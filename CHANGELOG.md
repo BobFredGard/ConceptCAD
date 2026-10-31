@@ -8,7 +8,7 @@ sont sorties le 2026-09-30j.
 Code dans `src/` · livrable `fusion_mvp.html` (généré par `build.js`) · architecture et
 garde-fous en tête de `src/00-entete-et-outils.js`.
 
-**492 versions**, de `2026-09-28b` à `V0.26.0` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
+**493 versions**, de `2026-09-28b` à `V0.26.1` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
 comme dans le fichier d'origine.
 
 ---
@@ -5991,3 +5991,9 @@ Demande : « Les 2 plans du haut, dégagement et retrait, définis / au brut ou 
 - **Cause** : dans la fiche d'opération, Dégagement / Retrait étaient dans l'onglet « Entrées », et Haut / Bas étaient des nombres saisis, à des endroits différents selon le type (Réglages pour la poche, Hauteurs pour l'ébauche 3D…). Aucune référence ni face cliquée pour Haut / Bas.
 - **Correctif** : un seul onglet **Hauteurs** dans chaque fiche d'opération (`faoPlanesCard`, `src/88-fao-80-interface.js`) : Dégagement, Retrait, puis Haut et Bas (poche, contour, ébauche 3D, finition). Haut / Bas (`faoHtRow`) : « Valeur saisie » (par défaut, documents inchangés) ou une référence (brut, modèle, bridage, **Sélection (face)**) plus un décalage ; choisir la face lance directement le clic dans la vue (`faoZPlaneCommit`, `src/88-fao-94-selection.js`). Modèle `op.hts={top,bot}` (`faoHtsClean`, `faoHtsSync`, `src/88-fao-40-zone-plans.js`) résolu dans le repère de l'opération et réécrit dans `ztop`/`zbot` avant la clé de cache (`faoOpMovesKey`) : les générateurs ne changent pas, un brut modifié rend l'opération à régénérer. « Limiter Z (arêtes) » passe dans cet onglet ; référence et lien d'arêtes s'excluent. Alerte si Haut ≤ Bas, Retrait sous le Haut, ou Dégagement sous le Retrait. Fiche du posage inchangée.
 - **Tests** : vérifié dans l'application (onglet unique, Bas sur « Haut du modèle » → 31 et alerte Haut ≤ Bas) ; `npm run ci:full`.
+
+## V0.26.1 - FAO : zone projetée en orange sur le plan de fond, clic dans la vue = désélection
+Demande : « quand on réalise des zones, on peut choisir des esquisses et des arêtes. Il faudrait pouvoir les projeter en orange sur le plan de fond pour être sûr de celles qui ont été choisies, surtout quand elles sont choisies sur des plans différents » ; « arêtes visibles si la fonction est sélectionnée » ; « le clic dans la zone 3D annule toute sélection de posage ou de fonction — valable FAO uniquement » ; « trait orange un peu épais ».
+- **Projection** (`src/89-fao-posage-repere.js`, `faoZoneProj`) : tant qu'une opération est sélectionnée, sa zone (extérieure et îlot : chaîne d'arêtes, esquisse ou rectangle) est dessinée en orange, trait de 4 px, à la cote Bas de l'opération (sinon dessous du brut), dans le repère de l'opération, toujours visible par-dessus la pièce. Pendant la saisie d'une chaîne, ce sont les arêtes retenues qui sont projetées, en direct. Rien pour la géodésique ni la limite Z.
+- **Clic dans la vue 3D** (`src/90-picking-mesure-import.js`) : en FAO, un clic (sans Ctrl) désélectionne le posage ou l'opération — la projection disparaît ; la face reste allumée et mesurée. Les modes de saisie (chaîne, plans, faces, perçages, origine) gardent leur clic. CAO inchangée.
+- **Tests** : vérifié dans l'application (Poche et Contour : boucle orange au fond de la poche, suivi en direct de la saisie de chaîne, clic sur la pièce = désélection) ; `npm run ci`.

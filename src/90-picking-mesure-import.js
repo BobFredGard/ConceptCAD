@@ -299,9 +299,15 @@ function faceSelect(e,second){
   // plan, construction : ni arbre, ni timeline, ni panneau, ni outil rouge), rien n'est désélectionné
   const meas=!!(e&&(e.ctrlKey||e.metaKey));
   // Espace FAO : on mesure et on allume les faces en orange, rien d'autre — pas de fonction,
-  // plan ni construction sélectionnés (pas d'édition CAO), la sélection FAO reste en place
+  // plan ni construction sélectionnés (pas d'édition CAO) ; V0.26.1 : le posage / l'opération est désélectionné
   const fao=typeof viewFaoActive==='function'&&viewFaoActive();
   const noSel=meas||fao;
+  // FAO : un clic (sans Ctrl) dans la vue 3D annule la sélection du posage ou de l'opération
+  if(fao&&!second&&!meas&&sel&&(sel.kind==='faoSetup'||sel.kind==='faoOp')){
+    sel={kind:null,id:null};
+    try{if(typeof faoRenderTree==='function')faoRenderTree();}catch(err){}
+    try{renderProps();}catch(err){}
+  }
   // 2026-10-16-017 : plans du repère (dessinés devant la pièce) prioritaires
   if(!second&&!noSel){const tp=triadPickPlane(e);if(tp){clearMeasure();sel={kind:'plane',id:tp};renderTree();renderProps();refreshParts();faceEl.textContent=`Plan ${tp} — ${PLANES[tp].label}
 Bouton « Esquisse » (ou double-clic dans l'arbre) pour dessiner dessus.`;return;}}
