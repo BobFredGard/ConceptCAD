@@ -88,7 +88,7 @@ function faoPoseSync(){
   // La sélection opération/posage fait partie de la signature : même sans repère
   // propre à l'opération, passer de l'un à l'autre doit reconstruire le groupe.
   const sig=[setup.id,selOp?('op:'+selOp.id):'setup',opF&&!opF.id?opF.X.concat(opF.Z).map(q=>q.toFixed(6)).join(','):'',st.x0,st.y0,st.z0,st.x1,st.y1,st.z1,st.cyl?JSON.stringify(st.cyl):'',faoStockShape(setup),setup.stockBody,spec.pt.join(','),spec.src,O.b,O.c,faoFrameSig(setup),
-    (typeof _docVersion!=='undefined'?_docVersion:0),faoPoseHover,faoZoneProjSig(selOp)].join('|');
+    (typeof _docVersion!=='undefined'?_docVersion:0),faoPoseHover,faoZoneProjSig(setup,selOp)].join('|');
   if(sig===faoPoseSig&&faoPoseGrp)return;
   faoPoseSig=sig;faoPoseClear();
   const g=new THREE.Group();g.name='faoPose';
@@ -173,46 +173,73 @@ function faoPoseSync(){
   faoAdd3D(g);faoPoseGrp=g;
   try{refreshMirror();}catch(e){}
 }
-/* Zone de l'opération sélectionnée PROJETÉE en orange sur le plan de fond (Bas de
-   l'opération, sinon dessous du brut) : esquisses et arêtes choisies sur des plans
-   différents se lisent d'un coup d'œil. Pendant la saisie d'une chaîne, ce sont les
+/* Zone de l'opération sélectionnée PROJETÉE en orange : opérations 3D (ébauche 3D,
+   finition, géodésique) sur le plan de la sélection quand elle est plane (V0.26.2 :
+   esquisse, arêtes cliquées toutes à la même cote), sinon — et toujours pour les
+   opérations 2D (contour, poche… : forme ET limite basse d'un coup d'œil) — sur le
+   plan de fond (Bas de l'opération, sinon dessous du brut) — esquisses
+   et arêtes choisies sur des plans différents se lisent d'un coup d'œil. Pendant la saisie d'une chaîne, ce sont les
    arêtes retenues qui sont projetées (en direct) ; sinon les boucles enregistrées
    (zone extérieure + îlot), dans le repère de l'opération. Toujours devant la pièce. */
-function faoZoneProjLoops(op){
-  // -> [[[x,y],…] fermée ? , …] — polylignes XY (repère de l'opération)
+function faoZoneProjZ(zs){
+  // cote commune d'une liste de Z (à 0,01 mm près), sinon null
+  let lo=Infinity,hi=-Infinity;
+  zs.forEach(function(z){z=+z;if(isFinite(z)){if(z<lo)lo=z;if(z>hi)hi=z;}});
+  return (lo<=hi&&hi-lo<=0.01)?(lo+hi)/2:null;
+}
+function faoZoneProjSkZ(setup,op,skId){
+  // cote du plan d'une esquisse de zone, dans le repère de l'opération (comme ses arêtes)
+  try{
+    const sk=((typeof doc!=='undefined'&&doc&&doc.sketches)||[]).find(function(x){return x.id===skId;})||((faoSkFind(skId)||{}).sk);
+    if(!sk)return null;
+    const w=occW(sk,0,0),Fr=faoOpFrameOf(setup.id,op.id);
+    const z=Fr.id?w[2]:faoToF(Fr,w)[2];
+    return isFinite(z)?z:null;
+  }catch(e){return null;}
+}
+function faoZoneProjLoops(setup,op){
+  // -> [{pts:[[x,y(,z)],…], closed, z}] — polylignes XY (repère de l'opération) ;
+  //    z = cote du plan de la sélection quand elle est plane, sinon null (plan de fond)
   const out=[];
+  const pl=(op.type==='rough3d'||op.type==='geofinish'||op.type==='geodesic'); // règle du plan de la sélection
   const live=(typeof faoChainMode!=='undefined'&&faoChainMode&&faoChainMode.opId===op.id&&faoChainMode.kind!=='z')?faoChainMode:null;
   const add=function(L,slot){
     if(!L)return;
     if(live&&live.kind===slot){
-      (live.sel||[]).forEach(function(i){const e=live.edges[i];if(e&&(e.pts||[]).length>=2)out.push({pts:e.pts,closed:false});});
+      const es=(live.sel||[]).map(function(i){return live.edges[i];}).filter(function(e){return e&&(e.pts||[]).length>=2;});
+      const zs=[];es.forEach(function(e){e.pts.forEach(function(q){zs.push(q[2]);});});
+      const z=pl?faoZoneProjZ(zs):null;
+      es.forEach(function(e){out.push({pts:e.pts,closed:false,z:z});});
       return;
     }
     if(L.mode==='rect'&&[L.x0,L.y0,L.x1,L.y1].every(function(v){return isFinite(+v);}))
-      out.push({pts:[[+L.x0,+L.y0],[+L.x1,+L.y0],[+L.x1,+L.y1],[+L.x0,+L.y1]],closed:true});
-    else if((L.mode==='chain'||L.mode==='sketch')&&(L.loop||[]).length>=2)out.push({pts:L.loop,closed:true});
+      out.push({pts:[[+L.x0,+L.y0],[+L.x1,+L.y0],[+L.x1,+L.y1],[+L.x0,+L.y1]],closed:true,z:null});
+    else if(L.mode==='chain'&&(L.loop||[]).length>=2) // arêtes cliquées (ancres) toutes à la même cote
+      out.push({pts:L.loop,closed:true,z:pl?faoZoneProjZ((L.anchors||[]).map(function(A){return A&&A.m?A.m[2]:NaN;})):null});
+    else if(L.mode==='sketch'&&(L.loop||[]).length>=2)
+      out.push({pts:L.loop,closed:true,z:(pl&&L.sk)?faoZoneProjSkZ(setup,op,L.sk):null});
   };
-  if(op.type==='geodesic')return out;
   add(op.limit||(live&&live.kind==='chain'?{}:null),'chain');
   add(op.limit2||(live&&live.kind==='chain2'?{}:null),'chain2');
   return out;
 }
-function faoZoneProjSig(op){
+function faoZoneProjSig(setup,op){
   if(!op)return '';
   try{
     let n=0,s=0;
-    faoZoneProjLoops(op).forEach(function(l){(l.pts||[]).forEach(function(p){n++;s+=(+p[0]||0)*1.3+(+p[1]||0)*0.7;});});
+    faoZoneProjLoops(setup,op).forEach(function(l){s+=l.z===null?0:+l.z*0.3;(l.pts||[]).forEach(function(p){n++;s+=(+p[0]||0)*1.3+(+p[1]||0)*0.7;});});
     return n+':'+s.toFixed(4)+':'+op.zbot;
   }catch(e){return '';}
 }
 function faoZoneProj(setup,op){
-  const loops=faoZoneProjLoops(op);
+  const loops=faoZoneProjLoops(setup,op);
   if(!loops.length||typeof faoThickSegs!=='function')return null;
-  let z=+op.zbot;
-  if(!isFinite(z)){try{const st=faoOpView(setup,op).stock||setup.stock;z=+st.z0;}catch(e){z=NaN;}}
-  if(!isFinite(z))return null;
+  let zf=+op.zbot; // plan de fond
+  if(!isFinite(zf)){try{const st=faoOpView(setup,op).stock||setup.stock;zf=+st.z0;}catch(e){zf=NaN;}}
   const arr=[];
   loops.forEach(function(l){
+    const z=(l.z!==null&&isFinite(+l.z))?+l.z:zf;
+    if(!isFinite(z))return;
     const P=l.pts,n=P.length,m=l.closed?n:n-1;
     for(let i=0;i<m;i++){const a=P[i],b=P[(i+1)%n];
       if(!a||!b||!isFinite(+a[0])||!isFinite(+b[0]))continue;

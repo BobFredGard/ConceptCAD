@@ -8,7 +8,7 @@ sont sorties le 2026-09-30j.
 Code dans `src/` · livrable `fusion_mvp.html` (généré par `build.js`) · architecture et
 garde-fous en tête de `src/00-entete-et-outils.js`.
 
-**493 versions**, de `2026-09-28b` à `V0.26.1` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
+**494 versions**, de `2026-09-28b` à `V0.26.2` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
 comme dans le fichier d'origine.
 
 ---
@@ -5997,3 +5997,8 @@ Demande : « quand on réalise des zones, on peut choisir des esquisses et des a
 - **Projection** (`src/89-fao-posage-repere.js`, `faoZoneProj`) : tant qu'une opération est sélectionnée, sa zone (extérieure et îlot : chaîne d'arêtes, esquisse ou rectangle) est dessinée en orange, trait de 4 px, à la cote Bas de l'opération (sinon dessous du brut), dans le repère de l'opération, toujours visible par-dessus la pièce. Pendant la saisie d'une chaîne, ce sont les arêtes retenues qui sont projetées, en direct. Rien pour la géodésique ni la limite Z.
 - **Clic dans la vue 3D** (`src/90-picking-mesure-import.js`) : en FAO, un clic (sans Ctrl) désélectionne le posage ou l'opération — la projection disparaît ; la face reste allumée et mesurée. Les modes de saisie (chaîne, plans, faces, perçages, origine) gardent leur clic. CAO inchangée.
 - **Tests** : vérifié dans l'application (Poche et Contour : boucle orange au fond de la poche, suivi en direct de la saisie de chaîne, clic sur la pièce = désélection) ; `npm run ci`.
+
+## V0.26.2 - FAO : ébauche 3D, finition, géodésique : zone projetée sur le plan de la sélection quand elle est plane
+Demande : « quand la sélection fait partie d'un même plan, il faut que la projection orange soit sur ce plan et pas le plan du fond » ; « l'Ébauche 3D, la finition et la géodésique doivent respecter cette règle. Pour le contour, c'est bien d'utiliser le plan d'usinage le plus bas pour voir à la fois la forme et la limite basse ».
+- **Cote de la projection** (`src/89-fao-posage-repere.js`, `faoZoneProjLoops`) : pour l'ébauche 3D, la finition et la géodésique, chaque boucle est dessinée à la cote de sa sélection quand celle-ci est plane (à 0,01 mm près), sinon sur le plan de fond (Bas de l'opération, sinon dessous du brut) comme en V0.26.1. Chaîne enregistrée : cote des arêtes cliquées (ancres) ; saisie en cours : toutes les arêtes retenues ; esquisse : plan de l'esquisse ; rectangle : plan de fond. Zone extérieure et îlot sont jugés séparément. Les opérations 2D (contour, poche, surfaçage, perçage…) restent sur le plan de fond : la forme et la limite basse se lisent ensemble.
+- **Tests** : vérifié dans l'application (Poche et Contour : la poche reste à Z 24, plan de fond ; la même sélection passée en Ébauche 3D est dessinée à Z 30 sur son arête ; saisie avec une arête à Z 30 et une à Z 26 → plan de fond) ; `npm run ci:full`.
