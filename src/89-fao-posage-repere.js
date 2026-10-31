@@ -177,7 +177,8 @@ function faoPoseSync(){
    finition, géodésique) sur le plan de la sélection quand elle est plane (V0.26.2 :
    esquisse, arêtes cliquées toutes à la même cote), sinon — et toujours pour les
    opérations 2D (contour, poche… : forme ET limite basse d'un coup d'œil) — sur le
-   plan de fond (Bas de l'opération, sinon dessous du brut) — esquisses
+   plan de fond (Bas de l'opération, sinon dessous du brut). Chanfrein (V0.26.3) : plan
+   des deux premières arêtes cliquées (deux premiers germes) — esquisses
    et arêtes choisies sur des plans différents se lisent d'un coup d'œil. Pendant la saisie d'une chaîne, ce sont les
    arêtes retenues qui sont projetées (en direct) ; sinon les boucles enregistrées
    (zone extérieure + îlot), dans le repère de l'opération. Toujours devant la pièce. */
@@ -186,6 +187,13 @@ function faoZoneProjZ(zs){
   let lo=Infinity,hi=-Infinity;
   zs.forEach(function(z){z=+z;if(isFinite(z)){if(z<lo)lo=z;if(z>hi)hi=z;}});
   return (lo<=hi&&hi-lo<=0.01)?(lo+hi)/2:null;
+}
+function faoZoneProjZ2(anchors){
+  // chanfrein : cote commune des deux premiers germes ; s'ils diffèrent (ou un seul), celle du premier
+  const zs=(anchors||[]).filter(function(A){return A&&A.m&&isFinite(+A.m[2]);}).map(function(A){return +A.m[2];});
+  if(!zs.length)return null;
+  const z=faoZoneProjZ(zs);
+  return z!==null?z:zs[0];
 }
 function faoZoneProjSkZ(setup,op,skId){
   // cote du plan d'une esquisse de zone, dans le repère de l'opération (comme ses arêtes)
@@ -208,12 +216,15 @@ function faoZoneProjLoops(setup,op){
     if(live&&live.kind===slot){
       const es=(live.sel||[]).map(function(i){return live.edges[i];}).filter(function(e){return e&&(e.pts||[]).length>=2;});
       const zs=[];es.forEach(function(e){e.pts.forEach(function(q){zs.push(q[2]);});});
-      const z=pl?faoZoneProjZ(zs):null;
+      const zc=(op.type==='chamfer')?faoZoneProjZ2((live.seeds||[]).slice(0,2).map(function(i){return faoEdgeAnchor(live.edges[i]);})):null;
+      const z=zc!==null?zc:(pl?faoZoneProjZ(zs):null);
       es.forEach(function(e){out.push({pts:e.pts,closed:false,z:z});});
       return;
     }
     if(L.mode==='rect'&&[L.x0,L.y0,L.x1,L.y1].every(function(v){return isFinite(+v);}))
       out.push({pts:[[+L.x0,+L.y0],[+L.x1,+L.y0],[+L.x1,+L.y1],[+L.x0,+L.y1]],closed:true,z:null});
+    else if(L.mode==='chain'&&(L.loop||[]).length>=2&&op.type==='chamfer') // chanfrein : premier germe
+      out.push({pts:L.loop,closed:true,z:faoZoneProjZ2((L.anchors||[]).slice(0,2))});
     else if(L.mode==='chain'&&(L.loop||[]).length>=2) // arêtes cliquées (ancres) toutes à la même cote
       out.push({pts:L.loop,closed:true,z:pl?faoZoneProjZ((L.anchors||[]).map(function(A){return A&&A.m?A.m[2]:NaN;})):null});
     else if(L.mode==='sketch'&&(L.loop||[]).length>=2)
