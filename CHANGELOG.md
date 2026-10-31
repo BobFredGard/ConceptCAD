@@ -8,7 +8,7 @@ sont sorties le 2026-09-30j.
 Code dans `src/` · livrable `fusion_mvp.html` (généré par `build.js`) · architecture et
 garde-fous en tête de `src/00-entete-et-outils.js`.
 
-**490 versions**, de `2026-09-28b` à `V0.25.0` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
+**491 versions**, de `2026-09-28b` à `V0.25.1` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
 comme dans le fichier d'origine.
 
 ---
@@ -5979,3 +5979,9 @@ Demande : « proposer une interface colorée : d'abord juste les icônes par th�
 - **Dessinées en volume** (`MF_ICF`, 50 icônes) : vue isométrique (`fzP`, `fzBox`, `fzPath`), faces ombrées, profil sélectionné orange, flèches bleues, construction orange, brut FAO bois clair et parcours bleus. `mfI` émet le dessin au trait ET le dessin en volume, le CSS montre le bon : rien n'est reconstruit au changement (ruban, barre rapide, timeline). Icônes sans version en volume (PLAN) : couleurs par famille.
 - **Délire** : arc-en-ciel, icônes penchées, yeux qui suivent la souris, gigue au survol, police Comic, liseré arc-en-ciel, confettis et emojis au clic ; animations coupées si « réduire les animations ».
 - **Tests** : vérifié dans l'aperçu (4 styles, menu, aucune erreur console) ; `npm run ci`.
+
+## V0.25.1 - FAO : un clic sur une face ne fait que l'allumer et la mesurer, sans édition de fonction
+Demande : « dans le monde FAO, je ne dois pas pouvoir éditer les fonctions comme dans le monde CAO. Je dois juste pouvoir mesurer et sélectionner les faces en orange ».
+- **Cause** : `faceSelect` (V0.23.26) sélectionnait la fonction créatrice de la face cliquée dans tous les espaces : en FAO, le panneau passait en édition de fonction CAO et la sélection du posage ou de l'opération était perdue. Les plans du repère, la construction, le clic dans le vide et les raccourcis E, H, R, F, C, M agissaient aussi comme en CAO.
+- **Correctif** (`src/90-picking-mesure-import.js`) : si `viewFaoActive()`, le clic allume la face en orange (type, aire), Ctrl+clic mesure entre deux faces, le clic dans le vide efface la mesure ; aucune fonction, plan ou construction n'est sélectionné et la sélection FAO reste en place. Les raccourcis des outils CAO sont ignorés en FAO. Le clic sur un point cardinal du posage (origine) est inchangé. CAO inchangée.
+- **Tests** : vérifié dans l'application (bloc 40 × 30 × 20 : en CAO la fonction est sélectionnée ; en FAO le posage reste sélectionné, face orange, mesure 90° entre deux faces, raccourci E sans effet) ; `npm run ci:full`.

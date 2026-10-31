@@ -336,7 +336,7 @@ input[type=range]{accent-color:var(--primary);width:100%}
  * peut changer sans rien casser. CACHE_VER (parcours FAO) reste indépendant.
  */
 
-const APP_VER='V0.25.0';
+const APP_VER='V0.25.1';
 try{console.log('[MiniFusion] version '+APP_VER);}catch(e){}
 try{var mfSv=document.getElementById('mfSplashVer');if(mfSv)mfSv.textContent=APP_VER;}catch(e){} // écran de démarrage
 
@@ -52448,6 +52448,7 @@ window.addEventListener('keydown',e=>{
   const id=map[String(e.key||'').toLowerCase()];if(!id)return;
   const t=e.target;if(t&&(t.tagName==='INPUT'||t.tagName==='TEXTAREA'||t.tagName==='SELECT'||t.isContentEditable))return;
   if(skEdit||extPickFace||faoChainMode)return;
+  if(typeof viewFaoActive==='function'&&viewFaoActive())return; // FAO : pas d'outils CAO
   const ov=$('sketchOverlay');if(ov&&ov.classList.contains('open'))return;
   const b=$(id);if(!b||b.disabled)return;
   e.preventDefault();b.click();
@@ -52458,6 +52459,7 @@ window.addEventListener('keydown',e=>{
   if((e.key==='e'||e.key==='E')&&!e.ctrlKey&&!e.altKey&&!e.metaKey&&!e.repeat){
     const t=e.target;if(t&&(t.tagName==='INPUT'||t.tagName==='TEXTAREA'||t.tagName==='SELECT'||t.isContentEditable))return;
     if(skEdit||filMode||filModeX||extPickFace||faoChainMode)return;
+    if(typeof viewFaoActive==='function'&&viewFaoActive())return; // FAO : pas d'outils CAO
     const ov=$('sketchOverlay');if(ov&&ov.classList.contains('open'))return;
     e.preventDefault();
     const b=$('btnExtrude');if(b&&!b.disabled)b.click();
@@ -52545,15 +52547,20 @@ function faceSelect(e,second){
   // V0.24.2 : Ctrl / Cmd enfoncé = MESURE seulement — rien n'est sélectionné nulle part (fonction,
   // plan, construction : ni arbre, ni timeline, ni panneau, ni outil rouge), rien n'est désélectionné
   const meas=!!(e&&(e.ctrlKey||e.metaKey));
+  // Espace FAO : on mesure et on allume les faces en orange, rien d'autre — pas de fonction,
+  // plan ni construction sélectionnés (pas d'édition CAO), la sélection FAO reste en place
+  const fao=typeof viewFaoActive==='function'&&viewFaoActive();
+  const noSel=meas||fao;
   // 2026-10-16-017 : plans du repère (dessinés devant la pièce) prioritaires
-  if(!second&&!meas){const tp=triadPickPlane(e);if(tp){clearMeasure();sel={kind:'plane',id:tp};renderTree();renderProps();refreshParts();faceEl.textContent=`Plan ${tp} — ${PLANES[tp].label}
+  if(!second&&!noSel){const tp=triadPickPlane(e);if(tp){clearMeasure();sel={kind:'plane',id:tp};renderTree();renderProps();refreshParts();faceEl.textContent=`Plan ${tp} — ${PLANES[tp].label}
 Bouton « Esquisse » (ou double-clic dans l'arbre) pour dessiner dessus.`;return;}}
-  if(!second&&!meas&&cgSelectAt(e))return; // construction (79) : plans, axes, points, repères
+  if(!second&&!noSel&&cgSelectAt(e))return; // construction (79) : plans, axes, points, repères
   const h=pick(e);
   try{const eh=edgeHoverPick(e,h);if(eh){edgeSelect(e,eh,second);return;}}catch(err){}
   if(second&&selEdges.length&&!selFaces.length){selEdges=[];}
   if(!h){
-    if(!second&&!meas){
+    if(!second&&fao){clearMeasure();faceEl.textContent='Aucune face — cliquez sur un corps.';}
+    else if(!second&&!meas){
       const pl=pickPlane(e);
       if(pl){sel={kind:'plane',id:pl};renderTree();renderProps();refreshParts();faceEl.textContent=`Plan ${pl} — ${PLANES[pl].label}\nBouton « Esquisse » (ou double-clic dans l'arbre) pour dessiner dessus.`;return;}
       clearMeasure();faceEl.textContent='Aucune face — cliquez sur un corps.';
@@ -52563,11 +52570,11 @@ Bouton « Esquisse » (ou double-clic dans l'arbre) pour dessiner dessus.`;retur
   clearHover();
   if(!second){clearMeasure();selFaces=[{mesh:h.object,faceIndex:h.faceIndex,point:h.point.clone(),geom:occFaceGeom(h.object,h.faceIndex)}];highlightTris(h.object,faceTrisFor(h.object,h.faceIndex),0xff9f0a,0.55);
     const G=selFaces[0].geom;
-    faceEl.textContent=`Face 1 : ${bodyName(h.object)}${G?(G.kind==='cyl'?` · CYLINDRE Ø${(G.r*2).toFixed(2)}`:' · PLAN'):''}\nAire ≈ ${faceArea(h.object,h.faceIndex)}\nCtrl+clic une 2e face (entraxe auto si cylindres) · Bouton « Esquisse » pour esquisser dessus.`;
+    faceEl.textContent=`Face 1 : ${bodyName(h.object)}${G?(G.kind==='cyl'?` · CYLINDRE Ø${(G.r*2).toFixed(2)}`:' · PLAN'):''}\nAire ≈ ${faceArea(h.object,h.faceIndex)}\nCtrl+clic une 2e face (entraxe auto si cylindres)${fao?'':' · Bouton « Esquisse » pour esquisser dessus.'}`;
     // V0.23.26 : la fonction créatrice est sélectionnée dans l'arbre et la timeline — différé :
     // la face s'allume tout de suite, le rejeu observé (points de contrôle) vient ensuite
     const hm=h.object,hf=h.faceIndex,hp=h.point.clone();
-    if(!meas)setTimeout(()=>{if(selFaces.length===1&&selFaces[0].mesh===hm&&selFaces[0].faceIndex===hf)faceSelectFeature(hm,hf,hp);},0);}
+    if(!noSel)setTimeout(()=>{if(selFaces.length===1&&selFaces[0].mesh===hm&&selFaces[0].faceIndex===hf)faceSelectFeature(hm,hf,hp);},0);}
   else{
     if(!selFaces.length){faceSelect(e,false);return;}
     const NB={mesh:h.object,faceIndex:h.faceIndex,point:h.point.clone(),geom:occFaceGeom(h.object,h.faceIndex)};
