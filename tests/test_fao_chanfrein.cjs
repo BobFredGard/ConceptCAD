@@ -57,6 +57,25 @@ const R=String.raw`
    const e05=H(99.55),e09=H(99.15),e12=H(98.85);
    // chanfrein 45° de 1 mm : à s mm de l'arête, Z = 29 + s
    A(near(e05,29.45,0.08)&&near(e09,29.85,0.08)&&near(e12,30,1e-6),'15 : simulation : à 0,45 et 0,85 mm de l’arête, Z '+e05.toFixed(2)+' et '+e09.toFixed(2)+' (attendu 29,45 et 29,85 : chanfrein 45° de 1 mm), à 1,15 mm le dessus est intact');}
+  // 6 bis. V0.26.4 : arêtes NON PLANES — dessus en pente (Z 20 en X0 → Z 30 en X100), axe outil en Z
+  {const o3=Object.assign(faoOpDefaults('chamfer'),{toolId:t.id,w:1,tipOff:0.3,cside:'ext'});
+   const zE=x=>20+x/10;
+   const E=[[[0,0,zE(0)],[100,0,zE(100)]],[[100,0,zE(100)],[100,60,zE(100)]],[[100,60,zE(100)],[0,60,zE(0)]],[[0,60,zE(0)],[0,0,zE(0)]]].map(p=>({pts:p}));
+   const res=faoLoopFromChains(E,faoOrderEdges(E,[0,1,2,3]));
+   A(res.loop3&&res.loop3.length===res.loop.length&&res.loop3.some(q=>q[2]===30)&&res.loop3.some(q=>q[2]===20),'18 : la boucle garde le Z de chaque point (loop3)');
+   o3.limit={mode:'chain',loop:res.loop,closed:res.closed,nEdges:4,tangent:true,side:'center',extra:0};o3.z=30;
+   A(faoChamferSetLoop3(o3.limit,res)===true&&!!faoChamferLoop3(o3.limit),'19 : arêtes non planes → parcours 3D');
+   s.ops.push(o3);
+   {const cp=(faoOpMoves(o3,s)||[]).filter(m=>m&&!m.r&&!m.ent&&isFinite(+m.x));
+    A(cp.length>4&&cp.every(m=>near(m.z,28.7,1e-3)),'19 bis : option 3D éteinte (défaut) : passe plane à Z28,7');}
+   o3.c3d=true;
+   const c3=(faoOpMoves(o3,s)||[]).filter(m=>m&&!m.r&&!m.ent&&isFinite(+m.x));
+   const side=c3.filter(m=>m.y<0&&m.x>=0&&m.x<=100);
+   const zs=c3.map(m=>m.z);
+   A(side.length>=2&&side.every(m=>near(m.z,zE(m.x)-1.3,2e-3)),'20 : côté en pente : pointe à Z arête − 1,3 tout du long ('+side.length+' points, Z '+Math.min(...zs).toFixed(2)+' → '+Math.max(...zs).toFixed(2)+')');
+   A(c3.filter(m=>m.x>2&&m.x<98||m.y>2&&m.y<58).every(m=>outside(m)&&near(dEdge(m),0.55,1e-3)),'21 : en 3D l’axe reste à 0,55 mm de l’arête en XY (outil vertical)');
+   const flat=Object.assign({},res,{loop3:res.loop3.map(q=>[q[0],q[1],30])});
+   A(faoChamferSetLoop3(o3.limit,flat)===true&&!o3.limit.loop3,'22 : arêtes planes : pas de loop3, parcours plan inchangé');}
   // 7. fiche, saisie, rafraîchissement
   A(/faoChamferRows\(d,setup,op\)/.test(String(faoOpCardElement))&&/op\.type==='chamfer'/.test(String(faoChainOk)),'16 : fiche Chanfrein branchée ; la validation de chaîne prend la cote de l’arête');
   A(faoZoneCtx(op,s)===null,'17 : pas de zone (ses arêtes sont son profil) : rien n’est rogné');

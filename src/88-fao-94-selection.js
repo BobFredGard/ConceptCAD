@@ -1723,6 +1723,7 @@ function faoChainOk(){
       faoChainMode.sel.forEach(function(i){const e=faoChainMode.edges[i];(e&&e.pts||[]).forEach(function(p){if(isFinite(+p[2])&&+p[2]>zh)zh=+p[2];});});
       if(zh>-1/0)op.z=Math.round(zh*1000)/1000;
       L.side='center';
+      faoChamferSetLoop3(L,res); // V0.26.4 : arêtes non planes -> parcours 3D, axe Z
     }
     if(!is2&&faoContourProfil(op)&&!op.zlim){
       // contour : bas = arête la plus basse de la sélection (bas de paroi),

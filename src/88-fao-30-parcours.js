@@ -542,6 +542,7 @@ function faoLoopFromChains(edges,chains){
   // Chaînes 3D -> boucle XY (projection, dédupliquée, refermée d'office).
   // Maillon {i,rev} : arête parcourue à l'envers si rev. Le 1er point de chaque
   // arête est conservé : la déduplication juste en dessous enlève les doublons.
+  // V0.26.4 : loop3 = mêmes points avec leur Z (chanfrein sur arêtes 3D).
   let pts=[];
   (chains||[]).forEach(function(ch){
     ch.forEach(function(link){
@@ -550,7 +551,7 @@ function faoLoopFromChains(edges,chains){
       const p=(edges[i]&&edges[i].pts)||[];
       for(let k=0;k<p.length;k++){
         const q=p[rev?(p.length-1-k):k];
-        pts.push([q[0],q[1]]);
+        pts.push([q[0],q[1],isFinite(+q[2])?+q[2]:0]);
       }
     });
   });
@@ -561,8 +562,10 @@ function faoLoopFromChains(edges,chains){
   });
   if(pts.length<3)return {loop:[],closed:false};
   const closed=Math.hypot(pts[0][0]-pts[pts.length-1][0],pts[0][1]-pts[pts.length-1][1])<0.5;
-  if(!closed)pts.push([pts[0][0],pts[0][1]]); // chaîne ouverte : refermée d'office
-  return {loop:pts.map(function(q){return [Math.round(q[0]*1000)/1000,Math.round(q[1]*1000)/1000];}),closed:closed};
+  if(!closed)pts.push([pts[0][0],pts[0][1],pts[0][2]]); // chaîne ouverte : refermée d'office
+  const r3=function(v){return Math.round(v*1000)/1000;};
+  return {loop:pts.map(function(q){return [r3(q[0]),r3(q[1])];}),closed:closed,
+    loop3:pts.map(function(q){return [r3(q[0]),r3(q[1]),r3(q[2])];})};
 }
 function faoLoopArea(loop){
   let a=0;
@@ -605,10 +608,10 @@ function faoEdgeAnchor(e){
 function faoChainLoopCap(res){
   // Cap 2000 pts (clip en O(n)) : les très longues chaînes sont sous-échantillonnées.
   if(!res||!res.loop||res.loop.length<=2000)return res;
-  const stride=Math.ceil(res.loop.length/2000), thin=[];
-  for(let i=0;i<res.loop.length;i+=stride)thin.push(res.loop[i]);
-  if(thin[thin.length-1]!==res.loop[res.loop.length-1])thin.push(res.loop[res.loop.length-1]);
-  return {loop:thin,closed:res.closed};
+  const stride=Math.ceil(res.loop.length/2000), thin=[], thin3=[], L3=res.loop3;
+  for(let i=0;i<res.loop.length;i+=stride){thin.push(res.loop[i]);if(L3)thin3.push(L3[i]);}
+  if(thin[thin.length-1]!==res.loop[res.loop.length-1]){thin.push(res.loop[res.loop.length-1]);if(L3)thin3.push(L3[L3.length-1]);}
+  return L3?{loop:thin,closed:res.closed,loop3:thin3}:{loop:thin,closed:res.closed};
 }
 // 2026-10-21-006 : ancres -> indices d'arêtes (même score que faoChainRematch,
 // appariement injectif) ; ancre introuvable = ignorée (pré-sélection de saisie).
@@ -696,8 +699,9 @@ function faoChainRematch(op,edges,field){
   res=faoChainLoopCap(res);
   const wasStale=!!L.stale;
   const loopChanged=JSON.stringify(L.loop||[])!==JSON.stringify(res.loop);
+  const z3Changed=op.type==='chamfer'&&faoChamferSetLoop3(L,res); // V0.26.4 : Z des arêtes suivi au rejeu
   L.loop=res.loop; L.closed=res.closed; L.nEdges=sel.length; L.stale=false;
-  return {changed:loopChanged||wasStale,stale:false,matched:seeds.length,nSel:sel.length};
+  return {changed:loopChanged||wasStale||z3Changed,stale:false,matched:seeds.length,nSel:sel.length};
 }
 function faoZlimFromEdges(edges,idxs){
   // Limite Z par arêtes : ancre par germe + Zmax/Zmin sur les arêtes retenues.

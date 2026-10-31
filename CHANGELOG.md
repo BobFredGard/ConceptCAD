@@ -8,7 +8,7 @@ sont sorties le 2026-09-30j.
 Code dans `src/` · livrable `fusion_mvp.html` (généré par `build.js`) · architecture et
 garde-fous en tête de `src/00-entete-et-outils.js`.
 
-**495 versions**, de `2026-09-28b` à `V0.26.3` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
+**496 versions**, de `2026-09-28b` à `V0.26.4` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
 comme dans le fichier d'origine.
 
 ---
@@ -6007,3 +6007,10 @@ Demande : « quand la sélection fait partie d'un même plan, il faut que la pro
 Demande : « pour le chanfrein, c'est le plan des 2 premières arêtes sélectionnées qui fait foi ».
 - **Cote de la projection** (`src/89-fao-posage-repere.js`, `faoZoneProjLoops`) : pour un chanfrein, la sélection orange est dessinée à la cote des deux premières arêtes cliquées (deux premiers germes), qu'elle soit enregistrée ou en cours de saisie, quelles que soient les cotes des arêtes suivantes. Si ces deux arêtes ne sont pas à la même cote, ou s'il n'y en a qu'une, la cote de la première fait foi ; sans germe : plan de fond. Les autres opérations ne changent pas.
 - **Tests** : vérifié dans l'application (Poche et Contour, sélection passée en chanfrein : deux premières arêtes à Z 26 → projection à Z 26 malgré une troisième à Z 30 ; première à Z 30 seule → Z 30) ; `npm run ci:full`.
+
+## V0.26.4 - FAO : chanfrein 3D, la pointe suit le Z de l'arête, axe outil toujours en Z
+Demande : « usinage d'un chanfrein sur un parcours 3D en gardant l'axe de l'outil toujours en Z » ; « Z ne doit pas être figé, juste que l'axe de l'outil sera toujours en Z » ; « le mettre dans l'icône Chanfrein avec une option 3D ».
+- **Option « Parcours »** (`src/89-fao-chanfrein.js`, fiche Chanfrein) : *Plan · Z fixe* (défaut, inchangé) ou *3D · suit l'arête* (`op.c3d`). En 3D, le contour XY est le même qu'en plan (axe à d de l'arête), puis chaque point reçoit la cote de pointe Z arête − (b + t), le Z étant lu sur l'arête au pied de la normale (rééchantillonnage à 0,5 mm, simplification 3D à 2 µm). L'axe de l'outil reste vertical : 3 axes. Arêtes non planes avec l'option éteinte : alerte dans la fiche.
+- **Boucle 3D** (`src/88-fao-30-parcours.js`, `faoLoopFromChains`) : la chaîne garde le Z de chaque point (`loop3`), conservé pour le chanfrein quand les arêtes ne sont pas planes (écart > 5 µm) et re-suivi au rejeu ; arêtes planes : rien ne change, signature comprise.
+- **Côté matière** : en 3D, la section est prise sous l'arête la plus basse (option `zSide` de `faoGenContourProfil`, absente ailleurs).
+- **Tests** : `tests/test_fao_chanfrein.cjs` 18 à 22 (dessus en pente Z 20 → 30 : pointe à Z arête − 1,3 tout du long, axe à 0,55 mm en XY, option éteinte = passe plane) ; `npm run ci`.

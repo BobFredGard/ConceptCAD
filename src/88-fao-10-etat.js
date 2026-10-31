@@ -163,7 +163,8 @@ function faoSanitiseOps(s){
       if(op.cside!=='ext'&&op.cside!=='int'&&op.cside!=='auto')delete op.cside;
       ['leadR','overlap','w','tipOff','z'].forEach(function(k){if(k in op&&!(isFinite(+op[k])&&(k==='z'||+op[k]>=0)))delete op[k];});
       ['nR','fin','tabN','tabW','tabH','descente','pente'].forEach(function(k){delete op[k];});
-    }else ['cside','nR','fin','leadR','overlap','tabN','tabW','tabH','descente','pente'].forEach(function(k){delete op[k];});
+      if(op.c3d)op.c3d=true; else delete op.c3d; // V0.26.4 : parcours 3D (absent = plan)
+    }else ['cside','nR','fin','leadR','overlap','tabN','tabW','tabH','descente','pente','c3d'].forEach(function(k){delete op[k];});
     if(op.type==='rough3d'||faoPocketAdapt(op)){const mp=+op.minipasses;op.minipasses=isFinite(mp)&&mp>0?Math.min(50,Math.round(mp)):0;
       // 2026-10-07-001/002 : finition des parois (N contours « Parois » -> 0,
       // sur la DERNIERE passe en profondeur, finitProf cotes vers le haut) —

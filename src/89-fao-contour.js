@@ -52,7 +52,8 @@ function faoGenContourProfil(mesh,loop0,o){
   // --- côté matière : section à mi-hauteur, parité de part et d'autre
   let side=o.side==='ext'||o.side==='int'?o.side:null;
   if(!side&&mesh){
-    const zm=Math.max(zbot+0.05,Math.min(ztop-0.05,(ztop+zbot)/2));
+    // o.zSide : cote de section imposée (chanfrein 3D : sous l'arête la plus basse)
+    const zm=isFinite(+o.zSide)?+o.zSide:Math.max(zbot+0.05,Math.min(ztop-0.05,(ztop+zbot)/2));
     const segs=faoSliceZCached(mesh,Math.round(zm*1000)/1000);
     let vin=0,vout=0;
     const n=loop.length-1,stp=Math.max(1,Math.floor(n/24));
