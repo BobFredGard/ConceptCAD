@@ -166,7 +166,7 @@ const vm=require('vm');
     A(!cardErr,'fiche op : construction sans exception'+(cardErr?' ('+cardErr+')':''));
     if(card){
       const ot=leaves(card), oh=(t)=>ot.indexOf(t)>=0;
-      A(oh('Plans'),'fiche op : titre « Plans »');
+      A(oh('Hauteurs (mm)'),'fiche op : titre « Hauteurs (mm) » (V0.26.0 : onglet unique)');
       A(oh('Dégagement')&&oh('Retrait'),'fiche op : rangées Dégagement / Retrait');
       A(oh(RZ(125,st))&&oh(RZ(50,st)),'fiche op : valeurs héritées affichées 125 / 50 (relatives)');
       A(!oh('Hériter du posage'),'fiche op : pas de bouton héritage tant que rien n’est écrêté');

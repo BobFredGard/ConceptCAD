@@ -91,6 +91,7 @@ function faoSanitiseOps(s){
   (s.ops||[]).forEach(function(op){
     if(!op.id)op.id=faoNewId('op');
     if(op.on===undefined)op.on=true;
+    faoHtsClean(op); // V0.26.0 : références Haut/Bas
     if(!op.toolId||!(s.tools||[]).some(function(t){return t.id===op.toolId;}))
       op.toolId=(s.tools&&s.tools[0]&&s.tools[0].id)||'T1';
     // 31z : laisse unique -> surépaisseurs radiale (XY) + axiale (fond/Z).

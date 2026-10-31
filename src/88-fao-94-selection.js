@@ -1251,6 +1251,20 @@ function faoZPlaneCommit(e){
       if(!op){faceEl.textContent='Plan : opération introuvable, annulé.';faoZPlaneCancel(true);return;}
       owner=op;
     }
+    if(t.which==='top'||t.which==='bot'){
+      // V0.26.0 : Haut / Bas de la zone sur la face cliquée (décalage conservé)
+      if(!op){faceEl.textContent='Plan : opération introuvable, annulé.';faoZPlaneCancel(true);return;}
+      const cur=(op.hts&&op.hts[t.which])||{dz:0};
+      faoSnapshot((t.which==='top'?'haut':'bas')+' sur face (Z '+z.toFixed(2)+')');
+      faoZlimBreak(op);
+      op.hts=Object.assign({},op.hts||{});
+      op.hts[t.which]={ref:'face',dz:isFinite(+cur.dz)?+cur.dz:0,fz:z};
+      faoHtsSync(op,faoOpView(setup,op));
+      faoZPlaneCancel(true);
+      faoChanged();
+      faceEl.textContent=(t.which==='top'?'Haut':'Bas')+' de la zone : face retenue à Z '+z.toFixed(2)+' mm.';
+      return;
+    }
     const eff=faoPlaneEff(setup,op);
     const base=(t.which==='clear'?eff.clear:eff.retr)||{ref:'brutHaut',dz:0};
     const mm=(base.ref==='max'||base.ref==='min');
@@ -1673,6 +1687,7 @@ function faoChainOk(){
       // Lien suivi à chaque rejeu (faoZlimRematch) ; éditer un champ casse le
       // lien (faoZlimBreak) ; arête perdue -> stale + alerte, valeurs gardées.
       op.zlim={anchors:Z.anchors,nEdges:nSel,stale:false};
+      delete op.hts; // V0.26.0 : le lien d'arêtes remplace les références Haut/Bas
       faoChainExit();
       faoChanged();
       faceEl.textContent='Limite Z : haut '+Z.ztop+' → bas '+Z.zbot+' ('+nSel+' arêtes) enregistrée.';

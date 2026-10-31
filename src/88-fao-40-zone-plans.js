@@ -222,6 +222,31 @@ function faoPlaneEff(job,op){
   return {clear:clear,retr:retr,mode:P.mode==='plan'?'plan':'min5',
     ownClear:!!O.clear,ownRetr:!!O.retr};
 }
+/* ===================== HAUTEURS : DESSUS / FOND DE LA ZONE ===================== */
+// V0.26.0 : Haut (ztop) / Bas (zbot) façon Fusion — `op.hts={top,bot}`, chaque
+// borne = {ref,dz,fz?} avec les références des plans (sans max/min/origine).
+// Absente = valeur saisie (op.ztop/op.zbot, historique ou automatique). La
+// référence est résolue dans le repère de l'opération et RÉÉCRIT op.ztop/op.zbot :
+// les générateurs ne lisent que ces deux nombres (clé de cache comprise).
+function faoHtsOps(op){
+  return !!op&&(op.type==='pocket'||op.type==='contour'||op.type==='rough3d'||op.type==='geofinish');
+}
+function faoHtsClean(op){
+  if(!op||op.hts===undefined)return;
+  if(!op.hts||typeof op.hts!=='object'||!faoHtsOps(op)||op.zlim){ delete op.hts; return; }
+  const o={}, t=faoPlaneSlotClean(op.hts.top), b=faoPlaneSlotClean(op.hts.bot);
+  if(t&&t.ref!=='origine')o.top=t;
+  if(b&&b.ref!=='origine')o.bot=b;
+  if(o.top||o.bot)op.hts=o; else delete op.hts;
+}
+function faoHtsSync(op,job){
+  // job = posage VU par l'opération (faoOpView) : brut et faces dans son repère.
+  const H=op&&op.hts;
+  if(!H)return;
+  const r=function(pl){ const z=faoPlaneZ(pl,op,job,0); return isFinite(z)?Math.round(z*1000)/1000:NaN; };
+  if(H.top){ const z=r(H.top); if(isFinite(z))op.ztop=z; }
+  if(H.bot){ const z=r(H.bot); if(isFinite(z))op.zbot=z; }
+}
 function faoZoneStrip(moves,ctx,secu,job){
   // 2026-10-10-002 : test de franchissement de la boîte brut (utilisé par le
   // garde-brut ci-dessous) : true si le segment a->b ENTRE dans la boîte sb

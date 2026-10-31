@@ -8,7 +8,7 @@ sont sorties le 2026-09-30j.
 Code dans `src/` · livrable `fusion_mvp.html` (généré par `build.js`) · architecture et
 garde-fous en tête de `src/00-entete-et-outils.js`.
 
-**491 versions**, de `2026-09-28b` à `V0.25.1` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
+**492 versions**, de `2026-09-28b` à `V0.26.0` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
 comme dans le fichier d'origine.
 
 ---
@@ -5985,3 +5985,9 @@ Demande : « dans le monde FAO, je ne dois pas pouvoir éditer les fonctions com
 - **Cause** : `faceSelect` (V0.23.26) sélectionnait la fonction créatrice de la face cliquée dans tous les espaces : en FAO, le panneau passait en édition de fonction CAO et la sélection du posage ou de l'opération était perdue. Les plans du repère, la construction, le clic dans le vide et les raccourcis E, H, R, F, C, M agissaient aussi comme en CAO.
 - **Correctif** (`src/90-picking-mesure-import.js`) : si `viewFaoActive()`, le clic allume la face en orange (type, aire), Ctrl+clic mesure entre deux faces, le clic dans le vide efface la mesure ; aucune fonction, plan ou construction n'est sélectionné et la sélection FAO reste en place. Les raccourcis des outils CAO sont ignorés en FAO. Le clic sur un point cardinal du posage (origine) est inchangé. CAO inchangée.
 - **Tests** : vérifié dans l'application (bloc 40 × 30 × 20 : en CAO la fonction est sélectionnée ; en FAO le posage reste sélectionné, face orange, mesure 90° entre deux faces, raccourci E sans effet) ; `npm run ci:full`.
+
+## V0.26.0 - FAO : onglet Hauteurs unique, Haut / Bas sur une référence ou une face cliquée
+Demande : « Les 2 plans du haut, dégagement et retrait, définis / au brut ou une surface cliquée [...] puis les hauteurs : où commence la pièce en Z et où finit la partie à usiner, à ne pas dépasser ; sélectionner une face avec un décalage, haute et basse. Dans les fonctions, un seul onglet. »
+- **Cause** : dans la fiche d'opération, Dégagement / Retrait étaient dans l'onglet « Entrées », et Haut / Bas étaient des nombres saisis, à des endroits différents selon le type (Réglages pour la poche, Hauteurs pour l'ébauche 3D…). Aucune référence ni face cliquée pour Haut / Bas.
+- **Correctif** : un seul onglet **Hauteurs** dans chaque fiche d'opération (`faoPlanesCard`, `src/88-fao-80-interface.js`) : Dégagement, Retrait, puis Haut et Bas (poche, contour, ébauche 3D, finition). Haut / Bas (`faoHtRow`) : « Valeur saisie » (par défaut, documents inchangés) ou une référence (brut, modèle, bridage, **Sélection (face)**) plus un décalage ; choisir la face lance directement le clic dans la vue (`faoZPlaneCommit`, `src/88-fao-94-selection.js`). Modèle `op.hts={top,bot}` (`faoHtsClean`, `faoHtsSync`, `src/88-fao-40-zone-plans.js`) résolu dans le repère de l'opération et réécrit dans `ztop`/`zbot` avant la clé de cache (`faoOpMovesKey`) : les générateurs ne changent pas, un brut modifié rend l'opération à régénérer. « Limiter Z (arêtes) » passe dans cet onglet ; référence et lien d'arêtes s'excluent. Alerte si Haut ≤ Bas, Retrait sous le Haut, ou Dégagement sous le Retrait. Fiche du posage inchangée.
+- **Tests** : vérifié dans l'application (onglet unique, Bas sur « Haut du modèle » → 31 et alerte Haut ≤ Bas) ; `npm run ci:full`.

@@ -106,6 +106,9 @@ function faoOpMovesKey(op,job){
     // repère propre (3+2) : la clé est TOUJOURS celle du posage vu par l'opération — qu'on la
     // calcule avec le posage (lecture du cache, F5, contrôles) ou pendant le calcul (faoOpJob)
     try{ if(op&&op.frame&&!(job&&job.__opJob===op)&&typeof faoOpFrame==='function'){ const fr=faoOpFrame(job,op); if(fr)job=faoOpJob(job,op,fr); } }catch(e){}
+    // V0.26.0 : Haut/Bas suivant une référence (brut, modèle, face) — résolus AVANT la
+    // signature : un brut modifié déplace ztop/zbot, donc la clé
+    try{ faoHtsSync(op,job); }catch(e){}
     const inh=!!(job&&job.__opJob);
     // champs du VRAI posage, dans SON ordre (nettoyage compris : jamais sur le posage vu par
     // l'opération, qui en garderait une copie et changerait l'ordre de la clé d'une session à l'autre)

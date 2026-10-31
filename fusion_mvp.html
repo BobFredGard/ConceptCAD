@@ -336,7 +336,7 @@ input[type=range]{accent-color:var(--primary);width:100%}
  * peut changer sans rien casser. CACHE_VER (parcours FAO) reste indépendant.
  */
 
-const APP_VER='V0.25.1';
+const APP_VER='V0.26.0';
 try{console.log('[MiniFusion] version '+APP_VER);}catch(e){}
 try{var mfSv=document.getElementById('mfSplashVer');if(mfSv)mfSv.textContent=APP_VER;}catch(e){} // écran de démarrage
 
@@ -30762,6 +30762,7 @@ function faoSanitiseOps(s){
   (s.ops||[]).forEach(function(op){
     if(!op.id)op.id=faoNewId('op');
     if(op.on===undefined)op.on=true;
+    faoHtsClean(op); // V0.26.0 : références Haut/Bas
     if(!op.toolId||!(s.tools||[]).some(function(t){return t.id===op.toolId;}))
       op.toolId=(s.tools&&s.tools[0]&&s.tools[0].id)||'T1';
     // 31z : laisse unique -> surépaisseurs radiale (XY) + axiale (fond/Z).
@@ -32574,6 +32575,31 @@ function faoPlaneEff(job,op){
   return {clear:clear,retr:retr,mode:P.mode==='plan'?'plan':'min5',
     ownClear:!!O.clear,ownRetr:!!O.retr};
 }
+/* ===================== HAUTEURS : DESSUS / FOND DE LA ZONE ===================== */
+// V0.26.0 : Haut (ztop) / Bas (zbot) façon Fusion — `op.hts={top,bot}`, chaque
+// borne = {ref,dz,fz?} avec les références des plans (sans max/min/origine).
+// Absente = valeur saisie (op.ztop/op.zbot, historique ou automatique). La
+// référence est résolue dans le repère de l'opération et RÉÉCRIT op.ztop/op.zbot :
+// les générateurs ne lisent que ces deux nombres (clé de cache comprise).
+function faoHtsOps(op){
+  return !!op&&(op.type==='pocket'||op.type==='contour'||op.type==='rough3d'||op.type==='geofinish');
+}
+function faoHtsClean(op){
+  if(!op||op.hts===undefined)return;
+  if(!op.hts||typeof op.hts!=='object'||!faoHtsOps(op)||op.zlim){ delete op.hts; return; }
+  const o={}, t=faoPlaneSlotClean(op.hts.top), b=faoPlaneSlotClean(op.hts.bot);
+  if(t&&t.ref!=='origine')o.top=t;
+  if(b&&b.ref!=='origine')o.bot=b;
+  if(o.top||o.bot)op.hts=o; else delete op.hts;
+}
+function faoHtsSync(op,job){
+  // job = posage VU par l'opération (faoOpView) : brut et faces dans son repère.
+  const H=op&&op.hts;
+  if(!H)return;
+  const r=function(pl){ const z=faoPlaneZ(pl,op,job,0); return isFinite(z)?Math.round(z*1000)/1000:NaN; };
+  if(H.top){ const z=r(H.top); if(isFinite(z))op.ztop=z; }
+  if(H.bot){ const z=r(H.bot); if(isFinite(z))op.zbot=z; }
+}
 function faoZoneStrip(moves,ctx,secu,job){
   // 2026-10-10-002 : test de franchissement de la boîte brut (utilisé par le
   // garde-brut ci-dessous) : true si le segment a->b ENTRE dans la boîte sb
@@ -32978,6 +33004,9 @@ function faoOpMovesKey(op,job){
     // repère propre (3+2) : la clé est TOUJOURS celle du posage vu par l'opération — qu'on la
     // calcule avec le posage (lecture du cache, F5, contrôles) ou pendant le calcul (faoOpJob)
     try{ if(op&&op.frame&&!(job&&job.__opJob===op)&&typeof faoOpFrame==='function'){ const fr=faoOpFrame(job,op); if(fr)job=faoOpJob(job,op,fr); } }catch(e){}
+    // V0.26.0 : Haut/Bas suivant une référence (brut, modèle, face) — résolus AVANT la
+    // signature : un brut modifié déplace ztop/zbot, donc la clé
+    try{ faoHtsSync(op,job); }catch(e){}
     const inh=!!(job&&job.__opJob);
     // champs du VRAI posage, dans SON ordre (nettoyage compris : jamais sur le posage vu par
     // l'opération, qui en garderait une copie et changerait l'ordre de la clé d'une session à l'autre)
@@ -38810,14 +38839,95 @@ function faoPlaneRow(which,label,pl,job,op,tgt){
   }
   return box;
 }
+function faoHtRow(which,label,setup,op){
+  // V0.26.0 : Haut / Bas de la zone — « Valeur saisie » (historique) ou une
+  // référence + décalage (brut, modèle, bridage, face cliquée).
+  const key=(which==='top')?'ztop':'zbot';
+  const pl=(op.hts&&op.hts[which])||null;
+  const cur=op.zlim?'aretes':(pl?pl.ref:'val');
+  const opts=[['val','Valeur saisie']];
+  FAO_PLANE_REFS.forEach(function(r){ if(r[0]!=='max'&&r[0]!=='min'&&r[0]!=='origine')opts.push(r); });
+  if(op.zlim)opts.push(['aretes','Arêtes du modèle (lien)']);
+  const row=faoRow();
+  row.appendChild(faoLab(label));
+  row.appendChild(faoSel(opts,cur,function(v){
+    if(v===cur||v==='aretes')return;
+    faoZlimBreak(op);
+    const H=Object.assign({},op.hts||{});
+    if(v==='val')delete H[which];
+    else{
+      const np={ref:v,dz:pl&&isFinite(+pl.dz)?+pl.dz:0};
+      if(v==='face'){
+        np.fz=isFinite(+op[key])?+op[key]-np.dz:0;
+        setTimeout(function(){ faoZPlaneStart({setupId:setup.id,opId:op.id,which:which,slot:null}); },0);
+      }
+      H[which]=np;
+    }
+    if(H.top||H.bot)op.hts=H; else delete op.hts;
+    faoHtsSync(op,faoOpView(setup,op));
+  },(which==='top'?'Dessus de la zone usinée : rien n’est usiné au-dessus.':
+    'Fond de la zone usinée : l’outil ne descend jamais plus bas (hors surépaisseur).')));
+  if(cur==='val'||cur==='aretes'){
+    row.appendChild(faoNum(faoDsp(op,op[key],2),function(v){ faoZlimBreak(op); op[key]=faoInp(op,v,2); },56,null,
+      label+' (mm, repère de l’opération). Édité à la main : casse le lien avec les arêtes.'));
+  }else{
+    row.appendChild(faoLab('Décalage'));
+    row.appendChild(faoNum(isFinite(+pl.dz)?+pl.dz:0,function(v){
+      op.hts=Object.assign({},op.hts); op.hts[which]=Object.assign({},pl,{dz:v});
+      faoHtsSync(op,faoOpView(setup,op));
+    },48,0.5,'Décalage (mm, ±) ajouté à la référence — négatif : plus bas.'));
+    if(pl.ref==='face')row.appendChild(faoMini('Sélect.',function(){
+      faoZPlaneStart({setupId:setup.id,opId:op.id,which:which,slot:null});
+    },'Cliquer la face de référence dans la vue 3D (Échap annule).'));
+    row.appendChild(faoLab('= '+(isFinite(+op[key])?(+faoDsp(op,op[key],2)).toFixed(2):'—')));
+  }
+  return row;
+}
 function faoPlanesCard(setup,op){
-  // Section « Plans » de la fiche opération : héritage posage > op > legacy.
+  // Section « Hauteurs » de la fiche opération (V0.26.0 : un seul onglet) :
+  // dégagement, retrait (héritage posage > op > legacy), puis Haut / Bas.
   const box=document.createElement('div');
-  box.appendChild(faoH('Plans'));
+  box.appendChild(faoH('Hauteurs (mm)'));
   const eff=faoPlaneEff(setup,op);
   const tgt={setupId:setup.id,opId:op.id};
+  if(faoHtsOps(op))faoHtsSync(op,faoOpView(setup,op));
   box.appendChild(faoPlaneRow('clear','Dégagement',eff.clear,setup,op,tgt));
   box.appendChild(faoPlaneRow('retr','Retrait',eff.retr,setup,op,tgt));
+  if(faoHtsOps(op)){
+    box.appendChild(faoHtRow('top','Haut',setup,op));
+    box.appendChild(faoHtRow('bot','Bas',setup,op));
+    if(op.type==='rough3d'||faoPocketAdapt(op)){
+      const rz=faoRow();
+      if(op.zlim){
+        const bz=document.createElement('span'); bz.className='fao-meta';
+        bz.textContent='Haut/Bas liés à '+(op.zlim.nEdges||'?')+' arête(s)'+(op.zlim.stale?' ⚠':'');
+        bz.title='Haut/Bas suivent ces arêtes à chaque rejeu du modèle.';
+        rz.appendChild(bz);
+        rz.appendChild(faoMini('Retirer le lien',function(){ faoZlimBreak(op); },
+          'Retirer le lien avec les arêtes (valeurs conservées, redeviennent éditables).'));
+      }else{
+        rz.appendChild(faoMini('Limiter Z (arêtes)',function(){ faoZlimStart(setup.id,op.id); },
+          'Sélectionner des arêtes du modèle pour fixer le haut et le bas de la zone.'));
+      }
+      box.appendChild(rz);
+      if(op.zlim&&op.zlim.stale){
+        const wz=document.createElement('div'); wz.className='fao-note';
+        wz.textContent='⚠ Modèle modifié : arêtes de limite Z non retrouvées — valeurs inchangées. Re-sélectionnez les arêtes.';
+        box.appendChild(wz);
+      }
+    }
+    // garde-fous : l'ordre Dégagement ≥ Retrait ≥ Haut > Bas
+    const zc=faoClearAbs(op,setup), zr=faoRetractAbs(op,setup);
+    const zt=+op.ztop, zb=+op.zbot, w=[], own=!!faoOpFrame(setup,op);
+    if(isFinite(zt)&&isFinite(zb)&&!(zt>zb))w.push('le Haut doit être au-dessus du Bas');
+    if(!own&&isFinite(zr)&&isFinite(zt)&&zr<zt-1e-6)w.push('le Retrait est sous le Haut de la zone');
+    if(isFinite(zc)&&isFinite(zr)&&zc<zr-1e-6)w.push('le Dégagement est sous le Retrait');
+    if(w.length){
+      const a=document.createElement('div'); a.className='fao-alert';
+      a.textContent='⚠ '+w.join(' ; ')+'.';
+      box.appendChild(a);
+    }
+  }
   if(eff.ownClear||eff.ownRetr){
     const rh=faoRow();
     rh.appendChild(faoMini('Hériter du posage',function(){
@@ -38828,9 +38938,10 @@ function faoPlanesCard(setup,op){
     box.appendChild(rh);
   }
   box.appendChild(faoHelp(
-    'Dégagement = plan des translations rapides XY ; Retrait = plan des remontées '+
-    '(mode « Remontées » du posage). Hérités du posage tant que non modifiés — '+
-    'tout plan reste au-dessus du dessus du brut.'));
+    'Dégagement = plan le plus haut, pour les translations et la rotation du plateau ; '+
+    'Retrait = plan des rapides sans toucher matière ni brides (hérités du posage tant que '+
+    'non modifiés). Haut / Bas = tranche usinée, jamais dépassée : référence + décalage, '+
+    'ou une face cliquée.'));
   return box;
 }
 /* 2026-10-14-011 : FICHE EN ONGLETS (retour : « menus pas top, zones texte
@@ -38848,15 +38959,15 @@ const FAO_TAB_HELP={
   'Repère':'Orientation de l’outil pour CETTE opération (3+2). Par défaut : le repère du posage.',
   'Outil':'Outil de l’opération, vitesse de rotation et avances. Grisé = valeur de la fiche outil ; une valeur saisie ici ne vaut que pour cette opération.',
   'Zone':'Où usiner : tout le brut, un rectangle, des arêtes du modèle ou une esquisse — et ce qu’il faut épargner.',
-  'Hauteurs':'Haut et Bas de la zone usinée (mm). Ils peuvent suivre des arêtes du modèle.',
+  'Hauteurs':'Dégagement, Retrait, puis Haut et Bas de la zone usinée : chacun depuis le brut, le modèle ou une face cliquée, plus un décalage.',
   'Passes':'Descente par niveau, pas latéral et manière de vider.',
-  'Entrées':'Comment l’outil entre dans la matière, et les plans de dégagement / retrait.',
+  'Entrées':'Comment l’outil entre dans la matière.',
   'Matière':'Surépaisseur laissée pour l’opération suivante (mm).',
   'Attaches':'Ponts de matière pour tenir la pièce en détourage traversant.'};
 function faoTabOf(t){
   t=String(t||'').toLowerCase().replace(/\s*\(.*$/,'').trim();
   const M=[['outil','Outil'],['trous','Zone'],['hauteur','Hauteurs'],['vidage','Passes'],['passes','Passes'],['côté et sens','Passes'],
-    ['trajectoire','Entrées'],['plans','Entrées'],['entrée','Entrées'],['matière','Matière'],
+    ['trajectoire','Entrées'],['plans','Hauteurs'],['entrée','Entrées'],['matière','Matière'],
     ['attaches','Attaches'],['repère','Repère'],['zone','Zone'],['bord de la poche','Zone'],['profil','Zone']];
   for(let i=0;i<M.length;i++)if(t.indexOf(M[i][0])===0)return M[i][1];
   return null;
@@ -39000,10 +39111,6 @@ function faoOpCardElement(setup,op,i){
     rp.appendChild(faoLab('→')); rp.appendChild(faoNum(faoDsp(op,op.x1,0),function(v){op.x1=faoInp(op,v,0);},56));
     rp.appendChild(faoNum(faoDsp(op,op.y1,1),function(v){op.y1=faoInp(op,v,1);},56));
   };
-  const zz=function(){
-    rp.appendChild(faoLab('Haut')); rp.appendChild(faoNum(faoDsp(op,op.ztop,2),function(v){op.ztop=faoInp(op,v,2);},56));
-    rp.appendChild(faoLab('Bas')); rp.appendChild(faoNum(faoDsp(op,op.zbot,2),function(v){op.zbot=faoInp(op,v,2);},56));
-  };
   if(op.type==='facing'){
     rp.appendChild(faoLab('Z')); rp.appendChild(faoNum(faoDsp(op,op.z,2),function(v){op.z=faoInp(op,v,2);},60));
     // SEUL paramètre de recouvrement XY : l'écart (ae). Le nombre de lignes est
@@ -39045,7 +39152,7 @@ function faoOpCardElement(setup,op,i){
   }else if(faoContourProfil(op)){
     faoContourRows(d,setup,op);
   }else if((op.type==='pocket'&&!faoPocketAdapt(op))||op.type==='contour'){
-    rect4(); zz();
+    rect4(); // Haut / Bas : onglet Hauteurs (faoPlanesCard)
     rp.appendChild(faoLab('Descente ap')); rp.appendChild(faoNum(op.ap,function(v){op.ap=Math.max(0.5,v);},48));
     if(op.type==='pocket'){ rp.appendChild(faoLab('Pas latéral')); rp.appendChild(faoNum(op.ae,function(v){op.ae=Math.max(0.5,v);},48)); }
     rp.appendChild(faoLab('Parois')); rp.appendChild(faoNum(faoRA(op).radial,function(v){op.radial=Math.max(0,v);},44,0.1));
@@ -39062,34 +39169,7 @@ function faoOpCardElement(setup,op,i){
       return (isFinite(+t.d)&&+t.d>0)?+t.d:10; })();
     const aeNow=isFinite(+op.ae)&&+op.ae>0?+op.ae:toolD*0.6;
     const apNow=isFinite(+op.ap)&&+op.ap>0?+op.ap:5;
-    d.appendChild(faoH('Hauteurs à usiner (mm)'));
-    const rZ=faoRow();
-    rZ.appendChild(faoLab('Haut')); rZ.appendChild(faoNum(faoDsp(op,op.ztop,2),function(v){faoZlimBreak(op);op.ztop=faoInp(op,v,2);},56,
-      null,'Niveau le plus haut usiné — en général le dessus du brut. Édité à la main : casse le lien avec les arêtes.'));
-    rZ.appendChild(faoLab('Bas')); rZ.appendChild(faoNum(faoDsp(op,op.zbot,2),function(v){faoZlimBreak(op);op.zbot=faoInp(op,v,2);},56,
-      null,'Niveau le plus bas — fond de la zone à ébaucher (hors surépaisseur). Édité à la main : casse le lien avec les arêtes.'));
-    if(op.zlim){
-      const bz=document.createElement('span'); bz.className='fao-meta';
-      bz.textContent='lié à '+(op.zlim.nEdges||'?')+' arête(s)'+(op.zlim.stale?' ⚠':'');
-      bz.title='Haut/Bas suivent ces arêtes à chaque rejeu du modèle.';
-      rZ.appendChild(bz);
-      const br=document.createElement('button'); br.textContent='Retirer'; br.style.fontSize='.72rem';
-      br.title='Retirer le lien avec les arêtes (valeurs conservées, redeviennent éditables).';
-      br.onclick=function(){ faoZlimBreak(op); faoChanged();
-        try{ if(typeof renderProps==='function')renderProps(); }catch(e){} };
-      rZ.appendChild(br);
-    }else{
-      const bl=document.createElement('button'); bl.textContent='Limiter Z (arêtes)'; bl.style.fontSize='.72rem';
-      bl.title='Sélectionner des arêtes du modèle pour fixer le haut et le bas de la zone à ébaucher.';
-      bl.onclick=function(){ faoZlimStart(setup.id,op.id); };
-      rZ.appendChild(bl);
-    }
-    d.appendChild(rZ);
-    if(op.zlim&&op.zlim.stale){
-      const wz=document.createElement('div'); wz.className='fao-note';
-      wz.textContent='⚠ Modèle modifié : arêtes de limite Z non retrouvées — valeurs inchangées. Re-sélectionnez les arêtes.';
-      d.appendChild(wz);
-    }
+    // Haut / Bas (+ lien d'arêtes) : onglet Hauteurs (faoPlanesCard)
     d.appendChild(faoH('Vidage'));
     const rM=faoRow();
     rM.appendChild(faoLab('Mode'));
@@ -39212,11 +39292,6 @@ function faoOpCardElement(setup,op,i){
     d.appendChild(rT2);
   }else if(op.type==='geofinish'){
     // 2026-10-14-011 : fiche en sections (onglets) — Hauteurs, Passes, Entrées, Matière
-    d.appendChild(faoH('Hauteurs (mm)'));
-    const gH=faoRow();
-    gH.appendChild(faoLab('Haut')); gH.appendChild(faoNum(faoDsp(op,op.ztop,2),function(v){op.ztop=faoInp(op,v,2);},56,null,'Haut de la zone finie (mm) : au-dessus, le relief n’est pas fini.'));
-    gH.appendChild(faoLab('Bas')); gH.appendChild(faoNum(faoDsp(op,op.zbot,2),function(v){op.zbot=faoInp(op,v,2);},56,null,'Bas de la zone finie (mm) : la pointe de l’outil descend jusqu’ici.'));
-    d.appendChild(gH);
     d.appendChild(faoH('Passes'));
     const gP=faoRow();
     gP.appendChild(faoLab('Pas')); gP.appendChild(faoNum(op.step,function(v){op.step=Math.max(0.2,v);},52,0.5,'Écart entre deux passes voisines, mesuré sur la surface (mm). Plus il est petit, plus les crêtes sont basses.'));
@@ -46000,6 +46075,20 @@ function faoZPlaneCommit(e){
       if(!op){faceEl.textContent='Plan : opération introuvable, annulé.';faoZPlaneCancel(true);return;}
       owner=op;
     }
+    if(t.which==='top'||t.which==='bot'){
+      // V0.26.0 : Haut / Bas de la zone sur la face cliquée (décalage conservé)
+      if(!op){faceEl.textContent='Plan : opération introuvable, annulé.';faoZPlaneCancel(true);return;}
+      const cur=(op.hts&&op.hts[t.which])||{dz:0};
+      faoSnapshot((t.which==='top'?'haut':'bas')+' sur face (Z '+z.toFixed(2)+')');
+      faoZlimBreak(op);
+      op.hts=Object.assign({},op.hts||{});
+      op.hts[t.which]={ref:'face',dz:isFinite(+cur.dz)?+cur.dz:0,fz:z};
+      faoHtsSync(op,faoOpView(setup,op));
+      faoZPlaneCancel(true);
+      faoChanged();
+      faceEl.textContent=(t.which==='top'?'Haut':'Bas')+' de la zone : face retenue à Z '+z.toFixed(2)+' mm.';
+      return;
+    }
     const eff=faoPlaneEff(setup,op);
     const base=(t.which==='clear'?eff.clear:eff.retr)||{ref:'brutHaut',dz:0};
     const mm=(base.ref==='max'||base.ref==='min');
@@ -46422,6 +46511,7 @@ function faoChainOk(){
       // Lien suivi à chaque rejeu (faoZlimRematch) ; éditer un champ casse le
       // lien (faoZlimBreak) ; arête perdue -> stale + alerte, valeurs gardées.
       op.zlim={anchors:Z.anchors,nEdges:nSel,stale:false};
+      delete op.hts; // V0.26.0 : le lien d'arêtes remplace les références Haut/Bas
       faoChainExit();
       faoChanged();
       faceEl.textContent='Limite Z : haut '+Z.ztop+' → bas '+Z.zbot+' ('+nSel+' arêtes) enregistrée.';
@@ -46877,11 +46967,7 @@ function faoContourRows(d,setup,op){
     ws.textContent='⚠ Modèle modifié : arêtes du profil non retrouvées — boucle inchangée (obsolète), re-sélectionnez le profil.';
     d.appendChild(ws);
   }
-  d.appendChild(faoH('Hauteurs (mm)'));
-  const rZ=faoRow();
-  rZ.appendChild(faoLab('Haut')); rZ.appendChild(faoNum(faoDsp(op,op.ztop,2),function(v){op.ztop=faoInp(op,v,2);},56,null,'Haut de la paroi usinée (dessus du brut par défaut).'));
-  rZ.appendChild(faoLab('Bas')); rZ.appendChild(faoNum(faoDsp(op,op.zbot,2),function(v){op.zbot=faoInp(op,v,2);},56,null,'Bas de la paroi (arête la plus basse du profil par défaut).'));
-  d.appendChild(rZ);
+  // Haut / Bas : onglet Hauteurs (faoPlanesCard)
   d.appendChild(faoH('Passes (mm)'));
   const pente=op.descente==='pente';
   const rD=faoRow();
