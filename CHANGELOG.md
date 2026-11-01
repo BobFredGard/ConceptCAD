@@ -8,7 +8,7 @@ sont sorties le 2026-09-30j.
 Code dans `src/` · livrable `fusion_mvp.html` (généré par `build.js`) · architecture et
 garde-fous en tête de `src/00-entete-et-outils.js`.
 
-**496 versions**, de `2026-09-28b` à `V0.26.4` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
+**497 versions**, de `2026-09-28b` à `V0.27.0` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
 comme dans le fichier d'origine.
 
 ---
@@ -6014,3 +6014,12 @@ Demande : « usinage d'un chanfrein sur un parcours 3D en gardant l'axe de l'out
 - **Boucle 3D** (`src/88-fao-30-parcours.js`, `faoLoopFromChains`) : la chaîne garde le Z de chaque point (`loop3`), conservé pour le chanfrein quand les arêtes ne sont pas planes (écart > 5 µm) et re-suivi au rejeu ; arêtes planes : rien ne change, signature comprise.
 - **Côté matière** : en 3D, la section est prise sous l'arête la plus basse (option `zSide` de `faoGenContourProfil`, absente ailleurs).
 - **Tests** : `tests/test_fao_chanfrein.cjs` 18 à 22 (dessus en pente Z 20 → 30 : pointe à Z arête − 1,3 tout du long, axe à 0,55 mm en XY, option éteinte = passe plane) ; `npm run ci`.
+
+## V0.27.0 - Interface téléphone (phase 1) : vue 3D plein écran, panneau translucide, gestes tactiles
+Demande : « une version pour téléphone portable : à l'écran la vue 3D, horizontale ou verticale, et les fonctions de base, ouvrir, enregistrer, esquisse, extrusion etc. avec leurs paramètres, peut-être en transparence sur l'écran entier le temps de les modifier ».
+- **Activation** (`src/99-mobile.js`, `mfmWanted`) : automatique sur un appareil tactile à petit écran ; forçage par `?mobile=1` / `?mobile=0`, retour à la détection par `?mobile=auto` (choix mémorisé, `minifusion_mobile`). Sur un téléphone en interface bureau, un bouton « Interface téléphone » permet d'y revenir. Rien ne change sur PC.
+- **Écran** : vue 3D plein écran ; barre du haut (menu, nom du fichier avec point « modifié », Annuler, Rétablir) ; barre d'outils (Arbre, Paramètres, Cadrer, Vues). En paysage, la barre passe à gauche et le panneau à droite sur toute la hauteur. Menu : Nouveau, Ouvrir, Enregistrer (`mffOpen` / `mffSave` : sélecteur de fichier et téléchargement sur mobile), Partager (Web Share, quand le téléphone le permet), export STL / STEP, thème, interface bureau.
+- **Panneau translucide** : l'arbre (`#tree`) et les paramètres (`#props`) y sont déplacés — mêmes éléments, même code, toutes les fiches marchent. Trois hauteurs (poignée), œil maintenu = pièce visible à travers, et après chaque valeur modifiée le panneau s'efface un instant pour montrer le résultat. Double tap dans l'arbre = éditer (ouvre Paramètres), appui long = menu de la ligne.
+- **Gestes** (`mfmTouchWire`) : 1 doigt = orbite autour du point touché (même mécanique que la souris), 2 doigts = pincer pour zoomer vers le centre du geste et glisser pour déplacer, tap = clic (sélection et tous les modes de pointage), double tap = cadrer, appui long = menu de la pièce. OrbitControls ne reçoit plus le tactile.
+- **Cadrage** (`mfmFit`) : en mode téléphone, « Tout afficher » retient le plus serré des deux champs de vue (la pièce débordait en portrait) et garde la direction de vue. `viewFit` du bureau inchangé.
+- **Tests** : vérifié en émulation téléphone (portrait et paysage) : tap = face sélectionnée, pincement ×2 = distance divisée par 2, appui long = menu de la pièce, extrusion 20 → 30 mm depuis le panneau puis Annuler, interface bureau inchangée ; `npm run ci:full`. Pas encore essayé sur un vrai téléphone.
