@@ -6178,6 +6178,12 @@ Demande : « il existe plusieurs projets MiniFusion dans GitHub […] Est-il pos
 - **GitHub** : dépôt renommé `BobFredGard/ConceptCAD` (GitHub redirige l’ancienne adresse du dépôt) ; site Pages désormais sur `bobfredgard.github.io/ConceptCAD/` (l’ancienne adresse `…/MiniFusion/` n’est pas redirigée).
 - **Tests** : `npm run ci`.
 
+## V0.33.1 - Signature « Fred Creation » dans l’animation de démarrage
+Demande : « Dans l'animation, il faut ajouter "Fred Creation" ».
+- **Écran de démarrage** : « Fred Creation » sous « CAO · FAO · Mise en plan », en capitales espacées ; arrive à 2,6 s en montant, deux filets se tracent de part et d’autre, puis un reflet bleu-violet parcourt le texte en boucle. Respecte « réduire les animations ».
+- **Vérifié** dans l’application (serveur local, capture de l’écran de démarrage).
+- **Tests** : `npm run ci:full`.
+
 ## V0.33.2 - FAO : Perçage sur des trous sélectionnés, gamme posée seule
 Demande : « quand je sélectionne un perçage et que je clique sur la fonction Perçage dans le monde FAO, que la fonction retrouve toute seule la gamme et la mette en place ».
 - **Sélection reprise** : faces de trous cliquées dans la vue (Ctrl+clic pour plusieurs) ou fonction Perçage sélectionnée ; chaque face désigne le trou reconnu dont l’axe passe au plus près (même règle que « Choisir dans la vue »).
