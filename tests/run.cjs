@@ -211,6 +211,7 @@ const SUITES = [
   "test_composants_lies",
   "test_composants_cache",
   "test_composants_repetitions",
+  "test_alerte_paroi",
   "test_composants_references",
   "test_composants_aretes_esquisse",
   "test_composants_aretes_occ",

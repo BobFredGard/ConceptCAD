@@ -337,7 +337,7 @@ input[type=range]{accent-color:var(--primary);width:100%}
  * peut changer sans rien casser. CACHE_VER (parcours FAO) reste indépendant.
  */
 
-const APP_VER='V0.29.0';
+const APP_VER='V0.29.1';
 try{console.log('[MiniFusion] version '+APP_VER);}catch(e){}
 try{var mfSv=document.getElementById('mfSplashVer');if(mfSv)mfSv.textContent=APP_VER;}catch(e){} // écran de démarrage
 
@@ -4849,7 +4849,7 @@ function occCurvePts(ad,u0,u1,tol,cap){
   leaves.forEach(l=>{const e=l[1];if(e>us[us.length-1]+1e-12)us.push(e);});
   return us.map(atc);
 }
-function occDraftOnce(result,refFace,faces,angle){
+function occDraftOnce(result,refFace,faces,angle,opts){
   const bin=[];
   try{
     const dir=occBinPush(bin,new occt.gp_Dir_4(refFace.n[0],refFace.n[1],refFace.n[2]));
@@ -4879,8 +4879,52 @@ function occDraftOnce(result,refFace,faces,angle){
     if(!done)throw new Error('dépouille refusée par le moteur');
     const out=occShapeCopy(da.Shape());
     if(!out||out.IsNull())throw new Error('solide dépouillé vide');
-    return {shape:out,refused:refused};
+    let thin=null;
+    if(opts&&opts.thin){try{thin=occDraftThin(da,faces);}catch(e){thin=null;}}
+    return {shape:out,refused:refused,thin};
   }finally{occDispose(bin);} // toujours : un `throw` en cours de boucle ne doit pas fuir de handles
+}
+function occFaceDist(a,b){
+  // Distance mini entre deux formes → {d, p:[x,y,z] sur a} ou null
+  const x=new occt.BRepExtrema_DistShapeShape_2(a,b,occt.Extrema_ExtFlag.Extrema_ExtFlag_MIN,occt.Extrema_ExtAlgo.Extrema_ExtAlgo_Grad);
+  try{
+    if(!x.IsDone()||!(x.NbSolution()>0))return null;
+    const q=x.PointOnShape1(1);
+    return{d:x.Value(),p:[q.X(),q.Y(),q.Z()]};
+  }finally{try{x.delete();}catch(e){}}
+}
+function occDraftThin(da,faces){
+  // ALERTE PAROI (2026-10-27) : deux faces dépouillées OPPOSÉES (normales sortantes contraires)
+  // se rapprochent l'une de l'autre si le plan neutre ou le sens ne conviennent pas. Cavité
+  // Test : nervure de 5 mm, flancs dépouillés de 25° autour de son dessus incliné → 1,2 mm au
+  // pied ; la dépouille « réussissait » sans un mot et tous les congés suivants échouaient
+  // (« arête trop courte »). On compare la distance mini de chaque paire avant et après
+  // (BRepOffsetAPI_DraftAngle.ModifiedShape) : → {d0, d, p, paroi} pour la pire chute de plus
+  // de moitié, sinon null. paroi : matière entre les deux faces (nervure) ; sinon passage
+  // (rainure, fente) qui se referme.
+  const L=faces.map(f=>{const n=occFaceOutNormal(f),b=occFaceBox(f);return n&&b?{f,n,c:b.pos}:null;});
+  const dot=(a,b)=>a[0]*b[0]+a[1]*b[1]+a[2]*b[2];
+  let pire=null;
+  for(let i=0;i<L.length;i++)for(let j=i+1;j<L.length;j++){
+    const A=L[i],B=L[j];
+    if(!A||!B||dot(A.n,B.n)>-0.9)continue;
+    const r0=occFaceDist(A.f,B.f);
+    if(!r0||!(r0.d>1e-3))continue; // faces voisines (arête commune) : pas une épaisseur
+    let r1=null;
+    try{r1=occFaceDist(da.ModifiedShape(A.f),da.ModifiedShape(B.f));}catch(e){continue;}
+    if(!r1||!(r1.d<0.5*r0.d))continue;
+    const k=r1.d/r0.d;
+    if(!pire||k<pire.k)pire={k,d0:r0.d,d:r1.d,p:r1.p,paroi:dot([B.c[0]-A.c[0],B.c[1]-A.c[1],B.c[2]-A.c[2]],A.n)<0};
+  }
+  return pire;
+}
+function occDraftThinMsg(t){
+  const nb=(v,k)=>String(+(+v).toFixed(k)).replace('.',',');
+  const ou=' près de ('+t.p.map(v=>nb(v,1)).join(' ; ')+')';
+  return (t.d<1e-3
+    ?`les faces dépouillées se rejoignent : ${t.paroi?'paroi':'passage'} de ${nb(t.d0,2)} mm réduit${t.paroi?'e':''} à zéro${ou}`
+    :`${t.paroi?'paroi amincie':'passage rétréci'} de ${nb(t.d0,2)} à ${nb(t.d,2)} mm${ou}`)
+    +' — vérifiez la face de référence (plan neutre) ou le sens de l’angle ; les congés posés ensuite sur cette paroi risquent d’échouer';
 }
 function occExtrudeDraft(shape,bs,sp,angleDeg){
   // Dépouille d'un OUTIL d'extrusion, pivotée sur le plan d'esquisse : les parois
@@ -5109,7 +5153,7 @@ function occApplyDraft(result,f){
   // pas : c'est l'appelant qui libère `got`/`ref` une fois le solide de sortie construit.
   const run=list=>{
     if(!list.length)throw new Error('aucune face retrouvable');
-    return occDraftOnce(result,{pos:rb.pos,n:rn},list,ang);
+    return occDraftOnce(result,{pos:rb.pos,n:rn},list,ang,{thin:true});
   };
   const dropShape=s=>{try{if(s&&s.shape)s.shape.delete();}catch(e){}};
   let r=null,echec=null;
@@ -5139,6 +5183,7 @@ function occApplyDraft(result,f){
       const ou=r.refused.map(p=>p?'('+p.map(v=>v.toFixed(1)).join(' ; ')+') mm':'inconnue');
       warnings.push(`${r.refused.length} face(s) non dépouillée(s) — elle(s) ne touche(nt) pas le plan neutre : ${ou.slice(0,3).join(', ')}${r.refused.length>3?'…':''}`);
     }
+    if(r.thin)warnings.push(occDraftThinMsg(r.thin));
     let out=s;
     try{out=occUnify(s);}catch(e){}
     if(out!==s){try{s.delete();}catch(e){} }
@@ -5889,8 +5934,16 @@ function occApplyXFillets(base,xfils){
     }
     const why=chamfer?'distance trop grande':'rayon trop grand';
     const dechire=invalide?' : le noyau rend un solide déchiré (faces invalides), refusé':'';
-    warns.push(`${lab} ${dp}${xNum(rMax)} impossible sur ${js.length} arête(s)${dl}${dechire} — ${why} ou faces déjà consommées par un autre congé ?`+(ok?` ESSAYEZ ${dp}${xNum(ok)} (vérifié)`:' — arête trop courte, aucun rayon testé ne passe'));
-    const conseil=ok?`${dp}${xNum(rMax)} impossible${dl}${dechire} — essayez ${dp}${xNum(ok)} (vérifié)`
+    // PAROI MINCE (2026-10-27) : l'arête la plus courte de la chaîne n'est souvent pas la cause.
+    // Cavité Test après une dépouille trop forte : « arête de 0,73 mm trop courte » alors que la
+    // nervure ne faisait plus que 1,2 mm d'épaisseur. Une paroi plus mince que 2 × R est nommée.
+    let mince=null;
+    if(!invalide){try{const w=occWallAt(base,jobs.map(j=>edges[j.bi]));if(w&&w.t<2*rMax)mince=w;}catch(e){mince=null;}}
+    const pMince=mince?`paroi de ${xNum(+mince.t.toFixed(2))} mm seulement près de (${mince.p.map(v=>xNum(+v.toFixed(1))).join(' ; ')}) — une opération précédente l’a-t-elle amincie (dépouille…) ?`:null;
+    warns.push(`${lab} ${dp}${xNum(rMax)} impossible sur ${js.length} arête(s)${mince?'':dl}${dechire} — `+(mince?pMince:`${why} ou faces déjà consommées par un autre congé ?`)
+      +(ok?` ESSAYEZ ${dp}${xNum(ok)} (vérifié)`:(mince?' Aucun rayon testé ne passe.':' — arête trop courte, aucun rayon testé ne passe')));
+    const conseil=ok?`${dp}${xNum(rMax)} impossible${mince?' — '+pMince:dl}${dechire} — essayez ${dp}${xNum(ok)} (vérifié)`
+      :mince?`${dp}${xNum(rMax)} impossible — ${pMince}`
       :`${dp}${xNum(rMax)} impossible${dl}${dechire} — arête trop courte ou faces déjà consommées par un autre congé`;
     xfils.forEach(xf=>{xf._err=conseil;});
     return{shape:base,warnings:warns};
@@ -5898,6 +5951,52 @@ function occApplyXFillets(base,xfils){
   xfils.forEach(xf=>{delete xf._err;}); // plus d'erreur : le rayon courant passe
   try{base.delete();}catch(e){}
   return{shape:s,warnings:warns};
+}
+function occWallAt(shape,eds){
+  // Épaisseur de matière mesurée DEPUIS des arêtes (2026-10-27) : de quelques points de chaque
+  // arête, un rayon part vers l'intérieur de chaque face plane qui la borde (−normale sortante)
+  // et la première sortie du solide donne l'épaisseur dans cette direction. Au pied d'une
+  // nervure, le flanc donne l'épaisseur de la nervure, le fond celle du fond : on garde la plus
+  // petite. → {t, p} ou null. Faces non planes ignorées (normale variable).
+  const bin=[];let best=null;
+  try{
+    const P=[];
+    const ex=occBinPush(bin,new occt.TopExp_Explorer_2(shape,occt.TopAbs_ShapeEnum.TopAbs_FACE,occt.TopAbs_ShapeEnum.TopAbs_SHAPE));
+    for(;ex.More();ex.Next()){
+      const f=occBinPush(bin,occt.TopoDS.Face_1(ex.Current()));
+      const ad=occBinPush(bin,new occt.BRepAdaptor_Surface_2(f,true));
+      if(ad.GetType()!==occt.GeomAbs_SurfaceType.GeomAbs_Plane)continue;
+      const n=occFaceOutNormal(f);if(!n)continue;
+      const L=occBinPush(bin,ad.Plane().Location()),b=occFaceBox(f);
+      P.push({f,n,o:[L.X(),L.Y(),L.Z()],c:b?b.pos:null});
+    }
+    const I=occBinPush(bin,new occt.IntCurvesFace_ShapeIntersector());I.Load(shape,1e-6);
+    for(const e of eds){
+      const pts=(e&&e.pts)||[];if(!pts.length)continue;
+      const pick=pts.length<=3?pts:[0.2,0.5,0.8].map(k=>pts[Math.round(k*(pts.length-1))]);
+      for(const p of pick){
+        let vx=null;
+        for(const F of P){
+          // sur le plan de la face, puis DANS la face (distance au sommet) : face qui borde l'arête
+          if(Math.abs((p[0]-F.o[0])*F.n[0]+(p[1]-F.o[1])*F.n[1]+(p[2]-F.o[2])*F.n[2])>1e-3)continue;
+          if(!vx){const mv=occBinPush(bin,new occt.BRepBuilderAPI_MakeVertex(occBinPush(bin,new occt.gp_Pnt_3(p[0],p[1],p[2]))));vx=mv.Vertex();bin.push(vx);}
+          const dd=occFaceDist(vx,F.f);if(!dd||dd.d>1e-3||!F.c)continue;
+          // départ décalé de 0,05 mm DANS la face, vers son centre : lancé depuis l'arête même, le
+          // rayon longerait la face voisine (intersections dégénérées)
+          const v=[F.c[0]-p[0],F.c[1]-p[1],F.c[2]-p[2]],vn=v[0]*F.n[0]+v[1]*F.n[1]+v[2]*F.n[2];
+          for(let k=0;k<3;k++)v[k]-=vn*F.n[k];
+          const lv=Math.hypot(v[0],v[1],v[2]);if(!(lv>1e-6))continue;
+          const s=Math.min(0.05,lv)/lv,q=[p[0]+v[0]*s,p[1]+v[1]*s,p[2]+v[2]*s];
+          const lin=occBinPush(bin,new occt.gp_Lin_3(occBinPush(bin,new occt.gp_Pnt_3(q[0],q[1],q[2])),occBinPush(bin,new occt.gp_Dir_4(-F.n[0],-F.n[1],-F.n[2]))));
+          I.Perform_1(lin,1e-3,1e4);
+          if(!I.IsDone())continue;
+          let t=Infinity;for(let k=1;k<=I.NbPnt();k++){const w=I.WParameter(k);if(w>1e-3&&w<t)t=w;}
+          if(isFinite(t)&&(!best||t<best.t))best={t,p:p.slice()};
+        }
+      }
+    }
+  }catch(e){best=null;}finally{occDispose(bin);}
+  return best;
 }
 function occFilletZone(eds,r){
   // Boîte des arêtes d'un congé (points échantillonnés) gonflée de R + 1 mm → {lo, hi}
@@ -6429,12 +6528,17 @@ function occReplayBodyIn(bid,list){
       if(!result){msgs.push(`${f.name} : aucun volume à dépouiller — ignoré`);return;}
       const ckD=occCkGet(ckKey);
       const cpD=ckD?occShapeCopy(ckD):null;
+      // alerte « paroi amincie » portée par la fonction (⚠ dans l'arbre, note du panneau),
+      // relue aussi depuis le cache : le point de contrôle ne rejoue pas la dépouille
+      const minceDe=w=>{const m=(w||[]).find(x=>/amincie|rétréci|se rejoignent/.test(x));if(m)f._thin=m;else delete f._thin;};
       if(cpD){
         try{result.delete();}catch(e){}result=cpD;
         const w=occCkWarn[ckKey];if(w&&w.length)msgs.push(...w.map(x=>`${f.name} : ${x}`));
+        minceDe(w);
         return;
       }
       const r=occApplyDraft(result,f);
+      minceDe(r.warnings);
       result=r.shape;msgs.push(...r.warnings.map(w=>`${f.name} : ${w}`));
       if(r.warnings.length)occCkWarn[ckKey]=r.warnings.slice();else delete occCkWarn[ckKey];
       occCkPut(ckKey,()=>occShapeCopy(result));
@@ -7825,7 +7929,7 @@ function featIconOf(f){
   if(f.type==='xmove')return '📐';
   if(f.type==='bmove')return '✥';
   if(f.type==='xdelface')return f._calc?'⏳':((f._m&&f._m.m<f._m.t)||f._err)?'⚠':'⌫'; // ⏳ : calcul au worker (21)
-  if(f.type==='xdraft')return ((f._m&&f._m.m<f._m.t)||f._err)?'⚠':'📐';
+  if(f.type==='xdraft')return ((f._m&&f._m.m<f._m.t)||f._err||f._thin)?'⚠':'📐';
   if(f.type==='xshell')return ((f._m&&f._m.m<f._m.t)||f._err)?'⚠':'🥚';
   if(f.type==='xsplit')return ((f._m&&f._m.m<f._m.t)||f._err)?'⚠':'✂';
   return '◧';
@@ -9226,6 +9330,7 @@ function renderProps(){
         pInfo(`<span style="color:var(--warn)">⚠ <b>${f._m.m}/${f._m.t}</b> face(s) retrouvée(s) — ${f._m.t-f._m.m} perdue(s).</span>`);
         pNote('Les faces sont retrouvées à chaque rejeu par leur position et leur normale.');
       }
+      if(f._thin)pInfo(`<span style="color:var(--warn)">⚠ ${f._thin}</span>`);
       if(f.ref)pNote('Face de référence (plan neutre) : centre ('+f.ref.pos.map(v=>(+v).toFixed(1)).join(' ; ')+') mm.');
       const d=document.createElement('input');d.type='text';d.inputMode='decimal';
       d.value=String(+f.angle||0).replace('.',',');parFx(d,f,'angle');
@@ -9661,7 +9766,7 @@ function tlbSteps(){
   // fonction m = clé 4·m : tout ce qui est au-delà est hors rejeu (off).
   const F=doc.features||[],S=[],m=tlIdx();
   const at=id=>F.findIndex(f=>f.id===id);
-  const warnF=f=>!!((f._m&&f._m.m<f._m.t)||f._err);
+  const warnF=f=>!!((f._m&&f._m.m<f._m.t)||f._err||f._thin);
   F.forEach((f,i)=>{if(!f.repeatId)S.push({kind:'feature',id:f.id,o:f,key:4*i+2,sub:0,warn:warnF(f)});});
   const cgKey={};
   (doc.cgeo||[]).filter(cgValid).forEach((c,k)=>{
@@ -30575,11 +30680,17 @@ function draftPreviewRemove(){
   });
   try{refreshParts();}catch(e){}
 }
+function draftThinNote(){
+  // note du panneau mise à jour sur place : re-rendre le panneau ferait perdre la saisie de l'angle
+  const n=document.getElementById('draftThinNote');if(!n)return;
+  const m=draftMode&&draftMode._thin;
+  n.style.display=m?'':'none';n.textContent=m?'⚠ '+m:'';
+}
 function draftPreviewUpdate(){
   try{
     if(!draftMode){draftPreviewRemove();return;}
     const faces=draftMode.faces||[];
-    if(!draftMode.ref||!faces.length||!occLive||!occLive.shape){draftPreviewRemove();return;}
+    if(!draftMode.ref||!faces.length||!occLive||!occLive.shape){draftMode._thin=null;draftThinNote();draftPreviewRemove();return;}
     // rien à recalculer si la sélection, la référence et l'angle n'ont pas bougé
     const sig=draftKey(draftMode.ref)+'|'+faces.map(draftKey).join(';')+'|'+draftAngleEff(draftMode);
     if(draftMode._prevSig===sig)return;
@@ -30588,8 +30699,11 @@ function draftPreviewUpdate(){
     faces.forEach(r=>{try{const h=occFindFace(occLive.shape,r);if(h)got.push(h);}catch(e){}});
     if(!got.length){draftPreviewRemove();return;}
     let r=null;
-    try{r=occDraftOnce(occLive.shape,{pos:draftMode.ref.pos,n:draftMode.ref.n},got,draftAngleEff(draftMode)*Math.PI/180);}
+    try{r=occDraftOnce(occLive.shape,{pos:draftMode.ref.pos,n:draftMode.ref.n},got,draftAngleEff(draftMode)*Math.PI/180,{thin:true});}
     finally{got.forEach(g=>{try{g.delete();}catch(e){}});}
+    // alerte « paroi amincie » dès l'aperçu, avant d'appliquer (2026-10-27, voir occDraftThin)
+    draftMode._thin=r&&r.thin?occDraftThinMsg(r.thin):null;
+    draftThinNote();
     if(!r||!r.shape){draftPreviewRemove();return;}
     let sh=r.shape;
     try{const u=occUnify(sh);if(u!==sh){try{sh.delete();}catch(e){}sh=u;}}catch(e){}
@@ -30821,6 +30935,8 @@ function renderDraftPanel(){
   frow.appendChild(fcb);
   const ftx=document.createElement('span');ftx.textContent='⇄ Inverser le sens de démoulage';frow.appendChild(ftx);
   p.appendChild(frow);
+  const tn=document.createElement('span');tn.className='note';tn.id='draftThinNote';tn.style.color='var(--warn)';
+  p.appendChild(tn);draftThinNote();
   {const ns=document.createElement('span');ns.className='note';ns.id='draftSensNote';
    ns.textContent=draftSensText();
    p.appendChild(ns);}

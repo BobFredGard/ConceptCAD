@@ -54,7 +54,7 @@ function tlbSteps(){
   // fonction m = clé 4·m : tout ce qui est au-delà est hors rejeu (off).
   const F=doc.features||[],S=[],m=tlIdx();
   const at=id=>F.findIndex(f=>f.id===id);
-  const warnF=f=>!!((f._m&&f._m.m<f._m.t)||f._err);
+  const warnF=f=>!!((f._m&&f._m.m<f._m.t)||f._err||f._thin);
   F.forEach((f,i)=>{if(!f.repeatId)S.push({kind:'feature',id:f.id,o:f,key:4*i+2,sub:0,warn:warnF(f)});});
   const cgKey={};
   (doc.cgeo||[]).filter(cgValid).forEach((c,k)=>{

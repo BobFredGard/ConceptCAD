@@ -130,7 +130,7 @@ function featIconOf(f){
   if(f.type==='xmove')return '📐';
   if(f.type==='bmove')return '✥';
   if(f.type==='xdelface')return f._calc?'⏳':((f._m&&f._m.m<f._m.t)||f._err)?'⚠':'⌫'; // ⏳ : calcul au worker (21)
-  if(f.type==='xdraft')return ((f._m&&f._m.m<f._m.t)||f._err)?'⚠':'📐';
+  if(f.type==='xdraft')return ((f._m&&f._m.m<f._m.t)||f._err||f._thin)?'⚠':'📐';
   if(f.type==='xshell')return ((f._m&&f._m.m<f._m.t)||f._err)?'⚠':'🥚';
   if(f.type==='xsplit')return ((f._m&&f._m.m<f._m.t)||f._err)?'⚠':'✂';
   return '◧';
@@ -1531,6 +1531,7 @@ function renderProps(){
         pInfo(`<span style="color:var(--warn)">⚠ <b>${f._m.m}/${f._m.t}</b> face(s) retrouvée(s) — ${f._m.t-f._m.m} perdue(s).</span>`);
         pNote('Les faces sont retrouvées à chaque rejeu par leur position et leur normale.');
       }
+      if(f._thin)pInfo(`<span style="color:var(--warn)">⚠ ${f._thin}</span>`);
       if(f.ref)pNote('Face de référence (plan neutre) : centre ('+f.ref.pos.map(v=>(+v).toFixed(1)).join(' ; ')+') mm.');
       const d=document.createElement('input');d.type='text';d.inputMode='decimal';
       d.value=String(+f.angle||0).replace('.',',');parFx(d,f,'angle');

@@ -254,11 +254,17 @@ function draftPreviewRemove(){
   });
   try{refreshParts();}catch(e){}
 }
+function draftThinNote(){
+  // note du panneau mise à jour sur place : re-rendre le panneau ferait perdre la saisie de l'angle
+  const n=document.getElementById('draftThinNote');if(!n)return;
+  const m=draftMode&&draftMode._thin;
+  n.style.display=m?'':'none';n.textContent=m?'⚠ '+m:'';
+}
 function draftPreviewUpdate(){
   try{
     if(!draftMode){draftPreviewRemove();return;}
     const faces=draftMode.faces||[];
-    if(!draftMode.ref||!faces.length||!occLive||!occLive.shape){draftPreviewRemove();return;}
+    if(!draftMode.ref||!faces.length||!occLive||!occLive.shape){draftMode._thin=null;draftThinNote();draftPreviewRemove();return;}
     // rien à recalculer si la sélection, la référence et l'angle n'ont pas bougé
     const sig=draftKey(draftMode.ref)+'|'+faces.map(draftKey).join(';')+'|'+draftAngleEff(draftMode);
     if(draftMode._prevSig===sig)return;
@@ -267,8 +273,11 @@ function draftPreviewUpdate(){
     faces.forEach(r=>{try{const h=occFindFace(occLive.shape,r);if(h)got.push(h);}catch(e){}});
     if(!got.length){draftPreviewRemove();return;}
     let r=null;
-    try{r=occDraftOnce(occLive.shape,{pos:draftMode.ref.pos,n:draftMode.ref.n},got,draftAngleEff(draftMode)*Math.PI/180);}
+    try{r=occDraftOnce(occLive.shape,{pos:draftMode.ref.pos,n:draftMode.ref.n},got,draftAngleEff(draftMode)*Math.PI/180,{thin:true});}
     finally{got.forEach(g=>{try{g.delete();}catch(e){}});}
+    // alerte « paroi amincie » dès l'aperçu, avant d'appliquer (2026-10-27, voir occDraftThin)
+    draftMode._thin=r&&r.thin?occDraftThinMsg(r.thin):null;
+    draftThinNote();
     if(!r||!r.shape){draftPreviewRemove();return;}
     let sh=r.shape;
     try{const u=occUnify(sh);if(u!==sh){try{sh.delete();}catch(e){}sh=u;}}catch(e){}
@@ -500,6 +509,8 @@ function renderDraftPanel(){
   frow.appendChild(fcb);
   const ftx=document.createElement('span');ftx.textContent='⇄ Inverser le sens de démoulage';frow.appendChild(ftx);
   p.appendChild(frow);
+  const tn=document.createElement('span');tn.className='note';tn.id='draftThinNote';tn.style.color='var(--warn)';
+  p.appendChild(tn);draftThinNote();
   {const ns=document.createElement('span');ns.className='note';ns.id='draftSensNote';
    ns.textContent=draftSensText();
    p.appendChild(ns);}

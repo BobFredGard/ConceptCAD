@@ -8,7 +8,7 @@ sont sorties le 2026-09-30j.
 Code dans `src/` · livrable `fusion_mvp.html` (généré par `build.js`) · architecture et
 garde-fous en tête de `src/00-entete-et-outils.js`.
 
-**502 versions**, de `2026-09-28b` à `V0.29.0` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
+**503 versions**, de `2026-09-28b` à `V0.29.1` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
 comme dans le fichier d'origine.
 
 ---
@@ -6069,3 +6069,9 @@ Demande : « ces 4 points OK + ajouter la fonction de répétitions dans l'assem
 - **Ruban** : groupe « Composants » (mode Placer) : boutons « Répétition » (occurrence ou lot sélectionné) et « Mesurer », avec leurs icônes dans les quatre styles (trait, couleur, volume, délire).
 - **Taille des icônes** (demande : « dans Settings, ajoute une option pour changer la taille des icônes ») : ⚙ → Affichage → « Taille des icônes » : Petite, Normale, Grande, Très grande (×0,8 à ×1,5) — ruban, barre rapide et outils d'esquisse ; libellés inchangés ; mémorisé (`minifusion_iconSize`, `mfIconSize`, `optIcSize`).
 - **Tests** : `tests/test_composants_repetitions.cjs` (linéaire, grille, circulaire, symétrie et symétrie double, associativité, identifiants stables, skip, source supprimée, annuler, fichier, fichier abîmé, insertion, date des liens, brouillon IndexedDB) ; `npm run ci`.
+
+## V0.29.1 - Dépouille : alerte « paroi amincie » ; congé refusé qui nomme la paroi trop mince
+Demande : « essaye et on voit » — reprise du travail mis de côté le 27/10 (commit WIP `792991a`, branche locale `wip/paroi-mince`), seules les alertes restaient à reporter (le reste du commit était déjà livré). Cas d'origine (Cavité Test) : une nervure de 5 mm dépouillée de 25° ne faisait plus que 1,2 mm au pied, SANS un mot, et tous les congés suivants échouaient sur « arête de 0,73 mm trop courte ».
+- **Alerte de dépouille** (`occDraftThin`, `occFaceDist`, `occDraftThinMsg`) : la distance entre chaque paire de faces dépouillées opposées est comparée avant / après ; si elle chute de plus de moitié : « paroi amincie de 5 à 1,5 mm près de (…) » (ou « passage rétréci », ou « les faces se rejoignent ») avec le conseil de vérifier le plan neutre ou le sens. Dès l'APERÇU dans le panneau de dépouille (avant d'appliquer), puis dans le journal, l'arbre (⚠), la timeline et le panneau de la fonction (`f._thin`, relu aussi depuis le cache).
+- **Congé / chanfrein refusé** (`occWallAt`) : l'épaisseur de matière est mesurée depuis les arêtes (rayons lancés dans les faces planes qui les bordent) ; plus mince que 2 × R → le message nomme la paroi (« paroi de 1,52 mm seulement près de (…) — une opération précédente l'a-t-elle amincie ? ») au lieu de « arête trop courte » ; le rayon vérifié proposé reste.
+- **Tests** : `tests/test_alerte_paroi.cjs` (plaque + nervure 5 mm : 1° rien, 5° alerte 5 → 1,5 mm, congé R2 refusé qui nomme la paroi de 1,52 mm et propose R1,4) ; suite complète.
