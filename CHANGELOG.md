@@ -8,7 +8,7 @@ sont sorties le 2026-09-30j.
 Code dans `src/` · livrable `fusion_mvp.html` (généré par `build.js`) · architecture et
 garde-fous en tête de `src/00-entete-et-outils.js`.
 
-**498 versions**, de `2026-09-28b` à `V0.28.0` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
+**500 versions**, de `2026-09-28b` à `V0.28.0` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
 comme dans le fichier d'origine.
 
 ---
@@ -6023,6 +6023,21 @@ Demande : « une version pour téléphone portable : à l'écran la vue 3D, hori
 - **Gestes** (`mfmTouchWire`) : 1 doigt = orbite autour du point touché (même mécanique que la souris), 2 doigts = pincer pour zoomer vers le centre du geste et glisser pour déplacer, tap = clic (sélection et tous les modes de pointage), double tap = cadrer, appui long = menu de la pièce. OrbitControls ne reçoit plus le tactile.
 - **Cadrage** (`mfmFit`) : en mode téléphone, « Tout afficher » retient le plus serré des deux champs de vue (la pièce débordait en portrait) et garde la direction de vue. `viewFit` du bureau inchangé.
 - **Tests** : vérifié en émulation téléphone (portrait et paysage) : tap = face sélectionnée, pincement ×2 = distance divisée par 2, appui long = menu de la pièce, extrusion 20 → 30 mm depuis le panneau puis Annuler, interface bureau inchangée ; `npm run ci:full`. Pas encore essayé sur un vrai téléphone.
+
+## V0.27.1 - Interface téléphone (phases 2 et 3) : Créer au doigt, esquisse tactile
+Demande : « Lance les points 2 et 3 » — création des fonctions solides (extrusion, révolution, congé, chanfrein, perçage…) avec le panneau translucide, puis l'esquisse au doigt.
+- **Créer** (`src/99-mobile-creer-esquisse.js`, `mfmCreateOpen`) : nouveau bouton de la barre d'outils, grille des commandes du ruban CAO (`MF_CAO` : Esquisse, Créer, Construire, Modifier, Ensembles ; Fichier reste dans le menu). La fiche de la commande s'ouvre dans le panneau : réduit quand elle attend des clics dans la vue (congé, chanfrein, face, dépouille, coque, scinder, perçage, construction), moitié sinon (`mfmPicking`).
+- **Arêtes au doigt** (`src/90-picking-mesure-import.js`, `edgePickScreen`) : tolérance multipliée par `window.mfmEdgeK` (2,5 en mode téléphone, 1 sinon : bureau inchangé).
+- **Esquisse** : le bandeau d'esquisse remplace la barre d'outils (défilant ; à gauche en paysage), libellés visibles ; barre du haut = Abandonner, liste, Annuler / Rétablir, Terminer ; onglet « Esquisse » du panneau = santé, sélection, contraintes, cotes (`#mfSkSidePanel`).
+- **Gestes sur le dessin** (`mfmSkTouchWire`, rejoués en événements souris : le code de l'esquisse ne change pas) : outil de tracé = viser en glissant (aperçu et accrochages suivent le doigt), point posé au lever ; tap = point sur place ; outil Sélection : tap = sélectionner, glisser = déplacer ou cadre ; double tap = double-clic (coter une entité, éditer une cote) ; appui long = menu de la sélection ou fin du tracé en cours ; 2 doigts = zoom et déplacement de la vue, sans rien poser.
+- **Tests** : vérifié en émulation téléphone : Créer › Congé (panneau réduit, arête prise par un tap à 13 px), esquisse sur XY (ligne : tap puis glisser-lever, 2ᵉ point au lever ; pincement ×1,9 sans tracé parasite ; appui long = fin de chaîne ; double tap = cote de longueur), Abandonner, paysage ; `npm run ci:full`. Pas encore essayé sur un vrai téléphone.
+
+## V0.27.2 - README refait : interface téléphone, gestes au doigt, fonctions jamais décrites
+Demande : « Il faut revoir complètement le Readme avec toutes les nouvelles options ajoutées ».
+- **Nouveau** (`README.md`) : section « Téléphone et tablette » (vue plein écran, barres, menu, panneau translucide, Créer, esquisse au doigt, activation `?mobile=`) ; « Souris, clavier et doigts » avec un tableau des gestes tactiles.
+- **Fonctions ajoutées à leur place** : sélection synchronisée et `Ctrl+clic` = mesure ; styles d'icônes ; effet de perspective ; rendu direct ; splines d'esquisse (G2, peigne) et arêtes du plan sans projeter ; plan perpendiculaire à une courbe ; perçage ANSI et gaz, vis en pouces ; répétition Unir / Nouveau corps ; suppression multi-faces et outils de face sur un STEP importé ; export STEP AP214 / AP203 sans courbes 2D ; FAO : poche, chanfrein 3D, zone projetée en orange, onglet Hauteurs ; PLAN : import DXF, accrochages et cotation en chaîne ; RENDU : matériaux au clic droit.
+- **À jour** : version, 120 fichiers source, 212 suites (81 rapides), `ci` / `ci:full` dans le cycle de livraison, essai depuis un téléphone sur le réseau local.
+- **Tests** : ancres du sommaire et images vérifiées ; `npm run ci:full`.
 
 ## V0.28.0 - Assemblages : instantanés des composants en cache, ouverture sans rejeu des pièces inchangées
 Mesure : ouvrir un assemblage rejouait chaque pièce distincte dans le noyau (0,6 à 1,4 s par pièce réelle ; 40 pièces = 34 s d'interface figée), à chaque ouverture, même sans aucun changement. Demande : attaquer ce point en premier, « au moindre doute on recalcule ».

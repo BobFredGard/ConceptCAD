@@ -716,7 +716,7 @@ function edgePickScreen(e,segs,faceHit,tolPx){
   const v=new THREE.Vector3(),vz=new THREE.Vector3(),toS=p=>{vz.set(p[0],p[1],p[2]).applyMatrix4(camera.matrixWorldInverse);v.set(p[0],p[1],p[2]).project(camera);return[(v.x+1)/2*r.width,(1-v.y)/2*r.height,v.z,-vz.z];};
   let slack=0.3;
   if(faceHit){const wpp=camera.isOrthographicCamera?(camera.top-camera.bottom)/(camera.zoom||1)/r.height:2*faceHit.distance*Math.tan(camera.fov*Math.PI/360)/r.height;slack=Math.min(0.3,2*wpp);}
-  let best=null,bd=tolPx||6;
+  let best=null,bd=(tolPx||6)*(window.mfmEdgeK||1); // interface téléphone : tolérance élargie au doigt (99-mobile-creer-esquisse)
   segs.forEach((P,pi)=>{
     if(!P||P.length<2)return;
     let a=toS(P[0]);
