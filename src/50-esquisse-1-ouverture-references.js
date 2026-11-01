@@ -62,7 +62,8 @@ function newSketchOnFace(){
   if(Math.abs(n.z)<0.95&&v.z<-1e-6){u.negate();v.negate();}
   // host : face porteuse nommée (antériorité) — fait suivre l'esquisse quand la porteuse bouge
   // x/y stockés depuis l'origine (pas le point de clic) pour ne pas dériver
-  const host=findHostForFace(origin,n);
+  // origine hors de la face cliquée (fond de rainure sous un îlot) : la face sous le CLIC
+  const host=findHostForFace(origin,n)||hostViaPoints([origin.x,origin.y,origin.z],n,[pt]);
   const sk={id:uid('sk'),name:'Esquisse '+(doc.sketches.length+1)+' (face)',plane:'FACE',
     entities:[],points:{},constraints:[],dims:[],seq:1,visible:true,
     origin:[+origin.x.toFixed(3),+origin.y.toFixed(3),+origin.z.toFixed(3)],
@@ -310,7 +311,15 @@ function findClosestProjectedEdge(sk,x,y,preferMid,wantType,edgesOver){
         let sc=d;
         // Identité dominante : le milieu mémorisé retrouve LA source même après un gros
         // déplacement (la simple distance au vieux point désignait le mauvais voisin).
-        if(preferMid&&e.mid){const dm=Math.hypot(e.mid[0]-preferMid[0],e.mid[1]-preferMid[1],e.mid[2]-preferMid[2]);sc=dm*1000+d;}
+        // V0.30.3 : écart mesuré DANS LE PLAN de l'esquisse, la hauteur ne départage qu'à égalité.
+        // En 3D, une pièce épaissie (Extrusion 10 → 39 mm) éloignait l'arête source (montée de
+        // 29 mm) plus que l'arête extérieure du BAS de la pièce (18 mm à côté, 10 mm sous) : les
+        // projetées de « Test Répétition Courbe » sautaient sur le contour de la pièce.
+        if(preferMid&&e.mid){
+          const w=[e.mid[0]-preferMid[0],e.mid[1]-preferMid[1],e.mid[2]-preferMid[2]],n=basis.n;
+          const dn=w[0]*n.x+w[1]*n.y+w[2]*n.z,dp=Math.sqrt(Math.max(0,w[0]*w[0]+w[1]*w[1]+w[2]*w[2]-dn*dn));
+          sc=(dp+1e-3*Math.abs(dn))*1000+d;
+        }
         if(sc>bd&&(!wantType||sc>bTyd))continue;
         if(sc<bd||(wantType&&sc<bTyd)){
           // reconstruit pr comme projectEdgeAt mais sans tol

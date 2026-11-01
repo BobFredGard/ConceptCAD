@@ -111,6 +111,13 @@ const {loadApp}=require('./appvm.cjs');
     A(K3.length===4&&K3.every(s=>s.visible===false&&s.entities.length===1&&s.entities[0].t==='circle'&&!s.constraints.length),'16 : guide dans l’esquisse du perçage : chaque copie ne garde que le cercle, esquisse copiée jamais affichée — '+K3.map(s=>s.entities.map(e=>e.t).join('+')+(s.visible===false?'':' (visible)')).join(' | '));
     A(H.entities.length===3&&H.visible===true,'17 : l’esquisse d’origine garde sa courbe guide et reste affichée');
     A(near(vol(),plein-5*trou,1e-3),'18 : volume exact, 5 perçages le long de la courbe — '+vol().toFixed(3));
+    // ── 10. esquisse posée sur la face du dessus (V0.30.3) : les copies gardent CETTE face ──
+    H.plane='FACE';H.host={feat:'F1',tag:'TOP',x:0,y:0,name:'Face dessus'};
+    repGenChildren(rp3);markDirty();rebuild();
+    const K4=doc.features.filter(f=>f.repeatId==='rp3').map(k=>doc.sketches.find(x=>x.id===k.sketchId));
+    A(K4.length===4&&K4.every(s=>s.host&&s.host.feat==='F1'&&s.host.name==='Face dessus'&&near(s.host.x,s.origin[0],1e-3)&&near(s.host.y,s.origin[1],1e-3)),'19 : chaque copie reste sur la face de l’esquisse d’origine, décalée sur cette face — '+K4.map(s=>JSON.stringify(s.host)).join(' | '));
+    doc.features.find(f=>f.id==='F1').distance=14;markDirty();rebuild();
+    A(K4.every(s=>near(s.origin[2],14,1e-6))&&near(vol(),plein*1.4-5*trou,1e-3),'20 : pièce épaissie à 14 : les copies suivent la face, 5 poches de 10 mm — '+vol().toFixed(3));
     return out;
   `;
   const o=await vm.runInContext('(async()=>{'+R+'})()',ctx);

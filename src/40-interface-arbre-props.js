@@ -585,7 +585,22 @@ function repCloneSketch(sk,i,skMap,featMap,cfg,reuse){
       ns.dims=(ns.dims||[]).filter(d=>!uses(d));
     }
   }
-  if(ns.host&&ns.host.feat&&featMap[ns.host.feat])ns.host.feat=featMap[ns.host.feat];else delete ns.host;
+  // V0.30.3 : hôte HORS de la répétition (le cas courant : perçages répétés sur la face du
+  // dessus) — la copie restait sans hôte, puis la migration la posait sur la face trouvée sous
+  // son origine déplacée : une autre fonction (fond d'une découpe) ou aucune (origine hors de
+  // la pièce : 21 copies sur 49 dans « Test Répétition Courbe ») → copies qui ne suivaient plus
+  // l'épaisseur. Copie restée dans le plan de la face : même face, (x, y) décalés d'autant.
+  const hostKeep=()=>{
+    const h=ns.host,hf=doc.features.find(f=>f.id===h.feat),hs=hf&&doc.sketches.find(s=>s.id===hf.sketchId);
+    if(!hs||h.tag==='SIDE'||!sk.origin)return false;
+    const B=sketchBasis(hs),o0=sk.origin,o1=ns.origin,N1=ns.axN||[0,0,1];
+    const d=[o1[0]-o0[0],o1[1]-o0[1],o1[2]-o0[2]],dot=(a,b)=>a[0]*b.x+a[1]*b.y+a[2]*b.z;
+    if(Math.abs(Math.abs(dot(N1,B.n))-1)>1e-6||Math.abs(dot(d,B.n))>1e-4)return false;
+    h.x=+((h.x||0)+dot(d,B.u)).toFixed(3);h.y=+((h.y||0)+dot(d,B.v)).toFixed(3);
+    return true;
+  };
+  if(ns.host&&ns.host.feat&&featMap[ns.host.feat])ns.host.feat=featMap[ns.host.feat];
+  else if(!(ns.host&&ns.host.feat&&hostKeep()))delete ns.host;
   if(reuse){
     const keep=reuse.id;
     for(const k of Object.keys(reuse))if(!(k in ns))delete reuse[k];

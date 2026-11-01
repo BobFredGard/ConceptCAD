@@ -235,6 +235,7 @@ const SUITES = [
   "test_fenetre_dynamique",
   "test_repeat_lin2",
   "test_repeat_profil",
+  "test_repetition_courbe_face",
   "test_repeat_imbrique",
   "test_repeat_corps",
   "test_filet_visibilite",

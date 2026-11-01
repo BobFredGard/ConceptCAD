@@ -337,7 +337,7 @@ input[type=range]{accent-color:var(--primary);width:100%}
  * peut changer sans rien casser. CACHE_VER (parcours FAO) reste indépendant.
  */
 
-const APP_VER='V0.30.2';
+const APP_VER='V0.30.3';
 try{console.log('[MiniFusion] version '+APP_VER);}catch(e){}
 try{var mfSv=document.getElementById('mfSplashVer');if(mfSv)mfSv.textContent=APP_VER;}catch(e){} // écran de démarrage
 
@@ -1962,7 +1962,10 @@ function findHostForFace(pt,n,tol){
       if(Math.abs(Math.abs(dot)-1)<=1e-2){
       const spH=extrudeSpan(f);
       const top=o.clone().addScaledVector(hn,spH.hi),bot=o.clone().addScaledVector(hn,spH.lo);
-      const cand=(dot>0)?top:bot; // pt doit être sur TOP si n==hn, BOTTOM si n==-hn
+      // V0.30.3 : DÉCOUPE — la face qui reste est son FOND (côté opposé à l'enlèvement) : une
+      // esquisse posée au fond d'une rainure suit la rainure (avant : aucun hôte, plan figé).
+      const cut=f.op==='cut',onLo=cut?dot>0:dot<0;
+      const cand=onLo?bot:top; // pt doit être sur TOP si n==hn, BOTTOM si n==-hn (fond de découpe : l'inverse)
       const mDist=Math.abs(n.dot(new THREE.Vector3().subVectors(pt,cand)));
       if(mDist>tol||mDist>bd)continue;
       // footprint : pt projeté sur le plan de l'esquisse porteuse
@@ -2002,7 +2005,7 @@ function findHostForFace(pt,n,tol){
         if(!inHole||onEdge){hit=true;break;}
       }
       if(!hit)continue;
-      best={feat:f,tag:(dot>0)?'TOP':'BOTTOM',x:+x.toFixed(3),y:+y.toFixed(3)};bd=mDist;
+      best={feat:f,tag:onLo?'BOTTOM':'TOP',x:+x.toFixed(3),y:+y.toFixed(3)};bd=mDist;
       }else{
         // ── SIDE : face latérale ⟂ à l'axe d'extrusion = arête footprint (lignes non construction)
         const dx=pt.x-o.x,dy=pt.y-o.y,dz=pt.z-o.z;
@@ -2142,6 +2145,26 @@ function reanchorSketchHost(sk){
   for(const t of tally.values())if(t.n>bn){bn=t.n;best=t.h;}
   return best?set(best):false;
 }
+function hostViaPoints(origin,n,pts){
+  // V0.30.3 : face porteuse trouvée par d'autres points de l'esquisse quand l'ORIGINE n'est pas
+  // dessus (origine = repère global projeté : îlot plus haut que le fond de rainure visé). x/y
+  // réexprimés depuis l'origine dans le repère de la porteuse → resolveSketchHost la garde en place.
+  for(const p of pts){
+    let h=null;try{h=findHostForFace(p,n);}catch(e){}
+    if(!h||!h.feat||h.tag==='SIDE')continue;
+    const hs=doc.sketches.find(s=>s.id===h.feat.sketchId);if(!hs)continue;
+    const B=sketchBasis(hs),d=new THREE.Vector3(origin[0]-B.o.x,origin[1]-B.o.y,origin[2]-B.o.z);
+    return {feat:h.feat,tag:h.tag,x:+d.dot(B.u).toFixed(3),y:+d.dot(B.v).toFixed(3)};
+  }
+  return null;
+}
+function sketchPts3(sk){
+  // points des entités dessinées (hors construction) en 3D, dans le plan de l'esquisse
+  const B=sketchBasis(sk),out=[],seen=new Set();
+  (sk.entities||[]).forEach(e=>{if(!e||e.construction||e.proj)return;[e.p1,e.p2,e.pc,e.p].forEach(id=>{const q=id&&!seen.has(id)&&sk.points[id];if(!q)return;seen.add(id);
+    out.push(new THREE.Vector3(B.o.x+B.u.x*q.x+B.v.x*q.y,B.o.y+B.u.y*q.x+B.v.y*q.y,B.o.z+B.u.z*q.x+B.v.z*q.y));});});
+  return out;
+}
 function resolveAllSketchHosts(){
   // Appelé en tête de chaque rebuild : matérialise toutes les esquisses sur faces.
   let ch=false;
@@ -2177,7 +2200,7 @@ function resolveAllSketchHosts(){
     if(!sk.axN)continue;
     const pt=new THREE.Vector3(sk.origin[0],sk.origin[1],sk.origin[2]);
     const n=new THREE.Vector3(sk.axN[0],sk.axN[1],sk.axN[2]).normalize();
-    const h=findHostForFace(pt,n);
+    const h=findHostForFace(pt,n)||(()=>{try{return hostViaPoints(sk.origin,n,sketchPts3(sk));}catch(e){return null;}})();
     if(h){sk.host=Object.assign({feat:h.feat.id,tag:h.tag,x:h.x,y:h.y,name:entName('face')},(h.tag==='SIDE')?{edge:h.edge,h:h.h}:{});ch=true;}
   }
   return ch;
@@ -8700,7 +8723,22 @@ function repCloneSketch(sk,i,skMap,featMap,cfg,reuse){
       ns.dims=(ns.dims||[]).filter(d=>!uses(d));
     }
   }
-  if(ns.host&&ns.host.feat&&featMap[ns.host.feat])ns.host.feat=featMap[ns.host.feat];else delete ns.host;
+  // V0.30.3 : hôte HORS de la répétition (le cas courant : perçages répétés sur la face du
+  // dessus) — la copie restait sans hôte, puis la migration la posait sur la face trouvée sous
+  // son origine déplacée : une autre fonction (fond d'une découpe) ou aucune (origine hors de
+  // la pièce : 21 copies sur 49 dans « Test Répétition Courbe ») → copies qui ne suivaient plus
+  // l'épaisseur. Copie restée dans le plan de la face : même face, (x, y) décalés d'autant.
+  const hostKeep=()=>{
+    const h=ns.host,hf=doc.features.find(f=>f.id===h.feat),hs=hf&&doc.sketches.find(s=>s.id===hf.sketchId);
+    if(!hs||h.tag==='SIDE'||!sk.origin)return false;
+    const B=sketchBasis(hs),o0=sk.origin,o1=ns.origin,N1=ns.axN||[0,0,1];
+    const d=[o1[0]-o0[0],o1[1]-o0[1],o1[2]-o0[2]],dot=(a,b)=>a[0]*b.x+a[1]*b.y+a[2]*b.z;
+    if(Math.abs(Math.abs(dot(N1,B.n))-1)>1e-6||Math.abs(dot(d,B.n))>1e-4)return false;
+    h.x=+((h.x||0)+dot(d,B.u)).toFixed(3);h.y=+((h.y||0)+dot(d,B.v)).toFixed(3);
+    return true;
+  };
+  if(ns.host&&ns.host.feat&&featMap[ns.host.feat])ns.host.feat=featMap[ns.host.feat];
+  else if(!(ns.host&&ns.host.feat&&hostKeep()))delete ns.host;
   if(reuse){
     const keep=reuse.id;
     for(const k of Object.keys(reuse))if(!(k in ns))delete reuse[k];
@@ -16986,7 +17024,8 @@ function newSketchOnFace(){
   if(Math.abs(n.z)<0.95&&v.z<-1e-6){u.negate();v.negate();}
   // host : face porteuse nommée (antériorité) — fait suivre l'esquisse quand la porteuse bouge
   // x/y stockés depuis l'origine (pas le point de clic) pour ne pas dériver
-  const host=findHostForFace(origin,n);
+  // origine hors de la face cliquée (fond de rainure sous un îlot) : la face sous le CLIC
+  const host=findHostForFace(origin,n)||hostViaPoints([origin.x,origin.y,origin.z],n,[pt]);
   const sk={id:uid('sk'),name:'Esquisse '+(doc.sketches.length+1)+' (face)',plane:'FACE',
     entities:[],points:{},constraints:[],dims:[],seq:1,visible:true,
     origin:[+origin.x.toFixed(3),+origin.y.toFixed(3),+origin.z.toFixed(3)],
@@ -17234,7 +17273,15 @@ function findClosestProjectedEdge(sk,x,y,preferMid,wantType,edgesOver){
         let sc=d;
         // Identité dominante : le milieu mémorisé retrouve LA source même après un gros
         // déplacement (la simple distance au vieux point désignait le mauvais voisin).
-        if(preferMid&&e.mid){const dm=Math.hypot(e.mid[0]-preferMid[0],e.mid[1]-preferMid[1],e.mid[2]-preferMid[2]);sc=dm*1000+d;}
+        // V0.30.3 : écart mesuré DANS LE PLAN de l'esquisse, la hauteur ne départage qu'à égalité.
+        // En 3D, une pièce épaissie (Extrusion 10 → 39 mm) éloignait l'arête source (montée de
+        // 29 mm) plus que l'arête extérieure du BAS de la pièce (18 mm à côté, 10 mm sous) : les
+        // projetées de « Test Répétition Courbe » sautaient sur le contour de la pièce.
+        if(preferMid&&e.mid){
+          const w=[e.mid[0]-preferMid[0],e.mid[1]-preferMid[1],e.mid[2]-preferMid[2]],n=basis.n;
+          const dn=w[0]*n.x+w[1]*n.y+w[2]*n.z,dp=Math.sqrt(Math.max(0,w[0]*w[0]+w[1]*w[1]+w[2]*w[2]-dn*dn));
+          sc=(dp+1e-3*Math.abs(dn))*1000+d;
+        }
         if(sc>bd&&(!wantType||sc>bTyd))continue;
         if(sc<bd||(wantType&&sc<bTyd)){
           // reconstruit pr comme projectEdgeAt mais sans tol

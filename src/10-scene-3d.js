@@ -1144,7 +1144,10 @@ function findHostForFace(pt,n,tol){
       if(Math.abs(Math.abs(dot)-1)<=1e-2){
       const spH=extrudeSpan(f);
       const top=o.clone().addScaledVector(hn,spH.hi),bot=o.clone().addScaledVector(hn,spH.lo);
-      const cand=(dot>0)?top:bot; // pt doit être sur TOP si n==hn, BOTTOM si n==-hn
+      // V0.30.3 : DÉCOUPE — la face qui reste est son FOND (côté opposé à l'enlèvement) : une
+      // esquisse posée au fond d'une rainure suit la rainure (avant : aucun hôte, plan figé).
+      const cut=f.op==='cut',onLo=cut?dot>0:dot<0;
+      const cand=onLo?bot:top; // pt doit être sur TOP si n==hn, BOTTOM si n==-hn (fond de découpe : l'inverse)
       const mDist=Math.abs(n.dot(new THREE.Vector3().subVectors(pt,cand)));
       if(mDist>tol||mDist>bd)continue;
       // footprint : pt projeté sur le plan de l'esquisse porteuse
@@ -1184,7 +1187,7 @@ function findHostForFace(pt,n,tol){
         if(!inHole||onEdge){hit=true;break;}
       }
       if(!hit)continue;
-      best={feat:f,tag:(dot>0)?'TOP':'BOTTOM',x:+x.toFixed(3),y:+y.toFixed(3)};bd=mDist;
+      best={feat:f,tag:onLo?'BOTTOM':'TOP',x:+x.toFixed(3),y:+y.toFixed(3)};bd=mDist;
       }else{
         // ── SIDE : face latérale ⟂ à l'axe d'extrusion = arête footprint (lignes non construction)
         const dx=pt.x-o.x,dy=pt.y-o.y,dz=pt.z-o.z;
@@ -1324,6 +1327,26 @@ function reanchorSketchHost(sk){
   for(const t of tally.values())if(t.n>bn){bn=t.n;best=t.h;}
   return best?set(best):false;
 }
+function hostViaPoints(origin,n,pts){
+  // V0.30.3 : face porteuse trouvée par d'autres points de l'esquisse quand l'ORIGINE n'est pas
+  // dessus (origine = repère global projeté : îlot plus haut que le fond de rainure visé). x/y
+  // réexprimés depuis l'origine dans le repère de la porteuse → resolveSketchHost la garde en place.
+  for(const p of pts){
+    let h=null;try{h=findHostForFace(p,n);}catch(e){}
+    if(!h||!h.feat||h.tag==='SIDE')continue;
+    const hs=doc.sketches.find(s=>s.id===h.feat.sketchId);if(!hs)continue;
+    const B=sketchBasis(hs),d=new THREE.Vector3(origin[0]-B.o.x,origin[1]-B.o.y,origin[2]-B.o.z);
+    return {feat:h.feat,tag:h.tag,x:+d.dot(B.u).toFixed(3),y:+d.dot(B.v).toFixed(3)};
+  }
+  return null;
+}
+function sketchPts3(sk){
+  // points des entités dessinées (hors construction) en 3D, dans le plan de l'esquisse
+  const B=sketchBasis(sk),out=[],seen=new Set();
+  (sk.entities||[]).forEach(e=>{if(!e||e.construction||e.proj)return;[e.p1,e.p2,e.pc,e.p].forEach(id=>{const q=id&&!seen.has(id)&&sk.points[id];if(!q)return;seen.add(id);
+    out.push(new THREE.Vector3(B.o.x+B.u.x*q.x+B.v.x*q.y,B.o.y+B.u.y*q.x+B.v.y*q.y,B.o.z+B.u.z*q.x+B.v.z*q.y));});});
+  return out;
+}
 function resolveAllSketchHosts(){
   // Appelé en tête de chaque rebuild : matérialise toutes les esquisses sur faces.
   let ch=false;
@@ -1359,7 +1382,7 @@ function resolveAllSketchHosts(){
     if(!sk.axN)continue;
     const pt=new THREE.Vector3(sk.origin[0],sk.origin[1],sk.origin[2]);
     const n=new THREE.Vector3(sk.axN[0],sk.axN[1],sk.axN[2]).normalize();
-    const h=findHostForFace(pt,n);
+    const h=findHostForFace(pt,n)||(()=>{try{return hostViaPoints(sk.origin,n,sketchPts3(sk));}catch(e){return null;}})();
     if(h){sk.host=Object.assign({feat:h.feat.id,tag:h.tag,x:h.x,y:h.y,name:entName('face')},(h.tag==='SIDE')?{edge:h.edge,h:h.h}:{});ch=true;}
   }
   return ch;
