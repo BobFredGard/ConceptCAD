@@ -562,8 +562,10 @@ function faoInitUI(){
               const s=faoSetup();
               faoSnapshot('nouvelle opération « '+nm+' »');
               s.ops.push(op);
+              // V0.33.2 : Perçage sur des trous sélectionnés → gamme posée d'office
+              const g=op.type==='drill'&&typeof faoDrillFromSel==='function'?faoDrillFromSel(s,op):null;
               faoChanged();
-              faoSelectOp(s.id,op.id);
+              faoSelectOp(s.id,(g&&g.length?g[0]:op).id);
             }catch(e){}
           };
           bar.appendChild(b);

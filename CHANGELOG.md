@@ -8,7 +8,7 @@ sont sorties le 2026-09-30j.
 Code dans `src/` · livrable `fusion_mvp.html` (généré par `build.js`) · architecture et
 garde-fous en tête de `src/00-entete-et-outils.js`.
 
-**515 versions**, de `2026-09-28b` à `V0.33.0` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
+**517 versions**, de `2026-09-28b` à `V0.33.2` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
 comme dans le fichier d'origine.
 
 ---
@@ -6177,3 +6177,10 @@ Demande : « il existe plusieurs projets MiniFusion dans GitHub […] Est-il pos
 - **Inchangé, volontairement** : l’identifiant interne du format (`app:'MiniFusion'`, pour que les fichiers restent lisibles par les versions précédentes), les clés de stockage du navigateur et les bases IndexedDB (brouillon, préférences et caches conservés), `tools/mcp-minifusion.cjs` et le dossier local.
 - **GitHub** : dépôt renommé `BobFredGard/ConceptCAD` (GitHub redirige l’ancienne adresse du dépôt) ; site Pages désormais sur `bobfredgard.github.io/ConceptCAD/` (l’ancienne adresse `…/MiniFusion/` n’est pas redirigée).
 - **Tests** : `npm run ci`.
+
+## V0.33.2 - FAO : Perçage sur des trous sélectionnés, gamme posée seule
+Demande : « quand je sélectionne un perçage et que je clique sur la fonction Perçage dans le monde FAO, que la fonction retrouve toute seule la gamme et la mette en place ».
+- **Sélection reprise** : faces de trous cliquées dans la vue (Ctrl+clic pour plusieurs) ou fonction Perçage sélectionnée ; chaque face désigne le trou reconnu dont l’axe passe au plus près (même règle que « Choisir dans la vue »).
+- **Toute la fonction suit** : un trou issu d’une fonction Perçage entraîne tous les trous de cette fonction — tous ses points, son lamage, l’avant-trou d’un double perçage. Cliquer le lamage d’un CHC donne donc perçage Ø6,6 + lamage fraisé.
+- **Gamme** : le bouton « Perçage » (ruban et barre « + Usinage ») remplace alors l’opération vide par la gamme habituelle (pointage → perçages par Ø, débourrage au-delà de 4 × Ø → lamages fraisés → taraudages) ; la première opération s’ouvre, un seul Ctrl+Z annule le tout. Sans trou sélectionné : opération vide, comme avant.
+- **Tests** : `test_fao_percage_selection` (noyau réel : M8 + lamage cliqués, fonction Ø5 sélectionnée, face hors trou) ; `npm run ci`.

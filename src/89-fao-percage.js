@@ -651,12 +651,53 @@ function faoDrillSections(setup,op,d){
   }
 }
 
+/* ----- Perçage créé sur une sélection : trous retrouvés + gamme posée — V0.33.2 -----
+   Faces de trous cliquées dans la vue (selFaces, Ctrl+clic pour plusieurs) ou fonction
+   Perçage sélectionnée : chaque face désigne le trou reconnu dont l'axe passe au plus
+   près (comme « Choisir dans la vue ») ; un trou issu d'une fonction Perçage entraîne
+   TOUS les trous de cette fonction (lamage, avant-trou d'un double perçage…). Les
+   groupes trouvés deviennent la sélection de l'opération, puis faoDrillGamme. */
+function faoDrillSelHoles(setup,op){
+  const Fr=faoOpFrameOf(setup.id,op.id);
+  const kF=faoFrameCur;faoFrameCur=Fr.id?null:Fr;let holes=[];
+  try{holes=faoHolesDetect();}finally{faoFrameCur=kF;}
+  if(!holes.length)return [];
+  const hit=[],feats={};
+  (typeof selFaces!=='undefined'&&selFaces||[]).forEach(function(f){
+    if(!f||!f.point)return;
+    const w=[f.point.x,f.point.y,f.point.z],q=Fr.id?w:faoToF(Fr,w);
+    let best=null,bd=Infinity;
+    holes.forEach(function(H){
+      if(q[2]>H.zSurf+0.5||q[2]<H.zbot-0.5)return;
+      const d=Math.hypot(q[0]-H.x,q[1]-H.y);
+      if(d<=H.d/2+0.5&&d<bd){bd=d;best=H;}
+    });
+    if(best){hit.push(best);if(best.feat)feats[best.feat.id]=1;}
+  });
+  try{ if(sel&&sel.kind==='feature'){const f=(doc.features||[]).find(function(x){return x.id===sel.id;});if(f&&f.type==='hole')feats[f.id]=1;} }catch(e){}
+  holes.forEach(function(H){if(H.feat&&feats[H.feat.id]&&hit.indexOf(H)<0)hit.push(H);});
+  const out=[];
+  hit.forEach(function(H){if(!out.some(function(s){return Math.abs(s.d-H.d)<0.02&&Math.abs(s.z-H.ztop)<0.05;}))
+    out.push({d:+(+H.d).toFixed(3),z:+(+H.ztop).toFixed(3)});});
+  return out;
+}
+function faoDrillFromSel(setup,op){
+  // Appelé juste après la création d'une opération Perçage (barre « + Usinage », ruban).
+  let gs=[];try{gs=faoDrillSelHoles(setup,op);}catch(e){gs=[];}
+  if(!gs.length)return null;
+  op.src='model';op.holeSel=gs;
+  const made=faoDrillGamme(setup,op,true);
+  try{ if(typeof clearMeasure==='function')clearMeasure(); }catch(e){}
+  return made;
+}
+
 /* ----- gamme automatique : pointage → perçage → taraudage — 2026-10-15-013 ----- */
-function faoDrillGamme(setup,op){
+function faoDrillGamme(setup,op,noSnap){
   // À partir des groupes sélectionnés de l'opération : remplace l'opération par la
   // séquence d'atelier. Lamages : signalés (fraisage = interpolation, étape suivante).
+  // noSnap : l'appelant a déjà pris l'instantané (création + gamme = un seul Ctrl+Z).
   if(!op||op.type!=='drill')return null;
-  faoSnapshot('gamme de perçage');
+  if(!noSnap)faoSnapshot('gamme de perçage');
   faoDrillResolve(op);
   const holes=op.holes||[];
   const sel=(op.holeSel||[]).slice();

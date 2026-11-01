@@ -372,7 +372,10 @@ const MF_CAO=[
 ];
 const MF_FAO_ICON={facing:'facing',pocket:'pocket',chamfer:'chamfer',contour:'contour',drill:'drill',rough3d:'rough3d',geofinish:'finish',geodesic:'geodesic',pocket2:'pocket'};
 function mfFaoAdd(type,nm){
-  try{const op=faoOpDefaults(type);if(!op)return;const s=faoSetup();faoSnapshot('nouvelle opération « '+nm+' »');s.ops.push(op);faoChanged();faoSelectOp(s.id,op.id);}catch(e){}
+  try{const op=faoOpDefaults(type);if(!op)return;const s=faoSetup();faoSnapshot('nouvelle opération « '+nm+' »');s.ops.push(op);
+    // V0.33.2 : Perçage sur des trous sélectionnés → gamme posée d'office (src/89-fao-percage.js)
+    const g=op.type==='drill'&&typeof faoDrillFromSel==='function'?faoDrillFromSel(s,op):null;
+    faoChanged();faoSelectOp(s.id,(g&&g.length?g[0]:op).id);}catch(e){}
 }
 function mfRibbon(){
   const rb=document.createElement('div');rb.id='mfRibbon';rb.className='mfM';
