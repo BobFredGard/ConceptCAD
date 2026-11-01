@@ -99,6 +99,18 @@ const {loadApp}=require('./appvm.cjs');
     // ── 8. esquisse guide supprimée : aucune copie, message ──
     doc.sketches=doc.sketches.filter(x=>x.id!=='skG');repGenChildren(rp2);
     A(doc.features.filter(f=>f.repeatId==='rp1').length===0&&/esquisse guide introuvable/.test(repPathNote(rp2)),'15 : guide supprimé : plus de copie, « '+repPathNote(rp2)+' »');
+    // ── 9. courbe guide DANS l'esquisse du perçage (V0.30.1) : seule la fonction est répétée ──
+    doc.features=doc.features.filter(f=>f.id!=='rp1'&&f.repeatId!=='rp1');
+    const H=doc.sketches.find(x=>x.id==='skH');H.visible=true;
+    Object.assign(H.points,{g1:{x:10,y:10},g2:{x:90,y:10},g3:{x:90,y:90}});
+    H.entities.push({id:'u1',t:'line',p1:'g1',p2:'g2',construction:true},{id:'u2',t:'line',p1:'g2',p2:'g3',construction:true});
+    H.constraints=[{type:'horizontal',line:'u1'}];
+    const rp3={id:'rp3',type:'repeat',name:'Suivant un profil',mode:'path',copies:4,q:1,base:['F2'],children:[],visible:true,path:{sk:'skH',pt:'g1'},pspace:'fit',orient:'fixed'};
+    doc.features.push(rp3);repGenChildren(rp3);markDirty();rebuild();
+    const K3=doc.features.filter(f=>f.repeatId==='rp3').map(k=>doc.sketches.find(x=>x.id===k.sketchId));
+    A(K3.length===4&&K3.every(s=>s.visible===false&&s.entities.length===1&&s.entities[0].t==='circle'&&!s.constraints.length),'16 : guide dans l’esquisse du perçage : chaque copie ne garde que le cercle, esquisse copiée jamais affichée — '+K3.map(s=>s.entities.map(e=>e.t).join('+')+(s.visible===false?'':' (visible)')).join(' | '));
+    A(H.entities.length===3&&H.visible===true,'17 : l’esquisse d’origine garde sa courbe guide et reste affichée');
+    A(near(vol(),plein-5*trou,1e-3),'18 : volume exact, 5 perçages le long de la courbe — '+vol().toFixed(3));
     return out;
   `;
   const o=await vm.runInContext('(async()=>{'+R+'})()',ctx);

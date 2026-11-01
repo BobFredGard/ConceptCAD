@@ -64,6 +64,20 @@ const vm=require('vm');
     att(q1&&q1.type==='path'&&q1.path.sk==='skG'&&q1.path.pt==='a'&&q1.pspace==='fit'&&q1.orient==='fixed','fichier : réglages du profil enregistrés — '+JSON.stringify(q1&&{type:q1.type,path:q1.path,pspace:q1.pspace,orient:q1.orient}));
     const nn=asmPatNorm(pats);
     att(nn&&nn.find(q=>q.id===L2.id).pspace==='pitch'&&nn.find(q=>q.id===L2.id).dist===25,'relecture (asmPatNorm) : pas imposé gardé');
+    // ── départ choisi à la souris (V0.30.1, 41-profil-choix-point) ──
+    const C=pgPickCands(doc);
+    att(C.some(c=>c.sk.id==='skG'&&c.v.pt==='a')&&C.some(c=>c.sk.id==='skO'&&c.v.pt==='b')&&C.every(c=>Array.isArray(c.w)&&c.w.length===3),'souris : points proposés de toutes les esquisses guides, en 3D — '+C.length);
+    const oo=C.find(c=>c.sk.id==='skO'&&c.v.pt==='b');
+    att(oo&&near(oo.w,[60,0,5]),'souris : point placé avec le repère de l’esquisse (origine z = 5)');
+    // vue de dessus 200 × 200 px : x écran = (x + 100) · 1, y écran = (100 − y) · 1
+    const proj=w=>[w[0]/100,w[1]/100,0];
+    const hit=pgPickNear(C,100+90+6,100-50-5,200,200,proj);
+    att(hit&&hit.sk.id==='skG'&&JSON.stringify(hit.v)===JSON.stringify({pt:'c'}),'souris : clic à 8 px du coin (90, 50) → ce sommet — '+JSON.stringify(hit&&hit.v));
+    att(!pgPickNear(C,100+70,100-30,200,200,proj),'souris : clic loin de tout point → rien');
+    let got=null;
+    att(pgPickStart(doc,p=>{got=p;})&&pgPick&&pgPick.cands.length===C.length,'souris : mode de choix actif');
+    pgPick.onPick(Object.assign({sk:hit.sk.id},hit.v));pgPickStop();
+    att(got&&got.sk==='skG'&&got.pt==='c'&&!pgPick,'souris : départ rendu {sk, pt}, mode refermé — '+JSON.stringify(got));
     // ── guide supprimé : instances laissées en place, message ──
     doc.sketches=doc.sketches.filter(s=>s.id!=='skG');asmResolve();
     att(inst(L1.id).length===7&&L1.st==='warn'&&/esquisse guide introuvable/.test(L1.msg),'guide supprimé : instances gardées, ⚠ « '+L1.msg+' »');

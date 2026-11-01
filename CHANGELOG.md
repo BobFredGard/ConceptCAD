@@ -8,7 +8,7 @@ sont sorties le 2026-09-30j.
 Code dans `src/` · livrable `fusion_mvp.html` (généré par `build.js`) · architecture et
 garde-fous en tête de `src/00-entete-et-outils.js`.
 
-**504 versions**, de `2026-09-28b` à `V0.30.0` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
+**505 versions**, de `2026-09-28b` à `V0.30.1` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
 comme dans le fichier d'origine.
 
 ---
@@ -6082,3 +6082,11 @@ Demande : « j'ai besoin d'une répétition suivant un profil donné » — cour
 - **CAO** (`src/40-interface-arbre-props.js`) : type « Suivant un profil » dans la Répétition (création et modification) : courbe guide, départ, espacement, pas, orientation, sens ; longueur et pas affichés ; aperçu rouge. Les copies se recalculent quand l'esquisse guide change (signature de la géométrie guide dans `repSourceSig`, `repSyncForSketch`) ; esquisse guide supprimée : plus de copie, ⚠ dans le panneau. Antériorité : la face qui porte la courbe guide.
 - **Assembler** (`src/48-assemblage-repetitions.js`) : type « Suivant un profil » pour les occurrences ; courbe guide dans une esquisse du composant porteur (à tracer par le centre de la pièce) ; mêmes réglages ; enregistré et relu vérifié ; guide introuvable : instances laissées en place, ⚠.
 - **Tests** : `tests/test_repeat_profil.cjs` (noyau réel : carré fermé 8 réparti, sens inversé, départ au milieu d'une ligne, polyligne ouverte depuis chaque extrémité, pas imposé, tangente, cercle 2πR, guide modifié, relecture, guide supprimé ; volumes exacts) ; `tests/test_composants_repetition_profil.cjs` (assemblage) ; `npm run ci:full`.
+
+## V0.30.1 - Répétition : seule la fonction est répétée, booléen groupé (5 à 8 × plus rapide), départ choisi à la souris dans la vue 3D
+Demandes : « pas la peine de répéter toute l'esquisse x fois… juste la fonction choisie dans l'arbre » ; « peux-tu augmenter la vitesse de réalisation et de visualisation de la répétition ? » ; « pour le choix du point, je préfèrerai sélectionner moi-même le point à la souris directement sur l'esquisse depuis le monde 3D ».
+- **Esquisses copiées** (`repCloneSketch`, `src/40-interface-arbre-props.js`) : l'esquisse recopiée avec chaque copie n'est plus jamais dessinée dans la vue (on voyait l'esquisse entière N fois). Répétition suivant un profil dont la courbe guide est dans l'esquisse de la fonction : la courbe guide (et ses contraintes, cotes) n'est pas recopiée, seule la géométrie de la fonction suit ; l'esquisse d'origine est intacte.
+- **Booléen groupé** (`occReplayBodyIn`, `src/20-noyau-et-operations-solides.js`) : les copies CONSÉCUTIVES d'une même répétition (extrusion ou perçage, même opération, corps de la fonction) partent en UN seul booléen à outils multiples au lieu de N booléens enchaînés sur une pièce de plus en plus percée ; point de contrôle sous la même clé que le rejeu une à une. Le moindre souci (outil illisible, filet modélisé à étapes, booléen refusé) → rejeu une à une. Vaut pour toutes les répétitions (linéaire, circulaire, symétrie, profil). Fantômes rouges : maillage du premier outil recopié par la matrice d'esquisse de chaque copie (extrusion simple, repère direct).
+- **Mesures** (noyau exact, plaque + perçages Ø2 sur un cercle) : 24 copies 1 462 → **302 ms** ; 60 copies 6 163 → **737 ms** (reste : maillage d'affichage de la pièce finale).
+- **Départ à la souris** (`src/41-profil-choix-point.js`) : 🎯 à côté de « Départ » (pièce et assemblage) : courbes guides des esquisses affichées tracées en orange avec leurs points de départ possibles (points d'esquisse, extrémités, sommets, milieux de lignes) ; un clic à ≤ 14 px d'un point le prend — esquisse guide comprise si aucune n'était choisie. Échap ou 🎯 : abandon.
+- **Tests** : `tests/test_repeat_profil.cjs` 16 à 18 (guide dans l'esquisse du perçage : copies réduites au cercle, masquées, volume exact) ; `tests/test_composants_repetition_profil.cjs` (points proposés, point le plus proche du clic, mode de choix) ; `npm run ci:full`.

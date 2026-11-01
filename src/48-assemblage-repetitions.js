@@ -272,11 +272,13 @@ function asmPatSet(fn){
   fn(P.pat);asmResolve();asmNotify();
 }
 function asmPatOk(){
+  try{pgPickStop();}catch(e){}
   const E=asmPatEd,o=E&&asmComp(E.owner);asmPatEd=null;
   if(E&&E.before!=null&&o&&JSON.stringify(o.pats)===E.before)asmUndoStack.pop(); // rien changé : pas d'étape
   try{renderTree();renderProps();}catch(e){}
 }
 function asmPatCancel(){
+  try{pgPickStop();}catch(e){}
   if(!asmPatEd)return;
   asmPatEd=null;
   if(asmUndo())asmRedoStack.pop(); // l'état d'avant l'édition, sans rien à rétablir
@@ -326,8 +328,10 @@ function asmPatProps(p){
       Row('Courbe guide',sel([['','— choisir —']].concat(G.map(k=>[k.id,k.name||k.id])),sk?sk.id:'',v=>asmPatSet(q=>{const k=(owner.doc.sketches||[]).find(s=>s.id===v);q.path=k?pgDefaultPath(k):{sk:null};})));
       if(sk){
         const ch=pgStartChoices(sk),cur=ch.findIndex(o=>pgSameStart(o.v,pat.path));
-        Row('Départ',sel(ch.map((o,i)=>[String(i),o.label]).concat(cur<0?[['-1','(départ actuel)']]:[]),String(cur),v=>asmPatSet(q=>{const o=ch[+v];if(o)q.path=Object.assign({sk:sk.id},o.v);})));
-      }
+        const w=mk('span');w.style.cssText='display:flex;gap:4px;align-items:center;flex:none';
+        w.appendChild(sel(ch.map((o,i)=>[String(i),o.label]).concat(cur<0?[['-1','(départ actuel)']]:[]),String(cur),v=>asmPatSet(q=>{const o=ch[+v];if(o)q.path=Object.assign({sk:sk.id},o.v);})));
+        w.appendChild(repPathPickBtn(owner.doc,fn=>asmPatSet(fn),sk.id));Row('Départ',w);
+      }else Row('Départ',repPathPickBtn(owner.doc,fn=>asmPatSet(fn),null));
     }
     Row('Quantité',num(pat.copies+1,v=>asmPatSet(q=>{q.copies=cnt(v);}),true));
     const P=asmPatPlan(owner,pat);

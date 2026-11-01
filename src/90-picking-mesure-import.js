@@ -3,6 +3,7 @@ function wirePick(){
   const el=renderer.domElement;let dx=0,dy=0;
   el.addEventListener('pointerdown',e=>{dx=e.clientX;dy=e.clientY;});
   el.addEventListener('pointerup',e=>{
+    if(typeof pgPick!=='undefined'&&pgPick){if(e.button===0&&Math.hypot(e.clientX-dx,e.clientY-dy)<=6)pgPickAt(e);return;} // répétition suivant un profil : départ (41)
     if(asmMode==='asm'){if(e.button===0&&Math.hypot(e.clientX-dx,e.clientY-dy)<=6)asmClick(e);return;} // vue d'assemblage (47)
     if(extPickFace||(typeof extUptoAuto==='function'&&extUptoAuto())){ // « jusqu'à la face » : clic COURT seulement (glisser = tourner la vue)
       if(e.button===0&&Math.hypot(e.clientX-dx,e.clientY-dy)<=6)extPickFaceCommit(e);return;}

@@ -268,7 +268,7 @@ function enterRepMode(){
   renderTree();renderRepPanel();
   faceEl.textContent='Répétition : cochez les fonctions à répéter dans la liste ci-dessus, puis Appliquer. Astuce : la repetition est depliee dans l arbre et ses sources sont marquees ◀.';
 }
-function exitRepMode(){repPreviewRemove();repPreviewSrcFree();repMode=null;renderTree();renderProps();}
+function exitRepMode(){try{pgPickStop();}catch(e){}repPreviewRemove();repPreviewSrcFree();repMode=null;renderTree();renderProps();}
 /* V0.11.20 : APERÇU ROUGE des copies dès le choix du plan / de l'axe (retour : « j'aimerais
    voir les répétitions en rouge sur cette 1ère étape pour voir si je ne me trompe pas de
    plan »). La PIÈCE ENTIÈRE (chaque corps montré) est recopiée avec la matrice de chaque
@@ -570,6 +570,21 @@ function repCloneSketch(sk,i,skMap,featMap,cfg,reuse){
   // esquisse libre au repère déjà transformé ; si le plan bouge, la source suit (cgSyncSketch),
   // sa signature change et repSyncStale régénère la copie.
   if(ns.plane==='CG'){ns.plane='FACE';delete ns.cg;}
+  // V0.30.1 : une esquisse copiée ne sert qu'à sa fonction — jamais dessinée dans la vue (on
+  // voyait l'esquisse entière N fois). Répétition suivant un profil dont la courbe guide est
+  // dans l'esquisse de la fonction (le cas courant : point d'accroche du perçage sur la
+  // courbe) : la courbe guide n'est pas recopiée, seule la géométrie de la fonction suit.
+  ns.visible=false;
+  if((cfg.mode||cfg.type)==='path'&&cfg.path&&cfg.path.sk===sk.id){
+    const R=pgResolve(sk,cfg.path);
+    if(R.ch){
+      const gone=new Set(R.ch.ids);
+      ns.entities=(ns.entities||[]).filter(e=>!gone.has(e.id));
+      const uses=o=>Object.keys(o).some(k=>typeof o[k]==='string'&&gone.has(o[k]));
+      ns.constraints=(ns.constraints||[]).filter(c=>!uses(c));
+      ns.dims=(ns.dims||[]).filter(d=>!uses(d));
+    }
+  }
   if(ns.host&&ns.host.feat&&featMap[ns.host.feat])ns.host.feat=featMap[ns.host.feat];else delete ns.host;
   if(reuse){
     const keep=reuse.id;
@@ -1394,6 +1409,13 @@ function repNewBodyEmpty(rp){
   const B=repExpandSources((rp.base||[]).map(id=>doc.features.find(x=>x.id===id)).filter(Boolean),new Set([rp.id]));
   return B.length>0&&!B.some(f=>(f.type==='extrude'||f.type==='revolve'||f.type==='sweep')&&(f.op||'add')!=='cut');
 }
+function repPathPickBtn(D,changed,cur){
+  // 🎯 : départ choisi à la souris sur la courbe guide, dans la vue 3D (41-profil-choix-point)
+  const b=document.createElement('button');b.className='mini repPathPick';b.textContent='🎯';b.style.cssText='padding:1px 6px;flex:none';
+  b.title='Choisir le départ à la souris : cliquez un point orange de la courbe guide dans la vue (Échap pour annuler)';
+  b.onclick=()=>{if(pgPick){pgPickStop();try{faceEl.textContent='Choix du départ annulé.';}catch(e){}return;}pgPickStart(D,path=>changed(q=>{q.path=path;}),cur);};
+  return b;
+}
 function repPathUI(c,infoId,row,note,changed){
   // Réglages d'une répétition SUIVANT UN PROFIL, communs à la création et à l'édition :
   // esquisse guide, point de départ, espacement (réparti / pas imposé), orientation, sens.
@@ -1407,8 +1429,9 @@ function repPathUI(c,infoId,row,note,changed){
   if(sk){
     const ch=pgStartChoices(sk),cur=ch.findIndex(o=>pgSameStart(o.v,c.path));
     const sd=mkSel(ch.map((o,i)=>[String(i),o.label]).concat(cur<0?[['-1','(départ actuel)']]:[]),String(cur),v=>changed(q=>{const o=ch[+v];if(o)q.path=Object.assign({sk:sk.id},o.v);}));
-    sd.className='repPathStart';sd.title='Point d’accroche de l’original : point d’esquisse sur la courbe, extrémité (courbe ouverte), sommet ou milieu d’une ligne';row('Départ',sd);
-  }
+    sd.className='repPathStart';sd.title='Point d’accroche de l’original : point d’esquisse sur la courbe, extrémité (courbe ouverte), sommet ou milieu d’une ligne';
+    const w=document.createElement('span');w.style.cssText='display:flex;gap:4px;align-items:center;flex:none';w.appendChild(sd);w.appendChild(repPathPickBtn(doc,changed,sk.id));row('Départ',w);
+  }else row('Départ',repPathPickBtn(doc,changed,null)); // un clic sur un point choisit l'esquisse ET le départ
   const sp=mkSel([['fit','Réparti sur la longueur'],['pitch','Pas imposé']],c.pspace==='pitch'?'pitch':'fit',v=>changed(q=>{
     q.pspace=v;
     if(v==='pitch'&&!(+q.dist>0)){const I=repPathInfo.get(infoId);q.dist=I&&I.step>0?+I.step.toFixed(3):10;}

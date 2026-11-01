@@ -337,7 +337,7 @@ input[type=range]{accent-color:var(--primary);width:100%}
  * peut changer sans rien casser. CACHE_VER (parcours FAO) reste indépendant.
  */
 
-const APP_VER='V0.30.0';
+const APP_VER='V0.30.1';
 try{console.log('[MiniFusion] version '+APP_VER);}catch(e){}
 try{var mfSv=document.getElementById('mfSplashVer');if(mfSv)mfSv.textContent=APP_VER;}catch(e){} // écran de démarrage
 
@@ -6665,8 +6665,96 @@ function occReplayBodyIn(bid,list){
     }
     occCkPut(ckKey,()=>occShapeCopy(result)); // point de contrôle pour le rejeu suivant
   };
+  // V0.30.1 : copies CONSÉCUTIVES d'une même répétition (extrusion / perçage, même opération,
+  // corps de la fonction) → UN SEUL booléen à outils multiples au lieu de N booléens enchaînés
+  // sur une pièce de plus en plus percée (24 perçages : 1,4 s → voir CHANGELOG). Clé du point de
+  // contrôle = la même que le rejeu une à une (préfixe cumulé) : rien d'autre ne change en aval.
+  // Le moindre souci (outil illisible, composé à étapes, booléen refusé) → rejeu une à une.
+  const batchLen=i=>{
+    const f=list[i];if(!f||!f.repeatId||!result)return 1;
+    const opOf=g=>g.type==='hole'?'cut':g.type==='extrude'?(g.op||'add'):null;
+    const op=opOf(f);if(op!=='cut'&&op!=='add')return 1;
+    let n=0;
+    while(i+n<list.length){const g=list[i+n];if(g.repeatId!==f.repeatId||opOf(g)!==op||occBodyOfFeat(g)!==bid||g.visible===false)break;n++;}
+    return n;
+  };
+  const kidsOf=s=>{
+    const CP=occt.TopAbs_ShapeEnum.TopAbs_COMPOUND;
+    if(s.ShapeType()!==CP)return [s];
+    const out=[];const it=new occt.TopoDS_Iterator_2(s,true,true);
+    try{for(;it.More();it.Next())out.push(it.Value());}finally{try{it.delete();}catch(e){}}
+    if(out.some(k=>k.ShapeType()===CP))return null; // composé à étapes (filet modélisé) : une à une
+    return out;
+  };
+  const batch=run=>{
+    const keys=[];let key=ckKey;run.forEach(g=>{key+=featSig(g)+';';keys.push(key);});
+    const cut=run[0].type==='hole'||(run[0].op||'add')==='cut';
+    const rs=[],tools=[];
+    const drop=()=>rs.forEach(r=>{try{r.shape.delete();}catch(e){}occDispose(r.bins);try{if(r.thr)r.thr.delete();}catch(e){}});
+    try{
+      occThroughBase=cut?result:null; // « à travers tout » : mesuré sur la pièce avant les copies
+      for(let k=0;k<run.length;k++){
+        const g=run[k];
+        let r=occToolCkGet(keys[k]);
+        if(!r){r=g.type==='hole'?occShapeOfHole(g):occShapeOfExtrude(g);occToolCkPut(keys[k],r);}
+        rs.push(r);
+        const kk=kidsOf(r.shape);if(!kk){drop();return false;}
+        tools.push(...kk);
+      }
+    }catch(err){drop();return false;}
+    let next=null;const ck=occCkGet(key);
+    if(ck)next=occShapeCopy(ck);
+    if(!next){
+      const la=new occt.TopTools_ListOfShape_1(),lt=new occt.TopTools_ListOfShape_1();
+      const c=cut?new occt.BRepAlgoAPI_Cut_1():new occt.BRepAlgoAPI_Fuse_1();
+      try{
+        la.Append_1(result);tools.forEach(t=>lt.Append_1(t));
+        c.SetArguments(la);c.SetTools(lt);if(cut)c.SetCheckInverted(false);c.Build();
+        const s=c.IsDone()?c.Shape():null;
+        if(!s||s.IsNull())throw new Error('booléen groupé refusé');
+        if(cut){const all=occCompoundOf(rs.map(r=>r.shape));next=occUnifyCutSeams(s,result,all);if(rs.length>1)try{all.delete();}catch(e){}}
+        else next=occUnify(s);
+      }catch(err){drop();return false;}
+      finally{try{c.delete();}catch(e){}try{la.delete();}catch(e){}try{lt.delete();}catch(e){}}
+    }
+    // succès : mêmes traces que le rejeu une à une (fantômes, éléments, filets, avertissements).
+    // Fantôme : une extrusion simple (ni « à travers tout », ni « jusqu'à ») copiée est l'outil de
+    // sa source déplacé avec son esquisse — maillage du premier recopié par la matrice
+    // (repère d'esquisse de la copie × inverse de celui du premier) au lieu d'un maillage noyau
+    // par copie (≈ 8 ms chacun). Symétrie (repère indirect) : maillée normalement.
+    let g0=null;
+    const basisM=g=>{
+      const sk=doc.sketches.find(s=>s.id===g.sketchId);if(!sk)return null;
+      const b=sketchBasis(sk),M=new THREE.Matrix4().makeBasis(b.u,b.v,b.n);M.setPosition(b.o);
+      return M.determinant()>0?M:null;
+    };
+    run.forEach((g,k)=>{
+      const r=rs[k];
+      bin.push(...r.bins);itemShapes.push(r.shape);items.push({f:g,shape:r.shape});
+      if(r.thr)threads.push({f:g,thr:r.thr});
+      if(r.warnings.length)msgs.push(...r.warnings.map(w=>`${g.name} : ${w}`));
+      if(!cut)return;
+      try{
+        const M=g.type==='extrude'&&!g.through&&!g.upto&&g._src?basisM(g):null;
+        let gg=null;
+        if(M&&g0&&g0.src===g._src){gg=g0.geo.clone();gg.applyMatrix4(new THREE.Matrix4().multiplyMatrices(M,g0.inv));}
+        else{
+          gg=g.type==='hole'?occTessellate(r.shape,1,0.8):occTessellate(r.shape,0.5);
+          if(M&&gg)g0={geo:gg,inv:M.clone().invert(),src:g._src};
+        }
+        if(gg)ghostShapes.push({geo:gg,orphan:false,fid:g.id});
+      }catch(e){msgs.push(`${g.name} : outil illisible`);}
+    });
+    try{result.delete();}catch(e){}result=next;ckKey=key;
+    if(!ck)occCkPut(ckKey,()=>occShapeCopy(result));
+    return true;
+  };
   const tap=occPrefixTap&&occReplayNest===1?occPrefixTap:null;
-  list.forEach(f=>{step(f);if(tap)try{tap(bid,f,result);}catch(e){}});
+  for(let i=0;i<list.length;){
+    const n=tap?1:batchLen(i);
+    if(n>1&&batch(list.slice(i,i+n))){i+=n;continue;}
+    const f=list[i++];step(f);if(tap)try{tap(bid,f,result);}catch(e){}
+  }
   // V0.21.19 : filets modélisés creusés EN DERNIER, en une seule découpe (src/76,
   // occShapeOfHole) : dans l'arbre, chaque perçage n'a laissé qu'un avant-trou lisse,
   // et les fonctions suivantes n'ont jamais vu les faces hélicoïdales.
@@ -8289,7 +8377,7 @@ function enterRepMode(){
   renderTree();renderRepPanel();
   faceEl.textContent='Répétition : cochez les fonctions à répéter dans la liste ci-dessus, puis Appliquer. Astuce : la repetition est depliee dans l arbre et ses sources sont marquees ◀.';
 }
-function exitRepMode(){repPreviewRemove();repPreviewSrcFree();repMode=null;renderTree();renderProps();}
+function exitRepMode(){try{pgPickStop();}catch(e){}repPreviewRemove();repPreviewSrcFree();repMode=null;renderTree();renderProps();}
 /* V0.11.20 : APERÇU ROUGE des copies dès le choix du plan / de l'axe (retour : « j'aimerais
    voir les répétitions en rouge sur cette 1ère étape pour voir si je ne me trompe pas de
    plan »). La PIÈCE ENTIÈRE (chaque corps montré) est recopiée avec la matrice de chaque
@@ -8591,6 +8679,21 @@ function repCloneSketch(sk,i,skMap,featMap,cfg,reuse){
   // esquisse libre au repère déjà transformé ; si le plan bouge, la source suit (cgSyncSketch),
   // sa signature change et repSyncStale régénère la copie.
   if(ns.plane==='CG'){ns.plane='FACE';delete ns.cg;}
+  // V0.30.1 : une esquisse copiée ne sert qu'à sa fonction — jamais dessinée dans la vue (on
+  // voyait l'esquisse entière N fois). Répétition suivant un profil dont la courbe guide est
+  // dans l'esquisse de la fonction (le cas courant : point d'accroche du perçage sur la
+  // courbe) : la courbe guide n'est pas recopiée, seule la géométrie de la fonction suit.
+  ns.visible=false;
+  if((cfg.mode||cfg.type)==='path'&&cfg.path&&cfg.path.sk===sk.id){
+    const R=pgResolve(sk,cfg.path);
+    if(R.ch){
+      const gone=new Set(R.ch.ids);
+      ns.entities=(ns.entities||[]).filter(e=>!gone.has(e.id));
+      const uses=o=>Object.keys(o).some(k=>typeof o[k]==='string'&&gone.has(o[k]));
+      ns.constraints=(ns.constraints||[]).filter(c=>!uses(c));
+      ns.dims=(ns.dims||[]).filter(d=>!uses(d));
+    }
+  }
   if(ns.host&&ns.host.feat&&featMap[ns.host.feat])ns.host.feat=featMap[ns.host.feat];else delete ns.host;
   if(reuse){
     const keep=reuse.id;
@@ -9415,6 +9518,13 @@ function repNewBodyEmpty(rp){
   const B=repExpandSources((rp.base||[]).map(id=>doc.features.find(x=>x.id===id)).filter(Boolean),new Set([rp.id]));
   return B.length>0&&!B.some(f=>(f.type==='extrude'||f.type==='revolve'||f.type==='sweep')&&(f.op||'add')!=='cut');
 }
+function repPathPickBtn(D,changed,cur){
+  // 🎯 : départ choisi à la souris sur la courbe guide, dans la vue 3D (41-profil-choix-point)
+  const b=document.createElement('button');b.className='mini repPathPick';b.textContent='🎯';b.style.cssText='padding:1px 6px;flex:none';
+  b.title='Choisir le départ à la souris : cliquez un point orange de la courbe guide dans la vue (Échap pour annuler)';
+  b.onclick=()=>{if(pgPick){pgPickStop();try{faceEl.textContent='Choix du départ annulé.';}catch(e){}return;}pgPickStart(D,path=>changed(q=>{q.path=path;}),cur);};
+  return b;
+}
 function repPathUI(c,infoId,row,note,changed){
   // Réglages d'une répétition SUIVANT UN PROFIL, communs à la création et à l'édition :
   // esquisse guide, point de départ, espacement (réparti / pas imposé), orientation, sens.
@@ -9428,8 +9538,9 @@ function repPathUI(c,infoId,row,note,changed){
   if(sk){
     const ch=pgStartChoices(sk),cur=ch.findIndex(o=>pgSameStart(o.v,c.path));
     const sd=mkSel(ch.map((o,i)=>[String(i),o.label]).concat(cur<0?[['-1','(départ actuel)']]:[]),String(cur),v=>changed(q=>{const o=ch[+v];if(o)q.path=Object.assign({sk:sk.id},o.v);}));
-    sd.className='repPathStart';sd.title='Point d’accroche de l’original : point d’esquisse sur la courbe, extrémité (courbe ouverte), sommet ou milieu d’une ligne';row('Départ',sd);
-  }
+    sd.className='repPathStart';sd.title='Point d’accroche de l’original : point d’esquisse sur la courbe, extrémité (courbe ouverte), sommet ou milieu d’une ligne';
+    const w=document.createElement('span');w.style.cssText='display:flex;gap:4px;align-items:center;flex:none';w.appendChild(sd);w.appendChild(repPathPickBtn(doc,changed,sk.id));row('Départ',w);
+  }else row('Départ',repPathPickBtn(doc,changed,null)); // un clic sur un point choisit l'esquisse ET le départ
   const sp=mkSel([['fit','Réparti sur la longueur'],['pitch','Pas imposé']],c.pspace==='pitch'?'pitch':'fit',v=>changed(q=>{
     q.pspace=v;
     if(v==='pitch'&&!(+q.dist>0)){const I=repPathInfo.get(infoId);q.dist=I&&I.step>0?+I.step.toFixed(3):10;}
@@ -10337,6 +10448,101 @@ function tlbBarSync(){
   const w=Math.max(24,cw*cw/sw),x=R.offsetLeft+(cw-w)*R.scrollLeft/Math.max(1,sw-cw);
   B.style.left=x+'px';B.style.width=w+'px';B.classList.add('on');
 }
+
+/* ═══════════════ 41-profil-choix-point.js — profil choix point ═══════════════ */
+/* ---------- répétition suivant un profil : départ choisi à la souris dans la vue 3D (V0.30.1) ----------
+   Demande : « je préfèrerai sélectionner moi-même le point à la souris directement sur l'esquisse
+   depuis le monde 3D ». 🎯 dans le panneau de la répétition (pièce ou assemblage) : les courbes
+   guides sont tracées en orange avec leurs points de départ possibles (points d'esquisse sur la
+   courbe, extrémités, sommets, milieux des lignes — pgStartChoices, 39), un clic près d'un point
+   (≤ 14 px) le prend comme départ, esquisse comprise. Échap ou 🎯 de nouveau : abandon.
+   pgPick = {D (document dont les esquisses sont proposées), onPick(path), grp, cands} ; les
+   coordonnées d'esquisse sont dans le repère de la scène (pièce active / composant porteur actif). */
+let pgPick=null;
+const PG_PICK_COL=0xff9f0a;
+function pgPickW(sk,q){
+  const O=sk.origin||[0,0,0],U=sk.axU||[1,0,0],V=sk.axV||[0,1,0];
+  return [O[0]+q.x*U[0]+q.y*V[0],O[1]+q.x*U[1]+q.y*V[1],O[2]+q.x*U[2]+q.y*V[2]];
+}
+function pgPickSketches(D,cur){
+  // Esquisses proposées : celles affichées dans la vue + la courbe guide en cours (toutes à défaut)
+  const G=pgGuideSketches(D),V=G.filter(sk=>sk.visible!==false||sk.id===cur);
+  return V.length?V:G;
+}
+function pgPickCands(D,cur){
+  // Points proposés des esquisses guides : [{sk, v, label, w}]
+  const out=[];
+  pgPickSketches(D,cur).forEach(sk=>{
+    try{ensureSketchBasis(sk);}catch(e){}
+    pgStartChoices(sk).forEach(c=>out.push({sk,v:c.v,label:c.label,w:pgPickW(sk,c.q)}));
+  });
+  return out;
+}
+function pgPickDraw(){
+  // Courbes guides + points de départ possibles, par-dessus la pièce
+  if(!pgPick||typeof THREE==='undefined'||typeof scene==='undefined')return;
+  const g=new THREE.Group();g.name='pgPick';g.renderOrder=999;
+  const lm=new THREE.LineBasicMaterial({color:PG_PICK_COL,depthTest:false,transparent:true,opacity:.9});
+  pgPickSketches(pgPick.D,pgPick.cur).forEach(sk=>{
+    pgChains(sk).forEach(ch=>{
+      const n=Math.max(16,Math.min(400,Math.ceil(ch.L/1.5)));
+      const pts=[];for(let i=0;i<=n;i++){const q=ch.at(ch.L*i/n);const w=pgPickW(sk,q);pts.push(new THREE.Vector3(w[0],w[1],w[2]));}
+      const L=new THREE.Line(new THREE.BufferGeometry().setFromPoints(pts),lm);L.renderOrder=999;g.add(L);
+    });
+  });
+  const P=[];pgPick.cands.forEach(c=>P.push(c.w[0],c.w[1],c.w[2]));
+  if(P.length){
+    const geo=new THREE.BufferGeometry();geo.setAttribute('position',new THREE.Float32BufferAttribute(P,3));
+    const pm=new THREE.PointsMaterial({color:PG_PICK_COL,size:11,sizeAttenuation:false,depthTest:false,transparent:true});
+    const pts=new THREE.Points(geo,pm);pts.renderOrder=1000;g.add(pts);
+  }
+  scene.add(g);pgPick.grp=g;
+}
+function pgPickClear(){
+  const g=pgPick&&pgPick.grp;if(!g)return;
+  try{g.traverse(o=>{if(o.geometry)o.geometry.dispose();if(o.material)o.material.dispose();});scene.remove(g);}catch(e){}
+  pgPick.grp=null;
+}
+function pgPickStart(D,onPick,cur){
+  pgPickStop();
+  const cands=pgPickCands(D,cur);
+  if(!cands.length){try{faceEl.textContent='Départ : aucune courbe guide avec un point proposable (dessinez la courbe, avec un point dessus, dans une esquisse).';}catch(e){}return false;}
+  pgPick={D,onPick,grp:null,cands,cur:cur||null};
+  pgPickDraw();
+  try{faceEl.textContent='Départ : cliquez un point orange de la courbe guide (point d’esquisse, extrémité, sommet, milieu de ligne) — Échap pour annuler.';}catch(e){}
+  return true;
+}
+function pgPickStop(){pgPickClear();pgPick=null;}
+function pgPickNear(cands,mx,my,W,H,proj){
+  // Candidat le plus proche du curseur à l'écran (≤ 14 px) ; proj(w) → [x, y, z] en NDC
+  let best=null,bd=14;
+  cands.forEach(c=>{
+    const p=proj(c.w);if(!p||Math.abs(p[2])>1)return;
+    const d=Math.hypot((p[0]+1)/2*W-mx,(1-p[1])/2*H-my);
+    if(d<bd){bd=d;best=c;}
+  });
+  return best;
+}
+function pgPickAt(e){
+  if(!pgPick)return false;
+  const r=renderer.domElement.getBoundingClientRect(),v=new THREE.Vector3();
+  const c=pgPickNear(pgPick.cands,e.clientX-r.left,e.clientY-r.top,r.width,r.height,w=>{v.set(w[0],w[1],w[2]).project(camera);return [v.x,v.y,v.z];});
+  if(!c){try{faceEl.textContent='Départ : aucun point de la courbe guide sous le curseur — cliquez un point orange (Échap pour annuler).';}catch(err){}return true;}
+  const fn=pgPick.onPick;pgPickStop();
+  try{faceEl.textContent='Départ : '+c.label+' · '+(c.sk.name||c.sk.id);}catch(err){}
+  fn(Object.assign({sk:c.sk.id},c.v));
+  return true;
+}
+(function(){
+  try{
+    if(typeof document==='undefined')return;
+    document.addEventListener('keydown',e=>{
+      if(!pgPick||e.key!=='Escape')return;
+      e.preventDefault();e.stopPropagation();pgPickStop();
+      try{faceEl.textContent='Choix du départ annulé.';}catch(err){}
+    },true);
+  }catch(e){}
+})();
 
 /* ═══════════════ 42-arbre-modele.js — arbre modele ═══════════════ */
 /* ---------- arbre : modèle + rendu générique ----------
@@ -14959,11 +15165,13 @@ function asmPatSet(fn){
   fn(P.pat);asmResolve();asmNotify();
 }
 function asmPatOk(){
+  try{pgPickStop();}catch(e){}
   const E=asmPatEd,o=E&&asmComp(E.owner);asmPatEd=null;
   if(E&&E.before!=null&&o&&JSON.stringify(o.pats)===E.before)asmUndoStack.pop(); // rien changé : pas d'étape
   try{renderTree();renderProps();}catch(e){}
 }
 function asmPatCancel(){
+  try{pgPickStop();}catch(e){}
   if(!asmPatEd)return;
   asmPatEd=null;
   if(asmUndo())asmRedoStack.pop(); // l'état d'avant l'édition, sans rien à rétablir
@@ -15013,8 +15221,10 @@ function asmPatProps(p){
       Row('Courbe guide',sel([['','— choisir —']].concat(G.map(k=>[k.id,k.name||k.id])),sk?sk.id:'',v=>asmPatSet(q=>{const k=(owner.doc.sketches||[]).find(s=>s.id===v);q.path=k?pgDefaultPath(k):{sk:null};})));
       if(sk){
         const ch=pgStartChoices(sk),cur=ch.findIndex(o=>pgSameStart(o.v,pat.path));
-        Row('Départ',sel(ch.map((o,i)=>[String(i),o.label]).concat(cur<0?[['-1','(départ actuel)']]:[]),String(cur),v=>asmPatSet(q=>{const o=ch[+v];if(o)q.path=Object.assign({sk:sk.id},o.v);})));
-      }
+        const w=mk('span');w.style.cssText='display:flex;gap:4px;align-items:center;flex:none';
+        w.appendChild(sel(ch.map((o,i)=>[String(i),o.label]).concat(cur<0?[['-1','(départ actuel)']]:[]),String(cur),v=>asmPatSet(q=>{const o=ch[+v];if(o)q.path=Object.assign({sk:sk.id},o.v);})));
+        w.appendChild(repPathPickBtn(owner.doc,fn=>asmPatSet(fn),sk.id));Row('Départ',w);
+      }else Row('Départ',repPathPickBtn(owner.doc,fn=>asmPatSet(fn),null));
     }
     Row('Quantité',num(pat.copies+1,v=>asmPatSet(q=>{q.copies=cnt(v);}),true));
     const P=asmPatPlan(owner,pat);
@@ -53909,6 +54119,7 @@ function wirePick(){
   const el=renderer.domElement;let dx=0,dy=0;
   el.addEventListener('pointerdown',e=>{dx=e.clientX;dy=e.clientY;});
   el.addEventListener('pointerup',e=>{
+    if(typeof pgPick!=='undefined'&&pgPick){if(e.button===0&&Math.hypot(e.clientX-dx,e.clientY-dy)<=6)pgPickAt(e);return;} // répétition suivant un profil : départ (41)
     if(asmMode==='asm'){if(e.button===0&&Math.hypot(e.clientX-dx,e.clientY-dy)<=6)asmClick(e);return;} // vue d'assemblage (47)
     if(extPickFace||(typeof extUptoAuto==='function'&&extUptoAuto())){ // « jusqu'à la face » : clic COURT seulement (glisser = tourner la vue)
       if(e.button===0&&Math.hypot(e.clientX-dx,e.clientY-dy)<=6)extPickFaceCommit(e);return;}

@@ -3835,8 +3835,96 @@ function occReplayBodyIn(bid,list){
     }
     occCkPut(ckKey,()=>occShapeCopy(result)); // point de contrôle pour le rejeu suivant
   };
+  // V0.30.1 : copies CONSÉCUTIVES d'une même répétition (extrusion / perçage, même opération,
+  // corps de la fonction) → UN SEUL booléen à outils multiples au lieu de N booléens enchaînés
+  // sur une pièce de plus en plus percée (24 perçages : 1,4 s → voir CHANGELOG). Clé du point de
+  // contrôle = la même que le rejeu une à une (préfixe cumulé) : rien d'autre ne change en aval.
+  // Le moindre souci (outil illisible, composé à étapes, booléen refusé) → rejeu une à une.
+  const batchLen=i=>{
+    const f=list[i];if(!f||!f.repeatId||!result)return 1;
+    const opOf=g=>g.type==='hole'?'cut':g.type==='extrude'?(g.op||'add'):null;
+    const op=opOf(f);if(op!=='cut'&&op!=='add')return 1;
+    let n=0;
+    while(i+n<list.length){const g=list[i+n];if(g.repeatId!==f.repeatId||opOf(g)!==op||occBodyOfFeat(g)!==bid||g.visible===false)break;n++;}
+    return n;
+  };
+  const kidsOf=s=>{
+    const CP=occt.TopAbs_ShapeEnum.TopAbs_COMPOUND;
+    if(s.ShapeType()!==CP)return [s];
+    const out=[];const it=new occt.TopoDS_Iterator_2(s,true,true);
+    try{for(;it.More();it.Next())out.push(it.Value());}finally{try{it.delete();}catch(e){}}
+    if(out.some(k=>k.ShapeType()===CP))return null; // composé à étapes (filet modélisé) : une à une
+    return out;
+  };
+  const batch=run=>{
+    const keys=[];let key=ckKey;run.forEach(g=>{key+=featSig(g)+';';keys.push(key);});
+    const cut=run[0].type==='hole'||(run[0].op||'add')==='cut';
+    const rs=[],tools=[];
+    const drop=()=>rs.forEach(r=>{try{r.shape.delete();}catch(e){}occDispose(r.bins);try{if(r.thr)r.thr.delete();}catch(e){}});
+    try{
+      occThroughBase=cut?result:null; // « à travers tout » : mesuré sur la pièce avant les copies
+      for(let k=0;k<run.length;k++){
+        const g=run[k];
+        let r=occToolCkGet(keys[k]);
+        if(!r){r=g.type==='hole'?occShapeOfHole(g):occShapeOfExtrude(g);occToolCkPut(keys[k],r);}
+        rs.push(r);
+        const kk=kidsOf(r.shape);if(!kk){drop();return false;}
+        tools.push(...kk);
+      }
+    }catch(err){drop();return false;}
+    let next=null;const ck=occCkGet(key);
+    if(ck)next=occShapeCopy(ck);
+    if(!next){
+      const la=new occt.TopTools_ListOfShape_1(),lt=new occt.TopTools_ListOfShape_1();
+      const c=cut?new occt.BRepAlgoAPI_Cut_1():new occt.BRepAlgoAPI_Fuse_1();
+      try{
+        la.Append_1(result);tools.forEach(t=>lt.Append_1(t));
+        c.SetArguments(la);c.SetTools(lt);if(cut)c.SetCheckInverted(false);c.Build();
+        const s=c.IsDone()?c.Shape():null;
+        if(!s||s.IsNull())throw new Error('booléen groupé refusé');
+        if(cut){const all=occCompoundOf(rs.map(r=>r.shape));next=occUnifyCutSeams(s,result,all);if(rs.length>1)try{all.delete();}catch(e){}}
+        else next=occUnify(s);
+      }catch(err){drop();return false;}
+      finally{try{c.delete();}catch(e){}try{la.delete();}catch(e){}try{lt.delete();}catch(e){}}
+    }
+    // succès : mêmes traces que le rejeu une à une (fantômes, éléments, filets, avertissements).
+    // Fantôme : une extrusion simple (ni « à travers tout », ni « jusqu'à ») copiée est l'outil de
+    // sa source déplacé avec son esquisse — maillage du premier recopié par la matrice
+    // (repère d'esquisse de la copie × inverse de celui du premier) au lieu d'un maillage noyau
+    // par copie (≈ 8 ms chacun). Symétrie (repère indirect) : maillée normalement.
+    let g0=null;
+    const basisM=g=>{
+      const sk=doc.sketches.find(s=>s.id===g.sketchId);if(!sk)return null;
+      const b=sketchBasis(sk),M=new THREE.Matrix4().makeBasis(b.u,b.v,b.n);M.setPosition(b.o);
+      return M.determinant()>0?M:null;
+    };
+    run.forEach((g,k)=>{
+      const r=rs[k];
+      bin.push(...r.bins);itemShapes.push(r.shape);items.push({f:g,shape:r.shape});
+      if(r.thr)threads.push({f:g,thr:r.thr});
+      if(r.warnings.length)msgs.push(...r.warnings.map(w=>`${g.name} : ${w}`));
+      if(!cut)return;
+      try{
+        const M=g.type==='extrude'&&!g.through&&!g.upto&&g._src?basisM(g):null;
+        let gg=null;
+        if(M&&g0&&g0.src===g._src){gg=g0.geo.clone();gg.applyMatrix4(new THREE.Matrix4().multiplyMatrices(M,g0.inv));}
+        else{
+          gg=g.type==='hole'?occTessellate(r.shape,1,0.8):occTessellate(r.shape,0.5);
+          if(M&&gg)g0={geo:gg,inv:M.clone().invert(),src:g._src};
+        }
+        if(gg)ghostShapes.push({geo:gg,orphan:false,fid:g.id});
+      }catch(e){msgs.push(`${g.name} : outil illisible`);}
+    });
+    try{result.delete();}catch(e){}result=next;ckKey=key;
+    if(!ck)occCkPut(ckKey,()=>occShapeCopy(result));
+    return true;
+  };
   const tap=occPrefixTap&&occReplayNest===1?occPrefixTap:null;
-  list.forEach(f=>{step(f);if(tap)try{tap(bid,f,result);}catch(e){}});
+  for(let i=0;i<list.length;){
+    const n=tap?1:batchLen(i);
+    if(n>1&&batch(list.slice(i,i+n))){i+=n;continue;}
+    const f=list[i++];step(f);if(tap)try{tap(bid,f,result);}catch(e){}
+  }
   // V0.21.19 : filets modélisés creusés EN DERNIER, en une seule découpe (src/76,
   // occShapeOfHole) : dans l'arbre, chaque perçage n'a laissé qu'un avant-trou lisse,
   // et les fonctions suivantes n'ont jamais vu les faces hélicoïdales.
