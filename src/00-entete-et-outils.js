@@ -1,4 +1,4 @@
-/* ============ MiniFusion — CAO paramétrique + FAO ============ */
+/* ============ ConceptCAD (ex-MiniFusion) — CAO paramétrique + FAO + mise en plan ============ */
 /* DÉGEL 2026-09-29 — anciennes zones GEL 2026-09-25 (sketch skLoopTrace→solveSketch + contraintes,
    congés xfillet/occApplyXFillets, antériorité occFinalShape/findHost) : désormais MODIFICATION LIBRE,
    sous la discipline projet — régression verte → bump APP_VER (= numéro du tag) → snapshot Backup/ → push GitHub.
@@ -15,14 +15,14 @@
  * ── VERSIONS ──
  * Depuis la V0.2.0 (2026-10-17) : UN SEUL numéro, celui des tags Git — `V0.MINEUR.CORRECTIF`
  * (badge en haut à droite, en-tête des fichiers .miniFusion, aide, CHANGELOG `## V0.x.y`,
- * snapshots `Backup/fusion_mvp_V0.x.y.html`, tag annoté `V0.x.y`). L'ancien numéro daté
+ * snapshots `Backup/ConceptCAD_V0.x.y.html`, tag annoté `V0.x.y`). L'ancien numéro daté
  * `AAAA-MM-JJ-NNN` (2026-10-01-001 → 2026-10-16-021) reste dans l'historique du CHANGELOG.
  * APP_VER n'est comparé qu'à égalité stricte (anti-cache) et affiché : le format
  * peut changer sans rien casser. CACHE_VER (parcours FAO) reste indépendant.
  */
 
-const APP_VER='V0.32.0';
-try{console.log('[MiniFusion] version '+APP_VER);}catch(e){}
+const APP_VER='V0.33.0';
+try{console.log('[ConceptCAD] version '+APP_VER);}catch(e){}
 try{var mfSv=document.getElementById('mfSplashVer');if(mfSv)mfSv.textContent=APP_VER;}catch(e){} // écran de démarrage
 
 /* ── Tampon des CACHES persistants (image « lastGood » + parcours FAO) ─────────

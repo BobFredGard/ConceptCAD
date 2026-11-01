@@ -200,7 +200,7 @@
     inp.onchange=()=>{const f=inp.files&&inp.files[0];if(!f)return;const rd=new FileReader();
       rd.onload=()=>{
         let o;try{o=JSON.parse(rd.result);}catch(e){mepStatus('Fichier de paramètres illisible.');return;}
-        if(!o||o.format!=='miniFusion-plan-params'||!o.prefs){mepStatus('Ce fichier ne contient pas de paramètres plan miniFusion.');return;}
+        if(!o||o.format!=='miniFusion-plan-params'||!o.prefs){mepStatus('Ce fichier ne contient pas de paramètres plan ConceptCAD.');return;}
         mepPrefsApply(o.prefs);
         let n=0;if(o.tbLib&&typeof o.tbLib==='object'){const L=mepTbLib();Object.keys(o.tbLib).forEach(k=>{const tb=o.tbLib[k];if(tb&&tb.kind==='sk'&&tb.sk&&!L[k]){L[k]=tb;n++;}});mepTbLibSave(L);}
         mepSideShow();mepRender();

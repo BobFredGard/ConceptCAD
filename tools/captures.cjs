@@ -14,7 +14,7 @@ const VOULUES=process.argv.slice(3);
 const EX=n=>path.join(RACINE,'Exemples',n+'.miniFusion');
 
 async function demarrer(page){
-  await page.goto('http://127.0.0.1:'+PORT+'/fusion_mvp.html');
+  await page.goto('http://127.0.0.1:'+PORT+'/ConceptCAD.html');
   await page.waitForFunction(()=>typeof occtReady!=='undefined'&&(occtReady===true||/échec|indisponible/.test(occBaseMsg)),null,{timeout:200000});
   if(!await page.evaluate(()=>occtReady))throw new Error('noyau OCCT indisponible');
   await page.waitForFunction(()=>!skEdit&&rebuildDepth===0);

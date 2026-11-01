@@ -64,7 +64,7 @@ function asmLinkText(L,cur){
 async function asmLinkLoad(L,txt){
   let b;try{b=JSON.parse(txt);}catch(e){throw new Error('fichier illisible');}
   const top=(b&&b.bundle===1&&b.doc)?b.doc:b;
-  if(!top||!Array.isArray(top.features))throw new Error('ce n’est pas un projet MiniFusion');
+  if(!top||!Array.isArray(top.features))throw new Error('ce n’est pas un projet ConceptCAD');
   if(b&&b.bundle===1){try{await bundleStoreCaches(b);}catch(e){}}
   const t=asmTreeOfFile(top);
   const map=Object.assign({},L.link.map||{});
@@ -272,12 +272,12 @@ function asmExclusiveSubtree(C){
   return {sub,bad:[...new Set(bad)]};
 }
 async function asmCmdExtract(cid){
-  // Composant → fichier .miniFusion, et le composant devient lié à ce fichier
+  // Composant → fichier .conceptcad, et le composant devient lié à ce fichier
   const C=asmComp(cid),why=asmExtractCheck(C);
   if(why){alert('Extraction impossible : '+why+'.');return false;}
   if(!MFF_FS||!window.showSaveFilePicker){alert('Extraire vers un fichier demande Chrome ou Edge.');return false;}
   let h;
-  try{const o={suggestedName:String(C.name).replace(/[\\/:*?"<>|]/g,'_')+'.miniFusion',types:MFF_TYPES};if(mffFolder)o.startIn=mffFolder;h=await window.showSaveFilePicker(o);}
+  try{const o={suggestedName:String(C.name).replace(/[\\/:*?"<>|]/g,'_')+'.conceptcad',types:MFF_TYPES};if(mffFolder)o.startIn=mffFolder;h=await window.showSaveFilePicker(o);}
   catch(e){if(!(e&&e.name==='AbortError'))alert('Extraire : '+(e&&e.message||e));return false;}
   return asmExtractTo(C,h);
 }

@@ -202,7 +202,7 @@ function mfmViewsMenu(anchor){
 async function mfmShare(){
   try{
     const data=await mffData();
-    const nm=(mffName||doc.name||'piece').replace(/[\\/:*?"<>|]/g,'_')+'.miniFusion';
+    const nm=(mffName||doc.name||'piece').replace(/[\\/:*?"<>|]/g,'_')+'.conceptcad';
     const f=new File([data],nm,{type:'application/json'});
     if(navigator.canShare&&navigator.canShare({files:[f]})){await navigator.share({files:[f],title:nm});mffMark();return;}
   }catch(e){if(e&&e.name==='AbortError')return;}

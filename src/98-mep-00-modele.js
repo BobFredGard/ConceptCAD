@@ -313,7 +313,7 @@
   function mepNewSheet(n){
     const sh={id:'sh'+Date.now().toString(36)+Math.floor(Math.random()*1e4),name:'Planche '+n,
       format:'A3',orient:'landscape',views:[],dims:[],sk:null,
-      title:{projet:'MiniFusion — Plan',auteur:'—',date:new Date().toLocaleDateString('fr-FR'),tb:null},
+      title:{projet:'ConceptCAD — Plan',auteur:'—',date:new Date().toLocaleDateString('fr-FR'),tb:null},
       frame:mepFrameUserDef()||undefined,
       seq:1,dseq:1};
     const def=mepTbDefault();if(def)mepTbApply(sh,def); // format et cadre du modèle par défaut aussi

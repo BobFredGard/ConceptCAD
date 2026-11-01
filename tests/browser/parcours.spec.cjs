@@ -27,7 +27,7 @@ async function demarrer(page){
   const err=[];
   page.on('pageerror',e=>err.push('pageerror : '+e.message));
   page.on('dialog',d=>{err.push('dialog : '+d.message());d.dismiss().catch(()=>{});});
-  await page.goto('/fusion_mvp.html');
+  await page.goto('/ConceptCAD.html');
   await page.waitForFunction(()=>typeof occtReady!=='undefined'&&(occtReady===true||/échec|indisponible/.test(occBaseMsg)),null,{timeout:200000});
   const etat=await page.evaluate(()=>({ok:occtReady,msg:occBaseMsg,ver:APP_VER}));
   expect(etat.ok,'noyau OCCT : '+etat.msg).toBe(true);

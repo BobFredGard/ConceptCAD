@@ -13,8 +13,8 @@
 //   node tests/parcours/run.cjs --ecrire            écrit la référence
 //   node tests/parcours/run.cjs --fichier Cavité    seulement les fichiers qui contiennent « Cavité »
 //   node tests/parcours/run.cjs -j 4                taille du pool
-//   APP_FILE=<autre fusion_mvp.html> node tests/parcours/run.cjs   compare une autre version
-//                                                   (ex. `git show V0.9.2:fusion_mvp.html`)
+//   APP_FILE=<autre ConceptCAD.html> node tests/parcours/run.cjs   compare une autre version
+//                                                   (ex. `git show V0.9.2:ConceptCAD.html`)
 const path = require('path'), fs = require('fs'), os = require('os'), { execFileSync } = require('child_process');
 const { NCPU, masque, lancerProc, tuer, coeursPE } = require('../coeurs.cjs');
 const ROOT = path.join(__dirname, '..', '..');

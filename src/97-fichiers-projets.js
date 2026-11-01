@@ -8,7 +8,7 @@
    Ouvrir / Nouveau : si la pièce a des modifications non enregistrées → Enregistrer / Ne pas
    enregistrer / Annuler, puis l'espace est VIDÉ (docResetEmpty) avant de charger. */
 const MFF_FS=typeof window!=='undefined'&&typeof window.showOpenFilePicker==='function';
-const MFF_TYPES=[{description:'Projet MiniFusion',accept:{'application/json':['.miniFusion','.json']}}];
+const MFF_TYPES=[{description:'Projet ConceptCAD',accept:{'application/json':['.conceptcad','.miniFusion','.json']}}];
 let mffHandle=null,mffName='',mffSavedSig=null,mffFolder=null;
 function mffSig(){
   // empreinte du DOCUMENT (sans la vue, la sélection ni les replis) : « modifié depuis l'enregistrement »
@@ -25,7 +25,7 @@ function mffTitle(){
     const nm=mffName||((doc&&doc.name)||'Sans titre');const mod=mffModified();
     const el=document.getElementById('mffName');
     if(el){el.textContent=(mod?'● ':'')+nm;el.title=(mffHandle?'Fichier : '+mffHandle.name:'Pas encore de fichier sur le disque')+(mod?' — modifications non enregistrées':' — enregistré');el.classList.toggle('mod',mod);}
-    document.title=(mod?'● ':'')+nm+' — MiniFusion';
+    document.title=(mod?'● ':'')+nm+' — ConceptCAD';
   }catch(e){}
 }
 /* ---- boîte de dialogue « Enregistrer les modifications ? » ---- */
@@ -79,7 +79,7 @@ function mffCheckData(txt){
   let o;try{o=JSON.parse(txt);}catch(e){return 'contenu illisible ('+(e&&e.message||e)+')';}
   if(!o||typeof o!=='object')return 'contenu illisible';
   const d=o.doc&&typeof o.doc==='object'?o.doc:o; // bundle : {doc, …} ; document : {app, …}
-  if(d.app!=='MiniFusion'&&!Array.isArray(d.features)&&!Array.isArray(d.sketches))return 'ce n’est pas un projet MiniFusion';
+  if(d.app!=='MiniFusion'&&!Array.isArray(d.features)&&!Array.isArray(d.sketches))return 'ce n’est pas un projet ConceptCAD';
   return '';
 }
 async function mffDirOf(h){
@@ -146,7 +146,7 @@ async function mffBakMenu(anchor){
     :[{html:'<span style="opacity:.6">'+(mffHandle?'Aucune copie de secours pour ce fichier':'Pas encore de fichier sur le disque')+'</span>',fn:()=>{}}];
   mfPop(anchor,items);
 }
-function mffBase(n){return String(n||'').replace(/(\.minifusion(\.json)?|\.json)$/i,'');}
+function mffBase(n){return String(n||'').replace(/(\.conceptcad|\.minifusion(\.json)?|\.json)$/i,'');}
 async function mffSave(){
   // true si enregistré
   if(mffHandle&&(MFF_FS||typeof mffHandle.createWritable==='function')){ // un lien qui sait écrire suffit
@@ -162,7 +162,7 @@ async function mffSave(){
   return await mffSaveAs();
 }
 async function mffSaveAs(){
-  const fname=(mffName||doc.name||'piece').replace(/[\\/:*?"<>|]/g,'_')+'.miniFusion';
+  const fname=(mffName||doc.name||'piece').replace(/[\\/:*?"<>|]/g,'_')+'.conceptcad';
   if(MFF_FS&&window.showSaveFilePicker){
     try{
       const o={suggestedName:fname,types:MFF_TYPES};if(mffFolder)o.startIn=mffFolder;else if(mffHandle)o.startIn=mffHandle;
@@ -256,17 +256,17 @@ async function mffFolderPanel(){
     const ch=document.createElement('button');ch.textContent=mffFolder?'Changer de dossier…':'Choisir un dossier…';ch.onclick=async()=>{if(await mffFolderChoose())draw();};bar.appendChild(ch);
     if(mffFolder){const sv=document.createElement('button');sv.className='primary';sv.textContent='Enregistrer ici';sv.title='Enregistrer la pièce courante dans ce dossier';
       sv.onclick=async()=>{const nm=prompt('Nom du fichier :',(mffName||doc.name||'piece').replace(/[\\/:*?"<>|]/g,'_'));if(!nm)return;
-        try{if(!(await mffPerm(mffFolder,'readwrite')))return;const h=await mffFolder.getFileHandle(mffBase(nm)+'.miniFusion',{create:true});await mffWrite(h);mffHandle=h;fileHandle=h;mffName=mffBase(h.name);doc.name=mffName;mffMark();mffRecentAdd(h);try{renderTree();renderProps();}catch(e){}draw();}catch(e){alert('Enregistrement impossible : '+(e&&e.message||e));}};
+        try{if(!(await mffPerm(mffFolder,'readwrite')))return;const h=await mffFolder.getFileHandle(mffBase(nm)+'.conceptcad',{create:true});await mffWrite(h);mffHandle=h;fileHandle=h;mffName=mffBase(h.name);doc.name=mffName;mffMark();mffRecentAdd(h);try{renderTree();renderProps();}catch(e){}draw();}catch(e){alert('Enregistrement impossible : '+(e&&e.message||e));}};
       bar.appendChild(sv);}
     body.appendChild(bar);
     if(!mffFolder){const n=document.createElement('div');n.className='mffNote';n.textContent='Choisissez le dossier où vous rangez vos pièces : la liste de ses projets apparaîtra ici (double-clic pour ouvrir).';body.appendChild(n);return;}
     const path=document.createElement('div');path.className='mffNote';path.textContent='📁 '+mffFolder.name;body.appendChild(path);
     if(!(await mffPerm(mffFolder,'read'))){const n=document.createElement('div');n.className='mffNote';n.textContent='Permission nécessaire : cliquez « Changer de dossier… » ou rouvrez ce panneau.';body.appendChild(n);return;}
     const files=[];
-    try{for await(const [nm,h] of mffFolder.entries()){if(h.kind==='file'&&/\.(miniFusion|json)$/i.test(nm)){let t=0;try{t=(await h.getFile()).lastModified;}catch(e){}files.push({nm,h,t});}}}catch(e){}
+    try{for await(const [nm,h] of mffFolder.entries()){if(h.kind==='file'&&/\.(conceptcad|miniFusion|json)$/i.test(nm)){let t=0;try{t=(await h.getFile()).lastModified;}catch(e){}files.push({nm,h,t});}}}catch(e){}
     files.sort((a,b)=>b.t-a.t);
     const list=document.createElement('div');list.className='mffList';
-    if(!files.length){const n=document.createElement('div');n.className='mffNote';n.textContent='Aucun projet (.miniFusion) dans ce dossier.';list.appendChild(n);}
+    if(!files.length){const n=document.createElement('div');n.className='mffNote';n.textContent='Aucun projet (.conceptcad ou .miniFusion) dans ce dossier.';list.appendChild(n);}
     files.forEach(f=>{const r=document.createElement('div');r.className='mffRow';if(mffHandle&&mffHandle.name===f.nm)r.classList.add('on');
       r.innerHTML='<span>'+f.nm.replace(/</g,'&lt;')+'</span><em>'+(f.t?new Date(f.t).toLocaleString('fr'):'')+'</em>';
       r.title='Double-clic : ouvrir';r.ondblclick=async()=>{if(await mffConfirmDiscard()){await mffOpenHandle(f.h);close();}};list.appendChild(r);});

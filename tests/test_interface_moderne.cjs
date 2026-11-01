@@ -4,7 +4,7 @@ const fs=require('fs'),path=require('path'),vm=require('vm');
 const ROOT=path.join(__dirname,'..');
 const {loadApp}=require('./appvm.cjs');
 let ko=0;const A=(c,m)=>{if(!c){ko++;console.log('  x '+m);}else console.log('  ✓ '+m);};
-const html=fs.readFileSync(path.join(ROOT,'fusion_mvp.html'),'utf8');
+const html=fs.readFileSync(path.join(ROOT,'ConceptCAD.html'),'utf8');
 const src=fs.readFileSync(path.join(ROOT,'src','97-interface-moderne.js'),'utf8');
 const ids=[...src.matchAll(/\['[^']*','[^']*','(btn\w+|fao\w+Btn)'/g)].map(m=>m[1]);
 const missing=ids.filter(id=>!new RegExp("id=[\"']"+id+"[\"']|\.id=[\"']"+id+"[\"']|id='"+id+"'").test(html));

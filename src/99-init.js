@@ -34,7 +34,7 @@ function bootSafeBanner(){
   mk('💾 Enregistrer le brouillon…',async()=>{
     try{const t=await bootHeldText();if(!t){faceEl.textContent='Aucun brouillon local.';return;}
       const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([t],{type:'application/json'}));
-      a.download='Brouillon '+new Date().toISOString().slice(0,16).replace(/[T:]/g,'-')+'.miniFusion';
+      a.download='Brouillon '+new Date().toISOString().slice(0,16).replace(/[T:]/g,'-')+'.conceptcad';
       document.body.appendChild(a);a.click();setTimeout(()=>{URL.revokeObjectURL(a.href);a.remove();},2000);}catch(e){faceEl.textContent='Brouillon illisible : '+e.message;}});
   mk('↻ Rouvrir quand même',async()=>{
     b.remove();bootHold=false;try{const t=await bootHeldText();if(!t)return;

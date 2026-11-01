@@ -4,7 +4,7 @@
 // créé depuis JS dans src/96 (avec le regroupement du bandeau), enfant direct du
 // .topbar (hors .tb, donc jamais déplacé par le regroupement), poussé à droite
 // par margin-left:auto avant la rangée .hints — donc le script construit contient
-// bien APP_VER et le head de fusion_mvp.html pas, avec la règle #prodVer du
+// bien APP_VER et le head de ConceptCAD.html pas, avec la règle #prodVer du
 // style injecté styleBandeau.
 const fs=require('fs'),path=require('path'),vm=require('vm');
 const ROOT=path.join(__dirname,'..');
@@ -21,9 +21,9 @@ const A=(c,m)=>{if(!c){ko++;console.log('  x '+m);}else console.log('  ✓ '+m);
   A(/^V\d+\.\d+\.\d+$/.test(VER),"APP_VER au format des tags (V0.x.y) : "+VER);
   A(/#prodVer\{/.test(src96),"src/96 : règle de style #prodVer (styleBandeau)");
   A(/#prodVer\{margin-left:auto/.test(src96),"src/96 : badge poussé à droite (margin-left:auto)");
-  const html=fs.readFileSync(path.join(ROOT,'fusion_mvp.html'),'utf8');
+  const html=fs.readFileSync(path.join(ROOT,'ConceptCAD.html'),'utf8');
   const m=html.match(/<script>([\s\S]*?)<\/script>/);
-  A(!!m,"fusion_mvp.html : script principal trouvé");
+  A(!!m,"ConceptCAD.html : script principal trouvé");
   const head=html.split('<script>')[0];
   A(head.indexOf(VER)<0,"coque (head) : aucun numéro de version en dur — injection JS uniquement");
   A(!/MVP param/.test(head)&&!/id="appVer"/.test(head),"coque (head) : plus de « MVP paramétrique » ni de 2e numéro (appVer)");

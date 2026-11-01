@@ -1,5 +1,5 @@
 // Tests navigateur réels (Chromium headless) : `npm run test:browser`.
-// Le livrable fusion_mvp.html est servi en http (le noyau OCCT .wasm ne se lit
+// Le livrable ConceptCAD.html est servi en http (le noyau OCCT .wasm ne se lit
 // pas en file://) par un petit serveur statique sans dépendance.
 'use strict';
 const {defineConfig,devices}=require('@playwright/test');
@@ -35,7 +35,7 @@ module.exports=defineConfig({
   webServer:{
     command:'node tests/browser/serveur.cjs '+PORT,
     cwd:require('path').join(__dirname,'..','..'),
-    url:'http://127.0.0.1:'+PORT+'/fusion_mvp.html',
+    url:'http://127.0.0.1:'+PORT+'/ConceptCAD.html',
     reuseExistingServer:!process.env.CI,
     timeout:30000
   }

@@ -1,5 +1,5 @@
 # Normalisation : HEAD est stocké en LF, le working tree local peut être en CRLF
-# (build.js régénère fusion_mvp.html en CRLF — convention du projet).
+# (build.js régénère ConceptCAD.html en CRLF — convention du projet).
 # Sans ça, git affiche "modifié" la totalité des fichiers alors que seul l'EOL a bougé.
 * text=auto
 # Textes explicites : renormalisation garantie quel que soit l'OS de la machine
@@ -29,5 +29,6 @@
 *.ico     binary
 occt/*.wasm filter=lfs diff=lfs merge=lfs -text
 Exemples/*.miniFusion filter=lfs diff=lfs merge=lfs -text
+Exemples/*.conceptcad filter=lfs diff=lfs merge=lfs -text
 Exemples/*.step filter=lfs diff=lfs merge=lfs -text
 Exemples/*.stp filter=lfs diff=lfs merge=lfs -text

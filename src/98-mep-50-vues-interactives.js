@@ -569,7 +569,7 @@
       rd.onload=()=>{
         let o;try{o=JSON.parse(rd.result);}catch(e){mepStatus('Fichier de cartouches illisible.');return;}
         const tbs=o&&o.format==='miniFusion-cartouches'&&o.tbs?o.tbs:(mepTbOk(o)?{[o.name||f.name.replace(/\.[^.]+$/,'')]:o}:null);
-        if(!tbs){mepStatus('Ce fichier ne contient pas de cartouche miniFusion.');return;}
+        if(!tbs){mepStatus('Ce fichier ne contient pas de cartouche ConceptCAD.');return;}
         // V0.22.7 : un modèle du même nom est REMPLACÉ (le fichier extérieur fait foi : on le recharge après
         // l'avoir corrigé) ; un fichier d'un seul modèle s'applique aussi à la planche courante
         const L=mepTbLib(),got=[];

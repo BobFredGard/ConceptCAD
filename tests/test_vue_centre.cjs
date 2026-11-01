@@ -8,7 +8,7 @@
 // appels branchés aux points de changement (fit, repli arbre, repli FAO, espace).
 const fs=require('fs'),path=require('path'),vm=require('vm');
 const {loadApp}=require('./appvm.cjs');
-const APP=path.join(__dirname,'..','fusion_mvp.html');
+const APP=path.join(__dirname,'..','ConceptCAD.html');
 const SRC=fs.readFileSync(APP,'utf8');
 const src=f=>fs.readFileSync(path.join(__dirname,'..','src',f),'utf8');
 const faoSrc=fs.readdirSync(path.join(__dirname,'..','src'))

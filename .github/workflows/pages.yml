@@ -1,5 +1,5 @@
-# Publication de MiniFusion sur GitHub Pages : https://bobfredgard.github.io/MiniFusion/
-# Le site sert le livrable fusion_mvp.html (en index.html) avec threejs/, le noyau OCCT
+# Publication de ConceptCAD sur GitHub Pages : https://bobfredgard.github.io/ConceptCAD/
+# Le site sert le livrable ConceptCAD.html (en index.html) avec threejs/, le noyau OCCT
 # WebAssembly et les Exemples : en http(s), le noyau exact démarre seul, sans « Noyau .wasm… ».
 # Déclenché à chaque tag de version (V0.x.y) — le site suit donc la dernière version livrée —
 # ou à la main (onglet Actions › Pages › Run workflow). Un seul checkout LFS par version :
@@ -34,7 +34,7 @@ jobs:
       - name: Assembler le site
         run: |
           mkdir -p _site/occt
-          cp fusion_mvp.html _site/index.html
+          cp ConceptCAD.html _site/index.html
           cp -r threejs Exemples _site/
           # seuls ces deux fichiers sont chargés par l'application (opencascade.full.wasm ne sert pas)
           cp occt/opencascade.full.js occt/opencascade.wasm.wasm _site/occt/

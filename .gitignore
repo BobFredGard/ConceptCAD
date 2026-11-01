@@ -2,7 +2,7 @@
 desktop.ini
 node_modules/
 .lint-bundle.js
-fusion_mvp - Copie.html
+ConceptCAD - Copie.html
 *.html.bak_g
 occt/*.bak
 Backup/
@@ -23,4 +23,5 @@ playwright-report/
 # durées des suites Node (ordre du pool de tests/run.cjs)
 tests/.durees.json
 *.miniFusion.bak
+*.conceptcad.bak
 tests/.coeurs.json

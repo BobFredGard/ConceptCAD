@@ -4,7 +4,7 @@
 
 ## Nature du projet
 
-MiniFusion est une application web **mono-page** de **CAO paramétrique, assemblage, FAO, mise en plan et rendu** utilisable hors-ligne. Le livrable est un **HTML unique** (`fusion_mvp.html`, ~3,5 Mo) généré à partir des sources de `src/` et des fiches machines de `PostPro/`. Aucune installation, aucun compte, aucune dépendance runtime : l'application fonctionne en `file://`, avec un serveur statique facultatif.
+ConceptCAD (ex-MiniFusion) est une application web **mono-page** de **CAO paramétrique, assemblage, FAO, mise en plan et rendu** utilisable hors-ligne. Le livrable est un **HTML unique** (`ConceptCAD.html`, ~3,5 Mo) généré à partir des sources de `src/` et des fiches machines de `PostPro/`. Aucune installation, aucun compte, aucune dépendance runtime : l'application fonctionne en `file://`, avec un serveur statique facultatif.
 
 Le noyau géométrique exact est **OpenCascade (OCCT) compilé en WebAssembly**. En cas d'indisponibilité, l'application bascule automatiquement sur un moteur maillage (CSG).
 
@@ -14,7 +14,7 @@ Le noyau géométrique exact est **OpenCascade (OCCT) compilé en WebAssembly**.
 |---|---|
 | `src/*.js` | Sources, **101 fichiers** (~59 200 lignes), concaténés dans l'ordre numérique par `build.js`. |
 | `PostPro/*.js` | Fiches machines (Fagor 8065, Siemens 630 et 1520), insérées par `build.js` après `88-fao-60-postprocesseurs.js`. Les `.cps` Autodesk restent locaux. |
-| `fusion_mvp.html` | Livrable généré. **Ne jamais l'éditer à la main.** |
+| `ConceptCAD.html` | Livrable généré. **Ne jamais l'éditer à la main.** |
 | `build.js` | Concaténation + bandeaux de section ; `--check` échoue si le livrable est périmé. |
 | `tests/` | **169 suites** Node (171 entrées dans `tests/run.cjs`, certaines suites longues coupées en parties) + **54** rapides (`tests/run-fast.cjs`) ; non-régression des parcours FAO (`tests/parcours/`, `npm run parcours`) ; Playwright dans `tests/browser/` (`parcours.spec.cjs`, 20 parcours ; `gpu.spec.cjs`, 4 tests sur la vraie carte graphique). |
 | `tools/lint.cjs` | Lint ESLint du script concaténé, dans l'ordre exact du build. |

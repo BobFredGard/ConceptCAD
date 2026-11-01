@@ -209,7 +209,7 @@ async function filmPlay(){
   await filmSleep(600);
   if(F.stop)return filmEnd();
   F.ui.cap.classList.remove('on');F.speed=0.34;
-  filmCard('Terminé',nm,'construite en '+T.length+' étape'+(T.length>1?'s':'')+' · MiniFusion '+APP_VER);
+  filmCard('Terminé',nm,'construite en '+T.length+' étape'+(T.length>1?'s':'')+' · ConceptCAD '+APP_VER);
   F.ui.card.style.background='radial-gradient(closest-side,rgba(8,10,16,.6),rgba(8,10,16,.2))';
   await filmSleep(3200);
   return filmEnd();

@@ -1,9 +1,9 @@
-// Harnais de test sans Electron : exécute le script principal de fusion_mvp.html
+// Harnais de test sans Electron : exécute le script principal de ConceptCAD.html
 // dans un sandbox vm avec des stubs DOM/THREE, et expose les fonctions d'esquisse.
 'use strict';
 const fs=require('fs'),vm=require('vm'),path=require('path');
 
-const APP=process.env.APP_FILE||path.join(__dirname,'..','fusion_mvp.html');
+const APP=process.env.APP_FILE||path.join(__dirname,'..','ConceptCAD.html');
 
 // Rattrapage des exceptions C++ du noyau (voir src/96-noyau-occt-tiers-lgpl.js) : la colle
 // OCCT, chargée par les tests dans le contexte PRINCIPAL de Node (vm.runInThisContext), y
@@ -162,7 +162,7 @@ function loadApp(){
     requestAnimationFrame:()=>{},cancelAnimationFrame(){},setTimeout,clearTimeout,setInterval,clearInterval,
     performance:global.performance,fetch:()=>Promise.reject(new Error('fetch stub')),Promise,Math,JSON,Date,String,Number,Boolean,Array,Object,RegExp,Error,TypeError,RangeError,Map,Set,WeakMap,WeakSet,Symbol,Proxy,Reflect,Int8Array,Uint8Array,Uint8ClampedArray,Int16Array,Uint16Array,Int32Array,Uint32Array,Float32Array,Float64Array,BigInt,
     THREE,
-    location:{href:'file:///fusion_mvp.html',protocol:'file:'},
+    location:{href:'file:///ConceptCAD.html',protocol:'file:'},
     navigator:{userAgent:'node',platform:'test',onLine:true},
     history:{pushState(){},replaceState(){},back(){},forward(){}},
     screen:{width:1280,height:900},
@@ -188,7 +188,7 @@ function loadApp(){
   sandbox.PointerEvent=PointerEvent;sandbox.MouseEvent=MouseEvent;sandbox.KeyboardEvent=KeyboardEvent;sandbox.dragEv=dragEv;
   const ctx=vm.createContext(sandbox);
   let loadErr=null;
-  try{ vm.runInContext(m[1],ctx,{filename:'fusion_mvp.html'}); }
+  try{ vm.runInContext(m[1],ctx,{filename:'ConceptCAD.html'}); }
   catch(e){ loadErr=e; }
   return { ctx, sandbox, loadErr };
 }

@@ -1,6 +1,6 @@
 const fs=require('fs'),vm=require('vm'),path=require('path');
 const ROOT=path.join(__dirname,'..');
-const html=fs.readFileSync(path.join(ROOT,'fusion_mvp.html'),'utf8');
+const html=fs.readFileSync(path.join(ROOT,'ConceptCAD.html'),'utf8');
 const m=html.match(/<script>([\s\S]*?)<\/script>/);
 console.log('script trouvé :',!!m,'  longueur :',m?m[1].length:0);
 if(m){

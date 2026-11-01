@@ -1,8 +1,8 @@
 /* ───────────────────────────────────────────────────────────────────────────
    Machine : Fagor 8065 (3 axes)
-   Post-processeur MiniFusion : UN FICHIER PAR MACHINE dans PostPro/.
+   Post-processeur ConceptCAD : UN FICHIER PAR MACHINE dans PostPro/.
    Nouvelle machine : copier ce fichier, changer id / label / réglages, puis
-   lancer `npm run build` (le fichier est intégré au livrable fusion_mvp.html).
+   lancer `npm run build` (le fichier est intégré au livrable ConceptCAD.html).
 
    Repères dans les modèles de lignes : {T} n° d'outil, {S} vitesse de broche,
    {ZRETR} plan de retrait (repère pièce), {NAME} nom du programme.

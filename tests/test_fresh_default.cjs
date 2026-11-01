@@ -17,7 +17,7 @@ const {loadApp}=require('./appvm.cjs');
 (async()=>{
   const {ctx,sandbox}=loadApp();
   const src30=require('fs').readFileSync(require('path').join(__dirname,'..','src','30-marqueur-temps.js'),'utf8');
-  const html=require('fs').readFileSync(require('path').join(__dirname,'..','fusion_mvp.html'),'utf8');
+  const html=require('fs').readFileSync(require('path').join(__dirname,'..','ConceptCAD.html'),'utf8');
   const body=[
     "const out={fails:[],log:[]};",
     "const A=(c,m)=>{if(!c)out.fails.push(m);};",

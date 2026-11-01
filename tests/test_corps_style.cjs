@@ -20,9 +20,9 @@ fs.readdirSync(SRC).filter(f=>f.endsWith('.js')).forEach(f=>{
   if(/\b(f|ff)\.opacity\s*=[^=]/.test(s))
     staticKo.push(f+' : écriture f.opacity (transparence par fonction)');
 });
-const html=fs.readFileSync(path.join(ROOT,'fusion_mvp.html'),'utf8');
-if(/id="ctxColorAuto"/.test(html))staticKo.push('fusion_mvp.html : bouton « Auto » du clic-droit encore présent');
-if(/optTint/.test(html))staticKo.push('fusion_mvp.html : teinte pièce globale (optTint) encore présente');
+const html=fs.readFileSync(path.join(ROOT,'ConceptCAD.html'),'utf8');
+if(/id="ctxColorAuto"/.test(html))staticKo.push('ConceptCAD.html : bouton « Auto » du clic-droit encore présent');
+if(/optTint/.test(html))staticKo.push('ConceptCAD.html : teinte pièce globale (optTint) encore présente');
 (async()=>{
   const {ctx}=loadApp();
   const R=[

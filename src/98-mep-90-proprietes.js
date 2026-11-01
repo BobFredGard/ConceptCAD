@@ -444,7 +444,7 @@
     /* — paramètres (projet + session + fichier) — */
     h('Paramètres');
     {const n=document.createElement('div');n.className='note';
-     n.textContent='Tous les réglages du plan (écriture, cotes, traits, export, papier, cadre et cartouche par défaut) sont enregistrés avec la pièce (.miniFusion) et gardés pour la session. Ouvrir une pièce reprend ses réglages. « Sauvegarder par défaut » : ces réglages sont repris à chaque nouvelle session et par chaque nouveau plan (une pièce qui a déjà les siens les garde).';
+     n.textContent='Tous les réglages du plan (écriture, cotes, traits, export, papier, cadre et cartouche par défaut) sont enregistrés avec la pièce (.conceptcad) et gardés pour la session. Ouvrir une pièce reprend ses réglages. « Sauvegarder par défaut » : ces réglages sont repris à chaque nouvelle session et par chaque nouveau plan (une pièce qui a déjà les siens les garde).';
      root.appendChild(n);}
     r=rowEl();
     r.appendChild(mkBtn('Sauvegarder par défaut',()=>{mepPrefsDefSave();mepSideShow();},'Mémoriser tous les réglages actuels du plan comme réglages par défaut de ce navigateur : nouvelles sessions et nouveaux plans')).style.flex='1';

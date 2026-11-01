@@ -1,12 +1,14 @@
-# MiniFusion
+# ConceptCAD
+
+*Anciennement **MiniFusion** (renommé en V0.33.0).*
 
 **CAO paramétrique, assemblage, FAO, mise en plan et rendu, dans un seul fichier HTML.** On ouvre la page et on travaille, sur PC comme sur téléphone : ni installation, ni compte, ni connexion.
 
-[![▶ Lancer MiniFusion dans le navigateur](https://img.shields.io/badge/%E2%96%B6%20Lancer%20MiniFusion-noyau%20OCCT%20inclus-2ea44f?style=for-the-badge)](https://bobfredgard.github.io/MiniFusion/)
+[![▶ Lancer ConceptCAD dans le navigateur](https://img.shields.io/badge/%E2%96%B6%20Lancer%20ConceptCAD-noyau%20OCCT%20inclus-2ea44f?style=for-the-badge)](https://bobfredgard.github.io/ConceptCAD/)
 
 ![Support de pédale déportée R1200RT en alu anodisé rouge sur béton, lancer de rayons de l'atelier RENDU (2048 échantillons)](docs/captures/rendu-pedale.jpg)
 
-Le noyau géométrique exact est **OpenCascade compilé en WebAssembly**. S'il n'est pas disponible, l'application bascule seule sur un moteur maillage (CSG). Version actuelle : **V0.27.2** (voir le [journal des modifications](CHANGELOG.md)).
+Le noyau géométrique exact est **OpenCascade compilé en WebAssembly**. S'il n'est pas disponible, l'application bascule seule sur un moteur maillage (CSG). Version actuelle : **V0.33.0** (voir le [journal des modifications](CHANGELOG.md)).
 
 | | |
 |---|---|
@@ -42,11 +44,11 @@ Quatre espaces dans le bandeau supérieur : **CAO**, **FAO**, **PLAN** et **REND
 - **Vue 3D** : cube de vue, orbite contrainte ou libre, centre de rotation sur le point visé, zoom vers le curseur, sol miroir, transparence « verre », **effet de perspective** réglable (de presque orthographique à fuyantes marquées, la pièce garde sa taille).
 - **Coupe X / Y / Z** (⚙ › Coupe) : plan de coupe glissé ou saisi au mm, côté inversable, faces coupées remplies.
 - **Rendu direct** (bouton de la barre de vue) : la vue CAO ou FAO prend les matériaux, reliefs et patine de l'atelier RENDU, son ambiance et son fond, en temps réel.
-- **Écran de démarrage** animé « ◧ MiniFusion » pendant le chargement (10 s ; un clic ou `Échap` le passe).
+- **Écran de démarrage** animé « ◧ ConceptCAD » pendant le chargement (10 s ; un clic ou `Échap` le passe).
 
 ## Téléphone et tablette
 
-Sur un appareil tactile à petit écran, MiniFusion passe tout seul en **interface téléphone**. Même application, mêmes fichiers `.miniFusion` que sur PC.
+Sur un appareil tactile à petit écran, ConceptCAD passe tout seul en **interface téléphone**. Même application, mêmes fichiers `.conceptcad` que sur PC.
 
 - **Vue 3D plein écran**, en portrait ou en paysage.
 - **Barre du haut** : menu ☰, nom du fichier (• = modifié), Annuler, Rétablir.
@@ -100,10 +102,10 @@ Historique rejouable, timeline à icônes (vert = ajout, rouge = enlèvement), m
 
 - **Corps** : matériau (bibliothèque commune avec le RENDU, masse estimée), couleur, transparence, isoler ; une découpe peut traverser plusieurs corps.
 - **Mesures** (`Ctrl+clic`) : face à face, Ø, entraxe, entre deux arêtes.
-- **Fichiers** : import STEP / STL, export STL / OBJ, projet **`.miniFusion`** (pièce, FAO, planches, rendu), récents et **dossier de projets**, sauvegarde locale automatique.
+- **Fichiers** : import STEP / STL, export STL / OBJ, projet **`.conceptcad`** (pièce, FAO, planches, rendu ; les anciens `.miniFusion` s’ouvrent toujours), récents et **dossier de projets**, sauvegarde locale automatique.
 - **Export STEP** : **AP214** (par défaut) ou **AP203**, option « **sans courbes 2D** » pour les vieux logiciels ; aussi pour un corps seul (clic droit).
 - **STEP multi-corps** : arborescence des sous-ensembles et pièces avec leurs noms, pièces **masquables** (👁), **une couleur par pièce ou par occurrence** ; les gros fichiers (44 Mo, 73 000 faces) s'ouvrent et se manipulent sans à-coups.
-- **Enregistrement sûr** : contenu vérifié avant écriture, version précédente gardée (`nom.miniFusion.bak` et copie dans le navigateur), menu **Copie de secours**.
+- **Enregistrement sûr** : contenu vérifié avant écriture, version précédente gardée (`nom.conceptcad.bak` et copie dans le navigateur), menu **Copie de secours**.
 
 ## Assemblage
 
@@ -234,7 +236,7 @@ Une image soignée de la pièce ou de l'assemblage, en **1920×1080 ou 4K**, enr
 
 ## Démarrage
 
-**En ligne** : [bobfredgard.github.io/MiniFusion](https://bobfredgard.github.io/MiniFusion/) ouvre la dernière version publiée, sur PC comme sur téléphone, noyau OCCT chargé automatiquement (≈ 65 Mo au premier lancement, puis en cache). Le site est republié à chaque version par `.github/workflows/pages.yml`.
+**En ligne** : [bobfredgard.github.io/ConceptCAD](https://bobfredgard.github.io/ConceptCAD/) ouvre la dernière version publiée, sur PC comme sur téléphone, noyau OCCT chargé automatiquement (≈ 65 Mo au premier lancement, puis en cache). Le site est republié à chaque version par `.github/workflows/pages.yml`.
 
 **En local** :
 
@@ -242,15 +244,15 @@ Une image soignée de la pièce ou de l'assemblage, en **1920×1080 ou 4K**, enr
 Server.bat
 ```
 
-`Server.bat` sert le dossier sur `http://localhost:3000` (et sur le réseau local, pour essayer depuis un téléphone : `http://<adresse du PC>:3000/fusion_mvp.html`). N'importe quel serveur statique convient aussi :
+`Server.bat` sert le dossier sur `http://localhost:3000` (et sur le réseau local, pour essayer depuis un téléphone : `http://<adresse du PC>:3000/ConceptCAD.html`). N'importe quel serveur statique convient aussi :
 
 ```bash
 npx serve . -l 3000
 ```
 
-En `file://` (double-clic sur `fusion_mvp.html`), l'application démarre en mode maillage ; le bouton **Noyau .wasm…** active le noyau exact, gardé ensuite en cache. Des projets d'exemple se trouvent dans `Exemples/` : **Perçages** (plaque usinée complète, avec sa planche), **Crochet**, **Support Pédale Déportée R1200RT 2011**, **Axe**, **Cavité Usinage**, **Malaxeur Retard**…
+En `file://` (double-clic sur `ConceptCAD.html`), l'application démarre en mode maillage ; le bouton **Noyau .wasm…** active le noyau exact, gardé ensuite en cache. Des projets d'exemple se trouvent dans `Exemples/` : **Perçages** (plaque usinée complète, avec sa planche), **Crochet**, **Support Pédale Déportée R1200RT 2011**, **Axe**, **Cavité Usinage**, **Malaxeur Retard**…
 
-Le dépôt stocke les gros binaires (`occt/*.wasm`, `Exemples/*.miniFusion`, `Exemples/*.step`) via **Git LFS**. Après un clone : `git lfs install` puis `git lfs pull`.
+Le dépôt stocke les gros binaires (`occt/*.wasm`, `Exemples/*.conceptcad`, `Exemples/*.miniFusion`, `Exemples/*.step`) via **Git LFS**. Après un clone : `git lfs install` puis `git lfs pull`.
 
 ## Scripts et pilotage par Claude (MCP)
 
@@ -263,14 +265,14 @@ Le dépôt stocke les gros binaires (`occt/*.wasm`, `Exemples/*.miniFusion`, `Ex
  {"op":"info"}]
 ```
 
-- **Serveur MCP** `tools/mcp-minifusion.cjs` (Node, sans dépendance) : Claude, ou tout client MCP, envoie des scripts à la page et lit l'état du modèle (`minifusion_run_script`, `minifusion_info`, `minifusion_commands`). Installation : `claude mcp add minifusion -- node <chemin>/tools/mcp-minifusion.cjs`, puis menu Projet → **🔌 Pilotage (MCP)…** dans MiniFusion (WebSocket local 127.0.0.1:47811).
+- **Serveur MCP** `tools/mcp-minifusion.cjs` (Node, sans dépendance) : Claude, ou tout client MCP, envoie des scripts à la page et lit l'état du modèle (`minifusion_run_script`, `minifusion_info`, `minifusion_commands`). Installation : `claude mcp add minifusion -- node <chemin>/tools/mcp-minifusion.cjs`, puis menu Projet → **🔌 Pilotage (MCP)…** dans ConceptCAD (WebSocket local 127.0.0.1:47811).
 
 ## Développement
 
 | Chemin | Rôle |
 |---|---|
 | `src/*.js` | **Les sources** : 120 fichiers concaténés dans l'ordre alphabétique (noyau, esquisse, fonctions 3D, assemblage, FAO découpée par domaine, mise en plan, rendu, interface téléphone `99-mobile*.js`). C'est ici qu'on travaille. |
-| `fusion_mvp.html` | **Livrable généré** par `node build.js`. On n'édite jamais son script à la main. |
+| `ConceptCAD.html` | **Livrable généré** par `node build.js`. On n'édite jamais son script à la main. |
 | `PostPro/` | Une fiche par machine (`siemens-630.js`, `siemens-1520.js`, `fagor-8065.js`). Nouvelle machine = copier une fiche, la modifier, `npm run build`. |
 | `tests/` | 212 suites Node lancées en parallèle (`npm run ci:full`), 81 rapides (`npm run ci`), non-régression des parcours FAO (`npm run parcours`), tests de référence (`tests/oracle/`, [docs/oracle.md](docs/oracle.md)). |
 | `tests/browser/` | Playwright dans un vrai Chromium : parcours critiques et Rendu (`npm run test:browser`, seul projet lancé par la CI GitHub, déclenchée à la main) et carte graphique réelle (`npm run test:gpu`, en local). |

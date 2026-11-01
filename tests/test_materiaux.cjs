@@ -10,7 +10,7 @@ const staticKo=[];
 // garde statique : l'atelier a SA scène et SON moteur, il ne touche jamais ceux de la CAO
 const rendu=fs.readFileSync(path.join(ROOT,'src','98-rendu.js'),'utf8');
 // vue CAO : cases Sol / Miroir (HTML) et Ombre (98-rendu-vue), shader du sol à deux réglages
-const html0=fs.readFileSync(path.join(ROOT,'fusion_mvp.html'),'utf8'),vue=fs.readFileSync(path.join(ROOT,'src','98-rendu-vue.js'),'utf8'),sc3=fs.readFileSync(path.join(ROOT,'src','10-scene-3d.js'),'utf8');
+const html0=fs.readFileSync(path.join(ROOT,'ConceptCAD.html'),'utf8'),vue=fs.readFileSync(path.join(ROOT,'src','98-rendu-vue.js'),'utf8'),sc3=fs.readFileSync(path.join(ROOT,'src','10-scene-3d.js'),'utf8');
 if(!/id="optFloor"/.test(html0)||!/id="optMirror"/.test(html0))staticKo.push('réglages de vue : cases « Sol » et « Miroir » attendues');
 if(/if\(mirrorOn&&floorMesh&&mirrorCam&&!/.test(sc3))staticKo.push('reflet : la passe miroir ne doit pas être coupée sous une ambiance (reflet figé)');
 if(!/if\(vu\)\{/.test(sc3))staticKo.push('reflet : passe recalculée à chaque image attendue');

@@ -394,7 +394,7 @@ function mfRibbon(){
     ['asmInspect','Inspecter',()=>asmCmdInspect(),'Interférences entre corps / composants, masses (matière par composant) et centre de gravité',asmO],
     ['asmFromBodies','Depuis corps',()=>asmCmdFromBodies(),'Créer un composant depuis le corps sélectionné (ou depuis chaque corps) : la pièce multicorps devient un assemblage, sans rien remodéliser',asmO],
     ['asmStd','Normalisés',()=>stdDlg(),'Vis ISO / ANSI (CHC, FHC, pas au choix), bouchons gaz six pans creux, goupilles, clavettes ISO : insérés comme composants du composant actif',asmO],
-    ['import','Insérer',()=>asmCmdInsert(),'Insérer un fichier .miniFusion comme composant du composant actif : lié (modifiable ici, la source suit) ou copié',asmO]],'mfCao mfAsmG');
+    ['import','Insérer',()=>asmCmdInsert(),'Insérer un fichier .conceptcad (ou .miniFusion) comme composant du composant actif : lié (modifiable ici, la source suit) ou copié',asmO]],'mfCao mfAsmG');
   // FAO : posage, opérations (mêmes fiches que la barre « + Usinage »), simulation, calcul, export
   grp('Posage',[['setup','Posage',()=>{const b=Array.from(document.querySelectorAll('#faoTreeWrap button')).find(x=>/\+ Posage/.test(x.textContent));if(b)b.click();},'Ajouter un posage'],['tools','Outils','faoToolsBtn',null,'mfIcR']],'mfFao');
   // V0.23.20 : esquisses et corps FAO (murs infranchissables) — src/89-fao-murs.js

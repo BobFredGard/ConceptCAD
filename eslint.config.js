@@ -13,7 +13,7 @@ module.exports = [
       'Backup/**',
       'Exemples/**',
       'docs/**',
-      'fusion_mvp.html'
+      'ConceptCAD.html'
     ]
   },
   {

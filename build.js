@@ -1,17 +1,17 @@
-// build.js — assemble les sources de src/ dans le livrable unique fusion_mvp.html
+// build.js — assemble les sources de src/ dans le livrable unique ConceptCAD.html
 // (aucune dépendance, Node seul). Le fichier généré n'est JAMAIS édité à la main :
-//   node build.js          reconstruit fusion_mvp.html
+//   node build.js          reconstruit ConceptCAD.html
 //   node build.js --check  échoue (code 1) si le livrable est périmé  → garde-fou CI
 //
 // DISCIPLINE : on édite les fichiers de src/, PUIS on reconstruit. Editer
-// fusion_mvp.html à la main est perdu au build suivant — le --check le signale.
+// ConceptCAD.html à la main est perdu au build suivant — le --check le signale.
 //
 // Le découpage est une PARTITION CONTIGUË du script d'origine : l'ordre d'exécution des
 // statements de haut niveau est donc conservé à l'identique, et le livrable reste
 // un seul HTML (double-clic et file:// continuent de fonctionner).
 const fs=require('fs'),path=require('path');
 const ROOT=__dirname;
-const HTML=path.join(ROOT,'fusion_mvp.html');
+const HTML=path.join(ROOT,'ConceptCAD.html');
 const SRC=path.join(ROOT,'src');
 const parts=fs.readdirSync(SRC).filter(f=>/^\d\d-.*\.js$/.test(f)).sort();
 if(!parts.length){console.error('src/ est vide');process.exit(1);}
@@ -45,14 +45,14 @@ const out=(head+'\n<script>\n'+chunks.join('\n\n')+'\n</script>\n'+tail).replace
 
 if(process.argv.indexOf('--check')>=0){
   if(out!==old){
-    console.error('✗ fusion_mvp.html est PÉRIMÉ :_src/ a changé sans rebuild.');
+    console.error('✗ ConceptCAD.html est PÉRIMÉ :_src/ a changé sans rebuild.');
     console.error('  Lancez : node build.js');
     process.exit(1);
   }
-  console.log('✓ fusion_mvp.html à jour ('+parts.length+' fichiers source)');
+  console.log('✓ ConceptCAD.html à jour ('+parts.length+' fichiers source)');
   process.exit(0);
 }
 if(out===old){console.log('✓ rien à reconstruire ('+parts.length+' fichiers source)');process.exit(0);}
 fs.writeFileSync(HTML,out,'utf8');
-console.log('✓ fusion_mvp.html reconstruit : '+parts.length+' fichiers + '+machines.length+' machine(s), '+
+console.log('✓ ConceptCAD.html reconstruit : '+parts.length+' fichiers + '+machines.length+' machine(s), '+
   out.split(/\r?\n/).length+' lignes, '+(out.length/1024).toFixed(0)+' Ko');

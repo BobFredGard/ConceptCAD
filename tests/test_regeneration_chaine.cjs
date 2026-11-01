@@ -19,7 +19,7 @@ const {loadApp}=require('./appvm.cjs');
   const real=await globalThis.opencascadeFactory({wasmBinary:fs.readFileSync(path.join(ROOT,'occt','opencascade.wasm.wasm'))});
   const {ctx,sandbox}=loadApp();
   sandbox.__realOcct=real;
-  { const html=fs.readFileSync(path.join(ROOT,'fusion_mvp.html'),'utf8'),s97=fs.readFileSync(path.join(ROOT,'src','97-auto-tests.js'),'utf8');
+  { const html=fs.readFileSync(path.join(ROOT,'ConceptCAD.html'),'utf8'),s97=fs.readFileSync(path.join(ROOT,'src','97-auto-tests.js'),'utf8');
     sandbox.__unique=!/id="btnHard"/.test(html)&&!/b\.id='btnValidate'/.test(s97)&&/⟳ Régénérer<\/button>/.test(html); }
   sandbox.__doc=fs.readFileSync(path.join(ROOT,'tests','fixtures','cavite_regeneration.json'),'utf8');
   vm.runInContext('occt=__realOcct;occtReady=true;window.alert=function(){};showAll=function(){};applyView=function(){};',ctx);

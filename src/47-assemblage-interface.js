@@ -541,7 +541,7 @@ function asmAfterLoad(){
     try{asmSnapSyncSoon();}catch(e){} // points d'accroche : faces relues sur la forme exacte
   },0);
 }
-/* ── insérer un fichier .miniFusion (copie : il devient un composant du composant actif) ── */
+/* ── insérer un fichier .conceptcad ou .miniFusion (copie : il devient un composant du composant actif) ── */
 async function asmCmdInsert(){
   if(asmMode!=='asm')asmEnter();
   if(MFF_FS)return asmCmdLinkInsert(); // Chrome / Edge : Lier ou Copier (47-composants-lies)
@@ -552,7 +552,7 @@ async function asmCmdInsert(){
       const [h]=await window.showOpenFilePicker(o);if(!h)return;
       const f=await h.getFile();txt=await f.text();name=f.name;
     }else{
-      const f=await new Promise(res=>{const i=document.createElement('input');i.type='file';i.accept='.miniFusion,.json';i.onchange=()=>res(i.files&&i.files[0]);i.click();});
+      const f=await new Promise(res=>{const i=document.createElement('input');i.type='file';i.accept='.conceptcad,.miniFusion,.json';i.onchange=()=>res(i.files&&i.files[0]);i.click();});
       if(!f)return;txt=await f.text();name=f.name;
     }
   }catch(e){if(!(e&&e.name==='AbortError'))alert('Lecture impossible : '+(e&&e.message||e));return;}
@@ -570,7 +570,7 @@ async function asmInsertText(txt,name){
   // alignements internes suivent (identifiants renouvelés).
   let b;try{b=JSON.parse(txt);}catch(e){alert('Fichier illisible.');return false;}
   const top=(b&&b.bundle===1&&b.doc)?b.doc:b; // ancien .minifusion.json : document nu
-  if(!top||!Array.isArray(top.features)){alert('Ce n’est pas un projet MiniFusion.');return false;}
+  if(!top||!Array.isArray(top.features)){alert('Ce n’est pas un projet ConceptCAD.');return false;}
   const t=asmTreeOfFile(top);
   // Déjà inséré ? Mêmes identifiants de fonctions qu'un composant présent : les caches FAO
   // (clés par posage / opération) seraient partagés entre deux composants indépendants.
@@ -581,7 +581,7 @@ async function asmInsertText(txt,name){
   if(b&&b.bundle===1){try{await bundleStoreCaches(b);}catch(e){}}
   const owner=asmActiveComp();
   asmPush('insérer « '+(name||top.name||'fichier')+' »');
-  const base=String(name||top.name||'Composant').replace(/\.(miniFusion|minifusion|json)$/,'').replace(/\.minifusion$/i,'');
+  const base=String(name||top.name||'Composant').replace(/\.(conceptcad|miniFusion|minifusion|json)$/i,'').replace(/\.minifusion$/i,'');
   // identifiants neufs : composants, occurrences, chemins des alignements
   const cm={},om={};
   t.comps.forEach(c=>{cm[c.id]=uid('cp');c.occ.forEach(o=>{om[o.id]=uid('oc');});});

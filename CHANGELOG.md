@@ -8,7 +8,7 @@ sont sorties le 2026-09-30j.
 Code dans `src/` · livrable `fusion_mvp.html` (généré par `build.js`) · architecture et
 garde-fous en tête de `src/00-entete-et-outils.js`.
 
-**514 versions**, de `2026-09-28b` à `V0.32.0` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
+**515 versions**, de `2026-09-28b` à `V0.33.0` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
 comme dans le fichier d'origine.
 
 ---
@@ -6166,3 +6166,14 @@ Demande : « niveau application dans sa globalité, surprends-moi ».
 - **Plein écran** attendu 0,8 s au plus : certains cadres intégrés ne répondent jamais à la demande (le film tourne alors dans la vue normale).
 - **Vérifié** dans l’application sur « Cache Piles » (14 fonctions) : film complet, document identique au bit près après le film (non modifié, aucune étape d’annulation), enregistrement WebM (780 Ko pour 3,5 s, carton incrusté).
 - **Tests** : `npm run ci:full`.
+
+## V0.33.0 - MiniFusion devient ConceptCAD
+Demande : « il existe plusieurs projets MiniFusion dans GitHub […] Est-il possible de le changer ? », puis « on change pour celui-ci » (ConceptCAD).
+- **Pourquoi** : « MiniFusion » est porté par de nombreux dépôts GitHub et rappelle Fusion 360 (Autodesk) ; « ConceptCAD » n’est pris ni sur GitHub ni comme nom de logiciel.
+- **Écran de démarrage** : « Concept » en blanc et « CAD » en dégradé, sous-titre « CAO · FAO · Mise en plan » ; titre de l’onglet, bandeau, fenêtres d’enregistrement, messages, carton du film, cartouche par défaut, en-tête des G-codes (« ConceptCAD FAO ») et des exports OBJ.
+- **Logo de la barre du haut** aux couleurs de l’animation : petit carré à moitié rempli du dégradé bleu, « Concept » + « CAD » en dégradé (contour du carré dans la couleur du texte, lisible dans tous les thèmes) ; « CAD » en extra-gras.
+- **Livrable** : `fusion_mvp.html` devient **`ConceptCAD.html`** (build, tests, Pages, README) ; un petit `fusion_mvp.html` redirige l’ancienne adresse vers le nouveau fichier.
+- **Fichiers** : les projets s’enregistrent en **`.conceptcad`** (même contenu) ; les `.miniFusion` et `.minifusion.json` s’ouvrent, s’insèrent et apparaissent dans le dossier de projets comme avant.
+- **Inchangé, volontairement** : l’identifiant interne du format (`app:'MiniFusion'`, pour que les fichiers restent lisibles par les versions précédentes), les clés de stockage du navigateur et les bases IndexedDB (brouillon, préférences et caches conservés), `tools/mcp-minifusion.cjs` et le dossier local.
+- **GitHub** : dépôt renommé `BobFredGard/ConceptCAD` (GitHub redirige l’ancienne adresse du dépôt) ; site Pages désormais sur `bobfredgard.github.io/ConceptCAD/` (l’ancienne adresse `…/MiniFusion/` n’est pas redirigée).
+- **Tests** : `npm run ci`.

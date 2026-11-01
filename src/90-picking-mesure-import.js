@@ -2054,7 +2054,7 @@ function meshesToSTL(meshes){
   return buf;
 }
 function meshesToOBJ(meshes){
-  let s='# MiniFusion\n',vo=1;
+  let s='# ConceptCAD\n',vo=1;
   meshes.forEach(m=>{m.updateMatrixWorld(true);s+=`o ${m.name||'part'}\n`;const p=m.geometry.attributes.position;const v=new THREE.Vector3();
     for(let i=0;i<p.count;i++){v.fromBufferAttribute(p,i).applyMatrix4(m.matrixWorld);s+=`v ${v.x} ${v.y} ${v.z}\n`;}
     const idx=m.geometry.index;const n=(idx?idx.count:p.count)/3;
@@ -2482,11 +2482,11 @@ $('btnSave').onclick=async()=>{
   try{const d=serialise();localStorage.setItem('minifusion_auto',d);localStorage.setItem('minifusion_named_'+doc.name,d);dirty=false;refreshParts();alert('Sauvé en local (navigateur) sous « '+doc.name+' ». Utilisez « Sous… » pour un fichier dédié.');}catch(e){alert('Sauvegarde impossible : '+e.message);}
 };
 $('btnSaveAs').onclick=async()=>{
-  const fname=(doc.name||'piece').replace(/[\\/:*?"<>|]/g,'_')+'.miniFusion';
+  const fname=(doc.name||'piece').replace(/[\\/:*?"<>|]/g,'_')+'.conceptcad';
   let data;try{ data=await bundleSerialise(); }catch(err){ data=serialise(); }
   try{
     if(window.showSaveFilePicker){
-      fileHandle=await window.showSaveFilePicker({suggestedName:fname,types:[{description:'MiniFusion (document + trajectoires)',accept:{'application/json':['.miniFusion']}}]});
+      fileHandle=await window.showSaveFilePicker({suggestedName:fname,types:[{description:'ConceptCAD (document + trajectoires)',accept:{'application/json':['.conceptcad']}}]});
       const w=await fileHandle.createWritable();await w.write(data);await w.close();autosave();alert('Sauvé sous '+fileHandle.name+' (document + trajectoires).');return;
     }
     throw new Error('no picker');
@@ -2499,15 +2499,15 @@ $('btnLoad').onclick=()=>$('fileProj').click();
 $('fileProj').addEventListener('change',async e=>{
   const f=e.target.files[0];if(!f)return;
   try{
-    const txt=await f.text();const nm=f.name.replace(/(\.minifusion(\.json)?|\.json)$/i,'');
-    if(bundleIs(txt))await bundleRestore(txt,{name:nm});          // .miniFusion : doc + trajectoires
+    const txt=await f.text();const nm=f.name.replace(/(\.conceptcad|\.minifusion(\.json)?|\.json)$/i,'');
+    if(bundleIs(txt))await bundleRestore(txt,{name:nm});          // .conceptcad / .miniFusion : doc + trajectoires
     else{await deserialise(txt);doc.name=nm;rebuild();renderProps();} // ancien .minifusion.json
   }catch(err){alert('Projet illisible : '+err.message);}
   e.target.value='';
 });
-try{$('fileProj').accept='.json,.minifusion.json,.miniFusion';}catch(e){}
-try{$('btnSaveAs').title='Sauver sous… (.miniFusion : document + trajectoires)';}catch(e){}
-try{$('btnLoad').title='Ouvrir un projet (.miniFusion ou .minifusion.json)';}catch(e){}
+try{$('fileProj').accept='.conceptcad,.miniFusion,.json,.minifusion.json';}catch(e){}
+try{$('btnSaveAs').title='Sauver sous… (.conceptcad : document + trajectoires)';}catch(e){}
+try{$('btnLoad').title='Ouvrir un projet (.conceptcad, ou ancien .miniFusion / .minifusion.json)';}catch(e){}
 
 
 /* 2026-10-14-009 : MAILLAGE FIN DE FINITION — retour « dans les congés,

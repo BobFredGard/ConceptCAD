@@ -135,13 +135,13 @@ function faoPost(job,postId){
   // G40 (annule la compensation d'outil) + G80 (annule les cycles en canneau) en
   // entête : programme démarré proprement, jamais laissé d'un usage précédent.
   if(fag){
-    L.push('('+name+' - MiniFusion FAO '+FAO_VER+' - '+post.label+' - '+faoToday()+')');
+    L.push('('+name+' - ConceptCAD FAO '+FAO_VER+' - '+post.label+' - '+faoToday()+')');
     L.push('('+faoOriginLabel(job)+' - origine '+wcs+')');
     if(warns.length)cmt('ATTENTION : '+warns.join(' ; '));
     nc('G71 G40 G80 G17 G90 G94 '+wcs);
   }else{
     L.push('; %_N_'+name+'_MPF');
-    L.push('; MiniFusion FAO '+FAO_VER+' — '+post.label+' — '+faoToday());
+    L.push('; ConceptCAD FAO '+FAO_VER+' — '+post.label+' — '+faoToday());
     L.push('; Origine '+wcs+' : '+faoOriginLabel(job)+
       ' ('+faoFmtXYZ(ox)+','+faoFmtXYZ(oy)+','+faoFmtXYZ(oz)+')');
     if(warns.length)cmt('ATTENTION : '+warns.join(' ; '));

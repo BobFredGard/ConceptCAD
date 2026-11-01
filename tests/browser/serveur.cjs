@@ -14,7 +14,7 @@ const MIME={'.html':'text/html; charset=utf-8','.js':'text/javascript; charset=u
 http.createServer((req,res)=>{
   let p;
   try{p=decodeURIComponent(new URL(req.url,'http://x').pathname);}catch(e){res.writeHead(400);res.end();return;}
-  if(p==='/')p='/fusion_mvp.html';
+  if(p==='/')p='/ConceptCAD.html';
   const f=path.join(RACINE,p);
   if(!f.startsWith(RACINE)){res.writeHead(403);res.end();return;}
   fs.stat(f,(err,st)=>{
