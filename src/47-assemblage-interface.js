@@ -65,6 +65,7 @@ function asmCaptureActive(){
   const pfaces=asmSkCaptureFaces(); // faces planes / cylindriques : références de construction des autres (46)
   c._snap={items,edges,pedges,pfaces,exact:builtEngine==='exact',hash:(()=>{try{return docHash();}catch(e){return '';}})()};
   delete c._stale;
+  try{asmCacheSoon(c);}catch(e){} // gardé pour les prochaines ouvertures (47-assemblage-cache)
   // le composant vient d'être rejoué : ses repères ont pu bouger → les alignements suivent
   try{if(asmResolve()){dirty=true;autosave();}}catch(e){}
   asmExtSyncSoon(); // ce composant a pu bouger des éléments visés par d'autres (46)
@@ -499,8 +500,13 @@ function asmAfterLoad(){
   asmSelId=null;
   if(!asmOn()){try{asmCtxDraw();}catch(e){}return;}
   const want=!!asm._wantAsm;asm._wantAsm=false;
-  setTimeout(()=>{
+  const A=asm;
+  setTimeout(async()=>{
+    // instantanés gardés d'une ouverture précédente : seuls les composants changés sont rejoués
+    let n=0;try{n=await asmCacheFill();}catch(e){}
+    if(asm!==A)return; // autre fichier ouvert pendant la lecture du cache
     try{asmBuildSnapshots();}catch(e){}
+    if(n){try{asmResolve();asmExtSyncSoon();}catch(e){}} // références entre composants : relues sans rejeu
     // asmEnter : un composant sans enfants (fichier V0.6.0 : la pièce active) → son porteur
     if(want){try{asmEnter();}catch(e){}}else{try{asmCtxDraw();renderTree();}catch(e){}}
     // composants liés : sources vérifiées sans rien demander (l'autorisation demande un clic)

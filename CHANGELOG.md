@@ -8,7 +8,7 @@ sont sorties le 2026-09-30j.
 Code dans `src/` · livrable `fusion_mvp.html` (généré par `build.js`) · architecture et
 garde-fous en tête de `src/00-entete-et-outils.js`.
 
-**497 versions**, de `2026-09-28b` à `V0.27.0` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
+**498 versions**, de `2026-09-28b` à `V0.28.0` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
 comme dans le fichier d'origine.
 
 ---
@@ -6023,3 +6023,13 @@ Demande : « une version pour téléphone portable : à l'écran la vue 3D, hori
 - **Gestes** (`mfmTouchWire`) : 1 doigt = orbite autour du point touché (même mécanique que la souris), 2 doigts = pincer pour zoomer vers le centre du geste et glisser pour déplacer, tap = clic (sélection et tous les modes de pointage), double tap = cadrer, appui long = menu de la pièce. OrbitControls ne reçoit plus le tactile.
 - **Cadrage** (`mfmFit`) : en mode téléphone, « Tout afficher » retient le plus serré des deux champs de vue (la pièce débordait en portrait) et garde la direction de vue. `viewFit` du bureau inchangé.
 - **Tests** : vérifié en émulation téléphone (portrait et paysage) : tap = face sélectionnée, pincement ×2 = distance divisée par 2, appui long = menu de la pièce, extrusion 20 → 30 mm depuis le panneau puis Annuler, interface bureau inchangée ; `npm run ci:full`. Pas encore essayé sur un vrai téléphone.
+
+## V0.28.0 - Assemblages : instantanés des composants en cache, ouverture sans rejeu des pièces inchangées
+Mesure : ouvrir un assemblage rejouait chaque pièce distincte dans le noyau (0,6 à 1,4 s par pièce réelle ; 40 pièces = 34 s d'interface figée), à chaque ouverture, même sans aucun changement. Demande : attaquer ce point en premier, « au moindre doute on recalcule ».
+- **Cache** (`src/47-assemblage-cache.js`) : l'instantané d'affichage de chaque composant (maillages, arêtes, arêtes et faces exactes visées par les autres composants) est gardé en IndexedDB à la fin de son rejeu, et relu à l'ouverture à la place du rejeu. La clé couvre le paramétrique (même texte que `docHash`, via `docHashSrc` / `docHashOf`), les fiches et la visibilité des corps, la teinte, l'apparence de rendu, `APP_VER`, `CACHE_VER` et le format ; deux empreintes indépendantes + la longueur. Le nom du composant n'y entre pas : la même pièce dans deux assemblages partage son entrée.
+- **Jamais en cache** : composant avec un import (contenu hors empreinte), capture en repli maillage, avec le marqueur temps reculé, une fonction suspendue ou une esquisse ouverte. Le composant actif est toujours reconstruit, comme avant. Erreur IndexedDB (quota, navigation privée) : rejeu normal, sans message.
+- **Document réparé à la première activation** (`asmActivate`) : les répétitions régénérées changent le document, la clé du fichier ne retrouvait donc jamais l'instantané. Le rejeu de première activation écrit aussi un renvoi depuis la clé du document tel que lu ; l'empreinte relue est celle du document rejoué (références des autres composants inchangées : rien n'est marqué modifié à l'ouverture).
+- **Composants liés** : une source relue (mise à jour, insertion, nouveau lien) est servie par le cache si son contenu est déjà connu.
+- **Purge** : index `asnap:index`, 300 entrées gardées, les plus anciennes partent.
+- **Mesures** (navigateur, noyau exact) : banc de 40 pièces réelles (Axe, Crochet, Support Pédale) : 35 s → **61 ms** à la deuxième ouverture ; une cote, une couleur ou une visibilité changée dans 3 pièces → seules ces 3 sont rejouées. Instantanés relus identiques à un rejeu (géométrie, couleurs, arêtes, faces de référence, empreinte). Test Assemblage, Test Visserie, Goupille : positions et états des liaisons identiques à froid et depuis le cache. Toute nouvelle version rejoue une fois chaque pièce (clé liée à `APP_VER`). Entrer dans une pièce pour la modifier reste un rejeu complet (≈ 1,3 s).
+- **Tests** : `tests/test_composants_cache.cjs` (24 contrôles : clé, écriture différée, exclusions, relecture, composant modifié, renvoi, purge, erreurs) ; `npm run ci`.

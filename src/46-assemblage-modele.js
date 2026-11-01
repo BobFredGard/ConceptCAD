@@ -376,8 +376,12 @@ function asmActivate(cid,path){
     // Première activation : mêmes réparations qu'à l'ouverture d'un fichier (deserialise) —
     // instances de répétition en double ou en trop, puis régénération (elles sont dérivées)
     c._sane=true;
+    let raw=null;try{if(typeof asmCacheKey==='function')raw=asmCacheKey(doc);}catch(e){}
     try{docSanitise();}catch(e){}
     try{doc.features.filter(f=>f.type==='repeat').forEach(f=>{try{repGenChildren(f);}catch(e){}});}catch(e){}
+    // le rejeu qui suit capture l'instantané du document tel que lu (réparé puis rejoué) : le
+    // cache le retrouvera aussi par la clé du fichier (47-assemblage-cache) — le temps de ce rejeu
+    c._rawKey=raw;
   }
   const rt=c._rt||{};
   docUndoStack=rt.undo||[];docRedoStack=rt.redo||[];
@@ -389,6 +393,7 @@ function asmActivate(cid,path){
   builtVersion=-1;builtHash=null;builtEngine=null;_hashMemo=null;
   // _docVersion++ et non markDirty() : changer de composant n'est pas une modification du document
   try{_docVersion++;rebuild();}catch(e){}
+  delete c._rawKey; // rejeu synchrone terminé : toute capture suivante suit une modification
   try{renderTree();renderProps();docUndoUI();}catch(e){}
   try{if(typeof faoRefreshFaoUI==='function')faoRefreshFaoUI();}catch(e){}
   try{if(typeof faoRefreshPreview==='function')faoRefreshPreview();}catch(e){}

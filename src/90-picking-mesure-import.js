@@ -2093,14 +2093,24 @@ function docHash(){
   // Empreinte du paramétrique rejouable (imports éphémères exclus : non persistés).
   // Normalisée comme serialise : AUCUN champ transitoire (_m, _refs, _health, _audit),
   // sinon le cache raterait à chaque F5 (c'était le bug de l'éventail).
+  if(_hashMemo&&_hashVer===_docVersion)return _hashMemo; // même version → empreinte déjà calculée
+  const h=docHashOf(doc);
+  if(h!=='x'){_hashMemo=h;_hashVer=_docVersion;}
+  return h;
+}
+function docHashSrc(d){
+  // Texte normalisé dont docHash prend l'empreinte — pour n'importe quel document (composants
+  // d'un assemblage : cache des instantanés, 47-assemblage-cache)
+  const stripSketch=sk=>{const c=Object.assign({},sk);delete c._refs;delete c._health;delete c._audit;return c;};
+  const stripFeat=({_mesh,_m,...r})=>r;
+  const stripCg=c=>{const o=cgClean(c);delete o.st;delete o.msg;delete o.ai;return o;};
+  return JSON.stringify({s:d.sketches.map(stripSketch),f:(d.features||[]).filter(f=>f.type!=='import').map(stripFeat),t:d.tint||0,...((d.cgeo&&d.cgeo.length)?{c:d.cgeo.map(stripCg)}:{})}); // construction : seulement si présente (empreinte des anciens documents inchangée)
+}
+function docHashOf(d){
   try{
-    const stripSketch=sk=>{const c=Object.assign({},sk);delete c._refs;delete c._health;delete c._audit;return c;};
-    const stripFeat=({_mesh,_m,...r})=>r;
-    if(_hashMemo&&_hashVer===_docVersion)return _hashMemo; // même version → empreinte déjà calculée
-    const stripCg=c=>{const o=cgClean(c);delete o.st;delete o.msg;delete o.ai;return o;};
-    const s=JSON.stringify({s:doc.sketches.map(stripSketch),f:(doc.features||[]).filter(f=>f.type!=='import').map(stripFeat),t:doc.tint||0,...((doc.cgeo&&doc.cgeo.length)?{c:doc.cgeo.map(stripCg)}:{})}); // construction : seulement si présente (empreinte des anciens documents inchangée)
+    const s=docHashSrc(d);
     let h=2166136261;for(let i=0;i<s.length;i++){h^=s.charCodeAt(i);h=Math.imul(h,16777619);}
-    _hashMemo=(h>>>0).toString(36)+'_'+s.length;_hashVer=_docVersion;return _hashMemo;
+    return (h>>>0).toString(36)+'_'+s.length;
   }catch(e){return 'x';}
 }
 function idbOpen(){

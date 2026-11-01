@@ -163,6 +163,7 @@ async function asmLinksCheck(ask){
   if(out.updated.length){
     // contenu remplacé depuis le disque : les annulations qui le citaient ne valent plus
     asmUndoStack.length=0;asmRedoStack.length=0;
+    try{await asmCacheFill();}catch(e){} // source déjà vue (autre hôte, retour en arrière) : sans rejeu
     try{asmBuildSnapshots();}catch(e){}
     asmLinkRebase(asmLinked().filter(L=>out.updated.includes(L.name)));
     try{dirty=true;autosave();}catch(e){}
@@ -235,6 +236,7 @@ async function asmLinkInsert(h,txt,name){
   catch(e){asm.comps=asm.comps.filter(c=>c!==L&&c.of!==L.id);asmUndoStack.pop();alert('Lien impossible : '+(e&&e.message||e));return null;}
   let dx=0;try{const box=new THREE.Box3();asmSceneGet().getObjectByName('asmOcc').traverse(m=>{if(m.isMesh)box.expandByObject(m);});if(!box.isEmpty())dx=box.max.x+20;}catch(e){}
   const o=asmNewOccObj(L.id,base+':1',{o:[dx,0,0],x:[1,0,0],y:[0,1,0],z:[0,0,1]});owner.occ.push(o);
+  try{await asmCacheFill(asmLinkMembers(L));}catch(e){}
   try{asmBuildSnapshots();}catch(e){}
   asmLinkRebase([L]);
   asmResolve();asmSelId=o.id;asmNotify();
@@ -305,7 +307,7 @@ async function asmCmdRelink(cid){
   const p=await asmPickSource();if(!p)return false;
   const ref=await asmLinkRef(p.h);
   L.link.rel=ref.rel;L.link.key=ref.key;L.link.name=p.name;
-  if(asmHash(p.txt)!==L.link.sig&&!asmLinkDirty(L)){try{await asmLinkLoad(L,p.txt);asmBuildSnapshots();}catch(e){alert('Lecture impossible : '+(e&&e.message||e));}}
+  if(asmHash(p.txt)!==L.link.sig&&!asmLinkDirty(L)){try{await asmLinkLoad(L,p.txt);try{await asmCacheFill(asmLinkMembers(L));}catch(e){}asmBuildSnapshots();}catch(e){alert('Lecture impossible : '+(e&&e.message||e));}}
   else L.link.st='ok';
   asmNotify();
   try{faceEl.textContent='« '+L.name+' » relié à '+(ref.rel||p.name)+'.';}catch(e){}
