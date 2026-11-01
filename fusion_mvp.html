@@ -337,7 +337,7 @@ input[type=range]{accent-color:var(--primary);width:100%}
  * peut changer sans rien casser. CACHE_VER (parcours FAO) reste indépendant.
  */
 
-const APP_VER='V0.31.0';
+const APP_VER='V0.31.1';
 try{console.log('[MiniFusion] version '+APP_VER);}catch(e){}
 try{var mfSv=document.getElementById('mfSplashVer');if(mfSv)mfSv.textContent=APP_VER;}catch(e){} // écran de démarrage
 
@@ -8151,7 +8151,7 @@ let repMode=null;
       /* rangées label + contrôle */
       '#props .pnl-row{display:flex;gap:5px;align-items:center;margin:4px 0;flex-wrap:wrap}'+
       '#props .pnl-row>pnl-lab,#props .pnl-row>label{flex:1;min-width:0;color:var(--muted);font-size:.74rem;display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}'+
-      '#props .pnl-row>input[type=text],#props .pnl-row>input[type=number],#props .pnl-row>select{max-width:130px;padding:3px 6px;font-size:.72rem;border:1px solid var(--border);border-radius:5px;background:var(--bg);color:var(--text);width:auto;flex:none}'+
+      '#props .pnl-row>input[type=text],#props .pnl-row>input[type=number],#props .pnl-row>input[data-fxnum],#props .pnl-row>select{max-width:130px;padding:3px 6px;font-size:.72rem;border:1px solid var(--border);border-radius:5px;background:var(--bg);color:var(--text);width:auto;flex:none}'+
       '#props .pnl-row>input[type=checkbox]{max-width:none;flex:none;margin-left:auto}'+
       /* boutons d'action (Cadrer / Rejeter / Supprimer…) */
       '#props .pnl-btns{display:flex;gap:5px;flex-wrap:wrap;margin:6px 0}'+
@@ -9050,6 +9050,9 @@ function repGenAll(){
   for(const rp of [...doc.features]){if(rp.type==='repeat')repGenChildren(rp);}
 }
 const REPEAT_MAX=200; // garde-fou : une saisie de copies aberrante ne doit pas figer le rejeu
+// Champ QUANTITÉ (original compris) : texte pour accepter ƒx ; ↑ / ↓ ajoutent / retirent 1.
+function repQtyInput(v,tip){const i=document.createElement('input');i.type='text';i.inputMode='numeric';i.style.width='64px';i.value=String(v);i.title=tip;parNumKeys(i);return i;}
+function repQtyRead(i){const n=Math.round(parseFloat(String(i.value).replace(',','.')));return n>=2?n:2;}
 function repMaxCopies(v){const n=Math.floor(+v||1);return isFinite(n)?Math.min(REPEAT_MAX,Math.max(1,n)):1;}
 function repCloneSkName(sk){return /\(rép\s*\d+\)\s*$/.test((sk&&sk.name)||'');}
 function docSanitise(){
@@ -9538,7 +9541,7 @@ function applyRepPattern(){
     rp.path=Object.assign({},repMode.path);rp.pspace=repMode.pspace==='pitch'?'pitch':'fit';rp.orient=repMode.orient==='tangent'?'tangent':'fixed';
     if(repMode.rev)rp.rev=true;delete rp.axis;delete rp.angle;
   }
-  parFxCopy(repMode,rp,repMode.type==='circ'?['angle']:(repMode.type==='lin'?(repMode.lin2?['dist','dist2']:['dist']):(repMode.type==='path'&&repMode.pspace==='pitch'?['dist']:[])));
+  parFxCopy(repMode,rp,(repMode.type==='mir'?[]:['qty']).concat(repMode.type==='circ'?['angle']:(repMode.type==='lin'?(repMode.lin2?['dist','dist2','qty2']:['dist']):(repMode.type==='path'&&repMode.pspace==='pitch'?['dist']:[]))));
   addFeature(rp);
   const nb=repGenChildren(rp);
   exitRepMode();
@@ -9621,8 +9624,10 @@ function renderRepPanel(){
   const typ=document.createElement('select');[['lin','Linéaire'],['circ','Circulaire'],['mir','Symétrie'],['path','Suivant un profil']].forEach(o=>{const op=document.createElement('option');op.value=o[0];op.textContent=o[1];typ.appendChild(op);});typ.value=repMode.type;
   typ.onchange=()=>{repMode.type=typ.value;if(typ.value==='path'&&!repMode.path){const G=pgGuideSketches(doc);if(G.length)repMode.path=pgDefaultPath(G[G.length-1]);}renderRepPanel();};row.appendChild(typ);
   // 2026-10-23 : QUANTITÉ, original compris (6 = l'original + 5 copies) ; stocké : copies = quantité − 1
-  const cnt=document.createElement('input');cnt.type='number';cnt.min='2';cnt.value=(+repMode.copies||1)+1;cnt.title='Quantité, original compris (6 = l’original + 5 copies)';cnt.onchange=()=>{repMode.copies=repMaxCopies((+cnt.value||2)-1);cnt.value=repMode.copies+1;repPreviewUpdate();};
+  // V0.31.1 : champ texte branché sur ƒx (« N », « N*2 », « N = 6 ») — la quantité est un nombre sans unité
+  const cnt=repQtyInput((+repMode.copies||1)+1,'Quantité, original compris (6 = l’original + 5 copies)');
   if(repMode.type==='mir'){cnt.disabled=true;cnt.value=2;}
+  else{parFx(cnt,repMode,'qty');cnt.onchange=()=>{repMode.copies=repMaxCopies(repQtyRead(cnt)-1);repPreviewUpdate();};}
   row.appendChild(cnt);p.appendChild(row);
   if(repMode.type==='path')repPathUI(repMode,'_rpEdit',
     (lab,ctl)=>{const r=document.createElement('div');r.className='row';const l=document.createElement('label');l.textContent=lab;r.appendChild(l);if(ctl)r.appendChild(ctl);p.appendChild(r);},
@@ -9672,8 +9677,8 @@ function renderRepPanel(){
     if(repMode.lin2){
       const ax2=document.createElement('select');['X','Y','Z','Face'].forEach(v=>{const op=document.createElement('option');op.value=v;op.textContent=v==='Face'?'Face / arête':v;ax2.appendChild(op);});
       ax2.value=repMode.axis2||'Y';ax2.title='Axe de la 2ᵉ direction';ax2.onchange=()=>{repMode.axis2=ax2.value;delete repMode.dir2;renderRepPanel();};p.appendChild(ax2);
-      const c2=document.createElement('input');c2.type='number';c2.min='2';c2.value=(+repMode.copies2||1)+1;c2.title='Quantité dans la 2ᵉ direction, original compris';
-      c2.onchange=()=>{repMode.copies2=repMaxCopies((+c2.value||2)-1);c2.value=repMode.copies2+1;repPreviewUpdate();};p.appendChild(c2);
+      const c2=repQtyInput((+repMode.copies2||1)+1,'Quantité dans la 2ᵉ direction, original compris');parFx(c2,repMode,'qty2');
+      c2.onchange=()=>{repMode.copies2=repMaxCopies(repQtyRead(c2)-1);repPreviewUpdate();};p.appendChild(c2);
       const ld=document.createElement('label');ld.textContent=' Distance 2 (mm)';const i2=document.createElement('input');i2.type='text';i2.inputMode='decimal';i2.value=repMode.dist2;parFx(i2,repMode,'dist2');
       i2.onchange=()=>{repMode.dist2=parseFloat(String(i2.value).replace(',','.'))||0;repPreviewUpdate();};ld.appendChild(i2);p.appendChild(ld);
       const bf2=document.createElement('button');bf2.textContent='🎯 Face / arête → 2ᵉ direction';bf2.title='Prend la direction de l’arête sélectionnée (axe d’un cercle) ou la normale de la face sélectionnée';bf2.onclick=()=>repUseSelectedFace2();p.appendChild(bf2);
@@ -9908,8 +9913,9 @@ function renderProps(){
         if(repNewBodyEmpty(f))pNote('⚠ Aucune source n’ajoute de matière (découpe, congé, dépouille…) : les corps créés restent vides. Cochez aussi l’extrusion de base, ou choisissez « Unir ».');
       }
       // 2026-10-23 : QUANTITÉ, original compris (6 = l'original + 5 copies) ; stocké : copies = quantité − 1
-      const cnt=document.createElement('input');cnt.type='number';cnt.min='2';cnt.value=(+f.copies||1)+1;cnt.title='Quantité, original compris (6 = l’original + 5 copies)';
-      cnt.onchange=()=>{f.copies=repMaxCopies((+cnt.value||2)-1);applyCfg();};
+      const cnt=repQtyInput((+f.copies||1)+1,'Quantité, original compris (6 = l’original + 5 copies)');
+      if(f.mode!=='mir')parFx(cnt,f,'qty'); // ƒx : « N », « N*2 », « N = 6 » — nombre sans unité, arrondi
+      cnt.onchange=()=>{f.copies=repMaxCopies(repQtyRead(cnt)-1);applyCfg();};
       if(f.mode!=='mir')pRow('Quantité',cnt);
       if(f.mode==='path'){
         repPathUI(f,f.id,(lab,ctl)=>pRow(lab,ctl),t=>pNote(t),fn=>{docPushUndo('profil de « '+f.name+' »');fn(f);applyCfg();});
@@ -9952,8 +9958,8 @@ function renderProps(){
         if(f.lin2){
           icoBtns(pRow('2ᵉ axe',pSel(['X','Y','Z','Face'].map(v=>[v,v==='Face'?'Face / arête':v]),f.axis2||'Y',v=>{docPushUndo('2ᵉ direction');f.axis2=v;delete f.dir2;applyCfg();})),
             [['🎯',pickTip,()=>repUseFaceFor(f,2)],['⇄','Inverser la 2ᵉ direction',()=>repFlipDir(f,2)]]);
-          const c2=document.createElement('input');c2.type='number';c2.min='2';c2.value=(+f.copies2||1)+1;c2.title='Quantité dans la 2ᵉ direction, original compris';
-          c2.onchange=()=>{docPushUndo('2ᵉ direction');f.copies2=repMaxCopies((+c2.value||2)-1);applyCfg();};
+          const c2=repQtyInput((+f.copies2||1)+1,'Quantité dans la 2ᵉ direction, original compris');parFx(c2,f,'qty2');
+          c2.onchange=()=>{docPushUndo('2ᵉ direction');f.copies2=repMaxCopies(repQtyRead(c2)-1);applyCfg();};
           pRow('Quantité 2',c2);
           const i2=document.createElement('input');i2.type='text';i2.inputMode='decimal';i2.value=f.dist2;parFx(i2,f,'dist2');
           i2.addEventListener('change',()=>{docPushUndo('2ᵉ direction');f.dist2=parseFloat(String(i2.value).replace(',','.'))||0;applyCfg();});
@@ -22593,8 +22599,21 @@ function parHolders(){
   (doc.cgeo||[]).forEach(c=>{if(c&&c.p&&typeof c.p==='object')out.push({h:c.p,f:c});});
   return out;
 }
-function parHolderVal(h,k){const v=+h[k];return k==='distance'?Math.abs(v):v;}
+// V0.31.1 : QUANTITÉS (nombres sans unité). Un paramètre n'a pas d'unité : c'est la fonction
+// qui la donne. Clé virtuelle « qty » = quantité affichée, original compris, rangée dans
+// h.copies (= quantité − 1) ; arrondie à l'entier, au moins 2.
+const PAR_QTY={qty:'copies',qty2:'copies2'};
+function parHolderKey(k){return PAR_QTY[k]||k;}
+function parHolderVal(h,k){
+  if(PAR_QTY[k])return repMaxCopies(h[PAR_QTY[k]])+1;
+  const v=+h[k];return k==='distance'?Math.abs(v):v;}
 function parHolderSet(h,k,v){
+  if(PAR_QTY[k]){
+    const n=Math.round(v);if(!(n>=2))throw new Error('quantité < 2 ('+(+(+v).toFixed(4))+')');
+    const c=repMaxCopies(n-1),rk=PAR_QTY[k];
+    if((+h[rk]||1)!==c){h[rk]=c;return true;}
+    return false;
+  }
   // distance d'extrusion : la saisie est une COURSE (positive), le sens reste celui choisi
   if(k==='distance'){const sg=(+h[k]<0)?-1:1;v=sg*Math.abs(v);}
   if(Math.abs((+h[k]||0)-v)>1e-9){h[k]=v;return true;}
@@ -22687,16 +22706,17 @@ function parFxSet(h,k,txt){
   if(name){h.pname=h.pname||{};h.pname[k]=name;}
   if(parIsNumber(expr)){if(h.expr)delete h.expr[k];return{ok:true,v:parseFloat(expr.replace(',','.'))};}
   h.expr=h.expr||{};h.expr[k]=expr;
-  const before=h[k];
+  const rk=parHolderKey(k),before=h[rk];
   // porteur hors document (commande en cours de création : congé, coque, répétition…) :
   // parResolve ne le voit pas, l'expression est évaluée ici avec les valeurs du document
   const inDoc=parHolders().some(x=>x.h===h);
   let v=NaN;
   try{const R=parResolve();if(!inDoc){v=parEval(expr,R.get);if(!isFinite(v))throw new Error('valeur non finie');}}
   catch(e){h.exprErr=h.exprErr||{};h.exprErr[k]=e.message;}
-  if(h.exprErr&&h.exprErr[k]){const msg=h.exprErr[k];if(name&&oldN&&name!==oldN)parRename(name,oldN);restore();h[k]=before;return{ok:false,msg:'Expression : '+msg};}
+  if(h.exprErr&&h.exprErr[k]){const msg=h.exprErr[k];if(name&&oldN&&name!==oldN)parRename(name,oldN);restore();h[rk]=before;return{ok:false,msg:'Expression : '+msg};}
   if(inDoc)v=parHolderVal(h,k);
-  h[k]=before; // le code de la fonction applique la valeur (contrôles, nom, rejeu)
+  else if(PAR_QTY[k]){const n=Math.round(v);if(!(n>=2)){if(name&&oldN&&name!==oldN)parRename(name,oldN);restore();return{ok:false,msg:'Expression : quantité < 2 ('+(+v.toFixed(4))+')'};}v=n;}
+  h[rk]=before; // le code de la fonction applique la valeur (contrôles, nom, rejeu)
   return{ok:true,v};
 }
 function parFxCopy(src,dst,keys){
@@ -22817,7 +22837,7 @@ function openParamsDlg(){
   ov.appendChild(box);
   const render=()=>{
     box.innerHTML='';
-    const h=document.createElement('div');h.innerHTML='<b style="font-size:15px">ƒx Paramètres</b><div style="opacity:.7;margin:4px 0 10px">Nommez une cote en tapant « nom = valeur » dans sa saisie ; utilisez le nom dans d’autres cotes (« nom*2 », « (L-2*nom)/3 »). Angles en degrés.</div>';
+    const h=document.createElement('div');h.innerHTML='<b style="font-size:15px">ƒx Paramètres</b><div style="opacity:.7;margin:4px 0 10px">Nommez une cote en tapant « nom = valeur » dans sa saisie ; utilisez le nom dans d’autres cotes (« nom*2 », « (L-2*nom)/3 »). Angles en degrés. Un paramètre n’a pas d’unité : c’est le champ qui la donne (mm, °, ou nombre pour une quantité, arrondie à l’entier).</div>';
     box.appendChild(h);
     const tbl=document.createElement('table');tbl.style.cssText='border-collapse:collapse;width:100%';
     tbl.innerHTML='<tr style="text-align:left;opacity:.7"><th style="padding:3px 6px">Nom</th><th style="padding:3px 6px">Expression</th><th style="padding:3px 6px">Valeur</th><th style="padding:3px 6px">Origine</th><th></th></tr>';
@@ -22847,7 +22867,7 @@ function openParamsDlg(){
         setExpr:ex=>{const r=parDimCommit(sk,d,ex);if(!r.ok)return r.msg;d.value=r.nv;return true;}});
     }));
     // valeurs de fonctions 3D nommées ou en expression
-    const featLbl={distance:'distance',draft:'dépouille',angle:'angle',dist:'distance',thick:'épaisseur',radius:'rayon',r:'rayon',d:'Ø',depth:'profondeur',cbD:'Ø lamage',cbH:'prof. lamage',csD:'Ø fraisure',stD:'Ø avant-trou',stH:'prof. avant-trou',len:'longueur filetée'};
+    const featLbl={distance:'distance',draft:'dépouille',angle:'angle',dist:'distance',thick:'épaisseur',radius:'rayon',r:'rayon',d:'Ø',depth:'profondeur',cbD:'Ø lamage',cbH:'prof. lamage',csD:'Ø fraisure',stD:'Ø avant-trou',stH:'prof. avant-trou',len:'longueur filetée',qty:'quantité',qty2:'quantité 2'};
     parHolders().forEach(({h,f})=>{
       const ks=new Set([...Object.keys(h.expr||{}),...Object.keys(h.pname||{})]);
       ks.forEach(k=>{
@@ -22894,7 +22914,9 @@ function parNumKeys(i){
   i.addEventListener('keydown',e=>{
     if(e.key!=='ArrowUp'&&e.key!=='ArrowDown')return;
     const v=parseFloat(String(i.value).replace(',','.'));if(!isFinite(v))return;
-    const st=Math.abs(parseFloat(i.step))||1,n=v+(e.key==='ArrowUp'?st:-st);
+    const st=Math.abs(parseFloat(i.step))||1;let n=v+(e.key==='ArrowUp'?st:-st);
+    const lo=parseFloat(i.min),hi=parseFloat(i.max); // bornes d'un ancien type=number
+    if(isFinite(lo)&&n<lo)n=lo;if(isFinite(hi)&&n>hi)n=hi;
     i.value=String(+n.toFixed(6));e.preventDefault();
     try{i.dispatchEvent(new Event('change',{bubbles:true}));}catch(e2){}
   });
@@ -22923,8 +22945,31 @@ function parFxGlobal(e){
   try{faceEl.textContent='ƒx : '+s+' → '+(+v.toFixed(4));}catch(e2){}
   try{t.dispatchEvent(new Event('input',{bubbles:true}));}catch(e2){} // champs à l'écoute de « input »
 }
+// V0.31.1 : ƒx dans TOUS les champs — un type=number refuse les lettres (« P1*2 » impossible) :
+// chaque champ numérique ajouté à la page devient un champ texte décimal (data-fxnum pour les
+// styles), ↑ / ↓ gardent le pas et les bornes. Le gestionnaire du champ reçoit toujours un nombre.
+function parFxNumField(i){
+  if(!i||i._fxNum||i.type!=='number')return;
+  if(i.dataset&&i.dataset.nofx!=null)return;
+  i._fxNum=1;
+  const st=String(i.step||''),int=!st||st==='any'?false:/^\d+$/.test(st);
+  try{i.type='text';}catch(e){return;}
+  i.inputMode=int?'numeric':'decimal';i.setAttribute('data-fxnum','');parNumKeys(i);
+}
+function parFxNumScan(root){
+  if(!root||root.nodeType!==1)return;
+  if(root.tagName==='INPUT'){parFxNumField(root);return;}
+  if(root.querySelectorAll)root.querySelectorAll('input[type=number]').forEach(parFxNumField);
+}
 try{
-  document.addEventListener('focusin',e=>{const t=e.target;if(parFxEligible(t)){t._fxPrev=t.value;t._fxLast=null;}},true);
+  if(typeof MutationObserver!=='undefined'&&document.documentElement){
+    new MutationObserver(ms=>{for(const m of ms)m.addedNodes.forEach(parFxNumScan);})
+      .observe(document.documentElement,{childList:true,subtree:true});
+    parFxNumScan(document.documentElement);
+  }
+}catch(e){}
+try{
+  document.addEventListener('focusin',e=>{const t=e.target;if(t&&t.type==='number')parFxNumField(t);if(parFxEligible(t)){t._fxPrev=t.value;t._fxLast=null;}},true);
   document.addEventListener('keydown',parFxGlobal,true);
   document.addEventListener('change',parFxGlobal,true);
 }catch(e){}
@@ -32176,7 +32221,7 @@ const faoRapideMin=30;
       +'box-shadow:0 0 0 3px rgba(10,132,255,.25)}'
       +'.fao-in:disabled{opacity:.5}'
       /* --- 2026-10-14-011 : champs numériques SANS flèches (illisibles), valeur à droite --- */
-      +'.fao-in[type=number],.fao-in.fao-num{-moz-appearance:textfield;appearance:textfield;text-align:right}'
+      +'.fao-in[type=number],.fao-in[data-fxnum],.fao-in.fao-num{-moz-appearance:textfield;appearance:textfield;text-align:right}'
       +'.fao-in[type=number]::-webkit-inner-spin-button,.fao-in[type=number]::-webkit-outer-spin-button{-webkit-appearance:none;margin:0}'
       /* --- onglets de la fiche d'opération --- */
       +'.fao-tabs{display:flex;flex-wrap:wrap;gap:2px;margin:8px 0 6px;border-bottom:1px solid rgba(255,255,255,.12)}'
@@ -32192,7 +32237,7 @@ const faoRapideMin=30;
       +'.fao-row.fao-line{display:flex;flex-wrap:wrap;align-items:center;gap:4px 8px;margin:3px 0;min-height:24px}'
       +'.fao-row.fao-line>.fao-lab{flex:1 0 auto;max-width:100%;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--text);font-size:.74rem}'
       +'.fao-ctl{display:flex;align-items:center;justify-content:flex-end;gap:5px;flex:0 1 auto;min-width:0;max-width:100%;margin-left:auto}'
-      +'.fao-ctl>.fao-in[type=number],.fao-ctl>.fao-in.fao-num,.fao-ctl>input[type=number]{width:66px!important;flex:none}'
+      +'.fao-ctl>.fao-in[type=number],.fao-ctl>.fao-in.fao-num,.fao-ctl>input[type=number],.fao-ctl>input[data-fxnum]{width:66px!important;flex:none}'
       +'.fao-ctl>.fao-in[type=text]{width:120px}'
       +'.fao-ctl>.fao-sel,.fao-ctl>select{max-width:160px;min-width:88px}'
       +'.fao-ctl>input[type=checkbox]{margin:0;flex:none}'
@@ -70719,7 +70764,7 @@ function rdLookCss(){
     '#rdLook .rlHead>span{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:700}',
     '#rdLook button{padding:2px 7px;font-size:.71rem;border:1px solid var(--border);background:none;color:var(--text);border-radius:6px;cursor:pointer}',
     '#rdLook button:hover{border-color:var(--primary,#0a84ff)}',
-    '#rdLook select,#rdLook input[type=number]{padding:3px 6px;font-size:.72rem;border:1px solid var(--border);border-radius:5px;background:var(--bg);color:var(--text);min-width:0}',
+    '#rdLook select,#rdLook input[type=number],#rdLook input[data-fxnum]{padding:3px 6px;font-size:.72rem;border:1px solid var(--border);border-radius:5px;background:var(--bg);color:var(--text);min-width:0}',
     '#rdLook input[type=color]{width:30px;height:22px;padding:0;border:1px solid var(--border);border-radius:4px;background:none;flex:none}',
     '#rdLook .rlRow,#rdLook .rdRel{display:flex;align-items:center;gap:4px;margin:4px 0}',
     '#rdLook .rlRow>select,#rdLook .rdRel>select:first-child{flex:1;max-width:none}',
@@ -72805,7 +72850,7 @@ function rdCss(){
     '#rdPanel h4{margin:8px 0 3px;font-size:.66rem;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);font-weight:600}',
     '#rdPanel .rdRow{display:flex;gap:5px;align-items:center;margin:4px 0;min-height:22px}',
     '#rdPanel .rdRow>label{flex:1;min-width:0;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}',
-    '#rdPanel select,#rdPanel input[type=number]{max-width:132px;padding:3px 6px;font-size:.72rem;border:1px solid var(--border);border-radius:5px;background:var(--bg);color:var(--text)}',
+    '#rdPanel select,#rdPanel input[type=number],#rdPanel input[data-fxnum]{max-width:132px;padding:3px 6px;font-size:.72rem;border:1px solid var(--border);border-radius:5px;background:var(--bg);color:var(--text)}',
     '#rdPanel .rdRow>select{flex:0 1 128px;min-width:0}',
     '#rdPanel .rdRow.rdWrap{flex-wrap:wrap;justify-content:space-between;row-gap:3px}',
     '#rdPanel input[type=range]{flex:0 1 96px;min-width:0;margin:0}',
@@ -73417,7 +73462,7 @@ function mfmCss(){
   '#mfmBody #props input,#mfmBody #props select,#mfmBody #props button{font-size:16px;min-height:40px}', /* 16 px : pas de zoom automatique iOS */
   '#mfmBody #props .pnl-row{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:5px 0}',
   '#mfmBody #props .pnl-row>label{flex:1;min-width:0}',
-  '#mfmBody #props .pnl-row>input[type=text],#mfmBody #props .pnl-row>input[type=number],#mfmBody #props .pnl-row>select{max-width:55%}',
+  '#mfmBody #props .pnl-row>input[type=text],#mfmBody #props .pnl-row>input[type=number],#mfmBody #props .pnl-row>input[data-fxnum],#mfmBody #props .pnl-row>select{max-width:55%}',
   /* paysage : barre d'outils à gauche, panneau à droite sur toute la hauteur */
   '@media (orientation:landscape){',
   ' body.mf-mobile #mfmNav{top:0;bottom:0;right:auto;width:calc(60px + env(safe-area-inset-left));height:auto;flex-direction:column;padding:48px 0 env(safe-area-inset-bottom) env(safe-area-inset-left)}',

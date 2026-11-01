@@ -8,7 +8,7 @@ sont sorties le 2026-09-30j.
 Code dans `src/` · livrable `fusion_mvp.html` (généré par `build.js`) · architecture et
 garde-fous en tête de `src/00-entete-et-outils.js`.
 
-**509 versions**, de `2026-09-28b` à `V0.31.0` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
+**510 versions**, de `2026-09-28b` à `V0.31.1` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
 comme dans le fichier d'origine.
 
 ---
@@ -6124,3 +6124,11 @@ Demande : « ajouter la fonction Double perçage, l'idée est un trou dans un tr
 - **Mise en plan** : cotation « Ø8 ↧5 » puis « Ø1,5 déb. » ; Ø et profondeur de l’avant-trou pilotables par paramètres ; signature du cache de rejeu complétée.
 - **Vérifié** dans l’application (bouton « Double », deux trous, rejeu exact, FAO : Ø8 Z20→15 pointe 118° + Ø1,5 débouchant).
 - **Tests** : `tests/test_percage_3d.cjs` 1d, 2e, 2f ; `npm run ci`.
+
+## V0.31.1 - Paramètres : une quantité peut être un paramètre (répétitions) ; ƒx dans tous les champs numériques
+Demande : « je ne pouvais pas mettre de paramètre pour une quantité, comme dans les répétitions. Les paramètres créés sont non genrés… c’est la fonction qui le rend genré » ; puis « dans tous les champs si ce n’est pas le cas ».
+- **Quantité** (`src/51-parametres.js`, `src/40-interface-arbre-props.js`) : les champs « Quantité » et « Quantité 2 » d’une répétition (création et édition) étaient des `type=number`, qui refusent les lettres, et n’étaient pas branchés sur ƒx. Ils acceptent maintenant « N », « N*2 », « (L-10)/5 » ou « N = 6 » (nomme la quantité), et le lien reste vivant : changer N dans ƒx régénère la répétition. Clé virtuelle `qty` / `qty2` = quantité affichée (original compris), rangée dans `copies` / `copies2` (= quantité − 1).
+- **Paramètres sans unité** : un paramètre reste un nombre, c’est le champ qui lui donne son unité (mm, °, ou nombre). Une quantité est arrondie à l’entier ; moins de 2 → ⚠ « quantité < 2 », la dernière valeur est gardée. Texte de la fenêtre ƒx complété, origine « … · quantité ».
+- **Tous les champs** : chaque `input type=number` ajouté à la page (mise en plan, rendu, n° d’outil FAO, audit d’esquisse… ~25 champs) devient un champ texte décimal (`data-fxnum`, styles repris) : le filet ƒx global y accepte une expression, ↑ / ↓ gardent le pas et les bornes. Hors fonctions 3D, la valeur reste figée au moment de la saisie (comme avant pour les champs texte).
+- **Vérifié** dans l’application sur « Test Répétition Courbe » : Quantité = N, N = 10 → 10 exemplaires, N = 7 dans ƒx → 7 ; champ type=number converti et « N*1,5 » évalué.
+- **Tests** : `tests/test_parametres_3d.cjs` 14 à 21 ; `npm run ci:full`.

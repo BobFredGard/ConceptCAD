@@ -68,7 +68,7 @@ function mfmCss(){
   '#mfmBody #props input,#mfmBody #props select,#mfmBody #props button{font-size:16px;min-height:40px}', /* 16 px : pas de zoom automatique iOS */
   '#mfmBody #props .pnl-row{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:5px 0}',
   '#mfmBody #props .pnl-row>label{flex:1;min-width:0}',
-  '#mfmBody #props .pnl-row>input[type=text],#mfmBody #props .pnl-row>input[type=number],#mfmBody #props .pnl-row>select{max-width:55%}',
+  '#mfmBody #props .pnl-row>input[type=text],#mfmBody #props .pnl-row>input[type=number],#mfmBody #props .pnl-row>input[data-fxnum],#mfmBody #props .pnl-row>select{max-width:55%}',
   /* paysage : barre d'outils à gauche, panneau à droite sur toute la hauteur */
   '@media (orientation:landscape){',
   ' body.mf-mobile #mfmNav{top:0;bottom:0;right:auto;width:calc(60px + env(safe-area-inset-left));height:auto;flex-direction:column;padding:48px 0 env(safe-area-inset-bottom) env(safe-area-inset-left)}',

@@ -501,7 +501,7 @@ function rdCss(){
     '#rdPanel h4{margin:8px 0 3px;font-size:.66rem;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);font-weight:600}',
     '#rdPanel .rdRow{display:flex;gap:5px;align-items:center;margin:4px 0;min-height:22px}',
     '#rdPanel .rdRow>label{flex:1;min-width:0;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}',
-    '#rdPanel select,#rdPanel input[type=number]{max-width:132px;padding:3px 6px;font-size:.72rem;border:1px solid var(--border);border-radius:5px;background:var(--bg);color:var(--text)}',
+    '#rdPanel select,#rdPanel input[type=number],#rdPanel input[data-fxnum]{max-width:132px;padding:3px 6px;font-size:.72rem;border:1px solid var(--border);border-radius:5px;background:var(--bg);color:var(--text)}',
     '#rdPanel .rdRow>select{flex:0 1 128px;min-width:0}',
     '#rdPanel .rdRow.rdWrap{flex-wrap:wrap;justify-content:space-between;row-gap:3px}',
     '#rdPanel input[type=range]{flex:0 1 96px;min-width:0;margin:0}',

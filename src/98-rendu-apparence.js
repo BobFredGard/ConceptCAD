@@ -22,7 +22,7 @@ function rdLookCss(){
     '#rdLook .rlHead>span{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:700}',
     '#rdLook button{padding:2px 7px;font-size:.71rem;border:1px solid var(--border);background:none;color:var(--text);border-radius:6px;cursor:pointer}',
     '#rdLook button:hover{border-color:var(--primary,#0a84ff)}',
-    '#rdLook select,#rdLook input[type=number]{padding:3px 6px;font-size:.72rem;border:1px solid var(--border);border-radius:5px;background:var(--bg);color:var(--text);min-width:0}',
+    '#rdLook select,#rdLook input[type=number],#rdLook input[data-fxnum]{padding:3px 6px;font-size:.72rem;border:1px solid var(--border);border-radius:5px;background:var(--bg);color:var(--text);min-width:0}',
     '#rdLook input[type=color]{width:30px;height:22px;padding:0;border:1px solid var(--border);border-radius:4px;background:none;flex:none}',
     '#rdLook .rlRow,#rdLook .rdRel{display:flex;align-items:center;gap:4px;margin:4px 0}',
     '#rdLook .rlRow>select,#rdLook .rdRel>select:first-child{flex:1;max-width:none}',

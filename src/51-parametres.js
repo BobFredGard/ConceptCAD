@@ -75,8 +75,21 @@ function parHolders(){
   (doc.cgeo||[]).forEach(c=>{if(c&&c.p&&typeof c.p==='object')out.push({h:c.p,f:c});});
   return out;
 }
-function parHolderVal(h,k){const v=+h[k];return k==='distance'?Math.abs(v):v;}
+// V0.31.1 : QUANTITÉS (nombres sans unité). Un paramètre n'a pas d'unité : c'est la fonction
+// qui la donne. Clé virtuelle « qty » = quantité affichée, original compris, rangée dans
+// h.copies (= quantité − 1) ; arrondie à l'entier, au moins 2.
+const PAR_QTY={qty:'copies',qty2:'copies2'};
+function parHolderKey(k){return PAR_QTY[k]||k;}
+function parHolderVal(h,k){
+  if(PAR_QTY[k])return repMaxCopies(h[PAR_QTY[k]])+1;
+  const v=+h[k];return k==='distance'?Math.abs(v):v;}
 function parHolderSet(h,k,v){
+  if(PAR_QTY[k]){
+    const n=Math.round(v);if(!(n>=2))throw new Error('quantité < 2 ('+(+(+v).toFixed(4))+')');
+    const c=repMaxCopies(n-1),rk=PAR_QTY[k];
+    if((+h[rk]||1)!==c){h[rk]=c;return true;}
+    return false;
+  }
   // distance d'extrusion : la saisie est une COURSE (positive), le sens reste celui choisi
   if(k==='distance'){const sg=(+h[k]<0)?-1:1;v=sg*Math.abs(v);}
   if(Math.abs((+h[k]||0)-v)>1e-9){h[k]=v;return true;}
@@ -169,16 +182,17 @@ function parFxSet(h,k,txt){
   if(name){h.pname=h.pname||{};h.pname[k]=name;}
   if(parIsNumber(expr)){if(h.expr)delete h.expr[k];return{ok:true,v:parseFloat(expr.replace(',','.'))};}
   h.expr=h.expr||{};h.expr[k]=expr;
-  const before=h[k];
+  const rk=parHolderKey(k),before=h[rk];
   // porteur hors document (commande en cours de création : congé, coque, répétition…) :
   // parResolve ne le voit pas, l'expression est évaluée ici avec les valeurs du document
   const inDoc=parHolders().some(x=>x.h===h);
   let v=NaN;
   try{const R=parResolve();if(!inDoc){v=parEval(expr,R.get);if(!isFinite(v))throw new Error('valeur non finie');}}
   catch(e){h.exprErr=h.exprErr||{};h.exprErr[k]=e.message;}
-  if(h.exprErr&&h.exprErr[k]){const msg=h.exprErr[k];if(name&&oldN&&name!==oldN)parRename(name,oldN);restore();h[k]=before;return{ok:false,msg:'Expression : '+msg};}
+  if(h.exprErr&&h.exprErr[k]){const msg=h.exprErr[k];if(name&&oldN&&name!==oldN)parRename(name,oldN);restore();h[rk]=before;return{ok:false,msg:'Expression : '+msg};}
   if(inDoc)v=parHolderVal(h,k);
-  h[k]=before; // le code de la fonction applique la valeur (contrôles, nom, rejeu)
+  else if(PAR_QTY[k]){const n=Math.round(v);if(!(n>=2)){if(name&&oldN&&name!==oldN)parRename(name,oldN);restore();return{ok:false,msg:'Expression : quantité < 2 ('+(+v.toFixed(4))+')'};}v=n;}
+  h[rk]=before; // le code de la fonction applique la valeur (contrôles, nom, rejeu)
   return{ok:true,v};
 }
 function parFxCopy(src,dst,keys){
@@ -299,7 +313,7 @@ function openParamsDlg(){
   ov.appendChild(box);
   const render=()=>{
     box.innerHTML='';
-    const h=document.createElement('div');h.innerHTML='<b style="font-size:15px">ƒx Paramètres</b><div style="opacity:.7;margin:4px 0 10px">Nommez une cote en tapant « nom = valeur » dans sa saisie ; utilisez le nom dans d’autres cotes (« nom*2 », « (L-2*nom)/3 »). Angles en degrés.</div>';
+    const h=document.createElement('div');h.innerHTML='<b style="font-size:15px">ƒx Paramètres</b><div style="opacity:.7;margin:4px 0 10px">Nommez une cote en tapant « nom = valeur » dans sa saisie ; utilisez le nom dans d’autres cotes (« nom*2 », « (L-2*nom)/3 »). Angles en degrés. Un paramètre n’a pas d’unité : c’est le champ qui la donne (mm, °, ou nombre pour une quantité, arrondie à l’entier).</div>';
     box.appendChild(h);
     const tbl=document.createElement('table');tbl.style.cssText='border-collapse:collapse;width:100%';
     tbl.innerHTML='<tr style="text-align:left;opacity:.7"><th style="padding:3px 6px">Nom</th><th style="padding:3px 6px">Expression</th><th style="padding:3px 6px">Valeur</th><th style="padding:3px 6px">Origine</th><th></th></tr>';
@@ -329,7 +343,7 @@ function openParamsDlg(){
         setExpr:ex=>{const r=parDimCommit(sk,d,ex);if(!r.ok)return r.msg;d.value=r.nv;return true;}});
     }));
     // valeurs de fonctions 3D nommées ou en expression
-    const featLbl={distance:'distance',draft:'dépouille',angle:'angle',dist:'distance',thick:'épaisseur',radius:'rayon',r:'rayon',d:'Ø',depth:'profondeur',cbD:'Ø lamage',cbH:'prof. lamage',csD:'Ø fraisure',stD:'Ø avant-trou',stH:'prof. avant-trou',len:'longueur filetée'};
+    const featLbl={distance:'distance',draft:'dépouille',angle:'angle',dist:'distance',thick:'épaisseur',radius:'rayon',r:'rayon',d:'Ø',depth:'profondeur',cbD:'Ø lamage',cbH:'prof. lamage',csD:'Ø fraisure',stD:'Ø avant-trou',stH:'prof. avant-trou',len:'longueur filetée',qty:'quantité',qty2:'quantité 2'};
     parHolders().forEach(({h,f})=>{
       const ks=new Set([...Object.keys(h.expr||{}),...Object.keys(h.pname||{})]);
       ks.forEach(k=>{
@@ -376,7 +390,9 @@ function parNumKeys(i){
   i.addEventListener('keydown',e=>{
     if(e.key!=='ArrowUp'&&e.key!=='ArrowDown')return;
     const v=parseFloat(String(i.value).replace(',','.'));if(!isFinite(v))return;
-    const st=Math.abs(parseFloat(i.step))||1,n=v+(e.key==='ArrowUp'?st:-st);
+    const st=Math.abs(parseFloat(i.step))||1;let n=v+(e.key==='ArrowUp'?st:-st);
+    const lo=parseFloat(i.min),hi=parseFloat(i.max); // bornes d'un ancien type=number
+    if(isFinite(lo)&&n<lo)n=lo;if(isFinite(hi)&&n>hi)n=hi;
     i.value=String(+n.toFixed(6));e.preventDefault();
     try{i.dispatchEvent(new Event('change',{bubbles:true}));}catch(e2){}
   });
@@ -405,8 +421,31 @@ function parFxGlobal(e){
   try{faceEl.textContent='ƒx : '+s+' → '+(+v.toFixed(4));}catch(e2){}
   try{t.dispatchEvent(new Event('input',{bubbles:true}));}catch(e2){} // champs à l'écoute de « input »
 }
+// V0.31.1 : ƒx dans TOUS les champs — un type=number refuse les lettres (« P1*2 » impossible) :
+// chaque champ numérique ajouté à la page devient un champ texte décimal (data-fxnum pour les
+// styles), ↑ / ↓ gardent le pas et les bornes. Le gestionnaire du champ reçoit toujours un nombre.
+function parFxNumField(i){
+  if(!i||i._fxNum||i.type!=='number')return;
+  if(i.dataset&&i.dataset.nofx!=null)return;
+  i._fxNum=1;
+  const st=String(i.step||''),int=!st||st==='any'?false:/^\d+$/.test(st);
+  try{i.type='text';}catch(e){return;}
+  i.inputMode=int?'numeric':'decimal';i.setAttribute('data-fxnum','');parNumKeys(i);
+}
+function parFxNumScan(root){
+  if(!root||root.nodeType!==1)return;
+  if(root.tagName==='INPUT'){parFxNumField(root);return;}
+  if(root.querySelectorAll)root.querySelectorAll('input[type=number]').forEach(parFxNumField);
+}
 try{
-  document.addEventListener('focusin',e=>{const t=e.target;if(parFxEligible(t)){t._fxPrev=t.value;t._fxLast=null;}},true);
+  if(typeof MutationObserver!=='undefined'&&document.documentElement){
+    new MutationObserver(ms=>{for(const m of ms)m.addedNodes.forEach(parFxNumScan);})
+      .observe(document.documentElement,{childList:true,subtree:true});
+    parFxNumScan(document.documentElement);
+  }
+}catch(e){}
+try{
+  document.addEventListener('focusin',e=>{const t=e.target;if(t&&t.type==='number')parFxNumField(t);if(parFxEligible(t)){t._fxPrev=t.value;t._fxLast=null;}},true);
   document.addEventListener('keydown',parFxGlobal,true);
   document.addEventListener('change',parFxGlobal,true);
 }catch(e){}

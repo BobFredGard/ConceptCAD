@@ -57,6 +57,18 @@ const {loadApp}=require('./appvm.cjs');
     // fichier
     "const js=JSON.parse(serialise(false));const g=js.features.find(f=>f.id==='F1');",
     "A(g&&g.expr&&g.expr.distance==='L/5'&&g.pname.distance==='Ep','13 : expressions et noms enregistrés dans le fichier');",
+    // V0.31.1 : QUANTITÉ d'une répétition = paramètre sans unité (clé virtuelle qty = copies + 1)
+    "doc.params.push({name:'N',expr:'4'});",
+    "const R1={id:'R1',type:'repeat',name:'Linéaire',mode:'lin',copies:1,dist:20,axis:'X',base:[fH.id],children:[],visible:true};doc.features.push(R1);repGenChildren(R1);",
+    "r=parFxSet(R1,'qty','N');A(r.ok&&r.v===4&&R1.expr.qty==='N'&&R1.copies===1,'14 : quantité « N » acceptée → 4 (appliquée par le champ, copies inchangées)');",
+    "parApplyAll();repGenChildren(R1);A(R1.copies===3&&doc.features.filter(f=>f.repeatId==='R1').length===3,'15 : N = 4 → 3 copies + l’original ('+R1.copies+')');",
+    "doc.params.find(p=>p.name==='N').expr='N0*1,8';doc.params.push({name:'N0',expr:'3'});parApplyAll();A(R1.copies===4,'16 : 5,4 arrondi à 5 exemplaires ('+R1.copies+')');",
+    "doc.params.find(p=>p.name==='N0').expr='0,5';parApplyAll();A(R1.copies===4&&/quantité < 2/.test(R1.exprErr&&R1.exprErr.qty),'17 : quantité < 2 → ⚠, dernière valeur gardée');",
+    "r=parFxSet(R1,'qty','Nq = 6');A(r.ok&&r.v===6&&R1.pname.qty==='Nq'&&parAll().get('Nq').kind==='feat','18 : « Nq = 6 » nomme la quantité, réutilisable ailleurs');",
+    "const tmp={copies:1};r=parFxSet(tmp,'qty','N0*5');A(r.ok&&r.v===3&&tmp.copies===1,'19 : commande en création : N0*5 = 2,5 → 3, porteur intact');",
+    "r=parFxSet(tmp,'qty','N0');A(!r.ok&&/quantité < 2/.test(r.msg)&&tmp.expr.qty==='N0*5','20 : commande en création : quantité < 2 refusée, l\u2019expression précédente reste');",
+    "const ni={type:'number',step:'1',min:'2',value:'3',dataset:{},attrs:{},setAttribute(k,v){this.attrs[k]=v;},addEventListener(){}};parFxNumField(ni);",
+    "A(ni.type==='text'&&ni.inputMode==='numeric'&&'data-fxnum' in ni.attrs,'21 : un champ type=number devient un champ texte ƒx (pas entier → numérique)');",
     "return out;"
   ].join('\n');
   const o=await vm.runInContext('(async()=>{'+R+'})()',ctx);

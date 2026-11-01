@@ -13,7 +13,7 @@ let repMode=null;
       /* rangées label + contrôle */
       '#props .pnl-row{display:flex;gap:5px;align-items:center;margin:4px 0;flex-wrap:wrap}'+
       '#props .pnl-row>pnl-lab,#props .pnl-row>label{flex:1;min-width:0;color:var(--muted);font-size:.74rem;display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}'+
-      '#props .pnl-row>input[type=text],#props .pnl-row>input[type=number],#props .pnl-row>select{max-width:130px;padding:3px 6px;font-size:.72rem;border:1px solid var(--border);border-radius:5px;background:var(--bg);color:var(--text);width:auto;flex:none}'+
+      '#props .pnl-row>input[type=text],#props .pnl-row>input[type=number],#props .pnl-row>input[data-fxnum],#props .pnl-row>select{max-width:130px;padding:3px 6px;font-size:.72rem;border:1px solid var(--border);border-radius:5px;background:var(--bg);color:var(--text);width:auto;flex:none}'+
       '#props .pnl-row>input[type=checkbox]{max-width:none;flex:none;margin-left:auto}'+
       /* boutons d'action (Cadrer / Rejeter / Supprimer…) */
       '#props .pnl-btns{display:flex;gap:5px;flex-wrap:wrap;margin:6px 0}'+
@@ -912,6 +912,9 @@ function repGenAll(){
   for(const rp of [...doc.features]){if(rp.type==='repeat')repGenChildren(rp);}
 }
 const REPEAT_MAX=200; // garde-fou : une saisie de copies aberrante ne doit pas figer le rejeu
+// Champ QUANTITÉ (original compris) : texte pour accepter ƒx ; ↑ / ↓ ajoutent / retirent 1.
+function repQtyInput(v,tip){const i=document.createElement('input');i.type='text';i.inputMode='numeric';i.style.width='64px';i.value=String(v);i.title=tip;parNumKeys(i);return i;}
+function repQtyRead(i){const n=Math.round(parseFloat(String(i.value).replace(',','.')));return n>=2?n:2;}
 function repMaxCopies(v){const n=Math.floor(+v||1);return isFinite(n)?Math.min(REPEAT_MAX,Math.max(1,n)):1;}
 function repCloneSkName(sk){return /\(rép\s*\d+\)\s*$/.test((sk&&sk.name)||'');}
 function docSanitise(){
@@ -1400,7 +1403,7 @@ function applyRepPattern(){
     rp.path=Object.assign({},repMode.path);rp.pspace=repMode.pspace==='pitch'?'pitch':'fit';rp.orient=repMode.orient==='tangent'?'tangent':'fixed';
     if(repMode.rev)rp.rev=true;delete rp.axis;delete rp.angle;
   }
-  parFxCopy(repMode,rp,repMode.type==='circ'?['angle']:(repMode.type==='lin'?(repMode.lin2?['dist','dist2']:['dist']):(repMode.type==='path'&&repMode.pspace==='pitch'?['dist']:[])));
+  parFxCopy(repMode,rp,(repMode.type==='mir'?[]:['qty']).concat(repMode.type==='circ'?['angle']:(repMode.type==='lin'?(repMode.lin2?['dist','dist2','qty2']:['dist']):(repMode.type==='path'&&repMode.pspace==='pitch'?['dist']:[]))));
   addFeature(rp);
   const nb=repGenChildren(rp);
   exitRepMode();
@@ -1483,8 +1486,10 @@ function renderRepPanel(){
   const typ=document.createElement('select');[['lin','Linéaire'],['circ','Circulaire'],['mir','Symétrie'],['path','Suivant un profil']].forEach(o=>{const op=document.createElement('option');op.value=o[0];op.textContent=o[1];typ.appendChild(op);});typ.value=repMode.type;
   typ.onchange=()=>{repMode.type=typ.value;if(typ.value==='path'&&!repMode.path){const G=pgGuideSketches(doc);if(G.length)repMode.path=pgDefaultPath(G[G.length-1]);}renderRepPanel();};row.appendChild(typ);
   // 2026-10-23 : QUANTITÉ, original compris (6 = l'original + 5 copies) ; stocké : copies = quantité − 1
-  const cnt=document.createElement('input');cnt.type='number';cnt.min='2';cnt.value=(+repMode.copies||1)+1;cnt.title='Quantité, original compris (6 = l’original + 5 copies)';cnt.onchange=()=>{repMode.copies=repMaxCopies((+cnt.value||2)-1);cnt.value=repMode.copies+1;repPreviewUpdate();};
+  // V0.31.1 : champ texte branché sur ƒx (« N », « N*2 », « N = 6 ») — la quantité est un nombre sans unité
+  const cnt=repQtyInput((+repMode.copies||1)+1,'Quantité, original compris (6 = l’original + 5 copies)');
   if(repMode.type==='mir'){cnt.disabled=true;cnt.value=2;}
+  else{parFx(cnt,repMode,'qty');cnt.onchange=()=>{repMode.copies=repMaxCopies(repQtyRead(cnt)-1);repPreviewUpdate();};}
   row.appendChild(cnt);p.appendChild(row);
   if(repMode.type==='path')repPathUI(repMode,'_rpEdit',
     (lab,ctl)=>{const r=document.createElement('div');r.className='row';const l=document.createElement('label');l.textContent=lab;r.appendChild(l);if(ctl)r.appendChild(ctl);p.appendChild(r);},
@@ -1534,8 +1539,8 @@ function renderRepPanel(){
     if(repMode.lin2){
       const ax2=document.createElement('select');['X','Y','Z','Face'].forEach(v=>{const op=document.createElement('option');op.value=v;op.textContent=v==='Face'?'Face / arête':v;ax2.appendChild(op);});
       ax2.value=repMode.axis2||'Y';ax2.title='Axe de la 2ᵉ direction';ax2.onchange=()=>{repMode.axis2=ax2.value;delete repMode.dir2;renderRepPanel();};p.appendChild(ax2);
-      const c2=document.createElement('input');c2.type='number';c2.min='2';c2.value=(+repMode.copies2||1)+1;c2.title='Quantité dans la 2ᵉ direction, original compris';
-      c2.onchange=()=>{repMode.copies2=repMaxCopies((+c2.value||2)-1);c2.value=repMode.copies2+1;repPreviewUpdate();};p.appendChild(c2);
+      const c2=repQtyInput((+repMode.copies2||1)+1,'Quantité dans la 2ᵉ direction, original compris');parFx(c2,repMode,'qty2');
+      c2.onchange=()=>{repMode.copies2=repMaxCopies(repQtyRead(c2)-1);repPreviewUpdate();};p.appendChild(c2);
       const ld=document.createElement('label');ld.textContent=' Distance 2 (mm)';const i2=document.createElement('input');i2.type='text';i2.inputMode='decimal';i2.value=repMode.dist2;parFx(i2,repMode,'dist2');
       i2.onchange=()=>{repMode.dist2=parseFloat(String(i2.value).replace(',','.'))||0;repPreviewUpdate();};ld.appendChild(i2);p.appendChild(ld);
       const bf2=document.createElement('button');bf2.textContent='🎯 Face / arête → 2ᵉ direction';bf2.title='Prend la direction de l’arête sélectionnée (axe d’un cercle) ou la normale de la face sélectionnée';bf2.onclick=()=>repUseSelectedFace2();p.appendChild(bf2);
@@ -1770,8 +1775,9 @@ function renderProps(){
         if(repNewBodyEmpty(f))pNote('⚠ Aucune source n’ajoute de matière (découpe, congé, dépouille…) : les corps créés restent vides. Cochez aussi l’extrusion de base, ou choisissez « Unir ».');
       }
       // 2026-10-23 : QUANTITÉ, original compris (6 = l'original + 5 copies) ; stocké : copies = quantité − 1
-      const cnt=document.createElement('input');cnt.type='number';cnt.min='2';cnt.value=(+f.copies||1)+1;cnt.title='Quantité, original compris (6 = l’original + 5 copies)';
-      cnt.onchange=()=>{f.copies=repMaxCopies((+cnt.value||2)-1);applyCfg();};
+      const cnt=repQtyInput((+f.copies||1)+1,'Quantité, original compris (6 = l’original + 5 copies)');
+      if(f.mode!=='mir')parFx(cnt,f,'qty'); // ƒx : « N », « N*2 », « N = 6 » — nombre sans unité, arrondi
+      cnt.onchange=()=>{f.copies=repMaxCopies(repQtyRead(cnt)-1);applyCfg();};
       if(f.mode!=='mir')pRow('Quantité',cnt);
       if(f.mode==='path'){
         repPathUI(f,f.id,(lab,ctl)=>pRow(lab,ctl),t=>pNote(t),fn=>{docPushUndo('profil de « '+f.name+' »');fn(f);applyCfg();});
@@ -1814,8 +1820,8 @@ function renderProps(){
         if(f.lin2){
           icoBtns(pRow('2ᵉ axe',pSel(['X','Y','Z','Face'].map(v=>[v,v==='Face'?'Face / arête':v]),f.axis2||'Y',v=>{docPushUndo('2ᵉ direction');f.axis2=v;delete f.dir2;applyCfg();})),
             [['🎯',pickTip,()=>repUseFaceFor(f,2)],['⇄','Inverser la 2ᵉ direction',()=>repFlipDir(f,2)]]);
-          const c2=document.createElement('input');c2.type='number';c2.min='2';c2.value=(+f.copies2||1)+1;c2.title='Quantité dans la 2ᵉ direction, original compris';
-          c2.onchange=()=>{docPushUndo('2ᵉ direction');f.copies2=repMaxCopies((+c2.value||2)-1);applyCfg();};
+          const c2=repQtyInput((+f.copies2||1)+1,'Quantité dans la 2ᵉ direction, original compris');parFx(c2,f,'qty2');
+          c2.onchange=()=>{docPushUndo('2ᵉ direction');f.copies2=repMaxCopies(repQtyRead(c2)-1);applyCfg();};
           pRow('Quantité 2',c2);
           const i2=document.createElement('input');i2.type='text';i2.inputMode='decimal';i2.value=f.dist2;parFx(i2,f,'dist2');
           i2.addEventListener('change',()=>{docPushUndo('2ᵉ direction');f.dist2=parseFloat(String(i2.value).replace(',','.'))||0;applyCfg();});
