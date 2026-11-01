@@ -336,7 +336,7 @@ input[type=range]{accent-color:var(--primary);width:100%}
  * peut changer sans rien casser. CACHE_VER (parcours FAO) reste indépendant.
  */
 
-const APP_VER='V0.28.0';
+const APP_VER='V0.28.1';
 try{console.log('[MiniFusion] version '+APP_VER);}catch(e){}
 try{var mfSv=document.getElementById('mfSplashVer');if(mfSv)mfSv.textContent=APP_VER;}catch(e){} // écran de démarrage
 
@@ -11617,7 +11617,8 @@ function asmSerial(){
   try{asmNamesSync();}catch(e){} // noms des composants = noms de leurs documents (47)
   const comps=asm.comps.map(c=>({id:c.id,kind:'comp',name:c.name,doc:c.doc===doc?null:serialiseObj(c.doc,false),
     occ:c.occ.map(asmOccSerial),link:asmLinkSerial(c.link,c),of:c.of||undefined}));
-  return {v:2,name:asm.name,root:asm.root,active:asm.active,path:asm.path.slice(),mode:asmMode,comps};
+  return {v:2,name:asm.name,root:asm.root,active:asm.active,path:asm.path.slice(),mode:asmMode,comps,
+    img:asm.img?true:undefined}; // images des pièces embarquées dans le fichier (47-assemblage-cache)
 }
 function asmLinkSerial(l,c){
   // Lien enregistré sans son état d'exécution (st, msg) ; pend : modifié ici et pas encore écrit
@@ -11672,6 +11673,7 @@ function asmFromSerial(a){
   asm=null;asmMode='part';asmUndoStack=[];asmRedoStack=[];
   const t=asmTreeFromSerial(a,doc);if(!t)return false;
   asm={name:t.name,root:t.root,comps:t.comps,path:[],active:t.active};
+  if(a.img===true)asm.img=true;
   asm.path=(t.path&&asmPathComp(t.path)===t.active)?t.path:(asmFirstPath(t.active)||[]);
   // la vue d'assemblage demande les instantanés de tous les composants : rétablie après le
   // chargement (asmAfterLoad, 47), on ouvre donc toujours en mode Modéliser
@@ -11915,15 +11917,22 @@ function asmExtSyncSoon(){if(!asmExtBusy&&asm){try{setTimeout(()=>{try{if(asmExt
      · empreinte du paramétrique (docHashSrc, comme docHash) ;
      · ce qui colore et montre les corps sans être dans cette empreinte (fiches des corps,
        visibilité, teinte, apparence de rendu) ;
-     · version de l'application ET du moteur (APP_VER, CACHE_VER) : toute livraison rejoue une
-       fois ;
+     · version du moteur de géométrie (CACHE_VER, comme l'image de la pièce active et les
+       trajectoires FAO — V0.28.1 : plus APP_VER, sinon une image enregistrée dans un fichier ne
+       servait plus dès la livraison suivante). Une correction du rejeu d'une fonction DOIT donc
+       changer CACHE_VER, sinon l'ancienne image reste affichée jusqu'au prochain rejeu ;
      · deux empreintes indépendantes + la longueur du texte (pas de collision réaliste).
    Jamais mis en cache : un composant avec un import (contenu hors empreinte), une capture en
    repli maillage, ou prise avec le marqueur temps reculé, une fonction suspendue, une esquisse
    ouverte (l'image ne correspond pas au document complet).
    Clés asnap:<…> du magasin « kv » ; index asnap:index {clé → dernier usage} : au-delà de
    ASM_CACHE_MAX entrées, les plus anciennes partent. Le cache est une simple accélération :
-   toute erreur de lecture ou d'écriture (quota, navigation privée) le contourne en silence. */
+   toute erreur de lecture ou d'écriture (quota, navigation privée) le contourne en silence.
+   IMAGES DANS LE FICHIER (option de l'assemblage asm.img, V0.28.1) : à l'enregistrement, les
+   entrées des composants du fichier partent dans le paquet .miniFusion (b.asnap : tableaux
+   typés réunis en un bloc binaire compressé gzip, base64) ; à l'ouverture, bundleStoreCaches
+   les remet dans le cache AVANT la lecture du document : le fichier s'ouvre vite sur un autre
+   poste. Elles passent par les mêmes clés : une image qui ne correspond plus est ignorée. */
 const ASM_CACHE_V=1;        // format des entrées
 const ASM_CACHE_MAX=300;    // entrées gardées
 const ASM_CACHE_VERTS=1500000; // composant plus gros : pas de cache (comme saveViewCache)
@@ -11935,7 +11944,7 @@ function asmCacheKey(d){
   // Clé du composant (document d) ; null : pas de cache
   if(!asmCacheable(d))return null;
   let s;
-  try{s=docHashSrc(d)+'|'+JSON.stringify({b:d.bodies||[],v:d.bodyVis||{},t:d.tint||0,r:d.rendu||null})+'|'+APP_VER+'|'+CACHE_VER+'|'+ASM_CACHE_V;}
+  try{s=docHashSrc(d)+'|'+JSON.stringify({b:d.bodies||[],v:d.bodyVis||{},t:d.tint||0,r:d.rendu||null})+'|'+CACHE_VER+'|'+ASM_CACHE_V;}
   catch(e){return null;}
   let a=2166136261,b=5381;
   for(let i=0;i<s.length;i++){const c=s.charCodeAt(i);a^=c;a=Math.imul(a,16777619);b=(Math.imul(b,33)^c)|0;}
@@ -12070,6 +12079,88 @@ async function asmCacheFill(list){
   });
   if(n){try{await asmCacheWrite({'asnap:index':idx},[]);}catch(e){}}
   return n;
+}
+/* ── images dans le fichier (option asm.img) ── */
+const ASM_CACHE_TA={f32:Float32Array,u32:Uint32Array,u16:Uint16Array,u8:Uint8Array};
+function asmCacheTaKind(a){return a instanceof Float32Array?'f32':a instanceof Uint32Array?'u32':a instanceof Uint16Array?'u16':a instanceof Uint8Array?'u8':null;}
+async function asmCacheZip(u8,inflate){
+  // gzip natif (Chrome, Edge, Firefox récents) ; null : indisponible
+  if(typeof CompressionStream==='undefined'||typeof DecompressionStream==='undefined'||typeof Response==='undefined'||typeof Blob==='undefined')return null;
+  const s=new Blob([u8]).stream().pipeThrough(inflate?new DecompressionStream('gzip'):new CompressionStream('gzip'));
+  return new Uint8Array(await new Response(s).arrayBuffer());
+}
+async function asmCacheExport(){
+  // Entrées du cache des composants de ce fichier (renvois compris) → {v, meta, z, bin} ou null.
+  // meta : les entrées, chaque tableau typé remplacé par {$t, o, n} dans le bloc binaire bin.
+  if(!asm||!asmCacheIdbOK())return null;
+  if(asmCacheT){clearTimeout(asmCacheT);asmCacheT=null;try{await asmCacheFlush();}catch(e){}} // captures récentes d'abord
+  const keys=[...new Set(asm.comps.map(c=>c.doc?asmCacheKey(c.doc):null).filter(Boolean))];
+  if(!keys.length)return null;
+  let got;try{got=await asmCacheRead(keys);}catch(e){return null;}
+  const al=[...new Set(keys.map(k=>got[k]&&got[k].alias).filter(k=>k&&!got[k]))];
+  if(al.length){try{Object.assign(got,await asmCacheRead(al));}catch(e){}}
+  const parts=[];let off=0;
+  const walk=v=>{
+    if(ArrayBuffer.isView(v)){
+      const t=asmCacheTaKind(v);if(!t)return null;
+      const pad=(4-off%4)%4;if(pad){parts.push(new Uint8Array(pad));off+=pad;}
+      parts.push(new Uint8Array(v.buffer,v.byteOffset,v.byteLength));
+      const r={$t:t,o:off,n:v.length};off+=v.byteLength;return r;
+    }
+    if(Array.isArray(v))return v.map(walk);
+    if(v&&typeof v==='object'){const o={};Object.keys(v).forEach(k=>{o[k]=walk(v[k]);});return o;}
+    return v;
+  };
+  const meta={};
+  Object.keys(got).forEach(k=>{const v=got[k];if(k!=='asnap:index'&&v&&v.v===ASM_CACHE_V)meta[k]=walk(v);});
+  if(!Object.keys(meta).length)return null;
+  const bin=new Uint8Array(off);let p=0;parts.forEach(u=>{bin.set(u,p);p+=u.length;});
+  // gzip : le bloc binaire ET meta (arêtes et faces exactes : tableaux de nombres en texte)
+  try{
+    const g=await asmCacheZip(bin,false),m=g&&await asmCacheZip(new TextEncoder().encode(JSON.stringify(meta)),false);
+    if(g&&m)return {v:ASM_CACHE_V,z:'gzip',meta:importU8ToB64(m),bin:importU8ToB64(g)};
+  }catch(e){}
+  return {v:ASM_CACHE_V,z:'',meta,bin:importU8ToB64(bin)};
+}
+async function asmCacheImport(x){
+  // Images d'un fichier ouvert (b.asnap) → cache du navigateur, avant la lecture des composants.
+  // Contenu venu d'ailleurs : tout est vérifié, une entrée douteuse est ignorée. → entrées gardées
+  if(!x||typeof x!=='object'||x.v!==ASM_CACHE_V||!x.meta||typeof x.bin!=='string'||!asmCacheIdbOK())return 0;
+  let bin,meta=x.meta;try{bin=importB64ToU8(x.bin);}catch(e){return 0;}
+  if(x.z==='gzip'){
+    try{
+      bin=await asmCacheZip(bin,true);
+      const m=typeof meta==='string'?await asmCacheZip(importB64ToU8(meta),true):null;
+      meta=m?JSON.parse(new TextDecoder().decode(m)):null;
+    }catch(e){return 0;}
+    if(!bin)return 0;
+  }else if(x.z)return 0;
+  if(!meta||typeof meta!=='object'||Array.isArray(meta))return 0;
+  const un=v=>{
+    if(v&&typeof v==='object'&&!Array.isArray(v)&&typeof v.$t==='string'){
+      const T=ASM_CACHE_TA[v.$t],o=+v.o,n=+v.n;
+      if(!T||!Number.isInteger(o)||!Number.isInteger(n)||o<0||n<0||o%T.BYTES_PER_ELEMENT||o+n*T.BYTES_PER_ELEMENT>bin.length)throw new Error('image abîmée');
+      return new T(bin.buffer.slice(bin.byteOffset+o,bin.byteOffset+o+n*T.BYTES_PER_ELEMENT));
+    }
+    if(Array.isArray(v))return v.map(un);
+    if(v&&typeof v==='object'){const r={};Object.keys(v).forEach(k=>{r[k]=un(v[k]);});return r;}
+    return v;
+  };
+  const puts={};
+  Object.keys(meta).forEach(k=>{
+    if(!/^asnap:[0-9a-z_]+$/.test(k)||k==='asnap:index')return;
+    try{const v=un(meta[k]);
+      if(v&&v.v===ASM_CACHE_V&&(typeof v.alias==='string'?/^asnap:[0-9a-z_]+$/.test(v.alias):Array.isArray(v.items)&&v.items.every(it=>it&&it.pos instanceof Float32Array)))puts[k]=v;
+    }catch(e){}
+  });
+  const ks=Object.keys(puts);if(!ks.length)return 0;
+  let idx={};try{idx=((await asmCacheRead(['asnap:index']))['asnap:index'])||{};}catch(e){}
+  ks.forEach(k=>{idx[k]=Date.now();});
+  const dels=Object.keys(idx).sort((a,b)=>idx[b]-idx[a]).slice(ASM_CACHE_MAX).filter(k=>!puts[k]);
+  dels.forEach(k=>{delete idx[k];});
+  puts['asnap:index']=idx;
+  try{await asmCacheWrite(puts,dels);}catch(e){return 0;}
+  return ks.length;
 }
 
 /* ═══════════════ 47-assemblage-interface.js — assemblage interface ═══════════════ */
@@ -12537,6 +12628,14 @@ function asmRenderProps(p){
     const l=[['➕ Nouveau composant',asmCmdNewComp,'primary'],['📥 Insérer…',asmCmdInsert],['🔩 Normalisés…',()=>stdDlg()],['✏️ Modéliser « '+c.name+' »',()=>asmExit()]];
     if(asm.path.length)l.push(['↑ Remonter',asmUp]);
     Btns(l);
+    if(!asm.path.length){
+      // V0.28.1 : images des pièces dans le fichier (47-assemblage-cache)
+      const lab=mk('label','pnl-note'),cb=document.createElement('input');
+      cb.type='checkbox';cb.checked=!!asm.img;
+      cb.onchange=()=>{if(cb.checked)asm.img=true;else delete asm.img;dirty=true;try{autosave();}catch(e){}};
+      lab.appendChild(cb);lab.appendChild(document.createTextNode(' Enregistrer les images des pièces dans le fichier (ouverture rapide sur un autre poste, fichier plus lourd)'));
+      p.appendChild(lab);
+    }
     asmJointsProps(p); // piloter les liaisons (48)
     return;
   }
@@ -55071,9 +55170,11 @@ async function bundleImports(){
 async function bundleSerialise(){
   const moves=await bundleMoves();
   const imports=await bundleImports();
+  // V0.28.1 : images des pièces d'un assemblage, sur option (47-assemblage-cache)
+  let asnap=null;try{if(asm&&asm.img)asnap=await asmCacheExport();}catch(e){asnap=null;}
   return JSON.stringify({app:'MiniFusion',bundle:1,v:APP_VER,cacheVer:CACHE_VER,
     at:Date.now(),name:doc.name||'',doc:JSON.parse(serialise()),
-    nMoves:Object.keys(moves).length,moves:moves,imports:imports});
+    nMoves:Object.keys(moves).length,moves:moves,imports:imports,asnap:asnap||undefined});
 }
 let faoBundleMovesN=0;   // trajectoires embarquees dans le fichier ouvert
 function bundleReport(){
@@ -55118,6 +55219,9 @@ async function bundleStoreCaches(b){
   if(ks.length&&faoMovesReady()){
     for(let i=0;i<ks.length;i++){ try{ await idbSet(ks[i],moves[ks[i]]); }catch(e){} }
   }
+  // Images des pièces d'un assemblage (option, V0.28.1) : dans le cache AVANT le document,
+  // lu à l'ouverture à la place des rejeux (47-assemblage-cache)
+  if(b.asnap){try{await asmCacheImport(b.asnap);}catch(e){}}
   // Sources des imports AVANT le document : deserialise les rejoue aussitôt.
   const im=(b.imports&&typeof b.imports==='object')?b.imports:{};
   for(const k of Object.keys(im)){

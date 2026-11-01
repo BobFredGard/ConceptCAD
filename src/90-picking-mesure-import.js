@@ -2353,9 +2353,11 @@ async function bundleImports(){
 async function bundleSerialise(){
   const moves=await bundleMoves();
   const imports=await bundleImports();
+  // V0.28.1 : images des pièces d'un assemblage, sur option (47-assemblage-cache)
+  let asnap=null;try{if(asm&&asm.img)asnap=await asmCacheExport();}catch(e){asnap=null;}
   return JSON.stringify({app:'MiniFusion',bundle:1,v:APP_VER,cacheVer:CACHE_VER,
     at:Date.now(),name:doc.name||'',doc:JSON.parse(serialise()),
-    nMoves:Object.keys(moves).length,moves:moves,imports:imports});
+    nMoves:Object.keys(moves).length,moves:moves,imports:imports,asnap:asnap||undefined});
 }
 let faoBundleMovesN=0;   // trajectoires embarquees dans le fichier ouvert
 function bundleReport(){
@@ -2400,6 +2402,9 @@ async function bundleStoreCaches(b){
   if(ks.length&&faoMovesReady()){
     for(let i=0;i<ks.length;i++){ try{ await idbSet(ks[i],moves[ks[i]]); }catch(e){} }
   }
+  // Images des pièces d'un assemblage (option, V0.28.1) : dans le cache AVANT le document,
+  // lu à l'ouverture à la place des rejeux (47-assemblage-cache)
+  if(b.asnap){try{await asmCacheImport(b.asnap);}catch(e){}}
   // Sources des imports AVANT le document : deserialise les rejoue aussitôt.
   const im=(b.imports&&typeof b.imports==='object')?b.imports:{};
   for(const k of Object.keys(im)){

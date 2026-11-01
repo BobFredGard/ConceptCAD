@@ -4,10 +4,13 @@
 // retour réel est vérifié dans le navigateur) : clé (ce qui la change, ce qui ne la change pas),
 // écriture différée, relecture à l'ouverture, composant modifié → rejoué, import et image
 // partielle jamais gardés, renvoi « document tel que lu », purge des plus anciennes entrées.
+// V0.28.1 : images dans le fichier (option asm.img) : export gzip, import vérifié, aller-retour.
 const {loadApp}=require('./appvm.cjs');
 const vm=require('vm');
 (async()=>{
-  const {ctx}=loadApp();
+  const {ctx,sandbox}=loadApp();
+  // ce que le navigateur fournit et que le bac à sable n'a pas : base64, gzip natif, clonage
+  Object.assign(sandbox,{btoa,atob,Blob,Response,CompressionStream,DecompressionStream,TextEncoder,TextDecoder,structuredClone});
   const R=`
     const P=[];const p=s=>P.push(String(s));
     const ATT=[];const att=(ok,msg)=>{if(!ok)ATT.push(msg);else p('ok : '+msg);};
@@ -16,8 +19,8 @@ const vm=require('vm');
     att(asmCacheIdbOK()===false,'0 : sans IndexedDB, cache désactivé (rien ne change)');
     const KV={};let reads=0,writes=0;
     indexedDB={};idbOpen=function(){return Promise.reject(new Error('stub'));};
-    asmCacheRead=async keys=>{reads++;const o={};keys.forEach(k=>{if(k in KV)o[k]=JSON.parse(JSON.stringify(KV[k]));});return o;};
-    asmCacheWrite=async (puts,dels)=>{writes++;Object.keys(puts||{}).forEach(k=>{KV[k]=JSON.parse(JSON.stringify(puts[k]));});(dels||[]).forEach(k=>{delete KV[k];});return true;};
+    asmCacheRead=async keys=>{reads++;const o={};keys.forEach(k=>{if(k in KV)o[k]=structuredClone(KV[k]);});return o;};
+    asmCacheWrite=async (puts,dels)=>{writes++;Object.keys(puts||{}).forEach(k=>{KV[k]=structuredClone(puts[k]);});(dels||[]).forEach(k=>{delete KV[k];});return true;};
     asmCachePack=s=>s&&s.exact?{items:s.items.map(it=>({tag:it.tag})),edges:null,pedges:s.pedges||null,pfaces:null,hash:s.hash}:null;
     asmCacheUnpack=(v,h)=>({items:v.items.map(it=>({tag:it.tag,geo:{dispose(){}}})),edges:null,pedges:v.pedges,pfaces:null,exact:true,hash:v.hash||h,cached:true});
     att(asmCacheIdbOK()===true,'1 : IndexedDB présente : cache actif');
@@ -87,6 +90,34 @@ const vm=require('vm');
     await wait(1400);
     const ix=KV['asnap:index'];
     att(Object.keys(ix).length===ASM_CACHE_MAX&&!('asnap:vieux0' in KV)&&('asnap:vieux'+(ASM_CACHE_MAX+4) in KV)&&KV[asmCacheKey(h.doc)],'22 : purge des plus anciennes, la nouvelle entrée reste');
+    // ── images dans le fichier (V0.28.1, option asm.img) ──
+    asm.img=true;
+    att(asmSerial().img===true,'24 : option enregistrée avec l assemblage');
+    {const s=asmSerial();const keep=asm;asmFromSerial(s);att(asm.img===true,'25 : option relue à l ouverture');asm=keep;}
+    // une entrée réelle (tableaux typés) pour A, un renvoi pour F déjà présent
+    const kA=asmCacheKey(a.doc);
+    KV[kA]={v:ASM_CACHE_V,at:1,hash:'hA',items:[{pos:new Float32Array([1,2,3,4,5,6,7,8,9]),nor:null,idx:new Uint16Array([0,1,2]),color:0x336699,bid:'b1'}],
+      edges:{pos:new Float32Array([0,0,0,1,1,1]),col:new Float32Array([0,0,0,0,0,0])},pedges:[{pts:[[0,0,0],[1,0,0]]}],pfaces:null};
+    const kF=asmCacheKey(f.doc),kFt=KV[raw]&&KV[raw].alias; // F rouvert tel que lu : clé = renvoi
+    KV[kFt]={v:ASM_CACHE_V,at:1,hash:'hF',items:[{pos:new Float32Array([0,0,0,1,0,0,0,1,0]),nor:null,idx:null,color:1,bid:'b1'}],edges:null,pedges:null,pfaces:null};
+    const X=await asmCacheExport();
+    att(X&&X.v===ASM_CACHE_V&&X.z==='gzip'&&typeof X.bin==='string'&&typeof X.meta==='string','26 : export compressé (gzip, base64)');
+    // autre poste : cache vide
+    Object.keys(KV).forEach(k=>{delete KV[k];});
+    const nI=await asmCacheImport(JSON.parse(JSON.stringify(X)));
+    const eA=KV[kA];
+    att(nI>=2&&eA&&eA.items[0].pos instanceof Float32Array&&Array.from(eA.items[0].pos).join()==='1,2,3,4,5,6,7,8,9'&&eA.items[0].idx instanceof Uint16Array&&Array.from(eA.items[0].idx).join()==='0,1,2'
+      &&eA.edges.pos.length===6&&eA.pedges[0].pts[1][0]===1&&eA.hash==='hA','27 : import : tableaux typés et données relus à l identique ('+nI+')');
+    att(kF===raw&&KV[raw]&&KV[raw].alias===kFt&&KV[kFt]&&KV[kFt].hash==='hF','28 : renvoi et sa cible voyagent ensemble');
+    att(KV['asnap:index']&&kA in KV['asnap:index'],'29 : entrées importées indexées (purge)');
+    delete a._snap;att(await asmCacheFill([a])===1&&a._snap.cached,'30 : composant relu depuis l image du fichier');
+    // fichier abîmé ou d un autre format : ignoré
+    Object.keys(KV).forEach(k=>{delete KV[k];});
+    att(await asmCacheImport(Object.assign({},X,{v:99}))===0&&!Object.keys(KV).length,'31 : autre format : ignoré');
+    att(await asmCacheImport(Object.assign({},X,{bin:'@@@'}))===0,'32 : binaire illisible : ignoré');
+    const Y=Object.assign({},X,{z:'',meta:{[kA]:{v:ASM_CACHE_V,items:[{pos:{$t:'f32',o:0,n:999999}}]},'pas:une-cle':{v:ASM_CACHE_V,items:[]}},bin:'AAAA'});
+    att(await asmCacheImport(Y)===0&&!Object.keys(KV).length,'33 : tableau hors du bloc binaire, clé étrangère : ignorés');
+    asm.img=false;delete asm.img;
     // ── erreurs d IndexedDB : sans cache, sans casser ──
     asmCacheRead=async()=>{throw new Error('quota');};
     delete h._snap;

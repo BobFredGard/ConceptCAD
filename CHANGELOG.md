@@ -8,7 +8,7 @@ sont sorties le 2026-09-30j.
 Code dans `src/` · livrable `fusion_mvp.html` (généré par `build.js`) · architecture et
 garde-fous en tête de `src/00-entete-et-outils.js`.
 
-**500 versions**, de `2026-09-28b` à `V0.28.0` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
+**501 versions**, de `2026-09-28b` à `V0.28.1` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
 comme dans le fichier d'origine.
 
 ---
@@ -6048,3 +6048,12 @@ Mesure : ouvrir un assemblage rejouait chaque pièce distincte dans le noyau (0,
 - **Purge** : index `asnap:index`, 300 entrées gardées, les plus anciennes partent.
 - **Mesures** (navigateur, noyau exact) : banc de 40 pièces réelles (Axe, Crochet, Support Pédale) : 35 s → **61 ms** à la deuxième ouverture ; une cote, une couleur ou une visibilité changée dans 3 pièces → seules ces 3 sont rejouées. Instantanés relus identiques à un rejeu (géométrie, couleurs, arêtes, faces de référence, empreinte). Test Assemblage, Test Visserie, Goupille : positions et états des liaisons identiques à froid et depuis le cache. Toute nouvelle version rejoue une fois chaque pièce (clé liée à `APP_VER`). Entrer dans une pièce pour la modifier reste un rejeu complet (≈ 1,3 s).
 - **Tests** : `tests/test_composants_cache.cjs` (24 contrôles : clé, écriture différée, exclusions, relecture, composant modifié, renvoi, purge, erreurs) ; `npm run ci`.
+
+## V0.28.1 - Assemblages : images des pièces enregistrées dans le fichier (option), ouverture rapide sur un autre poste
+Demande : « l'image que tu crées ne peut-elle pas être gardée dans le fichier source pour la rouvrir n'importe où facilement ? » — « Oui, en option ».
+- **Option** (`src/47-assemblage-interface.js`) : case « Enregistrer les images des pièces dans le fichier » à la racine de l'assemblage (mode Placer), enregistrée avec l'assemblage (`asm.img`, `src/46-assemblage-modele.js`). Décochée par défaut.
+- **Enregistrement** (`bundleSerialise`, `asmCacheExport`) : les entrées du cache des composants du fichier (renvois compris) partent dans le paquet `.miniFusion` (`asnap`) : tableaux typés réunis en un bloc binaire, données en JSON, les deux compressés gzip (natif du navigateur) puis en base64 ; sans gzip, bloc non compressé.
+- **Ouverture** (`bundleStoreCaches`, `asmCacheImport`) : les images sont remises dans le cache du navigateur AVANT la lecture du document, puis servies par les mêmes clés qu'en V0.28.0 : une image qui ne correspond plus au contenu est ignorée. Contenu venu d'ailleurs vérifié (format, clés, bornes de chaque tableau dans le bloc) ; une entrée douteuse est écartée. Vaut aussi pour une source liée ou insérée qui porte ses images.
+- **Clé** (`asmCacheKey`) : `CACHE_VER` au lieu d'`APP_VER`, comme l'image de la pièce active et les trajectoires FAO — sinon une image enregistrée ne servait plus dès la livraison suivante. Conséquence : une correction du rejeu d'une fonction doit changer `CACHE_VER`.
+- **Mesures** (navigateur, noyau exact, banc de 40 pièces réelles, 4 pièces différentes) : images 338 Ko compressées (1,4 Mo brut), ≈ 85 Ko par pièce distincte ; fichier 2 095 → 2 433 Ko ; enregistrement 25 → 64 ms. Cache du navigateur vidé (autre poste) puis ouverture du fichier : **89 ms**, 30 pièces servies par le fichier, les 10 pièces avec import rejouées ; images identiques à un rejeu (géométrie, couleurs, arêtes, faces de référence, empreinte).
+- **Tests** : `tests/test_composants_cache.cjs` 24 à 33 (option enregistrée et relue, export gzip, aller-retour des tableaux typés, renvoi et cible ensemble, indexation, composant relu depuis le fichier, fichier abîmé ou d'un autre format ignoré) ; `npm run ci`.

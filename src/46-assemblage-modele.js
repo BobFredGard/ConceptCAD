@@ -483,7 +483,8 @@ function asmSerial(){
   try{asmNamesSync();}catch(e){} // noms des composants = noms de leurs documents (47)
   const comps=asm.comps.map(c=>({id:c.id,kind:'comp',name:c.name,doc:c.doc===doc?null:serialiseObj(c.doc,false),
     occ:c.occ.map(asmOccSerial),link:asmLinkSerial(c.link,c),of:c.of||undefined}));
-  return {v:2,name:asm.name,root:asm.root,active:asm.active,path:asm.path.slice(),mode:asmMode,comps};
+  return {v:2,name:asm.name,root:asm.root,active:asm.active,path:asm.path.slice(),mode:asmMode,comps,
+    img:asm.img?true:undefined}; // images des pièces embarquées dans le fichier (47-assemblage-cache)
 }
 function asmLinkSerial(l,c){
   // Lien enregistré sans son état d'exécution (st, msg) ; pend : modifié ici et pas encore écrit
@@ -538,6 +539,7 @@ function asmFromSerial(a){
   asm=null;asmMode='part';asmUndoStack=[];asmRedoStack=[];
   const t=asmTreeFromSerial(a,doc);if(!t)return false;
   asm={name:t.name,root:t.root,comps:t.comps,path:[],active:t.active};
+  if(a.img===true)asm.img=true;
   asm.path=(t.path&&asmPathComp(t.path)===t.active)?t.path:(asmFirstPath(t.active)||[]);
   // la vue d'assemblage demande les instantanés de tous les composants : rétablie après le
   // chargement (asmAfterLoad, 47), on ouvre donc toujours en mode Modéliser

@@ -462,6 +462,14 @@ function asmRenderProps(p){
     const l=[['➕ Nouveau composant',asmCmdNewComp,'primary'],['📥 Insérer…',asmCmdInsert],['🔩 Normalisés…',()=>stdDlg()],['✏️ Modéliser « '+c.name+' »',()=>asmExit()]];
     if(asm.path.length)l.push(['↑ Remonter',asmUp]);
     Btns(l);
+    if(!asm.path.length){
+      // V0.28.1 : images des pièces dans le fichier (47-assemblage-cache)
+      const lab=mk('label','pnl-note'),cb=document.createElement('input');
+      cb.type='checkbox';cb.checked=!!asm.img;
+      cb.onchange=()=>{if(cb.checked)asm.img=true;else delete asm.img;dirty=true;try{autosave();}catch(e){}};
+      lab.appendChild(cb);lab.appendChild(document.createTextNode(' Enregistrer les images des pièces dans le fichier (ouverture rapide sur un autre poste, fichier plus lourd)'));
+      p.appendChild(lab);
+    }
     asmJointsProps(p); // piloter les liaisons (48)
     return;
   }
