@@ -1,43 +1,67 @@
 # MiniFusion
 
-**CAO paramétrique, assemblage, FAO, mise en plan et rendu, dans un seul fichier HTML.** On ouvre la page et on travaille : ni installation, ni compte, ni connexion.
+**CAO paramétrique, assemblage, FAO, mise en plan et rendu, dans un seul fichier HTML.** On ouvre la page et on travaille, sur PC comme sur téléphone : ni installation, ni compte, ni connexion.
 
 [![▶ Lancer MiniFusion dans le navigateur](https://img.shields.io/badge/%E2%96%B6%20Lancer%20MiniFusion-noyau%20OCCT%20inclus-2ea44f?style=for-the-badge)](https://bobfredgard.github.io/MiniFusion/)
 
 ![Support de pédale déportée R1200RT en alu anodisé rouge sur béton, lancer de rayons de l'atelier RENDU (2048 échantillons)](docs/captures/rendu-pedale.jpg)
 
-Le noyau géométrique exact est **OpenCascade compilé en WebAssembly**. S'il n'est pas disponible, l'application bascule seule sur un moteur maillage (CSG). Version actuelle : **V0.26.4** (voir le [journal des modifications](CHANGELOG.md)).
+Le noyau géométrique exact est **OpenCascade compilé en WebAssembly**. S'il n'est pas disponible, l'application bascule seule sur un moteur maillage (CSG). Version actuelle : **V0.27.2** (voir le [journal des modifications](CHANGELOG.md)).
 
 | | |
 |---|---|
 | ![Espace CAO](docs/captures/cao-percages.png) | ![Espace FAO](docs/captures/fao-parcours.png) |
-| **CAO** : esquisses contraintes, solides à historique, congés exacts, perçages taraudés | **FAO** : posages, 2,5D, 3D, 3+2, perçage, simulation, G-code Siemens et Fagor |
+| **CAO** : esquisses contraintes, splines, solides à historique, congés exacts, perçages taraudés | **FAO** : posages, 2,5D, 3D, 3+2, perçage, simulation, G-code Siemens et Fagor |
 | ![Espace PLAN](docs/captures/plan-percages.png) | ![Atelier RENDU](docs/captures/rendu-atelier.png) |
 | **PLAN** : planches cotées ISO, coupes, cartouche, nomenclature | **RENDU** : images réalistes 1920×1080 ou 4K, moteur rapide ou lancer de rayons |
 
 ## Sommaire
 
-- [Interface](#interface)
+- [Interface](#interface) : espaces, ruban, thèmes et icônes, vue 3D
+- [Téléphone et tablette](#téléphone-et-tablette) : vue plein écran, panneau translucide, gestes
 - [CAO](#cao) : esquisse, construction, fonctions 3D, corps et fichiers
-- [Assemblage](#assemblage) : composants, liaisons, références entre composants
+- [Assemblage](#assemblage) : composants, normalisés, liaisons, références entre composants
 - [FAO](#fao) : posage, opérations, perçage, simulation, 3+2, G-code
 - [PLAN](#plan) : planches, vues, coupes, cotation, sorties
 - [RENDU](#rendu) : deux moteurs, matériaux et patine, HDRI, finition, calques
-- [Souris et clavier](#souris-et-clavier)
+- [Souris, clavier et doigts](#souris-clavier-et-doigts)
 - [Démarrage](#démarrage) · [Scripts et MCP](#scripts-et-pilotage-par-claude-mcp) · [Développement](#développement) · [Licences](#licences)
 
 ## Interface
 
 Quatre espaces dans le bandeau supérieur : **CAO**, **FAO**, **PLAN** et **RENDU**.
 - **Bandeau** : barre rapide (annuler, rétablir, fichiers), **recherche de commandes** (`Ctrl+K`), état du noyau, **Régénérer**, nom du document (● = non enregistré) et version.
-- **Ruban à icônes** propre à chaque espace.
+- **Ruban à icônes** propre à chaque espace ; en esquisse, le ruban laisse la place au bandeau d'esquisse.
 - **Navigateur Modèle / Usinage / Plan** à gauche, avec des **onglets de posages** ; **propriétés** à droite ; **timeline** en bas de la vue 3D.
+- **Sélection synchronisée** : cliquer une face sélectionne la fonction qui l'a créée, dans l'arbre et dans la timeline (amenées à l'écran), et la fonction s'allume en rouge dans la vue. `Ctrl+clic` ne fait que mesurer, sans rien sélectionner.
 - **Fenêtres de fonctions** à boutons-icônes, aperçu immédiat, poignées dans la vue, **Annuler / OK**.
 - **Annuler / Rétablir partout** (`Ctrl+Z` / `Ctrl+Y`) : CAO, esquisse, assemblage, FAO, PLAN et RENDU.
-- **Cinq thèmes** : Nuit, Graphite, Atelier, Clair, Contraste élevé.
-- **Vue 3D** : cube de vue, orbite contrainte ou libre, centre de rotation sur la sélection, sol miroir, transparence « verre ».
+- **Apparence** (menu 🎨) :
+  - **cinq thèmes** : Nuit, Graphite, Atelier, Clair, Contraste élevé ;
+  - **quatre styles d'icônes** : au trait, couleurs par famille (une teinte par groupe du ruban), dessinées en volume, délire.
+- **Vue 3D** : cube de vue, orbite contrainte ou libre, centre de rotation sur le point visé, zoom vers le curseur, sol miroir, transparence « verre », **effet de perspective** réglable (de presque orthographique à fuyantes marquées, la pièce garde sa taille).
 - **Coupe X / Y / Z** (⚙ › Coupe) : plan de coupe glissé ou saisi au mm, côté inversable, faces coupées remplies.
+- **Rendu direct** (bouton de la barre de vue) : la vue CAO ou FAO prend les matériaux, reliefs et patine de l'atelier RENDU, son ambiance et son fond, en temps réel.
 - **Écran de démarrage** animé « ◧ MiniFusion » pendant le chargement (10 s ; un clic ou `Échap` le passe).
+
+## Téléphone et tablette
+
+Sur un appareil tactile à petit écran, MiniFusion passe tout seul en **interface téléphone**. Même application, mêmes fichiers `.miniFusion` que sur PC.
+
+- **Vue 3D plein écran**, en portrait ou en paysage.
+- **Barre du haut** : menu ☰, nom du fichier (• = modifié), Annuler, Rétablir.
+- **Barre d'outils** : **Créer**, **Arbre**, **Paramètres**, **Cadrer**, **Vues** (en bas en portrait, à gauche en paysage).
+- **Menu ☰** : Nouveau, Ouvrir, Enregistrer, **Partager / envoyer** (quand le téléphone le permet), export STL et STEP, thème, retour à l'interface bureau. Le brouillon est gardé dans le navigateur à chaque modification.
+- **Panneau translucide** pour l'arbre, les paramètres et l'esquisse :
+  - trois hauteurs (poignée à glisser ou à toucher) ; en paysage, il occupe le côté droit ;
+  - l'**œil**, maintenu appuyé, montre la pièce à travers le panneau ;
+  - après chaque valeur modifiée, le panneau s'efface un instant pour montrer le résultat.
+- **Créer** : grille des commandes CAO (Esquisse, Extrusion, Révolution, Balayage, Perçage, Plan, Axe, Point, Repère, Congé, Chanfrein, Face, Dépouille, Coque, Scinder, Répétition, Combiner, Déplacer, Paramètres). La fiche s'ouvre dans le panneau, **réduit** quand la commande attend des taps dans la vue (arêtes d'un congé, faces…), à moitié sinon. Les arêtes se touchent avec une tolérance élargie.
+- **Esquisse** : bandeau d'outils défilant à la place de la barre d'outils, **Abandonner** et **✔ Terminer** en haut, onglet « Esquisse » du panneau pour la santé, les contraintes et les cotes. Un outil de tracé **vise en glissant** (aperçu et accrochages suivent le doigt) et pose le point **au lever** ; un tap pose sur place.
+- **Activation** : automatique. `?mobile=1` force l'interface téléphone, `?mobile=0` l'interface bureau, `?mobile=auto` revient à la détection ; le choix est mémorisé. Sur un téléphone en interface bureau, un bouton « Interface téléphone » permet d'y revenir.
+- Le premier lancement télécharge le noyau OCCT (≈ 65 Mo, puis en cache) : à faire de préférence en Wi-Fi.
+
+Les gestes sont détaillés dans [Souris, clavier et doigts](#souris-clavier-et-doigts).
 
 ## CAO
 
@@ -46,48 +70,62 @@ Quatre espaces dans le bandeau supérieur : **CAO**, **FAO**, **PLAN** et **REND
 ### Esquisse
 
 - **Tracé guidé** : accroche aux points, milieux et centres ; inférences H / V, ⟂, tangente, **parallèle** et **prolongement** d'une ligne (guide tracé, contrainte posée au clic) ; un point glissé s'accroche aux points, milieux, lignes et cercles et la **contrainte est posée au lâcher** ; longueur et angle tapés pendant le tracé.
-- **Outils** : ligne, rectangle, oblong, cercle, arc, points de construction et de perçage, **projection associative** d'arêtes (aussi celles des autres composants), **intersection** du plan avec des faces ou un corps, congé, chanfrein, décalage 2D, ajustement.
+- **Outils** : ligne, rectangle, oblong, cercle, arc, **spline**, points de construction et de perçage, **projection associative** d'arêtes (aussi celles des autres composants), **intersection** du plan avec des faces ou un corps, congé, chanfrein, décalage 2D, ajustement.
+- **Arêtes du plan sans projeter** : les arêtes du solide situées dans le plan de l'esquisse, leurs sommets, milieux, centres et croisements, et les points où une arête traverse le plan, s'allument au survol et servent directement au tracé et à la cote (projetées d'office, associatives).
+- **Splines** par points de passage ou par points de contrôle, ouvertes ou fermées : poignées de tangence cotables, **tangence** et **courbure continue (G2)** avec une ligne, un arc ou une autre spline, **peigne de courbure** ; ajustement, jonction en T, décalage, intersection et projection en splines.
 - **13 contraintes** (horizontal, vertical, parallèle, perpendiculaire, colinéaire, égal, symétrie, tangence, coaxial, milieu, fixe, coïncident, construction) et **cotes pilotées** (longueur, Ø, rayon, distance, angle, entraxe).
 - **Cotation souple** : la valeur se tape pendant la pose (Entrée pose), le texte se glisse avec sa ligne de cote, clic de l'outil Cote sur une cote existante pour la modifier, cote de **référence** à la demande (clic droit), nom d'une autre cote inséré d'un clic pendant la saisie (`d1`, `d2`…), unités dans les expressions (`2 cm + 3`, `1 in`), et la barre d'état nomme ce qui détermine déjà une cote redondante.
 - **Solveur** Levenberg-Marquardt au moindre déplacement : une cote impossible est refusée et la barre d'état dit pourquoi ; degrés de liberté réels, esquisse bleue (sous-contrainte) ou blanche (totalement contrainte).
-- **Vue d'esquisse** à plat ou dans la vue 3D courante, pièce en transparence, orbite au clic-molette, touche `N` pour revenir à plat.
-- **Paramètres nommés**, **expressions ƒx** et **configurations** (tables de variantes).
+- **Vue d'esquisse** à plat ou dans la vue 3D courante, pièce en transparence, orbite au clic-molette comme en 3D, touche `N` pour revenir à plat ; la roue ⚙ porte les réglages de l'esquisse (Grille 1 mm, À plat, Effacer tout).
+- **Paramètres nommés**, **expressions ƒx** (aussi dans les commandes, avec `pi`) et **configurations** (tables de variantes).
 
 ### Géométrie de construction
 
-Plans (décalé, à un angle, 3 points, médian, normal), axes, points et **repères**, désignés dans la vue ou dans l'arbre. Ils sont **associatifs** : un plan posé sur une face suit la pièce quand une cote change.
+Plans (décalé, à un angle, 3 points, médian, normal à un axe, **perpendiculaire à une courbe** à une position donnée de sa longueur), axes, points et **repères**, désignés dans la vue ou dans l'arbre. Ils sont **associatifs** : un plan posé sur une face suit la pièce quand une cote change.
 
 ### Fonctions 3D
 
 Historique rejouable, timeline à icônes (vert = ajout, rouge = enlèvement), marqueur de temps glissable, réordonnancement par glisser-déposer. Une fonction ne s'appuie que sur ce qui la précède (**règle d'antériorité**).
-- **Extrusion** et **révolution** dynamiques : distance, jusqu'à une face, à travers tout, symétrique, dépouille, nouveau corps.
+- **Extrusion** et **révolution** dynamiques : distance, jusqu'à une face, à travers tout, symétrique, dépouille, nouveau corps ; flèche à glisser dans la vue.
 - **Balayage** d'un profil le long d'une ligne, d'un arc ou d'une **spline**.
-- **Perçage** simple, lamé, fraisé, **alésé** (fond plat avec ou sans perçage, ou débouchant ; classe ISO 286 : H7…) ou **taraudé**, débouchant ou borgne. Le filet ISO 68-1 est **réellement creusé dans le corps**, après l'avant-trou ; il est calculé en tâche de fond.
+- **Perçage** simple, lamé, fraisé, **alésé** (fond plat avec ou sans perçage, ou débouchant ; classe ISO 286 : H7… ; jeu de l'avant-trou en jeu ou en Ø) ou **taraudé**, débouchant ou borgne.
+  - Filetages : **métrique ISO**, **ANSI UNC / UNF**, **gaz G, Rc et NPT**.
+  - Lamages et fraisures d'après la vis : **CHC** et **FHC** ISO, ou ASME en pouces (FHC à 82°).
+  - Le filet ISO ou UN est **réellement creusé dans le corps**, après l'avant-trou, en tâche de fond ; le gaz reste en filet cosmétique.
 - **Congés et chanfreins exacts** sur la chaîne tangente ou l'arête seule (un clic ajoute ou retire une arête), avec reprise NURBS quand le noyau refuse la chaîne. Chanfrein à **distance égale, deux distances ou distance + angle**, première face inversable.
-- **Répétition** linéaire, en grille, circulaire, symétrie.
-- **Modifier** : déplacer ou supprimer une face, **dépouille** (angle signé, sens inversable), coque, **scinder** par un plan, **déplacer un corps** (translation, rotation, point à point), **combiner** (union, soustraction, intersection).
+- **Répétition** linéaire, en grille, circulaire, symétrie, avec aperçu rouge des copies ; les copies **s'unissent** à leur corps ou deviennent chacune un **nouveau corps**. Une répétition se répète.
+- **Modifier** : déplacer une face, **supprimer des faces** (plusieurs à la fois, calcul en tâche de fond), **dépouille** (angle signé, sens inversable), coque, **scinder** par un plan, **déplacer un corps** (translation, rotation, point à point), **combiner** (union, soustraction, intersection). Ces outils marchent aussi sur un **STEP importé** seul.
 
 ### Corps, mesures, fichiers
 
-- **Corps** : matériau (bibliothèque commune avec le RENDU, masse estimée), couleur, transparence, isoler.
-- **Mesures** : face à face, Ø, entraxe, entre deux arêtes.
-- **Fichiers** : import STEP / STL, export STEP / STL / OBJ, projet **`.miniFusion`** (pièce, FAO, planches, rendu), sauvegarde locale automatique.
+- **Corps** : matériau (bibliothèque commune avec le RENDU, masse estimée), couleur, transparence, isoler ; une découpe peut traverser plusieurs corps.
+- **Mesures** (`Ctrl+clic`) : face à face, Ø, entraxe, entre deux arêtes.
+- **Fichiers** : import STEP / STL, export STL / OBJ, projet **`.miniFusion`** (pièce, FAO, planches, rendu), récents et **dossier de projets**, sauvegarde locale automatique.
+- **Export STEP** : **AP214** (par défaut) ou **AP203**, option « **sans courbes 2D** » pour les vieux logiciels ; aussi pour un corps seul (clic droit).
 - **STEP multi-corps** : arborescence des sous-ensembles et pièces avec leurs noms, pièces **masquables** (👁), **une couleur par pièce ou par occurrence** ; les gros fichiers (44 Mo, 73 000 faces) s'ouvrent et se manipulent sans à-coups.
-- **Enregistrement sûr** : contenu vérifié avant écriture, version précédente gardée (`nom.miniFusion.bak` et copie dans le navigateur).
+- **Enregistrement sûr** : contenu vérifié avant écriture, version précédente gardée (`nom.miniFusion.bak` et copie dans le navigateur), menu **Copie de secours**.
 
 ## Assemblage
 
 Comme dans Fusion 360, **tout est composant** : le fichier est le composant racine, ses enfants sont des pièces complètes, à n'importe quelle profondeur.
-- **Arbre unifié** : pièce et composants dans une seule arborescence, avec recherche et glisser-déposer ; sélection multiple (Ctrl+clic, Shift+clic) aussi en mode Assembler.
+- **Arbre unifié** : pièce et composants dans une seule arborescence, avec recherche et glisser-déposer ; sélection multiple (`Ctrl+clic`, `Shift+clic` = plage) aussi en mode Assembler.
 - **Modéliser** le composant actif (le reste de l'assemblage affiché autour) ou **Assembler** ses enfants (manipulateur, pas de 1 mm et 5°). Dans les deux modes, la vue tourne autour du composant visé.
 - **FAO** permise seulement quand une **pièce** est active (pas en mode Assembler).
 - **Composant**, **Occurrence**, **Insérer** un autre fichier, **Depuis corps** pour convertir une pièce multicorps sans rien remodéliser.
-- **Normalisés** : vis ISO 4762 / ISO 10642 (pas gros par défaut, pas fins au choix), vis ANSI SHCS / FHCS 82° (UNC ou UNF), bouchons six pans creux DIN 906, DIN 908 et NPTF, goupilles ISO 2338, 8734, 2339, 8752 et ANSI (dowel, spring), clavettes ISO 773 formes A, B, C ; de vraies fonctions (révolution, six pans creux), avec aperçu coté. **Sur des trous** : un clic sur un trou pose la pièce dans tous les trous identiques de la pièce (simples, lamés, fraisés), en liaison rigide qui suit les trous (vis FHC 0,2 mm sous la surface, goupilles par leur centre : milieu du trou, arête haute ou basse, au plus court du clic). **Dans une rainure** : une clavette se pose au fond d’une rainure (fermée ou débouchante), par le centre de face ou contre un bout rond, et toutes les rainures identiques sont équipées. **Modifier…** (propriétés ou clic droit) rouvre la fenêtre sur la pièce : toutes ses occurrences, ou celle-ci seulement.
+- **Normalisés** : vraies fonctions (révolution, six pans creux), avec aperçu coté.
+  - **Vis** ISO 4762 / ISO 10642 (pas gros par défaut, pas fins au choix), ANSI SHCS / FHCS 82° (UNC ou UNF).
+  - **Bouchons** six pans creux DIN 906, DIN 908 et NPTF.
+  - **Goupilles** ISO 2338, 8734, 2339, 8752 et ANSI (dowel, spring).
+  - **Clavettes** ISO 773 formes A, B, C.
+  - **Sur des trous** : un clic sur un trou pose la pièce dans tous les trous identiques (simples, lamés, fraisés), en liaison rigide qui suit les trous (vis FHC 0,2 mm sous la surface, goupilles par leur centre : milieu du trou, arête haute ou basse, au plus court du clic).
+  - **Dans une rainure** : une clavette se pose au fond d'une rainure (fermée ou débouchante), par le centre de face ou contre un bout rond, et toutes les rainures identiques sont équipées.
+  - **Modifier…** (propriétés ou clic droit) rouvre la fenêtre sur la pièce : toutes ses occurrences, ou celle-ci seulement.
 - **Composants liés** à un fichier du dossier de projets : édition sur place, mise à jour, conflits gérés.
 - **Aligner** un repère ou un **point d'accroche** (centre et points cardinaux d'une face, axe d'un cylindre, centre d'un cercle) sur un autre composant, de façon associative.
 - **Liaisons** : rigide, pivot, glissière, pivot glissant, plan, rotule, avec limites, curseurs et animation.
 - **Références entre composants** : faces, arêtes, sommets, plans et axes d'un autre composant servent de références, et suivent ses changements.
 - **Inspecter** : propriétés physiques (volume, masse, centre de gravité) et interférences.
+- **Apparence de rendu** par pièce au clic droit, appliquée d'un coup à toutes les occurrences d'un composant (visserie).
 
 ## FAO
 
@@ -95,25 +133,28 @@ Comme dans Fusion 360, **tout est composant** : le fichier est le composant raci
 
 ### Posage
 
-- Le repère du posage est **le repère d'usinage** : origine sur un des **27 points cardinaux** du brut ou du modèle, directions Z / X sur un axe, une face ou une arête, cases « Inverser ».
+- Le repère du posage est **le repère d'usinage** : origine sur un des **27 points cardinaux** du brut ou du modèle, directions Z / X sur un axe, une face ou une arête, cases « Inverser ». La vue tourne autour du Z du posage.
 - **Brut** : boîte, cylindre ou corps réel du modèle ; marges et surépaisseurs.
 - **Machine** : Siemens 840D (630 / 1520) ou Fagor 8065, origine G54–G59, plans de dégagement et de retrait.
 - **Outils** : fraises cylindriques, boules, toriques, à chanfreiner, forets, forets à pointer et à centrer (DIN 333 A), tarauds.
 
 ### Opérations
 
-- **Surfaçage**, **Contour** (côté auto, passes radiales, attaches), **Chanfrein** sur arêtes cliquées.
+- **Surfaçage**, **Poche**, **Contour** (côté auto, passes radiales, attaches ; descente en **paliers** ou en **pente** réglable).
+- **Chanfrein** sur arêtes cliquées, **en plan** (Z fixe) ou **en 3D** : la pointe suit le Z de l'arête, l'axe de l'outil reste vertical (3 axes).
 - **Perçage** : les trous sont **reconnus sur le modèle** (Ø, profondeur, débouchant ou borgne, lamage, filet) et choisis par groupe ; pointage, perçage, débourrage, taraudage, **lamage fraisé en hélice** ; **gamme automatique** pointage → perçage → lamage → taraudage, avec les forets pris dans la bibliothèque ou créés.
 - **Ébauche 3D** : niveaux en Z, minipasses, une région finie avant l'autre ; deux stratégies :
   - **Trochoïdal** : spirale avec arcs de dégagement ;
   - **Escargot** : anneaux concentriques autour des îlots, départ par l'extérieur, suivi du brut restant (carte du brut).
 
   Les entrées ne plongent **jamais en pleine matière** : par l'extérieur en arc, en hélice ou en rampe douce (pente ≤ 0,4). Les descentes dans l'air se font en **rapide**, jusqu'au brut restant.
-- **Contour** : descente en **paliers** ou en **pente** (pente réglable).
 - **Finition** (passes parallèles ou à crête constante) et **Géodésique** (passes à distance constante depuis les bords des faces).
-- **Faces usinables / intouchables** par opération, **zones** (rectangle, chaîne d'arêtes, esquisse, îlots), hauteurs par références.
+- **Zones** : rectangle, chaîne d'arêtes, esquisse, îlots. La zone choisie est **projetée en orange** tant que l'opération est sélectionnée : sur le plan de fond pour les opérations 2D, sur le plan de la sélection quand elle est plane pour l'ébauche 3D, la finition et la géodésique, sur le plan des deux premières arêtes pour le chanfrein.
+- **Onglet Hauteurs** unique dans chaque fiche : Dégagement, Retrait, puis Haut et Bas, en valeur saisie ou sur une **référence** (brut, modèle, bridage, **face cliquée**) plus un décalage ; alertes si les hauteurs se croisent.
+- **Faces usinables / intouchables** par opération.
 - **Limites propres à la FAO** (ruban FAO → Limites) : esquisses et extrusions, en **solide** ou en **surface**, qui servent de murs ou de surfaces infranchissables sans toucher au modèle.
 - **Copier / coller** (`Ctrl+C` / `Ctrl+V`) une ou plusieurs opérations, ou un posage complet.
+- **Dans la vue** : un clic sur une face l'allume et la mesure sans éditer de fonction ; un clic dans la vue désélectionne le posage ou l'opération.
 
 ### Simulation, 3+2 et G-code
 
@@ -129,7 +170,7 @@ Comme dans Fusion 360, **tout est composant** : le fichier est le composant raci
 ### Planches
 
 - **Formats** A4 à A0, paysage ou portrait, ou format manuel ; plusieurs planches en onglets.
-- **Cadre** réglable (préréglages Justet, ISO 5457, Classique), **cartouche** éditable avec logo, **nomenclature** et tableau des révisions ; le **cartouche d'entreprise** peut venir d'un modèle externe, gardé hors du dépôt.
+- **Cadre** réglable (préréglages Justet, ISO 5457, Classique), **cartouche** dessiné en esquisse contrainte et éditable avec logo, **nomenclature** et tableau des révisions ; le **cartouche d'entreprise** peut venir d'un modèle externe, gardé hors du dépôt.
 - **Écriture ISO 3098** et paramètres du plan enregistrés par projet (`.mfplan`).
 
 ### Vues
@@ -137,24 +178,26 @@ Comme dans Fusion 360, **tout est composant** : le fichier est le composant raci
 - **Face, projection, ISO, caméra, auxiliaire, coupe et détail**, par corps ou en assemblage (une hachure par pièce, bulles automatiques).
 - **Orientation de la vue principale** : Face, Arrière, Côté gauche, Côté droit, Dessus, Dessous ; les projections suivent.
 - **Arêtes exactes** du noyau (HLR OCCT), y compris pour un STEP importé ; perspective et cavalière ; **rendu réaliste** des vues au choix.
-- **Ligne de coupe** droite ou brisée (ISO 128-44), **hachures** (ISO 128-50), **filetages** (ISO 6410), **axes** (ISO 128-2) ; nom de vue affiché seulement sur les coupes et détails.
+- **Ligne de coupe** droite ou brisée (ISO 128-44), **hachures** (ISO 128-50), **filetages** (ISO 6410), **axes** (ISO 128-2) étirables et cotables ; nom de vue affiché seulement sur les coupes et détails.
 - **Coupe locale** : contour libre plus une arête du plan, modifiable ou supprimable (double-clic sur ses hachures).
+- **Import DXF** : un dessin DXF (lignes, arcs, polylignes, splines, blocs) devient une vue de la planche.
 
 ### Cotation et sorties
 
-- **Cote** unique (longueur, distance, Ø, rayon, angle), **tolérances ISO 286** (toutes les classes, alésages A … ZC et arbres a … zc, IT01 … IT18, ajustements), cotes associatives qui suivent la pièce.
-- **Perçages** cotés depuis la fonction Perçage (« Perçages auto » cote toute la planche ; la tolérance d'un alésé s'y écrit d'office), **ordonnées X / Y**, notes à flèche.
+- **Cote** unique (longueur, distance, Ø, rayon, angle) avec **accrochages** imposés (extrémité, milieu, extrême X / Y, intersection), **cotation en chaîne** depuis une ligne de rappel, cotes d'angle sur les quatre secteurs, texte collé à l'arc et déplaçable.
+- **Tolérances ISO 286** (toutes les classes, alésages A … ZC et arbres a … zc, IT01 … IT18, ajustements) ; les cotes sont associatives et **suivent une modification du 3D**.
+- **Perçages** cotés depuis la fonction Perçage (« Perçages auto » cote toute la planche ; la tolérance d'un alésé s'y écrit d'office), **ordonnées X / Y** (avec cassure), notes à flèche.
 - **Hauteur du texte** des cotes, avec flèches et tolérances proportionnelles ; épaisseur des lignes d'attache et des axes de trous ; **Sauvegarder par défaut** / **Appliquer les défauts**.
 - **Dessin 2D** sur la planche avec contraintes.
 - **Sorties** : SVG, **DXF R12** par calques, **PDF** au format exact, impression (dans une fenêtre dédiée), en couleur ou tout en noir.
 
 ## RENDU
 
-Une image soignée de la pièce ou de l'assemblage, en **1920×1080 ou 4K**, enregistrée en PNG. L'atelier a sa propre scène : la vue CAO n'est jamais touchée.
+Une image soignée de la pièce ou de l'assemblage, en **1920×1080 ou 4K**, enregistrée en PNG. L'atelier a sa propre scène : la vue CAO n'est jamais touchée. Ses réglages servent aussi au **rendu direct** de la vue CAO / FAO.
 - **Deux moteurs**, tous deux sur la carte graphique :
   - **Rapide** : l'image s'affine passe après passe, quelques secondes ;
   - **Lancer de rayons** (three-gpu-pathtracer) : lumière renvoyée, reflets entre pièces, vrai verre ; 128, 512 ou 2048 échantillons pour l'image finale, chargé seulement quand on le choisit.
-- **Matériaux** de la bibliothèque commune (aciers, aluminiums usinés ou anodisés, laiton, titane, plastiques, élastomères, peintures, bois, verres) :
+- **Matériaux** de la bibliothèque commune (aciers, aluminiums usinés ou anodisés, laiton, titane, plastiques, élastomères, peintures, bois, verres), choisis **au clic droit sur chaque pièce** :
   - **couches** : paillettes sous vernis, irisation (titane bleui, peinture nacrée) ;
   - **reliefs procéduraux** : brossé, sablé, moleté, bois ;
   - **patine** par corps : taches de teinte, usure des arêtes vives, salissure des creux, de légère à très usée.
@@ -164,21 +207,34 @@ Une image soignée de la pièce ou de l'assemblage, en **1920×1080 ou 4K**, enr
 - **Finition** : débruitage (lancer de rayons), halo, vignettage, grain, contraste, saturation, température ; préréglages Neutre, Photo, Cinéma.
 - **Calques séparés** au choix : une archive `.zip` avec l'image finale, le masque, la profondeur, les normales, une couleur par corps et l'ombre seule, prêts pour la retouche.
 
-## Souris et clavier
+## Souris, clavier et doigts
+
+**Souris et clavier (PC)**
 
 | | Vue 3D | Esquisse |
 |---|---|---|
-| Clic gauche | sélection | dessin, sélection |
-| Glisser gauche | rotation | dessin, déplacement d'entités, sélection au cadre |
+| Clic gauche | sélection (et la fonction qui a créé la face) | dessin, sélection |
+| `Ctrl+clic` | mesure seule, sans sélection | multi-sélection |
+| Glisser gauche | rotation autour du point visé | dessin, déplacement d'entités, sélection au cadre |
 | Clic-molette glissé | rotation | rotation autour du dessin |
-| Clic droit glissé | déplacement | déplacement |
-| Clic droit court | menu contextuel | menu contextuel / annuler l'action |
-| Molette | zoom | zoom sous le curseur |
-| Clavier | `Ctrl+K` commandes, `Suppr` supprimer, `Ctrl+Z` / `Ctrl+Y` | `N` à plat, `Échap` fin d'outil, `F1`–`F12` contraintes, `L` `C` `R` `B` `P` `T` `D` `F` `O` outils, `H` perçage, `X` construction, `I` intersection |
+| `Ctrl` + molette enfoncée, clic droit glissé | déplacement | déplacement |
+| Clic droit court | menu contextuel (matériau de rendu, masquer, isoler…) | menu contextuel / annuler l'action |
+| Molette | zoom vers le curseur | zoom sous le curseur |
+| Clavier | `Ctrl+K` commandes, `Suppr` supprimer, `Ctrl+Z` / `Ctrl+Y`, `Ctrl+C` / `Ctrl+V` (FAO) | `N` à plat, `Échap` fin d'outil, `F1`–`F12` contraintes, `L` `C` `R` `B` `P` `T` `D` `F` `O` outils, `H` perçage, `X` construction, `I` intersection |
+
+**Doigts (interface téléphone)**
+
+| | Vue 3D | Esquisse |
+|---|---|---|
+| Tap | sélection, et tous les choix dans la vue (arêtes, faces…) | outil de tracé : point posé ; Sélection : sélectionner |
+| Glisser 1 doigt | rotation autour du point touché | outil de tracé : viser, point posé au lever ; Sélection : déplacer ou cadre |
+| 2 doigts | pincer = zoom, glisser = déplacement | pincer = zoom, glisser = déplacement (rien n'est posé) |
+| Double tap | cadrer toute la pièce | coter une entité, éditer une cote |
+| Appui long | menu de la pièce ; dans l'arbre, menu de la ligne | menu de la sélection, ou fin du tracé en cours |
 
 ## Démarrage
 
-**En ligne** : [bobfredgard.github.io/MiniFusion](https://bobfredgard.github.io/MiniFusion/) ouvre la dernière version publiée, noyau OCCT chargé automatiquement (≈ 65 Mo au premier lancement, puis en cache). Le site est republié à chaque tag de version par `.github/workflows/pages.yml`.
+**En ligne** : [bobfredgard.github.io/MiniFusion](https://bobfredgard.github.io/MiniFusion/) ouvre la dernière version publiée, sur PC comme sur téléphone, noyau OCCT chargé automatiquement (≈ 65 Mo au premier lancement, puis en cache). Le site est republié à chaque version par `.github/workflows/pages.yml`.
 
 **En local** :
 
@@ -186,7 +242,7 @@ Une image soignée de la pièce ou de l'assemblage, en **1920×1080 ou 4K**, enr
 Server.bat
 ```
 
-`Server.bat` sert le dossier sur `http://localhost:3000`. N'importe quel serveur statique convient aussi :
+`Server.bat` sert le dossier sur `http://localhost:3000` (et sur le réseau local, pour essayer depuis un téléphone : `http://<adresse du PC>:3000/fusion_mvp.html`). N'importe quel serveur statique convient aussi :
 
 ```bash
 npx serve . -l 3000
@@ -213,10 +269,10 @@ Le dépôt stocke les gros binaires (`occt/*.wasm`, `Exemples/*.miniFusion`, `Ex
 
 | Chemin | Rôle |
 |---|---|
-| `src/*.js` | **Les sources** : 116 fichiers concaténés dans l'ordre numérique (noyau, esquisse, fonctions 3D, assemblage, FAO découpée par domaine, mise en plan, rendu). C'est ici qu'on travaille. |
+| `src/*.js` | **Les sources** : 120 fichiers concaténés dans l'ordre alphabétique (noyau, esquisse, fonctions 3D, assemblage, FAO découpée par domaine, mise en plan, rendu, interface téléphone `99-mobile*.js`). C'est ici qu'on travaille. |
 | `fusion_mvp.html` | **Livrable généré** par `node build.js`. On n'édite jamais son script à la main. |
 | `PostPro/` | Une fiche par machine (`siemens-630.js`, `siemens-1520.js`, `fagor-8065.js`). Nouvelle machine = copier une fiche, la modifier, `npm run build`. |
-| `tests/` | 210 suites Node lancées en parallèle (`node tests/run.cjs`), 81 rapides (`node tests/run-fast.cjs`), non-régression des parcours FAO (`npm run parcours`), tests de référence (`tests/oracle/`, [docs/oracle.md](docs/oracle.md)). |
+| `tests/` | 212 suites Node lancées en parallèle (`npm run ci:full`), 81 rapides (`npm run ci`), non-régression des parcours FAO (`npm run parcours`), tests de référence (`tests/oracle/`, [docs/oracle.md](docs/oracle.md)). |
 | `tests/browser/` | Playwright dans un vrai Chromium : parcours critiques et Rendu (`npm run test:browser`, seul projet lancé par la CI GitHub, déclenchée à la main) et carte graphique réelle (`npm run test:gpu`, en local). |
 | `tools/` | Lint du script concaténé (`npm run lint`), serveur MCP, **captures du README** (`npm run captures`). |
 | `occt/`, `threejs/` | Noyau OpenCascade WebAssembly, rendu three.js. |
@@ -225,9 +281,9 @@ Le dépôt stocke les gros binaires (`occt/*.wasm`, `Exemples/*.miniFusion`, `Ex
 Cycle de livraison :
 1. modifier `src/` ;
 2. `node build.js` ;
-3. `npm run ci` (build à jour, syntaxe, tests rapides, lint), qui doit être vert ; la suite complète et les tests navigateur quand c'est utile ;
+3. `npm run ci` (build à jour, syntaxe, tests rapides, lint) pendant le travail, `npm run ci:full` (suite complète) avant de livrer ; tous deux doivent être verts ;
 4. incrémenter `APP_VER` (`src/00-entete-et-outils.js`) et `version` (`package.json`), ajouter une entrée au CHANGELOG ;
-5. commit, push et tag annoté `V0.x.y`.
+5. commit, push et tag annoté `V0.x.y`, qui republie le site en ligne.
 
 **Un seul numéro de version** : `APP_VER` = `package.json` = tag Git.
 
