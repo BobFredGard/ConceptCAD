@@ -34,6 +34,7 @@ function wirePick(){
    el.addEventListener('pointermove',hoverMove);
    el.addEventListener('pointerleave',()=>clearHover());
    el.addEventListener('pointermove',e=>{
+      if(typeof pgPick!=='undefined'&&pgPick){pgPickHover(e);return;} // répétition suivant un profil : départ (41)
       if(extPickFace||(typeof extUptoAuto==='function'&&extUptoAuto())){renderer.domElement.style.cursor='crosshair';return;}
       if(faoPlanePick){renderer.domElement.style.cursor='crosshair';return;}
       if(faoZPlanePick){renderer.domElement.style.cursor='crosshair';return;}

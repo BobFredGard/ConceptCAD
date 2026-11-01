@@ -328,9 +328,8 @@ function asmPatProps(p){
       Row('Courbe guide',sel([['','— choisir —']].concat(G.map(k=>[k.id,k.name||k.id])),sk?sk.id:'',v=>asmPatSet(q=>{const k=(owner.doc.sketches||[]).find(s=>s.id===v);q.path=k?pgDefaultPath(k):{sk:null};})));
       if(sk){
         const ch=pgStartChoices(sk),cur=ch.findIndex(o=>pgSameStart(o.v,pat.path));
-        const w=mk('span');w.style.cssText='display:flex;gap:4px;align-items:center;flex:none';
-        w.appendChild(sel(ch.map((o,i)=>[String(i),o.label]).concat(cur<0?[['-1','(départ actuel)']]:[]),String(cur),v=>asmPatSet(q=>{const o=ch[+v];if(o)q.path=Object.assign({sk:sk.id},o.v);})));
-        w.appendChild(repPathPickBtn(owner.doc,fn=>asmPatSet(fn),sk.id));Row('Départ',w);
+        Row('Départ',sel(ch.map((o,i)=>[String(i),o.label]).concat(cur<0?[['-1','(départ actuel)']]:[]),String(cur),v=>asmPatSet(q=>{const o=ch[+v];if(o)q.path=Object.assign({sk:sk.id},o.v);})));
+        Row('',repPathPickBtn(owner.doc,fn=>asmPatSet(fn),sk.id));
       }else Row('Départ',repPathPickBtn(owner.doc,fn=>asmPatSet(fn),null));
     }
     Row('Quantité',num(pat.copies+1,v=>asmPatSet(q=>{q.copies=cnt(v);}),true));

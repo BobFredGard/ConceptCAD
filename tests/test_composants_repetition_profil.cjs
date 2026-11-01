@@ -78,6 +78,10 @@ const vm=require('vm');
     att(pgPickStart(doc,p=>{got=p;})&&pgPick&&pgPick.cands.length===C.length,'souris : mode de choix actif');
     pgPick.onPick(Object.assign({sk:hit.sk.id},hit.v));pgPickStop();
     att(got&&got.sk==='skG'&&got.pt==='c'&&!pgPick,'souris : départ rendu {sk, pt}, mode refermé — '+JSON.stringify(got));
+    // centre du cercle d'un perçage posé sur la courbe : proposé (sans outil Point)
+    const SP={id:'skP',points:{a:{x:0,y:0},b:{x:80,y:0},c:{x:20,y:0},h:{x:20,y:0.3}},entities:[{id:'q1',t:'line',p1:'a',p2:'b',construction:true},{id:'cc',t:'circle',pc:'c',r:2}]};
+    const lb=pgStartChoices(SP).map(o=>JSON.stringify(o.v)+' '+o.label);
+    att(lb.some(l=>l.indexOf('{"pt":"c"} Point (20 ; 0)')===0),'centre du cercle du perçage sur la courbe : proposé — '+lb.join(' | '));
     // ── guide supprimé : instances laissées en place, message ──
     doc.sketches=doc.sketches.filter(s=>s.id!=='skG');asmResolve();
     att(inst(L1.id).length===7&&L1.st==='warn'&&/esquisse guide introuvable/.test(L1.msg),'guide supprimé : instances gardées, ⚠ « '+L1.msg+' »');

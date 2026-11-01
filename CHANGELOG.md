@@ -8,7 +8,7 @@ sont sorties le 2026-09-30j.
 Code dans `src/` · livrable `fusion_mvp.html` (généré par `build.js`) · architecture et
 garde-fous en tête de `src/00-entete-et-outils.js`.
 
-**505 versions**, de `2026-09-28b` à `V0.30.1` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
+**506 versions**, de `2026-09-28b` à `V0.30.2` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
 comme dans le fichier d'origine.
 
 ---
@@ -6090,3 +6090,11 @@ Demandes : « pas la peine de répéter toute l'esquisse x fois… juste la fonc
 - **Mesures** (noyau exact, plaque + perçages Ø2 sur un cercle) : 24 copies 1 462 → **302 ms** ; 60 copies 6 163 → **737 ms** (reste : maillage d'affichage de la pièce finale).
 - **Départ à la souris** (`src/41-profil-choix-point.js`) : 🎯 à côté de « Départ » (pièce et assemblage) : courbes guides des esquisses affichées tracées en orange avec leurs points de départ possibles (points d'esquisse, extrémités, sommets, milieux de lignes) ; un clic à ≤ 14 px d'un point le prend — esquisse guide comprise si aucune n'était choisie. Échap ou 🎯 : abandon.
 - **Tests** : `tests/test_repeat_profil.cjs` 16 à 18 (guide dans l'esquisse du perçage : copies réduites au cercle, masquées, volume exact) ; `tests/test_composants_repetition_profil.cjs` (points proposés, point le plus proche du clic, mode de choix) ; `npm run ci:full`.
+
+## V0.30.2 - Répétition suivant un profil : le départ à la souris marche aussi dans l’Assembler
+Retour : « pas réussi à sélectionner à la souris » ; « la fonction répétition a un double emploi, il faut traiter CAO et Assembler ».
+- **Assembler** : les courbes guides orange et leurs points étaient ajoutés à la scène de la pièce, invisible en mode Placer (la vue rend la scène d’assemblage) → tracés dans `asmRenderScene()`. Le manipulateur de déplacement (`asmGizmoDown`, `src/48-assemblage-placement.js`) captait le clic : or la pièce source est justement posée sur le départ → il se retire pendant le choix du départ.
+- **Points proposés** (`pgStartChoices`, `src/39-profil-guide.js`) : tout point d’une entité posé sur la courbe (ex. centre du cercle d’un perçage) est proposé, sans avoir à ajouter un point d’esquisse.
+- **Bouton** « 🎯 Choisir dans la vue » / « ✕ Annuler le choix » sur sa propre ligne sous « Départ » (CAO et Assembler) ; survol : le point visé grossit (blanc), son nom s’affiche, curseur main.
+- **Vérifié au vrai clic** dans les deux modes : CAO (sommet d’un carré), Assembler (cercle R40, départ (−40 ; 0) pris sous le manipulateur, 6 goupilles réparties).
+- **Tests** : `tests/test_composants_repetition_profil.cjs` (centre du cercle du perçage proposé) ; `npm run ci:full`.

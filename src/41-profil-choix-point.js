@@ -30,7 +30,7 @@ function pgPickDraw(){
   // Courbes guides + points de départ possibles, par-dessus la pièce
   if(!pgPick||typeof THREE==='undefined'||typeof scene==='undefined')return;
   const g=new THREE.Group();g.name='pgPick';g.renderOrder=999;
-  const lm=new THREE.LineBasicMaterial({color:PG_PICK_COL,depthTest:false,transparent:true,opacity:.9});
+  const lm=new THREE.LineBasicMaterial({color:PG_PICK_COL,depthTest:false,transparent:true,opacity:1});
   pgPickSketches(pgPick.D,pgPick.cur).forEach(sk=>{
     pgChains(sk).forEach(ch=>{
       const n=Math.max(16,Math.min(400,Math.ceil(ch.L/1.5)));
@@ -41,26 +41,48 @@ function pgPickDraw(){
   const P=[];pgPick.cands.forEach(c=>P.push(c.w[0],c.w[1],c.w[2]));
   if(P.length){
     const geo=new THREE.BufferGeometry();geo.setAttribute('position',new THREE.Float32BufferAttribute(P,3));
-    const pm=new THREE.PointsMaterial({color:PG_PICK_COL,size:11,sizeAttenuation:false,depthTest:false,transparent:true});
+    const pm=new THREE.PointsMaterial({color:PG_PICK_COL,size:14,sizeAttenuation:false,depthTest:false,transparent:true});
     const pts=new THREE.Points(geo,pm);pts.renderOrder=1000;g.add(pts);
   }
-  scene.add(g);pgPick.grp=g;
+  // mode Placer : la vue rend la scène d'assemblage, dans le repère du composant actif (porteur)
+  const S=typeof asmRenderScene==='function'?asmRenderScene():scene;
+  S.add(g);pgPick.grp=g;
+}
+function pgPickHover(e){
+  // Survol : le point visé grossit, son nom s'affiche ; curseur main
+  if(!pgPick||!pgPick.grp)return;
+  const c=pgPickUnder(e);
+  if(c===pgPick.hov)return;
+  pgPick.hov=c;
+  const g=pgPick.grp,old=g.getObjectByName('pgHov');
+  if(old){g.remove(old);try{old.geometry.dispose();old.material.dispose();}catch(err){}}
+  try{renderer.domElement.style.cursor=c?'pointer':'crosshair';}catch(err){}
+  if(!c){try{faceEl.textContent='Départ : cliquez un point orange de la courbe guide — Échap pour annuler.';}catch(err){}return;}
+  const geo=new THREE.BufferGeometry();geo.setAttribute('position',new THREE.Float32BufferAttribute(c.w,3));
+  const m=new THREE.Points(geo,new THREE.PointsMaterial({color:0xffffff,size:17,sizeAttenuation:false,depthTest:false,transparent:true}));
+  m.name='pgHov';m.renderOrder=1001;g.add(m);
+  try{faceEl.textContent='Départ : '+c.label+' · '+(c.sk.name||c.sk.id)+' — clic pour le prendre';}catch(err){}
+}
+function pgPickUnder(e){
+  const r=renderer.domElement.getBoundingClientRect(),v=new THREE.Vector3();
+  return pgPickNear(pgPick.cands,e.clientX-r.left,e.clientY-r.top,r.width,r.height,w=>{v.set(w[0],w[1],w[2]).project(camera);return [v.x,v.y,v.z];});
 }
 function pgPickClear(){
   const g=pgPick&&pgPick.grp;if(!g)return;
-  try{g.traverse(o=>{if(o.geometry)o.geometry.dispose();if(o.material)o.material.dispose();});scene.remove(g);}catch(e){}
+  try{g.traverse(o=>{if(o.geometry)o.geometry.dispose();if(o.material)o.material.dispose();});if(g.parent)g.parent.remove(g);}catch(e){}
+  try{renderer.domElement.style.cursor='';}catch(e){}
   pgPick.grp=null;
 }
-function pgPickStart(D,onPick,cur){
+function pgPickStart(D,onPick,cur,onEnd){
   pgPickStop();
   const cands=pgPickCands(D,cur);
   if(!cands.length){try{faceEl.textContent='Départ : aucune courbe guide avec un point proposable (dessinez la courbe, avec un point dessus, dans une esquisse).';}catch(e){}return false;}
-  pgPick={D,onPick,grp:null,cands,cur:cur||null};
+  pgPick={D,onPick,grp:null,cands,cur:cur||null,onEnd:onEnd||null};
   pgPickDraw();
   try{faceEl.textContent='Départ : cliquez un point orange de la courbe guide (point d’esquisse, extrémité, sommet, milieu de ligne) — Échap pour annuler.';}catch(e){}
   return true;
 }
-function pgPickStop(){pgPickClear();pgPick=null;}
+function pgPickStop(){const f=pgPick&&pgPick.onEnd;pgPickClear();pgPick=null;if(f)try{f();}catch(e){}}
 function pgPickNear(cands,mx,my,W,H,proj){
   // Candidat le plus proche du curseur à l'écran (≤ 14 px) ; proj(w) → [x, y, z] en NDC
   let best=null,bd=14;
@@ -73,8 +95,7 @@ function pgPickNear(cands,mx,my,W,H,proj){
 }
 function pgPickAt(e){
   if(!pgPick)return false;
-  const r=renderer.domElement.getBoundingClientRect(),v=new THREE.Vector3();
-  const c=pgPickNear(pgPick.cands,e.clientX-r.left,e.clientY-r.top,r.width,r.height,w=>{v.set(w[0],w[1],w[2]).project(camera);return [v.x,v.y,v.z];});
+  const c=pgPickUnder(e);
   if(!c){try{faceEl.textContent='Départ : aucun point de la courbe guide sous le curseur — cliquez un point orange (Échap pour annuler).';}catch(err){}return true;}
   const fn=pgPick.onPick;pgPickStop();
   try{faceEl.textContent='Départ : '+c.label+' · '+(c.sk.name||c.sk.id);}catch(err){}

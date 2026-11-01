@@ -98,6 +98,7 @@ function asmRotFr(F,O,a,ang){
 function asmGizmoDown(e){
   // Capture (document) : avant OrbitControls — un clic sur le manipulateur ne fait pas tourner la vue
   if(asmMode!=='asm'||!asmGz||e.button!==0||!renderer||e.target!==renderer.domElement)return;
+  if(typeof pgPick!=='undefined'&&pgPick)return; // choix du départ d'une répétition suivant un profil (41) : le clic va au point
   const o=asmOcc(asmSelId),G=asmGizmoSpec(o);if(!G)return;
   const ray=asmRay(e);rayc.ray.copy(ray);
   asmGz.updateMatrixWorld(true);

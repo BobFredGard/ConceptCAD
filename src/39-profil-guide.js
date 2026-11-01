@@ -199,6 +199,12 @@ function pgStartChoices(sk){
   const near=q=>out.some(o=>Math.hypot(o.q.x-q.x,o.q.y-q.y)<1e-6);
   const add=(v,label,q)=>{const k=JSON.stringify(v);if(seen.has(k)||near(q))return;seen.add(k);out.push({v,label,q});};
   (sk.entities||[]).forEach(e=>{if(e&&e.t==='cpoint'&&P[e.p]&&onCurve(P[e.p]))add({pt:e.p},'Point '+xy(P[e.p]),P[e.p]);});
+  // V0.30.1 : tout autre point d'esquisse posé sur la courbe — centre du cercle d'un perçage,
+  // extrémité d'une ligne d'une autre géométrie… (poignées de spline exclues)
+  const hd=new Set();(sk.entities||[]).forEach(e=>{if(e&&e.handle)[e.p,e.p1,e.p2].forEach(x=>{if(x)hd.add(x);});});
+  const ent=new Set();(sk.entities||[]).forEach(e=>{if(e&&!e.handle&&e.t!=='cpoint')[e.p1,e.p2,e.pa,e.pb,e.pc].concat(e.pts||[]).forEach(x=>{if(x)ent.add(x);});});
+  const tour=new Set();C.forEach(ch=>ch.segs.forEach(g=>{const en=pgEnds(g.e);if(en)en.forEach(x=>tour.add(x));}));
+  ent.forEach(id=>{const q=P[id];if(q&&!hd.has(id)&&!tour.has(id)&&onCurve(q))add({pt:id},'Point '+xy(q),q);});
   C.forEach((ch,k)=>{
     const tag=C.length>1?' · courbe '+(k+1):'';
     if(!ch.closed){

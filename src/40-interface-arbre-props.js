@@ -1411,9 +1411,12 @@ function repNewBodyEmpty(rp){
 }
 function repPathPickBtn(D,changed,cur){
   // 🎯 : départ choisi à la souris sur la courbe guide, dans la vue 3D (41-profil-choix-point)
-  const b=document.createElement('button');b.className='mini repPathPick';b.textContent='🎯';b.style.cssText='padding:1px 6px;flex:none';
+  const b=document.createElement('button');b.className='mini repPathPick';b.textContent=pgPick?'✕ Annuler le choix':'🎯 Choisir dans la vue';b.style.cssText='padding:2px 8px;flex:none;white-space:nowrap';
   b.title='Choisir le départ à la souris : cliquez un point orange de la courbe guide dans la vue (Échap pour annuler)';
-  b.onclick=()=>{if(pgPick){pgPickStop();try{faceEl.textContent='Choix du départ annulé.';}catch(e){}return;}pgPickStart(D,path=>changed(q=>{q.path=path;}),cur);};
+  b.onclick=()=>{
+    if(pgPick){pgPickStop();b.textContent='🎯 Choisir dans la vue';try{faceEl.textContent='Choix du départ annulé.';}catch(e){}return;}
+    if(pgPickStart(D,path=>changed(q=>{q.path=path;}),cur,()=>{b.textContent='🎯 Choisir dans la vue';}))b.textContent='✕ Annuler le choix';
+  };
   return b;
 }
 function repPathUI(c,infoId,row,note,changed){
@@ -1430,7 +1433,7 @@ function repPathUI(c,infoId,row,note,changed){
     const ch=pgStartChoices(sk),cur=ch.findIndex(o=>pgSameStart(o.v,c.path));
     const sd=mkSel(ch.map((o,i)=>[String(i),o.label]).concat(cur<0?[['-1','(départ actuel)']]:[]),String(cur),v=>changed(q=>{const o=ch[+v];if(o)q.path=Object.assign({sk:sk.id},o.v);}));
     sd.className='repPathStart';sd.title='Point d’accroche de l’original : point d’esquisse sur la courbe, extrémité (courbe ouverte), sommet ou milieu d’une ligne';
-    const w=document.createElement('span');w.style.cssText='display:flex;gap:4px;align-items:center;flex:none';w.appendChild(sd);w.appendChild(repPathPickBtn(doc,changed,sk.id));row('Départ',w);
+    row('Départ',sd);row('',repPathPickBtn(doc,changed,sk.id));
   }else row('Départ',repPathPickBtn(doc,changed,null)); // un clic sur un point choisit l'esquisse ET le départ
   const sp=mkSel([['fit','Réparti sur la longueur'],['pitch','Pas imposé']],c.pspace==='pitch'?'pitch':'fit',v=>changed(q=>{
     q.pspace=v;
