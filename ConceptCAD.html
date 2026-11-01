@@ -134,6 +134,10 @@ input[type=range]{accent-color:var(--primary);width:100%}
 #mfSplash .word span{display:inline-block;animation:mfsLetter .7s cubic-bezier(.2,.8,.2,1) both}
 #mfSplash .word .f{background:linear-gradient(135deg,#6cb6ff,#0a84ff 50%,#8a88ff);-webkit-background-clip:text;background-clip:text;color:transparent}
 #mfSplash .tag{font-size:.82rem;letter-spacing:.32em;text-transform:uppercase;color:#98989d;margin-top:-10px;animation:mfsUp .8s ease-out 2.1s both}
+#mfSplash .by{display:flex;align-items:center;gap:12px;margin-top:-6px;font-size:.95rem;font-weight:600;letter-spacing:.18em;text-transform:uppercase;animation:mfsUp .9s cubic-bezier(.2,.8,.2,1) 2.6s both}
+#mfSplash .by b{font-weight:600;background:linear-gradient(90deg,#6cb6ff,#f5f5f7 45%,#8a88ff 55%,#6cb6ff);background-size:220% 100%;-webkit-background-clip:text;background-clip:text;color:transparent;animation:mfsSig 4s linear 3s infinite}
+#mfSplash .by::before,#mfSplash .by::after{content:'';width:34px;height:1px;background:linear-gradient(90deg,transparent,rgba(138,136,255,.7));transform-origin:right;animation:mfsCutX .7s cubic-bezier(.6,0,.2,1) 2.9s both}
+#mfSplash .by::after{background:linear-gradient(90deg,rgba(138,136,255,.7),transparent);transform-origin:left}
 #mfSplash .bar{position:absolute;bottom:64px;width:220px;height:3px;border-radius:3px;background:rgba(255,255,255,.08);overflow:hidden;animation:mfsFade .6s 1.4s both}
 #mfSplash .bar i{position:absolute;inset:0;background:linear-gradient(90deg,#0a84ff,#8a88ff);transform-origin:left;animation:mfsProg 9.3s linear both}
 #mfSplash .foot{position:absolute;bottom:30px;display:flex;gap:14px;font-size:.72rem;color:#6e6e73;letter-spacing:.06em;animation:mfsFade .6s 2.4s both}
@@ -149,6 +153,8 @@ input[type=range]{accent-color:var(--primary);width:100%}
 @keyframes mfsLetter{from{opacity:0;transform:translateY(26px) scale(.9)}}
 @keyframes mfsUp{from{opacity:0;transform:translateY(10px)}}
 @keyframes mfsProg{from{transform:scaleX(0)}}
+@keyframes mfsSig{to{background-position:-220% 0}}
+@keyframes mfsCutX{from{transform:scaleX(0)}}
 @media(prefers-reduced-motion:reduce){#mfSplash *{animation-duration:.01s!important;animation-delay:0s!important;animation-iteration-count:1!important}}
 #mfSplash .reset{position:absolute;right:18px;top:50%;transform:translateY(-50%);z-index:2;opacity:0;pointer-events:none;transition:opacity .35s ease;font-size:.78rem;padding:9px 13px;border-radius:9px;border:1px solid rgba(255,159,10,.55);background:rgba(42,29,12,.85);color:#ffe2b0;cursor:pointer;max-width:190px;text-align:left;line-height:1.3}
 #mfSplash .reset.on{opacity:1;pointer-events:auto}
@@ -161,6 +167,7 @@ input[type=range]{accent-color:var(--primary);width:100%}
   <div class="mark"><div class="glow"></div><div class="halo"></div><div class="sq"><div class="half"></div><div class="cut"></div><div class="shine"></div></div></div>
   <div class="word" aria-label="ConceptCAD"></div>
   <div class="tag">CAO · FAO · Mise en plan</div>
+  <div class="by" aria-label="Fred Creation"><b>Fred Creation</b></div>
   <div class="bar"><i></i></div>
   <div class="foot"><span id="mfSplashVer"></span><span>Cliquer ou Échap pour passer</span></div>
   <button class="reset" type="button" title="Vide le brouillon de session (une copie est gardée), le cache d'affichage et le cache du noyau 3D, puis redémarre sur un document vide. Préférences, fichiers récents et copies de sauvegarde conservés. Aussi : adresse terminée par ?vide">🧹 Vider le cache<br>et démarrer à vide</button>
@@ -369,7 +376,7 @@ input[type=range]{accent-color:var(--primary);width:100%}
  * peut changer sans rien casser. CACHE_VER (parcours FAO) reste indépendant.
  */
 
-const APP_VER='V0.33.0';
+const APP_VER='V0.33.1';
 try{console.log('[ConceptCAD] version '+APP_VER);}catch(e){}
 try{var mfSv=document.getElementById('mfSplashVer');if(mfSv)mfSv.textContent=APP_VER;}catch(e){} // écran de démarrage
 
