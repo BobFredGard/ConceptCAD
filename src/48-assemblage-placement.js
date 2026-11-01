@@ -13,7 +13,7 @@ let asmGz=null;       // groupe du manipulateur (dans asmScene)
 let asmDrag=null;     // geste en cours {kind:'move'|'rot', ax, o0, fr0, t0|p0, occ}
 let asmAlign=null;    // commande Aligner en cours {occ, step:'src'|'dst', src, dst, flip, rz, off, saved}
 const ASM_AX=[[1,0,0],[0,1,0],[0,0,1]],ASM_AX_COL=[0xff453a,0x30d158,0x0a84ff];
-function asmMovable(o){return !!o&&!o.fixed&&!o.align;}
+function asmMovable(o){return !!o&&!o.fixed&&!o.align&&!o.pat;} // instance de répétition : placée par sa répétition (48-assemblage-repetitions)
 function asmCmdMoveOcc(path,id){
   // « ✥ Déplacer » (menu de l'arbre) : mode Placer, occurrence sélectionnée, manipulateur —
   // sauf si elle est bloquée (fixée, ou placée par une liaison / un alignement)
@@ -21,7 +21,7 @@ function asmCmdMoveOcc(path,id){
   if(asmMode!=='asm'){if(asmShow(path,'asm',id)===false)return;}
   else{asmSelId=id;asmPivot=null;asmDraw();asmGizmoDraw();renderTree();renderProps();}
   const dof=o.align&&asmDofs(o.align).length;
-  try{faceEl.textContent=o.fixed?'« '+o.name+' » est fixée : libérez-la (📌 Libérer) pour la déplacer.'
+  try{faceEl.textContent=o.pat?'« '+o.name+' » est une instance de répétition : sa position suit la source.':o.fixed?'« '+o.name+' » est fixée : libérez-la (📌 Libérer) pour la déplacer.'
     :o.align?(dof?'« '+o.name+' » est liée : seuls ses degrés de liberté se pilotent (manipulateur ou curseurs).':'« '+o.name+' » est alignée (rigide) : supprimez la liaison pour la déplacer librement.')
     :'Déplacer « '+o.name+' » : flèches = translation, anneaux = rotation (pas 1 mm / 5°, Maj = libre), ou Position X / Y / Z dans le panneau.';}catch(e){}
 }
@@ -162,6 +162,7 @@ function asmPlacementProps(p,o){
   try{asmLookProps(p,o);}catch(e){}
 }
 function asmPlacementCore(p,o){
+  if(o.pat){asmPatOccProps(p,o);return;} // instance de répétition (48-assemblage-repetitions)
   const mk=(tag,cls,txt)=>{const d=document.createElement(tag);if(cls)d.className=cls;if(txt!=null)d.textContent=txt;return d;};
   const Row=(lab,ctl)=>{const r=mk('div','pnl-row');r.appendChild(mk('label',null,lab));if(ctl)r.appendChild(ctl);p.appendChild(r);return r;};
   const num=(v,fn,w)=>{const i=document.createElement('input');i.type='text';i.inputMode='decimal';i.style.width=(w||64)+'px';i.value=String(+(+v).toFixed(3)).replace('.',',');
@@ -244,6 +245,7 @@ function asmFramesOf(occ){return asmFramesUnder(occ.comp,null);} // à poser (re
 function asmAlignStart(id){
   const o=asmOcc(id);if(!o)return;
   if(o.fixed){try{faceEl.textContent='Occurrence fixée : libérez-la pour l’aligner.';}catch(e){}return;}
+  if(o.pat){try{faceEl.textContent='Instance de répétition : sa position suit la source — alignez plutôt la source.';}catch(e){}return;}
   asmAlign={occ:o.id,step:'src',src:undefined,dst:undefined,flip:false,rz:0,off:[0,0,0],face:null,saved:JSON.parse(JSON.stringify({fr:o.fr,align:o.align}))};
   asmAlignRefresh();
   try{faceEl.textContent='Aligner « '+o.name+' » : choisissez le repère du composant à poser — clic sur une triade, ou sur une face pour ses points d’accroche.';}catch(e){}

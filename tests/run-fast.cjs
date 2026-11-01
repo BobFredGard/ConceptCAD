@@ -71,6 +71,7 @@ const SUITES = [
   'test_fenetre_dynamique',
   'test_composants_lies',
   'test_composants_cache',
+  'test_composants_repetitions',
   'test_composants_references',
   'test_composants_aretes_esquisse',
   'test_enregistrement_sur',

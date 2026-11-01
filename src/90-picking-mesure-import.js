@@ -2216,11 +2216,32 @@ function autosave(){
   // reste identique ; l'indicateur « non sauvegardé » reste honnête jusqu'à l'écriture.
   refreshParts();
   if(_autoT)clearTimeout(_autoT);
-  _autoT=setTimeout(()=>{_autoT=null;try{localStorage.setItem('minifusion_auto',serialise(false));dirty=false;}catch(e){}refreshParts();},600);
+  _autoT=setTimeout(()=>{_autoT=null;try{autosaveWrite();dirty=false;}catch(e){}refreshParts();},600);
 }
 function autosaveFlush(){ // fermeture d'onglet : plus aucune perte possible
   if(!dirty)return;
-  try{localStorage.setItem('minifusion_auto',serialise(false));dirty=false;}catch(e){}
+  try{autosaveWrite();dirty=false;}catch(e){}
+}
+/* V0.29.0 : brouillon trop gros pour le stockage local (≈ 5 Mo : grand assemblage, imports) —
+   l'écriture échouait sans bruit et l'ANCIEN brouillon restait, restauré au rechargement. Il
+   part alors dans IndexedDB ('draft' = {at, txt}) ; le stockage local n'en garde que la date
+   (minifusion_auto_idb), et plus aucun brouillon périmé. Relu par draftRestore (99-init). */
+function autosaveWrite(){
+  const txt=serialise(false);
+  try{localStorage.setItem('minifusion_auto',txt);try{localStorage.removeItem('minifusion_auto_idb');}catch(e){}return 'ls';}catch(e){}
+  const at=Date.now();
+  try{localStorage.removeItem('minifusion_auto');}catch(e){}
+  try{localStorage.setItem('minifusion_auto_idb',String(at));}catch(e){}
+  try{idbSet('draft',{at,txt}).catch(()=>{});}catch(e){}
+  return 'idb';
+}
+async function draftRestore(){
+  // → texte du brouillon à restaurer (stockage local, sinon IndexedDB s'il est le plus récent) ou null
+  let auto=null;try{auto=localStorage.getItem('minifusion_auto');}catch(e){}
+  if(auto)return auto;
+  let at=0;try{at=+localStorage.getItem('minifusion_auto_idb')||0;}catch(e){}
+  if(!at||typeof indexedDB==='undefined')return null;
+  try{const d=await idbGet('draft');return d&&typeof d.txt==='string'&&+d.at>=at?d.txt:null;}catch(e){return null;}
 }
 addEventListener('beforeunload',()=>{autosaveFlush();});
 addEventListener('visibilitychange',()=>{if(document.visibilityState==='hidden')autosaveFlush();});

@@ -246,6 +246,10 @@ function asmAlignTarget(ownerId,a){
 function asmResolveIn(owner){
   // Place les occurrences alignées d'UN porteur, dans l'ordre des dépendances entre frères
   let ch=false;
+  // répétitions de composants (48-assemblage-repetitions) : instances placées d'après leurs sources,
+  // avant les alignements (une occurrence peut viser une instance) puis après (une source alignée a bougé)
+  const pg=()=>{try{if(typeof asmPatGen==='function'&&asmPatGen(owner))ch=true;}catch(e){}};
+  pg();
   const todo=owner.occ.filter(o=>o.align);
   owner.occ.forEach(o=>{if(!o.align){o.st='ok';o.msg='';}});
   const done=new Set(owner.occ.filter(o=>!o.align).map(o=>o.id));
@@ -267,6 +271,7 @@ function asmResolveIn(owner){
     }
   }
   todo.forEach(o=>{o.st='warn';o.msg='alignement circulaire : position mémorisée';});
+  pg();
   return ch;
 }
 function asmResolve(){
@@ -323,6 +328,9 @@ function asmDeleteOcc(id,noPush){
   const owner=asmOccOwner(id),o=asmOcc(id);if(!o||!owner)return false;
   if(!noPush)asmPush('suppression de « '+o.name+' »');
   owner.occ=owner.occ.filter(q=>q.id!==id);
+  // répétitions (48) : instance notée supprimée, ou source retirée — ses instances partent AVANT
+  // la purge (sinon elles gardaient en vie un composant qui n'a plus que des instances orphelines)
+  try{if(typeof asmPatOnDelete==='function'){asmPatOnDelete(owner,o);asmPatGen(owner);}}catch(e){}
   // les alignements qui passaient par elle tombent (les occurrences gardent leur position)
   asm.comps.forEach(c=>c.occ.forEach(q=>{const a=q.align;
     if(a&&((a.dst&&a.dst.path.includes(id))||(a.src&&a.src.path.includes(id))))q.align=null;}));
@@ -422,9 +430,9 @@ function asmDocSnapOf(d){
 function asmSnap(docIds){
   // Occurrences copiées ; composants par RÉFÉRENCE ; documents nommés copiés
   if(!asm)return null;
-  const occ={};asm.comps.forEach(c=>{occ[c.id]=JSON.parse(JSON.stringify(c.occ));});
+  const occ={},pats={};asm.comps.forEach(c=>{occ[c.id]=JSON.parse(JSON.stringify(c.occ));if(c.pats)pats[c.id]=JSON.parse(JSON.stringify(c.pats));});
   const docs={};(docIds||[]).forEach(id=>{const c=asmComp(id);if(c&&c.doc)docs[id]=asmDocSnapOf(c.doc);});
-  return {occ,comps:asm.comps.slice(),active:asm.active,path:asm.path.slice(),docs};
+  return {occ,pats,comps:asm.comps.slice(),active:asm.active,path:asm.path.slice(),docs};
 }
 function asmPush(label,docIds){
   const s=asmSnap(docIds);if(!s)return;
@@ -441,7 +449,8 @@ function asmUndoFirst(redo){
   return !!a&&(a.docIds||[]).includes(asm.active)&&(!d||(a.t||0)>(d.t||0));
 }
 function asmRestore(s){
-  asm.comps=s.comps;asm.comps.forEach(c=>{if(s.occ[c.id])c.occ=s.occ[c.id];});
+  asm.comps=s.comps;asm.comps.forEach(c=>{if(s.occ[c.id])c.occ=s.occ[c.id];
+    if(s.pats&&s.pats[c.id])c.pats=JSON.parse(JSON.stringify(s.pats[c.id]));else delete c.pats;}); // répétitions (48)
   const touched=[];
   Object.keys(s.docs||{}).forEach(id=>{
     const c=asmComp(id);if(!c)return;
@@ -476,13 +485,13 @@ function asmNotify(viewOnly){
   const f=globalThis.asmOnChange;if(typeof f==='function'){try{f(!!viewOnly);}catch(e){}}
 }
 /* ── sauvegarde : bloc asm (v2) dans le fichier (doc = composant actif, compatibilité) ── */
-function asmOccSerial(o){const s={id:o.id,comp:o.comp,name:o.name,fr:o.fr,fixed:!!o.fixed,visible:o.visible!==false,align:o.align||null};if(o.look)s.look=o.look;if(o.rendu)s.rendu=o.rendu;return s;}
+function asmOccSerial(o){const s={id:o.id,comp:o.comp,name:o.name,fr:o.fr,fixed:!!o.fixed,visible:o.visible!==false,align:o.align||null};if(o.look)s.look=o.look;if(o.rendu)s.rendu=o.rendu;if(o.pat)s.pat={id:o.pat.id,k:o.pat.k};return s;}
 function asmSerial(){
   if(!asmHasContent())return null;
   asmSync();
   try{asmNamesSync();}catch(e){} // noms des composants = noms de leurs documents (47)
   const comps=asm.comps.map(c=>({id:c.id,kind:'comp',name:c.name,doc:c.doc===doc?null:serialiseObj(c.doc,false),
-    occ:c.occ.map(asmOccSerial),link:asmLinkSerial(c.link,c),of:c.of||undefined}));
+    occ:c.occ.map(asmOccSerial),link:asmLinkSerial(c.link,c),of:c.of||undefined,pats:asmPatSerial(c)}));
   return {v:2,name:asm.name,root:asm.root,active:asm.active,path:asm.path.slice(),mode:asmMode,comps,
     img:asm.img?true:undefined}; // images des pièces embarquées dans le fichier (47-assemblage-cache)
 }
@@ -503,12 +512,13 @@ function asmTreeFromSerial(a,topDoc,mkDoc){
   const okFr=f=>f&&['o','x','y','z'].every(k=>Array.isArray(f[k])&&f[k].length===3&&f[k].every(v=>isFinite(+v)));
   const fr=f=>okFr(f)?{o:f.o.map(Number),x:f.x.map(Number),y:f.y.map(Number),z:f.z.map(Number)}:asmFr0();
   const occOf=(o,cidKey)=>({id:String(o.id),comp:String(o[cidKey]),name:String(o.name||o.id),fr:fr(o.fr),fixed:!!o.fixed,
-    visible:o.visible!==false,align:asmAlignNorm(o.align),look:asmLookNorm(o.look),rendu:(typeof renduNorm==='function'?renduNorm(o.rendu):null)||undefined,st:'ok',msg:''});
+    visible:o.visible!==false,align:asmAlignNorm(o.align),look:asmLookNorm(o.look),rendu:(typeof renduNorm==='function'?renduNorm(o.rendu):null)||undefined,st:'ok',msg:'',
+    pat:o.pat&&typeof o.pat.id==='string'&&typeof o.pat.k==='string'?{id:o.pat.id,k:o.pat.k}:undefined}); // instance de répétition (48)
   let comps,root;
   if(Array.isArray(a.comps)&&a.comps.length){
     comps=a.comps.filter(c=>c&&typeof c.id==='string').map(c=>({id:c.id,kind:'comp',name:String(c.name||c.id),
       doc:c.doc==null?topDoc:mkDoc(c.doc),occ:(Array.isArray(c.occ)?c.occ:[]).filter(o=>o&&typeof o.id==='string').map(o=>occOf(o,'comp')),
-      link:(c.link&&typeof c.link==='object')?c.link:null,of:typeof c.of==='string'?c.of:undefined}));
+      link:(c.link&&typeof c.link==='object')?c.link:null,of:typeof c.of==='string'?c.of:undefined,pats:asmPatNorm(c.pats)}));
     root=comps.some(c=>c.id===a.root)?a.root:comps[0].id;
   }else if(Array.isArray(a.parts)&&a.parts.length&&Array.isArray(a.occ)){
     // V0.6.0 (v1) : un seul niveau, sans géométrie d'assemblage → racine vide portant les occurrences

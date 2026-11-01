@@ -370,6 +370,7 @@ function treeComps(L,P){
     const id=inst.path[inst.path.length-1],o=asmOcc(id);if(!o)return null;
     const sub=(c.occ&&c.occ.length?' <span style="color:var(--muted)" title="Sous-composants">('+c.occ.length+')</span>':'')+asmLinkBadge(c);
     const badges=(o.fixed?'<span class="tbadge" title="Fixée">📌 fixe</span>':'')+
+      (o.pat?'<span class="tbadge" title="Instance de répétition : position imposée par sa source">🔁</span>':'')+
       (o.align?(o.align.type?'<span class="tbadge j" title="Liaison">⚙ '+asmEsc((ASM_JOINTS[o.align.type]||{}).lab||'')+'</span>':'<span class="tbadge j" title="Alignée sur un repère (rigide)">⚙ Rigide</span>'):'')+
       (o.st==='warn'?'<span class="tbadge w" title="'+asmEsc(o.msg)+'">⚠</span>':'');
     L.push({drop:treeDropComp(inst.comp),lvl:lv,cls:'tnode tocc'+(self?' tactive':'')+(direct&&asmMode==='asm'&&asmLotHas(id)?' sel':'')+(o.visible===false?' hidden':''),
@@ -392,7 +393,9 @@ function treeComps(L,P){
             if(asmMode==='asm'&&!asmLotHas(id)){asmSelId=id;asmDraw();renderTree();renderProps();} // dans le lot : le lot reste
             items.push({html:'✥ Déplacer',fn:()=>asmCmdMoveOcc(AP,id)},
               {html:'➕ Nouvelle occurrence',fn:()=>{if(asmMode!=='asm')asmShow(AP,'asm',id);asmSelId=id;asmCmdNewOcc();}},
-              {html:o.fixed?'📌 Libérer':'📌 Fixer',fn:()=>asmToggleFixed(id)},
+              ...(o.pat?[{html:'🔁 Modifier la répétition',fn:()=>{if(asmMode!=='asm')asmShow(AP,'asm',id);const R=asmPatOf(o);if(R)asmPatEdit(R.owner.id,R.pat.id);}}]
+                :[{html:'🔁 Répétition…',fn:()=>{const L0=asmLotHas(id)?asmLotIds():[id];if(asmMode!=='asm')asmShow(AP,'asm',id);asmPatStart(L0);}},
+                  {html:o.fixed?'📌 Libérer':'📌 Fixer',fn:()=>asmToggleFixed(id)}]), // 48-assemblage-repetitions
               {html:'🏷 Renommer le composant',fn:()=>asmRename(id)},
               ...(c.doc&&c.doc.std?[{html:'🔩 Modifier la pièce normalisée…',fn:()=>stdDlg({occ:id})}]:[]), // 48-composants-normalises
               {html:'🗑 Supprimer'+(asmLotIds().length>1&&asmLotHas(id)?' le lot ('+asmLotIds().length+')':''),fn:()=>asmAskDeleteLot(asmLotHas(id)?asmLotIds():[id])});
@@ -471,6 +474,38 @@ function treeComps(L,P){
   }
   if(open0)kids(asm.root,[],2);
   treeJoints(L,all,1);
+  treePatterns(L,all,1);
+}
+/* ── dossier Répétitions (V0.29.0, 48-assemblage-repetitions) ──
+   Une ligne par répétition de composants : type, quantité, sources. Clic = l'ouvrir dans le
+   panneau (mode Placer de son porteur) ; clic droit = la modifier ou la supprimer. */
+let treePatsOpen=true;
+function treePatterns(L,all,lv){
+  const Q=!!treeQuery,seen=new Set(),R=[];
+  all.forEach(inst=>{
+    if(seen.has(inst.comp))return;seen.add(inst.comp);
+    const c=asmComp(inst.comp);(c&&c.pats||[]).forEach(p=>R.push({c,p,path:inst.path}));
+  });
+  if(!R.length)return;
+  const open=treePatsOpen||Q;
+  L.push({lvl:lv,cls:'tnode tsec',
+    html:'<span class="tri" title="Déplier / replier">'+(open?'▼':'▶')+'</span><span>🔁</span><span class="nm">Répétitions <span style="color:var(--muted)">('+R.length+')</span></span>',
+    title:'Répétitions de composants · clic sur une ligne = la modifier (mode Placer)',
+    on:{click:()=>{treePatsOpen=!treePatsOpen;renderTree();}}});
+  if(!open)return;
+  const AP=asm.path,same=(a,b)=>a.length===b.length&&a.every((q,i)=>q===b[i]);
+  R.forEach(({c,p,path})=>{
+    const n=c.occ.filter(o=>o.pat&&o.pat.id===p.id).length;
+    const src=p.src.map(id=>(c.occ.find(o=>o.id===id)||{}).name||'?').join(', ');
+    const go=()=>{if(asmMode!=='asm'||!same(path,AP))asmShow(path,'asm');asmPatEdit(c.id,p.id);};
+    L.push({lvl:lv+1,cls:'tnode tjoint'+(asmPatEd&&asmPatEd.pat===p.id?' sel':''),
+      html:'<span>🔁</span><span class="nm">'+asmEsc(p.name||'Répétition')+' <span style="color:var(--muted)">'+asmEsc(asmPatName(p))+' · '+asmEsc(src)+' ×'+(n+p.src.length)+'</span></span>'+
+        (p.st==='warn'?'<span class="tbadge w" title="'+asmEsc(p.msg)+'">⚠</span>':''),
+      title:asmPatName(p)+' de '+src+' dans « '+c.name+' » : '+n+' instance(s) · clic = modifier · clic droit = menu',
+      on:{click:go,
+        ctx:e=>{try{mfPop({getBoundingClientRect:()=>({left:e.clientX,right:e.clientX+200,top:e.clientY-6,bottom:e.clientY-6,width:200,height:0})},
+          [{html:'🔁 Modifier',fn:go},{html:'🗑 Supprimer la répétition',fn:()=>{if(asmMode!=='asm'||!same(path,AP))asmShow(path,'asm');asmPatDeleteCmd(c.id,p.id);}}]);}catch(err){}}}});
+  });
 }
 function treeOpenFeature(path,fid){
   // Modéliser le composant de l'instance, puis y sélectionner la fonction (double-clic en lecture seule)

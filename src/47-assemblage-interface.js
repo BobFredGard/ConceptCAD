@@ -56,7 +56,10 @@ function asmCaptureActive(){
       const m=b.mesh.material||{};
       // intensité et transparence du CORPS (fiche doc.bodies), pas l'opacité calculée de sa matière
       const bid=bodyIdOfRuntime(b);
-      items.push({geo:g,color:(m.color&&m.color.getHex)?m.color.getHex():0x9a9aa0,bid:bid||null,op:bid?bodyOpOf(bid):1,gl:bid?bodyGlassEff(bid):1,rl:bid?renderLookOf(bid):null,cm:bid?bodyMatOf(bid):null}); // rl : apparence de RENDU (atelier) ; cm : matériau CAO (vue) — 12-materiaux, V0.10.0
+      // V0.29.0 : faces exactes (plan / cylindre) de chaque groupe du maillage — mesures entre pièces (48-assemblage-mesure)
+      const grp=asmGrpNorm((b.mesh.geometry.userData||{}).occGroups);g.userData.occGroups=grp||undefined;
+      const fg=grp?asmFaceTable(b):null;
+      items.push({grp:grp||null,fg:fg||null,geo:g,color:(m.color&&m.color.getHex)?m.color.getHex():0x9a9aa0,bid:bid||null,op:bid?bodyOpOf(bid):1,gl:bid?bodyGlassEff(bid):1,rl:bid?renderLookOf(bid):null,cm:bid?bodyMatOf(bid):null}); // rl : apparence de RENDU (atelier) ; cm : matériau CAO (vue) — 12-materiaux, V0.10.0
     }catch(e){}
   });
   if(c._snap)asmSnapFree(c._snap);
@@ -123,6 +126,7 @@ function asmFill(G,placer){
       const m=new THREE.Mesh(it.geo,mat);const ro=it.bid?asmOccRenduOf(inst.path,it.bid):null; // apparence de rendu choisie dans le rendu d'assemblage (occurrence)
       m.userData.rd={mat:ro?ro.mat:(it.rl?it.rl.mat:null),color:ro?ro.col:(it.rl?it.rl.color:it.color),rel:ro?ro.rel:(it.rl?it.rl.rel:null),cmat:it.cm||null,ccol:it.color,ghost:kind==='ghost',
         bid:it.bid||null,comp:inst.comp,occ:inst.path.length?inst.path[inst.path.length-1]:null}; // apparence de rendu (98-rendu, 98-rendu-vue)
+      m.userData.fg=it.fg||null;m.userData.ipath=inst.path; // mesures entre pièces (48-assemblage-mesure)
       if(kind==='pick')m.userData.occ=key;else{m.raycast=()=>{};if(kind==='ghost')m.renderOrder=-1;}
       g.add(m);
       if(kind!=='ghost'){try{glassDepthMask({mesh:m});}catch(e){}} // passes de verre, comme une pièce
@@ -186,6 +190,7 @@ function asmShow(path,mode,selId){
   if(typeof skEdit!=='undefined'&&skEdit){try{faceEl.textContent='Fermez d’abord l’esquisse.';}catch(e){}return false;}
   asmEnsure();
   try{asmInspectClear();}catch(e){} // résultats d'inspection : propres à une vue (48)
+  try{asmMeasStop(true);if(asmPatEd)asmPatOk();}catch(e){} // mesure, répétition ouverte : propres à une vue (48)
   asmPivot=null; // repère choisi comme centre de rotation : propre au composant quitté
   const p=asmPathOK(path)?path.slice():[];
   const moved=p.join('/')!==asm.path.join('/');
@@ -258,6 +263,7 @@ function asmPickAt(e){
   return h?h.object.userData.occ:null;
 }
 function asmClick(e){
+  if(asmMeas){asmMeasClick(e);return;} // mesures entre pièces (48-assemblage-mesure)
   if(asmAlignPickAt(e))return; // commande Aligner : clic = repère (48)
   if(stdHolePickAt(e))return; // composants normalisés : pose sur des trous (48)
   const id=asmPickAt(e);
@@ -317,6 +323,8 @@ function asmKey(e){
   const ctrl=e.ctrlKey||e.metaKey,k=String(e.key||'').toLowerCase();
   if(ctrl&&(k==='z'||k==='y'))return false; // routage unique en capture (undoDispatch, 45)
   if((e.key==='Delete'||e.key==='Backspace')&&asmSelId){e.preventDefault();asmAskDeleteLot(asmLotIds());return true;}
+  if(e.key==='Escape'&&asmMeas){asmMeasStop();return true;}
+  if(e.key==='Escape'&&asmPatEd){asmPatCancel();return true;}
   if(e.key==='Escape'&&asmAlign){asmAlignCancel();return true;}
   if(e.key==='Escape'&&stdHolePick){stdHoleCancel();return true;}
   if(e.key==='Escape'&&asmAnim){asmAnimStop();return true;} // animation d'une liaison (48)
@@ -454,14 +462,22 @@ function asmRenderProps(p){
   const Note=t=>p.appendChild(mk('div','pnl-note',t));
   const Btns=list=>{const d=mk('div','pnl-btns');list.forEach(([t,fn,cls])=>{const b=mk('button',cls||null,t);b.onclick=fn;d.appendChild(b);});p.appendChild(d);return d;};
   if(typeof asmAlign!=='undefined'&&asmAlign){asmAlignProps(p);return;} // commande Aligner (48)
+  if(asmMeas){asmMeasProps(p);return;}              // mesures entre pièces (48-assemblage-mesure)
+  if(asmPatEd&&asmPatProps(p))return;               // répétition ouverte (48-assemblage-repetitions)
   const c=asmActiveComp();
   const o=asmOcc(asmSelId);
   if(!o||!c.occ.includes(o)){
     H('🧩 '+c.name);
     Note(c.occ.length+' composant(s) placé(s) ici, '+asm.comps.length+' composant(s) dans le fichier. Cliquez un composant (vue ou arbre) ; double-clic = le modéliser.');
-    const l=[['➕ Nouveau composant',asmCmdNewComp,'primary'],['📥 Insérer…',asmCmdInsert],['🔩 Normalisés…',()=>stdDlg()],['✏️ Modéliser « '+c.name+' »',()=>asmExit()]];
+    const l=[['➕ Nouveau composant',asmCmdNewComp,'primary'],['📥 Insérer…',asmCmdInsert],['🔩 Normalisés…',()=>stdDlg()],['✏️ Modéliser « '+c.name+' »',()=>asmExit()],
+      ['📏 Mesurer',asmMeasStart]];
     if(asm.path.length)l.push(['↑ Remonter',asmUp]);
     Btns(l);
+    // répétitions de ce composant (48-assemblage-repetitions) : une ligne chacune, clic = la modifier
+    if((c.pats||[]).length){
+      H('🔁 Répétitions');
+      Btns(c.pats.map(q=>['🔁 '+(q.name||'Répétition')+' · '+asmPatName(q)+' ('+c.occ.filter(o=>o.pat&&o.pat.id===q.id).length+')',()=>asmPatEdit(c.id,q.id)]));
+    }
     if(!asm.path.length){
       // V0.28.1 : images des pièces dans le fichier (47-assemblage-cache)
       const lab=mk('label','pnl-note'),cb=document.createElement('input');
@@ -482,6 +498,7 @@ function asmRenderProps(p){
     Note('Ctrl+clic = ajouter / retirer · Shift+clic = plage · Suppr = supprimer le lot · Échap = désélectionner.');
     Btns([[nf===L.length?'📌 Libérer':'📌 Fixer',()=>{const v=nf!==L.length;asmLotEach(v?'fixer':'libérer',q=>{q.fixed=v;});}],
       [nh===L.length?'👁 Afficher':'🙈 Masquer',()=>{const v=nh===L.length;asmLotEach('visibilité',q=>{q.visible=v;});}],
+      ['🔁 Répéter le lot…',()=>asmPatStart(lot)],['📏 Mesurer',asmMeasStart],
       ['🗑 Supprimer',()=>asmAskDeleteLot(lot),'danger']]);
     return;
   }
@@ -497,7 +514,9 @@ function asmRenderProps(p){
   const l=[['✏️ Modéliser',()=>asmExit(o.id),'primary']];
   if(cc.occ&&cc.occ.length)l.push(['🧩 Placer ses composants',()=>asmShow(asm.path.concat(o.id),'asm')]);
   if(cc.doc&&cc.doc.std)l.push(['🔩 Modifier…',()=>stdDlg({occ:o.id})]); // pièce normalisée (48)
-  l.push(['➕ Occurrence',asmCmdNewOcc],[o.fixed?'📌 Libérer':'📌 Fixer',()=>asmToggleFixed(o.id)],['🗑 Supprimer',()=>asmAskDelete(o.id),'danger']);
+  l.push(['➕ Occurrence',asmCmdNewOcc]);
+  if(!o.pat)l.push(['🔁 Répétition…',()=>asmPatStart([o.id])],[o.fixed?'📌 Libérer':'📌 Fixer',()=>asmToggleFixed(o.id)]); // 48-assemblage-repetitions
+  l.push(['📏 Mesurer',asmMeasStart],['🗑 Supprimer',()=>asmAskDelete(o.id),'danger']);
   Btns(l);
   {const lm=asmLinkMenu(cc);if(lm.length)Btns(lm.map(x=>[x.html,x.fn]));}
 }
@@ -569,8 +588,10 @@ async function asmInsertText(txt,name){
   const rp=path=>(path||[]).map(id=>om[id]||id);
   const neufs=t.comps.map(c=>{
     const nm=c.id===t.root?base:c.name;c.doc.name=nm;
+    const M=id=>om[id]||id;
     return {id:cm[c.id],kind:'comp',name:nm,doc:c.doc,link:null,occ:c.occ.map(o=>Object.assign({},o,{id:om[o.id],comp:cm[o.comp],
-      align:o.align?Object.assign({},o.align,{src:{path:rp(o.align.src.path),cg:o.align.src.cg},dst:{path:rp(o.align.dst.path),cg:o.align.dst.cg}}):null}))};
+      align:o.align?Object.assign({},o.align,{src:{path:rp(o.align.src.path),cg:o.align.src.cg},dst:{path:rp(o.align.dst.path),cg:o.align.dst.cg}}):null,
+      pat:asmPatOccRemap(o.pat,M)})),pats:asmPatRemap(c.pats,M)}; // répétitions (48) : sources et instances renommées
   });
   {const L=asmLinkOwner(owner);if(L)neufs.forEach(c=>{c.of=L.id;});} // inséré dans un composant lié : il en fait partie
   neufs.forEach(c=>asm.comps.push(c));

@@ -34,11 +34,12 @@ function asmSubtreeObj(L){
   const top=serialiseObj(L.doc,false);top.name=L.name;
   const mem=asmLinkMembers(L);
   if(mem.length>1||L.occ.length){
-    const occ=o=>({id:I(o.id),comp:I(o.comp),name:o.name,fr:o.fr,fixed:!!o.fixed,visible:o.visible!==false,
-      align:o.align?Object.assign({},o.align,{src:{path:o.align.src.path.map(I),cg:o.align.src.cg},dst:{path:o.align.dst.path.map(I),cg:o.align.dst.cg}}):null});
+    const occ=o=>{const s={id:I(o.id),comp:I(o.comp),name:o.name,fr:o.fr,fixed:!!o.fixed,visible:o.visible!==false,
+      align:o.align?Object.assign({},o.align,{src:{path:o.align.src.path.map(I),cg:o.align.src.cg},dst:{path:o.align.dst.path.map(I),cg:o.align.dst.cg}}):null};
+      if(o.pat)s.pat=asmPatOccRemap(o.pat,I);return s;}; // instance de répétition (48)
     top.asm={v:2,name:L.name,root:I(L.id),active:I(L.id),path:[],mode:'part',
       comps:mem.map(c=>({id:I(c.id),kind:'comp',name:c.name,doc:c===L?null:serialiseObj(c.doc,false),occ:c.occ.map(occ),link:c===L?null:asmLinkSerial(c.link),
-        of:c.of&&c.of!==L.id?I(c.of):undefined}))};
+        of:c.of&&c.of!==L.id?I(c.of):undefined,pats:asmPatRemap(asmPatSerial(c),I)}))};
   }
   return top;
 }
@@ -77,7 +78,9 @@ async function asmLinkLoad(L,txt){
   };
   t.comps.forEach(c=>{M(c.id);c.occ.forEach(o=>M(o.id));});
   const mo=o=>Object.assign({},o,{id:M(o.id),comp:M(o.comp),st:'ok',msg:'',
-    align:o.align?Object.assign({},o.align,{src:{path:o.align.src.path.map(M),cg:o.align.src.cg},dst:{path:o.align.dst.path.map(M),cg:o.align.dst.cg}}):null});
+    align:o.align?Object.assign({},o.align,{src:{path:o.align.src.path.map(M),cg:o.align.src.cg},dst:{path:o.align.dst.path.map(M),cg:o.align.dst.cg}}):null,
+    pat:asmPatOccRemap(o.pat,M)});
+  const mp=c=>{const p=asmPatRemap(c.pats,M);return p&&p.length?p:undefined;}; // répétitions (48)
   const keep=new Set();
   t.comps.forEach(c=>{
     if(c.id===t.root){
@@ -85,14 +88,14 @@ async function asmLinkLoad(L,txt){
       const nd=JSON.parse(JSON.stringify(serialiseObj(c.doc,false)));
       if(L.doc===doc){try{docApplySnap(JSON.stringify(nd));}catch(e){}}
       else{Object.keys(L.doc).forEach(k=>{if(!(k in nd))delete L.doc[k];});Object.assign(L.doc,docFromSerial(nd));}
-      L.doc.name=L.name;L.occ=c.occ.map(mo);
+      L.doc.name=L.name;L.occ=c.occ.map(mo);L.pats=mp(c);if(!L.pats)delete L.pats;
     }else{
       const id=M(c.id);keep.add(id);
       let h=old.get(id);
       if(h){
         if(h.doc===doc){try{docApplySnap(JSON.stringify(serialiseObj(c.doc,false)));}catch(e){}}else h.doc=c.doc;
-        h.name=c.name;h.occ=c.occ.map(mo);h.link=c.link||null;h.of=c.of?M(c.of):L.id;
-      }else{h={id,kind:'comp',name:c.name,doc:c.doc,occ:c.occ.map(mo),link:c.link||null,of:c.of?M(c.of):L.id};asm.comps.push(h);}
+        h.name=c.name;h.occ=c.occ.map(mo);h.link=c.link||null;h.of=c.of?M(c.of):L.id;h.pats=mp(c);if(!h.pats)delete h.pats;
+      }else{h={id,kind:'comp',name:c.name,doc:c.doc,occ:c.occ.map(mo),link:c.link||null,of:c.of?M(c.of):L.id};if(mp(c))h.pats=mp(c);asm.comps.push(h);}
     }
   });
   // sous-composants disparus de la source (et ce qui ne servait qu'à eux)
@@ -138,6 +141,19 @@ async function asmLinkRef(h){
   const key='mfl:'+uid('k');try{await idbSet(key,h);}catch(e){}
   return {rel:null,key};
 }
+/* ── date et taille de la source (V0.29.0) ──
+   Relevées à chaque lecture ou écriture complète, avec l'empreinte du texte à ce moment-là ;
+   données d'exécution (_ : jamais enregistrées) — un fichier rouvert relit toujours ses sources.
+   Au moindre doute (date, taille ou empreinte différente, relevé absent) : lecture complète. */
+function asmLinkStamp(L,f){
+  if(!L||!L.link)return;
+  if(f&&isFinite(+f.lastModified)&&isFinite(+f.size)){L.link._lm=+f.lastModified;L.link._sz=+f.size;L.link._sg=L.link.sig;}
+  else{delete L.link._lm;delete L.link._sz;delete L.link._sg;}
+}
+function asmLinkStampSame(L,f){
+  const l=L&&L.link;
+  return !!(l&&f&&l._lm!=null&&l.sig&&l._sg===l.sig&&+f.lastModified===l._lm&&+f.size===l._sz&&l.st!=='warn');
+}
 /* ── vérifier les liens (ouverture, retour sur l'onglet, bouton) ── */
 async function asmLinksCheck(ask){
   if(!asm||asmLinkBusy)return {updated:[],warn:[]};
@@ -149,15 +165,19 @@ async function asmLinksCheck(ask){
       if(!L.link||!asmComp(L.id))continue;
       const r=await asmLinkHandle(L,ask);
       if(!r.h){L.link.st='warn';L.link.msg=r.why;out.warn.push(L.name);if(r.perm)out.perm=true;continue;}
-      let txt;try{txt=await (await r.h.getFile()).text();}catch(e){L.link.st='warn';L.link.msg='lecture impossible';out.warn.push(L.name);continue;}
-      if(asmHash(txt)===L.link.sig){L.link.st='ok';L.link.msg='';continue;}
+      let f,txt;try{f=await r.h.getFile();}catch(e){L.link.st='warn';L.link.msg='lecture impossible';out.warn.push(L.name);continue;}
+      // V0.29.0 : même date et même taille qu'à la dernière lecture de cette session → inchangée,
+      // sans relire ni analyser le fichier (la première vérification de la session lit toujours)
+      if(asmLinkStampSame(L,f)){L.link.st='ok';L.link.msg='';continue;}
+      try{txt=await f.text();}catch(e){L.link.st='warn';L.link.msg='lecture impossible';out.warn.push(L.name);continue;}
+      if(asmHash(txt)===L.link.sig){asmLinkStamp(L,f);L.link.st='ok';L.link.msg='';continue;}
       let choix='theirs';
       if(asmLinkDirty(L))choix=await mffAsk('« '+L.name+' » a changé sur le disque ET ici.\nGarder vos modifications (la source sera écrasée au prochain enregistrement), prendre la source (vos modifications sont perdues), ou rompre le lien ?',
         [['mine','Garder les miennes',true],['theirs','Prendre la source'],['break','Rompre le lien']]);
-      if(choix==='mine'){L.link.sig=asmHash(txt);L.link.pend=true;L.link.st='ok';L.link.msg='modifié ici : la source sera réécrite à l’enregistrement';continue;}
+      if(choix==='mine'){L.link.sig=asmHash(txt);asmLinkStamp(L,f);L.link.pend=true;L.link.st='ok';L.link.msg='modifié ici : la source sera réécrite à l’enregistrement';continue;}
       if(choix==='break'){asmLinkBreak(L);continue;}
       if(choix==='cancel')continue;
-      try{await asmLinkLoad(L,txt);out.updated.push(L.name);}catch(e){L.link.st='warn';L.link.msg=String(e&&e.message||e);out.warn.push(L.name);}
+      try{await asmLinkLoad(L,txt);asmLinkStamp(L,f);out.updated.push(L.name);}catch(e){L.link.st='warn';L.link.msg=String(e&&e.message||e);out.warn.push(L.name);}
     }
   }finally{asmLinkBusy=false;}
   if(out.updated.length){
@@ -191,6 +211,7 @@ async function asmLinksWrite(){
       const txt=asmLinkText(L,cur);
       await mffWriteSafe(r.h,txt); // V0.8.3 : contrôle, copie .bak de la source, écriture abandonnée en cas d'erreur
       delete L.link.pend;L.link.sig=asmHash(txt);L.link.base=asmSubtreeSig(L);L.link.st='ok';L.link.msg='';
+      try{asmLinkStamp(L,await r.h.getFile());}catch(e){asmLinkStamp(L,null);}
       out.written.push(L.name);
     }catch(e){out.failed.push(L.name+' ('+(e&&e.message||e)+')');}
   }
@@ -306,7 +327,7 @@ async function asmCmdRelink(cid){
   const L=asmComp(cid);if(!L||!L.link)return false;
   const p=await asmPickSource();if(!p)return false;
   const ref=await asmLinkRef(p.h);
-  L.link.rel=ref.rel;L.link.key=ref.key;L.link.name=p.name;
+  L.link.rel=ref.rel;L.link.key=ref.key;L.link.name=p.name;asmLinkStamp(L,null);
   if(asmHash(p.txt)!==L.link.sig&&!asmLinkDirty(L)){try{await asmLinkLoad(L,p.txt);try{await asmCacheFill(asmLinkMembers(L));}catch(e){}asmBuildSnapshots();}catch(e){alert('Lecture impossible : '+(e&&e.message||e));}}
   else L.link.st='ok';
   asmNotify();

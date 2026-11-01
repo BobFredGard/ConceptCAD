@@ -2,7 +2,10 @@
 window.addEventListener('error',e=>{try{statsEl.textContent+='\n[ERREUR] '+(e.message||e.error);}catch(_){}});
 try{$('appVerLive').textContent=APP_VER;}catch(e){}
 buildScene();renderTree();renderProps();refreshParts();
-try{const auto=localStorage.getItem('minifusion_auto');if(auto){deserialise(auto,{rebuild:false});renderProps();faceEl.textContent='Brouillon local restauré.';}}catch(e){}
+// V0.29.0 : brouillon trop gros pour le stockage local → IndexedDB (autosaveWrite, 90), relu avant le cache d'affichage
+let draftP=null;
+try{const auto=localStorage.getItem('minifusion_auto');if(auto){deserialise(auto,{rebuild:false});renderProps();faceEl.textContent='Brouillon local restauré.';}
+  else draftP=draftRestore().then(t=>{if(t)return Promise.resolve(deserialise(t,{rebuild:false})).then(()=>{renderProps();faceEl.textContent='Brouillon local restauré (grand fichier).';});}).catch(()=>{});}catch(e){}
 // Le cache d'affichage n'est qu'un DÉCOR : il redonne une image, pas un modèle. Sans rejeu,
 // il n'y a pas de solide exact (occLive) — donc ni congé, ni esquisse sur face, ni sélection
 // de face : « impossible de rejouer le solide ». Symptôme mesuré : le PREMIER F5 rejouait
@@ -12,7 +15,7 @@ try{const auto=localStorage.getItem('minifusion_auto');if(auto){deserialise(auto
 // la boîte du « solide combiné » parfois dégénérée (40×40×10000) — caméra hors champ,
 // vue noire. Tant qu'OCCT n'est pas prêt, la caméra par défaut (90,-90,90) montre l'origine.
 try{
-  restoreViewCache().then(ok=>{
+  (draftP||Promise.resolve()).then(()=>restoreViewCache()).then(ok=>{
     if(ok)log('Affichage restauré depuis le cache — rejeu exact en cours…');
     // builtVersion=-1 : la garde « rien n'a changé » court-circuterait sinon le rejeu,
     // puisque restoreViewCache vient de poser builtHash.

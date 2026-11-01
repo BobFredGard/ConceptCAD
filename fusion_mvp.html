@@ -227,6 +227,7 @@ input[type=range]{accent-color:var(--primary);width:100%}
       <div class="setRow"><label>Arêtes <select id="optEdges" title="Sans arêtes : ombrage pur · Avec arêtes : vives noires, tangentes gris clair"><option value="off">Masquées</option><option value="on">Vives noires / tangentes grises</option></select></label></div>
       <div class="setRow"><label><input type="checkbox" id="optAxes" checked> Repère (axes XYZ)</label></div>
       <div class="setRow"><label><input type="checkbox" id="optZoomInv"> Inverser le zoom</label></div>
+      <div class="setRow"><label>Taille des icônes <select id="optIcSize" title="Icônes du ruban, de la barre rapide et des outils d'esquisse (les libellés gardent leur taille)"><option value="0.8">Petite</option><option value="1" selected>Normale</option><option value="1.25">Grande</option><option value="1.5">Très grande</option></select></label></div>
       <div class="setRow"><label>Orbite <select id="optOrbit" title="Contrainte : Z reste en haut de l'écran · Libre : la pièce tourne dans tous les sens (tour complet, par-dessus et par-dessous)"><option value="contrainte">Contrainte (Z en haut)</option><option value="libre">Libre (tous les sens)</option></select></label></div>
       <div class="setRow" title="Effet de perspective = angle de champ de la caméra : à gauche presque orthographique, à droite fuyantes marquées. La pièce garde sa taille à l'écran. Double-clic : 50° par défaut"><label for="optFov">Perspective</label><input type="range" id="optFov" min="5" max="90" step="1" value="50" style="flex:1"><span id="optFovVal" style="min-width:30px;text-align:right">50°</span></div>
       <p class="ovlTitle">Coupe</p>
@@ -336,7 +337,7 @@ input[type=range]{accent-color:var(--primary);width:100%}
  * peut changer sans rien casser. CACHE_VER (parcours FAO) reste indépendant.
  */
 
-const APP_VER='V0.28.1';
+const APP_VER='V0.29.0';
 try{console.log('[MiniFusion] version '+APP_VER);}catch(e){}
 try{var mfSv=document.getElementById('mfSplashVer');if(mfSv)mfSv.textContent=APP_VER;}catch(e){} // écran de démarrage
 
@@ -6144,8 +6145,18 @@ function occCkMax(){
   const n=(((typeof doc!=='undefined')&&doc&&doc.features)?doc.features.length:0)+2;
   // 2026-10-16-003 : 3 × la timeline (bornée) — après une modification, l'ancien ET le nouveau
   // préfixe coexistent pendant les passes de projection ; à 1 × ils s'évinçaient mutuellement.
-  return Math.max(8,Math.min(3*n,120));
+  const base=Math.max(8,Math.min(3*n,120));
+  // V0.29.0 : assemblage — la file est commune à tous les composants (clés préfixées, asmCkPrefix)
+  // mais bornée par la timeline de la pièce OUVERTE : une petite pièce évinçait les points de
+  // contrôle de toutes les autres, et revenir dans une grosse pièce la rejouait en entier
+  // (1,1 à 1,7 s → 0,2 s gardée). Plafond large tant que le tas du noyau reste raisonnable.
+  try{
+    if(typeof asm!=='undefined'&&asm&&asm.comps&&asm.comps.length>1&&!(occt&&occt.HEAP8&&occt.HEAP8.length>OCC_CK_HEAP))return Math.max(base,OCC_CK_ASM);
+  }catch(e){}
+  return base;
 }
+const OCC_CK_ASM=200;          // points de contrôle gardés en assemblage (toutes pièces confondues)
+const OCC_CK_HEAP=1536*1048576; // au-delà de 1,5 Go de tas du noyau : retour à la borne d'une pièce
 function occShapeCopy(sh){
   try{return new occt.BRepBuilderAPI_Copy_2(sh,true,true).Shape();}catch(e){return null;}
 }
@@ -10289,6 +10300,7 @@ function treeComps(L,P){
     const id=inst.path[inst.path.length-1],o=asmOcc(id);if(!o)return null;
     const sub=(c.occ&&c.occ.length?' <span style="color:var(--muted)" title="Sous-composants">('+c.occ.length+')</span>':'')+asmLinkBadge(c);
     const badges=(o.fixed?'<span class="tbadge" title="Fixée">📌 fixe</span>':'')+
+      (o.pat?'<span class="tbadge" title="Instance de répétition : position imposée par sa source">🔁</span>':'')+
       (o.align?(o.align.type?'<span class="tbadge j" title="Liaison">⚙ '+asmEsc((ASM_JOINTS[o.align.type]||{}).lab||'')+'</span>':'<span class="tbadge j" title="Alignée sur un repère (rigide)">⚙ Rigide</span>'):'')+
       (o.st==='warn'?'<span class="tbadge w" title="'+asmEsc(o.msg)+'">⚠</span>':'');
     L.push({drop:treeDropComp(inst.comp),lvl:lv,cls:'tnode tocc'+(self?' tactive':'')+(direct&&asmMode==='asm'&&asmLotHas(id)?' sel':'')+(o.visible===false?' hidden':''),
@@ -10311,7 +10323,9 @@ function treeComps(L,P){
             if(asmMode==='asm'&&!asmLotHas(id)){asmSelId=id;asmDraw();renderTree();renderProps();} // dans le lot : le lot reste
             items.push({html:'✥ Déplacer',fn:()=>asmCmdMoveOcc(AP,id)},
               {html:'➕ Nouvelle occurrence',fn:()=>{if(asmMode!=='asm')asmShow(AP,'asm',id);asmSelId=id;asmCmdNewOcc();}},
-              {html:o.fixed?'📌 Libérer':'📌 Fixer',fn:()=>asmToggleFixed(id)},
+              ...(o.pat?[{html:'🔁 Modifier la répétition',fn:()=>{if(asmMode!=='asm')asmShow(AP,'asm',id);const R=asmPatOf(o);if(R)asmPatEdit(R.owner.id,R.pat.id);}}]
+                :[{html:'🔁 Répétition…',fn:()=>{const L0=asmLotHas(id)?asmLotIds():[id];if(asmMode!=='asm')asmShow(AP,'asm',id);asmPatStart(L0);}},
+                  {html:o.fixed?'📌 Libérer':'📌 Fixer',fn:()=>asmToggleFixed(id)}]), // 48-assemblage-repetitions
               {html:'🏷 Renommer le composant',fn:()=>asmRename(id)},
               ...(c.doc&&c.doc.std?[{html:'🔩 Modifier la pièce normalisée…',fn:()=>stdDlg({occ:id})}]:[]), // 48-composants-normalises
               {html:'🗑 Supprimer'+(asmLotIds().length>1&&asmLotHas(id)?' le lot ('+asmLotIds().length+')':''),fn:()=>asmAskDeleteLot(asmLotHas(id)?asmLotIds():[id])});
@@ -10390,6 +10404,38 @@ function treeComps(L,P){
   }
   if(open0)kids(asm.root,[],2);
   treeJoints(L,all,1);
+  treePatterns(L,all,1);
+}
+/* ── dossier Répétitions (V0.29.0, 48-assemblage-repetitions) ──
+   Une ligne par répétition de composants : type, quantité, sources. Clic = l'ouvrir dans le
+   panneau (mode Placer de son porteur) ; clic droit = la modifier ou la supprimer. */
+let treePatsOpen=true;
+function treePatterns(L,all,lv){
+  const Q=!!treeQuery,seen=new Set(),R=[];
+  all.forEach(inst=>{
+    if(seen.has(inst.comp))return;seen.add(inst.comp);
+    const c=asmComp(inst.comp);(c&&c.pats||[]).forEach(p=>R.push({c,p,path:inst.path}));
+  });
+  if(!R.length)return;
+  const open=treePatsOpen||Q;
+  L.push({lvl:lv,cls:'tnode tsec',
+    html:'<span class="tri" title="Déplier / replier">'+(open?'▼':'▶')+'</span><span>🔁</span><span class="nm">Répétitions <span style="color:var(--muted)">('+R.length+')</span></span>',
+    title:'Répétitions de composants · clic sur une ligne = la modifier (mode Placer)',
+    on:{click:()=>{treePatsOpen=!treePatsOpen;renderTree();}}});
+  if(!open)return;
+  const AP=asm.path,same=(a,b)=>a.length===b.length&&a.every((q,i)=>q===b[i]);
+  R.forEach(({c,p,path})=>{
+    const n=c.occ.filter(o=>o.pat&&o.pat.id===p.id).length;
+    const src=p.src.map(id=>(c.occ.find(o=>o.id===id)||{}).name||'?').join(', ');
+    const go=()=>{if(asmMode!=='asm'||!same(path,AP))asmShow(path,'asm');asmPatEdit(c.id,p.id);};
+    L.push({lvl:lv+1,cls:'tnode tjoint'+(asmPatEd&&asmPatEd.pat===p.id?' sel':''),
+      html:'<span>🔁</span><span class="nm">'+asmEsc(p.name||'Répétition')+' <span style="color:var(--muted)">'+asmEsc(asmPatName(p))+' · '+asmEsc(src)+' ×'+(n+p.src.length)+'</span></span>'+
+        (p.st==='warn'?'<span class="tbadge w" title="'+asmEsc(p.msg)+'">⚠</span>':''),
+      title:asmPatName(p)+' de '+src+' dans « '+c.name+' » : '+n+' instance(s) · clic = modifier · clic droit = menu',
+      on:{click:go,
+        ctx:e=>{try{mfPop({getBoundingClientRect:()=>({left:e.clientX,right:e.clientX+200,top:e.clientY-6,bottom:e.clientY-6,width:200,height:0})},
+          [{html:'🔁 Modifier',fn:go},{html:'🗑 Supprimer la répétition',fn:()=>{if(asmMode!=='asm'||!same(path,AP))asmShow(path,'asm');asmPatDeleteCmd(c.id,p.id);}}]);}catch(err){}}}});
+  });
 }
 function treeOpenFeature(path,fid){
   // Modéliser le composant de l'instance, puis y sélectionner la fonction (double-clic en lecture seule)
@@ -11380,6 +11426,10 @@ function asmAlignTarget(ownerId,a){
 function asmResolveIn(owner){
   // Place les occurrences alignées d'UN porteur, dans l'ordre des dépendances entre frères
   let ch=false;
+  // répétitions de composants (48-assemblage-repetitions) : instances placées d'après leurs sources,
+  // avant les alignements (une occurrence peut viser une instance) puis après (une source alignée a bougé)
+  const pg=()=>{try{if(typeof asmPatGen==='function'&&asmPatGen(owner))ch=true;}catch(e){}};
+  pg();
   const todo=owner.occ.filter(o=>o.align);
   owner.occ.forEach(o=>{if(!o.align){o.st='ok';o.msg='';}});
   const done=new Set(owner.occ.filter(o=>!o.align).map(o=>o.id));
@@ -11401,6 +11451,7 @@ function asmResolveIn(owner){
     }
   }
   todo.forEach(o=>{o.st='warn';o.msg='alignement circulaire : position mémorisée';});
+  pg();
   return ch;
 }
 function asmResolve(){
@@ -11457,6 +11508,9 @@ function asmDeleteOcc(id,noPush){
   const owner=asmOccOwner(id),o=asmOcc(id);if(!o||!owner)return false;
   if(!noPush)asmPush('suppression de « '+o.name+' »');
   owner.occ=owner.occ.filter(q=>q.id!==id);
+  // répétitions (48) : instance notée supprimée, ou source retirée — ses instances partent AVANT
+  // la purge (sinon elles gardaient en vie un composant qui n'a plus que des instances orphelines)
+  try{if(typeof asmPatOnDelete==='function'){asmPatOnDelete(owner,o);asmPatGen(owner);}}catch(e){}
   // les alignements qui passaient par elle tombent (les occurrences gardent leur position)
   asm.comps.forEach(c=>c.occ.forEach(q=>{const a=q.align;
     if(a&&((a.dst&&a.dst.path.includes(id))||(a.src&&a.src.path.includes(id))))q.align=null;}));
@@ -11556,9 +11610,9 @@ function asmDocSnapOf(d){
 function asmSnap(docIds){
   // Occurrences copiées ; composants par RÉFÉRENCE ; documents nommés copiés
   if(!asm)return null;
-  const occ={};asm.comps.forEach(c=>{occ[c.id]=JSON.parse(JSON.stringify(c.occ));});
+  const occ={},pats={};asm.comps.forEach(c=>{occ[c.id]=JSON.parse(JSON.stringify(c.occ));if(c.pats)pats[c.id]=JSON.parse(JSON.stringify(c.pats));});
   const docs={};(docIds||[]).forEach(id=>{const c=asmComp(id);if(c&&c.doc)docs[id]=asmDocSnapOf(c.doc);});
-  return {occ,comps:asm.comps.slice(),active:asm.active,path:asm.path.slice(),docs};
+  return {occ,pats,comps:asm.comps.slice(),active:asm.active,path:asm.path.slice(),docs};
 }
 function asmPush(label,docIds){
   const s=asmSnap(docIds);if(!s)return;
@@ -11575,7 +11629,8 @@ function asmUndoFirst(redo){
   return !!a&&(a.docIds||[]).includes(asm.active)&&(!d||(a.t||0)>(d.t||0));
 }
 function asmRestore(s){
-  asm.comps=s.comps;asm.comps.forEach(c=>{if(s.occ[c.id])c.occ=s.occ[c.id];});
+  asm.comps=s.comps;asm.comps.forEach(c=>{if(s.occ[c.id])c.occ=s.occ[c.id];
+    if(s.pats&&s.pats[c.id])c.pats=JSON.parse(JSON.stringify(s.pats[c.id]));else delete c.pats;}); // répétitions (48)
   const touched=[];
   Object.keys(s.docs||{}).forEach(id=>{
     const c=asmComp(id);if(!c)return;
@@ -11610,13 +11665,13 @@ function asmNotify(viewOnly){
   const f=globalThis.asmOnChange;if(typeof f==='function'){try{f(!!viewOnly);}catch(e){}}
 }
 /* ── sauvegarde : bloc asm (v2) dans le fichier (doc = composant actif, compatibilité) ── */
-function asmOccSerial(o){const s={id:o.id,comp:o.comp,name:o.name,fr:o.fr,fixed:!!o.fixed,visible:o.visible!==false,align:o.align||null};if(o.look)s.look=o.look;if(o.rendu)s.rendu=o.rendu;return s;}
+function asmOccSerial(o){const s={id:o.id,comp:o.comp,name:o.name,fr:o.fr,fixed:!!o.fixed,visible:o.visible!==false,align:o.align||null};if(o.look)s.look=o.look;if(o.rendu)s.rendu=o.rendu;if(o.pat)s.pat={id:o.pat.id,k:o.pat.k};return s;}
 function asmSerial(){
   if(!asmHasContent())return null;
   asmSync();
   try{asmNamesSync();}catch(e){} // noms des composants = noms de leurs documents (47)
   const comps=asm.comps.map(c=>({id:c.id,kind:'comp',name:c.name,doc:c.doc===doc?null:serialiseObj(c.doc,false),
-    occ:c.occ.map(asmOccSerial),link:asmLinkSerial(c.link,c),of:c.of||undefined}));
+    occ:c.occ.map(asmOccSerial),link:asmLinkSerial(c.link,c),of:c.of||undefined,pats:asmPatSerial(c)}));
   return {v:2,name:asm.name,root:asm.root,active:asm.active,path:asm.path.slice(),mode:asmMode,comps,
     img:asm.img?true:undefined}; // images des pièces embarquées dans le fichier (47-assemblage-cache)
 }
@@ -11637,12 +11692,13 @@ function asmTreeFromSerial(a,topDoc,mkDoc){
   const okFr=f=>f&&['o','x','y','z'].every(k=>Array.isArray(f[k])&&f[k].length===3&&f[k].every(v=>isFinite(+v)));
   const fr=f=>okFr(f)?{o:f.o.map(Number),x:f.x.map(Number),y:f.y.map(Number),z:f.z.map(Number)}:asmFr0();
   const occOf=(o,cidKey)=>({id:String(o.id),comp:String(o[cidKey]),name:String(o.name||o.id),fr:fr(o.fr),fixed:!!o.fixed,
-    visible:o.visible!==false,align:asmAlignNorm(o.align),look:asmLookNorm(o.look),rendu:(typeof renduNorm==='function'?renduNorm(o.rendu):null)||undefined,st:'ok',msg:''});
+    visible:o.visible!==false,align:asmAlignNorm(o.align),look:asmLookNorm(o.look),rendu:(typeof renduNorm==='function'?renduNorm(o.rendu):null)||undefined,st:'ok',msg:'',
+    pat:o.pat&&typeof o.pat.id==='string'&&typeof o.pat.k==='string'?{id:o.pat.id,k:o.pat.k}:undefined}); // instance de répétition (48)
   let comps,root;
   if(Array.isArray(a.comps)&&a.comps.length){
     comps=a.comps.filter(c=>c&&typeof c.id==='string').map(c=>({id:c.id,kind:'comp',name:String(c.name||c.id),
       doc:c.doc==null?topDoc:mkDoc(c.doc),occ:(Array.isArray(c.occ)?c.occ:[]).filter(o=>o&&typeof o.id==='string').map(o=>occOf(o,'comp')),
-      link:(c.link&&typeof c.link==='object')?c.link:null,of:typeof c.of==='string'?c.of:undefined}));
+      link:(c.link&&typeof c.link==='object')?c.link:null,of:typeof c.of==='string'?c.of:undefined,pats:asmPatNorm(c.pats)}));
     root=comps.some(c=>c.id===a.root)?a.root:comps[0].id;
   }else if(Array.isArray(a.parts)&&a.parts.length&&Array.isArray(a.occ)){
     // V0.6.0 (v1) : un seul niveau, sans géométrie d'assemblage → racine vide portant les occurrences
@@ -11933,7 +11989,7 @@ function asmExtSyncSoon(){if(!asmExtBusy&&asm){try{setTimeout(()=>{try{if(asmExt
    typés réunis en un bloc binaire compressé gzip, base64) ; à l'ouverture, bundleStoreCaches
    les remet dans le cache AVANT la lecture du document : le fichier s'ouvre vite sur un autre
    poste. Elles passent par les mêmes clés : une image qui ne correspond plus est ignorée. */
-const ASM_CACHE_V=1;        // format des entrées
+const ASM_CACHE_V=2;        // format des entrées (2 : V0.29.0, faces exactes it.grp / it.fg pour les mesures)
 const ASM_CACHE_MAX=300;    // entrées gardées
 const ASM_CACHE_VERTS=1500000; // composant plus gros : pas de cache (comme saveViewCache)
 const asmCachePend=new Map(); // composant → {snap, key} à écrire
@@ -11984,7 +12040,7 @@ function asmCachePack(s){
     if(!p||!p.array)return null;
     verts+=p.count||0;if(verts>ASM_CACHE_VERTS)return null;
     items.push({pos:p.array.slice(),nor:asmCacheArr(g.attributes.normal),idx:g.index?asmCacheArr(g.index):null,
-      color:it.color,bid:it.bid,op:it.op,gl:it.gl,rl:it.rl||null,cm:it.cm||null});
+      color:it.color,bid:it.bid,op:it.op,gl:it.gl,rl:it.rl||null,cm:it.cm||null,grp:it.grp||null,fg:it.fg||null});
   }
   const e=s.edges&&s.edges.attributes;
   return {items,edges:e&&e.position?{pos:asmCacheArr(e.position),col:asmCacheArr(e.color)}:null,
@@ -12000,7 +12056,10 @@ function asmCacheUnpack(v,hash){
     if(it.nor&&it.nor.length===it.pos.length)g.setAttribute('normal',new THREE.Float32BufferAttribute(it.nor,3));
     if(it.idx)g.setIndex(new THREE.BufferAttribute(it.idx,1));
     if(!g.attributes.normal)g.computeVertexNormals();
-    return {geo:g,color:it.color,bid:it.bid||null,op:it.op,gl:it.gl,rl:it.rl||null,cm:it.cm||null};
+    // faces exactes (V0.29.0, mesures) : vérifiées, une table douteuse est simplement absente
+    const grp=asmGrpNorm(it.grp),fg=grp?asmFgNorm(it.fg,grp.length):null;
+    if(grp)g.userData.occGroups=grp;
+    return {geo:g,color:it.color,bid:it.bid||null,op:it.op,gl:it.gl,rl:it.rl||null,cm:it.cm||null,grp:grp||null,fg:fg||null};
   });
   let edges=null;
   if(v.edges&&v.edges.pos&&v.edges.pos.length){
@@ -12222,7 +12281,10 @@ function asmCaptureActive(){
       const m=b.mesh.material||{};
       // intensité et transparence du CORPS (fiche doc.bodies), pas l'opacité calculée de sa matière
       const bid=bodyIdOfRuntime(b);
-      items.push({geo:g,color:(m.color&&m.color.getHex)?m.color.getHex():0x9a9aa0,bid:bid||null,op:bid?bodyOpOf(bid):1,gl:bid?bodyGlassEff(bid):1,rl:bid?renderLookOf(bid):null,cm:bid?bodyMatOf(bid):null}); // rl : apparence de RENDU (atelier) ; cm : matériau CAO (vue) — 12-materiaux, V0.10.0
+      // V0.29.0 : faces exactes (plan / cylindre) de chaque groupe du maillage — mesures entre pièces (48-assemblage-mesure)
+      const grp=asmGrpNorm((b.mesh.geometry.userData||{}).occGroups);g.userData.occGroups=grp||undefined;
+      const fg=grp?asmFaceTable(b):null;
+      items.push({grp:grp||null,fg:fg||null,geo:g,color:(m.color&&m.color.getHex)?m.color.getHex():0x9a9aa0,bid:bid||null,op:bid?bodyOpOf(bid):1,gl:bid?bodyGlassEff(bid):1,rl:bid?renderLookOf(bid):null,cm:bid?bodyMatOf(bid):null}); // rl : apparence de RENDU (atelier) ; cm : matériau CAO (vue) — 12-materiaux, V0.10.0
     }catch(e){}
   });
   if(c._snap)asmSnapFree(c._snap);
@@ -12289,6 +12351,7 @@ function asmFill(G,placer){
       const m=new THREE.Mesh(it.geo,mat);const ro=it.bid?asmOccRenduOf(inst.path,it.bid):null; // apparence de rendu choisie dans le rendu d'assemblage (occurrence)
       m.userData.rd={mat:ro?ro.mat:(it.rl?it.rl.mat:null),color:ro?ro.col:(it.rl?it.rl.color:it.color),rel:ro?ro.rel:(it.rl?it.rl.rel:null),cmat:it.cm||null,ccol:it.color,ghost:kind==='ghost',
         bid:it.bid||null,comp:inst.comp,occ:inst.path.length?inst.path[inst.path.length-1]:null}; // apparence de rendu (98-rendu, 98-rendu-vue)
+      m.userData.fg=it.fg||null;m.userData.ipath=inst.path; // mesures entre pièces (48-assemblage-mesure)
       if(kind==='pick')m.userData.occ=key;else{m.raycast=()=>{};if(kind==='ghost')m.renderOrder=-1;}
       g.add(m);
       if(kind!=='ghost'){try{glassDepthMask({mesh:m});}catch(e){}} // passes de verre, comme une pièce
@@ -12352,6 +12415,7 @@ function asmShow(path,mode,selId){
   if(typeof skEdit!=='undefined'&&skEdit){try{faceEl.textContent='Fermez d’abord l’esquisse.';}catch(e){}return false;}
   asmEnsure();
   try{asmInspectClear();}catch(e){} // résultats d'inspection : propres à une vue (48)
+  try{asmMeasStop(true);if(asmPatEd)asmPatOk();}catch(e){} // mesure, répétition ouverte : propres à une vue (48)
   asmPivot=null; // repère choisi comme centre de rotation : propre au composant quitté
   const p=asmPathOK(path)?path.slice():[];
   const moved=p.join('/')!==asm.path.join('/');
@@ -12424,6 +12488,7 @@ function asmPickAt(e){
   return h?h.object.userData.occ:null;
 }
 function asmClick(e){
+  if(asmMeas){asmMeasClick(e);return;} // mesures entre pièces (48-assemblage-mesure)
   if(asmAlignPickAt(e))return; // commande Aligner : clic = repère (48)
   if(stdHolePickAt(e))return; // composants normalisés : pose sur des trous (48)
   const id=asmPickAt(e);
@@ -12483,6 +12548,8 @@ function asmKey(e){
   const ctrl=e.ctrlKey||e.metaKey,k=String(e.key||'').toLowerCase();
   if(ctrl&&(k==='z'||k==='y'))return false; // routage unique en capture (undoDispatch, 45)
   if((e.key==='Delete'||e.key==='Backspace')&&asmSelId){e.preventDefault();asmAskDeleteLot(asmLotIds());return true;}
+  if(e.key==='Escape'&&asmMeas){asmMeasStop();return true;}
+  if(e.key==='Escape'&&asmPatEd){asmPatCancel();return true;}
   if(e.key==='Escape'&&asmAlign){asmAlignCancel();return true;}
   if(e.key==='Escape'&&stdHolePick){stdHoleCancel();return true;}
   if(e.key==='Escape'&&asmAnim){asmAnimStop();return true;} // animation d'une liaison (48)
@@ -12620,14 +12687,22 @@ function asmRenderProps(p){
   const Note=t=>p.appendChild(mk('div','pnl-note',t));
   const Btns=list=>{const d=mk('div','pnl-btns');list.forEach(([t,fn,cls])=>{const b=mk('button',cls||null,t);b.onclick=fn;d.appendChild(b);});p.appendChild(d);return d;};
   if(typeof asmAlign!=='undefined'&&asmAlign){asmAlignProps(p);return;} // commande Aligner (48)
+  if(asmMeas){asmMeasProps(p);return;}              // mesures entre pièces (48-assemblage-mesure)
+  if(asmPatEd&&asmPatProps(p))return;               // répétition ouverte (48-assemblage-repetitions)
   const c=asmActiveComp();
   const o=asmOcc(asmSelId);
   if(!o||!c.occ.includes(o)){
     H('🧩 '+c.name);
     Note(c.occ.length+' composant(s) placé(s) ici, '+asm.comps.length+' composant(s) dans le fichier. Cliquez un composant (vue ou arbre) ; double-clic = le modéliser.');
-    const l=[['➕ Nouveau composant',asmCmdNewComp,'primary'],['📥 Insérer…',asmCmdInsert],['🔩 Normalisés…',()=>stdDlg()],['✏️ Modéliser « '+c.name+' »',()=>asmExit()]];
+    const l=[['➕ Nouveau composant',asmCmdNewComp,'primary'],['📥 Insérer…',asmCmdInsert],['🔩 Normalisés…',()=>stdDlg()],['✏️ Modéliser « '+c.name+' »',()=>asmExit()],
+      ['📏 Mesurer',asmMeasStart]];
     if(asm.path.length)l.push(['↑ Remonter',asmUp]);
     Btns(l);
+    // répétitions de ce composant (48-assemblage-repetitions) : une ligne chacune, clic = la modifier
+    if((c.pats||[]).length){
+      H('🔁 Répétitions');
+      Btns(c.pats.map(q=>['🔁 '+(q.name||'Répétition')+' · '+asmPatName(q)+' ('+c.occ.filter(o=>o.pat&&o.pat.id===q.id).length+')',()=>asmPatEdit(c.id,q.id)]));
+    }
     if(!asm.path.length){
       // V0.28.1 : images des pièces dans le fichier (47-assemblage-cache)
       const lab=mk('label','pnl-note'),cb=document.createElement('input');
@@ -12648,6 +12723,7 @@ function asmRenderProps(p){
     Note('Ctrl+clic = ajouter / retirer · Shift+clic = plage · Suppr = supprimer le lot · Échap = désélectionner.');
     Btns([[nf===L.length?'📌 Libérer':'📌 Fixer',()=>{const v=nf!==L.length;asmLotEach(v?'fixer':'libérer',q=>{q.fixed=v;});}],
       [nh===L.length?'👁 Afficher':'🙈 Masquer',()=>{const v=nh===L.length;asmLotEach('visibilité',q=>{q.visible=v;});}],
+      ['🔁 Répéter le lot…',()=>asmPatStart(lot)],['📏 Mesurer',asmMeasStart],
       ['🗑 Supprimer',()=>asmAskDeleteLot(lot),'danger']]);
     return;
   }
@@ -12663,7 +12739,9 @@ function asmRenderProps(p){
   const l=[['✏️ Modéliser',()=>asmExit(o.id),'primary']];
   if(cc.occ&&cc.occ.length)l.push(['🧩 Placer ses composants',()=>asmShow(asm.path.concat(o.id),'asm')]);
   if(cc.doc&&cc.doc.std)l.push(['🔩 Modifier…',()=>stdDlg({occ:o.id})]); // pièce normalisée (48)
-  l.push(['➕ Occurrence',asmCmdNewOcc],[o.fixed?'📌 Libérer':'📌 Fixer',()=>asmToggleFixed(o.id)],['🗑 Supprimer',()=>asmAskDelete(o.id),'danger']);
+  l.push(['➕ Occurrence',asmCmdNewOcc]);
+  if(!o.pat)l.push(['🔁 Répétition…',()=>asmPatStart([o.id])],[o.fixed?'📌 Libérer':'📌 Fixer',()=>asmToggleFixed(o.id)]); // 48-assemblage-repetitions
+  l.push(['📏 Mesurer',asmMeasStart],['🗑 Supprimer',()=>asmAskDelete(o.id),'danger']);
   Btns(l);
   {const lm=asmLinkMenu(cc);if(lm.length)Btns(lm.map(x=>[x.html,x.fn]));}
 }
@@ -12735,8 +12813,10 @@ async function asmInsertText(txt,name){
   const rp=path=>(path||[]).map(id=>om[id]||id);
   const neufs=t.comps.map(c=>{
     const nm=c.id===t.root?base:c.name;c.doc.name=nm;
+    const M=id=>om[id]||id;
     return {id:cm[c.id],kind:'comp',name:nm,doc:c.doc,link:null,occ:c.occ.map(o=>Object.assign({},o,{id:om[o.id],comp:cm[o.comp],
-      align:o.align?Object.assign({},o.align,{src:{path:rp(o.align.src.path),cg:o.align.src.cg},dst:{path:rp(o.align.dst.path),cg:o.align.dst.cg}}):null}))};
+      align:o.align?Object.assign({},o.align,{src:{path:rp(o.align.src.path),cg:o.align.src.cg},dst:{path:rp(o.align.dst.path),cg:o.align.dst.cg}}):null,
+      pat:asmPatOccRemap(o.pat,M)})),pats:asmPatRemap(c.pats,M)}; // répétitions (48) : sources et instances renommées
   });
   {const L=asmLinkOwner(owner);if(L)neufs.forEach(c=>{c.of=L.id;});} // inséré dans un composant lié : il en fait partie
   neufs.forEach(c=>asm.comps.push(c));
@@ -12789,11 +12869,12 @@ function asmSubtreeObj(L){
   const top=serialiseObj(L.doc,false);top.name=L.name;
   const mem=asmLinkMembers(L);
   if(mem.length>1||L.occ.length){
-    const occ=o=>({id:I(o.id),comp:I(o.comp),name:o.name,fr:o.fr,fixed:!!o.fixed,visible:o.visible!==false,
-      align:o.align?Object.assign({},o.align,{src:{path:o.align.src.path.map(I),cg:o.align.src.cg},dst:{path:o.align.dst.path.map(I),cg:o.align.dst.cg}}):null});
+    const occ=o=>{const s={id:I(o.id),comp:I(o.comp),name:o.name,fr:o.fr,fixed:!!o.fixed,visible:o.visible!==false,
+      align:o.align?Object.assign({},o.align,{src:{path:o.align.src.path.map(I),cg:o.align.src.cg},dst:{path:o.align.dst.path.map(I),cg:o.align.dst.cg}}):null};
+      if(o.pat)s.pat=asmPatOccRemap(o.pat,I);return s;}; // instance de répétition (48)
     top.asm={v:2,name:L.name,root:I(L.id),active:I(L.id),path:[],mode:'part',
       comps:mem.map(c=>({id:I(c.id),kind:'comp',name:c.name,doc:c===L?null:serialiseObj(c.doc,false),occ:c.occ.map(occ),link:c===L?null:asmLinkSerial(c.link),
-        of:c.of&&c.of!==L.id?I(c.of):undefined}))};
+        of:c.of&&c.of!==L.id?I(c.of):undefined,pats:asmPatRemap(asmPatSerial(c),I)}))};
   }
   return top;
 }
@@ -12832,7 +12913,9 @@ async function asmLinkLoad(L,txt){
   };
   t.comps.forEach(c=>{M(c.id);c.occ.forEach(o=>M(o.id));});
   const mo=o=>Object.assign({},o,{id:M(o.id),comp:M(o.comp),st:'ok',msg:'',
-    align:o.align?Object.assign({},o.align,{src:{path:o.align.src.path.map(M),cg:o.align.src.cg},dst:{path:o.align.dst.path.map(M),cg:o.align.dst.cg}}):null});
+    align:o.align?Object.assign({},o.align,{src:{path:o.align.src.path.map(M),cg:o.align.src.cg},dst:{path:o.align.dst.path.map(M),cg:o.align.dst.cg}}):null,
+    pat:asmPatOccRemap(o.pat,M)});
+  const mp=c=>{const p=asmPatRemap(c.pats,M);return p&&p.length?p:undefined;}; // répétitions (48)
   const keep=new Set();
   t.comps.forEach(c=>{
     if(c.id===t.root){
@@ -12840,14 +12923,14 @@ async function asmLinkLoad(L,txt){
       const nd=JSON.parse(JSON.stringify(serialiseObj(c.doc,false)));
       if(L.doc===doc){try{docApplySnap(JSON.stringify(nd));}catch(e){}}
       else{Object.keys(L.doc).forEach(k=>{if(!(k in nd))delete L.doc[k];});Object.assign(L.doc,docFromSerial(nd));}
-      L.doc.name=L.name;L.occ=c.occ.map(mo);
+      L.doc.name=L.name;L.occ=c.occ.map(mo);L.pats=mp(c);if(!L.pats)delete L.pats;
     }else{
       const id=M(c.id);keep.add(id);
       let h=old.get(id);
       if(h){
         if(h.doc===doc){try{docApplySnap(JSON.stringify(serialiseObj(c.doc,false)));}catch(e){}}else h.doc=c.doc;
-        h.name=c.name;h.occ=c.occ.map(mo);h.link=c.link||null;h.of=c.of?M(c.of):L.id;
-      }else{h={id,kind:'comp',name:c.name,doc:c.doc,occ:c.occ.map(mo),link:c.link||null,of:c.of?M(c.of):L.id};asm.comps.push(h);}
+        h.name=c.name;h.occ=c.occ.map(mo);h.link=c.link||null;h.of=c.of?M(c.of):L.id;h.pats=mp(c);if(!h.pats)delete h.pats;
+      }else{h={id,kind:'comp',name:c.name,doc:c.doc,occ:c.occ.map(mo),link:c.link||null,of:c.of?M(c.of):L.id};if(mp(c))h.pats=mp(c);asm.comps.push(h);}
     }
   });
   // sous-composants disparus de la source (et ce qui ne servait qu'à eux)
@@ -12893,6 +12976,19 @@ async function asmLinkRef(h){
   const key='mfl:'+uid('k');try{await idbSet(key,h);}catch(e){}
   return {rel:null,key};
 }
+/* ── date et taille de la source (V0.29.0) ──
+   Relevées à chaque lecture ou écriture complète, avec l'empreinte du texte à ce moment-là ;
+   données d'exécution (_ : jamais enregistrées) — un fichier rouvert relit toujours ses sources.
+   Au moindre doute (date, taille ou empreinte différente, relevé absent) : lecture complète. */
+function asmLinkStamp(L,f){
+  if(!L||!L.link)return;
+  if(f&&isFinite(+f.lastModified)&&isFinite(+f.size)){L.link._lm=+f.lastModified;L.link._sz=+f.size;L.link._sg=L.link.sig;}
+  else{delete L.link._lm;delete L.link._sz;delete L.link._sg;}
+}
+function asmLinkStampSame(L,f){
+  const l=L&&L.link;
+  return !!(l&&f&&l._lm!=null&&l.sig&&l._sg===l.sig&&+f.lastModified===l._lm&&+f.size===l._sz&&l.st!=='warn');
+}
 /* ── vérifier les liens (ouverture, retour sur l'onglet, bouton) ── */
 async function asmLinksCheck(ask){
   if(!asm||asmLinkBusy)return {updated:[],warn:[]};
@@ -12904,15 +13000,19 @@ async function asmLinksCheck(ask){
       if(!L.link||!asmComp(L.id))continue;
       const r=await asmLinkHandle(L,ask);
       if(!r.h){L.link.st='warn';L.link.msg=r.why;out.warn.push(L.name);if(r.perm)out.perm=true;continue;}
-      let txt;try{txt=await (await r.h.getFile()).text();}catch(e){L.link.st='warn';L.link.msg='lecture impossible';out.warn.push(L.name);continue;}
-      if(asmHash(txt)===L.link.sig){L.link.st='ok';L.link.msg='';continue;}
+      let f,txt;try{f=await r.h.getFile();}catch(e){L.link.st='warn';L.link.msg='lecture impossible';out.warn.push(L.name);continue;}
+      // V0.29.0 : même date et même taille qu'à la dernière lecture de cette session → inchangée,
+      // sans relire ni analyser le fichier (la première vérification de la session lit toujours)
+      if(asmLinkStampSame(L,f)){L.link.st='ok';L.link.msg='';continue;}
+      try{txt=await f.text();}catch(e){L.link.st='warn';L.link.msg='lecture impossible';out.warn.push(L.name);continue;}
+      if(asmHash(txt)===L.link.sig){asmLinkStamp(L,f);L.link.st='ok';L.link.msg='';continue;}
       let choix='theirs';
       if(asmLinkDirty(L))choix=await mffAsk('« '+L.name+' » a changé sur le disque ET ici.\nGarder vos modifications (la source sera écrasée au prochain enregistrement), prendre la source (vos modifications sont perdues), ou rompre le lien ?',
         [['mine','Garder les miennes',true],['theirs','Prendre la source'],['break','Rompre le lien']]);
-      if(choix==='mine'){L.link.sig=asmHash(txt);L.link.pend=true;L.link.st='ok';L.link.msg='modifié ici : la source sera réécrite à l’enregistrement';continue;}
+      if(choix==='mine'){L.link.sig=asmHash(txt);asmLinkStamp(L,f);L.link.pend=true;L.link.st='ok';L.link.msg='modifié ici : la source sera réécrite à l’enregistrement';continue;}
       if(choix==='break'){asmLinkBreak(L);continue;}
       if(choix==='cancel')continue;
-      try{await asmLinkLoad(L,txt);out.updated.push(L.name);}catch(e){L.link.st='warn';L.link.msg=String(e&&e.message||e);out.warn.push(L.name);}
+      try{await asmLinkLoad(L,txt);asmLinkStamp(L,f);out.updated.push(L.name);}catch(e){L.link.st='warn';L.link.msg=String(e&&e.message||e);out.warn.push(L.name);}
     }
   }finally{asmLinkBusy=false;}
   if(out.updated.length){
@@ -12946,6 +13046,7 @@ async function asmLinksWrite(){
       const txt=asmLinkText(L,cur);
       await mffWriteSafe(r.h,txt); // V0.8.3 : contrôle, copie .bak de la source, écriture abandonnée en cas d'erreur
       delete L.link.pend;L.link.sig=asmHash(txt);L.link.base=asmSubtreeSig(L);L.link.st='ok';L.link.msg='';
+      try{asmLinkStamp(L,await r.h.getFile());}catch(e){asmLinkStamp(L,null);}
       out.written.push(L.name);
     }catch(e){out.failed.push(L.name+' ('+(e&&e.message||e)+')');}
   }
@@ -13061,7 +13162,7 @@ async function asmCmdRelink(cid){
   const L=asmComp(cid);if(!L||!L.link)return false;
   const p=await asmPickSource();if(!p)return false;
   const ref=await asmLinkRef(p.h);
-  L.link.rel=ref.rel;L.link.key=ref.key;L.link.name=p.name;
+  L.link.rel=ref.rel;L.link.key=ref.key;L.link.name=p.name;asmLinkStamp(L,null);
   if(asmHash(p.txt)!==L.link.sig&&!asmLinkDirty(L)){try{await asmLinkLoad(L,p.txt);try{await asmCacheFill(asmLinkMembers(L));}catch(e){}asmBuildSnapshots();}catch(e){alert('Lecture impossible : '+(e&&e.message||e));}}
   else L.link.st='ok';
   asmNotify();
@@ -13546,6 +13647,182 @@ function asmClearOccRendu(o,bid,all){
   asmNotify();
 }
 
+/* ═══════════════ 48-assemblage-mesure.js — assemblage mesure ═══════════════ */
+/* ---------- mesures entre pièces d'un assemblage (V0.29.0) ----------
+   Mode Placer, « 📏 Mesurer » : deux clics sur des faces de n'importe quelles pièces affichées
+   (composant actif, enfants, fantômes) → les mêmes mesures que dans la pièce (measurePair, 90) :
+   distance exacte entre faces parallèles, entraxe de deux cylindres, axe ↔ face, angle entre
+   faces ; sinon distance entre les points cliqués. Un clic seul sur un cylindre donne son Ø.
+   Géométrie EXACTE sans rejeu ni noyau : chaque instantané de composant porte, pour chaque face
+   de ses maillages, son plan ou son cylindre (it.fg, capturé en fin de rejeu par asmFaceTable,
+   gardé en cache avec l'image) ; la mesure le place par la matrice de l'instance cliquée.
+   Faces d'autres types (tores, splines) ou image sans table : distance entre points cliqués. */
+let asmMeas=null; // {picks:[{mesh, faceIndex, point, geom, name}], txt}
+function asmFaceTable(b){
+  // Plan / cylindre exact de chaque groupe de faces du maillage du corps b (ordre de
+  // geometry.userData.occGroups), dans le repère du maillage affiché → [{k,…}|null] ou null
+  try{
+    if(!(typeof occHas==='function'&&occHas())||!b||!b.mesh||!b.mesh.geometry)return null;
+    const groups=(b.mesh.geometry.userData||{}).occGroups||[];if(!groups.length)return null;
+    let shape=null;
+    if(b.kind==='body'&&b.shape&&occLive&&occLive.shape)shape=b.shape;
+    else if(b.kind==='import'){const e=importGeom.get(b.ref||b.id);if(e&&e.brep)shape=e.brep;}
+    if(!shape)return null;
+    b.mesh.updateMatrixWorld(true);
+    const M=b.mesh.matrixWorld,N=new THREE.Matrix3().getNormalMatrix(M);
+    const want=new Map();groups.forEach((g,i)=>{if(!want.has(g.f))want.set(g.f,[]);want.get(g.f).push(i);});
+    const out=new Array(groups.length).fill(null),T=occt.GeomAbs_SurfaceType;
+    const r6=v=>[+v.x.toFixed(6),+v.y.toFixed(6),+v.z.toFixed(6)];
+    const ex=new occt.TopExp_Explorer_2(shape,occt.TopAbs_ShapeEnum.TopAbs_FACE,occt.TopAbs_ShapeEnum.TopAbs_SHAPE);
+    let k=0;
+    try{
+      while(ex.More()){
+        if(want.has(k)){
+          let f=null,ad=null;
+          try{
+            f=occt.TopoDS.Face_1(ex.Current());ad=new occt.BRepAdaptor_Surface_2(f,true);
+            const gt=ad.GetType();let G=null;
+            if(gt===T.GeomAbs_Cylinder){
+              const c=ad.Cylinder(),a=c.Axis();
+              const C=new THREE.Vector3(a.Location().X(),a.Location().Y(),a.Location().Z()).applyMatrix4(M);
+              const A=new THREE.Vector3(a.Direction().X(),a.Direction().Y(),a.Direction().Z()).applyMatrix3(N).normalize();
+              G={k:'cyl',c:r6(C),a:r6(A),r:+c.Radius().toFixed(6)};
+            }else if(gt===T.GeomAbs_Plane){
+              const a=ad.Plane().Axis();
+              const P=new THREE.Vector3(a.Location().X(),a.Location().Y(),a.Location().Z()).applyMatrix4(M);
+              const n=new THREE.Vector3(a.Direction().X(),a.Direction().Y(),a.Direction().Z()).applyMatrix3(N).normalize();
+              G={k:'plan',p:r6(P),n:r6(n)};
+            }
+            if(G)want.get(k).forEach(i=>{out[i]=G;});
+          }catch(e){}
+          finally{try{if(ad)ad.delete();}catch(e){}try{if(f)f.delete();}catch(e){}}
+        }
+        k++;ex.Next();
+      }
+    }finally{try{ex.delete();}catch(e){}}
+    return out;
+  }catch(e){return null;}
+}
+function asmFgNorm(fg,n){
+  // Table relue (cache, fichier) : même longueur que les groupes, entrées vérifiées
+  if(!Array.isArray(fg)||fg.length!==n)return null;
+  const v3=a=>Array.isArray(a)&&a.length===3&&a.every(x=>typeof x==='number'&&isFinite(x));
+  return fg.map(G=>{
+    if(G&&G.k==='cyl'&&v3(G.c)&&v3(G.a)&&isFinite(+G.r)&&+G.r>0)return {k:'cyl',c:G.c,a:G.a,r:+G.r};
+    if(G&&G.k==='plan'&&v3(G.p)&&v3(G.n))return {k:'plan',p:G.p,n:G.n};
+    return null;
+  });
+}
+function asmGrpNorm(g){
+  // Groupes de faces relus : {start, count, f} entiers positifs
+  if(!Array.isArray(g))return null;
+  const ok=g.every(x=>x&&Number.isInteger(x.start)&&Number.isInteger(x.count)&&Number.isInteger(x.f)&&x.start>=0&&x.count>=0&&x.f>=0);
+  return ok?g.map(x=>({start:x.start,count:x.count,f:x.f})):null;
+}
+/* ── commande ── */
+function asmMeasStart(){
+  if(asmMode!=='asm')return;
+  try{if(asmPatEd)asmPatOk();}catch(e){}
+  asmMeasGfxClear();
+  asmMeas={picks:[],txt:''};
+  try{renderProps();}catch(e){}
+  try{faceEl.textContent='Mesurer : cliquez une face, puis une 2ᵉ (même pièce ou une autre) · Échap pour finir.';}catch(e){}
+}
+function asmRibbonMeasure(){
+  // Bouton du bandeau : passe en mode Placer au besoin ; un second clic termine la mesure
+  if(typeof skEdit!=='undefined'&&skEdit){try{faceEl.textContent='Fermez d’abord l’esquisse.';}catch(e){}return;}
+  if(asmMeas&&asmMode==='asm'){asmMeasStop();return;}
+  if(asmMode!=='asm'&&asmEnter()===false)return;
+  asmMeasStart();
+}
+function asmMeasStop(quiet){
+  if(!asmMeas)return;
+  asmMeas=null;asmMeasGfxClear();
+  if(!quiet){try{renderProps();}catch(e){}try{faceEl.textContent='Mesure terminée.';}catch(e){}}
+}
+function asmMeasGfxClear(){
+  // Les tracés de mesure (90 : measureGroup, selGroup) sont rangés dans la scène d'assemblage
+  try{[measureGroup,selGroup].forEach(g=>{if(g&&g.parent&&g.parent!==scene)g.parent.remove(g);});}catch(e){}
+  try{clearMeasure();}catch(e){}
+}
+function asmMeasGfxAdopt(){
+  const S=asmSceneGet();
+  try{if(measureGroup)S.add(measureGroup);if(selGroup)S.add(selGroup);}catch(e){}
+}
+function asmMeasHit(e){
+  // Face sous le curseur, toutes pièces affichées (les fantômes en dernier recours)
+  const G=asmSceneGet().getObjectByName('asmOcc');if(!G)return null;
+  const r=renderer.domElement.getBoundingClientRect();
+  rayc.setFromCamera(new THREE.Vector2(((e.clientX-r.left)/r.width)*2-1,-((e.clientY-r.top)/r.height)*2+1),camera);
+  G.updateMatrixWorld(true);
+  const hits=[];
+  // raycast d'origine : les pièces non sélectionnables l'ont neutralisé (asmFill, 47)
+  G.traverse(m=>{if(m.isMesh&&m.userData&&m.userData.rd){try{THREE.Mesh.prototype.raycast.call(m,rayc,hits);}catch(err){}}});
+  hits.sort((a,b)=>a.distance-b.distance);
+  return hits.find(h=>!h.object.userData.rd.ghost)||hits[0]||null;
+}
+function asmMeasGeom(m,fi){
+  // Plan / cylindre exact de la face cliquée, dans la scène d'assemblage (format occFaceGeom, 90)
+  const fg=m&&m.userData.fg,grp=m&&m.geometry&&(m.geometry.userData||{}).occGroups;
+  if(!fg||!grp||fi==null)return null;
+  const gi=grp.findIndex(g=>fi>=g.start&&fi<g.start+g.count);if(gi<0)return null;
+  const G=fg[gi];if(!G)return null;
+  m.updateMatrixWorld(true);
+  const M=m.matrixWorld,N=new THREE.Matrix3().getNormalMatrix(M);
+  if(G.k==='cyl')return {kind:'cyl',center:new THREE.Vector3(...G.c).applyMatrix4(M),axis:new THREE.Vector3(...G.a).applyMatrix3(N).normalize(),r:G.r};
+  return {kind:'plan',p:new THREE.Vector3(...G.p).applyMatrix4(M),n:new THREE.Vector3(...G.n).applyMatrix3(N).normalize()};
+}
+function asmMeasName(m){
+  // « Châssis:1 › Roue:2 » (chemin de l'instance) ; le composant actif lui-même : son nom
+  const path=m&&m.userData.ipath;if(!asm||!Array.isArray(path))return 'pièce';
+  if(!path.length)return (asmRoot()||{}).name||'pièce';
+  const n=[];let c=asmRoot();
+  for(const id of path){const o=c&&c.occ.find(q=>q.id===id);if(!o)break;n.push(o.name);c=asmComp(o.comp);}
+  return n.join(' › ')||'pièce';
+}
+function asmMeasClick(e){
+  if(!asmMeas)return false;
+  const h=asmMeasHit(e);
+  if(!h){asmMeasGfxClear();asmMeas.picks=[];asmMeas.txt='';
+    try{faceEl.textContent='Aucune face ici — cliquez une face d’une pièce.';}catch(err){}try{renderProps();}catch(err){}return true;}
+  const P={mesh:h.object,faceIndex:h.faceIndex,point:h.point.clone(),geom:asmMeasGeom(h.object,h.faceIndex),name:asmMeasName(h.object)};
+  const kind=G=>G?(G.kind==='cyl'?' · CYLINDRE Ø'+(G.r*2).toFixed(2):' · PLAN'):'';
+  let txt='';
+  if(asmMeas.picks.length!==1){
+    // première face (ou nouvelle mesure après deux faces)
+    asmMeasGfxClear();asmMeas.picks=[P];
+    try{highlightTris(P.mesh,faceTrisFor(P.mesh,P.faceIndex),0xff9f0a,0.55);}catch(err){}
+    if(P.geom&&P.geom.kind==='cyl'){
+      try{drawAxis(P.geom.center,P.geom.axis,axisLen());tagAt('Ø '+(P.geom.r*2).toFixed(2),P.point.clone());}catch(err){}
+    }
+    txt='Face 1 : '+P.name+kind(P.geom)+'\nCliquez une 2ᵉ face (même pièce ou une autre).';
+  }else{
+    const A=asmMeas.picks[0];asmMeas.picks.push(P);
+    try{highlightTris(P.mesh,faceTrisFor(P.mesh,P.faceIndex),0xff9f0a,0.55);}catch(err){}
+    let done=false;try{done=measurePair(A,P);}catch(err){done=false;}
+    let res;
+    if(done)res=faceEl.textContent;
+    else{const d=A.point.distanceTo(P.point);dimPair(A.point,P.point,d.toFixed(2)+' mm');
+      res='Distance entre les points cliqués ≈ '+d.toFixed(2)+' mm'+(A.geom&&P.geom?'':'\n(face non plane ni cylindrique, ou image sans géométrie exacte : distance des points)');}
+    txt='Face 1 : '+A.name+kind(A.geom)+'\nFace 2 : '+P.name+kind(P.geom)+'\n'+res;
+  }
+  asmMeasGfxAdopt();
+  asmMeas.txt=txt;
+  try{faceEl.textContent=txt;}catch(err){}
+  try{renderProps();}catch(err){}
+  return true;
+}
+function asmMeasProps(p){
+  const mk=(tag,cls,txt)=>{const d=document.createElement(tag);if(cls)d.className=cls;if(txt!=null)d.textContent=txt;return d;};
+  p.appendChild(mk('div','pnl-h','📏 Mesurer'));
+  p.appendChild(mk('div','pnl-note','Clic sur une face, puis sur une 2ᵉ : faces parallèles, entraxe, axe ↔ face, angle — sinon distance des points. Toutes les pièces affichées, à toute profondeur.'));
+  if(asmMeas&&asmMeas.txt){const r=mk('div','pnl-note',asmMeas.txt);r.style.whiteSpace='pre-line';r.style.fontWeight='600';p.appendChild(r);}
+  const b=mk('div','pnl-btns');
+  const nw=mk('button',null,'↺ Nouvelle mesure');nw.onclick=()=>{asmMeasGfxClear();asmMeas.picks=[];asmMeas.txt='';renderProps();};b.appendChild(nw);
+  const cl=mk('button','primary','Terminer');cl.title='Échap';cl.onclick=()=>asmMeasStop();b.appendChild(cl);
+  p.appendChild(b);
+}
+
 /* ═══════════════ 48-assemblage-placement.js — assemblage placement ═══════════════ */
 /* ---------- composants : placement des occurrences (V0.6.0 → V0.6.1) ----------
    Trois façons de placer une occurrence (enfant direct du composant actif, mode Placer) :
@@ -13562,7 +13839,7 @@ let asmGz=null;       // groupe du manipulateur (dans asmScene)
 let asmDrag=null;     // geste en cours {kind:'move'|'rot', ax, o0, fr0, t0|p0, occ}
 let asmAlign=null;    // commande Aligner en cours {occ, step:'src'|'dst', src, dst, flip, rz, off, saved}
 const ASM_AX=[[1,0,0],[0,1,0],[0,0,1]],ASM_AX_COL=[0xff453a,0x30d158,0x0a84ff];
-function asmMovable(o){return !!o&&!o.fixed&&!o.align;}
+function asmMovable(o){return !!o&&!o.fixed&&!o.align&&!o.pat;} // instance de répétition : placée par sa répétition (48-assemblage-repetitions)
 function asmCmdMoveOcc(path,id){
   // « ✥ Déplacer » (menu de l'arbre) : mode Placer, occurrence sélectionnée, manipulateur —
   // sauf si elle est bloquée (fixée, ou placée par une liaison / un alignement)
@@ -13570,7 +13847,7 @@ function asmCmdMoveOcc(path,id){
   if(asmMode!=='asm'){if(asmShow(path,'asm',id)===false)return;}
   else{asmSelId=id;asmPivot=null;asmDraw();asmGizmoDraw();renderTree();renderProps();}
   const dof=o.align&&asmDofs(o.align).length;
-  try{faceEl.textContent=o.fixed?'« '+o.name+' » est fixée : libérez-la (📌 Libérer) pour la déplacer.'
+  try{faceEl.textContent=o.pat?'« '+o.name+' » est une instance de répétition : sa position suit la source.':o.fixed?'« '+o.name+' » est fixée : libérez-la (📌 Libérer) pour la déplacer.'
     :o.align?(dof?'« '+o.name+' » est liée : seuls ses degrés de liberté se pilotent (manipulateur ou curseurs).':'« '+o.name+' » est alignée (rigide) : supprimez la liaison pour la déplacer librement.')
     :'Déplacer « '+o.name+' » : flèches = translation, anneaux = rotation (pas 1 mm / 5°, Maj = libre), ou Position X / Y / Z dans le panneau.';}catch(e){}
 }
@@ -13711,6 +13988,7 @@ function asmPlacementProps(p,o){
   try{asmLookProps(p,o);}catch(e){}
 }
 function asmPlacementCore(p,o){
+  if(o.pat){asmPatOccProps(p,o);return;} // instance de répétition (48-assemblage-repetitions)
   const mk=(tag,cls,txt)=>{const d=document.createElement(tag);if(cls)d.className=cls;if(txt!=null)d.textContent=txt;return d;};
   const Row=(lab,ctl)=>{const r=mk('div','pnl-row');r.appendChild(mk('label',null,lab));if(ctl)r.appendChild(ctl);p.appendChild(r);return r;};
   const num=(v,fn,w)=>{const i=document.createElement('input');i.type='text';i.inputMode='decimal';i.style.width=(w||64)+'px';i.value=String(+(+v).toFixed(3)).replace('.',',');
@@ -13793,6 +14071,7 @@ function asmFramesOf(occ){return asmFramesUnder(occ.comp,null);} // à poser (re
 function asmAlignStart(id){
   const o=asmOcc(id);if(!o)return;
   if(o.fixed){try{faceEl.textContent='Occurrence fixée : libérez-la pour l’aligner.';}catch(e){}return;}
+  if(o.pat){try{faceEl.textContent='Instance de répétition : sa position suit la source — alignez plutôt la source.';}catch(e){}return;}
   asmAlign={occ:o.id,step:'src',src:undefined,dst:undefined,flip:false,rz:0,off:[0,0,0],face:null,saved:JSON.parse(JSON.stringify({fr:o.fr,align:o.align}))};
   asmAlignRefresh();
   try{faceEl.textContent='Aligner « '+o.name+' » : choisissez le repère du composant à poser — clic sur une triade, ou sur une face pour ses points d’accroche.';}catch(e){}
@@ -13988,6 +14267,334 @@ function asmAsBuiltMenu(o,anchor){
       try{faceEl.textContent='Liaison '+ASM_JOINTS[t].lab.toLowerCase()+' à la position actuelle : faites-la jouer au manipulateur ou au curseur.';}catch(e){}}}));
   });
   try{const r=anchor.getBoundingClientRect();mfPop({getBoundingClientRect:()=>r},items);}catch(e){}
+}
+
+/* ═══════════════ 48-assemblage-repetitions.js — assemblage repetitions ═══════════════ */
+/* ---------- répétitions de composants (V0.29.0) ----------
+   Les répétitions de la pièce (40 : linéaire, deux directions, circulaire, symétrie, symétrie
+   double), appliquées à des OCCURRENCES. Une répétition appartient au composant porteur :
+     owner.pats = [{id, name, type:'lin'|'circ'|'mir', src:[ids d'occurrences du porteur],
+                    ref:{cg} (repère du porteur : son origine si cg null, sinon un repère de
+                    construction), axis 'X'|'Y'|'Z' (direction, axe de rotation ou normale du plan,
+                    dans ce repère), copies (original exclu), dist, angle, lin2/axis2/copies2/dist2
+                    (2ᵉ direction), plane2 (symétrie double : normale du 2ᵉ plan), skip:[clés]}]
+   Les instances sont des occurrences ordinaires du porteur, marquées o.pat = {id, k} (k = source
+   + case de la grille) : leur position est DÉRIVÉE (transformation × position de la source),
+   recalculée par asmResolveIn — associative : la source bouge (manipulateur, liaison), le repère
+   de référence bouge → les instances suivent. Une instance garde son identifiant d'un calcul à
+   l'autre (les références vers elle tiennent) ; supprimée, sa clé va dans skip ; une source
+   supprimée emporte ses instances.
+   Symétrie : vraie symétrie (repère indirect, déterminant −1) — la pièce est dessinée et
+   inspectée en miroir, comme la fonction Symétrie de la pièce. */
+const ASM_PAT_MAX=500; // instances par répétition (garde-fou d'une saisie aberrante)
+const ASM_PAT_TYPES={lin:'Linéaire',circ:'Circulaire',mir:'Symétrie'};
+function asmPatName(p){
+  if(!p)return '';
+  if(p.type==='mir')return p.plane2?'Symétrie double':'Symétrie';
+  if(p.type==='lin'&&p.lin2)return 'Linéaire 2 directions';
+  return ASM_PAT_TYPES[p.type]||'Répétition';
+}
+function asmPatNorm(list){
+  // Répétitions lues d'un fichier : tout est vérifié, une entrée inutilisable est écartée
+  if(!Array.isArray(list))return undefined;
+  const ax=v=>v==='Y'||v==='Z'?v:'X',num=(v,d)=>isFinite(+v)?+v:d,cnt=v=>Math.max(1,Math.min(ASM_PAT_MAX,Math.floor(+v)||1));
+  const out=list.filter(p=>p&&typeof p.id==='string'&&ASM_PAT_TYPES[p.type]&&Array.isArray(p.src)).map(p=>{
+    const o={id:p.id,name:typeof p.name==='string'?p.name:'',type:p.type,src:p.src.filter(x=>typeof x==='string'),
+      ref:{cg:p.ref&&typeof p.ref.cg==='string'?p.ref.cg:null},axis:ax(p.axis),copies:cnt(p.copies),dist:num(p.dist,10),angle:num(p.angle,360),
+      skip:Array.isArray(p.skip)?p.skip.filter(x=>typeof x==='string'):[]};
+    if(p.lin2){o.lin2=true;o.axis2=ax(p.axis2);o.copies2=cnt(p.copies2);o.dist2=num(p.dist2,10);}
+    if(p.plane2)o.plane2=ax(p.plane2);
+    return o;
+  }).filter(p=>p.src.length);
+  return out.length?out:undefined;
+}
+function asmPatSerial(c){
+  const L=c&&c.pats;if(!Array.isArray(L)||!L.length)return undefined;
+  return L.map(p=>{const o={};Object.keys(p).forEach(k=>{if(k!=='st'&&k!=='msg'&&k[0]!=='_')o[k]=p[k];});return JSON.parse(JSON.stringify(o));});
+}
+function asmPatRemap(list,M){
+  // Identifiants renouvelés (insertion d'un fichier, composant lié) : sources, clés des instances
+  if(!Array.isArray(list))return list;
+  return list.map(p=>Object.assign({},p,{src:(p.src||[]).map(M),skip:(p.skip||[]).map(k=>asmPatKeyRemap(k,M))}));
+}
+function asmPatKeyRemap(k,M){const i=String(k).indexOf('|');return i<0?k:M(k.slice(0,i))+k.slice(i);}
+function asmPatOccRemap(pat,M){return pat&&typeof pat==='object'?{id:pat.id,k:asmPatKeyRemap(pat.k,M)}:undefined;}
+/* ── transformations (repères {o,x,y,z} : asmCompose / asmApply, 46) ── */
+function asmPatUnit(v){const l=Math.hypot(v[0],v[1],v[2])||1;return [v[0]/l,v[1]/l,v[2]/l];}
+function asmPatAxis(F,a){return asmPatUnit(a==='Y'?F.y:a==='Z'?F.z:F.x);}
+function asmPatTrans(d){return {o:d.slice(),x:[1,0,0],y:[0,1,0],z:[0,0,1]};}
+function asmPatRot(P,a,ang){
+  // Rotation d'angle ang (rad) autour de la droite (P, a) — Rodrigues
+  const c=Math.cos(ang),s=Math.sin(ang),[x,y,z]=a;
+  const R=v=>{const d=x*v[0]+y*v[1]+z*v[2];
+    return [v[0]*c+(y*v[2]-z*v[1])*s+x*d*(1-c),v[1]*c+(z*v[0]-x*v[2])*s+y*d*(1-c),v[2]*c+(x*v[1]-y*v[0])*s+z*d*(1-c)];};
+  const rp=R(P);
+  return {o:[P[0]-rp[0],P[1]-rp[1],P[2]-rp[2]],x:R([1,0,0]),y:R([0,1,0]),z:R([0,0,1])};
+}
+function asmPatMirror(P,n){
+  // Symétrie par rapport au plan (P, n) : R = I − 2 n nᵀ (repère indirect)
+  const R=v=>{const d=2*(n[0]*v[0]+n[1]*v[1]+n[2]*v[2]);return [v[0]-d*n[0],v[1]-d*n[1],v[2]-d*n[2]];};
+  const rp=R(P);
+  return {o:[P[0]-rp[0],P[1]-rp[1],P[2]-rp[2]],x:R([1,0,0]),y:R([0,1,0]),z:R([0,0,1])};
+}
+function asmPatRefFrame(owner,p){return p&&p.ref&&p.ref.cg?asmCompFrame(owner.id,p.ref.cg):asmFr0();}
+function asmPatCells(owner,p){
+  // Cases de la répétition (original exclu) : [{k, M}] — M dans le repère du porteur ; null si
+  // le repère de référence a disparu
+  const F=asmPatRefFrame(owner,p);if(!F)return null;
+  const out=[];
+  if(p.type==='lin'){
+    const d1=asmPatAxis(F,p.axis),n1=Math.max(1,+p.copies||1),s1=+p.dist||0;
+    const two=!!p.lin2,d2=two?asmPatAxis(F,p.axis2):[0,0,0],n2=two?Math.max(1,+p.copies2||1):0,s2=two?(+p.dist2||0):0;
+    for(let j=0;j<=n2;j++)for(let i=0;i<=n1;i++){
+      if(!i&&!j)continue;
+      out.push({k:i+','+j,M:asmPatTrans([d1[0]*s1*i+d2[0]*s2*j,d1[1]*s1*i+d2[1]*s2*j,d1[2]*s1*i+d2[2]*s2*j])});
+    }
+  }else if(p.type==='circ'){
+    const a=asmPatAxis(F,p.axis),n=Math.max(1,+p.copies||1);
+    const step=typeof repCircStep==='function'?repCircStep({angle:p.angle,copies:n}):(Math.abs(+p.angle||360)>=360-1e-9?(+p.angle||360)/(n+1):(+p.angle||360)/n);
+    for(let i=1;i<=n;i++)out.push({k:'r'+i,M:asmPatRot(F.o,a,step*i*Math.PI/180)});
+  }else if(p.type==='mir'){
+    const M1=asmPatMirror(F.o,asmPatAxis(F,p.axis));
+    out.push({k:'m1',M:M1});
+    if(p.plane2){const M2=asmPatMirror(F.o,asmPatAxis(F,p.plane2));out.push({k:'m2',M:M2},{k:'m12',M:asmCompose(M1,M2)});}
+  }
+  return out.slice(0,ASM_PAT_MAX);
+}
+function asmPatGen(owner){
+  // Instances des répétitions du porteur, créées / placées / retirées → true si quelque chose a changé
+  if(!owner)return false;
+  let ch=false;
+  const byId=new Map(owner.occ.map(o=>[o.id,o]));
+  // une répétition sans source restante disparaît (ses instances avec elle)
+  if(Array.isArray(owner.pats)){
+    owner.pats.forEach(p=>{p.src=(p.src||[]).filter(id=>{const o=byId.get(id);return o&&!o.pat;});});
+    const n0=owner.pats.length;owner.pats=owner.pats.filter(p=>p.src.length);
+    if(owner.pats.length!==n0)ch=true;
+    if(!owner.pats.length)delete owner.pats;
+  }
+  const pats=owner.pats||[],have=new Map(),keep=new Set();
+  owner.occ.forEach(o=>{if(o.pat)have.set(o.pat.id+'#'+o.pat.k,o);});
+  const fresh=[];
+  pats.forEach(p=>{
+    p.st='ok';p.msg='';
+    const cells=asmPatCells(owner,p);
+    if(!cells){ // repère de référence introuvable : les instances restent où elles sont
+      p.st='warn';p.msg='repère de référence introuvable : instances laissées en place';
+      owner.occ.forEach(o=>{if(o.pat&&o.pat.id===p.id)keep.add(o.id);});return;
+    }
+    const skip=new Set(p.skip||[]);
+    p.src.forEach(sid=>{
+      const s=byId.get(sid);if(!s)return;
+      cells.forEach(cell=>{
+        const k=sid+'|'+cell.k;if(skip.has(k))return;
+        let o=have.get(p.id+'#'+k);
+        if(!o){o=asmNewOccObj(s.comp,asmOccName(s.comp));o.pat={id:p.id,k};fresh.push(o);ch=true;}
+        if(o.comp!==s.comp){o.comp=s.comp;ch=true;}
+        const fr=asmRound(asmCompose(cell.M,s.fr));
+        if(['o','x','y','z'].some(q=>fr[q].some((v,j)=>Math.abs(v-o.fr[q][j])>1e-9))){o.fr=fr;ch=true;}
+        if(o.align){o.align=null;ch=true;}
+        if(o.fixed)o.fixed=false;
+        // apparence de la source (intensité, transparence, arêtes, rendu) : les instances la suivent
+        const lk=s.look?JSON.stringify(s.look):'',rd=s.rendu?JSON.stringify(s.rendu):'';
+        if((o.look?JSON.stringify(o.look):'')!==lk){if(lk)o.look=JSON.parse(lk);else delete o.look;ch=true;}
+        if((o.rendu?JSON.stringify(o.rendu):'')!==rd){if(rd)o.rendu=JSON.parse(rd);else delete o.rendu;ch=true;}
+        o.st='ok';o.msg='';
+        keep.add(o.id);
+      });
+    });
+  });
+  if(fresh.length){
+    // les instances neuves se rangent après leur source (arbre, ordre des occurrences)
+    fresh.forEach(o=>{
+      const sid=o.pat.k.split('|')[0];
+      let at=-1;owner.occ.forEach((q,i)=>{if(q.id===sid||(q.pat&&q.pat.id===o.pat.id&&q.pat.k.split('|')[0]===sid))at=i;});
+      owner.occ.splice(at<0?owner.occ.length:at+1,0,o);
+    });
+    // numéros suivis (« Goupille:2 », « Goupille:3 »…) : nommées une à une, une fois toutes rangées
+    fresh.forEach(o=>{o.name='';});fresh.forEach(o=>{o.name=asmOccName(o.comp);});
+  }
+  // (une instance sur le chemin de l'instance éditée reste : on ne retire pas la pièce sous les pieds)
+  const gone=owner.occ.filter(o=>o.pat&&!keep.has(o.id)&&!(asm.path||[]).includes(o.id)).map(o=>o.id);
+  if(gone.length){
+    ch=true;
+    const G=new Set(gone);
+    owner.occ=owner.occ.filter(o=>!G.has(o.id));
+    // ce qui s'alignait sur une instance disparue garde sa position
+    asm.comps.forEach(c=>c.occ.forEach(q=>{const a=q.align;
+      if(a&&((a.dst&&a.dst.path.some(x=>G.has(x)))||(a.src&&a.src.path.some(x=>G.has(x)))))q.align=null;}));
+  }
+  return ch;
+}
+function asmPatOf(o){
+  // Répétition dont l'occurrence est une instance → {owner, pat} ou null
+  if(!o||!o.pat)return null;
+  const owner=asmOccOwner(o.id);const p=owner&&(owner.pats||[]).find(q=>q.id===o.pat.id);
+  return p?{owner,pat:p}:null;
+}
+function asmPatOnDelete(owner,o){
+  // Suppression d'une occurrence (asmDeleteOcc, 46) : instance → notée dans skip (elle ne revient
+  // pas) ; source → retirée de ses répétitions (asmPatGen emporte ses instances)
+  if(!owner||!o)return;
+  if(o.pat){const p=(owner.pats||[]).find(q=>q.id===o.pat.id);if(p){p.skip=p.skip||[];if(p.skip.indexOf(o.pat.k)<0)p.skip.push(o.pat.k);}return;}
+  (owner.pats||[]).forEach(p=>{p.src=(p.src||[]).filter(id=>id!==o.id);});
+}
+function asmPatNew(owner,ids,type){
+  // Nouvelle répétition des occurrences ids (enfants directs du porteur, hors instances)
+  const src=(ids||[]).filter(id=>owner.occ.some(o=>o.id===id&&!o.pat));
+  if(!src.length)return null;
+  const n=(owner.pats||[]).length+1;
+  // pas proposé : la taille de la première source le long de X (sinon 50 mm)
+  let dist=50;
+  try{const s=asmOcc(src[0]),c=s&&asmComp(s.comp);
+    if(c&&c._snap&&typeof asmSnapBox==='function'){const b=asmSnapBox(c._snap);if(!b.isEmpty())dist=Math.max(5,Math.ceil(1.2*(b.max.x-b.min.x)));}}catch(e){}
+  const p={id:uid('pt'),name:'Répétition '+n,type:ASM_PAT_TYPES[type]?type:'lin',src,ref:{cg:null},axis:type==='circ'?'Z':'X',
+    copies:type==='mir'?1:2,dist,angle:360,skip:[]};
+  owner.pats=(owner.pats||[]).concat(p);
+  return p;
+}
+function asmPatDelete(owner,pid){
+  // Supprime la répétition : ses instances partent, les sources restent
+  if(!owner||!owner.pats)return false;
+  const n0=owner.pats.length;owner.pats=owner.pats.filter(p=>p.id!==pid);
+  if(!owner.pats.length)delete owner.pats;
+  if(n0===((owner.pats||[]).length))return false;
+  asmPatGen(owner);
+  return true;
+}
+/* ── interface (mode Placer) : panneau d'édition, comme Aligner (asmRenderProps, 47) ──
+   Les réglages s'appliquent en direct (les instances sont recalculées à chaque changement) ;
+   une étape d'annulation pour toute l'édition ; Annuler / Échap revient à l'état d'avant. */
+let asmPatEd=null; // {owner, pat, before} : répétition ouverte dans le panneau
+function asmPatCur(){
+  const o=asmPatEd&&asmComp(asmPatEd.owner),p=o&&(o.pats||[]).find(q=>q.id===asmPatEd.pat);
+  return p?{owner:o,pat:p}:null;
+}
+function asmPatStart(ids,type){
+  // Nouvelle répétition des occurrences sélectionnées (enfants directs du composant actif)
+  if(asmMode!=='asm')return false;
+  const owner=asmActiveComp();if(!owner)return false;
+  ids=(ids||[]).filter(id=>owner.occ.some(o=>o.id===id&&!o.pat));
+  if(!ids.length){try{faceEl.textContent='Répétition : sélectionnez d’abord une ou plusieurs occurrences (une instance de répétition ne se répète pas : modifiez sa répétition).';}catch(e){}return false;}
+  try{if(asmMeas)asmMeasStop(true);}catch(e){}
+  asmPush('répétition');
+  const p=asmPatNew(owner,ids,type);if(!p){asmUndoStack.pop();return false;}
+  asmPatEd={owner:owner.id,pat:p.id,before:null};
+  asmResolve();asmNotify();
+  try{faceEl.textContent='Répétition de '+ids.length+' occurrence(s) : type, direction, quantité et pas dans le panneau (aperçu en direct) · ✓ OK pour garder · Échap pour annuler.';}catch(e){}
+  return p;
+}
+function asmRibbonPattern(){
+  // Bouton du bandeau : mode Placer au besoin (depuis une pièce : son assemblage, elle
+  // sélectionnée) ; occurrence ou lot sélectionné → nouvelle répétition ; instance → sa répétition
+  if(typeof skEdit!=='undefined'&&skEdit){try{faceEl.textContent='Fermez d’abord l’esquisse.';}catch(e){}return;}
+  if(asmMode!=='asm'&&asmEnter()===false)return;
+  if(asmPatEd)return;
+  const o=asmOcc(asmSelId),R=o&&o.pat?asmPatOf(o):null;
+  if(R){asmPatEdit(R.owner.id,R.pat.id);return;}
+  const L=asmLotIds();
+  if(!L.length){try{faceEl.textContent='Répétition : cliquez d’abord l’occurrence à répéter (Ctrl+clic pour un lot), puis « Répétition ».';}catch(e){}return;}
+  asmPatStart(L);
+}
+function asmPatEdit(ownerId,pid){
+  const o=asmComp(ownerId),p=o&&(o.pats||[]).find(q=>q.id===pid);if(!p)return false;
+  try{if(asmMeas)asmMeasStop(true);}catch(e){}
+  asmPush('modifier « '+(p.name||'répétition')+' »');
+  asmPatEd={owner:o.id,pat:p.id,before:JSON.stringify(o.pats)};
+  try{renderTree();renderProps();}catch(e){}
+  return true;
+}
+function asmPatSet(fn){
+  const P=asmPatCur();if(!P)return;
+  fn(P.pat);asmResolve();asmNotify();
+}
+function asmPatOk(){
+  const E=asmPatEd,o=E&&asmComp(E.owner);asmPatEd=null;
+  if(E&&E.before!=null&&o&&JSON.stringify(o.pats)===E.before)asmUndoStack.pop(); // rien changé : pas d'étape
+  try{renderTree();renderProps();}catch(e){}
+}
+function asmPatCancel(){
+  if(!asmPatEd)return;
+  asmPatEd=null;
+  if(asmUndo())asmRedoStack.pop(); // l'état d'avant l'édition, sans rien à rétablir
+  asmNotify();
+  try{faceEl.textContent='Répétition annulée.';}catch(e){}
+}
+function asmPatDeleteCmd(ownerId,pid){
+  const o=asmComp(ownerId),p=o&&(o.pats||[]).find(q=>q.id===pid);if(!p)return;
+  const n=o.occ.filter(q=>q.pat&&q.pat.id===pid).length;
+  if(!confirm('Supprimer « '+(p.name||'Répétition')+' » ? Ses '+n+' instance(s) partent, les sources restent (Ctrl+Z pour annuler).'))return;
+  if(asmPatEd&&asmPatEd.pat===pid){asmPatEd=null;asmUndoStack.pop();} // l'étape de l'édition ouverte devient celle de la suppression
+  asmPush('supprimer « '+(p.name||'répétition')+' »');
+  asmPatDelete(o,pid);asmResolve();
+  if(asmSelId&&!asmOcc(asmSelId))asmSelId=null;
+  asmNotify();
+}
+function asmPatProps(p){
+  // Panneau de la répétition ouverte → true s'il a été dessiné
+  const P=asmPatCur();if(!P){asmPatEd=null;return false;}
+  const {owner,pat}=P;
+  const mk=(tag,cls,txt)=>{const d=document.createElement(tag);if(cls)d.className=cls;if(txt!=null)d.textContent=txt;return d;};
+  const Row=(lab,ctl)=>{const r=mk('div','pnl-row');r.appendChild(mk('label',null,lab));if(ctl)r.appendChild(ctl);p.appendChild(r);return r;};
+  const sel=(opts,v,fn)=>{const s=document.createElement('select');opts.forEach(([k,t])=>{const o=document.createElement('option');o.value=k;o.textContent=t;if(k===v)o.selected=true;s.appendChild(o);});s.onchange=()=>fn(s.value);return s;};
+  const num=(v,fn,int)=>{const i=document.createElement('input');i.type='text';i.inputMode='decimal';i.style.width='64px';i.value=String(+(+v).toFixed(3)).replace('.',',');
+    const go=()=>{const x=parseFloat(String(i.value).replace(',','.'));if(isFinite(x))fn(int?Math.round(x):x);};i.addEventListener('change',go);i.addEventListener('keydown',e=>{if(e.key==='Enter')go();});return i;};
+  const chk=(v,fn)=>{const c=document.createElement('input');c.type='checkbox';c.checked=!!v;c.onchange=()=>fn(c.checked);return c;};
+  const cnt=v=>Math.max(1,Math.min(ASM_PAT_MAX,Math.floor(v)-1)); // quantité saisie (original compris) → copies
+  const AX=[['X','X'],['Y','Y'],['Z','Z']],PL=[['X','YZ (normale X)'],['Y','XZ (normale Y)'],['Z','XY (normale Z)']];
+  p.appendChild(mk('div','pnl-h','🔁 '+(pat.name||'Répétition')+' · '+asmPatName(pat)));
+  const n=owner.occ.filter(o=>o.pat&&o.pat.id===pat.id).length;
+  p.appendChild(mk('div','pnl-note','Sources : '+pat.src.map(id=>(asmOcc(id)||{}).name||'?').join(', ')+' · '+n+' instance(s)'+(pat.type==='mir'?' (en miroir)':'')));
+  if(pat.st==='warn')p.appendChild(mk('div','pnl-note','⚠ '+pat.msg));
+  const nm=document.createElement('input');nm.type='text';nm.value=pat.name||'';nm.onchange=()=>asmPatSet(q=>{q.name=nm.value.trim()||q.name;});Row('Nom',nm);
+  Row('Type',sel([['lin','Linéaire'],['circ','Circulaire'],['mir','Symétrie']],pat.type,v=>asmPatSet(q=>{
+    if(q.type===v)return;q.type=v;
+    if(v==='circ'){q.axis='Z';if(q.copies<2)q.copies=5;}
+    if(v==='mir'){q.copies=1;}
+    if(v==='lin'&&q.copies<2)q.copies=2;})));
+  // repère de référence : origine du porteur ou un de ses repères de construction (associatif)
+  const fr=[['','Origine de « '+owner.name+' »']].concat((owner.doc.cgeo||[]).filter(k=>k&&k.kind==='frame').map(k=>[k.id,k.name]));
+  Row('Référence',sel(fr,(pat.ref&&pat.ref.cg)||'',v=>asmPatSet(q=>{q.ref={cg:v||null};})));
+  if(pat.type==='lin'){
+    Row('Direction',sel(AX,pat.axis,v=>asmPatSet(q=>{q.axis=v;})));
+    Row('Quantité',num(pat.copies+1,v=>asmPatSet(q=>{q.copies=cnt(v);}),true));
+    Row('Pas (mm)',num(pat.dist,v=>asmPatSet(q=>{q.dist=v;})));
+    Row('2ᵉ direction',chk(pat.lin2,v=>asmPatSet(q=>{if(v){q.lin2=true;q.axis2=q.axis2||(q.axis==='X'?'Y':'X');q.copies2=q.copies2||1;if(q.dist2==null)q.dist2=q.dist;}else{delete q.lin2;}})));
+    if(pat.lin2){
+      Row('Direction 2',sel(AX,pat.axis2,v=>asmPatSet(q=>{q.axis2=v;})));
+      Row('Quantité 2',num((pat.copies2||1)+1,v=>asmPatSet(q=>{q.copies2=cnt(v);}),true));
+      Row('Pas 2 (mm)',num(pat.dist2||0,v=>asmPatSet(q=>{q.dist2=v;})));
+    }
+    p.appendChild(mk('div','pnl-note','Pas négatif = sens inverse. Quantité = original compris.'));
+  }else if(pat.type==='circ'){
+    Row('Axe',sel(AX,pat.axis,v=>asmPatSet(q=>{q.axis=v;})));
+    Row('Quantité',num(pat.copies+1,v=>asmPatSet(q=>{q.copies=cnt(v);}),true));
+    Row('Angle total (°)',num(pat.angle,v=>asmPatSet(q=>{q.angle=v||360;})));
+    p.appendChild(mk('div','pnl-note','Autour de l’axe passant par l’origine de la référence · 360° = tour complet réparti.'));
+  }else{
+    Row('Plan',sel(PL,pat.axis,v=>asmPatSet(q=>{q.axis=v;})));
+    Row('Symétrie double',chk(!!pat.plane2,v=>asmPatSet(q=>{if(v)q.plane2=q.axis==='X'?'Y':'X';else delete q.plane2;})));
+    if(pat.plane2)Row('Plan 2',sel(PL,pat.plane2,v=>asmPatSet(q=>{q.plane2=v;})));
+    p.appendChild(mk('div','pnl-note','Vraie symétrie : la pièce est en miroir (un filetage à droite devient à gauche).'));
+  }
+  if((pat.skip||[]).length){
+    const b=mk('div','pnl-btns'),r=mk('button','mini','↺ Rétablir '+pat.skip.length+' instance(s) supprimée(s)');
+    r.onclick=()=>asmPatSet(q=>{q.skip=[];});b.appendChild(r);p.appendChild(b);
+  }
+  const b=mk('div','pnl-btns');
+  const ok=mk('button','primary','✓ OK');ok.onclick=asmPatOk;b.appendChild(ok);
+  const an=mk('button',null,'Annuler');an.title='Revenir à l’état d’avant (Échap)';an.onclick=asmPatCancel;b.appendChild(an);
+  const dl=mk('button','danger','🗑 Supprimer');dl.title='Supprimer la répétition (les sources restent)';dl.onclick=()=>asmPatDeleteCmd(owner.id,pat.id);b.appendChild(dl);
+  p.appendChild(b);
+  return true;
+}
+function asmPatOccProps(p,o){
+  // Panneau de placement d'une instance : sa position est imposée par la répétition (48-assemblage-placement)
+  const R=asmPatOf(o);
+  const mk=(tag,cls,txt)=>{const d=document.createElement(tag);if(cls)d.className=cls;if(txt!=null)d.textContent=txt;return d;};
+  p.appendChild(mk('div','pnl-h','Placement'));
+  p.appendChild(mk('div','pnl-note','🔁 Instance de « '+(R?R.pat.name||'Répétition':'?')+' »'+(R?' ('+asmPatName(R.pat)+')':'')+' : position imposée par la répétition — elle suit sa source.'));
+  if(R){const b=mk('div','pnl-btns'),e=mk('button','primary','🔁 Modifier la répétition');e.onclick=()=>asmPatEdit(R.owner.id,R.pat.id);b.appendChild(e);p.appendChild(b);}
 }
 
 /* ═══════════════ 48-composants-depuis-corps.js — composants depuis corps ═══════════════ */
@@ -55033,11 +55640,32 @@ function autosave(){
   // reste identique ; l'indicateur « non sauvegardé » reste honnête jusqu'à l'écriture.
   refreshParts();
   if(_autoT)clearTimeout(_autoT);
-  _autoT=setTimeout(()=>{_autoT=null;try{localStorage.setItem('minifusion_auto',serialise(false));dirty=false;}catch(e){}refreshParts();},600);
+  _autoT=setTimeout(()=>{_autoT=null;try{autosaveWrite();dirty=false;}catch(e){}refreshParts();},600);
 }
 function autosaveFlush(){ // fermeture d'onglet : plus aucune perte possible
   if(!dirty)return;
-  try{localStorage.setItem('minifusion_auto',serialise(false));dirty=false;}catch(e){}
+  try{autosaveWrite();dirty=false;}catch(e){}
+}
+/* V0.29.0 : brouillon trop gros pour le stockage local (≈ 5 Mo : grand assemblage, imports) —
+   l'écriture échouait sans bruit et l'ANCIEN brouillon restait, restauré au rechargement. Il
+   part alors dans IndexedDB ('draft' = {at, txt}) ; le stockage local n'en garde que la date
+   (minifusion_auto_idb), et plus aucun brouillon périmé. Relu par draftRestore (99-init). */
+function autosaveWrite(){
+  const txt=serialise(false);
+  try{localStorage.setItem('minifusion_auto',txt);try{localStorage.removeItem('minifusion_auto_idb');}catch(e){}return 'ls';}catch(e){}
+  const at=Date.now();
+  try{localStorage.removeItem('minifusion_auto');}catch(e){}
+  try{localStorage.setItem('minifusion_auto_idb',String(at));}catch(e){}
+  try{idbSet('draft',{at,txt}).catch(()=>{});}catch(e){}
+  return 'idb';
+}
+async function draftRestore(){
+  // → texte du brouillon à restaurer (stockage local, sinon IndexedDB s'il est le plus récent) ou null
+  let auto=null;try{auto=localStorage.getItem('minifusion_auto');}catch(e){}
+  if(auto)return auto;
+  let at=0;try{at=+localStorage.getItem('minifusion_auto_idb')||0;}catch(e){}
+  if(!at||typeof indexedDB==='undefined')return null;
+  try{const d=await idbGet('draft');return d&&typeof d.txt==='string'&&+d.at>=at?d.txt:null;}catch(e){return null;}
 }
 addEventListener('beforeunload',()=>{autosaveFlush();});
 addEventListener('visibilitychange',()=>{if(document.visibilityState==='hidden')autosaveFlush();});
@@ -56878,6 +57506,10 @@ const MF_ICF={
   asmPart:fzBox(-6,-6,-3,3,3,3,'b')+FZ_PLUS,
   asmOcc:'<g opacity=".45">'+fzBox(-7,-1,-4,-2,4,1,'b')+'</g>'+fzBox(-2,-6,-1,3,-1,4,'b')+FZ_PLUS,
   asmInspect:fzBox(-5,-5,-4,4,4,2,'b')+'<circle cx="10" cy="10" r="5.4" fill="#dbeafe" fill-opacity=".55" stroke="#1f2937" stroke-width="1.6"/><path d="M14 14l6 6" stroke="#1f2937" stroke-width="2.8" stroke-linecap="round"/>',
+  // V0.29.0 : mesurer entre pièces (règle graduée en biais, cote verte)
+  asmMeasure:'<g transform="rotate(-35 12 12)"><rect x="2.5" y="9" width="19" height="6" rx="1" fill="#fde68a" stroke="#1f2937" stroke-width="1.2"/>'+
+    '<path d="M5 9v2.6M8 9v1.6M11 9v2.6M14 9v1.6M17 9v2.6M20 9v1.6" stroke="#1f2937" stroke-width="1"/></g>'+
+    '<path d="M4 20.5h16" stroke="#16a34a" stroke-width="1.6"/><path d="M4 18.5v4M20 18.5v4" stroke="#16a34a" stroke-width="1.4"/>',
   asmFromBodies:fzBox(-7,-1,-3,-3,3,1,'b')+fzBox(1,-7,0,5,-3,4,'o')+fzArrow(9,18.5,19,18.5,'#16a34a',2),
   asmStd:'<rect x="10" y="9" width="4" height="10.5" fill="url(#mfFzHm)" stroke="#4b5563" stroke-width=".7"/><path d="M10 11l4 1.3M10 13.4l4 1.3M10 15.8l4 1.3M10 18.2l4 1.3" stroke="#4b5563" stroke-width=".7"/><path d="M10 19.5l2 2.5 2-2.5" fill="#cbd5e1" stroke="#4b5563" stroke-width=".7"/>'+
     fzCyl(12,8.6,5.6,3.6,'mfFzHm','m')+'<path d="M10.3 5 13.7 5 15.4 5.9 13.7 6.9 10.3 6.9 8.6 5.9Z" fill="#374151"/>',
@@ -56925,6 +57557,15 @@ function mfIcons(s){
   mfLS('minifusion_icons',s);
   try{mfIcTag();}catch(e){}
   try{document.querySelectorAll('.mfIconOpt').forEach(b=>b.classList.toggle('on',b.dataset.i===s));}catch(e){}
+}
+/* V0.29.0 : taille des icônes (⚙ → Affichage), mémorisée (minifusion_iconSize) ; zoom CSS sur les dessins, libellés inchangés */
+const MF_ICSIZES=[['0.8','Petite'],['1','Normale'],['1.25','Grande'],['1.5','Très grande']];
+function mfIconSize(k){
+  k=MF_ICSIZES.some(x=>x[0]===String(k))?String(k):'1';
+  try{if(k==='1')document.body.removeAttribute('data-icsize');else document.body.setAttribute('data-icsize',k);
+    document.body.style.setProperty('--mfIcK',k);}catch(e){}
+  mfLS('minifusion_iconSize',k);
+  try{const s=document.getElementById('optIcSize');if(s)s.value=k;}catch(e){}
 }
 /* délire : les yeux suivent la souris (une passe par image), confettis au clic */
 let mfEyeRaf=0,mfEyeXY=[0,0];
@@ -56997,6 +57638,9 @@ function mfIcCss(){
   'body[data-icons="delire"] .mfGrp:nth-child(6n+4) .mfGrpT{color:#3fa9f5}body[data-icons="delire"] .mfGrp:nth-child(6n+5) .mfGrpT{color:#b06ab3}body[data-icons="delire"] .mfGrp:nth-child(6n) .mfGrpT{color:#ff8ad8}',
   'body[data-icons="delire"] #mfRibbon,body[data-icons="delire"] #mfSkBar{background:linear-gradient(90deg,#ff5f6d,#ffc371,#47e891,#3fa9f5,#b06ab3,#ff5f6d) top/100% 3px no-repeat,var(--surface)}',
   'body[data-icons="delire"] .mfRb:hover{background:linear-gradient(135deg,rgba(255,95,109,.18),rgba(63,169,245,.18))}',
+  /* taille des icônes : ruban, barre rapide, outils d'esquisse */
+  'body[data-icsize] :is(.mfRb i,.mfQuick button,#skToolbar .tool,#skToolbar .con) svg{zoom:var(--mfIcK,1)}',
+  'body[data-icsize] .mfRb i{height:auto;min-height:calc(24px * var(--mfIcK,1))}',
   '.mfConf{position:fixed;z-index:99999;width:7px;height:7px;border-radius:2px;pointer-events:none;font-size:15px;line-height:1}',
   '@media (prefers-reduced-motion:reduce){body[data-icons="delire"] *{animation:none!important}}'
   ].join('\n');
@@ -57006,6 +57650,9 @@ function mfIcCss(){
   try{
     mfIcCss();mfIcDefs();
     mfIcons(mfLS('minifusion_icons')||'trait');
+    mfIconSize(mfLS('minifusion_iconSize')||'1');
+    const icSz=()=>{try{const s=document.getElementById('optIcSize');if(s&&!s.onchange){s.value=mfLS('minifusion_iconSize')||'1';s.onchange=()=>mfIconSize(s.value);}}catch(e){}};
+    icSz();window.addEventListener('DOMContentLoaded',icSz);
     document.addEventListener('pointermove',e=>{if(document.body.getAttribute('data-icons')==='delire')mfEyesMove(e);},{passive:true});
     document.addEventListener('click',e=>{if(document.body.getAttribute('data-icons')==='delire')mfConfetti(e);},true);
     // le ruban et les outils d'esquisse naissent après ce fichier (97-interface-moderne, 60, 62) : on les repère ensuite
@@ -57364,6 +58011,7 @@ const MF_IC={
   asmOcc:'<path d="M3 9l6-3 6 3v6l-6 3-6-3z"/><path d="M17 10v8M13 14h8"/>',
   asmStd:'<path d="M7 3h10v4l-2 2H9L7 7z"/><path d="M10.5 3v2.5M13.5 3v2.5"/><path d="M9.5 9v12h5V9"/><path d="M9.5 12l5 1.5M9.5 15l5 1.5M9.5 18l5 1.5"/>',
   asmInspect:'<circle cx="10" cy="10" r="6"/><path d="M14.5 14.5L21 21"/><path d="M7 10h6M10 7v6"/>',
+  asmMeasure:'<path d="M3 15L15 3l4 4L7 19z"/><path d="M6.5 11.5l1.8 1.8M9 9l1.2 1.2M11.5 6.5l1.8 1.8"/><path d="M4 21.5h16M4 20v3M20 20v3"/>', // V0.29.0 : mesurer entre pièces (règle + cote)
   asmFromBodies:'<path d="M3 14l5-3 5 3v5l-5 3-5-3z"/><path d="M14 6l4-2 4 2v4l-4 2-4-2z"/><path d="M12 12l3-3M15 9h-2.5M15 9v2.5"/>',
   pPdf:'<path d="M6 3h9l3 3v15H6z"/><text x="12" y="17.6" font-size="6.2" font-family="sans-serif" font-weight="700" text-anchor="middle" fill="currentColor" stroke="none">PDF</text>'
 };
@@ -57403,6 +58051,9 @@ function mfRibbon(){
   grp('Composants',[['asmView','<span class="mfLabM">Assembler</span><span class="mfLabA">Modéliser</span>',()=>asmToggle(),'Modéliser le composant actif ↔ placer ses composants'],
     ['asmPart','Composant',()=>asmCmdNewComp(),'Nouveau composant dans le composant actif (on entre aussitôt dedans)',asmO],
     ['asmOcc','Occurrence',()=>{if(asmMode!=='asm')asmEnter();asmCmdNewOcc();},'Nouvelle occurrence du composant sélectionné',asmO],
+    // V0.29.0 : répétitions de composants (48-assemblage-repetitions), mesures entre pièces (48-assemblage-mesure)
+    ['pattern','Répétition',()=>asmRibbonPattern(),'Répéter l’occurrence sélectionnée (ou le lot) : linéaire, 2 directions, circulaire, symétrie',asmO],
+    ['asmMeasure','Mesurer',()=>asmRibbonMeasure(),'Mesurer entre pièces : deux faces → distance, entraxe, axe ↔ face, angle (Échap pour finir)',asmO],
     ['asmInspect','Inspecter',()=>asmCmdInspect(),'Interférences entre corps / composants, masses (matière par composant) et centre de gravité',asmO],
     ['asmFromBodies','Depuis corps',()=>asmCmdFromBodies(),'Créer un composant depuis le corps sélectionné (ou depuis chaque corps) : la pièce multicorps devient un assemblage, sans rien remodéliser',asmO],
     ['asmStd','Normalisés',()=>stdDlg(),'Vis ISO / ANSI (CHC, FHC, pas au choix), bouchons gaz six pans creux, goupilles, clavettes ISO : insérés comme composants du composant actif',asmO],
@@ -71613,7 +72264,10 @@ function rdClose(){
 window.addEventListener('error',e=>{try{statsEl.textContent+='\n[ERREUR] '+(e.message||e.error);}catch(_){}});
 try{$('appVerLive').textContent=APP_VER;}catch(e){}
 buildScene();renderTree();renderProps();refreshParts();
-try{const auto=localStorage.getItem('minifusion_auto');if(auto){deserialise(auto,{rebuild:false});renderProps();faceEl.textContent='Brouillon local restauré.';}}catch(e){}
+// V0.29.0 : brouillon trop gros pour le stockage local → IndexedDB (autosaveWrite, 90), relu avant le cache d'affichage
+let draftP=null;
+try{const auto=localStorage.getItem('minifusion_auto');if(auto){deserialise(auto,{rebuild:false});renderProps();faceEl.textContent='Brouillon local restauré.';}
+  else draftP=draftRestore().then(t=>{if(t)return Promise.resolve(deserialise(t,{rebuild:false})).then(()=>{renderProps();faceEl.textContent='Brouillon local restauré (grand fichier).';});}).catch(()=>{});}catch(e){}
 // Le cache d'affichage n'est qu'un DÉCOR : il redonne une image, pas un modèle. Sans rejeu,
 // il n'y a pas de solide exact (occLive) — donc ni congé, ni esquisse sur face, ni sélection
 // de face : « impossible de rejouer le solide ». Symptôme mesuré : le PREMIER F5 rejouait
@@ -71623,7 +72277,7 @@ try{const auto=localStorage.getItem('minifusion_auto');if(auto){deserialise(auto
 // la boîte du « solide combiné » parfois dégénérée (40×40×10000) — caméra hors champ,
 // vue noire. Tant qu'OCCT n'est pas prêt, la caméra par défaut (90,-90,90) montre l'origine.
 try{
-  restoreViewCache().then(ok=>{
+  (draftP||Promise.resolve()).then(()=>restoreViewCache()).then(ok=>{
     if(ok)log('Affichage restauré depuis le cache — rejeu exact en cours…');
     // builtVersion=-1 : la garde « rien n'a changé » court-circuterait sinon le rejeu,
     // puisque restoreViewCache vient de poser builtHash.

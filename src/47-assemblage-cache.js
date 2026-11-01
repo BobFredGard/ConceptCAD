@@ -24,7 +24,7 @@
    typés réunis en un bloc binaire compressé gzip, base64) ; à l'ouverture, bundleStoreCaches
    les remet dans le cache AVANT la lecture du document : le fichier s'ouvre vite sur un autre
    poste. Elles passent par les mêmes clés : une image qui ne correspond plus est ignorée. */
-const ASM_CACHE_V=1;        // format des entrées
+const ASM_CACHE_V=2;        // format des entrées (2 : V0.29.0, faces exactes it.grp / it.fg pour les mesures)
 const ASM_CACHE_MAX=300;    // entrées gardées
 const ASM_CACHE_VERTS=1500000; // composant plus gros : pas de cache (comme saveViewCache)
 const asmCachePend=new Map(); // composant → {snap, key} à écrire
@@ -75,7 +75,7 @@ function asmCachePack(s){
     if(!p||!p.array)return null;
     verts+=p.count||0;if(verts>ASM_CACHE_VERTS)return null;
     items.push({pos:p.array.slice(),nor:asmCacheArr(g.attributes.normal),idx:g.index?asmCacheArr(g.index):null,
-      color:it.color,bid:it.bid,op:it.op,gl:it.gl,rl:it.rl||null,cm:it.cm||null});
+      color:it.color,bid:it.bid,op:it.op,gl:it.gl,rl:it.rl||null,cm:it.cm||null,grp:it.grp||null,fg:it.fg||null});
   }
   const e=s.edges&&s.edges.attributes;
   return {items,edges:e&&e.position?{pos:asmCacheArr(e.position),col:asmCacheArr(e.color)}:null,
@@ -91,7 +91,10 @@ function asmCacheUnpack(v,hash){
     if(it.nor&&it.nor.length===it.pos.length)g.setAttribute('normal',new THREE.Float32BufferAttribute(it.nor,3));
     if(it.idx)g.setIndex(new THREE.BufferAttribute(it.idx,1));
     if(!g.attributes.normal)g.computeVertexNormals();
-    return {geo:g,color:it.color,bid:it.bid||null,op:it.op,gl:it.gl,rl:it.rl||null,cm:it.cm||null};
+    // faces exactes (V0.29.0, mesures) : vérifiées, une table douteuse est simplement absente
+    const grp=asmGrpNorm(it.grp),fg=grp?asmFgNorm(it.fg,grp.length):null;
+    if(grp)g.userData.occGroups=grp;
+    return {geo:g,color:it.color,bid:it.bid||null,op:it.op,gl:it.gl,rl:it.rl||null,cm:it.cm||null,grp:grp||null,fg:fg||null};
   });
   let edges=null;
   if(v.edges&&v.edges.pos&&v.edges.pos.length){

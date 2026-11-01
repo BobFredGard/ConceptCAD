@@ -3315,8 +3315,18 @@ function occCkMax(){
   const n=(((typeof doc!=='undefined')&&doc&&doc.features)?doc.features.length:0)+2;
   // 2026-10-16-003 : 3 × la timeline (bornée) — après une modification, l'ancien ET le nouveau
   // préfixe coexistent pendant les passes de projection ; à 1 × ils s'évinçaient mutuellement.
-  return Math.max(8,Math.min(3*n,120));
+  const base=Math.max(8,Math.min(3*n,120));
+  // V0.29.0 : assemblage — la file est commune à tous les composants (clés préfixées, asmCkPrefix)
+  // mais bornée par la timeline de la pièce OUVERTE : une petite pièce évinçait les points de
+  // contrôle de toutes les autres, et revenir dans une grosse pièce la rejouait en entier
+  // (1,1 à 1,7 s → 0,2 s gardée). Plafond large tant que le tas du noyau reste raisonnable.
+  try{
+    if(typeof asm!=='undefined'&&asm&&asm.comps&&asm.comps.length>1&&!(occt&&occt.HEAP8&&occt.HEAP8.length>OCC_CK_HEAP))return Math.max(base,OCC_CK_ASM);
+  }catch(e){}
+  return base;
 }
+const OCC_CK_ASM=200;          // points de contrôle gardés en assemblage (toutes pièces confondues)
+const OCC_CK_HEAP=1536*1048576; // au-delà de 1,5 Go de tas du noyau : retour à la borne d'une pièce
 function occShapeCopy(sh){
   try{return new occt.BRepBuilderAPI_Copy_2(sh,true,true).Shape();}catch(e){return null;}
 }

@@ -132,6 +132,10 @@ const MF_ICF={
   asmPart:fzBox(-6,-6,-3,3,3,3,'b')+FZ_PLUS,
   asmOcc:'<g opacity=".45">'+fzBox(-7,-1,-4,-2,4,1,'b')+'</g>'+fzBox(-2,-6,-1,3,-1,4,'b')+FZ_PLUS,
   asmInspect:fzBox(-5,-5,-4,4,4,2,'b')+'<circle cx="10" cy="10" r="5.4" fill="#dbeafe" fill-opacity=".55" stroke="#1f2937" stroke-width="1.6"/><path d="M14 14l6 6" stroke="#1f2937" stroke-width="2.8" stroke-linecap="round"/>',
+  // V0.29.0 : mesurer entre pièces (règle graduée en biais, cote verte)
+  asmMeasure:'<g transform="rotate(-35 12 12)"><rect x="2.5" y="9" width="19" height="6" rx="1" fill="#fde68a" stroke="#1f2937" stroke-width="1.2"/>'+
+    '<path d="M5 9v2.6M8 9v1.6M11 9v2.6M14 9v1.6M17 9v2.6M20 9v1.6" stroke="#1f2937" stroke-width="1"/></g>'+
+    '<path d="M4 20.5h16" stroke="#16a34a" stroke-width="1.6"/><path d="M4 18.5v4M20 18.5v4" stroke="#16a34a" stroke-width="1.4"/>',
   asmFromBodies:fzBox(-7,-1,-3,-3,3,1,'b')+fzBox(1,-7,0,5,-3,4,'o')+fzArrow(9,18.5,19,18.5,'#16a34a',2),
   asmStd:'<rect x="10" y="9" width="4" height="10.5" fill="url(#mfFzHm)" stroke="#4b5563" stroke-width=".7"/><path d="M10 11l4 1.3M10 13.4l4 1.3M10 15.8l4 1.3M10 18.2l4 1.3" stroke="#4b5563" stroke-width=".7"/><path d="M10 19.5l2 2.5 2-2.5" fill="#cbd5e1" stroke="#4b5563" stroke-width=".7"/>'+
     fzCyl(12,8.6,5.6,3.6,'mfFzHm','m')+'<path d="M10.3 5 13.7 5 15.4 5.9 13.7 6.9 10.3 6.9 8.6 5.9Z" fill="#374151"/>',
@@ -179,6 +183,15 @@ function mfIcons(s){
   mfLS('minifusion_icons',s);
   try{mfIcTag();}catch(e){}
   try{document.querySelectorAll('.mfIconOpt').forEach(b=>b.classList.toggle('on',b.dataset.i===s));}catch(e){}
+}
+/* V0.29.0 : taille des icônes (⚙ → Affichage), mémorisée (minifusion_iconSize) ; zoom CSS sur les dessins, libellés inchangés */
+const MF_ICSIZES=[['0.8','Petite'],['1','Normale'],['1.25','Grande'],['1.5','Très grande']];
+function mfIconSize(k){
+  k=MF_ICSIZES.some(x=>x[0]===String(k))?String(k):'1';
+  try{if(k==='1')document.body.removeAttribute('data-icsize');else document.body.setAttribute('data-icsize',k);
+    document.body.style.setProperty('--mfIcK',k);}catch(e){}
+  mfLS('minifusion_iconSize',k);
+  try{const s=document.getElementById('optIcSize');if(s)s.value=k;}catch(e){}
 }
 /* délire : les yeux suivent la souris (une passe par image), confettis au clic */
 let mfEyeRaf=0,mfEyeXY=[0,0];
@@ -251,6 +264,9 @@ function mfIcCss(){
   'body[data-icons="delire"] .mfGrp:nth-child(6n+4) .mfGrpT{color:#3fa9f5}body[data-icons="delire"] .mfGrp:nth-child(6n+5) .mfGrpT{color:#b06ab3}body[data-icons="delire"] .mfGrp:nth-child(6n) .mfGrpT{color:#ff8ad8}',
   'body[data-icons="delire"] #mfRibbon,body[data-icons="delire"] #mfSkBar{background:linear-gradient(90deg,#ff5f6d,#ffc371,#47e891,#3fa9f5,#b06ab3,#ff5f6d) top/100% 3px no-repeat,var(--surface)}',
   'body[data-icons="delire"] .mfRb:hover{background:linear-gradient(135deg,rgba(255,95,109,.18),rgba(63,169,245,.18))}',
+  /* taille des icônes : ruban, barre rapide, outils d'esquisse */
+  'body[data-icsize] :is(.mfRb i,.mfQuick button,#skToolbar .tool,#skToolbar .con) svg{zoom:var(--mfIcK,1)}',
+  'body[data-icsize] .mfRb i{height:auto;min-height:calc(24px * var(--mfIcK,1))}',
   '.mfConf{position:fixed;z-index:99999;width:7px;height:7px;border-radius:2px;pointer-events:none;font-size:15px;line-height:1}',
   '@media (prefers-reduced-motion:reduce){body[data-icons="delire"] *{animation:none!important}}'
   ].join('\n');
@@ -260,6 +276,9 @@ function mfIcCss(){
   try{
     mfIcCss();mfIcDefs();
     mfIcons(mfLS('minifusion_icons')||'trait');
+    mfIconSize(mfLS('minifusion_iconSize')||'1');
+    const icSz=()=>{try{const s=document.getElementById('optIcSize');if(s&&!s.onchange){s.value=mfLS('minifusion_iconSize')||'1';s.onchange=()=>mfIconSize(s.value);}}catch(e){}};
+    icSz();window.addEventListener('DOMContentLoaded',icSz);
     document.addEventListener('pointermove',e=>{if(document.body.getAttribute('data-icons')==='delire')mfEyesMove(e);},{passive:true});
     document.addEventListener('click',e=>{if(document.body.getAttribute('data-icons')==='delire')mfConfetti(e);},true);
     // le ruban et les outils d'esquisse naissent après ce fichier (97-interface-moderne, 60, 62) : on les repère ensuite
