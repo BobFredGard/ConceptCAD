@@ -8,7 +8,7 @@ sont sorties le 2026-09-30j.
 Code dans `src/` · livrable `fusion_mvp.html` (généré par `build.js`) · architecture et
 garde-fous en tête de `src/00-entete-et-outils.js`.
 
-**507 versions**, de `2026-09-28b` à `V0.30.3` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
+**508 versions**, de `2026-09-28b` à `V0.30.4` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
 comme dans le fichier d'origine.
 
 ---
@@ -6108,3 +6108,10 @@ Suite : « le fait de toucher à la cote de la 1ère esquisse a foutu le bordel 
 - **Esquisse sans face** (`findHostForFace`, `hostViaPoints`, `src/10-scene-3d.js`) : l’esquisse 3 est posée au FOND de la rainure, mais sa face était cherchée sous son origine (centre de la pièce, sur l’îlot plus haut) → aucune face, esquisse figée à z = 15 quelle que soit l’épaisseur. Le fond d’une DÉCOUPE peut maintenant porter une esquisse (côté opposé à l’enlèvement) ; à la pose sur face, origine hors de la face → face sous le clic ; esquisse déjà sans face (fichier existant) → face retrouvée par ses propres points. L’esquisse suit alors la rainure : z = épaisseur − 5.
 - **Projetées qui sautaient** (`findClosestProjectedEdge`, `src/50-esquisse-1-ouverture-references.js`) : l’arête source se retrouvait par son milieu 3D ; pièce passée de 10 à 39 mm → l’arête de la rainure (montée de 29 mm) plus « loin » que l’arête extérieure du BAS de la pièce → projetées, courbe guide et perçage tirés sur le contour (−104 ; 56). Écart mesuré dans le plan de l’esquisse, la hauteur ne départage qu’à égalité.
 - **Tests** : `tests/test_repeat_profil.cjs` 19 et 20 (copies sur la face d’origine, décalées ; pièce épaissie, volume exact) ; `tests/test_repetition_courbe_face.cjs` sur `Exemples/Test Répétition Courbe.miniFusion` (face retrouvée au fond de la rainure, suit 10 / 39 / 20 mm, projetées en place, 29 copies sur la même face) ; `npm run ci:full`.
+
+## V0.30.4 - Répétition : l’aperçu d’un perçage « débouchant tout » ne descend plus à 2 m sous la pièce
+Retour (capture) : à la création d’une répétition, une forêt de tiges rouges sous la pièce, disparue au clic sur Appliquer.
+- **Cause** (`repFeatPreviewGeos`, `src/40-interface-arbre-props.js`) : l’aperçu construit l’outil du perçage hors du rejeu ; « débouchant tout » mesure sa course sur `occThroughBase`, qui n’y contient qu’un reste illisible du dernier rejeu → course par défaut de 2 000 mm.
+- **Correctif** : pendant l’aperçu, la course est mesurée sur la pièce affichée (`occLive`) puis la valeur d’origine est rendue. Même chose pour une découpe « à travers tout ».
+- **Vérifié** dans l’application sur `Exemples/Test Répétition Courbe.miniFusion` : outil d’aperçu de z = 15 à −1,1 (pièce + 1 mm) au lieu de −1 985.
+- **Tests** : `npm run ci:full`.

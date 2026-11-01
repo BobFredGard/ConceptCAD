@@ -350,10 +350,16 @@ function repFeatPreviewGeos(f){
     let ok=false;
     if(typeof occHas==='function'&&occHas()){
       let r=null;
+      // V0.30.4 : « débouchant tout » mesuré sur la pièce affichée — hors rejeu occThroughBase est
+      // un reste du dernier rejeu (illisible) et l'outil d'aperçu partait sur 2 m (forêt de tiges
+      // rouges sous la pièce).
+      const thr0=occThroughBase;
+      if(typeof occLive!=='undefined'&&occLive&&occLive.shape)occThroughBase=occLive.shape;
       try{
         r=f.type==='revolve'?occShapeOfRevolve(f):(f.type==='hole'?occShapeOfHole(f):occShapeOfExtrude(f));
         out.push({geo:occTessellate(r.shape,0.3,0.4),mw:null});ok=true;
       }catch(e){}
+      finally{occThroughBase=thr0;}
       if(r){occDispose(r.bins);try{r.shape.delete();}catch(e){}}
     }
     if(!ok){
