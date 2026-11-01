@@ -329,7 +329,7 @@ function openParamsDlg(){
         setExpr:ex=>{const r=parDimCommit(sk,d,ex);if(!r.ok)return r.msg;d.value=r.nv;return true;}});
     }));
     // valeurs de fonctions 3D nommées ou en expression
-    const featLbl={distance:'distance',draft:'dépouille',angle:'angle',dist:'distance',thick:'épaisseur',radius:'rayon',r:'rayon',d:'Ø',depth:'profondeur',cbD:'Ø lamage',cbH:'prof. lamage',csD:'Ø fraisure',len:'longueur filetée'};
+    const featLbl={distance:'distance',draft:'dépouille',angle:'angle',dist:'distance',thick:'épaisseur',radius:'rayon',r:'rayon',d:'Ø',depth:'profondeur',cbD:'Ø lamage',cbH:'prof. lamage',csD:'Ø fraisure',stD:'Ø avant-trou',stH:'prof. avant-trou',len:'longueur filetée'};
     parHolders().forEach(({h,f})=>{
       const ks=new Set([...Object.keys(h.expr||{}),...Object.keys(h.pname||{})]);
       ks.forEach(k=>{

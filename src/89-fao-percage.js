@@ -105,7 +105,7 @@ function faoHolesDetect(shapes){
       const th=(typeof isoHoleThread==='function')?isoHoleThread(f.thread.size,f.thread.p,f.thread.clear):null;if(!th)return;
       const A=holeAxis(f,sk);if(Math.abs(A.dir.z)<0.9999)return;
       const N=holeNorm(f),rb=Math.max((+f.d)/2,th.D1/2+th.c);
-      const off=N.kind==='cbore'?N.cbH:(N.kind==='csink'?Math.max(0,(N.csD-N.d)/2/Math.tan(N.csA*Math.PI/360)):0);
+      const off=holeEntryOff(N);
       let zEndAll=null;
       A.pts.forEach(function(P){
         let known=false;
@@ -179,6 +179,10 @@ function faoHolesDetect(shapes){
     holes.forEach(function(o){
       if(o===h||Math.hypot(o.x-h.x,o.y-h.y)>0.01||o.d<=h.d+0.01)return;
       if(Math.abs(o.zbot-h.ztop)<0.02){h.cb={d:o.d,depth:+(o.ztop-o.zbot).toFixed(3)};h.zSurf=Math.max(h.zSurf,o.zSurf);o.step=true;}
+      // double perçage (V0.31.0) : avant-trou plus large dont la pointe de foret (cône)
+      // descend jusqu'au trou — ce cône n'est pas un chanfrein d'entrée du petit trou
+      else if(h.chD>0&&Math.abs(o.d-h.chD)<0.05&&Math.abs(o.zbot-h.zSurf)<0.02){
+        h.pre={d:o.d,depth:+(o.ztop-o.zbot).toFixed(3)};h.chD=0;h.zSurf=Math.max(h.ztop,o.zSurf);o.step=true;}
     });
   });
   // débouchant : SOUS la pointe éventuelle (le vide du cône n'est pas « sous la
@@ -213,9 +217,11 @@ function faoHolesDetect(shapes){
           // alésé (V0.24.0) : l'alésage Ø reamD (tolérance ISO) et son perçage Ø d
           const Nr=f.kind==='ream'?holeNorm(f):null,isReam=!!Nr&&Math.abs(h.d-Nr.reamD)<0.02;
           if(Nr)de=Nr.d;
-          if(Math.abs(h.d-de)>0.02&&!(f.kind==='cbore'&&Math.abs(h.d-(+f.cbD))<0.02)&&!isReam)return;
-          h.feat={id:f.id,name:f.name,kind:f.kind||'simple',thread:(!Nr&&f.thread&&f.thread.size)?{size:f.thread.size,p:+f.thread.p,len:+f._thLen||+f.thread.len||0}:null,
-            role:(f.kind==='cbore'&&Math.abs(h.d-(+f.cbD))<0.02)?'lamage':(isReam?'alesage':'trou')};
+          // double perçage (V0.31.0) : l'avant-trou Ø stD est un perçage à part (foret, pointe)
+          const isPre=f.kind==='step'&&Math.abs(h.d-holeNorm(f).stD)<0.02;
+          if(Math.abs(h.d-de)>0.02&&!(f.kind==='cbore'&&Math.abs(h.d-(+f.cbD))<0.02)&&!isReam&&!isPre)return;
+          h.feat={id:f.id,name:f.name,kind:f.kind||'simple',thread:(!Nr&&!isPre&&f.thread&&f.thread.size)?{size:f.thread.size,p:+f.thread.p,len:+f._thLen||+f.thread.len||0}:null,
+            role:(f.kind==='cbore'&&Math.abs(h.d-(+f.cbD))<0.02)?'lamage':(isReam?'alesage':(isPre?'avant-trou':'trou'))};
           if(isReam)h.feat.tol=f.reamTol||'H7';
         });
       });
@@ -605,7 +611,7 @@ function faoDrillSections(setup,op,d){
       const h0=g.holes[0];
       const s=document.createElement('span');s.className='fao-meta';
       s.textContent='Ø'+(+g.d.toFixed(2))+' × '+g.holes.length+' · Z '+(+g.z.toFixed(2))+' → '+(+h0.zbot.toFixed(2))+' · '+(h0.through?'débouchant':'borgne')+
-        (h0.tipAng?(' · pointe '+h0.tipAng+'°'):'')+(h0.chD?(' · chanfrein Ø'+(+h0.chD.toFixed(2))):'')+(h0.cb?(' · lamage Ø'+h0.cb.d):'');
+        (h0.tipAng?(' · pointe '+h0.tipAng+'°'):'')+(h0.chD?(' · chanfrein Ø'+(+h0.chD.toFixed(2))):'')+(h0.cb?(' · lamage Ø'+h0.cb.d):'')+(h0.pre?(' · sous avant-trou Ø'+h0.pre.d):'');
       r.appendChild(s);
       // nature : reconnue (fonction Perçage) ou choisie (STEP) — trou lisse / taraudé
       const fe=g.holes.find(function(h){return h.feat;});
@@ -614,6 +620,8 @@ function faoDrillSections(setup,op,d){
         t.textContent='taraudé '+holeThreadLabel(fe.feat.thread)+' (fonction Perçage)';r.appendChild(t);
       }else if(fe&&fe.feat.role==='lamage'){
         const t=document.createElement('span');t.className='fao-meta';t.textContent='lamage (fonction Perçage)';r.appendChild(t);
+      }else if(fe&&fe.feat.role==='avant-trou'){
+        const t=document.createElement('span');t.className='fao-meta';t.textContent='avant-trou d’un double perçage (fonction Perçage)';r.appendChild(t);
       }else if(fe&&fe.feat.role==='alesage'){
         const t=document.createElement('span');t.className='fao-meta';t.style.color='#ff9f0a';t.textContent='alésé '+fe.feat.tol+' (fonction Perçage)';r.appendChild(t);
       }else if(!fe){

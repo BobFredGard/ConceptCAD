@@ -21,6 +21,9 @@
        'through' → + perçage Ø d débouchant (cas 3).
      Ø de perçage = reamD − reamOff (0,5, 1 mm ou autre écart saisi — reamOffFree ; null = Ø d saisi librement).
      La tolérance s'écrit d'office dans la cotation de perçage de la mise en plan.
+   • V0.31.0 — kind:'step' (Double perçage, « un trou dans un trou ») : avant-trou Ø stD
+     sur stH (plein Ø), fond en pointe stTip (118° par défaut, 0 = fond plat), puis le
+     trou Ø d qui continue jusqu'à la fin choisie (ex. Ø1,5 débouchant sous un Ø8 × 5).
    • Géométrie exacte : par point, un outil de révolution (lamage/fraisure + corps +
      pointe) le long de −n (ou +n si inversé), unis puis découpés du corps.
    ═══════════════════════════════════════════════════════════════════════════ */
@@ -127,6 +130,7 @@ function holeName(f){
   let t=f.thread&&f.thread.size?('Taraudé '+holeThreadLabel(f.thread)):('Ø'+fr(f.d));
   if(f.kind==='cbore')t+=' lamé Ø'+fr(f.cbD);
   if(f.kind==='csink')t+=' fraisé Ø'+fr(f.csD);
+  if(f.kind==='step'){const N=holeNorm(f);t='Ø'+fr(N.stD)+' ↧'+fr(N.stH)+' + '+t;}
   const fin=f.end==='through'?' débouchant tout':(f.end==='next'?' débouchant':(f.end==='upto'?' jusqu’à la face':''));
   return 'Perçage '+t+fin+' ×'+n;
 }
@@ -151,7 +155,9 @@ function holeNorm(f){
   }
   const d=Math.max(0.2,+f.d||6.6);
   return {d:d,r:d/2,
-    kind:f.kind==='cbore'||f.kind==='csink'?f.kind:'simple',
+    kind:f.kind==='cbore'||f.kind==='csink'||f.kind==='step'?f.kind:'simple',
+    stD:Math.max(d+0.2,+f.stD||Math.max(8,d*2)),stH:Math.max(0.1,+f.stH||5),
+    stTip:(f.stTip===0||f.stTip==='0')?0:Math.min(170,Math.max(60,+f.stTip||118)),
     cbD:Math.max(d+0.2,+f.cbD||d*1.7),cbH:Math.max(0.1,+f.cbH||d*0.9),
     csD:Math.max(d+0.2,+f.csD||d*2),csA:Math.min(150,Math.max(60,+f.csA||90)),
     end:(f.end==='through'||f.end==='next'||f.end==='upto')?f.end:'blind',
@@ -164,12 +170,24 @@ function holeAxis(f,sk){
   const s=f.flip?1:-1;
   return {dir:{x:B.n.x*s,y:B.n.y*s,z:B.n.z*s},pts:holePoints(sk).map(function(p){const w=occW(sk,p.x,p.y);return {id:p.id,x:w[0],y:w[1],z:w[2]};})};
 }
+// Distance du plan au début du trou à plein Ø d (sous le lamage, la fraisure ou l'avant-trou)
+function holeEntryOff(N){
+  if(N.kind==='cbore')return N.cbH;
+  if(N.kind==='csink')return Math.max(0,(N.csD-N.d)/2/Math.tan(N.csA*Math.PI/360));
+  if(N.kind==='step')return N.stH+(N.stTip>0?(N.stD-N.d)/2/Math.tan(N.stTip*Math.PI/360):0);
+  return 0;
+}
 const HOLE_THROUGH=2000; // « débouchant » : la course traverse toute pièce raisonnable
 function holeProfileSegs(N,zEndPt){
   // Segments le long de l'axe (distance depuis le plan, rayons début/fin) pour un trou.
   const s=[];let z=0;
   if(N.kind==='cbore'||(N.kind==='ream'&&(N.pilot==='blind'||N.pilot==='through'))){s.push([z,N.cbH,N.cbD/2,N.cbD/2]);z=N.cbH;}
   else if(N.kind==='csink'){const h=(N.csD-N.d)/2/Math.tan(N.csA*Math.PI/360);s.push([z,h,N.csD/2,N.r]);z=h;}
+  else if(N.kind==='step'){
+    // avant-trou plein Ø, puis cône de la pointe du foret jusqu'au Ø du trou
+    s.push([z,N.stH,N.stD/2,N.stD/2]);z=N.stH;
+    if(N.stTip>0){const h=(N.stD-N.d)/2/Math.tan(N.stTip*Math.PI/360);s.push([z,h,N.stD/2,N.r]);z+=h;}
+  }
   const zEnd=Math.max(isFinite(zEndPt)?zEndPt:(N.through?(N.thruLen||HOLE_THROUGH):N.depth),z+0.05);
   s.push([z,zEnd-z,N.r,N.r]);
   if(N.end==='blind'&&N.tip>0){const h=N.r/Math.tan(N.tip*Math.PI/360);s.push([zEnd,h,N.r,0]);}
@@ -313,7 +331,7 @@ function occShapeOfHole(f){
       let L=+f.thread.len||0;
       if(m==='upto'){const t=holePlaneDist(f.thread.uptoPlane,P0,A.dir);if(t!==null)L=t;else warnings.push('longueur filetée « jusqu’à la face » : face non choisie');}
       else if(m==='next'){const t=holeNextExit(base,P0,A.dir);if(t!==null)L=t;}
-      else if(m==='through'){const of0=(N.kind==='cbore')?N.cbH:(N.kind==='csink'?Math.max(0,(N.csD-N.d)/2/Math.tan(N.csA*Math.PI/360)):0);L=Math.max(0,zEndOf(P0)-of0);}
+      else if(m==='through'){const of0=holeEntryOff(N);L=Math.max(0,zEndOf(P0)-of0);}
       f._thLen=+L.toFixed(3);
     }
   }catch(e){}
@@ -356,7 +374,7 @@ function occShapeOfHole(f){
     const zEnd=zEndOf(P);
     if(!thModel){add(fused(P,holeProfileSegs(N,zEnd),true));return;}
     const p=thModel.P;
-    const off=(N.kind==='cbore')?N.cbH:(N.kind==='csink'?Math.max(0,(N.csD-N.d)/2/Math.tan(N.csA*Math.PI/360)):0);
+    const off=holeEntryOff(N);
     const L=((f.thread.lenMode||'len')==='through')?Math.max(0,zEnd-off)
       :Math.min(+f._thLen||+f.thread.len||N.depth,zEnd-off);
     // Le vide commence un pas AVANT l'entrée (jonction hors matière) et, pour un
@@ -537,6 +555,7 @@ function renderHoleProps(p,f){
   /* type */
   // V0.8.0 : type en icônes (fenêtre dynamique)
   const segT=extSeg([['simple','⊚','Simple','Trou cylindrique'],['cbore','⊡','Lamage','Lamage pour tête de vis'],['csink','⊽','Fraisure','Fraisure conique'],
+    ['step','◎','Double','Double perçage : un trou dans un trou (avant-trou Ø D sur une profondeur, puis trou Ø d)'],
     ['ream','⌀','Alésé','Trou alésé à fond plat, tolérance ISO (H7…)']],f.kind||'simple',
     function(v){docPushUndo('perçage');
       if(v==='ream'&&f.kind!=='ream'){
@@ -548,6 +567,14 @@ function renderHoleProps(p,f){
         if(f.reamOff===undefined)f.reamOff=0.5;
         if(!f.pilot)f.pilot='none';
         if(f.reamOff>0)f.d=holeReamDrill(f);
+      }
+      if(v==='step'&&f.kind!=='step'){
+        // valeurs de départ : le cas courant, Ø1,5 débouchant sous un avant-trou Ø8 × 5,
+        // pointe 118° (Ø du trou gardé s'il a déjà été changé)
+        if(+f.d===6.6&&!(f.thread&&f.thread.size)){f.d=1.5;f.end='through';}
+        if(!(+f.stD>+f.d))f.stD=(+f.d<6)?8:Math.round(1.6*f.d);
+        if(!(+f.stH>0))f.stH=5;
+        if(f.stTip===undefined)f.stTip=118;
       }
       f.kind=v;go();});
   pRow('Type',segT);
@@ -602,6 +629,12 @@ function renderHoleProps(p,f){
     }
   }
   if(f.kind==='cbore'){pRow('Ø lamage',num(f.cbD,function(v){f.cbD=v;},0,f,'cbD'));pRow('Profondeur lamage',num(f.cbH,function(v){f.cbH=v;},0,f,'cbH'));}
+  if(f.kind==='step'){
+    pRow('Ø avant-trou',num(f.stD||holeNorm(f).stD,function(v){f.stD=v;},0,f,'stD'));
+    pRow('Prof. avant-trou (plein Ø)',num(f.stH||holeNorm(f).stH,function(v){f.stH=v;},0,f,'stH'));
+    pRow('Fond avant-trou',sel([['118','Pointe 118°'],['135','Pointe 135°'],['140','Pointe 140°'],['90','Pointe 90°'],['0','Fond plat']],String(f.stTip===0?0:(f.stTip||118)),function(v){f.stTip=+v;}));
+    if(+f.stD>0&&+f.stD<+f.d+0.2)pNote('Le Ø de l’avant-trou doit dépasser le Ø du trou (ramené à Ø'+fr(+holeNorm(f).stD.toFixed(2))+').');
+  }
   if(f.kind==='csink'){pRow('Ø fraisure',num(f.csD,function(v){f.csD=v;},0,f,'csD'));pRow('Angle (°)',sel([['90','90°'],['82','82° (UNC)'],['100','100°'],['120','120°']],String(f.csA||90),function(v){f.csA=+v;}));}
   /* fin */
   // V0.8.0 : fin en icônes
@@ -678,7 +711,7 @@ function holeThreadPaths(stepsPerTurn,inset){
     // repère orthonormé autour de l'axe
     const ref=Math.abs(D.z)<0.9?new THREE.Vector3(0,0,1):new THREE.Vector3(1,0,0);
     const U=new THREE.Vector3().crossVectors(D,ref).normalize(),V=new THREE.Vector3().crossVectors(D,U).normalize();
-    const off=(N.kind==='cbore')?N.cbH:0;
+    const off=(N.kind==='cbore'||N.kind==='step')?holeEntryOff(N):0;
     A.pts.forEach(function(P){
       const O=new THREE.Vector3(P.x,P.y,P.z),helix=[],ring=[];
       const turns=len/pz,steps=Math.max(spt,Math.ceil(turns*spt));

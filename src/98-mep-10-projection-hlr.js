@@ -937,7 +937,7 @@
       let A=null,N=null;try{A=holeAxis(f,sk);N=holeNorm(f);}catch(e){return;}
       if(!A||!A.pts||!A.pts.length)return;
       const D=mepNorm([A.dir.x,A.dir.y,A.dir.z]),R=T[1]/2;
-      const off=(N.kind==='cbore')?N.cbH:(N.kind==='csink'?Math.max(0,(N.csD-N.d)/2/Math.tan(N.csA*Math.PI/360)):0);
+      const off=(typeof holeEntryOff==='function')?holeEntryOff(N):0;
       const thru=(f.thread.lenMode||'len')==='through';
       const L=Math.max(0,+f._thLen||+f.thread.len||+N.depth||0);if(!(L>0))return;
       const facing=dot(D,b.dir);

@@ -8,7 +8,7 @@ sont sorties le 2026-09-30j.
 Code dans `src/` · livrable `fusion_mvp.html` (généré par `build.js`) · architecture et
 garde-fous en tête de `src/00-entete-et-outils.js`.
 
-**508 versions**, de `2026-09-28b` à `V0.30.4` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
+**509 versions**, de `2026-09-28b` à `V0.31.0` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
 comme dans le fichier d'origine.
 
 ---
@@ -6115,3 +6115,12 @@ Retour (capture) : à la création d’une répétition, une forêt de tiges rou
 - **Correctif** : pendant l’aperçu, la course est mesurée sur la pièce affichée (`occLive`) puis la valeur d’origine est rendue. Même chose pour une découpe « à travers tout ».
 - **Vérifié** dans l’application sur `Exemples/Test Répétition Courbe.miniFusion` : outil d’aperçu de z = 15 à −1,1 (pièce + 1 mm) au lieu de −1 985.
 - **Tests** : `npm run ci:full`.
+
+## V0.31.0 - Perçage : Double perçage (un trou dans un trou)
+Demande : « ajouter la fonction Double perçage, l'idée est un trou dans un trou. Souvent des trous traversants de diamètre 1,5 avec un avant-trou de diamètre 8 sur la profondeur de mon choix ».
+- **Nouveau type « ◎ Double »** (`kind:'step'`, `src/76-percage.js`) : avant-trou Ø `stD` sur `stH` (plein Ø), fond en pointe `stTip` (118° par défaut, 135°, 140°, 90° ou fond plat), puis le trou Ø `d` jusqu’à la fin choisie (borgne, jusqu’à la face, débouchant, tout) ; taraudage possible sur le petit trou. Valeurs de départ : Ø1,5 débouchant sous Ø8 × 5. Nom : « Perçage Ø8 ↧5 + Ø1,5 débouchant tout ×n ».
+- **`holeEntryOff(N)`** : début du plein Ø sous lamage / fraisure / avant-trou, partagé par le filet (modélisé, cosmétique), la FAO et la mise en plan.
+- **FAO** (`faoHolesDetect`, `src/89-fao-percage.js`) : l’avant-trou est un perçage borgne avec pointe (rôle « avant-trou »), le petit trou un débouchant ; le cône de la pointe n’est plus pris pour un chanfrein d’entrée, le pointage part de la surface de la pièce.
+- **Mise en plan** : cotation « Ø8 ↧5 » puis « Ø1,5 déb. » ; Ø et profondeur de l’avant-trou pilotables par paramètres ; signature du cache de rejeu complétée.
+- **Vérifié** dans l’application (bouton « Double », deux trous, rejeu exact, FAO : Ø8 Z20→15 pointe 118° + Ø1,5 débouchant).
+- **Tests** : `tests/test_percage_3d.cjs` 1d, 2e, 2f ; `npm run ci`.

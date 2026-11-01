@@ -257,6 +257,8 @@
       if(N.pilot!=='none')lines.push('Ø'+fr(N.d)+' '+holeDepth());
       return lines.join('\n');
     }
+    // V0.31.0 : double perçage — l'avant-trou d'abord, puis le trou qu'il contient
+    if(N.kind==='step')lines.push('Ø'+fr(N.stD)+' ↧'+fr(N.stH));
     if(f.thread&&f.thread.size){
       lines.push(holeThreadLabel(f.thread)+' '+threadDepth());
       lines.push('Ø'+fr(N.d)+' '+holeDepth());
@@ -293,6 +295,7 @@
       const rs=[N.d/2];
       if(N.kind==='ream')rs.push(N.reamD/2);
       if(N.kind==='cbore')rs.push(N.cbD/2);
+      if(N.kind==='step')rs.push(N.stD/2);
       if(N.kind==='csink')rs.push(N.csD/2);
       if(f.thread&&f.thread.model&&typeof isoHoleThread==='function'){
         const th=isoHoleThread(f.thread.size,f.thread.p,f.thread.clear);
@@ -490,7 +493,7 @@
   }
   function mepAxisHoleOfFeature(f,N,A,P,b){
     const d=mepNorm(A.dir);
-    const r=Math.max(N.d/2,N.kind==='cbore'?N.cbD/2:0,N.kind==='csink'?N.csD/2:0);
+    const r=Math.max(N.d/2,N.kind==='cbore'?N.cbD/2:0,N.kind==='csink'?N.csD/2:0,N.kind==='step'?N.stD/2:0);
     return{fid:f.id,pid:P.id,f,N,A,P,
       x:mepDot([P.x,P.y,P.z],b.u),y:mepDot([P.x,P.y,P.z],b.v),r,
       facing:mepDot(d,b.dir),dir2:[mepDot(d,b.u),mepDot(d,b.v)]};
