@@ -21,7 +21,7 @@
  * peut changer sans rien casser. CACHE_VER (parcours FAO) reste indépendant.
  */
 
-const APP_VER='V0.31.1';
+const APP_VER='V0.31.2';
 try{console.log('[MiniFusion] version '+APP_VER);}catch(e){}
 try{var mfSv=document.getElementById('mfSplashVer');if(mfSv)mfSv.textContent=APP_VER;}catch(e){} // écran de démarrage
 
@@ -168,7 +168,8 @@ async function occtFinishBoot(){
     // maillage, dont le solide combiné peut avoir une boîte dégénérée (mesuré : 40×40×10000,
     // caméra propulsée hors du plan lointain 5000 → vue noire jusqu'au prochain Iso).
     if(!viewUserMoved){try{showAll();}catch(e){}}
-    try{if(filMode&&occLive&&occLive.shape){exitFilletMode(true);enterExactFilletMode();}}catch(e){}}
+    try{if(filMode&&occLive&&occLive.shape){exitFilletMode(true);enterExactFilletMode();}}catch(e){}
+    try{if(typeof bootSafeDone==='function')bootSafeDone();}catch(e){}} // V0.31.2 : rejeu exact passé → démarrage abouti (99-init)
 }
 async function bootWasmBinary(buf){
   // Mode fichier (file://) : le fetch du .wasm est bloqué par CORS, on l'injecte à la main.

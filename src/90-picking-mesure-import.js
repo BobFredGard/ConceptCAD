@@ -2228,7 +2228,9 @@ function autosaveFlush(){ // fermeture d'onglet : plus aucune perte possible
    l'écriture échouait sans bruit et l'ANCIEN brouillon restait, restauré au rechargement. Il
    part alors dans IndexedDB ('draft' = {at, txt}) ; le stockage local n'en garde que la date
    (minifusion_auto_idb), et plus aucun brouillon périmé. Relu par draftRestore (99-init). */
+let bootHold=false; // V0.31.2 : brouillon mis de côté après un démarrage interrompu (99-init) — pas de sauvegarde auto
 function autosaveWrite(){
+  if(bootHold||window.__mfResetting)return 'hold'; // … ou nettoyage « Vider le cache » en cours (écran de démarrage)
   const txt=serialise(false);
   try{localStorage.setItem('minifusion_auto',txt);try{localStorage.removeItem('minifusion_auto_idb');}catch(e){}return 'ls';}catch(e){}
   const at=Date.now();

@@ -150,6 +150,9 @@ input[type=range]{accent-color:var(--primary);width:100%}
 @keyframes mfsUp{from{opacity:0;transform:translateY(10px)}}
 @keyframes mfsProg{from{transform:scaleX(0)}}
 @media(prefers-reduced-motion:reduce){#mfSplash *{animation-duration:.01s!important;animation-delay:0s!important;animation-iteration-count:1!important}}
+#mfSplash .reset{position:absolute;right:18px;top:50%;transform:translateY(-50%);z-index:2;opacity:0;pointer-events:none;transition:opacity .35s ease;font-size:.78rem;padding:9px 13px;border-radius:9px;border:1px solid rgba(255,159,10,.55);background:rgba(42,29,12,.85);color:#ffe2b0;cursor:pointer;max-width:190px;text-align:left;line-height:1.3}
+#mfSplash .reset.on{opacity:1;pointer-events:auto}
+#mfSplash .reset:hover{border-color:#ff9f0a;box-shadow:0 0 14px rgba(255,159,10,.35)}
 </style>
 </head>
 <body>
@@ -160,6 +163,7 @@ input[type=range]{accent-color:var(--primary);width:100%}
   <div class="tag">CAO paramétrique · FAO</div>
   <div class="bar"><i></i></div>
   <div class="foot"><span id="mfSplashVer"></span><span>Cliquer ou Échap pour passer</span></div>
+  <button class="reset" type="button" title="Vide le brouillon de session (une copie est gardée), le cache d'affichage et le cache du noyau 3D, puis redémarre sur un document vide. Préférences, fichiers récents et copies de sauvegarde conservés. Aussi : adresse terminée par ?vide">🧹 Vider le cache<br>et démarrer à vide</button>
 </div>
 <script id="mfSplashJs">(function(){
   var s=document.getElementById('mfSplash');if(!s)return;
@@ -167,9 +171,36 @@ input[type=range]{accent-color:var(--primary);width:100%}
   if(navigator.webdriver){s.remove();return;}
   var w=s.querySelector('.word');
   'MiniFusion'.split('').forEach(function(c,i){var e=document.createElement('span');e.textContent=c;if(i>=4)e.className='f';e.style.animationDelay=(1.1+i*.055)+'s';w.appendChild(e);});
-  var fin=function(){if(!s.parentNode)return;s.classList.add('out');setTimeout(function(){s.remove();},480);document.removeEventListener('keydown',k,true);};
+  // fenêtre de 2 s (ou jusqu'au clic / Échap) avant le noyau 3D et le brouillon (96, 99-init)
+  var gateOpen=null;window.__mfGate=new Promise(function(r){gateOpen=r;});setTimeout(function(){gateOpen();},2000);
+  var fin=function(){gateOpen();if(!s.parentNode)return;s.classList.add('out');setTimeout(function(){s.remove();},480);document.removeEventListener('keydown',k,true);};
   var k=function(e){if(e.key==='Escape'||e.key==='Enter'||e.key===' '){e.preventDefault();e.stopPropagation();fin();}};
   s.addEventListener('click',fin);document.addEventListener('keydown',k,true);
+  // DÉPANNAGE — bouton caché à droite (apparaît quand la souris bouge) ou adresse « ?vide ».
+  // Script autonome, exécuté AVANT l'application : le brouillon n'est pas encore rouvert, il peut
+  // donc être écarté même s'il fait planter le démarrage.
+  var reset=function(){
+    window.__mfResetting=true;    try{var a=localStorage.getItem('minifusion_auto');if(a){try{localStorage.setItem('minifusion_auto_bak',a);}catch(e){}}
+      localStorage.removeItem('minifusion_auto');localStorage.removeItem('minifusion_auto_idb');localStorage.removeItem('minifusion_boot');}catch(e){}
+    var go=function(){var u=location.pathname+'?frais='+Date.now();location.replace(u);};
+    var t=setTimeout(go,4000),n=2,one=function(){if(--n<=0){clearTimeout(t);go();}};
+    try{indexedDB.deleteDatabase('minifusion_occ').onsuccess=one;}catch(e){one();}
+    try{var rq=indexedDB.open('minifusion',1);
+      rq.onupgradeneeded=function(){try{rq.result.createObjectStore('kv');}catch(e){}};
+      rq.onsuccess=function(){try{var db=rq.result,tx=db.transaction('kv','readwrite'),st=tx.objectStore('kv'),g=st.get('draft');
+        g.onsuccess=function(){if(g.result)st.put(g.result,'draftBak');st.delete('draft');st.delete('lastGood');st.delete('bootHeld');};
+        tx.oncomplete=function(){db.close();one();};tx.onerror=tx.onabort=function(){one();};}catch(e){one();}};
+      rq.onerror=one;}catch(e){one();}
+  };
+  if(/[?&]vide/.test(location.search)){reset();return;}
+  var rb=s.querySelector('.reset');
+  if(rb){
+    var show=function(){rb.classList.add('on');};
+    s.addEventListener('mousemove',show);
+    rb.addEventListener('click',function(e){e.stopPropagation();
+      if(!confirm('Vider le cache et démarrer une session vide ?\n\nLe brouillon en cours est gardé en copie ; préférences, fichiers récents et copies de sauvegarde sont conservés.'))return;
+      rb.textContent='🧹 Nettoyage…';rb.disabled=true;reset();});
+  }
   setTimeout(function(){if(s.parentNode)s.remove();document.removeEventListener('keydown',k,true);},10100);
 })();</script>
 <header class="topbar">
@@ -337,7 +368,7 @@ input[type=range]{accent-color:var(--primary);width:100%}
  * peut changer sans rien casser. CACHE_VER (parcours FAO) reste indépendant.
  */
 
-const APP_VER='V0.31.1';
+const APP_VER='V0.31.2';
 try{console.log('[MiniFusion] version '+APP_VER);}catch(e){}
 try{var mfSv=document.getElementById('mfSplashVer');if(mfSv)mfSv.textContent=APP_VER;}catch(e){} // écran de démarrage
 
@@ -484,7 +515,8 @@ async function occtFinishBoot(){
     // maillage, dont le solide combiné peut avoir une boîte dégénérée (mesuré : 40×40×10000,
     // caméra propulsée hors du plan lointain 5000 → vue noire jusqu'au prochain Iso).
     if(!viewUserMoved){try{showAll();}catch(e){}}
-    try{if(filMode&&occLive&&occLive.shape){exitFilletMode(true);enterExactFilletMode();}}catch(e){}}
+    try{if(filMode&&occLive&&occLive.shape){exitFilletMode(true);enterExactFilletMode();}}catch(e){}
+    try{if(typeof bootSafeDone==='function')bootSafeDone();}catch(e){}} // V0.31.2 : rejeu exact passé → démarrage abouti (99-init)
 }
 async function bootWasmBinary(buf){
   // Mode fichier (file://) : le fetch du .wasm est bloqué par CORS, on l'injecte à la main.
@@ -56514,7 +56546,9 @@ function autosaveFlush(){ // fermeture d'onglet : plus aucune perte possible
    l'écriture échouait sans bruit et l'ANCIEN brouillon restait, restauré au rechargement. Il
    part alors dans IndexedDB ('draft' = {at, txt}) ; le stockage local n'en garde que la date
    (minifusion_auto_idb), et plus aucun brouillon périmé. Relu par draftRestore (99-init). */
+let bootHold=false; // V0.31.2 : brouillon mis de côté après un démarrage interrompu (99-init) — pas de sauvegarde auto
 function autosaveWrite(){
+  if(bootHold||window.__mfResetting)return 'hold'; // … ou nettoyage « Vider le cache » en cours (écran de démarrage)
   const txt=serialise(false);
   try{localStorage.setItem('minifusion_auto',txt);try{localStorage.removeItem('minifusion_auto_idb');}catch(e){}return 'ls';}catch(e){}
   const at=Date.now();
@@ -57592,6 +57626,9 @@ function occCacheLoad(){
 (async()=>{
   if(window.__occBootDone)return; // garde anti-double-démarrage (import lent + repli script)
   window.__occBootDone=true;
+  // V0.31.2 : fenêtre de l'écran de démarrage (2 s, ou clic / Échap) — le fil reste libre pour
+  // le bouton de dépannage « Vider le cache » ; la compilation gèle sinon toute l'animation.
+  try{if(window.__mfGate)await window.__mfGate;}catch(e){}
   const t0=performance.now();
   const stage=s=>{occBaseMsg='OCCT : '+s;occStatus();try{console.log('[OCCT] '+s);}catch(e){}};
   const fail=(where,err)=>{
@@ -73133,8 +73170,57 @@ try{$('appVerLive').textContent=APP_VER;}catch(e){}
 buildScene();renderTree();renderProps();refreshParts();
 // V0.29.0 : brouillon trop gros pour le stockage local → IndexedDB (autosaveWrite, 90), relu avant le cache d'affichage
 let draftP=null;
-try{const auto=localStorage.getItem('minifusion_auto');if(auto){deserialise(auto,{rebuild:false});renderProps();faceEl.textContent='Brouillon local restauré.';}
-  else draftP=draftRestore().then(t=>{if(t)return Promise.resolve(deserialise(t,{rebuild:false})).then(()=>{renderProps();faceEl.textContent='Brouillon local restauré (grand fichier).';});}).catch(()=>{});}catch(e){}
+// V0.31.2 : DÉMARRAGE PROTÉGÉ. Un brouillon (ou son cache d'affichage) qui fait planter ou figer
+// l'onglet bloquait l'appli à CHAQUE ouverture (« plante dans Chrome, pas en privé ni dans Brave »).
+// Témoin posé ici, retiré une fois le rejeu exact passé (bootSafeDone) ou à une fermeture normale :
+// s'il est encore là, le démarrage précédent n'a pas abouti → brouillon NON rouvert, proposé.
+const BOOT_KEY='minifusion_boot';
+let bootPrev=null;try{bootPrev=localStorage.getItem(BOOT_KEY);localStorage.setItem(BOOT_KEY,String(Date.now()));}catch(e){}
+let bootSafeT=null;
+// brouillon mis de côté (mémoire + IndexedDB « bootHeld ») AVANT toute sauvegarde automatique :
+// le document vide ne doit pas l'écraser. bootHold bloque autosaveWrite (90) jusqu'au choix de l'utilisateur.
+bootHold=!!bootPrev;let bootHeldTxt=null;
+const bootHeldP=bootPrev?draftRestore().then(async t=>{
+  if(t){bootHeldTxt=t;try{await idbSet('bootHeld',{txt:t,at:Date.now()});}catch(e){}}
+  else{try{const h=await idbGet('bootHeld');if(h&&typeof h.txt==='string')bootHeldTxt=h.txt;}catch(e){}}
+}).catch(()=>{}):null; // bootHold levé par le choix fait dans le bandeau
+async function bootHeldText(){try{await bootHeldP;}catch(e){}return bootHeldTxt;}
+function bootSafeDone(ms){
+  if(bootSafeT)clearTimeout(bootSafeT);
+  bootSafeT=setTimeout(()=>{bootSafeT=null;try{localStorage.removeItem(BOOT_KEY);}catch(e){}},ms==null?5000:ms);
+}
+addEventListener('beforeunload',()=>{try{localStorage.removeItem(BOOT_KEY);}catch(e){}});
+setTimeout(()=>bootSafeDone(0),120000); // noyau lent mais onglet vivant : le démarrage a abouti
+function bootSafeBanner(){
+  const b=document.createElement('div');b.id='bootSafe';
+  b.style.cssText='position:fixed;left:50%;top:64px;transform:translateX(-50%);z-index:9500;max-width:min(560px,92vw);background:#2a1d0c;color:#ffe2b0;border:1px solid #ff9f0a;border-radius:10px;padding:10px 14px;font-size:13px;box-shadow:0 10px 30px rgba(0,0,0,.5)';
+  b.innerHTML='<b>⚠ Le démarrage précédent n’a pas abouti</b><div style="margin:4px 0 8px;opacity:.9">Le brouillon local n’a pas été rouvert (il bloquait peut-être l’application). Vous pouvez l’enregistrer dans un fichier, le rouvrir quand même, ou repartir d’un document vide. Sauvegarde automatique suspendue jusqu’à votre choix.</div>';
+  const bar=document.createElement('div');bar.style.cssText='display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end';
+  const mk=(t,fn)=>{const x=document.createElement('button');x.textContent=t;x.onclick=fn;bar.appendChild(x);return x;};
+  mk('💾 Enregistrer le brouillon…',async()=>{
+    try{const t=await bootHeldText();if(!t){faceEl.textContent='Aucun brouillon local.';return;}
+      const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([t],{type:'application/json'}));
+      a.download='Brouillon '+new Date().toISOString().slice(0,16).replace(/[T:]/g,'-')+'.miniFusion';
+      document.body.appendChild(a);a.click();setTimeout(()=>{URL.revokeObjectURL(a.href);a.remove();},2000);}catch(e){faceEl.textContent='Brouillon illisible : '+e.message;}});
+  mk('↻ Rouvrir quand même',async()=>{
+    b.remove();bootHold=false;try{const t=await bootHeldText();if(!t)return;
+      await Promise.resolve(deserialise(t,{rebuild:false}));renderTree();renderProps();
+      builtVersion=-1;builtHash=null;builtEngine=null;rebuild();if(occtReady)showAll();faceEl.textContent='Brouillon local rouvert.';}catch(e){faceEl.textContent='Brouillon : '+e.message;}});
+  mk('✕ Document vide',()=>{b.remove();bootHold=false;try{autosave();}catch(e){}});
+  b.appendChild(bar);document.body.appendChild(b);
+}
+if(bootPrev){
+  try{faceEl.textContent='⚠ Démarrage précédent interrompu : brouillon non rouvert.';}catch(e){}
+  try{bootSafeBanner();}catch(e){}
+}
+else{
+  // V0.31.2 : brouillon rouvert APRÈS la fenêtre de l'écran de démarrage (window.__mfGate, 2 s ou
+  // clic) : le bouton « Vider le cache » peut l'écarter avant qu'il ne bloque l'application.
+  const draftLoad=()=>{try{const auto=localStorage.getItem('minifusion_auto');if(auto){deserialise(auto,{rebuild:false});renderProps();faceEl.textContent='Brouillon local restauré.';return null;}
+    return draftRestore().then(t=>{if(t)return Promise.resolve(deserialise(t,{rebuild:false})).then(()=>{renderProps();faceEl.textContent='Brouillon local restauré (grand fichier).';});}).catch(()=>{});}catch(e){return null;}};
+  if(window.__mfGate)draftP=Promise.resolve(window.__mfGate).catch(()=>{}).then(()=>window.__mfResetting?null:draftLoad());
+  else draftP=draftLoad();
+}
 // Le cache d'affichage n'est qu'un DÉCOR : il redonne une image, pas un modèle. Sans rejeu,
 // il n'y a pas de solide exact (occLive) — donc ni congé, ni esquisse sur face, ni sélection
 // de face : « impossible de rejouer le solide ». Symptôme mesuré : le PREMIER F5 rejouait
@@ -73144,7 +73230,7 @@ try{const auto=localStorage.getItem('minifusion_auto');if(auto){deserialise(auto
 // la boîte du « solide combiné » parfois dégénérée (40×40×10000) — caméra hors champ,
 // vue noire. Tant qu'OCCT n'est pas prêt, la caméra par défaut (90,-90,90) montre l'origine.
 try{
-  (draftP||Promise.resolve()).then(()=>restoreViewCache()).then(ok=>{
+  (draftP||Promise.resolve()).then(()=>bootPrev?false:restoreViewCache()).then(ok=>{
     if(ok)log('Affichage restauré depuis le cache — rejeu exact en cours…');
     // builtVersion=-1 : la garde « rien n'a changé » court-circuterait sinon le rejeu,
     // puisque restoreViewCache vient de poser builtHash.
@@ -73152,6 +73238,7 @@ try{
     try{rebuild();}catch(e){}
     try{if(occtReady)showAll();}catch(e){}
     try{faoMovesPreloadSoon(true);}catch(e){} // solide rejoue : on (re)charge les parcours persistes
+    if(occtReady)bootSafeDone(); // sinon : à la fin du rejeu exact (occtFinishBoot)
   });
 }catch(e){try{builtVersion=-1;builtHash=null;builtEngine=null;rebuild();if(occtReady)showAll();faoMovesPreloadSoon(true);}catch(e2){}}
 log('Prêt. Esquisse → Extrusion → Export. Même navigation que le viewer.');

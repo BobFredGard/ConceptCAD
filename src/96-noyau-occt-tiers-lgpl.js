@@ -98,6 +98,9 @@ function occCacheLoad(){
 (async()=>{
   if(window.__occBootDone)return; // garde anti-double-démarrage (import lent + repli script)
   window.__occBootDone=true;
+  // V0.31.2 : fenêtre de l'écran de démarrage (2 s, ou clic / Échap) — le fil reste libre pour
+  // le bouton de dépannage « Vider le cache » ; la compilation gèle sinon toute l'animation.
+  try{if(window.__mfGate)await window.__mfGate;}catch(e){}
   const t0=performance.now();
   const stage=s=>{occBaseMsg='OCCT : '+s;occStatus();try{console.log('[OCCT] '+s);}catch(e){}};
   const fail=(where,err)=>{

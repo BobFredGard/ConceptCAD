@@ -8,7 +8,7 @@ sont sorties le 2026-09-30j.
 Code dans `src/` · livrable `fusion_mvp.html` (généré par `build.js`) · architecture et
 garde-fous en tête de `src/00-entete-et-outils.js`.
 
-**510 versions**, de `2026-09-28b` à `V0.31.1` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
+**511 versions**, de `2026-09-28b` à `V0.31.2` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
 comme dans le fichier d'origine.
 
 ---
@@ -6132,3 +6132,14 @@ Demande : « je ne pouvais pas mettre de paramètre pour une quantité, comme da
 - **Tous les champs** : chaque `input type=number` ajouté à la page (mise en plan, rendu, n° d’outil FAO, audit d’esquisse… ~25 champs) devient un champ texte décimal (`data-fxnum`, styles repris) : le filet ƒx global y accepte une expression, ↑ / ↓ gardent le pas et les bornes. Hors fonctions 3D, la valeur reste figée au moment de la saisie (comme avant pour les champs texte).
 - **Vérifié** dans l’application sur « Test Répétition Courbe » : Quantité = N, N = 10 → 10 exemplaires, N = 7 dans ƒx → 7 ; champ type=number converti et « N*1,5 » évalué.
 - **Tests** : `tests/test_parametres_3d.cjs` 14 à 21 ; `npm run ci:full`.
+
+## V0.31.2 - Démarrage protégé : un brouillon qui plante l’onglet n’est plus rouvert en boucle ; bouton « Vider le cache » sur l’écran de démarrage
+Retour : « application plantée au démarrage » ; « ça plante dans Chrome et pas Brave » ; « ça marche en privé ».
+- **Cause probable** : le brouillon local (ou son cache d’affichage), rouvert automatiquement à chaque ouverture, plantait ou figeait l’onglet. Chrome seul l’avait gardé, d’où le plantage dans Chrome seulement (Brave et la navigation privée n’ont pas ce brouillon). Pas encore reproduit faute du document.
+- **Correctif** (`src/99-init.js`) : un témoin `minifusion_boot` est posé au démarrage et retiré quand le rejeu exact a abouti (`occtFinishBoot` + 5 s) ou à une fermeture normale. S’il est encore là au démarrage suivant, le brouillon et le cache d’affichage ne sont pas rouverts : un bandeau propose **💾 Enregistrer le brouillon…** (fichier .miniFusion), **↻ Rouvrir quand même** ou **✕ Document vide**.
+- **Brouillon préservé** : copié en mémoire et dans IndexedDB (`bootHeld`) ; la sauvegarde automatique est suspendue (`autosaveWrite`, `src/90-picking-mesure-import.js`) jusqu’au choix, pour que le document vide ne l’écrase pas.
+Demande : « un bouton caché côté droit de l’écran [d’animation] quand je bouge la souris pour vider le cache et démarrer une session vide ».
+- **Bouton 🧹 « Vider le cache et démarrer à vide »** (écran de démarrage, gabarit de `fusion_mvp.html`) : apparaît à droite quand la souris bouge ; après confirmation, retire le brouillon de session (copie gardée : `minifusion_auto_bak`, IndexedDB `draftBak`), le cache d’affichage (`lastGood`) et le cache du noyau 3D compilé (base `minifusion_occ`, propre à chaque navigateur), puis recharge la page sans cache (`?frais=…`). Préférences, fichiers récents et copies de sauvegarde conservés. Même effet sans souris : adresse terminée par `?vide`. Sauvegarde automatique bloquée pendant le nettoyage (`window.__mfResetting`).
+- **Fenêtre de 2 s** (`window.__mfGate`, rendue tout de suite par un clic ou Échap) : le noyau 3D (`src/96-noyau-occt-tiers-lgpl.js`) et le brouillon (`src/99-init.js`) attendent sa fin. Sans elle, la compilation du noyau occupait le navigateur pendant toute l’animation et le bouton ne pouvait ni apparaître ni être cliqué.
+- **Vérifié** dans l’application : rechargement normal sans bandeau ; démarrage interrompu simulé → bandeau, brouillon intact (190 Ko) malgré une sauvegarde forcée, « Rouvrir quand même » → « Test Répétition Courbe » rejoué, témoin retiré ; bouton visible à 0,8 s (brouillon pas encore rouvert, noyau pas lancé), clic → document vide, copie du brouillon (190 Ko) gardée, caches vidés.
+- **Tests** : `npm run ci:full`.
