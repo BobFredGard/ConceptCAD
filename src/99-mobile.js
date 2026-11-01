@@ -11,6 +11,7 @@
    • Fichiers : Ouvrir / Enregistrer passent par mffOpen / mffSave (sélecteur et téléchargement
      sur mobile), Partager (Web Share) quand le téléphone le permet ; le brouillon local
      (autosave, minifusion_auto) reste le filet.
+   Phases 2 et 3 (Créer, esquisse au doigt) : 99-mobile-creer-esquisse.js (mfmPhase23).
    Activation : téléphone détecté (pointeur tactile, petit écran), ou ?mobile=1 / ?mobile=0
    (?mobile=auto : retour à la détection), choix mémorisé dans localStorage minifusion_mobile (on / off). */
 function mfmWanted(){
@@ -94,7 +95,8 @@ const MFM_IC={
   fit:'<path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/><rect x="8" y="8" width="8" height="8" rx="1"/>',
   views:'<path d="m12 3 8 4.5v9L12 21l-8-4.5v-9z"/><path d="m12 12 8-4.5M12 12v9M12 12 4 7.5"/>',
   eye:'<path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/>',
-  close:'<path d="M6 6l12 12M18 6 6 18"/>'
+  close:'<path d="M6 6l12 12M18 6 6 18"/>',
+  plus:'<circle cx="12" cy="12" r="9"/><path d="M12 8v8M8 12h8"/>'
 };
 function mfmI(k){return '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">'+(MFM_IC[k]||'')+'</svg>';}
 let mfmOn=false,mfmTab='tree',mfmGhostT=null;
@@ -358,6 +360,7 @@ function mfmBuild(){
   document.body.appendChild(top);
   // barre d'outils
   const nav=document.createElement('div');nav.id='mfmNav';nav.className='mfmBar';
+  mfmBtn(nav,'plus','Créer',()=>mfmCreateOpen(),'mfmNavCreate');
   mfmBtn(nav,'tree','Arbre',()=>mfmSheetToggle('tree'),'mfmNavTree');
   mfmBtn(nav,'props','Paramètres',()=>mfmSheetToggle('props'),'mfmNavProps');
   mfmBtn(nav,'fit','Cadrer',mfmFit);
@@ -370,6 +373,7 @@ function mfmBuild(){
   try{document.getElementById('tree').addEventListener('dblclick',()=>setTimeout(()=>mfmSheetOpen('props'),0));}catch(e){}
   mfmTreeLongPress();
   mfmTouchWire();
+  try{mfmPhase23();}catch(e){try{console.warn('téléphone, phases 2-3 :',e);}catch(err){}}
   // tous les « Tout afficher » de l'application (démarrage, ouverture d'un fichier…) cadrent
   // aussi selon la largeur de l'écran
   mfmShowAll0=showAll;
