@@ -81,7 +81,7 @@ function faoDrillCycle(op,job,oz,inFrame){
   const tT=faoToolById(job,op.toolId);
   return {holes:holes,pts:plan.map(function(p){return [p.x,p.y];}),RTP:RTP,RFP:h0.RFP,SDIS:h0.SDIS,DP:h0.DP,
     peck:h0.peck,span:h0.span,chip:cyc==='chip',dwell:dwell,
-    tap:cyc==='tap'?{p:(tT&&+tT.p>0)?+tT.p:1}:null};
+    tap:cyc==='tap'?{p:(tT&&+tT.p>0)?+tT.p:1,lh:!!(tT&&tT.lh)}:null}; // lh : taraud à gauche (V0.33.3)
 }
 // Post unifié : un seul corps de programme, dialecte réduit à la tête/pied + style de ligne.
 //  - Siemens 840D : lignes brutes, commentaires `;`, fin SUPA Z600 + parc machine
@@ -249,18 +249,22 @@ function faoPost(job,postId){
         // 2026-10-15-011 : départ (RFP) et fond (DP) PAR TROU ; temporisation (G82 /
         // CYCLE82, CYCLE83 DTB) ; brise-copeaux : CYCLE83 VARI=0 (Siemens), passes
         // explicites G1/G0 sur Fagor (syntaxe G73 8065 à confirmer en atelier).
+        // V0.33.3 : taraud à gauche — Fagor : broche en sens inverse (M04) le temps du cycle, le
+        // G84 inverse à son tour au fond pour ressortir ; Siemens : pas négatif dans CYCLE84.
+        const tapLH=!!(DC.tap&&DC.tap.lh);
+        if(fag&&tapLH)nc('M04');
         (DC.holes||[]).forEach(function(H){
           const X='X'+faoFmtXYZ(+H.x-ox), Y='Y'+faoFmtXYZ(+H.y-oy);
           const DTB=DC.dwell>0?faoFmtXYZ(DC.dwell):'';
           if(DC.tap){
             // 2026-10-15-013 : TARAUDAGE RIGIDE (F = pas × S). Siemens : CYCLE84 avec
-            // PIT = pas (positif = filet à droite), SDAC=3 (M3 après cycle), SST = SST1 = S.
+            // PIT = pas (positif = filet à droite, NÉGATIF = à gauche), SDAC=3 (M3 après cycle), SST = SST1 = S.
             // Fagor 8065 : G84 rigide (R1) — syntaxe à valider sur la machine.
             if(fag){
               nc('G98 G84 '+X+' '+Y+' Z'+faoFmtXYZ(DC.RTP)+' I'+faoFmtXYZ(H.DP)+' K0 R1'+fw(F));
             }else{
               nc('G0 '+X+' '+Y+' Z'+faoFmtXYZ(DC.RTP));
-              nc('CYCLE84('+faoFmtXYZ(DC.RTP)+', '+faoFmtXYZ(H.RFP)+', '+faoFmtXYZ(H.SDIS)+', '+faoFmtXYZ(H.DP)+', , '+DTB+', 3, , '+faoFmtXYZ(DC.tap.p)+', 0, '+SB+', '+SB+')');
+              nc('CYCLE84('+faoFmtXYZ(DC.RTP)+', '+faoFmtXYZ(H.RFP)+', '+faoFmtXYZ(H.SDIS)+', '+faoFmtXYZ(H.DP)+', , '+DTB+', 3, , '+(tapLH?'-':'')+faoFmtXYZ(DC.tap.p)+', 0, '+SB+', '+SB+')');
             }
             return;
           }
@@ -304,6 +308,7 @@ function faoPost(job,postId){
           }
         });
         if(fag)nc('G80'); // Fagor : les cycles sont modaux, annulation obligatoire
+        if(fag&&tapLH)nc('M03'); // broche rendue à droite pour la suite
         // La machine repose au plan du cycle (dessus + sortie) sur le dernier trou.
         if(DC.pts.length){
           const lp=DC.pts[DC.pts.length-1];

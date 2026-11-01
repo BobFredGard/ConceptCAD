@@ -8,7 +8,7 @@ sont sorties le 2026-09-30j.
 Code dans `src/` · livrable `fusion_mvp.html` (généré par `build.js`) · architecture et
 garde-fous en tête de `src/00-entete-et-outils.js`.
 
-**517 versions**, de `2026-09-28b` à `V0.33.2` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
+**518 versions**, de `2026-09-28b` à `V0.33.3` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
 comme dans le fichier d'origine.
 
 ---
@@ -6190,3 +6190,21 @@ Demande : « quand je sélectionne un perçage et que je clique sur la fonction 
 - **Toute la fonction suit** : un trou issu d’une fonction Perçage entraîne tous les trous de cette fonction — tous ses points, son lamage, l’avant-trou d’un double perçage. Cliquer le lamage d’un CHC donne donc perçage Ø6,6 + lamage fraisé.
 - **Gamme** : le bouton « Perçage » (ruban et barre « + Usinage ») remplace alors l’opération vide par la gamme habituelle (pointage → perçages par Ø, débourrage au-delà de 4 × Ø → lamages fraisés → taraudages) ; la première opération s’ouvre, un seul Ctrl+Z annule le tout. Sans trou sélectionné : opération vide, comme avant.
 - **Tests** : `test_fao_percage_selection` (noyau réel : M8 + lamage cliqués, fonction Ø5 sélectionnée, face hors trou) ; `npm run ci`.
+
+## V0.33.3 - FAO : Perçage sur sélection en 3+2, filets à gauche (LH)
+Retour : « Ça fonctionne pas en 3+2, il faut que tu mettes l'axe Z dans le sens des axes de trous, je règle le X après ».
+- **Cause** : la V0.33.2 cherchait les trous dans le repère du posage, qui ne voit que les trous parallèles à son Z ; un trou de flanc cliqué ne donnait rien.
+- **Repère 3+2 posé seul** : paroi d’un trou cliquée (ou fonction Perçage sélectionnée) d’axe autre que le Z du posage → repère propre de l’opération, **Z = axe du trou, sortant par son entrée** ; X laissé à régler (onglet Repère). Toute la gamme hérite de ce repère. Trou parallèle au Z du posage : repère du posage, comme avant.
+- **Sens** : celui de la fonction Perçage qui porte le trou ; sans fonction (STEP), le côté où le trou est borgne ; débouchant sans fonction : le sens le plus proche du Z du posage.
+- **Trou de flanc rattaché à sa fonction** : en repère d’opération, la reconnaissance comparait les centres de la fonction Perçage en repère monde — un trou taraudé de flanc perdait son filet (pas de taraudage dans la gamme) et son lamage. Les axes des fonctions sont désormais ramenés dans le repère de détection (`faoHoleAxisF`).
+- **Vérifié** dans l’application sur « Perçages » : paroi d’un M5 de la face avant cliquée → Z = −Y, les 2 M5 borgnes, pointage → Ø4,2 → taraud M5, parcours dans les trous.
+- **Tests** : `test_fao_percage_selection` complété (flanc borgne +X, sens par la géométrie seule, débouchant −Y, trou vertical sans repère propre) ; `npm run ci`.
+
+### Filets à gauche (LH) — CAO → FAO → G-code
+Question : « quand un taraud rentre il tourne dans un sens et quand il ressort, il ressort en sens inverse. Est-ce bien pris en compte […] ? Il faut aussi penser que les tarauds à droite et à gauche existent ».
+- **Constat** : l’inversion au fond était déjà là (cycles rigides CYCLE84 / G84 : la commande inverse la broche et ressort à la même avance). Les filets à gauche n’existaient nulle part : broche toujours en M3, pas du CYCLE84 toujours positif.
+- **CAO** : fonction Perçage taraudée → « Sens du filet : À droite / À gauche (LH) ». Désignation ISO 965 / ASME B1.1 : `M8-LH`, `M8×1-LH`, `1/4-20 UNC-LH` (nom de la fonction, arbre, cotation de mise en plan). Filet modélisé : hélice à gauche (miroir exact du filet à droite) ; filet cosmétique dessiné dans l’autre sens.
+- **FAO** : le sens suit le trou (fonction Perçage, ou choix « À gauche » à côté de « Taraudé M… » pour un STEP). Taraud de la bibliothèque : réglage « Sens » ; la gamme prend ou crée le taraud du bon sens (« Taraud M8-LH »). Un M8 et un M8-LH de même Ø et même départ donnent deux taraudages distincts : chaque taraudage de la gamme ne garde que les trous de SON filet (un trou lisse de même Ø n’est plus taraudé par erreur).
+- **G-code** : Siemens `CYCLE84(…, 3, , -1.250, …)` (pas négatif = à gauche) ; Fagor 8065 : `M04` avant le `G84` (le cycle inverse au fond), `M03` rendu après le `G80`. Syntaxe Fagor à valider en atelier, comme le reste du taraudage rigide.
+- **Normes** : les filets UNC / UNF (ANSI) et gaz G / Rc / NPT acceptent le sens à gauche de la même façon.
+- **Tests** : `test_taraud_gauche` (libellés, hélice cosmétique inversée, gamme M8 + M8-LH, CYCLE84 ±1,25, Fagor M04 → G84 → G80 → M03, STEP à gauche, filet modélisé = miroir à 99,9 %) ; `npm run ci`.

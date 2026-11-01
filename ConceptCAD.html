@@ -376,7 +376,7 @@ input[type=range]{accent-color:var(--primary);width:100%}
  * peut changer sans rien casser. CACHE_VER (parcours FAO) reste indépendant.
  */
 
-const APP_VER='V0.33.2';
+const APP_VER='V0.33.3';
 try{console.log('[ConceptCAD] version '+APP_VER);}catch(e){}
 try{var mfSv=document.getElementById('mfSplashVer');if(mfSv)mfSv.textContent=APP_VER;}catch(e){} // écran de démarrage
 
@@ -8354,7 +8354,7 @@ function repCanFeatureHint(f){
   if(f.type==='sweep')return sweepName(f);
   if(f.type==='hole'&&f.kind==='ream')return 'Perçage alésé · Ø'+holeNorm(f).reamD+' '+(f.reamTol||'H7');
   if(f.type==='hole'&&f.kind==='step')return 'Double perçage · Ø'+holeNorm(f).stD+' ↧'+holeNorm(f).stH+' + Ø'+(+f.d||0);
-  if(f.type==='hole')return 'Perçage · Ø'+(+f.d||0)+(f.thread&&f.thread.size?' · taraudé '+f.thread.size:'')+(f.kind&&f.kind!=='simple'?' · '+f.kind:'');
+  if(f.type==='hole')return 'Perçage · Ø'+(+f.d||0)+(f.thread&&f.thread.size?' · taraudé '+f.thread.size+(f.thread.lh?'-LH':''):'')+(f.kind&&f.kind!=='simple'?' · '+f.kind:'');
   if(f.type==='xfillet')return xLabel(xKindOf(f))+' · '+(f.edges||[]).length+' arête(s)'+xChamLabel(f);
   if(f.type==='xmove')return 'Déplacement de face · '+(+f.dist||0)+' mm';
   if(f.type==='bmove')return 'Déplacer un corps · '+(f.steps||[]).length+' étape(s)';
@@ -27106,7 +27106,7 @@ function askRevokePanel(f){
    • Points : entités cpoint `hole:true` de l'esquisse (outil ⊕ Centre de perçage) —
      seuls ces points portent un trou.
    • f = {type:'hole', sketchId, kind:'simple'|'cbore'|'csink', d (Ø de perçage),
-          thread:null|{size:'M8',p:1.25,len,model,clear}, cbD,cbH (lamage), csD,csA (fraisure),
+          thread:null|{size:'M8',p:1.25,len,model,clear,lh}, cbD,cbH (lamage), csD,csA (fraisure),
           end:'blind'|'through', depth (profondeur à plein Ø), tip (angle de pointe,
           0 = fond plat), flip (sens), op:'cut'}
      Taraudé : d = Ø de perçage du taraud (M − pas) ; filet cosmétique (dessin seul)
@@ -27210,7 +27210,8 @@ function isoHoleThread(size,p,jeu){
   const c=Math.max(0,+jeu||0)/2,D1=D-1.082532*P;
   return {D:D,P:P,D1:D1,rCrete:D1/2+c,rRacine:D/2+c,c:c};
 }
-function holeThreadLabel(th){ if(!th||!th.size)return ''; const t=isoThread(th.size); return th.size+((t&&+th.p!==t[2])?('×'+String(th.p)):''); }
+// V0.33.3 : filet à gauche → suffixe « -LH » (ISO 965 : M8-LH, M8×1-LH ; ASME B1.1 : 1/4-20 UNC-LH)
+function holeThreadLabel(th){ if(!th||!th.size)return ''; const t=isoThread(th.size); return th.size+((t&&+th.p!==t[2])?('×'+String(th.p)):'')+(th.lh?'-LH':''); }
 function holePoints(sk){
   // Centres de perçage de l'esquisse (2D) : [{id,x,y}]
   if(!sk)return [];
@@ -27325,13 +27326,15 @@ function occHoleThreadVoid(P,D,zStart,nT,th,rb,zEnd,tip,bins){
   const at=function(r,s){return {x:P.x+D.x*(z0+s)+U.x*r,y:P.y+D.y*(z0+s)+U.y*r,z:P.z+D.z*(z0+s)+U.z*r};};
   // profil d'un tour, de l'axe à l'axe (s le long de D) : crête p/4 entière, pas de demi-crêtes
   const q=[[0,-h],[rb,-h],[r2,-p/16],[r2,p/16],[rb,h],[rb,p-h],[0,p-h]];
-  // hélice d'un tour, à droite (u croît autour de D quand v avance le long de D)
+  // hélice d'un tour, à droite (u croît autour de D quand v avance le long de D) ; th.lh :
+  // à gauche (u décroît) — le cercle du fût tourne alors dans le même sens (axe −D)
+  const hs=th.lh?-1:1;
   const helix=function(r,s){
     if(r<1e-9){const me=occBinPush(bins,new occt.BRepBuilderAPI_MakeEdge_3(pnt(at(0,s)),pnt(at(0,s+p))));return me.Edge();}
     const ax3=occBinPush(bins,new occt.gp_Ax3_3(pnt(at(0,s)),dirOf(D),dirOf(U)));
     const hSurf=occBinPush(bins,new occt.Handle_Geom_Surface_2(new occt.Geom_CylindricalSurface_1(ax3,r))); // la poignée possède la surface
     const hLine=occBinPush(bins,new occt.Handle_Geom2d_Curve_2(new occt.Geom2d_Line_3(
-      occBinPush(bins,new occt.gp_Pnt2d_3(0,0)),occBinPush(bins,new occt.gp_Dir2d_4(2*Math.PI,p))))); // la poignée possède la droite
+      occBinPush(bins,new occt.gp_Pnt2d_3(0,0)),occBinPush(bins,new occt.gp_Dir2d_4(hs*2*Math.PI,p))))); // la poignée possède la droite
     const me=occBinPush(bins,new occt.BRepBuilderAPI_MakeEdge_31(hLine,hSurf,0,Math.hypot(2*Math.PI,p)));
     if(!me.IsDone())throw new Error('hélice impossible');
     const e=me.Edge();occt.BRepLib.BuildCurves3d_2(e);return e;
@@ -27356,7 +27359,7 @@ function occHoleThreadVoid(P,D,zStart,nT,th,rb,zEnd,tip,bins){
   sew.Add(ruled(0,1));sew.Add(cap(0,q));
   // fût : cercle du fond (même départ angulaire que les hélices) relié à la dernière crête
   const oE=pnt({x:P.x+D.x*zEnd,y:P.y+D.y*zEnd,z:P.z+D.z*zEnd});
-  const circ=occBinPush(bins,new occt.gp_Circ_2(occBinPush(bins,new occt.gp_Ax2_2(oE,dirOf(D),dirOf(U))),rb));
+  const circ=occBinPush(bins,new occt.gp_Circ_2(occBinPush(bins,new occt.gp_Ax2_2(oE,dirOf(th.lh?{x:-D.x,y:-D.y,z:-D.z}:D),dirOf(U))),rb));
   const ce=occBinPush(bins,new occt.BRepBuilderAPI_MakeEdge_8(circ)).Edge();
   sew.Add(occt.BRepFill.Face(occt.TopoDS.Edge_1(moved(H[5],nT-1)),ce));
   sew.Add(cap(nT,[q[1],q[2],q[3],q[4]])); // fin du dernier creux
@@ -27390,6 +27393,7 @@ function occShapeOfHole(f){
   const A=holeAxis(f,sk);
   if(!A.pts.length)throw new Error('aucun centre de perçage dans l’esquisse (outil ⊕)');
   const N0=holeNorm(f),thModel=(f.kind!=='ream'&&f.thread&&f.thread.model&&f.thread.size)?isoHoleThread(f.thread.size,f.thread.p,f.thread.clear):null;
+  if(thModel&&f.thread.lh)thModel.lh=true; // V0.33.3 : filet à gauche
   // filet modélisé : le corps ne doit jamais être plus étroit que la crête du filet
   const N=thModel?Object.assign({},N0,{r:Math.max(N0.r,thModel.rCrete)}):N0;
   // Débouchant : course limitée à la PIÈCE déjà construite (+1 mm) — sinon l'outil
@@ -27742,6 +27746,8 @@ function renderHoleProps(p,f){
   /* Ø */
   pRow(f.thread&&f.thread.size?'Ø taraud '+holeThreadLabel(f.thread):'Ø du trou',num(f.d,function(v){f.d=v;},0,f,'d'));
   if(f.thread&&f.thread.size){
+    // V0.33.3 : sens du filet — à gauche (LH) : taraud à gauche, broche inversée en FAO
+    pRow('Sens du filet',sel([['rh','À droite'],['lh','À gauche (LH)']],f.thread.lh?'lh':'rh',function(v){if(v==='lh')f.thread.lh=true;else delete f.thread.lh;}));
     pRow('Longueur filetée',sel([['len','Longueur'],['through','Débouchant tout (à travers)'],['upto','Jusqu\'à la face…'],['next','Prochaine face']],f.thread.lenMode||'len',function(v){
       f.thread.lenMode=v;if(v==='upto'&&!f.thread.uptoPlane)setTimeout(function(){holeFacePickStart(f.id,'thread');},0);}));
     const tm=f.thread.lenMode||'len';
@@ -27847,7 +27853,7 @@ function holeThreadPaths(stepsPerTurn,inset){
       const O=new THREE.Vector3(P.x,P.y,P.z),helix=[],ring=[];
       const turns=len/pz,steps=Math.max(spt,Math.ceil(turns*spt));
       for(let i=0;i<=steps;i++){
-        const a=i/steps*turns*Math.PI*2,z=off+i/steps*len;
+        const a=(f.thread.lh?-1:1)*i/steps*turns*Math.PI*2,z=off+i/steps*len; // à gauche : sens inverse
         const q=O.clone().addScaledVector(D,z).addScaledVector(U,rh*Math.cos(a)).addScaledVector(V,rh*Math.sin(a));
         helix.push([q.x,q.y,q.z]);
       }
@@ -36013,7 +36019,7 @@ function faoDrillCycle(op,job,oz,inFrame){
   const tT=faoToolById(job,op.toolId);
   return {holes:holes,pts:plan.map(function(p){return [p.x,p.y];}),RTP:RTP,RFP:h0.RFP,SDIS:h0.SDIS,DP:h0.DP,
     peck:h0.peck,span:h0.span,chip:cyc==='chip',dwell:dwell,
-    tap:cyc==='tap'?{p:(tT&&+tT.p>0)?+tT.p:1}:null};
+    tap:cyc==='tap'?{p:(tT&&+tT.p>0)?+tT.p:1,lh:!!(tT&&tT.lh)}:null}; // lh : taraud à gauche (V0.33.3)
 }
 // Post unifié : un seul corps de programme, dialecte réduit à la tête/pied + style de ligne.
 //  - Siemens 840D : lignes brutes, commentaires `;`, fin SUPA Z600 + parc machine
@@ -36181,18 +36187,22 @@ function faoPost(job,postId){
         // 2026-10-15-011 : départ (RFP) et fond (DP) PAR TROU ; temporisation (G82 /
         // CYCLE82, CYCLE83 DTB) ; brise-copeaux : CYCLE83 VARI=0 (Siemens), passes
         // explicites G1/G0 sur Fagor (syntaxe G73 8065 à confirmer en atelier).
+        // V0.33.3 : taraud à gauche — Fagor : broche en sens inverse (M04) le temps du cycle, le
+        // G84 inverse à son tour au fond pour ressortir ; Siemens : pas négatif dans CYCLE84.
+        const tapLH=!!(DC.tap&&DC.tap.lh);
+        if(fag&&tapLH)nc('M04');
         (DC.holes||[]).forEach(function(H){
           const X='X'+faoFmtXYZ(+H.x-ox), Y='Y'+faoFmtXYZ(+H.y-oy);
           const DTB=DC.dwell>0?faoFmtXYZ(DC.dwell):'';
           if(DC.tap){
             // 2026-10-15-013 : TARAUDAGE RIGIDE (F = pas × S). Siemens : CYCLE84 avec
-            // PIT = pas (positif = filet à droite), SDAC=3 (M3 après cycle), SST = SST1 = S.
+            // PIT = pas (positif = filet à droite, NÉGATIF = à gauche), SDAC=3 (M3 après cycle), SST = SST1 = S.
             // Fagor 8065 : G84 rigide (R1) — syntaxe à valider sur la machine.
             if(fag){
               nc('G98 G84 '+X+' '+Y+' Z'+faoFmtXYZ(DC.RTP)+' I'+faoFmtXYZ(H.DP)+' K0 R1'+fw(F));
             }else{
               nc('G0 '+X+' '+Y+' Z'+faoFmtXYZ(DC.RTP));
-              nc('CYCLE84('+faoFmtXYZ(DC.RTP)+', '+faoFmtXYZ(H.RFP)+', '+faoFmtXYZ(H.SDIS)+', '+faoFmtXYZ(H.DP)+', , '+DTB+', 3, , '+faoFmtXYZ(DC.tap.p)+', 0, '+SB+', '+SB+')');
+              nc('CYCLE84('+faoFmtXYZ(DC.RTP)+', '+faoFmtXYZ(H.RFP)+', '+faoFmtXYZ(H.SDIS)+', '+faoFmtXYZ(H.DP)+', , '+DTB+', 3, , '+(tapLH?'-':'')+faoFmtXYZ(DC.tap.p)+', 0, '+SB+', '+SB+')');
             }
             return;
           }
@@ -36236,6 +36246,7 @@ function faoPost(job,postId){
           }
         });
         if(fag)nc('G80'); // Fagor : les cycles sont modaux, annulation obligatoire
+        if(fag&&tapLH)nc('M03'); // broche rendue à droite pour la suite
         // La machine repose au plan du cycle (dessus + sortie) sur le dernier trou.
         if(DC.pts.length){
           const lp=DC.pts[DC.pts.length-1];
@@ -52220,8 +52231,15 @@ function faoToolsElement(setup){
     const sT=document.createElement('select');sT.className='fao-sel';
     ALL_THREADS.forEach(function(q){for(let k=2;k<q.length;k++){const e=document.createElement('option');e.value=q[0]+'|'+q[k];e.textContent=threadOptLabel(q,k);sT.appendChild(e);}}); // V0.20.3 : + UNC/UNF, G, Rc, NPT
     sT.value=(t.size||'M8')+'|'+(t.p||1.25);
-    sT.onchange=function(){const q=sT.value.split('|');faoSnapshot('filet du taraud');t.size=q[0];t.p=+q[1];const T=isoThread(q[0]);if(T)t.d=T[1];t.name='Taraud '+holeThreadLabel({size:t.size,p:t.p});faoChanged();rerender();};
+    sT.onchange=function(){const q=sT.value.split('|');faoSnapshot('filet du taraud');t.size=q[0];t.p=+q[1];const T=isoThread(q[0]);if(T)t.d=T[1];t.name='Taraud '+holeThreadLabel({size:t.size,p:t.p,lh:t.lh});faoChanged();rerender();};
     pT.appendChild(sT);s2.appendChild(pT);
+    // V0.33.3 : taraud à droite / à gauche (LH) — G-code : CYCLE84 pas négatif, Fagor M4
+    const pH=document.createElement('label');pH.className='fao-tl-f';pH.innerHTML='<span>Sens</span>';
+    const sH=document.createElement('select');sH.className='fao-sel';
+    [['rh','À droite'],['lh','À gauche (LH)']].forEach(function(q){const e=document.createElement('option');e.value=q[0];e.textContent=q[1];sH.appendChild(e);});
+    sH.value=t.lh?'lh':'rh';sH.title='Sens du filet taillé : à gauche, la broche tourne en sens inverse (M4) à l’entrée et repart en M3 à la sortie.';
+    sH.onchange=function(){faoSnapshot('sens du taraud');if(sH.value==='lh')t.lh=true;else delete t.lh;t.name='Taraud '+holeThreadLabel({size:t.size,p:t.p,lh:t.lh});faoChanged();rerender();};
+    pH.appendChild(sH);s2.appendChild(pH);
   }
   if(faoToolIsDrill(t))field(s2,'Angle de pointe',faoToolAngle(t),!(+t.ang>0),function(v){set('ang',Math.min(179,Math.max(30,v)),'angle de pointe');},
     t.kind==='center'?'Angle de pointe du pilote (°) : 118 (DIN 333) — le cône de centrage fait 60°':'Angle de pointe du foret (°) : 118 / 135 / 140 ; foret à pointer 90 (ou 120)',1,'°');
@@ -52401,6 +52419,16 @@ function faoHoleShapesW(){
   }catch(e){}
   return out;
 }
+// V0.33.3 : axe d'une fonction Perçage vu dans le repère où les trous sont détectés (celui de
+// l'opération 3+2 ou du posage, comme faoHoleShapes) — sinon un trou de flanc taraudé perdait
+// sa fonction (filet, lamage) dès que l'opération le voyait « vertical ».
+function faoHoleAxisF(f,sk){
+  const A=holeAxis(f,sk);
+  let Fr=null;try{Fr=faoFrameCur||faoFrame(faoSetup());}catch(e){}
+  if(!Fr||Fr.id)return A;
+  const d=faoRotF(Fr,[A.dir.x,A.dir.y,A.dir.z]);
+  return {dir:{x:d[0],y:d[1],z:d[2]},pts:A.pts.map(function(p){const q=faoToF(Fr,[p.x,p.y,p.z]);return {id:p.id,x:q[0],y:q[1],z:q[2]};})};
+}
 function faoHolesDetect(shapes){
   // Liste des trous verticaux (axe ±Z) des solides donnés. Pur OCCT : testable en Node.
   shapes=shapes||faoHoleShapes();
@@ -52455,7 +52483,7 @@ function faoHolesDetect(shapes){
       if(!f||f.type!=='hole'||f.visible===false||!f.thread||!f.thread.model)return;
       const sk=doc.sketches.find(function(q){return q.id===f.sketchId;});if(!sk)return;
       const th=(typeof isoHoleThread==='function')?isoHoleThread(f.thread.size,f.thread.p,f.thread.clear):null;if(!th)return;
-      const A=holeAxis(f,sk);if(Math.abs(A.dir.z)<0.9999)return;
+      const A=faoHoleAxisF(f,sk);if(Math.abs(A.dir.z)<0.9999)return;
       const N=holeNorm(f),rb=Math.max((+f.d)/2,th.D1/2+th.c);
       const off=holeEntryOff(N);
       let zEndAll=null;
@@ -52489,7 +52517,7 @@ function faoHolesDetect(shapes){
         if(mod||!f||f.type!=='hole'||!f.thread||!f.thread.model)return;
         const sk=doc.sketches.find(function(q){return q.id===f.sketchId;});if(!sk)return;
         const th=(typeof isoHoleThread==='function')?isoHoleThread(f.thread.size,f.thread.p,f.thread.clear):null;if(!th)return;
-        const A=holeAxis(f,sk),rb=Math.max((+f.d)/2,th.D1/2+th.c);
+        const A=faoHoleAxisF(f,sk),rb=Math.max((+f.d)/2,th.D1/2+th.c);
         A.pts.forEach(function(P){if(Math.abs(G.r-rb)<0.03&&Math.hypot(G.x-P.x,G.y-P.y)<0.03)mod=true;});
       });
     }catch(e){}
@@ -52559,7 +52587,7 @@ function faoHolesDetect(shapes){
     (doc.features||[]).forEach(function(f){
       if(!f||f.type!=='hole'||f.visible===false)return;
       const sk=doc.sketches.find(function(q){return q.id===f.sketchId;});if(!sk)return;
-      const A=holeAxis(f,sk);if(Math.abs(A.dir.z)<0.9999)return;
+      const A=faoHoleAxisF(f,sk);if(Math.abs(A.dir.z)<0.9999)return;
       A.pts.forEach(function(P){
         holes.forEach(function(h){
           if(Math.hypot(h.x-P.x,h.y-P.y)>0.02)return;
@@ -52572,7 +52600,7 @@ function faoHolesDetect(shapes){
           // double perçage (V0.31.0) : l'avant-trou Ø stD est un perçage à part (foret, pointe)
           const isPre=f.kind==='step'&&Math.abs(h.d-holeNorm(f).stD)<0.02;
           if(Math.abs(h.d-de)>0.02&&!(f.kind==='cbore'&&Math.abs(h.d-(+f.cbD))<0.02)&&!isReam&&!isPre)return;
-          h.feat={id:f.id,name:f.name,kind:f.kind||'simple',thread:(!Nr&&!isPre&&f.thread&&f.thread.size)?{size:f.thread.size,p:+f.thread.p,len:+f._thLen||+f.thread.len||0}:null,
+          h.feat={id:f.id,name:f.name,kind:f.kind||'simple',thread:(!Nr&&!isPre&&f.thread&&f.thread.size)?Object.assign({size:f.thread.size,p:+f.thread.p,len:+f._thLen||+f.thread.len||0},f.thread.lh?{lh:true}:{}):null,
             role:(f.kind==='cbore'&&Math.abs(h.d-(+f.cbD))<0.02)?'lamage':(isReam?'alesage':(isPre?'avant-trou':'trou'))};
           if(isReam)h.feat.tol=f.reamTol||'H7';
         });
@@ -52622,10 +52650,11 @@ function faoSetupOfOp(op){
 }
 function faoHoleThread(h,setup){
   // Filet d'un trou : fonction Perçage (reconnu) sinon choix STEP du posage.
-  if(h.feat&&h.feat.thread)return {size:h.feat.thread.size,p:+h.feat.thread.p,len:+h.feat.thread.len||0,src:'fonction'};
+  // V0.33.3 : lh = filet à gauche (fonction Perçage, ou choix « à gauche » du STEP)
+  if(h.feat&&h.feat.thread)return Object.assign({size:h.feat.thread.size,p:+h.feat.thread.p,len:+h.feat.thread.len||0,src:'fonction'},h.feat.thread.lh?{lh:true}:{});
   const key=(+h.d).toFixed(2)+'@'+(+h.ztop).toFixed(2);
   const i=setup&&setup.holeInfo&&setup.holeInfo[key];
-  if(i&&i.thread&&i.thread.size)return {size:i.thread.size,p:+i.thread.p,len:0,src:'STEP'};
+  if(i&&i.thread&&i.thread.size)return Object.assign({size:i.thread.size,p:+i.thread.p,len:0,src:'STEP'},i.thread.lh?{lh:true}:{});
   return null;
 }
 function faoWithOpFrame(op,fn){
@@ -52636,6 +52665,9 @@ function faoWithOpFrame(op,fn){
   const k=faoFrameCur;faoFrameCur=Fr||null;
   try{return fn(Fr);}finally{faoFrameCur=k;}
 }
+// V0.33.3 : clé d'un filet (taille, pas, sens) — un M8 et un M8-LH de même Ø et même départ
+// sont dans le même groupe de sélection, mais jamais dans le même taraudage (op.thKey).
+function faoThreadKey(th){ return th.size+'|'+(+th.p)+(th.lh?'|lh':''); }
 function faoDrillResolve(op){
   // Re-résout les trous sélectionnés sur le modèle COURANT (suit les modifications).
   // Retourne true si op.holes a changé. Sans modèle exact : instantané conservé.
@@ -52648,7 +52680,8 @@ function faoDrillResolve(op){
     const o={x:h.x,y:h.y,d:h.d,ztop:h.ztop,zbot:h.zbot,zSurf:h.zSurf,through:h.through,tipAng:h.tipAng,chD:h.chD};
     const th=faoHoleThread(h,setup);if(th)o.thread=th;
     if(h.feat&&h.feat.role==='lamage')o.cbore=true;
-    return o;});
+    return o;}).filter(function(o){ // taraudage de la gamme : seulement les trous de SON filet
+    return !op.thKey||op.cycle!=='tap'||(o.thread&&faoThreadKey(o.thread)===op.thKey);});
   const a=JSON.stringify(op.holes||[]),b=JSON.stringify(nh);
   if(a===b)return false;
   op.holes=nh;return true;
@@ -52769,11 +52802,14 @@ function faoDrillAutoTool(setup,op,d){
     const h0=(op.holes||[]).find(function(h){return h.thread;});
     if(!h0){return null;}
     const th=h0.thread,T=isoThread(th.size);
-    if(cur&&cur.kind==='tap'&&cur.size===th.size&&Math.abs(+cur.p-th.p)<1e-6)return null;
-    let tt=tools.find(function(x){return x.kind==='tap'&&x.size===th.size&&Math.abs(+x.p-th.p)<1e-6;});
+    // même filet ET même sens (taraud à droite / à gauche)
+    const same=function(x){return x&&x.kind==='tap'&&x.size===th.size&&Math.abs(+x.p-th.p)<1e-6&&!!x.lh===!!th.lh;};
+    if(same(cur))return null;
+    let tt=tools.find(same);
     let mk=false;
     if(!tt){const n=tools.reduce(function(m,x){return Math.max(m,+x.num||0);},0)+1;
       tt={id:'T'+n+'_'+Date.now().toString(36),num:n,name:'Taraud '+holeThreadLabel(th),kind:'tap',d:T?T[1]:+d,size:th.size,p:th.p,cornerR:0,flutes:3,vc:12,fz:0.1};
+      if(th.lh)tt.lh=true;
       tools.push(tt);mk=true;}
     op.toolId=tt.id;delete op.cut;return {tool:tt,made:mk};
   }
@@ -52921,8 +52957,8 @@ function faoDrillSections(setup,op,d){
     const nt=document.createElement('span');nt.className='fao-meta';
     nt.textContent=th0?('filet '+holeThreadLabel(th0.thread)+' · F = pas × S'):'⚠ aucun trou fileté sélectionné (fonction Perçage taraudée, ou « Taraudé M… » choisi dans la liste)';
     rd.appendChild(nt);
-    if(th0&&tt.kind==='tap'&&(tt.size!==th0.thread.size||Math.abs(+tt.p-th0.thread.p)>1e-6)){
-      const w=document.createElement('div');w.className='fao-note';w.textContent='⚠ Le taraud T'+tt.num+' ('+holeThreadLabel({size:tt.size,p:tt.p})+') ne correspond pas au filet '+holeThreadLabel(th0.thread)+'.';d.appendChild(w);}
+    if(th0&&tt.kind==='tap'&&(tt.size!==th0.thread.size||Math.abs(+tt.p-th0.thread.p)>1e-6||!!tt.lh!==!!th0.thread.lh)){
+      const w=document.createElement('div');w.className='fao-note';w.textContent='⚠ Le taraud T'+tt.num+' ('+holeThreadLabel({size:tt.size,p:tt.p,lh:tt.lh})+') ne correspond pas au filet '+holeThreadLabel(th0.thread)+'.';d.appendChild(w);}
   }else if(op.cycle==='spot'){
     rd.appendChild(faoLab('Ø pointage'));
     rd.appendChild(faoNum((+op.chD)||0,function(v){op.chD=Math.max(0,v);},52,0.1,'Ø du chanfrein laissé par le foret à pointer / à centrer (0 = chanfrein du modèle, sinon Ø du trou + 0,4)'));
@@ -52984,8 +53020,12 @@ function faoDrillSections(setup,op,d){
         if(opts.length>1)r.appendChild(faoSel(opts,info.thread?(info.thread.size+'|'+info.thread.p):'',function(v){
           setup.holeInfo=setup.holeInfo||{};
           if(!v)delete setup.holeInfo[key];
-          else{const q=v.split('|');setup.holeInfo[key]={thread:{size:q[0],p:+q[1]}};}
+          else{const q=v.split('|'),lh=!!(info.thread&&info.thread.lh);setup.holeInfo[key]={thread:Object.assign({size:q[0],p:+q[1]},lh?{lh:true}:{})};}
         },'Pièce importée (STEP) : la nature du trou n’est pas dans la géométrie — indiquez s’il est taraudé (Ø mesuré compatible avec le taraud).'));
+        // V0.33.3 : sens du filet (le STEP ne le dit pas non plus)
+        if(info.thread)r.appendChild(faoSel([['rh','À droite'],['lh','À gauche (LH)']],info.thread.lh?'lh':'rh',function(v){
+          if(v==='lh')info.thread.lh=true;else delete info.thread.lh;
+        },'Sens du filet : à gauche (LH) → taraud à gauche, broche inversée pendant le taraudage.'));
       }
       d.appendChild(r);
     });
@@ -53008,8 +53048,62 @@ function faoDrillSections(setup,op,d){
    Perçage sélectionnée : chaque face désigne le trou reconnu dont l'axe passe au plus
    près (comme « Choisir dans la vue ») ; un trou issu d'une fonction Perçage entraîne
    TOUS les trous de cette fonction (lamage, avant-trou d'un double perçage…). Les
-   groupes trouvés deviennent la sélection de l'opération, puis faoDrillGamme. */
+   groupes trouvés deviennent la sélection de l'opération, puis faoDrillGamme. V0.33.3 :
+   trou d'axe autre que le Z du posage → repère 3+2 de l'opération (faoDrillSelAxis). */
+function faoDrillSelAxis(setup,op){
+  // 3+2 : trou d'axe autre que le Z du posage → repère propre de l'opération, Z = axe du
+  // trou SORTANT par son entrée (l'utilisateur règle X ensuite). Sens : celui où le trou
+  // cliqué est vu borgne (fond dans la matière, ou lamage posé dessus) ; débouchant des
+  // deux côtés : sens de la fonction Perçage, sinon celui le plus proche du Z du posage.
+  const P=faoFrame(setup);
+  let a=null,pt=null,ac=null,fz=null;
+  const f0=(typeof selFaces!=='undefined'&&selFaces||[]).find(function(f){return f&&f.point&&f.geom&&f.geom.kind==='cyl'&&f.geom.axis;});
+  if(f0){a=[f0.geom.axis.x,f0.geom.axis.y,f0.geom.axis.z];pt=[f0.point.x,f0.point.y,f0.point.z];
+    const c=f0.geom.center;ac=c?[c.x,c.y,c.z]:pt;} // point de l'axe
+  try{
+    // sens de perçage de la fonction : sur l'axe cliqué, ou fonction sélectionnée dans l'arbre
+    (doc.features||[]).forEach(function(f){
+      if(fz||!f||f.type!=='hole'||f.visible===false)return;
+      const sk=doc.sketches.find(function(q){return q.id===f.sketchId;});if(!sk)return;
+      const A=holeAxis(f,sk),d=[A.dir.x,A.dir.y,A.dir.z];
+      if(!a){if(sel&&sel.kind==='feature'&&sel.id===f.id&&A.pts.length){fz=d.map(function(q){return -q;});}return;}
+      if(Math.abs(d[0]*a[0]+d[1]*a[1]+d[2]*a[2])<0.9999)return;
+      if(A.pts.some(function(p){const w=[p.x-ac[0],p.y-ac[1],p.z-ac[2]],t=w[0]*a[0]+w[1]*a[1]+w[2]*a[2];
+        return Math.hypot(w[0]-t*a[0],w[1]-t*a[1],w[2]-t*a[2])<0.05;}))fz=d.map(function(q){return -q;});
+    });
+  }catch(e){}
+  if(!a&&fz)a=fz;
+  if(!a)return false;
+  const rel=function(w){const r=P.id?w.slice():faoRotF(P,w);return r.map(function(q){return Math.abs(q)<1e-9?0:Math.round(q*1e9)/1e9;});};
+  const setZ=function(w){
+    const r=rel(w);
+    faoOpFrameEdit(setup,op,function(){
+      if(r[2]>0.9999){delete op.frame;return;} // axe du posage : rien à changer
+      let v=r;for(const k in FAO_AX){const q=FAO_AX[k];if(Math.abs(q[0]-r[0])<1e-7&&Math.abs(q[1]-r[1])<1e-7&&Math.abs(q[2]-r[2])<1e-7){v=k;break;}}
+      op.frame=Object.assign({},op.frame||{},{z:v,flipZ:false});delete op.frame.o;faoFrameFixX(op);
+    });
+  };
+  // trous du même axe vus avec Z = w : l'un d'eux est-il borgne ?
+  const blind=function(w){
+    setZ(w);
+    if(!pt)return null;
+    const Fr=faoOpFrameOf(setup.id,op.id),q=Fr.id?pt:faoToF(Fr,pt);
+    const kF=faoFrameCur;faoFrameCur=Fr.id?null:Fr;let hs=[];
+    try{hs=faoHolesDetect();}finally{faoFrameCur=kF;}
+    hs=hs.filter(function(H){return Math.hypot(q[0]-H.x,q[1]-H.y)<0.05;});
+    return hs.length?hs.some(function(H){return !H.through;}):null;
+  };
+  const n=a.map(function(q){return -q;});
+  if(fz){setZ(fz);return true;}
+  const bp=blind(a),bn=blind(n);
+  let w;
+  if(bp&&!bn)w=a;else if(bn&&!bp)w=n;
+  else w=(rel(a)[2]>=rel(n)[2])?a:n;
+  setZ(w);
+  return true;
+}
 function faoDrillSelHoles(setup,op){
+  try{faoDrillSelAxis(setup,op);}catch(e){}
   const Fr=faoOpFrameOf(setup.id,op.id);
   const kF=faoFrameCur;faoFrameCur=Fr.id?null:Fr;let holes=[];
   try{holes=faoHolesDetect();}finally{faoFrameCur=kF;}
@@ -53040,6 +53134,7 @@ function faoDrillFromSel(setup,op){
   op.src='model';op.holeSel=gs;
   const made=faoDrillGamme(setup,op,true);
   try{ if(typeof clearMeasure==='function')clearMeasure(); }catch(e){}
+  if(made&&op.frame){try{faceEl.textContent+=' Repère 3+2 : Z = axe des trous ('+faoFrameLabel(op.frame.z)+') — réglez X dans l’onglet Repère de chaque opération.';}catch(e){}}
   return made;
 }
 
@@ -53084,10 +53179,12 @@ function faoDrillGamme(setup,op,noSnap){
   });
   // 4. taraudage : un filet par opération
   const byT=new Map();
-  plain.forEach(function(s){const h=of(s).find(function(x){return x.thread;});if(!h)return;
-    const k=h.thread.size+'|'+h.thread.p;if(!byT.has(k))byT.set(k,[]);byT.get(k).push(s);});
-  byT.forEach(function(list){
-    const tp=Object.assign(faoOpDefaults('drill'),base,{cycle:'tap',holeSel:list.map(function(s){return {d:s.d,z:s.z};})});
+  plain.forEach(function(s){
+    // un groupe (même Ø, même départ) peut mêler filets à droite / à gauche, ou trous lisses
+    const ks=[];of(s).forEach(function(x){if(x.thread){const k=faoThreadKey(x.thread);if(ks.indexOf(k)<0)ks.push(k);}});
+    ks.forEach(function(k){if(!byT.has(k))byT.set(k,[]);byT.get(k).push(s);});});
+  byT.forEach(function(list,k){
+    const tp=Object.assign(faoOpDefaults('drill'),base,{cycle:'tap',thKey:k,holeSel:list.map(function(s){return {d:s.d,z:s.z};})});
     push(tp);faoDrillAutoTool(setup,tp,list[0].d);
   });
   faoChanged();

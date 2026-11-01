@@ -8,7 +8,7 @@
    • Points : entités cpoint `hole:true` de l'esquisse (outil ⊕ Centre de perçage) —
      seuls ces points portent un trou.
    • f = {type:'hole', sketchId, kind:'simple'|'cbore'|'csink', d (Ø de perçage),
-          thread:null|{size:'M8',p:1.25,len,model,clear}, cbD,cbH (lamage), csD,csA (fraisure),
+          thread:null|{size:'M8',p:1.25,len,model,clear,lh}, cbD,cbH (lamage), csD,csA (fraisure),
           end:'blind'|'through', depth (profondeur à plein Ø), tip (angle de pointe,
           0 = fond plat), flip (sens), op:'cut'}
      Taraudé : d = Ø de perçage du taraud (M − pas) ; filet cosmétique (dessin seul)
@@ -112,7 +112,8 @@ function isoHoleThread(size,p,jeu){
   const c=Math.max(0,+jeu||0)/2,D1=D-1.082532*P;
   return {D:D,P:P,D1:D1,rCrete:D1/2+c,rRacine:D/2+c,c:c};
 }
-function holeThreadLabel(th){ if(!th||!th.size)return ''; const t=isoThread(th.size); return th.size+((t&&+th.p!==t[2])?('×'+String(th.p)):''); }
+// V0.33.3 : filet à gauche → suffixe « -LH » (ISO 965 : M8-LH, M8×1-LH ; ASME B1.1 : 1/4-20 UNC-LH)
+function holeThreadLabel(th){ if(!th||!th.size)return ''; const t=isoThread(th.size); return th.size+((t&&+th.p!==t[2])?('×'+String(th.p)):'')+(th.lh?'-LH':''); }
 function holePoints(sk){
   // Centres de perçage de l'esquisse (2D) : [{id,x,y}]
   if(!sk)return [];
@@ -227,13 +228,15 @@ function occHoleThreadVoid(P,D,zStart,nT,th,rb,zEnd,tip,bins){
   const at=function(r,s){return {x:P.x+D.x*(z0+s)+U.x*r,y:P.y+D.y*(z0+s)+U.y*r,z:P.z+D.z*(z0+s)+U.z*r};};
   // profil d'un tour, de l'axe à l'axe (s le long de D) : crête p/4 entière, pas de demi-crêtes
   const q=[[0,-h],[rb,-h],[r2,-p/16],[r2,p/16],[rb,h],[rb,p-h],[0,p-h]];
-  // hélice d'un tour, à droite (u croît autour de D quand v avance le long de D)
+  // hélice d'un tour, à droite (u croît autour de D quand v avance le long de D) ; th.lh :
+  // à gauche (u décroît) — le cercle du fût tourne alors dans le même sens (axe −D)
+  const hs=th.lh?-1:1;
   const helix=function(r,s){
     if(r<1e-9){const me=occBinPush(bins,new occt.BRepBuilderAPI_MakeEdge_3(pnt(at(0,s)),pnt(at(0,s+p))));return me.Edge();}
     const ax3=occBinPush(bins,new occt.gp_Ax3_3(pnt(at(0,s)),dirOf(D),dirOf(U)));
     const hSurf=occBinPush(bins,new occt.Handle_Geom_Surface_2(new occt.Geom_CylindricalSurface_1(ax3,r))); // la poignée possède la surface
     const hLine=occBinPush(bins,new occt.Handle_Geom2d_Curve_2(new occt.Geom2d_Line_3(
-      occBinPush(bins,new occt.gp_Pnt2d_3(0,0)),occBinPush(bins,new occt.gp_Dir2d_4(2*Math.PI,p))))); // la poignée possède la droite
+      occBinPush(bins,new occt.gp_Pnt2d_3(0,0)),occBinPush(bins,new occt.gp_Dir2d_4(hs*2*Math.PI,p))))); // la poignée possède la droite
     const me=occBinPush(bins,new occt.BRepBuilderAPI_MakeEdge_31(hLine,hSurf,0,Math.hypot(2*Math.PI,p)));
     if(!me.IsDone())throw new Error('hélice impossible');
     const e=me.Edge();occt.BRepLib.BuildCurves3d_2(e);return e;
@@ -258,7 +261,7 @@ function occHoleThreadVoid(P,D,zStart,nT,th,rb,zEnd,tip,bins){
   sew.Add(ruled(0,1));sew.Add(cap(0,q));
   // fût : cercle du fond (même départ angulaire que les hélices) relié à la dernière crête
   const oE=pnt({x:P.x+D.x*zEnd,y:P.y+D.y*zEnd,z:P.z+D.z*zEnd});
-  const circ=occBinPush(bins,new occt.gp_Circ_2(occBinPush(bins,new occt.gp_Ax2_2(oE,dirOf(D),dirOf(U))),rb));
+  const circ=occBinPush(bins,new occt.gp_Circ_2(occBinPush(bins,new occt.gp_Ax2_2(oE,dirOf(th.lh?{x:-D.x,y:-D.y,z:-D.z}:D),dirOf(U))),rb));
   const ce=occBinPush(bins,new occt.BRepBuilderAPI_MakeEdge_8(circ)).Edge();
   sew.Add(occt.BRepFill.Face(occt.TopoDS.Edge_1(moved(H[5],nT-1)),ce));
   sew.Add(cap(nT,[q[1],q[2],q[3],q[4]])); // fin du dernier creux
@@ -292,6 +295,7 @@ function occShapeOfHole(f){
   const A=holeAxis(f,sk);
   if(!A.pts.length)throw new Error('aucun centre de perçage dans l’esquisse (outil ⊕)');
   const N0=holeNorm(f),thModel=(f.kind!=='ream'&&f.thread&&f.thread.model&&f.thread.size)?isoHoleThread(f.thread.size,f.thread.p,f.thread.clear):null;
+  if(thModel&&f.thread.lh)thModel.lh=true; // V0.33.3 : filet à gauche
   // filet modélisé : le corps ne doit jamais être plus étroit que la crête du filet
   const N=thModel?Object.assign({},N0,{r:Math.max(N0.r,thModel.rCrete)}):N0;
   // Débouchant : course limitée à la PIÈCE déjà construite (+1 mm) — sinon l'outil
@@ -644,6 +648,8 @@ function renderHoleProps(p,f){
   /* Ø */
   pRow(f.thread&&f.thread.size?'Ø taraud '+holeThreadLabel(f.thread):'Ø du trou',num(f.d,function(v){f.d=v;},0,f,'d'));
   if(f.thread&&f.thread.size){
+    // V0.33.3 : sens du filet — à gauche (LH) : taraud à gauche, broche inversée en FAO
+    pRow('Sens du filet',sel([['rh','À droite'],['lh','À gauche (LH)']],f.thread.lh?'lh':'rh',function(v){if(v==='lh')f.thread.lh=true;else delete f.thread.lh;}));
     pRow('Longueur filetée',sel([['len','Longueur'],['through','Débouchant tout (à travers)'],['upto','Jusqu\'à la face…'],['next','Prochaine face']],f.thread.lenMode||'len',function(v){
       f.thread.lenMode=v;if(v==='upto'&&!f.thread.uptoPlane)setTimeout(function(){holeFacePickStart(f.id,'thread');},0);}));
     const tm=f.thread.lenMode||'len';
@@ -749,7 +755,7 @@ function holeThreadPaths(stepsPerTurn,inset){
       const O=new THREE.Vector3(P.x,P.y,P.z),helix=[],ring=[];
       const turns=len/pz,steps=Math.max(spt,Math.ceil(turns*spt));
       for(let i=0;i<=steps;i++){
-        const a=i/steps*turns*Math.PI*2,z=off+i/steps*len;
+        const a=(f.thread.lh?-1:1)*i/steps*turns*Math.PI*2,z=off+i/steps*len; // à gauche : sens inverse
         const q=O.clone().addScaledVector(D,z).addScaledVector(U,rh*Math.cos(a)).addScaledVector(V,rh*Math.sin(a));
         helix.push([q.x,q.y,q.z]);
       }

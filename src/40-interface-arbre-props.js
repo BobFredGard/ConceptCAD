@@ -175,7 +175,7 @@ function repCanFeatureHint(f){
   if(f.type==='sweep')return sweepName(f);
   if(f.type==='hole'&&f.kind==='ream')return 'Perçage alésé · Ø'+holeNorm(f).reamD+' '+(f.reamTol||'H7');
   if(f.type==='hole'&&f.kind==='step')return 'Double perçage · Ø'+holeNorm(f).stD+' ↧'+holeNorm(f).stH+' + Ø'+(+f.d||0);
-  if(f.type==='hole')return 'Perçage · Ø'+(+f.d||0)+(f.thread&&f.thread.size?' · taraudé '+f.thread.size:'')+(f.kind&&f.kind!=='simple'?' · '+f.kind:'');
+  if(f.type==='hole')return 'Perçage · Ø'+(+f.d||0)+(f.thread&&f.thread.size?' · taraudé '+f.thread.size+(f.thread.lh?'-LH':''):'')+(f.kind&&f.kind!=='simple'?' · '+f.kind:'');
   if(f.type==='xfillet')return xLabel(xKindOf(f))+' · '+(f.edges||[]).length+' arête(s)'+xChamLabel(f);
   if(f.type==='xmove')return 'Déplacement de face · '+(+f.dist||0)+' mm';
   if(f.type==='bmove')return 'Déplacer un corps · '+(f.steps||[]).length+' étape(s)';

@@ -248,8 +248,15 @@ function faoToolsElement(setup){
     const sT=document.createElement('select');sT.className='fao-sel';
     ALL_THREADS.forEach(function(q){for(let k=2;k<q.length;k++){const e=document.createElement('option');e.value=q[0]+'|'+q[k];e.textContent=threadOptLabel(q,k);sT.appendChild(e);}}); // V0.20.3 : + UNC/UNF, G, Rc, NPT
     sT.value=(t.size||'M8')+'|'+(t.p||1.25);
-    sT.onchange=function(){const q=sT.value.split('|');faoSnapshot('filet du taraud');t.size=q[0];t.p=+q[1];const T=isoThread(q[0]);if(T)t.d=T[1];t.name='Taraud '+holeThreadLabel({size:t.size,p:t.p});faoChanged();rerender();};
+    sT.onchange=function(){const q=sT.value.split('|');faoSnapshot('filet du taraud');t.size=q[0];t.p=+q[1];const T=isoThread(q[0]);if(T)t.d=T[1];t.name='Taraud '+holeThreadLabel({size:t.size,p:t.p,lh:t.lh});faoChanged();rerender();};
     pT.appendChild(sT);s2.appendChild(pT);
+    // V0.33.3 : taraud à droite / à gauche (LH) — G-code : CYCLE84 pas négatif, Fagor M4
+    const pH=document.createElement('label');pH.className='fao-tl-f';pH.innerHTML='<span>Sens</span>';
+    const sH=document.createElement('select');sH.className='fao-sel';
+    [['rh','À droite'],['lh','À gauche (LH)']].forEach(function(q){const e=document.createElement('option');e.value=q[0];e.textContent=q[1];sH.appendChild(e);});
+    sH.value=t.lh?'lh':'rh';sH.title='Sens du filet taillé : à gauche, la broche tourne en sens inverse (M4) à l’entrée et repart en M3 à la sortie.';
+    sH.onchange=function(){faoSnapshot('sens du taraud');if(sH.value==='lh')t.lh=true;else delete t.lh;t.name='Taraud '+holeThreadLabel({size:t.size,p:t.p,lh:t.lh});faoChanged();rerender();};
+    pH.appendChild(sH);s2.appendChild(pH);
   }
   if(faoToolIsDrill(t))field(s2,'Angle de pointe',faoToolAngle(t),!(+t.ang>0),function(v){set('ang',Math.min(179,Math.max(30,v)),'angle de pointe');},
     t.kind==='center'?'Angle de pointe du pilote (°) : 118 (DIN 333) — le cône de centrage fait 60°':'Angle de pointe du foret (°) : 118 / 135 / 140 ; foret à pointer 90 (ou 120)',1,'°');
