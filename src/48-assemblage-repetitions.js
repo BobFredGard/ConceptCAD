@@ -13,9 +13,14 @@
    l'autre (les références vers elle tiennent) ; supprimée, sa clé va dans skip ; une source
    supprimée emporte ses instances.
    Symétrie : vraie symétrie (repère indirect, déterminant −1) — la pièce est dessinée et
-   inspectée en miroir, comme la fonction Symétrie de la pièce. */
+   inspectée en miroir, comme la fonction Symétrie de la pièce.
+   Suivant un profil (V0.30.0, type 'path', calcul : 39-profil-guide) : path {sk, pt | mid}
+   (esquisse GUIDE du porteur, point de départ), pspace 'fit' | 'pitch' (pas = dist), orient
+   'fixed' | 'tangent', rev. La source est posée sur le départ (courbe tracée par son centre) :
+   chaque instance est la source déplacée du départ à sa station, tournée avec la tangente au
+   besoin. */
 const ASM_PAT_MAX=500; // instances par répétition (garde-fou d'une saisie aberrante)
-const ASM_PAT_TYPES={lin:'Linéaire',circ:'Circulaire',mir:'Symétrie'};
+const ASM_PAT_TYPES={lin:'Linéaire',circ:'Circulaire',mir:'Symétrie',path:'Suivant un profil'};
 function asmPatName(p){
   if(!p)return '';
   if(p.type==='mir')return p.plane2?'Symétrie double':'Symétrie';
@@ -32,6 +37,13 @@ function asmPatNorm(list){
       skip:Array.isArray(p.skip)?p.skip.filter(x=>typeof x==='string'):[]};
     if(p.lin2){o.lin2=true;o.axis2=ax(p.axis2);o.copies2=cnt(p.copies2);o.dist2=num(p.dist2,10);}
     if(p.plane2)o.plane2=ax(p.plane2);
+    if(p.type==='path'){
+      const q=p.path&&typeof p.path==='object'?p.path:{};
+      o.path={sk:typeof q.sk==='string'?q.sk:null};
+      if(typeof q.pt==='string')o.path.pt=q.pt;else if(typeof q.mid==='string')o.path.mid=q.mid;
+      o.pspace=p.pspace==='pitch'?'pitch':'fit';o.orient=p.orient==='tangent'?'tangent':'fixed';
+      if(p.rev)o.rev=true;
+    }
     return o;
   }).filter(p=>p.src.length);
   return out.length?out:undefined;
@@ -82,12 +94,27 @@ function asmPatCells(owner,p){
     const a=asmPatAxis(F,p.axis),n=Math.max(1,+p.copies||1);
     const step=typeof repCircStep==='function'?repCircStep({angle:p.angle,copies:n}):(Math.abs(+p.angle||360)>=360-1e-9?(+p.angle||360)/(n+1):(+p.angle||360)/n);
     for(let i=1;i<=n;i++)out.push({k:'r'+i,M:asmPatRot(F.o,a,step*i*Math.PI/180)});
+  }else if(p.type==='path'){
+    const P=asmPatPlan(owner,p);
+    if(P.err){p._why=P.err;return null;}
+    P.cells.forEach((q,i)=>{
+      const M=asmPatRot(q.P0,asmPatUnit(q.N),q.ang*Math.PI/180);
+      M.o=[M.o[0]+q.Pi[0]-q.P0[0],M.o[1]+q.Pi[1]-q.P0[1],M.o[2]+q.Pi[2]-q.P0[2]];
+      out.push({k:'s'+(i+1),M});
+    });
   }else if(p.type==='mir'){
     const M1=asmPatMirror(F.o,asmPatAxis(F,p.axis));
     out.push({k:'m1',M:M1});
     if(p.plane2){const M2=asmPatMirror(F.o,asmPatAxis(F,p.plane2));out.push({k:'m2',M:M2},{k:'m12',M:asmCompose(M1,M2)});}
   }
   return out.slice(0,ASM_PAT_MAX);
+}
+function asmPatPlan(owner,p){
+  // Courbe guide (esquisse du porteur) → pgPlan : {L, closed, step, cells, warn, err}
+  const sk=p.path&&((owner.doc&&owner.doc.sketches)||[]).find(s=>s.id===p.path.sk);
+  if(!sk)return {err:'esquisse guide introuvable dans « '+owner.name+' »',cells:[]};
+  try{ensureSketchBasis(sk);}catch(e){}
+  return pgPlan(sk,p,Math.max(1,+p.copies||1)+1);
 }
 function asmPatGen(owner){
   // Instances des répétitions du porteur, créées / placées / retirées → true si quelque chose a changé
@@ -108,7 +135,7 @@ function asmPatGen(owner){
     p.st='ok';p.msg='';
     const cells=asmPatCells(owner,p);
     if(!cells){ // repère de référence introuvable : les instances restent où elles sont
-      p.st='warn';p.msg='repère de référence introuvable : instances laissées en place';
+      p.st='warn';p.msg=p._why||'repère de référence introuvable : instances laissées en place';delete p._why;
       owner.occ.forEach(o=>{if(o.pat&&o.pat.id===p.id)keep.add(o.id);});return;
     }
     const skip=new Set(p.skip||[]);
@@ -178,8 +205,16 @@ function asmPatNew(owner,ids,type){
     if(c&&c._snap&&typeof asmSnapBox==='function'){const b=asmSnapBox(c._snap);if(!b.isEmpty())dist=Math.max(5,Math.ceil(1.2*(b.max.x-b.min.x)));}}catch(e){}
   const p={id:uid('pt'),name:'Répétition '+n,type:ASM_PAT_TYPES[type]?type:'lin',src,ref:{cg:null},axis:type==='circ'?'Z':'X',
     copies:type==='mir'?1:2,dist,angle:360,skip:[]};
+  if(p.type==='path')asmPatPathInit(owner,p);
   owner.pats=(owner.pats||[]).concat(p);
   return p;
+}
+function asmPatPathInit(owner,p){
+  // Passage au type « suivant un profil » : dernière esquisse guide du porteur, départ proposé
+  if(p.path&&p.path.sk)return;
+  const G=pgGuideSketches(owner.doc);
+  p.path=G.length?pgDefaultPath(G[G.length-1]):{sk:null};
+  p.pspace=p.pspace||'fit';p.orient=p.orient||'fixed';
 }
 function asmPatDelete(owner,pid){
   // Supprime la répétition : ses instances partent, les sources restent
@@ -275,15 +310,36 @@ function asmPatProps(p){
   p.appendChild(mk('div','pnl-note','Sources : '+pat.src.map(id=>(asmOcc(id)||{}).name||'?').join(', ')+' · '+n+' instance(s)'+(pat.type==='mir'?' (en miroir)':'')));
   if(pat.st==='warn')p.appendChild(mk('div','pnl-note','⚠ '+pat.msg));
   const nm=document.createElement('input');nm.type='text';nm.value=pat.name||'';nm.onchange=()=>asmPatSet(q=>{q.name=nm.value.trim()||q.name;});Row('Nom',nm);
-  Row('Type',sel([['lin','Linéaire'],['circ','Circulaire'],['mir','Symétrie']],pat.type,v=>asmPatSet(q=>{
+  Row('Type',sel([['lin','Linéaire'],['circ','Circulaire'],['mir','Symétrie'],['path','Suivant un profil']],pat.type,v=>asmPatSet(q=>{
     if(q.type===v)return;q.type=v;
+    if(v==='path'){asmPatPathInit(owner,q);if(q.copies<2)q.copies=3;}
     if(v==='circ'){q.axis='Z';if(q.copies<2)q.copies=5;}
     if(v==='mir'){q.copies=1;}
     if(v==='lin'&&q.copies<2)q.copies=2;})));
   // repère de référence : origine du porteur ou un de ses repères de construction (associatif)
   const fr=[['','Origine de « '+owner.name+' »']].concat((owner.doc.cgeo||[]).filter(k=>k&&k.kind==='frame').map(k=>[k.id,k.name]));
-  Row('Référence',sel(fr,(pat.ref&&pat.ref.cg)||'',v=>asmPatSet(q=>{q.ref={cg:v||null};})));
-  if(pat.type==='lin'){
+  if(pat.type!=='path')Row('Référence',sel(fr,(pat.ref&&pat.ref.cg)||'',v=>asmPatSet(q=>{q.ref={cg:v||null};})));
+  if(pat.type==='path'){
+    const G=pgGuideSketches(owner.doc),sk=pat.path&&(owner.doc.sketches||[]).find(s=>s.id===pat.path.sk);
+    if(!G.length)p.appendChild(mk('div','pnl-note','Aucune esquisse de « '+owner.name+' » ne contient de ligne, d’arc ou de spline : en mode Modéliser, dessinez la courbe guide (ou projetez des arêtes des composants) en la faisant passer par le centre de la pièce à répéter.'));
+    else{
+      Row('Courbe guide',sel([['','— choisir —']].concat(G.map(k=>[k.id,k.name||k.id])),sk?sk.id:'',v=>asmPatSet(q=>{const k=(owner.doc.sketches||[]).find(s=>s.id===v);q.path=k?pgDefaultPath(k):{sk:null};})));
+      if(sk){
+        const ch=pgStartChoices(sk),cur=ch.findIndex(o=>pgSameStart(o.v,pat.path));
+        Row('Départ',sel(ch.map((o,i)=>[String(i),o.label]).concat(cur<0?[['-1','(départ actuel)']]:[]),String(cur),v=>asmPatSet(q=>{const o=ch[+v];if(o)q.path=Object.assign({sk:sk.id},o.v);})));
+      }
+    }
+    Row('Quantité',num(pat.copies+1,v=>asmPatSet(q=>{q.copies=cnt(v);}),true));
+    const P=asmPatPlan(owner,pat);
+    Row('Espacement',sel([['fit','Réparti sur la longueur'],['pitch','Pas imposé']],pat.pspace==='pitch'?'pitch':'fit',v=>asmPatSet(q=>{
+      q.pspace=v;if(v==='pitch')q.dist=P.step>0?+P.step.toFixed(3):(q.dist||10);})));
+    if(pat.pspace==='pitch')Row('Pas le long de la courbe (mm)',num(pat.dist,v=>asmPatSet(q=>{if(v>0)q.dist=v;})));
+    Row('Orientation',sel([['fixed','Fixe (translation)'],['tangent','Suit la tangente']],pat.orient==='tangent'?'tangent':'fixed',v=>asmPatSet(q=>{q.orient=v;})));
+    const bi=mk('button','mini','⇄ Inverser le sens');bi.onclick=()=>asmPatSet(q=>{if(q.rev)delete q.rev;else q.rev=true;});Row('Sens',bi);
+    const f=v=>String(+(+v).toFixed(3)).replace('.',',');
+    if(!P.err)p.appendChild(mk('div','pnl-note','Longueur de la courbe : '+f(P.L)+' mm · '+(P.closed?'fermée':'ouverte')+' · pas '+f(P.step)+' mm'+(P.warn?' — ⚠ '+P.warn:'')));
+    p.appendChild(mk('div','pnl-note','La pièce suit la courbe depuis le départ (tracez la courbe par son centre). Courbe fermée : la dernière instance s’arrête un pas avant le départ. Quantité = original compris.'));
+  }else if(pat.type==='lin'){
     Row('Direction',sel(AX,pat.axis,v=>asmPatSet(q=>{q.axis=v;})));
     Row('Quantité',num(pat.copies+1,v=>asmPatSet(q=>{q.copies=cnt(v);}),true));
     Row('Pas (mm)',num(pat.dist,v=>asmPatSet(q=>{q.dist=v;})));

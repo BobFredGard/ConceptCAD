@@ -293,6 +293,14 @@ function repPreviewXforms(cfg){
     for(let i=1;i<=n&&out.length<REP_PREVIEW_MAX;i++){const e=[[1,0,0],[0,1,0],[0,0,1]].map(v=>repRot(v,ax,st*i));out.push(lin3(e[0],e[1],e[2]));}
     return out;
   }
+  if(t==='path'){
+    repPathCells(Object.assign({},c,{id:c.id||'_rpEdit',copies:c.copies})).forEach(q=>{
+      if(out.length>=REP_PREVIEW_MAX)return;
+      const e=[[1,0,0],[0,1,0],[0,0,1]].map(v=>repRot(v,q.N,q.ang)),r0=repRot(q.P0,q.N,q.ang);
+      const M=lin3(e[0],e[1],e[2]);M[12]=q.Pi[0]-r0[0];M[13]=q.Pi[1]-r0[1];M[14]=q.Pi[2]-r0[2];out.push(M);
+    });
+    return out;
+  }
   const n1=repPlaneN(c),M1=mirM(n1);out.push(M1);
   if(c.plane2){
     const n2=c.planeN2?repNorm(c.planeN2):repPlaneN({plane:c.plane2});
@@ -463,7 +471,7 @@ function repPreviewUpdate(){
     scene.add(g);repPrevGroup=g;
   }catch(e){repPrevGroup=null;}
 }
-function repTypeName(m,f){if(m==='mir'&&f&&f.plane2)return 'Symétrie double';if(m==='lin'&&f&&f.lin2)return 'Linéaire 2 directions';return m==='mir'?'Symétrie':m==='circ'?'Circulaire':'Linéaire';}
+function repTypeName(m,f){if(m==='mir'&&f&&f.plane2)return 'Symétrie double';if(m==='lin'&&f&&f.lin2)return 'Linéaire 2 directions';return m==='mir'?'Symétrie':m==='circ'?'Circulaire':m==='path'?'Suivant un profil':'Linéaire';}
 function repAxisVec(cfg){const c=cfg||repMode;const a=c&&c.axis;if(c&&c.dir)return repNorm(c.dir);if(a==='Y')return[0,1,0];if(a==='Z')return[0,0,1];return[1,0,0];}
 function repPlaneN(cfg){const c=cfg||repMode;if(c&&c.planeN)return repNorm(c.planeN);const p=c&&c.plane;if(p==='XY')return[0,0,1];if(p==='XZ')return[0,1,0];return[1,0,0];}
 function repNorm(a){const l=Math.hypot(a[0],a[1],a[2])||1;return[a[0]/l,a[1]/l,a[2]/l];}
@@ -483,7 +491,25 @@ function repTransformPoint(p,i,cfg){const c=cfg||repMode,t=c.mode||c.type;
   const v=[+(p&&p[0]||0),+(p&&p[1]||0),+(p&&p[2]||0)];
   if(t==='lin')return repAdd(v,c._off?c._off:repScale(repAxisVec(c),(+c.dist||0)*i)); // _off : décalage d'une case de grille
   if(t==='circ')return repRot(v,repAxisVec(c),repCircStep(c)*i);
+  if(t==='path'){const q=c._pc;if(!q)return v;return repAdd(repRot(repAdd(v,repScale(q.P0,-1)),q.N,q.ang),q.Pi);} // _pc : case du profil (repPathCells)
   const n=repPlaneN(c);return repAdd(v,repScale(n,-2*repDot(v,n)));
+}
+// Répétition SUIVANT UN PROFIL (V0.30.0, calcul : 39-profil-guide) : rp.path = {sk, pt | mid}
+// (esquisse guide, point de départ), rp.pspace 'fit' (réparti) | 'pitch' (pas rp.dist),
+// rp.orient 'fixed' | 'tangent', rp.rev (sens inversé). Une case par copie : {P0, Pi, N, ang}.
+const repPathInfo=new Map(); // id de répétition → {L, closed, step, warn, err} (affichage, jamais enregistré)
+function repPathCells(rp){
+  const sk=rp&&rp.path&&doc.sketches.find(s=>s.id===rp.path.sk);
+  if(sk)try{ensureSketchBasis(sk);}catch(e){}
+  const R=sk?pgPlan(sk,rp,repMaxCopies(rp.copies)+1):{err:'esquisse guide introuvable — choisissez-en une',cells:[]};
+  if(rp&&rp.id)repPathInfo.set(rp.id,{L:R.L,closed:R.closed,step:R.step,warn:R.warn||'',err:R.err||''});
+  return R.cells.slice(0,REPEAT_MAX);
+}
+function repPathNote(rp){
+  const I=repPathInfo.get(rp.id);if(!I)return '';
+  if(I.err)return '⚠ '+I.err;
+  const f=v=>String(+(+v).toFixed(3)).replace('.',',');
+  return 'Longueur de la courbe : '+f(I.L)+' mm · '+(I.closed?'fermée':'ouverte')+' · pas '+f(I.step)+' mm'+(I.warn?' — ⚠ '+I.warn:'');
 }
 // Répétition linéaire à DEUX directions (grille) : 2ᵉ axe (rp.axis2 X/Y/Z/Face + rp.dir2), quantité
 // rp.copies2 (stockée − 1, comme copies), pas rp.dist2. Une instance par case (i, j) hors (0, 0).
@@ -501,6 +527,7 @@ function repTransformVec(v,i,cfg){const c=cfg||repMode,t=c.mode||c.type;
   const a=[+(v&&v[0]||0),+(v&&v[1]||0),+(v&&v[2]||0)];
   if(t==='lin')return a;
   if(t==='circ')return repRot(a,repAxisVec(c),repCircStep(c)*i);
+  if(t==='path')return c._pc?repRot(a,c._pc.N,c._pc.ang):a;
   const n=repPlaneN(c);return repAdd(a,repScale(n,-2*repDot(a,n)));
 }
 // Encombrement (boîte alignée X/Y/Z) d'une face après transformation : |M|·dim, M = matrice
@@ -755,10 +782,11 @@ function repGenChildren(rp){
   if(rp.mode!=='mir'){
     // linéaire : une instance par case de grille (une seule direction = une ligne), décalage explicite
     const cells=rp.mode==='lin'?repLinCells(rp):null;
-    const N=cells?cells.length:n;
+    const pcs=rp.mode==='path'?repPathCells(rp):null;
+    const N=cells?cells.length:pcs?pcs.length:n;
     for(let i=1;i<=N;i++){
       const skMap={},featMap={};
-      const cfg=cells?Object.assign({},rp,{_off:cells[i-1].off}):rp;
+      const cfg=cells?Object.assign({},rp,{_off:cells[i-1].off}):pcs?Object.assign({},rp,{_pc:pcs[i-1]}):rp;
       base.forEach(f=>{
         const c=take(i,f.type,f.id);
         const nf=repCloneFeature(f,i,skMap,featMap,cfg,c||null);
@@ -800,6 +828,8 @@ function repSyncForSketch(skId){
   if(!skId)return;
   const fids=new Set();
   doc.features.forEach(f=>{if(f.sketchId===skId&&f.type!=='repeat'&&!f.repeatId)fids.add(f.id);});
+  // esquisse GUIDE d'une répétition suivant un profil : les copies suivent la courbe
+  for(const rp of [...doc.features]){if(rp.type==='repeat'&&rp.mode==='path'&&rp.path&&rp.path.sk===skId){repGenChildren(rp);repSyncForFeature(rp);}}
   if(!fids.size)return;
   for(const rp of [...doc.features]){if(rp.type==='repeat'&&rp.base.some(id=>fids.has(id))){repGenChildren(rp);repSyncForFeature(rp);}}
 }
@@ -815,7 +845,8 @@ function repSyncForFeature(f,seen){
 }
 const repGenSigs=new Map(); // id de répétition -> signature des sources au dernier régénéré
 function repSourceSig(rp){
-  let s=JSON.stringify([rp.op||'join',rp.mode,rp.copies,rp.dist,rp.angle,rp.axis,rp.plane,rp.planeN,rp.plane2,rp.planeN2,rp.base,rp.dir,rp.lin2,rp.axis2,rp.dir2,rp.copies2,rp.dist2]);
+  let s=JSON.stringify([rp.op||'join',rp.mode,rp.copies,rp.dist,rp.angle,rp.axis,rp.plane,rp.planeN,rp.plane2,rp.planeN2,rp.base,rp.dir,rp.lin2,rp.axis2,rp.dir2,rp.copies2,rp.dist2,rp.path,rp.pspace,rp.orient,rp.rev]);
+  if(rp.mode==='path')s+='#g'+pgSketchSig(rp.path&&doc.sketches.find(x=>x.id===rp.path.sk)); // géométrie de la courbe guide
   // motif développé : une répétition source change dès que ses instances changent
   const B=(rp.base||[]).map(id=>doc.features.find(x=>x.id===id));
   if(B.some(f=>!f))s+='#?';
@@ -1327,7 +1358,12 @@ function applyRepPattern(){
     dist2:repMode.type==='lin'&&repMode.lin2?(+repMode.dist2||0):undefined,
     op:repMode.op==='new'?'new':undefined,
     base:base.map(f=>f.id),children:[],visible:true};
-  parFxCopy(repMode,rp,repMode.type==='circ'?['angle']:(repMode.type==='lin'?(repMode.lin2?['dist','dist2']:['dist']):[]));
+  if(repMode.type==='path'){
+    if(!repMode.path||!repMode.path.sk){faceEl.textContent='Répétition suivant un profil : choisissez l’esquisse guide.';return;}
+    rp.path=Object.assign({},repMode.path);rp.pspace=repMode.pspace==='pitch'?'pitch':'fit';rp.orient=repMode.orient==='tangent'?'tangent':'fixed';
+    if(repMode.rev)rp.rev=true;delete rp.axis;delete rp.angle;
+  }
+  parFxCopy(repMode,rp,repMode.type==='circ'?['angle']:(repMode.type==='lin'?(repMode.lin2?['dist','dist2']:['dist']):(repMode.type==='path'&&repMode.pspace==='pitch'?['dist']:[])));
   addFeature(rp);
   const nb=repGenChildren(rp);
   exitRepMode();
@@ -1358,21 +1394,62 @@ function repNewBodyEmpty(rp){
   const B=repExpandSources((rp.base||[]).map(id=>doc.features.find(x=>x.id===id)).filter(Boolean),new Set([rp.id]));
   return B.length>0&&!B.some(f=>(f.type==='extrude'||f.type==='revolve'||f.type==='sweep')&&(f.op||'add')!=='cut');
 }
+function repPathUI(c,infoId,row,note,changed){
+  // Réglages d'une répétition SUIVANT UN PROFIL, communs à la création et à l'édition :
+  // esquisse guide, point de départ, espacement (réparti / pas imposé), orientation, sens.
+  // changed(fn) : applique fn(c) puis rafraîchit le panneau (et les copies).
+  const mkSel=(opts,v,fn)=>{const s=document.createElement('select');opts.forEach(([k,t])=>{const o=document.createElement('option');o.value=k;o.textContent=t;s.appendChild(o);});s.value=v;s.onchange=()=>fn(s.value);return s;};
+  const G=pgGuideSketches(doc);
+  if(!G.length){note('Aucune esquisse ne contient de ligne, d’arc ou de spline : dessinez la courbe guide (ou projetez des arêtes du 3D) dans une esquisse, avec un point sur la courbe pour le départ.');return;}
+  const skId=c.path&&c.path.sk,sk=skId?doc.sketches.find(x=>x.id===skId):null;
+  const ss=mkSel([['','— choisir —']].concat(G.map(x=>[x.id,x.name||x.id])),sk?sk.id:'',v=>changed(q=>{const k=doc.sketches.find(x=>x.id===v);q.path=k?pgDefaultPath(k):null;}));
+  ss.className='repPathSk';ss.title='Esquisse qui porte la courbe guide (lignes, arcs, splines, arêtes projetées)';row('Courbe guide',ss);
+  if(sk){
+    const ch=pgStartChoices(sk),cur=ch.findIndex(o=>pgSameStart(o.v,c.path));
+    const sd=mkSel(ch.map((o,i)=>[String(i),o.label]).concat(cur<0?[['-1','(départ actuel)']]:[]),String(cur),v=>changed(q=>{const o=ch[+v];if(o)q.path=Object.assign({sk:sk.id},o.v);}));
+    sd.className='repPathStart';sd.title='Point d’accroche de l’original : point d’esquisse sur la courbe, extrémité (courbe ouverte), sommet ou milieu d’une ligne';row('Départ',sd);
+  }
+  const sp=mkSel([['fit','Réparti sur la longueur'],['pitch','Pas imposé']],c.pspace==='pitch'?'pitch':'fit',v=>changed(q=>{
+    q.pspace=v;
+    if(v==='pitch'&&!(+q.dist>0)){const I=repPathInfo.get(infoId);q.dist=I&&I.step>0?+I.step.toFixed(3):10;}
+  }));
+  sp.className='repPathSpace';row('Espacement',sp);
+  if(c.pspace==='pitch'){
+    const inp=document.createElement('input');inp.type='text';inp.inputMode='decimal';inp.value=c.dist;parFx(inp,c,'dist');
+    inp.addEventListener('change',()=>{const v=parseFloat(String(inp.value).replace(',','.'));if(isFinite(v)&&v>0)changed(q=>{q.dist=v;});});
+    row('Pas le long de la courbe (mm)',inp);
+  }
+  const so=mkSel([['fixed','Fixe (translation)'],['tangent','Suit la tangente']],c.orient==='tangent'?'tangent':'fixed',v=>changed(q=>{q.orient=v;}));
+  so.className='repPathOrient';so.title='Fixe : les copies restent parallèles à l’original · Suit la tangente : elles tournent avec la courbe';row('Orientation',so);
+  const bi=document.createElement('button');bi.textContent='⇄ Inverser le sens';bi.className='repPathRev';
+  bi.title='Parcourir la courbe dans l’autre sens (utile avec un pas imposé, ou si le départ n’est pas une extrémité)';
+  bi.onclick=()=>changed(q=>{if(q.rev)delete q.rev;else q.rev=true;});row('Sens',bi);
+  try{repPathCells(Object.assign({},c,{id:infoId}));}catch(e){}
+  const t=repPathNote({id:infoId});if(t)note(t);
+  note('Courbe fermée : le départ est aussi l’arrivée — la dernière copie s’arrête un pas avant. Courbe ouverte : de l’extrémité de départ à l’autre. Quantité = original compris.');
+}
 function renderRepPanel(){
   const p=$('props');p.innerHTML='';if(!repMode)return;
   const h=document.createElement('div');h.innerHTML='<b>🔁 Répétition</b><br><span class="note">Choisissez les fonctions à répéter ci-dessous (cases à cocher). Dans l\'arbre, un <b>Ctrl+clic</b> sert désormais à la multi-suppression.<br>🔴 <b>Aperçu rouge</b> : les fonctions cochées, recopiées comme elles le seront (volume ajouté ou enlevé, faces des congés et dépouilles) — pour contrôler le plan, l\'axe ou le pas avant de valider. Une répétition cochée recopie son motif entier.</span>';p.appendChild(h);
   const row=document.createElement('div');row.className='row';
-  const typ=document.createElement('select');[['lin','Linéaire'],['circ','Circulaire'],['mir','Symétrie']].forEach(o=>{const op=document.createElement('option');op.value=o[0];op.textContent=o[1];typ.appendChild(op);});typ.value=repMode.type;typ.onchange=()=>{repMode.type=typ.value;renderRepPanel();};row.appendChild(typ);
+  const typ=document.createElement('select');[['lin','Linéaire'],['circ','Circulaire'],['mir','Symétrie'],['path','Suivant un profil']].forEach(o=>{const op=document.createElement('option');op.value=o[0];op.textContent=o[1];typ.appendChild(op);});typ.value=repMode.type;
+  typ.onchange=()=>{repMode.type=typ.value;if(typ.value==='path'&&!repMode.path){const G=pgGuideSketches(doc);if(G.length)repMode.path=pgDefaultPath(G[G.length-1]);}renderRepPanel();};row.appendChild(typ);
   // 2026-10-23 : QUANTITÉ, original compris (6 = l'original + 5 copies) ; stocké : copies = quantité − 1
   const cnt=document.createElement('input');cnt.type='number';cnt.min='2';cnt.value=(+repMode.copies||1)+1;cnt.title='Quantité, original compris (6 = l’original + 5 copies)';cnt.onchange=()=>{repMode.copies=repMaxCopies((+cnt.value||2)-1);cnt.value=repMode.copies+1;repPreviewUpdate();};
   if(repMode.type==='mir'){cnt.disabled=true;cnt.value=2;}
   row.appendChild(cnt);p.appendChild(row);
+  if(repMode.type==='path')repPathUI(repMode,'_rpEdit',
+    (lab,ctl)=>{const r=document.createElement('div');r.className='row';const l=document.createElement('label');l.textContent=lab;r.appendChild(l);if(ctl)r.appendChild(ctl);p.appendChild(r);},
+    t=>{const n=document.createElement('span');n.className='note';n.textContent=t;p.appendChild(n);},
+    fn=>{fn(repMode);renderRepPanel();});
+  else{
   const ax=document.createElement('select');['X','Y','Z','Face'].forEach(v=>{const op=document.createElement('option');op.value=v;op.textContent=(repMode.type==='mir'?(v==='X'?'YZ':v==='Y'?'XZ':v==='Z'?'XY':v):(v==='Face'?'Face / arête':v));ax.appendChild(op);});
   ax.value=repMode.type==='mir'?(repMode.plane==='XY'?'Z':repMode.plane==='XZ'?'Y':repMode.plane==='Face'?'Face':'X'):(repMode.axis||'X');
   ax.onchange=()=>{if(repMode.type==='mir'){repMode.plane=ax.value==='X'?'YZ':ax.value==='Y'?'XZ':ax.value==='Z'?'XY':'Face';delete repMode.planeN;}else{repMode.axis=ax.value;delete repMode.dir;}renderRepPanel();};p.appendChild(ax);
   const bf=document.createElement('button');bf.textContent=repMode.type==='mir'?'🎯 Face sélectionnée → plan':'🎯 Face / arête sélectionnée → direction';
   bf.title=repMode.type==='mir'?'Plan de symétrie : normale de la face sélectionnée':'Direction de l’arête sélectionnée (axe d’un cercle ou d’un arc), sinon normale de la face sélectionnée';
   bf.onclick=repUseSelectedFace;p.appendChild(bf);
+  }
   if(repMode.type==='mir'){
     // Symétrie DOUBLE : un 2ᵉ plan dont la passe englobe la base ET la 1ʳᵉ symétrie.
     // Absent par défaut (compatibilité : une symétrie existante reste simple).
@@ -1627,8 +1704,10 @@ function renderProps(){
       // 🎯 / ⇄ sur la LIGNE de l'axe qu'ils règlent (et non en bas du panneau)
       const icoBtns=(row,list)=>{list.forEach(([ic,tip,fn])=>{const b=document.createElement('button');b.className='mini repDirBtn';b.textContent=ic;b.title=tip;b.style.cssText='padding:1px 6px;margin-left:4px;flex:none';b.onclick=fn;row.appendChild(b);});return row;};
       const pickTip='Prendre la direction de la sélection dans la vue : arête droite (sa direction), cercle ou arc (son axe), sinon face (sa normale)';
-      const typ=pSel([['lin','Linéaire'],['circ','Circulaire'],['mir','Symétrie']],f.mode||'lin',
-        v=>{f.mode=v;f.name=repTypeName(f.mode,f);applyCfg();});
+      const typ=pSel([['lin','Linéaire'],['circ','Circulaire'],['mir','Symétrie'],['path','Suivant un profil']],f.mode||'lin',
+        v=>{docPushUndo('type de « '+f.name+' »');f.mode=v;
+          if(v==='path'&&!f.path){const G=pgGuideSketches(doc);if(G.length)f.path=pgDefaultPath(G[G.length-1]);}
+          f.name=repTypeName(f.mode,f);applyCfg();});
       pRow('Type',typ);
       const opS=pSel(REP_OPS.map(o=>[o[0],o[1]]),repIsNewBody(f)?'new':'join',v=>{
         docPushUndo('opération de « '+f.name+' »');
@@ -1646,6 +1725,11 @@ function renderProps(){
       const cnt=document.createElement('input');cnt.type='number';cnt.min='2';cnt.value=(+f.copies||1)+1;cnt.title='Quantité, original compris (6 = l’original + 5 copies)';
       cnt.onchange=()=>{f.copies=repMaxCopies((+cnt.value||2)-1);applyCfg();};
       if(f.mode!=='mir')pRow('Quantité',cnt);
+      if(f.mode==='path'){
+        repPathUI(f,f.id,(lab,ctl)=>pRow(lab,ctl),t=>pNote(t),fn=>{docPushUndo('profil de « '+f.name+' »');fn(f);applyCfg();});
+        visDel(f);
+        return;
+      }
       const axOpts=['X','Y','Z','Face'].map(v=>[v,f.mode==='mir'?(v==='X'?'YZ':v==='Y'?'XZ':v==='Z'?'XY':v):(v==='Face'?'Face / arête':v)]);
       const axCur=f.mode==='mir'?(f.plane==='XY'?'Z':f.plane==='XZ'?'Y':f.plane==='Face'?'Face':'X'):(f.axis||'X');
       icoBtns(pRow(f.mode==='mir'?'Plan':'Axe',pSel(axOpts,axCur,

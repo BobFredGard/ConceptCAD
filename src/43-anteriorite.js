@@ -33,6 +33,10 @@ function antDeps(f,F,users){
   const add=(id,why,soft)=>{if(id&&id!==f.id&&!vu.has(id)&&F.some(x=>x.id===id)){vu.add(id);out.push(soft?{id,why,soft:true}:{id,why});}};
   if(!f||f.repeatId)return out;
   if(f.type==='repeat')(f.base||[]).forEach(id=>add(id,'source de la répétition'));
+  if(f.type==='repeat'&&f.mode==='path'&&f.path){ // courbe guide posée sur une face
+    const gk=(doc.sketches||[]).find(s=>s.id===f.path.sk);
+    if(gk&&gk.host&&gk.host.feat)add(gk.host.feat,'face portant la courbe guide « '+(gk.name||gk.id)+' »');
+  }
   if((f.type==='xfillet'||f.type==='fillet')&&f.target)add(f.target,'fonction visée');
   if(f.upto&&f.upto.ex)add(f.upto.ex,'cible « jusqu’à »');
   if(f.sketchId){
