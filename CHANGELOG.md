@@ -8,7 +8,7 @@ sont sorties le 2026-09-30j.
 Code dans `src/` · livrable `fusion_mvp.html` (généré par `build.js`) · architecture et
 garde-fous en tête de `src/00-entete-et-outils.js`.
 
-**511 versions**, de `2026-09-28b` à `V0.31.2` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
+**512 versions**, de `2026-09-28b` à `V0.31.3` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
 comme dans le fichier d'origine.
 
 ---
@@ -6142,4 +6142,10 @@ Demande : « un bouton caché côté droit de l’écran [d’animation] quand j
 - **Bouton 🧹 « Vider le cache et démarrer à vide »** (écran de démarrage, gabarit de `fusion_mvp.html`) : apparaît à droite quand la souris bouge ; après confirmation, retire le brouillon de session (copie gardée : `minifusion_auto_bak`, IndexedDB `draftBak`), le cache d’affichage (`lastGood`) et le cache du noyau 3D compilé (base `minifusion_occ`, propre à chaque navigateur), puis recharge la page sans cache (`?frais=…`). Préférences, fichiers récents et copies de sauvegarde conservés. Même effet sans souris : adresse terminée par `?vide`. Sauvegarde automatique bloquée pendant le nettoyage (`window.__mfResetting`).
 - **Fenêtre de 2 s** (`window.__mfGate`, rendue tout de suite par un clic ou Échap) : le noyau 3D (`src/96-noyau-occt-tiers-lgpl.js`) et le brouillon (`src/99-init.js`) attendent sa fin. Sans elle, la compilation du noyau occupait le navigateur pendant toute l’animation et le bouton ne pouvait ni apparaître ni être cliqué.
 - **Vérifié** dans l’application : rechargement normal sans bandeau ; démarrage interrompu simulé → bandeau, brouillon intact (190 Ko) malgré une sauvegarde forcée, « Rouvrir quand même » → « Test Répétition Courbe » rejoué, témoin retiré ; bouton visible à 0,8 s (brouillon pas encore rouvert, noyau pas lancé), clic → document vide, copie du brouillon (190 Ko) gardée, caches vidés.
+- **Tests** : `npm run ci:full`.
+
+## V0.31.3 - Bouton « Vider le cache » : visible seulement souris au bord droit de l’écran de démarrage
+Demande : « tu peux le cacher pour qu’il n’apparaisse que si je mets la souris à droite de l’écran ».
+- **Écran de démarrage** (gabarit de `fusion_mvp.html`) : le bouton 🧹 n’apparaît plus à tout mouvement de souris, seulement quand elle est dans la bande des 230 px de droite (le bouton y tient entier) ; il disparaît quand elle en sort ou quitte la fenêtre.
+- **Vérifié** dans l’application : souris au centre → caché ; bord droit → visible ; retour à gauche → caché.
 - **Tests** : `npm run ci:full`.

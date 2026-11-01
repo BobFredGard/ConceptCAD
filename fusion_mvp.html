@@ -176,7 +176,7 @@ input[type=range]{accent-color:var(--primary);width:100%}
   var fin=function(){gateOpen();if(!s.parentNode)return;s.classList.add('out');setTimeout(function(){s.remove();},480);document.removeEventListener('keydown',k,true);};
   var k=function(e){if(e.key==='Escape'||e.key==='Enter'||e.key===' '){e.preventDefault();e.stopPropagation();fin();}};
   s.addEventListener('click',fin);document.addEventListener('keydown',k,true);
-  // DÉPANNAGE — bouton caché à droite (apparaît quand la souris bouge) ou adresse « ?vide ».
+  // DÉPANNAGE — bouton caché au bord droit (apparaît quand la souris y passe) ou adresse « ?vide ».
   // Script autonome, exécuté AVANT l'application : le brouillon n'est pas encore rouvert, il peut
   // donc être écarté même s'il fait planter le démarrage.
   var reset=function(){
@@ -195,8 +195,9 @@ input[type=range]{accent-color:var(--primary);width:100%}
   if(/[?&]vide/.test(location.search)){reset();return;}
   var rb=s.querySelector('.reset');
   if(rb){
-    var show=function(){rb.classList.add('on');};
-    s.addEventListener('mousemove',show);
+    // visible seulement souris au bord DROIT de l'écran (bande de 230 px : le bouton y tient entier), masqué ailleurs
+    var show=function(e){rb.classList.toggle('on',e.clientX>=window.innerWidth-230);};
+    s.addEventListener('mousemove',show);s.addEventListener('mouseleave',function(){rb.classList.remove('on');});
     rb.addEventListener('click',function(e){e.stopPropagation();
       if(!confirm('Vider le cache et démarrer une session vide ?\n\nLe brouillon en cours est gardé en copie ; préférences, fichiers récents et copies de sauvegarde sont conservés.'))return;
       rb.textContent='🧹 Nettoyage…';rb.disabled=true;reset();});
@@ -368,7 +369,7 @@ input[type=range]{accent-color:var(--primary);width:100%}
  * peut changer sans rien casser. CACHE_VER (parcours FAO) reste indépendant.
  */
 
-const APP_VER='V0.31.2';
+const APP_VER='V0.31.3';
 try{console.log('[MiniFusion] version '+APP_VER);}catch(e){}
 try{var mfSv=document.getElementById('mfSplashVer');if(mfSv)mfSv.textContent=APP_VER;}catch(e){} // écran de démarrage
 
