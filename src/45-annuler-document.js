@@ -112,7 +112,8 @@ function docUndoBusy(){
       (typeof coqueMode!=='undefined'&&coqueMode)||(typeof splitMode!=='undefined'&&splitMode)||
       (typeof repMode!=='undefined'&&repMode)||(typeof mvMode!=='undefined'&&mvMode)||
       (typeof cgMode!=='undefined'&&cgMode)||(typeof faoChainMode!=='undefined'&&faoChainMode)||
-      (typeof treeDrag!=='undefined'&&treeDrag))return true;
+      (typeof treeDrag!=='undefined'&&treeDrag)||
+      (typeof film!=='undefined'&&film))return true; // film de construction (98-film) : états intermédiaires, document rendu tel quel
   }catch(e){}
   return false;
 }

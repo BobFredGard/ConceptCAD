@@ -515,6 +515,7 @@ function mfCommands(){
   [['Vue iso','iso'],['Vue de dessus','top'],['Vue de face','front'],['Vue de droite','right']].forEach(([l,v])=>add(l,()=>{try{setView(v);}catch(e){}}));
   [['Espace CAO','cao'],['Espace FAO','fao'],['Espace PLAN','plan']].forEach(([l,w])=>add(l,()=>mfWs(w)));
   add('Rendu (image réaliste)',()=>{try{rdOpen();}catch(e){}});
+  add('Film de construction (rejouer l’historique)',()=>{try{filmPlay();}catch(e){}},'film vidéo animation historique timeline');
   MF_THEMES.forEach(([k,l])=>add('Thème : '+l,()=>mfTheme(k)));
   add('Interface classique',()=>mfUiMode('classique'));
   return out;

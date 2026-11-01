@@ -219,6 +219,7 @@ function tlbHost(){
   [['⏮',-2,'Marqueur au début du fil'],['◀',-1,'Marqueur une fonction plus tôt'],['▶',1,'Marqueur une fonction plus tard'],['⏭',2,'Marqueur en fin de fil (tout rejouer)']].forEach(([t,k,h])=>{
     const b=document.createElement('button');b.textContent=t;b.title=h;b.onclick=()=>tlbStep(k);C.appendChild(b);
   });
+  {const b=document.createElement('button');b.textContent='🎬';b.title='Film de construction : rejouer l’historique en plein écran, une fonction à la fois (98-film)';b.onclick=()=>{try{filmPlay();}catch(e){}};C.appendChild(b);}
   const R=document.createElement('div');R.className='tlbR';
   const N=document.createElement('span');N.className='tlbN';
   const B=document.createElement('div');B.className='tlbB';

@@ -652,6 +652,7 @@ function animate(){
   try{if(typeof holeThreadVisSync==='function')holeThreadVisSync();}catch(e){} // filets taraudés : cachés avec leur corps (76)
   try{if(typeof clipTick==='function')clipTick();}catch(e){} // coupe : remplissage des faces coupées (91)
   renderer.render(RS,camera);
+  try{if(film&&film.rec)filmFrame();}catch(e){} // film de construction enregistré : image recopiée tant que le tampon est lisible (98-film)
 }
 // Sol miroir, lampe et plan d'ombre (98-rendu-vue) suivent la scène dessinée : celle de la pièce,
 // ou asmScene en mode Assembler (sinon ni reflet ni ombre sous les composants placés)

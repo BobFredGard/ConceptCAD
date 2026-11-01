@@ -8,7 +8,7 @@ sont sorties le 2026-09-30j.
 Code dans `src/` · livrable `fusion_mvp.html` (généré par `build.js`) · architecture et
 garde-fous en tête de `src/00-entete-et-outils.js`.
 
-**513 versions**, de `2026-09-28b` à `V0.31.4` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
+**514 versions**, de `2026-09-28b` à `V0.32.0` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
 comme dans le fichier d'origine.
 
 ---
@@ -6157,3 +6157,12 @@ Signalement : « Répétition de trous double : ça bloque au redémarrage » (s
 - **Mesuré** (repli maillage, même page) : double perçage 3 × 4 : 3 501 → 171 ms (271 000 → 26 000 triangles) ; lamage 740 → 144 ms ; fraisure 1 214 → 735 ms ; simple inchangé (~80 ms).
 - **Vérifié** dans l’application : bloc + double perçage Ø8 ↧5 + Ø1,5 débouchant, 3 centres répétés × 7, rechargement → rejeu maillage sans blocage, pas de bandeau ; rejeu exact sans erreur.
 - **Tests** : `test_percage_3d` 1e (un solide par centre, profil) ; `npm run ci`.
+
+## V0.32.0 - Film de construction : l’historique de la pièce rejoué en plein écran, fonction par fonction
+Demande : « niveau application dans sa globalité, surprends-moi ».
+- **Film de construction** (`src/98-film-construction.js`) : bouton 🎬 du bandeau de timeline, ou Ctrl+K « film ». La vue passe en plein écran avec des bandes cinéma ; carton d’ouverture (nom, nombre de fonctions et de corps), puis la pièce repart de zéro et se reconstruit une fonction de premier niveau à la fois (marqueur temps, comme ⏮ ◀ ▶ ⏭). La caméra tourne lentement autour de la pièce finale. Chaque étape a sa légende (« 05 / 14 », nom, nature dans les couleurs du bandeau : ajout vert, enlèvement rouge, modification bleue…), un éclair coloré et une graduation sur la barre de progression ; environ 25 s au total (0,9 à 2,2 s par étape), carton de fin. Échap = arrêter, Espace = pause. Espace CAO seulement, hors esquisse.
+- **Vidéo** : « ● Enregistrer » produit un WebM (VP9, 8 Mb/s, 1920 px au plus) avec bandes et légendes incrustées ; l’image est recopiée dans un canevas 2D juste après le rendu (`animate`, `src/10-scene-3d.js`), tant que le tampon WebGL est lisible.
+- **Document intact** : instantané au départ, filet d’annulation suspendu pendant le film (`docUndoBusy`, `src/45-annuler-document.js`). Rejouer des états intermédiaires réancre les esquisses posées sur des faces (origine décalée de 10,16 mm sur « Cache Piles ») et renomme les hôtes des copies d’esquisse de répétition (Face 119 → 122) : à la fin, les points de contrôle du rejeu sont vidés, l’instantané est réappliqué et les étiquettes d’hôte et le compteur `entNames` d’origine rendus. Marqueur, sélection et caméra reviennent comme avant.
+- **Plein écran** attendu 0,8 s au plus : certains cadres intégrés ne répondent jamais à la demande (le film tourne alors dans la vue normale).
+- **Vérifié** dans l’application sur « Cache Piles » (14 fonctions) : film complet, document identique au bit près après le film (non modifié, aucune étape d’annulation), enregistrement WebM (780 Ko pour 3,5 s, carton incrusté).
+- **Tests** : `npm run ci:full`.
