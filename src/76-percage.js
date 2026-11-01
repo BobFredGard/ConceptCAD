@@ -415,23 +415,56 @@ function legacyHoleGeos(f,msgs){
   const sk=doc.sketches.find(function(s){return s.id===f.sketchId;});
   if(!sk)throw new Error('esquisse introuvable');
   const A=holeAxis(f,sk),N=holeNorm(f),geos=[];
+  // pointe de l'avant-trou (double perçage) cachée dans la matière : fond plat en repli, ses
+  // facettes obliques décuplaient le coût du booléen BSP
+  if(N.kind==='step')N.stTip=0;
   if(msgs&&f.thread&&f.thread.model)msgs.push('filet modélisé : noyau exact requis — trou lisse en attendant');
   const segs=holeProfileSegs(N,N.end==='upto'?(holePlaneDist(f.uptoPlane,A.pts[0]||{x:0,y:0,z:0},A.dir)||N.depth):(N.end==='next'?N.depth:undefined));
   const up=new THREE.Vector3(0,1,0),dv=new THREE.Vector3(A.dir.x,A.dir.y,A.dir.z);
   const q=new THREE.Quaternion().setFromUnitVectors(up,dv);
+  // V0.31.4 : UN solide de révolution fermé par centre (et non un cylindre par étage) — chaque
+  // étage était un booléen BSP de plus, aux faces coplanaires avec le suivant : un double
+  // perçage répété (3 étages) figeait l'onglet au démarrage, rejoué en maillage avant le noyau.
+  const prof=holeLatheProfile(segs,N.through?60:Infinity); // repli maillage : course bornée
   A.pts.forEach(function(P){
-    segs.forEach(function(sg){
-      const len=Math.min(sg[1],N.through?60:sg[1]); // repli maillage : course bornée
-      // rayon nul (pointe) → 0,01 mm : un sommet dégénéré corrompt le booléen BSP (CSG)
-      const g=new THREE.CylinderGeometry(Math.max(sg[3],0.01),Math.max(sg[2],0.01),len,24);
-      g.applyQuaternion(q);
-      const c=sg[0]+len/2;
-      g.translate(P.x+dv.x*c,P.y+dv.y*c,P.z+dv.z*c);
-      geos.push(g);
-    });
+    const g=holeLatheGeo(prof,24);
+    g.applyQuaternion(q);g.translate(P.x,P.y,P.z);
+    geos.push(g);
   });
   if(!geos.length)throw new Error('aucun centre de perçage');
   return geos;
+}
+// Profil (anneaux {r,z}, z = distance depuis le plan) des segments d'un trou, chaque segment
+// borné à maxLen.
+function holeLatheProfile(segs,maxLen){
+  const R=[];
+  const push=function(r,z){const L=R[R.length-1];if(L&&Math.abs(L.r-r)<1e-9&&Math.abs(L.z-z)<1e-9)return;R.push({r:r,z:z});};
+  segs.forEach(function(sg){push(sg[2],sg[0]);push(sg[3],sg[0]+Math.min(sg[1],maxLen));});
+  return R;
+}
+// Maillage fermé, normales sortantes, autour de +Y : flancs entre anneaux successifs, disques
+// aux bouts de rayon non nul ; un anneau de rayon nul (pointe) est un sommet — aucun triangle
+// dégénéré (ils corrompent le booléen BSP du CSG).
+function holeLatheGeo(R,n){
+  const pos=[],EPS=1e-6;
+  const V=function(r,a,z){return [r*Math.cos(a),z,r*Math.sin(a)];};
+  const tri=function(a,b,c){pos.push(a[0],a[1],a[2],b[0],b[1],b[2],c[0],c[1],c[2]);};
+  for(let k=0;k<n;k++){
+    const a0=k*2*Math.PI/n,a1=(k+1)*2*Math.PI/n;
+    for(let i=0;i+1<R.length;i++){
+      const A=R[i],B=R[i+1];
+      const p00=V(A.r,a0,A.z),p01=V(A.r,a1,A.z),p10=V(B.r,a0,B.z),p11=V(B.r,a1,B.z);
+      if(B.r>EPS)tri(p00,p10,p11);
+      if(A.r>EPS)tri(p00,p11,p01);
+    }
+    const F=R[0],L=R[R.length-1];
+    if(F.r>EPS)tri([0,F.z,0],V(F.r,a0,F.z),V(F.r,a1,F.z));
+    if(L.r>EPS)tri([0,L.z,0],V(L.r,a1,L.z),V(L.r,a0,L.z));
+  }
+  const g=new THREE.BufferGeometry();
+  g.setAttribute('position',new THREE.Float32BufferAttribute(pos,3));
+  g.computeVertexNormals();
+  return g;
 }
 function holePlaneDist(pl,P,D){
   // Distance le long de l'axe jusqu'au plan choisi {p:[x,y,z],n:[x,y,z]} ; null si absent/parallèle/derrière.

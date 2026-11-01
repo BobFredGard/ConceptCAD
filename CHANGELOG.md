@@ -8,7 +8,7 @@ sont sorties le 2026-09-30j.
 Code dans `src/` · livrable `fusion_mvp.html` (généré par `build.js`) · architecture et
 garde-fous en tête de `src/00-entete-et-outils.js`.
 
-**512 versions**, de `2026-09-28b` à `V0.31.3` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
+**513 versions**, de `2026-09-28b` à `V0.31.4` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
 comme dans le fichier d'origine.
 
 ---
@@ -6149,3 +6149,11 @@ Demande : « tu peux le cacher pour qu’il n’apparaisse que si je mets la sou
 - **Écran de démarrage** (gabarit de `fusion_mvp.html`) : le bouton 🧹 n’apparaît plus à tout mouvement de souris, seulement quand elle est dans la bande des 230 px de droite (le bouton y tient entier) ; il disparaît quand elle en sort ou quitte la fenêtre.
 - **Vérifié** dans l’application : souris au centre → caché ; bord droit → visible ; retour à gauche → caché.
 - **Tests** : `npm run ci:full`.
+
+## V0.31.4 - Répétition de doubles perçages : le démarrage ne se fige plus
+Signalement : « Répétition de trous double : ça bloque au redémarrage » (s’ouvre ensuite avec « Rouvrir quand même »).
+- **Cause** : au démarrage, le brouillon est rejoué une première fois par le repli maillage (CSG BSP), avant que le noyau exact soit prêt ; « Rouvrir quand même » arrive après, en exact, d’où la différence. Ce repli (`legacyHoleGeos`, `src/76-percage.js`) soustrayait un cylindre par étage du trou, aux faces coplanaires avec l’étage suivant : un double perçage en a trois (avant-trou, pointe, trou), et le coût explosait avec la répétition. Mesuré : 3 trous × 4 en double perçage 3,5 s (271 000 triangles), 10 s × 6.
+- **Correctif** : un seul solide de révolution fermé par centre (`holeLatheProfile`, `holeLatheGeo`), sans triangle dégénéré ; la pointe de l’avant-trou, cachée dans la matière, est rendue à fond plat dans ce repli provisoire. Le rejeu exact est inchangé.
+- **Mesuré** (repli maillage, même page) : double perçage 3 × 4 : 3 501 → 171 ms (271 000 → 26 000 triangles) ; lamage 740 → 144 ms ; fraisure 1 214 → 735 ms ; simple inchangé (~80 ms).
+- **Vérifié** dans l’application : bloc + double perçage Ø8 ↧5 + Ø1,5 débouchant, 3 centres répétés × 7, rechargement → rejeu maillage sans blocage, pas de bandeau ; rejeu exact sans erreur.
+- **Tests** : `test_percage_3d` 1e (un solide par centre, profil) ; `npm run ci`.

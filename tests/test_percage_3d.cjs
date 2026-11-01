@@ -34,6 +34,10 @@ const {loadApp}=require('./appvm.cjs');
     "askHole('sD');const fD=doc.features[doc.features.length-1];fD.kind='step';fD.d=1.5;fD.stD=8;fD.stH=5;fD.stTip=118;fD.end='through';",
     "[fT,fM,fC,fF,fD].forEach(f=>f.name=holeName(f));",
     "A(fD.name.indexOf('Ø8 ↧5 + Ø1,5 débouchant tout')>=0,'1d : nom du double perçage — « '+fD.name+' »');",
+    // V0.31.4 : repli maillage = UN solide fermé par centre (un cylindre par étage figeait le démarrage)
+    "{const N=holeNorm(fD);N.stTip=0;const pr=holeLatheProfile(holeProfileSegs(N),60).map(q=>q.r+'@'+q.z).join(' ');",
+    " const nD=legacyHoleGeos(fD,[]).length,nC=legacyHoleGeos(fC,[]).length;",
+    " A(nD===1&&nC===2&&pr==='4@0 4@5 0.75@5 0.75@65','1e : repli maillage : un solide de révolution par centre ('+nD+'/'+nC+'), profil '+pr);}",
     "A(!fT.flip&&!fM.flip,'1a : sens automatique vers la matière (esquisse sur le dessus → vers le bas)');",
     "A(fM.d===6.75&&/Taraudé M8/.test(fM.name),'1b : taraudé M8 : Ø de perçage 6,75 (M − pas) — « '+fM.name+' »');",
     "markDirty();rebuild();",
