@@ -960,12 +960,57 @@ document.querySelectorAll('#ctxMenu3D button').forEach(b=>b.onclick=()=>{
   if(b.dataset.act==='isolate')isolate(bd.id);
   if(b.dataset.act==='showall')showAll2();
 });
+/* ---- STEP SEUL dans son corps : hors chaîne exacte (occReplayBody : importSeul), il
+   n'est jamais dans perBody — un STEP ouvert puis réexporté donnait « rien à exporter ».
+   On exporte alors son solide exact (importGeom.brep), sans les pièces masquées (👁 de
+   l'arborescence : f.hidOcc). Rend [{bodyId,shape}] : handles NEUFS, à supprimer. ---- */
+function importVisibleShape(f,brep){
+  const g=f&&f._mesh&&f._mesh.geometry,O=g&&g.userData&&g.userData.impOcc;
+  const H=new Set(O&&Array.isArray(f.hidOcc)?f.hidOcc:[]);
+  if(!H.size)return occShapeCopy(brep);
+  // Même parcours (et donc mêmes n° d'occurrence) qu'importStepOcc.
+  const E=occt.TopAbs_ShapeEnum,keep=[];let n=0;
+  const typ=s=>{const t=s.ShapeType();return t===E.TopAbs_SOLID?'so':t===E.TopAbs_SHELL?'sh':t===E.TopAbs_FACE?'f':t===E.TopAbs_COMPOUND||t===E.TopAbs_COMPSOLID?'c':'';};
+  const visit=(s,own)=>{
+    const t=typ(s);
+    if(t==='so'||((t==='sh'||t==='f')&&!own)){
+      if(!H.has(n))keep.push(t==='so'?occt.TopoDS.Solid_1(s):t==='sh'?occt.TopoDS.Shell_1(s):occt.TopoDS.Face_1(s));
+      n++;own=true;
+    }
+    if(t==='f'||!t)return;
+    const it=new occt.TopoDS_Iterator_2(s,true,true);
+    try{while(it.More()){visit(it.Value(),own);it.Next();}}finally{try{it.delete();}catch(e){}}
+  };
+  visit(brep,false);
+  const c=occCompoundOf(keep);
+  if(keep.length>1)keep.forEach(s=>{try{s.delete();}catch(e){}});
+  return c;
+}
+function importLoneShapes(FR,bid){
+  const out=[];
+  try{
+    if(typeof importGeom==='undefined'||!doc.bodies||!doc.bodies.length)return out;
+    const b0=doc.bodies[0].id,by={},done=new Set((FR&&FR.perBody||[]).map(p=>p.bodyId));
+    const feats=(doc.features||[]).filter(f=>f&&f.visible!==false);
+    const consumed=new Set();feats.forEach(f=>{if(f.type==='combine'&&!f.keep)(f.tools||[]).forEach(t=>consumed.add(t));});
+    feats.forEach(f=>{const b=(f.body&&doc.bodies.some(e=>e.id===f.body))?f.body:b0;(by[b]=by[b]||[]).push(f);});
+    Object.keys(by).forEach(b=>{
+      if((bid&&b!==bid)||done.has(b)||consumed.has(b)||!by[b].every(f=>f.type==='import'))return;
+      by[b].forEach(f=>{
+        const e=importGeom.get(f.id);if(!e||!e.brep)return;
+        let sh=null;try{sh=importVisibleShape(f,e.brep);}catch(err){sh=null;}
+        if(sh)out.push({bodyId:b,shape:sh});
+      });
+    });
+  }catch(e){}
+  return out;
+}
 /* ---- export STEP du corps : la shape vient de perBody (occFinalShape), donc
    SEULEMENT ce corps — jamais le composé de tous les corps. ---- */
 async function ctxExportStep(bid){
   let nm='corps';
   try{ nm=(bodyEntryOf(bid)||{}).name||bid||'corps'; }catch(e){}
-  let FR=null;
+  let FR=null,lone=[];
   try{
     if(!occHas())throw new Error('OCCT indisponible (chargement en cours ou échec — servez la page en http://)');
     const sch=await stepAskSchema('Export STEP « '+nm+' »');
@@ -974,7 +1019,8 @@ async function ctxExportStep(bid){
     const pok=(await occExportPreflight());
     if(!pok[0])throw new Error(pok[1]||'pré-test impossible');
     FR=occFinalShape();
-    const pb=(FR.perBody||[]).filter(p=>p.bodyId===bid);
+    let pb=(FR.perBody||[]).filter(p=>p.bodyId===bid);
+    if(!pb.length)pb=lone=importLoneShapes(FR,bid); // STEP seul dans ce corps
     if(!pb.length)throw new Error('rien à exporter : aucune fonction visible de ce corps dans le rejeu (⏻ éteint ?)');
     const path='/b.stp'; // chemin court fixe (cf. /o.stp de l'export global)
     try{occt.FS.unlink(path);}catch(e){}
@@ -992,6 +1038,7 @@ async function ctxExportStep(bid){
     try{alert('Export STEP de « '+nm+' » impossible : '+msg);}catch(_){}
   }finally{
     try{ if(FR)occCleanup(FR,null); }catch(e){}
+    lone.forEach(p=>{try{p.shape.delete();}catch(e){}});
   }
 }
 function ctxStepBtnMake(menuId){
@@ -2014,11 +2061,14 @@ $('btnExportStep').onclick=async()=>{
   try{
     // Exporte le solide exact : même pipeline que l'affichage (prismes + booléens + congés exacts).
     const FR=occFinalShape();
-    if(!FR.shape){alert('Solide vide, rien à exporter.');return;}
+    const lone=importLoneShapes(FR,null); // STEP seuls dans leur corps (hors perBody)
+    const all=[FR.shape].concat(lone.map(p=>p.shape)).filter(Boolean);
+    if(!all.length){alert('Solide vide, rien à exporter.');return;}
     const path='/o.stp'; // chemin court fixe (les chemins longs échouent dans certains onglets)
     try{occt.FS.unlink(path);}catch(e){}
     try{console.log('[STEP-OUT] path='+JSON.stringify(path)+' typeof='+(typeof path)+' cwd='+occt.FS.cwd()+' avant='+occt.FS.readdir('/').slice(0,12).join(','));}catch(e){}
-    const bytes=occWriteStep([FR.shape],path,sch);
+    let bytes;
+    try{bytes=occWriteStep(all,path,sch);}finally{lone.forEach(p=>{try{p.shape.delete();}catch(e){}});}
     try{console.log('[STEP-OUT] après='+occt.FS.readdir('/').slice(0,12).join(','));}catch(e){}
     const blob=new Blob([bytes],{type:'application/step'});
     const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=(doc.name||'piece')+'.step';a.click();

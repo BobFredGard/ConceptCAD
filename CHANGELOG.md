@@ -8,7 +8,7 @@ sont sorties le 2026-09-30j.
 Code dans `src/` · livrable `fusion_mvp.html` (généré par `build.js`) · architecture et
 garde-fous en tête de `src/00-entete-et-outils.js`.
 
-**521 versions**, de `2026-09-28b` à `V0.35.1` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
+**522 versions**, de `2026-09-28b` à `V0.35.2` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
 comme dans le fichier d'origine.
 
 ---
@@ -6238,3 +6238,9 @@ Demande : « pouvoir mettre des traits d'axe sur n'importe quelle géométrie du
 - **Automatique** : les corps natifs ont leurs axes comme les STEP (croix en vue de bout, trait sur la longueur en vue de côté), sauf ceux déjà tracés par une fonction Perçage ; cônes et tores ajoutés sur un axe encore libre. Les axes des cylindres gardent leur tracé (clés des axes allongés inchangées).
 - **Clic (Axes ▸ trou)** : un trou, mais aussi n'importe quel cercle ou arc d'une vue, ou le contour d'une forme de révolution vue de côté. La référence est l'axe 3D (suivi quand le modèle change : position, longueur) ; à défaut de solide exact (vue maillage, DXF), le cercle de la vue, suivi sur ses cercles et arcs. Alignement et cercle de perçage acceptent aussi ces cercles.
 - **Tests** : `test_mep_axes_revolution` (noyau réel : cercle extrudé natif — croix et trait auto, clics en bout et de côté, axe qui suit le cylindre déplacé et allongé ; cône et tore seuls ; cercle 2D) ; `npm run ci`.
+
+## V0.35.2 - Export STEP d'un STEP ouvert tel quel
+Retour : un assemblage ouvert depuis un STEP, clic droit ▸ Export STEP de « Corps 1 » → « rien à exporter : aucune fonction visible de ce corps dans le rejeu (⏻ éteint ?) ».
+- **Cause** : un STEP SEUL dans son corps reste hors de la chaîne exacte (`occReplayBody` : `importSeul`, affichage et FAO d'origine) ; il n'est donc jamais dans `perBody`, où l'export du corps cherchait sa forme. L'export global répondait de même « Solide vide ».
+- **Correctif** : `importLoneShapes` reprend le solide exact de l'import (`importGeom.brep`) pour les corps qui ne contiennent que des imports et sont absents de `perBody` ; les pièces masquées (👁 de l'arborescence du STEP, `f.hidOcc`) sont retirées (`importVisibleShape`, même parcours qu'`importStepOcc`) — masquer les autres pièces puis exporter le corps sort une seule pièce. Export global : ces STEP seuls s'ajoutent au composé.
+- **Tests** : `test_export_step_import` (noyau réel, MERLIN-37-000.step : 25 solides réécrits au clic droit, 22 avec 3 pièces masquées, 25 à l'export global) ; `test_ctx_step` ; `npm run ci:full`.
