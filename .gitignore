@@ -25,3 +25,7 @@ tests/.durees.json
 *.miniFusion.bak
 *.conceptcad.bak
 tests/.coeurs.json
+
+# noyau OCCT recompilé (occt-build/) : intermédiaires et résultats, trop gros pour Git
+occt-build/work/
+occt-build/out/

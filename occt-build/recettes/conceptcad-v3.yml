@@ -1,0 +1,26 @@
+# Noyau ConceptCAD — libcascade 3.1 (fork maintenu d'opencascade.js par taucad), OCCT 8.0.1,
+# Emscripten 6.0.5, exceptions WebAssembly natives. Image ghcr.io/taucad/opencascade.js:single-threaded.
+# Rendu par occt-build/build.cjs : la liste `bindings` est celle du full.yml de l'image (≈ 4 500
+# classes, comme le paquet npm publié) + nos liaisons à la main (additionalBindFiles).
+# ATTENTION : API différente de l'actuel (surcharges sans suffixe, sorties en « enveloppe ») —
+# voir occt-build/README.md, section « Version récente ».
+mainBuild:
+  name: conceptcad_v3
+  bindings:
+  # @BINDINGS@
+  additionalBindFiles:
+    - conceptcad_extras.cpp
+  emccFlags:
+    - -fwasm-exceptions
+    - -sEXPORT_ES6=1
+    - -sMODULARIZE
+    - -sALLOW_MEMORY_GROWTH=1
+    - -sEXPORTED_RUNTIME_METHODS=["FS","wasmMemory","HEAP8","HEAPU8","HEAP32","getExceptionMessage","incrementExceptionRefcount","decrementExceptionRefcount"]
+    - -sINITIAL_MEMORY=128MB
+    - -sMAXIMUM_MEMORY=4GB
+    - -sUSE_FREETYPE=1
+    - --no-entry
+    - -sSTACK_SIZE=8388608
+    - -sWASM_BIGINT
+    - -msimd128
+    - -O3
