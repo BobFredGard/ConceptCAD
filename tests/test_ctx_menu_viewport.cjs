@@ -49,7 +49,7 @@ const vm=require('vm');
     "att(b.style.display==='','corps : bouton STEP visible (display='+JSON.stringify(b.style.display)+')');",
     "const k3=c3d.children;",
     "const b3=k3[k3.length-1];",
-    "att(!!b3&&b3.dataset&&b3.dataset.act==='step','3D : export STEP = dernier enfant du menu');",
+    "att(!!b3&&b3.dataset&&/^step/.test(b3.dataset.act),'3D : export STEP = dernier enfant du menu');",
     // --- 5) garde-fous CSS injecté depuis JS (scroll si le menu dépasse en hauteur)
     "const st=(document.head.children||[]).filter(function(n){return n.tagName==='STYLE'&&n.textContent&&n.textContent.indexOf('max-height:calc(100vh - 8px)')>=0;});",
     "att(st.length===1,'CSS anti-rognage injecté depuis JS ('+st.length+')');",

@@ -8,7 +8,7 @@
 
 ![Support de pédale déportée R1200RT en alu anodisé rouge sur béton, lancer de rayons de l'atelier RENDU (2048 échantillons)](docs/captures/rendu-pedale.jpg)
 
-Le noyau géométrique exact est **OpenCascade compilé en WebAssembly**. S'il n'est pas disponible, l'application bascule seule sur un moteur maillage (CSG). Version actuelle : **V0.33.0** (voir le [journal des modifications](CHANGELOG.md)).
+Le noyau géométrique exact est **OpenCascade compilé en WebAssembly**. S'il n'est pas disponible, l'application bascule seule sur un moteur maillage (CSG). Version actuelle : **V0.35.3** (voir le [journal des modifications](CHANGELOG.md)).
 
 | | |
 |---|---|
@@ -103,7 +103,7 @@ Historique rejouable, timeline à icônes (vert = ajout, rouge = enlèvement), m
 - **Corps** : matériau (bibliothèque commune avec le RENDU, masse estimée), couleur, transparence, isoler ; une découpe peut traverser plusieurs corps.
 - **Mesures** (`Ctrl+clic`) : face à face, Ø, entraxe, entre deux arêtes.
 - **Fichiers** : import STEP / STL, export STL / OBJ, projet **`.conceptcad`** (pièce, FAO, planches, rendu ; les anciens `.miniFusion` s’ouvrent toujours), récents et **dossier de projets**, sauvegarde locale automatique.
-- **Export STEP** : **AP214** (par défaut) ou **AP203**, option « **sans courbes 2D** » pour les vieux logiciels ; aussi pour un corps seul (clic droit).
+- **Export STEP** : **AP214** (par défaut) ou **AP203**, option « **sans courbes 2D** » pour les vieux logiciels ; aussi pour un corps seul, ou **une seule pièce / un sous-ensemble d’un STEP multi-corps** (clic droit sur sa ligne de l’arborescence ou sur la pièce dans la vue 3D, placement d’assemblage gardé) ; un STEP ouvert tel quel se réexporte, sans ses pièces masquées.
 - **STEP multi-corps** : arborescence des sous-ensembles et pièces avec leurs noms, pièces **masquables** (👁), **une couleur par pièce ou par occurrence** ; les gros fichiers (44 Mo, 73 000 faces) s'ouvrent et se manipulent sans à-coups.
 - **Enregistrement sûr** : contenu vérifié avant écriture, version précédente gardée (`nom.conceptcad.bak` et copie dans le navigateur), menu **Copie de secours**.
 

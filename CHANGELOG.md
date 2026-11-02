@@ -8,7 +8,7 @@ sont sorties le 2026-09-30j.
 Code dans `src/` · livrable `fusion_mvp.html` (généré par `build.js`) · architecture et
 garde-fous en tête de `src/00-entete-et-outils.js`.
 
-**522 versions**, de `2026-09-28b` à `V0.35.2` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
+**523 versions**, de `2026-09-28b` à `V0.35.3` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
 comme dans le fichier d'origine.
 
 ---
@@ -6244,3 +6244,10 @@ Retour : un assemblage ouvert depuis un STEP, clic droit ▸ Export STEP de « C
 - **Cause** : un STEP SEUL dans son corps reste hors de la chaîne exacte (`occReplayBody` : `importSeul`, affichage et FAO d'origine) ; il n'est donc jamais dans `perBody`, où l'export du corps cherchait sa forme. L'export global répondait de même « Solide vide ».
 - **Correctif** : `importLoneShapes` reprend le solide exact de l'import (`importGeom.brep`) pour les corps qui ne contiennent que des imports et sont absents de `perBody` ; les pièces masquées (👁 de l'arborescence du STEP, `f.hidOcc`) sont retirées (`importVisibleShape`, même parcours qu'`importStepOcc`) — masquer les autres pièces puis exporter le corps sort une seule pièce. Export global : ces STEP seuls s'ajoutent au composé.
 - **Tests** : `test_export_step_import` (noyau réel, MERLIN-37-000.step : 25 solides réécrits au clic droit, 22 avec 3 pièces masquées, 25 à l'export global) ; `test_ctx_step` ; `npm run ci:full`.
+
+## V0.35.3 - Export STEP d'une seule pièce d'un STEP multi-corps
+Retour : « je ne veux récupérer qu'un seul corps et pas tout le Corps 1, soit dans l'arbre soit dans la vue 3D ».
+- **Arborescence du STEP** : clic droit sur une ligne pièce (🧊) ou sous-ensemble (📦) → petit menu « ⬇ Exporter cette pièce / ce sous-ensemble en STEP » (`importPieceMenu`).
+- **Vue 3D** : clic droit sur une pièce d'un STEP multi-corps → « ⬇ Exporter la pièce « nom » en STEP » dans le menu, juste avant l'export du corps ; la pièce est retrouvée par le triangle cliqué (`importPieceAt` : occGroups → faceOcc → feuille de l'arborescence).
+- **Export** (`importPieceExport`) : occurrences retenues du solide exact (`importOccShape`, même parcours qu'`importStepOcc`), placement d'assemblage gardé, fichier au nom de la pièce sans « :n ». Écriture et téléchargement mis en commun avec l'export du corps (`stepSaveShapes`).
+- **Tests** : `test_export_step_import` (+ pièce désignée en 3D → 1 solide et nom de l'arborescence, bouton du menu 3D visible / masqué, sous-ensemble → ses 14 pièces) ; `test_ctx_menu_viewport` : la dernière entrée du menu 3D est un export STEP (corps ou pièce) ; vérifié dans l'app sur MERLIN-37-000.step (pièce, sous-ensemble, coque libre) ; `npm run ci:full`.
