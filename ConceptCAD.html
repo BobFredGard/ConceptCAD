@@ -376,7 +376,7 @@ input[type=range]{accent-color:var(--primary);width:100%}
  * peut changer sans rien casser. CACHE_VER (parcours FAO) reste indépendant.
  */
 
-const APP_VER='V0.37.0';
+const APP_VER='V0.37.1';
 try{console.log('[ConceptCAD] version '+APP_VER);}catch(e){}
 try{var mfSv=document.getElementById('mfSplashVer');if(mfSv)mfSv.textContent=APP_VER;}catch(e){} // écran de démarrage
 
@@ -5628,6 +5628,20 @@ function buildEdgeOverlay(){
 function distSeg2(px,py,ax,ay,bx,by){const dx=bx-ax,dy=by-ay,L2=dx*dx+dy*dy||1e-18;let t=((px-ax)*dx+(py-ay)*dy)/L2;t=Math.max(0,Math.min(1,t));return Math.hypot(px-(ax+t*dx),py-(ay+t*dy));}
 function rotP(Q,Cx,Cy,a){const dx=Q.x-Cx,dy=Q.y-Cy,c=Math.cos(a),s=Math.sin(a);Q.x=Cx+dx*c-dy*s;Q.y=Cy+dx*s+dy*c;}
 function pairKey(a,b){return a<b?a+'_'+b:b+'_'+a;}
+// Écart 2D d'une arête à son entité d'esquisse, corrigé de la DÉPOUILLE : une extrusion à
+// dépouille pivote sur le plan d'esquisse, ses arêtes à la hauteur z sont décalées de
+// |z|·tan(angle) de l'entité qui les a produites (Barquette : fond à 35 mm, 15° → 9,4 mm).
+// Sans correction, l'arête du fond n'avait jamais d'ancre (hors des 8 mm) et retombait sur
+// le repli position+hauteur figées : changer calibre ou angle lui faisait perdre son arête.
+function xDraftDist(skId,z2,d){
+  let best=d;
+  (doc.features||[]).forEach(f=>{
+    if(f.type!=='extrude'||f.sketchId!==skId||f.visible===false)return;
+    const a=Math.abs(+f.draft||0);if(!(a>1e-9&&a<89))return;
+    best=Math.min(best,Math.abs(d-Math.abs(z2)*Math.tan(a*Math.PI/180)));
+  });
+  return best;
+}
 function xAnchorFor(m){
   // Nommage persistant d'une arête : ancre sketch (point ou entité) qui suit les éditions.
   // Le recalage se fait en 2D esquisse (insensible aux découpes qui scindent en hauteur).
@@ -5665,7 +5679,7 @@ function xAnchorFor(m){
         if(e.construction||e.ref)return; // ancre = géométrie de profil uniquement
         if(e.t==='line'){
           const A0=s.points[e.p1],B0=s.points[e.p2];if(!A0||!B0)return;
-          const d=distSeg2(x2,y2,A0.x,A0.y,B0.x,B0.y);
+          const d=xDraftDist(s.id,z2,distSeg2(x2,y2,A0.x,A0.y,B0.x,B0.y));
           if(d<bdE){bdE=d;bestE=e;}
         }else if(e.t==='circle'||e.t==='arc'){
           const C=s.points[e.pc];if(!C||!(e.r>0))return;
@@ -5675,7 +5689,7 @@ function xAnchorFor(m){
             const rel=((Math.atan2(y2-C.y,x2-C.x)-an.a1)%TAU+TAU)%TAU;
             if(rel>an.a2-an.a1+0.05)return; // hors du span : pas cette entité
           }
-          const d=Math.abs(Math.hypot(x2-C.x,y2-C.y)-e.r);
+          const d=xDraftDist(s.id,z2,Math.abs(Math.hypot(x2-C.x,y2-C.y)-e.r));
           if(d<bdE){bdE=d;bestE=e;}
         }
       });
@@ -5818,6 +5832,7 @@ function xAnchorMatch(se,edges){
       }
       d2=Math.abs(Math.hypot(q[0]-C.x,q[1]-C.y)-e.r);
     } else return;
+    d2=xDraftDist(a.sk,q[2],d2); // dépouille : l'arête suit l'angle et la hauteur courants
     // Ancre « far » (arête née d'un congé/chanfrein) : l'arc est à quelques mm de l'entité 2D
     // qui l'a produit → tolérance élargie, sinon plus aucune candidate et référence perdue.
     if(d2>(a.far?8.0:2.5))return;
@@ -5893,6 +5908,7 @@ function xAnchorStill(se){
     if(e.t==='line'){const A0=s.points[e.p1],B0=s.points[e.p2];if(!A0||!B0)return null;d2=distSeg2(q[0],q[1],A0.x,A0.y,B0.x,B0.y);}
     else if(e.t==='circle'||e.t==='arc'){const C=s.points[e.pc];if(!C||!(e.r>0))return null;d2=Math.abs(Math.hypot(q[0]-C.x,q[1]-C.y)-e.r);}
     else return null;
+    d2=xDraftDist(a.sk,q[2],d2);
     if(d2>(a.far?8.0:2.5))return false; // l'entité n'est plus sous le clic : elle a été déplacée
     // Niveau : celui mémorisé au clic (a.z) OU le niveau courant du côté (l'épaisseur a pu
     // changer légitimement, comme dans xAnchorMatch) ; hors des deux, l'esquisse a bougé.

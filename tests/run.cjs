@@ -60,6 +60,7 @@ const SUITES = [
   "test_conge_fond_poche",
   "test_conge_tangent",
   "test_conge_plan_decale",
+  "test_conge_depouille",
   "test_arbre_selection",
   "test_arbre_v2",
   "test_anteriorite",

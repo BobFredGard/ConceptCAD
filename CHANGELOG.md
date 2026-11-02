@@ -8,7 +8,7 @@ sont sorties le 2026-09-30j.
 Code dans `src/` · livrable `fusion_mvp.html` (généré par `build.js`) · architecture et
 garde-fous en tête de `src/00-entete-et-outils.js`.
 
-**530 versions**, de `2026-09-28b` à `V0.37.0` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
+**531 versions**, de `2026-09-28b` à `V0.37.1` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
 comme dans le fichier d'origine.
 
 ---
@@ -6313,3 +6313,10 @@ Demande : « faire comme dans Fusion360 de sélectionner la zone d'un contour, c
 - **Branché** sur le noyau exact (`occShapeOfExtrude`, zone disque à trous = `occDiskPrism` percé), le maillage de repli (`sketchShape(sk,picks)`) et l'accroche des esquisses posées sur les faces de l'extrusion (`skTracePick`).
 - **Vérifié** dans l'application (rectangle coupé en deux + cercle : ajout du disque, retrait de la moitié droite → solide 20×20×20 de la moitié gauche ; OK referme proprement, choix enregistré dans le document).
 - **Tests** : 3 auto-tests embarqués « Zones » (22/22) ; `npm run ci`.
+
+## V0.37.1 - Congé sur une arête d'extrusion à dépouille : l'arête suit calibre et angle
+Demande : « Dans ce fichier [Barquette], quand on change le paramètre calibre et angle ou l'un ou l'autre, le 1er congé perd son arête ».
+- **Cause** : le congé R15 porte sur l'arête du FOND d'une extrusion à dépouille (35 mm, −15°). Une dépouille pivote sur le plan d'esquisse : à la hauteur z, l'arête est décalée de |z|·tan(angle) de la ligne qui l'a produite (9,4 mm ici), au-delà des 8 mm de `xAnchorFor`. L'arête n'avait donc jamais d'ancre d'esquisse et retombait sur le repli position + hauteur figées : une autre hauteur (calibre) ou un autre décalage (angle) et plus aucune arête ne correspondait, le congé disparaissait sans erreur.
+- **Correctif** (`xDraftDist`) : l'écart 2D entre une arête et son entité d'esquisse est corrigé de la dépouille des extrusions de cette esquisse, dans `xAnchorFor`, `xAnchorMatch` et `xAnchorStill`. L'arête du fond reçoit une ancre (ligne + côté bas) et suit la hauteur et l'angle courants.
+- **Vérifié** dans l'application (Barquette, noyau réel) : calibre 40 / angle 15, 35 / 25, 30 / 20 puis retour 35 / 15 — l'arête reste au fond (y = −58,28, −52,68, −58,08, −59,62), congé appliqué.
+- **Tests** : `test_conge_depouille` (copie du fichier, 5 couples calibre / angle — échoue en V0.36.4) ; `npm run ci`.
