@@ -135,6 +135,7 @@ const SUITES = [
   "test_ouverture_deterministe",
   "test_esquisse_colineaire",
   "test_esquisse_echelle",
+  "test_esquisse_surbrillance",
   "test_regeneration_chaine",
   "test_fao_outils",
   "test_fao_percage",

@@ -15,6 +15,7 @@ const SUITES = [
   'test_esquisse_retour_arriere',
   'test_esquisse_aleatoire',
   'test_esquisse_echelle',
+  'test_esquisse_surbrillance',
   'test_parametres',
   'test_parametres_partout',
   'test_interface_moderne',

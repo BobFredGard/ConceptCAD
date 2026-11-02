@@ -376,7 +376,7 @@ input[type=range]{accent-color:var(--primary);width:100%}
  * peut changer sans rien casser. CACHE_VER (parcours FAO) reste indépendant.
  */
 
-const APP_VER='V0.36.1';
+const APP_VER='V0.36.2';
 try{console.log('[ConceptCAD] version '+APP_VER);}catch(e){}
 try{var mfSv=document.getElementById('mfSplashVer');if(mfSv)mfSv.textContent=APP_VER;}catch(e){} // écran de démarrage
 
@@ -20262,7 +20262,11 @@ function drawSketch2D(){
         skEl('path',{d:`M ${a-11} ${b} H ${a+11} M ${a} ${b-11} V ${b+11}`,stroke:ch,'stroke-width':1.2});
       }else skEl('path',{d:`M ${a-6} ${b} H ${a+6} M ${a} ${b-6} V ${b+6}`,stroke:col(e),'stroke-width':wdt(e)});}
   });
+  // contrainte / cote sélectionnée dans le panneau : ses points et entités surlignés en jaune
+  skDrawConHalo(sk);
   // extrémités : carrés (plein = fixe) + pastille coïncident + flèche DOF · origine = pastille ronde permanente
+  // centre de perçage : rond orange (un point ordinaire reste un carré)
+  const holeP=skHolePids(sk);
   const hEnds=new Set();(sk.entities||[]).forEach(e=>{if(e.t==='line'&&e.handle)hEnds.add(e.p2);});
   Object.keys(skPts(sk)).forEach(pid=>{
     const p=sk.points[pid];if(!p)return;const[a,b]=w2s(p.x,p.y);
@@ -20280,7 +20284,8 @@ function drawSketch2D(){
       skEl('path',{d:`M ${a} ${b-5} L ${a+5} ${b} L ${a} ${b+5} L ${a-5} ${b} Z`,fill:fix.has(pid)?'#e8e8ea':(isSel?'#ff9f0a':'#101012'),stroke:isSel?'#ff9f0a':'#bf5af2','stroke-width':1.5});
       return;
     }
-    skEl('rect',{x:a-4,y:b-4,width:8,height:8,fill:fix.has(pid)?'#e8e8ea':(isSel||isMark?'#ff9f0a':'#101012'),stroke:isSel?'#ff9f0a':(DA.ptFull(pid)?'#e8e8ea':'#64d2ff'),'stroke-width':1.5});
+    if(holeP.has(pid))skEl('circle',{cx:a,cy:b,r:4.5,fill:fix.has(pid)?'#ffb340':(isSel||isMark?'#ff9f0a':'#101012'),stroke:isSel?'#ff9f0a':'#ffb340','stroke-width':1.8});
+    else skEl('rect',{x:a-4,y:b-4,width:8,height:8,fill:fix.has(pid)?'#e8e8ea':(isSel||isMark?'#ff9f0a':'#101012'),stroke:isSel?'#ff9f0a':(DA.ptFull(pid)?'#e8e8ea':'#64d2ff'),'stroke-width':1.5});
     let used=0;(sk.entities||[]).forEach(e=>{if(e.handle)return;if(e.p1===pid||e.p2===pid||e.p===pid||e.pc===pid||e.pa===pid||e.pb===pid||(e.pts&&e.pts.indexOf(pid)>=0))used++;});
     if(used>=2)skEl('circle',{cx:a,cy:b,r:6,fill:'none',stroke:'#30d158','stroke-width':1.2,opacity:0.9}); // coïncident
     if(showDof&&!fix.has(pid))skEl('path',{d:`M ${a+7} ${b-7} h 7 m -3.5 -3.5 l 3.5 3.5 l -3.5 3.5`,fill:'none',stroke:'#30d158','stroke-width':1.4,opacity:0.85}); // DOF
@@ -20910,6 +20915,34 @@ function skFirstDimScale(sk,d,nv){
   return true;
 }
 
+function skHolePids(sk){ // points portant un centre de perçage (cpoint hole)
+  const s=new Set();(sk.entities||[]).forEach(e=>{if(e&&e.t==='cpoint'&&e.hole&&e.p)s.add(e.p);});return s;
+}
+function skConTargets(sk,c){
+  // points et entités visés par une contrainte ou une cote (champs de référence génériques)
+  const pts=new Set(),ents=new Set();if(!c)return{pts,ents};
+  ['p','a','b','c','d','line','ent','mid','s'].forEach(k=>{const v=c[k];if(v==null||typeof v!=='string')return;
+    if(sk.points&&sk.points[v])pts.add(v);else if(entById(sk,v))ents.add(v);});
+  return{pts,ents};
+}
+function skDrawConHalo(sk){
+  const sel=[skSel].concat(skSelX||[]).filter(s=>s&&(s.kind==='con'||s.kind==='dim'));if(!sel.length)return;
+  const pts=new Set(),ents=new Set();
+  sel.forEach(s=>{const c=(s.kind==='con'?sk.constraints:sk.dims||[]).find(x=>x.id===s.id);const T=skConTargets(sk,c);T.pts.forEach(p=>pts.add(p));T.ents.forEach(e=>ents.add(e));});
+  const P=sk.points,H='#ffd60a',halo={fill:'none',stroke:H,'stroke-width':8,opacity:.45,'stroke-linecap':'round',class:'skconhalo'};
+  ents.forEach(id=>{const e=entById(sk,id);if(!e)return;
+    if(e.t==='line'){const A=P[e.p1],B=P[e.p2];if(!A||!B)return;const[a,b]=w2s(A.x,A.y),[c,d]=w2s(B.x,B.y);skEl('line',Object.assign({x1:a,y1:b,x2:c,y2:d},halo));}
+    else if(e.t==='circle'){const C=P[e.pc];if(!C)return;const[a,b]=w2s(C.x,C.y);skEl('circle',Object.assign({cx:a,cy:b,r:Math.abs(e.r)*skView.s},halo));}
+    else if(e.t==='arc'){const C=P[e.pc],an=arcAngles(sk,e);if(!C||!an)return;
+      const[a,b]=w2s(C.x+e.r*Math.cos(an.a1),C.y+e.r*Math.sin(an.a1)),[c,d]=w2s(C.x+e.r*Math.cos(an.a2),C.y+e.r*Math.sin(an.a2));
+      skEl('path',Object.assign({d:`M ${a} ${b} A ${e.r*skView.s} ${e.r*skView.s} 0 ${an.a2-an.a1>Math.PI?1:0} 0 ${c} ${d}`},halo));}
+    else if(e.t==='spline'){const pl=skSplinePoly(sk,e);if(!pl)return;skEl('path',Object.assign({d:'M '+pl.map(q=>w2s(q[0],q[1]).map(v=>v.toFixed(1)).join(' ')).join(' L ')},halo));}
+    else if(e.t==='cpoint'&&e.p)pts.add(e.p);
+  });
+  pts.forEach(pid=>{const p=P[pid];if(!p)return;const[a,b]=w2s(p.x,p.y);
+    skEl('circle',{cx:a,cy:b,r:11,fill:'rgba(255,214,10,.18)',stroke:H,'stroke-width':2.5,class:'skconhalo'});});
+}
+
 /* ═══════════════ 50-esquisse-5-panneau-audit.js — esquisse 5 panneau audit ═══════════════ */
 // Esquisse 2D (5/5) : panneau latéral, annuler/rétablir, santé, audit et degrés de liberté, pose des cotes.
 /* ----- panneau latéral esquisse ----- */
@@ -20933,8 +20966,8 @@ function skDefaultStatus(){
 }
 function conDesc(sk,c){
   // Texte SANS glyphe : l'icône (registre SK_CON) est posée à côté par la liste.
-  const nm=id=>{const e=entById(sk,id);return e?(e.handle?'poignée':({line:'ligne',circle:'cercle',arc:'arc',cpoint:'point',spline:'spline'}[e.t]||'?'))+'…'+String(id).slice(-3):'?';};
-  const pt=id=>'pt…'+String(id).slice(-3);
+  const nm=id=>{const e=entById(sk,id);return e?(e.handle?'poignée':e.hole?'perçage':({line:'ligne',circle:'cercle',arc:'arc',cpoint:'point',spline:'spline'}[e.t]||'?'))+'…'+String(id).slice(-3):'?';};
+  const pt=id=>(skHolePids(sk).has(id)?'perçage…':'pt…')+String(id).slice(-3);
   const R=SK_CON[c.type],N=R?R.nom:c.type;
   if(c.type==='h'||c.type==='v')return N+' '+nm(c.line);
   if(c.type==='fix')return N+' '+(c.p?pt(c.p):nm(c.ent));

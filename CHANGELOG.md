@@ -8,7 +8,7 @@ sont sorties le 2026-09-30j.
 Code dans `src/` · livrable `fusion_mvp.html` (généré par `build.js`) · architecture et
 garde-fous en tête de `src/00-entete-et-outils.js`.
 
-**526 versions**, de `2026-09-28b` à `V0.36.1` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
+**527 versions**, de `2026-09-28b` à `V0.36.2` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
 comme dans le fichier d'origine.
 
 ---
@@ -6279,3 +6279,10 @@ Demande : « J'ai un problème de perte de référence de mes projections dans l
 - **Rejeu** (`findClosestProjectedEdge`) : une projetée de vraie longueur ne se raccroche plus à une arête qui se projette en un point (arête ⟂ au plan, perçage vu par la tranche) — elle devenait une ligne de longueur nulle. Une projetée déjà réduite à un point le reste (Support Pédale : points de référence voulus).
 - **Vérifié** sur MERLIN-23-001 rejoué avec le noyau réel : Projetée 1 revient à y = 35, les rectangles reprennent leur place (20 × 30 de x = 2,5 à 22,5), plus de nouvelle projetée de longueur nulle (Projetée 4 et Projetée 12, déjà réduites à un point dans le fichier enregistré, sont à reprojeter).
 - **Tests** : `test_proj_fix_perdus` (copie figée du fichier) ; `test_esquisse_projection`, `test_proj_arc_sens`, `test_esquisse_plan_cibles`, `test_anteriorite`, `test_conge_sur_conge`, `test_ouverture_deterministe` inchangés ; `npm run ci:full`.
+
+## V0.36.2 - Esquisse : cibles d'une contrainte surlignées, centres de perçage distincts des points
+Demande : « Il faudrait aussi pouvoir illuminer les entités sélectionnées dans l'arbre de l'esquisse et différencier les points des points de perçages ».
+- **Surbrillance** (`skDrawConHalo`, `skConTargets`) : une contrainte ou une cote sélectionnée dans le panneau d'esquisse (clic, sélection multiple) surligne en jaune dans la vue les lignes, cercles, arcs, splines et points qu'elle vise.
+- **Centres de perçage** (`skHolePids`) : leur point est un **rond orange** (plein si fixe) au lieu du carré des points ordinaires ; les listes de contraintes les nomment « perçage… » (« Fixe perçage…p17 ») au lieu de « pt… ».
+- **Vérifié** dans l'application : esquisse de test (rectangle + 2 centres de perçage), contrainte « point sur ligne » sélectionnée → ligne et point surlignés, ronds orange distincts des carrés.
+- **Tests** : `test_esquisse_surbrillance` (cibles d'une contrainte et d'une cote, centres de perçage, libellés) ; `npm run ci:full`.

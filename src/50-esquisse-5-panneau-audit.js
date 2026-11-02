@@ -20,8 +20,8 @@ function skDefaultStatus(){
 }
 function conDesc(sk,c){
   // Texte SANS glyphe : l'icône (registre SK_CON) est posée à côté par la liste.
-  const nm=id=>{const e=entById(sk,id);return e?(e.handle?'poignée':({line:'ligne',circle:'cercle',arc:'arc',cpoint:'point',spline:'spline'}[e.t]||'?'))+'…'+String(id).slice(-3):'?';};
-  const pt=id=>'pt…'+String(id).slice(-3);
+  const nm=id=>{const e=entById(sk,id);return e?(e.handle?'poignée':e.hole?'perçage':({line:'ligne',circle:'cercle',arc:'arc',cpoint:'point',spline:'spline'}[e.t]||'?'))+'…'+String(id).slice(-3):'?';};
+  const pt=id=>(skHolePids(sk).has(id)?'perçage…':'pt…')+String(id).slice(-3);
   const R=SK_CON[c.type],N=R?R.nom:c.type;
   if(c.type==='h'||c.type==='v')return N+' '+nm(c.line);
   if(c.type==='fix')return N+' '+(c.p?pt(c.p):nm(c.ent));
