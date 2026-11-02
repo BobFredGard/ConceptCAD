@@ -86,6 +86,8 @@ function drawSketch2D(){
       }
     }
   }
+  // zones fermées teintées (comme Fusion 360) : un contour ouvert ne se teinte pas (70-extrusion-profils)
+  try{skDrawRegions(sk);}catch(e){}
   // guides d'inférence H/V + ⟂/⦾
   if(skInfer){
     if(skInfer.v){const[x]=w2s(skInfer.x,0);skEl('line',{x1:x,y1:0,x2:x,y2:H,stroke:'#bf5af2','stroke-width':1,'stroke-dasharray':'6 4'});}

@@ -1160,13 +1160,14 @@ function findHostForFace(pt,n,tol){
         const fils=(doc.features||[]).filter(fi=>fi.type==='fillet'&&fi.target===f.id&&fi.visible!==false);
         if(fils.length){const rf=applyFilletsToSketch(hs,fils);data=rf.sk;}
       }catch(e){data=hs;}
-      const tr=skLoopTrace(data);
+      const tr=skTracePick(data,f.profiles);
       if(!tr||(!tr.solids.length&&!tr.circlesOut.length))continue;
       // pip direct sur les boucles 2D : on reconstruit l'enveloppe comme au rebuild
       const rings=[];
       try{
         for(const sol of tr.solids){
-          const ch=sol.chain;if(!ch||!ch.length)continue;
+          const ch=sol.chain;if(sol.circle){const R=skRegCircleRing(data,sol.circle);if(R)rings.push({ring:R,holes:(sol.holes||[]).map(h=>chainPolygon(h,tr.pts))});continue;}
+          if(!ch||!ch.length)continue;
           const ring=chainPolygon(ch,tr.pts);
           if(ring&&ring.length>=3)rings.push({ring,holes:(sol.holes||[]).map(h=>chainPolygon(h,tr.pts))});
         }
@@ -1709,11 +1710,14 @@ function skLoopTrace(sk){ // traçage de faces déterministe (demi-arêtes, mur 
       const an=arcAngles(sk,a);return !!an&&angInArc(Math.atan2(pt.y-C.y,pt.x-C.x),an.a1,an.a2);});
   const opens=[];
   deg.forEach((d,pid)=>{if(d===1&&pts[pid]&&!onCurve(pts[pid]))opens.push({x:pts[pid].x,y:pts[pid].y});});
-  return{loops,solids,opens,pts,edges,circlesOut,circleHoles,hasGeom:edges.length>0};
+  // faces (anneaux 2D + chaînes) et cercles : matière première des ZONES fermées (70-extrusion-profils)
+  const faceList=faces.map(f=>({ring:f.ring,area:f.area,chain:toChain(f.steps)}));
+  return{loops,solids,opens,pts,edges,circlesOut,circleHoles,faces:faceList,circles,hasGeom:edges.length>0};
 }
-function sketchShape(sk){
+function sketchShape(sk,picks){
+  // picks : zones choisies de l'extrusion (points intérieurs, 70-extrusion-profils) ; absent = toutes
   const P=sk.points||{};
-  const tr=skLoopTrace(sk);
+  const tr=skTracePick(sk,picks);
   const shapes=[];
   const chainToPath=(chain,PV,isHole)=>{
     const path=isHole?new THREE.Path():new THREE.Shape();
@@ -1735,7 +1739,8 @@ function sketchShape(sk){
     const s=new THREE.Shape();s.curves=p.curves;return s;
   };
   tr.solids.forEach(sol=>{
-    const shape=chainToPath(sol.chain,tr.pts,false);
+    const shape=sol.circle?fullCircle(sol.circle,false):chainToPath(sol.chain,tr.pts,false); // zone = disque à trous
+    if(!shape)return;
     (sol.holes||[]).forEach(h=>shape.holes.push(chainToPath(h,tr.pts,true)));
     tr.circleHoles.filter(c=>c.solid===tr.solids.indexOf(sol)).forEach(c=>{const hp=fullCircle(c.circle,true);if(hp)shape.holes.push(hp);});
     shapes.push(shape);

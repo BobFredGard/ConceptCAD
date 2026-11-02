@@ -117,6 +117,18 @@ function runSelfTests(){
     const tr=skLoopTrace(s);
     return tr.solids.length===1&&!tr.opens.length?null:`solides=${tr.solids.length} ouverts=${tr.opens.length}`;});
   T('Extrusion à trou (THREE)',()=>{const b=sketchShape(holeSq(true));const nH=b.shapes.length?(b.shapes[0].holes||[]).length:0;return b.shapes.length===1&&nH===1?null:`shapes=${b.shapes.length} trous=${nH}`;});
+  T('Zones : rect à trou → 2 zones (anneau + intérieur)',()=>{const s=holeSq(true);const R=skRegions(s);
+    const a=R.map(r=>Math.round(r.area)).sort((x,y)=>x-y).join(',');return a==='200,600'?null:'aires='+a;});
+  T('Zones : rect coupé en deux + cercle → 3 zones, choix d’une moitié',()=>{const s=rect();
+    s.points.m1={x:20,y:0};s.points.m2={x:20,y:20};s.entities[0].p2='m1';s.entities.push({id:'a2',t:'line',p1:'m1',p2:'p2'});
+    s.entities[2].p2='m2';s.entities.push({id:'c2',t:'line',p1:'m2',p2:'p4'});s.entities.push({id:'mid',t:'line',p1:'m1',p2:'m2'});
+    s.points.pc={x:10,y:10};s.entities.push({id:'ci',t:'circle',pc:'pc',r:4});
+    const R=skRegions(s);if(R.length!==3)return 'zones='+R.length;
+    const tr=skTracePick(s,[[30,10]]);if(tr.solids.length!==1||tr.circlesOut.length)return 'droite : solides='+tr.solids.length;
+    const t2=skTracePick(s,[[2,2],[10,10]]);return t2.solids.length===1&&t2.circlesOut.length===1&&t2.circleHoles.length===1?null:'gauche : '+t2.solids.length+'/'+t2.circlesOut.length+'/'+t2.circleHoles.length;});
+  T('Zones : disque à trou choisi seul',()=>{const s={points:{c1:{x:0,y:0}},entities:[{id:'A',t:'circle',pc:'c1',r:10},{id:'B',t:'circle',pc:'c1',r:4}],constraints:[],dims:[]};
+    const R=skRegions(s);if(R.length!==2)return 'zones='+R.length;
+    const b=sketchShape(s,[[7,0]]);return b.shapes.length===1&&(b.shapes[0].holes||[]).length===1?null:'shapes='+b.shapes.length;});
   T('Face → tous les coins du corps sélectionné',()=>{
     // simule la sélection par face : prend un esquisse rect, trace les solides,
     // puis vérifie que chainNodesOf de chaque solide couvre les 4 coins

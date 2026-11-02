@@ -90,7 +90,8 @@ function extDynPanel(p,f){
   const pr=mk('div','pnl-btns');pr.style.cssText='align-items:center;gap:6px';
   pr.appendChild(mk('span','pnl-note','✏️ '+skName(f.sketchId)));
   const ch=mk('button','mini','🔧 Changer');ch.title='Extruder une autre esquisse';ch.onclick=()=>askExtrude(null,f);pr.appendChild(ch);
-  sec('Profil',pr);
+  const pw=sec('Profil',pr);
+  try{pw.appendChild(extProfPanel(f));}catch(e){} // zones choisies : clic dans la vue (70-extrusion-profils)
   // opération
   sec('Opération',extSeg([['add','➕','Plot','Ajoute de la matière (bossage)'],['cut','➖','Poche','Retire de la matière'],['new','◧','Nouveau corps','Solide séparé']],
     f.newBody?'new':(f.op||'add'),v=>extDynSet('opération de « '+f.name+' »',g=>{
@@ -212,6 +213,7 @@ function extDynTick(){
   // À chaque image : la flèche suit l'extrusion sélectionnée, garde une taille constante à l'écran
   if(!extWired)extWire();
   const f=extDynFeature();
+  try{extProfTick(f);}catch(e){} // zones de l'esquisse sur son plan (70-extrusion-profils)
   const busy=(typeof skEdit!=='undefined'&&skEdit)||(typeof asmMode!=='undefined'&&asmMode==='asm')||(typeof filMode!=='undefined'&&filMode)||(typeof filModeX!=='undefined'&&filModeX);
   if(!f||f.upto||f.through||busy||f.visible===false){if(extDyn&&!f)extDyn=null;extDynHide();return;}
   const G=extArrowGeom(f);if(!G){extDynHide();return;}

@@ -8,7 +8,7 @@ sont sorties le 2026-09-30j.
 Code dans `src/` · livrable `fusion_mvp.html` (généré par `build.js`) · architecture et
 garde-fous en tête de `src/00-entete-et-outils.js`.
 
-**529 versions**, de `2026-09-28b` à `V0.36.4` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
+**530 versions**, de `2026-09-28b` à `V0.37.0` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
 comme dans le fichier d'origine.
 
 ---
@@ -6303,3 +6303,13 @@ Demandes : « on pourrait avoir une présélection au passage de la souris dans 
 - **Ajustement et projetées** (`splitOtherAt`, `trimEntity`, `entHits`) — cause de la « cacahuète » : les bouts de l'arc COUPAIENT les projetées ; au rejeu chaque projetée se raccrochait à son arête entière et ramenait le bout de l'arc au coin. Désormais une projetée n'est jamais coupée (bout posé « sur la droite ») ; ajuster une projetée la laisse entière, en construction, et le tronçon gardé devient une droite ordinaire posée dessus (contour fermé, associativité gardée) ; une projetée en construction sert de limite d'ajustement (plus besoin de décocher construction). Les esquisses déjà ajustées avec l'ancienne version gardent leurs projetées coupées (à refaire).
 - **Vérifié** dans l'application (Cavité Test : arêtes hors plan en tiretés, sélection et Ctrl+clic, bouts d'arcs en carrés ; bout d'arc tiré).
 - **Tests** : `test_arc_bout_glisse`, `test_trim_projetee`, `test_trim_projetee_noyau` (noyau réel : arc stable au rejeu, suit la boîte élargie) — échouent en V0.36.3 ; `test_esquisse_plan_cibles` étendu (arêtes hors plan, sélection) ; `npm test` 231/231.
+
+## V0.37.0 - Zones fermées d'une esquisse : teintées en esquisse, choisies à la souris dans l'extrusion (comme Fusion 360)
+Demande : « faire comme dans Fusion360 de sélectionner la zone d'un contour, cela permet de voir que l'esquisse est correcte et de choisir plusieurs contours pour une même extrusion ».
+- **Zones** (`skRegions`, nouveau `src/70-extrusion-profils.js`) : chaque face du découpage du plan par les traits (faces de `skLoopTrace`, désormais rendues avec leurs anneaux et chaînes, et cercles complets), moins ce qui est posé directement dedans. Un rectangle à trou donne deux zones (anneau + intérieur), un rectangle coupé en deux + un cercle en donne trois.
+- **Esquisse** (`skDrawRegions`) : chaque zone fermée teintée en bleu pâle — un contour qui ne se referme pas ne se teinte pas.
+- **Extrusion** : zones affichées sur le plan de l'esquisse pendant la fenêtre (choisies en bleu soutenu, survol éclairci) ; clic = ajouter / retirer une zone (au moins une reste) ; panneau « Profil » : « ▦ k zones sur n », bouton ↺ Auto. En « Jusqu'à la face », une face devant le plan reste un choix de face.
+- **Mémorisation** : `f.profiles` = un point intérieur par zone (bien au large des bords, coordonnées d'esquisse) ; il suit les cotes tant qu'il reste dans la même zone ; zone disparue signalée « ⚠ zone perdue ». Sans choix : toute la matière (pair/impair) comme avant — projets existants inchangés.
+- **Branché** sur le noyau exact (`occShapeOfExtrude`, zone disque à trous = `occDiskPrism` percé), le maillage de repli (`sketchShape(sk,picks)`) et l'accroche des esquisses posées sur les faces de l'extrusion (`skTracePick`).
+- **Vérifié** dans l'application (rectangle coupé en deux + cercle : ajout du disque, retrait de la moitié droite → solide 20×20×20 de la moitié gauche ; OK referme proprement, choix enregistré dans le document).
+- **Tests** : 3 auto-tests embarqués « Zones » (22/22) ; `npm run ci`.

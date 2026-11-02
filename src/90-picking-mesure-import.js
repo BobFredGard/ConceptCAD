@@ -5,6 +5,7 @@ function wirePick(){
   el.addEventListener('pointerup',e=>{
     if(typeof pgPick!=='undefined'&&pgPick){if(e.button===0&&Math.hypot(e.clientX-dx,e.clientY-dy)<=6)pgPickAt(e);return;} // répétition suivant un profil : départ (41)
     if(asmMode==='asm'){if(e.button===0&&Math.hypot(e.clientX-dx,e.clientY-dy)<=6)asmClick(e);return;} // vue d'assemblage (47)
+    if(e.button===0&&Math.hypot(e.clientX-dx,e.clientY-dy)<=6&&typeof extProfClick==='function'&&extProfClick(e))return; // zone d'esquisse de l'extrusion (70-extrusion-profils)
     if(extPickFace||(typeof extUptoAuto==='function'&&extUptoAuto())){ // « jusqu'à la face » : clic COURT seulement (glisser = tourner la vue)
       if(e.button===0&&Math.hypot(e.clientX-dx,e.clientY-dy)<=6)extPickFaceCommit(e);return;}
     if(cgMode&&cgMode.slot!=null){if(Math.hypot(e.clientX-dx,e.clientY-dy)<=6&&e.button===0)cgPickCommit(e);return;} // construction : référence de l'emplacement actif
@@ -36,6 +37,7 @@ function wirePick(){
    el.addEventListener('pointerleave',()=>clearHover());
    el.addEventListener('pointermove',e=>{
       if(typeof pgPick!=='undefined'&&pgPick){pgPickHover(e);return;} // répétition suivant un profil : départ (41)
+      if(!e.buttons&&typeof extProfHover==='function'&&extProfHover(e))return; // zone d'esquisse de l'extrusion
       if(extPickFace||(typeof extUptoAuto==='function'&&extUptoAuto())){renderer.domElement.style.cursor='crosshair';return;}
       if(faoPlanePick){renderer.domElement.style.cursor='crosshair';return;}
       if(faoZPlanePick){renderer.domElement.style.cursor='crosshair';return;}

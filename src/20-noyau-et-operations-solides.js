@@ -1122,9 +1122,9 @@ function occShapeOfExtrude(f){
     warns.push(...rf.warnings);data=rf.sk;
     if(!rf.applied&&!(fils.some(fi=>fi.rims&&(fi.rims.top||fi.rims.bottom)))){/* que des rims : rien en 2D */}
   }
-  const tr=skLoopTrace(data);
+  const tr=skTracePick(data,f.profiles); // zones choisies (70-extrusion-profils) ; sans choix = toutes
   if(!tr.solids.length&&!tr.circlesOut.length){
-    let m='profil non fermé';
+    let m=tr.picked===0?'aucune des zones choisies ne se retrouve dans l’esquisse':'profil non fermé';
     if(tr.opens&&tr.opens.length)m+=` (bout ouvert en ${tr.opens[0].x.toFixed(1)}, ${tr.opens[0].y.toFixed(1)})`;
     throw new Error(m);
   }
@@ -1143,7 +1143,9 @@ function occShapeOfExtrude(f){
   let shape=null;
   const fuseIn=(s)=>{if(!shape){shape=s;return;}const nx=occUnify(occFuse(shape,s));try{shape.delete();}catch(e){}try{s.delete();}catch(e){}shape=nx;};
   tr.solids.forEach((sol,si)=>{
-    let s=keep(occSpanPrism(data,tr,sol.chain,sp,sol.area),'contour '+tr.solids.length);
+    let s;
+    if(sol.circle){const Cc=data.points[sol.circle.pc];if(!Cc)throw new Error('zone : centre introuvable');s=keep(occDiskPrism(data,Cc.x,Cc.y,sol.circle.r,sp),'zone circulaire');}
+    else s=keep(occSpanPrism(data,tr,sol.chain,sp,sol.area),'contour '+tr.solids.length);
     s=rimApply(s);
     (sol.holes||[]).forEach(h=>{
       const t=keep(occSpanPrism(data,tr,h,sp,1),'trou');
@@ -4239,11 +4241,11 @@ function legacyPrismGeos(f,warnArr){
   // Prisme maillage (monde) d'une extrusion — même construction que la voie repli. Jette si profil vide.
   const sk=doc.sketches.find(s=>s.id===f.sketchId);if(!sk)throw new Error('esquisse introuvable');
   const fils=doc.features.filter(x=>x.type==='fillet'&&x.target===f.id&&x.visible!==false);
-  let built=sketchShape(sk);
+  let built=sketchShape(sk,f.profiles);
   if(fils.length){
     const rf=applyFilletsToSketch(sk,fils);
     if(warnArr)warnArr.push(...rf.warnings.map(w=>`${f.name} : ${w}`));
-    built=sketchShape(rf.sk);
+    built=sketchShape(rf.sk,f.profiles);
   }
   if(!built.shapes.length){
     let m=`Esquisse ${sk.name} : contour non fermé`;
