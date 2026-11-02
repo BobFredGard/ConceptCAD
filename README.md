@@ -8,7 +8,7 @@
 
 ![Support de pédale déportée R1200RT en alu anodisé rouge sur béton, lancer de rayons de l'atelier RENDU (2048 échantillons)](docs/captures/rendu-pedale.jpg)
 
-Le noyau géométrique exact est **OpenCascade compilé en WebAssembly**. S'il n'est pas disponible, l'application bascule seule sur un moteur maillage (CSG). Version actuelle : **V0.39.0** (voir le [journal des modifications](CHANGELOG.md)).
+Le noyau géométrique exact est **OpenCascade compilé en WebAssembly**. S'il n'est pas disponible, l'application bascule seule sur un moteur maillage (CSG). Version actuelle : **V0.40.0** (voir le [journal des modifications](CHANGELOG.md)).
 
 | | |
 |---|---|
@@ -101,7 +101,7 @@ Historique rejouable, timeline à icônes (vert = ajout, rouge = enlèvement), m
 
 ### Corps, mesures, fichiers
 
-- **Corps** : matériau (bibliothèque commune avec le RENDU, masse estimée), couleur, transparence, isoler ; une découpe peut traverser plusieurs corps.
+- **Corps** : matériau (bibliothèque commune avec le RENDU, masse estimée), couleur, transparence, isoler ; une découpe peut traverser plusieurs corps. Le corps actif (●) reçoit les nouvelles fonctions ; une extrusion, révolution, un balayage ou un perçage choisit aussi son corps dans son panneau. **Supprimer** un corps ne touche pas les autres (même ceux nés de lui par une répétition) ; **⊘ Retirer** (clic droit) l'enlève à partir d'une étape de la timeline, sans rien effacer, comme dans Fusion 360.
 - **Mesures** (`Ctrl+clic`) : face à face, Ø, entraxe, entre deux arêtes.
 - **Fichiers** : import STEP / STL, export STL / OBJ, projet **`.conceptcad`** (pièce, FAO, planches, rendu ; les anciens `.miniFusion` s’ouvrent toujours), récents et **dossier de projets**, sauvegarde locale automatique.
 - **Export STEP** : **AP214** (par défaut) ou **AP203**, option « **sans courbes 2D** » pour les vieux logiciels ; aussi pour un corps seul, ou **une seule pièce / un sous-ensemble d’un STEP multi-corps** (clic droit sur sa ligne de l’arborescence ou sur la pièce dans la vue 3D, placement d’assemblage gardé) ; un STEP ouvert tel quel se réexporte, sans ses pièces masquées.

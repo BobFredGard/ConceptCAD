@@ -4,7 +4,7 @@
 // d'une régénération à l'autre, nom donné conservé ; quantité réduite → corps en trop retiré ;
 // retour à Unir → corps neufs retirés ; symétrie double → 3 corps neufs (image de l'image à part) ;
 // perçage seul en nouveau corps → signalé vide ; relecture JSON ; suppression de la répétition →
-// corps retirés sauf celui qui porte une fonction ajoutée ; suppression d'un corps d'exemplaire refusée.
+// corps retirés sauf celui qui porte une fonction ajoutée ; suppression d'un corps d'exemplaire : seul lui part.
 const fs=require('fs'),vm=require('vm'),path=require('path');
 const ROOT=path.join(__dirname,'..');
 globalThis.__dirname=path.join(ROOT,'occt');
@@ -46,8 +46,12 @@ const {loadApp}=require('./appvm.cjs');
     rp.dist=25;repGenChildren(rp);markDirty();rebuild();
     A(doc.bodies.map(b=>b.id).join(',')===ids0&&doc.bodies[2].name==='Mon plot','5 : régénération (pas 25) — mêmes ids de corps, nom donné conservé');
     A(!!repBodyOwner(doc.bodies[1].id)&&!repBodyOwner('b1'),'6 : repBodyOwner reconnaît un corps d’exemplaire');
-    const nB=doc.bodies.length;delBody(doc.bodies[1].id);
-    A(doc.bodies.length===nB,'7 : suppression d’un corps d’exemplaire refusée (la répétition le régénère)');
+    const nB=doc.bodies.length,b1x=doc.bodies[1].id;delBody(b1x);markDirty();rebuild();
+    v=vols();
+    A(doc.bodies.length===nB-1&&!doc.bodies.some(b=>b.id===b1x)&&(rp.dropKeys||[]).length===1&&Object.keys(v).length===2&&doc.bodies.some(b=>b.name==='Mon plot'),'7 : corps d’exemplaire supprimé seul — l’autre exemplaire reste, la répétition ne le régénère plus');
+    repGenChildren(rp);
+    A(doc.bodies.length===nB-1,'7b : régénération — l’exemplaire supprimé ne revient pas');
+    delete rp.dropKeys;repGenChildren(rp);markDirty();rebuild();
     rp.copies=1;repGenChildren(rp);markDirty();rebuild();
     A(doc.bodies.length===2&&Object.keys(rp.bodyMap).length===1,'8 : quantité 2 → 1 corps neuf, le corps en trop est retiré');
     // relecture

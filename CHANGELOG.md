@@ -8,7 +8,7 @@ sont sorties le 2026-09-30j.
 Code dans `src/` · livrable `fusion_mvp.html` (généré par `build.js`) · architecture et
 garde-fous en tête de `src/00-entete-et-outils.js`.
 
-**533 versions**, de `2026-09-28b` à `V0.39.0` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
+**534 versions**, de `2026-09-28b` à `V0.40.0` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
 comme dans le fichier d'origine.
 
 ---
@@ -6337,3 +6337,10 @@ Demande : version adaptative de l'ébauche 3D (suite de V0.38.0, « si c'est une
 - **Passe non hachée** : en marche maxi, morceaux reliés jusqu'à 2·D et jetés sous D/2 (premier essai : remontées doublées, temps d'usinage inchangé).
 - **Mesures** (temps estimé, partout → marche 1 mm) : Cavité Test 17,1 → 15,2 min, Cavité Usinage 9,5 → 9,3 min, Malaxeur Retard 37,6 → 32,4 min ; à 0,5 mm les cavités (parois ~25°) gardent toutes leurs mini-passes. Calcul jusqu'à 1,8 × le mode partout.
 - **Tests** : `test_fao_minipasses_pentes` (îlot à flanc presque vertical et flanc à 30°, fraise droite et torique : 0 = sans marche, rien sur le flanc presque vertical, 5 cotes par niveau à 0,5 mm, une sur deux à 1,2 mm ; nettoyage) ; `npm run ci:full` 233/233 ; `npm run parcours` inchangé (seul écart, Perçage n° 11 de Perçages, déjà présent en V0.37.1).
+## V0.40.0 - Corps : supprimer sans perdre les autres, « Retirer » dans la timeline, corps choisi dans la fonction
+Demande : « il faut pouvoir supprimer un corps sans perdre tout le reste et activer un corps pour ajouter des opérations à ce corps ou donner la possibilité dans les fonctions de modifier tel ou tel corps » ; puis « Fusion 360 a créé dans le menu contextuel une suppression spéciale qui apparaît dans la timeline ».
+- **Cause** (exemple Griffe) : supprimer « Griffe Taraudée » emportait la Symétrie « nouveau corps » et donc « Griffe Lamée » entière ; supprimer « Griffe Lamée » était refusé (exemplaire de répétition).
+- **Supprimer un corps** (`delBody`) : un corps exemplaire d'une répétition « nouveau corps » part seul (`rp.dropKeys`, la répétition ne le régénère plus ; bouton « ↺ Rétablir » dans la répétition ; plus d'exemplaire → répétition retirée) ; une répétition dont toutes les sources sont dans le corps supprimé DÉTACHE ses copies rangées dans d'autres corps (`repDetachCopies` : fonctions ordinaires, géométrie inchangée) ; à cheval sur plusieurs corps, elle perd seulement ces sources ; une découpe qui traverse aussi d'autres corps y passe ; combinaisons et découpes multi-corps oublient le corps ; les esquisses posées sur ses faces restent en place.
+- **⊘ Retirer (timeline)** (clic droit d'un corps, comme Fusion 360) : étape `bremove` au marqueur — le corps disparaît à partir de là (filets cosmétiques compris), rien n'est effacé ; reculer le marqueur ou supprimer l'étape le fait revenir.
+- **Corps de la fonction** : ligne « Corps » dans le panneau d'une extrusion, révolution, balayage ou perçage (même effet qu'un glisser-déposer dans l'arbre) ; les découpes gardent « Corps visés ». La source d'une répétition « nouveau corps » ne change plus de corps (ses exemplaires seraient recréés).
+- **Tests** : `test_corps_suppression` (vrai noyau, Griffe : volumes identiques après chaque suppression, annuler, choix du corps, Retirer / marqueur / étape supprimée) ; `test_repeat_corps` mis à jour (l'exemplaire supprimé part seul) ; `npm run ci` 90/90.

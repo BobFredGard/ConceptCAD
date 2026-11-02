@@ -4220,6 +4220,9 @@ function occFinalShape(upto){
   const perBody=[],bin=[],itemShapes=[],ghostShapes=[],msgs=[],items=[],imports=[];
   // corps OUTILS consommés par une combinaison (sans « garder ») : plus affichés
   const consumed=new Set();list.forEach(f=>{if(f.type==='combine'&&!f.keep)(f.tools||[]).forEach(t=>consumed.add(t));});
+  // « Retirer » (bremove, comme Fusion 360) : le corps disparaît à partir de cette étape ;
+  // marqueur reculé avant elle, il revient. Rien n'est effacé du document.
+  list.forEach(f=>{if(f.type==='bremove'&&f.body)consumed.add(f.body);});
   // rejeu partiel = la liste s'arrête avant la fin (références d'esquisse) ; le rejeu
   // complet passe aussi un upto (marqueur de la timeline) : seule la longueur compte
   const partial=list.length<feats.filter(f=>!(occSkipFeat&&f.id===occSkipFeat)).length;
