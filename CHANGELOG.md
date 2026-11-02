@@ -8,7 +8,7 @@ sont sorties le 2026-09-30j.
 Code dans `src/` · livrable `fusion_mvp.html` (généré par `build.js`) · architecture et
 garde-fous en tête de `src/00-entete-et-outils.js`.
 
-**527 versions**, de `2026-09-28b` à `V0.36.2` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
+**528 versions**, de `2026-09-28b` à `V0.36.3` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
 comme dans le fichier d'origine.
 
 ---
@@ -6286,3 +6286,10 @@ Demande : « Il faudrait aussi pouvoir illuminer les entités sélectionnées da
 - **Centres de perçage** (`skHolePids`) : leur point est un **rond orange** (plein si fixe) au lieu du carré des points ordinaires ; les listes de contraintes les nomment « perçage… » (« Fixe perçage…p17 ») au lieu de « pt… ».
 - **Vérifié** dans l'application : esquisse de test (rectangle + 2 centres de perçage), contrainte « point sur ligne » sélectionnée → ligne et point surlignés, ronds orange distincts des carrés.
 - **Tests** : `test_esquisse_surbrillance` (cibles d'une contrainte et d'une cote, centres de perçage, libellés) ; `npm run ci:full`.
+
+## V0.36.3 - Esquisse : un coin rendu coïncident avec une projetée ne déplace plus la projetée
+Demande : « Quand je veux rendre les points coïncidents, c'est la ligne de projection qui bouge ! »
+- **Cause** : l'outil Coïncident ⌖ et F1 fusionnent les deux points (`mergePoints`) en gardant toujours le **premier cliqué**. Coin du rectangle cliqué en premier → le bout de la projetée était supprimé et la projetée se raccrochait au coin du rectangle (elle partait en biais).
+- **Correctif** (`mergePoints`) : si un seul des deux points est fixe (bout de projection, contrainte « Fixe », cf. `skFixed`), c'est lui qui est gardé, dans n'importe quel ordre de clic — le rectangle rejoint la projetée.
+- **Vérifié** dans l'application (fusion dans les deux ordres : la projetée reste en place).
+- **Tests** : `test_coincident_projetee` (échoue en V0.36.2) ; `test_coincident_contrainte`, `test_proj_fix_perdus`, `test_esquisse_projection` inchangés ; `npm run ci`.

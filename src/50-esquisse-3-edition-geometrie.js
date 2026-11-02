@@ -148,6 +148,10 @@ function splitLineAt(sk,lineId,pid){
 function mergePoints(sk,fromPid,toPid){
   if(!fromPid||!toPid||fromPid===toPid)return false;
   if(fromPid===SK_ORIGIN){const t=fromPid;fromPid=toPid;toPid=t;} // ne jamais supprimer l'origine
+  else if(toPid!==SK_ORIGIN){ // point fixe (projection, « fix ») conservé : c'est l'autre qui le rejoint,
+    const F=skFixed(sk);      // quel que soit l'ordre des clics — sinon la projetée suivait le point libre
+    if(F.has(fromPid)&&!F.has(toPid)){const t=fromPid;fromPid=toPid;toPid=t;}
+  }
   if(toPid===SK_ORIGIN){ // fusion vers (0,0) : translation rigide du reste du dessin — tangences/∥/＝ inchangées
     const P=sk.points[fromPid],O=sk.points[SK_ORIGIN];
     if(P&&O&&(P.x!==O.x||P.y!==O.y)){const dx=O.x-P.x,dy=O.y-P.y;
