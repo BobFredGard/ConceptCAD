@@ -376,7 +376,7 @@ input[type=range]{accent-color:var(--primary);width:100%}
  * peut changer sans rien casser. CACHE_VER (parcours FAO) reste indépendant.
  */
 
-const APP_VER='V0.35.3';
+const APP_VER='V0.35.4';
 try{console.log('[ConceptCAD] version '+APP_VER);}catch(e){}
 try{var mfSv=document.getElementById('mfSplashVer');if(mfSv)mfSv.textContent=APP_VER;}catch(e){} // écran de démarrage
 
@@ -22796,9 +22796,16 @@ function skPlDrawHover(sk){
    Unités : celles AFFICHÉES par la cote (mm, Ø pour une cote de diamètre ou depuis un
    axe, degrés pour un angle). sin/cos/tan en degrés. Décimale « 12,5 » acceptée ;
    arguments séparés par « ; » (ou « , » suivi d'un espace).
+   V0.35.4 : condition if(test ; alors ; sinon) — test avec < > <= >= == != (ou <>), and( ) / or( ) / not( ),
+   seule la branche retenue est évaluée ; roundmoins / roundplus (x ; pas) : arrondi inférieur /
+   supérieur au multiple du pas (1 par défaut) ; round(x ; pas) au plus proche. Noms de fonctions
+   sans casse (« RoundPlus », « IF », « Si »).
    Une cote nommée sert de paramètre partout (toutes esquisses) ; modifier sa valeur
    met à jour les cotes qui en dépendent, dans toutes les esquisses, puis le modèle. */
-const PAR_FN={sqrt:Math.sqrt,abs:Math.abs,min:Math.min,max:Math.max,round:Math.round,floor:Math.floor,ceil:Math.ceil,
+const parStep=(f,x,p)=>{p=Math.abs(p==null?1:p);if(!(p>0))throw new Error('pas d’arrondi nul');const q=x/p,r=Math.round(q);return(Math.abs(q-r)<1e-9?r:f(q))*p;};
+const PAR_FN={sqrt:Math.sqrt,abs:Math.abs,min:Math.min,max:Math.max,floor:Math.floor,ceil:Math.ceil,
+  round:(x,p)=>parStep(Math.round,x,p),roundmoins:(x,p)=>parStep(Math.floor,x,p),roundplus:(x,p)=>parStep(Math.ceil,x,p),
+  and:(...a)=>a.every(Boolean)?1:0,or:(...a)=>a.some(Boolean)?1:0,not:x=>x?0:1,
   sin:x=>Math.sin(x*Math.PI/180),cos:x=>Math.cos(x*Math.PI/180),tan:x=>Math.tan(x*Math.PI/180),
   asin:x=>Math.asin(x)*180/Math.PI,acos:x=>Math.acos(x)*180/Math.PI,atan:x=>Math.atan(x)*180/Math.PI};
 const PAR_CONST={pi:Math.PI,PI:Math.PI};
@@ -22806,16 +22813,18 @@ const PAR_ID=/^[A-Za-z_][A-Za-z0-9_]*$/;
 function parEval(src,lookup){
   // descente récursive : + - * / ^ ( ) fonctions, noms → lookup(nom)
   let s=String(src==null?'':src).trim().replace(/(\d),(\d)/g,'$1.$2').replace(/\s*(mm|°|deg)\s*$/i,'');
-  let i=0;
+  let i=0,dry=0; // dry > 0 : branche non retenue d'un if — lue (syntaxe) mais sans erreur de calcul
   const sp=()=>{while(i<s.length&&/\s/.test(s[i]))i++;};
   const err=m=>{throw new Error(m);};
+  const cmp=()=>{let v=expr();for(;;){sp();const m=/^(<=|>=|==|!=|<>|<|>|=(?!=))/.exec(s.slice(i));if(!m)return v;i+=m[0].length;const w=expr(),o=m[0];
+    v=(o==='<'?v<w:o==='>'?v>w:o==='<='?v<=w+1e-9:o==='>='?v>=w-1e-9:(o==='=='||o==='=')?Math.abs(v-w)<1e-9:Math.abs(v-w)>=1e-9)?1:0;}};
   const expr=()=>{let v=term();for(;;){sp();const c=s[i];if(c==='+'){i++;v+=term();}else if(c==='-'){i++;v-=term();}else return v;}};
-  const term=()=>{let v=unary();for(;;){sp();const c=s[i];if(c==='*'){i++;v*=unary();}else if(c==='/'){i++;const d=unary();if(d===0)err('division par zéro');v/=d;}else return v;}};
+  const term=()=>{let v=unary();for(;;){sp();const c=s[i];if(c==='*'){i++;v*=unary();}else if(c==='/'){i++;const d=unary();if(d===0){if(dry){v=0;continue;}err('division par zéro');}v/=d;}else return v;}};
   const unary=()=>{sp();if(s[i]==='-'){i++;return -unary();}if(s[i]==='+'){i++;return unary();}return pow();};
   const pow=()=>{const b=atom();sp();if(s[i]==='^'){i++;return Math.pow(b,unary());}return b;};
   const atom=()=>{
     sp();const c=s[i];
-    if(c==='('){i++;const v=expr();sp();if(s[i]!==')')err('« ) » manquante');i++;return v;}
+    if(c==='('){i++;const v=cmp();sp();if(s[i]!==')')err('« ) » manquante');i++;return v;}
     const mN=/^(\d+\.?\d*|\.\d+)([eE][+-]?\d+)?/.exec(s.slice(i));
     if(mN){i+=mN[0].length;let v=parseFloat(mN[0]);
       // V0.11.23 : unité collée au nombre (« 2 cm + 3 », « 1 in », « 1.5 rad ») — mm, cm, m, in / ", ° / deg, rad.
@@ -22827,18 +22836,29 @@ function parEval(src,lookup){
     if(mI){
       const nm=mI[0];i+=nm.length;sp();
       if(s[i]==='('){
-        const f=PAR_FN[nm];if(!f)err('fonction inconnue « '+nm+' »');
+        const ln=nm.toLowerCase();
+        if(ln==='if'||ln==='si'){ // if(test ; alors ; sinon) : la branche écartée est lue sans être calculée
+          i++;const t=cmp();sp();if(s[i]!==';'&&s[i]!==',')err('if(test ; alors ; sinon) : « ; » manquant');i++;
+          if(!t)dry++;const a=cmp();if(!t)dry--;sp();
+          if(s[i]!==';'&&s[i]!==',')err('if(test ; alors ; sinon) : « sinon » manquant');i++;
+          if(t)dry++;const b=cmp();if(t)dry--;sp();
+          if(s[i]!==')')err('« ) » manquante');i++;return t?a:b;
+        }
+        const f=Object.prototype.hasOwnProperty.call(PAR_FN,ln)?PAR_FN[ln]:null;if(!f)err('fonction inconnue « '+nm+' »');
         i++;const args=[];sp();
-        if(s[i]!==')'){for(;;){args.push(expr());sp();if(s[i]===';'||s[i]===','){i++;continue;}break;}}
-        sp();if(s[i]!==')')err('« ) » manquante');i++;return f.apply(null,args);
+        if(s[i]!==')'){for(;;){args.push(cmp());sp();if(s[i]===';'||s[i]===','){i++;continue;}break;}}
+        sp();if(s[i]!==')')err('« ) » manquante');i++;
+        if(dry){try{return f.apply(null,args);}catch(e){return 0;}}
+        return f.apply(null,args);
       }
       if(Object.prototype.hasOwnProperty.call(PAR_CONST,nm))return PAR_CONST[nm];
+      if(dry){try{return lookup(nm);}catch(e){return 0;}}
       return lookup(nm);
     }
     err(i>=s.length?'expression incomplète':'caractère inattendu « '+c+' »');
   };
   if(!s)err('expression vide');
-  const v=expr();sp();
+  const v=cmp();sp();
   if(i<s.length)err('caractère inattendu « '+s[i]+' »');
   if(!isFinite(v))err('résultat non fini');
   return v;
@@ -22961,7 +22981,7 @@ function parFxSet(h,k,txt){
   // Saisie « [nom =] valeur|expression » sur une valeur de fonction 3D. Retour {ok,v}|{ok:false,msg}.
   // ok + v : la valeur numérique à appliquer (le code de la fonction l'applique lui-même).
   const s=String(txt==null?'':txt).trim();
-  const mm=/^([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.*)$/.exec(s);
+  const mm=/^([A-Za-z_][A-Za-z0-9_]*)\s*=(?!=)\s*(.*)$/.exec(s);
   const name=mm?mm[1]:null,expr=(mm?mm[2]:s).trim();
   if(!expr)return{ok:false,msg:'Valeur vide.'};
   if(name){const ok=parNameCheck(name,null,null,h,k);if(ok!==true)return{ok:false,msg:ok};}
@@ -23021,7 +23041,7 @@ function parFxNum(txt,h,k){
   const s=String(txt==null?'':txt).trim().replace(/\s*(mm|°|deg)\s*$/i,'');
   if(parIsNumber(s)){if(h&&h.expr&&h.expr[k])delete h.expr[k];return{ok:true,v:parseFloat(s.replace(',','.'))};}
   if(h)return parFxSet(h,k,s);
-  if(/=/.test(s))return{ok:false,msg:'« nom = valeur » : nommer n’est possible que sur une valeur de fonction.'};
+  if(/^\s*[A-Za-z_][A-Za-z0-9_]*\s*=(?!=)/.test(s))return{ok:false,msg:'« nom = valeur » : nommer n’est possible que sur une valeur de fonction.'};
   try{return{ok:true,v:parEval(s,parValueNow)};}catch(e){return{ok:false,msg:e.message};}
 }
 function parFx(inp,h,k){
@@ -23057,7 +23077,7 @@ function parDimInputText(d){
 function parDimCommit(sk,d,txt){
   // Applique une saisie « [nom =] valeur|expression » à la cote d. Retour {ok,nv}|{ok:false,msg}.
   const s=String(txt==null?'':txt).trim();
-  const mm=/^([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.*)$/.exec(s);
+  const mm=/^([A-Za-z_][A-Za-z0-9_]*)\s*=(?!=)\s*(.*)$/.exec(s);
   const name=mm?mm[1]:null,expr=(mm?mm[2]:s).trim().replace(/^[ØøR∠]\s*(?=[\d.,(-])/,''); // V0.11.23 : « Ø20 », « R5 », « ∠45 » acceptés tels qu'affichés
   if(!expr)return{ok:false,msg:'Valeur vide.'};
   if(name){const ok=parNameCheck(name,d,null);if(ok!==true)return{ok:false,msg:ok};}
@@ -23112,7 +23132,7 @@ function openParamsDlg(){
       const tr=document.createElement('tr');
       const td=()=>{const t=document.createElement('td');t.style.padding='3px 6px';tr.appendChild(t);return t;};
       const n=document.createElement('input');n.value=o.name||'';n.style.cssText=inpCss;n.placeholder='nom';td().appendChild(n);
-      const x=document.createElement('input');x.value=o.expr;x.style.cssText=inpCss;td().appendChild(x);
+      const x=document.createElement('input');x.value=o.expr;x.style.cssText=inpCss;x.dataset.fxac='';td().appendChild(x);
       const v=td();v.textContent=o.err?('⚠ '+o.err):(isFinite(o.val)?String(+o.val.toFixed(12)).replace('.',',')+(o.unit||''):'');if(o.err)v.style.color='#ff9f0a';
       td().textContent=o.origin;
       const del=td();
@@ -23146,7 +23166,7 @@ function openParamsDlg(){
     box.appendChild(tbl);
     // constantes toujours disponibles (lecture seule) : pi à 12 décimales
     const cst=document.createElement('div');cst.className='parConst';cst.style.cssText='margin-top:8px;opacity:.85';
-    cst.innerHTML='<b>Constantes</b> (toujours disponibles) : <code>pi</code> = '+PAR_CONST.pi.toFixed(12).replace('.',',')+' — ex. « pi*D », « 2*pi*R », « D*pi/4 ».';
+    cst.innerHTML='<b>Constantes</b> (toujours disponibles) : <code>pi</code> = '+PAR_CONST.pi.toFixed(12).replace('.',',')+' — ex. « pi*D », « 2*pi*R », « D*pi/4 ».<br><b>Conditions</b> : <code>if(L &gt; 100 ; 5 ; 3)</code> — comparaisons &lt; &gt; &lt;= &gt;= == != , <code>and( ; )</code> <code>or( ; )</code> <code>not( )</code>. <b>Arrondis</b> au pas : <code>roundmoins(x ; 0,5)</code> <code>roundplus(x ; 5)</code> <code>round(x ; 0,1)</code>.';
     box.appendChild(cst);
     try{cfgSection(box,render);}catch(e){} // V0.8.4 : configurations (52-configurations)
     const bar=document.createElement('div');bar.style.cssText='display:flex;gap:8px;justify-content:flex-end;margin-top:12px';
@@ -23194,8 +23214,8 @@ function parFxGlobal(e){
   if(e.type==='keydown'&&e.key!=='Enter')return;
   if(!parFxEligible(t)||!parFxNumeric(t))return;
   const s=String(t.value).trim();
-  if(!s||parIsNumber(s)||s===t._fxLast||/=/.test(s))return; // « nom = … » : réservé aux champs parFx / cotes
-  if(!/[A-Za-z_(+*\/^-]/.test(s.replace(/^\s*-/,'')))return;
+  if(!s||parIsNumber(s)||s===t._fxLast||/^\s*[A-Za-z_][A-Za-z0-9_]*\s*=(?!=)/.test(s))return; // « nom = … » : réservé aux champs parFx / cotes
+  if(!/[A-Za-z_(+*\/^<>=!-]/.test(s.replace(/^\s*-/,'')))return;
   let v;
   try{v=parEval(s,parValueNow);}
   catch(err){
@@ -23238,6 +23258,90 @@ try{
   document.addEventListener('focusin',e=>{const t=e.target;if(t&&t.type==='number')parFxNumField(t);if(parFxEligible(t)){t._fxPrev=t.value;t._fxLast=null;}},true);
   document.addEventListener('keydown',parFxGlobal,true);
   document.addEventListener('change',parFxGlobal,true);
+}catch(e){}
+/* ---------- ƒx : liste des paramètres pendant la frappe (V0.35.4) ----------
+   Dans tout champ ƒx (cote d'esquisse, valeur de fonction 3D, champ numérique, expression de la
+   fenêtre Paramètres), dès la 1re lettre d'un nom, une liste propose les paramètres, cotes
+   nommées, constantes et fonctions qui commencent (puis contiennent) ce qui est tapé.
+   ↑ / ↓ choisissent, Entrée ou Tab insère le nom SANS valider le champ, Échap ferme la liste.
+   On continue l'expression (« L + », nouveau nom, Entrée pour l'insérer) puis Entrée valide.
+   Écoute sur window en capture : passe avant le filet global ƒx et les gestionnaires du champ. */
+let parAcBox=null,parAcInp=null,parAcItems=[],parAcSel=0,parAcTok=null;
+function parAcField(t){
+  if(!t||t.tagName!=='INPUT'||t.readOnly||t.disabled)return false;
+  if(t.type!=='text'&&t.type!=='')return false;
+  if(t.dataset&&t.dataset.nofx!=null)return false;
+  if(t.dataset&&t.dataset.fxac!=null)return true;
+  try{if(t.closest&&t.closest('#parDlg'))return false;}catch(e){} // colonne « Nom » : pas de liste
+  return !!t._parFx||parFxNumeric(t);
+}
+function parAcToken(t){
+  // nom en cours de frappe juste avant le curseur ; ignoré après un chiffre (unité « 5mm »)
+  const c=t.selectionStart,s=String(t.value);if(c==null||c!==t.selectionEnd)return null;
+  const m=/[A-Za-z_][A-Za-z0-9_]*$/.exec(s.slice(0,c));if(!m)return null;
+  const a=c-m[0].length;if(a>0&&/[0-9.,]/.test(s[a-1]))return null;
+  const e=/^[A-Za-z0-9_]*/.exec(s.slice(c))[0].length;
+  return{a,b:c+e,w:m[0]};
+}
+function parAcList(w){
+  const lw=w.toLowerCase(),out=[];
+  const fmt=v=>isFinite(v)?String(+(+v).toFixed(4)).replace('.',','):'';
+  parAll().forEach((e,nm)=>{let v=NaN;try{v=parValueNow(nm);}catch(x){}
+    out.push({nm,ins:nm,info:fmt(v),kind:e.kind==='param'?'paramètre':e.kind==='dim'?'cote':'fonction 3D'});});
+  out.push({nm:'pi',ins:'pi',info:fmt(Math.PI),kind:'constante'});
+  out.push({nm:'if( ; ; )',ins:'if(',info:'test ; alors ; sinon',kind:'condition',fn:'if'});
+  Object.keys(PAR_FN).forEach(f=>out.push({nm:f+'( )',ins:f+'(',info:/^round/.test(f)?'x ; pas':'',kind:'fonction',fn:f}));
+  const key=o=>(o.fn||o.nm).toLowerCase();
+  const rk=o=>key(o)===lw?0:key(o).startsWith(lw)?1:2; // exact, puis commence par, puis contient
+  const r=out.filter(o=>key(o).includes(lw));
+  r.sort((p,q)=>rk(p)-rk(q)||(p.fn?1:0)-(q.fn?1:0)||key(p).localeCompare(key(q)));
+  if(r.length===1&&r[0].ins===w)return[]; // nom déjà complet, seul candidat : Entrée valide le champ
+  return r.slice(0,12);
+}
+function parAcClose(){if(parAcBox){parAcBox.remove();parAcBox=null;}parAcInp=null;parAcItems=[];parAcTok=null;}
+function parAcDraw(){
+  const t=parAcInp;if(!t)return;
+  if(!parAcBox){parAcBox=document.createElement('div');parAcBox.id='parAc';
+    parAcBox.style.cssText='position:fixed;z-index:9500;background:#1c1c20;color:#e8e8ea;border:1px solid #0a84ff;border-radius:6px;padding:3px 0;font-size:12px;min-width:170px;max-height:260px;overflow:auto;box-shadow:0 8px 24px rgba(0,0,0,.55)';
+    parAcBox.addEventListener('mousedown',e=>{e.preventDefault();e.stopPropagation();const r=e.target.closest('[data-i]');if(r)parAcPick(+r.dataset.i);}); // le champ garde le focus
+    document.body.appendChild(parAcBox);}
+  parAcBox.innerHTML='';
+  parAcItems.forEach((o,i)=>{const r=document.createElement('div');r.dataset.i=i;
+    r.style.cssText='display:flex;gap:10px;justify-content:space-between;padding:2px 8px;cursor:pointer;white-space:nowrap'+(i===parAcSel?';background:#0a84ff;color:#fff':'');
+    const a=document.createElement('span');a.textContent=o.nm;a.style.fontFamily='monospace';
+    const b=document.createElement('span');b.textContent=(o.info?o.info+' · ':'')+o.kind;b.style.opacity='.7';
+    r.appendChild(a);r.appendChild(b);parAcBox.appendChild(r);
+    if(i===parAcSel)setTimeout(()=>{try{r.scrollIntoView({block:'nearest'});}catch(e){}},0);});
+  const q=t.getBoundingClientRect(),h=Math.min(260,parAcItems.length*19+8);
+  parAcBox.style.left=Math.max(4,Math.min(q.left,innerWidth-200))+'px';
+  parAcBox.style.top=(q.bottom+2+h>innerHeight?Math.max(4,q.top-2-h):q.bottom+2)+'px';
+}
+function parAcUpdate(t){
+  const k=parAcField(t)?parAcToken(t):null;
+  const L=k?parAcList(k.w):[];
+  if(!L.length){parAcClose();return;}
+  parAcInp=t;parAcTok=k;parAcItems=L;parAcSel=0;parAcDraw();
+}
+function parAcPick(i){
+  const t=parAcInp,k=parAcTok,o=parAcItems[i];if(!t||!k||!o)return;
+  const s=String(t.value);t.value=s.slice(0,k.a)+o.ins+s.slice(k.b);
+  const c=k.a+o.ins.length;try{t.setSelectionRange(c,c);}catch(e){}
+  const w=parseInt(t.style.width);if(w&&t.style.position==='absolute')t.style.width=Math.max(w,Math.min(320,8*t.value.length+24))+'px'; // saisie de cote
+  parAcClose();try{t.focus();}catch(e){}
+}
+try{
+  document.addEventListener('input',e=>parAcUpdate(e.target),true);
+  window.addEventListener('keydown',e=>{
+    if(!parAcBox||e.target!==parAcInp)return;
+    const n=parAcItems.length,stop=()=>{e.preventDefault();e.stopImmediatePropagation();};
+    if(e.key==='ArrowDown'){stop();parAcSel=(parAcSel+1)%n;parAcDraw();}
+    else if(e.key==='ArrowUp'){stop();parAcSel=(parAcSel-1+n)%n;parAcDraw();}
+    else if(e.key==='Enter'||e.key==='Tab'){stop();parAcPick(parAcSel);}
+    else if(e.key==='Escape'){stop();parAcClose();}
+    else if(e.key==='ArrowLeft'||e.key==='ArrowRight'||e.key==='Home'||e.key==='End')parAcClose();
+  },true);
+  document.addEventListener('focusout',e=>{if(e.target===parAcInp)parAcClose();},true);
+  window.addEventListener('scroll',()=>{if(parAcBox)parAcClose();},true);
 }catch(e){}
 // boutons ƒx : bandeau principal (après Perçage / Extrusion) et barre d'esquisse (avant ↩)
 (function(){

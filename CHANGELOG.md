@@ -8,7 +8,7 @@ sont sorties le 2026-09-30j.
 Code dans `src/` · livrable `fusion_mvp.html` (généré par `build.js`) · architecture et
 garde-fous en tête de `src/00-entete-et-outils.js`.
 
-**523 versions**, de `2026-09-28b` à `V0.35.3` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
+**524 versions**, de `2026-09-28b` à `V0.35.4` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
 comme dans le fichier d'origine.
 
 ---
@@ -6251,3 +6251,12 @@ Retour : « je ne veux récupérer qu'un seul corps et pas tout le Corps 1, soit
 - **Vue 3D** : clic droit sur une pièce d'un STEP multi-corps → « ⬇ Exporter la pièce « nom » en STEP » dans le menu, juste avant l'export du corps ; la pièce est retrouvée par le triangle cliqué (`importPieceAt` : occGroups → faceOcc → feuille de l'arborescence).
 - **Export** (`importPieceExport`) : occurrences retenues du solide exact (`importOccShape`, même parcours qu'`importStepOcc`), placement d'assemblage gardé, fichier au nom de la pièce sans « :n ». Écriture et téléchargement mis en commun avec l'export du corps (`stepSaveShapes`).
 - **Tests** : `test_export_step_import` (+ pièce désignée en 3D → 1 solide et nom de l'arborescence, bouton du menu 3D visible / masqué, sous-ensemble → ses 14 pièces) ; `test_ctx_menu_viewport` : la dernière entrée du menu 3D est un export STEP (corps ou pièce) ; vérifié dans l'app sur MERLIN-37-000.step (pièce, sous-ensemble, coque libre) ; `npm run ci:full`.
+
+## V0.35.4 - ƒx : liste des paramètres pendant la frappe, conditions if, arrondis au pas
+Demande : « propose-moi une liste de paramètres quand je rentre dans un champ à partir de la 1re lettre, même pour une opération entre 2 paramètres : je valide le 1er sans valider le champ, je continue (addition), je valide le 2e puis je revalide par Entrée ma somme » ; puis « des conditions IF THEN ELSE, et RoundMoins / RoundPlus ».
+- **Liste de suggestions** (`parAcUpdate`) dans tout champ ƒx — cote d'esquisse, valeur de fonction 3D, champ numérique, colonne Expression de la fenêtre ƒx Paramètres : dès la 1re lettre d'un nom, paramètres, cotes nommées, valeurs de fonctions 3D (avec leur valeur), `pi`, `if(` et fonctions ; d'abord ce qui commence par les lettres tapées, puis ce qui les contient. ↑ / ↓ choisissent, **Entrée** ou Tab insère le nom **sans valider le champ**, Échap ferme ; Entrée suivante (liste fermée) valide l'expression. Écoute sur `window` en capture : passe avant le filet global ƒx et les gestionnaires des champs. Pas de liste après un chiffre (unités « 5mm ») ni quand le nom tapé est déjà complet et seul candidat.
+- **Conditions** : `if(test ; alors ; sinon)` (aussi `IF`, `Si`), comparaisons `< > <= >= == !=` (ou `<>`), `and( ; )`, `or( ; )`, `not( )` ; seule la branche retenue est calculée (`if(W>0 ; L/W ; 0)` sans erreur pour W = 0). Noms de fonctions sans casse.
+- **Arrondis au pas** : `roundmoins(x ; pas)`, `roundplus(x ; pas)` (inférieur / supérieur au multiple du pas, 1 par défaut), `round(x ; pas)` au plus proche. Aide ajoutée dans la fenêtre ƒx.
+- « nom = expression » : le `=` d'un nom n'est plus confondu avec `==` (saisie de cote, fonctions 3D, filet global).
+- **Vérifié** dans l'application : `Lo` + Entrée → `Longueur`, ` + La` + Entrée → `Longueur + Larg`, Entrée → 60 ; idem dans une saisie de cote et dans la fenêtre ƒx (`L2 = Larg/4`) ; paramètres `if(Longueur>100;5;3)` = 5 et `RoundPlus(Longueur/3;5)` = 50.
+- **Tests** : `test_parametres` (1c–1f : if, comparaisons, branche écartée, and / or / not, roundmoins / roundplus / round, if incomplet ; 12c–12d : nom en cours de frappe, suggestions) ; `npm run ci:full`.
