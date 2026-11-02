@@ -8,7 +8,7 @@ sont sorties le 2026-09-30j.
 Code dans `src/` · livrable `fusion_mvp.html` (généré par `build.js`) · architecture et
 garde-fous en tête de `src/00-entete-et-outils.js`.
 
-**524 versions**, de `2026-09-28b` à `V0.35.4` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
+**525 versions**, de `2026-09-28b` à `V0.36.0` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
 comme dans le fichier d'origine.
 
 ---
@@ -6260,3 +6260,13 @@ Demande : « propose-moi une liste de paramètres quand je rentre dans un champ 
 - « nom = expression » : le `=` d'un nom n'est plus confondu avec `==` (saisie de cote, fonctions 3D, filet global).
 - **Vérifié** dans l'application : `Lo` + Entrée → `Longueur`, ` + La` + Entrée → `Longueur + Larg`, Entrée → 60 ; idem dans une saisie de cote et dans la fenêtre ƒx (`L2 = Larg/4`) ; paramètres `if(Longueur>100;5;3)` = 5 et `RoundPlus(Longueur/3;5)` = 50.
 - **Tests** : `test_parametres` (1c–1f : if, comparaisons, branche écartée, and / or / not, roundmoins / roundplus / round, if incomplet ; 12c–12d : nom en cours de frappe, suggestions) ; `npm run ci:full`.
+
+## V0.36.0 - Échelle / homothétie d'un corps, centre au choix, corps modifié ou nouveau corps
+Demande : « fonction Échelle ou Homothétie / à un point donné, centre repère ou point » ; puis « la fonction Échelle modifie le corps ou crée un nouveau corps ».
+- **Nouvelle fonction de la timeline** `bscale` (`src/85-echelle-corps.js`) : bouton **⤡ Échelle** (groupe Ensembles, ruban moderne), clic droit sur un corps dans l'arbre ou la vue (« ⤡ Échelle… »).
+- **Facteur uniforme** (homothétie) avec raccourcis × 2, × ½, pouce → mm (× 25,4), mm → pouce ; ou **non uniforme** X, Y, Z (repère de la pièce). Facteur nul ou négatif refusé (avertissement, corps inchangé).
+- **Centre** : origine (défaut), centre de gravité du corps, point ou repère de construction, point d'accroche cliqué sur une face (coins, milieux, centres de cercles — même saisie que Déplacer), ou coordonnées X, Y, Z saisies. Point figé en coordonnées ; pastille orange dans la vue tant que la fonction est sélectionnée. Pendant le choix du centre, la pièce est rejouée **sans** l'échelle : le centre du corps et les points cliqués sont ceux du corps d'origine.
+- **Résultat** : « Modifier le corps » (défaut) ou « **Nouveau corps (copie)** » : la copie mise à l'échelle naît dans un corps neuf, le corps source reste intact (même mécanique que la scission de corps, `occSplitNewBody`) ; revenir à « Modifier » retire le corps neuf s'il ne porte rien d'autre, comme la suppression de la fonction.
+- **Géométrie exacte** : uniforme → `BRepBuilderAPI_Transform` (`gp_Trsf.SetScale`, cylindres et cercles restent exacts) ; non uniforme → `BRepBuilderAPI_GTransform` (surfaces B-spline : un trou rond devient elliptique). Signature de cache : centre, facteurs, mode, et historique du source en copie.
+- **Vérifié** dans l'application : bouton du ruban → panneau, « Centre du corps » = (20 ; 10 ; 5) sur un bloc 40 × 20 × 10, nouveau corps créé une seule fois, choix d'un point puis retour du rejeu normal, console sans erreur.
+- **Tests** : `test_echelle_corps` (17 contrôles, noyau réel : ×2 origine / centre, ×½, × 25,4, non uniforme, cylindre exact, copie + source intact, fonction ajoutée ensuite au source, enregistrement, cache, facteur nul) ; `test_deplacer_corps` inchangé ; `npm run ci` 86/86.

@@ -8,7 +8,7 @@
 
 ![Support de pédale déportée R1200RT en alu anodisé rouge sur béton, lancer de rayons de l'atelier RENDU (2048 échantillons)](docs/captures/rendu-pedale.jpg)
 
-Le noyau géométrique exact est **OpenCascade compilé en WebAssembly**. S'il n'est pas disponible, l'application bascule seule sur un moteur maillage (CSG). Version actuelle : **V0.35.4** (voir le [journal des modifications](CHANGELOG.md)).
+Le noyau géométrique exact est **OpenCascade compilé en WebAssembly**. S'il n'est pas disponible, l'application bascule seule sur un moteur maillage (CSG). Version actuelle : **V0.36.0** (voir le [journal des modifications](CHANGELOG.md)).
 
 | | |
 |---|---|
@@ -58,7 +58,7 @@ Sur un appareil tactile à petit écran, ConceptCAD passe tout seul en **interfa
   - trois hauteurs (poignée à glisser ou à toucher) ; en paysage, il occupe le côté droit ;
   - l'**œil**, maintenu appuyé, montre la pièce à travers le panneau ;
   - après chaque valeur modifiée, le panneau s'efface un instant pour montrer le résultat.
-- **Créer** : grille des commandes CAO (Esquisse, Extrusion, Révolution, Balayage, Perçage, Plan, Axe, Point, Repère, Congé, Chanfrein, Face, Dépouille, Coque, Scinder, Répétition, Combiner, Déplacer, Paramètres). La fiche s'ouvre dans le panneau, **réduit** quand la commande attend des taps dans la vue (arêtes d'un congé, faces…), à moitié sinon. Les arêtes se touchent avec une tolérance élargie.
+- **Créer** : grille des commandes CAO (Esquisse, Extrusion, Révolution, Balayage, Perçage, Plan, Axe, Point, Repère, Congé, Chanfrein, Face, Dépouille, Coque, Scinder, Répétition, Combiner, Déplacer, Échelle, Paramètres). La fiche s'ouvre dans le panneau, **réduit** quand la commande attend des taps dans la vue (arêtes d'un congé, faces…), à moitié sinon. Les arêtes se touchent avec une tolérance élargie.
 - **Esquisse** : bandeau d'outils défilant à la place de la barre d'outils, **Abandonner** et **✔ Terminer** en haut, onglet « Esquisse » du panneau pour la santé, les contraintes et les cotes. Un outil de tracé **vise en glissant** (aperçu et accrochages suivent le doigt) et pose le point **au lever** ; un tap pose sur place.
 - **Activation** : automatique. `?mobile=1` force l'interface téléphone, `?mobile=0` l'interface bureau, `?mobile=auto` revient à la détection ; le choix est mémorisé. Sur un téléphone en interface bureau, un bouton « Interface téléphone » permet d'y revenir.
 - Le premier lancement télécharge le noyau OCCT (≈ 65 Mo, puis en cache) : à faire de préférence en Wi-Fi.
@@ -96,7 +96,7 @@ Historique rejouable, timeline à icônes (vert = ajout, rouge = enlèvement), m
   - Le filet ISO ou UN est **réellement creusé dans le corps**, après l'avant-trou, en tâche de fond ; le gaz reste en filet cosmétique.
 - **Congés et chanfreins exacts** sur la chaîne tangente ou l'arête seule (un clic ajoute ou retire une arête), avec reprise NURBS quand le noyau refuse la chaîne. Chanfrein à **distance égale, deux distances ou distance + angle**, première face inversable.
 - **Répétition** linéaire, en grille, circulaire, symétrie, avec aperçu rouge des copies ; les copies **s'unissent** à leur corps ou deviennent chacune un **nouveau corps**. Une répétition se répète.
-- **Modifier** : déplacer une face, **supprimer des faces** (plusieurs à la fois, calcul en tâche de fond), **dépouille** (angle signé, sens inversable), coque, **scinder** par un plan, **déplacer un corps** (translation, rotation, point à point), **combiner** (union, soustraction, intersection). Ces outils marchent aussi sur un **STEP importé** seul.
+- **Modifier** : déplacer une face, **supprimer des faces** (plusieurs à la fois, calcul en tâche de fond), **dépouille** (angle signé, sens inversable), coque, **scinder** par un plan, **déplacer un corps** (translation, rotation, point à point), **échelle / homothétie** d’un corps (facteur uniforme ou X, Y, Z ; centre = origine, point, centre du corps ; corps modifié ou nouveau corps), **combiner** (union, soustraction, intersection). Ces outils marchent aussi sur un **STEP importé** seul.
 
 ### Corps, mesures, fichiers
 

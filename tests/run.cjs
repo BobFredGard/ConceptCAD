@@ -34,6 +34,7 @@ const SUITES = [
   "test_xmove",
   "test_face_appuyer",
   "test_deplacer_corps",
+  "test_echelle_corps",
   "test_coque_sel",
   "test_suppression_face",
   "test_suppression_face_step",

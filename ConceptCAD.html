@@ -376,7 +376,7 @@ input[type=range]{accent-color:var(--primary);width:100%}
  * peut changer sans rien casser. CACHE_VER (parcours FAO) reste indépendant.
  */
 
-const APP_VER='V0.35.4';
+const APP_VER='V0.36.0';
 try{console.log('[ConceptCAD] version '+APP_VER);}catch(e){}
 try{var mfSv=document.getElementById('mfSplashVer');if(mfSv)mfSv.textContent=APP_VER;}catch(e){} // écran de démarrage
 
@@ -3293,7 +3293,9 @@ function bodyBirthFallback(bid,idx){
 function occSplitNewBody(f){
   // Corps NEUF né d'une scission de corps (xsplit mode 'body'), ou null : la fonction est
   // rejouée dans son corps (côté gardé) ET en tête du corps neuf (l'autre côté).
-  if(!f||f.type!=='xsplit'||f.mode!=='body'||!f.newBody)return null;
+  // Échelle « Nouveau corps » (bscale copy, 85-echelle-corps) : même mécanique, le corps
+  // source reste tel quel et la copie mise à l'échelle naît dans le corps neuf.
+  if(!f||!f.newBody||!((f.type==='xsplit'&&f.mode==='body')||(f.type==='bscale'&&f.copy)))return null;
   return (f.newBody!==occBodyOfFeat(f)&&doc.bodies.some(e=>e.id===f.newBody))?f.newBody:null;
 }
 function occCombinePrefix(f,tb){
@@ -6599,6 +6601,10 @@ function featSig(f){
   }else if(f.type==='bmove'){
     // Déplacer un corps : ses étapes (translations, rotations, point à point) font la géométrie
     s+='|'+JSON.stringify(f.steps||[]);
+  }else if(f.type==='bscale'){
+    // Échelle : centre, facteur(s) et, en copie, l'historique du corps source (comme xsplit)
+    s+='|'+JSON.stringify([f.o||[0,0,0],bsFactors(f),f.copy?1:0]);
+    if(occSplitNewBody(f))s+='|src:'+occCombinePrefix(f,occBodyOfFeat(f)).map(featSig).join(',');
   }else if(f.type==='xdelface'){
     s+='|'+((f.faces||[]).map(r=>JSON.stringify([r.pos,r.n||r.st,r.dim])).join(';'));
   }else if(f.type==='xsplit'){
@@ -6727,6 +6733,31 @@ function occReplayBodyIn(bid,list){
       if(r.pending){ckKey+=DEL_WK_MARK+f.id+';';return;}
       if(r.warnings.length)occCkWarn[ckKey]=r.warnings.slice();else delete occCkWarn[ckKey];
       occCkPut(ckKey,()=>occShapeCopy(result));
+      return;
+    }
+    if(f.type==='bscale'){
+      // Échelle (85-echelle-corps) : corps modifié sur place, ou — « Nouveau corps » — copie
+      // du corps source mise à l'échelle dans le corps neuf (le source n'est pas touché).
+      const nb=occSplitNewBody(f);
+      if(nb&&bid!==nb)return;
+      const neuf=nb===bid;
+      const ckS=occCkGet(ckKey);
+      const cpS=ckS?occShapeCopy(ckS):null;
+      if(cpS){
+        if(result)try{result.delete();}catch(e){}result=cpS;
+        const w=occCkWarn[ckKey];if(w&&w.length)msgs.push(...w.map(x=>f.name+' : '+x));
+        return;
+      }
+      let src=result;
+      if(neuf){
+        if(result){msgs.push(f.name+' : fonctions du corps neuf placées avant l’échelle — ignorées');try{result.delete();}catch(e){}result=null;}
+        try{src=occCombineTool(f,occBodyOfFeat(f),bin);}catch(err){src=null;msgs.push(f.name+' : corps source illisible ('+err.message+')');}
+      }
+      if(!src){msgs.push(f.name+' : aucun volume à mettre à l’échelle — ignoré');return;}
+      const r=occApplyBodyScale(src,f);
+      result=r.shape;msgs.push(...r.warnings.map(w=>f.name+' : '+w));
+      if(r.warnings.length)occCkWarn[ckKey]=r.warnings.slice();else delete occCkWarn[ckKey];
+      if(result)occCkPut(ckKey,()=>occShapeCopy(result));
       return;
     }
     if(f.type==='xsplit'){
@@ -8485,6 +8516,7 @@ function featIconOf(f){
   if(f.type==='xthread')return f._err?'⚠':'🔩'; // filetage d'un axe (76-filetage)
   if(f.type==='xmove')return '📐';
   if(f.type==='bmove')return '✥';
+  if(f.type==='bscale')return f._err?'⚠':'⤡';
   if(f.type==='xdelface')return f._calc?'⏳':((f._m&&f._m.m<f._m.t)||f._err)?'⚠':'⌫'; // ⏳ : calcul au worker (21)
   if(f.type==='xdraft')return ((f._m&&f._m.m<f._m.t)||f._err||f._thin)?'⚠':'📐';
   if(f.type==='xshell')return ((f._m&&f._m.m<f._m.t)||f._err)?'⚠':'🥚';
@@ -8535,6 +8567,7 @@ function repCanFeatureHint(f){
   if(f.type==='xfillet')return xLabel(xKindOf(f))+' · '+(f.edges||[]).length+' arête(s)'+xChamLabel(f);
   if(f.type==='xmove')return 'Déplacement de face · '+(+f.dist||0)+' mm';
   if(f.type==='bmove')return 'Déplacer un corps · '+(f.steps||[]).length+' étape(s)';
+  if(f.type==='bscale')return bsName(f);
   if(f.type==='xdelface')return 'Suppression · '+(f.faces||[]).length+' face(s)';
   if(f.type==='xdraft')return 'Dépouillage · '+draftAngleEff(f).toFixed(1).replace('.',',').replace('-','−')+'° · '+(f.faces||[]).length+' face(s)';
   if(f.type==='xshell')return 'Coque · '+String(Math.round((+f.thick||0)*100)/100).replace('.',',')+' mm · '+(f.faces||[]).length+' face(s) retirée(s)';
@@ -9321,7 +9354,7 @@ function delFeature(f){
   doc.features=doc.features.filter(x=>x.id!==f.id);
   doc.features.forEach(rp=>{if(rp.type==='repeat')rp.base=rp.base.filter(id=>id!==f.id);});
   if(tlMark===f.id)tlMark=null;
-  if(f.type==='xsplit')splitOnDelete(f); // corps neuf vide d'une scission (85-scinder)
+  if(f.type==='xsplit'||f.type==='bscale')splitOnDelete(f); // corps neuf vide d'une scission (85-scinder) ou d'une échelle en copie
 }
 // Le bouton vit ici (sources, jamais la coque HTML — même règle que Révolution) :
 // après Révolution si présente, sinon après Extrusion. Le regroupement du bandeau
@@ -9984,6 +10017,7 @@ function renderProps(){
     if(typeof bmPick!=='undefined'&&bmPick&&bmPick.fid!==f.id)bmPickExit(true); // saisie d'un autre Déplacer (85)
     /* — déplacer un corps (85) — */
     if(f.type==='bmove'){bmoveProps(p,f);visDel(f);return;}
+    if(f.type==='bscale'){bscaleProps(p,f);visDel(f);return;} // échelle (85-echelle-corps)
     if(f.type==='xsplit'){splitProps(p,f);visDel(f);return;} // scinder (85-scinder)
     /* — déplacement de face — */
     if(f.type==='xmove'){
@@ -10570,6 +10604,7 @@ function tlbSvgKey(s){
     case 'xshell':return ['shell','cut'];
     case 'xsplit':return ['split','mod'];
     case 'bmove':return ['move','mod'];
+    case 'bscale':return ['scale','mod'];
     case 'import':return ['import','mod'];
   }
   return null;
@@ -31183,7 +31218,9 @@ function mvApply(){
    Un composant (occurrence) se déplace, lui, en mode Assembler — s'il n'est ni fixé ni lié. */
 let bmPick=null; // saisie en cours {fid, want:'from'|'to'|'axis'|'dir', from?, face?:{pts|axes}}
 const BM_AX={X:[1,0,0],Y:[0,1,0],Z:[0,0,1]};
-function bmFeat(id){return (doc.features||[]).find(f=>f&&f.id===id&&f.type==='bmove')||null;}
+// La saisie (bmPick) sert aussi au centre d'une Échelle (bscale, 85-echelle-corps)
+function bmFeat(id){return (doc.features||[]).find(f=>f&&f.id===id&&(f.type==='bmove'||f.type==='bscale'))||null;}
+function bmVerb(){const f=bmPick&&bmFeat(bmPick.fid);return f&&f.type==='bscale'?'Échelle':'Déplacer';}
 function bmBodyName(id){const e=(doc.bodies||[]).find(b=>b.id===id);return e?e.name:'corps';}
 function bmName(f){return 'Déplacer « '+bmBodyName(f.body)+' »';}
 function bmFmt(v,n){return String(+(+v||0).toFixed(n==null?3:n)).replace('.',',');}
@@ -31287,19 +31324,22 @@ function bmChange(f,label,fn){
 }
 function bmAddStep(f,s){bmChange(f,'étape de déplacement',()=>{f.steps=(f.steps||[]).concat([s]);});}
 /* ── saisie dans la vue ── */
-const BM_WANT={from:'le point de départ',to:'le point d’arrivée',axis:'l’axe de rotation',dir:'la direction'};
+const BM_WANT={from:'le point de départ',to:'le point d’arrivée',axis:'l’axe de rotation',dir:'la direction',center:'le centre de l’échelle'};
 function bmPickStart(f,want,from){
   bmPick={fid:f.id,want,from:from||null,face:null};
   bmMarks();renderProps();
-  try{faceEl.textContent='Déplacer : choisissez '+BM_WANT[want]+' — clic sur une face pour ses '+(want==='axis'||want==='dir'?'axes':'points')+', ou dans le panneau. Échap = annuler.';}catch(e){}
+  try{faceEl.textContent=bmVerb()+' : choisissez '+BM_WANT[want]+' — clic sur une face pour ses '+(want==='axis'||want==='dir'?'axes':'points')+', ou dans le panneau. Échap = annuler.';}catch(e){}
 }
 function bmPickExit(silent){
   if(!bmPick)return;
+  const v=bmVerb(),fid=bmPick.fid;
   bmPick=null;bmMarks();
-  if(!silent){try{renderProps();faceEl.textContent='Déplacer : saisie annulée.';}catch(e){}}
+  if(typeof occSkipFeat!=='undefined'&&occSkipFeat===fid){occSkipFeat=null;markDirty();rebuild();renderTree();} // centre d'une Échelle (85-echelle-corps)
+  if(!silent){try{renderProps();faceEl.textContent=v+' : saisie annulée.';}catch(e){}}
 }
 function bmChoosePt(it){
   const P=bmPick,f=P&&bmFeat(P.fid);if(!f)return bmPickExit(true);
+  if(P.want==='center'){bmPick=null;bmMarks();bsSetCentre(f,it);return;}
   if(P.want==='from'){bmPickStart(f,'to',it);return;}
   if(P.want!=='to')return;
   bmPick=null;bmMarks();
@@ -31344,7 +31384,7 @@ function bmHoverAt(e){
   const i=bmMarkAt(e);
   if(i!==P.hover){
     P.hover=i;bmMarks();
-    if(i!=null&&P.face){const it=(P.face.axes||P.face.pts)[i];try{faceEl.textContent='Déplacer : '+(it&&it.name||'')+' — clic = choisir.';}catch(err){}}
+    if(i!=null&&P.face){const it=(P.face.axes||P.face.pts)[i];try{faceEl.textContent=bmVerb()+' : '+(it&&it.name||'')+' — clic = choisir.';}catch(err){}}
   }
   try{renderer.domElement.style.cursor=i!=null?'pointer':'crosshair';}catch(err){}
 }
@@ -31359,7 +31399,7 @@ function bmPickAt(e){
     const hit=h&&h.object?occFaceOfHit(h.object,h.faceIndex):null;
     if(hit&&hit.face){const g=asmSnapExtract([hit.face]);F=g.faces[0]||null;try{hit.face.delete();}catch(err){}}
   }catch(err){F=null;}
-  if(!F){try{faceEl.textContent='Déplacer : cliquez une face plane ou cylindrique d’un corps exact, ou choisissez dans le panneau.';}catch(err){}return;}
+  if(!F){try{faceEl.textContent=bmVerb()+' : cliquez une face plane ou cylindrique d’un corps exact, ou choisissez dans le panneau.';}catch(err){}return;}
   const ax=P.want==='axis'||P.want==='dir';
   P.hover=null;
   P.face=ax?{axes:bmFaceAxes(F),name:asmSnapFaceName(F)}:{pts:asmSnapItems(F).map(it=>({name:asmSnapFaceName(F)+' · '+it.name,p:it.fr.o})),name:asmSnapFaceName(F)};
@@ -31378,7 +31418,7 @@ function bmMarks(){
   let G=scene.getObjectByName('bmMarks');
   if(G){scene.remove(G);G.traverse(m=>{try{if(m.geometry)m.geometry.dispose();if(m.material)m.material.dispose();}catch(e){}});}
   const P=bmPick,f=P?bmFeat(P.fid):((typeof sel!=='undefined'&&sel&&sel.kind==='feature')?bmFeat(sel.id):null);
-  if(!P&&!(f&&(f.steps||[]).length))return;
+  if(!P&&!(f&&((f.steps||[]).length||f.type==='bscale')))return;
   G=new THREE.Group();G.name='bmMarks';scene.add(G);
   const L=bmMarkLen(),r=renderer.domElement.getBoundingClientRect(),tmp=new THREE.Vector3();
   // pastille de rayon CONSTANT à l'écran (px), quelle que soit la taille de la pièce
@@ -31389,6 +31429,7 @@ function bmMarks(){
   const line=(a,b,col,op)=>{const g=new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(...a),new THREE.Vector3(...b)]);
     const l=new THREE.Line(g,new THREE.LineBasicMaterial({color:col,depthTest:false,transparent:true,opacity:op==null?1:op}));l.renderOrder=994;l.raycast=()=>{};G.add(l);};
   const axis=(o,d0,col,op)=>{const d=asmV.unit(d0)||[0,0,1];line(asmV.sub(o,asmV.mul(d,L)),asmV.add(o,asmV.mul(d,L)),col,op);};
+  if(f&&f.type==='bscale')ball(f.o||[0,0,0],0xff9f0a,5); // centre de l'échelle
   if(f)(f.steps||[]).forEach(s=>{
     if(!s)return;
     if(s.k==='r'){axis(s.o,s.d,0xbf5af2);ball(s.o,0xbf5af2,4);}
@@ -31500,6 +31541,195 @@ function bmCtxSync(menuId,t){
     const b=document.createElement('button');b.id='btnBodyMove';b.textContent='✥ Déplacer un corps';
     b.title='Déplacer le corps actif : translation, rotation autour d’un axe, point à point (pose d’un STEP importé)';
     b.onclick=()=>{const t=(typeof sel!=='undefined'&&sel&&sel.kind==='body')?sel.id:null;openBodyMove(t);};
+    ref.parentNode.insertBefore(b,ref.nextSibling);
+  }catch(e){}
+})();
+
+/* ═══════════════ 85-echelle-corps.js — echelle corps ═══════════════ */
+/* ---------- échelle / homothétie d'un corps (V0.36.0) ----------
+   Fonction de la timeline {type:'bscale', body, o:[x,y,z], oname, s, uni, sx, sy, sz, copy, newBody?},
+   comme « Échelle » de Fusion 360 : homothétie de centre o et de rapport s (uniforme), ou
+   facteurs différents suivant X, Y, Z (repère de la pièce). Utile pour un STEP importé dans
+   la mauvaise unité (× 25,4 pouce → mm), un retrait de moulage, une maquette à l'échelle.
+   Centre : origine (défaut), centre du corps, point / repère de construction, ou point
+   d'accroche cliqué sur une face (saisie partagée avec Déplacer : 85-deplacer-corps, bmPick).
+   Le point choisi est FIGÉ en coordonnées, comme Déplacer.
+   Résultat : le corps est MODIFIÉ (défaut) ou, « Nouveau corps », une COPIE mise à l'échelle
+   naît dans un corps neuf et le corps source reste intact (même mécanique que la scission de
+   corps : occSplitNewBody, 20). Rejeu (20) : uniforme → BRepBuilderAPI_Transform (gp_Trsf.
+   SetScale : cylindres, plans, cercles restent exacts) ; X/Y/Z différents → BRepBuilderAPI_
+   GTransform (les surfaces deviennent des B-splines — un cercle devient une ellipse). */
+const BS_UNITS=[['× 2',2],['× ½',0.5],['pouce → mm (× 25,4)',25.4],['mm → pouce (÷ 25,4)',1/25.4]];
+function bsFactors(f){
+  // valeur absente → 1 ; un 0 saisi reste 0 (refusé au rejeu, avec avertissement)
+  const n=v=>v==null||v===''||!isFinite(+v)?1:+v,s=n(f.s);
+  return f.uni===false?[n(f.sx),n(f.sy),n(f.sz)]:[s,s,s];
+}
+function bsIsIdentity(f){return bsFactors(f).every(k=>Math.abs(k-1)<1e-12);}
+function bsName(f){
+  const k=bsFactors(f),t=f.uni===false?k.map(v=>bmFmt(v,4)).join(' × '):bmFmt(k[0],4);
+  return 'Échelle '+t+' « '+bmBodyName(f.body)+' »'+(f.copy?' (copie)':'');
+}
+function occApplyBodyScale(result,f){
+  // Rejeu (20) : {shape, warnings} ; le solide d'entrée est libéré si la transformation réussit
+  const k=bsFactors(f),o=(f.o||[0,0,0]).map(v=>+v||0);
+  if(k.some(v=>!(v>0)||!isFinite(v)))return {shape:result,warnings:['facteur nul ou négatif — le corps reste tel quel'],fatal:true};
+  if(bsIsIdentity(f))return {shape:result,warnings:[]};
+  let t=null,b=null,P=null;
+  try{
+    if(k[0]===k[1]&&k[1]===k[2]){
+      t=new occt.gp_Trsf_1();P=new occt.gp_Pnt_3(o[0],o[1],o[2]);t.SetScale(P,k[0]);
+      b=new occt.BRepBuilderAPI_Transform_2(result,t,true);
+    }else{
+      // p' = o + K·(p − o) : diagonale K, translation o − K·o
+      t=new occt.gp_GTrsf_1();
+      for(let i=0;i<3;i++){t.SetValue(i+1,i+1,k[i]);t.SetValue(i+1,4,o[i]*(1-k[i]));}
+      b=new occt.BRepBuilderAPI_GTransform_2(result,t,true);
+      if(!b.IsDone())throw new Error('transformation refusée');
+    }
+    const s=b.Shape();if(!s||s.IsNull())throw new Error('transformation vide');
+    try{result.delete();}catch(e){}
+    return {shape:s,warnings:[]};
+  }catch(e){
+    return {shape:result,warnings:['mise à l’échelle impossible ('+((e&&e.message)||e)+')'],fatal:true};
+  }finally{try{if(b)b.delete();}catch(e){}try{if(t)t.delete();}catch(e){}try{if(P)P.delete();}catch(e){}}
+}
+/* ── commande ── */
+function openBodyScale(bid){
+  try{ensureBodies();}catch(e){}
+  const id=bid&&(doc.bodies||[]).some(b=>b.id===bid)?bid:(doc.activeBody&&(doc.bodies||[]).some(b=>b.id===doc.activeBody)?doc.activeBody:((doc.bodies||[])[0]||{}).id);
+  if(!id){try{faceEl.textContent='Échelle : aucun corps.';}catch(e){}return null;}
+  if(!(doc.features||[]).some(f=>f.body===id&&f.visible!==false)){try{faceEl.textContent='Échelle : « '+bmBodyName(id)+' » est vide.';}catch(e){}return null;}
+  bmPickExit(true);
+  const f={id:uid('bs'),type:'bscale',name:'',body:id,o:[0,0,0],oname:'Origine',s:2,uni:true,sx:1,sy:1,sz:1,copy:false,visible:true};
+  f.name=bsName(f);
+  addFeature(f);
+  sel={kind:'feature',id:f.id};treeSel=[f.id];
+  markDirty();rebuild();renderTree();renderProps();
+  try{faceEl.textContent='Échelle « '+bmBodyName(id)+' » : réglez le facteur et le centre (origine, point, centre du corps) dans le panneau.';}catch(e){}
+  return f;
+}
+function bsChange(f,label,fn){
+  // Une modification = une étape d'annulation + rejeu
+  docPushUndo(label+' (« '+f.name+' »)');
+  fn();f.name=bsName(f);
+  markDirty();rebuild();renderTree();renderProps();
+}
+function bsSetCentre(f,it){
+  if(occSkipFeat===f.id)occSkipFeat=null; // fin de la saisie : l'échelle revient dans le rejeu
+  bsChange(f,'centre de l’échelle',()=>{f.o=it.p.slice();f.oname=it.name;});
+  try{faceEl.textContent='Échelle : centre = '+it.name+' '+bmP(it.p)+'.';}catch(e){}
+}
+function bsWithout(f,fn){
+  // Rejeu SANS l'échelle (occSkipFeat, comme l'édition d'un congé) : le centre du corps et les
+  // points d'accroche se lisent sur le corps d'ORIGINE, pas sur le corps déjà mis à l'échelle.
+  occSkipFeat=f.id;markDirty();rebuild();
+  return fn();
+}
+function bsPickCentre(f){bsWithout(f,()=>bmPickStart(f,'center'));}
+function bsBodyCentre(f){
+  let c=null;
+  try{c=bsWithout(f,()=>bmBodyCentre(f.body));}finally{occSkipFeat=null;}
+  if(c)bsSetCentre(f,{name:'Centre de « '+bmBodyName(f.body)+' »',p:c});
+  else{markDirty();rebuild();}
+}
+function bsSetCopy(f,on){
+  // « Nouveau corps » : corps neuf créé à la première activation, retiré s'il ne porte plus rien
+  bsChange(f,on?'échelle en nouveau corps':'échelle sur le corps',()=>{
+    if(on){f.copy=true;if(!f.newBody||!(doc.bodies||[]).some(b=>b.id===f.newBody))f.newBody=splitNewBodyFor(f.body);}
+    else{f.copy=false;if(f.newBody){const nb=f.newBody;delete f.newBody;splitOnDelete({type:'bscale',newBody:nb});}}
+  });
+}
+/* ── panneau ── */
+function bscaleProps(p,f){
+  const mk=(tag,cls,txt)=>{const d=document.createElement(tag);if(cls)d.className=cls;if(txt!=null)d.textContent=txt;return d;};
+  const Row=(lab,ctl)=>{const r=mk('div','pnl-row');r.appendChild(mk('label',null,lab));if(ctl)r.appendChild(ctl);p.appendChild(r);return r;};
+  const num=(v,fn,w)=>{const i=document.createElement('input');i.type='text';i.inputMode='decimal';i.style.width=(w||70)+'px';i.value=bmFmt(v,6);
+    const go=()=>{const x=parseFloat(String(i.value).replace(',','.'));if(!(x>0)||!isFinite(x)){i.value=bmFmt(v,6);try{faceEl.textContent='Échelle : le facteur doit être strictement positif.';}catch(e){}return;}if(x!==+v)fn(x);};
+    i.addEventListener('change',go);i.addEventListener('keydown',e=>{if(e.key==='Enter')go();});return i;};
+  const btn=(txt,title,fn,cls)=>{const b=mk('button',cls||'mini',txt);if(title)b.title=title;b.onclick=fn;return b;};
+  const set=(label,fn)=>bsChange(f,label,fn);
+  p.appendChild(mk('div','pnl-h','⤡ Échelle / homothétie'));
+  const sb=document.createElement('select');
+  (doc.bodies||[]).filter(b=>b.id!==f.newBody).forEach(b=>{const o=document.createElement('option');o.value=b.id;o.textContent=b.name;if(b.id===f.body)o.selected=true;sb.appendChild(o);});
+  sb.onchange=()=>set('corps mis à l’échelle',()=>{f.body=sb.value;});
+  Row('Corps',sb);
+  // résultat : modifier le corps ou créer un corps neuf
+  const rs=document.createElement('select');
+  [['mod','Modifier le corps'],['new','Nouveau corps (copie)']].forEach(([v,t])=>{const o=document.createElement('option');o.value=v;o.textContent=t;if((f.copy?'new':'mod')===v)o.selected=true;rs.appendChild(o);});
+  rs.onchange=()=>bsSetCopy(f,rs.value==='new');
+  Row('Résultat',rs);
+  if(f.copy&&f.newBody)p.appendChild(mk('div','pnl-note','La copie est dans « '+bmBodyName(f.newBody)+' » ; « '+bmBodyName(f.body)+' » reste intact.'));
+  // type et facteur(s)
+  const ts=document.createElement('select');
+  [['u','Uniforme (homothétie)'],['n','Non uniforme (X, Y, Z)']].forEach(([v,t])=>{const o=document.createElement('option');o.value=v;o.textContent=t;if((f.uni===false?'n':'u')===v)o.selected=true;ts.appendChild(o);});
+  ts.onchange=()=>set('type d’échelle',()=>{
+    if(ts.value==='n'){f.uni=false;const s=+f.s||1;f.sx=f.sy=f.sz=s;}
+    else{f.uni=true;f.s=+f.sx||1;}
+  });
+  Row('Type',ts);
+  if(f.uni!==false){
+    Row('Facteur',num(f.s,x=>set('facteur d’échelle',()=>{f.s=x;})));
+    const b=mk('div','pnl-btns');
+    BS_UNITS.forEach(([t,k])=>b.appendChild(btn(t,null,()=>set('facteur d’échelle',()=>{f.s=+(k===2||k===0.5?(+f.s||1)*k:k).toPrecision(12);}))));
+    p.appendChild(b);
+  }else{
+    [['X','sx'],['Y','sy'],['Z','sz']].forEach(([lab,key])=>Row('Facteur '+lab,num(f[key],x=>set('facteur '+lab,()=>{f[key]=x;}))));
+    p.appendChild(mk('div','pnl-note','Non uniforme : les cylindres deviennent elliptiques (surfaces B-spline).'));
+  }
+  // centre
+  const P=bmPick&&bmPick.fid===f.id?bmPick:null;
+  p.appendChild(mk('div','pnl-h','Centre'));
+  p.appendChild(mk('div','pnl-note',(f.oname||'Point')+' '+bmP(f.o||[0,0,0])+' mm'));
+  if(!P){
+    const b=mk('div','pnl-btns');
+    b.appendChild(btn('Origine','Centre = origine du repère',()=>bsSetCentre(f,{name:'Origine',p:[0,0,0]})));
+    b.appendChild(btn('Centre du corps','Centre de gravité du corps',()=>bsBodyCentre(f)));
+    b.appendChild(btn('⊙ Choisir un point…','Point de construction, repère, ou point d’accroche d’une face (coin, centre de cercle…)',()=>bsPickCentre(f)));
+    p.appendChild(b);
+    // coordonnées du centre, réglables à la main
+    ['X','Y','Z'].forEach((k,j)=>{
+      const i=document.createElement('input');i.type='text';i.inputMode='decimal';i.style.width='70px';const o=f.o||[0,0,0];i.value=bmFmt(o[j]);
+      const go=()=>{const x=parseFloat(String(i.value).replace(',','.'));if(isFinite(x)&&x!==+o[j])set('centre de l’échelle',()=>{f.o=(f.o||[0,0,0]).slice();f.o[j]=x;f.oname='Point';});};
+      i.addEventListener('change',go);i.addEventListener('keydown',e=>{if(e.key==='Enter')go();});
+      Row(k+' (mm)',i);
+    });
+    return;
+  }
+  // saisie du centre en cours (vue ou liste)
+  const list=(items,name)=>{const b=mk('div','pnl-btns');items.forEach(it=>b.appendChild(btn(name(it),null,()=>bmChoosePt(it))));p.appendChild(b);};
+  if(P.face){p.appendChild(mk('div','pnl-note',P.face.name+' :'));list(P.face.pts,it=>it.name.replace(/^.*? · /,''));}
+  p.appendChild(mk('div','pnl-note','Points de référence :'));
+  list(bmStaticPts(),it=>it.name);
+  p.appendChild(mk('div','pnl-note','Ou cliquez une face dans la vue.'));
+  const c=mk('div','pnl-btns');c.appendChild(btn('Annuler',null,()=>bmPickExit(false)));p.appendChild(c);
+}
+/* ── menus contextuels (arbre et vue) : « ⤡ Échelle… » sur un corps, juste après « Déplacer… » ── */
+const bsCtxBtns={};
+function bsCtxSync(menuId,t){
+  const m=document.getElementById(menuId);if(!m)return;
+  let b=bsCtxBtns[menuId];
+  if(!b){
+    b=document.createElement('button');b.textContent='⤡ Échelle…';
+    b.title='Échelle / homothétie du corps, centre au choix (fonction de la timeline)';
+    const mv=bmCtxBtns[menuId];
+    let step=null;try{step=menuId==='ctxMenu3D'?ctxStepBtn3d:ctxStepBtn;}catch(e){}
+    if(mv&&mv.parentNode===m)m.insertBefore(b,mv.nextSibling);else m.insertBefore(b,step&&step.parentNode===m?step:null);
+    b.onclick=()=>{const T=b._t;try{hideCtx();hideCtx3D();}catch(e){}if(T)openBodyScale(ctxBodyId(T)||T.id);};
+    bsCtxBtns[menuId]=b;
+  }
+  b._t=t;
+  b.style.display=(t&&t.kind==='body'&&t.id&&asmMode!=='asm')?'':'none';
+}
+// bouton (rangé dans « Ensembles » par 96-bandeau-groupes ; ruban moderne : 97)
+(function(){
+  try{
+    if(document.getElementById('btnBodyScale'))return;
+    const ref=document.getElementById('btnBodyMove')||document.getElementById('btnExtrude');
+    if(!ref||!ref.parentNode)return;
+    const b=document.createElement('button');b.id='btnBodyScale';b.textContent='⤡ Échelle';
+    b.title='Échelle / homothétie du corps actif : facteur uniforme ou X, Y, Z ; centre = origine, point ou centre du corps';
+    b.onclick=()=>{const t=(typeof sel!=='undefined'&&sel&&sel.kind==='body')?sel.id:null;openBodyScale(t);};
     ref.parentNode.insertBefore(b,ref.nextSibling);
   }catch(e){}
 })();
@@ -31836,7 +32066,7 @@ function splitNewBodyFor(src){
 }
 function splitOnDelete(f){
   // Suppression de la fonction : le corps neuf part avec elle s'il ne porte rien d'autre.
-  const nb=f&&f.type==='xsplit'&&f.newBody;
+  const nb=f&&(f.type==='xsplit'||f.type==='bscale')&&f.newBody;
   if(!nb||doc.features.some(x=>x.body===nb||(x.type==='combine'&&(x.tools||[]).indexOf(nb)>=0)||(x!==f&&x.newBody===nb)))return;
   doc.bodies=(doc.bodies||[]).filter(b=>b.id!==nb);
   if(doc.activeBody===nb&&doc.bodies.length)doc.activeBody=doc.bodies[0].id;
@@ -56078,7 +56308,7 @@ function showCtx(x,y,t){ctxTarget=t;$('ctxMenu').style.display='block';ctxPlace(
   // source que le panneau et que la vue 3D) — masqué ailleurs, comme l'export STEP.
   try{ ctxStyleShow('ctxMenu',!!(t&&t.kind==='body')); ctxStyleSync(); }catch(e){}
   try{ asmCtxSync(t,x,y); }catch(e){} // composant depuis ce corps, déplacer vers un composant (48)
-  try{ bmCtxSync('ctxMenu',t); }catch(e){}} // déplacer le corps (85)
+  try{ bmCtxSync('ctxMenu',t); }catch(e){}try{ bsCtxSync('ctxMenu',t); }catch(e){}} // déplacer le corps (85)
 function hideCtx(){$('ctxMenu').style.display='none';}
 function ctxBodyId(t){
   // Cible du clic-droit → CORPS conteneur. L'id affiché n'est PAS toujours celui
@@ -56116,7 +56346,7 @@ function showCtx3D(x,y,bid){ctxTarget={kind:'body',id:bid};const _bd=bodies.find
     ctxStyleShow('ctxMenu3D',!!(bid&&!_bd.ghost));
     ctxStyleSync();
   }catch(e){}
-  try{ bmCtxSync('ctxMenu3D',bid?ctxTarget:null); }catch(e){} // déplacer le corps (85)
+  try{ bmCtxSync('ctxMenu3D',bid?ctxTarget:null); }catch(e){}try{ bsCtxSync('ctxMenu3D',bid?ctxTarget:null); }catch(e){} // déplacer le corps (85)
   try{ rdLookCtxSync(bid&&!_bd.ghost?bid:null); }catch(e){} // matériau de rendu (98-rendu-apparence)
   $('ctxMenu3D').style.display='block';ctxPlace($('ctxMenu3D'),x,y);}
 function hideCtx3D(){$('ctxMenu3D').style.display='none';}
@@ -58509,6 +58739,7 @@ function openAide(){
     ['btnRepeat','\u{1F501}','Répétition (linéaire, circulaire, symétrie) (M)'],
     ['btnCombine','⊕','Combiner des corps (union, soustraction, intersection)'],
     ['btnBodyMove','✥','Déplacer un corps (translation, rotation, point à point)'],
+    ['btnBodyScale','⤡','Échelle / homothétie d’un corps (centre : origine, point, centre du corps)'],
     '#',
     [null,'Paramètres'],
     ['btnParams','ƒx','Paramètres (cotes et valeurs nommées)']
@@ -59430,6 +59661,7 @@ const MF_ICF={
   pattern:fzBox(-5.5,-5.5,-2,-1.5,-1.5,2,'b','o')+fzBox(1.5,-5.5,-2,5.5,-1.5,2,'b')+fzBox(-5.5,1.5,-2,-1.5,5.5,2,'b')+fzBox(1.5,1.5,-2,5.5,5.5,2,'b'),
   combine:fzCyl(15.5,15.5,4.4,9,'mfFzHo','o')+fzBox(-6,-1.5,-4,1,5.5,0.5,'b'),
   move:fzBox(-4,-4,-4,3,3,1,'b')+fzAxes(12,11.5,8.5),
+  scale:fzBox(-6,-6,-6,5,5,3,'b')+fzBox(-6,-6,-6,-1.5,-1.5,-1.5,'b','o')+fzArrow(5,19,19.5,4.5,'#1e88e5',1.8),
   params:'<rect x="3" y="4" width="18" height="16" rx="3" fill="url(#mfFzVb)" stroke="#1e3a8a" stroke-width=".8"/><path d="M9.6 17.6L11.2 9.6C11.5 8 12.3 7.4 13.6 7.6M9 11.8h4.2" fill="none" stroke="#fff" stroke-width="1.7" stroke-linecap="round"/><path d="M14 12.2l3.6 5M17.6 12.2l-3.6 5" stroke="#fde68a" stroke-width="1.7" stroke-linecap="round"/>',
   import:FZ_TRAY+fzArrow(12,2,12,15.2,'#16a34a',3),
   export:FZ_TRAY+fzArrow(12,15,12,1.8,'#1e88e5',3),
@@ -59878,6 +60110,7 @@ const MF_IC={
   fillet:'<path d="M4 20V12a8 8 0 0 1 8-8h8"/><path d="M4 20h16V4" stroke-dasharray="2 2"/>',
   chamfer:'<path d="M4 20V10l6-6h10"/><path d="M4 20h16V4" stroke-dasharray="2 2"/>',
   face:'<path d="M3 8l6-3v12l-6 3z"/><path d="M12 11h9M18 8l3 3-3 3"/>',
+  scale:'<rect x="3" y="11" width="10" height="10" rx="1"/><path d="M3 7V3h4M17 3h4v4M21 17v4h-4"/><path d="M10 14l9-9M14 5h5v5"/>',
   move:'<path d="M12 3v18M3 12h18"/><path d="M9.5 5.5L12 3l2.5 2.5M9.5 18.5L12 21l2.5-2.5M5.5 9.5L3 12l2.5 2.5M18.5 9.5L21 12l-2.5 2.5"/>',
   draft:'<path d="M8 4h8l4 16H4z"/><path d="M12 4v16" stroke-dasharray="2 2"/>',
   shell:'<path d="M3 6v14h18V6"/><path d="M7 6v10h10V6"/>',
@@ -59978,7 +60211,7 @@ const MF_CAO=[
     ['cgPoint','Point',()=>cgStart('point'),'Point de construction : sommet, centre, coordonnées, intersection axe / plan'],
     ['cgFrame','Repère',()=>cgStart('frame'),'Repère de construction : origine + Z + X, sur un plan ou une face, par 3 points']]],
   ['Modifier',[['fillet','Congé','btnFillet'],['chamfer','Chanfrein','btnChamfer'],['face','Face','btnMoveFace'],['draft','Dépouille','btnDraft'],['shell','Coque','btnCoque'],['thread','Filetage','btnThread'],['split','Scinder','btnSplit']]],
-  ['Ensembles',[['pattern','Répétition','btnRepeat'],['combine','Combiner','btnCombine'],['move','Déplacer','btnBodyMove'],['params','Paramètres','btnParams']]],
+  ['Ensembles',[['pattern','Répétition','btnRepeat'],['combine','Combiner','btnCombine'],['move','Déplacer','btnBodyMove'],['scale','Échelle','btnBodyScale'],['params','Paramètres','btnParams']]],
   ['Fichier',[['import','Importer','btnImport'],['export','STEP','btnExportStep'],['export','STL','btnExportStl'],['export','OBJ','btnExportObj']]]
 ];
 const MF_FAO_ICON={facing:'facing',pocket:'pocket',chamfer:'chamfer',contour:'contour',drill:'drill',rough3d:'rough3d',geofinish:'finish',geodesic:'geodesic',pocket2:'pocket'};
@@ -60684,7 +60917,7 @@ function viewFadeIn(){
      le solide reconstruit : on ne la promène pas dans des états intermédiaires). */
 let film=null; // état du film en cours (null = aucun)
 const FILM_KIND={extrude:'Extrusion',revolve:'Révolution',sweep:'Balayage',hole:'Perçage',fillet:'Congé',repeat:'Répétition',
-  combine:'Combiner',xmove:'Déplacer une face',xdelface:'Supprimer une face',xdraft:'Dépouille',xshell:'Coque',xthread:'Filetage',xsplit:'Scinder',bmove:'Déplacer le corps',import:'Import'};
+  combine:'Combiner',xmove:'Déplacer une face',xdelface:'Supprimer une face',xdraft:'Dépouille',xshell:'Coque',xthread:'Filetage',xsplit:'Scinder',bmove:'Déplacer le corps',bscale:'Échelle',import:'Import'};
 function filmKind(f){
   // [libellé, couleur] de la nature d'une fonction — mêmes couleurs que le bandeau (TLB_COL)
   let k=null;try{k=tlbSvgKey({kind:'feature',o:f});}catch(e){}

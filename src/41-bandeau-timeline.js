@@ -162,6 +162,7 @@ function tlbSvgKey(s){
     case 'xshell':return ['shell','cut'];
     case 'xsplit':return ['split','mod'];
     case 'bmove':return ['move','mod'];
+    case 'bscale':return ['scale','mod'];
     case 'import':return ['import','mod'];
   }
   return null;

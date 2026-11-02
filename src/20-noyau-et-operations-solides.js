@@ -399,7 +399,9 @@ function bodyBirthFallback(bid,idx){
 function occSplitNewBody(f){
   // Corps NEUF né d'une scission de corps (xsplit mode 'body'), ou null : la fonction est
   // rejouée dans son corps (côté gardé) ET en tête du corps neuf (l'autre côté).
-  if(!f||f.type!=='xsplit'||f.mode!=='body'||!f.newBody)return null;
+  // Échelle « Nouveau corps » (bscale copy, 85-echelle-corps) : même mécanique, le corps
+  // source reste tel quel et la copie mise à l'échelle naît dans le corps neuf.
+  if(!f||!f.newBody||!((f.type==='xsplit'&&f.mode==='body')||(f.type==='bscale'&&f.copy)))return null;
   return (f.newBody!==occBodyOfFeat(f)&&doc.bodies.some(e=>e.id===f.newBody))?f.newBody:null;
 }
 function occCombinePrefix(f,tb){
@@ -3705,6 +3707,10 @@ function featSig(f){
   }else if(f.type==='bmove'){
     // Déplacer un corps : ses étapes (translations, rotations, point à point) font la géométrie
     s+='|'+JSON.stringify(f.steps||[]);
+  }else if(f.type==='bscale'){
+    // Échelle : centre, facteur(s) et, en copie, l'historique du corps source (comme xsplit)
+    s+='|'+JSON.stringify([f.o||[0,0,0],bsFactors(f),f.copy?1:0]);
+    if(occSplitNewBody(f))s+='|src:'+occCombinePrefix(f,occBodyOfFeat(f)).map(featSig).join(',');
   }else if(f.type==='xdelface'){
     s+='|'+((f.faces||[]).map(r=>JSON.stringify([r.pos,r.n||r.st,r.dim])).join(';'));
   }else if(f.type==='xsplit'){
@@ -3833,6 +3839,31 @@ function occReplayBodyIn(bid,list){
       if(r.pending){ckKey+=DEL_WK_MARK+f.id+';';return;}
       if(r.warnings.length)occCkWarn[ckKey]=r.warnings.slice();else delete occCkWarn[ckKey];
       occCkPut(ckKey,()=>occShapeCopy(result));
+      return;
+    }
+    if(f.type==='bscale'){
+      // Échelle (85-echelle-corps) : corps modifié sur place, ou — « Nouveau corps » — copie
+      // du corps source mise à l'échelle dans le corps neuf (le source n'est pas touché).
+      const nb=occSplitNewBody(f);
+      if(nb&&bid!==nb)return;
+      const neuf=nb===bid;
+      const ckS=occCkGet(ckKey);
+      const cpS=ckS?occShapeCopy(ckS):null;
+      if(cpS){
+        if(result)try{result.delete();}catch(e){}result=cpS;
+        const w=occCkWarn[ckKey];if(w&&w.length)msgs.push(...w.map(x=>f.name+' : '+x));
+        return;
+      }
+      let src=result;
+      if(neuf){
+        if(result){msgs.push(f.name+' : fonctions du corps neuf placées avant l’échelle — ignorées');try{result.delete();}catch(e){}result=null;}
+        try{src=occCombineTool(f,occBodyOfFeat(f),bin);}catch(err){src=null;msgs.push(f.name+' : corps source illisible ('+err.message+')');}
+      }
+      if(!src){msgs.push(f.name+' : aucun volume à mettre à l’échelle — ignoré');return;}
+      const r=occApplyBodyScale(src,f);
+      result=r.shape;msgs.push(...r.warnings.map(w=>f.name+' : '+w));
+      if(r.warnings.length)occCkWarn[ckKey]=r.warnings.slice();else delete occCkWarn[ckKey];
+      if(result)occCkPut(ckKey,()=>occShapeCopy(result));
       return;
     }
     if(f.type==='xsplit'){

@@ -109,6 +109,7 @@ const MF_ICF={
   pattern:fzBox(-5.5,-5.5,-2,-1.5,-1.5,2,'b','o')+fzBox(1.5,-5.5,-2,5.5,-1.5,2,'b')+fzBox(-5.5,1.5,-2,-1.5,5.5,2,'b')+fzBox(1.5,1.5,-2,5.5,5.5,2,'b'),
   combine:fzCyl(15.5,15.5,4.4,9,'mfFzHo','o')+fzBox(-6,-1.5,-4,1,5.5,0.5,'b'),
   move:fzBox(-4,-4,-4,3,3,1,'b')+fzAxes(12,11.5,8.5),
+  scale:fzBox(-6,-6,-6,5,5,3,'b')+fzBox(-6,-6,-6,-1.5,-1.5,-1.5,'b','o')+fzArrow(5,19,19.5,4.5,'#1e88e5',1.8),
   params:'<rect x="3" y="4" width="18" height="16" rx="3" fill="url(#mfFzVb)" stroke="#1e3a8a" stroke-width=".8"/><path d="M9.6 17.6L11.2 9.6C11.5 8 12.3 7.4 13.6 7.6M9 11.8h4.2" fill="none" stroke="#fff" stroke-width="1.7" stroke-linecap="round"/><path d="M14 12.2l3.6 5M17.6 12.2l-3.6 5" stroke="#fde68a" stroke-width="1.7" stroke-linecap="round"/>',
   import:FZ_TRAY+fzArrow(12,2,12,15.2,'#16a34a',3),
   export:FZ_TRAY+fzArrow(12,15,12,1.8,'#1e88e5',3),

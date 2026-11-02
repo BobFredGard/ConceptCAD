@@ -17,7 +17,9 @@
    Un composant (occurrence) se déplace, lui, en mode Assembler — s'il n'est ni fixé ni lié. */
 let bmPick=null; // saisie en cours {fid, want:'from'|'to'|'axis'|'dir', from?, face?:{pts|axes}}
 const BM_AX={X:[1,0,0],Y:[0,1,0],Z:[0,0,1]};
-function bmFeat(id){return (doc.features||[]).find(f=>f&&f.id===id&&f.type==='bmove')||null;}
+// La saisie (bmPick) sert aussi au centre d'une Échelle (bscale, 85-echelle-corps)
+function bmFeat(id){return (doc.features||[]).find(f=>f&&f.id===id&&(f.type==='bmove'||f.type==='bscale'))||null;}
+function bmVerb(){const f=bmPick&&bmFeat(bmPick.fid);return f&&f.type==='bscale'?'Échelle':'Déplacer';}
 function bmBodyName(id){const e=(doc.bodies||[]).find(b=>b.id===id);return e?e.name:'corps';}
 function bmName(f){return 'Déplacer « '+bmBodyName(f.body)+' »';}
 function bmFmt(v,n){return String(+(+v||0).toFixed(n==null?3:n)).replace('.',',');}
@@ -121,19 +123,22 @@ function bmChange(f,label,fn){
 }
 function bmAddStep(f,s){bmChange(f,'étape de déplacement',()=>{f.steps=(f.steps||[]).concat([s]);});}
 /* ── saisie dans la vue ── */
-const BM_WANT={from:'le point de départ',to:'le point d’arrivée',axis:'l’axe de rotation',dir:'la direction'};
+const BM_WANT={from:'le point de départ',to:'le point d’arrivée',axis:'l’axe de rotation',dir:'la direction',center:'le centre de l’échelle'};
 function bmPickStart(f,want,from){
   bmPick={fid:f.id,want,from:from||null,face:null};
   bmMarks();renderProps();
-  try{faceEl.textContent='Déplacer : choisissez '+BM_WANT[want]+' — clic sur une face pour ses '+(want==='axis'||want==='dir'?'axes':'points')+', ou dans le panneau. Échap = annuler.';}catch(e){}
+  try{faceEl.textContent=bmVerb()+' : choisissez '+BM_WANT[want]+' — clic sur une face pour ses '+(want==='axis'||want==='dir'?'axes':'points')+', ou dans le panneau. Échap = annuler.';}catch(e){}
 }
 function bmPickExit(silent){
   if(!bmPick)return;
+  const v=bmVerb(),fid=bmPick.fid;
   bmPick=null;bmMarks();
-  if(!silent){try{renderProps();faceEl.textContent='Déplacer : saisie annulée.';}catch(e){}}
+  if(typeof occSkipFeat!=='undefined'&&occSkipFeat===fid){occSkipFeat=null;markDirty();rebuild();renderTree();} // centre d'une Échelle (85-echelle-corps)
+  if(!silent){try{renderProps();faceEl.textContent=v+' : saisie annulée.';}catch(e){}}
 }
 function bmChoosePt(it){
   const P=bmPick,f=P&&bmFeat(P.fid);if(!f)return bmPickExit(true);
+  if(P.want==='center'){bmPick=null;bmMarks();bsSetCentre(f,it);return;}
   if(P.want==='from'){bmPickStart(f,'to',it);return;}
   if(P.want!=='to')return;
   bmPick=null;bmMarks();
@@ -178,7 +183,7 @@ function bmHoverAt(e){
   const i=bmMarkAt(e);
   if(i!==P.hover){
     P.hover=i;bmMarks();
-    if(i!=null&&P.face){const it=(P.face.axes||P.face.pts)[i];try{faceEl.textContent='Déplacer : '+(it&&it.name||'')+' — clic = choisir.';}catch(err){}}
+    if(i!=null&&P.face){const it=(P.face.axes||P.face.pts)[i];try{faceEl.textContent=bmVerb()+' : '+(it&&it.name||'')+' — clic = choisir.';}catch(err){}}
   }
   try{renderer.domElement.style.cursor=i!=null?'pointer':'crosshair';}catch(err){}
 }
@@ -193,7 +198,7 @@ function bmPickAt(e){
     const hit=h&&h.object?occFaceOfHit(h.object,h.faceIndex):null;
     if(hit&&hit.face){const g=asmSnapExtract([hit.face]);F=g.faces[0]||null;try{hit.face.delete();}catch(err){}}
   }catch(err){F=null;}
-  if(!F){try{faceEl.textContent='Déplacer : cliquez une face plane ou cylindrique d’un corps exact, ou choisissez dans le panneau.';}catch(err){}return;}
+  if(!F){try{faceEl.textContent=bmVerb()+' : cliquez une face plane ou cylindrique d’un corps exact, ou choisissez dans le panneau.';}catch(err){}return;}
   const ax=P.want==='axis'||P.want==='dir';
   P.hover=null;
   P.face=ax?{axes:bmFaceAxes(F),name:asmSnapFaceName(F)}:{pts:asmSnapItems(F).map(it=>({name:asmSnapFaceName(F)+' · '+it.name,p:it.fr.o})),name:asmSnapFaceName(F)};
@@ -212,7 +217,7 @@ function bmMarks(){
   let G=scene.getObjectByName('bmMarks');
   if(G){scene.remove(G);G.traverse(m=>{try{if(m.geometry)m.geometry.dispose();if(m.material)m.material.dispose();}catch(e){}});}
   const P=bmPick,f=P?bmFeat(P.fid):((typeof sel!=='undefined'&&sel&&sel.kind==='feature')?bmFeat(sel.id):null);
-  if(!P&&!(f&&(f.steps||[]).length))return;
+  if(!P&&!(f&&((f.steps||[]).length||f.type==='bscale')))return;
   G=new THREE.Group();G.name='bmMarks';scene.add(G);
   const L=bmMarkLen(),r=renderer.domElement.getBoundingClientRect(),tmp=new THREE.Vector3();
   // pastille de rayon CONSTANT à l'écran (px), quelle que soit la taille de la pièce
@@ -223,6 +228,7 @@ function bmMarks(){
   const line=(a,b,col,op)=>{const g=new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(...a),new THREE.Vector3(...b)]);
     const l=new THREE.Line(g,new THREE.LineBasicMaterial({color:col,depthTest:false,transparent:true,opacity:op==null?1:op}));l.renderOrder=994;l.raycast=()=>{};G.add(l);};
   const axis=(o,d0,col,op)=>{const d=asmV.unit(d0)||[0,0,1];line(asmV.sub(o,asmV.mul(d,L)),asmV.add(o,asmV.mul(d,L)),col,op);};
+  if(f&&f.type==='bscale')ball(f.o||[0,0,0],0xff9f0a,5); // centre de l'échelle
   if(f)(f.steps||[]).forEach(s=>{
     if(!s)return;
     if(s.k==='r'){axis(s.o,s.d,0xbf5af2);ball(s.o,0xbf5af2,4);}

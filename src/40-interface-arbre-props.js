@@ -130,6 +130,7 @@ function featIconOf(f){
   if(f.type==='xthread')return f._err?'⚠':'🔩'; // filetage d'un axe (76-filetage)
   if(f.type==='xmove')return '📐';
   if(f.type==='bmove')return '✥';
+  if(f.type==='bscale')return f._err?'⚠':'⤡';
   if(f.type==='xdelface')return f._calc?'⏳':((f._m&&f._m.m<f._m.t)||f._err)?'⚠':'⌫'; // ⏳ : calcul au worker (21)
   if(f.type==='xdraft')return ((f._m&&f._m.m<f._m.t)||f._err||f._thin)?'⚠':'📐';
   if(f.type==='xshell')return ((f._m&&f._m.m<f._m.t)||f._err)?'⚠':'🥚';
@@ -180,6 +181,7 @@ function repCanFeatureHint(f){
   if(f.type==='xfillet')return xLabel(xKindOf(f))+' · '+(f.edges||[]).length+' arête(s)'+xChamLabel(f);
   if(f.type==='xmove')return 'Déplacement de face · '+(+f.dist||0)+' mm';
   if(f.type==='bmove')return 'Déplacer un corps · '+(f.steps||[]).length+' étape(s)';
+  if(f.type==='bscale')return bsName(f);
   if(f.type==='xdelface')return 'Suppression · '+(f.faces||[]).length+' face(s)';
   if(f.type==='xdraft')return 'Dépouillage · '+draftAngleEff(f).toFixed(1).replace('.',',').replace('-','−')+'° · '+(f.faces||[]).length+' face(s)';
   if(f.type==='xshell')return 'Coque · '+String(Math.round((+f.thick||0)*100)/100).replace('.',',')+' mm · '+(f.faces||[]).length+' face(s) retirée(s)';
@@ -966,7 +968,7 @@ function delFeature(f){
   doc.features=doc.features.filter(x=>x.id!==f.id);
   doc.features.forEach(rp=>{if(rp.type==='repeat')rp.base=rp.base.filter(id=>id!==f.id);});
   if(tlMark===f.id)tlMark=null;
-  if(f.type==='xsplit')splitOnDelete(f); // corps neuf vide d'une scission (85-scinder)
+  if(f.type==='xsplit'||f.type==='bscale')splitOnDelete(f); // corps neuf vide d'une scission (85-scinder) ou d'une échelle en copie
 }
 // Le bouton vit ici (sources, jamais la coque HTML — même règle que Révolution) :
 // après Révolution si présente, sinon après Extrusion. Le regroupement du bandeau
@@ -1629,6 +1631,7 @@ function renderProps(){
     if(typeof bmPick!=='undefined'&&bmPick&&bmPick.fid!==f.id)bmPickExit(true); // saisie d'un autre Déplacer (85)
     /* — déplacer un corps (85) — */
     if(f.type==='bmove'){bmoveProps(p,f);visDel(f);return;}
+    if(f.type==='bscale'){bscaleProps(p,f);visDel(f);return;} // échelle (85-echelle-corps)
     if(f.type==='xsplit'){splitProps(p,f);visDel(f);return;} // scinder (85-scinder)
     /* — déplacement de face — */
     if(f.type==='xmove'){

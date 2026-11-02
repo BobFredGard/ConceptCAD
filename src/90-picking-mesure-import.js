@@ -875,7 +875,7 @@ function showCtx(x,y,t){ctxTarget=t;$('ctxMenu').style.display='block';ctxPlace(
   // source que le panneau et que la vue 3D) — masqué ailleurs, comme l'export STEP.
   try{ ctxStyleShow('ctxMenu',!!(t&&t.kind==='body')); ctxStyleSync(); }catch(e){}
   try{ asmCtxSync(t,x,y); }catch(e){} // composant depuis ce corps, déplacer vers un composant (48)
-  try{ bmCtxSync('ctxMenu',t); }catch(e){}} // déplacer le corps (85)
+  try{ bmCtxSync('ctxMenu',t); }catch(e){}try{ bsCtxSync('ctxMenu',t); }catch(e){}} // déplacer le corps (85)
 function hideCtx(){$('ctxMenu').style.display='none';}
 function ctxBodyId(t){
   // Cible du clic-droit → CORPS conteneur. L'id affiché n'est PAS toujours celui
@@ -913,7 +913,7 @@ function showCtx3D(x,y,bid){ctxTarget={kind:'body',id:bid};const _bd=bodies.find
     ctxStyleShow('ctxMenu3D',!!(bid&&!_bd.ghost));
     ctxStyleSync();
   }catch(e){}
-  try{ bmCtxSync('ctxMenu3D',bid?ctxTarget:null); }catch(e){} // déplacer le corps (85)
+  try{ bmCtxSync('ctxMenu3D',bid?ctxTarget:null); }catch(e){}try{ bsCtxSync('ctxMenu3D',bid?ctxTarget:null); }catch(e){} // déplacer le corps (85)
   try{ rdLookCtxSync(bid&&!_bd.ghost?bid:null); }catch(e){} // matériau de rendu (98-rendu-apparence)
   $('ctxMenu3D').style.display='block';ctxPlace($('ctxMenu3D'),x,y);}
 function hideCtx3D(){$('ctxMenu3D').style.display='none';}

@@ -329,7 +329,7 @@ function splitNewBodyFor(src){
 }
 function splitOnDelete(f){
   // Suppression de la fonction : le corps neuf part avec elle s'il ne porte rien d'autre.
-  const nb=f&&f.type==='xsplit'&&f.newBody;
+  const nb=f&&(f.type==='xsplit'||f.type==='bscale')&&f.newBody;
   if(!nb||doc.features.some(x=>x.body===nb||(x.type==='combine'&&(x.tools||[]).indexOf(nb)>=0)||(x!==f&&x.newBody===nb)))return;
   doc.bodies=(doc.bodies||[]).filter(b=>b.id!==nb);
   if(doc.activeBody===nb&&doc.bodies.length)doc.activeBody=doc.bodies[0].id;
