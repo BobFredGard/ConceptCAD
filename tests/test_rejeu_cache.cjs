@@ -48,7 +48,7 @@ const lire=n=>fs.readFileSync(n.startsWith('fixtures/')?path.join(__dirname,n):p
     'A(instSk()===ids0&&doc.sketches.length===nSk0,"7 : aller-retour : mêmes esquisses d\'instances, aucune esquisse en plus ("+doc.sketches.length+")");'
   ].join('\n'));
   // (2) sur un fichier réel : bruit de solveur sur une esquisse projetée
-  await cas('Support Pédale Déportée R1200RT 2011.miniFusion',[
+  await cas('Support Pédale Déportée R1200RT 2011.conceptcad',[
     'nOp=0;markDirty();rebuild();A(nOp===0,"8 : rejeu sans changement : aucun booléen ni congé refait ("+nOp+")");',
     'const ex=doc.features.filter(f=>f.type==="extrude"&&f.visible!==false&&!f.repeatId)[0];const d0=ex.distance;',
     'ex.distance=d0+0.5;markDirty();rebuild();nOp=0;ex.distance=d0;markDirty();rebuild();',

@@ -1,6 +1,6 @@
 // V0.7.6 : perçage sur la TRANCHE — trous vus dans le repère propre de l'opération (3+2).
 // Retour : « J'ai un souci pour prendre les trous sur la tranche, repère bien placé pourtant »
-// (Perçages.miniFusion : opération Perçage, repère Z = −Y, trou Ø4,2 choisi dans la vue →
+// (Perçages.conceptcad : opération Perçage, repère Z = −Y, trou Ø4,2 choisi dans la vue →
 // « 0 pts »). Le clic dans la vue détectait les trous dans le repère de l'OPÉRATION, mais la
 // résolution des trous choisis, la liste du panneau et les anneaux les cherchaient dans celui du
 // POSAGE : le trou de la tranche n'y est pas vertical → 0 trou, 0 mouvement.

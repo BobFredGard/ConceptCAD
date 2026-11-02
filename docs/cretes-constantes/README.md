@@ -9,7 +9,7 @@ de l'opération **Crêtes Constantes**, défaut à la création depuis `2026-10-
 | Fichier | Rôle |
 |---|---|
 | `Exemples/cav.txt` | G-code Fagor 8065 produit par Fusion 360 (boule D6, pas 1 mm), 48 636 lignes |
-| `Exemples/Cavité Usinage.miniFusion` | le même modèle dans MiniFusion (op « Crêtes Constantes » du posage 1) |
+| `Exemples/Cavité Usinage.conceptcad` | le même modèle dans MiniFusion (op « Crêtes Constantes » du posage 1) |
 | `fusion360_capture.webp` | capture du parcours dans Fusion 360 |
 | `parse.cjs`, `rings.cjs` | lecture du G-code (G0/G1/G2/G3, I/J relatifs) et découpe en anneaux/liaisons |
 

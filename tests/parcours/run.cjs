@@ -1,5 +1,5 @@
 // Non-régression des PARCOURS FAO sur les exemples : `npm run parcours`.
-// Chaque opération active de chaque Exemples/*.miniFusion suivi par Git est recalculée
+// Chaque opération active de chaque Exemples/*.conceptcad suivi par Git est recalculée
 // (tests/parcours/calcul.cjs, un processus par opération, en parallèle, les plus longues
 // d'abord sur les cœurs P — voir tests/coeurs.cjs), puis son résumé chiffré est comparé
 // à la référence versionnée tests/parcours/reference.json :
@@ -36,7 +36,7 @@ function exemples() {
   try {
     l = execFileSync('git', ['-c', 'core.quotepath=off', 'ls-files', 'Exemples'], { cwd: ROOT, encoding: 'utf8' }).split('\n');
   } catch (e) { l = fs.readdirSync(path.join(ROOT, 'Exemples')).map(f => 'Exemples/' + f); }
-  return l.filter(f => /\.miniFusion$/.test(f) && (!FILTRE || f.includes(FILTRE))).sort();
+  return l.filter(f => /\.(conceptcad|miniFusion)$/.test(f) && (!FILTRE || f.includes(FILTRE))).sort();
 }
 const TYPES = { facing: 'Surfaçage', rough3d: 'Ébauche 3D', geofinish: 'Finition', geodesic: 'Géodésique', pocket: 'Poche',
   contour: 'Contour', drill: 'Perçage', chamfer: 'Chanfrein' };

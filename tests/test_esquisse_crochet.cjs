@@ -1,6 +1,6 @@
 // V0.7.1 : l'esquisse du Crochet ne décroche plus.
 // Symptôme : « j'ai encore des moments où l'esquisse décroche ». Sur l'esquisse du Crochet
-// (fixture copiée de Exemples/Crochet.miniFusion), V0.7.0 laissait un glisser rapide puis le
+// (fixture copiée de Exemples/Crochet.conceptcad), V0.7.0 laissait un glisser rapide puis le
 // retour avec une esquisse non résolue, une ligne retournée ou des points partis à des
 // centaines de milliers de mm ; une cote d'angle modifiée restait à ~3° de sa valeur.
 // Causes et correctifs :

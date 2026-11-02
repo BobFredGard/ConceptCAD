@@ -21,7 +21,7 @@ Le noyau géométrique exact est **OpenCascade (OCCT) compilé en WebAssembly**.
 | `tools/mcp-minifusion.cjs` | Serveur MCP (stdio, sans dépendance) : relaie les scripts JSON vers la page par un WebSocket local (127.0.0.1). |
 | `threejs/` | three.js, OrbitControls et CSG (MIT). |
 | `occt/` | Noyau OCCT WebAssembly (LGPL), `.wasm` suivis par Git LFS. |
-| `Exemples/` | Projets `.miniFusion` et STEP de référence (Git LFS), commités à chaque livraison. |
+| `Exemples/` | Projets `.conceptcad` et STEP de référence (Git LFS), commités à chaque livraison. |
 | `Backup/` | Instantanés locaux par version (non versionnés). |
 | `docs/` | Captures et notes de conception. |
 

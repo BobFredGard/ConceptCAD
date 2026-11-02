@@ -2,7 +2,7 @@
 // WebAssembly réel, rendu WebGL réel, interface moderne cliquée comme un
 // utilisateur. Complète les tests VM (tests/*.cjs, stubs DOM/THREE) qui ne
 // voient ni le .wasm ni le navigateur.
-//   1. ouvrir Exemples/Axe.miniFusion → solide exact, congés présents ;
+//   1. ouvrir Exemples/Axe.conceptcad → solide exact, congés présents ;
 //   2. esquisse (rectangle à la souris) → extrusion → prisme exact au bon volume ;
 //   3. FAO : surfaçage sur l'Axe → « Régénérer » → export G-code (téléchargement).
 'use strict';
@@ -10,12 +10,12 @@ const {test,expect}=require('@playwright/test');
 const fs=require('fs'),path=require('path');
 
 const RACINE=path.join(__dirname,'..','..');
-const AXE=path.join(RACINE,'Exemples','Axe.miniFusion');
+const AXE=path.join(RACINE,'Exemples','Axe.conceptcad');
 
 // Git LFS non récupéré → pointeurs de 130 octets à la place des binaires : on le dit
 // tout de suite plutôt que de laisser le noyau échouer sans explication.
 test.beforeAll(()=>{
-  for(const f of ['occt/opencascade.wasm.wasm','occt/opencascade.full.wasm','Exemples/Axe.miniFusion']){
+  for(const f of ['occt/opencascade.wasm.wasm','occt/opencascade.full.wasm','Exemples/Axe.conceptcad']){
     const n=fs.statSync(path.join(RACINE,f)).size;
     if(n<10000)throw new Error(f+' ne fait que '+n+' octets : pointeur Git LFS ? Lancez « git lfs pull ».');
   }
@@ -60,7 +60,7 @@ async function ouvrirAxe(page){
   await page.waitForFunction(()=>doc&&doc.name==='Axe'&&builtEngine==='exact'&&bodies.some(b=>b.shape)&&faoSolidSettled(),null,{timeout:120000});
 }
 
-test('ouvrir Axe.miniFusion : solide exact avec ses congés',async({page})=>{
+test('ouvrir Axe.conceptcad : solide exact avec ses congés',async({page})=>{
   const err=await demarrer(page);
   await ouvrirAxe(page);
   await expect(page.locator('#occtState')).toContainText('exact OCCT');
@@ -265,29 +265,29 @@ test('composants liés : lier l\'Axe, modifier sur place, la source est réécri
   const err=await demarrer(page);
   // Le stockage privé du navigateur (OPFS) sert de dossier de projets : mêmes API de fichiers
   // que le vrai dossier, sans fenêtre de dialogue à piloter.
-  const axe=require('fs').readFileSync(require('path').join(__dirname,'..','..','Exemples','Axe.miniFusion'),'utf8');
+  const axe=require('fs').readFileSync(require('path').join(__dirname,'..','..','Exemples','Axe.conceptcad'),'utf8');
   const r1=await page.evaluate(async axe=>{
     const dir=await (await navigator.storage.getDirectory()).getDirectoryHandle('mf-pw',{create:true});
-    const h=await dir.getFileHandle('Axe.miniFusion',{create:true});
+    const h=await dir.getFileHandle('Axe.conceptcad',{create:true});
     const w=await h.createWritable();await w.write(axe);await w.close();
     mffFolder=dir;doc.name='Banc';asmEnsure();
-    const L=await asmLinkInsert(h,axe,'Axe.miniFusion');
+    const L=await asmLinkInsert(h,axe,'Axe.conceptcad');
     return {rel:L.link.rel,dirty:asmLinkDirty(L),feats:L.doc.features.length};
   },axe);
-  expect(r1).toEqual({rel:'Axe.miniFusion',dirty:false,feats:13});
+  expect(r1).toEqual({rel:'Axe.conceptcad',dirty:false,feats:13});
   await expect(page.locator('#tree .tnode.tocc',{hasText:'Axe:1'})).toContainText('🔗');
   // modifier sur place : un repère de construction dans l'Axe, puis enregistrer (sources d'abord)
   const r2=await page.evaluate(async()=>{
     const L=asmLinked()[0];
     L.doc.cgeo.push({id:'rp',kind:'frame',how:'zx',name:'Repère PW',refs:[],p:{},at:null,visible:true,fr:{o:[1,2,3],x:[1,0,0],y:[0,1,0],z:[0,0,1]},st:'ok',msg:''});
     const d=asmLinkDirty(L);await asmLinksWrite();
-    const h=await mffFolder.getFileHandle('Axe.miniFusion');const b=JSON.parse(await (await h.getFile()).text());
+    const h=await mffFolder.getFileHandle('Axe.conceptcad');const b=JSON.parse(await (await h.getFile()).text());
     return {d,bundle:b.bundle,rp:(b.doc.cgeo||[]).some(c=>c.id==='rp'),apres:asmLinkDirty(L)};
   });
   expect(r2).toEqual({d:true,bundle:1,rp:true,apres:false});
   // la source change ailleurs : vérification → mise à jour
   const r3=await page.evaluate(async()=>{
-    const h=await mffFolder.getFileHandle('Axe.miniFusion');const b=JSON.parse(await (await h.getFile()).text());
+    const h=await mffFolder.getFileHandle('Axe.conceptcad');const b=JSON.parse(await (await h.getFile()).text());
     b.doc.cgeo=b.doc.cgeo.filter(c=>c.id!=='rp');
     const w=await h.createWritable();await w.write(JSON.stringify(b));await w.close();
     const r=await asmLinksCheck(false);

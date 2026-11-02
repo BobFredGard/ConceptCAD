@@ -3,7 +3,7 @@
    op.traj==='scallop' de la finition géodésique.
 
    Rétro-ingénierie de Exemples/cav.txt (Fusion 360, « Crêtes constantes »,
-   boule D6, pas 1) sur la cavité de Exemples/Cavité Usinage.miniFusion :
+   boule D6, pas 1) sur la cavité de Exemples/Cavité Usinage.conceptcad :
      • 30 anneaux FERMÉS depuis le bord de l'îlot (fond plat, offsets exacts de
        1 mm : périmètre +2π par anneau), tous dans le même sens ;
      • 24 anneaux FERMÉS depuis le bord haut, vers le bas, sens inverse ;

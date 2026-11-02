@@ -24,7 +24,7 @@ jobs:
         timeout-minutes: 30
 
   # Parcours critiques dans un vrai Chromium headless (noyau OCCT WebAssembly réel) :
-  # ouverture d'Exemples/Axe.miniFusion, esquisse → extrusion, FAO → G-code.
+  # ouverture d'Exemples/Axe.conceptcad, esquisse → extrusion, FAO → G-code.
   browser-test:
     runs-on: ubuntu-latest
     timeout-minutes: 20

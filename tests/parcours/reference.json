@@ -1,5 +1,5 @@
 {
- "Cavité Test.miniFusion › POSAGE1 › 1. Surfaçage (op_4_mvqryqye)": {
+ "Cavité Test.conceptcad › POSAGE1 › 1. Surfaçage (op_4_mvqryqye)": {
   "type": "facing",
   "outil": "Torique D20 R2",
   "ms": 7390,
@@ -18,7 +18,7 @@
    }
   }
  },
- "Cavité Test.miniFusion › POSAGE1 › 4. Contour (op_6_mvr0jnwn)": {
+ "Cavité Test.conceptcad › POSAGE1 › 4. Contour (op_6_mvr0jnwn)": {
   "type": "contour",
   "outil": "Fraise D10",
   "ms": 7755,
@@ -38,7 +38,7 @@
    }
   }
  },
- "Perçages.miniFusion › POSAGE1 › 7. Perçage (op_13_mvjrbphp)": {
+ "Perçages.conceptcad › POSAGE1 › 7. Perçage (op_13_mvjrbphp)": {
   "type": "drill",
   "outil": "Foret D5",
   "ms": 7725,
@@ -54,7 +54,7 @@
    "niveaux": {}
   }
  },
- "Perçages.miniFusion › POSAGE1 › 8. Perçage (op_14_mvjrbphp)": {
+ "Perçages.conceptcad › POSAGE1 › 8. Perçage (op_14_mvjrbphp)": {
   "type": "drill",
   "outil": "Taraud M6",
   "ms": 7785,
@@ -70,7 +70,7 @@
    "niveaux": {}
   }
  },
- "Perçages.miniFusion › POSAGE1 › 4. Perçage (op_8_mvjrb2sl)": {
+ "Perçages.conceptcad › POSAGE1 › 4. Perçage (op_8_mvjrb2sl)": {
   "type": "drill",
   "outil": "Foret D6.6",
   "ms": 7806,
@@ -86,7 +86,7 @@
    "niveaux": {}
   }
  },
- "Perçages.miniFusion › POSAGE1 › 5. Perçage (op_10_mvjrbe4p)": {
+ "Perçages.conceptcad › POSAGE1 › 5. Perçage (op_10_mvjrbe4p)": {
   "type": "drill",
   "outil": "Fraise D6",
   "ms": 7857,
@@ -104,7 +104,7 @@
    }
   }
  },
- "Perçages.miniFusion › POSAGE1 › 9. Perçage (op_2_mvnrwbxu)": {
+ "Perçages.conceptcad › POSAGE1 › 9. Perçage (op_2_mvnrwbxu)": {
   "type": "drill",
   "outil": "Foret à centrer D10",
   "ms": 7888,
@@ -120,7 +120,7 @@
    "niveaux": {}
   }
  },
- "Perçages.miniFusion › POSAGE1 › 3. Perçage (op_7_mvjrb2sl)": {
+ "Perçages.conceptcad › POSAGE1 › 3. Perçage (op_7_mvjrb2sl)": {
   "type": "drill",
   "outil": "Foret à centrer D10",
   "ms": 7980,
@@ -136,7 +136,7 @@
    "niveaux": {}
   }
  },
- "Perçages.miniFusion › POSAGE1 › 6. Perçage (op_12_mvjrbpho)": {
+ "Perçages.conceptcad › POSAGE1 › 6. Perçage (op_12_mvjrbpho)": {
   "type": "drill",
   "outil": "Foret à centrer D10",
   "ms": 7910,
@@ -152,7 +152,7 @@
    "niveaux": {}
   }
  },
- "Perçages.miniFusion › POSAGE1 › 10. Perçage (op_3_mvnrwbxv)": {
+ "Perçages.conceptcad › POSAGE1 › 10. Perçage (op_3_mvnrwbxv)": {
   "type": "drill",
   "outil": "Foret D4.2",
   "ms": 7972,
@@ -168,7 +168,7 @@
    "niveaux": {}
   }
  },
- "Perçages.miniFusion › POSAGE1 › 1. Surfaçage (op_5_mvjcidjk)": {
+ "Perçages.conceptcad › POSAGE1 › 1. Surfaçage (op_5_mvjcidjk)": {
   "type": "facing",
   "outil": "Torique D25 R2",
   "ms": 7962,
@@ -187,7 +187,7 @@
    }
   }
  },
- "Perçages.miniFusion › POSAGE1 › 11. Perçage (op_4_mvnrwbxw)": {
+ "Perçages.conceptcad › POSAGE1 › 11. Perçage (op_4_mvnrwbxw)": {
   "type": "drill",
   "outil": "Taraud M5",
   "ms": 8013,
@@ -205,7 +205,7 @@
    }
   }
  },
- "Perçages.miniFusion › POSAGE1 › 2. Contour (op_6_mvjcpb4f)": {
+ "Perçages.conceptcad › POSAGE1 › 2. Contour (op_6_mvjcpb4f)": {
   "type": "contour",
   "outil": "Fraise D10",
   "ms": 8293,
@@ -226,7 +226,7 @@
    }
   }
  },
- "Perçages.miniFusion › POSAGE1 › 13. Chanfrein (op_2_mvo2kuqf)": {
+ "Perçages.conceptcad › POSAGE1 › 13. Chanfrein (op_2_mvo2kuqf)": {
   "type": "chamfer",
   "outil": "Foret à centrer D10",
   "ms": 8289,
@@ -245,7 +245,7 @@
    }
   }
  },
- "Perçages.miniFusion › POSAGE1 › 12. Ébauche 3D (op_2_mvnu3k2a)": {
+ "Perçages.conceptcad › POSAGE1 › 12. Ébauche 3D (op_2_mvnu3k2a)": {
   "type": "rough3d",
   "outil": "Fraise D6",
   "ms": 8445,
@@ -268,7 +268,7 @@
    }
   }
  },
- "Poche et Contour.miniFusion › POSAGE1 › 2. Contour (op_3_mv81m3qf)": {
+ "Poche et Contour.conceptcad › POSAGE1 › 2. Contour (op_3_mv81m3qf)": {
   "type": "contour",
   "outil": "Fraise D10",
   "ms": 1759,
@@ -286,7 +286,7 @@
    }
   }
  },
- "Poche et Contour.miniFusion › POSAGE1 › 3. Poche (op_4_mv81nm4j)": {
+ "Poche et Contour.conceptcad › POSAGE1 › 3. Poche (op_4_mv81nm4j)": {
   "type": "pocket",
   "outil": "Fraise D10",
   "ms": 2172,
@@ -306,7 +306,7 @@
    }
   }
  },
- "Poche et Contour.miniFusion › POSAGE1 › 1. Surfaçage (op_3_mv7upzw4)": {
+ "Poche et Contour.conceptcad › POSAGE1 › 1. Surfaçage (op_3_mv7upzw4)": {
   "type": "facing",
   "outil": "Torique D25 R2",
   "ms": 2157,
@@ -326,7 +326,7 @@
    }
   }
  },
- "Poche et Contour.miniFusion › POSAGE1 › 4. Surfaçage (op_3_mvbd93sk)": {
+ "Poche et Contour.conceptcad › POSAGE1 › 4. Surfaçage (op_3_mvbd93sk)": {
   "type": "facing",
   "outil": "Fraise D10",
   "ms": 2168,
@@ -345,7 +345,7 @@
    }
   }
  },
- "Perçages.miniFusion › POSAGE1 › 14. Ébauche 3D (op_2_mvo4kwaj)": {
+ "Perçages.conceptcad › POSAGE1 › 14. Ébauche 3D (op_2_mvo4kwaj)": {
   "type": "rough3d",
   "outil": "Fraise D6",
   "ms": 12675,
@@ -372,7 +372,7 @@
    }
   }
  },
- "Cavité Usinage.miniFusion › CAVIT_TEST › 1. Surfaçage (op_33_mv9vmyye)": {
+ "Cavité Usinage.conceptcad › CAVIT_TEST › 1. Surfaçage (op_33_mv9vmyye)": {
   "type": "facing",
   "outil": "Fraise D20",
   "ms": 12884,
@@ -392,7 +392,7 @@
    }
   }
  },
- "Malaxeur Retard.miniFusion › POSAGE1 › 2. Géodésique (op_2_mvibf0gg)": {
+ "Malaxeur Retard.conceptcad › POSAGE1 › 2. Géodésique (op_2_mvibf0gg)": {
   "type": "geodesic",
   "outil": "Boule D30",
   "ms": 20626,
@@ -408,7 +408,7 @@
    "niveaux": {}
   }
  },
- "Cavité Usinage.miniFusion › CAVIT_TEST › 3. Finition (op_3_mv4wo41j)": {
+ "Cavité Usinage.conceptcad › CAVIT_TEST › 3. Finition (op_3_mv4wo41j)": {
   "type": "geofinish",
   "outil": "Boule D6",
   "ms": 24217,
@@ -436,7 +436,7 @@
    }
   }
  },
- "Cavité Test.miniFusion › POSAGE1 › 3. Finition (op_3_mvqu822f)": {
+ "Cavité Test.conceptcad › POSAGE1 › 3. Finition (op_3_mvqu822f)": {
   "type": "geofinish",
   "outil": "Boule D6",
   "ms": 27135,
@@ -455,7 +455,7 @@
    }
   }
  },
- "Cavité Test.miniFusion › POSAGE1 › 2. Ébauche 3D (op_5_mvqs3025)": {
+ "Cavité Test.conceptcad › POSAGE1 › 2. Ébauche 3D (op_5_mvqs3025)": {
   "type": "rough3d",
   "outil": "Torique D20 R2",
   "ms": 43804,
@@ -506,7 +506,7 @@
    }
   }
  },
- "Cavité Usinage.miniFusion › CAVIT_TEST › 2. Ébauche 3D (op_3_muyajzho)": {
+ "Cavité Usinage.conceptcad › CAVIT_TEST › 2. Ébauche 3D (op_3_muyajzho)": {
   "type": "rough3d",
   "outil": "Torique D25 R2",
   "ms": 65291,
@@ -559,7 +559,7 @@
    }
   }
  },
- "Malaxeur Retard.miniFusion › POSAGE1 › 1. Ébauche 3D (op_3_mvia0l7l)": {
+ "Malaxeur Retard.conceptcad › POSAGE1 › 1. Ébauche 3D (op_3_mvia0l7l)": {
   "type": "rough3d",
   "outil": "Torique D20 R2",
   "ms": 66882,

@@ -56,9 +56,9 @@ const vm=require('vm');
     mode='short';err='';try{await mffWriteSafe(h,v3);}catch(e){err=e.message;}mode='ok';
     att(/relecture/.test(err)&&FS['projets/pieces/Bride.miniFusion']===v2,'10 : fichier tronqué à la relecture : version précédente remise ('+err.slice(0,60)+')');
     // ── 7. fichier hors du dossier de projets : copie dans le navigateur seulement ──
-    FS['ailleurs/Axe.miniFusion']=v1;const hx=mkFile('ailleurs/Axe.miniFusion');
+    FS['ailleurs/Axe.conceptcad']=v1;const hx=mkFile('ailleurs/Axe.conceptcad');
     r=await mffWriteSafe(hx,v2);
-    att(FS['ailleurs/Axe.miniFusion']===v2&&!r.bak.disk&&r.bak.idb&&!('ailleurs/Axe.miniFusion.bak' in FS),'11 : hors du dossier de projets : pas de .bak sur le disque, copie dans le navigateur');
+    att(FS['ailleurs/Axe.conceptcad']===v2&&!r.bak.disk&&r.bak.idb&&!('ailleurs/Axe.conceptcad.bak' in FS),'11 : hors du dossier de projets : pas de .bak sur le disque, copie dans le navigateur');
     // ── 8. Ctrl+S complet ──
     mffHandle=h;doc.params[0].expr='16';doc.params[0].value=16;
     const ok=await mffSave();

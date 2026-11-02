@@ -10,11 +10,11 @@ const {test,expect}=require('@playwright/test');
 const fs=require('fs'),path=require('path');
 
 const RACINE=path.join(__dirname,'..','..');
-const AXE=path.join(RACINE,'Exemples','Axe.miniFusion');
+const AXE=path.join(RACINE,'Exemples','Axe.conceptcad');
 const REL_ID_SABLE=2; // REL_ID.sable (98-rendu-reliefs)
 
 test.beforeAll(()=>{
-  for(const f of ['occt/opencascade.wasm.wasm','occt/opencascade.full.wasm','Exemples/Axe.miniFusion']){
+  for(const f of ['occt/opencascade.wasm.wasm','occt/opencascade.full.wasm','Exemples/Axe.conceptcad']){
     const n=fs.statSync(path.join(RACINE,f)).size;
     if(n<10000)throw new Error(f+' ne fait que '+n+' octets : pointeur Git LFS ? Lancez « git lfs pull ».');
   }

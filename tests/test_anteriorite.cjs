@@ -102,7 +102,7 @@ const A=(c,m)=>{if(!c){ko++;console.log('  x '+m);}else console.log('  ✓ '+m);
     o.reelTxt=v.map(antMsg).join(' | ');
     return o;
   `;
-  vm.runInContext('var __SUPPORT='+JSON.stringify(fs.readFileSync(path.join(__dirname,'..','Exemples','Support Pédale Déportée R1200RT 2011.miniFusion'),'utf8')),ctx);
+  vm.runInContext('var __SUPPORT='+JSON.stringify(fs.readFileSync(path.join(__dirname,'..','Exemples','Support Pédale Déportée R1200RT 2011.conceptcad'),'utf8')),ctx);
   let o;
   try{o=await vm.runInContext('(async()=>{'+body+'})()',ctx);}
   catch(e){console.log('FATAL',String((e&&e.stack)||e).slice(0,800));process.exit(1);}

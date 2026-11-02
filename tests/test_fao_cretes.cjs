@@ -8,7 +8,7 @@
 // 2. outils : torique sans surcoupe, fraise droite refusée sur pente ;
 // 3. briques : FMM ≈ distance exacte (plan), drop-cutter boule (sphère/plan) ;
 // 4. op : défauts, sanitise, signature ;
-// 5. cavité réelle (fixture OCCT de Exemples/Cavité Usinage.miniFusion).
+// 5. cavité réelle (fixture OCCT de Exemples/Cavité Usinage.conceptcad).
 const {loadApp}=require('./appvm.cjs');
 const vm=require('vm'),fs=require('fs'),path=require('path');
 const FIX=path.join(__dirname,'fixtures');
@@ -160,7 +160,7 @@ const FIX=path.join(__dirname,'fixtures');
     "    const mf=faoActiveMesh({},true),mc=faoActiveMesh({});",
     "    att(mf&&mf.mesh.t.length===1&&mc&&mc.mesh.t.length===2,'faoActiveMesh : fin pour la Finition ('+(mf&&mf.mesh.t.length)+'), outillage sinon ('+(mc&&mc.mesh.t.length)+')');",
     "  }finally{bodies=kb;faoMeshFromBodyFine=kF;faoMeshFromBody=kM;}}",
-    // --- 5. cavité réelle (Exemples/Cavité Usinage.miniFusion, maillage OCCT)
+    // --- 5. cavité réelle (Exemples/Cavité Usinage.conceptcad, maillage OCCT)
     "const job={tools:__cavOp.tools};const op=__cavOp.op;",
     "const zc=faoZoneCtx(op,job);const tool=faoToolById(job,op.toolId);",
     "const t1=Date.now();",

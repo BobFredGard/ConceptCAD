@@ -11,7 +11,7 @@ const RACINE=path.join(__dirname,'..');
 const PORT=+(process.env.MF_PORT||3124);
 const SORTIE=path.resolve(process.argv[2]||path.join(RACINE,'docs','captures'));
 const VOULUES=process.argv.slice(3);
-const EX=n=>path.join(RACINE,'Exemples',n+'.miniFusion');
+const EX=n=>path.join(RACINE,'Exemples',n+'.conceptcad');
 
 async function demarrer(page){
   await page.goto('http://127.0.0.1:'+PORT+'/ConceptCAD.html');

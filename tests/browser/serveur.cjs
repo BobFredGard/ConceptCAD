@@ -9,7 +9,7 @@ const RACINE=path.resolve(__dirname,'..','..');
 const PORT=+(process.argv[2]||process.env.MF_PORT||3123);
 const MIME={'.html':'text/html; charset=utf-8','.js':'text/javascript; charset=utf-8','.mjs':'text/javascript; charset=utf-8',
   '.wasm':'application/wasm','.json':'application/json','.css':'text/css','.png':'image/png','.svg':'image/svg+xml',
-  '.miniFusion':'application/json','.step':'application/octet-stream','.stp':'application/octet-stream'};
+  '.miniFusion':'application/json','.conceptcad':'application/json','.step':'application/octet-stream','.stp':'application/octet-stream'};
 
 http.createServer((req,res)=>{
   let p;
