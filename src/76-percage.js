@@ -28,9 +28,9 @@
      pointe) le long de −n (ou +n si inversé), unis puis découpés du corps.
    ═══════════════════════════════════════════════════════════════════════════ */
 // Métrique ISO : [taille, Ø nominal, pas gros, pas fins…]
-const ISO_THREADS=[['M2',2,0.4],['M2.5',2.5,0.45],['M3',3,0.5],['M4',4,0.7],['M5',5,0.8],['M6',6,1,0.75],
+const ISO_THREADS=[['M1.6',1.6,0.35,0.2],['M2',2,0.4],['M2.5',2.5,0.45],['M3',3,0.5],['M4',4,0.7],['M5',5,0.8],['M6',6,1,0.75],
   ['M8',8,1.25,1],['M10',10,1.5,1.25,1],['M12',12,1.75,1.5,1.25],['M14',14,2,1.5],['M16',16,2,1.5],
-  ['M18',18,2.5,2,1.5],['M20',20,2.5,2,1.5],['M22',22,2.5,2,1.5],['M24',24,3,2]];
+  ['M18',18,2.5,2,1.5],['M20',20,2.5,2,1.5],['M22',22,2.5,2,1.5],['M24',24,3,2],['M30',30,3.5,2],['M36',36,4,3]]; // M1.6, M30, M36 : V0.35.0 (vis normalisées)
 // Vis CHC (ISO 4762) : passage moyen, lamage Ø, profondeur de lamage
 const ISO_CHC=[['M3',3.4,6.5,3.4],['M4',4.5,8,4.4],['M5',5.5,10,5.4],['M6',6.6,11,6.4],['M8',9,15,8.6],
   ['M10',11,18,10.8],['M12',13.5,20,13],['M14',15.5,24,15],['M16',17.5,26,17.5],['M20',22,33,21.5],['M24',26,40,25.5]];
@@ -767,6 +767,8 @@ function holeThreadPaths(stepsPerTurn,inset){
       out.push({bodyId:(typeof occBodyOfFeat==='function'?occBodyOfFeat(f):f.body)||null,helix:helix,ring:ring,spt:steps/turns});
     });
   });
+  // V0.35.0 : filetages d'axes (76-filetage) — même dessin, caché avec leur corps
+  if(typeof threadShaftPaths==='function')try{out.push(...threadShaftPaths(stepsPerTurn,inset));}catch(e){}
   return out;
 }
 /* V0.15.11 : « quand je cache un corps avec des trous taraudés, je veux cacher aussi les filets ».

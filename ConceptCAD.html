@@ -376,7 +376,7 @@ input[type=range]{accent-color:var(--primary);width:100%}
  * peut changer sans rien casser. CACHE_VER (parcours FAO) reste indépendant.
  */
 
-const APP_VER='V0.34.0';
+const APP_VER='V0.35.0';
 try{console.log('[ConceptCAD] version '+APP_VER);}catch(e){}
 try{var mfSv=document.getElementById('mfSplashVer');if(mfSv)mfSv.textContent=APP_VER;}catch(e){} // écran de démarrage
 
@@ -6554,6 +6554,10 @@ function featSig(f){
     s+='|'+f.sketchId+'|'+(skH?skSig(skH):'?')+'|'+JSON.stringify([f.kind,f.d,f.thread||null,f.cbD,f.cbH,f.csD,f.csA,f.end,f.depth,f.tip,!!f.flip,f.uptoPlane||null].concat(f.kind==='ream'?[f.reamD,f.reamH,f.pilot,f.reamOff]:(f.kind==='step'?[f.stD,f.stH,f.stTip]:[])));
     if(skH)(skH.entities||[]).forEach(e=>{if(e&&e.t==='cpoint'&&e.hole){const Q=skH.points[e.p];if(Q)s+=';h'+Q.x.toFixed(4)+','+Q.y.toFixed(4);}});
   }
+  if(f.type==='xthread'){
+    // Filetage (76-filetage) : axe visé, taille, pas, sens, longueur, départ, filet modélisé ou non
+    s+='|'+JSON.stringify([f.cyl||null,f.size,+f.p||0,!!f.lh,!!f.model,+f.clear||0,f.lenMode||'full',+f.len||0,!!f.flip]);
+  }
   if(f.type==='sweep'){
     // Balayage (75-balayage) : profil ET chemin — éditer l'un ou l'autre change le solide
     const sk=doc.sketches.find(x=>x.id===f.sketchId),pk=doc.sketches.find(x=>x.id===f.pathId);
@@ -6790,6 +6794,12 @@ function occReplayBodyIn(bid,list){
       result=r.shape;msgs.push(...r.warnings.map(w=>`${f.name} : ${w}`));
       if(r.warnings.length)occCkWarn[ckKey]=r.warnings.slice();else delete occCkWarn[ckKey];
       occCkPut(ckKey,()=>occShapeCopy(result));
+      return;
+    }
+    if(f.type==='xthread'){
+      // Filetage (76-filetage) : solide inchangé ; le vide fileté (filet modélisé) rejoint ceux
+      // des taraudages, creusés en fin de rejeu. Clé = préfixe : résolution mémorisée.
+      threadReplayStep(f,result,ckKey,msgs,threads,bid,bin);
       return;
     }
     let shape=null;
@@ -8472,6 +8482,7 @@ function featIconOf(f){
   if(f.type==='revolve')return (f.op||'add')==='cut'?'◔':'◍';
   if(f.type==='sweep')return (f.op||'add')==='cut'?'≋':'〰';
   if(f.type==='hole')return '⊚';
+  if(f.type==='xthread')return f._err?'⚠':'🔩'; // filetage d'un axe (76-filetage)
   if(f.type==='xmove')return '📐';
   if(f.type==='bmove')return '✥';
   if(f.type==='xdelface')return f._calc?'⏳':((f._m&&f._m.m<f._m.t)||f._err)?'⚠':'⌫'; // ⏳ : calcul au worker (21)
@@ -10257,6 +10268,7 @@ function renderProps(){
       fdynFoot(p,f);
     }
     {const cb=cutBodiesField(f);if(cb)p.appendChild(cb);} // V0.15.12 : plusieurs corps visibles → tous ou un seul
+    if(f.type==='xthread')renderThreadProps(p,f); // V0.35.0 : filetage d'un axe (76-filetage)
     if(f.type==='hole'){fdynEnsure(f);renderHoleProps(p,f);fdynFoot(p,f);} // V0.8.0 : OK / Annuler, flèche de profondeur
     /* — révolution — V0.8.0 : fenêtre dynamique (71-fenetre-dynamique) */
     if(f.type==='revolve'){ fdynRevolvePanel(p,f); }
@@ -10548,6 +10560,7 @@ function tlbSvgKey(s){
     case 'revolve':return ['revolve',cut?'cut':'add',cut];
     case 'sweep':return ['sweep',cut?'cut':'add',cut];
     case 'hole':return ['hole','cut'];
+    case 'xthread':return ['thread','mod'];
     case 'xfillet':{let k='';try{k=xKindOf(f);}catch(e){}return [/cham/i.test(k)?'chamfer':'fillet','mod'];}
     case 'fillet':return ['fillet','mod'];
     case 'repeat':return ['pattern','rep'];
@@ -12900,7 +12913,7 @@ function asmExtSyncSoon(){if(!asmExtBusy&&asm){try{setTimeout(()=>{try{if(asmExt
    typés réunis en un bloc binaire compressé gzip, base64) ; à l'ouverture, bundleStoreCaches
    les remet dans le cache AVANT la lecture du document : le fichier s'ouvre vite sur un autre
    poste. Elles passent par les mêmes clés : une image qui ne correspond plus est ignorée. */
-const ASM_CACHE_V=2;        // format des entrées (2 : V0.29.0, faces exactes it.grp / it.fg pour les mesures)
+const ASM_CACHE_V=3;        // format des entrées (2 : V0.29.0, faces exactes it.grp / it.fg pour les mesures ; 3 : V0.35.0, spirales des filets thr)
 const ASM_CACHE_MAX=300;    // entrées gardées
 const ASM_CACHE_VERTS=1500000; // composant plus gros : pas de cache (comme saveViewCache)
 const asmCachePend=new Map(); // composant → {snap, key} à écrire
@@ -12955,7 +12968,7 @@ function asmCachePack(s){
   }
   const e=s.edges&&s.edges.attributes;
   return {items,edges:e&&e.position?{pos:asmCacheArr(e.position),col:asmCacheArr(e.color)}:null,
-    pedges:s.pedges||null,pfaces:s.pfaces||null,hash:s.hash||''};
+    pedges:s.pedges||null,pfaces:s.pfaces||null,thr:s.thr||null,hash:s.hash||''};
 }
 function asmCacheUnpack(v,hash){
   // hash : empreinte du document REJOUÉ (celle de la capture), que citent les références des
@@ -12978,7 +12991,7 @@ function asmCacheUnpack(v,hash){
     edges.setAttribute('position',new THREE.Float32BufferAttribute(v.edges.pos,3));
     if(v.edges.col)edges.setAttribute('color',new THREE.Float32BufferAttribute(v.edges.col,3));
   }
-  return {items,edges,pedges:v.pedges||null,pfaces:v.pfaces||null,exact:true,hash,cached:true};
+  return {items,edges,pedges:v.pedges||null,pfaces:v.pfaces||null,thr:Array.isArray(v.thr)?v.thr:null,exact:true,hash,cached:true};
 }
 /* ── écriture : fin de rejeu du composant actif (asmCaptureActive), différée et groupée ── */
 function asmCacheSoon(c){
@@ -13202,7 +13215,13 @@ function asmCaptureActive(){
   const edges=asmEdgeCapture(); // arêtes pour le mode Placer (48-assemblage-apparence)
   const pedges=asmSkCaptureEdges(); // V0.8.1 : arêtes exactes, projetables dans les esquisses des autres (46)
   const pfaces=asmSkCaptureFaces(); // faces planes / cylindriques : références de construction des autres (46)
-  c._snap={items,edges,pedges,pfaces,exact:builtEngine==='exact',hash:(()=>{try{return docHash();}catch(e){return '';}})()};
+  // V0.35.0 : spirales des filets cosmétiques (taraudages, filetages — 76) des corps affichés :
+  // dessinées avec chaque occurrence, donc cachées avec elle
+  let thr=null;
+  try{const memo=new Map();
+    thr=(typeof holeThreadPaths==='function'?holeThreadPaths():[]).filter(T=>holeThreadBodyShown(T.bodyId,memo)).map(T=>({helix:T.helix,ring:T.ring}));
+    if(!thr.length)thr=null;}catch(e){thr=null;}
+  c._snap={items,edges,pedges,pfaces,thr,exact:builtEngine==='exact',hash:(()=>{try{return docHash();}catch(e){return '';}})()};
   delete c._stale;
   try{asmCacheSoon(c);}catch(e){} // gardé pour les prochaines ouvertures (47-assemblage-cache)
   // le composant vient d'être rejoué : ses repères ont pu bouger → les alignements suivent
@@ -13211,7 +13230,25 @@ function asmCaptureActive(){
   asmSnapSyncSoon(); // … ou des faces visées par des points d'accroche (48)
   if(!asmBuilding){try{asmCtxDraw();}catch(e){}if(asmMode==='asm'){try{asmDraw();}catch(e){}}}
 }
-function asmSnapFree(s){(s&&s.items||[]).forEach(it=>{try{it.geo.dispose();}catch(e){}});try{if(s&&s.edges)s.edges.dispose();}catch(e){}}
+function asmSnapFree(s){(s&&s.items||[]).forEach(it=>{try{it.geo.dispose();}catch(e){}});try{if(s&&s.edges)s.edges.dispose();}catch(e){}
+  try{if(s&&s._thrG){s._thrG.h.dispose();s._thrG.r.dispose();}}catch(e){}}
+function asmThrLines(s){
+  // Spirales (traits pleins) et cercles (pointillés) des filets cosmétiques de l'instantané —
+  // géométries partagées par toutes les occurrences, mêmes couleurs que dans la pièce (76)
+  if(!s||!s.thr||!s.thr.length)return null;
+  if(!s._thrG){
+    const seg=(arr,pts)=>{for(let i=1;i<pts.length;i++){const p=pts[i-1],q=pts[i];arr.push(p[0],p[1],p[2],q[0],q[1],q[2]);}};
+    const h=[],r=[];s.thr.forEach(T=>{seg(h,T.helix||[]);seg(r,T.ring||[]);});
+    const mk=a=>{const g=new THREE.BufferGeometry();g.setAttribute('position',new THREE.Float32BufferAttribute(a,3));return g;};
+    s._thrG={h:mk(h),r:mk(r)};
+  }
+  const G=new THREE.Group();
+  const hl=new THREE.LineSegments(s._thrG.h,new THREE.LineBasicMaterial({color:0xffb340,transparent:true,opacity:0.9}));
+  const rl=new THREE.LineSegments(s._thrG.r,new THREE.LineDashedMaterial({color:0xffb340,dashSize:0.8,gapSize:0.6,transparent:true,opacity:0.95}));
+  try{if(rl.computeLineDistances)rl.computeLineDistances();}catch(e){}
+  [hl,rl].forEach(l=>{l.renderOrder=5;l.raycast=()=>{};G.add(l);});
+  return G;
+}
 function asmBuildSnapshots(){
   // Rejoue chaque composant sans instantané (ou en repli maillage alors que le noyau exact est
   // prêt), puis revient au composant actif. Synchrone : rebuild() construit et capture
@@ -13267,6 +13304,7 @@ function asmFill(G,placer){
       g.add(m);
       if(kind!=='ghost'){try{glassDepthMask({mesh:m});}catch(e){}} // passes de verre, comme une pièce
     });
+    if(kind!=='ghost'){const tl=asmThrLines(c._snap);if(tl)g.add(tl);} // filets cosmétiques (V0.35.0)
     if(kind!=='ghost'&&c._snap.edges&&asmEdgesShown(look))
       g.add(asmEdgeLines(c._snap.edges,c._snap.items.some(it=>(look.gl!=null?look.gl:(it.gl||1))<0.999)));
     G.add(g);
@@ -16033,8 +16071,10 @@ function asmInspectProps(p){
      · révolution d'un profil (r, z) du plan XZ autour de Z — arcs permis (bouts bombés) ;
      · six pans creux : découpe d'un hexagone (plan XY) depuis le dessus ;
      · fente d'une goupille élastique, contour d'une clavette : esquisse XY + extrusion.
-   Le filet n'est pas modélisé (comme le filet cosmétique d'un perçage) : la désignation le
-   porte (M8×1, 1/4-28 UNF, G 1/2…) et doc.std la garde (nomenclature, réemploi).
+   V0.35.0 : la tige des vis (ISO, ANSI) et des bouchons G porte une fonction FILETAGE
+   (76-filetage) sur la longueur filetée de la norme : spirale cosmétique (comme un taraudage,
+   cachée avec la pièce) ou, au choix pour les vis, filet ISO modélisé. La désignation le
+   porte aussi (M8×1, 1/4-28 UNF, G 1/2…) et doc.std la garde (nomenclature, réemploi).
    Repères : vis CHC et bouchon à collerette — origine sous la tête (face d'appui), tige vers
    −Z ; vis FHC et bouchon conique — origine sur le dessus (affleurant), pièce vers −Z ;
    goupille — de z = 0 à z = L ; clavette — posée sur XY, centrée, hauteur vers +Z.
@@ -16155,12 +16195,19 @@ function stdScrewFHC(o){
   return {prof:[[0,-o.L],[o.d/2-c,-o.L],[o.d/2,-o.L+c],[o.d/2,zb],[dr/2,Math.min(ze,-0.05)],[dr/2,0],[0,0]],
     ops:[{k:'hex',z:0,s:o.s,t:o.t}]};
 }
+function stdThr(size,P,d,L,b,k,mod){
+  // Filetage de la tige (axe Z, tige vers −Z depuis z = −k) : taille connue du filetage seulement
+  if(typeof isoThread!=='function'||!isoThread(size))return null;
+  const full=L-k<=b+1e-6;
+  return {size,p:+(+P).toFixed(4),r:d/2,z:-(k+(L-k)/2),lenMode:full?'full':'len',len:+(+b).toFixed(3),model:!!mod};
+}
 function stdIsoScrew(st){
   const fhc=st.type==='fhc',T=fhc?STD_ISO10642:STD_ISO4762,r=T.find(x=>x[0]===st.size)||T[0];
   const pas=STD_ISO_PAS[r[0]],P=+st.pitch||pas[0],L=+st.len,fin=Math.abs(P-pas[0])>1e-9;
   const g=fhc?stdScrewFHC({d:r[1],dk:r[2],k:r[3],a:90,s:r[4],t:r[5],L,P}):stdScrewCHC({d:r[1],dk:r[2],k:r[3],s:r[4],t:r[5],L,P});
-  const th=r[0]+(fin?'×'+stdF(P):''),norm=fhc?'ISO 10642':'ISO 4762';
-  return Object.assign(g,{seat:fhc?'flush':'under',sink:fhc?FHC_RETRAIT:0,key:norm+'|'+th+'|'+L,norm,desig:th+'×'+stdF(L),name:(fhc?'FHC ':'CHC ')+th+'×'+stdF(L),
+  const th=r[0]+(fin?'×'+stdF(P):''),norm=fhc?'ISO 10642':'ISO 4762',mod=st.fil==='mod';
+  g.thr=stdThr(r[0],P,r[1],L,2*r[1]+12,fhc?r[3]:0,mod); // b = 2d + 12 (ISO 4762 / 10642, L ≤ 125)
+  return Object.assign(g,{seat:fhc?'flush':'under',sink:fhc?FHC_RETRAIT:0,key:norm+'|'+th+'|'+L+(mod?'|filet':''),norm,desig:th+'×'+stdF(L),name:(fhc?'FHC ':'CHC ')+th+'×'+stdF(L),
     info:(fhc?'Vis à tête fraisée six pans creux, fraisure 90°':'Vis à tête cylindrique six pans creux')+' · pas '+stdF(P)+(fin?' (fin)':' (gros)')+
       ' · '+(fhc?'Ø tête ':'dk ')+stdF(r[2])+' · k '+stdF(r[3])+' · clé '+stdF(r[4])+' · L '+stdF(L)+(fhc?' (tête comprise)':' (sous tête)')});
 }
@@ -16170,14 +16217,15 @@ function stdAnsiScrew(st){
   const L=stdFrac(st.len),I=STD_IN,P=I/tpi;
   const g=fhc?stdScrewFHC({d:r[1]*I,dk:r[2]*I,k:(r[2]-r[1])/2/Math.tan(41*Math.PI/180)*I,a:82,s:r[3]*I,t:r[4]*I,L:L*I,P})
     :stdScrewCHC({d:r[1]*I,dk:r[2]*I,k:r[3]*I,s:r[4]*I,t:r[5]*I,L:L*I,P});
-  const th=r[0]+'-'+tpi+' '+serie,norm=fhc?'ASME B18.3 FHCS':'ASME B18.3 SHCS';
-  return Object.assign(g,{seat:fhc?'flush':'under',sink:fhc?FHC_RETRAIT:0,key:norm+'|'+th+'|'+st.len,norm,desig:th+' × '+st.len+'"',name:(fhc?'FHCS ':'SHCS ')+th+' × '+st.len+'"',
+  const th=r[0]+'-'+tpi+' '+serie,norm=fhc?'ASME B18.3 FHCS':'ASME B18.3 SHCS',mod=st.fil==='mod';
+  g.thr=stdThr(th,P,r[1]*I,L*I,(2*r[1]+0.5)*I,fhc?(r[2]-r[1])/2/Math.tan(41*Math.PI/180)*I:0,mod); // LT = 2D + 1/2" (B18.3)
+  return Object.assign(g,{seat:fhc?'flush':'under',sink:fhc?FHC_RETRAIT:0,key:norm+'|'+th+'|'+st.len+(mod?'|filet':''),norm,desig:th+' × '+st.len+'"',name:(fhc?'FHCS ':'SHCS ')+th+' × '+st.len+'"',
     info:(fhc?'Flat head socket cap screw, fraisure 82°':'Socket head cap screw')+' · '+tpi+' filets/pouce · Ø '+stdF(r[1]*I)+' mm · L '+stdF(L*I)+' mm'+(fhc?' (tête comprise)':' (sous tête)')});
 }
 function stdPlug(st){
   if(st.type==='din908'){
     const r=STD_DIN908.find(x=>x[0]===st.size)||STD_DIN908[0],[,d,tpi,dk,k,i,s,t]=r,c=Math.min(STD_IN/tpi,1.5),ch=0.4;
-    return {seat:'under',key:'DIN 908|'+r[0],norm:'DIN 908',desig:r[0]+' A',name:'Bouchon DIN 908 '+r[0],
+    return {thr:stdThr(r[0].replace(' ',''),STD_IN/tpi,d,i,i,0,false),seat:'under',key:'DIN 908|'+r[0],norm:'DIN 908',desig:r[0]+' A',name:'Bouchon DIN 908 '+r[0],
       info:'Bouchon à collerette, six pans creux, filet cylindrique '+r[0]+' (ISO 228) · Ø collerette '+stdF(dk)+' · k '+stdF(k)+' · filetée '+stdF(i)+' · clé '+stdF(s),
       prof:[[0,-i],[d/2-c,-i],[d/2,-i+c],[d/2,0],[dk/2,0],[dk/2,k-ch],[dk/2-ch,k],[0,k]],ops:[{k:'hex',z:k,s,t}]};
   }
@@ -16253,7 +16301,8 @@ const STD_CATS=[
     {k:'size',lab:'Taille',opts:st=>(st.type==='fhc'?STD_ISO10642:STD_ISO4762).map(r=>[r[0],r[0]]),def:()=>'M6'},
     {k:'pitch',lab:'Pas',opts:st=>(STD_ISO_PAS[st.size]||[1]).map((p,i)=>[String(p),stdF(p)+(i?' — fin':' — gros (M)')])},
     {k:'len',lab:'Longueur (mm)',opts:st=>{const r=(st.type==='fhc'?STD_ISO10642:STD_ISO4762).find(x=>x[0]===st.size);
-      return r?stdLens(STD_ISO_LV,r[6],r[7],true).map(v=>[String(v),stdF(v)]):[];},def:st=>{const r=(st.type==='fhc'?STD_ISO10642:STD_ISO4762).find(x=>x[0]===st.size);return r?String(stdLens(STD_ISO_LV,Math.max(r[6],3*r[1]),r[7],true)[0]||r[6]):'';}}],
+      return r?stdLens(STD_ISO_LV,r[6],r[7],true).map(v=>[String(v),stdF(v)]):[];},def:st=>{const r=(st.type==='fhc'?STD_ISO10642:STD_ISO4762).find(x=>x[0]===st.size);return r?String(stdLens(STD_ISO_LV,Math.max(r[6],3*r[1]),r[7],true)[0]||r[6]):'';}},
+    {k:'fil',lab:'Filet',opts:()=>[['cos','Cosmétique (spirale dessinée)'],['mod','Modélisé (profil ISO, impression 3D)']]}],
     gen:stdIsoScrew},
   {k:'ansi',lab:'Vis ANSI',fields:[
     {k:'type',lab:'Type',opts:()=>[['chc','SHCS — tête cylindrique (B18.3)'],['fhc','FHCS — tête fraisée 82° (B18.3)']]},
@@ -16263,7 +16312,8 @@ const STD_CATS=[
     {k:'len',lab:'Longueur (po)',opts:st=>{const r=(st.type==='fhc'?STD_ANSI_FHCS:STD_ANSI_SHCS).find(x=>x[0]===st.size);
       if(!r)return [];const n=r.length;return stdLens(STD_INCH_LV,r[n-2],r[n-1]).map(v=>[v,v+'"']);},
       def:st=>{const r=(st.type==='fhc'?STD_ANSI_FHCS:STD_ANSI_SHCS).find(x=>x[0]===st.size);if(!r)return '';
-        const n=r.length,l=stdLens(STD_INCH_LV,r[n-2],r[n-1]);return l.find(v=>stdFrac(v)>=3*r[1])||l[0];}}],
+        const n=r.length,l=stdLens(STD_INCH_LV,r[n-2],r[n-1]);return l.find(v=>stdFrac(v)>=3*r[1])||l[0];}},
+    {k:'fil',lab:'Filet',opts:()=>[['cos','Cosmétique (spirale dessinée)'],['mod','Modélisé (profil ISO, impression 3D)']]}],
     gen:stdAnsiScrew},
   {k:'plug',lab:'Bouchons gaz',fields:[
     {k:'type',lab:'Type',opts:()=>[['din906','DIN 906 — conique R (sans collerette)'],['din908','DIN 908 — cylindrique G, à collerette'],['nptf','NPTF — conique (ANSI)']]},
@@ -16346,10 +16396,17 @@ function stdDoc(sp){
   d.bodies=[{id:'b1',name:sp.name,c:null}];d.bodySeq=2;d.activeBody='b1';
   d.std={key:sp.key,norm:sp.norm,desig:sp.desig};
   if(sp.cat&&sp.st){d.std.cat=sp.cat;d.std.st=Object.assign({},sp.st);}
-  const F=(f)=>{f.id=uid(f.type==='revolve'?'rv':'ex');f.visible=true;f.body='b1';d.features.push(f);return f;};
+  const F=(f)=>{f.id=uid(f.type==='revolve'?'rv':f.type==='xthread'?'th':'ex');f.visible=true;f.body='b1';d.features.push(f);return f;};
   if(sp.prof){
     const s=stdSketch(d,'Profil','XZ',0);stdLoop(s,sp.prof);
     F({type:'revolve',name:'Révolution',sketchId:s.id,axis:{k:'sys',d:'Z'},angle:360,op:'add'});
+  }
+  if(sp.prof&&sp.thr){
+    // V0.35.0 : filetage de la tige (76-filetage), départ au bout libre (pointe)
+    const t=sp.thr,f={type:'xthread',name:'',cyl:{c:[0,0,0],u:[0,0,1],r:+t.r.toFixed(6),p:[+t.r.toFixed(6),0,+t.z.toFixed(6)]},
+      size:t.size,p:t.p,lh:false,model:!!t.model,clear:0,lenMode:t.lenMode,len:t.len,flip:false,visible:true};
+    try{f.name=threadName(f);}catch(e){f.name='Filetage '+t.size;}
+    F(f);
   }
   (sp.ops||[]).forEach(o=>{
     if(o.k==='hex'){
@@ -27261,6 +27318,378 @@ function askRevokePanel(f){
   const p=$('props');p.insertBefore(lab,p.firstChild);
 }
 
+/* ═══════════════ 76-filetage.js — filetage ═══════════════ */
+/* ═══════════════════════════════════════════════════════════════════════════
+   FILETAGE (fonction 3D) — V0.35.0
+   Demande : « une fonction filetage pour les axes, pour faire des vis par exemple,
+   et l'appliquer au standard de visserie de l'Assemblage » ; « les filets auront les
+   mêmes spirales que les trous taraudés, cachées avec la vis quand elle l'est ».
+
+   • On clique la face CYLINDRIQUE EXTÉRIEURE d'un axe. Taille proposée d'après son Ø
+     (métrique ISO, UNC / UNF, gaz G), pas, sens (LH), longueur (toute la face ou donnée),
+     filet cosmétique (spirale dessinée, comme un taraudage) ou modélisé (profil ISO 68-1
+     creusé dans le corps, noyau exact).
+   • f = {type:'xthread', cyl:{c,u,r,p} (axe, rayon et point cliqué : référence durable),
+          size, p, lh, model, clear, lenMode:'full'|'len', len, flip (départ à l'autre bout)}
+   • Le départ est le bout LIBRE de la face (rien au-delà, ou seulement un chanfrein) :
+     le filet y débouche ; l'autre bout (épaulement, tête de vis) l'arrête net.
+   • Filet modélisé : comme le taraudage (src/76-percage, occHoleThreadVoid), le VIDE
+     fileté est construit directement (faces réglées entre hélices, aucun booléen) et
+     creusé en fin de rejeu du corps (occReplayBody, `threads`, worker). Il contient la
+     peau du cylindre (crête 0,01 sous le Ø de la face) : la découpe ne calcule aucune
+     intersection de flanc avec le cylindre, seulement avec les faces des bouts.
+   • Rien n'est ajouté au solide dans l'arbre : les fonctions suivantes voient l'axe lisse.
+   ═══════════════════════════════════════════════════════════════════════════ */
+// Géométrie résolue au dernier rejeu, par fonction : {o (axe, bout de départ), d (vers
+// l'intérieur), R, rR, len, bid} — hors du document (pas dans l'empreinte docHash).
+const threadGeo=new Map();
+const threadCk=new Map(); // clé de préfixe du rejeu → {g, thr (copie), w}
+function threadDims(size,p,clear,R){
+  // Filet extérieur ISO 68-1 (profil de base) : crête au Ø majeur d (méplat p/8), racine
+  // au Ø d1 = d − 1,0825·p (méplat p/4), flancs à 60°. clear : jeu d'impression sur le Ø.
+  const t=isoThread(size);if(!t)return null;
+  const d=+t[1],P=+p||+t[2];if(!(d>0)||!(P>0))return null;
+  const c=Math.max(0,+clear||0)/2,d1=d-1.082532*P;
+  const rC=Math.min((R>0?R:d/2)-0.01,d/2-c),rR=d1/2-c;
+  if(!(rC-rR>0.1*P)||!(rR>0))return null;
+  return {d,P,d1,rC,rR,w:P/8,h:P/8+(rC-rR)*Math.tan(Math.PI/6)};
+}
+function threadSizeFor(D){
+  // Taille la plus proche du Ø (métrique ISO d'abord, à Ø égal), pas gros
+  let best=null,bd=1e9;
+  ALL_THREADS.forEach(function(t){if(threadInfo(t[0]).cone)return;const e=Math.abs(t[1]-D)+(threadInfo(t[0]).fam==='M'?0:1e-3);if(e<bd){bd=e;best=t;}});
+  return best?{size:best[0],p:best[2],err:bd}:null;
+}
+function threadLabel(f){
+  if(!f||!f.size)return '';
+  const t=isoThread(f.size);
+  return f.size+((t&&+f.p!==t[2])?('×'+String(f.p).replace('.',',')):'')+(f.lh?'-LH':'');
+}
+function threadName(f){
+  const L=(f.lenMode==='len')?(' × '+String(+(+f.len||0).toFixed(2)).replace('.',',')):' (toute la face)';
+  return 'Filetage '+threadLabel(f)+L;
+}
+/* ----- face cylindrique de la fonction, sur le solide courant ----- */
+function threadCylOf(face){
+  // {c,u,r} d'une face cylindrique (axe monde), ou null
+  let ad=null;
+  try{
+    ad=new occt.BRepAdaptor_Surface_2(face,true);
+    if(ad.GetType()!==occt.GeomAbs_SurfaceType.GeomAbs_Cylinder)return null;
+    const cy=ad.Cylinder(),a=cy.Axis(),l=a.Location(),d=a.Direction();
+    const c=[l.X(),l.Y(),l.Z()],u=[d.X(),d.Y(),d.Z()];
+    const v0=ad.FirstVParameter(),v1=ad.LastVParameter();
+    return {c,u,r:cy.Radius(),v0:Math.min(v0,v1),v1:Math.max(v0,v1)};
+  }catch(e){return null;}
+  finally{try{if(ad)ad.delete();}catch(e){}}
+}
+function threadAxisT(ref,q){return (q[0]-ref.c[0])*ref.u[0]+(q[1]-ref.c[1])*ref.u[1]+(q[2]-ref.c[2])*ref.u[2];}
+function threadPerp(u){
+  const ref=Math.abs(u[2])<0.9?[0,0,1]:[1,0,0];
+  const x=[u[1]*ref[2]-u[2]*ref[1],u[2]*ref[0]-u[0]*ref[2],u[0]*ref[1]-u[1]*ref[0]],L=Math.hypot(x[0],x[1],x[2])||1;
+  return [x[0]/L,x[1]/L,x[2]/L];
+}
+function threadResolve(shape,f){
+  // Faces cylindriques coaxiales de même rayon que la référence → étendue axiale [a, b]
+  // (repère de f.cyl : t le long de f.cyl.u) du tronçon contenant le point cliqué.
+  const ref=f.cyl;if(!ref||!Array.isArray(ref.c)||!Array.isArray(ref.u)||!(ref.r>0))throw new Error('face de l’axe non définie');
+  const spans=[];
+  const ex=new occt.TopExp_Explorer_2(shape,occt.TopAbs_ShapeEnum.TopAbs_FACE,occt.TopAbs_ShapeEnum.TopAbs_SHAPE);
+  try{
+    for(;ex.More();ex.Next()){
+      const fc=occt.TopoDS.Face_1(ex.Current());
+      const C=threadCylOf(fc);try{fc.delete();}catch(e){}
+      if(!C||Math.abs(C.r-ref.r)>0.02)continue;
+      const dot=C.u[0]*ref.u[0]+C.u[1]*ref.u[1]+C.u[2]*ref.u[2];if(Math.abs(dot)<0.9999)continue;
+      const w=[C.c[0]-ref.c[0],C.c[1]-ref.c[1],C.c[2]-ref.c[2]],t=w[0]*ref.u[0]+w[1]*ref.u[1]+w[2]*ref.u[2];
+      if(Math.hypot(w[0]-t*ref.u[0],w[1]-t*ref.u[1],w[2]-t*ref.u[2])>0.02)continue;
+      const ta=t+dot*C.v0,tb=t+dot*C.v1;
+      spans.push([Math.min(ta,tb),Math.max(ta,tb)]);
+    }
+  }finally{try{ex.delete();}catch(e){}}
+  if(!spans.length)throw new Error('face cylindrique Ø'+String(+(2*ref.r).toFixed(2)).replace('.',',')+' introuvable');
+  spans.sort(function(x,y){return x[0]-y[0];});
+  const M=[];spans.forEach(function(s){const L=M[M.length-1];if(L&&s[0]<=L[1]+0.01)L[1]=Math.max(L[1],s[1]);else M.push(s.slice());});
+  const tp=Array.isArray(ref.p)?threadAxisT(ref,ref.p):(M[0][0]+M[0][1])/2;
+  let best=M[0],bd=1e18;
+  M.forEach(function(s){const d=tp<s[0]?s[0]-tp:(tp>s[1]?tp-s[1]:0);if(d<bd){bd=d;best=s;}});
+  return {a:best[0],b:best[1]};
+}
+function threadFreeDist(cl,ref,t0,sg,r,maxD){
+  // Bout libre ? distance (le long de sg·u, depuis t0) où la matière cesse au rayon r
+  // (racine du filet), ou null si elle continue au-delà de maxD (épaulement, tête).
+  const U=threadPerp(ref.u),IN=occt.TopAbs_State.TopAbs_IN;
+  const inAt=function(s){
+    const t=t0+sg*s;let n=0;
+    for(let k=0;k<3;k++){
+      const a=k*2*Math.PI/3,V=[ref.u[1]*U[2]-ref.u[2]*U[1],ref.u[2]*U[0]-ref.u[0]*U[2],ref.u[0]*U[1]-ref.u[1]*U[0]];
+      const q=[0,1,2].map(function(i){return ref.c[i]+ref.u[i]*t+(U[i]*Math.cos(a)+V[i]*Math.sin(a))*r;});
+      const P=new occt.gp_Pnt_3(q[0],q[1],q[2]);cl.Perform(P,1e-7);if(cl.State()===IN)n++;try{P.delete();}catch(e){}
+    }
+    return n>0;
+  };
+  for(let s=0.02;s<=maxD;s+=0.05)if(!inAt(s))return s;
+  return null;
+}
+/* ----- vide fileté extérieur ----- */
+// Même construction que le vide d'un taraudage (occHoleThreadVoid), retournée : le vide
+// va de la paroi filetée VERS L'EXTÉRIEUR, jusqu'au rayon Rout (hors matière). Un tour =
+// 4 faces réglées de paroi (flanc, racine, flanc, crête) + 1 bande cylindrique au rayon
+// Rout ; tours suivants translatés d'un pas, cousus ; fermeture aux deux bouts par une
+// rampe hélicoïdale (Rout → crête) et un bouchon plan dans le plan axial.
+// Étendue le long de D : de zStart à zStart + (nT+1)·p.
+function occShaftThreadVoid(P,D,zStart,nT,th,Rout,lh,bins){
+  const p=th.P,rC=th.rC,rR=th.rR,w=th.w,h=th.h;
+  if(!(nT>=1)||!(Rout>rC+1e-3)||!(h<p/2))return null;
+  const cross=function(a,b){return {x:a.y*b.z-a.z*b.y,y:a.z*b.x-a.x*b.z,z:a.x*b.y-a.y*b.x};};
+  const norm=function(a){const l=Math.hypot(a.x,a.y,a.z)||1;return {x:a.x/l,y:a.y/l,z:a.z/l};};
+  const ref=Math.abs(D.z)<0.9?{x:0,y:0,z:1}:{x:1,y:0,z:0};
+  // départ tourné de ~37° : jamais aligné sur la couture du cylindre de l'axe
+  const U0=norm(cross(D,ref)),V0=cross(D,U0),ca=Math.cos(0.65),sa=Math.sin(0.65);
+  const U={x:U0.x*ca+V0.x*sa,y:U0.y*ca+V0.y*sa,z:U0.z*ca+V0.z*sa};
+  const z0=zStart+h;
+  const pnt=function(q){return occBinPush(bins,new occt.gp_Pnt_3(q.x,q.y,q.z));};
+  const dirOf=function(q){return occBinPush(bins,new occt.gp_Dir_4(q.x,q.y,q.z));};
+  const at=function(r,s){return {x:P.x+D.x*(z0+s)+U.x*r,y:P.y+D.y*(z0+s)+U.y*r,z:P.z+D.z*(z0+s)+U.z*r};};
+  // profil d'un tour (r, s le long de D) : gorge à racine p/4, crête p/8 entre deux tours
+  const q=[[Rout,-h],[rC,-h],[rR,-w],[rR,w],[rC,h],[rC,p-h],[Rout,p-h]];
+  const hs=lh?-1:1;
+  const helix=function(r,s){
+    const ax3=occBinPush(bins,new occt.gp_Ax3_3(pnt(at(0,s)),dirOf(D),dirOf(U)));
+    const hSurf=occBinPush(bins,new occt.Handle_Geom_Surface_2(new occt.Geom_CylindricalSurface_1(ax3,r)));
+    const hLine=occBinPush(bins,new occt.Handle_Geom2d_Curve_2(new occt.Geom2d_Line_3(
+      occBinPush(bins,new occt.gp_Pnt2d_3(0,0)),occBinPush(bins,new occt.gp_Dir2d_4(hs*2*Math.PI,p)))));
+    const me=occBinPush(bins,new occt.BRepBuilderAPI_MakeEdge_31(hLine,hSurf,0,Math.hypot(2*Math.PI,p)));
+    if(!me.IsDone())throw new Error('hélice impossible');
+    const e=me.Edge();occt.BRepLib.BuildCurves3d_2(e);return e;
+  };
+  const H=q.map(function(a){return helix(a[0],a[1]);});
+  const ruled=function(i,j){return occt.BRepFill.Face(H[i],H[j]);};
+  const turn=[ruled(1,2),ruled(2,3),ruled(3,4),ruled(4,5),ruled(0,6)];
+  const cap=function(k){
+    const pl=occBinPush(bins,new occt.BRepBuilderAPI_MakePolygon_1());
+    q.forEach(function(a){pl.Add_1(pnt(at(a[0],a[1]+k*p)));});pl.Close();
+    const mf=occBinPush(bins,new occt.BRepBuilderAPI_MakeFace_15(pl.Wire(),true));
+    if(!mf.IsDone())throw new Error('bouchon de filet impossible');
+    return mf.Face();
+  };
+  const moved=function(s,k){
+    if(!k)return s;
+    const g=occBinPush(bins,new occt.gp_Trsf_1());g.SetTranslation_1(occBinPush(bins,new occt.gp_Vec_4(D.x*p*k,D.y*p*k,D.z*p*k)));
+    return occBinPush(bins,new occt.BRepBuilderAPI_Transform_2(s,g,true)).Shape();
+  };
+  const sew=occBinPush(bins,new occt.BRepBuilderAPI_Sewing(1e-4,true,true,true,false));
+  for(let k=0;k<nT;k++)turn.forEach(function(s){sew.Add(moved(s,k));});
+  sew.Add(ruled(0,1));sew.Add(cap(0));          // départ : rampe + bouchon
+  sew.Add(moved(ruled(5,6),nT-1));sew.Add(cap(nT)); // arrêt : rampe + bouchon
+  sew.Perform(occBinPush(bins,new occt.Handle_Message_ProgressIndicator_1()));
+  if(sew.NbFreeEdges()>0)throw new Error('filet non fermé ('+sew.NbFreeEdges()+' arêtes libres)');
+  const sewn=sew.SewedShape();
+  const ex=occBinPush(bins,new occt.TopExp_Explorer_2(sewn,occt.TopAbs_ShapeEnum.TopAbs_SHELL,occt.TopAbs_ShapeEnum.TopAbs_SHAPE));
+  if(!ex.More())throw new Error('coque de filet introuvable');
+  const ms=occBinPush(bins,new occt.BRepBuilderAPI_MakeSolid_1());
+  ms.Add(occt.TopoDS.Shell_1(ex.Current()));
+  let sol=ms.Solid();
+  const gp=occBinPush(bins,new occt.GProp_GProps_1());occt.BRepGProp.VolumeProperties_1(sol,gp,false,false,false);
+  if(gp.Mass()<0)sol=sol.Reversed();
+  return sol;
+}
+function threadModelable(f){return !!(f&&f.size&&threadInfo(f.size).model);}
+function threadCompute(shape,f,bin){
+  // Résout la face, choisit le départ, construit le vide si le filet est modélisé.
+  const ref=f.cyl,S=threadResolve(shape,f),w=[];
+  const t=isoThread(f.size);if(!t)throw new Error('taille de filet inconnue ('+f.size+')');
+  const P=+f.p||t[2],R=ref.r;
+  const th=threadDims(f.size,P,threadModelable(f)&&f.model?f.clear:0,R);
+  if(!th)throw new Error('profil de filet impossible sur Ø'+String(+(2*R).toFixed(2)).replace('.',','));
+  if(Math.abs(2*R-th.d)>Math.max(0.3,0.06*th.d))w.push('Ø de l’axe '+String(+(2*R).toFixed(2)).replace('.',',')+' éloigné du Ø nominal '+String(th.d).replace('.',',')+' du '+f.size);
+  // bouts libres (rien au-delà, ou seulement un chanfrein) : le filet y débouche
+  let cl=null,fa=null,fb=null;
+  try{
+    cl=new occt.BRepClass3d_SolidClassifier_2(shape);
+    const maxD=Math.max(3*P,0.4*R);
+    fa=threadFreeDist(cl,ref,S.a,-1,th.rR+0.02,maxD);
+    fb=threadFreeDist(cl,ref,S.b,1,th.rR+0.02,maxD);
+  }finally{try{if(cl)cl.delete();}catch(e){}}
+  // départ : le bout libre (à égalité, le bas de l'axe de référence) ; inversé : l'autre
+  let atA=(fa!=null)||(fb==null);if(f.flip)atA=!atA;
+  const t0=atA?S.a:S.b,sg=atA?1:-1,free0=atA?fa:fb,free1=atA?fb:fa,span=S.b-S.a;
+  const o=[0,1,2].map(function(i){return ref.c[i]+ref.u[i]*t0;}),d=ref.u.map(function(v){return v*sg;});
+  // fin du vide (depuis le départ, vers l'intérieur) : jamais dans un épaulement
+  const full=free1!=null?span+free1+P+0.1:span-0.05;
+  const lim=f.lenMode==='len'?Math.min(Math.max(P,+f.len||0),full):full;
+  const zStart=free0!=null?-(free0+P+0.05):0.05;
+  const len=f.lenMode==='len'?Math.min(Math.max(P,+f.len||0),span):span;
+  const g={o,d,R,rR:th.rR,len,P,lh:!!f.lh,free:free0!=null};
+  let thr=null;
+  if(f.model&&threadModelable(f)){
+    const nT=Math.floor((lim-zStart)/P+1e-9)-1;
+    if(nT<1)w.push('filet modélisé ignoré : longueur filetée trop courte');
+    else{
+      const bins=[];
+      try{thr=occShaftThreadVoid({x:o[0],y:o[1],z:o[2]},{x:d[0],y:d[1],z:d[2]},zStart,nT,th,R+Math.max(0.3,0.3*P),!!f.lh,bins);}
+      catch(err){w.push('filet modélisé impossible (axe lisse) : '+String(err.message||err));}
+      if(bin)bin.push(...bins);else occDispose(bins);
+    }
+  }else if(f.model)w.push('filet '+(threadInfo(f.size).cone?'conique ':'')+'cosmétique seulement (profil non modélisé)');
+  if(!g.free)w.push('aucun bout libre : le filet part du bout de la face et s’y arrête net');
+  return {g,thr,w};
+}
+function threadReplayStep(f,result,ck,msgs,threads,bid,bin){
+  // Branche du rejeu (occReplayBodyIn, src/20) : le solide n'est pas modifié ; le vide
+  // fileté rejoint les filets des taraudages, creusés en fin de rejeu.
+  if(occThreadSkip)return;
+  if(!result){msgs.push(`${f.name} : aucun axe à fileter — ignoré`);return;}
+  let e=threadCk.get(ck);
+  if(!e){
+    try{e=threadCompute(result,f,bin);}
+    catch(err){threadGeo.delete(f.id);f._err=String(err.message||err);msgs.push(`${f.name} : ${f._err}`);return;}
+    if(e.thr){const cp=occShapeCopy(e.thr);e={g:e.g,w:e.w,thr:cp};}
+    threadCk.set(ck,e);
+    while(threadCk.size>40){const k=threadCk.keys().next().value;const o=threadCk.get(k);threadCk.delete(k);try{if(o.thr)o.thr.delete();}catch(x){}}
+  }
+  delete f._err;
+  threadGeo.set(f.id,Object.assign({bid:bid},e.g));
+  f._thLen=+e.g.len.toFixed(3);
+  if(e.w.length)msgs.push(...e.w.map(x=>`${f.name} : ${x}`));
+  if(e.thr){const cp=occShapeCopy(e.thr);if(cp)threads.push({f,thr:cp});}
+}
+/* ----- spirales (filet cosmétique) : même dessin que les taraudages ----- */
+function threadShaftPaths(stepsPerTurn,inset){
+  // Un élément par filetage : {bodyId, helix, ring, spt} — format de holeThreadPaths (76-percage)
+  const out=[],spt=stepsPerTurn||24;
+  (doc.features||[]).forEach(function(f){
+    if(!f||f.type!=='xthread'||f.visible===false||!f.size)return;
+    if(f.model&&threadModelable(f)&&!f._err&&!(typeof occThrPending!=='undefined'&&occThrPending))return; // filet dans le solide
+    if(typeof tlLocked==='function'&&tlLocked(f))return;
+    const g=threadGeo.get(f.id);if(!g)return;
+    const D=new THREE.Vector3(g.d[0],g.d[1],g.d[2]).normalize();
+    const ref=Math.abs(D.z)<0.9?new THREE.Vector3(0,0,1):new THREE.Vector3(1,0,0);
+    const U=new THREE.Vector3().crossVectors(D,ref).normalize(),V=new THREE.Vector3().crossVectors(D,U).normalize();
+    const O=new THREE.Vector3(g.o[0],g.o[1],g.o[2]),rh=g.R+(inset||0.04); // juste HORS de la paroi (facettes du maillage)
+    const turns=g.len/g.P,steps=Math.max(spt,Math.ceil(turns*spt)),helix=[],ring=[];
+    for(let i=0;i<=steps;i++){
+      const a=(g.lh?-1:1)*i/steps*turns*Math.PI*2,z=i/steps*g.len;
+      const q=O.clone().addScaledVector(D,z).addScaledVector(U,rh*Math.cos(a)).addScaledVector(V,rh*Math.sin(a));
+      helix.push([q.x,q.y,q.z]);
+    }
+    // fin de la longueur filetée : cercle pointillé
+    for(let k=0;k<=48;k++){const a=k/48*Math.PI*2;
+      const q=O.clone().addScaledVector(D,g.len).addScaledVector(U,rh*Math.cos(a)).addScaledVector(V,rh*Math.sin(a));
+      ring.push([q.x,q.y,q.z]);}
+    out.push({bodyId:(typeof occBodyOfFeat==='function'?occBodyOfFeat(f):f.body)||g.bid||null,helix:helix,ring:ring,spt:steps/turns});
+  });
+  return out;
+}
+/* ----- création : clic sur la face cylindrique d'un axe ----- */
+let threadPick=null; // {fid|null}
+function threadFaceInfo(mesh,fi,point){
+  // {cyl, bid} d'une face cylindrique EXTÉRIEURE cliquée, ou {err}
+  if(!occHas()||!occLive)return {err:'noyau exact requis'};
+  const hit=occFaceOfHit(mesh,fi);if(!hit)return {err:'face introuvable'};
+  const C=threadCylOf(hit.face);try{hit.face.delete();}catch(e){}
+  if(!C)return {err:'choisissez une face CYLINDRIQUE (l’axe à fileter)'};
+  const p=[point.x,point.y,point.z],t=threadAxisT(C,p);
+  const ax=[0,1,2].map(function(i){return C.c[i]+C.u[i]*t;}),rd=[p[0]-ax[0],p[1]-ax[1],p[2]-ax[2]],L=Math.hypot(rd[0],rd[1],rd[2])||1;
+  // extérieure : juste au-delà de la paroi, on est hors matière (un trou : dans la matière)
+  let out=true,cl=null;
+  try{
+    cl=new occt.BRepClass3d_SolidClassifier_2(hit.bd.shape);
+    const s=C.r+Math.min(0.2,0.1*C.r),P=new occt.gp_Pnt_3(ax[0]+rd[0]/L*s,ax[1]+rd[1]/L*s,ax[2]+rd[2]/L*s);
+    cl.Perform(P,1e-7);out=cl.State()!==occt.TopAbs_State.TopAbs_IN;try{P.delete();}catch(e){}
+  }catch(e){}finally{try{if(cl)cl.delete();}catch(e){}}
+  if(!out)return {err:'c’est un trou : son taraudage se règle dans la fonction Perçage'};
+  const r6=function(a){return a.map(function(v){return +(+v).toFixed(6);});};
+  return {cyl:{c:r6(ax),u:r6(C.u),r:+C.r.toFixed(6),p:r6(p)},bid:hit.bd.bodyId||hit.bd.id||null};
+}
+function askThread(){
+  if(typeof skEdit!=='undefined'&&skEdit){try{faceEl.textContent='Fermez d’abord l’esquisse.';}catch(e){}return;}
+  if(!occHas()||!occLive){alert('Filetage : le noyau exact n’est pas prêt.');return;}
+  const s=selFaces&&selFaces[0];
+  if(s&&s.geom&&s.geom.kind==='cyl'){const I=threadFaceInfo(s.mesh,s.faceIndex,s.point);if(I.cyl){threadCreate(I);return;}}
+  threadPickStart(null);
+}
+function threadPickStart(fid){
+  threadPick={fid:fid};
+  try{renderer.domElement.style.cursor='crosshair';}catch(e){}
+  try{faceEl.textContent='Filetage : cliquez la face cylindrique de l’axe à fileter — Échap pour annuler.';}catch(e){}
+}
+function threadPickCancel(){threadPick=null;try{renderer.domElement.style.cursor='default';}catch(e){}}
+function threadPickAt(e){
+  if(!threadPick)return false;
+  const h=pick(e);if(!h){try{faceEl.textContent='Filetage : aucune face sous le curseur.';}catch(e2){}return true;}
+  const I=threadFaceInfo(h.object,h.faceIndex,h.point);
+  if(!I.cyl){try{faceEl.textContent='Filetage : '+I.err+'.';}catch(e2){}return true;}
+  const fid=threadPick.fid;threadPickCancel();
+  const f=fid&&doc.features.find(function(x){return x.id===fid;});
+  if(f){
+    docPushUndo('filetage : face');
+    f.cyl=I.cyl;if(I.bid)f.body=I.bid;
+    const z=threadSizeFor(2*I.cyl.r);if(z&&z.err<0.5){f.size=z.size;f.p=z.p;}
+    f.name=threadName(f);markDirty();rebuild();renderTree();renderProps();
+    try{faceEl.textContent='Filetage : nouvelle face retenue.';}catch(e2){}
+  }else threadCreate(I);
+  return true;
+}
+function threadCreate(I){
+  const z=threadSizeFor(2*I.cyl.r)||{size:'M8',p:1.25};
+  const nf={id:uid('th'),type:'xthread',name:'',cyl:I.cyl,size:z.size,p:z.p,lh:false,model:false,clear:0,
+    lenMode:'full',len:+Math.max(z.p*3,2*I.cyl.r*1.5).toFixed(1),flip:false,visible:true};
+  if(I.bid)nf.body=I.bid;
+  nf.name=threadName(nf);
+  addFeature(nf);
+  sel={kind:'feature',id:nf.id};treeSel=[];
+  markDirty();rebuild();renderTree();renderProps();
+  try{faceEl.textContent='Filetage '+threadLabel(nf)+' : réglez la taille, la longueur et le type de filet.'+(z.err>0.3?' (Ø de l’axe éloigné des tailles normalisées)':'');}catch(e){}
+}
+/* ----- panneau de la fonction ----- */
+function renderThreadProps(p,f){
+  const go=function(){f.name=threadName(f);markDirty();rebuild();renderTree();renderProps();};
+  const pH=t=>{const h=document.createElement('div');h.className='pnl-h';h.textContent=t;p.appendChild(h);return h;};
+  const pRow=(lab,el)=>{const r=document.createElement('div');r.className='pnl-row';
+    const L=document.createElement('label');L.textContent=lab;r.appendChild(L);if(el)r.appendChild(el);p.appendChild(r);return r;};
+  const pNote=t=>{const n=document.createElement('div');n.className='pnl-note';n.textContent=t;p.appendChild(n);return n;};
+  const pBtns=list=>{const d=document.createElement('div');d.className='pnl-btns';
+    list.forEach(([t,fn])=>{const b=document.createElement('button');b.textContent=t;b.onclick=fn;d.appendChild(b);});p.appendChild(d);return d;};
+  const sel=function(opts,val,fn){const s=document.createElement('select');let grp=s;
+    opts.forEach(function(o){if(o.g){grp=document.createElement('optgroup');grp.label=o.g;s.appendChild(grp);return;}
+      const op=document.createElement('option');op.value=o[0];op.textContent=o[1];grp.appendChild(op);});
+    s.value=String(val);s.onchange=function(){docPushUndo('filetage');fn(s.value);go();};return s;};
+  const num=function(val,fn,min){const i=document.createElement('input');i.type='text';i.inputMode='decimal';
+    i.value=String(+(+val).toFixed(3)).replace('.',',');
+    const c=function(){const v=parseFloat(String(i.value).replace(',','.'));if(isFinite(v)&&v>=min){docPushUndo('filetage');fn(v);go();}};
+    i.addEventListener('change',c);i.addEventListener('keydown',function(e){if(e.key==='Enter'){c();i.blur();}e.stopPropagation();});
+    i.addEventListener('click',function(e){e.stopPropagation();});return i;};
+  const fx=v=>String(+(+v).toFixed(3)).replace('.',',');
+  const D=f.cyl?2*f.cyl.r:0;
+  pH('Filetage');
+  pNote('Axe Ø'+fx(D)+(f._err?' — ⚠ '+f._err:''));
+  // tailles : celles proches du Ø de l'axe d'abord, puis toutes (mêmes familles que le taraudage)
+  const opts=[];
+  const near=ALL_THREADS.filter(function(t){return !threadInfo(t[0]).cone&&Math.abs(t[1]-D)<Math.max(0.6,0.08*D);}); // coniques (Rc, NPT) : pas sur un axe cylindrique
+  const push=function(t){if(threadInfo(t[0]).fam==='M'){for(let k=2;k<t.length;k++)opts.push([t[0]+'|'+t[k],threadOptLabel(t,k)]);}else opts.push([t[0]+'|'+t[2],threadOptLabel(t,2)]);};
+  if(near.length){opts.push({g:'Au Ø de l’axe'});near.forEach(push);}
+  opts.push({g:'Métrique ISO'});ISO_THREADS.forEach(push);
+  [['UNC','ANSI UNC (gros)'],['UNF','ANSI UNF (fin)'],['G','Gaz G — cylindrique (ISO 228)']].forEach(function(F){
+    opts.push({g:F[1]});THREADS_UN.concat(THREADS_GAZ).forEach(function(t){if(threadInfo(t[0]).fam===F[0])push(t);});});
+  const cur=f.size+'|'+f.p;
+  pRow('Taille',sel(opts,cur,function(v){const q=v.split('|');f.size=q[0];f.p=+q[1];if(!threadModelable(f))f.model=false;}));
+  pRow('Sens du filet',sel([['rh','À droite'],['lh','À gauche (LH)']],f.lh?'lh':'rh',function(v){f.lh=(v==='lh');}));
+  pRow('Longueur filetée',sel([['full','Toute la face'],['len','Longueur']],f.lenMode==='len'?'len':'full',function(v){f.lenMode=v;}));
+  if(f.lenMode==='len')pRow('Longueur (mm)',num(f.len||10,function(v){f.len=v;},0.1));
+  if(f._thLen)pNote('Longueur filetée effective : '+fx(f._thLen)+' mm');
+  pRow('Départ',sel([['0','Bout libre (auto)'],['1','Autre bout']],f.flip?'1':'0',function(v){f.flip=(v==='1');}));
+  if(threadModelable(f)){
+    pRow('Filet',sel([['cosmetic','Cosmétique (spirale dessinée, axe lisse)'],['model','Modélisé — profil ISO dans le corps']],f.model?'model':'cosmetic',function(v){f.model=(v==='model');}));
+    if(f.model){
+      pRow('Jeu (Ø mm, impression 3D)',num(f.clear||0,function(v){f.clear=v;},0));
+      const th=threadDims(f.size,f.p,f.clear,f.cyl&&f.cyl.r);
+      if(th)pNote((threadInfo(f.size).fam==='M'?'ISO 68-1 / ISO 965-1':'ASME B1.1 (profil 60°)')+' : Ø majeur '+fx(2*th.rC+0.02)+' (crête) / Ø mineur '+fx(2*th.rR)+' (racine), pas '+fx(th.P)+' mm. Noyau exact requis.');
+    }
+  }else pNote('Filet gaz (55°) : cosmétique seulement.');
+  pBtns([['🎯 Changer la face',function(){threadPickStart(f.id);}]]);
+}
+
 /* ═══════════════ 76-percage.js — percage ═══════════════ */
 /* ═══════════════════════════════════════════════════════════════════════════
    PERÇAGE (fonction 3D) — 2026-10-15-012
@@ -27292,9 +27721,9 @@ function askRevokePanel(f){
      pointe) le long de −n (ou +n si inversé), unis puis découpés du corps.
    ═══════════════════════════════════════════════════════════════════════════ */
 // Métrique ISO : [taille, Ø nominal, pas gros, pas fins…]
-const ISO_THREADS=[['M2',2,0.4],['M2.5',2.5,0.45],['M3',3,0.5],['M4',4,0.7],['M5',5,0.8],['M6',6,1,0.75],
+const ISO_THREADS=[['M1.6',1.6,0.35,0.2],['M2',2,0.4],['M2.5',2.5,0.45],['M3',3,0.5],['M4',4,0.7],['M5',5,0.8],['M6',6,1,0.75],
   ['M8',8,1.25,1],['M10',10,1.5,1.25,1],['M12',12,1.75,1.5,1.25],['M14',14,2,1.5],['M16',16,2,1.5],
-  ['M18',18,2.5,2,1.5],['M20',20,2.5,2,1.5],['M22',22,2.5,2,1.5],['M24',24,3,2]];
+  ['M18',18,2.5,2,1.5],['M20',20,2.5,2,1.5],['M22',22,2.5,2,1.5],['M24',24,3,2],['M30',30,3.5,2],['M36',36,4,3]]; // M1.6, M30, M36 : V0.35.0 (vis normalisées)
 // Vis CHC (ISO 4762) : passage moyen, lamage Ø, profondeur de lamage
 const ISO_CHC=[['M3',3.4,6.5,3.4],['M4',4.5,8,4.4],['M5',5.5,10,5.4],['M6',6.6,11,6.4],['M8',9,15,8.6],
   ['M10',11,18,10.8],['M12',13.5,20,13],['M14',15.5,24,15],['M16',17.5,26,17.5],['M20',22,33,21.5],['M24',26,40,25.5]];
@@ -28031,6 +28460,8 @@ function holeThreadPaths(stepsPerTurn,inset){
       out.push({bodyId:(typeof occBodyOfFeat==='function'?occBodyOfFeat(f):f.body)||null,helix:helix,ring:ring,spt:steps/turns});
     });
   });
+  // V0.35.0 : filetages d'axes (76-filetage) — même dessin, caché avec leur corps
+  if(typeof threadShaftPaths==='function')try{out.push(...threadShaftPaths(stepsPerTurn,inset));}catch(e){}
   return out;
 }
 /* V0.15.11 : « quand je cache un corps avec des trous taraudés, je veux cacher aussi les filets ».
@@ -54680,6 +55111,7 @@ function wirePick(){
     if(filMode){if(e.button===0&&!e.ctrlKey)filletToggle(e);return;}
     if(filModeX){if(e.button===0)exactToggle(e);return;} // clic = ajouter / retirer une arête (V0.11.6)
     if(typeof holeFacePick!=='undefined'&&holeFacePick){if(e.button===0&&!e.ctrlKey)holeFacePickAt(e);return;} // fonction Perçage : face de fin
+    if(typeof threadPick!=='undefined'&&threadPick){if(e.button===0&&!e.ctrlKey)threadPickAt(e);return;} // Filetage : face de l'axe (76-filetage)
     if(typeof faoHolePick!=='undefined'&&faoHolePick){if(e.button===0&&!e.ctrlKey)faoHolePickAt(e);return;} // perçage : clic sur un trou
     if(faoChainMode){if(e.button===0&&!e.ctrlKey)faoChainToggle(e);return;}
     if(faoPlanePick){if(e.button===0&&!e.ctrlKey)faoPlaneCommit(e);return;}
@@ -54822,6 +55254,7 @@ function filletTangentChain(sk, startCorner){
     if(faoChainMode){faoChainExit(true);return;}
     if(typeof faoHolePick!=='undefined'&&faoHolePick){faoHolePickExit();return;}
     if(typeof holeFacePick!=='undefined'&&holeFacePick){holeFacePickCancel();faceEl.textContent='Perçage : sélection de face annulée.';return;}
+    if(typeof threadPick!=='undefined'&&threadPick){threadPickCancel();faceEl.textContent='Filetage : sélection de face annulée.';return;}
     if(typeof bmPick!=='undefined'&&bmPick){bmPickExit(false);return;}
     if(mvMode){exitMoveFaceMode();return;}
     if(draftMode){exitDraftMode();return;}
@@ -57450,6 +57883,18 @@ function clipTick(){
     }
   }
 })();
+// V0.35.0 : bouton « Filetage » (fonction 3D, src/76-filetage.js), après la Coque.
+(function(){
+  if(document.getElementById('btnThread'))return;
+  const a=document.getElementById('btnCoque')||document.getElementById('btnDraft')||document.getElementById('btnHole');
+  if(!a||!a.parentNode)return;
+  const n=document.createElement('button');
+  n.id='btnThread';
+  n.textContent='🔩 Filetage';
+  n.title='Filetage d’un axe : cliquez la face cylindrique — métrique ISO, UNC/UNF, gaz G ; filet cosmétique ou modélisé.';
+  a.parentNode.insertBefore(n,a.nextSibling);
+})();
+if($('btnThread'))$('btnThread').onclick=()=>askThread();
 if($('btnHole'))$('btnHole').onclick=()=>askHole(sel.kind==='sketch'?sel.id:null);
 const btnRevolve=$('btnRevolve');
 if(btnRevolve)btnRevolve.onclick=()=>askRevolve(sel.kind==='sketch'?sel.id:null);
@@ -57807,6 +58252,7 @@ function openAide(){
     ['btnMoveFace','\u{1F4D0}','Déplacer une face'],
     ['btnDraft','\u{1F6E1}','Dépouillage (angle de démoulage)'],
       ['btnCoque','⚙','Coque'],
+    ['btnThread','🔩','Filetage d’un axe (vis, tige filetée)'],
     ['btnSplit','✂','Scinder (faces ou corps) par un plan'],
     '#',
     [null,'Ensembles'],
@@ -59176,6 +59622,7 @@ const MF_IC={
   extrude:'<path d="M4 15l8 4 8-4M4 15v-4l8-4 8 4v4M12 19v-8M4 11l8 4 8-4"/><path d="M12 7V2M9.5 4.5L12 2l2.5 2.5"/>',
   revolve:'<path d="M12 2v20" stroke-dasharray="2 2"/><ellipse cx="12" cy="13" rx="8" ry="3.2"/><path d="M17.5 8.5l2.2 2.4-3 .9"/>',
   sweep:'<path d="M3 18c4 0 5-12 10-12h4"/><ellipse cx="18.5" cy="6" rx="1.8" ry="3.2"/><ellipse cx="4.5" cy="18" rx="1.8" ry="3.2" stroke-dasharray="2 2"/>',
+  thread:'<path d="M8 3h8M8 21h8M8 3v18M16 3v18"/><path d="M8 6l8 2M8 10l8 2M8 14l8 2M8 18l8 2"/>',
   hole:'<circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="3.5"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/>',
   body:'<path d="M12 3l8 4v10l-8 4-8-4V7z"/><path d="M4 7l8 4 8-4M12 11v10"/>',
   fillet:'<path d="M4 20V12a8 8 0 0 1 8-8h8"/><path d="M4 20h16V4" stroke-dasharray="2 2"/>',
@@ -59280,7 +59727,7 @@ const MF_CAO=[
     ['cgAxis','Axe',()=>cgStart('axis'),'Axe de construction : arête, cylindre, 2 points, intersection de plans, normal à un plan'],
     ['cgPoint','Point',()=>cgStart('point'),'Point de construction : sommet, centre, coordonnées, intersection axe / plan'],
     ['cgFrame','Repère',()=>cgStart('frame'),'Repère de construction : origine + Z + X, sur un plan ou une face, par 3 points']]],
-  ['Modifier',[['fillet','Congé','btnFillet'],['chamfer','Chanfrein','btnChamfer'],['face','Face','btnMoveFace'],['draft','Dépouille','btnDraft'],['shell','Coque','btnCoque'],['split','Scinder','btnSplit']]],
+  ['Modifier',[['fillet','Congé','btnFillet'],['chamfer','Chanfrein','btnChamfer'],['face','Face','btnMoveFace'],['draft','Dépouille','btnDraft'],['shell','Coque','btnCoque'],['thread','Filetage','btnThread'],['split','Scinder','btnSplit']]],
   ['Ensembles',[['pattern','Répétition','btnRepeat'],['combine','Combiner','btnCombine'],['move','Déplacer','btnBodyMove'],['params','Paramètres','btnParams']]],
   ['Fichier',[['import','Importer','btnImport'],['export','STEP','btnExportStep'],['export','STL','btnExportStl'],['export','OBJ','btnExportObj']]]
 ];
@@ -59987,7 +60434,7 @@ function viewFadeIn(){
      le solide reconstruit : on ne la promène pas dans des états intermédiaires). */
 let film=null; // état du film en cours (null = aucun)
 const FILM_KIND={extrude:'Extrusion',revolve:'Révolution',sweep:'Balayage',hole:'Perçage',fillet:'Congé',repeat:'Répétition',
-  combine:'Combiner',xmove:'Déplacer une face',xdelface:'Supprimer une face',xdraft:'Dépouille',xshell:'Coque',xsplit:'Scinder',bmove:'Déplacer le corps',import:'Import'};
+  combine:'Combiner',xmove:'Déplacer une face',xdelface:'Supprimer une face',xdraft:'Dépouille',xshell:'Coque',xthread:'Filetage',xsplit:'Scinder',bmove:'Déplacer le corps',import:'Import'};
 function filmKind(f){
   // [libellé, couleur] de la nature d'une fonction — mêmes couleurs que le bandeau (TLB_COL)
   let k=null;try{k=tlbSvgKey({kind:'feature',o:f});}catch(e){}
@@ -74004,7 +74451,7 @@ function mfmCreateOpen(){
 // la commande attend-elle des clics dans la vue ? (arêtes, faces, points, emplacements)
 function mfmPicking(){
   const on=f=>{try{return !!f();}catch(e){return false;}};
-  return [()=>filMode,()=>filModeX,()=>mvMode,()=>draftMode,()=>coqueMode,()=>splitMode,()=>holeFacePick,()=>extPickFace,()=>bmPick,()=>cgMode].some(on);
+  return [()=>filMode,()=>filModeX,()=>mvMode,()=>draftMode,()=>coqueMode,()=>splitMode,()=>holeFacePick,()=>threadPick,()=>extPickFace,()=>bmPick,()=>cgMode].some(on);
 }
 function mfmRun(act){
   mfmSheetClose();

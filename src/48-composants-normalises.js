@@ -5,8 +5,10 @@
      · révolution d'un profil (r, z) du plan XZ autour de Z — arcs permis (bouts bombés) ;
      · six pans creux : découpe d'un hexagone (plan XY) depuis le dessus ;
      · fente d'une goupille élastique, contour d'une clavette : esquisse XY + extrusion.
-   Le filet n'est pas modélisé (comme le filet cosmétique d'un perçage) : la désignation le
-   porte (M8×1, 1/4-28 UNF, G 1/2…) et doc.std la garde (nomenclature, réemploi).
+   V0.35.0 : la tige des vis (ISO, ANSI) et des bouchons G porte une fonction FILETAGE
+   (76-filetage) sur la longueur filetée de la norme : spirale cosmétique (comme un taraudage,
+   cachée avec la pièce) ou, au choix pour les vis, filet ISO modélisé. La désignation le
+   porte aussi (M8×1, 1/4-28 UNF, G 1/2…) et doc.std la garde (nomenclature, réemploi).
    Repères : vis CHC et bouchon à collerette — origine sous la tête (face d'appui), tige vers
    −Z ; vis FHC et bouchon conique — origine sur le dessus (affleurant), pièce vers −Z ;
    goupille — de z = 0 à z = L ; clavette — posée sur XY, centrée, hauteur vers +Z.
@@ -127,12 +129,19 @@ function stdScrewFHC(o){
   return {prof:[[0,-o.L],[o.d/2-c,-o.L],[o.d/2,-o.L+c],[o.d/2,zb],[dr/2,Math.min(ze,-0.05)],[dr/2,0],[0,0]],
     ops:[{k:'hex',z:0,s:o.s,t:o.t}]};
 }
+function stdThr(size,P,d,L,b,k,mod){
+  // Filetage de la tige (axe Z, tige vers −Z depuis z = −k) : taille connue du filetage seulement
+  if(typeof isoThread!=='function'||!isoThread(size))return null;
+  const full=L-k<=b+1e-6;
+  return {size,p:+(+P).toFixed(4),r:d/2,z:-(k+(L-k)/2),lenMode:full?'full':'len',len:+(+b).toFixed(3),model:!!mod};
+}
 function stdIsoScrew(st){
   const fhc=st.type==='fhc',T=fhc?STD_ISO10642:STD_ISO4762,r=T.find(x=>x[0]===st.size)||T[0];
   const pas=STD_ISO_PAS[r[0]],P=+st.pitch||pas[0],L=+st.len,fin=Math.abs(P-pas[0])>1e-9;
   const g=fhc?stdScrewFHC({d:r[1],dk:r[2],k:r[3],a:90,s:r[4],t:r[5],L,P}):stdScrewCHC({d:r[1],dk:r[2],k:r[3],s:r[4],t:r[5],L,P});
-  const th=r[0]+(fin?'×'+stdF(P):''),norm=fhc?'ISO 10642':'ISO 4762';
-  return Object.assign(g,{seat:fhc?'flush':'under',sink:fhc?FHC_RETRAIT:0,key:norm+'|'+th+'|'+L,norm,desig:th+'×'+stdF(L),name:(fhc?'FHC ':'CHC ')+th+'×'+stdF(L),
+  const th=r[0]+(fin?'×'+stdF(P):''),norm=fhc?'ISO 10642':'ISO 4762',mod=st.fil==='mod';
+  g.thr=stdThr(r[0],P,r[1],L,2*r[1]+12,fhc?r[3]:0,mod); // b = 2d + 12 (ISO 4762 / 10642, L ≤ 125)
+  return Object.assign(g,{seat:fhc?'flush':'under',sink:fhc?FHC_RETRAIT:0,key:norm+'|'+th+'|'+L+(mod?'|filet':''),norm,desig:th+'×'+stdF(L),name:(fhc?'FHC ':'CHC ')+th+'×'+stdF(L),
     info:(fhc?'Vis à tête fraisée six pans creux, fraisure 90°':'Vis à tête cylindrique six pans creux')+' · pas '+stdF(P)+(fin?' (fin)':' (gros)')+
       ' · '+(fhc?'Ø tête ':'dk ')+stdF(r[2])+' · k '+stdF(r[3])+' · clé '+stdF(r[4])+' · L '+stdF(L)+(fhc?' (tête comprise)':' (sous tête)')});
 }
@@ -142,14 +151,15 @@ function stdAnsiScrew(st){
   const L=stdFrac(st.len),I=STD_IN,P=I/tpi;
   const g=fhc?stdScrewFHC({d:r[1]*I,dk:r[2]*I,k:(r[2]-r[1])/2/Math.tan(41*Math.PI/180)*I,a:82,s:r[3]*I,t:r[4]*I,L:L*I,P})
     :stdScrewCHC({d:r[1]*I,dk:r[2]*I,k:r[3]*I,s:r[4]*I,t:r[5]*I,L:L*I,P});
-  const th=r[0]+'-'+tpi+' '+serie,norm=fhc?'ASME B18.3 FHCS':'ASME B18.3 SHCS';
-  return Object.assign(g,{seat:fhc?'flush':'under',sink:fhc?FHC_RETRAIT:0,key:norm+'|'+th+'|'+st.len,norm,desig:th+' × '+st.len+'"',name:(fhc?'FHCS ':'SHCS ')+th+' × '+st.len+'"',
+  const th=r[0]+'-'+tpi+' '+serie,norm=fhc?'ASME B18.3 FHCS':'ASME B18.3 SHCS',mod=st.fil==='mod';
+  g.thr=stdThr(th,P,r[1]*I,L*I,(2*r[1]+0.5)*I,fhc?(r[2]-r[1])/2/Math.tan(41*Math.PI/180)*I:0,mod); // LT = 2D + 1/2" (B18.3)
+  return Object.assign(g,{seat:fhc?'flush':'under',sink:fhc?FHC_RETRAIT:0,key:norm+'|'+th+'|'+st.len+(mod?'|filet':''),norm,desig:th+' × '+st.len+'"',name:(fhc?'FHCS ':'SHCS ')+th+' × '+st.len+'"',
     info:(fhc?'Flat head socket cap screw, fraisure 82°':'Socket head cap screw')+' · '+tpi+' filets/pouce · Ø '+stdF(r[1]*I)+' mm · L '+stdF(L*I)+' mm'+(fhc?' (tête comprise)':' (sous tête)')});
 }
 function stdPlug(st){
   if(st.type==='din908'){
     const r=STD_DIN908.find(x=>x[0]===st.size)||STD_DIN908[0],[,d,tpi,dk,k,i,s,t]=r,c=Math.min(STD_IN/tpi,1.5),ch=0.4;
-    return {seat:'under',key:'DIN 908|'+r[0],norm:'DIN 908',desig:r[0]+' A',name:'Bouchon DIN 908 '+r[0],
+    return {thr:stdThr(r[0].replace(' ',''),STD_IN/tpi,d,i,i,0,false),seat:'under',key:'DIN 908|'+r[0],norm:'DIN 908',desig:r[0]+' A',name:'Bouchon DIN 908 '+r[0],
       info:'Bouchon à collerette, six pans creux, filet cylindrique '+r[0]+' (ISO 228) · Ø collerette '+stdF(dk)+' · k '+stdF(k)+' · filetée '+stdF(i)+' · clé '+stdF(s),
       prof:[[0,-i],[d/2-c,-i],[d/2,-i+c],[d/2,0],[dk/2,0],[dk/2,k-ch],[dk/2-ch,k],[0,k]],ops:[{k:'hex',z:k,s,t}]};
   }
@@ -225,7 +235,8 @@ const STD_CATS=[
     {k:'size',lab:'Taille',opts:st=>(st.type==='fhc'?STD_ISO10642:STD_ISO4762).map(r=>[r[0],r[0]]),def:()=>'M6'},
     {k:'pitch',lab:'Pas',opts:st=>(STD_ISO_PAS[st.size]||[1]).map((p,i)=>[String(p),stdF(p)+(i?' — fin':' — gros (M)')])},
     {k:'len',lab:'Longueur (mm)',opts:st=>{const r=(st.type==='fhc'?STD_ISO10642:STD_ISO4762).find(x=>x[0]===st.size);
-      return r?stdLens(STD_ISO_LV,r[6],r[7],true).map(v=>[String(v),stdF(v)]):[];},def:st=>{const r=(st.type==='fhc'?STD_ISO10642:STD_ISO4762).find(x=>x[0]===st.size);return r?String(stdLens(STD_ISO_LV,Math.max(r[6],3*r[1]),r[7],true)[0]||r[6]):'';}}],
+      return r?stdLens(STD_ISO_LV,r[6],r[7],true).map(v=>[String(v),stdF(v)]):[];},def:st=>{const r=(st.type==='fhc'?STD_ISO10642:STD_ISO4762).find(x=>x[0]===st.size);return r?String(stdLens(STD_ISO_LV,Math.max(r[6],3*r[1]),r[7],true)[0]||r[6]):'';}},
+    {k:'fil',lab:'Filet',opts:()=>[['cos','Cosmétique (spirale dessinée)'],['mod','Modélisé (profil ISO, impression 3D)']]}],
     gen:stdIsoScrew},
   {k:'ansi',lab:'Vis ANSI',fields:[
     {k:'type',lab:'Type',opts:()=>[['chc','SHCS — tête cylindrique (B18.3)'],['fhc','FHCS — tête fraisée 82° (B18.3)']]},
@@ -235,7 +246,8 @@ const STD_CATS=[
     {k:'len',lab:'Longueur (po)',opts:st=>{const r=(st.type==='fhc'?STD_ANSI_FHCS:STD_ANSI_SHCS).find(x=>x[0]===st.size);
       if(!r)return [];const n=r.length;return stdLens(STD_INCH_LV,r[n-2],r[n-1]).map(v=>[v,v+'"']);},
       def:st=>{const r=(st.type==='fhc'?STD_ANSI_FHCS:STD_ANSI_SHCS).find(x=>x[0]===st.size);if(!r)return '';
-        const n=r.length,l=stdLens(STD_INCH_LV,r[n-2],r[n-1]);return l.find(v=>stdFrac(v)>=3*r[1])||l[0];}}],
+        const n=r.length,l=stdLens(STD_INCH_LV,r[n-2],r[n-1]);return l.find(v=>stdFrac(v)>=3*r[1])||l[0];}},
+    {k:'fil',lab:'Filet',opts:()=>[['cos','Cosmétique (spirale dessinée)'],['mod','Modélisé (profil ISO, impression 3D)']]}],
     gen:stdAnsiScrew},
   {k:'plug',lab:'Bouchons gaz',fields:[
     {k:'type',lab:'Type',opts:()=>[['din906','DIN 906 — conique R (sans collerette)'],['din908','DIN 908 — cylindrique G, à collerette'],['nptf','NPTF — conique (ANSI)']]},
@@ -318,10 +330,17 @@ function stdDoc(sp){
   d.bodies=[{id:'b1',name:sp.name,c:null}];d.bodySeq=2;d.activeBody='b1';
   d.std={key:sp.key,norm:sp.norm,desig:sp.desig};
   if(sp.cat&&sp.st){d.std.cat=sp.cat;d.std.st=Object.assign({},sp.st);}
-  const F=(f)=>{f.id=uid(f.type==='revolve'?'rv':'ex');f.visible=true;f.body='b1';d.features.push(f);return f;};
+  const F=(f)=>{f.id=uid(f.type==='revolve'?'rv':f.type==='xthread'?'th':'ex');f.visible=true;f.body='b1';d.features.push(f);return f;};
   if(sp.prof){
     const s=stdSketch(d,'Profil','XZ',0);stdLoop(s,sp.prof);
     F({type:'revolve',name:'Révolution',sketchId:s.id,axis:{k:'sys',d:'Z'},angle:360,op:'add'});
+  }
+  if(sp.prof&&sp.thr){
+    // V0.35.0 : filetage de la tige (76-filetage), départ au bout libre (pointe)
+    const t=sp.thr,f={type:'xthread',name:'',cyl:{c:[0,0,0],u:[0,0,1],r:+t.r.toFixed(6),p:[+t.r.toFixed(6),0,+t.z.toFixed(6)]},
+      size:t.size,p:t.p,lh:false,model:!!t.model,clear:0,lenMode:t.lenMode,len:t.len,flip:false,visible:true};
+    try{f.name=threadName(f);}catch(e){f.name='Filetage '+t.size;}
+    F(f);
   }
   (sp.ops||[]).forEach(o=>{
     if(o.k==='hex'){

@@ -262,6 +262,7 @@ const MF_IC={
   extrude:'<path d="M4 15l8 4 8-4M4 15v-4l8-4 8 4v4M12 19v-8M4 11l8 4 8-4"/><path d="M12 7V2M9.5 4.5L12 2l2.5 2.5"/>',
   revolve:'<path d="M12 2v20" stroke-dasharray="2 2"/><ellipse cx="12" cy="13" rx="8" ry="3.2"/><path d="M17.5 8.5l2.2 2.4-3 .9"/>',
   sweep:'<path d="M3 18c4 0 5-12 10-12h4"/><ellipse cx="18.5" cy="6" rx="1.8" ry="3.2"/><ellipse cx="4.5" cy="18" rx="1.8" ry="3.2" stroke-dasharray="2 2"/>',
+  thread:'<path d="M8 3h8M8 21h8M8 3v18M16 3v18"/><path d="M8 6l8 2M8 10l8 2M8 14l8 2M8 18l8 2"/>',
   hole:'<circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="3.5"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/>',
   body:'<path d="M12 3l8 4v10l-8 4-8-4V7z"/><path d="M4 7l8 4 8-4M12 11v10"/>',
   fillet:'<path d="M4 20V12a8 8 0 0 1 8-8h8"/><path d="M4 20h16V4" stroke-dasharray="2 2"/>',
@@ -366,7 +367,7 @@ const MF_CAO=[
     ['cgAxis','Axe',()=>cgStart('axis'),'Axe de construction : arête, cylindre, 2 points, intersection de plans, normal à un plan'],
     ['cgPoint','Point',()=>cgStart('point'),'Point de construction : sommet, centre, coordonnées, intersection axe / plan'],
     ['cgFrame','Repère',()=>cgStart('frame'),'Repère de construction : origine + Z + X, sur un plan ou une face, par 3 points']]],
-  ['Modifier',[['fillet','Congé','btnFillet'],['chamfer','Chanfrein','btnChamfer'],['face','Face','btnMoveFace'],['draft','Dépouille','btnDraft'],['shell','Coque','btnCoque'],['split','Scinder','btnSplit']]],
+  ['Modifier',[['fillet','Congé','btnFillet'],['chamfer','Chanfrein','btnChamfer'],['face','Face','btnMoveFace'],['draft','Dépouille','btnDraft'],['shell','Coque','btnCoque'],['thread','Filetage','btnThread'],['split','Scinder','btnSplit']]],
   ['Ensembles',[['pattern','Répétition','btnRepeat'],['combine','Combiner','btnCombine'],['move','Déplacer','btnBodyMove'],['params','Paramètres','btnParams']]],
   ['Fichier',[['import','Importer','btnImport'],['export','STEP','btnExportStep'],['export','STL','btnExportStl'],['export','OBJ','btnExportObj']]]
 ];

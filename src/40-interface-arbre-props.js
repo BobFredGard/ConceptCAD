@@ -127,6 +127,7 @@ function featIconOf(f){
   if(f.type==='revolve')return (f.op||'add')==='cut'?'◔':'◍';
   if(f.type==='sweep')return (f.op||'add')==='cut'?'≋':'〰';
   if(f.type==='hole')return '⊚';
+  if(f.type==='xthread')return f._err?'⚠':'🔩'; // filetage d'un axe (76-filetage)
   if(f.type==='xmove')return '📐';
   if(f.type==='bmove')return '✥';
   if(f.type==='xdelface')return f._calc?'⏳':((f._m&&f._m.m<f._m.t)||f._err)?'⚠':'⌫'; // ⏳ : calcul au worker (21)
@@ -1912,6 +1913,7 @@ function renderProps(){
       fdynFoot(p,f);
     }
     {const cb=cutBodiesField(f);if(cb)p.appendChild(cb);} // V0.15.12 : plusieurs corps visibles → tous ou un seul
+    if(f.type==='xthread')renderThreadProps(p,f); // V0.35.0 : filetage d'un axe (76-filetage)
     if(f.type==='hole'){fdynEnsure(f);renderHoleProps(p,f);fdynFoot(p,f);} // V0.8.0 : OK / Annuler, flèche de profondeur
     /* — révolution — V0.8.0 : fenêtre dynamique (71-fenetre-dynamique) */
     if(f.type==='revolve'){ fdynRevolvePanel(p,f); }

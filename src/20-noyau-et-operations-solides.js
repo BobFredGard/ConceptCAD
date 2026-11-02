@@ -3660,6 +3660,10 @@ function featSig(f){
     s+='|'+f.sketchId+'|'+(skH?skSig(skH):'?')+'|'+JSON.stringify([f.kind,f.d,f.thread||null,f.cbD,f.cbH,f.csD,f.csA,f.end,f.depth,f.tip,!!f.flip,f.uptoPlane||null].concat(f.kind==='ream'?[f.reamD,f.reamH,f.pilot,f.reamOff]:(f.kind==='step'?[f.stD,f.stH,f.stTip]:[])));
     if(skH)(skH.entities||[]).forEach(e=>{if(e&&e.t==='cpoint'&&e.hole){const Q=skH.points[e.p];if(Q)s+=';h'+Q.x.toFixed(4)+','+Q.y.toFixed(4);}});
   }
+  if(f.type==='xthread'){
+    // Filetage (76-filetage) : axe visé, taille, pas, sens, longueur, départ, filet modélisé ou non
+    s+='|'+JSON.stringify([f.cyl||null,f.size,+f.p||0,!!f.lh,!!f.model,+f.clear||0,f.lenMode||'full',+f.len||0,!!f.flip]);
+  }
   if(f.type==='sweep'){
     // Balayage (75-balayage) : profil ET chemin — éditer l'un ou l'autre change le solide
     const sk=doc.sketches.find(x=>x.id===f.sketchId),pk=doc.sketches.find(x=>x.id===f.pathId);
@@ -3896,6 +3900,12 @@ function occReplayBodyIn(bid,list){
       result=r.shape;msgs.push(...r.warnings.map(w=>`${f.name} : ${w}`));
       if(r.warnings.length)occCkWarn[ckKey]=r.warnings.slice();else delete occCkWarn[ckKey];
       occCkPut(ckKey,()=>occShapeCopy(result));
+      return;
+    }
+    if(f.type==='xthread'){
+      // Filetage (76-filetage) : solide inchangé ; le vide fileté (filet modélisé) rejoint ceux
+      // des taraudages, creusés en fin de rejeu. Clé = préfixe : résolution mémorisée.
+      threadReplayStep(f,result,ckKey,msgs,threads,bid,bin);
       return;
     }
     let shape=null;

@@ -91,6 +91,7 @@
     ['btnMoveFace','\u{1F4D0}','Déplacer une face'],
     ['btnDraft','\u{1F6E1}','Dépouillage (angle de démoulage)'],
       ['btnCoque','⚙','Coque'],
+    ['btnThread','🔩','Filetage d’un axe (vis, tige filetée)'],
     ['btnSplit','✂','Scinder (faces ou corps) par un plan'],
     '#',
     [null,'Ensembles'],

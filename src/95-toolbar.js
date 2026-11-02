@@ -40,6 +40,18 @@
     }
   }
 })();
+// V0.35.0 : bouton « Filetage » (fonction 3D, src/76-filetage.js), après la Coque.
+(function(){
+  if(document.getElementById('btnThread'))return;
+  const a=document.getElementById('btnCoque')||document.getElementById('btnDraft')||document.getElementById('btnHole');
+  if(!a||!a.parentNode)return;
+  const n=document.createElement('button');
+  n.id='btnThread';
+  n.textContent='🔩 Filetage';
+  n.title='Filetage d’un axe : cliquez la face cylindrique — métrique ISO, UNC/UNF, gaz G ; filet cosmétique ou modélisé.';
+  a.parentNode.insertBefore(n,a.nextSibling);
+})();
+if($('btnThread'))$('btnThread').onclick=()=>askThread();
 if($('btnHole'))$('btnHole').onclick=()=>askHole(sel.kind==='sketch'?sel.id:null);
 const btnRevolve=$('btnRevolve');
 if(btnRevolve)btnRevolve.onclick=()=>askRevolve(sel.kind==='sketch'?sel.id:null);

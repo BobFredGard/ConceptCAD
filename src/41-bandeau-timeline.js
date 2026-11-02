@@ -152,6 +152,7 @@ function tlbSvgKey(s){
     case 'revolve':return ['revolve',cut?'cut':'add',cut];
     case 'sweep':return ['sweep',cut?'cut':'add',cut];
     case 'hole':return ['hole','cut'];
+    case 'xthread':return ['thread','mod'];
     case 'xfillet':{let k='';try{k=xKindOf(f);}catch(e){}return [/cham/i.test(k)?'chamfer':'fillet','mod'];}
     case 'fillet':return ['fillet','mod'];
     case 'repeat':return ['pattern','rep'];

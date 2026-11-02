@@ -66,7 +66,13 @@ function asmCaptureActive(){
   const edges=asmEdgeCapture(); // arêtes pour le mode Placer (48-assemblage-apparence)
   const pedges=asmSkCaptureEdges(); // V0.8.1 : arêtes exactes, projetables dans les esquisses des autres (46)
   const pfaces=asmSkCaptureFaces(); // faces planes / cylindriques : références de construction des autres (46)
-  c._snap={items,edges,pedges,pfaces,exact:builtEngine==='exact',hash:(()=>{try{return docHash();}catch(e){return '';}})()};
+  // V0.35.0 : spirales des filets cosmétiques (taraudages, filetages — 76) des corps affichés :
+  // dessinées avec chaque occurrence, donc cachées avec elle
+  let thr=null;
+  try{const memo=new Map();
+    thr=(typeof holeThreadPaths==='function'?holeThreadPaths():[]).filter(T=>holeThreadBodyShown(T.bodyId,memo)).map(T=>({helix:T.helix,ring:T.ring}));
+    if(!thr.length)thr=null;}catch(e){thr=null;}
+  c._snap={items,edges,pedges,pfaces,thr,exact:builtEngine==='exact',hash:(()=>{try{return docHash();}catch(e){return '';}})()};
   delete c._stale;
   try{asmCacheSoon(c);}catch(e){} // gardé pour les prochaines ouvertures (47-assemblage-cache)
   // le composant vient d'être rejoué : ses repères ont pu bouger → les alignements suivent
@@ -75,7 +81,25 @@ function asmCaptureActive(){
   asmSnapSyncSoon(); // … ou des faces visées par des points d'accroche (48)
   if(!asmBuilding){try{asmCtxDraw();}catch(e){}if(asmMode==='asm'){try{asmDraw();}catch(e){}}}
 }
-function asmSnapFree(s){(s&&s.items||[]).forEach(it=>{try{it.geo.dispose();}catch(e){}});try{if(s&&s.edges)s.edges.dispose();}catch(e){}}
+function asmSnapFree(s){(s&&s.items||[]).forEach(it=>{try{it.geo.dispose();}catch(e){}});try{if(s&&s.edges)s.edges.dispose();}catch(e){}
+  try{if(s&&s._thrG){s._thrG.h.dispose();s._thrG.r.dispose();}}catch(e){}}
+function asmThrLines(s){
+  // Spirales (traits pleins) et cercles (pointillés) des filets cosmétiques de l'instantané —
+  // géométries partagées par toutes les occurrences, mêmes couleurs que dans la pièce (76)
+  if(!s||!s.thr||!s.thr.length)return null;
+  if(!s._thrG){
+    const seg=(arr,pts)=>{for(let i=1;i<pts.length;i++){const p=pts[i-1],q=pts[i];arr.push(p[0],p[1],p[2],q[0],q[1],q[2]);}};
+    const h=[],r=[];s.thr.forEach(T=>{seg(h,T.helix||[]);seg(r,T.ring||[]);});
+    const mk=a=>{const g=new THREE.BufferGeometry();g.setAttribute('position',new THREE.Float32BufferAttribute(a,3));return g;};
+    s._thrG={h:mk(h),r:mk(r)};
+  }
+  const G=new THREE.Group();
+  const hl=new THREE.LineSegments(s._thrG.h,new THREE.LineBasicMaterial({color:0xffb340,transparent:true,opacity:0.9}));
+  const rl=new THREE.LineSegments(s._thrG.r,new THREE.LineDashedMaterial({color:0xffb340,dashSize:0.8,gapSize:0.6,transparent:true,opacity:0.95}));
+  try{if(rl.computeLineDistances)rl.computeLineDistances();}catch(e){}
+  [hl,rl].forEach(l=>{l.renderOrder=5;l.raycast=()=>{};G.add(l);});
+  return G;
+}
 function asmBuildSnapshots(){
   // Rejoue chaque composant sans instantané (ou en repli maillage alors que le noyau exact est
   // prêt), puis revient au composant actif. Synchrone : rebuild() construit et capture
@@ -131,6 +155,7 @@ function asmFill(G,placer){
       g.add(m);
       if(kind!=='ghost'){try{glassDepthMask({mesh:m});}catch(e){}} // passes de verre, comme une pièce
     });
+    if(kind!=='ghost'){const tl=asmThrLines(c._snap);if(tl)g.add(tl);} // filets cosmétiques (V0.35.0)
     if(kind!=='ghost'&&c._snap.edges&&asmEdgesShown(look))
       g.add(asmEdgeLines(c._snap.edges,c._snap.items.some(it=>(look.gl!=null?look.gl:(it.gl||1))<0.999)));
     G.add(g);

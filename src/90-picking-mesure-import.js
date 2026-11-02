@@ -12,6 +12,7 @@ function wirePick(){
     if(filMode){if(e.button===0&&!e.ctrlKey)filletToggle(e);return;}
     if(filModeX){if(e.button===0)exactToggle(e);return;} // clic = ajouter / retirer une arête (V0.11.6)
     if(typeof holeFacePick!=='undefined'&&holeFacePick){if(e.button===0&&!e.ctrlKey)holeFacePickAt(e);return;} // fonction Perçage : face de fin
+    if(typeof threadPick!=='undefined'&&threadPick){if(e.button===0&&!e.ctrlKey)threadPickAt(e);return;} // Filetage : face de l'axe (76-filetage)
     if(typeof faoHolePick!=='undefined'&&faoHolePick){if(e.button===0&&!e.ctrlKey)faoHolePickAt(e);return;} // perçage : clic sur un trou
     if(faoChainMode){if(e.button===0&&!e.ctrlKey)faoChainToggle(e);return;}
     if(faoPlanePick){if(e.button===0&&!e.ctrlKey)faoPlaneCommit(e);return;}
@@ -154,6 +155,7 @@ function filletTangentChain(sk, startCorner){
     if(faoChainMode){faoChainExit(true);return;}
     if(typeof faoHolePick!=='undefined'&&faoHolePick){faoHolePickExit();return;}
     if(typeof holeFacePick!=='undefined'&&holeFacePick){holeFacePickCancel();faceEl.textContent='Perçage : sélection de face annulée.';return;}
+    if(typeof threadPick!=='undefined'&&threadPick){threadPickCancel();faceEl.textContent='Filetage : sélection de face annulée.';return;}
     if(typeof bmPick!=='undefined'&&bmPick){bmPickExit(false);return;}
     if(mvMode){exitMoveFaceMode();return;}
     if(draftMode){exitDraftMode();return;}

@@ -81,7 +81,7 @@ function mfmCreateOpen(){
 // la commande attend-elle des clics dans la vue ? (arêtes, faces, points, emplacements)
 function mfmPicking(){
   const on=f=>{try{return !!f();}catch(e){return false;}};
-  return [()=>filMode,()=>filModeX,()=>mvMode,()=>draftMode,()=>coqueMode,()=>splitMode,()=>holeFacePick,()=>extPickFace,()=>bmPick,()=>cgMode].some(on);
+  return [()=>filMode,()=>filModeX,()=>mvMode,()=>draftMode,()=>coqueMode,()=>splitMode,()=>holeFacePick,()=>threadPick,()=>extPickFace,()=>bmPick,()=>cgMode].some(on);
 }
 function mfmRun(act){
   mfmSheetClose();

@@ -8,7 +8,7 @@ sont sorties le 2026-09-30j.
 Code dans `src/` · livrable `fusion_mvp.html` (généré par `build.js`) · architecture et
 garde-fous en tête de `src/00-entete-et-outils.js`.
 
-**519 versions**, de `2026-09-28b` à `V0.34.0` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
+**520 versions**, de `2026-09-28b` à `V0.35.0` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
 comme dans le fichier d'origine.
 
 ---
@@ -6218,3 +6218,15 @@ Demande : « Pour l'heure elle ne se comporte que comme une extrusion de face. E
 - **Garde-fou** : sur une fraisure réduite, l'unification des faces rendait le solide invalide alors que la fusion brute était saine — la fusion brute est alors gardée.
 - **Documents existants** : un déplacement de face plane entourée de faces droites ne change pas ; une face cylindrique ou bordée de faces inclinées est recalculée selon la nouvelle règle.
 - **Tests** : `test_face_appuyer` (volumes exacts : tronc de pyramide ±10, chanfrein ±5, trou débouchant Ø10 → Ø6 / Ø14, bossage R10 → R13 / R7, trou borgne à pointe 118° et fraisure 90° agrandis et réduits, dessus en L, bossage à dessus incliné ; congé tangent et bout de rainure sans casse) ; `test_xmove` inchangé ; `npm run ci`.
+
+## V0.35.0 - CAO : Filetage des axes, appliqué à la visserie normalisée
+Demande : « Il faudrait une fonction filetage pour les axes pour faire des vis par exemple, et l'on pourrait l'appliquer au standard de visserie de l'Assemblage » ; « les filets auront les mêmes spirales que les trous taraudés, à cacher avec la vis quand elle le sera ».
+- **Fonction Filetage** (`src/76-filetage.js`, bouton 🔩 dans « Modifier », groupe Faces) : on clique la face cylindrique EXTÉRIEURE d'un axe (un trou est refusé : son taraudage se règle dans le Perçage). Taille proposée d'après le Ø (métrique ISO, UNC / UNF, gaz G ; les coniques sont écartées), pas gros ou fin, sens à droite / à gauche (`-LH`), longueur filetée (toute la face ou donnée), départ au bout libre (auto) ou à l'autre bout, filet **cosmétique** (spirale, axe lisse — par défaut) ou **modélisé** (profil ISO 68-1 : crête au Ø de la face, racine au Ø d1, flancs à 60°, jeu d'impression 3D au choix).
+- **Référence de l'axe** : axe, rayon et point cliqué — le filetage suit l'axe quand il change de longueur (faces coaxiales de même rayon regroupées).
+- **Départ / arrêt** : le bout LIBRE (rien au-delà, ou un simple chanfrein) est trouvé par la matière au rayon de la racine ; le filet y débouche. L'autre bout (épaulement, tête de vis) l'arrête avant de toucher la matière voisine.
+- **Filet modélisé** : même principe que le taraudage (V0.21.19) — le vide fileté est construit directement (faces réglées entre hélices, rampes et bouchons aux deux bouts, aucun booléen), contient la peau du cylindre (crête 0,01 sous le Ø : aucune intersection de flanc avec le cylindre), et rejoint les filets des perçages, creusés en fin de rejeu par le worker. Dans l'arbre, l'axe reste lisse pour les fonctions suivantes ; la FAO voit le corps sans filets.
+- **Spirales** : mêmes traits que les taraudages (spirale orange, cercle pointillé en fin de filet), dans la vue et la mise en plan (`holeThreadPaths`), cachées avec leur corps.
+- **Visserie normalisée** : les vis ISO 4762 / 10642 portent un filetage sur b = 2d + 12 (filetées jusqu'à la tête si plus courtes), les vis ASME B18.3 sur LT = 2D + ½", les bouchons DIN 908 sur leur longueur filetée (G, cosmétique). Nouveau champ « Filet » des vis : cosmétique ou modélisé (pièce distincte). M1.6, M30 et M36 rejoignent la table des filetages métriques.
+- **Assemblage** : l'instantané d'un composant garde les spirales de ses filets cosmétiques (taraudages compris) ; elles sont dessinées avec chaque occurrence et disparaissent quand l'occurrence est cachée. Cache des instantanés : format 3 (les anciennes entrées sont recapturées une fois).
+- **Vérifié** dans l'application : clic sur un axe Ø8 → « Filetage M8 », spirale sur toute la face ; passé en modélisé → filet calculé par le worker en 1,7 s ; CHC M8×40 insérée dans un assemblage → spirale sur 28 mm, absente quand l'occurrence est cachée.
+- **Tests** : `test_filetage_axe` (bout libre, volume, coupe axiale crête / racine / 60°, épaulement intact, spirale et visibilité, LH, persistance, axe rallongé suivi, CHC M6×40 b = 24, M6×16 jusqu'à la tête, SHCS UNC, DIN 908, vis modélisée, instantané et cache d'assemblage) ; `npm run ci`.

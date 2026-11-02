@@ -24,7 +24,7 @@
    typés réunis en un bloc binaire compressé gzip, base64) ; à l'ouverture, bundleStoreCaches
    les remet dans le cache AVANT la lecture du document : le fichier s'ouvre vite sur un autre
    poste. Elles passent par les mêmes clés : une image qui ne correspond plus est ignorée. */
-const ASM_CACHE_V=2;        // format des entrées (2 : V0.29.0, faces exactes it.grp / it.fg pour les mesures)
+const ASM_CACHE_V=3;        // format des entrées (2 : V0.29.0, faces exactes it.grp / it.fg pour les mesures ; 3 : V0.35.0, spirales des filets thr)
 const ASM_CACHE_MAX=300;    // entrées gardées
 const ASM_CACHE_VERTS=1500000; // composant plus gros : pas de cache (comme saveViewCache)
 const asmCachePend=new Map(); // composant → {snap, key} à écrire
@@ -79,7 +79,7 @@ function asmCachePack(s){
   }
   const e=s.edges&&s.edges.attributes;
   return {items,edges:e&&e.position?{pos:asmCacheArr(e.position),col:asmCacheArr(e.color)}:null,
-    pedges:s.pedges||null,pfaces:s.pfaces||null,hash:s.hash||''};
+    pedges:s.pedges||null,pfaces:s.pfaces||null,thr:s.thr||null,hash:s.hash||''};
 }
 function asmCacheUnpack(v,hash){
   // hash : empreinte du document REJOUÉ (celle de la capture), que citent les références des
@@ -102,7 +102,7 @@ function asmCacheUnpack(v,hash){
     edges.setAttribute('position',new THREE.Float32BufferAttribute(v.edges.pos,3));
     if(v.edges.col)edges.setAttribute('color',new THREE.Float32BufferAttribute(v.edges.col,3));
   }
-  return {items,edges,pedges:v.pedges||null,pfaces:v.pfaces||null,exact:true,hash,cached:true};
+  return {items,edges,pedges:v.pedges||null,pfaces:v.pfaces||null,thr:Array.isArray(v.thr)?v.thr:null,exact:true,hash,cached:true};
 }
 /* ── écriture : fin de rejeu du composant actif (asmCaptureActive), différée et groupée ── */
 function asmCacheSoon(c){
