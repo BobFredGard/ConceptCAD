@@ -686,6 +686,7 @@ function* faoOpMovesIt0(op,job){
        kind:(faoToolById(job,op.toolId)||{}).kind,cornerR:(faoToolById(job,op.toolId)||{}).cornerR,
        radial:RA.radial,axial:RA.axial,
        minipasses:isFinite(+op.minipasses)?+op.minipasses:0,
+       minipassesMode:op.minipassesMode, // V0.38.0 : 'pentes' = seulement où il reste une marche
        finitParois:!!op.finitParois,finitN:op.finitN,finitProf:op.finitProf,
        finitFond:!!op.finitFond,
         // 2026-10-08-004 : entrée CIRC par défaut (doc sans champ = arc

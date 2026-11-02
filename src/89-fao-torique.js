@@ -30,7 +30,7 @@ function faoBullRingSetup(M,BB,D,rc,laisse,zoneAt){
 }
 // Courbes « pointe outil réel = z » : morceaux où la fraise droite n'était PAS
 // au contact (écart > 0,03 mm), orientés matière à droite si avalant.
-function faoBullRingRuns(C,z,climb,all){
+function faoBullRingRuns(C,z,climb,all,rb){
   const nx=C.nx,ny=C.ny,g=C.g,eps=1e-6;
   // faisable (pointe réelle <= z) ; la fraise droite borne : tB <= tF, tB >= tF − rc
   const feas=function(k){const f=C.fAt(k);if(f<=z+eps)return true;if(f-C.rc>z+eps)return false;return C.bAt(k)<=z+eps;};
@@ -105,6 +105,45 @@ function faoBullRingRuns(C,z,climb,all){
     const ux=(pts[bi+1][0]-pts[bi][0])/bl,uy=(pts[bi+1][1]-pts[bi][1])/bl,mx=(pts[bi][0]+pts[bi+1][0])/2,my=(pts[bi][1]+pts[bi+1][1])/2;
     const matRight=C.tipB(mx+uy*0.3,my-ux*0.3)>z+eps;
     if(matRight!==!!climb)pts=pts.slice().reverse();
+    // V0.38.0 : MINI-PASSES SUR LES PENTES SEULEMENT (rb = {z, seuil, bridge}) —
+    // un point ne coupe que si l'outil réel, écarté de `seuil` vers le côté
+    // libre, ne peut pas descendre jusqu'au niveau du dessous rb.z : paroi
+    // verticale = il y descend (rien à enlever), pente / chanfrein = il bute
+    // plus haut (marche laissée). Trous ≤ bridge comblés, morceaux < 2 mm jetés.
+    if(all&&rb&&isFinite(+rb.z)){
+      // points confondus retirés (un nœud de grille pile sur l'iso-ligne
+      // revient une fois par arête de triangle) : sinon aucune normale
+      pts=pts.filter(function(p,i){return i===0||Math.hypot(p[0]-pts[i-1][0],p[1]-pts[i-1][1])>1e-6;});
+      const sl=isFinite(+rb.seuil)?+rb.seuil:0.05,zb=+rb.z+1e-3,n=pts.length;
+      if(n<2)return;
+      const f=new Array(n);
+      for(let i=0;i<n;i++){
+        const a=pts[Math.max(0,i-1)],b=pts[Math.min(n-1,i+1)],p=pts[i];
+        const dx=b[0]-a[0],dy=b[1]-a[1],L=Math.hypot(dx,dy);
+        if(!(L>1e-9)){f[i]=false;continue;}
+        const ox=-dy/L*sl,oy=dx/L*sl;
+        f[i]=Math.min(C.tipB(p[0]+ox,p[1]+oy),C.tipB(p[0]-ox,p[1]-oy))>zb&&(!C.zoneAt||C.zoneAt(p[0],p[1]));
+      }
+      const i0=f.indexOf(false);
+      if(i0<0){runs.push({pts:faoSimplifyPts(pts,0.004),closed:!!ch.closed});return;}
+      if(f.indexOf(true)<0)return;
+      let Q=pts,F=f;
+      if(ch.closed){Q=pts.slice(i0).concat(pts.slice(0,i0+1));F=f.slice(i0).concat(f.slice(0,i0+1));}
+      const seg=function(i,j){let L=0;for(let k=i+1;k<=j;k++)L+=Math.hypot(Q[k][0]-Q[k-1][0],Q[k][1]-Q[k-1][1]);return L;};
+      const br=isFinite(+rb.bridge)?+rb.bridge:0;
+      for(let i=1;i<F.length;i++){
+        if(F[i]||!F[i-1])continue;
+        let j=i;while(j<F.length&&!F[j])j++;
+        if(j<F.length&&seg(i-1,j)<=br)for(let t=i;t<j;t++)F[t]=true;
+        i=j;
+      }
+      let rc=[];
+      const rflush=function(){if(rc.length>=2&&seg2(rc)>=2)runs.push({pts:faoSimplifyPts(rc,0.004),closed:false});rc=[];};
+      const seg2=function(A){let L=0;for(let k=1;k<A.length;k++)L+=Math.hypot(A[k][0]-A[k-1][0],A[k][1]-A[k-1][1]);return L;};
+      for(let i=0;i<Q.length;i++){if(F[i])rc.push(Q[i]);else rflush();}
+      rflush();
+      return;
+    }
     // all : contour COMPLET (mini-passe remplacée) ; sinon seulement où la
     // fraise droite n'était pas déjà au contact
     const keep=function(p){return (all||C.tipF(p[0],p[1])>z+0.03)&&(!C.zoneAt||C.zoneAt(p[0],p[1]));};
@@ -138,7 +177,7 @@ function faoBullRingRuns(C,z,climb,all){
 }
 // Émission des passes toriques d'un niveau à la suite des moves du moteur.
 function faoBullRingLevel(C,z,moves,o){
-  const runs=faoBullRingRuns(C,z,o.sens==='avalant',!!o.all);
+  const runs=faoBullRingRuns(C,z,o.sens==='avalant',!!o.all,o.restBelow);
   if(!runs.length)return 0;
   const secu=o.secu,tv=Math.min(secu,isFinite(+o.travelZ)?+o.travelZ:secu);
   const linkMax=o.linkMax;

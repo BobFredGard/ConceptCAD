@@ -166,6 +166,9 @@ function faoSanitiseOps(s){
       if(op.c3d)op.c3d=true; else delete op.c3d; // V0.26.4 : parcours 3D (absent = plan)
     }else ['cside','nR','fin','leadR','overlap','tabN','tabW','tabH','descente','pente','c3d'].forEach(function(k){delete op[k];});
     if(op.type==='rough3d'||faoPocketAdapt(op)){const mp=+op.minipasses;op.minipasses=isFinite(mp)&&mp>0?Math.min(50,Math.round(mp)):0;
+      // V0.38.0 : mini-passes « seulement sur les pentes » — absent = partout
+      // (documents existants : ni champ ni changement de clé)
+      if(op.minipassesMode!=='pentes')delete op.minipassesMode;
       // 2026-10-07-001/002 : finition des parois (N contours « Parois » -> 0,
       // sur la DERNIERE passe en profondeur, finitProf cotes vers le haut) —
       // OFF par defaut : ni champ ni effet tant que la case n'est pas cochee

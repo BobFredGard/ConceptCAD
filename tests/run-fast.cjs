@@ -23,6 +23,7 @@ const SUITES = [
   'test_ctx_menu_viewport',
   'test_prodver_badge',
   'test_fao_passes',
+  'test_fao_minipasses_pentes',
   'test_fao_zlim',
   'test_fao_pose_fond',
   'test_mise_en_plan',

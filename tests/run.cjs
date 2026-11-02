@@ -90,6 +90,7 @@ const SUITES = [
   "test_esquisse_contraintes",
   "test_fao",
   "test_fao3d",
+  "test_fao_minipasses_pentes",
   "test_fao_escargot",
   "test_fao_escargot_ilots",
   "test_fao_sens",

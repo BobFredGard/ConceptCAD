@@ -8,7 +8,7 @@ sont sorties le 2026-09-30j.
 Code dans `src/` · livrable `fusion_mvp.html` (généré par `build.js`) · architecture et
 garde-fous en tête de `src/00-entete-et-outils.js`.
 
-**531 versions**, de `2026-09-28b` à `V0.37.1` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
+**532 versions**, de `2026-09-28b` à `V0.38.0` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
 comme dans le fichier d'origine.
 
 ---
@@ -6320,3 +6320,12 @@ Demande : « Dans ce fichier [Barquette], quand on change le paramètre calibre 
 - **Correctif** (`xDraftDist`) : l'écart 2D entre une arête et son entité d'esquisse est corrigé de la dépouille des extrusions de cette esquisse, dans `xAnchorFor`, `xAnchorMatch` et `xAnchorStill`. L'arête du fond reçoit une ancre (ligne + côté bas) et suit la hauteur et l'angle courants.
 - **Vérifié** dans l'application (Barquette, noyau réel) : calibre 40 / angle 15, 35 / 25, 30 / 20 puis retour 35 / 15 — l'arête reste au fond (y = −58,28, −52,68, −58,08, −59,62), congé appliqué.
 - **Tests** : `test_conge_depouille` (copie du fichier, 5 couples calibre / angle — échoue en V0.36.4) ; `npm run ci`.
+
+## V0.38.0 - Ébauche 3D : mini-passes « pentes seulement »
+Demande : « Quand il n'y a pas de pentes tout le long, mais juste à des endroits particuliers, comme des chanfreins, ça vaut le coup de reprendre en mini-passes que cette partie-là ».
+- **Fiche Ébauche 3D › Passes** : nouveau choix **Mini-passes sur** (visible dès qu'il y a au moins une mini-passe) — *Toutes les parois* (défaut, comportement historique) ou *Pentes seulement* (`op.minipassesMode='pentes'`, champ absent = partout : documents et clés de parcours existants inchangés, `CACHE_VER` inchangé).
+- **Fraise droite** (`faoRoughAdaptiveLevel`, option `restBelow`) : un point de l'anneau de mini-passe n'est gardé que si le disque r − 0,05 mm posé sur l'ombre entre le niveau du dessous et la cote n'est pas libre (la paroi rentre plus bas : marche laissée). Anneaux densifiés à 0,5 mm, trous ≤ 1,5 × pas comblés, morceaux < min(3 mm, D/4) jetés.
+- **Fraise torique / boule** (`faoBullRingRuns`, paramètre `rb`) : outil réel écarté de 0,05 mm vers le côté libre — s'il descend jusqu'au niveau du dessous, la paroi est verticale (morceau sauté). Points confondus de l'iso-ligne retirés avant le calcul des normales (ils gardaient à tort tout un flanc droit).
+- **Mesures** (même nombre de mini-passes, partout → pentes) : Malaxeur Retard, coupe des mini-passes 10 836 → 7 908 mm (−27 %), rapides 47,3 → 39,6 m ; Perçages (fraise Ø6, 3 mini-passes) 553 → 72 mm et 662 → 78 mm ; Cavité Test et Cavité Usinage identiques (parois en dépouille sur tout le tour : marche réelle partout).
+- **Plan** : `docs/plan-mini-passes-adaptatives.md` (tranche 3 à venir : « marche maxi » en mm).
+- **Tests** : `test_fao_minipasses_pentes` (îlot à un flanc incliné et îlot droit, fraise droite et torique : partout inchangé, mini-passes seulement au droit de la pente, aucun point dans la matière, nettoyage et clé) ; `npm run ci:full` 233/233 ; `npm run parcours` inchangé (seul écart, Perçage n° 11 de Perçages, déjà présent en V0.37.1).

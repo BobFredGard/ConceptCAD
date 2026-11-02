@@ -2146,8 +2146,14 @@ function* faoGenRough3DIt(mesh,box,ztop,zbot,o){
         // paroi) est calculée au CONTACT RÉEL de l'outil (laisse Parois), à la
         // même place du parcours, au lieu du calcul fraise droite (~1 mm de
         // trop sur les faces inclinées, torique D25 R2).
-        if(bullC)faoBullRingLevel(bullCtx(s),zm,moves,{sens:o.sens,secu:secu,travelZ:tvZ,linkMax:bullLink,minRun:rem?5:0,dzStay:rem?h:0,all:true});
-        else faoRoughAdaptiveLevel(M,BB,zm,D,D/2+s,secu,Math.min(secu,bandTop),ae,entryMode,o.brutTop,zt,moves,{ringOnly:true,travelZ:tvZ,sens:o.sens,entryR:o.entryR,zoneAt:o.zoneAt,frameTouch:frameTouch});
+        if(bullC)faoBullRingLevel(bullCtx(s),zm,moves,{sens:o.sens,secu:secu,travelZ:tvZ,linkMax:bullLink,minRun:rem?5:0,dzStay:rem?h:0,all:true,
+          restBelow:o.minipassesMode==='pentes'?{z:L.z,bridge:bullLink}:undefined}); // V0.38.0 : pentes seulement
+        else faoRoughAdaptiveLevel(M,BB,zm,D,D/2+s,secu,Math.min(secu,bandTop),ae,entryMode,o.brutTop,zt,moves,
+          // V0.38.0 : « seulement sur les pentes » — morceaux de paroi où le
+          // niveau du dessous (L.z) a laissé une marche (src/88-fao-92-contour.js)
+          o.minipassesMode==='pentes'
+            ?{ringOnly:true,travelZ:tvZ,sens:o.sens,entryR:o.entryR,zoneAt:o.zoneAt,frameTouch:frameTouch,restBelow:{z:L.z}}
+            :{ringOnly:true,travelZ:tvZ,sens:o.sens,entryR:o.entryR,zoneAt:o.zoneAt,frameTouch:frameTouch});
         if(rem)rem.carve();
         yield frameYield(); // dessin progressif 005 : mini-passe k
       }

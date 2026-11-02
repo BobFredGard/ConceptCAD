@@ -1336,6 +1336,18 @@ function faoOpCardElement(setup,op,i){
     rP.appendChild(faoLab('Mini-passes')); rP.appendChild(faoNum(op.minipasses||0,function(v){op.minipasses=Math.max(0,Math.min(50,Math.round(v)));},40,1,
       'Mini-passes Z par niveau : contour des parois entre deux plans (0 = off, 1 à 50). Profondeur k·ap/(nb+1) sous le plan du dessus, décalage radial décroissant.'));
     d.appendChild(rP);
+    // V0.38.0 : mini-passes « seulement sur les pentes » (absent = partout)
+    if(+op.minipasses>0){
+      const rMp=faoRow();
+      rMp.appendChild(faoLab('Mini-passes sur'));
+      rMp.appendChild(faoSel([
+        ['partout','Toutes les parois','Chaque mini-passe fait le tour de toutes les parois de la tranche, verticales comprises (comportement historique).'],
+        ['pentes','Pentes seulement','Chaque mini-passe ne reprend que les morceaux de paroi où le niveau du dessous a laissé une marche (chanfreins, dépouilles, pentes) ; les parois verticales sont sautées.']],
+        op.minipassesMode==='pentes'?'pentes':'partout',
+        function(v){ if(v==='pentes')op.minipassesMode='pentes'; else delete op.minipassesMode; },
+        'Où faire les mini-passes : toutes les parois, ou seulement là où il reste de la matière en escalier.'));
+      d.appendChild(rMp);
+    }
     d.appendChild(faoHelp(
       'ae = '+(aeNow/toolD).toFixed(2)+'×Ø, ap = '+(apNow/toolD).toFixed(2)+'×Ø (outil Ø '+toolD+').'));
     d.appendChild(faoH('Matière à laisser (mm)'));

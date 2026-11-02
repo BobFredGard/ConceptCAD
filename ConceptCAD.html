@@ -376,7 +376,7 @@ input[type=range]{accent-color:var(--primary);width:100%}
  * peut changer sans rien casser. CACHE_VER (parcours FAO) reste indépendant.
  */
 
-const APP_VER='V0.37.1';
+const APP_VER='V0.38.0';
 try{console.log('[ConceptCAD] version '+APP_VER);}catch(e){}
 try{var mfSv=document.getElementById('mfSplashVer');if(mfSv)mfSv.textContent=APP_VER;}catch(e){} // écran de démarrage
 
@@ -34003,6 +34003,9 @@ function faoSanitiseOps(s){
       if(op.c3d)op.c3d=true; else delete op.c3d; // V0.26.4 : parcours 3D (absent = plan)
     }else ['cside','nR','fin','leadR','overlap','tabN','tabW','tabH','descente','pente','c3d'].forEach(function(k){delete op[k];});
     if(op.type==='rough3d'||faoPocketAdapt(op)){const mp=+op.minipasses;op.minipasses=isFinite(mp)&&mp>0?Math.min(50,Math.round(mp)):0;
+      // V0.38.0 : mini-passes « seulement sur les pentes » — absent = partout
+      // (documents existants : ni champ ni changement de clé)
+      if(op.minipassesMode!=='pentes')delete op.minipassesMode;
       // 2026-10-07-001/002 : finition des parois (N contours « Parois » -> 0,
       // sur la DERNIERE passe en profondeur, finitProf cotes vers le haut) —
       // OFF par defaut : ni champ ni effet tant que la case n'est pas cochee
@@ -36755,6 +36758,7 @@ function* faoOpMovesIt0(op,job){
        kind:(faoToolById(job,op.toolId)||{}).kind,cornerR:(faoToolById(job,op.toolId)||{}).cornerR,
        radial:RA.radial,axial:RA.axial,
        minipasses:isFinite(+op.minipasses)?+op.minipasses:0,
+       minipassesMode:op.minipassesMode, // V0.38.0 : 'pentes' = seulement où il reste une marche
        finitParois:!!op.finitParois,finitN:op.finitN,finitProf:op.finitProf,
        finitFond:!!op.finitFond,
         // 2026-10-08-004 : entrée CIRC par défaut (doc sans champ = arc
@@ -42390,6 +42394,18 @@ function faoOpCardElement(setup,op,i){
     rP.appendChild(faoLab('Mini-passes')); rP.appendChild(faoNum(op.minipasses||0,function(v){op.minipasses=Math.max(0,Math.min(50,Math.round(v)));},40,1,
       'Mini-passes Z par niveau : contour des parois entre deux plans (0 = off, 1 à 50). Profondeur k·ap/(nb+1) sous le plan du dessus, décalage radial décroissant.'));
     d.appendChild(rP);
+    // V0.38.0 : mini-passes « seulement sur les pentes » (absent = partout)
+    if(+op.minipasses>0){
+      const rMp=faoRow();
+      rMp.appendChild(faoLab('Mini-passes sur'));
+      rMp.appendChild(faoSel([
+        ['partout','Toutes les parois','Chaque mini-passe fait le tour de toutes les parois de la tranche, verticales comprises (comportement historique).'],
+        ['pentes','Pentes seulement','Chaque mini-passe ne reprend que les morceaux de paroi où le niveau du dessous a laissé une marche (chanfreins, dépouilles, pentes) ; les parois verticales sont sautées.']],
+        op.minipassesMode==='pentes'?'pentes':'partout',
+        function(v){ if(v==='pentes')op.minipassesMode='pentes'; else delete op.minipassesMode; },
+        'Où faire les mini-passes : toutes les parois, ou seulement là où il reste de la matière en escalier.'));
+      d.appendChild(rMp);
+    }
     d.appendChild(faoHelp(
       'ae = '+(aeNow/toolD).toFixed(2)+'×Ø, ap = '+(apNow/toolD).toFixed(2)+'×Ø (outil Ø '+toolD+').'));
     d.appendChild(faoH('Matière à laisser (mm)'));
@@ -45555,8 +45571,14 @@ function* faoGenRough3DIt(mesh,box,ztop,zbot,o){
         // paroi) est calculée au CONTACT RÉEL de l'outil (laisse Parois), à la
         // même place du parcours, au lieu du calcul fraise droite (~1 mm de
         // trop sur les faces inclinées, torique D25 R2).
-        if(bullC)faoBullRingLevel(bullCtx(s),zm,moves,{sens:o.sens,secu:secu,travelZ:tvZ,linkMax:bullLink,minRun:rem?5:0,dzStay:rem?h:0,all:true});
-        else faoRoughAdaptiveLevel(M,BB,zm,D,D/2+s,secu,Math.min(secu,bandTop),ae,entryMode,o.brutTop,zt,moves,{ringOnly:true,travelZ:tvZ,sens:o.sens,entryR:o.entryR,zoneAt:o.zoneAt,frameTouch:frameTouch});
+        if(bullC)faoBullRingLevel(bullCtx(s),zm,moves,{sens:o.sens,secu:secu,travelZ:tvZ,linkMax:bullLink,minRun:rem?5:0,dzStay:rem?h:0,all:true,
+          restBelow:o.minipassesMode==='pentes'?{z:L.z,bridge:bullLink}:undefined}); // V0.38.0 : pentes seulement
+        else faoRoughAdaptiveLevel(M,BB,zm,D,D/2+s,secu,Math.min(secu,bandTop),ae,entryMode,o.brutTop,zt,moves,
+          // V0.38.0 : « seulement sur les pentes » — morceaux de paroi où le
+          // niveau du dessous (L.z) a laissé une marche (src/88-fao-92-contour.js)
+          o.minipassesMode==='pentes'
+            ?{ringOnly:true,travelZ:tvZ,sens:o.sens,entryR:o.entryR,zoneAt:o.zoneAt,frameTouch:frameTouch,restBelow:{z:L.z}}
+            :{ringOnly:true,travelZ:tvZ,sens:o.sens,entryR:o.entryR,zoneAt:o.zoneAt,frameTouch:frameTouch});
         if(rem)rem.carve();
         yield frameYield(); // dessin progressif 005 : mini-passe k
       }
@@ -47203,6 +47225,59 @@ function faoRoughAdaptiveLevel(mesh,B,z,D,r,secu,zFrom,ae,entryMode,brutTop,zt,m
     }
     chunks.length=0;
     for(let ci=0;ci<zs.length;ci++)chunks.push(zs[ci]);
+  }
+  // V0.38.0 : MINI-PASSES SUR LES PENTES SEULEMENT (opt.restBelow = {z, seuil,
+  // minRun}) — un point de l'anneau ne coupe que si l'outil du niveau du
+  // dessous (cote restBelow.z, même rayon r) n'a pas déjà enlevé la matière :
+  // disque r − seuil posé sur l'ombre entre ce niveau et z. Libre = paroi
+  // verticale à cet endroit (rien à enlever) ; pris = la paroi rentre plus bas
+  // (pente, chanfrein, dépouille) -> morceau gardé. Trous ≤ linkMax comblés
+  // (pas de remontée pour quelques mm d'air), morceaux < minRun abandonnés.
+  // Absent : parcours strictement inchangés.
+  const RB=opt&&opt.restBelow;
+  if(isRing&&RB&&isFinite(+RB.z)&&+RB.z<z-1e-9){
+    const rb=Math.max(0.01,r-(isFinite(+RB.seuil)?+RB.seuil:0.05));
+    let sb=[];
+    faoShadowPlanes(mesh,+RB.z,z).forEach(function(pz){sb=sb.concat(faoSliceZCached(mesh,pz));});
+    const minRun=isFinite(+RB.minRun)?+RB.minRun:Math.min(3,D/4);
+    const rest=function(p){return !faoDiscClear(sb,p[0],p[1],0,rb);};
+    const dense=function(P){
+      const out=[P[0]];
+      for(let i=1;i<P.length;i++){
+        const a=P[i-1],b=P[i],n=Math.max(1,Math.ceil(Math.hypot(b[0]-a[0],b[1]-a[1])/0.5));
+        for(let s=1;s<=n;s++)out.push([a[0]+(b[0]-a[0])*s/n,a[1]+(b[1]-a[1])*s/n]);
+      }
+      return out;
+    };
+    const runLen=function(Q){let L=0;for(let i=1;i<Q.length;i++)L+=Math.hypot(Q[i][0]-Q[i-1][0],Q[i][1]-Q[i-1][1]);return L;};
+    const kept=[];
+    for(let ci=0;ci<chunks.length;ci++){
+      const ch=chunks[ci];
+      if(!ch.pts||ch.pts.length<2)continue;
+      let Q=dense(ch.pts);
+      let f=Q.map(rest);
+      const i0=f.indexOf(false);
+      if(i0<0){kept.push(ch);continue;}          // pente sur tout le tour : morceau d'origine
+      if(f.indexOf(true)<0)continue;             // paroi verticale partout : rien
+      // anneau fermé : on le déroule depuis un point libre (le morceau à
+      // cheval sur la fermeture reste d'un seul tenant)
+      if(ch.closed){Q=Q.slice(i0).concat(Q.slice(0,i0+1));f=f.slice(i0).concat(f.slice(0,i0+1));}
+      // trous courts entre deux morceaux gardés : comblés
+      for(let i=1;i<f.length;i++){
+        if(f[i]||!f[i-1])continue;
+        let j=i;while(j<f.length&&!f[j])j++;
+        if(j<f.length&&runLen(Q.slice(i-1,j+1))<=linkMax)for(let t=i;t<j;t++)f[t]=true;
+        i=j;
+      }
+      let run=null;
+      const flush=function(){if(run&&run.length>=2&&runLen(run)>=minRun)kept.push({pts:run,closed:false,bb:faoPtsBB(run),k:ch.k});run=null;};
+      for(let i=0;i<Q.length;i++){
+        if(f[i]){if(!run)run=[];run.push(Q[i]);}else flush();
+      }
+      flush();
+    }
+    chunks.length=0;
+    for(let ci=0;ci<kept.length;ci++)chunks.push(kept[ci]);
   }
   if(!chunks.length)return;
   // --- entree (UNE par niveau) : meme contrat qu'avant (tangente / helice
@@ -55544,7 +55619,7 @@ function faoBullRingSetup(M,BB,D,rc,laisse,zoneAt){
 }
 // Courbes « pointe outil réel = z » : morceaux où la fraise droite n'était PAS
 // au contact (écart > 0,03 mm), orientés matière à droite si avalant.
-function faoBullRingRuns(C,z,climb,all){
+function faoBullRingRuns(C,z,climb,all,rb){
   const nx=C.nx,ny=C.ny,g=C.g,eps=1e-6;
   // faisable (pointe réelle <= z) ; la fraise droite borne : tB <= tF, tB >= tF − rc
   const feas=function(k){const f=C.fAt(k);if(f<=z+eps)return true;if(f-C.rc>z+eps)return false;return C.bAt(k)<=z+eps;};
@@ -55619,6 +55694,45 @@ function faoBullRingRuns(C,z,climb,all){
     const ux=(pts[bi+1][0]-pts[bi][0])/bl,uy=(pts[bi+1][1]-pts[bi][1])/bl,mx=(pts[bi][0]+pts[bi+1][0])/2,my=(pts[bi][1]+pts[bi+1][1])/2;
     const matRight=C.tipB(mx+uy*0.3,my-ux*0.3)>z+eps;
     if(matRight!==!!climb)pts=pts.slice().reverse();
+    // V0.38.0 : MINI-PASSES SUR LES PENTES SEULEMENT (rb = {z, seuil, bridge}) —
+    // un point ne coupe que si l'outil réel, écarté de `seuil` vers le côté
+    // libre, ne peut pas descendre jusqu'au niveau du dessous rb.z : paroi
+    // verticale = il y descend (rien à enlever), pente / chanfrein = il bute
+    // plus haut (marche laissée). Trous ≤ bridge comblés, morceaux < 2 mm jetés.
+    if(all&&rb&&isFinite(+rb.z)){
+      // points confondus retirés (un nœud de grille pile sur l'iso-ligne
+      // revient une fois par arête de triangle) : sinon aucune normale
+      pts=pts.filter(function(p,i){return i===0||Math.hypot(p[0]-pts[i-1][0],p[1]-pts[i-1][1])>1e-6;});
+      const sl=isFinite(+rb.seuil)?+rb.seuil:0.05,zb=+rb.z+1e-3,n=pts.length;
+      if(n<2)return;
+      const f=new Array(n);
+      for(let i=0;i<n;i++){
+        const a=pts[Math.max(0,i-1)],b=pts[Math.min(n-1,i+1)],p=pts[i];
+        const dx=b[0]-a[0],dy=b[1]-a[1],L=Math.hypot(dx,dy);
+        if(!(L>1e-9)){f[i]=false;continue;}
+        const ox=-dy/L*sl,oy=dx/L*sl;
+        f[i]=Math.min(C.tipB(p[0]+ox,p[1]+oy),C.tipB(p[0]-ox,p[1]-oy))>zb&&(!C.zoneAt||C.zoneAt(p[0],p[1]));
+      }
+      const i0=f.indexOf(false);
+      if(i0<0){runs.push({pts:faoSimplifyPts(pts,0.004),closed:!!ch.closed});return;}
+      if(f.indexOf(true)<0)return;
+      let Q=pts,F=f;
+      if(ch.closed){Q=pts.slice(i0).concat(pts.slice(0,i0+1));F=f.slice(i0).concat(f.slice(0,i0+1));}
+      const seg=function(i,j){let L=0;for(let k=i+1;k<=j;k++)L+=Math.hypot(Q[k][0]-Q[k-1][0],Q[k][1]-Q[k-1][1]);return L;};
+      const br=isFinite(+rb.bridge)?+rb.bridge:0;
+      for(let i=1;i<F.length;i++){
+        if(F[i]||!F[i-1])continue;
+        let j=i;while(j<F.length&&!F[j])j++;
+        if(j<F.length&&seg(i-1,j)<=br)for(let t=i;t<j;t++)F[t]=true;
+        i=j;
+      }
+      let rc=[];
+      const rflush=function(){if(rc.length>=2&&seg2(rc)>=2)runs.push({pts:faoSimplifyPts(rc,0.004),closed:false});rc=[];};
+      const seg2=function(A){let L=0;for(let k=1;k<A.length;k++)L+=Math.hypot(A[k][0]-A[k-1][0],A[k][1]-A[k-1][1]);return L;};
+      for(let i=0;i<Q.length;i++){if(F[i])rc.push(Q[i]);else rflush();}
+      rflush();
+      return;
+    }
     // all : contour COMPLET (mini-passe remplacée) ; sinon seulement où la
     // fraise droite n'était pas déjà au contact
     const keep=function(p){return (all||C.tipF(p[0],p[1])>z+0.03)&&(!C.zoneAt||C.zoneAt(p[0],p[1]));};
@@ -55652,7 +55766,7 @@ function faoBullRingRuns(C,z,climb,all){
 }
 // Émission des passes toriques d'un niveau à la suite des moves du moteur.
 function faoBullRingLevel(C,z,moves,o){
-  const runs=faoBullRingRuns(C,z,o.sens==='avalant',!!o.all);
+  const runs=faoBullRingRuns(C,z,o.sens==='avalant',!!o.all,o.restBelow);
   if(!runs.length)return 0;
   const secu=o.secu,tv=Math.min(secu,isFinite(+o.travelZ)?+o.travelZ:secu);
   const linkMax=o.linkMax;

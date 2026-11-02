@@ -1117,6 +1117,59 @@ function faoRoughAdaptiveLevel(mesh,B,z,D,r,secu,zFrom,ae,entryMode,brutTop,zt,m
     chunks.length=0;
     for(let ci=0;ci<zs.length;ci++)chunks.push(zs[ci]);
   }
+  // V0.38.0 : MINI-PASSES SUR LES PENTES SEULEMENT (opt.restBelow = {z, seuil,
+  // minRun}) — un point de l'anneau ne coupe que si l'outil du niveau du
+  // dessous (cote restBelow.z, même rayon r) n'a pas déjà enlevé la matière :
+  // disque r − seuil posé sur l'ombre entre ce niveau et z. Libre = paroi
+  // verticale à cet endroit (rien à enlever) ; pris = la paroi rentre plus bas
+  // (pente, chanfrein, dépouille) -> morceau gardé. Trous ≤ linkMax comblés
+  // (pas de remontée pour quelques mm d'air), morceaux < minRun abandonnés.
+  // Absent : parcours strictement inchangés.
+  const RB=opt&&opt.restBelow;
+  if(isRing&&RB&&isFinite(+RB.z)&&+RB.z<z-1e-9){
+    const rb=Math.max(0.01,r-(isFinite(+RB.seuil)?+RB.seuil:0.05));
+    let sb=[];
+    faoShadowPlanes(mesh,+RB.z,z).forEach(function(pz){sb=sb.concat(faoSliceZCached(mesh,pz));});
+    const minRun=isFinite(+RB.minRun)?+RB.minRun:Math.min(3,D/4);
+    const rest=function(p){return !faoDiscClear(sb,p[0],p[1],0,rb);};
+    const dense=function(P){
+      const out=[P[0]];
+      for(let i=1;i<P.length;i++){
+        const a=P[i-1],b=P[i],n=Math.max(1,Math.ceil(Math.hypot(b[0]-a[0],b[1]-a[1])/0.5));
+        for(let s=1;s<=n;s++)out.push([a[0]+(b[0]-a[0])*s/n,a[1]+(b[1]-a[1])*s/n]);
+      }
+      return out;
+    };
+    const runLen=function(Q){let L=0;for(let i=1;i<Q.length;i++)L+=Math.hypot(Q[i][0]-Q[i-1][0],Q[i][1]-Q[i-1][1]);return L;};
+    const kept=[];
+    for(let ci=0;ci<chunks.length;ci++){
+      const ch=chunks[ci];
+      if(!ch.pts||ch.pts.length<2)continue;
+      let Q=dense(ch.pts);
+      let f=Q.map(rest);
+      const i0=f.indexOf(false);
+      if(i0<0){kept.push(ch);continue;}          // pente sur tout le tour : morceau d'origine
+      if(f.indexOf(true)<0)continue;             // paroi verticale partout : rien
+      // anneau fermé : on le déroule depuis un point libre (le morceau à
+      // cheval sur la fermeture reste d'un seul tenant)
+      if(ch.closed){Q=Q.slice(i0).concat(Q.slice(0,i0+1));f=f.slice(i0).concat(f.slice(0,i0+1));}
+      // trous courts entre deux morceaux gardés : comblés
+      for(let i=1;i<f.length;i++){
+        if(f[i]||!f[i-1])continue;
+        let j=i;while(j<f.length&&!f[j])j++;
+        if(j<f.length&&runLen(Q.slice(i-1,j+1))<=linkMax)for(let t=i;t<j;t++)f[t]=true;
+        i=j;
+      }
+      let run=null;
+      const flush=function(){if(run&&run.length>=2&&runLen(run)>=minRun)kept.push({pts:run,closed:false,bb:faoPtsBB(run),k:ch.k});run=null;};
+      for(let i=0;i<Q.length;i++){
+        if(f[i]){if(!run)run=[];run.push(Q[i]);}else flush();
+      }
+      flush();
+    }
+    chunks.length=0;
+    for(let ci=0;ci<kept.length;ci++)chunks.push(kept[ci]);
+  }
   if(!chunks.length)return;
   // --- entree (UNE par niveau) : meme contrat qu'avant (tangente / helice
   // multi-spots / rampe X ou Y / micro-helice / plongee sûre).
