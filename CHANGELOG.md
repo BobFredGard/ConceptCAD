@@ -8,7 +8,7 @@ sont sorties le 2026-09-30j.
 Code dans `src/` · livrable `fusion_mvp.html` (généré par `build.js`) · architecture et
 garde-fous en tête de `src/00-entete-et-outils.js`.
 
-**520 versions**, de `2026-09-28b` à `V0.35.0` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
+**521 versions**, de `2026-09-28b` à `V0.35.1` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
 comme dans le fichier d'origine.
 
 ---
@@ -6230,3 +6230,11 @@ Demande : « Il faudrait une fonction filetage pour les axes pour faire des vis 
 - **Assemblage** : l'instantané d'un composant garde les spirales de ses filets cosmétiques (taraudages compris) ; elles sont dessinées avec chaque occurrence et disparaissent quand l'occurrence est cachée. Cache des instantanés : format 3 (les anciennes entrées sont recapturées une fois).
 - **Vérifié** dans l'application : clic sur un axe Ø8 → « Filetage M8 », spirale sur toute la face ; passé en modélisé → filet calculé par le worker en 1,7 s ; CHC M8×40 insérée dans un assemblage → spirale sur 28 mm, absente quand l'occurrence est cachée.
 - **Tests** : `test_filetage_axe` (bout libre, volume, coupe axiale crête / racine / 60°, épaulement intact, spirale et visibilité, LH, persistance, axe rallongé suivi, CHC M6×40 b = 24, M6×16 jusqu'à la tête, SHCS UNC, DIN 908, vis modélisée, instantané et cache d'assemblage) ; `npm run ci`.
+
+## V0.35.1 - Mise en plan : traits d'axe sur toute géométrie de révolution
+Demande : « pouvoir mettre des traits d'axe sur n'importe quelle géométrie du 3D, peu importe qu'elle vienne d'un STEP ou d'un natif, d'un cercle extrudé… Les traits d'axes doivent reconnaître tous types de cercle ».
+- **Cause** : un axe ne se posait que sur une fonction Perçage (corps natifs) ou sur un cylindre complet (STEP seulement) ; un cercle extrudé, un bossage, une révolution, un cône ne donnaient rien, ni au clic ni en automatique.
+- **Axes lus sur le solide exact de tout corps** (`mepShapeRevs`) : faces cylindre, cône, tore, de révolution et arêtes circulaires, regroupées par axe ; les coutures de tore / sphère (méridiens) sont écartées.
+- **Automatique** : les corps natifs ont leurs axes comme les STEP (croix en vue de bout, trait sur la longueur en vue de côté), sauf ceux déjà tracés par une fonction Perçage ; cônes et tores ajoutés sur un axe encore libre. Les axes des cylindres gardent leur tracé (clés des axes allongés inchangées).
+- **Clic (Axes ▸ trou)** : un trou, mais aussi n'importe quel cercle ou arc d'une vue, ou le contour d'une forme de révolution vue de côté. La référence est l'axe 3D (suivi quand le modèle change : position, longueur) ; à défaut de solide exact (vue maillage, DXF), le cercle de la vue, suivi sur ses cercles et arcs. Alignement et cercle de perçage acceptent aussi ces cercles.
+- **Tests** : `test_mep_axes_revolution` (noyau réel : cercle extrudé natif — croix et trait auto, clics en bout et de côté, axe qui suit le cylindre déplacé et allongé ; cône et tore seuls ; cercle 2D) ; `npm run ci`.

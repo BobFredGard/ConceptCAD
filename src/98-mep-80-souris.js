@@ -58,7 +58,7 @@
       trim:'Ajuster : cliquez le tronçon à couper entre 2 intersections.',
       dim:'Cote : cliquez une arête/cercle · 2ᵉ entité pour distance/angle · cliquez pour poser · clic droit : accrochage (extrémité, milieu, extrême X/Y, intersection)',
       hole:'Perçage : cliquez un cercle de perçage, puis posez l’étiquette.',
-      axis:'Axes : cliquez un trou (ou utilisez Alignement / Cercle / Libre dans le panneau).',
+      axis:'Axes : cliquez un trou, un cercle, un arc ou le contour d’une forme de révolution (ou Alignement / Cercle / Libre dans le panneau).',
       cut2:'Coupe : 2 clics sur la ligne de coupe.',
       det2:'Détail : centre + rayon.'
     }[t]||'';
@@ -71,7 +71,7 @@
     if(m==='pitch')return 'Cercle de perçage : '+n+' trou(s) sélectionné(s) — cliquez encore ou Entrée pour créer.';
     if(m==='free')return 'Axe libre : cliquez le départ puis l’arrivée.';
     if(m==='sym')return mepSt.axisSym?'Axe de symétrie : cliquez la 2ᵉ droite.':'Axe de symétrie : cliquez 2 droites (parallèles : axe médian ; sécantes : bissectrice).';
-    return 'Axe de trou : cliquez un trou.';
+    return 'Axe : cliquez un trou, un cercle, un arc ou le contour d’une forme de révolution.';
   }
   function mepSetAxisMode(m){
     mepSt.axisMode=m||'hole';mepSt.axisSym=null;
@@ -269,19 +269,19 @@
       return;
     }
     const ref=mepAxisHoleAt(sh,P.x,P.y);
-    if(!ref){mepStatus('Axe : cliquez un trou.');return;}
+    if(!ref){mepStatus('Axe : cliquez un cercle, un arc ou le contour d’une forme de révolution.');return;}
     const v=mepView(sh,ref.vid);if(!v)return;
     if(mode==='hole'){
       if(!Array.isArray(v.axes))v.axes=[];
       mepEdit('axe de perçage',()=>{v.axes.push({id:mepUid('ax'),kind:'hole',ref});});
-      mepStatus('Axe de trou créé.');
+      mepStatus(ref.fid?'Axe de trou créé.':'Axe créé'+(ref.ax?' sur la forme de révolution (suit le modèle).':' sur le cercle.'));
       return;
     }
     if(!Array.isArray(mepSt.axisPick))mepSt.axisPick=[];
     if(mepSt.axisPick.length&&mepSt.axisPick[0].vid!==ref.vid){
       mepStatus('Axe : sélectionnez les trous dans la même vue.');return;
     }
-    const ix=mepSt.axisPick.findIndex(r=>r.fid===ref.fid&&r.pid===ref.pid);
+    const ix=mepSt.axisPick.findIndex(r=>mepAxisRefKey(r)===mepAxisRefKey(ref));
     if(ix>=0)mepSt.axisPick.splice(ix,1);else mepSt.axisPick.push(ref);
     mepStatus(mepAxisModeStatus());
     mepRender();

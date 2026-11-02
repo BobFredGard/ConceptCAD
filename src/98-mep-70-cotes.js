@@ -551,6 +551,7 @@
   }
   function mepAxisRefGeom(sh,v,ref){
     if(!ref)return null;
+    if(!ref.fid)return mepAxisGeoRef(sh,v,ref); // cercle quelconque (axe 3D ou cercle de la vue)
     const f=(doc.features||[]).find(x=>x&&x.id===ref.fid);if(!f)return null;
     const sk=(doc.sketches||[]).find(s=>s.id===f.sketchId);if(!sk)return null;
     const b=mepBasisOf(v);
@@ -573,6 +574,7 @@
     }
     if(ann.kind==='hole'){
       const h=mepAxisRefGeom(sh,v,ann.ref);if(!h)return[];
+      if(h.rev)return mepRevPrims(h.rev,v,mepBasisOf(v),MEP_AXIS.overrun/mepAxisScale(v));
       if(Math.abs(h.facing)>0.999)return mepAxisCrossPrims(h.x,h.y,h.r,v,'mepAxisCross');
       if(Math.abs(h.facing)<0.02)return mepAxisSideLine(h,v,mepGeoOf(v));
       return mepAxisCrossPrims(h.x,h.y,h.r,v,'mepAxisCross');
@@ -645,6 +647,132 @@
     mepCylCache.set(k,{shape:sh,list});
     return list;
   }
+  /* 2026-11-02 : AXES DE TOUTE GÉOMÉTRIE DE RÉVOLUTION (« des traits d'axe sur n'importe
+     quelle géométrie du 3D, STEP ou natif, cercle extrudé… tous types de cercle ») —
+     faces cylindre, cône, tore, de révolution ET arêtes circulaires du solide exact,
+     quelle que soit l'origine du corps. Regroupés par axe (sens normalisé) ; étendue =
+     arêtes de la face projetées sur l'axe ; u = plus grande couverture angulaire d'un
+     élément (≥ ~π : l'axe se dessine en automatique ; moins — congé, arc — : seulement
+     à la demande, d'un clic). La sphère n'a pas d'axe propre : ignorée. */
+  const mepRevCache=new Map(); // id du corps → {shape, list}
+  function mepShapeRevs(bd){
+    const sh=mepExactOf(bd);if(!sh||typeof occt==='undefined'||!occt)return[];
+    const k=bd.ref||bd.id,c=mepRevCache.get(k);
+    if(c&&c.shape===sh)return c.list;
+    const byAx=new Map(),bin=[];
+    const norm=(L,Dd)=>{
+      let d=[Dd.X(),Dd.Y(),Dd.Z()];
+      const sgn=Math.abs(d[0])>1e-6?Math.sign(d[0]):(Math.abs(d[1])>1e-6?Math.sign(d[1]):(Math.sign(d[2])||1));
+      if(sgn<0)d=d.map(x=>-x);
+      const l=[L.X(),L.Y(),L.Z()],ld=mepDot(l,d);
+      return{d,o:[l[0]-d[0]*ld,l[1]-d[1]*ld,l[2]-d[2]*ld]};
+    };
+    const add=(A,pts,r,u)=>{
+      const axk=A.o.map(x=>x.toFixed(2)).join(',')+'|'+A.d.map(x=>x.toFixed(3)).join(',');
+      let t0=Infinity,t1=-Infinity,rm=r>0?r:0;
+      pts.forEach(p=>{
+        const t=mepDot(p,A.d);t0=Math.min(t0,t);t1=Math.max(t1,t);
+        if(!(r>0)){const q=[p[0]-A.o[0]-A.d[0]*t,p[1]-A.o[1]-A.d[1]*t,p[2]-A.o[2]-A.d[2]*t];rm=Math.max(rm,Math.hypot(q[0],q[1],q[2]));}
+      });
+      if(!(t1>=t0)||!(rm>1e-3))return;
+      let g=byAx.get(axk);
+      if(!g){g={o:A.o,d:A.d,t0,t1,r:rm,u,rs:[rm]};byAx.set(axk,g);return;}
+      g.t0=Math.min(g.t0,t0);g.t1=Math.max(g.t1,t1);g.r=Math.max(g.r,rm);g.u=Math.max(g.u,u);
+      if(!g.rs.some(x=>Math.abs(x-rm)<0.01))g.rs.push(rm);
+    };
+    // couture d'une face de révolution (méridien d'un tore, d'une sphère) : un cercle qui n'est
+    // pas un parallèle — son « axe » n'en est pas un, l'arête est écartée plus bas
+    const seams=[];
+    const edgePts=s=>{ // points des arêtes d'une face
+      const pts=[];
+      try{
+        const ex=new occt.TopExp_Explorer_2(s,occt.TopAbs_ShapeEnum.TopAbs_EDGE,occt.TopAbs_ShapeEnum.TopAbs_SHAPE);bin.push(ex);
+        while(ex.More()){
+          try{const e=occt.TopoDS.Edge_1(ex.Current());bin.push(e);
+            try{if(occt.BRep_Tool.IsClosed_2(e,s))seams.push(e);}catch(err){}
+            const ad=new occt.BRepAdaptor_Curve_2(e);bin.push(ad);
+            const u0=ad.FirstParameter(),u1=ad.LastParameter();
+            if(u1>u0)(occCurvePts(ad,u0,u1,0.05,64)||[]).forEach(p=>pts.push(p));}catch(e){}
+          ex.Next();
+        }
+      }catch(e){}
+      return pts;
+    };
+    const T=occt.GeomAbs_SurfaceType,C=occt.GeomAbs_CurveType;
+    try{
+      const ex=new occt.TopExp_Explorer_2(sh,occt.TopAbs_ShapeEnum.TopAbs_FACE,occt.TopAbs_ShapeEnum.TopAbs_SHAPE);bin.push(ex);
+      while(ex.More()){
+        try{
+          const f=occt.TopoDS.Face_1(ex.Current());
+          const ad=new occt.BRepAdaptor_Surface_2(f,true);bin.push(ad);
+          const ty=ad.GetType();let ax=null,r=0;
+          if(ty===T.GeomAbs_Cylinder){const cy=ad.Cylinder();ax=cy.Axis();r=cy.Radius();}
+          else if(ty===T.GeomAbs_Cone)ax=ad.Cone().Axis();
+          else if(ty===T.GeomAbs_Torus)ax=ad.Torus().Axis();
+          else if(T.GeomAbs_SurfaceOfRevolution!==undefined&&ty===T.GeomAbs_SurfaceOfRevolution)ax=ad.AxeOfRevolution();
+          else if(ty===T.GeomAbs_Sphere)edgePts(f); // pas d'axe propre : seulement ses coutures
+          if(ax){
+            const A=norm(ax.Location(),ax.Direction());
+            add(A,edgePts(f),r,Math.abs(ad.LastUParameter()-ad.FirstUParameter()));
+          }
+        }catch(e){}
+        ex.Next();
+      }
+    }catch(e){}
+    try{ // arêtes circulaires seules (bord d'un disque, d'un lamage plan, d'un arc de contour…)
+      const ex=new occt.TopExp_Explorer_2(sh,occt.TopAbs_ShapeEnum.TopAbs_EDGE,occt.TopAbs_ShapeEnum.TopAbs_SHAPE);bin.push(ex);
+      while(ex.More()){
+        try{
+          const e=occt.TopoDS.Edge_1(ex.Current());bin.push(e);
+          const ad=new occt.BRepAdaptor_Curve_2(e);bin.push(ad);
+          if(ad.GetType()===C.GeomAbs_Circle&&!seams.some(q=>q.IsSame(e))){
+            const ci=ad.Circle(),ax=ci.Axis(),L=ax.Location(),A=norm(L,ax.Direction());
+            add(A,[[L.X(),L.Y(),L.Z()]],ci.Radius(),Math.abs(ad.LastParameter()-ad.FirstParameter()));
+          }
+        }catch(e){}
+        ex.Next();
+      }
+    }catch(e){}
+    bin.forEach(o=>{try{o.delete();}catch(e){}});
+    const list=[...byAx.values()];
+    mepRevCache.set(k,{shape:sh,list});
+    return list;
+  }
+  // deux axes 3D confondus (même droite, sens indifférent)
+  function mepRevSameAxis(a,b,tol){
+    if(Math.abs(mepDot(a.d,b.d))<0.9995)return false;
+    const w=[b.o[0]-a.o[0],b.o[1]-a.o[1],b.o[2]-a.o[2]],t=mepDot(w,a.d);
+    return Math.hypot(w[0]-a.d[0]*t,w[1]-a.d[1]*t,w[2]-a.d[2]*t)<=(tol||0.05);
+  }
+  // axes des fonctions Perçage (déjà dessinés par leurs propres traits) : {o,d} 3D
+  function mepHoleFeatAxes(){
+    const out=[];
+    (doc.features||[]).forEach(f=>{
+      if(!f||f.type!=='hole'||f.visible===false)return;
+      const sk=(doc.sketches||[]).find(s=>s.id===f.sketchId);if(!sk)return;
+      let A=null;try{A=holeAxis(f,sk);}catch(e){return;}
+      if(!A||!A.pts||!A.dir)return;
+      const d=mepNorm(A.dir);
+      A.pts.forEach(P=>out.push({o:[P.x,P.y,P.z],d}));
+    });
+    return out;
+  }
+  // traits d'un axe 3D dans une vue : croix (vue en bout), trait sur la longueur (vue de côté)
+  function mepRevPrims(g,v,b,over){
+    const facing=mepDot(g.d,b.dir);
+    const P=t=>[g.o[0]+g.d[0]*t,g.o[1]+g.d[1]*t,g.o[2]+g.d[2]*t];
+    if(Math.abs(facing)>0.999){
+      const c=P(g.t0);return mepAxisCrossPrims(mepDot(c,b.u),mepDot(c,b.v),g.r,v,'mepAxisCross');
+    }
+    if(Math.abs(facing)<0.02){
+      const A=P(g.t0),B=P(g.t1);
+      const ax=mepDot(A,b.u),ay=mepDot(A,b.v),bx=mepDot(B,b.u),by=mepDot(B,b.v);
+      const L=Math.hypot(bx-ax,by-ay);if(L<1e-6)return[];
+      const ux=(bx-ax)/L,uy=(by-ay)/L;
+      return[{t:'L',x1:ax-ux*over,y1:ay-uy*over,x2:bx+ux*over,y2:by+uy*over,cls:'mepAxis'}];
+    }
+    return[];
+  }
   /* Deux traits parallèles d'une vue = génératrices d'un même cylindre (axe dans le plan de
      la vue, à mi-distance, rayon = demi-écart) → la distance est un diamètre : « Ø ». */
   function mepCylDiaBetween(v,e1,e2){
@@ -697,23 +825,112 @@
   }
   function mepAxisCylPrims(sh,v){
     const out=[],b=mepBasisOf(v),over=MEP_AXIS.overrun/mepAxisScale(v);
+    let holes=null;
     mepMeshesOf(v).forEach(bd=>{
-      if(bd.kind!=='import')return; // corps modélisés : axes des fonctions Perçage
-      mepShapeCyls(bd).forEach(g=>{
-        const facing=mepDot(g.d,b.dir);
-        const P=t=>[g.o[0]+g.d[0]*t,g.o[1]+g.d[1]*t,g.o[2]+g.d[2]*t];
-        if(Math.abs(facing)>0.999){
-          const c=P(g.t0);out.push(...mepAxisCrossPrims(mepDot(c,b.u),mepDot(c,b.v),g.r,v,'mepAxisCross'));
-        }else if(Math.abs(facing)<0.02){
-          const A=P(g.t0),B=P(g.t1);
-          const ax=mepDot(A,b.u),ay=mepDot(A,b.v),bx=mepDot(B,b.u),by=mepDot(B,b.v);
-          const L=Math.hypot(bx-ax,by-ay);if(L<1e-6)return;
-          const ux=(bx-ax)/L,uy=(by-ay)/L;
-          out.push({t:'L',x1:ax-ux*over,y1:ay-uy*over,x2:bx+ux*over,y2:by+uy*over,cls:'mepAxis'});
-        }
+      // cylindres d'abord (tracé inchangé : les clés des axes déjà allongés restent valides),
+      // puis les autres révolutions (cône, tore, arêtes circulaires) sur un axe encore libre
+      const cyl=mepShapeCyls(bd);
+      let revs=[];try{revs=mepShapeRevs(bd).filter(g=>g.u>=Math.PI*0.95&&!cyl.some(c=>mepRevSameAxis(c,g)));}catch(e){}
+      // 2026-11-02 : corps natifs aussi (cercle extrudé, révolution…) — sauf les axes déjà
+      // tracés par une fonction Perçage
+      const list=cyl.concat(revs).filter(g=>{
+        if(bd.kind==='import')return true;
+        if(!holes)holes=mepHoleFeatAxes();
+        return !holes.some(h=>mepRevSameAxis(h,g,0.1));
       });
+      list.forEach(g=>out.push(...mepRevPrims(g,v,b,over)));
     });
     return out;
+  }
+  /* 2026-11-02 : axe manuel sur N'IMPORTE QUEL cercle — réf. 3D {ax:{o,d,r}} (axe de
+     révolution du solide exact, suivi à chaque reconstruction) ou, à défaut (vue maillage,
+     DXF, cercle sans révolution), réf. 2D {c:{cx,cy,r}} suivie sur les cercles/arcs de la vue. */
+  function mepRevAll(v){
+    const out=[];
+    mepMeshesOf(v).forEach(bd=>{try{mepShapeRevs(bd).forEach(g=>out.push(g));}catch(e){}});
+    return out;
+  }
+  function mepRevTrack(v,ax){
+    let best=null,bc=Infinity;
+    mepRevAll(v).forEach(g=>{
+      if(Math.abs(mepDot(g.d,ax.d))<0.9995)return;
+      const w=[ax.o[0]-g.o[0],ax.o[1]-g.o[1],ax.o[2]-g.o[2]],t=mepDot(w,g.d);
+      const off=Math.hypot(w[0]-g.d[0]*t,w[1]-g.d[1]*t,w[2]-g.d[2]*t);
+      const dr=Math.min(...(g.rs||[g.r]).map(r=>Math.abs(r-(+ax.r||0))));
+      const c=off+0.5*dr;if(c<bc){bc=c;best=g;}
+    });
+    return bc<=Math.max(2,0.6*(+ax.r||0))?best:null;
+  }
+  function mepCircTrack(v,c){
+    let best=null,bc=Infinity;
+    ((mepGeoOf(v)||{}).els||[]).forEach(e=>{
+      if(e.t!=='C'&&e.t!=='A')return;
+      if(e.k==='thread'||e.k==='threadH')return;
+      const k=Math.hypot(e.cx-c.cx,e.cy-c.cy)+0.5*Math.abs(e.r-c.r);
+      if(k<bc){bc=k;best=e;}
+    });
+    return bc<=Math.max(2,0.5*c.r)?best:null;
+  }
+  function mepAxisGeoRef(sh,v,ref){
+    const b=mepBasisOf(v);
+    if(ref.ax){
+      const g=mepRevTrack(v,ref.ax);
+      if(g&&mepGeoExact(mepGeoOf(v)))ref.ax={o:g.o.slice(),d:g.d.slice(),r:ref.ax.r,t0:g.t0,t1:g.t1}; // dérivé : pas d'étape d'annulation
+      const G=g||ref.ax,facing=mepDot(G.d,b.dir);
+      const r=+ref.ax.r||G.r||1,t0=Number.isFinite(G.t0)?G.t0:0,t1=Number.isFinite(G.t1)?G.t1:t0;
+      const P=t=>[G.o[0]+G.d[0]*t,G.o[1]+G.d[1]*t,G.o[2]+G.d[2]*t],c=P(t0);
+      return{x:mepDot(c,b.u),y:mepDot(c,b.v),r,facing,dir2:[mepDot(G.d,b.u),mepDot(G.d,b.v)],
+        rev:{o:G.o,d:G.d,t0,t1,r}};
+    }
+    if(ref.c){
+      const e=mepCircTrack(v,ref.c);
+      if(e&&mepGeoExact(mepGeoOf(v)))ref.c={cx:e.cx,cy:e.cy,r:e.r};
+      const c=e||ref.c;
+      return{x:c.cx,y:c.cy,r:c.r,facing:1,dir2:[0,0]};
+    }
+    return null;
+  }
+  // clé d'une référence de trou (fonction Perçage, axe 3D ou cercle 2D)
+  function mepAxisRefKey(r){
+    if(!r)return'';
+    if(r.fid)return r.fid+'|'+(r.pid||'');
+    if(r.ax)return 'x'+r.ax.o.map(x=>(+x).toFixed(2)).join(',')+'|'+r.ax.d.map(x=>(+x).toFixed(3)).join(',');
+    if(r.c)return 'c'+(+r.c.cx).toFixed(2)+','+(+r.c.cy).toFixed(2)+','+(+r.c.r).toFixed(2);
+    return'';
+  }
+  // cercle/axe quelconque sous la souris (après les fonctions Perçage)
+  function mepAxisGeoAt(sh,sx,sy){
+    const hit=mepHitViewEnt(sh,sx,sy);
+    const v0=hit?mepView(sh,hit.vid):mepViewAt(sh,sx,sy);
+    const views=v0?[v0]:sh.views;
+    const tolS=8/(mepSt.zoom||1);
+    let best=null,bd=tolS;
+    views.forEach(v=>{
+      if(mepOblOf(v)||mepPerspOf(v))return;
+      const b=mepBasisOf(v),px=(sx-v.x)/v.scale,py=(sy-v.y)/v.scale;
+      mepRevAll(v).forEach(g=>{
+        const facing=mepDot(g.d,b.dir);
+        const P=t=>[g.o[0]+g.d[0]*t,g.o[1]+g.d[1]*t,g.o[2]+g.d[2]*t];
+        let d=Infinity,r=g.r;
+        if(Math.abs(facing)>0.999){ // vue en bout : un des cercles, ou le centre
+          const c=P(g.t0),cx=mepDot(c,b.u),cy=mepDot(c,b.v),rc=Math.hypot(px-cx,py-cy);
+          (g.rs||[g.r]).forEach(rr=>{const k=Math.abs(rc-rr)*v.scale;if(k<d){d=k;r=rr;}});
+          d=Math.min(d,rc*v.scale);
+        }else if(Math.abs(facing)<0.02){ // vue de côté : l'axe ou une génératrice
+          const A=P(g.t0),B=P(g.t1),ax=mepDot(A,b.u),ay=mepDot(A,b.v),bx=mepDot(B,b.u),by=mepDot(B,b.v);
+          const L=Math.hypot(bx-ax,by-ay);if(L<1e-6)return;
+          const ux=(bx-ax)/L,uy=(by-ay)/L,t=(px-ax)*ux+(py-ay)*uy;
+          if(t<-1/v.scale*tolS||t>L+tolS/v.scale)return;
+          const off=Math.abs((px-ax)*-uy+(py-ay)*ux);
+          d=off*v.scale;
+          (g.rs||[g.r]).forEach(rr=>{const k=Math.abs(off-rr)*v.scale;if(k<d){d=k;r=rr;}});
+        }else return;
+        if(d<bd){bd=d;best={vid:v.id,ax:{o:g.o.slice(),d:g.d.slice(),r,t0:g.t0,t1:g.t1}};}
+      });
+    });
+    if(best)return best;
+    if(hit&&hit.e&&(hit.e.t==='C'||hit.e.t==='A'))return{vid:hit.vid,c:{cx:hit.e.cx,cy:hit.e.cy,r:hit.e.r}};
+    return null;
   }
   function mepAxisAutoGeom(sh,v){
     const out=[];
@@ -834,7 +1051,8 @@
         if(d<bd){bd=d;best={vid:v.id,fid:h.fid,pid:h.pid};}
       });
     });
-    return best;
+    if(best)return best;
+    try{return mepAxisGeoAt(sh,sx,sy);}catch(e){return null;} // 2026-11-02 : tout autre cercle
   }
   function mepSignedTol(v){
     const n=+v||0;

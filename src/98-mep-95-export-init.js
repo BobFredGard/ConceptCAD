@@ -483,6 +483,7 @@
       axisAuto:view=>mepAxisAutoGeom(mepSheet(),view),
       axisSym:(e1,e2,view)=>mepAxisSymGeom(e1,e2,view||{scale:1}),
       shapeCyls:bd=>mepShapeCyls(bd),
+      shapeRevs:bd=>mepShapeRevs(bd),axisGeoAt:(x,y)=>{mepSt.zoom=1;return mepAxisGeoAt(mepSheet(),x,y);},axisRefGeom:(view,ref)=>mepAxisRefGeom(mepSheet(),view,ref),
       axisManual:(view,ann)=>mepAxisManualGeom(mepSheet(),view,ann),
       axisAt:(x,y)=>mepAxisAt(mepSheet(),x,y),
       axisLines:(view,auto)=>{if(auto){mepAxGen++;const l=mepAxisLines(mepSheet(),view,auto);mepAxLinesCache.set(view,{gen:mepAxGen,geo:mepGeoOf(view),list:l});return l;}return mepAxisLines(mepSheet(),view);},

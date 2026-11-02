@@ -692,12 +692,12 @@
   }
   function mepSideAxis(root,v,a,sh){
     const h=document.createElement('h4');
-    h.textContent={hole:'Axe de trou',align:'Axe commun',pitch:'Cercle de perçage',free:a.sym?'Axe de symétrie (figé)':'Axe libre',sym:'Axe de symétrie'}[a.kind]||'Axe';
+    h.textContent={hole:a.ref&&a.ref.ax?'Axe de révolution':a.ref&&a.ref.c?'Axe de cercle':'Axe de trou',align:'Axe commun',pitch:'Cercle de perçage',free:a.sym?'Axe de symétrie (figé)':'Axe libre',sym:'Axe de symétrie'}[a.kind]||'Axe';
     root.appendChild(h);
     const note=document.createElement('div');
     note.className='note';
     const n=a.kind==='hole'?1:(a.refs||[]).length;
-    note.textContent=(a.kind==='free'?'Tracé libre':a.kind==='sym'?'Entre 2 droites — suit leurs déplacements':n+' trou(s)')+' · norme ISO 128-2 (04.1)';
+    note.textContent=(a.kind==='free'?'Tracé libre':a.kind==='sym'?'Entre 2 droites — suit leurs déplacements':a.kind==='hole'&&a.ref&&a.ref.ax?'Forme de révolution du modèle — suit ses modifications':a.kind==='hole'&&a.ref&&a.ref.c?'Cercle de la vue — suit ses déplacements':n+' cercle(s)')+' · norme ISO 128-2 (04.1)';
     root.appendChild(note);
     const act=document.createElement('div');act.className='row';
     const bDel=document.createElement('button');bDel.textContent='Supprimer';bDel.className='danger';

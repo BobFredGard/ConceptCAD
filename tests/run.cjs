@@ -202,6 +202,7 @@ const SUITES = [
   "test_ws_pose_cao",
   "test_mise_en_plan",
   "test_mep_step",
+  "test_mep_axes_revolution",
   "test_mep_coupe_brisee",
   "test_mep_coupe_locale",
   "test_mep_hachures_cotes",
