@@ -1130,8 +1130,20 @@ function faoRoughAdaptiveLevel(mesh,B,z,D,r,secu,zFrom,ae,entryMode,brutTop,zt,m
     const rb=Math.max(0.01,r-(isFinite(+RB.seuil)?+RB.seuil:0.05));
     let sb=[];
     faoShadowPlanes(mesh,+RB.z,z).forEach(function(pz){sb=sb.concat(faoSliceZCached(mesh,pz));});
-    const minRun=isFinite(+RB.minRun)?+RB.minRun:Math.min(3,D/4);
-    const rest=function(p){return !faoDiscClear(sb,p[0],p[1],0,rb);};
+    // V0.39.0 : MARCHE MAXI (RB.marche, mm) — au point, épaisseur horizontale t
+    // laissée par le niveau du dessous (r − distance à son ombre) ; pente
+    // locale s = t / (z − RB.z). Bande entière ≤ marche (s·h) : rien ; sinon
+    // une mini-passe sur m (m = ⌊marche / (s·δ)⌋, comptées depuis le haut,
+    // RB.k = rang de cette cote, δ = pas des cotes) : marche restante ≤ marche.
+    const mm=(isFinite(+RB.marche)&&+RB.marche>0&&isFinite(+RB.k)&&+RB.h>0&&+RB.d>0&&z-RB.z>1e-6)?RB:null;
+    // marche maxi : morceaux reliés jusqu'à 2·D et jetés sous D/2 (une cote
+    // sur m, variable le long du tour, hacherait la passe en remontées)
+    const minRun=isFinite(+RB.minRun)?+RB.minRun:(mm?D/2:Math.min(3,D/4));
+    const rest=function(p){
+      if(faoDiscClear(sb,p[0],p[1],0,rb))return false;
+      if(!mm)return true;
+      return faoMarcheGarde(function(t){return faoDiscClear(sb,p[0],p[1],0,Math.max(0.001,r-t));},z-mm.z,mm);
+    };
     const dense=function(P){
       const out=[P[0]];
       for(let i=1;i<P.length;i++){
@@ -1157,7 +1169,7 @@ function faoRoughAdaptiveLevel(mesh,B,z,D,r,secu,zFrom,ae,entryMode,brutTop,zt,m
       for(let i=1;i<f.length;i++){
         if(f[i]||!f[i-1])continue;
         let j=i;while(j<f.length&&!f[j])j++;
-        if(j<f.length&&runLen(Q.slice(i-1,j+1))<=linkMax)for(let t=i;t<j;t++)f[t]=true;
+        if(j<f.length&&runLen(Q.slice(i-1,j+1))<=(mm?Math.max(linkMax,2*D):linkMax))for(let t=i;t<j;t++)f[t]=true;
         i=j;
       }
       let run=null;

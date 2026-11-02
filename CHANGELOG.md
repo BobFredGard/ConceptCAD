@@ -8,7 +8,7 @@ sont sorties le 2026-09-30j.
 Code dans `src/` · livrable `fusion_mvp.html` (généré par `build.js`) · architecture et
 garde-fous en tête de `src/00-entete-et-outils.js`.
 
-**532 versions**, de `2026-09-28b` à `V0.38.0` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
+**533 versions**, de `2026-09-28b` à `V0.39.0` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
 comme dans le fichier d'origine.
 
 ---
@@ -6329,3 +6329,11 @@ Demande : « Quand il n'y a pas de pentes tout le long, mais juste à des endroi
 - **Mesures** (même nombre de mini-passes, partout → pentes) : Malaxeur Retard, coupe des mini-passes 10 836 → 7 908 mm (−27 %), rapides 47,3 → 39,6 m ; Perçages (fraise Ø6, 3 mini-passes) 553 → 72 mm et 662 → 78 mm ; Cavité Test et Cavité Usinage identiques (parois en dépouille sur tout le tour : marche réelle partout).
 - **Plan** : `docs/plan-mini-passes-adaptatives.md` (tranche 3 à venir : « marche maxi » en mm).
 - **Tests** : `test_fao_minipasses_pentes` (îlot à un flanc incliné et îlot droit, fraise droite et torique : partout inchangé, mini-passes seulement au droit de la pente, aucun point dans la matière, nettoyage et clé) ; `npm run ci:full` 233/233 ; `npm run parcours` inchangé (seul écart, Perçage n° 11 de Perçages, déjà présent en V0.37.1).
+
+## V0.39.0 - Ébauche 3D : marche maxi des mini-passes
+Demande : version adaptative de l'ébauche 3D (suite de V0.38.0, « si c'est une option qui ne détruit rien, lance »).
+- **Fiche Ébauche 3D › Passes** : en *Mini-passes sur : Pentes seulement*, champ **Marche maxi** (mm ; 0 ou vide = off, documents et clés de parcours inchangés, `CACHE_VER` inchangé). `op.marcheMaxi`, nettoyé au centième, retiré hors mode pentes.
+- **Règle** (`faoMarcheGarde`, fraise droite et torique) : au point, pente locale s = épaisseur laissée par le niveau du dessous / hauteur au-dessus de lui ; bande entière ≤ marche → aucune mini-passe ; sinon une cote sur m = ⌊marche / (s·pas des cotes)⌋, comptées depuis le haut. Deux essais d'outil suffisent le plus souvent (paroi raide : m = 1 sans bisection).
+- **Passe non hachée** : en marche maxi, morceaux reliés jusqu'à 2·D et jetés sous D/2 (premier essai : remontées doublées, temps d'usinage inchangé).
+- **Mesures** (temps estimé, partout → marche 1 mm) : Cavité Test 17,1 → 15,2 min, Cavité Usinage 9,5 → 9,3 min, Malaxeur Retard 37,6 → 32,4 min ; à 0,5 mm les cavités (parois ~25°) gardent toutes leurs mini-passes. Calcul jusqu'à 1,8 × le mode partout.
+- **Tests** : `test_fao_minipasses_pentes` (îlot à flanc presque vertical et flanc à 30°, fraise droite et torique : 0 = sans marche, rien sur le flanc presque vertical, 5 cotes par niveau à 0,5 mm, une sur deux à 1,2 mm ; nettoyage) ; `npm run ci:full` 233/233 ; `npm run parcours` inchangé (seul écart, Perçage n° 11 de Perçages, déjà présent en V0.37.1).

@@ -152,3 +152,20 @@ restante qu'en mode partout, et `npm run parcours` reste identique.
 ## Complexité
 
 Moyenne à élevée : 4 tranches, une dizaine de tâches, 6 fichiers source + 1 test.
+
+## Bilan tranche 3 — marche maxi (2026-11-02, non livrée)
+
+`op.marcheMaxi` (mm, mode pentes seulement ; absent ou 0 = V0.38.0). Le nombre de mini-passes devient un
+maximum : au point, pente locale s = épaisseur laissée / hauteur au-dessus du niveau du dessous ; bande
+entière ≤ marche → aucune mini-passe, sinon une cote sur ⌊marche / (s·pas)⌋ (`faoMarcheGarde`, deux essais
+d'outil le plus souvent). Morceaux reliés jusqu'à 2·D et jetés sous D/2 (sinon passe hachée : 2 × plus de
+remontées mesurées au premier essai).
+
+| Pièce (Ébauche 3D) | partout | pentes | marche 0,5 | marche 1 |
+|---|---|---|---|---|
+| Cavité Test (6 mini-passes) | 17,1 min | 17,1 | 17,1 | 15,2 (−11 %) |
+| Cavité Usinage (5) | 9,5 min | 9,5 | 9,5 | 9,3 (−2 %) |
+| Malaxeur Retard (3) | 37,6 min | 33,5 | 33,2 | 32,4 (−14 %) |
+
+Les cavités (parois ~25°) ont besoin de toutes leurs mini-passes pour rester sous 0,5 mm : seule une marche
+de 1 mm les éclaircit. Temps de calcul : jusqu'à 1,8 × celui du mode partout avec marche 1 (Cavité Usinage).

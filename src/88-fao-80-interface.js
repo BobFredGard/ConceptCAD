@@ -1346,6 +1346,12 @@ function faoOpCardElement(setup,op,i){
         op.minipassesMode==='pentes'?'pentes':'partout',
         function(v){ if(v==='pentes')op.minipassesMode='pentes'; else delete op.minipassesMode; },
         'Où faire les mini-passes : toutes les parois, ou seulement là où il reste de la matière en escalier.'));
+      // V0.39.0 : marche maxi — le nombre de mini-passes devient un maximum
+      if(op.minipassesMode==='pentes'){
+        rMp.appendChild(faoLab('Marche maxi'));
+        rMp.appendChild(faoNum(+op.marcheMaxi>0?+op.marcheMaxi:0,function(v){if(v>0)op.marcheMaxi=Math.min(50,v);else delete op.marcheMaxi;},44,0.1,
+          'Épaisseur de matière (mm, mesurée à l’horizontale) qu’on accepte de laisser en escalier sur une paroi. 0 = off. Les mini-passes deviennent un MAXIMUM : là où la paroi est presque verticale (marche plus petite que ce réglage sur tout le niveau), aucune ; plus la pente est douce, plus il en reste.'));
+      }
       d.appendChild(rMp);
     }
     d.appendChild(faoHelp(

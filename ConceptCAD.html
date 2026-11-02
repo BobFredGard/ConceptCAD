@@ -376,7 +376,7 @@ input[type=range]{accent-color:var(--primary);width:100%}
  * peut changer sans rien casser. CACHE_VER (parcours FAO) reste indépendant.
  */
 
-const APP_VER='V0.38.0';
+const APP_VER='V0.39.0';
 try{console.log('[ConceptCAD] version '+APP_VER);}catch(e){}
 try{var mfSv=document.getElementById('mfSplashVer');if(mfSv)mfSv.textContent=APP_VER;}catch(e){} // écran de démarrage
 
@@ -34006,6 +34006,10 @@ function faoSanitiseOps(s){
       // V0.38.0 : mini-passes « seulement sur les pentes » — absent = partout
       // (documents existants : ni champ ni changement de clé)
       if(op.minipassesMode!=='pentes')delete op.minipassesMode;
+      // V0.39.0 : marche maxi (mm) — mode pentes seulement ; absent ou 0 = off
+      const mx=+op.marcheMaxi;
+      if(op.minipassesMode==='pentes'&&isFinite(mx)&&mx>0)op.marcheMaxi=Math.min(50,Math.max(0.01,Math.round(mx*100)/100));
+      else delete op.marcheMaxi;
       // 2026-10-07-001/002 : finition des parois (N contours « Parois » -> 0,
       // sur la DERNIERE passe en profondeur, finitProf cotes vers le haut) —
       // OFF par defaut : ni champ ni effet tant que la case n'est pas cochee
@@ -36759,6 +36763,7 @@ function* faoOpMovesIt0(op,job){
        radial:RA.radial,axial:RA.axial,
        minipasses:isFinite(+op.minipasses)?+op.minipasses:0,
        minipassesMode:op.minipassesMode, // V0.38.0 : 'pentes' = seulement où il reste une marche
+       marcheMaxi:op.marcheMaxi,         // V0.39.0 : marche maxi (mm), mode pentes
        finitParois:!!op.finitParois,finitN:op.finitN,finitProf:op.finitProf,
        finitFond:!!op.finitFond,
         // 2026-10-08-004 : entrée CIRC par défaut (doc sans champ = arc
@@ -42404,6 +42409,12 @@ function faoOpCardElement(setup,op,i){
         op.minipassesMode==='pentes'?'pentes':'partout',
         function(v){ if(v==='pentes')op.minipassesMode='pentes'; else delete op.minipassesMode; },
         'Où faire les mini-passes : toutes les parois, ou seulement là où il reste de la matière en escalier.'));
+      // V0.39.0 : marche maxi — le nombre de mini-passes devient un maximum
+      if(op.minipassesMode==='pentes'){
+        rMp.appendChild(faoLab('Marche maxi'));
+        rMp.appendChild(faoNum(+op.marcheMaxi>0?+op.marcheMaxi:0,function(v){if(v>0)op.marcheMaxi=Math.min(50,v);else delete op.marcheMaxi;},44,0.1,
+          'Épaisseur de matière (mm, mesurée à l’horizontale) qu’on accepte de laisser en escalier sur une paroi. 0 = off. Les mini-passes deviennent un MAXIMUM : là où la paroi est presque verticale (marche plus petite que ce réglage sur tout le niveau), aucune ; plus la pente est douce, plus il en reste.'));
+      }
       d.appendChild(rMp);
     }
     d.appendChild(faoHelp(
@@ -45572,12 +45583,12 @@ function* faoGenRough3DIt(mesh,box,ztop,zbot,o){
         // même place du parcours, au lieu du calcul fraise droite (~1 mm de
         // trop sur les faces inclinées, torique D25 R2).
         if(bullC)faoBullRingLevel(bullCtx(s),zm,moves,{sens:o.sens,secu:secu,travelZ:tvZ,linkMax:bullLink,minRun:rem?5:0,dzStay:rem?h:0,all:true,
-          restBelow:o.minipassesMode==='pentes'?{z:L.z,bridge:bullLink}:undefined}); // V0.38.0 : pentes seulement
+          restBelow:o.minipassesMode==='pentes'?{z:L.z,bridge:bullLink,marche:o.marcheMaxi,k:k,h:h,d:h/(nbL+1)}:undefined}); // V0.38.0 : pentes seulement (V0.39.0 : marche maxi)
         else faoRoughAdaptiveLevel(M,BB,zm,D,D/2+s,secu,Math.min(secu,bandTop),ae,entryMode,o.brutTop,zt,moves,
           // V0.38.0 : « seulement sur les pentes » — morceaux de paroi où le
           // niveau du dessous (L.z) a laissé une marche (src/88-fao-92-contour.js)
           o.minipassesMode==='pentes'
-            ?{ringOnly:true,travelZ:tvZ,sens:o.sens,entryR:o.entryR,zoneAt:o.zoneAt,frameTouch:frameTouch,restBelow:{z:L.z}}
+            ?{ringOnly:true,travelZ:tvZ,sens:o.sens,entryR:o.entryR,zoneAt:o.zoneAt,frameTouch:frameTouch,restBelow:{z:L.z,marche:o.marcheMaxi,k:k,h:h,d:h/(nbL+1)}}
             :{ringOnly:true,travelZ:tvZ,sens:o.sens,entryR:o.entryR,zoneAt:o.zoneAt,frameTouch:frameTouch});
         if(rem)rem.carve();
         yield frameYield(); // dessin progressif 005 : mini-passe k
@@ -47239,8 +47250,20 @@ function faoRoughAdaptiveLevel(mesh,B,z,D,r,secu,zFrom,ae,entryMode,brutTop,zt,m
     const rb=Math.max(0.01,r-(isFinite(+RB.seuil)?+RB.seuil:0.05));
     let sb=[];
     faoShadowPlanes(mesh,+RB.z,z).forEach(function(pz){sb=sb.concat(faoSliceZCached(mesh,pz));});
-    const minRun=isFinite(+RB.minRun)?+RB.minRun:Math.min(3,D/4);
-    const rest=function(p){return !faoDiscClear(sb,p[0],p[1],0,rb);};
+    // V0.39.0 : MARCHE MAXI (RB.marche, mm) — au point, épaisseur horizontale t
+    // laissée par le niveau du dessous (r − distance à son ombre) ; pente
+    // locale s = t / (z − RB.z). Bande entière ≤ marche (s·h) : rien ; sinon
+    // une mini-passe sur m (m = ⌊marche / (s·δ)⌋, comptées depuis le haut,
+    // RB.k = rang de cette cote, δ = pas des cotes) : marche restante ≤ marche.
+    const mm=(isFinite(+RB.marche)&&+RB.marche>0&&isFinite(+RB.k)&&+RB.h>0&&+RB.d>0&&z-RB.z>1e-6)?RB:null;
+    // marche maxi : morceaux reliés jusqu'à 2·D et jetés sous D/2 (une cote
+    // sur m, variable le long du tour, hacherait la passe en remontées)
+    const minRun=isFinite(+RB.minRun)?+RB.minRun:(mm?D/2:Math.min(3,D/4));
+    const rest=function(p){
+      if(faoDiscClear(sb,p[0],p[1],0,rb))return false;
+      if(!mm)return true;
+      return faoMarcheGarde(function(t){return faoDiscClear(sb,p[0],p[1],0,Math.max(0.001,r-t));},z-mm.z,mm);
+    };
     const dense=function(P){
       const out=[P[0]];
       for(let i=1;i<P.length;i++){
@@ -47266,7 +47289,7 @@ function faoRoughAdaptiveLevel(mesh,B,z,D,r,secu,zFrom,ae,entryMode,brutTop,zt,m
       for(let i=1;i<f.length;i++){
         if(f[i]||!f[i-1])continue;
         let j=i;while(j<f.length&&!f[j])j++;
-        if(j<f.length&&runLen(Q.slice(i-1,j+1))<=linkMax)for(let t=i;t<j;t++)f[t]=true;
+        if(j<f.length&&runLen(Q.slice(i-1,j+1))<=(mm?Math.max(linkMax,2*D):linkMax))for(let t=i;t<j;t++)f[t]=true;
         i=j;
       }
       let run=null;
@@ -55603,6 +55626,22 @@ function faoMatterCarveTilt(g,a,b,r,ax,outCols,tp){
    contact. Entrée/sortie par le côté déjà usiné (pointe fraise droite
    <= z), liaison au contact seulement au pas, sinon remontée + rapide.
    ================================================================ */
+// V0.39.0 : MARCHE MAXI des mini-passes « pentes seulement » (fraise droite et
+// torique). free(t) : l'outil, écarté de t vers le côté libre, descend-il au
+// niveau du dessous ? -> épaisseur laissée ≤ t. zr = hauteur de cette cote
+// au-dessus du niveau du dessous ; mm = {marche, k (rang depuis le haut), h
+// (bande), d (pas des cotes)}. Pente s = t / zr : bande entière ≤ marche
+// (s·h) -> aucune mini-passe ; sinon une sur m = ⌊marche / (s·d)⌋. Deux
+// essais suffisent le plus souvent (paroi raide : m = 1 sans bisection).
+function faoMarcheGarde(free,zr,mm){
+  const e=+mm.marche,d1=e*zr/mm.h,d2=e*zr/(2*mm.d);
+  if(free(d1))return false;          // s·h ≤ marche : rien sur toute la bande
+  if(!(d2>d1)||!free(d2))return true; // m = 1 : toutes les cotes
+  let lo=d1,hi=d2;
+  for(let it=0;it<4;it++){const md=(lo+hi)/2;if(free(md))hi=md;else lo=md;}
+  const s=hi/zr;
+  return mm.k%Math.max(1,Math.floor(e/(s*mm.d)))===0;
+}
 function faoBullRingSetup(M,BB,D,rc,laisse,zoneAt){
   const R=D/2,g=0.5; // grille de repérage (1 mm : 92 % au contact au lieu de 96 %, cordes sur les courbes)
   const R0=Math.max(0,R-rc);
@@ -55705,13 +55744,21 @@ function faoBullRingRuns(C,z,climb,all,rb){
       pts=pts.filter(function(p,i){return i===0||Math.hypot(p[0]-pts[i-1][0],p[1]-pts[i-1][1])>1e-6;});
       const sl=isFinite(+rb.seuil)?+rb.seuil:0.05,zb=+rb.z+1e-3,n=pts.length;
       if(n<2)return;
+      // V0.39.0 : marche maxi — même règle que la fraise droite
+      // (src/88-fao-92-contour.js) ; t = écart vers le côté libre qu'il faut
+      // pour que l'outil descende au niveau du dessous
+      const mm=(isFinite(+rb.marche)&&+rb.marche>0&&isFinite(+rb.k)&&+rb.h>0&&+rb.d>0&&z-rb.z>1e-6)?rb:null;
       const f=new Array(n);
       for(let i=0;i<n;i++){
         const a=pts[Math.max(0,i-1)],b=pts[Math.min(n-1,i+1)],p=pts[i];
         const dx=b[0]-a[0],dy=b[1]-a[1],L=Math.hypot(dx,dy);
         if(!(L>1e-9)){f[i]=false;continue;}
-        const ox=-dy/L*sl,oy=dx/L*sl;
-        f[i]=Math.min(C.tipB(p[0]+ox,p[1]+oy),C.tipB(p[0]-ox,p[1]-oy))>zb&&(!C.zoneAt||C.zoneAt(p[0],p[1]));
+        const ux=-dy/L,uy=dx/L;
+        const tP=C.tipB(p[0]+ux*sl,p[1]+uy*sl),tM=C.tipB(p[0]-ux*sl,p[1]-uy*sl);
+        f[i]=Math.min(tP,tM)>zb&&(!C.zoneAt||C.zoneAt(p[0],p[1]));
+        if(!f[i]||!mm)continue;
+        const sg=tP<=tM?1:-1;
+        f[i]=faoMarcheGarde(function(d){return C.tipB(p[0]+sg*ux*d,p[1]+sg*uy*d)<=zb;},z-mm.z,mm);
       }
       const i0=f.indexOf(false);
       if(i0<0){runs.push({pts:faoSimplifyPts(pts,0.004),closed:!!ch.closed});return;}
@@ -55719,7 +55766,8 @@ function faoBullRingRuns(C,z,climb,all,rb){
       let Q=pts,F=f;
       if(ch.closed){Q=pts.slice(i0).concat(pts.slice(0,i0+1));F=f.slice(i0).concat(f.slice(0,i0+1));}
       const seg=function(i,j){let L=0;for(let k=i+1;k<=j;k++)L+=Math.hypot(Q[k][0]-Q[k-1][0],Q[k][1]-Q[k-1][1]);return L;};
-      const br=isFinite(+rb.bridge)?+rb.bridge:0;
+      // marche maxi : morceaux reliés jusqu'à 2·D, jetés sous D/2 (passe hachée sinon)
+      const br=Math.max(isFinite(+rb.bridge)?+rb.bridge:0,mm?2*C.D:0),rMin=mm?Math.max(2,C.D/2):2;
       for(let i=1;i<F.length;i++){
         if(F[i]||!F[i-1])continue;
         let j=i;while(j<F.length&&!F[j])j++;
@@ -55727,7 +55775,7 @@ function faoBullRingRuns(C,z,climb,all,rb){
         i=j;
       }
       let rc=[];
-      const rflush=function(){if(rc.length>=2&&seg2(rc)>=2)runs.push({pts:faoSimplifyPts(rc,0.004),closed:false});rc=[];};
+      const rflush=function(){if(rc.length>=2&&seg2(rc)>=rMin)runs.push({pts:faoSimplifyPts(rc,0.004),closed:false});rc=[];};
       const seg2=function(A){let L=0;for(let k=1;k<A.length;k++)L+=Math.hypot(A[k][0]-A[k-1][0],A[k][1]-A[k-1][1]);return L;};
       for(let i=0;i<Q.length;i++){if(F[i])rc.push(Q[i]);else rflush();}
       rflush();

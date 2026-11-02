@@ -14,6 +14,22 @@
    contact. Entrée/sortie par le côté déjà usiné (pointe fraise droite
    <= z), liaison au contact seulement au pas, sinon remontée + rapide.
    ================================================================ */
+// V0.39.0 : MARCHE MAXI des mini-passes « pentes seulement » (fraise droite et
+// torique). free(t) : l'outil, écarté de t vers le côté libre, descend-il au
+// niveau du dessous ? -> épaisseur laissée ≤ t. zr = hauteur de cette cote
+// au-dessus du niveau du dessous ; mm = {marche, k (rang depuis le haut), h
+// (bande), d (pas des cotes)}. Pente s = t / zr : bande entière ≤ marche
+// (s·h) -> aucune mini-passe ; sinon une sur m = ⌊marche / (s·d)⌋. Deux
+// essais suffisent le plus souvent (paroi raide : m = 1 sans bisection).
+function faoMarcheGarde(free,zr,mm){
+  const e=+mm.marche,d1=e*zr/mm.h,d2=e*zr/(2*mm.d);
+  if(free(d1))return false;          // s·h ≤ marche : rien sur toute la bande
+  if(!(d2>d1)||!free(d2))return true; // m = 1 : toutes les cotes
+  let lo=d1,hi=d2;
+  for(let it=0;it<4;it++){const md=(lo+hi)/2;if(free(md))hi=md;else lo=md;}
+  const s=hi/zr;
+  return mm.k%Math.max(1,Math.floor(e/(s*mm.d)))===0;
+}
 function faoBullRingSetup(M,BB,D,rc,laisse,zoneAt){
   const R=D/2,g=0.5; // grille de repérage (1 mm : 92 % au contact au lieu de 96 %, cordes sur les courbes)
   const R0=Math.max(0,R-rc);
@@ -116,13 +132,21 @@ function faoBullRingRuns(C,z,climb,all,rb){
       pts=pts.filter(function(p,i){return i===0||Math.hypot(p[0]-pts[i-1][0],p[1]-pts[i-1][1])>1e-6;});
       const sl=isFinite(+rb.seuil)?+rb.seuil:0.05,zb=+rb.z+1e-3,n=pts.length;
       if(n<2)return;
+      // V0.39.0 : marche maxi — même règle que la fraise droite
+      // (src/88-fao-92-contour.js) ; t = écart vers le côté libre qu'il faut
+      // pour que l'outil descende au niveau du dessous
+      const mm=(isFinite(+rb.marche)&&+rb.marche>0&&isFinite(+rb.k)&&+rb.h>0&&+rb.d>0&&z-rb.z>1e-6)?rb:null;
       const f=new Array(n);
       for(let i=0;i<n;i++){
         const a=pts[Math.max(0,i-1)],b=pts[Math.min(n-1,i+1)],p=pts[i];
         const dx=b[0]-a[0],dy=b[1]-a[1],L=Math.hypot(dx,dy);
         if(!(L>1e-9)){f[i]=false;continue;}
-        const ox=-dy/L*sl,oy=dx/L*sl;
-        f[i]=Math.min(C.tipB(p[0]+ox,p[1]+oy),C.tipB(p[0]-ox,p[1]-oy))>zb&&(!C.zoneAt||C.zoneAt(p[0],p[1]));
+        const ux=-dy/L,uy=dx/L;
+        const tP=C.tipB(p[0]+ux*sl,p[1]+uy*sl),tM=C.tipB(p[0]-ux*sl,p[1]-uy*sl);
+        f[i]=Math.min(tP,tM)>zb&&(!C.zoneAt||C.zoneAt(p[0],p[1]));
+        if(!f[i]||!mm)continue;
+        const sg=tP<=tM?1:-1;
+        f[i]=faoMarcheGarde(function(d){return C.tipB(p[0]+sg*ux*d,p[1]+sg*uy*d)<=zb;},z-mm.z,mm);
       }
       const i0=f.indexOf(false);
       if(i0<0){runs.push({pts:faoSimplifyPts(pts,0.004),closed:!!ch.closed});return;}
@@ -130,7 +154,8 @@ function faoBullRingRuns(C,z,climb,all,rb){
       let Q=pts,F=f;
       if(ch.closed){Q=pts.slice(i0).concat(pts.slice(0,i0+1));F=f.slice(i0).concat(f.slice(0,i0+1));}
       const seg=function(i,j){let L=0;for(let k=i+1;k<=j;k++)L+=Math.hypot(Q[k][0]-Q[k-1][0],Q[k][1]-Q[k-1][1]);return L;};
-      const br=isFinite(+rb.bridge)?+rb.bridge:0;
+      // marche maxi : morceaux reliés jusqu'à 2·D, jetés sous D/2 (passe hachée sinon)
+      const br=Math.max(isFinite(+rb.bridge)?+rb.bridge:0,mm?2*C.D:0),rMin=mm?Math.max(2,C.D/2):2;
       for(let i=1;i<F.length;i++){
         if(F[i]||!F[i-1])continue;
         let j=i;while(j<F.length&&!F[j])j++;
@@ -138,7 +163,7 @@ function faoBullRingRuns(C,z,climb,all,rb){
         i=j;
       }
       let rc=[];
-      const rflush=function(){if(rc.length>=2&&seg2(rc)>=2)runs.push({pts:faoSimplifyPts(rc,0.004),closed:false});rc=[];};
+      const rflush=function(){if(rc.length>=2&&seg2(rc)>=rMin)runs.push({pts:faoSimplifyPts(rc,0.004),closed:false});rc=[];};
       const seg2=function(A){let L=0;for(let k=1;k<A.length;k++)L+=Math.hypot(A[k][0]-A[k-1][0],A[k][1]-A[k-1][1]);return L;};
       for(let i=0;i<Q.length;i++){if(F[i])rc.push(Q[i]);else rflush();}
       rflush();

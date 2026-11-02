@@ -169,6 +169,10 @@ function faoSanitiseOps(s){
       // V0.38.0 : mini-passes « seulement sur les pentes » — absent = partout
       // (documents existants : ni champ ni changement de clé)
       if(op.minipassesMode!=='pentes')delete op.minipassesMode;
+      // V0.39.0 : marche maxi (mm) — mode pentes seulement ; absent ou 0 = off
+      const mx=+op.marcheMaxi;
+      if(op.minipassesMode==='pentes'&&isFinite(mx)&&mx>0)op.marcheMaxi=Math.min(50,Math.max(0.01,Math.round(mx*100)/100));
+      else delete op.marcheMaxi;
       // 2026-10-07-001/002 : finition des parois (N contours « Parois » -> 0,
       // sur la DERNIERE passe en profondeur, finitProf cotes vers le haut) —
       // OFF par defaut : ni champ ni effet tant que la case n'est pas cochee
