@@ -31,7 +31,7 @@ function entHits(sk,ent){ // intersections (monde) avec les autres entités
   if(ent.t==='line'){
     const A=P[ent.p1],B=P[ent.p2];if(!A||!B)return out;
     sk.entities.forEach(o=>{
-      if(o.id===ent.id||o.construction)return; // construction : ne coupe jamais (hors trim)
+      if(o.id===ent.id||o.construction&&!o.proj)return; // construction : ne coupe jamais (hors trim) — sauf une projection (V0.36.4)
       if(o.t==='line'){const C=P[o.p1],D=P[o.p2];if(!C||!D)return;
         const h=interLineLine(A,B,C,D);
         if(h&&h.t>-1e-6&&h.t<1+1e-6&&h.u>-1e-6&&h.u<1+1e-6)push(h.x,h.y);}
@@ -46,7 +46,7 @@ function entHits(sk,ent){ // intersections (monde) avec les autres entités
     const C=P[ent.pc];if(!C)return;
     const onArc=(x,y)=>{if(ent.t==='circle')return true;const an=arcAngles(sk,ent);return !!an&&onArcEps(Math.atan2(y-C.y,x-C.x),an.a1,an.a2);};
     sk.entities.forEach(o=>{
-      if(o.id===ent.id||o.construction)return; // construction : ne coupe jamais (hors trim)
+      if(o.id===ent.id||o.construction&&!o.proj)return; // construction : ne coupe jamais (hors trim) — sauf une projection (V0.36.4)
       if(o.t==='line'){const A=P[o.p1],B=P[o.p2];if(!A||!B)return;
         const span=Math.hypot(B.x-A.x,B.y-A.y)||1,tt=Math.max(1e-6,0.02/span); // tolérance en mm : une tangence (t≈1±bruit solveur) compte comme intersection
         interLineCircle(A,B,C,ent.r).forEach(h=>{if(h.t>-tt&&h.t<1+tt&&onArc(h.x,h.y))push(h.x,h.y);});}
@@ -57,7 +57,7 @@ function entHits(sk,ent){ // intersections (monde) avec les autres entités
     });
   }
   if(ent.t==='spline'){ // lot 3 : intersections exactes de la spline (Newton / bissection sur la courbe)
-    sk.entities.forEach(o=>{if(o.id===ent.id||o.construction)return;skSplineHits(sk,ent,o).forEach(h=>push(h.x,h.y));});
+    sk.entities.forEach(o=>{if(o.id===ent.id||o.construction&&!o.proj)return;skSplineHits(sk,ent,o).forEach(h=>push(h.x,h.y));});
   }
   const u=[];out.forEach(h=>{if(!u.some(k=>Math.hypot(k.x-h.x,k.y-h.y)<1e-6))u.push(h);});
   return u;
@@ -70,7 +70,11 @@ function splitOtherAt(sk,selfId,x,y){ // matérialise le point de coupe dans les
     if(o.id===selfId||o.t!=='line')return;
     const A=sk.points[o.p1],B=sk.points[o.p2];if(!A||!B)return;
     if(o.p1===pid||o.p2===pid)return;
-    if(distSeg(x,y,A,B)<tol)splitLineAt(sk,o.id,pid);
+    if(distSeg(x,y,A,B)>=tol)return;
+    // V0.36.4 : une PROJECTION ne se coupe pas (elle suit son arête entière au rejeu et ramenait le
+    // point de coupe au bout de l'arête) — le point y est posé (« sur la droite »)
+    if(o.proj){if(!(sk.constraints||[]).some(c=>c.type==='online'&&c.p===pid&&c.line===o.id))sk.constraints.push({id:skNewEid(sk),type:'online',p:pid,line:o.id});return;}
+    splitLineAt(sk,o.id,pid);
   });
   return pid;
 }
@@ -137,6 +141,15 @@ function skPinTangent(sk,lineId,entId){
 }
 function trimEntity(sk,ent,cx,cy){
   const P=sk.points;
+  if(ent.proj&&ent.t==='line'){ // (même en construction)
+    // V0.36.4 : une projetée ne se coupe pas (elle suit son arête entière au rejeu). Le tronçon gardé
+    // devient une droite ordinaire posée dessus (mêmes bouts fixes, coupes « sur la droite ») et la
+    // projetée repasse en construction : le contour se ferme, l'associativité reste.
+    const cl={id:skNewEid(sk),t:'line',p1:ent.p1,p2:ent.p2};
+    sk.entities.push(cl);ent.construction=true;
+    return trimEntity(sk,cl,cx,cy); // bouts fixes ou « sur la droite » : alignement implicite
+  }
+  if(ent.proj)return 'Projection : elle suit son arête source, elle ne s’ajuste pas (elle sert de limite aux autres).';
   if(ent.construction)return 'Entité de construction : repère de positionnement, rien à ajuster.'; // hors trim
   if(ent.t==='line'){
     const A=P[ent.p1],B=P[ent.p2];if(!A||!B)return 'Ligne invalide.';
@@ -563,6 +576,8 @@ svg.addEventListener('pointerdown',e=>{
       skDragWalk=null;skDragEnt={x0:wx,y0:wy,pids:comp.pids,orig,anchor:comp.pids.filter(p=>!skFixed(sk).has(p)),pushed:false,rigid};
       renderSkPanel();drawSketch2D();return;
     }
+    // V0.36.4 : arête / bout / milieu / centre du solide → sélectionné (projeté), Ctrl ajoute
+    if(skPlSelect(sk,wx,wy,skMulti(e)))return;
     // clic sur le vide → boîte de sélection (gauche→droite : dedans · droite→gauche : croisé)
     if(!skMulti(e)){skSel=null;skSelX=[];renderSkPanel();}
     skBox={x0:wx,y0:wy,x1:wx,y1:wy,add:skMulti(e)};
@@ -903,6 +918,12 @@ svg.addEventListener('pointermove',e=>{
     const h0=skPlHover;
     const s=findSnap(sk,wx,wy);const nm=s?{x:s.x,y:s.y}:null;
     if(JSON.stringify(nm)!==JSON.stringify(skSnapMk)||h0!==skPlHover&&!(h0&&skPlHover&&h0.x===skPlHover.x&&h0.y===skPlHover.y)){skSnapMk=nm;drawSketch2D();}
+  }
+  else if(!skDown&&!skDrag&&!skDimDrag&&!skBox&&skTool==='select'){
+    // V0.36.4 : sans outil, les arêtes / points du solide s'allument aussi au survol (présélection)
+    const h0=skPlHover;
+    skPlHover=(nearestPoint(sk,wx,wy,SK_SNAP)||nearestEntity(sk,wx,wy,SK_PICK))?null:skPlHit(sk,wx,wy,true);
+    if(h0!==skPlHover&&!(h0&&skPlHover&&h0.x===skPlHover.x&&h0.y===skPlHover.y&&h0.kind===skPlHover.kind))drawSketch2D();
   }
 });
 svg.addEventListener('pointerup',e=>{

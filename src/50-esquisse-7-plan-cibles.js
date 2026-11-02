@@ -3,7 +3,8 @@
 // croisements, et les points où une arête traverse le plan s'allument au survol (orange) dans
 // les outils de dessin et Cote. Au clic, l'entité est projetée en construction comme avec ⧉
 // (associative : suit le solide au rejeu) — l'utilisateur n'a plus à projeter ce qui est déjà
-// dans le plan. Les arêtes hors du plan restent l'affaire de ⧉.
+// dans le plan. V0.36.4 : les arêtes HORS du plan aussi, vues en projection (tiretés orange,
+// moins prioritaires que celles du plan) — un clic les projette comme ⧉, sans passer par l'outil.
 const SK_PL_TOOLS=new Set(['line','rect','slot','circle','arc','cpoint','hpoint','spline','cspline','dim']);
 const SK_PL_TOLZ=2e-3; // écart au plan toléré (mm) : arête « dans le plan »
 let skPlHover=null; // cible sous le curseur {kind:'pt'|'edge',...} — transitoire, jamais sauvée
@@ -80,7 +81,7 @@ function skPlBuild(sk){
   const keyOf=s=>s.type==='circle'?'c'+k(s.cx)+k(s.cy)+k(s.r):s.type==='curve'?'s'+s.pts.map(p=>k(p[0])+k(p[1])).join():
     s.type+[k(s.x1)+','+k(s.y1),k(s.x2)+','+k(s.y2)].sort().join(';')+(s.type==='arc'?k(s.cx)+k(s.cy):'');
   const addE=s=>{if(!s)return;const key=keyOf(s);if(seen.has(key))return;seen.add(key);E.push(s);};
-  const pierce=[];
+  const pierce=[],far=[];
   if(edges&&edges.length){
     for(const e of edges){
       if(!e||!e.pts||e.pts.length<2)continue;
@@ -90,6 +91,9 @@ function skPlBuild(sk){
         continue;
       }
       skPlTouches(sk,e).forEach(q=>pierce.push({x:q[0],y:q[1],srcMid:e.mid?e.mid.slice():null}));
+      // hors du plan : sa projection (une arête ⟂ au plan, réduite à un point, n'en a pas)
+      const s=skPlShape(e.pts.map(p=>[(p[0]-o.x)*u.x+(p[1]-o.y)*u.y+(p[2]-o.z)*u.z,(p[0]-o.x)*v.x+(p[1]-o.y)*v.y+(p[2]-o.z)*v.z]));
+      if(s){s.far=true;if(e.mid)s.srcMid=e.mid.slice();far.push(s);}
     }
   }else{
     // sans noyau : références du plan (sans lien de suivi — projections figées)
@@ -99,21 +103,29 @@ function skPlBuild(sk){
       else if(isFinite(r.x1))addE({type:'line',x1:r.x1,y1:r.y1,x2:r.x2,y2:r.y2});
     });
   }
+  const nIn=E.length;
+  // arêtes vues en projection APRÈS celles du plan : une arête confondue garde sa nature du plan
+  far.forEach(addE);
   const near=(x,y)=>P.find(p=>Math.hypot(p.x-x,p.y-y)<1e-4);
-  const addP=(kind,x,y,i)=>{const q=near(x,y);if(q){if(i!=null&&q.e.indexOf(i)<0)q.e.push(i);return;}P.push({kind,x,y,e:i!=null?[i]:[]});};
-  E.forEach((s,i)=>{
+  const addP=(kind,x,y,i)=>{const q=near(x,y);if(q){if(i!=null&&q.e.indexOf(i)<0&&!(i>=nIn&&q.e.some(j=>j<nIn)))q.e.push(i);return;}
+    P.push(Object.assign({kind,x,y,e:i!=null?[i]:[]},i!=null&&i>=nIn?{far:true}:{}));};
+  const ptsOf=lo=>{E.forEach((s,i)=>{if((i>=nIn)!==lo)return;
     if(s.type==='line'){addP('end',s.x1,s.y1,i);addP('end',s.x2,s.y2,i);}
     else if(s.type==='arc'){addP('end',s.x1,s.y1,i);addP('end',s.x2,s.y2,i);}
     else if(s.type==='curve'){const a=s.pts[0],b=s.pts[s.pts.length-1];addP('end',a[0],a[1],i);addP('end',b[0],b[1],i);}
   });
   // centres et milieux APRÈS les sommets : un sommet confondu garde sa nature de sommet
-  E.forEach((s,i)=>{
-    if(s.type==='line'){if(!near((s.x1+s.x2)/2,(s.y1+s.y2)/2))P.push({kind:'mid',x:(s.x1+s.x2)/2,y:(s.y1+s.y2)/2,e:[i]});}
-    else if(s.type!=='curve'&&!near(s.cx,s.cy))P.push({kind:'center',x:s.cx,y:s.cy,e:[i]});
-  });
-  if(E.length<=600)for(let i=0;i<E.length;i++)for(let j=i+1;j<E.length;j++)
+  E.forEach((s,i)=>{if((i>=nIn)!==lo)return;const f=lo?{far:true}:{};
+    if(s.type==='line'){if(!near((s.x1+s.x2)/2,(s.y1+s.y2)/2))P.push(Object.assign({kind:'mid',x:(s.x1+s.x2)/2,y:(s.y1+s.y2)/2,e:[i]},f));}
+    else if(s.type!=='curve'&&!near(s.cx,s.cy))P.push(Object.assign({kind:'center',x:s.cx,y:s.cy,e:[i]},f));
+  });};
+  ptsOf(false);
+  // croisements : arêtes du plan seulement (des projections se croisent sans se toucher en 3D)
+  if(nIn<=600)for(let i=0;i<nIn;i++)for(let j=i+1;j<nIn;j++)
     skPlIsect(E[i],E[j]).forEach(q=>{if(!near(q[0],q[1]))P.push({kind:'isect',x:q[0],y:q[1],e:[i,j]});});
+  // traversées avant les points vus en projection : un vrai point du plan prime
   pierce.forEach(q=>{if(!near(q.x,q.y))P.push({kind:'pierce',x:q.x,y:q.y,e:[],srcMid:q.srcMid});});
+  ptsOf(true);
   return{E,P};
 }
 function skPlTargets(sk){
@@ -133,14 +145,17 @@ function skPlFoot(s,x,y){
     return{d:Math.abs(dc-s.r),x:s.cx+(x-s.cx)/dc*s.r,y:s.cy+(y-s.cy)/dc*s.r};}
   return null; // courbe : seuls ses bouts sont des cibles
 }
-function skPlHit(sk,x,y){
-  // cible du plan sous (x,y) : point remarquable d'abord, puis arête (pied)
+const SK_PL_SELKINDS=new Set(['end','mid','center','pierce']); // outil Sélection : bouts, milieux, centres
+function skPlHit(sk,x,y,sel){
+  // cible du plan sous (x,y) : point remarquable d'abord, puis arête (pied) ; à distance
+  // comparable, ce qui est DANS le plan l'emporte sur ce qui n'y est vu qu'en projection.
+  // sel (outil Sélection) : seulement bouts / milieux / centres, et l'arête entière
   const T=skPlTargets(sk);if(!T||(!T.E.length&&!T.P.length))return null;
   let best=null,bd=SK_SNAP;
-  T.P.forEach(p=>{const d=Math.hypot(p.x-x,p.y-y);if(d<bd){bd=d;best={kind:'pt',p,x:p.x,y:p.y};}});
+  T.P.forEach(p=>{if(sel&&!SK_PL_SELKINDS.has(p.kind))return;const d=Math.hypot(p.x-x,p.y-y)*(p.far?1.5:1);if(d<bd){bd=d;best={kind:'pt',p,x:p.x,y:p.y};}});
   if(best)return best;
   bd=SK_PICK;
-  T.E.forEach((s,i)=>{const f=skPlFoot(s,x,y);if(f&&f.d<bd){bd=f.d;best={kind:'edge',i,x:f.x,y:f.y};}});
+  T.E.forEach((s,i)=>{const f=skPlFoot(s,x,y);const d=f&&f.d*(s.far?1.5:1);if(f&&d<bd){bd=d;best={kind:'edge',i,x:f.x,y:f.y};}});
   return best;
 }
 function skPlSnap(sk,x,y){
@@ -260,13 +275,30 @@ function skPlDimPrep(sk,x,y){
   skPlHover=null;
   return true;
 }
+function skPlSelect(sk,x,y,multi){
+  // outil Sélection : une arête ou un point remarquable du solide se sélectionne comme une
+  // entité d'esquisse — projeté (construction, associatif) au clic, Ctrl l'ajoute à la sélection
+  const h=skPlHit(sk,x,y,true);if(!h)return false;
+  skPushUndo();
+  let s=null;
+  if(h.kind==='edge'){const en=skPlEnsureEdge(sk,h.i);if(en)s={kind:'ent',id:en.id};}
+  else if(h.p.kind==='center'){const en=skPlEnsureEdge(sk,h.p.e[0]);if(en)s=en.pc?{kind:'point',pid:en.pc}:{kind:'ent',id:en.id};}
+  else{const pid=skPlMaterialize(sk,h);if(pid)s={kind:'point',pid};}
+  if(!s){skUndoStack.pop();skUndoBtn();return false;}
+  const same=a=>a&&a.kind===s.kind&&(a.id===s.id&&a.id!=null||a.pid===s.pid&&a.pid!=null);
+  if(multi&&skSel){if(!same(skSel)&&!skSelX.some(same))skSelX.push(s);}
+  else{skSel=s;skSelX=[];}
+  skPlHover=null;afterEdit();
+  return true;
+}
 function skPlDrawHover(sk){
   // surbrillance orange de la cible du plan survolée (arête(s) + point)
-  const h=skPlHover;if(!h||!SK_PL_TOOLS.has(skTool))return;
+  const h=skPlHover;if(!h||!(SK_PL_TOOLS.has(skTool)||skTool==='select'))return;
   const T=skPlTargets(sk);if(!T)return;
-  const C='#ff9f0a';
+  const C='#ff9f0a',skElBase=skEl,sel=skTool==='select';
   const drawE=s=>{
     if(!s)return;
+    const skEl=(t,a)=>skElBase(t,s.far?Object.assign(a,{'stroke-dasharray':'7 4'}):a); // vue en projection : tiretés
     if(s.type==='circle'){const[a,b]=w2s(s.cx,s.cy);skEl('circle',{cx:a,cy:b,r:s.r*skView.s,fill:'none',stroke:C,'stroke-width':3,opacity:0.9});}
     else if(s.type==='arc'){const a1=Math.atan2(s.y1-s.cy,s.x1-s.cx),a2=Math.atan2(s.y2-s.cy,s.x2-s.cx);let dd=a2-a1;while(dd<=0)dd+=Math.PI*2;
       const[a,b]=w2s(s.x1,s.y1),[c,d]=w2s(s.x2,s.y2);
@@ -274,9 +306,13 @@ function skPlDrawHover(sk){
     else if(s.type==='curve')skEl('path',{d:'M '+s.pts.map(q=>{const w=w2s(q[0],q[1]);return w[0].toFixed(1)+' '+w[1].toFixed(1);}).join(' L '),fill:'none',stroke:C,'stroke-width':3,opacity:0.9});
     else{const[a,b]=w2s(s.x1,s.y1),[c,d]=w2s(s.x2,s.y2);skEl('line',{x1:a,y1:b,x2:c,y2:d,stroke:C,'stroke-width':3,opacity:0.9});}
   };
-  if(h.kind==='edge')drawE(T.E[h.i]);
-  else (h.p.e||[]).forEach(i=>drawE(T.E[i]));
+  const ends=s=>!s?[]:s.type==='line'||s.type==='arc'?[[s.x1,s.y1],[s.x2,s.y2]]:s.type==='curve'?[s.pts[0],s.pts[s.pts.length-1]]:[];
+  const lit=h.kind==='edge'?[T.E[h.i]]:(h.p.e||[]).map(i=>T.E[i]);
+  lit.forEach(drawE);
+  // bouts des arêtes allumées : carrés creux, comme les extrémités d'une droite d'esquisse
+  lit.forEach(s=>ends(s).forEach(q=>{const[x,y]=w2s(q[0],q[1]);skEl('rect',{x:x-4,y:y-4,width:8,height:8,fill:'#101012',stroke:C,'stroke-width':1.5});}));
   const[a,b]=w2s(h.x,h.y);
   if(h.kind==='pt'&&h.p.kind==='pierce')skEl('path',{d:`M ${a} ${b-6} L ${a+6} ${b} L ${a} ${b+6} L ${a-6} ${b} Z`,fill:C,stroke:'#101012','stroke-width':1});
-  else skEl('circle',{cx:a,cy:b,r:h.kind==='pt'?5:3.5,fill:C,stroke:'#101012','stroke-width':1});
+  else if(h.kind==='pt')skEl('rect',{x:a-4.5,y:b-4.5,width:9,height:9,fill:C,stroke:'#101012','stroke-width':1}); // carré, comme les points d'esquisse
+  else if(!sel)skEl('circle',{cx:a,cy:b,r:3.5,fill:C,stroke:'#101012','stroke-width':1}); // pied sur l'arête (Sélection : l'arête seule)
 }

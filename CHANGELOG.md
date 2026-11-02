@@ -8,7 +8,7 @@ sont sorties le 2026-09-30j.
 Code dans `src/` · livrable `fusion_mvp.html` (généré par `build.js`) · architecture et
 garde-fous en tête de `src/00-entete-et-outils.js`.
 
-**528 versions**, de `2026-09-28b` à `V0.36.3` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
+**529 versions**, de `2026-09-28b` à `V0.36.4` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
 comme dans le fichier d'origine.
 
 ---
@@ -6293,3 +6293,13 @@ Demande : « Quand je veux rendre les points coïncidents, c'est la ligne de pro
 - **Correctif** (`mergePoints`) : si un seul des deux points est fixe (bout de projection, contrainte « Fixe », cf. `skFixed`), c'est lui qui est gardé, dans n'importe quel ordre de clic — le rectangle rejoint la projetée.
 - **Vérifié** dans l'application (fusion dans les deux ordres : la projetée reste en place).
 - **Tests** : `test_coincident_projetee` (échoue en V0.36.2) ; `test_coincident_contrainte`, `test_proj_fix_perdus`, `test_esquisse_projection` inchangés ; `npm run ci`.
+
+## V0.36.4 - Esquisse : arêtes du solide hors du plan au survol et en sélection, bouts d'arcs tirés librement, projetées ajustées sans se décrocher
+Demandes : « on pourrait avoir une présélection au passage de la souris dans l'esquisse tout le temps […] sans projeter » ; « sans fonction active » ; « des points carrés comme sur les droites » ; « que je puisse les tirer comme je veux » (bouts de mes arcs) ; projetées gauche + bas, cercle tangent ajusté en arc, « puis je veux faire une extrusion et ça part en cacahuète ».
+- **Arêtes hors du plan** (`skPlBuild`) : en plus des arêtes DANS le plan, toutes les arêtes du solide sont proposées vues en projection (tiretés orange) avec bouts, milieux et centres ; à distance égale, ce qui est dans le plan (et les traversées) l'emporte. Croisements : arêtes du plan seulement. Au clic d'un outil de dessin ou de Cote, projetées comme ⧉ (associatives).
+- **Outil Sélection** (`skPlSelect`) : survol sans pied flottant (bouts, milieux, centres ou l'arête entière) ; un clic sélectionne l'arête ou le point (projeté au besoin), Ctrl+clic l'ajoute à la sélection.
+- **Affichage** : point survolé en carré orange plein, bouts de chaque arête allumée en carrés creux.
+- **Bout d'arc tiré** : le solveur ignorait le résidu « bout sur le cercle » d'un point fixé ou ANCRÉ (celui qu'on tire) → le bout quittait l'arc puis était ramené sur l'ancien cercle. Résidu gardé tant que centre ou rayon peut bouger ; en relaxation, le bout pb tiré pilote le rayon comme pa.
+- **Ajustement et projetées** (`splitOtherAt`, `trimEntity`, `entHits`) — cause de la « cacahuète » : les bouts de l'arc COUPAIENT les projetées ; au rejeu chaque projetée se raccrochait à son arête entière et ramenait le bout de l'arc au coin. Désormais une projetée n'est jamais coupée (bout posé « sur la droite ») ; ajuster une projetée la laisse entière, en construction, et le tronçon gardé devient une droite ordinaire posée dessus (contour fermé, associativité gardée) ; une projetée en construction sert de limite d'ajustement (plus besoin de décocher construction). Les esquisses déjà ajustées avec l'ancienne version gardent leurs projetées coupées (à refaire).
+- **Vérifié** dans l'application (Cavité Test : arêtes hors plan en tiretés, sélection et Ctrl+clic, bouts d'arcs en carrés ; bout d'arc tiré).
+- **Tests** : `test_arc_bout_glisse`, `test_trim_projetee`, `test_trim_projetee_noyau` (noyau réel : arc stable au rejeu, suit la boîte élargie) — échouent en V0.36.3 ; `test_esquisse_plan_cibles` étendu (arêtes hors plan, sélection) ; `npm test` 231/231.

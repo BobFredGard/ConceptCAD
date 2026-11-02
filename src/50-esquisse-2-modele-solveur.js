@@ -645,7 +645,9 @@ function solveSketchRelax(sk,iters,anchor){
       if(e.t!=='arc')return;
       const C=Ps[e.pc],A=Ps[e.pa],B=Ps[e.pb];if(!C||!A||!B)return;
       const lock=rLocked(sk,e);
-      if(!lock){const ra=Math.hypot(A.x-C.x,A.y-C.y);if(ra>1e-9)e.r=ra;}
+      // V0.36.4 : bout pb fixé ou tiré (ancré) et pa libre → c'est pb qui pilote le rayon
+      const D=fix.has(e.pb)&&!fix.has(e.pa)?B:A;
+      if(!lock){const ra=Math.hypot(D.x-C.x,D.y-C.y);if(ra>1e-9)e.r=ra;}
       const rr=Math.max(e.r,1e-9);
       const proj=Pp=>{const aa=Math.atan2(Pp.y-C.y,Pp.x-C.x);Pp.x+=(C.x+rr*Math.cos(aa)-Pp.x)*0.5;Pp.y+=(C.y+rr*Math.sin(aa)-Pp.y)*0.5;};
       if(!fix.has(e.pa))proj(A);
@@ -843,14 +845,17 @@ function sklsCollect(sk,out,B){
     if(c.type==='onspline'){const r=skOnSplResid(sk,c);if(r!=null)push(r);} // point sur spline : distance signée au pied (mm)
     if(c.type==='fix'){ /* exclus des variables → pas de résidu */ }
   });
-  // ── structure des arcs : les extrémités restent sur le cercle (sauf point fixé) ──
+  // ── structure des arcs : les extrémités restent sur le cercle ──
+  // V0.36.4 : un bout fixé ou TIRÉ (ancré) garde son résidu tant que le centre ou le rayon
+  // peut bouger — c'est alors l'arc qui suit le bout ; ignoré seulement si tout est bloqué
   (sk.entities||[]).forEach(e=>{
     if(e.t!=='arc')return;
     const C=P[e.pc];
     if(!C)return;
     const onC=Pp=>Pp?(Math.hypot(Pp.x-C.x,Pp.y-C.y)-e.r):null;
-    if(P[e.pa]&&!fix.has(e.pa))push(onC(P[e.pa]));
-    if(P[e.pb]&&!fix.has(e.pb))push(onC(P[e.pb]));
+    const rigid=fix.has(e.pc)&&rLocked(sk,e);
+    if(P[e.pa]&&!(fix.has(e.pa)&&rigid))push(onC(P[e.pa]));
+    if(P[e.pb]&&!(fix.has(e.pb)&&rigid))push(onC(P[e.pb]));
   });
   for(let gi=g0;gi<out.length;gi++)out[gi]*=SK_GEO_W;
   // ── ancrage doux : les rayons libres ne dérivent que si une vraie contrainte les tire (equal, tangent2) ──

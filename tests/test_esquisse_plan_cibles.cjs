@@ -6,7 +6,8 @@
 //  4) ligne tracée de sommet à milieu (vrais événements souris), cote sur une arête ;
 //  5) plan médian y=30 : points de traversée des arêtes, suivis quand la boîte s'allonge ;
 //  6) croisements 2D (ligne/ligne, ligne/cercle, cercle/cercle) ;
-//  7) hors des outils de dessin (Sélection) : aucune accroche du plan.
+//  7) hors des outils de dessin (Sélection) : aucune accroche du plan (survol seul, V0.36.4) ;
+//  8) V0.36.4 : arêtes HORS du plan vues en projection (moins prioritaires), projetées au clic.
 const fs=require('fs'),vm=require('vm'),path=require('path');
 const ROOT=path.join(__dirname,'..');
 globalThis.__dirname=path.join(ROOT,'occt');
@@ -92,7 +93,8 @@ const {loadApp}=require('./appvm.cjs');
     _skPlCache=null;
     const T2=skPlTargets(s2);
     const pc=T2.P.filter(p=>p.kind==='pierce');
-    A(T2.E.length===0&&pc.length===4,'5 : plan médian : aucune arête, 4 traversées ('+T2.E.length+'/'+pc.length+')');
+    A(T2.E.length===4&&T2.E.every(e=>e.far)&&pc.length===4,'5 : plan médian : 4 arêtes vues en projection (aucune dans le plan), 4 traversées ('+T2.E.length+'/'+pc.length+')');
+    A(T2.P.filter(p=>p.far).length===4&&T2.P.filter(p=>p.far).every(p=>p.kind==='mid'),'5 : coins = traversées (prioritaires), milieux vus en projection');
     const b=sketchBasis(s2),to2=q=>[(q[0]-b.o.x)*b.u.x+(q[1]-b.o.y)*b.u.y+(q[2]-b.o.z)*b.u.z,(q[0]-b.o.x)*b.v.x+(q[1]-b.o.y)*b.v.y+(q[2]-b.o.z)*b.v.z];
     const want=[[10,30,0],[110,30,0],[10,30,40],[110,30,40]].map(to2);
     A(want.every(w=>pc.some(p=>near(p.x,w[0],1e-6)&&near(p.y,w[1],1e-6))),'5 : aux bons endroits '+JSON.stringify(pc.map(p=>[p.x,p.y])));
@@ -110,6 +112,29 @@ const {loadApp}=require('./appvm.cjs');
     updateAssociativeProjections(sk);
     const e0=proj().find(e=>e.t==='line'&&near(sk.points[e.p1].y,10)&&near(sk.points[e.p2].y,10));
     A(e0&&near(Math.max(sk.points[e0.p1].x,sk.points[e0.p2].x),130,1e-6),'5 : arête du plan projetée automatiquement : suit aussi (x→130)');
+    // ── 8. arête hors du plan : projetée au clic, associative ──
+    _skPlCache=null;
+    const m8=to2([70,30,40]),h8=skPlHit(s2,m8[0]+0.2,m8[1]+0.3);
+    A(h8&&h8.kind==='pt'&&h8.p.kind==='mid'&&h8.p.far,'8 : milieu de l’arête z=40 (hors plan) accroché');
+    const n8=s2.entities.filter(e=>e.proj&&e.t==='line').length;
+    const q8=skPlMaterialize(s2,h8);
+    const L8=s2.entities.filter(e=>e.proj&&e.t==='line');
+    const a8=to2([10,30,40]),b8=to2([130,30,40]),P8=s2.points;
+    A(L8.length===n8+1&&L8.some(e=>{const a=P8[e.p1],b=P8[e.p2];return a&&b&&e.construction&&near(Math.min(a.x,b.x),Math.min(a8[0],b8[0]),1e-6)&&near(Math.max(a.x,b.x),Math.max(a8[0],b8[0]),1e-6)&&near(a.y,a8[1],1e-6);}),'8 : arête hors plan projetée en construction');
+    A(s2.constraints.some(c=>c.type==='midpoint'&&c.p===q8),'8 : point au milieu de la projetée');
+    skTool='select';skPlHover=h8;let n9=0;const _e9=skEl;skEl=function(t,a,p){if(a&&a.stroke==='#ff9f0a'&&a['stroke-dasharray'])n9++;return _e9(t,a,p);};
+    try{skPlDrawHover(s2);}finally{skEl=_e9;skPlHover=null;}
+    A(n9===1,'8 : outil Sélection : présélection dessinée, en tiretés pour une arête hors plan ('+n9+')');
+    // Sélection : clic = sélection (arête projetée au besoin), Ctrl+clic = ajout ; jamais de pied flottant
+    const m0=to2([70,30,0]),e0x=to2([40,30,0]);
+    A(skPlHit(s2,e0x[0],e0x[1]+0.2,true).kind==='edge','8 : Sélection, sur l’arête : l’arête (pas de point)');
+    let dots=0;const _e10=skEl;skEl=function(t,a,p){if(t==='circle'&&a&&a.fill==='#ff9f0a')dots++;return _e10(t,a,p);};
+    try{skPlHover=skPlHit(s2,e0x[0],e0x[1]+0.2,true);skPlDrawHover(s2);}finally{skEl=_e10;skPlHover=null;}
+    A(dots===0,'8 : Sélection : aucun point dessiné le long de l’arête ('+dots+')');
+    skEdit=s2;skSel=null;skSelX=[];
+    A(skPlSelect(s2,m0[0]+0.2,m0[1]-0.2,false)&&skSel&&skSel.kind==='point'&&s2.points[skSel.pid]&&near(s2.points[skSel.pid].x,m0[0],1e-6),'8 : clic sur un milieu : point sélectionné');
+    A(skPlSelect(s2,e0x[0],e0x[1]+0.2,true)&&skSel&&skSel.kind==='point'&&skSelX.length===1&&skSelX[0].kind==='ent'&&entById(s2,skSelX[0].id).proj,'8 : Ctrl+clic sur l’arête : ajoutée, le point reste sélectionné');
+    skEdit=null;skSel=null;skSelX=[];
     // ── 6. croisements 2D ──
     const X=skPlIsect({type:'line',x1:0,y1:0,x2:10,y2:10},{type:'line',x1:0,y1:10,x2:10,y2:0});
     A(X.length===1&&near(X[0][0],5)&&near(X[0][1],5),'6 : ligne × ligne');
