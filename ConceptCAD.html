@@ -376,7 +376,7 @@ input[type=range]{accent-color:var(--primary);width:100%}
  * peut changer sans rien casser. CACHE_VER (parcours FAO) reste indépendant.
  */
 
-const APP_VER='V0.36.0';
+const APP_VER='V0.36.1';
 try{console.log('[ConceptCAD] version '+APP_VER);}catch(e){}
 try{var mfSv=document.getElementById('mfSplashVer');if(mfSv)mfSv.textContent=APP_VER;}catch(e){} // écran de démarrage
 
@@ -17567,7 +17567,7 @@ function projEdgesFor(sk){
   if(pk!=null&&edges){_projEdgePersist.set(pk,edges);while(_projEdgePersist.size>24)_projEdgePersist.delete(_projEdgePersist.keys().next().value);}
   return edges;
 }
-function findClosestProjectedEdge(sk,x,y,preferMid,wantType,edgesOver){
+function findClosestProjectedEdge(sk,x,y,preferMid,wantType,edgesOver,noPoint){
   // sans tolérance, cherche l'arête projetée la plus proche (antériorité).
   // preferMid : milieu 3D mémorisé à la projection — l'arête source d'origine prime
   // (si le solide bouge, on reste sur LA bonne arête et on rafraîchit le lien).
@@ -17582,6 +17582,10 @@ function findClosestProjectedEdge(sk,x,y,preferMid,wantType,edgesOver){
     try{
       for(const e of edges){
         const pts2=e.pts.map(p=>[(p[0]-o.x)*u.x+(p[1]-o.y)*u.y+(p[2]-o.z)*u.z, (p[0]-o.x)*v.x+(p[1]-o.y)*v.y+(p[2]-o.z)*v.z]);
+        // noPoint : une projetée de vraie LONGUEUR ne se raccroche pas à une arête ⟂ au plan (un
+        // point) — elle devenait une ligne de longueur nulle (MERLIN-23-001). Une projetée déjà
+        // réduite à un point le reste (Support Pédale : points de référence voulus).
+        if(noPoint&&pts2.every(p=>Math.hypot(p[0]-pts2[0][0],p[1]-pts2[0][1])<1e-4))continue;
         let d=1e9;
         for(let i=0;i<pts2.length-1;i++) d=Math.min(d, (function(ax,ay,bx,by){ const apx=x-ax,apy=y-ay,abx=bx-ax,aby=by-ay; const t=Math.max(0,Math.min(1,(apx*abx+apy*aby)/(abx*abx+aby*aby||1))); const cx=ax+abx*t,cy=ay+aby*t; return Math.hypot(x-cx,y-cy);})(pts2[i][0],pts2[i][1],pts2[i+1][0],pts2[i+1][1]));
         let sc=d;
@@ -17618,6 +17622,7 @@ function findClosestProjectedEdge(sk,x,y,preferMid,wantType,edgesOver){
             if(isFull) pr={type:'circle',cx,cy,r};
             else {const pm=pts2[Math.floor(pts2.length/2)];const oa=arcOrient(cx,cy,pts2[0][0],pts2[0][1],pts2[pts2.length-1][0],pts2[pts2.length-1][1],pm[0],pm[1]);pr={type:'arc',cx,cy,r,x1:oa[0],y1:oa[1],x2:oa[2],y2:oa[3]};}
           } else pr={type:'line',x1:pts2[0][0],y1:pts2[0][1],x2:pts2[pts2.length-1][0],y2:pts2[pts2.length-1][1]};
+          if(noPoint&&pr.type==='line'&&Math.hypot(pr.x2-pr.x1,pr.y2-pr.y1)<1e-4)continue; // boucle vue par la tranche : idem
           if(sc<bd){bd=sc;best=pr;srcMid=e.mid?e.mid.slice():null;}
           if(wantType&&pr.type===wantType&&sc<bTyd){bTyd=sc;bTy=pr;bTySrc=e.mid?e.mid.slice():null;}
         }
@@ -17660,7 +17665,7 @@ function updateAssociativeProjections0(sk){
     if(e.t==='line'){
       const A=sk.points[e.p1], B=sk.points[e.p2]; if(!A||!B) continue;
       const mx=(A.x+B.x)/2, my=(A.y+B.y)/2;
-      const pr=findClosestProjectedEdge(sk,mx,my,e.srcMid,'line',EO);
+      const pr=findClosestProjectedEdge(sk,mx,my,e.srcMid,'line',EO,Math.hypot(B.x-A.x,B.y-A.y)>=1e-4);
       if(!pr||pr.type!=='line') continue;
       if(pr.srcMid)e.srcMid=pr.srcMid;
       const d1=Math.hypot(A.x-pr.x1,A.y-pr.y1)+Math.hypot(B.x-pr.x2,B.y-pr.y2);
@@ -18186,6 +18191,7 @@ function migrateSketch(sk){
   });
   sk.entities=sk.entities.filter(e=>!e._dead);
   ensureOrigin(sk);
+  try{skProjFixRepair(sk);}catch(e){}
 }
 function cleanupSk(sk){
   ensureOrigin(sk); // origine permanente : rétablie si absente
@@ -18350,8 +18356,36 @@ function skFixed(sk){
     if(c.type==='fix'&&c.ent){const e=entById(sk,c.ent);if(e&&(e.t==='circle'||e.t==='arc'||e.t==='cpoint')&&(e.pc||e.p))f.add(e.pc||e.p);
       if(e&&e.t==='spline')skSplineAllPids(sk,e).forEach(p=>f.add(p));} // spline fixe : points de passage et poignées
   });
+  // Une PROJECTION est pilotée par son arête source, jamais par le solveur : fixe même sans
+  // contrainte « fix » (MERLIN-23-001 : les fix d'Esquisse 2 perdus → la projetée glissait
+  // avec les rectangles accrochés à ses bouts, et toutes les esquisses aval décrochaient).
+  (sk.entities||[]).forEach(e=>{if(e&&e.proj)skProjPids(sk,e).forEach(p=>f.add(p));});
   if((sk.points||{})[SK_ORIGIN])f.add(SK_ORIGIN);
   return f;
+}
+function skProjPids(sk,e){
+  if(e.t==='line')return[e.p1,e.p2].filter(Boolean);
+  if(e.t==='circle')return[e.pc].filter(Boolean);
+  if(e.t==='arc')return[e.pc,e.pa,e.pb].filter(Boolean);
+  if(e.t==='cpoint')return[e.p].filter(Boolean);
+  if(e.t==='spline')return skSplineAllPids(sk,e);
+  return[];
+}
+function skIsProjFix(sk,c){
+  // contrainte « fix » d'une projection : indissociable de son lien à l'arête source
+  if(!c||c.type!=='fix')return false;
+  return (sk.entities||[]).some(e=>e&&e.proj&&(c.ent===e.id||(c.p&&skProjPids(sk,e).indexOf(c.p)>=0)));
+}
+function skProjFixRepair(sk){
+  // contraintes « fix » manquantes d'une projection rétablies (l'icône 📌 dit la vérité)
+  let n=0;const has=f=>(sk.constraints||[]).some(f);
+  (sk.entities||[]).forEach(e=>{
+    if(!e||!e.proj||e.t==='spline')return; // spline : points de passage fixés à la création (skSplineProject)
+    // mêmes contraintes qu'à la création (skProjectCreate / skPlMaterialize)
+    skProjPids(sk,e).forEach(p=>{if(sk.points[p]&&!has(c=>c.type==='fix'&&c.p===p)){sk.constraints.push({id:skNewEid(sk),type:'fix',p});n++;}});
+    if((e.t==='circle'||e.t==='arc')&&!has(c=>c.type==='fix'&&c.ent===e.id)){sk.constraints.push({id:skNewEid(sk),type:'fix',ent:e.id});n++;}
+  });
+  return n;
 }
 function lineLen(sk,l){const P=sk.points,A=P[l.p1],B=P[l.p2];if(!A||!B)return 0;return Math.hypot(B.x-A.x,B.y-A.y);}
 function syncLineDims(sk,lineId){ // après ajout d'une ligne, recale ses cotes length sur la mesure courante (selon orientation)
@@ -19281,7 +19315,7 @@ function arcAngles(sk,e){ // angles dérivés des points d'extrémité (e.pa/e.p
   return{a1,a2:a1+d};
 }
 function rLocked(sk,e){
-  return (sk.constraints||[]).some(c=>c.type==='fix'&&c.ent===e.id)||(sk.dims||[]).some(d=>d.ent===e.id&&(d.type==='diameter'||d.type==='radius'));
+  return !!e.proj||(sk.constraints||[]).some(c=>c.type==='fix'&&c.ent===e.id)||(sk.dims||[]).some(d=>d.ent===e.id&&(d.type==='diameter'||d.type==='radius'));
 }
 function entLocked(sk,e,fix){
   fix=fix||skFixed(sk);
@@ -20991,7 +21025,7 @@ function renderSkPanel(){
     const s=document.createElement('span');s.textContent=conDesc(sk,c)+(bad?`  ⚠±${wA.viol.toFixed(2)}`:'');s.style.flex='1';d.appendChild(s);
     if(bad)d.style.borderColor='#ff453a';
     const x=document.createElement('span');x.className='x';x.textContent='✕';x.title='Retirer';
-    x.onclick=ev=>{ev.stopPropagation();skPushUndo();sk.constraints=sk.constraints.filter(k=>k.id!==c.id);if(skSel&&skSel.id===c.id)skSel=null;solveSketch(sk);drawSketch2D();renderSkPanel();};
+    x.onclick=ev=>{ev.stopPropagation();if(skIsProjFix(sk,c)){skStatus('Fixe d’une projection : elle suit son arête source — supprimez la projection pour la libérer.');return;}skPushUndo();sk.constraints=sk.constraints.filter(k=>k.id!==c.id);if(skSel&&skSel.id===c.id)skSel=null;solveSketch(sk);drawSketch2D();renderSkPanel();};
     d.appendChild(x);d.onclick=()=>{skSel={kind:'con',id:c.id};drawSketch2D();renderSkPanel();};cl.appendChild(d);
   });
   // cotes
@@ -21206,6 +21240,9 @@ function deleteSkSel(){
     else if(s.kind==='dim')killDims.add(s.id);
   };
   take(skSel);(skSelX||[]).forEach(take);
+  const projFix=[...killCons].filter(id=>skIsProjFix(sk,(sk.constraints||[]).find(c=>c.id===id)));
+  projFix.forEach(id=>killCons.delete(id)); // les fix d'une projection restent (elle suit son arête source)
+  if(projFix.length&&!killEnts.size&&!killPts.size&&!killCons.size&&!killDims.size){skStatus('Fixe d’une projection : elle suit son arête source — supprimez la projection pour la libérer.');return;}
   if(!killEnts.size&&!killPts.size&&!killCons.size&&!killDims.size){skStatus('Rien à supprimer — sélectionnez (fenêtre, Ctrl/Cmd+clic).');return;}
   const blockedOrigin=killPts.has(SK_ORIGIN);
   if(blockedOrigin)killPts.delete(SK_ORIGIN);

@@ -74,6 +74,7 @@ const SUITES = [
   "test_esquisse_face_conges",
   "test_esquisse_fao_cache",
   "test_esquisse_projection",
+  "test_proj_fix_perdus",
   "test_esquisse_intersection",
   "test_cote_points",
   "test_mep_accrochages",

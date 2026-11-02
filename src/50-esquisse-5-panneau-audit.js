@@ -112,7 +112,7 @@ function renderSkPanel(){
     const s=document.createElement('span');s.textContent=conDesc(sk,c)+(bad?`  ⚠±${wA.viol.toFixed(2)}`:'');s.style.flex='1';d.appendChild(s);
     if(bad)d.style.borderColor='#ff453a';
     const x=document.createElement('span');x.className='x';x.textContent='✕';x.title='Retirer';
-    x.onclick=ev=>{ev.stopPropagation();skPushUndo();sk.constraints=sk.constraints.filter(k=>k.id!==c.id);if(skSel&&skSel.id===c.id)skSel=null;solveSketch(sk);drawSketch2D();renderSkPanel();};
+    x.onclick=ev=>{ev.stopPropagation();if(skIsProjFix(sk,c)){skStatus('Fixe d’une projection : elle suit son arête source — supprimez la projection pour la libérer.');return;}skPushUndo();sk.constraints=sk.constraints.filter(k=>k.id!==c.id);if(skSel&&skSel.id===c.id)skSel=null;solveSketch(sk);drawSketch2D();renderSkPanel();};
     d.appendChild(x);d.onclick=()=>{skSel={kind:'con',id:c.id};drawSketch2D();renderSkPanel();};cl.appendChild(d);
   });
   // cotes
@@ -327,6 +327,9 @@ function deleteSkSel(){
     else if(s.kind==='dim')killDims.add(s.id);
   };
   take(skSel);(skSelX||[]).forEach(take);
+  const projFix=[...killCons].filter(id=>skIsProjFix(sk,(sk.constraints||[]).find(c=>c.id===id)));
+  projFix.forEach(id=>killCons.delete(id)); // les fix d'une projection restent (elle suit son arête source)
+  if(projFix.length&&!killEnts.size&&!killPts.size&&!killCons.size&&!killDims.size){skStatus('Fixe d’une projection : elle suit son arête source — supprimez la projection pour la libérer.');return;}
   if(!killEnts.size&&!killPts.size&&!killCons.size&&!killDims.size){skStatus('Rien à supprimer — sélectionnez (fenêtre, Ctrl/Cmd+clic).');return;}
   const blockedOrigin=killPts.has(SK_ORIGIN);
   if(blockedOrigin)killPts.delete(SK_ORIGIN);

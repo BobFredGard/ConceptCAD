@@ -8,7 +8,7 @@ sont sorties le 2026-09-30j.
 Code dans `src/` · livrable `fusion_mvp.html` (généré par `build.js`) · architecture et
 garde-fous en tête de `src/00-entete-et-outils.js`.
 
-**525 versions**, de `2026-09-28b` à `V0.36.0` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
+**526 versions**, de `2026-09-28b` à `V0.36.1` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
 comme dans le fichier d'origine.
 
 ---
@@ -6270,3 +6270,12 @@ Demande : « fonction Échelle ou Homothétie / à un point donné, centre repè
 - **Géométrie exacte** : uniforme → `BRepBuilderAPI_Transform` (`gp_Trsf.SetScale`, cylindres et cercles restent exacts) ; non uniforme → `BRepBuilderAPI_GTransform` (surfaces B-spline : un trou rond devient elliptique). Signature de cache : centre, facteurs, mode, et historique du source en copie.
 - **Vérifié** dans l'application : bouton du ruban → panneau, « Centre du corps » = (20 ; 10 ; 5) sur un bloc 40 × 20 × 10, nouveau corps créé une seule fois, choix d'un point puis retour du rejeu normal, console sans erreur.
 - **Tests** : `test_echelle_corps` (17 contrôles, noyau réel : ×2 origine / centre, ×½, × 25,4, non uniforme, cylindre exact, copie + source intact, fonction ajoutée ensuite au source, enregistrement, cache, facteur nul) ; `test_deplacer_corps` inchangé ; `npm run ci` 86/86.
+
+## V0.36.1 - Projections d'esquisse : toujours fixes, plus de décrochage en cascade
+Demande : « J'ai un problème de perte de référence de mes projections dans les esquisses » ; « Et puis les rectangles font n'importe quoi » (MERLIN-23-001).
+- **Cause** : dans « Esquisse 2 (face) », les contraintes « Fixe » des projetées avaient disparu. La projetée de l'arête y = 35 n'était plus tenue : le solveur la déplaçait avec les deux rectangles accrochés à ses bouts, le solide changeait, et les projetées des esquisses suivantes se raccrochaient en cascade à d'autres arêtes (taraudages dans le vide).
+- **Solveur** : une projection (ligne, cercle, arc, point de traversée, spline) est fixe **par nature** (`skFixed`, `rLocked`), avec ou sans contrainte « Fixe ». À l'ouverture d'une esquisse, les « Fixe » manquants d'une projetée sont rétablis (`skProjFixRepair`).
+- **Suppression** : le « Fixe » d'une projetée ne se retire plus seul (✕ de la liste, sélection + Suppr) — message : supprimer la projection pour la libérer (`skIsProjFix`).
+- **Rejeu** (`findClosestProjectedEdge`) : une projetée de vraie longueur ne se raccroche plus à une arête qui se projette en un point (arête ⟂ au plan, perçage vu par la tranche) — elle devenait une ligne de longueur nulle. Une projetée déjà réduite à un point le reste (Support Pédale : points de référence voulus).
+- **Vérifié** sur MERLIN-23-001 rejoué avec le noyau réel : Projetée 1 revient à y = 35, les rectangles reprennent leur place (20 × 30 de x = 2,5 à 22,5), plus de nouvelle projetée de longueur nulle (Projetée 4 et Projetée 12, déjà réduites à un point dans le fichier enregistré, sont à reprojeter).
+- **Tests** : `test_proj_fix_perdus` (copie figée du fichier) ; `test_esquisse_projection`, `test_proj_arc_sens`, `test_esquisse_plan_cibles`, `test_anteriorite`, `test_conge_sur_conge`, `test_ouverture_deterministe` inchangés ; `npm run ci:full`.

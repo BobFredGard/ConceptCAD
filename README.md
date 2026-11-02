@@ -8,7 +8,7 @@
 
 ![Support de pédale déportée R1200RT en alu anodisé rouge sur béton, lancer de rayons de l'atelier RENDU (2048 échantillons)](docs/captures/rendu-pedale.jpg)
 
-Le noyau géométrique exact est **OpenCascade compilé en WebAssembly**. S'il n'est pas disponible, l'application bascule seule sur un moteur maillage (CSG). Version actuelle : **V0.36.0** (voir le [journal des modifications](CHANGELOG.md)).
+Le noyau géométrique exact est **OpenCascade compilé en WebAssembly**. S'il n'est pas disponible, l'application bascule seule sur un moteur maillage (CSG). Version actuelle : **V0.36.1** (voir le [journal des modifications](CHANGELOG.md)).
 
 | | |
 |---|---|
@@ -72,7 +72,7 @@ Les gestes sont détaillés dans [Souris, clavier et doigts](#souris-clavier-et-
 ### Esquisse
 
 - **Tracé guidé** : accroche aux points, milieux et centres ; inférences H / V, ⟂, tangente, **parallèle** et **prolongement** d'une ligne (guide tracé, contrainte posée au clic) ; un point glissé s'accroche aux points, milieux, lignes et cercles et la **contrainte est posée au lâcher** ; longueur et angle tapés pendant le tracé.
-- **Outils** : ligne, rectangle, oblong, cercle, arc, **spline**, points de construction et de perçage, **projection associative** d'arêtes (aussi celles des autres composants), **intersection** du plan avec des faces ou un corps, congé, chanfrein, décalage 2D, ajustement.
+- **Outils** : ligne, rectangle, oblong, cercle, arc, **spline**, points de construction et de perçage, **projection associative** d'arêtes (aussi celles des autres composants ; une projetée reste fixe, elle ne bouge qu'avec son arête source), **intersection** du plan avec des faces ou un corps, congé, chanfrein, décalage 2D, ajustement.
 - **Arêtes du plan sans projeter** : les arêtes du solide situées dans le plan de l'esquisse, leurs sommets, milieux, centres et croisements, et les points où une arête traverse le plan, s'allument au survol et servent directement au tracé et à la cote (projetées d'office, associatives).
 - **Splines** par points de passage ou par points de contrôle, ouvertes ou fermées : poignées de tangence cotables, **tangence** et **courbure continue (G2)** avec une ligne, un arc ou une autre spline, **peigne de courbure** ; ajustement, jonction en T, décalage, intersection et projection en splines.
 - **13 contraintes** (horizontal, vertical, parallèle, perpendiculaire, colinéaire, égal, symétrie, tangence, coaxial, milieu, fixe, coïncident, construction) et **cotes pilotées** (longueur, Ø, rayon, distance, angle, entraxe).

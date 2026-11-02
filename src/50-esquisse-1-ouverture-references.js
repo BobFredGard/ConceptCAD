@@ -291,7 +291,7 @@ function projEdgesFor(sk){
   if(pk!=null&&edges){_projEdgePersist.set(pk,edges);while(_projEdgePersist.size>24)_projEdgePersist.delete(_projEdgePersist.keys().next().value);}
   return edges;
 }
-function findClosestProjectedEdge(sk,x,y,preferMid,wantType,edgesOver){
+function findClosestProjectedEdge(sk,x,y,preferMid,wantType,edgesOver,noPoint){
   // sans tolérance, cherche l'arête projetée la plus proche (antériorité).
   // preferMid : milieu 3D mémorisé à la projection — l'arête source d'origine prime
   // (si le solide bouge, on reste sur LA bonne arête et on rafraîchit le lien).
@@ -306,6 +306,10 @@ function findClosestProjectedEdge(sk,x,y,preferMid,wantType,edgesOver){
     try{
       for(const e of edges){
         const pts2=e.pts.map(p=>[(p[0]-o.x)*u.x+(p[1]-o.y)*u.y+(p[2]-o.z)*u.z, (p[0]-o.x)*v.x+(p[1]-o.y)*v.y+(p[2]-o.z)*v.z]);
+        // noPoint : une projetée de vraie LONGUEUR ne se raccroche pas à une arête ⟂ au plan (un
+        // point) — elle devenait une ligne de longueur nulle (MERLIN-23-001). Une projetée déjà
+        // réduite à un point le reste (Support Pédale : points de référence voulus).
+        if(noPoint&&pts2.every(p=>Math.hypot(p[0]-pts2[0][0],p[1]-pts2[0][1])<1e-4))continue;
         let d=1e9;
         for(let i=0;i<pts2.length-1;i++) d=Math.min(d, (function(ax,ay,bx,by){ const apx=x-ax,apy=y-ay,abx=bx-ax,aby=by-ay; const t=Math.max(0,Math.min(1,(apx*abx+apy*aby)/(abx*abx+aby*aby||1))); const cx=ax+abx*t,cy=ay+aby*t; return Math.hypot(x-cx,y-cy);})(pts2[i][0],pts2[i][1],pts2[i+1][0],pts2[i+1][1]));
         let sc=d;
@@ -342,6 +346,7 @@ function findClosestProjectedEdge(sk,x,y,preferMid,wantType,edgesOver){
             if(isFull) pr={type:'circle',cx,cy,r};
             else {const pm=pts2[Math.floor(pts2.length/2)];const oa=arcOrient(cx,cy,pts2[0][0],pts2[0][1],pts2[pts2.length-1][0],pts2[pts2.length-1][1],pm[0],pm[1]);pr={type:'arc',cx,cy,r,x1:oa[0],y1:oa[1],x2:oa[2],y2:oa[3]};}
           } else pr={type:'line',x1:pts2[0][0],y1:pts2[0][1],x2:pts2[pts2.length-1][0],y2:pts2[pts2.length-1][1]};
+          if(noPoint&&pr.type==='line'&&Math.hypot(pr.x2-pr.x1,pr.y2-pr.y1)<1e-4)continue; // boucle vue par la tranche : idem
           if(sc<bd){bd=sc;best=pr;srcMid=e.mid?e.mid.slice():null;}
           if(wantType&&pr.type===wantType&&sc<bTyd){bTyd=sc;bTy=pr;bTySrc=e.mid?e.mid.slice():null;}
         }
@@ -384,7 +389,7 @@ function updateAssociativeProjections0(sk){
     if(e.t==='line'){
       const A=sk.points[e.p1], B=sk.points[e.p2]; if(!A||!B) continue;
       const mx=(A.x+B.x)/2, my=(A.y+B.y)/2;
-      const pr=findClosestProjectedEdge(sk,mx,my,e.srcMid,'line',EO);
+      const pr=findClosestProjectedEdge(sk,mx,my,e.srcMid,'line',EO,Math.hypot(B.x-A.x,B.y-A.y)>=1e-4);
       if(!pr||pr.type!=='line') continue;
       if(pr.srcMid)e.srcMid=pr.srcMid;
       const d1=Math.hypot(A.x-pr.x1,A.y-pr.y1)+Math.hypot(B.x-pr.x2,B.y-pr.y2);

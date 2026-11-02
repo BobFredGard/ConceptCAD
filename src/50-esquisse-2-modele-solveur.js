@@ -78,6 +78,7 @@ function migrateSketch(sk){
   });
   sk.entities=sk.entities.filter(e=>!e._dead);
   ensureOrigin(sk);
+  try{skProjFixRepair(sk);}catch(e){}
 }
 function cleanupSk(sk){
   ensureOrigin(sk); // origine permanente : rétablie si absente
@@ -242,8 +243,36 @@ function skFixed(sk){
     if(c.type==='fix'&&c.ent){const e=entById(sk,c.ent);if(e&&(e.t==='circle'||e.t==='arc'||e.t==='cpoint')&&(e.pc||e.p))f.add(e.pc||e.p);
       if(e&&e.t==='spline')skSplineAllPids(sk,e).forEach(p=>f.add(p));} // spline fixe : points de passage et poignées
   });
+  // Une PROJECTION est pilotée par son arête source, jamais par le solveur : fixe même sans
+  // contrainte « fix » (MERLIN-23-001 : les fix d'Esquisse 2 perdus → la projetée glissait
+  // avec les rectangles accrochés à ses bouts, et toutes les esquisses aval décrochaient).
+  (sk.entities||[]).forEach(e=>{if(e&&e.proj)skProjPids(sk,e).forEach(p=>f.add(p));});
   if((sk.points||{})[SK_ORIGIN])f.add(SK_ORIGIN);
   return f;
+}
+function skProjPids(sk,e){
+  if(e.t==='line')return[e.p1,e.p2].filter(Boolean);
+  if(e.t==='circle')return[e.pc].filter(Boolean);
+  if(e.t==='arc')return[e.pc,e.pa,e.pb].filter(Boolean);
+  if(e.t==='cpoint')return[e.p].filter(Boolean);
+  if(e.t==='spline')return skSplineAllPids(sk,e);
+  return[];
+}
+function skIsProjFix(sk,c){
+  // contrainte « fix » d'une projection : indissociable de son lien à l'arête source
+  if(!c||c.type!=='fix')return false;
+  return (sk.entities||[]).some(e=>e&&e.proj&&(c.ent===e.id||(c.p&&skProjPids(sk,e).indexOf(c.p)>=0)));
+}
+function skProjFixRepair(sk){
+  // contraintes « fix » manquantes d'une projection rétablies (l'icône 📌 dit la vérité)
+  let n=0;const has=f=>(sk.constraints||[]).some(f);
+  (sk.entities||[]).forEach(e=>{
+    if(!e||!e.proj||e.t==='spline')return; // spline : points de passage fixés à la création (skSplineProject)
+    // mêmes contraintes qu'à la création (skProjectCreate / skPlMaterialize)
+    skProjPids(sk,e).forEach(p=>{if(sk.points[p]&&!has(c=>c.type==='fix'&&c.p===p)){sk.constraints.push({id:skNewEid(sk),type:'fix',p});n++;}});
+    if((e.t==='circle'||e.t==='arc')&&!has(c=>c.type==='fix'&&c.ent===e.id)){sk.constraints.push({id:skNewEid(sk),type:'fix',ent:e.id});n++;}
+  });
+  return n;
 }
 function lineLen(sk,l){const P=sk.points,A=P[l.p1],B=P[l.p2];if(!A||!B)return 0;return Math.hypot(B.x-A.x,B.y-A.y);}
 function syncLineDims(sk,lineId){ // après ajout d'une ligne, recale ses cotes length sur la mesure courante (selon orientation)
@@ -1173,7 +1202,7 @@ function arcAngles(sk,e){ // angles dérivés des points d'extrémité (e.pa/e.p
   return{a1,a2:a1+d};
 }
 function rLocked(sk,e){
-  return (sk.constraints||[]).some(c=>c.type==='fix'&&c.ent===e.id)||(sk.dims||[]).some(d=>d.ent===e.id&&(d.type==='diameter'||d.type==='radius'));
+  return !!e.proj||(sk.constraints||[]).some(c=>c.type==='fix'&&c.ent===e.id)||(sk.dims||[]).some(d=>d.ent===e.id&&(d.type==='diameter'||d.type==='radius'));
 }
 function entLocked(sk,e,fix){
   fix=fix||skFixed(sk);
