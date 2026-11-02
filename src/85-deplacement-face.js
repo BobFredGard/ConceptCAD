@@ -158,7 +158,7 @@ function renderMvPanel(){
   const q=document.createElement('button');q.textContent=mvMode.editing?'✖ Annuler':'Quitter';q.onclick=()=>exitMoveFaceMode();
   btns.appendChild(q);p.appendChild(btns);
   const n2=document.createElement('span');n2.className='note';
-  n2.textContent='Chaque face se déplace le long de sa normale sortante : positif, elle avance ; négatif, elle rentre.';
+  n2.textContent='Chaque face se déplace le long de sa normale sortante : positif, elle avance ; négatif, elle rentre. Ses bords suivent les faces voisines (une dépouille ou un chanfrein se prolonge). Une face cylindrique change de rayon : un arbre qui avance grossit, un trou qui avance rétrécit.';
   p.appendChild(n2);
 }
 function mvApply(){

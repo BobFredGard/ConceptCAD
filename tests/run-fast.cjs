@@ -7,6 +7,7 @@ const SUITES = [
   'test_fresh_default',
   'test_validate',
   'test_cao_passe',
+  'test_face_appuyer',
   'test_raccourcis',
   'test_precision_affichage',
   'test_esquisse_contraintes',

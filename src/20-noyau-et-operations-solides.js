@@ -1494,31 +1494,193 @@ function occFindFace(shape,ref){
   if(best&&bn>2.5){drop(best);return null;} // trop loin : on préfère échouer que viser une autre face
   return best?best.f:null;
 }
-function occMoveFaceOnce(shape,face,dist){
-  // Déplace UNE face de `dist` mm le long de sa normale sortante.
-  // dist > 0 : la matière est ajoutée au-delà (la face avance). dist < 0 : retirée en dessous.
-  const n=occFaceOutNormal(face);
-  if(!n)throw new Error('face non plane/cylindrique');
+/* ---------- déplacement de face façon « Appuyer/Tirer » (V0.34.0) ----------
+   Une face déplacée garde ses LIMITES sur les faces voisines : une voisine inclinée
+   (dépouille, chanfrein) est prolongée ou rognée jusqu'à la face déplacée, au lieu d'une
+   marche verticale ; une face cylindrique change de RAYON (même axe) au lieu d'être
+   extrudée le long de son axe, et un cône coaxial à son extrémité (pointe de foret,
+   fraisure) suit le nouveau rayon. Mesuré (volumes exacts) : tronc de pyramide ±10,
+   chanfrein ±5, trou débouchant Ø10 → Ø6 / Ø14, bossage R10 → R13 / R7, trou borgne à
+   pointe 118° et fraisure 90° agrandis et réduits, dessus en L, bossage à dessus incliné. */
+function occDot3(u,v){return u[0]*v[0]+u[1]*v[1]+u[2]*v[2];}
+function occSub3(u,v){return [u[0]-v[0],u[1]-v[1],u[2]-v[2]];}
+function occSurfDesc(f){
+  // Surface porteuse d'une face, pour dire si deux faces sont « sur la même surface » :
+  // plan {k:'pl',n,p} ; cylindre {k:'cy',a,p,r,X,Y,direct,u0..v1} ; cône {k:'co',a,apex,semi}.
+  let ad=null;
+  try{
+    ad=new occt.BRepAdaptor_Surface_2(f,true);
+    const T=occt.GeomAbs_SurfaceType,gt=ad.GetType();
+    const V=d=>[d.X(),d.Y(),d.Z()];
+    if(gt===T.GeomAbs_Plane){
+      const ax=ad.Plane().Axis();
+      return {k:'pl',n:V(ax.Direction()),p:V(ax.Location())};
+    }
+    if(gt===T.GeomAbs_Cylinder){
+      const cy=ad.Cylinder(),pos=cy.Position();
+      return {k:'cy',a:V(pos.Direction()),p:V(pos.Location()),r:cy.Radius(),X:V(pos.XDirection()),Y:V(pos.YDirection()),direct:pos.Direct(),
+        u0:ad.FirstUParameter(),u1:ad.LastUParameter(),v0:ad.FirstVParameter(),v1:ad.LastVParameter()};
+    }
+    if(gt===T.GeomAbs_Cone){
+      const co=ad.Cone();
+      return {k:'co',a:V(co.Position().Direction()),apex:V(co.Apex()),semi:co.SemiAngle()};
+    }
+    return {k:'?'};
+  }catch(e){return {k:'?'};}
+  finally{try{if(ad)ad.delete();}catch(e){}}
+}
+function occSameSurf(a,b){
+  const tol=1e-4;
+  if(!a||!b||a.k!==b.k)return false;
+  if(a.k==='pl')return Math.abs(Math.abs(occDot3(a.n,b.n))-1)<1e-7&&Math.abs(occDot3(occSub3(b.p,a.p),a.n))<tol;
+  if(a.k==='cy'){
+    if(Math.abs(Math.abs(occDot3(a.a,b.a))-1)>1e-7||Math.abs(a.r-b.r)>tol)return false;
+    const w=occSub3(b.p,a.p),t=occDot3(w,a.a);
+    return Math.hypot(w[0]-t*a.a[0],w[1]-t*a.a[1],w[2]-t*a.a[2])<tol;
+  }
+  return false;
+}
+function occSubShapes(sh,kind){
+  const out=[];
+  const ex=new occt.TopExp_Explorer_2(sh,occt.TopAbs_ShapeEnum[kind],occt.TopAbs_ShapeEnum.TopAbs_SHAPE);
+  while(ex.More()){out.push(kind==='TopAbs_FACE'?occt.TopoDS.Face_1(ex.Current()):ex.Current());ex.Next();}
+  try{ex.delete();}catch(e){}
+  return out;
+}
+function occFacesTouching(faces,group){
+  // Faces de `faces` (hors `group`) qui partagent une arête avec une face de `group`.
+  const ge=[];group.forEach(g=>occSubShapes(g,'TopAbs_EDGE').forEach(e=>ge.push(e)));
+  const out=faces.filter(f=>{
+    if(group.some(g=>g.IsSame(f)))return false;
+    const fe=occSubShapes(f,'TopAbs_EDGE');
+    const ok=fe.some(e=>ge.some(x=>x.IsSame(e)));
+    occDispose(fe);return ok;
+  });
+  occDispose(ge);
+  return out;
+}
+function occMoveFaceOnce(shape,face,dist,warn){
+  // Déplace UNE face de `dist` mm le long de sa normale sortante, ses limites SUIVANT les
+  // faces voisines. dist > 0 : la face avance (matière ajoutée), dist < 0 : elle rentre.
+  // Plan → plan parallèle ; cylindre → même axe, rayon ± dist (un alésage qui avance
+  // RÉTRÉCIT, un arbre qui avance GROSSIT).
+  // Méthode : un outil brut (prisme de la face, ou anneau entre l'ancien et le nouveau
+  // rayon) est ajouté/retiré ; ses faces latérales qui ne prolongent AUCUNE voisine
+  // d'origine sont ensuite retirées par BRepAlgoAPI_Defeaturing (occDeleteFacesOnce), qui
+  // prolonge les voisines jusqu'à la face déplacée. Échec de cette reprise (voisine
+  // tangente : congé) → résultat brut, bord droit, avec une alerte dans `warn`.
   const L=Math.abs(dist);
   if(!(L>1e-9))return occShapeCopy(shape);
-  const bin=[];
-  // Le prisme part du CÔTÉ DE LA DISTANCE : vers l'extérieur si la face avance, vers
-  // l'intérieur si elle rentre. Extruder toujours vers l'extérieur et soustraire ne retire
-  // aucune matière (le prisme est alors dans le vide) : le solide restait inchangé.
-  const vec=new occt.gp_Vec_4(n[0]*dist,n[1]*dist,n[2]*dist);
-  const pr=occBinPush(bin,new occt.BRepPrimAPI_MakePrism_1(face,vec,false,true));
-  const ps=occBinPush(bin,pr.Shape());
-  const out=dist>0?occFuse(shape,ps):occCut(shape,ps);
-  // Un déplacement doit laisser UN corps, comme une addition : sans unification, la
-  // fusion conserve les faces coplanaires du prisme et de la pièce d'origine (10 faces au
-  // lieu de 6 sur une simple boîte), ce qui se voit : coutures, arêtes parasites, impression
-  // de plusieurs morceaux. occUnify recolle les faces coplanaires — c'est déjà ce que fait
-  // le chemin « add » d'une extrusion.
-  let res=out;
-  try{res=occUnify(out);}catch(e){}
-  bin.forEach(b=>{try{b.delete();}catch(e){}});
-  if(!res||res.IsNull())throw new Error('opération de déplacement impossible');
-  return res;
+  const sd=occSurfDesc(face);
+  const bin=[],tmp=[];
+  const all=occSubShapes(shape,'TopAbs_FACE');tmp.push(...all);
+  try{
+    let tool,nd;
+    const group=[face];
+    if(sd.k==='cy'){
+      // Toutes les faces du même cylindre reliées à la face cliquée (un trou est souvent
+      // fait de deux demi-cylindres) bougent ensemble.
+      for(let grown=true;grown;){
+        grown=false;
+        occFacesTouching(all,group).forEach(f=>{if(occSameSurf(occSurfDesc(f),sd)){group.push(f);grown=true;}});
+      }
+      const ds=group.map(occSurfDesc);
+      let du=0,v0=1e18,v1=-1e18;ds.forEach(d=>{du+=d.u1-d.u0;v0=Math.min(v0,d.v0);v1=Math.max(v1,d.v1);});
+      if(!(v1-v0>1e-9))throw new Error('cylindre sans hauteur');
+      // Normale sortante : radiale vers l'extérieur pour un repère direct et une face non
+      // inversée (arbre, bossage), vers l'axe sinon (alésage).
+      const rev=face.Orientation_1()===occt.TopAbs_Orientation.TopAbs_REVERSED;
+      const sOut=(sd.direct?1:-1)*(rev?-1:1);
+      const r2=sd.r+sOut*dist;
+      if(!(r2>1e-6))throw new Error(`le rayon deviendrait nul ou négatif (${r2.toFixed(3)} mm)`);
+      // Extrémité bordée par un CÔNE coaxial (pointe de foret, fraisure, chanfrein de
+      // bossage) : l'anneau est prolongé au-delà, puis rogné par le cône prolongé — le
+      // cône suit alors le nouveau rayon au lieu de laisser une marche.
+      const vm=(v0+v1)/2,clips=[];
+      occFacesTouching(all,group).forEach(f=>{
+        const c=occSurfDesc(f);
+        if(c.k!=='co'||Math.abs(Math.abs(occDot3(c.a,sd.a))-1)>1e-7)return;
+        const w=occSub3(c.apex,sd.p),ta=occDot3(w,sd.a);
+        if(Math.hypot(w[0]-ta*sd.a[0],w[1]-ta*sd.a[1],w[2]-ta*sd.a[2])>1e-4)return;
+        const tg=Math.tan(Math.abs(c.semi));if(!(tg>1e-6))return;
+        const o=c.a.map(x=>x*(c.semi>0?1:-1)); // sens d'ouverture du cône
+        const b=occBoxMinMax(f),tc=occDot3(occSub3(b.lo.map((x,i)=>(x+b.hi[i])/2),sd.p),sd.a);
+        const E=(Math.max(sd.r,r2)+L)/tg+L;
+        if(tc>vm)v1+=E;else v0-=E;
+        const rho=(vm-ta)*occDot3(o,sd.a)*tg; // rayon du cône prolongé à mi-hauteur de la face
+        clips.push({apex:c.apex,ta,o,tg,inside:rho>sd.r});
+      });
+      // Anneau (ou secteur d'anneau pour un cylindre partiel) dans le repère du cylindre.
+      const full=du>=2*Math.PI-1e-6;
+      const u0=full?0:sd.u0,ang=full?2*Math.PI:(sd.u1-sd.u0);
+      const X=[0,1,2].map(i=>Math.cos(u0)*sd.X[i]+Math.sin(u0)*sd.Y[i]);
+      const D=[sd.X[1]*sd.Y[2]-sd.X[2]*sd.Y[1],sd.X[2]*sd.Y[0]-sd.X[0]*sd.Y[2],sd.X[0]*sd.Y[1]-sd.X[1]*sd.Y[0]];
+      const H=v1-v0,vb=occDot3(D,sd.a)>0?v0:v1;
+      const O=[0,1,2].map(i=>sd.p[i]+sd.a[i]*vb);
+      const ax=occBinPush(bin,new occt.gp_Ax2_2(occBinPush(bin,new occt.gp_Pnt_3(O[0],O[1],O[2])),
+        occBinPush(bin,new occt.gp_Dir_4(D[0],D[1],D[2])),occBinPush(bin,new occt.gp_Dir_4(X[0],X[1],X[2]))));
+      const cyl=r=>occBinPush(bin,occBinPush(bin,new occt.BRepPrimAPI_MakeCylinder_4(ax,r,H,ang)).Shape());
+      tool=occCut(cyl(Math.max(sd.r,r2)),cyl(Math.min(sd.r,r2)));
+      clips.forEach(c=>{
+        const far=Math.max(Math.abs(c.ta-v0),Math.abs(c.ta-v1))+10;
+        const cax=occBinPush(bin,new occt.gp_Ax2_3(occBinPush(bin,new occt.gp_Pnt_3(c.apex[0],c.apex[1],c.apex[2])),occBinPush(bin,new occt.gp_Dir_4(c.o[0],c.o[1],c.o[2]))));
+        const cs=occBinPush(bin,occBinPush(bin,new occt.BRepPrimAPI_MakeCone_3(cax,0,far*c.tg,far)).Shape());
+        const t2=c.inside?occCommon(tool,cs):occCut(tool,cs);
+        try{tool.delete();}catch(e){}
+        tool=t2;
+      });
+      nd=Object.assign({},sd,{r:r2});
+    }else{
+      const n=occFaceOutNormal(face);
+      if(!n||sd.k!=='pl')throw new Error('face non plane/cylindrique');
+      // Le prisme part du CÔTÉ DE LA DISTANCE : vers l'extérieur si la face avance, vers
+      // l'intérieur si elle rentre. Extruder toujours vers l'extérieur et soustraire ne retire
+      // aucune matière (le prisme est alors dans le vide) : le solide restait inchangé.
+      const vec=occBinPush(bin,new occt.gp_Vec_4(n[0]*dist,n[1]*dist,n[2]*dist));
+      const pr=occBinPush(bin,new occt.BRepPrimAPI_MakePrism_1(face,vec,false,true));
+      tool=pr.Shape();
+      nd={k:'pl',n,p:[0,1,2].map(i=>sd.p[i]+n[i]*dist)};
+    }
+    bin.push(tool);
+    const out=dist>0?occFuse(shape,tool):occCut(shape,tool);
+    // Un déplacement doit laisser UN corps, comme une addition : sans unification, la
+    // fusion conserve les faces coplanaires du prisme et de la pièce d'origine (10 faces au
+    // lieu de 6 sur une simple boîte), ce qui se voit : coutures, arêtes parasites, impression
+    // de plusieurs morceaux. occUnify recolle les faces coplanaires — c'est déjà ce que fait
+    // le chemin « add » d'une extrusion. Garde-fou : sur un raccord conique (fraisure
+    // réduite), l'unification rend un solide invalide alors que la fusion brute est saine —
+    // on garde alors la fusion brute.
+    let res=out;
+    try{
+      const u=occUnify(occShapeCopy(out));
+      if(u&&!u.IsNull()&&(occCoqueValide(u)||!occCoqueValide(out))){try{out.delete();}catch(e){}res=u;}
+      else if(u)try{u.delete();}catch(e){}
+    }catch(e){}
+    if(!res||res.IsNull())throw new Error('opération de déplacement impossible');
+    // Reprise des limites : faces du résultat portées par une surface latérale de l'outil
+    // qui ne prolonge aucune voisine d'origine (ou par la surface d'origine de la face :
+    // un reste exposé est un débord de l'outil), et contenues dans l'outil.
+    const nbF=occFacesTouching(all,group);
+    const nb=nbF.map(occSurfDesc);
+    const toolF=occSubShapes(tool,'TopAbs_FACE');tmp.push(...toolF);
+    const sides=toolF.map(occSurfDesc).filter(d=>!occSameSurf(d,nd)&&!nb.some(x=>occSameSurf(x,d)));
+    sides.push(sd);
+    const tb=occBoxMinMax(tool),e=1e-3;
+    const inTool=b=>b&&b.lo.every((v,i)=>v>=tb.lo[i]-e)&&b.hi.every((v,i)=>v<=tb.hi[i]+e);
+    const resF=occSubShapes(res,'TopAbs_FACE');tmp.push(...resF);
+    const extra=resF.filter(f=>sides.some(x=>occSameSurf(x,occSurfDesc(f)))&&inTool(occBoxMinMax(f)));
+    if(!extra.length)return res;
+    try{
+      const fx=occDeleteFacesOnce(res,extra);
+      try{res.delete();}catch(e2){}
+      return fx;
+    }catch(e2){
+      if(warn)warn.push(`bord de la face non prolongé le long des voisines (${(e2&&e2.message)||e2} — congé tangent ?) : bord droit conservé`);
+      return res;
+    }
+  }finally{
+    occDispose(bin);occDispose(tmp);
+  }
 }
 function mvRefs(f){
   // Faces visées par un déplacement : `faces` (multi-sélection, V0.21.6) ou l'ancienne
@@ -1591,15 +1753,19 @@ function occApplyMoveFace(result,f){
   if(!dist){drop();return {shape:result,warnings:['distance nulle — aucun déplacement']};}
   let cur=result;
   try{
+    // Un cylindre bouge en entier (ses demi-faces ensemble) : une 2ᵉ face cliquée sur le
+    // MÊME cylindre est sautée, sinon son rayon changerait deux fois.
+    const sds=found.map(h=>h?occSurfDesc(h):null);
     for(let i=0;i<found.length;i++){
       if(!found[i])continue;
+      if(sds[i].k==='cy'&&sds.slice(0,i).some((d,j)=>found[j]&&occSameSurf(d,sds[i])))continue;
       let face=found[i],own=false;
       if(cur!==result){
         face=trk[i]?occFindFaceTracked(cur,trk[i]):null;own=true;
         if(!face){warnings.push(`face ${lab(refs[i])} perdue après le déplacement des précédentes`);continue;}
       }
       let s;
-      try{s=occMoveFaceOnce(cur,face,dist);}
+      try{s=occMoveFaceOnce(cur,face,dist,warnings);}
       finally{if(own)try{face.delete();}catch(e){}}
       if(cur!==result)try{cur.delete();}catch(e){}
       cur=s;

@@ -8,7 +8,7 @@ sont sorties le 2026-09-30j.
 Code dans `src/` · livrable `fusion_mvp.html` (généré par `build.js`) · architecture et
 garde-fous en tête de `src/00-entete-et-outils.js`.
 
-**518 versions**, de `2026-09-28b` à `V0.33.3` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
+**519 versions**, de `2026-09-28b` à `V0.34.0` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
 comme dans le fichier d'origine.
 
 ---
@@ -6208,3 +6208,13 @@ Question : « quand un taraud rentre il tourne dans un sens et quand il ressort,
 - **G-code** : Siemens `CYCLE84(…, 3, , -1.250, …)` (pas négatif = à gauche) ; Fagor 8065 : `M04` avant le `G84` (le cycle inverse au fond), `M03` rendu après le `G80`. Syntaxe Fagor à valider en atelier, comme le reste du taraudage rigide.
 - **Normes** : les filets UNC / UNF (ANSI) et gaz G / Rc / NPT acceptent le sens à gauche de la même façon.
 - **Tests** : `test_taraud_gauche` (libellés, hélice cosmétique inversée, gamme M8 + M8-LH, CYCLE84 ±1,25, Fagor M04 → G84 → G80 → M03, STEP à gauche, filet modélisé = miroir à 99,9 %) ; `npm run ci`.
+
+## V0.34.0 - CAO : fonction Face façon « Appuyer/Tirer » (bords qui suivent les voisines, cylindres qui changent de rayon)
+Demande : « Pour l'heure elle ne se comporte que comme une extrusion de face. Elle devrait aussi pouvoir augmenter/réduire des cylindres de taille et aussi augmenter une surface en gardant ses limites telles quelles, tout en les grossissant ou rapetissant le long de ces limites ».
+- **Cause** : `occMoveFaceOnce` extrudait la face le long d'UNE normale puis l'ajoutait ou la retirait. Une voisine inclinée (dépouille, chanfrein) laissait une marche verticale ; un cylindre était extrudé le long de son axe au lieu de changer de rayon.
+- **Face plane** : plan parallèle ; les voisines non parallèles au déplacement sont prolongées ou rognées jusqu'au nouveau plan (les faces latérales du prisme qui ne prolongent aucune voisine sont retirées par `BRepAlgoAPI_Defeaturing`). Voisines droites : résultat identique à avant.
+- **Face cylindrique** : même axe, rayon ± distance — un arbre ou un bossage qui avance grossit, un trou qui avance rétrécit. Les demi-cylindres d'un même trou bougent ensemble (une 2ᵉ face cliquée sur le même cylindre est ignorée). Un cône coaxial à l'extrémité (pointe de foret, fraisure, chanfrein de bossage) suit le nouveau rayon ; une extrémité plane inclinée aussi.
+- **Limites** : voisine tangente (congé) → bord droit conservé, avec une alerte. Un congé ou un bout de rainure (cylindre partiel bordé de plans tangents) change de rayon sans que les plans tangents suivent.
+- **Garde-fou** : sur une fraisure réduite, l'unification des faces rendait le solide invalide alors que la fusion brute était saine — la fusion brute est alors gardée.
+- **Documents existants** : un déplacement de face plane entourée de faces droites ne change pas ; une face cylindrique ou bordée de faces inclinées est recalculée selon la nouvelle règle.
+- **Tests** : `test_face_appuyer` (volumes exacts : tronc de pyramide ±10, chanfrein ±5, trou débouchant Ø10 → Ø6 / Ø14, bossage R10 → R13 / R7, trou borgne à pointe 118° et fraisure 90° agrandis et réduits, dessus en L, bossage à dessus incliné ; congé tangent et bout de rainure sans casse) ; `test_xmove` inchangé ; `npm run ci`.
