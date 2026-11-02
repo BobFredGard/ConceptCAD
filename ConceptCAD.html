@@ -376,7 +376,7 @@ input[type=range]{accent-color:var(--primary);width:100%}
  * peut changer sans rien casser. CACHE_VER (parcours FAO) reste indépendant.
  */
 
-const APP_VER='V0.40.0';
+const APP_VER='V0.40.1';
 try{console.log('[ConceptCAD] version '+APP_VER);}catch(e){}
 try{var mfSv=document.getElementById('mfSplashVer');if(mfSv)mfSv.textContent=APP_VER;}catch(e){} // écran de démarrage
 
@@ -4462,6 +4462,141 @@ function occFacesTouching(faces,group){
   occDispose(ge);
   return out;
 }
+function occMoveFaceRuledTool(shape,face,n,dist){
+  // Outil d'un déplacement de face PLANE dont les voisines sont inclinées ET tangentes entre
+  // elles (V0.40.1, Barquette : coins arrondis d'une extrusion à dépouille), cas où la reprise
+  // par Defeaturing échoue. Le contour de la face est relevé de |dist| le long de u =
+  // n·signe(dist), chaque bord suivant le prolongement EXACT de sa voisine :
+  // - surface d'extrusion (coin d'une dépouille DraftAngle = cylindre OBLIQUE, pas un cône)
+  //   ou cylindre : bord translaté le long de la génératrice ;
+  // - cône : bord mis à l'échelle depuis le sommet ;
+  // - plan : segment entre les sommets relevés de ses deux voisins (deux plans voisins :
+  //   sommet relevé le long de leur droite commune).
+  // L'outil est le volume fermé entre l'ancien et le nouveau contour (parois cousues).
+  // Retourne l'outil (à libérer) ou null : face à trou, voisine d'un autre type (B-spline,
+  // congé tangent à la face), génératrice parallèle à la face, sommets incohérents.
+  const L=Math.abs(dist),sg=dist>0?1:-1,u=n.map(x=>x*sg);
+  const bin=[];
+  const V3=p=>[p.X(),p.Y(),p.Z()];
+  const add=(a,b,k)=>[a[0]+b[0]*k,a[1]+b[1]*k,a[2]+b[2]*k];
+  try{
+    if(occSubShapes(face,'TopAbs_WIRE').length!==1)return null;
+    const T=occt.GeomAbs_SurfaceType;
+    const ow=occBinPush(bin,occt.BRepTools.OuterWire(face));
+    const wx=occBinPush(bin,new occt.BRepTools_WireExplorer_3(ow,face));
+    const it=[];
+    for(;wx.More();wx.Next()){
+      const e=occBinPush(bin,occt.TopoDS.Edge_1(wx.Current()));
+      const v0=V3(occBinPush(bin,occt.BRep_Tool.Pnt(occBinPush(bin,wx.CurrentVertex()))));
+      const fl=occEdgeFaces(shape,e);fl.forEach(x=>bin.push(x.f));
+      const o=fl.find(x=>!x.f.IsSame(face));
+      if(!o)return null;
+      const ad=occBinPush(bin,new occt.BRepAdaptor_Surface_2(o.f,true)),gt=ad.GetType();
+      let r;
+      if(gt===T.GeomAbs_Plane){
+        const ca=occBinPush(bin,new occt.BRepAdaptor_Curve_2(e));
+        if(ca.GetType()!==occt.GeomAbs_CurveType.GeomAbs_Line)return null;
+        r={k:'pl',n:V3(occBinPush(bin,ad.Plane().Axis().Direction()))};
+      }else if(gt===T.GeomAbs_SurfaceOfExtrusion||gt===T.GeomAbs_Cylinder){
+        let d=V3(occBinPush(bin,gt===T.GeomAbs_Cylinder?ad.Cylinder().Axis().Direction():ad.Direction()));
+        const du=occDot3(d,u);
+        if(Math.abs(du)<1e-3)return null;
+        r={k:'tr',d:d.map(x=>x*L/du),dv:L/du,f:o.f}; // relève exactement de L le long de u
+      }else if(gt===T.GeomAbs_Cone){
+        r={k:'ap',a:V3(occBinPush(bin,ad.Cone().Apex()))};
+      }else return null;
+      it.push({e,v0,r});
+    }
+    const N=it.length;
+    if(N<2)return null;
+    // Relèvement d'un sommet par la règle d'une voisine (null pour un plan seul).
+    const lift=(r,v)=>{
+      if(r.k==='tr')return add(v,r.d,1);
+      if(r.k==='ap'){const w=occSub3(v,r.a),wu=occDot3(w,u);if(Math.abs(wu)<1e-6)return null;return add(r.a,w,1+L/wu);}
+      return null;
+    };
+    const tolV=Math.max(1e-4,L*1e-5);
+    const V1=[];
+    for(let k=0;k<N;k++){
+      const a=it[(k+N-1)%N].r,b=it[k].r,v=it[k].v0;
+      const c=[lift(a,v),lift(b,v)].filter(Boolean);
+      let q;
+      if(c.length){
+        if(c.length===2&&Math.hypot(...occSub3(c[0],c[1]))>tolV)return null;
+        q=c[0];
+      }else{
+        // deux plans : droite commune (ou, plans parallèles, ligne de plus grande pente)
+        let d=[a.n[1]*b.n[2]-a.n[2]*b.n[1],a.n[2]*b.n[0]-a.n[0]*b.n[2],a.n[0]*b.n[1]-a.n[1]*b.n[0]];
+        if(Math.hypot(...d)<1e-6)d=add(u,a.n,-occDot3(u,a.n));
+        const du=occDot3(d,u);
+        if(Math.abs(du)<1e-3)return null;
+        q=add(v,d,L/du);
+      }
+      V1.push(q);
+    }
+    // Parois construites sur la géométrie de leur voisine (un outil réglé ThruSections ne
+    // donne que des B-splines, que l'unification ne recolle pas aux parois d'origine) :
+    // plan → face plane, extrusion/cylindre → prisme de l'arête, cône → face réglée.
+    const P3=q=>occBinPush(bin,new occt.gp_Pnt_3(q[0],q[1],q[2]));
+    const sew=occBinPush(bin,new occt.BRepBuilderAPI_Sewing(Math.max(1e-5,tolV),true,true,true,false));
+    sew.Add(face);
+    const mw=occBinPush(bin,new occt.BRepBuilderAPI_MakeWire_1());
+    for(let k=0;k<N;k++){
+      const {e,r}=it[k],p0=V1[k],p1=V1[(k+1)%N];
+      let ne,side;
+      if(r.k==='pl'){
+        ne=occBinPush(bin,new occt.BRepBuilderAPI_MakeEdge_3(P3(p0),P3(p1))).Edge();
+        const pg=occBinPush(bin,new occt.BRepBuilderAPI_MakePolygon_1());
+        [it[k].v0,it[(k+1)%N].v0,p1,p0].forEach(q=>pg.Add_1(P3(q)));pg.Close();
+        const mf=occBinPush(bin,new occt.BRepBuilderAPI_MakeFace_15(pg.Wire(),true));
+        if(!mf.IsDone())return null;
+        side=mf.Face();
+      }else{
+        const t=occBinPush(bin,new occt.gp_Trsf_1());
+        if(r.k==='tr')t.SetTranslation_1(occBinPush(bin,new occt.gp_Vec_4(r.d[0],r.d[1],r.d[2])));
+        else t.SetScale(P3(r.a),1+L/occDot3(occSub3(it[k].v0,r.a),u));
+        const tb=occBinPush(bin,new occt.BRepBuilderAPI_Transform_2(e,t,true));
+        ne=occt.TopoDS.Edge_1(tb.Shape());
+        if(r.k==='tr'){
+          // Sur la SURFACE MÊME de la voisine (rectangle UV : arête iso-V, V le long de la
+          // génératrice unitaire) : l'unification la recolle alors à la voisine, sans couture.
+          try{
+            const loc=occBinPush(bin,new occt.TopLoc_Location_1());
+            const hs=occBinPush(bin,occt.BRep_Tool.Surface_1(r.f,loc));
+            const g=occBinPush(bin,new occt.BRepAdaptor_Curve2d_2(e,r.f));
+            const q0=occBinPush(bin,g.Value(g.FirstParameter())),q1=occBinPush(bin,g.Value(g.LastParameter()));
+            if(loc.IsIdentity()&&Math.abs(q0.Y()-q1.Y())<1e-9){
+              const v0=q0.Y(),v1=v0+r.dv;
+              const mf=occBinPush(bin,new occt.BRepBuilderAPI_MakeFace_14(hs,Math.min(q0.X(),q1.X()),Math.max(q0.X(),q1.X()),Math.min(v0,v1),Math.max(v0,v1),1e-7));
+              if(mf.IsDone())side=mf.Face();
+            }
+          }catch(x){side=null;}
+          if(!side)side=occBinPush(bin,new occt.BRepPrimAPI_MakePrism_1(e,occBinPush(bin,new occt.gp_Vec_4(r.d[0],r.d[1],r.d[2])),false,true)).Shape();
+        }else side=occt.BRepFill.Face(e,ne);
+      }
+      bin.push(ne);bin.push(side);
+      mw.Add_1(ne);
+      if(!mw.IsDone())return null;
+      sew.Add(side);
+    }
+    const mf1=occBinPush(bin,new occt.BRepBuilderAPI_MakeFace_15(mw.Wire(),true));
+    if(!mf1.IsDone())return null;
+    sew.Add(mf1.Face());
+    sew.Perform(occBinPush(bin,new occt.Handle_Message_ProgressIndicator_1()));
+    if(sew.NbFreeEdges()>0)return null;
+    const ex=occBinPush(bin,new occt.TopExp_Explorer_2(sew.SewedShape(),occt.TopAbs_ShapeEnum.TopAbs_SHELL,occt.TopAbs_ShapeEnum.TopAbs_SHAPE));
+    if(!ex.More())return null;
+    const ms=occBinPush(bin,new occt.BRepBuilderAPI_MakeSolid_1());
+    ms.Add(occt.TopoDS.Shell_1(ex.Current()));
+    let out=ms.Solid();
+    const gp=occBinPush(bin,new occt.GProp_GProps_1());occt.BRepGProp.VolumeProperties_1(out,gp,false,false,false);
+    if(gp.Mass()<0)out=out.Reversed();
+    // copie SANS dupliquer la géométrie : les coins gardent la surface de leur voisine
+    out=new occt.BRepBuilderAPI_Copy_2(out,false,false).Shape();
+    if(!out||out.IsNull()||!occCoqueValide(out)){try{if(out)out.delete();}catch(e){}return null;}
+    return out;
+  }finally{occDispose(bin);}
+}
 function occMoveFaceOnce(shape,face,dist,warn){
   // Déplace UNE face de `dist` mm le long de sa normale sortante, ses limites SUIVANT les
   // faces voisines. dist > 0 : la face avance (matière ajoutée), dist < 0 : elle rentre.
@@ -4578,6 +4713,29 @@ function occMoveFaceOnce(shape,face,dist,warn){
       try{res.delete();}catch(e2){}
       return fx;
     }catch(e2){
+      // Voisines tangentes entre elles (coins arrondis d'une extrusion à dépouille) : leurs
+      // surfaces prolongées ne se coupent pas franchement et la reprise échoue. Repli : outil
+      // réglé dont chaque bord suit le prolongement exact de sa voisine.
+      if(sd.k==='pl'){
+        let dt=null;
+        try{dt=occMoveFaceRuledTool(shape,face,nd.n,dist);}catch(e3){dt=null;}
+        if(dt){
+          try{
+            const o2=dist>0?occFuse(shape,dt):occCut(shape,dt);
+            let r2=o2;
+            try{
+              // copie sans dupliquer la géométrie : une surface partagée par la voisine et le
+              // prolongement de son coin permet à l'unification de les recoller
+              const u=occUnify(new occt.BRepBuilderAPI_Copy_2(o2,false,false).Shape());
+              if(u&&!u.IsNull()&&(occCoqueValide(u)||!occCoqueValide(o2))){try{o2.delete();}catch(e){}r2=u;}
+              else if(u)try{u.delete();}catch(e){}
+            }catch(e){}
+            if(r2&&!r2.IsNull()&&occCoqueValide(r2)){try{res.delete();}catch(e){}return r2;}
+            try{if(r2)r2.delete();}catch(e){}
+          }catch(e3){}
+          finally{try{dt.delete();}catch(e){}}
+        }
+      }
       if(warn)warn.push(`bord de la face non prolongé le long des voisines (${(e2&&e2.message)||e2} — congé tangent ?) : bord droit conservé`);
       return res;
     }

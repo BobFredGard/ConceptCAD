@@ -33,6 +33,7 @@ const SUITES = [
   "test_draft_sel",
   "test_xmove",
   "test_face_appuyer",
+  "test_face_depouille_tangente",
   "test_deplacer_corps",
   "test_echelle_corps",
   "test_coque_sel",
