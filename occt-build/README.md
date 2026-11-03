@@ -61,16 +61,57 @@ L'aiguillage est `tests/occt-moteur.cjs` (variable `OCCT_DIR`) : les tests lisen
 `occt/opencascade.full.js` et `occt/opencascade.wasm.wasm`, il redirige ces deux lectures vers le
 dossier donné (et ramène une colle « module ES » au format attendu).
 
-## Écarts déjà connus (lecture des définitions, avant essai réel)
+## Écarts relevés à la lecture des définitions (avant essai réel)
 
 - **v2** : 104 classes utilisées par `src/` toutes présentes ; 71 des 72 constructeurs suffixés
   et toutes les méthodes suffixées existent sous le même nom. Seul manque
   `BRepOffsetAPI_MakeThickSolid_2` (Coque, `src/20-…js`) : OCCT 7.6 l'a remplacé par
-  `new BRepOffsetAPI_MakeThickSolid()` + `MakeThickSolidByJoin(…)`. Reste à vérifier à l'exécution
-  que chaque `_N` désigne toujours la même surcharge.
+  `new BRepOffsetAPI_MakeThickSolid()` + `MakeThickSolidByJoin(…)` (branché dans `occCoqueThick`,
+  l'ancien appel reste prioritaire). À l'exécution, quelques `_N` ont changé de sens : d'où
+  `compat-v1` (voir Résultats).
 - **v3** : toutes les classes existent, mais **aucun** des 101 appels suffixés ne garde son nom ;
   `Bnd_Box::Get`, `BRepMesh_IncrementalMesh`, `TopoDS` changent aussi. Passer en v3 demande une
   couche d'adaptation dans l'application (chantier à part).
+
+## Résultats mesurés (03/11/2026)
+
+Images figées par empreinte dans `build.cjs` :
+v2 `sha256:3069f4c2…0524d` (construction 17,5 min), v3 `sha256:d7bf97ad…900b` (9,1 min).
+Les images occupent ~21 Go sous Docker.
+
+| | actuel (1.1.1) | v2 (OCCT 7.6) | v3 (OCCT 8.0.1) |
+|---|---|---|---|
+| .wasm | 65,9 Mo (13,9 gzip) | 50,3 Mo (13,8 gzip) | 42,8 Mo (11,9 gzip) |
+| CI rapide | 89/89 | 88/89 (avec `compat-v1`) | non branché (API sans suffixes) |
+| Suite complète | 233/233, 110 s | 230→231/233, 124 s | — |
+| `CCFaceOffset` Barquette | absent | **juste** (jointure « intersection ») | juste sur une boîte |
+
+**Couche de compatibilité `compat-v1`** (v2) : OCCT 7.6 ajoute en fin d'appel un `Message_ProgressRange`
+ou un booléen à ~250 méthodes, et renumérote quelques surcharges (`BRepPrimAPI_MakeBox_1..4`,
+`TColgp_Array1OfPnt_4`, `BRepTools.Write_2`…). `build.cjs` sonde les deux noyaux (appels de `src/`
+**et** de `tests/`) et écrit `out/v2/compat-v1.json` ; `tests/occt-moteur.cjs` l'applique au
+chargement. Pour adopter v2 dans l'application, il faudra soit embarquer cette couche (navigateur
++ worker de suppression de face), soit corriger les appels une fois pour toutes.
+
+**Écarts restants de la suite complète sur v2 :**
+- `test_conge_tangent` : congé R10 sur une rainure de demi-largeur 6 — solide **réellement
+  invalide** ; l'actuel le laisse passer (contrôle face par face), OCCT 7.6 le refuse. Avec un
+  rayon valide (R3–R5), c'est l'**actuel** qui échoue au rejeu et v2 qui réussit : défaut latent
+  du moteur actuel, test laissé tel quel.
+- `test_suppression_face_worker` (cas 3) : la face « pathologique » de Cavité Usinage (10 min
+  puis plantage avec l'actuel) est **refusée proprement en 0,7 s** par v2 au lieu d'attendre le
+  délai. Changement de comportement (meilleur), le test attend l'ancien.
+- `test_step_schema` : réglé par la sonde étendue à `tests/` (`TopoDS_Shape.Moved` + booléen).
+
+**Vitesse :** le cumul des tests est ~25 % plus long sur v2 (2 774 s contre 2 211 s, en
+parallèle donc bruité). Certains calculs accélèrent nettement (congé « rayon » 0,33 s contre
+1,97 s, symétrie de congés, FAO sécurité), d'autres ralentissent (filetages surtout).
+Mesuré seul (un test à la fois) : `test_filetage_axe` 26 s → 39 s, `test_symetrie_conges`
+40 s → 37 s, `test_fao_faces` 41 s → 43 s. Le ralentissement réel se concentre donc sur les
+filetages ; ailleurs les deux moteurs se valent.
+
+**v3** : se charge en 0,5 s, `CCFaceOffset` exact, export STEP AP242 et noms accentués corrects ;
+mais aucun appel suffixé de l'application ne garde son nom : chantier d'adaptation à part.
 
 ## Installer Docker Desktop (à faire par l'utilisateur, droits administrateur)
 

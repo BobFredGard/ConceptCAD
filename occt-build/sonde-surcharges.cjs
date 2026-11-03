@@ -10,7 +10,9 @@ src=src.replace(/export default (\w+);\s*$/,'globalThis.opencascadeFactory=$1;')
 if(!/opencascadeFactory/.test(src))src+='\n;globalThis.opencascadeFactory=opencascade;';
 globalThis.__dirname=path.dirname(path.resolve(js)); // la colle 1.x en a besoin
 try{vm.runInThisContext(src,{filename:'occt.js'});}catch(e){console.error(String(e).slice(0,300));process.exit(1);}
-const appSrc=fs.readdirSync(path.join(ROOT,'src')).filter(f=>f.endsWith('.js')).map(f=>fs.readFileSync(path.join(ROOT,'src',f),'utf8')).join('\n');
+// app (src/) + tests/ : un test peut appeler le noyau directement (ex. TopoDS_Shape.Moved)
+const lire=d=>fs.readdirSync(path.join(ROOT,d)).filter(f=>/\.c?js$/.test(f)).map(f=>fs.readFileSync(path.join(ROOT,d,f),'utf8')).join('\n');
+const appSrc=lire('src')+'\n'+lire('tests');
 // noms suffixés appelés par l'application (constructeurs, statiques, méthodes)
 const toks=new Set([...appSrc.matchAll(/\.([A-Za-z][A-Za-z0-9]*(?:_[A-Za-z0-9]+)*?)_(\d+)\b/g)].map(m=>m[1]));
 // noms non suffixés appelés (méthodes OCCT : majuscule initiale) et classes construites sans suffixe

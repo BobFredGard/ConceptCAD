@@ -12,12 +12,12 @@ const VARIANTES={
   // Image d'origine d'opencascade.js 2.0 (mars 2023) : OCCT et liaisons déjà compilés dedans,
   // une construction personnalisée ne refait que l'édition de liens (quelques minutes).
   v2:{
-    image:'donalffons/opencascade.js:2.0.0-beta.b5ff984',
+    image:'donalffons/opencascade.js@sha256:3069f4c2e3ab62bb82d81843bad2c0f8552ee92373208f8f655ef9bf71c0524d', // 2.0.0-beta.b5ff984
     args:(yml)=>[yml],
   },
   // Fork maintenu (taucad, « libcascade ») : OCCT 8.0.1, Emscripten 6, exceptions WebAssembly natives.
   v3:{
-    image:'ghcr.io/taucad/opencascade.js:single-threaded',
+    image:'ghcr.io/taucad/opencascade.js@sha256:d7bf97ada840afb0f0e0f6bba04b1b55dd0d276e1679a3e40c1431a2cf44900b', // single-threaded, 3.1.0
     args:(yml)=>['--config','single-threaded','link','/src/'+yml],
   },
 };
