@@ -50,8 +50,10 @@ function coqueKey(r){
   return (r.pos||[]).map(v=>(+v).toFixed(2)).join(',')+'|'+(r.n?r.n.map(v=>(+v).toFixed(3)).join(','):(r.st||''));
 }
 function coqueRefOf(face){
-  // Référence d'une face : générique pour la suppression de face (toute surface).
-  return (coqueMode&&coqueMode.del)?occFaceRefAny(face):occFaceRef(face);
+  // Référence d'une face : générique pour la suppression de face (toute surface), et pour
+  // la fonction Face quand le noyau décale toute face (85, V0.45.0).
+  const any=(coqueMode&&coqueMode.del)||(typeof mvMode!=='undefined'&&mvMode&&occHasFaceOffset());
+  return any?occFaceRefAny(face):occFaceRef(face);
 }
 /* ---------- surbrillance 3D (faces à retirer) ---------- */
 function coqueClearHl(){

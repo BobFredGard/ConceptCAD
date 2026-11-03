@@ -11,10 +11,16 @@
    `ref` (la première, pour les chemins qui ne lisent qu'une face). Le même mode ÉDITE une
    fonction existante (« Re-sélectionner »), comme la coque (87).
 
-   V0.41.0 : la face d'un congé ou d'un chanfrein (occBlendOfFace) n'est pas poussée : le
+   V0.45.0 : la face d'un congé ou d'un chanfrein (occBlendOfFace) n'est pas poussée : le
    panneau propose sa TAILLE (rayon / distance), qui modifie la fonction congé elle-même
-   (comme Appuyer/Tirer de Fusion 360). « Déplacer la face quand même » garde l'ancien geste. */
-let mvMode=null; // null | {faces:[ref], dist, editing:id|null, blend:{feat,idx,r,cham,ref}|null}
+   (comme Appuyer/Tirer de Fusion 360). « Déplacer la face quand même » garde l'ancien geste.
+
+   V0.45.1 : case « Faces tangentes » (cochée par défaut, retenue d'une fois sur l'autre) —
+   chaque face cliquée entraîne celles qui la prolongent sans arête vive (f.tangent, chaîne
+   recalculée au rejeu, 20-noyau occApplyMoveFace). Avec le noyau OCCT 8, toute face se
+   clique (congés, coins obliques, B-splines) : elles sont alors décalées par le noyau. */
+let mvMode=null; // null | {faces:[ref], dist, tangent, editing:id|null, blend:{feat,idx,r,cham,ref}|null}
+const mvMemo={tangent:true};
 let mvGroup=null; // surbrillance 3D des faces retenues
 
 // Bouton « Déplacer une face » : la coque HTML étant générée et jamais éditée à la main,
@@ -41,9 +47,28 @@ function mvClearHl(){
   mvGroup.traverse(o=>{if(o.geometry)o.geometry.dispose();if(o.material)o.material.dispose();});
   scene.remove(mvGroup);mvGroup=null;
 }
+function mvRefCopy(r){
+  // Référence persistée : centre, dimensions, normale (plan / cylindre) et type de surface.
+  const o={pos:r.pos.slice(),dim:r.dim.slice()};
+  if(Array.isArray(r.n))o.n=r.n.slice();
+  if(r.st)o.st=r.st;
+  return o;
+}
+function mvChainOf(r){
+  // Faces tangentes à une face retenue (surbrillance seule) : rangs sur le solide de son corps.
+  if(r._chain)return r._chain;
+  r._chain=[];
+  const b=r._ord>=0&&bodies.find(x=>x.id===r._bid&&x.shape);
+  if(b)try{r._chain=occTangentChainOrds(b.shape,[r._ord]).filter(o=>o!==r._ord);}catch(e){}
+  return r._chain;
+}
 function mvPaint(){
   mvClearHl();
-  if(mvMode)mvGroup=facesHlGroup(mvMode.blend?(mvMode.blend.ref?[mvMode.blend.ref]:[]):mvMode.faces,0xff9f0a,'mvFaces');
+  if(!mvMode)return;
+  if(mvMode.blend){mvGroup=facesHlGroup(mvMode.blend.ref?[mvMode.blend.ref]:[],0xff9f0a,'mvFaces');return;}
+  const all=mvMode.faces.slice();
+  if(mvMode.tangent)mvMode.faces.forEach(r=>mvChainOf(r).forEach(o=>all.push({_ord:o,_bid:r._bid})));
+  mvGroup=facesHlGroup(all,0xff9f0a,'mvFaces');
 }
 function mvHelp(){
   const nf=mvMode?mvMode.faces.length:0;
@@ -60,12 +85,12 @@ function enterMoveFaceMode(editF){
   }
   try{if(draftMode)exitDraftMode(true);}catch(e){}
   try{if(coqueMode)exitCoqueMode(true);}catch(e){}
-  mvMode={faces:[],dist:5,editing:editing?editing.id:null};
+  mvMode={faces:[],dist:5,tangent:editing?!!editing.tangent:mvMemo.tangent,editing:editing?editing.id:null};
   if(editing){
     // Édition : rejeu SANS la fonction (occSkipFeat) → les faces d'origine redeviennent
     // cliquables et se repeignent. Même stratégie que congé/dépouillage/coque.
-    mvMode.faces=mvRefs(editing).filter(r=>r&&Array.isArray(r.pos)&&Array.isArray(r.n)&&Array.isArray(r.dim))
-      .map(r=>{const o={pos:r.pos.slice(),n:r.n.slice(),dim:r.dim.slice(),_ord:-1};if(typeof r._bid==='string')o._bid=r._bid;return o;});
+    mvMode.faces=mvRefs(editing).filter(r=>r&&Array.isArray(r.pos)&&(Array.isArray(r.n)||r.st)&&Array.isArray(r.dim))
+      .map(r=>{const o=mvRefCopy(r);o._ord=-1;if(typeof r._bid==='string')o._bid=r._bid;return o;});
     mvMode.dist=+editing.dist||0;parFxFrom(editing,mvMode,['dist']);
     occSkipFeat=editing.id;
     tlEditLock(editing);
@@ -95,7 +120,8 @@ function mvFaceUnder(e){
     if(!h||!h.object||!h.object.geometry)return null;
     const hit=occFaceOfHit(h.object,h.faceIndex);
     if(!hit||!hit.face)return null;
-    const ref=occFaceRef(hit.face);
+    // Noyau OCCT 8 : toute face (décalage par le noyau) ; sinon plan / cylindre seulement.
+    const ref=occHasFaceOffset()?occFaceRefAny(hit.face):occFaceRef(hit.face);
     let blend=null;
     if(mvMode&&!mvMode.editing){try{blend=occBlendOfFace(hit.face,hit.bd&&hit.bd.shape,hit.bd&&hit.bd.id);}catch(e){}}
     try{hit.face.delete();}catch(e){}
@@ -116,9 +142,14 @@ function mvFaceCommit(e){
   if(!mvMode)return;
   const hit=mvFaceUnder(e);
   if(!hit){
-    faceEl.textContent='Déplacement de face : cliquez une face plane ou cylindrique du solide exact.';
+    faceEl.textContent='Déplacement de face : cliquez une face '+(occHasFaceOffset()?'':'plane ou cylindrique ')+'du solide exact.';
     return;
   }
+  // Face déjà retenue, ou entraînée par la chaîne tangente d'une autre : le clic la retire.
+  const k=hit.ref?coqueKey(hit.ref):null;
+  let i=k?mvMode.faces.findIndex(r=>coqueKey(r)===k):-1;
+  if(i<0&&hit.ref&&mvMode.tangent)i=mvMode.faces.findIndex(r=>r._bid===hit.ref._bid&&mvChainOf(r).includes(hit.ord));
+  if(i>=0&&!mvMode.blend){mvMode.faces.splice(i,1);mvPaint();renderMvPanel();mvHelp();return;}
   if(hit.blend){
     const f=doc.features.find(x=>x.id===hit.blend.feat);
     if(f){
@@ -132,9 +163,7 @@ function mvFaceCommit(e){
   }
   if(!hit.ref)return;
   mvMode.blend=null;
-  const k=coqueKey(hit.ref);
-  const i=mvMode.faces.findIndex(r=>coqueKey(r)===k);
-  if(i>=0)mvMode.faces.splice(i,1);else mvMode.faces.push(hit.ref);
+  mvMode.faces.push(hit.ref);
   mvPaint();renderMvPanel();mvHelp();
 }
 /* ---------- panneau ---------- */
@@ -180,7 +209,8 @@ function renderMvPanel(){
     mvMode.faces.forEach((fr,i)=>{
       const r2=document.createElement('div');r2.className='item';
       const s=document.createElement('span');
-      s.textContent=(fr._ord>=0?'✅ ':'⚠ ')+'▸ centre ('+fr.pos.map(v=>(+v).toFixed(1)).join(' ; ')+') mm';
+      const nt=mvMode.tangent?mvChainOf(fr).length:0;
+      s.textContent=(fr._ord>=0?'✅ ':'⚠ ')+'▸ centre ('+fr.pos.map(v=>(+v).toFixed(1)).join(' ; ')+') mm'+(nt?' + '+nt+' tangente'+(nt>1?'s':''):'');
       r2.appendChild(s);
       const x=document.createElement('button');x.textContent='✕';x.title='Retirer cette face';
       x.onclick=()=>{mvMode.faces.splice(i,1);mvPaint();renderMvPanel();mvHelp();};
@@ -203,13 +233,20 @@ function renderMvPanel(){
     mvMode.dist=Math.abs(v)<1e-9?0:v;inp.value=String(mvMode.dist).replace('.',',');
   };
   row.appendChild(inp);p.appendChild(row);
+  const rt=document.createElement('label');rt.className='pnl-row';rt.style.marginTop='6px';
+  const cb=document.createElement('input');cb.type='checkbox';cb.id='mvTangent';cb.checked=!!mvMode.tangent;
+  cb.onchange=()=>{mvMode.tangent=mvMemo.tangent=cb.checked;mvPaint();renderMvPanel();mvHelp();};
+  rt.appendChild(cb);rt.appendChild(document.createTextNode(' Faces tangentes'));
+  rt.title='Chaque face cliquée entraîne toutes celles qui la prolongent sans arête vive (parois, coins arrondis, congés, fond d’une poche)';
+  p.appendChild(rt);
   const btns=document.createElement('div');btns.className='pnl-btns';btns.style.marginTop='8px';
   const ok=document.createElement('button');ok.className='primary';
   ok.textContent=mvMode.editing?'✔ Enregistrer':'✔ Appliquer';ok.onclick=mvApply;btns.appendChild(ok);
   const q=document.createElement('button');q.textContent=mvMode.editing?'✖ Annuler':'Quitter';q.onclick=()=>exitMoveFaceMode();
   btns.appendChild(q);p.appendChild(btns);
   const n2=document.createElement('span');n2.className='note';
-  n2.textContent='Chaque face se déplace le long de sa normale sortante : positif, elle avance ; négatif, elle rentre. Ses bords suivent les faces voisines (une dépouille ou un chanfrein se prolonge). Une face cylindrique change de rayon : un arbre qui avance grossit, un trou qui avance rétrécit.';
+  n2.textContent='Chaque face se déplace le long de sa normale sortante : positif, elle avance ; négatif, elle rentre. Ses bords suivent les faces voisines (une dépouille ou un chanfrein se prolonge). Une face cylindrique change de rayon : un arbre qui avance grossit, un trou qui avance rétrécit.'+
+    (occHasFaceOffset()?' Faces courbes et chaînes tangentes (intérieur d’une poche, congés compris) sont décalées d’un bloc.':'');
   p.appendChild(n2);
 }
 function mvBlendApply(){
@@ -229,14 +266,15 @@ function mvApply(){
   if(mvMode.blend){mvBlendApply();return;}
   if(!mvMode.faces.length){faceEl.textContent='Déplacement de face : retenez au moins une face.';return;}
   // On retire `_ord` (index BRep de la session) : surbrillance seule, rien pour le rejeu.
-  const faces=mvMode.faces.map(r=>{const o={pos:r.pos.slice(),dim:r.dim.slice(),n:r.n.slice()};if(typeof r._bid==='string')o._bid=r._bid;return o;});
-  const dist=+mvMode.dist||0;
+  const faces=mvMode.faces.map(r=>{const o=mvRefCopy(r);if(typeof r._bid==='string')o._bid=r._bid;return o;});
+  const dist=+mvMode.dist||0,tangent=!!mvMode.tangent;
   if(mvMode.editing){
     // Édition EN PLACE (une seule fonction, comme congé/dépouillage/coque).
     const f=doc.features.find(x=>x.id===mvMode.editing&&x.type==='xmove');
     if(f){
       docPushUndo('édition de « '+f.name+' »');
       f.faces=faces;f.ref=JSON.parse(JSON.stringify(faces[0]));f.dist=dist;
+      if(tangent)f.tangent=true;else delete f.tangent;
       parFxCopy(mvMode,f,['dist']);f.name=mvName(f);
       repSyncForFeature(f); // les instances de la répétition suivent
       sel={kind:'feature',id:f.id};
@@ -249,6 +287,11 @@ function mvApply(){
   // On attaque le solide SANS cette nouvelle fonction, pour la viser sur la forme courante.
   occSkipFeat=null;
   const f={id:uid('mv'),type:'xmove',name:'',faces,ref:JSON.parse(JSON.stringify(faces[0])),dist};
+  if(tangent)f.tangent=true;
+  // Faces toutes sur le même corps : la fonction va dans CE corps, pas dans le corps actif
+  // (Barquette : fond de « Corps 1 » cliqué, « Corps 1 (2) (2) » actif → rien ne bougeait).
+  const bid=faces[0]._bid;
+  if(bid&&faces.every(r=>r._bid===bid)&&(doc.bodies||[]).some(b=>b.id===bid))f.body=bid;
   f.name=mvName(f);
   parFxCopy(mvMode,f,['dist']);
   addFeature(f); // instantané d'annulation + insertion au marqueur temps (comme extrusion/révolution/congé)

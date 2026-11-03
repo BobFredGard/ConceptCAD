@@ -1957,22 +1957,166 @@ function occFindFaceTracked(shape,t){
   try{ex.delete();}catch(e){}
   return best;
 }
+/* ---------- faces tangentes + décalage par le noyau (V0.45.1) ----------
+   Fonction Face, case « Faces tangentes » : la face cliquée entraîne toutes celles qui la
+   prolongent sans arête vive (parois, coins arrondis, congés, fond d'une poche). Ces faces,
+   de n'importe quel type, sont décalées par BRepOffset_MakeOffset face par face (liaison
+   maison CCFaceOffset, noyau OCCT 8 seulement) : décalage nul ailleurs, voisines prolongées
+   ou rognées (jointure « intersection »). Barquette, intérieur (17 faces : 8 parois dont 4
+   coins obliques, 8 congés du fond dont 4 B-splines, le fond) : +1 mm → +39 839 mm³ pour
+   40 401 mm² de surface, en 0,25 s. Le noyau rend les faces non analytiques voisines en
+   « surface décalée de 0 » (même géométrie) et un solide parfois invalide : ShapeFix le
+   répare sans bouger les cotes. */
+function occHasFaceOffset(){return !!(occt&&occt.CCFaceOffset);}
+function occEdgeTangent(e,f1,f2){
+  // Arête lisse entre f1 et f2 ? Drapeau du noyau d'abord ; s'il dit « vive » (souvent à
+  // tort : coins d'une dépouille, congé sur congé), écart des normales mesuré à 25/50/75 %
+  // de l'arête, comme occSharpEdges.
+  try{if(occt.BRep_Tool.Continuity_1(e,f1,f2)!==occt.GeomAbs_Shape.GeomAbs_C0)return true;}catch(err){}
+  const bin=[];
+  try{
+    const g1=occBinPush(bin,new occt.BRepAdaptor_Curve2d_2(e,f1)),g2=occBinPush(bin,new occt.BRepAdaptor_Curve2d_2(e,f2));
+    const s1=occBinPush(bin,occt.BRep_Tool.Surface_1(f1,occBinPush(bin,new occt.TopLoc_Location_1())));
+    const s2=occBinPush(bin,occt.BRep_Tool.Surface_1(f2,occBinPush(bin,new occt.TopLoc_Location_1())));
+    const w0=g1.FirstParameter(),w1=g1.LastParameter();
+    if(!(w1>w0))return false;
+    for(const p of [0.25,0.5,0.75]){
+      const q1=occBinPush(bin,g1.Value(w0+(w1-w0)*p)),q2=occBinPush(bin,g2.Value(w0+(w1-w0)*p));
+      const n1=occSurfNormalAt(s1,q1.X(),q1.Y()),n2=occSurfNormalAt(s2,q2.X(),q2.Y());
+      if(!n1||!n2)return false;
+      const d=occDot3(n1,n2)/(Math.hypot(n1[0],n1[1],n1[2])||1)/(Math.hypot(n2[0],n2[1],n2[2])||1);
+      const th=Math.acos(Math.max(-1,Math.min(1,d)))*180/Math.PI;
+      if(Math.min(th,180-th)>=3)return false;
+    }
+    return true;
+  }catch(err){return false;}
+  finally{occDispose(bin);}
+}
+function occTangentChainIdx(faces,seeds){
+  // Rangs (dans `faces`, les faces d'un solide dans l'ordre de l'explorateur) des faces
+  // reliées aux germes par des arêtes tangentes, germes compris, triés.
+  const edges=faces.map(()=>[]),bucket=new Map(),tmp=[];
+  faces.forEach((f,i)=>{
+    occSubShapes(f,'TopAbs_EDGE').forEach(e0=>{
+      tmp.push(e0);
+      try{
+        const e=occt.TopoDS.Edge_1(e0);tmp.push(e);
+        const ad=new occt.BRepAdaptor_Curve_2(e);
+        const m=ad.Value((ad.FirstParameter()+ad.LastParameter())/2);
+        const k=[m.X(),m.Y(),m.Z()].map(v=>Math.round(v*1e3)).join(',');
+        try{m.delete();ad.delete();}catch(err){}
+        edges[i].push({e,k});
+        if(!bucket.has(k))bucket.set(k,[]);
+        bucket.get(k).push({i,e});
+      }catch(err){}
+    });
+  });
+  const inChain=new Set(seeds.filter(i=>i>=0&&i<faces.length)),todo=[...inChain],seen=new Map();
+  try{
+    while(todo.length){
+      const i=todo.pop();
+      for(const a of edges[i]){
+        for(const b of bucket.get(a.k)||[]){
+          if(b.i===i||inChain.has(b.i)||!b.e.IsSame(a.e))continue;
+          const pk=Math.min(i,b.i)+'/'+Math.max(i,b.i)+'/'+a.k;
+          if(!seen.has(pk))seen.set(pk,occEdgeTangent(a.e,faces[i],faces[b.i]));
+          if(seen.get(pk)){inChain.add(b.i);todo.push(b.i);}
+        }
+      }
+    }
+  }finally{occDispose(tmp);}
+  return [...inChain].sort((a,b)=>a-b);
+}
+function occTangentChainOrds(shape,ords){
+  const faces=occSubShapes(shape,'TopAbs_FACE');
+  try{return occTangentChainIdx(faces,ords);}finally{occDispose(faces);}
+}
+function occShapeVolume(sh){
+  const g=new occt.GProp_GProps_1();
+  try{occt.BRepGProp.VolumeProperties_1(sh,g,false,false,false);return g.Mass();}
+  finally{try{g.delete();}catch(e){}}
+}
+function occFaceArea(f){
+  const g=new occt.GProp_GProps_1();
+  try{occt.BRepGProp.SurfaceProperties_1(f,g,false,false);return g.Mass();}
+  finally{try{g.delete();}catch(e){}}
+}
+function occOffsetFaces(shape,faces,dist,warnings){
+  // Décale `faces` (handles sur `shape`) de `dist` mm le long de la normale sortante, par le
+  // noyau. Retourne la nouvelle forme, ou null (raison dans `warnings`). Contrôle du volume :
+  // le noyau entraîne de lui-même les faces tangentes aux faces décalées ; la matière gagnée
+  // (ou perdue) doit avoir le signe de `dist` et valoir à peu près l'aire de cette chaîne
+  // × |dist| — sinon le résultat est refusé (solide retourné, faces mêlées…).
+  const all=occSubShapes(shape,'TopAbs_FACE');
+  let r=null;
+  try{
+    const idx=all.map((h,i)=>faces.some(f=>f.IsSame(h))?i:-1).filter(i=>i>=0);
+    const area=occTangentChainIdx(all,idx).reduce((s,i)=>s+occFaceArea(all[i]),0);
+    const o=new occt.CCFaceOffset();
+    try{
+      o.Init(shape,0,1e-6,true,false,2,false);
+      faces.forEach(f=>o.SetFace(f,dist));
+      if(!o.MakeOffset()){warnings.push('décalage refusé par le noyau ('+(o.Message()||'erreur '+o.Error())+')');return null;}
+      r=o.Shape();
+    }finally{try{o.delete();}catch(e){}}
+    if(!r||r.IsNull()){warnings.push('décalage : résultat vide');return null;}
+    if(!occCoqueValide(r)){
+      const fx=occCoqueRepare(r);
+      try{r.delete();}catch(e){}
+      r=fx;
+      if(!r||!occCoqueValide(r)){warnings.push('décalage : solide invalide, même réparé');if(r)try{r.delete();}catch(e){}return null;}
+    }
+    const dv=occShapeVolume(r)-occShapeVolume(shape),ev=area*dist,q=ev?dv/ev:0;
+    if(!(q>0.25&&q<4)){
+      warnings.push(`décalage incohérent (volume ${dv>=0?'+':''}${dv.toFixed(0)} mm³ pour ${ev>=0?'+':''}${ev.toFixed(0)} attendus)`);
+      try{r.delete();}catch(e){}
+      return null;
+    }
+    return r;
+  }finally{occDispose(all);}
+}
 function occApplyMoveFace(result,f){
   // Rejoue le déplacement d'une ou plusieurs faces. Retourne {shape,warnings} comme
   // occApplyXFillets. Les faces sont TOUTES retrouvées sur le solide d'entrée, puis
   // déplacées l'une après l'autre (même distance) : chacune est re-suivie sur le solide
   // déjà modifié (occFindFaceTracked) — deux faces voisines avancées ensemble donnent
   // ainsi un coin plein, pas une encoche entre deux prismes.
+  // V0.45.1 : « Faces tangentes » (f.tangent) ou face ni plane ni cylindrique → toutes les
+  // faces d'un coup par le noyau (occOffsetFaces), si le noyau sait le faire.
   const warnings=[];
   const dist=+f.dist||0;
   const refs=mvRefs(f);
   const lab=r=>'('+(r.pos||[]).map(v=>(+v).toFixed(1)).join(', ')+')';
-  const found=refs.map(r=>{try{return occFindFace(result,r);}catch(e){return null;}});
+  const found=refs.map(r=>{try{return r.n?occFindFace(result,r):occFindFaceAny(result,r);}catch(e){return null;}});
   const trk=found.map(h=>h?occFaceTrack(h):null);
   const drop=()=>found.forEach(h=>{if(h)try{h.delete();}catch(e){}});
   found.forEach((h,i)=>{if(!h)warnings.push(`face introuvable près de ${lab(refs[i])} — la pièce a changé`);});
   if(!found.some(Boolean)){drop();return {shape:result,warnings};}
   if(!dist){drop();return {shape:result,warnings:['distance nulle — aucun déplacement']};}
+  {
+    // Chaîne tangente : les faces ajoutées qui ne sont que l'autre moitié d'un même cylindre
+    // (ou d'un même plan) ne comptent pas — ce cas reste au calcul historique.
+    const all=occSubShapes(result,'TopAbs_FACE');
+    let chain=[];
+    try{
+      const seeds=all.map((h,i)=>found.some(x=>x&&x.IsSame(h))?i:-1).filter(i=>i>=0);
+      chain=f.tangent?occTangentChainIdx(all,seeds).map(i=>all[i]):seeds.map(i=>all[i]);
+      const sd=found.filter(Boolean).map(occSurfDesc);
+      const plain=sd.every(d=>d.k==='pl'||d.k==='cy')&&chain.every(h=>{const d=occSurfDesc(h);return sd.some(x=>occSameSurf(x,d));});
+      if(!plain){
+        if(!occHasFaceOffset()){
+          if(!sd.every(d=>d.k==='pl'||d.k==='cy')){drop();return {shape:result,warnings:warnings.concat(['face ni plane ni cylindrique : décalage indisponible avec ce noyau (noyau OCCT 8 requis)']),fatal:true};}
+          warnings.push('faces tangentes : décalage indisponible avec ce noyau — seules les faces cliquées bougent');
+        }else{
+          const r=occOffsetFaces(result,chain,dist,warnings);
+          if(!r){drop();return {shape:result,warnings,fatal:true};}
+          drop();
+          try{result.delete();}catch(e){}
+          return {shape:r,warnings};
+        }
+      }
+    }finally{occDispose(all);}
+  }
   let cur=result;
   try{
     // Un cylindre bouge en entier (ses demi-faces ensemble) : une 2ᵉ face cliquée sur le
@@ -4052,7 +4196,7 @@ function featSig(f){
     // La DISTANCE fait partie de la géométrie, et la face visée par sa référence durable
     // (centre + normale + dimensions) : sans elle, changer la distance d'un déplacement
     // laisserait la signature inchangée et le point de contrôle réappliquerait l'ancien.
-    s+='|d'+(+f.dist||0)+'@'+JSON.stringify(mvRefs(f).map(r=>[r.pos,r.n,r.dim]));
+    s+='|d'+(+f.dist||0)+'@'+JSON.stringify(mvRefs(f).map(r=>r.st&&!r.n?[r.pos,r.st,r.dim]:[r.pos,r.n,r.dim]))+(f.tangent?'|t':'');
   }else if(f.type==='bmove'){
     // Déplacer un corps : ses étapes (translations, rotations, point à point) font la géométrie
     s+='|'+JSON.stringify(f.steps||[]);
