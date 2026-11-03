@@ -3959,7 +3959,22 @@ function occReplayBody(bid,list){
   occReplayNest++;
   try{return occReplayBodyIn(bid,list);}finally{occReplayNest--;}
 }
-function occReplayBodyIn(bid,list){
+// V0.42.0 : le rejeu est un GÉNÉRATEUR qui rend la main avant chaque fonction ({bid,fs}).
+// La voie synchrone (occReplayBodyIn, occFinalShape) le vide d'une traite : même code, même
+// ordre, même résultat. La régénération avec barre de progression (31) le vide par tranches.
+function occDrain(g){for(;;){const r=g.next();if(r.done)return r.value;}}
+function* occNestGen(g){
+  // occReplayNest +1 SEULEMENT pendant que le rejeu du corps calcule (pas pendant qu'il attend
+  // entre deux tranches : un rejeu synchrone glissé dans l'intervalle reste de premier niveau).
+  for(;;){
+    let r;occReplayNest++;
+    try{r=g.next();}finally{occReplayNest--;}
+    if(r.done)return r.value;
+    yield r.value;
+  }
+}
+function occReplayBodyIn(bid,list){return occDrain(occReplayBodyGen(bid,list));}
+function* occReplayBodyGen(bid,list){
   // Rejeu ISOLÉ d'un corps : mêmes règles que l'ancien rejeu global (ordre timeline,
   // Fuse/Cut, congés/déplacements/dépouilles/coques entrelacés, cache par points de
   // contrôle), mais l'accumulateur ne voit QUE les fonctions du corps — une découpe du
@@ -4305,6 +4320,7 @@ function occReplayBodyIn(bid,list){
   const tap=occPrefixTap&&occReplayNest===1?occPrefixTap:null;
   for(let i=0;i<list.length;){
     const n=tap?1:batchLen(i);
+    yield {bid,fs:list.slice(i,i+n)}; // régénération par tranches (31) : fonction(s) sur le point d'être calculée(s)
     if(n>1&&batch(list.slice(i,i+n))){i+=n;continue;}
     const f=list[i++];step(f);if(tap)try{tap(bid,f,result);}catch(e){}
   }
@@ -4357,7 +4373,9 @@ function occThrCut(base,voids){
   return occCutEach(base,voids);
 }
 let occThrPending=false; // un filet modélisé attend le worker (filet cosmétique affiché)
-function occFinalShape(upto){
+function occFinalShape(upto){return occDrain(occFinalShapeGen(upto));}
+function* occFinalShapeGen(upto,warm){
+  // warm (31, préchauffe de la régénération) : filets modélisés sautés — le rejeu final les fait.
   // Partition par corps (ordre de première apparition dans la timeline), rejeu isolé
   // par corps, puis composé GRATUIT pour occLive (picking, ancrages, overlay, aperçu
   // et export continuent de voir l'ensemble, inchangés).
@@ -4384,12 +4402,12 @@ function occFinalShape(upto){
   // rejeu partiel = la liste s'arrête avant la fin (références d'esquisse) ; le rejeu
   // complet passe aussi un upto (marqueur de la timeline) : seule la longueur compte
   const partial=list.length<feats.filter(f=>!(occSkipFeat&&f.id===occSkipFeat)).length;
-  occThreadSkip=partial||!!occPrefixTap; // reposé à chaque appel : jamais d'état périmé (observateur : filets inutiles)
-  if(!partial&&!occPrefixTap)occThrPending=false;
+  occThreadSkip=partial||!!occPrefixTap||!!warm; // reposé à chaque appel : jamais d'état périmé (observateur : filets inutiles)
+  if(!partial&&!occPrefixTap&&!warm)occThrPending=false;
   const preThr=[]; // {bodyId, shape} : corps SANS filets modélisés (FAO)
-  order.forEach(bid=>{
-    if(consumed.has(bid))return;
-    const r=occReplayBody(bid,byBody[bid]);
+  for(const bid of order){
+    if(consumed.has(bid))continue;
+    const r=yield* occNestGen(occReplayBodyGen(bid,byBody[bid]));
     if(r.shape){
       let sh=r.shape;
       // 2026-10-19 : quand un congé/chanfrein exact a été appliqué, recoudre les faces de MÊME
@@ -4408,7 +4426,7 @@ function occFinalShape(upto){
     bin.push(...r.bin);itemShapes.push(...r.itemShapes);
     ghostShapes.push(...r.ghostShapes);msgs.push(...r.msgs);items.push(...r.items);
     imports.push(...r.imports); // imports entrés dans la chaîne exacte (affichés par le corps)
-  });
+  }
   const shape=occCompoundOf(perBody.map(p=>p.shape));
   // pièce SANS filets modélisés (FAO : le taraud fait le filet) — seulement s'il y en a
   const shapeFao=preThr.length?occCompoundOf(perBody.map(p=>{const q=preThr.find(x=>x.bodyId===p.bodyId);return q?q.shape:p.shape;})):null;

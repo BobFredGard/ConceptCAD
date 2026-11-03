@@ -2462,7 +2462,11 @@ async function deserialise(json,opts){
     doc.features.filter(f=>f.type==='repeat').forEach(f=>{try{repGenChildren(f);}catch(e){}});
   }catch(e){}
   sel={kind:null,id:null};uidN=doc.sketches.length+doc.features.length+1;
-  if(!opts||opts.rebuild!==false){rebuild();renderProps();showAll();}
+  if(!opts||opts.rebuild!==false){
+    // V0.42.0 : gros document → barre de progression (31) ; sans noyau exact, rien ne change
+    if(regenWarmUseful()){await regenWarm('Ouverture — '+(doc.name||'document'));builtVersion=-1;}
+    try{rebuild();}finally{regenUiHide();}
+    renderProps();showAll();}
   else renderProps();
   if(sansSrc.length)alert(sansSrc.length+' import(s) enregistré(s) sans leur fichier (ancien format) : '+sansSrc.join(', ')+'.\nRéimportez le STEP/STL (même nom, ou confirmez le rebranchement) : il reprend la fonction existante, usinages conservés. Puis ré-enregistrez.');
   const pImp=importRestorePending(); // lancée ICI (même ordre qu'avant), attendue à la fin

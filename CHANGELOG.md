@@ -8,7 +8,7 @@ sont sorties le 2026-09-30j.
 Code dans `src/` · livrable `fusion_mvp.html` (généré par `build.js`) · architecture et
 garde-fous en tête de `src/00-entete-et-outils.js`.
 
-**536 versions**, de `2026-09-28b` à `V0.41.0` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
+**537 versions**, de `2026-09-28b` à `V0.42.0` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
 comme dans le fichier d'origine.
 
 ---
@@ -6359,3 +6359,12 @@ Demande : supprimer les opérations d'un posage par multi-sélection + Suppr (ca
 - **Suppr / Retour arrière** (`faoDeleteSelected`, `faoDelKey`, `src/88-fao-81`) : les opérations choisies par Ctrl+clic / Maj+clic (sélection multiple de la V0.23.20) sont retirées ensemble ; une seule étape d'annulation (`faoSnapshot`), donc un Ctrl+Z les rend toutes à leur place, Ctrl+Y les retire de nouveau. La numérotation de l'arbre suit ; la sélection passe à l'opération suivante (sinon la précédente, sinon le posage).
 - **Garde-fous** : sans effet dans un champ de saisie, une boîte de dialogue, une esquisse ouverte ou la mise en plan.
 - **Tests** : `test_fao_suppression_multiple` (3 opérations sur 6 → Suppr → 3 restantes et renumérotées, une étape d'annulation, Ctrl+Z → les 6 dans l'ordre, Ctrl+Y, Suppr dans un champ ignorée) ; `npm run ci:full`.
+
+## V0.42.0 - Régénération : barre de progression avec le nom des fonctions et des esquisses
+Demande : une barre de progression pendant la régénération, avec les fonctions et esquisses qui défilent par leur nom (essai d'un nouveau noyau : écran figé plusieurs secondes sans rien dire).
+- **Cause** : le rejeu exact est synchrone ; tant qu'il calcule, le navigateur ne repeint rien.
+- **Rejeu en générateur** (`occReplayBodyGen`, `occFinalShapeGen`, `src/20`) : il rend la main avant chaque fonction ; la voie synchrone (`occFinalShape`, `rebuild()`) le vide d'une traite — même code, même ordre, même résultat.
+- **Préchauffe** (`regenWarm`, `src/31-regen-progression.js`) : à l'ouverture d'un document (`deserialise`), au chargement du noyau (`occtFinishBoot`) et au démarrage, ce rejeu est vidé par tranches en laissant le navigateur peindre la barre (n / total, nom de la fonction, esquisse utilisée) ; il remplit les points de contrôle aux mêmes clés, puis `rebuild()` ne fait que les relire et mailler l'affichage. Rien n'est touché (corps affichés, solide vivant, document) ; document modifié pendant une pause → préchauffe abandonnée, le rejeu final refait ce qui manque. Filets modélisés laissés au rejeu final (worker).
+- **Affichage** : seulement si la régénération dépasse 300 ms (pas de clignotement sur les petites pièces) ; clics et touches retenus tant que la barre est là (pas d'édition ni de Ctrl+Z au milieu).
+- **Limite** : une modification ordinaire (OK d'une fonction) reste un rejeu synchrone sans barre.
+- **Tests** : `test_regen_progression` (vrai noyau, Cache Piles, Support Pédale, Perçages : une tranche par fonction, solide identique au rejeu habituel et même topologie qu'à froid, rejeu final ≈ 10 × plus rapide après préchauffe) ; banc `tests/appvm` en rejeu synchrone par défaut (`__regenSync`) ; vérifié dans le navigateur (Cache Piles : barre à 0,4 s, 42 étapes, noms et esquisses) ; `npm run ci:full`.

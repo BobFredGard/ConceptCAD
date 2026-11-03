@@ -51,6 +51,7 @@ const SUITES = [
   'test_repeat_circ_tour',
   'test_repeat_corps',
   'test_corps_suppression',
+  'test_regen_progression',
   'test_filet_visibilite',
   'test_corps_temps',
   'test_esquisse_angle',
