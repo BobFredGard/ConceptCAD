@@ -8,7 +8,7 @@
    Ouvrir / Nouveau : si la pièce a des modifications non enregistrées → Enregistrer / Ne pas
    enregistrer / Annuler, puis l'espace est VIDÉ (docResetEmpty) avant de charger. */
 const MFF_FS=typeof window!=='undefined'&&typeof window.showOpenFilePicker==='function';
-const MFF_TYPES=[{description:'Projet ConceptCAD',accept:{'application/json':['.conceptcad','.miniFusion','.json']}}];
+const MFF_TYPES=[{description:'Projet ConceptCAD',accept:{'application/json':['.conceptcad','.gz','.miniFusion','.json']}}];
 let mffHandle=null,mffName='',mffSavedSig=null,mffFolder=null;
 function mffSig(){
   // empreinte du DOCUMENT (sans la vue, la sélection ni les replis) : « modifié depuis l'enregistrement »
@@ -178,7 +178,7 @@ async function mffBakMenu(anchor){
     :[{html:'<span style="opacity:.6">'+(mffHandle?'Aucune copie de secours pour ce fichier':'Pas encore de fichier sur le disque')+'</span>',fn:()=>{}}];
   mfPop(anchor,items);
 }
-function mffBase(n){return String(n||'').replace(/(\.conceptcad|\.minifusion(\.json)?|\.json)$/i,'');}
+function mffBase(n){return String(n||'').replace(/(\.conceptcad(\.gz)?|\.minifusion(\.json)?|\.json)$/i,'');}
 async function mffSave(){
   // true si enregistré
   if(mffHandle&&(MFF_FS||typeof mffHandle.createWritable==='function')){ // un lien qui sait écrire suffit
@@ -295,7 +295,7 @@ async function mffFolderPanel(){
     const path=document.createElement('div');path.className='mffNote';path.textContent='📁 '+mffFolder.name;body.appendChild(path);
     if(!(await mffPerm(mffFolder,'read'))){const n=document.createElement('div');n.className='mffNote';n.textContent='Permission nécessaire : cliquez « Changer de dossier… » ou rouvrez ce panneau.';body.appendChild(n);return;}
     const files=[];
-    try{for await(const [nm,h] of mffFolder.entries()){if(h.kind==='file'&&/\.(conceptcad|miniFusion|json)$/i.test(nm)){let t=0;try{t=(await h.getFile()).lastModified;}catch(e){}files.push({nm,h,t});}}}catch(e){}
+    try{for await(const [nm,h] of mffFolder.entries()){if(h.kind==='file'&&/\.(conceptcad|conceptcad\.gz|miniFusion|json)$/i.test(nm)){let t=0;try{t=(await h.getFile()).lastModified;}catch(e){}files.push({nm,h,t});}}}catch(e){}
     files.sort((a,b)=>b.t-a.t);
     const list=document.createElement('div');list.className='mffList';
     if(!files.length){const n=document.createElement('div');n.className='mffNote';n.textContent='Aucun projet (.conceptcad ou .miniFusion) dans ce dossier.';list.appendChild(n);}
@@ -313,7 +313,7 @@ function mffCss(){
   st.textContent=[
     '.mffDlgBg{position:fixed;inset:0;z-index:9000;background:rgba(0,0,0,.45);display:flex;align-items:center;justify-content:center}',
     '.mffDlg{min-width:380px;max-width:520px;padding:18px 20px;border-radius:14px;background:var(--surface);background-color:var(--bg);border:1px solid var(--border);box-shadow:0 20px 50px rgba(0,0,0,.5);color:var(--text)}',
-    '.mffMsg{font-size:.95rem;margin-bottom:16px;line-height:1.4}',
+    '.mffMsg{font-size:.95rem;margin-bottom:16px;line-height:1.4;white-space:pre-line}',
     '.mffBtns{display:flex;gap:8px;justify-content:flex-end}',
     '#mffName{font-size:.78rem;padding:3px 10px;border-radius:8px;color:var(--muted);max-width:260px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;cursor:default}',
     '#mffName.mod{color:var(--text)}',

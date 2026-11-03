@@ -376,7 +376,7 @@ input[type=range]{accent-color:var(--primary);width:100%}
  * peut changer sans rien casser. CACHE_VER (parcours FAO) reste indépendant.
  */
 
-const APP_VER='V0.46.0';
+const APP_VER='V0.46.1';
 try{console.log('[ConceptCAD] version '+APP_VER);}catch(e){}
 try{var mfSv=document.getElementById('mfSplashVer');if(mfSv)mfSv.textContent=APP_VER;}catch(e){} // écran de démarrage
 
@@ -14588,7 +14588,7 @@ async function asmCmdInsert(){
       const [h]=await window.showOpenFilePicker(o);if(!h)return;
       const f=await h.getFile();txt=await mffFileText(f);name=f.name;
     }else{
-      const f=await new Promise(res=>{const i=document.createElement('input');i.type='file';i.accept='.conceptcad,.miniFusion,.json';i.onchange=()=>res(i.files&&i.files[0]);i.click();});
+      const f=await new Promise(res=>{const i=document.createElement('input');i.type='file';i.accept='.conceptcad,.gz,.miniFusion,.json';i.onchange=()=>res(i.files&&i.files[0]);i.click();});
       if(!f)return;txt=await mffFileText(f);name=f.name;
     }
   }catch(e){if(!(e&&e.name==='AbortError'))alert('Lecture impossible : '+(e&&e.message||e));return;}
@@ -14768,7 +14768,16 @@ async function asmLinkHandle(L,ask){
     try{
       const seg=String(l.rel).split('/').filter(Boolean);let d=mffFolder;
       for(let i=0;i<seg.length-1;i++)d=await d.getDirectoryHandle(seg[i]);
-      return {h:await d.getFileHandle(seg[seg.length-1])};
+      const nm=seg[seg.length-1];
+      try{return {h:await d.getFileHandle(nm)};}
+      catch(e){
+        // V0.46.1 : source renommée « x.conceptcad.gz » ↔ « x.conceptcad » (compression à la main,
+        // puis format compressé d'office) : même fichier, le lien suit le nouveau nom
+        const alt=/\.gz$/i.test(nm)?nm.replace(/\.gz$/i,''):nm+'.gz';
+        const h=await d.getFileHandle(alt);
+        seg[seg.length-1]=alt;l.rel=seg.join('/');l.name=alt;
+        return {h};
+      }
     }catch(e){return {why:'source introuvable dans le dossier de projets : '+l.rel};}
   }
   if(l.key){
@@ -14838,7 +14847,35 @@ async function asmLinksCheck(ask){
   try{renderTree();}catch(e){}
   if(out.updated.length){try{faceEl.textContent='Mis à jour depuis le disque : '+out.updated.join(', ')+'.';}catch(e){}}
   else if(out.warn.length&&ask){try{faceEl.textContent='Liens non vérifiés : '+out.warn.join(', ')+'.';}catch(e){}}
+  if(ask&&out.warn.length&&!out.updated.length)await asmLinksWarnAsk();
   return out;
+}
+async function asmLinksWarnAsk(){
+  // V0.46.1 : clic sur 🔄 sans mise à jour possible → la raison, et de quoi la lever (choisir le
+  // dossier de projets, autoriser, relier la source). Chaque bouton est un clic : les fenêtres
+  // du système (dossier, fichier) exigent un geste de l'utilisateur.
+  const W=asmLinked().filter(L=>L.link.st==='warn');if(!W.length)return;
+  const NL=String.fromCharCode(10);
+  const txt=W.map(L=>'• '+L.name+' : '+(L.link.msg||'non vérifié')).join(NL);
+  const noDir=MFF_FS&&W.some(L=>L.link.rel&&!mffFolder);
+  const B=[];
+  if(noDir)B.push(['folder','Choisir le dossier de projets…',true]);
+  else if(W.some(L=>/autoriser/.test(L.link.msg||'')))B.push(['retry','Autoriser l’accès',true]);
+  if(MFF_FS)B.push(['relink','Désigner les fichiers sources…',!B.length]);
+  B.push(['cancel','Fermer']);
+  const c=await mffAsk('Composants liés non mis à jour :'+NL+txt
+    +(noDir?NL+NL+'Les sources sont cherchées dans le dossier de projets, qui n’est pas encore choisi dans ce navigateur (chaque adresse du site garde le sien).':'')
+    +(MFF_FS?'':NL+NL+'Les composants liés demandent Chrome ou Edge.'),B);
+  if(c==='folder'){if(await mffFolderChoose())await asmLinksCheck(true);return;}
+  if(c==='retry'){await asmLinksCheck(true);return;}
+  if(c!=='relink')return;
+  for(const L of W){
+    if(!asmComp(L.id)||!L.link||L.link.st!=='warn')continue;
+    const r=await mffAsk('Désigner le fichier source de « '+L.name+' » ('+(L.link.rel||L.link.name)+') ?',[['go','Choisir le fichier…',true],['skip','Passer'],['cancel','Arrêter']]);
+    if(r==='cancel')break;
+    if(r==='go')await asmCmdRelink(L.id);
+  }
+  try{renderTree();}catch(e){}
 }
 /* ── écrire les sources modifiées ici (avant l'hôte, Ctrl+S) ── */
 async function asmLinksWrite(){
@@ -59636,13 +59673,13 @@ $('btnLoad').onclick=()=>$('fileProj').click();
 $('fileProj').addEventListener('change',async e=>{
   const f=e.target.files[0];if(!f)return;
   try{
-    const txt=await mffFileText(f);const nm=f.name.replace(/(\.conceptcad|\.minifusion(\.json)?|\.json)$/i,'');
+    const txt=await mffFileText(f);const nm=f.name.replace(/(\.conceptcad(\.gz)?|\.minifusion(\.json)?|\.json)$/i,'');
     if(bundleIs(txt))await bundleRestore(txt,{name:nm});          // .conceptcad / .miniFusion : doc + trajectoires
     else{await deserialise(txt);doc.name=nm;rebuild();renderProps();} // ancien .minifusion.json
   }catch(err){alert('Projet illisible : '+err.message);}
   e.target.value='';
 });
-try{$('fileProj').accept='.conceptcad,.miniFusion,.json,.minifusion.json';}catch(e){}
+try{$('fileProj').accept='.conceptcad,.gz,.miniFusion,.json,.minifusion.json';}catch(e){}
 try{$('btnSaveAs').title='Sauver sous… (.conceptcad : document + trajectoires)';}catch(e){}
 try{$('btnLoad').title='Ouvrir un projet (.conceptcad, ou ancien .miniFusion / .minifusion.json)';}catch(e){}
 
@@ -60828,7 +60865,7 @@ function validateEnd(v){
    Ouvrir / Nouveau : si la pièce a des modifications non enregistrées → Enregistrer / Ne pas
    enregistrer / Annuler, puis l'espace est VIDÉ (docResetEmpty) avant de charger. */
 const MFF_FS=typeof window!=='undefined'&&typeof window.showOpenFilePicker==='function';
-const MFF_TYPES=[{description:'Projet ConceptCAD',accept:{'application/json':['.conceptcad','.miniFusion','.json']}}];
+const MFF_TYPES=[{description:'Projet ConceptCAD',accept:{'application/json':['.conceptcad','.gz','.miniFusion','.json']}}];
 let mffHandle=null,mffName='',mffSavedSig=null,mffFolder=null;
 function mffSig(){
   // empreinte du DOCUMENT (sans la vue, la sélection ni les replis) : « modifié depuis l'enregistrement »
@@ -60998,7 +61035,7 @@ async function mffBakMenu(anchor){
     :[{html:'<span style="opacity:.6">'+(mffHandle?'Aucune copie de secours pour ce fichier':'Pas encore de fichier sur le disque')+'</span>',fn:()=>{}}];
   mfPop(anchor,items);
 }
-function mffBase(n){return String(n||'').replace(/(\.conceptcad|\.minifusion(\.json)?|\.json)$/i,'');}
+function mffBase(n){return String(n||'').replace(/(\.conceptcad(\.gz)?|\.minifusion(\.json)?|\.json)$/i,'');}
 async function mffSave(){
   // true si enregistré
   if(mffHandle&&(MFF_FS||typeof mffHandle.createWritable==='function')){ // un lien qui sait écrire suffit
@@ -61115,7 +61152,7 @@ async function mffFolderPanel(){
     const path=document.createElement('div');path.className='mffNote';path.textContent='📁 '+mffFolder.name;body.appendChild(path);
     if(!(await mffPerm(mffFolder,'read'))){const n=document.createElement('div');n.className='mffNote';n.textContent='Permission nécessaire : cliquez « Changer de dossier… » ou rouvrez ce panneau.';body.appendChild(n);return;}
     const files=[];
-    try{for await(const [nm,h] of mffFolder.entries()){if(h.kind==='file'&&/\.(conceptcad|miniFusion|json)$/i.test(nm)){let t=0;try{t=(await h.getFile()).lastModified;}catch(e){}files.push({nm,h,t});}}}catch(e){}
+    try{for await(const [nm,h] of mffFolder.entries()){if(h.kind==='file'&&/\.(conceptcad|conceptcad\.gz|miniFusion|json)$/i.test(nm)){let t=0;try{t=(await h.getFile()).lastModified;}catch(e){}files.push({nm,h,t});}}}catch(e){}
     files.sort((a,b)=>b.t-a.t);
     const list=document.createElement('div');list.className='mffList';
     if(!files.length){const n=document.createElement('div');n.className='mffNote';n.textContent='Aucun projet (.conceptcad ou .miniFusion) dans ce dossier.';list.appendChild(n);}
@@ -61133,7 +61170,7 @@ function mffCss(){
   st.textContent=[
     '.mffDlgBg{position:fixed;inset:0;z-index:9000;background:rgba(0,0,0,.45);display:flex;align-items:center;justify-content:center}',
     '.mffDlg{min-width:380px;max-width:520px;padding:18px 20px;border-radius:14px;background:var(--surface);background-color:var(--bg);border:1px solid var(--border);box-shadow:0 20px 50px rgba(0,0,0,.5);color:var(--text)}',
-    '.mffMsg{font-size:.95rem;margin-bottom:16px;line-height:1.4}',
+    '.mffMsg{font-size:.95rem;margin-bottom:16px;line-height:1.4;white-space:pre-line}',
     '.mffBtns{display:flex;gap:8px;justify-content:flex-end}',
     '#mffName{font-size:.78rem;padding:3px 10px;border-radius:8px;color:var(--muted);max-width:260px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;cursor:default}',
     '#mffName.mod{color:var(--text)}',

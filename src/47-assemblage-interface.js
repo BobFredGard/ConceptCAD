@@ -577,7 +577,7 @@ async function asmCmdInsert(){
       const [h]=await window.showOpenFilePicker(o);if(!h)return;
       const f=await h.getFile();txt=await mffFileText(f);name=f.name;
     }else{
-      const f=await new Promise(res=>{const i=document.createElement('input');i.type='file';i.accept='.conceptcad,.miniFusion,.json';i.onchange=()=>res(i.files&&i.files[0]);i.click();});
+      const f=await new Promise(res=>{const i=document.createElement('input');i.type='file';i.accept='.conceptcad,.gz,.miniFusion,.json';i.onchange=()=>res(i.files&&i.files[0]);i.click();});
       if(!f)return;txt=await mffFileText(f);name=f.name;
     }
   }catch(e){if(!(e&&e.name==='AbortError'))alert('Lecture impossible : '+(e&&e.message||e));return;}

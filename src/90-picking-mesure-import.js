@@ -2654,13 +2654,13 @@ $('btnLoad').onclick=()=>$('fileProj').click();
 $('fileProj').addEventListener('change',async e=>{
   const f=e.target.files[0];if(!f)return;
   try{
-    const txt=await mffFileText(f);const nm=f.name.replace(/(\.conceptcad|\.minifusion(\.json)?|\.json)$/i,'');
+    const txt=await mffFileText(f);const nm=f.name.replace(/(\.conceptcad(\.gz)?|\.minifusion(\.json)?|\.json)$/i,'');
     if(bundleIs(txt))await bundleRestore(txt,{name:nm});          // .conceptcad / .miniFusion : doc + trajectoires
     else{await deserialise(txt);doc.name=nm;rebuild();renderProps();} // ancien .minifusion.json
   }catch(err){alert('Projet illisible : '+err.message);}
   e.target.value='';
 });
-try{$('fileProj').accept='.conceptcad,.miniFusion,.json,.minifusion.json';}catch(e){}
+try{$('fileProj').accept='.conceptcad,.gz,.miniFusion,.json,.minifusion.json';}catch(e){}
 try{$('btnSaveAs').title='Sauver sous… (.conceptcad : document + trajectoires)';}catch(e){}
 try{$('btnLoad').title='Ouvrir un projet (.conceptcad, ou ancien .miniFusion / .minifusion.json)';}catch(e){}
 

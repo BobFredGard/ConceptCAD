@@ -8,7 +8,7 @@ sont sorties le 2026-09-30j.
 Code dans `src/` · livrable `fusion_mvp.html` (généré par `build.js`) · architecture et
 garde-fous en tête de `src/00-entete-et-outils.js`.
 
-**549 versions**, de `2026-09-28b` à `V0.46.0` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
+**550 versions**, de `2026-09-28b` à `V0.46.1` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
 comme dans le fichier d'origine.
 
 ---
@@ -6459,3 +6459,11 @@ Demande : « faire en sorte que le format conceptcad soit un format toujours com
 - **Marque** : `"app":"ConceptCAD"` dans le fichier et le document (`serialise`, `bundleSerialise`) ; `"MiniFusion"` reste accepté à l'ouverture. Clés internes du navigateur inchangées.
 - **Gain** (exemples) : Cavité Usinage 11,2 → 3,8 Mo, Malaxeur Retard 5,3 → 1,7 Mo, Perçages 483 → 118 Ko, Axe 21 → 4 Ko. Une version antérieure de ConceptCAD n'ouvre pas un fichier compressé.
 - **Tests** : `tests/browser/fichier-gz.spec.cjs` (Chromium, vrai fichier : Axe en clair ouvert, écrit en gzip < moitié du texte, relu à l'identique, marqué ConceptCAD, contenu vide refusé et fichier intact, fichier gzip rouvert) ; `parcours.spec` composants liés (source réécrite compressée puis relue) ; `tests/lire-projet.cjs` : les tests Node lisent les exemples en clair ou compressés ; `npm run ci` et `npm run test:browser` (18/18).
+
+## V0.46.1 - Composants liés : la raison du ⚠ et sa solution au clic sur 🔄 ; source renommée « .conceptcad.gz » ↔ « .conceptcad » retrouvée
+Demande : capture de l'arbre (« 2 composant(s) lié(s) ⚠ ») : « pas de mise à jour » ; « ils s'appelaient conceptcad.gz ».
+- **Cause** : le clic sur 🔄 ne disait rien quand la vérification échouait (raison seulement au survol du ⚠ ou dans les propriétés du composant). Sources compressées à la main en `x.conceptcad.gz` puis renommées : le lien cherchait l'ancien nom (« source introuvable »). Le dossier de projets est aussi propre à chaque adresse du site (localhost, github.io) : lien créé ailleurs → « dossier de projets non choisi ».
+- **Boîte** (`asmLinksWarnAsk`, `src/47-composants-lies.js`) : clic sur 🔄 sans mise à jour → la liste des composants et leur raison, avec **Choisir le dossier de projets…** (dossier non choisi : puis nouvelle vérification), **Autoriser l'accès**, ou **Désigner les fichiers sources…** (un composant à la fois, `asmCmdRelink`) ; messages sur plusieurs lignes dans les boîtes `mffAsk`.
+- **Nom** (`asmLinkHandle`) : source absente sous son nom → même nom avec ou sans `.gz` ; trouvée, le lien retient le nouveau nom.
+- **`.conceptcad.gz`** : accepté par les fenêtres Ouvrir / Insérer, listé dans le dossier de projets, nom de pièce sans `.conceptcad.gz` (`mffBase`) ; contenu gzip lu comme depuis V0.46.0.
+- **Tests** : `tests/browser/fichier-gz.spec.cjs` 2 (Axe lié, source renommée en `.conceptcad.gz` et modifiée → mise à jour, lien sur le nouveau nom ; dossier non choisi → boîte avec la raison et « Choisir le dossier de projets… ») ; `npm run ci` et `npm run test:browser`.

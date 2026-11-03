@@ -122,7 +122,16 @@ async function asmLinkHandle(L,ask){
     try{
       const seg=String(l.rel).split('/').filter(Boolean);let d=mffFolder;
       for(let i=0;i<seg.length-1;i++)d=await d.getDirectoryHandle(seg[i]);
-      return {h:await d.getFileHandle(seg[seg.length-1])};
+      const nm=seg[seg.length-1];
+      try{return {h:await d.getFileHandle(nm)};}
+      catch(e){
+        // V0.46.1 : source renommée « x.conceptcad.gz » ↔ « x.conceptcad » (compression à la main,
+        // puis format compressé d'office) : même fichier, le lien suit le nouveau nom
+        const alt=/\.gz$/i.test(nm)?nm.replace(/\.gz$/i,''):nm+'.gz';
+        const h=await d.getFileHandle(alt);
+        seg[seg.length-1]=alt;l.rel=seg.join('/');l.name=alt;
+        return {h};
+      }
     }catch(e){return {why:'source introuvable dans le dossier de projets : '+l.rel};}
   }
   if(l.key){
@@ -192,7 +201,35 @@ async function asmLinksCheck(ask){
   try{renderTree();}catch(e){}
   if(out.updated.length){try{faceEl.textContent='Mis à jour depuis le disque : '+out.updated.join(', ')+'.';}catch(e){}}
   else if(out.warn.length&&ask){try{faceEl.textContent='Liens non vérifiés : '+out.warn.join(', ')+'.';}catch(e){}}
+  if(ask&&out.warn.length&&!out.updated.length)await asmLinksWarnAsk();
   return out;
+}
+async function asmLinksWarnAsk(){
+  // V0.46.1 : clic sur 🔄 sans mise à jour possible → la raison, et de quoi la lever (choisir le
+  // dossier de projets, autoriser, relier la source). Chaque bouton est un clic : les fenêtres
+  // du système (dossier, fichier) exigent un geste de l'utilisateur.
+  const W=asmLinked().filter(L=>L.link.st==='warn');if(!W.length)return;
+  const NL=String.fromCharCode(10);
+  const txt=W.map(L=>'• '+L.name+' : '+(L.link.msg||'non vérifié')).join(NL);
+  const noDir=MFF_FS&&W.some(L=>L.link.rel&&!mffFolder);
+  const B=[];
+  if(noDir)B.push(['folder','Choisir le dossier de projets…',true]);
+  else if(W.some(L=>/autoriser/.test(L.link.msg||'')))B.push(['retry','Autoriser l’accès',true]);
+  if(MFF_FS)B.push(['relink','Désigner les fichiers sources…',!B.length]);
+  B.push(['cancel','Fermer']);
+  const c=await mffAsk('Composants liés non mis à jour :'+NL+txt
+    +(noDir?NL+NL+'Les sources sont cherchées dans le dossier de projets, qui n’est pas encore choisi dans ce navigateur (chaque adresse du site garde le sien).':'')
+    +(MFF_FS?'':NL+NL+'Les composants liés demandent Chrome ou Edge.'),B);
+  if(c==='folder'){if(await mffFolderChoose())await asmLinksCheck(true);return;}
+  if(c==='retry'){await asmLinksCheck(true);return;}
+  if(c!=='relink')return;
+  for(const L of W){
+    if(!asmComp(L.id)||!L.link||L.link.st!=='warn')continue;
+    const r=await mffAsk('Désigner le fichier source de « '+L.name+' » ('+(L.link.rel||L.link.name)+') ?',[['go','Choisir le fichier…',true],['skip','Passer'],['cancel','Arrêter']]);
+    if(r==='cancel')break;
+    if(r==='go')await asmCmdRelink(L.id);
+  }
+  try{renderTree();}catch(e){}
 }
 /* ── écrire les sources modifiées ici (avant l'hôte, Ctrl+S) ── */
 async function asmLinksWrite(){

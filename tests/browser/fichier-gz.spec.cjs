@@ -49,3 +49,40 @@ test('fichier .conceptcad : gzip à l’écriture, clair ou gzip à la lecture, 
   await page.waitForFunction(()=>doc&&doc.name==='Axe gz'&&bodies.some(b=>b.shape),null,{timeout:120000});
   expect(err,'aucune erreur').toEqual([]);
 });
+
+// V0.46.1 : source d'un composant lié renommée « Axe.conceptcad » → « Axe.conceptcad.gz » ;
+// le lien la retrouve, suit le nouveau nom et se met à jour ; dossier non choisi → la raison
+// est donnée dans une boîte avec « Choisir le dossier de projets… »
+test('composant lié : source renommée en .conceptcad.gz retrouvée ; raison du ⚠ affichée',async({page})=>{
+  const err=[];
+  page.on('pageerror',e=>err.push('pageerror : '+e.message));
+  await page.goto('/ConceptCAD.html');
+  await page.waitForFunction(()=>typeof occtReady!=='undefined'&&(occtReady===true||/échec|indisponible/.test(occBaseMsg)),null,{timeout:200000});
+  await page.waitForFunction(()=>!skEdit&&rebuildDepth===0);
+  const axe=require('../lire-projet.cjs')(AXE);
+  const r=await page.evaluate(async axe=>{
+    const dir=await (await navigator.storage.getDirectory()).getDirectoryHandle('mf-gz',{create:true});
+    try{await dir.removeEntry('Axe.conceptcad.gz');}catch(e){}
+    const h=await dir.getFileHandle('Axe.conceptcad',{create:true});
+    await mffWriteSafe(h,axe,{noBak:true});
+    mffFolder=dir;doc.name='Banc';asmEnsure();
+    const L=await asmLinkInsert(h,axe,'Axe.conceptcad');
+    // renommée à la main, et modifiée : un repère en plus
+    const b=JSON.parse(axe);b.doc.cgeo=(b.doc.cgeo||[]).concat([{id:'rq',kind:'frame',how:'zx',name:'Repère GZ',refs:[],p:{},at:null,visible:true,fr:{o:[0,0,0],x:[1,0,0],y:[0,1,0],z:[0,0,1]},st:'ok',msg:''}]);
+    await mffWriteSafe(await dir.getFileHandle('Axe.conceptcad.gz',{create:true}),JSON.stringify(b),{noBak:true});
+    await dir.removeEntry('Axe.conceptcad');
+    const c=await asmLinksCheck(false);
+    const out={u:c.updated,rel:L.link.rel,rq:L.doc.cgeo.some(g=>g.id==='rq')};
+    // dossier non choisi (autre adresse du site) : le clic 🔄 explique et propose le dossier
+    mffFolder=null;L.link.st='ok';
+    let msg='',btn=[];const ask0=mffAsk;mffAsk=async(m,B)=>{msg=m;btn=B.map(x=>x[1]);return 'cancel';};
+    await asmLinksCheck(true);mffAsk=ask0;
+    return Object.assign(out,{msg,btn});
+  },axe);
+  expect(r.u).toEqual(['Axe']);
+  expect(r.rel).toBe('Axe.conceptcad.gz');
+  expect(r.rq).toBe(true);
+  expect(r.msg).toMatch(/Axe : dossier de projets non choisi/);
+  expect(r.btn).toContain('Choisir le dossier de projets…');
+  expect(err).toEqual([]);
+});
