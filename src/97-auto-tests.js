@@ -170,10 +170,10 @@ async function runValidateProgress(){
   try{
     if(regenWarmUseful()){
       try{occCkClear();}catch(e){}
-      if(await regenWarm('Régénération du modèle'))v.warm=true;
+      if(await regenWarm('Régénération du modèle',true))v.warm=true; // V0.44.4 : barre dès le clic
     }
     return validateEnd(v);
-  }finally{regenUiHide();}
+  }finally{try{await regenUiHold(REGEN_MIN_MS);}catch(e){}regenUiHide();}
 }
 function validateStart(){
   const L=[];let rep=0;

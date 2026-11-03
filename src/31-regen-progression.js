@@ -10,8 +10,10 @@
    rejeu rapide). La préchauffe ne touche ni à bodies, ni à occLive, ni au document : abandonnée si
    le document change pendant une pause, le rejeu final refait simplement ce qui manque.
    La barre n'apparaît qu'après REGEN_SHOW_MS (pas de clignotement sur les petites pièces) ; tant
-   qu'elle est là, clics et touches sont retenus (pas d'édition ni d'annulation au milieu). */
-const REGEN_SHOW_MS=300;
+   qu'elle est là, clics et touches sont retenus (pas d'édition ni d'annulation au milieu).
+   V0.44.4 (demande de Fred) : sur ⟳ Régénérer, geste explicite, la barre paraît dès le clic et
+   reste au moins REGEN_MIN_MS — le rejeu d'une pièce courante (~0,3 s) passait sous le seuil. */
+const REGEN_SHOW_MS=300,REGEN_MIN_MS=500;
 let regenRun=null,regenUi=null;
 function regenWarmUseful(){
   try{
@@ -32,16 +34,17 @@ function regenCol(kind,o){
   return kind==='sketch'?'#ff9f0a':'#64d2ff';
 }
 function regenSketchIds(f){const o=[];if(f.sketchId)o.push(f.sketchId);if(f.pathId&&f.pathId!==f.sketchId)o.push(f.pathId);return o;}
-function regenWarm(why){
+function regenWarm(why,tout){
   // Promesse → true si la préchauffe est allée au bout. La barre reste affichée (« Affichage du
   // modèle… ») pour le rejeu final : l'appelant appelle regenUiHide() après son rebuild().
+  // tout : barre affichée d'emblée (⟳ Régénérer), sans attendre REGEN_SHOW_MS.
   if(regenRun)return regenRun;
   if(!regenWarmUseful())return Promise.resolve(false);
-  regenRun=regenWarmRun(why).catch(()=>false).finally(()=>{regenRun=null;});
+  regenRun=regenWarmRun(why,tout).catch(()=>false).finally(()=>{regenRun=null;});
   return regenRun;
 }
-async function regenWarmRun(why){
-  const t0=performance.now();
+async function regenWarmRun(why,tout){
+  const t0=performance.now(),seuil=tout?0:REGEN_SHOW_MS;
   // Normalisations légères du début de rebuildInner (signatures identiques au rejeu final)
   try{importHydrate();}catch(e){}
   try{ensureBodies();}catch(e){}
@@ -56,6 +59,12 @@ async function regenWarmRun(why){
   const total=list.length+skAll.size,seenF=new Set(),seenS=new Set();
   const cols=[]; // couleurs des étapes traitées, dans l'ordre : la dernière colore la barre
   let g=null,FR=null,shown=false,lastPaint=t0,lastStep=t0;
+  if(tout){
+    // peinte avant la première fonction : elle peut à elle seule durer
+    regenUiShow(why);shown=true;regenUiSet(0,total,'','',[]);
+    await regenFrame();lastPaint=lastStep=performance.now();
+    if(stale())return false;
+  }
   try{
     g=occFinalShapeGen(upto,true);
     for(;;){
@@ -70,7 +79,7 @@ async function regenWarmRun(why){
         if(!seenF.has(f.id)){seenF.add(f.id);cols.push(regenCol('feature',f));}
       });
       const now=performance.now(),pas=now-lastStep;lastStep=now;
-      if(!shown&&now-t0>=REGEN_SHOW_MS){regenUiShow(why);shown=true;}
+      if(!shown&&now-t0>=seuil){regenUiShow(why);shown=true;}
       if(!shown)continue; // rien à peindre : pas de pause (aucune entrée possible non plus)
       const f=fs[0];
       const nom=f?(f.name||f.type)+(fs.length>1?' (+'+(fs.length-1)+' copie'+(fs.length>2?'s':'')+')':''):'';
@@ -123,8 +132,14 @@ function regenUiShow(why){
   b._why=why||'Régénération';
   try{(wrap||document.body).appendChild(b);document.body.appendChild(blk);}catch(e){}
   try{window.addEventListener('keydown',regenKeyBlock,true);}catch(e){}
-  regenUi={b,blk};
+  regenUi={b,blk,t:performance.now()};
   regenUiSet(0,0,'','');
+}
+function regenUiHold(ms){
+  // Laisse la barre à l'écran au moins ms depuis son apparition (le temps de la lire)
+  const u=regenUi;if(!u)return Promise.resolve();
+  const r=ms-(performance.now()-u.t);
+  return r>0?new Promise(k=>setTimeout(k,r)):Promise.resolve();
 }
 function regenUiSet(n,total,nom,esq,cols){
   const u=regenUi;if(!u)return;

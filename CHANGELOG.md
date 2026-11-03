@@ -8,7 +8,7 @@ sont sorties le 2026-09-30j.
 Code dans `src/` · livrable `fusion_mvp.html` (généré par `build.js`) · architecture et
 garde-fous en tête de `src/00-entete-et-outils.js`.
 
-**544 versions**, de `2026-09-28b` à `V0.44.3` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
+**545 versions**, de `2026-09-28b` à `V0.44.4` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
 comme dans le fichier d'origine.
 
 ---
@@ -6419,3 +6419,9 @@ Demande : depuis V0.44.0 les matières sont moins bien définies ; garder three 
 - **Correctif** (`src/98-rendu-reliefs.js`) : profondeurs de relief ~×2 (brossé, sablé, bois, grain, stries, couches ; moleté inchangé) — le lancer de rayons en hérite par `REL_DEF` ; rugosité couplée au relief ×3 (bosses et creux ne renvoient plus la même lumière) ; teinte qui suit le relief (creux ~7 % plus sombres) pour lire le grain hors des reflets.
 - **Limite** : PE-HD orange de la Barquette presque blanc dans l'atelier RENDU (déjà le cas avant), son grain reste peu visible.
 - **Tests** : comparaison d'images r147 / V0.44.0 / version corrigée sur la Barquette (même vue) : grain de l'inox brossé ~×3 ; shaders compilés sans erreur ; `npm run ci`.
+
+## V0.44.4 - ⟳ Régénérer : la barre de progression s'affiche dès le clic
+Signalé : la barre de progression n'apparaît jamais sur ⟳ Régénérer.
+- **Cause** : la barre n'apparaît qu'après 0,3 s de calcul (pas de clignotement) ; sur une pièce courante, noyau chaud, la préchauffe dure moins (Support Pédale : 0,28 s), la barre restait invisible.
+- **Correctif** (`src/31-regen-progression.js`, `src/97-auto-tests.js`) : sur ⟳ Régénérer (geste explicite), barre peinte avant la première fonction et gardée au moins 0,5 s (`REGEN_MIN_MS`, `regenUiHold`) ; ouverture, chargement du noyau et brouillon gardent le seuil de 0,3 s.
+- **Tests** : navigateur, Support Pédale : barre visible dès le clic, 0 / 29 → 29 / 29 avec les noms des fonctions et esquisses, retirée après 0,5 s ; `test_regen_progression` ; `npm run ci:full`.
