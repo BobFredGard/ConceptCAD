@@ -129,10 +129,21 @@ sans équivalent v3 reste absente (l'app la teste : `BRepOffsetAPI_MakeThickSoli
 | Barquette (`CCFaceOffset`, intersection) | — | juste, 135 ms | **juste, 51 ms** |
 | `test_filetage_axe` seul | 26 s | 39 s | 55 s |
 
-Reste pour l'adopter : charger v3 + traducteur dans le navigateur et dans le worker de suppression de
-face (exceptions WebAssembly natives : Chrome/Edge 95+, Firefox 100+), essai réel par Fred, puis
-réécriture progressive des appels au format v3 et retrait du traducteur. Les filetages sont plus lents
-(hélices) : à regarder avant la bascule.
+### Essai dans le navigateur : `ConceptCAD.html?noyau=v3`
+
+Interrupteur caché (`OCCT_V3`, `src/96-noyau-occt-tiers-lgpl.js`) : avec `?noyau=v3` dans l'adresse
+(http seulement), la page importe `occt-build/out/v3/conceptcad_v3.js`, charge `compat-v3.cjs` + sa
+table et enveloppe la fabrique ; le worker de suppression de face fait de même (`import()` de la colle
+ES dans le worker). L'état affiche « [ESSAI noyau v3 — OCCT 8.0.1] ». Sans le paramètre : rien ne change.
+`occt-build/out/` n'est pas dans Git : l'essai demande un `node occt-build/build.cjs v3` préalable.
+
+- Tests navigateur sur v3 : `MF_NOYAU=v3 npx playwright test -c tests/browser/playwright.config.cjs --project=chromium`
+  → **17/17** (03/11/2026).
+- Suppression de face au worker (Perçages.step, cylindre) : même solide qu'avec l'actuel (9 faces, 87 452,9 mm³).
+
+Reste pour l'adopter : essai réel par Fred, filetages plus lents (hélices) à regarder, messages
+d'erreur du noyau (exceptions WebAssembly natives, Chrome/Edge 95+, Firefox 100+), publication des
+fichiers v3 avec l'application, puis réécriture progressive des appels au format v3 et retrait du traducteur.
 
 ## Installer Docker Desktop (à faire par l'utilisateur, droits administrateur)
 

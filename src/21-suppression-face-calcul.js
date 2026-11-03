@@ -68,8 +68,13 @@ function delWkMain(){
     const ko=e=>self.postMessage({t:'ko',err:String((e&&e.message)||e)});
     if(m.t==='boot'){
       try{
-        self.importScripts(m.js);
-        const fac=self.opencascadeFactory||self.opencascade;
+        let fac;
+        if(m.v3){ // essai noyau v3 (?noyau=v3, 96-noyau) : colle en module ES + traducteur des appels
+          fac=(await occtV3Compat(m.v3.compat,m.v3.table))((await import(m.js)).default);
+        }else{
+          self.importScripts(m.js);
+          fac=self.opencascadeFactory||self.opencascade;
+        }
         let mod=m.mod||null;
         occt=await fac({
           locateFile:()=>m.wasm,
@@ -127,7 +132,7 @@ function delWkSource(){
   // importScripts cherche ___cxa_can_catch sur self — posée AVANT ce chargement.
   const fns=[occBinPush,occDispose,occUnifyKeepEdges,occUnify,occCoqueValide,occBoxMinMax,occDelFaceDebord,
     occDeleteFacesOnce,occDelFacesTry,occBrepWrite,occBrepRead,occFaceAt,occtTypeName,occtCanCatch,occtExcInstall,
-    occCut,occCutEach,occThrCut];
+    occCut,occCutEach,occThrCut,occtV3Compat];
   return 'let occt=null,occtReady=false;const DEL_ISOLE_MAX='+DEL_ISOLE_MAX+',DEL_BREP_PATH='+JSON.stringify(DEL_BREP_PATH)+';\n'+fns.map(String).join('\n')+'\nocctExcInstall(self);\n('+delWkMain+')();\n';
 }
 function delWkStart(){
@@ -138,7 +143,8 @@ function delWkStart(){
   me.w.onmessage=ev=>delWkMsg(me,ev.data||{});
   me.w.onerror=ev=>{try{ev.preventDefault();}catch(e){}delWkCrash(me,(ev&&ev.message)||'erreur du worker');};
   me.boot=setTimeout(()=>delWkCrash(me,'démarrage du noyau de calcul trop long'),180000);
-  const msg={t:'boot',js:occtFileUrl('occt/opencascade.full.js'),wasm:occtFileUrl('occt/opencascade.wasm.wasm'),mod:delWkMod};
+  const msg={t:'boot',js:occtFileUrl(OCCT_FILES.js),wasm:occtFileUrl(OCCT_FILES.wasm),mod:delWkMod,
+    v3:OCCT_V3?{compat:occtFileUrl(OCCT_FILES.compat),table:occtFileUrl(OCCT_FILES.table)}:null};
   try{me.w.postMessage(msg);}catch(e){msg.mod=null;me.w.postMessage(msg);}
   return me;
 }

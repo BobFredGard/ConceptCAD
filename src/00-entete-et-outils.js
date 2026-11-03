@@ -151,6 +151,7 @@ async function occtFinishBoot(){
   occBaseMsg=occtReady
     ?'OCCT : prêt — prismes exacts, booléens Fuse/Cut, congés toutes arêtes, STEP.'
     :'OCCT : chargé mais incomplet — repli sur maillage (CSG).';
+  if(typeof OCCT_V3!=='undefined'&&OCCT_V3)occBaseMsg+=' [ESSAI noyau v3 — OCCT 8.0.1]'; // interrupteur ?noyau=v3 (96-noyau)
   occStatus();
   if(occtReady){
     // Recalcul systématique une fois le noyau prêt (même si un affichage existe) :

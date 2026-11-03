@@ -27,7 +27,7 @@ async function demarrerAxe(page){
   page.on('pageerror',e=>err.push('pageerror : '+e.message));
   page.on('dialog',d=>{err.push('dialog : '+d.message());d.dismiss().catch(()=>{});});
   page.on('console',m=>{if(m.type()==='error'&&/THREE|WebGL|shader/i.test(m.text()))err.push('console : '+m.text().slice(0,300));});
-  await page.goto('/ConceptCAD.html');
+  await page.goto('/ConceptCAD.html'+(process.env.MF_NOYAU?'?noyau='+process.env.MF_NOYAU:''));
   await page.waitForFunction(()=>typeof occtReady!=='undefined'&&(occtReady===true||/échec|indisponible/.test(occBaseMsg)),null,{timeout:200000});
   expect(await page.evaluate(()=>occtReady),'noyau OCCT').toBe(true);
   await page.waitForFunction(()=>!skEdit&&rebuildDepth===0);
