@@ -9,8 +9,12 @@
    V0.21.6 : multi-sélection — clic = ajouter / re-clic = retirer (surbrillance orange),
    distance commune, Appliquer (Entrée) / Échap. La fonction mémorise `faces` (toutes) et
    `ref` (la première, pour les chemins qui ne lisent qu'une face). Le même mode ÉDITE une
-   fonction existante (« Re-sélectionner »), comme la coque (87). */
-let mvMode=null; // null | {faces:[ref], dist, editing:id|null}
+   fonction existante (« Re-sélectionner »), comme la coque (87).
+
+   V0.41.0 : la face d'un congé ou d'un chanfrein (occBlendOfFace) n'est pas poussée : le
+   panneau propose sa TAILLE (rayon / distance), qui modifie la fonction congé elle-même
+   (comme Appuyer/Tirer de Fusion 360). « Déplacer la face quand même » garde l'ancien geste. */
+let mvMode=null; // null | {faces:[ref], dist, editing:id|null, blend:{feat,idx,r,cham,ref}|null}
 let mvGroup=null; // surbrillance 3D des faces retenues
 
 // Bouton « Déplacer une face » : la coque HTML étant générée et jamais éditée à la main,
@@ -39,7 +43,7 @@ function mvClearHl(){
 }
 function mvPaint(){
   mvClearHl();
-  if(mvMode)mvGroup=facesHlGroup(mvMode.faces,0xff9f0a,'mvFaces');
+  if(mvMode)mvGroup=facesHlGroup(mvMode.blend?(mvMode.blend.ref?[mvMode.blend.ref]:[]):mvMode.faces,0xff9f0a,'mvFaces');
 }
 function mvHelp(){
   const nf=mvMode?mvMode.faces.length:0;
@@ -92,12 +96,15 @@ function mvFaceUnder(e){
     const hit=occFaceOfHit(h.object,h.faceIndex);
     if(!hit||!hit.face)return null;
     const ref=occFaceRef(hit.face);
+    let blend=null;
+    if(mvMode&&!mvMode.editing){try{blend=occBlendOfFace(hit.face,hit.bd&&hit.bd.shape,hit.bd&&hit.bd.id);}catch(e){}}
     try{hit.face.delete();}catch(e){}
-    if(!ref)return null;
+    if(blend)blend.ref=ref;
+    if(!ref)return blend?{ref:null,ord:hit.ord,blend}:null;
     // `_ord`/`_bid` = session (surbrillance seule), jamais persistés tels quels.
     if(hit.bd)ref._bid=hit.bd.id;
     ref._ord=hit.ord;
-    return {ref:ref,ord:hit.ord};
+    return {ref:ref,ord:hit.ord,blend};
   }catch(e){return null;}
 }
 function mvFaceHover(e){
@@ -112,15 +119,59 @@ function mvFaceCommit(e){
     faceEl.textContent='Déplacement de face : cliquez une face plane ou cylindrique du solide exact.';
     return;
   }
+  if(hit.blend){
+    const f=doc.features.find(x=>x.id===hit.blend.feat);
+    if(f){
+      mvMode.blend=hit.blend;mvMode.faces=[];
+      parFxFrom(f.edges[hit.blend.idx[0]],mvMode.blend,['r']);
+      mvPaint();renderMvPanel();
+      faceEl.innerHTML='<b>📐 '+(hit.blend.cham?'Chanfrein':'Congé')+'</b><br><span class="note">Face de « '+f.name+' » : réglez sa '+
+        (hit.blend.cham?'distance':'taille (rayon)')+' puis <b>Appliquer</b>. Un autre clic choisit une autre face.</span>';
+      return;
+    }
+  }
+  if(!hit.ref)return;
+  mvMode.blend=null;
   const k=coqueKey(hit.ref);
   const i=mvMode.faces.findIndex(r=>coqueKey(r)===k);
   if(i>=0)mvMode.faces.splice(i,1);else mvMode.faces.push(hit.ref);
   mvPaint();renderMvPanel();mvHelp();
 }
 /* ---------- panneau ---------- */
+function renderMvBlendPanel(p){
+  const B=mvMode.blend,f=doc.features.find(x=>x.id===B.feat);
+  const lb=B.cham?'Chanfrein':'Congé';
+  const h=document.createElement('div');h.className='pnl-h';
+  h.textContent='📐 Taille du '+lb.toLowerCase();p.appendChild(h);
+  const n=document.createElement('span');n.className='note';
+  n.textContent='Face de « '+(f?f.name:lb)+' »'+(B.idx.length>1?' ('+B.idx.length+' arêtes)':'')+' : sa taille change dans la fonction elle-même.';
+  p.appendChild(n);
+  const row=document.createElement('div');row.className='pnl-row';row.style.marginTop='8px';
+  const lab=document.createElement('label');lab.textContent=(B.cham?'Distance':'Rayon')+' (mm)';row.appendChild(lab);
+  const inp=document.createElement('input');inp.type='text';inp.inputMode='decimal';
+  inp.id='mvBlendIn';inp.value=String(+(+B.r).toFixed(4)).replace('.',',');
+  parFx(inp,B,'r');
+  inp.onchange=()=>{
+    const v=parseFloat(String(inp.value).replace(',','.').replace(/\s/g,''));
+    if(!isFinite(v)||!(v>0)){inp.value=String(B.r).replace('.',',');faceEl.textContent=(B.cham?'Distance':'Rayon')+' invalide : un nombre positif.';return;}
+    B.r=v;
+  };
+  row.appendChild(inp);p.appendChild(row);
+  const btns=document.createElement('div');btns.className='pnl-btns';btns.style.marginTop='8px';
+  const ok=document.createElement('button');ok.className='primary';ok.textContent='✔ Appliquer';ok.onclick=mvApply;btns.appendChild(ok);
+  const q=document.createElement('button');q.textContent='Quitter';q.onclick=()=>exitMoveFaceMode();btns.appendChild(q);
+  p.appendChild(btns);
+  if(B.ref){
+    const mv=document.createElement('button');mv.textContent='Déplacer la face quand même';mv.style.marginTop='6px';
+    mv.title='Pousser cette face le long de sa normale, sans toucher au '+lb.toLowerCase();
+    mv.onclick=()=>{const r=B.ref;mvMode.blend=null;mvMode.faces=[r];mvPaint();renderMvPanel();mvHelp();};
+    p.appendChild(mv);
+  }
+}
 function renderMvPanel(){
   const p=document.getElementById('props');if(!p)return;
   p.innerHTML='';if(!mvMode)return;
+  if(mvMode.blend){renderMvBlendPanel(p);return;}
   const h=document.createElement('div');h.className='pnl-h';
   h.textContent=mvMode.editing?'📐 Édition du déplacement de face':'📐 Déplacement de face';
   p.appendChild(h);
@@ -161,8 +212,21 @@ function renderMvPanel(){
   n2.textContent='Chaque face se déplace le long de sa normale sortante : positif, elle avance ; négatif, elle rentre. Ses bords suivent les faces voisines (une dépouille ou un chanfrein se prolonge). Une face cylindrique change de rayon : un arbre qui avance grossit, un trou qui avance rétrécit.';
   p.appendChild(n2);
 }
+function mvBlendApply(){
+  const B=mvMode.blend,f=doc.features.find(x=>x.id===B.feat&&x.type==='xfillet');
+  exitMoveFaceMode(true);
+  if(!f){faceEl.textContent='Congé : fonction introuvable.';return;}
+  const was=(+f.edges[B.idx[0]].r||+f.radius||0);
+  docPushUndo('taille de « '+f.name+' »');
+  B.idx.forEach(i=>{const e=f.edges[i];if(!e)return;e.r=B.r;parFxCopy(B,e,['r']);});
+  repSyncForFeature(f); // les instances de la répétition suivent
+  sel={kind:'feature',id:f.id};
+  markDirty();rebuild();renderTree();renderProps();
+  faceEl.textContent=f.name+' : '+(B.cham?'distance':'rayon')+' '+String(+was.toFixed(4)).replace('.',',')+' → '+String(B.r).replace('.',',')+' mm.';
+}
 function mvApply(){
   if(!mvMode)return;
+  if(mvMode.blend){mvBlendApply();return;}
   if(!mvMode.faces.length){faceEl.textContent='Déplacement de face : retenez au moins une face.';return;}
   // On retire `_ord` (index BRep de la session) : surbrillance seule, rien pour le rejeu.
   const faces=mvMode.faces.map(r=>{const o={pos:r.pos.slice(),dim:r.dim.slice(),n:r.n.slice()};if(typeof r._bid==='string')o._bid=r._bid;return o;});

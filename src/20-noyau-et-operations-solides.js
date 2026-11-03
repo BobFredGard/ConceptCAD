@@ -1027,7 +1027,27 @@ function occSingleEdgeTool(shape,pts,r,chamfer,cham,firstN){
     const th2=bis(2*Math.PI*(k2+1)/N,2*Math.PI*k2/N,true); // passage dedans → dehors (côté fin)
     let al=th2-th1;while(al<0)al+=2*Math.PI;while(al>2*Math.PI)al-=2*Math.PI;
     if(!(al>0.05&&al<Math.PI-0.02))return null; // arête concave (ou plate) : repli OCCT
-    const d1=dir(th1),d2=dir(th2),b=nrm(add(d1,d2));
+    let d1=dir(th1),d2=dir(th2);
+    // Directions EXACTES dans les faces planes qui bordent l'arête : la bissection du
+    // classifieur n'est juste qu'à ~1e-4 rad. Le cylindre n'était alors plus tout à fait
+    // tangent et la découpe laissait deux languettes de 0,002 mm² le long des lignes de
+    // tangence ; le congé ou chanfrein SUIVANT sur ce corps échouait en silence (découpe
+    // « réussie », volume inchangé). Face courbe : la bissection reste.
+    const snap=d=>{
+      let best=null,bd=0.999;
+      occSubShapes(shape,'TopAbs_FACE').forEach(f=>{
+        const sd=occSurfDesc(f);
+        try{f.delete();}catch(e){}
+        if(sd.k!=='pl'||Math.abs(dot(sub(A,sd.p),sd.n))>1e-5||Math.abs(dot(sub(B,sd.p),sd.n))>1e-5)return;
+        let c=nrm(cross(sd.n,t));if(dot(c,d)<0)c=mul(c,-1);
+        if(dot(c,d)>bd){bd=dot(c,d);best=c;}
+      });
+      return best||d;
+    };
+    d1=snap(d1);d2=snap(d2);
+    al=Math.acos(Math.max(-1,Math.min(1,dot(d1,d2))));
+    if(!(al>0.05&&al<Math.PI-0.02))return null;
+    const b=nrm(add(d1,d2));
     let s=chamfer?r:r/Math.tan(al/2),s1=s,s2=s;
     if(chamfer&&cham){
       // D1 sur la première face, D2 sur l'autre. Les directions d1/d2 sont DANS les faces :
@@ -1111,6 +1131,8 @@ function occFilletRun(base,jobs,warns,chamfer,opts){
       }
       const tool=ed?occSingleEdgeTool(cur,ed.pts,j.r,chamfer,cham,firstN):null;
       if(tool){try{nx=occCut(cur,tool);}catch(e){nx=null;}try{tool.delete();}catch(e){}}
+      // Découpe « réussie » qui n'enlève rien (corps abîmé en amont) : repli sur le noyau
+      if(nx){const v0=occCoqueVolume(cur),v1=occCoqueVolume(nx);if(v0!=null&&v1!=null&&!(v0-v1>1e-6)){try{nx.delete();}catch(e){}nx=null;}}
       if(!nx&&ed){nx=mk(cur,[{src:ed.src,r:j.r,fn:j.fn||null}]);if(nx)warns.push(kindLabel+' : arête courbe ou concave — suivi de la chaîne tangente (noyau)');}
       if(nx){if(cur!==base){try{cur.delete();}catch(e){}}cur=nx;done++;}
       else warns.push(kindLabel+' isolé impossible ('+(chamfer?'distance trop grande ?':'rayon trop grand ?')+')');
@@ -1978,6 +2000,90 @@ function occApplyMoveFace(result,f){
   drop();
   if(cur!==result)try{result.delete();}catch(e){}
   return {shape:cur,warnings};
+}
+function occBlendOfFace(face,shape,bodyId){
+  // Congé ou chanfrein (fonction xfillet) qui a fait `face` : « Déplacer une face » change
+  // alors sa TAILLE au lieu de pousser la face (comme Appuyer/Tirer de Fusion 360).
+  // Les arêtes d'un congé ne sont gardées que par leur milieu d'arête VIVE d'origine (e.pos,
+  // rafraîchi à chaque rejeu) : on les reconnaît par la géométrie.
+  // Congé : face courbe de même rayon (cylindre, petit rayon d'un tore), l'arête vive à moins
+  // de 2 r (r (1/sin(φ/2) − 1) pour un dièdre φ : 0,41 r à 90°). Chaîne tangente : les faces
+  // voisines de même rayon sont parcourues jusqu'à celle qui borde une arête mémorisée.
+  // Chanfrein : face plane qui ne contient pas l'arête vive (les deux voisines la contiennent)
+  // et dont le pied de la perpendiculaire tombe dans la face.
+  // → {feat, idx:[entrées], r, cham} ou null.
+  const feats=tlActiveList().filter(f=>f.type==='xfillet'&&f.visible!==false&&Array.isArray(f.edges)&&
+    (!bodyId||occBodyOfFeat(f)===bodyId));
+  if(!feats.length||!face)return null;
+  const T=occt.GeomAbs_SurfaceType;
+  const blendR=f=>{
+    let ad=null;
+    try{
+      ad=new occt.BRepAdaptor_Surface_2(f,true);
+      const gt=ad.GetType();
+      if(gt===T.GeomAbs_Plane){const ax=ad.Plane().Axis(),d=ax.Direction(),l=ax.Location();return {pl:true,n:[d.X(),d.Y(),d.Z()],p:[l.X(),l.Y(),l.Z()]};}
+      if(gt===T.GeomAbs_Cylinder)return {r:ad.Cylinder().Radius()};
+      if(gt===T.GeomAbs_Torus)return {r:ad.Torus().MinorRadius()};
+      return {r:null}; // surface libre d'un congé de coin : rayon non lisible
+    }catch(e){return null;}
+    finally{try{if(ad)ad.delete();}catch(e){}}
+  };
+  const bin=[];
+  const dist=(f,p)=>{
+    const g=new occt.gp_Pnt_3(p[0],p[1],p[2]);bin.push(g);
+    const v=new occt.BRepBuilderAPI_MakeVertex(g);bin.push(v);
+    const vx=v.Vertex();bin.push(vx);
+    const d=occFaceDist(vx,f);return d?d.d:1e18;
+  };
+  const test=(f,s)=>{
+    let best=null;
+    feats.forEach(F=>{
+      const cham=!!F.chamfer;
+      if(cham!==!!s.pl)return;
+      F.edges.forEach((e,i)=>{
+        if(!e||!Array.isArray(e.pos))return;
+        const r=+e.r||+F.radius||0;if(!(r>0))return;
+        let sc;
+        if(cham){
+          const dp=Math.abs(occDot3(occSub3(e.pos,s.p),s.n));
+          if(dp<0.1*r||dp>1.5*Math.max(r,+F.cd2||0))return;
+          const df=dist(f,e.pos);
+          if(Math.abs(df-dp)>0.02*r+1e-3)return;
+          sc=Math.abs(df-dp)/r;
+        }else{
+          if(s.r!=null&&Math.abs(s.r-r)>1e-3*Math.max(1,r))return;
+          const df=dist(f,e.pos);
+          if(df>2*r)return;
+          sc=df/r;
+        }
+        if(!best||sc<best.sc)best={sc,F,i,r};
+      });
+    });
+    return best;
+  };
+  try{
+    const s0=blendR(face);if(!s0)return null;
+    let hit=test(face,s0);
+    if(!hit&&!s0.pl&&shape){
+      // Chaîne tangente : de proche en proche par les faces courbes de même rayon.
+      const all=occSubShapes(shape,'TopAbs_FACE');bin.push(...all);
+      const me=all.find(f=>f.IsSame(face));
+      if(me){
+        const group=[me];
+        for(let k=0;k<40&&!hit;k++){
+          const nx=occFacesTouching(all,group).filter(f=>{const s=blendR(f);return s&&!s.pl&&(s.r==null||s0.r==null||Math.abs(s.r-s0.r)<1e-3*Math.max(1,s0.r));});
+          if(!nx.length)break;
+          for(const f of nx){group.push(f);hit=test(f,blendR(f));if(hit)break;}
+        }
+      }
+    }
+    if(!hit)return null;
+    // Entrées en double (même arête, rayon égal) : toutes changent ensemble.
+    const P=hit.F.edges[hit.i].pos;
+    const idx=hit.F.edges.map((e,i)=>(e&&Array.isArray(e.pos)&&Math.hypot(e.pos[0]-P[0],e.pos[1]-P[1],e.pos[2]-P[2])<=0.75&&Math.abs((+e.r||+hit.F.radius||0)-hit.r)<1e-9)?i:-1).filter(i=>i>=0);
+    return {feat:hit.F.id,idx,r:hit.r,cham:!!hit.F.chamfer};
+  }catch(e){return null;}
+  finally{occDispose(bin);}
 }
 /* ---------- suppression de faces (touche Suppr, façon Fusion) ----------
    BRepAlgoAPI_Defeaturing retire les faces visées et PROLONGE les faces voisines jusqu'à

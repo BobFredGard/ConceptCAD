@@ -8,7 +8,7 @@ sont sorties le 2026-09-30j.
 Code dans `src/` · livrable `fusion_mvp.html` (généré par `build.js`) · architecture et
 garde-fous en tête de `src/00-entete-et-outils.js`.
 
-**545 versions**, de `2026-09-28b` à `V0.44.4` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
+**546 versions**, de `2026-09-28b` à `V0.45.0` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
 comme dans le fichier d'origine.
 
 ---
@@ -6425,3 +6425,11 @@ Signalé : la barre de progression n'apparaît jamais sur ⟳ Régénérer.
 - **Cause** : la barre n'apparaît qu'après 0,3 s de calcul (pas de clignotement) ; sur une pièce courante, noyau chaud, la préchauffe dure moins (Support Pédale : 0,28 s), la barre restait invisible.
 - **Correctif** (`src/31-regen-progression.js`, `src/97-auto-tests.js`) : sur ⟳ Régénérer (geste explicite), barre peinte avant la première fonction et gardée au moins 0,5 s (`REGEN_MIN_MS`, `regenUiHold`) ; ouverture, chargement du noyau et brouillon gardent le seuil de 0,3 s.
 - **Tests** : navigateur, Support Pédale : barre visible dès le clic, 0 / 29 → 29 / 29 avec les noms des fonctions et esquisses, retirée après 0,5 s ; `test_regen_progression` ; `npm run ci:full`.
+
+## V0.45.0 - Fonction Face : la face d'un congé ou d'un chanfrein règle sa taille (comme Fusion 360) ; chanfrein après un congé « arête seule » de nouveau appliqué
+Demande : reprendre l'idée de SolidCraft (Press Pull sur la face d'un congé = rayon modifié), relevée en comparant sa fonction Face à la nôtre ; puis « regarde » le chanfrein qui ne s'appliquait pas après un congé.
+- **Taille d'un congé / chanfrein** (`occBlendOfFace`, `src/85-deplacement-face.js`) : dans « Déplacer une face », un clic sur la face d'un congé ouvre « Taille du congé » (rayon actuel, ƒx accepté) ; Appliquer modifie la fonction congé elle-même (les entrées en double de la même arête suivent, répétitions synchronisées), sans ajouter de déplacement de face. Chanfrein : sa distance (première distance en mode deux distances / angle). « Déplacer la face quand même » garde l'ancien geste. Reconnaissance par la géométrie : congé = face courbe de même rayon (cylindre, petit rayon du tore) à moins de 2 R de l'arête vive mémorisée, chaîne tangente parcourue de proche en proche (bout arrondi d'un oblong) ; chanfrein = face plane qui ne contient pas l'arête vive et sur laquelle tombe sa perpendiculaire. Une face ordinaire n'est jamais prise pour un congé.
+- **Cause du chanfrein manquant** : un congé « arête seule » (`occSingleEdgeTool`) plaçait son outil d'après des directions de face trouvées par bissection du classifieur, justes à ~1e-4 rad ; le cylindre n'était plus tout à fait tangent et la découpe laissait deux languettes de 0,002 mm² le long des lignes de tangence. Le congé ou chanfrein SUIVANT sur ce corps « réussissait » sans rien enlever (compteur 1/1, aucune alerte).
+- **Correctif** : directions recalées exactement dans les faces planes qui bordent l'arête (bissection gardée pour une face courbe) — boîte congée R10 : 7 faces au lieu de 9 ; garde-fou : une découpe d'arête seule qui n'enlève aucun volume passe la main au noyau (MakeFillet / MakeChamfer).
+- **Documents existants** : les congés « arête seule » perdent ces deux languettes au rejeu (forme inchangée).
+- **Tests** : `test_face_conge_taille` (congé R10 reconnu, chaîne tangente R2 d'un oblong jusqu'au bout torique, chanfrein 6, faces ordinaires et bout R6 de l'oblong refusés, R10 → R15 rejoué, congé seul = 7 faces, congé R10 + chanfrein 6 = 238 421,6 mm³ exact) ; vérifié dans l'application (clic sur le congé → R20, volume exact, Ctrl+Z → R10, face ordinaire et « quand même » inchangés) ; `npm run ci:full`.
