@@ -8,7 +8,7 @@ sont sorties le 2026-09-30j.
 Code dans `src/` · livrable `fusion_mvp.html` (généré par `build.js`) · architecture et
 garde-fous en tête de `src/00-entete-et-outils.js`.
 
-**547 versions**, de `2026-09-28b` à `V0.45.1` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
+**548 versions**, de `2026-09-28b` à `V0.45.2` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
 comme dans le fichier d'origine.
 
 ---
@@ -6441,3 +6441,12 @@ Demande : « Pour la fonction face, il faudrait pouvoir sélectionner toutes les
 - **Décalage** (`occOffsetFaces`) : par le noyau, `BRepOffset_MakeOffset` face par face (liaison `CCFaceOffset`, jointure « intersection », décalage nul ailleurs) ; solide réparé par ShapeFix s'il ressort invalide (le noyau réécrit les faces courbes voisines en « surface décalée de 0 », même géométrie) ; refusé si le volume gagné n'a pas le signe de la distance ou s'écarte de plus d'un facteur 4 de l'aire de la chaîne × distance. Une face plane ou cylindrique seule (ou sa chaîne réduite à la même surface) garde le calcul historique (V0.34.0 / V0.40.1) : documents existants inchangés.
 - **Limites** : le noyau entraîne de lui-même les faces tangentes à une face décalée, case cochée ou non. Ancien noyau (`?noyau=actuel`) : seule la face cliquée bouge (plane ou cylindrique), avec une alerte.
 - **Tests** : `test_face_tangentes` (Barquette : chaîne de 17 faces ; +1 mm → +39 839 mm³ pour 40 401 mm² d'intérieur, −1 mm → −40 959 mm³, fond à −32,25 / −34,25, bord du dessus à z 0, solides valides ; sans la case, le fond seul ; congé B-spline seul décalé avec ses tangentes ; ancien noyau : fond seul + alerte) ; vérifié dans l'application (clic sur le fond → 17 faces en surbrillance, +2 mm en 1,2 s, réédition à −1,5 mm, deux Ctrl+Z) ; `npm run ci:full`.
+
+## V0.45.2 - G-code : perçages Fagor 8065 conformes au manuel ; dégagement Siemens en coordonnées machine (SUPA X) ; sens de pivotement CYCLE800 réglable par machine
+Demande : « est-ce que tu penses que les 2 machines seront sans trop d'erreurs ? » puis « vérifie » contre la doc en ligne ; « peut-on faire ces mouvements dans le repère posage ? » → « en SUPA », sur ConceptCAD et sur les posts Fusion ; « l'idée est que le plateau soit toujours tourné vers les outils qui se trouvent à gauche ».
+- **Vérification** : posts comparés au manuel Fagor 8060/8065 « Canned cycles (·M· model) » (réf. 1807), à son aide-mémoire, au manuel Siemens « Programmieranleitung Zyklen » 01/2008 et aux `.cps` Fusion. Siemens conforme (CYCLE800 mode 27 = rotation axe par axe Z, Y, X ; CYCLE81 / 82 / 83 / 84 paramètre par paramètre).
+- **Fagor, temporisation** : sur le 8065, `G82` est le perçage à pas variable (B, D, H… attendus), pas le perçage avec temporisation → `G98 G81 … I… K<s>` (temporisation = K du G81, comme le post Fusion).
+- **Fagor, débourrage G83** : le 8065 perce J passes de I depuis le plan de référence Z ; la course était comptée depuis le dessus du trou → trous trop courts de (RTP − RFP), 5 mm sur l'exemple des tests. Course = RTP − fond, passes jamais plus longues que le pas demandé (Z5 → −20, Q4 : 7 × 3,571 au lieu de 5 × 4) ; temporisation K transmise.
+- **Siemens, dégagement** : avant chaque pivotement et en fin de programme, `G0 SUPA X-200` (630) / `G0 SUPA X-430` (1520) au lieu de `G0 X…` : en plan incliné, X n'est plus pris dans le plan pivoté. Posts Fusion locaux `630-5axes.cps` et `1520-5axes.cps` modifiés de même (`G0 SUPA X…`, le G0 évite un X seul en mode G1 modal ; fichiers sous licence Autodesk, hors Git).
+- **Siemens, sens de pivotement** : `_DIR` de CYCLE800 lu dans la fiche machine (`swivelDir`, +1 par défaut = blocage du post Fusion de l'utilisateur : outil jamais au travers de la table, plateau tourné vers les outils à gauche) ; -1 pour l'autre solution.
+- **Tests** : `test_fao` (G83 Fagor 7 × 3,571 depuis Z5), `test_fao_percage` 6f (G81 K, plus de G82), `test_post_cycle800` 9 / 16 (SUPA X) et 20 / 21 (`swivelDir`) ; `npm run ci:full`.

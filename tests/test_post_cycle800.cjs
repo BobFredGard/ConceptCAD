@@ -26,7 +26,7 @@ const R=[
   "A(/CYCLE800\\(1,\"TABLE\",0,27,0,0,0,90\\.000,0\\.000,90\\.000,0,0,0,1,,1\\)/.test(g),'6 : CYCLE800 du plan de l’opération (C 90, B 0, A 90), jeu TABLE, mode 27');",
   "A(!/TRAORI|TRAFOOF|G0 B/.test(g),'7 : plus de TRAORI ni de B/C machine');",
   "const iT=g.indexOf('T1 D1'),iC=g.indexOf('CYCLE800');A(iT>0&&iC>iT,'8 : pivotement après le changement d’outil (comme le post Fusion)');",
-  "const pre=g.slice(0,iC).split('\\n').slice(-4,-1).join('|');A(pre==='G0 SUPA Z600 D0|G0 X-430|D1','9 : dégagement de la 1520 avant le pivotement ('+pre+')');",
+  "const pre=g.slice(0,iC).split('\\n').slice(-4,-1).join('|');A(pre==='G0 SUPA Z600 D0|G0 SUPA X-430|D1','9 : dégagement de la 1520 avant le pivotement ('+pre+')');",
   "const iR=g.lastIndexOf('CYCLE800(1,\"TABLE\",0,27,0,0,0,0.000,0.000,0.000,0,0,0,1,,1)');A(iR>iC&&iR<g.indexOf('M30'),'10 : table remise à plat avant M30');",
   // coordonnées dans le plan incliné : le dessus de l'opération (face X1 = 40 du centre commun) en Z
   "const zs=(g.slice(iC,iR).match(/G1 [^\\n]*Z(-?[0-9.]+)/g)||[]).map(l=>+l.match(/Z(-?[0-9.]+)/)[1]);",
@@ -42,7 +42,7 @@ const R=[
   " try{g2=faoPost(s,'siemens630').code;}finally{faoOpMovesTry=sv;faoOpMoves=sv2;}",
   " A(/\\nG3 X0\\.000 Y10\\.000 Z0\\.000 I-10\\.000 J0\\.000/.test(g2),'14 : arc de l’opération réécrit en un seul G3 dans le plan incliné');",
   " A((g2.match(/\\nG1 /g)||[]).length<6,'15 : pas de segments de l’arc linéarisé');",
-  " const pre2=g2.slice(0,g2.indexOf('CYCLE800')).split('\\n').slice(-4,-1).join('|');A(pre2==='G0 SUPA Z600 D0|G0 X-200|D1','16 : dégagement de la 630 ('+pre2+')');}",
+  " const pre2=g2.slice(0,g2.indexOf('CYCLE800')).split('\\n').slice(-4,-1).join('|');A(pre2==='G0 SUPA Z600 D0|G0 SUPA X-200|D1','16 : dégagement de la 630 ('+pre2+')');}",
   // réglage TRAORI conservé
   "faoMachine({id:'tstTraori',kind:'siemens',label:'Essai TRAORI',swivel:'traori'});",
   "{const gt=faoPost(s,'tstTraori').code;A(/TRAORI\\(1\\)/.test(gt)&&/G0 B-90\\.000 C0\\.000/.test(gt)&&!/CYCLE800/.test(gt),'17 : réglage machine swivel:\\'traori\\' : ancienne sortie TRAORI + B/C');}",
@@ -51,6 +51,10 @@ const R=[
   // ancien 3+2 du posage : pivotement du plan B/C inverse
   "s.orient={b:-30,c:10};{const gl=faoPost(s,'siemens1520').code;A(/CYCLE800\\(1,\"TABLE\",0,27,0,0,0,-10\\.000,30\\.000,0\\.000,/.test(gl),'19 : ancien 3+2 du posage (B−30 C10) : plan pivoté C−10 B30');}",
   "delete s.orient;",
+  // sens de pivotement (_DIR) réglable par machine : plateau tourné vers les outils
+  "op.frame={z:'+X',x:'+Y'};delete op.z;faoMachine({id:'tstDir',kind:'siemens',label:'Essai DIR',swivel:'cycle800',swivelDir:-1});",
+  "{const gd=faoPost(s,'tstDir').code;A(/CYCLE800\\(1,\"TABLE\",0,27,0,0,0,90\\.000,0\\.000,90\\.000,0,0,0,-1,,1\\)/.test(gd)&&!/,0,0,0,1,,1\\)/.test(gd),'20 : swivelDir −1 : _DIR = −1 sur tous les CYCLE800');}",
+  "A(/,0,0,0,1,,1\\)/.test(faoPost(s,'siemens630').code),'21 : 630 par défaut : _DIR = +1 (comme le post Fusion)');",
   "out",
 ].join('\n');
 let res;

@@ -15,10 +15,11 @@ faoMachine({
   axes: 5,                       // 5 : indexation 3+2 commandée ; 3 : usinage à plat
   swivel: 'cycle800',            // 3+2 : 'cycle800' (pivotement de plan, comme le post Fusion) ou 'traori' (TRAORI + B/C)
   swivelData: 'TABLE',           // jeu de données de pivotement de la CN (CYCLE800)
-  swivelRetract: ['G0 SUPA Z600 D0', 'G0 X-200', 'D1'],   // dégagement avant chaque pivotement
+  swivelDir: 1,                  // CYCLE800 _DIR : +1 / -1 = des deux positions possibles, celle où l'axe de référence de la CN a la plus grande / la plus petite valeur (plateau tourné vers les outils à gauche : à vérifier au 1er essai)
+  swivelRetract: ['G0 SUPA Z600 D0', 'G0 SUPA X-200', 'D1'],   // dégagement avant chaque pivotement
   numbers: null,                 // numérotation des lignes : null, ou { start: 10, step: 5 }
   coolant: { flood: 'M7', through: 'M8', off: 'M9' },   // arrosage, centre outil, arrêt
   toolChange: ['T{T} D1', 'M6'],  // changement d'outil (une ligne par élément)
   spindle: 'S{S} M3',            // mise en rotation
-  end: ['G0 SUPA Z600 D0', 'G0 X-200', 'M30']   // fin : après l'arrêt d'arrosage
+  end: ['G0 SUPA Z600 D0', 'G0 SUPA X-200', 'M30']   // fin : après l'arrêt d'arrosage
 });

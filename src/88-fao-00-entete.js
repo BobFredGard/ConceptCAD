@@ -13,7 +13,7 @@
 // Conventions reprises des .cps de référence :
 //  - Siemens : `; %_N_NOM_MPF`, G71/G17/G90/G94, G54, `T.. D..` + M6, S/M3,
 //    arrosage M7 (général) / M8 (broche) / M9 (arrêt), rétraction
-//    `G0 SUPA Z600 D0` + parc X machine (630 : X-200, 1520 : X-430),
+//    `G0 SUPA Z600 D0` + `G0 SUPA X` machine (630 : X-200, 1520 : X-430, V0.45.2),
 //    perçages MCALL CYCLE81/83/84 (phase 2 — le MVP déroule en G0/G1), fin M30,
 //    pas de numéros de séquence.
 //  - Fagor 8065 : commentaires `( ... )`, `G71/G17/G90/G94`, G54,

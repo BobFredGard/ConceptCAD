@@ -109,7 +109,7 @@ const vm=require('vm');
     "att(/CYCLE83\\(5\\.000, 0\\.000, 5\\.000, -20\\.000, , -4\\.000/.test(spk),'siemens : CYCLE83 Q=4 (golden, FDEP=RFP-Q)');",
     "att(!/CYCLE81\\(/.test(spk),'Q>0 : CYCLE81 remplac\\u00e9 par CYCLE83');",
     "const fpk=faoPost(jobPk,'fagor8065').code;",
-    "att(/G98 G83 X20\\.000 Y20\\.000 Z5\\.000 I-4\\.000 J5/.test(fpk),'fagor : G83 I=-4 J=5 (golden)');",
+    "att(/G98 G83 X20\\.000 Y20\\.000 Z5\\.000 I-3\\.571 J7/.test(fpk),'fagor : G83 depuis le plan Z5 jusqu\\u2019\\u00e0 -20 : 7 passes de 3,571 \\u2264 Q4 (golden)');",
     "att(!/G81 X/.test(fpk),'Q>0 fagor : G81 remplac\\u00e9 par G83');",
     // --- bibliothèque : Vc/fz -> S/F
     "const sf=faoToolSF({d:10,vc:250,fz:0.06,flutes:2});",

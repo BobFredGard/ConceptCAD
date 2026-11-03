@@ -80,7 +80,7 @@ const {loadApp}=require('./appvm.cjs');
     "const f3=faoPost(S,'fagor8065').code;",
     "A(!/G73/.test(f3)&&/G0 Z/.test(f3)&&!/G83/.test(f3),'6e : Fagor brise-copeaux : passes explicites (pas de G73 non confirmé)');",
     "op.cycle='drill';op.dwell=0.5;",
-    "A(/CYCLE82\\(/.test(faoPost(S,'siemens630').code)&&/G82 /.test(faoPost(S,'fagor8065').code),'6f : temporisation : CYCLE82 / G82');",
+    "{const fd=faoPost(S,'fagor8065').code;A(/CYCLE82\\(/.test(faoPost(S,'siemens630').code)&&/G81 [^\\n]* K0\\.500/.test(fd)&&!/G82/.test(fd),'6f : temporisation : CYCLE82 / G81 K (G82 = pas variable sur 8065)');}",
     "op.dwell=0;",
     // ── 7. pointage : foret à centrer + profondeur par Ø de chanfrein
     "op.cycle='spot';faoDrillAutoTool(S,op,5);const ts=faoToolById(S,op.toolId);",

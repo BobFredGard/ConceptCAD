@@ -376,7 +376,7 @@ input[type=range]{accent-color:var(--primary);width:100%}
  * peut changer sans rien casser. CACHE_VER (parcours FAO) reste indépendant.
  */
 
-const APP_VER='V0.45.1';
+const APP_VER='V0.45.2';
 try{console.log('[ConceptCAD] version '+APP_VER);}catch(e){}
 try{var mfSv=document.getElementById('mfSplashVer');if(mfSv)mfSv.textContent=APP_VER;}catch(e){} // écran de démarrage
 
@@ -34523,7 +34523,7 @@ function delFaceApply(){
 // Conventions reprises des .cps de référence :
 //  - Siemens : `; %_N_NOM_MPF`, G71/G17/G90/G94, G54, `T.. D..` + M6, S/M3,
 //    arrosage M7 (général) / M8 (broche) / M9 (arrêt), rétraction
-//    `G0 SUPA Z600 D0` + parc X machine (630 : X-200, 1520 : X-430),
+//    `G0 SUPA Z600 D0` + `G0 SUPA X` machine (630 : X-200, 1520 : X-430, V0.45.2),
 //    perçages MCALL CYCLE81/83/84 (phase 2 — le MVP déroule en G0/G1), fin M30,
 //    pas de numéros de séquence.
 //  - Fagor 8065 : commentaires `( ... )`, `G71/G17/G90/G94`, G54,
@@ -38385,7 +38385,9 @@ function faoPost(job,postId){
   let oriCur={b:ORI.b,c:ORI.c}, traOn=ori32&&!ax3&&!c800, fagWarn=false;
   // CYCLE800 : plan courant ('0,0,0' = à plat) ; null = à recommander (après un changement d'outil)
   let swCur='0,0,0', swUsed=false;
-  const swOut=function(S,dir){ faoPostLines(post.swivelRetract,{}).forEach(nc); nc(faoCycle800(post,S,dir)); };
+  // _DIR de CYCLE800 : solution choisie par la CN parmi les deux possibles (fiche machine swivelDir, +1 par défaut comme le post Fusion)
+  const swDir=post.swivelDir===-1?-1:1;
+  const swOut=function(S){ faoPostLines(post.swivelRetract,{}).forEach(nc); nc(faoCycle800(post,S,swDir)); };
   groups.forEach(function(g,gi){
     const t=g.tool;
     const S=faoFmtS(t.s), F=faoFmtF(t.f), FP=faoFmtF(t.plunge);
@@ -38426,7 +38428,7 @@ function faoPost(job,postId){
         const SW=frB?faoSwivelZYX(frB.rel.X,frB.rel.Y,frB.rel.Z):(ori32?{a:0,b:0-ORI.b,c:0-ORI.c}:{a:0,b:0,c:0});
         const key=SW.a+','+SW.b+','+SW.c;
         if(key!==swCur){
-          swOut(SW,1); swUsed=true;
+          swOut(SW); swUsed=true;
           swCur=key;
         }
         if(frB){
@@ -38498,12 +38500,18 @@ function faoPost(job,postId){
               if(DC.dwell>0)nc('G4 K'+faoFmtXYZ(DC.dwell));
               nc('G0 Z'+faoFmtXYZ(DC.RTP));
             }else if(H.peck){
-              const pl=Math.max(Math.floor(H.span/H.peck),1);
-              const inc=-(H.span/pl);
+              // V0.45.2 : le 8065 perce J passes de I DEPUIS le plan de référence Z (manuel
+              // cycles fixes ·M·, G83) — la course part de RTP, pas du dessus du trou (trous
+              // trop courts de RTP − RFP avant) ; passes jamais plus longues que le pas demandé.
+              const run=DC.RTP-H.DP;
+              const pl=Math.max(Math.ceil(run/H.peck-1e-9),1);
+              const inc=-(run/pl);
               nc('G98 G83 '+X+' '+Y+' Z'+faoFmtXYZ(DC.RTP)+
-                ' I'+faoFmtXYZ(inc)+' J'+pl+fw(FP));
+                ' I'+faoFmtXYZ(inc)+' J'+pl+(DC.dwell>0?' K'+faoFmtXYZ(DC.dwell):'')+fw(FP));
             }else if(DC.dwell>0){
-              nc('G98 G82 '+X+' '+Y+' Z'+faoFmtXYZ(DC.RTP)+
+              // V0.45.2 : sur le 8065, G82 = perçage à pas VARIABLE ; la temporisation au
+              // fond est le K du G81 (manuel cycles fixes ·M·, comme le post Fusion).
+              nc('G98 G81 '+X+' '+Y+' Z'+faoFmtXYZ(DC.RTP)+
                 ' I'+faoFmtXYZ(H.DP)+' K'+faoFmtXYZ(DC.dwell)+fw(FP));
             }else{
               nc('G98 G81 '+X+' '+Y+' Z'+faoFmtXYZ(DC.RTP)+
@@ -38595,7 +38603,7 @@ function faoPost(job,postId){
   // 3+2 : annuler la transformation AVANT les coordonnées machine de fin (SUPA/park).
   if(traOn)nc('TRAFOOF');
   nc(CO.off);
-  if(c800&&swUsed&&swCur!=='0,0,0')swOut({a:0,b:0,c:0},1); // table remise à plat (post Fusion : onClose)
+  if(c800&&swUsed&&swCur!=='0,0,0')swOut({a:0,b:0,c:0}); // table remise à plat (post Fusion : onClose)
   // fin de la fiche machine (Fagor : retrait + #MSG[""] qui efface le message op — cav.txt N243150 ;
   // Siemens : SUPA Z600 + parc machine)
   faoPostLines(post.end,{ZRETR:faoFmtXYZ(retrPrev-oz),NAME:name}).forEach(nc);
@@ -38966,12 +38974,13 @@ faoMachine({
   axes: 5,                       // 5 : indexation 3+2 commandée ; 3 : usinage à plat
   swivel: 'cycle800',            // 3+2 : 'cycle800' (pivotement de plan, comme le post Fusion) ou 'traori' (TRAORI + B/C)
   swivelData: 'TABLE',           // jeu de données de pivotement de la CN (CYCLE800)
-  swivelRetract: ['G0 SUPA Z600 D0', 'G0 X-430', 'D1'],   // dégagement avant chaque pivotement
+  swivelDir: 1,                  // CYCLE800 _DIR : +1 / -1 = des deux positions possibles, celle où l'axe de référence de la CN a la plus grande / la plus petite valeur (plateau tourné vers les outils à gauche : à vérifier au 1er essai)
+  swivelRetract: ['G0 SUPA Z600 D0', 'G0 SUPA X-430', 'D1'],   // dégagement avant chaque pivotement
   numbers: null,                 // numérotation des lignes : null, ou { start: 10, step: 5 }
   coolant: { flood: 'M7', through: 'M8', off: 'M9' },   // arrosage, centre outil, arrêt
   toolChange: ['T{T} D1', 'M6'],  // changement d'outil (une ligne par élément)
   spindle: 'S{S} M3',            // mise en rotation
-  end: ['G0 SUPA Z600 D0', 'G0 X-430', 'M30']   // fin : après l'arrêt d'arrosage
+  end: ['G0 SUPA Z600 D0', 'G0 SUPA X-430', 'M30']   // fin : après l'arrêt d'arrosage
 });
 
 /* ═══════════════ PostPro/siemens-630.js — fiche machine ═══════════════ */
@@ -38992,12 +39001,13 @@ faoMachine({
   axes: 5,                       // 5 : indexation 3+2 commandée ; 3 : usinage à plat
   swivel: 'cycle800',            // 3+2 : 'cycle800' (pivotement de plan, comme le post Fusion) ou 'traori' (TRAORI + B/C)
   swivelData: 'TABLE',           // jeu de données de pivotement de la CN (CYCLE800)
-  swivelRetract: ['G0 SUPA Z600 D0', 'G0 X-200', 'D1'],   // dégagement avant chaque pivotement
+  swivelDir: 1,                  // CYCLE800 _DIR : +1 / -1 = des deux positions possibles, celle où l'axe de référence de la CN a la plus grande / la plus petite valeur (plateau tourné vers les outils à gauche : à vérifier au 1er essai)
+  swivelRetract: ['G0 SUPA Z600 D0', 'G0 SUPA X-200', 'D1'],   // dégagement avant chaque pivotement
   numbers: null,                 // numérotation des lignes : null, ou { start: 10, step: 5 }
   coolant: { flood: 'M7', through: 'M8', off: 'M9' },   // arrosage, centre outil, arrêt
   toolChange: ['T{T} D1', 'M6'],  // changement d'outil (une ligne par élément)
   spindle: 'S{S} M3',            // mise en rotation
-  end: ['G0 SUPA Z600 D0', 'G0 X-200', 'M30']   // fin : après l'arrêt d'arrosage
+  end: ['G0 SUPA Z600 D0', 'G0 SUPA X-200', 'M30']   // fin : après l'arrêt d'arrosage
 });
 
 /* ═══════════════ 88-fao-70-simulation.js — fao 70 simulation ═══════════════ */

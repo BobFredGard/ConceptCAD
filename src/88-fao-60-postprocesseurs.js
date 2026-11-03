@@ -168,7 +168,9 @@ function faoPost(job,postId){
   let oriCur={b:ORI.b,c:ORI.c}, traOn=ori32&&!ax3&&!c800, fagWarn=false;
   // CYCLE800 : plan courant ('0,0,0' = à plat) ; null = à recommander (après un changement d'outil)
   let swCur='0,0,0', swUsed=false;
-  const swOut=function(S,dir){ faoPostLines(post.swivelRetract,{}).forEach(nc); nc(faoCycle800(post,S,dir)); };
+  // _DIR de CYCLE800 : solution choisie par la CN parmi les deux possibles (fiche machine swivelDir, +1 par défaut comme le post Fusion)
+  const swDir=post.swivelDir===-1?-1:1;
+  const swOut=function(S){ faoPostLines(post.swivelRetract,{}).forEach(nc); nc(faoCycle800(post,S,swDir)); };
   groups.forEach(function(g,gi){
     const t=g.tool;
     const S=faoFmtS(t.s), F=faoFmtF(t.f), FP=faoFmtF(t.plunge);
@@ -209,7 +211,7 @@ function faoPost(job,postId){
         const SW=frB?faoSwivelZYX(frB.rel.X,frB.rel.Y,frB.rel.Z):(ori32?{a:0,b:0-ORI.b,c:0-ORI.c}:{a:0,b:0,c:0});
         const key=SW.a+','+SW.b+','+SW.c;
         if(key!==swCur){
-          swOut(SW,1); swUsed=true;
+          swOut(SW); swUsed=true;
           swCur=key;
         }
         if(frB){
@@ -281,12 +283,18 @@ function faoPost(job,postId){
               if(DC.dwell>0)nc('G4 K'+faoFmtXYZ(DC.dwell));
               nc('G0 Z'+faoFmtXYZ(DC.RTP));
             }else if(H.peck){
-              const pl=Math.max(Math.floor(H.span/H.peck),1);
-              const inc=-(H.span/pl);
+              // V0.45.2 : le 8065 perce J passes de I DEPUIS le plan de référence Z (manuel
+              // cycles fixes ·M·, G83) — la course part de RTP, pas du dessus du trou (trous
+              // trop courts de RTP − RFP avant) ; passes jamais plus longues que le pas demandé.
+              const run=DC.RTP-H.DP;
+              const pl=Math.max(Math.ceil(run/H.peck-1e-9),1);
+              const inc=-(run/pl);
               nc('G98 G83 '+X+' '+Y+' Z'+faoFmtXYZ(DC.RTP)+
-                ' I'+faoFmtXYZ(inc)+' J'+pl+fw(FP));
+                ' I'+faoFmtXYZ(inc)+' J'+pl+(DC.dwell>0?' K'+faoFmtXYZ(DC.dwell):'')+fw(FP));
             }else if(DC.dwell>0){
-              nc('G98 G82 '+X+' '+Y+' Z'+faoFmtXYZ(DC.RTP)+
+              // V0.45.2 : sur le 8065, G82 = perçage à pas VARIABLE ; la temporisation au
+              // fond est le K du G81 (manuel cycles fixes ·M·, comme le post Fusion).
+              nc('G98 G81 '+X+' '+Y+' Z'+faoFmtXYZ(DC.RTP)+
                 ' I'+faoFmtXYZ(H.DP)+' K'+faoFmtXYZ(DC.dwell)+fw(FP));
             }else{
               nc('G98 G81 '+X+' '+Y+' Z'+faoFmtXYZ(DC.RTP)+
@@ -378,7 +386,7 @@ function faoPost(job,postId){
   // 3+2 : annuler la transformation AVANT les coordonnées machine de fin (SUPA/park).
   if(traOn)nc('TRAFOOF');
   nc(CO.off);
-  if(c800&&swUsed&&swCur!=='0,0,0')swOut({a:0,b:0,c:0},1); // table remise à plat (post Fusion : onClose)
+  if(c800&&swUsed&&swCur!=='0,0,0')swOut({a:0,b:0,c:0}); // table remise à plat (post Fusion : onClose)
   // fin de la fiche machine (Fagor : retrait + #MSG[""] qui efface le message op — cav.txt N243150 ;
   // Siemens : SUPA Z600 + parc machine)
   faoPostLines(post.end,{ZRETR:faoFmtXYZ(retrPrev-oz),NAME:name}).forEach(nc);
