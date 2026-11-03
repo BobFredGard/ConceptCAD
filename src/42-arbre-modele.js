@@ -607,6 +607,8 @@ function treeFeatToBody(id,bodyId){
   const f=doc.features.find(x=>x.id===id),b=(doc.bodies||[]).find(x=>x.id===bodyId);
   if(!f||!b||f.repeatId||f.body===bodyId)return false;
   if(TREE_TO_BODY.indexOf(f.type)<0){try{faceEl.textContent='« '+f.name+' » vise des faces ou arêtes de son corps : elle ne change pas de corps (seules extrusion, révolution et perçage le peuvent).';}catch(e){}return false;}
+  const lock=featBodyLock(f);
+  if(lock){try{faceEl.textContent=lock;}catch(e){}return false;}
   docPushUndo('« '+f.name+' » vers « '+b.name+' »');
   f.body=bodyId;
   markDirty();rebuild();renderTree();renderProps();

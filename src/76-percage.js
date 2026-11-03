@@ -780,6 +780,8 @@ function holeThreadBodyShown(bid,memo){
   if(!bid)return true;
   if(memo&&memo.has(bid))return memo.get(bid);
   let r=!(doc.bodyVis&&doc.bodyVis[bid]===false);
+  // corps retiré (étape « Retirer » avant le marqueur) : plus aucun maillage, filets cachés
+  if(r&&typeof bodyRemovedAt==='function'){try{r=!bodyRemovedAt(bid,tlIdx());}catch(e){}}
   if(r){
     let seen=false,shown=false;
     (typeof bodies!=='undefined'&&bodies?bodies:[]).forEach(function(b){

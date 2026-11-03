@@ -130,6 +130,7 @@ function featIconOf(f){
   if(f.type==='xthread')return f._err?'⚠':'🔩'; // filetage d'un axe (76-filetage)
   if(f.type==='xmove')return '📐';
   if(f.type==='bmove')return '✥';
+  if(f.type==='bremove')return '⊘';
   if(f.type==='bscale')return f._err?'⚠':'⤡';
   if(f.type==='xdelface')return f._calc?'⏳':((f._m&&f._m.m<f._m.t)||f._err)?'⚠':'⌫'; // ⏳ : calcul au worker (21)
   if(f.type==='xdraft')return ((f._m&&f._m.m<f._m.t)||f._err||f._thin)?'⚠':'📐';
@@ -181,6 +182,7 @@ function repCanFeatureHint(f){
   if(f.type==='xfillet')return xLabel(xKindOf(f))+' · '+(f.edges||[]).length+' arête(s)'+xChamLabel(f);
   if(f.type==='xmove')return 'Déplacement de face · '+(+f.dist||0)+' mm';
   if(f.type==='bmove')return 'Déplacer un corps · '+(f.steps||[]).length+' étape(s)';
+  if(f.type==='bremove')return 'Corps retiré à partir de cette étape';
   if(f.type==='bscale')return bsName(f);
   if(f.type==='xdelface')return 'Suppression · '+(f.faces||[]).length+' face(s)';
   if(f.type==='xdraft')return 'Dépouillage · '+draftAngleEff(f).toFixed(1).replace('.',',').replace('-','−')+'° · '+(f.faces||[]).length+' face(s)';
@@ -721,6 +723,14 @@ function repDropBody(bid){
   if(doc.bodies.length&&doc.activeBody===bid)doc.activeBody=doc.bodies[0].id;
   return doc.bodies.length<n0;
 }
+function repDetachCopies(rp,bid){
+  // Les copies de rp rangées HORS du corps `bid` deviennent des fonctions ordinaires de leur
+  // corps (même géométrie, plus régénérées) : la répétition peut partir sans les emporter.
+  doc.features.forEach(f=>{
+    if(f.repeatId!==rp.id||f.body===bid)return;
+    delete f.repeatId;delete f.repIndex;delete f.repBodyKey;delete f._src;
+  });
+}
 function repBodyFor(rp,key,src){
   // Corps de l'exemplaire `key` (créé au besoin, couleur / transparence du corps source)
   rp.bodyMap=rp.bodyMap||{};
@@ -788,13 +798,17 @@ function repGenChildren(rp){
   // garde le corps de sa source (copié avec elle). Une instance de 1ʳᵉ passe prise comme source
   // (symétrie double) transmet sa clé : son image va dans un corps à part (image de l'image).
   const usedBodies=new Set();
+  // Retourne false quand l'exemplaire a été SUPPRIMÉ par l'utilisateur (rp.dropKeys,
+  // cf. delBody) : ni corps recréé, ni clone gardé.
   const setBody=(nf,src,idx)=>{
-    if(!repIsNewBody(rp)){delete nf.repBodyKey;return;}
+    if(!repIsNewBody(rp)){delete nf.repBodyKey;return true;}
     delete nf.cutBodies; // chaque exemplaire est un corps à part : sa découpe ne vise que lui
     const sb=occBodyOfFeat(src);
     const key=(src.repeatId===rp.id&&src.repBodyKey?src.repBodyKey:sb)+'@'+idx;
+    if((rp.dropKeys||[]).indexOf(key)>=0)return false;
     nf.repBodyKey=key;nf.body=repBodyFor(rp,key,(src.repeatId===rp.id&&src.repBodyKey)?src.repBodyKey.split('@')[0]:sb);
     usedBodies.add(nf.body);
+    return true;
   };
   // 2) Purge : instances hors bornes ou dont la source a disparu (+ esquisses orphelines).
   // Pour le miroir double, les instances de 2ᵉ passe sont recyclées à partir des instances
@@ -806,7 +820,7 @@ function repGenChildren(rp){
     sources.forEach(f=>{
       const c=take(idx,f.type,f.id);
       const nf=repCloneFeature(f,idx,skMap,featMap,cfg,c||null);
-      if(nf){nf.repeatId=rp.id;nf.repIndex=idx;setBody(nf,f,idx);if(c)reuse.set(idx+'|'+f.id,c);kids.push(nf);}
+      if(nf){nf.repeatId=rp.id;nf.repIndex=idx;if(!setBody(nf,f,idx))return;if(c)reuse.set(idx+'|'+f.id,c);kids.push(nf);}
     });
     return kids;
   };
@@ -830,7 +844,7 @@ function repGenChildren(rp){
       base.forEach(f=>{
         const c=take(i,f.type,f.id);
         const nf=repCloneFeature(f,i,skMap,featMap,cfg,c||null);
-        if(nf){nf.repeatId=rp.id;nf.repIndex=i;setBody(nf,f,i);if(c)reuse.set(i+'|'+f.id,c);rp.children.push(nf.id);kids.push(nf);}
+        if(nf){nf.repeatId=rp.id;nf.repIndex=i;if(!setBody(nf,f,i))return;if(c)reuse.set(i+'|'+f.id,c);rp.children.push(nf.id);kids.push(nf);}
       });
     }
   }else{
@@ -994,6 +1008,7 @@ function cutBodyCandidates(f){
   return (doc.bodies||[]).filter(e=>{
     if(!e||consumed.has(e.id))return false;
     if(doc.bodyVis&&doc.bodyVis[e.id]===false)return false;
+    if(bodyRemovedAt(e.id,i))return false;
     try{if(!bodyEnabledOf(e.id))return false;}catch(err){}
     try{return bodyBornAt(e.id,i);}catch(err){return true;}
   });
@@ -1036,6 +1051,44 @@ function cutBodiesField(f){
     markDirty();rebuild();renderTree();renderProps();refreshParts();
     try{faceEl.textContent=v==='all'?'« '+f.name+' » découpe les '+(cand.length+1)+' corps visibles.':'« '+f.name+' » ne découpe plus que « '+nm(own)+' ».';}catch(e){}
   };
+  r.appendChild(s);
+  return r;
+}
+// Corps d'une fonction, au choix dans son panneau (même effet qu'un glisser-déposer dans
+// l'arbre) : extrusion, révolution, balayage, perçage — pas les copies de répétition ni la
+// fonction qui crée son propre corps. Candidats : les corps déjà nés à cet instant de la timeline.
+function featBodyLock(f){
+  // Raison qui interdit de changer f de corps, ou '' : source d'une répétition « nouveau
+  // corps » (ses exemplaires — corps nommés, fonctions ajoutées — seraient recréés sous
+  // d'autres ids).
+  if(!f)return '';
+  if(doc.features.some(rp=>rp.type==='repeat'&&repIsNewBody(rp)&&(rp.base||[]).indexOf(f.id)>=0))
+    return '« '+f.name+' » est la source d’une répétition « nouveau corps » : la changer de corps recréerait ses exemplaires.';
+  return '';
+}
+function featBodyChoices(f){
+  if(!f||f.repeatId||f.newBody||TREE_TO_BODY.indexOf(f.type)<0||featBodyLock(f))return [];
+  const i=doc.features.indexOf(f),own=occBodyOfFeat(f);
+  // corps ordinaire (◧ Corps, migration) : il existe dès le départ ; un corps né d'une
+  // fonction (répétition, extrusion « nouveau corps », scission) seulement après elle
+  const plain=bid=>!repBodyOwner(bid)&&!doc.features.some(x=>(x.newBody===true&&x.body===bid)||x.newBody===bid);
+  const L=(doc.bodies||[]).filter(e=>{
+    if(e.id===own)return true;
+    if(bodyRemovedAt(e.id,i))return false;
+    try{return plain(e.id)||bodyBornAt(e.id,i);}catch(err){return true;}
+  });
+  return L.length>1?L:[];
+}
+function featBodyField(f){
+  const L=featBodyChoices(f);
+  if(!L.length)return null;
+  const r=document.createElement('div');r.className='pnl-row';
+  const lab=document.createElement('label');lab.textContent='Corps';r.appendChild(lab);
+  const s=document.createElement('select');s.className='featBodySel';
+  L.forEach(e=>{const o=document.createElement('option');o.value=e.id;o.textContent=e.name;s.appendChild(o);});
+  s.value=occBodyOfFeat(f);
+  s.title='Corps modifié par cette fonction';
+  s.onchange=()=>{if(!treeFeatToBody(f.id,s.value))s.value=occBodyOfFeat(f);};
   r.appendChild(s);
   return r;
 }
@@ -1196,31 +1249,96 @@ function featMove(id,dir){
   return true;
 }
 function delBody(id){
-  // Supprime le corps ET ses fonctions (avec leurs dépendances : congés, répétitions
-  // qui les consomment — delFeature cascade déjà). Les répétitions à cheval sur deux
-  // corps partent aussi, sinon leurs instances resteraient orphelines sans se régénérer.
+  // Supprime le corps et SES fonctions, SANS emporter les autres corps :
+  //  - corps exemplaire d'une répétition « nouveau corps » : l'exemplaire est retiré de la
+  //    répétition (rp.dropKeys), les autres exemplaires restent ; plus aucun → répétition retirée ;
+  //  - répétition dont toutes les sources sont dans ce corps : ses copies rangées dans
+  //    D'AUTRES corps sont DÉTACHÉES (fonctions ordinaires, géométrie inchangée) avant
+  //    qu'elle parte ; à cheval sur plusieurs corps, elle perd seulement ces sources ;
+  //  - combinaisons et découpes multi-corps des autres corps oublient ce corps ;
+  //  - les esquisses posées sur ses faces restent où elles sont (hôte périmé : 20/resolve).
   const e=(doc.bodies||[]).find(x=>x.id===id);
   if(!e)return;
-  // Corps d'un exemplaire de répétition « nouveau corps » : il est régénéré par la répétition,
-  // le supprimer seul n'aurait pas d'effet durable — on l'explique au lieu de le faire.
-  const own=typeof repBodyOwner==='function'?repBodyOwner(id):null;
-  if(own&&doc.features.some(f=>f.repeatId===own.id&&f.body===id)){
-    try{faceEl.textContent='« '+e.name+' » est un exemplaire de la répétition « '+own.name+' » : réduisez sa quantité, passez-la en « Unir » ou supprimez-la.';}catch(e2){}
-    return;
-  }
-  const kids=doc.features.filter(f=>f.body===id);
-  const kidIds=new Set(kids.map(f=>f.id));
-  const reps=doc.features.filter(f=>f.type==='repeat'&&(f.body===id||(f.base||[]).some(b=>kidIds.has(b))));
-  const nF=kids.length+reps.filter(r=>r.body!==id).length;
-  if(!confirm('Supprimer « '+e.name+' »'+(nF?(' et ses '+nF+' fonction(s)'):' (vide)')+' ?'))return;
+  const kids=doc.features.filter(f=>f.body===id&&!f.repeatId);
+  const nF=kids.filter(f=>f.type!=='repeat'&&!(f.cutBodies||[]).some(b=>b!==id)).length; // découpes multi-corps : gardées
+  if(!confirm('Supprimer « '+e.name+' »'+(nF?(' et ses '+nF+' fonction(s)'):'')+' ? Les autres corps sont conservés.'))return;
   docPushUndo('suppression de « '+e.name+' »');
-  reps.forEach(f=>delFeature(f));
-  doc.features.filter(f=>f.body===id).forEach(f=>delFeature(f));
+  // 1) exemplaire d'une répétition « nouveau corps »
+  doc.features.filter(rp=>rp.type==='repeat'&&rp.bodyMap).forEach(rp=>{
+    const keys=Object.keys(rp.bodyMap).filter(k=>rp.bodyMap[k]===id);
+    if(!keys.length)return;
+    rp.dropKeys=(rp.dropKeys||[]).concat(keys.filter(k=>(rp.dropKeys||[]).indexOf(k)<0));
+    if(!repGenChildren(rp))repRemoveRepeat(rp);
+  });
+  // 2) répétitions qui consomment des fonctions de ce corps
+  const srcIds=new Set(doc.features.filter(f=>f.body===id&&!f.repeatId).map(f=>f.id));
+  doc.features.filter(rp=>rp.type==='repeat'&&(rp.base||[]).some(b=>srcIds.has(b))).forEach(rp=>{
+    const keep=(rp.base||[]).filter(b=>!srcIds.has(b));
+    if(keep.length){
+      rp.base=keep;
+      if(rp.body===id){const k0=doc.features.find(x=>x.id===keep[0]);if(k0)rp.body=k0.body;}
+      repGenChildren(rp);return;
+    }
+    repDetachCopies(rp,id);
+    delFeature(rp);
+  });
+  // 3) ses fonctions — une découpe qui traverse aussi d'autres corps y reste
+  doc.features.filter(f=>f.body===id).forEach(f=>{
+    const o=Array.isArray(f.cutBodies)?f.cutBodies.filter(b=>b!==id&&doc.bodies.some(x=>x.id===b)):[];
+    if(o.length&&!f.repeatId){f.body=o[0];if(o.length>1)f.cutBodies=o.slice(1);else delete f.cutBodies;return;}
+    delFeature(f);
+  });
+  // 4) références des autres corps à celui-ci
+  doc.features.slice().forEach(f=>{
+    if(Array.isArray(f.cutBodies)){f.cutBodies=f.cutBodies.filter(b=>b!==id);if(!f.cutBodies.length)delete f.cutBodies;}
+    if(f.type==='combine'&&Array.isArray(f.tools)&&f.tools.indexOf(id)>=0){
+      f.tools=f.tools.filter(b=>b!==id);
+      if(!f.tools.length)delFeature(f);
+    }
+  });
   doc.bodies=doc.bodies.filter(x=>x.id!==id);
   if(!doc.bodies.length){const n=doc.bodySeq++;const nid='b'+n;doc.bodies.push({id:nid,name:'Corps '+n,c:null});}
   if(!doc.bodies.some(x=>x.id===doc.activeBody))doc.activeBody=doc.bodies[0].id;
   treeSel=[];sel={kind:'body',id:doc.activeBody};
   markDirty();rebuild();renderTree();renderProps();
+}
+
+// « Retirer » un corps (comme Fusion 360) : une ÉTAPE de la timeline {type:'bremove', body}
+// au marqueur — le corps disparaît à partir de là, ses fonctions et les autres corps restent.
+// Supprimer l'étape (ou reculer le marqueur avant elle) le fait revenir.
+function bodyRemoveAdd(id){
+  const e=(doc.bodies||[]).find(x=>x.id===id);
+  if(!e)return null;
+  const i=tlIdx(),L=i<0?doc.features:doc.features.slice(0,i);
+  if(L.some(f=>f.type==='bremove'&&f.body===id)){try{faceEl.textContent='« '+e.name+' » est déjà retiré à cet instant de la timeline.';}catch(err){}return null;}
+  const f={id:uid('br'),type:'bremove',name:'Retirer « '+e.name+' »',body:id,visible:true};
+  addFeature(f);
+  if(doc.activeBody===id){const o=doc.bodies.find(x=>x.id!==id);if(o)doc.activeBody=o.id;}
+  sel={kind:'feature',id:f.id};treeSel=[];
+  markDirty();rebuild();renderTree();renderProps();
+  try{faceEl.textContent='« '+e.name+' » retiré à partir de cette étape (timeline) : supprimez l’étape pour le faire revenir.';}catch(err){}
+  return f;
+}
+function bodyRemovedAt(bid,idx){
+  // true si une étape « Retirer » de ce corps précède idx (null = fin de la timeline)
+  const L=doc.features||[],n=idx==null||idx<0?L.length:idx;
+  for(let k=0;k<n;k++){const f=L[k];if(f&&f.type==='bremove'&&f.body===bid&&f.visible!==false)return true;}
+  return false;
+}
+let bremCtxBtn=null;
+function bremCtxSync(t){
+  // entrée du clic droit d'un corps dans l'arbre, juste après « Supprimer »
+  const m=document.getElementById('ctxMenu');if(!m)return;
+  if(!bremCtxBtn){
+    const b=document.createElement('button');b.textContent='⊘ Retirer (timeline)';
+    b.title='Comme Fusion 360 : ajoute une étape « Retirer » dans la timeline — le corps disparaît à partir de là, sans rien effacer';
+    const at=m.querySelector('button[data-act="del"]');
+    m.insertBefore(b,at?at.nextSibling:null);
+    b.onclick=()=>{const T=b._t;try{hideCtx();}catch(e){}if(T)bodyRemoveAdd(ctxBodyId(T)||T.id);};
+    bremCtxBtn=b;
+  }
+  bremCtxBtn._t=t;
+  bremCtxBtn.style.display=(t&&t.kind==='body'&&t.id&&(doc.bodies||[]).some(x=>x.id===t.id))?'':'none';
 }
 
 // ── sélection multiple + suppression ─────────────────────────────────────────
@@ -1631,6 +1749,11 @@ function renderProps(){
     if(typeof bmPick!=='undefined'&&bmPick&&bmPick.fid!==f.id)bmPickExit(true); // saisie d'un autre Déplacer (85)
     /* — déplacer un corps (85) — */
     if(f.type==='bmove'){bmoveProps(p,f);visDel(f);return;}
+    if(f.type==='bremove'){
+      const be=(doc.bodies||[]).find(x=>x.id===f.body);
+      pInfo('⊘ <b>'+(be?be.name:f.body)+'</b> est retiré à partir de cette étape de la timeline. Rien n’est effacé : supprimez cette étape (ou reculez le marqueur avant elle) pour le faire revenir.');
+      visDel(f);return;
+    }
     if(f.type==='bscale'){bscaleProps(p,f);visDel(f);return;} // échelle (85-echelle-corps)
     if(f.type==='xsplit'){splitProps(p,f);visDel(f);return;} // scinder (85-scinder)
     /* — déplacement de face — */
@@ -1777,6 +1900,10 @@ function renderProps(){
         const nb=new Set(doc.features.filter(k=>k.repeatId===f.id).map(k=>k.body));
         pNote('◧ '+nb.size+' corps créé(s) — un par exemplaire'+(repNewBodyEmpty(f)?'':' ; renommer, colorer ou combiner chacun dans l’arbre')+'.');
         if(repNewBodyEmpty(f))pNote('⚠ Aucune source n’ajoute de matière (découpe, congé, dépouille…) : les corps créés restent vides. Cochez aussi l’extrusion de base, ou choisissez « Unir ».');
+        if((f.dropKeys||[]).length)pBtns([['↺ Rétablir '+f.dropKeys.length+' exemplaire(s) supprimé(s)',()=>{
+          docPushUndo('exemplaires de « '+f.name+' » rétablis');
+          delete f.dropKeys;applyCfg();
+        }]]);
       }
       // 2026-10-23 : QUANTITÉ, original compris (6 = l'original + 5 copies) ; stocké : copies = quantité − 1
       const cnt=repQtyInput((+f.copies||1)+1,'Quantité, original compris (6 = l’original + 5 copies)');
@@ -1915,7 +2042,7 @@ function renderProps(){
       }
       fdynFoot(p,f);
     }
-    {const cb=cutBodiesField(f);if(cb)p.appendChild(cb);} // V0.15.12 : plusieurs corps visibles → tous ou un seul
+    {const cb=cutBodiesField(f)||featBodyField(f);if(cb)p.appendChild(cb);} // V0.15.12 : plusieurs corps visibles → tous ou un seul ; sinon corps de la fonction
     if(f.type==='xthread')renderThreadProps(p,f); // V0.35.0 : filetage d'un axe (76-filetage)
     if(f.type==='hole'){fdynEnsure(f);renderHoleProps(p,f);fdynFoot(p,f);} // V0.8.0 : OK / Annuler, flèche de profondeur
     /* — révolution — V0.8.0 : fenêtre dynamique (71-fenetre-dynamique) */

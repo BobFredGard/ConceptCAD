@@ -8,7 +8,7 @@ sont sorties le 2026-09-30j.
 Code dans `src/` · livrable `fusion_mvp.html` (généré par `build.js`) · architecture et
 garde-fous en tête de `src/00-entete-et-outils.js`.
 
-**533 versions**, de `2026-09-28b` à `V0.39.0` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
+**535 versions**, de `2026-09-28b` à `V0.40.1` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
 comme dans le fichier d'origine.
 
 ---
@@ -6337,3 +6337,19 @@ Demande : version adaptative de l'ébauche 3D (suite de V0.38.0, « si c'est une
 - **Passe non hachée** : en marche maxi, morceaux reliés jusqu'à 2·D et jetés sous D/2 (premier essai : remontées doublées, temps d'usinage inchangé).
 - **Mesures** (temps estimé, partout → marche 1 mm) : Cavité Test 17,1 → 15,2 min, Cavité Usinage 9,5 → 9,3 min, Malaxeur Retard 37,6 → 32,4 min ; à 0,5 mm les cavités (parois ~25°) gardent toutes leurs mini-passes. Calcul jusqu'à 1,8 × le mode partout.
 - **Tests** : `test_fao_minipasses_pentes` (îlot à flanc presque vertical et flanc à 30°, fraise droite et torique : 0 = sans marche, rien sur le flanc presque vertical, 5 cotes par niveau à 0,5 mm, une sur deux à 1,2 mm ; nettoyage) ; `npm run ci:full` 233/233 ; `npm run parcours` inchangé (seul écart, Perçage n° 11 de Perçages, déjà présent en V0.37.1).
+## V0.40.0 - Corps : supprimer sans perdre les autres, « Retirer » dans la timeline, corps choisi dans la fonction
+Demande : « il faut pouvoir supprimer un corps sans perdre tout le reste et activer un corps pour ajouter des opérations à ce corps ou donner la possibilité dans les fonctions de modifier tel ou tel corps » ; puis « Fusion 360 a créé dans le menu contextuel une suppression spéciale qui apparaît dans la timeline ».
+- **Cause** (exemple Griffe) : supprimer « Griffe Taraudée » emportait la Symétrie « nouveau corps » et donc « Griffe Lamée » entière ; supprimer « Griffe Lamée » était refusé (exemplaire de répétition).
+- **Supprimer un corps** (`delBody`) : un corps exemplaire d'une répétition « nouveau corps » part seul (`rp.dropKeys`, la répétition ne le régénère plus ; bouton « ↺ Rétablir » dans la répétition ; plus d'exemplaire → répétition retirée) ; une répétition dont toutes les sources sont dans le corps supprimé DÉTACHE ses copies rangées dans d'autres corps (`repDetachCopies` : fonctions ordinaires, géométrie inchangée) ; à cheval sur plusieurs corps, elle perd seulement ces sources ; une découpe qui traverse aussi d'autres corps y passe ; combinaisons et découpes multi-corps oublient le corps ; les esquisses posées sur ses faces restent en place.
+- **⊘ Retirer (timeline)** (clic droit d'un corps, comme Fusion 360) : étape `bremove` au marqueur — le corps disparaît à partir de là (filets cosmétiques compris), rien n'est effacé ; reculer le marqueur ou supprimer l'étape le fait revenir.
+- **Corps de la fonction** : ligne « Corps » dans le panneau d'une extrusion, révolution, balayage ou perçage (même effet qu'un glisser-déposer dans l'arbre) ; les découpes gardent « Corps visés ». La source d'une répétition « nouveau corps » ne change plus de corps (ses exemplaires seraient recréés).
+- **Tests** : `test_corps_suppression` (vrai noyau, Griffe : volumes identiques après chaque suppression, annuler, choix du corps, Retirer / marqueur / étape supprimée) ; `test_repeat_corps` mis à jour (l'exemplaire supprimé part seul) ; `npm run ci` 90/90.
+
+## V0.40.1 - CAO : la fonction Face prolonge les parois en dépouille aux coins arrondis (Barquette)
+Demande : « Corps 1 (2) (2) reçoit une fonction face […] je fais une Face de 5mm. Je pensais que les parois […] allaient être continuées. Ce n'est pas le cas, on a juste une extrusion de la face sélectionnée ».
+- **Cause** : la reprise des bords de la V0.34.0 (`BRepAlgoAPI_Defeaturing`) échoue quand les voisines sont tangentes entre elles. Sur une extrusion à dépouille, les coins arrondis sont des cylindres OBLIQUES (surfaces d'extrusion produites par DraftAngle, 15° aux raccords, ~20,7° en leur milieu) tangents aux parois planes : « les faces voisines ne se rejoignent pas », bord droit conservé avec une alerte.
+- **Repli** (`occMoveFaceRuledTool`, `src/20`) : pour une face plane, le contour est relevé de la distance, chaque bord suivant le prolongement EXACT de sa voisine — surface d'extrusion ou cylindre : translaté le long de la génératrice ; cône : mis à l'échelle depuis le sommet ; plan : segment entre les sommets relevés (deux plans : leur droite commune). Les parois de l'outil sont construites sur la géométrie de leur voisine (plan ; rectangle UV sur la surface même du coin), cousues en solide, puis ajoutées ou retirées.
+- **Sans couture** : outil et résultat copiés sans dupliquer la géométrie, pour que l'unification recolle chaque prolongement à sa paroi et à son coin d'origine (`BRepBuilderAPI_Copy` avec géométrie copie chaque surface : un coin n'était plus reconnu comme le même).
+- **Limites** : face percée, voisine B-spline ou congé tangent à la face → comportement inchangé (bord droit et alerte).
+- **Moteur** : le décalage face par face d'OpenCascade (`BRepOffset_MakeOffset`, l'équivalent de Fusion 360) n'est pas compilé dans opencascade.js 1.1.4 ; la recompilation du noyau est étudiée à part.
+- **Tests** : `test_face_depouille_tangente` (document réel : dessus monté de 5 mm, élargi de 5·tan 15° = 1,34 mm par côté, 18 faces comme avant le déplacement, solide valide, aucune alerte) ; `test_face_appuyer` et `test_xmove` inchangés ; `npm run ci:full`.

@@ -877,7 +877,8 @@ function showCtx(x,y,t){ctxTarget=t;$('ctxMenu').style.display='block';ctxPlace(
   // source que le panneau et que la vue 3D) — masqué ailleurs, comme l'export STEP.
   try{ ctxStyleShow('ctxMenu',!!(t&&t.kind==='body')); ctxStyleSync(); }catch(e){}
   try{ asmCtxSync(t,x,y); }catch(e){} // composant depuis ce corps, déplacer vers un composant (48)
-  try{ bmCtxSync('ctxMenu',t); }catch(e){}try{ bsCtxSync('ctxMenu',t); }catch(e){}} // déplacer le corps (85)
+  try{ bmCtxSync('ctxMenu',t); }catch(e){}try{ bsCtxSync('ctxMenu',t); }catch(e){} // déplacer le corps (85)
+  try{ bremCtxSync(t); }catch(e){}} // retirer le corps dans la timeline (40)
 function hideCtx(){$('ctxMenu').style.display='none';}
 function ctxBodyId(t){
   // Cible du clic-droit → CORPS conteneur. L'id affiché n'est PAS toujours celui
