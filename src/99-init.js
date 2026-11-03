@@ -69,7 +69,7 @@ try{
     // builtVersion=-1 : la garde « rien n'a changé » court-circuterait sinon le rejeu,
     // puisque restoreViewCache vient de poser builtHash.
     builtVersion=-1;builtHash=null;builtEngine=null;
-    // V0.41.0 : noyau déjà prêt → barre de progression (31) ; sinon repli maillage, immédiat
+    // V0.42.0 : noyau déjà prêt → barre de progression (31) ; sinon repli maillage, immédiat
     if(regenWarmUseful()){try{await regenWarm('Ouverture du brouillon');}catch(e){}builtVersion=-1;}
     try{rebuild();}catch(e){}finally{regenUiHide();}
     try{if(occtReady)showAll();}catch(e){}

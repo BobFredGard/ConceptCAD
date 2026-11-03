@@ -16,7 +16,7 @@ jobs:
           lfs: true
       - uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: '22'
           cache: npm
       - run: npm ci
       - name: CI complet (build, syntaxe, 115 suites, lint)
@@ -34,7 +34,7 @@ jobs:
           lfs: true
       - uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: '22'
           cache: npm
       - run: npm ci
       - name: Installer Chromium (Playwright)

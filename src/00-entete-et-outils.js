@@ -21,7 +21,7 @@
  * peut changer sans rien casser. CACHE_VER (parcours FAO) reste indépendant.
  */
 
-const APP_VER='V0.41.0';
+const APP_VER='V0.42.0';
 try{console.log('[ConceptCAD] version '+APP_VER);}catch(e){}
 try{var mfSv=document.getElementById('mfSplashVer');if(mfSv)mfSv.textContent=APP_VER;}catch(e){} // écran de démarrage
 
@@ -151,7 +151,7 @@ async function occtFinishBoot(){
   occBaseMsg=occtReady
     ?'OCCT : prêt — prismes exacts, booléens Fuse/Cut, congés toutes arêtes, STEP.'
     :'OCCT : chargé mais incomplet — repli sur maillage (CSG).';
-  if(typeof OCCT_V3!=='undefined'&&OCCT_V3)occBaseMsg+=' [ESSAI noyau v3 — OCCT 8.0.1]'; // interrupteur ?noyau=v3 (96-noyau)
+  if(occtReady)occBaseMsg+=(typeof OCCT_V3!=='undefined'&&OCCT_V3)?' (OCCT 8.0.1)':' (ancien noyau OCCT 7.4)'; // 96-noyau : ?noyau=actuel
   occStatus();
   if(occtReady){
     // Recalcul systématique une fois le noyau prêt (même si un affichage existe) :
@@ -160,7 +160,7 @@ async function occtFinishBoot(){
     // rebuild() se croyait à jour et ne rejouait rien. Résultat mesuré : au 2e
     // rechargement de la page, le cache était valide, le rejeu sauté, occLive absent —
     // plus aucun congé, plus aucune esquisse sur face, plus aucune sélection de face.
-    // V0.41.0 : préchauffe avec barre de progression (31) — le rejeu final relit ses points de contrôle
+    // V0.42.0 : préchauffe avec barre de progression (31) — le rejeu final relit ses points de contrôle
     try{faceEl.textContent='Noyau prêt — recalcul exact…';builtVersion=-1;builtHash=null;builtEngine=null;
       await regenWarm('Recalcul exact du modèle');builtVersion=-1;rebuild();}catch(e){}
     finally{regenUiHide();}

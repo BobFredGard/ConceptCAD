@@ -1,4 +1,4 @@
-/* ---------- Régénération avec barre de progression (V0.41.0) ----------
+/* ---------- Régénération avec barre de progression (V0.42.0) ----------
    Le rejeu exact est SYNCHRONE : tant qu'il calcule, le navigateur ne repeint rien — sur un gros
    document (noyau chargé, fichier ouvert) l'écran restait figé plusieurs secondes sans rien dire.
    Plutôt que de rendre rebuild() asynchrone (une centaine d'appelants comptent sur un solide à

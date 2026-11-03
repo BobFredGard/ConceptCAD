@@ -2463,7 +2463,7 @@ async function deserialise(json,opts){
   }catch(e){}
   sel={kind:null,id:null};uidN=doc.sketches.length+doc.features.length+1;
   if(!opts||opts.rebuild!==false){
-    // V0.41.0 : gros document → barre de progression (31) ; sans noyau exact, rien ne change
+    // V0.42.0 : gros document → barre de progression (31) ; sans noyau exact, rien ne change
     if(regenWarmUseful()){await regenWarm('Ouverture — '+(doc.name||'document'));builtVersion=-1;}
     try{rebuild();}finally{regenUiHide();}
     renderProps();showAll();}

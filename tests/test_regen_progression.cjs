@@ -1,4 +1,4 @@
-// V0.41.0 : régénération avec barre de progression (src/31). La préchauffe vide le MÊME rejeu
+// V0.42.0 : régénération avec barre de progression (src/31). La préchauffe vide le MÊME rejeu
 // (occFinalShapeGen) par tranches, en rendant la main au navigateur entre deux fonctions ; le
 // rebuild() qui suit relit ses points de contrôle. Contrôles au noyau OCCT RÉEL, sur des exemples :
 //  1) la préchauffe rend la main (au moins une tranche par fonction) et va au bout ;

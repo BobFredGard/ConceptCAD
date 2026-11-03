@@ -164,9 +164,16 @@ class Worker{
   console.log('--- 3. Cavité Usinage, face pathologique ---');
   console.log('  face visée : '+o.kind+' '+JSON.stringify(o.box&&o.box.dim.map(v=>+v.toFixed(1)))+' sur '+o.nCav+' faces');
   A(o.t3.calc&&o.t3.ms<15000,'Suppr rend la main ('+o.t3.ms+' ms, import compris) avec « calcul en cours »');
-  A(o.t3.fini&&o.t3.total<60000,'calcul abandonné au délai ('+(o.t3.total/1000).toFixed(1)+' s de bout en bout, délai 3 s, démarrage du worker compris)');
-  A(o.t3.m&&o.t3.m.m===0&&/temps raisonnable/.test(o.t3.msgFin),'⚠ « '+o.t3.msgFin.slice(0,140)+' »');
-  A(o.t3.stop>=1,'worker arrêté net ('+o.t3.stop+' arrêt)');
+  // V0.42.0, noyau v3 (OCCT 8) : la face n'est plus « pathologique » — le noyau refuse proprement
+  // en moins d'une seconde (⚠ faces voisines), sans attendre le délai ; l'ancien noyau calculait
+  // ~10 min puis plantait (abandon au délai). Les deux issues sont justes : pièce intacte, ⚠ clair.
+  if(o.t3.fini&&o.t3.m&&o.t3.m.m===0&&o.t3.stop===0&&/ne se rejoignent pas/.test(o.t3.msgFin)){
+    A(o.t3.total<60000,'refus propre du noyau sans attendre le délai ('+(o.t3.total/1000).toFixed(1)+' s) : « '+o.t3.msgFin.slice(0,90)+' »');
+  }else{
+    A(o.t3.fini&&o.t3.total<60000,'calcul abandonné au délai ('+(o.t3.total/1000).toFixed(1)+' s de bout en bout, délai 3 s, démarrage du worker compris)');
+    A(o.t3.m&&o.t3.m.m===0&&/temps raisonnable/.test(o.t3.msgFin),'⚠ « '+o.t3.msgFin.slice(0,140)+' »');
+    A(o.t3.stop>=1,'worker arrêté net ('+o.t3.stop+' arrêt)');
+  }
   A(o.t3.apres&&o.t3.avant&&o.t3.apres.faces===o.nCav&&o.t3.avant.faces===o.nCav,'pièce intacte ('+(o.t3.apres&&o.t3.apres.faces)+' faces)');
   console.log('--- 4. worker relancé, face ordinaire ---');
   A(o.t4.calc&&o.t4.fini,'calcul relancé et terminé ('+o.t4.created+' workers créés)');

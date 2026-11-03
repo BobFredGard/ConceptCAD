@@ -36,9 +36,12 @@ jobs:
           mkdir -p _site/occt
           cp ConceptCAD.html _site/index.html
           cp -r threejs Exemples _site/
-          # seuls ces deux fichiers sont chargés par l'application (opencascade.full.wasm ne sert pas)
+          # noyau de l'application (V0.42.0) : OCCT 8, occt/v3 (colle, .wasm, traducteur et sa table) ;
+          # l'ancien noyau reste servi pour ?noyau=actuel (opencascade.full.wasm ne sert pas)
+          cp -r occt/v3 _site/occt/
           cp occt/opencascade.full.js occt/opencascade.wasm.wasm _site/occt/
           # un pointeur LFS (≈ 130 octets) à la place du .wasm ferait retomber l'app en mode maillage
+          test "$(head -c 4 _site/occt/v3/conceptcad_v3.wasm | od -An -c | tr -d ' ')" = '\0asm'
           test "$(head -c 4 _site/occt/opencascade.wasm.wasm | od -An -c | tr -d ' ')" = '\0asm'
           touch _site/.nojekyll
           du -sh _site

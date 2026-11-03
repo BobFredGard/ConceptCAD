@@ -376,7 +376,7 @@ input[type=range]{accent-color:var(--primary);width:100%}
  * peut changer sans rien casser. CACHE_VER (parcours FAO) reste indépendant.
  */
 
-const APP_VER='V0.41.0';
+const APP_VER='V0.42.0';
 try{console.log('[ConceptCAD] version '+APP_VER);}catch(e){}
 try{var mfSv=document.getElementById('mfSplashVer');if(mfSv)mfSv.textContent=APP_VER;}catch(e){} // écran de démarrage
 
@@ -506,7 +506,7 @@ async function occtFinishBoot(){
   occBaseMsg=occtReady
     ?'OCCT : prêt — prismes exacts, booléens Fuse/Cut, congés toutes arêtes, STEP.'
     :'OCCT : chargé mais incomplet — repli sur maillage (CSG).';
-  if(typeof OCCT_V3!=='undefined'&&OCCT_V3)occBaseMsg+=' [ESSAI noyau v3 — OCCT 8.0.1]'; // interrupteur ?noyau=v3 (96-noyau)
+  if(occtReady)occBaseMsg+=(typeof OCCT_V3!=='undefined'&&OCCT_V3)?' (OCCT 8.0.1)':' (ancien noyau OCCT 7.4)'; // 96-noyau : ?noyau=actuel
   occStatus();
   if(occtReady){
     // Recalcul systématique une fois le noyau prêt (même si un affichage existe) :
@@ -515,7 +515,7 @@ async function occtFinishBoot(){
     // rebuild() se croyait à jour et ne rejouait rien. Résultat mesuré : au 2e
     // rechargement de la page, le cache était valide, le rejeu sauté, occLive absent —
     // plus aucun congé, plus aucune esquisse sur face, plus aucune sélection de face.
-    // V0.41.0 : préchauffe avec barre de progression (31) — le rejeu final relit ses points de contrôle
+    // V0.42.0 : préchauffe avec barre de progression (31) — le rejeu final relit ses points de contrôle
     try{faceEl.textContent='Noyau prêt — recalcul exact…';builtVersion=-1;builtHash=null;builtEngine=null;
       await regenWarm('Recalcul exact du modèle');builtVersion=-1;rebuild();}catch(e){}
     finally{regenUiHide();}
@@ -6869,7 +6869,7 @@ function occReplayBody(bid,list){
   occReplayNest++;
   try{return occReplayBodyIn(bid,list);}finally{occReplayNest--;}
 }
-// V0.41.0 : le rejeu est un GÉNÉRATEUR qui rend la main avant chaque fonction ({bid,fs}).
+// V0.42.0 : le rejeu est un GÉNÉRATEUR qui rend la main avant chaque fonction ({bid,fs}).
 // La voie synchrone (occReplayBodyIn, occFinalShape) le vide d'une traite : même code, même
 // ordre, même résultat. La régénération avec barre de progression (31) le vide par tranches.
 function occDrain(g){for(;;){const r=g.next();if(r.done)return r.value;}}
@@ -8375,7 +8375,7 @@ function drawSketchHelpers(){
 }
 
 /* ═══════════════ 31-regen-progression.js — regen progression ═══════════════ */
-/* ---------- Régénération avec barre de progression (V0.41.0) ----------
+/* ---------- Régénération avec barre de progression (V0.42.0) ----------
    Le rejeu exact est SYNCHRONE : tant qu'il calcule, le navigateur ne repeint rien — sur un gros
    document (noyau chargé, fichier ouvert) l'écran restait figé plusieurs secondes sans rien dire.
    Plutôt que de rendre rebuild() asynchrone (une centaine d'appelants comptent sur un solide à
@@ -58962,7 +58962,7 @@ async function deserialise(json,opts){
   }catch(e){}
   sel={kind:null,id:null};uidN=doc.sketches.length+doc.features.length+1;
   if(!opts||opts.rebuild!==false){
-    // V0.41.0 : gros document → barre de progression (31) ; sans noyau exact, rien ne change
+    // V0.42.0 : gros document → barre de progression (31) ; sans noyau exact, rien ne change
     if(regenWarmUseful()){await regenWarm('Ouverture — '+(doc.name||'document'));builtVersion=-1;}
     try{rebuild();}finally{regenUiHide();}
     renderProps();showAll();}
@@ -59936,13 +59936,14 @@ function occtFileUrl(p){ // chemin relatif : marche en http(s) comme en file://
   try{const b=document.currentScript&&document.currentScript.src?document.currentScript.src:location.href;
     return new URL(p,b).href;}catch(e){return p;}
 }
-// Interrupteur caché (essai, 2026-11-03) : « ?noyau=v3 » dans l'adresse démarre le noyau recompilé
-// OCCT 8.0.1 (occt-build/, libcascade 3.1) au lieu d'occt/, avec le traducteur des appels
-// (occt-build/compat-v3.cjs). Sans le paramètre : rien ne change. Pas en file:// (le .wasm s'y lit mal).
-const OCCT_V3=(()=>{try{return location.protocol!=='file:'&&new URLSearchParams(location.search).get('noyau')==='v3';}catch(e){return false;}})();
+// Noyau (V0.42.0) : par défaut le noyau recompilé OCCT 8.0.1 (occt/v3, libcascade 3.1, fabriqué par
+// occt-build/), avec le traducteur des appels 1.1.1 (occt/v3/compat-v3.cjs). En secours :
+// « ?noyau=actuel » dans l'adresse = l'ancien noyau 1.1.1 (occt/opencascade.*). En file:// : l'ancien
+// (le .wasm s'y lit seulement par « ⚙ Noyau .wasm… » et la colle v3 est un module ES).
+const OCCT_V3=(()=>{try{return location.protocol!=='file:'&&location.protocol!=='about:'&&new URLSearchParams(location.search).get('noyau')!=='actuel';}catch(e){return false;}})();
 const OCCT_FILES=OCCT_V3
-  ?{js:'occt-build/out/v3/conceptcad_v3.js',wasm:'occt-build/out/v3/conceptcad_v3.wasm',
-    compat:'occt-build/compat-v3.cjs',table:'occt-build/out/v3/compat-v3.json'}
+  ?{js:'occt/v3/conceptcad_v3.js',wasm:'occt/v3/conceptcad_v3.wasm',
+    compat:'occt/v3/compat-v3.cjs',table:'occt/v3/compat-v3.json'}
   :{js:'occt/opencascade.full.js',wasm:'occt/opencascade.wasm.wasm'};
 // Traducteur v3 (page et worker de suppression de face) : charge compat-v3.cjs + sa table, rend
 // une fabrique qui enveloppe celle du noyau. Le module CommonJS est évalué avec un `require` vide
@@ -60011,14 +60012,14 @@ function occCacheLoad(){
   // s'affiche après coup, quand la tabulation est déjà gelée.
   const yieldUI=()=>new Promise(r=>{try{requestAnimationFrame(()=>setTimeout(r,0));}catch(e){setTimeout(r,0);}});
   const boot=async factory=>{
-    stage('JS noyau OK, compilation wasm (~65 Mo, ~10-60 s) — interface momentanément figée…');
+    stage(`JS noyau OK, compilation wasm (~${OCCT_V3?43:65} Mo, ~10-60 s) — interface momentanément figée…`);
     await yieldUI();
     occt=await withTimeout(factory({locateFile:p=>String(p).endsWith('.wasm')?OCCT_FILES.wasm:p}),180000,'compilation wasm');
     occBaseMsg=`OCCT : prêt en ${((performance.now()-t0)/1000).toFixed(0)} s — vérification…`;occStatus();
     await occtFinishBoot();
   };
   const bootBin=async(factory,bin)=>{
-    stage('JS noyau OK, compilation depuis le cache local (~65 Mo) — interface momentanément figée…');
+    stage(`JS noyau OK, compilation depuis le cache local (~${OCCT_V3?43:65} Mo) — interface momentanément figée…`);
     await yieldUI();
     try{
       occt=await withTimeout(factory({wasmBinary:bin,locateFile:p=>String(p).endsWith('.wasm')?OCCT_FILES.wasm:p}),180000,'compilation wasm');
@@ -60044,7 +60045,7 @@ function occCacheLoad(){
     const mod=await withTimeout(import(occtFileUrl(OCCT_FILES.js)),30000,'chargement JS');
     let factory=mod.default||mod.opencascadeFactory||window.opencascadeFactory||window.opencascade;
     if(typeof factory!=='function')throw new Error('factory absente (import vide ?)');
-    if(OCCT_V3){stage('essai noyau v3 (OCCT 8) : chargement du traducteur…');
+    if(OCCT_V3){stage('noyau OCCT 8 : chargement du traducteur…');
       factory=(await occtV3Compat(occtFileUrl(OCCT_FILES.compat),occtFileUrl(OCCT_FILES.table)))(factory);}
     if(cached){await bootBin(factory,cached);return;}
     await boot(factory);return;
@@ -76166,7 +76167,7 @@ try{
     // builtVersion=-1 : la garde « rien n'a changé » court-circuterait sinon le rejeu,
     // puisque restoreViewCache vient de poser builtHash.
     builtVersion=-1;builtHash=null;builtEngine=null;
-    // V0.41.0 : noyau déjà prêt → barre de progression (31) ; sinon repli maillage, immédiat
+    // V0.42.0 : noyau déjà prêt → barre de progression (31) ; sinon repli maillage, immédiat
     if(regenWarmUseful()){try{await regenWarm('Ouverture du brouillon');}catch(e){}builtVersion=-1;}
     try{rebuild();}catch(e){}finally{regenUiHide();}
     try{if(occtReady)showAll();}catch(e){}

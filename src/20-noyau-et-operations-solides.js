@@ -3966,7 +3966,7 @@ function occReplayBody(bid,list){
   occReplayNest++;
   try{return occReplayBodyIn(bid,list);}finally{occReplayNest--;}
 }
-// V0.41.0 : le rejeu est un GÉNÉRATEUR qui rend la main avant chaque fonction ({bid,fs}).
+// V0.42.0 : le rejeu est un GÉNÉRATEUR qui rend la main avant chaque fonction ({bid,fs}).
 // La voie synchrone (occReplayBodyIn, occFinalShape) le vide d'une traite : même code, même
 // ordre, même résultat. La régénération avec barre de progression (31) le vide par tranches.
 function occDrain(g){for(;;){const r=g.next();if(r.done)return r.value;}}

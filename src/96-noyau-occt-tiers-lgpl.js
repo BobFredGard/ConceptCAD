@@ -58,13 +58,14 @@ function occtFileUrl(p){ // chemin relatif : marche en http(s) comme en file://
   try{const b=document.currentScript&&document.currentScript.src?document.currentScript.src:location.href;
     return new URL(p,b).href;}catch(e){return p;}
 }
-// Interrupteur caché (essai, 2026-11-03) : « ?noyau=v3 » dans l'adresse démarre le noyau recompilé
-// OCCT 8.0.1 (occt-build/, libcascade 3.1) au lieu d'occt/, avec le traducteur des appels
-// (occt-build/compat-v3.cjs). Sans le paramètre : rien ne change. Pas en file:// (le .wasm s'y lit mal).
-const OCCT_V3=(()=>{try{return location.protocol!=='file:'&&new URLSearchParams(location.search).get('noyau')==='v3';}catch(e){return false;}})();
+// Noyau (V0.42.0) : par défaut le noyau recompilé OCCT 8.0.1 (occt/v3, libcascade 3.1, fabriqué par
+// occt-build/), avec le traducteur des appels 1.1.1 (occt/v3/compat-v3.cjs). En secours :
+// « ?noyau=actuel » dans l'adresse = l'ancien noyau 1.1.1 (occt/opencascade.*). En file:// : l'ancien
+// (le .wasm s'y lit seulement par « ⚙ Noyau .wasm… » et la colle v3 est un module ES).
+const OCCT_V3=(()=>{try{return location.protocol!=='file:'&&location.protocol!=='about:'&&new URLSearchParams(location.search).get('noyau')!=='actuel';}catch(e){return false;}})();
 const OCCT_FILES=OCCT_V3
-  ?{js:'occt-build/out/v3/conceptcad_v3.js',wasm:'occt-build/out/v3/conceptcad_v3.wasm',
-    compat:'occt-build/compat-v3.cjs',table:'occt-build/out/v3/compat-v3.json'}
+  ?{js:'occt/v3/conceptcad_v3.js',wasm:'occt/v3/conceptcad_v3.wasm',
+    compat:'occt/v3/compat-v3.cjs',table:'occt/v3/compat-v3.json'}
   :{js:'occt/opencascade.full.js',wasm:'occt/opencascade.wasm.wasm'};
 // Traducteur v3 (page et worker de suppression de face) : charge compat-v3.cjs + sa table, rend
 // une fabrique qui enveloppe celle du noyau. Le module CommonJS est évalué avec un `require` vide
@@ -133,14 +134,14 @@ function occCacheLoad(){
   // s'affiche après coup, quand la tabulation est déjà gelée.
   const yieldUI=()=>new Promise(r=>{try{requestAnimationFrame(()=>setTimeout(r,0));}catch(e){setTimeout(r,0);}});
   const boot=async factory=>{
-    stage('JS noyau OK, compilation wasm (~65 Mo, ~10-60 s) — interface momentanément figée…');
+    stage(`JS noyau OK, compilation wasm (~${OCCT_V3?43:65} Mo, ~10-60 s) — interface momentanément figée…`);
     await yieldUI();
     occt=await withTimeout(factory({locateFile:p=>String(p).endsWith('.wasm')?OCCT_FILES.wasm:p}),180000,'compilation wasm');
     occBaseMsg=`OCCT : prêt en ${((performance.now()-t0)/1000).toFixed(0)} s — vérification…`;occStatus();
     await occtFinishBoot();
   };
   const bootBin=async(factory,bin)=>{
-    stage('JS noyau OK, compilation depuis le cache local (~65 Mo) — interface momentanément figée…');
+    stage(`JS noyau OK, compilation depuis le cache local (~${OCCT_V3?43:65} Mo) — interface momentanément figée…`);
     await yieldUI();
     try{
       occt=await withTimeout(factory({wasmBinary:bin,locateFile:p=>String(p).endsWith('.wasm')?OCCT_FILES.wasm:p}),180000,'compilation wasm');
@@ -166,7 +167,7 @@ function occCacheLoad(){
     const mod=await withTimeout(import(occtFileUrl(OCCT_FILES.js)),30000,'chargement JS');
     let factory=mod.default||mod.opencascadeFactory||window.opencascadeFactory||window.opencascade;
     if(typeof factory!=='function')throw new Error('factory absente (import vide ?)');
-    if(OCCT_V3){stage('essai noyau v3 (OCCT 8) : chargement du traducteur…');
+    if(OCCT_V3){stage('noyau OCCT 8 : chargement du traducteur…');
       factory=(await occtV3Compat(occtFileUrl(OCCT_FILES.compat),occtFileUrl(OCCT_FILES.table)))(factory);}
     if(cached){await bootBin(factory,cached);return;}
     await boot(factory);return;

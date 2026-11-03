@@ -34,6 +34,9 @@ const {loadApp}=require('./appvm.cjs');
     "att(!!filModeX,'mode congé exact non entré');",
     "const i0=filModeX?filModeX.edges.findIndex(e=>Math.hypot(e.mid[0]-0,e.mid[1]-6,e.mid[2]-40)<0.75):-1;",
     "att(i0>=0,'arête germe (haut, y=6) introuvable dans '+((filModeX&&filModeX.edges.length)||0)+' arêtes');",
+    // R5 (rayon pris au clic) : le slot fait 12 de large — un congé R10 (rayon par défaut) donne un
+    // solide INVALIDE, que le noyau v3 (OCCT 8, V0.42.0) refuse à raison ; l'ancien le laissait passer.
+    "if(filModeX)filModeX.radius=5;",
     "if(i0>=0)xSeedAdd(i0);",
     "xSelSync();",
     "p('xSelSync : sel='+filModeX.sel.length+' arêtes, germes='+filModeX.seeds.length+' (chaîne tangente attendue : 4)');",

@@ -1,0 +1,29 @@
+// V0.42.0 : le noyau OCCT 8 (occt/v3) est celui de l'application. On vérifie que ses fichiers
+// sont là et entiers (pas des pointeurs Git LFS), que la copie du traducteur est celle de
+// occt-build/compat-v3.cjs (source unique, recopiée par occt-build/installer.cjs) et que la page
+// charge bien ces fichiers par défaut (OCCT_FILES), l'ancien noyau restant joignable (?noyau=actuel).
+const fs=require('fs'),path=require('path');
+const ROOT=path.join(__dirname,'..'),V3=path.join(ROOT,'occt','v3');
+let ko=0;
+const A=(c,m)=>{if(!c){ko++;console.log('  ✗ '+m);}else console.log('  ✓ '+m);};
+console.log('=== Noyau OCCT 8 installé (occt/v3) ===');
+const taille=f=>{try{return fs.statSync(path.join(V3,f)).size;}catch(e){return 0;}};
+A(taille('conceptcad_v3.wasm')>30e6,'conceptcad_v3.wasm présent ('+(taille('conceptcad_v3.wasm')/1e6).toFixed(1)+' Mo — moins de 1 Ko = pointeur LFS : git lfs pull)');
+try{const b=Buffer.alloc(4);const fd=fs.openSync(path.join(V3,'conceptcad_v3.wasm'),'r');fs.readSync(fd,b,0,4,0);fs.closeSync(fd);
+  A(b.toString('latin1')==='\0asm','… et c\'est bien du WebAssembly');}catch(e){A(false,'wasm illisible');}
+A(taille('conceptcad_v3.js')>10e3,'colle conceptcad_v3.js présente');
+const lf=f=>fs.readFileSync(f,'utf8').replace(/\r\n/g,'\n');
+A(fs.existsSync(path.join(V3,'compat-v3.cjs'))&&lf(path.join(V3,'compat-v3.cjs'))===lf(path.join(ROOT,'occt-build','compat-v3.cjs')),
+  'traducteur occt/v3/compat-v3.cjs = occt-build/compat-v3.cjs (sinon : node occt-build/installer.cjs)');
+let table=null;try{table=JSON.parse(fs.readFileSync(path.join(V3,'compat-v3.json'),'utf8'));}catch(e){}
+A(table&&table.ctors&&table.methods&&Object.keys(table.methods).length>50,'table compat-v3.json lisible');
+// la page : fichiers v3 par défaut, ancien noyau en secours
+const src=fs.readFileSync(path.join(ROOT,'src','96-noyau-occt-tiers-lgpl.js'),'utf8');
+for(const f of ['occt/v3/conceptcad_v3.js','occt/v3/conceptcad_v3.wasm','occt/v3/compat-v3.cjs','occt/v3/compat-v3.json'])
+  A(src.includes("'"+f+"'")&&fs.existsSync(path.join(ROOT,f)),'la page charge '+f);
+A(/get\('noyau'\)!=='actuel'/.test(src)&&fs.existsSync(path.join(ROOT,'occt','opencascade.wasm.wasm')),'secours ?noyau=actuel : ancien noyau toujours livré');
+// publication : Pages copie occt/v3
+const pages=fs.readFileSync(path.join(ROOT,'.github','workflows','pages.yml'),'utf8');
+A(/occt\/v3/.test(pages),'pages.yml publie occt/v3');
+console.log(ko?'\n*** '+ko+' PROBLEME(S) ***':'\n*** TOUT PASSE ***');
+process.exit(ko?1:0);

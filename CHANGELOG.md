@@ -8,7 +8,7 @@ sont sorties le 2026-09-30j.
 Code dans `src/` · livrable `fusion_mvp.html` (généré par `build.js`) · architecture et
 garde-fous en tête de `src/00-entete-et-outils.js`.
 
-**536 versions**, de `2026-09-28b` à `V0.41.0` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
+**537 versions**, de `2026-09-28b` à `V0.42.0` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
 comme dans le fichier d'origine.
 
 ---
@@ -6359,3 +6359,12 @@ Demande : supprimer les opérations d'un posage par multi-sélection + Suppr (ca
 - **Suppr / Retour arrière** (`faoDeleteSelected`, `faoDelKey`, `src/88-fao-81`) : les opérations choisies par Ctrl+clic / Maj+clic (sélection multiple de la V0.23.20) sont retirées ensemble ; une seule étape d'annulation (`faoSnapshot`), donc un Ctrl+Z les rend toutes à leur place, Ctrl+Y les retire de nouveau. La numérotation de l'arbre suit ; la sélection passe à l'opération suivante (sinon la précédente, sinon le posage).
 - **Garde-fous** : sans effet dans un champ de saisie, une boîte de dialogue, une esquisse ouverte ou la mise en plan.
 - **Tests** : `test_fao_suppression_multiple` (3 opérations sur 6 → Suppr → 3 restantes et renumérotées, une étape d'annulation, Ctrl+Z → les 6 dans l'ordre, Ctrl+Y, Suppr dans un champ ignorée) ; `npm run ci:full`.
+
+## V0.42.0 - Noyau OpenCascade 8 recompilé (décalage face par face, plus rapide), barre de progression de la régénération
+Demande : recompiler nous-mêmes le noyau OCCT WebAssembly, dans une version récente (« la V3 m'intéresse plus »), puis « vas-y, on corrigera après » après essai ; et « une barre de progression pour la régénération avec les fonctions qui apparaissent dessus, leur nom ».
+- **Noyau** : OCCT **8.0.1** (libcascade 3.1, Emscripten 6, exceptions WebAssembly natives) fabriqué par `occt-build/` (recette Docker reproductible, images figées par empreinte), installé dans `occt/v3/` (`node occt-build/installer.cjs`) : 43 Mo au lieu de 66. Il ajoute nos liaisons `CCFaceOffset` (`BRepOffset_MakeOffset` face par face, absent de tous les noyaux publiés), `CCText` (noms UTF-8) et `CCStatic` (schéma STEP AP242).
+- **Traducteur** (`occt-build/compat-v3.cjs`, copie `occt/v3/compat-v3.cjs`) : l'application garde ses appels opencascade.js 1.1.1 (`gp_Pnt_3`, `Face_1`…) ; ils sont traduits au chargement vers l'API sans suffixes de v3 (surcharges choisies par type, arguments ajoutés depuis OCCT 7.4 complétés d'après le `.d.ts`, poignées transparentes, sorties « enveloppe », typedefs renommés). Les erreurs du noyau ont un texte lisible (« OCCT Standard_TypeMismatch : … » au lieu de « [object WebAssembly.Exception] »).
+- **Secours** : `?noyau=actuel` dans l'adresse = l'ancien noyau 1.1.1 (OCCT 7.4), toujours livré ; en `file://`, l'ancien noyau aussi.
+- **Écarts constatés** : un congé R10 sur une rainure de 12 mm de large donnait un solide invalide que l'ancien noyau laissait passer — OCCT 8 le refuse (test passé à R5) ; la face « pathologique » de Cavité Usinage (10 min puis plantage) est refusée proprement en moins d'une seconde. Rejeu des filetages plus rapide (axe fileté 6,1 → 2,5 s) ; seuls les tests point dedans/dehors (`BRepClass3d_SolidClassifier`) sur hélices sont plus lents.
+- **Barre de progression** (`src/31-regen-progression.js`) : à l'ouverture d'un gros document et au démarrage du noyau, la régénération affiche n / total et le nom de la fonction ou de l'esquisse en cours ; géométrie identique.
+- **Tests** : suites Node sur OCCT 8 par défaut (`tests/moteur-defaut.cjs` ; `OCCT_DIR=actuel` pour l'ancien), `test_moteur_v3` (fichiers installés, traducteur à jour, publication), `test_regen_progression` ; navigateur 17/17 (`MF_NOYAU=actuel` pour l'ancien) ; `tools/ci-moteur.cjs` essaie tout autre moteur.
