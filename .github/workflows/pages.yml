@@ -36,7 +36,7 @@ jobs:
           mkdir -p _site/occt
           cp ConceptCAD.html _site/index.html
           cp -r threejs Exemples _site/
-          # noyau de l'application (V0.42.0) : OCCT 8, occt/v3 (colle, .wasm, traducteur et sa table) ;
+          # noyau de l'application (V0.43.0) : OCCT 8, occt/v3 (colle, .wasm, traducteur et sa table) ;
           # l'ancien noyau reste servi pour ?noyau=actuel (opencascade.full.wasm ne sert pas)
           cp -r occt/v3 _site/occt/
           cp occt/opencascade.full.js occt/opencascade.wasm.wasm _site/occt/

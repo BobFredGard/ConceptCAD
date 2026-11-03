@@ -58,7 +58,7 @@ function occtFileUrl(p){ // chemin relatif : marche en http(s) comme en file://
   try{const b=document.currentScript&&document.currentScript.src?document.currentScript.src:location.href;
     return new URL(p,b).href;}catch(e){return p;}
 }
-// Noyau (V0.42.0) : par défaut le noyau recompilé OCCT 8.0.1 (occt/v3, libcascade 3.1, fabriqué par
+// Noyau (V0.43.0) : par défaut le noyau recompilé OCCT 8.0.1 (occt/v3, libcascade 3.1, fabriqué par
 // occt-build/), avec le traducteur des appels 1.1.1 (occt/v3/compat-v3.cjs). En secours :
 // « ?noyau=actuel » dans l'adresse = l'ancien noyau 1.1.1 (occt/opencascade.*). En file:// : l'ancien
 // (le .wasm s'y lit seulement par « ⚙ Noyau .wasm… » et la colle v3 est un module ES).

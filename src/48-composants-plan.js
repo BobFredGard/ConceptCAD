@@ -45,7 +45,7 @@ function asmPlanBodies(){
   const own=((typeof bodies!=='undefined'&&bodies)||[]).filter(b=>b&&!b.ghost&&b.kind!=='ghost'&&b.mesh&&b.mesh.visible!==false);
   if(!asmPlanOn())return own;
   const sig=asmPlanSig();
-  if(asmPlanCache&&asmPlanCache.sig===sig)return own.concat(asmPlanCache.list);
+  if(asmPlanCache&&asmPlanCache.sig===sig){asmPlanCache.list.forEach(asmPlanRd);return own.concat(asmPlanCache.list);}
   asmPlanFree();
   const exact=typeof occHas==='function'&&occHas();
   const list=[];
@@ -66,7 +66,7 @@ function asmPlanBodies(){
           const e=(c.doc.bodies||[]).find(x=>x.id===b.id)||{};
           const col=e.color>0?e.color:0x9a9aa0;
           const mesh=new THREE.Mesh(geo,new THREE.MeshStandardMaterial({color:col}));
-          list.push({kind:'body',id:key+':'+b.id,bodyId:key+':'+b.id,name:c.name+' · '+b.name,mesh,shape:sh,tri,color:col,asmComp:c.id,asmPath:I.path});
+          list.push({kind:'body',id:key+':'+b.id,bodyId:key+':'+b.id,name:c.name+' · '+b.name,mesh,shape:sh,tri,color:col,asmComp:c.id,asmPath:I.path,asmBid:b.id});
           done=true;
         });
       }catch(e){}
@@ -76,12 +76,24 @@ function asmPlanBodies(){
       c._snap.items.forEach((it,k)=>{
         const g=it.geo.clone();g.applyMatrix4(asmMat4(I.F));
         const mesh=new THREE.Mesh(g,new THREE.MeshStandardMaterial({color:it.color}));
-        list.push({kind:'body',id:key+':m'+k,bodyId:key+':m'+k,name:c.name,mesh,shape:null,color:it.color,asmComp:c.id,asmPath:I.path});
+        list.push({kind:'body',id:key+':m'+k,bodyId:key+':m'+k,name:c.name,mesh,shape:null,color:it.color,asmComp:c.id,asmPath:I.path,asmBid:it.bid||null});
       });
     }
   });
+  list.forEach(asmPlanRd);
   asmPlanCache={sig,list};
   return own.concat(list);
+}
+function asmPlanRd(b){
+  // Apparence de RENDU d'un corps d'instance (vue « Rendu réaliste » du PLAN, vEnvLookOf) : celle de
+  // l'occurrence (rendu d'assemblage), sinon celle de la pièce (doc.rendu, capturée dans l'instantané),
+  // sinon la couleur CAO — comme en 3D (47-assemblage-interface). Relue à chaque appel : elle ne
+  // change pas la signature du cache.
+  const c=asmComp(b.asmComp),bid=b.asmBid;
+  const it=bid&&c&&c._snap?c._snap.items.find(x=>x.bid===bid):null;
+  let ro=null;try{ro=bid?asmOccRenduOf(b.asmPath,bid):null;}catch(e){}
+  const rl=it&&it.rl;
+  b.mesh.userData.rd={mat:ro?ro.mat:(rl?rl.mat:null),color:ro?ro.col:(rl?rl.color:b.color),rel:ro?ro.rel:(rl?rl.rel:null),ccol:b.color};
 }
 function asmBomRows(lvl){
   // Nomenclature des composants : 'comp1' (premier niveau), 'all' (tous niveaux), 'parts'

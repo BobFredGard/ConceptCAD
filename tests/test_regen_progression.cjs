@@ -4,7 +4,7 @@
 //  1) la préchauffe rend la main (au moins une tranche par fonction) et va au bout ;
 //  2) le solide final est STRICTEMENT identique au rejeu synchrone habituel (topologie + boîte par
 //     corps) ; même topologie que le rejeu à froid (sa boîte diffère de quelques centièmes sur
-//     « Perçages » — marge de tolérance d'une copie de point de contrôle, déjà vrai avant V0.41.0) ;
+//     « Perçages » — marge de tolérance d'une copie de point de contrôle, déjà vrai avant V0.42.0) ;
 //  3) le rejeu final après préchauffe ne recalcule plus rien de lourd (bien plus rapide).
 const fs=require('fs'),vm=require('vm'),path=require('path');
 const ROOT=path.join(__dirname,'..');

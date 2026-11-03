@@ -1,7 +1,7 @@
 // Tests navigateur réels (Chromium headless) : `npm run test:browser`.
 // Le livrable ConceptCAD.html est servi en http (le noyau OCCT .wasm ne se lit
 // pas en file://) par un petit serveur statique sans dépendance.
-// Noyau : OCCT 8 par défaut (V0.42.0) ; MF_NOYAU=actuel : les mêmes parcours sur l'ancien noyau (?noyau=actuel).
+// Noyau : OCCT 8 par défaut (V0.43.0) ; MF_NOYAU=actuel : les mêmes parcours sur l'ancien noyau (?noyau=actuel).
 'use strict';
 const {defineConfig,devices}=require('@playwright/test');
 

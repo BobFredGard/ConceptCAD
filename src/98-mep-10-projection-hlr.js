@@ -504,6 +504,10 @@
       scene.traverse(o=>{
         if(o!==scene&&!keep.has(o)){saved.push([o,o.visible]);o.visible=false;}
       });
+      // corps des instances d'une vue « Assemblage » (48-composants-plan) : maillages hors scène,
+      // ajoutés le temps du rendu (sinon l'image ne montre que le composant actif)
+      const loose=list.map(bd=>bd.mesh).filter(m=>m&&!m.parent);
+      loose.forEach(m=>scene.add(m));
       const oldTarget=renderer.getRenderTarget?renderer.getRenderTarget():null;
       const oldClear=renderer.getClearColor?renderer.getClearColor(new THREE.Color()):null;
       const oldAlpha=renderer.getClearAlpha?renderer.getClearAlpha():1;
@@ -575,6 +579,7 @@
           lw:+(r-l).toFixed(3),lh:+(btm-t).toFixed(3)};
       }finally{
         for(let i=0;i<saved.length;i++)saved[i][0].visible=saved[i][1];
+        loose.forEach(m=>{try{scene.remove(m);}catch(e){}});
         if(thrGrp){try{scene.remove(thrGrp);thrGrp.traverse(o=>{try{if(o.geometry)o.geometry.dispose();if(o.material)o.material.dispose();}catch(e){}});}catch(e){}}
         mirObjs.forEach(o=>{try{scene.remove(o);(Array.isArray(o.material)?o.material:[o.material]).forEach(m=>m.dispose());}catch(e){}});
         scene.background=oldBg;

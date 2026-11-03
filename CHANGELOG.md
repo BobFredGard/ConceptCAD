@@ -8,7 +8,7 @@ sont sorties le 2026-09-30j.
 Code dans `src/` · livrable `fusion_mvp.html` (généré par `build.js`) · architecture et
 garde-fous en tête de `src/00-entete-et-outils.js`.
 
-**537 versions**, de `2026-09-28b` à `V0.42.0` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
+**539 versions**, de `2026-09-28b` à `V0.43.0` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
 comme dans le fichier d'origine.
 
 ---
@@ -6360,11 +6360,26 @@ Demande : supprimer les opérations d'un posage par multi-sélection + Suppr (ca
 - **Garde-fous** : sans effet dans un champ de saisie, une boîte de dialogue, une esquisse ouverte ou la mise en plan.
 - **Tests** : `test_fao_suppression_multiple` (3 opérations sur 6 → Suppr → 3 restantes et renumérotées, une étape d'annulation, Ctrl+Z → les 6 dans l'ordre, Ctrl+Y, Suppr dans un champ ignorée) ; `npm run ci:full`.
 
-## V0.42.0 - Noyau OpenCascade 8 recompilé (décalage face par face, plus rapide), barre de progression de la régénération
-Demande : recompiler nous-mêmes le noyau OCCT WebAssembly, dans une version récente (« la V3 m'intéresse plus »), puis « vas-y, on corrigera après » après essai ; et « une barre de progression pour la régénération avec les fonctions qui apparaissent dessus, leur nom ».
+## V0.42.0 - Régénération : barre de progression avec le nom des fonctions et des esquisses
+Demande : une barre de progression pendant la régénération, avec les fonctions et esquisses qui défilent par leur nom (essai d'un nouveau noyau : écran figé plusieurs secondes sans rien dire).
+- **Cause** : le rejeu exact est synchrone ; tant qu'il calcule, le navigateur ne repeint rien.
+- **Rejeu en générateur** (`occReplayBodyGen`, `occFinalShapeGen`, `src/20`) : il rend la main avant chaque fonction ; la voie synchrone (`occFinalShape`, `rebuild()`) le vide d'une traite — même code, même ordre, même résultat.
+- **Préchauffe** (`regenWarm`, `src/31-regen-progression.js`) : à l'ouverture d'un document (`deserialise`), au chargement du noyau (`occtFinishBoot`) et au démarrage, ce rejeu est vidé par tranches en laissant le navigateur peindre la barre (n / total, nom de la fonction, esquisse utilisée) ; il remplit les points de contrôle aux mêmes clés, puis `rebuild()` ne fait que les relire et mailler l'affichage. Rien n'est touché (corps affichés, solide vivant, document) ; document modifié pendant une pause → préchauffe abandonnée, le rejeu final refait ce qui manque. Filets modélisés laissés au rejeu final (worker).
+- **Affichage** : seulement si la régénération dépasse 300 ms (pas de clignotement sur les petites pièces) ; clics et touches retenus tant que la barre est là (pas d'édition ni de Ctrl+Z au milieu).
+- **Limite** : une modification ordinaire (OK d'une fonction) reste un rejeu synchrone sans barre.
+- **Tests** : `test_regen_progression` (vrai noyau, Cache Piles, Support Pédale, Perçages : une tranche par fonction, solide identique au rejeu habituel et même topologie qu'à froid, rejeu final ≈ 10 × plus rapide après préchauffe) ; banc `tests/appvm` en rejeu synchrone par défaut (`__regenSync`) ; vérifié dans le navigateur (Cache Piles : barre à 0,4 s, 42 étapes, noms et esquisses) ; `npm run ci:full`.
+
+## V0.42.1 - PLAN : textures des pièces des autres composants dans les vues d'assemblage rendues
+Demande : « Mise en plan assemblages -> les textures des pièces externes ne sont pas prises en compte ».
+- **Cause** : les corps des instances d'une vue « Assemblage » (`asmPlanBodies`, `src/48-composants-plan.js`) étaient recréés avec leur seule couleur CAO, sans apparence de rendu ; et, maillages hors de la scène, ils n'entraient même pas dans l'image d'une vue « Rendu 3D » ou « Rendu réaliste » (image vide, seuls les traits restaient).
+- **Apparence** (`asmPlanRd`) : chaque corps d'instance reçoit l'apparence de rendu de la 3D — celle de l'occurrence (rendu d'assemblage), sinon celle de la pièce (instantané), sinon sa couleur ; relue à chaque appel, elle suit un changement de matériau sans attendre une modification de la géométrie.
+- **Image** (`mepRender3dImage`, `src/98-mep-10-projection-hlr.js`) : ces corps sont ajoutés à la scène le temps du rendu, puis retirés.
+- **Tests** : vérifié dans le navigateur (Test Assemblage : Base en acier, vue de face en rendu réaliste → base texturée acier et goupille jaune, image vide avant) ; `npm run ci:full`.
+
+## V0.43.0 - Noyau OpenCascade 8 recompilé (décalage face par face, plus rapide), l'ancien en secours
+Demande : recompiler nous-mêmes le noyau OCCT WebAssembly, dans une version récente (« la V3 m'intéresse plus »), puis « vas-y, on corrigera après » après essai.
 - **Noyau** : OCCT **8.0.1** (libcascade 3.1, Emscripten 6, exceptions WebAssembly natives) fabriqué par `occt-build/` (recette Docker reproductible, images figées par empreinte), installé dans `occt/v3/` (`node occt-build/installer.cjs`) : 43 Mo au lieu de 66. Il ajoute nos liaisons `CCFaceOffset` (`BRepOffset_MakeOffset` face par face, absent de tous les noyaux publiés), `CCText` (noms UTF-8) et `CCStatic` (schéma STEP AP242).
 - **Traducteur** (`occt-build/compat-v3.cjs`, copie `occt/v3/compat-v3.cjs`) : l'application garde ses appels opencascade.js 1.1.1 (`gp_Pnt_3`, `Face_1`…) ; ils sont traduits au chargement vers l'API sans suffixes de v3 (surcharges choisies par type, arguments ajoutés depuis OCCT 7.4 complétés d'après le `.d.ts`, poignées transparentes, sorties « enveloppe », typedefs renommés). Les erreurs du noyau ont un texte lisible (« OCCT Standard_TypeMismatch : … » au lieu de « [object WebAssembly.Exception] »).
 - **Secours** : `?noyau=actuel` dans l'adresse = l'ancien noyau 1.1.1 (OCCT 7.4), toujours livré ; en `file://`, l'ancien noyau aussi.
 - **Écarts constatés** : un congé R10 sur une rainure de 12 mm de large donnait un solide invalide que l'ancien noyau laissait passer — OCCT 8 le refuse (test passé à R5) ; la face « pathologique » de Cavité Usinage (10 min puis plantage) est refusée proprement en moins d'une seconde. Rejeu des filetages plus rapide (axe fileté 6,1 → 2,5 s) ; seuls les tests point dedans/dehors (`BRepClass3d_SolidClassifier`) sur hélices sont plus lents.
-- **Barre de progression** (`src/31-regen-progression.js`) : à l'ouverture d'un gros document et au démarrage du noyau, la régénération affiche n / total et le nom de la fonction ou de l'esquisse en cours ; géométrie identique.
-- **Tests** : suites Node sur OCCT 8 par défaut (`tests/moteur-defaut.cjs` ; `OCCT_DIR=actuel` pour l'ancien), `test_moteur_v3` (fichiers installés, traducteur à jour, publication), `test_regen_progression` ; navigateur 17/17 (`MF_NOYAU=actuel` pour l'ancien) ; `tools/ci-moteur.cjs` essaie tout autre moteur.
+- **Tests** : suites Node sur OCCT 8 par défaut (`tests/moteur-defaut.cjs` ; `OCCT_DIR=actuel` pour l'ancien), `test_moteur_v3` (fichiers installés, traducteur à jour, publication) ; navigateur 17/17 (`MF_NOYAU=actuel` pour l'ancien) ; `tools/ci-moteur.cjs` essaie tout autre moteur.

@@ -1,4 +1,4 @@
-// Moteur des suites (V0.42.0) : celui de l'application, le noyau OCCT 8 (occt/v3) + traducteur.
+// Moteur des suites (V0.43.0) : celui de l'application, le noyau OCCT 8 (occt/v3) + traducteur.
 // Les tests lisent toujours occt/opencascade.full.js ; l'aiguillage tests/occt-moteur.cjs (posé ici
 // dans NODE_OPTIONS, hérité par chaque suite lancée) redirige vers occt/v3.
 //   OCCT_DIR=actuel  → ancien noyau 1.1.1 (occt/opencascade.*) ;  OCCT_DIR=<dossier> → ce moteur-là.

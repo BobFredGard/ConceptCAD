@@ -1,4 +1,4 @@
-// V0.42.0 : le noyau OCCT 8 (occt/v3) est celui de l'application. On vérifie que ses fichiers
+// V0.43.0 : le noyau OCCT 8 (occt/v3) est celui de l'application. On vérifie que ses fichiers
 // sont là et entiers (pas des pointeurs Git LFS), que la copie du traducteur est celle de
 // occt-build/compat-v3.cjs (source unique, recopiée par occt-build/installer.cjs) et que la page
 // charge bien ces fichiers par défaut (OCCT_FILES), l'ancien noyau restant joignable (?noyau=actuel).
