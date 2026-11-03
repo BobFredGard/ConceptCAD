@@ -25,6 +25,12 @@ function regenFrame(){
   return new Promise(r=>{let ok=false;const k=()=>{if(!ok){ok=true;r();}};
     try{requestAnimationFrame(()=>setTimeout(k,0));}catch(e){}setTimeout(k,60);});
 }
+function regenCol(kind,o){
+  // Couleur de l'étape dans la timeline (41, TLB_COL) : vert ajout, rouge enlèvement, orange
+  // esquisse, bleu clair modification, violet répétition, jaune construction.
+  try{const k=tlbSvgKey({kind,o});if(k&&TLB_COL[k[1]])return TLB_COL[k[1]];}catch(e){}
+  return kind==='sketch'?'#ff9f0a':'#64d2ff';
+}
 function regenSketchIds(f){const o=[];if(f.sketchId)o.push(f.sketchId);if(f.pathId&&f.pathId!==f.sketchId)o.push(f.pathId);return o;}
 function regenWarm(why){
   // Promesse → true si la préchauffe est allée au bout. La barre reste affichée (« Affichage du
@@ -48,6 +54,7 @@ async function regenWarmRun(why){
   const skName={};(doc.sketches||[]).forEach(s=>{skName[s.id]=s.name||'Esquisse';});
   const skAll=new Set();list.forEach(f=>regenSketchIds(f).forEach(id=>{if(skName[id]!=null)skAll.add(id);}));
   const total=list.length+skAll.size,seenF=new Set(),seenS=new Set();
+  const cols=[]; // couleurs des étapes traitées, dans l'ordre : la dernière colore la barre
   let g=null,FR=null,shown=false,lastPaint=t0,lastStep=t0;
   try{
     g=occFinalShapeGen(upto,true);
@@ -58,13 +65,16 @@ async function regenWarmRun(why){
       if(r.done){FR=r.value;break;}
       const fs=(r.value&&r.value.fs)||[];
       const nouv=[];
-      fs.forEach(f=>{seenF.add(f.id);regenSketchIds(f).forEach(id=>{if(skAll.has(id)&&!seenS.has(id)){seenS.add(id);nouv.push(skName[id]);}});});
+      fs.forEach(f=>{
+        regenSketchIds(f).forEach(id=>{if(skAll.has(id)&&!seenS.has(id)){seenS.add(id);nouv.push(skName[id]);cols.push(regenCol('sketch',null));}});
+        if(!seenF.has(f.id)){seenF.add(f.id);cols.push(regenCol('feature',f));}
+      });
       const now=performance.now(),pas=now-lastStep;lastStep=now;
       if(!shown&&now-t0>=REGEN_SHOW_MS){regenUiShow(why);shown=true;}
       if(!shown)continue; // rien à peindre : pas de pause (aucune entrée possible non plus)
       const f=fs[0];
       const nom=f?(f.name||f.type)+(fs.length>1?' (+'+(fs.length-1)+' copie'+(fs.length>2?'s':'')+')':''):'';
-      regenUiSet(Math.min(seenF.size+seenS.size,total),total,nom,nouv.join(', '));
+      regenUiSet(Math.min(seenF.size+seenS.size,total),total,nom,nouv.join(', '),cols);
       // Pause seulement si la fonction précédente a pesé (le nom de la suivante doit être LU
       // pendant qu'elle calcule) ou si l'écran n'a pas bougé depuis 100 ms.
       if(pas>8||now-lastPaint>=100){
@@ -78,7 +88,7 @@ async function regenWarmRun(why){
   }finally{
     if(FR){try{occCleanup(FR,null);}catch(e){}} // copies jetables : le rejeu final relit les points de contrôle
   }
-  if(shown){regenUiSet(total,total,'Affichage du modèle…','');await regenFrame();}
+  if(shown){regenUiSet(total,total,'Affichage du modèle…','',['var(--primary,#0a84ff)']);await regenFrame();}
   return true;
 }
 /* ---------- interface ---------- */
@@ -89,36 +99,51 @@ function regenKeyBlock(e){
 }
 function regenUiShow(why){
   if(regenUi)return;
-  const o=document.createElement('div');o.id='mfRegen';
-  o.style.cssText='position:fixed;inset:0;z-index:9800;cursor:progress;background:transparent';
-  o.innerHTML='<div role="progressbar" aria-valuemin="0" style="position:absolute;left:50%;bottom:56px;transform:translateX(-50%);width:min(440px,calc(100vw - 32px));box-sizing:border-box;'+
-    'background:var(--surface,#2c2c2e);color:var(--text,#f2f2f7);border:1px solid var(--border,rgba(255,255,255,.12));border-radius:12px;padding:12px 16px 14px;'+
-    'box-shadow:0 12px 32px rgba(0,0,0,.45);font-size:13px;backdrop-filter:blur(8px)">'+
-    '<div style="display:flex;justify-content:space-between;gap:12px;align-items:baseline;margin-bottom:8px">'+
-      '<b class="t" style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis"></b><span class="n" style="color:var(--muted,#98989d);font-variant-numeric:tabular-nums;white-space:nowrap"></span></div>'+
-    '<div style="height:6px;border-radius:3px;background:var(--border,rgba(255,255,255,.12));overflow:hidden">'+
-      '<div class="b" style="height:100%;width:0;border-radius:3px;background:var(--primary,#0a84ff);transition:width .12s linear"></div></div>'+
-    '<div class="f" style="margin-top:8px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis"></div>'+
-    '<div class="s" style="margin-top:2px;color:var(--muted,#98989d);font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis"></div></div>';
-  try{o.querySelector('.t').textContent='⟳ '+(why||'Régénération');}catch(e){}
-  try{document.body.appendChild(o);}catch(e){}
-  try{window.addEventListener('keydown',regenKeyBlock,true);}catch(e){}
-  regenUi=o;
-}
-function regenUiSet(n,total,nom,esq){
-  const o=regenUi;if(!o)return;
+  // V0.43.1 (demande de Fred) : BANDEAU tout en bas de la vue 3D, juste au-dessus de la timeline,
+  // barre en couleur avec le texte dedans, un peu transparente (la pièce se devine dessous). Dans #vpwrap : l'écran de démarrage (#mfSplash) reste
+  // devant. Un voile transparent sur toute la fenêtre retient les clics (pas d'édition au milieu).
+  const blk=document.createElement('div');blk.id='mfRegenBlk';
+  blk.style.cssText='position:fixed;inset:0;z-index:9800;cursor:progress;background:transparent';
+  const wrap=document.getElementById('vpwrap');
+  const b=document.createElement('div');b.id='mfRegen';b.setAttribute('role','progressbar');b.setAttribute('aria-valuemin','0');
+  let bas=8;
   try{
-    const p=total>0?Math.round(100*n/total):100;
-    o.querySelector('.b').style.width=p+'%';
-    o.querySelector('.n').textContent=n+' / '+total;
-    o.querySelector('.f').textContent=nom||'';
-    o.querySelector('.s').textContent=esq?'Esquisse : '+esq:'';
-    const pb=o.firstChild;pb.setAttribute('aria-valuemax',String(total));pb.setAttribute('aria-valuenow',String(n));pb.setAttribute('aria-valuetext',nom||'');
+    // posé au-dessus de la timeline si elle est affichée (CAO), sinon en pied de vue
+    const tl=document.getElementById('mfTl'),tb=tl&&tl.getBoundingClientRect(),wb=wrap&&wrap.getBoundingClientRect();
+    if(tb&&wb&&tb.height>0&&tl.offsetParent)bas=Math.max(8,Math.round(wb.bottom-tb.top)+6);
+  }catch(e){}
+  b.style.cssText=(wrap?'position:absolute;':'position:fixed;z-index:9801;')+'left:12px;right:12px;bottom:'+bas+'px;z-index:26;height:24px;border-radius:7px;overflow:hidden;'+
+    'background:color-mix(in srgb,var(--surface,#2c2c2e) 55%,transparent);backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px);border:1px solid var(--border,rgba(255,255,255,.14));box-shadow:0 4px 16px rgba(0,0,0,.25);font-size:12px;line-height:24px;pointer-events:none';
+  // Texte en double : couleur du thème sur le fond, blanc sur la partie remplie (découpée à la largeur)
+  const ligne=c=>'<div class="'+c+'" style="position:absolute;inset:0;display:flex;gap:10px;padding:0 10px;white-space:nowrap'+
+    (c==='l2'?';color:#fff;text-shadow:0 0 3px rgba(0,0,0,.75),0 1px 2px rgba(0,0,0,.5);clip-path:inset(0 100% 0 0)':';color:var(--text,#f2f2f7)')+'">'+
+    '<span class="tx" style="flex:1;overflow:hidden;text-overflow:ellipsis"></span><span class="n" style="font-variant-numeric:tabular-nums"></span></div>';
+  // Remplissage : couleur de la timeline de la fonction EN COURS (change à chaque étape), découpé à l'avancement
+  b.innerHTML='<div class="b" style="position:absolute;inset:0;opacity:.78;background-color:var(--primary,#0a84ff);clip-path:inset(0 100% 0 0);transition:clip-path .12s linear,background-color .25s ease"></div>'+ligne('l1')+ligne('l2');
+  b._why=why||'Régénération';
+  try{(wrap||document.body).appendChild(b);document.body.appendChild(blk);}catch(e){}
+  try{window.addEventListener('keydown',regenKeyBlock,true);}catch(e){}
+  regenUi={b,blk};
+  regenUiSet(0,0,'','');
+}
+function regenUiSet(n,total,nom,esq,cols){
+  const u=regenUi;if(!u)return;
+  try{
+    const b=u.b,p=total>0?Math.round(100*n/total):0;
+    const tx='⟳ '+b._why+(nom?' — '+nom:'')+(esq?'  ·  esquisse : '+esq:'');
+    const fill=b.querySelector('.b');
+    if(cols&&cols.length)fill.style.backgroundColor=cols[cols.length-1]; // fonction traitée à l'instant
+    fill.style.clipPath='inset(0 '+(100-p)+'% 0 0)';
+    b.querySelector('.l2').style.clipPath='inset(0 '+(100-p)+'% 0 0)';
+    b.querySelectorAll('.tx').forEach(e=>{e.textContent=tx;});
+    b.querySelectorAll('.n').forEach(e=>{e.textContent=total?n+' / '+total:'';});
+    b.setAttribute('aria-valuemax',String(total));b.setAttribute('aria-valuenow',String(n));b.setAttribute('aria-valuetext',tx);
   }catch(e){}
 }
 function regenUiHide(){
   if(!regenUi)return;
   try{window.removeEventListener('keydown',regenKeyBlock,true);}catch(e){}
-  try{regenUi.remove();}catch(e){}
+  try{regenUi.b.remove();}catch(e){}
+  try{regenUi.blk.remove();}catch(e){}
   regenUi=null;
 }

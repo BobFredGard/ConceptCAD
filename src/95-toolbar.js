@@ -78,7 +78,10 @@ $('btnSelfTest').onclick=runSelfTests;
 // corps. Rapport détaillé dans « Auto-tests », résumé dans « Mesure ».
 function regenTout(){
   try{faceEl.textContent='⟳ Régénération du modèle…';}catch(e){}
-  try{return runValidate();}catch(e){try{faceEl.textContent+='\n[Régénérer] '+String((e&&e.message)||e);}catch(_){}}
+  const ko=e=>{try{faceEl.textContent+='\n[Régénérer] '+String((e&&e.message)||e);}catch(_){}};
+  // V0.43.1 : noyau exact présent → barre de progression (31) ; sinon rejeu synchrone, comme avant
+  if(regenWarmUseful()){if(regenRun)return regenRun;return runValidateProgress().catch(ko);}
+  try{return runValidate();}catch(e){ko(e);}
 }
 if($('btnRebuild')){
   $('btnRebuild').textContent='⟳ Régénérer';
@@ -87,7 +90,7 @@ if($('btnRebuild')){
 }
 
 // ---------- rafraîchissement DUR ----------
-function hardRefresh(){
+function hardRefresh(opt){
   // On jette TOUT ce qui pourrait être périmé, puis on rejoue le modèle entier :
   //   · les INSTANCES de répétition régénérées depuis leurs sources (balayage de réparation)
   //   · points de contrôle du rejeu (solides accumulés mémorisés entre deux reconstructions)
@@ -99,7 +102,8 @@ function hardRefresh(){
   hardPh=ph; // les sous-chronomètres (src/20/30) ne tournent que pendant ce appel
   const t0=performance.now();
   try{const a=performance.now();repGenAll();ph.rep=performance.now()-a;}catch(e){}
-  let nCk=0;try{nCk=(typeof occCk!=='undefined'&&occCk.length)||0;const a=performance.now();occCkClear();ph.purge=performance.now()-a;}catch(e){}
+  // keepCk (⟳ Régénérer, V0.43.1) : points de contrôle jetés puis refaits juste avant par la préchauffe
+  let nCk=0;try{nCk=(typeof occCk!=='undefined'&&occCk.length)||0;const a=performance.now();if(!(opt&&opt.keepCk))occCkClear();ph.purge=performance.now()-a;}catch(e){}
   _hashMemo=null;_hashVer=-1;
   builtHash=null;builtEngine=null;builtVersion=-1;
   try{for(const b of bodies){try{scene.remove(b.mesh);}catch(e){}try{if(b.mesh&&b.mesh.geometry)b.mesh.geometry.dispose();}catch(e){}}}catch(e){}

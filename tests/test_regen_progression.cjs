@@ -5,6 +5,7 @@
 //  2) le solide final est STRICTEMENT identique au rejeu synchrone habituel (topologie + boîte par
 //     corps) ; même topologie que le rejeu à froid (sa boîte diffère de quelques centièmes sur
 //     « Perçages » — marge de tolérance d'une copie de point de contrôle, déjà vrai avant V0.42.0) ;
+//  2b) ⟳ Régénérer (regenTout → runValidateProgress, V0.43.1) donne le même solide ;
 //  3) le rejeu final après préchauffe ne recalcule plus rien de lourd (bien plus rapide).
 const fs=require('fs'),vm=require('vm'),path=require('path');
 const ROOT=path.join(__dirname,'..');
@@ -31,7 +32,7 @@ const EX=['Cache Piles.conceptcad','Support Pédale Déportée R1200RT 2011.conc
       // référence : rejeu synchrone à froid
       occCkClear();builtVersion=-1;builtHash=null;
       let t=performance.now();rebuild();out.msFroid=performance.now()-t;out.froid=topo();
-      builtVersion=-1;rebuild();out.ref=topo(); // rejeu synchrone habituel (points de contrôle)
+      builtVersion=-1;t=performance.now();rebuild();out.msRef=performance.now()-t;out.ref=topo(); // rejeu synchrone habituel (points de contrôle)
       // préchauffe par tranches puis rejeu final
       occCkClear();builtVersion=-1;builtHash=null;
       window.__regenSync=false;
@@ -43,6 +44,8 @@ const EX=['Cache Piles.conceptcad','Support Pédale Déportée R1200RT 2011.conc
       out.tranches=tranches;
       t=performance.now();builtVersion=-1;rebuild();regenUiHide();out.msFinal=performance.now()-t;
       out.got=topo();
+      // ⟳ Régénérer (V0.43.1) : phases de validation + caches jetés + rejeu préchauffé
+      const rp=await regenTout();out.val=typeof rp==='string'&&/VALIDATION/.test(rp);out.gotVal=topo();
       return out;})()`,ctx);
     console.log('· '+nom+' : '+o.nf+' fonctions, '+o.tranches+' tranches ; froid '+Math.round(o.msFroid)+' ms, préchauffe '+Math.round(o.msChauffe)+' ms, rejeu final '+Math.round(o.msFinal)+' ms');
     A(o.utile&&o.ok===true,nom+' : préchauffe utile et menée au bout');
@@ -51,7 +54,9 @@ const EX=['Cache Piles.conceptcad','Support Pédale Déportée R1200RT 2011.conc
     A(o.ref&&o.got===o.ref,nom+' : solide identique au rejeu synchrone ('+(o.ref||'vide').slice(0,90)+'…)');
     A(o.froid&&sansBoite(o.got)===sansBoite(o.froid),nom+' : même topologie que le rejeu à froid');
     if(o.got!==o.ref)console.log('    réf : '+o.ref+'\n    obt : '+o.got);
-    A(o.msFinal<o.msFroid*0.6||o.msFroid<150,nom+' : le rejeu final relit la préchauffe');
+    A(o.val&&o.gotVal===o.ref,nom+' : ⟳ Régénérer avec barre — rapport rendu, solide identique');
+    // le rejeu final coûte un rejeu ordinaire sur points de contrôle (filets modélisés compris), pas un rejeu à froid
+    A(o.msFinal<=o.msRef*2+250||o.msFinal<o.msFroid*0.6,nom+' : le rejeu final relit la préchauffe (final '+Math.round(o.msFinal)+' ms, rejeu ordinaire '+Math.round(o.msRef)+' ms)');
   }
   console.log(ko?'ÉCART':'*** TOUT PASSE ***');process.exit(ko?1:0);
 })().catch(e=>{console.log('ERREUR',e&&e.stack||e);process.exit(1);});

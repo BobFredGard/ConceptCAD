@@ -8,7 +8,7 @@ sont sorties le 2026-09-30j.
 Code dans `src/` · livrable `fusion_mvp.html` (généré par `build.js`) · architecture et
 garde-fous en tête de `src/00-entete-et-outils.js`.
 
-**539 versions**, de `2026-09-28b` à `V0.43.0` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
+**540 versions**, de `2026-09-28b` à `V0.43.1` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
 comme dans le fichier d'origine.
 
 ---
@@ -6383,3 +6383,10 @@ Demande : recompiler nous-mêmes le noyau OCCT WebAssembly, dans une version ré
 - **Secours** : `?noyau=actuel` dans l'adresse = l'ancien noyau 1.1.1 (OCCT 7.4), toujours livré ; en `file://`, l'ancien noyau aussi.
 - **Écarts constatés** : un congé R10 sur une rainure de 12 mm de large donnait un solide invalide que l'ancien noyau laissait passer — OCCT 8 le refuse (test passé à R5) ; la face « pathologique » de Cavité Usinage (10 min puis plantage) est refusée proprement en moins d'une seconde. Rejeu des filetages plus rapide (axe fileté 6,1 → 2,5 s) ; seuls les tests point dedans/dehors (`BRepClass3d_SolidClassifier`) sur hélices sont plus lents.
 - **Tests** : suites Node sur OCCT 8 par défaut (`tests/moteur-defaut.cjs` ; `OCCT_DIR=actuel` pour l'ancien), `test_moteur_v3` (fichiers installés, traducteur à jour, publication) ; navigateur 17/17 (`MF_NOYAU=actuel` pour l'ancien) ; `tools/ci-moteur.cjs` essaie tout autre moteur.
+
+## V0.43.1 - Régénération : bandeau de progression au-dessus de la timeline, aussi sur ⟳ Régénérer
+Demande : « Je suis en V0.43.0 et je ne vois pas de barre » ; puis « pas devant l'animation de démarrage et je voulais un bandeau tout en bas de la fenêtre 3D, au-dessus de la timeline, avec une barre en couleur et le texte dedans », « un peu transparente », « que la couleur de la barre change en fonction de la fonction traitée à l'instant T ».
+- **Causes** : le bouton ⟳ Régénérer (et Ctrl+Maj+R) n'avait pas de barre ; avec le noyau OCCT 8 la plupart des pièces se régénèrent en moins de 0,3 s (seuil d'affichage, voulu) ; au F5 la barre se cachait sous l'écran de démarrage.
+- **⟳ Régénérer** (`regenTout` → `runValidateProgress`, `src/95`, `src/97`) : phases 1-3 de la validation, caches jetés, rejeu préchauffé avec la barre, puis phases 4-7 ; le rafraîchissement dur garde ces points de contrôle tout neufs (`hardRefresh({keepCk})`). Sans noyau exact (et dans les tests) : rejeu synchrone comme avant (`runValidate` découpée en `validateStart` / `validateEnd`).
+- **Bandeau** (`src/31-regen-progression.js`) : en bas de la vue 3D (`#vpwrap`), juste au-dessus de la timeline, toute la largeur ; barre semi-transparente, texte dedans (« ⟳ Régénération du modèle — nom de la fonction · esquisse : … » et n / total), blanc sur la partie remplie. La couleur de la barre est celle de la fonction en cours dans la timeline (vert ajout, rouge enlèvement, orange esquisse, bleu clair modification, violet répétition). L'écran de démarrage reste devant. Clics et touches toujours retenus pendant le calcul.
+- **Tests** : `test_regen_progression` (⟳ Régénérer avec barre : rapport rendu, solide identique sur les 3 exemples ; rejeu final comparé à un rejeu ordinaire — filets modélisés compris — au lieu du rejeu à froid, trop serré sous charge) ; vérifié dans le navigateur avec OCCT 8 (Cavité Usinage : ouverture, ⟳ Régénérer, chargement du noyau) ; `npm run ci:full`.

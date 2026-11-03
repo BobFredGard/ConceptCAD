@@ -160,6 +160,22 @@ function runValidate(){
   // Chaque phase pose un diagnostic ET répare ce qui l'est ; le compte rendu
   // (✅ vert / ⚠ signalé / ❌ échec) s'écrit dans la zone Auto-tests (#selfTest),
   // et le texte revient aussi en valeur de retour (les tests du dépôt le lisent).
+  return validateEnd(validateStart());
+}
+// V0.43.1 : ⟳ Régénérer avec barre de progression (31). Phases 1-3 (document, répétitions,
+// esquisses), puis caches jetés et rejeu PRÉCHAUFFÉ par tranches (noms des fonctions à l'écran),
+// puis phases 4-7 : le rafraîchissement dur de la phase 4 garde ces points de contrôle tout neufs.
+async function runValidateProgress(){
+  const v=validateStart();
+  try{
+    if(regenWarmUseful()){
+      try{occCkClear();}catch(e){}
+      if(await regenWarm('Régénération du modèle'))v.warm=true;
+    }
+    return validateEnd(v);
+  }finally{regenUiHide();}
+}
+function validateStart(){
   const L=[];let rep=0;
   const line=(n,st,txt)=>L.push(n+' '+st+' '+txt);
   // 1) DOCUMENT — docSanitise : instances orphelines/doublons, copies bornées, noms de
@@ -195,12 +211,16 @@ function runValidate(){
     line(3,bad.length?'⚠':'✅','Esquisses — '+(doc.sketches||[]).length+' esquisse(s)'+
       (bad.length?', dont '+bad.length+' avec contrainte(s)/cote(s) violée(s) : '+bad.join(', '):', aucune violation'));
   }catch(e){line(3,'❌','Esquisses — '+String((e&&e.message)||e));}
+  return {L,rep,line,warm:false};
+}
+function validateEnd(v){
+  const L=v.L,line=v.line;let rep=v.rep;
   // 4) FONCTIONS — rejeu complet, puis lecture des marques : _err (échec) et
   //    _m.m<_m.t (fonction dégradée : visage introuvable après modification amont).
   try{
     // 2026-10-15-009 : UN rejeu complet ici (caches jetés, convergence des projections,
     // instances et faces porteuses) — la phase 5 n'en refait plus un second.
-    hardRefresh();
+    hardRefresh(v.warm?{keepCk:true}:null); // préchauffé : caches déjà jetés puis refaits
     const fsx=doc.features.filter(f=>f.type!=='repeat');
     const err=fsx.filter(f=>f._err);
     const miss=fsx.filter(f=>f._m&&f._m.t&&f._m.m<f._m.t);
