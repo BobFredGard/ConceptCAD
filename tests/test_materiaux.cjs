@@ -126,14 +126,14 @@ if(/(^|[^.\w])(scene|renderer|camera)\s*=[^=]/m.test(rendu))staticKo.push('98-re
   const v=vm.runInContext("const m=new THREE.Mesh(new THREE.BoxGeometry(10,20,30));m.position.set(5,-3,7);m.rotation.z=0.7;meshVolumeMm3(m)",c3);
   if(!(Math.abs(v-6000)<1e-6))staticKo.push("volume d'un pavé 10×20×30 (déplacé, tourné) : "+v+' au lieu de 6000');
   else console.log("volume d'un pavé 10×20×30 : 6000 mm³ ✓");
-  // environnements de rendu de la vue : les lignes du shader retouchées existent bien dans three r147
+  // environnements de rendu de la vue : les lignes du shader retouchées existent bien dans three.js
   const frag=vm.runInContext('THREE.ShaderChunk.meshphysical_frag',c3);
-  // reliefs : ancrages du shader présents dans three r147 (sinon le relief serait silencieusement absent)
+  // reliefs : ancrages du shader présents dans three.js (sinon le relief serait silencieusement absent)
   const vert=vm.runInContext('THREE.ShaderChunk.meshphysical_vert',c3);
   ['#include <beginnormal_vertex>','#include <begin_vertex>'].forEach(t=>{if(vert.indexOf(t)<0)staticKo.push('relApply : « '+t+' » absent du shader de three.js');});
   if(vert.indexOf('#include <beginnormal_vertex>')>vert.indexOf('#include <begin_vertex>'))staticKo.push('relApply : objectNormal doit précéder begin_vertex');
   ['#include <color_fragment>','#include <normal_fragment_maps>'].forEach(t=>{if(frag.indexOf(t)<0)staticKo.push('relApply : « '+t+' » absent du shader de three.js');});
-  ['vec4 diffuseColor = vec4( diffuse, opacity );','vec3 totalEmissiveRadiance = emissive;','#include <roughnessmap_fragment>','#include <metalnessmap_fragment>','#include <encodings_fragment>']
+  ['vec4 diffuseColor = vec4( diffuse, opacity );','vec3 totalEmissiveRadiance = emissive;','#include <roughnessmap_fragment>','#include <metalnessmap_fragment>','#include <colorspace_fragment>']
     .forEach(t=>{if(frag.indexOf(t)<0)staticKo.push('vEnvPatch : « '+t+' » absent du shader de three.js');});
   // focale : la pièce garde sa taille à l'écran (l'appareil recule), jamais distance 0 (bug V0.10.0)
   vm.runInContext(fs.readFileSync(path.join(ROOT,'src','98-rendu.js'),'utf8'),c3);

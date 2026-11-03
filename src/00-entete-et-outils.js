@@ -21,7 +21,7 @@
  * peut changer sans rien casser. CACHE_VER (parcours FAO) reste indépendant.
  */
 
-const APP_VER='V0.43.1';
+const APP_VER='V0.44.0';
 try{console.log('[ConceptCAD] version '+APP_VER);}catch(e){}
 try{var mfSv=document.getElementById('mfSplashVer');if(mfSv)mfSv.textContent=APP_VER;}catch(e){} // écran de démarrage
 
@@ -245,7 +245,7 @@ function setMatAlpha(mat,a,glass){
   // (avant : voile 26 % et matière mate d'un coup dès le 1er cran).
   const frost=g<0.999?0.16*Math.sin(Math.PI*Math.min(1,tn*1.25)/2)*(1-0.55*tn):0;
   const tr=a<0.999||g<0.999;
-  // 2026-10-16-013 : three r147 compile une matière OPAQUE avec alpha forcé à 1 (#define OPAQUE) :
+  // 2026-10-16-013 : three compile une matière OPAQUE avec alpha forcé à 1 (#define OPAQUE) :
   // passer en transparent EXIGE une recompilation. L'ancien test « mat.needsUpdate!==undefined »
   // était toujours faux (propriété en écriture seule) → transparence ignorée ou collée.
   const flip=!!mat.transparent!==tr;

@@ -11,7 +11,7 @@
    Hors WebGL2 ou sans cibles flottantes : la taille en JavaScript (src/88-fao-70). */
 function faoCarteGOn(){
   try{return typeof renderer!=='undefined'&&renderer&&renderer.capabilities&&renderer.capabilities.isWebGL2&&
-    !!renderer.extensions.get('EXT_color_buffer_float')&&typeof THREE.WebGLMultipleRenderTargets==='function';}catch(e){return false;}
+    !!renderer.extensions.get('EXT_color_buffer_float')&&typeof THREE.WebGLRenderTarget==='function';}catch(e){return false;}
 }
 const FAO_CGC_VS=[
   'in vec4 iSeg; in vec4 iZ;', // (ax, ay, bx, by) dans la carte ; (cote de pointe, rayon, ligne de l'outil, 0)
@@ -63,9 +63,9 @@ function faoCarteGInit(vw,g){
   const ac=renderer.autoClear,prev=renderer.getRenderTarget();renderer.autoClear=false;
   try{
     maps.forEach((m,i)=>{
-      const rt=new THREE.WebGLMultipleRenderTargets(m.nx,m.ny,3);
+      const rt=new THREE.WebGLRenderTarget(m.nx,m.ny,{count:3}); // trois textures (ex-WebGLMultipleRenderTargets, retiré en r172)
       rt.depthBuffer=true;
-      [[THREE.RedFormat],[THREE.RGBAFormat],[THREE.RGFormat]].forEach((f,k)=>{const t=rt.texture[k];t.format=f[0];t.type=THREE.FloatType;
+      [[THREE.RedFormat],[THREE.RGBAFormat],[THREE.RGFormat]].forEach((f,k)=>{const t=rt.textures[k];t.format=f[0];t.type=THREE.FloatType;
         t.minFilter=THREE.NearestFilter;t.magFilter=THREE.NearestFilter;t.generateMipmaps=false;});
       const zlo=m.oz-1,zr=Math.max(1,(m.full!=null?m.full:m.sz1)-m.oz+2);
       const sH=faoCarteGTex(m.h,m.nx,m.ny,THREE.RedFormat),sN=faoCarteGTex(m.nrm,m.nx,m.ny,THREE.RGBAFormat),sW=faoCarteGTex(m.wn,m.nx,m.ny,THREE.RGFormat);
@@ -85,9 +85,9 @@ function faoCarteGInit(vw,g){
 function faoCarteGBind(vw){
   // les rendus existants lisent les textures de la carte graphique
   const C=vw.cg;if(!C)return;
-  if(vw.rm&&typeof faoRmU!=='undefined'&&faoRmU){C.maps.forEach((M,i)=>{faoRmU['rmH'+i].value=M.rt.texture[0];faoRmU['rmN'+i].value=M.rt.texture[1];faoRmU['rmW'+i].value=M.rt.texture[2];});
-    for(let i=C.maps.length;i<FAO_RM_MAX;i++){faoRmU['rmH'+i].value=C.maps[0].rt.texture[0];faoRmU['rmN'+i].value=C.maps[0].rt.texture[1];faoRmU['rmW'+i].value=C.maps[0].rt.texture[2];}}
-  if(vw.gpu&&typeof faoGpuU!=='undefined'&&faoGpuU){const M=C.maps[0];faoGpuU.faoH.value=M.rt.texture[0];faoGpuU.faoN.value=M.rt.texture[1];faoGpuU.faoW.value=M.rt.texture[2];}
+  if(vw.rm&&typeof faoRmU!=='undefined'&&faoRmU){C.maps.forEach((M,i)=>{faoRmU['rmH'+i].value=M.rt.textures[0];faoRmU['rmN'+i].value=M.rt.textures[1];faoRmU['rmW'+i].value=M.rt.textures[2];});
+    for(let i=C.maps.length;i<FAO_RM_MAX;i++){faoRmU['rmH'+i].value=C.maps[0].rt.textures[0];faoRmU['rmN'+i].value=C.maps[0].rt.textures[1];faoRmU['rmW'+i].value=C.maps[0].rt.textures[2];}}
+  if(vw.gpu&&typeof faoGpuU!=='undefined'&&faoGpuU){const M=C.maps[0];faoGpuU.faoH.value=M.rt.textures[0];faoGpuU.faoN.value=M.rt.textures[1];faoGpuU.faoW.value=M.rt.textures[2];}
 }
 function faoCarteGTool(C,r,cr,tp){
   const T=faoEngTool(r,cr,tp);let row=C.tools.get(T.key);if(row!=null)return row;

@@ -1,5 +1,5 @@
 /* ---------- finition de l'image de l'atelier RENDU (V0.15.0) ----------
-   Une chaîne écrite UNE fois, en GLSL que comprennent le three r147 (moteur rapide) et le three récent
+   Une chaîne écrite UNE fois, en GLSL que comprennent le three de la CAO (moteur rapide) et sa copie isolée
    (lancer de rayons) : rpCreate(T, moteur) reçoit l'espace de noms three de chacun. Elle part de l'image
    LINÉAIRE accumulée (cible flottante, alpha prémultiplié ou non) et va jusqu'aux pixels du canevas :
      1. débruitage (lancer de rayons) : filtre bilatéral — moyenne pondérée des voisins, coupée là où la

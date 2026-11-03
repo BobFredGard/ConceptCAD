@@ -23,8 +23,8 @@ function asmOn(){return !!asm&&asm.comps.some(c=>c.occ.length>0);}
 function asmSceneGet(){
   if(asmScene)return asmScene;
   asmScene=new THREE.Scene();
-  asmScene.add(new THREE.HemisphereLight(0xffffff,0x444444,0.75));
-  const key=new THREE.DirectionalLight(0xffffff,1.0);key.position.set(60,-40,120);asmScene.add(key);
+  asmScene.add(new THREE.HemisphereLight(0xffffff,0x444444,0.75*Math.PI)); // ×π : comme r147 (10-scene-3d)
+  const key=new THREE.DirectionalLight(0xffffff,Math.PI);key.position.set(60,-40,120);asmScene.add(key);
   try{asmTri=triadMake({name:'asmTri',px:90,planes:false});asmScene.add(asmTri);}catch(e){}
   const g=new THREE.Group();g.name='asmOcc';asmScene.add(g);
   return asmScene;

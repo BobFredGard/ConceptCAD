@@ -40,8 +40,9 @@ function buildScene(){
     const dpr=(typeof window!=='undefined'&&window.devicePixelRatio)||1;
     renderer.setPixelRatio(Math.min(2,Math.max(1.25,dpr))); // arêtes nettes sur écran HiDPI
   }catch(e){}
-  scene.add(new THREE.HemisphereLight(0xffffff,0x444444,0.75));
-  const key=new THREE.DirectionalLight(0xffffff,1.0); key.position.set(60,-40,120); scene.add(key);
+  // intensités ×π : unités physiques de three ≥ r155, même éclairage qu'en r147
+  scene.add(new THREE.HemisphereLight(0xffffff,0x444444,0.75*Math.PI));
+  const key=new THREE.DirectionalLight(0xffffff,Math.PI); key.position.set(60,-40,120); scene.add(key);
   try{if('environment' in scene)scene.environment=makeStudioEnv();}catch(e){} // reflets studio
   // 2026-10-16-017 : repère façon Fusion (point + 3 axes + 3 plans cliquables, taille constante à l'écran)
   axHelper=triadMake({name:'axHelper'}); scene.add(axHelper); scene.add(axHelper.userData.planeGroup); // plans = plans d'origine (œil de l'arbre) // X rouge → droite, Y vert → arrière, Z bleu → haut

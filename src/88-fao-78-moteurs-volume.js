@@ -615,7 +615,7 @@ function faoSdfGMaterial(){
     sh.vertexShader='varying vec3 vSdPos;\n'+sh.vertexShader.replace('#include <project_vertex>','#include <project_vertex>\n vSdPos = position;');
     sh.fragmentShader=FAO_SDFG_FS+'\n'+sh.fragmentShader
       .replace('#include <clipping_planes_fragment>','sdMarch();\n#include <clipping_planes_fragment>')
-      .replace('#include <normal_fragment_begin>','vec3 normal = sdNv;\n vec3 geometryNormal = normal;')
+      .replace('#include <normal_fragment_begin>','float faceDirection = 1.0;\n vec3 normal = sdNv;\n vec3 nonPerturbedNormal = normal;') // geometryNormal : lights_fragment_begin (three ≥ r155)
       .replace('geometry.position = - vViewPosition;','geometry.position = sdPv.xyz;')
       .replace('normalize( vViewPosition );','normalize( -sdPv.xyz );')
       .replace('#include <dithering_fragment>','#include <dithering_fragment>\n gl_FragDepth = sdDepth;');

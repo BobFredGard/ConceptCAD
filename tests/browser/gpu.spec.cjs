@@ -121,8 +121,8 @@ test('atelier RENDU, « Lancer de rayons » : chargé à la demande, affinage su
     return {rayons:RDPT.THREE.REVISION,cao:THREE.REVISION,opaque:opaque/(W*H),teintes:teintes.size,visible:rd.rt.canvas.style.visibility};
   });
   test.info().annotations.push({type:'lancer de rayons',description:JSON.stringify(R)});
-  expect(R.rayons).toBe('186');
-  expect(R.cao,'le three de la CAO reste celui de l’application').toBe('147');
+  expect(R.rayons).toBe('187');
+  expect(R.cao,'la CAO et le lancer de rayons sur la même version de three').toBe('187');
   expect(R.visible).toBe('visible');
   expect(R.opaque,'pièce et sol dessinés').toBeGreaterThan(0.05);
   expect(R.teintes,'image ombrée, pas un aplat').toBeGreaterThan(40);

@@ -2,7 +2,7 @@
  * CSG booleen (union / soustraction) vendore hors-ligne — MIT.
  * Origine : Evan Wallace (2011, MIT) ; rework THREE.js : manthrax (MIT).
  * Fichiers d'origine : csg-lib.js + three-csg.js (sans modules/worker).
- * Adapte : global THREE classique (three.min.js r147), pas de dependance.
+ * Adapte : global THREE classique (threejs/three.min.js), pas de dependance.
  * ============================================================ */
 (function(global){
 'use strict';

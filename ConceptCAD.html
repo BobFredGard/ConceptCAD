@@ -376,7 +376,7 @@ input[type=range]{accent-color:var(--primary);width:100%}
  * peut changer sans rien casser. CACHE_VER (parcours FAO) reste indépendant.
  */
 
-const APP_VER='V0.43.1';
+const APP_VER='V0.44.0';
 try{console.log('[ConceptCAD] version '+APP_VER);}catch(e){}
 try{var mfSv=document.getElementById('mfSplashVer');if(mfSv)mfSv.textContent=APP_VER;}catch(e){} // écran de démarrage
 
@@ -600,7 +600,7 @@ function setMatAlpha(mat,a,glass){
   // (avant : voile 26 % et matière mate d'un coup dès le 1er cran).
   const frost=g<0.999?0.16*Math.sin(Math.PI*Math.min(1,tn*1.25)/2)*(1-0.55*tn):0;
   const tr=a<0.999||g<0.999;
-  // 2026-10-16-013 : three r147 compile une matière OPAQUE avec alpha forcé à 1 (#define OPAQUE) :
+  // 2026-10-16-013 : three compile une matière OPAQUE avec alpha forcé à 1 (#define OPAQUE) :
   // passer en transparent EXIGE une recompilation. L'ancien test « mat.needsUpdate!==undefined »
   // était toujours faux (propriété en écriture seule) → transparence ignorée ou collée.
   const flip=!!mat.transparent!==tr;
@@ -902,8 +902,9 @@ function buildScene(){
     const dpr=(typeof window!=='undefined'&&window.devicePixelRatio)||1;
     renderer.setPixelRatio(Math.min(2,Math.max(1.25,dpr))); // arêtes nettes sur écran HiDPI
   }catch(e){}
-  scene.add(new THREE.HemisphereLight(0xffffff,0x444444,0.75));
-  const key=new THREE.DirectionalLight(0xffffff,1.0); key.position.set(60,-40,120); scene.add(key);
+  // intensités ×π : unités physiques de three ≥ r155, même éclairage qu'en r147
+  scene.add(new THREE.HemisphereLight(0xffffff,0x444444,0.75*Math.PI));
+  const key=new THREE.DirectionalLight(0xffffff,Math.PI); key.position.set(60,-40,120); scene.add(key);
   try{if('environment' in scene)scene.environment=makeStudioEnv();}catch(e){} // reflets studio
   // 2026-10-16-017 : repère façon Fusion (point + 3 axes + 3 plans cliquables, taille constante à l'écran)
   axHelper=triadMake({name:'axHelper'}); scene.add(axHelper); scene.add(axHelper.userData.planeGroup); // plans = plans d'origine (œil de l'arbre) // X rouge → droite, Y vert → arrière, Z bleu → haut
@@ -13707,8 +13708,8 @@ function asmOn(){return !!asm&&asm.comps.some(c=>c.occ.length>0);}
 function asmSceneGet(){
   if(asmScene)return asmScene;
   asmScene=new THREE.Scene();
-  asmScene.add(new THREE.HemisphereLight(0xffffff,0x444444,0.75));
-  const key=new THREE.DirectionalLight(0xffffff,1.0);key.position.set(60,-40,120);asmScene.add(key);
+  asmScene.add(new THREE.HemisphereLight(0xffffff,0x444444,0.75*Math.PI)); // ×π : comme r147 (10-scene-3d)
+  const key=new THREE.DirectionalLight(0xffffff,Math.PI);key.position.set(60,-40,120);asmScene.add(key);
   try{asmTri=triadMake({name:'asmTri',px:90,planes:false});asmScene.add(asmTri);}catch(e){}
   const g=new THREE.Group();g.name='asmOcc';asmScene.add(g);
   return asmScene;
@@ -40465,7 +40466,7 @@ function faoMatterRmMat(){
     sh.vertexShader='varying vec3 vRmPos;\n'+sh.vertexShader.replace('#include <project_vertex>','#include <project_vertex>\n vRmPos = position;');
     sh.fragmentShader=FAO_RM_FS+'\n'+sh.fragmentShader
       .replace('#include <clipping_planes_fragment>','rmMarch();\n#include <clipping_planes_fragment>')
-      .replace('#include <normal_fragment_begin>','vec3 normal = rmN;\n vec3 geometryNormal = normal;')
+      .replace('#include <normal_fragment_begin>','float faceDirection = 1.0;\n vec3 normal = rmN;\n vec3 nonPerturbedNormal = normal;') // geometryNormal : lights_fragment_begin (three ≥ r155)
       .replace('#include <color_fragment>','#include <color_fragment>\n if(rmDebug>0){ diffuseColor.rgb = rmDbg; }')
       .replace('geometry.position = - vViewPosition;','geometry.position = rmPv.xyz;')
       .replace('normalize( vViewPosition );','normalize( -rmPv.xyz );')
@@ -41136,7 +41137,7 @@ function faoSdfGMaterial(){
     sh.vertexShader='varying vec3 vSdPos;\n'+sh.vertexShader.replace('#include <project_vertex>','#include <project_vertex>\n vSdPos = position;');
     sh.fragmentShader=FAO_SDFG_FS+'\n'+sh.fragmentShader
       .replace('#include <clipping_planes_fragment>','sdMarch();\n#include <clipping_planes_fragment>')
-      .replace('#include <normal_fragment_begin>','vec3 normal = sdNv;\n vec3 geometryNormal = normal;')
+      .replace('#include <normal_fragment_begin>','float faceDirection = 1.0;\n vec3 normal = sdNv;\n vec3 nonPerturbedNormal = normal;') // geometryNormal : lights_fragment_begin (three ≥ r155)
       .replace('geometry.position = - vViewPosition;','geometry.position = sdPv.xyz;')
       .replace('normalize( vViewPosition );','normalize( -sdPv.xyz );')
       .replace('#include <dithering_fragment>','#include <dithering_fragment>\n gl_FragDepth = sdDepth;');
@@ -41403,7 +41404,7 @@ function faoEngDispose(vw){
    Hors WebGL2 ou sans cibles flottantes : la taille en JavaScript (src/88-fao-70). */
 function faoCarteGOn(){
   try{return typeof renderer!=='undefined'&&renderer&&renderer.capabilities&&renderer.capabilities.isWebGL2&&
-    !!renderer.extensions.get('EXT_color_buffer_float')&&typeof THREE.WebGLMultipleRenderTargets==='function';}catch(e){return false;}
+    !!renderer.extensions.get('EXT_color_buffer_float')&&typeof THREE.WebGLRenderTarget==='function';}catch(e){return false;}
 }
 const FAO_CGC_VS=[
   'in vec4 iSeg; in vec4 iZ;', // (ax, ay, bx, by) dans la carte ; (cote de pointe, rayon, ligne de l'outil, 0)
@@ -41455,9 +41456,9 @@ function faoCarteGInit(vw,g){
   const ac=renderer.autoClear,prev=renderer.getRenderTarget();renderer.autoClear=false;
   try{
     maps.forEach((m,i)=>{
-      const rt=new THREE.WebGLMultipleRenderTargets(m.nx,m.ny,3);
+      const rt=new THREE.WebGLRenderTarget(m.nx,m.ny,{count:3}); // trois textures (ex-WebGLMultipleRenderTargets, retiré en r172)
       rt.depthBuffer=true;
-      [[THREE.RedFormat],[THREE.RGBAFormat],[THREE.RGFormat]].forEach((f,k)=>{const t=rt.texture[k];t.format=f[0];t.type=THREE.FloatType;
+      [[THREE.RedFormat],[THREE.RGBAFormat],[THREE.RGFormat]].forEach((f,k)=>{const t=rt.textures[k];t.format=f[0];t.type=THREE.FloatType;
         t.minFilter=THREE.NearestFilter;t.magFilter=THREE.NearestFilter;t.generateMipmaps=false;});
       const zlo=m.oz-1,zr=Math.max(1,(m.full!=null?m.full:m.sz1)-m.oz+2);
       const sH=faoCarteGTex(m.h,m.nx,m.ny,THREE.RedFormat),sN=faoCarteGTex(m.nrm,m.nx,m.ny,THREE.RGBAFormat),sW=faoCarteGTex(m.wn,m.nx,m.ny,THREE.RGFormat);
@@ -41477,9 +41478,9 @@ function faoCarteGInit(vw,g){
 function faoCarteGBind(vw){
   // les rendus existants lisent les textures de la carte graphique
   const C=vw.cg;if(!C)return;
-  if(vw.rm&&typeof faoRmU!=='undefined'&&faoRmU){C.maps.forEach((M,i)=>{faoRmU['rmH'+i].value=M.rt.texture[0];faoRmU['rmN'+i].value=M.rt.texture[1];faoRmU['rmW'+i].value=M.rt.texture[2];});
-    for(let i=C.maps.length;i<FAO_RM_MAX;i++){faoRmU['rmH'+i].value=C.maps[0].rt.texture[0];faoRmU['rmN'+i].value=C.maps[0].rt.texture[1];faoRmU['rmW'+i].value=C.maps[0].rt.texture[2];}}
-  if(vw.gpu&&typeof faoGpuU!=='undefined'&&faoGpuU){const M=C.maps[0];faoGpuU.faoH.value=M.rt.texture[0];faoGpuU.faoN.value=M.rt.texture[1];faoGpuU.faoW.value=M.rt.texture[2];}
+  if(vw.rm&&typeof faoRmU!=='undefined'&&faoRmU){C.maps.forEach((M,i)=>{faoRmU['rmH'+i].value=M.rt.textures[0];faoRmU['rmN'+i].value=M.rt.textures[1];faoRmU['rmW'+i].value=M.rt.textures[2];});
+    for(let i=C.maps.length;i<FAO_RM_MAX;i++){faoRmU['rmH'+i].value=C.maps[0].rt.textures[0];faoRmU['rmN'+i].value=C.maps[0].rt.textures[1];faoRmU['rmW'+i].value=C.maps[0].rt.textures[2];}}
+  if(vw.gpu&&typeof faoGpuU!=='undefined'&&faoGpuU){const M=C.maps[0];faoGpuU.faoH.value=M.rt.textures[0];faoGpuU.faoN.value=M.rt.textures[1];faoGpuU.faoW.value=M.rt.textures[2];}
 }
 function faoCarteGTool(C,r,cr,tp){
   const T=faoEngTool(r,cr,tp);let row=C.tools.get(T.key);if(row!=null)return row;
@@ -73954,7 +73955,7 @@ function rdLookCtxSync(bid){ // menu du clic droit de la vue (90) : « Matériau
 
 /* ═══════════════ 98-rendu-post.js — rendu post ═══════════════ */
 /* ---------- finition de l'image de l'atelier RENDU (V0.15.0) ----------
-   Une chaîne écrite UNE fois, en GLSL que comprennent le three r147 (moteur rapide) et le three récent
+   Une chaîne écrite UNE fois, en GLSL que comprennent le three de la CAO (moteur rapide) et sa copie isolée
    (lancer de rayons) : rpCreate(T, moteur) reçoit l'espace de noms three de chacun. Elle part de l'image
    LINÉAIRE accumulée (cible flottante, alpha prémultiplié ou non) et va jusqu'aux pixels du canevas :
      1. débruitage (lancer de rayons) : filtre bilatéral — moyenne pondérée des voisins, coupée là où la
@@ -74139,7 +74140,7 @@ async function rdLayers(W,H){
 /* ---------- atelier RENDU : moteur « Lancer de rayons » (V0.12.0, prototype) ----------
    Second moteur de l'atelier (bloc « Moteur » du panneau) : three-gpu-pathtracer sur un three RÉCENT, empaqueté
    à part (threejs/rendu-rayons.js → window.RDPT, chargé au premier choix du moteur). Il ne partage rien avec le
-   three r147 de la CAO ni avec le moteur rapide : son canevas (posé sur celui du moteur rapide, sans souris :
+   three de la CAO ni avec le moteur rapide : son canevas (posé sur celui du moteur rapide, sans souris :
    la navigation et la mise au point restent au moteur rapide), son contexte WebGL, ses copies des maillages de
    l'atelier (rd.group, mêmes matières physiques).
    - Lumière : la même ambiance (rdEnvDesc) calculée en image équirectangulaire flottante, plus la lampe de
@@ -74188,11 +74189,11 @@ function rtEnvData(){
     return {c,x,y,dist,hw:w/2,hh:h/2,col:rgb(tint).map(v=>v*inten)};
   });
   const T=D.sky.top,Hz=D.sky.hor,B=D.sky.bot;
-  // lampe : disque de rayon « Douceur » (comme rdSunJitter), éclairement égal à celui de la DirectionalLight r147
+  // lampe : disque de rayon « Douceur » (comme rdSunJitter), éclairement égal à celui de la DirectionalLight du moteur rapide
   const ka=(D.key[0]+st.envRot)*Math.PI/180,ke=D.key[1]*Math.PI/180;
   const kd=[Math.cos(ke)*Math.cos(ka),Math.cos(ke)*Math.sin(ka),Math.sin(ke)];
   const kr=Math.max(0.8,st.douceur*0.4)*Math.PI/180,kc=Math.cos(kr);
-  const E=st.lum*(st.amb==='noir'?0.6:1.4)*Math.PI; // r147 (lumières non physiques) : éclairement × π
+  const E=st.lum*(st.amb==='noir'?0.6:1.4)*Math.PI; // comme la lampe du moteur rapide (98-rendu, rdFloor) : × π
   const lamp=[];let om=0;const eUp=[0,0,0]; // éclairement d'un plan horizontal par le ciel et les panneaux
   const dU=2*Math.PI/W,dV=Math.PI/H;
   for(let j=0;j<H;j++){
@@ -75158,10 +75159,10 @@ function vEnvPatch(m){
       .replace('vec3 totalEmissiveRadiance = emissive;','vec3 totalEmissiveRadiance = pow( emissive, vec3( 2.2 ) );')
       .replace('#include <roughnessmap_fragment>','float roughnessFactor = uEnvRou;')
       .replace('#include <metalnessmap_fragment>','float metalnessFactor = uEnvMet;')
-      .replace('#include <encodings_fragment>',
+      .replace('#include <colorspace_fragment>',
         // verre approché : plus opaque et plus réfléchissant sur les bords (Fresnel)
         'gl_FragColor.a = clamp( gl_FragColor.a + uEnvGlass * 0.6 * pow( 1.0 - abs( dot( normalize( normal ), normalize( vViewPosition ) ) ), 3.0 ), 0.0, 1.0 );'+
-        'gl_FragColor.rgb = vEnvAces( gl_FragColor.rgb ); gl_FragColor = LinearTosRGB( gl_FragColor );');
+        'gl_FragColor.rgb = vEnvAces( gl_FragColor.rgb ); gl_FragColor = sRGBTransferOETF( gl_FragColor );');
   };
   m.customProgramCacheKey=function(){return 'vEnvPhoto2';};
   m.envMap=vEnvS.rt.texture;m.envMapIntensity=1;
@@ -75589,8 +75590,9 @@ function rdFloor(){
   rd.keyBase={c,R,a:(rd.keyDir[0]+st.envRot)*Math.PI/180,e:rd.keyDir[1]*Math.PI/180};
   rdSunJitter(-1);
   rd.key.target.position.copy(c);rd.key.target.updateMatrixWorld();
-  // HDRI : éclairement de son soleil (r147, lumières non physiques : intensité = E / π) ; sans soleil, pas de lampe
-  rd.key.intensity=rd.sunE!=null?st.lum*rd.sunE/Math.PI:st.lum*(st.amb==='noir'?0.6:1.4);
+  // HDRI : éclairement de son soleil (lumières physiques depuis r155 : intensité = E) ; sans soleil, pas de lampe.
+  // Ambiances sans soleil : ×π, même lampe qu'en r147
+  rd.key.intensity=rd.sunE!=null?st.lum*rd.sunE:st.lum*(st.amb==='noir'?0.6:1.4)*Math.PI;
   const sc=rd.key.shadow.camera;sc.left=-R*1.6;sc.right=R*1.6;sc.top=R*1.6;sc.bottom=-R*1.6;sc.near=R*0.5;sc.far=R*8;sc.updateProjectionMatrix();
 }
 function rdHalton(i,b){let f=1,r=0;i=i+1;while(i>0){f/=b;r+=f*(i%b);i=Math.floor(i/b);}return r;}
@@ -76103,8 +76105,8 @@ function rdOpen(){
   try{r=new THREE.WebGLRenderer({canvas,antialias:false,alpha:true,preserveDrawingBuffer:true,powerPreference:'high-performance'});}
   catch(e){ov.remove();alert('Rendu indisponible : WebGL refusé par le navigateur.');return;}
   // passes linéaires (cibles flottantes) ; tons et sRGB à l'affichage seulement (rdShow)
-  r.outputEncoding=THREE.LinearEncoding;r.toneMapping=THREE.NoToneMapping;
-  r.shadowMap.enabled=true;r.shadowMap.type=THREE.PCFSoftShadowMap;r.shadowMap.autoUpdate=false;
+  r.outputColorSpace=THREE.LinearSRGBColorSpace;r.toneMapping=THREE.NoToneMapping;
+  r.shadowMap.enabled=true;r.shadowMap.type=THREE.PCFShadowMap;r.shadowMap.autoUpdate=false; // PCFSoftShadowMap retiré en r180 : PCF est désormais adouci
   const cam=new THREE.PerspectiveCamera(30,16/9,0.1,10000);cam.up.set(0,0,1);
   cam.position.copy(camera.position);
   const ctl=new THREE.OrbitControls(cam,canvas);

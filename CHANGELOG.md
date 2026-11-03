@@ -8,7 +8,7 @@ sont sorties le 2026-09-30j.
 Code dans `src/` · livrable `fusion_mvp.html` (généré par `build.js`) · architecture et
 garde-fous en tête de `src/00-entete-et-outils.js`.
 
-**540 versions**, de `2026-09-28b` à `V0.43.1` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
+**541 versions**, de `2026-09-28b` à `V0.44.0` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
 comme dans le fichier d'origine.
 
 ---
@@ -6390,3 +6390,12 @@ Demande : « Je suis en V0.43.0 et je ne vois pas de barre » ; puis « pas deva
 - **⟳ Régénérer** (`regenTout` → `runValidateProgress`, `src/95`, `src/97`) : phases 1-3 de la validation, caches jetés, rejeu préchauffé avec la barre, puis phases 4-7 ; le rafraîchissement dur garde ces points de contrôle tout neufs (`hardRefresh({keepCk})`). Sans noyau exact (et dans les tests) : rejeu synchrone comme avant (`runValidate` découpée en `validateStart` / `validateEnd`).
 - **Bandeau** (`src/31-regen-progression.js`) : en bas de la vue 3D (`#vpwrap`), juste au-dessus de la timeline, toute la largeur ; barre semi-transparente, texte dedans (« ⟳ Régénération du modèle — nom de la fonction · esquisse : … » et n / total), blanc sur la partie remplie. La couleur de la barre est celle de la fonction en cours dans la timeline (vert ajout, rouge enlèvement, orange esquisse, bleu clair modification, violet répétition). L'écran de démarrage reste devant. Clics et touches toujours retenus pendant le calcul.
 - **Tests** : `test_regen_progression` (⟳ Régénérer avec barre : rapport rendu, solide identique sur les 3 exemples ; rejeu final comparé à un rejeu ordinaire — filets modélisés compris — au lieu du rejeu à froid, trop serré sous charge) ; vérifié dans le navigateur avec OCCT 8 (Cavité Usinage : ouverture, ⟳ Régénérer, chargement du noyau) ; `npm run ci:full`.
+
+## V0.44.0 - Three.js 0.187 (la CAO quitte r147, le lancer de rayons sur la même version)
+Demande : mettre à jour Three.js — la CAO tournait encore sur r147 (fin 2022), le lancer de rayons sur 0.186.1.
+- **Cause** : three ne publie plus de `three.min.js` (script classique) depuis r160, seulement des modules ES ; et entre r147 et 0.187 la gestion des couleurs (r152), les unités des lumières (r155), le tampon stencil par défaut (r163) et les cibles à plusieurs textures (r172) ont changé.
+- **Empaquetage** (`tools/three-entree.mjs`, esbuild) : `threejs/three.min.js` = three 0.187.0 en script classique (`window.THREE`, objet où OrbitControls.js et CSG.js se greffent toujours), réglé comme r147 : couleurs et textures non converties (`ColorManagement` coupé), `WebGLRenderer` en sortie linéaire et avec stencil (bouchons de coupe). Reflets des matières physiques par l'approximation DFG de r147 au lieu de la table de r181 (sinon laiton, cuivre et or nettement plus pâles dans l'atelier RENDU).
+- **Lumières ×π** (`src/10`, `src/47`, `src/98-rendu`) : même éclairage qu'avant ; soleil d'une HDRI à son éclairement réel.
+- **Shaders** : rendu de la vue (`colorspace_fragment`, `sRGBTransferOETF`, `src/98-rendu-vue`), matières FAO à lancer de rayons (`normal_fragment_begin`, `src/88-fao-77/78`), taille GPU « cartes » sur `WebGLRenderTarget({count:3})` (`src/88-fao-79`) ; ombres de l'atelier en `PCFShadowMap` (PCFSoft retiré en r180 : douceur très légèrement différente).
+- **Lancer de rayons** : `threejs/rendu-rayons.js` reconstruit sur three 0.187.0 (copie isolée, couleurs gérées par three).
+- **Tests** : `test_materiaux` (ancrages de shader de 0.187), `gpu.spec` (même version de three pour la CAO et le lancer de rayons) ; navigateur 20/20 dont GPU, sur OCCT 8 (taille GPU = JavaScript cellule par cellule) ; comparaison d'images avec r147 (même pièce, même vue : écart moyen ~1/765 par pixel, coupe identique, atelier RENDU : laiton rouge − bleu 32 contre 31 en r147) ; `npm run ci:full`.

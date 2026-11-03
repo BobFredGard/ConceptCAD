@@ -1,7 +1,7 @@
 /* ---------- atelier RENDU : moteur « Lancer de rayons » (V0.12.0, prototype) ----------
    Second moteur de l'atelier (bloc « Moteur » du panneau) : three-gpu-pathtracer sur un three RÉCENT, empaqueté
    à part (threejs/rendu-rayons.js → window.RDPT, chargé au premier choix du moteur). Il ne partage rien avec le
-   three r147 de la CAO ni avec le moteur rapide : son canevas (posé sur celui du moteur rapide, sans souris :
+   three de la CAO ni avec le moteur rapide : son canevas (posé sur celui du moteur rapide, sans souris :
    la navigation et la mise au point restent au moteur rapide), son contexte WebGL, ses copies des maillages de
    l'atelier (rd.group, mêmes matières physiques).
    - Lumière : la même ambiance (rdEnvDesc) calculée en image équirectangulaire flottante, plus la lampe de
@@ -50,11 +50,11 @@ function rtEnvData(){
     return {c,x,y,dist,hw:w/2,hh:h/2,col:rgb(tint).map(v=>v*inten)};
   });
   const T=D.sky.top,Hz=D.sky.hor,B=D.sky.bot;
-  // lampe : disque de rayon « Douceur » (comme rdSunJitter), éclairement égal à celui de la DirectionalLight r147
+  // lampe : disque de rayon « Douceur » (comme rdSunJitter), éclairement égal à celui de la DirectionalLight du moteur rapide
   const ka=(D.key[0]+st.envRot)*Math.PI/180,ke=D.key[1]*Math.PI/180;
   const kd=[Math.cos(ke)*Math.cos(ka),Math.cos(ke)*Math.sin(ka),Math.sin(ke)];
   const kr=Math.max(0.8,st.douceur*0.4)*Math.PI/180,kc=Math.cos(kr);
-  const E=st.lum*(st.amb==='noir'?0.6:1.4)*Math.PI; // r147 (lumières non physiques) : éclairement × π
+  const E=st.lum*(st.amb==='noir'?0.6:1.4)*Math.PI; // comme la lampe du moteur rapide (98-rendu, rdFloor) : × π
   const lamp=[];let om=0;const eUp=[0,0,0]; // éclairement d'un plan horizontal par le ciel et les panneaux
   const dU=2*Math.PI/W,dV=Math.PI/H;
   for(let j=0;j<H;j++){

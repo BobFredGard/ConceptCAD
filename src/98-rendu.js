@@ -205,8 +205,9 @@ function rdFloor(){
   rd.keyBase={c,R,a:(rd.keyDir[0]+st.envRot)*Math.PI/180,e:rd.keyDir[1]*Math.PI/180};
   rdSunJitter(-1);
   rd.key.target.position.copy(c);rd.key.target.updateMatrixWorld();
-  // HDRI : éclairement de son soleil (r147, lumières non physiques : intensité = E / π) ; sans soleil, pas de lampe
-  rd.key.intensity=rd.sunE!=null?st.lum*rd.sunE/Math.PI:st.lum*(st.amb==='noir'?0.6:1.4);
+  // HDRI : éclairement de son soleil (lumières physiques depuis r155 : intensité = E) ; sans soleil, pas de lampe.
+  // Ambiances sans soleil : ×π, même lampe qu'en r147
+  rd.key.intensity=rd.sunE!=null?st.lum*rd.sunE:st.lum*(st.amb==='noir'?0.6:1.4)*Math.PI;
   const sc=rd.key.shadow.camera;sc.left=-R*1.6;sc.right=R*1.6;sc.top=R*1.6;sc.bottom=-R*1.6;sc.near=R*0.5;sc.far=R*8;sc.updateProjectionMatrix();
 }
 function rdHalton(i,b){let f=1,r=0;i=i+1;while(i>0){f/=b;r+=f*(i%b);i=Math.floor(i/b);}return r;}
@@ -719,8 +720,8 @@ function rdOpen(){
   try{r=new THREE.WebGLRenderer({canvas,antialias:false,alpha:true,preserveDrawingBuffer:true,powerPreference:'high-performance'});}
   catch(e){ov.remove();alert('Rendu indisponible : WebGL refusé par le navigateur.');return;}
   // passes linéaires (cibles flottantes) ; tons et sRGB à l'affichage seulement (rdShow)
-  r.outputEncoding=THREE.LinearEncoding;r.toneMapping=THREE.NoToneMapping;
-  r.shadowMap.enabled=true;r.shadowMap.type=THREE.PCFSoftShadowMap;r.shadowMap.autoUpdate=false;
+  r.outputColorSpace=THREE.LinearSRGBColorSpace;r.toneMapping=THREE.NoToneMapping;
+  r.shadowMap.enabled=true;r.shadowMap.type=THREE.PCFShadowMap;r.shadowMap.autoUpdate=false; // PCFSoftShadowMap retiré en r180 : PCF est désormais adouci
   const cam=new THREE.PerspectiveCamera(30,16/9,0.1,10000);cam.up.set(0,0,1);
   cam.position.copy(camera.position);
   const ctl=new THREE.OrbitControls(cam,canvas);

@@ -157,7 +157,7 @@ function faoMatterRmMat(){
     sh.vertexShader='varying vec3 vRmPos;\n'+sh.vertexShader.replace('#include <project_vertex>','#include <project_vertex>\n vRmPos = position;');
     sh.fragmentShader=FAO_RM_FS+'\n'+sh.fragmentShader
       .replace('#include <clipping_planes_fragment>','rmMarch();\n#include <clipping_planes_fragment>')
-      .replace('#include <normal_fragment_begin>','vec3 normal = rmN;\n vec3 geometryNormal = normal;')
+      .replace('#include <normal_fragment_begin>','float faceDirection = 1.0;\n vec3 normal = rmN;\n vec3 nonPerturbedNormal = normal;') // geometryNormal : lights_fragment_begin (three ≥ r155)
       .replace('#include <color_fragment>','#include <color_fragment>\n if(rmDebug>0){ diffuseColor.rgb = rmDbg; }')
       .replace('geometry.position = - vViewPosition;','geometry.position = rmPv.xyz;')
       .replace('normalize( vViewPosition );','normalize( -rmPv.xyz );')

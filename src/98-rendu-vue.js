@@ -61,10 +61,10 @@ function vEnvPatch(m){
       .replace('vec3 totalEmissiveRadiance = emissive;','vec3 totalEmissiveRadiance = pow( emissive, vec3( 2.2 ) );')
       .replace('#include <roughnessmap_fragment>','float roughnessFactor = uEnvRou;')
       .replace('#include <metalnessmap_fragment>','float metalnessFactor = uEnvMet;')
-      .replace('#include <encodings_fragment>',
+      .replace('#include <colorspace_fragment>',
         // verre approché : plus opaque et plus réfléchissant sur les bords (Fresnel)
         'gl_FragColor.a = clamp( gl_FragColor.a + uEnvGlass * 0.6 * pow( 1.0 - abs( dot( normalize( normal ), normalize( vViewPosition ) ) ), 3.0 ), 0.0, 1.0 );'+
-        'gl_FragColor.rgb = vEnvAces( gl_FragColor.rgb ); gl_FragColor = LinearTosRGB( gl_FragColor );');
+        'gl_FragColor.rgb = vEnvAces( gl_FragColor.rgb ); gl_FragColor = sRGBTransferOETF( gl_FragColor );');
   };
   m.customProgramCacheKey=function(){return 'vEnvPhoto2';};
   m.envMap=vEnvS.rt.texture;m.envMapIntensity=1;
