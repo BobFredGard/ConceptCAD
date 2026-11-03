@@ -30,7 +30,7 @@ const {loadApp}=require('./appvm.cjs');
     "const v1=occCoqueVolume(occLive.shape);out.log.push('volume '+v0.toFixed(1)+' → '+v1.toFixed(1)+' mm3');",
     "A(v1<v0-150&&v1>v0-450,'3 : matière retirée par le filet plausible ('+(v0-v1).toFixed(1)+' mm3)');",
     "{const ex=new occt.TopExp_Explorer_2(occLive.shape,occt.TopAbs_ShapeEnum.TopAbs_SOLID,occt.TopAbs_ShapeEnum.TopAbs_SHAPE);let n=0;for(;ex.More();ex.Next())n++;A(n===1,'4 : un seul solide ('+n+')');}",
-    "const cl=new occt.BRepClass3d_SolidClassifier_2(occLive.shape);",
+    "const cl=occClassifier(occLive.shape); // V0.44.1 : parité de rayon (20), ~40× plus rapide sous OCCT 8",
     "const OUT=occt.TopAbs_State.TopAbs_OUT;",
     "const st=(x,y,z)=>{const p=new occt.gp_Pnt_3(x,y,z);cl.Perform(p,1e-6);const s=cl.State();p.delete();return s;};",
     "const fracOut=(r,z)=>{let n=0,N=144;for(let k=0;k<N;k++){const a=k/N*Math.PI*2;if(st(15+r*Math.cos(a),15+r*Math.sin(a),z)===OUT)n++;}return n/N;};",
@@ -87,7 +87,7 @@ const {loadApp}=require('./appvm.cjs');
     " const P3=holeThreadPaths();A(P3.length===1&&Math.abs(Math.max(...P3[0].helix.map(p=>p[2]))-(-39.1+24))<1e-3,'11g : spirale cosmétique sur 24 mm');}",
     "const vC=occCoqueVolume(occLive.shape);ft.model=true;markDirty();rebuild();",
     "{const vM=occCoqueVolume(occLive.shape);A(!ft._err&&vM<vC-100,'11h : vis à filet modélisé (matière retirée '+(vC-vM).toFixed(1)+' mm3)');",
-    " const cl2=new occt.BRepClass3d_SolidClassifier_2(occLive.shape),O2=occt.TopAbs_State.TopAbs_OUT;let n=0;",
+    " const cl2=occClassifier(occLive.shape),O2=occt.TopAbs_State.TopAbs_OUT;let n=0;",
     " for(let k=0;k<72;k++){const a=k/72*Math.PI*2,q=new occt.gp_Pnt_3(2.8*Math.cos(a),2.8*Math.sin(a),-1);cl2.Perform(q,1e-6);if(cl2.State()===O2)n++;q.delete();}",
     " A(n===0,'11i : sous la tête (au-delà de b), tige intacte');try{cl2.delete();}catch(e){}}",
     // assemblage : spirales capturées avec l'occurrence (dessinées avec elle, cachées avec elle)

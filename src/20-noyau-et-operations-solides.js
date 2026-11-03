@@ -94,6 +94,37 @@ function insertSketchFillet(data,fx,fy,r,fxPid){
 function occHas(){return occtReady&&occt;}
 function occBinPush(bin,h){if(h)bin.push(h);return h;}
 function occDispose(list){(list||[]).forEach(h=>{try{h.delete();}catch(e){}});}
+function occClassifier(shape){
+  // Point dedans / dehors RAPIDE (V0.44.1) : même usage que BRepClass3d_SolidClassifier_2
+  // (Perform(p,tol), State(), delete()). Sous OCCT 8 le classifieur coûte ~22 ms par point sur un
+  // corps fileté (hélices), contre ~0,5 ms pour une parité de rayon (IntCurvesFace) — même verdict
+  // mesuré. Deux rayons obliques : s'ils ne sont pas d'accord (rayon qui frôle une arête), ou si le
+  // point est sur une face, le vrai classifieur tranche.
+  let I=null,cl=null,st=null;
+  const D=[[0.5773,0.5774,0.5773],[-0.2673,0.5345,0.8018]];
+  const slow=(p,tol)=>{if(!cl)cl=new occt.BRepClass3d_SolidClassifier_2(shape);cl.Perform(p,tol);return cl.State();};
+  const ray=(p,d,tol)=>{
+    const dd=new occt.gp_Dir_4(d[0],d[1],d[2]),L=new occt.gp_Lin_3(p,dd);
+    try{
+      I.Perform_1(L,-tol,1e7);if(!I.IsDone())return -1;
+      let c=0;for(let k=1;k<=I.NbPnt();k++){const w=I.WParameter(k);if(w<=tol)return -1;c++;}
+      return c&1;
+    }finally{try{L.delete();}catch(e){}try{dd.delete();}catch(e){}}
+  };
+  return{
+    Perform(p,tol){
+      const t=Math.max(+tol||0,1e-7);
+      try{
+        if(!I){I=new occt.IntCurvesFace_ShapeIntersector();I.Load(shape,1e-6);}
+        const a=ray(p,D[0],t),b=a<0?-1:ray(p,D[1],t);
+        if(a>=0&&a===b){st=a?occt.TopAbs_State.TopAbs_IN:occt.TopAbs_State.TopAbs_OUT;return;}
+      }catch(e){}
+      st=slow(p,tol);
+    },
+    State(){return st;},
+    delete(){try{if(I)I.delete();}catch(e){}try{if(cl)cl.delete();}catch(e){}I=cl=null;}
+  };
+}
 function occW(sk,x,y){ // sketch 2D -> monde
   const{u,v,n,o}=sketchBasis(sk);
   return[o.x+u.x*x+v.x*y,o.y+u.y*x+v.y*y,o.z+u.z*x+v.z*y];
@@ -982,7 +1013,7 @@ function occSingleEdgeTool(shape,pts,r,chamfer,cham,firstN){
   const dir=th=>add(mul(u,Math.cos(th)),mul(v,Math.sin(th)));
   const bin=[];
   try{
-    const cl=new occt.BRepClass3d_SolidClassifier_2(shape);bin.push(cl);
+    const cl=occClassifier(shape);bin.push(cl);
     const IN=occt.TopAbs_State.TopAbs_IN;
     const eps=Math.max(1e-3,Math.min(0.05,r*0.05));
     const inAt=th=>{const q=add(M,mul(dir(th),eps));const P=new occt.gp_Pnt_3(q[0],q[1],q[2]);cl.Perform(P,1e-7);const s=cl.State();try{P.delete();}catch(e){}return s===IN;};
@@ -3443,33 +3474,62 @@ function occApplyXFillets(base,xfils){
     const rMax=Math.min.apply(null,js.map(j=>j.r));
     const lMin=Math.min.apply(null,jobs.map(j=>edges[j.bi].len||0));
     const dl=lMin>0?` sur une arête de ${xNum(lMin)} mm`:'';
-    let ok=null;
-    for(const k of [0.7,0.5,0.4,0.3,0.2]){
-      const r2=Math.max(0.5,+(rMax*k).toFixed(2));
-      const w2=[];
-      const cham2=cham?Object.assign({},cham,{d2:+(cham.d2*k).toFixed(2)}):null; // D2 réduit dans le même rapport
-      const t=occFilletRun(occShapeCopy(base),js.map(j=>({src:j.src,r:r2,mid:j.mid.slice(),fn:j.fn||null})),w2,chamfer,{single,cham:cham2});
-      const bon=t&&(occFacesValides(t,zone)||baseSaine===false); // un rayon « vérifié » doit aussi donner un solide valide
-      try{if(t)t.delete();}catch(e){}
-      if(bon){ok=r2;break;}
-    }
-    const why=chamfer?'distance trop grande':'rayon trop grand';
-    const dechire=invalide?' : le noyau rend un solide déchiré (faces invalides), refusé':'';
     // PAROI MINCE (2026-10-27) : l'arête la plus courte de la chaîne n'est souvent pas la cause.
     // Cavité Test après une dépouille trop forte : « arête de 0,73 mm trop courte » alors que la
     // nervure ne faisait plus que 1,2 mm d'épaisseur. Une paroi plus mince que 2 × R est nommée.
     let mince=null;
     if(!invalide){try{const w=occWallAt(base,jobs.map(j=>edges[j.bi]));if(w&&w.t<2*rMax)mince=w;}catch(e){mince=null;}}
     const pMince=mince?`paroi de ${xNum(+mince.t.toFixed(2))} mm seulement près de (${mince.p.map(v=>xNum(+v.toFixed(1))).join(' ; ')}) — une opération précédente l’a-t-elle amincie (dépouille…) ?`:null;
+    let ok=null,okSh=null,kOk=0,kKo=1,ref=null,v0=null;
+    try{v0=occCoqueVolume(base);}catch(e){v0=null;}
+    const essai=k=>{
+      const r2=Math.max(0.5,+(rMax*k).toFixed(2));
+      const w2=[];
+      const cham2=cham?Object.assign({},cham,{d2:+(cham.d2*k).toFixed(2)}):null; // D2 réduit dans le même rapport
+      const t=occFilletRun(occShapeCopy(base),js.map(j=>({src:j.src,r:r2,mid:j.mid.slice(),fn:j.fn||null})),w2,chamfer,{single,cham:cham2});
+      let bon=t&&(occFacesValides(t,zone)||baseSaine===false); // un rayon « vérifié » doit aussi donner un solide valide
+      // VOLUME PLAUSIBLE (V0.44.1) : un congé « valide » peut être faux (slot de 12 mm, R6 :
+      // +1 866 mm³ au lieu d'en retirer). La matière ôtée ou ajoutée croît comme r² : même sens
+      // et pas plus de 1,5 × (r / r_réf)² fois l'écart du petit rayon de référence.
+      if(bon&&v0!=null){
+        let dv=null;try{dv=occCoqueVolume(t)-v0;}catch(e){dv=null;}
+        if(dv!=null){
+          if(!ref)ref={r:r2,dv};
+          else if(Math.abs(ref.dv)>1e-6&&(dv*ref.dv<0&&Math.abs(dv)>1e-3*Math.abs(v0)||Math.abs(dv)>1.5*Math.abs(ref.dv)*(r2/ref.r)*(r2/ref.r)))bon=false;
+        }
+      }
+      if(!bon){try{if(t)t.delete();}catch(e){}return false;}
+      try{if(okSh)okSh.delete();}catch(e){}
+      ok=r2;okSh=t;kOk=k;return true;
+    };
+    // V0.44.1 (OCCT 8 refuse les congés trop grands que l'ancien noyau laissait passer) : le plus
+    // grand rayon qui passe est cherché (petit rayon de référence d'abord, puis échelle et 3
+    // dichotomies) puis APPLIQUÉ, avec un ⚠ — la pièce se construit au lieu de rester bloquée.
+    // Le rayon demandé reste enregistré : si la géométrie s'agrandit, il revient tout seul.
+    if(essai(0.2)){
+      const sh0=okSh,ok0=ok;okSh=null; // la référence reste la solution si rien de plus grand ne passe
+      for(const k of [0.7,0.5,0.4,0.3]){if(essai(k))break;kKo=k;}
+      if(okSh){try{sh0.delete();}catch(e){}for(let i=0;i<3;i++){const k=(kOk+kKo)/2;if(!essai(k))kKo=k;}}
+      else{okSh=sh0;ok=ok0;}
+    }
+    if(okSh){
+      const adj=`${dp}${xNum(rMax)} impossible ici${invalide?' (le noyau rend un solide déchiré)':''}${mince?' — '+pMince:''} — appliqué ${dp}${xNum(ok)}, le plus grand qui passe`;
+      warns.push(`${lab} ${adj}`);
+      xfils.forEach(xf=>{delete xf._err;xf._adj=adj;});
+      try{base.delete();}catch(e){}
+      return{shape:okSh,warnings:warns};
+    }
+    const why=chamfer?'distance trop grande':'rayon trop grand';
+    const dechire=invalide?' : le noyau rend un solide déchiré (faces invalides), refusé':'';
     warns.push(`${lab} ${dp}${xNum(rMax)} impossible sur ${js.length} arête(s)${mince?'':dl}${dechire} — `+(mince?pMince:`${why} ou faces déjà consommées par un autre congé ?`)
       +(ok?` ESSAYEZ ${dp}${xNum(ok)} (vérifié)`:(mince?' Aucun rayon testé ne passe.':' — arête trop courte, aucun rayon testé ne passe')));
     const conseil=ok?`${dp}${xNum(rMax)} impossible${mince?' — '+pMince:dl}${dechire} — essayez ${dp}${xNum(ok)} (vérifié)`
       :mince?`${dp}${xNum(rMax)} impossible — ${pMince}`
       :`${dp}${xNum(rMax)} impossible${dl}${dechire} — arête trop courte ou faces déjà consommées par un autre congé`;
-    xfils.forEach(xf=>{xf._err=conseil;});
+    xfils.forEach(xf=>{xf._err=conseil;delete xf._adj;});
     return{shape:base,warnings:warns};
   }
-  xfils.forEach(xf=>{delete xf._err;}); // plus d'erreur : le rayon courant passe
+  xfils.forEach(xf=>{delete xf._err;delete xf._adj;}); // plus d'erreur : le rayon courant passe
   try{base.delete();}catch(e){}
   return{shape:s,warnings:warns};
 }

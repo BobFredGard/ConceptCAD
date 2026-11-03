@@ -8,7 +8,7 @@ sont sorties le 2026-09-30j.
 Code dans `src/` · livrable `fusion_mvp.html` (généré par `build.js`) · architecture et
 garde-fous en tête de `src/00-entete-et-outils.js`.
 
-**541 versions**, de `2026-09-28b` à `V0.44.0` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
+**542 versions**, de `2026-09-28b` à `V0.44.1` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
 comme dans le fichier d'origine.
 
 ---
@@ -6399,3 +6399,10 @@ Demande : mettre à jour Three.js — la CAO tournait encore sur r147 (fin 2022)
 - **Shaders** : rendu de la vue (`colorspace_fragment`, `sRGBTransferOETF`, `src/98-rendu-vue`), matières FAO à lancer de rayons (`normal_fragment_begin`, `src/88-fao-77/78`), taille GPU « cartes » sur `WebGLRenderTarget({count:3})` (`src/88-fao-79`) ; ombres de l'atelier en `PCFShadowMap` (PCFSoft retiré en r180 : douceur très légèrement différente).
 - **Lancer de rayons** : `threejs/rendu-rayons.js` reconstruit sur three 0.187.0 (copie isolée, couleurs gérées par three).
 - **Tests** : `test_materiaux` (ancrages de shader de 0.187), `gpu.spec` (même version de three pour la CAO et le lancer de rayons) ; navigateur 20/20 dont GPU, sur OCCT 8 (taille GPU = JavaScript cellule par cellule) ; comparaison d'images avec r147 (même pièce, même vue : écart moyen ~1/765 par pixel, coupe identique, atelier RENDU : laiton rouge − bleu 32 contre 31 en r147) ; `npm run ci:full`.
+
+## V0.44.1 - OCCT 8 : congé trop grand ramené au plus grand rayon qui passe, point dedans / dehors 40× plus rapide
+Demande : après le passage au noyau OCCT 8 (V0.43.0), « trouver des parades » aux deux écarts connus : congés trop grands refusés, tests point dedans / dehors lents sur les hélices.
+- **Congé ramené** (`src/20`, `occApplyXFillets`) : quand le rayon demandé échoue, le plus grand qui passe (petit rayon de référence, échelle 0,7 → 0,3, 3 dichotomies) est APPLIQUÉ au lieu de laisser la fonction en erreur ; ⚠ dans l'arbre, la timeline et le panneau (`f._adj`, « R10 impossible ici — appliqué R5,75, le plus grand qui passe », paroi mince nommée le cas échéant). Le rayon demandé reste enregistré : il revient seul si la géométrie s'agrandit.
+- **Contrôle de volume** : un congé « valide » peut être faux — slot de 12 mm, R6 : +1 866 mm³ au lieu d'en retirer (l'ancien noyau gonflait aussi : +664 mm³ à R10, accepté sans rien dire). L'écart de volume doit garder le sens de celui du rayon de référence et croître au plus comme 1,5 × (r / r_réf)².
+- **Point dedans / dehors** (`occClassifier`, `src/20`) : parité de deux rayons obliques (`IntCurvesFace_ShapeIntersector`) au lieu de `BRepClass3d_SolidClassifier` (22 ms par point sur un axe fileté sous OCCT 8) ; même verdict, 400 points en 0,5 s au lieu de 17 s ; désaccord des rayons ou point sur une face → le vrai classifieur tranche. Utilisé par le congé d'arête seule, le filetage et le perçage (`src/76`) ; la reconnaissance des perçages FAO (`src/89`) est laissée telle quelle.
+- **Tests** : `test_conge_ramene` (R10 sur le slot → entre R5 et R6 exclu, matière retirée, R10 gardé) ; `test_alerte_paroi` (paroi nommée, congé refusé ou ramené) ; `test_filetage_axe` sur `occClassifier` (54 → 10 s, mêmes contrôles au centième) ; vérifié dans le navigateur ; `npm run ci:full` 239/239.

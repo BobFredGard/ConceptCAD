@@ -185,7 +185,7 @@ function threadCompute(shape,f,bin){
   // bouts libres (rien au-delà, ou seulement un chanfrein) : le filet y débouche
   let cl=null,fa=null,fb=null;
   try{
-    cl=new occt.BRepClass3d_SolidClassifier_2(shape);
+    cl=occClassifier(shape);
     const maxD=Math.max(3*P,0.4*R);
     fa=threadFreeDist(cl,ref,S.a,-1,th.rR+0.02,maxD);
     fb=threadFreeDist(cl,ref,S.b,1,th.rR+0.02,maxD);
@@ -273,7 +273,7 @@ function threadFaceInfo(mesh,fi,point){
   // extérieure : juste au-delà de la paroi, on est hors matière (un trou : dans la matière)
   let out=true,cl=null;
   try{
-    cl=new occt.BRepClass3d_SolidClassifier_2(hit.bd.shape);
+    cl=occClassifier(hit.bd.shape);
     const s=C.r+Math.min(0.2,0.1*C.r),P=new occt.gp_Pnt_3(ax[0]+rd[0]/L*s,ax[1]+rd[1]/L*s,ax[2]+rd[2]/L*s);
     cl.Perform(P,1e-7);out=cl.State()!==occt.TopAbs_State.TopAbs_IN;try{P.delete();}catch(e){}
   }catch(e){}finally{try{if(cl)cl.delete();}catch(e){}}

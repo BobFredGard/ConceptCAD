@@ -484,7 +484,7 @@ function holeNextExit(sh,P,D){
   if(!sh||typeof occt==='undefined')return null;
   let cl=null;
   try{
-    cl=new occt.BRepClass3d_SolidClassifier_2(sh);
+    cl=occClassifier(sh);
     const IN=occt.TopAbs_State.TopAbs_IN;
     const inAt=function(t){const p=new occt.gp_Pnt_3(P.x+D.x*t,P.y+D.y*t,P.z+D.z*t);cl.Perform(p,1e-7);const r=cl.State()===IN;try{p.delete();}catch(e){}return r;};
     let bb=null,Lmax=2000;
@@ -539,7 +539,7 @@ function askHole(presetSketchId){
   try{
     if(occHas()&&occLive&&occLive.shape){
       const A=holeAxis(nf,sk),P=A.pts[0],D=A.dir;
-      const cl=new occt.BRepClass3d_SolidClassifier_2(occLive.shape);
+      const cl=occClassifier(occLive.shape);
       const st=function(s){const p=new occt.gp_Pnt_3(P.x+D.x*s,P.y+D.y*s,P.z+D.z*s);cl.Perform(p,1e-6);const r=cl.State();try{p.delete();}catch(e){}return r;};
       const IN=occt.TopAbs_State.TopAbs_IN;
       if(st(0.6)!==IN&&st(-0.6)===IN)nf.flip=true;

@@ -62,6 +62,7 @@ const SUITES = [
   "test_hote_oriphelin",
   "test_conge_fond_poche",
   "test_conge_tangent",
+  "test_conge_ramene",
   "test_conge_plan_decale",
   "test_conge_depouille",
   "test_arbre_selection",

@@ -33,6 +33,7 @@ const SUITES = [
   'test_undo_document',
   'test_undo_filet',
   'test_conge_tangent',
+  'test_conge_ramene',
   'test_conge_plan_decale',
   'test_conge_depouille',
   'test_chanfrein_modes',

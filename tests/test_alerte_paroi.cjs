@@ -72,8 +72,10 @@ const {loadApp}=require('./appvm.cjs');
     const xf={id:'xf_t',type:'xfillet',name:'Congé',edges:E.map(e=>({pos:e.mid.slice(),r:2,len:+e.len.toFixed(3),seed:1})),tangent:true,visible:true};
     doc.features.push(xf);
     occCkClear();markDirty();rebuild();const F2=occFinalShape(null);try{F2.shape.delete();}catch(e){}
-    p('congé R2 : '+(xf._err||'passé'));
-    att(xf._err&&/paroi de 1,[0-9]+ mm/.test(xf._err),'congé : la paroi mince n est pas nommée ('+xf._err+')');
+    p('congé R2 : '+(xf._err||xf._adj||'passé'));
+    // V0.44.1 : refusé (_err) ou ramené au plus grand rayon qui passe (_adj) — la paroi est nommée dans les deux cas
+    const msg=xf._err||xf._adj;
+    att(msg&&/paroi de 1,[0-9]+ mm/.test(msg),'congé : la paroi mince n est pas nommée ('+msg+')');
     att(!(xf._err&&/arête trop courte/.test(xf._err)),'congé : encore « arête trop courte »');
   }
   if(ATT.length){p('');p('ECHECS ('+ATT.length+') :');ATT.forEach(m=>p('  ✗ '+m));}

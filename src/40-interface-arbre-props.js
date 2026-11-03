@@ -120,7 +120,7 @@ let treeSel=[];   // ids de fonctions, dans l'ordre de clic
 function featIconOf(f){
   if(!f)return '◧';
   if(f.type==='extrude')return (f.op||'add')==='cut'?'▾':'▤';
-  if(f.type==='xfillet')return xIcon(xKindOf(f))+((f._m&&f._m.m<f._m.t)||f._err?'⚠':'');
+  if(f.type==='xfillet')return xIcon(xKindOf(f))+((f._m&&f._m.m<f._m.t)||f._err||f._adj?'⚠':'');
   if(f.type==='fillet')return xIcon(xKindOf(f));
   if(f.type==='repeat')return '🔁';
   if(f.type==='combine')return f.mode==='cut'?'⊖':(f.mode==='intersect'?'⊗':'⊕');
@@ -1985,6 +1985,7 @@ function renderProps(){
     if(f.type==='xfillet'){
       if(f._m)pInfo(f._m.m>=f._m.t?`✅ ${f._m.m}/${f._m.t} arêtes retrouvées`:`⚠ ${f._m.m}/${f._m.t} arêtes retrouvées — cliquez « Modifier la sélection »`);
       if(f._err){const e=document.createElement('div');e.style.cssText='font-size:.78rem;color:#ff6b60;background:rgba(255,69,58,.09);border:1px solid rgba(255,69,58,.3);border-radius:6px;padding:5px 7px;margin-top:6px';e.textContent='⚠ '+f._err;p.appendChild(e);}
+      if(f._adj&&!f._err){const e=document.createElement('div');e.style.cssText='font-size:.78rem;color:var(--warn);background:rgba(255,159,10,.09);border:1px solid rgba(255,159,10,.3);border-radius:6px;padding:5px 7px;margin-top:6px';e.textContent='⚠ '+f._adj;p.appendChild(e);} // V0.44.1 : rayon ramené (20)
       const lst=document.createElement('div');lst.className='col';lst.style.marginTop='6px';lst.style.maxHeight='180px';lst.style.overflow='auto';
       (f.edges||[]).forEach((s,i)=>{
         const r=document.createElement('div');r.className='tnode';
