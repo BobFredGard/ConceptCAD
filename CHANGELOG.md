@@ -8,7 +8,7 @@ sont sorties le 2026-09-30j.
 Code dans `src/` · livrable `fusion_mvp.html` (généré par `build.js`) · architecture et
 garde-fous en tête de `src/00-entete-et-outils.js`.
 
-**543 versions**, de `2026-09-28b` à `V0.44.2` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
+**544 versions**, de `2026-09-28b` à `V0.44.3` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
 comme dans le fichier d'origine.
 
 ---
@@ -6412,3 +6412,10 @@ Signalé : planche « Support Capteur Drapeau » (MERLIN-09-002) — dans la vue
 - **Cause** : dans three 0.187 le pixel ratio de l'écran ne s'applique plus quand une cible de rendu est active ; l'image de la vue (`mepRender3dImage`, `src/98-mep-10-projection-hlr.js`) divisait encore son viewport par ce ratio (correctif de l'époque r147), d'où un rendu dans 80 % de la cible à 125 % d'affichage, collé en bas à gauche.
 - **Correctif** : viewport = toute la cible, en pixels réels (`setViewport(0,0,W,H)`).
 - **Test** : MERLIN-09-002 ouvert puis PLAN aussitôt : l'image remplit son cadre (projection three = projection du dessin au pixel près), plus de doublons ; `npm run ci` ; navigateur 20/20 dont GPU.
+
+## V0.44.3 - Grain et texture des matières plus lisibles (three 0.187)
+Demande : depuis V0.44.0 les matières sont moins bien définies ; garder three 0.187 mais retrouver du grain, de la texture.
+- **Cause** : l'éclairage d'environnement de three 0.187 (préfiltrage GGX au lieu du flou de r147) lisse un peu plus les reflets des matières semi-mates ; les reliefs procéduraux, déjà discrets, ne se lisaient presque plus (inox brossé quasi lisse).
+- **Correctif** (`src/98-rendu-reliefs.js`) : profondeurs de relief ~×2 (brossé, sablé, bois, grain, stries, couches ; moleté inchangé) — le lancer de rayons en hérite par `REL_DEF` ; rugosité couplée au relief ×3 (bosses et creux ne renvoient plus la même lumière) ; teinte qui suit le relief (creux ~7 % plus sombres) pour lire le grain hors des reflets.
+- **Limite** : PE-HD orange de la Barquette presque blanc dans l'atelier RENDU (déjà le cas avant), son grain reste peu visible.
+- **Tests** : comparaison d'images r147 / V0.44.0 / version corrigée sur la Barquette (même vue) : grain de l'inox brossé ~×3 ; shaders compilés sans erreur ; `npm run ci`.
