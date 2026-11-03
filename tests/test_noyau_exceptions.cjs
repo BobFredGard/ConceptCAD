@@ -59,7 +59,10 @@ if(typeof sandbox.delWkSource==='function'){
 
 // la colle livrée appelle ces noms sans les définir
 const glue=fs.readFileSync(path.join(__dirname,'..','occt','opencascade.full.js'),'utf8');
-A(/___cxa_can_catch\(caughtType/.test(glue),'la colle du noyau appelle ___cxa_can_catch');
+// (noyau essayé à exceptions WebAssembly natives, v3 : plus de ___cxa_can_catch du tout)
+if(process.env.OCCT_DIR&&!/___cxa_can_catch/.test(glue))
+  console.log('  ℹ noyau essayé à exceptions natives : ___cxa_can_catch inutile, correction à retirer à son adoption');
+else A(/___cxa_can_catch\(caughtType/.test(glue),'la colle du noyau appelle ___cxa_can_catch');
 // (essai d'un autre noyau par OCCT_DIR, tests/occt-moteur.cjs : sa colle peut la définir — alors
 // la rustine deviendra inutile le jour où ce noyau sera adopté ; ce n'est pas un échec ici)
 if(process.env.OCCT_DIR&&/function ___cxa_can_catch\b|___cxa_can_catch\s*=/.test(glue))

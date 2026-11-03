@@ -26,15 +26,26 @@ if(DIR){
     const {appliquer}=require(path.join(__dirname,'..','occt-build','compat-v1.cjs'));
     globalThis.__occtCompatWrap=f=>async(o)=>appliquer(await f(o),compat);
   }
+  // noyau v3 (libcascade, API sans suffixes) : occt-build/compat-v3.cjs
+  const compat3File=path.join(dir,'compat-v3.json');
+  const compat3=!compat&&fs.existsSync(compat3File)?JSON.parse(orig.call(fs,compat3File,'utf8')):null;
+  if(compat3){
+    const {appliquer}=require(path.join(__dirname,'..','occt-build','compat-v3.cjs'));
+    globalThis.__occtCompatWrap=f=>async(o)=>appliquer(await f(o),compat3);
+  }
+  // la colle v3 (module ES d'Emscripten 6) charge `node:module` par import() : pas permis dans un script
+  globalThis.__occtRequire=require;
+  globalThis.__occtGlueUrl=require('url').pathToFileURL(jsFile).href;
   function adaptGlue(src){
     // module ES → script : la fabrique devient globalThis.opencascadeFactory
     if(/export default (\w+);\s*$/.test(src))
       src=src.replace(/export default (\w+);\s*$/,'try{globalThis.opencascadeFactory=$1;}catch(e){}\n');
     if(!/opencascadeFactory/.test(src))src+='\n;try{globalThis.opencascadeFactory=opencascade;}catch(e){}\n';
     // noyau plus récent qu'OCCT 7.4 : couche de compatibilité des appels 1.1.1 (occt-build/compat-v1.cjs)
-    if(compat)src+='\n;globalThis.opencascadeFactory=globalThis.__occtCompatWrap(globalThis.opencascadeFactory);\n';
+    if(compat||compat3)src+='\n;globalThis.opencascadeFactory=globalThis.__occtCompatWrap(globalThis.opencascadeFactory);\n';
     // import.meta n'existe pas dans un script : la colle ne s'en sert que pour situer le .wasm
-    return src.replace(/import\.meta\.url/g,'("file://"+__filename)');
+    return src.replace(/import\.meta\.url/g,'globalThis.__occtGlueUrl')
+      .replace(/await import\("node:module"\)/g,'globalThis.__occtRequire("node:module")');
   }
   fs.readFileSync=function(p,...rest){
     try{

@@ -82,7 +82,7 @@ Les images occupent ~21 Go sous Docker.
 | | actuel (1.1.1) | v2 (OCCT 7.6) | v3 (OCCT 8.0.1) |
 |---|---|---|---|
 | .wasm | 65,9 Mo (13,9 gzip) | 50,3 Mo (13,8 gzip) | 42,8 Mo (11,9 gzip) |
-| CI rapide | 89/89 | 88/89 (avec `compat-v1`) | non branché (API sans suffixes) |
+| CI rapide | 89/89 | 88/89 (avec `compat-v1`) | 88/89 (avec `compat-v3`, voir plus bas) |
 | Suite complète | 233/233, 110 s | 230→231/233, 124 s | — |
 | `CCFaceOffset` Barquette | absent | **juste** (jointure « intersection ») | juste sur une boîte |
 
@@ -110,8 +110,29 @@ Mesuré seul (un test à la fois) : `test_filetage_axe` 26 s → 39 s, `test_sym
 40 s → 37 s, `test_fao_faces` 41 s → 43 s. Le ralentissement réel se concentre donc sur les
 filetages ; ailleurs les deux moteurs se valent.
 
-**v3** : se charge en 0,5 s, `CCFaceOffset` exact, export STEP AP242 et noms accentués corrects ;
-mais aucun appel suffixé de l'application ne garde son nom : chantier d'adaptation à part.
+### v3 (OCCT 8.0.1) avec le traducteur `compat-v3` (03/11/2026)
+
+`occt-build/compat-v3.cjs` fait parler l'application (appels 1.1.1) au noyau v3 sans toucher à `src/` :
+noms suffixés fournis à la demande (prototypes « de repli » : seul un nom absent passe par eux),
+arguments complétés ou ôtés d'après les signatures du `.d.ts` v3 (`out/v3/compat-v3.json`, généré par
+`build.cjs v3`), poignées transparentes (`Handle_X_2(o)` → o, `get()` → l'objet, nulle → `IsNull()` vrai),
+`Handle_Message_ProgressIndicator` → `Message_ProgressRange`, sorties « enveloppe » → `returnValue`,
+typedefs renommés (`TopTools_ListOfShape` → `NCollection_List_TopoDS_Shape`…). Une surcharge ancienne
+sans équivalent v3 reste absente (l'app la teste : `BRepOffsetAPI_MakeThickSolid_2` → nouvelle Coque).
+`tests/occt-moteur.cjs` adapte aussi la colle (module ES d'Emscripten 6 : `import.meta`, `import("node:module")`).
+
+| | actuel | v2 | v3 |
+|---|---|---|---|
+| CI rapide | 89/89 | 88/89 | **88/89** |
+| Suite complète | 233/233 | 231/233 | **231/233** (mêmes deux écarts que v2, expliqués plus haut) |
+| Cumul des tests (parallèle, bruité) | 2 211 s | 2 774 s | 1 866 – 2 086 s |
+| Barquette (`CCFaceOffset`, intersection) | — | juste, 135 ms | **juste, 51 ms** |
+| `test_filetage_axe` seul | 26 s | 39 s | 55 s |
+
+Reste pour l'adopter : charger v3 + traducteur dans le navigateur et dans le worker de suppression de
+face (exceptions WebAssembly natives : Chrome/Edge 95+, Firefox 100+), essai réel par Fred, puis
+réécriture progressive des appels au format v3 et retrait du traducteur. Les filetages sont plus lents
+(hélices) : à regarder avant la bascule.
 
 ## Installer Docker Desktop (à faire par l'utilisateur, droits administrateur)
 

@@ -76,6 +76,11 @@ function main(){
     sh(process.execPath,[path.join(HERE,'sonde-surcharges.cjs'),path.join(ROOT,'occt','opencascade.full.js'),path.join(ROOT,'occt','opencascade.wasm.wasm'),sA]);
     sh(process.execPath,[path.join(HERE,'sonde-surcharges.cjs'),path.join(out,'conceptcad.js'),path.join(out,'conceptcad.wasm'),sB]);
     sh(process.execPath,[path.join(HERE,'compat-v1.cjs'),path.join(out,'conceptcad.d.ts'),sA,sB,path.join(out,'compat-v1.json')]);
+  }else{
+    // v3 : table compat-v3.json (signatures v3 des appels de l'ancien noyau), voir compat-v3.cjs
+    const ROOT=path.join(HERE,'..'),sA=path.join(work,'sonde-ancien.json');
+    sh(process.execPath,[path.join(HERE,'sonde-surcharges.cjs'),path.join(ROOT,'occt','opencascade.full.js'),path.join(ROOT,'occt','opencascade.wasm.wasm'),sA]);
+    sh(process.execPath,[path.join(HERE,'compat-v3.cjs'),path.join(out,'conceptcad_v3.d.ts'),sA,path.join(out,'compat-v3.json')]);
   }
   const wasm=fs.readdirSync(out).filter(f=>f.endsWith('.wasm')).map(f=>`${f} ${(fs.statSync(path.join(out,f)).size/1e6).toFixed(1)} Mo`);
   const img=sh('docker',['image','inspect','--format','{{index .RepoDigests 0}}',VARIANTES[v].image],{capture:true}).trim();
