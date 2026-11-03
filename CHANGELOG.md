@@ -8,7 +8,7 @@ sont sorties le 2026-09-30j.
 Code dans `src/` · livrable `fusion_mvp.html` (généré par `build.js`) · architecture et
 garde-fous en tête de `src/00-entete-et-outils.js`.
 
-**542 versions**, de `2026-09-28b` à `V0.44.1` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
+**543 versions**, de `2026-09-28b` à `V0.44.2` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
 comme dans le fichier d'origine.
 
 ---
@@ -6406,3 +6406,9 @@ Demande : après le passage au noyau OCCT 8 (V0.43.0), « trouver des parades »
 - **Contrôle de volume** : un congé « valide » peut être faux — slot de 12 mm, R6 : +1 866 mm³ au lieu d'en retirer (l'ancien noyau gonflait aussi : +664 mm³ à R10, accepté sans rien dire). L'écart de volume doit garder le sens de celui du rayon de référence et croître au plus comme 1,5 × (r / r_réf)².
 - **Point dedans / dehors** (`occClassifier`, `src/20`) : parité de deux rayons obliques (`IntCurvesFace_ShapeIntersector`) au lieu de `BRepClass3d_SolidClassifier` (22 ms par point sur un axe fileté sous OCCT 8) ; même verdict, 400 points en 0,5 s au lieu de 17 s ; désaccord des rayons ou point sur une face → le vrai classifieur tranche. Utilisé par le congé d'arête seule, le filetage et le perçage (`src/76`) ; la reconnaissance des perçages FAO (`src/89`) est laissée telle quelle.
 - **Tests** : `test_conge_ramene` (R10 sur le slot → entre R5 et R6 exclu, matière retirée, R10 gardé) ; `test_alerte_paroi` (paroi nommée, congé refusé ou ramené) ; `test_filetage_axe` sur `occClassifier` (54 → 10 s, mêmes contrôles au centième) ; vérifié dans le navigateur ; `npm run ci:full` 239/239.
+
+## V0.44.2 - PLAN : vue « Rendu réaliste » de nouveau calée sur le dessin (Three.js 0.187)
+Signalé : planche « Support Capteur Drapeau » (MERLIN-09-002) — dans la vue 3D réaliste, bras violet et pince jaune décalés vers le bas, doublons blancs (le dessin au trait) à la bonne place.
+- **Cause** : dans three 0.187 le pixel ratio de l'écran ne s'applique plus quand une cible de rendu est active ; l'image de la vue (`mepRender3dImage`, `src/98-mep-10-projection-hlr.js`) divisait encore son viewport par ce ratio (correctif de l'époque r147), d'où un rendu dans 80 % de la cible à 125 % d'affichage, collé en bas à gauche.
+- **Correctif** : viewport = toute la cible, en pixels réels (`setViewport(0,0,W,H)`).
+- **Test** : MERLIN-09-002 ouvert puis PLAN aussitôt : l'image remplit son cadre (projection three = projection du dessin au pixel près), plus de doublons ; `npm run ci` ; navigateur 20/20 dont GPU.

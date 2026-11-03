@@ -545,11 +545,10 @@
           magFilter:THREE.LinearFilter,format:THREE.RGBAFormat,
           type:THREE.UnsignedByteType,depthBuffer:true,stencilBuffer:false});
         renderer.setRenderTarget(rt);
-        /* setViewport est exprimé en pixels CSS : Three le multiplie par le
-           pixel ratio du renderer. Sans division, l'image 1600 px est rendue
-           dans un viewport 1600×pr puis rognée/décalée. */
-        const pr=(renderer.getPixelRatio?renderer.getPixelRatio():1)||1;
-        if(renderer.setViewport)renderer.setViewport(0,0,W/pr,H/pr);
+        /* viewport = toute la cible, en pixels réels : dans three 0.187 le pixel ratio de l'écran
+           ne s'applique plus quand une cible est active (r147 le multipliait, d'où l'ancienne division
+           W/pr, qui rend maintenant l'image dans 80 % de la cible à 125 % : pièces décalées). */
+        if(renderer.setViewport)renderer.setViewport(0,0,W,H);
         renderer.setClearColor(0x000000,0);
         renderer.autoClear=true;
         renderer.render(scene,cam);
