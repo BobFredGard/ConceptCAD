@@ -739,7 +739,7 @@ function faoRenderTree(){
         const d=document.createElement('div');
         d.className='fao-op'+(isSel('faoOp',op.id)||faoMultiHas(s.id,op.id)?' sel':'')
           +(off?' isoff':'')+(hid?' ishid':'');
-        d.title='Clic = fiche dans le panneau droit · Ctrl+clic / Maj+clic = plusieurs opérations (Ctrl+C / Ctrl+V)'
+        d.title='Clic = fiche dans le panneau droit · Ctrl+clic / Maj+clic = plusieurs opérations (Ctrl+C / Ctrl+V, Suppr = supprimer, Ctrl+Z = rétablir)'
           +(hid?' — traces masquées dans la 3D (opération toujours active)':'');
         const eye=document.createElement('span');
         eye.textContent=off?'○':'●';

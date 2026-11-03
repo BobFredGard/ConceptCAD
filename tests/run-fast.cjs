@@ -41,6 +41,7 @@ const SUITES = [
   'test_normales_exactes',
   'test_fao_outils',
   'test_fao_copier_coller',
+  'test_fao_suppression_multiple',
   'test_fao_percage',
   'test_fao_murs',
   'test_fao_32_fiches',
