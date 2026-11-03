@@ -71,6 +71,20 @@ const vm=require('vm');
     const cd=L.find(c=>c.where==='disk');
     await mffBakOpen(cd);
     att(doc.params.length===1&&doc.params[0].value===12&&mffHandle===h,'15 : copie ouverte (e = 12), rattachée au même fichier');
+    // ── 10. V0.46.2 : fichier vidé sur le disque (Barquette à 0 octet) ──
+    doc.params[0].expr='18';doc.params[0].value=18;
+    let thrown='';try{await mffLoadText('','Vide.conceptcad',null);}catch(e){thrown=e.message;}
+    att(/vide/.test(thrown)&&doc.params[0].value===18,'16 : contenu vide : le modèle ouvert n’est pas effacé ('+thrown+')');
+    FS['projets/pieces/Bride.miniFusion']='';
+    let asked='';mffAsk=async m=>{asked=m;return 'cancel';};
+    let okO=await mffOpenHandle(h);
+    att(!okO&&/vide \\(0 octet\\)/.test(asked)&&/copie de secours/.test(asked)&&doc.params[0].value===18,'17 : ouverture d’un fichier vide : copie de secours proposée, Annuler garde le modèle');
+    mffAsk=async()=>'bak';
+    okO=await mffOpenHandle(h);
+    att(okO&&doc.params[0].value===12&&mffHandle===h&&FS['projets/pieces/Bride.miniFusion']==='','18 : « Ouvrir la copie » : la copie la plus récente (version d’avant, e = 12) est ouverte, le disque n’est pas réécrit sans Ctrl+S');
+    FS['ailleurs/Neuf.conceptcad']='';delete IDB['mff:bak:Neuf.conceptcad'];let al='';alert=m=>{al=m;};
+    okO=await mffOpenHandle(mkFile('ailleurs/Neuf.conceptcad'));
+    att(!okO&&/Aucune copie/.test(al)&&doc.params[0].value===12,'19 : fichier vide sans copie : message clair, modèle intact');
     return {ATT,OK};
   `;
   const o=await vm.runInContext('(async function(){'+R+'})()',ctx);

@@ -8,7 +8,7 @@ sont sorties le 2026-09-30j.
 Code dans `src/` · livrable `fusion_mvp.html` (généré par `build.js`) · architecture et
 garde-fous en tête de `src/00-entete-et-outils.js`.
 
-**550 versions**, de `2026-09-28b` à `V0.46.1` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
+**551 versions**, de `2026-09-28b` à `V0.46.2` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
 comme dans le fichier d'origine.
 
 ---
@@ -6467,3 +6467,11 @@ Demande : capture de l'arbre (« 2 composant(s) lié(s) ⚠ ») : « pas de mise
 - **Nom** (`asmLinkHandle`) : source absente sous son nom → même nom avec ou sans `.gz` ; trouvée, le lien retient le nouveau nom.
 - **`.conceptcad.gz`** : accepté par les fenêtres Ouvrir / Insérer, listé dans le dossier de projets, nom de pièce sans `.conceptcad.gz` (`mffBase`) ; contenu gzip lu comme depuis V0.46.0.
 - **Tests** : `tests/browser/fichier-gz.spec.cjs` 2 (Axe lié, source renommée en `.conceptcad.gz` et modifiée → mise à jour, lien sur le nouveau nom ; dossier non choisi → boîte avec la raison et « Choisir le dossier de projets… ») ; `npm run ci` et `npm run test:browser`.
+
+## V0.46.2 - Fichier vide ou abîmé : le modèle ouvert reste en place et la copie de secours est proposée ; Exemples/ contrôlés à chaque livraison
+Demande : « C'est bizarre que le fichier soit vide. Il faut mettre une action en place pour que cela n'arrive pas. » (Exemples/Barquette.conceptcad trouvé à 0 octet dans le dépôt principal le 03/11, cause extérieure à l'application ; restauré depuis Git).
+- **Cause** : à l'ouverture, l'espace était vidé (`docResetEmpty`) AVANT de lire le contenu : un fichier vide ou tronqué effaçait le modèle ouvert pour n'afficher qu'une erreur.
+- **Ouverture** (`mffLoadText`, `src/97-fichiers-projets.js`) : contenu contrôlé (`mffCheckData`, sur le texte décompressé) avant de vider l'espace ; refusé → le modèle ouvert n'est pas remplacé.
+- **Copie de secours** (`mffOpenDamaged`) : fichier vide, illisible ou compression abîmée → la copie lisible la plus récente (`.bak` à côté, ou copie du navigateur) est proposée ; ouverte, le document est marqué modifié et Ctrl+S la remet dans le fichier. Sans copie : message clair, modèle intact.
+- **Exemples/** : `tests/test_exemples_sains.cjs` (suites rapide et complète) refuse tout projet ou STEP vide, tronqué ou illisible (gzip décompressé et relu, pointeur LFS accepté) ; au cpt, lancé aussi sur le dépôt principal (`node tests/test_exemples_sains.cjs D:/ConceptCAD/Exemples`).
+- **Tests** : `tests/test_enregistrement_sur.cjs` 16-19 (contenu vide : modèle gardé ; fichier vide : copie proposée, Annuler garde le modèle ; « Ouvrir la copie » ouvre la version d'avant sans réécrire le disque ; sans copie : message) ; `npm run ci:full`.

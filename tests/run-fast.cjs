@@ -89,6 +89,7 @@ const SUITES = [
   'test_composants_references',
   'test_composants_aretes_esquisse',
   'test_enregistrement_sur',
+  'test_exemples_sains',
   'test_configurations',
   'test_mcp_serveur',
   'test_cartouche_modele',

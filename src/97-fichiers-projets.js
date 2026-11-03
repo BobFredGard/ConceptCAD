@@ -211,6 +211,8 @@ async function mffSaveAs(){
 }
 async function mffLoadText(txt,name,handle){
   // vide l'espace PUIS charge (document + trajectoires), sans demander : l'appelant a déjà confirmé
+  // V0.46.2 : contenu contrôlé AVANT de vider l'espace (fichier vide / tronqué : rien n'est perdu)
+  const bad=mffCheckData(txt);if(bad)throw new Error(bad+' — le modèle ouvert n’a pas été remplacé');
   try{if(typeof faoVw!=='undefined'&&faoVw&&typeof faoViewerOpen==='function')faoViewerOpen();}catch(e){} // simulation fermée
   try{docResetEmpty();}catch(e){}
   const nm=mffBase(name);
@@ -227,8 +229,26 @@ async function mffLoadText(txt,name,handle){
 async function mffOpenHandle(h){
   try{
     if(!(await mffPerm(h,'read')))throw new Error('permission refusée');
-    const f=await h.getFile();await mffLoadText(await mffFileText(f),f.name,h);return true;
+    // compressé abîmé (gzip coupé) : traité comme un fichier vide, la copie de secours est proposée
+    const f=await h.getFile();let txt='',bad='';try{txt=await mffFileText(f);bad=mffCheckData(txt);}catch(e){bad='compression illisible';}
+    if(bad)return await mffOpenDamaged(h,f,bad);
+    await mffLoadText(txt,f.name,h);return true;
   }catch(e){alert('Ouverture impossible : '+(e&&e.message||e));return false;}
+}
+async function mffOpenDamaged(h,f,bad){
+  // V0.46.2 : fichier vide ou abîmé sur le disque (vu : Barquette à 0 octet) — le modèle ouvert
+  // reste en place ; la copie de secours la plus récente (.bak, navigateur) est proposée
+  const L=[];for(const c of await mffBakFind(h)){try{const t=await c.txt();if(!mffCheckData(t))L.push({c,t});}catch(e){}}
+  const what='« '+h.name+' » est '+(f.size===0?'vide (0 octet)':'abîmé ('+bad+', '+f.size+' octets)')+'.';
+  if(!L.length){alert(what+'\nAucune copie de secours lisible pour ce fichier. Le modèle ouvert n’a pas été remplacé.');return false;}
+  const c=L[0].c;
+  const r=await mffAsk(what+'\nOuvrir la copie de secours ('+c.label+(c.at?', '+new Date(c.at).toLocaleString('fr'):'')+') ? Ctrl+S la remettra dans le fichier.',
+    [['bak','Ouvrir la copie',true],['cancel','Annuler']]);
+  if(r!=='bak')return false;
+  await mffLoadText(L[0].t,h.name,h);
+  mffSavedSig=null;setTimeout(()=>{mffSavedSig='__copie__';mffTitle();},1600); // « modifié » : le disque n'a pas cette version
+  try{faceEl.textContent='Copie de secours ouverte — « '+h.name+' » était '+(f.size===0?'vide':'abîmé')+' ; Ctrl+S pour la remettre dans le fichier.';}catch(e){}
+  return true;
 }
 async function mffOpen(){
   if(!(await mffConfirmDiscard()))return;

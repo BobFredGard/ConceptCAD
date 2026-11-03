@@ -242,6 +242,7 @@ const SUITES = [
   "test_composants_aretes_occ",
   "test_composants_plan_bulles",
   "test_enregistrement_sur",
+  "test_exemples_sains",
   "test_configurations",
   "test_scripts",
   "test_mcp_serveur",
