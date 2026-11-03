@@ -160,7 +160,10 @@ async function occtFinishBoot(){
     // rebuild() se croyait à jour et ne rejouait rien. Résultat mesuré : au 2e
     // rechargement de la page, le cache était valide, le rejeu sauté, occLive absent —
     // plus aucun congé, plus aucune esquisse sur face, plus aucune sélection de face.
-    try{faceEl.textContent='Noyau prêt — recalcul exact…';builtVersion=-1;builtHash=null;builtEngine=null;rebuild();}catch(e){}
+    // V0.41.0 : préchauffe avec barre de progression (31) — le rejeu final relit ses points de contrôle
+    try{faceEl.textContent='Noyau prêt — recalcul exact…';builtVersion=-1;builtHash=null;builtEngine=null;
+      await regenWarm('Recalcul exact du modèle');builtVersion=-1;rebuild();}catch(e){}
+    finally{regenUiHide();}
     // Assemblage : les autres pièces, capturées en repli maillage, sont refaites en exact (47)
     try{if(asmOn())asmBuildSnapshots();}catch(e){}
     // Imports STEP du document (F5, ouverture avant le noyau) : rejoués depuis leur source.

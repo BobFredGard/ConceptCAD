@@ -64,12 +64,14 @@ else{
 // la boîte du « solide combiné » parfois dégénérée (40×40×10000) — caméra hors champ,
 // vue noire. Tant qu'OCCT n'est pas prêt, la caméra par défaut (90,-90,90) montre l'origine.
 try{
-  (draftP||Promise.resolve()).then(()=>bootPrev?false:restoreViewCache()).then(ok=>{
+  (draftP||Promise.resolve()).then(()=>bootPrev?false:restoreViewCache()).then(async ok=>{
     if(ok)log('Affichage restauré depuis le cache — rejeu exact en cours…');
     // builtVersion=-1 : la garde « rien n'a changé » court-circuterait sinon le rejeu,
     // puisque restoreViewCache vient de poser builtHash.
     builtVersion=-1;builtHash=null;builtEngine=null;
-    try{rebuild();}catch(e){}
+    // V0.41.0 : noyau déjà prêt → barre de progression (31) ; sinon repli maillage, immédiat
+    if(regenWarmUseful()){try{await regenWarm('Ouverture du brouillon');}catch(e){}builtVersion=-1;}
+    try{rebuild();}catch(e){}finally{regenUiHide();}
     try{if(occtReady)showAll();}catch(e){}
     try{faoMovesPreloadSoon(true);}catch(e){} // solide rejoue : on (re)charge les parcours persistes
     if(occtReady)bootSafeDone(); // sinon : à la fin du rejeu exact (occtFinishBoot)

@@ -166,6 +166,14 @@ function appliquer(oc,table){
   for(const k of E.statics||[]){const [c,M]=k.split('.');const C=oc[c];if(C&&typeof C[M]==='function'){const f=C[M],ovl=T.statics[k];C[M]=Object.assign(function(...a){return sortie(f.apply(C,ajuster(a,ovl)));},f);}}
   for(const k of E.methods||[]){const [c,M]=k.split('.');const C=oc[c];if(!C||!C.prototype)continue;const f=C.prototype[M];if(typeof f!=='function')continue;
     const ovl=T.methods[k];C.prototype[M]=Object.assign(function(...a){return sortie(f.apply(this,ajuster(a,ovl)));},f);}
+  // 5. erreurs : v3 lance des exceptions WebAssembly natives, sans texte (« [object WebAssembly.Exception] »
+  //    dans les messages de l'app) ; on leur donne le type et le texte d'OCCT, lus comme e.message / String(e).
+  const WE=typeof WebAssembly!=='undefined'&&WebAssembly.Exception;
+  if(WE&&typeof oc.getExceptionMessage==='function'){
+    const lire=e=>{try{const r=oc.getExceptionMessage(e);return 'OCCT '+(Array.isArray(r)?r:[r]).filter(Boolean).join(' : ');}catch(x){return 'exception OCCT';}};
+    Object.defineProperty(WE.prototype,'message',{get(){return lire(this);},configurable:true});
+    Object.defineProperty(WE.prototype,'toString',{value(){return this.message;},configurable:true,writable:true});
+  }
   oc.__compatV3={NULLH};
   return oc;
 }

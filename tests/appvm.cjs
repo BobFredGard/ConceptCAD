@@ -177,6 +177,9 @@ function loadApp(){
   // micro-tâche plus tard et remettait occtReady=false : toute attente du test avant son
   // rejeu (await null de plus dans bundleRestore…) le faisait passer en repli maillage.
   sandbox.__occBootDone=true;
+  // Régénération avec barre de progression (src/31) : préchauffe asynchrone coupée par défaut —
+  // les tests gardent le rejeu synchrone d'avant ; test_regen_progression la rallume.
+  sandbox.__regenSync=true;
   sandbox.addEventListener=function(t,fn){evBind('window',t,fn);};sandbox.removeEventListener=function(){};
   sandbox.dispatchEvent=function(ev){evFire('window',ev);return true;};
   sandbox.matchMedia=function(){return{matches:false,addListener(){},removeListener(){},addEventListener(){},removeEventListener(){}};};

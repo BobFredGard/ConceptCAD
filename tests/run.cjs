@@ -130,6 +130,7 @@ const SUITES = [
   "test_timeline_bandeau",
   "test_corps_iso",
   "test_corps_suppression",
+  "test_regen_progression",
   "test_corps_style",
   "test_materiaux",
   "test_rendu_patine",

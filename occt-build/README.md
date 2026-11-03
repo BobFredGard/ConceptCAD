@@ -141,9 +141,17 @@ ES dans le worker). L'état affiche « [ESSAI noyau v3 — OCCT 8.0.1] ». Sans 
   → **17/17** (03/11/2026).
 - Suppression de face au worker (Perçages.step, cylindre) : même solide qu'avec l'actuel (9 faces, 87 452,9 mm³).
 
-Reste pour l'adopter : essai réel par Fred, filetages plus lents (hélices) à regarder, messages
-d'erreur du noyau (exceptions WebAssembly natives, Chrome/Edge 95+, Firefox 100+), publication des
-fichiers v3 avec l'application, puis réécriture progressive des appels au format v3 et retrait du traducteur.
+**Filetages (profil, `test_filetage_axe`)** : le rejeu du filet est plus RAPIDE sur v3 (6,1 s → 2,5 s,
+dont la soustraction 4,5 s → 1,7 s). Le test dure plus longtemps à cause de ses propres vérifications :
+des milliers de `BRepClass3d_SolidClassifier.Perform` (point dedans / dehors) sur les faces hélicoïdales,
+~2,6 fois plus lents sous OCCT 8. L'app ne s'en sert que pour quelques points (perçages, FAO).
+
+**Messages d'erreur** : les exceptions WebAssembly natives de v3 reçoivent `message` / `toString` =
+« OCCT <type> : <texte> » (`compat-v3`, via `getExceptionMessage`), au lieu de « [object WebAssembly.Exception] ».
+
+Reste pour l'adopter : essai réel par Fred (en cours, « pas mal »), publication des fichiers v3 avec
+l'application (navigateurs : Chrome/Edge 95+, Firefox 100+), puis réécriture progressive des appels au
+format v3 et retrait du traducteur.
 
 ## Installer Docker Desktop (à faire par l'utilisateur, droits administrateur)
 
