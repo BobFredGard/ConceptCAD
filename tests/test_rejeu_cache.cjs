@@ -11,7 +11,7 @@ vm.runInThisContext(fs.readFileSync(path.join(ROOT,'occt','opencascade.full.js')
 const {loadApp}=require('./appvm.cjs');
 // « test suppr » : copie figée (version du 2026-10-27, avec extrusions) — l'exemple vivant a
 // été retravaillé depuis (import seul) et ne porte plus d'extrusion à faire varier
-const lire=n=>fs.readFileSync(n.startsWith('fixtures/')?path.join(__dirname,n):path.join(ROOT,'Exemples',n),'utf8');
+const lire=n=>require('./lire-projet.cjs')(n.startsWith('fixtures/')?path.join(__dirname,n):path.join(ROOT,'Exemples',n));
 (async()=>{
   const real=await globalThis.opencascadeFactory({wasmBinary:fs.readFileSync(path.join(ROOT,'occt','opencascade.wasm.wasm'))});
   const out={fails:[],log:[]};

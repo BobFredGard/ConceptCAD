@@ -203,7 +203,7 @@ async function mfmShare(){
   try{
     const data=await mffData();
     const nm=(mffName||doc.name||'piece').replace(/[\\/:*?"<>|]/g,'_')+'.conceptcad';
-    const f=new File([data],nm,{type:'application/json'});
+    const bin=await mffPack(data),f=new File([bin],nm,{type:typeof bin==='string'?'application/json':'application/gzip'});
     if(navigator.canShare&&navigator.canShare({files:[f]})){await navigator.share({files:[f],title:nm});mffMark();return;}
   }catch(e){if(e&&e.name==='AbortError')return;}
   mffSaveAs();

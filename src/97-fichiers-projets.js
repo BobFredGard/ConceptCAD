@@ -55,6 +55,31 @@ async function mffConfirmDiscard(){
 }
 /* ---- écriture / lecture ---- */
 async function mffData(){try{return await bundleSerialise();}catch(e){return serialise();}}
+/* ---- fichier compressé (V0.46.0) : un .conceptcad est écrit en gzip, sans changer d'extension
+   (3 à 5 fois plus petit) ; à la lecture, la signature gzip (1F 8B) est reconnue et un fichier
+   en clair (anciennes versions, .miniFusion, .json) s'ouvre comme avant ---- */
+async function mffPack(txt){
+  // texte du projet → octets gzip à écrire (le texte tel quel si le navigateur ne sait pas compresser)
+  if(typeof txt!=='string'||typeof TextEncoder==='undefined')return txt;
+  // la compression est relue tout de suite : si elle ne redonne pas exactement le texte, on écrit en clair
+  try{
+    const z=await asmCacheZip(new TextEncoder().encode(txt),false);if(!z||!z.length)return txt;
+    const back=await asmCacheZip(z,true);
+    return back&&new TextDecoder().decode(back)===txt?z:txt;
+  }catch(e){return txt;}
+}
+async function mffFileText(f){
+  // File / Blob d'un projet → texte (décompressé s'il est en gzip)
+  if(typeof f.arrayBuffer!=='function')return await f.text();
+  const u8=new Uint8Array(await f.arrayBuffer());
+  if(u8.length>2&&u8[0]===0x1f&&u8[1]===0x8b){
+    const z=await asmCacheZip(u8,true);
+    if(!z)throw new Error('fichier compressé : ce navigateur ne sait pas le décompresser');
+    return new TextDecoder().decode(z);
+  }
+  return new TextDecoder().decode(u8);
+}
+function mffBlob(data){return new Blob([data],{type:typeof data==='string'?'application/json':'application/gzip'});}
 async function mffPerm(h,mode){
   try{const o={mode:mode||'readwrite'};if((await h.queryPermission(o))==='granted')return true;return (await h.requestPermission(o))==='granted';}catch(e){return false;}
 }
@@ -79,7 +104,7 @@ function mffCheckData(txt){
   let o;try{o=JSON.parse(txt);}catch(e){return 'contenu illisible ('+(e&&e.message||e)+')';}
   if(!o||typeof o!=='object')return 'contenu illisible';
   const d=o.doc&&typeof o.doc==='object'?o.doc:o; // bundle : {doc, …} ; document : {app, …}
-  if(d.app!=='MiniFusion'&&!Array.isArray(d.features)&&!Array.isArray(d.sketches))return 'ce n’est pas un projet ConceptCAD';
+  if(d.app!=='ConceptCAD'&&d.app!=='MiniFusion'&&!Array.isArray(d.features)&&!Array.isArray(d.sketches))return 'ce n’est pas un projet ConceptCAD';
   return '';
 }
 async function mffDirOf(h){
@@ -98,24 +123,31 @@ async function mffBackup(h,old){
   try{
     const d=await mffDirOf(h);
     if(d){const b=await d.getFileHandle(h.name+'.bak',{create:true});const w=await b.createWritable();
-      try{await w.write(old);await w.close();out.disk=b.name;}catch(e){try{await w.abort();}catch(e2){}}}
+      try{await w.write(await mffPack(old));await w.close();out.disk=b.name;}catch(e){try{await w.abort();}catch(e2){}}}
   }catch(e){}
   return out;
 }
 async function mffWriteSafe(h,data,opt){
   // → {bak:{disk,idb}} ; lève une erreur si rien n'a été écrit (l'original est alors intact)
   const bad=mffCheckData(data);if(bad)throw new Error('enregistrement annulé : '+bad+' — le fichier sur le disque n’a pas été touché');
-  let old=null;try{old=await (await h.getFile()).text();}catch(e){old=null;}
+  let old=null;try{old=await mffFileText(await h.getFile());}catch(e){old=null;}
   let bak={disk:'',idb:false};
   if(old&&old!==data&&!(opt&&opt.noBak))bak=await mffBackup(h,old);
+  const bin=await mffPack(data);
   const w=await h.createWritable();
-  try{await w.write(data);await w.close();}
+  try{await w.write(bin);await w.close();}
   catch(e){try{await w.abort();}catch(e2){}throw e;}
+  // relecture : le fichier écrit doit avoir la bonne taille ET redonner exactement le projet
+  // (jamais vide ni abîmé) ; sinon la version précédente est remise
   try{
-    const f=await h.getFile(),n=typeof Blob!=='undefined'?new Blob([data]).size:data.length;
-    if(typeof f.size==='number'&&f.size!==n){
-      if(old){const w2=await h.createWritable();await w2.write(old);await w2.close();}
-      throw new Error('relecture : '+f.size+' octets au lieu de '+n+(old?' — version précédente remise':''));
+    const f=await h.getFile(),n=typeof Blob!=='undefined'?new Blob([bin]).size:bin.length;
+    let why='';
+    if(typeof f.size==='number'&&f.size!==n)why=f.size+' octets au lieu de '+n;
+    else{let back=null;try{back=await mffFileText(f);}catch(e){back=null;}
+      if(back!==null&&back!==data)why=back.length?'contenu relu différent':'fichier vide';}
+    if(why){
+      if(old){const w2=await h.createWritable();await w2.write(await mffPack(old));await w2.close();}
+      throw new Error('relecture : '+why+(old?' — version précédente remise':''));
     }
   }catch(e){if(/relecture/.test(e&&e.message||''))throw e;}
   mffLastBak=bak;
@@ -126,7 +158,7 @@ async function mffBakFind(h){
   // Copies de secours du fichier courant : sur le disque (.bak) et dans le navigateur
   const out=[];if(!h)return out;
   try{const d=await mffDirOf(h);if(d){const b=await d.getFileHandle(h.name+'.bak');const f=await b.getFile();
-    out.push({where:'disk',label:'📁 '+b.name,at:f.lastModified||0,txt:async()=>await f.text()});}}catch(e){}
+    out.push({where:'disk',label:'📁 '+b.name,at:f.lastModified||0,txt:async()=>await mffFileText(f)});}}catch(e){}
   try{const r=await idbGet('mff:bak:'+h.name);if(r&&typeof r.txt==='string')out.push({where:'idb',label:'🗄 copie du navigateur',at:r.at||0,txt:async()=>r.txt});}catch(e){}
   return out.sort((a,b)=>b.at-a.at);
 }
@@ -175,7 +207,7 @@ async function mffSaveAs(){
     }catch(e){if(e&&e.name==='AbortError')return false;try{faceEl.textContent='Enregistrer sous : '+(e&&e.message||e);}catch(e2){}return false;}
   }
   // repli : téléchargement
-  try{const data=await mffData();const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([data],{type:'application/json'}));a.download=fname;a.click();setTimeout(()=>URL.revokeObjectURL(a.href),2000);mffMark();return true;}catch(e){return false;}
+  try{const txt=await mffData();if(mffCheckData(txt))return false;const data=await mffPack(txt);const a=document.createElement('a');a.href=URL.createObjectURL(mffBlob(data));a.download=fname;a.click();setTimeout(()=>URL.revokeObjectURL(a.href),2000);mffMark();return true;}catch(e){return false;}
 }
 async function mffLoadText(txt,name,handle){
   // vide l'espace PUIS charge (document + trajectoires), sans demander : l'appelant a déjà confirmé
@@ -195,7 +227,7 @@ async function mffLoadText(txt,name,handle){
 async function mffOpenHandle(h){
   try{
     if(!(await mffPerm(h,'read')))throw new Error('permission refusée');
-    const f=await h.getFile();await mffLoadText(await f.text(),f.name,h);return true;
+    const f=await h.getFile();await mffLoadText(await mffFileText(f),f.name,h);return true;
   }catch(e){alert('Ouverture impossible : '+(e&&e.message||e));return false;}
 }
 async function mffOpen(){
@@ -315,7 +347,7 @@ function mffCss(){
         const f=e.target.files[0];e.target.value='';if(!f)return;
         if(!mffPendingOpen&&!(await mffConfirmDiscard()))return;
         mffPendingOpen=false;
-        try{await mffLoadText(await f.text(),f.name,null);}catch(err){alert('Projet illisible : '+err.message);}
+        try{await mffLoadText(await mffFileText(f),f.name,null);}catch(err){alert('Projet illisible : '+err.message);}
       });
     }
     // menu Projet (classique) : + Ouvrir récent, Dossier de projets

@@ -169,7 +169,7 @@ async function asmLinksCheck(ask){
       // V0.29.0 : même date et même taille qu'à la dernière lecture de cette session → inchangée,
       // sans relire ni analyser le fichier (la première vérification de la session lit toujours)
       if(asmLinkStampSame(L,f)){L.link.st='ok';L.link.msg='';continue;}
-      try{txt=await f.text();}catch(e){L.link.st='warn';L.link.msg='lecture impossible';out.warn.push(L.name);continue;}
+      try{txt=await mffFileText(f);}catch(e){L.link.st='warn';L.link.msg='lecture impossible';out.warn.push(L.name);continue;}
       if(asmHash(txt)===L.link.sig){asmLinkStamp(L,f);L.link.st='ok';L.link.msg='';continue;}
       let choix='theirs';
       if(asmLinkDirty(L))choix=await mffAsk('« '+L.name+' » a changé sur le disque ET ici.\nGarder vos modifications (la source sera écrasée au prochain enregistrement), prendre la source (vos modifications sont perdues), ou rompre le lien ?',
@@ -203,7 +203,7 @@ async function asmLinksWrite(){
     const r=await asmLinkHandle(L,true);
     if(!r.h){out.failed.push(L.name+' ('+r.why+')');continue;}
     try{
-      const cur=await (await r.h.getFile()).text();
+      const cur=await mffFileText(await r.h.getFile());
       if(asmHash(cur)!==L.link.sig){
         const c=await mffAsk('La source de « '+L.name+' » a aussi changé sur le disque depuis la dernière vérification.\nL’écraser avec vos modifications ?',[['over','Écraser la source',true],['skip','Ne pas l’écrire']]);
         if(c!=='over'){out.failed.push(L.name+' (non écrite)');continue;}
@@ -232,7 +232,7 @@ async function asmPickSource(){
   try{
     const o={types:MFF_TYPES,multiple:false};if(mffFolder)o.startIn=mffFolder;
     const [h]=await window.showOpenFilePicker(o);if(!h)return null;
-    const f=await h.getFile();return {h,txt:await f.text(),name:f.name};
+    const f=await h.getFile();return {h,txt:await mffFileText(f),name:f.name};
   }catch(e){if(!(e&&e.name==='AbortError'))alert('Lecture impossible : '+(e&&e.message||e));return null;}
 }
 async function asmLinkInsert(h,txt,name){
@@ -299,7 +299,7 @@ async function asmExtractTo(C,h){
   x.sub.forEach(id=>{asmComp(id).of=C.id;});
   try{
     const txt=asmLinkText(C,'');
-    const w=await h.createWritable();await w.write(txt);await w.close();
+    await mffWriteSafe(h,txt); // contrôlé, compressé, relu (jamais vide)
     C.link.sig=asmHash(txt);C.link.base=asmSubtreeSig(C);C.link.st='ok';
   }catch(e){asmUndo();alert('Écriture impossible : '+(e&&e.message||e));return false;}
   asmNotify();

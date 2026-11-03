@@ -8,7 +8,7 @@ sont sorties le 2026-09-30j.
 Code dans `src/` · livrable `fusion_mvp.html` (généré par `build.js`) · architecture et
 garde-fous en tête de `src/00-entete-et-outils.js`.
 
-**548 versions**, de `2026-09-28b` à `V0.45.2` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
+**549 versions**, de `2026-09-28b` à `V0.46.0` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
 comme dans le fichier d'origine.
 
 ---
@@ -6450,3 +6450,12 @@ Demande : « est-ce que tu penses que les 2 machines seront sans trop d'erreurs 
 - **Siemens, dégagement** : avant chaque pivotement et en fin de programme, `G0 SUPA X-200` (630) / `G0 SUPA X-430` (1520) au lieu de `G0 X…` : en plan incliné, X n'est plus pris dans le plan pivoté. Posts Fusion locaux `630-5axes.cps` et `1520-5axes.cps` modifiés de même (`G0 SUPA X…`, le G0 évite un X seul en mode G1 modal ; fichiers sous licence Autodesk, hors Git).
 - **Siemens, sens de pivotement** : `_DIR` de CYCLE800 lu dans la fiche machine (`swivelDir`, +1 par défaut = blocage du post Fusion de l'utilisateur : outil jamais au travers de la table, plateau tourné vers les outils à gauche) ; -1 pour l'autre solution.
 - **Tests** : `test_fao` (G83 Fagor 7 × 3,571 depuis Z5), `test_fao_percage` 6f (G81 K, plus de G82), `test_post_cycle800` 9 / 16 (SUPA X) et 20 / 21 (`swivelDir`) ; `npm run ci:full`.
+
+## V0.46.0 - Fichiers .conceptcad compressés (gzip, même extension) : 3 à 5 fois plus petits ; relus après écriture, jamais vides ; marqués « ConceptCAD »
+Demande : « faire en sorte que le format conceptcad soit un format toujours compressé gz, sans le gz… pour gagner de la place sur le disque » ; « il ne faut oublier l'import dans l'assemblage » ; « à la sauvegarde, il faut vérifier que le fichier n'est jamais vide » ; « remplacer MiniFusion par ConceptCAD » dans le fichier ; « ouvrir les existants et les sauvegarder compressés ensuite ».
+- **Écriture** (`mffPack`, `src/97-fichiers-projets.js`) : le texte du projet est compressé en gzip (natif du navigateur, `asmCacheZip`) puis aussitôt décompressé pour contrôle ; s'il ne redonne pas exactement le texte, ou sans gzip dans le navigateur, le fichier est écrit en clair. Passent par là : Ctrl+S et « Enregistrer sous » (`mffWriteSafe`), la copie `.bak`, le téléchargement de repli, le partage sur téléphone, le brouillon du démarrage sûr, l'extraction d'un composant et la réécriture des sources liées (désormais par `mffWriteSafe`), les anciens boutons Sauver / Sous….
+- **Lecture** (`mffFileText`) : signature gzip (1F 8B) reconnue et décompressée, sinon texte en clair : les fichiers existants (`.conceptcad` en clair, `.miniFusion`, `.minifusion.json`) s'ouvrent comme avant et sont réécrits compressés au premier enregistrement. Ouvrir, récents, dossier de projets, copies de secours, **Insérer** dans l'assemblage, composants liés (vérification, réécriture, remplacement) passent par là ; l'empreinte des liens porte sur le texte, un lien n'apparaît donc pas « modifié » au passage en gzip.
+- **Jamais vide** : contenu contrôlé avant l'écriture (comme depuis V0.8.3), puis relu APRÈS : taille écrite, et texte décompressé identique au projet ; sinon la version précédente est remise et l'enregistrement est signalé en erreur. Téléchargement de repli : contenu non valable → rien n'est téléchargé.
+- **Marque** : `"app":"ConceptCAD"` dans le fichier et le document (`serialise`, `bundleSerialise`) ; `"MiniFusion"` reste accepté à l'ouverture. Clés internes du navigateur inchangées.
+- **Gain** (exemples) : Cavité Usinage 11,2 → 3,8 Mo, Malaxeur Retard 5,3 → 1,7 Mo, Perçages 483 → 118 Ko, Axe 21 → 4 Ko. Une version antérieure de ConceptCAD n'ouvre pas un fichier compressé.
+- **Tests** : `tests/browser/fichier-gz.spec.cjs` (Chromium, vrai fichier : Axe en clair ouvert, écrit en gzip < moitié du texte, relu à l'identique, marqué ConceptCAD, contenu vide refusé et fichier intact, fichier gzip rouvert) ; `parcours.spec` composants liés (source réécrite compressée puis relue) ; `tests/lire-projet.cjs` : les tests Node lisent les exemples en clair ou compressés ; `npm run ci` et `npm run test:browser` (18/18).

@@ -27,7 +27,7 @@ const [fichier, setupId, opId] = process.argv.slice(2);
   class F32 { constructor(a, n) { this.array = Float32Array.from(a); this.itemSize = n; this.count = this.array.length / n; } }
   sandbox.THREE = new Proxy({}, { get(t, k) { if (k === 'BufferGeometry') return BG; if (k === 'Float32BufferAttribute') return F32; return T0[k]; } });
   vm.runInContext('occt=__realOcct;occtReady=true;window.alert=function(){};window.confirm=function(){return true;};viewUserMoved=true;', ctx);
-  const b = JSON.parse(fs.readFileSync(fichier, 'utf8'));
+  const b = JSON.parse(require('../lire-projet.cjs')(fichier));
   delete b.moves; // jamais les trajectoires du fichier : tout est recalculé
   sandbox.__doc = JSON.stringify(b);
   sandbox.__ids = [setupId, opId];

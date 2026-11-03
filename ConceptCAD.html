@@ -376,7 +376,7 @@ input[type=range]{accent-color:var(--primary);width:100%}
  * peut changer sans rien casser. CACHE_VER (parcours FAO) reste indépendant.
  */
 
-const APP_VER='V0.45.2';
+const APP_VER='V0.46.0';
 try{console.log('[ConceptCAD] version '+APP_VER);}catch(e){}
 try{var mfSv=document.getElementById('mfSplashVer');if(mfSv)mfSv.textContent=APP_VER;}catch(e){} // écran de démarrage
 
@@ -14586,10 +14586,10 @@ async function asmCmdInsert(){
     if(MFF_FS){
       const o={types:MFF_TYPES,multiple:false};if(mffFolder)o.startIn=mffFolder;
       const [h]=await window.showOpenFilePicker(o);if(!h)return;
-      const f=await h.getFile();txt=await f.text();name=f.name;
+      const f=await h.getFile();txt=await mffFileText(f);name=f.name;
     }else{
       const f=await new Promise(res=>{const i=document.createElement('input');i.type='file';i.accept='.conceptcad,.miniFusion,.json';i.onchange=()=>res(i.files&&i.files[0]);i.click();});
-      if(!f)return;txt=await f.text();name=f.name;
+      if(!f)return;txt=await mffFileText(f);name=f.name;
     }
   }catch(e){if(!(e&&e.name==='AbortError'))alert('Lecture impossible : '+(e&&e.message||e));return;}
   if(txt!=null)await asmInsertText(txt,name);
@@ -14815,7 +14815,7 @@ async function asmLinksCheck(ask){
       // V0.29.0 : même date et même taille qu'à la dernière lecture de cette session → inchangée,
       // sans relire ni analyser le fichier (la première vérification de la session lit toujours)
       if(asmLinkStampSame(L,f)){L.link.st='ok';L.link.msg='';continue;}
-      try{txt=await f.text();}catch(e){L.link.st='warn';L.link.msg='lecture impossible';out.warn.push(L.name);continue;}
+      try{txt=await mffFileText(f);}catch(e){L.link.st='warn';L.link.msg='lecture impossible';out.warn.push(L.name);continue;}
       if(asmHash(txt)===L.link.sig){asmLinkStamp(L,f);L.link.st='ok';L.link.msg='';continue;}
       let choix='theirs';
       if(asmLinkDirty(L))choix=await mffAsk('« '+L.name+' » a changé sur le disque ET ici.\nGarder vos modifications (la source sera écrasée au prochain enregistrement), prendre la source (vos modifications sont perdues), ou rompre le lien ?',
@@ -14849,7 +14849,7 @@ async function asmLinksWrite(){
     const r=await asmLinkHandle(L,true);
     if(!r.h){out.failed.push(L.name+' ('+r.why+')');continue;}
     try{
-      const cur=await (await r.h.getFile()).text();
+      const cur=await mffFileText(await r.h.getFile());
       if(asmHash(cur)!==L.link.sig){
         const c=await mffAsk('La source de « '+L.name+' » a aussi changé sur le disque depuis la dernière vérification.\nL’écraser avec vos modifications ?',[['over','Écraser la source',true],['skip','Ne pas l’écrire']]);
         if(c!=='over'){out.failed.push(L.name+' (non écrite)');continue;}
@@ -14878,7 +14878,7 @@ async function asmPickSource(){
   try{
     const o={types:MFF_TYPES,multiple:false};if(mffFolder)o.startIn=mffFolder;
     const [h]=await window.showOpenFilePicker(o);if(!h)return null;
-    const f=await h.getFile();return {h,txt:await f.text(),name:f.name};
+    const f=await h.getFile();return {h,txt:await mffFileText(f),name:f.name};
   }catch(e){if(!(e&&e.name==='AbortError'))alert('Lecture impossible : '+(e&&e.message||e));return null;}
 }
 async function asmLinkInsert(h,txt,name){
@@ -14945,7 +14945,7 @@ async function asmExtractTo(C,h){
   x.sub.forEach(id=>{asmComp(id).of=C.id;});
   try{
     const txt=asmLinkText(C,'');
-    const w=await h.createWritable();await w.write(txt);await w.close();
+    await mffWriteSafe(h,txt); // contrôlé, compressé, relu (jamais vide)
     C.link.sig=asmHash(txt);C.link.base=asmSubtreeSig(C);C.link.st='ok';
   }catch(e){asmUndo();alert('Écriture impossible : '+(e&&e.message||e));return false;}
   asmNotify();
@@ -59210,7 +59210,7 @@ function serialise(pretty){
 function serialiseObj(d,ui){
   // Objet d'une pièce. ui : état d'interface (repère, vue, sélection) — pièce active seulement
   // (undefined → clé absente du JSON : l'ordre et le contenu restent ceux d'avant).
-  return {app:'MiniFusion',v:1,name:d.name,tint:d.tint||0,entNames:d.entNames||null,originVis:ui?originVis:undefined,view:ui?collectView():undefined,bodyVis:d.bodyVis||{},bodies:(d.bodies||[]).map(e=>({id:e.id,name:e.name,c:e.c,color:e.color,mat:e.mat||undefined,op:e.op,gl:e.gl,open:e.open!==false})),bodySeq:d.bodySeq||0,activeBody:d.activeBody||null,fold:{sk:!!(d.fold&&d.fold.sk),origin:!!(d.fold&&d.fold.origin)},fao:d.fao||null,mep:d.mep||null,rendu:(typeof renduNorm==='function'?renduNorm(d.rendu):null)||undefined,params:(d.params||[]).map(p=>({name:p.name,expr:p.expr,value:p.value})),configs:(typeof cfgNorm==='function'?cfgNorm(d.configs):null)||undefined,sel:ui?{kind:sel.kind,id:sel.id}:undefined,sketches:(d.sketches||[]).map(s=>{const c=Object.assign({},s);delete c._refs;return c;}),features:(d.features||[]).map(({_mesh,_m,...r})=>r),cgeo:(d.cgeo||[]).map(cgClean),std:d.std||undefined}; // std : pièce normalisée (48-composants-normalises)
+  return {app:'ConceptCAD',v:1,name:d.name,tint:d.tint||0,entNames:d.entNames||null,originVis:ui?originVis:undefined,view:ui?collectView():undefined,bodyVis:d.bodyVis||{},bodies:(d.bodies||[]).map(e=>({id:e.id,name:e.name,c:e.c,color:e.color,mat:e.mat||undefined,op:e.op,gl:e.gl,open:e.open!==false})),bodySeq:d.bodySeq||0,activeBody:d.activeBody||null,fold:{sk:!!(d.fold&&d.fold.sk),origin:!!(d.fold&&d.fold.origin)},fao:d.fao||null,mep:d.mep||null,rendu:(typeof renduNorm==='function'?renduNorm(d.rendu):null)||undefined,params:(d.params||[]).map(p=>({name:p.name,expr:p.expr,value:p.value})),configs:(typeof cfgNorm==='function'?cfgNorm(d.configs):null)||undefined,sel:ui?{kind:sel.kind,id:sel.id}:undefined,sketches:(d.sketches||[]).map(s=>{const c=Object.assign({},s);delete c._refs;return c;}),features:(d.features||[]).map(({_mesh,_m,...r})=>r),cgeo:(d.cgeo||[]).map(cgClean),std:d.std||undefined}; // std : pièce normalisée (48-composants-normalises)
 }
 function docFromSerial(o){
   // Document de pièce à partir de son objet sérialisé (ouverture, pièces d'un assemblage)
@@ -59517,7 +59517,7 @@ async function bundleSerialise(){
   const imports=await bundleImports();
   // V0.28.1 : images des pièces d'un assemblage, sur option (47-assemblage-cache)
   let asnap=null;try{if(asm&&asm.img)asnap=await asmCacheExport();}catch(e){asnap=null;}
-  return JSON.stringify({app:'MiniFusion',bundle:1,v:APP_VER,cacheVer:CACHE_VER,
+  return JSON.stringify({app:'ConceptCAD',bundle:1,v:APP_VER,cacheVer:CACHE_VER,
     at:Date.now(),name:doc.name||'',doc:JSON.parse(serialise()),
     nMoves:Object.keys(moves).length,moves:moves,imports:imports,asnap:asnap||undefined});
 }
@@ -59612,7 +59612,7 @@ $('btnSave').onclick=async()=>{
   try{
     if(window.showSaveFilePicker&&fileHandle){
       const data=await bundleSerialise();
-      const w=await fileHandle.createWritable();await w.write(data);await w.close();
+      await mffWriteSafe(fileHandle,data);
       autosave();alert('Sauvé dans '+fileHandle.name+' (document + trajectoires).');return;
     }
   }catch(e){}
@@ -59624,11 +59624,11 @@ $('btnSaveAs').onclick=async()=>{
   try{
     if(window.showSaveFilePicker){
       fileHandle=await window.showSaveFilePicker({suggestedName:fname,types:[{description:'ConceptCAD (document + trajectoires)',accept:{'application/json':['.conceptcad']}}]});
-      const w=await fileHandle.createWritable();await w.write(data);await w.close();autosave();alert('Sauvé sous '+fileHandle.name+' (document + trajectoires).');return;
+      await mffWriteSafe(fileHandle,data);autosave();alert('Sauvé sous '+fileHandle.name+' (document + trajectoires).');return;
     }
     throw new Error('no picker');
   }catch(e){
-    const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([data],{type:'application/json'}));a.download=fname;a.click();
+    const a=document.createElement('a');a.href=URL.createObjectURL(mffBlob(await mffPack(data)));a.download=fname;a.click();
     setTimeout(()=>URL.revokeObjectURL(a.href),2000);
   }
 };
@@ -59636,7 +59636,7 @@ $('btnLoad').onclick=()=>$('fileProj').click();
 $('fileProj').addEventListener('change',async e=>{
   const f=e.target.files[0];if(!f)return;
   try{
-    const txt=await f.text();const nm=f.name.replace(/(\.conceptcad|\.minifusion(\.json)?|\.json)$/i,'');
+    const txt=await mffFileText(f);const nm=f.name.replace(/(\.conceptcad|\.minifusion(\.json)?|\.json)$/i,'');
     if(bundleIs(txt))await bundleRestore(txt,{name:nm});          // .conceptcad / .miniFusion : doc + trajectoires
     else{await deserialise(txt);doc.name=nm;rebuild();renderProps();} // ancien .minifusion.json
   }catch(err){alert('Projet illisible : '+err.message);}
@@ -60875,6 +60875,31 @@ async function mffConfirmDiscard(){
 }
 /* ---- écriture / lecture ---- */
 async function mffData(){try{return await bundleSerialise();}catch(e){return serialise();}}
+/* ---- fichier compressé (V0.46.0) : un .conceptcad est écrit en gzip, sans changer d'extension
+   (3 à 5 fois plus petit) ; à la lecture, la signature gzip (1F 8B) est reconnue et un fichier
+   en clair (anciennes versions, .miniFusion, .json) s'ouvre comme avant ---- */
+async function mffPack(txt){
+  // texte du projet → octets gzip à écrire (le texte tel quel si le navigateur ne sait pas compresser)
+  if(typeof txt!=='string'||typeof TextEncoder==='undefined')return txt;
+  // la compression est relue tout de suite : si elle ne redonne pas exactement le texte, on écrit en clair
+  try{
+    const z=await asmCacheZip(new TextEncoder().encode(txt),false);if(!z||!z.length)return txt;
+    const back=await asmCacheZip(z,true);
+    return back&&new TextDecoder().decode(back)===txt?z:txt;
+  }catch(e){return txt;}
+}
+async function mffFileText(f){
+  // File / Blob d'un projet → texte (décompressé s'il est en gzip)
+  if(typeof f.arrayBuffer!=='function')return await f.text();
+  const u8=new Uint8Array(await f.arrayBuffer());
+  if(u8.length>2&&u8[0]===0x1f&&u8[1]===0x8b){
+    const z=await asmCacheZip(u8,true);
+    if(!z)throw new Error('fichier compressé : ce navigateur ne sait pas le décompresser');
+    return new TextDecoder().decode(z);
+  }
+  return new TextDecoder().decode(u8);
+}
+function mffBlob(data){return new Blob([data],{type:typeof data==='string'?'application/json':'application/gzip'});}
 async function mffPerm(h,mode){
   try{const o={mode:mode||'readwrite'};if((await h.queryPermission(o))==='granted')return true;return (await h.requestPermission(o))==='granted';}catch(e){return false;}
 }
@@ -60899,7 +60924,7 @@ function mffCheckData(txt){
   let o;try{o=JSON.parse(txt);}catch(e){return 'contenu illisible ('+(e&&e.message||e)+')';}
   if(!o||typeof o!=='object')return 'contenu illisible';
   const d=o.doc&&typeof o.doc==='object'?o.doc:o; // bundle : {doc, …} ; document : {app, …}
-  if(d.app!=='MiniFusion'&&!Array.isArray(d.features)&&!Array.isArray(d.sketches))return 'ce n’est pas un projet ConceptCAD';
+  if(d.app!=='ConceptCAD'&&d.app!=='MiniFusion'&&!Array.isArray(d.features)&&!Array.isArray(d.sketches))return 'ce n’est pas un projet ConceptCAD';
   return '';
 }
 async function mffDirOf(h){
@@ -60918,24 +60943,31 @@ async function mffBackup(h,old){
   try{
     const d=await mffDirOf(h);
     if(d){const b=await d.getFileHandle(h.name+'.bak',{create:true});const w=await b.createWritable();
-      try{await w.write(old);await w.close();out.disk=b.name;}catch(e){try{await w.abort();}catch(e2){}}}
+      try{await w.write(await mffPack(old));await w.close();out.disk=b.name;}catch(e){try{await w.abort();}catch(e2){}}}
   }catch(e){}
   return out;
 }
 async function mffWriteSafe(h,data,opt){
   // → {bak:{disk,idb}} ; lève une erreur si rien n'a été écrit (l'original est alors intact)
   const bad=mffCheckData(data);if(bad)throw new Error('enregistrement annulé : '+bad+' — le fichier sur le disque n’a pas été touché');
-  let old=null;try{old=await (await h.getFile()).text();}catch(e){old=null;}
+  let old=null;try{old=await mffFileText(await h.getFile());}catch(e){old=null;}
   let bak={disk:'',idb:false};
   if(old&&old!==data&&!(opt&&opt.noBak))bak=await mffBackup(h,old);
+  const bin=await mffPack(data);
   const w=await h.createWritable();
-  try{await w.write(data);await w.close();}
+  try{await w.write(bin);await w.close();}
   catch(e){try{await w.abort();}catch(e2){}throw e;}
+  // relecture : le fichier écrit doit avoir la bonne taille ET redonner exactement le projet
+  // (jamais vide ni abîmé) ; sinon la version précédente est remise
   try{
-    const f=await h.getFile(),n=typeof Blob!=='undefined'?new Blob([data]).size:data.length;
-    if(typeof f.size==='number'&&f.size!==n){
-      if(old){const w2=await h.createWritable();await w2.write(old);await w2.close();}
-      throw new Error('relecture : '+f.size+' octets au lieu de '+n+(old?' — version précédente remise':''));
+    const f=await h.getFile(),n=typeof Blob!=='undefined'?new Blob([bin]).size:bin.length;
+    let why='';
+    if(typeof f.size==='number'&&f.size!==n)why=f.size+' octets au lieu de '+n;
+    else{let back=null;try{back=await mffFileText(f);}catch(e){back=null;}
+      if(back!==null&&back!==data)why=back.length?'contenu relu différent':'fichier vide';}
+    if(why){
+      if(old){const w2=await h.createWritable();await w2.write(await mffPack(old));await w2.close();}
+      throw new Error('relecture : '+why+(old?' — version précédente remise':''));
     }
   }catch(e){if(/relecture/.test(e&&e.message||''))throw e;}
   mffLastBak=bak;
@@ -60946,7 +60978,7 @@ async function mffBakFind(h){
   // Copies de secours du fichier courant : sur le disque (.bak) et dans le navigateur
   const out=[];if(!h)return out;
   try{const d=await mffDirOf(h);if(d){const b=await d.getFileHandle(h.name+'.bak');const f=await b.getFile();
-    out.push({where:'disk',label:'📁 '+b.name,at:f.lastModified||0,txt:async()=>await f.text()});}}catch(e){}
+    out.push({where:'disk',label:'📁 '+b.name,at:f.lastModified||0,txt:async()=>await mffFileText(f)});}}catch(e){}
   try{const r=await idbGet('mff:bak:'+h.name);if(r&&typeof r.txt==='string')out.push({where:'idb',label:'🗄 copie du navigateur',at:r.at||0,txt:async()=>r.txt});}catch(e){}
   return out.sort((a,b)=>b.at-a.at);
 }
@@ -60995,7 +61027,7 @@ async function mffSaveAs(){
     }catch(e){if(e&&e.name==='AbortError')return false;try{faceEl.textContent='Enregistrer sous : '+(e&&e.message||e);}catch(e2){}return false;}
   }
   // repli : téléchargement
-  try{const data=await mffData();const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([data],{type:'application/json'}));a.download=fname;a.click();setTimeout(()=>URL.revokeObjectURL(a.href),2000);mffMark();return true;}catch(e){return false;}
+  try{const txt=await mffData();if(mffCheckData(txt))return false;const data=await mffPack(txt);const a=document.createElement('a');a.href=URL.createObjectURL(mffBlob(data));a.download=fname;a.click();setTimeout(()=>URL.revokeObjectURL(a.href),2000);mffMark();return true;}catch(e){return false;}
 }
 async function mffLoadText(txt,name,handle){
   // vide l'espace PUIS charge (document + trajectoires), sans demander : l'appelant a déjà confirmé
@@ -61015,7 +61047,7 @@ async function mffLoadText(txt,name,handle){
 async function mffOpenHandle(h){
   try{
     if(!(await mffPerm(h,'read')))throw new Error('permission refusée');
-    const f=await h.getFile();await mffLoadText(await f.text(),f.name,h);return true;
+    const f=await h.getFile();await mffLoadText(await mffFileText(f),f.name,h);return true;
   }catch(e){alert('Ouverture impossible : '+(e&&e.message||e));return false;}
 }
 async function mffOpen(){
@@ -61135,7 +61167,7 @@ function mffCss(){
         const f=e.target.files[0];e.target.value='';if(!f)return;
         if(!mffPendingOpen&&!(await mffConfirmDiscard()))return;
         mffPendingOpen=false;
-        try{await mffLoadText(await f.text(),f.name,null);}catch(err){alert('Projet illisible : '+err.message);}
+        try{await mffLoadText(await mffFileText(f),f.name,null);}catch(err){alert('Projet illisible : '+err.message);}
       });
     }
     // menu Projet (classique) : + Ouvrir récent, Dossier de projets
@@ -76647,7 +76679,7 @@ function bootSafeBanner(){
   const mk=(t,fn)=>{const x=document.createElement('button');x.textContent=t;x.onclick=fn;bar.appendChild(x);return x;};
   mk('💾 Enregistrer le brouillon…',async()=>{
     try{const t=await bootHeldText();if(!t){faceEl.textContent='Aucun brouillon local.';return;}
-      const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([t],{type:'application/json'}));
+      const a=document.createElement('a');a.href=URL.createObjectURL(mffBlob(await mffPack(t)));
       a.download='Brouillon '+new Date().toISOString().slice(0,16).replace(/[T:]/g,'-')+'.conceptcad';
       document.body.appendChild(a);a.click();setTimeout(()=>{URL.revokeObjectURL(a.href);a.remove();},2000);}catch(e){faceEl.textContent='Brouillon illisible : '+e.message;}});
   mk('↻ Rouvrir quand même',async()=>{
@@ -77134,7 +77166,7 @@ async function mfmShare(){
   try{
     const data=await mffData();
     const nm=(mffName||doc.name||'piece').replace(/[\\/:*?"<>|]/g,'_')+'.conceptcad';
-    const f=new File([data],nm,{type:'application/json'});
+    const bin=await mffPack(data),f=new File([bin],nm,{type:typeof bin==='string'?'application/json':'application/gzip'});
     if(navigator.canShare&&navigator.canShare({files:[f]})){await navigator.share({files:[f],title:nm});mffMark();return;}
   }catch(e){if(e&&e.name==='AbortError')return;}
   mffSaveAs();

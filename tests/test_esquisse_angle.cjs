@@ -9,7 +9,7 @@ const ROOT=path.join(__dirname,'..');
 let ko=0;const A=(c,m)=>{if(!c){ko++;console.log('  ✗ '+m);}else console.log('  ✓ '+m);};
 (async()=>{
   const {ctx}=loadApp();
-  const json=fs.readFileSync(path.join(__dirname,'fixtures','crochet.miniFusion'),'utf8');
+  const json=require('./lire-projet.cjs')(path.join(__dirname,'fixtures','crochet.miniFusion'));
   const o=await vm.runInContext(`(async()=>{
     const out={};
     const raw=JSON.parse(${JSON.stringify(json)});
@@ -52,7 +52,7 @@ let ko=0;const A=(c,m)=>{if(!c){ko++;console.log('  ✗ '+m);}else console.log('
   A(Math.abs(o.shared.val-o.shared.geo)<0.01,'sommet commun : cote = secteur réel ('+o.shared.val.toFixed(2)+'°)');
   if(0)A(Math.abs(o.shared120.geo-120)<0.05&&o.shared120.res<1e-4,'sommet commun : 120° demandé → '+o.shared120.geo.toFixed(2)+'°, parallèle et cotes tenues');
   // 3) « test angle » : entraxe « 10 » posé entre deux lignes non parallèles (ancienne tolérance 3°)
-  const j2=fs.readFileSync(path.join(__dirname,'fixtures','test-angle.miniFusion'),'utf8');
+  const j2=require('./lire-projet.cjs')(path.join(__dirname,'fixtures','test-angle.miniFusion'));
   const q=await vm.runInContext(`(async()=>{
     const out={};const raw=JSON.parse(${JSON.stringify(j2)});
     if(raw.doc)await bundleRestore(${JSON.stringify(j2)},{rebuild:false});else await deserialise(${JSON.stringify(j2)},{rebuild:false});

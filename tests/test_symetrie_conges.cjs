@@ -15,7 +15,7 @@ const ROOT=path.join(__dirname,'..');
 globalThis.__dirname=path.join(ROOT,'occt');
 vm.runInThisContext(fs.readFileSync(path.join(ROOT,'occt','opencascade.full.js'),'utf8'),{filename:'occt.js'});
 const {loadApp}=require('./appvm.cjs');
-const reel=fs.readFileSync(path.join(ROOT,'tests','fixtures','symetrie_conges_cg.miniFusion'),'utf8');
+const reel=require('./lire-projet.cjs')(path.join(ROOT,'tests','fixtures','symetrie_conges_cg.miniFusion'));
 (async()=>{
   const real=await globalThis.opencascadeFactory({wasmBinary:fs.readFileSync(path.join(ROOT,'occt','opencascade.wasm.wasm'))});
   const {ctx,sandbox}=loadApp();

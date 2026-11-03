@@ -77,7 +77,7 @@ function inVm(){
   return out;
 }
 const {ctx}=loadApp();
-try{ctx.__TE=JSON.parse(require('fs').readFileSync(require('path').join(__dirname,'..','Exemples','test esquisse.conceptcad'),'utf8')).doc.sketches[0];}catch(e){ctx.__TE=null;}
+try{ctx.__TE=JSON.parse(require('./lire-projet.cjs')(require('path').join(__dirname,'..','Exemples','test esquisse.conceptcad'))).doc.sketches[0];}catch(e){ctx.__TE=null;}
 const out=vm.runInContext('('+inVm.toString()+')()',ctx,{filename:'test_esquisse_cotes_pose.js'});
 console.log('=== Esquisse : statut des cotes en pose, placement R / Ø ===');
 out.log.forEach(m=>console.log('  ✓ '+m));

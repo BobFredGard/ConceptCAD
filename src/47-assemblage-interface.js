@@ -575,10 +575,10 @@ async function asmCmdInsert(){
     if(MFF_FS){
       const o={types:MFF_TYPES,multiple:false};if(mffFolder)o.startIn=mffFolder;
       const [h]=await window.showOpenFilePicker(o);if(!h)return;
-      const f=await h.getFile();txt=await f.text();name=f.name;
+      const f=await h.getFile();txt=await mffFileText(f);name=f.name;
     }else{
       const f=await new Promise(res=>{const i=document.createElement('input');i.type='file';i.accept='.conceptcad,.miniFusion,.json';i.onchange=()=>res(i.files&&i.files[0]);i.click();});
-      if(!f)return;txt=await f.text();name=f.name;
+      if(!f)return;txt=await mffFileText(f);name=f.name;
     }
   }catch(e){if(!(e&&e.name==='AbortError'))alert('Lecture impossible : '+(e&&e.message||e));return;}
   if(txt!=null)await asmInsertText(txt,name);

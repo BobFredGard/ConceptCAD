@@ -7,7 +7,7 @@ const ROOT=path.join(__dirname,'..');
 let ko=0;const A=(c,m)=>{if(!c){ko++;console.log('  ✗ '+m);}else console.log('  ✓ '+m);};
 (async()=>{
   const {ctx}=loadApp();
-  const json=fs.readFileSync(path.join(ROOT,'Exemples','Perçages.conceptcad'),'utf8');
+  const json=require('./lire-projet.cjs')(path.join(ROOT,'Exemples','Perçages.conceptcad'));
   const o=await vm.runInContext(`(async()=>{
     const out={};
     out.stepTour=repCircStep({angle:360,copies:5});out.stepSect=repCircStep({angle:90,copies:3});

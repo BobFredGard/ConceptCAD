@@ -20,7 +20,7 @@ const EX=['Cache Piles.conceptcad','Support Pédale Déportée R1200RT 2011.conc
     const {ctx,sandbox}=loadApp();
     sandbox.__realOcct=real;
     vm.runInContext('occt=__realOcct;occtReady=true;',ctx);
-    const json=fs.readFileSync(path.join(ROOT,'Exemples',nom),'utf8');
+    const json=require('./lire-projet.cjs')(path.join(ROOT,'Exemples',nom));
     const o=await vm.runInContext(`(async()=>{
       const raw=JSON.parse(${JSON.stringify(json)});
       if(raw.doc)await bundleRestore(${JSON.stringify(json)},{rebuild:false});else await deserialise(${JSON.stringify(json)},{rebuild:false});

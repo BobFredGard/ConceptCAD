@@ -2228,7 +2228,7 @@ function serialise(pretty){
 function serialiseObj(d,ui){
   // Objet d'une pièce. ui : état d'interface (repère, vue, sélection) — pièce active seulement
   // (undefined → clé absente du JSON : l'ordre et le contenu restent ceux d'avant).
-  return {app:'MiniFusion',v:1,name:d.name,tint:d.tint||0,entNames:d.entNames||null,originVis:ui?originVis:undefined,view:ui?collectView():undefined,bodyVis:d.bodyVis||{},bodies:(d.bodies||[]).map(e=>({id:e.id,name:e.name,c:e.c,color:e.color,mat:e.mat||undefined,op:e.op,gl:e.gl,open:e.open!==false})),bodySeq:d.bodySeq||0,activeBody:d.activeBody||null,fold:{sk:!!(d.fold&&d.fold.sk),origin:!!(d.fold&&d.fold.origin)},fao:d.fao||null,mep:d.mep||null,rendu:(typeof renduNorm==='function'?renduNorm(d.rendu):null)||undefined,params:(d.params||[]).map(p=>({name:p.name,expr:p.expr,value:p.value})),configs:(typeof cfgNorm==='function'?cfgNorm(d.configs):null)||undefined,sel:ui?{kind:sel.kind,id:sel.id}:undefined,sketches:(d.sketches||[]).map(s=>{const c=Object.assign({},s);delete c._refs;return c;}),features:(d.features||[]).map(({_mesh,_m,...r})=>r),cgeo:(d.cgeo||[]).map(cgClean),std:d.std||undefined}; // std : pièce normalisée (48-composants-normalises)
+  return {app:'ConceptCAD',v:1,name:d.name,tint:d.tint||0,entNames:d.entNames||null,originVis:ui?originVis:undefined,view:ui?collectView():undefined,bodyVis:d.bodyVis||{},bodies:(d.bodies||[]).map(e=>({id:e.id,name:e.name,c:e.c,color:e.color,mat:e.mat||undefined,op:e.op,gl:e.gl,open:e.open!==false})),bodySeq:d.bodySeq||0,activeBody:d.activeBody||null,fold:{sk:!!(d.fold&&d.fold.sk),origin:!!(d.fold&&d.fold.origin)},fao:d.fao||null,mep:d.mep||null,rendu:(typeof renduNorm==='function'?renduNorm(d.rendu):null)||undefined,params:(d.params||[]).map(p=>({name:p.name,expr:p.expr,value:p.value})),configs:(typeof cfgNorm==='function'?cfgNorm(d.configs):null)||undefined,sel:ui?{kind:sel.kind,id:sel.id}:undefined,sketches:(d.sketches||[]).map(s=>{const c=Object.assign({},s);delete c._refs;return c;}),features:(d.features||[]).map(({_mesh,_m,...r})=>r),cgeo:(d.cgeo||[]).map(cgClean),std:d.std||undefined}; // std : pièce normalisée (48-composants-normalises)
 }
 function docFromSerial(o){
   // Document de pièce à partir de son objet sérialisé (ouverture, pièces d'un assemblage)
@@ -2535,7 +2535,7 @@ async function bundleSerialise(){
   const imports=await bundleImports();
   // V0.28.1 : images des pièces d'un assemblage, sur option (47-assemblage-cache)
   let asnap=null;try{if(asm&&asm.img)asnap=await asmCacheExport();}catch(e){asnap=null;}
-  return JSON.stringify({app:'MiniFusion',bundle:1,v:APP_VER,cacheVer:CACHE_VER,
+  return JSON.stringify({app:'ConceptCAD',bundle:1,v:APP_VER,cacheVer:CACHE_VER,
     at:Date.now(),name:doc.name||'',doc:JSON.parse(serialise()),
     nMoves:Object.keys(moves).length,moves:moves,imports:imports,asnap:asnap||undefined});
 }
@@ -2630,7 +2630,7 @@ $('btnSave').onclick=async()=>{
   try{
     if(window.showSaveFilePicker&&fileHandle){
       const data=await bundleSerialise();
-      const w=await fileHandle.createWritable();await w.write(data);await w.close();
+      await mffWriteSafe(fileHandle,data);
       autosave();alert('Sauvé dans '+fileHandle.name+' (document + trajectoires).');return;
     }
   }catch(e){}
@@ -2642,11 +2642,11 @@ $('btnSaveAs').onclick=async()=>{
   try{
     if(window.showSaveFilePicker){
       fileHandle=await window.showSaveFilePicker({suggestedName:fname,types:[{description:'ConceptCAD (document + trajectoires)',accept:{'application/json':['.conceptcad']}}]});
-      const w=await fileHandle.createWritable();await w.write(data);await w.close();autosave();alert('Sauvé sous '+fileHandle.name+' (document + trajectoires).');return;
+      await mffWriteSafe(fileHandle,data);autosave();alert('Sauvé sous '+fileHandle.name+' (document + trajectoires).');return;
     }
     throw new Error('no picker');
   }catch(e){
-    const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([data],{type:'application/json'}));a.download=fname;a.click();
+    const a=document.createElement('a');a.href=URL.createObjectURL(mffBlob(await mffPack(data)));a.download=fname;a.click();
     setTimeout(()=>URL.revokeObjectURL(a.href),2000);
   }
 };
@@ -2654,7 +2654,7 @@ $('btnLoad').onclick=()=>$('fileProj').click();
 $('fileProj').addEventListener('change',async e=>{
   const f=e.target.files[0];if(!f)return;
   try{
-    const txt=await f.text();const nm=f.name.replace(/(\.conceptcad|\.minifusion(\.json)?|\.json)$/i,'');
+    const txt=await mffFileText(f);const nm=f.name.replace(/(\.conceptcad|\.minifusion(\.json)?|\.json)$/i,'');
     if(bundleIs(txt))await bundleRestore(txt,{name:nm});          // .conceptcad / .miniFusion : doc + trajectoires
     else{await deserialise(txt);doc.name=nm;rebuild();renderProps();} // ancien .minifusion.json
   }catch(err){alert('Projet illisible : '+err.message);}

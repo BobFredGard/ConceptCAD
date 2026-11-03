@@ -16,7 +16,7 @@ const {loadApp}=require('./appvm.cjs');
   const real=await globalThis.opencascadeFactory({wasmBinary:fs.readFileSync(path.join(ROOT,'occt','opencascade.wasm.wasm'))});
   const {ctx,sandbox}=loadApp();
   sandbox.__realOcct=real;
-  vm.runInContext('occt=__realOcct;occtReady=true;window.alert=function(){};confirm=function(){return true;};var __F='+JSON.stringify(fs.readFileSync(path.join(ROOT,'Exemples','Test Répétition Courbe.conceptcad'),'utf8')),ctx);
+  vm.runInContext('occt=__realOcct;occtReady=true;window.alert=function(){};confirm=function(){return true;};var __F='+JSON.stringify(require('./lire-projet.cjs')(path.join(ROOT,'Exemples','Test Répétition Courbe.conceptcad'))),ctx);
   const R=String.raw`
     const out={fails:[],log:[]};const A=(c,m)=>{if(!c)out.fails.push(m);else out.log.push(m);};const near=(a,b,t)=>Math.abs(a-b)<(t||1e-3);
     doc=docFromSerial(JSON.parse(__F).doc);ensureBodies();

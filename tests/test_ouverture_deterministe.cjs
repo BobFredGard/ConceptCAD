@@ -15,9 +15,9 @@ vm.runInThisContext(fs.readFileSync(path.join(ROOT,'occt','opencascade.full.js')
 const {loadApp}=require('./appvm.cjs');
 let ko=0;
 const A=(c,m)=>{if(!c){ko++;console.log('  ✗ '+m);}else console.log('  ✓ '+m);};
-const pedale=fs.readFileSync(path.join(ROOT,'Exemples','Support Pédale Déportée R1200RT 2011.conceptcad'),'utf8');
-const malaxeur=fs.readFileSync(path.join(ROOT,'Exemples','Malaxeur Retard.conceptcad'),'utf8');
-const crochet=fs.readFileSync(path.join(ROOT,'Exemples','Crochet.conceptcad'),'utf8');
+const pedale=require('./lire-projet.cjs')(path.join(ROOT,'Exemples','Support Pédale Déportée R1200RT 2011.conceptcad'));
+const malaxeur=require('./lire-projet.cjs')(path.join(ROOT,'Exemples','Malaxeur Retard.conceptcad'));
+const crochet=require('./lire-projet.cjs')(path.join(ROOT,'Exemples','Crochet.conceptcad'));
 (async()=>{
   const real=await globalThis.opencascadeFactory({wasmBinary:fs.readFileSync(path.join(ROOT,'occt','opencascade.wasm.wasm'))});
   const {ctx,sandbox}=loadApp();

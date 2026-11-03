@@ -265,7 +265,7 @@ test('composants liés : lier l\'Axe, modifier sur place, la source est réécri
   const err=await demarrer(page);
   // Le stockage privé du navigateur (OPFS) sert de dossier de projets : mêmes API de fichiers
   // que le vrai dossier, sans fenêtre de dialogue à piloter.
-  const axe=require('fs').readFileSync(require('path').join(__dirname,'..','..','Exemples','Axe.conceptcad'),'utf8');
+  const axe=require('../lire-projet.cjs')(require('path').join(__dirname,'..','..','Exemples','Axe.conceptcad'));
   const r1=await page.evaluate(async axe=>{
     const dir=await (await navigator.storage.getDirectory()).getDirectoryHandle('mf-pw',{create:true});
     const h=await dir.getFileHandle('Axe.conceptcad',{create:true});
@@ -281,13 +281,13 @@ test('composants liés : lier l\'Axe, modifier sur place, la source est réécri
     const L=asmLinked()[0];
     L.doc.cgeo.push({id:'rp',kind:'frame',how:'zx',name:'Repère PW',refs:[],p:{},at:null,visible:true,fr:{o:[1,2,3],x:[1,0,0],y:[0,1,0],z:[0,0,1]},st:'ok',msg:''});
     const d=asmLinkDirty(L);await asmLinksWrite();
-    const h=await mffFolder.getFileHandle('Axe.conceptcad');const b=JSON.parse(await (await h.getFile()).text());
+    const h=await mffFolder.getFileHandle('Axe.conceptcad');const b=JSON.parse(await mffFileText(await h.getFile()));
     return {d,bundle:b.bundle,rp:(b.doc.cgeo||[]).some(c=>c.id==='rp'),apres:asmLinkDirty(L)};
   });
   expect(r2).toEqual({d:true,bundle:1,rp:true,apres:false});
   // la source change ailleurs : vérification → mise à jour
   const r3=await page.evaluate(async()=>{
-    const h=await mffFolder.getFileHandle('Axe.conceptcad');const b=JSON.parse(await (await h.getFile()).text());
+    const h=await mffFolder.getFileHandle('Axe.conceptcad');const b=JSON.parse(await mffFileText(await h.getFile()));
     b.doc.cgeo=b.doc.cgeo.filter(c=>c.id!=='rp');
     const w=await h.createWritable();await w.write(JSON.stringify(b));await w.close();
     const r=await asmLinksCheck(false);

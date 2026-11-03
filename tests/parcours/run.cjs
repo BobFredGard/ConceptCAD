@@ -43,7 +43,7 @@ const TYPES = { facing: 'Surfaçage', rough3d: 'Ébauche 3D', geofinish: 'Finiti
 function taches() {
   const t = [];
   for (const f of exemples()) {
-    let b; try { b = JSON.parse(fs.readFileSync(path.join(ROOT, f), 'utf8')); } catch (e) { continue; }
+    let b; try { b = JSON.parse(require('../lire-projet.cjs')(path.join(ROOT, f))); } catch (e) { continue; }
     const d = b.doc || b;
     ((d.fao && d.fao.setups) || []).forEach(s => (s.ops || []).forEach((o, i) => {
       if (!o || o.on === false) return;
