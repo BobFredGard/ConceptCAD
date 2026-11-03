@@ -158,6 +158,43 @@ function faoPaste(){
   }catch(e){}
   return 0;
 }
+/* V0.41.0 : Suppr (ou Retour arrière) supprime TOUTES les opérations sélectionnées
+   (Ctrl+clic / Maj+clic) en une seule étape d'annulation : un Ctrl+Z les rend toutes.
+   La sélection passe à l'opération qui suivait (sinon la précédente, sinon le posage). */
+function faoDeleteSelected(){
+  // Renvoie le nombre d'opérations supprimées (0 = rien).
+  try{
+    const so=faoSelectedOps();
+    if(!so)return 0;
+    const s=so.setup, ops=s.ops||[], n=so.ops.length;
+    const last=ops.indexOf(so.ops[n-1]);
+    const rest=ops.filter(function(o){ return so.ops.indexOf(o)<0; });
+    const after=ops.slice(last+1).filter(function(o){ return so.ops.indexOf(o)<0; })[0]
+      ||ops.slice(0,last).filter(function(o){ return so.ops.indexOf(o)<0; }).pop()||null;
+    faoSnapshot(n>1?('supprimer '+n+' opérations'):('supprimer « '+faoOpShortLabel(so.ops[0])+' »'));
+    s.ops=rest;
+    faoMulti=[];
+    if(after)sel={kind:'faoOp',id:after.id,setup:s.id};
+    else sel={kind:'faoSetup',id:s.id};
+    faoChanged();
+    if(after)faoSelectOp(s.id,after.id); else faoSelectSetup(s.id);
+    faoClipMsg(n+' opération(s) supprimée(s) — Ctrl+Z pour les rétablir.');
+    return n;
+  }catch(e){ return 0; }
+}
+function faoDelKey(e){
+  // true = touche consommée (Suppr sur des opérations FAO sélectionnées).
+  if(!e||e.ctrlKey||e.metaKey||e.altKey)return false;
+  if(e.key!=='Delete'&&e.key!=='Backspace')return false;
+  if(typeof sel==='undefined'||!sel||sel.kind!=='faoOp')return false;
+  if(faoClipKeyTarget(e.target))return false; // champ de saisie : effacer du texte
+  try{ if(typeof document!=='undefined'&&document.querySelector&&document.querySelector('.mffDlgBg'))return false; }catch(err){}
+  try{ if(typeof mepIsOpen==='function'&&mepIsOpen())return false; }catch(err){}
+  try{ if(typeof skEdit!=='undefined'&&skEdit)return false; }catch(err){}
+  if(!faoDeleteSelected())return false;
+  try{ if(e.preventDefault)e.preventDefault(); if(e.stopImmediatePropagation)e.stopImmediatePropagation(); }catch(err){}
+  return true;
+}
 function faoClipKeyTarget(t){
   // Champ de saisie : Ctrl+C / Ctrl+V gardent leur sens natif (texte).
   try{
@@ -168,6 +205,7 @@ function faoClipKeyTarget(t){
 }
 (function(){
   if(typeof window==='undefined'||!window.addEventListener)return;
+  window.addEventListener('keydown',faoDelKey,true);
   window.addEventListener('keydown',function(e){
     if(!(e.ctrlKey||e.metaKey)||e.altKey||e.shiftKey)return;
     const k=String(e.key||'').toLowerCase();

@@ -8,7 +8,7 @@ sont sorties le 2026-09-30j.
 Code dans `src/` · livrable `fusion_mvp.html` (généré par `build.js`) · architecture et
 garde-fous en tête de `src/00-entete-et-outils.js`.
 
-**535 versions**, de `2026-09-28b` à `V0.40.1` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
+**536 versions**, de `2026-09-28b` à `V0.41.0` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
 comme dans le fichier d'origine.
 
 ---
@@ -6353,3 +6353,9 @@ Demande : « Corps 1 (2) (2) reçoit une fonction face […] je fais une Face de
 - **Limites** : face percée, voisine B-spline ou congé tangent à la face → comportement inchangé (bord droit et alerte).
 - **Moteur** : le décalage face par face d'OpenCascade (`BRepOffset_MakeOffset`, l'équivalent de Fusion 360) n'est pas compilé dans opencascade.js 1.1.4 ; la recompilation du noyau est étudiée à part.
 - **Tests** : `test_face_depouille_tangente` (document réel : dessus monté de 5 mm, élargi de 5·tan 15° = 1,34 mm par côté, 18 faces comme avant le déplacement, solide valide, aucune alerte) ; `test_face_appuyer` et `test_xmove` inchangés ; `npm run ci:full`.
+
+## V0.41.0 - FAO : supprimer plusieurs opérations d'un coup (Suppr), rétablies d'un seul Ctrl+Z
+Demande : supprimer les opérations d'un posage par multi-sélection + Suppr (capture du panneau Usinage, 14 opérations sous POSAGE1).
+- **Suppr / Retour arrière** (`faoDeleteSelected`, `faoDelKey`, `src/88-fao-81`) : les opérations choisies par Ctrl+clic / Maj+clic (sélection multiple de la V0.23.20) sont retirées ensemble ; une seule étape d'annulation (`faoSnapshot`), donc un Ctrl+Z les rend toutes à leur place, Ctrl+Y les retire de nouveau. La numérotation de l'arbre suit ; la sélection passe à l'opération suivante (sinon la précédente, sinon le posage).
+- **Garde-fous** : sans effet dans un champ de saisie, une boîte de dialogue, une esquisse ouverte ou la mise en plan.
+- **Tests** : `test_fao_suppression_multiple` (3 opérations sur 6 → Suppr → 3 restantes et renumérotées, une étape d'annulation, Ctrl+Z → les 6 dans l'ordre, Ctrl+Y, Suppr dans un champ ignorée) ; `npm run ci:full`.
