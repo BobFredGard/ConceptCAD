@@ -8,7 +8,7 @@ sont sorties le 2026-09-30j.
 Code dans `src/` · livrable `fusion_mvp.html` (généré par `build.js`) · architecture et
 garde-fous en tête de `src/00-entete-et-outils.js`.
 
-**537 versions**, de `2026-09-28b` à `V0.42.0` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
+**538 versions**, de `2026-09-28b` à `V0.42.1` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
 comme dans le fichier d'origine.
 
 ---
@@ -6368,3 +6368,10 @@ Demande : une barre de progression pendant la régénération, avec les fonction
 - **Affichage** : seulement si la régénération dépasse 300 ms (pas de clignotement sur les petites pièces) ; clics et touches retenus tant que la barre est là (pas d'édition ni de Ctrl+Z au milieu).
 - **Limite** : une modification ordinaire (OK d'une fonction) reste un rejeu synchrone sans barre.
 - **Tests** : `test_regen_progression` (vrai noyau, Cache Piles, Support Pédale, Perçages : une tranche par fonction, solide identique au rejeu habituel et même topologie qu'à froid, rejeu final ≈ 10 × plus rapide après préchauffe) ; banc `tests/appvm` en rejeu synchrone par défaut (`__regenSync`) ; vérifié dans le navigateur (Cache Piles : barre à 0,4 s, 42 étapes, noms et esquisses) ; `npm run ci:full`.
+
+## V0.42.1 - PLAN : textures des pièces des autres composants dans les vues d'assemblage rendues
+Demande : « Mise en plan assemblages -> les textures des pièces externes ne sont pas prises en compte ».
+- **Cause** : les corps des instances d'une vue « Assemblage » (`asmPlanBodies`, `src/48-composants-plan.js`) étaient recréés avec leur seule couleur CAO, sans apparence de rendu ; et, maillages hors de la scène, ils n'entraient même pas dans l'image d'une vue « Rendu 3D » ou « Rendu réaliste » (image vide, seuls les traits restaient).
+- **Apparence** (`asmPlanRd`) : chaque corps d'instance reçoit l'apparence de rendu de la 3D — celle de l'occurrence (rendu d'assemblage), sinon celle de la pièce (instantané), sinon sa couleur ; relue à chaque appel, elle suit un changement de matériau sans attendre une modification de la géométrie.
+- **Image** (`mepRender3dImage`, `src/98-mep-10-projection-hlr.js`) : ces corps sont ajoutés à la scène le temps du rendu, puis retirés.
+- **Tests** : vérifié dans le navigateur (Test Assemblage : Base en acier, vue de face en rendu réaliste → base texturée acier et goupille jaune, image vide avant) ; `npm run ci:full`.
