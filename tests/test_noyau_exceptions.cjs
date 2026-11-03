@@ -60,7 +60,11 @@ if(typeof sandbox.delWkSource==='function'){
 // la colle livrée appelle ces noms sans les définir
 const glue=fs.readFileSync(path.join(__dirname,'..','occt','opencascade.full.js'),'utf8');
 A(/___cxa_can_catch\(caughtType/.test(glue),'la colle du noyau appelle ___cxa_can_catch');
-A(!/function ___cxa_can_catch\b|___cxa_can_catch\s*=/.test(glue),'… sans la définir (sinon cette correction serait à retirer)');
+// (essai d'un autre noyau par OCCT_DIR, tests/occt-moteur.cjs : sa colle peut la définir — alors
+// la rustine deviendra inutile le jour où ce noyau sera adopté ; ce n'est pas un échec ici)
+if(process.env.OCCT_DIR&&/function ___cxa_can_catch\b|___cxa_can_catch\s*=/.test(glue))
+  console.log('  ℹ la colle du noyau essayé définit ___cxa_can_catch : correction à retirer à son adoption');
+else A(!/function ___cxa_can_catch\b|___cxa_can_catch\s*=/.test(glue),'… sans la définir (sinon cette correction serait à retirer)');
 
 console.log(ko?'\n*** '+ko+' PROBLEME(S) ***':'\n*** TOUT PASSE ***');
 process.exit(ko?1:0);

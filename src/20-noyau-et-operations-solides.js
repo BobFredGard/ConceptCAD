@@ -609,8 +609,15 @@ function occCoqueThick(result,faces,thick,join,inter){
   try{
     const L=occBinPush(bin,new occt.TopTools_ListOfShape_1());
     for(const f of faces)L.Append_1(occBinPush(bin,occt.TopoDS.Face_1(f)));
-    const mk=occBinPush(bin,new occt.BRepOffsetAPI_MakeThickSolid_2(
-      result,L,-Math.abs(thick),0.01,join,inter,false,join,false));
+    let mk;
+    if(occt.BRepOffsetAPI_MakeThickSolid_2){
+      mk=occBinPush(bin,new occt.BRepOffsetAPI_MakeThickSolid_2(
+        result,L,-Math.abs(thick),0.01,join,inter,false,join,false));
+    }else{ // OCCT ≥ 7.6 (noyau recompilé, occt-build/) : constructeur vide + MakeThickSolidByJoin
+      mk=occBinPush(bin,new occt.BRepOffsetAPI_MakeThickSolid());
+      mk.MakeThickSolidByJoin(result,L,-Math.abs(thick),0.01,occt.BRepOffset_Mode.BRepOffset_Skin,
+        inter,false,join,false,occBinPush(bin,new occt.Message_ProgressRange_1()));
+    }
     mk.Build();
     let done=false;
     try{done=!!mk.IsDone();}catch(e){}

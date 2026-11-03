@@ -18,6 +18,7 @@
 #include <string>
 #include <vector>
 
+#include <Standard_Version.hxx>
 #include <Standard_Failure.hxx>
 #include <TopoDS_Shape.hxx>
 #include <TopoDS_Face.hxx>
@@ -62,7 +63,11 @@ private:
     try {
       if (thick) myMaker.MakeThickSolid(); else myMaker.MakeOffsetShape();
     } catch (const Standard_Failure& e) {
+#if OCC_VERSION_HEX >= 0x080000 // OCCT 8 : Standard_Failure dérive de std::exception
+      myMsg = std::string(e.ExceptionType()) + ": " + (e.what() ? e.what() : "");
+#else
       myMsg = std::string(e.DynamicType()->Name()) + ": " + (e.GetMessageString() ? e.GetMessageString() : "");
+#endif
       return false;
     } catch (...) {
       myMsg = "exception C++";

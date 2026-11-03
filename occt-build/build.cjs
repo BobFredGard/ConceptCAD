@@ -67,6 +67,16 @@ function main(){
   // libcascade suffixe parfois le nom par la variante (conceptcad_single.js…).
   for(const f of fs.readdirSync(work))
     if(/^conceptcad.*\.(js|wasm|d\.ts|json|symbols)$/.test(f))fs.renameSync(path.join(work,f),path.join(out,f));
+  // la colle sort parfois sans extension (nom de build sans « .js ») : on la renomme
+  for(const f of fs.readdirSync(out))if(/^conceptcad[\w-]*$/.test(f))fs.renameSync(path.join(out,f),path.join(out,f+'.js'));
+  if(v==='v2'){
+    // table de compatibilité des appels 1.1.1 (suffixes renumérotés, arguments ajoutés) : sondes
+    // de l'ancien noyau (occt/) et du nouveau, puis compat-v1.json lu par tests/occt-moteur.cjs
+    const ROOT=path.join(HERE,'..'),sA=path.join(work,'sonde-ancien.json'),sB=path.join(work,'sonde-nouveau.json');
+    sh(process.execPath,[path.join(HERE,'sonde-surcharges.cjs'),path.join(ROOT,'occt','opencascade.full.js'),path.join(ROOT,'occt','opencascade.wasm.wasm'),sA]);
+    sh(process.execPath,[path.join(HERE,'sonde-surcharges.cjs'),path.join(out,'conceptcad.js'),path.join(out,'conceptcad.wasm'),sB]);
+    sh(process.execPath,[path.join(HERE,'compat-v1.cjs'),path.join(out,'conceptcad.d.ts'),sA,sB,path.join(out,'compat-v1.json')]);
+  }
   const wasm=fs.readdirSync(out).filter(f=>f.endsWith('.wasm')).map(f=>`${f} ${(fs.statSync(path.join(out,f)).size/1e6).toFixed(1)} Mo`);
   const img=sh('docker',['image','inspect','--format','{{index .RepoDigests 0}}',VARIANTES[v].image],{capture:true}).trim();
   fs.writeFileSync(path.join(out,'PROVENANCE.txt'),

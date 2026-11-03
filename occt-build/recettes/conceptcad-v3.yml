@@ -5,7 +5,7 @@
 # ATTENTION : API différente de l'actuel (surcharges sans suffixe, sorties en « enveloppe ») —
 # voir occt-build/README.md, section « Version récente ».
 mainBuild:
-  name: conceptcad_v3
+  name: conceptcad_v3.js
   bindings:
   # @BINDINGS@
   additionalBindFiles:

@@ -20,11 +20,19 @@ if(DIR){
   const ROOT_OCCT=path.resolve(__dirname,'..','occt');
   const orig=fs.readFileSync;
   let glue=null;
+  const compatFile=path.join(dir,'compat-v1.json');
+  const compat=fs.existsSync(compatFile)?JSON.parse(orig.call(fs,compatFile,'utf8')):null;
+  if(compat){
+    const {appliquer}=require(path.join(__dirname,'..','occt-build','compat-v1.cjs'));
+    globalThis.__occtCompatWrap=f=>async(o)=>appliquer(await f(o),compat);
+  }
   function adaptGlue(src){
     // module ES → script : la fabrique devient globalThis.opencascadeFactory
     if(/export default (\w+);\s*$/.test(src))
       src=src.replace(/export default (\w+);\s*$/,'try{globalThis.opencascadeFactory=$1;}catch(e){}\n');
     if(!/opencascadeFactory/.test(src))src+='\n;try{globalThis.opencascadeFactory=opencascade;}catch(e){}\n';
+    // noyau plus récent qu'OCCT 7.4 : couche de compatibilité des appels 1.1.1 (occt-build/compat-v1.cjs)
+    if(compat)src+='\n;globalThis.opencascadeFactory=globalThis.__occtCompatWrap(globalThis.opencascadeFactory);\n';
     // import.meta n'existe pas dans un script : la colle ne s'en sert que pour situer le .wasm
     return src.replace(/import\.meta\.url/g,'("file://"+__filename)');
   }
