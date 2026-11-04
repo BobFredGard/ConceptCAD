@@ -28,12 +28,13 @@ function cfgNorm(c){
 function cfgCurrent(nm){
   // Expression actuelle d'une valeur nommée (texte), ou '' si inconnue
   const e=parAll().get(nm);if(!e)return '';
+  if(e.kind==='dparam')return String(e.p.value);
   if(e.kind==='param')return String(e.p.expr==null?'':e.p.expr);
   if(e.kind==='dim')return (e.d.expr!=null&&String(e.d.expr).trim()!=='')?String(e.d.expr):String(+parDimUser(e.d).toFixed(6));
   return (e.h.expr&&e.h.expr[e.k])?String(e.h.expr[e.k]):String(+parHolderVal(e.h,e.k).toFixed(6));
 }
 function cfgSetExpr(nm,ex){
-  const e=parAll().get(nm);if(!e)return false;
+  const e=parAll().get(nm);if(!e||e.kind==='dparam')return false; // dérivé : la source décide
   ex=String(ex).trim();
   if(e.kind==='param')e.p.expr=ex;
   else if(e.kind==='dim'){e.d.expr=ex;parPending.add(e.sk);}
@@ -124,7 +125,7 @@ function cfgSection(box,rerender){
   const add=document.createElement('button');add.id='cfgAdd';add.textContent='+ Configuration';add.title='Nouvelle variante = l’état actuel du modèle';
   add.onclick=()=>{docPushUndo('configurations');const r=cfgAddRow();if(cfgOf().rows.length===1){cfgOf().active=r.id;}try{renderTree();}catch(e){}redo();};
   bar.appendChild(add);
-  const names=[...parAll().keys()].filter(n=>!(c&&c.cols.includes(n)));
+  const names=[...parAll().entries()].filter(([n,e])=>e.kind!=='dparam'&&!(c&&c.cols.includes(n))).map(([n])=>n);
   if(names.length){
     const s=document.createElement('select');s.id='cfgColSel';
     const o0=document.createElement('option');o0.value='';o0.textContent='+ Colonne…';s.appendChild(o0);

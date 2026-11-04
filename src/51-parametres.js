@@ -78,6 +78,8 @@ function parDimUser(d){return d.type==='angle'?d.value*180/Math.PI:(d.dia?2*d.va
 function parDimFromUser(d,f){return d.type==='angle'?f*Math.PI/180:(d.dia?f/2:f);}
 function parAll(){
   const m=new Map();
+  // V0.47.0 : paramètres venus d'un autre fichier (52-derivee) ; un nom local l'emporte
+  (doc.derive||[]).forEach(L=>(L.params||[]).forEach(p=>{if(p&&p.name)m.set(p.name,{kind:'dparam',p,L});}));
   (doc.params||[]).forEach(p=>{if(p&&p.name)m.set(p.name,{kind:'param',p});});
   (doc.sketches||[]).forEach(sk=>(sk.dims||[]).forEach(d=>{if(d&&d.name)m.set(d.name,{kind:'dim',d,sk});}));
   parHolders().forEach(({h,f})=>{if(h.pname)Object.keys(h.pname).forEach(k=>{const nm=h.pname[k];if(nm)m.set(nm,{kind:'feat',h,k,f});});});
@@ -123,6 +125,7 @@ function parResolve(){
   const get=nm=>{
     if(val.has(nm))return val.get(nm);
     const e=m.get(nm);if(!e)throw new Error('« '+nm+' » inconnu');
+    if(e.kind==='dparam'){const dv=+e.p.value;if(!isFinite(dv))throw new Error('« '+nm+' » sans valeur');val.set(nm,dv);return dv;}
     if(busy.has(nm))throw new Error('référence circulaire (« '+nm+' »)');
     busy.add(nm);let v;
     try{
@@ -242,6 +245,7 @@ function parFxFrom(f,dst,keys){
 function parValueNow(nm){
   // valeur ACTUELLE d'un nom (sans réévaluer le document)
   const e=parAll().get(nm);if(!e)throw new Error('« '+nm+' » inconnu');
+  if(e.kind==='dparam')return +e.p.value;
   if(e.kind==='param')return(e.p.value!=null&&isFinite(+e.p.value))?+e.p.value:parEval(e.p.expr,parValueNow);
   return e.kind==='feat'?parHolderVal(e.h,e.k):parDimUser(e.d);
 }
@@ -319,6 +323,7 @@ function parDecor(id,str){
 /* ---------- fenêtre ƒx Paramètres ---------- */
 function parAfterChange(){
   parApplyAll();
+  try{parMiniSoon();}catch(e){}
   try{if(typeof skEdit!=='undefined'&&skEdit){drawSketch2D();renderSkPanel();}}catch(e){}
   try{markDirty();rebuild();}catch(e){}
 }
@@ -343,14 +348,18 @@ function openParamsDlg(){
       const td=()=>{const t=document.createElement('td');t.style.padding='3px 6px';tr.appendChild(t);return t;};
       const n=document.createElement('input');n.value=o.name||'';n.style.cssText=inpCss;n.placeholder='nom';td().appendChild(n);
       const x=document.createElement('input');x.value=o.expr;x.style.cssText=inpCss;x.dataset.fxac='';td().appendChild(x);
+      if(o.ro){n.disabled=true;x.disabled=true;n.style.opacity=x.style.opacity='.6';} // V0.47.0 : paramètre dérivé, modifiable seulement dans sa source
       const v=td();v.textContent=o.err?('⚠ '+o.err):(isFinite(o.val)?String(+o.val.toFixed(12)).replace('.',',')+(o.unit||''):'');if(o.err)v.style.color='#ff9f0a';
       td().textContent=o.origin;
       const del=td();
       if(o.del){const b=document.createElement('button');b.textContent='🗑';b.title='Supprimer';b.onclick=()=>{o.del();parAfterChange();render();};del.appendChild(b);}
+      if(o.ro){tbl.appendChild(tr);return;}
       n.onchange=()=>{const r=o.rename(n.value.trim());if(r!==true){alert(r);n.value=o.name||'';return;}parAfterChange();render();};
       x.onchange=()=>{const r=o.setExpr(x.value.trim());if(r!==true){alert(r);x.value=o.expr;return;}parAfterChange();render();};
       tbl.appendChild(tr);
     };
+    (doc.derive||[]).forEach(L=>(L.params||[]).forEach(p=>row({name:p.name,expr:String(+(+p.value).toFixed(12)).replace('.',','),val:+p.value,err:p.miss?'disparu de la source':null,origin:'🔗 '+L.name,ro:true,
+      del:()=>{L.params=L.params.filter(q=>q!==p);L.auto=false;}})));
     (doc.params||[]).forEach(p=>row({name:p.name,expr:String(p.expr==null?'':p.expr),val:p.value,err:p.err,origin:'Paramètre',
       rename:nm=>{if(!nm)return'Nom requis.';const ok=parNameCheck(nm,null,p);if(ok!==true)return ok;parRename(p.name,nm);p.name=nm;return true;},
       setExpr:ex=>{if(!ex)return'Expression vide.';const o=p.expr;p.expr=ex;parResolve();if(p.err){const m=p.err;p.expr=o;parResolve();return'Expression : '+m;}return true;},
@@ -379,6 +388,7 @@ function openParamsDlg(){
     cst.innerHTML='<b>Constantes</b> (toujours disponibles) : <code>pi</code> = '+PAR_CONST.pi.toFixed(12).replace('.',',')+' — ex. « pi*D », « 2*pi*R », « D*pi/4 ».<br><b>Conditions</b> : <code>if(L &gt; 100 ; 5 ; 3)</code> — comparaisons &lt; &gt; &lt;= &gt;= == != , <code>and( ; )</code> <code>or( ; )</code> <code>not( )</code>. <b>Arrondis</b> au pas : <code>roundmoins(x ; 0,5)</code> <code>roundplus(x ; 5)</code> <code>round(x ; 0,1)</code>.';
     box.appendChild(cst);
     try{cfgSection(box,render);}catch(e){} // V0.8.4 : configurations (52-configurations)
+    try{derDlgSection(box,render);}catch(e){} // V0.47.0 : fichiers dont celui-ci dérive (52-derivee)
     const bar=document.createElement('div');bar.style.cssText='display:flex;gap:8px;justify-content:flex-end;margin-top:12px';
     const add=document.createElement('button');add.textContent='+ Paramètre';
     add.onclick=()=>{let k=1;while(parAll().has('P'+k))k++;doc.params.push({name:'P'+k,expr:'10',value:10});parAfterChange();render();};
@@ -497,7 +507,7 @@ function parAcList(w){
   const lw=w.toLowerCase(),out=[];
   const fmt=v=>isFinite(v)?String(+(+v).toFixed(4)).replace('.',','):'';
   parAll().forEach((e,nm)=>{let v=NaN;try{v=parValueNow(nm);}catch(x){}
-    out.push({nm,ins:nm,info:fmt(v),kind:e.kind==='param'?'paramètre':e.kind==='dim'?'cote':'fonction 3D'});});
+    out.push({nm,ins:nm,info:fmt(v),kind:e.kind==='param'?'paramètre':e.kind==='dparam'?'dérivé':e.kind==='dim'?'cote':'fonction 3D'});});
   out.push({nm:'pi',ins:'pi',info:fmt(Math.PI),kind:'constante'});
   out.push({nm:'if( ; ; )',ins:'if(',info:'test ; alors ; sinon',kind:'condition',fn:'if'});
   Object.keys(PAR_FN).forEach(f=>out.push({nm:f+'( )',ins:f+'(',info:/^round/.test(f)?'x ; pas':'',kind:'fonction',fn:f}));
@@ -553,19 +563,26 @@ try{
   document.addEventListener('focusout',e=>{if(e.target===parAcInp)parAcClose();},true);
   window.addEventListener('scroll',()=>{if(parAcBox)parAcClose();},true);
 }catch(e){}
+// V0.47.0 : clic = mini-liste du bandeau de droite (52-derivee) ; clic droit = liste complète.
+// _ctx : le bouton du ruban moderne (97) reprend le même clic droit.
+function parBtn(n){
+  n.onclick=()=>parMiniToggle();
+  n._ctx=()=>openParamsDlg();
+  n.addEventListener('contextmenu',e=>{e.preventDefault();e.stopPropagation();openParamsDlg();});
+}
 // boutons ƒx : bandeau principal (après Perçage / Extrusion) et barre d'esquisse (avant ↩)
 (function(){
   try{
     if(!document.getElementById('btnParams')){
       const ref=document.getElementById('btnHole')||document.getElementById('btnExtrude');
       if(ref&&ref.parentNode){const n=document.createElement('button');n.id='btnParams';n.textContent='ƒx Paramètres';
-        n.title='Paramètres : cotes nommées (« nom = valeur » dans la saisie d’une cote) et paramètres libres, réutilisables dans les expressions des cotes.';
-        ref.parentNode.insertBefore(n,ref.nextSibling);n.onclick=()=>openParamsDlg();}
+        n.title='Paramètres — clic : mini-liste dans le bandeau de droite ; clic droit : liste complète.';
+        ref.parentNode.insertBefore(n,ref.nextSibling);parBtn(n);}
     }
     if(!document.getElementById('skParams')){
       const u=document.getElementById('skUndo');
       if(u&&u.parentNode){const n=document.createElement('button');n.id='skParams';n.textContent='ƒx';
-        n.title='Paramètres (cotes nommées, expressions)';u.parentNode.insertBefore(n,u);n.onclick=()=>openParamsDlg();}
+        n.title='Paramètres — clic : mini-liste à droite ; clic droit : liste complète';u.parentNode.insertBefore(n,u);parBtn(n);}
     }
   }catch(e){}
 })();

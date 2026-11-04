@@ -119,6 +119,7 @@ let treeSel=[];   // ids de fonctions, dans l'ordre de clic
 // répétition, qui vit hors de renderTree.
 function featIconOf(f){
   if(!f)return '◧';
+  if(f.type==='import'&&f.derive){const L=derLinkOf(f);return '🔗'+(!L||L.st==='warn'?'⚠':'');} // corps dérivé (52)
   if(f.type==='extrude')return (f.op||'add')==='cut'?'▾':'▤';
   if(f.type==='xfillet')return xIcon(xKindOf(f))+((f._m&&f._m.m<f._m.t)||f._err||f._adj?'⚠':'');
   if(f.type==='fillet')return xIcon(xKindOf(f));
@@ -2049,6 +2050,7 @@ function renderProps(){
     /* — révolution — V0.8.0 : fenêtre dynamique (71-fenetre-dynamique) */
     if(f.type==='revolve'){ fdynRevolvePanel(p,f); }
     if(f.type==='sweep'){ sweepPanel(p,f); } // 75-balayage
+    if(f.type==='import'&&f.derive)derProps(p,f); // V0.47.0 : corps dérivé (52)
     if(f.type==='import'){ importColorsPanel(p,f,pRow,pSel,pNote); } // STEP multi-corps : couleur par pièce / occurrence (90)
     /* — extrusion — */
     if(f.type==='extrude'){

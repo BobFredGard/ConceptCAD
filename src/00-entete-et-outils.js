@@ -21,7 +21,7 @@
  * peut changer sans rien casser. CACHE_VER (parcours FAO) reste indépendant.
  */
 
-const APP_VER='V0.46.4';
+const APP_VER='V0.47.0';
 try{console.log('[ConceptCAD] version '+APP_VER);}catch(e){}
 try{var mfSv=document.getElementById('mfSplashVer');if(mfSv)mfSv.textContent=APP_VER;}catch(e){} // écran de démarrage
 
@@ -168,6 +168,7 @@ async function occtFinishBoot(){
     try{if(asmOn())asmBuildSnapshots();}catch(e){}
     // Imports STEP du document (F5, ouverture avant le noyau) : rejoués depuis leur source.
     try{if(typeof importRestorePending==='function')importRestorePending();}catch(e){}
+    try{if(typeof derCheck==='function')derCheck(false);}catch(e){} // V0.47.0 : corps dérivés en attente du noyau (52)
     // Re-cadrage après bascule exact : le 1er cadrage (chargement) s'est fait sur le repli
     // maillage, dont le solide combiné peut avoir une boîte dégénérée (mesuré : 40×40×10000,
     // caméra propulsée hors du plan lointain 5000 → vue noire jusqu'au prochain Iso).

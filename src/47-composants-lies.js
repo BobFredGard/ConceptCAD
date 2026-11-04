@@ -111,14 +111,15 @@ async function asmLinkLoad(L,txt){
   return true;
 }
 /* ── accès aux fichiers sources ── */
-async function asmLinkHandle(L,ask){
-  // → {h} ou {why} ; ask : demander l'autorisation (il faut un geste de l'utilisateur)
+async function asmLinkHandle(L,ask,mode){
+  // → {h} ou {why} ; ask : demander l'autorisation (il faut un geste de l'utilisateur) ;
+  // mode : 'read' pour une source seulement lue (Dérivée, 52), sinon lecture et écriture
   const l=L.link,perm=async(h,mode)=>{
     try{const o={mode};if(typeof h.queryPermission!=='function')return true; // (stockage privé : toujours permis)
       if((await h.queryPermission(o))==='granted')return true;
       if(!ask)return false;return (await h.requestPermission(o))==='granted';}catch(e){return false;}};
   if(l.rel&&mffFolder){
-    if(!(await perm(mffFolder,'readwrite')))return {why:'accès au dossier de projets à autoriser',perm:true};
+    if(!(await perm(mffFolder,mode||'readwrite')))return {why:'accès au dossier de projets à autoriser',perm:true};
     try{
       const seg=String(l.rel).split('/').filter(Boolean);let d=mffFolder;
       for(let i=0;i<seg.length-1;i++)d=await d.getDirectoryHandle(seg[i]);
@@ -137,7 +138,7 @@ async function asmLinkHandle(L,ask){
   if(l.key){
     let h=null;try{h=await idbGet(l.key);}catch(e){}
     if(!h)return {why:'source introuvable (lien mémorisé sur un autre ordinateur ?)'};
-    if(!(await perm(h,'readwrite')))return {why:'accès au fichier source à autoriser',perm:true};
+    if(!(await perm(h,mode||'readwrite')))return {why:'accès au fichier source à autoriser',perm:true};
     return {h};
   }
   return {why:l.rel?'dossier de projets non choisi : lien « '+l.rel+' » non vérifié':'source inconnue'};

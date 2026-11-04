@@ -106,6 +106,7 @@
   const gFile=groupe('Fichier','Importer une pièce, ou l\'exporter dans un format',[
     [null,'Importer'],
     ['btnImport','\u{1F4C2}','Importer une pièce (STEP / STL)'],
+    ['btnDerive','\u{1F517}','Dériver d’un autre fichier (paramètres, corps)'],
     '#',
     [null,'Exporter'],
     ['btnExportStep','\u{2B07}','STEP — géométrie exacte'],

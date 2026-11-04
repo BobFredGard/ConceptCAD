@@ -370,7 +370,7 @@ const MF_CAO=[
     ['cgFrame','Repère',()=>cgStart('frame'),'Repère de construction : origine + Z + X, sur un plan ou une face, par 3 points']]],
   ['Modifier',[['fillet','Congé','btnFillet'],['chamfer','Chanfrein','btnChamfer'],['face','Face','btnMoveFace'],['draft','Dépouille','btnDraft'],['shell','Coque','btnCoque'],['thread','Filetage','btnThread'],['split','Scinder','btnSplit']]],
   ['Ensembles',[['pattern','Répétition','btnRepeat'],['combine','Combiner','btnCombine'],['move','Déplacer','btnBodyMove'],['scale','Échelle','btnBodyScale'],['params','Paramètres','btnParams']]],
-  ['Fichier',[['import','Importer','btnImport'],['export','STEP','btnExportStep'],['export','STL','btnExportStl'],['export','OBJ','btnExportObj']]]
+  ['Fichier',[['import','Importer','btnImport'],['import','Dériver','btnDerive'],['export','STEP','btnExportStep'],['export','STL','btnExportStl'],['export','OBJ','btnExportObj']]]
 ];
 const MF_FAO_ICON={facing:'facing',pocket:'pocket',chamfer:'chamfer',contour:'contour',drill:'drill',rough3d:'rough3d',geofinish:'finish',geodesic:'geodesic',pocket2:'pocket'};
 function mfFaoAdd(type,nm){
@@ -384,7 +384,9 @@ function mfRibbon(){
   const grp=(title,btns,cls)=>{const g=document.createElement('div');g.className='mfGrp '+cls;const bb=document.createElement('div');bb.className='mfGrpB';
     btns.forEach(([ic,lab,act,tip,cls])=>{const b=document.createElement('button');b.className='mfRb'+(cls?' '+cls:'');b.innerHTML='<i>'+(mfI(ic,22)||ic)+'</i>'+lab;
       const src=typeof act==='string'?document.getElementById(act):null;b.title=tip||(src&&src.title)||lab;
-      b.onclick=()=>{mfCloseMenus();typeof act==='function'?act():mfClick(act);};bb.appendChild(b);});
+      b.onclick=()=>{mfCloseMenus();typeof act==='function'?act():mfClick(act);};
+      if(src&&src._ctx)b.addEventListener('contextmenu',e=>{e.preventDefault();e.stopPropagation();mfCloseMenus();src._ctx();}); // clic droit du bouton d'origine (ƒx : liste complète)
+      bb.appendChild(b);});
     g.appendChild(bb);const t=document.createElement('div');t.className='mfGrpT';t.textContent=title;g.appendChild(t);rb.appendChild(g);};
   MF_CAO.forEach(([t,bs])=>grp(t,bs,'mfCao'));
   // V0.6.0 / V0.6.1 : composants (46/47) — seul groupe CAO visible en mode Placer (mfAsmG) ;

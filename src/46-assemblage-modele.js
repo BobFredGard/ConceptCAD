@@ -410,6 +410,7 @@ function asmActivate(cid,path){
   return true;
 }
 function asmCkPrefix(){
+  if(derCkPre)return derCkPre; // rejeu d'un fichier source (52-derivee) : ses corps ne se mêlent pas à ceux d'ici
   // Points de contrôle du noyau : clés préfixées par le composant (deux composants peuvent
   // avoir un corps « b1 » aux signatures identiques). Composant seul : aucun préfixe (inchangé).
   return asm&&asm.comps.length>1?asm.active+'§':'';

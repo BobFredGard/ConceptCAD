@@ -85,6 +85,7 @@ const SUITES = [
   'test_extrusion_dynamique',
   'test_fenetre_dynamique',
   'test_composants_lies',
+  'test_derivee',
   'test_composants_cache',
   'test_composants_repetitions',
   'test_composants_repetition_profil',

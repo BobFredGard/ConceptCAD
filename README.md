@@ -80,7 +80,7 @@ Les gestes sont détaillés dans [Souris, clavier et doigts](#souris-clavier-et-
 - **Cotation souple** : la valeur se tape pendant la pose (Entrée pose), le texte se glisse avec sa ligne de cote, clic de l'outil Cote sur une cote existante pour la modifier, cote de **référence** à la demande (clic droit), nom d'une autre cote inséré d'un clic pendant la saisie (`d1`, `d2`…), unités dans les expressions (`2 cm + 3`, `1 in`), et la barre d'état nomme ce qui détermine déjà une cote redondante.
 - **Solveur** Levenberg-Marquardt au moindre déplacement : une cote impossible est refusée et la barre d'état dit pourquoi ; degrés de liberté réels, esquisse bleue (sous-contrainte) ou blanche (totalement contrainte).
 - **Vue d'esquisse** à plat ou dans la vue 3D courante, pièce en transparence, orbite au clic-molette comme en 3D, touche `N` pour revenir à plat ; la roue ⚙ porte les réglages de l'esquisse (Grille 1 mm, À plat, Effacer tout).
-- **Paramètres nommés**, **expressions ƒx** (aussi dans les commandes, avec `pi`) et **configurations** (tables de variantes). Dès la 1re lettre, une **liste propose les paramètres** (Entrée insère le nom sans valider le champ) ; **conditions** `if(L > 100 ; 5 ; 3)` et **arrondis au pas** `roundmoins(x ; 0,5)`, `roundplus(x ; 5)`.
+- **Paramètres nommés**, **expressions ƒx** (aussi dans les commandes, avec `pi`) et **configurations** (tables de variantes). Dès la 1re lettre, une **liste propose les paramètres** (Entrée insère le nom sans valider le champ) ; **conditions** `if(L > 100 ; 5 ; 3)` et **arrondis au pas** `roundmoins(x ; 0,5)`, `roundplus(x ; 5)`. **Clic sur ƒx** : mini-liste des paramètres et de leurs valeurs dans le bandeau de droite ; **clic droit** : liste complète.
 
 ### Géométrie de construction
 
@@ -125,6 +125,7 @@ Comme dans Fusion 360, **tout est composant** : le fichier est le composant raci
   - **Dans une rainure** : une clavette se pose au fond d'une rainure (fermée ou débouchante), par le centre de face ou contre un bout rond, et toutes les rainures identiques sont équipées.
   - **Modifier…** (propriétés ou clic droit) rouvre la fenêtre sur la pièce : toutes ses occurrences, ou celle-ci seulement.
 - **Composants liés** à un fichier du dossier de projets : édition sur place, mise à jour, conflits gérés.
+- **Dérivée** : paramètres et corps d'un autre fichier, qui suivent leur source quand elle change (lien à sens unique). Un corps dérivé reste modifiable dans le fichier qui le reçoit, et peut servir d'outil à soustraire avec **Combiner**.
 - **Aligner** un repère ou un **point d'accroche** (centre et points cardinaux d'une face, axe d'un cylindre, centre d'un cercle) sur un autre composant, de façon associative.
 - **Liaisons** : rigide, pivot, glissière, pivot glissant, plan, rotule, avec limites, curseurs et animation.
 - **Références entre composants** : faces, arêtes, sommets, plans et axes d'un autre composant servent de références, et suivent ses changements.

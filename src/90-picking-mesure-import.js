@@ -2228,12 +2228,12 @@ function serialise(pretty){
 function serialiseObj(d,ui){
   // Objet d'une pièce. ui : état d'interface (repère, vue, sélection) — pièce active seulement
   // (undefined → clé absente du JSON : l'ordre et le contenu restent ceux d'avant).
-  return {app:'ConceptCAD',v:1,name:d.name,tint:d.tint||0,entNames:d.entNames||null,originVis:ui?originVis:undefined,view:ui?collectView():undefined,bodyVis:d.bodyVis||{},bodies:(d.bodies||[]).map(e=>({id:e.id,name:e.name,c:e.c,color:e.color,mat:e.mat||undefined,op:e.op,gl:e.gl,open:e.open!==false})),bodySeq:d.bodySeq||0,activeBody:d.activeBody||null,fold:{sk:!!(d.fold&&d.fold.sk),origin:!!(d.fold&&d.fold.origin)},fao:d.fao||null,mep:d.mep||null,rendu:(typeof renduNorm==='function'?renduNorm(d.rendu):null)||undefined,params:(d.params||[]).map(p=>({name:p.name,expr:p.expr,value:p.value})),configs:(typeof cfgNorm==='function'?cfgNorm(d.configs):null)||undefined,sel:ui?{kind:sel.kind,id:sel.id}:undefined,sketches:(d.sketches||[]).map(s=>{const c=Object.assign({},s);delete c._refs;return c;}),features:(d.features||[]).map(({_mesh,_m,...r})=>r),cgeo:(d.cgeo||[]).map(cgClean),std:d.std||undefined}; // std : pièce normalisée (48-composants-normalises)
+  return {app:'ConceptCAD',v:1,name:d.name,tint:d.tint||0,entNames:d.entNames||null,originVis:ui?originVis:undefined,view:ui?collectView():undefined,bodyVis:d.bodyVis||{},bodies:(d.bodies||[]).map(e=>({id:e.id,name:e.name,c:e.c,color:e.color,mat:e.mat||undefined,op:e.op,gl:e.gl,open:e.open!==false})),bodySeq:d.bodySeq||0,activeBody:d.activeBody||null,fold:{sk:!!(d.fold&&d.fold.sk),origin:!!(d.fold&&d.fold.origin)},fao:d.fao||null,mep:d.mep||null,rendu:(typeof renduNorm==='function'?renduNorm(d.rendu):null)||undefined,params:(d.params||[]).map(p=>({name:p.name,expr:p.expr,value:p.value})),derive:derClean(d.derive),configs:(typeof cfgNorm==='function'?cfgNorm(d.configs):null)||undefined,sel:ui?{kind:sel.kind,id:sel.id}:undefined,sketches:(d.sketches||[]).map(s=>{const c=Object.assign({},s);delete c._refs;return c;}),features:(d.features||[]).map(({_mesh,_m,...r})=>r),cgeo:(d.cgeo||[]).map(cgClean),std:d.std||undefined}; // std : pièce normalisée (48-composants-normalises)
 }
 function docFromSerial(o){
   // Document de pièce à partir de son objet sérialisé (ouverture, pièces d'un assemblage)
   const d={name:o.name||'Sans titre',tint:o.tint||0,entNames:o.entNames||null,sketches:o.sketches||[],features:o.features||[],cgeo:Array.isArray(o.cgeo)?o.cgeo.filter(cgValid):[],bodyVis:o.bodyVis||{},bodies:Array.isArray(o.bodies)?o.bodies.filter(e=>e&&typeof e.id==='string').map(e=>({id:e.id,name:String(e.name||e.id),c:Array.isArray(e.c)&&e.c.length===3?e.c.slice():null,color:isFinite(+e.color)?+e.color:undefined,mat:(typeof matDef==='function'&&matDef(e.mat))?e.mat:undefined,op:(e.op>0&&e.op<1)?+e.op:undefined,gl:(e.gl>0&&e.gl<1)?+e.gl:undefined,open:e.open!==false})):[],
-    bodySeq:o.bodySeq>0?Math.floor(o.bodySeq):1,activeBody:(typeof o.activeBody==='string')?o.activeBody:null,fold:(o.fold&&typeof o.fold==='object')?{sk:!!o.fold.sk,origin:!!o.fold.origin}:{},fao:o.fao||null,mep:o.mep||null,rendu:(typeof renduNorm==='function'?renduNorm(o.rendu):null),params:Array.isArray(o.params)?o.params.filter(p=>p&&typeof p.name==='string'):[],configs:(typeof cfgNorm==='function'?cfgNorm(o.configs):null),
+    bodySeq:o.bodySeq>0?Math.floor(o.bodySeq):1,activeBody:(typeof o.activeBody==='string')?o.activeBody:null,fold:(o.fold&&typeof o.fold==='object')?{sk:!!o.fold.sk,origin:!!o.fold.origin}:{},fao:o.fao||null,mep:o.mep||null,rendu:(typeof renduNorm==='function'?renduNorm(o.rendu):null),params:Array.isArray(o.params)?o.params.filter(p=>p&&typeof p.name==='string'):[],derive:Array.isArray(o.derive)?o.derive.filter(L=>L&&typeof L.id==='string'):undefined,configs:(typeof cfgNorm==='function'?cfgNorm(o.configs):null),
     std:(o.std&&typeof o.std==='object'&&typeof o.std.key==='string')?Object.assign({key:o.std.key,norm:String(o.std.norm||''),desig:String(o.std.desig||'')},
       typeof o.std.cat==='string'&&o.std.st&&typeof o.std.st==='object'?{cat:o.std.cat,st:Object.fromEntries(Object.entries(o.std.st).filter(e=>typeof e[1]==='string'))}:{}):undefined};
   let mx=0;
@@ -2257,7 +2257,7 @@ function docHashSrc(d){
   const stripSketch=sk=>{const c=Object.assign({},sk);delete c._refs;delete c._health;delete c._audit;return c;};
   const stripFeat=({_mesh,_m,...r})=>r;
   const stripCg=c=>{const o=cgClean(c);delete o.st;delete o.msg;delete o.ai;return o;};
-  return JSON.stringify({s:d.sketches.map(stripSketch),f:(d.features||[]).filter(f=>f.type!=='import').map(stripFeat),t:d.tint||0,...((d.cgeo&&d.cgeo.length)?{c:d.cgeo.map(stripCg)}:{})}); // construction : seulement si présente (empreinte des anciens documents inchangée)
+  return JSON.stringify({s:d.sketches.map(stripSketch),f:(d.features||[]).filter(f=>f.type!=='import'||f.derive).map(stripFeat),t:d.tint||0,...((d.cgeo&&d.cgeo.length)?{c:d.cgeo.map(stripCg)}:{})}); // construction : seulement si présente (empreinte des anciens documents inchangée)
 }
 function docHashOf(d){
   try{
@@ -2362,7 +2362,7 @@ async function restoreViewCache(){
     return true;
   }catch(e){return false;}
 }
-function markDirty(){dirty=true;_docVersion++;refreshParts();try{docUndoNudge();}catch(e){}} // filet d'annulation (45)
+function markDirty(){dirty=true;_docVersion++;refreshParts();try{docUndoNudge();}catch(e){}try{parMiniSoon();}catch(e){}} // filet d'annulation (45) ; mini-liste des paramètres (52)
 function autosave(){
   // Différé : une rafale de reconstructions n'écrit plus le document local à chaque fois
   // (sérialisation + écriture synchrone qui bloquaient le fil principal). Le contenu
@@ -2483,6 +2483,7 @@ async function deserialise(json,opts){
   try{if(typeof viewFadeIn==='function')viewFadeIn();}catch(e){}
   try{asmAfterLoad();}catch(e){} // assemblage : instantanés, vue rétablie (47)
   try{await pImp;}catch(e){}
+  try{parMiniSoon();derCheck(false);}catch(e){} // V0.47.0 : dérivées vérifiées sans rien demander (52)
 }
 /* ---------- conteneur .miniFusion : document + cache de trajectoires ----------
    Demandé : « un fichier dédié qui encapsule le json ET son cache ». Le document

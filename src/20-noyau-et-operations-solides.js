@@ -443,7 +443,10 @@ function occCombinePrefix(f,tb){
 }
 function occCombineTool(f,tb,bin){
   const list=occCombinePrefix(f,tb);if(!list.length)return null;
-  const r=occReplayBody(tb,list);
+  // V0.47.0 : corps outil fait d'un seul import (STEP, corps dérivé) : il entre aussi dans la
+  // chaîne exacte, sinon « corps outil vide » et la soustraction ne faisait rien
+  const sf=occStepForce;occStepForce=true;
+  let r;try{r=occReplayBody(tb,list);}finally{occStepForce=sf;}
   bin.push(...(r.bin||[]));(r.itemShapes||[]).forEach(s=>{if(s&&s!==r.shape)bin.push(s);});
   return r.shape||null;
 }
@@ -4149,6 +4152,11 @@ function featSig(f){
   // flip (sens inversé) et draft (dépouille d'extrusion) modifient le prisme : sans eux
   // dans la signature, basculer le sens ou l'angle réutiliserait le solide périmé.
   let s=f.type+'|'+(f.op||'add')+'|'+(+f.distance||0)+'|'+(f.mid?1:0)+'|'+(f.visible!==false?1:0)+'|'+(f.through?1:0)+'|'+(f.upto?JSON.stringify(f.upto):'')+'|'+(f.flip?1:0)+'|'+(+f.draft||0)+'|b'+(f.body||'');
+  if(f.type==='import'&&f.derive)s+='|k'+((f.src&&f.src.key)||''); // corps dérivé (52) : sa forme suit la source
+  // V0.47.0 : import pas encore restauré (ouverture, F5 : le noyau rejoue avant importRestorePending).
+  // Sans cette marque, une combinaison dont il est l'outil gardait en mémoire son résultat SANS
+  // l'outil, repris tel quel une fois l'import revenu : la soustraction disparaissait.
+  if(f.type==='import'&&!(typeof importGeom!=='undefined'&&(importGeom.get(f.id)||{}).brep))s+='|!';
   if(f.type==='hole'){
     // Perçage : esquisse (centres) + tous les paramètres qui façonnent l'outil de découpe.
     const skH=doc.sketches.find(x=>x.id===f.sketchId);
@@ -5030,8 +5038,10 @@ function occRebuild(){
     // Imports mesh : affichés tels quels SAUF s'ils sont entrés dans la chaîne exacte
     // (ils SONT alors le corps : un second affichage montrerait le solide deux fois).
     const consommes=new Set(FR.imports||[]);
+    // V0.47.0 : corps outil consommé par Combiner : son import ne s'affiche plus
+    const manges=new Set(),visT=doc.features.filter(f=>f.visible!==false),nT=tlReplayCount();(nT==null?visT:visT.slice(0,nT)).forEach(f=>{if(f.type==='combine'&&!f.keep)(f.tools||[]).forEach(t=>manges.add(t));});
     doc.features.filter(f=>f.visible!==false&&f.type==='import'&&f._mesh).forEach(f=>{
-      if(consommes.has(f.id)){try{scene.remove(f._mesh);}catch(e){}return;}
+      if(consommes.has(f.id)||manges.has(f.body)){try{scene.remove(f._mesh);}catch(e){}return;}
       const col=bodyColorOf(f.body); // l'import appartient à un corps : SA couleur
       f._mesh.material=applyBodyStyle(importColorMat(f,FreshMat(col)),f.body);scene.add(f._mesh);
       bodies.push({id:f.id,name:f.name,mesh:f._mesh,color:col,visible:true,kind:'import',ref:f.id,bodyId:f.body||null});

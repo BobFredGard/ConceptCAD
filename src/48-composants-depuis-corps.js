@@ -118,6 +118,7 @@ function asmSplitApply(src,dst,plan){
     if(src.bodyVis&&src.bodyVis[b]===false){dst.bodyVis=dst.bodyVis||{};dst.bodyVis[bmap[b]]=false;}
   });
   (src.params||[]).forEach(p=>{if(p&&p.name&&!dst.params.some(q=>q&&q.name===p.name))dst.params.push(cl(p));});
+  (src.derive||[]).forEach(L=>{dst.derive=dst.derive||[];if(!dst.derive.some(q=>q.id===L.id))dst.derive.push(cl(L));}); // V0.47.0 : dérivées (52)
   if(!dst.bodies.some(e=>e.id===dst.activeBody))dst.activeBody=dst.bodies.length?dst.bodies[0].id:null;
   // retrait de la source
   src.features=(src.features||[]).filter(f=>!plan.M.has(f.id));

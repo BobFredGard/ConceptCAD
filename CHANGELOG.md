@@ -8,7 +8,7 @@ sont sorties le 2026-09-30j.
 Code dans `src/` · livrable `fusion_mvp.html` (généré par `build.js`) · architecture et
 garde-fous en tête de `src/00-entete-et-outils.js`.
 
-**553 versions**, de `2026-09-28b` à `V0.46.4` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
+**554 versions**, de `2026-09-28b` à `V0.47.0` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
 comme dans le fichier d'origine.
 
 ---
@@ -6489,3 +6489,13 @@ Demande : « ceci est un trou taraudé mais à la coupe locale, les traits fins 
 - **Filetage** (`mepThreadEls(view,cut)`, `src/98-mep-10-projection-hlr.js`) : accepte le plan d'une coupe locale ; fond de filet et fin de filetage rognés par la forme ; plan hors de l'axe : traits à la corde du Ø nominal ; plan perpendiculaire à l'axe : 3/4 de cercle s'il traverse la partie filetée ; trou derrière le plan : filet caché en mode pointillé ; trou côté matière enlevée : rien dans la forme.
 - **Tests** : `tests/test_mep_filetage_coupe_locale.cjs` (trou dans l'axe et hors de l'axe, longueur filetée, fin de filetage, trous non coupés, mode sans cachées, plan perpendiculaire) ; essai dans l'application ; `npm run ci:full`.
 - **Tests figés** : `test_esquisse_cotes_pose` et `test_repetition_courbe_face` lisaient `Exemples/`, réenregistrés et modifiés par l'utilisateur le 04/11 : ils lisent désormais leur copie de l'état d'origine (`tests/fixtures/test-esquisse-e17.json`, `repetition-courbe-sans-face.json`), mêmes vérifications.
+
+## V0.47.0 - Dérivée : paramètres et corps partagés entre fichiers, qui suivent leur source et restent modifiables ; ƒx : mini-liste à droite au clic, liste complète au clic droit
+Demande : « un fichier avec des paramètres que l'on puisse utiliser dans plusieurs fichiers », « dessiner une pièce dans un fichier que je pourrais soustraire à une autre pièce d'un autre fichier », « l'on peut vouloir modifier un corps dans la pièce réceptrice, il ne faut pas bloquer cette possibilité » ; « la liste des paramètres […] prend tout l'écran […] au clic gauche, une mini liste dans le bandeau de droite ».
+- **Dérivée** (`src/52-derivee.js`, bouton 🔗 Dériver du groupe Fichier) : on choisit un fichier, puis ses paramètres et ses corps. Le lien va dans un seul sens : la source n'est que lue (`asmLinkHandle` mode `read`), jamais réécrite. Vérification à l'ouverture, au retour sur l'onglet ou la fenêtre, et par 🔄.
+- **Paramètres dérivés** (`doc.derive`, kind `dparam` de `parAll`) : utilisables partout, modifiables seulement dans la source, valeurs copiées dans le fichier (il s'ouvre sans la source). Nom déjà pris : suffixe (`Jeu_2`). Tous cochés : les paramètres ajoutés ensuite à la source arrivent d'eux-mêmes. Disparu de la source : dernière valeur gardée, ⚠.
+- **Corps dérivés** : fonction `import` (STEP écrit depuis le solide de la source, rejouée sans affichage : `derReplay`) dans un corps neuf, avec `f.derive`. Corps de sous-composants proposés, à leur place dans l'assemblage. Fonctions ajoutées ici (congé, bossage, déplacement, Combiner…) : rejouées sur la nouvelle forme, donc gardées. Même solide (`derStepSig`, sans date ni compteur du noyau) : aucun rejeu. Corps disparu : dernière forme gardée, ⚠. Rompre le lien : valeurs en paramètres locaux, corps figé (Ctrl+Z rétablit).
+- **Soustraction** : Combiner avec le corps dérivé comme outil. **Défaut corrigé** (`occCombineTool`) : un corps outil fait d'un seul import (STEP compris) donnait « corps outil vide » et la combinaison ne faisait rien ; son import restait aussi affiché une fois consommé (`occRebuild`).
+- **Mini-liste** (`parMiniToggle`, en haut du bandeau de droite) : clic sur ƒx = noms et valeurs, ⤢ ou clic droit sur ƒx = liste complète ; état retenu par le navigateur. Bandeau masqué (écran étroit, mobile) : le clic ouvre la liste complète.
+- **Défaut corrigé** (`featSig`) : à l'ouverture ou au F5, une combinaison dont l'outil est un import pas encore restauré mémorisait son résultat sans l'outil, repris une fois l'import revenu : la soustraction disparaissait.
+- **Tests** : `tests/test_derivee.cjs` (38 contrôles, noyau réel, dossier de projets simulé ; aussi en suite rapide).
