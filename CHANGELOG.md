@@ -8,7 +8,7 @@ sont sorties le 2026-09-30j.
 Code dans `src/` · livrable `fusion_mvp.html` (généré par `build.js`) · architecture et
 garde-fous en tête de `src/00-entete-et-outils.js`.
 
-**558 versions**, de `2026-09-28b` à `V0.48.0` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
+**559 versions**, de `2026-09-28b` à `V0.48.1` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
 comme dans le fichier d'origine.
 
 ---
@@ -6527,3 +6527,11 @@ Demande : « au survol de chaque icône de l'application apparaissent une petite
 - **Infobulle du navigateur** : le `title` du bouton survolé est retiré le temps du survol et remis pendant un clic (certaines commandes le lisent).
 - **Hors périmètre** : boutons des lignes de l'arbre, des fenêtres de fonctions, de l'atelier RENDU et du panneau FAO : infobulle habituelle.
 - **Tests** : `tests/test_fiches_icones.cjs` (toute icône du ruban, de la barre rapide et du bandeau d'esquisse a sa fiche ; option par défaut et mémorisée ; aussi en suite rapide) ; survol réel dans les espaces CAO, FAO, PLAN et esquisse.
+
+## V0.48.1 - Fiches au survol façon dessin animé
+Demande : « essaie de les rendre plus "dessin animé" ».
+- **Dessin** (`src/97-interface-fiches-dessins.js`) : palette vive propre aux fiches (`FIC`), gros contours d'encre, ombrage en aplats (dégradés à marches `mfFcH*`), reflets, ombre franche.
+- **Animation** (`src/97-interface-fiches-survol.js`), boucle de 3 s commune à toutes les fiches : la scène de gauche se tasse, la flèche saute, le résultat sort du sol en s'étirant et en rebondissant, des étoiles éclatent. Le mouvement est le même partout : il n'est pas propre à chaque commande.
+- **Mascotte** : un écrou jaune à côté du titre, qui saute de joie quand le résultat apparaît et cligne des yeux.
+- **Mouvement réduit** demandé par le système : dessin fixe, sans étoiles.
+- **Tests** : `tests/test_fiches_icones.cjs` ; images de l'animation relues, planche des 148 fiches relue.
