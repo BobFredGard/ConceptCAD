@@ -8,7 +8,7 @@ sont sorties le 2026-09-30j.
 Code dans `src/` · livrable `fusion_mvp.html` (généré par `build.js`) · architecture et
 garde-fous en tête de `src/00-entete-et-outils.js`.
 
-**555 versions**, de `2026-09-28b` à `V0.47.1` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
+**557 versions**, de `2026-09-28b` à `V0.47.2` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
 comme dans le fichier d'origine.
 
 ---
@@ -6509,3 +6509,12 @@ Demande : « Pour la mini liste, je veux bien pouvoir modifier les valeurs des p
 - **⊘ Retirer dans la vue 3D** (`bremCtxSync`) : demande « Oui, ajoute-le » ; l'entrée n'existait qu'au clic droit dans l'arbre. Absente en mode Assembler et sur un corps d'un autre composant.
 - **README** : version, nombre de sources et de suites, taille du noyau (≈ 43 Mo, partout), Dérivée détaillée.
 - **Tests** : `tests/test_mini_liste_parametres.cjs` (20 contrôles, aussi en suite rapide) ; essai dans l'application : clic, frappe, Entrée, Tab, Échap, liste des noms, Ctrl+Z, esquisse ouverte, extrusion en cours ; `npm run ci:full`.
+
+## V0.47.2 - Soustraction : un corps outil passé par « Faces tangentes » retire enfin sa matière ; corps consommé barré dans l'arbre ; version du README tenue à jour automatiquement
+Demandes : « Impossible de voir la dernière soustraction » (Barquette), « les numéro de version ne sont jamais corectement mis à jour ».
+- **Défaut corrigé** (`occShellToSolid`, `occOffsetFaces`) : le décalage de faces du noyau pouvait rendre une coque fermée au lieu d'un solide. Elle paraissait saine (valide, volume calculable), mais une soustraction par une coque ne retire rien, sans aucun message. Barquette : ⊖ Intérieur laissait 924 553 mm³, comme avant la coupe. La coque redevient un solide.
+- **Arbre** (`bodyConsumedBy`, demande : « ne faut-il pas que le corps "Intérieur" soit barré après soustraction ou addition ? ») : un corps consommé par Combiner (sans « garder ») ou retiré est barré à partir de cette étape, selon le marqueur.
+- **Signalement** : une combinaison dont l'outil n'est pas un volume fermé le dit maintenant, au lieu de rester sans effet en silence.
+- **Documents à jour** (`tools/docs-version.cjs`, appelé par `build.js`) : `APP_VER` est la seule source. `node build.js` recopie la version et les chiffres dans `package.json`, le README et l'en-tête du CHANGELOG. `npm run ci` et `ci:full` échouent si l'un d'eux est en retard, si un passage a disparu, ou si le CHANGELOG n'a pas d'entrée pour la version. Les versions citées comme historique ne sont pas touchées.
+- **Test figé** : `test_face_tangentes` lisait `Exemples/Barquette`, modifié par l'utilisateur : il lit désormais sa copie (`tests/fixtures/barquette-faces-tangentes.conceptcad`).
+- **Tests** : `tests/test_soustraction_faces_tangentes.cjs` (fichier de l'utilisateur figé dans `tests/fixtures`), `tests/test_docs_version.cjs` ; essai dans l'application ; `npm run ci:full`.

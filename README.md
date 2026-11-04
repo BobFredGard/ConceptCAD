@@ -8,7 +8,7 @@
 
 ![Support de pédale déportée R1200RT en alu anodisé rouge sur béton, lancer de rayons de l'atelier RENDU (2048 échantillons)](docs/captures/rendu-pedale.jpg)
 
-Le noyau géométrique exact est **OpenCascade 8 compilé en WebAssembly** par nos soins (recette reproductible dans `occt-build/`). S'il n'est pas disponible, l'application bascule seule sur un moteur maillage (CSG). Version actuelle : **V0.47.1** (voir le [journal des modifications](CHANGELOG.md)).
+Le noyau géométrique exact est **OpenCascade 8 compilé en WebAssembly** par nos soins (recette reproductible dans `occt-build/`). S'il n'est pas disponible, l'application bascule seule sur un moteur maillage (CSG). Version actuelle : **V0.47.2** (voir le [journal des modifications](CHANGELOG.md)).
 
 | | |
 |---|---|
@@ -102,7 +102,7 @@ Historique rejouable, timeline à icônes (vert = ajout, rouge = enlèvement), m
 
 ### Corps, mesures, fichiers
 
-- **Corps** : matériau (bibliothèque commune avec le RENDU, masse estimée), couleur, transparence, isoler ; une découpe peut traverser plusieurs corps. Le corps actif (●) reçoit les nouvelles fonctions ; une extrusion, révolution, un balayage ou un perçage choisit aussi son corps dans son panneau. **Supprimer** un corps ne touche pas les autres (même ceux nés de lui par une répétition) ; **⊘ Retirer** (clic droit sur le corps, dans l'arbre ou dans la vue 3D) l'enlève à partir d'une étape de la timeline, sans rien effacer, comme dans Fusion 360.
+- **Corps** : matériau (bibliothèque commune avec le RENDU, masse estimée), couleur, transparence, isoler ; une découpe peut traverser plusieurs corps. Le corps actif (●) reçoit les nouvelles fonctions ; une extrusion, révolution, un balayage ou un perçage choisit aussi son corps dans son panneau. **Supprimer** un corps ne touche pas les autres (même ceux nés de lui par une répétition) ; **⊘ Retirer** (clic droit sur le corps, dans l'arbre ou dans la vue 3D) l'enlève à partir d'une étape de la timeline, sans rien effacer, comme dans Fusion 360. Un corps retiré, ou consommé par **Combiner**, est barré dans l'arbre à partir de cette étape.
 - **Mesures** (`Ctrl+clic`) : face à face, Ø, entraxe, entre deux arêtes.
 - **Fichiers** : import STEP / STL, export STL / OBJ, projet **`.conceptcad`** compressé, 3 à 5 fois plus petit (pièce, FAO, planches, rendu ; les fichiers en clair, les `.conceptcad.gz` et les anciens `.miniFusion` s’ouvrent toujours), récents et **dossier de projets**, sauvegarde locale automatique ; un fichier vide ou abîmé ne remplace jamais le modèle ouvert et sa copie de secours est proposée.
 - **Export STEP** : **AP214** (par défaut) ou **AP203**, option « **sans courbes 2D** » pour les vieux logiciels ; aussi pour un corps seul, ou **une seule pièce / un sous-ensemble d’un STEP multi-corps** (clic droit sur sa ligne de l’arborescence ou sur la pièce dans la vue 3D, placement d’assemblage gardé) ; un STEP ouvert tel quel se réexporte, sans ses pièces masquées.
@@ -280,7 +280,7 @@ Le dépôt stocke les gros binaires (`occt/*.wasm`, `Exemples/*.conceptcad`, `Ex
 | `src/*.js` | **Les sources** : 131 fichiers concaténés dans l'ordre alphabétique (noyau, esquisse, fonctions 3D, assemblage, FAO découpée par domaine, mise en plan, rendu, interface téléphone `99-mobile*.js`). C'est ici qu'on travaille. |
 | `ConceptCAD.html` | **Livrable généré** par `node build.js`. On n'édite jamais son script à la main. |
 | `PostPro/` | Une fiche par machine (`siemens-630.js`, `siemens-1520.js`, `fagor-8065.js`). Nouvelle machine = copier une fiche, la modifier, `npm run build`. |
-| `tests/` | 246 suites Node lancées en parallèle (`npm run ci:full`), 102 rapides (`npm run ci`), non-régression des parcours FAO (`npm run parcours`), tests de référence (`tests/oracle/`, [docs/oracle.md](docs/oracle.md)). |
+| `tests/` | 248 suites Node lancées en parallèle (`npm run ci:full`), 104 rapides (`npm run ci`), non-régression des parcours FAO (`npm run parcours`), tests de référence (`tests/oracle/`, [docs/oracle.md](docs/oracle.md)). |
 | `tests/browser/` | Playwright dans un vrai Chromium : parcours critiques et Rendu (`npm run test:browser`, seul projet lancé par la CI GitHub, déclenchée à la main) et carte graphique réelle (`npm run test:gpu`, en local). |
 | `tools/` | Lint du script concaténé (`npm run lint`), serveur MCP, **captures du README** (`npm run captures`). |
 | `occt/`, `threejs/` | Noyau OpenCascade WebAssembly (`occt/v3` : OCCT 8, celui de l'application ; `occt/opencascade.*` : l'ancien 7.4, adresse `?noyau=actuel`), rendu three.js. |
@@ -291,10 +291,10 @@ Cycle de livraison :
 1. modifier `src/` ;
 2. `node build.js` ;
 3. `npm run ci` (build à jour, syntaxe, tests rapides, lint) pendant le travail, `npm run ci:full` (suite complète) avant de livrer ; tous deux doivent être verts ;
-4. incrémenter `APP_VER` (`src/00-entete-et-outils.js`) et `version` (`package.json`), ajouter une entrée au CHANGELOG ;
+4. incrémenter `APP_VER` (`src/00-entete-et-outils.js`), ajouter une entrée au CHANGELOG, puis `node build.js` ;
 5. commit, push et tag annoté `V0.x.y`, qui republie le site en ligne.
 
-**Un seul numéro de version** : `APP_VER` = `package.json` = tag Git.
+**Un seul numéro de version** : `APP_VER` = `package.json` = tag Git. `node build.js` recopie la version et les chiffres dans `package.json`, ce README et l'en-tête du CHANGELOG ; `npm run ci` refuse la livraison s'ils sont en retard.
 
 Les captures de ce README sont refaites par `npm run captures` (Chromium sur la carte graphique, exemples Perçages, Crochet et Support Pédale ; les fichiers ne sont jamais réécrits). `npm run captures -- <dossier> rendu` n'en refait qu'une.
 

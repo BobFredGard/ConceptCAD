@@ -43,15 +43,29 @@ parts.forEach(f=>{
 // CRLF pur : convention du projet (le fichier d'origine est en CRLF)
 const out=(head+'\n<script>\n'+chunks.join('\n\n')+'\n</script>\n'+tail).replace(/\r\n/g,'\n').replace(/\n/g,'\r\n');
 
-if(process.argv.indexOf('--check')>=0){
+// V0.47.2 : version et chiffres des documents (package.json, README, CHANGELOG) alignés sur APP_VER
+const {synchroniser}=require('./tools/docs-version.cjs');
+const verif=process.argv.indexOf('--check')>=0;
+const docs=synchroniser(!verif);
+if(docs.erreurs.length){
+  docs.erreurs.forEach(m=>console.error('✗ documents : '+m));
+  process.exit(1);
+}
+if(verif){
+  if(docs.retards.length){
+    console.error('✗ documents en retard sur '+docs.version+' : '+docs.retards.join(', '));
+    console.error('  Lancez : node build.js');
+    process.exit(1);
+  }
   if(out!==old){
     console.error('✗ ConceptCAD.html est PÉRIMÉ :_src/ a changé sans rebuild.');
     console.error('  Lancez : node build.js');
     process.exit(1);
   }
-  console.log('✓ ConceptCAD.html à jour ('+parts.length+' fichiers source)');
+  console.log('✓ ConceptCAD.html et documents à jour, '+docs.version+' ('+parts.length+' fichiers source)');
   process.exit(0);
 }
+if(docs.retards.length)console.log('✓ documents mis à jour : '+docs.retards.join(', '));
 if(out===old){console.log('✓ rien à reconstruire ('+parts.length+' fichiers source)');process.exit(0);}
 fs.writeFileSync(HTML,out,'utf8');
 console.log('✓ ConceptCAD.html reconstruit : '+parts.length+' fichiers + '+machines.length+' machine(s), '+

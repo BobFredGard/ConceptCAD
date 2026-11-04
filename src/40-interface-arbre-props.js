@@ -97,6 +97,7 @@ let repMode=null;
       '.tnode.bh .nm,.tnode.bh>span:nth-child(2){font-weight:700}'+
       '.tnode.bh .tri{opacity:.75}'+
       '.tnode.bh.off .nm{opacity:.6}'+
+      '.tnode.bh.gone .nm{opacity:.6;text-decoration:line-through}'+
       '.tnode .pwr{cursor:pointer;user-select:none;font-size:.8rem;opacity:.34;filter:grayscale(1)}'+
       '.tnode .pwr.on{opacity:1;filter:none;color:var(--accent)}'+
       '.tnode .eye{cursor:pointer;user-select:none}'+
@@ -1319,6 +1320,15 @@ function bodyRemoveAdd(id){
   markDirty();rebuild();renderTree();renderProps();
   try{faceEl.textContent='« '+e.name+' » retiré à partir de cette étape (timeline) : supprimez l’étape pour le faire revenir.';}catch(err){}
   return f;
+}
+function bodyConsumedBy(bid,idx){
+  // V0.47.2 : étape qui fait disparaître ce corps avant idx (null = fin de la timeline) : outil d'une
+  // combinaison sans « garder », ou « Retirer ». Marqueur reculé avant elle : le corps est de nouveau là.
+  const L=doc.features||[],n=idx==null||idx<0?L.length:idx;
+  for(let k=0;k<n;k++){const f=L[k];if(!f||f.visible===false)continue;
+    if(f.type==='bremove'&&f.body===bid)return f;
+    if(f.type==='combine'&&!f.keep&&(f.tools||[]).indexOf(bid)>=0)return f;}
+  return null;
 }
 function bodyRemovedAt(bid,idx){
   // true si une étape « Retirer » de ce corps précède idx (null = fin de la timeline)

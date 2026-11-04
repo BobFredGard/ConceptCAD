@@ -2044,6 +2044,29 @@ function occFaceArea(f){
   try{occt.BRepGProp.SurfaceProperties_1(f,g,false,false);return g.Mass();}
   finally{try{g.delete();}catch(e){}}
 }
+function occShellToSolid(r){
+  // V0.47.2 : le décalage du noyau peut rendre une COQUE fermée au lieu d'un solide. Elle a l'air
+  // saine (valide, volume calculable), mais un outil sans solide ne retire rien : la soustraction
+  // ne faisait rien, sans le dire. Retourne un solide (r est libéré) ou r tel quel s'il en a déjà un.
+  const sol=occSubShapes(r,'TopAbs_SOLID');
+  const nSol=sol.length;occDispose(sol);
+  if(nSol)return r;
+  const sh=occSubShapes(r,'TopAbs_SHELL');
+  try{
+    if(sh.length!==1)return r;
+    const ms=new occt.BRepBuilderAPI_MakeSolid_1();
+    let out=null;
+    try{
+      ms.Add(occt.TopoDS.Shell_1(sh[0]));
+      out=ms.Solid();
+      if(occShapeVolume(out)<0)out=out.Reversed();
+      out=occShapeCopy(out);
+    }finally{try{ms.delete();}catch(e){}}
+    if(!out||out.IsNull()||!occCoqueValide(out))return r;
+    try{r.delete();}catch(e){}
+    return out;
+  }finally{occDispose(sh);}
+}
 function occOffsetFaces(shape,faces,dist,warnings){
   // Décale `faces` (handles sur `shape`) de `dist` mm le long de la normale sortante, par le
   // noyau. Retourne la nouvelle forme, ou null (raison dans `warnings`). Contrôle du volume :
@@ -2069,6 +2092,7 @@ function occOffsetFaces(shape,faces,dist,warnings){
       r=fx;
       if(!r||!occCoqueValide(r)){warnings.push('décalage : solide invalide, même réparé');if(r)try{r.delete();}catch(e){}return null;}
     }
+    r=occShellToSolid(r);
     const dv=occShapeVolume(r)-occShapeVolume(shape),ev=area*dist,q=ev?dv/ev:0;
     if(!(q>0.25&&q<4)){
       warnings.push(`décalage incohérent (volume ${dv>=0?'+':''}${dv.toFixed(0)} mm³ pour ${ev>=0?'+':''}${ev.toFixed(0)} attendus)`);
@@ -4497,6 +4521,8 @@ function* occReplayBodyGen(bid,list){
         if(tb===bid)return;
         let ts=null;try{ts=occCombineTool(f,tb,bin);}catch(err){msgs.push(`${f.name} : corps outil illisible (${err.message})`);}
         if(!ts){msgs.push(`${f.name} : corps outil vide à cet endroit de la timeline`);return;}
+        // V0.47.2 : un outil sans solide ne retire rien : on le dit au lieu de ne rien faire en silence
+        {const so=occSubShapes(ts,'TopAbs_SOLID');if(!so.length)msgs.push(`${f.name} : le corps outil n’est pas un volume fermé — la combinaison risque de rester sans effet`);occDispose(so);}
         try{
           const n=f.mode==='cut'?occCut(r2,ts):(f.mode==='intersect'?occCommon(r2,ts):occUnify(occFuse(r2,ts)));
           try{r2.delete();}catch(e){}r2=n;

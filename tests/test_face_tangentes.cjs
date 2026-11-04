@@ -15,7 +15,7 @@ const {loadApp}=require('./appvm.cjs');
   const real=await globalThis.opencascadeFactory({wasmBinary:fs.readFileSync(path.join(ROOT,'occt','opencascade.wasm.wasm'))});
   const {ctx,sandbox}=loadApp();
   sandbox.__realOcct=real;
-  sandbox.__doc=require('./lire-projet.cjs')(path.join(ROOT,'Exemples','Barquette.conceptcad'));
+  sandbox.__doc=require('./lire-projet.cjs')(path.join(ROOT,'tests','fixtures','barquette-faces-tangentes.conceptcad'));
   vm.runInContext('occt=__realOcct;occtReady=true;window.alert=function(){};showAll=function(){};applyView=function(){};',ctx);
   const R=[
     'const out={fails:[],log:[]};',

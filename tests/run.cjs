@@ -237,6 +237,8 @@ const SUITES = [
   "test_composants_lies",
   "test_derivee",
   "test_mini_liste_parametres",
+  "test_soustraction_faces_tangentes",
+  "test_docs_version",
   "test_composants_cache",
   "test_composants_repetitions",
   "test_alerte_paroi",

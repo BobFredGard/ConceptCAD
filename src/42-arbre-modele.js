@@ -300,6 +300,7 @@ function treePart(L){
     const kidsVis=kids.filter(f=>!tlLocked(f));
     const estActif=doc.activeBody===be.id;
     let pasNe=false;try{pasNe=tlMark!=null&&!bodyBornAt(be.id,tlIdx());}catch(e){} // V0.15.12 : corps né plus loin que le marqueur
+    let parti=null;try{parti=bodyConsumedBy(be.id,tlIdx());}catch(e){} // V0.47.2 : outil consommé ou corps retiré : barré
     const selIn=treeSel.concat([(sel.kind==='feature'||sel.kind==='body')?sel.id:null]).filter(Boolean);
     const hasSel=selIn.some(id=>id===be.id||bodyOf(doc.features.find(x=>x.id===id))===be.id);
     const open=be.open!==false||hasSel||!!treeQuery;
@@ -307,13 +308,13 @@ function treePart(L){
     try{ visVue=!(doc.bodyVis&&doc.bodyVis[be.id]===false); }catch(e){}
     const enRejeu=bodyEnabledOf(be.id);
     const bcol=bodyTextColor(be);
-    L.push({drag:{kind:'body',id:be.id},drop:treeDropBody(be.id),lvl:0,cls:'tnode bh'+((sel.kind==='body'&&sel.id===be.id)?' sel':'')+(visVue?'':' hidden')+(enRejeu?'':' off')+(pasNe?' locked':''),
+    L.push({drag:{kind:'body',id:be.id},drop:treeDropBody(be.id),lvl:0,cls:'tnode bh'+((sel.kind==='body'&&sel.id===be.id)?' sel':'')+(visVue?'':' hidden')+(enRejeu?'':' off')+(pasNe?' locked':'')+(parti?' gone':''),
       style:{boxShadow:'inset 3px 0 0 '+(bcol||'#9a9aa0')},
       html:'<span class="tri" title="Déplier / replier les fonctions du corps">'+(open?'▼':'▶')+'</span><span title="Corps — '+(be.name||'')+'">🧱</span>'+
         '<span class="nm"'+(bcol?(' style="color:'+bcol+'"'):'')+'>'+be.name+(estActif?' ●':'')+(pasNe?' <span title="Ce corps naît plus loin dans la timeline : il n’existe pas encore au marqueur">⏳ pas encore créé</span>':' · '+kidsVis.length+' fonction(s)')+(function(){const o=typeof repBodyOwner==='function'?repBodyOwner(be.id):null;return o?' <span class="repsrc" title="Corps créé par la répétition « '+o.name+' » (opération Nouveau corps)">🔁 '+o.name+'</span>':'';})()+'</span>'+
         '<span class="pwr'+(enRejeu?' on':'')+'" title="'+(enRejeu?'Rejeu ACTIF : toutes les fonctions de ce corps sont recalculées — cliquer pour les EXCLURE (le corps reste visible)':'Rejeu ÉTEINT : toutes les fonctions de ce corps sont exclues (grisées) — cliquer pour les inclure')+'">⏻</span>'+
         '<span class="eye" title="'+(visVue?'Corps visible dans la 3D — cliquer pour le CACHER (il reste dans le rejeu et l\'export)':'Corps masqué dans la 3D (vue seule) — cliquer pour l\'AFFICHER. Aucune fonction n\'est touchée')+'">'+(visVue?'👁':EYE_OFF)+'</span>',
-      title:'Clic = sélectionner et ACTIVER (les nouvelles fonctions naîtront dans « '+be.name+' ») · ▶/▼ = replier · ⏻ = rejeu (inclure/exclure ses fonctions du recalcul) · 👁 = vue 3D seule · clic droit = renommer / supprimer · ➕ additif / ➖ découpe · ● = corps actif',
+      title:(parti?'Corps absent du résultat à partir de « '+parti.name+' » : reculez le marqueur avant cette étape pour le retrouver · ':'')+'Clic = sélectionner et ACTIVER (les nouvelles fonctions naîtront dans « '+be.name+' ») · ▶/▼ = replier · ⏻ = rejeu (inclure/exclure ses fonctions du recalcul) · 👁 = vue 3D seule · clic droit = renommer / supprimer · ➕ additif / ➖ découpe · ● = corps actif',
       on:{
         tri:()=>{be.open=!open;try{dirty=true;}catch(e){}renderTree();},
         pwr:()=>bodyToggleEnabled(be.id),
