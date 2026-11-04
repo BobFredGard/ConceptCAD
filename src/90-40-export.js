@@ -156,6 +156,10 @@ function stepAskSchema(titre){
     document.addEventListener('keydown',kd,true);
   });
 }
+// Fonctions du FS présentes dans les DEUX noyaux : le noyau OCCT 8 (occt/v3) n'expose plus
+// FS.analyzePath ni FS.isDir ; FS.stat reste disponible partout.
+function occFsExists(path){try{occt.FS.stat(path);return true;}catch(e){return false;}}
+function occFsIsDir(st){return (st.mode&0o170000)===0o040000;}
 function occWriteStep(shapes,path,schema,noPcurve){
   // schema : 'AP214' | 'AP203' ; noPcurve : booléen (défaut : derniers choix de l'utilisateur).
   let b=occWriteStepAp214(shapes,path);
@@ -178,8 +182,7 @@ function occWriteStepAp214(shapes,path){
   try{bytes=occt.FS.readFile(path);}catch(e){bytes=null;} // lecture AVANT toute libération
   try{wr.delete();}catch(e){}
   if(wst!==RD.IFSelect_RetDone){occFsDiag();throw new Error(`écriture refusée par le noyau — voir console F12 [OCCT-FS]`);}
-  let ok=false;
-  try{ok=!!occt.FS.analyzePath(path).exists;}catch(e){ok=false;}
+  const ok=occFsExists(path);
   if(bytes&&bytes.length>1000)return bytes;
   if(!ok){
     // Ultime recours : balaye le FS pour retrouver le fichier (CWD inattendu ?).
@@ -192,7 +195,7 @@ function occWriteStepAp214(shapes,path){
           try{
             const st=occt.FS.stat(p);
             if(st&&st.size>0&&/\.stp$/i.test(p)){seen=p;return true;}
-            if(occt.FS.isDir&&occt.FS.isDir(st.mode)){if(walk(p))return true;}
+            if(occFsIsDir(st)&&!/^\/(dev|proc)(\/|$)/.test(p)){if(walk(p))return true;}
           }catch(e){}
         }
         return false;
@@ -226,8 +229,7 @@ async function occExportPreflight(){
     const st=wr.Write('/pre_b.stp');
     try{b.delete();}catch(e){}try{wr.delete();}catch(e){}
     if(st!==RD.IFSelect_RetDone)return[false,'Write boîte refusé par le noyau'];
-    let ex=false;try{ex=!!occt.FS.analyzePath('/pre_b.stp').exists;}catch(e){}
-    if(!ex)return[false,'Write boîte OK mais fichier absent (traversée des noms rompue — rechargez la page)'];
+    if(!occFsExists('/pre_b.stp'))return[false,'Write boîte OK mais fichier absent (traversée des noms rompue — rechargez la page)'];
     let n=0;try{n=occt.FS.readFile('/pre_b.stp').length;}catch(e){}
     try{occt.FS.unlink('/pre_b.stp');}catch(e){}
     if(!(n>1000))return[false,'boîte écrite mais vide'];

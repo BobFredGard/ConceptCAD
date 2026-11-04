@@ -7,6 +7,8 @@
 //   C. export global → le STEP seul y est aussi ;
 //   D. UNE pièce (clic droit dans la vue 3D, importPieceAt) → 1 solide, nom de l'arborescence ;
 //   E. un sous-ensemble (ligne 📦 de l'arborescence) → ses seules pièces.
+// Le pré-test occExportPreflight tourne pour de vrai : simulé ici, il avait caché qu'il échouait
+// à chaque export sur le noyau OCCT 8 (FS.analyzePath absent).
 const fs=require('fs'),vm=require('vm'),path=require('path');
 const ROOT=path.join(__dirname,'..');
 globalThis.__dirname=path.join(ROOT,'occt');
@@ -40,7 +42,6 @@ const A=(c,m)=>{if(!c){ko++;console.log('  ✗ '+m);}else console.log('  ✓ '+m
     const O=f._mesh.geometry.userData.impOcc;
     const bid=(f.body&&doc.bodies.some(e=>e.id===f.body))?f.body:doc.bodies[0].id;
     stepAskSchema=async function(){return 'AP214';};
-    occExportPreflight=async function(){return [true,'ok'];};
     let wrote=[];const _w=occWriteStep;
     occWriteStep=function(shapes,p,s){const b=_w(shapes,p,s);wrote.push(b);return b;};
     Blob=class{constructor(parts){this.parts=parts;}};
