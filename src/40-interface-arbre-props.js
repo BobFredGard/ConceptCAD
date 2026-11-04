@@ -1326,20 +1326,26 @@ function bodyRemovedAt(bid,idx){
   for(let k=0;k<n;k++){const f=L[k];if(f&&f.type==='bremove'&&f.body===bid&&f.visible!==false)return true;}
   return false;
 }
-let bremCtxBtn=null;
-function bremCtxSync(t){
-  // entrée du clic droit d'un corps dans l'arbre, juste après « Supprimer »
-  const m=document.getElementById('ctxMenu');if(!m)return;
-  if(!bremCtxBtn){
-    const b=document.createElement('button');b.textContent='⊘ Retirer (timeline)';
+const bremCtxBtns={};
+function bremCtxSync(t,menuId){
+  // entrée du clic droit d'un corps : arbre (juste après « Supprimer ») et vue 3D (avant « Déplacer »).
+  // V0.47.1 : vue 3D — l'id cliqué peut être celui du corps affiché, d'où ctxBodyId ; pas en mode Assembler.
+  menuId=menuId||'ctxMenu';
+  const m=document.getElementById(menuId);if(!m)return;
+  let b=bremCtxBtns[menuId];
+  if(!b){
+    b=document.createElement('button');b.textContent='⊘ Retirer (timeline)';
     b.title='Comme Fusion 360 : ajoute une étape « Retirer » dans la timeline — le corps disparaît à partir de là, sans rien effacer';
-    const at=m.querySelector('button[data-act="del"]');
-    m.insertBefore(b,at?at.nextSibling:null);
-    b.onclick=()=>{const T=b._t;try{hideCtx();}catch(e){}if(T)bodyRemoveAdd(ctxBodyId(T)||T.id);};
-    bremCtxBtn=b;
+    const del=m.querySelector('button[data-act="del"]'),mv=bmCtxBtns[menuId];
+    if(del)m.insertBefore(b,del.nextSibling);
+    else if(mv&&mv.parentNode===m)m.insertBefore(b,mv);
+    else m.insertBefore(b,m.firstChild);
+    b.onclick=()=>{const T=b._t;try{hideCtx();hideCtx3D();}catch(e){}if(T)bodyRemoveAdd(ctxBodyId(T)||T.id);};
+    bremCtxBtns[menuId]=b;
   }
-  bremCtxBtn._t=t;
-  bremCtxBtn.style.display=(t&&t.kind==='body'&&t.id&&(doc.bodies||[]).some(x=>x.id===t.id))?'':'none';
+  b._t=t;
+  let bid=null;try{bid=t&&t.kind==='body'&&t.id?ctxBodyId(t):null;}catch(e){}
+  b.style.display=(bid&&(doc.bodies||[]).some(x=>x.id===bid)&&(menuId==='ctxMenu'||asmMode!=='asm'))?'':'none';
 }
 
 // ── sélection multiple + suppression ─────────────────────────────────────────

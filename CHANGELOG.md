@@ -8,7 +8,7 @@ sont sorties le 2026-09-30j.
 Code dans `src/` · livrable `fusion_mvp.html` (généré par `build.js`) · architecture et
 garde-fous en tête de `src/00-entete-et-outils.js`.
 
-**554 versions**, de `2026-09-28b` à `V0.47.0` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
+**555 versions**, de `2026-09-28b` à `V0.47.1` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
 comme dans le fichier d'origine.
 
 ---
@@ -6499,3 +6499,13 @@ Demande : « un fichier avec des paramètres que l'on puisse utiliser dans plusi
 - **Mini-liste** (`parMiniToggle`, en haut du bandeau de droite) : clic sur ƒx = noms et valeurs, ⤢ ou clic droit sur ƒx = liste complète ; état retenu par le navigateur. Bandeau masqué (écran étroit, mobile) : le clic ouvre la liste complète.
 - **Défaut corrigé** (`featSig`) : à l'ouverture ou au F5, une combinaison dont l'outil est un import pas encore restauré mémorisait son résultat sans l'outil, repris une fois l'import revenu : la soustraction disparaissait.
 - **Tests** : `tests/test_derivee.cjs` (38 contrôles, noyau réel, dossier de projets simulé ; aussi en suite rapide).
+
+## V0.47.1 - ƒx : les valeurs se modifient directement dans la mini-liste ; une cote modifiée depuis la liste complète déplace bien l'esquisse ; ⊘ Retirer aussi au clic droit dans la vue 3D ; README à jour
+Demande : « Pour la mini liste, je veux bien pouvoir modifier les valeurs des paramètres ! », « Le Readme n'est pas à jour ».
+- **Mini-liste modifiable** (`parMiniField`, `parMiniCommit`, `src/52-derivee.js`) : chaque valeur est un champ. Au clic, il montre la formule ou la valeur complète ; Entrée ou la sortie du champ valident, Échap annule ; la liste des noms apparaît pendant la frappe. Un refus (formule fausse, référence circulaire, cote impossible) s'affiche sous la liste et la valeur reste inchangée. Paramètre dérivé et cote de référence : lecture seule.
+- **Réglages communs** (`parSetParam`, `parSetDim`, `parSetFeat`, `src/51-parametres.js`) : mêmes règles pour la mini-liste et la liste complète.
+- **Défauts corrigés** dans la liste complète : une cote réglée sur un nombre, esquisse fermée, ne déplaçait pas la géométrie (esquisse non résolue) ; une valeur de fonction 3D réglée sur un nombre laissait le nom de la fonction et ses répétitions en retard. Une cote impossible est maintenant refusée, l'esquisse gardant sa forme.
+- **Saisie préservée** : un rafraîchissement de la liste n'efface plus un champ en cours de frappe ; `#parMini` est hors du filet global ƒx, qui aurait remplacé une formule par sa valeur.
+- **⊘ Retirer dans la vue 3D** (`bremCtxSync`) : demande « Oui, ajoute-le » ; l'entrée n'existait qu'au clic droit dans l'arbre. Absente en mode Assembler et sur un corps d'un autre composant.
+- **README** : version, nombre de sources et de suites, taille du noyau (≈ 43 Mo, partout), Dérivée détaillée.
+- **Tests** : `tests/test_mini_liste_parametres.cjs` (20 contrôles, aussi en suite rapide) ; essai dans l'application : clic, frappe, Entrée, Tab, Échap, liste des noms, Ctrl+Z, esquisse ouverte, extrusion en cours ; `npm run ci:full`.

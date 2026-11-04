@@ -86,6 +86,7 @@ const SUITES = [
   'test_fenetre_dynamique',
   'test_composants_lies',
   'test_derivee',
+  'test_mini_liste_parametres',
   'test_composants_cache',
   'test_composants_repetitions',
   'test_composants_repetition_profil',

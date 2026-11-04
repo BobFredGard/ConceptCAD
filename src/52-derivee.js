@@ -422,7 +422,10 @@ function derDlgSection(box,redo){
 }
 /* ── mini-liste des paramètres, dans le bandeau de droite ──
    Clic gauche sur ƒx : l'affiche ou la masque. Clic droit : la liste complète (51). Le bandeau
-   étant masqué sur écran étroit, le clic gauche y ouvre directement la liste complète. */
+   étant masqué sur écran étroit, le clic gauche y ouvre directement la liste complète.
+   V0.47.1 : les valeurs se modifient sur place. Au clic, le champ montre l'expression (valeur,
+   formule) ; Entrée ou la sortie du champ valident, Échap annule. Un paramètre dérivé et une cote
+   de référence restent en lecture seule. */
 let parMiniT=null;
 function parMiniEl(){return document.getElementById('parMini');}
 function parMiniOpen(){const e=parMiniEl();return !!e&&e.style.display!=='none';}
@@ -433,27 +436,81 @@ function parMiniSoon(){
 }
 function parMiniRows(){
   const fmt=v=>isFinite(v)?String(+(+v).toFixed(4)).replace('.',','):'';
+  const brut=v=>String(+(+v).toFixed(12)).replace('.',','); // texte à éditer : toute la précision
   const rows=[];
-  (doc.derive||[]).forEach(L=>(L.params||[]).forEach(p=>rows.push({name:p.name,val:fmt(p.value),title:'Dérivé de '+L.name+(p.miss?' — disparu de la source':''),link:true,warn:!!p.miss})));
-  (doc.params||[]).forEach(p=>{if(p&&p.name)rows.push({name:p.name,val:p.err?'':fmt(p.value),title:p.err||String(p.expr==null?'':p.expr),warn:!!p.err});});
+  (doc.derive||[]).forEach(L=>(L.params||[]).forEach(p=>rows.push({name:p.name,val:fmt(p.value),title:'Dérivé de '+L.name+(p.miss?' — disparu de la source':' — à modifier dans ce fichier'),link:true,warn:!!p.miss})));
+  (doc.params||[]).forEach(p=>{if(p&&p.name)rows.push({name:p.name,val:p.err?'':fmt(p.value),title:p.err||String(p.expr==null?'':p.expr),warn:!!p.err,
+    edit:String(p.expr==null?'':p.expr),set:ex=>parSetParam(p,ex)});});
   (doc.sketches||[]).forEach(sk=>(sk.dims||[]).forEach(d=>{if(!d||!d.name)return;
-    rows.push({name:d.name,val:fmt(parDimUser(d))+(d.type==='angle'?'°':''),title:(sk.name||sk.id)+' · cote'+(d.expr?' : '+d.expr:''),warn:!!d.exprErr});}));
+    rows.push({name:d.name,val:fmt(parDimUser(d))+(d.type==='angle'?'°':''),title:(sk.name||sk.id)+' · cote'+(d.ref?' de référence (mesurée, non modifiable)':'')+(d.expr?' : '+d.expr:''),warn:!!d.exprErr,
+      edit:d.expr?String(d.expr):brut(parDimUser(d)),set:d.ref?null:ex=>parSetDim(sk,d,ex)});}));
   parHolders().forEach(({h,f})=>{if(!h.pname)return;Object.keys(h.pname).forEach(k=>{const nm=h.pname[k];if(!nm)return;
     let v=NaN;try{v=parHolderVal(h,k);}catch(e){}
-    rows.push({name:nm,val:fmt(v)+(/angle|draft/.test(k)?'°':''),title:(f.name||f.id)+(h.expr&&h.expr[k]?' : '+h.expr[k]:''),warn:!!(h.exprErr&&h.exprErr[k])});});});
+    rows.push({name:nm,val:fmt(v)+(/angle|draft/.test(k)?'°':''),title:(f.name||f.id)+(h.expr&&h.expr[k]?' : '+h.expr[k]:''),warn:!!(h.exprErr&&h.exprErr[k]),
+      edit:h.expr&&h.expr[k]?String(h.expr[k]):brut(v),set:ex=>parSetFeat(h,k,f,ex)});});});
   return rows;
+}
+let parMiniBusy=false; // liste en reconstruction : la perte de focus qui en résulte ne valide rien
+function parMiniShow(inp){
+  const r=inp._row;
+  inp.value=r.val||r.edit||'';
+  inp.style.color=r.warn?'var(--warn,#ff9f0a)':'';
+}
+function parMiniErr(m){
+  const e=(parMiniEl()||document).querySelector('.parMiniE');if(!e)return;
+  e.textContent=m?'⚠ '+m:'';e.style.display=m?'':'none';
+}
+function parMiniCommit(inp){
+  if(parMiniBusy||inp._start==null)return;
+  const s=String(inp.value).trim(),start=inp._start;inp._start=null;
+  if(!s||s===start){parMiniShow(inp);return;}
+  const nm=inp._row.name,r=inp._row.set(s);
+  if(r!==true){parMiniErr(nm+' : '+r);parMiniShow(inp);return;}
+  parMiniErr('');
+  parAfterChange();
+  parMiniRender();
+}
+function parMiniField(){
+  const inp=document.createElement('input');inp.type='text';inp.className='parMiniI';inp.spellcheck=false;
+  inp.dataset.fxac=''; // liste des noms pendant la frappe (51)
+  inp.addEventListener('focus',()=>{parMiniErr('');inp._start=inp._row.edit;inp.value=inp._start;inp.style.color='';inp.select();});
+  inp.addEventListener('blur',()=>parMiniCommit(inp));
+  inp.addEventListener('keydown',e=>{
+    if(e.key==='Enter'){e.preventDefault();parMiniCommit(inp);inp.blur();}
+    else if(e.key==='Escape'){inp._start=null;parMiniShow(inp);inp.blur();}
+    e.stopPropagation(); // les lettres tapées ne déclenchent aucun raccourci
+  });
+  return inp;
 }
 function parMiniRender(){
   const el=parMiniEl();if(!el)return;
   const body=el.querySelector('.parMiniB');if(!body)return;
   const rows=parMiniRows();
-  body.innerHTML='';
-  if(!rows.length){const n=document.createElement('span');n.className='note';n.textContent='Aucun paramètre. Clic droit sur ƒx : liste complète.';body.appendChild(n);}
-  rows.forEach(r=>{
-    const d=document.createElement('div');d.className='parMiniR';d.title=r.title||'';
-    const a=document.createElement('span');a.className='parMiniN';a.textContent=(r.link?'🔗 ':'')+r.name;d.appendChild(a);
-    const b=document.createElement('span');b.className='parMiniV';b.textContent=(r.warn?'⚠ ':'')+r.val;if(r.warn)b.style.color='var(--warn,#ff9f0a)';d.appendChild(b);
-    body.appendChild(d);
+  const sig=rows.map(r=>r.name+(r.set?'':'#')).join('\n');
+  if(body._sig!==sig){
+    // Lignes changées : reconstruction, sans perdre une saisie en cours
+    const act=document.activeElement,keep=act&&act.classList&&act.classList.contains('parMiniI')&&body.contains(act)?{name:act._row.name,txt:act.value,start:act._start}:null;
+    parMiniBusy=true;
+    body.innerHTML='';
+    parMiniBusy=false;
+    body._sig=sig;
+    if(!rows.length){const n=document.createElement('span');n.className='note';n.textContent='Aucun paramètre. Clic droit sur ƒx : liste complète.';body.appendChild(n);}
+    rows.forEach(r=>{
+      const d=document.createElement('div');d.className='parMiniR';
+      const a=document.createElement('span');a.className='parMiniN';d.appendChild(a);
+      if(r.set){const i=parMiniField();i._row=r;d.appendChild(i);}
+      else{const b=document.createElement('span');b.className='parMiniV';d.appendChild(b);}
+      body.appendChild(d);
+    });
+    if(keep){const i=[...body.querySelectorAll('.parMiniI')].find(x=>x._row.name===keep.name);
+      if(i){i.focus();i.value=keep.txt;i._start=keep.start;}}
+  }
+  rows.forEach((r,n)=>{
+    const d=body.children[n];d.title=r.title||'';
+    d.querySelector('.parMiniN').textContent=(r.link?'🔗 ':'')+r.name;
+    const i=d.querySelector('.parMiniI');
+    if(i){i._row=r;if(document.activeElement!==i)parMiniShow(i);return;}
+    const b=d.querySelector('.parMiniV');b.textContent=(r.warn?'⚠ ':'')+r.val;b.style.color=r.warn?'var(--warn,#ff9f0a)':'';
   });
   const up=el.querySelector('.parMiniUp');
   if(up){const liens=derDocs().length>0&&(doc.derive||[]).length>0;up.style.display=liens?'':'none';
@@ -467,7 +524,11 @@ function parMiniBuild(){
   css.textContent='#parMini .parMiniH{display:flex;align-items:center;gap:4px;margin-bottom:4px}#parMini .parMiniH .panel-title{flex:1;margin:0}'
     +'#parMini .parMiniH button{padding:0 5px;min-width:0;line-height:1.5}'
     +'#parMini .parMiniB{max-height:38vh;overflow-y:auto}'
-    +'#parMini .parMiniR{display:flex;justify-content:space-between;gap:10px;padding:1px 2px;font-size:.8rem}'
+    +'#parMini .parMiniR{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:1px 2px;font-size:.8rem}'
+    +'#parMini .parMiniI{flex:0 1 96px;min-width:48px;width:96px;box-sizing:border-box;margin:0;padding:0 3px;height:20px;font:inherit;font-variant-numeric:tabular-nums;text-align:right;background:transparent;color:inherit;border:1px solid transparent;border-radius:4px}'
+    +'#parMini .parMiniI:hover{border-color:var(--border,#555)}'
+    +'#parMini .parMiniI:focus{outline:none;border-color:#0a84ff;background:rgba(10,132,255,.12);text-align:left}'
+    +'#parMini .parMiniE{margin-top:4px;font-size:.75rem;color:var(--warn,#ff9f0a)}'
     +'#parMini .parMiniN{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}'
     +'#parMini .parMiniV{font-variant-numeric:tabular-nums;white-space:nowrap;opacity:.85}';
   el.appendChild(css);
@@ -478,6 +539,7 @@ function parMiniBuild(){
   const x=document.createElement('button');x.textContent='✕';x.title='Masquer';x.onclick=()=>parMiniToggle(false);h.appendChild(x);
   el.appendChild(h);
   const b=document.createElement('div');b.className='parMiniB';el.appendChild(b);
+  const er=document.createElement('div');er.className='parMiniE';er.style.display='none';el.appendChild(er);
   side.insertBefore(el,side.firstChild);
   return el;
 }

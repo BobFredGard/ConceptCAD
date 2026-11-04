@@ -8,7 +8,7 @@
 
 ![Support de pédale déportée R1200RT en alu anodisé rouge sur béton, lancer de rayons de l'atelier RENDU (2048 échantillons)](docs/captures/rendu-pedale.jpg)
 
-Le noyau géométrique exact est **OpenCascade 8 compilé en WebAssembly** par nos soins (recette reproductible dans `occt-build/`). S'il n'est pas disponible, l'application bascule seule sur un moteur maillage (CSG). Version actuelle : **V0.46.4** (voir le [journal des modifications](CHANGELOG.md)).
+Le noyau géométrique exact est **OpenCascade 8 compilé en WebAssembly** par nos soins (recette reproductible dans `occt-build/`). S'il n'est pas disponible, l'application bascule seule sur un moteur maillage (CSG). Version actuelle : **V0.47.1** (voir le [journal des modifications](CHANGELOG.md)).
 
 | | |
 |---|---|
@@ -22,7 +22,7 @@ Le noyau géométrique exact est **OpenCascade 8 compilé en WebAssembly** par n
 - [Interface](#interface) : espaces, ruban, thèmes et icônes, vue 3D
 - [Téléphone et tablette](#téléphone-et-tablette) : vue plein écran, panneau translucide, gestes
 - [CAO](#cao) : esquisse, construction, fonctions 3D, corps et fichiers
-- [Assemblage](#assemblage) : composants, normalisés, liaisons, références entre composants
+- [Assemblage](#assemblage) : composants, normalisés, Dérivée, liaisons, références entre composants
 - [FAO](#fao) : posage, opérations, perçage, simulation, 3+2, G-code
 - [PLAN](#plan) : planches, vues, coupes, cotation, sorties
 - [RENDU](#rendu) : deux moteurs, matériaux et patine, HDRI, finition, calques
@@ -80,7 +80,7 @@ Les gestes sont détaillés dans [Souris, clavier et doigts](#souris-clavier-et-
 - **Cotation souple** : la valeur se tape pendant la pose (Entrée pose), le texte se glisse avec sa ligne de cote, clic de l'outil Cote sur une cote existante pour la modifier, cote de **référence** à la demande (clic droit), nom d'une autre cote inséré d'un clic pendant la saisie (`d1`, `d2`…), unités dans les expressions (`2 cm + 3`, `1 in`), et la barre d'état nomme ce qui détermine déjà une cote redondante.
 - **Solveur** Levenberg-Marquardt au moindre déplacement : une cote impossible est refusée et la barre d'état dit pourquoi ; degrés de liberté réels, esquisse bleue (sous-contrainte) ou blanche (totalement contrainte).
 - **Vue d'esquisse** à plat ou dans la vue 3D courante, pièce en transparence, orbite au clic-molette comme en 3D, touche `N` pour revenir à plat ; la roue ⚙ porte les réglages de l'esquisse (Grille 1 mm, À plat, Effacer tout).
-- **Paramètres nommés**, **expressions ƒx** (aussi dans les commandes, avec `pi`) et **configurations** (tables de variantes). Dès la 1re lettre, une **liste propose les paramètres** (Entrée insère le nom sans valider le champ) ; **conditions** `if(L > 100 ; 5 ; 3)` et **arrondis au pas** `roundmoins(x ; 0,5)`, `roundplus(x ; 5)`. **Clic sur ƒx** : mini-liste des paramètres et de leurs valeurs dans le bandeau de droite ; **clic droit** : liste complète.
+- **Paramètres nommés**, **expressions ƒx** (aussi dans les commandes, avec `pi`) et **configurations** (tables de variantes). Dès la 1re lettre, une **liste propose les paramètres** (Entrée insère le nom sans valider le champ) ; **conditions** `if(L > 100 ; 5 ; 3)` et **arrondis au pas** `roundmoins(x ; 0,5)`, `roundplus(x ; 5)`. **Clic sur ƒx** : mini-liste des paramètres dans le bandeau de droite, où chaque valeur se **modifie sur place** (nombre ou formule ; Entrée valide, Échap annule) ; **clic droit** : liste complète.
 
 ### Géométrie de construction
 
@@ -102,7 +102,7 @@ Historique rejouable, timeline à icônes (vert = ajout, rouge = enlèvement), m
 
 ### Corps, mesures, fichiers
 
-- **Corps** : matériau (bibliothèque commune avec le RENDU, masse estimée), couleur, transparence, isoler ; une découpe peut traverser plusieurs corps. Le corps actif (●) reçoit les nouvelles fonctions ; une extrusion, révolution, un balayage ou un perçage choisit aussi son corps dans son panneau. **Supprimer** un corps ne touche pas les autres (même ceux nés de lui par une répétition) ; **⊘ Retirer** (clic droit) l'enlève à partir d'une étape de la timeline, sans rien effacer, comme dans Fusion 360.
+- **Corps** : matériau (bibliothèque commune avec le RENDU, masse estimée), couleur, transparence, isoler ; une découpe peut traverser plusieurs corps. Le corps actif (●) reçoit les nouvelles fonctions ; une extrusion, révolution, un balayage ou un perçage choisit aussi son corps dans son panneau. **Supprimer** un corps ne touche pas les autres (même ceux nés de lui par une répétition) ; **⊘ Retirer** (clic droit sur le corps, dans l'arbre ou dans la vue 3D) l'enlève à partir d'une étape de la timeline, sans rien effacer, comme dans Fusion 360.
 - **Mesures** (`Ctrl+clic`) : face à face, Ø, entraxe, entre deux arêtes.
 - **Fichiers** : import STEP / STL, export STL / OBJ, projet **`.conceptcad`** compressé, 3 à 5 fois plus petit (pièce, FAO, planches, rendu ; les fichiers en clair, les `.conceptcad.gz` et les anciens `.miniFusion` s’ouvrent toujours), récents et **dossier de projets**, sauvegarde locale automatique ; un fichier vide ou abîmé ne remplace jamais le modèle ouvert et sa copie de secours est proposée.
 - **Export STEP** : **AP214** (par défaut) ou **AP203**, option « **sans courbes 2D** » pour les vieux logiciels ; aussi pour un corps seul, ou **une seule pièce / un sous-ensemble d’un STEP multi-corps** (clic droit sur sa ligne de l’arborescence ou sur la pièce dans la vue 3D, placement d’assemblage gardé) ; un STEP ouvert tel quel se réexporte, sans ses pièces masquées.
@@ -125,7 +125,7 @@ Comme dans Fusion 360, **tout est composant** : le fichier est le composant raci
   - **Dans une rainure** : une clavette se pose au fond d'une rainure (fermée ou débouchante), par le centre de face ou contre un bout rond, et toutes les rainures identiques sont équipées.
   - **Modifier…** (propriétés ou clic droit) rouvre la fenêtre sur la pièce : toutes ses occurrences, ou celle-ci seulement.
 - **Composants liés** à un fichier du dossier de projets : édition sur place, mise à jour, conflits gérés.
-- **Dérivée** : paramètres et corps d'un autre fichier, qui suivent leur source quand elle change (lien à sens unique). Un corps dérivé reste modifiable dans le fichier qui le reçoit, et peut servir d'outil à soustraire avec **Combiner**.
+- **Dérivée** (bouton **🔗 Dériver**) : paramètres et corps d'un autre fichier du dossier de projets, qui suivent leur source quand elle change (lien à sens unique : la source n'est jamais réécrite). Un paramètre dérivé se modifie dans sa source ; un corps dérivé reste modifiable dans le fichier qui le reçoit, ses fonctions ajoutées survivent aux mises à jour, et il peut servir d'outil à soustraire avec **Combiner**.
 - **Aligner** un repère ou un **point d'accroche** (centre et points cardinaux d'une face, axe d'un cylindre, centre d'un cercle) sur un autre composant, de façon associative.
 - **Liaisons** : rigide, pivot, glissière, pivot glissant, plan, rotule, avec limites, curseurs et animation.
 - **Références entre composants** : faces, arêtes, sommets, plans et axes d'un autre composant servent de références, et suivent ses changements.
@@ -242,7 +242,7 @@ Une image soignée de la pièce ou de l'assemblage, en **1920×1080 ou 4K**, enr
 
 ## Démarrage
 
-**En ligne** : [bobfredgard.github.io/ConceptCAD](https://bobfredgard.github.io/ConceptCAD/) ouvre la dernière version publiée, sur PC comme sur téléphone, noyau OCCT chargé automatiquement (≈ 65 Mo au premier lancement, puis en cache). Le site est republié à chaque version par `.github/workflows/pages.yml`.
+**En ligne** : [bobfredgard.github.io/ConceptCAD](https://bobfredgard.github.io/ConceptCAD/) ouvre la dernière version publiée, sur PC comme sur téléphone, noyau OCCT chargé automatiquement (≈ 43 Mo au premier lancement, puis en cache). Le site est republié à chaque version par `.github/workflows/pages.yml`.
 
 **En local** :
 
@@ -277,10 +277,10 @@ Le dépôt stocke les gros binaires (`occt/*.wasm`, `Exemples/*.conceptcad`, `Ex
 
 | Chemin | Rôle |
 |---|---|
-| `src/*.js` | **Les sources** : 120 fichiers concaténés dans l'ordre alphabétique (noyau, esquisse, fonctions 3D, assemblage, FAO découpée par domaine, mise en plan, rendu, interface téléphone `99-mobile*.js`). C'est ici qu'on travaille. |
+| `src/*.js` | **Les sources** : 131 fichiers concaténés dans l'ordre alphabétique (noyau, esquisse, fonctions 3D, assemblage, FAO découpée par domaine, mise en plan, rendu, interface téléphone `99-mobile*.js`). C'est ici qu'on travaille. |
 | `ConceptCAD.html` | **Livrable généré** par `node build.js`. On n'édite jamais son script à la main. |
 | `PostPro/` | Une fiche par machine (`siemens-630.js`, `siemens-1520.js`, `fagor-8065.js`). Nouvelle machine = copier une fiche, la modifier, `npm run build`. |
-| `tests/` | 212 suites Node lancées en parallèle (`npm run ci:full`), 81 rapides (`npm run ci`), non-régression des parcours FAO (`npm run parcours`), tests de référence (`tests/oracle/`, [docs/oracle.md](docs/oracle.md)). |
+| `tests/` | 246 suites Node lancées en parallèle (`npm run ci:full`), 102 rapides (`npm run ci`), non-régression des parcours FAO (`npm run parcours`), tests de référence (`tests/oracle/`, [docs/oracle.md](docs/oracle.md)). |
 | `tests/browser/` | Playwright dans un vrai Chromium : parcours critiques et Rendu (`npm run test:browser`, seul projet lancé par la CI GitHub, déclenchée à la main) et carte graphique réelle (`npm run test:gpu`, en local). |
 | `tools/` | Lint du script concaténé (`npm run lint`), serveur MCP, **captures du README** (`npm run captures`). |
 | `occt/`, `threejs/` | Noyau OpenCascade WebAssembly (`occt/v3` : OCCT 8, celui de l'application ; `occt/opencascade.*` : l'ancien 7.4, adresse `?noyau=actuel`), rendu three.js. |

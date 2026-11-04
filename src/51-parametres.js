@@ -320,6 +320,39 @@ function parDecor(id,str){
   return str;
 }
 
+/* ---------- réglage d'une valeur, commun à la liste complète et à la mini-liste (V0.47.1) ----------
+   Retour : true, ou le message qui explique le refus (la valeur reste alors inchangée). */
+function parSetParam(p,ex){
+  if(!ex)return'Expression vide.';
+  const o=p.expr;p.expr=ex;parResolve();
+  if(p.err){const m=p.err;p.expr=o;parResolve();return'Expression : '+m;}
+  return true;
+}
+function parSetDim(sk,d,ex){
+  // Une cote change la géométrie : l'esquisse est résolue, et une valeur impossible est refusée
+  // comme dans l'esquisse (avant : une valeur chiffrée ne déplaçait rien tant que l'esquisse n'était pas rouverte).
+  const ouverte=(typeof skEdit!=='undefined')&&skEdit===sk;
+  const avant=ouverte?null:JSON.stringify({points:sk.points,entities:sk.entities,dims:sk.dims});
+  const resOk=ouverte?true:skResid(sk)<=SK_OK_RES;
+  if(ouverte)skPushUndo();
+  const r=parDimCommit(sk,d,ex);
+  if(!r.ok){if(ouverte){skUndoStack.pop();skUndoBtn();}return r.msg;}
+  d.value=r.nv;
+  if(ouverte)return skSolveOrRevert(sk,'Cote')?true:'Cote impossible : l’esquisse garde sa forme.';
+  solveSketch(sk);
+  if(resOk&&skResid(sk)>SK_OK_RES){
+    const b=JSON.parse(avant);sk.points=b.points;sk.entities=b.entities;sk.dims=b.dims;parPending.delete(sk);
+    return'Cote impossible : l’esquisse garde sa forme.';
+  }
+  return true;
+}
+function parSetFeat(h,k,f,ex){
+  const oE=h.expr&&h.expr[k];
+  const r=parFxSet(h,k,ex);if(!r.ok)return r.msg;
+  try{if(parHolderSet(h,k,r.v))f._fxDirty=1;} // nom de la fonction et répétitions suivent (parApplyAll)
+  catch(e){if(oE!==undefined){h.expr=h.expr||{};h.expr[k]=oE;}return e.message;}
+  return true;
+}
 /* ---------- fenêtre ƒx Paramètres ---------- */
 function parAfterChange(){
   parApplyAll();
@@ -362,14 +395,14 @@ function openParamsDlg(){
       del:()=>{L.params=L.params.filter(q=>q!==p);L.auto=false;}})));
     (doc.params||[]).forEach(p=>row({name:p.name,expr:String(p.expr==null?'':p.expr),val:p.value,err:p.err,origin:'Paramètre',
       rename:nm=>{if(!nm)return'Nom requis.';const ok=parNameCheck(nm,null,p);if(ok!==true)return ok;parRename(p.name,nm);p.name=nm;return true;},
-      setExpr:ex=>{if(!ex)return'Expression vide.';const o=p.expr;p.expr=ex;parResolve();if(p.err){const m=p.err;p.expr=o;parResolve();return'Expression : '+m;}return true;},
+      setExpr:ex=>parSetParam(p,ex),
       del:()=>{doc.params=doc.params.filter(q=>q!==p);}}));
     (doc.sketches||[]).forEach(sk=>(sk.dims||[]).forEach(d=>{
       if(!d||(!d.name&&(d.expr==null||String(d.expr).trim()==='')))return;
       const unit=d.type==='angle'?'°':(d.dia||d.type==='diameter'?' (Ø)':'');
       row({name:d.name,expr:(d.expr!=null&&String(d.expr).trim()!=='')?String(d.expr):String(+parDimUser(d).toFixed(4)),val:parDimUser(d),unit,err:d.exprErr,origin:(sk.name||sk.id)+' · cote',
         rename:nm=>{if(!nm){delete d.name;return true;}const ok=parNameCheck(nm,d,null);if(ok!==true)return ok;parRename(d.name,nm);d.name=nm;return true;},
-        setExpr:ex=>{const r=parDimCommit(sk,d,ex);if(!r.ok)return r.msg;d.value=r.nv;return true;}});
+        setExpr:ex=>parSetDim(sk,d,ex)});
     }));
     // valeurs de fonctions 3D nommées ou en expression
     const featLbl={distance:'distance',draft:'dépouille',angle:'angle',dist:'distance',thick:'épaisseur',radius:'rayon',r:'rayon',d:'Ø',depth:'profondeur',cbD:'Ø lamage',cbH:'prof. lamage',csD:'Ø fraisure',stD:'Ø avant-trou',stH:'prof. avant-trou',len:'longueur filetée',qty:'quantité',qty2:'quantité 2'};
@@ -379,7 +412,7 @@ function openParamsDlg(){
         if(!(h.expr&&h.expr[k])&&!(h.pname&&h.pname[k]))return;
         row({name:h.pname&&h.pname[k],expr:(h.expr&&h.expr[k])?String(h.expr[k]):String(+parHolderVal(h,k).toFixed(4)),val:parHolderVal(h,k),unit:/angle|draft/.test(k)?'°':'',err:h.exprErr&&h.exprErr[k],origin:(f.name||f.id)+' · '+(featLbl[k]||k),
           rename:nm=>{if(!nm){if(h.pname)delete h.pname[k];return true;}const ok=parNameCheck(nm,null,null,h,k);if(ok!==true)return ok;const o=h.pname&&h.pname[k];if(o)parRename(o,nm);h.pname=h.pname||{};h.pname[k]=nm;return true;},
-          setExpr:ex=>{const r=parFxSet(h,k,ex);if(!r.ok)return r.msg;parHolderSet(h,k,r.v);return true;}});
+          setExpr:ex=>parSetFeat(h,k,f,ex)});
       });
     });
     box.appendChild(tbl);
@@ -411,7 +444,7 @@ function parFxEligible(t){
   if(!t||t.tagName!=='INPUT'||t._parFx||t.readOnly||t.disabled)return false;
   if(t.type!=='text'&&t.type!=='')return false;
   if(t.dataset&&t.dataset.nofx!=null)return false;
-  try{if(t.closest&&t.closest('#parDlg'))return false;}catch(e){}
+  try{if(t.closest&&t.closest('#parDlg,#parMini'))return false;}catch(e){} // expressions gardées telles quelles
   return true;
 }
 function parNumKeys(i){
