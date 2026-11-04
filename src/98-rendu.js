@@ -726,6 +726,7 @@ function rdOpen(){
   cam.position.copy(camera.position);
   const ctl=new THREE.OrbitControls(cam,canvas);
   ctl.target.copy(controls.target);ctl.enableDamping=false;
+  ctl.zoomSpeed=zoomInv?-1:1; // même sens de molette que la vue 3D (option « inverser le zoom »)
   if(ctl.mouseButtons&&THREE.MOUSE){ctl.mouseButtons.LEFT=THREE.MOUSE.ROTATE;ctl.mouseButtons.MIDDLE=THREE.MOUSE.ROTATE;ctl.mouseButtons.RIGHT=THREE.MOUSE.PAN;}
   ctl.addEventListener('change',()=>{if(rd&&!rd.busy){rdApplyCam();rdReset();}});
   ctl.addEventListener('start',()=>{if(rd)rd.drag=true;});

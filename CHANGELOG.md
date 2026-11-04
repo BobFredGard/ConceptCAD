@@ -8,7 +8,7 @@ sont sorties le 2026-09-30j.
 Code dans `src/` · livrable `fusion_mvp.html` (généré par `build.js`) · architecture et
 garde-fous en tête de `src/00-entete-et-outils.js`.
 
-**559 versions**, de `2026-09-28b` à `V0.48.1` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
+**560 versions**, de `2026-09-28b` à `V0.48.2` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
 comme dans le fichier d'origine.
 
 ---
@@ -6535,3 +6535,9 @@ Demande : « essaie de les rendre plus "dessin animé" ».
 - **Mascotte** : un écrou jaune à côté du titre, qui saute de joie quand le résultat apparaît et cligne des yeux.
 - **Mouvement réduit** demandé par le système : dessin fixe, sans étoiles.
 - **Tests** : `tests/test_fiches_icones.cjs` ; images de l'animation relues, planche des 148 fiches relue.
+
+## V0.48.2 - RENDU : la molette zoome dans le même sens que la vue 3D
+Demande : « faire en sorte que le zoom du Rendu soit comme celui du 3D… le sens ».
+- **Cause** : la caméra de l’telier RENDU est créée à part (`src/98-rendu.js`) et ignorait l’\option « inverser le zoom » (`zoomInv`) : avec l’\option cochée, la molette y allait à l’nvers de la vue 3D.
+- **Correctif** : `ctl.zoomSpeed=zoomInv?-1:1`, à l’\ouverture de l’telier. Seul le sens change : la vitesse et le centre du zoom restent ceux du RENDU.
+- **Test** : molette réelle dans le navigateur, option cochée puis décochée, distance caméra comparée entre la vue 3D et le RENDU.
