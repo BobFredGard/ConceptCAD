@@ -286,6 +286,88 @@ function edgeGeomOf(P){
   const ok=V.every(q=>Math.abs(q.distanceTo(C)-r)<2e-3*Math.max(1,r));
   return ok?{kind:'circle',center:C,axis:n.clone().normalize(),r,closed,pts:V}:{kind:'curve',pts:V};
 }
+// NUMÉRO ET ORIGINE d'une face ou d'une arête cliquée. Le numéro est son rang dans le solide (il peut
+// changer si le modèle change) ; l'origine vient de son nom unique (20-05), qui lui ne change pas.
+function selOrigine(nom){
+  // « ex_3_abc/e6/flanc » → nom de la fonction ; une arête (« a|b ») → ses deux fonctions
+  if(!nom)return '';
+  const L=[];
+  nomsDecoupe(nom).forEach(n=>{
+    const m=n.match(/^[a-z]+_\d+_\w+/);
+    const f=m&&(doc.features||[]).find(x=>x.id===m[0]);
+    const t=/^congé\[/.test(n)?'Congé':/^chanfrein\[/.test(n)?'Chanfrein':f?(f.name||f.id):null;
+    if(t&&L.indexOf(t)<0)L.push(t);
+  });
+  return L.join(' / ');
+}
+function selShapeDe(bd){
+  if(!bd)return null;
+  if(bd.kind==='body'&&bd.shape&&occLive&&occLive.shape)return bd.shape;
+  if(bd.kind==='import'){const e=importGeom.get(bd.ref||bd.id);if(e&&e.brep)return e.brep;}
+  return null;
+}
+function selFaceInfo(mesh,fi){
+  // → {n, origine} ; n=0 si la face n'a pas de numéro (maillage sans noyau exact)
+  const R={n:0,origine:''};
+  try{
+    const g=(mesh.geometry.userData.occGroups||[]).find(g=>fi>=g.start&&fi<g.start+g.count);
+    if(!g)return R;
+    R.n=g.f+1;
+    if(!occHas())return R;
+    const shape=selShapeDe(bodies.find(b=>b.mesh===mesh));if(!shape)return R;
+    const f=occFaceAt(shape,g.f);if(!f)return R;
+    try{R.origine=selOrigine(nomsFaceDe(shape,f));}finally{try{f.delete();}catch(e){}}
+  }catch(e){}
+  return R;
+}
+function selAreteInfo(P){
+  // Arête du solide dont les points tombent sur la polyligne cliquée (coordonnées monde)
+  const R={n:0,origine:''};
+  // Vue d'assemblage : l'arête peut venir d'une autre pièce, placée ailleurs ; pas de numéro plutôt qu'un faux
+  if(!occHas()||!P||P.length<2||(typeof asmMode!=='undefined'&&asmMode==='asm'))return R;
+  // Le milieu en longueur : un point de la liste peut être un coin, commun à plusieurs arêtes
+  let L=0;for(let i=1;i<P.length;i++)L+=Math.hypot(P[i][0]-P[i-1][0],P[i][1]-P[i-1][1],P[i][2]-P[i-1][2]);
+  let q=P[0];
+  for(let i=1,c=0;i<P.length;i++){
+    const l=Math.hypot(P[i][0]-P[i-1][0],P[i][1]-P[i-1][1],P[i][2]-P[i-1][2]);
+    if(c+l>=L/2&&l>0){const t=(L/2-c)/l;q=[0,1,2].map(k=>P[i-1][k]+(P[i][k]-P[i-1][k])*t);break;}
+    c+=l;
+  }
+  const dSeg=(v,a,b)=>{
+    const ab=[b[0]-a[0],b[1]-a[1],b[2]-a[2]],l2=ab[0]*ab[0]+ab[1]*ab[1]+ab[2]*ab[2];
+    const t=l2>0?Math.max(0,Math.min(1,((v[0]-a[0])*ab[0]+(v[1]-a[1])*ab[1]+(v[2]-a[2])*ab[2])/l2)):0;
+    return Math.hypot(a[0]+ab[0]*t-v[0],a[1]+ab[1]*t-v[1],a[2]+ab[2]*t-v[2]);
+  };
+  let best=null,bd0=0.5; // la plus proche : les courbes sont lues en 10 segments, avec un léger écart
+  (bodies||[]).forEach(bd=>{
+    const shape=selShapeDe(bd);if(!shape)return;
+    try{
+      const inv=bd.mesh&&bd.mesh.matrixWorld?new THREE.Matrix4().copy(bd.mesh.matrixWorld).invert():null;
+      const w=new THREE.Vector3(q[0],q[1],q[2]);if(inv)w.applyMatrix4(inv);
+      const v=[w.x,w.y,w.z];
+      occListEdges(shape).forEach(e=>{
+        const T=e.pts||[];
+        for(let i=1;i<T.length;i++){const d=dSeg(v,T[i-1],T[i]);if(d<bd0){bd0=d;best={shape,src:e.src};}}
+      });
+    }catch(e){}
+  });
+  if(!best)return R;
+  const E=occt.TopAbs_ShapeEnum;
+  let carte=null,ex=null;
+  try{
+    carte=nomsCarte(best.shape,E.TopAbs_EDGE,E.TopAbs_FACE);
+    if(!carte){R.n=best.src+1;return R;} // noyau sans carte : le rang de lecture sert de numéro
+    ex=new occt.TopExp_Explorer_2(best.shape,E.TopAbs_EDGE,E.TopAbs_SHAPE);
+    for(let k=0;ex.More()&&k<best.src;k++)ex.Next();
+    if(ex.More()){
+      R.n=carte.FindIndex(ex.Current());
+      R.origine=selOrigine(nomsAreteDe(best.shape,ex.Current()));
+    }
+  }catch(e){}
+  finally{try{if(ex)ex.delete();}catch(e){}try{if(carte)carte.delete();}catch(e){}}
+  return R;
+}
+function selLibelle(mot,I){return mot+(I.n?' '+I.n:'');}
 function edgeSelect(e,eh,second){
   const P=eh.P||edgeHoverSegs()[eh.pi];if(!P)return;
   const G=edgeGeomOf(P);
@@ -295,7 +377,8 @@ function edgeSelect(e,eh,second){
     if(!selGroup){selGroup=new THREE.Group();mesScene().add(selGroup);}
     edgeHoverDraw(P,selGroup,0xff9f0a);
     const desc=G.kind==='line'?('DROITE · longueur '+G.a.distanceTo(G.b).toFixed(2)+' mm'):(G.kind==='circle'?((G.closed?'CERCLE':'ARC')+' · Ø'+(2*G.r).toFixed(2)+' (R'+G.r.toFixed(2)+')'):'COURBE');
-    faceEl.textContent='Arête 1 : '+desc+'\nCtrl/Cmd+clic une 2e arête : distance perpendiculaire, angle ou entraxe.';
+    const I=selAreteInfo(P);
+    faceEl.textContent=selLibelle('Arête',I)+' : '+desc+(I.origine?'\nCréée par : '+I.origine:'')+'\nCtrl/Cmd+clic une 2e arête : distance perpendiculaire, angle ou entraxe.';
     return;
   }
   selEdges.push({P,G});edgeHoverDraw(P,selGroup,0xff9f0a);
@@ -374,7 +457,8 @@ Bouton « Esquisse » (ou double-clic dans l'arbre) pour dessiner dessus.`;retur
   if(!second){clearMeasure();if(propre)selFaces=[P];else mesEtrangere=P;highlightTris(h.object,faceTrisFor(h.object,h.faceIndex),0xff9f0a,0.55);
     const G=P.geom;
     if(meas&&G&&G.kind==='cyl'){drawAxis(G.center,G.axis,axisLen());tagAt('Ø '+(G.r*2).toFixed(2),P.point.clone());} // Ctrl+clic seul sur un cylindre : son Ø
-    faceEl.textContent=`Face 1 : ${mesNom(h.object)}${G?(G.kind==='cyl'?` · CYLINDRE Ø${(G.r*2).toFixed(2)}`:' · PLAN'):''}\nAire ≈ ${faceArea(h.object,h.faceIndex)}\nCtrl+clic une 2e face (entraxe auto si cylindres)${fao||!propre?'':' · Bouton « Esquisse » pour esquisser dessus.'}`;
+    const FI=selFaceInfo(h.object,h.faceIndex);
+    faceEl.textContent=`${selLibelle('Face',FI)} : ${mesNom(h.object)}${G?(G.kind==='cyl'?` · CYLINDRE Ø${(G.r*2).toFixed(2)}`:' · PLAN'):''}${FI.origine?`\nCréée par : ${FI.origine}`:''}\nAire ≈ ${faceArea(h.object,h.faceIndex)}\nCtrl+clic une 2e face (entraxe auto si cylindres)${fao||!propre?'':' · Bouton « Esquisse » pour esquisser dessus.'}`;
     // V0.23.26 : la fonction créatrice est sélectionnée dans l'arbre et la timeline — différé :
     // la face s'allume tout de suite, le rejeu observé (points de contrôle) vient ensuite
     const hm=h.object,hf=h.faceIndex,hp=h.point.clone();
@@ -384,7 +468,7 @@ Bouton « Esquisse » (ou double-clic dans l'arbre) pour dessiner dessus.`;retur
     if(!A){faceSelect(e,false);return;}
     if(propre)selFaces.push(P);
     highlightTris(h.object,faceTrisFor(h.object,h.faceIndex),0xff9f0a,0.55);
-    const noms=`Face 1 : ${mesNom(A.mesh)}\nFace 2 : ${mesNom(P.mesh)}\n`;
+    const noms=`${selLibelle('Face',selFaceInfo(A.mesh,A.faceIndex))} : ${mesNom(A.mesh)}\n${selLibelle('Face',selFaceInfo(P.mesh,P.faceIndex))} : ${mesNom(P.mesh)}\n`;
     if(measurePair(A,P)){if(!propre||!mesPropre(A.mesh))faceEl.textContent=noms+faceEl.textContent;}
     else{
       const d=A.point.distanceTo(P.point);

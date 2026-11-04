@@ -8,7 +8,7 @@ sont sorties le 2026-09-30j.
 Code dans `src/` · livrable `fusion_mvp.html` (généré par `build.js`) · architecture et
 garde-fous en tête de `src/00-entete-et-outils.js`.
 
-**569 versions**, de `2026-09-28b` à `V0.54.0` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
+**570 versions**, de `2026-09-28b` à `V0.55.0` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
 comme dans le fichier d'origine.
 
 ---
@@ -6617,3 +6617,17 @@ Limite constatée en livrant les engrenages : à la racine d’un assemblage, le
 - **Défaut ancien corrigé** (`importHydrate`) : le ménage de la mémoire ne regardait que le composant actif et effaçait le solide exact des STEP importés dans les autres composants.
 - **Reste à faire** : l’inspection ignore toujours les composants faits d’un STEP seul dans son corps ; les noms des pièces dans le fichier STEP ne sont pas contrôlés.
 - **Test** : `test_export_step_assemblage`, sur les deux moteurs : vrai clic, vrai pré-test, fichier relu, chaque solide contrôlé (validité, volume, position) ; `Exemples/Engrenages.conceptcad` donne 6 solides valides aux bonnes positions. `CACHE_VER` ne change pas.
+
+## V0.55.0 - Une valeur impossible ne laisse plus de séquelles ; le clic donne le vrai numéro des faces et des arêtes
+
+Demandes : « Cache Piles et Support », « Corrige-la », puis « pourquoi ne pas mettre leur vrai numéro ? ».
+
+- **Cause (retour inexact)** : une valeur impossible déformait une esquisse, et la résolution suivante repartait de cette déformation ; Cache Piles (e23, 64,95 → 81,19 → 64,95) finissait à 2 653 mm³ au lieu de 2 630.
+- **Correctif** (`SK_BON`, `skBonReprise`, `skBonNote`) : chaque esquisse garde son dernier état résolu (écart ≤ 0,001 mm), l’état ouvert du fichier compris, et y revient après un état raté. Un point déplacé à la main efface ce souvenir. Seuls les points tenus par une source extérieure gardent leur place : un simple « fixe » déplacé par le solveur revient aussi.
+- **Cause (mauvaise arête)** : une projetée allongée pendant un état raté refusait ensuite sa vraie source, vue par la tranche, et prenait une voisine (Support Pédale, Esquisse 8).
+- **Correctif** (`updateAssociativeProjections0`) : une arête retrouvée par son nom fait foi, même réduite à un point.
+- **Effet au banc** : retours avec un solide différent du départ, de 5 à 1 (reste Griffe dd1).
+- **Support Pédale, défaut d’antériorité corrigé dans le fichier, à la demande de l’utilisateur** : l’Esquisse 5 était posée sur la paroi d’une découpe qui dépendait de sa propre extrusion ; le niveau ne tenait que par la mémoire du dernier calcul. Elle est reposée sur le dessus de l’Extrusion de l’Esquisse 3, au même niveau. Pièce identique (volume, arêtes, points) ; les réglages Esquisse 1 e28, e43 et Extrusion de l’Esquisse 3 donnent le même résultat par saut et par petits pas.
+- **Numéro** (`selFaceInfo`, `selAreteInfo`, `selOrigine`) : « Face 1 » et « Arête 1 » voulaient seulement dire « première choisie ». Le clic affiche le rang dans le solide et la fonction qui a créé l’élément (son nom unique traduit). Le rang peut changer si le modèle change, le nom non. Vue d’assemblage : pas de numéro d’arête, plutôt qu’un faux venu d’une autre pièce.
+- **Reste à faire** : environ 20 réglages au banc restent différents selon le chemin, souvent une ligne de construction ou une valeur qui rend un congé impossible ; 3 calculs interrompus.
+- **Tests** : `test_noms_retour` (retour exact sur les deux pièces, geste manuel respecté), `test_selection_numero` ; `test_anteriorite` vérifie que le Support n’a plus de défaut. Parcours d’usinage inchangés, `CACHE_VER` ne change pas.

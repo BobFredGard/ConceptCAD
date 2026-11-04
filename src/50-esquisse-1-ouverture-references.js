@@ -407,7 +407,10 @@ function updateAssociativeProjections0(sk){
     if(e.t==='line'){
       const A=sk.points[e.p1], B=sk.points[e.p2]; if(!A||!B) continue;
       const mx=(A.x+B.x)/2, my=(A.y+B.y)/2;
-      const pr=findClosestProjectedEdge(sk,mx,my,projPreferMid(sk,e,EO),'line',EO,Math.hypot(B.x-A.x,B.y-A.y)>=1e-4);
+      // Une arête retrouvée par son nom fait foi, même vue par la tranche (un point) : une projetée
+      // allongée pendant un état raté retrouve ainsi sa vraie source (Support Pédale, Esquisse 8).
+      const midP=projPreferMid(sk,e,EO),parNom=midP!==e.srcMid;
+      const pr=findClosestProjectedEdge(sk,mx,my,midP,'line',EO,!parNom&&Math.hypot(B.x-A.x,B.y-A.y)>=1e-4);
       if(!pr||pr.type!=='line') continue;
       if(pr.srcMid)e.srcMid=pr.srcMid;
       const d1=Math.hypot(A.x-pr.x1,A.y-pr.y1)+Math.hypot(B.x-pr.x2,B.y-pr.y2);

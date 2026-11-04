@@ -149,6 +149,8 @@ const SUITES = [
   "test_noms_fao",
   "test_noms_reouverture",
   "test_noms_barquette",
+  "test_noms_retour",
+  "test_selection_numero",
   "test_noms_repetition",
   "test_import_vie",
   "test_import_persist",

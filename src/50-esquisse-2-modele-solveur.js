@@ -1114,7 +1114,36 @@ function skPtsNote(sk){const o={};Object.keys(sk.points||{}).forEach(k=>{const p
 function skValsNote(sk){
   if(!sk)return;
   (sk.dims||[]).forEach(d=>{if(d&&isFinite(+d.value)&&!SK_VALS.has(d))SK_VALS.set(d,+d.value);});
-  if(sk.points&&!SK_PTS.has(sk))skPtsNote(sk);
+  if(sk.points&&!SK_PTS.has(sk)){skPtsNote(sk);skBonNote(sk);} // l'état ouvert du fichier est le premier bon état
+}
+// DERNIER BON ÉTAT : une valeur impossible laisse l'esquisse déformée (Cache Piles, largeur 81 : écart de
+// 5 mm sur l'Esquisse 7). La résolution suivante repart du dernier état résolu, et non de cette
+// déformation : revenir à la valeur d'origine redonne exactement l'esquisse d'origine. Tout geste de
+// l'utilisateur sur l'esquisse (glisser, annuler) efface ce souvenir.
+const SK_BON=new WeakMap(); // esquisse → {snap, vals, mauvais}
+function skBonReprise(sk,anchor){
+  const B=SK_BON.get(sk);if(!B||!B.mauvais)return;
+  const M=SK_PTS.get(sk);
+  // Seuls les points tenus par une source extérieure gardent leur place du moment. Un simple « fixe »
+  // a pu être déplacé par le solveur dans l'état raté (Cache Piles, Esquisse 7, p1) : il revient aussi.
+  const ext=new Set(anchor||[]);ext.add('O');
+  (sk.entities||[]).forEach(e=>{if(e&&(e.proj||e.isProj||e.isect||e.pierce||e.ext))[e.p1,e.p2,e.pc,e.pa,e.pb,e.p].forEach(q=>{if(q)ext.add(q);});});
+  const cur=[];
+  for(const k of Object.keys(sk.points)){
+    const p=sk.points[k],m=M&&M[k];
+    if(ext.has(k)){cur.push([p,p.x,p.y]);continue;}
+    if(!m||Math.hypot(p.x-m[0],p.y-m[1])>1e-6){SK_BON.delete(sk);return;} // l'utilisateur a bougé un point
+  }
+  skRestoreCoords(sk,B.snap);
+  skPtsNote(sk); // les petits pas partent de là
+  cur.forEach(([p,x,y])=>{p.x=x;p.y=y;});
+  B.vals.forEach((v,d)=>{if(d&&(sk.dims||[]).indexOf(d)>=0)SK_VALS.set(d,v);});
+}
+function skBonNote(sk,iters){
+  if((iters||120)<100){SK_BON.delete(sk);return;}
+  let r=Infinity;try{r=skResid(sk);}catch(e){r=Infinity;}
+  if(r<=1e-3){const vals=new Map();(sk.dims||[]).forEach(d=>{if(d&&isFinite(+d.value))vals.set(d,+d.value);});SK_BON.set(sk,{snap:skSnapCoords(sk),vals,mauvais:false});return;}
+  const B=SK_BON.get(sk);if(B)B.mauvais=true;
 }
 function skPasFixes(sk,anchor){
   // Points fixes à faire glisser : [{p,x0,y0,x1,y1}] et leur plus grand déplacement ; rien si un point libre a bougé
@@ -1132,6 +1161,7 @@ function skPasFixes(sk,anchor){
 }
 function solveSketch(sk,iters,anchor){
   if(!sk||!sk.points)return;
+  if((iters||120)>=100)skBonReprise(sk,anchor);
   const D=(sk.dims||[]).filter(d=>d&&!d.ref&&isFinite(+d.value)&&SK_VALS.has(d));
   const fin=D.map(d=>+d.value),dep=D.map(d=>SK_VALS.get(d));
   let k=0;D.forEach((d,i)=>{const e=Math.abs(fin[i]-dep[i]);if(e>1e-3)k=Math.max(k,e/Math.max(Math.abs(dep[i]),1e-6));});
@@ -1161,6 +1191,7 @@ function solveSketch(sk,iters,anchor){
   }else solveSketch1(sk,iters,anchor);
   (sk.dims||[]).forEach(d=>{if(d&&isFinite(+d.value))SK_VALS.set(d,+d.value);});
   skPtsNote(sk);
+  skBonNote(sk,iters);
 }
 function solveSketch1(sk,iters,anchor){
   if(!sk||!sk.points)return;iters=iters||120;
