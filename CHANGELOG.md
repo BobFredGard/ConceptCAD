@@ -8,7 +8,7 @@ sont sorties le 2026-09-30j.
 Code dans `src/` · livrable `fusion_mvp.html` (généré par `build.js`) · architecture et
 garde-fous en tête de `src/00-entete-et-outils.js`.
 
-**575 versions**, de `2026-09-28b` à `V0.58.1` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
+**576 versions**, de `2026-09-28b` à `V0.58.2` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
 comme dans le fichier d'origine.
 
 ---
@@ -6686,3 +6686,13 @@ Demande : « CAO Répétitions -> impossible de répéter un balayage » ; « je
 - **Esquisses copiées** : `skUsedBy` compte le profil et le chemin. `skIsRepCopy`, la purge (quantité réduite, répétition supprimée) et `repSyncForSketch` (chemin source modifié) passent par lui. « Tout afficher » (`showAll2`) laisse désormais toutes les esquisses copiées cachées, celles des autres fonctions aussi.
 - **Aperçu rouge** : il montre le volume balayé.
 - **Vérifié** : vrai navigateur (case cochée, axe Z, 3 exemplaires : 30 000 mm³, arbre limité à Profil, Chemin, balayage et ses copies). **Tests** : `test_repeat_balayage` (linéaire, circulaire, symétries, suivant un profil, nouveau corps, découpe, rechargement, esquisses cachées). `CACHE_VER` ne change pas.
+
+## V0.58.2 - Les congés se répètent sur la bonne arête, et un congé va dans le corps de l’arête cliquée
+
+Demande (Barquette) : « Impossible de répéter les congés à la fin ou alors de les passer sur la répétition » ; « R3.3 ».
+
+- **Cause 1, la copie partait du clic d’origine** : `pos0` reste figé au clic, alors que la source a pu être emportée par son esquisse (renfort déplacé de 14,5 à 58 mm). L’image de ce clic tombait 45 mm à côté : le congé R3,3 copié prenait une arête d’angle, la même pour les deux copies, et échouait. Quand la source est à plus de 2 mm de son clic, une copie neuve ou réparée à l’ouverture part maintenant de la position réelle de la source (`pos`). Jamais après une édition : `pos` date alors de la valeur précédente (`test_noms_retour`, Cache Piles). Une copie dont le nom est bon garde son `pos0` : le retour à une valeur précédente retrouve ses points de contrôle.
+- **Cause 2, le mauvais nom restait** : une copie gardait le nom de son arête tant que celui de la source ne changeait pas, même faux. Si la source touche une fonction copiée dans la même passe, le nom de la copie doit porter l’équivalent (`repNomCopieOk`), sinon il est oublié. La 4ᵉ arête du grand congé copié était partie sans alerte sur le fond de la pièce.
+- **Fichiers existants** : les copies sont déjà régénérées à l’ouverture ; un nom faux y est oublié et la copie repart de la position de sa source (`repReparation`).
+- **Cause 3, congé posé à la main** : il naissait dans le corps actif. « Intérieur », actif et masqué, recevait le congé, qui y prenait une autre arête : la pièce ne changeait pas. Il va maintenant dans le corps de l’arête cliquée (`xCorpsDesAretes`) ; les corps montrés passent avant les masqués.
+- **Vérifié** : Barquette en noyau OCCT 8, aucune erreur ni alerte, trois exemplaires identiques (arête de 25,47 mm à x = 51,89 ; -6,11 ; -64,11). Le congé posé à la main sur les arêtes copiées donne le même volume que la répétition : 224 133,4 mm³. **Tests** : `test_repeat_conges` (une copie part sur une arête de 1,41 mm avec l’ancien code). `CACHE_VER` ne change pas.

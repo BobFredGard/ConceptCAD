@@ -247,7 +247,9 @@ async function deserialise(json,opts){
   // chaque chargement alors même que le code était corrigé. Coût : une régénération
   // déterministe, sans effet sur les sources.
   try{
+    repReparation=true; // fichier juste ouvert : les sources sont au repos (V0.58.2)
     doc.features.filter(f=>f.type==='repeat').forEach(f=>{try{repGenChildren(f);}catch(e){}});
+    repReparation=false;
   }catch(e){}
   sel={kind:null,id:null};uidN=doc.sketches.length+doc.features.length+1;
   if(!opts||opts.rebuild!==false){

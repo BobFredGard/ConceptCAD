@@ -76,6 +76,7 @@ const SUITES = [
   "test_revolve",
   "test_balayage",
   "test_repeat_balayage",
+  "test_repeat_conges",
   "test_skctxmenu",
   "test_esquisse_transparence",
   "test_esquisse_arbre_rabat",

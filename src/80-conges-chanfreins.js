@@ -727,6 +727,26 @@ function renderExactPanel(){
   const q=document.createElement('button');q.textContent=ed?'✖ Annuler':'Quitter';q.onclick=()=>exitFilletMode();
   row.appendChild(q);p.appendChild(row);
 }
+// V0.58.2 : un congé va dans le corps de l'arête CLIQUÉE, pas dans le corps actif. Barquette, corps
+// actif « Intérieur » masqué : le congé posé sur une arête de la barquette y cherchait une autre arête,
+// et la pièce ne changeait pas. Les corps montrés passent avant les masqués, le corps actif départage.
+function xCorpsDesAretes(sel){
+  try{
+    const L=(bodies||[]).filter(b=>b&&b.kind==='body'&&b.shape&&!b.asmComp&&(doc.bodies||[]).some(e=>e.id===b.id));
+    const compte=b=>{
+      const E=occListEdges(b.shape);
+      return sel.filter(s=>E.some(e=>Math.hypot(e.mid[0]-s.pos[0],e.mid[1]-s.pos[1],e.mid[2]-s.pos[2])<0.75)).length;
+    };
+    let best=null,bc=0;
+    const note=b=>[b.visible!==false?1:0,b.id===doc.activeBody?1:0];
+    L.forEach(b=>{
+      const c=compte(b);if(!c)return;
+      const n=note(b),m=best?note(best):[-1,-1];
+      if(n[0]>m[0]||(n[0]===m[0]&&(c>bc||(c===bc&&n[1]>m[1])))){best=b;bc=c;}
+    });
+    return best?best.id:null;
+  }catch(e){return null;}
+}
 function applyExactFillet(){
   if(!filModeX)return;
   const ed=filModeX.editing?doc.features.find(x=>x.id===filModeX.editing):null;
@@ -789,6 +809,7 @@ function applyExactFillet(){
   }
   const nf={id:uid('xf'),type:'xfillet',name:xLabel(k)+' ('+filModeX.sel.length+' arête(s))',edges:mkEdges(),visible:true,tangent:filModeX.tangent!==false};
   if(xIsChamfer(k)){nf.chamfer=true;chamFields(nf);}
+  const corps=xCorpsDesAretes(filModeX.sel);if(corps)nf.body=corps;
   const snap0=docSnap(),len0=docUndoStack.length; // V0.8.0 : Annuler retire le congé
   addFeature(nf);
   try{ fdynStart(nf,snap0,len0); }catch(e){}

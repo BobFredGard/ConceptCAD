@@ -421,9 +421,32 @@ function repNomGarde(o,src,old,cle){
   if(c)o[de]=c;else delete o[de];
   if(old&&old[cle]&&c&&(old[de]===undefined||old[de]===c))o[cle]=old[cle];
 }
-function repNomsListe(src,nouv,old,cle){
+// UN NOM DE COPIE DOIT DÉSIGNER LA COPIE. Si la référence source touche une fonction copiée dans la même
+// passe (sw_30 → sw_50), le nom de la copie doit porter l'équivalent. Barquette, congé R3,3 sur le bord
+// d'un renfort balayé : la copie gardait « e28/flanc|e5/flanc », une arête d'angle sans rapport avec son
+// renfort. Un tel nom est oublié : la copie se recale sur l'image de la position de sa source.
+function repNomPropre(n){return String(n).replace(/#[0-9]+/g,'').replace(/@[A-Za-z0-9_]+/g,'');}
+function repNomVise(nomSrc,featMap){
+  // Faces que le nom de la copie doit contenir : celles de la source qui nomment une fonction copiée
+  const ids=Object.keys(featMap||{});
+  return nomsDecoupe(repNomCle(nomSrc)).map(repNomPropre).map(x=>{
+    let y=x;ids.forEach(id=>{y=y.split(id).join(featMap[id]);});
+    return y===x?null:y;
+  }).filter(Boolean);
+}
+function repNomCopieOk(nomCopie,nomSrc,featMap){
+  if(!nomCopie||!nomSrc)return true;
+  const a=new Set(nomsDecoupe(repNomCle(nomCopie)).map(repNomPropre));
+  return repNomVise(nomSrc,featMap).every(x=>a.has(x));
+}
+function repNomsListe(src,nouv,old,cle,featMap){
   if(!Array.isArray(src)||!Array.isArray(nouv))return;
-  nouv.forEach((o,k)=>{if(o&&typeof o==='object')repNomGarde(o,src[k],Array.isArray(old)?old[k]:null,cle);});
+  nouv.forEach((o,k)=>{
+    if(!o||typeof o!=='object')return;
+    const ov=Array.isArray(old)?old[k]:null;
+    repNomGarde(o,src[k],ov,cle);
+    if(o[cle]&&src[k]&&!repNomCopieOk(o[cle],src[k][cle],featMap))delete o[cle];
+  });
 }
 function repCloneFaceRef(r,i,skMap,cfg){
   if(!r||!Array.isArray(r.pos))return r;
@@ -434,6 +457,7 @@ function repCloneFaceRef(r,i,skMap,cfg){
   if(r.anchor&&r.anchor.sk&&skMap[r.anchor.sk])o.anchor=Object.assign({},r.anchor,{sk:skMap[r.anchor.sk]});else delete o.anchor;
   return o;
 }
+let repReparation=false; // régénération de réparation à l'ouverture : la source est au repos
 let repGenBusy=false; // garde-fou : une régénération ne s'emboîte jamais (rejeu non borné)
 function repCloneSketch(sk,i,skMap,featMap,cfg,reuse){
   // reuse = esquisse d'une instance déjà créée : MISE À JOUR EN PLACE (id conservé). Les
@@ -549,7 +573,14 @@ function repCloneFeature(f,i,skMap,featMap,cfg,reuse){
       const a=s.anchor&&s.anchor.sk&&skMap[s.anchor.sk]?Object.assign({},s.anchor,{sk:skMap[s.anchor.sk]}):null;
       const o=Object.assign({},s,{anchor:a});
       o.pos=repTransformPoint(s.pos,i,cfg).map(v=>+v.toFixed(6));
-      o.pos0=repTransformPoint(s.pos0||s.pos,i,cfg).map(v=>+v.toFixed(6));
+      // V0.58.2 : source emportée loin de son clic (pos0 figé) par son esquisse : une copie NEUVE, ou réparée
+      // à l'ouverture, part de l'endroit où la source EST. Barquette : renfort déplacé de 14,5 à 58 mm, l'image
+      // du clic tombait 45 mm à côté et le congé R3,3 copié prenait une autre arête, la même pour toutes les
+      // copies. Jamais après une édition : pos date alors de la valeur précédente (Cache Piles, retour de
+      // valeur : mauvaises arêtes), et l'image de pos0 reste la bonne référence.
+      const p0=s.pos0||s.pos,repos=!reuse||reuse._src!==f.id||repReparation;
+      const loin=repos&&Math.hypot(s.pos[0]-p0[0],s.pos[1]-p0[1],s.pos[2]-p0[2])>2;
+      o.pos0=loin?o.pos.slice():repTransformPoint(p0,i,cfg).map(v=>+v.toFixed(6));
       // V0.11.19 : normale de la première face d'un chanfrein asymétrique, transformée comme
       // les normales de faces (repCloneFaceRef) — la copie garde D1 sur l'image de la même face.
       if(Array.isArray(s.fn)&&s.fn.length===3)o.fn=repNorm(repTransformVec(s.fn,i,cfg)).map(v=>+v.toFixed(4));
@@ -574,8 +605,11 @@ function repCloneFeature(f,i,skMap,featMap,cfg,reuse){
     if(f.type==='xdelface'){nf.faces=(f.faces||[]).map(r=>repCloneFaceRef(r,i,skMap,cfg));delete nf._m;delete nf._err;}
   }
   // Noms des références : ceux de la copie, pas ceux de la source
-  if(f.type==='xfillet')repNomsListe(f.edges,nf.edges,reuse&&reuse.edges,'nom');
-  if(f.type==='xdraft'||f.type==='xmove'||f.type==='xdelface')repNomsListe(f.faces,nf.faces,reuse&&reuse.faces,'nom');
+  if(f.type==='xfillet')repNomsListe(f.edges,nf.edges,reuse&&reuse.edges,'nom',featMap);
+  // Nom valable : l'arête se retrouve par lui et le pos0 déjà connu reste (il entre dans la signature :
+  // le changer à chaque régénération empêcherait de retrouver les points de contrôle au retour d'une valeur).
+  if(f.type==='xfillet'&&reuse&&Array.isArray(reuse.edges))nf.edges.forEach((o,k)=>{const v=reuse.edges[k];if(o&&o.nom&&v&&Array.isArray(v.pos0))o.pos0=v.pos0.slice();});
+  if(f.type==='xdraft'||f.type==='xmove'||f.type==='xdelface')repNomsListe(f.faces,nf.faces,reuse&&reuse.faces,'nom',featMap);
   if((f.type==='xmove'||f.type==='xdraft')&&nf.ref&&f.ref&&!nf.ref.nom)repNomGarde(nf.ref,f.ref,reuse&&reuse.ref,'nom');
   // Le NOM de la FONCTION COPIÉE est conservé tel quel dans la sous-arborescence (c'est la
   // répétition elle-même qui porte le nom du TYPE : Linéaire / Circulaire / Symétrie).
