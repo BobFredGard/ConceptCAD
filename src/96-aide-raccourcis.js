@@ -23,7 +23,7 @@ const AIDE_SECTIONS=[
     ['F5','Vue isométrique complète'],['ƒx Paramètres','Paramètres, cotes et valeurs nommées'],
     ['Champs des fonctions','Valeur, expression (L/10) ou « nom = valeur » : extrusion, perçage, congé, dépouille…']]],
   ['3D — sélection et mesure',[
-    ['Clic','Face (ou arête présélectionnée en orange)'],['Ctrl/Cmd + clic','2e face ou arête : mesure (entraxe, distance ⟂, angle)'],
+    ['Clic','Face (ou arête présélectionnée en orange)'],['Ctrl/Cmd + clic','Mesure, partout (CAO, FAO, assemblage, fonction ouverte) sans rien sélectionner : 1re puis 2e face ou arête (entraxe, distance ⟂, angle)'],
     ['Shift + clic','Ø exact'],['Molette','Tourner'],['Ctrl + clic droit','Recentrer'],
     ['Alt + double-clic','Isoler'],['Clic droit','Menu pièce'],['Suppr','Supprime la ou les faces sélectionnées : les voisines se rejoignent (congé → arête vive, trou rebouché)'],['Échap','Effacer la sélection']]],
   ['Couleurs d’esquisse',[

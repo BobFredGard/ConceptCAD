@@ -288,7 +288,8 @@ function asmPickAt(e){
   return h?h.object.userData.occ:null;
 }
 function asmClick(e){
-  if(asmMeas){asmMeasClick(e);return;} // mesures entre pièces (48-assemblage-mesure)
+  // Ctrl+clic = mesure (wirePick, 90) ; un clic simple efface la mesure affichée
+  if(asmMeas)asmMeasStop(true);
   if(asmAlignPickAt(e))return; // commande Aligner : clic = repère (48)
   if(stdHolePickAt(e))return; // composants normalisés : pose sur des trous (48)
   const id=asmPickAt(e);
@@ -487,15 +488,13 @@ function asmRenderProps(p){
   const Note=t=>p.appendChild(mk('div','pnl-note',t));
   const Btns=list=>{const d=mk('div','pnl-btns');list.forEach(([t,fn,cls])=>{const b=mk('button',cls||null,t);b.onclick=fn;d.appendChild(b);});p.appendChild(d);return d;};
   if(typeof asmAlign!=='undefined'&&asmAlign){asmAlignProps(p);return;} // commande Aligner (48)
-  if(asmMeas){asmMeasProps(p);return;}              // mesures entre pièces (48-assemblage-mesure)
   if(asmPatEd&&asmPatProps(p))return;               // répétition ouverte (48-assemblage-repetitions)
   const c=asmActiveComp();
   const o=asmOcc(asmSelId);
   if(!o||!c.occ.includes(o)){
     H('🧩 '+c.name);
     Note(c.occ.length+' composant(s) placé(s) ici, '+asm.comps.length+' composant(s) dans le fichier. Cliquez un composant (vue ou arbre) ; double-clic = le modéliser.');
-    const l=[['➕ Nouveau composant',asmCmdNewComp,'primary'],['📥 Insérer…',asmCmdInsert],['🔩 Normalisés…',()=>stdDlg()],['✏️ Modéliser « '+c.name+' »',()=>asmExit()],
-      ['📏 Mesurer',asmMeasStart]];
+    const l=[['➕ Nouveau composant',asmCmdNewComp,'primary'],['📥 Insérer…',asmCmdInsert],['🔩 Normalisés…',()=>stdDlg()],['✏️ Modéliser « '+c.name+' »',()=>asmExit()]];
     if(asm.path.length)l.push(['↑ Remonter',asmUp]);
     Btns(l);
     // répétitions de ce composant (48-assemblage-repetitions) : une ligne chacune, clic = la modifier
@@ -516,14 +515,14 @@ function asmRenderProps(p){
   }
   const lot=asmLotIds();
   if(lot.length>1){
-    // lot (Ctrl/Shift+clic) : ce qui s'applique à toutes les occurrences
+    // lot (Ctrl+clic dans l'arbre, Shift+clic) : ce qui s'applique à toutes les occurrences
     const L=lot.map(asmOcc).filter(Boolean),nf=L.filter(q=>q.fixed).length,nh=L.filter(q=>q.visible===false).length;
     H('📦 '+L.length+' composants sélectionnés');
     Note(L.map(q=>q.name).join(', '));
-    Note('Ctrl+clic = ajouter / retirer · Shift+clic = plage · Suppr = supprimer le lot · Échap = désélectionner.');
+    Note('Ctrl+clic dans l’arbre = ajouter / retirer · Shift+clic = plage · Suppr = supprimer le lot · Échap = désélectionner.');
     Btns([[nf===L.length?'📌 Libérer':'📌 Fixer',()=>{const v=nf!==L.length;asmLotEach(v?'fixer':'libérer',q=>{q.fixed=v;});}],
       [nh===L.length?'👁 Afficher':'🙈 Masquer',()=>{const v=nh===L.length;asmLotEach('visibilité',q=>{q.visible=v;});}],
-      ['🔁 Répéter le lot…',()=>asmPatStart(lot)],['📏 Mesurer',asmMeasStart],
+      ['🔁 Répéter le lot…',()=>asmPatStart(lot)],
       ['🗑 Supprimer',()=>asmAskDeleteLot(lot),'danger']]);
     return;
   }
@@ -541,7 +540,7 @@ function asmRenderProps(p){
   if(cc.doc&&cc.doc.std)l.push(['🔩 Modifier…',()=>stdDlg({occ:o.id})]); // pièce normalisée (48)
   l.push(['➕ Occurrence',asmCmdNewOcc]);
   if(!o.pat)l.push(['🔁 Répétition…',()=>asmPatStart([o.id])],[o.fixed?'📌 Libérer':'📌 Fixer',()=>asmToggleFixed(o.id)]); // 48-assemblage-repetitions
-  l.push(['📏 Mesurer',asmMeasStart],['🗑 Supprimer',()=>asmAskDelete(o.id),'danger']);
+  l.push(['🗑 Supprimer',()=>asmAskDelete(o.id),'danger']);
   Btns(l);
   {const lm=asmLinkMenu(cc);if(lm.length)Btns(lm.map(x=>[x.html,x.fn]));}
 }

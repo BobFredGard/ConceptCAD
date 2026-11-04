@@ -261,6 +261,88 @@ test('composants depuis les corps : clic droit sur un corps, même place, Ctrl+Z
   expect(err).toEqual([]);
 });
 
+test('mesure : Ctrl enfoncé = mesure en CAO, fonction ouverte, FAO et assemblage, sans rien activer',async({page})=>{
+  const err=await demarrer(page);
+  await page.evaluate(()=>{
+    const mkSk=(name,pts)=>{newSketch('XY');const sk=skEdit;sk.name=name;const P=pts.map(([x,y])=>addPoint(sk,x,y));
+      for(let i=0;i<P.length;i++)sk.entities.push({id:'L'+i,t:'line',p1:P[i],p2:P[(i+1)%P.length]});closeSketch(true);return sk;};
+    const a=mkSk('Esquisse socle',[[-20,-20],[20,-20],[20,20],[-20,20]]);
+    addFeature({id:uid('ex'),type:'extrude',name:'Socle',sketchId:a.id,op:'add',distance:20});
+    const b=mkSk('Esquisse colonne',[[30,-5],[40,-5],[40,5],[30,5]]);extNew={sketchId:b.id,op:'new',dist:50};extNewOk();
+    doc.bodies[1].name='Colonne';markDirty();rebuild();
+  });
+  await page.waitForFunction(()=>builtEngine==='exact'&&rebuildDepth===0&&builtVersion===_docVersion&&doc.bodies.length===2,null,{timeout:60000});
+  await page.evaluate(()=>{setView('iso');sel={kind:null,id:null};treeSel=[];clearMeasure();});
+  await page.waitForTimeout(800);
+  // point du monde -> pixel de la page (centres des faces du dessus : z=20 et z=50)
+  const ecran=(x,y,z)=>page.evaluate(([x,y,z])=>{const r=renderer.domElement.getBoundingClientRect(),v=new THREE.Vector3(x,y,z).project(camera);
+    return [r.left+(v.x+1)/2*r.width,r.top+(1-v.y)/2*r.height];},[x,y,z]);
+  const clic=async(x,y,z)=>{const [a,b]=await ecran(x,y,z);await page.mouse.move(a,b);await page.mouse.click(a,b);};
+  const texte=()=>page.evaluate(()=>faceEl.textContent);
+  const rien=()=>page.evaluate(()=>({kind:sel.kind,tree:treeSel.length}));
+  const curseur=()=>page.evaluate(()=>renderer.domElement.classList.contains('mfCtrlMesure'));
+
+  // CAO : le curseur annonce la mesure dès l'appui, deux clics mesurent, rien n'est sélectionné
+  await page.keyboard.down('Control');
+  expect(await curseur()).toBe(true);
+  await clic(0,0,20);
+  expect(await texte()).toMatch(/^Face 1/);
+  await clic(35,0,50);
+  expect(await texte()).toMatch(/30\.00 mm/);
+  expect(await rien()).toEqual({kind:null,tree:0});
+  await page.keyboard.up('Control');
+  expect(await curseur()).toBe(false);
+
+  // Sans Ctrl, le clic garde son rôle : la fonction de la face est sélectionnée
+  await clic(0,0,20);
+  await page.waitForFunction(()=>sel.kind==='feature'&&selFaces.length===1,null,{timeout:30000});
+  await page.evaluate(()=>{sel={kind:null,id:null};treeSel=[];clearMeasure();renderTree();renderProps();});
+
+  // Fonction ouverte (congé) : Ctrl+clic mesure, la fonction reste ouverte et ne reçoit rien
+  await page.evaluate(()=>enterFilletMode());
+  const choix=()=>page.evaluate(()=>JSON.stringify((filModeX||filMode).sel||[]));
+  const avant=await choix();
+  await page.keyboard.down('Control');
+  await clic(0,0,20);await clic(35,0,50);
+  await page.keyboard.up('Control');
+  expect(await texte()).toMatch(/30\.00 mm/);
+  expect(await page.evaluate(()=>!!(filMode||filModeX))).toBe(true);
+  expect(await choix()).toBe(avant);
+  await page.evaluate(()=>{exitFilletMode();clearMeasure();});
+
+  // FAO : même geste, sans ouvrir ni sélectionner quoi que ce soit
+  await page.locator('[data-mfws="fao"]').first().click();
+  await expect(page.locator('body')).toHaveAttribute('data-ws','fao');
+  await page.evaluate(()=>{sel={kind:null,id:null};treeSel=[];clearMeasure();});
+  await page.keyboard.down('Control');
+  await clic(0,0,20);await clic(35,0,50);
+  await page.keyboard.up('Control');
+  expect(await texte()).toMatch(/30\.00 mm/);
+  expect(await rien()).toEqual({kind:null,tree:0});
+  await page.locator('[data-mfws="cao"]').first().click();
+  await expect(page.locator('body')).toHaveAttribute('data-ws','cao');
+
+  // Assemblage : plus de bouton Mesurer, Ctrl+clic mesure entre pièces sans toucher à la sélection
+  await page.evaluate(()=>{clearMeasure();asmCmdFromBodies([doc.bodies[1].id]);});
+  await page.waitForFunction(()=>asm&&asmRoot().occ.length===1&&doc.bodies.length===1,null,{timeout:60000});
+  await page.evaluate(()=>asmEnter());
+  await page.waitForFunction(()=>asmMode==='asm'&&!!asmSceneGet().getObjectByName('asmOcc'));
+  await page.waitForTimeout(800);
+  await expect(page.locator('#mfRibbon button.mfRb:visible',{hasText:'Mesurer'})).toHaveCount(0);
+  await expect(page.locator('#props button',{hasText:'Mesurer'})).toHaveCount(0);
+  await page.keyboard.down('Control');
+  await clic(0,0,20);
+  expect(await texte()).toMatch(/^Face 1/);
+  await clic(35,0,50);
+  await page.keyboard.up('Control');
+  expect(await texte()).toMatch(/30\.00 mm/);
+  expect(await page.evaluate(()=>({id:asmSelId,lot:asmLot.length}))).toEqual({id:null,lot:0});
+  // un clic simple efface la mesure et sélectionne la pièce, comme avant
+  await clic(35,0,50);
+  expect(await page.evaluate(()=>({m:asmMeas,sel:!!asmSelId}))).toEqual({m:null,sel:true});
+  expect(err).toEqual([]);
+});
+
 test('composants liés : lier l\'Axe, modifier sur place, la source est réécrite, puis suivie',async({page})=>{
   const err=await demarrer(page);
   // Le stockage privé du navigateur (OPFS) sert de dossier de projets : mêmes API de fichiers

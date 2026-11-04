@@ -1,7 +1,10 @@
 function occCleanup(FR,keepShape){
   if(!FR)return;
   occDispose(FR.bin);
-  (FR.itemShapes||[]).forEach(s=>{if(s!==keepShape){try{s.delete();}catch(e){}}});
+  // Au rebuild, le solide d'un corps fait d'une seule extrusion EST son item : il est affiché
+  // (b.shape), donc gardé, sinon mesures et faces exactes échouent dès qu'il y a deux corps.
+  const affiches=new Set(keepShape?(FR.perBody||[]).map(p=>p.shape):[]);
+  (FR.itemShapes||[]).forEach(s=>{if(s!==keepShape&&!affiches.has(s)){try{s.delete();}catch(e){}}});
   if(FR.shape&&FR.shape!==keepShape){try{FR.shape.delete();}catch(e){}}
   if(FR.shapeFao){try{FR.shapeFao.delete();}catch(e){}}
   (FR.preThr||[]).forEach(p=>{try{p.shape.delete();}catch(e){}});

@@ -352,7 +352,6 @@ const MF_IC={
   asmOcc:'<path d="M3 9l6-3 6 3v6l-6 3-6-3z"/><path d="M17 10v8M13 14h8"/>',
   asmStd:'<path d="M7 3h10v4l-2 2H9L7 7z"/><path d="M10.5 3v2.5M13.5 3v2.5"/><path d="M9.5 9v12h5V9"/><path d="M9.5 12l5 1.5M9.5 15l5 1.5M9.5 18l5 1.5"/>',
   asmInspect:'<circle cx="10" cy="10" r="6"/><path d="M14.5 14.5L21 21"/><path d="M7 10h6M10 7v6"/>',
-  asmMeasure:'<path d="M3 15L15 3l4 4L7 19z"/><path d="M6.5 11.5l1.8 1.8M9 9l1.2 1.2M11.5 6.5l1.8 1.8"/><path d="M4 21.5h16M4 20v3M20 20v3"/>', // V0.29.0 : mesurer entre pièces (règle + cote)
   asmFromBodies:'<path d="M3 14l5-3 5 3v5l-5 3-5-3z"/><path d="M14 6l4-2 4 2v4l-4 2-4-2z"/><path d="M12 12l3-3M15 9h-2.5M15 9v2.5"/>',
   pPdf:'<path d="M6 3h9l3 3v15H6z"/><text x="12" y="17.6" font-size="6.2" font-family="sans-serif" font-weight="700" text-anchor="middle" fill="currentColor" stroke="none">PDF</text>'
 };
@@ -398,9 +397,8 @@ function mfRibbon(){
   grp('Composants',[['asmView','<span class="mfLabM">Assembler</span><span class="mfLabA">Modéliser</span>',()=>asmToggle(),'Modéliser le composant actif ↔ placer ses composants'],
     ['asmPart','Composant',()=>asmCmdNewComp(),'Nouveau composant dans le composant actif (on entre aussitôt dedans)',asmO],
     ['asmOcc','Occurrence',()=>{if(asmMode!=='asm')asmEnter();asmCmdNewOcc();},'Nouvelle occurrence du composant sélectionné',asmO],
-    // V0.29.0 : répétitions de composants (48-assemblage-repetitions), mesures entre pièces (48-assemblage-mesure)
+    // V0.29.0 : répétitions de composants (48-assemblage-repetitions)
     ['pattern','Répétition',()=>asmRibbonPattern(),'Répéter l’occurrence sélectionnée (ou le lot) : linéaire, 2 directions, circulaire, symétrie',asmO],
-    ['asmMeasure','Mesurer',()=>asmRibbonMeasure(),'Mesurer entre pièces : deux faces → distance, entraxe, axe ↔ face, angle (Échap pour finir)',asmO],
     ['asmInspect','Inspecter',()=>asmCmdInspect(),'Interférences entre corps / composants, masses (matière par composant) et centre de gravité',asmO],
     ['asmFromBodies','Depuis corps',()=>asmCmdFromBodies(),'Créer un composant depuis le corps sélectionné (ou depuis chaque corps) : la pièce multicorps devient un assemblage, sans rien remodéliser',asmO],
     ['asmStd','Normalisés',()=>stdDlg(),'Vis ISO / ANSI (CHC, FHC, pas au choix), bouchons gaz six pans creux, goupilles, clavettes ISO : insérés comme composants du composant actif',asmO],

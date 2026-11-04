@@ -2,7 +2,19 @@
 function wirePick(){
   const el=renderer.domElement;let dx=0,dy=0;
   el.addEventListener('pointerdown',e=>{dx=e.clientX;dy=e.clientY;});
+  // Ctrl / Cmd enfoncé = MESURE, quoi qu'il soit ouvert (fonction, FAO, assemblage) : le curseur
+  // l'annonce dès l'appui, le clic mesure sans rien activer ni sélectionner.
+  try{const st=document.createElement('style');st.textContent='canvas.mfCtrlMesure{cursor:crosshair!important}';document.head.appendChild(st);}catch(e){}
+  const ctrlVue=on=>{try{el.classList.toggle('mfCtrlMesure',!!on&&!skEdit);}catch(e){}};
+  window.addEventListener('keydown',e=>{if(e.key==='Control'||e.key==='Meta')ctrlVue(true);},true);
+  window.addEventListener('keyup',e=>{if(e.key==='Control'||e.key==='Meta')ctrlVue(false);},true);
+  window.addEventListener('blur',()=>ctrlVue(false));
+  el.addEventListener('pointermove',e=>ctrlVue(e.ctrlKey||e.metaKey));
   el.addEventListener('pointerup',e=>{
+    if(ctrlMesureEv(e)&&!skEdit&&e.button===0&&Math.hypot(e.clientX-dx,e.clientY-dy)<=6){
+      if(asmMode==='asm')asmMeasClick(e);else faceSelect(e,true);
+      return;
+    }
     if(typeof pgPick!=='undefined'&&pgPick){if(e.button===0&&Math.hypot(e.clientX-dx,e.clientY-dy)<=6)pgPickAt(e);return;} // répétition suivant un profil : départ (41)
     if(asmMode==='asm'){if(e.button===0&&Math.hypot(e.clientX-dx,e.clientY-dy)<=6)asmClick(e);return;} // vue d'assemblage (47)
     if(e.button===0&&Math.hypot(e.clientX-dx,e.clientY-dy)<=6&&typeof extProfClick==='function'&&extProfClick(e))return; // zone d'esquisse de l'extrusion (70-extrusion-profils)
@@ -36,6 +48,7 @@ function wirePick(){
    el.addEventListener('pointermove',hoverMove);
    el.addEventListener('pointerleave',()=>clearHover());
    el.addEventListener('pointermove',e=>{
+      if(ctrlMesureEv(e))return; // Ctrl : survol de mesure seulement (hoverMove), pas celui de la fonction ouverte
       if(typeof pgPick!=='undefined'&&pgPick){pgPickHover(e);return;} // répétition suivant un profil : départ (41)
       if(!e.buttons&&typeof extProfHover==='function'&&extProfHover(e))return; // zone d'esquisse de l'extrusion
       if(extPickFace||(typeof extUptoAuto==='function'&&extUptoAuto())){renderer.domElement.style.cursor='crosshair';return;}
@@ -223,6 +236,8 @@ window.addEventListener('keydown',e=>{
     const b=$('btnExtrude');if(b&&!b.disabled)b.click();
   }
 });
+// Geste de mesure : Ctrl / Cmd seul (Ctrl+Maj reste la sélection d'une plage, Alt l'isolement)
+function ctrlMesureEv(e){return !!(e&&(e.ctrlKey||e.metaKey)&&!e.shiftKey&&!e.altKey);}
 function pick(e){
   const r=renderer.domElement.getBoundingClientRect();
   const ndc=new THREE.Vector2(((e.clientX-r.left)/r.width)*2-1,-((e.clientY-r.top)/r.height)*2+1);
@@ -771,11 +786,12 @@ function edgeHoverDraw(P,grp,color){
 function hoverMove(e){
   if(asmMode==='asm')return; // vue d'assemblage : la scène de la pièce n'est pas affichée
   // Pré-sélection lumineuse au survol (comme le viewer), ~15 Hz max, jamais en orbite/clic.
-  if(filMode||filModeX||skEdit||faoChainMode)return;
+  const meas=ctrlMesureEv(e); // Ctrl : les faces et arêtes s'allument aussi quand une fonction est ouverte
+  if(skEdit||(!meas&&(filMode||filModeX||faoChainMode)))return;
   if(e.buttons!==0)return;
   const now=performance.now();if(now-lastHoverT<65)return;lastHoverT=now;
   try{
-    if(triadHoverAt(e)||(typeof faoPoseHoverAt==='function'&&faoPoseHoverAt(e))){if(hoverKey)clearHover();renderer.domElement.style.cursor='pointer';hoverMove._cur=1;return;}
+    if(!meas&&(triadHoverAt(e)||(typeof faoPoseHoverAt==='function'&&faoPoseHoverAt(e)))){if(hoverKey)clearHover();renderer.domElement.style.cursor='pointer';hoverMove._cur=1;return;}
     if(hoverMove._cur){hoverMove._cur=0;renderer.domElement.style.cursor='';}
     const h=pick(e);
     const eh=edgeHoverPick(e,h);

@@ -376,7 +376,7 @@ input[type=range]{accent-color:var(--primary);width:100%}
  * peut changer sans rien casser. CACHE_VER (parcours FAO) reste indépendant.
  */
 
-const APP_VER='V0.50.0';
+const APP_VER='V0.51.0';
 try{console.log('[ConceptCAD] version '+APP_VER);}catch(e){}
 try{var mfSv=document.getElementById('mfSplashVer');if(mfSv)mfSv.textContent=APP_VER;}catch(e){} // écran de démarrage
 
@@ -7487,7 +7487,10 @@ function occTessellateBudget(shape,D,maxTris,countFn){
 function occCleanup(FR,keepShape){
   if(!FR)return;
   occDispose(FR.bin);
-  (FR.itemShapes||[]).forEach(s=>{if(s!==keepShape){try{s.delete();}catch(e){}}});
+  // Au rebuild, le solide d'un corps fait d'une seule extrusion EST son item : il est affiché
+  // (b.shape), donc gardé, sinon mesures et faces exactes échouent dès qu'il y a deux corps.
+  const affiches=new Set(keepShape?(FR.perBody||[]).map(p=>p.shape):[]);
+  (FR.itemShapes||[]).forEach(s=>{if(s!==keepShape&&!affiches.has(s)){try{s.delete();}catch(e){}}});
   if(FR.shape&&FR.shape!==keepShape){try{FR.shape.delete();}catch(e){}}
   if(FR.shapeFao){try{FR.shapeFao.delete();}catch(e){}}
   (FR.preThr||[]).forEach(p=>{try{p.shape.delete();}catch(e){}});
@@ -14931,7 +14934,8 @@ function asmPickAt(e){
   return h?h.object.userData.occ:null;
 }
 function asmClick(e){
-  if(asmMeas){asmMeasClick(e);return;} // mesures entre pièces (48-assemblage-mesure)
+  // Ctrl+clic = mesure (wirePick, 90) ; un clic simple efface la mesure affichée
+  if(asmMeas)asmMeasStop(true);
   if(asmAlignPickAt(e))return; // commande Aligner : clic = repère (48)
   if(stdHolePickAt(e))return; // composants normalisés : pose sur des trous (48)
   const id=asmPickAt(e);
@@ -15130,15 +15134,13 @@ function asmRenderProps(p){
   const Note=t=>p.appendChild(mk('div','pnl-note',t));
   const Btns=list=>{const d=mk('div','pnl-btns');list.forEach(([t,fn,cls])=>{const b=mk('button',cls||null,t);b.onclick=fn;d.appendChild(b);});p.appendChild(d);return d;};
   if(typeof asmAlign!=='undefined'&&asmAlign){asmAlignProps(p);return;} // commande Aligner (48)
-  if(asmMeas){asmMeasProps(p);return;}              // mesures entre pièces (48-assemblage-mesure)
   if(asmPatEd&&asmPatProps(p))return;               // répétition ouverte (48-assemblage-repetitions)
   const c=asmActiveComp();
   const o=asmOcc(asmSelId);
   if(!o||!c.occ.includes(o)){
     H('🧩 '+c.name);
     Note(c.occ.length+' composant(s) placé(s) ici, '+asm.comps.length+' composant(s) dans le fichier. Cliquez un composant (vue ou arbre) ; double-clic = le modéliser.');
-    const l=[['➕ Nouveau composant',asmCmdNewComp,'primary'],['📥 Insérer…',asmCmdInsert],['🔩 Normalisés…',()=>stdDlg()],['✏️ Modéliser « '+c.name+' »',()=>asmExit()],
-      ['📏 Mesurer',asmMeasStart]];
+    const l=[['➕ Nouveau composant',asmCmdNewComp,'primary'],['📥 Insérer…',asmCmdInsert],['🔩 Normalisés…',()=>stdDlg()],['✏️ Modéliser « '+c.name+' »',()=>asmExit()]];
     if(asm.path.length)l.push(['↑ Remonter',asmUp]);
     Btns(l);
     // répétitions de ce composant (48-assemblage-repetitions) : une ligne chacune, clic = la modifier
@@ -15159,14 +15161,14 @@ function asmRenderProps(p){
   }
   const lot=asmLotIds();
   if(lot.length>1){
-    // lot (Ctrl/Shift+clic) : ce qui s'applique à toutes les occurrences
+    // lot (Ctrl+clic dans l'arbre, Shift+clic) : ce qui s'applique à toutes les occurrences
     const L=lot.map(asmOcc).filter(Boolean),nf=L.filter(q=>q.fixed).length,nh=L.filter(q=>q.visible===false).length;
     H('📦 '+L.length+' composants sélectionnés');
     Note(L.map(q=>q.name).join(', '));
-    Note('Ctrl+clic = ajouter / retirer · Shift+clic = plage · Suppr = supprimer le lot · Échap = désélectionner.');
+    Note('Ctrl+clic dans l’arbre = ajouter / retirer · Shift+clic = plage · Suppr = supprimer le lot · Échap = désélectionner.');
     Btns([[nf===L.length?'📌 Libérer':'📌 Fixer',()=>{const v=nf!==L.length;asmLotEach(v?'fixer':'libérer',q=>{q.fixed=v;});}],
       [nh===L.length?'👁 Afficher':'🙈 Masquer',()=>{const v=nh===L.length;asmLotEach('visibilité',q=>{q.visible=v;});}],
-      ['🔁 Répéter le lot…',()=>asmPatStart(lot)],['📏 Mesurer',asmMeasStart],
+      ['🔁 Répéter le lot…',()=>asmPatStart(lot)],
       ['🗑 Supprimer',()=>asmAskDeleteLot(lot),'danger']]);
     return;
   }
@@ -15184,7 +15186,7 @@ function asmRenderProps(p){
   if(cc.doc&&cc.doc.std)l.push(['🔩 Modifier…',()=>stdDlg({occ:o.id})]); // pièce normalisée (48)
   l.push(['➕ Occurrence',asmCmdNewOcc]);
   if(!o.pat)l.push(['🔁 Répétition…',()=>asmPatStart([o.id])],[o.fixed?'📌 Libérer':'📌 Fixer',()=>asmToggleFixed(o.id)]); // 48-assemblage-repetitions
-  l.push(['📏 Mesurer',asmMeasStart],['🗑 Supprimer',()=>asmAskDelete(o.id),'danger']);
+  l.push(['🗑 Supprimer',()=>asmAskDelete(o.id),'danger']);
   Btns(l);
   {const lm=asmLinkMenu(cc);if(lm.length)Btns(lm.map(x=>[x.html,x.fn]));}
 }
@@ -16130,7 +16132,7 @@ function asmClearOccRendu(o,bid,all){
 
 /* ═══════════════ 48-assemblage-mesure.js — assemblage mesure ═══════════════ */
 /* ---------- mesures entre pièces d'un assemblage (V0.29.0) ----------
-   Mode Placer, « 📏 Mesurer » : deux clics sur des faces de n'importe quelles pièces affichées
+   Mode Placer, Ctrl+clic (wirePick, 90) sur deux faces de n'importe quelles pièces affichées
    (composant actif, enfants, fantômes) → les mêmes mesures que dans la pièce (measurePair, 90) :
    distance exacte entre faces parallèles, entraxe de deux cylindres, axe ↔ face, angle entre
    faces ; sinon distance entre les points cliqués. Un clic seul sur un cylindre donne son Ø.
@@ -16200,26 +16202,11 @@ function asmGrpNorm(g){
   const ok=g.every(x=>x&&Number.isInteger(x.start)&&Number.isInteger(x.count)&&Number.isInteger(x.f)&&x.start>=0&&x.count>=0&&x.f>=0);
   return ok?g.map(x=>({start:x.start,count:x.count,f:x.f})):null;
 }
-/* ── commande ── */
-function asmMeasStart(){
-  if(asmMode!=='asm')return;
-  try{if(asmPatEd)asmPatOk();}catch(e){}
-  asmMeasGfxClear();
-  asmMeas={picks:[],txt:''};
-  try{renderProps();}catch(e){}
-  try{faceEl.textContent='Mesurer : cliquez une face, puis une 2ᵉ (même pièce ou une autre) · Échap pour finir.';}catch(e){}
-}
-function asmRibbonMeasure(){
-  // Bouton du bandeau : passe en mode Placer au besoin ; un second clic termine la mesure
-  if(typeof skEdit!=='undefined'&&skEdit){try{faceEl.textContent='Fermez d’abord l’esquisse.';}catch(e){}return;}
-  if(asmMeas&&asmMode==='asm'){asmMeasStop();return;}
-  if(asmMode!=='asm'&&asmEnter()===false)return;
-  asmMeasStart();
-}
+/* ── mesure en cours : existe dès le 1er Ctrl+clic, jusqu'au clic simple ou à Échap ── */
 function asmMeasStop(quiet){
   if(!asmMeas)return;
   asmMeas=null;asmMeasGfxClear();
-  if(!quiet){try{renderProps();}catch(e){}try{faceEl.textContent='Mesure terminée.';}catch(e){}}
+  if(!quiet){try{faceEl.textContent='Mesure effacée.';}catch(e){}}
 }
 function asmMeasGfxClear(){
   // Les tracés de mesure (90 : measureGroup, selGroup) sont rangés dans la scène d'assemblage
@@ -16262,10 +16249,9 @@ function asmMeasName(m){
   return n.join(' › ')||'pièce';
 }
 function asmMeasClick(e){
-  if(!asmMeas)return false;
   const h=asmMeasHit(e);
-  if(!h){asmMeasGfxClear();asmMeas.picks=[];asmMeas.txt='';
-    try{faceEl.textContent='Aucune face ici — cliquez une face d’une pièce.';}catch(err){}try{renderProps();}catch(err){}return true;}
+  if(!h){try{faceEl.textContent='Aucune face ici — Ctrl+clic sur une face d’une pièce.';}catch(err){}return true;} // la 1ʳᵉ face reste choisie
+  if(!asmMeas)asmMeas={picks:[]};
   const P={mesh:h.object,faceIndex:h.faceIndex,point:h.point.clone(),geom:asmMeasGeom(h.object,h.faceIndex),name:asmMeasName(h.object)};
   const kind=G=>G?(G.kind==='cyl'?' · CYLINDRE Ø'+(G.r*2).toFixed(2):' · PLAN'):'';
   let txt='';
@@ -16276,7 +16262,7 @@ function asmMeasClick(e){
     if(P.geom&&P.geom.kind==='cyl'){
       try{drawAxis(P.geom.center,P.geom.axis,axisLen());tagAt('Ø '+(P.geom.r*2).toFixed(2),P.point.clone());}catch(err){}
     }
-    txt='Face 1 : '+P.name+kind(P.geom)+'\nCliquez une 2ᵉ face (même pièce ou une autre).';
+    txt='Face 1 : '+P.name+kind(P.geom)+'\nCtrl+clic une 2ᵉ face (même pièce ou une autre).';
   }else{
     const A=asmMeas.picks[0];asmMeas.picks.push(P);
     try{highlightTris(P.mesh,faceTrisFor(P.mesh,P.faceIndex),0xff9f0a,0.55);}catch(err){}
@@ -16288,20 +16274,8 @@ function asmMeasClick(e){
     txt='Face 1 : '+A.name+kind(A.geom)+'\nFace 2 : '+P.name+kind(P.geom)+'\n'+res;
   }
   asmMeasGfxAdopt();
-  asmMeas.txt=txt;
   try{faceEl.textContent=txt;}catch(err){}
-  try{renderProps();}catch(err){}
   return true;
-}
-function asmMeasProps(p){
-  const mk=(tag,cls,txt)=>{const d=document.createElement(tag);if(cls)d.className=cls;if(txt!=null)d.textContent=txt;return d;};
-  p.appendChild(mk('div','pnl-h','📏 Mesurer'));
-  p.appendChild(mk('div','pnl-note','Clic sur une face, puis sur une 2ᵉ : faces parallèles, entraxe, axe ↔ face, angle — sinon distance des points. Toutes les pièces affichées, à toute profondeur.'));
-  if(asmMeas&&asmMeas.txt){const r=mk('div','pnl-note',asmMeas.txt);r.style.whiteSpace='pre-line';r.style.fontWeight='600';p.appendChild(r);}
-  const b=mk('div','pnl-btns');
-  const nw=mk('button',null,'↺ Nouvelle mesure');nw.onclick=()=>{asmMeasGfxClear();asmMeas.picks=[];asmMeas.txt='';renderProps();};b.appendChild(nw);
-  const cl=mk('button','primary','Terminer');cl.title='Échap';cl.onclick=()=>asmMeasStop();b.appendChild(cl);
-  p.appendChild(b);
 }
 
 /* ═══════════════ 48-assemblage-placement.js — assemblage placement ═══════════════ */
@@ -58643,7 +58617,19 @@ function faoTorusDropper(mesh,D,rc,laisse){
 function wirePick(){
   const el=renderer.domElement;let dx=0,dy=0;
   el.addEventListener('pointerdown',e=>{dx=e.clientX;dy=e.clientY;});
+  // Ctrl / Cmd enfoncé = MESURE, quoi qu'il soit ouvert (fonction, FAO, assemblage) : le curseur
+  // l'annonce dès l'appui, le clic mesure sans rien activer ni sélectionner.
+  try{const st=document.createElement('style');st.textContent='canvas.mfCtrlMesure{cursor:crosshair!important}';document.head.appendChild(st);}catch(e){}
+  const ctrlVue=on=>{try{el.classList.toggle('mfCtrlMesure',!!on&&!skEdit);}catch(e){}};
+  window.addEventListener('keydown',e=>{if(e.key==='Control'||e.key==='Meta')ctrlVue(true);},true);
+  window.addEventListener('keyup',e=>{if(e.key==='Control'||e.key==='Meta')ctrlVue(false);},true);
+  window.addEventListener('blur',()=>ctrlVue(false));
+  el.addEventListener('pointermove',e=>ctrlVue(e.ctrlKey||e.metaKey));
   el.addEventListener('pointerup',e=>{
+    if(ctrlMesureEv(e)&&!skEdit&&e.button===0&&Math.hypot(e.clientX-dx,e.clientY-dy)<=6){
+      if(asmMode==='asm')asmMeasClick(e);else faceSelect(e,true);
+      return;
+    }
     if(typeof pgPick!=='undefined'&&pgPick){if(e.button===0&&Math.hypot(e.clientX-dx,e.clientY-dy)<=6)pgPickAt(e);return;} // répétition suivant un profil : départ (41)
     if(asmMode==='asm'){if(e.button===0&&Math.hypot(e.clientX-dx,e.clientY-dy)<=6)asmClick(e);return;} // vue d'assemblage (47)
     if(e.button===0&&Math.hypot(e.clientX-dx,e.clientY-dy)<=6&&typeof extProfClick==='function'&&extProfClick(e))return; // zone d'esquisse de l'extrusion (70-extrusion-profils)
@@ -58677,6 +58663,7 @@ function wirePick(){
    el.addEventListener('pointermove',hoverMove);
    el.addEventListener('pointerleave',()=>clearHover());
    el.addEventListener('pointermove',e=>{
+      if(ctrlMesureEv(e))return; // Ctrl : survol de mesure seulement (hoverMove), pas celui de la fonction ouverte
       if(typeof pgPick!=='undefined'&&pgPick){pgPickHover(e);return;} // répétition suivant un profil : départ (41)
       if(!e.buttons&&typeof extProfHover==='function'&&extProfHover(e))return; // zone d'esquisse de l'extrusion
       if(extPickFace||(typeof extUptoAuto==='function'&&extUptoAuto())){renderer.domElement.style.cursor='crosshair';return;}
@@ -58864,6 +58851,8 @@ window.addEventListener('keydown',e=>{
     const b=$('btnExtrude');if(b&&!b.disabled)b.click();
   }
 });
+// Geste de mesure : Ctrl / Cmd seul (Ctrl+Maj reste la sélection d'une plage, Alt l'isolement)
+function ctrlMesureEv(e){return !!(e&&(e.ctrlKey||e.metaKey)&&!e.shiftKey&&!e.altKey);}
 function pick(e){
   const r=renderer.domElement.getBoundingClientRect();
   const ndc=new THREE.Vector2(((e.clientX-r.left)/r.width)*2-1,-((e.clientY-r.top)/r.height)*2+1);
@@ -59412,11 +59401,12 @@ function edgeHoverDraw(P,grp,color){
 function hoverMove(e){
   if(asmMode==='asm')return; // vue d'assemblage : la scène de la pièce n'est pas affichée
   // Pré-sélection lumineuse au survol (comme le viewer), ~15 Hz max, jamais en orbite/clic.
-  if(filMode||filModeX||skEdit||faoChainMode)return;
+  const meas=ctrlMesureEv(e); // Ctrl : les faces et arêtes s'allument aussi quand une fonction est ouverte
+  if(skEdit||(!meas&&(filMode||filModeX||faoChainMode)))return;
   if(e.buttons!==0)return;
   const now=performance.now();if(now-lastHoverT<65)return;lastHoverT=now;
   try{
-    if(triadHoverAt(e)||(typeof faoPoseHoverAt==='function'&&faoPoseHoverAt(e))){if(hoverKey)clearHover();renderer.domElement.style.cursor='pointer';hoverMove._cur=1;return;}
+    if(!meas&&(triadHoverAt(e)||(typeof faoPoseHoverAt==='function'&&faoPoseHoverAt(e)))){if(hoverKey)clearHover();renderer.domElement.style.cursor='pointer';hoverMove._cur=1;return;}
     if(hoverMove._cur){hoverMove._cur=0;renderer.domElement.style.cursor='';}
     const h=pick(e);
     const eh=edgeHoverPick(e,h);
@@ -61823,7 +61813,7 @@ const AIDE_SECTIONS=[
     ['F5','Vue isométrique complète'],['ƒx Paramètres','Paramètres, cotes et valeurs nommées'],
     ['Champs des fonctions','Valeur, expression (L/10) ou « nom = valeur » : extrusion, perçage, congé, dépouille…']]],
   ['3D — sélection et mesure',[
-    ['Clic','Face (ou arête présélectionnée en orange)'],['Ctrl/Cmd + clic','2e face ou arête : mesure (entraxe, distance ⟂, angle)'],
+    ['Clic','Face (ou arête présélectionnée en orange)'],['Ctrl/Cmd + clic','Mesure, partout (CAO, FAO, assemblage, fonction ouverte) sans rien sélectionner : 1re puis 2e face ou arête (entraxe, distance ⟂, angle)'],
     ['Shift + clic','Ø exact'],['Molette','Tourner'],['Ctrl + clic droit','Recentrer'],
     ['Alt + double-clic','Isoler'],['Clic droit','Menu pièce'],['Suppr','Supprime la ou les faces sélectionnées : les voisines se rejoignent (congé → arête vive, trou rebouché)'],['Échap','Effacer la sélection']]],
   ['Couleurs d’esquisse',[
@@ -63482,10 +63472,6 @@ const MF_ICF={
   asmPart:fzBox(-6,-6,-3,3,3,3,'b')+FZ_PLUS,
   asmOcc:'<g opacity=".45">'+fzBox(-7,-1,-4,-2,4,1,'b')+'</g>'+fzBox(-2,-6,-1,3,-1,4,'b')+FZ_PLUS,
   asmInspect:fzBox(-5,-5,-4,4,4,2,'b')+'<circle cx="10" cy="10" r="5.4" fill="#dbeafe" fill-opacity=".55" stroke="#1f2937" stroke-width="1.6"/><path d="M14 14l6 6" stroke="#1f2937" stroke-width="2.8" stroke-linecap="round"/>',
-  // V0.29.0 : mesurer entre pièces (règle graduée en biais, cote verte)
-  asmMeasure:'<g transform="rotate(-35 12 12)"><rect x="2.5" y="9" width="19" height="6" rx="1" fill="#fde68a" stroke="#1f2937" stroke-width="1.2"/>'+
-    '<path d="M5 9v2.6M8 9v1.6M11 9v2.6M14 9v1.6M17 9v2.6M20 9v1.6" stroke="#1f2937" stroke-width="1"/></g>'+
-    '<path d="M4 20.5h16" stroke="#16a34a" stroke-width="1.6"/><path d="M4 18.5v4M20 18.5v4" stroke="#16a34a" stroke-width="1.4"/>',
   asmFromBodies:fzBox(-7,-1,-3,-3,3,1,'b')+fzBox(1,-7,0,5,-3,4,'o')+fzArrow(9,18.5,19,18.5,'#16a34a',2),
   asmStd:'<rect x="10" y="9" width="4" height="10.5" fill="url(#mfFzHm)" stroke="#4b5563" stroke-width=".7"/><path d="M10 11l4 1.3M10 13.4l4 1.3M10 15.8l4 1.3M10 18.2l4 1.3" stroke="#4b5563" stroke-width=".7"/><path d="M10 19.5l2 2.5 2-2.5" fill="#cbd5e1" stroke="#4b5563" stroke-width=".7"/>'+
     fzCyl(12,8.6,5.6,3.6,'mfFzHm','m')+'<path d="M10.3 5 13.7 5 15.4 5.9 13.7 6.9 10.3 6.9 8.6 5.9Z" fill="#374151"/>',
@@ -63991,7 +63977,6 @@ const MF_IC={
   asmOcc:'<path d="M3 9l6-3 6 3v6l-6 3-6-3z"/><path d="M17 10v8M13 14h8"/>',
   asmStd:'<path d="M7 3h10v4l-2 2H9L7 7z"/><path d="M10.5 3v2.5M13.5 3v2.5"/><path d="M9.5 9v12h5V9"/><path d="M9.5 12l5 1.5M9.5 15l5 1.5M9.5 18l5 1.5"/>',
   asmInspect:'<circle cx="10" cy="10" r="6"/><path d="M14.5 14.5L21 21"/><path d="M7 10h6M10 7v6"/>',
-  asmMeasure:'<path d="M3 15L15 3l4 4L7 19z"/><path d="M6.5 11.5l1.8 1.8M9 9l1.2 1.2M11.5 6.5l1.8 1.8"/><path d="M4 21.5h16M4 20v3M20 20v3"/>', // V0.29.0 : mesurer entre pièces (règle + cote)
   asmFromBodies:'<path d="M3 14l5-3 5 3v5l-5 3-5-3z"/><path d="M14 6l4-2 4 2v4l-4 2-4-2z"/><path d="M12 12l3-3M15 9h-2.5M15 9v2.5"/>',
   pPdf:'<path d="M6 3h9l3 3v15H6z"/><text x="12" y="17.6" font-size="6.2" font-family="sans-serif" font-weight="700" text-anchor="middle" fill="currentColor" stroke="none">PDF</text>'
 };
@@ -64037,9 +64022,8 @@ function mfRibbon(){
   grp('Composants',[['asmView','<span class="mfLabM">Assembler</span><span class="mfLabA">Modéliser</span>',()=>asmToggle(),'Modéliser le composant actif ↔ placer ses composants'],
     ['asmPart','Composant',()=>asmCmdNewComp(),'Nouveau composant dans le composant actif (on entre aussitôt dedans)',asmO],
     ['asmOcc','Occurrence',()=>{if(asmMode!=='asm')asmEnter();asmCmdNewOcc();},'Nouvelle occurrence du composant sélectionné',asmO],
-    // V0.29.0 : répétitions de composants (48-assemblage-repetitions), mesures entre pièces (48-assemblage-mesure)
+    // V0.29.0 : répétitions de composants (48-assemblage-repetitions)
     ['pattern','Répétition',()=>asmRibbonPattern(),'Répéter l’occurrence sélectionnée (ou le lot) : linéaire, 2 directions, circulaire, symétrie',asmO],
-    ['asmMeasure','Mesurer',()=>asmRibbonMeasure(),'Mesurer entre pièces : deux faces → distance, entraxe, axe ↔ face, angle (Échap pour finir)',asmO],
     ['asmInspect','Inspecter',()=>asmCmdInspect(),'Interférences entre corps / composants, masses (matière par composant) et centre de gravité',asmO],
     ['asmFromBodies','Depuis corps',()=>asmCmdFromBodies(),'Créer un composant depuis le corps sélectionné (ou depuis chaque corps) : la pièce multicorps devient un assemblage, sans rien remodéliser',asmO],
     ['asmStd','Normalisés',()=>stdDlg(),'Vis ISO / ANSI (CHC, FHC, pas au choix), bouchons gaz six pans creux, goupilles, clavettes ISO : insérés comme composants du composant actif',asmO],

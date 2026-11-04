@@ -1,5 +1,5 @@
 /* ---------- mesures entre pièces d'un assemblage (V0.29.0) ----------
-   Mode Placer, « 📏 Mesurer » : deux clics sur des faces de n'importe quelles pièces affichées
+   Mode Placer, Ctrl+clic (wirePick, 90) sur deux faces de n'importe quelles pièces affichées
    (composant actif, enfants, fantômes) → les mêmes mesures que dans la pièce (measurePair, 90) :
    distance exacte entre faces parallèles, entraxe de deux cylindres, axe ↔ face, angle entre
    faces ; sinon distance entre les points cliqués. Un clic seul sur un cylindre donne son Ø.
@@ -69,26 +69,11 @@ function asmGrpNorm(g){
   const ok=g.every(x=>x&&Number.isInteger(x.start)&&Number.isInteger(x.count)&&Number.isInteger(x.f)&&x.start>=0&&x.count>=0&&x.f>=0);
   return ok?g.map(x=>({start:x.start,count:x.count,f:x.f})):null;
 }
-/* ── commande ── */
-function asmMeasStart(){
-  if(asmMode!=='asm')return;
-  try{if(asmPatEd)asmPatOk();}catch(e){}
-  asmMeasGfxClear();
-  asmMeas={picks:[],txt:''};
-  try{renderProps();}catch(e){}
-  try{faceEl.textContent='Mesurer : cliquez une face, puis une 2ᵉ (même pièce ou une autre) · Échap pour finir.';}catch(e){}
-}
-function asmRibbonMeasure(){
-  // Bouton du bandeau : passe en mode Placer au besoin ; un second clic termine la mesure
-  if(typeof skEdit!=='undefined'&&skEdit){try{faceEl.textContent='Fermez d’abord l’esquisse.';}catch(e){}return;}
-  if(asmMeas&&asmMode==='asm'){asmMeasStop();return;}
-  if(asmMode!=='asm'&&asmEnter()===false)return;
-  asmMeasStart();
-}
+/* ── mesure en cours : existe dès le 1er Ctrl+clic, jusqu'au clic simple ou à Échap ── */
 function asmMeasStop(quiet){
   if(!asmMeas)return;
   asmMeas=null;asmMeasGfxClear();
-  if(!quiet){try{renderProps();}catch(e){}try{faceEl.textContent='Mesure terminée.';}catch(e){}}
+  if(!quiet){try{faceEl.textContent='Mesure effacée.';}catch(e){}}
 }
 function asmMeasGfxClear(){
   // Les tracés de mesure (90 : measureGroup, selGroup) sont rangés dans la scène d'assemblage
@@ -131,10 +116,9 @@ function asmMeasName(m){
   return n.join(' › ')||'pièce';
 }
 function asmMeasClick(e){
-  if(!asmMeas)return false;
   const h=asmMeasHit(e);
-  if(!h){asmMeasGfxClear();asmMeas.picks=[];asmMeas.txt='';
-    try{faceEl.textContent='Aucune face ici — cliquez une face d’une pièce.';}catch(err){}try{renderProps();}catch(err){}return true;}
+  if(!h){try{faceEl.textContent='Aucune face ici — Ctrl+clic sur une face d’une pièce.';}catch(err){}return true;} // la 1ʳᵉ face reste choisie
+  if(!asmMeas)asmMeas={picks:[]};
   const P={mesh:h.object,faceIndex:h.faceIndex,point:h.point.clone(),geom:asmMeasGeom(h.object,h.faceIndex),name:asmMeasName(h.object)};
   const kind=G=>G?(G.kind==='cyl'?' · CYLINDRE Ø'+(G.r*2).toFixed(2):' · PLAN'):'';
   let txt='';
@@ -145,7 +129,7 @@ function asmMeasClick(e){
     if(P.geom&&P.geom.kind==='cyl'){
       try{drawAxis(P.geom.center,P.geom.axis,axisLen());tagAt('Ø '+(P.geom.r*2).toFixed(2),P.point.clone());}catch(err){}
     }
-    txt='Face 1 : '+P.name+kind(P.geom)+'\nCliquez une 2ᵉ face (même pièce ou une autre).';
+    txt='Face 1 : '+P.name+kind(P.geom)+'\nCtrl+clic une 2ᵉ face (même pièce ou une autre).';
   }else{
     const A=asmMeas.picks[0];asmMeas.picks.push(P);
     try{highlightTris(P.mesh,faceTrisFor(P.mesh,P.faceIndex),0xff9f0a,0.55);}catch(err){}
@@ -157,18 +141,6 @@ function asmMeasClick(e){
     txt='Face 1 : '+A.name+kind(A.geom)+'\nFace 2 : '+P.name+kind(P.geom)+'\n'+res;
   }
   asmMeasGfxAdopt();
-  asmMeas.txt=txt;
   try{faceEl.textContent=txt;}catch(err){}
-  try{renderProps();}catch(err){}
   return true;
-}
-function asmMeasProps(p){
-  const mk=(tag,cls,txt)=>{const d=document.createElement(tag);if(cls)d.className=cls;if(txt!=null)d.textContent=txt;return d;};
-  p.appendChild(mk('div','pnl-h','📏 Mesurer'));
-  p.appendChild(mk('div','pnl-note','Clic sur une face, puis sur une 2ᵉ : faces parallèles, entraxe, axe ↔ face, angle — sinon distance des points. Toutes les pièces affichées, à toute profondeur.'));
-  if(asmMeas&&asmMeas.txt){const r=mk('div','pnl-note',asmMeas.txt);r.style.whiteSpace='pre-line';r.style.fontWeight='600';p.appendChild(r);}
-  const b=mk('div','pnl-btns');
-  const nw=mk('button',null,'↺ Nouvelle mesure');nw.onclick=()=>{asmMeasGfxClear();asmMeas.picks=[];asmMeas.txt='';renderProps();};b.appendChild(nw);
-  const cl=mk('button','primary','Terminer');cl.title='Échap';cl.onclick=()=>asmMeasStop();b.appendChild(cl);
-  p.appendChild(b);
 }

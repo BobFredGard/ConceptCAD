@@ -8,7 +8,7 @@ sont sorties le 2026-09-30j.
 Code dans `src/` · livrable `fusion_mvp.html` (généré par `build.js`) · architecture et
 garde-fous en tête de `src/00-entete-et-outils.js`.
 
-**565 versions**, de `2026-09-28b` à `V0.50.0` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
+**566 versions**, de `2026-09-28b` à `V0.51.0` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
 comme dans le fichier d'origine.
 
 ---
@@ -6578,3 +6578,12 @@ Demandes : « de 235 à 250, le solide se met en vrac alors que de 5 en 5 il gar
 - **Répétitions** : une copie garde les noms de ses références d'une régénération à l'autre, tant que la source désigne le même élément. Cavité Test, largeur 120 : les congés copiés par la Symétrie double sautaient de l'arête de 4,8 mm à sa voisine de 18,13 mm.
 - **Reste à faire** : les cotes de mise en plan suivent encore la géométrie de la vue, et l'intersection d'esquisse avec un corps entier choisit sa courbe par position. Banc de persistance (295 réglages, un saut comparé à des petits pas) : 238 sans écart au lieu de 190, 22 avec une alerte seule, 8 avec de très petits écarts, 24 qui changent encore de forme, 3 interrompus.
 - **Tests** : `test_noms_socle`, `test_noms_partout`, `test_noms_fao`, `test_noms_reouverture` (aussi en suite rapide), `test_noms_barquette`, `test_noms_repetition` ; banc `tests/banc_persistance.cjs` (état des lieux, hors CI).
+
+## V0.51.0 - Mesure : Ctrl enfoncé, sans bouton et sans rien activer
+
+Demande : retrouver une mesure souple, sans bouton à choisir et sans fonction qui s’active quand on sélectionne une face.
+
+- **Ctrl enfoncé = mesure, partout** (`wirePick`) : le curseur devient une croix dès l’appui, et Ctrl+clic mesure en priorité sur tout le reste, en CAO, en FAO et avec une fonction ouverte (congé, dépouille, saisie de face…), qui reste ouverte et ne reçoit rien. Le clic sans Ctrl ne change pas. Ctrl+Maj reste la sélection d’une plage ; l’esquisse garde son propre Ctrl.
+- **Assemblage** : bouton Mesurer retiré du bandeau et des panneaux, avec son panneau dédié. Ctrl+clic mesure entre les pièces, le résultat s’affiche dans la barre de message, un clic simple ou Échap l’efface. Conséquence : dans la vue 3D, Ctrl+clic n’ajoute plus de pièce à la sélection (reste Ctrl+clic dans l’arbre, et Maj+clic pour une plage).
+- **Mesure fausse sur plusieurs corps** (`occCleanup`) : le solide d’un corps fait d’une seule extrusion était aussi rangé parmi les solides intermédiaires, donc effacé après la reconstruction alors qu’il restait affiché. La mesure retombait sur la distance entre les points cliqués (46,10 au lieu de 30,00 sur l’essai), et les autres lectures de face de ce corps échouaient. `CACHE_VER` ne change pas : aucun parcours à régénérer.
+- **Test** : parcours navigateur « mesure : Ctrl enfoncé » (CAO, fonction ouverte, FAO, assemblage).
