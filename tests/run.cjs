@@ -88,6 +88,7 @@ const SUITES = [
   "test_mep_chaine",
   "test_mep_angle_texte",
   "test_mep_cotes_suivi",
+  "test_mep_percage_coupe",
   "test_esquisse_cotes_pose",
   "test_esquisse_arc_fixe_ddl",
   "test_esquisse_spline",

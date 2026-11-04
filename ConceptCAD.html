@@ -376,7 +376,7 @@ input[type=range]{accent-color:var(--primary);width:100%}
  * peut changer sans rien casser. CACHE_VER (parcours FAO) reste indépendant.
  */
 
-const APP_VER='V0.46.2';
+const APP_VER='V0.46.3';
 try{console.log('[ConceptCAD] version '+APP_VER);}catch(e){}
 try{var mfSv=document.getElementById('mfSplashVer');if(mfSv)mfSv.textContent=APP_VER;}catch(e){} // écran de démarrage
 
@@ -65730,8 +65730,8 @@ function filmFrame(){
     views.forEach(v=>{
       let g=null;try{g=mepGeoOf(v);}catch(e){return;}
       const byF=new Map();
+      const span=x=>x.t==='C'?2*Math.PI:Math.abs(x.a1-x.a0); // perçage coupé : l'arc le plus long représente le trou
       (g&&g.els||[]).forEach((e,i)=>{
-        if(!e||e.t!=='C')return;
         let m=null;try{m=mepHoleAt(sh,v.id,e,i);}catch(err){}
         if(!m)return;
         const fam=mepHoleFam(m.f);if(done.has(fam))return;
@@ -65739,15 +65739,17 @@ function filmFrame(){
         let F=byF.get(fam);if(!F){F={f:m.f,fam,pts:new Map()};byF.set(fam,F);}
         const cur=F.pts.get(key),vis=e.k!=='hid';
         // par trou : un cercle vu de préférence, le plus grand (lamage / fraisure englobe)
-        if(!cur||(vis&&!cur.vis)||(vis===cur.vis&&e.r>cur.e.r))F.pts.set(key,{e,i,vis});
+        if(!cur||(vis&&!cur.vis)||(vis===cur.vis&&(e.r>cur.e.r+1e-6||(Math.abs(e.r-cur.e.r)<=1e-6&&span(e)>span(cur.e)))))F.pts.set(key,{e,i,vis});
       });
       byF.forEach(F=>{
         const list=[...F.pts.values()];
-        // étiquette sur le trou le plus en haut à droite de la vue
-        list.sort((p,q)=>(q.e.cx-q.e.cy)-(p.e.cx-p.e.cy));
+        // étiquette sur le trou le plus en haut à droite de la vue, un trou entier de préférence
+        list.sort((p,q)=>(q.e.t==='C')-(p.e.t==='C')||(q.e.cx-q.e.cy)-(p.e.cx-p.e.cy));
         const t=list[0],e=t.e,k=e.r+9/Math.max(1e-9,v.scale||1);
+        // en haut à droite, sauf si cette partie du trou a été enlevée : côté matière restante
+        const a0=-Math.PI/4,ang=mepHoleArcAng(v,e,a0)===a0?a0:(e.a0+e.a1)/2;
         add.push({id:mepUid('d'),kind:'hole',vid:v.id,vid2:null,a:{x:e.cx,y:e.cy,hint:{t:'ctr',i:t.i}},
-          b:{x:e.cx+k*0.75,y:e.cy-k*0.75},off:0,holeFid:F.f.id,holeText:mepHoleFeatureText(F.f),holeN:list.length,tol:null,ref:false});
+          b:{x:e.cx+k*Math.SQRT2*0.75*Math.cos(ang),y:e.cy+k*Math.SQRT2*0.75*Math.sin(ang)},off:0,holeFid:F.f.id,holeText:mepHoleFeatureText(F.f),holeN:list.length,tol:null,ref:false});
         done.add(F.fam);
       });
     });
@@ -68623,8 +68625,9 @@ function filmFrame(){
     return (f&&f.type==='hole'&&f.kind==='ream'&&f.reamTol)?{m:'cls',cls:String(f.reamTol)}:null;
   }
   function mepHoleTol(d){return d.tol||(d.tolManual?null:mepHoleAutoTol(d));}
+  // e = cercle, ou arc : un perçage coupé par une autre fonction n'est plus vu qu'en arcs
   function mepHoleAt(sh,vid,e,i){
-    if(!e||e.t!=='C')return null;
+    if(!e||(e.t!=='C'&&e.t!=='A'))return null;
     const v=mepView(sh,vid);if(!v)return null;
     if(typeof holeAxis!=='function'||typeof holeNorm!=='function'||typeof doc==='undefined')return null;
     const b=mepBasisOf(v),u=b.u,vv=b.v,dir=b.dir;
@@ -68677,7 +68680,6 @@ function filmFrame(){
     if(C.has(fam))return C.get(fam);
     const pts=new Set();
     g.els.forEach((e,i)=>{
-      if(!e||e.t!=='C')return;
       let m=null;try{m=mepHoleAt(sh,v.id,e,i);}catch(err){}
       if(m&&mepHoleFam(m.f)===fam)pts.add([m.P.x,m.P.y,m.P.z].map(q=>(+q).toFixed(3)).join(','));
     });
@@ -68858,7 +68860,6 @@ function filmFrame(){
   function mepAxisFaceHoles(sh,v){
     const g=mepGeoOf(v),b=mepBasisOf(v),out=[],seen=new Set();
     g.els.forEach((e,i)=>{
-      if(e.t!=='C')return;
       const m=mepHoleAt(sh,v.id,e,i);if(!m)return;
       const key=m.f.id+'|'+m.P.id;
       if(seen.has(key))return;
@@ -69383,7 +69384,7 @@ function filmFrame(){
   }
   function mepAxisHoleAt(sh,sx,sy){
     const hit=mepHitViewEnt(sh,sx,sy);
-    if(hit&&hit.e&&hit.e.t==='C'){
+    if(hit&&hit.e){
       const m=mepHoleAt(sh,hit.vid,hit.e,hit.i);
       if(m)return{vid:hit.vid,fid:m.f.id,pid:m.P.id};
     }
@@ -69610,11 +69611,22 @@ function filmFrame(){
   const MEP_TOL_STACK=/\u0001\u0003(\(?)([^\u0004]*)\u0004([^\u0002]*)\u0002/;
   // texte seul (panneau, export texte) : pile écrite « (+0.015 / 0) »
   const mepTolMarks=s=>String(s||'').replace(new RegExp(MEP_TOL_STACK.source,'g'),(m,p,a,b)=>p?'('+a+' / '+b+')':a+' / '+b).replace(/[\u0001\u0002]/g,'');
-  function mepHoleCallout(cx,cy,rr,px,py,txt){
+  // perçage coupé (arcs) : angle ramené sur la matière restante, pour que la flèche ne vise pas le vide
+  function mepHoleArcAng(v,e,ang){
+    if(!e||e.t!=='A')return ang;
+    const same=(mepGeoOf(v).els||[]).filter(o=>o&&(o.t==='C'||o.t==='A')&&Math.hypot(o.cx-e.cx,o.cy-e.cy)<0.05&&Math.abs(o.r-e.r)<0.05);
+    if(same.some(o=>o.t==='C'||mepArcIn(o,ang)))return ang;
+    const gap=a=>{const d=Math.abs(a-ang)%(2*Math.PI);return Math.min(d,2*Math.PI-d);};
+    let best=ang,bd=Infinity;
+    same.forEach(o=>[o.a0,o.a1].forEach(a=>{const d=gap(a);if(d<bd){bd=d;best=a;}}));
+    return best;
+  }
+  function mepHoleCallout(cx,cy,rr,px,py,txt,fixAng){
     let ux=px-cx,uy=py-cy,ul=Math.hypot(ux,uy);
     if(ul<1e-6){ux=1;uy=0;ul=1;}
     ux/=ul;uy/=ul;
-    const ang=Math.atan2(uy,ux);
+    let ang=Math.atan2(uy,ux);
+    if(fixAng)ang=fixAng(ang);
     const ex=cx+rr*Math.cos(ang),ey=cy+rr*Math.sin(ang);
     const lines=String(txt||'').split('\n');
     // interligne, souligné et largeur suivent la hauteur d'écriture des cotes
@@ -69804,7 +69816,7 @@ function filmFrame(){
         const v=w.v1,cS=mepToSheet(v,e.cx,e.cy);
         rr=e.r*v.scale;cx=cS.x;cy=cS.y;
       }
-      const g=mepHoleCallout(cx,cy,rr,w.b.x,w.b.y,txt);
+      const g=mepHoleCallout(cx,cy,rr,w.b.x,w.b.y,txt,a=>mepHoleArcAng(w.v1,e,a));
       draw('line',Object.assign({x1:g.tx,y1:g.lineY,x2:g.ex,y2:g.ey,'marker-end':AR},L));
       const t=draw('text',Object.assign({x:g.tx,y:g.y0,'text-anchor':g.anchor},T));
       let twM=0;
@@ -70481,7 +70493,7 @@ function filmFrame(){
     }
     if(mepSt.tool==='hole'&&mepSt.entSel&&mepSt.entSel.length===1){
       const sh=mepSheet(),s=mepSt.entSel[0],ref=mepEntRef(sh,s);
-      if(ref&&ref.e.t==='C'){
+      if(ref&&(ref.e.t==='C'||ref.e.t==='A')){
         const d=mepHoleDraft(sh,ref.v.id,ref.e,ref.i);
         if(d){
           d.__sel=false;
@@ -70490,7 +70502,7 @@ function filmFrame(){
           return;
         }
       }
-      mepStatus('Perçage : ce cercle ne correspond pas à une fonction Perçage.');
+      mepStatus('Perçage : ce tracé ne correspond pas à une fonction Perçage.');
       mepRender();
       return;
     }
@@ -70959,7 +70971,7 @@ function filmFrame(){
       const hit=mepHitViewEnt(sh,P.x,P.y);
       const d=hit?mepHoleDraft(sh,hit.vid,hit.e,hit.i):null;
       if(!d){
-        mepStatus('Perçage : cliquez un cercle projeté correspondant à une fonction Perçage.');
+        mepStatus('Perçage : cliquez un cercle ou un arc projeté correspondant à une fonction Perçage.');
         return;
       }
       mepSt.selDim=null;
@@ -74212,7 +74224,7 @@ function filmFrame(){
       axisPick:()=>Array.isArray(mepSt.axisPick)?mepSt.axisPick.slice():[],
       setAxisMode:m=>{mepSetAxisMode(m);},
       holeText:mepHoleFeatureText,holeTol:d=>mepHoleTol(d),
-      holeCallout:mepHoleCallout,
+      holeCallout:mepHoleCallout,holeAt:mepHoleAt,holeDraft:mepHoleDraft,autoHoles:mepAutoHoles,
       fmt:mepFmtNum,
       geo:view=>mepGeoOf(view),geoClear:()=>mepGeoCache.clear(),locCurve:p=>mepLocCurve(p),clipSegPoly:(a,b,c,d,P,k)=>mepClipSegPoly(a,b,c,d,P,k),dxfView:(txt,name)=>{const r=mepDxfParse(txt);const v=mepAddView({kind:'dxf',vk:'',label:'',dxf:mepDxfData(r,name||'t',1),mode:'wire'});v._dims=mepDxfDims(mepSheet(),v,r);return v;},dimMeasure:d=>mepDimMeasure(mepSheet(),d),ptRefresh:(v,q,pr)=>mepPtRefresh(mepSheet(),v,q,pr),dimPts:d=>mepDimPtsRefresh(mepSheet(),d),ordClick:(P,ax)=>mepOrdClick(mepSheet(),P,ax),ordEnd:()=>{mepSt.ord=null;},ordPick:(d,i)=>{mepSt.selDim=d?d.id:null;mepSt.ordPt=d?{id:d.id,i}:null;},selDim:id=>{mepSt.selDim=id;},holeTolText:(t,tol)=>mepTolMarks(mepHoleTolText(t,tol)),dimText:d=>mepDimText(d,mepDimMeasure(mepSheet(),d)),ordPtAt:(d,P)=>mepOrdPtAt(mepSheet(),d,P),ordDelPt:(d,i)=>mepOrdDelPt(mepSheet(),d,i),ordValue:(d,p)=>mepOrdValue(d,p),drawDim:(mk,d)=>mepDrawDim(mk,d,mepSheet()),dimPressDbl:(P,ev)=>mepDimPressDbl(mepSheet(),P,ev||{}),dimAlignTo:(ref,ids)=>mepDimAlignTo(mepSheet(),ref,ids),perspCam:v=>mepPerspCam(v),threadEls:v=>mepThreadEls(v),oblShear:(sh,v)=>mepOblShear(sh,v),
       imgRect:(view,img)=>mepImg3dRect(view,img),

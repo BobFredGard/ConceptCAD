@@ -35,7 +35,7 @@
     }
     if(mepSt.tool==='hole'&&mepSt.entSel&&mepSt.entSel.length===1){
       const sh=mepSheet(),s=mepSt.entSel[0],ref=mepEntRef(sh,s);
-      if(ref&&ref.e.t==='C'){
+      if(ref&&(ref.e.t==='C'||ref.e.t==='A')){
         const d=mepHoleDraft(sh,ref.v.id,ref.e,ref.i);
         if(d){
           d.__sel=false;
@@ -44,7 +44,7 @@
           return;
         }
       }
-      mepStatus('Perçage : ce cercle ne correspond pas à une fonction Perçage.');
+      mepStatus('Perçage : ce tracé ne correspond pas à une fonction Perçage.');
       mepRender();
       return;
     }
@@ -513,7 +513,7 @@
       const hit=mepHitViewEnt(sh,P.x,P.y);
       const d=hit?mepHoleDraft(sh,hit.vid,hit.e,hit.i):null;
       if(!d){
-        mepStatus('Perçage : cliquez un cercle projeté correspondant à une fonction Perçage.');
+        mepStatus('Perçage : cliquez un cercle ou un arc projeté correspondant à une fonction Perçage.');
         return;
       }
       mepSt.selDim=null;

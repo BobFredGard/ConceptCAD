@@ -258,8 +258,8 @@
     views.forEach(v=>{
       let g=null;try{g=mepGeoOf(v);}catch(e){return;}
       const byF=new Map();
+      const span=x=>x.t==='C'?2*Math.PI:Math.abs(x.a1-x.a0); // perçage coupé : l'arc le plus long représente le trou
       (g&&g.els||[]).forEach((e,i)=>{
-        if(!e||e.t!=='C')return;
         let m=null;try{m=mepHoleAt(sh,v.id,e,i);}catch(err){}
         if(!m)return;
         const fam=mepHoleFam(m.f);if(done.has(fam))return;
@@ -267,15 +267,17 @@
         let F=byF.get(fam);if(!F){F={f:m.f,fam,pts:new Map()};byF.set(fam,F);}
         const cur=F.pts.get(key),vis=e.k!=='hid';
         // par trou : un cercle vu de préférence, le plus grand (lamage / fraisure englobe)
-        if(!cur||(vis&&!cur.vis)||(vis===cur.vis&&e.r>cur.e.r))F.pts.set(key,{e,i,vis});
+        if(!cur||(vis&&!cur.vis)||(vis===cur.vis&&(e.r>cur.e.r+1e-6||(Math.abs(e.r-cur.e.r)<=1e-6&&span(e)>span(cur.e)))))F.pts.set(key,{e,i,vis});
       });
       byF.forEach(F=>{
         const list=[...F.pts.values()];
-        // étiquette sur le trou le plus en haut à droite de la vue
-        list.sort((p,q)=>(q.e.cx-q.e.cy)-(p.e.cx-p.e.cy));
+        // étiquette sur le trou le plus en haut à droite de la vue, un trou entier de préférence
+        list.sort((p,q)=>(q.e.t==='C')-(p.e.t==='C')||(q.e.cx-q.e.cy)-(p.e.cx-p.e.cy));
         const t=list[0],e=t.e,k=e.r+9/Math.max(1e-9,v.scale||1);
+        // en haut à droite, sauf si cette partie du trou a été enlevée : côté matière restante
+        const a0=-Math.PI/4,ang=mepHoleArcAng(v,e,a0)===a0?a0:(e.a0+e.a1)/2;
         add.push({id:mepUid('d'),kind:'hole',vid:v.id,vid2:null,a:{x:e.cx,y:e.cy,hint:{t:'ctr',i:t.i}},
-          b:{x:e.cx+k*0.75,y:e.cy-k*0.75},off:0,holeFid:F.f.id,holeText:mepHoleFeatureText(F.f),holeN:list.length,tol:null,ref:false});
+          b:{x:e.cx+k*Math.SQRT2*0.75*Math.cos(ang),y:e.cy+k*Math.SQRT2*0.75*Math.sin(ang)},off:0,holeFid:F.f.id,holeText:mepHoleFeatureText(F.f),holeN:list.length,tol:null,ref:false});
         done.add(F.fam);
       });
     });

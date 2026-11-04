@@ -8,7 +8,7 @@ sont sorties le 2026-09-30j.
 Code dans `src/` · livrable `fusion_mvp.html` (généré par `build.js`) · architecture et
 garde-fous en tête de `src/00-entete-et-outils.js`.
 
-**551 versions**, de `2026-09-28b` à `V0.46.2` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
+**552 versions**, de `2026-09-28b` à `V0.46.3` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
 comme dans le fichier d'origine.
 
 ---
@@ -6475,3 +6475,10 @@ Demande : « C'est bizarre que le fichier soit vide. Il faut mettre une action e
 - **Copie de secours** (`mffOpenDamaged`) : fichier vide, illisible ou compression abîmée → la copie lisible la plus récente (`.bak` à côté, ou copie du navigateur) est proposée ; ouverte, le document est marqué modifié et Ctrl+S la remet dans le fichier. Sans copie : message clair, modèle intact.
 - **Exemples/** : `tests/test_exemples_sains.cjs` (suites rapide et complète) refuse tout projet ou STEP vide, tronqué ou illisible (gzip décompressé et relu, pointeur LFS accepté) ; au cpt, lancé aussi sur le dépôt principal (`node tests/test_exemples_sains.cjs D:/ConceptCAD/Exemples`).
 - **Tests** : `tests/test_enregistrement_sur.cjs` 16-19 (contenu vide : modèle gardé ; fichier vide : copie proposée, Annuler garde le modèle ; « Ouvrir la copie » ouvre la version d'avant sans réécrire le disque ; sans copie : message) ; `npm run ci:full`.
+
+## V0.46.3 - Mise en plan : un perçage coupé par une autre fonction reste reconnu par la cotation de perçage
+Demande : « si l'on coupe cet alésage par une extrusion d'un rectangle, l'alésage n'est plus reconnu par la cotation de perçage ».
+- **Cause** : vu de bout, le trou coupé n'est plus un cercle mais des arcs ; `mepHoleAt` et ses appelants n'acceptaient que les cercles complets.
+- **Reconnaissance** (`mepHoleAt`, `src/98-mep-70-cotes.js`) : arcs acceptés, avec les mêmes contrôles de centre et de rayon ; outil Perçage et « Coter les perçages » (`mepAutoHoles`) en profitent, le compte « n× » inclut les trous coupés. Même levée pour les traits d'axe (`mepAxisHoleAt`, `mepAxisFaceHoles`).
+- **Flèche** (`mepHoleArcAng`) : ramenée sur la matière restante si l'étiquette est du côté enlevé ; pose automatique sur un trou entier de préférence, sinon côté matière.
+- **Tests** : `tests/test_mep_percage_coupe.cjs` (moitié enlevée, rainure à travers, poche sur le dessus, deux trous dont un coupé, perçage simple, arc sans perçage, cote posée avant la coupe, étiquette glissée) ; essai dans l'application ; `npm run ci:full`.

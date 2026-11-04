@@ -278,8 +278,9 @@
     return (f&&f.type==='hole'&&f.kind==='ream'&&f.reamTol)?{m:'cls',cls:String(f.reamTol)}:null;
   }
   function mepHoleTol(d){return d.tol||(d.tolManual?null:mepHoleAutoTol(d));}
+  // e = cercle, ou arc : un perçage coupé par une autre fonction n'est plus vu qu'en arcs
   function mepHoleAt(sh,vid,e,i){
-    if(!e||e.t!=='C')return null;
+    if(!e||(e.t!=='C'&&e.t!=='A'))return null;
     const v=mepView(sh,vid);if(!v)return null;
     if(typeof holeAxis!=='function'||typeof holeNorm!=='function'||typeof doc==='undefined')return null;
     const b=mepBasisOf(v),u=b.u,vv=b.v,dir=b.dir;
@@ -332,7 +333,6 @@
     if(C.has(fam))return C.get(fam);
     const pts=new Set();
     g.els.forEach((e,i)=>{
-      if(!e||e.t!=='C')return;
       let m=null;try{m=mepHoleAt(sh,v.id,e,i);}catch(err){}
       if(m&&mepHoleFam(m.f)===fam)pts.add([m.P.x,m.P.y,m.P.z].map(q=>(+q).toFixed(3)).join(','));
     });
@@ -513,7 +513,6 @@
   function mepAxisFaceHoles(sh,v){
     const g=mepGeoOf(v),b=mepBasisOf(v),out=[],seen=new Set();
     g.els.forEach((e,i)=>{
-      if(e.t!=='C')return;
       const m=mepHoleAt(sh,v.id,e,i);if(!m)return;
       const key=m.f.id+'|'+m.P.id;
       if(seen.has(key))return;
@@ -1038,7 +1037,7 @@
   }
   function mepAxisHoleAt(sh,sx,sy){
     const hit=mepHitViewEnt(sh,sx,sy);
-    if(hit&&hit.e&&hit.e.t==='C'){
+    if(hit&&hit.e){
       const m=mepHoleAt(sh,hit.vid,hit.e,hit.i);
       if(m)return{vid:hit.vid,fid:m.f.id,pid:m.P.id};
     }
@@ -1265,11 +1264,22 @@
   const MEP_TOL_STACK=/\u0001\u0003(\(?)([^\u0004]*)\u0004([^\u0002]*)\u0002/;
   // texte seul (panneau, export texte) : pile écrite « (+0.015 / 0) »
   const mepTolMarks=s=>String(s||'').replace(new RegExp(MEP_TOL_STACK.source,'g'),(m,p,a,b)=>p?'('+a+' / '+b+')':a+' / '+b).replace(/[\u0001\u0002]/g,'');
-  function mepHoleCallout(cx,cy,rr,px,py,txt){
+  // perçage coupé (arcs) : angle ramené sur la matière restante, pour que la flèche ne vise pas le vide
+  function mepHoleArcAng(v,e,ang){
+    if(!e||e.t!=='A')return ang;
+    const same=(mepGeoOf(v).els||[]).filter(o=>o&&(o.t==='C'||o.t==='A')&&Math.hypot(o.cx-e.cx,o.cy-e.cy)<0.05&&Math.abs(o.r-e.r)<0.05);
+    if(same.some(o=>o.t==='C'||mepArcIn(o,ang)))return ang;
+    const gap=a=>{const d=Math.abs(a-ang)%(2*Math.PI);return Math.min(d,2*Math.PI-d);};
+    let best=ang,bd=Infinity;
+    same.forEach(o=>[o.a0,o.a1].forEach(a=>{const d=gap(a);if(d<bd){bd=d;best=a;}}));
+    return best;
+  }
+  function mepHoleCallout(cx,cy,rr,px,py,txt,fixAng){
     let ux=px-cx,uy=py-cy,ul=Math.hypot(ux,uy);
     if(ul<1e-6){ux=1;uy=0;ul=1;}
     ux/=ul;uy/=ul;
-    const ang=Math.atan2(uy,ux);
+    let ang=Math.atan2(uy,ux);
+    if(fixAng)ang=fixAng(ang);
     const ex=cx+rr*Math.cos(ang),ey=cy+rr*Math.sin(ang);
     const lines=String(txt||'').split('\n');
     // interligne, souligné et largeur suivent la hauteur d'écriture des cotes
@@ -1459,7 +1469,7 @@
         const v=w.v1,cS=mepToSheet(v,e.cx,e.cy);
         rr=e.r*v.scale;cx=cS.x;cy=cS.y;
       }
-      const g=mepHoleCallout(cx,cy,rr,w.b.x,w.b.y,txt);
+      const g=mepHoleCallout(cx,cy,rr,w.b.x,w.b.y,txt,a=>mepHoleArcAng(w.v1,e,a));
       draw('line',Object.assign({x1:g.tx,y1:g.lineY,x2:g.ex,y2:g.ey,'marker-end':AR},L));
       const t=draw('text',Object.assign({x:g.tx,y:g.y0,'text-anchor':g.anchor},T));
       let twM=0;
