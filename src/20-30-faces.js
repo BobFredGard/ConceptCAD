@@ -101,6 +101,13 @@ function occFindFace(shape,ref){
   //   le centre a bougé de loin.
   // Passe 2 (proximité) : comportement historique, couperet 2,5 mm.
   if(!shape||!ref)return null;
+  // Le nom d'abord (20-05) : la position n'est que le repli, et le moyen de nommer une référence neuve
+  const parNom=nomsRefFace(shape,ref);if(parNom)return parNom;
+  const g=occFindFace0(shape,ref);
+  nomsRefNote(shape,ref,g);
+  return g;
+}
+function occFindFace0(shape,ref){
   if(!ref.anchor){try{const a0=xAnchorFor(ref.pos);if(a0)ref.anchor=a0;}catch(e){}}
   const SH=occt.TopAbs_ShapeEnum.TopAbs_SHAPE;
   const ex=new occt.TopExp_Explorer_2(shape,occt.TopAbs_ShapeEnum.TopAbs_FACE,SH);
@@ -364,6 +371,7 @@ function occMoveFaceOnce(shape,face,dist,warn){
   const sd=occSurfDesc(face);
   const bin=[],tmp=[];
   const all=occSubShapes(shape,'TopAbs_FACE');tmp.push(...all);
+  const nomFace=nomsFaceDe(shape,face); // la face déplacée garde son nom : la nouvelle naît de l'outil
   try{
     let tool,nd;
     const group=[face];
@@ -447,6 +455,7 @@ function occMoveFaceOnce(shape,face,dist,warn){
       else if(u)try{u.delete();}catch(e){}
     }catch(e){}
     if(!res||res.IsNull())throw new Error('opération de déplacement impossible');
+    nomsFaceSurSurface(res,nomFace,nd);
     // Reprise des limites : faces du résultat portées par une surface latérale de l'outil
     // qui ne prolonge aucune voisine d'origine (ou par la surface d'origine de la face :
     // un reste exposé est un débord de l'outil), et contenues dans l'outil.
@@ -461,7 +470,9 @@ function occMoveFaceOnce(shape,face,dist,warn){
     const extra=resF.filter(f=>sides.some(x=>occSameSurf(x,occSurfDesc(f)))&&inTool(occBoxMinMax(f)));
     if(!extra.length)return res;
     try{
+      const snap=nomsInstantane(res);
       const fx=occDeleteFacesOnce(res,extra);
+      nomsCompleter(fx,null,snap);
       try{res.delete();}catch(e2){}
       return fx;
     }catch(e2){
@@ -478,11 +489,11 @@ function occMoveFaceOnce(shape,face,dist,warn){
             try{
               // copie sans dupliquer la géométrie : une surface partagée par la voisine et le
               // prolongement de son coin permet à l'unification de les recoller
-              const u=occUnify(new occt.BRepBuilderAPI_Copy_2(o2,false,false).Shape());
+              const u=occUnify(nomsPartage(o2,new occt.BRepBuilderAPI_Copy_2(o2,false,false).Shape()));
               if(u&&!u.IsNull()&&(occCoqueValide(u)||!occCoqueValide(o2))){try{o2.delete();}catch(e){}r2=u;}
               else if(u)try{u.delete();}catch(e){}
             }catch(e){}
-            if(r2&&!r2.IsNull()&&occCoqueValide(r2)){try{res.delete();}catch(e){}return r2;}
+            if(r2&&!r2.IsNull()&&occCoqueValide(r2)){nomsFaceSurSurface(r2,nomFace,nd);try{res.delete();}catch(e){}return r2;}
             try{if(r2)r2.delete();}catch(e){}
           }catch(e3){}
           finally{try{dt.delete();}catch(e){}}
@@ -868,8 +879,14 @@ function occFaceRefAny(f){
 }
 function occFindFaceAny(shape,ref){
   if(!shape||!ref)return null;
+  const parNom=nomsRefFace(shape,ref);if(parNom)return parNom;
+  const g=occFindFaceAny0(shape,ref);
+  nomsRefNote(shape,ref,g);
+  return g;
+}
+function occFindFaceAny0(shape,ref){
   if(ref.n){
-    const h=occFindFace(shape,ref);
+    const h=occFindFace0(shape,ref);
     if(h||!ref.anchor)return h;
     // Repli : une extrusion amont a changé de hauteur, la face visée a donc changé de
     // dimensions et occFindFace la refuse. L'ancre d'esquisse suffit alors : même type de

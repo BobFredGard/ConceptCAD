@@ -490,13 +490,24 @@ function cgShapeFor(ctx){
 function cgEdgesOf(shape,ctx){
   // Arêtes (données pures : mid, pts, len) — une seule énumération par solide et par passe
   if(ctx){ctx.edges=ctx.edges||new Map();if(ctx.edges.has(shape))return ctx.edges.get(shape);}
-  let L=[];try{L=occListEdges(shape);}catch(e){L=[];}
+  let L=[];try{L=nomsSurAretes(shape,occListEdges(shape));}catch(e){L=[];}
   if(ctx)ctx.edges.set(shape,L);
   return L;
 }
 function cgFindEdge(edges,se){
   // Même nommage persistant que les congés exacts : ancre d'esquisse (suit les éditions),
   // départagée par la dernière position connue ; sinon la plus proche de même longueur.
+  // Le NOM (20-05) passe avant tout, comme pour les congés.
+  if(se.nom){
+    const iN=nomsTrouveArete(edges,se.nom,se.pos);
+    if(iN>=0){if(edges[iN].nom)se.nom=edges[iN].nom;return iN;}
+    NOMS_PERTES.push('l’arête d’origine n’existe plus près de '+nomsPos(se.pos)+' — recherche par position');
+  }
+  const i=cgFindEdge0(edges,se);
+  if(i>=0&&!se.nom&&edges[i].nom)se.nom=edges[i].nom;
+  return i;
+}
+function cgFindEdge0(edges,se){
   if(!se.anchor){try{const a=xAnchorFor(se.pos);if(a)se.anchor=a;}catch(e){}}
   const dist=i=>{const m=edges[i].mid;return Math.hypot(m[0]-se.pos[0],m[1]-se.pos[1],m[2]-se.pos[2]);};
   let anc=[];try{anc=se.anchor?xAnchorMatch(se,edges):[];}catch(e){anc=[];}

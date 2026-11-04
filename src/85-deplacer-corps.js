@@ -54,6 +54,7 @@ function occApplyBodyMove(result,f){
   try{
     t=asmTrsf(F);b=new occt.BRepBuilderAPI_Transform_2(result,t,true);
     const s=b.Shape();if(!s||s.IsNull())throw new Error('transformation vide');
+    nomsMemeRangs(result,s);
     try{result.delete();}catch(e){}
     return {shape:s,warnings:[]};
   }catch(e){

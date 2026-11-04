@@ -133,7 +133,8 @@ function delWkSource(){
   const fns=[occBinPush,occDispose,occUnifyKeepEdges,occUnify,occCoqueValide,occBoxMinMax,occDelFaceDebord,
     occDeleteFacesOnce,occDelFacesTry,occBrepWrite,occBrepRead,occFaceAt,occtTypeName,occtCanCatch,occtExcInstall,
     occCut,occCutEach,occThrCut,occtV3Compat];
-  return 'let occt=null,occtReady=false;const DEL_ISOLE_MAX='+DEL_ISOLE_MAX+',DEL_BREP_PATH='+JSON.stringify(DEL_BREP_PATH)+';\n'+fns.map(String).join('\n')+'\nocctExcInstall(self);\n('+delWkMain+')();\n';
+  // Noms uniques (20-05) : le worker n'en porte pas, le rejeu les redonne à la réponse (nomsCompleter)
+  return 'function nomsTransmet(a,b,r){return r;}\nfunction nomsApresUnify(){}\nlet occt=null,occtReady=false;const DEL_ISOLE_MAX='+DEL_ISOLE_MAX+',DEL_BREP_PATH='+JSON.stringify(DEL_BREP_PATH)+';\n'+fns.map(String).join('\n')+'\nocctExcInstall(self);\n('+delWkMain+')();\n';
 }
 function delWkStart(){
   if(delWk)return delWk;

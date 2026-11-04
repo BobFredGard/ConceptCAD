@@ -630,7 +630,9 @@ function asmSkExtEdges(x,cid){
   const T=asmPathComp(x.path),c=asmComp(T),E=c&&c._snap&&c._snap.pedges;
   if(!E||!E.length||T===cid)return null;
   const ctx=asmSkExtCtx(x,cid),F=ctx&&asmSkXf(ctx,x.path);if(!F)return null;
-  return E.map(e=>({pts:e.pts.map(p=>asmApply(F,p)),mid:e.mid?asmApply(F,e.mid):null}));
+  const R=E.map(e=>({pts:e.pts.map(p=>asmApply(F,p)),mid:e.mid?asmApply(F,e.mid):null,nom:e.nom}));
+  R.alias=E.alias||{};
+  return R;
 }
 function asmSkExtSig(x,cid){
   // Signature de ce que voit la projection : repère de l'instance visée + état de son composant
@@ -657,9 +659,11 @@ function asmSkCaptureEdges(){
   // Arêtes exactes du composant actif (fin de rejeu), données pures pour les esquisses des autres
   try{
     if(!(typeof occHas==='function'&&occHas()&&occLive&&occLive.shape))return null;
-    const E=occListEdges(occLive.shape);if(!E||!E.length)return null;
+    const E=nomsSurAretes(occLive.shape,occListEdges(occLive.shape));if(!E||!E.length)return null;
     const r=p=>p.map(a=>Math.round(a*1e6)/1e6);
-    return E.slice(0,8000).map(e=>({pts:e.pts.map(r),mid:e.mid?r(e.mid):null}));
+    const R=E.slice(0,8000).map(e=>({pts:e.pts.map(r),mid:e.mid?r(e.mid):null,nom:e.nom}));
+    R.alias=E.alias||{};
+    return R;
   }catch(e){return null;}
 }
 /* ── faces des autres composants comme références de construction ──
@@ -684,12 +688,12 @@ function asmSkCaptureFaces(){
           const gt=ad.GetType(),b=occFaceBox(f);
           if(b&&gt===T.GeomAbs_Plane){
             const n=occFaceOutNormal(f);
-            if(n)out.push({ref:occFaceRefAny(f),plane:{o:r(b.pos),n:r(n)}});
+            if(n)out.push({ref:occFaceRefAny(f),nom:nomsFaceDe(occLive.shape,f),plane:{o:r(b.pos),n:r(n)}});
           }else if(b&&(gt===T.GeomAbs_Cylinder||gt===T.GeomAbs_Cone)){
             const S=gt===T.GeomAbs_Cylinder?ad.Cylinder():ad.Cone(),ax=S.Axis();
             const d=[ax.Direction().X(),ax.Direction().Y(),ax.Direction().Z()],lo=[ax.Location().X(),ax.Location().Y(),ax.Location().Z()];
             const t=(b.pos[0]-lo[0])*d[0]+(b.pos[1]-lo[1])*d[1]+(b.pos[2]-lo[2])*d[2];
-            out.push({ref:occFaceRefAny(f),axis:{o:r([lo[0]+d[0]*t,lo[1]+d[1]*t,lo[2]+d[2]*t]),d:r(d),rad:gt===T.GeomAbs_Cylinder?+S.Radius().toFixed(6):null}});
+            out.push({ref:occFaceRefAny(f),nom:nomsFaceDe(occLive.shape,f),axis:{o:r([lo[0]+d[0]*t,lo[1]+d[1]*t,lo[2]+d[2]*t]),d:r(d),rad:gt===T.GeomAbs_Cylinder?+S.Radius().toFixed(6):null}});
           }
         }catch(e){}
         finally{try{if(ad)ad.delete();}catch(e){}try{if(f)f.delete();}catch(e){}}
@@ -703,8 +707,10 @@ function asmXfFind(Fs,ref){
   // Face visée dans la capture courante : même référence durable, sinon la plus proche de la
   // géométrie mémorisée (même type, même direction) — la face a pu changer de taille
   if(!Fs||!ref)return null;
+  // Le nom d'abord (20-05) ; une référence sans nom retient celui de la face retrouvée à l'identique
+  if(ref.nom){const parNom=Fs.find(e=>e.nom===ref.nom);if(parNom)return parNom;}
   const k=JSON.stringify(ref.ref||null);
-  const same=Fs.find(e=>JSON.stringify(e.ref||null)===k);if(same)return same;
+  const same=Fs.find(e=>JSON.stringify(e.ref||null)===k);if(same){if(!ref.nom&&same.nom)ref.nom=same.nom;return same;}
   const L=ref.loc||{},dot=(a,b)=>a[0]*b[0]+a[1]*b[1]+a[2]*b[2],sub=(a,b)=>[a[0]-b[0],a[1]-b[1],a[2]-b[2]];
   let best=null,bd=Infinity;
   Fs.forEach(e=>{
@@ -732,6 +738,11 @@ function asmXfEval(ref,cid){
    len, vpos dans le repère du composant visé, mis à jour à chaque lecture (la référence suit
    l'arête, comme celles de la pièce : arête la plus proche, de longueur voisine). */
 function asmXeFind(E,ref){
+  const longueur=e=>{let L=0;for(let i=1;i<e.pts.length;i++)L+=Math.hypot(e.pts[i][0]-e.pts[i-1][0],e.pts[i][1]-e.pts[i-1][1],e.pts[i][2]-e.pts[i-1][2]);return L;};
+  if(ref.nom){
+    const i=nomsTrouveArete(E,ref.nom,ref.pos);
+    if(i>=0){const e=E[i];return {e,m:e.mid||e.pts[Math.floor(e.pts.length/2)],L:longueur(e)};}
+  }
   let best=null,bd=2.5;
   E.forEach(e=>{
     const m=e.mid||e.pts[Math.floor(e.pts.length/2)],d=Math.hypot(m[0]-ref.pos[0],m[1]-ref.pos[1],m[2]-ref.pos[2]);
@@ -740,6 +751,7 @@ function asmXeFind(E,ref){
     if(ref.len>0&&Math.abs(L-ref.len)>Math.max(2,0.35*ref.len))return;
     bd=d;best={e,m,L};
   });
+  if(best&&!ref.nom&&best.e.nom&&bd<1e-3)ref.nom=best.e.nom;
   return best;
 }
 function asmXeEval(ref,cid){

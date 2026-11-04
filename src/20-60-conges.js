@@ -303,7 +303,7 @@ function occApplyXFillets(base,xfils){
   const chamfer=(xfils||[]).some(x=>x&&x.chamfer);
   const lab=xLabelLow(chamfer?'chamfer':'fillet');
   const dp=chamfer?'D':'R';
-  const edges=occListEdges(base);
+  const edges=nomsSurAretes(base,occListEdges(base));
   if(!edges.length){warns.push(lab+' : aucune arête détectée');return{shape:base,warnings:warns};}
   // 2026-10-16-015 : migration — les entrées « tangente » ajoutées par d'anciens rejeux sont
   // retirées (la chaîne se re-déduit au calcul) dès qu'il reste au moins une arête CLIQUÉE.
@@ -339,7 +339,8 @@ function occApplyXFillets(base,xfils){
   const jobs=[],matchedSe=new Set(),seBi=new Map();
   const take=(bi,r,se,fnChain)=>{
     if(se){matchedSe.add(se);seBi.set(se,bi);if(!se.pos0)se.pos0=se.pos.slice(); // POSITION D'ORIGINE figée : c'est elle la référence durable
-      se.pos=edges[bi].mid.slice();se.len=+edges[bi].len.toFixed(3);} // snapshot rafraîchi (repli plus tard)
+      se.pos=edges[bi].mid.slice();se.len=+edges[bi].len.toFixed(3); // snapshot rafraîchi (repli plus tard)
+      if(!se.nom&&edges[bi].nom)se.nom=edges[bi].nom;} // référence neuve ou document ancien : le nom est retenu
     const dup=jobs.find(j=>j.bi===bi);
     // fn (V0.11.19) : normale de la première face d'un chanfrein asymétrique, portée par
     // l'entrée (ou par le germe pour une arête de chaîne)
@@ -349,6 +350,14 @@ function occApplyXFillets(base,xfils){
   xfils.forEach(xf=>{
     (xf.edges||[]).forEach(se=>{
       if(!(se.r>0))return;
+      // Le NOM d'abord (20-05) : l'arête est celle qui sépare les mêmes faces, où qu'elle soit partie.
+      // Nom absent du solide : recherche géométrique ci-dessous, avec alerte (le nom est gardé : si
+      // l'édition est annulée ou inversée, l'arête revient).
+      if(se.nom){
+        const iN=nomsTrouveArete(edges,se.nom,se.pos);
+        if(iN>=0){se.nom=edges[iN].nom;take(iN,se.r,se);return;}
+        warns.push(`${chamfer?'chanfrein':'congé'} ${dp}${xNum(se.r)} : l’arête d’origine n’existe plus près de ${nomsPos(se.pos)} — recherche par position`);
+      }
       // Passe 0 : ancre absente (anciens projets avant persistance anchor) → recalée sur se.pos.
       // XY inchangé (changement de hauteur) : retrouve point/entité → passe 1 suit la cote/distance.
       if(!se.anchor){try{const a0=xAnchorFor(se.pos);if(a0)se.anchor=a0;}catch(e){}}

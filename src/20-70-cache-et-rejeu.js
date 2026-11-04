@@ -45,7 +45,7 @@ function occCkMax(){
 const OCC_CK_ASM=200;          // points de contrôle gardés en assemblage (toutes pièces confondues)
 const OCC_CK_HEAP=1536*1048576; // au-delà de 1,5 Go de tas du noyau : retour à la borne d'une pièce
 function occShapeCopy(sh){
-  try{return new occt.BRepBuilderAPI_Copy_2(sh,true,true).Shape();}catch(e){return null;}
+  try{return nomsPartage(sh,new occt.BRepBuilderAPI_Copy_2(sh,true,true).Shape());}catch(e){return null;}
 }
 // 2026-10-16-003 : cache des OUTILS (prisme d'extrusion / révolution / perçage) par clé de
 // préfixe — la même que les points de contrôle. Sur un point de contrôle trouvé, l'outil
@@ -202,7 +202,7 @@ function featSig(f){
   // clé après chaque rejeu (point de contrôle raté, tout l'aval rejoué sans changement).
   const jf={};for(const k in f){if(k==='name'||k==='open'||k==='_m'||k==='_mesh'||k==='_calc')continue;jf[k]=f[k];}
   if(f.type==='xfillet'&&Array.isArray(f.edges))jf.edges=f.edges.map(e=>{if(!e||typeof e!=='object')return e;const q=Object.assign({},e);if(q.pos0)delete q.pos;delete q.len;return q;});
-  s+='|j'+JSON.stringify(jf);
+  s+='|j'+JSON.stringify(jf,nomsSansCles);
   return s;
 }
 function occCkGet(key){
@@ -286,7 +286,9 @@ function* occReplayBodyGen(bid,list){
         if(sv&&Array.isArray(f.edges)&&sv.length===f.edges.length)f.edges.forEach((e,i)=>{if(e&&sv[i]){if(sv[i].pos)e.pos=sv[i].pos.slice();if(sv[i].len!=null)e.len=sv[i].len;}});
         return;
       }
+      const snapX=nomsInstantane(result); // reprise NURBS : pas d'historique du noyau
       const r=occApplyXFillets(result,[f]);
+      nomsCompleter(r.shape,null,snapX);
       result=r.shape;msgs.push(...r.warnings.map(w=>`${f.name} : ${w}`));
       if(r.warnings.length)occCkWarn[ckKey]=r.warnings.slice();else delete occCkWarn[ckKey];
       occCkEdges[ckKey]=(f.edges||[]).map(e=>e?{pos:Array.isArray(e.pos)?e.pos.slice():null,len:e.len!=null?e.len:null}:null);
@@ -302,7 +304,9 @@ function* occReplayBodyGen(bid,list){
         const w=occCkWarn[ckKey];if(w&&w.length)msgs.push(...w.map(x=>`${f.name} : ${x}`));
         return;
       }
+      const snapM=f.type==='bmove'?null:nomsInstantane(result); // suppression (dans le worker), décalage : pas d'historique
       const r=f.type==='xmove'?occApplyMoveFace(result,f):f.type==='bmove'?occApplyBodyMove(result,f):occApplyDeleteFaces(result,f,ckKey,ckPre); // bmove : 85-deplacer-corps
+      if(!r.pending&&snapM)nomsCompleter(r.shape,null,snapM);
       result=r.shape;msgs.push(...r.warnings.map(w=>`${f.name} : ${w}`));
       // Suppression partie au worker : corps affiché SANS elle, et rien de mémorisé en aval
       // sous une clé qui la supposerait faite (même marque que le STEP en cours de restauration).
@@ -378,7 +382,9 @@ function* occReplayBodyGen(bid,list){
         minceDe(w);
         return;
       }
+      const snapD=nomsInstantane(result);
       const r=occApplyDraft(result,f);
+      nomsCompleter(r.shape,null,snapD);
       minceDe(r.warnings);
       result=r.shape;msgs.push(...r.warnings.map(w=>`${f.name} : ${w}`));
       if(r.warnings.length)occCkWarn[ckKey]=r.warnings.slice();else delete occCkWarn[ckKey];
@@ -397,7 +403,9 @@ function* occReplayBodyGen(bid,list){
         const w=occCkWarn[ckKey];if(w&&w.length)msgs.push(...w.map(x=>`${f.name} : ${x}`));
         return;
       }
+      const snapC=nomsInstantane(result); // recette BSpline, réparation : pas d'historique
       const r=occApplyCoque(result,f);
+      nomsCompleter(r.shape,null,snapC);
       result=r.shape;msgs.push(...r.warnings.map(w=>`${f.name} : ${w}`));
       if(r.warnings.length)occCkWarn[ckKey]=r.warnings.slice();else delete occCkWarn[ckKey];
       occCkPut(ckKey,()=>occShapeCopy(result));
@@ -429,6 +437,7 @@ function* occReplayBodyGen(bid,list){
       }
       shape=occShapeCopy(bp); // COPIE : la table reste propriétaire de son BRep
       if(!shape){msgs.push(`${f.name} : copie exacte impossible — ignoré`);return;}
+      nomsCompleter(shape,f.id,null); // fichier figé : l'ordre géométrique est stable
       imports.push(f.id);
       if(!result){result=shape;occCkPut(ckKey,()=>occShapeCopy(result));return;}
       // Mêmes règles qu'une fonction additive (ci-dessous) : point de contrôle
@@ -561,6 +570,7 @@ function* occReplayBodyGen(bid,list){
         c.SetArguments(la);c.SetTools(lt);if(cut)c.SetCheckInverted(false);c.Build();
         const s=c.IsDone()?c.Shape():null;
         if(!s||s.IsNull())throw new Error('booléen groupé refusé');
+        nomsTransmet([result,...rs.map(r=>r.shape)],c,s); // l'outil entier : ses enfants ne portent pas les noms
         if(cut){const all=occCompoundOf(rs.map(r=>r.shape));next=occUnifyCutSeams(s,result,all);if(rs.length>1)try{all.delete();}catch(e){}}
         else next=occUnify(s);
       }catch(err){drop();return false;}
@@ -602,8 +612,18 @@ function* occReplayBodyGen(bid,list){
   for(let i=0;i<list.length;){
     const n=tap?1:batchLen(i);
     yield {bid,fs:list.slice(i,i+n)}; // régénération par tranches (31) : fonction(s) sur le point d'être calculée(s)
-    if(n>1&&batch(list.slice(i,i+n))){i+=n;continue;}
-    const f=list[i++];step(f);if(tap)try{tap(bid,f,result);}catch(e){}
+    if(n>1&&batch(list.slice(i,i+n))){nomsCompleter(result,list[i].id,null);i+=n;continue;}
+    const f=list[i++];
+    NOMS_PERTES=[];
+    step(f);
+    nomsCompleter(result,f.id,null); // aucune face sans nom, quelle que soit la fonction
+    const perdu=nomsPerteLue();
+    if(perdu.length){
+      const w=[...new Set(perdu)];
+      msgs.push(...w.map(x=>`${f.name} : ${x}`));
+      occCkWarn[ckKey]=[...new Set((occCkWarn[ckKey]||[]).concat(w))];
+    }
+    if(tap)try{tap(bid,f,result);}catch(e){}
   }
   // V0.21.19 : filets modélisés creusés EN DERNIER, en une seule découpe (src/76,
   // occShapeOfHole) : dans l'arbre, chaque perçage n'a laissé qu'un avant-trou lisse,
@@ -708,7 +728,7 @@ function* occFinalShapeGen(upto,warm){
     ghostShapes.push(...r.ghostShapes);msgs.push(...r.msgs);items.push(...r.items);
     imports.push(...r.imports); // imports entrés dans la chaîne exacte (affichés par le corps)
   }
-  const shape=occCompoundOf(perBody.map(p=>p.shape));
+  const shape=nomsCompose(perBody.map(p=>p.shape),occCompoundOf(perBody.map(p=>p.shape)),perBody.map(p=>p.bodyId));
   // pièce SANS filets modélisés (FAO : le taraud fait le filet) — seulement s'il y en a
   const shapeFao=preThr.length?occCompoundOf(perBody.map(p=>{const q=preThr.find(x=>x.bodyId===p.bodyId);return q?q.shape:p.shape;})):null;
   return{shape,shapeFao,preThr,perBody,ghostShapes,msgs,bin,itemShapes,items,imports};
@@ -979,6 +999,7 @@ function occRebuild(){
       });
       if(!bodies.some(b=>b.kind==='body'))faceEl.textContent+=(faceEl.textContent?'\n':'')+'Solide exact vide (tout a été découpé).';
       if(FR.shape){occLive={shape:FR.shape,shapeFao:FR.shapeFao||null,preThr:FR.preThr||[]};FR.shape=null;FR.shapeFao=null;FR.preThr=null;} // conservé pour le picking d'arêtes
+      try{faoFacesSuivre();}catch(err){}
     }
     FR.ghostShapes.forEach((gh,i)=>{
       try{
@@ -1003,6 +1024,7 @@ function occRebuild(){
       bodies.push({id:f.id,name:f.name,mesh:f._mesh,color:col,visible:true,kind:'import',ref:f.id,bodyId:f.body||null});
     });
     occCleanup(FR,(occLive&&occLive.shape)||null);
+    if(NOMS_PERTES_ESQ.size)FR.msgs.push(...NOMS_PERTES_ESQ.values());
     if(FR.msgs.length)faceEl.textContent+=(faceEl.textContent?'\n':'')+FR.msgs.slice(0,4).join('\n');
     phAdd('mesh',performance.now()-_ts);
     return true;

@@ -164,7 +164,7 @@ function skIsectSourceCurves(sk,src){
         if(!f){faces.push(ref);continue;} // face perdue : l'ancienne référence est gardée
         occIsectSection(f,B,false).forEach(c=>curves.push(c));
         const nr=occFaceRefAny(f);
-        if(nr){if(r0.anchor)nr.anchor=r0.anchor;faces.push(nr);}else faces.push(ref);
+        if(nr){if(r0.anchor)nr.anchor=r0.anchor;if(r0.nom)nr.nom=r0.nom;faces.push(nr);}else faces.push(ref);
         try{f.delete();}catch(e){}
       }
       return {curves:isectMergeArcs(curves),src:{mode:'faces',faces}};

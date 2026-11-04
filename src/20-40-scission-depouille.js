@@ -31,6 +31,7 @@ function occSplitRun(shape,tools){
     sp.SetArguments(la);sp.SetTools(lt);sp.Build();
     if(!sp.IsDone())throw new Error('découpe refusée par le noyau');
     const r=sp.Shape();if(!r||r.IsNull())throw new Error('résultat vide');
+    nomsTransmet([shape],sp,r);
     return r;
   }finally{try{sp.delete();}catch(e){}try{la.delete();}catch(e){}try{lt.delete();}catch(e){}}
 }
@@ -58,7 +59,7 @@ function occSplitFacesOnce(shape,faces,P){
     if(!secs.length)return{shape:null,cut:0};
     const r=occSplitRun(shape,secs);
     const so=occSolidsOf(r);
-    if(so.length===1){try{r.delete();}catch(e){}return{shape:so[0],cut};}
+    if(so.length===1){nomsCompose([r],so[0]);try{r.delete();}catch(e){}return{shape:so[0],cut};}
     so.forEach(s=>{try{s.delete();}catch(e){}});
     return{shape:r,cut};
   }finally{try{pln.delete();}catch(e){}secs.forEach(s=>{try{s.delete();}catch(e){}});}
@@ -84,9 +85,11 @@ function occSplitBodyOnce(shape,P){
     const d=(ct[0]-P.o[0])*P.n[0]+(ct[1]-P.o[1])*P.n[1]+(ct[2]-P.o[2])*P.n[2];
     (d>0?pos:neg).push(s);
   });
-  try{r.delete();}catch(e){}
   const pack=L=>!L.length?null:(L.length===1?L[0]:occCompoundOf(L));
-  return{neg:pack(neg),pos:pack(pos),nNeg:neg.length,nPos:pos.length};
+  const pN=pack(neg),pP=pack(pos);
+  [pN,pP].forEach(s=>{if(s)nomsCompose([r],s);});
+  try{r.delete();}catch(e){}
+  return{neg:pN,pos:pP,nNeg:neg.length,nPos:pos.length};
 }
 function occApplySplit(result,f,side){
   // Rejoue la scission. side : 'neg' (corps d'origine) | 'pos' (corps neuf, mode corps).
@@ -233,7 +236,9 @@ function occDraftOnce(result,refFace,faces,angle,opts){
     let done=false;
     try{done=!!da.IsDone();}catch(e){}
     if(!done)throw new Error('dépouille refusée par le moteur');
-    const out=occShapeCopy(da.Shape());
+    const brut=da.Shape();
+    nomsTransmet([result],da,brut);
+    const out=occShapeCopy(brut);
     if(!out||out.IsNull())throw new Error('solide dépouillé vide');
     let thin=null;
     if(opts&&opts.thin){try{thin=occDraftThin(da,faces);}catch(e){thin=null;}}

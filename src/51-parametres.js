@@ -121,6 +121,7 @@ const parPending=new Set(); // esquisses dont une cote a changé, à résoudre (
 function parResolve(){
   // Évalue paramètres et cotes ƒx (ordre de dépendance, cycles détectés). Une cote dont
   // l'expression échoue garde sa dernière valeur et porte d.exprErr (⚠ à l'écran).
+  (doc.sketches||[]).forEach(skValsNote); // valeur de départ des cotes, avant que les expressions les changent
   const m=parAll(),val=new Map(),busy=new Set(),changed=new Set();
   const get=nm=>{
     if(val.has(nm))return val.get(nm);

@@ -313,6 +313,7 @@ function occShapeOfHole(f){
   }
   const bins=[],warnings=[];
   const base=(typeof occThroughBase!=='undefined')?occThroughBase:null;
+  holePlaneSuit(f.uptoPlane,base);if(f.thread)holePlaneSuit(f.thread.uptoPlane,base);
   const zEndOf=function(P){
     // Profondeur (plein Ø) de CE trou selon la fin choisie.
     if(N.end==='upto'){
@@ -345,6 +346,7 @@ function occShapeOfHole(f){
   const tool=[];
   const add=function(sh){ tool.push(sh); };
   const OVER=0.02; // départ légèrement au-dessus du plan : jamais de face coplanaire
+  let iCentre=0,iSeg=0;
   const segShape=function(P,sg,first){
     // 1er segment rallongé de OVER au-dessus du plan : un CÔNE (fraisure) est prolongé
     // sur sa génératrice, sinon le Ø au ras de la face serait trop petit (10,96 pour 11).
@@ -355,6 +357,8 @@ function occShapeOfHole(f){
     let sh=null;
     if(Math.abs(sg[2]-sg[3])<1e-9){const mk=new occt.BRepPrimAPI_MakeCylinder_3(ax,sg[2],h);sh=mk.Shape();try{mk.delete();}catch(e){}}
     else{const mk=new occt.BRepPrimAPI_MakeCone_3(ax,r0,sg[3],h);sh=mk.Shape();try{mk.delete();}catch(e){}}
+    // Noms : centre, segment du profil, rang de la face du cylindre ou du cône (ordre fixe du noyau)
+    nomsNomme(sh,(m,fn)=>{for(let k=0;k<fn.length;k++)fn[k]=f.id+'/c'+iCentre+'/s'+iSeg+'/f'+(k+1);});
     return sh;
   };
   // Les segments du profil (fût, lamage/fraisure, pointe) sont FUSIONNÉS : une découpe
@@ -363,7 +367,7 @@ function occShapeOfHole(f){
   // recouvrement, qui supprime ces opercules.
   const fused=function(P,segs,firstOver){
     let prof=null;
-    segs.forEach(function(sg,i){const sh=segShape(P,sg,firstOver&&i===0);prof=prof?occFuse(prof,sh):sh;});
+    segs.forEach(function(sg,i){iSeg=i;const sh=segShape(P,sg,firstOver&&i===0);prof=prof?occFuse(prof,sh):sh;});
     return prof;
   };
   // Filet modélisé (V0.21.19) : à sa place dans l'arbre, le perçage n'est qu'un
@@ -374,7 +378,8 @@ function occShapeOfHole(f){
   // cylindre au lieu de centaines de faces hélicoïdales. La crête du filet est 0,01 mm
   // au-delà de l'avant-trou (Ø + 0,02, dans la tolérance 6H) : jamais de face confondue.
   const voids=[];let v0=null;const rC=N.r+0.01;
-  A.pts.forEach(function(P){
+  A.pts.forEach(function(P,iP){
+    iCentre=iP;
     const zEnd=zEndOf(P);
     if(!thModel){add(fused(P,holeProfileSegs(N,zEnd),true));return;}
     const p=thModel.P;
@@ -411,7 +416,7 @@ function occShapeOfHole(f){
     add(fused(P,holeProfileSegs(N,blind?zEnd-0.01:zEnd),true));
   });
   if(!tool.length)throw new Error('aucun corps d’outil de perçage');
-  const shp=(tool.length===1)?tool[0]:(occCompoundOf(tool)||tool[0]);
+  const shp=(tool.length===1)?tool[0]:nomsCompose(tool,occCompoundOf(tool)||tool[0]);
   return {shape:shp,bins:bins,warnings:warnings,thr:voids.length?occCompoundOf(voids):null};
 }
 function legacyHoleGeos(f,msgs){
@@ -469,6 +474,25 @@ function holeLatheGeo(R,n){
   g.setAttribute('position',new THREE.Float32BufferAttribute(pos,3));
   g.computeVertexNormals();
   return g;
+}
+function holePlaneSuit(pl,base){
+  // Fin de trou « jusqu'à la face » : la face garde son nom (20-05), le plan mémorisé la suit.
+  if(!pl||!pl.p||!pl.n||!base)return;
+  let h=null,all=null;
+  try{
+    if(pl.nom){h=nomsRefFace(base,pl);if(!h)return;}
+    else{
+      all=occSubShapes(base,'TopAbs_FACE');
+      const g=all.find(x=>{const d=occSurfDesc(x);if(!d||d.k!=='pl')return false;
+        const c=Math.abs(d.n[0]*pl.n[0]+d.n[1]*pl.n[1]+d.n[2]*pl.n[2]);
+        return c>0.9999&&Math.abs((d.p[0]-pl.p[0])*pl.n[0]+(d.p[1]-pl.p[1])*pl.n[1]+(d.p[2]-pl.p[2])*pl.n[2])<1e-3;});
+      if(g){const n=nomsFaceDe(base,g);if(n)pl.nom=n;}
+      return;
+    }
+    const d=occSurfDesc(h);if(!d||d.k!=='pl')return;
+    if(Math.abs((d.p[0]-pl.p[0])*pl.n[0]+(d.p[1]-pl.p[1])*pl.n[1]+(d.p[2]-pl.p[2])*pl.n[2])>1e-6)pl.p=d.p.slice();
+  }catch(e){}
+  finally{try{if(h)h.delete();}catch(e){}if(all)occDispose(all);}
 }
 function holePlaneDist(pl,P,D){
   // Distance le long de l'axe jusqu'au plan choisi {p:[x,y,z],n:[x,y,z]} ; null si absent/parallèle/derrière.

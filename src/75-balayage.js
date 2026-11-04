@@ -194,6 +194,7 @@ function occShapeOfSweep(f){
   // chemin à spline : binormale FIXE = normale de son esquisse (repère à rotation minimale d'une courbe plane).
   // Le Frenet corrigé ne rend jamais la main sur une B-spline (mesuré, OCCT wasm) ; le Frenet pur vrille aux inflexions.
   const binorm=!path.circle&&path.chain.some(st=>st.ed.kind==='spline')?sketchBasis(pk).n:null;
+  const cotesDe=new Map(); // fil → côtés du profil (noms des faces)
   const pipe=w=>{
     const ps=occBinPush(bins,new occt.BRepOffsetAPI_MakePipeShell(spine));
     if(binorm)ps.SetMode_3(occBinPush(bins,new occt.gp_Dir_4(binorm.x,binorm.y,binorm.z)));
@@ -206,18 +207,20 @@ function occShapeOfSweep(f){
     if(!ok)throw new Error('balayage : le solide ne se ferme pas');
     let s=ps.Shape();
     if(vol(s)<0)s=s.Reversed(); // fil du profil à l'envers : solide retourné
+    nomsPrefixe(nomsPrismeFaces(ps,s,cotesDe.get(w)),f.id);
     return s;
   };
   // fil d'une boucle du profil, ou d'un cercle plein (même recette que diskOf de la révolution)
-  const wireOf=chain=>occWireFromChain(sk,tr,chain,bins,0);
+  const wireOf=chain=>{const c=[],w=occWireFromChain(sk,tr,chain,bins,0,c);cotesDe.set(w,c);return w;};
   const circWire=c=>{
     const C=sk.points[c.pc];if(!C)throw new Error('pastille : centre introuvable');
     const n=sketchBasis(sk).n,w=occW(sk,C.x,C.y);
     const ax=occBinPush(bins,new occt.gp_Ax2_3(occBinPush(bins,new occt.gp_Pnt_3(w[0],w[1],w[2])),occBinPush(bins,new occt.gp_Dir_4(n.x,n.y,n.z))));
     const me=occBinPush(bins,new occt.BRepBuilderAPI_MakeEdge_8(occBinPush(bins,new occt.gp_Circ_2(ax,c.r))));
     me.Build();if(!me.IsDone())throw new Error('cercle du profil impossible');
-    const mw=occBinPush(bins,new occt.BRepBuilderAPI_MakeWire_1());mw.Add_1(me.Edge());mw.Build();
-    return mw.Wire();
+    const mw=occBinPush(bins,new occt.BRepBuilderAPI_MakeWire_1());mw.Add_1(me.Edge());const eC=mw.Edge();mw.Build();
+    const fil=mw.Wire();cotesDe.set(fil,[{e:eC,id:c.id}]);
+    return fil;
   };
   let shape=null;
   const fuseIn=s=>{if(!shape){shape=s;return;}const nx=occUnify(occFuse(shape,s));try{shape.delete();}catch(e){}try{s.delete();}catch(e){}shape=nx;};

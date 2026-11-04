@@ -40,6 +40,7 @@ function occApplyBodyScale(result,f){
       if(!b.IsDone())throw new Error('transformation refusée');
     }
     const s=b.Shape();if(!s||s.IsNull())throw new Error('transformation vide');
+    nomsMemeRangs(result,s);
     try{result.delete();}catch(e){}
     return {shape:s,warnings:[]};
   }catch(e){

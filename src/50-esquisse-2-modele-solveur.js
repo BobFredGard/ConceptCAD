@@ -1099,7 +1099,70 @@ function skRevertTo(sk,before,label,why){
 /* solveur principal : essaie le moindres carrés (LM) ET la relaxation, puis garde le meilleur
    des deux (mesuré par le résidu d'audit maximal). C'est le LM qui relève les systèmes
    bien posés ; la relaxation conserve les cas qu'elle résolvait déjà (sous/pluridéterminés). */
+// GRAND CHANGEMENT : l'esquisse y va par petits pas, en interne. D'un seul coup, le solveur peut
+// retomber sur une autre solution (arc retourné, point passé de l'autre côté d'une cote) alors que par
+// petits pas la forme se conserve. Deux déclencheurs :
+//  · une cote qui bouge de plus de 5 % ;
+//  · les points fixes (projections) qui bougent plus que la moitié de la plus petite cote, les autres
+//    points n'ayant pas été touchés. Cavité Test, largeur 114,4 → 104 : le contour recule de 5,2 mm, la
+//    cote de 3 mm de la nervure passait de l'autre côté de son point et les congés échouaient.
+// Rien ne change sans mouvement : ni à l'ouverture, ni au rejeu d'un modèle inchangé (les parcours
+// d'usinage gardent leurs clés). Si les petits pas n'aboutissent pas, le calcul direct reprend la main.
+const SK_VALS=new WeakMap(); // cote → valeur à la dernière résolution (mémoire seulement)
+const SK_PTS=new WeakMap();  // esquisse → points à la dernière résolution (mémoire seulement)
+function skPtsNote(sk){const o={};Object.keys(sk.points||{}).forEach(k=>{const p=sk.points[k];o[k]=[p.x,p.y];});SK_PTS.set(sk,o);}
+function skValsNote(sk){
+  if(!sk)return;
+  (sk.dims||[]).forEach(d=>{if(d&&isFinite(+d.value)&&!SK_VALS.has(d))SK_VALS.set(d,+d.value);});
+  if(sk.points&&!SK_PTS.has(sk))skPtsNote(sk);
+}
+function skPasFixes(sk,anchor){
+  // Points fixes à faire glisser : [{p,x0,y0,x1,y1}] et leur plus grand déplacement ; rien si un point libre a bougé
+  const M=SK_PTS.get(sk);if(!M)return null;
+  let fix=null;try{fix=skFixed(sk);}catch(e){return null;}
+  (anchor||[]).forEach(p=>fix.add(p));
+  const L=[];let mx=0;
+  for(const k of Object.keys(sk.points)){
+    const p=sk.points[k],m=M[k];if(!m)continue;
+    const d=Math.hypot(p.x-m[0],p.y-m[1]);
+    if(fix.has(k)){if(d>1e-6){L.push({p,x0:m[0],y0:m[1],x1:p.x,y1:p.y});mx=Math.max(mx,d);}}
+    else if(d>1e-6)return null;
+  }
+  return L.length?{L,mx}:null;
+}
 function solveSketch(sk,iters,anchor){
+  if(!sk||!sk.points)return;
+  const D=(sk.dims||[]).filter(d=>d&&!d.ref&&isFinite(+d.value)&&SK_VALS.has(d));
+  const fin=D.map(d=>+d.value),dep=D.map(d=>SK_VALS.get(d));
+  let k=0;D.forEach((d,i)=>{const e=Math.abs(fin[i]-dep[i]);if(e>1e-3)k=Math.max(k,e/Math.max(Math.abs(dep[i]),1e-6));});
+  let N=k>0.05?Math.ceil(k/0.05):1;
+  const F=(iters||120)>=100?skPasFixes(sk,anchor):null;
+  if(F){
+    let cote=Infinity;(sk.dims||[]).forEach(d=>{if(d&&!d.ref&&d.type!=='angle'&&+d.value>1e-3)cote=Math.min(cote,+d.value);});
+    if(isFinite(cote)&&F.mx>cote/2)N=Math.max(N,Math.ceil(F.mx/(cote/2)));
+  }
+  N=Math.min(8,N);
+  if(N>1&&(iters||120)>=100){
+    const avant=skSnapCoords(sk);
+    const pose=t=>{
+      D.forEach((d,i)=>{d.value=dep[i]+(fin[i]-dep[i])*t;});
+      if(F)F.L.forEach(q=>{q.p.x=q.x0+(q.x1-q.x0)*t;q.p.y=q.y0+(q.y1-q.y0)*t;});
+    };
+    try{
+      // les points libres partent de leur dernière position : avant, ils y sont déjà
+      for(let s=1;s<N;s++){pose(s/N);solveSketch1(sk,iters,anchor);}
+    }finally{pose(1);D.forEach((d,i)=>{d.value=fin[i];});}
+    solveSketch1(sk,iters,anchor);
+    if(skResid(sk)>SK_OK_RES){
+      const parPas=skSnapCoords(sk),rp=skResid(sk);
+      skRestoreCoords(sk,avant);solveSketch1(sk,iters,anchor);
+      if(skResid(sk)>=rp)skRestoreCoords(sk,parPas);
+    }
+  }else solveSketch1(sk,iters,anchor);
+  (sk.dims||[]).forEach(d=>{if(d&&isFinite(+d.value))SK_VALS.set(d,+d.value);});
+  skPtsNote(sk);
+}
+function solveSketch1(sk,iters,anchor){
   if(!sk||!sk.points)return;iters=iters||120;
   ensureOrigin(sk); // origine clouée (0,0) AVANT tout essai : réglage autour du vrai repère
   try{skDimSides(sk);}catch(e){} // côté des entraxes / point↔ligne lu sur l'état cohérent courant

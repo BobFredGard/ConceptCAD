@@ -72,7 +72,7 @@ let undoPtrDown=false,undoActLabel='',undoActT=0;
 // solveur d'esquisse redépose les points à 1e-8 mm près au premier passage, 1e-12 ensuite.
 // Le vrai instantané garde tout ; mais ces écarts-là, à eux seuls, ne font pas une étape —
 // ouvrir puis fermer une esquisse sans rien y toucher en laissait une.
-function undoKeyRep(k,v){return k.charCodeAt(0)===95?undefined:v;}
+function undoKeyRep(k,v){return k.charCodeAt(0)===95||NOMS_CLES[k]?undefined:v;}
 function undoSame(a,b){
   if(a===b)return true;
   if(a==null||b==null)return false;

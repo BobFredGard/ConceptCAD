@@ -150,7 +150,7 @@ function occShapeOfRevolve(f){
     const D=occBinPush(bins,new occt.gp_Dir_4(ax.D3.x,ax.D3.y,ax.D3.z));
     return occBinPush(bins,new occt.gp_Ax1_2(P,D));
   };
-  const revol=(faceShape)=>{
+  const revol=(faceShape,cotes)=>{
     // ATTENTION : cette build d'OCCT ignore l'angle dans BRepPrimAPI_MakeRevol_2(S,Ax,angle)
     // (90° et 360° donnent exactement le même solide). Seule la surcharge à 4 arguments
     // MakeRevol_1(S,Ax,angle,copy) applique réellement l'angle, EN RADIANS — vérifié :
@@ -158,13 +158,15 @@ function occShapeOfRevolve(f){
     const r=occBinPush(bins,new occt.BRepPrimAPI_MakeRevol_1(faceShape,mkAx(),ang,false));
     r.Build();
     if(!r.IsDone())throw new Error('révolution impossible (profil auto-intersecté ?)');
-    return r.Shape();
+    const sh=r.Shape();
+    nomsPrefixe(nomsPrismeFaces(r,sh,cotes),f.id);
+    return sh;
   };
   // face plane d'une boucle (z0 = plan de l'esquisse)
-  const faceOf=(chain,area)=>{
+  const faceOf=(chain,area,cotes)=>{
     const bin=[];
     try{
-      let w=occWireFromChain(data,tr,chain,bin,0);
+      let w=occWireFromChain(data,tr,chain,bin,0,cotes);
       if(area<0)w=occt.TopoDS.Wire_1(w.Reversed());
       const fm=occBinPush(bin,new occt.BRepBuilderAPI_MakeFace_15(w,true));
       fm.Build();if(!fm.IsDone())throw new Error('face impossible');
@@ -178,7 +180,7 @@ function occShapeOfRevolve(f){
   // recette que occDiskPrism (2 demi-arcs sur une gp_Circ) : cette build d'OCCT n'expose ni
   // GC_MakeCirc, ni gp_Trsf, donc on construit la pastille là où elle est, sans transform.
   // ATTENTION : c'est « data » (l'esquisse evt. copyiée par les congés), pas « sk ».
-  const diskOf=(cEnt)=>{
+  const diskOf=(cEnt,cotes)=>{
     const C=data.points[cEnt.pc];if(!C)throw new Error('pastille : centre introuvable');
     const bin=[];
     try{
@@ -192,7 +194,9 @@ function occShapeOfRevolve(f){
       const m1=occBinPush(bin,new occt.BRepBuilderAPI_MakeEdge_10(circ,P0,P1));m1.Build();
       const m2=occBinPush(bin,new occt.BRepBuilderAPI_MakeEdge_10(circ,P1,P0));m2.Build();
       if(!m1.IsDone()||!m2.IsDone())throw new Error('pastille impossible');
-      mkW.Add_1(m1.Edge());mkW.Add_1(m2.Edge());mkW.Build();
+      mkW.Add_1(m1.Edge());if(cotes)cotes.push({e:mkW.Edge(),id:cEnt.id});
+      mkW.Add_1(m2.Edge());if(cotes)cotes.push({e:mkW.Edge(),id:cEnt.id});
+      mkW.Build();
       if(!mkW.IsDone())throw new Error('pastille non fermée');
       const fm=occBinPush(bin,new occt.BRepBuilderAPI_MakeFace_15(mkW.Wire(),true));
       fm.Build();if(!fm.IsDone())throw new Error('face pastille impossible');
@@ -209,17 +213,17 @@ function occShapeOfRevolve(f){
   const boucleKey=ch=>(ch||[]).map(x=>(x.ed&&x.ed.e&&x.ed.e.id)||(x.ed&&x.ed.a+'>'+x.ed.b)).sort().join('|');
   const solides=tr.solids.filter(s=>{const k=boucleKey(s.chain);if(vus.has(k))return false;vus.add(k);return true;});
   solides.forEach((sol,si)=>{
-    let s=revol(faceOf(sol.chain,sol.area));
+    const cS=[];let s=revol(faceOf(sol.chain,sol.area,cS),cS);
     (sol.holes||[]).forEach(h=>{
-      const t=revol(faceOf(h,1));
+      const cH=[];const t=revol(faceOf(h,1,cH),cH);
       const c=occCut(s,t);try{s.delete();}catch(e){}try{t.delete();}catch(e){}s=c;
     });
     tr.circleHoles.filter(ch=>ch.solid===si).forEach(ch=>{
-      const t=revol(diskOf(ch.circle));
+      const cC=[];const t=revol(diskOf(ch.circle,cC),cC);
       const c=occCut(s,t);try{s.delete();}catch(e){}try{t.delete();}catch(e){}s=c;
     });
     fuseIn(s);
-  });  tr.circlesOut.forEach(cEnt=>{fuseIn(revol(diskOf(cEnt)));});
+  });  tr.circlesOut.forEach(cEnt=>{const cD=[];fuseIn(revol(diskOf(cEnt,cD),cD));});
   if(!shape){occDispose(bins);throw new Error('solide vide');}
   return{shape,bins,warnings:warns};
 }

@@ -41,7 +41,7 @@ function docHashSrc(d){
   const stripSketch=sk=>{const c=Object.assign({},sk);delete c._refs;delete c._health;delete c._audit;return c;};
   const stripFeat=({_mesh,_m,...r})=>r;
   const stripCg=c=>{const o=cgClean(c);delete o.st;delete o.msg;delete o.ai;return o;};
-  return JSON.stringify({s:d.sketches.map(stripSketch),f:(d.features||[]).filter(f=>f.type!=='import'||f.derive).map(stripFeat),t:d.tint||0,...((d.cgeo&&d.cgeo.length)?{c:d.cgeo.map(stripCg)}:{})}); // construction : seulement si présente (empreinte des anciens documents inchangée)
+  return JSON.stringify({s:d.sketches.map(stripSketch),f:(d.features||[]).filter(f=>f.type!=='import'||f.derive).map(stripFeat),t:d.tint||0,...((d.cgeo&&d.cgeo.length)?{c:d.cgeo.map(stripCg)}:{})},nomsSansCles); // construction : seulement si présente (empreinte des anciens documents inchangée)
 }
 function docHashOf(d){
   try{
@@ -195,6 +195,9 @@ async function deserialise(json,opts){
   // affichée (mesuré : Axe ouvert, solide de Crochet 7 609,69 mm³) ; docHash() resservait aussi
   // l'empreinte mémorisée de l'ancien document.
   _docVersion++;
+  // Le solide affiché est celui de l'ancien document : une esquisse non consommée y aurait cherché
+  // ses arêtes projetées et aurait sauté sur une arête étrangère avant le premier rejeu.
+  try{occDropLive();}catch(e){}
   // V0.6.0 : assemblage (autres pièces + occurrences) — absent d'un fichier d'une seule pièce
   try{asmFromSerial(o.asm);}catch(e){asm=null;}
   // Les numéros de corps ne sont jamais réemployés : le compteur repart au-delà

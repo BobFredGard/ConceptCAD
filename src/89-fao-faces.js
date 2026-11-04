@@ -24,7 +24,42 @@ function faoProtectM(op){return (op&&isFinite(+op.protectM)&&+op.protectM>=0)?+o
 // nettoyage d'une liste (sanitize document)
 function faoFaceListClean(L){
   return (Array.isArray(L)?L:[]).filter(function(q){return q&&q.b!==undefined&&q.b!==null&&(q.all||isFinite(+q.f));})
-    .map(function(q){return q.all?{b:q.b,all:1}:{b:q.b,f:+q.f};});
+    .map(function(q){if(q.all)return {b:q.b,all:1};const r={b:q.b,f:+q.f};if(q.nom)r.nom=String(q.nom);return r;});
+}
+// Une face choisie garde son nom (20-05) : son rang suit le solide quand le modèle change.
+// Le nom est retenu au premier passage, le rang ne bouge que si la face a réellement changé de place :
+// un modèle inchangé garde des parcours et des clés identiques. Une face coupée depuis reste choisie
+// par tous ses morceaux. Nom absent : le rang reste tel quel et l'alerte le dit.
+function faoFaceRangs(T,nom){
+  let n=nom,g=0,i=T.f.indexOf(n);const a=T.a||{};
+  while(i<0&&a[n]&&g++<8){n=a[n];i=T.f.indexOf(n);}
+  if(i>=0)return [i];
+  const base=n.replace(/#d+$/,''),L=[];
+  T.f.forEach(function(x,k){if(x&&(x===base||x.indexOf(n+'#')===0||x.indexOf(base+'#')===0))L.push(k);});
+  return L;
+}
+function faoFacesSuivre(){
+  const r=doc&&doc.fao;if(!r||!Array.isArray(r.setups)||!Array.isArray(bodies))return;
+  r.setups.forEach(function(s){(s.ops||[]).forEach(function(op){['faces','protect'].forEach(function(key){
+    const L=op&&op[key];if(!Array.isArray(L)||!L.length)return;
+    const R=[],vu=new Set();
+    const met=function(q){const k=q.all?q.b+'/all':q.b+'/'+q.f;if(vu.has(k))return;vu.add(k);R.push(q);};
+    L.forEach(function(q){
+      if(!q||q.all){if(q)met(q);return;}
+      const b=bodies.find(function(x){return x&&x.kind==='body'&&String(x.id)===String(q.b);});
+      const T=b&&b.shape&&NOMS_TABLES.get(b.shape);
+      if(!T){met(q);return;}
+      if(!q.nom){if(T.f[q.f])q.nom=T.f[q.f];met(q);return;}
+      const rangs=faoFaceRangs(T,q.nom);
+      if(!rangs.length){
+        nomsPerteNote('fao/'+op.id+'/'+key+'/'+q.nom,'Usinage « '+(op.name||op.type)+' » : une face choisie n’existe plus');
+        met(q);return;
+      }
+      nomsPerteOubli('fao/'+op.id+'/'+key+'/'+q.nom);
+      rangs.forEach(function(k){met({b:q.b,f:k,nom:q.nom});});
+    });
+    if(JSON.stringify(R)!==JSON.stringify(L))op[key]=R;
+  });});});
 }
 // Triangles d'une liste (faces et/ou solides) -> {v,t} dans le repère du posage
 function faoFaceMesh(job,list){
@@ -325,7 +360,7 @@ function faoFaceToggle(op,key,b,f,whole){
   const set=(op.tangent!==false)?faoGeoTangentFaces(b,[f],8):[f];
   if(has)op[key]=op[key].filter(function(q){return !(String(q.b)===String(b.id)&&!q.all&&set.indexOf(+q.f)>=0);});
   else{
-    set.forEach(function(g){if(!op[key].some(function(q){return same(q,g);}))op[key].push({b:b.id,f:+g});});
+    set.forEach(function(g){if(!op[key].some(function(q){return same(q,g);})){const T=b.shape&&NOMS_TABLES.get(b.shape),n=T&&T.f[+g];op[key].push(n?{b:b.id,f:+g,nom:n}:{b:b.id,f:+g});}});
     if(Array.isArray(op[other]))op[other]=op[other].filter(function(q){return !(String(q.b)===String(b.id)&&!q.all&&set.indexOf(+q.f)>=0);});
   }
   return 'face '+(has?'retirée':'ajoutée')+(set.length>1?' avec '+(set.length-1)+' face(s) tangente(s)':'');

@@ -280,10 +280,10 @@ function projEdgesFor(sk){
   const pk=key==='live'?null:projPrefixSig(idx);
   if(pk!=null&&_projEdgePersist.has(pk)){const ed=_projEdgePersist.get(pk);if(_projEdgeCache)_projEdgeCache.set(key,ed);return ed;}
   let edges=null;
-  if(key==='live'){try{edges=occListEdges(occLive.shape);}catch(e){edges=null;}}
+  if(key==='live'){try{edges=nomsSurAretes(occLive.shape,occListEdges(occLive.shape));}catch(e){edges=null;}}
   else{
     let FR=null;
-    try{FR=occFinalShape(idx);if(FR&&FR.shape)edges=occListEdges(FR.shape);}catch(e){edges=null;}
+    try{FR=occFinalShape(idx);if(FR&&FR.shape)edges=nomsSurAretes(FR.shape,occListEdges(FR.shape));}catch(e){edges=null;}
     // nettoyage APRÈS lecture (occCleanup supprime FR.shape)
     finally{if(FR){try{occCleanup(FR,null);}catch(e){}}}
   }
@@ -359,6 +359,24 @@ function findClosestProjectedEdge(sk,x,y,preferMid,wantType,edgesOver,noPoint){
   if(res&&resSrc)res.srcMid=resSrc;
   return res;
 }
+// ARÊTE SOURCE D'UNE PROJETÉE : son NOM (20-05). Le milieu mémorisé ne suffit pas : Barquette,
+// longueur 230 → 237, le bord de la lèvre part de 115 à 118,5 et l'arête intérieure (6,88 mm plus
+// loin) arrive à 111,62, plus près de l'ancienne position — l'esquisse sautait dessus.
+function projPreferMid(sk,e,EO){
+  // → milieu 3D où chercher l'arête source
+  if(!e.srcMid)return e.srcMid;
+  const edges=EO!==undefined?EO:projEdgesFor(sk);if(!edges)return e.srcMid;
+  const cle=sk.id+'/'+e.id,M=e.srcMid;
+  if(e.srcNom){
+    const i=nomsTrouveArete(edges,e.srcNom,M);
+    if(i>=0){nomsPerteOubli(cle);if(edges[i].nom)e.srcNom=edges[i].nom;return edges[i].mid;}
+    nomsPerteNote(cle,(sk.name||'Esquisse')+' : l’arête projetée n’existe plus près de '+nomsPos(M)+' — recherche par position');
+    return M;
+  }
+  const src=edges.find(d=>d.nom&&d.mid&&Math.hypot(d.mid[0]-M[0],d.mid[1]-M[1],d.mid[2]-M[2])<1e-3);
+  if(src)e.srcNom=src.nom;
+  return M;
+}
 function updateAssociativeProjections(sk){
   if(!sk||!sk.entities) return false;
   const own=!_projEdgeCache;if(own)_projEdgeCache=new Map(); // cache local si appel isolé
@@ -389,7 +407,7 @@ function updateAssociativeProjections0(sk){
     if(e.t==='line'){
       const A=sk.points[e.p1], B=sk.points[e.p2]; if(!A||!B) continue;
       const mx=(A.x+B.x)/2, my=(A.y+B.y)/2;
-      const pr=findClosestProjectedEdge(sk,mx,my,e.srcMid,'line',EO,Math.hypot(B.x-A.x,B.y-A.y)>=1e-4);
+      const pr=findClosestProjectedEdge(sk,mx,my,projPreferMid(sk,e,EO),'line',EO,Math.hypot(B.x-A.x,B.y-A.y)>=1e-4);
       if(!pr||pr.type!=='line') continue;
       if(pr.srcMid)e.srcMid=pr.srcMid;
       const d1=Math.hypot(A.x-pr.x1,A.y-pr.y1)+Math.hypot(B.x-pr.x2,B.y-pr.y2);
@@ -403,14 +421,14 @@ function updateAssociativeProjections0(sk){
       }
     } else if(e.t==='circle'){
       const C=sk.points[e.pc]; if(!C) continue;
-      const pr=findClosestProjectedEdge(sk,C.x,C.y,e.srcMid,'circle',EO);
+      const pr=findClosestProjectedEdge(sk,C.x,C.y,projPreferMid(sk,e,EO),'circle',EO);
       if(!pr||pr.type!=='circle') continue;
       if(pr.srcMid)e.srcMid=pr.srcMid;
       if(Math.hypot(C.x-pr.cx,C.y-pr.cy)>0.02 || Math.abs(e.r-pr.r)>0.02){ C.x=pr.cx; C.y=pr.cy; e.r=pr.r; changed=true; }
     } else if(e.t==='arc'){
       const C=sk.points[e.pc], A=sk.points[e.pa], B=sk.points[e.pb]; if(!C||!A||!B) continue;
       const mx=(A.x+B.x)/2, my=(A.y+B.y)/2;
-      const pr=findClosestProjectedEdge(sk,mx,my,e.srcMid,'arc',EO);
+      const pr=findClosestProjectedEdge(sk,mx,my,projPreferMid(sk,e,EO),'arc',EO);
       if(!pr||pr.type!=='arc') continue;
       if(pr.srcMid)e.srcMid=pr.srcMid;
       if(Math.hypot(C.x-pr.cx,C.y-pr.cy)>0.02 || Math.hypot(A.x-pr.x1,A.y-pr.y1)>0.02 || Math.hypot(B.x-pr.x2,B.y-pr.y2)>0.02 || Math.abs(e.r-pr.r)>0.02){

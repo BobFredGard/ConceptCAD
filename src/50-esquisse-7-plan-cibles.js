@@ -252,7 +252,8 @@ function skPlTrackPierce(sk,e,EO){
   const Q=sk.points[e.p];if(!Q||!e.srcMid)return false;
   const edges=EO!==undefined?EO:projEdgesFor(sk);if(!edges||!edges.length)return false;
   let src=null,bd=Infinity;
-  edges.forEach(ed=>{if(!ed.mid)return;const d=Math.hypot(ed.mid[0]-e.srcMid[0],ed.mid[1]-e.srcMid[1],ed.mid[2]-e.srcMid[2]);if(d<bd){bd=d;src=ed;}});
+  const pref=projPreferMid(sk,e,edges)||e.srcMid; // le nom de l'arête d'abord (20-05)
+  edges.forEach(ed=>{if(!ed.mid)return;const d=Math.hypot(ed.mid[0]-pref[0],ed.mid[1]-pref[1],ed.mid[2]-pref[2]);if(d<bd){bd=d;src=ed;}});
   if(!src)return false;
   e.srcMid=src.mid.slice();
   let q=null;bd=Infinity;

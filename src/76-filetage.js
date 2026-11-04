@@ -72,20 +72,41 @@ function threadResolve(shape,f){
   // Faces cylindriques coaxiales de même rayon que la référence → étendue axiale [a, b]
   // (repère de f.cyl : t le long de f.cyl.u) du tronçon contenant le point cliqué.
   const ref=f.cyl;if(!ref||!Array.isArray(ref.c)||!Array.isArray(ref.u)||!(ref.r>0))throw new Error('face de l’axe non définie');
-  const spans=[];
+  // La face cylindrique par son NOM (20-05) : l'axe et le rayon la suivent si la pièce a bougé
+  if(ref.nom){
+    const h=nomsRefFace(shape,ref);
+    if(h){
+      const C=threadCylOf(h);try{h.delete();}catch(e){}
+      if(C){
+        const w=[C.c[0]-ref.c[0],C.c[1]-ref.c[1],C.c[2]-ref.c[2]],t=w[0]*ref.u[0]+w[1]*ref.u[1]+w[2]*ref.u[2];
+        const q=[w[0]-t*ref.u[0],w[1]-t*ref.u[1],w[2]-t*ref.u[2]];
+        if(Math.hypot(q[0],q[1],q[2])>1e-6&&Math.abs(C.u[0]*ref.u[0]+C.u[1]*ref.u[1]+C.u[2]*ref.u[2])>0.9999){
+          ref.c=ref.c.map((v,i)=>v+q[i]);
+          if(Array.isArray(ref.p))ref.p=ref.p.map((v,i)=>v+q[i]);
+        }
+        if(Math.abs(C.r-ref.r)>1e-6)ref.r=C.r;
+      }
+    }
+  }
+  const spans=[];let nomVu=null;
+  const tp0=!ref.nom&&Array.isArray(ref.p)?threadAxisT(ref,ref.p):null;
   const ex=new occt.TopExp_Explorer_2(shape,occt.TopAbs_ShapeEnum.TopAbs_FACE,occt.TopAbs_ShapeEnum.TopAbs_SHAPE);
   try{
     for(;ex.More();ex.Next()){
       const fc=occt.TopoDS.Face_1(ex.Current());
-      const C=threadCylOf(fc);try{fc.delete();}catch(e){}
-      if(!C||Math.abs(C.r-ref.r)>0.02)continue;
-      const dot=C.u[0]*ref.u[0]+C.u[1]*ref.u[1]+C.u[2]*ref.u[2];if(Math.abs(dot)<0.9999)continue;
+      const C=threadCylOf(fc);
+      if(!C||Math.abs(C.r-ref.r)>0.02){try{fc.delete();}catch(e){}continue;}
+      const dot=C.u[0]*ref.u[0]+C.u[1]*ref.u[1]+C.u[2]*ref.u[2];if(Math.abs(dot)<0.9999){try{fc.delete();}catch(e){}continue;}
       const w=[C.c[0]-ref.c[0],C.c[1]-ref.c[1],C.c[2]-ref.c[2]],t=w[0]*ref.u[0]+w[1]*ref.u[1]+w[2]*ref.u[2];
-      if(Math.hypot(w[0]-t*ref.u[0],w[1]-t*ref.u[1],w[2]-t*ref.u[2])>0.02)continue;
+      if(Math.hypot(w[0]-t*ref.u[0],w[1]-t*ref.u[1],w[2]-t*ref.u[2])>0.02){try{fc.delete();}catch(e){}continue;}
       const ta=t+dot*C.v0,tb=t+dot*C.v1;
       spans.push([Math.min(ta,tb),Math.max(ta,tb)]);
+      // Référence ancienne : la face sous le point cliqué donne son nom
+      if(tp0!==null&&!nomVu&&tp0>=Math.min(ta,tb)-0.01&&tp0<=Math.max(ta,tb)+0.01)nomVu=nomsFaceDe(shape,fc);
+      try{fc.delete();}catch(e){}
     }
   }finally{try{ex.delete();}catch(e){}}
+  if(nomVu)ref.nom=nomVu;
   if(!spans.length)throw new Error('face cylindrique Ø'+String(+(2*ref.r).toFixed(2)).replace('.',',')+' introuvable');
   spans.sort(function(x,y){return x[0]-y[0];});
   const M=[];spans.forEach(function(s){const L=M[M.length-1];if(L&&s[0]<=L[1]+0.01)L[1]=Math.max(L[1],s[1]);else M.push(s.slice());});

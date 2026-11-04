@@ -408,9 +408,24 @@ function repTransformDim(d,i,cfg){
 // Référence durable de face (pos/n/dim + ancre, cf. occFaceRef) transportée dans une copie :
 // l'ancre suit l'esquisse CLONÉE de la même passe (comme les congés), sinon elle est jetée et
 // occFindFace la recalera sur la position transformée.
+// NOM D'UNE RÉFÉRENCE DANS UNE COPIE : à chaque régénération la copie repart de la position miroir de
+// la source. Sans son nom elle recherchait son arête par position : Cavité Test, largeur 120, les congés
+// copiés de la Symétrie double sautaient de l'arête de 4,8 mm à sa voisine de 18,13 mm (congé impossible).
+// La copie garde donc le nom qu'elle a déjà, tant que la source désigne toujours le même élément.
+function repNomCle(n){return n?String(n).replace(/<.*$/,'').replace(/#d+$/,''):'';}
+function repNomGarde(o,src,old,cle){
+  const de=cle+'De',c=repNomCle(src&&src[cle]);
+  delete o[cle];
+  if(c)o[de]=c;else delete o[de];
+  if(old&&old[cle]&&c&&(old[de]===undefined||old[de]===c))o[cle]=old[cle];
+}
+function repNomsListe(src,nouv,old,cle){
+  if(!Array.isArray(src)||!Array.isArray(nouv))return;
+  nouv.forEach((o,k)=>{if(o&&typeof o==='object')repNomGarde(o,src[k],Array.isArray(old)?old[k]:null,cle);});
+}
 function repCloneFaceRef(r,i,skMap,cfg){
   if(!r||!Array.isArray(r.pos))return r;
-  const o=Object.assign({},r);delete o._ord;
+  const o=Object.assign({},r);delete o._ord;delete o.nom; // la copie a ses propres faces : renommée au 1er rejeu
   o.pos=repTransformPoint(r.pos,i,cfg).map(v=>+v.toFixed(3));
   if(Array.isArray(r.n))o.n=repNorm(repTransformVec(r.n,i,cfg)).map(v=>+v.toFixed(4));
   if(Array.isArray(r.dim))o.dim=repTransformDim(r.dim,i,cfg).map(v=>+v.toFixed(3));
@@ -424,6 +439,8 @@ function repCloneSketch(sk,i,skMap,featMap,cfg,reuse){
   // cotes, hôtes, projections, sélection et marqueur temps gardent leurs cibles.
   if(!reuse&&skMap[sk.id])return skMap[sk.id];
   const ns=JSON.parse(JSON.stringify(sk));
+  // arêtes de la copie : nommées au 1er rejeu, puis gardées d'une régénération à l'autre
+  (ns.entities||[]).forEach(e=>{const src={srcNom:e.srcNom},old=reuse&&(reuse.entities||[]).find(x=>x.id===e.id);repNomGarde(e,src,old,'srcNom');});
   ensureSketchBasis(ns);
   ns.name=(sk.name||'Esquisse')+' (rép '+i+')';
   ns.origin=repTransformPoint(ns.origin||[0,0,0],i,cfg).map(v=>+v.toFixed(6));
@@ -546,6 +563,10 @@ function repCloneFeature(f,i,skMap,featMap,cfg,reuse){
     if(f.type==='xmove'){nf.ref=repCloneFaceRef(f.ref,i,skMap,cfg);if(Array.isArray(f.faces))nf.faces=f.faces.map(r=>repCloneFaceRef(r,i,skMap,cfg));}
     if(f.type==='xdelface'){nf.faces=(f.faces||[]).map(r=>repCloneFaceRef(r,i,skMap,cfg));delete nf._m;delete nf._err;}
   }
+  // Noms des références : ceux de la copie, pas ceux de la source
+  if(f.type==='xfillet')repNomsListe(f.edges,nf.edges,reuse&&reuse.edges,'nom');
+  if(f.type==='xdraft'||f.type==='xmove'||f.type==='xdelface')repNomsListe(f.faces,nf.faces,reuse&&reuse.faces,'nom');
+  if((f.type==='xmove'||f.type==='xdraft')&&nf.ref&&f.ref&&!nf.ref.nom)repNomGarde(nf.ref,f.ref,reuse&&reuse.ref,'nom');
   // Le NOM de la FONCTION COPIÉE est conservé tel quel dans la sous-arborescence (c'est la
   // répétition elle-même qui porte le nom du TYPE : Linéaire / Circulaire / Symétrie).
   nf.name=f.name||'Fonction';

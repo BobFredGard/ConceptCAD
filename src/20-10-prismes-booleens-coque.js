@@ -129,7 +129,8 @@ function occW(sk,x,y){ // sketch 2D -> monde
   const{u,v,n,o}=sketchBasis(sk);
   return[o.x+u.x*x+v.x*y,o.y+u.y*x+v.y*y,o.z+u.z*x+v.z*y];
 }
-function occWireFromChain(sk,tr,chain,bin,z0){
+function occWireFromChain(sk,tr,chain,bin,z0,cotes){
+  // cotes (facultatif, noms uniques) : reçoit {e:arête du contour,id:entité d'esquisse}
   // Construit un TopoDS_Wire fermé en coords monde depuis une chaîne skLoopTrace.
   // Sens préservé (arcs CW via .Reversed()). Jette une Error en cas d'échec.
   // z0 = décalage du plan de construction le long de n (prisme décalé : plage [lo,hi]).
@@ -149,6 +150,8 @@ function occWireFromChain(sk,tr,chain,bin,z0){
   const PW=(x,y)=>{const w=OP(occW(sk,x,y));return occBinPush(bin,new occt.gp_Pnt_3(w[0],w[1],w[2]));};
   const mkW=occBinPush(bin,new occt.BRepBuilderAPI_MakeWire_1());
   const nodes=chainNodesOf(chain);
+  // MakeWire recopie l'arête pour partager les sommets : on retient celle du contour
+  const noteCote=ed=>{if(cotes&&ed&&ed.e&&ed.e.id!=null)cotes.push({e:mkW.Edge(),id:ed.e.id});};
   const projOnCirc=(Cw,r,a)=>{const w=OP(occW(sk,Cw.x+r*Math.cos(a),Cw.y+r*Math.sin(a)));return occBinPush(bin,new occt.gp_Pnt_3(w[0],w[1],w[2]));};
   for(let i=0;i<nodes.length-1;i++){
     const st=chain[i],ed=st.ed;
@@ -158,7 +161,7 @@ function occWireFromChain(sk,tr,chain,bin,z0){
       if(!A||!B)throw new Error('ligne incomplète');
       const me=occBinPush(bin,new occt.BRepBuilderAPI_MakeEdge_3(PW(A.x,A.y),PW(B.x,B.y)));
       me.Build();if(!me.IsDone())throw new Error('arête ligne impossible');
-      mkW.Add_1(me.Edge());
+      mkW.Add_1(me.Edge());noteCote(ed);
     }else if(ed.kind==='spline'){
       // 2026-10-29 : spline d'esquisse = B-spline EXACTE (mêmes pôles et nœuds que le dessin 2D, 50-esquisse-6),
       // pôles posés dans le plan par la même application affine que les lignes : bouts identiques aux voisines
@@ -172,7 +175,7 @@ function occWireFromChain(sk,tr,chain,bin,z0){
       const me=occBinPush(bin,new occt.BRepBuilderAPI_MakeEdge_24(h));
       me.Build();if(!me.IsDone())throw new Error('arête spline impossible');
       let e=me.Edge();if(ed.a!==st.from)e=occt.TopoDS.Edge_1(e.Reversed());
-      mkW.Add_1(e);
+      mkW.Add_1(e);noteCote(ed);
     }else{
       const a=ed.e,Cc=tr.pts[a.pc];
       const an=arcAngles(sk,a);if(!an||!Cc)throw new Error('arc invalide');
@@ -192,7 +195,7 @@ function occWireFromChain(sk,tr,chain,bin,z0){
         // cylindre, sans arête de jonction ; sa projection en esquisse est un seul cercle.
         const m1=occBinPush(bin,new occt.BRepBuilderAPI_MakeEdge_8(circ));m1.Build();
         if(!m1.IsDone())throw new Error('cercle complet impossible');
-        mkW.Add_1(m1.Edge());
+        mkW.Add_1(m1.Edge());noteCote(ed);
         continue;
       }
       // Sens réel : le départ coïncide-t-il avec a1 (sens CCW de l'entité) ou a2 (retour CW) ?
@@ -207,7 +210,7 @@ function occWireFromChain(sk,tr,chain,bin,z0){
       me.Build();if(!me.IsDone())throw new Error('arête arc impossible');
       // Note : .Reversed() rend un TopoDS_Shape -> recast obligatoire en TopoDS_Edge.
       let e=me.Edge();if(rev)e=occt.TopoDS.Edge_1(e.Reversed());
-      mkW.Add_1(e);
+      mkW.Add_1(e);noteCote(ed);
     }
   }
   mkW.Build();if(!mkW.IsDone())throw new Error('contour non fermé (wire)');
@@ -218,7 +221,8 @@ function occPrismOfChain(sk,tr,chain,distance,area,z0){
   // vers +n : distance>0 toujours (la plage [lo,hi] est gérée par z0=lo, longueur hi-lo).
   const bin=[];
   try{
-    let w=occWireFromChain(sk,tr,chain,bin,z0);
+    const cotes=[];
+    let w=occWireFromChain(sk,tr,chain,bin,z0,cotes);
     if(area<0)w=occt.TopoDS.Wire_1(w.Reversed());
     const fm=occBinPush(bin,new occt.BRepBuilderAPI_MakeFace_15(w,true));
     fm.Build();if(!fm.IsDone())throw new Error('face impossible');
@@ -227,6 +231,7 @@ function occPrismOfChain(sk,tr,chain,distance,area,z0){
     const pr=occBinPush(bin,new occt.BRepPrimAPI_MakePrism_1(fm.Face(),vec,false,true));
     pr.Build();if(!pr.IsDone())throw new Error('prisme impossible');
     const s=pr.Shape();
+    nomsPrismeFaces(pr,s,cotes);
     try{w.delete();}catch(e){}
     return{shape:s,bin};
   }catch(err){occDispose(bin);throw err;}
@@ -341,6 +346,7 @@ function occSpanPrism(sk,tr,chain,sp,area){
 function occFuse(a,b){
   const f=new occt.BRepAlgoAPI_Fuse_3(a,b);
   f.Build();const ok=f.IsDone();const s=ok?f.Shape():null;
+  if(s)nomsTransmet([a,b],f,s);
   try{f.delete();}catch(e){}
   if(!ok||!s)throw new Error('fusion impossible');
   return s;
@@ -348,6 +354,7 @@ function occFuse(a,b){
 function occCut(a,b){
   const c=new occt.BRepAlgoAPI_Cut_3(a,b);
   c.Build();const ok=c.IsDone();const s=ok?c.Shape():null;
+  if(s)nomsTransmet([a,b],c,s);
   try{c.delete();}catch(e){}
   if(!ok||!s)throw new Error('découpe impossible');
   return s;
@@ -377,12 +384,14 @@ function occCutEach(a,b){
     c.SetArguments(la);c.SetTools(lt);c.SetCheckInverted(false);c.Build();
     const s=c.IsDone()?c.Shape():null;
     if(!s||s.IsNull())throw new Error('découpe impossible');
+    nomsTransmet([a,b],c,s); // b : le composé porte les noms, ses enfants non
     return s;
   }finally{try{c.delete();}catch(e){}try{la.delete();}catch(e){}try{lt.delete();}catch(e){}}
 }
 function occCommon(a,b){
   const c=new occt.BRepAlgoAPI_Common_3(a,b);
   c.Build();const ok=c.IsDone();const s=ok?c.Shape():null;
+  if(s)nomsTransmet([a,b],c,s);
   try{c.delete();}catch(e){}
   if(!ok||!s)throw new Error('intersection impossible');
   return s;
@@ -465,7 +474,7 @@ function occUnify(s){
     keep.forEach(e=>u.KeepShape(e));
     u.Build();
     const r=u.Shape();
-    if(r&&r!==s){try{s.delete();}catch(e){}return r;}
+    if(r&&r!==s){nomsApresUnify(u,s,r);try{s.delete();}catch(e){}return r;}
     return s;
   }catch(e){
     return s;
@@ -615,6 +624,7 @@ function occUnifyCutSeams(res,prev,tool){
     u.Build();
     const r=u.Shape();
     if(!r||r.IsNull()||r===res)return res;
+    nomsApresUnify(u,res,r);
     try{res.delete();}catch(e){}
     return r;
   }catch(e){
@@ -656,7 +666,20 @@ function occCoqueThick(result,faces,thick,join,inter){
     let done=false;
     try{done=!!mk.IsDone();}catch(e){}
     if(!done)throw new Error('évidage refusé par le moteur (paroi trop épaisse ? ouverture mal placée ?)');
-    const out=occShapeCopy(mk.Shape());
+    const brut=mk.Shape();
+    // Paroi intérieure : née de la face extérieure qu'elle double (« nom/int »)
+    try{
+      const T=nomsDe(result),mS=T?nomsCarteFaces(result):null;
+      if(mS)try{
+        nomsTransmet([result],mk,brut,{nais:(m,f)=>{
+          for(let i=1;i<=mS.Size();i++){
+            const nom=T.f[i-1];if(!nom)continue;
+            nomsListe(mk.Generated(mS.FindKey(i))).forEach(y=>{const j=m.FindIndex(y);if(j>0&&!f[j-1])f[j-1]=nom+'/int';});
+          }
+        }});
+      }finally{try{mS.delete();}catch(e){}}
+    }catch(e){}
+    const out=occShapeCopy(brut);
     if(!out||out.IsNull()){try{if(out)out.delete();}catch(e){}throw new Error('solide évidé vide');}
     return out;
   }finally{occDispose(bin);}

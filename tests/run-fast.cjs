@@ -107,6 +107,10 @@ const SUITES = [
   'test_rendu_patine',
   'test_rendu_scene',
   'test_noms_globaux',
+  'test_noms_socle',
+  'test_noms_partout',
+  'test_noms_fao',
+  'test_noms_reouverture',
   'test_import_arbre',
   'test_export_step_import'
 ];

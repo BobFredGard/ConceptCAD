@@ -29,6 +29,9 @@ function faoOpSig(op){
         const L2={};
         for(const kk in v) if(Object.prototype.hasOwnProperty.call(v,kk)&&kk!=='stale'&&kk!=='missing')L2[kk]=v[kk];
         o.limit2=L2;
+      }else if((k==='faces'||k==='protect')&&Array.isArray(v)){
+        // le nom d'une face choisie (89) ne change pas le parcours : hors de la clé
+        o[k]=v.map(function(q){if(!q||!q.nom)return q;const c=Object.assign({},q);delete c.nom;return c;});
       }else o[k]=v;
     }
   }catch(e){ return op; }

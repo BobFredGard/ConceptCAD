@@ -26,6 +26,11 @@ function occDiskPrism(sk,Cx,Cy,r,sp){
     const pr=occBinPush(bin,new occt.BRepPrimAPI_MakePrism_1(fm.Face(),vec,false,true));
     pr.Build();if(!pr.IsDone())throw new Error('prisme pastille impossible');
     const s=pr.Shape();
+    nomsNomme(s,(m,fn)=>{
+      nomsListe(pr.Generated(mkW.Edge())).forEach(y=>{const j=m.FindIndex(y);if(j>0)fn[j-1]='cercle/flanc';});
+      const q=nomsBoutsPrisme(pr),a=m.FindIndex(q[0]),b=m.FindIndex(q[1]);
+      if(a>0)fn[a-1]='bas';if(b>0)fn[b-1]='haut';
+    });
     return{shape:s,bin};
   }catch(err){occDispose(bin);throw err;}
 }
@@ -265,7 +270,7 @@ function occFilletRun(base,jobs,warns,chamfer,opts){
       if(sansFace)warns.push('chanfrein : '+sansFace+' arête(s) sans face identifiable — distance égale appliquée');
       let ok=false;try{mf.Build();ok=mf.IsDone();}catch(e){ok=false;}
       if(!ok){occDispose(bin);return null;}
-      const s=mf.Shape();occDispose(bin);return s;
+      const s=mf.Shape();nomsApresConge(mf,cur,s,chamfer);occDispose(bin);return s;
     }catch(e){occDispose(bin);return null;}
   };
   if(opts&&opts.single){
@@ -335,6 +340,8 @@ function occShapeOfExtrude(f){
     if(!rf.applied&&!(fils.some(fi=>fi.rims&&(fi.rims.top||fi.rims.bottom)))){/* que des rims : rien en 2D */}
   }
   const tr=skTracePick(data,f.profiles); // zones choisies (70-extrusion-profils) ; sans choix = toutes
+  // Noms uniques : chaque contour de l'outil est préfixé de la fonction (et du centre pour une pastille)
+  const nomme=(r,pre)=>{if(r&&r.shape)nomsPrefixe(r.shape,pre);return r;};
   if(!tr.solids.length&&!tr.circlesOut.length){
     let m=tr.picked===0?'aucune des zones choisies ne se retrouve dans l’esquisse':'profil non fermé';
     if(tr.opens&&tr.opens.length)m+=` (bout ouvert en ${tr.opens[0].x.toFixed(1)}, ${tr.opens[0].y.toFixed(1)})`;
@@ -356,17 +363,17 @@ function occShapeOfExtrude(f){
   const fuseIn=(s)=>{if(!shape){shape=s;return;}const nx=occUnify(occFuse(shape,s));try{shape.delete();}catch(e){}try{s.delete();}catch(e){}shape=nx;};
   tr.solids.forEach((sol,si)=>{
     let s;
-    if(sol.circle){const Cc=data.points[sol.circle.pc];if(!Cc)throw new Error('zone : centre introuvable');s=keep(occDiskPrism(data,Cc.x,Cc.y,sol.circle.r,sp),'zone circulaire');}
-    else s=keep(occSpanPrism(data,tr,sol.chain,sp,sol.area),'contour '+tr.solids.length);
+    if(sol.circle){const Cc=data.points[sol.circle.pc];if(!Cc)throw new Error('zone : centre introuvable');s=keep(nomme(occDiskPrism(data,Cc.x,Cc.y,sol.circle.r,sp),f.id+'/'+sol.circle.id),'zone circulaire');}
+    else s=keep(nomme(occSpanPrism(data,tr,sol.chain,sp,sol.area),f.id),'contour '+tr.solids.length);
     s=rimApply(s);
     (sol.holes||[]).forEach(h=>{
-      const t=keep(occSpanPrism(data,tr,h,sp,1),'trou');
+      const t=keep(nomme(occSpanPrism(data,tr,h,sp,1),f.id),'trou');
       const c=occCut(s,t);try{s.delete();}catch(e){}try{t.delete();}catch(e){}s=c;
     });
     tr.circleHoles.filter(ch=>ch.solid===si).forEach(ch=>{
       const Cc=data.points[ch.circle.pc];
       if(!Cc)throw new Error('pastille : centre introuvable');
-      const t=keep(occDiskPrism(data,Cc.x,Cc.y,ch.circle.r,sp),'trou circulaire');
+      const t=keep(nomme(occDiskPrism(data,Cc.x,Cc.y,ch.circle.r,sp),f.id+'/'+ch.circle.id),'trou circulaire');
       const c=occCut(s,t);try{s.delete();}catch(e){}try{t.delete();}catch(e){}s=c;
     });
     fuseIn(s);
@@ -374,7 +381,7 @@ function occShapeOfExtrude(f){
   tr.circlesOut.forEach(cEnt=>{
     const Cc=data.points[cEnt.pc];
     if(!Cc)throw new Error('pastille : centre introuvable');
-    fuseIn(rimApply(keep(occDiskPrism(data,Cc.x,Cc.y,cEnt.r,sp),'pastille')));
+    fuseIn(rimApply(keep(nomme(occDiskPrism(data,Cc.x,Cc.y,cEnt.r,sp),f.id+'/'+cEnt.id),'pastille')));
   });
   if(!shape){occDispose(bins);throw new Error('solide vide');}
   // Dépouille d'extrusion (f.draft, degrés signés / plan d'esquisse) : inclinaison des

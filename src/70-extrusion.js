@@ -125,7 +125,17 @@ function resolveExtrudeUpto(f){
   let bestFn=null,bestFi=-1,bestP=null;
   const faceCount=g.index?Math.floor(g.index.count/3):Math.floor(pos.count/3);
   const storedFi=f.upto.faceId?.fi;
-  if(typeof storedFi==='number' && storedFi>=0 && storedFi<faceCount){
+  // 0) Le NOM de la face (20-05) : ni la retessellation ni un changement de taille ne le trompent
+  if(f.upto.nom&&tgtBody.shape){
+    let h=null;
+    try{
+      h=nomsRefFace(tgtBody.shape,{nom:f.upto.nom});
+      const d=h?occSurfDesc(h):null,n=h?occFaceOutNormal(h):null;
+      if(d&&d.k==='pl'&&n){bestFn={x:n[0],y:n[1],z:n[2]};bestP=d.p.slice();bestFi=(typeof storedFi==='number')?storedFi:0;}
+    }catch(e){}
+    finally{try{if(h)h.delete();}catch(e){}}
+  }
+  if(!bestFn&&typeof storedFi==='number' && storedFi>=0 && storedFi<faceCount){
     const n=faceNormalWorld(mesh,storedFi);
     if(n){
       // N'accepte le triangle mémorisé que s'il est sur le MÊME PLAN que la face cliquée
@@ -172,6 +182,7 @@ function resolveExtrudeUpto(f){
   if(!bestFn)return false;
   // Mémorise le triangle utilisé pour le suivi dynamique
   f.upto.faceId={fi:bestFi,bid:tgtBody.id};
+  if(!f.upto.nom){let H=null;try{H=occFaceOfHit(mesh,bestFi);if(H&&H.face&&H.bd){const n=nomsFaceDe(H.bd.shape,H.face);if(n)f.upto.nom=n;}}catch(e){}finally{try{if(H&&H.face)H.face.delete();}catch(e){}}}
   // Distance signée le long de B.n de O (origine esquisse) au plan de la face
   const dotBn=bestFn.x*B.n.x+bestFn.y*B.n.y+bestFn.z*B.n.z;
   if(Math.abs(dotBn)<1e-9)return false;

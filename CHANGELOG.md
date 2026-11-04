@@ -8,7 +8,7 @@ sont sorties le 2026-09-30j.
 Code dans `src/` · livrable `fusion_mvp.html` (généré par `build.js`) · architecture et
 garde-fous en tête de `src/00-entete-et-outils.js`.
 
-**564 versions**, de `2026-09-28b` à `V0.49.0` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
+**565 versions**, de `2026-09-28b` à `V0.50.0` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
 comme dans le fichier d'origine.
 
 ---
@@ -6567,3 +6567,14 @@ Demande : « ajouter l'outil pour réaliser des pentagrammes ou des 6 pans ou + 
 - **Changement de Ø** : la forme grandit autour de son centre avant la résolution (`skPolyRescale`), sinon le solveur ferait glisser un centre encore libre ; la règle « 1re cote = mise à l'échelle de toute l'esquisse » ne s'applique pas à cette cote.
 - `CACHE_VER` ne change pas : aucun parcours à régénérer.
 - **Tests** : `test_esquisse_polygone` (3 à 24 côtés créés à la souris, Ø modifié, sommet tiré, cote en trop devenue référence, clavier, annulation) ; contrôle ponctuel au noyau exact : volumes extrudés conformes à n·r²·tan(π/n)·h pour 3, 5, 6, 8 et 12 côtés.
+
+## V0.50.0 - Persistance : chaque face et chaque arête a un nom unique
+Demandes : « de 235 à 250, le solide se met en vrac alors que de 5 en 5 il garde sa forme ; le congé de 1 perd sa référence et le plan aussi », « chaque face, chaque arête nommé d'un nom unique », « valable pour toutes les entités de l'esquisse, des contraintes et des projections », puis Cavité Test : « le Congé exact (1 arête(s)) ne suit pas ».
+- **Cause** : les références (congés, plans, projections, faces d'esquisse) retrouvaient leur élément par sa position. Après un grand saut, l'élément voisin était parfois plus proche de l'ancienne position que le bon. Barquette, longueur 230 → 237 : le bord de la lèvre part à 118,5 et l'arête intérieure arrive à 111,62, plus près de l'ancien 115.
+- **Noms** (`src/20-05-noms.js`) : chaque face reçoit un nom transmis par toutes les fonctions (extrusion, révolution, balayage, perçage, booléens, congés, coque, dépouille, déplacement de face, scission, import, échelle, déplacement de corps). Une face coupée donne des morceaux `#k` numérotés dans l'ordre géométrique, une face recollée garde le plus petit nom. Le nom d'une arête vient de ses deux faces.
+- **Références** : congés et chanfreins, plans et points de construction, projections, faces d'esquisse, jusqu'à la face, filetages, perçages, liaisons d'assemblage et faces choisies pour l'usinage cherchent d'abord par le nom. Les fichiers existants reçoivent leurs noms à l'ouverture sans paraître modifiés. Nom introuvable : recherche par position et alerte visible, le nom est gardé pour que l'élément revienne si l'édition est annulée.
+- **Sans effet sur les caches** : les noms restent hors des signatures, de l'empreinte du document, de l'annulation et des clés de parcours. `CACHE_VER` ne change pas : aucun parcours à régénérer.
+- **Esquisses par petits pas** (`solveSketch`) : une cote qui bouge de plus de 5 %, ou des projections qui bougent de plus de la moitié de la plus petite cote, se résolvent en interne par paliers (8 au plus), avec retour au calcul direct si les paliers n'aboutissent pas. Cavité Test, largeur 114,4 → 104 : le contour reculait de 5,2 mm, le point de la cote de 3 mm de la nervure passait de l'autre côté et les congés échouaient.
+- **Répétitions** : une copie garde les noms de ses références d'une régénération à l'autre, tant que la source désigne le même élément. Cavité Test, largeur 120 : les congés copiés par la Symétrie double sautaient de l'arête de 4,8 mm à sa voisine de 18,13 mm.
+- **Reste à faire** : les cotes de mise en plan suivent encore la géométrie de la vue, et l'intersection d'esquisse avec un corps entier choisit sa courbe par position. Banc de persistance (295 réglages, un saut comparé à des petits pas) : 238 sans écart au lieu de 190, 22 avec une alerte seule, 8 avec de très petits écarts, 24 qui changent encore de forme, 3 interrompus.
+- **Tests** : `test_noms_socle`, `test_noms_partout`, `test_noms_fao`, `test_noms_reouverture` (aussi en suite rapide), `test_noms_barquette`, `test_noms_repetition` ; banc `tests/banc_persistance.cjs` (état des lieux, hors CI).

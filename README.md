@@ -8,7 +8,7 @@
 
 ![Support de pédale déportée R1200RT en alu anodisé rouge sur béton, lancer de rayons de l'atelier RENDU (2048 échantillons)](docs/captures/rendu-pedale.jpg)
 
-Le noyau géométrique exact est **OpenCascade 8 compilé en WebAssembly** par nos soins (recette reproductible dans `occt-build/`). S'il n'est pas disponible, l'application bascule seule sur un moteur maillage (CSG). Version actuelle : **V0.49.0** (voir le [journal des modifications](CHANGELOG.md)).
+Le noyau géométrique exact est **OpenCascade 8 compilé en WebAssembly** par nos soins (recette reproductible dans `occt-build/`). S'il n'est pas disponible, l'application bascule seule sur un moteur maillage (CSG). Version actuelle : **V0.50.0** (voir le [journal des modifications](CHANGELOG.md)).
 
 | | |
 |---|---|
@@ -100,6 +100,7 @@ Historique rejouable, timeline à icônes (vert = ajout, rouge = enlèvement), m
 - **Congés et chanfreins exacts** sur la chaîne tangente ou l'arête seule (un clic ajoute ou retire une arête), avec reprise NURBS quand le noyau refuse la chaîne ; un rayon impossible est ramené au plus grand qui passe (⚠ dans l’arbre), le rayon demandé restant enregistré. Chanfrein à **distance égale, deux distances ou distance + angle**, première face inversable. L'arête choisie suit les paramètres amont, y compris sur une extrusion à **dépouille** (hauteur et angle modifiés).
 - **Répétition** linéaire, en grille, circulaire, symétrie, avec aperçu rouge des copies ; les copies **s'unissent** à leur corps ou deviennent chacune un **nouveau corps**. Une répétition se répète.
 - **Modifier** : déplacer une face façon Appuyer/Tirer (ses bords suivent les parois voisines, dépouilles et coins arrondis compris ; cliquer la face d’un **congé ou d’un chanfrein** règle directement sa taille ; case **Faces tangentes** : un clic retient toutes les faces qui se prolongent sans arête vive — l’intérieur d’une poche, congés compris — décalées d’un bloc quel que soit leur type), **supprimer des faces** (plusieurs à la fois, calcul en tâche de fond), **dépouille** (angle signé, sens inversable), coque, **scinder** par un plan, **déplacer un corps** (translation, rotation, point à point), **échelle / homothétie** d’un corps (facteur uniforme ou X, Y, Z ; centre = origine, point, centre du corps ; corps modifié ou nouveau corps), **combiner** (union, soustraction, intersection). Ces outils marchent aussi sur un **STEP importé** seul.
+- **Références qui tiennent** : chaque face et chaque arête porte un nom unique, transmis d’une fonction à l’autre. Congés, plans, perçages, esquisses sur face, projections, liaisons d’assemblage et faces choisies pour l’usinage retrouvent leur élément par ce nom, y compris dans les copies d’une répétition. Un grand changement de cote se calcule par petits pas en interne ; si un élément a vraiment disparu, une alerte le dit.
 
 ### Corps, mesures, fichiers
 
@@ -278,10 +279,10 @@ Le dépôt stocke les gros binaires (`occt/*.wasm`, `Exemples/*.conceptcad`, `Ex
 
 | Chemin | Rôle |
 |---|---|
-| `src/*.js` | **Les sources** : 149 fichiers concaténés dans l'ordre alphabétique (noyau, esquisse, fonctions 3D, assemblage, FAO découpée par domaine, mise en plan, rendu, interface téléphone `99-mobile*.js`). C'est ici qu'on travaille. |
+| `src/*.js` | **Les sources** : 150 fichiers concaténés dans l'ordre alphabétique (noyau, esquisse, fonctions 3D, assemblage, FAO découpée par domaine, mise en plan, rendu, interface téléphone `99-mobile*.js`). C'est ici qu'on travaille. |
 | `ConceptCAD.html` | **Livrable généré** par `node build.js`. On n'édite jamais son script à la main. |
 | `PostPro/` | Une fiche par machine (`siemens-630.js`, `siemens-1520.js`, `fagor-8065.js`). Nouvelle machine = copier une fiche, la modifier, `npm run build`. |
-| `tests/` | 249 suites Node lancées en parallèle (`npm run ci:full`), 106 rapides (`npm run ci`), non-régression des parcours FAO (`npm run parcours`), tests de référence (`tests/oracle/`, [docs/oracle.md](docs/oracle.md)). |
+| `tests/` | 255 suites Node lancées en parallèle (`npm run ci:full`), 110 rapides (`npm run ci`), non-régression des parcours FAO (`npm run parcours`), tests de référence (`tests/oracle/`, [docs/oracle.md](docs/oracle.md)). |
 | `tests/browser/` | Playwright dans un vrai Chromium : parcours critiques et Rendu (`npm run test:browser`, seul projet lancé par la CI GitHub, déclenchée à la main) et carte graphique réelle (`npm run test:gpu`, en local). |
 | `tools/` | Lint du script concaténé (`npm run lint`), serveur MCP, **captures du README** (`npm run captures`). |
 | `occt/`, `threejs/` | Noyau OpenCascade WebAssembly (`occt/v3` : OCCT 8, celui de l'application ; `occt/opencascade.*` : l'ancien 7.4, adresse `?noyau=actuel`), rendu three.js. |
