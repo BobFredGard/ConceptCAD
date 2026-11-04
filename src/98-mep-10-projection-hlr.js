@@ -924,13 +924,14 @@
      Fond de filet (k 'thread') : gris clair et plus fin que le trait fin (.mepThread).
      Filet modélisé (impression 3D) : sa géométrie réelle est déjà dessinée — rien d'ajouté.
      Vue oblique / perspective : rien (convention définie pour les vues orthogonales). Détail : comme sa
-     vue mère (même base), rogné ensuite par le cercle du détail (mepFinishGeo). */
-  function mepThreadEls(view){
+     vue mère (même base), rogné ensuite par le cercle du détail (mepFinishGeo).
+     Coupe locale : cut = {planes,n}, son plan à la place de celui de la vue (mepLocalApply). */
+  function mepThreadEls(view,cut){
     const out=[];
     if(!view||mepOblOf(view)||mepPerspOf(view)||typeof holeAxis!=='function'||typeof isoThread!=='function')return out;
     const b=mepBasisOf(view),dot=mepDot;
-    const planes=view.section?((view._step&&view._step.planes)||[view.section.p]):null;
-    const nS=view.section?mepNorm(view.section.n):null;
+    const planes=cut?cut.planes:(view.section?((view._step&&view._step.planes)||[view.section.p]):null);
+    const nS=cut?mepNorm(cut.n):(view.section?mepNorm(view.section.n):null);
     (doc.features||[]).forEach(f=>{
       if(!f||f.type!=='hole'||f.visible===false||!f.thread||!f.thread.size||f.thread.model)return;
       const fb=(typeof occBodyOfFeat==='function'?occBodyOfFeat(f):f.body)||null; // V0.15.11 : f.bodyId n'existe pas
@@ -968,10 +969,13 @@
         const rCut=Math.min(R,(+N.d>0?N.d/2:R));
         const inCut=!!(planes&&Math.abs(dot(nS,D))<0.02&&planes.some(p0=>Math.abs(dot(nS,[w[0]-p0[0],w[1]-p0[1],w[2]-p0[2]]))<rCut));
         if(!inCut&&view.mode!=='dash')return; // filet caché : seulement en « cachées en pointillé »
+        if(!inCut&&cut&&dot(nS,[w[0]-cut.planes[0][0],w[1]-cut.planes[0][1],w[2]-cut.planes[0][2]])>0)return; // coupe locale : ôté avec la matière enlevée
         const k=inCut?'thread':'threadH';
         const a=at(off),e=at(off+L);
-        [-1,1].forEach(sg=>out.push({t:'L',x1:a[0]+nx*R*sg,y1:a[1]+ny*R*sg,x2:e[0]+nx*R*sg,y2:e[1]+ny*R*sg,k}));
-        if(!thru)out.push({t:'L',x1:e[0]-nx*R,y1:e[1]-ny*R,x2:e[0]+nx*R,y2:e[1]+ny*R,k:inCut?'sharp':'threadH'}); // fin de filetage
+        // plan de coupe hors de l'axe (coupe locale sur une arête voisine) : trait à la corde du Ø nominal
+        const hC=inCut&&cut?Math.abs(dot(nS,[w[0]-cut.planes[0][0],w[1]-cut.planes[0][1],w[2]-cut.planes[0][2]])):0,Rv=Math.sqrt(R*R-hC*hC);
+        [-1,1].forEach(sg=>out.push({t:'L',x1:a[0]+nx*Rv*sg,y1:a[1]+ny*Rv*sg,x2:e[0]+nx*Rv*sg,y2:e[1]+ny*Rv*sg,k}));
+        if(!thru)out.push({t:'L',x1:e[0]-nx*Rv,y1:e[1]-ny*Rv,x2:e[0]+nx*Rv,y2:e[1]+ny*Rv,k:inCut?'sharp':'threadH'}); // fin de filetage
       });
     });
     return out;

@@ -537,7 +537,9 @@
         const g2={els:[],hatch:[]};
         if(!mepHlrExact(g2,view,cut,new Set()))return;
         g2.els=mepMergeCollinear(g2.els);
-        els=mepClipPoly(els,poly,false).concat(mepClipPoly(g2.els,poly,true));
+        // filetages vus par cette coupe (fond de filet ISO 6410-1), comme dans une vue en coupe
+        let th=[];try{th=mepThreadEls(view,{planes:[p0],n:dir});}catch(e2){}
+        els=mepClipPoly(els,poly,false).concat(mepClipPoly(g2.els.concat(th),poly,true));
         let loops=[];try{loops=mepHatchLoops(cut,view,p0,dir);}catch(e2){}
         if(loops.length)geo.hatchLoc.push({loops,poly});
         mepLocBorder(view,poly).forEach(run=>els.push({t:'P',pts:run,k:'brk'})); // limite de la coupe : trait fin continu, sur la matière

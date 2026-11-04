@@ -8,7 +8,7 @@ sont sorties le 2026-09-30j.
 Code dans `src/` · livrable `fusion_mvp.html` (généré par `build.js`) · architecture et
 garde-fous en tête de `src/00-entete-et-outils.js`.
 
-**552 versions**, de `2026-09-28b` à `V0.46.3` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
+**553 versions**, de `2026-09-28b` à `V0.46.4` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
 comme dans le fichier d'origine.
 
 ---
@@ -6482,3 +6482,10 @@ Demande : « si l'on coupe cet alésage par une extrusion d'un rectangle, l'alé
 - **Reconnaissance** (`mepHoleAt`, `src/98-mep-70-cotes.js`) : arcs acceptés, avec les mêmes contrôles de centre et de rayon ; outil Perçage et « Coter les perçages » (`mepAutoHoles`) en profitent, le compte « n× » inclut les trous coupés. Même levée pour les traits d'axe (`mepAxisHoleAt`, `mepAxisFaceHoles`).
 - **Flèche** (`mepHoleArcAng`) : ramenée sur la matière restante si l'étiquette est du côté enlevé ; pose automatique sur un trou entier de préférence, sinon côté matière.
 - **Tests** : `tests/test_mep_percage_coupe.cjs` (moitié enlevée, rainure à travers, poche sur le dessus, deux trous dont un coupé, perçage simple, arc sans perçage, cote posée avant la coupe, étiquette glissée) ; essai dans l'application ; `npm run ci:full`.
+
+## V0.46.4 - Mise en plan : les traits fins du fond de filet apparaissent dans une coupe locale
+Demande : « ceci est un trou taraudé mais à la coupe locale, les traits fins du fond de filet n'apparaissent pas ».
+- **Cause** : `mepLocalApply` n'ajoutait que les arêtes de la pièce coupée ; le dessin du filetage (`mepThreadEls`) ne connaissait que le plan d'une vue en coupe.
+- **Filetage** (`mepThreadEls(view,cut)`, `src/98-mep-10-projection-hlr.js`) : accepte le plan d'une coupe locale ; fond de filet et fin de filetage rognés par la forme ; plan hors de l'axe : traits à la corde du Ø nominal ; plan perpendiculaire à l'axe : 3/4 de cercle s'il traverse la partie filetée ; trou derrière le plan : filet caché en mode pointillé ; trou côté matière enlevée : rien dans la forme.
+- **Tests** : `tests/test_mep_filetage_coupe_locale.cjs` (trou dans l'axe et hors de l'axe, longueur filetée, fin de filetage, trous non coupés, mode sans cachées, plan perpendiculaire) ; essai dans l'application ; `npm run ci:full`.
+- **Tests figés** : `test_esquisse_cotes_pose` et `test_repetition_courbe_face` lisaient `Exemples/`, réenregistrés et modifiés par l'utilisateur le 04/11 : ils lisent désormais leur copie de l'état d'origine (`tests/fixtures/test-esquisse-e17.json`, `repetition-courbe-sans-face.json`), mêmes vérifications.
