@@ -8,7 +8,7 @@ sont sorties le 2026-09-30j.
 Code dans `src/` · livrable `fusion_mvp.html` (généré par `build.js`) · architecture et
 garde-fous en tête de `src/00-entete-et-outils.js`.
 
-**574 versions**, de `2026-09-28b` à `V0.58.0` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
+**575 versions**, de `2026-09-28b` à `V0.58.1` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
 comme dans le fichier d'origine.
 
 ---
@@ -6676,3 +6676,13 @@ Demande : « j'aimerais que les traits d'esquisse soit plus épais dans la vue 3
 - **Suivi** : `updateAssociativeProjections0` recale l'entité sur sa source à chaque rejeu, en 3D, donc aussi quand le plan source bouge. Les sources passent avant les esquisses qui les reprennent (`skpOrdre`) : une chaîne A→B→C suit en une passe, aussi sans noyau. Source supprimée : entité figée et avertissement. Boucle impossible : une esquisse qui dépend de la cible n'est pas proposée. Antériorité : la fonction reste après la face portant l'esquisse source.
 - **Limite** : la projection se fait élément par élément.
 - **Vérifié** : Barquette dans le vrai navigateur (ligne, arc et point projetés à la souris ; largeur +20 mm : les trois suivent de 10 mm ; thème Clair). **Tests** : `test_esquisse_projection_esquisses` (48 contrôles). `CACHE_VER` ne change pas.
+
+## V0.58.1 - Un balayage se répète ; seules ses copies apparaissent dans la répétition
+
+Demande : « CAO Répétitions -> impossible de répéter un balayage » ; « je ne veux pas voir "mille" esquisses. Seul le balayage est visible dans la répétition ».
+
+- **Cause** : le type `sweep` manquait à `repCanFeature`, le balayage n’était donc pas proposé. Une copie doit aussi transformer ses deux esquisses, profil et chemin, alors que le code de répétition n’en connaissait qu’une par fonction.
+- **Copie** (`repCloneFeature`) : le chemin est cloné et transformé avec le profil, avec des identifiants stables d’une régénération à l’autre. S’il sert aussi de courbe guide d’une répétition suivant un profil, la copie le garde entier.
+- **Esquisses copiées** : `skUsedBy` compte le profil et le chemin. `skIsRepCopy`, la purge (quantité réduite, répétition supprimée) et `repSyncForSketch` (chemin source modifié) passent par lui. « Tout afficher » (`showAll2`) laisse désormais toutes les esquisses copiées cachées, celles des autres fonctions aussi.
+- **Aperçu rouge** : il montre le volume balayé.
+- **Vérifié** : vrai navigateur (case cochée, axe Z, 3 exemplaires : 30 000 mm³, arbre limité à Profil, Chemin, balayage et ses copies). **Tests** : `test_repeat_balayage` (linéaire, circulaire, symétries, suivant un profil, nouveau corps, découpe, rechargement, esquisses cachées). `CACHE_VER` ne change pas.

@@ -962,4 +962,4 @@ function isolate(id){
   doc.bodyVis={};bodies.forEach(b=>{doc.bodyVis[b.id]=b.visible;});markDirty();
   refreshParts();buildEdgeOverlay();refreshMirror();
 }
-function showAll2(){bodies.forEach(b=>{b.visible=true;b.mesh.visible=true;});doc.bodyVis={};doc.features.forEach(f=>f.visible=true);doc.sketches.forEach(s=>s.visible=true);markDirty();refreshParts();showAll();rebuild();}
+function showAll2(){bodies.forEach(b=>{b.visible=true;b.mesh.visible=true;});doc.bodyVis={};doc.features.forEach(f=>f.visible=true);doc.sketches.forEach(s=>{if(!skIsRepCopy(s))s.visible=true;});markDirty();refreshParts();showAll();rebuild();} // esquisses copiées par une répétition : jamais montrées

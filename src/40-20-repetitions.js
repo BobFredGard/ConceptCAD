@@ -4,17 +4,19 @@
 function skIsRepCopy(sk){
   // Esquisse utilisée UNIQUEMENT par des instances de répétition (copie générée) → true
   const F=doc.features||[];
-  return !!sk&&F.some(f=>f.repeatId&&f.sketchId===sk.id)&&!F.some(f=>!f.repeatId&&f.sketchId===sk.id);
+  return !!sk&&F.some(f=>f.repeatId&&skUsedBy(f,sk.id))&&!F.some(f=>!f.repeatId&&skUsedBy(f,sk.id));
 }
+// Une fonction peut porter DEUX esquisses : le balayage a son profil (sketchId) et son chemin (pathId).
+function skUsedBy(f,id){return f.sketchId===id||f.pathId===id;}
 function repCanFeature(id){
   const f=doc.features.find(x=>x.id===id);
   if(!f)return false;
   if(f.repeatId)return false;
   if(f.type==='repeat')return true; // V0.11.30 : une répétition se répète (voir repExpandSources)
   // 2026-10-16-005 : perçages répétables ; 2026-10-27 : dépouilles, révolutions, déplacement et
-  // suppression de face. Restent exclues les opérations de CORPS ENTIER (coque, scission,
+  // suppression de face ; puis balayages. Restent exclues les opérations de CORPS ENTIER (coque, scission,
   // combinaison, déplacement de corps, import) : les répéter n'a pas de sens géométrique.
-  return ['extrude','revolve','hole','xfillet','xdraft','xmove','xdelface'].includes(f.type);
+  return ['extrude','revolve','sweep','hole','xfillet','xdraft','xmove','xdelface'].includes(f.type);
 }
 // Antériorité (43) : une répétition ne répète que ce qui la PRÉCÈDE — fonctions placées avant
 // elle, ou, à la création (rp absent), avant son point d'insertion (marqueur de temps).
@@ -87,7 +89,7 @@ function repSourceList(base,onChange,onTick,rp){
   box.appendChild(t);
   if(!cand.length){
     const w=document.createElement('span');w.className='note';
-    w.textContent='Aucune fonction répétable en amont (extrusion, révolution, perçage, congé, chanfrein, dépouille, déplacement ou suppression de face, répétition placés avant la répétition).';
+    w.textContent='Aucune fonction répétable en amont (extrusion, révolution, balayage, perçage, congé, chanfrein, dépouille, déplacement ou suppression de face, répétition placés avant la répétition).';
     box.appendChild(w);
     return box;
   }
@@ -180,7 +182,7 @@ function repPreviewRemove(){
 }
 /* V0.11.30 : l'aperçu montre les FONCTIONS COCHÉES, plus la pièce entière (retour : « ce qu'il
    faut montrer en rouge, ce sont les features sélectionnées et non le corps en cours »).
-   - extrusion / découpe / révolution / perçage : le SOLIDE-OUTIL seul (prisme, volume tourné,
+   - extrusion / découpe / révolution / balayage / perçage : le SOLIDE-OUTIL seul (prisme, volume tourné,
      volume percé) — ce qui sera ajouté ou enlevé à chaque copie ;
    - congé / chanfrein / dépouille / déplacement de face : les FACES du corps qui les portent ;
    - suppression de face (faces disparues) ou face introuvable : la boîte de la face mémorisée ;
@@ -207,7 +209,7 @@ function repFaceOrd(shape,face){
 }
 function repFeatPreviewGeos(f){
   const out=[];
-  if(f.type==='extrude'||f.type==='revolve'||f.type==='hole'){
+  if(f.type==='extrude'||f.type==='revolve'||f.type==='sweep'||f.type==='hole'){
     let ok=false;
     if(typeof occHas==='function'&&occHas()){
       let r=null;
@@ -217,7 +219,7 @@ function repFeatPreviewGeos(f){
       const thr0=occThroughBase;
       if(typeof occLive!=='undefined'&&occLive&&occLive.shape)occThroughBase=occLive.shape;
       try{
-        r=f.type==='revolve'?occShapeOfRevolve(f):(f.type==='hole'?occShapeOfHole(f):occShapeOfExtrude(f));
+        r=f.type==='revolve'?occShapeOfRevolve(f):(f.type==='sweep'?occShapeOfSweep(f):(f.type==='hole'?occShapeOfHole(f):occShapeOfExtrude(f)));
         out.push({geo:occTessellate(r.shape,0.3,0.4),mw:null});ok=true;
       }catch(e){}
       finally{occThroughBase=thr0;}
@@ -225,7 +227,7 @@ function repFeatPreviewGeos(f){
     }
     if(!ok){
       try{
-        const gl=f.type==='revolve'?legacyRevolveGeos(f,[]):(f.type==='hole'?legacyHoleGeos(f,[]):legacyPrismGeos(f,[]));
+        const gl=f.type==='revolve'?legacyRevolveGeos(f,[]):(f.type==='sweep'?legacySweepGeos(f,[]):(f.type==='hole'?legacyHoleGeos(f,[]):legacyPrismGeos(f,[])));
         (gl||[]).forEach(g=>{if(g&&g.isBufferGeometry)out.push({geo:g,mw:null});});
       }catch(e){}
     }
@@ -501,12 +503,20 @@ function repCloneFeature(f,i,skMap,featMap,cfg,reuse){
   // créer un nouveau — les fonctions qui pointent vers cette instance restent valides.
   const nf=JSON.parse(JSON.stringify(f));delete nf._m;delete nf._mesh;
   nf.visible=true;nf._src=f.id;
-  const target=reuse?reuse.id:uid({xfillet:'xf',hole:'ho',xdraft:'dr',revolve:'rv',xmove:'mv',xdelface:'df'}[f.type]||'ex');
-  if(f.type==='extrude'||f.type==='hole'||f.type==='revolve'){ // perçage : son esquisse de centres est clonée / transformée comme un profil
+  const target=reuse?reuse.id:uid({xfillet:'xf',hole:'ho',xdraft:'dr',revolve:'rv',sweep:'sw',xmove:'mv',xdelface:'df'}[f.type]||'ex');
+  if(f.type==='extrude'||f.type==='hole'||f.type==='revolve'||f.type==='sweep'){ // perçage : son esquisse de centres est clonée / transformée comme un profil
     const sk=doc.sketches.find(s=>s.id===f.sketchId);if(!sk)return null;
     featMap[f.id]=target; // AVANT l'esquisse : l'hôte (feat) de l'esquisse se remappe sur l'instance
     const reuseSk=reuse?doc.sketches.find(s=>s.id===reuse.sketchId):null;
     nf.sketchId=repCloneSketch(sk,i,skMap,featMap,cfg,reuseSk);
+    if(f.type==='sweep'){
+      // Le CHEMIN du balayage est lui aussi transformé : sans lui, le profil copié partirait sur
+      // le chemin d'origine. S'il sert aussi de courbe guide (répétition suivant un profil), il
+      // reste entier dans la copie : repCloneSketch ne doit pas y retirer la guide (path:null).
+      const pk=doc.sketches.find(s=>s.id===f.pathId);if(!pk)return null;
+      const reusePk=reuse?doc.sketches.find(s=>s.id===reuse.pathId):null;
+      nf.pathId=repCloneSketch(pk,i,skMap,featMap,Object.assign({},cfg,{path:null}),reusePk);
+    }
     if(nf.upto&&nf.upto.ex){if(featMap[nf.upto.ex])nf.upto.ex=featMap[nf.upto.ex];else nf.upto=null;}
     if(f.type==='revolve'){
       // 2026-10-27 : révolution répétée. Un axe SYSTÈME (X/Y/Z monde) ne suit pas la copie : il
@@ -631,9 +641,10 @@ function repGenChildren(rp){
   try{
   const olds=doc.features.filter(f=>f.repeatId===rp.id);
   const dropSketch=cid=>{
-    const f=doc.features.find(x=>x.id===cid);if(!f||!f.sketchId)return;
-    const sk=doc.sketches.find(s=>s.id===f.sketchId);
-    if(sk&&!doc.features.some(x=>x.id!==f.id&&x.sketchId===sk.id))doc.sketches=doc.sketches.filter(s=>s.id!==sk.id);
+    const f=doc.features.find(x=>x.id===cid);if(!f)return;
+    [f.sketchId,f.pathId].filter(Boolean).forEach(id=>{
+      if(!doc.features.some(x=>x.id!==f.id&&skUsedBy(x,id)))doc.sketches=doc.sketches.filter(s=>s.id!==id);
+    });
   };
   // V0.11.30 : une répétition source (pas soi-même, pas une instance) est développée en son motif
   rp.base=rp.base.filter(id=>{const b=doc.features.find(x=>x.id===id);return b&&b.id!==rp.id&&!b.repeatId;});
@@ -744,12 +755,11 @@ function repGenChildren(rp){
 }
 function repRemoveRepeat(rp){
   if(!rp||rp.type!=='repeat')return;
-  for(const f of [...doc.features]){
-    if(f.repeatId!==rp.id||!f.sketchId)continue;
-    const sk=doc.sketches.find(s=>s.id===f.sketchId);
-    if(sk&&!doc.features.some(x=>x!==f&&x.sketchId===sk.id))doc.sketches=doc.sketches.filter(s=>s.id!==sk.id);
-  }
+  const kids=doc.features.filter(f=>f.repeatId===rp.id);
   doc.features=doc.features.filter(f=>f.id!==rp.id&&f.repeatId!==rp.id);
+  kids.forEach(f=>[f.sketchId,f.pathId].filter(Boolean).forEach(id=>{
+    if(!doc.features.some(x=>skUsedBy(x,id)))doc.sketches=doc.sketches.filter(s=>s.id!==id);
+  }));
   if(rp.bodyMap)Object.keys(rp.bodyMap).forEach(k=>repDropBody(rp.bodyMap[k])); // corps neufs des exemplaires
 }
 function repSyncForSketch(skId){
@@ -757,7 +767,7 @@ function repSyncForSketch(skId){
   // après une édition d'esquisse, les clones (esquisses copiées/miroir) suivent la géométrie.
   if(!skId)return;
   const fids=new Set();
-  doc.features.forEach(f=>{if(f.sketchId===skId&&f.type!=='repeat'&&!f.repeatId)fids.add(f.id);});
+  doc.features.forEach(f=>{if(skUsedBy(f,skId)&&f.type!=='repeat'&&!f.repeatId)fids.add(f.id);});
   // esquisse GUIDE d'une répétition suivant un profil : les copies suivent la courbe
   for(const rp of [...doc.features]){if(rp.type==='repeat'&&rp.mode==='path'&&rp.path&&rp.path.sk===skId){repGenChildren(rp);repSyncForFeature(rp);}}
   if(!fids.size)return;

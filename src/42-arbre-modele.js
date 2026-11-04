@@ -527,7 +527,7 @@ function treeCompContent(L,inst,c,lv){
   const CG=(D.cgeo||[]).filter(k=>k&&k.kind);
   if(CG.length)ro(0,'📐','Construction','('+CG.length+')',true);
   const F=D.features||[];
-  const sks=(D.sketches||[]).filter(s=>!(F.some(f=>f.repeatId&&f.sketchId===s.id)&&!F.some(f=>!f.repeatId&&f.sketchId===s.id)));
+  const sks=(D.sketches||[]).filter(s=>!(F.some(f=>f.repeatId&&skUsedBy(f,s.id))&&!F.some(f=>!f.repeatId&&skUsedBy(f,s.id))));
   if(sks.length){ro(0,'✏️','Esquisses','('+sks.length+')',true);sks.forEach(s=>ro(1,'✏️',s.name));}
   const B=(D.bodies||[]).length?D.bodies:[{id:'b1',name:'Corps 1'}];
   const ids=B.map(b=>b.id),bOf=f=>ids.indexOf(f.body)>=0?f.body:ids[0];
