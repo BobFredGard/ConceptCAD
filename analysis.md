@@ -28,15 +28,15 @@ Le noyau géométrique exact est **OpenCascade (OCCT) compilé en WebAssembly**.
 ## Architecture des sources
 
 - `00` : métadonnées (`APP_VER`, `CACHE_VER`), utilitaires, thème, caches.
-- `10`–`20` : scène three.js, repère (`11`), bibliothèque de matériaux de rendu (`12`), rejeu paramétrique, noyau exact OCCT et repli maillage.
-- `30`–`45` : marqueur de temps, arbre/propriétés, bandeau de timeline (`41`), arbre unifié modèle + assemblage (`42-arbre-modele.js` : `treeModel` / `treeDraw`), règle d'antériorité (`43`), annuler/rétablir (`45` : `undoDispatch` unique pour Ctrl+Z / Ctrl+Y, filet `docCheckpoint`).
+- `10`–`20` : scène three.js, repère (`11`), bibliothèque de matériaux de rendu (`12`), rejeu paramétrique, noyau exact OCCT et repli maillage (`20-10` à `20-70` : prismes et booléens, arêtes et maillage, faces, scission et dépouille, arêtes affichées, congés, cache et rejeu).
+- `30`–`45` : marqueur de temps, arbre/propriétés (`40-10` à `40-50` : arbre, répétitions, corps et fonctions, panneau de répétition, panneau de propriétés), bandeau de timeline (`41`), arbre unifié modèle + assemblage (`42-arbre-modele.js` : `treeModel` / `treeDraw`), règle d'antériorité (`43`), annuler/rétablir (`45` : `undoDispatch` unique pour Ctrl+Z / Ctrl+Y, filet `docCheckpoint`).
 - `46`–`48` : assemblage — modèle des composants (`46`, `doc` = composant actif, l'arbre vit à côté dans `asm`), interface et mode Assembler (`47`), composants liés à un fichier (`47`), accroches, apparence, placement, composants depuis les corps, inspection (interférences, propriétés physiques), mise en plan d'assemblage (`48-*`). Liaisons rigide / pivot / glissière / pivot glissant / plan / rotule avec limites, sans solveur global.
 - `49`–`62` : esquisse 2D (registre d'icônes `49`, cinq fichiers `50-esquisse-*`, solveur Levenberg-Marquardt), paramètres (`51`), configurations (`52`, tables de variantes), scripts JSON et pont de pilotage (`53`), trim et souris (`60`), Intersection (`62`, section exacte `BRepAlgoAPI_Section`, suivie au rejeu).
 - `70`–`87` : fonctions 3D — extrusion (avec fenêtre dynamique `70`/`71`), révolution, perçage, combiner, congés et chanfreins (reprise NURBS quand le noyau refuse la chaîne), déplacer une face, **déplacer un corps** (translation, rotation, point à point), **scinder par un plan**, supprimer une face, dépouille, coque.
 - `78`–`79` : géométrie de construction (modèle et résolution, puis affichage, saisie, panneau).
 - `88-fao-00` à `88-fao-94` : FAO découpée par domaine (état, outils, brut, parcours 2,5D, zones, caches, post-processeurs (3+2 Siemens par CYCLE800, avance F modale), simulation — `70` grille et lecture, `75` cavités des posages 3+2 en voxels (repli sans WebGL2), `76` rendu GPU instancié, `77` cartes par orientation et lancer de rayons, `78` tri-dexel (retiré du choix) et champ de distance, `79` taille des cartes sur la carte graphique —, interface, ébauche 3D, contour, sélection 3+2).
 - `89` : modules FAO spécialisés (chanfrein, contour, crêtes, faces, géodésique, outils, perçage, repère de posage, torique).
-- `90` : picking, mesure, import/export STEP/STL/OBJ.
+- `90-10` à `90-60` : sélection et mesure, menus contextuels, import, export STEP/STL/OBJ, document et sauvegarde, maillages FAO.
 - `95`–`99` : barre d'outils, aide, bandeau de groupes, interface moderne (onglets Modèle / Usinage, onglets de posages), fichiers/projets, mise en plan (style, import DXF, treize fichiers `98-mep-*`), **rendu** (`98-rendu.js`, `98-rendu-vue.js`, `98-rendu-reliefs.js`), initialisation, raccourcis d'esquisse.
 
 L'exécution reste **un seul script global** : les fichiers ne sont pas des modules ES, ils partagent la portée du livrable. C'est ce qui permet le double-clic sur le fichier HTML, mais c'est aussi la principale contrainte d'architecture.
@@ -89,7 +89,7 @@ Le harnais de test (`tests/appvm.cjs`) exécute le vrai script dans une machine 
 
 - **Rythme de livraison très élevé** : 254 commits depuis le 1ᵉʳ octobre, une trentaine par jour les 25 et 26/10, sur tous les modules à la fois. L'Ébauche 3D, considérée comme validée, a été retouchée en V0.9.2, V0.11.11 et V0.11.12 : à revérifier dans l'application sur les exemples.
 - **1 875 avertissements `no-empty`** (1 288 en V0.9.13, 1 046 en V0.3.5) : les `catch(e){}` silencieux augmentent à chaque version.
-- **Gros fichiers** : `20-noyau-et-operations-solides.js` (~3 300 lignes), `88-fao-90-ebauche3d.js` (~2 400), `88-fao-80-interface.js` (~2 100), `90-picking-mesure-import.js` (~1 900), `88-fao-92-contour.js` (~1 850). Les fichiers `98-mep-*` partagent une fonction englobante et ne se lisent qu'assemblés.
+- **Gros fichiers** : `88-fao-90-ebauche3d.js` (~2 400), `88-fao-80-interface.js` (~2 100), `88-fao-92-contour.js` (~1 850). Les fichiers `98-mep-*` partagent une fonction englobante et ne se lisent qu'assemblés.
 - **Monolithe global** : namespace unique sans modules ni types ; les identifiants publics passent par `window`.
 - **Couverture navigateur** : 20 parcours Playwright + 4 tests GPU ; le Rendu et une bonne part de l'interface se valident encore à la main.
 - **Dépôt dans Dropbox** : la synchronisation crée des copies en conflit et peut abîmer `.git` (pack sans index constaté) ; `.git` pèse ~274 Mo, et `Backup/` (~256 Mo) et `occt/*.bak`, ignorés par Git, sont quand même synchronisés.
@@ -101,5 +101,5 @@ Le harnais de test (`tests/appvm.cjs`) exécute le vrai script dans une machine 
 2. Réduire les `catch` vides en journalisant l'erreur ou en justifiant l'ignorance.
 3. Arcs de rotation sur les repères de posage et d'opération (dernière étape du posage).
 4. Étendre les parcours Playwright (mise en plan, congés, 3+2, Rendu).
-5. Découper `20-noyau-et-operations-solides.js` et les gros fichiers FAO.
+5. Découper les gros fichiers FAO (les fichiers 20, 40 et 90 l'ont été en V0.48.3).
 6. Envisager de sortir le dépôt de Dropbox.

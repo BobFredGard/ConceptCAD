@@ -16,8 +16,8 @@ const AXE=path.join(RACINE,'Exemples','Axe.conceptcad');
 // tout de suite plutôt que de laisser le noyau échouer sans explication.
 test.beforeAll(()=>{
   for(const f of ['occt/opencascade.wasm.wasm','occt/opencascade.full.wasm','Exemples/Axe.conceptcad']){
-    const n=fs.statSync(path.join(RACINE,f)).size;
-    if(n<10000)throw new Error(f+' ne fait que '+n+' octets : pointeur Git LFS ? Lancez « git lfs pull ».');
+    // Un .conceptcad compressé peut peser moins de 10 Ko (V0.46.0) : on reconnaît le pointeur à son contenu.
+    if(fs.readFileSync(path.join(RACINE,f)).subarray(0,23).toString()==='version https://git-lfs')throw new Error(f+' est un pointeur Git LFS : lancez « git lfs pull ».');
   }
 });
 

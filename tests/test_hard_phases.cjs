@@ -20,7 +20,7 @@ const {loadApp}=require('./appvm.cjs');
   const real=await globalThis.opencascadeFactory({wasmBinary:fs.readFileSync(path.join(ROOT,'occt','opencascade.wasm.wasm'))});
   const {ctx,sandbox}=loadApp();
   sandbox.__realOcct=real;
-  sandbox.__src20=fs.readFileSync(path.join(ROOT,'src','20-noyau-et-operations-solides.js'),'utf8');
+  sandbox.__src20=fs.readFileSync(path.join(ROOT,'src','20-70-cache-et-rejeu.js'),'utf8');
   sandbox.__src30=fs.readFileSync(path.join(ROOT,'src','30-marqueur-temps.js'),'utf8');
   sandbox.__src95=fs.readFileSync(path.join(ROOT,'src','95-toolbar.js'),'utf8');
   vm.runInContext('occt=__realOcct;occtReady=true;',ctx);

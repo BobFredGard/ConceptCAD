@@ -3,7 +3,7 @@
 // positions du mesh affiché pour son maillage plan de posage. Sans intervention :
 //   • autre triangulation ⇒ autre G-code (l'historique FAO ne serait pas reproductible) ;
 //   • plus de 120 000 triangles ⇒ faoMeshFromBody renvoie null ⇒ corps EXCLU du posage.
-// Corrigé par le wrapper de fin de 90-picking-mesure-import.js :
+// Corrigé par le wrapper de 90-30-import.js :
 //   • corps exact  → re-tessellation avec occXDefl() (référence outillage, dynamique
 //     avec les congés) après BRepTools.Clean (BRepMesh réutilise un maillage plus fin) ;
 //   • import STEP  → entry.faoGeo posé à l'import en 0,5 mm/0,5 rad AVANT la finesse

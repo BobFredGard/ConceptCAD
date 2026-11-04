@@ -376,7 +376,7 @@ input[type=range]{accent-color:var(--primary);width:100%}
  * peut changer sans rien casser. CACHE_VER (parcours FAO) reste indépendant.
  */
 
-const APP_VER='V0.48.2';
+const APP_VER='V0.48.3';
 try{console.log('[ConceptCAD] version '+APP_VER);}catch(e){}
 try{var mfSv=document.getElementById('mfSplashVer');if(mfSv)mfSv.textContent=APP_VER;}catch(e){} // écran de démarrage
 
@@ -2902,7 +2902,7 @@ function clearRenderLook(id){ // revient à l'apparence CAO
   return true;
 }
 
-/* ═══════════════ 20-noyau-et-operations-solides.js — noyau et operations solides ═══════════════ */
+/* ═══════════════ 20-10-prismes-booleens-coque.js — 10 prismes booleens coque ═══════════════ */
 /* ----- congés 3D (arêtes verticales) : sélection en 3D, insertion paramétrique dans l'esquisse ----- */
 function chainNodesOf(chain){
   const nodes=[chain[0].from];
@@ -3754,6 +3754,7 @@ function occApplyCoque(result,f){
   }
 }
 
+/* ═══════════════ 20-20-aretes-et-maillage.js — 20 aretes et maillage ═══════════════ */
 function occDiskPrism(sk,Cx,Cy,r,sp){
   // Pastille pleine (cercles isolés) : cercle -> wire -> face -> UN prisme.
   // sp = plage {lo,hi} (ou nombre pour compat) : cercle construit au plan décalé z0=lo,
@@ -4315,6 +4316,8 @@ function occTriPos(shape,defl,ang,wantN){
   try{if(gP)gP.delete();if(gV)gV.delete();}catch(e){}
   return nrm?{pos,groups,nrm}:{pos,groups};
 }
+
+/* ═══════════════ 20-30-faces.js — 30 faces ═══════════════ */
 let occLive=null; // solide BRep affiché conservé pour le picking d'arêtes exact
 function occDropLive(){if(occLive){try{occLive.shape.delete();}catch(e){}
   try{if(occLive.shapeFao)occLive.shapeFao.delete();}catch(e){}
@@ -5360,6 +5363,8 @@ function occDelFacesTry(result,hs){
      opposé à la normale restent dans le corps, ceux du côté de la normale vont dans le
      corps neuf `newBody` (« Inverser » échange les côtés). Mesuré : boîte 100x60x40
      coupée à X=30 → 72 000 + 168 000 mm³. */
+
+/* ═══════════════ 20-40-scission-depouille.js — 40 scission depouille ═══════════════ */
 function splitPlaneOf(f){
   // Plan résolu {o,n} (monde) : origine, plan de construction (repère persistant) ou face
   // figée au clic ; décalage le long de la normale ; flip retourne la normale.
@@ -5915,6 +5920,8 @@ function occApplyDraft(result,f){
     return{shape:result,warnings:[`dépouille impossible (${(e&&e.message)||e})`],fatal:true};
   }
 }
+
+/* ═══════════════ 20-50-aretes-affichees.js — 50 aretes affichees ═══════════════ */
 let edgeMode='off'; // 'off' | 'on' : surlignage vives noires / tangentes grises
 try{const em=localStorage.getItem('minifusion_edges');if(em==='on'||em==='off')edgeMode=em;}catch(e){}
 // V0.11.7 : UN SEUL test « ce corps est-il montré ? » — peau, arêtes, survol et choix d'arêtes,
@@ -6104,6 +6111,8 @@ function buildEdgeOverlay(){
     try{if(typeof skEdit!=='undefined'&&skEdit&&skEdit._fade)grp.visible=false;}catch(e){} // esquisse ouverte : arêtes propres (skEdgesSync)
   }catch(e){ edgeOverlayErr=e; /* aucun overlay vaut mieux qu'un rendu cassé */ }
 }
+
+/* ═══════════════ 20-60-conges.js — 60 conges ═══════════════ */
 function distSeg2(px,py,ax,ay,bx,by){const dx=bx-ax,dy=by-ay,L2=dx*dx+dy*dy||1e-18;let t=((px-ax)*dx+(py-ay)*dy)/L2;t=Math.max(0,Math.min(1,t));return Math.hypot(px-(ax+t*dx),py-(ay+t*dy));}
 function rotP(Q,Cx,Cy,a){const dx=Q.x-Cx,dy=Q.y-Cy,c=Math.cos(a),s=Math.sin(a);Q.x=Cx+dx*c-dy*s;Q.y=Cy+dx*s+dy*c;}
 function pairKey(a,b){return a<b?a+'_'+b:b+'_'+a;}
@@ -6973,6 +6982,8 @@ function occTessellateBudget(shape,D,maxTris,countFn){
   }
   return g;
 }
+
+/* ═══════════════ 20-70-cache-et-rejeu.js — 70 cache et rejeu ═══════════════ */
 function occCleanup(FR,keepShape){
   if(!FR)return;
   occDispose(FR.bin);
@@ -9116,7 +9127,7 @@ function pgGuideSketches(D){
   return ((D&&D.sketches)||[]).filter(sk=>pgEnts(sk).length&&!/\(rép\s*\d+\)\s*$/.test(sk.name||''));
 }
 
-/* ═══════════════ 40-interface-arbre-props.js — interface arbre props ═══════════════ */
+/* ═══════════════ 40-10-arbre.js — 10 arbre ═══════════════ */
 /* ---------- arbre + timeline + props ---------- */
 let repMode=null;
 // ── CSS panneau Paramètres (aside.right #props) : MÊME style que le panneau
@@ -9264,6 +9275,8 @@ function renderTree(){
   treeRender();
   try{mfFaoGate();}catch(e){} // V0.21.11 : FAO grisé sans pièce active (97)
 }
+
+/* ═══════════════ 40-20-repetitions.js — 20 repetitions ═══════════════ */
 // Fonction répétable : extrusion ou congé/chanfrein exact. NI une répétition, NI une
 // instance de répétition (une instance est déjà générée : la répéter empilerait des
 // clones sans sens, et la liste à cocher la proposait).
@@ -10055,6 +10068,8 @@ function repQtyInput(v,tip){const i=document.createElement('input');i.type='text
 function repQtyRead(i){const n=Math.round(parseFloat(String(i.value).replace(',','.')));return n>=2?n:2;}
 function repMaxCopies(v){const n=Math.floor(+v||1);return isFinite(n)?Math.min(REPEAT_MAX,Math.max(1,n)):1;}
 function repCloneSkName(sk){return /\(rép\s*\d+\)\s*$/.test((sk&&sk.name)||'');}
+
+/* ═══════════════ 40-30-corps-fonctions.js — 30 corps fonctions ═══════════════ */
 function docSanitise(){
   // Répare un document rechargé : instance en double, instance sans répétition, esquisse
   // d'instance abandonnée et nombre de copies aberrant. Les esquisses LIBRES (non
@@ -10605,6 +10620,8 @@ function treeDeleteSel(){
   try{refreshMirror();}catch(e){}
   faceEl.textContent='🗑 Supprimé : '+nomsTous.join(', ')+'  —  Ctrl+Z pour annuler.';
 }
+
+/* ═══════════════ 40-40-panneau-repetition.js — 40 panneau repetition ═══════════════ */
 function repPickedDir(faceOnly){
   // Direction choisie dans la vue : ARÊTE sélectionnée (droite : sa direction ; cercle / arc : son
   // axe), sinon normale de la FACE sélectionnée. faceOnly : symétrie (un plan = une normale de face).
@@ -10819,6 +10836,8 @@ function renderRepPanel(){
   const r=document.createElement('div');r.className='row';r.style.marginTop='8px';const ok=document.createElement('button');ok.className='primary';ok.textContent='✔ Appliquer';ok.onclick=applyRepPattern;r.appendChild(ok);const q=document.createElement('button');q.textContent='Quitter';q.onclick=exitRepMode;r.appendChild(q);p.appendChild(r);
   repPreviewUpdate(); // V0.11.20 : les copies en rouge dès l'entrée et à chaque changement de type / plan / axe
 }
+
+/* ═══════════════ 40-50-panneau-proprietes.js — 50 panneau proprietes ═══════════════ */
 function renderProps(){
   if(typeof extNew!=='undefined'&&extNew)extNew=null; // une sélection annule le formulaire en cours
   if(typeof revNew!=='undefined'&&revNew)revNew=null; // idem pour le formulaire de révolution
@@ -34239,7 +34258,7 @@ function deleteSelectedFaces(){
 
    En pratique : on clique la face de référence, puis les faces à dépouiller, puis on
    saisit l'angle et on applique. OCCT fait le reste via BRepOffsetAPI_DraftAngle
-   (occApplyDraft / occDraftOnce, dans 20-noyau-et-operations-solides.js).
+   (occApplyDraft / occDraftOnce, dans 20-40-scission-depouille.js).
 
    Chaque face est mémorisée par sa RÉFÉRENCE DURABLE (centre + normale + dimensions,
    occFaceRef) et non par son numéro : celui-ci change dès qu'une autre opération ajoute
@@ -34801,7 +34820,7 @@ function draftApply(){
    But : transformer un volume plein en bac/boîtier — on choisit les FACES À RETIRER
    (les ouvertures, ex. le dessus) et une ÉPAISSEUR de paroi ; le noyau évide
    l'intérieur via BRepOffsetAPI_MakeThickSolid (occApplyCoque / occCoqueOnce,
-   dans 20-noyau-et-operations-solides.js).
+   dans 20-10-prismes-booleens-coque.js).
 
    Chaque face est mémorisée par sa RÉFÉRENCE DURABLE (centre + normale +
    dimensions, occFaceRef) et non par son numéro — même approche que le
@@ -35253,7 +35272,7 @@ function delFaceApply(){
 // Les arcs sont en IJK incrémental départ (accepté par 840D comme 8065, <180°).
 //
 // État : `doc.fao` (persisté via serialise/deserialise, voir
-// 90-picking-mesure-import.js) — les modifications FAO ne touchent JAMAIS à
+// 90-50-document-sauvegarde.js) — les modifications FAO ne touchent JAMAIS à
 // _docVersion, donc aucun rejeu géométrique n'est déclenché (travail parallèle
 // sans interférence avec la partie dessin).
 // Moves : [{r:0|1, x, y, z}] — r=1 rapide (G0), r=0 usinage (G1) ; arc:{i,j,cw} -> G2/G3.
@@ -35269,7 +35288,7 @@ const faoRapideMin=30;
 
 /* ================= styles des panneaux FAO (injectés) =================
    La coque HTML/CSS du livrable généré n'est jamais éditée à la main — même
-   discipline que cssRepSrc / cssTreeBody (40-interface-arbre-props.js). */
+   discipline que cssRepSrc / cssTreeBody (40-10-arbre.js). */
 (function(){
   try{
     if(typeof document==='undefined'||document.getElementById('faoUiCss'))return;
@@ -57699,7 +57718,7 @@ function faoTorusDropper(mesh,D,rc,laisse){
   return {tip:tip,R0:R0,rc:rc,L:L};
 }
 
-/* ═══════════════ 90-picking-mesure-import.js — picking mesure import ═══════════════ */
+/* ═══════════════ 90-10-selection-mesure.js — 10 selection mesure ═══════════════ */
 /* ---------- picking / mesure façon viewer ---------- */
 function wirePick(){
   const el=renderer.domElement;let dx=0,dy=0;
@@ -58537,6 +58556,7 @@ function isolate(id){
 }
 function showAll2(){bodies.forEach(b=>{b.visible=true;b.mesh.visible=true;});doc.bodyVis={};doc.features.forEach(f=>f.visible=true);doc.sketches.forEach(s=>s.visible=true);markDirty();refreshParts();showAll();rebuild();}
 
+/* ═══════════════ 90-20-menus-contextuels.js — 20 menus contextuels ═══════════════ */
 /* ---------- menus contextuels ---------- */
 let ctxTarget=null;
 /* ---- clic droit → export STEP du SEUL corps (arbre + vue 3D) ----
@@ -58961,6 +58981,7 @@ const curName=t=>{if(t.kind==='plane')return 'Plan '+t.id;if(t.kind==='cg')retur
 
 /* ---------- coupe : voir 91-coupe-section.js (axe X / Y / Z, remplissage des faces coupées) ---------- */
 
+/* ═══════════════ 90-30-import.js — 30 import ═══════════════ */
 /* ---------- import / export ---------- */
 // ── Géométrie vivante des imports (STEP / STL) ───────────────────────────────
 // Un import n'a AUCUNE forme paramétrique : sa géométrie EST le mesh `f._mesh`,
@@ -59616,6 +59637,8 @@ faoMeshFromBody=function(b){
   }catch(e){}
   return _faoMeshFromBodyOrig?_faoMeshFromBodyOrig(b):null;
 };
+
+/* ═══════════════ 90-40-export.js — 40 export ═══════════════ */
 function occFsDiag(){
   // Photo du FS interne pour diagnostiquer (console F12).
   try{
@@ -59917,6 +59940,7 @@ function meshesToOBJ(meshes){
   return s;
 }
 
+/* ═══════════════ 90-50-document-sauvegarde.js — 50 document sauvegarde ═══════════════ */
 /* ---------- sauvegarde locale + fichier dédié ---------- */
 function serialise(pretty){
   // pretty=1 (défaut) pour l'export fichier lisible ; compact pour l'autosave local
@@ -60377,6 +60401,8 @@ try{$('btnLoad').title='Ouvrir un projet (.conceptcad, ou ancien .miniFusion / .
    maillage FIN (corde 0,01 mm, 0,1 rad ≈ 16 facettes sur 90°), en cache
    sur le corps ; l'Ébauche et les autres opérations gardent le leur
    (parcours inchangés). Repli : maillage d'outillage habituel. */
+
+/* ═══════════════ 90-60-maillages-fao.js — 60 maillages fao ═══════════════ */
 const FAO_FINE_DEFL={lin:0.01,ang:0.1};
 function faoFineGeo(b){
   try{

@@ -5,7 +5,7 @@
 
    En pratique : on clique la face de référence, puis les faces à dépouiller, puis on
    saisit l'angle et on applique. OCCT fait le reste via BRepOffsetAPI_DraftAngle
-   (occApplyDraft / occDraftOnce, dans 20-noyau-et-operations-solides.js).
+   (occApplyDraft / occDraftOnce, dans 20-40-scission-depouille.js).
 
    Chaque face est mémorisée par sa RÉFÉRENCE DURABLE (centre + normale + dimensions,
    occFaceRef) et non par son numéro : celui-ci change dès qu'une autre opération ajoute

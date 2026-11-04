@@ -23,7 +23,7 @@
 // Les arcs sont en IJK incrémental départ (accepté par 840D comme 8065, <180°).
 //
 // État : `doc.fao` (persisté via serialise/deserialise, voir
-// 90-picking-mesure-import.js) — les modifications FAO ne touchent JAMAIS à
+// 90-50-document-sauvegarde.js) — les modifications FAO ne touchent JAMAIS à
 // _docVersion, donc aucun rejeu géométrique n'est déclenché (travail parallèle
 // sans interférence avec la partie dessin).
 // Moves : [{r:0|1, x, y, z}] — r=1 rapide (G0), r=0 usinage (G1) ; arc:{i,j,cw} -> G2/G3.
@@ -39,7 +39,7 @@ const faoRapideMin=30;
 
 /* ================= styles des panneaux FAO (injectés) =================
    La coque HTML/CSS du livrable généré n'est jamais éditée à la main — même
-   discipline que cssRepSrc / cssTreeBody (40-interface-arbre-props.js). */
+   discipline que cssRepSrc / cssTreeBody (40-10-arbre.js). */
 (function(){
   try{
     if(typeof document==='undefined'||document.getElementById('faoUiCss'))return;

@@ -16,7 +16,7 @@ let staticKo=[];
 });
 // syncBodyEntries/occSplitSolids (rapprochement par centroïdes) ont disparu avec les
 // corps conteneurs : le rejeu attribue par id, plus par position.
-['20-noyau-et-operations-solides.js'].forEach(f=>{
+fs.readdirSync(SRC).filter(f=>/^20-dd-.*.js$/.test(f)).forEach(f=>{
   const src=fs.readFileSync(path.join(SRC,f),'utf8');
   if(/function syncBodyEntries|function occSplitSolids/.test(src))staticKo.push(f+' : syncBodyEntries/occSplitSolids morts non supprimés');
   if(/solids=occSplitSolids/.test(src))staticKo.push(f+' : occRebuild scinde encore le composé');

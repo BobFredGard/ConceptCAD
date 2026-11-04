@@ -2,7 +2,7 @@
    But : transformer un volume plein en bac/boîtier — on choisit les FACES À RETIRER
    (les ouvertures, ex. le dessus) et une ÉPAISSEUR de paroi ; le noyau évide
    l'intérieur via BRepOffsetAPI_MakeThickSolid (occApplyCoque / occCoqueOnce,
-   dans 20-noyau-et-operations-solides.js).
+   dans 20-10-prismes-booleens-coque.js).
 
    Chaque face est mémorisée par sa RÉFÉRENCE DURABLE (centre + normale +
    dimensions, occFaceRef) et non par son numéro — même approche que le
