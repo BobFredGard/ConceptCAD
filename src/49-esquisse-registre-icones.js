@@ -17,6 +17,7 @@ const SK_ICONS={
   rect:'<rect x="4" y="6.5" width="16" height="11"/><circle cx="4" cy="6.5" r="1.8" fill="currentColor" stroke="none"/><circle cx="20" cy="17.5" r="1.8" fill="currentColor" stroke="none"/>',
   slot:'<path d="M8.5 7h7a5 5 0 0 1 0 10h-7a5 5 0 0 1 0-10z"/><circle cx="8.5" cy="12" r="1.3" fill="currentColor" stroke="none"/><circle cx="15.5" cy="12" r="1.3" fill="currentColor" stroke="none"/>',
   circle:'<circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="1.7" fill="currentColor" stroke="none"/>',
+  polygon:'<path d="M12 2.5l8.2 4.75v9.5L12 21.5l-8.2-4.75v-9.5z"/><circle cx="12" cy="12" r="5.2" stroke-width="1.2" stroke-dasharray="1.6 1.8"/>',
   arc:'<path d="M20 18A12 12 0 0 0 8 6"/><path d="M8 18h12M8 18V6" stroke-dasharray="1.6 2.4" stroke-width="1.3"/><circle cx="8" cy="18" r="1.6" fill="currentColor" stroke="none"/>',
   spline:'<path d="M3.5 18C6 6 10 5 12 12s6 6 8.5-6"/><circle cx="3.5" cy="18" r="1.7" fill="currentColor" stroke="none"/><circle cx="12" cy="12" r="1.7" fill="currentColor" stroke="none"/><circle cx="20.5" cy="6" r="1.7" fill="currentColor" stroke="none"/>',
   cpoint:'<circle cx="12" cy="12" r="2.4" fill="currentColor" stroke="none"/><path d="M12 3.5v4.5M12 16v4.5M3.5 12H8M16 12h4.5"/>',

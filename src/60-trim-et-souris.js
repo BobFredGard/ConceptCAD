@@ -595,11 +595,13 @@ svg.addEventListener('pointerdown',e=>{
     skStatus('1er point armé — déplacez puis 2e clic (ou tapez une longueur + Entrée).');
     return;
   }
-  if(skTool==='rect'||skTool==='circle'||skTool==='slot'){
+  if(skTool==='rect'||skTool==='circle'||skTool==='slot'||skTool==='polygon'){
     if(skDown) return;
     skPlUndoIfPlane(sk,wx,wy);
     const pid=snapNewPoint(sk,wx,wy);const S=sk.points[pid];
-    skDown={pid,x:S.x,y:S.y,center:skMulti(e)&&skTool!=='circle'};return;
+    skDown={pid,x:S.x,y:S.y,center:skMulti(e)&&skTool!=='circle'&&skTool!=='polygon'};
+    if(skTool==='polygon'){skPoly.last=null;skPoly.ang=Math.PI/2;}
+    return;
   }
   if(skTool==='spline'||skTool==='cspline'){skSplClick(sk,wx,wy,e);return;} // 2026-10-29 : spline par points de passage (50-esquisse-6)
   if(skTool==='cpoint'){skPushUndo();const pid=snapNewPoint(sk,wx,wy);sk.entities.push({id:skNewEid(sk),t:'cpoint',p:pid});skAutoAttach(sk,pid,wx,wy);afterEdit();return;}
@@ -910,6 +912,7 @@ svg.addEventListener('pointermove',e=>{
     skStatus('Ø = '+(2*r0).toFixed(2)+' — 2e clic pour valider.');
     drawSketch2D();return;
   }
+  if(skTool==='polygon'&&skDown){skPolyMove(sk,wx,wy);return;}
   if(skTool==='arc'&&skArcC&&skArcA1!==null&&skArcA1!==undefined&&skDraft){
     const C=sk.points[skArcC];let a2=Math.atan2(wy-C.y,wx-C.x);let d=a2-skArcA1;while(d<=0)d+=Math.PI*2;
     skDraft.a2=skArcA1+d;drawSketch2D();return;
@@ -1090,6 +1093,7 @@ svg.addEventListener('pointerup',e=>{
     skDown=null;skDraft=null;afterEdit();
     skTool='select';document.querySelectorAll('#skToolbar .tool').forEach(x=>x.classList.toggle('on',x.dataset.tool==='select'));skStatus('Sélection (➤).');return;
   }
+  if(skTool==='polygon'&&skDown){skPolyUp(sk,wx,wy);return;}
   if(skTool==='circle'&&skDown){
     let bx=wx,by=wy;const s=findSnap(sk,wx,wy);
     if(s){bx=s.x;by=s.y;}else if($('skSnap').checked){bx=skSnapVal(bx);by=skSnapVal(by);}
@@ -1386,6 +1390,10 @@ window.addEventListener('keydown',e=>{
   if(skEdit&&(skTool==='spline'||skTool==='cspline')&&skSpl&&(e.key==='Enter'||e.key==='Escape')){e.preventDefault();skSplFinish(false);if(e.key==='Escape')skEscapeToSelect();return;}
   if(e.key==='Escape'){e.preventDefault();skEscapeToSelect();return;}
   if(e.key==='Enter'&&skEdit&&skTool==='isect'){e.preventDefault();skIsectValidate();return;}
+  if(skEdit&&skTool==='polygon'&&!e.ctrlKey&&!e.altKey&&!e.metaKey){
+    if(e.key==='Enter'){e.preventDefault();skPolyEnter();return;}
+    if(/^[0-9]$/.test(e.key)&&skPolyType(e.key)){e.preventDefault();return;} // chiffres : Ø intérieur
+  }
   // V0.11.23 : pendant la pose d'une cote, taper sa valeur (ou Entrée) la pose là où elle est et ouvre la saisie
   if(skEdit&&skTool==='dim'&&skDimPlace&&!e.ctrlKey&&!e.altKey&&!e.metaKey&&(e.key==='Enter'||/^[0-9.,-]$/.test(e.key))){
     e.preventDefault();skDimPlaceType(e.key==='Enter'?null:(e.key===','?'.':e.key));return;
@@ -1424,6 +1432,10 @@ window.addEventListener('keydown',e=>{
   // 2026-10-29 : Spline (S), rangée avec les outils de dessin, juste après l'arc
   mk('spline','∿','Spline (S) : cliquez les points de passage — double-clic / Entrée / clic droit = fin, clic sur le 1er point = fermée · clic droit sur un point : poignée de tangence');
   mk('cspline','∿','Spline par points de contrôle (Maj+S) : cliquez les pôles — la courbe part du 1er, finit au dernier et suit le polygone · double-clic / Entrée / clic droit = fin, clic sur le 1er pôle = fermée');
+  mk('polygon','⬡','Polygone régulier (G) : réglez le nombre de côtés et le Ø intérieur (tangent aux côtés), cliquez le centre, puis cliquez pour orienter — Ø vide : à la souris');
+  const pg=bar.querySelector('[data-tool="polygon"]'),ci=bar.querySelector('[data-tool="circle"]');
+  if(pg&&ci&&ci.parentNode)ci.parentNode.insertBefore(pg,ci.nextSibling);
+  bar.addEventListener('click',()=>skPolySync()); // tout changement d'outil : réglages du polygone montrés ou masqués
   const sp=bar.querySelector('[data-tool="spline"]'),cs=bar.querySelector('[data-tool="cspline"]'),arc=bar.querySelector('[data-tool="arc"]');
   if(sp&&arc&&arc.parentNode)arc.parentNode.insertBefore(sp,arc.nextSibling);
   if(cs&&sp&&sp.parentNode)sp.parentNode.insertBefore(cs,sp.nextSibling);

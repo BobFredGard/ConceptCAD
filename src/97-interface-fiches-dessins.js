@@ -242,6 +242,7 @@ function mfFiTable(){
   F('sk/rect','Rectangle','Trace un rectangle à partir de deux coins opposés (Ctrl : depuis le centre).',[],RECT_A,RECT_B,'R',CL,RES);
   F('sk/slot','Oblong','Trace un trou allongé aux bouts arrondis, pour une rainure.',[],NUM(16,20,'1')+NUM(84,56,'2'),ficD('M34 20H66A18 18 0 0 1 66 56H34A18 18 0 0 1 34 20Z',SK,1.6,null,'#dbeafe')+PTS(34,38)+PTS(66,38),'B',CL,RES);
   F('sk/circle','Cercle','Trace un cercle : le centre, puis un point du tour.',[],CIRC_A,CIRC_B,'C',CL,RES);
+  F('sk/polygon','Polygone','Trace un polygone régulier : pentagone, 6 pans ou plus. Réglez le nombre de côtés et le Ø intérieur, celui du cercle qui touche chaque côté.',['Réglez les côtés et le Ø intérieur','Cliquez le centre, puis l’orientation'],ficC(50,38,20,GY,1,'2 1.8')+PTS(50,38),ficD('M50 12L72.5 25V51L50 64L27.5 51V25Z',SK,1.6,null,'#dbeafe')+ficC(50,38,22.5,GY,.9,'2 1.8')+PTS(50,38),'G','Le cercle intérieur','Les côtés lui sont tangents');
   F('sk/arc','Arc','Trace un morceau de cercle : le centre, le départ, l’arrivée.',[],ARC_A,ARC_B,null,CL,RES);
   const SPP=[[14,58],[36,24],[60,48],[86,18]];
   F('sk/spline','Courbe libre','Trace une courbe souple qui passe par tous vos points.',['Cliquez les points de passage','Double-clic ou Entrée pour finir'],SPP.map((p,i)=>NUM(p[0],p[1],''+(i+1))).join(''),ficD('M14 58C22 34 28 24 36 24S50 48 60 48S78 34 86 18')+SPP.map(p=>PTS(p[0],p[1])).join(''),'S',CL,RES);

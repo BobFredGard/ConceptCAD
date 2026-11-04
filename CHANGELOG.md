@@ -8,7 +8,7 @@ sont sorties le 2026-09-30j.
 Code dans `src/` · livrable `fusion_mvp.html` (généré par `build.js`) · architecture et
 garde-fous en tête de `src/00-entete-et-outils.js`.
 
-**563 versions**, de `2026-09-28b` à `V0.48.5` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
+**564 versions**, de `2026-09-28b` à `V0.49.0` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
 comme dans le fichier d'origine.
 
 ---
@@ -6559,3 +6559,11 @@ Demande : « Thème : Clair -> les menus contextuels sont illisibles -> changer 
 - **Cause** : le menu de l’esquisse (Cote / Contrainte) et celui de l’outil Intersection imposaient un texte blanc directement sur chaque ligne, sur un fond devenu blanc en thème clair. Le menu d’une pièce de STEP importé gardait à l’inverse un fond sombre, avec le texte sombre du thème.
 - **Correctif** : couleur et survol des lignes de ces deux menus portés par la feuille de style, selon le thème (`src/60-trim-et-souris.js`, `src/62-esquisse-intersection.js`, `src/97-interface-moderne.js`) ; `#ctxPiece` rejoint les règles des autres menus en thème clair. `CACHE_VER` ne change pas.
 - **Test** : contraste mesuré dans le navigateur sur les trois menus, dans les 5 thèmes (au moins 4,9:1 partout, 6:1 en clair au lieu de 1:1) ; survol contrôlé à l’écran ; `test_skctxmenu` et `test_ctx_menu_viewport` passent.
+
+## V0.49.0 - Esquisse : outil Polygone (pentagone, 6 pans ou plus)
+Demande : « ajouter l'outil pour réaliser des pentagrammes ou des 6 pans ou + -> Nb de cotés + Ø intérieur tangent aux droites des formes ».
+- **Outil** (bandeau d'esquisse, touche `G`) : réglage du nombre de côtés (3 à 64) et du Ø intérieur ; clic 1 = centre, clic 2 = orientation (aimantée tous les 15°), et Ø si le champ est vide ; Entrée valide avec un côté à plat en haut. Un chiffre tapé pendant l'outil part dans le champ Ø.
+- **Forme paramétrique** (`50-esquisse-8-polygone.js`) : cercle de construction piloté par la cote Ø, côtés tangents et égaux, rayon de construction perpendiculaire au 1er côté en son milieu. Ce rayon est nécessaire : à nombre de côtés pair, « tangents + égaux » laisse les sommets alterner (un losange vérifie les deux). Un côté posé à plat reçoit H ou V ; centre sur l'origine + côté à plat = 0 degré de liberté.
+- **Changement de Ø** : la forme grandit autour de son centre avant la résolution (`skPolyRescale`), sinon le solveur ferait glisser un centre encore libre ; la règle « 1re cote = mise à l'échelle de toute l'esquisse » ne s'applique pas à cette cote.
+- `CACHE_VER` ne change pas : aucun parcours à régénérer.
+- **Tests** : `test_esquisse_polygone` (3 à 24 côtés créés à la souris, Ø modifié, sommet tiré, cote en trop devenue référence, clavier, annulation) ; contrôle ponctuel au noyau exact : volumes extrudés conformes à n·r²·tan(π/n)·h pour 3, 5, 6, 8 et 12 côtés.

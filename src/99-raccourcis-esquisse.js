@@ -8,7 +8,7 @@ document.addEventListener('keydown',function(e){
   if(e.ctrlKey||e.altKey||e.metaKey)return;
   if(typeof skEdit==='undefined'||!skEdit)return;      // hors édition d'esquisse : on ignore
   const k=e.key.toLowerCase();
-  const map={l:'line',c:'circle',r:'rect',b:'slot',s:'spline',p:'project',i:'isect',t:'trim',d:'dim',f:'fillet',o:'offset'};
+  const map={l:'line',c:'circle',g:'polygon',r:'rect',b:'slot',s:'spline',p:'project',i:'isect',t:'trim',d:'dim',f:'fillet',o:'offset'};
   if(!(k in map))return;
   const tool=(k==='s'&&e.shiftKey)?'cspline':map[k]; // Maj+S : spline par points de contrôle
   const btn=document.querySelector('#skToolbar .tool[data-tool="'+tool+'"]');

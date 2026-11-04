@@ -8,7 +8,7 @@
 
 ![Support de pédale déportée R1200RT en alu anodisé rouge sur béton, lancer de rayons de l'atelier RENDU (2048 échantillons)](docs/captures/rendu-pedale.jpg)
 
-Le noyau géométrique exact est **OpenCascade 8 compilé en WebAssembly** par nos soins (recette reproductible dans `occt-build/`). S'il n'est pas disponible, l'application bascule seule sur un moteur maillage (CSG). Version actuelle : **V0.48.5** (voir le [journal des modifications](CHANGELOG.md)).
+Le noyau géométrique exact est **OpenCascade 8 compilé en WebAssembly** par nos soins (recette reproductible dans `occt-build/`). S'il n'est pas disponible, l'application bascule seule sur un moteur maillage (CSG). Version actuelle : **V0.49.0** (voir le [journal des modifications](CHANGELOG.md)).
 
 | | |
 |---|---|
@@ -74,7 +74,7 @@ Les gestes sont détaillés dans [Souris, clavier et doigts](#souris-clavier-et-
 ### Esquisse
 
 - **Tracé guidé** : accroche aux points, milieux et centres ; inférences H / V, ⟂, tangente, **parallèle** et **prolongement** d'une ligne (guide tracé, contrainte posée au clic) ; un point glissé s'accroche aux points, milieux, lignes et cercles et la **contrainte est posée au lâcher** ; longueur et angle tapés pendant le tracé.
-- **Outils** : ligne, rectangle, oblong, cercle, arc, **spline**, points de construction et de perçage (perçage = rond orange, point ordinaire = carré), **projection associative** d'arêtes (aussi celles des autres composants ; une projetée reste fixe, elle ne bouge qu'avec son arête source ; un point rendu coïncident avec elle vient s'y coller ; ajustée, elle reste entière en construction et le tronçon gardé devient une droite posée dessus), **intersection** du plan avec des faces ou un corps, congé, chanfrein, décalage 2D, ajustement. Une contrainte ou une cote cliquée dans le panneau surligne en jaune ce qu'elle vise.
+- **Outils** : ligne, rectangle, oblong, cercle, **polygone régulier** (nombre de côtés + Ø intérieur tangent aux côtés, touche `G`), arc, **spline**, points de construction et de perçage (perçage = rond orange, point ordinaire = carré), **projection associative** d'arêtes (aussi celles des autres composants ; une projetée reste fixe, elle ne bouge qu'avec son arête source ; un point rendu coïncident avec elle vient s'y coller ; ajustée, elle reste entière en construction et le tronçon gardé devient une droite posée dessus), **intersection** du plan avec des faces ou un corps, congé, chanfrein, décalage 2D, ajustement. Une contrainte ou une cote cliquée dans le panneau surligne en jaune ce qu'elle vise.
 - **Arêtes du solide sans projeter** : les arêtes du solide situées dans le plan de l'esquisse (trait plein), et aussi celles hors du plan vues en projection (tiretés), leurs sommets, milieux, centres et croisements, et les points où une arête traverse le plan, s'allument au survol (bouts en carrés) et servent directement au tracé et à la cote (projetées d'office, associatives). Sans outil actif, un clic les sélectionne comme une entité d'esquisse (Ctrl pour ajouter).
 - **Splines** par points de passage ou par points de contrôle, ouvertes ou fermées : poignées de tangence cotables, **tangence** et **courbure continue (G2)** avec une ligne, un arc ou une autre spline, **peigne de courbure** ; ajustement, jonction en T, décalage, intersection et projection en splines.
 - **13 contraintes** (horizontal, vertical, parallèle, perpendiculaire, colinéaire, égal, symétrie, tangence, coaxial, milieu, fixe, coïncident, construction) et **cotes pilotées** (longueur, Ø, rayon, distance, angle, entraxe).
@@ -278,10 +278,10 @@ Le dépôt stocke les gros binaires (`occt/*.wasm`, `Exemples/*.conceptcad`, `Ex
 
 | Chemin | Rôle |
 |---|---|
-| `src/*.js` | **Les sources** : 148 fichiers concaténés dans l'ordre alphabétique (noyau, esquisse, fonctions 3D, assemblage, FAO découpée par domaine, mise en plan, rendu, interface téléphone `99-mobile*.js`). C'est ici qu'on travaille. |
+| `src/*.js` | **Les sources** : 149 fichiers concaténés dans l'ordre alphabétique (noyau, esquisse, fonctions 3D, assemblage, FAO découpée par domaine, mise en plan, rendu, interface téléphone `99-mobile*.js`). C'est ici qu'on travaille. |
 | `ConceptCAD.html` | **Livrable généré** par `node build.js`. On n'édite jamais son script à la main. |
 | `PostPro/` | Une fiche par machine (`siemens-630.js`, `siemens-1520.js`, `fagor-8065.js`). Nouvelle machine = copier une fiche, la modifier, `npm run build`. |
-| `tests/` | 248 suites Node lancées en parallèle (`npm run ci:full`), 105 rapides (`npm run ci`), non-régression des parcours FAO (`npm run parcours`), tests de référence (`tests/oracle/`, [docs/oracle.md](docs/oracle.md)). |
+| `tests/` | 249 suites Node lancées en parallèle (`npm run ci:full`), 106 rapides (`npm run ci`), non-régression des parcours FAO (`npm run parcours`), tests de référence (`tests/oracle/`, [docs/oracle.md](docs/oracle.md)). |
 | `tests/browser/` | Playwright dans un vrai Chromium : parcours critiques et Rendu (`npm run test:browser`, seul projet lancé par la CI GitHub, déclenchée à la main) et carte graphique réelle (`npm run test:gpu`, en local). |
 | `tools/` | Lint du script concaténé (`npm run lint`), serveur MCP, **captures du README** (`npm run captures`). |
 | `occt/`, `threejs/` | Noyau OpenCascade WebAssembly (`occt/v3` : OCCT 8, celui de l'application ; `occt/opencascade.*` : l'ancien 7.4, adresse `?noyau=actuel`), rendu three.js. |

@@ -8,7 +8,7 @@ const AIDE_SECTIONS=[
     ['F8','Concentricité'],['F9','Colinéaire'],['F10','Symétrie (2 lignes + axe)'],['F12','Blocage'],
     ['X','Construction ↔ profil'],['Clic droit','Menu : contraintes, congé, axe de rotation…']]],
   ['Esquisse — tracé et cotes',[
-    ['H','Centre de perçage'],['L C R B','Ligne · cercle · rectangle · oblong'],['P I','Projection · intersection (faces / corps ∩ plan)'],['T D','Ajuster · cote'],['F O','Congé · décalage'],['Ligne','Le 2e clic enchaîne la ligne suivante'],
+    ['H','Centre de perçage'],['L C R B','Ligne · cercle · rectangle · oblong'],['G','Polygone régulier : nombre de côtés + Ø intérieur tangent aux côtés'],['P I','Projection · intersection (faces / corps ∩ plan)'],['T D','Ajuster · cote'],['F O','Congé · décalage'],['Ligne','Le 2e clic enchaîne la ligne suivante'],
     ['S','Spline : clics = points de passage · double-clic / Entrée = fin · 1er point = fermée'],['Maj+S','Spline par points de contrôle (pôles, polygone en pointillé)'],['Clic droit sur un point de spline','Poignée de tangence (direction + tension)'],
     ['Spline + courbe, clic droit','Tangence · courbure continue (G2) · peigne de courbure'],
     ['Ajuster (T) sur une spline','Retire le tronçon cliqué ; les morceaux gardés sont exacts (points de contrôle)'],

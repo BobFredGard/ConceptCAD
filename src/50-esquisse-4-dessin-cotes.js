@@ -342,6 +342,7 @@ function drawSketch2D(){
     if(d.t==='circle'){const[a,b]=w2s(d.cx,d.cy);skEl('circle',{cx:a,cy:b,r:d.r*skView.s,fill:'none',stroke:'#fff','stroke-dasharray':'5 3'});
       const t=skEl('text',{x:a,y:b-d.r*skView.s-8,fill:'#ffd60a','font-size':13,'font-weight':'bold','text-anchor':'middle'});
       t.textContent='⌀'+(d.r*2).toFixed(2);}
+    if(d.t==='polygon')skPolyDrawDraft(d);
     if(d.t==='arc'){const C=sk.points[d.pc];if(C){const p1={x:C.x+d.r*Math.cos(d.a1),y:C.y+d.r*Math.sin(d.a1)},p2={x:C.x+d.r*Math.cos(d.a2),y:C.y+d.r*Math.sin(d.a2)};
       const[a,b]=w2s(p1.x,p1.y),[c2,d2]=w2s(p2.x,p2.y);
       let dd=(d.a2-d.a1)%(Math.PI*2);if(dd<0)dd+=Math.PI*2;
@@ -360,6 +361,7 @@ function drawSketch2D(){
     h.textContent='Tab angle/longueur · Entrée OK · Échap annule';
   }
   if(skRoot)skOrbUpright(skRoot); // orbite : textes et étiquettes restent lisibles
+  skPolySync();
 }
 function dimById(sk,id){return (sk.dims||[]).find(d=>d.id===id);}
 function angleArcInfo(sk,d){ // {V,rr,a1,dd} — secteur STOCKE (a1=rayon A, dd=±value), arc et texte toujours cohérents
@@ -859,6 +861,7 @@ function skFirstDimScale(sk,d,nv){
   // aucun point fixé ni projeté) : toute l'esquisse est mise à l'échelle (comme Fusion)
   // au lieu d'étirer une seule entité — les proportions sont gardées.
   if(!d||d.ref||d.type==='angle')return false;
+  if(d.ent){const E=entById(sk,d.ent);if(E&&E.poly)return false;} // Ø d'un polygone : il grandit autour de son centre (skPolyRescale)
   if((sk.dims||[]).some(x=>x!==d&&!x.ref))return false;
   if((sk.constraints||[]).some(c=>c.type==='fix'))return false;
   if((sk.entities||[]).some(e=>e.proj||e.ref))return false;

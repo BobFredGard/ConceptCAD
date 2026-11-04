@@ -1108,7 +1108,7 @@ function solveSketch(sk,iters,anchor){
   let lsRes=Infinity;
   try{
     const fix=skFixed(sk);(anchor||[]).forEach(p=>fix.add(p));
-    (sk.dims||[]).forEach(d=>{if(d.ref)return;if(d.type==='diameter'||d.type==='radius'){const e=entById(sk,d.ent);if(e&&(e.t==='circle'||e.t==='arc'))e.r=Math.max(d.type==='diameter'?d.value/2:d.value,0.1);}});
+    (sk.dims||[]).forEach(d=>{if(d.ref)return;if(d.type==='diameter'||d.type==='radius'){const e=entById(sk,d.ent);if(e&&(e.t==='circle'||e.t==='arc')){const r=Math.max(d.type==='diameter'?d.value/2:d.value,0.1);if(e.poly)skPolyRescale(sk,e,r);e.r=r;}}});
     const B=sklsBuild(sk,fix);
     if(B.n>0&&B.n<=300){
       const x=new Float64Array(B.n);

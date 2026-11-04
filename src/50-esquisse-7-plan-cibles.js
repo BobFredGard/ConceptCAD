@@ -5,7 +5,7 @@
 // (associative : suit le solide au rejeu) — l'utilisateur n'a plus à projeter ce qui est déjà
 // dans le plan. V0.36.4 : les arêtes HORS du plan aussi, vues en projection (tiretés orange,
 // moins prioritaires que celles du plan) — un clic les projette comme ⧉, sans passer par l'outil.
-const SK_PL_TOOLS=new Set(['line','rect','slot','circle','arc','cpoint','hpoint','spline','cspline','dim']);
+const SK_PL_TOOLS=new Set(['line','rect','slot','circle','polygon','arc','cpoint','hpoint','spline','cspline','dim']);
 const SK_PL_TOLZ=2e-3; // écart au plan toléré (mm) : arête « dans le plan »
 let skPlHover=null; // cible sous le curseur {kind:'pt'|'edge',...} — transitoire, jamais sauvée
 let _skPlCache=null; // {id,live,T} : cibles de l'esquisse ouverte (vidé par skBuildRefs)
