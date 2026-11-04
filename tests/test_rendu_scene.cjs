@@ -11,7 +11,7 @@ const vm=require('vm'),fs=require('fs'),path=require('path');
 const ROOT=path.join(__dirname,'..');
 const c={console,TextDecoder,TextEncoder};c.window=c;c.self=c;vm.createContext(c);
 vm.runInContext(fs.readFileSync(path.join(ROOT,'threejs','rendu-rayons.js'),'utf8'),c,{filename:'rendu-rayons.js'});
-for(const f of ['threejs/three.min.js','src/98-rendu-surface.js','src/98-rendu-scene.js'])vm.runInContext(fs.readFileSync(path.join(ROOT,f),'utf8'),c,{filename:f});
+for(const f of ['threejs/three.min.js','src/98-rendu-surface.js','src/98-rendu-scene.js','src/98-rendu-supports.js'])vm.runInContext(fs.readFileSync(path.join(ROOT,f),'utf8'),c,{filename:f});
 // 1. fichier .hdr
 const W=512,H=256,sun=[Math.cos(35*Math.PI/180)*Math.cos(30*Math.PI/180),Math.sin(35*Math.PI/180),Math.cos(35*Math.PI/180)*Math.sin(30*Math.PI/180)];
 const rgbe=(r,g,b)=>{const v=Math.max(r,g,b);if(v<1e-32)return [0,0,0,0];const e=Math.ceil(Math.log2(v)),f=256/Math.pow(2,e);return [Math.min(255,Math.floor(r*f)),Math.min(255,Math.floor(g*f)),Math.min(255,Math.floor(b*f)),e+128];};
@@ -56,11 +56,24 @@ const r=vm.runInContext(`(()=>{
   const g=rdHdriGround(Hd);att(g[0]>g[2]&&Math.abs(g[0]-0.45)<0.05,'couleur du sol de l\\u2019image');
   att(rdLinHex([1,1,1])==='#ffffff'&&rdLinHex([0,0,0])==='#000000'&&rdLinHex([0.2195,0.2195,0.2195])==='#818181','rdLinHex');
   // 4. supports périodiques
-  RD_SUPPORTS.filter(s=>s[0]).forEach(([kk])=>{const S=rdSupTex(kk),N=S.N,a=S.data;let dc=0,dr=0,ref=0;
-    for(let y=0;y<N;y++){for(let ch=0;ch<3;ch++){dc+=Math.abs(a[(y*N)*4+ch]-a[(y*N+N-1)*4+ch]);ref+=Math.abs(a[(y*N)*4+ch]-a[(y*N+N/2)*4+ch]);}}
-    for(let x=0;x<N;x++)for(let ch=0;ch<3;ch++)dr+=Math.abs(a[x*4+ch]-a[((N-1)*N+x)*4+ch]);
-    p('support '+kk+' : écart aux raccords '+(dc/N/3).toFixed(1)+' / '+(dr/N/3).toFixed(1)+' (au milieu : '+(ref/N/3).toFixed(1)+')');
-    att(dc/N/3<12&&dr/N/3<12,kk+' : la tuile ne se raccorde pas');});
+  // raccord : passer du dernier pixel au premier ne doit pas sauter plus que deux pixels voisins DANS la tuile
+  RD_SUPPORTS.filter(s=>s[0]).forEach(([kk])=>{const S=rdSupTex(kk,128),N=S.N,a=S.data,px=(x,y,ch)=>a[(y*N+x)*4+ch];
+    const col=(x1,x2)=>{let d=0;for(let y=0;y<N;y++)for(let ch=0;ch<3;ch++)d+=Math.abs(px(x1,y,ch)-px(x2,y,ch));return d/N/3;};
+    const lig=(y1,y2)=>{let d=0;for(let x=0;x<N;x++)for(let ch=0;ch<3;ch++)d+=Math.abs(px(x,y1,ch)-px(x,y2,ch));return d/N/3;};
+    let mc=0,ml=0;for(let i=0;i<N-1;i++){mc=Math.max(mc,col(i,i+1));ml=Math.max(ml,lig(i,i+1));}
+    const dc=col(N-1,0),dl=lig(N-1,0);
+    att(dc<=mc*1.3+6&&dl<=ml*1.3+6,kk+' : la tuile ne se raccorde pas ('+dc.toFixed(1)+' pour '+mc.toFixed(1)+', '+dl.toFixed(1)+' pour '+ml.toFixed(1)+')');
+    let moy=0,nan=false;for(let i=0;i<a.length;i+=4){moy+=a[i]+a[i+1]+a[i+2];if(a[i+3]!==255)nan=true;}moy/=3*a.length/4;
+    att(!nan&&moy>3,kk+' : tuile noire ou incomplète');});
+  // catalogue : au moins 70 sols, chaque famille demandée présente, tenue à la lumière cohérente
+  const S2=RD_SUPPORTS.filter(s=>s[0]),fam=new Set(S2.map(s=>s[2]));
+  p(S2.length+' supports, '+fam.size+' familles');
+  att(S2.length>=70,'catalogue trop court : '+S2.length);
+  ['Textiles','Verres dépolis','LED','Peintures','Pierre et béton','Bois','Métal','Atelier','Carrelage et construction'].forEach(f=>att(fam.has(f),'famille absente : '+f));
+  att(new Set(S2.map(s=>s[0])).size===S2.length,'clés de supports en double');
+  S2.forEach(([kk])=>{const d=RD_SUP_DEF[kk];att(d&&d.t>0&&d.r>=0&&d.r<=1,kk+' : tuile ou rugosité');});
+  att(S2.filter(s=>s[2]==='LED').every(s=>RD_SUP_DEF[s[0]].em>0),'les LED doivent émettre');
+  att(RD_SUP_DEF.pMateNoir.k===0&&RD_SUP_DEF.pBrilNoir.k>RD_SUP_DEF.pSatinAnth.k&&RD_SUP_DEF.verreDep.b>0,'mate sans reflet, laque nette, dépoli flou');
   // studio
   const pr=rdStudioProfile(10);let ok=true;for(let i=1;i<pr.length;i++){const d=Math.hypot(pr[i][0]-pr[i-1][0],pr[i][1]-pr[i-1][1]);if(pr[i][0]<pr[i-1][0]-1e-9||pr[i][1]<pr[i-1][1]-1e-9||d>40)ok=false;}
   att(ok&&pr[0][0]===0&&pr[pr.length-1][1]>=50,'profil du studio');

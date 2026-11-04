@@ -8,7 +8,7 @@
 
 ![Support de pédale déportée R1200RT en alu anodisé rouge sur béton, lancer de rayons de l'atelier RENDU (2048 échantillons)](docs/captures/rendu-pedale.jpg)
 
-Le noyau géométrique exact est **OpenCascade 8 compilé en WebAssembly** par nos soins (recette reproductible dans `occt-build/`). S'il n'est pas disponible, l'application bascule seule sur un moteur maillage (CSG). Version actuelle : **V0.55.0** (voir le [journal des modifications](CHANGELOG.md)).
+Le noyau géométrique exact est **OpenCascade 8 compilé en WebAssembly** par nos soins (recette reproductible dans `occt-build/`). S'il n'est pas disponible, l'application bascule seule sur un moteur maillage (CSG). Version actuelle : **V0.56.0** (voir le [journal des modifications](CHANGELOG.md)).
 
 | | |
 |---|---|
@@ -214,7 +214,7 @@ Une image soignée de la pièce ou de l'assemblage, en **1920×1080 ou 4K**, enr
   - **reliefs procéduraux** : brossé, sablé, moleté, bois ;
   - **patine** par corps : taches de teinte, usure des arêtes vives, salissure des creux, de légère à très usée.
 - **Ambiances** générées à la volée (studio, studio lumineux, atelier, extérieur, scène noire), ou **image HDRI importée** (`.hdr`, `.exr`) dont le soleil porte l'ombre ; gardée par le navigateur, jamais dans le fichier.
-- **Fond et sol** : dégradé, uni, transparent (PNG détouré), **studio courbe** ou l'HDRI elle-même ; sol miroir, ombre réglable, **supports** texturés (béton, plateau de bois, marbre, tapis de découpe).
+- **Fond et sol** : dégradé, uni, transparent (PNG détouré), **studio courbe** ou l'HDRI elle-même ; sol miroir, ombre réglable, **80 supports** (sols) à l'échelle réelle, avec galerie de vignettes : pierre, bois, carrelage, métal, peintures mates, satinées, brillantes et métallisées, textiles, verres dépolis, LED, atelier ; chacun a son reflet, et les LED éclairent la pièce au lancer de rayons. Les mêmes sols s'affichent dans la vue 3D (⚙ → Support).
 - **Appareil photo** : focale en mm, ouverture et **profondeur de champ**, mise au point au clic, exposition, rendu des tons ; **vues enregistrées** avec la pièce.
 - **Finition** : débruitage (lancer de rayons), halo, vignettage, grain, contraste, saturation, température ; préréglages Neutre, Photo, Cinéma.
 - **Calques séparés** au choix : une archive `.zip` avec l'image finale, le masque, la profondeur, les normales, une couleur par corps et l'ombre seule, prêts pour la retouche.
@@ -281,7 +281,7 @@ Le dépôt stocke les gros binaires (`occt/*.wasm`, `Exemples/*.conceptcad`, `Ex
 
 | Chemin | Rôle |
 |---|---|
-| `src/*.js` | **Les sources** : 152 fichiers concaténés dans l'ordre alphabétique (noyau, esquisse, fonctions 3D, assemblage, FAO découpée par domaine, mise en plan, rendu, interface téléphone `99-mobile*.js`). C'est ici qu'on travaille. |
+| `src/*.js` | **Les sources** : 153 fichiers concaténés dans l'ordre alphabétique (noyau, esquisse, fonctions 3D, assemblage, FAO découpée par domaine, mise en plan, rendu, interface téléphone `99-mobile*.js`). C'est ici qu'on travaille. |
 | `ConceptCAD.html` | **Livrable généré** par `node build.js`. On n'édite jamais son script à la main. |
 | `PostPro/` | Une fiche par machine (`siemens-630.js`, `siemens-1520.js`, `fagor-8065.js`). Nouvelle machine = copier une fiche, la modifier, `npm run build`. |
 | `tests/` | 260 suites Node lancées en parallèle (`npm run ci:full`), 112 rapides (`npm run ci`), non-régression des parcours FAO (`npm run parcours`), tests de référence (`tests/oracle/`, [docs/oracle.md](docs/oracle.md)). |

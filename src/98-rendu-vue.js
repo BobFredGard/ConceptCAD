@@ -17,7 +17,7 @@ const VENV_SOL={studio:'#b4b8bf',clair:'#e2e4e8',atelier:'#272b31',exterieur:'#7
 const VENV_FOND={studio:['#d3d6db','#9a9fa7'],clair:['#f4f5f7','#cdd1d7'],atelier:['#3a4049','#121417'],exterieur:['#b7c5d4','#6a7684'],noir:['#1b1b1e','#000000']};
 let vEnv='actuel';
 try{const v=localStorage.getItem('minifusion_env');if(v&&VENV_LIST.some(x=>x[0]===v))vEnv=v;}catch(e){}
-const vEnvS={on:false,amb:null,rt:null,key:null,bg:null,pmrem:null,sun:null,floor:null,mats:new Set()};
+const vEnvS={on:false,amb:null,rt:null,key:null,bg:null,pmrem:null,sun:null,floor:null,mats:new Set(),supK:null,supTex:{}};
 const VENV_GLSL=[
   'uniform vec3 uEnvCol;uniform float uEnvMet;uniform float uEnvRou;uniform float uEnvGlass;',
   'vec3 vEnvRrt(vec3 v){vec3 a=v*(v+0.0245786)-0.000090537;vec3 b=v*(0.983729*v+0.4329510)+0.238081;return a/b;}',
@@ -44,6 +44,34 @@ function vEnvCfg(){
   const f=st.fond==='degrade'?[st.fc1,st.fc2]:st.fond==='uni'?[st.fc1,st.fc1]:VENV_FOND[amb];
   const sol=st.solCol||(st.fond==='degrade'||st.fond==='uni'?f[1]:VENV_SOL[amb]);
   return {amb,rot:+st.envRot||0,int:st.envInt!=null?+st.envInt:1,fond:f,sol,sig:['rendu',amb,st.envRot,f[0],f[1]].join('|')};
+}
+/* ── support (sol texturé) dans la vue 3D : le même réglage que la fenêtre RENDU, dans tous les environnements
+   des espaces CAO et FAO. Le sol de la vue n'est pas éclairé et sa sortie est linéaire : la tuile s'affiche telle quelle. ── */
+function vEnvSupKey(){
+  const st=(rd&&rd.st)||vEnvRdSt||(vEnvRdSt=rdSettings());
+  return st.support&&RD_SUP_DEF[st.support]?st.support:'';
+}
+function vEnvSupFloor(){ // un support choisi se voit : la case « Sol » se coche
+  floorOn=true;const c=document.getElementById('optFloor');if(c)c.checked=true;
+  try{localStorage.setItem('minifusion_sol','on');}catch(e){}
+  try{refreshMirror();}catch(e){}
+}
+function vEnvSupChoose(v){ // liste des réglages de vue : écrit le réglage de la fenêtre RENDU
+  if(rd&&rd.st)rd.st.support=v;
+  else{const st=rdSettings();st.support=v;try{localStorage.setItem(RD_LS,JSON.stringify(st));}catch(e){}vEnvRdSt=st;}
+  if(v)vEnvSupFloor();
+}
+function vEnvSupSync(cao){ // à chaque image : ne touche au sol que si le support change
+  const k=cao?vEnvSupKey():'';
+  if(k===vEnvS.supK||!mirrorU)return;
+  vEnvS.supK=k;
+  const s=document.getElementById('optSup');if(s&&cao){s.value=k;rdSupMark(k);}
+  const U=mirrorU,d=k?RD_SUP_DEF[k]:null;
+  if(k&&!vEnvS.supTex[k]){const S=rdSupTex(k),t=new THREE.DataTexture(S.data,S.N,S.N,THREE.RGBAFormat);
+    t.wrapS=t.wrapT=THREE.RepeatWrapping;t.magFilter=THREE.LinearFilter;t.minFilter=THREE.LinearMipmapLinearFilter;t.generateMipmaps=true;t.anisotropy=8;t.needsUpdate=true;
+    vEnvS.supTex[k]=t;}
+  U.uSup.value=k?1:0;U.tSup.value=k?vEnvS.supTex[k]:null;U.uSupT.value=d?d.t:100;U.uSupK.value=d&&d.k!=null?d.k:1;U.uSupB.value=d&&d.b||0;
+  mirrorDirty=true;
 }
 /* ── matières des corps ── */
 function vEnvPatch(m){
@@ -213,6 +241,7 @@ const _vEnvBox=new THREE.Box3(),_vEnvC=new THREE.Vector3(),_vEnvSz=new THREE.Vec
 function vEnvTick(){
   // appelée à chaque image (animate, 10-scene-3d) : suit l'espace de travail, les corps et leurs apparences
   const cao=vCaoWs(),envW=cao&&vEnv!=='actuel',shW=cao&&vShadowOn;
+  vEnvSupSync(cao);
   // sol et reflet SUIVENT la pièce (déplacée, modifiée, composant placé) : recalés toutes les 15 images
   vEnvS.n=(vEnvS.n||0)+1;
   if(cao&&vEnvS.n%15===0&&(floorOn||mirrorOn)){try{refreshMirror();}catch(e){}}
@@ -276,6 +305,14 @@ function vEnvTick(){
       if(vEnv!=='actuel')b.classList.add('on');
     }
     row0.parentNode.insertBefore(row,row0);
+    // liste « Support » : le sol de la vue, le même que dans la fenêtre RENDU
+    const rowS=document.createElement('div');rowS.className='setRow';
+    const labS=document.createElement('label');labS.textContent='Support ';
+    const ss=rdSupSelect('',vEnvSupChoose);ss.id='optSup'; // valeur posée par vEnvSupSync (98-rendu.js n'est pas encore chargé ici)
+    ss.title='Matière du sol, à l’échelle réelle : pierre, bois, carrelage, métal, peintures, textiles, verres dépolis, LED… — le même sol dans la fenêtre RENDU';
+    labS.appendChild(ss);rowS.appendChild(labS);
+    row0.parentNode.insertBefore(rowS,row0);
+    row0.parentNode.insertBefore(rdSupGallery(vEnvSupKey,vEnvSupChoose),row0);
     const lo=document.createElement('label');lo.title='Ombre portée de la pièce sur le sol (espace CAO)';
     const co=document.createElement('input');co.type='checkbox';co.id='optShadow';co.checked=vShadowOn;
     co.onchange=()=>{vShadowOn=co.checked;try{localStorage.setItem('minifusion_ombre',vShadowOn?'on':'off');}catch(e){}};

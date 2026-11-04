@@ -139,7 +139,9 @@ function rtFloorMat(){
   const sup=!studio&&st.support&&RD_SUP_DEF[st.support]?st.support:'';
   if(sup){const t=rtSupMap(sup),n=16*(R.floorR||50)/RD_SUP_DEF[sup].t;t.repeat.set(n,n);m.map=t;m.color.setRGB(Math.min(1,k[0]),Math.min(1,k[1]),Math.min(1,k[2]));}
   else{m.map=null;cal(m,rdSolHex());}
-  m.roughness=sup?RD_SUP_DEF[sup].r:st.miroir?0.4:0.9;m.clearcoat=st.miroir?1:0;m.clearcoatRoughness=0.04;
+  const sd=sup?RD_SUP_DEF[sup]:null; // tenue à la lumière du support (98-rendu-supports) : métal, vernis, LED qui éclairent la pièce
+  m.roughness=sd?sd.r:st.miroir?0.4:0.9;m.metalness=sd&&sd.m||0;m.clearcoat=st.miroir?(sd&&sd.cc!=null?sd.cc:1):0;m.clearcoatRoughness=0.04;
+  if(sd&&sd.em){m.emissiveMap=m.map;m.emissive.setRGB(1,1,1);m.emissiveIntensity=sd.em;}else{m.emissiveMap=null;m.emissive.setRGB(0,0,0);m.emissiveIntensity=1;}
   m.opacity=on?1:0;
   if(R.studio){const s=R.studio.material;cal(s,rdSolHex());s.roughness=st.miroir?0.35:0.9;s.clearcoat=st.miroir?1:0;s.clearcoatRoughness=0.22;} // vernis satiné : la gorge courbe ne fait pas de lignes de reflets
   R.floorKey=rtFloorKey();

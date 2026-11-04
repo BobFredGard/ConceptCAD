@@ -8,7 +8,7 @@ sont sorties le 2026-09-30j.
 Code dans `src/` · livrable `fusion_mvp.html` (généré par `build.js`) · architecture et
 garde-fous en tête de `src/00-entete-et-outils.js`.
 
-**570 versions**, de `2026-09-28b` à `V0.55.0` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
+**571 versions**, de `2026-09-28b` à `V0.56.0` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
 comme dans le fichier d'origine.
 
 ---
@@ -6631,3 +6631,15 @@ Demandes : « Cache Piles et Support », « Corrige-la », puis « pourquoi ne p
 - **Numéro** (`selFaceInfo`, `selAreteInfo`, `selOrigine`) : « Face 1 » et « Arête 1 » voulaient seulement dire « première choisie ». Le clic affiche le rang dans le solide et la fonction qui a créé l’élément (son nom unique traduit). Le rang peut changer si le modèle change, le nom non. Vue d’assemblage : pas de numéro d’arête, plutôt qu’un faux venu d’une autre pièce.
 - **Reste à faire** : environ 20 réglages au banc restent différents selon le chemin, souvent une ligne de construction ou une valeur qui rend un congé impossible ; 3 calculs interrompus.
 - **Tests** : `test_noms_retour` (retour exact sur les deux pièces, geste manuel respecté), `test_selection_numero` ; `test_anteriorite` vérifie que le Support n’a plus de défaut. Parcours d’usinage inchangés, `CACHE_VER` ne change pas.
+
+## V0.56.0 - Les supports (sols) arrivent dans la vue 3D, et le catalogue passe de 4 à 80 sols
+
+Demandes : « j'aimerais avoir les Supports dans le 3D aussi en mode rendu », « en ajouter plein d'autres », « des textures supplémentaires et en nombre, comme les textiles, les verres dépolis, les LEDs, les peintures », « si tu vois autre chose, vas-y aussi ».
+
+- **Vue 3D** (`vEnvSupSync`, `vEnvSupChoose`, 98-rendu-vue ; `mirrorU`, 10-scene-3d) : le support choisi s'affiche sur le sol de la vue, dans tous les environnements, en CAO et en FAO. Réglages de vue ⚙ → liste « Support » ; même réglage que la fenêtre RENDU. Choisir un support coche « Sol ».
+- **Catalogue** (`src/98-rendu-supports.js`) : 76 sols de plus, par familles : pierre et béton, bois, carrelage et construction, métal, peintures (mates, satinées, laques, métallisées, nacrées, martelée, craquelée, époxy), textiles, verres dépolis, LED, atelier.
+- **Tenue à la lumière par sol** : force du reflet (`k`), flou du reflet (`b`, 12 prélèvements), métal (`m`), vernis (`cc`), lumière émise (`em`). Les quatre sols d'origine gardent leur aspect.
+- **LED** : carte d'émission dans le lancer de rayons (elles éclairent la pièce) ; dans le moteur rapide et la vue 3D, le sol brille sans éclairer.
+- **Verres dépolis** : aspect seulement, le sol reste opaque.
+- **Galerie** (`rdSupGallery`) : « Voir tous les sols », une vignette par sol, dans la fenêtre RENDU et les réglages de vue ; vignettes calculées à la première ouverture.
+- **Tests** : `test_rendu_scene` contrôle le catalogue (au moins 70 sols, familles, tuiles complètes, mate sans reflet, LED émissives). Son contrôle de raccord compare désormais le saut au bord de tuile aux sauts dans la tuile, sur une petite tuile : le catalogue entier reste rapide à tester. Parcours d'usinage inchangés, `CACHE_VER` ne change pas.

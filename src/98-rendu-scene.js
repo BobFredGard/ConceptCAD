@@ -11,8 +11,8 @@
      passer les rayons d'ombre (castShadow false) : l'ambiance éclaire la pièce à travers eux.
    - Supports : béton, plateau de bois, marbre, tapis de découpe — textures périodiques à l'échelle réelle
      (mm), posées sur le disque du sol (moteur rapide) ou son équivalent physique (lancer de rayons). */
-const RD_SUPPORTS=[['','Uni'],['beton','Béton'],['bois','Plateau de bois'],['marbre','Marbre'],['tapis','Tapis de découpe']];
-// t tuile (mm) · r rugosité (lancer de rayons)
+const RD_SUPPORTS=[['','Uni'],['beton','Béton','Pierre et béton'],['marbre','Marbre','Pierre et béton'],['bois','Plateau de bois','Bois'],['tapis','Tapis de découpe','Atelier']]; // [clé, nom, famille] ; le reste du catalogue : 98-rendu-supports
+// t tuile (mm) · r rugosité (lancer de rayons) ; autres champs : 98-rendu-supports
 const RD_SUP_DEF={beton:{t:400,r:0.85},bois:{t:600,r:0.45},marbre:{t:500,r:0.2},tapis:{t:100,r:0.7}};
 let rdHdri=null; // {name, w, h, data (Float32 RGBA, Y en haut, ligne 0 en haut), sun:{u,v,lum}|null, at}
 /* ── HDRI : import, mémoire du navigateur ── */
@@ -137,13 +137,14 @@ function rdHdriSunKey(H){ // soleil → [azimut, élévation] en degrés (avant 
 }
 /* ── supports texturés : albédo sRGB 8 bits, tuile périodique de RD_SUP_DEF[k].t mm ── */
 const _rdSupCache={};
-function rdSupTex(k){
-  if(_rdSupCache[k])return _rdSupCache[k];
-  const N=1024,a=new Uint8Array(N*N*4),T=RD_SUP_DEF[k].t,mm=T/N;
+function rdSupTex(k,N0){ // N0 : petite tuile (vignette, test), jamais mise en cache
+  if(!N0&&_rdSupCache[k])return _rdSupCache[k];
+  const N=N0||1024,a=new Uint8Array(N*N*4),T=RD_SUP_DEF[k].t,mm=T/N,G=RD_SUP_DEF[k].g;
   const put=(i,r,g,b)=>{a[i]=Math.max(0,Math.min(255,Math.round(r)));a[i+1]=Math.max(0,Math.min(255,Math.round(g)));a[i+2]=Math.max(0,Math.min(255,Math.round(b)));a[i+3]=255;};
   for(let y=0;y<N;y++)for(let x=0;x<N;x++){
     const i=(y*N+x)*4,u=x/N,v=y/N;
-    if(k==='beton'){ // gris ciment, nuages, pores
+    if(G){const c=G(u,v,T,x,y);put(i,c[0],c[1],c[2]);} // catalogue : 98-rendu-supports
+    else if(k==='beton'){ // gris ciment, nuages, pores
       const c1=Math.round(T/60),c2=Math.round(T/6),n=sfFbm(u*c1,v*c1,c1,c1,31)*0.7+sfNoise(u*c2,v*c2,c2,c2,32)*0.3,p=sfNoise(u*T/1.2,v*T/1.2,Math.round(T/1.2),Math.round(T/1.2),33);
       const g=150+(n-0.5)*55-(p>0.93?28:0);put(i,g*1.0,g*0.98,g*0.95);
     }else if(k==='bois'){ // 5 lames de 120 mm, fil le long de u (cernes larges ondulés + traits fins), joints sombres
@@ -161,7 +162,8 @@ function rdSupTex(k){
       if(L2)put(i,222,234,226);else if(l)put(i,150+n,196+n,170+n);else put(i,38+n,110+n,78+n);
     }
   }
-  return (_rdSupCache[k]={data:a,N,t:T});
+  const S={data:a,N,t:T};if(!N0)_rdSupCache[k]=S;
+  return S;
 }
 /* ── studio courbe : profil (r, z) de la cuvette pour un corps de rayon R ── */
 function rdStudioProfile(R){

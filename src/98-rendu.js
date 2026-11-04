@@ -260,14 +260,14 @@ function rdDisk(c,R,z){
     rd.mirRT=new THREE.WebGLRenderTarget(2048,2048,{samples:4,type:THREE.HalfFloatType});
     rd.mirCam=new THREE.PerspectiveCamera();rd.mirMat=new THREE.Matrix4();
     const U={color:{value:new THREE.Color()},tRefl:{value:rd.mirRT.texture},texM:{value:rd.mirMat},uC:{value:new THREE.Vector3()},
-      uR:{value:1},uDisk:{value:1},uRefl:{value:1},tSup:{value:null},uSup:{value:0},uSupT:{value:100}};
+      uR:{value:1},uDisk:{value:1},uRefl:{value:1},tSup:{value:null},uSup:{value:0},uSupT:{value:100},uSupK:{value:1},uSupB:{value:0},uSupE:{value:1}};
     rd.disk=new THREE.Mesh(new THREE.CircleGeometry(1,128),new THREE.ShaderMaterial({uniforms:U,transparent:true,depthWrite:false,
       vertexShader:'uniform mat4 texM; varying vec4 vUv; varying vec3 vW;\nvoid main(){ vec4 wp = modelMatrix * vec4(position, 1.0); vW = wp.xyz; vUv = texM * vec4(position, 1.0); gl_Position = projectionMatrix * viewMatrix * wp; }',
-      fragmentShader:'uniform vec3 color; uniform sampler2D tRefl; uniform vec3 uC; uniform float uR; uniform float uDisk; uniform float uRefl; uniform sampler2D tSup; uniform float uSup; uniform float uSupT; varying vec4 vUv; varying vec3 vW;\n'+
+      fragmentShader:'uniform vec3 color; uniform sampler2D tRefl; uniform vec3 uC; uniform float uR; uniform float uDisk; uniform float uRefl; uniform sampler2D tSup; uniform float uSup; uniform float uSupT; uniform float uSupK; uniform float uSupB; uniform float uSupE; varying vec4 vUv; varying vec3 vW;\n'+
         'void main(){ float d = distance(vW, uC); float a = uDisk > 0.5 ? 1.0 - smoothstep(uR * 1.6, uR * 5.5, d) : 0.0; vec3 refl = vec3(0.0); float ra = 0.0; float f = 0.0; '+
-        'if(uRefl > 0.5 && vUv.w > 1e-4){ vec2 uv = vUv.xy / vUv.w; if(uv.x > 0.0 && uv.x < 1.0 && uv.y > 0.0 && uv.y < 1.0){ vec4 r4 = texture2D(tRefl, uv); ra = r4.a; refl = ra > 1e-4 ? r4.rgb / ra : vec3(0.0); f = exp(-pow(d / max(uR * 1.2, 1e-3), 2.0) * 1.6) * 0.8; } } '+
-        'vec3 base = uSup > 0.5 ? pow(texture2D(tSup, vW.xy / uSupT).rgb, vec3(2.2)) : pow(color, vec3(2.2)); '+ // couleur choisie ou support (sRGB) → linéaire
-        'if(uDisk > 0.5){ gl_FragColor = vec4(mix(base, refl, clamp(f * ra * 0.7, 0.0, 1.0)), a); return; } gl_FragColor = vec4(refl, ra * f * 0.6); }'}));
+        'if(uRefl > 0.5 && vUv.w > 1e-4){ vec2 uv = vUv.xy / vUv.w; if(uv.x > 0.0 && uv.x < 1.0 && uv.y > 0.0 && uv.y < 1.0){ vec4 r4 = vec4(0.0); if(uSupB > 0.0){ for(int i = 0; i < 12; i++){ float q = float(i) + 0.5; float t = q * 2.39996; r4 += texture2D(tRefl, uv + vec2(cos(t), sin(t)) * sqrt(q / 12.0) * uSupB); } r4 /= 12.0; } else r4 = texture2D(tRefl, uv); ra = r4.a; refl = ra > 1e-4 ? r4.rgb / ra : vec3(0.0); f = exp(-pow(d / max(uR * 1.2, 1e-3), 2.0) * 1.6) * 0.8; } } '+
+        'vec3 base = uSup > 0.5 ? pow(texture2D(tSup, vW.xy / uSupT).rgb, vec3(2.2)) * uSupE : pow(color, vec3(2.2)); '+ // couleur choisie ou support (sRGB) → linéaire ; uSupE : LED
+        'if(uDisk > 0.5){ gl_FragColor = vec4(mix(base, refl, clamp(f * ra * 0.7 * uSupK, 0.0, 1.0)), a); return; } gl_FragColor = vec4(refl, ra * f * 0.6); }'}));
     rd.disk.renderOrder=-3;rd.scene.add(rd.disk);
     rd.floor.renderOrder=-2; // l'ombre par-dessus le sol et le reflet
   }
@@ -277,6 +277,7 @@ function rdDisk(c,R,z){
   U.color.value.set(rdSolHex());U.uC.value.set(c.x,c.y,z);U.uR.value=R;
   U.uDisk.value=st.solOn?1:0;U.uRefl.value=st.miroir?1:0;
   const sup=rdSupTex3(st.support);U.uSup.value=sup?1:0;U.tSup.value=sup;U.uSupT.value=sup?RD_SUP_DEF[st.support].t:100;
+  const sd=sup?RD_SUP_DEF[st.support]:null;U.uSupK.value=sd&&sd.k!=null?sd.k:1;U.uSupB.value=sd&&sd.b||0;U.uSupE.value=sd&&sd.em||1; // reflet et lumière du support (98-rendu-supports)
   rd.floorZ=z;
 }
 const _rdV1=new THREE.Vector3(),_rdV2=new THREE.Vector3();
@@ -603,8 +604,9 @@ function rdPanel(){
       r.appendChild(chk('Miroir','miroir','Reflet de la pièce au sol, avec ou sans disque'));
       r.appendChild(chk('Ombre','ombreOn','Ombre portée sur le sol'));
       pane.appendChild(r);
-      row('Support',select(RD_SUPPORTS,st.support||'',v=>{st.support=v;if(v)st.solOn=true;rdRefresh();rdPanel();}))
-        .title='Matière du sol, à l’échelle réelle (béton, plateau de bois, marbre, tapis de découpe quadrillé tous les 10 mm)';
+      row('Support',rdSupSelect(st.support,v=>{st.support=v;if(v){st.solOn=true;vEnvSupFloor();}rdRefresh();rdPanel();}))
+        .title='Matière du sol, à l’échelle réelle : pierre, bois, carrelage, métal, peintures, textiles, verres dépolis, LED… — le même sol dans la vue 3D';
+      pane.appendChild(rdSupGallery(st.support,v=>{st.support=v;if(v){st.solOn=true;vEnvSupFloor();}rdRefresh();rdPanel();}));
       slider('Ombre','ombre',0,1,0.05,v=>Math.round(v*100)+' %',null);
     }
     pane.appendChild(el('h4',null,'Dessin'));

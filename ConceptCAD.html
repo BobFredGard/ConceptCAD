@@ -376,7 +376,7 @@ input[type=range]{accent-color:var(--primary);width:100%}
  * peut changer sans rien casser. CACHE_VER (parcours FAO) reste indépendant.
  */
 
-const APP_VER='V0.55.0';
+const APP_VER='V0.56.0';
 try{console.log('[ConceptCAD] version '+APP_VER);}catch(e){}
 try{var mfSv=document.getElementById('mfSplashVer');if(mfSv)mfSv.textContent=APP_VER;}catch(e){} // écran de démarrage
 
@@ -923,10 +923,11 @@ function buildScene(){
   mirrorTexMat=new THREE.Matrix4();
   mirrorU={color:{value:new THREE.Color(0x141519)},tDiffuse:{value:mirrorRT.texture},
     textureMatrix:{value:mirrorTexMat},uCenter:{value:new THREE.Vector3()},uRadius:{value:1},
-    uDisk:{value:1},uRefl:{value:1},uFade:{value:0},uReflK:{value:0.62}}; // floorSync : Sol, Miroir, bords fondus (ambiance de rendu)
+    uDisk:{value:1},uRefl:{value:1},uFade:{value:0},uReflK:{value:0.62}, // floorSync : Sol, Miroir, bords fondus (ambiance de rendu)
+    tSup:{value:null},uSup:{value:0},uSupT:{value:100},uSupK:{value:1},uSupB:{value:0}}; // support (sol texturé) : vEnvSupSync, 98-rendu-vue
   const fm=new THREE.ShaderMaterial({uniforms:mirrorU,
-    vertexShader:'uniform mat4 textureMatrix; varying vec4 vUv; varying vec3 vWorld;\nvoid main(){ vec4 wp = modelMatrix * vec4(position, 1.0); vWorld = wp.xyz; vUv = textureMatrix * vec4(position, 1.0); gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }',
-    fragmentShader:'uniform vec3 color; uniform sampler2D tDiffuse; uniform vec3 uCenter; uniform float uRadius; uniform float uDisk; uniform float uRefl; uniform float uFade; uniform float uReflK; varying vec4 vUv; varying vec3 vWorld;\nvoid main(){ float d = distance(vWorld, uCenter); float a = uDisk > 0.5 ? (uFade > 0.5 ? 1.0 - smoothstep(uRadius * 1.5, uRadius * 5.0, d) : 1.0) : 0.0; vec3 refl = vec3(0.0); float ra = 0.0; float f = 0.0; if(uRefl > 0.5 && vUv.w > 1e-4){ vec2 uv = vUv.xy / vUv.w; float eg = min(min(uv.x, 1.0 - uv.x), min(uv.y, 1.0 - uv.y)); if(eg > 0.0){ vec4 r4 = texture2D(tDiffuse, uv); refl = r4.rgb; ra = r4.a; f = exp(-pow(d / max(uRadius * 1.15, 1e-3), 2.0) * 2.0) * 0.85 * smoothstep(0.0, 0.03, eg); } } if(uDisk > 0.5){ gl_FragColor = vec4(mix(color, refl * uReflK, clamp(f, 0.0, 0.85) * ra), a); return; } gl_FragColor = vec4(refl, ra * clamp(f, 0.0, 0.85) * 0.55); }'});
+    vertexShader:'uniform mat4 textureMatrix; varying vec4 vUv; varying vec3 vWorld; varying vec3 vEx; varying vec3 vEy;\nvoid main(){ vec4 wp = modelMatrix * vec4(position, 1.0); vWorld = wp.xyz; vEx = modelMatrix[0].xyz; vEy = modelMatrix[1].xyz; vUv = textureMatrix * vec4(position, 1.0); gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }',
+    fragmentShader:'uniform vec3 color; uniform sampler2D tDiffuse; uniform vec3 uCenter; uniform float uRadius; uniform float uDisk; uniform float uRefl; uniform float uFade; uniform float uReflK; uniform sampler2D tSup; uniform float uSup; uniform float uSupT; uniform float uSupK; uniform float uSupB; varying vec4 vUv; varying vec3 vWorld; varying vec3 vEx; varying vec3 vEy;\nvoid main(){ float d = distance(vWorld, uCenter); float a = uDisk > 0.5 ? (uFade > 0.5 ? 1.0 - smoothstep(uRadius * 1.5, uRadius * 5.0, d) : 1.0) : 0.0; vec3 refl = vec3(0.0); float ra = 0.0; float f = 0.0; if(uRefl > 0.5 && vUv.w > 1e-4){ vec2 uv = vUv.xy / vUv.w; float eg = min(min(uv.x, 1.0 - uv.x), min(uv.y, 1.0 - uv.y)); if(eg > 0.0){ vec4 r4 = vec4(0.0); if(uSupB > 0.0){ for(int i = 0; i < 12; i++){ float q = float(i) + 0.5; float t = q * 2.39996; r4 += texture2D(tDiffuse, uv + vec2(cos(t), sin(t)) * sqrt(q / 12.0) * uSupB); } r4 /= 12.0; refl = r4.a > 1e-4 ? r4.rgb / r4.a : vec3(0.0); } else { r4 = texture2D(tDiffuse, uv); refl = r4.rgb; } ra = r4.a; f = exp(-pow(d / max(uRadius * 1.15, 1e-3), 2.0) * 2.0) * 0.85 * smoothstep(0.0, 0.03, eg); } } if(uDisk > 0.5){ vec3 base = color; float k = 1.0; if(uSup > 0.5){ base = texture2D(tSup, vec2(dot(vWorld, normalize(vEx)), dot(vWorld, normalize(vEy))) / uSupT).rgb; k = uSupK; } gl_FragColor = vec4(mix(base, refl * uReflK, clamp(f * k, 0.0, 0.85) * ra), a); return; } gl_FragColor = vec4(refl, ra * clamp(f, 0.0, 0.85) * 0.55); }'});
   floorMesh=new THREE.Mesh(new THREE.CircleGeometry(400,48),fm);
   floorMesh.name='floor';floorMesh.position.z=-0.5;scene.add(floorMesh);
   try{if(typeof mf3D==='function')mf3D(document.body.getAttribute('data-theme')||'nuit');}catch(e){} // thème (V0.2.1)
@@ -77836,7 +77837,9 @@ function rtFloorMat(){
   const sup=!studio&&st.support&&RD_SUP_DEF[st.support]?st.support:'';
   if(sup){const t=rtSupMap(sup),n=16*(R.floorR||50)/RD_SUP_DEF[sup].t;t.repeat.set(n,n);m.map=t;m.color.setRGB(Math.min(1,k[0]),Math.min(1,k[1]),Math.min(1,k[2]));}
   else{m.map=null;cal(m,rdSolHex());}
-  m.roughness=sup?RD_SUP_DEF[sup].r:st.miroir?0.4:0.9;m.clearcoat=st.miroir?1:0;m.clearcoatRoughness=0.04;
+  const sd=sup?RD_SUP_DEF[sup]:null; // tenue à la lumière du support (98-rendu-supports) : métal, vernis, LED qui éclairent la pièce
+  m.roughness=sd?sd.r:st.miroir?0.4:0.9;m.metalness=sd&&sd.m||0;m.clearcoat=st.miroir?(sd&&sd.cc!=null?sd.cc:1):0;m.clearcoatRoughness=0.04;
+  if(sd&&sd.em){m.emissiveMap=m.map;m.emissive.setRGB(1,1,1);m.emissiveIntensity=sd.em;}else{m.emissiveMap=null;m.emissive.setRGB(0,0,0);m.emissiveIntensity=1;}
   m.opacity=on?1:0;
   if(R.studio){const s=R.studio.material;cal(s,rdSolHex());s.roughness=st.miroir?0.35:0.9;s.clearcoat=st.miroir?1:0;s.clearcoatRoughness=0.22;} // vernis satiné : la gorge courbe ne fait pas de lignes de reflets
   R.floorKey=rtFloorKey();
@@ -78168,8 +78171,8 @@ function relShader(sh){
      passer les rayons d'ombre (castShadow false) : l'ambiance éclaire la pièce à travers eux.
    - Supports : béton, plateau de bois, marbre, tapis de découpe — textures périodiques à l'échelle réelle
      (mm), posées sur le disque du sol (moteur rapide) ou son équivalent physique (lancer de rayons). */
-const RD_SUPPORTS=[['','Uni'],['beton','Béton'],['bois','Plateau de bois'],['marbre','Marbre'],['tapis','Tapis de découpe']];
-// t tuile (mm) · r rugosité (lancer de rayons)
+const RD_SUPPORTS=[['','Uni'],['beton','Béton','Pierre et béton'],['marbre','Marbre','Pierre et béton'],['bois','Plateau de bois','Bois'],['tapis','Tapis de découpe','Atelier']]; // [clé, nom, famille] ; le reste du catalogue : 98-rendu-supports
+// t tuile (mm) · r rugosité (lancer de rayons) ; autres champs : 98-rendu-supports
 const RD_SUP_DEF={beton:{t:400,r:0.85},bois:{t:600,r:0.45},marbre:{t:500,r:0.2},tapis:{t:100,r:0.7}};
 let rdHdri=null; // {name, w, h, data (Float32 RGBA, Y en haut, ligne 0 en haut), sun:{u,v,lum}|null, at}
 /* ── HDRI : import, mémoire du navigateur ── */
@@ -78294,13 +78297,14 @@ function rdHdriSunKey(H){ // soleil → [azimut, élévation] en degrés (avant 
 }
 /* ── supports texturés : albédo sRGB 8 bits, tuile périodique de RD_SUP_DEF[k].t mm ── */
 const _rdSupCache={};
-function rdSupTex(k){
-  if(_rdSupCache[k])return _rdSupCache[k];
-  const N=1024,a=new Uint8Array(N*N*4),T=RD_SUP_DEF[k].t,mm=T/N;
+function rdSupTex(k,N0){ // N0 : petite tuile (vignette, test), jamais mise en cache
+  if(!N0&&_rdSupCache[k])return _rdSupCache[k];
+  const N=N0||1024,a=new Uint8Array(N*N*4),T=RD_SUP_DEF[k].t,mm=T/N,G=RD_SUP_DEF[k].g;
   const put=(i,r,g,b)=>{a[i]=Math.max(0,Math.min(255,Math.round(r)));a[i+1]=Math.max(0,Math.min(255,Math.round(g)));a[i+2]=Math.max(0,Math.min(255,Math.round(b)));a[i+3]=255;};
   for(let y=0;y<N;y++)for(let x=0;x<N;x++){
     const i=(y*N+x)*4,u=x/N,v=y/N;
-    if(k==='beton'){ // gris ciment, nuages, pores
+    if(G){const c=G(u,v,T,x,y);put(i,c[0],c[1],c[2]);} // catalogue : 98-rendu-supports
+    else if(k==='beton'){ // gris ciment, nuages, pores
       const c1=Math.round(T/60),c2=Math.round(T/6),n=sfFbm(u*c1,v*c1,c1,c1,31)*0.7+sfNoise(u*c2,v*c2,c2,c2,32)*0.3,p=sfNoise(u*T/1.2,v*T/1.2,Math.round(T/1.2),Math.round(T/1.2),33);
       const g=150+(n-0.5)*55-(p>0.93?28:0);put(i,g*1.0,g*0.98,g*0.95);
     }else if(k==='bois'){ // 5 lames de 120 mm, fil le long de u (cernes larges ondulés + traits fins), joints sombres
@@ -78318,7 +78322,8 @@ function rdSupTex(k){
       if(L2)put(i,222,234,226);else if(l)put(i,150+n,196+n,170+n);else put(i,38+n,110+n,78+n);
     }
   }
-  return (_rdSupCache[k]={data:a,N,t:T});
+  const S={data:a,N,t:T};if(!N0)_rdSupCache[k]=S;
+  return S;
 }
 /* ── studio courbe : profil (r, z) de la cuvette pour un corps de rayon R ── */
 function rdStudioProfile(R){
@@ -78331,6 +78336,192 @@ function rdStudioGeo(T3,R){ // LatheGeometry (axe Y) couchée sur Z, face vers l
   const pts=rdStudioProfile(R).map(([r,z])=>new T3.Vector2(Math.max(r,1e-3),z));
   const g=new T3.LatheGeometry(pts,256);g.rotateX(Math.PI/2); // 256 côtés : pas de facettes dans le vernis
   return g;
+}
+
+/* ═══════════════ 98-rendu-supports.js — rendu supports ═══════════════ */
+/* ---------- catalogue des supports (sols) de l'atelier RENDU et de la vue 3D ----------
+   Chaque support : une tuile périodique calculée à la demande (albédo sRGB, à l'échelle réelle) et sa
+   tenue à la lumière. Champs de RD_SUP_DEF : t tuile (mm) · r rugosité · g générateur (u, v, T, x, y) → [r, g, b]
+   · m métal · cc vernis (lancer de rayons) · k force du reflet (moteur rapide, vue 3D ; absent = 1)
+   · b flou du reflet (fraction de l'image reflétée : verre dépoli, satiné) · em lumière émise (LED).
+   Les générateurs ne dépendent que de bruits périodiques (sfNoise, sfFbm) : les bords de tuile se raccordent. */
+const _sN=(u,v,c,s)=>sfNoise(u*c,v*c,c,c,s);
+const _sF=(u,v,c,s)=>sfFbm(u*c,v*c,c,c,s);
+const _sA=(u,v,cx,cy,s)=>sfNoise(u*cx,v*cy,cx,cy,s); // bruit étiré (fibres, fil, brossage)
+const _sK=(c,k)=>[c[0]*k,c[1]*k,c[2]*k];
+const _sMix=(a,b,t)=>[a[0]+(b[0]-a[0])*t,a[1]+(b[1]-a[1])*t,a[2]+(b[2]-a[2])*t];
+const _sMod=(a,p)=>((a%p)+p)%p;
+function _sCell(u,v,c,s){ // cellules périodiques : d1, d2 (distances aux 2 germes les plus proches), h (hasard de la plus proche)
+  const x=u*c,y=v*c,i=Math.floor(x),j=Math.floor(y);let d1=9,d2=9,h=0;
+  for(let dj=-1;dj<=1;dj++)for(let di=-1;di<=1;di++){
+    const a=_sMod(i+di,c),b=_sMod(j+dj,c),d=Math.hypot(i+di+sfHash(a,b,s)-x,j+dj+sfHash(a,b,s+1)-y);
+    if(d<d1){d2=d1;d1=d;h=sfHash(a,b,s+2);}else if(d<d2)d2=d;
+  }
+  return [d1,d2,h];
+}
+function _sLames(u,v,n,c,s){ // lames de bois : n par tuile, fil le long de u, abouts décalés, joints sombres
+  const l=Math.floor(v*n),vv=v*n-l,du=(u+sfHash(l,0,s+7))%1;
+  const cerne=sfTri(vv*9+(sfFbm(u*8,vv*2+l*3.1,8,1e6,s+l)-0.5)*3),trait=sfNoise(u*6,vv*60,6,1e6,s+20+l);
+  const t=0.8+0.14*cerne*cerne+0.1*(trait-0.5)+(sfHash(l,0,s+1)-0.5)*0.2;
+  return _sK(c,t*(vv<0.012||vv>0.988||du<0.002||du>0.998?0.35:1));
+}
+function _sChevrons(u,v,c,s){ // parquet à chevrons : 4 colonnes en V, 8 rangs
+  const xx=u*4,col=Math.floor(xx),fx=xx-col,w=v*8+(col%2?fx:1-fx),row=Math.floor(w),fw=w-row,id=_sMod(row,8);
+  const t=0.8+0.12*sfNoise(fx*5,fw*30,1e6,1e6,s+col*11+id)+(sfHash(col,id,s)-0.5)*0.22;
+  return _sK(c,t*(fw<0.03||fw>0.97||fx<0.01||fx>0.99?0.4:1));
+}
+function _sCarr(u,v,nx,ny,dec,jx,jy,jc,fc){ // carreaux en quinconce (dec : décalage d'un rang sur deux, en carreaux)
+  const yy=v*ny,j=Math.floor(yy),fy=yy-j,xx=u*nx+(j%2?dec:0),i=_sMod(Math.floor(xx),nx),fx=xx-Math.floor(xx);
+  if(fx<jx||fx>1-jx||fy<jy||fy>1-jy)return jc;
+  return fc(i,j,fx,fy);
+}
+function _sTisse(u,v,n,a,b,serge){ // armure toile (2 fils) ou sergé (diagonale de 4)
+  const X=u*n,Y=v*n,i=Math.floor(X),j=Math.floor(Y),fx=X-i,fy=Y-j,top=serge?(i+j)%4<2:(i+j)%2===0;
+  const ombre=0.62+0.38*Math.sin(Math.PI*(top?fx:fy));
+  return _sK(top?a:b,ombre*(0.94+0.12*sfHash(top?i:j,top?0:1,77)));
+}
+function _sTartan(t,B){let c=0;for(const q of B){c+=q[0];if(t*16<c)return q[1];}return B[B.length-1][1];} // bandes d'un écossais (somme des largeurs : 16)
+const _sLuxe=(u,v,c,s)=>_sK(c,0.72+0.56*_sF(u,v,5,s)+0.1*(_sN(u,v,256,s+5)-0.5)); // velours : plages d'écrasement du poil
+const _sPaillette=(x,y,s,c,f)=>{const h=sfHash(x,y,s);return h>1-f?_sMix(c,[255,255,255],0.55):h<f?_sK(c,0.72):c;};
+const _sMet=(c,s)=>(u,v,T,x,y)=>_sPaillette(x,y,s,_sK(c,0.92+0.16*_sF(u,v,4,s+1)),0.03); // peinture métallisée
+const _sUni=(c,s,a)=>(u,v)=>_sK(c,1+(a||0.015)*(_sF(u,v,6,s)-0.5)); // peinture unie, à peine nuagée
+const _sNacre=(a,b,s)=>(u,v,T,x,y)=>_sPaillette(x,y,s,_sMix(a,b,Math.min(1,Math.max(0,_sF(u,v,5,s+1)*2-0.5))),0.015);
+const _sLed=(pas,coul,rayon,fond)=>(u,v)=>{ // points lumineux en grille, halo baké
+  const X=u*pas,Y=v*pas,i=Math.floor(X),j=Math.floor(Y),d=Math.hypot(X-i-0.5,Y-j-0.5);
+  const c=typeof coul==='function'?coul(i,j):coul,cœur=d<rayon?1:Math.exp(-(d-rayon)*(d-rayon)*40)*0.55;
+  return _sMix(fond,c,cœur);
+};
+const _sPeint=(mat)=>mat==='mate'?{r:0.92,cc:0,k:0}:mat==='satin'?{r:0.4,cc:0.3,k:0.35,b:0.012}:mat==='brillante'?{r:0.08,cc:1,k:0.9}:mat==='metal'?{r:0.32,m:0.45,cc:1,k:0.7}:{r:0.2,cc:1,k:0.75,b:0.004}; // nacre
+[
+  // ── pierre et béton ──
+  ['beton2','Béton sombre','Pierre et béton',{t:400,r:0.8,k:0.25,b:0.012,g:(u,v)=>{const n=_sF(u,v,7,131)*0.7+_sN(u,v,64,134)*0.3,p=_sN(u,v,320,135),c=78+(n-0.5)*40-(p>0.93?16:0);return [c,c,c*1.02];}}],
+  ['marbreNoir','Marbre noir','Pierre et béton',{t:500,r:0.15,cc:1,k:1,g:(u,v)=>{const w=_sF(u,v,6,141)*2.2,f=Math.pow(sfTri(u*3+v*2+w),14),c=18+f*205+(_sN(u,v,32,142)-0.5)*6;return [c,c,c*1.02];}}],
+  ['ardoise','Ardoise','Pierre et béton',{t:500,r:0.75,k:0.2,b:0.015,g:(u,v)=>{const n=_sA(u,v,6,64,151)*0.6+_sF(u,v,8,152)*0.4,c=46+(n-0.5)*42;return [c,c*1.05,c*1.14];}}],
+  ['granit','Granit','Pierre et béton',{t:200,r:0.3,cc:0.5,k:0.6,g:(u,v,T,x,y)=>{const h=sfHash(x>>1,y>>1,161),n=_sN(u,v,128,162),c=h>0.8?205:h<0.25?38:125+(n-0.5)*50;return [c,c*0.98,c*0.97];}}],
+  ['granitNoir','Granit noir (marbre de contrôle)','Pierre et béton',{t:200,r:0.12,cc:1,k:1,g:(u,v,T,x,y)=>{const h=sfHash(x>>1,y>>1,171),c=h>0.965?130:h>0.86?56:20+_sN(u,v,128,172)*12;return [c,c,c*1.05];}}],
+  ['terrazzo','Terrazzo','Pierre et béton',{t:300,r:0.25,cc:1,k:0.6,g:(u,v)=>{const A=_sCell(u,v,48,181),B=_sCell(u,v,20,185);
+    if(B[1]-B[0]>0.3&&B[0]<0.42)return _sMix([120,84,66],[208,190,168],B[2]);
+    if(A[1]-A[0]>0.14&&A[0]<0.38)return A[2]>0.66?[64,68,74]:A[2]>0.33?[176,126,100]:[232,228,220];
+    const c=206+(_sF(u,v,8,189)-0.5)*12;return [c,c*0.98,c*0.94];}}],
+  ['travertin','Travertin','Pierre et béton',{t:600,r:0.55,k:0.3,b:0.012,g:(u,v)=>{const n=_sA(u,v,6,48,191),t=sfTri(v*12+(_sF(u,v,4,192)-0.5)*1.4),p=_sA(u,v,32,128,194);return _sK([222,202,170],(0.86+0.1*t+0.08*(n-0.5))*(p>0.86?0.72:1));}}],
+  ['sable','Sable','Pierre et béton',{t:300,r:1,cc:0,k:0,g:(u,v,T,x,y)=>{const o=sfTri(v*18+(_sF(u,v,4,201)-0.5)*3);return _sPaillette(x,y,202,_sK([214,186,138],0.88+0.14*o+(_sN(u,v,256,203)-0.5)*0.1),0.05);}}],
+  ['asphalte','Asphalte','Pierre et béton',{t:200,r:0.95,cc:0,k:0,g:(u,v,T,x,y)=>{const h=sfHash(x>>1,y>>1,211),c=h>0.9?108:h>0.5?56:34;return [c,c,c];}}],
+  // ── bois ──
+  ['noyer','Noyer','Bois',{t:720,r:0.4,cc:0.5,k:0.6,g:(u,v)=>_sLames(u,v,6,[112,74,50],221)}],
+  ['chene','Chêne clair','Bois',{t:800,r:0.5,k:0.4,b:0.008,g:(u,v)=>_sLames(u,v,4,[214,178,130],231)}],
+  ['hetre','Établi en hêtre','Bois',{t:320,r:0.55,k:0.25,b:0.012,g:(u,v)=>_sLames(u,v,8,[220,180,136],241)}],
+  ['wenge','Wengé','Bois',{t:600,r:0.35,cc:0.6,k:0.7,g:(u,v)=>_sLames(u,v,5,[70,48,38],251)}],
+  ['chevrons','Parquet à chevrons','Bois',{t:640,r:0.35,cc:0.6,k:0.6,g:(u,v)=>_sChevrons(u,v,[186,136,90],261)}],
+  // ── carrelage ──
+  ['brique','Brique','Carrelage et construction',{t:480,r:0.9,cc:0,k:0,g:(u,v)=>_sCarr(u,v,2,8,0.5,0.02,0.08,[150,144,134],(i,j)=>{const b=sfHash(i,_sMod(j,8),271);return _sK(_sMix([142,62,42],[176,92,62],b),0.9+0.2*_sF(u,v,16,272));})}],
+  ['metro','Carrelage métro','Carrelage et construction',{t:600,r:0.1,cc:1,k:0.8,g:(u,v)=>_sCarr(u,v,4,8,0.5,0.012,0.024,[148,148,146],(i,j)=>{const c=238+(sfHash(i,_sMod(j,8),281)-0.5)*14;return [c,c,c*0.99];})}],
+  ['damier','Damier noir et blanc','Carrelage et construction',{t:400,r:0.12,cc:1,k:0.9,g:(u,v)=>_sCarr(u,v,4,4,0,0.006,0.006,[80,80,80],(i,j)=>{const w=_sF(u,v,8,291);return (i+j)%2?_sK([38,38,42],0.8+0.4*w):_sK([236,234,228],0.92+0.1*w);})}],
+  ['ciment','Carreaux de ciment','Carrelage et construction',{t:400,r:0.5,k:0.3,b:0.012,g:(u,v)=>_sCarr(u,v,4,4,0,0.008,0.008,[176,170,158],(i,j,fx,fy)=>{const r=Math.hypot(fx-0.5,fy-0.5),l=Math.abs(fx-0.5)+Math.abs(fy-0.5),q=Math.min(Math.hypot(fx,fy),Math.hypot(1-fx,fy),Math.hypot(fx,1-fy),Math.hypot(1-fx,1-fy));
+    return r<0.13?[188,92,62]:l<0.42?[46,78,102]:q<0.2?[46,78,102]:[226,216,194];})}],
+  // ── métal ──
+  ['tole','Tôle larmée','Métal',{t:120,r:0.4,m:0.5,cc:0,k:0.45,b:0.012,g:(u,v)=>{const X=u*4,Y=v*4,i=Math.floor(X),j=Math.floor(Y),s=(i+j)%2?1:-1,a=X-i-0.5,b=Y-j-0.5,p=(a+s*b)*Math.SQRT1_2,q=(a-s*b)*Math.SQRT1_2,d=Math.hypot(p/0.42,q/0.1),n=_sK([136,140,146],0.94+0.12*_sF(u,v,8,301));
+    return d<1?_sK(n,1.28-0.5*d+(p+q)*0.5):d<1.2?_sK(n,0.7):n;}}],
+  ['acier','Acier brossé','Métal',{t:200,r:0.35,m:0.6,cc:0,k:0.5,b:0.018,g:(u,v)=>{const c=146+(_sA(u,v,6,512,311)-0.5)*44+(_sA(u,v,16,128,312)-0.5)*16;return [c,c*1.01,c*1.03];}}],
+  ['laiton','Laiton brossé','Métal',{t:200,r:0.3,m:0.6,cc:0,k:0.55,b:0.015,g:(u,v)=>_sK([200,164,86],0.92+0.3*(_sA(u,v,6,512,321)-0.5))}],
+  ['cuivre','Cuivre brossé','Métal',{t:200,r:0.3,m:0.6,cc:0,k:0.55,b:0.015,g:(u,v)=>_sK([190,112,76],0.92+0.3*(_sA(u,v,6,512,331)-0.5))}],
+  ['perfore','Tôle perforée','Métal',{t:100,r:0.4,m:0.5,cc:0,k:0.3,b:0.015,g:(u,v)=>{const yy=v*10,j=Math.floor(yy),xx=u*10+(j%2?0.5:0),d=Math.hypot(xx-Math.floor(xx)-0.5,yy-j-0.5);return d<0.3?[14,14,16]:d<0.34?[86,88,92]:_sK([168,171,176],0.95+0.1*_sA(u,v,6,256,341));}}],
+  // ── peintures ──
+  ['pMateNoir','Peinture mate noire','Peintures',Object.assign(_sPeint('mate'),{t:200,g:_sUni([30,30,32],351)})],
+  ['pMateBlanc','Peinture mate blanche','Peintures',Object.assign(_sPeint('mate'),{t:200,g:_sUni([232,231,226],352)})],
+  ['pMateRouge','Peinture mate rouge','Peintures',Object.assign(_sPeint('mate'),{t:200,g:_sUni([164,42,36],353)})],
+  ['pMateSauge','Peinture mate vert sauge','Peintures',Object.assign(_sPeint('mate'),{t:200,g:_sUni([132,150,124],354)})],
+  ['pMateBleu','Peinture mate bleu nuit','Peintures',Object.assign(_sPeint('mate'),{t:200,g:_sUni([36,52,84],355)})],
+  ['pSatinAnth','Peinture satinée anthracite','Peintures',Object.assign(_sPeint('satin'),{t:200,g:_sUni([62,66,72],356)})],
+  ['pSatinCreme','Peinture satinée crème','Peintures',Object.assign(_sPeint('satin'),{t:200,g:_sUni([228,216,190],357)})],
+  ['pBrilNoir','Laque noire brillante','Peintures',Object.assign(_sPeint('brillante'),{t:200,g:_sUni([12,12,14],358,0)})],
+  ['pBrilBlanc','Laque blanche brillante','Peintures',Object.assign(_sPeint('brillante'),{t:200,g:_sUni([240,240,238],359,0)})],
+  ['pBrilRouge','Laque rouge brillante','Peintures',Object.assign(_sPeint('brillante'),{t:200,g:_sUni([176,18,22],360,0)})],
+  ['pBrilBleu','Laque bleue brillante','Peintures',Object.assign(_sPeint('brillante'),{t:200,g:_sUni([16,64,150],361,0)})],
+  ['pMetArgent','Peinture métallisée argent','Peintures',Object.assign(_sPeint('metal'),{t:100,g:_sMet([176,180,186],362)})],
+  ['pMetGraph','Peinture métallisée graphite','Peintures',Object.assign(_sPeint('metal'),{t:100,g:_sMet([70,74,80],363)})],
+  ['pMetBleu','Peinture métallisée bleue','Peintures',Object.assign(_sPeint('metal'),{t:100,g:_sMet([34,70,136],364)})],
+  ['pMetRouge','Peinture métallisée rouge','Peintures',Object.assign(_sPeint('metal'),{t:100,g:_sMet([146,24,32],365)})],
+  ['pMetOr','Peinture pailletée or','Peintures',Object.assign(_sPeint('metal'),{t:100,g:_sMet([190,150,70],366)})],
+  ['pNacre','Peinture nacrée blanche','Peintures',Object.assign(_sPeint('nacre'),{t:200,g:_sNacre([236,232,226],[218,226,240],367)})],
+  ['pNacreViolet','Peinture nacrée violette','Peintures',Object.assign(_sPeint('nacre'),{t:200,g:_sNacre([86,44,126],[42,70,140],368)})],
+  ['pMartele','Peinture martelée','Peintures',{t:100,r:0.4,m:0.3,cc:0.6,k:0.45,b:0.012,g:(u,v)=>{const A=_sCell(u,v,24,369);return _sK([84,104,108],0.72+0.75*A[0]);}}],
+  ['pCraquele','Peinture craquelée','Peintures',{t:200,r:0.85,cc:0,k:0,g:(u,v)=>{const A=_sCell(u,v,28,373);return A[1]-A[0]<0.05?[52,42,32]:_sK([206,190,158],0.92+0.14*A[2]);}}],
+  ['pEpoxy','Sol époxy d’atelier','Peintures',{t:300,r:0.2,cc:1,k:0.7,g:(u,v)=>{const A=_sCell(u,v,64,377);if(A[0]<0.2)return A[2]>0.66?[230,230,226]:A[2]>0.33?[36,38,42]:[160,164,170];return _sK([118,124,132],0.96+0.08*_sF(u,v,6,381));}}],
+  // ── textiles ──
+  ['feutre','Feutre gris','Textiles',{t:100,r:1,cc:0,k:0,g:(u,v,T,x,y)=>{const h=sfHash(x,y,391);return _sK([122,124,128],0.82+0.24*_sF(u,v,16,392)+(h-0.5)*0.2);}}],
+  ['lin','Toile de lin','Textiles',{t:64,r:0.95,cc:0,k:0,g:(u,v)=>_sK(_sTisse(u,v,64,[208,196,172],[194,180,154]),0.94+0.12*_sA(u,v,4,64,401))}],
+  ['jute','Toile de jute','Textiles',{t:80,r:1,cc:0,k:0,g:(u,v)=>_sK(_sTisse(u,v,32,[172,136,88],[150,114,68]),0.85+0.3*_sF(u,v,16,411))}],
+  ['denim','Denim','Textiles',{t:48,r:0.95,cc:0,k:0,g:(u,v)=>_sK(_sTisse(u,v,64,[46,72,116],[192,198,206],true),0.88+0.24*_sA(u,v,4,32,421))}],
+  ['velRouge','Velours rouge','Textiles',{t:300,r:1,cc:0,k:0,g:(u,v)=>_sLuxe(u,v,[132,18,34],431)}],
+  ['velNoir','Velours noir','Textiles',{t:300,r:1,cc:0,k:0,g:(u,v)=>_sLuxe(u,v,[26,26,30],441)}],
+  ['velBleu','Velours bleu roi','Textiles',{t:300,r:1,cc:0,k:0,g:(u,v)=>_sLuxe(u,v,[28,48,120],451)}],
+  ['soie','Soie ivoire','Textiles',{t:200,r:0.35,cc:0,k:0.25,b:0.02,g:(u,v)=>_sK([234,222,196],0.82+0.3*_sF(u,v,4,461)+0.05*(_sA(u,v,4,256,464)-0.5))}],
+  ['tweed','Tweed','Textiles',{t:64,r:1,cc:0,k:0,g:(u,v,T,x,y)=>_sPaillette(x,y,471,_sTisse(u,v,64,[116,104,88],[72,78,74],true),0.04)}],
+  ['tartan','Écossais','Textiles',{t:160,r:0.95,cc:0,k:0,g:(u,v)=>{const B=[[4,[28,60,44]],[1,[20,20,28]],[4,[24,40,88]],[1,[20,20,28]],[1,[176,36,36]],[1,[20,20,28]],[3,[28,60,44]],[1,[210,190,110]]];return _sTisse(u,v,128,_sTartan(u,B),_sTartan(v,B),true);}}],
+  ['moquette','Moquette','Textiles',{t:100,r:1,cc:0,k:0,g:(u,v)=>_sK([104,92,84],0.62+0.5*_sN(u,v,128,481)+0.22*_sF(u,v,8,482))}],
+  ['alcantara','Alcantara','Textiles',{t:150,r:1,cc:0,k:0,g:(u,v,T,x,y)=>_sK([54,56,60],0.82+0.34*_sF(u,v,8,491)+(sfHash(x,y,492)-0.5)*0.14)}],
+  ['cuir','Cuir noir','Textiles',{t:100,r:0.5,cc:0.1,k:0.2,b:0.02,g:(u,v)=>{const A=_sCell(u,v,48,501),c=A[1]-A[0]<0.07?16:30+A[0]*18;return [c,c,c*1.02];}}],
+  ['cuirFauve','Cuir fauve','Textiles',{t:100,r:0.5,cc:0.1,k:0.2,b:0.02,g:(u,v)=>{const A=_sCell(u,v,48,505);return _sK([150,92,52],A[1]-A[0]<0.07?0.55:0.84+0.3*A[0]);}}],
+  ['carbone','Tissu de carbone','Textiles',{t:48,r:0.22,cc:1,k:0.55,g:(u,v)=>{const X=u*24,Y=v*24,i=Math.floor(X),j=Math.floor(Y),top=(i+j)%4<2,f=top?X-i:Y-j,c=18+44*Math.pow(Math.sin(Math.PI*f),2)*(top?1:0.55);return [c,c,c*1.05];}}],
+  // ── verres dépolis (aspect : un sol opaque, reflet flou ; on ne voit pas au travers) ──
+  ['verreDep','Verre dépoli','Verres dépolis',{t:200,r:0.5,cc:0,k:0.45,b:0.03,g:(u,v,T,x,y)=>_sK([222,232,232],0.96+0.05*_sF(u,v,4,511)+(sfHash(x,y,512)-0.5)*0.03)}],
+  ['verreBleu','Verre dépoli bleuté','Verres dépolis',{t:200,r:0.5,cc:0,k:0.45,b:0.03,g:(u,v,T,x,y)=>_sK([172,206,226],0.96+0.06*_sF(u,v,4,521)+(sfHash(x,y,522)-0.5)*0.03)}],
+  ['verreFume','Verre dépoli fumé','Verres dépolis',{t:200,r:0.45,cc:0,k:0.5,b:0.025,g:(u,v,T,x,y)=>_sK([62,66,70],0.94+0.1*_sF(u,v,4,531)+(sfHash(x,y,532)-0.5)*0.05)}],
+  ['verreGivre','Verre givré','Verres dépolis',{t:150,r:0.55,cc:0,k:0.35,b:0.035,g:(u,v)=>{const A=_sCell(u,v,32,541);return _sK([226,236,240],0.84+0.2*Math.min(1,A[1]-A[0])+0.04*_sN(u,v,128,545));}}],
+  ['verreStrie','Verre strié','Verres dépolis',{t:120,r:0.3,cc:0.6,k:0.45,b:0.02,g:(u,v)=>{const f=u*24-Math.floor(u*24);return _sK([214,228,226],0.8+0.24*Math.sin(Math.PI*f));}}],
+  // ── LED (émettent de la lumière ; le lancer de rayons éclaire la pièce avec) ──
+  ['ledBlanc','Matrice de LED blanches','LED',{t:160,r:0.7,cc:0,k:0.15,em:2.5,g:_sLed(16,[255,250,236],0.14,[14,14,16])}],
+  ['ledRvb','Matrice de LED RVB','LED',{t:160,r:0.7,cc:0,k:0.15,em:2.5,g:_sLed(18,(i,j)=>[[255,40,40],[40,255,70],[50,90,255]][(i+j)%3],0.14,[10,10,12])}],
+  ['ledBleu','Matrice de LED bleues','LED',{t:160,r:0.7,cc:0,k:0.15,em:2.5,g:_sLed(16,[50,120,255],0.14,[8,10,16])}],
+  ['ledAmbre','Matrice de LED ambre','LED',{t:160,r:0.7,cc:0,k:0.15,em:2.5,g:_sLed(16,[255,160,40],0.14,[14,10,8])}],
+  ['ledBande','Bandeaux de LED','LED',{t:240,r:0.7,cc:0,k:0.15,em:2,g:(u,v)=>{const f=v*6-Math.floor(v*6),d=Math.abs(f-0.5);return _sMix([18,18,22],[255,250,236],Math.exp(-d*d*220));}}],
+  ['ledDalle','Dalle lumineuse','LED',{t:200,r:0.5,cc:0,k:0.2,b:0.03,em:1.6,g:(u,v)=>{const c=246+6*_sF(u,v,4,551);return [c,c,c*0.98];}}],
+  ['ledNeon','Néons en grille','LED',{t:300,r:0.7,cc:0,k:0.15,em:2,g:(u,v)=>{const d=q=>{const f=q*3-Math.floor(q*3);return Math.abs(f-0.5);},e=Math.min(d(u),d(v));return _sMix([12,8,20],[255,70,220],Math.exp(-e*e*700));}}],
+  // ── atelier ──
+  ['caoutchouc','Tapis caoutchouc strié','Atelier',{t:100,r:0.75,cc:0,k:0.1,b:0.02,g:(u,v)=>{const c=28+22*Math.pow(Math.sin(Math.PI*(v*20-Math.floor(v*20))),2)+(_sN(u,v,64,561)-0.5)*5;return [c,c,c];}}],
+  ['papier','Papier millimétré','Atelier',{t:100,r:0.9,cc:0,k:0,g:(u,v,T)=>{const G=p=>{const X=u*T,Y=v*T;return Math.min(Math.min(X%p,p-X%p),Math.min(Y%p,p-Y%p));};return G(10)<0.13?[226,120,70]:G(5)<0.08?[236,160,118]:G(1)<0.05?[244,206,178]:[250,246,234];}}],
+  ['planBleu','Plan bleu','Atelier',{t:100,r:0.7,cc:0,k:0.05,g:(u,v,T)=>{const G=p=>{const X=u*T,Y=v*T;return Math.min(Math.min(X%p,p-X%p),Math.min(Y%p,p-Y%p));};return G(50)<0.3?[214,228,246]:G(10)<0.13?[118,156,212]:_sK([26,70,136],0.94+0.12*_sF(u,v,8,571));}}],
+  ['kraft','Carton kraft','Atelier',{t:150,r:0.9,cc:0,k:0,g:(u,v,T,x,y)=>_sPaillette(x,y,581,_sK([176,132,88],0.88+0.2*_sA(u,v,8,256,582)),0.02)}],
+  ['liege','Liège','Atelier',{t:120,r:0.85,cc:0,k:0,g:(u,v)=>{const A=_sCell(u,v,64,591);return _sK(_sMix([146,100,62],[206,164,112],A[2]),A[1]-A[0]<0.06?0.62:1);}}]
+].forEach(([k,lab,grp,d])=>{RD_SUPPORTS.push([k,lab,grp]);RD_SUP_DEF[k]=d;});
+function rdSupSelect(cur,fn){ // liste des supports, rangée par familles (fenêtre RENDU et réglages de la vue 3D)
+  const s=document.createElement('select'),gr={};
+  RD_SUPPORTS.forEach(([v,t,g])=>{
+    const o=document.createElement('option');o.value=v;o.textContent=t;
+    if(!g){s.appendChild(o);return;}
+    if(!gr[g]){gr[g]=document.createElement('optgroup');gr[g].label=g;s.appendChild(gr[g]);}
+    gr[g].appendChild(o);
+  });
+  s.value=cur||'';if(s.selectedIndex<0)s.value='';
+  s.onchange=()=>fn(s.value);
+  return s;
+}
+/* ── galerie : une vignette par sol, par famille (calculée à la première ouverture : 80 vignettes, quelques dizaines de ms) ── */
+let _rdSupGalOuverte=false;
+const _rdSupVign={};
+function rdSupMark(k){document.querySelectorAll('button[data-sup]').forEach(b=>{b.style.outline=b.dataset.sup===(k||'')?'2px solid var(--primary,#0a84ff)':'none';});}
+function rdSupGallery(cur,fn){
+  const d=document.createElement('details');d.className='rdSupGal';d.style.cssText='margin:3px 0 6px;font-size:.7rem';
+  const sm=document.createElement('summary');sm.textContent='Voir tous les sols';sm.style.cursor='pointer';d.appendChild(sm);
+  let fait=false;
+  const remplir=()=>{
+    if(fait)return;fait=true;const grilles={};
+    RD_SUPPORTS.forEach(([k,t,g])=>{
+      const fam=g||'Sans matière';
+      if(!grilles[fam]){
+        const h=document.createElement('div');h.textContent=fam;h.style.cssText='margin:6px 0 2px;opacity:.7';d.appendChild(h);
+        grilles[fam]=document.createElement('div');grilles[fam].style.cssText='display:grid;grid-template-columns:repeat(auto-fill,minmax(34px,1fr));gap:3px';d.appendChild(grilles[fam]);}
+      const grille=grilles[fam],b=document.createElement('button');b.type='button';b.title=t;b.dataset.sup=k;b.setAttribute('aria-label',t);
+      b.style.cssText='padding:0;border:1px solid var(--border,#555);border-radius:4px;background:none;cursor:pointer;aspect-ratio:1;overflow:hidden;outline-offset:1px';
+      const c=document.createElement('canvas');c.width=c.height=48;c.style.cssText='display:block;width:100%;height:100%';
+      if(k){const S=_rdSupVign[k]||(_rdSupVign[k]=rdSupTex(k,48));c.getContext('2d').putImageData(new ImageData(new Uint8ClampedArray(S.data),48,48),0,0);}
+      b.appendChild(c);b.onclick=()=>{fn(k);rdSupMark(k);};grille.appendChild(b);
+    });
+    rdSupMark(typeof cur==='function'?cur():cur); // cur : la valeur, ou une fonction qui la lit
+  };
+  d.ontoggle=()=>{_rdSupGalOuverte=d.open;if(d.open)remplir();};
+  if(_rdSupGalOuverte){d.open=true;remplir();}
+  return d;
 }
 
 /* ═══════════════ 98-rendu-surface.js — rendu surface ═══════════════ */
@@ -78677,7 +78868,7 @@ const VENV_SOL={studio:'#b4b8bf',clair:'#e2e4e8',atelier:'#272b31',exterieur:'#7
 const VENV_FOND={studio:['#d3d6db','#9a9fa7'],clair:['#f4f5f7','#cdd1d7'],atelier:['#3a4049','#121417'],exterieur:['#b7c5d4','#6a7684'],noir:['#1b1b1e','#000000']};
 let vEnv='actuel';
 try{const v=localStorage.getItem('minifusion_env');if(v&&VENV_LIST.some(x=>x[0]===v))vEnv=v;}catch(e){}
-const vEnvS={on:false,amb:null,rt:null,key:null,bg:null,pmrem:null,sun:null,floor:null,mats:new Set()};
+const vEnvS={on:false,amb:null,rt:null,key:null,bg:null,pmrem:null,sun:null,floor:null,mats:new Set(),supK:null,supTex:{}};
 const VENV_GLSL=[
   'uniform vec3 uEnvCol;uniform float uEnvMet;uniform float uEnvRou;uniform float uEnvGlass;',
   'vec3 vEnvRrt(vec3 v){vec3 a=v*(v+0.0245786)-0.000090537;vec3 b=v*(0.983729*v+0.4329510)+0.238081;return a/b;}',
@@ -78704,6 +78895,34 @@ function vEnvCfg(){
   const f=st.fond==='degrade'?[st.fc1,st.fc2]:st.fond==='uni'?[st.fc1,st.fc1]:VENV_FOND[amb];
   const sol=st.solCol||(st.fond==='degrade'||st.fond==='uni'?f[1]:VENV_SOL[amb]);
   return {amb,rot:+st.envRot||0,int:st.envInt!=null?+st.envInt:1,fond:f,sol,sig:['rendu',amb,st.envRot,f[0],f[1]].join('|')};
+}
+/* ── support (sol texturé) dans la vue 3D : le même réglage que la fenêtre RENDU, dans tous les environnements
+   des espaces CAO et FAO. Le sol de la vue n'est pas éclairé et sa sortie est linéaire : la tuile s'affiche telle quelle. ── */
+function vEnvSupKey(){
+  const st=(rd&&rd.st)||vEnvRdSt||(vEnvRdSt=rdSettings());
+  return st.support&&RD_SUP_DEF[st.support]?st.support:'';
+}
+function vEnvSupFloor(){ // un support choisi se voit : la case « Sol » se coche
+  floorOn=true;const c=document.getElementById('optFloor');if(c)c.checked=true;
+  try{localStorage.setItem('minifusion_sol','on');}catch(e){}
+  try{refreshMirror();}catch(e){}
+}
+function vEnvSupChoose(v){ // liste des réglages de vue : écrit le réglage de la fenêtre RENDU
+  if(rd&&rd.st)rd.st.support=v;
+  else{const st=rdSettings();st.support=v;try{localStorage.setItem(RD_LS,JSON.stringify(st));}catch(e){}vEnvRdSt=st;}
+  if(v)vEnvSupFloor();
+}
+function vEnvSupSync(cao){ // à chaque image : ne touche au sol que si le support change
+  const k=cao?vEnvSupKey():'';
+  if(k===vEnvS.supK||!mirrorU)return;
+  vEnvS.supK=k;
+  const s=document.getElementById('optSup');if(s&&cao){s.value=k;rdSupMark(k);}
+  const U=mirrorU,d=k?RD_SUP_DEF[k]:null;
+  if(k&&!vEnvS.supTex[k]){const S=rdSupTex(k),t=new THREE.DataTexture(S.data,S.N,S.N,THREE.RGBAFormat);
+    t.wrapS=t.wrapT=THREE.RepeatWrapping;t.magFilter=THREE.LinearFilter;t.minFilter=THREE.LinearMipmapLinearFilter;t.generateMipmaps=true;t.anisotropy=8;t.needsUpdate=true;
+    vEnvS.supTex[k]=t;}
+  U.uSup.value=k?1:0;U.tSup.value=k?vEnvS.supTex[k]:null;U.uSupT.value=d?d.t:100;U.uSupK.value=d&&d.k!=null?d.k:1;U.uSupB.value=d&&d.b||0;
+  mirrorDirty=true;
 }
 /* ── matières des corps ── */
 function vEnvPatch(m){
@@ -78873,6 +79092,7 @@ const _vEnvBox=new THREE.Box3(),_vEnvC=new THREE.Vector3(),_vEnvSz=new THREE.Vec
 function vEnvTick(){
   // appelée à chaque image (animate, 10-scene-3d) : suit l'espace de travail, les corps et leurs apparences
   const cao=vCaoWs(),envW=cao&&vEnv!=='actuel',shW=cao&&vShadowOn;
+  vEnvSupSync(cao);
   // sol et reflet SUIVENT la pièce (déplacée, modifiée, composant placé) : recalés toutes les 15 images
   vEnvS.n=(vEnvS.n||0)+1;
   if(cao&&vEnvS.n%15===0&&(floorOn||mirrorOn)){try{refreshMirror();}catch(e){}}
@@ -78936,6 +79156,14 @@ function vEnvTick(){
       if(vEnv!=='actuel')b.classList.add('on');
     }
     row0.parentNode.insertBefore(row,row0);
+    // liste « Support » : le sol de la vue, le même que dans la fenêtre RENDU
+    const rowS=document.createElement('div');rowS.className='setRow';
+    const labS=document.createElement('label');labS.textContent='Support ';
+    const ss=rdSupSelect('',vEnvSupChoose);ss.id='optSup'; // valeur posée par vEnvSupSync (98-rendu.js n'est pas encore chargé ici)
+    ss.title='Matière du sol, à l’échelle réelle : pierre, bois, carrelage, métal, peintures, textiles, verres dépolis, LED… — le même sol dans la fenêtre RENDU';
+    labS.appendChild(ss);rowS.appendChild(labS);
+    row0.parentNode.insertBefore(rowS,row0);
+    row0.parentNode.insertBefore(rdSupGallery(vEnvSupKey,vEnvSupChoose),row0);
     const lo=document.createElement('label');lo.title='Ombre portée de la pièce sur le sol (espace CAO)';
     const co=document.createElement('input');co.type='checkbox';co.id='optShadow';co.checked=vShadowOn;
     co.onchange=()=>{vShadowOn=co.checked;try{localStorage.setItem('minifusion_ombre',vShadowOn?'on':'off');}catch(e){}};
@@ -79207,14 +79435,14 @@ function rdDisk(c,R,z){
     rd.mirRT=new THREE.WebGLRenderTarget(2048,2048,{samples:4,type:THREE.HalfFloatType});
     rd.mirCam=new THREE.PerspectiveCamera();rd.mirMat=new THREE.Matrix4();
     const U={color:{value:new THREE.Color()},tRefl:{value:rd.mirRT.texture},texM:{value:rd.mirMat},uC:{value:new THREE.Vector3()},
-      uR:{value:1},uDisk:{value:1},uRefl:{value:1},tSup:{value:null},uSup:{value:0},uSupT:{value:100}};
+      uR:{value:1},uDisk:{value:1},uRefl:{value:1},tSup:{value:null},uSup:{value:0},uSupT:{value:100},uSupK:{value:1},uSupB:{value:0},uSupE:{value:1}};
     rd.disk=new THREE.Mesh(new THREE.CircleGeometry(1,128),new THREE.ShaderMaterial({uniforms:U,transparent:true,depthWrite:false,
       vertexShader:'uniform mat4 texM; varying vec4 vUv; varying vec3 vW;\nvoid main(){ vec4 wp = modelMatrix * vec4(position, 1.0); vW = wp.xyz; vUv = texM * vec4(position, 1.0); gl_Position = projectionMatrix * viewMatrix * wp; }',
-      fragmentShader:'uniform vec3 color; uniform sampler2D tRefl; uniform vec3 uC; uniform float uR; uniform float uDisk; uniform float uRefl; uniform sampler2D tSup; uniform float uSup; uniform float uSupT; varying vec4 vUv; varying vec3 vW;\n'+
+      fragmentShader:'uniform vec3 color; uniform sampler2D tRefl; uniform vec3 uC; uniform float uR; uniform float uDisk; uniform float uRefl; uniform sampler2D tSup; uniform float uSup; uniform float uSupT; uniform float uSupK; uniform float uSupB; uniform float uSupE; varying vec4 vUv; varying vec3 vW;\n'+
         'void main(){ float d = distance(vW, uC); float a = uDisk > 0.5 ? 1.0 - smoothstep(uR * 1.6, uR * 5.5, d) : 0.0; vec3 refl = vec3(0.0); float ra = 0.0; float f = 0.0; '+
-        'if(uRefl > 0.5 && vUv.w > 1e-4){ vec2 uv = vUv.xy / vUv.w; if(uv.x > 0.0 && uv.x < 1.0 && uv.y > 0.0 && uv.y < 1.0){ vec4 r4 = texture2D(tRefl, uv); ra = r4.a; refl = ra > 1e-4 ? r4.rgb / ra : vec3(0.0); f = exp(-pow(d / max(uR * 1.2, 1e-3), 2.0) * 1.6) * 0.8; } } '+
-        'vec3 base = uSup > 0.5 ? pow(texture2D(tSup, vW.xy / uSupT).rgb, vec3(2.2)) : pow(color, vec3(2.2)); '+ // couleur choisie ou support (sRGB) → linéaire
-        'if(uDisk > 0.5){ gl_FragColor = vec4(mix(base, refl, clamp(f * ra * 0.7, 0.0, 1.0)), a); return; } gl_FragColor = vec4(refl, ra * f * 0.6); }'}));
+        'if(uRefl > 0.5 && vUv.w > 1e-4){ vec2 uv = vUv.xy / vUv.w; if(uv.x > 0.0 && uv.x < 1.0 && uv.y > 0.0 && uv.y < 1.0){ vec4 r4 = vec4(0.0); if(uSupB > 0.0){ for(int i = 0; i < 12; i++){ float q = float(i) + 0.5; float t = q * 2.39996; r4 += texture2D(tRefl, uv + vec2(cos(t), sin(t)) * sqrt(q / 12.0) * uSupB); } r4 /= 12.0; } else r4 = texture2D(tRefl, uv); ra = r4.a; refl = ra > 1e-4 ? r4.rgb / ra : vec3(0.0); f = exp(-pow(d / max(uR * 1.2, 1e-3), 2.0) * 1.6) * 0.8; } } '+
+        'vec3 base = uSup > 0.5 ? pow(texture2D(tSup, vW.xy / uSupT).rgb, vec3(2.2)) * uSupE : pow(color, vec3(2.2)); '+ // couleur choisie ou support (sRGB) → linéaire ; uSupE : LED
+        'if(uDisk > 0.5){ gl_FragColor = vec4(mix(base, refl, clamp(f * ra * 0.7 * uSupK, 0.0, 1.0)), a); return; } gl_FragColor = vec4(refl, ra * f * 0.6); }'}));
     rd.disk.renderOrder=-3;rd.scene.add(rd.disk);
     rd.floor.renderOrder=-2; // l'ombre par-dessus le sol et le reflet
   }
@@ -79224,6 +79452,7 @@ function rdDisk(c,R,z){
   U.color.value.set(rdSolHex());U.uC.value.set(c.x,c.y,z);U.uR.value=R;
   U.uDisk.value=st.solOn?1:0;U.uRefl.value=st.miroir?1:0;
   const sup=rdSupTex3(st.support);U.uSup.value=sup?1:0;U.tSup.value=sup;U.uSupT.value=sup?RD_SUP_DEF[st.support].t:100;
+  const sd=sup?RD_SUP_DEF[st.support]:null;U.uSupK.value=sd&&sd.k!=null?sd.k:1;U.uSupB.value=sd&&sd.b||0;U.uSupE.value=sd&&sd.em||1; // reflet et lumière du support (98-rendu-supports)
   rd.floorZ=z;
 }
 const _rdV1=new THREE.Vector3(),_rdV2=new THREE.Vector3();
@@ -79550,8 +79779,9 @@ function rdPanel(){
       r.appendChild(chk('Miroir','miroir','Reflet de la pièce au sol, avec ou sans disque'));
       r.appendChild(chk('Ombre','ombreOn','Ombre portée sur le sol'));
       pane.appendChild(r);
-      row('Support',select(RD_SUPPORTS,st.support||'',v=>{st.support=v;if(v)st.solOn=true;rdRefresh();rdPanel();}))
-        .title='Matière du sol, à l’échelle réelle (béton, plateau de bois, marbre, tapis de découpe quadrillé tous les 10 mm)';
+      row('Support',rdSupSelect(st.support,v=>{st.support=v;if(v){st.solOn=true;vEnvSupFloor();}rdRefresh();rdPanel();}))
+        .title='Matière du sol, à l’échelle réelle : pierre, bois, carrelage, métal, peintures, textiles, verres dépolis, LED… — le même sol dans la vue 3D';
+      pane.appendChild(rdSupGallery(st.support,v=>{st.support=v;if(v){st.solOn=true;vEnvSupFloor();}rdRefresh();rdPanel();}));
       slider('Ombre','ombre',0,1,0.05,v=>Math.round(v*100)+' %',null);
     }
     pane.appendChild(el('h4',null,'Dessin'));
