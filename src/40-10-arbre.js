@@ -130,6 +130,7 @@ function featIconOf(f){
   if(f.type==='sweep')return (f.op||'add')==='cut'?'≋':'〰';
   if(f.type==='hole')return '⊚';
   if(f.type==='xthread')return f._err?'⚠':'🔩'; // filetage d'un axe (76-filetage)
+  if(f.type==='gear')return f._err?'⚠':'⚙️'; // engrenage (76-engrenage)
   if(f.type==='xmove')return '📐';
   if(f.type==='bmove')return '✥';
   if(f.type==='bremove')return '⊘';

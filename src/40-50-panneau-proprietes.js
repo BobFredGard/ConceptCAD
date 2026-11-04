@@ -174,6 +174,7 @@ function renderProps(){
       :f.type==='revolve'?'Révolution'
       :f.type==='sweep'?'Balayage'
       :f.type==='combine'?'Combiner'
+      :f.type==='gear'?'Fonction'
       :'Import';
     pH(typeLabel);
     pInfo(`<b>${f.name}</b>`);
@@ -360,6 +361,7 @@ function renderProps(){
     }
     {const cb=cutBodiesField(f)||featBodyField(f);if(cb)p.appendChild(cb);} // V0.15.12 : plusieurs corps visibles → tous ou un seul ; sinon corps de la fonction
     if(f.type==='xthread')renderThreadProps(p,f); // V0.35.0 : filetage d'un axe (76-filetage)
+    if(f.type==='gear')renderGearProps(p,f); // engrenage (76-engrenage)
     if(f.type==='hole'){fdynEnsure(f);renderHoleProps(p,f);fdynFoot(p,f);} // V0.8.0 : OK / Annuler, flèche de profondeur
     /* — révolution — V0.8.0 : fenêtre dynamique (71-fenetre-dynamique) */
     if(f.type==='revolve'){ fdynRevolvePanel(p,f); }

@@ -228,6 +228,74 @@ function stdKeyOutline(o){
   if(o.form==='C')return [[x0,-r,{c:[x0,0],ccw:true}],[hl,-r],[hl,r],[x0,r]];
   return [[x0,-r,{c:[x0,0],ccw:true}],[x1,-r],[x1,r,{c:[x1,0],ccw:true}],[x0,r]];
 }
+function stdIso773For(d){
+  // Ligne d'ISO 773 d'un Ø d'arbre (« de plus de … à … » ; la première ligne inclut son début), ou undefined
+  return STD_ISO773.find((r,i)=>(i===0?d>=r[0]:d>r[0])&&d<=r[1]);
+}
+function stdGearBoreOpts(st){
+  // Cas de contrôle du champ alésage : plein, et un Ø tenant dans cette roue
+  let rf=0;try{rf=gearGeom({m:st.m,z:st.z,alpha:st.alpha,b:st.b||1,x:st.x,beta:st.beta}).rf;}catch(e){rf=0;}
+  const v=+(0.8*rf).toFixed(1);
+  return v>0?[['0','0'],[String(v),stdF(v)]]:[['0','0']];
+}
+function stdGear(st){
+  // Roue extérieure ou couronne, droite ou hélicoïdale (48-engrenages-calcul) ; le contour sert aussi à l'aperçu
+  const o={k:'gear',m:+st.m,z:Math.round(+st.z),alpha:+st.alpha,b:+st.b,x:+st.x||0,beta:+st.beta||0,hand:st.hand==='L'?'L':'R'};
+  if(+st.j>0)o.j=+st.j;
+  if(+st.ks>0)o.ks=+st.ks;
+  const pairKey=(o.j||o.ks)?'|j'+(o.j||0)+'|k'+(o.ks||0):'',pairInfo=o.j?' · dent amincie de '+stdF(o.j)+' mm (jeu de paire)':'';
+  if(st.kind==='rack'){o.kind='rack';o.H=+st.H||0;o.x=0;}
+  if(st.kind==='int'){o.kind='int';o.D=+st.D||0;}
+  const g=gearGeom(o);
+  if(g.rack){
+    o.H=g.H; // hauteur automatique : la pièce garde sa valeur
+    const labR='m'+stdF(g.m)+' Z'+g.z+(g.aDeg===20?'':' α'+stdF(g.aDeg)+'°')+(g.betaDeg?' β'+stdF(g.betaDeg)+'° '+(g.hand==='L'?'G':'D'):'')+' × '+stdF(g.b)+' H'+stdF(g.ya-g.yb);
+    return {key:'GEAR|'+[g.m,g.z,g.aDeg,g.b,0,0,0,g.betaDeg,g.betaDeg?g.hand:'R','rack',g.H].join('|')+pairKey,norm:'ISO 53',desig:labR,name:'Crémaillère '+labR,
+      info:'Pas '+stdF(g.pt)+' · longueur '+stdF(g.L)+' · hauteur totale '+stdF(g.ya-g.yb)+' · ligne de référence à '+stdF(g.ya)+' mm du sommet des dents'+(g.betaDeg?' · module apparent '+stdF(g.mt):'')+pairInfo,
+      checks:gearChecks(g),ops:[o],reach:g.L/2};
+  }
+  gearProfile(g); // géométrie impossible (plus de flanc…) : refusée dès la fenêtre, avec son motif
+  if(g.internal)o.D=g.D; // Ø automatique : la pièce garde sa valeur
+  const helixLab=g.betaDeg?' β'+stdF(g.betaDeg)+'° '+(g.hand==='L'?'G':'D'):'';
+  if(g.internal){
+    const labI='m'+stdF(g.m)+' Z'+g.z+(g.aDeg===20?'':' α'+stdF(g.aDeg)+'°')+helixLab+(g.x?' x'+(g.x>0?'+':'')+stdF(g.x):'')+' × '+stdF(g.b)+' Ø'+stdF(g.D);
+    return {key:'GEAR|'+[g.m,g.z,g.aDeg,g.b,g.x,0,0,g.betaDeg,g.betaDeg?g.hand:'R','int',g.D].join('|')+pairKey,norm:'ISO 53 / ISO 21771',desig:labI,name:'Couronne '+labI,
+      info:(g.betaDeg?'Module apparent '+stdF(g.mt)+' · main '+(g.hand==='L'?'gauche':'droite')+' · ':'')+'Ø primitif '+stdF(2*g.rp)+' · Ø de tête '+stdF(2*g.ra)+' · Ø de pied '+stdF(2*g.rf)+' · Ø de base '+stdF(2*g.rb)+' · pas '+stdF(g.pitch)+' mm'+pairInfo,
+      checks:gearChecks(g),ops:[o],reach:g.D/2};
+  }
+  // alésage (0 = roue pleine) et rainure de moyeu ISO 773 d'après son Ø
+  const d=+st.d||0,row=d>0&&st.kw==='iso'?stdIso773For(d):null,ops=[o],checks=gearChecks(g);
+  let bore='',hint='';
+  if(d>0){
+    const B={k:'bore',d,b:row?row[2]:0,t2:row?row[5]:0,w:g.b};
+    checks.push(...gearBoreChecks(g,B));ops.push(B);
+    bore=' Ø'+stdF(d)+(row?' rainure '+stdF(row[2])+'×'+stdF(row[5]):'');
+    if(row)hint=' · clavette '+stdF(row[2])+'×'+stdF(row[3]);
+  }
+  const lab='m'+stdF(g.m)+' Z'+g.z+(g.aDeg===20?'':' α'+stdF(g.aDeg)+'°')+helixLab+(g.x?' x'+(g.x>0?'+':'')+stdF(g.x):'')+' × '+stdF(g.b)+bore;
+  return {key:'GEAR|'+[g.m,g.z,g.aDeg,g.b,g.x,d,row?row[2]:0,g.betaDeg,g.betaDeg?g.hand:'R'].join('|')+pairKey,norm:'ISO 53 / ISO 21771'+(row?' / ISO 773':''),desig:lab,name:'Engrenage '+lab,
+    info:(g.betaDeg?'Module apparent '+stdF(g.mt)+' · main '+(g.hand==='L'?'gauche':'droite')+' · ':'')+'Ø primitif '+stdF(2*g.rp)+' · Ø de tête '+stdF(2*g.ra)+' · Ø de pied '+stdF(2*g.rf)+' · Ø de base '+stdF(2*g.rb)+' · pas '+stdF(g.pitch)+' mm'+hint+pairInfo,
+    checks,ops,reach:g.ra};
+}
+function stdGearPair(st){
+  // Paire : deux pièces d'engrenage ordinaires (onglet Engrenages), posées au bon entraxe, dents logées
+  const P=gearPair({kind:st.kind,m:st.m,alpha:st.alpha,beta:st.beta,hand:st.hand,z1:st.z1,z2:st.z2,x1:st.x1,x2:st.x2,b:st.b,jn:st.jn});
+  const part=(O,kind,d)=>{
+    const s={kind,m:String(O.m),z:String(O.z),alpha:String(O.alpha),b:String(O.b),x:String(O.x||0),beta:String(O.beta||0),hand:O.hand};
+    if(O.j)s.j=String(O.j);
+    if(O.ks)s.ks=String(O.ks);
+    if(d>0)s.d=String(d);
+    return stdSpec('gear',s);
+  };
+  const sp1=part(P.o1,'ext',+st.d1||0),sp2=part(P.o2,P.kind,P.kind==='ext'?(+st.d2||0):0);
+  (sp1.checks||[]).concat(sp2.checks||[]).forEach(c=>{if(/Paroi|Roue plus étroite/.test(c.txt)&&c.lvl==='warn')P.checks.push(c);});
+  const lab='m'+stdF(P.g1.m)+' Z'+P.g1.z+'/'+P.g2.z+(P.g1.aDeg===20?'':' α'+stdF(P.g1.aDeg)+'°')+(P.g1.betaDeg?' β'+stdF(P.g1.betaDeg)+'°':'')+' × '+stdF(P.g1.b);
+  const nm={ext:'Paire ',int:'Pignon et couronne ',rack:'Pignon et crémaillère '}[P.kind]+lab;
+  const dist=P.kind==='rack'?'Hauteur de l’axe du pignon '+stdF(P.a)+' mm au-dessus de la ligne de référence':'Entraxe '+stdF(+P.a.toFixed(3))+' mm';
+  return {key:'GEARPAIR|'+[sp1.key,sp2.key].join('|'),norm:'ISO 53 / ISO 21771',desig:lab,name:nm,
+    info:dist+(P.ratio?' · rapport '+stdF(+P.ratio.toFixed(3)):'')+' · angle de fonctionnement '+stdF(+P.awDeg.toFixed(2))+'°'+(P.g1.betaDeg?' · pignon main '+(P.hand1==='L'?'gauche':'droite')+', '+(P.kind==='int'?'couronne':P.kind==='rack'?'crémaillère':'roue')+' main '+(P.hand2==='L'?'gauche':'droite'):''),
+    checks:P.checks,ops:[],pair:[{sp:sp1,fr:P.fr1,o:P.o1},{sp:sp2,fr:P.fr2,o:P.o2}],reach:P.reach,calc:P};
+}
 /* ── catégories de la fenêtre : champs (options selon l'état) et générateur ── */
 const STD_CATS=[
   {k:'iso',lab:'Vis ISO',fields:[
@@ -269,7 +337,41 @@ const STD_CATS=[
     {k:'len',lab:'Longueur (mm)',opts:st=>{const r=STD_ISO773.find(x=>x[2]+'x'+x[3]===st.size);
       return r?stdLens(STD_KEY_LV,r[6],r[7],true).map(v=>[String(v),stdF(v)]):[];},
       def:st=>{const r=STD_ISO773.find(x=>x[2]+'x'+x[3]===st.size);return r?String(stdLens(STD_KEY_LV,Math.max(r[6],4*r[2]),r[7],true)[0]||r[6]):'';}}],
-    gen:stdKey}
+    gen:stdKey},
+  // num : valeur libre tapée dans la fenêtre (bornée) ; opts = quelques cas de contrôle (tests), sug = valeurs proposées
+  // show : champ masqué sans objet pour ces réglages (il reprend alors sa valeur par défaut)
+  {k:'gear',lab:'Engrenages',fields:[
+    {k:'kind',lab:'Denture',opts:()=>[['ext','Extérieure (roue)'],['int','Intérieure (couronne)'],['rack','Crémaillère']]},
+    {k:'m',lab:'Module (mm)',num:{min:0.1,max:50,step:0.05},sug:()=>GEAR_MODULES,opts:()=>[['0.5','0,5'],['2','2'],['10','10']],def:()=>'2'},
+    {k:'z',lab:'Nombre de dents',num:{min:6,max:500,step:1,int:true},opts:st=>(st.kind==='int'?['24','60','200']:st.kind==='rack'?['6','30']:['6','20','60','200']).map(v=>[v,v]),def:()=>'20'},
+    {k:'alpha',lab:'Angle de pression',opts:()=>[['20','20° (usuel)'],['14.5','14,5°'],['25','25°']]},
+    {k:'beta',lab:'Angle d’hélice β (0 = denture droite)',num:{min:0,max:45,step:1},opts:()=>[['0','0'],['15','15']],def:()=>'0'},
+    {k:'hand',lab:'Sens de l’hélice',opts:st=>+st.beta>0?[['R','Main droite'],['L','Main gauche']]:[['R','— (pas d’hélice)']]},
+    {k:'x',lab:'Déport x (en modules, 0 = aucun)',num:{min:-1,max:2,step:0.05},opts:()=>[['-0.3','−0,3'],['0','0'],['0.2','0,2']],def:()=>'0',show:st=>st.kind!=='rack'},
+    {k:'b',lab:'Largeur (mm)',num:{min:0.1,max:2000,step:0.5},opts:()=>[['5','5'],['20','20'],['100','100']],def:()=>'20'},
+    {k:'H',lab:'Hauteur du corps sous les dents (mm, 0 = automatique)',num:{min:0,max:2000,step:0.5},opts:()=>[['0','0']],def:()=>'0',show:st=>st.kind==='rack'},
+    {k:'D',lab:'Ø extérieur de la couronne (mm, 0 = automatique)',num:{min:0,max:10000,step:0.5},opts:()=>[['0','0']],def:()=>'0',show:st=>st.kind==='int'},
+    {k:'d',lab:'Alésage Ø (mm, 0 = roue pleine)',num:{min:0,max:5000,step:0.5},opts:stdGearBoreOpts,def:()=>'0',show:st=>st.kind==='ext'},
+    {k:'kw',lab:'Rainure de clavette',show:st=>st.kind==='ext',opts:st=>{
+      const d=+st.d||0,r=stdIso773For(d),none=d>0?'Sans rainure':'— (pas d’alésage)';
+      return (r?[['iso','ISO 773 : largeur '+stdF(r[2])+', profondeur '+stdF(r[5])+' (clavette '+stdF(r[2])+'×'+stdF(r[3])+')']]:[]).concat([['none',none]]);
+    }}],
+    gen:stdGear},
+  {k:'gearPair',lab:'Paire d’engrenages',fields:[
+    {k:'kind',lab:'Le pignon engrène avec',opts:()=>[['ext','Une roue extérieure'],['int','Une couronne intérieure'],['rack','Une crémaillère']]},
+    {k:'m',lab:'Module (mm)',num:{min:0.1,max:50,step:0.05},sug:()=>GEAR_MODULES,opts:()=>[['2','2']],def:()=>'2'},
+    {k:'z1',lab:'Dents du pignon',num:{min:6,max:500,step:1,int:true},opts:()=>[['20','20']],def:()=>'20'},
+    {k:'z2',lab:'Dents de l’autre pièce',num:{min:6,max:500,step:1,int:true},opts:st=>st.kind==='int'?[['60','60']]:st.kind==='rack'?[['30','30']]:[['40','40']],def:()=>'40'},
+    {k:'alpha',lab:'Angle de pression',opts:()=>[['20','20° (usuel)'],['14.5','14,5°'],['25','25°']]},
+    {k:'beta',lab:'Angle d’hélice β (0 = denture droite)',num:{min:0,max:45,step:1},opts:()=>[['0','0'],['15','15']],def:()=>'0'},
+    {k:'hand',lab:'Sens d’hélice du pignon (l’autre pièce s’en déduit)',opts:st=>+st.beta>0?[['R','Main droite'],['L','Main gauche']]:[['R','— (pas d’hélice)']]},
+    {k:'x1',lab:'Déport du pignon (en modules)',num:{min:-1,max:2,step:0.05},opts:()=>[['0','0'],['0.3','0,3']],def:()=>'0'},
+    {k:'x2',lab:'Déport de l’autre pièce (en modules)',num:{min:-1,max:2,step:0.05},opts:()=>[['0','0']],def:()=>'0',show:st=>st.kind!=='rack'},
+    {k:'b',lab:'Largeur (mm)',num:{min:0.1,max:2000,step:0.5},opts:()=>[['20','20']],def:()=>'20'},
+    {k:'jn',lab:'Jeu entre flancs (mm, 0 = aucun)',num:{min:0,max:50,step:0.01},opts:()=>[['0','0'],['0.1','0,1']],def:()=>'0.1'},
+    {k:'d1',lab:'Alésage du pignon Ø (mm, 0 = plein)',num:{min:0,max:5000,step:0.5},opts:()=>[['0','0']],def:()=>'0'},
+    {k:'d2',lab:'Alésage de la roue Ø (mm, 0 = pleine)',num:{min:0,max:5000,step:0.5},opts:()=>[['0','0']],def:()=>'0',show:st=>st.kind==='ext'}],
+    gen:stdGearPair}
 ];
 function stdPinRows(t){
   return t==='iso8734'?STD_ISO8734:t==='iso2339'?STD_ISO2339:t==='iso8752'?STD_ISO8752:t==='dowel'?STD_ANSI_DOWEL:t==='spring'?STD_ANSI_SPRING:STD_ISO2338;
@@ -279,6 +381,15 @@ function stdNormState(cat,st){
   // Chaque champ garde sa valeur si elle reste proposée, sinon reprend sa valeur par défaut
   const C=stdCat(cat),o=Object.assign({},st||{});
   C.fields.forEach(f=>{
+    if(f.show&&!f.show(o))delete o[f.k]; // sans objet : valeur par défaut
+    if(f.num){
+      // valeur libre : bornée ; illisible ou absente, elle reprend sa valeur par défaut
+      let v=parseFloat(String(o[f.k]).replace(',','.'));
+      if(!isFinite(v))v=+f.def(o);
+      if(f.num.int)v=Math.round(v);
+      o[f.k]=String(Math.min(f.num.max,Math.max(f.num.min,v)));
+      return;
+    }
     const op=f.opts(o);
     if(!op.some(x=>x[0]===o[f.k])){const d=f.def?f.def(o):null;o[f.k]=op.some(x=>x[0]===d)?d:(op[0]?op[0][0]:'');}
   });
@@ -330,7 +441,7 @@ function stdDoc(sp){
   d.bodies=[{id:'b1',name:sp.name,c:null}];d.bodySeq=2;d.activeBody='b1';
   d.std={key:sp.key,norm:sp.norm,desig:sp.desig};
   if(sp.cat&&sp.st){d.std.cat=sp.cat;d.std.st=Object.assign({},sp.st);}
-  const F=(f)=>{f.id=uid(f.type==='revolve'?'rv':f.type==='xthread'?'th':'ex');f.visible=true;f.body='b1';d.features.push(f);return f;};
+  const F=(f)=>{f.id=uid(f.type==='revolve'?'rv':f.type==='xthread'?'th':f.type==='gear'?'gr':'ex');f.visible=true;f.body='b1';d.features.push(f);return f;};
   if(sp.prof){
     const s=stdSketch(d,'Profil','XZ',0);stdLoop(s,sp.prof);
     F({type:'revolve',name:'Révolution',sketchId:s.id,axis:{k:'sys',d:'Z'},angle:360,op:'add'});
@@ -353,6 +464,18 @@ function stdDoc(sp){
     }else if(o.k==='key'){
       const s=stdSketch(d,'Contour','XY',0);stdLoop(s,stdKeyOutline(o));
       F({type:'extrude',name:'Clavette',sketchId:s.id,distance:o.h,op:'add',mid:false,upto:null});
+    }else if(o.k==='gear'){
+      const fg=F({type:'gear',name:'Denture',m:o.m,z:o.z,alpha:o.alpha,b:o.b,x:o.x,beta:o.beta,hand:o.hand,op:'add'});
+      if(o.kind==='int'){fg.kind='int';fg.D=o.D;}
+      if(o.kind==='rack'){fg.kind='rack';fg.H=o.H;}
+      if(o.j)fg.j=o.j;
+      if(o.ks)fg.ks=o.ks;
+    }else if(o.k==='bore'){
+      // sous la roue, et débouchant au-dessus : la découpe ne part pas d'une face confondue
+      const s=stdSketch(d,'Alésage','XY',-1);
+      if(o.b)stdLoop(s,gearBoreLoop(o));
+      else s.entities.push({id:skNewEid(s),t:'circle',pc:addPoint(s,0,0),r:o.d/2});
+      F({type:'extrude',name:o.b?'Alésage et rainure':'Alésage',sketchId:s.id,distance:o.w+2,op:'cut',mid:false,upto:null});
     }
   });
   return d;
@@ -380,13 +503,29 @@ function stdInsert(sp){
   asmEnsure();
   if(asmMode!=='asm')asmEnter();
   const owner=asmActiveComp();if(!owner)return null;
-  let dx=0;try{const box=new THREE.Box3();asmSceneGet().getObjectByName('asmOcc').traverse(m=>{if(m.isMesh)box.expandByObject(m);});if(!box.isEmpty())dx=box.max.x+20;}catch(e){}
+  if(sp.pair)return stdInsertPair(sp,owner);
+  let dx=0;try{const box=new THREE.Box3();asmSceneGet().getObjectByName('asmOcc').traverse(m=>{if(m.isMesh)box.expandByObject(m);});if(!box.isEmpty())dx=box.max.x+20+(sp.reach||0);}catch(e){} // reach : rayon d'une grande pièce centrée sur son origine
   const r=stdAddOcc(sp,owner.id,{o:[dx,0,0],x:[1,0,0],y:[0,1,0],z:[0,0,1]});if(!r)return null;
   if(r.fresh){try{asmBuildSnapshots();}catch(e){}}
   asmSelId=r.occ.id;
   asmNotify();
   try{faceEl.textContent=(r.fresh?'Inséré « ':'Nouvelle occurrence « ')+r.occ.name+' » dans « '+owner.name+' ». Placez-la, ou alignez un point d’accroche.';}catch(e){}
   return r.occ;
+}
+function stdInsertPair(sp,owner){
+  // Les deux pièces au bon entraxe, à droite de ce qui est affiché ; un seul Ctrl+Z retire le tout
+  let dx=0;try{const box=new THREE.Box3();asmSceneGet().getObjectByName('asmOcc').traverse(m=>{if(m.isMesh)box.expandByObject(m);});if(!box.isEmpty())dx=box.max.x+20+(sp.reach||0);}catch(e){}
+  const n0=asmUndoStack.length,occs=[];
+  sp.pair.forEach(P=>{
+    const fr=Object.assign({},P.fr,{o:[P.fr.o[0]+dx,P.fr.o[1],P.fr.o[2]]}),r=stdAddOcc(P.sp,owner.id,fr);
+    if(r)occs.push(r.occ);
+  });
+  while(asmUndoStack.length>n0+1)asmUndoStack.pop();
+  try{asmBuildSnapshots();}catch(e){}
+  if(occs[0])asmSelId=occs[0].id;
+  asmNotify();
+  try{faceEl.textContent='« '+sp.name+' » insérée : dents logées, au bon entraxe. Les deux pièces restent libres : déplacez-les ensemble.';}catch(e){}
+  return occs[0]||null;
 }
 /* ── trous d'une pièce (faces exactes, 48-assemblage-accroches : asmSnapExtract) ──
    Entrée d'un trou = cercle d'une face plane qui est un bord INTÉRIEUR (la face déborde du
@@ -672,7 +811,9 @@ function stdHolePickAt(e){
   for(const hit of hits){
     const path=hit.object.parent.userData.path;
     if(path.length<n||!P.every((q,i)=>path[i]===q))continue; // hors du composant actif
-    const c=asmComp(asmPathComp(path));if(!c||(c.doc&&c.doc.std))continue; // une vis déjà posée : on regarde derrière
+    const c=asmComp(asmPathComp(path));
+    // une vis déjà posée : on regarde derrière. Exception : la rainure d'une roue dentée reçoit sa clavette
+    if(!c||(c.doc&&c.doc.std&&!(stdIsKey(sp)&&c.doc.std.cat==='gear')))continue;
     const Gs=asmSnapGeomOf(c);if(!Gs)continue;
     const inv=new THREE.Matrix4().copy(hit.object.matrixWorld).invert();
     const pl=hit.point.clone().applyMatrix4(inv),ld=rayc.ray.direction.clone().transformDirection(inv);
@@ -725,7 +866,14 @@ function stdPolyPts(pts){
   return out;
 }
 function stdSvg(sp){
-  const W=240,H=220,shapes=[],hid=[];
+  const W=240,H=220,shapes=[],hid=[],holes=[];
+  (sp.pair||[]).forEach(P=>{
+    const g=gearGeom(P.o),F=P.fr,mv=q=>[F.o[0]+q[0]*F.x[0]+q[1]*F.y[0],F.o[1]+q[0]*F.x[1]+q[1]*F.y[1]];
+    if(g.internal){
+      const C=[];for(let i=0;i<96;i++){const a=i/96*2*Math.PI;C.push(mv([g.D/2*Math.cos(a),g.D/2*Math.sin(a)]));}
+      shapes.push(C);holes.push(gearPolyline(g,0.05,6).map(mv));
+    }else shapes.unshift(gearPolyline(g,0.05,6).map(mv));
+  });
   if(sp.prof){
     const P=stdPolyPts(sp.prof);
     shapes.push(P.map(p=>[p[0],p[1]]),P.map(p=>[-p[0],p[1]]));
@@ -734,6 +882,19 @@ function stdSvg(sp){
       if(o.k==='slot'){const z0=o.z0||0;hid.push([[-o.w/2,z0],[-o.w/2,z0+o.L]],[[o.w/2,z0],[o.w/2,z0+o.L]]);}
     });
   }
+  (sp.ops||[]).forEach(o=>{ // vue de dessus
+    if(o.k==='gear'){
+      const g=gearGeom(o);
+      if(g.internal){
+        const P=[];for(let i=0;i<96;i++){const a=i/96*2*Math.PI;P.push([g.D/2*Math.cos(a),g.D/2*Math.sin(a)]);}
+        shapes.push(P);holes.push(gearPolyline(g,0.05,6));
+      }else shapes.push(gearPolyline(g,0.05,6));
+    }
+    if(o.k==='bore'){
+      if(o.b)holes.push(stdPolyPts(gearBoreLoop(o)));
+      else{const P=[];for(let i=0;i<48;i++){const a=i/48*2*Math.PI;P.push([o.d/2*Math.cos(a),o.d/2*Math.sin(a)]);}holes.push(P);}
+    }
+  });
   (sp.ops||[]).forEach(o=>{
     if(o.k!=='key')return;
     const P=stdPolyPts(stdKeyOutline(o)),gap=o.b*0.8;
@@ -747,6 +908,7 @@ function stdSvg(sp){
   const path=S=>S.map((p,i)=>(i?'L':'M')+X(p[0])+' '+Y(p[1])).join(' ');
   let s='<svg viewBox="0 0 '+W+' '+H+'" width="'+W+'" height="'+H+'" xmlns="http://www.w3.org/2000/svg">';
   shapes.forEach(S=>{s+='<path d="'+path(S)+' Z" fill="var(--stdFill)" stroke="var(--text)" stroke-width="1.2" stroke-linejoin="round"/>';});
+  holes.forEach(S=>{s+='<path d="'+path(S)+' Z" fill="var(--bg)" stroke="var(--text)" stroke-width="1.2" stroke-linejoin="round"/>';});
   if(sp.prof)s+='<path d="M'+X(0)+' 4 V'+(H-4)+'" stroke="var(--muted)" stroke-width="0.8" stroke-dasharray="10 3 2 3"/>';
   hid.forEach(S=>{s+='<path d="'+path(S)+'" fill="none" stroke="var(--text)" stroke-width="0.9" stroke-dasharray="4 3" opacity=".75"/>';});
   return s+'</svg>';
@@ -766,10 +928,12 @@ function stdCss(){
     '#stdDlg .stdBody{display:flex;gap:14px;padding:12px 14px;border-top:1px solid var(--border);flex-wrap:wrap}',
     '#stdDlg .stdForm{flex:1 1 260px;display:flex;flex-direction:column;gap:8px;min-width:0}',
     '#stdDlg .stdForm label{display:flex;flex-direction:column;align-items:stretch;text-align:left;gap:3px;margin:0;font-size:.75rem;color:var(--muted)}',
-    '#stdDlg .stdForm select{width:100%;max-width:none;margin:0;font-size:.85rem;color:var(--text)}',
+    '#stdDlg .stdForm select,#stdDlg .stdForm input{width:100%;max-width:none;margin:0;font-size:.85rem;color:var(--text);box-sizing:border-box}',
     '#stdDlg .stdPrev{flex:0 0 240px;display:flex;align-items:center;justify-content:center;border:1px solid var(--border);border-radius:10px;min-height:220px}',
     '#stdDlg .stdName{font-weight:600;font-size:.9rem;color:var(--text);text-align:left}',
     '#stdDlg .stdInfo{font-size:.75rem;color:var(--muted);line-height:1.4;text-align:left}',
+    '#stdDlg .stdChk{font-size:.75rem;line-height:1.35;text-align:left;color:#30d158}',
+    '#stdDlg .stdChk.warn{color:#ff9f0a}#stdDlg .stdChk.err{color:#ff453a}',
     '#stdDlg .stdFoot{display:flex;gap:8px;justify-content:flex-end;align-items:center;padding:10px 14px;border-top:1px solid var(--border)}',
     '#stdDlg .stdFoot span{margin-right:auto;font-size:.75rem;color:var(--muted)}'
   ].join('\n');
@@ -786,6 +950,7 @@ function stdDlg(edit){
     if(!S){try{faceEl.textContent='Ce composant n’est pas une pièce normalisée (ou ses réglages sont illisibles).';}catch(e){}return;}
     stdUi.cat=S.cat;stdUi.st=stdUi.st||{};stdUi.st[S.cat]=S.st;
   }
+  else if(stdUi.st&&stdUi.st.gear){delete stdUi.st.gear.j;delete stdUi.st.gear.ks;}
   w=document.createElement('div');w.id='stdDlg';
   w.innerHTML='<div class="stdHead"><b>🔩 Composants normalisés</b><button title="Fermer (Échap)">✕</button></div>'+
     '<div class="stdTabs"></div><div class="stdBody"><div class="stdForm"></div><div class="stdPrev"></div></div>'+
@@ -815,18 +980,34 @@ function stdDlg(edit){
     }
     const C=stdCat(stdUi.cat);
     stdUi.st[C.k]=stdNormState(C.k,stdUi.st[C.k]);const st=stdUi.st[C.k];
+    // le formulaire est refait à chaque changement : le champ où l'on tabule garde le curseur
+    const focusK=form.contains(document.activeElement)?document.activeElement.dataset.k:null;
     tabs.innerHTML='';
     STD_CATS.forEach(c=>{const b=document.createElement('button');b.textContent=c.lab;if(c.k===C.k)b.className='on';
       b.onclick=()=>{stdUi.cat=c.k;save();draw();};tabs.appendChild(b);});
     form.innerHTML='';
     C.fields.forEach(f=>{
+      if(f.show&&!f.show(st))return;
       const l=document.createElement('label');l.textContent=f.lab;
+      if(f.num){
+        const i=document.createElement('input');i.type='number';i.dataset.k=f.k;
+        i.min=f.num.min;i.max=f.num.max;i.step=f.num.step;i.value=st[f.k];
+        if(f.sug){
+          const dl=document.createElement('datalist');dl.id='stdSug_'+f.k;
+          f.sug().forEach(v=>{const o=document.createElement('option');o.value=v;dl.appendChild(o);});
+          i.setAttribute('list',dl.id);l.appendChild(dl);
+        }
+        i.onchange=()=>{st[f.k]=i.value;save();draw();};
+        l.appendChild(i);form.appendChild(l);
+        return;
+      }
       const s=document.createElement('select');s.dataset.k=f.k;
       f.opts(st).forEach(([v,t])=>{const o=document.createElement('option');o.value=v;o.textContent=t;if(v===st[f.k])o.selected=true;s.appendChild(o);});
       s.onchange=()=>{st[f.k]=s.value;save();draw();};
       l.appendChild(s);form.appendChild(l);
     });
-    let sp=null;try{sp=stdSpec(C.k,st);}catch(e){sp=null;}
+    if(focusK){const q=form.querySelector('[data-k="'+focusK+'"]');if(q)q.focus();}
+    let sp=null,spErr='';try{sp=stdSpec(C.k,st);}catch(e){sp=null;spErr=String(e.message||e);}
     const nm=document.createElement('div');nm.className='stdName';nm.textContent=sp?sp.name:'—';form.appendChild(nm);
     if(sp&&stdIsKey(sp)&&!edit){
       // clavette : par quel point elle se pose « Dans une rainure »
@@ -845,6 +1026,12 @@ function stdDlg(edit){
       l.appendChild(s);form.appendChild(l);
     }
     const inf=document.createElement('div');inf.className='stdInfo';inf.textContent=sp?(sp.norm+' · '+sp.info):'';form.appendChild(inf);
+    // engrenages : contrôles de la pièce (alertes sans blocage), ou motif du refus
+    const chk=(cls,txt)=>{const d=document.createElement('div');d.className='stdChk'+(cls?' '+cls:'');d.textContent=txt;form.appendChild(d);};
+    if(sp&&sp.checks){
+      sp.checks.forEach(c=>chk(c.lvl==='ok'?'':'warn',(c.lvl==='ok'?'✓ ':'⚠ ')+c.txt));
+      const n=document.createElement('div');n.className='stdInfo';n.textContent='Contrôle de la géométrie seulement, pas de la résistance.';form.appendChild(n);
+    }else if(!sp&&spErr)chk('err','⛔ '+spErr);
     prev.innerHTML=sp?stdSvg(sp):'';
     if(edit){bHole.disabled=bIns.disabled=!sp;bHole.onclick=()=>apply(sp,true);bIns.onclick=()=>apply(sp,false);return;}
     bIns.disabled=!sp;bHole.disabled=!sp||(!sp.seat&&!stdIsKey(sp));
@@ -854,7 +1041,7 @@ function stdDlg(edit){
     bIns.onclick=()=>{
       if(!sp)return;
       const o=stdInsert(sp);
-      msg.textContent=o?'✓ '+o.name+' inséré':'Insertion impossible ici.';
+      msg.textContent=!o?'Insertion impossible ici.':sp.pair?'✓ '+sp.name+' : les deux pièces sont posées':'✓ '+o.name+' inséré';
     };
   };
   // déplaçable par l'en-tête

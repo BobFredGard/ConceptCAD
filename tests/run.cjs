@@ -266,6 +266,8 @@ const SUITES = [
   "test_composants_liaisons",
   "test_composants_inspection",
   "test_composants_normalises",
+  "test_engrenages",
+  "test_engrenages_paire",
   "test_composants_plan",
   "test_composants_accroches",
   "test_composants_apparence",

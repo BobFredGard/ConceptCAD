@@ -124,6 +124,7 @@ function featSig(f){
     // Filetage (76-filetage) : axe visé, taille, pas, sens, longueur, départ, filet modélisé ou non
     s+='|'+JSON.stringify([f.cyl||null,f.size,+f.p||0,!!f.lh,!!f.model,+f.clear||0,f.lenMode||'full',+f.len||0,!!f.flip]);
   }
+  if(f.type==='gear')s+='|'+JSON.stringify(gearSig(f)); // Engrenage (76-engrenage) : ses réglages font tout le solide
   if(f.type==='sweep'){
     // Balayage (75-balayage) : profil ET chemin — éditer l'un ou l'autre change le solide
     const sk=doc.sketches.find(x=>x.id===f.sketchId),pk=doc.sketches.find(x=>x.id===f.pathId);
@@ -418,6 +419,19 @@ function* occReplayBodyGen(bid,list){
       // Filetage (76-filetage) : solide inchangé ; le vide fileté (filet modélisé) rejoint ceux
       // des taraudages, creusés en fin de rejeu. Clé = préfixe : résolution mémorisée.
       threadReplayStep(f,result,ckKey,msgs,threads,bid,bin);
+      return;
+    }
+    if(f.type==='gear'){
+      // Engrenage (76-engrenage) : solide construit d'après ses réglages, point de contrôle comme les autres
+      const ckG=occCkGet(ckKey);
+      const cpG=ckG?occShapeCopy(ckG):null;
+      if(cpG){if(result)try{result.delete();}catch(e){}result=cpG;delete f._err;return;}
+      let gs=null;
+      try{gs=gearSolid(f,bin);}catch(err){f._err=String(err.message||err);msgs.push(`${f.name} : ${f._err}`);return;}
+      delete f._err;
+      if(result){const uG=occUnify(occFuse(result,gs));try{result.delete();}catch(e){}try{gs.delete();}catch(e){}result=uG;}
+      else result=gs;
+      occCkPut(ckKey,()=>occShapeCopy(result));
       return;
     }
     let shape=null;

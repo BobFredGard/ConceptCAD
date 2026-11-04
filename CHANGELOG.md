@@ -8,7 +8,7 @@ sont sorties le 2026-09-30j.
 Code dans `src/` · livrable `fusion_mvp.html` (généré par `build.js`) · architecture et
 garde-fous en tête de `src/00-entete-et-outils.js`.
 
-**567 versions**, de `2026-09-28b` à `V0.52.0` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
+**568 versions**, de `2026-09-28b` à `V0.53.0` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
 comme dans le fichier d'origine.
 
 ---
@@ -6598,3 +6598,11 @@ Demandes : « il y a une rémanence des faces choisies sur un modèle […] quan
 - **Fonctions** : une face d’une pièce voisine sert seulement à mesurer (`mesEtrangere`), elle n’entre pas dans la sélection lue par Esquisse, les trous, etc.
 - **Reste à faire** : l’arête d’un corps masqué dans une autre pièce peut encore réagir au survol.
 - **Test** : parcours navigateur « mesure d’assemblage ». `CACHE_VER` ne change pas.
+
+## V0.53.0 - Engrenages : roue, couronne, crémaillère et paire calée
+Demande : « que peux-tu me proposer comme module de création d'engrenages… », puis « Planifier le niveau 1 » et les 8 étapes (`docs/plan-engrenages-niveau-1.md`).
+- **Pièce** (`src/48-engrenages-calcul.js`, `src/76-engrenage.js`, onglet Engrenages de **Normalisés**) : vraie développante et pied taillé par l'outil crémaillère ISO 53, sous-coupe comprise ; denture droite ou hélicoïdale (module normal) ; roue, couronne, crémaillère ; déport ; alésage et rainure de clavette ISO 773.
+- **Paire** (onglet Paire d'engrenages) : entraxe par l'angle de fonctionnement, sens d'hélice déduit, dents logées à la pose, un seul Ctrl+Z pour les deux pièces. Jeu entre flancs réglable (0,1 mm par défaut), obtenu en amincissant les deux dentures : l'entraxe ne bouge pas. Têtes raccourcies si le déport mange le fond de dent, ou si la couronne attaquerait le pied du pignon.
+- **Contrôles** : rapport de conduite, interférence, couronne trop proche, jeu nul, sous-coupe, dent en pointe. Géométrie seulement, pas de calcul de résistance. Les pièces restent libres, sans lien de mouvement.
+- **Sans effet sur les parcours** : `CACHE_VER` ne change pas.
+- **Tests** : `tests/test_engrenages.cjs` (suite rapide) : simulation indépendante du taillage, cotes, coupes de 13 paires sur 12 positions d'un pas et mesure du jeu. `tests/test_engrenages_paire.cjs` (suite complète) : volume commun nul entre solides réels sur 12 positions, pour droite, hélicoïdale, couronne et crémaillère ; `Exemples/Engrenages.conceptcad` rechargé, inspecté, exporté et réimporté en STEP. Les deux moteurs.

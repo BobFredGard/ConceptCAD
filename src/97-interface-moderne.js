@@ -288,6 +288,7 @@ const MF_IC={
   redo:'<path d="M15 14l5-5-5-5"/><path d="M20 9H9a5 5 0 0 0 0 10h3"/>',
   setup:'<path d="M3 19h18M6 19v-4h12v4"/><path d="M9 15V9h6v6"/><path d="M12 9V4" stroke-dasharray="2 2"/>',
   tools:'<path d="M10 3h4v8l-1 2v8h-2v-8l-1-2z"/><path d="M10 6l4 1.5M10 9l4 1.5"/>',
+  gear:'<circle cx="12" cy="12" r="6.5"/><circle cx="12" cy="12" r="2.2"/><path d="M12 2.5v3M12 18.5v3M2.5 12h3M18.5 12h3M5.3 5.3l2.1 2.1M16.6 16.6l2.1 2.1M18.7 5.3l-2.1 2.1M7.4 16.6l-2.1 2.1"/>',
   facing:'<path d="M3 6h18v4H3v4h18v4H3"/>',
   pocket:'<rect x="3" y="4" width="18" height="16" rx="3"/><rect x="7.5" y="8.5" width="9" height="7" rx="1.5"/>',
   contour:'<rect x="6" y="7" width="12" height="10" rx="2"/><rect x="2.5" y="3.5" width="19" height="17" rx="4" stroke-dasharray="2.5 2"/>',
@@ -401,7 +402,7 @@ function mfRibbon(){
     ['pattern','Répétition',()=>asmRibbonPattern(),'Répéter l’occurrence sélectionnée (ou le lot) : linéaire, 2 directions, circulaire, symétrie',asmO],
     ['asmInspect','Inspecter',()=>asmCmdInspect(),'Interférences entre corps / composants, masses (matière par composant) et centre de gravité',asmO],
     ['asmFromBodies','Depuis corps',()=>asmCmdFromBodies(),'Créer un composant depuis le corps sélectionné (ou depuis chaque corps) : la pièce multicorps devient un assemblage, sans rien remodéliser',asmO],
-    ['asmStd','Normalisés',()=>stdDlg(),'Vis ISO / ANSI (CHC, FHC, pas au choix), bouchons gaz six pans creux, goupilles, clavettes ISO : insérés comme composants du composant actif',asmO],
+    ['asmStd','Normalisés',()=>stdDlg(),'Vis ISO / ANSI (CHC, FHC, pas au choix), bouchons gaz six pans creux, goupilles, clavettes ISO, engrenages et paires d’engrenages : insérés comme composants du composant actif',asmO],
     ['import','Insérer',()=>asmCmdInsert(),'Insérer un fichier .conceptcad (ou .miniFusion) comme composant du composant actif : lié (modifiable ici, la source suit) ou copié',asmO]],'mfCao mfAsmG');
   // FAO : posage, opérations (mêmes fiches que la barre « + Usinage »), simulation, calcul, export
   grp('Posage',[['setup','Posage',()=>{const b=Array.from(document.querySelectorAll('#faoTreeWrap button')).find(x=>/\+ Posage/.test(x.textContent));if(b)b.click();},'Ajouter un posage'],['tools','Outils','faoToolsBtn',null,'mfIcR']],'mfFao');

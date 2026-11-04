@@ -466,7 +466,10 @@ function asmRestore(s){
     if(c.doc===doc){try{builtVersion=-1;builtHash=null;markDirty();rebuild();}catch(e){}}
     else c._stale=true; // instantané d'affichage à refaire (47)
   });
-  asmResolve();asmNotify();
+  asmResolve();
+  // sans cela, Ctrl+Z sur une pièce modifiée rendait son document mais laissait l'ancienne forme à l'écran
+  if(touched.some(c=>c._stale)&&typeof asmBuildSnapshots==='function'){try{asmBuildSnapshots();}catch(e){}}
+  asmNotify();
 }
 function asmUndo(){
   const e=asmUndoStack.pop();if(!e||!asm)return false;

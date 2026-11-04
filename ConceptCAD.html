@@ -376,7 +376,7 @@ input[type=range]{accent-color:var(--primary);width:100%}
  * peut changer sans rien casser. CACHE_VER (parcours FAO) reste indépendant.
  */
 
-const APP_VER='V0.52.0';
+const APP_VER='V0.53.0';
 try{console.log('[ConceptCAD] version '+APP_VER);}catch(e){}
 try{var mfSv=document.getElementById('mfSplashVer');if(mfSv)mfSv.textContent=APP_VER;}catch(e){} // écran de démarrage
 
@@ -7611,6 +7611,7 @@ function featSig(f){
     // Filetage (76-filetage) : axe visé, taille, pas, sens, longueur, départ, filet modélisé ou non
     s+='|'+JSON.stringify([f.cyl||null,f.size,+f.p||0,!!f.lh,!!f.model,+f.clear||0,f.lenMode||'full',+f.len||0,!!f.flip]);
   }
+  if(f.type==='gear')s+='|'+JSON.stringify(gearSig(f)); // Engrenage (76-engrenage) : ses réglages font tout le solide
   if(f.type==='sweep'){
     // Balayage (75-balayage) : profil ET chemin — éditer l'un ou l'autre change le solide
     const sk=doc.sketches.find(x=>x.id===f.sketchId),pk=doc.sketches.find(x=>x.id===f.pathId);
@@ -7905,6 +7906,19 @@ function* occReplayBodyGen(bid,list){
       // Filetage (76-filetage) : solide inchangé ; le vide fileté (filet modélisé) rejoint ceux
       // des taraudages, creusés en fin de rejeu. Clé = préfixe : résolution mémorisée.
       threadReplayStep(f,result,ckKey,msgs,threads,bid,bin);
+      return;
+    }
+    if(f.type==='gear'){
+      // Engrenage (76-engrenage) : solide construit d'après ses réglages, point de contrôle comme les autres
+      const ckG=occCkGet(ckKey);
+      const cpG=ckG?occShapeCopy(ckG):null;
+      if(cpG){if(result)try{result.delete();}catch(e){}result=cpG;delete f._err;return;}
+      let gs=null;
+      try{gs=gearSolid(f,bin);}catch(err){f._err=String(err.message||err);msgs.push(`${f.name} : ${f._err}`);return;}
+      delete f._err;
+      if(result){const uG=occUnify(occFuse(result,gs));try{result.delete();}catch(e){}try{gs.delete();}catch(e){}result=uG;}
+      else result=gs;
+      occCkPut(ckKey,()=>occShapeCopy(result));
       return;
     }
     let shape=null;
@@ -9787,6 +9801,7 @@ function featIconOf(f){
   if(f.type==='sweep')return (f.op||'add')==='cut'?'≋':'〰';
   if(f.type==='hole')return '⊚';
   if(f.type==='xthread')return f._err?'⚠':'🔩'; // filetage d'un axe (76-filetage)
+  if(f.type==='gear')return f._err?'⚠':'⚙️'; // engrenage (76-engrenage)
   if(f.type==='xmove')return '📐';
   if(f.type==='bmove')return '✥';
   if(f.type==='bremove')return '⊘';
@@ -11562,6 +11577,7 @@ function renderProps(){
       :f.type==='revolve'?'Révolution'
       :f.type==='sweep'?'Balayage'
       :f.type==='combine'?'Combiner'
+      :f.type==='gear'?'Fonction'
       :'Import';
     pH(typeLabel);
     pInfo(`<b>${f.name}</b>`);
@@ -11748,6 +11764,7 @@ function renderProps(){
     }
     {const cb=cutBodiesField(f)||featBodyField(f);if(cb)p.appendChild(cb);} // V0.15.12 : plusieurs corps visibles → tous ou un seul ; sinon corps de la fonction
     if(f.type==='xthread')renderThreadProps(p,f); // V0.35.0 : filetage d'un axe (76-filetage)
+    if(f.type==='gear')renderGearProps(p,f); // engrenage (76-engrenage)
     if(f.type==='hole'){fdynEnsure(f);renderHoleProps(p,f);fdynFoot(p,f);} // V0.8.0 : OK / Annuler, flèche de profondeur
     /* — révolution — V0.8.0 : fenêtre dynamique (71-fenetre-dynamique) */
     if(f.type==='revolve'){ fdynRevolvePanel(p,f); }
@@ -12041,6 +12058,7 @@ function tlbSvgKey(s){
     case 'sweep':return ['sweep',cut?'cut':'add',cut];
     case 'hole':return ['hole','cut'];
     case 'xthread':return ['thread','mod'];
+    case 'gear':return ['gear','add'];
     case 'xfillet':{let k='';try{k=xKindOf(f);}catch(e){}return [/cham/i.test(k)?'chamfer':'fillet','mod'];}
     case 'fillet':return ['fillet','mod'];
     case 'repeat':return ['pattern','rep'];
@@ -14055,7 +14073,10 @@ function asmRestore(s){
     if(c.doc===doc){try{builtVersion=-1;builtHash=null;markDirty();rebuild();}catch(e){}}
     else c._stale=true; // instantané d'affichage à refaire (47)
   });
-  asmResolve();asmNotify();
+  asmResolve();
+  // sans cela, Ctrl+Z sur une pièce modifiée rendait son document mais laissait l'ancienne forme à l'écran
+  if(touched.some(c=>c._stale)&&typeof asmBuildSnapshots==='function'){try{asmBuildSnapshots();}catch(e){}}
+  asmNotify();
 }
 function asmUndo(){
   const e=asmUndoStack.pop();if(!e||!asm)return false;
@@ -17778,6 +17799,74 @@ function stdKeyOutline(o){
   if(o.form==='C')return [[x0,-r,{c:[x0,0],ccw:true}],[hl,-r],[hl,r],[x0,r]];
   return [[x0,-r,{c:[x0,0],ccw:true}],[x1,-r],[x1,r,{c:[x1,0],ccw:true}],[x0,r]];
 }
+function stdIso773For(d){
+  // Ligne d'ISO 773 d'un Ø d'arbre (« de plus de … à … » ; la première ligne inclut son début), ou undefined
+  return STD_ISO773.find((r,i)=>(i===0?d>=r[0]:d>r[0])&&d<=r[1]);
+}
+function stdGearBoreOpts(st){
+  // Cas de contrôle du champ alésage : plein, et un Ø tenant dans cette roue
+  let rf=0;try{rf=gearGeom({m:st.m,z:st.z,alpha:st.alpha,b:st.b||1,x:st.x,beta:st.beta}).rf;}catch(e){rf=0;}
+  const v=+(0.8*rf).toFixed(1);
+  return v>0?[['0','0'],[String(v),stdF(v)]]:[['0','0']];
+}
+function stdGear(st){
+  // Roue extérieure ou couronne, droite ou hélicoïdale (48-engrenages-calcul) ; le contour sert aussi à l'aperçu
+  const o={k:'gear',m:+st.m,z:Math.round(+st.z),alpha:+st.alpha,b:+st.b,x:+st.x||0,beta:+st.beta||0,hand:st.hand==='L'?'L':'R'};
+  if(+st.j>0)o.j=+st.j;
+  if(+st.ks>0)o.ks=+st.ks;
+  const pairKey=(o.j||o.ks)?'|j'+(o.j||0)+'|k'+(o.ks||0):'',pairInfo=o.j?' · dent amincie de '+stdF(o.j)+' mm (jeu de paire)':'';
+  if(st.kind==='rack'){o.kind='rack';o.H=+st.H||0;o.x=0;}
+  if(st.kind==='int'){o.kind='int';o.D=+st.D||0;}
+  const g=gearGeom(o);
+  if(g.rack){
+    o.H=g.H; // hauteur automatique : la pièce garde sa valeur
+    const labR='m'+stdF(g.m)+' Z'+g.z+(g.aDeg===20?'':' α'+stdF(g.aDeg)+'°')+(g.betaDeg?' β'+stdF(g.betaDeg)+'° '+(g.hand==='L'?'G':'D'):'')+' × '+stdF(g.b)+' H'+stdF(g.ya-g.yb);
+    return {key:'GEAR|'+[g.m,g.z,g.aDeg,g.b,0,0,0,g.betaDeg,g.betaDeg?g.hand:'R','rack',g.H].join('|')+pairKey,norm:'ISO 53',desig:labR,name:'Crémaillère '+labR,
+      info:'Pas '+stdF(g.pt)+' · longueur '+stdF(g.L)+' · hauteur totale '+stdF(g.ya-g.yb)+' · ligne de référence à '+stdF(g.ya)+' mm du sommet des dents'+(g.betaDeg?' · module apparent '+stdF(g.mt):'')+pairInfo,
+      checks:gearChecks(g),ops:[o],reach:g.L/2};
+  }
+  gearProfile(g); // géométrie impossible (plus de flanc…) : refusée dès la fenêtre, avec son motif
+  if(g.internal)o.D=g.D; // Ø automatique : la pièce garde sa valeur
+  const helixLab=g.betaDeg?' β'+stdF(g.betaDeg)+'° '+(g.hand==='L'?'G':'D'):'';
+  if(g.internal){
+    const labI='m'+stdF(g.m)+' Z'+g.z+(g.aDeg===20?'':' α'+stdF(g.aDeg)+'°')+helixLab+(g.x?' x'+(g.x>0?'+':'')+stdF(g.x):'')+' × '+stdF(g.b)+' Ø'+stdF(g.D);
+    return {key:'GEAR|'+[g.m,g.z,g.aDeg,g.b,g.x,0,0,g.betaDeg,g.betaDeg?g.hand:'R','int',g.D].join('|')+pairKey,norm:'ISO 53 / ISO 21771',desig:labI,name:'Couronne '+labI,
+      info:(g.betaDeg?'Module apparent '+stdF(g.mt)+' · main '+(g.hand==='L'?'gauche':'droite')+' · ':'')+'Ø primitif '+stdF(2*g.rp)+' · Ø de tête '+stdF(2*g.ra)+' · Ø de pied '+stdF(2*g.rf)+' · Ø de base '+stdF(2*g.rb)+' · pas '+stdF(g.pitch)+' mm'+pairInfo,
+      checks:gearChecks(g),ops:[o],reach:g.D/2};
+  }
+  // alésage (0 = roue pleine) et rainure de moyeu ISO 773 d'après son Ø
+  const d=+st.d||0,row=d>0&&st.kw==='iso'?stdIso773For(d):null,ops=[o],checks=gearChecks(g);
+  let bore='',hint='';
+  if(d>0){
+    const B={k:'bore',d,b:row?row[2]:0,t2:row?row[5]:0,w:g.b};
+    checks.push(...gearBoreChecks(g,B));ops.push(B);
+    bore=' Ø'+stdF(d)+(row?' rainure '+stdF(row[2])+'×'+stdF(row[5]):'');
+    if(row)hint=' · clavette '+stdF(row[2])+'×'+stdF(row[3]);
+  }
+  const lab='m'+stdF(g.m)+' Z'+g.z+(g.aDeg===20?'':' α'+stdF(g.aDeg)+'°')+helixLab+(g.x?' x'+(g.x>0?'+':'')+stdF(g.x):'')+' × '+stdF(g.b)+bore;
+  return {key:'GEAR|'+[g.m,g.z,g.aDeg,g.b,g.x,d,row?row[2]:0,g.betaDeg,g.betaDeg?g.hand:'R'].join('|')+pairKey,norm:'ISO 53 / ISO 21771'+(row?' / ISO 773':''),desig:lab,name:'Engrenage '+lab,
+    info:(g.betaDeg?'Module apparent '+stdF(g.mt)+' · main '+(g.hand==='L'?'gauche':'droite')+' · ':'')+'Ø primitif '+stdF(2*g.rp)+' · Ø de tête '+stdF(2*g.ra)+' · Ø de pied '+stdF(2*g.rf)+' · Ø de base '+stdF(2*g.rb)+' · pas '+stdF(g.pitch)+' mm'+hint+pairInfo,
+    checks,ops,reach:g.ra};
+}
+function stdGearPair(st){
+  // Paire : deux pièces d'engrenage ordinaires (onglet Engrenages), posées au bon entraxe, dents logées
+  const P=gearPair({kind:st.kind,m:st.m,alpha:st.alpha,beta:st.beta,hand:st.hand,z1:st.z1,z2:st.z2,x1:st.x1,x2:st.x2,b:st.b,jn:st.jn});
+  const part=(O,kind,d)=>{
+    const s={kind,m:String(O.m),z:String(O.z),alpha:String(O.alpha),b:String(O.b),x:String(O.x||0),beta:String(O.beta||0),hand:O.hand};
+    if(O.j)s.j=String(O.j);
+    if(O.ks)s.ks=String(O.ks);
+    if(d>0)s.d=String(d);
+    return stdSpec('gear',s);
+  };
+  const sp1=part(P.o1,'ext',+st.d1||0),sp2=part(P.o2,P.kind,P.kind==='ext'?(+st.d2||0):0);
+  (sp1.checks||[]).concat(sp2.checks||[]).forEach(c=>{if(/Paroi|Roue plus étroite/.test(c.txt)&&c.lvl==='warn')P.checks.push(c);});
+  const lab='m'+stdF(P.g1.m)+' Z'+P.g1.z+'/'+P.g2.z+(P.g1.aDeg===20?'':' α'+stdF(P.g1.aDeg)+'°')+(P.g1.betaDeg?' β'+stdF(P.g1.betaDeg)+'°':'')+' × '+stdF(P.g1.b);
+  const nm={ext:'Paire ',int:'Pignon et couronne ',rack:'Pignon et crémaillère '}[P.kind]+lab;
+  const dist=P.kind==='rack'?'Hauteur de l’axe du pignon '+stdF(P.a)+' mm au-dessus de la ligne de référence':'Entraxe '+stdF(+P.a.toFixed(3))+' mm';
+  return {key:'GEARPAIR|'+[sp1.key,sp2.key].join('|'),norm:'ISO 53 / ISO 21771',desig:lab,name:nm,
+    info:dist+(P.ratio?' · rapport '+stdF(+P.ratio.toFixed(3)):'')+' · angle de fonctionnement '+stdF(+P.awDeg.toFixed(2))+'°'+(P.g1.betaDeg?' · pignon main '+(P.hand1==='L'?'gauche':'droite')+', '+(P.kind==='int'?'couronne':P.kind==='rack'?'crémaillère':'roue')+' main '+(P.hand2==='L'?'gauche':'droite'):''),
+    checks:P.checks,ops:[],pair:[{sp:sp1,fr:P.fr1,o:P.o1},{sp:sp2,fr:P.fr2,o:P.o2}],reach:P.reach,calc:P};
+}
 /* ── catégories de la fenêtre : champs (options selon l'état) et générateur ── */
 const STD_CATS=[
   {k:'iso',lab:'Vis ISO',fields:[
@@ -17819,7 +17908,41 @@ const STD_CATS=[
     {k:'len',lab:'Longueur (mm)',opts:st=>{const r=STD_ISO773.find(x=>x[2]+'x'+x[3]===st.size);
       return r?stdLens(STD_KEY_LV,r[6],r[7],true).map(v=>[String(v),stdF(v)]):[];},
       def:st=>{const r=STD_ISO773.find(x=>x[2]+'x'+x[3]===st.size);return r?String(stdLens(STD_KEY_LV,Math.max(r[6],4*r[2]),r[7],true)[0]||r[6]):'';}}],
-    gen:stdKey}
+    gen:stdKey},
+  // num : valeur libre tapée dans la fenêtre (bornée) ; opts = quelques cas de contrôle (tests), sug = valeurs proposées
+  // show : champ masqué sans objet pour ces réglages (il reprend alors sa valeur par défaut)
+  {k:'gear',lab:'Engrenages',fields:[
+    {k:'kind',lab:'Denture',opts:()=>[['ext','Extérieure (roue)'],['int','Intérieure (couronne)'],['rack','Crémaillère']]},
+    {k:'m',lab:'Module (mm)',num:{min:0.1,max:50,step:0.05},sug:()=>GEAR_MODULES,opts:()=>[['0.5','0,5'],['2','2'],['10','10']],def:()=>'2'},
+    {k:'z',lab:'Nombre de dents',num:{min:6,max:500,step:1,int:true},opts:st=>(st.kind==='int'?['24','60','200']:st.kind==='rack'?['6','30']:['6','20','60','200']).map(v=>[v,v]),def:()=>'20'},
+    {k:'alpha',lab:'Angle de pression',opts:()=>[['20','20° (usuel)'],['14.5','14,5°'],['25','25°']]},
+    {k:'beta',lab:'Angle d’hélice β (0 = denture droite)',num:{min:0,max:45,step:1},opts:()=>[['0','0'],['15','15']],def:()=>'0'},
+    {k:'hand',lab:'Sens de l’hélice',opts:st=>+st.beta>0?[['R','Main droite'],['L','Main gauche']]:[['R','— (pas d’hélice)']]},
+    {k:'x',lab:'Déport x (en modules, 0 = aucun)',num:{min:-1,max:2,step:0.05},opts:()=>[['-0.3','−0,3'],['0','0'],['0.2','0,2']],def:()=>'0',show:st=>st.kind!=='rack'},
+    {k:'b',lab:'Largeur (mm)',num:{min:0.1,max:2000,step:0.5},opts:()=>[['5','5'],['20','20'],['100','100']],def:()=>'20'},
+    {k:'H',lab:'Hauteur du corps sous les dents (mm, 0 = automatique)',num:{min:0,max:2000,step:0.5},opts:()=>[['0','0']],def:()=>'0',show:st=>st.kind==='rack'},
+    {k:'D',lab:'Ø extérieur de la couronne (mm, 0 = automatique)',num:{min:0,max:10000,step:0.5},opts:()=>[['0','0']],def:()=>'0',show:st=>st.kind==='int'},
+    {k:'d',lab:'Alésage Ø (mm, 0 = roue pleine)',num:{min:0,max:5000,step:0.5},opts:stdGearBoreOpts,def:()=>'0',show:st=>st.kind==='ext'},
+    {k:'kw',lab:'Rainure de clavette',show:st=>st.kind==='ext',opts:st=>{
+      const d=+st.d||0,r=stdIso773For(d),none=d>0?'Sans rainure':'— (pas d’alésage)';
+      return (r?[['iso','ISO 773 : largeur '+stdF(r[2])+', profondeur '+stdF(r[5])+' (clavette '+stdF(r[2])+'×'+stdF(r[3])+')']]:[]).concat([['none',none]]);
+    }}],
+    gen:stdGear},
+  {k:'gearPair',lab:'Paire d’engrenages',fields:[
+    {k:'kind',lab:'Le pignon engrène avec',opts:()=>[['ext','Une roue extérieure'],['int','Une couronne intérieure'],['rack','Une crémaillère']]},
+    {k:'m',lab:'Module (mm)',num:{min:0.1,max:50,step:0.05},sug:()=>GEAR_MODULES,opts:()=>[['2','2']],def:()=>'2'},
+    {k:'z1',lab:'Dents du pignon',num:{min:6,max:500,step:1,int:true},opts:()=>[['20','20']],def:()=>'20'},
+    {k:'z2',lab:'Dents de l’autre pièce',num:{min:6,max:500,step:1,int:true},opts:st=>st.kind==='int'?[['60','60']]:st.kind==='rack'?[['30','30']]:[['40','40']],def:()=>'40'},
+    {k:'alpha',lab:'Angle de pression',opts:()=>[['20','20° (usuel)'],['14.5','14,5°'],['25','25°']]},
+    {k:'beta',lab:'Angle d’hélice β (0 = denture droite)',num:{min:0,max:45,step:1},opts:()=>[['0','0'],['15','15']],def:()=>'0'},
+    {k:'hand',lab:'Sens d’hélice du pignon (l’autre pièce s’en déduit)',opts:st=>+st.beta>0?[['R','Main droite'],['L','Main gauche']]:[['R','— (pas d’hélice)']]},
+    {k:'x1',lab:'Déport du pignon (en modules)',num:{min:-1,max:2,step:0.05},opts:()=>[['0','0'],['0.3','0,3']],def:()=>'0'},
+    {k:'x2',lab:'Déport de l’autre pièce (en modules)',num:{min:-1,max:2,step:0.05},opts:()=>[['0','0']],def:()=>'0',show:st=>st.kind!=='rack'},
+    {k:'b',lab:'Largeur (mm)',num:{min:0.1,max:2000,step:0.5},opts:()=>[['20','20']],def:()=>'20'},
+    {k:'jn',lab:'Jeu entre flancs (mm, 0 = aucun)',num:{min:0,max:50,step:0.01},opts:()=>[['0','0'],['0.1','0,1']],def:()=>'0.1'},
+    {k:'d1',lab:'Alésage du pignon Ø (mm, 0 = plein)',num:{min:0,max:5000,step:0.5},opts:()=>[['0','0']],def:()=>'0'},
+    {k:'d2',lab:'Alésage de la roue Ø (mm, 0 = pleine)',num:{min:0,max:5000,step:0.5},opts:()=>[['0','0']],def:()=>'0',show:st=>st.kind==='ext'}],
+    gen:stdGearPair}
 ];
 function stdPinRows(t){
   return t==='iso8734'?STD_ISO8734:t==='iso2339'?STD_ISO2339:t==='iso8752'?STD_ISO8752:t==='dowel'?STD_ANSI_DOWEL:t==='spring'?STD_ANSI_SPRING:STD_ISO2338;
@@ -17829,6 +17952,15 @@ function stdNormState(cat,st){
   // Chaque champ garde sa valeur si elle reste proposée, sinon reprend sa valeur par défaut
   const C=stdCat(cat),o=Object.assign({},st||{});
   C.fields.forEach(f=>{
+    if(f.show&&!f.show(o))delete o[f.k]; // sans objet : valeur par défaut
+    if(f.num){
+      // valeur libre : bornée ; illisible ou absente, elle reprend sa valeur par défaut
+      let v=parseFloat(String(o[f.k]).replace(',','.'));
+      if(!isFinite(v))v=+f.def(o);
+      if(f.num.int)v=Math.round(v);
+      o[f.k]=String(Math.min(f.num.max,Math.max(f.num.min,v)));
+      return;
+    }
     const op=f.opts(o);
     if(!op.some(x=>x[0]===o[f.k])){const d=f.def?f.def(o):null;o[f.k]=op.some(x=>x[0]===d)?d:(op[0]?op[0][0]:'');}
   });
@@ -17880,7 +18012,7 @@ function stdDoc(sp){
   d.bodies=[{id:'b1',name:sp.name,c:null}];d.bodySeq=2;d.activeBody='b1';
   d.std={key:sp.key,norm:sp.norm,desig:sp.desig};
   if(sp.cat&&sp.st){d.std.cat=sp.cat;d.std.st=Object.assign({},sp.st);}
-  const F=(f)=>{f.id=uid(f.type==='revolve'?'rv':f.type==='xthread'?'th':'ex');f.visible=true;f.body='b1';d.features.push(f);return f;};
+  const F=(f)=>{f.id=uid(f.type==='revolve'?'rv':f.type==='xthread'?'th':f.type==='gear'?'gr':'ex');f.visible=true;f.body='b1';d.features.push(f);return f;};
   if(sp.prof){
     const s=stdSketch(d,'Profil','XZ',0);stdLoop(s,sp.prof);
     F({type:'revolve',name:'Révolution',sketchId:s.id,axis:{k:'sys',d:'Z'},angle:360,op:'add'});
@@ -17903,6 +18035,18 @@ function stdDoc(sp){
     }else if(o.k==='key'){
       const s=stdSketch(d,'Contour','XY',0);stdLoop(s,stdKeyOutline(o));
       F({type:'extrude',name:'Clavette',sketchId:s.id,distance:o.h,op:'add',mid:false,upto:null});
+    }else if(o.k==='gear'){
+      const fg=F({type:'gear',name:'Denture',m:o.m,z:o.z,alpha:o.alpha,b:o.b,x:o.x,beta:o.beta,hand:o.hand,op:'add'});
+      if(o.kind==='int'){fg.kind='int';fg.D=o.D;}
+      if(o.kind==='rack'){fg.kind='rack';fg.H=o.H;}
+      if(o.j)fg.j=o.j;
+      if(o.ks)fg.ks=o.ks;
+    }else if(o.k==='bore'){
+      // sous la roue, et débouchant au-dessus : la découpe ne part pas d'une face confondue
+      const s=stdSketch(d,'Alésage','XY',-1);
+      if(o.b)stdLoop(s,gearBoreLoop(o));
+      else s.entities.push({id:skNewEid(s),t:'circle',pc:addPoint(s,0,0),r:o.d/2});
+      F({type:'extrude',name:o.b?'Alésage et rainure':'Alésage',sketchId:s.id,distance:o.w+2,op:'cut',mid:false,upto:null});
     }
   });
   return d;
@@ -17930,13 +18074,29 @@ function stdInsert(sp){
   asmEnsure();
   if(asmMode!=='asm')asmEnter();
   const owner=asmActiveComp();if(!owner)return null;
-  let dx=0;try{const box=new THREE.Box3();asmSceneGet().getObjectByName('asmOcc').traverse(m=>{if(m.isMesh)box.expandByObject(m);});if(!box.isEmpty())dx=box.max.x+20;}catch(e){}
+  if(sp.pair)return stdInsertPair(sp,owner);
+  let dx=0;try{const box=new THREE.Box3();asmSceneGet().getObjectByName('asmOcc').traverse(m=>{if(m.isMesh)box.expandByObject(m);});if(!box.isEmpty())dx=box.max.x+20+(sp.reach||0);}catch(e){} // reach : rayon d'une grande pièce centrée sur son origine
   const r=stdAddOcc(sp,owner.id,{o:[dx,0,0],x:[1,0,0],y:[0,1,0],z:[0,0,1]});if(!r)return null;
   if(r.fresh){try{asmBuildSnapshots();}catch(e){}}
   asmSelId=r.occ.id;
   asmNotify();
   try{faceEl.textContent=(r.fresh?'Inséré « ':'Nouvelle occurrence « ')+r.occ.name+' » dans « '+owner.name+' ». Placez-la, ou alignez un point d’accroche.';}catch(e){}
   return r.occ;
+}
+function stdInsertPair(sp,owner){
+  // Les deux pièces au bon entraxe, à droite de ce qui est affiché ; un seul Ctrl+Z retire le tout
+  let dx=0;try{const box=new THREE.Box3();asmSceneGet().getObjectByName('asmOcc').traverse(m=>{if(m.isMesh)box.expandByObject(m);});if(!box.isEmpty())dx=box.max.x+20+(sp.reach||0);}catch(e){}
+  const n0=asmUndoStack.length,occs=[];
+  sp.pair.forEach(P=>{
+    const fr=Object.assign({},P.fr,{o:[P.fr.o[0]+dx,P.fr.o[1],P.fr.o[2]]}),r=stdAddOcc(P.sp,owner.id,fr);
+    if(r)occs.push(r.occ);
+  });
+  while(asmUndoStack.length>n0+1)asmUndoStack.pop();
+  try{asmBuildSnapshots();}catch(e){}
+  if(occs[0])asmSelId=occs[0].id;
+  asmNotify();
+  try{faceEl.textContent='« '+sp.name+' » insérée : dents logées, au bon entraxe. Les deux pièces restent libres : déplacez-les ensemble.';}catch(e){}
+  return occs[0]||null;
 }
 /* ── trous d'une pièce (faces exactes, 48-assemblage-accroches : asmSnapExtract) ──
    Entrée d'un trou = cercle d'une face plane qui est un bord INTÉRIEUR (la face déborde du
@@ -18222,7 +18382,9 @@ function stdHolePickAt(e){
   for(const hit of hits){
     const path=hit.object.parent.userData.path;
     if(path.length<n||!P.every((q,i)=>path[i]===q))continue; // hors du composant actif
-    const c=asmComp(asmPathComp(path));if(!c||(c.doc&&c.doc.std))continue; // une vis déjà posée : on regarde derrière
+    const c=asmComp(asmPathComp(path));
+    // une vis déjà posée : on regarde derrière. Exception : la rainure d'une roue dentée reçoit sa clavette
+    if(!c||(c.doc&&c.doc.std&&!(stdIsKey(sp)&&c.doc.std.cat==='gear')))continue;
     const Gs=asmSnapGeomOf(c);if(!Gs)continue;
     const inv=new THREE.Matrix4().copy(hit.object.matrixWorld).invert();
     const pl=hit.point.clone().applyMatrix4(inv),ld=rayc.ray.direction.clone().transformDirection(inv);
@@ -18275,7 +18437,14 @@ function stdPolyPts(pts){
   return out;
 }
 function stdSvg(sp){
-  const W=240,H=220,shapes=[],hid=[];
+  const W=240,H=220,shapes=[],hid=[],holes=[];
+  (sp.pair||[]).forEach(P=>{
+    const g=gearGeom(P.o),F=P.fr,mv=q=>[F.o[0]+q[0]*F.x[0]+q[1]*F.y[0],F.o[1]+q[0]*F.x[1]+q[1]*F.y[1]];
+    if(g.internal){
+      const C=[];for(let i=0;i<96;i++){const a=i/96*2*Math.PI;C.push(mv([g.D/2*Math.cos(a),g.D/2*Math.sin(a)]));}
+      shapes.push(C);holes.push(gearPolyline(g,0.05,6).map(mv));
+    }else shapes.unshift(gearPolyline(g,0.05,6).map(mv));
+  });
   if(sp.prof){
     const P=stdPolyPts(sp.prof);
     shapes.push(P.map(p=>[p[0],p[1]]),P.map(p=>[-p[0],p[1]]));
@@ -18284,6 +18453,19 @@ function stdSvg(sp){
       if(o.k==='slot'){const z0=o.z0||0;hid.push([[-o.w/2,z0],[-o.w/2,z0+o.L]],[[o.w/2,z0],[o.w/2,z0+o.L]]);}
     });
   }
+  (sp.ops||[]).forEach(o=>{ // vue de dessus
+    if(o.k==='gear'){
+      const g=gearGeom(o);
+      if(g.internal){
+        const P=[];for(let i=0;i<96;i++){const a=i/96*2*Math.PI;P.push([g.D/2*Math.cos(a),g.D/2*Math.sin(a)]);}
+        shapes.push(P);holes.push(gearPolyline(g,0.05,6));
+      }else shapes.push(gearPolyline(g,0.05,6));
+    }
+    if(o.k==='bore'){
+      if(o.b)holes.push(stdPolyPts(gearBoreLoop(o)));
+      else{const P=[];for(let i=0;i<48;i++){const a=i/48*2*Math.PI;P.push([o.d/2*Math.cos(a),o.d/2*Math.sin(a)]);}holes.push(P);}
+    }
+  });
   (sp.ops||[]).forEach(o=>{
     if(o.k!=='key')return;
     const P=stdPolyPts(stdKeyOutline(o)),gap=o.b*0.8;
@@ -18297,6 +18479,7 @@ function stdSvg(sp){
   const path=S=>S.map((p,i)=>(i?'L':'M')+X(p[0])+' '+Y(p[1])).join(' ');
   let s='<svg viewBox="0 0 '+W+' '+H+'" width="'+W+'" height="'+H+'" xmlns="http://www.w3.org/2000/svg">';
   shapes.forEach(S=>{s+='<path d="'+path(S)+' Z" fill="var(--stdFill)" stroke="var(--text)" stroke-width="1.2" stroke-linejoin="round"/>';});
+  holes.forEach(S=>{s+='<path d="'+path(S)+' Z" fill="var(--bg)" stroke="var(--text)" stroke-width="1.2" stroke-linejoin="round"/>';});
   if(sp.prof)s+='<path d="M'+X(0)+' 4 V'+(H-4)+'" stroke="var(--muted)" stroke-width="0.8" stroke-dasharray="10 3 2 3"/>';
   hid.forEach(S=>{s+='<path d="'+path(S)+'" fill="none" stroke="var(--text)" stroke-width="0.9" stroke-dasharray="4 3" opacity=".75"/>';});
   return s+'</svg>';
@@ -18316,10 +18499,12 @@ function stdCss(){
     '#stdDlg .stdBody{display:flex;gap:14px;padding:12px 14px;border-top:1px solid var(--border);flex-wrap:wrap}',
     '#stdDlg .stdForm{flex:1 1 260px;display:flex;flex-direction:column;gap:8px;min-width:0}',
     '#stdDlg .stdForm label{display:flex;flex-direction:column;align-items:stretch;text-align:left;gap:3px;margin:0;font-size:.75rem;color:var(--muted)}',
-    '#stdDlg .stdForm select{width:100%;max-width:none;margin:0;font-size:.85rem;color:var(--text)}',
+    '#stdDlg .stdForm select,#stdDlg .stdForm input{width:100%;max-width:none;margin:0;font-size:.85rem;color:var(--text);box-sizing:border-box}',
     '#stdDlg .stdPrev{flex:0 0 240px;display:flex;align-items:center;justify-content:center;border:1px solid var(--border);border-radius:10px;min-height:220px}',
     '#stdDlg .stdName{font-weight:600;font-size:.9rem;color:var(--text);text-align:left}',
     '#stdDlg .stdInfo{font-size:.75rem;color:var(--muted);line-height:1.4;text-align:left}',
+    '#stdDlg .stdChk{font-size:.75rem;line-height:1.35;text-align:left;color:#30d158}',
+    '#stdDlg .stdChk.warn{color:#ff9f0a}#stdDlg .stdChk.err{color:#ff453a}',
     '#stdDlg .stdFoot{display:flex;gap:8px;justify-content:flex-end;align-items:center;padding:10px 14px;border-top:1px solid var(--border)}',
     '#stdDlg .stdFoot span{margin-right:auto;font-size:.75rem;color:var(--muted)}'
   ].join('\n');
@@ -18336,6 +18521,7 @@ function stdDlg(edit){
     if(!S){try{faceEl.textContent='Ce composant n’est pas une pièce normalisée (ou ses réglages sont illisibles).';}catch(e){}return;}
     stdUi.cat=S.cat;stdUi.st=stdUi.st||{};stdUi.st[S.cat]=S.st;
   }
+  else if(stdUi.st&&stdUi.st.gear){delete stdUi.st.gear.j;delete stdUi.st.gear.ks;}
   w=document.createElement('div');w.id='stdDlg';
   w.innerHTML='<div class="stdHead"><b>🔩 Composants normalisés</b><button title="Fermer (Échap)">✕</button></div>'+
     '<div class="stdTabs"></div><div class="stdBody"><div class="stdForm"></div><div class="stdPrev"></div></div>'+
@@ -18365,18 +18551,34 @@ function stdDlg(edit){
     }
     const C=stdCat(stdUi.cat);
     stdUi.st[C.k]=stdNormState(C.k,stdUi.st[C.k]);const st=stdUi.st[C.k];
+    // le formulaire est refait à chaque changement : le champ où l'on tabule garde le curseur
+    const focusK=form.contains(document.activeElement)?document.activeElement.dataset.k:null;
     tabs.innerHTML='';
     STD_CATS.forEach(c=>{const b=document.createElement('button');b.textContent=c.lab;if(c.k===C.k)b.className='on';
       b.onclick=()=>{stdUi.cat=c.k;save();draw();};tabs.appendChild(b);});
     form.innerHTML='';
     C.fields.forEach(f=>{
+      if(f.show&&!f.show(st))return;
       const l=document.createElement('label');l.textContent=f.lab;
+      if(f.num){
+        const i=document.createElement('input');i.type='number';i.dataset.k=f.k;
+        i.min=f.num.min;i.max=f.num.max;i.step=f.num.step;i.value=st[f.k];
+        if(f.sug){
+          const dl=document.createElement('datalist');dl.id='stdSug_'+f.k;
+          f.sug().forEach(v=>{const o=document.createElement('option');o.value=v;dl.appendChild(o);});
+          i.setAttribute('list',dl.id);l.appendChild(dl);
+        }
+        i.onchange=()=>{st[f.k]=i.value;save();draw();};
+        l.appendChild(i);form.appendChild(l);
+        return;
+      }
       const s=document.createElement('select');s.dataset.k=f.k;
       f.opts(st).forEach(([v,t])=>{const o=document.createElement('option');o.value=v;o.textContent=t;if(v===st[f.k])o.selected=true;s.appendChild(o);});
       s.onchange=()=>{st[f.k]=s.value;save();draw();};
       l.appendChild(s);form.appendChild(l);
     });
-    let sp=null;try{sp=stdSpec(C.k,st);}catch(e){sp=null;}
+    if(focusK){const q=form.querySelector('[data-k="'+focusK+'"]');if(q)q.focus();}
+    let sp=null,spErr='';try{sp=stdSpec(C.k,st);}catch(e){sp=null;spErr=String(e.message||e);}
     const nm=document.createElement('div');nm.className='stdName';nm.textContent=sp?sp.name:'—';form.appendChild(nm);
     if(sp&&stdIsKey(sp)&&!edit){
       // clavette : par quel point elle se pose « Dans une rainure »
@@ -18395,6 +18597,12 @@ function stdDlg(edit){
       l.appendChild(s);form.appendChild(l);
     }
     const inf=document.createElement('div');inf.className='stdInfo';inf.textContent=sp?(sp.norm+' · '+sp.info):'';form.appendChild(inf);
+    // engrenages : contrôles de la pièce (alertes sans blocage), ou motif du refus
+    const chk=(cls,txt)=>{const d=document.createElement('div');d.className='stdChk'+(cls?' '+cls:'');d.textContent=txt;form.appendChild(d);};
+    if(sp&&sp.checks){
+      sp.checks.forEach(c=>chk(c.lvl==='ok'?'':'warn',(c.lvl==='ok'?'✓ ':'⚠ ')+c.txt));
+      const n=document.createElement('div');n.className='stdInfo';n.textContent='Contrôle de la géométrie seulement, pas de la résistance.';form.appendChild(n);
+    }else if(!sp&&spErr)chk('err','⛔ '+spErr);
     prev.innerHTML=sp?stdSvg(sp):'';
     if(edit){bHole.disabled=bIns.disabled=!sp;bHole.onclick=()=>apply(sp,true);bIns.onclick=()=>apply(sp,false);return;}
     bIns.disabled=!sp;bHole.disabled=!sp||(!sp.seat&&!stdIsKey(sp));
@@ -18404,7 +18612,7 @@ function stdDlg(edit){
     bIns.onclick=()=>{
       if(!sp)return;
       const o=stdInsert(sp);
-      msg.textContent=o?'✓ '+o.name+' inséré':'Insertion impossible ici.';
+      msg.textContent=!o?'Insertion impossible ici.':sp.pair?'✓ '+sp.name+' : les deux pièces sont posées':'✓ '+o.name+' inséré';
     };
   };
   // déplaçable par l'en-tête
@@ -18622,6 +18830,402 @@ function asmBalloonAnchor(cid){
   const c=asmComp(cid);let p=[0,0,0];
   try{if(c._snap&&c._snap.items.length){const b=asmSnapBox(c._snap),m=b.getCenter(new THREE.Vector3());p=[m.x,m.y,m.z];}}catch(e){}
   return asmApply(I.F,p);
+}
+
+/* ═══════════════ 48-engrenages-calcul.js — engrenages calcul ═══════════════ */
+/* ---------- engrenages : calcul de la denture (plan docs/plan-engrenages-niveau-1.md) ----------
+   Calcul pur, sans noyau ni interface : cotes (ISO 21771) et contour d'une roue extérieure droite
+   telle que la taille un outil crémaillère ISO 53 (saillie de dent 1 m, creux 1,25 m, rayon de
+   tête d'outil 0,38 m), vu de dessus, dents dans le sens direct.
+
+   Hélicoïdal : m, α et x restent normaux, comme sur la fraise-mère. Tout le contour se calcule dans
+   la section droite de la roue (coupe perpendiculaire à l'axe), où l'outil paraît étiré de 1/cos β
+   dans le sens tangentiel : module mt = m/cos β, angle αt (tan αt = tan α/cos β), et son arrondi
+   devient une ellipse. Cette section tourne ensuite le long de l'axe (76-engrenage).
+
+   Flanc = vraie développante du cercle de base. Point de roulement φ :
+     P(φ) = rb·(cos φ + φ·sin φ, sin φ − φ·cos φ)     P'(φ) = rb·φ·(cos φ, sin φ)
+   Pied = enveloppe de l'arrondi de tête de l'outil (loi d'engrènement : au contact, la normale de
+   l'outil passe par le point de roulement). Un point de l'arrondi, de paramètre γ (l'angle de la
+   normale dans le plan normal de l'outil), en coordonnées outil (h radial depuis le primitif,
+   Y tangentiel dans la section droite) :
+     Y0 = Y + h·cos β·cot γ      θ = −Y0/rp      P = R(−θ)·(rp + h, Y − Y0)
+   Si l'outil entame le flanc (φF < 0 : sous-coupe), le pied coupe la développante : le contour
+   passe de l'un à l'autre à leur intersection. Sinon ils se raccordent, tangents, en φF.
+
+   Denture intérieure (couronne) : le CREUX d'une dent est la dent d'une roue extérieure de même Z, de
+   déport opposé (x > 0 épaissit la dent de la couronne, DIN 3960). Mêmes développantes (gearFlankAt),
+   une tête vers l'axe, un pied vers l'extérieur raccordé par un simple arc : la vraie forme dépend de
+   l'outil-pignon, et ce pied ne travaille pas. Sous le cercle de base il n'y a plus de développante :
+   la tête s'y arrête (dent raccourcie, signalée). Un creux est centré sur +X.
+
+   Chaque courbe va au noyau en B-spline cubique C1 construite sur les valeurs ET les tangentes
+   (Hermite à pas constant, nœuds doubles) : une seule arête par courbe, écart bien sous le micron
+   (tests/test_engrenages.cjs, qui compare le contour à une simulation indépendante du taillage). */
+// Modules proposés dans la fenêtre (ISO 54 à partir de 1) ; tout autre module reste permis.
+const GEAR_MODULES=[0.5,0.6,0.8,1,1.25,1.5,2,2.5,3,4,5,6,8,10,12,16,20,25];
+const GEAR_FLANK_SEG=6;   // morceaux de B-spline par flanc
+const GEAR_ROOT_SEG=32;   // morceaux de B-spline par pied : sa courbure varie beaucoup (écart < 0,0001 m ; 8 morceaux : 0,003 m)
+const GEAR_DENSE=40;      // points exacts par courbe : aperçu, aire de référence
+const GEAR_PHI_MIN=0.01;  // la développante part du cercle de base avec une tangente nulle : on la prend juste au-dessus
+function gearInv(a){return Math.tan(a)-a;}
+function gearRackGeom(o){
+  // Crémaillère : dents vers +Y, le long de X, centrée sur l'origine, largeur le long de Z, ligne de référence en y = 0.
+  // Dans le plan normal, c'est le profil ISO 53 (saillie 1 m, creux 1,25 m, arrondi 0,38 m), à flancs droits.
+  // Inclinée (β) : ce profil étiré de 1/cos β selon X, poussé selon X en montant. Main droite : x recule en montant
+  // (vue dents vers soi, les dents montent vers la droite, comme sur une roue main droite).
+  const m=+o.m,z=Math.round(+o.z),aDeg=+o.alpha,b=+o.b,betaDeg=+o.beta||0,hand=o.hand==='L'?'L':'R',js=+o.j||0;
+  if(!(m>0))throw new Error('module invalide');
+  if(!(z>=1))throw new Error('il faut au moins une dent');
+  if(!(aDeg>0&&aDeg<38))throw new Error('angle de pression invalide');
+  if(!(b>0))throw new Error('largeur invalide');
+  if(!(betaDeg>=0&&betaDeg<=45))throw new Error('angle d’hélice invalide');
+  const a=aDeg*Math.PI/180,ca=Math.cos(a),ta=Math.tan(a),beta=betaDeg*Math.PI/180,cb=Math.cos(beta),tb=Math.tan(beta);
+  const rho=m*Math.min(0.38,(Math.PI/4-1.25*ta)/(1/ca-ta)),dC=1.25*m-rho,H=+o.H>0?+o.H:3*m,uTip=Math.PI*m/4-m*ta-js/2;
+  if(!(uTip>0))throw new Error('jeu trop grand : la dent n’a plus de sommet');
+  return {rack:true,m,z,aDeg,a,b,x:0,betaDeg,beta,hand,cb,at:betaDeg?Math.atan(ta/cb):a,mt:m/cb,H,ya:m,yf:-1.25*m,yb:-1.25*m-H,
+    pitch:Math.PI*m,pt:Math.PI*m/cb,L:z*Math.PI*m/cb,rho,dC,uC:Math.PI*m/4-js/2+dC*ta+rho/ca,uTip,j:js,thick:Math.PI*m/2-js,undercut:false,twist:0,
+    shift:(hand==='L'?1:-1)*b*tb,overlap:b*Math.sin(beta)/(Math.PI*m)};
+}
+function gearRackOutline(g,extra){
+  // Contour fermé de la section en z = 0, sens direct : {k:'ln',a,b} et {k:'bs',…}. Coupé à mi-creux aux deux bouts :
+  // la longueur vaut exactement z pas. extra : dents de plus de chaque côté (balayage oblique, recoupé ensuite).
+  const k=extra||0,pm=g.pitch,m=g.m,ta=Math.tan(g.a),sa=Math.sin(g.a),ca=Math.cos(g.a),X=u=>u/g.cb,out=[];
+  const uEnd=(g.z/2+k)*pm,xr=X(uEnd),xl=-xr,uTip=g.uTip,uT=g.uC-g.rho*ca,yT=-(g.dC+g.rho*sa);
+  let cur=[xl,g.yb];
+  const to=q=>{if(Math.hypot(q[0]-cur[0],q[1]-cur[1])>1e-9)out.push({k:'ln',a:cur,b:q});cur=q;};
+  const t0=-Math.PI/2,t1=g.a-Math.PI,dt=t1-t0;
+  const F=gearHermite(s=>{const t=t0+dt*s;return {p:[X(g.uC+g.rho*Math.cos(t)),-g.dC+g.rho*Math.sin(t)],d:[-X(g.rho*Math.sin(t))*dt,g.rho*Math.cos(t)*dt]};},0,1,4,GEAR_DENSE);
+  const right=c=>({k:'bs',poles:F.poles.map(q=>[q[0]+c,q[1]]),knots:F.knots,mults:F.mults,pts:F.pts.map(q=>[q[0]+c,q[1]])});
+  const left=c=>({k:'bs',poles:F.poles.slice().reverse().map(q=>[c-q[0],q[1]]),knots:F.knots,mults:F.mults,pts:F.pts.slice().reverse().map(q=>[c-q[0],q[1]])});
+  to([xr,g.yb]);to([xr,g.yf]);
+  for(let i=g.z-1+k;i>=-k;i--){
+    const u=(i-g.z/2+0.5)*pm,c=X(u);
+    to([X(u+g.uC),g.yf]);out.push(right(c));cur=[X(u+uT),yT];
+    to([X(u+uTip),g.ya]);to([X(u-uTip),g.ya]);to([X(u-uT),yT]);
+    out.push(left(c));cur=[X(u-g.uC),g.yf];
+  }
+  to([xl,g.yf]);to([xl,g.yb]);
+  return out;
+}
+function gearGeom(o){
+  if(o.kind==='rack')return gearRackGeom(o);
+  // o = {m, z, alpha (degrés), b (largeur), x (déport, en modules), beta (degrés, 0 = droite), hand ('R' main droite, 'L'),
+  //      kind ('int' : couronne, sinon extérieure), D (Ø extérieur de couronne, 0 = automatique),
+  //      j (amincissement de la dent sur le primitif, plan normal), ks (raccourcissement de tête, en modules) : réglés par la paire} → cotes de la roue
+  const m=+o.m,z=Math.round(+o.z),aDeg=+o.alpha,b=+o.b,x=+o.x||0,betaDeg=+o.beta||0,hand=o.hand==='L'?'L':'R',js=+o.j||0,ks=+o.ks||0;
+  if(!(m>0))throw new Error('module invalide');
+  if(!(z>=6))throw new Error('il faut au moins 6 dents');
+  if(!(aDeg>0&&aDeg<45))throw new Error('angle de pression invalide');
+  if(!(b>0))throw new Error('largeur invalide');
+  if(!(betaDeg>=0&&betaDeg<=45))throw new Error('angle d’hélice invalide');
+  const a=aDeg*Math.PI/180,ca=Math.cos(a),sa=Math.sin(a),ta=Math.tan(a);
+  const beta=betaDeg*Math.PI/180,cb=Math.cos(beta),tb=Math.tan(beta);
+  const at=betaDeg?Math.atan(ta/cb):a,mt=m/cb; // section droite : angle et module apparents
+  const twist=(hand==='L'?-1:1)*b*tb/(mt*z/2); // rotation de la section sur toute la largeur (main droite : sens direct en montant)
+  const overlap=b*Math.sin(beta)/(Math.PI*m);  // recouvrement ε_β
+  if(o.kind==='int'){
+    const rp=mt*z/2,rb=rp*Math.cos(at),rf=rp+m*(1.25-x),rTip=rp-m*(1+x-ks),rMin=rb*Math.hypot(1,GEAR_PHI_MIN),ra=Math.max(rTip,rMin);
+    if(!(rf>ra))throw new Error('déport trop grand : il ne reste plus de flanc');
+    const psiB=Math.PI/(2*z)+gearInv(at)-2*x*ta/z+js/(2*cb*rp); // demi-largeur angulaire du CREUX, au cercle de base
+    if(!(psiB-gearInv(Math.acos(rb/rf))>0))throw new Error('creux en pointe : le fond de dent n’a plus de largeur, augmentez le déport');
+    const psiTip=Math.PI/z-(psiB-gearInv(Math.acos(rb/ra))); // demi-épaisseur angulaire de la dent à sa tête
+    if(!(psiTip>0))throw new Error('dent en pointe : son sommet n’a plus de largeur, augmentez le déport');
+    const D=+o.D>0?+o.D:Math.ceil(2*(rf+3*m));
+    if(!(D>2*rf))throw new Error('Ø extérieur trop petit : il atteint le pied de dent (Ø '+String(+(2*rf).toFixed(2)).replace('.',',')+')');
+    return {internal:true,j:js,ks,m,z,aDeg,a,b,x,betaDeg,beta,hand,cb,at,mt,rp,rb,ra,rf,D,psiB,psiTip,tipCut:rTip<rMin,xMaxFull:(rp-rb)/m-1,
+      pitch:Math.PI*m,pitchB:Math.PI*mt*Math.cos(at),thick:m*(Math.PI/2+2*x*ta)-js,space:m*(Math.PI/2-2*x*ta)+js,
+      rho:0.38*m,undercut:false,tipThick:2*psiTip*ra*Math.cos(Math.atan(ra/rp*tb)),twist,overlap};
+  }
+  const rp=mt*z/2,rb=rp*Math.cos(at),ra=rp+m*(1+x-ks),rf=rp-m*(1.25-x);
+  if(!(rf>0))throw new Error('déport trop négatif : le cercle de pied disparaît');
+  // demi-épaisseur angulaire de la dent, au cercle de base
+  const psiB=Math.PI/(2*z)+gearInv(at)+2*x*ta/z-js/(2*cb*rp);
+  const aTip=Math.acos(Math.min(1,rb/ra)),psiTip=psiB-gearInv(aTip);
+  if(!(psiTip>0))throw new Error('dent en pointe : son sommet n’a plus de largeur, réduisez le déport');
+  // outil : à fort angle de pression, l'arrondi 0,38 m ne tient plus sur la tête d'outil (tête toute ronde)
+  const rho=m*Math.min(0.38,(Math.PI/4-1.25*ta)/(1/ca-ta));
+  const dC=1.25*m-rho,yC=(-Math.PI*m/4+js/2-dC*ta-rho/ca)/cb,dT=dC+rho*sa,st=Math.sin(at);
+  const phiF=Math.tan(at)-(dT-x*m)/(rb*st); // roulement où le flanc droit de l'outil cesse : < 0 = sous-coupe
+  return {j:js,ks,m,z,aDeg,a,b,x,betaDeg,beta,hand,cb,at,mt,rp,rb,ra,rf,psiB,psiTip,pitch:Math.PI*m,pitchB:Math.PI*mt*Math.cos(at),
+    thick:m*(Math.PI/2+2*x*ta)-js,rho,dC,yC,phiF,undercut:phiF<0,
+    xMin:dT/m-z*st*st/(2*cb),
+    tipThick:2*psiTip*ra*Math.cos(Math.atan(ra/rp*tb)), // mesurée perpendiculairement à la dent, à son hélice de tête
+    twist,overlap};
+}
+function gearHermite(fn,t0,t1,n,dense){
+  // fn(t) → {p, d (dérivée)} : B-spline cubique C1 de t0 à t1 → {poles, knots, mults, pts}
+  const h=(t1-t0)/n,poles=[],knots=[],mults=[],pts=[];
+  for(let i=0;i<=n;i++){
+    const t=t0+i*h,P=fn(t);
+    knots.push(t);mults.push(i===0||i===n?4:2);
+    if(i===0)poles.push(P.p);
+    if(i>0)poles.push([P.p[0]-P.d[0]*h/3,P.p[1]-P.d[1]*h/3]);
+    if(i<n)poles.push([P.p[0]+P.d[0]*h/3,P.p[1]+P.d[1]*h/3]);
+    if(i===n)poles.push(P.p);
+  }
+  for(let i=0;i<=dense;i++)pts.push(fn(t0+(t1-t0)*i/dense).p);
+  return {poles,knots,mults,pts};
+}
+function gearFlankAt(g,phi){
+  // point et tangente du flanc BAS de la dent d'axe +X (roulement φ)
+  const c=Math.cos(phi),s=Math.sin(phi),C=Math.cos(-g.psiB),S=Math.sin(-g.psiB);
+  const rot=q=>[q[0]*C-q[1]*S,q[0]*S+q[1]*C];
+  return {p:rot([g.rb*(c+phi*s),g.rb*(s-phi*c)]),d:rot([g.rb*phi*c,g.rb*phi*s])};
+}
+function gearRootAt(g,gam){
+  // point du pied BAS : arrondi de l'outil, paramètre γ (π/2 : fond de dent ; α : fin d'arrondi)
+  const qh=g.x*g.m-g.dC-g.rho*Math.sin(gam),qy=g.yC+g.rho*Math.cos(gam)/g.cb;
+  const y0=qy+qh*g.cb/Math.tan(gam),th=-y0/g.rp,X=g.rp+qh,Y=qy-y0,c=Math.cos(th),s=Math.sin(th);
+  return [X*c+Y*s,-X*s+Y*c];
+}
+function gearCrossing(g){
+  // Sous-coupe : angle γ où le pied coupe la développante, en montant depuis le fond de dent
+  const flankAng=r=>-g.psiB+gearInv(Math.acos(g.rb/r));
+  const rMin=g.rb*Math.hypot(1,GEAR_PHI_MIN);
+  const D=gam=>{const q=gearRootAt(g,gam),r=Math.hypot(q[0],q[1]);return r<rMin?null:Math.atan2(q[1],q[0])-flankAng(r);};
+  const N=600,g0=Math.PI/2,g1=g.a;
+  let prev=g0;
+  for(let i=1;i<=N;i++){
+    const gam=g0+(g1-g0)*i/N,d=D(gam);
+    if(d!==null&&d<=0){
+      let lo=prev,hi=gam; // lo peut être sous le cercle de base (D nul) : il reste du côté « avant le croisement »
+      for(let k=0;k<60;k++){const mid=(lo+hi)/2,v=D(mid);if(v!==null&&v<=0)hi=mid;else lo=mid;}
+      return hi;
+    }
+    prev=gam;
+  }
+  // φF tout juste nul : le pied s'arrête sur le cercle de base, là où la développante commence (effleurement)
+  const qE=gearRootAt(g,g1),S=gearFlankAt(g,GEAR_PHI_MIN).p;
+  return Math.hypot(qE[0]-S[0],qE[1]-S[1])<1e-3*g.m?g1:null;
+}
+function gearProfileInt(g){
+  // Couronne : flanc et arc de pied du côté BAS du creux d'axe +X, jointifs, de la tête vers le fond.
+  // Cercle de rayon ρ dans le creux, tangent au flanc et au cercle de pied. Trop large pour le creux : on le réduit.
+  const phi0=Math.sqrt((g.ra/g.rb)*(g.ra/g.rb)-1),phiMax=Math.sqrt((g.rf/g.rb)*(g.rf/g.rb)-1);
+  const centre=(phi,rho)=>{ // centre du cercle : à ρ du flanc, côté creux (normale à gauche en montant)
+    const F=gearFlankAt(g,phi),L=Math.hypot(F.d[0],F.d[1]);
+    return [F.p[0]-rho*F.d[1]/L,F.p[1]+rho*F.d[0]/L];
+  };
+  let rho=g.rho,phiT=null,C=null;
+  for(let k=0;k<40;k++,rho*=0.85){
+    let lo=phi0,hi=phiMax;
+    const ecart=phi=>{const c=centre(phi,rho);return Math.hypot(c[0],c[1])-(g.rf-rho);};
+    if(ecart(lo)<0&&ecart(hi)>0){
+      for(let i=0;i<70;i++){const mid=(lo+hi)/2;if(ecart(mid)<0)lo=mid;else hi=mid;}
+      const c=centre(hi,rho);
+      if(c[1]<-1e-4*g.m){phiT=hi;C=c;break;} // le centre reste du côté bas : il reste un fond de dent entre les deux arcs
+    }
+  }
+  if(C===null)throw new Error('creux trop étroit : le pied de dent ne se raccorde pas');
+  const flank=gearHermite(phi=>gearFlankAt(g,phi),phi0,phiT,GEAR_FLANK_SEG,GEAR_DENSE);
+  const T=flank.poles[flank.poles.length-1],k=g.rf/Math.hypot(C[0],C[1]),R=[C[0]*k,C[1]*k];
+  const a0=Math.atan2(T[1]-C[1],T[0]-C[0]);let a1=Math.atan2(R[1]-C[1],R[0]-C[0]);
+  while(a1<=a0)a1+=2*Math.PI; // on tourne à gauche, du flanc vers le fond
+  const fillet=gearHermite(t=>({p:[C[0]+rho*Math.cos(t),C[1]+rho*Math.sin(t)],d:[-rho*Math.sin(t),rho*Math.cos(t)]}),a0,a1,4,GEAR_DENSE);
+  fillet.poles[0]=T;fillet.pts[0]=T;fillet.poles[fillet.poles.length-1]=R;fillet.pts[fillet.pts.length-1]=R;
+  return {flank,fillet,rho};
+}
+function gearProfile(g){
+  // Pied et flanc du côté BAS de la dent d'axe +X, jointifs, du fond de dent vers la tête
+  if(g.internal)return gearProfileInt(g);
+  const phi1=Math.sqrt((g.ra/g.rb)*(g.ra/g.rb)-1);
+  let gamE=g.a,phi0=g.phiF;
+  if(g.phiF<GEAR_PHI_MIN){
+    gamE=gearCrossing(g);
+    if(gamE===null)throw new Error('sous-coupe : le pied de dent ne rejoint pas le flanc');
+    const q=gearRootAt(g,gamE);
+    phi0=Math.max(GEAR_PHI_MIN,Math.sqrt(Math.max(0,(q[0]*q[0]+q[1]*q[1])/(g.rb*g.rb)-1)));
+  }
+  if(!(phi0<phi1-1e-6))throw new Error('il ne reste plus de flanc : sous-coupe totale ou déport excessif');
+  const flank=gearHermite(phi=>gearFlankAt(g,phi),phi0,phi1,GEAR_FLANK_SEG,GEAR_DENSE);
+  const G=t=>Math.PI/2+(gamE-Math.PI/2)*t,e=1e-5;
+  const root=gearHermite(t=>{
+    const a=gearRootAt(g,G(t-e)),b=gearRootAt(g,G(t+e));
+    return {p:gearRootAt(g,G(t)),d:[(b[0]-a[0])/(2*e),(b[1]-a[1])/(2*e)]};
+  },0,1,GEAR_ROOT_SEG,GEAR_DENSE);
+  // bouts confondus avec leurs voisins exacts : flanc (ici) et cercle de pied (angle yC/rp)
+  const S=flank.poles[0],E=root.poles.length-1;
+  root.poles[E]=S;root.pts[root.pts.length-1]=S;
+  return {flank,root};
+}
+function gearOutline(g){
+  // Contour fermé de la roue, sens direct, sous forme de segments jointifs :
+  //   {k:'arc',r,a0,a1 (a1>a0)}  {k:'bs',poles,knots,mults,pts}
+  if(g.rack)return gearRackOutline(g);
+  const P=gearProfile(g),rot=(q,c)=>{const C=Math.cos(c),S=Math.sin(c);return [q[0]*C-q[1]*S,q[0]*S+q[1]*C];};
+  const up=q=>[q[0],-q[1]]; // miroir : côté haut de la dent, parcouru à l'envers
+  const fwd=(C,c)=>({k:'bs',poles:C.poles.map(q=>rot(q,c)),knots:C.knots,mults:C.mults,pts:C.pts.map(q=>rot(q,c))});
+  const rev=(C,c)=>({k:'bs',poles:C.poles.slice().reverse().map(q=>rot(up(q),c)),
+    knots:C.knots.map((v,i)=>C.knots[0]+C.knots[C.knots.length-1]-C.knots[C.knots.length-1-i]),mults:C.mults,
+    pts:C.pts.slice().reverse().map(q=>rot(up(q),c))});
+  if(g.internal){
+    // bord intérieur de la couronne, parcouru dans le sens direct : flanc, arc, fond, arc, flanc, tête
+    const S=P.flank.poles[0],R=P.fillet.poles[P.fillet.poles.length-1],aS=Math.atan2(S[1],S[0]),aR=Math.atan2(R[1],R[0]),step=2*Math.PI/g.z,out=[];
+    for(let i=0;i<g.z;i++){
+      const c=i*step;
+      out.push(fwd(P.flank,c),fwd(P.fillet,c));
+      out.push({k:'arc',r:g.rf,a0:c+aR,a1:c-aR});
+      out.push(rev(P.fillet,c),rev(P.flank,c));
+      out.push({k:'arc',r:g.ra,a0:c-aS,a1:c+step+aS});
+    }
+    return out;
+  }
+  const Se=P.flank.pts[P.flank.pts.length-1],angE=Math.atan2(Se[1],Se[0]);
+  const R0=P.root.poles[0],ang0=Math.atan2(R0[1],R0[0]),step=2*Math.PI/g.z,out=[];
+  for(let i=0;i<g.z;i++){
+    const c=i*step;
+    out.push(fwd(P.root,c),fwd(P.flank,c));
+    out.push({k:'arc',r:g.ra,a0:c+angE,a1:c-angE});
+    out.push(rev(P.flank,c),rev(P.root,c));
+    // fond de dent : absent quand l'outil a une tête toute ronde (les deux pieds se touchent)
+    if(step+2*ang0>1e-7)out.push({k:'arc',r:g.rf,a0:c-ang0,a1:c+step+ang0});
+  }
+  return out;
+}
+function gearPolyline(g,arcStep,every){
+  // Contour en polyligne : aperçu de la fenêtre (every : un point de courbe sur n), aire de référence des tests
+  const out=[],da=arcStep||0.02,k=every||1;
+  gearOutline(g).forEach(s=>{
+    if(s.k==='bs'){for(let i=0;i<s.pts.length-1;i+=k)out.push(s.pts[i]);}
+    else if(s.k==='ln')out.push(s.a);
+    else{const n=Math.max(1,Math.ceil((s.a1-s.a0)/da));for(let i=0;i<n;i++){const t=s.a0+(s.a1-s.a0)*i/n;out.push([s.r*Math.cos(t),s.r*Math.sin(t)]);}}
+  });
+  return out;
+}
+function gearBoreLoop(o){
+  // Alésage Ø o.d et rainure de moyeu (largeur o.b, fond à d/2 + o.t2 de l'axe, ISO 773) du côté +X, sous une
+  // dent, là où la paroi est la plus épaisse. Sommets de stdLoop : grand arc de bord à bord, puis les 3 côtés.
+  const r=o.d/2,h=o.b/2,xe=Math.sqrt(r*r-h*h),xf=r+o.t2;
+  return [[xe,h],[xe,-h,{c:[0,0],ccw:true}],[xf,-h],[xf,h]];
+}
+function gearBoreChecks(g,o){
+  // Refuse un alésage qui atteint le pied de dent ; sinon {lvl, txt} comme gearChecks. Repère d'atelier : 2 modules de paroi.
+  const f=v=>String(+v.toFixed(2)).replace('.',','),wall=g.rf-(o.d/2+(o.t2||0)),out=[];
+  if(o.b&&!(o.d>o.b))throw new Error('alésage plus petit que sa rainure');
+  if(!(wall>0))throw new Error('alésage trop grand : '+(o.b?'sa rainure atteint':'il atteint')+' le pied de dent');
+  const lab=o.b?'Paroi sous la rainure':'Paroi sous les dents';
+  if(wall<2*g.m)out.push({lvl:'warn',txt:lab+' mince : '+f(wall)+' mm (repère usuel : au moins 2 modules, soit '+f(2*g.m)+' mm).'});
+  else out.push({lvl:'ok',txt:lab+' : '+f(wall)+' mm.'});
+  if(o.b&&g.b<o.b)out.push({lvl:'warn',txt:'Roue plus étroite ('+f(g.b)+' mm) que la rainure ('+f(o.b)+' mm) : la pose automatique de la clavette se trompera de sens.'});
+  return out;
+}
+function gearChecks(g){
+  // Contrôles d'une roue seule, pour la fenêtre et le panneau : {lvl:'ok'|'warn', txt}
+  const f=v=>String(+v.toFixed(2)).replace('.',','),out=[];
+  if(g.rack){
+    if(g.H<2*g.m)out.push({lvl:'warn',txt:'Corps mince : '+f(g.H)+' mm sous les dents (repère usuel : au moins 2 modules, soit '+f(2*g.m)+' mm).'});
+    else out.push({lvl:'ok',txt:'Corps sous les dents : '+f(g.H)+' mm.'});
+    if(g.betaDeg)out.push({lvl:'ok',txt:'Recouvrement ε_β : '+f(g.overlap)+' (dents en prise sur la largeur, en plus du rapport de conduite).'});
+    return out;
+  }
+  if(g.internal){
+    if(g.tipCut)out.push({lvl:'warn',txt:'Dents raccourcies : la tête descendrait sous le cercle de base, où la développante n’existe pas. Tête ramenée à Ø '+f(2*g.ra)+'. Il faudrait plus de dents ou un déport x ≤ '+f(Math.floor(g.xMaxFull*100)/100)+'.'});
+    if(g.tipThick<0.25*g.m)out.push({lvl:'warn',txt:'Tête de dent très fine ('+f(g.tipThick)+' mm) : fragile à cet endroit. Augmentez le déport ou ajoutez des dents.'});
+    else out.push({lvl:'ok',txt:'Épaisseur en tête de dent : '+f(g.tipThick)+' mm.'});
+    const rim=g.D/2-g.rf;
+    if(rim<2*g.m)out.push({lvl:'warn',txt:'Couronne mince : '+f(rim)+' mm sous les dents (repère usuel : au moins 2 modules, soit '+f(2*g.m)+' mm).'});
+    else out.push({lvl:'ok',txt:'Couronne sous les dents : '+f(rim)+' mm.'});
+    out.push({lvl:'ok',txt:'Pied de dent en arc simple : la forme réelle dépend de l’outil-pignon.'});
+    if(g.betaDeg)out.push({lvl:'ok',txt:'Recouvrement ε_β : '+f(g.overlap)+' (dents en prise sur la largeur, en plus du rapport de conduite).'});
+    return out;
+  }
+  if(g.undercut)out.push({lvl:'warn',txt:'Sous-coupe : le pied de dent est creusé par l’outil, la dent est affaiblie. Déport conseillé : x ≥ '+f(Math.ceil(g.xMin*100)/100)+'.'});
+  else out.push({lvl:'ok',txt:'Pas de sous-coupe.'});
+  if(g.tipThick<0.25*g.m)out.push({lvl:'warn',txt:'Tête de dent très fine ('+f(g.tipThick)+' mm) : fragile à cet endroit. Réduisez le déport ou ajoutez des dents.'});
+  else out.push({lvl:'ok',txt:'Épaisseur en tête de dent : '+f(g.tipThick)+' mm.'});
+  if(g.betaDeg)out.push({lvl:'ok',txt:'Recouvrement ε_β : '+f(g.overlap)+' (dents en prise sur la largeur, en plus du rapport de conduite).'});
+  return out;
+}
+/* ── paire : entraxe, jeu, calage, rapport de conduite, contrôles (ISO 21771, DIN 3960) ──
+   Pignon extérieur + roue extérieure, couronne ou crémaillère, même module, angle et hélice.
+   Le jeu jn (mesuré perpendiculairement aux flancs) s'obtient en amincissant également les deux dentures :
+   l'entraxe ne bouge pas. Calage : la dent du pignon entre dans un creux de l'autre pièce, sur la ligne des centres. */
+function gearInvRev(v){
+  // angle dont la développante vaut v (Newton sur tan a − a)
+  let a=Math.cbrt(3*v);
+  for(let i=0;i<30;i++){const t=Math.tan(a),d=(t-a-v)/(t*t);a-=d;if(Math.abs(d)<1e-15)break;}
+  return a;
+}
+function gearPair(p){
+  // p = {kind ('ext','int','rack'), m, alpha, beta, hand (du pignon), z1, z2, x1, x2, b, jn} →
+  //     {o1, o2 (réglages des deux pièces), fr1, fr2 (repères), g1, g2, a, aw, epsA, epsB, ratio, checks, roll(φ)}
+  const kind=p.kind==='int'||p.kind==='rack'?p.kind:'ext',z1=Math.round(+p.z1),z2=Math.round(+p.z2),m=+p.m,x1=+p.x1||0,x2=kind==='rack'?0:+p.x2||0;
+  const jn=Math.max(0,+p.jn||0),base={m,alpha:+p.alpha,beta:+p.beta||0,b:+p.b};
+  const hand1=p.hand==='L'?'L':'R',hand2=kind==='int'?hand1:(hand1==='L'?'R':'L');
+  const a0n=base.alpha*Math.PI/180,js=jn/(2*Math.cos(a0n)); // amincissement de chaque dent, sur le primitif, plan normal
+  const opt1={k:'gear',...base,z:z1,x:x1,hand:hand1,j:js},opt2={k:'gear',...base,z:z2,x:x2,hand:hand2,j:js};
+  if(kind==='int'){opt2.kind='int';if(+p.D>0)opt2.D=+p.D;}
+  if(kind==='rack'){opt2.kind='rack';if(+p.H>0)opt2.H=+p.H;}
+  if(kind==='int'&&!(z2>z1))throw new Error('la couronne doit avoir plus de dents que le pignon');
+  let g1=gearGeom(opt1),g2=gearGeom(opt2);
+  const at=g1.at,ta=Math.tan(g1.a),rp1=g1.rp,rb1=g1.rb,pb=g1.pitchB;
+  let a,aw;
+  if(kind==='rack'){a=rp1+x1*m;aw=at;}
+  else{
+    const zs=kind==='int'?z2-z1:z1+z2,xs=kind==='int'?-(x1+x2):x1+x2,inv=gearInv(at)+2*xs*ta/zs;
+    if(!(inv>0))throw new Error('déports trop négatifs : les roues ne peuvent plus se rapprocher autant');
+    aw=gearInvRev(inv);
+    a=(kind==='int'?g2.rp-rp1:rp1+g2.rp)*Math.cos(at)/Math.cos(aw);
+  }
+  // têtes raccourcies pour garder 0,25 m au fond de dent quand le déport écarte les roues moins que prévu
+  const c0=0.25*m;
+  if(kind==='ext'){opt1.k2=Math.max(0,(g1.ra-(a-g2.rf-c0))/m);opt2.k2=Math.max(0,(g2.ra-(a-g1.rf-c0))/m);}
+  if(kind==='int'){
+    // couronne : sa tête doit aussi s'arrêter avant le pied du pignon, là où sa développante commence
+    const raNeed=Math.hypot(g2.rb,a*Math.sin(aw)+gearProfile(g1).flank.knots[0]*g1.rb+1e-3*m);
+    opt1.k2=Math.max(0,(g1.ra-(g2.rf-c0-a))/m);
+    opt2.k2=Math.max(0,(a+g1.rf+c0-g2.ra)/m,(raNeed-g2.ra)/m);
+  }
+  [opt1,opt2].forEach(o=>{const v=o.k2;delete o.k2;if(v>1e-9)o.ks=v;});
+  g1=gearGeom(opt1);g2=gearGeom(opt2);
+  // repères : pignon dent vers l'autre pièce ; l'autre pièce présente un creux
+  let fr1,fr2,th1,th2,c1,c2,reach,sens;
+  if(kind==='ext'){c1=[0,0];c2=[a,0];th1=0;th2=Math.PI-Math.PI/z2;reach=g1.ra;sens=-z1/z2;}
+  else if(kind==='int'){c2=[0,0];c1=[a,0];th1=0;th2=0;reach=g2.D/2;sens=z1/z2;}
+  else{c2=[0,0];c1=[z2%2?g2.pt/2:0,a];th1=-Math.PI/2;th2=0;reach=g2.L/2;sens=rp1;} // crémaillère : glisse de rp·φ
+  const frm=(c,t)=>({o:[c[0],c[1],0],x:[Math.cos(t),Math.sin(t),0],y:[-Math.sin(t),Math.cos(t),0],z:[0,0,1]});
+  fr1=frm(c1,th1);fr2=frm(c2,th2);
+  const roll=phi=>kind==='rack'?{fr1:frm(c1,th1+phi),fr2:frm([sens*phi,0],0)}:{fr1:frm(c1,th1+phi),fr2:frm(c2,th2+sens*phi)};
+  // rapport de conduite, le long de la ligne d'action
+  const rho=g=>Math.sqrt(g.ra*g.ra-g.rb*g.rb),L=a*Math.sin(aw);
+  let epsA;
+  if(kind==='ext')epsA=(rho(g1)+rho(g2)-L)/pb;
+  else if(kind==='int')epsA=(rho(g1)-rho(g2)+L)/pb;
+  else epsA=(rho(g1)-rp1*Math.sin(at)+(g2.ya-x1*m)/Math.sin(at))/pb;
+  const epsB=g1.overlap;
+  // contrôles
+  const f=v=>String(+v.toFixed(2)).replace('.',','),checks=[],lab2=kind==='int'?'Couronne':kind==='rack'?'Crémaillère':'Roue';
+  const P1=gearProfile(g1),flank1=P1.flank.knots[0]*g1.rb; // où commence la vraie développante du pignon, le long de la ligne d'action
+  if(epsA<1)checks.push({lvl:'warn',txt:'Rapport de conduite '+f(epsA)+', sous 1 : les dents se lâchent avant que la suivante prenne le relais.'});
+  else if(epsA<1.2)checks.push({lvl:'warn',txt:'Rapport de conduite faible : '+f(epsA)+' (repère usuel : au moins 1,2).'});
+  else checks.push({lvl:'ok',txt:'Rapport de conduite : '+f(epsA)+(g1.betaDeg?' (total avec le recouvrement : '+f(epsA+epsB)+')':'')+'.'});
+  const bad=(q,who)=>checks.push({lvl:'warn',txt:'Interférence : '+who+'. Il faut un déport, plus de dents ou un plus grand angle de pression.'});
+  const tolI=1e-3*m; // sous cette valeur, l'écart vient de l'arrondi de l'outil simulé, pas d'un vrai contact
+  let ok=true;
+  if(kind==='ext'){
+    const P2=gearProfile(g2),flank2=P2.flank.knots[0]*g2.rb;
+    if(L-rho(g2)<flank1-tolI){bad(0,'la tête de la roue attaque le pied du pignon');ok=false;}
+    if(L-rho(g1)<flank2-tolI){bad(0,'la tête du pignon attaque le pied de la roue');ok=false;}
+  }else if(kind==='int'){
+    const P2=gearProfile(g2),lim2=P2.flank.knots[P2.flank.knots.length-1]*g2.rb;
+    if(rho(g2)-L<flank1-tolI){bad(0,'la tête de la couronne attaque le pied du pignon');ok=false;}
+    if(rho(g1)+L>lim2+tolI){bad(0,'la tête du pignon dépasse le flanc de la couronne');ok=false;}
+    if(z2-z1<10){checks.push({lvl:'warn',txt:'Couronne et pignon trop proches : '+(z2-z1)+' dents d’écart (repère usuel : au moins 10), les têtes risquent de se toucher hors de la ligne d’action.'});ok=false;}
+  }else{
+    if(rp1*Math.sin(at)-(g2.ya-x1*m)/Math.sin(at)<flank1-tolI){bad(0,'la tête de la crémaillère attaque le pied du pignon');ok=false;}
+  }
+  if(ok)checks.push({lvl:'ok',txt:'Pas d’interférence sur la ligne d’action.'});
+  if(g1.ks||g2.ks)checks.push({lvl:'ok',txt:'Têtes raccourcies pour garder le jeu au fond de dent'+(g1.ks?' (pignon : '+f(g1.ks*m)+' mm)':'')+(g2.ks?' ('+lab2.toLowerCase()+' : '+f(g2.ks*m)+' mm)':'')+'.'});
+  if(jn===0)checks.push({lvl:'warn',txt:'Jeu nul : les flancs se touchent des deux côtés. Prévoyez un jeu pour une pièce réelle.'});
+  gearChecks(g1).filter(c=>c.lvl==='warn').forEach(c=>checks.push({lvl:'warn',txt:'Pignon : '+c.txt}));
+  gearChecks(g2).filter(c=>c.lvl==='warn').forEach(c=>checks.push({lvl:'warn',txt:lab2+' : '+c.txt}));
+  checks.push({lvl:'ok',txt:'Contrôle géométrique seulement : la résistance des dents n’est pas calculée.'});
+  return {kind,o1:opt1,o2:opt2,g1,g2,fr1,fr2,a,aw,awDeg:aw*180/Math.PI,epsA,epsB,ratio:kind==='rack'?null:z2/z1,reach,roll,checks,jn,js,hand1,hand2};
+}
+function gearHandsOk(kind,h1,h2){
+  // Sens d'hélice compatibles : extérieure et crémaillère en sens opposés, couronne dans le même sens
+  return kind==='int'?h1===h2:h1!==h2;
 }
 
 /* ═══════════════ 49-esquisse-registre-icones.js — esquisse registre icones ═══════════════ */
@@ -30197,6 +30801,159 @@ function askRevokePanel(f){
   sel2.onchange=()=>apply(sel2.value);
   lab.appendChild(sel2);
   const p=$('props');p.insertBefore(lab,p.firstChild);
+}
+
+/* ═══════════════ 76-engrenage.js — engrenage ═══════════════ */
+/* ---------- ENGRENAGE (fonction 3D, plan docs/plan-engrenages-niveau-1.md) ----------
+   f = {type:'gear', m, z, alpha, b, x, beta, hand, kind ('int' couronne, 'rack' crémaillère), D, H} : solide posé sur XY (z = 0 à z = b), axe sur Z, une
+   dent sur +X en bas. Pas d'esquisse : le contour (48-engrenages-calcul) va directement au noyau, en vraies
+   courbes (B-spline des flancs, arcs de tête et de pied), et les 60 dents d'une grande roue ne
+   chargent pas le solveur. On change la roue par « Modifier la pièce normalisée… ». */
+function gearSig(f){return [+f.m,+f.z,+f.alpha,+f.b,+f.x||0,+f.beta||0,f.hand==='L'?'L':'R',f.kind==='int'||f.kind==='rack'?f.kind:'ext',+f.D||0,+f.H||0,+f.j||0,+f.ks||0];}
+function gearWire(g,bin,outline){
+  const pnt=q=>occBinPush(bin,new occt.gp_Pnt_3(q[0],q[1],0));
+  const ax=occBinPush(bin,new occt.gp_Ax2_3(pnt([0,0]),occBinPush(bin,new occt.gp_Dir_4(0,0,1))));
+  const mkW=occBinPush(bin,new occt.BRepBuilderAPI_MakeWire_1());
+  (outline||gearOutline(g)).forEach(s=>{
+    let me;
+    if(s.k==='ln')me=new occt.BRepBuilderAPI_MakeEdge_3(pnt(s.a),pnt(s.b));
+    else if(s.k==='arc'){
+      const circ=occBinPush(bin,new occt.gp_Circ_2(ax,s.r));
+      const at=a=>pnt([s.r*Math.cos(a),s.r*Math.sin(a)]);
+      me=new occt.BRepBuilderAPI_MakeEdge_10(circ,at(s.a0),at(s.a1));
+    }else{
+      const poles=occBinPush(bin,new occt.TColgp_Array1OfPnt_2(1,s.poles.length));
+      s.poles.forEach((q,i)=>poles.SetValue(i+1,pnt(q)));
+      const kn=occBinPush(bin,new occt.TColStd_Array1OfReal_2(1,s.knots.length)),mu=occBinPush(bin,new occt.TColStd_Array1OfInteger_2(1,s.knots.length));
+      s.knots.forEach((v,i)=>{kn.SetValue(i+1,v);mu.SetValue(i+1,s.mults[i]);});
+      me=new occt.BRepBuilderAPI_MakeEdge_24(occBinPush(bin,new occt.Handle_Geom_Curve_2(new occt.Geom_BSplineCurve_1(poles,kn,mu,3,false))));
+    }
+    occBinPush(bin,me);me.Build();
+    if(!me.IsDone())throw new Error('arête de denture impossible');
+    mkW.Add_1(me.Edge());
+  });
+  mkW.Build();
+  if(!mkW.IsDone())throw new Error('contour de denture non fermé');
+  return mkW.Wire();
+}
+function gearHelixSolid(g,bin){
+  // Denture hélicoïdale : la section droite balaie l'axe, et une hélice tracée sur le cylindre primitif
+  // (fil auxiliaire) la fait tourner. Écart du flanc mesuré contre la théorie : < 1 µm (tests/test_engrenages.cjs).
+  const O=occBinPush(bin,new occt.gp_Pnt_3(0,0,0)),Z=occBinPush(bin,new occt.gp_Dir_4(0,0,1));
+  const cyl=occBinPush(bin,new occt.gp_Ax3_3(O,Z,occBinPush(bin,new occt.gp_Dir_4(1,0,0))));
+  const surf=occBinPush(bin,new occt.Handle_Geom_Surface_2(new occt.Geom_CylindricalSurface_1(cyl,g.rp)));
+  const line=occBinPush(bin,new occt.Handle_Geom2d_Curve_2(new occt.Geom2d_Line_3(occBinPush(bin,new occt.gp_Pnt2d_3(0,0)),occBinPush(bin,new occt.gp_Dir2d_4(g.twist,g.b)))));
+  const me=occBinPush(bin,new occt.BRepBuilderAPI_MakeEdge_31(line,surf,0,Math.hypot(g.twist,g.b)));
+  if(!me.IsDone())throw new Error('hélice de la denture impossible');
+  const he=me.Edge();occt.BRepLib.BuildCurves3d_2(he);
+  const hw=occBinPush(bin,new occt.BRepBuilderAPI_MakeWire_1());hw.Add_1(he);hw.Build();
+  const se=occBinPush(bin,new occt.BRepBuilderAPI_MakeEdge_3(O,occBinPush(bin,new occt.gp_Pnt_3(0,0,g.b))));
+  const sw=occBinPush(bin,new occt.BRepBuilderAPI_MakeWire_1());sw.Add_1(se.Edge());sw.Build();
+  const ps=occBinPush(bin,new occt.BRepOffsetAPI_MakePipeShell(sw.Wire()));
+  const noContact=occt.BRepFill_TypeOfContact.BRepFill_NoContact; // même appel, nommé autrement selon le noyau
+  if(ps.SetMode_5)ps.SetMode_5(hw.Wire(),false,noContact);else ps.SetMode(hw.Wire(),false,noContact);
+  ps.Add_1(gearWire(g,bin),false,false);
+  ps.Build();
+  if(!ps.IsDone())throw new Error('balayage de la denture hélicoïdale impossible');
+  if(!ps.MakeSolid())throw new Error('denture hélicoïdale : le solide ne se ferme pas');
+  return ps.Shape();
+}
+function gearRingFace(g,z,inner,bin){
+  // Base de couronne à la hauteur z : disque extérieur percé du bord intérieur donné
+  const ax=occBinPush(bin,new occt.gp_Ax2_3(occBinPush(bin,new occt.gp_Pnt_3(0,0,z)),occBinPush(bin,new occt.gp_Dir_4(0,0,1))));
+  const edge=occBinPush(bin,new occt.BRepBuilderAPI_MakeEdge_8(occBinPush(bin,new occt.gp_Circ_2(ax,g.D/2))));
+  const w=occBinPush(bin,new occt.BRepBuilderAPI_MakeWire_1());w.Add_1(edge.Edge());w.Build();
+  const mf=occBinPush(bin,new occt.BRepBuilderAPI_MakeFace_15(w.Wire(),true));
+  mf.Add(occt.TopoDS.Wire_1(inner.Reversed()));mf.Build();
+  if(!mf.IsDone())throw new Error('base de couronne impossible');
+  const fx=occBinPush(bin,new occt.ShapeFix_Face_2(mf.Face()));fx.FixOrientation_1();
+  return fx.Face();
+}
+function gearRingSolid(g,bin){
+  // Couronne, sans découpe (50 fois plus lente sur ces surfaces, et figerait l'application) :
+  // droite : base percée extrudée. Hélicoïdale : les flancs balayés de la « roue » de son bord intérieur,
+  // cousus avec l'extérieur et deux bases percées de ce même bord.
+  if(!g.betaDeg){
+    const pr=occBinPush(bin,new occt.BRepPrimAPI_MakePrism_1(gearRingFace(g,0,gearWire(g,bin),bin),occBinPush(bin,new occt.gp_Vec_4(0,0,g.b)),false,true));
+    pr.Build();
+    if(!pr.IsDone())throw new Error('extrusion de la couronne impossible');
+    return pr.Shape();
+  }
+  const plug=gearHelixSolid(g,bin),sew=occBinPush(bin,new occt.BRepBuilderAPI_Sewing(1e-4,true,true,true,false));
+  const faces=occSubShapes(plug,'TopAbs_FACE');
+  try{
+    faces.forEach(f=>{
+      const F=occt.TopoDS.Face_1(f),S=occBinPush(bin,new occt.BRepAdaptor_Surface_2(F,true));
+      if(S.GetType()!==occt.GeomAbs_SurfaceType.GeomAbs_Plane){sew.Add(f);return;}
+      const P=occBinPush(bin,new occt.GProp_GProps_1());occt.BRepGProp.SurfaceProperties_1(F,P,false,false);
+      sew.Add(gearRingFace(g,P.CentreOfMass().Z(),occt.BRepTools.OuterWire(F),bin));
+    });
+  }finally{occDispose(faces);}
+  const ax=occBinPush(bin,new occt.gp_Ax2_3(occBinPush(bin,new occt.gp_Pnt_3(0,0,0)),occBinPush(bin,new occt.gp_Dir_4(0,0,1))));
+  const edge=occBinPush(bin,new occt.BRepBuilderAPI_MakeEdge_8(occBinPush(bin,new occt.gp_Circ_2(ax,g.D/2))));
+  const side=occBinPush(bin,new occt.BRepPrimAPI_MakePrism_1(edge.Edge(),occBinPush(bin,new occt.gp_Vec_4(0,0,g.b)),false,true));side.Build();
+  sew.Add(side.Shape());
+  sew.Perform(occBinPush(bin,new occt.Handle_Message_ProgressIndicator_1()));
+  if(sew.NbFreeEdges()>0)throw new Error('couronne non fermée ('+sew.NbFreeEdges()+' arêtes libres)');
+  const ex=occBinPush(bin,new occt.TopExp_Explorer_2(sew.SewedShape(),occt.TopAbs_ShapeEnum.TopAbs_SHELL,occt.TopAbs_ShapeEnum.TopAbs_SHAPE));
+  if(!ex.More())throw new Error('coque de couronne introuvable');
+  const ms=occBinPush(bin,new occt.BRepBuilderAPI_MakeSolid_1());
+  ms.Add(occt.TopoDS.Shell_1(ex.Current()));
+  let sol=ms.Solid();
+  const gp=occBinPush(bin,new occt.GProp_GProps_1());occt.BRepGProp.VolumeProperties_1(sol,gp,false,false,false);
+  if(gp.Mass()<0)sol=sol.Reversed();
+  return sol;
+}
+function gearRackSolid(g,bin){
+  // Droite : section extrudée. Inclinée : section plus longue poussée en biais, puis recoupée d'équerre aux deux bouts.
+  const extra=g.betaDeg?Math.ceil(Math.abs(g.shift)/g.pt)+1:0;
+  const mf=occBinPush(bin,new occt.BRepBuilderAPI_MakeFace_15(gearWire(g,bin,gearRackOutline(g,extra)),true));
+  if(!mf.IsDone())throw new Error('face de crémaillère impossible');
+  const pr=occBinPush(bin,new occt.BRepPrimAPI_MakePrism_1(mf.Face(),occBinPush(bin,new occt.gp_Vec_4(g.betaDeg?g.shift:0,0,g.b)),false,true));
+  pr.Build();
+  if(!pr.IsDone())throw new Error('extrusion de la crémaillère impossible');
+  if(!g.betaDeg)return pr.Shape();
+  const pnt=(x,y,z)=>occBinPush(bin,new occt.gp_Pnt_3(x,y,z));
+  const box=occBinPush(bin,new occt.BRepPrimAPI_MakeBox_3(pnt(-g.L/2,g.yb-1,-1),pnt(g.L/2,g.ya+1,g.b+1)));
+  const c=occBinPush(bin,new occt.BRepAlgoAPI_Common_3(pr.Shape(),box.Shape()));
+  c.Build();
+  if(!c.IsDone())throw new Error('coupe des bouts de la crémaillère impossible');
+  return c.Shape();
+}
+function gearSolid(f,bin){
+  const g=gearGeom(f);
+  if(g.rack)return gearRackSolid(g,bin);
+  if(g.internal)return gearRingSolid(g,bin);
+  if(g.betaDeg)return gearHelixSolid(g,bin);
+  const mf=occBinPush(bin,new occt.BRepBuilderAPI_MakeFace_15(gearWire(g,bin),true));
+  if(!mf.IsDone())throw new Error('face de denture impossible');
+  const pr=occBinPush(bin,new occt.BRepPrimAPI_MakePrism_1(mf.Face(),occBinPush(bin,new occt.gp_Vec_4(0,0,g.b)),false,true));
+  pr.Build();
+  if(!pr.IsDone())throw new Error('extrusion de la denture impossible');
+  return pr.Shape();
+}
+function renderGearProps(p,f){
+  const row=(lab,val)=>{const r=document.createElement('div');r.className='pnl-row';
+    const L=document.createElement('label');L.textContent=lab;r.appendChild(L);
+    const v=document.createElement('span');v.textContent=val;r.appendChild(v);p.appendChild(r);};
+  let g=null;try{g=gearGeom(f);}catch(e){g=null;}
+  const h=document.createElement('div');h.className='pnl-h';h.textContent=g&&g.rack?'Crémaillère':g&&g.internal?'Couronne à denture intérieure':'Engrenage';p.appendChild(h);
+  if(g&&g.rack){
+    row('Module',stdF(g.m)+' mm');row('Dents',String(g.z));row('Angle de pression',stdF(g.aDeg)+'°');
+    if(g.betaDeg)row('Inclinaison',stdF(g.betaDeg)+'° main '+(g.hand==='L'?'gauche':'droite'));
+    row('Largeur',stdF(g.b)+' mm');row('Pas',stdF(g.pt)+' mm');row('Longueur',stdF(g.L)+' mm');row('Hauteur totale',stdF(g.ya-g.yb)+' mm');
+    gearChecks(g).forEach(c=>{const d=document.createElement('div');d.className='pnl-note';d.textContent=(c.lvl==='ok'?'✓ ':'⚠ ')+c.txt;p.appendChild(d);});
+  }else if(g){
+    row(g.betaDeg?'Module normal':'Module',stdF(g.m)+' mm');row('Dents',String(g.z));row('Angle de pression',stdF(g.aDeg)+'°');
+    if(g.betaDeg){row('Hélice',stdF(g.betaDeg)+'° main '+(g.hand==='L'?'gauche':'droite'));row('Module apparent',stdF(g.mt)+' mm');}
+    row('Déport x',stdF(g.x));row('Largeur',stdF(g.b)+' mm');
+    row('Ø primitif',stdF(2*g.rp)+' mm');row('Ø de tête',stdF(2*g.ra)+' mm');row('Ø de pied',stdF(2*g.rf)+' mm');row('Ø de base',stdF(2*g.rb)+' mm');
+    if(g.internal)row('Ø extérieur',stdF(g.D)+' mm');
+    gearChecks(g).forEach(c=>{const d=document.createElement('div');d.className='pnl-note';d.textContent=(c.lvl==='ok'?'✓ ':'⚠ ')+c.txt;p.appendChild(d);});
+  }
+  const n=document.createElement('div');n.className='pnl-note';
+  n.textContent=f._err?('⚠ '+f._err):'Pour changer cette roue : en assemblage, clic droit sur la pièce → « Modifier la pièce normalisée… ».';
+  p.appendChild(n);
 }
 
 /* ═══════════════ 76-filetage.js — filetage ═══════════════ */
@@ -63044,7 +63801,7 @@ function mfFiTable(){
   F('Composants/Inspecter','Inspecter','Trouve les pièces qui se touchent ou se chevauchent, et donne les masses et le centre de gravité.',[],CB('b','b'),CB('b','b')+'<ellipse cx="58" cy="42" rx="10" ry="16" fill="#ef4444" fill-opacity=".65" stroke="'+RE+'"/>'+ficT(79,14,'⚠',11,RE),null,'L’assemblage','Chevauchement');
   F('Composants/Depuis corps','Composants depuis corps','Transforme les corps d’une même pièce en composants, sans rien redessiner.',['Sélectionnez un corps, ou aucun pour tous'],ficBox(-20,-6,-6,-4,10,6,'b')+ficBox(2,-14,-6,18,2,6,'b')+ficR(10,14,80,48,GY,.8,'none',4),TREE(2,true),null,'Corps d’une pièce','Composants');
   const SCREW=()=>ficCyl(0,0,-24,4,32,'mfFcHm','m')+ficCyl(0,0,8,9,8,'mfFcHm','m')+ficE3(0,0,16,4,'#374151','#374151');
-  F('Composants/Normalisés','Pièces normalisées','Insère des pièces du commerce toutes prêtes : vis, bouchons, goupilles, clavettes.',['Choisissez la famille','Choisissez la taille'],ficR(16,13,68,50,'#94a3b8',1,'#fff',3)+['Vis CHC M6','Goupille','Clavette'].map((s,i)=>ficT(22,27+i*14,s,7,i?'#334155':OR,'start')).join(''),SCREW(),null,'Le catalogue','Votre pièce');
+  F('Composants/Normalisés','Pièces normalisées','Insère des pièces toutes prêtes : vis, bouchons, goupilles, clavettes, engrenages. Une paire d’engrenages se pose calée, au bon entraxe.',['Choisissez la famille','Choisissez la taille'],ficR(16,13,68,50,'#94a3b8',1,'#fff',3)+['Vis CHC M6','Goupille','Clavette','Engrenage'].map((s,i)=>ficT(22,25+i*11.5,s,7,i?'#334155':OR,'start')).join(''),SCREW(),null,'Le catalogue','Votre pièce');
   F('Composants/Insérer','Insérer un fichier','Ajoute une pièce d’un autre fichier à l’assemblage : liée (elle suit le fichier) ou copiée.',['Choisissez le fichier','Lié ou copié'],DOC(34,14,'.CAD',OR),PA(-10,0,-12,'b')+PB(12,-8,'o'),null,'Le fichier','Dans l’assemblage');
   /* ========== FAO ========== */
   const WD=(x0,y0,z0,x1,y1,z1)=>ficBox(x0,y0,z0,x1,y1,z1,'w');
@@ -63919,6 +64676,7 @@ const MF_IC={
   redo:'<path d="M15 14l5-5-5-5"/><path d="M20 9H9a5 5 0 0 0 0 10h3"/>',
   setup:'<path d="M3 19h18M6 19v-4h12v4"/><path d="M9 15V9h6v6"/><path d="M12 9V4" stroke-dasharray="2 2"/>',
   tools:'<path d="M10 3h4v8l-1 2v8h-2v-8l-1-2z"/><path d="M10 6l4 1.5M10 9l4 1.5"/>',
+  gear:'<circle cx="12" cy="12" r="6.5"/><circle cx="12" cy="12" r="2.2"/><path d="M12 2.5v3M12 18.5v3M2.5 12h3M18.5 12h3M5.3 5.3l2.1 2.1M16.6 16.6l2.1 2.1M18.7 5.3l-2.1 2.1M7.4 16.6l-2.1 2.1"/>',
   facing:'<path d="M3 6h18v4H3v4h18v4H3"/>',
   pocket:'<rect x="3" y="4" width="18" height="16" rx="3"/><rect x="7.5" y="8.5" width="9" height="7" rx="1.5"/>',
   contour:'<rect x="6" y="7" width="12" height="10" rx="2"/><rect x="2.5" y="3.5" width="19" height="17" rx="4" stroke-dasharray="2.5 2"/>',
@@ -64032,7 +64790,7 @@ function mfRibbon(){
     ['pattern','Répétition',()=>asmRibbonPattern(),'Répéter l’occurrence sélectionnée (ou le lot) : linéaire, 2 directions, circulaire, symétrie',asmO],
     ['asmInspect','Inspecter',()=>asmCmdInspect(),'Interférences entre corps / composants, masses (matière par composant) et centre de gravité',asmO],
     ['asmFromBodies','Depuis corps',()=>asmCmdFromBodies(),'Créer un composant depuis le corps sélectionné (ou depuis chaque corps) : la pièce multicorps devient un assemblage, sans rien remodéliser',asmO],
-    ['asmStd','Normalisés',()=>stdDlg(),'Vis ISO / ANSI (CHC, FHC, pas au choix), bouchons gaz six pans creux, goupilles, clavettes ISO : insérés comme composants du composant actif',asmO],
+    ['asmStd','Normalisés',()=>stdDlg(),'Vis ISO / ANSI (CHC, FHC, pas au choix), bouchons gaz six pans creux, goupilles, clavettes ISO, engrenages et paires d’engrenages : insérés comme composants du composant actif',asmO],
     ['import','Insérer',()=>asmCmdInsert(),'Insérer un fichier .conceptcad (ou .miniFusion) comme composant du composant actif : lié (modifiable ici, la source suit) ou copié',asmO]],'mfCao mfAsmG');
   // FAO : posage, opérations (mêmes fiches que la barre « + Usinage »), simulation, calcul, export
   grp('Posage',[['setup','Posage',()=>{const b=Array.from(document.querySelectorAll('#faoTreeWrap button')).find(x=>/\+ Posage/.test(x.textContent));if(b)b.click();},'Ajouter un posage'],['tools','Outils','faoToolsBtn',null,'mfIcR']],'mfFao');
@@ -64709,7 +65467,7 @@ function viewFadeIn(){
      le solide reconstruit : on ne la promène pas dans des états intermédiaires). */
 let film=null; // état du film en cours (null = aucun)
 const FILM_KIND={extrude:'Extrusion',revolve:'Révolution',sweep:'Balayage',hole:'Perçage',fillet:'Congé',repeat:'Répétition',
-  combine:'Combiner',xmove:'Déplacer une face',xdelface:'Supprimer une face',xdraft:'Dépouille',xshell:'Coque',xthread:'Filetage',xsplit:'Scinder',bmove:'Déplacer le corps',bremove:'Retirer le corps',bscale:'Échelle',import:'Import'};
+  combine:'Combiner',xmove:'Déplacer une face',xdelface:'Supprimer une face',xdraft:'Dépouille',xshell:'Coque',xthread:'Filetage',gear:'Engrenage',xsplit:'Scinder',bmove:'Déplacer le corps',bremove:'Retirer le corps',bscale:'Échelle',import:'Import'};
 function filmKind(f){
   // [libellé, couleur] de la nature d'une fonction — mêmes couleurs que le bandeau (TLB_COL)
   let k=null;try{k=tlbSvgKey({kind:'feature',o:f});}catch(e){}
