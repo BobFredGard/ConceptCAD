@@ -193,6 +193,9 @@ function cgEdit(id){
   const el=cgGet(id);if(!el)return;
   if(typeof skEdit!=='undefined'&&skEdit)return;
   const d=JSON.parse(JSON.stringify(cgClean(el)));
+  // ƒx : le brouillon est une copie : sans ce lien, le nom de sa propre valeur (« Dist = 30 ») passait pour
+  // « déjà utilisé » et la nouvelle valeur était refusée.
+  parFxFrom(el.p,d.p,Object.keys(CG_HOW[el.kind][el.how].par||{}));
   cgMode={draft:d,editId:id,slot:null};
   sel={kind:null,id:null};
   cgRefresh();
@@ -242,7 +245,7 @@ function cgCommit(){
   if(cgMode.editId){
     const el=cgGet(cgMode.editId);if(!el){cgCancel();return;}
     docPushUndo('modification de « '+el.name+' »');
-    el.how=d.how;el.refs=d.refs.map(r=>r?JSON.parse(JSON.stringify(r)):null);el.p=JSON.parse(JSON.stringify(d.p||{}));
+    el.how=d.how;el.refs=d.refs.map(r=>r?JSON.parse(JSON.stringify(r)):null);el.p=JSON.parse(JSON.stringify(cgClean(d).p||{})); // cgClean : sans les liens _fxOf du brouillon
     if(d.how==='ext'&&d.ext)el.ext=JSON.parse(JSON.stringify(d.ext));else delete el.ext;
     if(d.name)el.name=d.name;
     id=el.id;
@@ -264,7 +267,7 @@ function cgSetHow(how){
   const So=CG_HOW[d.kind][old].slots,Sn=CG_HOW[d.kind][how].slots;
   // on garde les références compatibles, emplacement par emplacement
   const refs=[];Sn.forEach((s,i)=>{const r=d.refs[i];if(r&&So[i]&&(cgEvalRef(r,null)||{})[s[0]])refs[i]=r;});
-  d.how=how;d.refs=refs;d.p=Object.assign(cgDefaults(d.kind,how),Object.fromEntries(Object.entries(d.p||{}).filter(([k])=>k==='flip'||k==='expr'||k==='pname'||(CG_HOW[d.kind][how].par||{})[k])));
+  d.how=how;d.refs=refs;d.p=Object.assign(cgDefaults(d.kind,how),Object.fromEntries(Object.entries(d.p||{}).filter(([k])=>k==='flip'||k==='expr'||k==='pname'||k==='_fxOf'||k==='_fxKeys'||(CG_HOW[d.kind][how].par||{})[k])));
   cgNextSlot();cgRefresh();
 }
 function cgRefAccept(ref){

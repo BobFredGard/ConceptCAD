@@ -279,7 +279,10 @@ function parFx(inp,h,k){
     inp.value=String(+r.v.toFixed(12)).replace('.',',');inp._fxDone=inp.value;
     try{faceEl.textContent='ƒx : '+(h.pname&&h.pname[k]?h.pname[k]+' = ':'')+(h.expr&&h.expr[k]?h.expr[k]+' → ':'')+(+r.v.toFixed(4));}catch(e){}
   };
-  inp.addEventListener('change',go);inp.addEventListener('blur',go);
+  inp.addEventListener('change',go);
+  // Traverser le champ sans rien y changer ne fait rien (avant : « Dist = 30 » devenait « 30 » à l'écran).
+  const base=inp.value;
+  inp.addEventListener('blur',()=>{if(inp.value!==base)go();});
   inp.addEventListener('keydown',e=>{if(e.key==='Enter')go();});
   return inp;
 }
@@ -512,6 +515,47 @@ try{
   document.addEventListener('focusin',e=>{const t=e.target;if(t&&t.type==='number')parFxNumField(t);if(parFxEligible(t)){t._fxPrev=t.value;t._fxLast=null;}},true);
   document.addEventListener('keydown',parFxGlobal,true);
   document.addEventListener('change',parFxGlobal,true);
+}catch(e){}
+/* ---------- clic perdu juste après une saisie ----------
+   Quitter un champ en cliquant ailleurs enregistre sa valeur PENDANT l'appui de la souris ; bien des panneaux
+   se redessinent alors : le bouton pressé disparaît, son remplaçant identique n'a pas reçu l'appui et le clic
+   se perd (Valider à cliquer deux fois, Inverser pas coché, référence de l'arbre pas prise, champ suivant pas
+   activé). Si c'est bien ce qui s'est passé, le clic est rejoué sur le remplaçant : même type, même texte,
+   sous la souris — sinon rien. */
+let saisieClic=null;
+function saisieClicRejoue(e){
+  const P=saisieClic;saisieClic=null;
+  if(!P||!P.chg||!P.t||P.t.isConnected)return;
+  const o=P.t,n=document.elementFromPoint(e.clientX,e.clientY);
+  if(!n||n.tagName!==o.tagName||n.type!==o.type||n.textContent.trim()!==o.textContent.trim())return;
+  if(n.tagName==='SELECT')return;
+  if(n.tagName==='TEXTAREA'||(n.tagName==='INPUT'&&n.type==='text')){n.focus();n.select();return;}
+  n.dispatchEvent(new MouseEvent('click',{bubbles:true,cancelable:true,button:0,clientX:e.clientX,clientY:e.clientY,ctrlKey:e.ctrlKey,shiftKey:e.shiftKey,metaKey:e.metaKey}));
+}
+/* Même cause au clavier : Tab enregistre le champ, le panneau se redessine et le curseur repart du haut — ce qui
+   était tapé ensuite (Y, Z d'un point…) se perdait. Le curseur va au champ voulu, à la même place dans le panneau. */
+const SAISIE_FOCUS='input:not([disabled]),select:not([disabled]),textarea:not([disabled]),button:not([disabled])';
+function saisieTab(e){
+  const t=e.target;
+  if(e.key!=='Tab'||!t||!/^(INPUT|SELECT|TEXTAREA)$/.test(t.tagName))return;
+  const pas=e.shiftKey?-1:1,L=[];
+  for(let a=t.parentElement;a&&a!==document.body;a=a.parentElement){
+    const F=[...a.querySelectorAll(SAISIE_FOCUS)],s=F[F.indexOf(t)+pas];
+    L.push({a,i:F.indexOf(t)+pas,tag:s&&s.tagName,type:s&&s.type});
+  }
+  setTimeout(()=>{
+    if(t.isConnected)return; // panneau pas redessiné : le navigateur a fait le bon geste
+    const R=L.find(x=>x.a.isConnected);if(!R||!R.tag)return;
+    const n=R.a.querySelectorAll(SAISIE_FOCUS)[R.i];
+    if(!n||n.tagName!==R.tag||n.type!==R.type)return;
+    n.focus();if(n.select&&n.tagName!=='SELECT'&&n.tagName!=='BUTTON')n.select();
+  },0);
+}
+try{
+  document.addEventListener('pointerdown',e=>{saisieClic=e.button===0?{t:e.target,chg:false}:null;},true);
+  document.addEventListener('change',()=>{if(saisieClic)saisieClic.chg=true;},true);
+  document.addEventListener('mouseup',saisieClicRejoue,true);
+  document.addEventListener('keydown',saisieTab,true);
 }catch(e){}
 /* ---------- ƒx : liste des paramètres pendant la frappe (V0.35.4) ----------
    Dans tout champ ƒx (cote d'esquisse, valeur de fonction 3D, champ numérique, expression de la

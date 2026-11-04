@@ -376,7 +376,7 @@ input[type=range]{accent-color:var(--primary);width:100%}
  * peut changer sans rien casser. CACHE_VER (parcours FAO) reste indépendant.
  */
 
-const APP_VER='V0.57.0';
+const APP_VER='V0.57.1';
 try{console.log('[ConceptCAD] version '+APP_VER);}catch(e){}
 try{var mfSv=document.getElementById('mfSplashVer');if(mfSv)mfSv.textContent=APP_VER;}catch(e){} // écran de démarrage
 
@@ -26135,7 +26135,10 @@ function parFx(inp,h,k){
     inp.value=String(+r.v.toFixed(12)).replace('.',',');inp._fxDone=inp.value;
     try{faceEl.textContent='ƒx : '+(h.pname&&h.pname[k]?h.pname[k]+' = ':'')+(h.expr&&h.expr[k]?h.expr[k]+' → ':'')+(+r.v.toFixed(4));}catch(e){}
   };
-  inp.addEventListener('change',go);inp.addEventListener('blur',go);
+  inp.addEventListener('change',go);
+  // Traverser le champ sans rien y changer ne fait rien (avant : « Dist = 30 » devenait « 30 » à l'écran).
+  const base=inp.value;
+  inp.addEventListener('blur',()=>{if(inp.value!==base)go();});
   inp.addEventListener('keydown',e=>{if(e.key==='Enter')go();});
   return inp;
 }
@@ -26368,6 +26371,47 @@ try{
   document.addEventListener('focusin',e=>{const t=e.target;if(t&&t.type==='number')parFxNumField(t);if(parFxEligible(t)){t._fxPrev=t.value;t._fxLast=null;}},true);
   document.addEventListener('keydown',parFxGlobal,true);
   document.addEventListener('change',parFxGlobal,true);
+}catch(e){}
+/* ---------- clic perdu juste après une saisie ----------
+   Quitter un champ en cliquant ailleurs enregistre sa valeur PENDANT l'appui de la souris ; bien des panneaux
+   se redessinent alors : le bouton pressé disparaît, son remplaçant identique n'a pas reçu l'appui et le clic
+   se perd (Valider à cliquer deux fois, Inverser pas coché, référence de l'arbre pas prise, champ suivant pas
+   activé). Si c'est bien ce qui s'est passé, le clic est rejoué sur le remplaçant : même type, même texte,
+   sous la souris — sinon rien. */
+let saisieClic=null;
+function saisieClicRejoue(e){
+  const P=saisieClic;saisieClic=null;
+  if(!P||!P.chg||!P.t||P.t.isConnected)return;
+  const o=P.t,n=document.elementFromPoint(e.clientX,e.clientY);
+  if(!n||n.tagName!==o.tagName||n.type!==o.type||n.textContent.trim()!==o.textContent.trim())return;
+  if(n.tagName==='SELECT')return;
+  if(n.tagName==='TEXTAREA'||(n.tagName==='INPUT'&&n.type==='text')){n.focus();n.select();return;}
+  n.dispatchEvent(new MouseEvent('click',{bubbles:true,cancelable:true,button:0,clientX:e.clientX,clientY:e.clientY,ctrlKey:e.ctrlKey,shiftKey:e.shiftKey,metaKey:e.metaKey}));
+}
+/* Même cause au clavier : Tab enregistre le champ, le panneau se redessine et le curseur repart du haut — ce qui
+   était tapé ensuite (Y, Z d'un point…) se perdait. Le curseur va au champ voulu, à la même place dans le panneau. */
+const SAISIE_FOCUS='input:not([disabled]),select:not([disabled]),textarea:not([disabled]),button:not([disabled])';
+function saisieTab(e){
+  const t=e.target;
+  if(e.key!=='Tab'||!t||!/^(INPUT|SELECT|TEXTAREA)$/.test(t.tagName))return;
+  const pas=e.shiftKey?-1:1,L=[];
+  for(let a=t.parentElement;a&&a!==document.body;a=a.parentElement){
+    const F=[...a.querySelectorAll(SAISIE_FOCUS)],s=F[F.indexOf(t)+pas];
+    L.push({a,i:F.indexOf(t)+pas,tag:s&&s.tagName,type:s&&s.type});
+  }
+  setTimeout(()=>{
+    if(t.isConnected)return; // panneau pas redessiné : le navigateur a fait le bon geste
+    const R=L.find(x=>x.a.isConnected);if(!R||!R.tag)return;
+    const n=R.a.querySelectorAll(SAISIE_FOCUS)[R.i];
+    if(!n||n.tagName!==R.tag||n.type!==R.type)return;
+    n.focus();if(n.select&&n.tagName!=='SELECT'&&n.tagName!=='BUTTON')n.select();
+  },0);
+}
+try{
+  document.addEventListener('pointerdown',e=>{saisieClic=e.button===0?{t:e.target,chg:false}:null;},true);
+  document.addEventListener('change',()=>{if(saisieClic)saisieClic.chg=true;},true);
+  document.addEventListener('mouseup',saisieClicRejoue,true);
+  document.addEventListener('keydown',saisieTab,true);
 }catch(e){}
 /* ---------- ƒx : liste des paramètres pendant la frappe (V0.35.4) ----------
    Dans tout champ ƒx (cote d'esquisse, valeur de fonction 3D, champ numérique, expression de la
@@ -33696,6 +33740,9 @@ function cgEdit(id){
   const el=cgGet(id);if(!el)return;
   if(typeof skEdit!=='undefined'&&skEdit)return;
   const d=JSON.parse(JSON.stringify(cgClean(el)));
+  // ƒx : le brouillon est une copie : sans ce lien, le nom de sa propre valeur (« Dist = 30 ») passait pour
+  // « déjà utilisé » et la nouvelle valeur était refusée.
+  parFxFrom(el.p,d.p,Object.keys(CG_HOW[el.kind][el.how].par||{}));
   cgMode={draft:d,editId:id,slot:null};
   sel={kind:null,id:null};
   cgRefresh();
@@ -33745,7 +33792,7 @@ function cgCommit(){
   if(cgMode.editId){
     const el=cgGet(cgMode.editId);if(!el){cgCancel();return;}
     docPushUndo('modification de « '+el.name+' »');
-    el.how=d.how;el.refs=d.refs.map(r=>r?JSON.parse(JSON.stringify(r)):null);el.p=JSON.parse(JSON.stringify(d.p||{}));
+    el.how=d.how;el.refs=d.refs.map(r=>r?JSON.parse(JSON.stringify(r)):null);el.p=JSON.parse(JSON.stringify(cgClean(d).p||{})); // cgClean : sans les liens _fxOf du brouillon
     if(d.how==='ext'&&d.ext)el.ext=JSON.parse(JSON.stringify(d.ext));else delete el.ext;
     if(d.name)el.name=d.name;
     id=el.id;
@@ -33767,7 +33814,7 @@ function cgSetHow(how){
   const So=CG_HOW[d.kind][old].slots,Sn=CG_HOW[d.kind][how].slots;
   // on garde les références compatibles, emplacement par emplacement
   const refs=[];Sn.forEach((s,i)=>{const r=d.refs[i];if(r&&So[i]&&(cgEvalRef(r,null)||{})[s[0]])refs[i]=r;});
-  d.how=how;d.refs=refs;d.p=Object.assign(cgDefaults(d.kind,how),Object.fromEntries(Object.entries(d.p||{}).filter(([k])=>k==='flip'||k==='expr'||k==='pname'||(CG_HOW[d.kind][how].par||{})[k])));
+  d.how=how;d.refs=refs;d.p=Object.assign(cgDefaults(d.kind,how),Object.fromEntries(Object.entries(d.p||{}).filter(([k])=>k==='flip'||k==='expr'||k==='pname'||k==='_fxOf'||k==='_fxKeys'||(CG_HOW[d.kind][how].par||{})[k])));
   cgNextSlot();cgRefresh();
 }
 function cgRefAccept(ref){

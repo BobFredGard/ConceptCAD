@@ -8,7 +8,7 @@ sont sorties le 2026-09-30j.
 Code dans `src/` · livrable `fusion_mvp.html` (généré par `build.js`) · architecture et
 garde-fous en tête de `src/00-entete-et-outils.js`.
 
-**572 versions**, de `2026-09-28b` à `V0.57.0` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
+**573 versions**, de `2026-09-28b` à `V0.57.1` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
 comme dans le fichier d'origine.
 
 ---
@@ -6654,3 +6654,14 @@ Demande : « une bibliothèque d'aimant avec leur caractéristiques et leur cham
 - **Défaut corrigé** : la matière d'un composant choisie dans Inspecter (`doc.mat`) n'était pas enregistrée dans le fichier : perdue à la réouverture, la masse repartait sur l'acier. Elle est maintenant écrite et relue.
 - **Pas repris** : aimants diamétraux (5 articles), formes spéciales, catalogue Binder Magnetic (non trouvé en ligne).
 - **Tests** : `test_aimants` retrouve les 2952 G et 2643 G publiés par K&J pour le disque D82, recoupe disque, anneau et pavé avec une intégration numérique et avec le dipôle à grande distance, contrôle le catalogue, les lignes, l'enregistrement, l'annulation et les volumes du noyau exact ; `tests/browser/aimants.spec.cjs` joue le parcours avec de vrais clics droits. Parcours d'usinage inchangés, `CACHE_VER` ne change pas.
+
+## V0.57.1 - Champs de valeurs : la saisie reste acquise, et le clic ou le Tab qui la suit n'est plus perdu
+
+Demande : « certains champs de valeurs ne gardent pas les paramètres rentrés, comme par exemple le champ de la valeur du plan parallèle ».
+
+- **Plan rouvert dont la valeur est nommée** : `Dist = 30` changé en `Dist = 35` était refusé (« nom déjà utilisé ») et la valeur revenait à 30. Cause : `cgEdit` travaille sur une copie de l'élément, qui ne se reconnaissait pas comme porteuse de son propre nom. Elle est maintenant reliée à l'original (`parFxFrom`) ; ce lien n'est pas recopié à la validation.
+- **Traverser un champ sans rien y changer** : `parFx` retraitait le texte à la sortie et le nom disparaissait de l'affichage. La sortie ne fait plus rien si le texte n'a pas changé.
+- **Tab dans un panneau qui se redessine** (`saisieTab`) : le curseur repartait du haut du panneau et ce qui était tapé ensuite se perdait (point X, Tab, Y, Tab, Z : seul X restait). Le curseur va au champ voulu, à la même place dans le panneau.
+- **Clic perdu juste après une saisie** (`saisieClicRejoue`) : quitter le champ enregistre sa valeur pendant l'appui de la souris ; le panneau se redessine et le bouton pressé disparaît. Il fallait cliquer deux fois sur Valider, Inverser ne se cochait pas, la référence de l'arbre n'était pas prise. Le clic est rejoué sur le remplaçant : même type, même texte, sous la souris ; sinon rien.
+- **Constaté sans défaut** : un nombre simple dans le champ du plan décalé (décimales, négatif, annuler / rétablir, rejeu, enregistrement) ; 25 champs de fonctions créées sur 7 pièces d'exemple. Les fenêtres de création n'ont été que relues.
+- **Tests** : `tests/browser/champs.spec.cjs` (6 parcours en vrai navigateur). `CACHE_VER` ne change pas.
