@@ -7,12 +7,12 @@ function wirePick(){
   try{const st=document.createElement('style');st.textContent='canvas.mfCtrlMesure{cursor:crosshair!important}';document.head.appendChild(st);}catch(e){}
   const ctrlVue=on=>{try{el.classList.toggle('mfCtrlMesure',!!on&&!skEdit);}catch(e){}};
   window.addEventListener('keydown',e=>{if(e.key==='Control'||e.key==='Meta')ctrlVue(true);},true);
-  window.addEventListener('keyup',e=>{if(e.key==='Control'||e.key==='Meta')ctrlVue(false);},true);
+  window.addEventListener('keyup',e=>{if(e.key==='Control'||e.key==='Meta'){ctrlVue(false);if(hoverKey)clearHover();}},true);
   window.addEventListener('blur',()=>ctrlVue(false));
   el.addEventListener('pointermove',e=>ctrlVue(e.ctrlKey||e.metaKey));
   el.addEventListener('pointerup',e=>{
     if(ctrlMesureEv(e)&&!skEdit&&e.button===0&&Math.hypot(e.clientX-dx,e.clientY-dy)<=6){
-      if(asmMode==='asm')asmMeasClick(e);else faceSelect(e,true);
+      faceSelect(e,true);
       return;
     }
     if(typeof pgPick!=='undefined'&&pgPick){if(e.button===0&&Math.hypot(e.clientX-dx,e.clientY-dy)<=6)pgPickAt(e);return;} // répétition suivant un profil : départ (41)
@@ -238,6 +238,26 @@ window.addEventListener('keydown',e=>{
 });
 // Geste de mesure : Ctrl / Cmd seul (Ctrl+Maj reste la sélection d'une plage, Alt l'isolement)
 function ctrlMesureEv(e){return !!(e&&(e.ctrlKey||e.metaKey)&&!e.shiftKey&&!e.altKey);}
+// Un seul outil de mesure en Modéliser et en Assembler : il voit les corps du modèle (Modéliser) et
+// les composants dessinés dans la vue (48-assemblage-mesure) ; ses tracés vont dans la scène affichée.
+function mesScene(){return asmMode==='asm'?asmSceneGet():scene;}
+function mesPick(e){
+  if(typeof viewFaoActive==='function'&&viewFaoActive())return pick(e); // FAO : le modèle seul
+  const r=renderer.domElement.getBoundingClientRect();
+  rayc.setFromCamera(new THREE.Vector2(((e.clientX-r.left)/r.width)*2-1,-((e.clientY-r.top)/r.height)*2+1),camera);
+  const hits=asmMode==='asm'?[]:rayc.intersectObjects(bodies.filter(b=>b.visible).map(b=>b.mesh),false);
+  asmMeasHits(hits);
+  hits.sort((a,b)=>a.distance-b.distance);
+  return hits.find(h=>!(h.object.userData.rd&&h.object.userData.rd.ghost))||hits[0]||null; // les fantômes en dernier recours
+}
+function mesEdgeSegs(){
+  const part=asmMode==='asm'?[]:edgeHoverSegs();
+  return typeof viewFaoActive==='function'&&viewFaoActive()?part:part.concat(asmMeasEdgeSegs());
+}
+const mesPropre=m=>bodies.some(b=>b.mesh===m);
+const mesGeomOf=(m,fi)=>mesPropre(m)?occFaceGeom(m,fi):asmMeasGeom(m,fi);
+const mesNom=m=>mesPropre(m)?bodyName(m):asmMeasName(m);
+function mesEnCours(){return !!(mesEtrangere||selFaces.length||selEdges.length||selGroup||measureGroup);}
 function pick(e){
   const r=renderer.domElement.getBoundingClientRect();
   const ndc=new THREE.Vector2(((e.clientX-r.left)/r.width)*2-1,-((e.clientY-r.top)/r.height)*2+1);
@@ -267,12 +287,12 @@ function edgeGeomOf(P){
   return ok?{kind:'circle',center:C,axis:n.clone().normalize(),r,closed,pts:V}:{kind:'curve',pts:V};
 }
 function edgeSelect(e,eh,second){
-  const P=edgeHoverSegs()[eh.pi];if(!P)return;
+  const P=eh.P||edgeHoverSegs()[eh.pi];if(!P)return;
   const G=edgeGeomOf(P);
   clearHover();
   if(!second||!selEdges.length){
     clearMeasure();selEdges=[{P,G}];
-    if(!selGroup){selGroup=new THREE.Group();scene.add(selGroup);}
+    if(!selGroup){selGroup=new THREE.Group();mesScene().add(selGroup);}
     edgeHoverDraw(P,selGroup,0xff9f0a);
     const desc=G.kind==='line'?('DROITE · longueur '+G.a.distanceTo(G.b).toFixed(2)+' mm'):(G.kind==='circle'?((G.closed?'CERCLE':'ARC')+' · Ø'+(2*G.r).toFixed(2)+' (R'+G.r.toFixed(2)+')'):'COURBE');
     faceEl.textContent='Arête 1 : '+desc+'\nCtrl/Cmd+clic une 2e arête : distance perpendiculaire, angle ou entraxe.';
@@ -334,8 +354,11 @@ function faceSelect(e,second){
   if(!second&&!noSel){const tp=triadPickPlane(e);if(tp){clearMeasure();sel={kind:'plane',id:tp};renderTree();renderProps();refreshParts();faceEl.textContent=`Plan ${tp} — ${PLANES[tp].label}
 Bouton « Esquisse » (ou double-clic dans l'arbre) pour dessiner dessus.`;return;}}
   if(!second&&!noSel&&cgSelectAt(e))return; // construction (79) : plans, axes, points, repères
-  const h=pick(e);
-  try{const eh=edgeHoverPick(e,h);if(eh){edgeSelect(e,eh,second);return;}}catch(err){}
+  const h=meas?mesPick(e):pick(e);
+  try{
+    const segs=meas?mesEdgeSegs():edgeHoverSegs(),eh=edgePickScreen(e,segs,h,6);
+    if(eh){eh.P=segs[eh.pi];edgeSelect(e,eh,second);return;}
+  }catch(err){}
   if(second&&selEdges.length&&!selFaces.length){selEdges=[];}
   if(!h){
     if(!second&&fao){clearMeasure();faceEl.textContent='Aucune face — cliquez sur un corps.';}
@@ -347,21 +370,26 @@ Bouton « Esquisse » (ou double-clic dans l'arbre) pour dessiner dessus.`;retur
       if(sel.kind||treeSel.length){sel={kind:null,id:null};treeSel=[];renderTree();renderProps();refreshParts();}
     }return;}
   clearHover();
-  if(!second){clearMeasure();selFaces=[{mesh:h.object,faceIndex:h.faceIndex,point:h.point.clone(),geom:occFaceGeom(h.object,h.faceIndex)}];highlightTris(h.object,faceTrisFor(h.object,h.faceIndex),0xff9f0a,0.55);
-    const G=selFaces[0].geom;
-    faceEl.textContent=`Face 1 : ${bodyName(h.object)}${G?(G.kind==='cyl'?` · CYLINDRE Ø${(G.r*2).toFixed(2)}`:' · PLAN'):''}\nAire ≈ ${faceArea(h.object,h.faceIndex)}\nCtrl+clic une 2e face (entraxe auto si cylindres)${fao?'':' · Bouton « Esquisse » pour esquisser dessus.'}`;
+  const propre=mesPropre(h.object),P={mesh:h.object,faceIndex:h.faceIndex,point:h.point.clone(),geom:mesGeomOf(h.object,h.faceIndex)};
+  if(!second){clearMeasure();if(propre)selFaces=[P];else mesEtrangere=P;highlightTris(h.object,faceTrisFor(h.object,h.faceIndex),0xff9f0a,0.55);
+    const G=P.geom;
+    if(meas&&G&&G.kind==='cyl'){drawAxis(G.center,G.axis,axisLen());tagAt('Ø '+(G.r*2).toFixed(2),P.point.clone());} // Ctrl+clic seul sur un cylindre : son Ø
+    faceEl.textContent=`Face 1 : ${mesNom(h.object)}${G?(G.kind==='cyl'?` · CYLINDRE Ø${(G.r*2).toFixed(2)}`:' · PLAN'):''}\nAire ≈ ${faceArea(h.object,h.faceIndex)}\nCtrl+clic une 2e face (entraxe auto si cylindres)${fao||!propre?'':' · Bouton « Esquisse » pour esquisser dessus.'}`;
     // V0.23.26 : la fonction créatrice est sélectionnée dans l'arbre et la timeline — différé :
     // la face s'allume tout de suite, le rejeu observé (points de contrôle) vient ensuite
     const hm=h.object,hf=h.faceIndex,hp=h.point.clone();
     if(!noSel)setTimeout(()=>{if(selFaces.length===1&&selFaces[0].mesh===hm&&selFaces[0].faceIndex===hf)faceSelectFeature(hm,hf,hp);},0);}
   else{
-    if(!selFaces.length){faceSelect(e,false);return;}
-    const NB={mesh:h.object,faceIndex:h.faceIndex,point:h.point.clone(),geom:occFaceGeom(h.object,h.faceIndex)};
-    selFaces.push(NB);highlightTris(h.object,faceTrisFor(h.object,h.faceIndex),0xff9f0a,0.55);
-    if(!measurePair(selFaces[0],NB)){
-      const[a,b]=selFaces;const d=a.point.distanceTo(b.point);
-      dimPair(a.point,b.point,d.toFixed(2)+' mm');
-      faceEl.textContent=`Face 1 : ${bodyName(a.mesh)}\nFace 2 : ${bodyName(b.mesh)}\nDistance points ≈ ${d.toFixed(2)} mm${occHas()?'':'\n(Entraxe/Ø exacts : noyau OCCT requis — page en http://)'}`;
+    const A=mesEtrangere||selFaces[0];
+    if(!A){faceSelect(e,false);return;}
+    if(propre)selFaces.push(P);
+    highlightTris(h.object,faceTrisFor(h.object,h.faceIndex),0xff9f0a,0.55);
+    const noms=`Face 1 : ${mesNom(A.mesh)}\nFace 2 : ${mesNom(P.mesh)}\n`;
+    if(measurePair(A,P)){if(!propre||!mesPropre(A.mesh))faceEl.textContent=noms+faceEl.textContent;}
+    else{
+      const d=A.point.distanceTo(P.point);
+      dimPair(A.point,P.point,d.toFixed(2)+' mm');
+      faceEl.textContent=`${noms}Distance points ≈ ${d.toFixed(2)} mm${occHas()?'':'\n(Entraxe/Ø exacts : noyau OCCT requis — page en http://)'}`;
     }
   }
 }
@@ -580,7 +608,7 @@ function entraxePts(c1,a1,c2,a2){
   return{q1,q2,d:q1.distanceTo(q2),par:false};
 }
 function drawAxis(center,axis,len){
-  if(!selGroup){selGroup=new THREE.Group();scene.add(selGroup);}
+  if(!selGroup){selGroup=new THREE.Group();mesScene().add(selGroup);}
   const a=center.clone().addScaledVector(axis,-len/2),b=center.clone().addScaledVector(axis,len/2);
   const l=new THREE.Line(new THREE.BufferGeometry().setFromPoints([a,b]),
     new THREE.LineDashedMaterial({color:0xff9f0a,dashSize:len/20,gapSize:len/25,depthTest:false}));
@@ -684,7 +712,7 @@ function faceTrisFor(mesh,fi){
 }
 function highlightTris(mesh,tris,color,opacity,target){
   if(!tris||!tris.length)return;
-  const grp=target||(()=>{if(!selGroup){selGroup=new THREE.Group();scene.add(selGroup);}return selGroup;})();
+  const grp=target||(()=>{if(!selGroup){selGroup=new THREE.Group();mesScene().add(selGroup);}return selGroup;})();
   mesh.updateMatrixWorld(true);
   const g=mesh.geometry,pos=g.attributes.position,idx=g.index;
   const arr=[],v=new THREE.Vector3();
@@ -710,7 +738,7 @@ function highlightTris(mesh,tris,color,opacity,target){
 let hoverGroup=null,hoverKey='',lastHoverT=0;
 function clearHover(){
   hoverKey='';
-  if(hoverGroup){scene.remove(hoverGroup);hoverGroup.traverse(o=>{o.geometry&&o.geometry.dispose();o.material&&(Array.isArray(o.material)?o.material:[o.material]).forEach(m=>m.dispose&&m.dispose());});hoverGroup=null;}
+  if(hoverGroup){hoverGroup.removeFromParent();hoverGroup.traverse(o=>{o.geometry&&o.geometry.dispose();o.material&&(Array.isArray(o.material)?o.material:[o.material]).forEach(m=>m.dispose&&m.dispose());});hoverGroup=null;}
 }
 // 2026-10-16-003 : PRÉSÉLECTION DES ARÊTES au survol (comme les faces) — surbrillance orange sanguine,
 // ruban à peine plus épais que le trait normal (1,6 px au lieu de 1). Priorité à l'arête si le
@@ -784,22 +812,22 @@ function edgeHoverDraw(P,grp,color){
   m.renderOrder=997;m.raycast=()=>{};grp.add(m);
 }
 function hoverMove(e){
-  if(asmMode==='asm')return; // vue d'assemblage : la scène de la pièce n'est pas affichée
   // Pré-sélection lumineuse au survol (comme le viewer), ~15 Hz max, jamais en orbite/clic.
-  const meas=ctrlMesureEv(e); // Ctrl : les faces et arêtes s'allument aussi quand une fonction est ouverte
+  const meas=ctrlMesureEv(e); // Ctrl : les faces et arêtes s'allument aussi quand une fonction est ouverte, et en Assembler
+  if(asmMode==='asm'&&!meas){if(hoverKey)clearHover();return;} // vue d'assemblage : seule la mesure survole
   if(skEdit||(!meas&&(filMode||filModeX||faoChainMode)))return;
   if(e.buttons!==0)return;
   const now=performance.now();if(now-lastHoverT<65)return;lastHoverT=now;
   try{
     if(!meas&&(triadHoverAt(e)||(typeof faoPoseHoverAt==='function'&&faoPoseHoverAt(e)))){if(hoverKey)clearHover();renderer.domElement.style.cursor='pointer';hoverMove._cur=1;return;}
     if(hoverMove._cur){hoverMove._cur=0;renderer.domElement.style.cursor='';}
-    const h=pick(e);
-    const eh=edgeHoverPick(e,h);
+    const h=meas?mesPick(e):pick(e);
+    const segs=meas?mesEdgeSegs():edgeHoverSegs(),eh=edgePickScreen(e,segs,h,6);
     if(eh){
       const key='edge:'+eh.pi;if(key===hoverKey)return;
       clearHover();hoverKey=key;
-      hoverGroup=new THREE.Group();scene.add(hoverGroup);
-      edgeHoverDraw(edgeHoverSegs()[eh.pi],hoverGroup);
+      hoverGroup=new THREE.Group();mesScene().add(hoverGroup);
+      edgeHoverDraw(segs[eh.pi],hoverGroup);
       return;
     }
     if(!h||h.faceIndex===undefined||h.faceIndex===null){if(hoverKey)clearHover();return;}
@@ -808,7 +836,7 @@ function hoverMove(e){
     const key=h.object.uuid+':'+(g?('g'+g.f):('t'+h.faceIndex));
     if(key===hoverKey)return;
     clearHover();hoverKey=key;
-    if(!hoverGroup){hoverGroup=new THREE.Group();scene.add(hoverGroup);}
+    if(!hoverGroup){hoverGroup=new THREE.Group();mesScene().add(hoverGroup);}
     const tris=g?null:growTris(h.object,h.faceIndex);
     if(g){const out=[];for(let t=g.start;t<g.start+g.count&&out.length<4000;t++)out.push(t);highlightTris(h.object,out,0x0a84ff,0.35,hoverGroup);}
     else if(tris&&tris.length)highlightTris(h.object,tris.slice(0,4000),0x0a84ff,0.35,hoverGroup);
@@ -816,18 +844,19 @@ function hoverMove(e){
   }catch(err){}
 }
 function clearMeasure(){
-  selFaces=[];selEdges=[];selLabels=[];labelsDiv.innerHTML='';clearHover();
-  if(selGroup){scene.remove(selGroup);selGroup=null;}
-  if(measureGroup){scene.remove(measureGroup);measureGroup=null;}
+  selFaces=[];mesEtrangere=null;selEdges=[];selLabels=[];labelsDiv.innerHTML='';clearHover();
+  // removeFromParent : les tracés sont dans la scène où ils ont été faits (mesScene), pas forcément celle de la pièce
+  if(selGroup){selGroup.removeFromParent();selGroup=null;}
+  if(measureGroup){measureGroup.removeFromParent();measureGroup=null;}
 }
 function tagAt(text,pos){
-  if(!measureGroup){measureGroup=new THREE.Group();scene.add(measureGroup);}
+  if(!measureGroup){measureGroup=new THREE.Group();mesScene().add(measureGroup);}
   const dot=new THREE.Mesh(new THREE.SphereGeometry(0.9,10,10),new THREE.MeshBasicMaterial({color:0x30d158,depthTest:false,depthWrite:false,transparent:true}));dot.position.copy(pos);dot.renderOrder=999;dot.raycast=()=>{};measureGroup.add(dot);
   const el=document.createElement('div');el.className='mlabel';el.textContent=text;labelsDiv.appendChild(el);
   selLabels.push({el,getPos:()=>pos.clone()});
 }
 function dimPair(p1,p2,text){
-  if(!measureGroup){measureGroup=new THREE.Group();scene.add(measureGroup);}
+  if(!measureGroup){measureGroup=new THREE.Group();mesScene().add(measureGroup);}
   const ml=new THREE.Line(new THREE.BufferGeometry().setFromPoints([p1,p2]),new THREE.LineBasicMaterial({color:0x30d158,depthTest:false,depthWrite:false,transparent:true}));ml.renderOrder=999;ml.raycast=()=>{};measureGroup.add(ml);
   [p1,p2].forEach(p=>{const s=new THREE.Mesh(new THREE.SphereGeometry(1,10,10),new THREE.MeshBasicMaterial({color:0x30d158,depthTest:false,depthWrite:false,transparent:true}));s.position.copy(p);s.renderOrder=999;s.raycast=()=>{};measureGroup.add(s);});
   const el=document.createElement('div');el.className='mlabel';el.textContent=text;labelsDiv.appendChild(el);

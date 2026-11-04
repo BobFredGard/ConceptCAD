@@ -239,7 +239,7 @@ function asmPatStart(ids,type){
   const owner=asmActiveComp();if(!owner)return false;
   ids=(ids||[]).filter(id=>owner.occ.some(o=>o.id===id&&!o.pat));
   if(!ids.length){try{faceEl.textContent='Répétition : sélectionnez d’abord une ou plusieurs occurrences (une instance de répétition ne se répète pas : modifiez sa répétition).';}catch(e){}return false;}
-  try{if(asmMeas)asmMeasStop(true);}catch(e){}
+  try{asmMeasStop(true);}catch(e){}
   asmPush('répétition');
   const p=asmPatNew(owner,ids,type);if(!p){asmUndoStack.pop();return false;}
   asmPatEd={owner:owner.id,pat:p.id,before:null};
@@ -261,7 +261,7 @@ function asmRibbonPattern(){
 }
 function asmPatEdit(ownerId,pid){
   const o=asmComp(ownerId),p=o&&(o.pats||[]).find(q=>q.id===pid);if(!p)return false;
-  try{if(asmMeas)asmMeasStop(true);}catch(e){}
+  try{asmMeasStop(true);}catch(e){}
   asmPush('modifier « '+(p.name||'répétition')+' »');
   asmPatEd={owner:o.id,pat:p.id,before:JSON.stringify(o.pats)};
   try{renderTree();renderProps();}catch(e){}

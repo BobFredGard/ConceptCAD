@@ -163,6 +163,7 @@ function asmFill(G,placer){
   G.updateMatrixWorld(true);
 }
 function asmDraw(){
+  asmMeasStop(true); // les pièces sont redessinées, peut-être déplacées : la mesure ne resterait pas sur elles
   const S=asmSceneGet(),G=S.getObjectByName('asmOcc');
   asmClear(G);
   if(!asm)return;
@@ -289,7 +290,7 @@ function asmPickAt(e){
 }
 function asmClick(e){
   // Ctrl+clic = mesure (wirePick, 90) ; un clic simple efface la mesure affichée
-  if(asmMeas)asmMeasStop(true);
+  asmMeasStop(true);
   if(asmAlignPickAt(e))return; // commande Aligner : clic = repère (48)
   if(stdHolePickAt(e))return; // composants normalisés : pose sur des trous (48)
   const id=asmPickAt(e);
@@ -349,7 +350,7 @@ function asmKey(e){
   const ctrl=e.ctrlKey||e.metaKey,k=String(e.key||'').toLowerCase();
   if(ctrl&&(k==='z'||k==='y'))return false; // routage unique en capture (undoDispatch, 45)
   if((e.key==='Delete'||e.key==='Backspace')&&asmSelId){e.preventDefault();asmAskDeleteLot(asmLotIds());return true;}
-  if(e.key==='Escape'&&asmMeas){asmMeasStop();return true;}
+  if(e.key==='Escape'&&mesEnCours()){asmMeasStop();return true;}
   if(e.key==='Escape'&&asmPatEd){asmPatCancel();return true;}
   if(e.key==='Escape'&&asmAlign){asmAlignCancel();return true;}
   if(e.key==='Escape'&&stdHolePick){stdHoleCancel();return true;}

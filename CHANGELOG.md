@@ -8,7 +8,7 @@ sont sorties le 2026-09-30j.
 Code dans `src/` · livrable `fusion_mvp.html` (généré par `build.js`) · architecture et
 garde-fous en tête de `src/00-entete-et-outils.js`.
 
-**566 versions**, de `2026-09-28b` à `V0.51.0` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
+**567 versions**, de `2026-09-28b` à `V0.52.0` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
 comme dans le fichier d'origine.
 
 ---
@@ -6587,3 +6587,14 @@ Demande : retrouver une mesure souple, sans bouton à choisir et sans fonction q
 - **Assemblage** : bouton Mesurer retiré du bandeau et des panneaux, avec son panneau dédié. Ctrl+clic mesure entre les pièces, le résultat s’affiche dans la barre de message, un clic simple ou Échap l’efface. Conséquence : dans la vue 3D, Ctrl+clic n’ajoute plus de pièce à la sélection (reste Ctrl+clic dans l’arbre, et Maj+clic pour une plage).
 - **Mesure fausse sur plusieurs corps** (`occCleanup`) : le solide d’un corps fait d’une seule extrusion était aussi rangé parmi les solides intermédiaires, donc effacé après la reconstruction alors qu’il restait affiché. La mesure retombait sur la distance entre les points cliqués (46,10 au lieu de 30,00 sur l’essai), et les autres lectures de face de ce corps échouaient. `CACHE_VER` ne change pas : aucun parcours à régénérer.
 - **Test** : parcours navigateur « mesure : Ctrl enfoncé » (CAO, fonction ouverte, FAO, assemblage).
+
+## V0.52.0 - Mesure : plus de faces rémanentes, le même outil en Modéliser et en Assembler
+
+Demandes : « il y a une rémanence des faces choisies sur un modèle […] quand on passe au mode Assembler », « il faut le même outil de mesure en mode Modéliser ».
+
+- **Rémanence** : une régénération pendant une mesure en Assembler laissait les faces orange accrochées à la vue, même après un aller-retour entre les modes ; une cote faite en Modéliser restait affichée en Assembler. Les tracés sont maintenant rangés dans la scène affichée et retirés de celle où ils sont ; la mesure s’efface au changement de mode, à chaque régénération et quand les pièces sont redessinées (déplacement…).
+- **Un seul outil** (`faceSelect`, `hoverMove`) : en **Modéliser**, Ctrl+clic atteint aussi les pièces autour du modèle (faces et arêtes) ; en **Assembler**, il gagne le survol et les arêtes. Ctrl+clic seul sur un cylindre donne son Ø partout. La FAO reste limitée au modèle.
+- **Comportement changé en Assembler** : après deux faces, un 3ᵉ Ctrl+clic mesure depuis la 1ʳᵉ face, comme en Modéliser, au lieu de relancer une mesure ; Échap ou un clic simple repart de zéro.
+- **Fonctions** : une face d’une pièce voisine sert seulement à mesurer (`mesEtrangere`), elle n’entre pas dans la sélection lue par Esquisse, les trous, etc.
+- **Reste à faire** : l’arête d’un corps masqué dans une autre pièce peut encore réagir au survol.
+- **Test** : parcours navigateur « mesure d’assemblage ». `CACHE_VER` ne change pas.

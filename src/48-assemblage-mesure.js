@@ -1,13 +1,12 @@
 /* ---------- mesures entre pièces d'un assemblage (V0.29.0) ----------
-   Mode Placer, Ctrl+clic (wirePick, 90) sur deux faces de n'importe quelles pièces affichées
-   (composant actif, enfants, fantômes) → les mêmes mesures que dans la pièce (measurePair, 90) :
-   distance exacte entre faces parallèles, entraxe de deux cylindres, axe ↔ face, angle entre
+   Le geste et les calculs sont ceux de la pièce (Ctrl+clic, faceSelect et measurePair, 90), en
+   Modéliser comme en Assembler ; ce fichier leur donne les pièces affichées (composant actif,
+   enfants, fantômes) : distance exacte entre faces parallèles, entraxe de deux cylindres, axe ↔ face, angle entre
    faces ; sinon distance entre les points cliqués. Un clic seul sur un cylindre donne son Ø.
    Géométrie EXACTE sans rejeu ni noyau : chaque instantané de composant porte, pour chaque face
    de ses maillages, son plan ou son cylindre (it.fg, capturé en fin de rejeu par asmFaceTable,
    gardé en cache avec l'image) ; la mesure le place par la matrice de l'instance cliquée.
    Faces d'autres types (tores, splines) ou image sans table : distance entre points cliqués. */
-let asmMeas=null; // {picks:[{mesh, faceIndex, point, geom, name}], txt}
 function asmFaceTable(b){
   // Plan / cylindre exact de chaque groupe de faces du maillage du corps b (ordre de
   // geometry.userData.occGroups), dans le repère du maillage affiché → [{k,…}|null] ou null
@@ -69,32 +68,37 @@ function asmGrpNorm(g){
   const ok=g.every(x=>x&&Number.isInteger(x.start)&&Number.isInteger(x.count)&&Number.isInteger(x.f)&&x.start>=0&&x.count>=0&&x.f>=0);
   return ok?g.map(x=>({start:x.start,count:x.count,f:x.f})):null;
 }
-/* ── mesure en cours : existe dès le 1er Ctrl+clic, jusqu'au clic simple ou à Échap ── */
+/* ── ce que la mesure voit des composants dessinés dans la vue ── */
 function asmMeasStop(quiet){
-  if(!asmMeas)return;
-  asmMeas=null;asmMeasGfxClear();
+  if(!mesEnCours())return;
+  clearMeasure();
   if(!quiet){try{faceEl.textContent='Mesure effacée.';}catch(e){}}
 }
-function asmMeasGfxClear(){
-  // Les tracés de mesure (90 : measureGroup, selGroup) sont rangés dans la scène d'assemblage
-  try{[measureGroup,selGroup].forEach(g=>{if(g&&g.parent&&g.parent!==scene)g.parent.remove(g);});}catch(e){}
-  try{clearMeasure();}catch(e){}
+function asmMeasVue(){
+  // Assembler : tout ce qui est placé ; Modéliser : ce qui est autour de la pièce
+  const G=asmMode==='asm'?asmSceneGet().getObjectByName('asmOcc'):scene.getObjectByName('asmCtx');
+  return G&&G.visible!==false?G:null;
 }
-function asmMeasGfxAdopt(){
-  const S=asmSceneGet();
-  try{if(measureGroup)S.add(measureGroup);if(selGroup)S.add(selGroup);}catch(e){}
-}
-function asmMeasHit(e){
-  // Face sous le curseur, toutes pièces affichées (les fantômes en dernier recours)
-  const G=asmSceneGet().getObjectByName('asmOcc');if(!G)return null;
-  const r=renderer.domElement.getBoundingClientRect();
-  rayc.setFromCamera(new THREE.Vector2(((e.clientX-r.left)/r.width)*2-1,-((e.clientY-r.top)/r.height)*2+1),camera);
+function asmMeasHits(hits){
+  // Rayon rayc déjà placé. Raycast d'origine : les pièces non sélectionnables l'ont neutralisé (asmFill, 47)
+  const G=asmMeasVue();if(!G)return;
   G.updateMatrixWorld(true);
-  const hits=[];
-  // raycast d'origine : les pièces non sélectionnables l'ont neutralisé (asmFill, 47)
-  G.traverse(m=>{if(m.isMesh&&m.userData&&m.userData.rd){try{THREE.Mesh.prototype.raycast.call(m,rayc,hits);}catch(err){}}});
-  hits.sort((a,b)=>a.distance-b.distance);
-  return hits.find(h=>!h.object.userData.rd.ghost)||hits[0]||null;
+  G.traverseVisible(m=>{if(m.isMesh&&m.userData&&m.userData.rd){try{THREE.Mesh.prototype.raycast.call(m,rayc,hits);}catch(err){}}});
+}
+function asmMeasEdgeSegs(){
+  // Arêtes exactes des composants affichés (_snap.pedges), placées une fois par dessin
+  const G=asmMeasVue();if(!G)return [];
+  let out=[];
+  G.children.forEach(g=>{
+    const u=g.userData;if(!u||!u.path||u.kind==='ghost')return;
+    if(!u.mesSegs){
+      const c=asmComp(asmPathComp(u.path)),E=(c&&c._snap&&c._snap.pedges)||[],v=new THREE.Vector3();
+      g.updateMatrixWorld(true);
+      u.mesSegs=E.map(x=>x.pts.map(p=>{v.set(p[0],p[1],p[2]).applyMatrix4(g.matrixWorld);return [v.x,v.y,v.z];}));
+    }
+    out=out.concat(u.mesSegs);
+  });
+  return out;
 }
 function asmMeasGeom(m,fi){
   // Plan / cylindre exact de la face cliquée, dans la scène d'assemblage (format occFaceGeom, 90)
@@ -114,33 +118,4 @@ function asmMeasName(m){
   const n=[];let c=asmRoot();
   for(const id of path){const o=c&&c.occ.find(q=>q.id===id);if(!o)break;n.push(o.name);c=asmComp(o.comp);}
   return n.join(' › ')||'pièce';
-}
-function asmMeasClick(e){
-  const h=asmMeasHit(e);
-  if(!h){try{faceEl.textContent='Aucune face ici — Ctrl+clic sur une face d’une pièce.';}catch(err){}return true;} // la 1ʳᵉ face reste choisie
-  if(!asmMeas)asmMeas={picks:[]};
-  const P={mesh:h.object,faceIndex:h.faceIndex,point:h.point.clone(),geom:asmMeasGeom(h.object,h.faceIndex),name:asmMeasName(h.object)};
-  const kind=G=>G?(G.kind==='cyl'?' · CYLINDRE Ø'+(G.r*2).toFixed(2):' · PLAN'):'';
-  let txt='';
-  if(asmMeas.picks.length!==1){
-    // première face (ou nouvelle mesure après deux faces)
-    asmMeasGfxClear();asmMeas.picks=[P];
-    try{highlightTris(P.mesh,faceTrisFor(P.mesh,P.faceIndex),0xff9f0a,0.55);}catch(err){}
-    if(P.geom&&P.geom.kind==='cyl'){
-      try{drawAxis(P.geom.center,P.geom.axis,axisLen());tagAt('Ø '+(P.geom.r*2).toFixed(2),P.point.clone());}catch(err){}
-    }
-    txt='Face 1 : '+P.name+kind(P.geom)+'\nCtrl+clic une 2ᵉ face (même pièce ou une autre).';
-  }else{
-    const A=asmMeas.picks[0];asmMeas.picks.push(P);
-    try{highlightTris(P.mesh,faceTrisFor(P.mesh,P.faceIndex),0xff9f0a,0.55);}catch(err){}
-    let done=false;try{done=measurePair(A,P);}catch(err){done=false;}
-    let res;
-    if(done)res=faceEl.textContent;
-    else{const d=A.point.distanceTo(P.point);dimPair(A.point,P.point,d.toFixed(2)+' mm');
-      res='Distance entre les points cliqués ≈ '+d.toFixed(2)+' mm'+(A.geom&&P.geom?'':'\n(face non plane ni cylindrique, ou image sans géométrie exacte : distance des points)');}
-    txt='Face 1 : '+A.name+kind(A.geom)+'\nFace 2 : '+P.name+kind(P.geom)+'\n'+res;
-  }
-  asmMeasGfxAdopt();
-  try{faceEl.textContent=txt;}catch(err){}
-  return true;
 }

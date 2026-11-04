@@ -21,7 +21,7 @@
  * peut changer sans rien casser. CACHE_VER (parcours FAO) reste indépendant.
  */
 
-const APP_VER='V0.51.0';
+const APP_VER='V0.52.0';
 try{console.log('[ConceptCAD] version '+APP_VER);}catch(e){}
 try{var mfSv=document.getElementById('mfSplashVer');if(mfSv)mfSv.textContent=APP_VER;}catch(e){} // écran de démarrage
 
@@ -107,6 +107,7 @@ function entName(kind){
 }
 let sel={kind:null,id:null};
 let selFaces=[]; // {mesh,faceIndex,point}
+let mesEtrangere=null; // 1re face de la mesure quand elle est sur un autre composant : jamais dans selFaces, que lisent les fonctions (Esquisse, trous…)
 let selGroup=null,measureGroup=null,labelsDiv=$('labels'),selLabels=[];
 let clipPlane=null,fileHandle=null,occt=null,occtReady=false,dirty=false;
 let builtHash=null,builtEngine=null; // empreinte doc + moteur ('exact'|'mesh') du dernier affichage

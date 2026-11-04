@@ -339,7 +339,109 @@ test('mesure : Ctrl enfoncé = mesure en CAO, fonction ouverte, FAO et assemblag
   expect(await page.evaluate(()=>({id:asmSelId,lot:asmLot.length}))).toEqual({id:null,lot:0});
   // un clic simple efface la mesure et sélectionne la pièce, comme avant
   await clic(35,0,50);
-  expect(await page.evaluate(()=>({m:asmMeas,sel:!!asmSelId}))).toEqual({m:null,sel:true});
+  expect(await page.evaluate(()=>({m:mesEnCours(),sel:!!asmSelId}))).toEqual({m:false,sel:true});
+  expect(err).toEqual([]);
+});
+
+test('mesure d\'assemblage : plus de faces rémanentes, même outil en Modéliser et en Assembler',async({page})=>{
+  const err=await demarrer(page);
+  await page.evaluate(()=>{
+    const mkSk=(name,pts)=>{newSketch('XY');const sk=skEdit;sk.name=name;const P=pts.map(([x,y])=>addPoint(sk,x,y));
+      for(let i=0;i<P.length;i++)sk.entities.push({id:'L'+i,t:'line',p1:P[i],p2:P[(i+1)%P.length]});closeSketch(true);return sk;};
+    const a=mkSk('Esquisse socle',[[-20,-20],[20,-20],[20,20],[-20,20]]);
+    addFeature({id:uid('ex'),type:'extrude',name:'Socle',sketchId:a.id,op:'add',distance:20});
+    const b=mkSk('Esquisse colonne',[[30,-5],[40,-5],[40,5],[30,5]]);extNew={sketchId:b.id,op:'new',dist:50};extNewOk();
+    doc.bodies[1].name='Colonne';markDirty();rebuild();
+  });
+  await page.waitForFunction(()=>builtEngine==='exact'&&rebuildDepth===0&&builtVersion===_docVersion&&doc.bodies.length===2,null,{timeout:60000});
+  await page.evaluate(()=>{asmCmdFromBodies([doc.bodies[1].id]);});
+  await page.waitForFunction(()=>asm&&asmRoot().occ.length===1&&doc.bodies.length===1&&rebuildDepth===0,null,{timeout:60000});
+  await page.evaluate(()=>{setView('iso');sel={kind:null,id:null};treeSel=[];clearMeasure();});
+  await page.waitForTimeout(800);
+  const ecran=(x,y,z)=>page.evaluate(([x,y,z])=>{const r=renderer.domElement.getBoundingClientRect(),v=new THREE.Vector3(x,y,z).project(camera);
+    return [r.left+(v.x+1)/2*r.width,r.top+(1-v.y)/2*r.height];},[x,y,z]);
+  const clic=async(x,y,z)=>{const [a,b]=await ecran(x,y,z);await page.mouse.move(a,b);await page.mouse.click(a,b);};
+  const ctrlClics=async(...pts)=>{await page.keyboard.down('Control');for(const p of pts)await clic(...p);await page.keyboard.up('Control');};
+  const texte=()=>page.evaluate(()=>faceEl.textContent);
+  // ce que la vue dessine encore de la mesure : faces orange (renderOrder 996), étiquettes de cote
+  const restes=()=>page.evaluate(()=>{let f=0;const S=asmRenderScene();S.traverse(o=>{if(o.isMesh&&o.renderOrder===996)f++;});
+    return {faces:f,cotes:labelsDiv.children.length};});
+  const vide={faces:0,cotes:0};
+
+  // Modéliser → Assembler : une mesure faite sur le modèle ne suit pas dans l'autre vue
+  await ctrlClics([0,0,20],[20,0,10]);
+  expect.soft((await restes()).faces).toBe(2);
+  await page.evaluate(()=>asmEnter());
+  await page.waitForFunction(()=>asmMode==='asm'&&!!asmSceneGet().getObjectByName('asmOcc'));
+  await page.waitForTimeout(500);
+  expect.soft(await restes(),'Modéliser → Assembler').toEqual(vide);
+
+  // Assembler : un rejeu pendant la mesure ne laisse aucune face accrochée à la vue
+  await ctrlClics([0,0,20],[35,0,50]);
+  expect.soft((await restes()).faces).toBe(2);
+  await page.evaluate(()=>{builtVersion=-1;rebuild();});
+  await page.waitForFunction(()=>rebuildDepth===0);
+  await page.waitForTimeout(300);
+  expect.soft(await restes(),'rejeu en Assembler').toEqual(vide);
+
+  // Assembler → Modéliser → Assembler : rien ne revient
+  await ctrlClics([0,0,20]);
+  await page.evaluate(()=>asmExit());
+  await page.waitForFunction(()=>asmMode==='part'&&rebuildDepth===0);
+  expect.soft(await restes(),'Assembler → Modéliser').toEqual(vide);
+  await page.evaluate(()=>asmEnter());
+  await page.waitForFunction(()=>asmMode==='asm');
+  expect.soft(await restes(),'retour en Assembler').toEqual(vide);
+
+  // Redessiner les pièces (déplacement…) efface la mesure : ses faces orange ne restent pas à l'ancienne place
+  await ctrlClics([35,0,50]);
+  expect.soft((await restes()).faces).toBe(1);
+  await page.evaluate(()=>asmNotify());
+  expect.soft(await restes(),'pièce déplacée').toEqual(vide);
+
+  // Modéliser : même outil qu'en Assembler, la pièce voisine se mesure aussi
+  await page.evaluate(()=>{asmExit();clearMeasure();});
+  await page.waitForFunction(()=>asmMode==='part'&&rebuildDepth===0);
+  await page.waitForTimeout(500);
+  await ctrlClics([0,0,20],[35,0,50]);
+  expect.soft(await texte()).toMatch(/30\.00 mm/);
+  expect.soft(await texte()).toMatch(/Colonne/);
+  // Seules les faces du modèle servent aux fonctions (Esquisse, trous…) : pas celle de la voisine
+  expect.soft(await page.evaluate(()=>selFaces.length)).toBe(1);
+  await page.evaluate(()=>clearMeasure());
+  // deux faces de la voisine seule, sans rien sélectionner
+  await ctrlClics([35,0,50],[40,0,25]);
+  expect.soft(await page.evaluate(()=>selFaces.length)).toBe(0);
+  expect.soft(await texte()).toMatch(/Faces non parallèles/);
+  await page.evaluate(()=>clearMeasure());
+  // arête de la voisine au survol et au clic, comme une arête du modèle
+  const [ax,ay]=await ecran(40,5,25);
+  await page.keyboard.down('Control');
+  await page.mouse.move(ax,ay);await page.waitForTimeout(150);await page.mouse.move(ax+1,ay);await page.waitForTimeout(150);
+  expect.soft(await page.evaluate(()=>hoverKey)).toMatch(/^edge:/);
+  await page.mouse.click(ax+1,ay);
+  await page.keyboard.up('Control');
+  expect.soft(await texte()).toMatch(/^Arête 1 : DROITE · longueur 50\.00/);
+  await page.evaluate(()=>clearMeasure());
+
+  // Assembler : survol et arêtes, comme en Modéliser
+  await page.evaluate(()=>asmEnter());
+  await page.waitForFunction(()=>asmMode==='asm');
+  await page.waitForTimeout(500);
+  const [cx,cy]=await ecran(0,0,20);
+  await page.keyboard.down('Control');
+  await page.mouse.move(cx,cy);await page.waitForTimeout(150);await page.mouse.move(cx+1,cy);await page.waitForTimeout(150);
+  expect.soft(await page.evaluate(()=>hoverKey)).not.toBe('');
+  await page.keyboard.up('Control');
+  expect.soft(await page.evaluate(()=>hoverKey)).toBe('');
+  await page.keyboard.down('Control');
+  const [bx,by]=await ecran(40,5,25);
+  await page.mouse.move(bx,by);await page.waitForTimeout(150);await page.mouse.click(bx,by);
+  await page.keyboard.up('Control');
+  expect.soft(await texte()).toMatch(/^Arête 1 : DROITE · longueur 50\.00/);
+  // Échap efface
+  await page.keyboard.press('Escape');
+  expect.soft(await restes(),'Échap').toEqual(vide);
   expect(err).toEqual([]);
 });
 
