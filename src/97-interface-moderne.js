@@ -383,6 +383,7 @@ function mfRibbon(){
   const rb=document.createElement('div');rb.id='mfRibbon';rb.className='mfM';
   const grp=(title,btns,cls)=>{const g=document.createElement('div');g.className='mfGrp '+cls;const bb=document.createElement('div');bb.className='mfGrpB';
     btns.forEach(([ic,lab,act,tip,cls])=>{const b=document.createElement('button');b.className='mfRb'+(cls?' '+cls:'');b.innerHTML='<i>'+(mfI(ic,22)||ic)+'</i>'+lab;
+      b.dataset.fi=title+'/'+lab.replace(/<span class="mfLabA">.*?<\/span>/,'').replace(/<[^>]+>/g,''); // fiche illustrée au survol (97-interface-fiches)
       const src=typeof act==='string'?document.getElementById(act):null;b.title=tip||(src&&src.title)||lab;
       b.onclick=()=>{mfCloseMenus();typeof act==='function'?act():mfClick(act);};
       if(src&&src._ctx)b.addEventListener('contextmenu',e=>{e.preventDefault();e.stopPropagation();mfCloseMenus();src._ctx();}); // clic droit du bouton d'origine (ƒx : liste complète)
@@ -741,12 +742,12 @@ function mfBuildModern(){
   // V0.10.0 : RENDU — atelier plein écran par-dessus l'espace en cours (98-rendu)
   {const b=document.createElement('button');b.textContent='RENDU';b.title='Rendu : image réaliste 1920×1080 — matériaux, ambiances, appareil photo';b.dataset.mfrd='1';b.onclick=()=>{try{rdOpen();}catch(e){}};ws.appendChild(b);}
   const q=document.createElement('div');q.className='mfQuick mfM';
-  [['undo','Annuler (Ctrl+Z)','btnUndo'],['redo','Rétablir (Ctrl+Y)','btnRedo']].forEach(([ic,t,id])=>{const b=document.createElement('button');b.innerHTML=mfI(ic,18);b.title=t;b.onclick=()=>mfClick(id);q.appendChild(b);});
+  [['undo','Annuler (Ctrl+Z)','btnUndo'],['redo','Rétablir (Ctrl+Y)','btnRedo']].forEach(([ic,t,id])=>{const b=document.createElement('button');b.innerHTML=mfI(ic,18);b.title=t;b.dataset.fi='q/'+ic;b.onclick=()=>mfClick(id);q.appendChild(b);});
   // V0.2.3 : TOUS les boutons de fichier à côté d'« Enregistrer » (src/97-fichiers-projets.js)
   const sp=document.createElement('span');sp.className='mfQsep';q.appendChild(sp);
   [['new','Nouveau projet',()=>mffNew()],['open','Ouvrir… (Ctrl+O)',()=>mffOpen()],['recent','Ouvrir récent',e=>mffRecentMenu(e.currentTarget)],
    ['save','Enregistrer (Ctrl+S)',()=>mffSave()],['saveas','Enregistrer sous… (Ctrl+Maj+S)',()=>mffSaveAs()],['folder','Dossier de projets',()=>mffFolderPanel()]].forEach(([ic,t,fn])=>{
-    const b=document.createElement('button');b.innerHTML=mfI(ic,18);b.title=t;b.onclick=e=>{e.stopPropagation();fn(e);};q.appendChild(b);});
+    const b=document.createElement('button');b.innerHTML=mfI(ic,18);b.title=t;b.dataset.fi='q/'+ic;b.onclick=e=>{e.stopPropagation();fn(e);};q.appendChild(b);});
   const sx=mfSearchBox();
   const after=brand?brand.nextSibling:top.firstChild;
   // V0.7.6 : la barre d'état (noyau, message, Régénérer, unité) vit DANS le bandeau supérieur,

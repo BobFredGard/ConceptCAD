@@ -24,6 +24,7 @@ const SUITES = [
   'test_parametres',
   'test_parametres_partout',
   'test_interface_moderne',
+  'test_fiches_icones',
   'test_sk_origin',
   'test_ctx_menu_viewport',
   'test_prodver_badge',

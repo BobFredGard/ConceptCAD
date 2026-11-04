@@ -8,7 +8,7 @@
 
 ![Support de pédale déportée R1200RT en alu anodisé rouge sur béton, lancer de rayons de l'atelier RENDU (2048 échantillons)](docs/captures/rendu-pedale.jpg)
 
-Le noyau géométrique exact est **OpenCascade 8 compilé en WebAssembly** par nos soins (recette reproductible dans `occt-build/`). S'il n'est pas disponible, l'application bascule seule sur un moteur maillage (CSG). Version actuelle : **V0.47.2** (voir le [journal des modifications](CHANGELOG.md)).
+Le noyau géométrique exact est **OpenCascade 8 compilé en WebAssembly** par nos soins (recette reproductible dans `occt-build/`). S'il n'est pas disponible, l'application bascule seule sur un moteur maillage (CSG). Version actuelle : **V0.48.0** (voir le [journal des modifications](CHANGELOG.md)).
 
 | | |
 |---|---|
@@ -41,6 +41,7 @@ Quatre espaces dans le bandeau supérieur : **CAO**, **FAO**, **PLAN** et **REND
 - **Annuler / Rétablir partout** (`Ctrl+Z` / `Ctrl+Y`) : CAO, esquisse, assemblage, FAO, PLAN et RENDU.
 - **Apparence** (menu 🎨) :
   - **cinq thèmes** : Nuit, Graphite, Atelier, Clair, Contraste élevé ;
+  - **fiches illustrées au survol** (actives par défaut, ⚙ → Affichage pour les couper) : une image avant → après, une phrase simple, les étapes et le raccourci de chaque icône ;
   - **quatre styles d'icônes** : au trait, couleurs par famille (une teinte par groupe du ruban), dessinées en volume, délire.
 - **Vue 3D** : cube de vue, orbite contrainte ou libre, centre de rotation sur le point visé, zoom vers le curseur, sol miroir, transparence « verre », **effet de perspective** réglable (de presque orthographique à fuyantes marquées, la pièce garde sa taille).
 - **Coupe X / Y / Z** (⚙ › Coupe) : plan de coupe glissé ou saisi au mm, côté inversable, faces coupées remplies.
@@ -277,10 +278,10 @@ Le dépôt stocke les gros binaires (`occt/*.wasm`, `Exemples/*.conceptcad`, `Ex
 
 | Chemin | Rôle |
 |---|---|
-| `src/*.js` | **Les sources** : 131 fichiers concaténés dans l'ordre alphabétique (noyau, esquisse, fonctions 3D, assemblage, FAO découpée par domaine, mise en plan, rendu, interface téléphone `99-mobile*.js`). C'est ici qu'on travaille. |
+| `src/*.js` | **Les sources** : 133 fichiers concaténés dans l'ordre alphabétique (noyau, esquisse, fonctions 3D, assemblage, FAO découpée par domaine, mise en plan, rendu, interface téléphone `99-mobile*.js`). C'est ici qu'on travaille. |
 | `ConceptCAD.html` | **Livrable généré** par `node build.js`. On n'édite jamais son script à la main. |
 | `PostPro/` | Une fiche par machine (`siemens-630.js`, `siemens-1520.js`, `fagor-8065.js`). Nouvelle machine = copier une fiche, la modifier, `npm run build`. |
-| `tests/` | 248 suites Node lancées en parallèle (`npm run ci:full`), 104 rapides (`npm run ci`), non-régression des parcours FAO (`npm run parcours`), tests de référence (`tests/oracle/`, [docs/oracle.md](docs/oracle.md)). |
+| `tests/` | 248 suites Node lancées en parallèle (`npm run ci:full`), 105 rapides (`npm run ci`), non-régression des parcours FAO (`npm run parcours`), tests de référence (`tests/oracle/`, [docs/oracle.md](docs/oracle.md)). |
 | `tests/browser/` | Playwright dans un vrai Chromium : parcours critiques et Rendu (`npm run test:browser`, seul projet lancé par la CI GitHub, déclenchée à la main) et carte graphique réelle (`npm run test:gpu`, en local). |
 | `tools/` | Lint du script concaténé (`npm run lint`), serveur MCP, **captures du README** (`npm run captures`). |
 | `occt/`, `threejs/` | Noyau OpenCascade WebAssembly (`occt/v3` : OCCT 8, celui de l'application ; `occt/opencascade.*` : l'ancien 7.4, adresse `?noyau=actuel`), rendu three.js. |

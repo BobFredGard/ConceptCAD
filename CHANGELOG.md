@@ -8,7 +8,7 @@ sont sorties le 2026-09-30j.
 Code dans `src/` · livrable `fusion_mvp.html` (généré par `build.js`) · architecture et
 garde-fous en tête de `src/00-entete-et-outils.js`.
 
-**557 versions**, de `2026-09-28b` à `V0.47.2` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
+**558 versions**, de `2026-09-28b` à `V0.48.0` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
 comme dans le fichier d'origine.
 
 ---
@@ -6518,3 +6518,12 @@ Demandes : « Impossible de voir la dernière soustraction » (Barquette), « le
 - **Documents à jour** (`tools/docs-version.cjs`, appelé par `build.js`) : `APP_VER` est la seule source. `node build.js` recopie la version et les chiffres dans `package.json`, le README et l'en-tête du CHANGELOG. `npm run ci` et `ci:full` échouent si l'un d'eux est en retard, si un passage a disparu, ou si le CHANGELOG n'a pas d'entrée pour la version. Les versions citées comme historique ne sont pas touchées.
 - **Test figé** : `test_face_tangentes` lisait `Exemples/Barquette`, modifié par l'utilisateur : il lit désormais sa copie (`tests/fixtures/barquette-faces-tangentes.conceptcad`).
 - **Tests** : `tests/test_soustraction_faces_tangentes.cjs` (fichier de l'utilisateur figé dans `tests/fixtures`), `tests/test_docs_version.cjs` ; essai dans l'application ; `npm run ci:full`.
+
+## V0.48.0 - Fiches illustrées au survol des icônes
+Demande : « au survol de chaque icône de l'application apparaissent une petite image explicite de ce que réalise exactement la fonction […] une option par défaut active, désactivable dans les settings ».
+- **Fiche au survol** (`src/97-interface-fiches-survol.js`) : image avant → après, phrase simple, étapes, raccourci. Ruban CAO, FAO et PLAN, barre rapide, bandeau d'esquisse, onglets d'espaces, boutons de la vue, timeline, onglets de planches et de posages. Souris seulement ; le tactile ne change pas. Une icône sans fiche garde son infobulle.
+- **Dessins** (`src/97-interface-fiches-dessins.js`) : 148 fiches en SVG dans le livrable, tableau construit au premier survol. Même langage partout : pièce gris-bleu, orange = ce que l'on choisit ou ce qui change, bleu = trait ou mouvement, bois = matière à usiner.
+- **Option** : ⚙ → Affichage → « Fiches illustrées au survol », cochée par défaut (`minifusion_fiches`). Décochée : l'infobulle habituelle.
+- **Infobulle du navigateur** : le `title` du bouton survolé est retiré le temps du survol et remis pendant un clic (certaines commandes le lisent).
+- **Hors périmètre** : boutons des lignes de l'arbre, des fenêtres de fonctions, de l'atelier RENDU et du panneau FAO : infobulle habituelle.
+- **Tests** : `tests/test_fiches_icones.cjs` (toute icône du ruban, de la barre rapide et du bandeau d'esquisse a sa fiche ; option par défaut et mémorisée ; aussi en suite rapide) ; survol réel dans les espaces CAO, FAO, PLAN et esquisse.
