@@ -231,7 +231,7 @@ function rebuildInner(projPass){
   };
   clearMeasure();if(selGroup){scene.remove(selGroup);selGroup=null;}selFaces=[];
   // nettoie prévisu esquisses 3D
-  scene.children.filter(o=>o.name&&o.name.startsWith('sk_')).forEach(o=>scene.remove(o));
+  sk3dPurge();
   drawSketchHelpers();
   try{
   let ci=0;const filWarn=[];
@@ -364,27 +364,29 @@ function FreshMat(c){return new THREE.MeshStandardMaterial({color:c,metalness:.3
 function skStrong3D(){try{return document.body.getAttribute('data-theme')==='clair'?0x2a2d33:0xffffff;}catch(e){return 0xffffff;}}
 function drawSketchHelpers(){
   (doc.sketches||[]).forEach(sk=>{
-    if(sk.visible===false)return;
+    // L'esquisse ouverte est dessinée à plat par l'éditeur : son tracé 3D, figé, ferait doublon dessous.
+    if(sk.visible===false||sk===skEdit)return;
     const P=sk.points||{};if(!P)return;
     const{u,v,n,o}=sketchBasis(sk);
     const grp=new THREE.Group();grp.name='sk_'+sk.id;
-    // V0.2.2 : traits forts de l'esquisse en BLANC dans la vue 3D (gris foncé en thème Clair)
-    const mat=new THREE.LineBasicMaterial({color:skStrong3D()});mat.userData.skStrong=true;
     // 2026-10-16-004 : CONSTRUCTION en pointillés (comme dans l'esquisse) ; axe de rotation
     // en tireté long orange. Tiret proportionné à l'esquisse (lisible petite ou grande pièce).
     let ext=0;Object.values(P).forEach(q=>{if(q)ext=Math.max(ext,Math.abs(q.x),Math.abs(q.y));});
     const dsh=Math.max(0.4,Math.min(6,ext/40));
-    const matC=new THREE.LineDashedMaterial({color:0xffd60a,dashSize:dsh,gapSize:dsh*0.8,transparent:true,opacity:0.8});
-    const matAx=new THREE.LineDashedMaterial({color:0xff9f0a,dashSize:dsh*3,gapSize:dsh*0.9});
-    const mk=(pts,e)=>{const m=(e&&e.axis)?matAx:((e&&e.construction)?matC:mat);const L=new THREE.Line(new THREE.BufferGeometry().setFromPoints(pts),m);if(m!==mat)L.computeLineDistances();return L;};
+    const forts=[],aides=[],axes=[];
+    const mk=(pts,e)=>{((e&&e.axis)?axes:((e&&e.construction)?aides:forts)).push(pts);};
     const to3=(x,y)=>new THREE.Vector3().copy(o).addScaledVector(u,x).addScaledVector(v,y);
     (sk.entities||[]).forEach(e=>{
       if(e.t==='line'){const A=P[e.p1],B=P[e.p2];if(!A||!B||e.handle)return; // poignée de spline : esquisse ouverte seulement
-        grp.add(mk([to3(A.x,A.y),to3(B.x,B.y)],e));}
-      if(e.t==='circle'){const C=P[e.pc];if(!C||!(e.r>0))return;const pts=[];for(let i=0;i<=48;i++){const a=i/48*Math.PI*2;pts.push(to3(C.x+Math.cos(a)*e.r,C.y+Math.sin(a)*e.r));}grp.add(mk(pts,e));}
-      if(e.t==='arc'){const C=P[e.pc];if(!C||!(e.r>0))return;const an=arcAngles(sk,e);if(!an)return;const pts=[];const d=an.a2-an.a1;const n2=Math.max(2,Math.ceil(d/(Math.PI*2)*48));for(let i=0;i<=n2;i++){const a=an.a1+d*i/n2;pts.push(to3(C.x+Math.cos(a)*e.r,C.y+Math.sin(a)*e.r));}grp.add(mk(pts,e));}
-      if(e.t==='spline'){const pl=skSplinePoly(sk,e);if(pl)grp.add(mk(pl.map(q=>to3(q[0],q[1])),e));}
+        mk([to3(A.x,A.y),to3(B.x,B.y)],e);}
+      if(e.t==='circle'){const C=P[e.pc];if(!C||!(e.r>0))return;const pts=[];for(let i=0;i<=48;i++){const a=i/48*Math.PI*2;pts.push(to3(C.x+Math.cos(a)*e.r,C.y+Math.sin(a)*e.r));}mk(pts,e);}
+      if(e.t==='arc'){const C=P[e.pc];if(!C||!(e.r>0))return;const an=arcAngles(sk,e);if(!an)return;const pts=[];const d=an.a2-an.a1;const n2=Math.max(2,Math.ceil(d/(Math.PI*2)*48));for(let i=0;i<=n2;i++){const a=an.a1+d*i/n2;pts.push(to3(C.x+Math.cos(a)*e.r,C.y+Math.sin(a)*e.r));}mk(pts,e);}
+      if(e.t==='spline'){const pl=skSplinePoly(sk,e);if(pl)mk(pl.map(q=>to3(q[0],q[1])),e);}
     });
+    // V0.2.2 : traits forts de l'esquisse en BLANC dans la vue 3D (gris foncé en thème Clair)
+    sk3dTraits(grp,forts,{col:skStrong3D(),larg:SK3D_FORT,fort:true});
+    sk3dTraits(grp,aides,{col:0xffd60a,larg:SK3D_AIDE,tiret:dsh,vide:dsh*0.8});
+    sk3dTraits(grp,axes,{col:0xff9f0a,larg:SK3D_AIDE,tiret:dsh*3,vide:dsh*0.9});
     scene.add(grp);
   });
 }

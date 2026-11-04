@@ -109,7 +109,7 @@ function hardRefresh(opt){
   try{for(const b of bodies){try{scene.remove(b.mesh);}catch(e){}try{if(b.mesh&&b.mesh.geometry)b.mesh.geometry.dispose();}catch(e){}}}catch(e){}
   bodies=[];occLive=null;selFaces=[];
   try{clearMeasure();}catch(e){}
-  try{scene.children.filter(o=>o.name&&o.name.startsWith('sk_')).forEach(o=>{try{scene.remove(o);}catch(e){}});}catch(e){}
+  try{sk3dPurge();}catch(e){}
   let tris=0;try{scene.traverse(o=>{if(o.isMesh&&o.geometry&&o.geometry.attributes&&o.geometry.attributes.position)tris+=(o.geometry.index?o.geometry.index.count:o.geometry.attributes.position.count)/3;});}catch(e){}
   faceEl.textContent='Rafraîchissement dur : caches jetés ('+nCk+' point(s) de contrôle), rejeu complet…';
   let err=null;

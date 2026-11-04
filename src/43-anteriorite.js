@@ -46,6 +46,14 @@ function antDeps(f,F,users){
       const c=(doc.cgeo||[]).find(x=>x&&x.id===sk.cg.id);
       if(c&&c.at)add(c.at,'plan de construction « '+(c.name||c.id)+' » de l’esquisse « '+(sk.name||sk.id)+' »');
     }
+    // esquisses reprises par projection (50-esquisse-8), de proche en proche : la fonction doit
+    // venir après la face qui les porte, sinon la géométrie projetée dépendrait de ce qu'elle crée
+    const vus=new Set();
+    const sources=s=>{if(!s||vus.has(s.id))return;vus.add(s.id);skpDeps(s).forEach(id=>{
+      const q=(doc.sketches||[]).find(x=>x.id===id);if(!q)return;
+      if(q.host&&q.host.feat)add(q.host.feat,'face portant l’esquisse « '+(q.name||q.id)+' », projetée dans « '+(sk.name||sk.id)+' »');
+      sources(q);});};
+    sources(sk);
   }
   antAnchorSketches(f,new Set()).forEach(skId=>{
     if(skId===f.sketchId)return;

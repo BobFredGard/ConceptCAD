@@ -86,6 +86,7 @@ function drawSketch2D(){
       }
     }
   }
+  if(skTool==='project')try{skpDessin(sk);}catch(e){} // les autres esquisses, à projeter (50-esquisse-8)
   // zones fermées teintées (comme Fusion 360) : un contour ouvert ne se teinte pas (70-extrusion-profils)
   try{skDrawRegions(sk);}catch(e){}
   // guides d'inférence H/V + ⟂/⦾
@@ -274,7 +275,10 @@ function drawSketch2D(){
   // ⧉ hover : arête projetable sous le curseur (même hors plan) en orange — Fusion-like
   if(skTool==='project'&&skProjectHover){
     const pr=skProjectHover;
-    if(pr.type==='circle'){
+    if(pr.type==='point'){
+      const[a,b]=w2s(pr.x,pr.y);
+      skEl('rect',{x:a-4.5,y:b-4.5,width:9,height:9,fill:'#ff9f0a',stroke:'#101012','stroke-width':1});
+    }else if(pr.type==='circle'){
       const[a,b]=w2s(pr.cx,pr.cy);
       skEl('circle',{cx:a,cy:b,r:pr.r*skView.s,fill:'none',stroke:'#ff9f0a','stroke-width':3,opacity:0.95});
       skEl('circle',{cx:a,cy:b,r:4,fill:'#ff9f0a'});

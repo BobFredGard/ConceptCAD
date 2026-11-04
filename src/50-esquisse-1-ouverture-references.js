@@ -394,6 +394,7 @@ function updateAssociativeProjections0(sk){
     // de profil fixée par l'utilisateur n'est pas une projection).
     // Intersection ⨯ (62-esquisse-intersection.js) : section de sa source, recalculée
     if(e.isect){if(typeof skIsectTrack==='function'&&skIsectTrack(sk,e))changed=true;continue;}
+    if(e.skSrc){if(skpTrack(sk,e))changed=true;continue;} // projection d'une autre esquisse (50-esquisse-8)
     if(e.pierce&&e.t==='cpoint'){if(skPlTrackPierce(sk,e))changed=true;continue;} // V0.20.1 : traversée du plan
     const isProj=e.proj||e.isProj||(e.construction&&e.t==='line'&&sk.constraints.some(c=>c.type==='fix'&&c.p===e.p1)&&sk.constraints.some(c=>c.type==='fix'&&c.p===e.p2));
     if(!isProj) continue;
@@ -454,7 +455,8 @@ function updateAllProjections(){
     const L=[];
     (doc.sketches||[]).forEach(sk=>{ if(sk.id===skEdit?.id)return; if(repCloneSkName(sk))return; let k=-1;try{k=skConsumerIdx(sk);}catch(e){} L.push({sk,k:k>=0?k:1e9}); });
     L.sort((a,b)=>a.k-b.k);
-    L.forEach(({sk,k})=>{ try{ if(updateAssociativeProjections(sk)){changed=true;
+    skpNotesPurge();
+    skpOrdre(L).forEach(({sk,k})=>{ try{ if(updateAssociativeProjections(sk)){changed=true;
       if(_projEdgeCache)[..._projEdgeCache.keys()].forEach(key=>{const n=key[0]==='f'?+key.slice(1):1e9;if(n>k)_projEdgeCache.delete(key);});
       // la chaîne aval suit AUSSITÔT : esquisses posées sur faces + instances de répétition
       try{resolveAllSketchHosts();}catch(e){}
@@ -467,7 +469,8 @@ function updateAllProjections(){
 function projPreUpdate(){
   // Avant le rejeu principal : seulement si le noyau exact est prêt et qu'au moins une
   // esquisse porte des projections associatives (sinon : rien à faire, aucun coût).
-  const ext=(doc.sketches||[]).some(sk=>(sk.entities||[]).some(e=>e&&e.proj&&e.ext)); // V0.8.1 : sans noyau, des instantanés
+  skpNotesPurge(); // même s'il ne reste aucune projection à suivre
+  const ext=(doc.sketches||[]).some(sk=>(sk.entities||[]).some(e=>e&&e.proj&&(e.ext||e.skSrc))); // V0.8.1 : sans noyau, des instantanés ; une autre esquisse se suit aussi sans noyau
   if(!(typeof occHas==='function'&&occHas())&&!ext)return false;
   const any=ext||(doc.sketches||[]).some(sk=>(sk.entities||[]).some(e=>e&&(e.proj||e.isProj)));
   if(!any)return false;
@@ -621,7 +624,7 @@ function skBuildRefs(){
   // AVANT la fonction qui consomme cette esquisse — pas la pièce finie.
   // Esquisse jamais consommée : solide fini.
   if(!skEdit){return;}
-  skEdit._refs=[];skEdit._ghost=[];skEdit._refNote='';skEdit._fade=null;skAnteriorEdges=null;_skPlCache=null;skPlHover=null;
+  skEdit._refs=[];skEdit._ghost=[];skEdit._refNote='';skEdit._fade=null;skAnteriorEdges=null;_skPlCache=null;skPlHover=null;_skpCache=null;
   const feats=doc.features.filter(f=>f.visible!==false);
   const idx=skConsumerIdx(skEdit);
   const geomLater=arr=>arr.some(f=>f.type==='extrude'||f.type==='revolve'||f.type==='sweep'||f.type==='xfillet'||f.type==='fillet');
@@ -715,6 +718,7 @@ function openSketch(id){
     if(s0)(s0.dims||[]).forEach(d=>{if(d.ref&&d.refV!==1&&skDimCanDrive(s0,d)){const mv=skDimMeasure(s0,d);if(mv!=null&&isFinite(mv))d.value=mv;delete d.ref;delete d.refV;}});
     if(s0&&(s0.dims||[]).some(d=>!d.chk))skCheckNewDims(s0);}catch(e){}
   skEdit=doc.sketches.find(s=>s.id===id);if(!skEdit)return;
+  sk3dRedessine(); // son tracé 3D s'efface le temps de l'édition
   migrateSketch(skEdit);
   // 1) VERROU puis REBUILD puis REFS (l'ordre compte) : skBuildRefs pose le fondu SK_FACE_ALPHA et
   // les références sur les meshes — avant, il s'appuyait sur l'ancien état (matériaux neufs
@@ -776,6 +780,7 @@ function closeSketch(save){
   else if(skEdit){markDirty();try{rebuild();}catch(e){}renderTree();renderProps();}
   const skNm=skEdit&&skEdit.name;
   skEdit=null;try{docUndoUI();}catch(e){} // V0.7.6 : les flèches du haut reviennent au document
+  sk3dRedessine(); // le rejeu de sortie a eu lieu esquisse encore ouverte : son tracé 3D revient
   // Toute la session d'esquisse = UNE étape d'annulation du document (filet, 45)
   try{undoActLabel='esquisse « '+(skNm||'')+' »';undoActT=Date.now();docCheckpoint();}catch(e){}
   skSel=null;skSelX=[];skChain=null;skArcC=null;skArcPa=null;skSpl=null;skDraft=null;skDown=null;skDrag=null;skDimDrag=null;skDimLine=null;skDimRef=null;skBox=null;skDragEnt=null;skDyn=null;skInfer=null;skPan=null;skSnapMk=null;skDimPlace=null;skProjectHover=null;skPlHover=null;

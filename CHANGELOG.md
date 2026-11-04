@@ -8,7 +8,7 @@ sont sorties le 2026-09-30j.
 Code dans `src/` · livrable `fusion_mvp.html` (généré par `build.js`) · architecture et
 garde-fous en tête de `src/00-entete-et-outils.js`.
 
-**573 versions**, de `2026-09-28b` à `V0.57.1` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
+**574 versions**, de `2026-09-28b` à `V0.58.0` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
 comme dans le fichier d'origine.
 
 ---
@@ -6665,3 +6665,14 @@ Demande : « certains champs de valeurs ne gardent pas les paramètres rentrés,
 - **Clic perdu juste après une saisie** (`saisieClicRejoue`) : quitter le champ enregistre sa valeur pendant l'appui de la souris ; le panneau se redessine et le bouton pressé disparaît. Il fallait cliquer deux fois sur Valider, Inverser ne se cochait pas, la référence de l'arbre n'était pas prise. Le clic est rejoué sur le remplaçant : même type, même texte, sous la souris ; sinon rien.
 - **Constaté sans défaut** : un nombre simple dans le champ du plan décalé (décimales, négatif, annuler / rétablir, rejeu, enregistrement) ; 25 champs de fonctions créées sur 7 pièces d'exemple. Les fenêtres de création n'ont été que relues.
 - **Tests** : `tests/browser/champs.spec.cjs` (6 parcours en vrai navigateur). `CACHE_VER` ne change pas.
+
+## V0.58.0 - Traits d'esquisse épais et visibles à travers les solides ; projeter les points, lignes et courbes d'une esquisse dans une autre
+
+Demande : « j'aimerais que les traits d'esquisse soit plus épais dans la vue 3d, surtout les trait blancs et surtout qu'ils soient visibles à travers les solides » ; « pouvoir projeter les point, des lignes et des courbe d'une esquisse dans une autre ».
+
+- **Traits en 3D** (`src/30-traits-esquisse-3d.js`) : WebGL ignore l'épaisseur des lignes (1 pixel). Chaque segment devient un ruban élargi en pixels écran, à bouts arrondis : 3 px pour les traits forts, 2 px pour la construction et l'axe, quel que soit le zoom. Une 2e passe sans test de profondeur dessine plus finement (2 et 1,5 px) ce qui est caché par un solide. Le reflet du sol les ignore ; le thème Clair garde son gris foncé.
+- **Esquisse ouverte** : son tracé 3D est retiré le temps de l'édition (il restait figé sous le dessin, gênant maintenant qu'il est épais) et revient à la sortie. Les tampons des esquisses sont libérés à chaque rejeu (`sk3dPurge`).
+- **⧉ Projeter depuis une autre esquisse** (`src/50-esquisse-8-projection-esquisses.js`) : les esquisses visibles s'affichent en bleu avec leurs points ; un clic crée l'entité en construction et fixe, liée par `e.skSrc`. Plans parallèles : cercle et arc restent cercle et arc, y compris sur un plan retourné. Plan incliné : ils deviennent une spline (ellipse). Vu par la tranche : non proposé, ses points le restent.
+- **Suivi** : `updateAssociativeProjections0` recale l'entité sur sa source à chaque rejeu, en 3D, donc aussi quand le plan source bouge. Les sources passent avant les esquisses qui les reprennent (`skpOrdre`) : une chaîne A→B→C suit en une passe, aussi sans noyau. Source supprimée : entité figée et avertissement. Boucle impossible : une esquisse qui dépend de la cible n'est pas proposée. Antériorité : la fonction reste après la face portant l'esquisse source.
+- **Limite** : la projection se fait élément par élément.
+- **Vérifié** : Barquette dans le vrai navigateur (ligne, arc et point projetés à la souris ; largeur +20 mm : les trois suivent de 10 mm ; thème Clair). **Tests** : `test_esquisse_projection_esquisses` (48 contrôles). `CACHE_VER` ne change pas.

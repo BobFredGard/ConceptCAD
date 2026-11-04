@@ -685,6 +685,7 @@ svg.addEventListener('pointerdown',e=>{
     return;
   }
   if(skTool==='project'){
+    if(skpClic(sk,wx,wy))return; // point, ligne ou courbe d'une autre esquisse (50-esquisse-8)
     // OCCT donne les arêtes BRep exactes (vives ET de tangence) ; sans noyau on garde le
     // repli sur les références projetées (corps visibles) — dégradé, mais utilisable.
     if(!(occHas()&&occLive&&occLive.shape)&&!((sk._refs||[]).length)&&!(typeof asmSkExtLists==='function'&&asmSkExtLists().length)){
@@ -736,11 +737,12 @@ svg.addEventListener('pointermove',e=>{
   if(skPan&&!skPan.moved){if(Math.hypot(e.clientX-skPan.px,e.clientY-skPan.py)<4)return;skPan.moved=true;} // seuil : un clic droit court reste un clic
   if(skPan){skView.cx=skPan.cx-(e.clientX-skPan.px)/skView.s;skView.cy=skPan.cy+(e.clientY-skPan.py)/skView.s;drawSketch2D();return;}
   if(skTool==='project'){
-    const pr=projectEdgeAt(sk,wx,wy);
+    const pr=skpHit(sk,wx,wy)||projectEdgeAt(sk,wx,wy);
     const k=pr?JSON.stringify(pr):'null', ko=skProjectHover?JSON.stringify(skProjectHover):'null';
     if(k!==ko){ skProjectHover=pr; drawSketch2D(); }
-    if(pr) skStatus('⧉ '+(pr.type==='circle'?'Cercle':pr.type==='arc'?'Arc':pr.type==='curve'?'Courbe':'Arête')+(pr.ext?' de « '+(pr.extName||'composant')+' » (suit ce composant)':'')+' — clic pour projeter en construction.');
-    else skStatus('⧉ Survolez une arête 3D (même hors plan) — elle s\'illumine en orange.');
+    if(pr&&pr.skSrc) skStatus('⧉ '+skpNom(pr)+' de « '+pr.srcName+' » (suit cette esquisse) — clic pour projeter en construction.');
+    else if(pr) skStatus('⧉ '+(pr.type==='circle'?'Cercle':pr.type==='arc'?'Arc':pr.type==='curve'?'Courbe':'Arête')+(pr.ext?' de « '+(pr.extName||'composant')+' » (suit ce composant)':'')+' — clic pour projeter en construction.');
+    else skStatus('⧉ Survolez une arête 3D (même hors plan) ou le tracé bleu d\'une autre esquisse visible — il s\'illumine en orange.');
     return;
   }
   if(skTool==='isect'){skIsectHoverAt(sk,wx,wy,!!e.shiftKey);return;}
