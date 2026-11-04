@@ -45,11 +45,12 @@ function openAide(){
     rows.forEach(([k,t])=>{h+='<tr><td style="padding:2px 8px 2px 0;white-space:nowrap;vertical-align:top"><kbd style="background:#2c2c32;border:1px solid #44444c;border-radius:4px;padding:0 5px;font-size:11.5px">'+k+'</kbd></td><td style="padding:2px 0;opacity:.9">'+t+'</td></tr>';});
     h+='</table></div>';
   });
-  h+='</div><div style="opacity:.6;margin-top:10px">F1 (hors esquisse) ou « ? » rouvrent cette aide · Échap ou clic hors de la fenêtre pour fermer.</div>';
+  h+='</div>'+journalAideHtml()+'<div style="opacity:.6;margin-top:10px">F1 (hors esquisse) ou « ? » rouvrent cette aide · Échap ou clic hors de la fenêtre pour fermer.</div>';
   box.innerHTML=h;ov.appendChild(box);
   ov.addEventListener('mousedown',e=>{if(e.target===ov)ov.remove();});
   document.body.appendChild(ov);
   const c=document.getElementById('aideClose');if(c)c.onclick=()=>ov.remove();
+  journalAideBranche();
 }
 (function(){
   try{

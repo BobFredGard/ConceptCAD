@@ -8,7 +8,7 @@ sont sorties le 2026-09-30j.
 Code dans `src/` · livrable `fusion_mvp.html` (généré par `build.js`) · architecture et
 garde-fous en tête de `src/00-entete-et-outils.js`.
 
-**576 versions**, de `2026-09-28b` à `V0.58.2` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
+**577 versions**, de `2026-09-28b` à `V0.59.0` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
 comme dans le fichier d'origine.
 
 ---
@@ -6696,3 +6696,13 @@ Demande (Barquette) : « Impossible de répéter les congés à la fin ou alors 
 - **Fichiers existants** : les copies sont déjà régénérées à l’ouverture ; un nom faux y est oublié et la copie repart de la position de sa source (`repReparation`).
 - **Cause 3, congé posé à la main** : il naissait dans le corps actif. « Intérieur », actif et masqué, recevait le congé, qui y prenait une autre arête : la pièce ne changeait pas. Il va maintenant dans le corps de l’arête cliquée (`xCorpsDesAretes`) ; les corps montrés passent avant les masqués.
 - **Vérifié** : Barquette en noyau OCCT 8, aucune erreur ni alerte, trois exemplaires identiques (arête de 25,47 mm à x = 51,89 ; -6,11 ; -64,11). Le congé posé à la main sur les arêtes copiées donne le même volume que la répétition : 224 133,4 mm³. **Tests** : `test_repeat_conges` (une copie part sur une arête de 1,41 mm avec l’ancien code). `CACHE_VER` ne change pas.
+
+## V0.59.0 - Journal d’erreurs local, première étape de la correction assistée par IA
+
+Demande : « Il y a un moyen de rajouter du code IA dans mon fichier pour qu'il aprenne et corrige tout seul ? » Réponse retenue : une correction assistée, où l’IA propose et où les tests et l’utilisateur valident. Cette version ne contient pas d’IA : elle note les pannes.
+
+- **Journal** (`src/01-journal-erreurs.js`, chargé juste après `APP_VER`) : erreurs non rattrapées et tâches asynchrones en échec, avec message, emplacement, pile, version et les 5 derniers boutons cliqués. Une erreur répétée tient sur une ligne avec son compteur (écriture au plus une fois par seconde) ; 50 erreurs différentes au maximum, dans le stockage du navigateur (`minifusion_journal`).
+- **Confidentialité** : aucun envoi réseau ; ni le contenu du document ni les valeurs saisies ; les chemins sont réduits au nom du fichier.
+- **Aide** (F1 hors esquisse ou « ? ») : nombre d’erreurs, dernière erreur, boutons Enregistrer, Copier et Vider.
+- **Limites** : les erreurs déjà rattrapées par l’application et celles des tâches de fond (Worker) n’arrivent pas au journal.
+- **Tests** : `test_journal_erreurs`. `CACHE_VER` ne change pas : aucun parcours à régénérer.
