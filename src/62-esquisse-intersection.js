@@ -496,9 +496,8 @@ function skIsectCtx(x,y){
   m.innerHTML='<div style="font-size:.72rem;color:var(--muted);padding:4px 8px">Intersection ⨯</div>';
   const add=(label,fn)=>{
     const b=document.createElement('button');
-    b.style.cssText='display:flex;align-items:center;gap:8px;width:100%;text-align:left;padding:6px 10px;background:none;border:none;color:#fff;cursor:pointer;font-size:.82rem';
+    b.style.cssText='display:flex;align-items:center;gap:8px;width:100%;text-align:left;padding:6px 10px;border:none;cursor:pointer;font-size:.82rem'; // couleurs et survol : feuille de style, selon le thème (97)
     b.textContent=label;
-    b.onmouseenter=()=>b.style.background='rgba(255,255,255,.08)';b.onmouseleave=()=>b.style.background='none';
     b.onclick=()=>{hideSkCtx();fn();};m.appendChild(b);
   };
   const n=skIsectSel.length;

@@ -1203,11 +1203,11 @@ function showSkCtx(x,y){
     const b=document.createElement('button');
     const hit=CTX_IC.find(([k])=>label.indexOf(k)===0);
     const txt=hit?label.slice(label.indexOf(' ')+1):label;
-    b.style.cssText='display:flex;align-items:center;gap:8px;width:100%;text-align:left;padding:6px 10px;background:none;border:none;color:#fff;cursor:pointer;font-size:.82rem';
+    b.style.cssText='display:flex;align-items:center;gap:8px;width:100%;text-align:left;padding:6px 10px;border:none;cursor:pointer;font-size:.82rem'; // couleurs et survol : feuille de style, selon le thème (97)
     if(hit){const ic=document.createElement('span');ic.className='skli-ic';ic.innerHTML=skIcon(hit[1],16);b.appendChild(ic);}
     const tx=document.createElement('span');tx.textContent=txt;b.appendChild(tx);
     if(typeof b.textContent!=='string'||!b.textContent)b.textContent=txt; /* DOM simulé des tests : pas d'agrégation des enfants */
-    b.onmouseenter=()=>b.style.background='rgba(255,255,255,.08)'; b.onmouseleave=()=>b.style.background='none'; b.onclick=()=>{ hideSkCtx(); fn(); }; m.appendChild(b);
+    b.onclick=()=>{ hideSkCtx(); fn(); }; m.appendChild(b);
   };
   let has=false;
   // V0.11.23 : une COTE sélectionnée — son menu propre (comme SolidCraft : valeur, toggle_driven, dimension_text reset)

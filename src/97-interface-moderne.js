@@ -50,10 +50,12 @@ function mfCss(){
   'body[data-theme="clair"] .ddMenu,body[data-theme="clair"] .mfPop{background:rgba(255,255,255,.98)!important;color:var(--text)}',
   'body[data-theme="clair"] .ddMenu button:hover{color:#fff}',
   /* menus contextuels (arbre, pièce 3D, esquisse) : fond clair en Clair (texte sombre lisible) */
-  'body[data-theme="clair"] #ctxMenu,body[data-theme="clair"] #ctxMenu3D,body[data-theme="clair"] #skCtxMenu{background:rgba(255,255,255,.98)!important;color:#1c1c1e;border-color:rgba(0,0,0,.14)!important;box-shadow:0 12px 32px rgba(0,0,0,.18)!important}',
-  'body[data-theme="clair"] #ctxMenu button,body[data-theme="clair"] #ctxMenu3D button,body[data-theme="clair"] #skCtxMenu button{color:#1c1c1e;background:none}',
-  'body[data-theme="clair"] #ctxMenu button:hover,body[data-theme="clair"] #ctxMenu3D button:hover,body[data-theme="clair"] #skCtxMenu button:hover{background:var(--primary);color:#fff}',
-  'body[data-theme="clair"] #ctx3DTitle,body[data-theme="clair"] #skCtxTitle{color:#5f6368!important}',
+  '#skCtxMenu button{background:none;color:var(--text)}',
+  '#skCtxMenu button:hover{background:rgba(255,255,255,.08)}',
+  'body[data-theme="clair"] #ctxMenu,body[data-theme="clair"] #ctxMenu3D,body[data-theme="clair"] #skCtxMenu,body[data-theme="clair"] #ctxPiece{background:rgba(255,255,255,.98)!important;color:#1c1c1e;border-color:rgba(0,0,0,.14)!important;box-shadow:0 12px 32px rgba(0,0,0,.18)!important}',
+  'body[data-theme="clair"] #ctxMenu button,body[data-theme="clair"] #ctxMenu3D button,body[data-theme="clair"] #skCtxMenu button,body[data-theme="clair"] #ctxPiece button{color:#1c1c1e;background:none}',
+  'body[data-theme="clair"] #ctxMenu button:hover,body[data-theme="clair"] #ctxMenu3D button:hover,body[data-theme="clair"] #skCtxMenu button:hover,body[data-theme="clair"] #ctxPiece button:hover{background:var(--primary);color:#fff}',
+  'body[data-theme="clair"] #ctx3DTitle,body[data-theme="clair"] #skCtxTitle,body[data-theme="clair"] #ctxPiece .ttl{color:#5f6368!important}',
   /* fiche FAO (à droite) et panneau Usinage en Clair : textes FAO codés clairs → sombres */
   'body[data-theme="clair"] :is(aside.right,#faoTreeWrap) :is(.fao-lab,.fao-tab,.fao-tip,.fao-help,.fao-empty,.fao-note){color:#5f6368!important}',
   'body[data-theme="clair"] :is(aside.right,#faoTreeWrap) :is(.fao-opnum,.fao-title,.fao-h,.fao-tab:hover){color:#1c1c1e!important}',
