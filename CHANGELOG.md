@@ -8,7 +8,7 @@ sont sorties le 2026-09-30j.
 Code dans `src/` · livrable `fusion_mvp.html` (généré par `build.js`) · architecture et
 garde-fous en tête de `src/00-entete-et-outils.js`.
 
-**571 versions**, de `2026-09-28b` à `V0.56.0` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
+**572 versions**, de `2026-09-28b` à `V0.57.0` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
 comme dans le fichier d'origine.
 
 ---
@@ -6643,3 +6643,14 @@ Demandes : « j'aimerais avoir les Supports dans le 3D aussi en mode rendu », �
 - **Verres dépolis** : aspect seulement, le sol reste opaque.
 - **Galerie** (`rdSupGallery`) : « Voir tous les sols », une vignette par sol, dans la fenêtre RENDU et les réglages de vue ; vignettes calculées à la première ouverture.
 - **Tests** : `test_rendu_scene` contrôle le catalogue (au moins 70 sols, familles, tuiles complètes, mate sans reflet, LED émissives). Son contrôle de raccord compare désormais le saut au bord de tuile aux sauts dans la tuile, sur une petite tuile : le catalogue entier reste rapide à tester. Parcours d'usinage inchangés, `CACHE_VER` ne change pas.
+
+## V0.57.0 - Bibliothèque d'aimants permanents et lignes de champ 3D
+
+Demande : « une bibliothèque d'aimant avec leur caractéristiques et leur champ magnétique réel, dessiné en 3D sous formes de courbes que l'on pourrait faire apparaitre ou disparaitre avec un clic droit de la souris ».
+
+- **Bibliothèque** (`src/48-aimants-catalogue.js`, `src/48-aimants-interface.js`) : commande « Aimants » du groupe Composants, onglet de la fenêtre des normalisés. 254 articles réels de Supermagnete : disques et cylindres, cubes, pavés, anneaux. Chaque valeur vient de la fiche de l'article : rémanence, coercivités, (BH)max, force, température maximale, sens d'aimantation. L'aimant arrive comme une pièce normalisée, pôle nord en haut, avec la masse volumique de sa matière.
+- **Champ** (`src/48-aimants-champ.js`) : calculé à partir de la forme et du Br moyen de la fiche. Cylindre : Derby et Olbert ; anneau : deux cylindres ; pavé : formes fermées. **Limite : aimant seul, dans l'air** ; ni l'acier voisin, ni les autres aimants, ni la température ne comptent.
+- **Lignes de champ** : clic droit sur un aimant posé, afficher ou masquer, par occurrence. Le choix s'enregistre dans le fichier (`occ.mag`) et Ctrl+Z l'annule. Couleur selon l'intensité (violet faible, orange fort), flèche du nord vers le sud.
+- **Défaut corrigé** : la matière d'un composant choisie dans Inspecter (`doc.mat`) n'était pas enregistrée dans le fichier : perdue à la réouverture, la masse repartait sur l'acier. Elle est maintenant écrite et relue.
+- **Pas repris** : aimants diamétraux (5 articles), formes spéciales, catalogue Binder Magnetic (non trouvé en ligne).
+- **Tests** : `test_aimants` retrouve les 2952 G et 2643 G publiés par K&J pour le disque D82, recoupe disque, anneau et pavé avec une intégration numérique et avec le dipôle à grande distance, contrôle le catalogue, les lignes, l'enregistrement, l'annulation et les volumes du noyau exact ; `tests/browser/aimants.spec.cjs` joue le parcours avec de vrais clics droits. Parcours d'usinage inchangés, `CACHE_VER` ne change pas.

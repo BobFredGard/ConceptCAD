@@ -113,6 +113,7 @@ const SUITES = [
   'test_noms_reouverture',
   'test_import_arbre',
   'test_export_step_import',
+  'test_aimants',
   'test_engrenages',
   'test_export_step_assemblage'
 ];

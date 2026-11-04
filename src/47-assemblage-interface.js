@@ -156,6 +156,7 @@ function asmFill(G,placer){
       if(kind!=='ghost'){try{glassDepthMask({mesh:m});}catch(e){}} // passes de verre, comme une pièce
     });
     if(kind!=='ghost'){const tl=asmThrLines(c._snap);if(tl)g.add(tl);} // filets cosmétiques (V0.35.0)
+    if(kind!=='ghost'){const ml=magLinesFor(c,inst.path);if(ml)g.add(ml);} // lignes de champ d'un aimant (48-aimants-interface)
     if(kind!=='ghost'&&c._snap.edges&&asmEdgesShown(look))
       g.add(asmEdgeLines(c._snap.edges,c._snap.items.some(it=>(look.gl!=null?look.gl:(it.gl||1))<0.999)));
     G.add(g);

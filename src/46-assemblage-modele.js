@@ -489,7 +489,7 @@ function asmNotify(viewOnly){
   const f=globalThis.asmOnChange;if(typeof f==='function'){try{f(!!viewOnly);}catch(e){}}
 }
 /* ── sauvegarde : bloc asm (v2) dans le fichier (doc = composant actif, compatibilité) ── */
-function asmOccSerial(o){const s={id:o.id,comp:o.comp,name:o.name,fr:o.fr,fixed:!!o.fixed,visible:o.visible!==false,align:o.align||null};if(o.look)s.look=o.look;if(o.rendu)s.rendu=o.rendu;if(o.pat)s.pat={id:o.pat.id,k:o.pat.k};return s;}
+function asmOccSerial(o){const s={id:o.id,comp:o.comp,name:o.name,fr:o.fr,fixed:!!o.fixed,visible:o.visible!==false,align:o.align||null};if(o.look)s.look=o.look;if(o.rendu)s.rendu=o.rendu;if(o.mag)s.mag=true;if(o.pat)s.pat={id:o.pat.id,k:o.pat.k};return s;}
 function asmSerial(){
   if(!asmHasContent())return null;
   asmSync();
@@ -516,7 +516,7 @@ function asmTreeFromSerial(a,topDoc,mkDoc){
   const okFr=f=>f&&['o','x','y','z'].every(k=>Array.isArray(f[k])&&f[k].length===3&&f[k].every(v=>isFinite(+v)));
   const fr=f=>okFr(f)?{o:f.o.map(Number),x:f.x.map(Number),y:f.y.map(Number),z:f.z.map(Number)}:asmFr0();
   const occOf=(o,cidKey)=>({id:String(o.id),comp:String(o[cidKey]),name:String(o.name||o.id),fr:fr(o.fr),fixed:!!o.fixed,
-    visible:o.visible!==false,align:asmAlignNorm(o.align),look:asmLookNorm(o.look),rendu:(typeof renduNorm==='function'?renduNorm(o.rendu):null)||undefined,st:'ok',msg:'',
+    visible:o.visible!==false,align:asmAlignNorm(o.align),look:asmLookNorm(o.look),rendu:(typeof renduNorm==='function'?renduNorm(o.rendu):null)||undefined,mag:o.mag?true:undefined,st:'ok',msg:'',
     pat:o.pat&&typeof o.pat.id==='string'&&typeof o.pat.k==='string'?{id:o.pat.id,k:o.pat.k}:undefined}); // instance de répétition (48)
   let comps,root;
   if(Array.isArray(a.comps)&&a.comps.length){

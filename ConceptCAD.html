@@ -376,7 +376,7 @@ input[type=range]{accent-color:var(--primary);width:100%}
  * peut changer sans rien casser. CACHE_VER (parcours FAO) reste indépendant.
  */
 
-const APP_VER='V0.56.0';
+const APP_VER='V0.57.0';
 try{console.log('[ConceptCAD] version '+APP_VER);}catch(e){}
 try{var mfSv=document.getElementById('mfSplashVer');if(mfSv)mfSv.textContent=APP_VER;}catch(e){} // écran de démarrage
 
@@ -14097,7 +14097,7 @@ function asmNotify(viewOnly){
   const f=globalThis.asmOnChange;if(typeof f==='function'){try{f(!!viewOnly);}catch(e){}}
 }
 /* ── sauvegarde : bloc asm (v2) dans le fichier (doc = composant actif, compatibilité) ── */
-function asmOccSerial(o){const s={id:o.id,comp:o.comp,name:o.name,fr:o.fr,fixed:!!o.fixed,visible:o.visible!==false,align:o.align||null};if(o.look)s.look=o.look;if(o.rendu)s.rendu=o.rendu;if(o.pat)s.pat={id:o.pat.id,k:o.pat.k};return s;}
+function asmOccSerial(o){const s={id:o.id,comp:o.comp,name:o.name,fr:o.fr,fixed:!!o.fixed,visible:o.visible!==false,align:o.align||null};if(o.look)s.look=o.look;if(o.rendu)s.rendu=o.rendu;if(o.mag)s.mag=true;if(o.pat)s.pat={id:o.pat.id,k:o.pat.k};return s;}
 function asmSerial(){
   if(!asmHasContent())return null;
   asmSync();
@@ -14124,7 +14124,7 @@ function asmTreeFromSerial(a,topDoc,mkDoc){
   const okFr=f=>f&&['o','x','y','z'].every(k=>Array.isArray(f[k])&&f[k].length===3&&f[k].every(v=>isFinite(+v)));
   const fr=f=>okFr(f)?{o:f.o.map(Number),x:f.x.map(Number),y:f.y.map(Number),z:f.z.map(Number)}:asmFr0();
   const occOf=(o,cidKey)=>({id:String(o.id),comp:String(o[cidKey]),name:String(o.name||o.id),fr:fr(o.fr),fixed:!!o.fixed,
-    visible:o.visible!==false,align:asmAlignNorm(o.align),look:asmLookNorm(o.look),rendu:(typeof renduNorm==='function'?renduNorm(o.rendu):null)||undefined,st:'ok',msg:'',
+    visible:o.visible!==false,align:asmAlignNorm(o.align),look:asmLookNorm(o.look),rendu:(typeof renduNorm==='function'?renduNorm(o.rendu):null)||undefined,mag:o.mag?true:undefined,st:'ok',msg:'',
     pat:o.pat&&typeof o.pat.id==='string'&&typeof o.pat.k==='string'?{id:o.pat.id,k:o.pat.k}:undefined}); // instance de répétition (48)
   let comps,root;
   if(Array.isArray(a.comps)&&a.comps.length){
@@ -14825,6 +14825,7 @@ function asmFill(G,placer){
       if(kind!=='ghost'){try{glassDepthMask({mesh:m});}catch(e){}} // passes de verre, comme une pièce
     });
     if(kind!=='ghost'){const tl=asmThrLines(c._snap);if(tl)g.add(tl);} // filets cosmétiques (V0.35.0)
+    if(kind!=='ghost'){const ml=magLinesFor(c,inst.path);if(ml)g.add(ml);} // lignes de champ d'un aimant (48-aimants-interface)
     if(kind!=='ghost'&&c._snap.edges&&asmEdgesShown(look))
       g.add(asmEdgeLines(c._snap.edges,c._snap.items.some(it=>(look.gl!=null?look.gl:(it.gl||1))<0.999)));
     G.add(g);
@@ -15699,6 +15700,540 @@ function asmLinkMenu(c){
   return [{html:'📤 Extraire vers un fichier…',fn:()=>asmCmdExtract(c.id)},{html:'🔗 Remplacer par un lien…',fn:()=>asmCmdReplaceWithLink(c.id)}];
 }
 try{document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible'&&asmLinked().length)asmLinksCheck(false);});}catch(e){}
+
+/* ═══════════════ 48-aimants-catalogue.js — aimants catalogue ═══════════════ */
+/* ---------- aimants permanents : catalogue (V0.57.0) ----------
+   Articles RÉELS du catalogue Supermagnete (Webcraft GmbH), relevés le 04/11/2026 sur le catalogue
+   PDF et sur la fiche technique de chaque article. Fichier GÉNÉRÉ : seuls les aimants nus, droits,
+   à aimantation uniforme le long d'une arête ou de l'axe sont repris.
+   h : cote le long du sens d'aimantation (mm) ; br T, hcb kA/m, hcj kA/m mini, bh kJ/m³, tmax °C. */
+const MAG_CAT=[
+{"code":"S-01-01-N","src":"Supermagnete","mat":"NdFeB","grade":"N45","s":"cyl","d":1,"h":1,"br":[1.32,1.37],"hcb":[860,995],"hcj":955,"bh":[342,358],"tmax":80,"force":"31 g","dirTxt":"axial (parallèle à la hauteur)"},
+{"code":"S-02-01-N","src":"Supermagnete","mat":"NdFeB","grade":"N48","s":"cyl","d":2,"h":1,"br":[1.37,1.42],"hcb":[860,995],"hcj":955,"bh":[358,382],"tmax":80,"force":"110 g","dirTxt":"axial (parallèle à la hauteur)"},
+{"code":"S-02-02-N","src":"Supermagnete","mat":"NdFeB","grade":"N48","s":"cyl","d":2,"h":2,"br":[1.37,1.42],"hcb":[860,995],"hcj":955,"bh":[358,382],"tmax":80,"force":"150 g","dirTxt":"axial (parallèle à la hauteur)"},
+{"code":"S-02-03-N","src":"Supermagnete","mat":"NdFeB","grade":"N45","s":"cyl","d":2,"h":3,"br":[1.32,1.37],"hcb":[860,995],"hcj":955,"bh":[342,358],"tmax":80,"force":"160 g","dirTxt":"axial (parallèle à la hauteur)"},
+{"code":"S-02-04-N","src":"Supermagnete","mat":"NdFeB","grade":"N45","s":"cyl","d":2,"h":4,"br":[1.32,1.37],"hcb":[860,995],"hcj":955,"bh":[342,358],"tmax":80,"force":"160 g","dirTxt":"axial (parallèle à la hauteur)"},
+{"code":"S-02-05-N","src":"Supermagnete","mat":"NdFeB","grade":"N45","s":"cyl","d":2,"h":5,"br":[1.32,1.37],"hcb":[860,995],"hcj":955,"bh":[342,358],"tmax":80,"force":"170 g","dirTxt":"axial (parallèle à la hauteur)"},
+{"code":"S-03-01-N","src":"Supermagnete","mat":"NdFeB","grade":"N48","s":"cyl","d":3,"h":1,"br":[1.37,1.42],"hcb":[860,995],"hcj":955,"bh":[358,382],"tmax":80,"force":"190 g","dirTxt":"axial (parallèle à la hauteur)"},
+{"code":"S-03-02-N","src":"Supermagnete","mat":"NdFeB","grade":"N48","s":"cyl","d":3,"h":2,"br":[1.37,1.42],"hcb":[860,995],"hcj":955,"bh":[358,382],"tmax":80,"force":"300 g","dirTxt":"axial (parallèle à la hauteur)"},
+{"code":"S-03-03-N","src":"Supermagnete","mat":"NdFeB","grade":"N45","s":"cyl","d":3,"h":3,"br":[1.32,1.37],"hcb":[860,995],"hcj":955,"bh":[342,358],"tmax":80,"force":"330 g","dirTxt":"axial (parallèle à la hauteur)"},
+{"code":"S-03-06-N","src":"Supermagnete","mat":"NdFeB","grade":"N48","s":"cyl","d":3,"h":6,"br":[1.37,1.42],"hcb":[860,995],"hcj":955,"bh":[358,382],"tmax":80,"force":"400 g","dirTxt":"axial (parallèle à la hauteur)"},
+{"code":"S-03-08-N","src":"Supermagnete","mat":"NdFeB","grade":"N48","s":"cyl","d":3,"h":8,"br":[1.37,1.42],"hcb":[860,995],"hcj":955,"bh":[358,382],"tmax":80,"force":"410 g","dirTxt":"axial (parallèle à la hauteur)"},
+{"code":"S-03-10-N","src":"Supermagnete","mat":"NdFeB","grade":"N45","s":"cyl","d":3,"h":10,"br":[1.32,1.37],"hcb":[860,995],"hcj":955,"bh":[342,358],"tmax":80,"force":"390 g","dirTxt":"axial (parallèle à la hauteur)"},
+{"code":"S-04-01-N","src":"Supermagnete","mat":"NdFeB","grade":"N45","s":"cyl","d":4,"h":1,"br":[1.32,1.37],"hcb":[860,995],"hcj":955,"bh":[342,358],"tmax":80,"force":"250 g","dirTxt":"axial (parallèle à la hauteur)"},
+{"code":"S-04-02-N","src":"Supermagnete","mat":"NdFeB","grade":"N45","s":"cyl","d":4,"h":2,"br":[1.32,1.37],"hcb":[860,995],"hcj":955,"bh":[342,358],"tmax":80,"force":"420 g","dirTxt":"axial (parallèle à la hauteur)"},
+{"code":"S-04-03-N","src":"Supermagnete","mat":"NdFeB","grade":"N45","s":"cyl","d":4,"h":3,"br":[1.32,1.37],"hcb":[860,995],"hcj":955,"bh":[342,358],"tmax":80,"force":"530 g","dirTxt":"axial (parallèle à la hauteur)"},
+{"code":"S-04-04-N","src":"Supermagnete","mat":"NdFeB","grade":"N45","s":"cyl","d":4,"h":4,"br":[1.32,1.37],"hcb":[860,995],"hcj":955,"bh":[342,358],"tmax":80,"force":"590 g","dirTxt":"axial (parallèle à la hauteur)"},
+{"code":"S-04-05-Z","src":"Supermagnete","mat":"NdFeB","grade":"N45","s":"cyl","d":4,"h":5,"br":[1.32,1.37],"hcb":[860,995],"hcj":955,"bh":[342,358],"tmax":80,"force":"630 g","dirTxt":"axial (parallèle à la hauteur)"},
+{"code":"S-04-07-N","src":"Supermagnete","mat":"NdFeB","grade":"N45","s":"cyl","d":4,"h":7,"br":[1.32,1.37],"hcb":[860,995],"hcj":955,"bh":[342,358],"tmax":80,"force":"670 g","dirTxt":"axial (parallèle à la hauteur)"},
+{"code":"S-04-10-AN","src":"Supermagnete","mat":"NdFeB","grade":"N45","s":"cyl","d":4,"h":10,"br":[1.32,1.37],"hcb":[860,995],"hcj":955,"bh":[342,358],"tmax":80,"force":"700 g","dirTxt":"axial (parallèle à la hauteur)"},
+{"code":"S-04-13-N","src":"Supermagnete","mat":"NdFeB","grade":"N42","s":"cyl","d":4,"h":12.5,"br":[1.29,1.32],"hcb":[860,955],"hcj":955,"bh":[318,334],"tmax":80,"force":"660 g","dirTxt":"axial (parallèle à la hauteur)"},
+{"code":"S-04-25-N","src":"Supermagnete","mat":"NdFeB","grade":"N42","s":"cyl","d":4,"h":25,"br":[1.29,1.32],"hcb":[860,955],"hcj":955,"bh":[318,334],"tmax":80,"force":"670 g","dirTxt":"axial (parallèle à la hauteur)"},
+{"code":"S-05-01-N","src":"Supermagnete","mat":"NdFeB","grade":"N45","s":"cyl","d":5,"h":1,"br":[1.32,1.37],"hcb":[860,995],"hcj":955,"bh":[342,358],"tmax":80,"force":"320 g","dirTxt":"axial (parallèle à la hauteur)"},
+{"code":"S-05-02-N40N","src":"Supermagnete","mat":"NdFeB","grade":"N40","s":"cyl","d":5,"h":2,"br":[1.26,1.29],"hcb":[860,955],"hcj":955,"bh":[303,318],"tmax":80,"force":"520 g","dirTxt":"axial (parallèle à la hauteur)"},
+{"code":"S-05-02-N52N","src":"Supermagnete","mat":"NdFeB","grade":"N52","s":"cyl","d":5,"h":2,"br":[1.42,1.47],"hcb":[860,995],"hcj":955,"bh":[380,422],"tmax":65,"force":"680 g","dirTxt":"axial (parallèle à la hauteur)"},
+{"code":"S-05-03-N","src":"Supermagnete","mat":"NdFeB","grade":"N42","s":"cyl","d":5,"h":3,"br":[1.29,1.32],"hcb":[860,955],"hcj":955,"bh":[318,334],"tmax":80,"force":"700 g","dirTxt":"axial (parallèle à la hauteur)"},
+{"code":"S-05-04-N","src":"Supermagnete","mat":"NdFeB","grade":"N45","s":"cyl","d":5,"h":4,"br":[1.32,1.37],"hcb":[860,995],"hcj":955,"bh":[342,358],"tmax":80,"force":"860 g","dirTxt":"axial (parallèle à la hauteur)"},
+{"code":"FE-S-05-05","src":"Supermagnete","mat":"Ferrite","grade":"Y35","s":"cyl","d":5,"h":5,"br":[0.4,0.41],"hcb":[175,195],"hcj":200,"bh":[30,32],"tmax":250,"force":"100 g","dirTxt":"axial (parallèle à la hauteur)"},
+{"code":"S-05-05-N","src":"Supermagnete","mat":"NdFeB","grade":"N45","s":"cyl","d":5,"h":5,"br":[1.32,1.37],"hcb":[860,995],"hcj":955,"bh":[342,358],"tmax":80,"force":"940 g","dirTxt":"axial (parallèle à la hauteur)"},
+{"code":"S-05-08-N","src":"Supermagnete","mat":"NdFeB","grade":"N45","s":"cyl","d":5,"h":8.47,"br":[1.32,1.37],"hcb":[860,995],"hcj":955,"bh":[342,358],"tmax":80,"force":"1,1 kg","dirTxt":"axial (parallèle à la hauteur)"},
+{"code":"S-05-10-N","src":"Supermagnete","mat":"NdFeB","grade":"N45","s":"cyl","d":5,"h":10,"br":[1.32,1.37],"hcb":[860,995],"hcj":955,"bh":[342,358],"tmax":80,"force":"1,1 kg","dirTxt":"axial (parallèle à la hauteur)"},
+{"code":"S-05-13-N","src":"Supermagnete","mat":"NdFeB","grade":"N45","s":"cyl","d":5,"h":12.5,"br":[1.32,1.37],"hcb":[860,995],"hcj":955,"bh":[342,358],"tmax":80,"force":"1,1 kg","dirTxt":"axial (parallèle à la hauteur)"},
+{"code":"S-05-14-N","src":"Supermagnete","mat":"NdFeB","grade":"N45","s":"cyl","d":5,"h":13.96,"br":[1.32,1.37],"hcb":[860,995],"hcj":955,"bh":[342,358],"tmax":80,"force":"1,1 kg","dirTxt":"axial (parallèle à la hauteur)"},
+{"code":"S-05-25-N","src":"Supermagnete","mat":"NdFeB","grade":"N45","s":"cyl","d":5,"h":25,"br":[1.32,1.37],"hcb":[860,995],"hcj":955,"bh":[342,358],"tmax":80,"force":"1,1 kg","dirTxt":"axial (parallèle à la hauteur)"},
+{"code":"S-06-01-N","src":"Supermagnete","mat":"NdFeB","grade":"N45","s":"cyl","d":6,"h":1,"br":[1.32,1.37],"hcb":[860,995],"hcj":955,"bh":[342,358],"tmax":80,"force":"400 g","dirTxt":"axial (parallèle à la hauteur)"},
+{"code":"S-06-02-G","src":"Supermagnete","mat":"NdFeB","grade":"N45","s":"cyl","d":6,"h":2,"br":[1.32,1.37],"hcb":[860,995],"hcj":955,"bh":[342,358],"tmax":80,"force":"740 g","dirTxt":"axial (parallèle à la hauteur)"},
+{"code":"S-06-02-N","src":"Supermagnete","mat":"NdFeB","grade":"N45","s":"cyl","d":6,"h":2,"br":[1.32,1.37],"hcb":[860,995],"hcj":955,"bh":[342,358],"tmax":80,"force":"740 g","dirTxt":"axial (parallèle à la hauteur)"},
+{"code":"S-06-03-N","src":"Supermagnete","mat":"NdFeB","grade":"N45","s":"cyl","d":6,"h":3,"br":[1.32,1.37],"hcb":[860,995],"hcj":955,"bh":[342,358],"tmax":80,"force":"990 g","dirTxt":"axial (parallèle à la hauteur)"},
+{"code":"S-06-04-N","src":"Supermagnete","mat":"NdFeB","grade":"N45","s":"cyl","d":6,"h":4,"br":[1.32,1.37],"hcb":[860,995],"hcj":955,"bh":[342,358],"tmax":80,"force":"1,2 kg","dirTxt":"axial (parallèle à la hauteur)"},
+{"code":"S-06-06-N","src":"Supermagnete","mat":"NdFeB","grade":"N48","s":"cyl","d":6,"h":6,"br":[1.37,1.42],"hcb":[860,995],"hcj":955,"bh":[358,382],"tmax":80,"force":"1,5 kg","dirTxt":"axial (parallèle à la hauteur)"},
+{"code":"S-06-08-N","src":"Supermagnete","mat":"NdFeB","grade":"N48","s":"cyl","d":6,"h":8,"br":[1.37,1.42],"hcb":[860,995],"hcj":955,"bh":[358,382],"tmax":80,"force":"1,6 kg","dirTxt":"axial (parallèle à la hauteur)"},
+{"code":"S-06-10-N","src":"Supermagnete","mat":"NdFeB","grade":"N40","s":"cyl","d":6,"h":10,"br":[1.26,1.29],"hcb":[860,955],"hcj":955,"bh":[303,318],"tmax":80,"force":"1,4 kg","dirTxt":"axial (parallèle à la hauteur)"},
+{"code":"S-06-13-N","src":"Supermagnete","mat":"NdFeB","grade":"N48","s":"cyl","d":6,"h":13,"br":[1.37,1.42],"hcb":[860,995],"hcj":955,"bh":[358,382],"tmax":80,"force":"1,7 kg","dirTxt":"axial (parallèle à la hauteur)"},
+{"code":"S-06-25-N","src":"Supermagnete","mat":"NdFeB","grade":"N42","s":"cyl","d":6.35,"h":25.4,"br":[1.29,1.32],"hcb":[860,955],"hcj":955,"bh":[318,334],"tmax":80,"force":"1,7 kg","dirTxt":"axial (parallèle à la hauteur)"},
+{"code":"S-08-01-N","src":"Supermagnete","mat":"NdFeB","grade":"N45","s":"cyl","d":8,"h":1,"br":[1.32,1.37],"hcb":[860,995],"hcj":955,"bh":[342,358],"tmax":80,"force":"540 g","dirTxt":"axial (parallèle à la hauteur)"},
+{"code":"S-08-02-N","src":"Supermagnete","mat":"NdFeB","grade":"N45","s":"cyl","d":8,"h":2,"br":[1.32,1.37],"hcb":[860,995],"hcj":955,"bh":[342,358],"tmax":80,"force":"1,1 kg","dirTxt":"axial (parallèle à la hauteur)"},
+{"code":"S-08-03-E","src":"Supermagnete","mat":"NdFeB","grade":"N45","s":"cyl","d":8,"h":3,"br":[1.32,1.37],"hcb":[860,995],"hcj":955,"bh":[342,358],"tmax":80,"force":"1,5 kg","dirTxt":"axial (parallèle à la hauteur)"},
+{"code":"S-08-03-G","src":"Supermagnete","mat":"NdFeB","grade":"N40","s":"cyl","d":8,"h":3,"br":[1.26,1.29],"hcb":[860,955],"hcj":955,"bh":[303,318],"tmax":80,"force":"1,3 kg","dirTxt":"axial (parallèle à la hauteur)"},
+{"code":"S-08-03-N","src":"Supermagnete","mat":"NdFeB","grade":"N45","s":"cyl","d":8,"h":3,"br":[1.32,1.37],"hcb":[860,995],"hcj":955,"bh":[342,358],"tmax":80,"force":"1,5 kg","dirTxt":"axial (parallèle à la hauteur)"},
+{"code":"S-08-04-N","src":"Supermagnete","mat":"NdFeB","grade":"N45","s":"cyl","d":8,"h":4,"br":[1.32,1.37],"hcb":[860,995],"hcj":955,"bh":[342,358],"tmax":80,"force":"1,8 kg","dirTxt":"axial (parallèle à la hauteur)"},
+{"code":"S-08-05-E","src":"Supermagnete","mat":"NdFeB","grade":"N45","s":"cyl","d":8,"h":5,"br":[1.32,1.37],"hcb":[860,995],"hcj":955,"bh":[342,358],"tmax":80,"force":"2 kg","dirTxt":"axial (parallèle à la hauteur)"},
+{"code":"S-08-05-N","src":"Supermagnete","mat":"NdFeB","grade":"N45","s":"cyl","d":8,"h":5,"br":[1.32,1.37],"hcb":[860,995],"hcj":955,"bh":[342,358],"tmax":80,"force":"2 kg","dirTxt":"axial (parallèle à la hauteur)"},
+{"code":"S-08-06-N52N","src":"Supermagnete","mat":"NdFeB","grade":"N52","s":"cyl","d":8,"h":6,"br":[1.42,1.47],"hcb":[860,995],"hcj":955,"bh":[380,422],"tmax":65,"force":"2,6 kg","dirTxt":"axial (parallèle à la hauteur)"},
+{"code":"S-08-08-K","src":"Supermagnete","mat":"NdFeB","grade":"N45","s":"cyl","d":8,"h":8,"br":[1.32,1.37],"hcb":[860,995],"hcj":955,"bh":[342,358],"tmax":80,"force":"2,5 kg","dirTxt":"axial (parallèle à la hauteur)"},
+{"code":"S-08-08-N","src":"Supermagnete","mat":"NdFeB","grade":"N45","s":"cyl","d":8,"h":8,"br":[1.32,1.37],"hcb":[860,995],"hcj":955,"bh":[342,358],"tmax":80,"force":"2,5 kg","dirTxt":"axial (parallèle à la hauteur)"},
+{"code":"S-08-30-N","src":"Supermagnete","mat":"NdFeB","grade":"N42","s":"cyl","d":8,"h":30,"br":[1.29,1.32],"hcb":[860,955],"hcj":955,"bh":[318,334],"tmax":80,"force":"2,7 kg","dirTxt":"axial (parallèle à la hauteur)"},
+{"code":"S-09-03-N52N","src":"Supermagnete","mat":"NdFeB","grade":"N52","s":"cyl","d":9,"h":3,"br":[1.42,1.47],"hcb":[860,995],"hcj":955,"bh":[380,422],"tmax":65,"force":"2 kg","dirTxt":"axial (parallèle à la hauteur)"},
+{"code":"S-09-05-N","src":"Supermagnete","mat":"NdFeB","grade":"N50","s":"cyl","d":9,"h":5,"br":[1.4,1.46],"hcb":[860,995],"hcj":955,"bh":[374,406],"tmax":80,"force":"2,7 kg","dirTxt":"axial (parallèle à la hauteur)"},
+{"code":"S-10-01-N","src":"Supermagnete","mat":"NdFeB","grade":"N35","s":"cyl","d":10,"h":1,"br":[1.17,1.21],"hcb":[860,915],"hcj":955,"bh":[263,279],"tmax":80,"force":"540 g","dirTxt":"axial (parallèle à la hauteur)"},
+{"code":"S-10-02-N","src":"Supermagnete","mat":"NdFeB","grade":"N42","s":"cyl","d":10,"h":2,"br":[1.29,1.32],"hcb":[860,955],"hcj":955,"bh":[318,334],"tmax":80,"force":"1,3 kg","dirTxt":"axial (parallèle à la hauteur)"},
+{"code":"FE-S-10-03","src":"Supermagnete","mat":"Ferrite","grade":"Y35","s":"cyl","d":10,"h":3,"br":[0.4,0.41],"hcb":[175,195],"hcj":200,"bh":[30,32],"tmax":250,"force":"200 g","dirTxt":"axial (parallèle à la hauteur)"},
+{"code":"S-10-03-N","src":"Supermagnete","mat":"NdFeB","grade":"N42","s":"cyl","d":10,"h":3,"br":[1.29,1.32],"hcb":[860,955],"hcj":955,"bh":[318,334],"tmax":80,"force":"1,8 kg","dirTxt":"axial (parallèle à la hauteur)"},
+{"code":"S-10-03-N52N","src":"Supermagnete","mat":"NdFeB","grade":"N52","s":"cyl","d":10,"h":3,"br":[1.42,1.47],"hcb":[860,995],"hcj":955,"bh":[380,422],"tmax":65,"force":"2,3 kg","dirTxt":"axial (parallèle à la hauteur)"},
+{"code":"S-10-04-N","src":"Supermagnete","mat":"NdFeB","grade":"N42","s":"cyl","d":10,"h":4,"br":[1.29,1.32],"hcb":[860,955],"hcj":955,"bh":[318,334],"tmax":80,"force":"2,3 kg","dirTxt":"axial (parallèle à la hauteur)"},
+{"code":"FE-S-10-05","src":"Supermagnete","mat":"Ferrite","grade":"Y35","s":"cyl","d":10,"h":5,"br":[0.4,0.41],"hcb":[175,195],"hcj":200,"bh":[30,32],"tmax":250,"force":"300 g","dirTxt":"axial (parallèle à la hauteur)"},
+{"code":"S-10-05-E","src":"Supermagnete","mat":"NdFeB","grade":"N42","s":"cyl","d":10,"h":5,"br":[1.29,1.32],"hcb":[860,955],"hcj":955,"bh":[318,334],"tmax":80,"force":"2 kg","dirTxt":"axial (parallèle à la hauteur)"},
+{"code":"S-10-05-N","src":"Supermagnete","mat":"NdFeB","grade":"N42","s":"cyl","d":10,"h":5,"br":[1.29,1.32],"hcb":[860,955],"hcj":955,"bh":[318,334],"tmax":80,"force":"2,6 kg","dirTxt":"axial (parallèle à la hauteur)"},
+{"code":"S-10-05-N52N","src":"Supermagnete","mat":"NdFeB","grade":"N52","s":"cyl","d":10,"h":5,"br":[1.42,1.47],"hcb":[860,995],"hcj":955,"bh":[380,422],"tmax":65,"force":"3,3 kg","dirTxt":"axial (parallèle à la hauteur)"},
+{"code":"FE-S-10-10","src":"Supermagnete","mat":"Ferrite","grade":"Y35","s":"cyl","d":10,"h":10,"br":[0.4,0.41],"hcb":[175,195],"hcj":200,"bh":[30,32],"tmax":250,"force":"400 g","dirTxt":"axial (parallèle à la hauteur)"},
+{"code":"S-10-10-N","src":"Supermagnete","mat":"NdFeB","grade":"N45","s":"cyl","d":10,"h":10,"br":[1.32,1.37],"hcb":[860,995],"hcj":955,"bh":[342,358],"tmax":80,"force":"3,9 kg","dirTxt":"axial (parallèle à la hauteur)"},
+{"code":"S-10-20-N","src":"Supermagnete","mat":"NdFeB","grade":"N45","s":"cyl","d":10,"h":20,"br":[1.32,1.37],"hcb":[860,995],"hcj":955,"bh":[342,358],"tmax":80,"force":"4,4 kg","dirTxt":"axial (parallèle à la hauteur)"},
+{"code":"S-10-40-N","src":"Supermagnete","mat":"NdFeB","grade":"N40","s":"cyl","d":10,"h":40,"br":[1.26,1.29],"hcb":[860,955],"hcj":955,"bh":[303,318],"tmax":80,"force":"4,1 kg","dirTxt":"axial (parallèle à la hauteur)"},
+{"code":"S-12-01-N","src":"Supermagnete","mat":"NdFeB","grade":"N42","s":"cyl","d":12,"h":1,"br":[1.29,1.32],"hcb":[860,955],"hcj":955,"bh":[318,334],"tmax":80,"force":"770 g","dirTxt":"axial (parallèle à la hauteur)"},
+{"code":"S-12-02-N","src":"Supermagnete","mat":"NdFeB","grade":"N45","s":"cyl","d":12,"h":2,"br":[1.32,1.37],"hcb":[860,995],"hcj":955,"bh":[342,358],"tmax":80,"force":"1,7 kg","dirTxt":"axial (parallèle à la hauteur)"},
+{"code":"S-12-03-N","src":"Supermagnete","mat":"NdFeB","grade":"N45","s":"cyl","d":12,"h":3,"br":[1.32,1.37],"hcb":[860,995],"hcj":955,"bh":[342,358],"tmax":80,"force":"2,4 kg","dirTxt":"axial (parallèle à la hauteur)"},
+{"code":"S-12-04-N","src":"Supermagnete","mat":"NdFeB","grade":"N45","s":"cyl","d":12,"h":4,"br":[1.32,1.37],"hcb":[860,995],"hcj":955,"bh":[342,358],"tmax":80,"force":"3,1 kg","dirTxt":"axial (parallèle à la hauteur)"},
+{"code":"FE-S-12-05","src":"Supermagnete","mat":"Ferrite","grade":"Y35","s":"cyl","d":12,"h":5,"br":[0.4,0.41],"hcb":[175,195],"hcj":200,"bh":[30,32],"tmax":250,"force":"400 g","dirTxt":"axial (parallèle à la hauteur)"},
+{"code":"S-12-05-N","src":"Supermagnete","mat":"NdFeB","grade":"N45","s":"cyl","d":12,"h":5,"br":[1.32,1.37],"hcb":[860,995],"hcj":955,"bh":[342,358],"tmax":80,"force":"3,6 kg","dirTxt":"axial (parallèle à la hauteur)"},
+{"code":"S-12-06-K","src":"Supermagnete","mat":"NdFeB","grade":"N45","s":"cyl","d":12,"h":6,"br":[1.32,1.37],"hcb":[860,995],"hcj":955,"bh":[342,358],"tmax":80,"force":"4,1 kg","dirTxt":"axial (parallèle à la hauteur)"},
+{"code":"S-12-06-N","src":"Supermagnete","mat":"NdFeB","grade":"N45","s":"cyl","d":12,"h":6,"br":[1.32,1.37],"hcb":[860,995],"hcj":955,"bh":[342,358],"tmax":80,"force":"4,1 kg","dirTxt":"axial (parallèle à la hauteur)"},
+{"code":"SALE-134","src":"Supermagnete","mat":"NdFeB","grade":"50M","s":"cyl","d":12,"h":6,"br":[1.4,1.46],"hcb":[860,995],"hcj":1114,"bh":[374,406],"tmax":100,"force":"4,1 kg","dirTxt":"axial (parallèle à la hauteur)"},
+{"code":"S-12-08-N","src":"Supermagnete","mat":"NdFeB","grade":"N45","s":"cyl","d":12,"h":8,"br":[1.32,1.37],"hcb":[860,995],"hcj":955,"bh":[342,358],"tmax":80,"force":"4,8 kg","dirTxt":"axial (parallèle à la hauteur)"},
+{"code":"S-12-10-N","src":"Supermagnete","mat":"NdFeB","grade":"N45","s":"cyl","d":12,"h":10,"br":[1.32,1.37],"hcb":[860,995],"hcj":955,"bh":[342,358],"tmax":80,"force":"5,3 kg","dirTxt":"axial (parallèle à la hauteur)"},
+{"code":"S-12-60-N","src":"Supermagnete","mat":"NdFeB","grade":"N38","s":"cyl","d":12,"h":60,"br":[1.22,1.26],"hcb":[860,915],"hcj":955,"bh":[287,303],"tmax":80,"force":"5,6 kg","dirTxt":"axial (parallèle à la hauteur)"},
+{"code":"S-13-01-N","src":"Supermagnete","mat":"NdFeB","grade":"N45","s":"cyl","d":13,"h":1,"br":[1.32,1.37],"hcb":[860,995],"hcj":955,"bh":[342,358],"tmax":80,"force":"910 g","dirTxt":"axial (parallèle à la hauteur)"},
+{"code":"S-13-02-N","src":"Supermagnete","mat":"NdFeB","grade":"N45","s":"cyl","d":13,"h":2,"br":[1.32,1.37],"hcb":[860,995],"hcj":955,"bh":[342,358],"tmax":80,"force":"1,8 kg","dirTxt":"axial (parallèle à la hauteur)"},
+{"code":"S-15-02-N","src":"Supermagnete","mat":"NdFeB","grade":"N40","s":"cyl","d":15,"h":2,"br":[1.26,1.29],"hcb":[860,955],"hcj":955,"bh":[303,318],"tmax":80,"force":"1,9 kg","dirTxt":"axial (parallèle à la hauteur)"},
+{"code":"S-15-03-N","src":"Supermagnete","mat":"NdFeB","grade":"N45","s":"cyl","d":15,"h":3,"br":[1.32,1.37],"hcb":[860,995],"hcj":955,"bh":[342,358],"tmax":80,"force":"3,2 kg","dirTxt":"axial (parallèle à la hauteur)"},
+{"code":"S-15-03-N52N","src":"Supermagnete","mat":"NdFeB","grade":"N52","s":"cyl","d":15,"h":3,"br":[1.42,1.47],"hcb":[860,995],"hcj":955,"bh":[380,422],"tmax":65,"force":"3,7 kg","dirTxt":"axial (parallèle à la hauteur)"},
+{"code":"FE-S-15-05","src":"Supermagnete","mat":"Ferrite","grade":"Y35","s":"cyl","d":15,"h":5,"br":[0.4,0.41],"hcb":[175,195],"hcj":200,"bh":[30,32],"tmax":250,"force":"550 g","dirTxt":"axial (parallèle à la hauteur)"},
+{"code":"S-15-05-N","src":"Supermagnete","mat":"NdFeB","grade":"N42","s":"cyl","d":15,"h":5,"br":[1.29,1.32],"hcb":[860,955],"hcj":955,"bh":[318,334],"tmax":80,"force":"4,5 kg","dirTxt":"axial (parallèle à la hauteur)"},
+{"code":"S-15-08-K","src":"Supermagnete","mat":"NdFeB","grade":"N42","s":"cyl","d":15,"h":8,"br":[1.29,1.32],"hcb":[860,955],"hcj":955,"bh":[318,334],"tmax":80,"force":"6,2 kg","dirTxt":"axial (parallèle à la hauteur)"},
+{"code":"S-15-08-N","src":"Supermagnete","mat":"NdFeB","grade":"N42","s":"cyl","d":15,"h":8,"br":[1.29,1.32],"hcb":[860,955],"hcj":955,"bh":[318,334],"tmax":80,"force":"6,2 kg","dirTxt":"axial (parallèle à la hauteur)"},
+{"code":"FE-S-15-10","src":"Supermagnete","mat":"Ferrite","grade":"Y35","s":"cyl","d":15,"h":10,"br":[0.4,0.41],"hcb":[175,195],"hcj":200,"bh":[30,32],"tmax":250,"force":"750 g","dirTxt":"axial (parallèle à la hauteur)"},
+{"code":"S-15-100-N","src":"Supermagnete","mat":"NdFeB","grade":"N35","s":"cyl","d":15,"h":100,"br":[1.17,1.21],"hcb":[860,915],"hcj":955,"bh":[263,279],"tmax":80,"force":"8,2 kg","dirTxt":"axial (parallèle à la hauteur)"},
+{"code":"S-18-02-N","src":"Supermagnete","mat":"NdFeB","grade":"N45","s":"cyl","d":18,"h":2,"br":[1.32,1.37],"hcb":[860,995],"hcj":955,"bh":[342,358],"tmax":80,"force":"2,6 kg","dirTxt":"axial (parallèle à la hauteur)"},
+{"code":"S-18-03-N","src":"Supermagnete","mat":"NdFeB","grade":"N45","s":"cyl","d":18,"h":3,"br":[1.32,1.37],"hcb":[860,995],"hcj":955,"bh":[342,358],"tmax":80,"force":"3,9 kg","dirTxt":"axial (parallèle à la hauteur)"},
+{"code":"S-18-05-N","src":"Supermagnete","mat":"NdFeB","grade":"N42","s":"cyl","d":18,"h":5,"br":[1.29,1.32],"hcb":[860,955],"hcj":955,"bh":[318,334],"tmax":80,"force":"5,7 kg","dirTxt":"axial (parallèle à la hauteur)"},
+{"code":"S-20-02-N","src":"Supermagnete","mat":"NdFeB","grade":"N45","s":"cyl","d":20,"h":2,"br":[1.32,1.37],"hcb":[860,995],"hcj":955,"bh":[342,358],"tmax":80,"force":"2,9 kg","dirTxt":"axial (parallèle à la hauteur)"},
+{"code":"S-20-02-N52N","src":"Supermagnete","mat":"NdFeB","grade":"N52","s":"cyl","d":20,"h":2,"br":[1.42,1.47],"hcb":[860,995],"hcj":955,"bh":[380,422],"tmax":65,"force":"3,4 kg","dirTxt":"axial (parallèle à la hauteur)"},
+{"code":"FE-S-20-03","src":"Supermagnete","mat":"Ferrite","grade":"Y35","s":"cyl","d":20,"h":3,"br":[0.4,0.41],"hcb":[175,195],"hcj":200,"bh":[30,32],"tmax":250,"force":"400 g","dirTxt":"axial (parallèle à la hauteur)"},
+{"code":"S-20-03-N","src":"Supermagnete","mat":"NdFeB","grade":"N45","s":"cyl","d":20,"h":3,"br":[1.32,1.37],"hcb":[860,995],"hcj":955,"bh":[342,358],"tmax":80,"force":"4,3 kg","dirTxt":"axial (parallèle à la hauteur)"},
+{"code":"S-20-04-N","src":"Supermagnete","mat":"NdFeB","grade":"N42","s":"cyl","d":20,"h":4,"br":[1.29,1.32],"hcb":[860,955],"hcj":955,"bh":[318,334],"tmax":80,"force":"5,3 kg","dirTxt":"axial (parallèle à la hauteur)"},
+{"code":"FE-S-20-05","src":"Supermagnete","mat":"Ferrite","grade":"Y35","s":"cyl","d":20,"h":5,"br":[0.4,0.41],"hcb":[175,195],"hcj":200,"bh":[30,32],"tmax":250,"force":"700 g","dirTxt":"axial (parallèle à la hauteur)"},
+{"code":"S-20-05-N","src":"Supermagnete","mat":"NdFeB","grade":"N42","s":"cyl","d":20,"h":5,"br":[1.29,1.32],"hcb":[860,955],"hcj":955,"bh":[318,334],"tmax":80,"force":"6,4 kg","dirTxt":"axial (parallèle à la hauteur)"},
+{"code":"S-20-05-T","src":"Supermagnete","mat":"NdFeB","grade":"N42","s":"cyl","d":20,"h":5,"br":[1.29,1.32],"hcb":[860,955],"hcj":955,"bh":[318,334],"tmax":80,"force":"6,4 kg","dirTxt":"axial (parallèle à la hauteur)"},
+{"code":"S-20-06-N","src":"Supermagnete","mat":"NdFeB","grade":"N42","s":"cyl","d":20,"h":6,"br":[1.29,1.32],"hcb":[860,955],"hcj":955,"bh":[318,334],"tmax":80,"force":"7,5 kg","dirTxt":"axial (parallèle à la hauteur)"},
+{"code":"S-20-07-N","src":"Supermagnete","mat":"NdFeB","grade":"N42","s":"cyl","d":20,"h":7,"br":[1.29,1.32],"hcb":[860,955],"hcj":955,"bh":[318,334],"tmax":80,"force":"8,4 kg","dirTxt":"axial (parallèle à la hauteur)"},
+{"code":"S-20-08-N","src":"Supermagnete","mat":"NdFeB","grade":"N42","s":"cyl","d":20,"h":8,"br":[1.29,1.32],"hcb":[860,955],"hcj":955,"bh":[318,334],"tmax":80,"force":"9,3 kg","dirTxt":"axial (parallèle à la hauteur)"},
+{"code":"S-20-09-N","src":"Supermagnete","mat":"NdFeB","grade":"N42","s":"cyl","d":20,"h":9,"br":[1.29,1.32],"hcb":[860,955],"hcj":955,"bh":[318,334],"tmax":80,"force":"10 kg","dirTxt":"axial (parallèle à la hauteur)"},
+{"code":"FE-S-20-10","src":"Supermagnete","mat":"Ferrite","grade":"Y35","s":"cyl","d":20,"h":10,"br":[0.4,0.41],"hcb":[175,195],"hcj":200,"bh":[30,32],"tmax":250,"force":"1,4 kg","dirTxt":"axial (parallèle à la hauteur)"},
+{"code":"S-20-10-N","src":"Supermagnete","mat":"NdFeB","grade":"N42","s":"cyl","d":20,"h":10,"br":[1.29,1.32],"hcb":[860,955],"hcj":955,"bh":[318,334],"tmax":80,"force":"11 kg","dirTxt":"axial (parallèle à la hauteur)"},
+{"code":"S-20-12-N","src":"Supermagnete","mat":"NdFeB","grade":"N42","s":"cyl","d":20,"h":12,"br":[1.29,1.32],"hcb":[860,955],"hcj":955,"bh":[318,334],"tmax":80,"force":"12 kg","dirTxt":"axial (parallèle à la hauteur)"},
+{"code":"S-20-15-N","src":"Supermagnete","mat":"NdFeB","grade":"N42","s":"cyl","d":20,"h":15,"br":[1.29,1.32],"hcb":[860,955],"hcj":955,"bh":[318,334],"tmax":80,"force":"13 kg","dirTxt":"axial (parallèle à la hauteur)"},
+{"code":"S-20-20-N","src":"Supermagnete","mat":"NdFeB","grade":"N42","s":"cyl","d":20,"h":20,"br":[1.29,1.32],"hcb":[860,955],"hcj":955,"bh":[318,334],"tmax":80,"force":"15 kg","dirTxt":"axial (parallèle à la hauteur)"},
+{"code":"S-25-02-N","src":"Supermagnete","mat":"NdFeB","grade":"N38","s":"cyl","d":25,"h":2,"br":[1.22,1.26],"hcb":[860,915],"hcj":955,"bh":[287,303],"tmax":80,"force":"3,1 kg","dirTxt":"axial (parallèle à la hauteur)"},
+{"code":"S-25-03-N","src":"Supermagnete","mat":"NdFeB","grade":"N45","s":"cyl","d":25,"h":3,"br":[1.32,1.37],"hcb":[860,995],"hcj":955,"bh":[342,358],"tmax":80,"force":"5,5 kg","dirTxt":"axial (parallèle à la hauteur)"},
+{"code":"FE-S-25-05","src":"Supermagnete","mat":"Ferrite","grade":"Y35","s":"cyl","d":25,"h":5,"br":[0.4,0.41],"hcb":[175,195],"hcj":200,"bh":[30,32],"tmax":250,"force":"800 g","dirTxt":"axial (parallèle à la hauteur)"},
+{"code":"S-25-05-N","src":"Supermagnete","mat":"NdFeB","grade":"N42","s":"cyl","d":25,"h":5,"br":[1.29,1.32],"hcb":[860,955],"hcj":955,"bh":[318,334],"tmax":80,"force":"8,3 kg","dirTxt":"axial (parallèle à la hauteur)"},
+{"code":"S-25-07-N","src":"Supermagnete","mat":"NdFeB","grade":"N42","s":"cyl","d":25,"h":7,"br":[1.29,1.32],"hcb":[860,955],"hcj":955,"bh":[318,334],"tmax":80,"force":"11 kg","dirTxt":"axial (parallèle à la hauteur)"},
+{"code":"FE-S-25-10","src":"Supermagnete","mat":"Ferrite","grade":"Y35","s":"cyl","d":25,"h":10,"br":[0.4,0.41],"hcb":[175,195],"hcj":200,"bh":[30,32],"tmax":250,"force":"1,5 kg","dirTxt":"axial (parallèle à la hauteur)"},
+{"code":"FE-S-25-15","src":"Supermagnete","mat":"Ferrite","grade":"Y35","s":"cyl","d":25,"h":15,"br":[0.4,0.41],"hcb":[175,195],"hcj":200,"bh":[30,32],"tmax":250,"force":"2,3 kg","dirTxt":"axial (parallèle à la hauteur)"},
+{"code":"S-30-03-N","src":"Supermagnete","mat":"NdFeB","grade":"N45","s":"cyl","d":30,"h":3,"br":[1.32,1.37],"hcb":[860,995],"hcj":955,"bh":[342,358],"tmax":80,"force":"6,7 kg","dirTxt":"axial (parallèle à la hauteur)"},
+{"code":"FE-S-30-05","src":"Supermagnete","mat":"Ferrite","grade":"Y35","s":"cyl","d":30,"h":5,"br":[0.4,0.41],"hcb":[175,195],"hcj":200,"bh":[30,32],"tmax":250,"force":"900 g","dirTxt":"axial (parallèle à la hauteur)"},
+{"code":"S-30-07-N","src":"Supermagnete","mat":"NdFeB","grade":"N42","s":"cyl","d":30,"h":7,"br":[1.29,1.32],"hcb":[860,955],"hcj":955,"bh":[318,334],"tmax":80,"force":"14 kg","dirTxt":"axial (parallèle à la hauteur)"},
+{"code":"FE-S-30-10","src":"Supermagnete","mat":"Ferrite","grade":"Y35","s":"cyl","d":30,"h":10,"br":[0.4,0.41],"hcb":[175,195],"hcj":200,"bh":[30,32],"tmax":250,"force":"2,3 kg","dirTxt":"axial (parallèle à la hauteur)"},
+{"code":"S-30-10-N","src":"Supermagnete","mat":"NdFeB","grade":"N45","s":"cyl","d":30,"h":10,"br":[1.32,1.37],"hcb":[860,995],"hcj":955,"bh":[342,358],"tmax":80,"force":"20 kg","dirTxt":"axial (parallèle à la hauteur)"},
+{"code":"FE-S-30-15","src":"Supermagnete","mat":"Ferrite","grade":"Y35","s":"cyl","d":30,"h":15,"br":[0.4,0.41],"hcb":[175,195],"hcj":200,"bh":[30,32],"tmax":250,"force":"3 kg","dirTxt":"axial (parallèle à la hauteur)"},
+{"code":"S-30-15-N","src":"Supermagnete","mat":"NdFeB","grade":"N42","s":"cyl","d":30,"h":15,"br":[1.29,1.32],"hcb":[860,955],"hcj":955,"bh":[318,334],"tmax":80,"force":"24 kg","dirTxt":"axial (parallèle à la hauteur)"},
+{"code":"S-35-05-N","src":"Supermagnete","mat":"NdFeB","grade":"N42","s":"cyl","d":35,"h":5,"br":[1.29,1.32],"hcb":[860,955],"hcj":955,"bh":[318,334],"tmax":80,"force":"12 kg","dirTxt":"axial (parallèle à la hauteur)"},
+{"code":"S-35-20-N","src":"Supermagnete","mat":"NdFeB","grade":"N45","s":"cyl","d":35,"h":20,"br":[1.32,1.37],"hcb":[860,995],"hcj":955,"bh":[342,358],"tmax":80,"force":"38 kg","dirTxt":"axial (parallèle à la hauteur)"},
+{"code":"FE-S-40-10","src":"Supermagnete","mat":"Ferrite","grade":"Y35","s":"cyl","d":40,"h":10,"br":[0.4,0.41],"hcb":[175,195],"hcj":200,"bh":[30,32],"tmax":250,"force":"2,4 kg","dirTxt":"axial (parallèle à la hauteur)"},
+{"code":"FE-S-40-20","src":"Supermagnete","mat":"Ferrite","grade":"Y35","s":"cyl","d":40,"h":20,"br":[0.4,0.41],"hcb":[175,195],"hcj":200,"bh":[30,32],"tmax":250,"force":"4,7 kg","dirTxt":"axial (parallèle à la hauteur)"},
+{"code":"S-45-30-N","src":"Supermagnete","mat":"NdFeB","grade":"N45","s":"cyl","d":45,"h":30,"br":[1.32,1.37],"hcb":[860,995],"hcj":955,"bh":[342,358],"tmax":80,"force":"69 kg","dirTxt":"axial (parallèle à la hauteur)"},
+{"code":"S-60-05-N","src":"Supermagnete","mat":"NdFeB","grade":"N42","s":"cyl","d":60,"h":5,"br":[1.29,1.32],"hcb":[860,955],"hcj":955,"bh":[318,334],"tmax":80,"force":"21 kg","dirTxt":"axial (parallèle à la hauteur)"},
+{"code":"FE-S-60-15","src":"Supermagnete","mat":"Ferrite","grade":"Y35","s":"cyl","d":60,"h":15,"br":[0.4,0.41],"hcb":[175,195],"hcj":200,"bh":[30,32],"tmax":250,"force":"4,9 kg","dirTxt":"axial (parallèle à la hauteur)"},
+{"code":"FE-S-70-15","src":"Supermagnete","mat":"Ferrite","grade":"Y35","s":"cyl","d":70,"h":15,"br":[0.4,0.41],"hcb":[175,195],"hcj":200,"bh":[30,32],"tmax":250,"force":"8,4 kg","dirTxt":"axial (parallèle à la hauteur)"},
+{"code":"S-70-35-N","src":"Supermagnete","mat":"NdFeB","grade":"N45","s":"cyl","d":70,"h":35,"br":[1.32,1.37],"hcb":[860,995],"hcj":955,"bh":[342,358],"tmax":80,"force":"140 kg","dirTxt":"axial (parallèle à la hauteur)"},
+{"code":"FE-S-100-15","src":"Supermagnete","mat":"Ferrite","grade":"Y35","s":"cyl","d":100,"h":15,"br":[0.4,0.41],"hcb":[175,195],"hcj":200,"bh":[30,32],"tmax":250,"force":"11 kg","dirTxt":"axial (parallèle à la hauteur)"},
+{"code":"W-01-N","src":"Supermagnete","mat":"NdFeB","grade":"N45","s":"cube","a":1,"b":1,"h":1,"br":[1.32,1.37],"hcb":[860,995],"hcj":955,"bh":[342,358],"tmax":80,"force":"37 g","dirTxt":"le long d’une arête"},
+{"code":"W-03-N","src":"Supermagnete","mat":"NdFeB","grade":"N45","s":"cube","a":3,"b":3,"h":3,"br":[1.32,1.37],"hcb":[860,995],"hcj":955,"bh":[342,358],"tmax":80,"force":"290 g","dirTxt":"le long d’une arête"},
+{"code":"W-04-N","src":"Supermagnete","mat":"NdFeB","grade":"N42","s":"cube","a":4,"b":4,"h":4,"br":[1.29,1.32],"hcb":[860,955],"hcj":955,"bh":[318,334],"tmax":80,"force":"500 g","dirTxt":"le long d’une arête"},
+{"code":"W-05-G","src":"Supermagnete","mat":"NdFeB","grade":"N42","s":"cube","a":5,"b":5,"h":5,"br":[1.29,1.32],"hcb":[860,955],"hcj":955,"bh":[318,334],"tmax":80,"force":"1,1 kg","dirTxt":"le long d’une arête"},
+{"code":"W-05-N","src":"Supermagnete","mat":"NdFeB","grade":"N42","s":"cube","a":5,"b":5,"h":5,"br":[1.29,1.32],"hcb":[860,955],"hcj":955,"bh":[318,334],"tmax":80,"force":"1,1 kg","dirTxt":"le long d’une arête"},
+{"code":"W-05-N50-G","src":"Supermagnete","mat":"NdFeB","grade":"N50","s":"cube","a":5,"b":5,"h":5,"br":[1.4,1.46],"hcb":[860,995],"hcj":955,"bh":[374,406],"tmax":80,"force":"1,2 kg","dirTxt":"le long d’une arête"},
+{"code":"W-05-N50-N","src":"Supermagnete","mat":"NdFeB","grade":"N50","s":"cube","a":5,"b":5,"h":5,"br":[1.4,1.46],"hcb":[860,995],"hcj":955,"bh":[374,406],"tmax":80,"force":"1,2 kg","dirTxt":"le long d’une arête"},
+{"code":"W-06-N","src":"Supermagnete","mat":"NdFeB","grade":"N42","s":"cube","a":6,"b":6,"h":6,"br":[1.29,1.32],"hcb":[860,955],"hcj":955,"bh":[318,334],"tmax":80,"force":"1,3 kg","dirTxt":"le long d’une arête"},
+{"code":"W-07-K","src":"Supermagnete","mat":"NdFeB","grade":"N42","s":"cube","a":7,"b":7,"h":7,"br":[1.29,1.32],"hcb":[860,955],"hcj":955,"bh":[318,334],"tmax":80,"force":"1,6 kg","dirTxt":"le long d’une arête"},
+{"code":"W-07-N","src":"Supermagnete","mat":"NdFeB","grade":"N42","s":"cube","a":7,"b":7,"h":7,"br":[1.29,1.32],"hcb":[860,955],"hcj":955,"bh":[318,334],"tmax":80,"force":"1,6 kg","dirTxt":"le long d’une arête"},
+{"code":"W-10-N","src":"Supermagnete","mat":"NdFeB","grade":"N42","s":"cube","a":10,"b":10,"h":10,"br":[1.29,1.32],"hcb":[860,955],"hcj":955,"bh":[318,334],"tmax":80,"force":"3,8 kg","dirTxt":"le long d’une arête"},
+{"code":"W-12-N","src":"Supermagnete","mat":"NdFeB","grade":"N48","s":"cube","a":12,"b":12,"h":12,"br":[1.37,1.42],"hcb":[860,995],"hcj":955,"bh":[358,382],"tmax":80,"force":"6,3 kg","dirTxt":"le long d’une arête"},
+{"code":"Q-05-04-01-G","src":"Supermagnete","mat":"NdFeB","grade":"N50","s":"box","a":5,"b":4,"h":1,"br":[1.4,1.46],"hcb":[860,995],"hcj":955,"bh":[374,406],"tmax":80,"force":"350 g","dirTxt":"Dans le sens de la hauteur"},
+{"code":"Q-05-04-01-N","src":"Supermagnete","mat":"NdFeB","grade":"N50","s":"box","a":5,"b":4,"h":1,"br":[1.4,1.46],"hcb":[860,995],"hcj":955,"bh":[374,406],"tmax":80,"force":"350 g","dirTxt":"Dans le sens de la hauteur"},
+{"code":"Q-05-05-01-HN","src":"Supermagnete","mat":"NdFeB","grade":"44H","s":"box","a":5,"b":5,"h":1,"br":[1.32,1.36],"hcb":[860,1035],"hcj":1353,"bh":[334,350],"tmax":120,"force":"350 g","dirTxt":"Dans le sens de la hauteur"},
+{"code":"Q-CDM48-G","src":"Supermagnete","mat":"NdFeB","grade":"N48","s":"box","a":5,"b":5,"h":1,"br":[1.37,1.42],"hcb":[860,995],"hcj":955,"bh":[358,382],"tmax":80,"force":"350 g","dirTxt":"Dans le sens de la hauteur"},
+{"code":"Q-CDM48-N","src":"Supermagnete","mat":"NdFeB","grade":"N48","s":"box","a":5,"b":5,"h":1,"br":[1.37,1.42],"hcb":[860,995],"hcj":955,"bh":[358,382],"tmax":80,"force":"350 g","dirTxt":"Dans le sens de la hauteur"},
+{"code":"Q-CDM50-G","src":"Supermagnete","mat":"NdFeB","grade":"N50","s":"box","a":5,"b":5,"h":1.2,"br":[1.4,1.46],"hcb":[860,995],"hcj":955,"bh":[374,406],"tmax":80,"force":"450 g","dirTxt":"Dans le sens de la hauteur"},
+{"code":"Q-CDM50-N","src":"Supermagnete","mat":"NdFeB","grade":"N50","s":"box","a":5,"b":5,"h":1.2,"br":[1.4,1.46],"hcb":[860,995],"hcj":955,"bh":[374,406],"tmax":80,"force":"450 g","dirTxt":"Dans le sens de la hauteur"},
+{"code":"Q-05-05-02-G","src":"Supermagnete","mat":"NdFeB","grade":"N45","s":"box","a":5,"b":5,"h":2,"br":[1.32,1.37],"hcb":[860,995],"hcj":955,"bh":[342,358],"tmax":80,"force":"650 g","dirTxt":"Dans le sens de la hauteur"},
+{"code":"Q-05-05-02-N","src":"Supermagnete","mat":"NdFeB","grade":"N45","s":"box","a":5,"b":5,"h":2,"br":[1.32,1.37],"hcb":[860,995],"hcj":955,"bh":[342,358],"tmax":80,"force":"650 g","dirTxt":"Dans le sens de la hauteur"},
+{"code":"Q-05-05-03-N52N","src":"Supermagnete","mat":"NdFeB","grade":"N52","s":"box","a":5,"b":5,"h":3,"br":[1.42,1.47],"hcb":[860,995],"hcj":955,"bh":[380,422],"tmax":65,"force":"1 kg","dirTxt":"Dans le sens de la hauteur"},
+{"code":"Q-06-04-02-HN","src":"Supermagnete","mat":"NdFeB","grade":"44H","s":"box","a":6,"b":4,"h":2,"br":[1.32,1.36],"hcb":[860,1035],"hcj":1353,"bh":[334,350],"tmax":120,"force":"640 g","dirTxt":"Dans le sens de la hauteur"},
+{"code":"Q-06-05-02-HN","src":"Supermagnete","mat":"NdFeB","grade":"48H","s":"box","a":6,"b":5,"h":2,"br":[1.37,1.42],"hcb":[860,995],"hcj":1353,"bh":[358,382],"tmax":120,"force":"600 g","dirTxt":"Dans le sens de la hauteur"},
+{"code":"Q-08-04-03-N","src":"Supermagnete","mat":"NdFeB","grade":"N45","s":"box","a":8,"b":4,"h":3,"br":[1.32,1.37],"hcb":[860,995],"hcj":955,"bh":[342,358],"tmax":80,"force":"900 g","dirTxt":"Dans le sens de la hauteur"},
+{"code":"Q-08-05-05-Z","src":"Supermagnete","mat":"NdFeB","grade":"N45","s":"box","a":8,"b":5,"h":5,"br":[1.32,1.37],"hcb":[860,995],"hcj":955,"bh":[342,358],"tmax":80,"force":"1,1 kg","dirTxt":"Dans le sens de la hauteur"},
+{"code":"Q-08-08-04-N","src":"Supermagnete","mat":"NdFeB","grade":"N45","s":"box","a":8,"b":8,"h":4,"br":[1.32,1.37],"hcb":[860,995],"hcj":955,"bh":[342,358],"tmax":80,"force":"1,5 kg","dirTxt":"Dans le sens de la hauteur"},
+{"code":"Q-10-03-02-HN","src":"Supermagnete","mat":"NdFeB","grade":"44H","s":"box","a":10,"b":3,"h":2,"br":[1.32,1.36],"hcb":[860,1035],"hcj":1353,"bh":[334,350],"tmax":120,"force":"700 g","dirTxt":"Dans le sens de la hauteur"},
+{"code":"Q-10-04-01-G","src":"Supermagnete","mat":"NdFeB","grade":"N50","s":"box","a":10,"b":4,"h":1,"br":[1.4,1.46],"hcb":[860,995],"hcj":955,"bh":[374,406],"tmax":80,"force":"580 g","dirTxt":"Dans le sens de la hauteur"},
+{"code":"Q-10-04-01-N","src":"Supermagnete","mat":"NdFeB","grade":"N50","s":"box","a":10,"b":4,"h":1,"br":[1.4,1.46],"hcb":[860,995],"hcj":955,"bh":[374,406],"tmax":80,"force":"580 g","dirTxt":"Dans le sens de la hauteur"},
+{"code":"Q-10-04-02-G","src":"Supermagnete","mat":"NdFeB","grade":"N50","s":"box","a":10,"b":4,"h":2,"br":[1.4,1.46],"hcb":[860,995],"hcj":955,"bh":[374,406],"tmax":80,"force":"1,1 kg","dirTxt":"Dans le sens de la hauteur"},
+{"code":"Q-10-04-02-N","src":"Supermagnete","mat":"NdFeB","grade":"N50","s":"box","a":10,"b":4,"h":2,"br":[1.4,1.46],"hcb":[860,995],"hcj":955,"bh":[374,406],"tmax":80,"force":"1,1 kg","dirTxt":"Dans le sens de la hauteur"},
+{"code":"Q-10-05-01-G","src":"Supermagnete","mat":"NdFeB","grade":"N50","s":"box","a":10,"b":5,"h":1,"br":[1.4,1.46],"hcb":[860,995],"hcj":955,"bh":[374,406],"tmax":80,"force":"650 g","dirTxt":"Dans le sens de la hauteur"},
+{"code":"Q-10-05-01-N","src":"Supermagnete","mat":"NdFeB","grade":"N50","s":"box","a":10,"b":5,"h":1,"br":[1.4,1.46],"hcb":[860,995],"hcj":955,"bh":[374,406],"tmax":80,"force":"650 g","dirTxt":"Dans le sens de la hauteur"},
+{"code":"Q-10-05-02-G","src":"Supermagnete","mat":"NdFeB","grade":"N50","s":"box","a":10,"b":5,"h":2,"br":[1.4,1.46],"hcb":[860,995],"hcj":955,"bh":[374,406],"tmax":80,"force":"1,2 kg","dirTxt":"Dans le sens de la hauteur"},
+{"code":"Q-10-05-02-N","src":"Supermagnete","mat":"NdFeB","grade":"N50","s":"box","a":10,"b":5,"h":2,"br":[1.4,1.46],"hcb":[860,995],"hcj":955,"bh":[374,406],"tmax":80,"force":"1,2 kg","dirTxt":"Dans le sens de la hauteur"},
+{"code":"Q-10-05-03-N","src":"Supermagnete","mat":"NdFeB","grade":"N45","s":"box","a":10,"b":5,"h":3,"br":[1.32,1.37],"hcb":[860,995],"hcj":955,"bh":[342,358],"tmax":80,"force":"1,5 kg","dirTxt":"Dans le sens de la hauteur"},
+{"code":"Q-10-06-06-Z","src":"Supermagnete","mat":"NdFeB","grade":"N45","s":"box","a":10,"b":6,"h":6,"br":[1.32,1.37],"hcb":[860,995],"hcj":955,"bh":[342,358],"tmax":80,"force":"2,1 kg","dirTxt":"Dans le sens de la hauteur"},
+{"code":"Q-10-10-01-N","src":"Supermagnete","mat":"NdFeB","grade":"N42","s":"box","a":10,"b":10,"h":1,"br":[1.29,1.32],"hcb":[860,955],"hcj":955,"bh":[318,334],"tmax":80,"force":"600 g","dirTxt":"Dans le sens de la hauteur"},
+{"code":"Q-10-10-02-N","src":"Supermagnete","mat":"NdFeB","grade":"N45","s":"box","a":10,"b":10,"h":2,"br":[1.32,1.37],"hcb":[860,995],"hcj":955,"bh":[342,358],"tmax":80,"force":"1 kg","dirTxt":"Dans le sens de la hauteur"},
+{"code":"Q-10-10-03-N","src":"Supermagnete","mat":"NdFeB","grade":"N42","s":"box","a":10,"b":10,"h":3,"br":[1.29,1.32],"hcb":[860,955],"hcj":955,"bh":[318,334],"tmax":80,"force":"1,7 kg","dirTxt":"Dans le sens de la hauteur"},
+{"code":"Q-10-10-04-K","src":"Supermagnete","mat":"NdFeB","grade":"N40","s":"box","a":10,"b":10,"h":4,"br":[1.26,1.29],"hcb":[860,955],"hcj":955,"bh":[303,318],"tmax":80,"force":"2,2 kg","dirTxt":"Dans le sens de la hauteur"},
+{"code":"Q-10-10-04-N","src":"Supermagnete","mat":"NdFeB","grade":"N40","s":"box","a":10,"b":10,"h":4,"br":[1.26,1.29],"hcb":[860,955],"hcj":955,"bh":[303,318],"tmax":80,"force":"2,2 kg","dirTxt":"Dans le sens de la hauteur"},
+{"code":"Q-10-10-05-N","src":"Supermagnete","mat":"NdFeB","grade":"N42","s":"box","a":10,"b":10,"h":5,"br":[1.29,1.32],"hcb":[860,955],"hcj":955,"bh":[318,334],"tmax":80,"force":"2,8 kg","dirTxt":"Dans le sens de la hauteur"},
+{"code":"Q-12-07-02-HN","src":"Supermagnete","mat":"NdFeB","grade":"44H","s":"box","a":12,"b":7,"h":2,"br":[1.32,1.36],"hcb":[860,1035],"hcj":1353,"bh":[334,350],"tmax":120,"force":"1,3 kg","dirTxt":"Dans le sens de la hauteur"},
+{"code":"Q-12-08-02-N","src":"Supermagnete","mat":"NdFeB","grade":"N50","s":"box","a":12,"b":8,"h":2,"br":[1.4,1.46],"hcb":[860,995],"hcj":955,"bh":[374,406],"tmax":80,"force":"1,5 kg","dirTxt":"Dans le sens de la hauteur"},
+{"code":"Q-19-13-06-LN","src":"Supermagnete","mat":"NdFeB","grade":"N42","s":"box","a":12.7,"b":6.35,"h":19.05,"br":[1.29,1.32],"hcb":[860,955],"hcj":955,"bh":[318,334],"tmax":80,"force":"4,1 kg","dirTxt":"Dans le sens de la longueur"},
+{"code":"Q-15-04-04-MN","src":"Supermagnete","mat":"NdFeB","grade":"45M","s":"box","a":15,"b":4,"h":4,"br":[1.32,1.37],"hcb":[860,1035],"hcj":1114,"bh":[342,358],"tmax":100,"force":"1,7 kg","dirTxt":"Dans le sens de la hauteur"},
+{"code":"Q-15-15-03-N","src":"Supermagnete","mat":"NdFeB","grade":"N45","s":"box","a":15,"b":15,"h":3,"br":[1.32,1.37],"hcb":[860,995],"hcj":955,"bh":[342,358],"tmax":80,"force":"3,4 kg","dirTxt":"Dans le sens de la hauteur"},
+{"code":"Q-15-15-08-N","src":"Supermagnete","mat":"NdFeB","grade":"N42","s":"box","a":15,"b":15,"h":8,"br":[1.29,1.32],"hcb":[860,955],"hcj":955,"bh":[318,334],"tmax":80,"force":"7,6 kg","dirTxt":"Dans le sens de la hauteur"},
+{"code":"Q-18-08-04-Z","src":"Supermagnete","mat":"NdFeB","grade":"N45","s":"box","a":18,"b":8,"h":4,"br":[1.32,1.37],"hcb":[860,995],"hcj":955,"bh":[342,358],"tmax":80,"force":"2,7 kg","dirTxt":"Dans le sens de la hauteur"},
+{"code":"FE-Q-18-10-06","src":"Supermagnete","mat":"Ferrite","grade":"Y35","s":"box","a":18,"b":10,"h":6,"br":[0.4,0.41],"hcb":[175,195],"hcj":200,"bh":[30,32],"tmax":250,"force":"630 g","dirTxt":"Dans le sens de la hauteur"},
+{"code":"Q-18-15-10-Z","src":"Supermagnete","mat":"NdFeB","grade":"N45","s":"box","a":18,"b":15,"h":10,"br":[1.32,1.37],"hcb":[860,995],"hcj":955,"bh":[342,358],"tmax":80,"force":"9,8 kg","dirTxt":"Dans le sens de la hauteur"},
+{"code":"Q-18-18-04-Z","src":"Supermagnete","mat":"NdFeB","grade":"N45","s":"box","a":18,"b":18,"h":4,"br":[1.32,1.37],"hcb":[860,995],"hcj":955,"bh":[342,358],"tmax":80,"force":"4,1 kg","dirTxt":"Dans le sens de la hauteur"},
+{"code":"Q-19-13-06-N","src":"Supermagnete","mat":"NdFeB","grade":"N42","s":"box","a":19.05,"b":12.7,"h":6.35,"br":[1.29,1.32],"hcb":[860,955],"hcj":955,"bh":[318,334],"tmax":80,"force":"6,5 kg","dirTxt":"Dans le sens de la hauteur"},
+{"code":"Q-20-04-02-N","src":"Supermagnete","mat":"NdFeB","grade":"N45","s":"box","a":20,"b":4,"h":2,"br":[1.32,1.37],"hcb":[860,995],"hcj":955,"bh":[342,358],"tmax":80,"force":"1,2 kg","dirTxt":"Dans le sens de la hauteur"},
+{"code":"Q-20-04-03-N","src":"Supermagnete","mat":"NdFeB","grade":"N48","s":"box","a":20,"b":4,"h":3,"br":[1.37,1.42],"hcb":[860,995],"hcj":955,"bh":[358,382],"tmax":80,"force":"2,4 kg","dirTxt":"Dans le sens de la hauteur"},
+{"code":"Q-20-05-02-HN","src":"Supermagnete","mat":"NdFeB","grade":"44H","s":"box","a":20,"b":5,"h":2,"br":[1.32,1.36],"hcb":[860,1035],"hcj":1353,"bh":[334,350],"tmax":120,"force":"1,5 kg","dirTxt":"Dans le sens de la hauteur"},
+{"code":"Q-20-05-05-Z","src":"Supermagnete","mat":"NdFeB","grade":"N42","s":"box","a":20,"b":5,"h":5,"br":[1.29,1.32],"hcb":[860,955],"hcj":955,"bh":[318,334],"tmax":80,"force":"2,5 kg","dirTxt":"Dans le sens de la hauteur"},
+{"code":"Q-20-10-02-N","src":"Supermagnete","mat":"NdFeB","grade":"N45","s":"box","a":20,"b":10,"h":2,"br":[1.32,1.37],"hcb":[860,995],"hcj":955,"bh":[342,358],"tmax":80,"force":"2,1 kg","dirTxt":"Dans le sens de la hauteur"},
+{"code":"Q-20-10-05-N","src":"Supermagnete","mat":"NdFeB","grade":"N42","s":"box","a":20,"b":10,"h":5,"br":[1.29,1.32],"hcb":[860,955],"hcj":955,"bh":[318,334],"tmax":80,"force":"3,8 kg","dirTxt":"Dans le sens de la hauteur"},
+{"code":"FE-Q-20-20-03","src":"Supermagnete","mat":"Ferrite","grade":"Y35","s":"box","a":20,"b":20,"h":3,"br":[0.4,0.41],"hcb":[175,195],"hcj":200,"bh":[30,32],"tmax":250,"force":"450 g","dirTxt":"Dans le sens de la hauteur"},
+{"code":"Q-20-20-03-N","src":"Supermagnete","mat":"NdFeB","grade":"N45","s":"box","a":20,"b":20,"h":3,"br":[1.32,1.37],"hcb":[860,995],"hcj":955,"bh":[342,358],"tmax":80,"force":"4,2 kg","dirTxt":"Dans le sens de la hauteur"},
+{"code":"Q-20-20-05-N","src":"Supermagnete","mat":"NdFeB","grade":"N42","s":"box","a":20,"b":20,"h":5,"br":[1.29,1.32],"hcb":[860,955],"hcj":955,"bh":[318,334],"tmax":80,"force":"6 kg","dirTxt":"Dans le sens de la hauteur"},
+{"code":"Q-20-20-10-N","src":"Supermagnete","mat":"NdFeB","grade":"N42","s":"box","a":20,"b":20,"h":10,"br":[1.29,1.32],"hcb":[860,955],"hcj":955,"bh":[318,334],"tmax":80,"force":"12 kg","dirTxt":"Dans le sens de la hauteur"},
+{"code":"Q-25-06-02-SN","src":"Supermagnete","mat":"NdFeB","grade":"45SH","s":"box","a":25,"b":6,"h":2,"br":[1.32,1.37],"hcb":[860,955],"hcj":1592,"bh":[342,358],"tmax":150,"force":"1,7 kg","dirTxt":"Dans le sens de la hauteur"},
+{"code":"Q-25-08-01-N","src":"Supermagnete","mat":"NdFeB","grade":"N48","s":"box","a":25,"b":8,"h":1,"br":[1.37,1.42],"hcb":[860,995],"hcj":955,"bh":[358,382],"tmax":80,"force":"1,1 kg","dirTxt":"Dans le sens de la hauteur"},
+{"code":"Q-50-25-10-LN","src":"Supermagnete","mat":"NdFeB","grade":"N40","s":"box","a":25,"b":10,"h":50,"br":[1.26,1.29],"hcb":[860,955],"hcj":955,"bh":[303,318],"tmax":80,"force":"12 kg","dirTxt":"Dans le sens de la longueur"},
+{"code":"Q-25-15-06-N","src":"Supermagnete","mat":"NdFeB","grade":"N45","s":"box","a":25,"b":15,"h":6,"br":[1.32,1.37],"hcb":[860,995],"hcj":955,"bh":[342,358],"tmax":80,"force":"7 kg","dirTxt":"Dans le sens de la hauteur"},
+{"code":"FE-Q-25-20-06","src":"Supermagnete","mat":"Ferrite","grade":"Y35","s":"box","a":25,"b":20,"h":6,"br":[0.4,0.41],"hcb":[175,195],"hcj":200,"bh":[30,32],"tmax":250,"force":"1,2 kg","dirTxt":"Dans le sens de la hauteur"},
+{"code":"Q-25-25-13-N","src":"Supermagnete","mat":"NdFeB","grade":"N40","s":"box","a":25.4,"b":25.4,"h":12.7,"br":[1.26,1.29],"hcb":[860,955],"hcj":955,"bh":[303,318],"tmax":80,"force":"20 kg","dirTxt":"Dans le sens de la hauteur"},
+{"code":"Q-30-10-05-N","src":"Supermagnete","mat":"NdFeB","grade":"N42","s":"box","a":30,"b":10,"h":5,"br":[1.29,1.32],"hcb":[860,955],"hcj":955,"bh":[318,334],"tmax":80,"force":"6,5 kg","dirTxt":"Dans le sens de la hauteur"},
+{"code":"Q-30-10-10-Z","src":"Supermagnete","mat":"NdFeB","grade":"N40","s":"box","a":30,"b":10,"h":10,"br":[1.26,1.29],"hcb":[860,955],"hcj":955,"bh":[303,318],"tmax":80,"force":"8,8 kg","dirTxt":"Dans le sens de la hauteur"},
+{"code":"Q-30-12-12-Z","src":"Supermagnete","mat":"NdFeB","grade":"N52","s":"box","a":30,"b":12,"h":12,"br":[1.42,1.47],"hcb":[860,995],"hcj":955,"bh":[380,422],"tmax":65,"force":"18 kg","dirTxt":"Dans le sens de la hauteur"},
+{"code":"Q-30-15-06-Z","src":"Supermagnete","mat":"NdFeB","grade":"42SH","s":"box","a":30,"b":15,"h":6,"br":[1.29,1.32],"hcb":[860,955],"hcj":1592,"bh":[318,334],"tmax":150,"force":"8,8 kg","dirTxt":"Dans le sens de la hauteur"},
+{"code":"FE-Q-30-20-06","src":"Supermagnete","mat":"Ferrite","grade":"Y35","s":"box","a":30,"b":20,"h":6,"br":[0.4,0.41],"hcb":[175,195],"hcj":200,"bh":[30,32],"tmax":250,"force":"1,4 kg","dirTxt":"Dans le sens de la hauteur"},
+{"code":"Q-30-30-15-N","src":"Supermagnete","mat":"NdFeB","grade":"N45","s":"box","a":30,"b":30,"h":15,"br":[1.32,1.37],"hcb":[860,995],"hcj":955,"bh":[342,358],"tmax":80,"force":"35 kg","dirTxt":"Dans le sens de la hauteur"},
+{"code":"Q-35-07-05-N","src":"Supermagnete","mat":"NdFeB","grade":"N35","s":"box","a":35,"b":7,"h":5,"br":[1.17,1.21],"hcb":[860,915],"hcj":955,"bh":[263,279],"tmax":80,"force":"5,5 kg","dirTxt":"Dans le sens de la hauteur"},
+{"code":"Q-36-08-04-C","src":"Supermagnete","mat":"NdFeB","grade":"N45","s":"box","a":36,"b":8,"h":4,"br":[1.32,1.37],"hcb":[860,995],"hcj":955,"bh":[342,358],"tmax":80,"force":"6 kg","dirTxt":"Dans le sens de la hauteur"},
+{"code":"Q-40-10-05-N","src":"Supermagnete","mat":"NdFeB","grade":"N42","s":"box","a":40,"b":10,"h":5,"br":[1.29,1.32],"hcb":[860,955],"hcj":955,"bh":[318,334],"tmax":80,"force":"9,5 kg","dirTxt":"Dans le sens de la hauteur"},
+{"code":"Q-40-10-10-N","src":"Supermagnete","mat":"NdFeB","grade":"N42","s":"box","a":40,"b":10,"h":10,"br":[1.29,1.32],"hcb":[860,955],"hcj":955,"bh":[318,334],"tmax":80,"force":"15 kg","dirTxt":"Dans le sens de la hauteur"},
+{"code":"Q-40-15-05-N","src":"Supermagnete","mat":"NdFeB","grade":"N40","s":"box","a":40,"b":15,"h":5,"br":[1.26,1.29],"hcb":[860,955],"hcj":955,"bh":[303,318],"tmax":80,"force":"11 kg","dirTxt":"Dans le sens de la hauteur"},
+{"code":"Q-40-18-05-N","src":"Supermagnete","mat":"NdFeB","grade":"N35","s":"box","a":40,"b":18,"h":5,"br":[1.17,1.21],"hcb":[860,915],"hcj":955,"bh":[263,279],"tmax":80,"force":"8 kg","dirTxt":"Dans le sens de la hauteur"},
+{"code":"Q-40-20-05-N","src":"Supermagnete","mat":"NdFeB","grade":"N42","s":"box","a":40,"b":20,"h":5,"br":[1.29,1.32],"hcb":[860,955],"hcj":955,"bh":[318,334],"tmax":80,"force":"14 kg","dirTxt":"Dans le sens de la hauteur"},
+{"code":"FE-Q-40-20-10","src":"Supermagnete","mat":"Ferrite","grade":"Y35","s":"box","a":40,"b":20,"h":10,"br":[0.4,0.41],"hcb":[175,195],"hcj":200,"bh":[30,32],"tmax":250,"force":"2,5 kg","dirTxt":"Dans le sens de la hauteur"},
+{"code":"Q-40-20-10-N","src":"Supermagnete","mat":"NdFeB","grade":"N42","s":"box","a":40,"b":20,"h":10,"br":[1.29,1.32],"hcb":[860,955],"hcj":955,"bh":[318,334],"tmax":80,"force":"25 kg","dirTxt":"Dans le sens de la hauteur"},
+{"code":"Q-40-40-20-N","src":"Supermagnete","mat":"NdFeB","grade":"N42","s":"box","a":40,"b":40,"h":20,"br":[1.29,1.32],"hcb":[860,955],"hcj":955,"bh":[318,334],"tmax":80,"force":"60 kg","dirTxt":"Dans le sens de la hauteur"},
+{"code":"Q-46-30-10-N","src":"Supermagnete","mat":"NdFeB","grade":"N40","s":"box","a":46,"b":30,"h":10,"br":[1.26,1.29],"hcb":[860,955],"hcj":955,"bh":[303,318],"tmax":80,"force":"29 kg","dirTxt":"Dans le sens de la hauteur"},
+{"code":"Q-50-15-15-N","src":"Supermagnete","mat":"NdFeB","grade":"N48","s":"box","a":50,"b":15,"h":15,"br":[1.37,1.42],"hcb":[860,995],"hcj":955,"bh":[358,382],"tmax":80,"force":"33 kg","dirTxt":"Dans le sens de la hauteur"},
+{"code":"FE-Q-50-50-05","src":"Supermagnete","mat":"Ferrite","grade":"Y35","s":"box","a":50,"b":50,"h":5,"br":[0.4,0.41],"hcb":[175,195],"hcj":200,"bh":[30,32],"tmax":250,"force":"2 kg","dirTxt":"Dans le sens de la hauteur"},
+{"code":"Q-51-51-25-N","src":"Supermagnete","mat":"NdFeB","grade":"N40","s":"box","a":50.8,"b":50.8,"h":25.4,"br":[1.26,1.29],"hcb":[860,955],"hcj":955,"bh":[303,318],"tmax":80,"force":"100 kg","dirTxt":"Dans le sens de la hauteur"},
+{"code":"FE-Q-60-30-10","src":"Supermagnete","mat":"Ferrite","grade":"Y35","s":"box","a":60,"b":30,"h":10,"br":[0.4,0.41],"hcb":[175,195],"hcj":200,"bh":[30,32],"tmax":250,"force":"4,1 kg","dirTxt":"Dans le sens de la hauteur"},
+{"code":"Q-60-30-15-N","src":"Supermagnete","mat":"NdFeB","grade":"N40","s":"box","a":60,"b":30,"h":15,"br":[1.26,1.29],"hcb":[860,955],"hcj":955,"bh":[303,318],"tmax":80,"force":"56 kg","dirTxt":"Dans le sens de la hauteur"},
+{"code":"Q-70-70-30-N","src":"Supermagnete","mat":"NdFeB","grade":"N40","s":"box","a":70,"b":70,"h":30,"br":[1.26,1.29],"hcb":[860,955],"hcj":955,"bh":[303,318],"tmax":80,"force":"150 kg","dirTxt":"Dans le sens de la hauteur"},
+{"code":"Q-111-89-20-E","src":"Supermagnete","mat":"NdFeB","grade":"N45","s":"box","a":110.6,"b":89,"h":19.5,"br":[1.32,1.37],"hcb":[860,995],"hcj":955,"bh":[342,358],"tmax":80,"force":"200 kg","dirTxt":"Dans le sens de la hauteur"},
+{"code":"R-06-02-02-G","src":"Supermagnete","mat":"NdFeB","grade":"N45","s":"ring","d":6,"di":2,"h":2,"br":[1.32,1.37],"hcb":[860,995],"hcj":955,"bh":[342,358],"tmax":80,"force":"760 g","dirTxt":"axial (parallèle à la hauteur)"},
+{"code":"R-06-02-02-N","src":"Supermagnete","mat":"NdFeB","grade":"N45","s":"ring","d":6,"di":2,"h":2,"br":[1.32,1.37],"hcb":[860,995],"hcj":955,"bh":[342,358],"tmax":80,"force":"760 g","dirTxt":"axial (parallèle à la hauteur)"},
+{"code":"R-08-02-06-N","src":"Supermagnete","mat":"NdFeB","grade":"N50","s":"ring","d":8,"di":2,"h":6,"br":[1.4,1.46],"hcb":[860,995],"hcj":955,"bh":[374,406],"tmax":80,"force":"2,4 kg","dirTxt":"axial (parallèle à la hauteur)"},
+{"code":"R-10-04-05-G","src":"Supermagnete","mat":"NdFeB","grade":"N42","s":"ring","d":10,"di":4,"h":5,"br":[1.29,1.32],"hcb":[860,955],"hcj":955,"bh":[318,334],"tmax":80,"force":"2,5 kg","dirTxt":"axial (parallèle à la hauteur)"},
+{"code":"R-10-04-05-N","src":"Supermagnete","mat":"NdFeB","grade":"N42","s":"ring","d":10,"di":4,"h":5,"br":[1.29,1.32],"hcb":[860,955],"hcj":955,"bh":[318,334],"tmax":80,"force":"2,5 kg","dirTxt":"axial (parallèle à la hauteur)"},
+{"code":"R-10-04-10-N","src":"Supermagnete","mat":"NdFeB","grade":"N42","s":"ring","d":10,"di":4,"h":10,"br":[1.29,1.32],"hcb":[860,955],"hcj":955,"bh":[318,334],"tmax":80,"force":"3,1 kg","dirTxt":"axial (parallèle à la hauteur)"},
+{"code":"R-10-04-15-N","src":"Supermagnete","mat":"NdFeB","grade":"N42","s":"ring","d":10,"di":4,"h":15,"br":[1.29,1.32],"hcb":[860,955],"hcj":955,"bh":[318,334],"tmax":80,"force":"3,3 kg","dirTxt":"axial (parallèle à la hauteur)"},
+{"code":"R-12-05-12-N","src":"Supermagnete","mat":"NdFeB","grade":"N42","s":"ring","d":12,"di":5,"h":12,"br":[1.29,1.32],"hcb":[860,955],"hcj":955,"bh":[318,334],"tmax":80,"force":"4,4 kg","dirTxt":"axial (parallèle à la hauteur)"},
+{"code":"R-15-06-06-N","src":"Supermagnete","mat":"NdFeB","grade":"N42","s":"ring","d":15,"di":6,"h":6,"br":[1.29,1.32],"hcb":[860,955],"hcj":955,"bh":[318,334],"tmax":80,"force":"5,1 kg","dirTxt":"axial (parallèle à la hauteur)"},
+{"code":"R-19-09-06-N","src":"Supermagnete","mat":"NdFeB","grade":"N42","s":"ring","d":19.1,"di":9.5,"h":6.4,"br":[1.29,1.32],"hcb":[860,955],"hcj":955,"bh":[318,334],"tmax":80,"force":"7,5 kg","dirTxt":"axial (parallèle à la hauteur)"},
+{"code":"R-20-04-05-N","src":"Supermagnete","mat":"NdFeB","grade":"N45","s":"ring","d":20,"di":4.2,"h":5,"br":[1.32,1.37],"hcb":[860,995],"hcj":955,"bh":[342,358],"tmax":80,"force":"7,2 kg","dirTxt":"axial (parallèle à la hauteur)"},
+{"code":"FE-R-22-06-05","src":"Supermagnete","mat":"Ferrite","grade":"Y35","s":"ring","d":22,"di":6,"h":5,"br":[0.4,0.41],"hcb":[175,195],"hcj":200,"bh":[30,32],"tmax":250,"force":"820 g","dirTxt":"axial (parallèle à la hauteur)"},
+{"code":"R-25-04-05-N","src":"Supermagnete","mat":"NdFeB","grade":"N45","s":"ring","d":25,"di":4.2,"h":5,"br":[1.32,1.37],"hcb":[860,995],"hcj":955,"bh":[342,358],"tmax":80,"force":"9,4 kg","dirTxt":"axial (parallèle à la hauteur)"},
+{"code":"R-27-16-05-N","src":"Supermagnete","mat":"NdFeB","grade":"N42","s":"ring","d":26.75,"di":16,"h":5,"br":[1.29,1.32],"hcb":[860,955],"hcj":955,"bh":[318,334],"tmax":80,"force":"11 kg","dirTxt":"axial (parallèle à la hauteur)"},
+{"code":"FE-R-30-16-08","src":"Supermagnete","mat":"Ferrite","grade":"Y35","s":"ring","d":30,"di":16,"h":8,"br":[0.4,0.41],"hcb":[175,195],"hcj":200,"bh":[30,32],"tmax":250,"force":"1,6 kg","dirTxt":"axial (parallèle à la hauteur)"},
+{"code":"FE-R-40-22-09","src":"Supermagnete","mat":"Ferrite","grade":"Y35","s":"ring","d":40,"di":22,"h":9,"br":[0.4,0.41],"hcb":[175,195],"hcj":200,"bh":[30,32],"tmax":250,"force":"2,7 kg","dirTxt":"axial (parallèle à la hauteur)"},
+{"code":"R-40-23-06-N","src":"Supermagnete","mat":"NdFeB","grade":"N42","s":"ring","d":40,"di":23,"h":6,"br":[1.29,1.32],"hcb":[860,955],"hcj":955,"bh":[318,334],"tmax":80,"force":"21 kg","dirTxt":"axial (parallèle à la hauteur)"},
+{"code":"R-60-06-30-N","src":"Supermagnete","mat":"NdFeB","grade":"N45","s":"ring","d":60,"di":6,"h":30,"br":[1.32,1.37],"hcb":[860,995],"hcj":955,"bh":[342,358],"tmax":80,"force":"120 kg","dirTxt":"axial (parallèle à la hauteur)"},
+{"code":"FE-R-60-20-10","src":"Supermagnete","mat":"Ferrite","grade":"Y35","s":"ring","d":60,"di":20,"h":10,"br":[0.4,0.41],"hcb":[175,195],"hcj":200,"bh":[30,32],"tmax":250,"force":"4 kg","dirTxt":"axial (parallèle à la hauteur)"},
+{"code":"FE-R-80-40-15","src":"Supermagnete","mat":"Ferrite","grade":"Y35","s":"ring","d":80,"di":40,"h":15,"br":[0.4,0.41],"hcb":[175,195],"hcj":200,"bh":[30,32],"tmax":250,"force":"9,5 kg","dirTxt":"axial (parallèle à la hauteur)"},
+{"code":"FE-R-100-60-20","src":"Supermagnete","mat":"Ferrite","grade":"Y35","s":"ring","d":100,"di":60,"h":20,"br":[0.4,0.41],"hcb":[175,195],"hcj":200,"bh":[30,32],"tmax":250,"force":"16 kg","dirTxt":"axial (parallèle à la hauteur)"}
+];
+
+/* ═══════════════ 48-aimants-champ.js — aimants champ ═══════════════ */
+/* ---------- aimants permanents : champ magnétique calculé et lignes de champ (V0.57.0) ----------
+   Modèle : aimant SEUL, dans l'air, à aimantation uniforme selon +Z (pôle nord en haut). Le champ
+   se calcule directement à partir de la forme et de la rémanence Br, sans maillage :
+     · cylindre : Derby & Olbert, Am. J. Phys. 78 (2010), intégrale elliptique complète généralisée
+       de Bulirsch (cel) — justes partout, sur l'axe et hors de l'axe ;
+     · anneau : cylindre extérieur moins cylindre intérieur ;
+     · pavé : deux feuilles de charge magnétique, formes fermées (arctangentes et logarithmes).
+   Limites assumées : ni l'acier voisin, ni les autres aimants, ni la température, ni les
+   dispersions de fabrication n'entrent dans le calcul.
+   Unités : mm et tesla. Géométrie m={s:'cyl'|'ring'|'box', Br, h, d, di, a, b}, origine au centre
+   de sa face sud (z de 0 à h), comme la pièce posée par la fenêtre des aimants. */
+function magCel(kc,p0,c0,s0){
+  // Bulirsch : cel(kc,p,c,s) ; p>0 partout ici (p=1 ou γ², γ≠0 sauf exactement sur la paroi, traité par magCyl)
+  let k=Math.abs(kc),e=k,m=1,p=Math.sqrt(p0),c=c0,s=s0/p,f=c,g;
+  c=c+s/p;g=e/p;s=2*(s+f*g);p=g+p;g=m;m=k+m;
+  for(let i=0;i<64&&Math.abs(g-k)>g*1e-10;i++){k=2*Math.sqrt(e);e=k*m;f=c;c=c+s/p;g=e/p;s=2*(s+f*g);p=g+p;g=m;m=k+m;}
+  return (Math.PI/2)*(s+c*m)/(m*(m+p));
+}
+function magCyl(rho,z,a,b,Br){
+  // Cylindre de rayon a, de z=-b à z=+b : [Bρ, Bz] au point (ρ, z)
+  let r=Math.max(rho,1e-9*a);
+  if(Math.abs(r-a)<1e-9*a)r=a*(1+1e-9); // γ=0 exactement sur la paroi : p=0 sans intérêt physique
+  const zp=z+b,zm=z-b,hp=Math.hypot(zp,r+a),hm=Math.hypot(zm,r+a),g=(a-r)/(a+r);
+  const kp=Math.max(1e-12,Math.hypot(zp,a-r)/hp),km=Math.max(1e-12,Math.hypot(zm,a-r)/hm);
+  const K=Br/Math.PI;
+  return [
+    K*(a/hp*magCel(kp,1,1,-1)-a/hm*magCel(km,1,1,-1)),
+    K*(a/(a+r))*(zp/hp*magCel(kp,g*g,1,g)-zm/hm*magCel(km,g*g,1,g))
+  ];
+}
+function magBox(x,y,z,a,b,c,Br){
+  // Pavé |x|≤a, |y|≤b, |z|≤c, aimanté +Z
+  let bx=0,by=0,bz=0;
+  for(const [sw,z0] of [[1,c],[-1,-c]])for(const su of [1,-1])for(const sv of [1,-1]){
+    const u=x+su*a,v=y+sv*b,w=z-z0,R=Math.sqrt(u*u+v*v+w*w)||1e-12,s=sw*su*sv;
+    bz+=s*Math.atan2(u*v,w*R);
+    bx-=s*Math.log(Math.max(v+R,1e-12));
+    by-=s*Math.log(Math.max(u+R,1e-12));
+  }
+  const K=Br/(4*Math.PI);
+  return [K*bx,K*by,K*bz]; // atan2 traverse les faces sans saut : c'est bien B, y compris dans la matière
+}
+function magField(m,x,y,z){
+  // Champ B (tesla) au point (x,y,z) du repère de la pièce
+  const zc=z-m.h/2;
+  if(m.s==='box')return magBox(x,y,zc,m.a/2,m.b/2,m.h/2,m.Br);
+  const r=Math.hypot(x,y),q=Math.max(r,1e-12);
+  let [Bp,Bz]=magCyl(r,zc,m.d/2,m.h/2,m.Br);
+  if(m.s==='ring'){const I=magCyl(r,zc,m.di/2,m.h/2,m.Br);Bp-=I[0];Bz-=I[1];}
+  return [Bp*x/q,Bp*y/q,Bz];
+}
+function magInside(m,x,y,z){
+  if(z<0||z>m.h)return false;
+  if(m.s==='box')return Math.abs(x)<=m.a/2&&Math.abs(y)<=m.b/2;
+  const r=Math.hypot(x,y);
+  return r<=m.d/2&&(m.s!=='ring'||r>=m.di/2);
+}
+function magSize(m){return m.s==='box'?Math.max(m.a,m.b,m.h):Math.max(m.d,m.h);}
+function magPoleField(m){
+  // Induction sur la face nord (tesla) : en son centre ; sur un anneau, à mi-largeur de la matière
+  return magField(m,m.s==='ring'?(m.d+m.di)/4:0,0,m.h+1e-6*magSize(m))[2];
+}
+function magSeeds(m){
+  // Points de départ sur la face nord, juste au-dessus d'elle
+  const z=m.h+magSize(m)*1e-3,out=[];
+  if(m.s==='box'){
+    const nx=Math.max(2,Math.round(Math.sqrt(36*m.a/m.b))),ny=Math.max(2,Math.round(36/nx));
+    for(let i=0;i<nx;i++)for(let j=0;j<ny;j++)out.push([m.a*((i+.5)/nx-.5),m.b*((j+.5)/ny-.5),z]);
+    return out;
+  }
+  const r0=m.s==='ring'?m.di/2:0,r1=m.d/2,nr=4;
+  for(let i=0;i<nr;i++){
+    const r=r0+(r1-r0)*(i+.5)/nr,na=12;
+    for(let j=0;j<na;j++){const t=2*Math.PI*(j+(i%2)*.5)/na;out.push([r*Math.cos(t),r*Math.sin(t),z]);}
+  }
+  return out;
+}
+function magTrace(m,seed){
+  // Suit le champ depuis la face nord (Runge-Kutta 4, pas proportionnel à la pièce) ; fin : retour
+  // dans l'aimant (closed) ou sortie de la sphère de 4 fois sa taille → {pts, closed}
+  const S=magSize(m),h=S/48,R=4*S,zc=m.h/2,pts=[seed.slice()];
+  const dir=(x,y,z)=>{const B=magField(m,x,y,z),n=Math.hypot(B[0],B[1],B[2])||1e-30;return [B[0]/n,B[1]/n,B[2]/n];};
+  let p=seed.slice();
+  for(let i=0;i<1200;i++){
+    const k1=dir(p[0],p[1],p[2]),
+      k2=dir(p[0]+h/2*k1[0],p[1]+h/2*k1[1],p[2]+h/2*k1[2]),
+      k3=dir(p[0]+h/2*k2[0],p[1]+h/2*k2[1],p[2]+h/2*k2[2]),
+      k4=dir(p[0]+h*k3[0],p[1]+h*k3[1],p[2]+h*k3[2]);
+    p=[0,1,2].map(j=>p[j]+h/6*(k1[j]+2*k2[j]+2*k3[j]+k4[j]));
+    if(!p.every(isFinite))break;
+    pts.push(p);
+    if(i>1&&magInside(m,p[0],p[1],p[2]))return {pts,closed:true};
+    if(Math.hypot(p[0],p[1],p[2]-zc)>R)return {pts,closed:false};
+  }
+  return {pts,closed:false};
+}
+function magLines(m){
+  // Toutes les lignes de l'aimant. Une ligne qui sort de la sphère est complétée par sa symétrique
+  // (plan médian de la pièce) : le côté sud a alors autant de lignes que le côté nord.
+  const out=[];
+  magSeeds(m).forEach(s=>{
+    const T=magTrace(m,s);out.push(T);
+    if(!T.closed)out.push({pts:T.pts.map(p=>[p[0],p[1],m.h-p[2]]).reverse(),closed:false,mirror:true});
+  });
+  return out;
+}
+function magColor(t){
+  // t=0 champ faible (violet) → t=1 champ fort (orange)
+  const c=new THREE.Color();c.setHSL((270-255*t)/360,0.85,0.58);return c;
+}
+function magLineGeo(m){
+  // Géométrie des lignes : couleur selon l'intensité (échelle log de 1 mT à Br), flèche au milieu
+  const P=[],C=[],lo=Math.log(1e-3),hi=Math.log(Math.max(m.Br,2e-3));
+  const col=p=>{const B=magField(m,p[0],p[1],p[2]),n=Math.max(Math.hypot(B[0],B[1],B[2]),1e-6);return magColor(Math.max(0,Math.min(1,(Math.log(n)-lo)/(hi-lo))));};
+  const seg=(a,b,c)=>{P.push(a[0],a[1],a[2],b[0],b[1],b[2]);C.push(c.r,c.g,c.b,c.r,c.g,c.b);};
+  const S=magSize(m),w=S*0.05;
+  magLines(m).forEach(L=>{
+    const Q=L.pts,st=Math.max(1,Math.round(Q.length/90));
+    let prev=Q[0],c=col(prev),n=0;
+    for(let i=st;i<Q.length||prev!==Q[Q.length-1];i+=st){
+      const q=Q[Math.min(i,Q.length-1)];c=col(q);seg(prev,q,c);prev=q;
+      if(++n>4000)break;
+    }
+    if(Q.length<4)return;
+    // flèche (nord → sud) : le plan de ses deux barbes contient toujours le segment
+    const i=Math.floor(Q.length/2),a=Q[i],b=Q[Math.min(i+1,Q.length-1)];
+    let d=[b[0]-a[0],b[1]-a[1],b[2]-a[2]],l=Math.hypot(d[0],d[1],d[2])||1;d=d.map(v=>v/l);
+    let u=[-d[2],0,d[0]]; // perpendiculaire au segment
+    if(Math.hypot(u[0],u[1],u[2])<1e-3)u=[1,0,0];
+    const lu=Math.hypot(u[0],u[1],u[2]);u=u.map(v=>v/lu);
+    const k=col(a),t1=[0,1,2].map(j=>a[j]-w*d[j]+w*.5*u[j]),t2=[0,1,2].map(j=>a[j]-w*d[j]-w*.5*u[j]);
+    seg(a,t1,k);seg(a,t2,k);
+  });
+  const g=new THREE.BufferGeometry();
+  g.setAttribute('position',new THREE.Float32BufferAttribute(P,3));
+  g.setAttribute('color',new THREE.Float32BufferAttribute(C,3));
+  return g;
+}
+
+/* ═══════════════ 48-aimants-interface.js — aimants interface ═══════════════ */
+/* ---------- aimants permanents : bibliothèque et lignes de champ à l'écran (V0.57.0) ----------
+   Onglet « Aimants » de la fenêtre des normalisés (48-composants-normalises) : l'aimant arrive
+   comme une pièce normalisée (composant, occurrences, « Modifier… », sauvegarde). doc.std.mag
+   garde sa géométrie et ses caractéristiques : le fichier reste juste si le catalogue change.
+   Clic droit sur un aimant posé (90-10) : afficher / masquer ses lignes de champ, lire ses
+   caractéristiques. L'affichage est propre à l'occurrence (occ.mag, enregistré). */
+const MAG_SHAPES=[['cyl','Disque / cylindre'],['cube','Cube'],['box','Pavé'],['ring','Anneau']];
+const MAG_MATS={NdFeB:{nom:'NdFeB (néodyme)',rho:7.5},Ferrite:{nom:'Ferrite',rho:4.9}};
+function magRow(code){return MAG_CAT.find(r=>r.code===code)||null;}
+function magRows(st){return MAG_CAT.filter(r=>r.s===st.shape&&(!st.grade||st.grade==='*'||r.grade===st.grade));}
+function magGradeOpts(st){
+  const g=[...new Set(MAG_CAT.filter(r=>r.s===st.shape).map(r=>r.grade))].sort();
+  return [['*','Toutes']].concat(g.map(x=>[x,x]));
+}
+function magDims(r){
+  return r.s==='cyl'?'Ø'+stdF(r.d)+' × '+stdF(r.h):
+    r.s==='ring'?'Ø'+stdF(r.d)+'/'+stdF(r.di)+' × '+stdF(r.h):
+    stdF(r.a)+' × '+stdF(r.b)+' × '+stdF(r.h);
+}
+function magArtDef(st){
+  // article proposé : le premier d'au moins 10 mm, plus parlant qu'un aimant de 1 mm
+  const R=magRows(st),big=R.find(r=>(r.d||r.a)>=10);
+  return big?big.code:(R[0]?R[0].code:'');
+}
+function magArtOpts(st){return magRows(st).map(r=>[r.code,magDims(r)+' mm · '+r.grade+' — '+r.code]);}
+function magBr(r){return (r.br[0]+r.br[1])/2;}
+function magGeom(r){
+  const m={s:r.s==='cube'?'box':r.s,Br:magBr(r),h:r.h};
+  if(m.s==='box'){m.a=r.a;m.b=r.b;}else{m.d=r.d;if(m.s==='ring')m.di=r.di;}
+  return m;
+}
+function magSpec(st){
+  const r=magRow(st.art);
+  if(!r)throw new Error('Article introuvable dans le catalogue.');
+  const g=magGeom(r),M=MAG_MATS[r.mat]||MAG_MATS.NdFeB;
+  const sp={key:'MAG:'+r.code,name:'Aimant '+r.code,norm:r.src,desig:r.code,reach:0,
+    info:magInfo(r,g),mag:Object.assign({},g,{code:r.code,src:r.src,grade:r.grade,mat:r.mat,br:r.br,hcb:r.hcb,hcj:r.hcj,bh:r.bh,tmax:r.tmax,force:r.force,dirTxt:r.dirTxt}),
+    mat:{name:M.nom,rho:M.rho},color:r.mat==='Ferrite'?0x3c3d40:0xc3c6ca};
+  if(g.s==='box')sp.ops=[{k:'mbox',a:g.a,b:g.b,h:g.h}];
+  else{const r0=g.s==='ring'?g.di/2:0,r1=g.d/2;sp.prof=[[r0,0],[r1,0],[r1,g.h],[r0,g.h]];}
+  return sp;
+}
+function magInfo(r,g){
+  const F=(v,n)=>stdF(+(+v).toFixed(n));
+  return r.mat+' '+r.grade+' · Br '+F(r.br[0],3)+' à '+F(r.br[1],3)+' T · '+r.dirTxt+
+    ' · force '+(r.force||'non indiquée')+' · '+(r.tmax!=null?r.tmax+' °C maxi':'température non indiquée')+
+    ' · champ calculé '+(g.s==='ring'?'sur la face nord, à mi-largeur : ':'au centre de la face nord : ')+Math.round(Math.abs(magPoleField(g))*1000)+' mT';
+}
+function magNorm(v){
+  // Relecture du fichier : fiche d'aimant complète et saine, sinon rien (le fichier peut être ancien ou altéré)
+  if(!v||typeof v!=='object'||!['cyl','ring','box'].includes(v.s))return null;
+  const pos=x=>typeof x==='number'&&isFinite(x)&&x>0;
+  if(!pos(v.Br)||!pos(v.h))return null;
+  if(v.s==='box'?!(pos(v.a)&&pos(v.b)):!pos(v.d))return null;
+  if(v.s==='ring'&&!(pos(v.di)&&v.di<v.d))return null;
+  const pair=x=>Array.isArray(x)&&x.length===2&&x.every(pos)?[x[0],x[1]]:null,txt=x=>typeof x==='string'?x:'';
+  const m={s:v.s,Br:v.Br,h:v.h,code:txt(v.code),src:txt(v.src),grade:txt(v.grade),mat:txt(v.mat),br:pair(v.br),hcb:pair(v.hcb),hcj:pos(v.hcj)?v.hcj:null,bh:pair(v.bh),tmax:typeof v.tmax==='number'&&isFinite(v.tmax)?v.tmax:null,force:typeof v.force==='string'?v.force:null,dirTxt:txt(v.dirTxt)};
+  if(v.s==='box'){m.a=v.a;m.b=v.b;}else{m.d=v.d;if(v.s==='ring')m.di=v.di;}
+  return m;
+}
+function magDlg(){stdDlg(null,'magnet');}
+/* ── lignes de champ à l'écran ── */
+const magGeoCache=new Map(); // lignes par article : partagées par les occurrences, jamais refaites
+function magOfComp(c){const s=c&&c.doc&&c.doc.std;return s&&s.mag&&s.mag.s?s.mag:null;}
+function magGeoFor(m,key){
+  let g=magGeoCache.get(key);
+  if(!g){g=magLineGeo(m);magGeoCache.set(key,g);}
+  return g;
+}
+function magLinesFor(c,path){
+  // Groupe à ajouter à l'occurrence (repère de la pièce), ou null si ses lignes sont masquées
+  const m=magOfComp(c),id=path&&path.length?path[path.length-1]:null,o=id?asmOcc(id):null;
+  if(!m||!o||!o.mag)return null;
+  const G=new THREE.Group();G.name='magLines';
+  const L=new THREE.LineSegments(magGeoFor(m,c.doc.std.key),new THREE.LineBasicMaterial({vertexColors:true,transparent:true,opacity:0.9}));
+  L.raycast=()=>{};L.renderOrder=6;G.add(L);
+  return G;
+}
+function magToggle(id){
+  const o=asmOcc(id);if(!o)return false;
+  asmPush((o.mag?'masquer':'afficher')+' les lignes de champ de « '+o.name+' »');
+  if(o.mag)delete o.mag;else o.mag=true;
+  dirty=true;
+  try{autosave();}catch(e){}
+  if(asmMode==='asm'){try{asmDraw();}catch(e){}}else{try{asmCtxDraw();}catch(e){}}
+  asmNotify();
+  return !!o.mag;
+}
+function magCtxClose(){const p=document.getElementById('magCtx');if(p)p.remove();document.removeEventListener('pointerdown',magCtxOut,true);document.removeEventListener('keydown',magCtxKey,true);}
+function magCtxOut(e){const p=document.getElementById('magCtx');if(p&&!p.contains(e.target))magCtxClose();}
+function magCtxKey(e){if(e.key==='Escape'){e.stopPropagation();magCtxClose();}}
+function magCtxRows(m){
+  const F=(v,n)=>stdF(+(+v).toFixed(n)),pair=(a,u,n)=>a?F(a[0],n)+' à '+F(a[1],n)+' '+u:'non indiqué';
+  return [
+    ['Article',m.code+' ('+m.src+')'],
+    ['Matière',m.mat+' '+m.grade],
+    ['Rémanence Br',pair(m.br,'T',3)],
+    ['Coercivité HcB',pair(m.hcb,'kA/m',0)],
+    ['Coercivité HcJ',m.hcj?'≥ '+F(m.hcj,0)+' kA/m':'non indiquée'],
+    ['Énergie (BH)max',pair(m.bh,'kJ/m³',0)],
+    ['Force d’adhérence',m.force||'non indiquée'],
+    ['Température maxi',m.tmax!=null?m.tmax+' °C':'non indiquée'],
+    ['Aimantation',m.dirTxt||'axiale'],
+    ['Champ face nord',Math.round(Math.abs(magPoleField(m))*1000)+' mT (calculé)']
+  ];
+}
+function magCtx(x,y,t,c){
+  // t={occ,bid,comp} (rdLookAsmHit)
+  magCtxClose();
+  const m=magOfComp(c),o=t.occ?asmOcc(t.occ):null;if(!m||!o)return;
+  const p=document.createElement('div');p.id='magCtx';
+  p.style.cssText='position:fixed;z-index:5000;min-width:230px;max-width:340px;background:rgba(28,28,32,.96);color:#eee;border:1px solid var(--border);border-radius:9px;padding:5px;box-shadow:0 12px 32px rgba(0,0,0,.6);font-size:.82rem';
+  p.addEventListener('contextmenu',e=>{e.preventDefault();e.stopPropagation();});
+  const head=document.createElement('div');head.textContent=o.name;head.style.cssText='padding:5px 10px;font-weight:600;opacity:.8';p.appendChild(head);
+  const btn=(txt,fn,id)=>{const b=document.createElement('button');b.textContent=txt;if(id)b.id=id;b.style.cssText='display:block;width:100%;text-align:left;background:none;border:none;padding:7px 10px;font-size:.82rem;border-radius:6px;color:inherit;cursor:pointer';b.onclick=fn;p.appendChild(b);return b;};
+  btn(o.mag?'🧲 Masquer les lignes de champ':'🧲 Afficher les lignes de champ',()=>{magCtxClose();magToggle(o.id);},'magCtxLines');
+  const info=document.createElement('div');
+  btn('ℹ️ Caractéristiques',()=>{
+    if(info.childElementCount){info.innerHTML='';return;}
+    magCtxRows(m).forEach(([k,v])=>{const d=document.createElement('div');d.style.cssText='display:flex;justify-content:space-between;gap:12px;padding:2px 10px';const a=document.createElement('span');a.textContent=k;a.style.opacity='.65';const b=document.createElement('span');b.textContent=v;b.style.textAlign='right';d.append(a,b);info.appendChild(d);});
+    const n=document.createElement('div');n.textContent='Champ calculé pour l’aimant seul dans l’air, à Br moyen. L’acier voisin et la température n’y entrent pas.';n.style.cssText='padding:6px 10px;opacity:.65;line-height:1.35';info.appendChild(n);
+    try{ctxPlace(p,x,y);}catch(e){}
+  },'magCtxInfo');
+  p.appendChild(info);
+  btn('🎨 Apparence…',()=>{magCtxClose();try{rdLookPop(x,y,t);}catch(e){}});
+  document.body.appendChild(p);
+  try{ctxPlace(p,x,y);}catch(e){p.style.left=x+'px';p.style.top=y+'px';}
+  setTimeout(()=>{document.addEventListener('pointerdown',magCtxOut,true);document.addEventListener('keydown',magCtxKey,true);},0);
+}
 
 /* ═══════════════ 48-assemblage-accroches.js — assemblage accroches ═══════════════ */
 /* ---------- points d'accroche (V0.7.2) ----------
@@ -17968,7 +18503,13 @@ const STD_CATS=[
     {k:'jn',lab:'Jeu entre flancs (mm, 0 = aucun)',num:{min:0,max:50,step:0.01},opts:()=>[['0','0'],['0.1','0,1']],def:()=>'0.1'},
     {k:'d1',lab:'Alésage du pignon Ø (mm, 0 = plein)',num:{min:0,max:5000,step:0.5},opts:()=>[['0','0']],def:()=>'0'},
     {k:'d2',lab:'Alésage de la roue Ø (mm, 0 = pleine)',num:{min:0,max:5000,step:0.5},opts:()=>[['0','0']],def:()=>'0',show:st=>st.kind==='ext'}],
-    gen:stdGearPair}
+    gen:stdGearPair},
+  // V0.57.0 : aimants permanents, articles réels du catalogue (48-aimants-catalogue, 48-aimants-interface)
+  {k:'magnet',lab:'Aimants',fields:[
+    {k:'shape',lab:'Forme',opts:()=>MAG_SHAPES},
+    {k:'grade',lab:'Nuance',opts:magGradeOpts,def:()=>'*'},
+    {k:'art',lab:'Article',opts:magArtOpts,def:magArtDef}],
+    gen:magSpec}
 ];
 function stdPinRows(t){
   return t==='iso8734'?STD_ISO8734:t==='iso2339'?STD_ISO2339:t==='iso8752'?STD_ISO8752:t==='dowel'?STD_ANSI_DOWEL:t==='spring'?STD_ANSI_SPRING:STD_ISO2338;
@@ -18038,6 +18579,9 @@ function stdDoc(sp){
   d.bodies=[{id:'b1',name:sp.name,c:null}];d.bodySeq=2;d.activeBody='b1';
   d.std={key:sp.key,norm:sp.norm,desig:sp.desig};
   if(sp.cat&&sp.st){d.std.cat=sp.cat;d.std.st=Object.assign({},sp.st);}
+  if(sp.mag)d.std.mag=sp.mag; // aimant : géométrie et caractéristiques (48-aimants-interface)
+  if(sp.mat)d.mat=sp.mat;
+  if(sp.color!=null)d.bodies[0].color=sp.color;
   const F=(f)=>{f.id=uid(f.type==='revolve'?'rv':f.type==='xthread'?'th':f.type==='gear'?'gr':'ex');f.visible=true;f.body='b1';d.features.push(f);return f;};
   if(sp.prof){
     const s=stdSketch(d,'Profil','XZ',0);stdLoop(s,sp.prof);
@@ -18067,6 +18611,9 @@ function stdDoc(sp){
       if(o.kind==='rack'){fg.kind='rack';fg.H=o.H;}
       if(o.j)fg.j=o.j;
       if(o.ks)fg.ks=o.ks;
+    }else if(o.k==='mbox'){
+      const s=stdSketch(d,'Contour','XY',0),a=o.a/2,b=o.b/2;stdLoop(s,[[-a,-b],[a,-b],[a,b],[-a,b]]);
+      F({type:'extrude',name:'Aimant',sketchId:s.id,distance:o.h,op:'add',mid:false,upto:null});
     }else if(o.k==='bore'){
       // sous la roue, et débouchant au-dessus : la découpe ne part pas d'une face confondue
       const s=stdSketch(d,'Alésage','XY',-1);
@@ -18492,6 +19039,9 @@ function stdSvg(sp){
       else{const P=[];for(let i=0;i<48;i++){const a=i/48*2*Math.PI;P.push([o.d/2*Math.cos(a),o.d/2*Math.sin(a)]);}holes.push(P);}
     }
   });
+  (sp.ops||[]).forEach(o=>{ // aimant pavé : de face, pôle nord en haut
+    if(o.k==='mbox')shapes.push([[-o.a/2,0],[o.a/2,0],[o.a/2,o.h],[-o.a/2,o.h]]);
+  });
   (sp.ops||[]).forEach(o=>{
     if(o.k!=='key')return;
     const P=stdPolyPts(stdKeyOutline(o)),gap=o.b*0.8;
@@ -18536,7 +19086,7 @@ function stdCss(){
   ].join('\n');
   document.head.appendChild(st);
 }
-function stdDlg(edit){
+function stdDlg(edit,cat){
   // Ouvre (ou ferme) la fenêtre des composants normalisés. edit = {occ} : « Modifier… » une pièce
   // posée — la fenêtre reprend ses réglages et applique à toutes ses occurrences ou à celle-ci.
   let w=document.getElementById('stdDlg');if(w){w.remove();if(!edit)return;}
@@ -18548,6 +19098,7 @@ function stdDlg(edit){
     stdUi.cat=S.cat;stdUi.st=stdUi.st||{};stdUi.st[S.cat]=S.st;
   }
   else if(stdUi.st&&stdUi.st.gear){delete stdUi.st.gear.j;delete stdUi.st.gear.ks;}
+  if(cat&&!edit)stdUi.cat=cat; // commande « Aimants » du ruban : ouvre directement son onglet
   w=document.createElement('div');w.id='stdDlg';
   w.innerHTML='<div class="stdHead"><b>🔩 Composants normalisés</b><button title="Fermer (Échap)">✕</button></div>'+
     '<div class="stdTabs"></div><div class="stdBody"><div class="stdForm"></div><div class="stdPrev"></div></div>'+
@@ -59497,7 +60048,7 @@ function wirePick(){
     // pièce d'un autre composant (autour de la pièce, ou mode Assembler) devant la pièce active :
     // directement sa fenêtre d'apparence de rendu (98-rendu-apparence)
     const h=asmMode==='asm'?null:pick(e);
-    try{const a=rdLookAsmHit(e);if(a&&(!h||a.distance<h.distance)){rdLookPop(e.clientX,e.clientY,a.t);return;}}catch(err){}
+    try{const a=rdLookAsmHit(e);if(a&&(!h||a.distance<h.distance)){const ac=asmComp(a.t.comp);if(a.t.occ&&magOfComp(ac))magCtx(e.clientX,e.clientY,a.t,ac);else rdLookPop(e.clientX,e.clientY,a.t);return;}}catch(err){}
     if(!h)return;
     const b=bodies.find(x=>x.mesh===h.object);
     ctxPieceNext=b&&b.kind==='import'?importPieceAt(h.object,h.faceIndex):null; // pièce d'un STEP multi-corps
@@ -61790,14 +62341,15 @@ function serialise(pretty){
 function serialiseObj(d,ui){
   // Objet d'une pièce. ui : état d'interface (repère, vue, sélection) — pièce active seulement
   // (undefined → clé absente du JSON : l'ordre et le contenu restent ceux d'avant).
-  return {app:'ConceptCAD',v:1,name:d.name,tint:d.tint||0,entNames:d.entNames||null,originVis:ui?originVis:undefined,view:ui?collectView():undefined,bodyVis:d.bodyVis||{},bodies:(d.bodies||[]).map(e=>({id:e.id,name:e.name,c:e.c,color:e.color,mat:e.mat||undefined,op:e.op,gl:e.gl,open:e.open!==false})),bodySeq:d.bodySeq||0,activeBody:d.activeBody||null,fold:{sk:!!(d.fold&&d.fold.sk),origin:!!(d.fold&&d.fold.origin)},fao:d.fao||null,mep:d.mep||null,rendu:(typeof renduNorm==='function'?renduNorm(d.rendu):null)||undefined,params:(d.params||[]).map(p=>({name:p.name,expr:p.expr,value:p.value})),derive:derClean(d.derive),configs:(typeof cfgNorm==='function'?cfgNorm(d.configs):null)||undefined,sel:ui?{kind:sel.kind,id:sel.id}:undefined,sketches:(d.sketches||[]).map(s=>{const c=Object.assign({},s);delete c._refs;return c;}),features:(d.features||[]).map(({_mesh,_m,...r})=>r),cgeo:(d.cgeo||[]).map(cgClean),std:d.std||undefined}; // std : pièce normalisée (48-composants-normalises)
+  return {app:'ConceptCAD',v:1,name:d.name,tint:d.tint||0,entNames:d.entNames||null,originVis:ui?originVis:undefined,view:ui?collectView():undefined,bodyVis:d.bodyVis||{},bodies:(d.bodies||[]).map(e=>({id:e.id,name:e.name,c:e.c,color:e.color,mat:e.mat||undefined,op:e.op,gl:e.gl,open:e.open!==false})),bodySeq:d.bodySeq||0,activeBody:d.activeBody||null,fold:{sk:!!(d.fold&&d.fold.sk),origin:!!(d.fold&&d.fold.origin)},fao:d.fao||null,mep:d.mep||null,rendu:(typeof renduNorm==='function'?renduNorm(d.rendu):null)||undefined,params:(d.params||[]).map(p=>({name:p.name,expr:p.expr,value:p.value})),derive:derClean(d.derive),configs:(typeof cfgNorm==='function'?cfgNorm(d.configs):null)||undefined,sel:ui?{kind:sel.kind,id:sel.id}:undefined,sketches:(d.sketches||[]).map(s=>{const c=Object.assign({},s);delete c._refs;return c;}),features:(d.features||[]).map(({_mesh,_m,...r})=>r),cgeo:(d.cgeo||[]).map(cgClean),std:d.std||undefined,mat:d.mat||undefined}; // std : pièce normalisée (48-composants-normalises)
 }
 function docFromSerial(o){
   // Document de pièce à partir de son objet sérialisé (ouverture, pièces d'un assemblage)
   const d={name:o.name||'Sans titre',tint:o.tint||0,entNames:o.entNames||null,sketches:o.sketches||[],features:o.features||[],cgeo:Array.isArray(o.cgeo)?o.cgeo.filter(cgValid):[],bodyVis:o.bodyVis||{},bodies:Array.isArray(o.bodies)?o.bodies.filter(e=>e&&typeof e.id==='string').map(e=>({id:e.id,name:String(e.name||e.id),c:Array.isArray(e.c)&&e.c.length===3?e.c.slice():null,color:isFinite(+e.color)?+e.color:undefined,mat:(typeof matDef==='function'&&matDef(e.mat))?e.mat:undefined,op:(e.op>0&&e.op<1)?+e.op:undefined,gl:(e.gl>0&&e.gl<1)?+e.gl:undefined,open:e.open!==false})):[],
     bodySeq:o.bodySeq>0?Math.floor(o.bodySeq):1,activeBody:(typeof o.activeBody==='string')?o.activeBody:null,fold:(o.fold&&typeof o.fold==='object')?{sk:!!o.fold.sk,origin:!!o.fold.origin}:{},fao:o.fao||null,mep:o.mep||null,rendu:(typeof renduNorm==='function'?renduNorm(o.rendu):null),params:Array.isArray(o.params)?o.params.filter(p=>p&&typeof p.name==='string'):[],derive:Array.isArray(o.derive)?o.derive.filter(L=>L&&typeof L.id==='string'):undefined,configs:(typeof cfgNorm==='function'?cfgNorm(o.configs):null),
     std:(o.std&&typeof o.std==='object'&&typeof o.std.key==='string')?Object.assign({key:o.std.key,norm:String(o.std.norm||''),desig:String(o.std.desig||'')},
-      typeof o.std.cat==='string'&&o.std.st&&typeof o.std.st==='object'?{cat:o.std.cat,st:Object.fromEntries(Object.entries(o.std.st).filter(e=>typeof e[1]==='string'))}:{}):undefined};
+      typeof o.std.cat==='string'&&o.std.st&&typeof o.std.st==='object'?{cat:o.std.cat,st:Object.fromEntries(Object.entries(o.std.st).filter(e=>typeof e[1]==='string'))}:{},magNorm(o.std.mag)?{mag:magNorm(o.std.mag)}:{}):undefined,
+    mat:(o.mat&&typeof o.mat==='object'&&typeof o.mat.name==='string'&&o.mat.rho>0&&isFinite(+o.mat.rho))?{name:o.mat.name,rho:+o.mat.rho}:undefined};
   let mx=0;
   (d.bodies||[]).forEach(e=>{const m=/^b(\d+)$/.exec(e.id||'');if(m)mx=Math.max(mx,+m[1]);});
   if(!(d.bodySeq>mx))d.bodySeq=mx+1;
@@ -63962,6 +64514,7 @@ function mfFiTable(){
   F('Composants/Depuis corps','Composants depuis corps','Transforme les corps d’une même pièce en composants, sans rien redessiner.',['Sélectionnez un corps, ou aucun pour tous'],ficBox(-20,-6,-6,-4,10,6,'b')+ficBox(2,-14,-6,18,2,6,'b')+ficR(10,14,80,48,GY,.8,'none',4),TREE(2,true),null,'Corps d’une pièce','Composants');
   const SCREW=()=>ficCyl(0,0,-24,4,32,'mfFcHm','m')+ficCyl(0,0,8,9,8,'mfFcHm','m')+ficE3(0,0,16,4,'#374151','#374151');
   F('Composants/Normalisés','Pièces normalisées','Insère des pièces toutes prêtes : vis, bouchons, goupilles, clavettes, engrenages. Une paire d’engrenages se pose calée, au bon entraxe.',['Choisissez la famille','Choisissez la taille'],ficR(16,13,68,50,'#94a3b8',1,'#fff',3)+['Vis CHC M6','Goupille','Clavette','Engrenage'].map((s,i)=>ficT(22,25+i*11.5,s,7,i?'#334155':OR,'start')).join(''),SCREW(),null,'Le catalogue','Votre pièce');
+  F('Composants/Aimants','Aimants permanents','Insère un aimant réel du catalogue, avec ses caractéristiques. Un clic droit sur l’aimant affiche ou masque ses lignes de champ, calculées pour l’aimant seul dans l’air.',['Choisissez la forme et l’article','Clic droit : lignes de champ'],ficR(16,13,68,50,'#94a3b8',1,'#fff',3)+['Ø10 × 5 N45','Cube 5 N42','Pavé 20 × 10 × 5','Anneau Ø10/4'].map((s,i)=>ficT(22,25+i*11.5,s,7,i?'#334155':OR,'start')).join(''),ficCyl(0,0,-8,14,14,'mfFcHm','m')+ficE3(0,0,6,14,'#dc2626','#dc2626'),null,'Le catalogue','Votre aimant');
   F('Composants/Insérer','Insérer un fichier','Ajoute une pièce d’un autre fichier à l’assemblage : liée (elle suit le fichier) ou copiée.',['Choisissez le fichier','Lié ou copié'],DOC(34,14,'.CAD',OR),PA(-10,0,-12,'b')+PB(12,-8,'o'),null,'Le fichier','Dans l’assemblage');
   /* ========== FAO ========== */
   const WD=(x0,y0,z0,x1,y1,z1)=>ficBox(x0,y0,z0,x1,y1,z1,'w');
@@ -64396,6 +64949,7 @@ const MF_ICF={
   asmOcc:'<g opacity=".45">'+fzBox(-7,-1,-4,-2,4,1,'b')+'</g>'+fzBox(-2,-6,-1,3,-1,4,'b')+FZ_PLUS,
   asmInspect:fzBox(-5,-5,-4,4,4,2,'b')+'<circle cx="10" cy="10" r="5.4" fill="#dbeafe" fill-opacity=".55" stroke="#1f2937" stroke-width="1.6"/><path d="M14 14l6 6" stroke="#1f2937" stroke-width="2.8" stroke-linecap="round"/>',
   asmFromBodies:fzBox(-7,-1,-3,-3,3,1,'b')+fzBox(1,-7,0,5,-3,4,'o')+fzArrow(9,18.5,19,18.5,'#16a34a',2),
+  asmMag:'<path d="M5 3h5v10a2 2 0 0 0 4 0V3h5v10a7 7 0 0 1-14 0z" fill="#dc2626" stroke="#7f1d1d" stroke-width=".8"/><path d="M5 3h5v4H5zM14 3h5v4h-5z" fill="#e5e7eb" stroke="#4b5563" stroke-width=".7"/>',
   asmStd:'<rect x="10" y="9" width="4" height="10.5" fill="url(#mfFzHm)" stroke="#4b5563" stroke-width=".7"/><path d="M10 11l4 1.3M10 13.4l4 1.3M10 15.8l4 1.3M10 18.2l4 1.3" stroke="#4b5563" stroke-width=".7"/><path d="M10 19.5l2 2.5 2-2.5" fill="#cbd5e1" stroke="#4b5563" stroke-width=".7"/>'+
     fzCyl(12,8.6,5.6,3.6,'mfFzHm','m')+'<path d="M10.3 5 13.7 5 15.4 5.9 13.7 6.9 10.3 6.9 8.6 5.9Z" fill="#374151"/>',
   // FAO : brut en bois clair, parcours bleus
@@ -64900,6 +65454,7 @@ const MF_IC={
   asmPart:'<path d="M4 8l8-4 8 4v8l-8 4-8-4z"/><path d="M4 8l8 4 8-4M12 12v8"/>',
   asmOcc:'<path d="M3 9l6-3 6 3v6l-6 3-6-3z"/><path d="M17 10v8M13 14h8"/>',
   asmStd:'<path d="M7 3h10v4l-2 2H9L7 7z"/><path d="M10.5 3v2.5M13.5 3v2.5"/><path d="M9.5 9v12h5V9"/><path d="M9.5 12l5 1.5M9.5 15l5 1.5M9.5 18l5 1.5"/>',
+  asmMag:'<path d="M5 4h5v9a2 2 0 0 0 4 0V4h5v9a7 7 0 0 1-14 0z"/><path d="M5 8h5M14 8h5"/>',
   asmInspect:'<circle cx="10" cy="10" r="6"/><path d="M14.5 14.5L21 21"/><path d="M7 10h6M10 7v6"/>',
   asmFromBodies:'<path d="M3 14l5-3 5 3v5l-5 3-5-3z"/><path d="M14 6l4-2 4 2v4l-4 2-4-2z"/><path d="M12 12l3-3M15 9h-2.5M15 9v2.5"/>',
   pPdf:'<path d="M6 3h9l3 3v15H6z"/><text x="12" y="17.6" font-size="6.2" font-family="sans-serif" font-weight="700" text-anchor="middle" fill="currentColor" stroke="none">PDF</text>'
@@ -64951,6 +65506,7 @@ function mfRibbon(){
     ['asmInspect','Inspecter',()=>asmCmdInspect(),'Interférences entre corps / composants, masses (matière par composant) et centre de gravité',asmO],
     ['asmFromBodies','Depuis corps',()=>asmCmdFromBodies(),'Créer un composant depuis le corps sélectionné (ou depuis chaque corps) : la pièce multicorps devient un assemblage, sans rien remodéliser',asmO],
     ['asmStd','Normalisés',()=>stdDlg(),'Vis ISO / ANSI (CHC, FHC, pas au choix), bouchons gaz six pans creux, goupilles, clavettes ISO, engrenages et paires d’engrenages : insérés comme composants du composant actif',asmO],
+    ['asmMag','Aimants',()=>magDlg(),'Bibliothèque d’aimants permanents (disques, cylindres, cubes, pavés, anneaux), articles réels avec leurs caractéristiques. Clic droit sur un aimant posé : afficher ou masquer ses lignes de champ',asmO],
     ['import','Insérer',()=>asmCmdInsert(),'Insérer un fichier .conceptcad (ou .miniFusion) comme composant du composant actif : lié (modifiable ici, la source suit) ou copié',asmO]],'mfCao mfAsmG');
   // FAO : posage, opérations (mêmes fiches que la barre « + Usinage »), simulation, calcul, export
   grp('Posage',[['setup','Posage',()=>{const b=Array.from(document.querySelectorAll('#faoTreeWrap button')).find(x=>/\+ Posage/.test(x.textContent));if(b)b.click();},'Ajouter un posage'],['tools','Outils','faoToolsBtn',null,'mfIcR']],'mfFao');

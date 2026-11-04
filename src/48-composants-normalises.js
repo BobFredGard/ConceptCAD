@@ -371,7 +371,13 @@ const STD_CATS=[
     {k:'jn',lab:'Jeu entre flancs (mm, 0 = aucun)',num:{min:0,max:50,step:0.01},opts:()=>[['0','0'],['0.1','0,1']],def:()=>'0.1'},
     {k:'d1',lab:'Alésage du pignon Ø (mm, 0 = plein)',num:{min:0,max:5000,step:0.5},opts:()=>[['0','0']],def:()=>'0'},
     {k:'d2',lab:'Alésage de la roue Ø (mm, 0 = pleine)',num:{min:0,max:5000,step:0.5},opts:()=>[['0','0']],def:()=>'0',show:st=>st.kind==='ext'}],
-    gen:stdGearPair}
+    gen:stdGearPair},
+  // V0.57.0 : aimants permanents, articles réels du catalogue (48-aimants-catalogue, 48-aimants-interface)
+  {k:'magnet',lab:'Aimants',fields:[
+    {k:'shape',lab:'Forme',opts:()=>MAG_SHAPES},
+    {k:'grade',lab:'Nuance',opts:magGradeOpts,def:()=>'*'},
+    {k:'art',lab:'Article',opts:magArtOpts,def:magArtDef}],
+    gen:magSpec}
 ];
 function stdPinRows(t){
   return t==='iso8734'?STD_ISO8734:t==='iso2339'?STD_ISO2339:t==='iso8752'?STD_ISO8752:t==='dowel'?STD_ANSI_DOWEL:t==='spring'?STD_ANSI_SPRING:STD_ISO2338;
@@ -441,6 +447,9 @@ function stdDoc(sp){
   d.bodies=[{id:'b1',name:sp.name,c:null}];d.bodySeq=2;d.activeBody='b1';
   d.std={key:sp.key,norm:sp.norm,desig:sp.desig};
   if(sp.cat&&sp.st){d.std.cat=sp.cat;d.std.st=Object.assign({},sp.st);}
+  if(sp.mag)d.std.mag=sp.mag; // aimant : géométrie et caractéristiques (48-aimants-interface)
+  if(sp.mat)d.mat=sp.mat;
+  if(sp.color!=null)d.bodies[0].color=sp.color;
   const F=(f)=>{f.id=uid(f.type==='revolve'?'rv':f.type==='xthread'?'th':f.type==='gear'?'gr':'ex');f.visible=true;f.body='b1';d.features.push(f);return f;};
   if(sp.prof){
     const s=stdSketch(d,'Profil','XZ',0);stdLoop(s,sp.prof);
@@ -470,6 +479,9 @@ function stdDoc(sp){
       if(o.kind==='rack'){fg.kind='rack';fg.H=o.H;}
       if(o.j)fg.j=o.j;
       if(o.ks)fg.ks=o.ks;
+    }else if(o.k==='mbox'){
+      const s=stdSketch(d,'Contour','XY',0),a=o.a/2,b=o.b/2;stdLoop(s,[[-a,-b],[a,-b],[a,b],[-a,b]]);
+      F({type:'extrude',name:'Aimant',sketchId:s.id,distance:o.h,op:'add',mid:false,upto:null});
     }else if(o.k==='bore'){
       // sous la roue, et débouchant au-dessus : la découpe ne part pas d'une face confondue
       const s=stdSketch(d,'Alésage','XY',-1);
@@ -895,6 +907,9 @@ function stdSvg(sp){
       else{const P=[];for(let i=0;i<48;i++){const a=i/48*2*Math.PI;P.push([o.d/2*Math.cos(a),o.d/2*Math.sin(a)]);}holes.push(P);}
     }
   });
+  (sp.ops||[]).forEach(o=>{ // aimant pavé : de face, pôle nord en haut
+    if(o.k==='mbox')shapes.push([[-o.a/2,0],[o.a/2,0],[o.a/2,o.h],[-o.a/2,o.h]]);
+  });
   (sp.ops||[]).forEach(o=>{
     if(o.k!=='key')return;
     const P=stdPolyPts(stdKeyOutline(o)),gap=o.b*0.8;
@@ -939,7 +954,7 @@ function stdCss(){
   ].join('\n');
   document.head.appendChild(st);
 }
-function stdDlg(edit){
+function stdDlg(edit,cat){
   // Ouvre (ou ferme) la fenêtre des composants normalisés. edit = {occ} : « Modifier… » une pièce
   // posée — la fenêtre reprend ses réglages et applique à toutes ses occurrences ou à celle-ci.
   let w=document.getElementById('stdDlg');if(w){w.remove();if(!edit)return;}
@@ -951,6 +966,7 @@ function stdDlg(edit){
     stdUi.cat=S.cat;stdUi.st=stdUi.st||{};stdUi.st[S.cat]=S.st;
   }
   else if(stdUi.st&&stdUi.st.gear){delete stdUi.st.gear.j;delete stdUi.st.gear.ks;}
+  if(cat&&!edit)stdUi.cat=cat; // commande « Aimants » du ruban : ouvre directement son onglet
   w=document.createElement('div');w.id='stdDlg';
   w.innerHTML='<div class="stdHead"><b>🔩 Composants normalisés</b><button title="Fermer (Échap)">✕</button></div>'+
     '<div class="stdTabs"></div><div class="stdBody"><div class="stdForm"></div><div class="stdPrev"></div></div>'+

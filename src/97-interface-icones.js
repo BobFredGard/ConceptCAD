@@ -134,6 +134,7 @@ const MF_ICF={
   asmOcc:'<g opacity=".45">'+fzBox(-7,-1,-4,-2,4,1,'b')+'</g>'+fzBox(-2,-6,-1,3,-1,4,'b')+FZ_PLUS,
   asmInspect:fzBox(-5,-5,-4,4,4,2,'b')+'<circle cx="10" cy="10" r="5.4" fill="#dbeafe" fill-opacity=".55" stroke="#1f2937" stroke-width="1.6"/><path d="M14 14l6 6" stroke="#1f2937" stroke-width="2.8" stroke-linecap="round"/>',
   asmFromBodies:fzBox(-7,-1,-3,-3,3,1,'b')+fzBox(1,-7,0,5,-3,4,'o')+fzArrow(9,18.5,19,18.5,'#16a34a',2),
+  asmMag:'<path d="M5 3h5v10a2 2 0 0 0 4 0V3h5v10a7 7 0 0 1-14 0z" fill="#dc2626" stroke="#7f1d1d" stroke-width=".8"/><path d="M5 3h5v4H5zM14 3h5v4h-5z" fill="#e5e7eb" stroke="#4b5563" stroke-width=".7"/>',
   asmStd:'<rect x="10" y="9" width="4" height="10.5" fill="url(#mfFzHm)" stroke="#4b5563" stroke-width=".7"/><path d="M10 11l4 1.3M10 13.4l4 1.3M10 15.8l4 1.3M10 18.2l4 1.3" stroke="#4b5563" stroke-width=".7"/><path d="M10 19.5l2 2.5 2-2.5" fill="#cbd5e1" stroke="#4b5563" stroke-width=".7"/>'+
     fzCyl(12,8.6,5.6,3.6,'mfFzHm','m')+'<path d="M10.3 5 13.7 5 15.4 5.9 13.7 6.9 10.3 6.9 8.6 5.9Z" fill="#374151"/>',
   // FAO : brut en bois clair, parcours bleus

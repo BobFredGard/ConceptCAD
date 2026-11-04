@@ -88,7 +88,7 @@ function wirePick(){
     // pièce d'un autre composant (autour de la pièce, ou mode Assembler) devant la pièce active :
     // directement sa fenêtre d'apparence de rendu (98-rendu-apparence)
     const h=asmMode==='asm'?null:pick(e);
-    try{const a=rdLookAsmHit(e);if(a&&(!h||a.distance<h.distance)){rdLookPop(e.clientX,e.clientY,a.t);return;}}catch(err){}
+    try{const a=rdLookAsmHit(e);if(a&&(!h||a.distance<h.distance)){const ac=asmComp(a.t.comp);if(a.t.occ&&magOfComp(ac))magCtx(e.clientX,e.clientY,a.t,ac);else rdLookPop(e.clientX,e.clientY,a.t);return;}}catch(err){}
     if(!h)return;
     const b=bodies.find(x=>x.mesh===h.object);
     ctxPieceNext=b&&b.kind==='import'?importPieceAt(h.object,h.faceIndex):null; // pièce d'un STEP multi-corps
