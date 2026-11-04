@@ -113,7 +113,8 @@ const SUITES = [
   'test_noms_reouverture',
   'test_import_arbre',
   'test_export_step_import',
-  'test_engrenages'
+  'test_engrenages',
+  'test_export_step_assemblage'
 ];
 let ok = 0; const ko = [];
 for (const s of SUITES) {

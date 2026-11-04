@@ -8,7 +8,7 @@ sont sorties le 2026-09-30j.
 Code dans `src/` · livrable `fusion_mvp.html` (généré par `build.js`) · architecture et
 garde-fous en tête de `src/00-entete-et-outils.js`.
 
-**568 versions**, de `2026-09-28b` à `V0.53.0` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
+**569 versions**, de `2026-09-28b` à `V0.54.0` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
 comme dans le fichier d'origine.
 
 ---
@@ -6606,3 +6606,14 @@ Demande : « que peux-tu me proposer comme module de création d'engrenages… �
 - **Contrôles** : rapport de conduite, interférence, couronne trop proche, jeu nul, sous-coupe, dent en pointe. Géométrie seulement, pas de calcul de résistance. Les pièces restent libres, sans lien de mouvement.
 - **Sans effet sur les parcours** : `CACHE_VER` ne change pas.
 - **Tests** : `tests/test_engrenages.cjs` (suite rapide) : simulation indépendante du taillage, cotes, coupes de 13 paires sur 12 positions d'un pas et mesure du jeu. `tests/test_engrenages_paire.cjs` (suite complète) : volume commun nul entre solides réels sur 12 positions, pour droite, hélicoïdale, couronne et crémaillère ; `Exemples/Engrenages.conceptcad` rechargé, inspecté, exporté et réimporté en STEP. Les deux moteurs.
+
+## V0.54.0 - Export STEP de tout l’assemblage visible
+
+Limite constatée en livrant les engrenages : à la racine d’un assemblage, le bouton STEP répondait « Solide vide ».
+
+- **Cause** : l’export ne lisait que le document actif (`occFinalShape`), et la racine d’un assemblage n’a pas de solide propre.
+- **Correctif** (`btnExportStep`, `asmStepShapes`) : en vue d’assemblage, ou dans un composant sans solide propre qui en contient d’autres, le fichier reçoit les formes exactes de chaque occurrence visible, placées ; les occurrences masquées (à tout niveau) n’y sont pas. Le fichier porte le nom du composant. Une pièce en cours de modélisation s’exporte seule, comme avant.
+- **Pièce sans solide exact** : un message la nomme, pour ne pas livrer un fichier incomplet sans le dire.
+- **Défaut ancien corrigé** (`importHydrate`) : le ménage de la mémoire ne regardait que le composant actif et effaçait le solide exact des STEP importés dans les autres composants.
+- **Reste à faire** : l’inspection ignore toujours les composants faits d’un STEP seul dans son corps ; les noms des pièces dans le fichier STEP ne sont pas contrôlés.
+- **Test** : `test_export_step_assemblage`, sur les deux moteurs : vrai clic, vrai pré-test, fichier relu, chaque solide contrôlé (validité, volume, position) ; `Exemples/Engrenages.conceptcad` donne 6 solides valides aux bonnes positions. `CACHE_VER` ne change pas.

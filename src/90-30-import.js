@@ -61,6 +61,8 @@ function importHydrate(){
       else{const e=importGeom.get(f.id);if(e&&e.mesh)f._mesh=e.mesh;}
     });
   }catch(e){}
+  // Les imports des AUTRES composants de l'assemblage vivent aussi (la table est commune à tous)
+  try{if(asm)asm.comps.forEach(c=>((c.doc&&c.doc.features)||[]).forEach(f=>{if(f&&f.type==='import')vivant.add(f.id);}));}catch(e){}
   for(const id of Array.from(importGeom.keys())){
     if(vivant.has(id)||importIdStillReachable(id))continue;
     const e=importGeom.get(id);importGeom.delete(id);

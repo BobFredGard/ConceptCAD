@@ -203,6 +203,7 @@ const SUITES = [
   "test_import_regen",
   "test_ctx_step",
   "test_export_step_import",
+  "test_export_step_assemblage",
   "test_ctx_menu_viewport",
   "test_fao_reset",
   "test_fao_passes",

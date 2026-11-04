@@ -244,25 +244,39 @@ $('btnExportStep').onclick=async()=>{
   const[pok,pdetail]=await occExportPreflight();
   try{console.log('[STEP-OUT] pré-test : '+pdetail);}catch(e){}
   if(!pok){alert('Export STEP impossible : '+pdetail+'.');faceEl.textContent='Export STEP : '+pdetail;return;}
+  let FR=null,free=[]; // free : formes à libérer une fois le fichier écrit
   try{
-    // Exporte le solide exact : même pipeline que l'affichage (prismes + booléens + congés exacts).
-    const FR=occFinalShape();
-    const lone=importLoneShapes(FR,null); // STEP seuls dans leur corps (hors perBody)
-    const all=[FR.shape].concat(lone.map(p=>p.shape)).filter(Boolean);
+    let all=[],E=null;
+    if(asmMode!=='asm'){
+      // Exporte le solide exact : même pipeline que l'affichage (prismes + booléens + congés exacts).
+      FR=occFinalShape();
+      free=importLoneShapes(FR,null).map(p=>p.shape); // STEP seuls dans leur corps (hors perBody)
+      all=[FR.shape].concat(free).filter(Boolean);
+    }
+    // Vue d'assemblage, ou composant sans solide propre mais qui en contient : tout ce qui est visible, placé
+    const base=asmActiveComp();
+    if(asmMode==='asm'||(!all.length&&base&&base.occ.length)){
+      try{occCleanup(FR,null);}catch(e){}
+      FR=null; // la collecte rejoue les composants : le rejeu d'ici ne doit pas lui survivre
+      E=asmStepShapes();free=all=E.shapes;
+    }
     if(!all.length){alert('Solide vide, rien à exporter.');return;}
     const path='/o.stp'; // chemin court fixe (les chemins longs échouent dans certains onglets)
     try{occt.FS.unlink(path);}catch(e){}
     try{console.log('[STEP-OUT] path='+JSON.stringify(path)+' typeof='+(typeof path)+' cwd='+occt.FS.cwd()+' avant='+occt.FS.readdir('/').slice(0,12).join(','));}catch(e){}
-    let bytes;
-    try{bytes=occWriteStep(all,path,sch);}finally{lone.forEach(p=>{try{p.shape.delete();}catch(e){}});}
+    const bytes=occWriteStep(all,path,sch);
     try{console.log('[STEP-OUT] après='+occt.FS.readdir('/').slice(0,12).join(','));}catch(e){}
     const blob=new Blob([bytes],{type:'application/step'});
-    const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=(doc.name||'piece')+'.step';a.click();
+    const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=((E?E.name:doc.name)||'piece')+'.step';a.click();
     setTimeout(()=>URL.revokeObjectURL(a.href),2000);
     try{occt.FS.unlink(path);}catch(e){}
-    occCleanup(FR,null);
-    faceEl.textContent='STEP '+stepLabel(sch)+' exact exporté ('+(bytes.length/1024).toFixed(1)+' Ko).';
+    faceEl.textContent='STEP '+stepLabel(sch)+' exact exporté ('+(E?E.shapes.length+' solides, ':'')+(bytes.length/1024).toFixed(1)+' Ko).';
+    if(E&&E.missing.length)alert('Attention : pièce(s) sans solide exact, absentes du fichier STEP : '+E.missing.join(', ')+'.');
   }catch(e){alert('Export STEP impossible : '+e.message);}
+  finally{
+    free.forEach(s=>{try{s.delete();}catch(e){}});
+    try{if(FR)occCleanup(FR,null);}catch(e){}
+  }
 };
 $('btnExportStl').onclick=()=>downloadMesh('stl');
 $('btnExportObj').onclick=()=>downloadMesh('obj');

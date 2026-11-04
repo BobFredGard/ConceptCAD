@@ -39,16 +39,22 @@ function asmBox(sh){
 }
 function asmBoxHit(a,b,tol){return [0,1,2].every(i=>a.min[i]<=b.max[i]+tol&&b.min[i]<=a.max[i]+tol);}
 function asmExactFree(c){if(c&&c._exact){(c._exact.list||[]).forEach(x=>{try{x.shape.delete();}catch(e){}});c._exact=null;}}
-function asmExactActive(){
+function asmExactActive(imports){
   // Corps exacts du composant actif (copies), d'un rejeu frais : les solides affichés peuvent
-  // avoir été remplacés entre-temps (un rejeu libère les précédents)
+  // avoir été remplacés entre-temps (un rejeu libère les précédents).
+  // imports : ajoute les STEP seuls dans leur corps (hors perBody), marqués lone
   const out=[];let FR=null;
+  const name=id=>{const e=(doc.bodies||[]).find(x=>x.id===id);return (e&&e.name)||id;};
+  const vis=id=>!(doc.bodyVis&&doc.bodyVis[id]===false);
   try{
     FR=occFinalShape(null);
     (FR.perBody||[]).forEach(pb=>{
-      if(!pb||!pb.shape||(doc.bodyVis&&doc.bodyVis[pb.bodyId]===false))return;
-      const e=(doc.bodies||[]).find(x=>x.id===pb.bodyId);
-      const s=occShapeCopy(pb.shape);if(s)out.push({id:pb.bodyId,name:(e&&e.name)||pb.bodyId,shape:s});
+      if(!pb||!pb.shape||!vis(pb.bodyId))return;
+      const s=occShapeCopy(pb.shape);if(s)out.push({id:pb.bodyId,name:name(pb.bodyId),shape:s});
+    });
+    if(imports)importLoneShapes(FR,null).forEach(p=>{
+      if(vis(p.bodyId))out.push({id:p.bodyId,name:name(p.bodyId),shape:p.shape,lone:true});
+      else{try{p.shape.delete();}catch(e){}}
     });
   }catch(e){}
   try{occCleanup(FR,null);}catch(e){}
@@ -69,7 +75,7 @@ function asmExactCollect(cids){
         asmExactFree(c);
         // composant actif : son rejeu courant fait foi ; les autres sont activés (rejoués)
         if(c.id!==asm.active){asmActivate(c.id);moved=true;}
-        c._exact={hash:c._snap?c._snap.hash:'',list:asmExactActive()};
+        c._exact={hash:c._snap?c._snap.hash:'',list:asmExactActive(true)};
       }
       out.set(id,c._exact.list);
     });
@@ -77,19 +83,38 @@ function asmExactCollect(cids){
   }finally{asmBuilding=false;}
   return out;
 }
+function asmVisibleInstances(base){
+  // Instances sous base (elle comprise), sans celles masquées à un niveau quelconque du chemin
+  const hidden=path=>{let c=base;for(const id of path){const o=c&&c.occ.find(q=>q.id===id);if(!o||o.visible===false)return true;c=asmComp(o.comp);}return false;};
+  return asmInstances(base.id).filter(i=>!hidden(i.path));
+}
+function asmStepShapes(){
+  // Export STEP de l'assemblage : formes exactes de ce qui est visible sous le composant actif,
+  // placées. → {name, shapes (à libérer par l'appelant), missing : composants sans solide exact}
+  asmEnsure();
+  const base=asmActiveComp(),inst=asmVisibleInstances(base);
+  const ex=asmExactCollect([...new Set(inst.map(i=>i.comp))]);
+  const shapes=[],missing=new Set();
+  inst.forEach(I=>{
+    const c=asmComp(I.comp),list=ex.get(I.comp)||[];
+    if(!list.length&&((c&&c.doc&&c.doc.features)||[]).some(f=>f&&f.visible!==false))missing.add(c.name);
+    list.forEach(b=>shapes.push(asmPlaced(b.shape,I.F)));
+  });
+  return {name:base.name,shapes,missing:[...missing]};
+}
 function asmInspectRun(){
   // Inspection du composant actif (et de son contenu) → asmInspect, ou null (pas de noyau exact)
   if(!(typeof occHas==='function'&&occHas()))return null;
   asmEnsure();
   const base=asmActiveComp();
-  const hidden=path=>{let c=base;for(const id of path){const o=c&&c.occ.find(q=>q.id===id);if(!o||o.visible===false)return true;c=asmComp(o.comp);}return false;};
-  const inst=asmInstances(base.id).filter(i=>!hidden(i.path));
+  const inst=asmVisibleInstances(base);
   const ex=asmExactCollect([...new Set(inst.map(i=>i.comp))]);
   const name=path=>{const n=[];let c=base;path.forEach(id=>{const o=c.occ.find(q=>q.id===id);n.push(o.name);c=asmComp(o.comp);});return n.join(' › ');};
   const items=[];
   inst.forEach((I,k)=>{
     const c=asmComp(I.comp),m=asmMatOf(c);
     (ex.get(I.comp)||[]).forEach(b=>{
+      if(b.lone)return; // STEP seul dans son corps : réservé à l'export, l'inspection reste inchangée
       const s=asmPlaced(b.shape,I.F),vc=asmVolCom(s);
       items.push({inst:k,path:I.path,comp:c.id,label:(I.path.length?name(I.path)+' › ':'')+b.name,body:b.name,mat:m.name,rho:m.rho,
         v:vc.v,mass:vc.v*m.rho/1000,c:vc.c,shape:s,box:asmBox(s)});
