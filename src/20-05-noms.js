@@ -370,7 +370,7 @@ function nomsRefFace(shape,ref){
     };
     if(i<0){
       // Face coupée depuis (#1, #2…) ou nom d'un morceau recollé depuis : le morceau le plus proche
-      const base=nom.replace(/#\d+$/,''),L=[];
+      const base=nom.replace(/(#\d+)+$/,''),L=[];
       T.f.forEach((n,k)=>{if(n&&(n===base||n.indexOf(nom+'#')===0||n.indexOf(base+'#')===0))L.push(k);});
       if(L.length)i=proche(L);
     }
@@ -398,8 +398,10 @@ function nomsDecoupe(nom){
   return fa;
 }
 function nomsBase(n,a){
-  n=n.replace(/#\d+$/,'');
-  let g=0;while(a&&a[n]&&g++<8)n=a[n].replace(/#\d+$/,'');
+  // Tous les numéros : une copie de répétition porte « flanc#1#1 », et quand la face n'est plus coupée
+  // il ne reste que « flanc » (Barquette, largeur 175 : la copie du congé ne se retrouvait plus)
+  n=n.replace(/(#\d+)+$/,'');
+  let g=0;while(a&&a[n]&&g++<8)n=a[n].replace(/(#\d+)+$/,'');
   return n;
 }
 function nomsSurAretes(shape,edges){

@@ -1,7 +1,8 @@
 // Socle des noms uniques (src/20-05-noms.js) : sur le document réel de la Barquette, chaque face
 // issue d'une extrusion, d'une fusion, d'une découpe, d'une dépouille ou d'un congé porte un nom ;
 // aucun doublon ; le nom survit à un changement de longueur, d'un coup comme par petits pas, et le
-// bord de la lèvre garde le sien à la bonne position. Lancé seul : node tools/ci-moteur.cjs occt/v3 -- tests/test_noms_socle.cjs
+// bord de la lèvre garde le sien à la bonne position. Deux états de la pièce : d'origine et avec renforts.
+// Lancé seul : node tools/ci-moteur.cjs occt/v3 -- tests/test_noms_socle.cjs
 const fs=require('fs'),vm=require('vm'),path=require('path');
 const ROOT=path.join(__dirname,'..');
 globalThis.__dirname=path.join(ROOT,'occt');
@@ -10,8 +11,10 @@ const {loadApp}=require('./appvm.cjs'),lire=require('./lire-projet.cjs');
 (async()=>{
   const real=await globalThis.opencascadeFactory({wasmBinary:fs.readFileSync(path.join(ROOT,'occt','opencascade.wasm.wasm'))});
   if(!real.NCollection_IndexedDataMap_TopoDS_Shape_NCollection_List_TopoDS_Shape_TopTools_ShapeMapHasher){console.log('=== Noms uniques : noyau sans carte indexée, sauté ===\n\n*** TOUT PASSE ***');return;}
+  let total=0;
+  for(const P of [{nom:'d’origine',fichier:'barquette-noms.conceptcad',L:230},{nom:'avec renforts',fichier:'barquette-renforts.conceptcad',L:235}]){
   const {ctx,sandbox}=loadApp();
-  sandbox.__realOcct=real;sandbox.__txt=lire(path.join(ROOT,'tests','fixtures','barquette-noms.conceptcad'));
+  sandbox.__realOcct=real;sandbox.__txt=lire(path.join(ROOT,'tests','fixtures',P.fichier));sandbox.__L=P.L;
   vm.runInContext('occt=__realOcct;occtReady=true;window.alert=function(){};showAll=function(){};applyView=function(){};',ctx);
   const R=String.raw`
     const out={fails:[],log:[]};
@@ -41,21 +44,23 @@ const {loadApp}=require('./appvm.cjs'),lire=require('./lire-projet.cjs');
     out.exemples=base.tous.slice(0,10);
     const copie=lire_();
     A(JSON.stringify(copie.tous.slice().sort())===JSON.stringify(base.tous.slice().sort()),'les points de contrôle redonnent les mêmes noms');
-    poser(235);const petit=lire_();poser(240);poser(245);poser(250);const pas=lire_();
-    poser(230);poser(250);const saut=lire_();
+    poser(__L+5);const petit=lire_();poser(__L+10);poser(__L+15);poser(__L+20);const pas=lire_();
+    poser(__L);poser(__L+20);const saut=lire_();
     const nb=x=>x.tous.filter(n=>base.tous.indexOf(n)>=0).length;
-    A(nb(petit)===base.tous.length,'235 : tous les noms de départ sont retrouvés ('+nb(petit)+'/'+base.tous.length+')');
-    A(nb(pas)===base.tous.length,'250 par petits pas : tous les noms retrouvés ('+nb(pas)+'/'+base.tous.length+')');
-    A(nb(saut)===base.tous.length,'250 d’un coup : tous les noms retrouvés ('+nb(saut)+'/'+base.tous.length+')');
+    A(nb(petit)===base.tous.length,(__L+5)+' : tous les noms de départ sont retrouvés ('+nb(petit)+'/'+base.tous.length+')');
+    A(nb(pas)===base.tous.length,(__L+20)+' par petits pas : tous les noms retrouvés ('+nb(pas)+'/'+base.tous.length+')');
+    A(nb(saut)===base.tous.length,(__L+20)+' d’un coup : tous les noms retrouvés ('+nb(saut)+'/'+base.tous.length+')');
     A(JSON.stringify(saut.tous.slice().sort())===JSON.stringify(pas.tous.slice().sort()),'saut et petits pas donnent les mêmes noms');
-    const eL=Object.keys(base.F).filter(n=>Math.abs(base.F[n][0]-115)<0.01&&Math.abs(base.F[n][1])<0.01);
-    A(eL.length>0,'une face du bord de la lèvre est repérée à x = 115 ('+eL.join(', ')+')');
-    eL.forEach(n=>A(saut.F[n]&&Math.abs(saut.F[n][0]-125)<0.01,'à 250 d’un coup, « '+n+' » est à x = 125 ('+(saut.F[n]||[]).join(',')+')'));
+    const eL=Object.keys(base.F).filter(n=>Math.abs(base.F[n][0]-__L/2)<0.01&&Math.abs(base.F[n][1])<0.01);
+    A(eL.length>0,'une face du bord de la lèvre est repérée à x = '+(__L/2)+' ('+eL.join(', ')+')');
+    eL.forEach(n=>A(saut.F[n]&&Math.abs(saut.F[n][0]-(__L+20)/2)<0.01,'à '+(__L+20)+' d’un coup, « '+n+' » est à x = '+((__L+20)/2)+' ('+(saut.F[n]||[]).join(',')+')'));
     return out;`;
   const o=await vm.runInContext('(async()=>{'+R+'})()',ctx);
-  console.log('=== Noms uniques : socle (Barquette, noyau réel) ===');
+  console.log('=== Noms uniques : socle (Barquette '+P.nom+', noyau réel) ===');
   (o.log||[]).forEach(m=>console.log('  ✓ '+m));
   if(process.env.NOMS_VERBEUX)console.log(o.exemples);
-  if(o.fails&&o.fails.length){o.fails.forEach(m=>console.log('  ✗ '+m));console.log('\n*** '+o.fails.length+' PROBLEME(S) ***');process.exit(1);}
+  (o.fails||[]).forEach(m=>console.log('  ✗ '+m));total+=(o.fails||[]).length;
+  }
+  if(total){console.log('\n*** '+total+' PROBLEME(S) ***');process.exit(1);}
   console.log('\n*** TOUT PASSE ***');
 })().catch(e=>{console.log('FATAL',String((e&&e.stack)||e).slice(0,1200));process.exit(1);});

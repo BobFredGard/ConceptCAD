@@ -8,7 +8,7 @@ sont sorties le 2026-09-30j.
 Code dans `src/` · livrable `fusion_mvp.html` (généré par `build.js`) · architecture et
 garde-fous en tête de `src/00-entete-et-outils.js`.
 
-**582 versions**, de `2026-09-28b` à `V0.62.0` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
+**583 versions**, de `2026-09-28b` à `V0.62.1` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
 comme dans le fichier d'origine.
 
 ---
@@ -6758,3 +6758,13 @@ Demande : « CAO : j’aimerais une fonction clavette automatique pour les arbre
 - **La clavette, corps de pièce** (« Oui, comme un corps de pièce ») : créée d’office dans son propre corps, posée au fond de la rainure, aux cotes ISO (largeur, hauteur) ; case « Clavette (corps séparé) » pour la retirer ou la reposer. Sur « toute la longueur », clavette droite, centrée, de la longueur de la série. Elle suit le Ø ; le corps actif reste la pièce ; un nom de corps donné à la main reste. Supprimer la rainure retire sa clavette ; supprimer la clavette garde la rainure.
 - **Limites** : les esquisses de la rainure et de la clavette sont réécrites au rejeu, donc une retouche à la main ne tient pas. Une répétition de la rainure ne répète pas la clavette (non essayé). Le corps de clavette n’est pas masqué pour la FAO : à masquer pour usiner la rainure (non essayé).
 - **Tests** : `test_clavette`. `CACHE_VER` ne change pas.
+
+## V0.62.1 - Barquette avec renforts : le retour à la valeur d’origine redonne la pièce exacte
+
+Défaut relevé en V0.60.0 : sur la Barquette enrichie, changer `longueur_barquette` ou `largeur_barquette` d’un grand coup puis revenir ne redonnait pas la pièce.
+- **Cause principale** : quand un renfort cesse de couper un flanc, la face reprend son nom simple (`flanc` au lieu de `flanc#1`). La copie d’un congé porte `flanc#1#1`, et un seul numéro était retiré : elle ne se reconnaissait plus, repartait par position sur une autre arête et n’en revenait pas. Tous les numéros sont retirés (`nomsBase`, `nomsRefFace`).
+- **Copie de répétition** : un simple changement de numéro de morceau de la source ne fait plus oublier le nom de la copie (`repNomGarde`).
+- **Plans en retard** : les plans étaient résolus avant la mise à jour des projections. Plan 3 avait un rejeu de retard sur son esquisse, Plan 1 lisait une pièce pas encore à jour. Ils sont résolus de nouveau quand une esquisse a bougé (`rebuildInner`, `projRefreshRerun`).
+- **Esquisses copiées** : leurs traits projetés de construction suivent la source (`repSourceSig`).
+- **Limite connue, du modèle et non du logiciel** : le haut de « Guide Renfort 1 » est tenu par un point fixe. Au-delà d’une largeur de 180 environ, le profil de 12 mm n’atteint plus le flanc et le congé R3,3 ne peut plus exister : c’est signalé et le retour reste exact, mais à 185 le saut et les petits pas ne donnent pas tout à fait la même forme. Sur une copie, relier ce point au bord projeté lève la limite (largeurs 185 et 200 exactes). `Exemples/` n’est pas modifié.
+- **Tests** : `test_noms_barquette` et `test_noms_socle` tournent aussi sur `tests/fixtures/barquette-renforts.conceptcad`, copie figée de la pièce récente. `CACHE_VER` ne change pas.

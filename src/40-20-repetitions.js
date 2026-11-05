@@ -419,7 +419,8 @@ function repNomGarde(o,src,old,cle){
   const de=cle+'De',c=repNomCle(src&&src[cle]);
   delete o[cle];
   if(c)o[de]=c;else delete o[de];
-  if(old&&old[cle]&&c&&(old[de]===undefined||old[de]===c))o[cle]=old[cle];
+  // « même élément » : mêmes faces. Le numéro de morceau change avec la pièce (flanc#1 ↔ flanc)
+  if(old&&old[cle]&&c&&(old[de]===undefined||repNomPropre(old[de])===repNomPropre(c)))o[cle]=old[cle];
 }
 // UN NOM DE COPIE DOIT DÉSIGNER LA COPIE. Si la référence source touche une fonction copiée dans la même
 // passe (sw_30 → sw_50), le nom de la copie doit porter l'équivalent. Barquette, congé R3,3 sur le bord
@@ -828,7 +829,11 @@ function repSourceSig(rp){
   // motif développé : une répétition source change dès que ses instances changent
   const B=(rp.base||[]).map(id=>doc.features.find(x=>x.id===id));
   if(B.some(f=>!f))s+='#?';
-  repExpandSources(B.filter(Boolean),new Set([rp.id])).forEach(f=>{s+='#'+featSig(f);});
+  repExpandSources(B.filter(Boolean),new Set([rp.id])).forEach(f=>{
+    s+='#'+featSig(f);
+    // les traits projetés de construction n'entrent pas dans featSig, mais la copie doit les suivre
+    (doc.sketches||[]).forEach(k=>{if(skUsedBy(f,k.id))(k.entities||[]).forEach(e=>{if(e&&e.proj&&Array.isArray(e.srcMid))s+='~'+e.srcMid.map(v=>(+v).toFixed(3)).join(',');});});
+  });
   return s;
 }
 function repSyncStale(){

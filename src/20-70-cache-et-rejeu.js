@@ -1065,6 +1065,7 @@ function projRefreshRerun(pass){
   try{ch=updateAllProjections();}catch(e){}
   phAdd('proj',performance.now()-_tp);
   if(!ch)return false;
+  try{if(typeof cgResolveAll==='function'&&cgResolveAll())resolveAllSketchHosts();}catch(e){} // plans posés sur ce qui vient de bouger
   if(sigOf()===s0){
     // Projeté recalé sans effet sur le profil : on ne rejoue pas, mais on persiste les
     // nouvelles coordonnées et on redessine l'esquisse ouverte (tracé 2D non rafraîchi).

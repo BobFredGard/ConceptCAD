@@ -192,7 +192,9 @@ function rebuildInner(projPass){
   // 2026-10-16-008 : projections associatives AVANT le rejeu principal (ordre timeline, hôtes
   // de faces et instances recalés au fil de l'eau) → le rejeu se fait UNE fois sur un modèle
   // déjà cohérent, au lieu de « rejeu → projections bougent → second rejeu ».
-  if(!projPass){const _tq=performance.now();try{if(typeof projPreUpdate==='function')projPreUpdate();}catch(e){}phAdd('proj',performance.now()-_tq);}
+  // Une esquisse a bougé : les plans résolus plus haut l'ont vue à son ancienne place (Barquette :
+  // Plan 3 avait un rejeu de retard sur son esquisse, Plan 1 lisait une pièce pas encore à jour).
+  if(!projPass){const _tq=performance.now();try{if(typeof projPreUpdate==='function'&&projPreUpdate()&&typeof cgResolveAll==='function'&&cgResolveAll())resolveAllSketchHosts();}catch(e){}phAdd('proj',performance.now()-_tq);}
   // Snapshot du dernier état valide : commit si le rebuild aboutit, rollback sinon.
   const prevBodies=bodies,prevLive=occLive;
   const prevSet=new Set(scene.children);

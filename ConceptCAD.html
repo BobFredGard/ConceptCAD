@@ -376,7 +376,7 @@ input[type=range]{accent-color:var(--primary);width:100%}
  * peut changer sans rien casser. CACHE_VER (parcours FAO) reste indépendant.
  */
 
-const APP_VER='V0.62.0';
+const APP_VER='V0.62.1';
 try{console.log('[ConceptCAD] version '+APP_VER);}catch(e){}
 try{var mfSv=document.getElementById('mfSplashVer');if(mfSv)mfSv.textContent=APP_VER;}catch(e){} // écran de démarrage
 
@@ -3396,7 +3396,7 @@ function nomsRefFace(shape,ref){
     };
     if(i<0){
       // Face coupée depuis (#1, #2…) ou nom d'un morceau recollé depuis : le morceau le plus proche
-      const base=nom.replace(/#\d+$/,''),L=[];
+      const base=nom.replace(/(#\d+)+$/,''),L=[];
       T.f.forEach((n,k)=>{if(n&&(n===base||n.indexOf(nom+'#')===0||n.indexOf(base+'#')===0))L.push(k);});
       if(L.length)i=proche(L);
     }
@@ -3424,8 +3424,10 @@ function nomsDecoupe(nom){
   return fa;
 }
 function nomsBase(n,a){
-  n=n.replace(/#\d+$/,'');
-  let g=0;while(a&&a[n]&&g++<8)n=a[n].replace(/#\d+$/,'');
+  // Tous les numéros : une copie de répétition porte « flanc#1#1 », et quand la face n'est plus coupée
+  // il ne reste que « flanc » (Barquette, largeur 175 : la copie du congé ne se retrouvait plus)
+  n=n.replace(/(#\d+)+$/,'');
+  let g=0;while(a&&a[n]&&g++<8)n=a[n].replace(/(#\d+)+$/,'');
   return n;
 }
 function nomsSurAretes(shape,edges){
@@ -8672,6 +8674,7 @@ function projRefreshRerun(pass){
   try{ch=updateAllProjections();}catch(e){}
   phAdd('proj',performance.now()-_tp);
   if(!ch)return false;
+  try{if(typeof cgResolveAll==='function'&&cgResolveAll())resolveAllSketchHosts();}catch(e){} // plans posés sur ce qui vient de bouger
   if(sigOf()===s0){
     // Projeté recalé sans effet sur le profil : on ne rejoue pas, mais on persiste les
     // nouvelles coordonnées et on redessine l'esquisse ouverte (tracé 2D non rafraîchi).
@@ -9197,7 +9200,9 @@ function rebuildInner(projPass){
   // 2026-10-16-008 : projections associatives AVANT le rejeu principal (ordre timeline, hôtes
   // de faces et instances recalés au fil de l'eau) → le rejeu se fait UNE fois sur un modèle
   // déjà cohérent, au lieu de « rejeu → projections bougent → second rejeu ».
-  if(!projPass){const _tq=performance.now();try{if(typeof projPreUpdate==='function')projPreUpdate();}catch(e){}phAdd('proj',performance.now()-_tq);}
+  // Une esquisse a bougé : les plans résolus plus haut l'ont vue à son ancienne place (Barquette :
+  // Plan 3 avait un rejeu de retard sur son esquisse, Plan 1 lisait une pièce pas encore à jour).
+  if(!projPass){const _tq=performance.now();try{if(typeof projPreUpdate==='function'&&projPreUpdate()&&typeof cgResolveAll==='function'&&cgResolveAll())resolveAllSketchHosts();}catch(e){}phAdd('proj',performance.now()-_tq);}
   // Snapshot du dernier état valide : commit si le rebuild aboutit, rollback sinon.
   const prevBodies=bodies,prevLive=occLive;
   const prevSet=new Set(scene.children);
@@ -10471,7 +10476,8 @@ function repNomGarde(o,src,old,cle){
   const de=cle+'De',c=repNomCle(src&&src[cle]);
   delete o[cle];
   if(c)o[de]=c;else delete o[de];
-  if(old&&old[cle]&&c&&(old[de]===undefined||old[de]===c))o[cle]=old[cle];
+  // « même élément » : mêmes faces. Le numéro de morceau change avec la pièce (flanc#1 ↔ flanc)
+  if(old&&old[cle]&&c&&(old[de]===undefined||repNomPropre(old[de])===repNomPropre(c)))o[cle]=old[cle];
 }
 // UN NOM DE COPIE DOIT DÉSIGNER LA COPIE. Si la référence source touche une fonction copiée dans la même
 // passe (sw_30 → sw_50), le nom de la copie doit porter l'équivalent. Barquette, congé R3,3 sur le bord
@@ -10880,7 +10886,11 @@ function repSourceSig(rp){
   // motif développé : une répétition source change dès que ses instances changent
   const B=(rp.base||[]).map(id=>doc.features.find(x=>x.id===id));
   if(B.some(f=>!f))s+='#?';
-  repExpandSources(B.filter(Boolean),new Set([rp.id])).forEach(f=>{s+='#'+featSig(f);});
+  repExpandSources(B.filter(Boolean),new Set([rp.id])).forEach(f=>{
+    s+='#'+featSig(f);
+    // les traits projetés de construction n'entrent pas dans featSig, mais la copie doit les suivre
+    (doc.sketches||[]).forEach(k=>{if(skUsedBy(f,k.id))(k.entities||[]).forEach(e=>{if(e&&e.proj&&Array.isArray(e.srcMid))s+='~'+e.srcMid.map(v=>(+v).toFixed(3)).join(',');});});
+  });
   return s;
 }
 function repSyncStale(){
