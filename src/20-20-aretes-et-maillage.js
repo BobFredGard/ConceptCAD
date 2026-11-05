@@ -151,7 +151,7 @@ function draftAngleOk(a){return isFinite(a)&&Math.abs(a)>1e-9&&Math.abs(a)<90;}
 // toujours) — arête DROITE et CONVEXE entre deux faces : le secteur de matière est mesuré au
 // classificateur, l'outil (triangle du coin − disque du congé, ou triangle seul pour un
 // chanfrein) est extrudé le long de l'arête en DÉBORDANT devant et derrière, puis soustrait.
-function occSingleEdgeTool(shape,pts,r,chamfer,cham,firstN){
+function occSingleEdgeTool(shape,pts,r,chamfer,cham,firstN,info){
   // cham/firstN (V0.11.19) : chanfrein asymétrique — options xChamOpts et normale sortante de
   // la PREMIÈRE face (celle qui porte D1) ; sans normale utilisable, l'outil renonce (null →
   // repli noyau, qui sait faire).
@@ -219,12 +219,40 @@ function occSingleEdgeTool(shape,pts,r,chamfer,cham,firstN){
     const T1=add(M,mul(d1,s1)),T2=add(M,mul(d2,s2));
     const Eo=sub(M,mul(b,0.5*s+0.5)); // sommet du triangle repoussé HORS matière (pas de face coplanaire)
     const o=Math.max(2*s,2),half=L/2+o;
-    const at0=p=>sub(p,mul(t,half));
+    // Le débordement ne doit traverser que du vide : l'outil dépasse la section du chanfrein (côté Eo),
+    // et au bout d'une arête bornée par un mur (fond de rainure) il entaillait la matière du mur.
+    // Sondes dans la partie de la section qui est HORS matière le long de l'arête : si l'une tombe
+    // dans la matière après le bout, l'outil s'arrête là. La partie M,T1,T2 n'est pas sondée :
+    // une face tangente qui continue (arc) doit rester chanfreinée par le débordement.
+    const sect=[];
+    [T1,T2].forEach(T=>[[.1,.45,.45],[.34,.33,.33],[.1,.8,.1],[.1,.1,.8],[.6,.2,.2]].forEach(w=>{
+      sect.push(add(add(mul(Eo,w[0]),mul(T,w[1])),mul(M,w[2])));
+    }));
+    const libre=(sg,d)=>sect.every(q=>{
+      const p=add(q,mul(t,sg*(L/2+d))),G=new occt.gp_Pnt_3(p[0],p[1],p[2]);
+      cl.Perform(G,1e-7);const st8=cl.State();try{G.delete();}catch(e){}
+      return st8!==IN;
+    });
+    const portee=sg=>{
+      if(!libre(sg,1e-3))return 0;
+      const n=8;let lo=1e-3;
+      for(let k=1;k<=n;k++){
+        const d=o*k/n;
+        if(libre(sg,d)){lo=d;continue;}
+        let hi=d;for(let i=0;i<10;i++){const m=(lo+hi)/2;if(libre(sg,m))lo=m;else hi=m;}
+        return lo;
+      }
+      return o;
+    };
+    const oA=portee(-1),oB=portee(1);
+    if(info)info.borne=oA<o||oB<o;
+    const at0=p=>sub(p,mul(t,L/2+oA));
     const P=p=>{const q=new occt.gp_Pnt_3(p[0],p[1],p[2]);bin.push(q);return q;};
     const poly=new occt.BRepBuilderAPI_MakePolygon_3(P(at0(Eo)),P(at0(T1)),P(at0(T2)),true);bin.push(poly);
     if(!poly.IsDone())return null;
     const fm=new occt.BRepBuilderAPI_MakeFace_15(poly.Wire(),true);bin.push(fm);if(!fm.IsDone())return null;
-    const vec=new occt.gp_Vec_4(t[0]*2*half,t[1]*2*half,t[2]*2*half);bin.push(vec);
+    const lgOutil=L+oA+oB;
+    const vec=new occt.gp_Vec_4(t[0]*lgOutil,t[1]*lgOutil,t[2]*lgOutil);bin.push(vec);
     const pr=new occt.BRepPrimAPI_MakePrism_1(fm.Face(),vec,false,true);bin.push(pr);pr.Build();if(!pr.IsDone())return null;
     let tool=pr.Shape();
     if(!chamfer){
@@ -286,8 +314,19 @@ function occFilletRun(base,jobs,warns,chamfer,opts){
         try{eh=occEdgeAt(cur,ed.src);ff=eh?occChamferFirstFace(cur,eh,cham.flip,j.fn):null;firstN=ff?ff.n:null;}catch(e){firstN=null;}
         try{if(ff&&ff.f)ff.f.delete();}catch(e){}try{if(eh)eh.delete();}catch(e){}
       }
-      const tool=ed?occSingleEdgeTool(cur,ed.pts,j.r,chamfer,cham,firstN):null;
-      if(tool){try{nx=occCut(cur,tool);}catch(e){nx=null;}try{tool.delete();}catch(e){}}
+      const info={};
+      const tool=ed?occSingleEdgeTool(cur,ed.pts,j.r,chamfer,cham,firstN,info):null;
+      // Arête arrêtée par un mur : l'outil coupe d'équerre, le noyau suit le mur s'il est en biais ou courbe.
+      // Pris s'il ne crée qu'une face, sinon il a suivi une chaîne tangente que la case écarte.
+      if(tool&&info.borne){
+        const k=mk(cur,[{src:ed.src,r:j.r,fn:j.fn||null}]);
+        if(k){
+          const avant=new Set(occFaceKeys(cur)),nees=occFaceKeys(k).filter(c=>c==='?'||!avant.has(c)).length;
+          if(nees<=1&&occCoqueValide(k))nx=k;else{try{k.delete();}catch(e){}}
+        }
+      }
+      if(tool&&!nx){try{nx=occCut(cur,tool);}catch(e){nx=null;}}
+      if(tool){try{tool.delete();}catch(e){}}
       // Découpe « réussie » qui n'enlève rien (corps abîmé en amont) : repli sur le noyau
       if(nx){const v0=occCoqueVolume(cur),v1=occCoqueVolume(nx);if(v0!=null&&v1!=null&&!(v0-v1>1e-6)){try{nx.delete();}catch(e){}nx=null;}}
       if(!nx&&ed){nx=mk(cur,[{src:ed.src,r:j.r,fn:j.fn||null}]);if(nx)warns.push(kindLabel+' : arête courbe ou concave — suivi de la chaîne tangente (noyau)');}
@@ -326,7 +365,69 @@ function occRimFillets(base,o,n,d,rsTop,rsBot){
   try{base.delete();}catch(e){}
   return{shape:s,warnings:warns};
 }
-function occShapeOfExtrude(f){
+// V0.63.6 : JONCTIONS LIGNE / ARC TANGENTES remises au vrai point de tangence, pour construire le
+// solide. Le solveur rend la ligne tangente à 1e-10 mm près, mais le point de jonction glisse alors
+// de √(2·r·écart) : 4e-11 mm d'écart, R0,6 → 7 microns le long de la ligne (MERLIN-32-002, rainure dont
+// le centre d'arc est posé sur le flanc : la ligne s'arrêtait 7 µm avant le flanc, laissant une face
+// cylindrique de 7 µm de large que le chanfrein du fond rendait invalide). L'esquisse enregistrée ne
+// bouge pas : copie rendue seulement s'il y a quelque chose à corriger, utilisée seulement par
+// occCutSansFaceFine — appliquée partout, elle décalait le contour de la pièce de quelques microns par
+// rapport aux esquisses qui le projettent, et créait ailleurs les micro-arêtes qu'elle devait éviter.
+function skTangencesExactes(sk){
+  const P=(sk&&sk.points)||{},L=((sk&&sk.entities)||[]).filter(e=>e&&!e.construction);
+  const degre={};
+  L.forEach(e=>[e.p1,e.p2,e.pa,e.pb].forEach(p=>{if(p)degre[p]=(degre[p]||0)+1;}));
+  let pts=null;
+  L.forEach(a=>{
+    if(a.t!=='arc'||!(a.r>0)||a.pa===a.pb)return;
+    const C=P[a.pc];if(!C)return;
+    [a.pa,a.pb].forEach(pid=>{
+      if(degre[pid]!==2)return; // jonction d'une ligne et d'un arc, rien d'autre
+      const l=L.find(e=>e.t==='line'&&(e.p1===pid||e.p2===pid));
+      const Q=P[pid],R=l&&P[l.p1===pid?l.p2:l.p1];if(!Q||!R)return;
+      const n=Math.hypot(Q.x-R.x,Q.y-R.y);if(!(n>1e-6))return;
+      const ux=(Q.x-R.x)/n,uy=(Q.y-R.y)/n,t=(C.x-R.x)*ux+(C.y-R.y)*uy;
+      const F={x:R.x+ux*t,y:R.y+uy*t},d=Math.hypot(F.x-Q.x,F.y-Q.y);
+      // tangente à la tolérance du noyau ; déplacement visible du noyau mais sans effet sur le dessin
+      if(Math.abs(Math.hypot(C.x-F.x,C.y-F.y)-a.r)>1e-7||d<=1e-7||d>0.02)return;
+      if(!pts)pts=Object.assign({},P);
+      pts[pid]=Object.assign({},Q,F);
+    });
+  });
+  return pts?Object.assign({},sk,{points:pts}):sk;
+}
+function occMicroAretes(shape){
+  // Nombre d'arêtes de moins d'un micron : restes d'une découpe, jamais du dessin voulu.
+  let n=0;
+  const x=new occt.TopExp_Explorer_2(shape,occt.TopAbs_ShapeEnum.TopAbs_EDGE,occt.TopAbs_ShapeEnum.TopAbs_SHAPE);
+  try{
+    for(;x.More();x.Next()){
+      const G=new occt.GProp_GProps_1();
+      try{occt.BRepGProp.LinearProperties(x.Current(),G,false,false);if(G.Mass()<1e-3)n++;}finally{G.delete();}
+    }
+  }finally{x.delete();}
+  return n;
+}
+// V0.63.6 : une découpe qui LAISSE des micro-arêtes est refaite avec les tangences exactes de son
+// esquisse. Résultat gardé seulement s'il en a moins, s'il est valide et de même volume, sinon null :
+// une découpe sans défaut, ou dont l'esquisse n'a rien à corriger, ne change pas d'un atome.
+function occCutSansFaceFine(f,avant,coupe){
+  try{
+    const sk=doc.sketches.find(s=>s.id===f.sketchId);
+    if(!sk||skTangencesExactes(sk)===sk)return null;
+    const n=occMicroAretes(coupe);
+    if(!n||n<=occMicroAretes(avant))return null;
+    const r=occShapeOfExtrude(f,{tangencesExactes:true});
+    let c=null;
+    try{c=occUnifyCutSeams(occCut(avant,r.shape),avant,r.shape);}
+    finally{try{r.shape.delete();}catch(e){}occDispose(r.bins);}
+    const v0=occCoqueVolume(coupe),v1=occCoqueVolume(c);
+    if(occMicroAretes(c)<n&&occCoqueValide(c)&&v0!=null&&v1!=null&&Math.abs(v1-v0)<=1e-3)return c;
+    try{c.delete();}catch(e){}
+  }catch(e){}
+  return null;
+}
+function occShapeOfExtrude(f,opts){
   // Solide BRep exact d'une extrusion (congés 2D pré-appliqués, trous = découpes).
   const sk=doc.sketches.find(s=>s.id===f.sketchId);
   if(!sk)throw new Error('esquisse introuvable');
@@ -339,6 +440,7 @@ function occShapeOfExtrude(f){
     warns.push(...rf.warnings);data=rf.sk;
     if(!rf.applied&&!(fils.some(fi=>fi.rims&&(fi.rims.top||fi.rims.bottom)))){/* que des rims : rien en 2D */}
   }
+  if(opts&&opts.tangencesExactes)data=skTangencesExactes(data);
   const tr=skTracePick(data,f.profiles); // zones choisies (70-extrusion-profils) ; sans choix = toutes
   // Noms uniques : chaque contour de l'outil est préfixé de la fonction (et du centre pour une pastille)
   const nomme=(r,pre)=>{if(r&&r.shape)nomsPrefixe(r.shape,pre);return r;};

@@ -234,7 +234,7 @@ function xNewFaces(base,res){
   if(xBaseKeys.shape!==base){xBaseKeys={shape:base,keys:new Set(occFaceKeys(base))};}
   return occFaceKeys(res).map(k=>k==='?'||!xBaseKeys.keys.has(k));
 }
-function xPreviewShape(base,jobs,cham){
+function xPreviewShape(base,jobs,cham,edges){
   // Forme montrée par l'aperçu : le SOLIDE COMPLET avec congé/chanfrein appliqué, ou
   // null si impossible. Extraite pour être testée telle quelle (test_apercu_diff.cjs),
   // pas recopiée dans le test — la copie dérive, la fonction non.
@@ -244,7 +244,20 @@ function xPreviewShape(base,jobs,cham){
   const warns=[];
   let sh=null;
   // V0.11.19 : type de chanfrein de la commande (deux distances / angle / inversion) dans l'aperçu
-  try{sh=occFilletRun(base,jobs,warns,cham,{single:!!(filModeX&&filModeX.tangent===false),cham:cham?xChamOpts(filModeX):null});}catch(e){sh=null;}
+  const single=!!(filModeX&&filModeX.tangent===false),co=cham?xChamOpts(filModeX):null;
+  try{sh=occFilletRun(base,jobs,warns,cham,{single,cham:co});}catch(e){sh=null;}
+  // V0.63.6 : MÊME CONTRÔLE qu'« Appliquer » (occApplyXFillets) : un solide déchiré n'est plus montré
+  // comme s'il allait passer, et la reprise NURBS qu'Appliquer tenterait est tentée ici aussi.
+  if(sh){
+    const zone=occFilletZone(jobs,Math.max.apply(null,jobs.map(j=>j.r)));
+    if(!occFacesValides(sh,zone)&&occFacesValides(base,zone)){
+      try{sh.delete();}catch(e){}
+      sh=null;
+      let rN=null;try{rN=occFilletNurbs(base,jobs,cham,single,edges||occListEdges(base),co);}catch(e){rN=null;}
+      if(rN&&occFacesValides(rN.shape,zone))sh=rN.shape;
+      else{try{if(rN)rN.shape.delete();}catch(e){}warns.push('le noyau rend un solide déchiré (faces invalides)');}
+    }
+  }
   return sh?{shape:sh}:{shape:null,warns};
 }
 function xPreviewUpdate(){
@@ -261,10 +274,10 @@ function xPreviewUpdate(){
     sel.forEach(s=>{
       let bi=-1,bd=1e9;
       E.forEach((e,i)=>{const d=Math.hypot(e.mid[0]-s.pos[0],e.mid[1]-s.pos[1],e.mid[2]-s.pos[2]);if(d<bd){bd=d;bi=i;}});
-      if(bi>=0&&bd<1.5)jobs.push({src:E[bi].src,r:s.r,mid:E[bi].mid,fn:Array.isArray(s.fn)?s.fn:null});
+      if(bi>=0&&bd<1.5)jobs.push({src:E[bi].src,r:s.r,mid:E[bi].mid,pts:E[bi].pts,fn:Array.isArray(s.fn)?s.fn:null});
     });
     if(!jobs.length){xPrevRemove();return;}
-    const pv=xPreviewShape(occLive.shape,jobs,cham);
+    const pv=xPreviewShape(occLive.shape,jobs,cham,E);
     if(!pv||!pv.shape){
       // 2026-10-18 V0.2.4 : échec d'aperçu = message PRÉCIS + rayon maximal vérifié par
       // sonde descendante (0,7 → 0,2 × le rayon demandé, même mécanique qu'au rejeu).
@@ -273,17 +286,20 @@ function xPreviewUpdate(){
       // aucun aperçu n'apparaissait. La sonde ne tourne qu'une fois par signature.
       if(filModeX._failSig!==sig){
         filModeX._failSig=sig;filModeX._prevMsg=null;
-        const dp=xIsChamfer(cham)?'D':'R';
+        const dp=cham?'D':'R';
         let msg=(pv&&pv.warns&&pv.warns.length)?pv.warns.join(' · '):'aperçu impossible';
         try{
           const rMax=Math.min.apply(null,jobs.map(j=>j.r||0))||0;
+          const zone=occFilletZone(jobs,rMax);
           for(const kk of [0.7,0.5,0.4,0.3,0.2]){
             const r2=Math.max(0.3,+(rMax*kk).toFixed(2));
             const w2=[];let t=null;
             try{t=occFilletRun(occShapeCopy(occLive.shape),jobs.map(j=>({src:j.src,r:r2,mid:j.mid.slice()})),w2,cham,{single:!!(filModeX&&filModeX.tangent===false)});}catch(ex){t=null;}
-            if(t){try{t.delete();}catch(e2){}msg+=' — max vérifié : '+dp+r2+' ; réduisez le rayon';break;}
+            const bon=t&&occFacesValides(t,zone); // « vérifié » : un solide valide, comme à l'application
+            try{if(t)t.delete();}catch(e2){}
+            if(bon){msg+=' — max vérifié : '+dp+r2+' ; réduisez '+(cham?'la distance':'le rayon');break;}
           }
-          if(msg.indexOf('max vérifié')<0)msg+=' — aucun rayon testé ne passe (arête trop courte ou faces déjà '+((xIsChamfer(cham))?'chanfreinées':'congées')+' ?)';
+          if(msg.indexOf('max vérifié')<0)msg+=' — aucun '+(cham?'réglage':'rayon')+' testé ne passe (arête trop courte ou faces déjà '+(cham?'chanfreinées':'congées')+' ?)';
         }catch(err){}
         if(msg)filModeX._prevMsg=msg; // message figé tant que la sélection ne bouge pas
         if(filModeX._prevMsg)faceEl.textContent=xLabel(filModeX.kind)+' : '+filModeX._prevMsg;

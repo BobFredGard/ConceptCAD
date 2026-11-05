@@ -8,7 +8,7 @@ sont sorties le 2026-09-30j.
 Code dans `src/` · livrable `fusion_mvp.html` (généré par `build.js`) · architecture et
 garde-fous en tête de `src/00-entete-et-outils.js`.
 
-**591 versions**, de `2026-09-28b` à `V0.63.5` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
+**592 versions**, de `2026-09-28b` à `V0.63.6` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
 comme dans le fichier d'origine.
 
 ---
@@ -6838,3 +6838,12 @@ Demande : « quand je change la largeur en + ou en -, les esquisses des guides p
 - **Limite** : un trait raccourci par l’outil Ajuster passe par un autre chemin que `deleteSkSel` ; un « fixe » resté ainsi est réparé à la réouverture du fichier.
 - **Mesuré** (Barquette, noyau réel, navigateur) : largeurs de 150 à 190 sans aucun message, 7 232,8 mm³ par mm de largeur, retour à 165 au même volume. Un changement prend environ 6 s, sans échec de congé ; avant, 16 à 33 s selon les passes. La fuite de mémoire observée pendant l’analyse avait déjà été corrigée en V0.63.2.
 - **Tests** : `test_guides_fixe_oublie` (nouveau), sur `tests/fixtures/barquette-guides.conceptcad`, copie figée de la pièce. `CACHE_VER` ne change pas.
+
+## V0.63.6 - CAO : chanfrein au fond d’une rainure tangente au bord de la pièce ; l’aperçu ne montre plus ce qu’Appliquer refuse
+
+Demande : « Le chanfrein se montre à la construction mais fait une erreur quand on clique Appliquer » (MERLIN-32-002-E, chanfrein de 1 mm sur l’arête de 1,2 mm au fond de la rainure).
+- **Cause** : le solveur laisse une tangence ligne/arc à 4e-11 mm près ; le point de jonction glisse alors de √(2·r·écart), soit 7 µm. Le centre de l’arc étant posé sur le flanc, les lignes de la rainure s’arrêtaient 7 µm avant lui : la découpe laissait une face cylindrique de 7 µm de large et 4 micro-arêtes. Le chanfrein prolongeait cette face et la rendait invalide. L’aperçu ne contrôlait pas le résultat et le montrait ; le rejeu, lui, le refusait (« solide déchiré », V0.11).
+- **Correctif** : `occCutSansFaceFine` (`src/20-20`) : une découpe par extrusion qui laisse de nouvelles micro-arêtes est refaite avec `skTangencesExactes`, qui remet les jonctions ligne/arc tangentes au vrai point de tangence, sur une copie (l’esquisse enregistrée ne bouge pas). Ce résultat n’est gardé que s’il a moins de micro-arêtes, s’il est valide et de même volume. Une découpe sans défaut ne change pas : appliquée à toutes les esquisses, la remise à la tangence décalait le contour de MERLIN de 3 à 12 µm par rapport à l’esquisse qui le projette, et créait ailleurs le même défaut. `xPreviewShape` applique maintenant le même contrôle qu’Appliquer, reprise NURBS comprise : un solide déchiré n’est plus montré, et le message le dit. La sonde « max vérifié » de l’aperçu vérifie aussi la validité, et parle de distance pour un chanfrein.
+- **Case « tangentes » décochée** : sur la même arête, le chanfrein enlevait 3,29 mm³ au lieu de 0,6 : l’outil débordait de 2 mm à chaque bout et entaillait les murs de la rainure. Le débordement s’arrête maintenant à la première matière rencontrée hors de la section du chanfrein (congés aussi). Quand une arête est ainsi bornée, le noyau passe d’abord, car il suit un mur en biais ou courbe ; il est écarté s’il suit une chaîne tangente, et l’outil arrêté d’équerre reste alors en repli.
+- **Limite** : les copies d’une répétition, découpées en un seul booléen, ne passent pas par cette reprise.
+- **Tests** : `test_tangence_exacte` (nouveau, noyau réel : défaut reproduit sans la correction, puis la commande réelle) ; `test_conge_arete_seule` (murs des deux côtés, d’un seul côté, penchés de 20°, mur + arc tangent). `CACHE_VER` ne change pas.

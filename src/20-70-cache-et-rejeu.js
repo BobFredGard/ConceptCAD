@@ -526,7 +526,8 @@ function* occReplayBodyGen(bid,list){
       const ckC=occCkGet(ckKey);
       const cpC=ckC?occShapeCopy(ckC):null;
       if(cpC){try{result.delete();}catch(e){}result=cpC;return;}
-      const c=occUnifyCutSeams((f.type==='hole'?occCutEach:occCut)(result,shape),result,shape); // fond pile sur une face : pas de mini surface
+      let c=occUnifyCutSeams((f.type==='hole'?occCutEach:occCut)(result,shape),result,shape); // fond pile sur une face : pas de mini surface
+      if(f.type==='extrude'){const c2=occCutSansFaceFine(f,result,c);if(c2){try{c.delete();}catch(e){}c=c2;}} // V0.63.6 : pas de face de quelques microns
       try{result.delete();}catch(e){}try{shape.delete();}catch(e){}
       result=c;
     }else{
