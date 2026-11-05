@@ -1,0 +1,197 @@
+#include "projet.h"
+
+#include <cstdio>
+#include <map>
+#include <nlohmann/json.hpp>
+#include <stdexcept>
+#include <zlib.h>
+
+// ordered_json : garde l'ordre des clés du fichier, comme un objet JavaScript. L'ordre des points
+// décide du point gardé quand deux points quasi confondus fusionnent (skLoopTrace, src/10-scene-3d.js).
+using json = nlohmann::ordered_json;
+
+Esquisse* Document::esquisse(const std::string& id) {
+  for (auto& s : esquisses)
+    if (s.id == id) return &s;
+  return nullptr;
+}
+const Fonction* Document::fonction(const std::string& id) const {
+  for (auto& f : fonctions)
+    if (f.id == id) return &f;
+  return nullptr;
+}
+
+static std::string lireOctets(const std::wstring& chemin) {
+  FILE* f = _wfopen(chemin.c_str(), L"rb");
+  if (!f) throw std::runtime_error("fichier introuvable ou illisible");
+  std::string b;
+  char tampon[65536];
+  size_t n;
+  while ((n = fread(tampon, 1, sizeof tampon, f)) > 0) b.append(tampon, n);
+  fclose(f);
+  return b;
+}
+
+static std::string degonfler(const std::string& gz) {
+  z_stream z{};
+  if (inflateInit2(&z, 16 + MAX_WBITS) != Z_OK) throw std::runtime_error("décompression impossible");
+  z.next_in = reinterpret_cast<Bytef*>(const_cast<char*>(gz.data()));
+  z.avail_in = static_cast<uInt>(gz.size());
+  std::string out;
+  char tampon[262144];
+  int r;
+  do {
+    z.next_out = reinterpret_cast<Bytef*>(tampon);
+    z.avail_out = sizeof tampon;
+    r = inflate(&z, Z_NO_FLUSH);
+    if (r != Z_OK && r != Z_STREAM_END) {
+      inflateEnd(&z);
+      throw std::runtime_error("fichier compressé abîmé");
+    }
+    out.append(tampon, sizeof tampon - z.avail_out);
+  } while (r != Z_STREAM_END);
+  inflateEnd(&z);
+  return out;
+}
+
+static std::string texte(const json& j, const char* k) {
+  auto it = j.find(k);
+  return it != j.end() && it->is_string() ? it->get<std::string>() : std::string();
+}
+static bool vrai(const json& j, const char* k) {
+  auto it = j.find(k);
+  if (it == j.end() || it->is_null()) return false;
+  if (it->is_boolean()) return it->get<bool>();
+  if (it->is_number()) return it->get<double>() != 0;
+  if (it->is_string()) return !it->get<std::string>().empty();
+  return true;
+}
+static bool vec3(const json& j, const char* k, Vec3& v) {
+  auto it = j.find(k);
+  if (it == j.end() || !it->is_array() || it->size() < 3 || !(*it)[0].is_number()) return false;
+  for (int i = 0; i < 3; i++) v[i] = (*it)[i].get<double>();
+  return true;
+}
+
+static void lireEsquisse(const json& js, Document& d, std::map<std::string, int>& refus) {
+  Esquisse s;
+  s.id = texte(js, "id");
+  s.nom = texte(js, "name");
+  s.plan = texte(js, "plane");
+  // planeBasis (src/10-scene-3d.js) : axes portés par l'esquisse, sinon les 3 plans d'origine
+  Vec3 u, v, n;
+  if (vec3(js, "axU", u) && vec3(js, "axV", v) && vec3(js, "axN", n)) {
+    s.u = u;
+    s.v = v;
+    s.n = n;
+  } else if (s.plan == "XZ") {
+    s.u = {1, 0, 0};
+    s.v = {0, 0, 1};
+    s.n = {0, -1, 0};
+  } else if (s.plan == "YZ") {
+    s.u = {0, 1, 0};
+    s.v = {0, 0, 1};
+    s.n = {1, 0, 0};
+  }
+  vec3(js, "origin", s.o);
+  if (js.contains("points") && js["points"].is_object())
+    for (auto& [k, p] : js["points"].items()) {
+      s.ordre.push_back(k);
+      s.points[k] = Pt{p.value("x", 0.0), p.value("y", 0.0)};
+    }
+  if (js.contains("entities"))
+    for (auto& je : js["entities"]) {
+      Entite e;
+      e.id = texte(je, "id");
+      e.t = texte(je, "t");
+      e.p1 = texte(je, "p1");
+      e.p2 = texte(je, "p2");
+      e.pc = texte(je, "pc");
+      e.pa = texte(je, "pa");
+      e.pb = texte(je, "pb");
+      if (je.contains("r") && je["r"].is_number()) e.r = je["r"].get<double>();
+      e.construction = vrai(je, "construction");
+      e.ref = vrai(je, "ref");
+      if (e.t != "line" && e.t != "arc" && e.t != "circle" && e.t != "cpoint" && !e.construction)
+        refus["esquisse : « " + e.t + " »"]++;
+      s.entites.push_back(std::move(e));
+    }
+  if (vrai(js, "cg")) refus["esquisse sur plan de construction"]++;
+  if (js.contains("host") && js["host"].is_object()) {
+    auto& h = js["host"];
+    s.hote.feat = texte(h, "feat");
+    s.hote.existe = !s.hote.feat.empty();
+    if (h.contains("tag") && h["tag"].is_string()) s.hote.tag = h["tag"].get<std::string>();
+    s.hote.edge = texte(h, "edge");
+    s.hote.x = h.contains("x") && h["x"].is_number() ? h["x"].get<double>() : 0;
+    s.hote.y = h.contains("y") && h["y"].is_number() ? h["y"].get<double>() : 0;
+    if (h.contains("h") && h["h"].is_number()) {
+      s.hote.h = h["h"].get<double>();
+      s.hote.aH = true;
+    }
+  }
+  d.esquisses.push_back(std::move(s));
+}
+
+static void lireFonction(const json& jf, Document& d, std::map<std::string, int>& refus) {
+  Fonction f;
+  f.id = texte(jf, "id");
+  f.type = texte(jf, "type");
+  f.nom = texte(jf, "name");
+  f.esquisse = texte(jf, "sketchId");
+  f.corps = texte(jf, "body");
+  if (jf.contains("op") && jf["op"].is_string()) f.op = jf["op"].get<std::string>();
+  if (jf.contains("distance") && jf["distance"].is_number()) {
+    f.distance = jf["distance"].get<double>();
+    f.aDistance = true;
+  }
+  f.visible = !(jf.contains("visible") && jf["visible"].is_boolean() && !jf["visible"].get<bool>());
+  f.mid = vrai(jf, "mid");
+  f.flip = vrai(jf, "flip");
+  f.through = vrai(jf, "through");
+  // La répétition se contente de créer des copies, rejouées comme des fonctions : sans effet ici.
+  if (f.visible && f.type != "extrude" && f.type != "repeat") refus["fonction « " + f.type + " »"]++;
+  if (f.visible && f.type == "extrude") {
+    if (vrai(jf, "upto")) refus["extrusion « jusqu'à un objet »"]++;
+    if (vrai(jf, "draft")) refus["extrusion avec dépouille"]++;
+    if (vrai(jf, "repeatId")) refus["extrusion copiée par une répétition"]++;
+    if (jf.contains("profiles") && jf["profiles"].is_array() && !jf["profiles"].empty())
+      refus["extrusion limitée à certaines zones"]++;
+    if (jf.contains("cutBodies") && jf["cutBodies"].is_array() && !jf["cutBodies"].empty())
+      refus["découpe dans plusieurs corps"]++;
+    if (jf.contains("expr") && jf["expr"].is_object() && !jf["expr"].empty()) refus["cote par formule"]++;
+  }
+  d.fonctions.push_back(std::move(f));
+}
+
+Document lireProjet(const std::wstring& chemin) {
+  std::string b = lireOctets(chemin);
+  if (b.size() >= 2 && static_cast<unsigned char>(b[0]) == 0x1f && static_cast<unsigned char>(b[1]) == 0x8b)
+    b = degonfler(b);
+  json racine;
+  try {
+    racine = json::parse(b);
+  } catch (const std::exception&) {
+    throw std::runtime_error("ce n'est pas un projet ConceptCAD lisible");
+  }
+  b.clear();
+  b.shrink_to_fit();
+  const bool lot = racine.contains("doc") && racine["doc"].is_object();
+  const json& j = lot ? racine["doc"] : racine;
+  if (!j.contains("features") || !j.contains("sketches")) throw std::runtime_error("ce fichier ne contient pas de pièce");
+
+  Document d;
+  std::map<std::string, int> refus;
+  d.nom = texte(j, "name");
+  if (j.contains("bodies"))
+    for (auto& c : j["bodies"]) d.corps.push_back(texte(c, "id"));
+  if (d.corps.empty()) d.corps.push_back("b1");
+  for (auto& s : j["sketches"]) lireEsquisse(s, d, refus);
+  for (auto& f : j["features"]) lireFonction(f, d, refus);
+  if (j.contains("params") && j["params"].is_array() && !j["params"].empty()) refus["paramètres nommés"]++;
+  if (lot && racine.contains("imports") && !racine["imports"].empty()) refus["fichier importé"]++;
+  if (j.contains("asm") && j["asm"].is_object()) refus["assemblage"]++;
+  if (j.contains("components") && j["components"].is_array() && !j["components"].empty()) refus["assemblage"]++;
+  for (auto& [k, n] : refus) d.nonPrisEnCharge.push_back(k + " × " + std::to_string(n));
+  return d;
+}

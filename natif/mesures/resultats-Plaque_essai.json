@@ -1,0 +1,241 @@
+{
+ "piece": "Plaque essai.conceptcad",
+ "fonction": 0,
+ "date": "2026-11-05T22:44:48.120Z",
+ "machine": {
+  "coeurs": 24,
+  "memoireGo": 64,
+  "processeur": "Intel(R) Core(TM) i9-14900KF"
+ },
+ "serveur": {
+  "port": 50450,
+  "empreinte": "c208ae63f2935b4d"
+ },
+ "parite": {
+  "navigateur": [
+   {
+    "nom": "tel quel",
+    "volume": 566092.3963356088,
+    "aire": 118557.87276417357,
+    "faces": 398,
+    "aretes": 1200,
+    "sommets": 2400,
+    "solides": 1,
+    "valide": true,
+    "boite": [
+     -0.006215493905425938,
+     -0.006215493905425938,
+     -0.006215493905425938,
+     180.00621549390542,
+     180.00621549390542,
+     20.006215493905426
+    ]
+   },
+   {
+    "nom": "0=5",
+    "volume": 110807.74770975423,
+    "aire": 72521.76956150969,
+    "faces": 202,
+    "aretes": 1200,
+    "sommets": 2400,
+    "solides": 1,
+    "valide": true,
+    "boite": [
+     -0.006215493905425938,
+     -0.006215493905425938,
+     -0.006215493905425938,
+     180.00621549390542,
+     180.00621549390542,
+     5.006215493905426
+    ]
+   },
+   {
+    "nom": "0=12.5",
+    "volume": 323092.3963356077,
+    "aire": 113157.87276417355,
+    "faces": 398,
+    "aretes": 1200,
+    "sommets": 2400,
+    "solides": 1,
+    "valide": true,
+    "boite": [
+     -0.006215493905425938,
+     -0.006215493905425938,
+     -0.006215493905425938,
+     180.00621549390542,
+     180.00621549390542,
+     12.506215493905426
+    ]
+   },
+   {
+    "nom": "0=30",
+    "volume": 890092.3963356059,
+    "aire": 125757.87276417357,
+    "faces": 398,
+    "aretes": 1200,
+    "sommets": 2400,
+    "solides": 1,
+    "valide": true,
+    "boite": [
+     -0.006215493905425938,
+     -0.006215493905425938,
+     -0.006215493905425938,
+     180.00621549390542,
+     180.00621549390542,
+     30.006215493905426
+    ]
+   }
+  ],
+  "natif": [
+   {
+    "nom": "tel quel",
+    "volume": 566092.396335609,
+    "aire": 118557.872764174,
+    "faces": 398,
+    "aretes": 1200,
+    "sommets": 2400,
+    "solides": 1,
+    "valide": true,
+    "boite": [
+     0,
+     0,
+     0,
+     180,
+     180,
+     20
+    ],
+    "ms": 2613.735,
+    "messages": 0
+   },
+   {
+    "nom": "0=5",
+    "volume": 110807.747709754,
+    "aire": 72521.76956151,
+    "faces": 202,
+    "aretes": 1200,
+    "sommets": 2400,
+    "solides": 1,
+    "valide": true,
+    "boite": [
+     0,
+     0,
+     0,
+     180,
+     180,
+     5
+    ],
+    "ms": 2664.31,
+    "messages": 0
+   },
+   {
+    "nom": "0=12.5",
+    "volume": 323092.396335608,
+    "aire": 113157.872764174,
+    "faces": 398,
+    "aretes": 1200,
+    "sommets": 2400,
+    "solides": 1,
+    "valide": true,
+    "boite": [
+     0,
+     0,
+     0,
+     180,
+     180,
+     12.5
+    ],
+    "ms": 2627.707,
+    "messages": 0
+   },
+   {
+    "nom": "0=30",
+    "volume": 890092.396335606,
+    "aire": 125757.872764174,
+    "faces": 398,
+    "aretes": 1200,
+    "sommets": 2400,
+    "solides": 1,
+    "valide": true,
+    "boite": [
+     0,
+     0,
+     0,
+     180,
+     180,
+     30
+    ],
+    "ms": 2649.237,
+    "messages": 0
+   }
+  ],
+  "version": "V0.64.3 ; OCCT : prêt — prismes exacts, booléens Fuse/Cut, congés toutes arêtes, STEP. (OCCT 8.0.1)",
+  "erreursNavigateur": [],
+  "messagesNavigateur": "Ouvert : Plaque essai.conceptcad.",
+  "nonPrisEnCharge": []
+ },
+ "navigateur": [
+  {
+   "repos": {
+    "processus": 8,
+    "prive": 574.2,
+    "detail": "chrome#10=40 chrome#11=2 chrome#12=58 chrome#13=7 chrome#14=3 chrome#15=33 chrome#16=7 chrome#17=423",
+    "ws": 943.7,
+    "engage": 965.4
+   },
+   "apres": {
+    "processus": 8,
+    "prive": 1101.5,
+    "detail": "chrome=38 chrome#1=2 chrome#2=63 chrome#3=7 chrome#4=3 chrome#5=26 chrome#6=7 chrome#7=955",
+    "ws": 1483.6,
+    "engage": 1440.9
+   },
+   "msCalc": 5219.899999976158,
+   "msTotal": 5221.699999988079,
+   "ms90": 5489.199999988079,
+   "tasNoyauMo": 660.875,
+   "erreurs": []
+  }
+ ],
+ "natif": [
+  {
+   "repos": {
+    "processus": 1,
+    "prive": 165.1,
+    "detail": "ConceptCADNatif=165",
+    "ws": 203.3,
+    "engage": 517.4
+   },
+   "apres": {
+    "processus": 1,
+    "prive": 245,
+    "detail": "ConceptCADNatif=245",
+    "ws": 283.5,
+    "engage": 502.8
+   },
+   "msTotal": 5345.266,
+   "ms90": 5842.744,
+   "nb": 120
+  }
+ ],
+ "natifSequentiel": [
+  {
+   "repos": {
+    "processus": 1,
+    "prive": 139.6,
+    "detail": "ConceptCADNatif=140",
+    "ws": 177.6,
+    "engage": 277.9
+   },
+   "apres": {
+    "processus": 1,
+    "prive": 150.4,
+    "detail": "ConceptCADNatif=150",
+    "ws": 188.7,
+    "engage": 279.3
+   },
+   "msTotal": 6314.899,
+   "ms90": 7208.085,
+   "nb": 120
+  }
+ ]
+}

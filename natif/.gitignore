@@ -1,0 +1,4 @@
+# Tiers telecharges, intermediaires de compilation et resultat : jamais dans Git
+.tiers/
+sortie/
+mesures/brut/

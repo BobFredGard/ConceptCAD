@@ -1,0 +1,3 @@
+Tour 1 (interrompu avant le natif sur un coeur, limite d'attente du banc trop courte) :
+ natif    164.8 -> 211.6 Mo | ms 3455.55 nb 120
+ chrome   580.6 -> 1144.3 Mo | calc ms 10514.7 avec image 10517 tas 660.875

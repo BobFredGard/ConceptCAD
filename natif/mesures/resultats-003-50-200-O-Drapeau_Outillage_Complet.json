@@ -1,0 +1,359 @@
+{
+ "piece": "003-50-200-O-Drapeau Outillage Complet.conceptcad",
+ "fonction": 0,
+ "date": "2026-11-05T21:57:29.175Z",
+ "machine": {
+  "coeurs": 24,
+  "memoireGo": 64,
+  "processeur": "Intel(R) Core(TM) i9-14900KF"
+ },
+ "serveur": {
+  "port": 58959,
+  "empreinte": "c208ae63f2935b4d"
+ },
+ "parite": {
+  "navigateur": [
+   {
+    "nom": "tel quel",
+    "volume": 53007.29106259765,
+    "aire": 19758.60128969546,
+    "faces": 15,
+    "aretes": 76,
+    "sommets": 152,
+    "solides": 1,
+    "valide": true,
+    "boite": [
+     -41.054204365848456,
+     -65.05420436584811,
+     -0.05420436584918592,
+     51.05420436584834,
+     95.05420436584919,
+     10.054204365849186
+    ]
+   },
+   {
+    "nom": "0=5",
+    "volume": 17009.999615278655,
+    "aire": 8113.9996918075585,
+    "faces": 7,
+    "aretes": 30,
+    "sommets": 60,
+    "solides": 1,
+    "valide": true,
+    "boite": [
+     14.999999899999816,
+     0.000002219440774552033,
+     -1.0000000710976284e-7,
+     51.000000099999156,
+     95.00000010000001,
+     5.000000100000007
+    ]
+   },
+   {
+    "nom": "0=12.5",
+    "volume": 73379.34826526242,
+    "aire": 20939.198610152518,
+    "faces": 15,
+    "aretes": 76,
+    "sommets": 152,
+    "solides": 1,
+    "valide": true,
+    "boite": [
+     -41.054204365848456,
+     -65.05420436584811,
+     -0.05420436584918592,
+     51.05420436584834,
+     95.05420436584919,
+     12.554204365849186
+    ]
+   },
+   {
+    "nom": "0=30",
+    "volume": 215983.74868391585,
+    "aire": 29203.379853351886,
+    "faces": 15,
+    "aretes": 76,
+    "sommets": 152,
+    "solides": 1,
+    "valide": true,
+    "boite": [
+     -41.054204365848456,
+     -65.05420436584811,
+     -0.05420436584918592,
+     51.05420436584834,
+     95.05420436584919,
+     30.054204365849184
+    ]
+   }
+  ],
+  "natif": [
+   {
+    "nom": "tel quel",
+    "volume": 53007.291062598,
+    "aire": 19758.601289695,
+    "faces": 15,
+    "aretes": 76,
+    "sommets": 152,
+    "solides": 1,
+    "valide": true,
+    "boite": [
+     -41,
+     -65,
+     0,
+     51,
+     95,
+     10
+    ],
+    "ms": 45.93,
+    "messages": 0
+   },
+   {
+    "nom": "0=5",
+    "volume": 17009.999615279,
+    "aire": 8113.999691808,
+    "faces": 7,
+    "aretes": 30,
+    "sommets": 60,
+    "solides": 1,
+    "valide": true,
+    "boite": [
+     15,
+     0.000002,
+     0,
+     51,
+     95,
+     5
+    ],
+    "ms": 32.251,
+    "messages": 0
+   },
+   {
+    "nom": "0=12.5",
+    "volume": 73379.348265262,
+    "aire": 20939.198610153,
+    "faces": 15,
+    "aretes": 76,
+    "sommets": 152,
+    "solides": 1,
+    "valide": true,
+    "boite": [
+     -41,
+     -65,
+     0,
+     51,
+     95,
+     12.5
+    ],
+    "ms": 27.996,
+    "messages": 0
+   },
+   {
+    "nom": "0=30",
+    "volume": 215983.748683916,
+    "aire": 29203.379853352,
+    "faces": 15,
+    "aretes": 76,
+    "sommets": 152,
+    "solides": 1,
+    "valide": true,
+    "boite": [
+     -41,
+     -65,
+     0,
+     51,
+     95,
+     30
+    ],
+    "ms": 30.215,
+    "messages": 0
+   }
+  ],
+  "version": "V0.64.3 ; OCCT : prêt — prismes exacts, booléens Fuse/Cut, congés toutes arêtes, STEP. (OCCT 8.0.1)",
+  "erreursNavigateur": [],
+  "messagesNavigateur": "Ouvert : 003-50-200-O-Drapeau Outillage Complet.conceptcad.",
+  "nonPrisEnCharge": []
+ },
+ "navigateur": [
+  {
+   "repos": {
+    "processus": 8,
+    "prive": 462.3,
+    "detail": "chrome#10=40 chrome#11=2 chrome#12=58 chrome#13=7 chrome#14=3 chrome#15=34 chrome#16=7 chrome#17=312",
+    "ws": 833.5,
+    "engage": 893.6
+   },
+   "apres": {
+    "processus": 8,
+    "prive": 432.3,
+    "detail": "chrome#10=41 chrome#11=1 chrome#12=61 chrome#13=7 chrome#14=3 chrome#15=26 chrome#16=7 chrome#17=285",
+    "ws": 808.7,
+    "engage": 860.3
+   },
+   "msCalc": 62.900000005960464,
+   "msTotal": 63.79999998211861,
+   "ms90": 69.5,
+   "tasNoyauMo": 128,
+   "erreurs": []
+  },
+  {
+   "repos": {
+    "processus": 8,
+    "prive": 458.1,
+    "detail": "chrome#10=39 chrome#11=2 chrome#12=56 chrome#13=7 chrome#14=3 chrome#15=34 chrome#16=7 chrome#17=310",
+    "ws": 830.6,
+    "engage": 889.2
+   },
+   "apres": {
+    "processus": 8,
+    "prive": 433.3,
+    "detail": "chrome#10=41 chrome#11=1 chrome#12=62 chrome#13=7 chrome#14=3 chrome#15=27 chrome#16=7 chrome#17=286",
+    "ws": 810.8,
+    "engage": 856.7
+   },
+   "msCalc": 68.30000001192093,
+   "msTotal": 69,
+   "ms90": 80.39999997615814,
+   "tasNoyauMo": 128,
+   "erreurs": []
+  },
+  {
+   "repos": {
+    "processus": 8,
+    "prive": 463.9,
+    "detail": "chrome#10=41 chrome#11=2 chrome#12=61 chrome#13=7 chrome#14=3 chrome#15=33 chrome#16=7 chrome#17=310",
+    "ws": 836.4,
+    "engage": 897.9
+   },
+   "apres": {
+    "processus": 8,
+    "prive": 448.5,
+    "detail": "chrome#10=42 chrome#11=1 chrome#12=66 chrome#13=7 chrome#14=3 chrome#15=26 chrome#16=7 chrome#17=296",
+    "ws": 826.3,
+    "engage": 874.7
+   },
+   "msCalc": 61.5,
+   "msTotal": 62.30000001192093,
+   "ms90": 102.60000002384186,
+   "tasNoyauMo": 128,
+   "erreurs": []
+  }
+ ],
+ "natif": [
+  {
+   "repos": {
+    "processus": 1,
+    "prive": 40.1,
+    "detail": "ConceptCADNatif=40",
+    "ws": 80.5,
+    "engage": 326.9
+   },
+   "apres": {
+    "processus": 1,
+    "prive": 55,
+    "detail": "ConceptCADNatif=55",
+    "ws": 95.3,
+    "engage": 385.3
+   },
+   "msTotal": 19.685,
+   "ms90": 23.742,
+   "nb": 120
+  },
+  {
+   "repos": {
+    "processus": 1,
+    "prive": 40.3,
+    "detail": "ConceptCADNatif=40",
+    "ws": 80.8,
+    "engage": 329.2
+   },
+   "apres": {
+    "processus": 1,
+    "prive": 55.1,
+    "detail": "ConceptCADNatif=55",
+    "ws": 95.7,
+    "engage": 388.3
+   },
+   "msTotal": 35.449,
+   "ms90": 44.351,
+   "nb": 120
+  },
+  {
+   "repos": {
+    "processus": 1,
+    "prive": 40.8,
+    "detail": "ConceptCADNatif=41",
+    "ws": 81.3,
+    "engage": 326.4
+   },
+   "apres": {
+    "processus": 1,
+    "prive": 55,
+    "detail": "ConceptCADNatif=55",
+    "ws": 95.6,
+    "engage": 385.3
+   },
+   "msTotal": 19.21,
+   "ms90": 20.065,
+   "nb": 120
+  }
+ ],
+ "natifSequentiel": [
+  {
+   "repos": {
+    "processus": 1,
+    "prive": 28.4,
+    "detail": "ConceptCADNatif=28",
+    "ws": 68.7,
+    "engage": 151.1
+   },
+   "apres": {
+    "processus": 1,
+    "prive": 34.1,
+    "detail": "ConceptCADNatif=34",
+    "ws": 74.5,
+    "engage": 156.4
+   },
+   "msTotal": 24.026,
+   "ms90": 26.44,
+   "nb": 120
+  },
+  {
+   "repos": {
+    "processus": 1,
+    "prive": 28.5,
+    "detail": "ConceptCADNatif=29",
+    "ws": 68.9,
+    "engage": 151.1
+   },
+   "apres": {
+    "processus": 1,
+    "prive": 34.1,
+    "detail": "ConceptCADNatif=34",
+    "ws": 74.6,
+    "engage": 156.3
+   },
+   "msTotal": 22.103,
+   "ms90": 23.592,
+   "nb": 120
+  },
+  {
+   "repos": {
+    "processus": 1,
+    "prive": 28.5,
+    "detail": "ConceptCADNatif=29",
+    "ws": 68.8,
+    "engage": 150.8
+   },
+   "apres": {
+    "processus": 1,
+    "prive": 34.2,
+    "detail": "ConceptCADNatif=34",
+    "ws": 74.6,
+    "engage": 156.1
+   },
+   "msTotal": 21.322,
+   "ms90": 25.606,
+   "nb": 120
+  }
+ ]
+}
