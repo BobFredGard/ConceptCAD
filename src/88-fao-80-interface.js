@@ -641,7 +641,7 @@ function faoInitUI(){
         if(rv==='fondu'||rv==='masque')faoViewerRap=rv; }catch(e){}
       const brap=document.createElement('button'); brap.id='faoRapBtn';
       brap.textContent=faoViewerRapLabel(faoViewerRap);
-      brap.title='Traces rapides (rouges) : ✓ tous (30 %) — ~ fondus (8 %, contexte sans bruit) — ✕ masqués (coupe et entrées seules).';
+      brap.title='Rapides (jaune) et remontées (magenta) : ✓ bien visibles — ~ fondus (8 %, contexte sans bruit) — ✕ masqués (coupe et entrées seules).';
       brap.onclick=function(){ faoViewerRapNext(); };
       faoVwRapBtn=brap;
       r2.appendChild(brap);

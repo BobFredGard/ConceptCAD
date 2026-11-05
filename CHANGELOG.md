@@ -8,7 +8,7 @@ sont sorties le 2026-09-30j.
 Code dans `src/` · livrable `fusion_mvp.html` (généré par `build.js`) · architecture et
 garde-fous en tête de `src/00-entete-et-outils.js`.
 
-**578 versions**, de `2026-09-28b` à `V0.59.1` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
+**579 versions**, de `2026-09-28b` à `V0.59.2` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
 comme dans le fichier d'origine.
 
 ---
@@ -6716,3 +6716,12 @@ Retour sur Barquette : esquisses fantômes mal placées dans le fil, Symétrie i
 **Correctif** : la répétition prend le corps de sa première source, fichiers existants compris (volume de Barquette inchangé, 224 133,4 mm³) ; l'esquisse retient sa place de création (`sk.at`) ; une esquisse vide que rien ne cite disparaît à la fermeture et à l'ouverture du fichier, sans étape d'annulation qui la ramène ; un plan ne retient une fonction que s'il s'appuie sur le solide, et le chemin d'un balayage porte désormais les mêmes liens que son profil ; plans indépendants et esquisses libres gardent leur place quand la fonction voisine est déplacée ; sélecteur « Corps actif » dans le bandeau de timeline (corps masqué signalé, corps pas encore créé ou retiré grisé).
 
 **Test** : `test_fil_esquisses`, sur une copie du fichier de l'utilisateur.
+
+## V0.59.2 - FAO : rapides et remontées bien visibles, et distincts
+
+Les rapides et les remontées étaient tous orange pâle et presque transparents.
+
+- **Aperçu** : rapides en jaune, remontées (G0 vertical qui monte) en magenta, trait plein et épais comme les transitions vertes ; coupe et transitions inchangées. Le bouton « Rapides » les estompe ou les masque toujours.
+- **Simulation** : mêmes couleurs, trait fin inchangé.
+- **Limite** : le jaune se voit moins sur une pièce jaune.
+- **Tests** : `test_fao_circ` (la remontée est séparée des autres rapides). `CACHE_VER` ne change pas : parcours et G-code identiques.

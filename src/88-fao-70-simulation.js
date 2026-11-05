@@ -401,16 +401,17 @@ function faoViewerStockCreate(){
   return g;
 }
 function faoViewerLineCreate(vw){
-  // Polyline continue, couleur par vertex façon Fusion 360 (2026-10-13-007) :
-  // bleu = coupe, orange = rapide, vert = plongée (G1 vertical descendant —
-  // 2026-10-08-004) ou entrée étiquetée ent (hélice, rampe, arc circ,
-  // descente d'entrée — 005).
+  // Polyline continue, couleur par vertex : bleu = coupe, jaune = rapide,
+  // magenta = remontée (G0 vertical qui monte), vert = plongée (G1 vertical
+  // descendant — 2026-10-08-004) ou entrée étiquetée ent (hélice, rampe, arc
+  // circ, descente d'entrée — 005).
   const pos=[], col=[];
   vw.pts.forEach(function(p,i){
     pos.push(p.x,p.y,p.z);
     const q=(i>0)?vw.pts[i-1]:null;
     const plg=p.ent|| (q&&!p.r&&!q.r&&Math.abs(p.x-q.x)<1e-9&&Math.abs(p.y-q.y)<1e-9&&p.z<q.z-1e-9);
-    const c=(i>0&&p.r)?0xff9f0a:(plg?0x30d158:0x2f80ff);
+    const ret=q&&p.r&&Math.abs(p.x-q.x)<1e-9&&Math.abs(p.y-q.y)<1e-9&&p.z>q.z+1e-9;
+    const c=(i>0&&p.r)?(ret?FAO_COL_REMONTEE:FAO_COL_RAPIDE):(plg?0x30d158:0x2f80ff);
     col.push(((c>>16)&255)/255, ((c>>8)&255)/255, (c&255)/255);
   });
   try{

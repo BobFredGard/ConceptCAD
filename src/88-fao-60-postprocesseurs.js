@@ -445,6 +445,7 @@ function faoClearPreview(){
   faoPrevGroup=null;
 }
 let faoPrevMissing=0; // ops sans parcours en memoire lors du dernier redraw en LECTURE
+const FAO_COL_RAPIDE=0xffd60a, FAO_COL_REMONTEE=0xff2d92; // mêmes couleurs dans l'aperçu et la simulation
 function faoSegSplit(moves,clip,prev0){
   // Segments par PAIRE CONSECUTIVE de la séquence réelle : coupe->coupe en
   // vert, tout passage par un rapide en rouge. Aucune liaison fantôme.
@@ -456,8 +457,10 @@ function faoSegSplit(moves,clip,prev0){
   // `prev0` (2026-10-09-005) : move précédent fourni par l'appelant — le
   // premier segment d'un découpage incrémental n'est jamais fantôme. Le
   // dernier move est renvoyé (`out.prev`) pour enchaîner le fragment suivant.
-  // -> {cut:[x,y,z,...], rap:[x,y,z,...], plg:[x,y,z,...], prev:move|null}
-  const out={cut:[],rap:[],plg:[],prev:null};
+  // REMONTÉES (`ret`) = G0 strictement vertical qui monte, séparé des autres
+  // rapides pour être reconnaissable à l'écran.
+  // -> {cut:[x,y,z,...], rap:[...], ret:[...], plg:[...], prev:move|null}
+  const out={cut:[],rap:[],ret:[],plg:[],prev:null};
   if(!moves||!moves.length){ out.prev=(prev0===undefined)?null:prev0; return out; }
   let prev=(prev0===undefined)?null:prev0;
   const seg=function(arr,ax,ay,az,bx,by,bz,coupe){
@@ -473,7 +476,8 @@ function faoSegSplit(moves,clip,prev0){
       // 2026-10-14-006 : TRANSITIONS entre traces (m.tr : liaisons au contact)
       // en vert avec les plongées (demande : « transitions en vert, comme pour
       // la plongée »).
-      const arr=(m.r)?out.rap:((plg||m.ent||m.tr)?out.plg:out.cut); // le segment prend la commande de SA destination (G0 -> rouge)
+      const ret=!!m.r&&Math.abs(m.x-prev.x)<1e-9&&Math.abs(m.y-prev.y)<1e-9&&m.z>prev.z+1e-9;
+      const arr=ret?out.ret:((m.r)?out.rap:((plg||m.ent||m.tr)?out.plg:out.cut)); // le segment prend la commande de SA destination
       const coupe=!m.r;
       if(m.arc&&!prev.r){
         let pp={x:prev.x,y:prev.y,z:prev.z};
@@ -538,10 +542,9 @@ function faoThickSegs(arr,color,alpha,px){
   return mesh;
 }
 function faoPrevAdd(group,sp){
-  // Ajoute le résultat d'un faoSegSplit au groupe de l'aperçu : coupe bleue
-  // 2f80ff, rapides orange ff9f0a (30% de transparence), plongées/entrées
-  // vertes 30d158 — palette façon Fusion 360 (2026-10-13-007). Renvoie les objets créés (pour retrait provisoire
-  // — 2026-10-09-005, dessin progressif) ; échec silencieux (stubs/tests).
+  // Ajoute le résultat d'un faoSegSplit au groupe de l'aperçu. Renvoie les objets
+  // créés (pour retrait provisoire — 2026-10-09-005, dessin progressif) ; échec
+  // silencieux (stubs/tests).
   const objs=[];
   if(!group||!sp)return objs;
   const add=function(arr,color,alpha,px){
@@ -557,13 +560,16 @@ function faoPrevAdd(group,sp){
       group.add(ls); objs.push(ls);
     }catch(e){}
   };
-  // 2026-10-13-007 : palette façon Fusion 360 — coupe BLEUE, rapides
-  // ORANGE, plongées/entrées VERTES (feed). Rapides en transparence : ils
-  // ne doivent pas masquer le parcours bleu.
+  // Palette : coupe BLEUE, transitions/plongées VERTES, rapides JAUNES,
+  // remontées MAGENTA. Rapides et remontées ont le même trait plein et épais
+  // que les transitions ; le bouton « Rapides » (faoViewerRap) les estompe à
+  // 8 % ou les masque pour dégager la coupe.
   add(sp.cut,0x2f80ff);
-  // 2026-10-13-003 : rapides selon faoViewerRap (tous 30 % / fondu 8 % /
-  // masqués) — bouton « Rapides » de la barre Exécution.
-  if(faoViewerRap!=='masque')add(sp.rap,0xff9f0a,faoViewerRap==='fondu'?0.08:0.3,2);
+  if(faoViewerRap!=='masque'){
+    const a=faoViewerRap==='fondu'?0.08:undefined;
+    add(sp.rap,FAO_COL_RAPIDE,a,2);
+    add(sp.ret||[],FAO_COL_REMONTEE,a,2);
+  }
   add(sp.plg||[],0x30d158,undefined,2);
   return objs;
 }
@@ -592,8 +598,7 @@ function faoRefreshPreview(mode){
     if(typeof THREE==='undefined'||typeof scene==='undefined'||!scene)return 0;
     faoPrevGroup=new THREE.Group(); faoPrevGroup.name='faoPreview';
     const mk=function(moves,clip){
-      // Coupe en vert, rapides en rouge, plongées en bleu — faoSegSplit borne la
-      // coupe à la zone et laisse les G0 traverser librement (cf. faoSegSplit).
+      // faoSegSplit borne la coupe à la zone et laisse les G0 traverser librement.
       if(!moves||!moves.length)return;
       try{ faoPrevAdd(faoPrevGroup,faoSegSplit(moves,clip)); }catch(e){}
     };
