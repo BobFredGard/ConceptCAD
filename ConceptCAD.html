@@ -376,7 +376,7 @@ input[type=range]{accent-color:var(--primary);width:100%}
  * peut changer sans rien casser. CACHE_VER (parcours FAO) reste indépendant.
  */
 
-const APP_VER='V0.63.7';
+const APP_VER='V0.63.8';
 try{console.log('[ConceptCAD] version '+APP_VER);}catch(e){}
 try{var mfSv=document.getElementById('mfSplashVer');if(mfSv)mfSv.textContent=APP_VER;}catch(e){} // écran de démarrage
 
@@ -8867,6 +8867,8 @@ function delWkMain(){
     if(m.t==='boot'){
       try{
         let fac;
+        // fichier autonome : en file://, le worker ne lit pas les adresses de la page, il recrée les siennes
+        if(m.emb){const U=k=>URL.createObjectURL(m.emb[k]);m.js=U('js');m.wasm=U('wasm');m.v3={compat:U('compat'),table:U('table')};}
         if(m.v3){ // essai noyau v3 (?noyau=v3, 96-noyau) : colle en module ES + traducteur des appels
           fac=(await occtV3Compat(m.v3.compat,m.v3.table))((await import(m.js)).default);
         }else{
@@ -8942,7 +8944,7 @@ function delWkStart(){
   me.w.onmessage=ev=>delWkMsg(me,ev.data||{});
   me.w.onerror=ev=>{try{ev.preventDefault();}catch(e){}delWkCrash(me,(ev&&ev.message)||'erreur du worker');};
   me.boot=setTimeout(()=>delWkCrash(me,'démarrage du noyau de calcul trop long'),180000);
-  const msg={t:'boot',js:occtFileUrl(OCCT_FILES.js),wasm:occtFileUrl(OCCT_FILES.wasm),mod:delWkMod,
+  const msg={t:'boot',emb:window.__EMB?window.__EMB.blobs:null,js:occtFileUrl(OCCT_FILES.js),wasm:occtFileUrl(OCCT_FILES.wasm),mod:delWkMod,
     v3:OCCT_V3?{compat:occtFileUrl(OCCT_FILES.compat),table:occtFileUrl(OCCT_FILES.table)}:null};
   try{me.w.postMessage(msg);}catch(e){msg.mod=null;me.w.postMessage(msg);}
   return me;
@@ -65391,7 +65393,7 @@ function occtFileUrl(p){ // chemin relatif : marche en http(s) comme en file://
 // occt-build/), avec le traducteur des appels 1.1.1 (occt/v3/compat-v3.cjs). En secours :
 // « ?noyau=actuel » dans l'adresse = l'ancien noyau 1.1.1 (occt/opencascade.*). En file:// : l'ancien
 // (le .wasm s'y lit seulement par « ⚙ Noyau .wasm… » et la colle v3 est un module ES).
-const OCCT_V3=(()=>{try{return location.protocol!=='file:'&&location.protocol!=='about:'&&new URLSearchParams(location.search).get('noyau')!=='actuel';}catch(e){return false;}})();
+const OCCT_V3=(()=>{try{if(window.__EMB)return true; /* fichier autonome (tools/autonome.cjs) : noyau 8 dans le HTML */ return location.protocol!=='file:'&&location.protocol!=='about:'&&new URLSearchParams(location.search).get('noyau')!=='actuel';}catch(e){return false;}})();
 const OCCT_FILES=OCCT_V3
   ?{js:'occt/v3/conceptcad_v3.js',wasm:'occt/v3/conceptcad_v3.wasm',
     compat:'occt/v3/compat-v3.cjs',table:'occt/v3/compat-v3.json'}
@@ -65446,6 +65448,7 @@ function occCacheLoad(){
 (async()=>{
   if(window.__occBootDone)return; // garde anti-double-démarrage (import lent + repli script)
   window.__occBootDone=true;
+  if(window.__EMB)await window.__EMB.pret(OCCT_FILES); // fichier autonome : adresses blob à la place des fichiers
   // V0.31.2 : fenêtre de l'écran de démarrage (2 s, ou clic / Échap) — le fil reste libre pour
   // le bouton de dépannage « Vider le cache » ; la compilation gèle sinon toute l'animation.
   try{if(window.__mfGate)await window.__mfGate;}catch(e){}
@@ -65483,7 +65486,7 @@ function occCacheLoad(){
   // SANS cache exploitable, on ne tente RIEN : en file:// le .wasm ne peut pas être lu, et la
   // compilation des ~65 Mo monopolise le thread principal (onglet figé, aucun message) —
   // on reste en moteur maillage avec une explication claire.
-  const isFile=location.protocol==='file:'||location.protocol==='about:';
+  const isFile=!window.__EMB&&(location.protocol==='file:'||location.protocol==='about:');
   let cached=null;
   if(isFile){try{cached=await occCacheLoad();}catch(e){cached=null;}}
   if(isFile&&!cached){
@@ -80287,7 +80290,7 @@ let rtLoading=null;
 function rtLoad(){
   if(window.RDPT)return Promise.resolve(window.RDPT);
   if(!rtLoading)rtLoading=new Promise((ok,ko)=>{
-    const s=document.createElement('script');s.src=RT_SRC;
+    const s=document.createElement('script');s.src=(window.__EMB&&window.__EMB.rt)||RT_SRC;
     s.onload=()=>window.RDPT?ok(window.RDPT):ko(new Error('bibliothèque vide'));
     s.onerror=()=>{rtLoading=null;s.remove();ko(new Error(RT_SRC+' introuvable'));};
     document.head.appendChild(s);

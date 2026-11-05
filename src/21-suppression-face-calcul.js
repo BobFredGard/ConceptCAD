@@ -69,6 +69,8 @@ function delWkMain(){
     if(m.t==='boot'){
       try{
         let fac;
+        // fichier autonome : en file://, le worker ne lit pas les adresses de la page, il recrée les siennes
+        if(m.emb){const U=k=>URL.createObjectURL(m.emb[k]);m.js=U('js');m.wasm=U('wasm');m.v3={compat:U('compat'),table:U('table')};}
         if(m.v3){ // essai noyau v3 (?noyau=v3, 96-noyau) : colle en module ES + traducteur des appels
           fac=(await occtV3Compat(m.v3.compat,m.v3.table))((await import(m.js)).default);
         }else{
@@ -144,7 +146,7 @@ function delWkStart(){
   me.w.onmessage=ev=>delWkMsg(me,ev.data||{});
   me.w.onerror=ev=>{try{ev.preventDefault();}catch(e){}delWkCrash(me,(ev&&ev.message)||'erreur du worker');};
   me.boot=setTimeout(()=>delWkCrash(me,'démarrage du noyau de calcul trop long'),180000);
-  const msg={t:'boot',js:occtFileUrl(OCCT_FILES.js),wasm:occtFileUrl(OCCT_FILES.wasm),mod:delWkMod,
+  const msg={t:'boot',emb:window.__EMB?window.__EMB.blobs:null,js:occtFileUrl(OCCT_FILES.js),wasm:occtFileUrl(OCCT_FILES.wasm),mod:delWkMod,
     v3:OCCT_V3?{compat:occtFileUrl(OCCT_FILES.compat),table:occtFileUrl(OCCT_FILES.table)}:null};
   try{me.w.postMessage(msg);}catch(e){msg.mod=null;me.w.postMessage(msg);}
   return me;

@@ -8,7 +8,7 @@ sont sorties le 2026-09-30j.
 Code dans `src/` · livrable `fusion_mvp.html` (généré par `build.js`) · architecture et
 garde-fous en tête de `src/00-entete-et-outils.js`.
 
-**593 versions**, de `2026-09-28b` à `V0.63.7` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
+**594 versions**, de `2026-09-28b` à `V0.63.8` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
 comme dans le fichier d'origine.
 
 ---
@@ -6855,3 +6855,11 @@ Demande : « Le chanfrein se montre à la construction mais fait une erreur quan
 - **Bandeau** : modifier un paramètre à la main (fenêtre ƒx, mini-liste) sur une pièce lourde peint « Modification du paramètre — calcul en cours… » avant le rejeu (`parAfterChange(true)`, `parRebuildBandeau`). Le seuil est la durée du recalcul précédent (0,3 s) ; sans mesure, plus de 20 fonctions.
 - **Limite** : la page reste figée pendant le calcul (environ 5 s sur Barquette). La préchauffe par tranches `regenWarm` a été essayée et écartée : 24 s au lieu de 5 s, et 5 s de blocage restaient à la fin. Sa lenteur n’est pas expliquée.
 - **Tests** : `tests/browser/modif-barre.spec.cjs` (nouveau) : bandeau présent puis retiré, temps comparable au recalcul sans bandeau, même résultat que le rejeu synchrone, un seul Ctrl+Z. `CACHE_VER` ne change pas.
+
+## V0.63.8 - Fichier autonome : ConceptCAD en un seul fichier, OCCT 8 par double-clic et sans Internet
+
+- **Besoin** : utiliser ConceptCAD sur un PC sans connexion. Ouvert par double-clic, `ConceptCAD.html` prend l’ancien noyau OCCT 7.4 : le navigateur refuse en `file://` le programme de démarrage du noyau 8 (module ES) et les fichiers qu’il lit à côté de lui.
+- **Correctif** : `npm run autonome` (`tools/autonome.cjs`) fabrique `ConceptCAD-autonome.html` à partir du livrable, avec le noyau 8 (wasm compressé, 43 → 12 Mo), son traducteur et `threejs/` à l’intérieur : environ 23 Mo, sans recompiler le noyau. L’application reconnaît ce mode à `window.__EMB` : adresses blob à la place des fichiers (`96-noyau`, rendu par rayons), et le worker de calcul reçoit les Blob pour recréer ses propres adresses, celles de la page lui étant interdites en `file://`.
+- **Mesuré** (Barquette, Chromium, dossier vide, hors ligne) : mêmes temps qu’en `localhost` (ouverture 6,9 s, modification 4,7 s, Régénérer 9,6 s), noyau prêt en 3 s au lieu de 1 s.
+- **Limites** : fichier trop gros pour Git, ignoré et refait à chaque livraison dans le dépôt principal. Enregistrement et carte graphique réelle non vérifiés par les tests automatiques, Firefox non essayé.
+- **Tests** : `test_autonome` (nouveau) et `tests/browser/autonome.spec.cjs` (nouveau). `ConceptCAD.html` ne change pas de comportement. `CACHE_VER` ne change pas.

@@ -21,7 +21,7 @@ let rtLoading=null;
 function rtLoad(){
   if(window.RDPT)return Promise.resolve(window.RDPT);
   if(!rtLoading)rtLoading=new Promise((ok,ko)=>{
-    const s=document.createElement('script');s.src=RT_SRC;
+    const s=document.createElement('script');s.src=(window.__EMB&&window.__EMB.rt)||RT_SRC;
     s.onload=()=>window.RDPT?ok(window.RDPT):ko(new Error('bibliothèque vide'));
     s.onerror=()=>{rtLoading=null;s.remove();ko(new Error(RT_SRC+' introuvable'));};
     document.head.appendChild(s);

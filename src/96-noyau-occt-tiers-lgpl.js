@@ -62,7 +62,7 @@ function occtFileUrl(p){ // chemin relatif : marche en http(s) comme en file://
 // occt-build/), avec le traducteur des appels 1.1.1 (occt/v3/compat-v3.cjs). En secours :
 // « ?noyau=actuel » dans l'adresse = l'ancien noyau 1.1.1 (occt/opencascade.*). En file:// : l'ancien
 // (le .wasm s'y lit seulement par « ⚙ Noyau .wasm… » et la colle v3 est un module ES).
-const OCCT_V3=(()=>{try{return location.protocol!=='file:'&&location.protocol!=='about:'&&new URLSearchParams(location.search).get('noyau')!=='actuel';}catch(e){return false;}})();
+const OCCT_V3=(()=>{try{if(window.__EMB)return true; /* fichier autonome (tools/autonome.cjs) : noyau 8 dans le HTML */ return location.protocol!=='file:'&&location.protocol!=='about:'&&new URLSearchParams(location.search).get('noyau')!=='actuel';}catch(e){return false;}})();
 const OCCT_FILES=OCCT_V3
   ?{js:'occt/v3/conceptcad_v3.js',wasm:'occt/v3/conceptcad_v3.wasm',
     compat:'occt/v3/compat-v3.cjs',table:'occt/v3/compat-v3.json'}
@@ -117,6 +117,7 @@ function occCacheLoad(){
 (async()=>{
   if(window.__occBootDone)return; // garde anti-double-démarrage (import lent + repli script)
   window.__occBootDone=true;
+  if(window.__EMB)await window.__EMB.pret(OCCT_FILES); // fichier autonome : adresses blob à la place des fichiers
   // V0.31.2 : fenêtre de l'écran de démarrage (2 s, ou clic / Échap) — le fil reste libre pour
   // le bouton de dépannage « Vider le cache » ; la compilation gèle sinon toute l'animation.
   try{if(window.__mfGate)await window.__mfGate;}catch(e){}
@@ -154,7 +155,7 @@ function occCacheLoad(){
   // SANS cache exploitable, on ne tente RIEN : en file:// le .wasm ne peut pas être lu, et la
   // compilation des ~65 Mo monopolise le thread principal (onglet figé, aucun message) —
   // on reste en moteur maillage avec une explication claire.
-  const isFile=location.protocol==='file:'||location.protocol==='about:';
+  const isFile=!window.__EMB&&(location.protocol==='file:'||location.protocol==='about:');
   let cached=null;
   if(isFile){try{cached=await occCacheLoad();}catch(e){cached=null;}}
   if(isFile&&!cached){
