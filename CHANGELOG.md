@@ -8,7 +8,7 @@ sont sorties le 2026-09-30j.
 Code dans `src/` · livrable `fusion_mvp.html` (généré par `build.js`) · architecture et
 garde-fous en tête de `src/00-entete-et-outils.js`.
 
-**595 versions**, de `2026-09-28b` à `V0.64.0` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
+**596 versions**, de `2026-09-28b` à `V0.64.1` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
 comme dans le fichier d'origine.
 
 ---
@@ -6873,3 +6873,12 @@ Demande : « Il faudrait enregistrer chaque pièce avec son environnement propre
 - **Annulation** : changer d’environnement écrit le brouillon, sans étape de Ctrl+Z ni rejeu (`vEnvTouched`).
 - **Limites** : appareil photo, qualité et finition de l’image restent communs à toutes les pièces ; une image HDRI n’est toujours pas dans le fichier (à réimporter sur un autre PC).
 - **Tests** : `test_environnement_piece` (nouveau, 16 contrôles) ; `rendu.spec` ; ouverture d’un `.conceptcad` et rechargement contrôlés dans le navigateur. `CACHE_VER` ne change pas.
+
+## V0.64.1 - README revu en profondeur, version autonome à télécharger
+
+- **Demande** : quand la V0.64.0 sera finie, « revoir le README en profondeur » et ajouter le lien Dropbox « pour proposer la version autonome à ceux qui la souhaitent ».
+- **Lien** : bouton en tête du README, phrase sous l’image et tableau de la section Démarrage, qui passe du bas de la page au début.
+- **Erreurs corrigées** : le double-clic sur `ConceptCAD.html` ne donne pas le noyau exact (mode maillage ou ancien noyau OCCT 7.4, lent) ; « dans un seul fichier HTML » ne valait que pour la version autonome ; les aimants coupaient en deux la liste des pièces normalisées.
+- **Rangement** : perçage sur cylindre, clavette, grands changements de cote et fil de construction rejoignent les fonctions 3D ; « Fichiers » devient une partie à part ; « Modifier » passe en liste ; les instructions de développement sont regroupées à la fin. La fonction RENDU « environnement par pièce » de V0.64.0 est décrite dans RENDU.
+- **Limites** : le README indique ce que les tests ne couvrent pas dans la version autonome (enregistrement, carte graphique réelle, Firefox). La copie sur Dropbox reste un geste de livraison, pas un automatisme de `npm run autonome`.
+- **Tests** : `test_docs_version`, liens internes contrôlés. L’application ne change pas ; seul son numéro de version change. `CACHE_VER` ne change pas.
