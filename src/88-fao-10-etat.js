@@ -84,6 +84,7 @@ function faoSanitiseOps(s){
     if(P.mode==='plan'||P.mode==='min5')out.mode=P.mode;
     if(out.clear||out.retr||out.mode)s.planes=out; else delete s.planes;
   }else if(s.planes!==undefined)delete s.planes;
+  if(s.liftMin!==undefined&&!(+s.liftMin>0))delete s.liftMin; // V0.61.0 : retrait minimum entre passes (mm)
   if(s.fixture&&typeof s.fixture==='object'){
     if(!isFinite(+s.fixture.z0))delete s.fixture.z0;
     if(!isFinite(+s.fixture.z1))delete s.fixture.z1;

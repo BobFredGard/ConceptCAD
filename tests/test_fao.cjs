@@ -220,9 +220,10 @@ const vm=require('vm');
     "att(mOG.laisse===0.5&&mOG.radial===undefined,'geodesique : laisse conservee');",
     // --- plan de retrait : défaut dessus+25, utilisé entre outils
     "att(faoRetractZ(job)===50,'retrait auto = z1+25');",
-    "att(/G0 Z25\\.000/.test(sbi),'retrait inter-outils (50-25=25 relatif)');",
-    "jobB.retract=60;",
-    "att(/G0 Z35\\.000/.test(faoPost(jobB,'siemens630').code),'retrait manuel 60 -> Z35');",
+    "att(/G0 Z100\\.000/.test(sbi),'changement d outil au degagement (125-25=100 relatif)');",
+    "jobB.safeZ=60;",
+    "att(/G0 Z35\\.000/.test(faoPost(jobB,'siemens630').code),'degagement manuel 60 -> Z35');",
+    "delete jobB.safeZ;",
     "delete jobB.retract;",
     // --- Liang-Barsky + clipping
     "const lb=faoClipLB({x:-10,y:5},{x:10,y:5},{x0:0,y0:0,x1:10,y1:10});",

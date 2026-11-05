@@ -662,14 +662,14 @@ function faoMovesOpToPos(mv,fr){
 }
 function faoSeqSafeOp(job,op,fr,mv,prev){
   // Rapides d'une opération au repère propre (3+2), mouvements en repère posage :
-  //  - entre deux points : retrait / translation / plongée au plan de dégagement de
+  //  - entre deux points : retrait / translation / plongée au plan de retrait de
   //    l'opération, le long de SON Z (plus de remontée selon le Z du posage) ;
   //  - entrée : au plan de sécurité du posage au-dessus du point d'entrée, puis le long
   //    du Z de l'opération depuis son plan de retrait ;
   //  - sortie : le long du Z de l'opération jusqu'à son plan de retrait, puis au plan du posage.
   const jo=faoOpJob(job,op,fr),safeO=faoClearAbs(op,jo);
   const retrO=Math.max(safeO,faoRetractAbs(op,jo)); // entrée / sortie : jusqu'au plan de RETRAIT de l'opération
-  const hop=faoClearAbs(null,job);
+  const hop=faoClearAbs(null,job), linkO=faoLinkPlane(op,jo);
   const toO=function(p){const q=faoToF(fr,faoToW(fr.P,[+p.x,+p.y,+p.z]));return {r:p.r?1:0,x:q[0],y:q[1],z:q[2]};};
   const toP=function(p){const w=faoPtOpToPos(fr,[p.x,p.y,p.z]);return {r:1,x:w[0],y:w[1],z:w[2]};};
   const out=[];
@@ -686,7 +686,7 @@ function faoSeqSafeOp(job,op,fr,mv,prev){
       if(prev)put({r:1,x:prev.x,y:prev.y,z:zh});
       put({r:1,x:e.x,y:e.y,z:zh});put(e);
     }else{
-      const ins=faoSafeAhead(pO,mO,safeO);
+      const ins=faoSafeAhead(pO,mO,linkO);
       if(ins)ins.forEach(function(J){put(toP(J));});
     }
     out.push(m);pO=mO;

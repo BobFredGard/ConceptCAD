@@ -121,6 +121,7 @@ function faoOpMovesKey(op,job){
     for(const k in base){
       if(!Object.prototype.hasOwnProperty.call(base,k)||k==='ops'||k==='open')continue;
       if(k==='name'||k==='id')continue; // libelle / identifiant : jamais une trajectoire
+      if(k==='liftMin')continue; // V0.61.0 : appliqué après le calcul (faoOpLinks), aucun parcours à refaire
       if(k==='holeInfo')continue; // nature des trous d'un STEP (taraudé…) : aucun effet sur les tracés
       if(k==='sketches'||k==='walls')continue; // V0.23.20 : esquisses/corps FAO -> géométrie seule (ci-dessous)
       js[k]=job[k]; // posage vu par l'opération : son brut (repère de l'opération)
@@ -1154,9 +1155,9 @@ function faoRetractZ(setup){
   return (isFinite(+s.z1)?+s.z1:0)+25;
 }
 /* ----- plan de sécurité / dégagement : 100 mm au-dessus de la pièce ----- */
-// Tout RAPIDE qui translate en XY passe par ce plan : on remonte d'abord, on
-// traverse au plan, puis on plonge. Jamais de translation en Z bas (l'outil
-// ne doit pas traverser la matière en G0).
+// V0.61.0 : plan de l'approche de chaque opération, du changement d'outil, de la
+// rotation du plateau et de la fin de programme. Les rapides ENTRE LES PASSES
+// suivent le Retrait (faoOpLinks, src/88-fao-55-liaisons.js).
 function faoSafeZ(job){
   if(job&&job.planes&&job.planes.clear){
     const z=faoPlaneZ(job.planes.clear,null,job,0);
@@ -1185,9 +1186,14 @@ function faoSeqSafe(job,seule){
   // seule=true : LECTURE SEULE — un parcours absent de la memoire est IGNORE
   // (absent:true), jamais calcule : afficher/masquer une trace ne regenerate rien.
   const res=[]; let prev=null;
-  ((job&&job.ops)||[]).forEach(function(op){
-    if(!op||op.on===false)return;
-    const safe=faoClearAbs(op,job); // plan de dégagement de CETTE opération
+  const opsOn=((job&&job.ops)||[]).filter(function(op){return op&&op.on!==false;});
+  // V0.61.0 : retrait minimum = carte de la matière restante (src/88-fao-55-liaisons.js)
+  let ctx=null;
+  if(!(job&&job.planes&&job.planes.mode==='plan')&&opsOn.length){
+    ctx=faoLinkCtx(job,opsOn);
+    if(ctx)ctx.lift=faoLiftMin(job);
+  }
+  opsOn.forEach(function(op){
     let mv=null;
     if(seule){
       mv=faoOpMovesTry(op,job);
@@ -1196,14 +1202,8 @@ function faoSeqSafe(job,seule){
     // repère propre (3+2) : dégagements le long du Z de L'OPÉRATION (src/89-fao-posage-repere.js)
     const fr=(function(){try{return faoOpFrame(job,op);}catch(e){return null;}})();
     if(fr&&mv.length){const q=faoSeqSafeOp(job,op,fr,mv,prev);prev=q.prev;res.push({op:op,moves:q.out});return;}
-    const out=[];
-    for(let i=0;i<mv.length;i++){
-      const m=mv[i];
-      const ins=faoSafeAhead(prev,m,safe);
-      if(ins)for(let k=0;k<ins.length;k++)out.push(ins[k]);
-      out.push(m);
-      prev=m;
-    }
+    const out=faoOpLinks(job,op,mv,prev,ctx);
+    if(out.length)prev=out[out.length-1];
     // Perçage émis en cycle dialecte : la machine repose au plan du cycle
     // (plan de retrait de l'opération = RTP), sous le plan de sécurité.
     if(op.type==='drill'&&mv.length){

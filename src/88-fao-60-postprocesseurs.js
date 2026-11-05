@@ -97,9 +97,9 @@ function faoPost(job,postId){
   const name=faoProgName(job.name);
   const wcs=job.wcs||'G54';
   const OG=faoOriginPoint(job), OX=OG[0], OY=OG[1], OZ=OG[2], ox=OX, oy=OY, oz=OZ;
-  // Repli : plan de retrait du posage (aucune op ON -> groupe sans bloc).
-  const retr=faoRetractZ(job);
-  let retrPrev=retr; // plan de retrait du groupe précédent (retrait inter-outils)
+  // Repli : plan de dégagement du posage (aucune op ON -> groupe sans bloc).
+  const retr=faoSafeZ(job);
+  let retrPrev=retr; // V0.61.0 : plan de DÉGAGEMENT du groupe précédent (changement d'outil, fin de programme)
   // Indexation 3+2 (table C + B) : {0,0} = 3 axes strictement inchangé.
   const ORI=faoOrient(job), ori32=(ORI.b!==0||ORI.c!==0);
   const groups=faoJobMoves(job);
@@ -174,12 +174,12 @@ function faoPost(job,postId){
   groups.forEach(function(g,gi){
     const t=g.tool;
     const S=faoFmtS(t.s), F=faoFmtF(t.f), FP=faoFmtF(t.plunge);
-    // Plan de retrait du groupe en cours = plan de sa 1re opération (hérité
+    // Plan de dégagement du groupe en cours = plan de sa 1re opération (hérité
     // du posage sinon) — 2026-10-08-002, plans par opération.
     let retrCur=retr;
     for(let bi=0;bi<(g.blocks||[]).length;bi++){
       const qb=g.blocks[bi]&&g.blocks[bi].op;
-      if(qb&&qb.on!==false){ retrCur=faoRetractAbs(qb,job); break; }
+      if(qb&&qb.on!==false){ retrCur=faoClearAbs(qb,job); break; }
     }
     if(gi>0){ nc(CO.off);
       if(c800&&swUsed&&swCur!=='0,0,0')faoPostLines(post.swivelRetract,{}).forEach(nc); // plan incliné : retrait machine
@@ -241,9 +241,6 @@ function faoPost(job,postId){
         oriCur={b:OB.b,c:OB.c};
       }
       const sq=SEQ[qi++]||{moves:b.moves};
-      // Plan de dégagement de CETTE opération (hérité du posage sinon) —
-      // 2026-10-08-002 : la plongée/translation passe par son propre plan.
-      const safeB=faoClearAbs(b.op,job);
       // P1-a : perçage émis en cycle dialecte — le déroulé G0/G1 reste la
       // source prévisualisation/estimation/garde-fou mais n'est pas écrit ici.
       const DC=faoDrillCycle(b.op,joB,oz,!!toB);
@@ -254,6 +251,12 @@ function faoPost(job,postId){
         // V0.33.3 : taraud à gauche — Fagor : broche en sens inverse (M04) le temps du cycle, le
         // G84 inverse à son tour au fond pour ressortir ; Siemens : pas négatif dans CYCLE84.
         const tapLH=!!(DC.tap&&DC.tap.lh);
+        // V0.61.0 : approche du premier trou par le dégagement, comme toute opération
+        if(prev&&!toB&&DC.holes&&DC.holes.length){
+          const zA=faoClearAbs(b.op,job);
+          nc('G0 Z'+faoFmtXYZ(Math.max(zA,+prev.z)-oz));
+          nc('G0 X'+faoFmtXYZ(+DC.holes[0].x-ox)+' Y'+faoFmtXYZ(+DC.holes[0].y-oy));
+        }
         if(fag&&tapLH)nc('M04');
         (DC.holes||[]).forEach(function(H){
           const X='X'+faoFmtXYZ(+H.x-ox), Y='Y'+faoFmtXYZ(+H.y-oy);
@@ -325,7 +328,7 @@ function faoPost(job,postId){
         }
         return;
       }
-      let first=true; const b32=!!(b.op&&faoOpFrame(job,b.op));
+      let first=true;
       if(toB){
         // CYCLE800 : mouvements ramenés dans le plan incliné ; un arc de l'opération (linéarisé
         // dans le posage) redevient un seul G2/G3 quand tous ses segments sont là, dans l'ordre
@@ -360,13 +363,7 @@ function faoPost(job,postId){
         return;
       }
       sq.moves.forEach(function(m){
-        // Plan de sécurité : retrait sur place -> translation au plan -> plongée.
-        const ins=b32?null:faoSafeAhead(prev,m,safeB); // 3+2 : déjà fait le long de son Z (faoSeqSafeOp)
-        if(ins)for(let q=0;q<ins.length;q++){
-          const J=ins[q];
-          nc('G0 X'+faoFmtXYZ(J.x-ox)+' Y'+faoFmtXYZ(J.y-oy)+' Z'+faoFmtXYZ(J.z-oz));
-          first=true;
-        }
+        // V0.61.0 : rapides déjà normalisés par faoSeqSafe (dégagement + liaisons).
         const X='X'+faoFmtXYZ(m.x-ox), Y='Y'+faoFmtXYZ(m.y-oy), Z='Z'+faoFmtXYZ(m.z-oz);
         if(m.r){ nc('G0 '+X+' '+Y+' '+Z); first=true; }
         else if(m.arc){ nc(faoArcWords(m,ox,oy,oz)+fw(m.ent?FE:F)); first=false; }

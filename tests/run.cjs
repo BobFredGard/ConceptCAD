@@ -127,6 +127,7 @@ const SUITES = [
   "test_fao_fond_finition",
   "test_fao_planes",
   "test_fao_securite",
+  "test_fao_liaisons",
   "test_fao_stale",
   "test_fao_refresh",
   "test_fao_cache_idb",

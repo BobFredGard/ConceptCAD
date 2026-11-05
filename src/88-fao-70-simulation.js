@@ -133,13 +133,13 @@ function faoViewerBuild(setup){
     const axO=(function(){ try{ const fr=faoOpFrame(setup,op); return fr?fr.rel.Z.slice():null; }catch(e){ return null; } })();
     if(ext.length)chunks.push({op:op,ext:ext,f:f,d:d,kind:kind,cr:cr,tp:tp,ax:axO});
   });
-  // Encadrement « zone de retrait » (2026-10-08-004) : en tête, l'outil vient
-  // de la zone de retrait ; en queue, il y retourne — dans les DEUX cas un
+  // Encadrement (V0.61.0 : plan de dégagement) : en tête, l'outil vient
+  // du dégagement ; en queue, il y retourne — dans les DEUX cas un
   // rapide vertical au même XY (le segment prend la commande de sa destination,
   // comme partout ailleurs). Segments plus courts que le retrait : inchangé.
   if(chunks.length){
-    const r0=faoRetractAbs(chunks[0].op,setup);
-    const rN=faoRetractAbs(chunks[chunks.length-1].op,setup);
+    const r0=faoClearAbs(chunks[0].op,setup);
+    const rN=faoClearAbs(chunks[chunks.length-1].op,setup);
     const e0=chunks[0].ext;
     if(isFinite(r0)&&r0>e0[0].z+1e-9)e0.unshift({x:e0[0].x,y:e0[0].y,z:r0,r:1});
     const eN=chunks[chunks.length-1].ext, lN=eN[eN.length-1];

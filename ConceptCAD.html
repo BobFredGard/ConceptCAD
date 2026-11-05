@@ -376,7 +376,7 @@ input[type=range]{accent-color:var(--primary);width:100%}
  * peut changer sans rien casser. CACHE_VER (parcours FAO) reste indépendant.
  */
 
-const APP_VER='V0.60.0';
+const APP_VER='V0.61.0';
 try{console.log('[ConceptCAD] version '+APP_VER);}catch(e){}
 try{var mfSv=document.getElementById('mfSplashVer');if(mfSv)mfSv.textContent=APP_VER;}catch(e){} // écran de démarrage
 
@@ -38778,6 +38778,7 @@ function faoSanitiseOps(s){
     if(P.mode==='plan'||P.mode==='min5')out.mode=P.mode;
     if(out.clear||out.retr||out.mode)s.planes=out; else delete s.planes;
   }else if(s.planes!==undefined)delete s.planes;
+  if(s.liftMin!==undefined&&!(+s.liftMin>0))delete s.liftMin; // V0.61.0 : retrait minimum entre passes (mm)
   if(s.fixture&&typeof s.fixture==='object'){
     if(!isFinite(+s.fixture.z0))delete s.fixture.z0;
     if(!isFinite(+s.fixture.z1))delete s.fixture.z1;
@@ -41054,6 +41055,7 @@ function faoOpMovesKey(op,job){
     for(const k in base){
       if(!Object.prototype.hasOwnProperty.call(base,k)||k==='ops'||k==='open')continue;
       if(k==='name'||k==='id')continue; // libelle / identifiant : jamais une trajectoire
+      if(k==='liftMin')continue; // V0.61.0 : appliqué après le calcul (faoOpLinks), aucun parcours à refaire
       if(k==='holeInfo')continue; // nature des trous d'un STEP (taraudé…) : aucun effet sur les tracés
       if(k==='sketches'||k==='walls')continue; // V0.23.20 : esquisses/corps FAO -> géométrie seule (ci-dessous)
       js[k]=job[k]; // posage vu par l'opération : son brut (repère de l'opération)
@@ -42087,9 +42089,9 @@ function faoRetractZ(setup){
   return (isFinite(+s.z1)?+s.z1:0)+25;
 }
 /* ----- plan de sécurité / dégagement : 100 mm au-dessus de la pièce ----- */
-// Tout RAPIDE qui translate en XY passe par ce plan : on remonte d'abord, on
-// traverse au plan, puis on plonge. Jamais de translation en Z bas (l'outil
-// ne doit pas traverser la matière en G0).
+// V0.61.0 : plan de l'approche de chaque opération, du changement d'outil, de la
+// rotation du plateau et de la fin de programme. Les rapides ENTRE LES PASSES
+// suivent le Retrait (faoOpLinks, src/88-fao-55-liaisons.js).
 function faoSafeZ(job){
   if(job&&job.planes&&job.planes.clear){
     const z=faoPlaneZ(job.planes.clear,null,job,0);
@@ -42118,9 +42120,14 @@ function faoSeqSafe(job,seule){
   // seule=true : LECTURE SEULE — un parcours absent de la memoire est IGNORE
   // (absent:true), jamais calcule : afficher/masquer une trace ne regenerate rien.
   const res=[]; let prev=null;
-  ((job&&job.ops)||[]).forEach(function(op){
-    if(!op||op.on===false)return;
-    const safe=faoClearAbs(op,job); // plan de dégagement de CETTE opération
+  const opsOn=((job&&job.ops)||[]).filter(function(op){return op&&op.on!==false;});
+  // V0.61.0 : retrait minimum = carte de la matière restante (src/88-fao-55-liaisons.js)
+  let ctx=null;
+  if(!(job&&job.planes&&job.planes.mode==='plan')&&opsOn.length){
+    ctx=faoLinkCtx(job,opsOn);
+    if(ctx)ctx.lift=faoLiftMin(job);
+  }
+  opsOn.forEach(function(op){
     let mv=null;
     if(seule){
       mv=faoOpMovesTry(op,job);
@@ -42129,14 +42136,8 @@ function faoSeqSafe(job,seule){
     // repère propre (3+2) : dégagements le long du Z de L'OPÉRATION (src/89-fao-posage-repere.js)
     const fr=(function(){try{return faoOpFrame(job,op);}catch(e){return null;}})();
     if(fr&&mv.length){const q=faoSeqSafeOp(job,op,fr,mv,prev);prev=q.prev;res.push({op:op,moves:q.out});return;}
-    const out=[];
-    for(let i=0;i<mv.length;i++){
-      const m=mv[i];
-      const ins=faoSafeAhead(prev,m,safe);
-      if(ins)for(let k=0;k<ins.length;k++)out.push(ins[k]);
-      out.push(m);
-      prev=m;
-    }
+    const out=faoOpLinks(job,op,mv,prev,ctx);
+    if(out.length)prev=out[out.length-1];
     // Perçage émis en cycle dialecte : la machine repose au plan du cycle
     // (plan de retrait de l'opération = RTP), sous le plan de sécurité.
     if(op.type==='drill'&&mv.length){
@@ -42145,6 +42146,214 @@ function faoSeqSafe(job,seule){
     res.push({op:op,moves:out});
   });
   return res;
+}
+
+/* ═══════════════ 88-fao-55-liaisons.js — fao 55 liaisons ═══════════════ */
+/* ===================== LIAISONS ENTRE PASSES ===================== */
+// V0.61.0 : rôle de chaque plan (demande utilisateur) :
+//  - Dégagement : position avant le travail de chaque opération, changement
+//    d'outil, rotation du plateau, fin de programme ;
+//  - Retrait : hauteur des rapides ENTRE LES PASSES d'une opération ;
+//  - mode 'min5' (« Retrait minimum ») : la liaison ne monte que de job.liftMin
+//    au-dessus du plus haut de ses deux bouts ET de la matière survolée, sans
+//    dépasser le plan de retrait.
+// Tout se joue ici, APRÈS le calcul des parcours : aucun parcours à régénérer
+// (CACHE_VER inchangé, liftMin hors de faoOpMovesKey).
+//
+// La matière survolée vient d'une carte de hauteurs refaite à chaque séquence :
+// le brut plein, le modèle et les corps à éviter comme plancher, puis ce que les
+// passes précédentes ont réellement enlevé. Elle ne descend que là où l'outil a
+// entièrement balayé la maille : en cas de doute, elle reste trop haute.
+const FAO_LIFT_DEF=5;
+function faoLiftMin(job){
+  const v=job?+job.liftMin:NaN;
+  return (isFinite(v)&&v>0)?v:FAO_LIFT_DEF;
+}
+function faoLinkPlane(op,job){
+  // Plan de retrait de l'opération, jamais sous le dessus du brut.
+  const top=(job&&job.stock&&isFinite(+job.stock.z1))?+job.stock.z1:
+    (op&&isFinite(+op.z))?+op.z:(op&&isFinite(+op.ztop))?+op.ztop:0;
+  return Math.max(faoRetractAbs(op,job),top);
+}
+function faoHMapDisc(rad,cell,prof){
+  // Mailles entières sous un disque : [di, dj, surélévation due au profil d'outil]
+  const out=[], n=Math.ceil(rad/cell);
+  for(let j=-n;j<=n;j++)for(let i=-n;i<=n;i++){
+    const d=Math.hypot(i,j)*cell;
+    if(d<=rad)out.push([i,j,prof?prof(d):0]);
+  }
+  return out;
+}
+function faoHMapRaster(H,F,G,mesh){
+  // Plancher = dessus du maillage, par maille (triangles dilatés d'une maille).
+  const v=mesh.v, c=G.cell;
+  for(let t=0;t<mesh.t.length;t++){
+    const a=v[mesh.t[t][0]], b=v[mesh.t[t][1]], d=v[mesh.t[t][2]];
+    const zMax=Math.max(a[2],b[2],d[2]);
+    const i0=Math.max(0,Math.floor((Math.min(a[0],b[0],d[0])-G.x0)/c)-1), i1=Math.min(G.nx-1,Math.ceil((Math.max(a[0],b[0],d[0])-G.x0)/c)+1);
+    const j0=Math.max(0,Math.floor((Math.min(a[1],b[1],d[1])-G.y0)/c)-1), j1=Math.min(G.ny-1,Math.ceil((Math.max(a[1],b[1],d[1])-G.y0)/c)+1);
+    const ux=b[0]-a[0], uy=b[1]-a[1], wx=d[0]-a[0], wy=d[1]-a[1];
+    const det=ux*wy-uy*wx, L=Math.max(Math.hypot(ux,uy),Math.hypot(wx,wy),1e-9);
+    const flat=Math.abs(det)<1e-6*L*L; // triangle vu par la tranche : sa boîte entière
+    const eU=flat?0:1.5*c*Math.hypot(wx,wy)/Math.abs(det), eW=flat?0:1.5*c*Math.hypot(ux,uy)/Math.abs(det);
+    for(let j=j0;j<=j1;j++)for(let i=i0;i<=i1;i++){
+      let z=zMax;
+      if(!flat){
+        const px=G.x0+(i+0.5)*c-a[0], py=G.y0+(j+0.5)*c-a[1];
+        const s=(px*wy-py*wx)/det, q=(ux*py-uy*px)/det;
+        if(s<-eU||q<-eW||s+q>1+eU+eW)continue;
+        z=Math.min(zMax,a[2]+s*(b[2]-a[2])+q*(d[2]-a[2])+(eU+eW)*Math.max(Math.abs(b[2]-a[2]),Math.abs(d[2]-a[2])));
+      }
+      const k=j*G.nx+i;
+      if(z>F[k])F[k]=z;
+      if(z>H[k])H[k]=z;
+    }
+  }
+}
+function faoLinkCtx(job,ops){
+  // Carte de hauteurs du posage ; null = matière inconnue -> plan de retrait.
+  const st=job&&job.stock;
+  if(!st||!isFinite(+st.x0)||!isFinite(+st.x1)||!isFinite(+st.y0)||!isFinite(+st.y1)||!isFinite(+st.z1))return null;
+  const meshes=[];
+  try{
+    if(typeof bodies!=='undefined'&&bodies&&bodies.length){
+      const am=faoActiveMesh(job);
+      if(!am||!am.mesh)return null;
+      meshes.push(am.mesh);
+    }
+    const wm=(typeof faoWallsMesh==='function')?faoWallsMesh(job):null;
+    if(wm)meshes.push(wm);
+    ops.forEach(function(op){
+      if(op&&Array.isArray(op.protect)&&op.protect.length){ const rb=faoProtectBodiesMesh(job,op); if(rb)meshes.push(rb); }
+    });
+  }catch(e){ return null; }
+  // Étendue : le brut et tout ce qui dépasse ; maille de 2 mm à D/6, 1500 × 1500 au plus.
+  let x0=+st.x0,x1=+st.x1,y0=+st.y0,y1=+st.y1,dMin=1/0;
+  meshes.forEach(function(M){ M.v.forEach(function(p){
+    if(p[0]<x0)x0=p[0]; if(p[0]>x1)x1=p[0]; if(p[1]<y0)y0=p[1]; if(p[1]>y1)y1=p[1];
+  }); });
+  ops.forEach(function(op){ const t=faoToolById(job,op&&op.toolId); if(t&&+t.d>0&&+t.d<dMin)dMin=+t.d; });
+  const dim=Math.max(x1-x0,y1-y0,1);
+  const cell=Math.max(dim/1500,Math.min(2,isFinite(dMin)?dMin/6:2));
+  const G={x0:x0,y0:y0,cell:cell,nx:Math.ceil((x1-x0)/cell)+1,ny:Math.ceil((y1-y0)/cell)+1};
+  const H=new Float32Array(G.nx*G.ny).fill(-Infinity), F=new Float32Array(G.nx*G.ny).fill(-Infinity);
+  const i0=Math.max(0,Math.floor((+st.x0-x0)/cell)), i1=Math.min(G.nx-1,Math.ceil((+st.x1-x0)/cell));
+  const j0=Math.max(0,Math.floor((+st.y0-y0)/cell)), j1=Math.min(G.ny-1,Math.ceil((+st.y1-y0)/cell));
+  for(let j=j0;j<=j1;j++)for(let i=i0;i<=i1;i++)H[j*G.nx+i]=+st.z1;
+  meshes.forEach(function(M){ faoHMapRaster(H,F,G,M); });
+  const fx=job.fixture;
+  const floor=(fx&&isFinite(+fx.z1))?+fx.z1:-Infinity; // bridage connu en Z seulement
+  const stamps=new Map(), discs=new Map();
+  const stampOf=function(t){
+    // Outil cylindrique, torique, boule ; les autres (pointes, chanfrein) n'enlèvent rien ici.
+    const kind=t&&t.kind, R=t?(+t.d)/2:0;
+    if(!(R>0)||(kind!=='flat'&&kind!=='ball'&&kind!=='bull'))return null;
+    const key=kind+':'+R+':'+(t.cornerR||0);
+    if(!stamps.has(key)){
+      const rc=kind==='ball'?R:(kind==='bull'?Math.min(R,Math.max(0,+t.cornerR||0)):0);
+      const m=cell*0.75; // maille entièrement sous l'outil, surélévation prise à son coin
+      const prof=function(d){ const e=d+m-(R-rc); return (rc>0&&e>0)?rc-Math.sqrt(Math.max(0,rc*rc-e*e)):0; };
+      stamps.set(key,R-m>0?{list:faoHMapDisc(R-m,cell,prof),step:Math.max(cell,R/3),R:R}:{list:[],step:1e9,R:R});
+    }
+    return stamps.get(key);
+  };
+  const stampAt=function(S,x,y,z){
+    const ci=Math.round((x-G.x0)/cell-0.5), cj=Math.round((y-G.y0)/cell-0.5), L=S.list;
+    for(let n=0;n<L.length;n++){
+      const i=ci+L[n][0], j=cj+L[n][1];
+      if(i<0||j<0||i>=G.nx||j>=G.ny)continue;
+      const k=j*G.nx+i, h=z+L[n][2];
+      if(h<H[k])H[k]=h>F[k]?h:F[k];
+    }
+  };
+  const ctx={lift:0,
+    cut:function(S,a,b){
+      // Enlèvement d'un mouvement de coupe a -> b (arcs développés).
+      if(!S||!S.list.length)return;
+      const seg=function(p,q){
+        const L=Math.hypot(q[0]-p[0],q[1]-p[1]), n=Math.max(1,Math.ceil(L/S.step));
+        for(let i=0;i<=n;i++){ const t=i/n; stampAt(S,p[0]+(q[0]-p[0])*t,p[1]+(q[1]-p[1])*t,p[2]+(q[2]-p[2])*t); }
+      };
+      if(b.arc){
+        let pv=[+a.x,+a.y,+a.z];
+        (faoArcSegs(a,b)||[]).forEach(function(q){ seg(pv,q); pv=q; });
+        seg(pv,[+b.x,+b.y,+b.z]);
+      }else seg([+a.x,+a.y,+a.z],[+b.x,+b.y,+b.z]);
+    },
+    tool:function(op){ return stampOf(faoToolById(job,op&&op.toolId)); },
+    top:function(a,b,R){
+      // Plus haut point de matière sous le passage d'un outil de rayon R.
+      const step=Math.max(cell,R/2), rad=R+step/2+cell;
+      const kd=String(rad);
+      if(!discs.has(kd))discs.set(kd,faoHMapDisc(rad,cell,null));
+      const D=discs.get(kd), L=Math.hypot(b.x-a.x,b.y-a.y), n=Math.max(1,Math.ceil(L/step));
+      let top=floor;
+      for(let s=0;s<=n;s++){
+        const t=s/n, ci=Math.round((a.x+(b.x-a.x)*t-G.x0)/cell-0.5), cj=Math.round((a.y+(b.y-a.y)*t-G.y0)/cell-0.5);
+        for(let q=0;q<D.length;q++){
+          const i=ci+D[q][0], j=cj+D[q][1];
+          if(i<0||j<0||i>=G.nx||j>=G.ny)continue;
+          const h=H[j*G.nx+i];
+          if(h>top)top=h;
+        }
+      }
+      return top;
+    }
+  };
+  return ctx;
+}
+function faoOpLinks(job,op,mv,prev,ctx){
+  // Rapides d'une opération (repère du posage) : approche au dégagement, puis
+  // liaisons au plan de retrait ou au retrait minimum.
+  const out=[], safe=faoClearAbs(op,job);
+  const drill=op.type==='drill'; // le cycle machine repose à sa hauteur : déroulé identique
+  const plane=drill?faoZoneSecu(op,job):faoLinkPlane(op,job);
+  const tool=faoToolById(job,op.toolId), R=tool?(+tool.d)/2:0;
+  const low=ctx&&!drill&&R>0?ctx:null;
+  const S=ctx?ctx.tool(op):null;
+  let p=prev, first=true;
+  const put=function(m){ out.push(m); p=m; };
+  for(let i=0;i<mv.length;i++){
+    const m=mv[i];
+    if(first){
+      first=false;
+      const ins=faoSafeAhead(prev,m,safe);
+      if(ins)ins.forEach(function(J){ out.push(J); });
+      if(!m.r&&ctx&&p)ctx.cut(S,p,m);
+      put(m);
+      continue;
+    }
+    if(!m.r){ if(ctx&&p)ctx.cut(S,p,m); put(m); continue; }
+    let k=i;
+    while(k+1<mv.length&&mv[k+1].r)k++;
+    let B=mv[k];
+    if(Math.hypot(B.x-p.x,B.y-p.y)<=1e-9||drill){
+      // sur place (ou perçage) : rapides conservés, jamais une translation sous le plan
+      for(let q=i;q<=k;q++){
+        const ins=faoSafeAhead(p,mv[q],plane);
+        if(ins)ins.forEach(function(J){ out.push(J); });
+        put(mv[q]);
+      }
+    }else{
+      let zL=Math.max(plane,+p.z,+B.z);
+      if(low){
+        // Plongée verticale qui suit : le rapide s'arrête à la montée choisie au-dessus
+        // de la matière, plutôt qu'à la hauteur de calcul du parcours (brut + Sortie).
+        const N=mv[k+1];
+        if(N&&!N.r&&!N.arc&&+N.z<+B.z&&Math.hypot(N.x-B.x,N.y-B.y)<=1e-9){
+          const zB=low.top(B,B,R)+low.lift;
+          if(zB<+B.z-1e-9&&zB>+N.z+1e-9)B={r:1,x:B.x,y:B.y,z:zB};
+        }
+        const top=low.top(p,B,R);
+        zL=Math.max(Math.min(Math.max(+p.z,top)+low.lift,plane),+p.z,+B.z,top);
+      }
+      if(p.z<zL-1e-9)out.push({r:1,x:p.x,y:p.y,z:zL});
+      if(B.z<zL-1e-9)out.push({r:1,x:B.x,y:B.y,z:zL});
+      put(B);
+    }
+    i=k;
+  }
+  return out;
 }
 
 /* ═══════════════ 88-fao-60-postprocesseurs.js — fao 60 postprocesseurs ═══════════════ */
@@ -42247,9 +42456,9 @@ function faoPost(job,postId){
   const name=faoProgName(job.name);
   const wcs=job.wcs||'G54';
   const OG=faoOriginPoint(job), OX=OG[0], OY=OG[1], OZ=OG[2], ox=OX, oy=OY, oz=OZ;
-  // Repli : plan de retrait du posage (aucune op ON -> groupe sans bloc).
-  const retr=faoRetractZ(job);
-  let retrPrev=retr; // plan de retrait du groupe précédent (retrait inter-outils)
+  // Repli : plan de dégagement du posage (aucune op ON -> groupe sans bloc).
+  const retr=faoSafeZ(job);
+  let retrPrev=retr; // V0.61.0 : plan de DÉGAGEMENT du groupe précédent (changement d'outil, fin de programme)
   // Indexation 3+2 (table C + B) : {0,0} = 3 axes strictement inchangé.
   const ORI=faoOrient(job), ori32=(ORI.b!==0||ORI.c!==0);
   const groups=faoJobMoves(job);
@@ -42324,12 +42533,12 @@ function faoPost(job,postId){
   groups.forEach(function(g,gi){
     const t=g.tool;
     const S=faoFmtS(t.s), F=faoFmtF(t.f), FP=faoFmtF(t.plunge);
-    // Plan de retrait du groupe en cours = plan de sa 1re opération (hérité
+    // Plan de dégagement du groupe en cours = plan de sa 1re opération (hérité
     // du posage sinon) — 2026-10-08-002, plans par opération.
     let retrCur=retr;
     for(let bi=0;bi<(g.blocks||[]).length;bi++){
       const qb=g.blocks[bi]&&g.blocks[bi].op;
-      if(qb&&qb.on!==false){ retrCur=faoRetractAbs(qb,job); break; }
+      if(qb&&qb.on!==false){ retrCur=faoClearAbs(qb,job); break; }
     }
     if(gi>0){ nc(CO.off);
       if(c800&&swUsed&&swCur!=='0,0,0')faoPostLines(post.swivelRetract,{}).forEach(nc); // plan incliné : retrait machine
@@ -42391,9 +42600,6 @@ function faoPost(job,postId){
         oriCur={b:OB.b,c:OB.c};
       }
       const sq=SEQ[qi++]||{moves:b.moves};
-      // Plan de dégagement de CETTE opération (hérité du posage sinon) —
-      // 2026-10-08-002 : la plongée/translation passe par son propre plan.
-      const safeB=faoClearAbs(b.op,job);
       // P1-a : perçage émis en cycle dialecte — le déroulé G0/G1 reste la
       // source prévisualisation/estimation/garde-fou mais n'est pas écrit ici.
       const DC=faoDrillCycle(b.op,joB,oz,!!toB);
@@ -42404,6 +42610,12 @@ function faoPost(job,postId){
         // V0.33.3 : taraud à gauche — Fagor : broche en sens inverse (M04) le temps du cycle, le
         // G84 inverse à son tour au fond pour ressortir ; Siemens : pas négatif dans CYCLE84.
         const tapLH=!!(DC.tap&&DC.tap.lh);
+        // V0.61.0 : approche du premier trou par le dégagement, comme toute opération
+        if(prev&&!toB&&DC.holes&&DC.holes.length){
+          const zA=faoClearAbs(b.op,job);
+          nc('G0 Z'+faoFmtXYZ(Math.max(zA,+prev.z)-oz));
+          nc('G0 X'+faoFmtXYZ(+DC.holes[0].x-ox)+' Y'+faoFmtXYZ(+DC.holes[0].y-oy));
+        }
         if(fag&&tapLH)nc('M04');
         (DC.holes||[]).forEach(function(H){
           const X='X'+faoFmtXYZ(+H.x-ox), Y='Y'+faoFmtXYZ(+H.y-oy);
@@ -42475,7 +42687,7 @@ function faoPost(job,postId){
         }
         return;
       }
-      let first=true; const b32=!!(b.op&&faoOpFrame(job,b.op));
+      let first=true;
       if(toB){
         // CYCLE800 : mouvements ramenés dans le plan incliné ; un arc de l'opération (linéarisé
         // dans le posage) redevient un seul G2/G3 quand tous ses segments sont là, dans l'ordre
@@ -42510,13 +42722,7 @@ function faoPost(job,postId){
         return;
       }
       sq.moves.forEach(function(m){
-        // Plan de sécurité : retrait sur place -> translation au plan -> plongée.
-        const ins=b32?null:faoSafeAhead(prev,m,safeB); // 3+2 : déjà fait le long de son Z (faoSeqSafeOp)
-        if(ins)for(let q=0;q<ins.length;q++){
-          const J=ins[q];
-          nc('G0 X'+faoFmtXYZ(J.x-ox)+' Y'+faoFmtXYZ(J.y-oy)+' Z'+faoFmtXYZ(J.z-oz));
-          first=true;
-        }
+        // V0.61.0 : rapides déjà normalisés par faoSeqSafe (dégagement + liaisons).
         const X='X'+faoFmtXYZ(m.x-ox), Y='Y'+faoFmtXYZ(m.y-oy), Z='Z'+faoFmtXYZ(m.z-oz);
         if(m.r){ nc('G0 '+X+' '+Y+' '+Z); first=true; }
         else if(m.arc){ nc(faoArcWords(m,ox,oy,oz)+fw(m.ent?FE:F)); first=false; }
@@ -43084,13 +43290,13 @@ function faoViewerBuild(setup){
     const axO=(function(){ try{ const fr=faoOpFrame(setup,op); return fr?fr.rel.Z.slice():null; }catch(e){ return null; } })();
     if(ext.length)chunks.push({op:op,ext:ext,f:f,d:d,kind:kind,cr:cr,tp:tp,ax:axO});
   });
-  // Encadrement « zone de retrait » (2026-10-08-004) : en tête, l'outil vient
-  // de la zone de retrait ; en queue, il y retourne — dans les DEUX cas un
+  // Encadrement (V0.61.0 : plan de dégagement) : en tête, l'outil vient
+  // du dégagement ; en queue, il y retourne — dans les DEUX cas un
   // rapide vertical au même XY (le segment prend la commande de sa destination,
   // comme partout ailleurs). Segments plus courts que le retrait : inchangé.
   if(chunks.length){
-    const r0=faoRetractAbs(chunks[0].op,setup);
-    const rN=faoRetractAbs(chunks[chunks.length-1].op,setup);
+    const r0=faoClearAbs(chunks[0].op,setup);
+    const rN=faoClearAbs(chunks[chunks.length-1].op,setup);
     const e0=chunks[0].ext;
     if(isFinite(r0)&&r0>e0[0].z+1e-9)e0.unshift({x:e0[0].x,y:e0[0].y,z:r0,r:1});
     const eN=chunks[chunks.length-1].ext, lN=eN[eN.length-1];
@@ -47001,8 +47207,8 @@ function faoPlanesCard(setup,op){
     box.appendChild(rh);
   }
   box.appendChild(faoHelp(
-    'Dégagement = plan le plus haut, pour les translations et la rotation du plateau ; '+
-    'Retrait = plan des rapides sans toucher matière ni brides (hérités du posage tant que '+
+    'Dégagement = position avant le travail, changement d’outil et rotation du plateau ; '+
+    'Retrait = rapides entre les passes (hérités du posage tant que '+
     'non modifiés). Haut / Bas = tranche usinée, jamais dépassée : référence + décalage, '+
     'ou une face cliquée.'));
   return box;
@@ -47209,7 +47415,7 @@ function faoOpCardElement(setup,op,i){
     // demi-tour + retrait Z (voir infobulle).
     rp.appendChild(faoLab('Sortie'));
     rp.appendChild(faoNum(isFinite(+setup.secu)?+setup.secu:5,function(v){ setup.secu=Math.max(0,v); },44,0.5,
-      'Sortie de pièce (mm hors matière — réglage du POSAGE, commun à toutes les opérations) : (1) dépassement XY en bout de ligne — l’outil sort de la pièce avant son demi-tour, (2) plafond des remontées locales du mode « Remontées : plan retrait ou +5 mm ». Généralement 5 à 10.'));
+      'Sortie de pièce (mm hors matière — réglage du POSAGE, commun à toutes les opérations) : (1) dépassement XY en bout de ligne — l’outil sort de la pièce avant son demi-tour, (2) hauteur de calcul des parcours et des cycles de perçage en mode « Retrait minimum ». Généralement 5 à 10.'));
   }else if(op.type==='chamfer'){
     faoChamferRows(d,setup,op); // src/89-fao-chanfrein.js
   }else if(faoContourProfil(op)){
@@ -47957,7 +48163,7 @@ function faoSetupFiche(p,setup){
   const rC=faoRow();
   rC.appendChild(faoLab('Sortie'));
   rC.appendChild(faoNum(setup.secu,function(v){ setup.secu=Math.max(0,v); },48,0.5,
-    "Sortie de pièce (mm hors matière) : (1) dépassement XY en bout de ligne — l'outil sort de la pièce de cette valeur avant son demi-tour, (2) plafond des remontées locales du mode « Remontées : plan retrait ou +5 mm ». Généralement 5 à 10."));
+    "Sortie de pièce (mm hors matière) : (1) dépassement XY en bout de ligne — l'outil sort de la pièce de cette valeur avant son demi-tour, (2) hauteur de calcul des parcours et des cycles de perçage en mode « Retrait minimum ». Généralement 5 à 10."));
   rC.appendChild(faoLab('Arrosage'));
   rC.appendChild(faoSel([['flood','M7/M08'],['through','M8'],['off','arrêt']],setup.coolant||'flood',
     function(v){ setup.coolant=v; }));
@@ -47971,14 +48177,19 @@ function faoSetupFiche(p,setup){
   const rMd=faoRow();
   rMd.appendChild(faoLab('Remontées'));
   rMd.appendChild(faoSel([
-    ['min5','Plan retrait ou +5 mm','Défaut : les G0 remontent localement à 5 mm au-dessus de la matière, sans jamais dépasser le plan de retrait (Sortie en borne le plafond).'],
-    ['plan','Toujours plan de retrait','Toutes les remontées montent au plan de retrait — liaisons plus hautes, plus lentes, mais dégagement maximal.']],
+    ['min5','Retrait minimum','Entre deux passes, l’outil ne monte que de la valeur choisie au-dessus de la matière qu’il survole, sans dépasser le plan de retrait.'],
+    ['plan','Toujours plan de retrait','Entre deux passes, l’outil monte toujours au plan de retrait : plus haut et plus lent, mais simple à vérifier.']],
     effP.mode,function(v){ setup.planes=setup.planes||{}; setup.planes.mode=v; },
-    'Remontées (liaisons G0) : toujours le plan de retrait, OU remontée locale minimum 5 mm bornée par le plan de retrait.'));
+    'Remontées entre deux passes : retrait minimum (valeur au choix) OU toujours le plan de retrait.'));
+  if(effP.mode!=='plan'){
+    rMd.appendChild(faoNum(faoLiftMin(setup),function(v){ if(v>0)setup.liftMin=v; },48,0.5,
+      'Retrait minimum (mm) : hauteur de la remontée entre deux passes, au-dessus de la matière survolée. Le plan de retrait reste le plafond.'));
+    rMd.appendChild(faoLab('mm'));
+  }
   p.appendChild(rMd);
   p.appendChild(faoHelp(
-    'Plans en mm par référence (« depuis ») + décalage : dégagement = plan des translations rapides XY, '+
-    'retrait = plan des remontées et des changements d\'outil. Opérations : héritent de ces valeurs '+
+    'Plans en mm par référence (« depuis ») + décalage. Dégagement = position avant le travail, '+
+    'changement d\'outil et rotation du plateau. Retrait = rapides entre les passes. Opérations : héritent de ces valeurs '+
     'tant qu\'elles ne les touchent pas ; tout plan reste ≥ dessus du brut.'));
   p.appendChild(faoH('Machine · temps')); // 2026-10-22-008 : onglet « Temps »
   const rV=faoRow();
@@ -60317,14 +60528,14 @@ function faoMovesOpToPos(mv,fr){
 }
 function faoSeqSafeOp(job,op,fr,mv,prev){
   // Rapides d'une opération au repère propre (3+2), mouvements en repère posage :
-  //  - entre deux points : retrait / translation / plongée au plan de dégagement de
+  //  - entre deux points : retrait / translation / plongée au plan de retrait de
   //    l'opération, le long de SON Z (plus de remontée selon le Z du posage) ;
   //  - entrée : au plan de sécurité du posage au-dessus du point d'entrée, puis le long
   //    du Z de l'opération depuis son plan de retrait ;
   //  - sortie : le long du Z de l'opération jusqu'à son plan de retrait, puis au plan du posage.
   const jo=faoOpJob(job,op,fr),safeO=faoClearAbs(op,jo);
   const retrO=Math.max(safeO,faoRetractAbs(op,jo)); // entrée / sortie : jusqu'au plan de RETRAIT de l'opération
-  const hop=faoClearAbs(null,job);
+  const hop=faoClearAbs(null,job), linkO=faoLinkPlane(op,jo);
   const toO=function(p){const q=faoToF(fr,faoToW(fr.P,[+p.x,+p.y,+p.z]));return {r:p.r?1:0,x:q[0],y:q[1],z:q[2]};};
   const toP=function(p){const w=faoPtOpToPos(fr,[p.x,p.y,p.z]);return {r:1,x:w[0],y:w[1],z:w[2]};};
   const out=[];
@@ -60341,7 +60552,7 @@ function faoSeqSafeOp(job,op,fr,mv,prev){
       if(prev)put({r:1,x:prev.x,y:prev.y,z:zh});
       put({r:1,x:e.x,y:e.y,z:zh});put(e);
     }else{
-      const ins=faoSafeAhead(pO,mO,safeO);
+      const ins=faoSafeAhead(pO,mO,linkO);
       if(ins)ins.forEach(function(J){put(toP(J));});
     }
     out.push(m);pO=mO;

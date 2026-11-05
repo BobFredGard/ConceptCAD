@@ -8,7 +8,7 @@ sont sorties le 2026-09-30j.
 Code dans `src/` · livrable `fusion_mvp.html` (généré par `build.js`) · architecture et
 garde-fous en tête de `src/00-entete-et-outils.js`.
 
-**580 versions**, de `2026-09-28b` à `V0.60.0` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
+**581 versions**, de `2026-09-28b` à `V0.61.0` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
 comme dans le fichier d'origine.
 
 ---
@@ -6733,3 +6733,14 @@ Les rapides et les remontées étaient tous orange pâle et presque transparents
 - **Modèle** : plan de construction tangent (`how:'tangent'`, 78), esquisse dessus, fonction Perçage ordinaire, en une seule étape d’annulation. Le plan se résout à chaque rejeu : le trou suit le cylindre et la référence.
 - **Limites** : face extérieure seulement ; la référence doit exister avant le trou ; cote réglée dans le panneau, pas dessinée en 3D ; répétition autour du cylindre et types de trou autres que le simple débouchant non essayés.
 - **Tests** : `test_percage_cylindre`. `CACHE_VER` ne change pas.
+
+## V0.61.0 - FAO : Dégagement et Retrait séparés, retrait minimum réglable
+
+**FAO : le Dégagement et le Retrait ont enfin chacun leur rôle, et le retrait minimum entre passes est réglable.**
+
+- **Cause** : `faoSeqSafe` et `faoPost` faisaient passer toute translation rapide par le plan de dégagement, même entre deux passes. Avec 100 dans l’un ou l’autre champ, tout remontait à 100 au-dessus du brut.
+- **Dégagement** : approche de chaque opération, changement d’outil, rotation du plateau, fin de programme.
+- **Retrait** : rapides entre les passes (`faoOpLinks`, `src/88-fao-55-liaisons.js`).
+- **Retrait minimum** (remplace « Plan retrait ou +5 mm », reste le défaut, 5 mm, `setup.liftMin`) : montée au-dessus de la matière survolée, plafonnée par le plan de retrait. La matière vient d’une carte de hauteurs : brut plein, modèle et corps à éviter, moins ce que les passes précédentes ont vraiment enlevé. En cas de doute elle reste trop haute : près d’une paroi non usinée, la liaison passe au-dessus de cette paroi.
+- **Limites** : opération en repère propre (3+2) et perçage gardent leur plan (retrait, hauteur du cycle) ; le bridage n’est connu qu’en Z : sa hauteur, si elle est saisie, sert de plancher à toute liaison.
+- **Tests** : `test_fao_liaisons` (cas de la capture, retrait minimum, contrôle de collision sur Cavité par une carte indépendante : 0 traversée, rapides 4,3 m contre 17,8 m au plan haut), `test_fao_securite` et `test_fao_planes` adaptés. `CACHE_VER` ne change pas : aucun parcours à régénérer pour le retrait minimum.

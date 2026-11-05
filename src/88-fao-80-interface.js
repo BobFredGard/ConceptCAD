@@ -1062,8 +1062,8 @@ function faoPlanesCard(setup,op){
     box.appendChild(rh);
   }
   box.appendChild(faoHelp(
-    'Dégagement = plan le plus haut, pour les translations et la rotation du plateau ; '+
-    'Retrait = plan des rapides sans toucher matière ni brides (hérités du posage tant que '+
+    'Dégagement = position avant le travail, changement d’outil et rotation du plateau ; '+
+    'Retrait = rapides entre les passes (hérités du posage tant que '+
     'non modifiés). Haut / Bas = tranche usinée, jamais dépassée : référence + décalage, '+
     'ou une face cliquée.'));
   return box;
@@ -1270,7 +1270,7 @@ function faoOpCardElement(setup,op,i){
     // demi-tour + retrait Z (voir infobulle).
     rp.appendChild(faoLab('Sortie'));
     rp.appendChild(faoNum(isFinite(+setup.secu)?+setup.secu:5,function(v){ setup.secu=Math.max(0,v); },44,0.5,
-      'Sortie de pièce (mm hors matière — réglage du POSAGE, commun à toutes les opérations) : (1) dépassement XY en bout de ligne — l’outil sort de la pièce avant son demi-tour, (2) plafond des remontées locales du mode « Remontées : plan retrait ou +5 mm ». Généralement 5 à 10.'));
+      'Sortie de pièce (mm hors matière — réglage du POSAGE, commun à toutes les opérations) : (1) dépassement XY en bout de ligne — l’outil sort de la pièce avant son demi-tour, (2) hauteur de calcul des parcours et des cycles de perçage en mode « Retrait minimum ». Généralement 5 à 10.'));
   }else if(op.type==='chamfer'){
     faoChamferRows(d,setup,op); // src/89-fao-chanfrein.js
   }else if(faoContourProfil(op)){
@@ -2018,7 +2018,7 @@ function faoSetupFiche(p,setup){
   const rC=faoRow();
   rC.appendChild(faoLab('Sortie'));
   rC.appendChild(faoNum(setup.secu,function(v){ setup.secu=Math.max(0,v); },48,0.5,
-    "Sortie de pièce (mm hors matière) : (1) dépassement XY en bout de ligne — l'outil sort de la pièce de cette valeur avant son demi-tour, (2) plafond des remontées locales du mode « Remontées : plan retrait ou +5 mm ». Généralement 5 à 10."));
+    "Sortie de pièce (mm hors matière) : (1) dépassement XY en bout de ligne — l'outil sort de la pièce de cette valeur avant son demi-tour, (2) hauteur de calcul des parcours et des cycles de perçage en mode « Retrait minimum ». Généralement 5 à 10."));
   rC.appendChild(faoLab('Arrosage'));
   rC.appendChild(faoSel([['flood','M7/M08'],['through','M8'],['off','arrêt']],setup.coolant||'flood',
     function(v){ setup.coolant=v; }));
@@ -2032,14 +2032,19 @@ function faoSetupFiche(p,setup){
   const rMd=faoRow();
   rMd.appendChild(faoLab('Remontées'));
   rMd.appendChild(faoSel([
-    ['min5','Plan retrait ou +5 mm','Défaut : les G0 remontent localement à 5 mm au-dessus de la matière, sans jamais dépasser le plan de retrait (Sortie en borne le plafond).'],
-    ['plan','Toujours plan de retrait','Toutes les remontées montent au plan de retrait — liaisons plus hautes, plus lentes, mais dégagement maximal.']],
+    ['min5','Retrait minimum','Entre deux passes, l’outil ne monte que de la valeur choisie au-dessus de la matière qu’il survole, sans dépasser le plan de retrait.'],
+    ['plan','Toujours plan de retrait','Entre deux passes, l’outil monte toujours au plan de retrait : plus haut et plus lent, mais simple à vérifier.']],
     effP.mode,function(v){ setup.planes=setup.planes||{}; setup.planes.mode=v; },
-    'Remontées (liaisons G0) : toujours le plan de retrait, OU remontée locale minimum 5 mm bornée par le plan de retrait.'));
+    'Remontées entre deux passes : retrait minimum (valeur au choix) OU toujours le plan de retrait.'));
+  if(effP.mode!=='plan'){
+    rMd.appendChild(faoNum(faoLiftMin(setup),function(v){ if(v>0)setup.liftMin=v; },48,0.5,
+      'Retrait minimum (mm) : hauteur de la remontée entre deux passes, au-dessus de la matière survolée. Le plan de retrait reste le plafond.'));
+    rMd.appendChild(faoLab('mm'));
+  }
   p.appendChild(rMd);
   p.appendChild(faoHelp(
-    'Plans en mm par référence (« depuis ») + décalage : dégagement = plan des translations rapides XY, '+
-    'retrait = plan des remontées et des changements d\'outil. Opérations : héritent de ces valeurs '+
+    'Plans en mm par référence (« depuis ») + décalage. Dégagement = position avant le travail, '+
+    'changement d\'outil et rotation du plateau. Retrait = rapides entre les passes. Opérations : héritent de ces valeurs '+
     'tant qu\'elles ne les touchent pas ; tout plan reste ≥ dessus du brut.'));
   p.appendChild(faoH('Machine · temps')); // 2026-10-22-008 : onglet « Temps »
   const rV=faoRow();

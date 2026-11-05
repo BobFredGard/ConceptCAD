@@ -1,7 +1,7 @@
-// 2026-10-06 « FAO plan de sécurité » — aucun rapide ne translate en Z bas
-// Le parcours doit REMONTR sur un plan placé 100 mm au-dessus de la pièce avant
-// de se déplacer vers le prochain usinage : retrait sur place -> translation au
-// plan -> plongée. Toute translation XY en G0 sous le plan traverse la matière.
+// « FAO plan de sécurité » — V0.61.0 : le plan de DÉGAGEMENT sert à l'approche de
+// chaque opération et au changement d'outil ; entre les passes, le mode « Toujours
+// plan de retrait » translate au retrait. Aucune translation XY en G0 sous ces plans.
+// (Le mode « Retrait minimum » et la matière survolée : test_fao_liaisons.)
 // Contrat vérifié ici sur (1) la séquence partagée aperçu/visionneuse/post,
 // (2) le G-code réellement émis, (3) le champ UI.
 const fs=require('fs'),vm=require('vm'),path=require('path');
@@ -77,34 +77,33 @@ const A=(c,m)=>{if(!c){ko++;console.log('  ✗ '+m);}else console.log('  ✓ '+m
     const job=faoDoc();
     const safe=faoSafeZ(job);
     A(safe===160,'document réel : plan = '+(job.stock?job.stock.z1:'?')+' + 100 = '+safe);
+    const planesAv=job.planes;
+    job.planes=Object.assign({},planesAv||{},{mode:'plan'});
     const seq=faoSeqSafe(job);
-    let viol=0, nTravel=0, maxLow=-1e9, nPlan=0;
+    let viol=0, nTravel=0, maxLow=-1e9, nAppr=0;
     for(let i=0;i<seq.length;i++){
       const mv=seq[i].moves;
-      let prev=null;
+      const plan=faoLinkPlane(seq[i].op,job), cl=faoClearAbs(seq[i].op,job);
+      if(seq[i].op.frame||seq[i].op.type==='drill')continue;
+      let prev=i?seq[i-1].moves[seq[i-1].moves.length-1]:null, app=true;
       for(let k=0;k<mv.length;k++){
         const m=mv[k];
         if(prev){
           const dxy=Math.hypot(m.x-prev.x,m.y-prev.y);
-          const rapid=m.r?1:0; // le segment est exécuté par la commande de sa destination
-          if(rapid&&dxy>1e-9){
+          if(m.r&&dxy>1e-9){ // le segment est exécuté par la commande de sa destination
             nTravel++;
-            const lo=Math.min(prev.z,m.z);
-            if(lo<safe-1e-9){ viol++; if(lo>maxLow)maxLow=lo; }
+            const lo=Math.min(prev.z,m.z), lim=app?cl:plan;
+            if(app){ nAppr++; app=false; }
+            if(lo<lim-1e-9){ viol++; if(lo>maxLow)maxLow=lo; }
           }
-          if(m.r&&Math.abs(m.z-safe)<1e-9)nPlan++;
         }
         prev=m;
       }
     }
-    A(viol===0,'séquence réelle : 0 translation XY rapide sous le plan ('+nTravel+
+    A(viol===0,'séquence réelle : 0 translation XY rapide sous le dégagement (approche) ou le retrait ('+nTravel+
        ' translations, viol='+viol+(viol?'), plus bas '+maxLow.toFixed(1):'')+')');
-    // Le seuil était >100 quand les EXCURSIONS hors zone (tours du cadre de
-    // validation, 30 séries de G0) gonflaient ce comptage de ~2 pts par G0 dehors
-    // retirés : le plan reste la voie unique des translations rapides (viol=0).
-    A(nPlan>20,'séquence réelle : le plan est réellement utilisé ('+nPlan+' pts à '+safe+' mm)');
-    A(seq.some(function(b){return b.moves.some(function(m){return m.r&&Math.abs(m.z-safe)<1e-9;});}),
-       'séquence réelle : au moins une opération passe par le plan');
+    A(nAppr>0,'séquence réelle : '+nAppr+' approche(s) au plan de dégagement');
+    job.planes=planesAv; if(!planesAv)delete job.planes;
     // Règle d'atelier (capture) : la zone est un MUR — aucun G0 de l'OPÉRATION
     // ne part « usiner dans le vide ». Les franchissements sanctionnés (changement
     // d'outil, point de repos) sont le fait de la séquence ENTRE deux opérations :
@@ -123,6 +122,8 @@ const A=(c,m)=>{if(!c){ko++;console.log('  ✗ '+m);}else console.log('  ✓ '+m
     // ---- 3. G-code : même invariant, lu dans le programme émis ----
     const J=faoDefaultSetup();
     J.name='SECU'; J.stock={x0:0,y0:0,z0:0,x1:100,y1:80,z1:25};
+    // retrait confondu avec le dégagement : aucune translation XY sous ce plan
+    J.planes={clear:{ref:'brutHaut',dz:100},retr:{ref:'brutHaut',dz:100},mode:'plan'};
     J.ops=[
       {id:'a',on:true,toolId:'T1',type:'pocket',x0:10,y0:10,x1:90,y1:70,ztop:25,zbot:5,ap:10,ae:5},
       {id:'b',on:true,toolId:'T1',type:'contour',x0:10,y0:10,x1:90,y1:70,ztop:5,zbot:0,ap:5},
