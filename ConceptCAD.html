@@ -376,7 +376,7 @@ input[type=range]{accent-color:var(--primary);width:100%}
  * peut changer sans rien casser. CACHE_VER (parcours FAO) reste indépendant.
  */
 
-const APP_VER='V0.61.0';
+const APP_VER='V0.62.0';
 try{console.log('[ConceptCAD] version '+APP_VER);}catch(e){}
 try{var mfSv=document.getElementById('mfSplashVer');if(mfSv)mfSv.textContent=APP_VER;}catch(e){} // écran de démarrage
 
@@ -10029,6 +10029,8 @@ function featIconOf(f){
   if(f.type==='revolve')return (f.op||'add')==='cut'?'◔':'◍';
   if(f.type==='sweep')return (f.op||'add')==='cut'?'≋':'〰';
   if(f.type==='hole')return '⊚';
+  if(f.kwKey)return '🔑'; // clavette, corps séparé (76-clavette)
+  if(f.kw)return '⊟'; // rainure de clavette
   if(f.type==='xthread')return f._err?'⚠':'🔩'; // filetage d'un axe (76-filetage)
   if(f.type==='gear')return f._err?'⚠':'⚙️'; // engrenage (76-engrenage)
   if(f.type==='xmove')return '📐';
@@ -10961,6 +10963,7 @@ function delFeature(f){
   doc.features=doc.features.filter(x=>x.id!==f.id);
   doc.features.forEach(rp=>{if(rp.type==='repeat')rp.base=rp.base.filter(id=>id!==f.id);});
   if(tlMark===f.id)tlMark=null;
+  if(f.kw||f.kwKey)kwOnDelete(f); // rainure de clavette et son corps (76-clavette)
   if(f.type==='xsplit'||f.type==='bscale')splitOnDelete(f); // corps neuf vide d'une scission (85-scinder) ou d'une échelle en copie
 }
 // Le bouton vit ici (sources, jamais la coque HTML — même règle que Révolution) :
@@ -12065,7 +12068,7 @@ function renderProps(){
     /* — extrusion — */
     if(f.type==='extrude'){
       // V0.7.6 : fenêtre de l'extrusion dynamique — boutons à icônes, flèche dans la vue (70-extrusion-dynamique)
-      extDynPanel(p,f);
+      if(f.kw)kwPanel(p,f);else if(f.kwKey)kwKeyPanel(p,f);else extDynPanel(p,f);
     }
     visDel(f);
     return;
@@ -30084,7 +30087,7 @@ let extDynOptOpen=false;  // « ▸ Options » déplié (mémorisé entre deux o
 function extDynFeature(){
   if(typeof sel==='undefined'||!sel||sel.kind!=='feature')return null;
   const f=(doc.features||[]).find(x=>x&&x.id===sel.id);
-  return f&&f.type==='extrude'?f:null;
+  return f&&f.type==='extrude'&&!f.kw&&!f.kwKey?f:null; // rainure de clavette : sa propre fenêtre (76-clavette)
 }
 function extDynEnsure(){
   // Session de la fenêtre : ouverte à la première sélection d'une extrusion
@@ -30702,6 +30705,8 @@ function extName(f){
   // Nom d'affichage : distance signée, symétrique (±) ou « vers un objet » (cible).
   // ⇄ = sens inversé (miroir de la course, opération inchangée) ; ∠ = dépouille.
   if(!f)return'Extrusion';
+  if(f.kw)return kwName(f);
+  if(f.kwKey)return f.name||'Clavette';
   const base=(f.op==='cut'?'Découpe ':'Extrusion ')+skName(f.sketchId);
   const suf=(f.flip?' ⇄':'')+((+f.draft||0)?' ∠'+(+f.draft)+'°':'');
   if(f.upto&&f.upto.ex){
@@ -30911,11 +30916,11 @@ const FDYN_TYPES={revolve:1,sweep:1,hole:1,xfillet:1};
 function fdynFeature(){
   if(typeof sel==='undefined'||!sel||sel.kind!=='feature')return null;
   const f=(doc.features||[]).find(x=>x&&x.id===sel.id);
-  return f&&FDYN_TYPES[f.type]?f:null;
+  return f&&(FDYN_TYPES[f.type]||f.kw)?f:null;
 }
 function fdynEnsure(f){
   // session ouverte à la première sélection (modification) ; une création l'ouvre elle-même
-  if(!f||!FDYN_TYPES[f.type]){fdyn=null;return null;}
+  if(!f||!(FDYN_TYPES[f.type]||f.kw)){fdyn=null;return null;}
   if(!fdyn||fdyn.id!==f.id)fdyn={id:f.id,type:f.type,isNew:false,snap:docSnap(),len:docUndoStack.length};
   return fdyn;
 }
@@ -32080,6 +32085,324 @@ function askRevokePanel(f){
   const p=$('props');p.insertBefore(lab,p.firstChild);
 }
 
+/* ═══════════════ 76-clavette.js — clavette ═══════════════ */
+/* ═══════════════════════════════════════════════════════════════════════════
+   RAINURE DE CLAVETTE AUTOMATIQUE (arbres et alésages)
+   « CAO : j'aimerais une fonction clavette automatique pour les arbres et les alésages »
+   Un clic sur un cylindre : face extérieure = arbre, face intérieure = alésage. Le Ø lu sur la pièce donne
+   la ligne d'ISO 773 (STD_ISO773, 48-composants-normalises) : largeur b, profondeur t1 (arbre) ou t2 (moyeu).
+   Comme le perçage sur cylindre (76-percage-cylindre), trois éléments ordinaires, une étape d'annulation :
+     • un plan tangent (78, how:'tangent'), masqué, qui porte la position et les réglages : el.kw ;
+     • une esquisse posée dessus, dont le contour est RÉÉCRIT par kwSync à chaque rejeu ;
+     • une extrusion en découpe, f.kw = true, dont la profondeur est réécrite de même.
+   La rainure suit donc le Ø : un arbre de 30 passé à 40 change de ligne d'ISO 773 tout seul. Répétition,
+   FAO et mise en plan la voient comme n'importe quelle découpe.
+   La clavette elle-même (« Oui, comme un corps de pièce ») : un corps séparé, en extrusion f.kwKey = id du plan,
+   sur un plan décalé (el2.kwKeyOf) posé au fond de la rainure. kwSync réécrit aussi son contour et sa hauteur.
+   el.kw = {bore, form, iso, b, t, h, L (null = automatique), end (±1, bout ouvert de la forme C), key (clavette posée)}
+   Hauteurs comptées depuis l'axe, ISO 773 : fond à R − t1 (arbre), R + t2 (alésage).
+   ═══════════════════════════════════════════════════════════════════════════ */
+const KW_OVER=1; // mm : l'outil dépasse de la matière, il ne part jamais d'une surface tangente ou confondue
+const KW_FORMS=[['A','Fermée, bouts ronds'],['B','Fermée, bouts droits'],['C','Débouchante d’un côté'],['T','Toute la longueur']];
+function kwDims(kw,D){
+  // Cotes de la rainure pour un Ø D → {b,t,h,row,iso,warn}
+  const row=stdIso773For(D);
+  if(kw.iso!==false&&row)return {b:row[2],h:row[3],t:kw.bore?row[5]:row[4],row,iso:true,warn:''};
+  const b=+kw.b>0?+kw.b:+Math.max(1,D/4).toFixed(1),t=+kw.t>0?+kw.t:+(b*(kw.bore?0.4:0.6)).toFixed(1);
+  const h=+kw.h>0?+kw.h:(row?row[3]:+(b*0.9).toFixed(1));
+  return {b,t,h,row:row||null,iso:false,warn:kw.iso!==false?'Ø '+stdF(D)+' hors d’ISO 773 (6 à 130) : cotes à vérifier':''};
+}
+function kwPlaneOff(kw,R){
+  // Hauteur du plan au-dessus du cylindre : au-dessus de l'arbre, au fond de la rainure dans un alésage
+  return kw.bore?kwDims(kw,2*R).t:KW_OVER;
+}
+function kwAutoLen(kw,D,Lc,row){
+  // Longueur de la série ISO : la plus grande qui tient dans le cylindre, sans dépasser 1,5 × Ø (usage courant)
+  const room=Math.max(0,Lc-(kw.form==='C'?0:2)),top=Math.min(room,1.5*D);
+  const lv=row?STD_KEY_LV.filter(v=>v>=row[6]&&v<=row[7]):STD_KEY_LV;
+  let L=0;lv.forEach(v=>{if(v<=top+1e-9)L=v;});
+  return L||Math.min(room,lv.length?lv[0]:room);
+}
+function kwSketchOf(el){return (doc.sketches||[]).find(s=>s.plane==='CG'&&s.cg&&s.cg.id===el.id)||null;}
+function kwFeatureOf(sk){return sk?(doc.features||[]).find(f=>f&&f.kw&&f.sketchId===sk.id)||null:null;}
+function kwPlaneOf(f){return f&&f.kw?holeCylPlane(f):null;}
+function kwProbe(shape,pts){
+  // Points dans la matière ? → tableau de booléens
+  const cl=occClassifier(shape),T=occt.TopAbs_State.TopAbs_IN;
+  try{
+    return pts.map(q=>{const P=new occt.gp_Pnt_3(q[0],q[1],q[2]);try{cl.Perform(P,1e-6);return cl.State()===T;}finally{P.delete();}});
+  }finally{cl.delete();}
+}
+function kwLoop(form,h,x0,x1,L,open){
+  // Contour en repère d'esquisse : X = axe du cylindre, origine = point de position, h = demi-largeur
+  if(form==='T')return [[x0,-h],[x1,-h],[x1,h],[x0,h]];
+  if(form==='C'){
+    if(open>0){const c=x1-L+h;return [[x1,-h],[x1,h],[c,h],[c,-h,{c:[c,0],ccw:true}]];}
+    const c=x0+L-h;return [[x0,-h],[c,-h],[c,h,{c:[c,0],ccw:true}],[x0,h]];
+  }
+  const a=L/2;
+  if(form==='B')return [[-a,-h],[a,-h],[a,h],[-a,h]];
+  const m=a-h;
+  return [[-m,-h],[m,-h],[m,h,{c:[m,0],ccw:true}],[-m,h],[-m,-h,{c:[-m,0],ccw:true}]];
+}
+/* ----- la clavette, corps séparé ----- */
+function kwKeyPlane(el){return (doc.cgeo||[]).find(c=>c&&c.kwKeyOf===el.id)||null;}
+function kwKeyFeature(el){return (doc.features||[]).find(f=>f&&f.kwKey===el.id)||null;}
+function kwKeyAdd(el){
+  // Plan au fond de la rainure, esquisse, extrusion en nouveau corps. Le contour vient de kwSync.
+  // Le corps actif ne change pas : la suite du travail continue dans la pièce.
+  if(kwKeyFeature(el))return;
+  const n=(doc.cgeo||[]).filter(c=>c&&c.kwKeyOf).length+1;
+  const e2=cgNew('plane','offset',[{k:'cg',id:el.id}],{d:0},'Plan de la clavette '+n);
+  e2.visible=false;e2.kwKeyOf=el.id;
+  const sk={id:uid('sk'),name:'Esquisse '+(doc.sketches.length+1)+' (corps de clavette)',plane:'CG',cg:{id:e2.id},
+    points:{},entities:[],constraints:[],dims:[],seq:1,visible:false,origin:[0,0,0]};
+  cgSyncSketch(sk);
+  doc.sketches.push(sk);
+  const kf={id:uid('ex'),type:'extrude',name:'Clavette',sketchId:sk.id,distance:1,op:'add',visible:true,mid:false,upto:null,kwKey:el.id,newBody:true};
+  kf.body=extNewBody();
+  addFeature(kf);
+  el.kw.key=true;
+}
+function kwKeyRemove(el){
+  // Retire la clavette : fonction, esquisse, plan et corps, s'il n'a rien reçu d'autre
+  const kf=kwKeyFeature(el),e2=kwKeyPlane(el);
+  el.kw.key=false;
+  if(kf){
+    doc.features=doc.features.filter(f=>f!==kf);
+    doc.features.forEach(rp=>{if(rp.type==='repeat')rp.base=rp.base.filter(id=>id!==kf.id);});
+    if(typeof tlMark!=='undefined'&&tlMark===kf.id)tlMark=null;
+  }
+  if(e2){
+    const sk=kwSketchOf(e2);
+    if(sk)doc.sketches=doc.sketches.filter(s=>s!==sk);
+    doc.cgeo=doc.cgeo.filter(c=>c!==e2);
+  }
+  const bid=kf&&kf.body;
+  if(bid&&!doc.features.some(f=>f.body===bid||f.newBody===bid||(f.type==='combine'&&(f.tools||[]).indexOf(bid)>=0))){
+    doc.bodies=doc.bodies.filter(b=>b.id!==bid);
+    if(doc.activeBody===bid)delete doc.activeBody;
+  }
+}
+function kwOnDelete(f){
+  // delFeature : supprimer la rainure retire sa clavette ; supprimer la clavette laisse la rainure
+  if(f.kw){const el=holeCylPlane(f);if(el)kwKeyRemove(el);}
+  else if(f.kwKey){const el=cgGet(f.kwKey);if(el){const k=f;doc.features.push(k);kwKeyRemove(el);}}
+}
+function kwKeySync(el,dm,L,pts){
+  // Fond de la rainure → plan de la clavette ; hauteur vers l'axe dans un alésage, vers l'extérieur sur un arbre
+  const kf=kwKeyFeature(el),e2=kwKeyPlane(el);
+  if(!kf||!e2){if(el.kw.key)kwKeyRemove(el);return;}
+  e2.p.d=el.kw.bore?0:-(dm.t+KW_OVER);
+  kf.distance=el.kw.bore?-dm.h:dm.h;
+  const sk=kwSketchOf(e2);
+  if(sk){
+    const sig=JSON.stringify(pts.map(p=>[+p[0].toFixed(6),+p[1].toFixed(6),p[2]?+p[2].c[0].toFixed(6):null]));
+    if(sk.kwSig!==sig||!(sk.entities||[]).length){
+      sk.points={};sk.entities=[];sk.constraints=[];sk.dims=[];sk.seq=1;
+      stdLoop(sk,pts);sk.kwSig=sig;
+    }
+  }
+  kf.name='Clavette '+stdF(dm.b)+' × '+stdF(dm.h)+' × '+stdF(L);
+  const B=(doc.bodies||[]).find(b=>b.id===kf.body);
+  if(B&&(/^Corps \d+$/.test(B.name||'')||/^Clavette /.test(B.name||'')))B.name=kf.name; // un nom donné à la main reste
+}
+function kwSync(el,ctx){
+  // Réécrit le contour et la profondeur d'après le Ø réel. Appelé par cgResolveAll, plan tout juste résolu.
+  if(!el||!el.kw||!el.fr)return;
+  const sk=kwSketchOf(el);if(!sk)return;
+  const f=kwFeatureOf(sk),kw=el.kw;
+  const c=ctx||{},keep=c.self;c.self=el;
+  try{
+    const g0=cgEvalRef(el.refs[0],c),A=g0&&g0.axis;
+    if(!A||!(A.r>0)||!(A.t1>A.t0))return;
+    const R=+A.r,D=2*R,dm=kwDims(kw,D),warn=[];
+    if(dm.warn)warn.push(dm.warn);
+    const d=cgCylDir(A.d),rev=cgDot(d,cgUnit(A.d))<0;
+    const t0=rev?-A.t1:A.t0,t1=rev?-A.t0:A.t1,Lc=t1-t0;
+    const o=cgArr(el.fr.o),z=cgArr(el.fr.z),y=cgArr(el.fr.y),tO=cgDot(cgSub(o,A.o),d);
+    const g=dm.b/2;
+    if(!(dm.b<D)){el._kwOut={D,b:dm.b,t:dm.t,h:dm.h,L:0,iso:dm.iso,warn:'rainure plus large que le cylindre'};return;}
+    if(!kw.bore&&!(dm.t<R))warn.push('rainure plus profonde que le rayon');
+    const eLat=cgDot(cgSub(o,A.o),y),foot=cgAdd(A.o,cgMul(y,eLat));
+    const at=(t,rad)=>cgAdd(cgAdd(foot,cgMul(d,t)),cgMul(z,rad));
+    // Un bout de cylindre libre : l'outil dépasse. Un épaulement ou un fond : il s'y arrête, à fleur.
+    let wall0=false,wall1=false,thin=false;
+    const shape=cgShapeFor(c);
+    if(shape){
+      const rp=kw.bore?R+dm.t/2:R-dm.t/2;
+      try{
+        const P=kwProbe(shape,[at(t0-0.2,rp),at(t1+0.2,rp),at((t0+t1)/2,R+dm.t+0.2)]);
+        wall0=P[0];wall1=P[1];thin=kw.bore&&!P[2];
+      }catch(e){}
+    }
+    if(thin)warn.push('moyeu trop mince : la rainure le traverse');
+    const auto=kwAutoLen(kw,D,Lc,dm.row);
+    const asked=+kw.L>0?+kw.L:auto; // longueur utile, sur la matière
+    let L=asked,Lout=asked;
+    const x0=t0-tO-(wall0?0:KW_OVER),x1=t1-tO+(wall1?0:KW_OVER),open=kw.end<0?-1:1;
+    if(kw.form==='T')Lout=Lc;
+    else if(kw.form==='C'){
+      if(asked>Lc+1e-6)warn.push('clavette plus longue que le cylindre');
+      Lout=Math.max(Math.min(asked,Lc),g+0.01);
+      L=Lout+(open>0?(wall1?0:KW_OVER):(wall0?0:KW_OVER)); // comptée depuis le bout de l'outil
+    }else{
+      if(kw.form==='A'&&L<dm.b+0.01)Lout=L=dm.b+0.01;
+      if(L>Lc+1e-6)warn.push('clavette plus longue que le cylindre');
+      else if(tO-L/2<t0-1e-6||tO+L/2>t1+1e-6)warn.push('la rainure dépasse du cylindre');
+    }
+    const pts=kwLoop(kw.form,g,x0,x1,L,open);
+    const sig=JSON.stringify(pts.map(p=>[+p[0].toFixed(6),+p[1].toFixed(6),p[2]?+p[2].c[0].toFixed(6):null]));
+    if(sk.kwSig!==sig||!(sk.entities||[]).length){
+      sk.points={};sk.entities=[];sk.constraints=[];sk.dims=[];sk.seq=1;
+      stdLoop(sk,pts);sk.kwSig=sig;
+    }
+    // Profondeur (vers −n) : du plan au fond pour un arbre ; du fond à sous la corde pour un alésage
+    let depth=dm.t+KW_OVER;
+    if(kw.bore){
+      const e=Math.abs(eLat)+g,cord=e<R?Math.sqrt(R*R-e*e):0;
+      depth=dm.t+(R-cord)+KW_OVER;
+    }
+    // La clavette : même contour que la rainure, sans le dépassement ; toute la longueur = clavette droite, centrée
+    let Lk=Lout,ptsK;
+    if(kw.form==='T'){
+      Lk=Math.min(asked,Lc);
+      const cx=(t0+t1)/2-tO;
+      ptsK=kwLoop('B',g,0,0,Lk,1).map(p=>[p[0]+cx,p[1]]);
+    }else if(kw.form==='C')ptsK=kwLoop('C',g,t0-tO,t1-tO,Lout,open);
+    else ptsK=pts;
+    if(kw.key)kwKeySync(el,dm,Lk,ptsK);
+    el._kwOut={D:+D.toFixed(4),b:dm.b,t:dm.t,h:dm.h,L:+Lout.toFixed(3),Lk:+Lk.toFixed(3),iso:dm.iso,warn:warn.join(' ; ')};
+    if(f){f.distance=-(+depth.toFixed(4));f.name=kwName(f);}
+  }catch(e){
+    el._kwOut=Object.assign({},el._kwOut||{},{warn:String((e&&e.message)||e)});
+  }finally{c.self=keep;}
+}
+function kwName(f){
+  const el=kwPlaneOf(f),O=el&&el._kwOut;
+  if(!O||!O.D)return 'Rainure de clavette';
+  return 'Rainure de clavette '+stdF(O.b)+' × '+stdF(O.L)+' ('+(el.kw.bore?'alésage':'arbre')+' Ø'+stdF(O.D)+')';
+}
+/* ----- création ----- */
+function kwOnCylinder(C){
+  // C : résultat de holeCylOfHit(…, true). Plan + esquisse + découpe, une seule étape d'annulation.
+  const snap0=docSnap(),len0=docUndoStack.length;
+  const D=holeCylDirection(C.A.d,C.rad);
+  const n=(doc.cgeo||[]).filter(c=>c&&c.kw).length+1;
+  const el=cgNew('plane','tangent',[{k:'face',ref:C.ref,name:entName('face')},D.ref,null],{a:D.a,d:0,e:0,side:1},'Plan de clavette '+n);
+  el.visible=false;
+  el.kw={bore:!!C.inner,form:C.inner?'T':'A',iso:true,b:0,t:0,h:0,L:null,end:C.t<0?-1:1,key:false};
+  cgResolveOne(el,{});
+  const fail=m=>{
+    doc.cgeo=doc.cgeo.filter(c=>c!==el);docUndoStack.length=Math.min(docUndoStack.length,len0);
+    try{faceEl.textContent='Clavette : '+m+'.';}catch(e){}
+    return null;
+  };
+  if(!el.fr)return fail(el.msg||'plan tangent impossible');
+  const sk={id:uid('sk'),name:'Esquisse '+(doc.sketches.length+1)+' (clavette)',plane:'CG',cg:{id:el.id},
+    points:{},entities:[],constraints:[],dims:[],seq:1,visible:false,origin:[0,0,0]};
+  cgSyncSketch(sk);
+  doc.sketches.push(sk);
+  kwSync(el,{});
+  if(!sk.entities.length){
+    doc.sketches=doc.sketches.filter(s=>s!==sk);
+    return fail((el._kwOut&&el._kwOut.warn)||'cotes de rainure impossibles');
+  }
+  const nf={id:uid('ex'),type:'extrude',name:'',sketchId:sk.id,distance:-1,op:'cut',visible:true,mid:false,upto:null,kw:true};
+  if(C.body)nf.body=C.body;
+  addFeature(nf);
+  kwKeyAdd(el);
+  kwSync(el,{});
+  docUndoStack.length=Math.min(docUndoStack.length,len0+1);
+  fdynStart(nf,snap0,len0);
+  sel={kind:'feature',id:nf.id};
+  markDirty();rebuild();renderTree();renderProps();
+  try{faceEl.textContent='Clavette : '+(el.kw.bore?'alésage':'arbre')+' reconnu, cotes ISO 773 appliquées. Réglez au besoin, puis OK (Échap = annuler).';}catch(e){}
+  return el;
+}
+function kwStart(){
+  // Bouton Clavette : cylindre déjà sélectionné, sinon on attend un clic
+  if(!occHas()){alert('Clavette : le noyau exact doit être chargé.');return;}
+  const F=selFaces&&selFaces[0];
+  if(F&&F.mesh&&F.point){const C=holeCylOfHit(F.mesh,F.faceIndex,F.point,true);if(!C.err){kwOnCylinder(C);return;}}
+  holeFacePick={which:'cylKw',fid:null};
+  try{renderer.domElement.style.cursor='crosshair';}catch(e){}
+  try{faceEl.textContent='Clavette : cliquez un ARBRE (face extérieure) ou un ALÉSAGE (face intérieure) — Échap pour annuler.';}catch(e){}
+}
+/* ----- panneau ----- */
+function kwPanel(p,f){
+  const el=kwPlaneOf(f);
+  fdynEnsure(f);
+  const pH=t=>{const h=document.createElement('div');h.className='pnl-h';h.textContent=t;p.appendChild(h);return h;};
+  const pRow=(lab,x)=>{const r=document.createElement('div');r.className='pnl-row';
+    const L=document.createElement('label');L.textContent=lab;r.appendChild(L);if(x)r.appendChild(x);p.appendChild(r);return r;};
+  const pNote=t=>{const n=document.createElement('div');n.className='pnl-note';n.textContent=t;p.appendChild(n);return n;};
+  if(!el){pNote('⚠ Plan de la clavette introuvable.');fdynFoot(p,f);return;}
+  const kw=el.kw,O=el._kwOut||{};
+  const go=()=>{markDirty();rebuild();renderTree();renderProps();};
+  const set=fn=>{docPushUndo('clavette');fn();go();};
+  const select=(opts,val,fn)=>{
+    const s=document.createElement('select');
+    opts.forEach(o=>{const q=document.createElement('option');q.value=o[0];q.textContent=o[1];s.appendChild(q);});
+    s.value=val;s.onchange=()=>set(()=>fn(s.value));return s;
+  };
+  const num=(val,fn)=>{
+    const i=document.createElement('input');i.type='text';i.inputMode='decimal';i.style.width='70px';
+    i.value=String(+(+val||0).toFixed(3)).replace('.',',');
+    const c=()=>{const v=parseFloat(String(i.value).replace(',','.'));if(isFinite(v)&&v>0&&v!==+val)set(()=>fn(v));};
+    i.addEventListener('change',c);
+    i.addEventListener('keydown',e=>{if(e.key==='Enter'){c();i.blur();}e.stopPropagation();});
+    i.addEventListener('click',e=>e.stopPropagation());
+    return i;
+  };
+  const mini=(t,title,fn)=>{const b=document.createElement('button');b.className='mini';b.textContent=t;b.title=title;b.onclick=fn;return b;};
+  const span=list=>{const w=document.createElement('span');w.style.cssText='display:flex;gap:4px;align-items:center;flex:1;justify-content:flex-end';
+    list.forEach(x=>w.appendChild(x));return w;};
+  pH('Rainure de clavette');
+  if(O.D)pNote((kw.bore?'Alésage':'Arbre')+' Ø'+stdF(O.D)+(O.iso?' — ISO 773 : clavette '+stdF(O.b)+' × '+stdF(O.h)+', rainure '+(kw.bore?'t2 ':'t1 ')+stdF(O.t):' — cotes manuelles'));
+  if(O.warn)pNote('⚠ '+O.warn);
+  pRow('Pièce',select([['shaft','Arbre'],['bore','Alésage']],kw.bore?'bore':'shaft',v=>{kw.bore=v==='bore';}));
+  pRow('Forme',select(KW_FORMS,kw.form,v=>{kw.form=v;}));
+  const kc=document.createElement('input');kc.type='checkbox';kc.checked=!!kw.key;
+  kc.title='Crée la clavette comme un corps séparé de la pièce, posée au fond de la rainure';
+  kc.onchange=()=>{
+    const len=docUndoStack.length;
+    docPushUndo('clavette');
+    if(kc.checked)kwKeyAdd(el);else kwKeyRemove(el);
+    docUndoStack.length=Math.min(docUndoStack.length,len+1);
+    go();
+  };
+  pRow('Clavette (corps séparé)',kc);
+  if(kw.form!=='T'||kw.key){
+    const l=[num((kw.form==='T'?O.Lk:O.L)||kw.L||0,v=>{kw.L=v;})];
+    if(kw.L)l.push(mini('Auto','Reprendre la longueur de la série ISO, adaptée au cylindre',()=>set(()=>{kw.L=null;})));
+    pRow(kw.form==='T'?'Long. clavette (mm)':'Longueur (mm)',span(l));
+  }
+  if(kw.form==='C')pRow('Bout ouvert',span([mini('⇄','Déboucher de l’autre côté du cylindre',()=>set(()=>{kw.end=kw.end<0?1:-1;}))]));
+  const iso=document.createElement('input');iso.type='checkbox';iso.checked=kw.iso!==false;
+  iso.onchange=()=>set(()=>{kw.iso=iso.checked;if(!iso.checked){kw.b=O.b||kw.b;kw.t=O.t||kw.t;kw.h=O.h||kw.h;}});
+  pRow('Cotes ISO 773',iso);
+  if(kw.iso===false){
+    pRow('Largeur (mm)',num(O.b||kw.b,v=>{kw.b=v;}));
+    pRow('Profondeur (mm)',num(O.t||kw.t,v=>{kw.t=v;}));
+    if(kw.key)pRow('Hauteur de la clavette (mm)',num(O.h||kw.h,v=>{kw.h=v;}));
+  }
+  renderHoleCylProps(f,el,{pH,pRow,pNote,go,what:'Clavette',noCote:kw.form==='C'||kw.form==='T',noNote:true});
+  fdynFoot(p,f);
+}
+function kwKeyPanel(p,f){
+  // La clavette se règle depuis sa rainure : ses cotes y sont recalculées à chaque rejeu
+  const n=document.createElement('div');n.className='pnl-note';
+  n.textContent='Corps de clavette, posé au fond de sa rainure. Ses cotes suivent la rainure et le Ø.';p.appendChild(n);
+  const el=cgGet(f.kwKey),sk=el&&kwSketchOf(el),rf=kwFeatureOf(sk);
+  if(rf){
+    const d=document.createElement('div');d.className='pnl-btns';
+    const b=document.createElement('button');b.className='mini';b.textContent='Régler depuis la rainure';
+    b.onclick=()=>{sel={kind:'feature',id:rf.id};renderTree();renderProps();};
+    d.appendChild(b);p.appendChild(d);
+  }
+}
+
 /* ═══════════════ 76-engrenage.js — engrenage ═══════════════ */
 /* ---------- ENGRENAGE (fonction 3D, plan docs/plan-engrenages-niveau-1.md) ----------
    f = {type:'gear', m, z, alpha, b, x, beta, hand, kind ('int' couronne, 'rack' crémaillère), D, H} : solide posé sur XY (z = 0 à z = b), axe sur Z, une
@@ -32647,8 +32970,8 @@ function holeCylPlane(f){
   const el=sk&&sk.plane==='CG'&&sk.cg?cgGet(sk.cg.id):null;
   return el&&el.kind==='plane'&&el.how==='tangent'?el:null;
 }
-function holeCylOfHit(mesh,fi,point){
-  // Face cliquée → {ref,A,rad,t,body} ou {err}
+function holeCylOfHit(mesh,fi,point,any){
+  // Face cliquée → {ref,A,rad,t,body,inner} ou {err} ; any : la face intérieure d'un alésage est admise (clavette)
   const hit=occFaceOfHit(mesh,fi);
   if(!hit||!hit.face)return {err:'face illisible (noyau exact requis)'};
   try{
@@ -32659,9 +32982,10 @@ function holeCylOfHit(mesh,fi,point){
     const d=cgCylDir(A.d),P=cgArr(point),w=cgSub(P,A.o),t=cgDot(w,d),rad=cgSub(w,cgMul(d,t));
     if(cgLen(rad)<1e-6)return {err:'point cliqué sur l’axe'};
     const nw=faceNormalWorld(mesh,fi);
-    if(nw&&cgDot(cgArr(nw),rad)<0)return {err:'cliquez la face EXTÉRIEURE du cylindre (l’intérieur d’un alésage n’est pas pris en charge)'};
+    const inner=!!nw&&cgDot(cgArr(nw),rad)<0;
+    if(inner&&!any)return {err:'cliquez la face EXTÉRIEURE du cylindre (l’intérieur d’un alésage n’est pas pris en charge)'};
     const inDoc=hit.bd&&(doc.bodies||[]).some(function(b){return b.id===hit.bd.id;});
-    return {ref:ref,A:{o:A.o,d:d,r:A.r},rad:cgUnit(rad),t:t,body:inDoc?hit.bd.id:null};
+    return {ref:ref,A:{o:A.o,d:d,r:A.r},rad:cgUnit(rad),t:t,body:inDoc?hit.bd.id:null,inner:inner};
   }catch(e){return {err:String((e&&e.message)||e)};}
   finally{try{hit.face.delete();}catch(e){}}
 }
@@ -32755,7 +33079,15 @@ function holeCylPlacement(el,ref){
   return {d:+Math.abs(v).toFixed(2),side:v<0?-1:1};
 }
 function holeCylPickAt(e){
-  const W=holeFacePick,msg=function(t){try{faceEl.textContent='Perçage : '+t;}catch(err){}};
+  const W=holeFacePick,fW=W.fid&&doc.features.find(function(x){return x.id===W.fid;}),isKw=W.which==='cylKw'||(fW&&fW.kw);
+  const msg=function(t){try{faceEl.textContent=(isKw?'Clavette : ':'Perçage : ')+t;}catch(err){}};
+  if(W.which==='cylKw'){
+    const h=pick(e);if(!h){msg('aucune face sous le curseur.');return true;}
+    const C=holeCylOfHit(h.object,h.faceIndex,h.point,true);
+    if(C.err){msg(C.err+'.');return true;}
+    holeFacePickCancel();kwOnCylinder(C);
+    return true;
+  }
   if(W.which==='cyl'){
     const h=pick(e);if(!h){msg('aucune face sous le curseur.');return true;}
     const C=holeCylOfHit(h.object,h.faceIndex,h.point);
@@ -32784,17 +33116,19 @@ function holeCylPickAt(e){
     }
   }catch(err){msg(((err&&err.message)||err)+'.');return true;}
   holeFacePickCancel();
-  f.name=holeName(f);markDirty();rebuild();renderTree();renderProps();
+  if(!f.kw)f.name=holeName(f);markDirty();rebuild();renderTree();renderProps();
   msg(W.which==='cylPos'?'référence retenue — tapez la cote voulue.':'direction retenue.');
   return true;
 }
 /* ----- panneau ----- */
 function renderHoleCylProps(f,el,U){
-  // U : aides du panneau Perçage {pH,pRow,pNote,go}
+  // U : aides du panneau {pH,pRow,pNote,go} ; what : nom de la fonction (Perçage par défaut) ;
+  // noCote : pas de cote le long de l'axe (rainure sur toute la longueur) ; noNote : pas de note de profondeur
+  const WHAT=U.what||'Perçage',wl=WHAT.toLowerCase();
   const start=function(which,txt){
     holeFacePick={which:which,fid:f.id};
     try{renderer.domElement.style.cursor='crosshair';}catch(e){}
-    try{faceEl.textContent='Perçage : '+txt+' — Échap pour annuler.';}catch(e){}
+    try{faceEl.textContent=WHAT+' : '+txt+' — Échap pour annuler.';}catch(e){}
   };
   const startDir=function(){start('cylDir','cliquez un axe, une arête droite ou une face plane (direction du trou)');};
   const startPos=function(){start('cylPos','cliquez une face, une arête ou un sommet (référence de la cote)');};
@@ -32806,7 +33140,7 @@ function renderHoleCylProps(f,el,U){
     const c=function(){
       const v=parseFloat(String(i.value).replace(',','.'));
       if(!isFinite(v)||(min!=null&&v<min)||v===+el.p[k])return;
-      docPushUndo('perçage : position');el.p[k]=v;U.go();
+      docPushUndo(wl+' : position');el.p[k]=v;U.go();
     };
     i.addEventListener('change',c);
     i.addEventListener('keydown',function(e){if(e.key==='Enter'){c();i.blur();}e.stopPropagation();});
@@ -32838,7 +33172,7 @@ function renderHoleCylProps(f,el,U){
   s.onchange=function(){
     const v=s.value;
     if(v==='ref'){startDir();return;}
-    docPushUndo('perçage : direction');
+    docPushUndo(wl+' : direction');
     if(el.p.expr)delete el.p.expr.a;
     if(v==='free'){el.refs[1]=null;if(el.fr)el.p.a=Math.round(holeCylFreeAngle(cgArr(el.fr.x),cgArr(el.fr.z)));}
     else{el.refs[1]={k:'o',id:v[1]};el.p.a=v[0]==='-'?180:0;}
@@ -32847,11 +33181,12 @@ function renderHoleCylProps(f,el,U){
   U.pRow('Direction',s);
   U.pRow('Angle (°)',field('a'));
   /* cote */
+  if(!U.noCote){
   const r2=el.refs[2];
   const bRef=mini(r2?cgRefLabel(r2):'Milieu du cylindre','Choisir la face, l’arête ou le sommet depuis lequel la cote est mesurée',startPos);
   const lRef=[bRef];
   if(r2)lRef.push(mini('✕','Mesurer depuis le milieu du cylindre (le trou ne bouge pas)',function(){
-    docPushUndo('perçage : référence de cote');
+    docPushUndo(wl+' : référence de cote');
     try{
       const A0=cgEvalRef(el.refs[0],{}),d=cgCylDir(A0.axis.d),v=cgDot(cgSub(el.fr.o,A0.axis.o),d);
       el.p.d=+Math.abs(v).toFixed(2);el.p.side=v<0?-1:1;if(el.p.expr)delete el.p.expr.d;
@@ -32860,10 +33195,11 @@ function renderHoleCylProps(f,el,U){
   }));
   U.pRow('Cote depuis',span(lRef));
   U.pRow('Cote (mm)',span([field('d',0),mini('⇄','Passer de l’autre côté de la référence',function(){
-    docPushUndo('perçage : position');el.p.side=(+el.p.side<0)?1:-1;U.go();
+    docPushUndo(wl+' : position');el.p.side=(+el.p.side<0)?1:-1;U.go();
   })]));
+  }
   U.pRow('Décalage latéral (mm)',field('e'));
-  U.pNote('La profondeur se compte depuis le sommet du cylindre (plan tangent).');
+  if(!U.noNote)U.pNote('La profondeur se compte depuis le sommet du cylindre (plan tangent).');
 }
 
 /* ═══════════════ 76-percage.js — percage ═══════════════ */
@@ -34262,7 +34598,9 @@ function cgTangentBuild(el,ctx,A){
   const t0=gP?cgAxialOf(el.refs[2],gP,A.o,d):0;
   const t=t0+cgNum(el,'d')*(cgNum(el,'side')<0?-1:1),e=cgNum(el,'e');
   if(Math.abs(e)>R)warn.push('décalage latéral plus grand que le rayon : le trou manque le cylindre');
-  const o=cgAdd(cgAdd(cgAdd(A.o,cgMul(d,t)),cgMul(n,R)),cgMul(cgCross(n,d),e));
+  // Rainure de clavette (76-clavette) : le plan se pose au-dessus de l'arbre, au fond de la rainure d'un alésage
+  const hR=R+(el.kw?kwPlaneOff(el.kw,R):0);
+  const o=cgAdd(cgAdd(cgAdd(A.o,cgMul(d,t)),cgMul(n,hR)),cgMul(cgCross(n,d),e));
   return {o,d,n,warn:warn.join(' ; ')};
 }
 function cgRound(fr){
@@ -34317,7 +34655,7 @@ function cgResolveAll(){
   try{
     for(const el of order){
       el.ai=cgPos(el);
-      if(!cgLocked(el))cgResolveOne(el,ctx);
+      if(!cgLocked(el)){cgResolveOne(el,ctx);if(el.kw)kwSync(el,ctx);}
       for(const sk of (doc.sketches||[]))if(sk.plane==='CG'&&sk.cg&&sk.cg.id===el.id){if(cgSyncSketch(sk))ch=true;}
     }
     // place de création d'une esquisse : même repli que les éléments si sa fonction disparaît
@@ -34417,7 +34755,10 @@ function cgEvalModelRef(ref,ctx){
         const d=cgUnit([ax.Direction().X(),ax.Direction().Y(),ax.Direction().Z()]),lo=[ax.Location().X(),ax.Location().Y(),ax.Location().Z()];
         const o=cgAdd(lo,cgMul(d,cgDot(cgSub(b.pos,lo),d))); // au droit du centre de la face
         // r : rayon du cylindre (plan tangent) ; un cône n'en a pas qui vaille partout
-        return {axis:gt===T.GeomAbs_Cylinder?{o,d,r:ad.Cylinder().Radius()}:{o,d},point:{o}};
+        if(gt!==T.GeomAbs_Cylinder)return {axis:{o,d},point:{o}};
+        // t0, t1 : étendue de la face le long de d, comptée depuis o (longueur utile d'une rainure de clavette)
+        const v=[ad.FirstVParameter(),ad.LastVParameter()].map(w=>cgDot(cgSub(cgAdd(lo,cgMul(d,w)),o),d)).sort((p,q)=>p-q);
+        return {axis:{o,d,r:ad.Cylinder().Radius(),t0:v[0],t1:v[1]},point:{o}};
       }
       return {point:{o:b.pos}};
     }catch(e){return null;}
@@ -61337,7 +61678,7 @@ function filletTangentChain(sk, startCorner){
     if(filMode||filModeX){exitFilletMode();return;}
     if(faoChainMode){faoChainExit(true);return;}
     if(typeof faoHolePick!=='undefined'&&faoHolePick){faoHolePickExit();return;}
-    if(typeof holeFacePick!=='undefined'&&holeFacePick){holeFacePickCancel();faceEl.textContent='Perçage : sélection de face annulée.';return;}
+    if(typeof holeFacePick!=='undefined'&&holeFacePick){const kwP=holeFacePick.which==='cylKw';holeFacePickCancel();faceEl.textContent=kwP?'Clavette : annulée.':'Perçage : sélection de face annulée.';return;}
     if(typeof threadPick!=='undefined'&&threadPick){threadPickCancel();faceEl.textContent='Filetage : sélection de face annulée.';return;}
     if(typeof bmPick!=='undefined'&&bmPick){bmPickExit(false);return;}
     if(mvMode){exitMoveFaceMode();return;}
@@ -64267,6 +64608,17 @@ function clipTick(){
     }
   }
 })();
+// Bouton « Clavette » (rainure automatique, src/76-clavette.js), après le Perçage.
+(function(){
+  if(document.getElementById('btnKeyway'))return;
+  const a=document.getElementById('btnHole');
+  if(!a||!a.parentNode)return;
+  const n=document.createElement('button');
+  n.id='btnKeyway';
+  n.textContent='🔑 Clavette';
+  n.title='Rainure de clavette automatique : cliquez un arbre ou un alésage, le Ø donne les cotes ISO 773, et la clavette se pose comme un corps séparé. Le tout suit le Ø si la pièce change.';
+  a.parentNode.insertBefore(n,a.nextSibling);
+})();
 // V0.35.0 : bouton « Filetage » (fonction 3D, src/76-filetage.js), après la Coque.
 (function(){
   if(document.getElementById('btnThread'))return;
@@ -64280,6 +64632,7 @@ function clipTick(){
 })();
 if($('btnThread'))$('btnThread').onclick=()=>askThread();
 if($('btnHole'))$('btnHole').onclick=()=>holeStart();
+if($('btnKeyway'))$('btnKeyway').onclick=()=>kwStart();
 const btnRevolve=$('btnRevolve');
 if(btnRevolve)btnRevolve.onclick=()=>askRevolve(sel.kind==='sketch'?sel.id:null);
 if($('btnSweep'))$('btnSweep').onclick=()=>askSweep(sel.kind==='sketch'?sel.id:null);
@@ -64629,6 +64982,7 @@ function openAide(){
     ['btnRevolve','\u{1F504}','Révolution (R)'],
     ['btnSweep','〰','Balayage (profil le long d’un chemin)'],
     ['btnHole','⊚','Perçage (H)'],
+    ['btnKeyway','\u{1F511}','Rainure de clavette automatique (arbre ou alésage)'],
     '#',
     ['btnBody','◧','Nouveau corps de pièce']
   ],'\u{1F9F1}');
@@ -65666,6 +66020,8 @@ function mfFiTable(){
   F('Créer/Balayage','Balayage','Fait glisser un profil fermé le long d’un chemin : tube, main courante, rainure.',['Choisissez le profil fermé','Choisissez le chemin (une autre esquisse)'],ficD(TUBE,SK,1.5,'3 2.4')+'<ellipse cx="16" cy="62" rx="5" ry="9" fill="#ffd27a" stroke="'+OR+'" stroke-width="1.3"/>',ficD(TUBE,'#1e293b',15)+ficD(TUBE,'#a9bfd6',13)+ficD('M16 58C33 58 33 16 62 16H84','#eef3f9',2.4)+'<ellipse cx="84" cy="20" rx="4" ry="7.5" fill="url(#mfFcHo)" stroke="#8a5200" stroke-width="1.2"/>');
   const CROSS=(X,Y,Z)=>{const p=ficXY(X,Y,Z);return ficL(p[0]-4.5,p[1],p[0]+4.5,p[1],OR,1.2)+ficL(p[0],p[1]-3.2,p[0],p[1]+3.2,OR,1.2)+ficDot(p[0],p[1],1.4,OR);};
   F('Créer/Perçage','Perçage','Fait des trous propres sur les centres de perçage de l’esquisse : simple, lamé, fraisé ou taraudé.',['Placez des centres dans une esquisse et sélectionnez-la, ou cliquez un cylindre de la pièce','Cliquez Perçage','Choisissez le type de trou ; sur un cylindre, réglez sa direction et sa cote'],BK()+CROSS(-7,-7,7)+CROSS(7,7,7),BK()+ficHole(-7,-7,7,4)+ficHole(7,7,7,4),'H');
+  const KW0=ficL(14,26,86,26,'#7f9bb9',1.6)+ficL(14,56,86,56,'#7f9bb9',1.6)+'<ellipse cx="14" cy="41" rx="6" ry="15" fill="#e3ecf5" stroke="#7f9bb9" stroke-width="1.4"/>';
+  F('Créer/Clavette','Rainure de clavette','Creuse la rainure d’une clavette dans un arbre ou un alésage, aux cotes ISO 773 de son diamètre, et y pose la clavette comme un corps séparé. Si le diamètre change, tout suit.',['Cliquez Clavette','Cliquez le cylindre : face extérieure pour un arbre, intérieure pour un alésage','Réglez la forme, la longueur et la position, puis OK'],KW0,KW0+ficD('M38 33H62A7 7 0 0 1 62 47H38A7 7 0 0 1 38 33Z',OR,1.6,null,'#ffd27a'));
   F('Créer/Corps','Corps','Démarre une nouvelle pièce séparée dans le même fichier. Ce que vous créez ensuite ira dedans.',[],ficBox(-20,-6,-8,-2,12,6,'b'),ficBox(-20,-6,-8,-2,12,6,'b')+ficBox(2,-14,-8,18,2,6,'o')+ficDot(82,12,3,GR)+ficT(82,23,'actif',6,GR));
   F('Construire/Plan','Plan de construction','Ajoute un plan « invisible » pour dessiner là où il n’y a pas de face : décalé, en biais, par 3 points…',[],BK(),BK()+OPL(22,18),null);
   F('Construire/Axe','Axe de construction','Ajoute une droite de repère : pour tourner ou répéter autour d’elle.',[],ficCyl(0,0,-12,10,24),ficL(50,2,50,14,OR,1.6,'4 2')+ficCyl(0,0,-12,10,24)+ficL(50,14,50,74,OR,1.6,'4 2'));
@@ -66117,6 +66473,7 @@ const MF_ICF={
     '<path d="M4 17C8 17 9 6 15 6H18.5" fill="none" stroke="#eef3f9" stroke-width="1.2" stroke-linecap="round"/>'+
     '<ellipse cx="18.5" cy="7" rx="1.5" ry="2.7" fill="url(#mfFzHo)" stroke="#8a5200" stroke-width=".7"/><ellipse cx="4" cy="18" rx="1.5" ry="2.7" fill="none" stroke="#1e88e5" stroke-width=".9" stroke-dasharray="1.4 1"/>',
   hole:fzBox(-5,-5,-5,5,5,0,'b')+'<ellipse cx="12" cy="12" rx="3.4" ry="1.95" fill="#243a52" stroke="#38506a" stroke-width=".6"/><path d="M8.6 12A3.4 1.95 0 0 0 15.4 12A3.4 1.4 0 0 1 8.6 12Z" fill="#5d7896"/>'+fzArrow(12,1.5,12,10.2,'#1e88e5',2),
+  keyway:'<rect x="2.5" y="8" width="19" height="9" rx="4.5" fill="url(#mfFzHb)" stroke="#38506a" stroke-width=".8"/><rect x="7" y="9.7" width="10" height="3.2" rx="1.6" fill="#f6a623" stroke="#8a5200" stroke-width=".7"/>',
   body:fzBox(-5,-5,-3.5,5,5,3,'b'),
   fillet:fzPoly([[-5,5,-5],[5,5,-5],[5,5,0.3],[-5,5,0.3]],FZ.b[1],FZ.b[3])+
     fzPath([['M',5,-5,-5],['L',5,5,-5],['L',5,5,0.3],['Q',5,5,2,5,3.2,2],['L',5,-5,2],['Z']],'fill="'+FZ.b[2]+'" '+FZ_E)+
@@ -66576,6 +66933,7 @@ const MF_IC={
   sketch:'<path d="M4 20h4L19 9l-4-4L4 16z"/><path d="M13 7l4 4"/>',
   extrude:'<path d="M4 15l8 4 8-4M4 15v-4l8-4 8 4v4M12 19v-8M4 11l8 4 8-4"/><path d="M12 7V2M9.5 4.5L12 2l2.5 2.5"/>',
   revolve:'<path d="M12 2v20" stroke-dasharray="2 2"/><ellipse cx="12" cy="13" rx="8" ry="3.2"/><path d="M17.5 8.5l2.2 2.4-3 .9"/>',
+  keyway:'<rect x="2.5" y="7.5" width="19" height="10" rx="5"/><rect x="7.5" y="10" width="9" height="3.5" rx="1.75"/>',
   sweep:'<path d="M3 18c4 0 5-12 10-12h4"/><ellipse cx="18.5" cy="6" rx="1.8" ry="3.2"/><ellipse cx="4.5" cy="18" rx="1.8" ry="3.2" stroke-dasharray="2 2"/>',
   thread:'<path d="M8 3h8M8 21h8M8 3v18M16 3v18"/><path d="M8 6l8 2M8 10l8 2M8 14l8 2M8 18l8 2"/>',
   hole:'<circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="3.5"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/>',
@@ -66678,7 +67036,7 @@ let mfBuilt=false;
 function mfClick(id){mfCloseMenus();const b=document.getElementById(id);if(b){b.click();return true;}try{faceEl.textContent='Commande indisponible ici ('+id+').';}catch(e){}return false;}
 const MF_CAO=[
   ['Esquisse',[['sketch','Esquisse','btnSketch']]],
-  ['Créer',[['extrude','Extrusion','btnExtrude'],['revolve','Révolution','btnRevolve'],['sweep','Balayage','btnSweep'],['hole','Perçage','btnHole'],['body','Corps','btnBody']]],
+  ['Créer',[['extrude','Extrusion','btnExtrude'],['revolve','Révolution','btnRevolve'],['sweep','Balayage','btnSweep'],['hole','Perçage','btnHole'],['keyway','Clavette','btnKeyway'],['body','Corps','btnBody']]],
   // V0.5.0 : géométrie de construction (78/79)
   ['Construire',[['cgPlane','Plan',()=>cgStart('plane'),'Plan de construction : décalé, à un angle, par 3 points, médian, normal à un axe'],
     ['cgAxis','Axe',()=>cgStart('axis'),'Axe de construction : arête, cylindre, 2 points, intersection de plans, normal à un plan'],

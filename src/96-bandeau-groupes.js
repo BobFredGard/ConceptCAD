@@ -79,6 +79,7 @@
     ['btnRevolve','\u{1F504}','Révolution (R)'],
     ['btnSweep','〰','Balayage (profil le long d’un chemin)'],
     ['btnHole','⊚','Perçage (H)'],
+    ['btnKeyway','\u{1F511}','Rainure de clavette automatique (arbre ou alésage)'],
     '#',
     ['btnBody','◧','Nouveau corps de pièce']
   ],'\u{1F9F1}');

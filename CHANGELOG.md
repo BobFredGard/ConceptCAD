@@ -8,7 +8,7 @@ sont sorties le 2026-09-30j.
 Code dans `src/` · livrable `fusion_mvp.html` (généré par `build.js`) · architecture et
 garde-fous en tête de `src/00-entete-et-outils.js`.
 
-**581 versions**, de `2026-09-28b` à `V0.61.0` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
+**582 versions**, de `2026-09-28b` à `V0.62.0` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
 comme dans le fichier d'origine.
 
 ---
@@ -6744,3 +6744,17 @@ Les rapides et les remontées étaient tous orange pâle et presque transparents
 - **Retrait minimum** (remplace « Plan retrait ou +5 mm », reste le défaut, 5 mm, `setup.liftMin`) : montée au-dessus de la matière survolée, plafonnée par le plan de retrait. La matière vient d’une carte de hauteurs : brut plein, modèle et corps à éviter, moins ce que les passes précédentes ont vraiment enlevé. En cas de doute elle reste trop haute : près d’une paroi non usinée, la liaison passe au-dessus de cette paroi.
 - **Limites** : opération en repère propre (3+2) et perçage gardent leur plan (retrait, hauteur du cycle) ; le bridage n’est connu qu’en Z : sa hauteur, si elle est saisie, sert de plancher à toute liaison.
 - **Tests** : `test_fao_liaisons` (cas de la capture, retrait minimum, contrôle de collision sur Cavité par une carte indépendante : 0 traversée, rapides 4,3 m contre 17,8 m au plan haut), `test_fao_securite` et `test_fao_planes` adaptés. `CACHE_VER` ne change pas : aucun parcours à régénérer pour le retrait minimum.
+
+## V0.62.0 - Rainure de clavette automatique, sur un arbre ou dans un alésage
+
+Demande : « CAO : j’aimerais une fonction clavette automatique pour les arbres et les alésages ».
+- **Geste** : bouton **Clavette** (groupe Créer), puis clic sur un cylindre, ou l’inverse. Face extérieure = arbre, face intérieure = alésage.
+- **Automatique** (`src/76-clavette.js`) : le Ø lu sur la pièce donne la ligne d’ISO 773, largeur et profondeur (t1 arbre, t2 moyeu). Longueur de la série, au plus 1,5 × Ø et tenant dans le cylindre. Si le Ø change, la rainure change de ligne d’elle-même.
+- **Réglages** : pièce, forme (fermée à bouts ronds ou droits, débouchante d’un côté, toute la longueur), longueur, cotes manuelles, direction, angle, cote depuis une référence, décalage latéral.
+- **Défauts** : arbre = fermée à bouts ronds au milieu du cylindre ; alésage = toute la longueur.
+- **Épaulement** : une rainure débouchante s’arrête à fleur d’un épaulement ou d’un fond, sinon elle dépasse du bout libre.
+- **Alertes** : Ø hors d’ISO 773 (6 à 130), clavette plus longue que le cylindre ou qui en dépasse, rainure plus profonde que le rayon, moyeu trop mince.
+- **Modèle** : plan tangent (`el.kw`, avec un nouveau décalage en hauteur), esquisse réécrite à chaque rejeu, extrusion en découpe (`f.kw`), en une seule étape d’annulation. Répétition, sauvegarde et rejeu : comme une découpe. `holeCylOfHit` admet la face intérieure sur demande ; le perçage la refuse toujours.
+- **La clavette, corps de pièce** (« Oui, comme un corps de pièce ») : créée d’office dans son propre corps, posée au fond de la rainure, aux cotes ISO (largeur, hauteur) ; case « Clavette (corps séparé) » pour la retirer ou la reposer. Sur « toute la longueur », clavette droite, centrée, de la longueur de la série. Elle suit le Ø ; le corps actif reste la pièce ; un nom de corps donné à la main reste. Supprimer la rainure retire sa clavette ; supprimer la clavette garde la rainure.
+- **Limites** : les esquisses de la rainure et de la clavette sont réécrites au rejeu, donc une retouche à la main ne tient pas. Une répétition de la rainure ne répète pas la clavette (non essayé). Le corps de clavette n’est pas masqué pour la FAO : à masquer pour usiner la rainure (non essayé).
+- **Tests** : `test_clavette`. `CACHE_VER` ne change pas.

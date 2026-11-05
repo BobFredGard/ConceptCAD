@@ -170,7 +170,7 @@ function filletTangentChain(sk, startCorner){
     if(filMode||filModeX){exitFilletMode();return;}
     if(faoChainMode){faoChainExit(true);return;}
     if(typeof faoHolePick!=='undefined'&&faoHolePick){faoHolePickExit();return;}
-    if(typeof holeFacePick!=='undefined'&&holeFacePick){holeFacePickCancel();faceEl.textContent='Perçage : sélection de face annulée.';return;}
+    if(typeof holeFacePick!=='undefined'&&holeFacePick){const kwP=holeFacePick.which==='cylKw';holeFacePickCancel();faceEl.textContent=kwP?'Clavette : annulée.':'Perçage : sélection de face annulée.';return;}
     if(typeof threadPick!=='undefined'&&threadPick){threadPickCancel();faceEl.textContent='Filetage : sélection de face annulée.';return;}
     if(typeof bmPick!=='undefined'&&bmPick){bmPickExit(false);return;}
     if(mvMode){exitMoveFaceMode();return;}

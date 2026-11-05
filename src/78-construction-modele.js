@@ -459,7 +459,9 @@ function cgTangentBuild(el,ctx,A){
   const t0=gP?cgAxialOf(el.refs[2],gP,A.o,d):0;
   const t=t0+cgNum(el,'d')*(cgNum(el,'side')<0?-1:1),e=cgNum(el,'e');
   if(Math.abs(e)>R)warn.push('décalage latéral plus grand que le rayon : le trou manque le cylindre');
-  const o=cgAdd(cgAdd(cgAdd(A.o,cgMul(d,t)),cgMul(n,R)),cgMul(cgCross(n,d),e));
+  // Rainure de clavette (76-clavette) : le plan se pose au-dessus de l'arbre, au fond de la rainure d'un alésage
+  const hR=R+(el.kw?kwPlaneOff(el.kw,R):0);
+  const o=cgAdd(cgAdd(cgAdd(A.o,cgMul(d,t)),cgMul(n,hR)),cgMul(cgCross(n,d),e));
   return {o,d,n,warn:warn.join(' ; ')};
 }
 function cgRound(fr){
@@ -514,7 +516,7 @@ function cgResolveAll(){
   try{
     for(const el of order){
       el.ai=cgPos(el);
-      if(!cgLocked(el))cgResolveOne(el,ctx);
+      if(!cgLocked(el)){cgResolveOne(el,ctx);if(el.kw)kwSync(el,ctx);}
       for(const sk of (doc.sketches||[]))if(sk.plane==='CG'&&sk.cg&&sk.cg.id===el.id){if(cgSyncSketch(sk))ch=true;}
     }
     // place de création d'une esquisse : même repli que les éléments si sa fonction disparaît
@@ -614,7 +616,10 @@ function cgEvalModelRef(ref,ctx){
         const d=cgUnit([ax.Direction().X(),ax.Direction().Y(),ax.Direction().Z()]),lo=[ax.Location().X(),ax.Location().Y(),ax.Location().Z()];
         const o=cgAdd(lo,cgMul(d,cgDot(cgSub(b.pos,lo),d))); // au droit du centre de la face
         // r : rayon du cylindre (plan tangent) ; un cône n'en a pas qui vaille partout
-        return {axis:gt===T.GeomAbs_Cylinder?{o,d,r:ad.Cylinder().Radius()}:{o,d},point:{o}};
+        if(gt!==T.GeomAbs_Cylinder)return {axis:{o,d},point:{o}};
+        // t0, t1 : étendue de la face le long de d, comptée depuis o (longueur utile d'une rainure de clavette)
+        const v=[ad.FirstVParameter(),ad.LastVParameter()].map(w=>cgDot(cgSub(cgAdd(lo,cgMul(d,w)),o),d)).sort((p,q)=>p-q);
+        return {axis:{o,d,r:ad.Cylinder().Radius(),t0:v[0],t1:v[1]},point:{o}};
       }
       return {point:{o:b.pos}};
     }catch(e){return null;}

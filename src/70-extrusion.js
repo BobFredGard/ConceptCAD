@@ -85,6 +85,8 @@ function extName(f){
   // Nom d'affichage : distance signée, symétrique (±) ou « vers un objet » (cible).
   // ⇄ = sens inversé (miroir de la course, opération inchangée) ; ∠ = dépouille.
   if(!f)return'Extrusion';
+  if(f.kw)return kwName(f);
+  if(f.kwKey)return f.name||'Clavette';
   const base=(f.op==='cut'?'Découpe ':'Extrusion ')+skName(f.sketchId);
   const suf=(f.flip?' ⇄':'')+((+f.draft||0)?' ∠'+(+f.draft)+'°':'');
   if(f.upto&&f.upto.ex){

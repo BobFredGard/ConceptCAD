@@ -263,6 +263,7 @@ const MF_IC={
   sketch:'<path d="M4 20h4L19 9l-4-4L4 16z"/><path d="M13 7l4 4"/>',
   extrude:'<path d="M4 15l8 4 8-4M4 15v-4l8-4 8 4v4M12 19v-8M4 11l8 4 8-4"/><path d="M12 7V2M9.5 4.5L12 2l2.5 2.5"/>',
   revolve:'<path d="M12 2v20" stroke-dasharray="2 2"/><ellipse cx="12" cy="13" rx="8" ry="3.2"/><path d="M17.5 8.5l2.2 2.4-3 .9"/>',
+  keyway:'<rect x="2.5" y="7.5" width="19" height="10" rx="5"/><rect x="7.5" y="10" width="9" height="3.5" rx="1.75"/>',
   sweep:'<path d="M3 18c4 0 5-12 10-12h4"/><ellipse cx="18.5" cy="6" rx="1.8" ry="3.2"/><ellipse cx="4.5" cy="18" rx="1.8" ry="3.2" stroke-dasharray="2 2"/>',
   thread:'<path d="M8 3h8M8 21h8M8 3v18M16 3v18"/><path d="M8 6l8 2M8 10l8 2M8 14l8 2M8 18l8 2"/>',
   hole:'<circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="3.5"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/>',
@@ -365,7 +366,7 @@ let mfBuilt=false;
 function mfClick(id){mfCloseMenus();const b=document.getElementById(id);if(b){b.click();return true;}try{faceEl.textContent='Commande indisponible ici ('+id+').';}catch(e){}return false;}
 const MF_CAO=[
   ['Esquisse',[['sketch','Esquisse','btnSketch']]],
-  ['Créer',[['extrude','Extrusion','btnExtrude'],['revolve','Révolution','btnRevolve'],['sweep','Balayage','btnSweep'],['hole','Perçage','btnHole'],['body','Corps','btnBody']]],
+  ['Créer',[['extrude','Extrusion','btnExtrude'],['revolve','Révolution','btnRevolve'],['sweep','Balayage','btnSweep'],['hole','Perçage','btnHole'],['keyway','Clavette','btnKeyway'],['body','Corps','btnBody']]],
   // V0.5.0 : géométrie de construction (78/79)
   ['Construire',[['cgPlane','Plan',()=>cgStart('plane'),'Plan de construction : décalé, à un angle, par 3 points, médian, normal à un axe'],
     ['cgAxis','Axe',()=>cgStart('axis'),'Axe de construction : arête, cylindre, 2 points, intersection de plans, normal à un plan'],

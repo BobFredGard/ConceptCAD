@@ -18,8 +18,8 @@ function holeCylPlane(f){
   const el=sk&&sk.plane==='CG'&&sk.cg?cgGet(sk.cg.id):null;
   return el&&el.kind==='plane'&&el.how==='tangent'?el:null;
 }
-function holeCylOfHit(mesh,fi,point){
-  // Face cliquée → {ref,A,rad,t,body} ou {err}
+function holeCylOfHit(mesh,fi,point,any){
+  // Face cliquée → {ref,A,rad,t,body,inner} ou {err} ; any : la face intérieure d'un alésage est admise (clavette)
   const hit=occFaceOfHit(mesh,fi);
   if(!hit||!hit.face)return {err:'face illisible (noyau exact requis)'};
   try{
@@ -30,9 +30,10 @@ function holeCylOfHit(mesh,fi,point){
     const d=cgCylDir(A.d),P=cgArr(point),w=cgSub(P,A.o),t=cgDot(w,d),rad=cgSub(w,cgMul(d,t));
     if(cgLen(rad)<1e-6)return {err:'point cliqué sur l’axe'};
     const nw=faceNormalWorld(mesh,fi);
-    if(nw&&cgDot(cgArr(nw),rad)<0)return {err:'cliquez la face EXTÉRIEURE du cylindre (l’intérieur d’un alésage n’est pas pris en charge)'};
+    const inner=!!nw&&cgDot(cgArr(nw),rad)<0;
+    if(inner&&!any)return {err:'cliquez la face EXTÉRIEURE du cylindre (l’intérieur d’un alésage n’est pas pris en charge)'};
     const inDoc=hit.bd&&(doc.bodies||[]).some(function(b){return b.id===hit.bd.id;});
-    return {ref:ref,A:{o:A.o,d:d,r:A.r},rad:cgUnit(rad),t:t,body:inDoc?hit.bd.id:null};
+    return {ref:ref,A:{o:A.o,d:d,r:A.r},rad:cgUnit(rad),t:t,body:inDoc?hit.bd.id:null,inner:inner};
   }catch(e){return {err:String((e&&e.message)||e)};}
   finally{try{hit.face.delete();}catch(e){}}
 }
@@ -126,7 +127,15 @@ function holeCylPlacement(el,ref){
   return {d:+Math.abs(v).toFixed(2),side:v<0?-1:1};
 }
 function holeCylPickAt(e){
-  const W=holeFacePick,msg=function(t){try{faceEl.textContent='Perçage : '+t;}catch(err){}};
+  const W=holeFacePick,fW=W.fid&&doc.features.find(function(x){return x.id===W.fid;}),isKw=W.which==='cylKw'||(fW&&fW.kw);
+  const msg=function(t){try{faceEl.textContent=(isKw?'Clavette : ':'Perçage : ')+t;}catch(err){}};
+  if(W.which==='cylKw'){
+    const h=pick(e);if(!h){msg('aucune face sous le curseur.');return true;}
+    const C=holeCylOfHit(h.object,h.faceIndex,h.point,true);
+    if(C.err){msg(C.err+'.');return true;}
+    holeFacePickCancel();kwOnCylinder(C);
+    return true;
+  }
   if(W.which==='cyl'){
     const h=pick(e);if(!h){msg('aucune face sous le curseur.');return true;}
     const C=holeCylOfHit(h.object,h.faceIndex,h.point);
@@ -155,17 +164,19 @@ function holeCylPickAt(e){
     }
   }catch(err){msg(((err&&err.message)||err)+'.');return true;}
   holeFacePickCancel();
-  f.name=holeName(f);markDirty();rebuild();renderTree();renderProps();
+  if(!f.kw)f.name=holeName(f);markDirty();rebuild();renderTree();renderProps();
   msg(W.which==='cylPos'?'référence retenue — tapez la cote voulue.':'direction retenue.');
   return true;
 }
 /* ----- panneau ----- */
 function renderHoleCylProps(f,el,U){
-  // U : aides du panneau Perçage {pH,pRow,pNote,go}
+  // U : aides du panneau {pH,pRow,pNote,go} ; what : nom de la fonction (Perçage par défaut) ;
+  // noCote : pas de cote le long de l'axe (rainure sur toute la longueur) ; noNote : pas de note de profondeur
+  const WHAT=U.what||'Perçage',wl=WHAT.toLowerCase();
   const start=function(which,txt){
     holeFacePick={which:which,fid:f.id};
     try{renderer.domElement.style.cursor='crosshair';}catch(e){}
-    try{faceEl.textContent='Perçage : '+txt+' — Échap pour annuler.';}catch(e){}
+    try{faceEl.textContent=WHAT+' : '+txt+' — Échap pour annuler.';}catch(e){}
   };
   const startDir=function(){start('cylDir','cliquez un axe, une arête droite ou une face plane (direction du trou)');};
   const startPos=function(){start('cylPos','cliquez une face, une arête ou un sommet (référence de la cote)');};
@@ -177,7 +188,7 @@ function renderHoleCylProps(f,el,U){
     const c=function(){
       const v=parseFloat(String(i.value).replace(',','.'));
       if(!isFinite(v)||(min!=null&&v<min)||v===+el.p[k])return;
-      docPushUndo('perçage : position');el.p[k]=v;U.go();
+      docPushUndo(wl+' : position');el.p[k]=v;U.go();
     };
     i.addEventListener('change',c);
     i.addEventListener('keydown',function(e){if(e.key==='Enter'){c();i.blur();}e.stopPropagation();});
@@ -209,7 +220,7 @@ function renderHoleCylProps(f,el,U){
   s.onchange=function(){
     const v=s.value;
     if(v==='ref'){startDir();return;}
-    docPushUndo('perçage : direction');
+    docPushUndo(wl+' : direction');
     if(el.p.expr)delete el.p.expr.a;
     if(v==='free'){el.refs[1]=null;if(el.fr)el.p.a=Math.round(holeCylFreeAngle(cgArr(el.fr.x),cgArr(el.fr.z)));}
     else{el.refs[1]={k:'o',id:v[1]};el.p.a=v[0]==='-'?180:0;}
@@ -218,11 +229,12 @@ function renderHoleCylProps(f,el,U){
   U.pRow('Direction',s);
   U.pRow('Angle (°)',field('a'));
   /* cote */
+  if(!U.noCote){
   const r2=el.refs[2];
   const bRef=mini(r2?cgRefLabel(r2):'Milieu du cylindre','Choisir la face, l’arête ou le sommet depuis lequel la cote est mesurée',startPos);
   const lRef=[bRef];
   if(r2)lRef.push(mini('✕','Mesurer depuis le milieu du cylindre (le trou ne bouge pas)',function(){
-    docPushUndo('perçage : référence de cote');
+    docPushUndo(wl+' : référence de cote');
     try{
       const A0=cgEvalRef(el.refs[0],{}),d=cgCylDir(A0.axis.d),v=cgDot(cgSub(el.fr.o,A0.axis.o),d);
       el.p.d=+Math.abs(v).toFixed(2);el.p.side=v<0?-1:1;if(el.p.expr)delete el.p.expr.d;
@@ -231,8 +243,9 @@ function renderHoleCylProps(f,el,U){
   }));
   U.pRow('Cote depuis',span(lRef));
   U.pRow('Cote (mm)',span([field('d',0),mini('⇄','Passer de l’autre côté de la référence',function(){
-    docPushUndo('perçage : position');el.p.side=(+el.p.side<0)?1:-1;U.go();
+    docPushUndo(wl+' : position');el.p.side=(+el.p.side<0)?1:-1;U.go();
   })]));
+  }
   U.pRow('Décalage latéral (mm)',field('e'));
-  U.pNote('La profondeur se compte depuis le sommet du cylindre (plan tangent).');
+  if(!U.noNote)U.pNote('La profondeur se compte depuis le sommet du cylindre (plan tangent).');
 }

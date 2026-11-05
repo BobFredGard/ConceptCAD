@@ -49,6 +49,7 @@ function delFeature(f){
   doc.features=doc.features.filter(x=>x.id!==f.id);
   doc.features.forEach(rp=>{if(rp.type==='repeat')rp.base=rp.base.filter(id=>id!==f.id);});
   if(tlMark===f.id)tlMark=null;
+  if(f.kw||f.kwKey)kwOnDelete(f); // rainure de clavette et son corps (76-clavette)
   if(f.type==='xsplit'||f.type==='bscale')splitOnDelete(f); // corps neuf vide d'une scission (85-scinder) ou d'une échelle en copie
 }
 // Le bouton vit ici (sources, jamais la coque HTML — même règle que Révolution) :

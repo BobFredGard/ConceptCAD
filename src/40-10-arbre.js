@@ -129,6 +129,8 @@ function featIconOf(f){
   if(f.type==='revolve')return (f.op||'add')==='cut'?'◔':'◍';
   if(f.type==='sweep')return (f.op||'add')==='cut'?'≋':'〰';
   if(f.type==='hole')return '⊚';
+  if(f.kwKey)return '🔑'; // clavette, corps séparé (76-clavette)
+  if(f.kw)return '⊟'; // rainure de clavette
   if(f.type==='xthread')return f._err?'⚠':'🔩'; // filetage d'un axe (76-filetage)
   if(f.type==='gear')return f._err?'⚠':'⚙️'; // engrenage (76-engrenage)
   if(f.type==='xmove')return '📐';

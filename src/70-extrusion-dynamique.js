@@ -15,7 +15,7 @@ let extDynOptOpen=false;  // « ▸ Options » déplié (mémorisé entre deux o
 function extDynFeature(){
   if(typeof sel==='undefined'||!sel||sel.kind!=='feature')return null;
   const f=(doc.features||[]).find(x=>x&&x.id===sel.id);
-  return f&&f.type==='extrude'?f:null;
+  return f&&f.type==='extrude'&&!f.kw&&!f.kwKey?f:null; // rainure de clavette : sa propre fenêtre (76-clavette)
 }
 function extDynEnsure(){
   // Session de la fenêtre : ouverte à la première sélection d'une extrusion

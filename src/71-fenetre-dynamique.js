@@ -13,11 +13,11 @@ const FDYN_TYPES={revolve:1,sweep:1,hole:1,xfillet:1};
 function fdynFeature(){
   if(typeof sel==='undefined'||!sel||sel.kind!=='feature')return null;
   const f=(doc.features||[]).find(x=>x&&x.id===sel.id);
-  return f&&FDYN_TYPES[f.type]?f:null;
+  return f&&(FDYN_TYPES[f.type]||f.kw)?f:null;
 }
 function fdynEnsure(f){
   // session ouverte à la première sélection (modification) ; une création l'ouvre elle-même
-  if(!f||!FDYN_TYPES[f.type]){fdyn=null;return null;}
+  if(!f||!(FDYN_TYPES[f.type]||f.kw)){fdyn=null;return null;}
   if(!fdyn||fdyn.id!==f.id)fdyn={id:f.id,type:f.type,isNew:false,snap:docSnap(),len:docUndoStack.length};
   return fdyn;
 }

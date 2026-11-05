@@ -371,7 +371,7 @@ function renderProps(){
     /* — extrusion — */
     if(f.type==='extrude'){
       // V0.7.6 : fenêtre de l'extrusion dynamique — boutons à icônes, flèche dans la vue (70-extrusion-dynamique)
-      extDynPanel(p,f);
+      if(f.kw)kwPanel(p,f);else if(f.kwKey)kwKeyPanel(p,f);else extDynPanel(p,f);
     }
     visDel(f);
     return;
