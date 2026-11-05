@@ -376,7 +376,7 @@ input[type=range]{accent-color:var(--primary);width:100%}
  * peut changer sans rien casser. CACHE_VER (parcours FAO) reste indépendant.
  */
 
-const APP_VER='V0.64.2';
+const APP_VER='V0.64.3';
 try{console.log('[ConceptCAD] version '+APP_VER);}catch(e){}
 try{var mfSv=document.getElementById('mfSplashVer');if(mfSv)mfSv.textContent=APP_VER;}catch(e){} // écran de démarrage
 
@@ -3049,13 +3049,16 @@ function nomsCarte(s,t,a){
 function nomsCarteFaces(s){const E=occt.TopAbs_ShapeEnum;return nomsCarte(s,E.TopAbs_FACE,E.TopAbs_SHELL);} // coques ouvertes comprises
 function nomsListe(l){
   // Le noyau rend une référence vers sa liste interne : copie avant de la consommer
+  // La liste reçue est une copie temporaire : consommée ici. Les éléments rendus sont à libérer (nomsChaque).
   const R=[];if(!l)return R;
-  const n=l.Size();if(!n)return R;
+  const n=l.Size();if(!n){occFree(l);return R;}
   const cp=new occt.TopTools_ListOfShape_1();
-  try{cp.Assign(l);for(let i=0;i<n;i++){R.push(cp.First_1?cp.First_1():cp.First());cp.RemoveFirst();}}
-  finally{try{cp.delete();}catch(e){}}
+  try{occFree(cp.Assign(l));for(let i=0;i<n;i++){R.push(cp.First_1?cp.First_1():cp.First());cp.RemoveFirst();}}
+  finally{try{cp.delete();}catch(e){}occFree(l);}
   return R;
 }
+function nomsChaque(l,fn){const R=nomsListe(l);try{return R.map(fn);}finally{occDispose(R);}} // chaque élément, puis libéré
+function nomsFaceCle(m,i){return occCastLibre(m.FindKey(i),c=>occt.TopoDS.Face_1(c));}
 function nomsDe(s){return s?(NOMS_TABLES.get(s)||null):null;}
 function nomsPartage(src,dst){
   // dst = copie exacte de src, ou src elle-même sous un autre objet
@@ -3087,9 +3090,10 @@ function nomsTransmet(entrees,api,res,opts){
           const x=mS.FindKey(i);
           const ici=mR.FindIndex(x);
           if(ici>0)par[ici-1].push({nom,seul:true});
-          let L=[];try{L=nomsListe(api.Modified(x));}catch(e){L=[];}
+          let L=[];try{ // x et L libérés en fin de tour
+          try{L=nomsListe(api.Modified(x));}catch(e){L=[];}
           // Dépouille : ses faces inclinées ne sont données que par ModifiedShape
-          if(!L.length&&ici<=0&&api.ModifiedShape){try{const y=api.ModifiedShape(x);if(y&&!y.IsNull())L=[y];}catch(e){}}
+          if(!L.length&&ici<=0&&api.ModifiedShape){try{const y=api.ModifiedShape(x);if(y&&!y.IsNull())L=[y];else occFree(y);}catch(e){}}
           const pieces=[];
           L.forEach(y=>{const j=mR.FindIndex(y);if(j>0&&pieces.every(p=>p.j!==j))pieces.push({j,y});});
           if(pieces.length===1)par[pieces[0].j-1].push({nom,seul:true});
@@ -3099,6 +3103,7 @@ function nomsTransmet(entrees,api,res,opts){
             pieces.sort((a,b)=>(a.c[0]-b.c[0])||(a.c[1]-b.c[1])||(a.c[2]-b.c[2]));
             pieces.forEach((p,k)=>par[p.j-1].push({nom:nom+'#'+(k+1),seul:false}));
           }
+          }finally{occDispose(L);occFree(x);}
         }
         Object.keys(T.a||{}).forEach(k=>seen.add(JSON.stringify([k,T.a[k]])));
       }finally{try{if(mS)mS.delete();}catch(e){}}
@@ -3118,7 +3123,7 @@ function nomsTransmet(entrees,api,res,opts){
     f.forEach((n,i)=>{if(n){if(!vus.has(n))vus.set(n,[]);vus.get(n).push(i);}});
     vus.forEach((L,n)=>{
       if(L.length<2)return;
-      const q=L.map(i=>({i,c:nomsCentre(mR.FindKey(i+1))}));
+      const q=L.map(i=>({i,c:occAvec(mR.FindKey(i+1),nomsCentre)}));
       q.sort((x,y)=>(x.c[0]-y.c[0])||(x.c[1]-y.c[1])||(x.c[2]-y.c[2]));
       q.forEach((x,k)=>{if(k)f[x.i]=n+'#'+(k+1);});
     });
@@ -3143,10 +3148,12 @@ function nomsNomme(res,fn){
 function nomsApresUnify(u,s,r){
   // ShapeUpgrade_UnifySameDomain : l'historique passe par une poignée
   if(!nomsActif||!NOMS_TABLES.get(s))return;
+  let h=null;
   try{
-    const h=u.History(),H=h&&h.get?h.get():h;
+    h=u.History();const H=h&&h.get?h.get():h;
     nomsTransmet([s],{Modified:x=>H.Modified(x)},r);
   }catch(e){}
+  finally{occFree(h);}
 }
 function nomsApresConge(mf,base,s,chamfer){
   // Faces gardées : historique. Face née : nom de l'arête dont elle vient (stable d'un rejeu à l'autre)
@@ -3159,10 +3166,10 @@ function nomsApresConge(mf,base,s,chamfer){
       const n=R.carte.Size(),pre=chamfer?'chanfrein':'congé';
       for(let i=1;i<=n;i++){
         let k=0;
-        nomsListe(mf.Generated(R.carte.FindKey(i))).forEach(y=>{
+        occAvec(R.carte.FindKey(i),cle=>nomsChaque(mf.Generated(cle),y=>{
           const j=m.FindIndex(y);
           if(j>0&&!f[j-1]){f[j-1]=pre+'['+R.noms[i-1]+']'+(k?'#'+(k+1):'');k++;}
-        });
+        }));
       }
     }});
   }catch(e){}
@@ -3190,12 +3197,14 @@ function nomsPrismeFaces(pr,res,cotes){
       let n=nom;for(let k=2;pris.has(n);k++)n=nom+'#'+k;
       f[j-1]=n;pris.add(n);
     };
-    (cotes||[]).forEach(c=>{try{nomsListe(pr.Generated(c.e)).forEach(y=>pose(y,c.id+'/flanc'));}catch(e){}});
+    (cotes||[]).forEach(c=>{try{nomsChaque(pr.Generated(c.e),y=>pose(y,c.id+'/flanc'));}catch(e){}});
+    let bouts=[];
     try{
-      const bouts=nomsBoutsPrisme(pr);
+      bouts=nomsBoutsPrisme(pr);
       if(bouts[0]&&!bouts[0].IsNull())pose(bouts[0],'bas');
       if(bouts[1]&&!bouts[1].IsNull())pose(bouts[1],'haut');
     }catch(e){}
+    finally{occDispose(bouts);}
   });
 }
 /* ----- arêtes : nom déduit des faces qu'elles séparent ----- */
@@ -3209,7 +3218,7 @@ function nomsAretes(s){
     const nomF=x=>{const j=mF.FindIndex(x);return j>0?(T.f[j-1]||'?'):'?';};
     const N=mE.Size(),rows=[];
     for(let i=1;i<=N;i++){
-      const paire=[...new Set(nomsListe(mE.FindFromIndex(i)).map(nomF))].sort();
+      const paire=[...new Set(nomsChaque(mE.FindFromIndex(i),nomF))].sort();
       rows.push({i,cle:paire.join('|'),paire});
     }
     // Deux arêtes entre les mêmes faces : départagées par les faces qui touchent leurs bouts
@@ -3217,9 +3226,10 @@ function nomsAretes(s){
     grp.forEach(L=>{
       if(L.length<2)return;
       L.forEach(r=>{
-        const e=occt.TopoDS.Edge_1(mE.FindKey(r.i)),v=new Set();
+        const e=occCastLibre(mE.FindKey(r.i),c=>occt.TopoDS.Edge_1(c)),v=new Set();
         [occt.TopExp.FirstVertex(e,false),occt.TopExp.LastVertex(e,false)].forEach(q=>{
-          const j=mV.FindIndex(q);if(j>0)nomsListe(mV.FindFromIndex(j)).forEach(fx=>v.add(nomF(fx)));});
+          const j=mV.FindIndex(q);if(j>0)nomsChaque(mV.FindFromIndex(j),fx=>v.add(nomF(fx)));occFree(q);});
+        occFree(e);
         r.bouts=[...v].filter(n=>r.paire.indexOf(n)<0).sort().join(',');
       });
       const g2=new Map();L.forEach(r=>{if(!g2.has(r.bouts))g2.set(r.bouts,[]);g2.get(r.bouts).push(r);});
@@ -3228,7 +3238,7 @@ function nomsAretes(s){
         if(M.length>1){
           M.forEach(r=>{
             r.c=[0,0,0];
-            try{const ad=new occt.BRepAdaptor_Curve_2(occt.TopoDS.Edge_1(mE.FindKey(r.i)));const p=ad.Value((ad.FirstParameter()+ad.LastParameter())/2);r.c=[p.X(),p.Y(),p.Z()];try{p.delete();}catch(e){}try{ad.delete();}catch(e){}}catch(e){}
+            try{const eM=occCastLibre(mE.FindKey(r.i),c=>occt.TopoDS.Edge_1(c));const ad=new occt.BRepAdaptor_Curve_2(eM);r.c=occXyz(ad.Value((ad.FirstParameter()+ad.LastParameter())/2));occFree(ad);occFree(eM);}catch(e){}
           });
           M.sort((x,y)=>(x.c[0]-y.c[0])||(x.c[1]-y.c[1])||(x.c[2]-y.c[2]));
         }
@@ -3262,7 +3272,7 @@ function nomsCompose(parts,res,ids){
         mP=nomsCarteFaces(p);
         for(let i=1;i<=mP.Size();i++){
           const n=T.f[i-1];if(!n)continue;
-          const j=m.FindIndex(mP.FindKey(i));if(j<=0)continue;
+          const j=occAvec(mP.FindKey(i),x=>m.FindIndex(x));if(j<=0)continue;
           const q=vus.has(n)?n+'@'+((ids&&ids[k])||k):n;
           vus.add(q);f[j-1]=q;
         }
@@ -3295,7 +3305,7 @@ function nomsInstantane(s){
     const L=[];
     for(let i=1;i<=m.Size();i++){
       const nom=T.f[i-1];if(!nom)continue;
-      const x=occt.TopoDS.Face_1(m.FindKey(i));
+      const x=nomsFaceCle(m,i);
       try{L.push({nom,d:occSurfDesc(x),c:nomsCentre(x)});}catch(e){}
       finally{try{x.delete();}catch(e){}}
     }
@@ -3310,7 +3320,7 @@ function nomsCompleter(res,fid,snap){
   if(!nomsActif||!res)return res;
   let T=NOMS_TABLES.get(res);
   if(T&&T.f.length&&T.f.indexOf(null)<0)return res;
-  let m=null;
+  let m=null,tous=[];
   try{
     m=nomsCarteFaces(res);if(!m)return res;
     const N=m.Size();
@@ -3320,7 +3330,7 @@ function nomsCompleter(res,fid,snap){
     const pris=new Set(f.filter(Boolean));
     const libre=n=>{if(!pris.has(n))return n;for(let k=2;;k++){const q=n+'#'+k;if(!pris.has(q))return q;}};
     let vides=[];
-    for(let i=0;i<N;i++)if(!f[i]){const x=occt.TopoDS.Face_1(m.FindKey(i+1));vides.push({i,x,c:nomsCentre(x)});}
+    for(let i=0;i<N;i++)if(!f[i]){const x=nomsFaceCle(m,i+1);tous.push(x);vides.push({i,x,c:nomsCentre(x)});}
     vides.sort((p,q)=>(p.c[0]-q.c[0])||(p.c[1]-q.c[1])||(p.c[2]-q.c[2]));
     if(snap&&snap.L.length)vides=vides.filter(v=>{
       let d=null;try{d=occSurfDesc(v.x);}catch(e){return true;}
@@ -3335,7 +3345,7 @@ function nomsCompleter(res,fid,snap){
     if(fid)vides.forEach((v,k)=>{const n=libre(fid+'/~'+(k+1));f[v.i]=n;pris.add(n);});
     if(!T)NOMS_TABLES.set(res,{f,a});
   }catch(e){}
-  finally{try{if(m)m.delete();}catch(e){}}
+  finally{occDispose(tous);try{if(m)m.delete();}catch(e){}}
   return res;
 }
 function nomsFaceSurSurface(res,nom,nd){
@@ -3348,7 +3358,7 @@ function nomsFaceSurSurface(res,nom,nd){
     const pris=new Set(T.f.filter(Boolean));let k=0;
     for(let i=0;i<T.f.length;i++){
       if(T.f[i])continue;
-      const x=occt.TopoDS.Face_1(m.FindKey(i+1));
+      const x=nomsFaceCle(m,i+1);
       try{
         if(occSameSurf(occSurfDesc(x),nd)){
           let n=nom;while(pris.has(n))n=nom+'#'+(++k+1);
@@ -3391,7 +3401,7 @@ function nomsRefFace(shape,ref){
     const proche=L=>{
       if(L.length<2||!Array.isArray(ref.pos))return L[0];
       let b=L[0],bd=1e18;
-      L.forEach(k=>{const x=m.FindKey(k+1),c=nomsCentre(x),d=Math.hypot(c[0]-ref.pos[0],c[1]-ref.pos[1],c[2]-ref.pos[2]);if(d<bd){bd=d;b=k;}});
+      L.forEach(k=>{const c=occAvec(m.FindKey(k+1),nomsCentre),d=Math.hypot(c[0]-ref.pos[0],c[1]-ref.pos[1],c[2]-ref.pos[2]);if(d<bd){bd=d;b=k;}});
       return b;
     };
     if(i<0){
@@ -3401,7 +3411,7 @@ function nomsRefFace(shape,ref){
       if(L.length)i=proche(L);
     }
     if(i<0){NOMS_PERTES.push('la face d’origine n’existe plus'+(ref.pos?' près de '+nomsPos(ref.pos):'')+' — recherche par position');return null;}
-    return occt.TopoDS.Face_1(m.FindKey(i+1));
+    return nomsFaceCle(m,i+1);
   }catch(e){return null;}
   finally{try{if(m)m.delete();}catch(e){}}
 }
@@ -3441,7 +3451,7 @@ function nomsSurAretes(shape,edges){
     ex=new occt.TopExp_Explorer_2(shape,E.TopAbs_EDGE,E.TopAbs_SHAPE);
     for(let k=0;ex.More();k++,ex.Next()){
       const e=par.get(k);if(!e)continue;
-      const j=R.carte.FindIndex(ex.Current());
+      const j=occAvec(ex.Current(),x=>R.carte.FindIndex(x));
       if(j>0)e.nom=R.noms[j-1];
     }
     edges.alias=T.a||{};
@@ -3561,6 +3571,17 @@ function insertSketchFillet(data,fx,fy,r,fxPid){
 function occHas(){return occtReady&&occt;}
 function occBinPush(bin,h){if(h)bin.push(h);return h;}
 function occDispose(list){(list||[]).forEach(h=>{try{h.delete();}catch(e){}});}
+// V0.64.3 : le noyau rend une COPIE à chaque appel qui rend un objet (Current, FindKey, Corner…, Direction…), à
+// libérer une par une : rien ne le fait à notre place. Une copie de forme oubliée garde aussi en vie la géométrie
+// et le maillage qu'elle désigne, même une fois le solide supprimé. Vérifié par test_fuite_noyau.
+function occFree(h){try{if(h&&h.delete)h.delete();}catch(e){}}
+function occCastLibre(c,cast){try{return cast(c);}finally{occFree(c);}} // transtypage : la source part, le résultat reste
+function occFaceCur(x){return occCastLibre(x.Current(),c=>occt.TopoDS.Face_1(c));}
+function occEdgeCur(x){return occCastLibre(x.Current(),c=>occt.TopoDS.Edge_1(c));}
+function occSolidCur(x){return occCastLibre(x.Current(),c=>occt.TopoDS.Solid_1(c));}
+function occShellCur(x){return occCastLibre(x.Current(),c=>occt.TopoDS.Shell_1(c));}
+function occXyz(p){try{return[p.X(),p.Y(),p.Z()];}finally{occFree(p);}} // lit un point / une direction, puis le libère
+function occAvec(h,fn){try{return fn(h);}finally{occFree(h);}} // prête h à fn le temps de l'appel
 function occClassifier(shape){
   // Point dedans / dehors RAPIDE (V0.44.1) : même usage que BRepClass3d_SolidClassifier_2
   // (Perform(p,tol), State(), delete()). Sous OCCT 8 le classifieur coûte ~22 ms par point sur un
@@ -3618,7 +3639,7 @@ function occWireFromChain(sk,tr,chain,bin,z0,cotes){
   const mkW=occBinPush(bin,new occt.BRepBuilderAPI_MakeWire_1());
   const nodes=chainNodesOf(chain);
   // MakeWire recopie l'arête pour partager les sommets : on retient celle du contour
-  const noteCote=ed=>{if(cotes&&ed&&ed.e&&ed.e.id!=null)cotes.push({e:mkW.Edge(),id:ed.e.id});};
+  const noteCote=ed=>{if(cotes&&ed&&ed.e&&ed.e.id!=null)cotes.push({e:occBinPush(bin,mkW.Edge()),id:ed.e.id});};
   const projOnCirc=(Cw,r,a)=>{const w=OP(occW(sk,Cw.x+r*Math.cos(a),Cw.y+r*Math.sin(a)));return occBinPush(bin,new occt.gp_Pnt_3(w[0],w[1],w[2]));};
   for(let i=0;i<nodes.length-1;i++){
     const st=chain[i],ed=st.ed;
@@ -3628,7 +3649,7 @@ function occWireFromChain(sk,tr,chain,bin,z0,cotes){
       if(!A||!B)throw new Error('ligne incomplète');
       const me=occBinPush(bin,new occt.BRepBuilderAPI_MakeEdge_3(PW(A.x,A.y),PW(B.x,B.y)));
       me.Build();if(!me.IsDone())throw new Error('arête ligne impossible');
-      mkW.Add_1(me.Edge());noteCote(ed);
+      mkW.Add_1(occBinPush(bin,me.Edge()));noteCote(ed);
     }else if(ed.kind==='spline'){
       // 2026-10-29 : spline d'esquisse = B-spline EXACTE (mêmes pôles et nœuds que le dessin 2D, 50-esquisse-6),
       // pôles posés dans le plan par la même application affine que les lignes : bouts identiques aux voisines
@@ -3641,7 +3662,7 @@ function occWireFromChain(sk,tr,chain,bin,z0,cotes){
       const h=occBinPush(bin,new occt.Handle_Geom_Curve_2(new occt.Geom_BSplineCurve_1(poles,kn,mu,bs.p||SK_SPL_DEG,false))); // la poignée possède la courbe
       const me=occBinPush(bin,new occt.BRepBuilderAPI_MakeEdge_24(h));
       me.Build();if(!me.IsDone())throw new Error('arête spline impossible');
-      let e=me.Edge();if(ed.a!==st.from)e=occt.TopoDS.Edge_1(e.Reversed());
+      let e=occBinPush(bin,me.Edge());if(ed.a!==st.from)e=occBinPush(bin,occCastLibre(e.Reversed(),c=>occt.TopoDS.Edge_1(c)));
       mkW.Add_1(e);noteCote(ed);
     }else{
       const a=ed.e,Cc=tr.pts[a.pc];
@@ -3676,7 +3697,7 @@ function occWireFromChain(sk,tr,chain,bin,z0,cotes){
       const me=occBinPush(bin,new occt.BRepBuilderAPI_MakeEdge_10(circ,P1,P2));
       me.Build();if(!me.IsDone())throw new Error('arête arc impossible');
       // Note : .Reversed() rend un TopoDS_Shape -> recast obligatoire en TopoDS_Edge.
-      let e=me.Edge();if(rev)e=occt.TopoDS.Edge_1(e.Reversed());
+      let e=occBinPush(bin,me.Edge());if(rev)e=occBinPush(bin,occCastLibre(e.Reversed(),c=>occt.TopoDS.Edge_1(c)));
       mkW.Add_1(e);noteCote(ed);
     }
   }
@@ -3690,12 +3711,12 @@ function occPrismOfChain(sk,tr,chain,distance,area,z0){
   try{
     const cotes=[];
     let w=occWireFromChain(sk,tr,chain,bin,z0,cotes);
-    if(area<0)w=occt.TopoDS.Wire_1(w.Reversed());
+    if(area<0){const w0=w;w=occCastLibre(w0.Reversed(),c=>occt.TopoDS.Wire_1(c));occFree(w0);}
     const fm=occBinPush(bin,new occt.BRepBuilderAPI_MakeFace_15(w,true));
     fm.Build();if(!fm.IsDone())throw new Error('face impossible');
     const{u,v,n}=sketchBasis(sk);
     const vec=occBinPush(bin,new occt.gp_Vec_4(n.x*distance,n.y*distance,n.z*distance));
-    const pr=occBinPush(bin,new occt.BRepPrimAPI_MakePrism_1(fm.Face(),vec,false,true));
+    const pr=occBinPush(bin,new occt.BRepPrimAPI_MakePrism_1(occBinPush(bin,fm.Face()),vec,false,true));
     pr.Build();if(!pr.IsDone())throw new Error('prisme impossible');
     const s=pr.Shape();
     nomsPrismeFaces(pr,s,cotes);
@@ -3753,12 +3774,12 @@ function occSpanFromShape(shape,B){
   if(!shape||!B)return null;
   try{
     const box=new occt.Bnd_Box_1();
-    occt.BRepBndLib.Add(shape,box,true);
-    const a=box.CornerMin(),b=box.CornerMax();
+    let a,b;
+    try{occt.BRepBndLib.Add(shape,box,true);a=occXyz(box.CornerMin());b=occXyz(box.CornerMax());}finally{occFree(box);}
     // Les 8 coins : deux coins opposés ne suffisent que si l'axe penche vers (+,+,+). Barquette,
     // Ø30 incliné à 20° au coin de la pièce : les copies de la symétrie double (axe (−,+,+)…)
     // recevaient un outil trop court, qui enlevait 0 à 1923 mm³ au lieu de 7475.
-    const xs=[a.X(),b.X()],ys=[a.Y(),b.Y()],zs=[a.Z(),b.Z()];
+    const xs=[a[0],b[0]],ys=[a[1],b[1]],zs=[a[2],b[2]];
     let mn=Infinity,mx=-Infinity;
     for(const x of xs)for(const y of ys)for(const z of zs){
       const d=(x-B.o.x)*B.n.x+(y-B.o.y)*B.n.y+(z-B.o.z)*B.n.z;
@@ -3841,6 +3862,10 @@ function occCutEach(a,b){
   const kids=[];
   const it=new occt.TopoDS_Iterator_2(b,true,true);
   try{for(;it.More();it.Next())kids.push(it.Value());}finally{try{it.delete();}catch(e){}}
+  try{return occCutKids(a,b,kids);}finally{occDispose(kids);}
+}
+function occCutKids(a,b,kids){
+  const CP=occt.TopAbs_ShapeEnum.TopAbs_COMPOUND;
   if(kids.length&&kids.every(k=>k.ShapeType()===CP)){
     let r=a;
     kids.forEach(k=>{const n=occCutEach(r,k);if(r!==a){try{r.delete();}catch(e){}}r=n;});
@@ -3972,7 +3997,7 @@ function occUnifyKeepEdges(s){
     const R=[];
     const ex=occBinPush(bin,new occt.TopExp_Explorer_2(s,E.TopAbs_FACE,E.TopAbs_SHAPE));
     for(;ex.More();ex.Next()){
-      const f=occBinPush(bin,occt.TopoDS.Face_1(ex.Current()));
+      const f=occBinPush(bin,occFaceCur(ex));
       const ad=occBinPush(bin,new occt.BRepAdaptor_Surface_2(f,true));
       const t=ad.GetType();let g=null,k='',sig=[];
       if(t===T.GeomAbs_Cylinder){g=occBinPush(bin,ad.Cylinder());k='cyl';sig=[g.Radius()];}
@@ -3993,9 +4018,9 @@ function occUnifyKeepEdges(s){
       if(c>0&&a.direct===b.direct)continue; // paramétrages compatibles : UnifySameDomain s'en sort
       const ea=occBinPush(bin,new occt.TopExp_Explorer_2(a.f,E.TopAbs_EDGE,E.TopAbs_SHAPE));
       for(;ea.More();ea.Next()){
-        const e=ea.Current();let com=false;
+        const e=occBinPush(bin,ea.Current());let com=false;
         const eb=occBinPush(bin,new occt.TopExp_Explorer_2(b.f,E.TopAbs_EDGE,E.TopAbs_SHAPE));
-        for(;eb.More()&&!com;eb.Next())com=e.IsSame(eb.Current());
+        for(;eb.More()&&!com;eb.Next())com=occAvec(eb.Current(),x=>e.IsSame(x));
         if(com&&!out.some(x=>x.IsSame(e)))out.push(occt.TopoDS.Edge_1(e));
       }
     }
@@ -4012,8 +4037,8 @@ function occUnifyKeepEdges(s){
    n'était couture ni du solide d'avant ni de l'outil. Toutes les autres arêtes sont gardées. */
 function occShapeBox(s,m){
   const b=new occt.Bnd_Box_1();
-  try{occt.BRepBndLib.Add(s,b,true);const a=b.CornerMin(),z=b.CornerMax();
-    return [[a.X()-m,a.Y()-m,a.Z()-m],[z.X()+m,z.Y()+m,z.Z()+m]];}
+  try{occt.BRepBndLib.Add(s,b,true);const a=occXyz(b.CornerMin()),z=occXyz(b.CornerMax());
+    return [[a[0]-m,a[1]-m,a[2]-m],[z[0]+m,z[1]+m,z[2]+m]];}
   finally{try{b.delete();}catch(e){}}
 }
 function occPlaneSeams(s,box,withPts){
@@ -4027,7 +4052,7 @@ function occPlaneSeams(s,box,withPts){
     const buckets=new Map();let fi=0;
     const ex=occBinPush(bin,new occt.TopExp_Explorer_2(s,E.TopAbs_FACE,E.TopAbs_SHAPE));
     for(;ex.More();ex.Next(),fi++){
-      const f=occBinPush(bin,occt.TopoDS.Face_1(ex.Current()));
+      const f=occBinPush(bin,occFaceCur(ex));
       if(box){const b=occFaceBox(f);if(!b||!hit(b))continue;}
       const ad=occBinPush(bin,new occt.BRepAdaptor_Surface_2(f,true));
       if(ad.GetType()!==T.GeomAbs_Plane)continue;
@@ -4036,7 +4061,7 @@ function occPlaneSeams(s,box,withPts){
       const d=n[0]*L.X()+n[1]*L.Y()+n[2]*L.Z();
       const ee=occBinPush(bin,new occt.TopExp_Explorer_2(f,E.TopAbs_EDGE,E.TopAbs_SHAPE));
       for(;ee.More();ee.Next()){
-        const e=occBinPush(bin,occt.TopoDS.Edge_1(ee.Current()));
+        const e=occBinPush(bin,occEdgeCur(ee));
         const c=occBinPush(bin,new occt.BRepAdaptor_Curve_2(e));
         const u0=c.FirstParameter(),u1=c.LastParameter();
         const m=occBinPush(bin,c.Value((u0+u1)/2));
@@ -4088,7 +4113,7 @@ function occUnifyCutSeams(res,prev,tool){
     const E=occt.TopAbs_ShapeEnum;
     const ex=occBinPush(bin,new occt.TopExp_Explorer_2(res,E.TopAbs_EDGE,E.TopAbs_SHAPE));
     for(;ex.More();ex.Next()){
-      const e=ex.Current();
+      const e=occBinPush(bin,ex.Current());
       if(!drop.some(r=>r.e.IsSame(e)))u.KeepShape(occBinPush(bin,occt.TopoDS.Edge_1(e)));
     }
     u.Build();
@@ -4144,7 +4169,7 @@ function occCoqueThick(result,faces,thick,join,inter){
         nomsTransmet([result],mk,brut,{nais:(m,f)=>{
           for(let i=1;i<=mS.Size();i++){
             const nom=T.f[i-1];if(!nom)continue;
-            nomsListe(mk.Generated(mS.FindKey(i))).forEach(y=>{const j=m.FindIndex(y);if(j>0&&!f[j-1])f[j-1]=nom+'/int';});
+            occAvec(mS.FindKey(i),c=>nomsChaque(mk.Generated(c),y=>{const j=m.FindIndex(y);if(j>0&&!f[j-1])f[j-1]=nom+'/int';}));
           }
         }});
       }finally{try{mS.delete();}catch(e){}}
@@ -4166,8 +4191,7 @@ function occCoqueBBox(sh){
   try{occt.BRepBndLib.AddOptimal(sh,b,true,false);}
   catch(e){try{occt.BRepBndLib.AddOptimal(sh,b);}catch(e2){try{b.delete();}catch(e){}return null;}}
   try{
-    const a=b.CornerMin(),z=b.CornerMax();
-    const o=[a.X(),a.Y(),a.Z(),z.X(),z.Y(),z.Z()];
+    const o=occXyz(b.CornerMin()).concat(occXyz(b.CornerMax()));
     try{b.delete();}catch(e){}
     return o;
   }catch(e){try{b.delete();}catch(e2){}return null;}
@@ -4372,8 +4396,8 @@ function occDiskPrism(sk,Cx,Cy,r,sp){
     pr.Build();if(!pr.IsDone())throw new Error('prisme pastille impossible');
     const s=pr.Shape();
     nomsNomme(s,(m,fn)=>{
-      nomsListe(pr.Generated(mkW.Edge())).forEach(y=>{const j=m.FindIndex(y);if(j>0)fn[j-1]='cercle/flanc';});
-      const q=nomsBoutsPrisme(pr),a=m.FindIndex(q[0]),b=m.FindIndex(q[1]);
+      occAvec(mkW.Edge(),c=>nomsChaque(pr.Generated(c),y=>{const j=m.FindIndex(y);if(j>0)fn[j-1]='cercle/flanc';}));
+      const q=nomsBoutsPrisme(pr),a=m.FindIndex(q[0]),b=m.FindIndex(q[1]);occDispose(q);
       if(a>0)fn[a-1]='bas';if(b>0)fn[b-1]='haut';
     });
     return{shape:s,bin};
@@ -4432,7 +4456,7 @@ function occEdgeAt(shape,src){
   const SH=occt.TopAbs_ShapeEnum.TopAbs_SHAPE;
   const ex=new occt.TopExp_Explorer_2(shape,occt.TopAbs_ShapeEnum.TopAbs_EDGE,SH);
   let k=0,out=null;
-  while(ex.More()){if(k===src){out=occt.TopoDS.Edge_1(ex.Current());break;}k++;ex.Next();}
+  while(ex.More()){if(k===src){out=occEdgeCur(ex);break;}k++;ex.Next();}
   try{ex.delete();}catch(e){}
   return out;
 }
@@ -4445,7 +4469,7 @@ function occEdgeFaces(shape,edge){
     const SH=occt.TopAbs_ShapeEnum.TopAbs_SHAPE;
     const fx=new occt.TopExp_Explorer_2(shape,occt.TopAbs_ShapeEnum.TopAbs_FACE,SH);bin.push(fx);
     while(fx.More()&&out.length<2){
-      const f=occt.TopoDS.Face_1(fx.Current());
+      const f=occFaceCur(fx);
       let has=false;
       const ee=new occt.TopExp_Explorer_2(f,occt.TopAbs_ShapeEnum.TopAbs_EDGE,SH);bin.push(ee);
       while(ee.More()){if(ee.Current().IsSame(edge)){has=true;break;}ee.Next();}
@@ -4625,7 +4649,7 @@ function occFilletRun(base,jobs,warns,chamfer,opts){
       const SH=occt.TopAbs_ShapeEnum.TopAbs_SHAPE;
       const ex=new occt.TopExp_Explorer_2(cur,occt.TopAbs_ShapeEnum.TopAbs_EDGE,SH);bin.push(ex);
       const hs=[];let k=0;
-      while(ex.More()){if(want.has(k)){const h=occt.TopoDS.Edge_1(ex.Current());bin.push(h);const w=want.get(k);hs.push({h,r:w.r,fn:w.fn||null});}k++;ex.Next();}
+      while(ex.More()){if(want.has(k)){const h=occEdgeCur(ex);bin.push(h);const w=want.get(k);hs.push({h,r:w.r,fn:w.fn||null});}k++;ex.Next();}
       occDispose([ex]);
       if(!hs.length){occDispose(bin);return null;}
       if(chamfer&&!occt.BRepFilletAPI_MakeChamfer){occDispose(bin);return null;}
@@ -4748,7 +4772,7 @@ function occMicroAretes(shape){
   try{
     for(;x.More();x.Next()){
       const G=new occt.GProp_GProps_1();
-      try{occt.BRepGProp.LinearProperties(x.Current(),G,false,false);if(G.Mass()<1e-3)n++;}finally{G.delete();}
+      try{occAvec(x.Current(),c=>occt.BRepGProp.LinearProperties(c,G,false,false));if(G.Mass()<1e-3)n++;}finally{G.delete();}
     }
   }finally{x.delete();}
   return n;
@@ -4952,11 +4976,12 @@ function occTriPos(shape,defl,ang,wantN){
   const SH=occt.TopAbs_ShapeEnum.TopAbs_SHAPE;
   const ex=new occt.TopExp_Explorer_2(shape,occt.TopAbs_ShapeEnum.TopAbs_FACE,SH);
   while(ex.More()){
-    const f=occt.TopoDS.Face_1(ex.Current());
+    const f=occFaceCur(ex);
     const loc=new occt.TopLoc_Location_1();
     const triStart=pos.length/9;
+    let h=null; // t = h.get() appartient à h : on ne libère que h
     try{
-      const h=occt.BRep_Tool.Triangulation(f,loc);
+      h=occt.BRep_Tool.Triangulation(f,loc);
       if(h&&!h.IsNull()){
         const t=h.get(),nt=t.NbTriangles();
         // Orientation_1() rend un objet-enum (identité stricte, pas un nombre).
@@ -5003,6 +5028,7 @@ function occTriPos(shape,defl,ang,wantN){
         try{if(trsf)trsf.delete();}catch(e){}
       }
     }catch(e){}
+    occFree(h);occFree(f);
     try{loc.delete();}catch(e){}
     const triCount=pos.length/9-triStart;
     if(triCount>0)groups.push({f:faceOrd,start:triStart,count:triCount});
@@ -5038,9 +5064,9 @@ function occFaceOutNormal(f){
     try{
       const gt=ad.GetType();
       if(gt===occt.GeomAbs_SurfaceType.GeomAbs_Plane){
-        const d=ad.Plane().Axis().Direction();n=[d.X(),d.Y(),d.Z()];
+        const q=ad.Plane(),a=q.Axis();n=occXyz(a.Direction());occFree(a);occFree(q);
       }else if(gt===occt.GeomAbs_SurfaceType.GeomAbs_Cylinder){
-        const d=ad.Cylinder().Axis().Direction();n=[d.X(),d.Y(),d.Z()];
+        const q=ad.Cylinder(),a=q.Axis();n=occXyz(a.Direction());occFree(a);occFree(q);
       }
     }catch(e){}
     if(!n){try{ad.delete();}catch(e){}return null;}
@@ -5058,8 +5084,8 @@ function occFaceBox(f){
   try{
     const b=new occt.Bnd_Box_1();
     occt.BRepBndLib.Add(f,b,true);
-    const a=b.CornerMin(),z=b.CornerMax();
-    const out={pos:[(a.X()+z.X())/2,(a.Y()+z.Y())/2,(a.Z()+z.Z())/2],dim:[z.X()-a.X(),z.Y()-a.Y(),z.Z()-a.Z()]};
+    const a=occXyz(b.CornerMin()),z=occXyz(b.CornerMax());
+    const out={pos:[(a[0]+z[0])/2,(a[1]+z[1])/2,(a[2]+z[2])/2],dim:[z[0]-a[0],z[1]-a[1],z[2]-a[2]]};
     b.delete();return out;
   }catch(e){return null;}
 }
@@ -5130,7 +5156,7 @@ function occFindFace0(shape,ref){
   const ex=new occt.TopExp_Explorer_2(shape,occt.TopAbs_ShapeEnum.TopAbs_FACE,SH);
   const cands=[];
   while(ex.More()){
-    const f=occt.TopoDS.Face_1(ex.Current());
+    const f=occFaceCur(ex);
     const b=occFaceBox(f),n=occFaceOutNormal(f);
     if(b&&n){
       const dot=n[0]*ref.n[0]+n[1]*ref.n[1]+n[2]*ref.n[2];
@@ -5190,19 +5216,19 @@ function occSurfDesc(f){
   try{
     ad=new occt.BRepAdaptor_Surface_2(f,true);
     const T=occt.GeomAbs_SurfaceType,gt=ad.GetType();
-    const V=d=>[d.X(),d.Y(),d.Z()];
+    const V=occXyz;
     if(gt===T.GeomAbs_Plane){
-      const ax=ad.Plane().Axis();
-      return {k:'pl',n:V(ax.Direction()),p:V(ax.Location())};
+      const pl=ad.Plane(),ax=pl.Axis();
+      try{return {k:'pl',n:V(ax.Direction()),p:V(ax.Location())};}finally{occFree(ax);occFree(pl);}
     }
     if(gt===T.GeomAbs_Cylinder){
       const cy=ad.Cylinder(),pos=cy.Position();
-      return {k:'cy',a:V(pos.Direction()),p:V(pos.Location()),r:cy.Radius(),X:V(pos.XDirection()),Y:V(pos.YDirection()),direct:pos.Direct(),
-        u0:ad.FirstUParameter(),u1:ad.LastUParameter(),v0:ad.FirstVParameter(),v1:ad.LastVParameter()};
+      try{return {k:'cy',a:V(pos.Direction()),p:V(pos.Location()),r:cy.Radius(),X:V(pos.XDirection()),Y:V(pos.YDirection()),direct:pos.Direct(),
+        u0:ad.FirstUParameter(),u1:ad.LastUParameter(),v0:ad.FirstVParameter(),v1:ad.LastVParameter()};}finally{occFree(pos);occFree(cy);}
     }
     if(gt===T.GeomAbs_Cone){
-      const co=ad.Cone();
-      return {k:'co',a:V(co.Position().Direction()),apex:V(co.Apex()),semi:co.SemiAngle()};
+      const co=ad.Cone(),pc=co.Position();
+      try{return {k:'co',a:V(pc.Direction()),apex:V(co.Apex()),semi:co.SemiAngle()};}finally{occFree(pc);occFree(co);}
     }
     return {k:'?'};
   }catch(e){return {k:'?'};}
@@ -5222,7 +5248,7 @@ function occSameSurf(a,b){
 function occSubShapes(sh,kind){
   const out=[];
   const ex=new occt.TopExp_Explorer_2(sh,occt.TopAbs_ShapeEnum[kind],occt.TopAbs_ShapeEnum.TopAbs_SHAPE);
-  while(ex.More()){out.push(kind==='TopAbs_FACE'?occt.TopoDS.Face_1(ex.Current()):ex.Current());ex.Next();}
+  while(ex.More()){out.push(kind==='TopAbs_FACE'?occFaceCur(ex):ex.Current());ex.Next();}
   try{ex.delete();}catch(e){}
   return out;
 }
@@ -5262,7 +5288,7 @@ function occMoveFaceRuledTool(shape,face,n,dist){
     const wx=occBinPush(bin,new occt.BRepTools_WireExplorer_3(ow,face));
     const it=[];
     for(;wx.More();wx.Next()){
-      const e=occBinPush(bin,occt.TopoDS.Edge_1(wx.Current()));
+      const e=occBinPush(bin,occEdgeCur(wx));
       const v0=V3(occBinPush(bin,occt.BRep_Tool.Pnt(occBinPush(bin,wx.CurrentVertex()))));
       const fl=occEdgeFaces(shape,e);fl.forEach(x=>bin.push(x.f));
       const o=fl.find(x=>!x.f.IsSame(face));
@@ -5363,7 +5389,7 @@ function occMoveFaceRuledTool(shape,face,n,dist){
     const ex=occBinPush(bin,new occt.TopExp_Explorer_2(sew.SewedShape(),occt.TopAbs_ShapeEnum.TopAbs_SHELL,occt.TopAbs_ShapeEnum.TopAbs_SHAPE));
     if(!ex.More())return null;
     const ms=occBinPush(bin,new occt.BRepBuilderAPI_MakeSolid_1());
-    ms.Add(occt.TopoDS.Shell_1(ex.Current()));
+    ms.Add(occShellCur(ex));
     let out=ms.Solid();
     const gp=occBinPush(bin,new occt.GProp_GProps_1());occt.BRepGProp.VolumeProperties_1(out,gp,false,false,false);
     if(gp.Mass()<0)out=out.Reversed();
@@ -5555,7 +5581,7 @@ function occFindFaceTracked(shape,t){
   const ex=new occt.TopExp_Explorer_2(shape,occt.TopAbs_ShapeEnum.TopAbs_FACE,occt.TopAbs_ShapeEnum.TopAbs_SHAPE);
   let best=null,bs=1e18;
   while(ex.More()){
-    const f=occt.TopoDS.Face_1(ex.Current());ex.Next();
+    const f=occFaceCur(ex);ex.Next();
     let ok=false,sc=1e18;
     const n=occFaceOutNormal(f);
     if(n&&n[0]*t.n[0]+n[1]*t.n[1]+n[2]*t.n[2]>=0.999){
@@ -5914,7 +5940,7 @@ function occFindFaceAny0(shape,ref){
     const ex=new occt.TopExp_Explorer_2(shape,occt.TopAbs_ShapeEnum.TopAbs_FACE,SH);
     let best=null,bs=1e18;
     while(ex.More()){
-      const f=occt.TopoDS.Face_1(ex.Current());
+      const f=occFaceCur(ex);
       let keep=false;
       try{
         const n=occFaceOutNormal(f),b=occFaceBox(f);
@@ -5935,7 +5961,7 @@ function occFindFaceAny0(shape,ref){
   const ex=new occt.TopExp_Explorer_2(shape,occt.TopAbs_ShapeEnum.TopAbs_FACE,SH);
   let best=null,bs=1e18;
   while(ex.More()){
-    const f=occt.TopoDS.Face_1(ex.Current());
+    const f=occFaceCur(ex);
     let keep=false;
     if(!ref.st||occSurfKind(f)===ref.st){
       const b=occFaceBox(f);
@@ -6120,7 +6146,7 @@ function occSplitRun(shape,tools){
 function occSolidsOf(shape){
   const out=[],SH=occt.TopAbs_ShapeEnum.TopAbs_SHAPE;
   const ex=new occt.TopExp_Explorer_2(shape,occt.TopAbs_ShapeEnum.TopAbs_SOLID,SH);
-  while(ex.More()){out.push(occt.TopoDS.Solid_1(ex.Current()));ex.Next();}
+  while(ex.More()){out.push(occSolidCur(ex));ex.Next();}
   try{ex.delete();}catch(e){}
   return out;
 }
@@ -6218,7 +6244,7 @@ function occListEdges(shape){
   const ex=new occt.TopExp_Explorer_2(shape,occt.TopAbs_ShapeEnum.TopAbs_EDGE,SH);bin.push(ex);
   let src=0;
   while(ex.More()){
-    const e=occt.TopoDS.Edge_1(ex.Current());bin.push(e);
+    const e=occEdgeCur(ex);bin.push(e);
     try{
       const ad=new occt.BRepAdaptor_Curve_2(e);bin.push(ad);
       const u0=ad.FirstParameter(),u1=ad.LastParameter();
@@ -6259,8 +6285,9 @@ function occCurvePts(ad,u0,u1,tol,cap){
   //    flèche d'une corde = R(1−cos(Δθ/2)) ≤ tol  ⇒  Δθ = 2·acos(1−tol/R)
   let R=-1;
   try{
-    const c=ad.Circle(),ax=c.Axis().Direction();
-    if(isFinite(ax.X())&&isFinite(ax.Y())&&isFinite(ax.Z()))R=c.Radius();
+    const c=ad.Circle(),a1=c.Axis(),ax=occXyz(a1.Direction());
+    if(isFinite(ax[0])&&isFinite(ax[1])&&isFinite(ax[2]))R=c.Radius();
+    occFree(a1);occFree(c);
   }catch(e){}
   if(R>1e-6){
     let dth=2*Math.acos(Math.max(-1,Math.min(1,1-tol/R)));
@@ -6318,7 +6345,7 @@ function occDraftOnce(result,refFace,faces,angle,opts){
     let done=false;
     try{done=!!da.IsDone();}catch(e){}
     if(!done)throw new Error('dépouille refusée par le moteur');
-    const brut=da.Shape();
+    const brut=occBinPush(bin,da.Shape());
     nomsTransmet([result],da,brut);
     const out=occShapeCopy(brut);
     if(!out||out.IsNull())throw new Error('solide dépouillé vide');
@@ -6332,8 +6359,7 @@ function occFaceDist(a,b){
   const x=new occt.BRepExtrema_DistShapeShape_2(a,b,occt.Extrema_ExtFlag.Extrema_ExtFlag_MIN,occt.Extrema_ExtAlgo.Extrema_ExtAlgo_Grad);
   try{
     if(!x.IsDone()||!(x.NbSolution()>0))return null;
-    const q=x.PointOnShape1(1);
-    return{d:x.Value(),p:[q.X(),q.Y(),q.Z()]};
+    return{d:x.Value(),p:occXyz(x.PointOnShape1(1))};
   }finally{try{x.delete();}catch(e){}}
 }
 function occDraftThin(da,faces){
@@ -6387,7 +6413,7 @@ function occExtrudeDraft(shape,bs,sp,angleDeg){
     const SH=occt.TopAbs_ShapeEnum.TopAbs_SHAPE;
     const ex=new occt.TopExp_Explorer_2(shape,occt.TopAbs_ShapeEnum.TopAbs_FACE,SH);bin.push(ex);
     while(ex.More()){
-      const fc=occt.TopoDS.Face_1(ex.Current());bin.push(fc);
+      const fc=occFaceCur(ex);bin.push(fc);
       let cap=false;
       try{
         const ad=new occt.BRepAdaptor_Surface_2(fc,true);bin.push(ad);
@@ -6451,7 +6477,7 @@ function occSharpEdges(shape){
     };
     const faces=[];
     const fx=new occt.TopExp_Explorer_2(shape,occt.TopAbs_ShapeEnum.TopAbs_FACE,SH);bin.push(fx);
-    while(fx.More()){const f=occt.TopoDS.Face_1(fx.Current());bin.push(f);faces.push(f);fx.Next();}
+    while(fx.More()){const f=occFaceCur(fx);bin.push(f);faces.push(f);fx.Next();}
     const fmap=new Map();
     // 2026-10-23 : COUTURES — une face de révolution (cylindre, cône…) est bordée deux fois par
     // la même arête (sa couture) : vue deux fois DANS LA MÊME FACE. Ce n'est pas une arête de la
@@ -6460,8 +6486,8 @@ function occSharpEdges(shape){
     const seam=new Set(),cyl=faces.map(f=>{
       try{const ad=new occt.BRepAdaptor_Surface_2(f,true);bin.push(ad);
         if(ad.GetType()!==occt.GeomAbs_SurfaceType.GeomAbs_Cylinder)return null;
-        const C=ad.Cylinder(),A=C.Axis(),d=A.Direction(),o=A.Location();
-        return{r:C.Radius(),d:[d.X(),d.Y(),d.Z()],o:[o.X(),o.Y(),o.Z()]};
+        const C=ad.Cylinder(),A=C.Axis();
+        try{return{r:C.Radius(),d:occXyz(A.Direction()),o:occXyz(A.Location())};}finally{occFree(A);occFree(C);}
       }catch(err){return null;}
     });
     const sameCyl=fl=>{
@@ -6474,7 +6500,7 @@ function occSharpEdges(shape){
     faces.forEach((f,fi)=>{
       const ee=new occt.TopExp_Explorer_2(f,occt.TopAbs_ShapeEnum.TopAbs_EDGE,SH);bin.push(ee);
       while(ee.More()){
-        const e=occt.TopoDS.Edge_1(ee.Current());bin.push(e);
+        const e=occEdgeCur(ee);bin.push(e);
         try{
           const ad=new occt.BRepAdaptor_Curve_2(e);bin.push(ad);
           if(ad.LastParameter()>ad.FirstParameter()){
@@ -6493,7 +6519,7 @@ function occSharpEdges(shape){
     const ex=new occt.TopExp_Explorer_2(shape,occt.TopAbs_ShapeEnum.TopAbs_EDGE,SH);bin.push(ex);
     const seen=new Set();
     while(ex.More()){
-      const e=occt.TopoDS.Edge_1(ex.Current());bin.push(e);
+      const e=occEdgeCur(ex);bin.push(e);
       try{
         const ad=new occt.BRepAdaptor_Curve_2(e);bin.push(ad);
         const u0=ad.FirstParameter(),u1=ad.LastParameter();
@@ -6534,8 +6560,8 @@ function occSharpEdges(shape){
                       const g2=new occt.BRepAdaptor_Curve2d_2(e,E2);bin.push(g2);
                       const w0=g1.FirstParameter(),w1=g1.LastParameter();
                       if(!(w1>w0))continue; // arête vue comme point dans ce couple : rien à mesurer ici
-                      const s1=occt.BRep_Tool.Surface_1(E1,new occt.TopLoc_Location_1());bin.push(s1);
-                      const s2=occt.BRep_Tool.Surface_1(E2,new occt.TopLoc_Location_1());bin.push(s2);
+                      const s1=occt.BRep_Tool.Surface_1(E1,occBinPush(bin,new occt.TopLoc_Location_1()));bin.push(s1);
+                      const s2=occt.BRep_Tool.Surface_1(E2,occBinPush(bin,new occt.TopLoc_Location_1()));bin.push(s2);
                       for(const p of [0.25,0.5,0.75]){
                         const q1=g1.Value(w0+(w1-w0)*p),q2=g2.Value(w0+(w1-w0)*p);
                         bin.push(q1);bin.push(q2);
@@ -7464,11 +7490,11 @@ function occWallAt(shape,eds){
     const P=[];
     const ex=occBinPush(bin,new occt.TopExp_Explorer_2(shape,occt.TopAbs_ShapeEnum.TopAbs_FACE,occt.TopAbs_ShapeEnum.TopAbs_SHAPE));
     for(;ex.More();ex.Next()){
-      const f=occBinPush(bin,occt.TopoDS.Face_1(ex.Current()));
+      const f=occBinPush(bin,occFaceCur(ex));
       const ad=occBinPush(bin,new occt.BRepAdaptor_Surface_2(f,true));
       if(ad.GetType()!==occt.GeomAbs_SurfaceType.GeomAbs_Plane)continue;
       const n=occFaceOutNormal(f);if(!n)continue;
-      const L=occBinPush(bin,ad.Plane().Location()),b=occFaceBox(f);
+      const L=occBinPush(bin,occBinPush(bin,ad.Plane()).Location()),b=occFaceBox(f);
       P.push({f,n,o:[L.X(),L.Y(),L.Z()],c:b?b.pos:null});
     }
     const I=occBinPush(bin,new occt.IntCurvesFace_ShapeIntersector());I.Load(shape,1e-6);
@@ -7515,7 +7541,7 @@ function occFacesValides(sh,zone){
   try{
     const ex=occBinPush(bin,new occt.TopExp_Explorer_2(sh,occt.TopAbs_ShapeEnum.TopAbs_FACE,occt.TopAbs_ShapeEnum.TopAbs_SHAPE));
     for(;ex.More();ex.Next()){
-      const f=occBinPush(bin,occt.TopoDS.Face_1(ex.Current()));
+      const f=occBinPush(bin,occFaceCur(ex));
       const b=occBinPush(bin,new occt.Bnd_Box_1());occt.BRepBndLib.Add(f,b,false);
       const a=occBinPush(bin,b.CornerMin()),z=occBinPush(bin,b.CornerMax());
       const A=[a.X(),a.Y(),a.Z()],Z=[z.X(),z.Y(),z.Z()];
@@ -7554,7 +7580,7 @@ function occFilletNurbs(base,js,chamfer,single,edges,cham){
     let nb=null;
     try{
       const nc=new occt.BRepBuilderAPI_NurbsConvert_2(sh,false);
-      try{nb=occShapeCopy(nc.Shape());}finally{del(nc);}
+      try{nb=occAvec(nc.Shape(),occShapeCopy);}finally{del(nc);}
       if(!nb||nb.IsNull())return null;
       const E=occListEdges(nb),js2=[];
       for(const j of js){
@@ -7581,7 +7607,7 @@ function occFilletNurbs(base,js,chamfer,single,edges,cham){
       js.forEach(j=>{const e=(edges||[]).find(x=>x.src===j.src);(e?e.pts:[j.mid]).forEach(q=>{for(let k=0;k<3;k++){lo[k]=Math.min(lo[k],q[k]);hi[k]=Math.max(hi[k],q[k]);}});});
       const m=Math.max.apply(null,js.map(j=>j.r))+1;
       for(let k=0;k<3;k++){lo[k]-=m;hi[k]+=m;}
-      const bx=occBinPush(bin,new occt.BRepPrimAPI_MakeBox_3(occBinPush(bin,new occt.gp_Pnt_3(lo[0],lo[1],lo[2])),occBinPush(bin,new occt.gp_Pnt_3(hi[0],hi[1],hi[2])))).Shape();
+      const bx=occBinPush(bin,occBinPush(bin,new occt.BRepPrimAPI_MakeBox_3(occBinPush(bin,new occt.gp_Pnt_3(lo[0],lo[1],lo[2])),occBinPush(bin,new occt.gp_Pnt_3(hi[0],hi[1],hi[2])))).Shape());
       // UNE passe (Splitter : corps coupé par le bloc, solides triés dedans / dehors) au lieu de
       // Common + Cut — deux booléens sur le corps entier, ~0,6 s chacun
       let loc=null,rest=null;const tri=Math.min(0.5,m/4);
@@ -7592,19 +7618,19 @@ function occFilletNurbs(base,js,chamfer,single,edges,cham){
         try{SP.Build();}catch(e){SP.Build(new occt.Message_ProgressRange());}
         if(SP.IsDone()){
           const ins=[],out=[];
-          const x=occBinPush(bin,new occt.TopExp_Explorer_2(SP.Shape(),occt.TopAbs_ShapeEnum.TopAbs_SOLID,occt.TopAbs_ShapeEnum.TopAbs_SHAPE));
+          const x=occBinPush(bin,new occt.TopExp_Explorer_2(occBinPush(bin,SP.Shape()),occt.TopAbs_ShapeEnum.TopAbs_SOLID,occt.TopAbs_ShapeEnum.TopAbs_SHAPE));
           while(x.More()){const so=x.Current();const bb=new occt.Bnd_Box_1();occt.BRepBndLib.Add(so,bb,false);
-            const q=bb.CornerMin(),z=bb.CornerMax(),A=[q.X(),q.Y(),q.Z()],Z=[z.X(),z.Y(),z.Z()];bb.delete();
+            const A=occXyz(bb.CornerMin()),Z=occXyz(bb.CornerMax());bb.delete();
             // boîte OCCT gonflée (tolérances, pôles des BSplines) : marge de tri m/4 — un solide
             // du dehors déborde du bloc de toute la taille du corps, pas de quelques dixièmes
-            ([0,1,2].every(k=>A[k]>=lo[k]-tri&&Z[k]<=hi[k]+tri)?ins:out).push(occBinPush(bin,occShapeCopy(so)));x.Next();}
+            ([0,1,2].every(k=>A[k]>=lo[k]-tri&&Z[k]<=hi[k]+tri)?ins:out).push(occBinPush(bin,occShapeCopy(so)));occFree(so);x.Next();}
           if(ins.length&&out.length){loc=occCompoundOf(ins);rest=occCompoundOf(out);if(ins.length>1)bin.push(loc);if(out.length>1)bin.push(rest);}
         }
       }catch(e){loc=rest=null;}
       if(!loc||!rest){loc=occBinPush(bin,occCommon(base,bx));rest=occBinPush(bin,occCut(base,bx));}
       // aire des faces posées sur les plans du bloc (faces de coupe) : l'arrondi ne doit pas les toucher
       const coupe=sh=>{let a=0;const x=new occt.TopExp_Explorer_2(sh,occt.TopAbs_ShapeEnum.TopAbs_FACE,occt.TopAbs_ShapeEnum.TopAbs_SHAPE);
-        while(x.More()){const f=occt.TopoDS.Face_1(x.Current());const G=new occt.GProp_GProps_1();occt.BRepGProp.SurfaceProperties_1(f,G,false,false);
+        while(x.More()){const f=occFaceCur(x);const G=new occt.GProp_GProps_1();occt.BRepGProp.SurfaceProperties_1(f,G,false,false);
           const c=G.CentreOfMass(),q=[c.X(),c.Y(),c.Z()];
           if([0,1,2].some(k=>Math.abs(q[k]-lo[k])<1e-6||Math.abs(q[k]-hi[k])<1e-6))a+=G.Mass();
           G.delete();x.Next();}
@@ -7619,7 +7645,7 @@ function occFilletNurbs(base,js,chamfer,single,edges,cham){
         const F=occBinPush(bin,new occt.BRepAlgoAPI_Fuse_1());F.SetArguments(L1);F.SetTools(L2);
         F.SetGlue(occt.BOPAlgo_GlueEnum.BOPAlgo_GlueShift); // le bloc et le reste ne se touchent que par les faces de coupe
         try{F.Build();}catch(e){F.Build(new occt.Message_ProgressRange());}
-        if(F.IsDone())g=occShapeCopy(F.Shape());
+        if(F.IsDone())g=occAvec(F.Shape(),occShapeCopy);
       }catch(e){g=null;}
       // BILAN DE FACES : en collage, recollé = reste + bloc − faces de coupe (des deux côtés).
       // Marge large mesurée : 49 faces au lieu de 53 et +2 375 mm³ d'un solide pourtant « valide ».
@@ -7627,7 +7653,7 @@ function occFilletNurbs(base,js,chamfer,single,edges,cham){
       // (UnifySameDomain a déformé un recollage : +1,19 mm³) — faces scindées au bord du bloc.
       const nF=sh=>{let n=0;const x=new occt.TopExp_Explorer_2(sh,occt.TopAbs_ShapeEnum.TopAbs_FACE,occt.TopAbs_ShapeEnum.TopAbs_SHAPE);while(x.More()){n++;x.Next();}x.delete();return n;};
       const nCaps=sh=>{let n=0;const x=new occt.TopExp_Explorer_2(sh,occt.TopAbs_ShapeEnum.TopAbs_FACE,occt.TopAbs_ShapeEnum.TopAbs_SHAPE);
-        while(x.More()){const bb=new occt.Bnd_Box_1();occt.BRepBndLib.Add(x.Current(),bb,false);const q=bb.CornerMin(),z=bb.CornerMax(),A=[q.X(),q.Y(),q.Z()],Z=[z.X(),z.Y(),z.Z()];
+        while(x.More()){const bb=new occt.Bnd_Box_1();occAvec(x.Current(),c=>occt.BRepBndLib.Add(c,bb,false));const A=occXyz(bb.CornerMin()),Z=occXyz(bb.CornerMax());
           if([0,1,2].some(k=>[lo[k],hi[k]].some(c=>Math.abs(A[k]-c)<1e-4&&Math.abs(Z[k]-c)<1e-4)))n++;
           bb.delete();x.Next();}
         x.delete();return n;};
@@ -8272,15 +8298,18 @@ function* occReplayBodyGen(bid,list){
     while(i+n<list.length){const g=list[i+n];if(g.repeatId!==f.repeatId||opOf(g)!==op||occBodyOfFeat(g)!==bid||g.visible===false)break;n++;}
     return n;
   };
+  const kidBin=[]; // enfants lus des composés : libérés à la fin du groupe
   const kidsOf=s=>{
     const CP=occt.TopAbs_ShapeEnum.TopAbs_COMPOUND;
     if(s.ShapeType()!==CP)return [s];
     const out=[];const it=new occt.TopoDS_Iterator_2(s,true,true);
     try{for(;it.More();it.Next())out.push(it.Value());}finally{try{it.delete();}catch(e){}}
+    kidBin.push(...out);
     if(out.some(k=>k.ShapeType()===CP))return null; // composé à étapes (filet modélisé) : une à une
     return out;
   };
-  const batch=run=>{
+  const batch=run=>{try{return batchIn(run);}finally{occDispose(kidBin);kidBin.length=0;}};
+  const batchIn=run=>{
     const keys=[];let key=ckKey;run.forEach(g=>{key+=featSig(g)+';';keys.push(key);});
     const cut=run[0].type==='hole'||(run[0].op||'add')==='cut';
     const rs=[],tools=[];
@@ -8528,9 +8557,9 @@ function occSolidBox(sh){
   // Boîte + diagonale d'un solide (pour les tolérances relatives), ou null.
   try{
     const box=new occt.Bnd_Box_1();occt.BRepBndLib.Add(sh,box,true);
-    const a=box.CornerMin(),b=box.CornerMax();
-    const r={c:[(a.X()+b.X())/2,(a.Y()+b.Y())/2,(a.Z()+b.Z())/2],
-      dg:Math.hypot(b.X()-a.X(),b.Y()-a.Y(),b.Z()-a.Z())};
+    const a=occXyz(box.CornerMin()),b=occXyz(box.CornerMax());
+    const r={c:[(a[0]+b[0])/2,(a[1]+b[1])/2,(a[2]+b[2])/2],
+      dg:Math.hypot(b[0]-a[0],b[1]-a[1],b[2]-a[2])};
     try{box.delete();}catch(e){}
     return r;
   }catch(e){return null;}
@@ -8933,9 +8962,10 @@ function delWkSource(){
   // Le worker reçoit le code de CE fichier et de 20-noyau, pas une copie à entretenir.
   // + rattrapage des exceptions C++ du noyau (V0.15.8, 96-noyau) : la colle chargée par
   // importScripts cherche ___cxa_can_catch sur self — posée AVANT ce chargement.
-  const fns=[occBinPush,occDispose,occUnifyKeepEdges,occUnify,occCoqueValide,occBoxMinMax,occDelFaceDebord,
+  const fns=[occFree,occCastLibre,occFaceCur,occEdgeCur,occSolidCur,occShellCur,occXyz,occAvec, // V0.64.3
+    occBinPush,occDispose,occUnifyKeepEdges,occUnify,occCoqueValide,occBoxMinMax,occDelFaceDebord,
     occDeleteFacesOnce,occDelFacesTry,occBrepWrite,occBrepRead,occFaceAt,occtTypeName,occtCanCatch,occtExcInstall,
-    occCut,occCutEach,occThrCut,occtV3Compat];
+    occCut,occCutEach,occCutKids,occThrCut,occtV3Compat];
   // Noms uniques (20-05) : le worker n'en porte pas, le rejeu les redonne à la réponse (nomsCompleter)
   return 'function nomsTransmet(a,b,r){return r;}\nfunction nomsApresUnify(){}\nlet occt=null,occtReady=false;const DEL_ISOLE_MAX='+DEL_ISOLE_MAX+',DEL_BREP_PATH='+JSON.stringify(DEL_BREP_PATH)+';\n'+fns.map(String).join('\n')+'\nocctExcInstall(self);\n('+delWkMain+')();\n';
 }
@@ -10432,7 +10462,7 @@ function repFeatPreviewGeos(f){
     const ex=new occt.TopExp_Explorer_2(b.shape,occt.TopAbs_ShapeEnum.TopAbs_FACE,SH);
     let o=0;
     while(ex.More()){
-      const fc=occt.TopoDS.Face_1(ex.Current());
+      const fc=occFaceCur(ex);
       try{
         const bx=occFaceBox(fc);
         if(bx){
@@ -14823,7 +14853,7 @@ function asmSkCaptureFaces(){
       while(ex.More()&&out.length<4000){
         let f=null,ad=null;
         try{
-          f=occt.TopoDS.Face_1(ex.Current());
+          f=occFaceCur(ex);
           ad=new occt.BRepAdaptor_Surface_2(f,true);
           const gt=ad.GetType(),b=occFaceBox(f);
           if(b&&gt===T.GeomAbs_Plane){
@@ -16823,7 +16853,7 @@ function asmSnapExtract(shapes){
     if(!sh)return;
     const ex=new occt.TopExp_Explorer_2(sh,FACE,SH);
     while(ex.More()){
-      const f=occt.TopoDS.Face_1(ex.Current());
+      const f=occFaceCur(ex);
       try{
         const ad=new occt.BRepAdaptor_Surface_2(f,true);const gt=ad.GetType();
         let F=null;
@@ -16841,7 +16871,7 @@ function asmSnapExtract(shapes){
           // arêtes de la face, échantillonnées (rectangle englobant, extrémités de l'axe)
           F.edges=[];const pts=[];
           const ee=new occt.TopExp_Explorer_2(f,EDGE,SH);
-          while(ee.More()){const info=asmSnapEdgeInfo(occt.TopoDS.Edge_1(ee.Current()));F.edges.push(info);info.pts.forEach(p=>pts.push(p));ee.Next();}
+          while(ee.More()){const info=asmSnapEdgeInfo(occEdgeCur(ee));F.edges.push(info);info.pts.forEach(p=>pts.push(p));ee.Next();}
           try{ee.delete();}catch(err){}
           const G=new occt.GProp_GProps_1();
           try{occt.BRepGProp.SurfaceProperties_1(f,G,false,false);const c=G.CentreOfMass();F.c=[c.X(),c.Y(),c.Z()];F.area=G.Mass();try{c.delete();}catch(err){}}
@@ -17250,7 +17280,7 @@ function asmFaceTable(b){
         if(want.has(k)){
           let f=null,ad=null;
           try{
-            f=occt.TopoDS.Face_1(ex.Current());ad=new occt.BRepAdaptor_Surface_2(f,true);
+            f=occFaceCur(ex);ad=new occt.BRepAdaptor_Surface_2(f,true);
             const gt=ad.GetType();let G=null;
             if(gt===T.GeomAbs_Cylinder){
               const c=ad.Cylinder(),a=c.Axis();
@@ -20645,7 +20675,7 @@ function skBRepPlanarRefs(shape){
     const SH=occt.TopAbs_ShapeEnum.TopAbs_SHAPE;
     const ex=new occt.TopExp_Explorer_2(shape, occt.TopAbs_ShapeEnum.TopAbs_EDGE, SH);
     while(ex.More() && out.length<4000){
-      const e=occt.TopoDS.Edge_1(ex.Current());
+      const e=occEdgeCur(ex);
       try{
         const ad=new occt.BRepAdaptor_Curve_2(e);
         const mid=ad.Value((ad.FirstParameter()+ad.LastParameter())/2);
@@ -29813,7 +29843,7 @@ function occIsectSection(target,B,withFaces){
     const ex=occBinPush(bin,new occt.TopExp_Explorer_2(r,occt.TopAbs_ShapeEnum.TopAbs_EDGE,occt.TopAbs_ShapeEnum.TopAbs_SHAPE));
     const fkOf=new Map();
     while(ex.More()){
-      const e=occt.TopoDS.Edge_1(ex.Current());
+      const e=occEdgeCur(ex);
       const pr=occIsectEdgePrim(e,B);
       if(pr&&withFaces){
         const f=new occt.TopoDS_Face();
@@ -29855,7 +29885,7 @@ function occIsectSolids(shape){
   const list=[];
   try{
     const ex=new occt.TopExp_Explorer_2(shape,occt.TopAbs_ShapeEnum.TopAbs_SOLID,occt.TopAbs_ShapeEnum.TopAbs_SHAPE);
-    while(ex.More()){list.push(occt.TopoDS.Solid_1(ex.Current()));ex.Next();}
+    while(ex.More()){list.push(occSolidCur(ex));ex.Next();}
     try{ex.delete();}catch(e){}
   }catch(e){}
   const own=list.length>0;
@@ -32748,7 +32778,7 @@ function gearRingSolid(g,bin){
   const ex=occBinPush(bin,new occt.TopExp_Explorer_2(sew.SewedShape(),occt.TopAbs_ShapeEnum.TopAbs_SHELL,occt.TopAbs_ShapeEnum.TopAbs_SHAPE));
   if(!ex.More())throw new Error('coque de couronne introuvable');
   const ms=occBinPush(bin,new occt.BRepBuilderAPI_MakeSolid_1());
-  ms.Add(occt.TopoDS.Shell_1(ex.Current()));
+  ms.Add(occShellCur(ex));
   let sol=ms.Solid();
   const gp=occBinPush(bin,new occt.GProp_GProps_1());occt.BRepGProp.VolumeProperties_1(sol,gp,false,false,false);
   if(gp.Mass()<0)sol=sol.Reversed();
@@ -32902,7 +32932,7 @@ function threadResolve(shape,f){
   const ex=new occt.TopExp_Explorer_2(shape,occt.TopAbs_ShapeEnum.TopAbs_FACE,occt.TopAbs_ShapeEnum.TopAbs_SHAPE);
   try{
     for(;ex.More();ex.Next()){
-      const fc=occt.TopoDS.Face_1(ex.Current());
+      const fc=occFaceCur(ex);
       const C=threadCylOf(fc);
       if(!C||Math.abs(C.r-ref.r)>0.02){try{fc.delete();}catch(e){}continue;}
       const dot=C.u[0]*ref.u[0]+C.u[1]*ref.u[1]+C.u[2]*ref.u[2];if(Math.abs(dot)<0.9999){try{fc.delete();}catch(e){}continue;}
@@ -32997,7 +33027,7 @@ function occShaftThreadVoid(P,D,zStart,nT,th,Rout,lh,bins){
   const ex=occBinPush(bins,new occt.TopExp_Explorer_2(sewn,occt.TopAbs_ShapeEnum.TopAbs_SHELL,occt.TopAbs_ShapeEnum.TopAbs_SHAPE));
   if(!ex.More())throw new Error('coque de filet introuvable');
   const ms=occBinPush(bins,new occt.BRepBuilderAPI_MakeSolid_1());
-  ms.Add(occt.TopoDS.Shell_1(ex.Current()));
+  ms.Add(occShellCur(ex));
   let sol=ms.Solid();
   const gp=occBinPush(bins,new occt.GProp_GProps_1());occt.BRepGProp.VolumeProperties_1(sol,gp,false,false,false);
   if(gp.Mass()<0)sol=sol.Reversed();
@@ -33725,7 +33755,7 @@ function occHoleThreadVoid(P,D,zStart,nT,th,rb,zEnd,tip,bins){
     const ax=occBinPush(bins,new occt.gp_Ax2_2(oE,dirOf(D),dirOf(U)));
     const cone=occBinPush(bins,new occt.BRepPrimAPI_MakeCone_3(ax,rb,0,rb/Math.tan(tip*Math.PI/360))).Shape();
     const fx=occBinPush(bins,new occt.TopExp_Explorer_2(cone,occt.TopAbs_ShapeEnum.TopAbs_FACE,occt.TopAbs_ShapeEnum.TopAbs_SHAPE));
-    for(;fx.More();fx.Next()){const fc=occt.TopoDS.Face_1(fx.Current());
+    for(;fx.More();fx.Next()){const fc=occFaceCur(fx);
       const ad=occBinPush(bins,new occt.BRepAdaptor_Surface_2(fc,true));
       if(ad.GetType()!==occt.GeomAbs_SurfaceType.GeomAbs_Plane)sew.Add(fc);}
   }else{
@@ -33738,7 +33768,7 @@ function occHoleThreadVoid(P,D,zStart,nT,th,rb,zEnd,tip,bins){
   const ex=occBinPush(bins,new occt.TopExp_Explorer_2(sewn,occt.TopAbs_ShapeEnum.TopAbs_SHELL,occt.TopAbs_ShapeEnum.TopAbs_SHAPE));
   if(!ex.More())throw new Error('coque de filet introuvable');
   const ms=occBinPush(bins,new occt.BRepBuilderAPI_MakeSolid_1());
-  ms.Add(occt.TopoDS.Shell_1(ex.Current()));
+  ms.Add(occShellCur(ex));
   let sol=ms.Solid();
   const gp=occBinPush(bins,new occt.GProp_GProps_1());occt.BRepGProp.VolumeProperties_1(sol,gp,false,false,false);
   if(gp.Mass()<0)sol=sol.Reversed();
@@ -33758,8 +33788,8 @@ function occShapeOfHole(f){
   if(N.through&&typeof occThroughBase!=='undefined'&&occThroughBase){
     try{
       const bb=new occt.Bnd_Box_1();occt.BRepBndLib.Add(occThroughBase,bb,true);
-      const a=bb.CornerMin(),b=bb.CornerMax();let L=0;
-      const cs=[[a.X(),b.X()],[a.Y(),b.Y()],[a.Z(),b.Z()]];
+      const a=occXyz(bb.CornerMin()),b=occXyz(bb.CornerMax());let L=0;
+      const cs=[[a[0],b[0]],[a[1],b[1]],[a[2],b[2]]];
       A.pts.forEach(function(P){for(let i=0;i<8;i++){const c=[cs[0][i&1],cs[1][(i>>1)&1],cs[2][(i>>2)&1]];
         L=Math.max(L,(c[0]-P.x)*A.dir.x+(c[1]-P.y)*A.dir.y+(c[2]-P.z)*A.dir.z);}});
       try{bb.delete();}catch(e){}
@@ -33822,7 +33852,7 @@ function occShapeOfHole(f){
   // recouvrement, qui supprime ces opercules.
   const fused=function(P,segs,firstOver){
     let prof=null;
-    segs.forEach(function(sg,i){iSeg=i;const sh=segShape(P,sg,firstOver&&i===0);prof=prof?occFuse(prof,sh):sh;});
+    segs.forEach(function(sg,i){iSeg=i;const sh=segShape(P,sg,firstOver&&i===0);if(!prof){prof=sh;return;}const nx=occFuse(prof,sh);occFree(prof);occFree(sh);prof=nx;});
     return prof;
   };
   // Filet modélisé (V0.21.19) : à sa place dans l'arbre, le perçage n'est qu'un
@@ -33967,7 +33997,7 @@ function holeNextExit(sh,P,D){
     const IN=occt.TopAbs_State.TopAbs_IN;
     const inAt=function(t){const p=new occt.gp_Pnt_3(P.x+D.x*t,P.y+D.y*t,P.z+D.z*t);cl.Perform(p,1e-7);const r=cl.State()===IN;try{p.delete();}catch(e){}return r;};
     let bb=null,Lmax=2000;
-    try{bb=new occt.Bnd_Box_1();occt.BRepBndLib.Add(sh,bb,true);const a=bb.CornerMin(),b=bb.CornerMax();Lmax=Math.hypot(b.X()-a.X(),b.Y()-a.Y(),b.Z()-a.Z())+1;bb.delete();}catch(e){}
+    try{bb=new occt.Bnd_Box_1();occt.BRepBndLib.Add(sh,bb,true);const a=occXyz(bb.CornerMin()),b=occXyz(bb.CornerMax());Lmax=Math.hypot(b[0]-a[0],b[1]-a[1],b[2]-a[2])+1;bb.delete();}catch(e){}
     const step=0.25;let t=0.05,seenIn=false,prevIn=false;
     for(;t<=Lmax;t+=step){
       const i=inAt(t);
@@ -35926,7 +35956,7 @@ function occFaceKeys(shape){
   while(ex.More()){
     let k='?';
     try{
-      const f=occt.TopoDS.Face_1(ex.Current());
+      const f=occFaceCur(ex);
       const s=new occt.BRepAdaptor_Surface_2(f,true);const ty=s.GetType();
       if(ty===T.GeomAbs_Plane){
         const pl=s.Plane(),ax=pl.Axis(),d=ax.Direction(),p=ax.Location();
@@ -36170,11 +36200,11 @@ function occFaceEdges(faceOrd,shape){
     const SH=occt.TopAbs_ShapeEnum.TopAbs_SHAPE;
     const ex=new occt.TopExp_Explorer_2(shape||occLive.shape,occt.TopAbs_ShapeEnum.TopAbs_FACE,SH);bin.push(ex);
     let k=0,face=null;
-    while(ex.More()){if(k===faceOrd){face=occt.TopoDS.Face_1(ex.Current());bin.push(face);break;}k++;ex.Next();}
+    while(ex.More()){if(k===faceOrd){face=occFaceCur(ex);bin.push(face);break;}k++;ex.Next();}
     if(!face)return out;
     const ee=new occt.TopExp_Explorer_2(face,occt.TopAbs_ShapeEnum.TopAbs_EDGE,SH);bin.push(ee);
     while(ee.More()){
-      const e=occt.TopoDS.Edge_1(ee.Current());bin.push(e);
+      const e=occEdgeCur(ee);bin.push(e);
       try{
         const ad=new occt.BRepAdaptor_Curve_2(e);bin.push(ad);
         const u0=ad.FirstParameter(),u1=ad.LastParameter();
@@ -38250,11 +38280,11 @@ function occTangentFaces(shape,ord){
     while(fx.More()){
       const mids=[];
       try{
-        const fh=occt.TopoDS.Face_1(fx.Current());bin.push(fh);
+        const fh=occFaceCur(fx);bin.push(fh);
         const ex=new occt.TopExp_Explorer_2(fh,occt.TopAbs_ShapeEnum.TopAbs_EDGE,SH);bin.push(ex);
         while(ex.More()){
           try{
-            const eh=occt.TopoDS.Edge_1(ex.Current());bin.push(eh);
+            const eh=occEdgeCur(ex);bin.push(eh);
             const ad=new occt.BRepAdaptor_Curve_2(eh);bin.push(ad);
             const u0=ad.FirstParameter(),u1=ad.LastParameter();
             if(u1>u0){const m=ad.Value((u0+u1)/2);mids.push(key([m.X(),m.Y(),m.Z()]));try{m.delete();}catch(e){}}
@@ -38759,7 +38789,7 @@ function coqueOrdOf(ref){
       while(ex.More()){
         if(want.has(o)){
           let cur=null;
-          try{cur=coqueRefOf(occt.TopoDS.Face_1(ex.Current()));}catch(e){}
+          try{cur=coqueRefOf(occFaceCur(ex));}catch(e){}
           if(cur){const kk=coqueKey(cur);if(!idx.has(kk))idx.set(kk,o);} // 1ʳᵉ face de même clé, comme avant
         }
         o++;ex.Next();
@@ -59649,13 +59679,13 @@ function faoHolesDetect(shapes){
     try{ ex=new occt.TopExp_Explorer_2(sh,occt.TopAbs_ShapeEnum.TopAbs_FACE,occt.TopAbs_ShapeEnum.TopAbs_SHAPE); }catch(e){ return; }
     let k=0;
     while(ex.More()){
-      let f=null,ad=null;
+      let f=null,ad=null;const tmp=[];
       try{
-        f=occt.TopoDS.Face_1(ex.Current());
+        f=occFaceCur(ex);
         ad=new occt.BRepAdaptor_Surface_2(f,true);
         const ty=ad.GetType();
         if(ty===T.GeomAbs_Cylinder){
-          const c=ad.Cylinder(),ax=c.Axis(),L=ax.Location(),Dd=ax.Direction();
+          const c=ad.Cylinder(),ax=c.Axis(),L=ax.Location(),Dd=ax.Direction();tmp.push(c,ax,L,Dd);
           // Orientation de face NON fiable (repère direct/indirect selon la construction :
           // une découpe extrudée en −Z donne des trous « FORWARD ») → tri par la matière
           // autour du cylindre, plus bas (faoHoleIsHole).
@@ -59668,17 +59698,18 @@ function faoHolesDetect(shapes){
             g.rng.push({lo:Math.min(za,zb),hi:Math.max(za,zb),u:u,f:si+':'+k});
           }
         }else if(ty===T.GeomAbs_Cone){
-          const c=ad.Cone(),ax=c.Axis(),Dd=ax.Direction();
+          const c=ad.Cone(),ax=c.Axis(),Dd=ax.Direction();tmp.push(c,ax,Dd);
           if(Math.abs(Dd.Z())>0.9999){
-            const A=c.Apex(),za=ad.FirstVParameter(),zb=ad.LastVParameter();
+            const A=c.Apex(),za=ad.FirstVParameter(),zb=ad.LastVParameter();tmp.push(A);
             // v = distance le long de la génératrice depuis la base : z = Lz + v·cos(semi)·dz
-            const L=ax.Location(),cs=Math.cos(c.SemiAngle());
+            const L=ax.Location(),cs=Math.cos(c.SemiAngle());tmp.push(L);
             const z1=L.Z()+Dd.Z()*za*cs,z2=L.Z()+Dd.Z()*zb*cs;
             cones.push({x:A.X(),y:A.Y(),apex:A.Z(),semi:Math.abs(c.SemiAngle()),zLo:Math.min(z1,z2),zHi:Math.max(z1,z2),rev:f.Orientation_1()===REV});
           }
         }
       }catch(e){}
       try{ if(ad)ad.delete(); }catch(e){}
+      occDispose(tmp);occFree(f);
       k++;ex.Next();
     }
     try{ ex.delete(); }catch(e){}
@@ -60907,7 +60938,7 @@ function faoShapeToF(sh,F){
     const tO=faoRotF(F,F.O||[0,0,0]);
     t.SetValues(F.X[0],F.X[1],F.X[2],-tO[0], F.Y[0],F.Y[1],F.Y[2],-tO[1], F.Z[0],F.Z[1],F.Z[2],-tO[2]);
     const b=new occt.BRepBuilderAPI_Transform_2(sh,t,true);
-    const s=b.Shape();
+    const s=b.Shape();occFree(b);occFree(t);
     if(faoShapeFCache.size>6)faoShapeFCache.clear();
     faoShapeFCache.set(sh,{k,s});
     return s;
@@ -62298,7 +62329,7 @@ function occFaceAt(shape,ord){
   const SH=occt.TopAbs_ShapeEnum.TopAbs_SHAPE;
   const ex=new occt.TopExp_Explorer_2(shape,occt.TopAbs_ShapeEnum.TopAbs_FACE,SH);
   let k=0;
-  while(ex.More()){if(k===ord){const f=occt.TopoDS.Face_1(ex.Current());try{ex.delete();}catch(e){}return f;}k++;ex.Next();}
+  while(ex.More()){if(k===ord){const f=occFaceCur(ex);try{ex.delete();}catch(e){}return f;}k++;ex.Next();}
   try{ex.delete();}catch(e){}
   return null;
 }
@@ -62398,7 +62429,7 @@ function occShapeHasFace(shape,ref,p){
   let ok=false;
   try{
     while(!ok&&ex.More()){
-      const f=occt.TopoDS.Face_1(ex.Current());
+      const f=occFaceCur(ex);
       try{
         const b=occFaceBox(f);let inBox=!!b;
         if(b)for(let k=0;k<3;k++)if(Math.abs(p[k]-b.pos[k])>b.dim[k]/2+0.05){inBox=false;break;}
@@ -69632,7 +69663,7 @@ function filmFrame(){
       const SH=occt.TopAbs_ShapeEnum.TopAbs_SHAPE;
       const ex=new occt.TopExp_Explorer_2(shape,occt.TopAbs_ShapeEnum.TopAbs_EDGE,SH);bin.push(ex);
       while(ex.More()){
-        const e=occt.TopoDS.Edge_1(ex.Current());bin.push(e);
+        const e=occEdgeCur(ex);bin.push(e);
         try{
           const ad=new occt.BRepAdaptor_Curve_2(e);bin.push(ad);
           const u0=ad.FirstParameter(),u1=ad.LastParameter();
@@ -70185,7 +70216,7 @@ function filmFrame(){
         while(fx.More()){
           let keep=false;
           try{
-            const f=occt.TopoDS.Face_1(fx.Current());
+            const f=occFaceCur(fx);
             const ad=new occt.BRepAdaptor_Surface_2(f,true);
             if(ad.GetType()===occt.GeomAbs_SurfaceType.GeomAbs_Plane){
               const pl=ad.Plane();
@@ -70196,7 +70227,7 @@ function filmFrame(){
                 const ee=new occt.TopExp_Explorer_2(f,occt.TopAbs_ShapeEnum.TopAbs_EDGE,occt.TopAbs_ShapeEnum.TopAbs_SHAPE);
                 while(ee.More()){
                   try{
-                    const e=occt.TopoDS.Edge_1(ee.Current());
+                    const e=occEdgeCur(ee);
                     const ca=new occt.BRepAdaptor_Curve_2(e);
                     const u0=ca.FirstParameter(),u1=ca.LastParameter();
                     if(u1>u0){
@@ -74516,7 +74547,7 @@ function filmFrame(){
     while(ex.More()){
       let ad=null;
       try{
-        const f=occt.TopoDS.Face_1(ex.Current());
+        const f=occFaceCur(ex);
         ad=new occt.BRepAdaptor_Surface_2(f,true);
         if(ad.GetType()===T.GeomAbs_Cylinder){
           const cy=ad.Cylinder(),ax=cy.Axis(),L=ax.Location(),Dd=ax.Direction();
@@ -74592,7 +74623,7 @@ function filmFrame(){
       try{
         const ex=new occt.TopExp_Explorer_2(s,occt.TopAbs_ShapeEnum.TopAbs_EDGE,occt.TopAbs_ShapeEnum.TopAbs_SHAPE);bin.push(ex);
         while(ex.More()){
-          try{const e=occt.TopoDS.Edge_1(ex.Current());bin.push(e);
+          try{const e=occEdgeCur(ex);bin.push(e);
             try{if(occt.BRep_Tool.IsClosed_2(e,s))seams.push(e);}catch(err){}
             const ad=new occt.BRepAdaptor_Curve_2(e);bin.push(ad);
             const u0=ad.FirstParameter(),u1=ad.LastParameter();
@@ -74607,7 +74638,7 @@ function filmFrame(){
       const ex=new occt.TopExp_Explorer_2(sh,occt.TopAbs_ShapeEnum.TopAbs_FACE,occt.TopAbs_ShapeEnum.TopAbs_SHAPE);bin.push(ex);
       while(ex.More()){
         try{
-          const f=occt.TopoDS.Face_1(ex.Current());
+          const f=occFaceCur(ex);
           const ad=new occt.BRepAdaptor_Surface_2(f,true);bin.push(ad);
           const ty=ad.GetType();let ax=null,r=0;
           if(ty===T.GeomAbs_Cylinder){const cy=ad.Cylinder();ax=cy.Axis();r=cy.Radius();}
@@ -74627,7 +74658,7 @@ function filmFrame(){
       const ex=new occt.TopExp_Explorer_2(sh,occt.TopAbs_ShapeEnum.TopAbs_EDGE,occt.TopAbs_ShapeEnum.TopAbs_SHAPE);bin.push(ex);
       while(ex.More()){
         try{
-          const e=occt.TopoDS.Edge_1(ex.Current());bin.push(e);
+          const e=occEdgeCur(ex);bin.push(e);
           const ad=new occt.BRepAdaptor_Curve_2(e);bin.push(ad);
           if(ad.GetType()===C.GeomAbs_Circle&&!seams.some(q=>q.IsSame(e))){
             const ci=ad.Circle(),ax=ci.Axis(),L=ax.Location(),A=norm(L,ax.Direction());

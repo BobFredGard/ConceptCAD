@@ -342,7 +342,7 @@
         while(fx.More()){
           let keep=false;
           try{
-            const f=occt.TopoDS.Face_1(fx.Current());
+            const f=occFaceCur(fx);
             const ad=new occt.BRepAdaptor_Surface_2(f,true);
             if(ad.GetType()===occt.GeomAbs_SurfaceType.GeomAbs_Plane){
               const pl=ad.Plane();
@@ -353,7 +353,7 @@
                 const ee=new occt.TopExp_Explorer_2(f,occt.TopAbs_ShapeEnum.TopAbs_EDGE,occt.TopAbs_ShapeEnum.TopAbs_SHAPE);
                 while(ee.More()){
                   try{
-                    const e=occt.TopoDS.Edge_1(ee.Current());
+                    const e=occEdgeCur(ee);
                     const ca=new occt.BRepAdaptor_Curve_2(e);
                     const u0=ca.FirstParameter(),u1=ca.LastParameter();
                     if(u1>u0){

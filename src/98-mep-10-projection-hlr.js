@@ -876,7 +876,7 @@
       const SH=occt.TopAbs_ShapeEnum.TopAbs_SHAPE;
       const ex=new occt.TopExp_Explorer_2(shape,occt.TopAbs_ShapeEnum.TopAbs_EDGE,SH);bin.push(ex);
       while(ex.More()){
-        const e=occt.TopoDS.Edge_1(ex.Current());bin.push(e);
+        const e=occEdgeCur(ex);bin.push(e);
         try{
           const ad=new occt.BRepAdaptor_Curve_2(e);bin.push(ad);
           const u0=ad.FirstParameter(),u1=ad.LastParameter();

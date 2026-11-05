@@ -94,6 +94,17 @@ function insertSketchFillet(data,fx,fy,r,fxPid){
 function occHas(){return occtReady&&occt;}
 function occBinPush(bin,h){if(h)bin.push(h);return h;}
 function occDispose(list){(list||[]).forEach(h=>{try{h.delete();}catch(e){}});}
+// V0.64.3 : le noyau rend une COPIE à chaque appel qui rend un objet (Current, FindKey, Corner…, Direction…), à
+// libérer une par une : rien ne le fait à notre place. Une copie de forme oubliée garde aussi en vie la géométrie
+// et le maillage qu'elle désigne, même une fois le solide supprimé. Vérifié par test_fuite_noyau.
+function occFree(h){try{if(h&&h.delete)h.delete();}catch(e){}}
+function occCastLibre(c,cast){try{return cast(c);}finally{occFree(c);}} // transtypage : la source part, le résultat reste
+function occFaceCur(x){return occCastLibre(x.Current(),c=>occt.TopoDS.Face_1(c));}
+function occEdgeCur(x){return occCastLibre(x.Current(),c=>occt.TopoDS.Edge_1(c));}
+function occSolidCur(x){return occCastLibre(x.Current(),c=>occt.TopoDS.Solid_1(c));}
+function occShellCur(x){return occCastLibre(x.Current(),c=>occt.TopoDS.Shell_1(c));}
+function occXyz(p){try{return[p.X(),p.Y(),p.Z()];}finally{occFree(p);}} // lit un point / une direction, puis le libère
+function occAvec(h,fn){try{return fn(h);}finally{occFree(h);}} // prête h à fn le temps de l'appel
 function occClassifier(shape){
   // Point dedans / dehors RAPIDE (V0.44.1) : même usage que BRepClass3d_SolidClassifier_2
   // (Perform(p,tol), State(), delete()). Sous OCCT 8 le classifieur coûte ~22 ms par point sur un
@@ -151,7 +162,7 @@ function occWireFromChain(sk,tr,chain,bin,z0,cotes){
   const mkW=occBinPush(bin,new occt.BRepBuilderAPI_MakeWire_1());
   const nodes=chainNodesOf(chain);
   // MakeWire recopie l'arête pour partager les sommets : on retient celle du contour
-  const noteCote=ed=>{if(cotes&&ed&&ed.e&&ed.e.id!=null)cotes.push({e:mkW.Edge(),id:ed.e.id});};
+  const noteCote=ed=>{if(cotes&&ed&&ed.e&&ed.e.id!=null)cotes.push({e:occBinPush(bin,mkW.Edge()),id:ed.e.id});};
   const projOnCirc=(Cw,r,a)=>{const w=OP(occW(sk,Cw.x+r*Math.cos(a),Cw.y+r*Math.sin(a)));return occBinPush(bin,new occt.gp_Pnt_3(w[0],w[1],w[2]));};
   for(let i=0;i<nodes.length-1;i++){
     const st=chain[i],ed=st.ed;
@@ -161,7 +172,7 @@ function occWireFromChain(sk,tr,chain,bin,z0,cotes){
       if(!A||!B)throw new Error('ligne incomplète');
       const me=occBinPush(bin,new occt.BRepBuilderAPI_MakeEdge_3(PW(A.x,A.y),PW(B.x,B.y)));
       me.Build();if(!me.IsDone())throw new Error('arête ligne impossible');
-      mkW.Add_1(me.Edge());noteCote(ed);
+      mkW.Add_1(occBinPush(bin,me.Edge()));noteCote(ed);
     }else if(ed.kind==='spline'){
       // 2026-10-29 : spline d'esquisse = B-spline EXACTE (mêmes pôles et nœuds que le dessin 2D, 50-esquisse-6),
       // pôles posés dans le plan par la même application affine que les lignes : bouts identiques aux voisines
@@ -174,7 +185,7 @@ function occWireFromChain(sk,tr,chain,bin,z0,cotes){
       const h=occBinPush(bin,new occt.Handle_Geom_Curve_2(new occt.Geom_BSplineCurve_1(poles,kn,mu,bs.p||SK_SPL_DEG,false))); // la poignée possède la courbe
       const me=occBinPush(bin,new occt.BRepBuilderAPI_MakeEdge_24(h));
       me.Build();if(!me.IsDone())throw new Error('arête spline impossible');
-      let e=me.Edge();if(ed.a!==st.from)e=occt.TopoDS.Edge_1(e.Reversed());
+      let e=occBinPush(bin,me.Edge());if(ed.a!==st.from)e=occBinPush(bin,occCastLibre(e.Reversed(),c=>occt.TopoDS.Edge_1(c)));
       mkW.Add_1(e);noteCote(ed);
     }else{
       const a=ed.e,Cc=tr.pts[a.pc];
@@ -209,7 +220,7 @@ function occWireFromChain(sk,tr,chain,bin,z0,cotes){
       const me=occBinPush(bin,new occt.BRepBuilderAPI_MakeEdge_10(circ,P1,P2));
       me.Build();if(!me.IsDone())throw new Error('arête arc impossible');
       // Note : .Reversed() rend un TopoDS_Shape -> recast obligatoire en TopoDS_Edge.
-      let e=me.Edge();if(rev)e=occt.TopoDS.Edge_1(e.Reversed());
+      let e=occBinPush(bin,me.Edge());if(rev)e=occBinPush(bin,occCastLibre(e.Reversed(),c=>occt.TopoDS.Edge_1(c)));
       mkW.Add_1(e);noteCote(ed);
     }
   }
@@ -223,12 +234,12 @@ function occPrismOfChain(sk,tr,chain,distance,area,z0){
   try{
     const cotes=[];
     let w=occWireFromChain(sk,tr,chain,bin,z0,cotes);
-    if(area<0)w=occt.TopoDS.Wire_1(w.Reversed());
+    if(area<0){const w0=w;w=occCastLibre(w0.Reversed(),c=>occt.TopoDS.Wire_1(c));occFree(w0);}
     const fm=occBinPush(bin,new occt.BRepBuilderAPI_MakeFace_15(w,true));
     fm.Build();if(!fm.IsDone())throw new Error('face impossible');
     const{u,v,n}=sketchBasis(sk);
     const vec=occBinPush(bin,new occt.gp_Vec_4(n.x*distance,n.y*distance,n.z*distance));
-    const pr=occBinPush(bin,new occt.BRepPrimAPI_MakePrism_1(fm.Face(),vec,false,true));
+    const pr=occBinPush(bin,new occt.BRepPrimAPI_MakePrism_1(occBinPush(bin,fm.Face()),vec,false,true));
     pr.Build();if(!pr.IsDone())throw new Error('prisme impossible');
     const s=pr.Shape();
     nomsPrismeFaces(pr,s,cotes);
@@ -286,12 +297,12 @@ function occSpanFromShape(shape,B){
   if(!shape||!B)return null;
   try{
     const box=new occt.Bnd_Box_1();
-    occt.BRepBndLib.Add(shape,box,true);
-    const a=box.CornerMin(),b=box.CornerMax();
+    let a,b;
+    try{occt.BRepBndLib.Add(shape,box,true);a=occXyz(box.CornerMin());b=occXyz(box.CornerMax());}finally{occFree(box);}
     // Les 8 coins : deux coins opposés ne suffisent que si l'axe penche vers (+,+,+). Barquette,
     // Ø30 incliné à 20° au coin de la pièce : les copies de la symétrie double (axe (−,+,+)…)
     // recevaient un outil trop court, qui enlevait 0 à 1923 mm³ au lieu de 7475.
-    const xs=[a.X(),b.X()],ys=[a.Y(),b.Y()],zs=[a.Z(),b.Z()];
+    const xs=[a[0],b[0]],ys=[a[1],b[1]],zs=[a[2],b[2]];
     let mn=Infinity,mx=-Infinity;
     for(const x of xs)for(const y of ys)for(const z of zs){
       const d=(x-B.o.x)*B.n.x+(y-B.o.y)*B.n.y+(z-B.o.z)*B.n.z;
@@ -374,6 +385,10 @@ function occCutEach(a,b){
   const kids=[];
   const it=new occt.TopoDS_Iterator_2(b,true,true);
   try{for(;it.More();it.Next())kids.push(it.Value());}finally{try{it.delete();}catch(e){}}
+  try{return occCutKids(a,b,kids);}finally{occDispose(kids);}
+}
+function occCutKids(a,b,kids){
+  const CP=occt.TopAbs_ShapeEnum.TopAbs_COMPOUND;
   if(kids.length&&kids.every(k=>k.ShapeType()===CP)){
     let r=a;
     kids.forEach(k=>{const n=occCutEach(r,k);if(r!==a){try{r.delete();}catch(e){}}r=n;});
@@ -505,7 +520,7 @@ function occUnifyKeepEdges(s){
     const R=[];
     const ex=occBinPush(bin,new occt.TopExp_Explorer_2(s,E.TopAbs_FACE,E.TopAbs_SHAPE));
     for(;ex.More();ex.Next()){
-      const f=occBinPush(bin,occt.TopoDS.Face_1(ex.Current()));
+      const f=occBinPush(bin,occFaceCur(ex));
       const ad=occBinPush(bin,new occt.BRepAdaptor_Surface_2(f,true));
       const t=ad.GetType();let g=null,k='',sig=[];
       if(t===T.GeomAbs_Cylinder){g=occBinPush(bin,ad.Cylinder());k='cyl';sig=[g.Radius()];}
@@ -526,9 +541,9 @@ function occUnifyKeepEdges(s){
       if(c>0&&a.direct===b.direct)continue; // paramétrages compatibles : UnifySameDomain s'en sort
       const ea=occBinPush(bin,new occt.TopExp_Explorer_2(a.f,E.TopAbs_EDGE,E.TopAbs_SHAPE));
       for(;ea.More();ea.Next()){
-        const e=ea.Current();let com=false;
+        const e=occBinPush(bin,ea.Current());let com=false;
         const eb=occBinPush(bin,new occt.TopExp_Explorer_2(b.f,E.TopAbs_EDGE,E.TopAbs_SHAPE));
-        for(;eb.More()&&!com;eb.Next())com=e.IsSame(eb.Current());
+        for(;eb.More()&&!com;eb.Next())com=occAvec(eb.Current(),x=>e.IsSame(x));
         if(com&&!out.some(x=>x.IsSame(e)))out.push(occt.TopoDS.Edge_1(e));
       }
     }
@@ -545,8 +560,8 @@ function occUnifyKeepEdges(s){
    n'était couture ni du solide d'avant ni de l'outil. Toutes les autres arêtes sont gardées. */
 function occShapeBox(s,m){
   const b=new occt.Bnd_Box_1();
-  try{occt.BRepBndLib.Add(s,b,true);const a=b.CornerMin(),z=b.CornerMax();
-    return [[a.X()-m,a.Y()-m,a.Z()-m],[z.X()+m,z.Y()+m,z.Z()+m]];}
+  try{occt.BRepBndLib.Add(s,b,true);const a=occXyz(b.CornerMin()),z=occXyz(b.CornerMax());
+    return [[a[0]-m,a[1]-m,a[2]-m],[z[0]+m,z[1]+m,z[2]+m]];}
   finally{try{b.delete();}catch(e){}}
 }
 function occPlaneSeams(s,box,withPts){
@@ -560,7 +575,7 @@ function occPlaneSeams(s,box,withPts){
     const buckets=new Map();let fi=0;
     const ex=occBinPush(bin,new occt.TopExp_Explorer_2(s,E.TopAbs_FACE,E.TopAbs_SHAPE));
     for(;ex.More();ex.Next(),fi++){
-      const f=occBinPush(bin,occt.TopoDS.Face_1(ex.Current()));
+      const f=occBinPush(bin,occFaceCur(ex));
       if(box){const b=occFaceBox(f);if(!b||!hit(b))continue;}
       const ad=occBinPush(bin,new occt.BRepAdaptor_Surface_2(f,true));
       if(ad.GetType()!==T.GeomAbs_Plane)continue;
@@ -569,7 +584,7 @@ function occPlaneSeams(s,box,withPts){
       const d=n[0]*L.X()+n[1]*L.Y()+n[2]*L.Z();
       const ee=occBinPush(bin,new occt.TopExp_Explorer_2(f,E.TopAbs_EDGE,E.TopAbs_SHAPE));
       for(;ee.More();ee.Next()){
-        const e=occBinPush(bin,occt.TopoDS.Edge_1(ee.Current()));
+        const e=occBinPush(bin,occEdgeCur(ee));
         const c=occBinPush(bin,new occt.BRepAdaptor_Curve_2(e));
         const u0=c.FirstParameter(),u1=c.LastParameter();
         const m=occBinPush(bin,c.Value((u0+u1)/2));
@@ -621,7 +636,7 @@ function occUnifyCutSeams(res,prev,tool){
     const E=occt.TopAbs_ShapeEnum;
     const ex=occBinPush(bin,new occt.TopExp_Explorer_2(res,E.TopAbs_EDGE,E.TopAbs_SHAPE));
     for(;ex.More();ex.Next()){
-      const e=ex.Current();
+      const e=occBinPush(bin,ex.Current());
       if(!drop.some(r=>r.e.IsSame(e)))u.KeepShape(occBinPush(bin,occt.TopoDS.Edge_1(e)));
     }
     u.Build();
@@ -677,7 +692,7 @@ function occCoqueThick(result,faces,thick,join,inter){
         nomsTransmet([result],mk,brut,{nais:(m,f)=>{
           for(let i=1;i<=mS.Size();i++){
             const nom=T.f[i-1];if(!nom)continue;
-            nomsListe(mk.Generated(mS.FindKey(i))).forEach(y=>{const j=m.FindIndex(y);if(j>0&&!f[j-1])f[j-1]=nom+'/int';});
+            occAvec(mS.FindKey(i),c=>nomsChaque(mk.Generated(c),y=>{const j=m.FindIndex(y);if(j>0&&!f[j-1])f[j-1]=nom+'/int';}));
           }
         }});
       }finally{try{mS.delete();}catch(e){}}
@@ -699,8 +714,7 @@ function occCoqueBBox(sh){
   try{occt.BRepBndLib.AddOptimal(sh,b,true,false);}
   catch(e){try{occt.BRepBndLib.AddOptimal(sh,b);}catch(e2){try{b.delete();}catch(e){}return null;}}
   try{
-    const a=b.CornerMin(),z=b.CornerMax();
-    const o=[a.X(),a.Y(),a.Z(),z.X(),z.Y(),z.Z()];
+    const o=occXyz(b.CornerMin()).concat(occXyz(b.CornerMax()));
     try{b.delete();}catch(e){}
     return o;
   }catch(e){try{b.delete();}catch(e2){}return null;}

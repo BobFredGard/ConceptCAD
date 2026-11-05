@@ -27,8 +27,8 @@ function occDiskPrism(sk,Cx,Cy,r,sp){
     pr.Build();if(!pr.IsDone())throw new Error('prisme pastille impossible');
     const s=pr.Shape();
     nomsNomme(s,(m,fn)=>{
-      nomsListe(pr.Generated(mkW.Edge())).forEach(y=>{const j=m.FindIndex(y);if(j>0)fn[j-1]='cercle/flanc';});
-      const q=nomsBoutsPrisme(pr),a=m.FindIndex(q[0]),b=m.FindIndex(q[1]);
+      occAvec(mkW.Edge(),c=>nomsChaque(pr.Generated(c),y=>{const j=m.FindIndex(y);if(j>0)fn[j-1]='cercle/flanc';}));
+      const q=nomsBoutsPrisme(pr),a=m.FindIndex(q[0]),b=m.FindIndex(q[1]);occDispose(q);
       if(a>0)fn[a-1]='bas';if(b>0)fn[b-1]='haut';
     });
     return{shape:s,bin};
@@ -87,7 +87,7 @@ function occEdgeAt(shape,src){
   const SH=occt.TopAbs_ShapeEnum.TopAbs_SHAPE;
   const ex=new occt.TopExp_Explorer_2(shape,occt.TopAbs_ShapeEnum.TopAbs_EDGE,SH);
   let k=0,out=null;
-  while(ex.More()){if(k===src){out=occt.TopoDS.Edge_1(ex.Current());break;}k++;ex.Next();}
+  while(ex.More()){if(k===src){out=occEdgeCur(ex);break;}k++;ex.Next();}
   try{ex.delete();}catch(e){}
   return out;
 }
@@ -100,7 +100,7 @@ function occEdgeFaces(shape,edge){
     const SH=occt.TopAbs_ShapeEnum.TopAbs_SHAPE;
     const fx=new occt.TopExp_Explorer_2(shape,occt.TopAbs_ShapeEnum.TopAbs_FACE,SH);bin.push(fx);
     while(fx.More()&&out.length<2){
-      const f=occt.TopoDS.Face_1(fx.Current());
+      const f=occFaceCur(fx);
       let has=false;
       const ee=new occt.TopExp_Explorer_2(f,occt.TopAbs_ShapeEnum.TopAbs_EDGE,SH);bin.push(ee);
       while(ee.More()){if(ee.Current().IsSame(edge)){has=true;break;}ee.Next();}
@@ -280,7 +280,7 @@ function occFilletRun(base,jobs,warns,chamfer,opts){
       const SH=occt.TopAbs_ShapeEnum.TopAbs_SHAPE;
       const ex=new occt.TopExp_Explorer_2(cur,occt.TopAbs_ShapeEnum.TopAbs_EDGE,SH);bin.push(ex);
       const hs=[];let k=0;
-      while(ex.More()){if(want.has(k)){const h=occt.TopoDS.Edge_1(ex.Current());bin.push(h);const w=want.get(k);hs.push({h,r:w.r,fn:w.fn||null});}k++;ex.Next();}
+      while(ex.More()){if(want.has(k)){const h=occEdgeCur(ex);bin.push(h);const w=want.get(k);hs.push({h,r:w.r,fn:w.fn||null});}k++;ex.Next();}
       occDispose([ex]);
       if(!hs.length){occDispose(bin);return null;}
       if(chamfer&&!occt.BRepFilletAPI_MakeChamfer){occDispose(bin);return null;}
@@ -403,7 +403,7 @@ function occMicroAretes(shape){
   try{
     for(;x.More();x.Next()){
       const G=new occt.GProp_GProps_1();
-      try{occt.BRepGProp.LinearProperties(x.Current(),G,false,false);if(G.Mass()<1e-3)n++;}finally{G.delete();}
+      try{occAvec(x.Current(),c=>occt.BRepGProp.LinearProperties(c,G,false,false));if(G.Mass()<1e-3)n++;}finally{G.delete();}
     }
   }finally{x.delete();}
   return n;
@@ -607,11 +607,12 @@ function occTriPos(shape,defl,ang,wantN){
   const SH=occt.TopAbs_ShapeEnum.TopAbs_SHAPE;
   const ex=new occt.TopExp_Explorer_2(shape,occt.TopAbs_ShapeEnum.TopAbs_FACE,SH);
   while(ex.More()){
-    const f=occt.TopoDS.Face_1(ex.Current());
+    const f=occFaceCur(ex);
     const loc=new occt.TopLoc_Location_1();
     const triStart=pos.length/9;
+    let h=null; // t = h.get() appartient à h : on ne libère que h
     try{
-      const h=occt.BRep_Tool.Triangulation(f,loc);
+      h=occt.BRep_Tool.Triangulation(f,loc);
       if(h&&!h.IsNull()){
         const t=h.get(),nt=t.NbTriangles();
         // Orientation_1() rend un objet-enum (identité stricte, pas un nombre).
@@ -658,6 +659,7 @@ function occTriPos(shape,defl,ang,wantN){
         try{if(trsf)trsf.delete();}catch(e){}
       }
     }catch(e){}
+    occFree(h);occFree(f);
     try{loc.delete();}catch(e){}
     const triCount=pos.length/9-triStart;
     if(triCount>0)groups.push({f:faceOrd,start:triStart,count:triCount});

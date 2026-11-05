@@ -8,7 +8,7 @@ sont sorties le 2026-09-30j.
 Code dans `src/` · livrable `fusion_mvp.html` (généré par `build.js`) · architecture et
 garde-fous en tête de `src/00-entete-et-outils.js`.
 
-**597 versions**, de `2026-09-28b` à `V0.64.2` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
+**598 versions**, de `2026-09-28b` à `V0.64.3` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
 comme dans le fichier d'origine.
 
 ---
@@ -6890,3 +6890,11 @@ Demande : « Il faudrait enregistrer chaque pièce avec son environnement propre
 - **Correctif** : `occSpanFromShape` projette les 8 coins. Barquette : les 4 coins enlèvent 7 475,5 mm³, leurs congés 811,3 mm³ ; le congé R15 repasse.
 - **Effet sur d’autres fichiers** : toute découpe « à travers tout » d’axe oblique, même sans répétition, peut désormais traverser réellement la pièce. `CACHE_VER` ne change pas.
 - **Tests** : `test_repeat_decoupe_inclinee` (échoue sans le correctif).
+
+## V0.64.3 - Fuite de mémoire du noyau : la RAM ne monte plus à chaque rejeu
+- **Cause** : retour utilisateur, RAM à 95 %, de plus en plus chargée à force de travailler sur un solide. Tout objet rendu par le noyau (`Current`, `FindKey`, `CornerMin`, `Axis`, `Direction`, `Modified`, `Shape`, et même `Assign`) est une copie à libérer, et des dizaines d'endroits ne le faisaient pas. Le recyclage automatique d'OCCT 8 ne couvre que les poignées intelligentes. Une copie de forme oubliée garde aussi en vie la géométrie et le maillage d'un solide supprimé, et le tas du noyau ne rétrécit jamais sans F5.
+- **Mesuré** (Cache Piles, 26 fonctions, Chromium, code servi vérifié) : tas du noyau de 128 à 550 Mo en 120 modifications de cote avant, 128 Mo stables après. Objets perdus : 2 011 par rejeu au repos et 18 600 par cote modifiée avant, 0 ou presque après.
+- **Correctif** : libération à chaque endroit relevé, avec les aides `occFree`, `occAvec`, `occXyz`, `occFaceCur`, `occEdgeCur`, `occSolidCur`, `occShellCur` (src/20-10) et `nomsChaque`, `nomsFaceCle` (src/20-05). 51 transtypages du courant d'un explorateur passent par ces aides.
+- **Effet sur d'autres fichiers** : aucun changement de géométrie. 9 exemples comparés avant et après en navigateur (Barquette, Cavité Usinage, Perçages…) : mêmes volumes, faces et noms. `CACHE_VER` ne change pas. La vitesse de rejeu à mémoire libre ne change pas non plus (environ 0,5 s sur Cache Piles).
+- **Limites** : le calcul en arrière-plan (worker), les assemblages, la FAO et la mise en plan n'ont pas eu le même suivi objet par objet. Les points de contrôle du rejeu, gardés exprès, ne changent pas.
+- **Tests** : `test_fuite_noyau` suit chaque objet du noyau de sa création à sa libération (OCCT 8 ; échoue sans le correctif) et vérifie que le tas reste stable.

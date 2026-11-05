@@ -199,11 +199,11 @@ function occTangentFaces(shape,ord){
     while(fx.More()){
       const mids=[];
       try{
-        const fh=occt.TopoDS.Face_1(fx.Current());bin.push(fh);
+        const fh=occFaceCur(fx);bin.push(fh);
         const ex=new occt.TopExp_Explorer_2(fh,occt.TopAbs_ShapeEnum.TopAbs_EDGE,SH);bin.push(ex);
         while(ex.More()){
           try{
-            const eh=occt.TopoDS.Edge_1(ex.Current());bin.push(eh);
+            const eh=occEdgeCur(ex);bin.push(eh);
             const ad=new occt.BRepAdaptor_Curve_2(eh);bin.push(ad);
             const u0=ad.FirstParameter(),u1=ad.LastParameter();
             if(u1>u0){const m=ad.Value((u0+u1)/2);mids.push(key([m.X(),m.Y(),m.Z()]));try{m.delete();}catch(e){}}

@@ -702,7 +702,7 @@
     while(ex.More()){
       let ad=null;
       try{
-        const f=occt.TopoDS.Face_1(ex.Current());
+        const f=occFaceCur(ex);
         ad=new occt.BRepAdaptor_Surface_2(f,true);
         if(ad.GetType()===T.GeomAbs_Cylinder){
           const cy=ad.Cylinder(),ax=cy.Axis(),L=ax.Location(),Dd=ax.Direction();
@@ -778,7 +778,7 @@
       try{
         const ex=new occt.TopExp_Explorer_2(s,occt.TopAbs_ShapeEnum.TopAbs_EDGE,occt.TopAbs_ShapeEnum.TopAbs_SHAPE);bin.push(ex);
         while(ex.More()){
-          try{const e=occt.TopoDS.Edge_1(ex.Current());bin.push(e);
+          try{const e=occEdgeCur(ex);bin.push(e);
             try{if(occt.BRep_Tool.IsClosed_2(e,s))seams.push(e);}catch(err){}
             const ad=new occt.BRepAdaptor_Curve_2(e);bin.push(ad);
             const u0=ad.FirstParameter(),u1=ad.LastParameter();
@@ -793,7 +793,7 @@
       const ex=new occt.TopExp_Explorer_2(sh,occt.TopAbs_ShapeEnum.TopAbs_FACE,occt.TopAbs_ShapeEnum.TopAbs_SHAPE);bin.push(ex);
       while(ex.More()){
         try{
-          const f=occt.TopoDS.Face_1(ex.Current());
+          const f=occFaceCur(ex);
           const ad=new occt.BRepAdaptor_Surface_2(f,true);bin.push(ad);
           const ty=ad.GetType();let ax=null,r=0;
           if(ty===T.GeomAbs_Cylinder){const cy=ad.Cylinder();ax=cy.Axis();r=cy.Radius();}
@@ -813,7 +813,7 @@
       const ex=new occt.TopExp_Explorer_2(sh,occt.TopAbs_ShapeEnum.TopAbs_EDGE,occt.TopAbs_ShapeEnum.TopAbs_SHAPE);bin.push(ex);
       while(ex.More()){
         try{
-          const e=occt.TopoDS.Edge_1(ex.Current());bin.push(e);
+          const e=occEdgeCur(ex);bin.push(e);
           const ad=new occt.BRepAdaptor_Curve_2(e);bin.push(ad);
           if(ad.GetType()===C.GeomAbs_Circle&&!seams.some(q=>q.IsSame(e))){
             const ci=ad.Circle(),ax=ci.Axis(),L=ax.Location(),A=norm(L,ax.Direction());

@@ -207,7 +207,7 @@ function occFaceKeys(shape){
   while(ex.More()){
     let k='?';
     try{
-      const f=occt.TopoDS.Face_1(ex.Current());
+      const f=occFaceCur(ex);
       const s=new occt.BRepAdaptor_Surface_2(f,true);const ty=s.GetType();
       if(ty===T.GeomAbs_Plane){
         const pl=s.Plane(),ax=pl.Axis(),d=ax.Direction(),p=ax.Location();
@@ -451,11 +451,11 @@ function occFaceEdges(faceOrd,shape){
     const SH=occt.TopAbs_ShapeEnum.TopAbs_SHAPE;
     const ex=new occt.TopExp_Explorer_2(shape||occLive.shape,occt.TopAbs_ShapeEnum.TopAbs_FACE,SH);bin.push(ex);
     let k=0,face=null;
-    while(ex.More()){if(k===faceOrd){face=occt.TopoDS.Face_1(ex.Current());bin.push(face);break;}k++;ex.Next();}
+    while(ex.More()){if(k===faceOrd){face=occFaceCur(ex);bin.push(face);break;}k++;ex.Next();}
     if(!face)return out;
     const ee=new occt.TopExp_Explorer_2(face,occt.TopAbs_ShapeEnum.TopAbs_EDGE,SH);bin.push(ee);
     while(ee.More()){
-      const e=occt.TopoDS.Edge_1(ee.Current());bin.push(e);
+      const e=occEdgeCur(ee);bin.push(e);
       try{
         const ad=new occt.BRepAdaptor_Curve_2(e);bin.push(ad);
         const u0=ad.FirstParameter(),u1=ad.LastParameter();

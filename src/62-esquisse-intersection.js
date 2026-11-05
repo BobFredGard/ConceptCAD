@@ -74,7 +74,7 @@ function occIsectSection(target,B,withFaces){
     const ex=occBinPush(bin,new occt.TopExp_Explorer_2(r,occt.TopAbs_ShapeEnum.TopAbs_EDGE,occt.TopAbs_ShapeEnum.TopAbs_SHAPE));
     const fkOf=new Map();
     while(ex.More()){
-      const e=occt.TopoDS.Edge_1(ex.Current());
+      const e=occEdgeCur(ex);
       const pr=occIsectEdgePrim(e,B);
       if(pr&&withFaces){
         const f=new occt.TopoDS_Face();
@@ -116,7 +116,7 @@ function occIsectSolids(shape){
   const list=[];
   try{
     const ex=new occt.TopExp_Explorer_2(shape,occt.TopAbs_ShapeEnum.TopAbs_SOLID,occt.TopAbs_ShapeEnum.TopAbs_SHAPE);
-    while(ex.More()){list.push(occt.TopoDS.Solid_1(ex.Current()));ex.Next();}
+    while(ex.More()){list.push(occSolidCur(ex));ex.Next();}
     try{ex.delete();}catch(e){}
   }catch(e){}
   const own=list.length>0;

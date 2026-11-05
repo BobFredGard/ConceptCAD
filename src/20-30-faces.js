@@ -21,9 +21,9 @@ function occFaceOutNormal(f){
     try{
       const gt=ad.GetType();
       if(gt===occt.GeomAbs_SurfaceType.GeomAbs_Plane){
-        const d=ad.Plane().Axis().Direction();n=[d.X(),d.Y(),d.Z()];
+        const q=ad.Plane(),a=q.Axis();n=occXyz(a.Direction());occFree(a);occFree(q);
       }else if(gt===occt.GeomAbs_SurfaceType.GeomAbs_Cylinder){
-        const d=ad.Cylinder().Axis().Direction();n=[d.X(),d.Y(),d.Z()];
+        const q=ad.Cylinder(),a=q.Axis();n=occXyz(a.Direction());occFree(a);occFree(q);
       }
     }catch(e){}
     if(!n){try{ad.delete();}catch(e){}return null;}
@@ -41,8 +41,8 @@ function occFaceBox(f){
   try{
     const b=new occt.Bnd_Box_1();
     occt.BRepBndLib.Add(f,b,true);
-    const a=b.CornerMin(),z=b.CornerMax();
-    const out={pos:[(a.X()+z.X())/2,(a.Y()+z.Y())/2,(a.Z()+z.Z())/2],dim:[z.X()-a.X(),z.Y()-a.Y(),z.Z()-a.Z()]};
+    const a=occXyz(b.CornerMin()),z=occXyz(b.CornerMax());
+    const out={pos:[(a[0]+z[0])/2,(a[1]+z[1])/2,(a[2]+z[2])/2],dim:[z[0]-a[0],z[1]-a[1],z[2]-a[2]]};
     b.delete();return out;
   }catch(e){return null;}
 }
@@ -113,7 +113,7 @@ function occFindFace0(shape,ref){
   const ex=new occt.TopExp_Explorer_2(shape,occt.TopAbs_ShapeEnum.TopAbs_FACE,SH);
   const cands=[];
   while(ex.More()){
-    const f=occt.TopoDS.Face_1(ex.Current());
+    const f=occFaceCur(ex);
     const b=occFaceBox(f),n=occFaceOutNormal(f);
     if(b&&n){
       const dot=n[0]*ref.n[0]+n[1]*ref.n[1]+n[2]*ref.n[2];
@@ -173,19 +173,19 @@ function occSurfDesc(f){
   try{
     ad=new occt.BRepAdaptor_Surface_2(f,true);
     const T=occt.GeomAbs_SurfaceType,gt=ad.GetType();
-    const V=d=>[d.X(),d.Y(),d.Z()];
+    const V=occXyz;
     if(gt===T.GeomAbs_Plane){
-      const ax=ad.Plane().Axis();
-      return {k:'pl',n:V(ax.Direction()),p:V(ax.Location())};
+      const pl=ad.Plane(),ax=pl.Axis();
+      try{return {k:'pl',n:V(ax.Direction()),p:V(ax.Location())};}finally{occFree(ax);occFree(pl);}
     }
     if(gt===T.GeomAbs_Cylinder){
       const cy=ad.Cylinder(),pos=cy.Position();
-      return {k:'cy',a:V(pos.Direction()),p:V(pos.Location()),r:cy.Radius(),X:V(pos.XDirection()),Y:V(pos.YDirection()),direct:pos.Direct(),
-        u0:ad.FirstUParameter(),u1:ad.LastUParameter(),v0:ad.FirstVParameter(),v1:ad.LastVParameter()};
+      try{return {k:'cy',a:V(pos.Direction()),p:V(pos.Location()),r:cy.Radius(),X:V(pos.XDirection()),Y:V(pos.YDirection()),direct:pos.Direct(),
+        u0:ad.FirstUParameter(),u1:ad.LastUParameter(),v0:ad.FirstVParameter(),v1:ad.LastVParameter()};}finally{occFree(pos);occFree(cy);}
     }
     if(gt===T.GeomAbs_Cone){
-      const co=ad.Cone();
-      return {k:'co',a:V(co.Position().Direction()),apex:V(co.Apex()),semi:co.SemiAngle()};
+      const co=ad.Cone(),pc=co.Position();
+      try{return {k:'co',a:V(pc.Direction()),apex:V(co.Apex()),semi:co.SemiAngle()};}finally{occFree(pc);occFree(co);}
     }
     return {k:'?'};
   }catch(e){return {k:'?'};}
@@ -205,7 +205,7 @@ function occSameSurf(a,b){
 function occSubShapes(sh,kind){
   const out=[];
   const ex=new occt.TopExp_Explorer_2(sh,occt.TopAbs_ShapeEnum[kind],occt.TopAbs_ShapeEnum.TopAbs_SHAPE);
-  while(ex.More()){out.push(kind==='TopAbs_FACE'?occt.TopoDS.Face_1(ex.Current()):ex.Current());ex.Next();}
+  while(ex.More()){out.push(kind==='TopAbs_FACE'?occFaceCur(ex):ex.Current());ex.Next();}
   try{ex.delete();}catch(e){}
   return out;
 }
@@ -245,7 +245,7 @@ function occMoveFaceRuledTool(shape,face,n,dist){
     const wx=occBinPush(bin,new occt.BRepTools_WireExplorer_3(ow,face));
     const it=[];
     for(;wx.More();wx.Next()){
-      const e=occBinPush(bin,occt.TopoDS.Edge_1(wx.Current()));
+      const e=occBinPush(bin,occEdgeCur(wx));
       const v0=V3(occBinPush(bin,occt.BRep_Tool.Pnt(occBinPush(bin,wx.CurrentVertex()))));
       const fl=occEdgeFaces(shape,e);fl.forEach(x=>bin.push(x.f));
       const o=fl.find(x=>!x.f.IsSame(face));
@@ -346,7 +346,7 @@ function occMoveFaceRuledTool(shape,face,n,dist){
     const ex=occBinPush(bin,new occt.TopExp_Explorer_2(sew.SewedShape(),occt.TopAbs_ShapeEnum.TopAbs_SHELL,occt.TopAbs_ShapeEnum.TopAbs_SHAPE));
     if(!ex.More())return null;
     const ms=occBinPush(bin,new occt.BRepBuilderAPI_MakeSolid_1());
-    ms.Add(occt.TopoDS.Shell_1(ex.Current()));
+    ms.Add(occShellCur(ex));
     let out=ms.Solid();
     const gp=occBinPush(bin,new occt.GProp_GProps_1());occt.BRepGProp.VolumeProperties_1(out,gp,false,false,false);
     if(gp.Mass()<0)out=out.Reversed();
@@ -538,7 +538,7 @@ function occFindFaceTracked(shape,t){
   const ex=new occt.TopExp_Explorer_2(shape,occt.TopAbs_ShapeEnum.TopAbs_FACE,occt.TopAbs_ShapeEnum.TopAbs_SHAPE);
   let best=null,bs=1e18;
   while(ex.More()){
-    const f=occt.TopoDS.Face_1(ex.Current());ex.Next();
+    const f=occFaceCur(ex);ex.Next();
     let ok=false,sc=1e18;
     const n=occFaceOutNormal(f);
     if(n&&n[0]*t.n[0]+n[1]*t.n[1]+n[2]*t.n[2]>=0.999){
@@ -897,7 +897,7 @@ function occFindFaceAny0(shape,ref){
     const ex=new occt.TopExp_Explorer_2(shape,occt.TopAbs_ShapeEnum.TopAbs_FACE,SH);
     let best=null,bs=1e18;
     while(ex.More()){
-      const f=occt.TopoDS.Face_1(ex.Current());
+      const f=occFaceCur(ex);
       let keep=false;
       try{
         const n=occFaceOutNormal(f),b=occFaceBox(f);
@@ -918,7 +918,7 @@ function occFindFaceAny0(shape,ref){
   const ex=new occt.TopExp_Explorer_2(shape,occt.TopAbs_ShapeEnum.TopAbs_FACE,SH);
   let best=null,bs=1e18;
   while(ex.More()){
-    const f=occt.TopoDS.Face_1(ex.Current());
+    const f=occFaceCur(ex);
     let keep=false;
     if(!ref.st||occSurfKind(f)===ref.st){
       const b=occFaceBox(f);

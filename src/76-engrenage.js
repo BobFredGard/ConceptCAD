@@ -92,7 +92,7 @@ function gearRingSolid(g,bin){
   const ex=occBinPush(bin,new occt.TopExp_Explorer_2(sew.SewedShape(),occt.TopAbs_ShapeEnum.TopAbs_SHELL,occt.TopAbs_ShapeEnum.TopAbs_SHAPE));
   if(!ex.More())throw new Error('coque de couronne introuvable');
   const ms=occBinPush(bin,new occt.BRepBuilderAPI_MakeSolid_1());
-  ms.Add(occt.TopoDS.Shell_1(ex.Current()));
+  ms.Add(occShellCur(ex));
   let sol=ms.Solid();
   const gp=occBinPush(bin,new occt.GProp_GProps_1());occt.BRepGProp.VolumeProperties_1(sol,gp,false,false,false);
   if(gp.Mass()<0)sol=sol.Reversed();

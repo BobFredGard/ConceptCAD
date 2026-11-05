@@ -270,7 +270,7 @@ function occHoleThreadVoid(P,D,zStart,nT,th,rb,zEnd,tip,bins){
     const ax=occBinPush(bins,new occt.gp_Ax2_2(oE,dirOf(D),dirOf(U)));
     const cone=occBinPush(bins,new occt.BRepPrimAPI_MakeCone_3(ax,rb,0,rb/Math.tan(tip*Math.PI/360))).Shape();
     const fx=occBinPush(bins,new occt.TopExp_Explorer_2(cone,occt.TopAbs_ShapeEnum.TopAbs_FACE,occt.TopAbs_ShapeEnum.TopAbs_SHAPE));
-    for(;fx.More();fx.Next()){const fc=occt.TopoDS.Face_1(fx.Current());
+    for(;fx.More();fx.Next()){const fc=occFaceCur(fx);
       const ad=occBinPush(bins,new occt.BRepAdaptor_Surface_2(fc,true));
       if(ad.GetType()!==occt.GeomAbs_SurfaceType.GeomAbs_Plane)sew.Add(fc);}
   }else{
@@ -283,7 +283,7 @@ function occHoleThreadVoid(P,D,zStart,nT,th,rb,zEnd,tip,bins){
   const ex=occBinPush(bins,new occt.TopExp_Explorer_2(sewn,occt.TopAbs_ShapeEnum.TopAbs_SHELL,occt.TopAbs_ShapeEnum.TopAbs_SHAPE));
   if(!ex.More())throw new Error('coque de filet introuvable');
   const ms=occBinPush(bins,new occt.BRepBuilderAPI_MakeSolid_1());
-  ms.Add(occt.TopoDS.Shell_1(ex.Current()));
+  ms.Add(occShellCur(ex));
   let sol=ms.Solid();
   const gp=occBinPush(bins,new occt.GProp_GProps_1());occt.BRepGProp.VolumeProperties_1(sol,gp,false,false,false);
   if(gp.Mass()<0)sol=sol.Reversed();
@@ -303,8 +303,8 @@ function occShapeOfHole(f){
   if(N.through&&typeof occThroughBase!=='undefined'&&occThroughBase){
     try{
       const bb=new occt.Bnd_Box_1();occt.BRepBndLib.Add(occThroughBase,bb,true);
-      const a=bb.CornerMin(),b=bb.CornerMax();let L=0;
-      const cs=[[a.X(),b.X()],[a.Y(),b.Y()],[a.Z(),b.Z()]];
+      const a=occXyz(bb.CornerMin()),b=occXyz(bb.CornerMax());let L=0;
+      const cs=[[a[0],b[0]],[a[1],b[1]],[a[2],b[2]]];
       A.pts.forEach(function(P){for(let i=0;i<8;i++){const c=[cs[0][i&1],cs[1][(i>>1)&1],cs[2][(i>>2)&1]];
         L=Math.max(L,(c[0]-P.x)*A.dir.x+(c[1]-P.y)*A.dir.y+(c[2]-P.z)*A.dir.z);}});
       try{bb.delete();}catch(e){}
@@ -367,7 +367,7 @@ function occShapeOfHole(f){
   // recouvrement, qui supprime ces opercules.
   const fused=function(P,segs,firstOver){
     let prof=null;
-    segs.forEach(function(sg,i){iSeg=i;const sh=segShape(P,sg,firstOver&&i===0);prof=prof?occFuse(prof,sh):sh;});
+    segs.forEach(function(sg,i){iSeg=i;const sh=segShape(P,sg,firstOver&&i===0);if(!prof){prof=sh;return;}const nx=occFuse(prof,sh);occFree(prof);occFree(sh);prof=nx;});
     return prof;
   };
   // Filet modélisé (V0.21.19) : à sa place dans l'arbre, le perçage n'est qu'un
@@ -512,7 +512,7 @@ function holeNextExit(sh,P,D){
     const IN=occt.TopAbs_State.TopAbs_IN;
     const inAt=function(t){const p=new occt.gp_Pnt_3(P.x+D.x*t,P.y+D.y*t,P.z+D.z*t);cl.Perform(p,1e-7);const r=cl.State()===IN;try{p.delete();}catch(e){}return r;};
     let bb=null,Lmax=2000;
-    try{bb=new occt.Bnd_Box_1();occt.BRepBndLib.Add(sh,bb,true);const a=bb.CornerMin(),b=bb.CornerMax();Lmax=Math.hypot(b.X()-a.X(),b.Y()-a.Y(),b.Z()-a.Z())+1;bb.delete();}catch(e){}
+    try{bb=new occt.Bnd_Box_1();occt.BRepBndLib.Add(sh,bb,true);const a=occXyz(bb.CornerMin()),b=occXyz(bb.CornerMax());Lmax=Math.hypot(b[0]-a[0],b[1]-a[1],b[2]-a[2])+1;bb.delete();}catch(e){}
     const step=0.25;let t=0.05,seenIn=false,prevIn=false;
     for(;t<=Lmax;t+=step){
       const i=inAt(t);

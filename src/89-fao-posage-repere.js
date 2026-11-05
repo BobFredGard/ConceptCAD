@@ -434,7 +434,7 @@ function faoShapeToF(sh,F){
     const tO=faoRotF(F,F.O||[0,0,0]);
     t.SetValues(F.X[0],F.X[1],F.X[2],-tO[0], F.Y[0],F.Y[1],F.Y[2],-tO[1], F.Z[0],F.Z[1],F.Z[2],-tO[2]);
     const b=new occt.BRepBuilderAPI_Transform_2(sh,t,true);
-    const s=b.Shape();
+    const s=b.Shape();occFree(b);occFree(t);
     if(faoShapeFCache.size>6)faoShapeFCache.clear();
     faoShapeFCache.set(sh,{k,s});
     return s;

@@ -29,7 +29,7 @@ function asmFaceTable(b){
         if(want.has(k)){
           let f=null,ad=null;
           try{
-            f=occt.TopoDS.Face_1(ex.Current());ad=new occt.BRepAdaptor_Surface_2(f,true);
+            f=occFaceCur(ex);ad=new occt.BRepAdaptor_Surface_2(f,true);
             const gt=ad.GetType();let G=null;
             if(gt===T.GeomAbs_Cylinder){
               const c=ad.Cylinder(),a=c.Axis();
