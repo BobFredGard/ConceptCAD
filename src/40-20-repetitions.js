@@ -682,6 +682,10 @@ function repGenChildren(rp){
   };
   // V0.11.30 : une répétition source (pas soi-même, pas une instance) est développée en son motif
   rp.base=rp.base.filter(id=>{const b=doc.features.find(x=>x.id===id);return b&&b.id!==rp.id&&!b.repeatId;});
+  // Une répétition vit dans le corps de ses sources, pas dans le corps actif à sa création :
+  // sinon l'arbre et le fil refusent de la placer parmi ses voisines (Barquette, Linéaire).
+  // Régénérée à chaque ouverture : les fichiers existants se réparent d'eux-mêmes.
+  {const s0=doc.features.find(x=>x.id===rp.base[0]);if(s0&&s0.body)rp.body=s0.body;}
   const n=rp.mode==='mir'?1:repMaxCopies(rp.copies);
   const base=repExpandSources(rp.base.map(id=>doc.features.find(f=>f.id===id)).filter(Boolean),new Set([rp.id]));
   // Symétrie DOUBLE : un 2ᵉ plan (rp.plane2) ajoute une 2ᵉ passe qui miroite la BASE et

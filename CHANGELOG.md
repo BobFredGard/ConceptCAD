@@ -8,7 +8,7 @@ sont sorties le 2026-09-30j.
 Code dans `src/` · livrable `fusion_mvp.html` (généré par `build.js`) · architecture et
 garde-fous en tête de `src/00-entete-et-outils.js`.
 
-**577 versions**, de `2026-09-28b` à `V0.59.0` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
+**578 versions**, de `2026-09-28b` à `V0.59.1` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
 comme dans le fichier d'origine.
 
 ---
@@ -6706,3 +6706,13 @@ Demande : « Il y a un moyen de rajouter du code IA dans mon fichier pour qu'il 
 - **Aide** (F1 hors esquisse ou « ? ») : nombre d’erreurs, dernière erreur, boutons Enregistrer, Copier et Vider.
 - **Limites** : les erreurs déjà rattrapées par l’application et celles des tâches de fond (Worker) n’arrivent pas au journal.
 - **Tests** : `test_journal_erreurs`. `CACHE_VER` ne change pas : aucun parcours à régénérer.
+
+## V0.59.1 - Fil de construction : esquisses à leur place, plus de fantômes, corps actif visible
+
+Retour sur Barquette : esquisses fantômes mal placées dans le fil, Symétrie impossible à amener juste après la Linéaire, choix du corps peu visible.
+
+**Cause** : une répétition naissait dans le corps actif et non celui de ses sources (Linéaire rangée dans « Intérieur », or l'arbre ne dépose que dans le même corps) ; une esquisse non consommée n'avait pas de place propre (après son plan ou son hôte, sinon en fin de fil) ; une esquisse refermée vide restait dans le document ; la place de création d'un plan comptait comme une dépendance, même pour un plan sans lien avec le solide ; le corps actif n'était signalé que par un « ● » dans l'arbre.
+
+**Correctif** : la répétition prend le corps de sa première source, fichiers existants compris (volume de Barquette inchangé, 224 133,4 mm³) ; l'esquisse retient sa place de création (`sk.at`) ; une esquisse vide que rien ne cite disparaît à la fermeture et à l'ouverture du fichier, sans étape d'annulation qui la ramène ; un plan ne retient une fonction que s'il s'appuie sur le solide, et le chemin d'un balayage porte désormais les mêmes liens que son profil ; plans indépendants et esquisses libres gardent leur place quand la fonction voisine est déplacée ; sélecteur « Corps actif » dans le bandeau de timeline (corps masqué signalé, corps pas encore créé ou retiré grisé).
+
+**Test** : `test_fil_esquisses`, sur une copie du fichier de l'utilisateur.

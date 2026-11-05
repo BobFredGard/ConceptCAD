@@ -3,6 +3,7 @@
 require('./moteur-defaut.cjs'); // noyau des suites : OCCT 8 (occt/v3) ; OCCT_DIR=actuel → ancien
 const { execFileSync } = require('child_process'), path = require('path');
 const SUITES = [
+  'test_fil_esquisses',
   'test_highlight_order',
   'test_noyau_exceptions',
   'test_moteur_v3',

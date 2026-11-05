@@ -48,7 +48,7 @@ const {loadApp}=require('./appvm.cjs');
     // ── T2 : esquisse POSÉE SUR FACE, dernière fonction → aucun verrou, modèle complet ──
     'const sk2={id:"s2",name:"E2",plane:"FACE",origin:[0,0,40],axU:[1,0,0],axV:[0,1,0],axN:[0,0,1],',
     '  host:{feat:"ex_t",tag:"TOP",x:20,y:15,name:"face 1"},',
-    '  entities:[],points:{},constraints:[],dims:[],seq:1,visible:true};',
+    '  entities:[],points:{p:{x:1,y:1}},constraints:[],dims:[],seq:1,visible:true};',
     'doc.sketches.push(sk2);safeRebuild("t2");',
     'openSketch("s2");',
     'out.t2={tlMark:tlMark,nb:live().length,op:mat(live()[0])?live()[0].mesh.material.opacity:null,note:skEdit._refNote};',

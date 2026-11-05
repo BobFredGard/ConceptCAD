@@ -376,7 +376,7 @@ input[type=range]{accent-color:var(--primary);width:100%}
  * peut changer sans rien casser. CACHE_VER (parcours FAO) reste indépendant.
  */
 
-const APP_VER='V0.59.0';
+const APP_VER='V0.59.1';
 try{console.log('[ConceptCAD] version '+APP_VER);}catch(e){}
 try{var mfSv=document.getElementById('mfSplashVer');if(mfSv)mfSv.textContent=APP_VER;}catch(e){} // écran de démarrage
 
@@ -10732,6 +10732,10 @@ function repGenChildren(rp){
   };
   // V0.11.30 : une répétition source (pas soi-même, pas une instance) est développée en son motif
   rp.base=rp.base.filter(id=>{const b=doc.features.find(x=>x.id===id);return b&&b.id!==rp.id&&!b.repeatId;});
+  // Une répétition vit dans le corps de ses sources, pas dans le corps actif à sa création :
+  // sinon l'arbre et le fil refusent de la placer parmi ses voisines (Barquette, Linéaire).
+  // Régénérée à chaque ouverture : les fichiers existants se réparent d'eux-mêmes.
+  {const s0=doc.features.find(x=>x.id===rp.base[0]);if(s0&&s0.body)rp.body=s0.body;}
   const n=rp.mode==='mir'?1:repMaxCopies(rp.copies);
   const base=repExpandSources(rp.base.map(id=>doc.features.find(f=>f.id===id)).filter(Boolean),new Set([rp.id]));
   // Symétrie DOUBLE : un 2ᵉ plan (rp.plane2) ajoute une 2ᵉ passe qui miroite la BASE et
@@ -10909,7 +10913,8 @@ function repCloneSkName(sk){return /\(rép\s*\d+\)\s*$/.test((sk&&sk.name)||'');
 function docSanitise(){
   // Répare un document rechargé : instance en double, instance sans répétition, esquisse
   // d'instance abandonnée et nombre de copies aberrant. Les esquisses LIBRES (non
-  // consommées par une extrusion) sont conservées : elles sont légitimes.
+  // consommées par une extrusion) sont conservées : elles sont légitimes, sauf si elles sont
+  // VIDES et que rien ne les cite : esquisses fantômes d'anciennes versions (skIsGhost, 50).
   // Les corps conteneurs sont normalisés aussi (anciens documents : tout vers « Corps 1 »).
   try{ensureBodies();}catch(e){}
   let dup=0,orph=0,sk=0,cap=0;
@@ -10935,6 +10940,8 @@ function docSanitise(){
     if(repCloneSkName(x)){sk++;return false;}
     return true;
   });
+  const fantomes=doc.sketches.filter(skIsGhost);
+  if(fantomes.length)doc.sketches=doc.sketches.filter(x=>fantomes.indexOf(x)<0);
   // Nom des congés/chanfreins exacts : une ancienne version pouvait perdre des arêtes
   // (fusion de jumeaux sur des arcs sans ancre) et laisser « Congé exact (16 arête(s)) »
   // alors qu'il n'en restait que 12 — un nom menteur dans l'arbre. On le réaligne sur la
@@ -10946,7 +10953,7 @@ function docSanitise(){
   doc.features.forEach(f=>{if(f.type==='xdraft'){const n=draftName(f);if(f.name!==n){f.name=n;ren++;}}});
   // Même raison pour la coque : « 2 face(s) retirée(s) » doit suivre la sélection réelle.
   doc.features.forEach(f=>{if(f.type==='xshell'){const n=shellName(f);if(f.name!==n){f.name=n;ren++;}}});
-  return {dup,orph,sk,cap,ren};
+  return {dup,orph,sk,cap,ren,vides:fantomes.length};
 }
 function delFeature(f){
   if(!f)return;
@@ -11203,9 +11210,20 @@ function featMoveStep(F,id,dir){
   }
   return true;
 }
-function featMoveApply(A,label){
+function featMoveKeepAnchors(id){
+  // Ce qui a seulement été créé juste après le bloc déplacé (plan indépendant du solide, esquisse
+  // pas encore consommée) garde sa place dans le fil au lieu de suivre le bloc. Une esquisse sur
+  // une face reste de toute façon après sa fonction hôte (tlbSteps, 41).
+  const F=doc.features,bl=featBlockOf(F.find(x=>x.id===id),F);
+  if(!bl)return;
+  const ids=new Set(F.slice(bl[0],bl[1]+1).map(x=>x.id)),prev=bl[0]>0?F[bl[0]-1].id:null;
+  (doc.cgeo||[]).forEach(c=>{if(c&&ids.has(c.at)&&!cgDependsOnModel(c))c.at=prev;});
+  (doc.sketches||[]).forEach(s=>{if(s.at!==undefined&&ids.has(s.at))s.at=prev;});
+}
+function featMoveApply(A,label,id){
   // Pose un nouvel ordre de doc.features (même tableau, même contenu) : une étape d'annulation + rejeu
   docPushUndo(label);
+  if(id)featMoveKeepAnchors(id);
   doc.features.splice(0,doc.features.length,...A);
   markDirty();rebuild();renderTree();renderProps();
 }
@@ -11217,7 +11235,7 @@ function featMove(id,dir){
   const A=doc.features.slice();
   if(!featMoveRaw(A,id,dir))return false;
   const f=doc.features.find(x=>x.id===id);
-  featMoveApply(A,'déplacement de « '+f.name+' »');
+  featMoveApply(A,'déplacement de « '+f.name+' »',id);
   return true;
 }
 function delBody(id){
@@ -12179,7 +12197,7 @@ function bodyStyleField(id){
 /* ---------- bandeau de timeline façon Fusion 360 (bas de la vue 3D, espace CAO) ----------
    Une icône par étape, dans l'ordre du fil : fonctions (doc.features, instances de répétition
    repliées dans leur répétition), esquisses (juste avant leur fonction consommatrice, sinon
-   après leur hôte), géométrie de construction (après sa fonction d'ancrage `at`, cf. cgPos).
+   à leur place de création sk.at), géométrie de construction (après sa fonction d'ancrage `at`, cf. cgPos).
    Survol = nom · clic = sélection (même `sel` que l'arbre) · double-clic = édition ·
    ⏱ marqueur glissable entre deux étapes (tlSetPtr : au-delà = grisé, comme tlLocked) ·
    glisser une fonction = la réordonner dans son corps (crans featMoveRaw : mêmes règles que ▲▼).
@@ -12199,6 +12217,8 @@ let tlbEl=null,tlbDrag=null,tlbNoClick=false;
       '#mfTl .tlbC{display:flex;gap:1px;flex:none}'+
       '#mfTl .tlbC button{padding:2px 5px;min-width:22px;font-size:.72rem;line-height:1.2;background:none;border:1px solid transparent;border-radius:6px;color:var(--text)}'+
       '#mfTl .tlbC button:hover{border-color:var(--border);color:var(--primary)}'+
+      '#mfTl .tlbK{flex:none;display:flex;align-items:center;gap:3px;font-size:.72rem;color:var(--muted);white-space:nowrap}'+
+      '#mfTl .tlbK select{max-width:150px;font-size:.72rem;padding:1px 2px;background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:6px}'+
       '#mfTl .tlbR{display:flex;align-items:center;gap:3px;flex:1;min-width:0;overflow-x:auto;overflow-y:hidden;padding:5px 4px 3px;scrollbar-width:none}'+
       '#mfTl .tlbR::-webkit-scrollbar{display:none}'+
       // V0.23.26 : barre de défilement fondue sur le bandeau (fine, translucide, au survol), posée
@@ -12227,8 +12247,8 @@ let tlbEl=null,tlbDrag=null,tlbNoClick=false;
 })();
 function tlbSteps(){
   // Étapes du fil, triées par clé : 4·i+2 pour la fonction i, 4·i+1 pour l'esquisse qu'elle
-  // consomme, 4·p+3 pour ce qui vient après la fonction p (construction ancrée, esquisse sur
-  // face ; p = -1 : en tête), 4·n pour une esquisse libre (fin du fil). Marqueur avant la
+  // consomme, 4·p+3 pour ce qui vient après la fonction p (construction ancrée, esquisse non
+  // consommée ; p = -1 : en tête), 4·n pour une esquisse libre de fichier ancien (fin du fil). Marqueur avant la
   // fonction m = clé 4·m : tout ce qui est au-delà est hors rejeu (off).
   const F=doc.features||[],S=[],m=tlIdx();
   const at=id=>F.findIndex(f=>f.id===id);
@@ -12243,9 +12263,12 @@ function tlbSteps(){
     if(skIsRepCopy(sk))return; // copie d'une répétition : comme ses fonctions d'instance, hors du fil
     const h=tlHostFeatureOfSketch(sk);let key;
     if(h&&(h.sketchId===sk.id||h.pathId===sk.id))key=4*at(h.id)+1;                                  // consommée : juste avant sa fonction
-    else if(sk.plane==='CG'&&sk.cg&&cgKey[sk.cg.id]!=null)key=cgKey[sk.cg.id];    // sur un élément de construction : après lui
-    else if(h)key=4*at(h.id)+3;                                                  // sur une face : après la fonction hôte
-    else key=4*F.length;                                                         // libre : en fin de fil
+    else{
+      // pas encore consommée : à sa place de création (sk.at), jamais avant ce qui la porte
+      const support=sk.plane==='CG'&&sk.cg&&cgKey[sk.cg.id]!=null?cgKey[sk.cg.id]:(h?4*at(h.id)+3:null);
+      if(sk.at!==undefined)key=Math.max(support==null?-1:support,4*cgPos(sk)+3);
+      else key=support==null?4*F.length:support;                                 // fichier ancien : place inconnue
+    }
     S.push({kind:'sketch',id:sk.id,o:sk,key,sub:1e6+k,warn:false});
   });
   S.sort((a,b)=>(a.key-b.key)||(a.sub-b.sub));
@@ -12314,7 +12337,7 @@ function tlbMoveTo(id,g,S){
   // un cran refusé (antériorité, 43) annule tout le déplacement : pas d'arrêt à mi-chemin
   if(refus){try{faceEl.textContent='⛔ Déplacement refusé : '+refus;}catch(e){}return false;}
   if(A.every((x,i)=>x===doc.features[i]))return false;
-  featMoveApply(A,'déplacement de « '+f.name+' »');
+  featMoveApply(A,'déplacement de « '+f.name+' »',id);
   return true;
 }
 // V0.7.6 : les icônes du RUBAN (SVG, 97-interface-moderne) au lieu de caractères — la même image
@@ -12393,6 +12416,34 @@ function tlbDbl(s){
   else if(f.type==='xsplit')enterSplitMode(f);
   else{renderTree();renderProps();}
 }
+function tlbBodyChoices(){
+  // Sélecteur « Corps actif » : les corps du document, avec ce qui empêche ou fausse le choix
+  const i=tlIdx();
+  return (doc.bodies||[]).map(e=>{
+    let ne=true,retire=false;
+    try{ne=bodyBornAt(e.id,i);retire=bodyRemovedAt(e.id,i);}catch(err){}
+    const masque=!!(doc.bodyVis&&doc.bodyVis[e.id]===false);
+    return {id:e.id,off:!ne||retire,label:(e.name||e.id)+(!ne?' (pas encore créé)':(retire?' (retiré)':(masque?' (masqué)':'')))};
+  });
+}
+function tlbBodyPick(id){
+  // Mêmes règles que le clic sur un corps dans l'arbre (tlActivateBody) ; refus : son message reste
+  if(!tlActivateBody(id)){renderTimeline();return false;}
+  const e=(doc.bodies||[]).find(x=>x.id===id);
+  renderTree();renderProps();refreshParts();
+  try{faceEl.textContent='« '+((e&&e.name)||id)+' » ACTIF : les nouvelles fonctions naîtront dedans.';}catch(err){}
+  return true;
+}
+function tlbBodySync(h){
+  // Visible dès qu'il y a un vrai choix ; la liste n'est refaite que si elle a changé (menu ouvert)
+  const L=tlbBodyChoices(),key=JSON.stringify(L),s=h._body;
+  h._bodyWrap.style.display=L.length>1?'':'none';
+  if(key!==h._bodyKey){
+    h._bodyKey=key;s.innerHTML='';
+    L.forEach(c=>{const o=document.createElement('option');o.value=c.id;o.textContent=c.label;o.disabled=c.off;s.appendChild(o);});
+  }
+  s.value=doc.activeBody||'';
+}
 function tlbHost(){
   if(tlbEl)return tlbEl;
   const vp=$('vpwrap');if(!vp)return null;
@@ -12402,10 +12453,14 @@ function tlbHost(){
     const b=document.createElement('button');b.textContent=t;b.title=h;b.onclick=()=>tlbStep(k);C.appendChild(b);
   });
   {const b=document.createElement('button');b.textContent='🎬';b.title='Film de construction : rejouer l’historique en plein écran, une fonction à la fois (98-film)';b.onclick=()=>{try{filmPlay();}catch(e){}};C.appendChild(b);}
+  const K=document.createElement('label');K.className='tlbK';K.title='Corps actif : les nouvelles fonctions naîtront dedans';
+  K.appendChild(document.createTextNode('🧱 Corps actif'));
+  const KS=document.createElement('select');KS.onchange=()=>tlbBodyPick(KS.value);K.appendChild(KS);
   const R=document.createElement('div');R.className='tlbR';
   const N=document.createElement('span');N.className='tlbN';
   const B=document.createElement('div');B.className='tlbB';
-  d.appendChild(C);d.appendChild(R);d.appendChild(N);d.appendChild(B);
+  d._body=KS;d._bodyWrap=K;d._bodyKey='';
+  d.appendChild(C);d.appendChild(K);d.appendChild(R);d.appendChild(N);d.appendChild(B);
   d._row=R;d._cnt=N;d._steps=[];d._bar=B;
   R.addEventListener('scroll',tlbBarSync);
   window.addEventListener('resize',tlbBarSync);
@@ -12460,6 +12515,7 @@ function tlbDragEnd(){
 function renderTimeline(){
   const h=tlbHost();if(!h)return;
   if(tlbDrag)return; // pas de re-rendu sous un glisser en cours
+  tlbBodySync(h);
   const R=h._row;R.innerHTML='';h._steps=[];
   const S=tlbSteps(),mg=tlbMarkGap(S),mOn=tlIdx()>=0;
   const mk=()=>{
@@ -13218,7 +13274,7 @@ function treeFeatMoveTo(id,targetId){
   }
   if(refus){try{faceEl.textContent='⛔ Déplacement refusé : '+refus;}catch(e){}return false;}
   if(A.every((x,i)=>x===F[i]))return false;
-  featMoveApply(A,'déplacement de « '+f.name+' »');
+  featMoveApply(A,'déplacement de « '+f.name+' »',id);
   return true;
 }
 // Fonction déposée sur l'en-tête d'un AUTRE corps : elle s'y applique désormais (f.body), à sa
@@ -13389,6 +13445,27 @@ function antAnchorSketches(o,out,prof){
   for(const k in o){if(k==='anchor'||k[0]==='_')continue;const v=o[k];if(v&&typeof v==='object')antAnchorSketches(v,out,(prof|0)+1);}
   return out;
 }
+function cgDependsOnModel(c,vus){
+  // Le plan s'appuie-t-il sur le solide ? Non s'il ne dépend que de l'origine, d'autres plans ou
+  // d'esquisses libres : sa place dans le fil (at) dit alors seulement OÙ il a été créé, pas ce
+  // dont il a besoin. Barquette : Plan 2 = YZ décalé, créé juste après la Symétrie, ne la retient pas.
+  vus=vus||new Set();
+  if(!c||vus.has(c.id))return false;
+  vus.add(c.id);
+  const parSk=id=>{
+    const s=(doc.sketches||[]).find(x=>x.id===id);
+    if(!s)return false;
+    if(s.host&&s.host.feat)return true;
+    return s.plane==='CG'&&s.cg?cgDependsOnModel((doc.cgeo||[]).find(x=>x&&x.id===s.cg.id),vus):false;
+  };
+  return (c.refs||[]).some(r=>{
+    if(!r)return false;
+    if(r.k==='face'||r.k==='edge'||r.k==='vtx')return true;
+    if(r.k==='cg')return cgDependsOnModel((doc.cgeo||[]).find(x=>x&&x.id===r.id),vus);
+    if(r.k==='skent'||r.k==='skpt')return parSk(r.sk);
+    return false;
+  });
+}
 function antDeps(f,F,users){
   // Liens d'antériorité de f : [{id, why, soft}] — id = fonction qui doit précéder f
   F=F||doc.features;users=users||antSketchUsers(F);
@@ -13402,12 +13479,14 @@ function antDeps(f,F,users){
   }
   if((f.type==='xfillet'||f.type==='fillet')&&f.target)add(f.target,'fonction visée');
   if(f.upto&&f.upto.ex)add(f.upto.ex,'cible « jusqu’à »');
-  if(f.sketchId){
-    const sk=(doc.sketches||[]).find(s=>s.id===f.sketchId);
+  // le profil et, pour un balayage, le chemin : les deux esquisses portent les mêmes liens
+  [f.sketchId,f.type==='sweep'?f.pathId:null].forEach(skId=>{
+    if(!skId)return;
+    const sk=(doc.sketches||[]).find(s=>s.id===skId);
     if(sk&&sk.host&&sk.host.feat)add(sk.host.feat,'face portant l’esquisse « '+(sk.name||sk.id)+' »');
     if(sk&&sk.plane==='CG'&&sk.cg&&sk.cg.id){
       const c=(doc.cgeo||[]).find(x=>x&&x.id===sk.cg.id);
-      if(c&&c.at)add(c.at,'plan de construction « '+(c.name||c.id)+' » de l’esquisse « '+(sk.name||sk.id)+' »');
+      if(c&&c.at&&cgDependsOnModel(c))add(c.at,'plan de construction « '+(c.name||c.id)+' » de l’esquisse « '+(sk.name||sk.id)+' »');
     }
     // esquisses reprises par projection (50-esquisse-8), de proche en proche : la fonction doit
     // venir après la face qui les porte, sinon la géométrie projetée dépendrait de ce qu'elle crée
@@ -13417,7 +13496,7 @@ function antDeps(f,F,users){
       if(q.host&&q.host.feat)add(q.host.feat,'face portant l’esquisse « '+(q.name||q.id)+' », projetée dans « '+(sk.name||sk.id)+' »');
       sources(q);});};
     sources(sk);
-  }
+  });
   antAnchorSketches(f,new Set()).forEach(skId=>{
     if(skId===f.sketchId)return;
     const u=users.get(skId);
@@ -20208,7 +20287,7 @@ function newSketch(preset){
   const isPlane=p=>typeof p==='string'&&['XY','XZ','YZ'].includes(p.toUpperCase());
   let pl=isPlane(preset)?preset.toUpperCase():((sel.kind==='plane'&&isPlane(sel.id))?sel.id:null);
   if(!pl)pl='XY'; // défaut plan XY (plus de prompt) — double-clic sur un plan de l'arborescence = esquisse dessus
-  const sk={id:uid('sk'),name:'Esquisse '+(doc.sketches.length+1),plane:pl,entities:[],points:{},constraints:[],dims:[],seq:1,visible:true,origin:[0,0,0]};
+  const sk={id:uid('sk'),name:'Esquisse '+(doc.sketches.length+1),plane:pl,entities:[],points:{},constraints:[],dims:[],seq:1,visible:true,origin:[0,0,0],at:cgAtNow()};
   ensureSketchBasis(sk);
   doc.sketches.push(sk);markDirty();rebuild();openSketch(sk.id);
 }
@@ -20229,7 +20308,7 @@ function newSketchOnCg(id,sub){
   if(el.kind!=='plane'&&el.kind!=='frame'){try{faceEl.textContent='Esquisse : choisissez un plan (ou un plan de repère), pas un '+cgKindLabel(el).toLowerCase()+'.';}catch(e){}return;}
   if(el.kind==='plane')sub=null;
   const sk={id:uid('sk'),name:'Esquisse '+(doc.sketches.length+1),plane:'CG',cg:sub?{id,sub}:{id},
-    entities:[],points:{},constraints:[],dims:[],seq:1,visible:true,origin:[0,0,0]};
+    entities:[],points:{},constraints:[],dims:[],seq:1,visible:true,origin:[0,0,0],at:cgAtNow()};
   cgSyncSketch(sk);
   if(!sk.axN){try{faceEl.textContent='Esquisse : « '+el.name+' » n’est pas résolu ('+(el.msg||'référence perdue')+').';}catch(e){}return;}
   doc.sketches.push(sk);markDirty();rebuild();openSketch(sk.id);
@@ -20264,7 +20343,7 @@ function newSketchOnFace(){
   // origine hors de la face cliquée (fond de rainure sous un îlot) : la face sous le CLIC
   const host=findHostForFace(origin,n)||hostViaPoints([origin.x,origin.y,origin.z],n,[pt]);
   const sk={id:uid('sk'),name:'Esquisse '+(doc.sketches.length+1)+' (face)',plane:'FACE',
-    entities:[],points:{},constraints:[],dims:[],seq:1,visible:true,
+    entities:[],points:{},constraints:[],dims:[],seq:1,visible:true,at:cgAtNow(),
     origin:[+origin.x.toFixed(3),+origin.y.toFixed(3),+origin.z.toFixed(3)],
     axU:[u.x,u.y,u.z],axV:[v.x,v.y,v.z],axN:[n.x,n.y,n.z],
     host:host?Object.assign({feat:host.feat.id,tag:host.tag,x:host.x,y:host.y,name:entName('face')},(host.tag==='SIDE')?{edge:host.edge,h:host.h}:{}):null};
@@ -20951,6 +21030,22 @@ function openSketch(id){
   // filet les inclut, sans quoi ouvrir puis fermer une esquisse laissait une étape « vide »
   try{docBaseSync();}catch(e){}
 }
+function skIsGhost(sk){
+  // Esquisse fantôme : rien de dessiné et rien ne la cite. Elle encombrerait le fil pour rien.
+  if(!sk||sk.fao||(sk.entities||[]).length||(sk.dims||[]).length||(sk.constraints||[]).length)return false;
+  if(Object.keys(sk.points||{}).some(p=>p!==SK_ORIGIN))return false;
+  try{
+    const reste=Object.assign({},doc,{sketches:(doc.sketches||[]).filter(s=>s!==sk)});
+    return JSON.stringify(reste,(k,v)=>k.charCodeAt(0)===95?undefined:v).indexOf('"'+sk.id+'"')<0;
+  }catch(e){return false;} // doute : on garde
+}
+function skGhostUndo(sk){
+  // La création et le retrait de l'esquisse s'annulent : aucune étape d'annulation ne la ramène.
+  // L'étape de sa création disparaît si elle ramène au document actuel (rien d'autre n'a changé).
+  const top=docUndoStack[docUndoStack.length-1];
+  if(top&&top.snap.indexOf('"'+sk.id+'"')<0&&undoSame(JSON.stringify(JSON.parse(top.snap),undoKeyRep),docSnapKey()))docUndoStack.pop();
+  docBaseSync();docUndoUI();
+}
 function closeSketch(save){
   try{if(skDimEditInp)skDimEditInp._cancel();}catch(e){} // V0.11.23
   skOpenAt=0;
@@ -20975,13 +21070,19 @@ function closeSketch(save){
   // la CAO ne la voit jamais (empreinte du modèle inchangée)
   const faoSk=(skEdit&&skEdit.fao)?skEdit:null;
   if(faoSk)try{faoSkDetach(faoSk);}catch(e){}
-  if(save&&skEdit){try{parApplyAll();}catch(e){}solveSketch(skEdit);cleanupSk(skEdit);if(!faoSk)repSyncForSketch(skEdit.id);markDirty();rebuild();projRefreshRerun(0);sel=faoSk?{kind:'faoSetup',id:faoSk.fao}:{kind:'sketch',id:skEdit.id};renderTree();renderProps();}
+  // refermée sans rien dessiner (validée ou annulée) : elle ne laisse pas de fantôme dans le fil
+  const fantome=skEdit&&skIsGhost(skEdit)?skEdit:null;
+  if(fantome){
+    doc.sketches=doc.sketches.filter(s=>s!==fantome);
+    if(sel&&sel.kind==='sketch'&&sel.id===fantome.id)sel={kind:null,id:null};
+  }
+  if(save&&skEdit){try{parApplyAll();}catch(e){}solveSketch(skEdit);cleanupSk(skEdit);if(!faoSk)repSyncForSketch(skEdit.id);markDirty();rebuild();projRefreshRerun(0);sel=faoSk?{kind:'faoSetup',id:faoSk.fao}:(fantome?{kind:null,id:null}:{kind:'sketch',id:skEdit.id});renderTree();renderProps();}
   else if(skEdit){markDirty();try{rebuild();}catch(e){}renderTree();renderProps();}
   const skNm=skEdit&&skEdit.name;
   skEdit=null;try{docUndoUI();}catch(e){} // V0.7.6 : les flèches du haut reviennent au document
   sk3dRedessine(); // le rejeu de sortie a eu lieu esquisse encore ouverte : son tracé 3D revient
   // Toute la session d'esquisse = UNE étape d'annulation du document (filet, 45)
-  try{undoActLabel='esquisse « '+(skNm||'')+' »';undoActT=Date.now();docCheckpoint();}catch(e){}
+  try{if(fantome)skGhostUndo(fantome);undoActLabel='esquisse « '+(skNm||'')+' »';undoActT=Date.now();docCheckpoint();}catch(e){}
   skSel=null;skSelX=[];skChain=null;skArcC=null;skArcPa=null;skSpl=null;skDraft=null;skDown=null;skDrag=null;skDimDrag=null;skDimLine=null;skDimRef=null;skBox=null;skDragEnt=null;skDyn=null;skInfer=null;skPan=null;skSnapMk=null;skDimPlace=null;skProjectHover=null;skPlHover=null;
   // Arborescence re-dépliée à la sortie, sauf si l'état antérieur était
   // rabattu (choix manuel de l'utilisateur conservé).
@@ -33922,6 +34023,8 @@ function cgResolveAll(){
       if(!cgLocked(el))cgResolveOne(el,ctx);
       for(const sk of (doc.sketches||[]))if(sk.plane==='CG'&&sk.cg&&sk.cg.id===el.id){if(cgSyncSketch(sk))ch=true;}
     }
+    // place de création d'une esquisse : même repli que les éléments si sa fonction disparaît
+    for(const sk of (doc.sketches||[]))if(sk.at!==undefined)sk.ai=cgPos(sk);
     // esquisses dont l'élément porteur a disparu (fichier abîmé, suppression hors cgDelete)
     for(const sk of (doc.sketches||[]))if(sk.plane==='CG'&&(!sk.cg||!cgGet(sk.cg.id))){cgDetachSketch(sk);ch=true;}
   }finally{
@@ -63155,6 +63258,7 @@ async function deserialise(json,opts){
   occCkClear(); // document remplacé : les points de contrôle ne valent plus rien
   const rep=docSanitise();
   if(rep.dup||rep.orph||rep.sk||rep.cap){try{log('Document réparé : '+rep.dup+' instance(s) en double, '+rep.orph+' instance(s) orpheline(s), '+rep.sk+' esquisse(s) d’instance abandonnée(s), '+rep.cap+' répétition(s) plafonnée(s) à '+REPEAT_MAX+' copies.');}catch(e){}}
+  if(rep.vides){try{log('Document réparé : '+rep.vides+' esquisse(s) vide(s) retirée(s) du fil.');}catch(e){}}
   if(rep.ren){try{log('Nom de congé/chanfrein réaligné sur la géométrie réelle : '+rep.ren+' fonction(s) (des arêtes avaient été perdues).');}catch(e){}}
   if(rep.dup||rep.orph){try{doc.features.filter(f=>f.type==='repeat').forEach(f=>repGenChildren(f));}catch(e){}}
   // Antériorité (43) : signalée, jamais corrigée d'office (⚠ dans l'arbre)

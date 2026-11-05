@@ -109,7 +109,7 @@ const vm=require('vm');
     const pf=cgNew('plane','offset',[C(f2.id,'XZ')],{d:1});
     V(pf.fr.z,[1,0,0],'plan XZ d un repère tourné : normale = -Y du repère');
     // ── esquisse posée sur un plan de construction ──
-    const sk={id:'skc',name:'Esq',plane:'CG',cg:{id:p2.id},entities:[],points:{},constraints:[],dims:[],seq:1,visible:true,origin:[0,0,0]};
+    const sk={id:'skc',name:'Esq',plane:'CG',cg:{id:p2.id},entities:[],points:{p:{x:1,y:1}},constraints:[],dims:[],seq:1,visible:true,origin:[0,0,0]};
     doc.sketches.push(sk);
     att(cgResolveAll()===true,'résolution : l esquisse reçoit sa base');
     V(sk.origin,[0,0,20],'esquisse sur plan : origine');V(sk.axN,[0,0,1],'esquisse : normale');

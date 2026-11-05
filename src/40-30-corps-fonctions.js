@@ -1,7 +1,8 @@
 function docSanitise(){
   // Répare un document rechargé : instance en double, instance sans répétition, esquisse
   // d'instance abandonnée et nombre de copies aberrant. Les esquisses LIBRES (non
-  // consommées par une extrusion) sont conservées : elles sont légitimes.
+  // consommées par une extrusion) sont conservées : elles sont légitimes, sauf si elles sont
+  // VIDES et que rien ne les cite : esquisses fantômes d'anciennes versions (skIsGhost, 50).
   // Les corps conteneurs sont normalisés aussi (anciens documents : tout vers « Corps 1 »).
   try{ensureBodies();}catch(e){}
   let dup=0,orph=0,sk=0,cap=0;
@@ -27,6 +28,8 @@ function docSanitise(){
     if(repCloneSkName(x)){sk++;return false;}
     return true;
   });
+  const fantomes=doc.sketches.filter(skIsGhost);
+  if(fantomes.length)doc.sketches=doc.sketches.filter(x=>fantomes.indexOf(x)<0);
   // Nom des congés/chanfreins exacts : une ancienne version pouvait perdre des arêtes
   // (fusion de jumeaux sur des arcs sans ancre) et laisser « Congé exact (16 arête(s)) »
   // alors qu'il n'en restait que 12 — un nom menteur dans l'arbre. On le réaligne sur la
@@ -38,7 +41,7 @@ function docSanitise(){
   doc.features.forEach(f=>{if(f.type==='xdraft'){const n=draftName(f);if(f.name!==n){f.name=n;ren++;}}});
   // Même raison pour la coque : « 2 face(s) retirée(s) » doit suivre la sélection réelle.
   doc.features.forEach(f=>{if(f.type==='xshell'){const n=shellName(f);if(f.name!==n){f.name=n;ren++;}}});
-  return {dup,orph,sk,cap,ren};
+  return {dup,orph,sk,cap,ren,vides:fantomes.length};
 }
 function delFeature(f){
   if(!f)return;
@@ -295,9 +298,20 @@ function featMoveStep(F,id,dir){
   }
   return true;
 }
-function featMoveApply(A,label){
+function featMoveKeepAnchors(id){
+  // Ce qui a seulement été créé juste après le bloc déplacé (plan indépendant du solide, esquisse
+  // pas encore consommée) garde sa place dans le fil au lieu de suivre le bloc. Une esquisse sur
+  // une face reste de toute façon après sa fonction hôte (tlbSteps, 41).
+  const F=doc.features,bl=featBlockOf(F.find(x=>x.id===id),F);
+  if(!bl)return;
+  const ids=new Set(F.slice(bl[0],bl[1]+1).map(x=>x.id)),prev=bl[0]>0?F[bl[0]-1].id:null;
+  (doc.cgeo||[]).forEach(c=>{if(c&&ids.has(c.at)&&!cgDependsOnModel(c))c.at=prev;});
+  (doc.sketches||[]).forEach(s=>{if(s.at!==undefined&&ids.has(s.at))s.at=prev;});
+}
+function featMoveApply(A,label,id){
   // Pose un nouvel ordre de doc.features (même tableau, même contenu) : une étape d'annulation + rejeu
   docPushUndo(label);
+  if(id)featMoveKeepAnchors(id);
   doc.features.splice(0,doc.features.length,...A);
   markDirty();rebuild();renderTree();renderProps();
 }
@@ -309,7 +323,7 @@ function featMove(id,dir){
   const A=doc.features.slice();
   if(!featMoveRaw(A,id,dir))return false;
   const f=doc.features.find(x=>x.id===id);
-  featMoveApply(A,'déplacement de « '+f.name+' »');
+  featMoveApply(A,'déplacement de « '+f.name+' »',id);
   return true;
 }
 function delBody(id){

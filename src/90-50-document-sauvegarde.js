@@ -237,6 +237,7 @@ async function deserialise(json,opts){
   occCkClear(); // document remplacé : les points de contrôle ne valent plus rien
   const rep=docSanitise();
   if(rep.dup||rep.orph||rep.sk||rep.cap){try{log('Document réparé : '+rep.dup+' instance(s) en double, '+rep.orph+' instance(s) orpheline(s), '+rep.sk+' esquisse(s) d’instance abandonnée(s), '+rep.cap+' répétition(s) plafonnée(s) à '+REPEAT_MAX+' copies.');}catch(e){}}
+  if(rep.vides){try{log('Document réparé : '+rep.vides+' esquisse(s) vide(s) retirée(s) du fil.');}catch(e){}}
   if(rep.ren){try{log('Nom de congé/chanfrein réaligné sur la géométrie réelle : '+rep.ren+' fonction(s) (des arêtes avaient été perdues).');}catch(e){}}
   if(rep.dup||rep.orph){try{doc.features.filter(f=>f.type==='repeat').forEach(f=>repGenChildren(f));}catch(e){}}
   // Antériorité (43) : signalée, jamais corrigée d'office (⚠ dans l'arbre)

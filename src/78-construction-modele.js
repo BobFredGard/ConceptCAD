@@ -465,6 +465,8 @@ function cgResolveAll(){
       if(!cgLocked(el))cgResolveOne(el,ctx);
       for(const sk of (doc.sketches||[]))if(sk.plane==='CG'&&sk.cg&&sk.cg.id===el.id){if(cgSyncSketch(sk))ch=true;}
     }
+    // place de création d'une esquisse : même repli que les éléments si sa fonction disparaît
+    for(const sk of (doc.sketches||[]))if(sk.at!==undefined)sk.ai=cgPos(sk);
     // esquisses dont l'élément porteur a disparu (fichier abîmé, suppression hors cgDelete)
     for(const sk of (doc.sketches||[]))if(sk.plane==='CG'&&(!sk.cg||!cgGet(sk.cg.id))){cgDetachSketch(sk);ch=true;}
   }finally{

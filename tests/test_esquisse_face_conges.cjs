@@ -31,7 +31,8 @@ const json=fs.readFileSync(path.join(ROOT,'tests','fixtures','face-congé.json')
     '  r.forEach(e=>{if(e.type==="arc")o.arc++;else if(e.type==="circle")o.circle++;else o.line++;});return o};',
     'const transOk=()=>bodies.filter(b=>!b.ghost).every(b=>{const m=b.mesh&&b.mesh.material;',
     '  return m&&Math.abs(m.opacity-SK_FACE_ALPHA)<1e-6;});',
-    'await deserialise('+JSON.stringify(json)+',{rebuild:false});',
+    // une esquisse vide serait retirée à l'ouverture (skIsGhost) : un point la garde pour le test
+    'await deserialise('+JSON.stringify(JSON.stringify((d=>{d.sketches.forEach(s=>{if(!(s.entities||[]).length)s.points=Object.assign({p:{x:1,y:1}},s.points);});return d;})(JSON.parse(json))))+',{rebuild:false});',
     'occCkClear();markDirty();rebuild();',
     // ── A : esquisse sur la face haute → modèle complet, congés dans les refs ──
     'openSketch("sk_10_musc7igu");',

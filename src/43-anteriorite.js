@@ -26,6 +26,27 @@ function antAnchorSketches(o,out,prof){
   for(const k in o){if(k==='anchor'||k[0]==='_')continue;const v=o[k];if(v&&typeof v==='object')antAnchorSketches(v,out,(prof|0)+1);}
   return out;
 }
+function cgDependsOnModel(c,vus){
+  // Le plan s'appuie-t-il sur le solide ? Non s'il ne dépend que de l'origine, d'autres plans ou
+  // d'esquisses libres : sa place dans le fil (at) dit alors seulement OÙ il a été créé, pas ce
+  // dont il a besoin. Barquette : Plan 2 = YZ décalé, créé juste après la Symétrie, ne la retient pas.
+  vus=vus||new Set();
+  if(!c||vus.has(c.id))return false;
+  vus.add(c.id);
+  const parSk=id=>{
+    const s=(doc.sketches||[]).find(x=>x.id===id);
+    if(!s)return false;
+    if(s.host&&s.host.feat)return true;
+    return s.plane==='CG'&&s.cg?cgDependsOnModel((doc.cgeo||[]).find(x=>x&&x.id===s.cg.id),vus):false;
+  };
+  return (c.refs||[]).some(r=>{
+    if(!r)return false;
+    if(r.k==='face'||r.k==='edge'||r.k==='vtx')return true;
+    if(r.k==='cg')return cgDependsOnModel((doc.cgeo||[]).find(x=>x&&x.id===r.id),vus);
+    if(r.k==='skent'||r.k==='skpt')return parSk(r.sk);
+    return false;
+  });
+}
 function antDeps(f,F,users){
   // Liens d'antériorité de f : [{id, why, soft}] — id = fonction qui doit précéder f
   F=F||doc.features;users=users||antSketchUsers(F);
@@ -39,12 +60,14 @@ function antDeps(f,F,users){
   }
   if((f.type==='xfillet'||f.type==='fillet')&&f.target)add(f.target,'fonction visée');
   if(f.upto&&f.upto.ex)add(f.upto.ex,'cible « jusqu’à »');
-  if(f.sketchId){
-    const sk=(doc.sketches||[]).find(s=>s.id===f.sketchId);
+  // le profil et, pour un balayage, le chemin : les deux esquisses portent les mêmes liens
+  [f.sketchId,f.type==='sweep'?f.pathId:null].forEach(skId=>{
+    if(!skId)return;
+    const sk=(doc.sketches||[]).find(s=>s.id===skId);
     if(sk&&sk.host&&sk.host.feat)add(sk.host.feat,'face portant l’esquisse « '+(sk.name||sk.id)+' »');
     if(sk&&sk.plane==='CG'&&sk.cg&&sk.cg.id){
       const c=(doc.cgeo||[]).find(x=>x&&x.id===sk.cg.id);
-      if(c&&c.at)add(c.at,'plan de construction « '+(c.name||c.id)+' » de l’esquisse « '+(sk.name||sk.id)+' »');
+      if(c&&c.at&&cgDependsOnModel(c))add(c.at,'plan de construction « '+(c.name||c.id)+' » de l’esquisse « '+(sk.name||sk.id)+' »');
     }
     // esquisses reprises par projection (50-esquisse-8), de proche en proche : la fonction doit
     // venir après la face qui les porte, sinon la géométrie projetée dépendrait de ce qu'elle crée
@@ -54,7 +77,7 @@ function antDeps(f,F,users){
       if(q.host&&q.host.feat)add(q.host.feat,'face portant l’esquisse « '+(q.name||q.id)+' », projetée dans « '+(sk.name||sk.id)+' »');
       sources(q);});};
     sources(sk);
-  }
+  });
   antAnchorSketches(f,new Set()).forEach(skId=>{
     if(skId===f.sketchId)return;
     const u=users.get(skId);

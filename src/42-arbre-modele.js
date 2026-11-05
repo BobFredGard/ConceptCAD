@@ -596,7 +596,7 @@ function treeFeatMoveTo(id,targetId){
   }
   if(refus){try{faceEl.textContent='⛔ Déplacement refusé : '+refus;}catch(e){}return false;}
   if(A.every((x,i)=>x===F[i]))return false;
-  featMoveApply(A,'déplacement de « '+f.name+' »');
+  featMoveApply(A,'déplacement de « '+f.name+' »',id);
   return true;
 }
 // Fonction déposée sur l'en-tête d'un AUTRE corps : elle s'y applique désormais (f.body), à sa

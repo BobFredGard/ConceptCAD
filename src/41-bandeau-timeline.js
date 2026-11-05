@@ -1,7 +1,7 @@
 /* ---------- bandeau de timeline façon Fusion 360 (bas de la vue 3D, espace CAO) ----------
    Une icône par étape, dans l'ordre du fil : fonctions (doc.features, instances de répétition
    repliées dans leur répétition), esquisses (juste avant leur fonction consommatrice, sinon
-   après leur hôte), géométrie de construction (après sa fonction d'ancrage `at`, cf. cgPos).
+   à leur place de création sk.at), géométrie de construction (après sa fonction d'ancrage `at`, cf. cgPos).
    Survol = nom · clic = sélection (même `sel` que l'arbre) · double-clic = édition ·
    ⏱ marqueur glissable entre deux étapes (tlSetPtr : au-delà = grisé, comme tlLocked) ·
    glisser une fonction = la réordonner dans son corps (crans featMoveRaw : mêmes règles que ▲▼).
@@ -21,6 +21,8 @@ let tlbEl=null,tlbDrag=null,tlbNoClick=false;
       '#mfTl .tlbC{display:flex;gap:1px;flex:none}'+
       '#mfTl .tlbC button{padding:2px 5px;min-width:22px;font-size:.72rem;line-height:1.2;background:none;border:1px solid transparent;border-radius:6px;color:var(--text)}'+
       '#mfTl .tlbC button:hover{border-color:var(--border);color:var(--primary)}'+
+      '#mfTl .tlbK{flex:none;display:flex;align-items:center;gap:3px;font-size:.72rem;color:var(--muted);white-space:nowrap}'+
+      '#mfTl .tlbK select{max-width:150px;font-size:.72rem;padding:1px 2px;background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:6px}'+
       '#mfTl .tlbR{display:flex;align-items:center;gap:3px;flex:1;min-width:0;overflow-x:auto;overflow-y:hidden;padding:5px 4px 3px;scrollbar-width:none}'+
       '#mfTl .tlbR::-webkit-scrollbar{display:none}'+
       // V0.23.26 : barre de défilement fondue sur le bandeau (fine, translucide, au survol), posée
@@ -49,8 +51,8 @@ let tlbEl=null,tlbDrag=null,tlbNoClick=false;
 })();
 function tlbSteps(){
   // Étapes du fil, triées par clé : 4·i+2 pour la fonction i, 4·i+1 pour l'esquisse qu'elle
-  // consomme, 4·p+3 pour ce qui vient après la fonction p (construction ancrée, esquisse sur
-  // face ; p = -1 : en tête), 4·n pour une esquisse libre (fin du fil). Marqueur avant la
+  // consomme, 4·p+3 pour ce qui vient après la fonction p (construction ancrée, esquisse non
+  // consommée ; p = -1 : en tête), 4·n pour une esquisse libre de fichier ancien (fin du fil). Marqueur avant la
   // fonction m = clé 4·m : tout ce qui est au-delà est hors rejeu (off).
   const F=doc.features||[],S=[],m=tlIdx();
   const at=id=>F.findIndex(f=>f.id===id);
@@ -65,9 +67,12 @@ function tlbSteps(){
     if(skIsRepCopy(sk))return; // copie d'une répétition : comme ses fonctions d'instance, hors du fil
     const h=tlHostFeatureOfSketch(sk);let key;
     if(h&&(h.sketchId===sk.id||h.pathId===sk.id))key=4*at(h.id)+1;                                  // consommée : juste avant sa fonction
-    else if(sk.plane==='CG'&&sk.cg&&cgKey[sk.cg.id]!=null)key=cgKey[sk.cg.id];    // sur un élément de construction : après lui
-    else if(h)key=4*at(h.id)+3;                                                  // sur une face : après la fonction hôte
-    else key=4*F.length;                                                         // libre : en fin de fil
+    else{
+      // pas encore consommée : à sa place de création (sk.at), jamais avant ce qui la porte
+      const support=sk.plane==='CG'&&sk.cg&&cgKey[sk.cg.id]!=null?cgKey[sk.cg.id]:(h?4*at(h.id)+3:null);
+      if(sk.at!==undefined)key=Math.max(support==null?-1:support,4*cgPos(sk)+3);
+      else key=support==null?4*F.length:support;                                 // fichier ancien : place inconnue
+    }
     S.push({kind:'sketch',id:sk.id,o:sk,key,sub:1e6+k,warn:false});
   });
   S.sort((a,b)=>(a.key-b.key)||(a.sub-b.sub));
@@ -136,7 +141,7 @@ function tlbMoveTo(id,g,S){
   // un cran refusé (antériorité, 43) annule tout le déplacement : pas d'arrêt à mi-chemin
   if(refus){try{faceEl.textContent='⛔ Déplacement refusé : '+refus;}catch(e){}return false;}
   if(A.every((x,i)=>x===doc.features[i]))return false;
-  featMoveApply(A,'déplacement de « '+f.name+' »');
+  featMoveApply(A,'déplacement de « '+f.name+' »',id);
   return true;
 }
 // V0.7.6 : les icônes du RUBAN (SVG, 97-interface-moderne) au lieu de caractères — la même image
@@ -215,6 +220,34 @@ function tlbDbl(s){
   else if(f.type==='xsplit')enterSplitMode(f);
   else{renderTree();renderProps();}
 }
+function tlbBodyChoices(){
+  // Sélecteur « Corps actif » : les corps du document, avec ce qui empêche ou fausse le choix
+  const i=tlIdx();
+  return (doc.bodies||[]).map(e=>{
+    let ne=true,retire=false;
+    try{ne=bodyBornAt(e.id,i);retire=bodyRemovedAt(e.id,i);}catch(err){}
+    const masque=!!(doc.bodyVis&&doc.bodyVis[e.id]===false);
+    return {id:e.id,off:!ne||retire,label:(e.name||e.id)+(!ne?' (pas encore créé)':(retire?' (retiré)':(masque?' (masqué)':'')))};
+  });
+}
+function tlbBodyPick(id){
+  // Mêmes règles que le clic sur un corps dans l'arbre (tlActivateBody) ; refus : son message reste
+  if(!tlActivateBody(id)){renderTimeline();return false;}
+  const e=(doc.bodies||[]).find(x=>x.id===id);
+  renderTree();renderProps();refreshParts();
+  try{faceEl.textContent='« '+((e&&e.name)||id)+' » ACTIF : les nouvelles fonctions naîtront dedans.';}catch(err){}
+  return true;
+}
+function tlbBodySync(h){
+  // Visible dès qu'il y a un vrai choix ; la liste n'est refaite que si elle a changé (menu ouvert)
+  const L=tlbBodyChoices(),key=JSON.stringify(L),s=h._body;
+  h._bodyWrap.style.display=L.length>1?'':'none';
+  if(key!==h._bodyKey){
+    h._bodyKey=key;s.innerHTML='';
+    L.forEach(c=>{const o=document.createElement('option');o.value=c.id;o.textContent=c.label;o.disabled=c.off;s.appendChild(o);});
+  }
+  s.value=doc.activeBody||'';
+}
 function tlbHost(){
   if(tlbEl)return tlbEl;
   const vp=$('vpwrap');if(!vp)return null;
@@ -224,10 +257,14 @@ function tlbHost(){
     const b=document.createElement('button');b.textContent=t;b.title=h;b.onclick=()=>tlbStep(k);C.appendChild(b);
   });
   {const b=document.createElement('button');b.textContent='🎬';b.title='Film de construction : rejouer l’historique en plein écran, une fonction à la fois (98-film)';b.onclick=()=>{try{filmPlay();}catch(e){}};C.appendChild(b);}
+  const K=document.createElement('label');K.className='tlbK';K.title='Corps actif : les nouvelles fonctions naîtront dedans';
+  K.appendChild(document.createTextNode('🧱 Corps actif'));
+  const KS=document.createElement('select');KS.onchange=()=>tlbBodyPick(KS.value);K.appendChild(KS);
   const R=document.createElement('div');R.className='tlbR';
   const N=document.createElement('span');N.className='tlbN';
   const B=document.createElement('div');B.className='tlbB';
-  d.appendChild(C);d.appendChild(R);d.appendChild(N);d.appendChild(B);
+  d._body=KS;d._bodyWrap=K;d._bodyKey='';
+  d.appendChild(C);d.appendChild(K);d.appendChild(R);d.appendChild(N);d.appendChild(B);
   d._row=R;d._cnt=N;d._steps=[];d._bar=B;
   R.addEventListener('scroll',tlbBarSync);
   window.addEventListener('resize',tlbBarSync);
@@ -282,6 +319,7 @@ function tlbDragEnd(){
 function renderTimeline(){
   const h=tlbHost();if(!h)return;
   if(tlbDrag)return; // pas de re-rendu sous un glisser en cours
+  tlbBodySync(h);
   const R=h._row;R.innerHTML='';h._steps=[];
   const S=tlbSteps(),mg=tlbMarkGap(S),mOn=tlIdx()>=0;
   const mk=()=>{

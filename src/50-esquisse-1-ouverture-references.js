@@ -9,7 +9,7 @@ function newSketch(preset){
   const isPlane=p=>typeof p==='string'&&['XY','XZ','YZ'].includes(p.toUpperCase());
   let pl=isPlane(preset)?preset.toUpperCase():((sel.kind==='plane'&&isPlane(sel.id))?sel.id:null);
   if(!pl)pl='XY'; // défaut plan XY (plus de prompt) — double-clic sur un plan de l'arborescence = esquisse dessus
-  const sk={id:uid('sk'),name:'Esquisse '+(doc.sketches.length+1),plane:pl,entities:[],points:{},constraints:[],dims:[],seq:1,visible:true,origin:[0,0,0]};
+  const sk={id:uid('sk'),name:'Esquisse '+(doc.sketches.length+1),plane:pl,entities:[],points:{},constraints:[],dims:[],seq:1,visible:true,origin:[0,0,0],at:cgAtNow()};
   ensureSketchBasis(sk);
   doc.sketches.push(sk);markDirty();rebuild();openSketch(sk.id);
 }
@@ -30,7 +30,7 @@ function newSketchOnCg(id,sub){
   if(el.kind!=='plane'&&el.kind!=='frame'){try{faceEl.textContent='Esquisse : choisissez un plan (ou un plan de repère), pas un '+cgKindLabel(el).toLowerCase()+'.';}catch(e){}return;}
   if(el.kind==='plane')sub=null;
   const sk={id:uid('sk'),name:'Esquisse '+(doc.sketches.length+1),plane:'CG',cg:sub?{id,sub}:{id},
-    entities:[],points:{},constraints:[],dims:[],seq:1,visible:true,origin:[0,0,0]};
+    entities:[],points:{},constraints:[],dims:[],seq:1,visible:true,origin:[0,0,0],at:cgAtNow()};
   cgSyncSketch(sk);
   if(!sk.axN){try{faceEl.textContent='Esquisse : « '+el.name+' » n’est pas résolu ('+(el.msg||'référence perdue')+').';}catch(e){}return;}
   doc.sketches.push(sk);markDirty();rebuild();openSketch(sk.id);
@@ -65,7 +65,7 @@ function newSketchOnFace(){
   // origine hors de la face cliquée (fond de rainure sous un îlot) : la face sous le CLIC
   const host=findHostForFace(origin,n)||hostViaPoints([origin.x,origin.y,origin.z],n,[pt]);
   const sk={id:uid('sk'),name:'Esquisse '+(doc.sketches.length+1)+' (face)',plane:'FACE',
-    entities:[],points:{},constraints:[],dims:[],seq:1,visible:true,
+    entities:[],points:{},constraints:[],dims:[],seq:1,visible:true,at:cgAtNow(),
     origin:[+origin.x.toFixed(3),+origin.y.toFixed(3),+origin.z.toFixed(3)],
     axU:[u.x,u.y,u.z],axV:[v.x,v.y,v.z],axN:[n.x,n.y,n.z],
     host:host?Object.assign({feat:host.feat.id,tag:host.tag,x:host.x,y:host.y,name:entName('face')},(host.tag==='SIDE')?{edge:host.edge,h:host.h}:{}):null};
@@ -752,6 +752,22 @@ function openSketch(id){
   // filet les inclut, sans quoi ouvrir puis fermer une esquisse laissait une étape « vide »
   try{docBaseSync();}catch(e){}
 }
+function skIsGhost(sk){
+  // Esquisse fantôme : rien de dessiné et rien ne la cite. Elle encombrerait le fil pour rien.
+  if(!sk||sk.fao||(sk.entities||[]).length||(sk.dims||[]).length||(sk.constraints||[]).length)return false;
+  if(Object.keys(sk.points||{}).some(p=>p!==SK_ORIGIN))return false;
+  try{
+    const reste=Object.assign({},doc,{sketches:(doc.sketches||[]).filter(s=>s!==sk)});
+    return JSON.stringify(reste,(k,v)=>k.charCodeAt(0)===95?undefined:v).indexOf('"'+sk.id+'"')<0;
+  }catch(e){return false;} // doute : on garde
+}
+function skGhostUndo(sk){
+  // La création et le retrait de l'esquisse s'annulent : aucune étape d'annulation ne la ramène.
+  // L'étape de sa création disparaît si elle ramène au document actuel (rien d'autre n'a changé).
+  const top=docUndoStack[docUndoStack.length-1];
+  if(top&&top.snap.indexOf('"'+sk.id+'"')<0&&undoSame(JSON.stringify(JSON.parse(top.snap),undoKeyRep),docSnapKey()))docUndoStack.pop();
+  docBaseSync();docUndoUI();
+}
 function closeSketch(save){
   try{if(skDimEditInp)skDimEditInp._cancel();}catch(e){} // V0.11.23
   skOpenAt=0;
@@ -776,13 +792,19 @@ function closeSketch(save){
   // la CAO ne la voit jamais (empreinte du modèle inchangée)
   const faoSk=(skEdit&&skEdit.fao)?skEdit:null;
   if(faoSk)try{faoSkDetach(faoSk);}catch(e){}
-  if(save&&skEdit){try{parApplyAll();}catch(e){}solveSketch(skEdit);cleanupSk(skEdit);if(!faoSk)repSyncForSketch(skEdit.id);markDirty();rebuild();projRefreshRerun(0);sel=faoSk?{kind:'faoSetup',id:faoSk.fao}:{kind:'sketch',id:skEdit.id};renderTree();renderProps();}
+  // refermée sans rien dessiner (validée ou annulée) : elle ne laisse pas de fantôme dans le fil
+  const fantome=skEdit&&skIsGhost(skEdit)?skEdit:null;
+  if(fantome){
+    doc.sketches=doc.sketches.filter(s=>s!==fantome);
+    if(sel&&sel.kind==='sketch'&&sel.id===fantome.id)sel={kind:null,id:null};
+  }
+  if(save&&skEdit){try{parApplyAll();}catch(e){}solveSketch(skEdit);cleanupSk(skEdit);if(!faoSk)repSyncForSketch(skEdit.id);markDirty();rebuild();projRefreshRerun(0);sel=faoSk?{kind:'faoSetup',id:faoSk.fao}:(fantome?{kind:null,id:null}:{kind:'sketch',id:skEdit.id});renderTree();renderProps();}
   else if(skEdit){markDirty();try{rebuild();}catch(e){}renderTree();renderProps();}
   const skNm=skEdit&&skEdit.name;
   skEdit=null;try{docUndoUI();}catch(e){} // V0.7.6 : les flèches du haut reviennent au document
   sk3dRedessine(); // le rejeu de sortie a eu lieu esquisse encore ouverte : son tracé 3D revient
   // Toute la session d'esquisse = UNE étape d'annulation du document (filet, 45)
-  try{undoActLabel='esquisse « '+(skNm||'')+' »';undoActT=Date.now();docCheckpoint();}catch(e){}
+  try{if(fantome)skGhostUndo(fantome);undoActLabel='esquisse « '+(skNm||'')+' »';undoActT=Date.now();docCheckpoint();}catch(e){}
   skSel=null;skSelX=[];skChain=null;skArcC=null;skArcPa=null;skSpl=null;skDraft=null;skDown=null;skDrag=null;skDimDrag=null;skDimLine=null;skDimRef=null;skBox=null;skDragEnt=null;skDyn=null;skInfer=null;skPan=null;skSnapMk=null;skDimPlace=null;skProjectHover=null;skPlHover=null;
   // Arborescence re-dépliée à la sortie, sauf si l'état antérieur était
   // rabattu (choix manuel de l'utilisateur conservé).
