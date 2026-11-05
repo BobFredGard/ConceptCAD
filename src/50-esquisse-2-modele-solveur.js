@@ -274,6 +274,30 @@ function skProjFixRepair(sk){
   });
   return n;
 }
+// Une projection supprimée emportait son lien à la pièce, mais pas ses « fixe ». Un trait accroché à son
+// bout gardait donc un point cloué à l'ancienne place, sans plus aucune source pour le déplacer.
+function skProjFixOublier(sk,pids){
+  // à la suppression : les « fixe » des points qui n'appartiennent plus à aucune projection
+  const reste=new Set();(sk.entities||[]).forEach(e=>{if(e&&e.proj)skProjPids(sk,e).forEach(p=>reste.add(p));});
+  sk.constraints=(sk.constraints||[]).filter(c=>!(c.type==='fix'&&c.p&&pids.has(c.p)&&!reste.has(c.p)));
+}
+// Fichiers déjà touchés (Barquette, Guide Rengort 2, p64) : un point « fixe » posé SUR une projection se
+// contredit dès que la référence bouge. Le résidu empêche alors de résoudre le reste de l'esquisse et les
+// congés aval échouent. C'est le lien à la référence qui compte : le « fixe » part, le point garde sa place
+// et, s'il était sur un bout de la projection, il y reste attaché. Lancé à l'ouverture seulement.
+function skFixSurProjRepair(sk){
+  let n=0;const P=sk.points||{},proj=new Set();
+  (sk.entities||[]).forEach(e=>{if(e&&e.proj)skProjPids(sk,e).forEach(p=>proj.add(p));});
+  const lignes=c=>c.type==='online'&&c.p&&c.line;
+  (sk.constraints||[]).filter(c=>c.type==='fix'&&c.p&&!proj.has(c.p)).forEach(c=>{
+    const on=(sk.constraints||[]).map(k=>lignes(k)&&k.p===c.p?entById(sk,k.line):null).find(L=>L&&L.proj&&L.t==='line');
+    if(!on)return;
+    sk.constraints=sk.constraints.filter(k=>k!==c);n++;
+    const A=P[c.p],bout=[on.p1,on.p2].find(q=>P[q]&&A&&Math.hypot(P[q].x-A.x,P[q].y-A.y)<1e-3);
+    if(bout&&!skHasCoincident(sk,c.p,bout))sk.constraints.push({id:skNewEid(sk),type:'coincident',a:c.p,b:bout});
+  });
+  return n;
+}
 function lineLen(sk,l){const P=sk.points,A=P[l.p1],B=P[l.p2];if(!A||!B)return 0;return Math.hypot(B.x-A.x,B.y-A.y);}
 function syncLineDims(sk,lineId){ // après ajout d'une ligne, recale ses cotes length sur la mesure courante (selon orientation)
   (sk.dims||[]).forEach(d=>{if(d.type==='length'&&d.line===lineId){const v=dimCurValue(sk,d);if(v!=null)d.value=v;}});

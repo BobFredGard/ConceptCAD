@@ -334,9 +334,11 @@ function deleteSkSel(){
   const blockedOrigin=killPts.has(SK_ORIGIN);
   if(blockedOrigin)killPts.delete(SK_ORIGIN);
   skPushUndo();
+  const projAvant=new Map();(sk.entities||[]).forEach(e=>{if(e&&e.proj)projAvant.set(e.id,skProjPids(sk,e));});
   if(killEnts.size)sk.entities=sk.entities.filter(x=>!killEnts.has(x.id));
   if(killPts.size)sk.entities.forEach(x=>{if(x.t==='spline')x.pts=x.pts.filter(p=>!killPts.has(p));}); // spline : le point de passage seul est retiré
   if(killPts.size)sk.entities=sk.entities.filter(x=>!(x.t==='line'&&(killPts.has(x.p1)||killPts.has(x.p2)))&&!((x.t==='circle'||x.t==='arc')&&killPts.has(x.pc))&&!(x.t==='arc'&&(killPts.has(x.pa)||killPts.has(x.pb)))&&!(x.t==='cpoint'&&killPts.has(x.p)));
+  {const vivants=new Set(sk.entities.map(x=>x.id)),libres=new Set();projAvant.forEach((ps,id)=>{if(!vivants.has(id))ps.forEach(p=>libres.add(p));});if(libres.size)skProjFixOublier(sk,libres);}
   if(killCons.size)sk.constraints=sk.constraints.filter(c=>!killCons.has(c.id));
   if(killDims.size)sk.dims=sk.dims.filter(d=>!killDims.has(d.id));
   const n=killEnts.size+killPts.size+killCons.size+killDims.size;

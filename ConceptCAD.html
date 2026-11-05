@@ -376,7 +376,7 @@ input[type=range]{accent-color:var(--primary);width:100%}
  * peut changer sans rien casser. CACHE_VER (parcours FAO) reste indépendant.
  */
 
-const APP_VER='V0.63.4';
+const APP_VER='V0.63.5';
 try{console.log('[ConceptCAD] version '+APP_VER);}catch(e){}
 try{var mfSv=document.getElementById('mfSplashVer');if(mfSv)mfSv.textContent=APP_VER;}catch(e){} // écran de démarrage
 
@@ -21497,6 +21497,30 @@ function skProjFixRepair(sk){
   });
   return n;
 }
+// Une projection supprimée emportait son lien à la pièce, mais pas ses « fixe ». Un trait accroché à son
+// bout gardait donc un point cloué à l'ancienne place, sans plus aucune source pour le déplacer.
+function skProjFixOublier(sk,pids){
+  // à la suppression : les « fixe » des points qui n'appartiennent plus à aucune projection
+  const reste=new Set();(sk.entities||[]).forEach(e=>{if(e&&e.proj)skProjPids(sk,e).forEach(p=>reste.add(p));});
+  sk.constraints=(sk.constraints||[]).filter(c=>!(c.type==='fix'&&c.p&&pids.has(c.p)&&!reste.has(c.p)));
+}
+// Fichiers déjà touchés (Barquette, Guide Rengort 2, p64) : un point « fixe » posé SUR une projection se
+// contredit dès que la référence bouge. Le résidu empêche alors de résoudre le reste de l'esquisse et les
+// congés aval échouent. C'est le lien à la référence qui compte : le « fixe » part, le point garde sa place
+// et, s'il était sur un bout de la projection, il y reste attaché. Lancé à l'ouverture seulement.
+function skFixSurProjRepair(sk){
+  let n=0;const P=sk.points||{},proj=new Set();
+  (sk.entities||[]).forEach(e=>{if(e&&e.proj)skProjPids(sk,e).forEach(p=>proj.add(p));});
+  const lignes=c=>c.type==='online'&&c.p&&c.line;
+  (sk.constraints||[]).filter(c=>c.type==='fix'&&c.p&&!proj.has(c.p)).forEach(c=>{
+    const on=(sk.constraints||[]).map(k=>lignes(k)&&k.p===c.p?entById(sk,k.line):null).find(L=>L&&L.proj&&L.t==='line');
+    if(!on)return;
+    sk.constraints=sk.constraints.filter(k=>k!==c);n++;
+    const A=P[c.p],bout=[on.p1,on.p2].find(q=>P[q]&&A&&Math.hypot(P[q].x-A.x,P[q].y-A.y)<1e-3);
+    if(bout&&!skHasCoincident(sk,c.p,bout))sk.constraints.push({id:skNewEid(sk),type:'coincident',a:c.p,b:bout});
+  });
+  return n;
+}
 function lineLen(sk,l){const P=sk.points,A=P[l.p1],B=P[l.p2];if(!A||!B)return 0;return Math.hypot(B.x-A.x,B.y-A.y);}
 function syncLineDims(sk,lineId){ // après ajout d'une ligne, recale ses cotes length sur la mesure courante (selon orientation)
   (sk.dims||[]).forEach(d=>{if(d.type==='length'&&d.line===lineId){const v=dimCurValue(sk,d);if(v!=null)d.value=v;}});
@@ -24502,9 +24526,11 @@ function deleteSkSel(){
   const blockedOrigin=killPts.has(SK_ORIGIN);
   if(blockedOrigin)killPts.delete(SK_ORIGIN);
   skPushUndo();
+  const projAvant=new Map();(sk.entities||[]).forEach(e=>{if(e&&e.proj)projAvant.set(e.id,skProjPids(sk,e));});
   if(killEnts.size)sk.entities=sk.entities.filter(x=>!killEnts.has(x.id));
   if(killPts.size)sk.entities.forEach(x=>{if(x.t==='spline')x.pts=x.pts.filter(p=>!killPts.has(p));}); // spline : le point de passage seul est retiré
   if(killPts.size)sk.entities=sk.entities.filter(x=>!(x.t==='line'&&(killPts.has(x.p1)||killPts.has(x.p2)))&&!((x.t==='circle'||x.t==='arc')&&killPts.has(x.pc))&&!(x.t==='arc'&&(killPts.has(x.pa)||killPts.has(x.pb)))&&!(x.t==='cpoint'&&killPts.has(x.p)));
+  {const vivants=new Set(sk.entities.map(x=>x.id)),libres=new Set();projAvant.forEach((ps,id)=>{if(!vivants.has(id))ps.forEach(p=>libres.add(p));});if(libres.size)skProjFixOublier(sk,libres);}
   if(killCons.size)sk.constraints=sk.constraints.filter(c=>!killCons.has(c.id));
   if(killDims.size)sk.dims=sk.dims.filter(d=>!killDims.has(d.id));
   const n=killEnts.size+killPts.size+killCons.size+killDims.size;
@@ -64187,6 +64213,7 @@ async function deserialise(json,opts){
   try{ensureBodies();}catch(e){}
   try{
     (doc.sketches||[]).forEach(migrateSketch);
+    (doc.sketches||[]).forEach(sk=>{try{skFixSurProjRepair(sk);}catch(e){}});
     try{resolveAllSketchHosts();}catch(e){}
   }catch(e){}
   try{applyView(o.view);}catch(e){}

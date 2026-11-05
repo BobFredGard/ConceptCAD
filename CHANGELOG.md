@@ -8,7 +8,7 @@ sont sorties le 2026-09-30j.
 Code dans `src/` · livrable `fusion_mvp.html` (généré par `build.js`) · architecture et
 garde-fous en tête de `src/00-entete-et-outils.js`.
 
-**590 versions**, de `2026-09-28b` à `V0.63.4` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
+**591 versions**, de `2026-09-28b` à `V0.63.5` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
 comme dans le fichier d'origine.
 
 ---
@@ -6829,3 +6829,12 @@ Signalé : après une vraie modification de la pièce puis un passage en Plan, l
 - **Cause** : au dessin, le plan fait suivre à ses cotes et à ses coupes la géométrie de la pièce, dans `doc.mep`. Le filet d’annulation (`docCheckpoint`) y voyait une modification et empilait une étape. Même chose à la première entrée : la création de la planche et de ses vues automatiques faisait des étapes.
 - **Correctif** : `docSansEtape` (`src/45-annuler-document.js`) fait rejoindre l’état de référence du filet à ce que le dessin et l’entrée en Plan écrivent dans `doc.mep`, sans étape. Une modification encore non relevée n’est pas absorbée : le relevé suivant en fait une seule étape, qui ramène à l’état d’avant, recalage compris. La recopie des réglages du plan reste hors de `docSansEtape` : changer un réglage reste annulable, comme tout vrai geste de plan.
 - **Tests** : `test_undo_filet` (section 9, échouait avant le correctif), `mep-annuler.spec` (nouveau, vrai navigateur sur le Support Pédale). `CACHE_VER` ne change pas : parcours inchangés.
+
+## V0.63.5 - CAO : les guides gardent leur référence quand la cote change
+
+Demande : « quand je change la largeur en + ou en -, les esquisses des guides perdent leur ref et du coup, impossible de résoudre la forme » (Barquette).
+- **Cause** : supprimer une projection laissait ses contraintes « fixe » sur ses points. Le trait accroché à l’un de ces points restait donc cloué à l’ancienne place. Dans Guide Rengort 2, `p64` était fixe et posé sur la projection de Guide Renfort 1 : à la largeur 170, la référence avançait de 2,5 mm, l’esquisse se contredisait, `p52` ne suivait plus, et les 18 congés de ces renforts échouaient ou passaient à un rayon réduit.
+- **Correctif** : `deleteSkSel` retire les « fixe » des points qui n’appartiennent plus à aucune projection (`skProjFixOublier`). À l’ouverture d’un fichier, `skFixSurProjRepair` répare les esquisses déjà touchées : un point fixe posé sur une projection perd son « fixe », et reste attaché au bout de la projection s’il s’y trouvait. La géométrie du fichier ne bouge pas à l’ouverture.
+- **Limite** : un trait raccourci par l’outil Ajuster passe par un autre chemin que `deleteSkSel` ; un « fixe » resté ainsi est réparé à la réouverture du fichier.
+- **Mesuré** (Barquette, noyau réel, navigateur) : largeurs de 150 à 190 sans aucun message, 7 232,8 mm³ par mm de largeur, retour à 165 au même volume. Un changement prend environ 6 s, sans échec de congé ; avant, 16 à 33 s selon les passes. La fuite de mémoire observée pendant l’analyse avait déjà été corrigée en V0.63.2.
+- **Tests** : `test_guides_fixe_oublie` (nouveau), sur `tests/fixtures/barquette-guides.conceptcad`, copie figée de la pièce. `CACHE_VER` ne change pas.

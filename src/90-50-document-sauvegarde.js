@@ -216,6 +216,7 @@ async function deserialise(json,opts){
   try{ensureBodies();}catch(e){}
   try{
     (doc.sketches||[]).forEach(migrateSketch);
+    (doc.sketches||[]).forEach(sk=>{try{skFixSurProjRepair(sk);}catch(e){}});
     try{resolveAllSketchHosts();}catch(e){}
   }catch(e){}
   try{applyView(o.view);}catch(e){}
