@@ -467,7 +467,7 @@ function parMiniCommit(inp){
   const nm=inp._row.name,r=inp._row.set(s);
   if(r!==true){parMiniErr(nm+' : '+r);parMiniShow(inp);return;}
   parMiniErr('');
-  parAfterChange();
+  parAfterChange(true);
   parMiniRender();
 }
 function parMiniField(){

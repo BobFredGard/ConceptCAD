@@ -376,7 +376,7 @@ input[type=range]{accent-color:var(--primary);width:100%}
  * peut changer sans rien casser. CACHE_VER (parcours FAO) reste indépendant.
  */
 
-const APP_VER='V0.63.6';
+const APP_VER='V0.63.7';
 try{console.log('[ConceptCAD] version '+APP_VER);}catch(e){}
 try{var mfSv=document.getElementById('mfSplashVer');if(mfSv)mfSv.textContent=APP_VER;}catch(e){} // écran de démarrage
 
@@ -27023,11 +27023,31 @@ function parSetFeat(h,k,f,ex){
   return true;
 }
 /* ---------- fenêtre ƒx Paramètres ---------- */
-function parAfterChange(){
+let parRebuildMs=-1; // durée du dernier recalcul : la pièce mérite-t-elle un message ?
+function parAfterChange(barre){
+  // barre : valeur changée à la main (fenêtre ƒx, mini-liste). Sur une pièce lourde, le bandeau de
+  // régénération (31) est peint AVANT le rejeu, qui reste d'un seul bloc : la préchauffe par tranches
+  // coûterait ici 5 fois le temps (Barquette : 24 s au lieu de 5 s, mesuré). Le solide n'est alors à
+  // jour qu'à la fin de la promesse rendue ; les dérivées, qui le lisent au retour, n'indiquent pas barre.
   parApplyAll();
   try{parMiniSoon();}catch(e){}
   try{if(typeof skEdit!=='undefined'&&skEdit){drawSketch2D();renderSkPanel();}}catch(e){}
-  try{markDirty();rebuild();}catch(e){}
+  try{markDirty();}catch(e){}
+  const lourd=parRebuildMs>=0?parRebuildMs>=REGEN_SHOW_MS:(doc.features||[]).length>20;
+  if(barre&&lourd&&regenWarmUseful())return parRebuildBandeau();
+  parRebuildMesure();
+}
+function parRebuildMesure(){
+  const t=performance.now();
+  try{rebuild();}catch(e){}
+  parRebuildMs=performance.now()-t;
+}
+async function parRebuildBandeau(){
+  // Avant le premier rejeu, le voile retient clics et touches ; le filet d'annulation part 300 ms
+  // après la modification, donc après ce rejeu qui démarre à la peinture suivante.
+  regenUiShow('Modification du paramètre');
+  regenUiSet(0,0,'calcul en cours…','');
+  try{await regenFrame();parRebuildMesure();}finally{regenUiHide();}
 }
 function openParamsDlg(){
   let ov=document.getElementById('parDlg');if(ov)ov.remove();
@@ -27054,10 +27074,10 @@ function openParamsDlg(){
       const v=td();v.textContent=o.err?('⚠ '+o.err):(isFinite(o.val)?String(+o.val.toFixed(12)).replace('.',',')+(o.unit||''):'');if(o.err)v.style.color='#ff9f0a';
       td().textContent=o.origin;
       const del=td();
-      if(o.del){const b=document.createElement('button');b.textContent='🗑';b.title='Supprimer';b.onclick=()=>{o.del();parAfterChange();render();};del.appendChild(b);}
+      if(o.del){const b=document.createElement('button');b.textContent='🗑';b.title='Supprimer';b.onclick=()=>{o.del();parAfterChange(true);render();};del.appendChild(b);}
       if(o.ro){tbl.appendChild(tr);return;}
-      n.onchange=()=>{const r=o.rename(n.value.trim());if(r!==true){alert(r);n.value=o.name||'';return;}parAfterChange();render();};
-      x.onchange=()=>{const r=o.setExpr(x.value.trim());if(r!==true){alert(r);x.value=o.expr;return;}parAfterChange();render();};
+      n.onchange=()=>{const r=o.rename(n.value.trim());if(r!==true){alert(r);n.value=o.name||'';return;}parAfterChange(true);render();};
+      x.onchange=()=>{const r=o.setExpr(x.value.trim());if(r!==true){alert(r);x.value=o.expr;return;}parAfterChange(true);render();};
       tbl.appendChild(tr);
     };
     (doc.derive||[]).forEach(L=>(L.params||[]).forEach(p=>row({name:p.name,expr:String(+(+p.value).toFixed(12)).replace('.',','),val:+p.value,err:p.miss?'disparu de la source':null,origin:'🔗 '+L.name,ro:true,
@@ -27965,7 +27985,7 @@ function parMiniCommit(inp){
   const nm=inp._row.name,r=inp._row.set(s);
   if(r!==true){parMiniErr(nm+' : '+r);parMiniShow(inp);return;}
   parMiniErr('');
-  parAfterChange();
+  parAfterChange(true);
   parMiniRender();
 }
 function parMiniField(){
@@ -67492,8 +67512,11 @@ function mfStatusBar(){
     if(!document.body.classList.contains('ui-modern'))return;
     try{
       const o=(document.getElementById('occtState')||{}).textContent||'';
-      const eng=/prêt/i.test(o)?('Noyau prêt · '+((typeof builtEngine!=='undefined'&&builtEngine)||'')):(o.replace(/^OCCT\s*:\s*/,'').slice(0,60));
-      const se=document.getElementById('mfStEng');se.textContent=eng;se.title=o; // texte complet en bulle
+      // Nom du noyau en clair ; l'ancien, bien plus lent, doit se voir d'un coup d'œil
+      const pret=/prêt/i.test(o),ancien=pret&&!(typeof OCCT_V3!=='undefined'&&OCCT_V3);
+      const eng=pret?((ancien?'⚠ Ancien noyau OCCT 7.4 (lent)':'Noyau OCCT 8.0.1')+' · '+((typeof builtEngine!=='undefined'&&builtEngine)||'')):(o.replace(/^OCCT\s*:\s*/,'').slice(0,60));
+      const se=document.getElementById('mfStEng');se.textContent=eng;se.style.color=ancien?'#ff9f0a':'';se.style.fontWeight=ancien?'700':'';
+      se.title=(ancien?'Ce mode est bien plus lent. Ouvrez ConceptCAD par son adresse : lancez Server.bat, puis http://localhost:3000.\n\n':'')+o; // texte complet en bulle
       const wb=document.getElementById('btnOccWasm');
       document.getElementById('mfStWasm').style.display=(wb&&wb.style.display!=='none'&&!/prêt/i.test(o))?'':'none';
       const f=((typeof faceEl!=='undefined'&&faceEl&&faceEl.textContent)||'').split('\n')[0];

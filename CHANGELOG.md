@@ -8,7 +8,7 @@ sont sorties le 2026-09-30j.
 Code dans `src/` · livrable `fusion_mvp.html` (généré par `build.js`) · architecture et
 garde-fous en tête de `src/00-entete-et-outils.js`.
 
-**592 versions**, de `2026-09-28b` à `V0.63.6` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
+**593 versions**, de `2026-09-28b` à `V0.63.7` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
 comme dans le fichier d'origine.
 
 ---
@@ -6847,3 +6847,11 @@ Demande : « Le chanfrein se montre à la construction mais fait une erreur quan
 - **Case « tangentes » décochée** : sur la même arête, le chanfrein enlevait 3,29 mm³ au lieu de 0,6 : l’outil débordait de 2 mm à chaque bout et entaillait les murs de la rainure. Le débordement s’arrête maintenant à la première matière rencontrée hors de la section du chanfrein (congés aussi). Quand une arête est ainsi bornée, le noyau passe d’abord, car il suit un mur en biais ou courbe ; il est écarté s’il suit une chaîne tangente, et l’outil arrêté d’équerre reste alors en repli.
 - **Limite** : les copies d’une répétition, découpées en un seul booléen, ne passent pas par cette reprise.
 - **Tests** : `test_tangence_exacte` (nouveau, noyau réel : défaut reproduit sans la correction, puis la commande réelle) ; `test_conge_arete_seule` (murs des deux côtés, d’un seul côté, penchés de 20°, mur + arc tangent). `CACHE_VER` ne change pas.
+
+## V0.63.7 - CAO : le noyau utilisé se voit, et un bandeau accompagne le recalcul d’un paramètre
+
+- **Constat** : Fred trouvait ouverture, modification et Régénérer bien plus lents après V0.63.5 sur Barquette. Mesuré : aucune régression avec le noyau normal. La page avait été ouverte par double-clic : en `file://`, c’est l’ancien noyau OCCT 7.4 (modification 174 s au lieu de 5 s). Le passage par `http://localhost:3000` a réglé la lenteur, mais rien à l’écran ne permettait de voir le noyau : son nom n’était que dans une bulle.
+- **Noyau affiché** : la ligne d’état montre « Noyau OCCT 8.0.1 » ; l’ancien noyau s’affiche en orange, « ⚠ Ancien noyau OCCT 7.4 (lent) », et la bulle indique comment ouvrir ConceptCAD par son adresse.
+- **Bandeau** : modifier un paramètre à la main (fenêtre ƒx, mini-liste) sur une pièce lourde peint « Modification du paramètre — calcul en cours… » avant le rejeu (`parAfterChange(true)`, `parRebuildBandeau`). Le seuil est la durée du recalcul précédent (0,3 s) ; sans mesure, plus de 20 fonctions.
+- **Limite** : la page reste figée pendant le calcul (environ 5 s sur Barquette). La préchauffe par tranches `regenWarm` a été essayée et écartée : 24 s au lieu de 5 s, et 5 s de blocage restaient à la fin. Sa lenteur n’est pas expliquée.
+- **Tests** : `tests/browser/modif-barre.spec.cjs` (nouveau) : bandeau présent puis retiré, temps comparable au recalcul sans bandeau, même résultat que le rejeu synchrone, un seul Ctrl+Z. `CACHE_VER` ne change pas.

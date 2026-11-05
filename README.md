@@ -8,7 +8,7 @@
 
 ![Support de pédale déportée R1200RT en alu anodisé rouge sur béton, lancer de rayons de l'atelier RENDU (2048 échantillons)](docs/captures/rendu-pedale.jpg)
 
-Le noyau géométrique exact est **OpenCascade 8 compilé en WebAssembly** par nos soins (recette reproductible dans `occt-build/`). S'il n'est pas disponible, l'application bascule seule sur un moteur maillage (CSG). Version actuelle : **V0.63.6** (voir le [journal des modifications](CHANGELOG.md)).
+Le noyau géométrique exact est **OpenCascade 8 compilé en WebAssembly** par nos soins (recette reproductible dans `occt-build/`). S'il n'est pas disponible, l'application bascule seule sur un moteur maillage (CSG). Version actuelle : **V0.63.7** (voir le [journal des modifications](CHANGELOG.md)).
 
 | | |
 |---|---|
@@ -38,6 +38,7 @@ Quatre espaces dans le bandeau supérieur : **CAO**, **FAO**, **PLAN** et **REND
 - **Sélection synchronisée** : cliquer une face sélectionne la fonction qui l'a créée, dans l'arbre et dans la timeline (amenées à l'écran), et la fonction s'allume en rouge dans la vue. `Ctrl+clic` ne fait que mesurer, sans rien sélectionner.
 - **Fenêtres de fonctions** à boutons-icônes, aperçu immédiat, poignées dans la vue, **Annuler / OK**.
 - **Barre de progression** à l'ouverture d'un document, au chargement du noyau et sur **⟳ Régénérer** : bandeau semi-transparent en bas de la vue 3D, au-dessus de la timeline, avec l'avancement (n / total) et le nom de la fonction et de l'esquisse en cours ; la barre prend la couleur de la fonction calculée (celle de la timeline). Sur ⟳ Régénérer, elle s'affiche dès le clic ; ailleurs, seulement si la régénération dure.
+- **Bandeau « calcul en cours »** pendant le recalcul d'une pièce lourde après la modification d'un paramètre, et **nom du noyau** en clair en bas de la vue 3D (« Noyau OCCT 8.0.1 », ou « ⚠ Ancien noyau OCCT 7.4 (lent) » en orange quand la page est ouverte par double-clic sur le fichier).
 - **Annuler / Rétablir partout** (`Ctrl+Z` / `Ctrl+Y`) : CAO, esquisse, assemblage, FAO, PLAN et RENDU.
 - **Apparence** (menu 🎨) :
   - **cinq thèmes** : Nuit, Graphite, Atelier, Clair, Contraste élevé ;

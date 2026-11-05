@@ -358,11 +358,31 @@ function parSetFeat(h,k,f,ex){
   return true;
 }
 /* ---------- fenêtre ƒx Paramètres ---------- */
-function parAfterChange(){
+let parRebuildMs=-1; // durée du dernier recalcul : la pièce mérite-t-elle un message ?
+function parAfterChange(barre){
+  // barre : valeur changée à la main (fenêtre ƒx, mini-liste). Sur une pièce lourde, le bandeau de
+  // régénération (31) est peint AVANT le rejeu, qui reste d'un seul bloc : la préchauffe par tranches
+  // coûterait ici 5 fois le temps (Barquette : 24 s au lieu de 5 s, mesuré). Le solide n'est alors à
+  // jour qu'à la fin de la promesse rendue ; les dérivées, qui le lisent au retour, n'indiquent pas barre.
   parApplyAll();
   try{parMiniSoon();}catch(e){}
   try{if(typeof skEdit!=='undefined'&&skEdit){drawSketch2D();renderSkPanel();}}catch(e){}
-  try{markDirty();rebuild();}catch(e){}
+  try{markDirty();}catch(e){}
+  const lourd=parRebuildMs>=0?parRebuildMs>=REGEN_SHOW_MS:(doc.features||[]).length>20;
+  if(barre&&lourd&&regenWarmUseful())return parRebuildBandeau();
+  parRebuildMesure();
+}
+function parRebuildMesure(){
+  const t=performance.now();
+  try{rebuild();}catch(e){}
+  parRebuildMs=performance.now()-t;
+}
+async function parRebuildBandeau(){
+  // Avant le premier rejeu, le voile retient clics et touches ; le filet d'annulation part 300 ms
+  // après la modification, donc après ce rejeu qui démarre à la peinture suivante.
+  regenUiShow('Modification du paramètre');
+  regenUiSet(0,0,'calcul en cours…','');
+  try{await regenFrame();parRebuildMesure();}finally{regenUiHide();}
 }
 function openParamsDlg(){
   let ov=document.getElementById('parDlg');if(ov)ov.remove();
@@ -389,10 +409,10 @@ function openParamsDlg(){
       const v=td();v.textContent=o.err?('⚠ '+o.err):(isFinite(o.val)?String(+o.val.toFixed(12)).replace('.',',')+(o.unit||''):'');if(o.err)v.style.color='#ff9f0a';
       td().textContent=o.origin;
       const del=td();
-      if(o.del){const b=document.createElement('button');b.textContent='🗑';b.title='Supprimer';b.onclick=()=>{o.del();parAfterChange();render();};del.appendChild(b);}
+      if(o.del){const b=document.createElement('button');b.textContent='🗑';b.title='Supprimer';b.onclick=()=>{o.del();parAfterChange(true);render();};del.appendChild(b);}
       if(o.ro){tbl.appendChild(tr);return;}
-      n.onchange=()=>{const r=o.rename(n.value.trim());if(r!==true){alert(r);n.value=o.name||'';return;}parAfterChange();render();};
-      x.onchange=()=>{const r=o.setExpr(x.value.trim());if(r!==true){alert(r);x.value=o.expr;return;}parAfterChange();render();};
+      n.onchange=()=>{const r=o.rename(n.value.trim());if(r!==true){alert(r);n.value=o.name||'';return;}parAfterChange(true);render();};
+      x.onchange=()=>{const r=o.setExpr(x.value.trim());if(r!==true){alert(r);x.value=o.expr;return;}parAfterChange(true);render();};
       tbl.appendChild(tr);
     };
     (doc.derive||[]).forEach(L=>(L.params||[]).forEach(p=>row({name:p.name,expr:String(+(+p.value).toFixed(12)).replace('.',','),val:+p.value,err:p.miss?'disparu de la source':null,origin:'🔗 '+L.name,ro:true,

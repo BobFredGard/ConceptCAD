@@ -582,8 +582,11 @@ function mfStatusBar(){
     if(!document.body.classList.contains('ui-modern'))return;
     try{
       const o=(document.getElementById('occtState')||{}).textContent||'';
-      const eng=/prêt/i.test(o)?('Noyau prêt · '+((typeof builtEngine!=='undefined'&&builtEngine)||'')):(o.replace(/^OCCT\s*:\s*/,'').slice(0,60));
-      const se=document.getElementById('mfStEng');se.textContent=eng;se.title=o; // texte complet en bulle
+      // Nom du noyau en clair ; l'ancien, bien plus lent, doit se voir d'un coup d'œil
+      const pret=/prêt/i.test(o),ancien=pret&&!(typeof OCCT_V3!=='undefined'&&OCCT_V3);
+      const eng=pret?((ancien?'⚠ Ancien noyau OCCT 7.4 (lent)':'Noyau OCCT 8.0.1')+' · '+((typeof builtEngine!=='undefined'&&builtEngine)||'')):(o.replace(/^OCCT\s*:\s*/,'').slice(0,60));
+      const se=document.getElementById('mfStEng');se.textContent=eng;se.style.color=ancien?'#ff9f0a':'';se.style.fontWeight=ancien?'700':'';
+      se.title=(ancien?'Ce mode est bien plus lent. Ouvrez ConceptCAD par son adresse : lancez Server.bat, puis http://localhost:3000.\n\n':'')+o; // texte complet en bulle
       const wb=document.getElementById('btnOccWasm');
       document.getElementById('mfStWasm').style.display=(wb&&wb.style.display!=='none'&&!/prêt/i.test(o))?'':'none';
       const f=((typeof faceEl!=='undefined'&&faceEl&&faceEl.textContent)||'').split('\n')[0];
