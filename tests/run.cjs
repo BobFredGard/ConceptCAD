@@ -77,6 +77,7 @@ const SUITES = [
   "test_revolve",
   "test_balayage",
   "test_repeat_balayage",
+  "test_repeat_decoupe_inclinee",
   "test_repeat_conges",
   "test_skctxmenu",
   "test_esquisse_transparence",

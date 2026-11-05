@@ -288,10 +288,13 @@ function occSpanFromShape(shape,B){
     const box=new occt.Bnd_Box_1();
     occt.BRepBndLib.Add(shape,box,true);
     const a=box.CornerMin(),b=box.CornerMax();
-    const corners=[[a.X(),a.Y(),a.Z()],[b.X(),b.Y(),b.Z()]];
+    // Les 8 coins : deux coins opposés ne suffisent que si l'axe penche vers (+,+,+). Barquette,
+    // Ø30 incliné à 20° au coin de la pièce : les copies de la symétrie double (axe (−,+,+)…)
+    // recevaient un outil trop court, qui enlevait 0 à 1923 mm³ au lieu de 7475.
+    const xs=[a.X(),b.X()],ys=[a.Y(),b.Y()],zs=[a.Z(),b.Z()];
     let mn=Infinity,mx=-Infinity;
-    for(const c of corners){
-      const d=(c[0]-B.o.x)*B.n.x+(c[1]-B.o.y)*B.n.y+(c[2]-B.o.z)*B.n.z;
+    for(const x of xs)for(const y of ys)for(const z of zs){
+      const d=(x-B.o.x)*B.n.x+(y-B.o.y)*B.n.y+(z-B.o.z)*B.n.z;
       if(d<mn)mn=d;if(d>mx)mx=d;
     }
     if(!(mx>mn&&isFinite(mn)&&isFinite(mx)))return null;

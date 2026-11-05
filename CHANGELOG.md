@@ -8,7 +8,7 @@ sont sorties le 2026-09-30j.
 Code dans `src/` · livrable `fusion_mvp.html` (généré par `build.js`) · architecture et
 garde-fous en tête de `src/00-entete-et-outils.js`.
 
-**596 versions**, de `2026-09-28b` à `V0.64.1` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
+**597 versions**, de `2026-09-28b` à `V0.64.2` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
 comme dans le fichier d'origine.
 
 ---
@@ -6882,3 +6882,11 @@ Demande : « Il faudrait enregistrer chaque pièce avec son environnement propre
 - **Rangement** : perçage sur cylindre, clavette, grands changements de cote et fil de construction rejoignent les fonctions 3D ; « Fichiers » devient une partie à part ; « Modifier » passe en liste ; les instructions de développement sont regroupées à la fin. La fonction RENDU « environnement par pièce » de V0.64.0 est décrite dans RENDU.
 - **Limites** : le README indique ce que les tests ne couvrent pas dans la version autonome (enregistrement, carte graphique réelle, Firefox). La copie sur Dropbox reste un geste de livraison, pas un automatisme de `npm run autonome`.
 - **Tests** : `test_docs_version`, liens internes contrôlés. L’application ne change pas ; seul son numéro de version change. `CACHE_VER` ne change pas.
+
+## V0.64.2 - Symétrie double : découpe à travers tout inclinée et son congé
+
+- **Retour** : Barquette, découpe Ø30 inclinée au coin de la pièce, « je voulais le congé avec mais impossible ».
+- **Cause** : la longueur de l’outil « à travers tout » se mesurait sur 2 coins seulement de la boîte de la pièce, ce qui n’est juste que pour un axe penché vers (+,+,+). Les images en miroir recevaient un outil trop court : 0, 282 et 1 923 mm³ enlevés au lieu de 7 475. Le congé copié ne trouvait donc pas son arête, et le congé R15 suivant échouait aussi.
+- **Correctif** : `occSpanFromShape` projette les 8 coins. Barquette : les 4 coins enlèvent 7 475,5 mm³, leurs congés 811,3 mm³ ; le congé R15 repasse.
+- **Effet sur d’autres fichiers** : toute découpe « à travers tout » d’axe oblique, même sans répétition, peut désormais traverser réellement la pièce. `CACHE_VER` ne change pas.
+- **Tests** : `test_repeat_decoupe_inclinee` (échoue sans le correctif).
