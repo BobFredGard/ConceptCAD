@@ -286,7 +286,7 @@ test('mesure : Ctrl enfoncé = mesure en CAO, fonction ouverte, FAO et assemblag
   await page.keyboard.down('Control');
   expect(await curseur()).toBe(true);
   await clic(0,0,20);
-  expect(await texte()).toMatch(/^Face 1/);
+  expect(await texte()).toMatch(/^Face \d+ : /); // son rang dans le solide (V0.55.0), contrôlé par test_selection_numero
   await clic(35,0,50);
   expect(await texte()).toMatch(/30\.00 mm/);
   expect(await rien()).toEqual({kind:null,tree:0});
@@ -332,7 +332,7 @@ test('mesure : Ctrl enfoncé = mesure en CAO, fonction ouverte, FAO et assemblag
   await expect(page.locator('#props button',{hasText:'Mesurer'})).toHaveCount(0);
   await page.keyboard.down('Control');
   await clic(0,0,20);
-  expect(await texte()).toMatch(/^Face 1/);
+  expect(await texte()).toMatch(/^Face \d+ : /);
   await clic(35,0,50);
   await page.keyboard.up('Control');
   expect(await texte()).toMatch(/30\.00 mm/);
@@ -421,7 +421,8 @@ test('mesure d\'assemblage : plus de faces rémanentes, même outil en Modélise
   expect.soft(await page.evaluate(()=>hoverKey)).toMatch(/^edge:/);
   await page.mouse.click(ax+1,ay);
   await page.keyboard.up('Control');
-  expect.soft(await texte()).toMatch(/^Arête 1 : DROITE · longueur 50\.00/);
+  // Arête d'une autre pièce : pas de numéro plutôt qu'un faux (V0.55.0)
+  expect.soft(await texte()).toMatch(/^Arête : DROITE · longueur 50\.00/);
   await page.evaluate(()=>clearMeasure());
 
   // Assembler : survol et arêtes, comme en Modéliser
@@ -438,7 +439,7 @@ test('mesure d\'assemblage : plus de faces rémanentes, même outil en Modélise
   const [bx,by]=await ecran(40,5,25);
   await page.mouse.move(bx,by);await page.waitForTimeout(150);await page.mouse.click(bx,by);
   await page.keyboard.up('Control');
-  expect.soft(await texte()).toMatch(/^Arête 1 : DROITE · longueur 50\.00/);
+  expect.soft(await texte()).toMatch(/^Arête : DROITE · longueur 50\.00/);
   // Échap efface
   await page.keyboard.press('Escape');
   expect.soft(await restes(),'Échap').toEqual(vide);

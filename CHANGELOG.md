@@ -8,7 +8,7 @@ sont sorties le 2026-09-30j.
 Code dans `src/` · livrable `fusion_mvp.html` (généré par `build.js`) · architecture et
 garde-fous en tête de `src/00-entete-et-outils.js`.
 
-**588 versions**, de `2026-09-28b` à `V0.63.2` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
+**589 versions**, de `2026-09-28b` à `V0.63.3` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
 comme dans le fichier d'origine.
 
 ---
@@ -6815,3 +6815,10 @@ Signalé : le passage de CAO à Plan est de plus en plus long, et les Ctrl+Z aus
 - **Fuite de mémoire** : `occShapeCopy` ne libérait jamais son constructeur `BRepBuilderAPI_Copy_2`, qui garde la copie : environ 17 Mo perdus par rejeu sur Cavité Usinage (793 Mo après 40 modifications) et un passage en Plan qui glissait de 1,6 à 2,3 s. Libéré, comme les deux autres copies de `src/20-30-faces.js` : tas stable à 128 Mo et temps stable sur 14 modifications.
 - **Limite** : après une vraie modification de la pièce, toutes les vues de la planche sont refaites (1,6 s sur Cavité Usinage).
 - **Tests** : `test_mep_vitesse` (nouveau). `CACHE_VER` ne change pas : parcours inchangés.
+
+## V0.63.3 - Tests de mesure remis à jour
+
+Trouvé en vérifiant V0.63.2 : deux tests navigateur de `parcours.spec` échouaient depuis V0.55.0, sans se voir car `npm run ci` ne les lance pas.
+- **Cause** : ils attendaient encore « Face 1 » et « Arête 1 ». V0.55.0 a remplacé ces mentions par le vrai rang dans le solide, et par une arête sans numéro quand elle vient d’une autre pièce. L’affichage de la mesure est correct.
+- **Correctif** : tests seuls. Une face doit porter un numéro, une arête d’une autre pièce ne doit pas en avoir. Aucun changement dans l’application.
+- **Tests** : `parcours.spec` 17/17, dont la suite du test « Ctrl enfoncé » (congé, FAO, assemblage), qui ne tournait plus. `CACHE_VER` ne change pas.
