@@ -11,7 +11,7 @@ const {loadApp}=require('./appvm.cjs'),lire=require('./lire-projet.cjs');
   const real=await globalThis.opencascadeFactory({wasmBinary:fs.readFileSync(path.join(ROOT,'occt','opencascade.wasm.wasm'))});
   if(!real.NCollection_IndexedDataMap_TopoDS_Shape_NCollection_List_TopoDS_Shape_TopTools_ShapeMapHasher){console.log('=== Noms uniques : noyau sans carte indexée, sauté ===\n\n*** TOUT PASSE ***');return;}
   const {ctx,sandbox}=loadApp();
-  sandbox.__realOcct=real;sandbox.__txt=lire(path.join(ROOT,'Exemples','Barquette.conceptcad'));
+  sandbox.__realOcct=real;sandbox.__txt=lire(path.join(ROOT,'tests','fixtures','barquette-noms.conceptcad'));
   vm.runInContext('occt=__realOcct;occtReady=true;window.alert=function(){};showAll=function(){};applyView=function(){};',ctx);
   const R=String.raw`
     const out={fails:[],log:[]};

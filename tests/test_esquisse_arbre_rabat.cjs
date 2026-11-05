@@ -28,7 +28,7 @@ const {loadApp}=require('./appvm.cjs');
     'const tog=document.getElementById("treeToggle");',
     'const state=()=>tog.textContent;',
     'const foldWrites=()=>__ls.filter(x=>x.indexOf("minifusion_treeFolded")===0);',
-    'const sk={id:"sR",name:"R",plane:"XY",entities:[],points:{},constraints:[],dims:[],seq:1,visible:true};',
+    'const sk={id:"sR",name:"R",plane:"XY",entities:[],points:{p:{x:1,y:1}},constraints:[],dims:[],seq:1,visible:true};',
     'ensureSketchBasis(sk);doc.sketches=[sk];doc.features=[];',
     // ═══ A. arbre déplié à l'entrée → rabattu en esquisse → visible à la sortie ═══
     'step("A : état initial onglet="+JSON.stringify(state()));',

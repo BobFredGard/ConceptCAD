@@ -9,7 +9,7 @@ const {loadApp}=require('./appvm.cjs'),lire=require('./lire-projet.cjs');
 (async()=>{
   const real=await globalThis.opencascadeFactory({wasmBinary:fs.readFileSync(path.join(ROOT,'occt','opencascade.wasm.wasm'))});
   if(!real.NCollection_IndexedDataMap_TopoDS_Shape_NCollection_List_TopoDS_Shape_TopTools_ShapeMapHasher){console.log('=== Barquette : noyau sans carte indexée, sauté ===\n\n*** TOUT PASSE ***');return;}
-  const txt=lire(path.join(ROOT,'Exemples','Barquette.conceptcad'));
+  const txt=lire(path.join(ROOT,'tests','fixtures','barquette-noms.conceptcad'));
   const scenario=async(seq)=>{
     const {ctx,sandbox}=loadApp();
     sandbox.__realOcct=real;sandbox.__txt=txt;sandbox.__seq=seq;
