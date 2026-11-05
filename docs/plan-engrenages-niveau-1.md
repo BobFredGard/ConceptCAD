@@ -37,7 +37,6 @@ Profil en développante en B-splines, largeur 20 mm, β = 15°, balayage `MakePi
 | Hélicoïdal m2 Z60 | 154 ms | 100 ms | oui | 242 |
 
 - La section haute coïncide avec la section basse tournée de l'angle attendu (écart de position des sommets : 0,0000 mm).
-- Ce fil auxiliaire marche aussi sur l'ancien noyau de secours (solide valide, Z60 en 950 ms).
 - **Point resté ouvert** : à Z60, le volume hélicoïdal s'écarte de 0,064 % du droit (0,003 % à Z20), alors qu'il devrait être identique. Cause inconnue : mesure ou forme. À trancher en tranche 4.
 - **Limites de l'essai** : profil simplifié (pied en segments, pôles non interpolés), pas de déport, pas de denture intérieure. Il valide la méthode, pas la précision finale.
 
@@ -138,7 +137,6 @@ Trouvé en route et corrigé : Ctrl+Z sur « Modifier… » laissait l'ancienne 
 | Roues à grand Z lourdes en assemblage ou en mise en plan (HLR) | Lenteur à l'ouverture | Moyenne | Mesure à Z200 et avec plusieurs occurrences ; niveau de maillage adapté, une seule copie par réutilisation de clé |
 | Champs libres : `stdStateOf` parcourt toutes les combinaisons des listes pour retrouver d'anciennes pièces | Blocage ou recherche sans fin | Moyenne | Toujours enregistrer `st` pour les engrenages, exclure l'onglet de cette recherche, avec test |
 | Écart de volume de 0,064 % révélant une vraie déformation de flanc | Dents hélicoïdales inexactes | Faible à moyenne | Mesure en T4 ; bascule possible vers les sections multiples ou des surfaces construites directement |
-| Comportement différent entre OCCT 8 et noyau de secours | Échec avec `?noyau=actuel` | Faible | Tests sur les deux noyaux (T8) ; la fonction `SetMode` a déjà une différence d'appel, gérée par le traducteur à vérifier |
 | Reconstruction sans noyau exact (repli maillage) | Fonction sans résultat | Faible | Message clair plutôt qu'une forme fausse |
 | Faux sentiment de sécurité sur les contrôles | Pièce jugée bonne mais fragile | Moyenne | Mention explicite : contrôle géométrique seulement, pas de résistance |
 

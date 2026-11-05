@@ -3,8 +3,6 @@
 // Et le copieur de solides jamais libéré : 200 Mo perdus à chaque changement de cote.
 const fs=require('fs'),vm=require('vm'),path=require('path');
 const ROOT=path.join(__dirname,'..');
-globalThis.__dirname=path.join(ROOT,'occt');
-vm.runInThisContext(fs.readFileSync(path.join(ROOT,'occt','opencascade.full.js'),'utf8'),{filename:'occt.js'});
 const {loadApp}=require('./appvm.cjs'),lire=require('./lire-projet.cjs');
 let ko=0;const A=(c,m)=>{if(c)console.log('  ✓ '+m);else{ko++;console.log('  ✗ '+m);}};
 (async()=>{
@@ -43,7 +41,7 @@ let ko=0;const A=(c,m)=>{if(c)console.log('  ✓ '+m);else{ko++;console.log('  �
     A(r.vGarde&&r.nGarde&&r.projGarde,'ouverture : « fixe » de l’utilisateur hors projection et « fixe » des projections intacts');
     A(r.encore===0,'réparation sans effet la deuxième fois');
   }
-  const real=await globalThis.opencascadeFactory({wasmBinary:fs.readFileSync(path.join(ROOT,'occt','opencascade.wasm.wasm'))});
+  const real=await require('./noyau.cjs').charger();
   if(!real.NCollection_IndexedDataMap_TopoDS_Shape_NCollection_List_TopoDS_Shape_TopTools_ShapeMapHasher){
     console.log('=== Barquette : noyau sans carte indexée, sauté ===');
   }else{

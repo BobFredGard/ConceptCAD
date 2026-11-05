@@ -9,12 +9,10 @@
 //  entre deux morceaux d'un même congé cylindrique : elle disparaît au lieu d'être grise.)
 const fs=require('fs'),vm=require('vm'),path=require('path');
 const ROOT=path.join(__dirname,'..');
-globalThis.__dirname=path.join(ROOT,'occt');
-vm.runInThisContext(fs.readFileSync(path.join(ROOT,'occt','opencascade.full.js'),'utf8'),{filename:'occt.js'});
 const {loadApp}=require('./appvm.cjs');
 const json=require('./lire-projet.cjs')(path.join(ROOT,'Exemples','Support Pédale Déportée R1200RT 2011.conceptcad'));
 (async()=>{
-  const real=await globalThis.opencascadeFactory({wasmBinary:fs.readFileSync(path.join(ROOT,'occt','opencascade.wasm.wasm'))});
+  const real=await require('./noyau.cjs').charger();
   const {ctx,sandbox}=loadApp();
   sandbox.__realOcct=real;
   vm.runInContext('occt=__realOcct;occtReady=true;',ctx);

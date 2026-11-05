@@ -587,7 +587,7 @@ function occApplyXFillets(base,xfils){
       try{if(okSh)okSh.delete();}catch(e){}
       ok=r2;okSh=t;kOk=k;return true;
     };
-    // V0.44.1 (OCCT 8 refuse les congés trop grands que l'ancien noyau laissait passer) : le plus
+    // V0.44.1 (OCCT 8 refuse les congés trop grands) : le plus
     // grand rayon qui passe est cherché (petit rayon de référence d'abord, puis échelle et 3
     // dichotomies) puis APPLIQUÉ, avec un ⚠ — la pièce se construit au lieu de rester bloquée.
     // Le rayon demandé reste enregistré : si la géométrie s'agrandit, il revient tout seul.

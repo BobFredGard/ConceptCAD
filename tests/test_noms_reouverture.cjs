@@ -1,13 +1,10 @@
 // Les noms survivent à l'enregistrement, ne rendent pas le document « modifié », et une référence perdue se voit.
-// Lancé seul : node tools/ci-moteur.cjs occt/v3 -- tests/test_noms_reouverture.cjs
+// Lancé seul : node tests/test_noms_reouverture.cjs
 const fs=require('fs'),vm=require('vm'),path=require('path');
 const ROOT=path.join(__dirname,'..');
-globalThis.__dirname=path.join(ROOT,'occt');
-vm.runInThisContext(fs.readFileSync(path.join(ROOT,'occt','opencascade.full.js'),'utf8'),{filename:'occt.js'});
 const {loadApp}=require('./appvm.cjs'),lire=require('./lire-projet.cjs');
 (async()=>{
-  const real=await globalThis.opencascadeFactory({wasmBinary:fs.readFileSync(path.join(ROOT,'occt','opencascade.wasm.wasm'))});
-  if(!real.NCollection_IndexedDataMap_TopoDS_Shape_NCollection_List_TopoDS_Shape_TopTools_ShapeMapHasher){console.log('=== Réouverture : noyau sans carte indexée, sauté ===\n\n*** TOUT PASSE ***');return;}
+  const real=await require('./noyau.cjs').charger();
   const nouv=()=>{const {ctx,sandbox}=loadApp();sandbox.__realOcct=real;vm.runInContext('occt=__realOcct;occtReady=true;window.alert=function(){};showAll=function(){};applyView=function(){};',ctx);return {ctx,sandbox};};
   const lit=String.raw`
     const nb=v=>+(+v).toFixed(3);

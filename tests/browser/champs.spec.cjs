@@ -11,7 +11,7 @@ const plan=page=>page.evaluate(()=>{const c=doc.cgeo[0];return {p:c.p,z:c.fr.o[2
 const ferme=page=>page.waitForFunction(()=>!cgMode&&rebuildDepth===0);
 
 test.beforeEach(async({page})=>{
-  await page.goto('/ConceptCAD.html'+(process.env.MF_NOYAU?'?noyau='+process.env.MF_NOYAU:''));
+  await page.goto('/ConceptCAD.html');
   await page.waitForFunction(()=>typeof occtReady!=='undefined'&&occtReady===true,null,{timeout:200000});
   await page.waitForFunction(()=>!skEdit&&rebuildDepth===0);
   await page.evaluate(()=>{cgStart('plane');cgRefAccept({k:'o',id:'XY'});});

@@ -9,11 +9,9 @@
 //   4. les esquisses copiées par la répétition gardent la même face.
 const fs=require('fs'),vm=require('vm'),path=require('path');
 const ROOT=path.join(__dirname,'..');
-globalThis.__dirname=path.join(ROOT,'occt');
-vm.runInThisContext(fs.readFileSync(path.join(ROOT,'occt','opencascade.full.js'),'utf8'),{filename:'occt.js'});
 const {loadApp}=require('./appvm.cjs');
 (async()=>{
-  const real=await globalThis.opencascadeFactory({wasmBinary:fs.readFileSync(path.join(ROOT,'occt','opencascade.wasm.wasm'))});
+  const real=await require('./noyau.cjs').charger();
   const {ctx,sandbox}=loadApp();
   sandbox.__realOcct=real;
   vm.runInContext('occt=__realOcct;occtReady=true;window.alert=function(){};confirm=function(){return true;};var __F='+JSON.stringify(require('./lire-projet.cjs')(path.join(__dirname,'fixtures','repetition-courbe-sans-face.json'))),ctx);

@@ -2,15 +2,13 @@
 // R10 sur la boucle du haut. OCCT 8 rend un solide déchiré (refusé) ; avant, la fonction restait en
 // erreur (« essayez R5 »). Désormais le plus grand rayon qui passe est APPLIQUÉ (R5,75 ici) avec un ⚠
 // (f._adj), le rayon demandé (R10) restant enregistré. R6 donne un solide « valide » qui GONFLE la pièce
-// (+1 866 mm³), écarté par le contrôle de volume (l ancien noyau gonflait aussi : +664 mm³ à R10).
+// (+1 866 mm³), écarté par le contrôle de volume.
 // Reste du parcours = test_conge_tangent.
 const fs=require('fs'),vm=require('vm'),path=require('path');
 const ROOT=path.join(__dirname,'..');
-globalThis.__dirname=path.join(ROOT,'occt');
-vm.runInThisContext(fs.readFileSync(path.join(ROOT,'occt','opencascade.full.js'),'utf8'),{filename:'occt.js'});
 const {loadApp}=require('./appvm.cjs');
 (async()=>{
-  const real=await globalThis.opencascadeFactory({wasmBinary:fs.readFileSync(path.join(ROOT,'occt','opencascade.wasm.wasm'))});
+  const real=await require('./noyau.cjs').charger();
   const {ctx,sandbox}=loadApp();
   sandbox.__realOcct=real;
   vm.runInContext('occt=__realOcct;occtReady=true;',ctx);
@@ -43,7 +41,7 @@ const {loadApp}=require('./appvm.cjs');
     "const f=doc.features.find(x=>x.type==='xfillet');",
     "att(!!f,'fonction de congé non créée');",
     "if(!f)return P.join(String.fromCharCode(10));",
-    "{const m=/appliqué R([0-9]+(?:,[0-9]+)?)/.exec(f._adj||''),r=m?+m[1].replace(',','.'):null;att(!f._err&&(!f._adj||(r>=5&&r<6)),'congé R10 appliqué (sous OCCT 8 : ramené entre R5 et R6 exclu — R6 gonflait la pièce ; l ancien noyau le passe tel quel) : err='+JSON.stringify(f._err||null)+' adj='+JSON.stringify(f._adj||null));}","if(f._adj){const v=occCoqueVolume(occLive.shape),v0=(40*12+Math.PI*36)*40;att(v<v0-1,'le congé RETIRE de la matière ('+v.toFixed(1)+' < '+v0.toFixed(1)+' mm³)');}","att((f.edges||[]).every(e=>e.r===10),'le rayon demandé (R10) reste enregistré');","att(f.tangent===true,'f.tangent non persisté à la création (='+(f.tangent)+')');",
+    "{const m=/appliqué R([0-9]+(?:,[0-9]+)?)/.exec(f._adj||''),r=m?+m[1].replace(',','.'):null;att(!f._err&&(!f._adj||(r>=5&&r<6)),'congé R10 appliqué (sous OCCT 8 : ramené entre R5 et R6 exclu — R6 gonflait la pièce) : err='+JSON.stringify(f._err||null)+' adj='+JSON.stringify(f._adj||null));}","if(f._adj){const v=occCoqueVolume(occLive.shape),v0=(40*12+Math.PI*36)*40;att(v<v0-1,'le congé RETIRE de la matière ('+v.toFixed(1)+' < '+v0.toFixed(1)+' mm³)');}","att((f.edges||[]).every(e=>e.r===10),'le rayon demandé (R10) reste enregistré');","att(f.tangent===true,'f.tangent non persisté à la création (='+(f.tangent)+')');",
     "const nbSeed=(f.edges||[]).filter(e=>e.seed).length;",
     "att(nbSeed===1,'germes persistés : '+nbSeed+' (1 attendu — une seule arête cliquée)');",
     "const NF=()=>{let k=0;const ex=new occt.TopExp_Explorer_2(occLive.shape,occt.TopAbs_ShapeEnum.TopAbs_FACE,occt.TopAbs_ShapeEnum.TopAbs_SHAPE);while(ex.More()){k++;ex.Next();}return k;};",

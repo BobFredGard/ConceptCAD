@@ -1,15 +1,12 @@
 // Le cas d'origine : Barquette, longueur ou largeur changée d'un grand coup. Le solide, le congé de 1,
 // le plan et les arêtes projetées doivent arriver au même endroit que par petits pas, et revenir
 // exactement au départ quand la valeur revient. Deux états de la pièce : d'origine, et avec ses renforts
-// (Symétrie, Linéaire, congés copiés). Lancé seul : node tools/ci-moteur.cjs occt/v3 -- tests/test_noms_barquette.cjs
+// (Symétrie, Linéaire, congés copiés). Lancé seul : node tests/test_noms_barquette.cjs
 const fs=require('fs'),vm=require('vm'),path=require('path');
 const ROOT=path.join(__dirname,'..');
-globalThis.__dirname=path.join(ROOT,'occt');
-vm.runInThisContext(fs.readFileSync(path.join(ROOT,'occt','opencascade.full.js'),'utf8'),{filename:'occt.js'});
 const {loadApp}=require('./appvm.cjs'),lire=require('./lire-projet.cjs');
 (async()=>{
-  const real=await globalThis.opencascadeFactory({wasmBinary:fs.readFileSync(path.join(ROOT,'occt','opencascade.wasm.wasm'))});
-  if(!real.NCollection_IndexedDataMap_TopoDS_Shape_NCollection_List_TopoDS_Shape_TopTools_ShapeMapHasher){console.log('=== Barquette : noyau sans carte indexée, sauté ===\n\n*** TOUT PASSE ***');return;}
+  const real=await require('./noyau.cjs').charger();
   const scenario=async(txt,seq)=>{
     const {ctx,sandbox}=loadApp();
     sandbox.__realOcct=real;sandbox.__txt=txt;sandbox.__seq=seq;

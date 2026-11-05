@@ -573,22 +573,16 @@ function mfPosTabs(){
 }
 function mfStatusBar(){
   const sb=document.createElement('div');sb.id='mfStatus';sb.className='mfM';
-  // ⚙ Noyau .wasm… : le panneau « État » (qui porte ce bouton) est masqué en moderne — au 1er lancement
-  // en mode fichier (file://) le noyau exact ne démarre qu'avec ce bouton, il doit donc rester accessible
-  sb.innerHTML='<button id="mfStWasm" style="display:none" title="Mode fichier (file://) : désignez occt/opencascade.wasm.wasm pour démarrer le noyau exact sans serveur">⚙ Noyau .wasm…</button><span id="mfStEng">Noyau…</span><span id="mfStMeas"></span><span class="mfSp"></span><span id="mfStSave"></span><button id="mfStRegen" title="Régénérer tout le modèle">⟳ Régénérer</button><b id="mfStVer"></b>';
+  sb.innerHTML='<span id="mfStEng">Noyau…</span><span id="mfStMeas"></span><span class="mfSp"></span><span id="mfStSave"></span><button id="mfStRegen" title="Régénérer tout le modèle">⟳ Régénérer</button><b id="mfStVer"></b>';
   sb.querySelector('#mfStRegen').onclick=()=>mfClick('btnRebuild');
-  sb.querySelector('#mfStWasm').onclick=()=>mfClick('btnOccWasm');
   const upd=()=>{
     if(!document.body.classList.contains('ui-modern'))return;
     try{
       const o=(document.getElementById('occtState')||{}).textContent||'';
-      // Nom du noyau en clair ; l'ancien, bien plus lent, doit se voir d'un coup d'œil
-      const pret=/prêt/i.test(o),ancien=pret&&!(typeof OCCT_V3!=='undefined'&&OCCT_V3);
-      const eng=pret?((ancien?'⚠ Ancien noyau OCCT 7.4 (lent)':'Noyau OCCT 8.0.1')+' · '+((typeof builtEngine!=='undefined'&&builtEngine)||'')):(o.replace(/^OCCT\s*:\s*/,'').slice(0,60));
-      const se=document.getElementById('mfStEng');se.textContent=eng;se.style.color=ancien?'#ff9f0a':'';se.style.fontWeight=ancien?'700':'';
-      se.title=(ancien?'Ce mode est bien plus lent. Ouvrez ConceptCAD par son adresse : lancez Server.bat, puis http://localhost:3000.\n\n':'')+o; // texte complet en bulle
-      const wb=document.getElementById('btnOccWasm');
-      document.getElementById('mfStWasm').style.display=(wb&&wb.style.display!=='none'&&!/prêt/i.test(o))?'':'none';
+      // Nom du noyau en clair
+      const eng=/prêt/i.test(o)?('Noyau OCCT 8.0.1 · '+((typeof builtEngine!=='undefined'&&builtEngine)||'')):(o.replace(/^OCCT\s*:\s*/,'').slice(0,60));
+      const se=document.getElementById('mfStEng');se.textContent=eng;
+      se.title=o; // texte complet en bulle
       const f=((typeof faceEl!=='undefined'&&faceEl&&faceEl.textContent)||'').split('\n')[0];
       const ms=document.getElementById('mfStMeas');ms.textContent=f;ms.title=(typeof faceEl!=='undefined'&&faceEl&&faceEl.textContent)||'';
       const st=(document.getElementById('stats')||{}).textContent||'';

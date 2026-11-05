@@ -2,7 +2,7 @@
    Après un rafraîchissement, le repli maillage s'affichait d'abord puis la pièce exacte la
    remplaçait (saut visible). La vue 3D reste désormais invisible tant que le noyau n'a pas
    recalculé la pièce en exact, puis elle apparaît en fondu. Garde-fous : noyau en échec →
-   on montre le maillage ; ouverture locale (file://) qui attend le .wasm → 8 s ; 60 s au plus. */
+   on montre le maillage ; 60 s au plus. */
 let bootVeilOn=false;
 function viewFadeOut(){
   // ouverture d'un modèle : la vue disparaît d'un coup (l'ancien modèle ne reste pas affiché)
@@ -39,9 +39,8 @@ function viewFadeIn(){
       try{
         const dt=Date.now()-t0;
         const ready=(typeof occtReady!=='undefined'&&occtReady)&&((typeof builtEngine!=='undefined'&&builtEngine==='exact')||!((doc&&doc.features)||[]).length);
-        const failed=typeof occBaseMsg==='string'&&/impossible|absent|incomplet/i.test(occBaseMsg);
-        const local=(location&&location.protocol==='file:')&&!(typeof occtReady!=='undefined'&&occtReady)&&dt>8000;
-        if(ready||failed||local||dt>60000)reveal();
+        const failed=typeof occBaseMsg==='string'&&/échec|impossible|absent|incomplet/i.test(occBaseMsg);
+        if(ready||failed||dt>60000)reveal();
       }catch(e){reveal();}
     },150);
   }catch(e){}

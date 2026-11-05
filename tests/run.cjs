@@ -2,7 +2,7 @@
 // Chaque suite sort 0 si verte. Portable : aucun chemin absolu (voir paths via ROOT).
 //
 // Suites lancées EN PARALLÈLE (pool de processus) : ~70 d'entre elles recompilent le
-// noyau OCCT (.wasm de 66 Mo), ce qui prenait ~25 min en série. Chaque suite reste un
+// noyau OCCT (.wasm de 43 Mo), ce qui prenait ~25 min en série. Chaque suite reste un
 // processus isolé ; sa sortie est mise en mémoire et affichée d'un bloc quand elle échoue
 // (ou toujours avec --verbose), pour que les journaux ne s'entremêlent pas.
 //   node tests/run.cjs              pool automatique (cœurs et mémoire)
@@ -27,7 +27,6 @@
 // médiane est gardée dans tests/.coeurs.json (2 au départ). Processeur homogène, hors
 // Windows ou TEST_AFFINITE=0 : pool homogène, comme avant. TEST_PCORES=0-7 force la liste
 // des cœurs P, TEST_RAPPORT=1.8 l'écart de vitesse.
-require('./moteur-defaut.cjs'); // noyau des suites : OCCT 8 (occt/v3) ; OCCT_DIR=actuel → ancien
 const path = require('path'), fs = require('fs'), os = require('os');
 const SUITES = [
   "test_highlight_order",
@@ -43,7 +42,6 @@ const SUITES = [
   "test_suppression_face",
   "test_suppression_face_step",
   "test_suppression_face_edition",
-  "test_noyau_exceptions",
   "test_moteur_v3",
   "test_suppression_face_worker",
   "test_decoupe_coplanaire",

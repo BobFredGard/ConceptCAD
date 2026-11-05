@@ -21,7 +21,7 @@
  * peut changer sans rien casser. CACHE_VER (parcours FAO) reste indépendant.
  */
 
-const APP_VER='V0.64.3';
+const APP_VER='V0.65.0';
 try{console.log('[ConceptCAD] version '+APP_VER);}catch(e){}
 try{var mfSv=document.getElementById('mfSplashVer');if(mfSv)mfSv.textContent=APP_VER;}catch(e){} // écran de démarrage
 
@@ -145,14 +145,13 @@ function applyView(v){
 }
 let viewUserMoved=false; // l'utilisateur a piloté la caméra (glisser/roulette) depuis le chargement
 let occBaseMsg='OCCT : état inconnu',occEngineMsg='—';
-function occStatus(){try{$('occtState').textContent=occBaseMsg+' · Moteur : '+occEngineMsg;}catch(e){}
-  try{const b=$('btnOccWasm');if(b)b.style.display=occtReady?'none':'';}catch(e){}}
+function occStatus(){try{$('occtState').textContent=occBaseMsg+' · Moteur : '+occEngineMsg;}catch(e){}}
 async function occtFinishBoot(){
   occtReady=!!(occt&&occt.BRepPrimAPI_MakeBox_2&&occt.BRepFilletAPI_MakeFillet);
   occBaseMsg=occtReady
     ?'OCCT : prêt — prismes exacts, booléens Fuse/Cut, congés toutes arêtes, STEP.'
     :'OCCT : chargé mais incomplet — repli sur maillage (CSG).';
-  if(occtReady)occBaseMsg+=(typeof OCCT_V3!=='undefined'&&OCCT_V3)?' (OCCT 8.0.1)':' (ancien noyau OCCT 7.4)'; // 96-noyau : ?noyau=actuel
+  if(occtReady)occBaseMsg+=' (OCCT 8.0.1)';
   occStatus();
   if(occtReady){
     // Recalcul systématique une fois le noyau prêt (même si un affichage existe) :
@@ -176,19 +175,6 @@ async function occtFinishBoot(){
     if(!viewUserMoved){try{showAll();}catch(e){}}
     try{if(filMode&&occLive&&occLive.shape){exitFilletMode(true);enterExactFilletMode();}}catch(e){}
     try{if(typeof bootSafeDone==='function')bootSafeDone();}catch(e){}} // V0.31.2 : rejeu exact passé → démarrage abouti (99-init)
-}
-async function bootWasmBinary(buf){
-  // Mode fichier (file://) : le fetch du .wasm est bloqué par CORS, on l'injecte à la main.
-  const factory=window.opencascadeFactory||window.opencascade;
-  if(typeof factory!=='function'){occBaseMsg='OCCT : JS noyau absent — rechargez la page (Ctrl+F5).';occStatus();return;}
-  occBaseMsg='OCCT : démarrage depuis le fichier local…';occStatus();
-  try{
-    occt=await factory({wasmBinary:buf,locateFile:p=>String(p).endsWith('.wasm')?'occt/opencascade.wasm.wasm':p});
-    await occtFinishBoot();
-  }catch(e){
-    occtReady=false;
-    occBaseMsg='OCCT : démarrage local impossible ('+String((e&&(e.message||e))||e).slice(0,120)+').';occStatus();
-  }
 }
 const VIVID=[0x0a84ff,0x30d158,0xff9f0a,0xbf5af2,0xff453a,0x64d2ff,0xffd60a,0x5e5ce6];
 const pickColor=i=>VIVID[i%VIVID.length];

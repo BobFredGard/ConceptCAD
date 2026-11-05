@@ -9,9 +9,7 @@
 // 4. Modification pendant le calcul : le travail caduc est abandonné, seul le dernier compte.
 const fs=require('fs'),vm=require('vm'),path=require('path');
 const {Worker:NodeWorker}=require('worker_threads');
-const ROOT=path.join(__dirname,'..'),OCCT=path.join(ROOT,'occt');
-globalThis.__dirname=OCCT;
-vm.runInThisContext(fs.readFileSync(path.join(OCCT,'opencascade.full.js'),'utf8'),{filename:'occt.js'});
+const ROOT=path.join(__dirname,'..');
 const {loadApp}=require('./appvm.cjs');
 let ko=0;
 const A=(c,m)=>{if(!c){ko++;console.log('  ✗ '+m);}else console.log('  ✓ '+m);};
@@ -21,11 +19,11 @@ const blobs=new Map();
 class Blob{constructor(parts){this.text=parts.join('');}}
 const URLs={createObjectURL(b){const k='blob:t'+blobs.size;blobs.set(k,b.text);return k;}};
 const PRE=`const {parentPort}=require('worker_threads');const fs=require('fs'),path=require('path'),vm=require('vm');
-globalThis.require=require;globalThis.self=globalThis;globalThis.__dirname=${JSON.stringify(OCCT)};
-const lire=u=>fs.readFileSync(path.join(${JSON.stringify(OCCT)},path.basename(String(u))));
+globalThis.require=require;globalThis.self=globalThis;
+const lire=u=>fs.readFileSync(require('url').fileURLToPath(String(u)));
 self.postMessage=m=>parentPort.postMessage(m);
-self.importScripts=u=>vm.runInThisContext(lire(u).toString('utf8'),{filename:'occt.js'});
-globalThis.fetch=async u=>({arrayBuffer:async()=>{const b=lire(u);return b.buffer.slice(b.byteOffset,b.byteOffset+b.byteLength);}});
+globalThis.fetch=async u=>({ok:true,text:async()=>lire(u).toString('utf8'),json:async()=>JSON.parse(lire(u).toString('utf8')),
+  arrayBuffer:async()=>{const b=lire(u);return b.buffer.slice(b.byteOffset,b.byteOffset+b.byteLength);}});
 parentPort.on('message',d=>self.onmessage&&self.onmessage({data:d}));
 `;
 class Worker{
@@ -40,9 +38,10 @@ class Worker{
 }
 
 (async()=>{
-  const real=await globalThis.opencascadeFactory({wasmBinary:fs.readFileSync(path.join(OCCT,'opencascade.wasm.wasm'))});
+  const real=await require('./noyau.cjs').charger();
   const {ctx,sandbox}=loadApp();
   sandbox.__realOcct=real;sandbox.Worker=Worker;sandbox.Blob=Blob;sandbox.URL=URLs;sandbox.__stats=stats;
+  require('./noyau.cjs').brancherFichiers(sandbox,ctx);
   vm.runInContext('occt=__realOcct;occtReady=true;window.alert=function(){};window.confirm=function(){return true;};',ctx);
   const body=`
     const out={};

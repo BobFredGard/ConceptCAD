@@ -5,15 +5,12 @@
 // à comparer à la correction JavaScript occMoveFaceRuledTool (V0.39.1, autre branche) :
 // dessus +5 mm, parois prolongées dans leur pente (+5·tan15° ≈ 1,34 mm par côté), solide valide.
 // Ne tourne qu'avec un moteur recompilé :
-//   node tools/ci-moteur.cjs occt-build/out/v2 -- tests/proto_face_offset_barquette.cjs
+//   node tests/proto_face_offset_barquette.cjs
 const fs=require('fs'),vm=require('vm'),path=require('path');
 const ROOT=path.join(__dirname,'..');
-globalThis.__dirname=path.join(ROOT,'occt');
-vm.runInThisContext(fs.readFileSync(path.join(ROOT,'occt','opencascade.full.js'),'utf8'),{filename:'occt.js'});
 const {loadApp}=require('./appvm.cjs');
 (async()=>{
-  const real=await globalThis.opencascadeFactory({wasmBinary:fs.readFileSync(path.join(ROOT,'occt','opencascade.wasm.wasm'))});
-  if(!real.CCFaceOffset){console.log('moteur sans CCFaceOffset (noyau d’origine ?) — prototype sauté');process.exit(2);}
+  const real=await require('./noyau.cjs').charger();
   const {ctx,sandbox}=loadApp();
   sandbox.__realOcct=real;
   sandbox.__doc=fs.readFileSync(path.join(ROOT,'tests','fixtures','barquette_face_depouille.json'),'utf8');

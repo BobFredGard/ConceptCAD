@@ -8,14 +8,12 @@
 //   E. composant fait d'un STEP importé seul dans son corps ;
 //   F. Exemples/Engrenages.conceptcad, s'il est là (6 solides valides aux bonnes positions).
 // Lancer sur les deux moteurs : node tests/test_export_step_assemblage.cjs (ancien) ;
-// node tools/ci-moteur.cjs occt/v3 -- tests/test_export_step_assemblage.cjs (OCCT 8).
+// node tests/test_export_step_assemblage.cjs (OCCT 8).
 const fs=require('fs'),vm=require('vm'),path=require('path');
 const ROOT=path.join(__dirname,'..');
-globalThis.__dirname=path.join(ROOT,'occt');
-vm.runInThisContext(fs.readFileSync(path.join(ROOT,'occt','opencascade.full.js'),'utf8'),{filename:'occt.js'});
 const {loadApp}=require('./appvm.cjs'),lireProjet=require('./lire-projet.cjs');
 (async()=>{
-  const real=await globalThis.opencascadeFactory({wasmBinary:fs.readFileSync(path.join(ROOT,'occt','opencascade.wasm.wasm'))});
+  const real=await require('./noyau.cjs').charger();
   const {ctx,sandbox}=loadApp();
   // géométrie minimale (comme test_export_step_import) : userData.impOcc doit survivre à l'import
   const T0=sandbox.THREE;

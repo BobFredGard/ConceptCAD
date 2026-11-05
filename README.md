@@ -10,7 +10,7 @@
 
 ![Support de pédale déportée R1200RT en alu anodisé rouge sur béton, lancer de rayons de l'atelier RENDU (2048 échantillons)](docs/captures/rendu-pedale.jpg)
 
-Le noyau géométrique exact est **OpenCascade 8 compilé en WebAssembly** par nos soins (recette reproductible dans `occt-build/`). S'il n'est pas disponible, l'application bascule seule sur un moteur maillage (CSG). Version actuelle : **V0.64.3** (voir le [journal des modifications](CHANGELOG.md)).
+Le noyau géométrique exact est **OpenCascade 8 compilé en WebAssembly** par nos soins (recette reproductible dans `occt-build/`). S'il n'est pas disponible, l'application bascule seule sur un moteur maillage (CSG). Version actuelle : **V0.65.0** (voir le [journal des modifications](CHANGELOG.md)).
 
 **Pas d'Internet sur le poste ?** La [version autonome](https://www.dropbox.com/scl/fi/sne7f5a9y8dr659b2xrow/ConceptCAD-autonome.html?rlkey=fgd0w1r5816ake50vxtd4fnuj&dl=0) tient en un seul fichier à télécharger, qui s'ouvre par double-clic (voir [Démarrage](#démarrage)).
 
@@ -46,7 +46,7 @@ C'est le même logiciel partout, et les projets `.conceptcad` passent de l'un à
 
 **Version autonome : ce qui n'est pas encore vérifié.** L'enregistrement et la carte graphique réelle ne passent pas par les tests automatiques, et Firefox n'a pas été essayé.
 
-**Ne pas ouvrir `ConceptCAD.html` par double-clic.** Le navigateur lui refuse le noyau récent : l'application tourne alors en mode maillage ou sur l'ancien noyau OCCT 7.4, bien plus lent (signalé en orange en bas de la vue 3D). Hors ligne, prendre la version autonome.
+**Ne pas ouvrir `ConceptCAD.html` par double-clic.** Le navigateur lui refuse le noyau de calcul : la page affiche alors un message qui renvoie vers les solutions ci-dessus, et rien d'autre. Hors ligne, prendre la version autonome.
 
 **Exemples** : le dossier `Exemples/` du dépôt contient des projets à ouvrir, dont **Perçages** (plaque usinée complète, avec sa planche), **Crochet**, **Support Pédale Déportée R1200RT 2011**, **Axe**, **Cavité Usinage**, **Malaxeur Retard** et **Engrenages**.
 
@@ -59,7 +59,7 @@ Quatre espaces dans le bandeau supérieur : **CAO**, **FAO**, **PLAN** et **REND
 - **Sélection synchronisée** : cliquer une face sélectionne la fonction qui l'a créée, dans l'arbre et dans la timeline (amenées à l'écran), et la fonction s'allume en rouge dans la vue. `Ctrl+clic` ne fait que mesurer, sans rien sélectionner.
 - **Fenêtres de fonctions** à boutons-icônes, aperçu immédiat, poignées dans la vue, **Annuler / OK**.
 - **Barre de progression** à l'ouverture d'un document, au chargement du noyau et sur **⟳ Régénérer** : bandeau semi-transparent en bas de la vue 3D, au-dessus de la timeline, avec l'avancement (n / total) et le nom de la fonction et de l'esquisse en cours ; la barre prend la couleur de la fonction calculée (celle de la timeline). Sur ⟳ Régénérer, elle s'affiche dès le clic ; ailleurs, seulement si la régénération dure.
-- **Bandeau « calcul en cours »** pendant le recalcul d'une pièce lourde après la modification d'un paramètre, et **nom du noyau** en clair en bas de la vue 3D (« Noyau OCCT 8.0.1 », ou « ⚠ Ancien noyau OCCT 7.4 (lent) » en orange quand la page est ouverte par double-clic sur le fichier).
+- **Bandeau « calcul en cours »** pendant le recalcul d'une pièce lourde après la modification d'un paramètre, et **nom du noyau** en clair en bas de la vue 3D.
 - **Annuler / Rétablir partout** (`Ctrl+Z` / `Ctrl+Y`) : CAO, esquisse, assemblage, FAO, PLAN et RENDU.
 - **Apparence** (menu 🎨) :
   - **cinq thèmes** : Nuit, Graphite, Atelier, Clair, Contraste élevé ;
@@ -308,7 +308,7 @@ Une image soignée de la pièce ou de l'assemblage, en **1920×1080 ou 4K**, enr
 
 ### Lancer depuis les sources
 
-Il faut Node.js et Git LFS : le dépôt stocke les gros binaires (`occt/*.wasm`, `occt/v3/*.wasm`, `Exemples/*.conceptcad`, `Exemples/*.miniFusion`, `Exemples/*.step`, `Exemples/*.stp`) via **Git LFS**. Après un clone : `git lfs install` puis `git lfs pull`.
+Il faut Node.js et Git LFS : le dépôt stocke les gros binaires (`occt/v3/*.wasm`, `Exemples/*.conceptcad`, `Exemples/*.miniFusion`, `Exemples/*.step`, `Exemples/*.stp`) via **Git LFS**. Après un clone : `git lfs install` puis `git lfs pull`.
 
 ```bat
 Server.bat
@@ -327,10 +327,10 @@ npx serve . -l 3000
 | `src/*.js` | **Les sources** : 162 fichiers concaténés dans l'ordre alphabétique (noyau, esquisse, fonctions 3D, assemblage, FAO découpée par domaine, mise en plan, rendu, interface téléphone `99-mobile*.js`). C'est ici qu'on travaille. |
 | `ConceptCAD.html` | **Livrable généré** par `node build.js`. On n'édite jamais son script à la main. |
 | `PostPro/` | Une fiche par machine (`siemens-630.js`, `siemens-1520.js`, `fagor-8065.js`). Nouvelle machine = copier une fiche, la modifier, `npm run build`. |
-| `tests/` | 277 suites Node lancées en parallèle (`npm run ci:full`), 122 rapides (`npm run ci`), non-régression des parcours FAO (`npm run parcours`), tests de référence (`tests/oracle/`, [docs/oracle.md](docs/oracle.md)). |
+| `tests/` | 276 suites Node lancées en parallèle (`npm run ci:full`), 121 rapides (`npm run ci`), non-régression des parcours FAO (`npm run parcours`), tests de référence (`tests/oracle/`, [docs/oracle.md](docs/oracle.md)). |
 | `tests/browser/` | Playwright dans un vrai Chromium : parcours critiques et Rendu (`npm run test:browser`, seul projet lancé par la CI GitHub, déclenchée à la main) et carte graphique réelle (`npm run test:gpu`, en local). |
 | `tools/` | Lint du script concaténé (`npm run lint`), serveur MCP, **captures du README** (`npm run captures`), **fichier autonome** (`npm run autonome`). |
-| `occt/`, `threejs/` | Noyau OpenCascade WebAssembly (`occt/v3` : OCCT 8, celui de l'application ; `occt/opencascade.*` : l'ancien 7.4, adresse `?noyau=actuel`), rendu three.js. |
+| `occt/`, `threejs/` | Noyau OpenCascade WebAssembly (`occt/v3` : OCCT 8), rendu three.js. |
 | `occt-build/` | Fabrication du noyau (Docker) et traducteur des appels : voir `occt-build/README.md`. |
 | `docs/` | Captures du README, analyses, tableaux de référence. |
 

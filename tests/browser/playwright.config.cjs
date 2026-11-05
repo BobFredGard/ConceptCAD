@@ -1,7 +1,6 @@
 // Tests navigateur réels (Chromium headless) : `npm run test:browser`.
 // Le livrable ConceptCAD.html est servi en http (le noyau OCCT .wasm ne se lit
 // pas en file://) par un petit serveur statique sans dépendance.
-// Noyau : OCCT 8 par défaut (V0.43.0) ; MF_NOYAU=actuel : les mêmes parcours sur l'ancien noyau (?noyau=actuel).
 'use strict';
 const {defineConfig,devices}=require('@playwright/test');
 
@@ -10,7 +9,7 @@ const PORT=+(process.env.MF_PORT||3123);
 module.exports=defineConfig({
   testDir:__dirname,
   testMatch:/.*\.spec\.cjs$/,
-  // Compilation du noyau (~65 Mo) + rejeu exact : larges marges, surtout en CI.
+  // Compilation du noyau (~43 Mo) + rejeu exact : larges marges, surtout en CI.
   timeout:240000,
   expect:{timeout:30000},
   fullyParallel:false,

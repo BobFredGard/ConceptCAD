@@ -8,7 +8,7 @@ sont sorties le 2026-09-30j.
 Code dans `src/` · livrable `fusion_mvp.html` (généré par `build.js`) · architecture et
 garde-fous en tête de `src/00-entete-et-outils.js`.
 
-**598 versions**, de `2026-09-28b` à `V0.64.3` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
+**599 versions**, de `2026-09-28b` à `V0.65.0` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
 comme dans le fichier d'origine.
 
 ---
@@ -6898,3 +6898,12 @@ Demande : « Il faudrait enregistrer chaque pièce avec son environnement propre
 - **Effet sur d'autres fichiers** : aucun changement de géométrie. 9 exemples comparés avant et après en navigateur (Barquette, Cavité Usinage, Perçages…) : mêmes volumes, faces et noms. `CACHE_VER` ne change pas. La vitesse de rejeu à mémoire libre ne change pas non plus (environ 0,5 s sur Cache Piles).
 - **Limites** : le calcul en arrière-plan (worker), les assemblages, la FAO et la mise en plan n'ont pas eu le même suivi objet par objet. Les points de contrôle du rejeu, gardés exprès, ne changent pas.
 - **Tests** : `test_fuite_noyau` suit chaque objet du noyau de sa création à sa libération (OCCT 8 ; échoue sans le correctif) et vérifie que le tas reste stable.
+
+## V0.65.0 - Un seul noyau : OCCT 8
+
+L'ancien noyau de secours OCCT 7.4 est retiré : 116 Mo de fichiers en moins dans `occt/` et un seul comportement à tester. Mêmes volumes, faces et noms sur les 20 projets de `Exemples/`, comparés en navigateur avant et après.
+
+- **Double-clic sur `ConceptCAD.html`** : au lieu de tourner sur l'ancien noyau, lent, ou en mode maillage, la page dit clairement quoi faire : ouvrir `ConceptCAD-autonome.html`, lancer `Server.bat` puis `http://localhost:3000`, ou utiliser la version en ligne. `double-clic.spec`.
+- **Retirés** : `?noyau=actuel`, le bouton « ⚙ Noyau .wasm… » et son cache local (effacé au démarrage), le rattrapage `___cxa_can_catch` devenu inutile avec les exceptions natives d'OCCT 8, la variante `v2` de `occt-build/`, `docs/noyau-occt-listing.md` (classes d'OCCT 7.4).
+- **Tests** : tous chargent OCCT 8 par `tests/noyau.cjs`, y compris lancés seuls ; `test_fuite_noyau` ne saute plus.
+- **Recompilation** : la liste des appels à traduire, qui se relevait sur l'ancien noyau, est figée dans `occt-build/sonde-1.1.1.json`.

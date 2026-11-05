@@ -20,7 +20,7 @@ test('le fichier autonome fonctionne seul, sans réseau ni serveur',async({brows
   try{
     await page.goto('file:///'+f.split(path.sep).join('/'));
     await page.waitForFunction(()=>{try{return occtReady===true||/échec|indisponible/.test(occBaseMsg);}catch(e){return false;}},null,{timeout:120000});
-    expect(await page.evaluate(()=>occtReady&&OCCT_V3)).toBe(true);
+    expect(await page.evaluate(()=>occtReady)).toBe(true);
     await page.setInputFiles('#fileProj',PIECE);
     await page.waitForFunction(()=>doc.features.length>0&&rebuildDepth===0&&!regenRun&&!regenUi,null,{timeout:180000});
     await page.waitForTimeout(1500);

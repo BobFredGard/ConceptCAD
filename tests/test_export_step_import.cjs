@@ -11,8 +11,6 @@
 // à chaque export sur le noyau OCCT 8 (FS.analyzePath absent).
 const fs=require('fs'),vm=require('vm'),path=require('path');
 const ROOT=path.join(__dirname,'..');
-globalThis.__dirname=path.join(ROOT,'occt');
-vm.runInThisContext(fs.readFileSync(path.join(ROOT,'occt','opencascade.full.js'),'utf8'),{filename:'occt.js'});
 const {loadApp}=require('./appvm.cjs');
 let ko=0;
 const A=(c,m)=>{if(!c){ko++;console.log('  ✗ '+m);}else console.log('  ✓ '+m);};
@@ -21,7 +19,7 @@ const A=(c,m)=>{if(!c){ko++;console.log('  ✗ '+m);}else console.log('  ✓ '+m
   const F=path.join(ROOT,'Exemples','MERLIN-37-000.step');
   const buf=fs.existsSync(F)?fs.readFileSync(F):null;
   if(!buf||buf.slice(0,40).toString().indexOf('git-lfs')>=0){console.log('  (MERLIN-37-000.step absent ou pointeur LFS : test sauté — `git lfs checkout`)');process.exit(0);}
-  const real=await globalThis.opencascadeFactory({wasmBinary:fs.readFileSync(path.join(ROOT,'occt','opencascade.wasm.wasm'))});
+  const real=await require('./noyau.cjs').charger();
   const {ctx,sandbox}=loadApp();
   // géométrie minimale (comme test_fao_brut_corps) : userData.impOcc doit survivre à l'import
   const T0=sandbox.THREE;

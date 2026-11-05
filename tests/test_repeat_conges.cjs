@@ -4,18 +4,15 @@
 //    source EST (pos), pas de l'image du clic (pos0), sinon elle prend une autre arête.
 // 2) Une copie enregistrée sur une mauvaise arête (fichier ancien) est réparée à l'ouverture.
 // 3) Un congé posé à la main va dans le corps de l'arête cliquée, même si le corps actif est masqué.
-// Lancé seul : node tools/ci-moteur.cjs occt/v3 -- tests/test_repeat_conges.cjs
+// Lancé seul : node tests/test_repeat_conges.cjs
 const fs=require('fs'),vm=require('vm'),path=require('path');
 const ROOT=path.join(__dirname,'..');
-globalThis.__dirname=path.join(ROOT,'occt');
-vm.runInThisContext(fs.readFileSync(path.join(ROOT,'occt','opencascade.full.js'),'utf8'),{filename:'occt.js'});
 const {loadApp}=require('./appvm.cjs');
 let ko=0;
 const A=(c,m)=>{if(!c){ko++;console.log('  ✗ '+m);}else console.log('  ✓ '+m);};
 (async()=>{
-  const real=await globalThis.opencascadeFactory({wasmBinary:fs.readFileSync(path.join(ROOT,'occt','opencascade.wasm.wasm'))});
+  const real=await require('./noyau.cjs').charger();
   const {ctx,sandbox}=loadApp();
-  if(!real.NCollection_IndexedDataMap_TopoDS_Shape_NCollection_List_TopoDS_Shape_TopTools_ShapeMapHasher){console.log('=== Congés et répétition : noyau sans noms, sauté ===');console.log('*** TOUT PASSE ***');return;}
   sandbox.__realOcct=real;
   vm.runInContext('occt=__realOcct;occtReady=true;window.alert=function(){};',ctx);
   const body=String.raw`

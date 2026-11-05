@@ -4,12 +4,10 @@
 // Uniquement la géométrie XY (pas de heightmap) : rapide et déterministe.
 const fs=require('fs'),vm=require('vm'),path=require('path');
 const ROOT=path.join(__dirname,'..');
-globalThis.__dirname=path.join(ROOT,'occt');
-vm.runInThisContext(fs.readFileSync(path.join(ROOT,'occt','opencascade.full.js'),'utf8'),{filename:'occt.js'});
 const {loadApp}=require('./appvm.cjs');
 const json=require('./lire-projet.cjs')([path.join(ROOT,'tests','fixtures','cavite_usinage.minifusion.json'),path.join(ROOT,'Cavité Usinage.minifusion.json'),path.join(ROOT,'Exemples','Cavité Usinage.minifusion.json')].find(fs.existsSync));
 (async()=>{
-  const real=await globalThis.opencascadeFactory({wasmBinary:fs.readFileSync(path.join(ROOT,'occt','opencascade.wasm.wasm'))});
+  const real=await require('./noyau.cjs').charger();
   const {ctx,sandbox}=loadApp();
   sandbox.__realOcct=real;
   sandbox.__docJson=json;

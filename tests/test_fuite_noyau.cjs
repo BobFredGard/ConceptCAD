@@ -14,11 +14,7 @@ class Suivi{
   }
   unregister(jeton){vivants.delete(jeton);}
 }
-globalThis.FinalizationGroup=Suivi;globalThis.FinalizationRegistry=Suivi; // les deux noyaux
-globalThis.__dirname=path.join(ROOT,'occt');
-// La colle d'OCCT 8 n'inscrit que les poignées intelligentes : ici, tous les objets.
-const colle=fs.readFileSync(path.join(ROOT,'occt','opencascade.full.js'),'utf8').replace(/[\w$]+\.Eb&&([\w$]+)\.register\(/,'$1.register(');
-vm.runInThisContext(colle,{filename:'occt.js'});
+globalThis.FinalizationRegistry=Suivi;
 const {loadApp}=require('./appvm.cjs');
 const lireProjet=require('./lire-projet.cjs');
 let ko=0;
@@ -31,16 +27,14 @@ const lieux=()=>{const t={};for(const st of vivants.values()){if(garde(st))conti
   return Object.entries(t).sort((a,b)=>b[1]-a[1]).slice(0,8).map(x=>x[1]+' × '+x[0]).join(', ');};
 const oublis=()=>{let n=0;for(const st of vivants.values())if(!garde(st))n++;return n;};
 (async()=>{
-  const real=await globalThis.opencascadeFactory({wasmBinary:fs.readFileSync(path.join(ROOT,'occt','opencascade.wasm.wasm'))});
+  // La colle d'OCCT 8 n'inscrit que les poignées intelligentes : ici, tous les objets.
+  const real=await require('./noyau.cjs').charger({colle:s=>s.replace(/[\w$]+\.Eb&&([\w$]+)\.register\(/,'$1.register(')});
   const {ctx,sandbox}=loadApp();
   sandbox.__realOcct=real;
   vm.runInContext('occt=__realOcct;occtReady=true;',ctx);
   // Le mouchard doit voir un objet ordinaire : si la colle change, le test ne passe plus à vide.
   actif=true;const t=new real.gp_Pnt_1();const vu=vivants.size===1;t.delete();const libere=vivants.size===0;actif=false;
   console.log('=== Fuite du noyau (objets créés et jamais libérés) ===');
-  // L'ancien noyau de secours ne distingue pas une copie d'un pointeur qu'il garde (h.get() d'une
-  // triangulation) : le décompte y serait faux. Les suites tournent sur OCCT 8 (tests/moteur-defaut.cjs).
-  if(!process.env.OCCT_DIR){console.log('  (ancien noyau : non applicable, lancer avec node tools/ci-moteur.cjs occt/v3 -- tests/test_fuite_noyau.cjs)');console.log('*** TOUT PASSE ***');process.exit(0);}
   A(vu&&libere,'le mouchard suit les objets du noyau ('+(vu?'création vue':'création INVISIBLE')+', '+(libere?'libération vue':'libération INVISIBLE')+')');
   sandbox.__json=lireProjet(path.join(ROOT,'Exemples','Cache Piles.conceptcad'));
   await vm.runInContext(String.raw`(async()=>{

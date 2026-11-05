@@ -2,7 +2,7 @@
 # Emscripten 6.0.5, exceptions WebAssembly natives. Image ghcr.io/taucad/opencascade.js:single-threaded.
 # Rendu par occt-build/build.cjs : la liste `bindings` est celle du full.yml de l'image (≈ 4 500
 # classes, comme le paquet npm publié) + nos liaisons à la main (additionalBindFiles).
-# ATTENTION : API différente de l'actuel (surcharges sans suffixe, sorties en « enveloppe ») —
+# ATTENTION : API différente de la 1.1.1 écrite dans src/ (surcharges sans suffixe, sorties en « enveloppe ») —
 # voir occt-build/README.md, section « Version récente ».
 mainBuild:
   name: conceptcad_v3.js

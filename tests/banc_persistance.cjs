@@ -140,10 +140,8 @@ async function banc(){
 
 /* ----- côté processus d'un exemple ----- */
 async function ouvrier(fichier,from,saut,pas){
-  globalThis.__dirname=path.join(ROOT,'occt');
-  vm.runInThisContext(fs.readFileSync(path.join(ROOT,'occt','opencascade.full.js'),'utf8'),{filename:'occt.js'});
   const {loadApp}=require('./appvm.cjs'),lire=require('./lire-projet.cjs');
-  const real=await globalThis.opencascadeFactory({wasmBinary:fs.readFileSync(path.join(ROOT,'occt','opencascade.wasm.wasm'))});
+  const real=await require('./noyau.cjs').charger();
   const {ctx,sandbox}=loadApp();
   Object.assign(sandbox,{__realOcct:real,__txt:lire(fichier),__from:from,__saut:saut,__pas:pas,
     __emit:o=>fs.writeSync(1,'BANC '+JSON.stringify(o)+'\n')});
@@ -212,7 +210,6 @@ async function chef(){
   const J=+opt('j',Math.max(2,Math.min(8,os.cpus().length>>1)));
   const sortie=opt('sortie',path.join(ROOT,'test-results','banc_persistance.json'));
   const saut=+opt('saut',0.25),pas=+opt('pas',5);
-  require('./moteur-defaut.cjs');
   const dir=path.join(ROOT,'Exemples');
   let L=fs.readdirSync(dir).filter(n=>/\.conceptcad$/i.test(n));
   if(ARGS.length)L=L.filter(n=>ARGS.some(a=>n.toLowerCase().includes(a.toLowerCase())));

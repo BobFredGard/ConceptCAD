@@ -8,12 +8,10 @@
 // chiffres servent à comparer deux versions du moteur, pas à reproduire l'écran.
 const fs = require('fs'), vm = require('vm'), path = require('path');
 const ROOT = path.join(__dirname, '..', '..');
-globalThis.__dirname = path.join(ROOT, 'occt');
-vm.runInThisContext(fs.readFileSync(path.join(ROOT, 'occt', 'opencascade.full.js'), 'utf8'), { filename: 'occt.js' });
 const { loadApp } = require('../appvm.cjs');
 const [fichier, setupId, opId] = process.argv.slice(2);
 (async () => {
-  const real = await globalThis.opencascadeFactory({ wasmBinary: fs.readFileSync(path.join(ROOT, 'occt', 'opencascade.wasm.wasm')) });
+  const real = await require('../noyau.cjs').charger();
   const { ctx, sandbox } = loadApp();
   sandbox.__realOcct = real;
   sandbox.btoa = globalThis.btoa; sandbox.atob = globalThis.atob; // sources des imports STEP (base64)

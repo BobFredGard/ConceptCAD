@@ -27,7 +27,6 @@
 *.png     binary
 *.jpg     binary
 *.ico     binary
-occt/*.wasm filter=lfs diff=lfs merge=lfs -text
 Exemples/*.miniFusion filter=lfs diff=lfs merge=lfs -text
 Exemples/*.conceptcad filter=lfs diff=lfs merge=lfs -text
 Exemples/*.step filter=lfs diff=lfs merge=lfs -text
