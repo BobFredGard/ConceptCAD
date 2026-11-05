@@ -51,6 +51,7 @@ const SUITES = [
   'test_fao_copier_coller',
   'test_fao_suppression_multiple',
   'test_fao_percage',
+  'test_percage_cylindre',
   'test_fao_murs',
   'test_fao_32_fiches',
   'test_simulation_rendu',

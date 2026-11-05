@@ -537,6 +537,7 @@ function holeFacePickStart(fid,which){
 function holeFacePickCancel(){holeFacePick=null;try{renderer.domElement.style.cursor='default';}catch(e){}}
 function holeFacePickAt(e){
   if(!holeFacePick)return false;
+  if(/^cyl/.test(holeFacePick.which))return holeCylPickAt(e); // perçage sur cylindre (76-percage-cylindre)
   const f=doc.features.find(function(x){return x.id===holeFacePick.fid;});
   if(!f){holeFacePickCancel();return false;}
   const h=pick(e);if(!h){try{faceEl.textContent='Perçage : aucune face sous le curseur.';}catch(e2){}return true;}
@@ -552,13 +553,15 @@ function holeFacePickAt(e){
   return true;
 }
 /* ----- création ----- */
-function askHole(presetSketchId){
+function askHole(presetSketchId,pre){
+  // pre (perçage sur cylindre) : {snap,len} = état d'annulation d'avant le plan et l'esquisse, init = réglages
   const lastWithHoles=function(){for(let i=doc.sketches.length-1;i>=0;i--){if(holePoints(doc.sketches[i]).length)return doc.sketches[i].id;}return null;};
   const skId=(presetSketchId&&holePoints(doc.sketches.find(function(s){return s.id===presetSketchId;})).length)?presetSketchId:lastWithHoles();
   if(!skId){alert('Perçage : placez d’abord des CENTRES DE PERÇAGE dans une esquisse (outil ⊕ de la barre d’esquisse), puis sélectionnez-la.');return;}
   const sk=doc.sketches.find(function(s){return s.id===skId;});
   const nf={id:uid('ho'),type:'hole',name:'',sketchId:skId,kind:'simple',d:6.6,thread:null,
     cbD:11,cbH:6.4,csD:13,csA:90,end:'blind',depth:15,tip:118,flip:false,op:'cut',visible:true};
+  if(pre&&pre.init)Object.assign(nf,pre.init);
   // sens automatique : vers la matière (le plan d'une face pointe vers l'extérieur)
   try{
     if(occHas()&&occLive&&occLive.shape){
@@ -571,7 +574,7 @@ function askHole(presetSketchId){
     }
   }catch(e){}
   nf.name=holeName(nf);
-  const snap0=docSnap(),len0=docUndoStack.length; // V0.8.0 : Annuler retire le perçage
+  const snap0=pre?pre.snap:docSnap(),len0=pre?pre.len:docUndoStack.length; // V0.8.0 : Annuler retire le perçage
   docPushUndo('perçage');
   addFeature(nf);
   try{ fdynStart(nf,snap0,len0); }catch(e){}
@@ -613,6 +616,8 @@ function renderHoleProps(p,f){
   const nP=holePoints(sk).length;
   pH('Perçage');
   pNote(nP+' centre(s) dans « '+(sk?sk.name:'?')+' »'+(nP?'':' — ajoutez-en avec l\'outil ⊕ de l\'esquisse'));
+  const elCyl=holeCylPlane(f);
+  if(elCyl)renderHoleCylProps(f,elCyl,{pH,pRow,pNote,go});
   /* type */
   // V0.8.0 : type en icônes (fenêtre dynamique)
   const segT=extSeg([['simple','⊚','Simple','Trou cylindrique'],['cbore','⊡','Lamage','Lamage pour tête de vis'],['csink','⊽','Fraisure','Fraisure conique'],

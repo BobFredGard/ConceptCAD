@@ -8,7 +8,7 @@ sont sorties le 2026-09-30j.
 Code dans `src/` · livrable `fusion_mvp.html` (généré par `build.js`) · architecture et
 garde-fous en tête de `src/00-entete-et-outils.js`.
 
-**579 versions**, de `2026-09-28b` à `V0.59.2` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
+**580 versions**, de `2026-09-28b` à `V0.60.0` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
 comme dans le fichier d'origine.
 
 ---
@@ -6725,3 +6725,11 @@ Les rapides et les remontées étaient tous orange pâle et presque transparents
 - **Simulation** : mêmes couleurs, trait fin inchangé.
 - **Limite** : le jaune se voit moins sur une pièce jaune.
 - **Tests** : `test_fao_circ` (la remontée est séparée des autres rapides). `CACHE_VER` ne change pas : parcours et G-code identiques.
+
+## V0.60.0 - Perçage sur un cylindre : direction et cote depuis une face, une arête ou un sommet
+
+- **Geste** : clic sur la face extérieure d’un cylindre puis Perçage, ou l’inverse. Si des centres d’esquisse restent à percer, ils gardent la priorité ; sinon, sans sélection, le bouton attend un clic sur un cylindre.
+- **Réglages** (`src/76-percage-cylindre.js`) : direction (axe, angle libre, parallèle à une face ou une arête), angle autour de l’axe, cote depuis une référence, décalage latéral.
+- **Modèle** : plan de construction tangent (`how:'tangent'`, 78), esquisse dessus, fonction Perçage ordinaire, en une seule étape d’annulation. Le plan se résout à chaque rejeu : le trou suit le cylindre et la référence.
+- **Limites** : face extérieure seulement ; la référence doit exister avant le trou ; cote réglée dans le panneau, pas dessinée en 3D ; répétition autour du cylindre et types de trou autres que le simple débouchant non essayés.
+- **Tests** : `test_percage_cylindre`. `CACHE_VER` ne change pas.

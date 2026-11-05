@@ -37,6 +37,10 @@ const CG_HOW={
     mid:{lab:'Médian',slots:[['plane','Plan 1'],['plane','Plan 2']],flip:true},
     normal:{lab:'Normal à un axe',slots:[['axis','Axe'],['point','Point',1]],flip:true},
     curve:{lab:'Perpendiculaire à une courbe',slots:[['curve','Droite, arc ou spline']],par:{t:{lab:'Position (0 début → 1 fin)',def:0.5,unit:'ratio'}},flip:true},
+    // Plan tangent (76-percage-cylindre) : porte le centre d'un trou sur un cylindre. Origine = point
+    // de tangence, normale = rayon sortant, X du plan = axe du cylindre.
+    tangent:{lab:'Tangent à un cylindre',slots:[['axis','Face cylindrique'],['axis','Direction',1],['point','Référence de cote',1]],
+      par:{a:{lab:'Angle autour de l’axe',def:0,unit:'°'},d:{lab:'Cote depuis la référence',def:0,unit:'mm'},e:{lab:'Décalage latéral',def:0,unit:'mm'}}},
     ext:{lab:'Depuis un autre composant',slots:[],ext:true,flip:true}
   },
   axis:{
@@ -346,6 +350,9 @@ function cgBuild(el,ctx){
       if(t<0||t>1)warn='position hors de [0 ; 1] : ramenée au bout';
       const K=cgCurveAt(S(0,'curve'),t),B=cgBasisN(K.d,null);
       fr=cgFrPlane(K.o,B.u,B.v,K.d);
+    }else if(el.how==='tangent'){
+      const T=cgTangentBuild(el,ctx,S(0,'axis'));
+      warn=T.warn;fr=cgFrPlane(T.o,T.d,cgCross(T.n,T.d),T.n);
     }else if(el.how==='ext'){
       const F=X();fr=cgFrPlane(F.o,F.x,F.y,F.z);
     }
@@ -409,6 +416,51 @@ function cgBuild(el,ctx){
   }
   if(!fr)throw new Error('méthode inconnue : '+el.how);
   return {fr,warn};
+}
+/* ── plan tangent à un cylindre ── */
+function cgAxialOf(ref,g,o,d){
+  // Position d'une référence le long de la droite (o, d unitaire), comptée depuis o. Plan ou face :
+  // là où la droite le coupe ; arête, sommet ou point : sa projection sur la droite.
+  const isEdge=ref&&(ref.k==='edge'||ref.k==='vtx'||ref.k==='xe');
+  if(g.plane&&!isEdge){
+    const n=cgUnit(g.plane.n),den=cgDot(n,d);
+    if(Math.abs(den)<1e-6)throw new Error('face parallèle à l’axe du cylindre : cote impossible');
+    return cgDot(n,cgSub(g.plane.o,o))/den;
+  }
+  const P=g.point||(g.axis&&{o:g.axis.o});
+  if(!P)throw new Error('référence de cote inutilisable');
+  return cgDot(cgSub(P.o,o),d);
+}
+function cgRefEval(el,ctx,i,lab){
+  const r=el.refs[i];if(!r)return null;
+  const g=cgEvalRef(r,ctx);
+  if(!g)throw new Error(lab+' introuvable — la pièce a changé');
+  return g;
+}
+function cgCylDir(d){
+  // Sens d'axe stable : le noyau choisit celui d'un cylindre à sa guise, or le côté de la cote et le
+  // décalage latéral en dépendent. Toujours vers le + de la première composante non nulle.
+  const u=cgUnit(d);
+  for(let i=0;i<3;i++){if(Math.abs(u[i])>1e-9)return u[i]<0?cgMul(u,-1):u;}
+  return u;
+}
+function cgTangentBuild(el,ctx,A){
+  // → {o,d,n,warn} : point de tangence, axe du cylindre, rayon sortant
+  const R=A.r!=null?+A.r:+A.rad;
+  if(!(R>0))throw new Error('choisissez une face cylindrique');
+  const d=cgCylDir(A.d),warn=[];
+  const gD=cgRefEval(el,ctx,1,'direction');
+  const D0=gD?(gD.axis?gD.axis.d:(gD.plane?gD.plane.n:null)):cgBasisN(d,null).u;
+  if(!D0)throw new Error('la direction doit être un axe, une arête droite ou une face plane');
+  const pr=cgSub(cgUnit(D0),cgMul(d,cgDot(cgUnit(D0),d)));
+  if(cgLen(pr)<1e-6)throw new Error('direction parallèle à l’axe du cylindre');
+  const n=cgUnit(cgRotDir(cgUnit(pr),d,cgNum(el,'a')*Math.PI/180));
+  const gP=cgRefEval(el,ctx,2,'référence de cote');
+  const t0=gP?cgAxialOf(el.refs[2],gP,A.o,d):0;
+  const t=t0+cgNum(el,'d')*(cgNum(el,'side')<0?-1:1),e=cgNum(el,'e');
+  if(Math.abs(e)>R)warn.push('décalage latéral plus grand que le rayon : le trou manque le cylindre');
+  const o=cgAdd(cgAdd(cgAdd(A.o,cgMul(d,t)),cgMul(n,R)),cgMul(cgCross(n,d),e));
+  return {o,d,n,warn:warn.join(' ; ')};
 }
 function cgRound(fr){
   // Arrondi stable (empreinte, signature d'esquisse) : 1 nm sur la position, 1e-9 sur les axes
@@ -561,7 +613,8 @@ function cgEvalModelRef(ref,ctx){
         const ax=(gt===T.GeomAbs_Cylinder?ad.Cylinder():ad.Cone()).Axis();
         const d=cgUnit([ax.Direction().X(),ax.Direction().Y(),ax.Direction().Z()]),lo=[ax.Location().X(),ax.Location().Y(),ax.Location().Z()];
         const o=cgAdd(lo,cgMul(d,cgDot(cgSub(b.pos,lo),d))); // au droit du centre de la face
-        return {axis:{o,d},point:{o}};
+        // r : rayon du cylindre (plan tangent) ; un cône n'en a pas qui vaille partout
+        return {axis:gt===T.GeomAbs_Cylinder?{o,d,r:ad.Cylinder().Radius()}:{o,d},point:{o}};
       }
       return {point:{o:b.pos}};
     }catch(e){return null;}

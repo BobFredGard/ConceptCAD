@@ -52,7 +52,7 @@
   a.parentNode.insertBefore(n,a.nextSibling);
 })();
 if($('btnThread'))$('btnThread').onclick=()=>askThread();
-if($('btnHole'))$('btnHole').onclick=()=>askHole(sel.kind==='sketch'?sel.id:null);
+if($('btnHole'))$('btnHole').onclick=()=>holeStart();
 const btnRevolve=$('btnRevolve');
 if(btnRevolve)btnRevolve.onclick=()=>askRevolve(sel.kind==='sketch'?sel.id:null);
 if($('btnSweep'))$('btnSweep').onclick=()=>askSweep(sel.kind==='sketch'?sel.id:null);
