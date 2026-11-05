@@ -351,7 +351,7 @@ function occMoveFaceRuledTool(shape,face,n,dist){
     const gp=occBinPush(bin,new occt.GProp_GProps_1());occt.BRepGProp.VolumeProperties_1(out,gp,false,false,false);
     if(gp.Mass()<0)out=out.Reversed();
     // copie SANS dupliquer la géométrie : les coins gardent la surface de leur voisine
-    out=new occt.BRepBuilderAPI_Copy_2(out,false,false).Shape();
+    {const cb=occBinPush(bin,new occt.BRepBuilderAPI_Copy_2(out,false,false));out=cb.Shape();}
     if(!out||out.IsNull()||!occCoqueValide(out)){try{if(out)out.delete();}catch(e){}return null;}
     return out;
   }finally{occDispose(bin);}
@@ -489,7 +489,8 @@ function occMoveFaceOnce(shape,face,dist,warn){
             try{
               // copie sans dupliquer la géométrie : une surface partagée par la voisine et le
               // prolongement de son coin permet à l'unification de les recoller
-              const u=occUnify(nomsPartage(o2,new occt.BRepBuilderAPI_Copy_2(o2,false,false).Shape()));
+              const cb=new occt.BRepBuilderAPI_Copy_2(o2,false,false),cs=nomsPartage(o2,cb.Shape());try{cb.delete();}catch(e){}
+              const u=occUnify(cs);
               if(u&&!u.IsNull()&&(occCoqueValide(u)||!occCoqueValide(o2))){try{o2.delete();}catch(e){}r2=u;}
               else if(u)try{u.delete();}catch(e){}
             }catch(e){}

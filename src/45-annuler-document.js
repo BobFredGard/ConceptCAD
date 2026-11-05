@@ -18,19 +18,20 @@
 let docUndoStack=[],docRedoStack=[];
 const DOC_UNDO_MAX=40; // au-delà, on oublie les plus anciennes étapes
 
+function docSnapObj(){
+  // Même normalisation que serialise : on ne stocke JAMAIS les transitoires
+  // (_mesh/_m sur les fonctions, _refs sur les esquisses). Sans cela un import
+  // STEP/STL gonflait chaque instantané d'un Mesh three.js complet (jusqu'à 40),
+  // et au retour JSON.parse produisait un objet plat sans updateMatrixWorld :
+  // crash au rejeu suivant (f._mesh.updateMatrixWorld dans 30).
+  const c=Object.assign({},doc);
+  c.sketches=(doc.sketches||[]).map(s=>{const o=Object.assign({},s);delete o._refs;return o;});
+  c.features=(doc.features||[]).map(({_mesh,_m,...r})=>r);
+  c.cgeo=(doc.cgeo||[]).map(cgClean);
+  return c;
+}
 function docSnap(){
-  try{
-    // Même normalisation que serialise : on ne stocke JAMAIS les transitoires
-    // (_mesh/_m sur les fonctions, _refs sur les esquisses). Sans cela un import
-    // STEP/STL gonflait chaque instantané d'un Mesh three.js complet (jusqu'à 40),
-    // et au retour JSON.parse produisait un objet plat sans updateMatrixWorld :
-    // crash au rejeu suivant (f._mesh.updateMatrixWorld dans 30).
-    const c=Object.assign({},doc);
-    c.sketches=(doc.sketches||[]).map(s=>{const o=Object.assign({},s);delete o._refs;return o;});
-    c.features=(doc.features||[]).map(({_mesh,_m,...r})=>r);
-    c.cgeo=(doc.cgeo||[]).map(cgClean);
-    return JSON.stringify(c);
-  }catch(e){return null;}
+  try{return JSON.stringify(docSnapObj());}catch(e){return null;}
 }
 
 // À appeler AVANT de muter le document. Un instantané identique au précédent est
@@ -88,13 +89,7 @@ function undoSame(a,b){
   try{return eq(JSON.parse(a),JSON.parse(b));}catch(e){return false;}
 }
 function docSnapKey(){
-  try{
-    const c=Object.assign({},doc);
-    c.sketches=(doc.sketches||[]).map(s=>{const o=Object.assign({},s);delete o._refs;return o;});
-    c.features=(doc.features||[]).map(({_mesh,_m,...r})=>r);
-    c.cgeo=(doc.cgeo||[]).map(cgClean);
-    return JSON.stringify(c,undoKeyRep);
-  }catch(e){return null;}
+  try{return JSON.stringify(docSnapObj(),undoKeyRep);}catch(e){return null;}
 }
 function docBaseSync(s){
   docBase=s!=null?s:docSnap();docBaseKey=docSnapKey();docBaseDoc=doc;docBaseStack=docUndoStack;
@@ -255,9 +250,27 @@ function undoLabelOf(t){
 // `sel` est remis à zéro (il peut pointer une fonction disparue) et les modes
   // suspendedus (congé, formulaires) sont refermés : ils)~tiennent un état validé
 // pour un document qui n'existe plus.
+// L'instantané ne diffère du document que par la mise en plan ? (mêmes règles que le filet :
+// transitoires et dérive du solveur ne comptent pas). Tout le reste compte comme du modèle.
+function docSnapMepOnly(d){
+  try{
+    const key=o=>{const r=Object.assign({},o);delete r.mep;return JSON.stringify(r,undoKeyRep);};
+    return undoSame(key(d),key(docSnapObj()));
+  }catch(e){return false;}
+}
 function docApplySnap(snap){
   let d;
   try{d=JSON.parse(snap);}catch(e){return false;}
+  // Geste de mise en plan : la pièce n'a pas changé, ni rejeu ni reprojection des vues
+  // (1,5 s pour 9 vues avant, à chaque Ctrl+Z). Seule la planche est remplacée.
+  if(docSnapMepOnly(d)){
+    if(Object.prototype.hasOwnProperty.call(d,'mep'))doc.mep=d.mep;else delete doc.mep;
+    dirty=true;
+    try{if(typeof window!=='undefined'&&typeof window.mepRefresh==='function')window.mepRefresh();}catch(e){}
+    try{autosave();}catch(e){}
+    docBaseSync();
+    return true;
+  }
   // Une clé apparue APRÈS l'instantané (doc.rendu créé par une première vue de rendu…) n'y
   // figure pas : sans ce retrait, l'annulation la laissait en place.
   Object.keys(doc).forEach(k=>{if(!Object.prototype.hasOwnProperty.call(d,k))delete doc[k];});

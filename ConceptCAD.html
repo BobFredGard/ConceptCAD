@@ -376,7 +376,7 @@ input[type=range]{accent-color:var(--primary);width:100%}
  * peut changer sans rien casser. CACHE_VER (parcours FAO) reste indépendant.
  */
 
-const APP_VER='V0.63.1';
+const APP_VER='V0.63.2';
 try{console.log('[ConceptCAD] version '+APP_VER);}catch(e){}
 try{var mfSv=document.getElementById('mfSplashVer');if(mfSv)mfSv.textContent=APP_VER;}catch(e){} // écran de démarrage
 
@@ -5263,7 +5263,7 @@ function occMoveFaceRuledTool(shape,face,n,dist){
     const gp=occBinPush(bin,new occt.GProp_GProps_1());occt.BRepGProp.VolumeProperties_1(out,gp,false,false,false);
     if(gp.Mass()<0)out=out.Reversed();
     // copie SANS dupliquer la géométrie : les coins gardent la surface de leur voisine
-    out=new occt.BRepBuilderAPI_Copy_2(out,false,false).Shape();
+    {const cb=occBinPush(bin,new occt.BRepBuilderAPI_Copy_2(out,false,false));out=cb.Shape();}
     if(!out||out.IsNull()||!occCoqueValide(out)){try{if(out)out.delete();}catch(e){}return null;}
     return out;
   }finally{occDispose(bin);}
@@ -5401,7 +5401,8 @@ function occMoveFaceOnce(shape,face,dist,warn){
             try{
               // copie sans dupliquer la géométrie : une surface partagée par la voisine et le
               // prolongement de son coin permet à l'unification de les recoller
-              const u=occUnify(nomsPartage(o2,new occt.BRepBuilderAPI_Copy_2(o2,false,false).Shape()));
+              const cb=new occt.BRepBuilderAPI_Copy_2(o2,false,false),cs=nomsPartage(o2,cb.Shape());try{cb.delete();}catch(e){}
+              const u=occUnify(cs);
               if(u&&!u.IsNull()&&(occCoqueValide(u)||!occCoqueValide(o2))){try{o2.delete();}catch(e){}r2=u;}
               else if(u)try{u.delete();}catch(e){}
             }catch(e){}
@@ -7657,7 +7658,10 @@ function occCkMax(){
 const OCC_CK_ASM=200;          // points de contrôle gardés en assemblage (toutes pièces confondues)
 const OCC_CK_HEAP=1536*1048576; // au-delà de 1,5 Go de tas du noyau : retour à la borne d'une pièce
 function occShapeCopy(sh){
-  try{return nomsPartage(sh,new occt.BRepBuilderAPI_Copy_2(sh,true,true).Shape());}catch(e){return null;}
+  // le constructeur de copie garde la copie et ses tables : le libérer, sinon ~200 Ko restent à chaque point de contrôle
+  let c=null;
+  try{c=new occt.BRepBuilderAPI_Copy_2(sh,true,true);return nomsPartage(sh,c.Shape());}catch(e){return null;}
+  finally{try{c&&c.delete();}catch(e){}}
 }
 // 2026-10-16-003 : cache des OUTILS (prisme d'extrusion / révolution / perçage) par clé de
 // préfixe — la même que les points de contrôle. Sur un point de contrôle trouvé, l'outil
@@ -13573,19 +13577,20 @@ function antWarnMap(F){
 let docUndoStack=[],docRedoStack=[];
 const DOC_UNDO_MAX=40; // au-delà, on oublie les plus anciennes étapes
 
+function docSnapObj(){
+  // Même normalisation que serialise : on ne stocke JAMAIS les transitoires
+  // (_mesh/_m sur les fonctions, _refs sur les esquisses). Sans cela un import
+  // STEP/STL gonflait chaque instantané d'un Mesh three.js complet (jusqu'à 40),
+  // et au retour JSON.parse produisait un objet plat sans updateMatrixWorld :
+  // crash au rejeu suivant (f._mesh.updateMatrixWorld dans 30).
+  const c=Object.assign({},doc);
+  c.sketches=(doc.sketches||[]).map(s=>{const o=Object.assign({},s);delete o._refs;return o;});
+  c.features=(doc.features||[]).map(({_mesh,_m,...r})=>r);
+  c.cgeo=(doc.cgeo||[]).map(cgClean);
+  return c;
+}
 function docSnap(){
-  try{
-    // Même normalisation que serialise : on ne stocke JAMAIS les transitoires
-    // (_mesh/_m sur les fonctions, _refs sur les esquisses). Sans cela un import
-    // STEP/STL gonflait chaque instantané d'un Mesh three.js complet (jusqu'à 40),
-    // et au retour JSON.parse produisait un objet plat sans updateMatrixWorld :
-    // crash au rejeu suivant (f._mesh.updateMatrixWorld dans 30).
-    const c=Object.assign({},doc);
-    c.sketches=(doc.sketches||[]).map(s=>{const o=Object.assign({},s);delete o._refs;return o;});
-    c.features=(doc.features||[]).map(({_mesh,_m,...r})=>r);
-    c.cgeo=(doc.cgeo||[]).map(cgClean);
-    return JSON.stringify(c);
-  }catch(e){return null;}
+  try{return JSON.stringify(docSnapObj());}catch(e){return null;}
 }
 
 // À appeler AVANT de muter le document. Un instantané identique au précédent est
@@ -13643,13 +13648,7 @@ function undoSame(a,b){
   try{return eq(JSON.parse(a),JSON.parse(b));}catch(e){return false;}
 }
 function docSnapKey(){
-  try{
-    const c=Object.assign({},doc);
-    c.sketches=(doc.sketches||[]).map(s=>{const o=Object.assign({},s);delete o._refs;return o;});
-    c.features=(doc.features||[]).map(({_mesh,_m,...r})=>r);
-    c.cgeo=(doc.cgeo||[]).map(cgClean);
-    return JSON.stringify(c,undoKeyRep);
-  }catch(e){return null;}
+  try{return JSON.stringify(docSnapObj(),undoKeyRep);}catch(e){return null;}
 }
 function docBaseSync(s){
   docBase=s!=null?s:docSnap();docBaseKey=docSnapKey();docBaseDoc=doc;docBaseStack=docUndoStack;
@@ -13810,9 +13809,27 @@ function undoLabelOf(t){
 // `sel` est remis à zéro (il peut pointer une fonction disparue) et les modes
   // suspendedus (congé, formulaires) sont refermés : ils)~tiennent un état validé
 // pour un document qui n'existe plus.
+// L'instantané ne diffère du document que par la mise en plan ? (mêmes règles que le filet :
+// transitoires et dérive du solveur ne comptent pas). Tout le reste compte comme du modèle.
+function docSnapMepOnly(d){
+  try{
+    const key=o=>{const r=Object.assign({},o);delete r.mep;return JSON.stringify(r,undoKeyRep);};
+    return undoSame(key(d),key(docSnapObj()));
+  }catch(e){return false;}
+}
 function docApplySnap(snap){
   let d;
   try{d=JSON.parse(snap);}catch(e){return false;}
+  // Geste de mise en plan : la pièce n'a pas changé, ni rejeu ni reprojection des vues
+  // (1,5 s pour 9 vues avant, à chaque Ctrl+Z). Seule la planche est remplacée.
+  if(docSnapMepOnly(d)){
+    if(Object.prototype.hasOwnProperty.call(d,'mep'))doc.mep=d.mep;else delete doc.mep;
+    dirty=true;
+    try{if(typeof window!=='undefined'&&typeof window.mepRefresh==='function')window.mepRefresh();}catch(e){}
+    try{autosave();}catch(e){}
+    docBaseSync();
+    return true;
+  }
   // Une clé apparue APRÈS l'instantané (doc.rendu créé par une première vue de rendu…) n'y
   // figure pas : sans ce retrait, l'annulation la laissait en place.
   Object.keys(doc).forEach(k=>{if(!Object.prototype.hasOwnProperty.call(d,k))delete doc[k];});
@@ -68528,7 +68545,42 @@ function filmFrame(){
 /* ═══════════════ 98-mep-10-projection-hlr.js — mep 10 projection hlr ═══════════════ */
 // Espace PLAN — suite de la fonction englobante ouverte dans 98-mep-00-modele.js (état privé partagé, fermée dans 98-mep-95-export-init.js) : cache géométrie, silhouettes, HLR (maillage et OCCT exact), rendu bitmap.
   /* ═══════════════ E. cache géométrie ═══════════════ */
-  const mepGeoCache=new Map(); // viewId → {ver,sig,geo}
+  const mepGeoCache=new Map(); // viewId → {ver,sig,geo} ; ver = mepGeomKey() à la projection
+  /* Une vue ne dépend que de la géométrie, pas du numéro de modification : _docVersion bouge
+     aussi quand la pièce reste identique (annulation, rejeu sans effet, esquisse ouverte puis
+     fermée), et toutes les projections étaient refaites au passage en PLAN. L'empreinte réunit
+     le paramétrique (docHash : filetages et perçages lus dans les fonctions) et ce qui est
+     réellement affiché (sommets et placement de chaque corps, même importé ou lié, que
+     docHash ne voit pas). */
+  const mepPosHash=new WeakMap(); // attribut position → {ver,h} : hachage refait si les sommets changent
+  function mepMeshPrint(mesh){
+    const g=mesh.geometry,pos=g&&g.attributes&&g.attributes.position;
+    let h='';
+    if(pos&&pos.array){
+      let m=mepPosHash.get(pos);
+      if(!m||m.ver!==pos.version){
+        const a=pos.array,w=new Uint32Array(a.buffer,a.byteOffset,a.byteLength>>>2);
+        let x=2166136261;
+        for(let i=0;i<w.length;i++){x^=w[i];x=Math.imul(x,16777619);}
+        m={ver:pos.version,h:(x>>>0).toString(36)+'_'+w.length};
+        mepPosHash.set(pos,m);
+      }
+      h=m.h;
+    }
+    return h+'@'+(mesh.matrixWorld?mesh.matrixWorld.elements.join():'');
+  }
+  function mepGeomKey(){
+    let s='';
+    try{s+=docHash();}catch(e){s+='?'+(typeof _docVersion!=='undefined'?_docVersion:0);}
+    try{s+='|'+tlMark+'|'+(occSkipFeat||'')+'|'+(occStepForce?1:0);}catch(e){}
+    try{s+='|'+bodyVisSig();}catch(e){}
+    const list=(typeof bodies!=='undefined'&&bodies)||[];
+    list.forEach(b=>{
+      if(!b||b.ghost||b.kind==='ghost'||!b.mesh)return;
+      s+='|'+(b.id||'')+(b.mesh.visible===false?'-':'+')+(mepExactOf(b)?'x':'m')+mepMeshPrint(b.mesh);
+    });
+    return s;
+  }
   function mepViewSig(v){
     let s=[v.kind==='dxf'?'dxf:'+((v.dxf&&v.dxf.rev)||0):'',mepRound(v.dir),mepRound(v.u),mepRound(v.v),v.bodyId||'',v.mode||'hide',v.tangent?1:0,
       v.hlrExact===false?'soft':'exact',v.shade?1:0,(v.render3d||v.real)?(v.mirror?'1m':1):0,v.real?'real':'',
@@ -68680,7 +68732,7 @@ function filmFrame(){
   }
   function mepGeoOf(view){
     const c=mepGeoCache.get(view.id);
-    const ver=(typeof _docVersion!=='undefined')?_docVersion:0;
+    const ver=mepGeomKey();
     if(c&&c.ver===ver&&c.sig===mepViewSig(view))return c.geo;
     const geo=mepBuildGeo(view);
     mepGeoCache.set(view.id,{ver,sig:mepViewSig(view),geo});
@@ -79369,7 +79421,7 @@ function filmFrame(){
      apparaît sans animation ». Mise à jour = une vue de la planche dont la projection n'est plus
      en cache (pièce modifiée, document ouvert…) ou une planche vide qui recevra ses vues. */
   function mepSheetStale(){
-    const sh=mepSheet(),ver=(typeof _docVersion!=='undefined')?_docVersion:0;
+    const sh=mepSheet(),ver=mepGeomKey();
     if(!sh.views.length)return typeof bodies!=='undefined'&&bodies.some(b=>b&&!b.ghost&&b.kind!=='ghost'&&b.mesh&&b.mesh.visible!==false);
     return sh.views.some(v=>{const c=mepGeoCache.get(v.id);try{return !c||c.ver!==ver||c.sig!==mepViewSig(v);}catch(e){return true;}});
   }
@@ -79509,7 +79561,7 @@ function filmFrame(){
   // fin de glissement : l'instantané undo a déjà été pris au premier mouvement
   window.mepViewDragCommit=()=>mepEdit('déplacement vue',()=>{},true);
   // après restauration d'un instantané documentaire : redessiner la planche
-  window.mepRefresh=()=>{try{mepRender();}catch(e){}};
+  window.mepRefresh=()=>{try{mepRender();if(mepSt.open)mepSideShow();}catch(e){}};
   window.mepDebugGeo=id=>{let v=null;((doc.mep&&doc.mep.sheets)||[]).forEach(s=>{v=v||(s.views||[]).find(x=>x.id===id);});return v?mepGeoOf(v):null;}; // diagnostic (console)
   window.mepSetTool=mepSetTool;
   window.mepImportDxf=mepImportDxf;
@@ -79591,7 +79643,7 @@ function filmFrame(){
       clearPick:()=>{mepSt.pick=null;},
       dimDraft:()=>mepSt.dim?{kind:mepSt.dim.kind,orient:mepSt.dim.orient||'a',off:typeof mepSt.dim.off==='number'?mepSt.dim.off:null,ghost:!!mepSt.dim.__ghost,lock:!!mepSt.dim.__orientLock}:null,
       setViewGeo:(v,geo)=>{mepGeoCache.set(v.id,{
-        ver:(typeof _docVersion!=='undefined')?_docVersion:0,sig:mepViewSig(v),geo});},
+        ver:mepGeomKey(),sig:mepViewSig(v),geo});},
       viewSel:()=>mepSt.sel,
       setViewSel:id=>{mepSt.sel=id;mepSt.selDim=null;try{mepSideShow();mepRender();}catch(e){}},
       entSig:mepEntSig,

@@ -48,7 +48,10 @@ function occCkMax(){
 const OCC_CK_ASM=200;          // points de contrôle gardés en assemblage (toutes pièces confondues)
 const OCC_CK_HEAP=1536*1048576; // au-delà de 1,5 Go de tas du noyau : retour à la borne d'une pièce
 function occShapeCopy(sh){
-  try{return nomsPartage(sh,new occt.BRepBuilderAPI_Copy_2(sh,true,true).Shape());}catch(e){return null;}
+  // le constructeur de copie garde la copie et ses tables : le libérer, sinon ~200 Ko restent à chaque point de contrôle
+  let c=null;
+  try{c=new occt.BRepBuilderAPI_Copy_2(sh,true,true);return nomsPartage(sh,c.Shape());}catch(e){return null;}
+  finally{try{c&&c.delete();}catch(e){}}
 }
 // 2026-10-16-003 : cache des OUTILS (prisme d'extrusion / révolution / perçage) par clé de
 // préfixe — la même que les points de contrôle. Sur un point de contrôle trouvé, l'outil

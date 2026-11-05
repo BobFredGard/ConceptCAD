@@ -314,7 +314,7 @@
      apparaît sans animation ». Mise à jour = une vue de la planche dont la projection n'est plus
      en cache (pièce modifiée, document ouvert…) ou une planche vide qui recevra ses vues. */
   function mepSheetStale(){
-    const sh=mepSheet(),ver=(typeof _docVersion!=='undefined')?_docVersion:0;
+    const sh=mepSheet(),ver=mepGeomKey();
     if(!sh.views.length)return typeof bodies!=='undefined'&&bodies.some(b=>b&&!b.ghost&&b.kind!=='ghost'&&b.mesh&&b.mesh.visible!==false);
     return sh.views.some(v=>{const c=mepGeoCache.get(v.id);try{return !c||c.ver!==ver||c.sig!==mepViewSig(v);}catch(e){return true;}});
   }
@@ -454,7 +454,7 @@
   // fin de glissement : l'instantané undo a déjà été pris au premier mouvement
   window.mepViewDragCommit=()=>mepEdit('déplacement vue',()=>{},true);
   // après restauration d'un instantané documentaire : redessiner la planche
-  window.mepRefresh=()=>{try{mepRender();}catch(e){}};
+  window.mepRefresh=()=>{try{mepRender();if(mepSt.open)mepSideShow();}catch(e){}};
   window.mepDebugGeo=id=>{let v=null;((doc.mep&&doc.mep.sheets)||[]).forEach(s=>{v=v||(s.views||[]).find(x=>x.id===id);});return v?mepGeoOf(v):null;}; // diagnostic (console)
   window.mepSetTool=mepSetTool;
   window.mepImportDxf=mepImportDxf;
@@ -536,7 +536,7 @@
       clearPick:()=>{mepSt.pick=null;},
       dimDraft:()=>mepSt.dim?{kind:mepSt.dim.kind,orient:mepSt.dim.orient||'a',off:typeof mepSt.dim.off==='number'?mepSt.dim.off:null,ghost:!!mepSt.dim.__ghost,lock:!!mepSt.dim.__orientLock}:null,
       setViewGeo:(v,geo)=>{mepGeoCache.set(v.id,{
-        ver:(typeof _docVersion!=='undefined')?_docVersion:0,sig:mepViewSig(v),geo});},
+        ver:mepGeomKey(),sig:mepViewSig(v),geo});},
       viewSel:()=>mepSt.sel,
       setViewSel:id=>{mepSt.sel=id;mepSt.selDim=null;try{mepSideShow();mepRender();}catch(e){}},
       entSig:mepEntSig,

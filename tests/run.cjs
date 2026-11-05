@@ -72,6 +72,7 @@ const SUITES = [
   "test_anteriorite",
   "test_undo_document",
   "test_undo_filet",
+  "test_mep_vitesse",
   "test_undo_aller_retour",
   "test_revolve",
   "test_balayage",

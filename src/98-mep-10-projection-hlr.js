@@ -1,6 +1,41 @@
 // Espace PLAN — suite de la fonction englobante ouverte dans 98-mep-00-modele.js (état privé partagé, fermée dans 98-mep-95-export-init.js) : cache géométrie, silhouettes, HLR (maillage et OCCT exact), rendu bitmap.
   /* ═══════════════ E. cache géométrie ═══════════════ */
-  const mepGeoCache=new Map(); // viewId → {ver,sig,geo}
+  const mepGeoCache=new Map(); // viewId → {ver,sig,geo} ; ver = mepGeomKey() à la projection
+  /* Une vue ne dépend que de la géométrie, pas du numéro de modification : _docVersion bouge
+     aussi quand la pièce reste identique (annulation, rejeu sans effet, esquisse ouverte puis
+     fermée), et toutes les projections étaient refaites au passage en PLAN. L'empreinte réunit
+     le paramétrique (docHash : filetages et perçages lus dans les fonctions) et ce qui est
+     réellement affiché (sommets et placement de chaque corps, même importé ou lié, que
+     docHash ne voit pas). */
+  const mepPosHash=new WeakMap(); // attribut position → {ver,h} : hachage refait si les sommets changent
+  function mepMeshPrint(mesh){
+    const g=mesh.geometry,pos=g&&g.attributes&&g.attributes.position;
+    let h='';
+    if(pos&&pos.array){
+      let m=mepPosHash.get(pos);
+      if(!m||m.ver!==pos.version){
+        const a=pos.array,w=new Uint32Array(a.buffer,a.byteOffset,a.byteLength>>>2);
+        let x=2166136261;
+        for(let i=0;i<w.length;i++){x^=w[i];x=Math.imul(x,16777619);}
+        m={ver:pos.version,h:(x>>>0).toString(36)+'_'+w.length};
+        mepPosHash.set(pos,m);
+      }
+      h=m.h;
+    }
+    return h+'@'+(mesh.matrixWorld?mesh.matrixWorld.elements.join():'');
+  }
+  function mepGeomKey(){
+    let s='';
+    try{s+=docHash();}catch(e){s+='?'+(typeof _docVersion!=='undefined'?_docVersion:0);}
+    try{s+='|'+tlMark+'|'+(occSkipFeat||'')+'|'+(occStepForce?1:0);}catch(e){}
+    try{s+='|'+bodyVisSig();}catch(e){}
+    const list=(typeof bodies!=='undefined'&&bodies)||[];
+    list.forEach(b=>{
+      if(!b||b.ghost||b.kind==='ghost'||!b.mesh)return;
+      s+='|'+(b.id||'')+(b.mesh.visible===false?'-':'+')+(mepExactOf(b)?'x':'m')+mepMeshPrint(b.mesh);
+    });
+    return s;
+  }
   function mepViewSig(v){
     let s=[v.kind==='dxf'?'dxf:'+((v.dxf&&v.dxf.rev)||0):'',mepRound(v.dir),mepRound(v.u),mepRound(v.v),v.bodyId||'',v.mode||'hide',v.tangent?1:0,
       v.hlrExact===false?'soft':'exact',v.shade?1:0,(v.render3d||v.real)?(v.mirror?'1m':1):0,v.real?'real':'',
@@ -152,7 +187,7 @@
   }
   function mepGeoOf(view){
     const c=mepGeoCache.get(view.id);
-    const ver=(typeof _docVersion!=='undefined')?_docVersion:0;
+    const ver=mepGeomKey();
     if(c&&c.ver===ver&&c.sig===mepViewSig(view))return c.geo;
     const geo=mepBuildGeo(view);
     mepGeoCache.set(view.id,{ver,sig:mepViewSig(view),geo});

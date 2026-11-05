@@ -8,7 +8,7 @@ sont sorties le 2026-09-30j.
 Code dans `src/` · livrable `fusion_mvp.html` (généré par `build.js`) · architecture et
 garde-fous en tête de `src/00-entete-et-outils.js`.
 
-**587 versions**, de `2026-09-28b` à `V0.63.1` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
+**588 versions**, de `2026-09-28b` à `V0.63.2` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
 comme dans le fichier d'origine.
 
 ---
@@ -6806,3 +6806,12 @@ Signalé : sur une cote « 5 H7 », les écarts descendaient sur la ligne de cot
 - **Cause** : sur une cote tracée de droite à gauche, le texte est tourné pour rester lisible, et son « haut » est déjà celui du lecteur. `mepDimDrawStack` inversait la pile en plus : écart supérieur sous la valeur, sur la ligne, et parenthèses décalées avec lui.
 - **Correctif** : l’écart inférieur reste au niveau de la valeur et l’écart supérieur au-dessus, dans les deux sens de tracé. Vaut pour les classes ISO et les tolérances à deux écarts. L’argument `flip`, devenu inutile, est retiré de `mepDimDrawText` et `mepDimDrawStack`.
 - **Tests** : `mep-tolerances.spec` (nouveau, vrai navigateur, échouait avant le correctif), `test_mep_hachures_cotes` mis à jour. `CACHE_VER` ne change pas.
+
+## V0.63.2 - Plan : passage depuis la CAO et Ctrl+Z bien plus rapides, plus de fuite de mémoire au rejeu
+
+Signalé : le passage de CAO à Plan est de plus en plus long, et les Ctrl+Z aussi dans la mise en plan.
+- **Ctrl+Z / Ctrl+Y** : `docApplySnap` rejouait toujours la pièce, et le changement de numéro de modification faisait reprojeter toutes les vues, même pour un simple déplacement de vue (1,5 à 2,4 s sur Cavité Usinage, 9 vues). Quand l’instantané ne diffère que par `doc.mep` (`docSnapMepOnly`), seule la planche est remplacée : 0,1 s. La fiche de propriétés suit la planche restaurée (`mepRefresh`).
+- **Cache des vues** : clé sur `_docVersion`, donc perdue à chaque modification, même sans effet sur la pièce. La clé devient une empreinte de la géométrie (`mepGeomKey` : `docHash`, marqueur, corps visibles, sommets et placement de chaque corps, y compris importés ou liés). Retour en Plan sans changement de géométrie : 0,1 s au lieu de 1,3 à 2,1 s. `mepSheetStale` suit la même clé : pas d’écran d’attente inutile.
+- **Fuite de mémoire** : `occShapeCopy` ne libérait jamais son constructeur `BRepBuilderAPI_Copy_2`, qui garde la copie : environ 17 Mo perdus par rejeu sur Cavité Usinage (793 Mo après 40 modifications) et un passage en Plan qui glissait de 1,6 à 2,3 s. Libéré, comme les deux autres copies de `src/20-30-faces.js` : tas stable à 128 Mo et temps stable sur 14 modifications.
+- **Limite** : après une vraie modification de la pièce, toutes les vues de la planche sont refaites (1,6 s sur Cavité Usinage).
+- **Tests** : `test_mep_vitesse` (nouveau). `CACHE_VER` ne change pas : parcours inchangés.
