@@ -517,7 +517,7 @@
           clientY:(r.top||0)+oy+(y-vb.y)*k,altKey:false,pointerId:1,preventDefault(){}});
       },
       dimTextParts:(d,v)=>mepDimTextParts(d,v),
-      dimSymbolParts:(d,v,s)=>mepDimSymbolParts(d,v,s||'Ø'),dimDrawText:(mk,T,m,u,l,x,y,a,tr,f,sy,par,post)=>mepDimDrawText(mk,T,m,u,l,x,y,a,tr,f,sy,par,post),dimStackW:(u,l,p,po)=>mepDimStackW(u,l,p,po),
+      dimSymbolParts:(d,v,s)=>mepDimSymbolParts(d,v,s||'Ø'),dimDrawText:(mk,T,m,u,l,x,y,a,tr,sy,par,post)=>mepDimDrawText(mk,T,m,u,l,x,y,a,tr,sy,par,post),dimStackW:(u,l,p,po)=>mepDimStackW(u,l,p,po),
       dimLabelHalf:(d,v)=>mepDimLabelHalf(d,v),
       dimTolLineH:()=>mepDimTolLineH(),
       dimExtent:(d,v)=>{

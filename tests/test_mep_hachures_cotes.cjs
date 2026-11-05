@@ -233,12 +233,12 @@ const A=(c,m)=>{if(!c){ko++;console.log('  ✗ '+m);}else console.log('  ✓ '+m
       holeAxis=hA0;holeNorm=hN0;doc.features=F0;doc.sketches=S0;
       // ── 7. Ø40 H7 (+0,025 / 0) calé à droite (leader à droite) : la pile tient avant le point d'attache
       const rec=[];const mkR=(tag,a)=>{const o=Object.assign({tag},a,{textContent:''});rec.push(o);return o;};
-      T.dimDrawText(mkR,{},'Ø40 H7','+0.025','0',100,50,'end',null,false,'',true,'');
+      T.dimDrawText(mkR,{},'Ø40 H7','+0.025','0',100,50,'end',null,'',true,'');
       const xs7=rec.map(o=>+o.x);
       const close=rec.find(o=>o.textContent&&o.textContent[0]===')')||rec[rec.length-1];
       out.endMainX=+rec[0].x;out.endClose=+close.x;out.endW=T.dimStackW('+0.025','0',true,'');
       out.endOk=rec[0].x<100&&Math.max(...xs7)<100&&xs7.slice(1).every(x=>x>+rec[0].x);
-      rec.length=0;T.dimDrawText(mkR,{},'Ø40 H7','+0.025','0',100,50,'start',null,false,'',true,'');
+      rec.length=0;T.dimDrawText(mkR,{},'Ø40 H7','+0.025','0',100,50,'start',null,'',true,'');
       out.startOk=+rec[0].x===100&&rec.slice(1).every(o=>+o.x>100);
     }catch(err){out.err=(out.err||'')+' '+err.message+' '+err.stack;}
     sh.views.splice(sh.views.indexOf(par),1);

@@ -8,7 +8,7 @@ sont sorties le 2026-09-30j.
 Code dans `src/` · livrable `fusion_mvp.html` (généré par `build.js`) · architecture et
 garde-fous en tête de `src/00-entete-et-outils.js`.
 
-**586 versions**, de `2026-09-28b` à `V0.63.0` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
+**587 versions**, de `2026-09-28b` à `V0.63.1` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
 comme dans le fichier d'origine.
 
 ---
@@ -6799,3 +6799,10 @@ Demande : les cotes dépassaient du mauvais côté (Ø20.01 posé à hauteur de 
 - **Précision** : liste « Précision » à quatre valeurs (`mepPrecSelect`) dans les propriétés de la cote (longueur, distance, Ø, R, angle, perçage, ordonnées) et « Précision (par défaut) » dans Paramètres — Plan, section Cotation. La cote garde `d.prec` ; sans réglage, elle suit le plan, 0.01 d’origine, et un angle reste à 0.1 (`mepDimPrec`). Les zéros inutiles restent masqués.
 - **`mepFmtNum`** : sans décimale, les zéros de fin font partie du nombre (20 s’affichait « 2 », 100 « 1 »).
 - **Tests** : `test_mise_en_plan` (cote à hauteur des arêtes, sens de chaque rappel, précisions). `CACHE_VER` ne change pas.
+
+## V0.63.1 - Plan : écarts de tolérance au niveau de la valeur, quel que soit le sens de la cote
+
+Signalé : sur une cote « 5 H7 », les écarts descendaient sur la ligne de cote, le 0 au-dessus du +0,012, alors que leur place avait été réglée au niveau du H7.
+- **Cause** : sur une cote tracée de droite à gauche, le texte est tourné pour rester lisible, et son « haut » est déjà celui du lecteur. `mepDimDrawStack` inversait la pile en plus : écart supérieur sous la valeur, sur la ligne, et parenthèses décalées avec lui.
+- **Correctif** : l’écart inférieur reste au niveau de la valeur et l’écart supérieur au-dessus, dans les deux sens de tracé. Vaut pour les classes ISO et les tolérances à deux écarts. L’argument `flip`, devenu inutile, est retiré de `mepDimDrawText` et `mepDimDrawStack`.
+- **Tests** : `mep-tolerances.spec` (nouveau, vrai navigateur, échouait avant le correctif), `test_mep_hachures_cotes` mis à jour. `CACHE_VER` ne change pas.

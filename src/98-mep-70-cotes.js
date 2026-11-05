@@ -1218,7 +1218,7 @@
     return pw+tw+cw;
   }
   function mepDimStackGap(){return (MEP_DIM_STYLE.textHeight||7)*0.245;}
-  function mepDimDrawText(mk,T,main,up,lo,x,y,anchor,transform,flip,sym,par,post){
+  function mepDimDrawText(mk,T,main,up,lo,x,y,anchor,transform,sym,par,post){
     // 2026-10-22-011 : texte calé à DROITE (leader à droite) — la pile des écarts tient AVANT
     // le point d'attache : tout le groupe recule (la pile ne déborde plus sur le leader)
     const shiftEnd=(anchor==='end'&&(up||lo))?mepDimStackGap()+mepDimStackW(up,lo,par,post):0;
@@ -1238,12 +1238,12 @@
     const mw=Math.max(7,String(main).length*th*0.62);
     // calé à gauche : la pile suit la largeur MESURÉE du texte (celle du souligné des Ø/R)
     const sx=anchor==='middle'?x+mw/2+gap:(anchor==='end'?x-shiftEnd+gap:x+mepTxtW(t,main,th)+gap);
-    mepDimDrawStack(mk,T,sx,y,up,lo,transform,flip,par,post);
+    mepDimDrawStack(mk,T,sx,y,up,lo,transform,par,post);
     return t;
   }
   /* pile des écarts (supérieur au-dessus de l'inférieur), entre parenthèses pour une classe ISO,
      à partir de sx (bord gauche) sur la ligne de base y du texte de cote */
-  function mepDimDrawStack(mk,T,sx,y,up,lo,transform,flip,par,post){
+  function mepDimDrawStack(mk,T,sx,y,up,lo,transform,par,post){
     const th=MEP_DIM_STYLE.textHeight||7;
     const sub=mepDimSubH(th);
     const lh=mepDimTolLineH();
@@ -1262,12 +1262,14 @@
       if(P[0]){const a=mk('text',Object.assign({},st,{x:xd,y:yy,'text-anchor':'end'}));a.textContent=P[0];}
       if(P[1]){const b=mk('text',Object.assign({},st,{x:xd,y:yy}));b.textContent=P[1];}
     };
-    row(U,flip?y+lh:y-lh);
+    // Le texte d'une cote tracée vers la gauche est tourné pour rester lisible : son « haut » est
+    // celui du lecteur. L'écart supérieur reste donc au-dessus, l'inférieur au niveau de la valeur.
+    row(U,y-lh);
     row(L,y);
     if(par){
       // parenthèses centrées sur la pile : milieu des deux lignes d'écarts (hauteur de capitale
       // ≈ 0,7 × corps), le centre d'un « ( » est ≈ 0,26 × son corps au-dessus de la ligne de base
-      const ph=sub+lh,py=y+(flip?lh:-lh)*0.5-sub*0.35+ph*0.26;
+      const ph=sub+lh,py=y-lh*0.5-sub*0.35+ph*0.26;
       const sp=Object.assign({},st,{y:py,style:'font-size:'+ph.toFixed(2)+'px;stroke-width:1'});
       const p0=mk('text',Object.assign({},sp,{x:sx}));p0.textContent='(';
       const p1=mk('text',Object.assign({},sp,{x:sx+pw+tw}));p1.textContent=')'+(post?' '+post:'');
@@ -1504,7 +1506,7 @@
       const pp=(k>0&&p.tol)?mepDimTextParts({kind:'len',tol:p.tol,prec:d.prec},val<1e-9?0:val):null; // tolérance de CE point
       const put=(x,y,anchor,tr)=>{
         if(!pp){const a={x,y,'text-anchor':anchor};if(tr)a.transform=tr;draw('text',Object.assign(a,T1)).textContent=s;return;}
-        mepDimDrawText(draw,T1,pp.main,pp.up,pp.lo,x,y,anchor,tr,false,pp.sym,pp.par,pp.post);
+        mepDimDrawText(draw,T1,pp.main,pp.up,pp.lo,x,y,anchor,tr,pp.sym,pp.par,pp.post);
       };
       // cassure (2026-10-23) : rappel droit, coude oblique sur 3 mm, puis droit jusqu'à la ligne des valeurs
       const J=(k>0&&+p.jog)?+p.jog*v.scale:0;
@@ -1591,7 +1593,7 @@
           if(aft){t2=draw('text',Object.assign({x:g.tx,y:yy,'text-anchor':'start'},T));t2.textContent=aft;w2=mepTxtW(t2,aft,th);}
           const tot=w0+gap+ws+(aft?gap+w2:0),x0=g.anchor==='end'?g.tx-tot:g.tx;
           t0.setAttribute('x',String(x0));
-          mepDimDrawStack(draw,T,x0+w0+gap,yy,up,lo,null,false,par,'');
+          mepDimDrawStack(draw,T,x0+w0+gap,yy,up,lo,null,par,'');
           if(t2)t2.setAttribute('x',String(x0+w0+gap+ws+gap));
           twM=Math.max(twM,tot);
           return;
@@ -1653,7 +1655,7 @@
           x2:cx-rr*Math.cos(ang),y2:cy-rr*Math.sin(ang),'marker-end':ARS},L));
       }
       // trait sous la valeur R/Ø : longueur du texte réel (symbole et tolérances compris)
-      const tEl=mepDimDrawText(draw,T,str,pp.up,pp.lo,tx,ty,ux<0?'end':'start',null,false,pp.sym,pp.par,pp.post);
+      const tEl=mepDimDrawText(draw,T,str,pp.up,pp.lo,tx,ty,ux<0?'end':'start',null,pp.sym,pp.par,pp.post);
       let tw=mepTxtW(tEl,str+(pp.sym?' '+pp.sym:''),fs);
       if(pp.up||pp.lo)tw+=mepDimStackGap()+mepDimStackW(pp.up,pp.lo,pp.par,pp.post); // pile des écarts comprise
       tw=Math.max(hh,tw);
@@ -1696,7 +1698,7 @@
         }
       }
       const pp=mepDimTextParts(d,val);
-      mepDimDrawText(draw,T,pp.main,pp.up,pp.lo,tp.bx,tp.by,'middle',null,false,pp.sym,pp.par,pp.post);
+      mepDimDrawText(draw,T,pp.main,pp.up,pp.lo,tp.bx,tp.by,'middle',null,pp.sym,pp.par,pp.post);
       return;
     }
     /* linear (len / dist) */
@@ -1738,5 +1740,5 @@
     const tr=flip?'rotate('+(ang+180)+' '+mx+' '+my+')':'rotate('+ang+' '+mx+' '+my+')';
     const pp=mepDimTextParts(d,val);
     const main=d.ref?'('+pp.main+')':pp.main;
-    mepDimDrawText(draw,T,main,pp.up,pp.lo,mx,my,'middle',tr,flip,pp.sym,pp.par,pp.post);
+    mepDimDrawText(draw,T,main,pp.up,pp.lo,mx,my,'middle',tr,pp.sym,pp.par,pp.post);
   }
