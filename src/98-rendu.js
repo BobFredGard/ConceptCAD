@@ -16,7 +16,8 @@
      image : 16, 64 ou 256 passes à la taille finale.
    - Appareil photo : focale en mm (capteur 24×36, cadre 16:9), ouverture f/ et mise au point au clic,
      exposition en EV, rendu des tons ; vues enregistrées avec la pièce (doc.rendu.cams).
-   Réglages retenus dans le navigateur (localStorage), pas dans le document. */
+   Réglages retenus dans le navigateur (localStorage) ; ceux de l'environnement (VENV_DOC_KEYS, 98-rendu-vue)
+   sont aussi enregistrés avec chaque pièce. */
 const RD_LS='minifusion_rendu';
 const RD_DEF={amb:'studio',envRot:0,envInt:1,lum:1,fond:'degrade',fc1:'#f2f3f5',fc2:'#c3c7ce',ombre:0.45,douceur:6,
   focale:50,ev:0,tons:'aces',res:'1080',ech:64,aretes:'non',solOn:true,solCol:'',miroir:true,ombreOn:true,ouv:0,map:0,moteur:'rapide',support:'',
@@ -31,7 +32,7 @@ function rdSettings(){
   delete s.qual; // V0.10.0 : suréchantillonnage ×2, remplacé par le nombre de passes (ech)
   return Object.assign({},RD_DEF,s);
 }
-function rdSave(){try{localStorage.setItem(RD_LS,JSON.stringify(rd.st));}catch(e){}vEnvRdSt=null;} // Rendu direct (98-rendu-vue) : réglages relus
+function rdSave(){try{localStorage.setItem(RD_LS,JSON.stringify(rd.st));}catch(e){}vEnvRdSt=null;vEnvTouched();} // Rendu direct (98-rendu-vue) : réglages relus ; ceux de l'environnement suivent la pièce
 /* ── ambiances : scène d'environnement → PMREM ── */
 function rdLin(hex){return new THREE.Color(hex).convertSRGBToLinear();}
 function rdEnvDesc(amb){

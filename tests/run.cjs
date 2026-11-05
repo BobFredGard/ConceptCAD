@@ -147,6 +147,7 @@ const SUITES = [
   "test_regen_progression",
   "test_corps_style",
   "test_materiaux",
+  "test_environnement_piece",
   "test_rendu_patine",
   "test_rendu_scene",
   "test_noms_globaux",

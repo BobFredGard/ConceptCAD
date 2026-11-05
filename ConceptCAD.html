@@ -376,7 +376,7 @@ input[type=range]{accent-color:var(--primary);width:100%}
  * peut changer sans rien casser. CACHE_VER (parcours FAO) reste indépendant.
  */
 
-const APP_VER='V0.63.8';
+const APP_VER='V0.64.0';
 try{console.log('[ConceptCAD] version '+APP_VER);}catch(e){}
 try{var mfSv=document.getElementById('mfSplashVer');if(mfSv)mfSv.textContent=APP_VER;}catch(e){} // écran de démarrage
 
@@ -14511,7 +14511,9 @@ function asmActivate(cid,path){
   else if(asmPathComp(asm.path)!==cid)asm.path=asmFirstPath(cid)||[];
   if(c.id===asm.active&&c.doc===doc)return true;
   asmLeavePart();
+  try{doc._env=vEnvCollect();}catch(e){} // chaque pièce garde son environnement (98-rendu-vue)
   asm.active=c.id;doc=c.doc;
+  try{vEnvDocApply(doc._env);}catch(e){}
   if(!c._sane){
     // Première activation : mêmes réparations qu'à l'ouverture d'un fichier (deserialise) —
     // instances de répétition en double ou en trop, puis régénération (elles sont dérivées)
@@ -64150,12 +64152,15 @@ function serialise(pretty){
 function serialiseObj(d,ui){
   // Objet d'une pièce. ui : état d'interface (repère, vue, sélection) — pièce active seulement
   // (undefined → clé absente du JSON : l'ordre et le contenu restent ceux d'avant).
-  return {app:'ConceptCAD',v:1,name:d.name,tint:d.tint||0,entNames:d.entNames||null,originVis:ui?originVis:undefined,view:ui?collectView():undefined,bodyVis:d.bodyVis||{},bodies:(d.bodies||[]).map(e=>({id:e.id,name:e.name,c:e.c,color:e.color,mat:e.mat||undefined,op:e.op,gl:e.gl,open:e.open!==false})),bodySeq:d.bodySeq||0,activeBody:d.activeBody||null,fold:{sk:!!(d.fold&&d.fold.sk),origin:!!(d.fold&&d.fold.origin)},fao:d.fao||null,mep:d.mep||null,rendu:(typeof renduNorm==='function'?renduNorm(d.rendu):null)||undefined,params:(d.params||[]).map(p=>({name:p.name,expr:p.expr,value:p.value})),derive:derClean(d.derive),configs:(typeof cfgNorm==='function'?cfgNorm(d.configs):null)||undefined,sel:ui?{kind:sel.kind,id:sel.id}:undefined,sketches:(d.sketches||[]).map(s=>{const c=Object.assign({},s);delete c._refs;return c;}),features:(d.features||[]).map(({_mesh,_m,...r})=>r),cgeo:(d.cgeo||[]).map(cgClean),std:d.std||undefined,mat:d.mat||undefined}; // std : pièce normalisée (48-composants-normalises)
+  return {app:'ConceptCAD',v:1,name:d.name,tint:d.tint||0,entNames:d.entNames||null,originVis:ui?originVis:undefined,view:ui?collectView():undefined,bodyVis:d.bodyVis||{},bodies:(d.bodies||[]).map(e=>({id:e.id,name:e.name,c:e.c,color:e.color,mat:e.mat||undefined,op:e.op,gl:e.gl,open:e.open!==false})),bodySeq:d.bodySeq||0,activeBody:d.activeBody||null,fold:{sk:!!(d.fold&&d.fold.sk),origin:!!(d.fold&&d.fold.origin)},fao:d.fao||null,mep:d.mep||null,rendu:(typeof renduNorm==='function'?renduNorm(d.rendu):null)||undefined,params:(d.params||[]).map(p=>({name:p.name,expr:p.expr,value:p.value})),derive:derClean(d.derive),configs:(typeof cfgNorm==='function'?cfgNorm(d.configs):null)||undefined,sel:ui?{kind:sel.kind,id:sel.id}:undefined,sketches:(d.sketches||[]).map(s=>{const c=Object.assign({},s);delete c._refs;return c;}),features:(d.features||[]).map(({_mesh,_m,...r})=>r),cgeo:(d.cgeo||[]).map(cgClean),std:d.std||undefined,mat:d.mat||undefined,env:serialEnv(d)}; // std : pièce normalisée (48-composants-normalises) ; env : environnement de la pièce (98-rendu-vue)
+}
+function serialEnv(d){ // pièce active : ce qui est à l'écran ; les autres : ce qu'elles ont gardé
+  try{return d===doc?vEnvCollect():(d._env||undefined);}catch(e){return d._env||undefined;}
 }
 function docFromSerial(o){
   // Document de pièce à partir de son objet sérialisé (ouverture, pièces d'un assemblage)
   const d={name:o.name||'Sans titre',tint:o.tint||0,entNames:o.entNames||null,sketches:o.sketches||[],features:o.features||[],cgeo:Array.isArray(o.cgeo)?o.cgeo.filter(cgValid):[],bodyVis:o.bodyVis||{},bodies:Array.isArray(o.bodies)?o.bodies.filter(e=>e&&typeof e.id==='string').map(e=>({id:e.id,name:String(e.name||e.id),c:Array.isArray(e.c)&&e.c.length===3?e.c.slice():null,color:isFinite(+e.color)?+e.color:undefined,mat:(typeof matDef==='function'&&matDef(e.mat))?e.mat:undefined,op:(e.op>0&&e.op<1)?+e.op:undefined,gl:(e.gl>0&&e.gl<1)?+e.gl:undefined,open:e.open!==false})):[],
-    bodySeq:o.bodySeq>0?Math.floor(o.bodySeq):1,activeBody:(typeof o.activeBody==='string')?o.activeBody:null,fold:(o.fold&&typeof o.fold==='object')?{sk:!!o.fold.sk,origin:!!o.fold.origin}:{},fao:o.fao||null,mep:o.mep||null,rendu:(typeof renduNorm==='function'?renduNorm(o.rendu):null),params:Array.isArray(o.params)?o.params.filter(p=>p&&typeof p.name==='string'):[],derive:Array.isArray(o.derive)?o.derive.filter(L=>L&&typeof L.id==='string'):undefined,configs:(typeof cfgNorm==='function'?cfgNorm(o.configs):null),
+    bodySeq:o.bodySeq>0?Math.floor(o.bodySeq):1,activeBody:(typeof o.activeBody==='string')?o.activeBody:null,fold:(o.fold&&typeof o.fold==='object')?{sk:!!o.fold.sk,origin:!!o.fold.origin}:{},fao:o.fao||null,mep:o.mep||null,rendu:(typeof renduNorm==='function'?renduNorm(o.rendu):null),_env:vEnvNorm(o.env),params:Array.isArray(o.params)?o.params.filter(p=>p&&typeof p.name==='string'):[],derive:Array.isArray(o.derive)?o.derive.filter(L=>L&&typeof L.id==='string'):undefined,configs:(typeof cfgNorm==='function'?cfgNorm(o.configs):null),
     std:(o.std&&typeof o.std==='object'&&typeof o.std.key==='string')?Object.assign({key:o.std.key,norm:String(o.std.norm||''),desig:String(o.std.desig||'')},
       typeof o.std.cat==='string'&&o.std.st&&typeof o.std.st==='object'?{cat:o.std.cat,st:Object.fromEntries(Object.entries(o.std.st).filter(e=>typeof e[1]==='string'))}:{},magNorm(o.std.mag)?{mag:magNorm(o.std.mag)}:{}):undefined,
     mat:(o.mat&&typeof o.mat==='object'&&typeof o.mat.name==='string'&&o.mat.rho>0&&isFinite(+o.mat.rho))?{name:o.mat.name,rho:+o.mat.rho}:undefined};
@@ -64358,6 +64363,7 @@ async function deserialise(json,opts){
     try{resolveAllSketchHosts();}catch(e){}
   }catch(e){}
   try{applyView(o.view);}catch(e){}
+  try{vEnvDocApply(doc._env);}catch(e){} // après la vue : l'environnement de la pièce décide du miroir
   if(o.originVis)originVis={XY:o.originVis.XY!==false,XZ:o.originVis.XZ!==false,YZ:o.originVis.YZ!==false};
   sel={kind:null,id:null}; // restaure la sélection si elle désigne encore quelque chose
   if(o.sel&&o.sel.id){
@@ -65002,8 +65008,8 @@ if($('fileWasm'))$('fileWasm').addEventListener('change',async e=>{
   catch(err){occBaseMsg='OCCT : lecture impossible ('+err.message+')';occStatus();}
   e.target.value='';
 });
-try{if($('optFloor')){$('optFloor').checked=floorOn;$('optFloor').onchange=()=>{floorOn=$('optFloor').checked;try{localStorage.setItem('minifusion_sol',floorOn?'on':'off');}catch(e){}refreshMirror();};}}catch(e){}
-try{if($('optMirror')){$('optMirror').checked=mirrorOn;$('optMirror').onchange=()=>{mirrorOn=$('optMirror').checked;try{localStorage.setItem('minifusion_mirror',mirrorOn?'on':'off');}catch(e){}refreshMirror();};}}catch(e){}
+try{if($('optFloor')){$('optFloor').checked=floorOn;$('optFloor').onchange=()=>{floorOn=$('optFloor').checked;try{localStorage.setItem('minifusion_sol',floorOn?'on':'off');}catch(e){}refreshMirror();vEnvTouched();};}}catch(e){}
+try{if($('optMirror')){$('optMirror').checked=mirrorOn;$('optMirror').onchange=()=>{mirrorOn=$('optMirror').checked;try{localStorage.setItem('minifusion_mirror',mirrorOn?'on':'off');}catch(e){}refreshMirror();vEnvTouched();};}}catch(e){}
 try{if($('optAxes')){$('optAxes').checked=axHelper?axHelper.visible:true;$('optAxes').onchange=()=>{if(axHelper)axHelper.visible=$('optAxes').checked;markDirty();try{renderTree();}catch(e){}};}}catch(e){}
 try{if($('optZoomInv')){$('optZoomInv').checked=zoomInv;$('optZoomInv').onchange=()=>{zoomInv=$('optZoomInv').checked;if(controls)controls.zoomSpeed=zoomInv?-1:1;try{localStorage.setItem('minifusion_zoominv',zoomInv?'on':'off');}catch(e){}markDirty();};}}catch(e){}
 try{if($('optOrbit')){$('optOrbit').value=orbitFree?'libre':'contrainte';$('optOrbit').onchange=()=>orbitSetMode($('optOrbit').value==='libre');}}catch(e){}
@@ -81453,6 +81459,47 @@ function vEnvSet(k){
   try{localStorage.setItem('minifusion_env',vEnv);}catch(e){}
   const s=document.getElementById('optEnv');if(s)s.value=vEnv;
   const b=document.getElementById('btnLive');if(b)b.classList.toggle('on',vEnv!=='actuel');
+  vEnvTouched();
+}
+/* ── environnement PROPRE à chaque pièce : enregistré dans son fichier (clé env), remis à l'ouverture et
+   au changement de composant. Pour la pièce active, la référence reste l'état affiché (vEnvCollect, relevé à
+   l'enregistrement) ; d._env ne garde que celui des pièces au repos : « _ » le tient hors du filet d'annulation
+   (45) et Ctrl+Z ne change pas l'ambiance. Pièce sans environnement (ancien fichier, nouvelle pièce) : celui de
+   l'écran reste en place, puis devient le sien. Appareil photo, qualité et finition de l'image n'en font pas partie. */
+const VENV_DOC_KEYS=['amb','envRot','envInt','lum','fond','fc1','fc2','ombre','douceur','solOn','solCol','miroir','ombreOn','support'];
+let vEnvSig=null,vEnvApplying=false;
+function vEnvCollect(){
+  const st=(rd&&rd.st)||vEnvRdSt||(vEnvRdSt=rdSettings()),r={};
+  VENV_DOC_KEYS.forEach(k=>{if(st[k]!==undefined)r[k]=st[k];});
+  return {v:vEnv,sol:floorOn,miroir:mirrorOn,ombre:vShadowOn,rd:r};
+}
+function vEnvNorm(o){ // lecture d'un fichier : valeurs simples seulement, jamais un réglage étranger
+  if(!o||typeof o!=='object'||Array.isArray(o))return null;
+  const r={},s=o.rd&&typeof o.rd==='object'?o.rd:{};
+  VENV_DOC_KEYS.forEach(k=>{if(['string','number','boolean'].includes(typeof s[k]))r[k]=s[k];});
+  return {v:VENV_LIST.some(x=>x[0]===o.v)?o.v:'actuel',sol:o.sol!==false,miroir:o.miroir!==false,ombre:o.ombre!==false,rd:r};
+}
+function vEnvDocApply(env){ // met à l'écran l'environnement d'une pièce ; sans environnement, rien ne change
+  if(!env)return;
+  vEnvApplying=true;
+  try{
+    vEnvSet(env.v);
+    floorOn=env.sol;mirrorOn=env.miroir;vShadowOn=env.ombre;
+    [['optFloor',floorOn],['optMirror',mirrorOn],['optShadow',vShadowOn]].forEach(([id,on])=>{const c=document.getElementById(id);if(c)c.checked=on;});
+    try{localStorage.setItem('minifusion_sol',floorOn?'on':'off');localStorage.setItem('minifusion_mirror',mirrorOn?'on':'off');localStorage.setItem('minifusion_ombre',vShadowOn?'on':'off');}catch(e){}
+    if(rd&&rd.st){Object.assign(rd.st,env.rd);rdRefresh('env');rdPanel();}
+    else{const st=Object.assign(rdSettings(),env.rd);try{localStorage.setItem(RD_LS,JSON.stringify(st));}catch(e){}vEnvRdSt=st;}
+    try{refreshMirror();}catch(e){}
+  }finally{vEnvApplying=false;}
+  vEnvSig=JSON.stringify(vEnvCollect());
+}
+function vEnvTouched(){ // réglage changé à la main : la pièce est modifiée (brouillon écrit, sans rejeu ni étape d'annulation)
+  if(vEnvApplying)return;
+  try{
+    const s=JSON.stringify(vEnvCollect());
+    if(s===vEnvSig)return;
+    vEnvSig=s;dirty=true;autosave();
+  }catch(e){}
 }
 /* ── « Rendu direct » (V0.19.1) : l'ambiance, sa rotation, la force des reflets, le fond (dégradé ou uni)
    et la couleur du sol sont ceux de la fenêtre RENDU (98-rendu : rd.st, ou ses réglages enregistrés) ;
@@ -81482,6 +81529,7 @@ function vEnvSupChoose(v){ // liste des réglages de vue : écrit le réglage de
   if(rd&&rd.st)rd.st.support=v;
   else{const st=rdSettings();st.support=v;try{localStorage.setItem(RD_LS,JSON.stringify(st));}catch(e){}vEnvRdSt=st;}
   if(v)vEnvSupFloor();
+  vEnvTouched();
 }
 function vEnvSupSync(cao){ // à chaque image : ne touche au sol que si le support change
   const k=cao?vEnvSupKey():'';
@@ -81737,7 +81785,7 @@ function vEnvTick(){
     row0.parentNode.insertBefore(rdSupGallery(vEnvSupKey,vEnvSupChoose),row0);
     const lo=document.createElement('label');lo.title='Ombre portée de la pièce sur le sol (espace CAO)';
     const co=document.createElement('input');co.type='checkbox';co.id='optShadow';co.checked=vShadowOn;
-    co.onchange=()=>{vShadowOn=co.checked;try{localStorage.setItem('minifusion_ombre',vShadowOn?'on':'off');}catch(e){}};
+    co.onchange=()=>{vShadowOn=co.checked;try{localStorage.setItem('minifusion_ombre',vShadowOn?'on':'off');}catch(e){}vEnvTouched();};
     lo.appendChild(co);lo.appendChild(document.createTextNode(' Ombre'));
     row0.appendChild(document.createTextNode(' '));row0.appendChild(lo);
   }catch(e){}
@@ -81762,7 +81810,8 @@ function vEnvTick(){
      image : 16, 64 ou 256 passes à la taille finale.
    - Appareil photo : focale en mm (capteur 24×36, cadre 16:9), ouverture f/ et mise au point au clic,
      exposition en EV, rendu des tons ; vues enregistrées avec la pièce (doc.rendu.cams).
-   Réglages retenus dans le navigateur (localStorage), pas dans le document. */
+   Réglages retenus dans le navigateur (localStorage) ; ceux de l'environnement (VENV_DOC_KEYS, 98-rendu-vue)
+   sont aussi enregistrés avec chaque pièce. */
 const RD_LS='minifusion_rendu';
 const RD_DEF={amb:'studio',envRot:0,envInt:1,lum:1,fond:'degrade',fc1:'#f2f3f5',fc2:'#c3c7ce',ombre:0.45,douceur:6,
   focale:50,ev:0,tons:'aces',res:'1080',ech:64,aretes:'non',solOn:true,solCol:'',miroir:true,ombreOn:true,ouv:0,map:0,moteur:'rapide',support:'',
@@ -81777,7 +81826,7 @@ function rdSettings(){
   delete s.qual; // V0.10.0 : suréchantillonnage ×2, remplacé par le nombre de passes (ech)
   return Object.assign({},RD_DEF,s);
 }
-function rdSave(){try{localStorage.setItem(RD_LS,JSON.stringify(rd.st));}catch(e){}vEnvRdSt=null;} // Rendu direct (98-rendu-vue) : réglages relus
+function rdSave(){try{localStorage.setItem(RD_LS,JSON.stringify(rd.st));}catch(e){}vEnvRdSt=null;vEnvTouched();} // Rendu direct (98-rendu-vue) : réglages relus ; ceux de l'environnement suivent la pièce
 /* ── ambiances : scène d'environnement → PMREM ── */
 function rdLin(hex){return new THREE.Color(hex).convertSRGBToLinear();}
 function rdEnvDesc(amb){

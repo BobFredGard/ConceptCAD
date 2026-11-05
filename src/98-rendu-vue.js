@@ -31,6 +31,47 @@ function vEnvSet(k){
   try{localStorage.setItem('minifusion_env',vEnv);}catch(e){}
   const s=document.getElementById('optEnv');if(s)s.value=vEnv;
   const b=document.getElementById('btnLive');if(b)b.classList.toggle('on',vEnv!=='actuel');
+  vEnvTouched();
+}
+/* ── environnement PROPRE à chaque pièce : enregistré dans son fichier (clé env), remis à l'ouverture et
+   au changement de composant. Pour la pièce active, la référence reste l'état affiché (vEnvCollect, relevé à
+   l'enregistrement) ; d._env ne garde que celui des pièces au repos : « _ » le tient hors du filet d'annulation
+   (45) et Ctrl+Z ne change pas l'ambiance. Pièce sans environnement (ancien fichier, nouvelle pièce) : celui de
+   l'écran reste en place, puis devient le sien. Appareil photo, qualité et finition de l'image n'en font pas partie. */
+const VENV_DOC_KEYS=['amb','envRot','envInt','lum','fond','fc1','fc2','ombre','douceur','solOn','solCol','miroir','ombreOn','support'];
+let vEnvSig=null,vEnvApplying=false;
+function vEnvCollect(){
+  const st=(rd&&rd.st)||vEnvRdSt||(vEnvRdSt=rdSettings()),r={};
+  VENV_DOC_KEYS.forEach(k=>{if(st[k]!==undefined)r[k]=st[k];});
+  return {v:vEnv,sol:floorOn,miroir:mirrorOn,ombre:vShadowOn,rd:r};
+}
+function vEnvNorm(o){ // lecture d'un fichier : valeurs simples seulement, jamais un réglage étranger
+  if(!o||typeof o!=='object'||Array.isArray(o))return null;
+  const r={},s=o.rd&&typeof o.rd==='object'?o.rd:{};
+  VENV_DOC_KEYS.forEach(k=>{if(['string','number','boolean'].includes(typeof s[k]))r[k]=s[k];});
+  return {v:VENV_LIST.some(x=>x[0]===o.v)?o.v:'actuel',sol:o.sol!==false,miroir:o.miroir!==false,ombre:o.ombre!==false,rd:r};
+}
+function vEnvDocApply(env){ // met à l'écran l'environnement d'une pièce ; sans environnement, rien ne change
+  if(!env)return;
+  vEnvApplying=true;
+  try{
+    vEnvSet(env.v);
+    floorOn=env.sol;mirrorOn=env.miroir;vShadowOn=env.ombre;
+    [['optFloor',floorOn],['optMirror',mirrorOn],['optShadow',vShadowOn]].forEach(([id,on])=>{const c=document.getElementById(id);if(c)c.checked=on;});
+    try{localStorage.setItem('minifusion_sol',floorOn?'on':'off');localStorage.setItem('minifusion_mirror',mirrorOn?'on':'off');localStorage.setItem('minifusion_ombre',vShadowOn?'on':'off');}catch(e){}
+    if(rd&&rd.st){Object.assign(rd.st,env.rd);rdRefresh('env');rdPanel();}
+    else{const st=Object.assign(rdSettings(),env.rd);try{localStorage.setItem(RD_LS,JSON.stringify(st));}catch(e){}vEnvRdSt=st;}
+    try{refreshMirror();}catch(e){}
+  }finally{vEnvApplying=false;}
+  vEnvSig=JSON.stringify(vEnvCollect());
+}
+function vEnvTouched(){ // réglage changé à la main : la pièce est modifiée (brouillon écrit, sans rejeu ni étape d'annulation)
+  if(vEnvApplying)return;
+  try{
+    const s=JSON.stringify(vEnvCollect());
+    if(s===vEnvSig)return;
+    vEnvSig=s;dirty=true;autosave();
+  }catch(e){}
 }
 /* ── « Rendu direct » (V0.19.1) : l'ambiance, sa rotation, la force des reflets, le fond (dégradé ou uni)
    et la couleur du sol sont ceux de la fenêtre RENDU (98-rendu : rd.st, ou ses réglages enregistrés) ;
@@ -60,6 +101,7 @@ function vEnvSupChoose(v){ // liste des réglages de vue : écrit le réglage de
   if(rd&&rd.st)rd.st.support=v;
   else{const st=rdSettings();st.support=v;try{localStorage.setItem(RD_LS,JSON.stringify(st));}catch(e){}vEnvRdSt=st;}
   if(v)vEnvSupFloor();
+  vEnvTouched();
 }
 function vEnvSupSync(cao){ // à chaque image : ne touche au sol que si le support change
   const k=cao?vEnvSupKey():'';
@@ -315,7 +357,7 @@ function vEnvTick(){
     row0.parentNode.insertBefore(rdSupGallery(vEnvSupKey,vEnvSupChoose),row0);
     const lo=document.createElement('label');lo.title='Ombre portée de la pièce sur le sol (espace CAO)';
     const co=document.createElement('input');co.type='checkbox';co.id='optShadow';co.checked=vShadowOn;
-    co.onchange=()=>{vShadowOn=co.checked;try{localStorage.setItem('minifusion_ombre',vShadowOn?'on':'off');}catch(e){}};
+    co.onchange=()=>{vShadowOn=co.checked;try{localStorage.setItem('minifusion_ombre',vShadowOn?'on':'off');}catch(e){}vEnvTouched();};
     lo.appendChild(co);lo.appendChild(document.createTextNode(' Ombre'));
     row0.appendChild(document.createTextNode(' '));row0.appendChild(lo);
   }catch(e){}

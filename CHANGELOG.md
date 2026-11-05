@@ -8,7 +8,7 @@ sont sorties le 2026-09-30j.
 Code dans `src/` · livrable `fusion_mvp.html` (généré par `build.js`) · architecture et
 garde-fous en tête de `src/00-entete-et-outils.js`.
 
-**594 versions**, de `2026-09-28b` à `V0.63.8` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
+**595 versions**, de `2026-09-28b` à `V0.64.0` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
 comme dans le fichier d'origine.
 
 ---
@@ -6863,3 +6863,13 @@ Demande : « Le chanfrein se montre à la construction mais fait une erreur quan
 - **Mesuré** (Barquette, Chromium, dossier vide, hors ligne) : mêmes temps qu’en `localhost` (ouverture 6,9 s, modification 4,7 s, Régénérer 9,6 s), noyau prêt en 3 s au lieu de 1 s.
 - **Limites** : fichier trop gros pour Git, ignoré et refait à chaque livraison dans le dépôt principal. Enregistrement et carte graphique réelle non vérifiés par les tests automatiques, Firefox non essayé.
 - **Tests** : `test_autonome` (nouveau) et `tests/browser/autonome.spec.cjs` (nouveau). `ConceptCAD.html` ne change pas de comportement. `CACHE_VER` ne change pas.
+## V0.64.0 - Rendu : chaque pièce est enregistrée avec son environnement
+
+Demande : « Il faudrait enregistrer chaque pièce avec son environnement propre ».
+- **Constat** : l’environnement de la vue et les réglages de l’atelier RENDU vivaient dans le navigateur, communs à toutes les pièces ; un fichier ne retrouvait pas son ambiance.
+- **Enregistré avec la pièce** (clé `env` du fichier) : environnement de la vue (⚙), Sol, Miroir, Ombre, et dans l’atelier RENDU ambiance, rotation, reflets, lumière, fond et ses couleurs, ombre, sol et support. Remis à l’ouverture et au brouillon (`vEnvDocApply`, `src/98-rendu-vue.js`).
+- **Assemblage** : chaque composant garde le sien (`d._env`) ; il revient quand on active le composant (`asmActivate`).
+- **Ancien fichier ou nouvelle pièce** : sans environnement, celui de l’écran reste en place, puis devient le sien à l’enregistrement.
+- **Annulation** : changer d’environnement écrit le brouillon, sans étape de Ctrl+Z ni rejeu (`vEnvTouched`).
+- **Limites** : appareil photo, qualité et finition de l’image restent communs à toutes les pièces ; une image HDRI n’est toujours pas dans le fichier (à réimporter sur un autre PC).
+- **Tests** : `test_environnement_piece` (nouveau, 16 contrôles) ; `rendu.spec` ; ouverture d’un `.conceptcad` et rechargement contrôlés dans le navigateur. `CACHE_VER` ne change pas.

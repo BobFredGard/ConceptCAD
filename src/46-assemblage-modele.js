@@ -379,7 +379,9 @@ function asmActivate(cid,path){
   else if(asmPathComp(asm.path)!==cid)asm.path=asmFirstPath(cid)||[];
   if(c.id===asm.active&&c.doc===doc)return true;
   asmLeavePart();
+  try{doc._env=vEnvCollect();}catch(e){} // chaque pièce garde son environnement (98-rendu-vue)
   asm.active=c.id;doc=c.doc;
+  try{vEnvDocApply(doc._env);}catch(e){}
   if(!c._sane){
     // Première activation : mêmes réparations qu'à l'ouverture d'un fichier (deserialise) —
     // instances de répétition en double ou en trop, puis régénération (elles sont dérivées)
