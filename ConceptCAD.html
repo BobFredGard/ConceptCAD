@@ -376,7 +376,7 @@ input[type=range]{accent-color:var(--primary);width:100%}
  * peut changer sans rien casser. CACHE_VER (parcours FAO) reste indépendant.
  */
 
-const APP_VER='V0.63.3';
+const APP_VER='V0.63.4';
 try{console.log('[ConceptCAD] version '+APP_VER);}catch(e){}
 try{var mfSv=document.getElementById('mfSplashVer');if(mfSv)mfSv.textContent=APP_VER;}catch(e){} // écran de démarrage
 
@@ -13600,6 +13600,7 @@ function docSnap(){
 // Ctrl+Z en mode pièce, dans l'ordre où elle a été faite.
 let undoTick=0;
 function docPushUndo(label){
+  if(docAutoDepth)return; // travail automatique (docSansEtape) : pas une opération de l'utilisateur
   docCheckpoint(); // une modification encore non enregistrée devient d'abord SA propre étape
   const s=docSnap();
   if(s==null)return;
@@ -13691,6 +13692,35 @@ function docCheckpoint(){
   docBaseSync(cur);
   docUndoUI();
   return true;
+}
+/* Recalage automatique du plan : au dessin, le plan fait suivre à ses cotes et à ses coupes la
+   géométrie de la pièce (et crée, à la première entrée, sa planche et ses vues). Ce n'est pas un
+   geste : sans ceci, modifier la pièce puis passer en Plan laissait une étape « fantôme », et le
+   premier Ctrl+Z semblait ne rien faire. Ce que fn écrit dans doc.mep rejoint donc l'état de
+   référence, à condition que RIEN d'autre ne soit en attente :
+   - modification non relevée (pièce ou plan) : la référence ne bouge pas, le relevé suivant
+     fait UNE étape qui ramène à l'état d'avant, recalage compris ;
+   - étape tout juste prise (docPushUndo, sommet = référence) : docCheckpoint se recale seul. */
+let docAutoDepth=0;
+function docSansEtape(fn){
+  if(docAutoDepth)return fn();
+  let avant;
+  try{avant=JSON.stringify(doc.mep,undoKeyRep);}catch(e){return fn();}
+  docAutoDepth++;
+  try{return fn();}
+  finally{docAutoDepth--;docAutoAbsorbe(avant);}
+}
+function docAutoAbsorbe(avant){
+  try{
+    if(JSON.stringify(doc.mep,undoKeyRep)===avant)return;
+    if(docBase==null||docBaseDoc!==doc||docBaseStack!==docUndoStack)return; // docCheckpoint se recalera
+    const top=docUndoStack[docUndoStack.length-1];
+    if(top&&top.snap===docBase)return;
+    const cur=docSnap();if(cur==null)return;
+    const c=JSON.parse(cur);
+    if(avant===undefined)delete c.mep;else c.mep=JSON.parse(avant);
+    if(undoSame(JSON.stringify(c,undoKeyRep),docBaseKey))docBaseSync(cur);
+  }catch(e){}
 }
 // Différé : une rafale de markDirty (rejeu, glissement) ne relève qu'une fois
 function docUndoNudge(){
@@ -72968,7 +72998,10 @@ function filmFrame(){
   function mepRender(){
     if(!mepWrapEl||!mepSt.open)return;
     mepEnsure();
-    mepPrefsSync();
+    mepPrefsSync(); // hors docSansEtape : un réglage changé (cotes, hachures…) est un vrai geste, annulable
+    docSansEtape(mepRenderCorps); // cotes et coupes qui suivent la pièce : pas d'étape d'annulation
+  }
+  function mepRenderCorps(){
     try{mepCutFollowAll(mepSheet());}catch(e){}
     mepAxGen++; // traits d'axe recalculés à chaque rendu
     const sh=mepSheet();
@@ -79459,7 +79492,7 @@ function filmFrame(){
     setTimeout(()=>{if(tok===mepBusyTok&&mepBusyEl&&mepBusyEl.parentNode&&!mepBusyEl.classList.contains('on'))mepBusyEl.remove();},320);
   }
   function mepSetActive(on,opt){
-    if(on)mepEnsure();
+    if(on)docSansEtape(mepEnsure); // première entrée : planche créée sans étape d'annulation
     if(on){
       const was=mepSt.open; // les boutons du ruban repassent par ici : le zoom en cours est gardé
       // entrée dans l'espace (onglet PLAN) avec un plan à recalculer : animation de transition
@@ -79474,12 +79507,12 @@ function filmFrame(){
       try{if(typeof mfSyncPropsHost==='function')mfSyncPropsHost();}catch(e){}
       // masque les commandes CAO/FAO du ruban via data-ws
       try{document.body.setAttribute('data-ws','plan');}catch(e){}
-      const fill=()=>{
+      const fill=()=>docSansEtape(()=>{
         try{mepRender();}catch(e){console.warn(e);}
         mepStatus('Espace PLAN — planches, vues, cotes. '+mepSheet().name);
         // vues standards auto si planche vide et corps présents
         mepAutoViews();
-      };
+      });
       if(!anim){fill();return;}
       // fondu d'ouverture SUR LA VUE 3D, puis planche ouverte et calculée sous l'écran couvert,
       // puis fondu de fermeture sur le plan ; affichage tenu au moins ~0,45 s

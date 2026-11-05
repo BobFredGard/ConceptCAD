@@ -352,7 +352,7 @@
     setTimeout(()=>{if(tok===mepBusyTok&&mepBusyEl&&mepBusyEl.parentNode&&!mepBusyEl.classList.contains('on'))mepBusyEl.remove();},320);
   }
   function mepSetActive(on,opt){
-    if(on)mepEnsure();
+    if(on)docSansEtape(mepEnsure); // première entrée : planche créée sans étape d'annulation
     if(on){
       const was=mepSt.open; // les boutons du ruban repassent par ici : le zoom en cours est gardé
       // entrée dans l'espace (onglet PLAN) avec un plan à recalculer : animation de transition
@@ -367,12 +367,12 @@
       try{if(typeof mfSyncPropsHost==='function')mfSyncPropsHost();}catch(e){}
       // masque les commandes CAO/FAO du ruban via data-ws
       try{document.body.setAttribute('data-ws','plan');}catch(e){}
-      const fill=()=>{
+      const fill=()=>docSansEtape(()=>{
         try{mepRender();}catch(e){console.warn(e);}
         mepStatus('Espace PLAN — planches, vues, cotes. '+mepSheet().name);
         // vues standards auto si planche vide et corps présents
         mepAutoViews();
-      };
+      });
       if(!anim){fill();return;}
       // fondu d'ouverture SUR LA VUE 3D, puis planche ouverte et calculée sous l'écran couvert,
       // puis fondu de fermeture sur le plan ; affichage tenu au moins ~0,45 s

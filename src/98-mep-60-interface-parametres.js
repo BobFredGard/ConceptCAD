@@ -211,7 +211,10 @@
   function mepRender(){
     if(!mepWrapEl||!mepSt.open)return;
     mepEnsure();
-    mepPrefsSync();
+    mepPrefsSync(); // hors docSansEtape : un réglage changé (cotes, hachures…) est un vrai geste, annulable
+    docSansEtape(mepRenderCorps); // cotes et coupes qui suivent la pièce : pas d'étape d'annulation
+  }
+  function mepRenderCorps(){
     try{mepCutFollowAll(mepSheet());}catch(e){}
     mepAxGen++; // traits d'axe recalculés à chaque rendu
     const sh=mepSheet();

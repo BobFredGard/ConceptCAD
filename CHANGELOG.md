@@ -8,7 +8,7 @@ sont sorties le 2026-09-30j.
 Code dans `src/` · livrable `fusion_mvp.html` (généré par `build.js`) · architecture et
 garde-fous en tête de `src/00-entete-et-outils.js`.
 
-**589 versions**, de `2026-09-28b` à `V0.63.3` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
+**590 versions**, de `2026-09-28b` à `V0.63.4` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
 comme dans le fichier d'origine.
 
 ---
@@ -6822,3 +6822,10 @@ Trouvé en vérifiant V0.63.2 : deux tests navigateur de `parcours.spec` échoua
 - **Cause** : ils attendaient encore « Face 1 » et « Arête 1 ». V0.55.0 a remplacé ces mentions par le vrai rang dans le solide, et par une arête sans numéro quand elle vient d’une autre pièce. L’affichage de la mesure est correct.
 - **Correctif** : tests seuls. Une face doit porter un numéro, une arête d’une autre pièce ne doit pas en avoir. Aucun changement dans l’application.
 - **Tests** : `parcours.spec` 17/17, dont la suite du test « Ctrl enfoncé » (congé, FAO, assemblage), qui ne tournait plus. `CACHE_VER` ne change pas.
+
+## V0.63.4 - Plan : un seul Ctrl+Z après une modification de la pièce et un passage en Plan
+
+Signalé : après une vraie modification de la pièce puis un passage en Plan, le premier Ctrl+Z semble ne rien faire, il en faut un second pour revenir à la pièce d’avant.
+- **Cause** : au dessin, le plan fait suivre à ses cotes et à ses coupes la géométrie de la pièce, dans `doc.mep`. Le filet d’annulation (`docCheckpoint`) y voyait une modification et empilait une étape. Même chose à la première entrée : la création de la planche et de ses vues automatiques faisait des étapes.
+- **Correctif** : `docSansEtape` (`src/45-annuler-document.js`) fait rejoindre l’état de référence du filet à ce que le dessin et l’entrée en Plan écrivent dans `doc.mep`, sans étape. Une modification encore non relevée n’est pas absorbée : le relevé suivant en fait une seule étape, qui ramène à l’état d’avant, recalage compris. La recopie des réglages du plan reste hors de `docSansEtape` : changer un réglage reste annulable, comme tout vrai geste de plan.
+- **Tests** : `test_undo_filet` (section 9, échouait avant le correctif), `mep-annuler.spec` (nouveau, vrai navigateur sur le Support Pédale). `CACHE_VER` ne change pas : parcours inchangés.

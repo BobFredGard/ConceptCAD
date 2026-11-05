@@ -41,6 +41,7 @@ function docSnap(){
 // Ctrl+Z en mode pièce, dans l'ordre où elle a été faite.
 let undoTick=0;
 function docPushUndo(label){
+  if(docAutoDepth)return; // travail automatique (docSansEtape) : pas une opération de l'utilisateur
   docCheckpoint(); // une modification encore non enregistrée devient d'abord SA propre étape
   const s=docSnap();
   if(s==null)return;
@@ -132,6 +133,35 @@ function docCheckpoint(){
   docBaseSync(cur);
   docUndoUI();
   return true;
+}
+/* Recalage automatique du plan : au dessin, le plan fait suivre à ses cotes et à ses coupes la
+   géométrie de la pièce (et crée, à la première entrée, sa planche et ses vues). Ce n'est pas un
+   geste : sans ceci, modifier la pièce puis passer en Plan laissait une étape « fantôme », et le
+   premier Ctrl+Z semblait ne rien faire. Ce que fn écrit dans doc.mep rejoint donc l'état de
+   référence, à condition que RIEN d'autre ne soit en attente :
+   - modification non relevée (pièce ou plan) : la référence ne bouge pas, le relevé suivant
+     fait UNE étape qui ramène à l'état d'avant, recalage compris ;
+   - étape tout juste prise (docPushUndo, sommet = référence) : docCheckpoint se recale seul. */
+let docAutoDepth=0;
+function docSansEtape(fn){
+  if(docAutoDepth)return fn();
+  let avant;
+  try{avant=JSON.stringify(doc.mep,undoKeyRep);}catch(e){return fn();}
+  docAutoDepth++;
+  try{return fn();}
+  finally{docAutoDepth--;docAutoAbsorbe(avant);}
+}
+function docAutoAbsorbe(avant){
+  try{
+    if(JSON.stringify(doc.mep,undoKeyRep)===avant)return;
+    if(docBase==null||docBaseDoc!==doc||docBaseStack!==docUndoStack)return; // docCheckpoint se recalera
+    const top=docUndoStack[docUndoStack.length-1];
+    if(top&&top.snap===docBase)return;
+    const cur=docSnap();if(cur==null)return;
+    const c=JSON.parse(cur);
+    if(avant===undefined)delete c.mep;else c.mep=JSON.parse(avant);
+    if(undoSame(JSON.stringify(c,undoKeyRep),docBaseKey))docBaseSync(cur);
+  }catch(e){}
 }
 // Différé : une rafale de markDirty (rejeu, glissement) ne relève qu'une fois
 function docUndoNudge(){
