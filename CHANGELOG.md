@@ -8,7 +8,7 @@ sont sorties le 2026-09-30j.
 Code dans `src/` · livrable `fusion_mvp.html` (généré par `build.js`) · architecture et
 garde-fous en tête de `src/00-entete-et-outils.js`.
 
-**584 versions**, de `2026-09-28b` à `V0.62.2` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
+**585 versions**, de `2026-09-28b` à `V0.62.3` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
 comme dans le fichier d'origine.
 
 ---
@@ -6778,3 +6778,15 @@ Demande : « Il me faut pouvoir modifier les cotes de la clavette, des fois, ce 
 - **Corps de la clavette** : le cliquer montre ses cotes, modifiables, et un bouton vers la rainure.
 - **Fichiers** : les cotes manuelles de la V0.62.0 sont relues telles quelles.
 - **Tests** : `test_clavette` section 13, `clavette.spec` (vraie saisie). `CACHE_VER` ne change pas.
+
+## V0.62.3 - Cotation de perçage : dans toutes les vues, le trou vu de bout ou de côté
+
+**Demande** : « Permettre de coter dans toutes les vues, que le perçage soit du côté du trou ou sens long ». L’outil n’acceptait qu’un cercle ou un arc, sur un trou vu exactement de bout.
+
+- **Trou vu de côté** (vue de face, coupe, vue projetée, détail) : cliquer sa paroi, son axe, son fond, son épaulement ou le cône de sa pointe pose la même cote, avec le texte complet de la fonction Perçage. La flèche part du point cliqué et reste sur le trait si le trou change de Ø.
+- **Trou vu en biais** (ISO, caméra) : les ellipses et les parois sont reconnues.
+- **Nombre de trous** : de côté, les trous se superposent ; la cote reprend le total de la fonction (« 2× Ø8 »).
+- **Garde-fou** : un trait doit rester dans la longueur du trou et sur un de ses rayons ; une arête de la pièce alignée au-delà du fond n’est pas un trou.
+- **Vu de bout** : inchangé. Une ligne jamais atteinte de `mepHoleDraft`, qui aurait planté si on lui donnait la position de l’étiquette, est retirée.
+- **Limite** : « Perçages auto » reste sur les vues de bout. Une vue sans traits cachés ne montre pas le trou intérieur : il faut alors une coupe ou les traits cachés.
+- **Tests** : `test_mep_percage_cote_cote`, `mep-percage.spec` (vrais clics). `CACHE_VER` ne change pas.

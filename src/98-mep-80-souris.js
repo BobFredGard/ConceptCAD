@@ -35,7 +35,7 @@
     }
     if(mepSt.tool==='hole'&&mepSt.entSel&&mepSt.entSel.length===1){
       const sh=mepSheet(),s=mepSt.entSel[0],ref=mepEntRef(sh,s);
-      if(ref&&(ref.e.t==='C'||ref.e.t==='A')){
+      if(ref&&(ref.e.t==='C'||ref.e.t==='A'||ref.e.t==='L')){
         const d=mepHoleDraft(sh,ref.v.id,ref.e,ref.i);
         if(d){
           d.__sel=false;
@@ -57,7 +57,7 @@
       point:'Point : cliquez pour placer.',
       trim:'Ajuster : cliquez le tronçon à couper entre 2 intersections.',
       dim:'Cote : cliquez une arête/cercle · 2ᵉ entité pour distance/angle · cliquez pour poser · clic droit : accrochage (extrémité, milieu, extrême X/Y, intersection)',
-      hole:'Perçage : cliquez un cercle de perçage, puis posez l’étiquette.',
+      hole:'Perçage : cliquez le trou, de bout (cercle) ou de côté (paroi, axe, fond), puis posez l’étiquette.',
       axis:'Axes : cliquez un trou, un cercle, un arc ou le contour d’une forme de révolution (ou Alignement / Cercle / Libre dans le panneau).',
       cut2:'Coupe : 2 clics sur la ligne de coupe.',
       det2:'Détail : centre + rayon.'
@@ -511,9 +511,13 @@
     if(tool==='hole'){
       if(mepSt.dim){mepDimCommitDraft(sh,P,ev.shiftKey);return;}
       const hit=mepHitViewEnt(sh,P.x,P.y);
-      const d=hit?mepHoleDraft(sh,hit.vid,hit.e,hit.i):null;
+      let d=hit?mepHoleDraft(sh,hit.vid,hit.e,hit.i,hit.lx,hit.ly):null;
+      if(!d){ // l'axe du trou convient aussi, mais jamais à la place d'une arête reconnue
+        const hax=mepHitViewEnt(sh,P.x,P.y,{axes:true});
+        if(hax&&hax.e.t==='L')d=mepHoleDraft(sh,hax.vid,hax.e,hax.i,hax.lx,hax.ly);
+      }
       if(!d){
-        mepStatus('Perçage : cliquez un cercle ou un arc projeté correspondant à une fonction Perçage.');
+        mepStatus('Perçage : cliquez un trou, vu de bout (cercle, arc) ou de côté (paroi, axe, fond).');
         return;
       }
       mepSt.selDim=null;

@@ -497,7 +497,7 @@
       axisPick:()=>Array.isArray(mepSt.axisPick)?mepSt.axisPick.slice():[],
       setAxisMode:m=>{mepSetAxisMode(m);},
       holeText:mepHoleFeatureText,holeTol:d=>mepHoleTol(d),
-      holeCallout:mepHoleCallout,holeAt:mepHoleAt,holeDraft:mepHoleDraft,autoHoles:mepAutoHoles,
+      holeCallout:mepHoleCallout,holeAt:mepHoleAt,holeAtLine:mepHoleAtLine,holeDraft:mepHoleDraft,autoHoles:mepAutoHoles,
       fmt:mepFmtNum,
       geo:view=>mepGeoOf(view),geoClear:()=>mepGeoCache.clear(),locCurve:p=>mepLocCurve(p),clipSegPoly:(a,b,c,d,P,k)=>mepClipSegPoly(a,b,c,d,P,k),dxfView:(txt,name)=>{const r=mepDxfParse(txt);const v=mepAddView({kind:'dxf',vk:'',label:'',dxf:mepDxfData(r,name||'t',1),mode:'wire'});v._dims=mepDxfDims(mepSheet(),v,r);return v;},dimMeasure:d=>mepDimMeasure(mepSheet(),d),ptRefresh:(v,q,pr)=>mepPtRefresh(mepSheet(),v,q,pr),dimPts:d=>mepDimPtsRefresh(mepSheet(),d),ordClick:(P,ax)=>mepOrdClick(mepSheet(),P,ax),ordEnd:()=>{mepSt.ord=null;},ordPick:(d,i)=>{mepSt.selDim=d?d.id:null;mepSt.ordPt=d?{id:d.id,i}:null;},selDim:id=>{mepSt.selDim=id;},holeTolText:(t,tol)=>mepTolMarks(mepHoleTolText(t,tol)),dimText:d=>mepDimText(d,mepDimMeasure(mepSheet(),d)),ordPtAt:(d,P)=>mepOrdPtAt(mepSheet(),d,P),ordDelPt:(d,i)=>mepOrdDelPt(mepSheet(),d,i),ordValue:(d,p)=>mepOrdValue(d,p),drawDim:(mk,d)=>mepDrawDim(mk,d,mepSheet()),dimPressDbl:(P,ev)=>mepDimPressDbl(mepSheet(),P,ev||{}),dimAlignTo:(ref,ids)=>mepDimAlignTo(mepSheet(),ref,ids),perspCam:v=>mepPerspCam(v),threadEls:(v,c)=>mepThreadEls(v,c),oblShear:(sh,v)=>mepOblShear(sh,v),
       imgRect:(view,img)=>mepImg3dRect(view,img),

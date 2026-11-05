@@ -74,6 +74,7 @@ const SUITES = [
   'test_mep_angle_texte',
   'test_mep_cotes_suivi',
   'test_mep_percage_coupe',
+  'test_mep_percage_cote_cote',
   'test_mep_filetage_coupe_locale',
   'test_esquisse_cotes_pose',
   'test_esquisse_cotes_souples',

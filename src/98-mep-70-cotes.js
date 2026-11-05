@@ -339,12 +339,103 @@
     C.set(fam,pts.size);
     return pts.size;
   }
-  function mepHoleDraft(sh,vid,e,i,lx,ly){
-    const m=mepHoleAt(sh,vid,e,i);
+  /* Perçage vu DE CÔTÉ ou en biais (coupe, vue de face, vue projetée, perspective) : le trou
+     n'y est plus un cercle mais des traits. Sont reconnus : la paroi (parallèle à l'axe, à un
+     rayon du trou), l'axe, le fond, l'épaulement et le cône (extrémités sur un rayon ou sur
+     l'axe), et les petits traits de l'ellipse d'un trou vu en biais. Tout reste compris dans
+     la longueur du trou : une arête de la pièce qui passe au même endroit n'est pas un trou. */
+  function mepHoleRadii(f,N){
+    const rs=[N.d/2];
+    if(N.kind==='ream')rs.push(N.reamD/2);
+    if(N.kind==='cbore')rs.push(N.cbD/2);
+    if(N.kind==='step')rs.push(N.stD/2);
+    if(N.kind==='csink')rs.push(N.csD/2);
+    if(f.thread&&typeof isoHoleThread==='function'){
+      const th=isoHoleThread(f.thread.size,f.thread.p,f.thread.clear);
+      if(th)rs.push(th.D/2);
+    }
+    return rs;
+  }
+  function mepHoleLen(N){
+    if(N.end!=='blind')return HOLE_THROUGH;
+    return N.depth+(N.tip>0?N.r/Math.tan(N.tip*Math.PI/360):0);
+  }
+  function mepHoleAtLine(sh,vid,e,i){
+    if(!e||e.t!=='L')return null;
+    const v=mepView(sh,vid);if(!v)return null;
+    if(typeof holeAxis!=='function'||typeof holeNorm!=='function'||typeof doc==='undefined')return null;
+    const b=mepBasisOf(v),len=Math.hypot(e.x2-e.x1,e.y2-e.y1);
+    if(len<1e-6)return null;
+    let best=null;
+    (doc.features||[]).forEach(f=>{
+      if(!f||f.type!=='hole'||f.visible===false)return;
+      const sk=(doc.sketches||[]).find(s=>s.id===f.sketchId);if(!sk)return;
+      let A=null,N=null;
+      try{A=holeAxis(f,sk);N=holeNorm(f);}catch(err){return;}
+      if(!A||!A.pts||!A.pts.length||!A.dir)return;
+      const ad=[A.dir.x,A.dir.y,A.dir.z],c=Math.abs(mepDot(ad,b.dir));
+      if(c>=0.999)return; // vu de bout : ce sont les cercles qui le portent
+      const s=Math.sqrt(1-c*c);
+      const ax=mepDot(ad,b.u)/s,ay=mepDot(ad,b.v)/s;
+      const rs=mepHoleRadii(f,N),rMax=Math.max.apply(null,rs),spanT=mepHoleLen(N)*s;
+      const tolW=r=>Math.max(0.05,r*0.02);
+      const nearR=w=>w<=0.05||rs.some(r=>Math.abs(w-r)<=tolW(r));
+      A.pts.forEach(P=>{
+        const px=mepDot([P.x,P.y,P.z],b.u),py=mepDot([P.x,P.y,P.z],b.v);
+        const at=(x,y)=>({t:(x-px)*ax+(y-py)*ay,w:(x-px)*ay-(y-py)*ax});
+        const p1=at(e.x1,e.y1),p2=at(e.x2,e.y2);
+        const marge=rMax*c+0.2; // en biais, la paroi commence sur l'ellipse de l'entrée
+        const dans=q=>q.t>=-marge&&q.t<=spanT+marge&&Math.abs(q.w)<=rMax+0.05;
+        let score=null;
+        if(dans(p1)&&dans(p2)){
+          const w1=Math.abs(p1.w),w2=Math.abs(p2.w);
+          if(Math.abs(p1.w-p2.w)<=Math.max(0.02,len*0.02)&&nearR(w1)&&nearR(w2))
+            score=Math.min(w1,Math.min.apply(null,rs.map(r=>Math.abs(w1-r))));
+          else if(c<0.02&&nearR(w1)&&nearR(w2))score=1; // fond, épaulement, cône
+          else if(c>=0.02)
+            rs.forEach(r=>{ // ellipse : les deux bouts sont sur le même cercle du trou
+              if(w1>r+tolW(r)||w2>r+tolW(r))return;
+              const h1=r*c*Math.sqrt(Math.max(0,1-(w1*w1)/(r*r))),h2=r*c*Math.sqrt(Math.max(0,1-(w2*w2)/(r*r)));
+              [p1.t-h1,p1.t+h1].forEach(a1=>[p2.t-h2,p2.t+h2].forEach(a2=>{
+                if(Math.abs(a1-a2)<=0.05+r*0.03&&a1>=-0.2&&a1<=spanT+0.2&&(score==null||score>1))score=1;
+              }));
+            });
+        }
+        if(score==null)return;
+        if(!best||score<best.score)best={f:f,N:N,A:A,P:P,view:v,i:i,score:score};
+      });
+    });
+    return best;
+  }
+  // tous les trous de la famille : une vue de côté ne permet pas de les compter (ils s'y superposent)
+  function mepHoleFamTotal(fam){
+    let n=0;
+    (doc.features||[]).forEach(f=>{
+      if(!f||f.type!=='hole'||f.visible===false||mepHoleFam(f)!==fam)return;
+      const sk=(doc.sketches||[]).find(s=>s.id===f.sketchId);
+      if(sk&&typeof holePoints==='function')n+=holePoints(sk).length;
+    });
+    return n;
+  }
+  function mepHoleDraftLine(sh,vid,e,i,lx,ly){
+    const m=mepHoleAtLine(sh,vid,e,i);
     if(!m)return null;
+    const x=lx!=null?lx:(e.x1+e.x2)/2,y=ly!=null?ly:(e.y1+e.y2)/2;
+    const hn=mepHoleFamTotal(mepHoleFam(m.f));
+    return{kind:'hole',vid:vid,vid2:null,a:{x:x,y:y,hint:{t:'seg',i:i}},
+      b:{x:x+m.N.r+5,y:y-m.N.r-5},off:0,holeFid:m.f.id,holeText:mepHoleFeatureText(m.f),holeN:hn>1?hn:undefined,__ghost:true,tol:null};
+  }
+  function mepHoleDraft(sh,vid,e,i,lx,ly){
+    if(e&&e.t==='L')return mepHoleDraftLine(sh,vid,e,i,lx,ly);
+    const m=mepHoleAt(sh,vid,e,i);
+    if(!m){
+      // en biais, une partie de l'ellipse du trou peut être dessinée en petit arc : on juge sa corde
+      if(!e||e.t!=='A')return null;
+      const corde={t:'L',x1:e.cx+e.r*Math.cos(e.a0),y1:e.cy+e.r*Math.sin(e.a0),x2:e.cx+e.r*Math.cos(e.a1),y2:e.cy+e.r*Math.sin(e.a1)};
+      return mepHoleDraftLine(sh,vid,corde,i,lx,ly);
+    }
     const hn=mepHoleCount(sh,m.view,mepHoleFam(m.f));
     const b={x:e.cx+e.r*0.9,y:e.cy-e.r*0.9};
-    if(lx!=null&&ly!=null)b={x:lx,y:ly};
     return{kind:'hole',vid:vid,vid2:null,a:{x:e.cx,y:e.cy,hint:{t:'ctr',i:i}},
       b:b,off:0,holeFid:m.f.id,holeText:mepHoleFeatureText(m.f),holeN:hn>1?hn:undefined,__ghost:true,tol:null};
   }
@@ -1457,7 +1548,8 @@
         if(f){
           d.holeText=mepHoleFeatureText(f);
           // nombre tenu à jour (répétition modifiée, trous ajoutés à l'esquisse…)
-          const hn=mepHoleCount(sh,w.v1,mepHoleFam(f));if(hn>0)d.holeN=hn;
+          // (flèche posée sur un trait : trou vu de côté, tous ceux de la famille)
+          const hn=d.a&&d.a.hint&&d.a.hint.t==='seg'?mepHoleFamTotal(mepHoleFam(f)):mepHoleCount(sh,w.v1,mepHoleFam(f));if(hn>0)d.holeN=hn;
           txt=d.txt||((d.holeN>1?d.holeN+'× ':'')+d.holeText);
         }
       }
@@ -1468,6 +1560,11 @@
       if(e&&(e.t==='C'||e.t==='A')){
         const v=w.v1,cS=mepToSheet(v,e.cx,e.cy);
         rr=e.r*v.scale;cx=cS.x;cy=cS.y;
+      }else if(d.kind==='hole'&&e&&e.t==='L'){
+        // trou vu de côté : la pointe reste sur son trait, même si le trou a changé de Ø ou de place
+        const p=mepToSheet(w.v1,e.x1,e.y1),q=mepToSheet(w.v1,e.x2,e.y2),dx=q.x-p.x,dy=q.y-p.y,l2=dx*dx+dy*dy;
+        const k=l2>1e-12?Math.max(0,Math.min(1,((cx-p.x)*dx+(cy-p.y)*dy)/l2)):0;
+        cx=p.x+dx*k;cy=p.y+dy*k;
       }
       const g=mepHoleCallout(cx,cy,rr,w.b.x,w.b.y,txt,a=>mepHoleArcAng(w.v1,e,a));
       draw('line',Object.assign({x1:g.tx,y1:g.lineY,x2:g.ex,y2:g.ey,'marker-end':AR},L));
