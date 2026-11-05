@@ -376,7 +376,7 @@ input[type=range]{accent-color:var(--primary);width:100%}
  * peut changer sans rien casser. CACHE_VER (parcours FAO) reste indépendant.
  */
 
-const APP_VER='V0.62.1';
+const APP_VER='V0.62.2';
 try{console.log('[ConceptCAD] version '+APP_VER);}catch(e){}
 try{var mfSv=document.getElementById('mfSplashVer');if(mfSv)mfSv.textContent=APP_VER;}catch(e){} // écran de démarrage
 
@@ -32109,18 +32109,25 @@ function askRevokePanel(f){
    FAO et mise en plan la voient comme n'importe quelle découpe.
    La clavette elle-même (« Oui, comme un corps de pièce ») : un corps séparé, en extrusion f.kwKey = id du plan,
    sur un plan décalé (el2.kwKeyOf) posé au fond de la rainure. kwSync réécrit aussi son contour et sa hauteur.
-   el.kw = {bore, form, iso, b, t, h, L (null = automatique), end (±1, bout ouvert de la forme C), key (clavette posée)}
+   el.kw = {bore, form, L (null = automatique), end (±1, bout ouvert de la forme C), key (clavette posée),
+            ob, ot (largeur et profondeur de rainure), oh, okb, okL (hauteur, largeur, longueur de clavette)}
+   Une cote « o… » > 0 est saisie : elle prime et ne suit plus le Ø ; 0 ou absente = automatique. La largeur et la
+   longueur de la clavette reprennent par défaut celles de la rainure. Fichiers de la V0.62.0 : iso:false avec b, t, h.
    Hauteurs comptées depuis l'axe, ISO 773 : fond à R − t1 (arbre), R + t2 (alésage).
    ═══════════════════════════════════════════════════════════════════════════ */
 const KW_OVER=1; // mm : l'outil dépasse de la matière, il ne part jamais d'une surface tangente ou confondue
 const KW_FORMS=[['A','Fermée, bouts ronds'],['B','Fermée, bouts droits'],['C','Débouchante d’un côté'],['T','Toute la longueur']];
 function kwDims(kw,D){
-  // Cotes de la rainure pour un Ø D → {b,t,h,row,iso,warn}
-  const row=stdIso773For(D);
-  if(kw.iso!==false&&row)return {b:row[2],h:row[3],t:kw.bore?row[5]:row[4],row,iso:true,warn:''};
-  const b=+kw.b>0?+kw.b:+Math.max(1,D/4).toFixed(1),t=+kw.t>0?+kw.t:+(b*(kw.bore?0.4:0.6)).toFixed(1);
-  const h=+kw.h>0?+kw.h:(row?row[3]:+(b*0.9).toFixed(1));
-  return {b,t,h,row:row||null,iso:false,warn:kw.iso!==false?'Ø '+stdF(D)+' hors d’ISO 773 (6 à 130) : cotes à vérifier':''};
+  // Cotes pour un Ø D → {b,t,h,kb,row,iso (aucune cote saisie),warn}
+  const row=stdIso773For(D),old=kw.iso===false;
+  const pick=(o,leg,isoV,fb)=>+o>0?+o:(old&&+leg>0?+leg:(row?isoV:fb));
+  const b=pick(kw.ob,kw.b,row&&row[2],+Math.max(1,D/4).toFixed(1));
+  const t=pick(kw.ot,kw.t,row&&(kw.bore?row[5]:row[4]),+(b*(kw.bore?0.4:0.6)).toFixed(1));
+  const h=pick(kw.oh,kw.h,row&&row[3],+(b*0.9).toFixed(1));
+  const kb=+kw.okb>0?+kw.okb:b;
+  const free=+kw.ob>0&&+kw.ot>0&&+kw.oh>0;
+  return {b,t,h,kb,row:row||null,iso:!!row&&!old&&!(+kw.ob>0||+kw.ot>0||+kw.oh>0||+kw.okb>0),
+    warn:!row&&!old&&!free?'Ø '+stdF(D)+' hors d’ISO 773 (6 à 130) : cotes à vérifier':''};
 }
 function kwPlaneOff(kw,R){
   // Hauteur du plan au-dessus du cylindre : au-dessus de l'arbre, au fond de la rainure dans un alésage
@@ -32213,7 +32220,7 @@ function kwKeySync(el,dm,L,pts){
       stdLoop(sk,pts);sk.kwSig=sig;
     }
   }
-  kf.name='Clavette '+stdF(dm.b)+' × '+stdF(dm.h)+' × '+stdF(L);
+  kf.name='Clavette '+stdF(dm.kb)+' × '+stdF(dm.h)+' × '+stdF(L);
   const B=(doc.bodies||[]).find(b=>b.id===kf.body);
   if(B&&(/^Corps \d+$/.test(B.name||'')||/^Clavette /.test(B.name||'')))B.name=kf.name; // un nom donné à la main reste
 }
@@ -32273,16 +32280,25 @@ function kwSync(el,ctx){
       const e=Math.abs(eLat)+g,cord=e<R?Math.sqrt(R*R-e*e):0;
       depth=dm.t+(R-cord)+KW_OVER;
     }
-    // La clavette : même contour que la rainure, sans le dépassement ; toute la longueur = clavette droite, centrée
-    let Lk=Lout,ptsK;
-    if(kw.form==='T'){
-      Lk=Math.min(asked,Lc);
+    // La clavette : le contour de la rainure sans le dépassement, à ses cotes si elles sont saisies ;
+    // toute la longueur = clavette droite, centrée
+    const gk=dm.kb/2,form=kw.form;
+    let Lk=+kw.okL>0?+kw.okL:(form==='T'?Math.min(asked,Lc):Lout);
+    if(form==='A'&&Lk<dm.kb+0.01)Lk=dm.kb+0.01;
+    if(form==='C'&&Lk<gk+0.01)Lk=gk+0.01;
+    if(kw.key){
+      if(dm.kb>dm.b+1e-6)warn.push('clavette plus large que la rainure');
+      if(form!=='T'&&Lk>Lout+1e-6)warn.push('clavette plus longue que la rainure');
+      else if(Lk>Lc+1e-6)warn.push('clavette plus longue que le cylindre');
+    }
+    let ptsK;
+    if(form==='T'){
       const cx=(t0+t1)/2-tO;
-      ptsK=kwLoop('B',g,0,0,Lk,1).map(p=>[p[0]+cx,p[1]]);
-    }else if(kw.form==='C')ptsK=kwLoop('C',g,t0-tO,t1-tO,Lout,open);
-    else ptsK=pts;
+      ptsK=kwLoop('B',gk,0,0,Lk,1).map(p=>[p[0]+cx,p[1]]);
+    }else if(form==='C')ptsK=kwLoop('C',gk,t0-tO,t1-tO,Lk,open);
+    else ptsK=kwLoop(form,gk,0,0,Lk,open);
     if(kw.key)kwKeySync(el,dm,Lk,ptsK);
-    el._kwOut={D:+D.toFixed(4),b:dm.b,t:dm.t,h:dm.h,L:+Lout.toFixed(3),Lk:+Lk.toFixed(3),iso:dm.iso,warn:warn.join(' ; ')};
+    el._kwOut={D:+D.toFixed(4),b:dm.b,t:dm.t,h:dm.h,L:+Lout.toFixed(3),kb:dm.kb,Lk:+Lk.toFixed(3),iso:dm.iso,warn:warn.join(' ; ')};
     if(f){f.distance=-(+depth.toFixed(4));f.name=kwName(f);}
   }catch(e){
     el._kwOut=Object.assign({},el._kwOut||{},{warn:String((e&&e.message)||e)});
@@ -32340,26 +32356,28 @@ function kwStart(){
   try{faceEl.textContent='Clavette : cliquez un ARBRE (face extérieure) ou un ALÉSAGE (face intérieure) — Échap pour annuler.';}catch(e){}
 }
 /* ----- panneau ----- */
-function kwPanel(p,f){
-  const el=kwPlaneOf(f);
-  fdynEnsure(f);
+function kwUi(p){
+  // Aides du panneau (mêmes classes que renderProps)
+  const go=()=>{markDirty();rebuild();renderTree();renderProps();};
+  const set=fn=>{docPushUndo('clavette');fn();go();};
   const pH=t=>{const h=document.createElement('div');h.className='pnl-h';h.textContent=t;p.appendChild(h);return h;};
   const pRow=(lab,x)=>{const r=document.createElement('div');r.className='pnl-row';
     const L=document.createElement('label');L.textContent=lab;r.appendChild(L);if(x)r.appendChild(x);p.appendChild(r);return r;};
   const pNote=t=>{const n=document.createElement('div');n.className='pnl-note';n.textContent=t;p.appendChild(n);return n;};
-  if(!el){pNote('⚠ Plan de la clavette introuvable.');fdynFoot(p,f);return;}
-  const kw=el.kw,O=el._kwOut||{};
-  const go=()=>{markDirty();rebuild();renderTree();renderProps();};
-  const set=fn=>{docPushUndo('clavette');fn();go();};
   const select=(opts,val,fn)=>{
     const s=document.createElement('select');
     opts.forEach(o=>{const q=document.createElement('option');q.value=o[0];q.textContent=o[1];s.appendChild(q);});
     s.value=val;s.onchange=()=>set(()=>fn(s.value));return s;
   };
-  const num=(val,fn)=>{
+  const num=(val,fn,clear)=>{
+    // Valeur > 0 ; champ vidé = retour à l'automatique
     const i=document.createElement('input');i.type='text';i.inputMode='decimal';i.style.width='70px';
     i.value=String(+(+val||0).toFixed(3)).replace('.',',');
-    const c=()=>{const v=parseFloat(String(i.value).replace(',','.'));if(isFinite(v)&&v>0&&v!==+val)set(()=>fn(v));};
+    const c=()=>{
+      const tx=String(i.value).trim();
+      if(!tx&&clear){set(clear);return;}
+      const v=parseFloat(tx.replace(',','.'));if(isFinite(v)&&v>0&&Math.abs(v-(+val||0))>5e-4)set(()=>fn(v));
+    };
     i.addEventListener('change',c);
     i.addEventListener('keydown',e=>{if(e.key==='Enter'){c();i.blur();}e.stopPropagation();});
     i.addEventListener('click',e=>e.stopPropagation());
@@ -32368,11 +32386,41 @@ function kwPanel(p,f){
   const mini=(t,title,fn)=>{const b=document.createElement('button');b.className='mini';b.textContent=t;b.title=title;b.onclick=fn;return b;};
   const span=list=>{const w=document.createElement('span');w.style.cssText='display:flex;gap:4px;align-items:center;flex:1;justify-content:flex-end';
     list.forEach(x=>w.appendChild(x));return w;};
-  pH('Rainure de clavette');
-  if(O.D)pNote((kw.bore?'Alésage':'Arbre')+' Ø'+stdF(O.D)+(O.iso?' — ISO 773 : clavette '+stdF(O.b)+' × '+stdF(O.h)+', rainure '+(kw.bore?'t2 ':'t1 ')+stdF(O.t):' — cotes manuelles'));
-  if(O.warn)pNote('⚠ '+O.warn);
-  pRow('Pièce',select([['shaft','Arbre'],['bore','Alésage']],kw.bore?'bore':'shaft',v=>{kw.bore=v==='bore';}));
-  pRow('Forme',select(KW_FORMS,kw.form,v=>{kw.form=v;}));
+  return {go,set,pH,pRow,pNote,select,num,mini,span};
+}
+function kwCote(U,lab,val,on,put,clear,tip){
+  // Une ligne de cote : le champ, et ↺ tant que la valeur est saisie
+  const l=[U.num(val,put,clear)];
+  if(on)l.push(U.mini('↺',tip,()=>U.set(clear)));
+  U.pRow(lab,U.span(l));
+}
+function kwKeyRows(U,el){
+  // Cotes de la clavette : dans le panneau de la rainure et dans celui du corps
+  const kw=el.kw,O=el._kwOut||{};
+  U.pH('Clavette');
+  kwCote(U,'Largeur (mm)',O.kb,+kw.okb>0,v=>{kw.okb=v;},()=>{kw.okb=0;},'Reprendre la largeur de la rainure');
+  const oldH=kw.iso===false&&+kw.h>0;
+  kwCote(U,'Hauteur (mm)',O.h,+kw.oh>0||oldH,v=>{kw.oh=v;},()=>{kw.oh=0;kw.h=0;},'Reprendre la hauteur ISO 773');
+  kwCote(U,'Longueur (mm)',O.Lk,+kw.okL>0,v=>{kw.okL=v;},()=>{kw.okL=0;},kw.form==='T'?'Reprendre la longueur de la série ISO':'Reprendre la longueur de la rainure');
+}
+function kwPanel(p,f){
+  const el=kwPlaneOf(f),U=kwUi(p);
+  fdynEnsure(f);
+  if(!el){U.pNote('⚠ Plan de la clavette introuvable.');fdynFoot(p,f);return;}
+  const kw=el.kw,O=el._kwOut||{};
+  U.pH('Rainure de clavette');
+  if(O.D){
+    const r=stdIso773For(O.D);
+    U.pNote((kw.bore?'Alésage':'Arbre')+' Ø'+stdF(O.D)+(r?' — ISO 773 : clavette '+stdF(r[2])+' × '+stdF(r[3])+', rainure '+(kw.bore?'t2 ':'t1 ')+stdF(kw.bore?r[5]:r[4]):'')+(O.iso?'':' — cotes modifiées'));
+  }
+  if(O.warn)U.pNote('⚠ '+O.warn);
+  U.pRow('Pièce',U.select([['shaft','Arbre'],['bore','Alésage']],kw.bore?'bore':'shaft',v=>{kw.bore=v==='bore';}));
+  U.pRow('Forme',U.select(KW_FORMS,kw.form,v=>{kw.form=v;}));
+  const oldB=kw.iso===false&&+kw.b>0,oldT=kw.iso===false&&+kw.t>0;
+  kwCote(U,'Largeur (mm)',O.b,+kw.ob>0||oldB,v=>{kw.ob=v;},()=>{kw.ob=0;kw.b=0;},'Reprendre la largeur ISO 773');
+  kwCote(U,'Profondeur (mm)',O.t,+kw.ot>0||oldT,v=>{kw.ot=v;},()=>{kw.ot=0;kw.t=0;},'Reprendre la profondeur ISO 773');
+  if(kw.form!=='T')kwCote(U,'Longueur (mm)',O.L||kw.L,+kw.L>0,v=>{kw.L=v;},()=>{kw.L=null;},'Reprendre la longueur de la série ISO, adaptée au cylindre');
+  if(kw.form==='C')U.pRow('Bout ouvert',U.span([U.mini('⇄','Déboucher de l’autre côté du cylindre',()=>U.set(()=>{kw.end=kw.end<0?1:-1;}))]));
   const kc=document.createElement('input');kc.type='checkbox';kc.checked=!!kw.key;
   kc.title='Crée la clavette comme un corps séparé de la pièce, posée au fond de la rainure';
   kc.onchange=()=>{
@@ -32380,36 +32428,25 @@ function kwPanel(p,f){
     docPushUndo('clavette');
     if(kc.checked)kwKeyAdd(el);else kwKeyRemove(el);
     docUndoStack.length=Math.min(docUndoStack.length,len+1);
-    go();
+    U.go();
   };
-  pRow('Clavette (corps séparé)',kc);
-  if(kw.form!=='T'||kw.key){
-    const l=[num((kw.form==='T'?O.Lk:O.L)||kw.L||0,v=>{kw.L=v;})];
-    if(kw.L)l.push(mini('Auto','Reprendre la longueur de la série ISO, adaptée au cylindre',()=>set(()=>{kw.L=null;})));
-    pRow(kw.form==='T'?'Long. clavette (mm)':'Longueur (mm)',span(l));
-  }
-  if(kw.form==='C')pRow('Bout ouvert',span([mini('⇄','Déboucher de l’autre côté du cylindre',()=>set(()=>{kw.end=kw.end<0?1:-1;}))]));
-  const iso=document.createElement('input');iso.type='checkbox';iso.checked=kw.iso!==false;
-  iso.onchange=()=>set(()=>{kw.iso=iso.checked;if(!iso.checked){kw.b=O.b||kw.b;kw.t=O.t||kw.t;kw.h=O.h||kw.h;}});
-  pRow('Cotes ISO 773',iso);
-  if(kw.iso===false){
-    pRow('Largeur (mm)',num(O.b||kw.b,v=>{kw.b=v;}));
-    pRow('Profondeur (mm)',num(O.t||kw.t,v=>{kw.t=v;}));
-    if(kw.key)pRow('Hauteur de la clavette (mm)',num(O.h||kw.h,v=>{kw.h=v;}));
-  }
-  renderHoleCylProps(f,el,{pH,pRow,pNote,go,what:'Clavette',noCote:kw.form==='C'||kw.form==='T',noNote:true});
+  U.pRow('Clavette (corps séparé)',kc);
+  if(kw.key)kwKeyRows(U,el);
+  U.pNote('Une cote saisie ne suit plus le Ø ; ↺ ou un champ vidé la rend automatique.');
+  renderHoleCylProps(f,el,{pH:U.pH,pRow:U.pRow,pNote:U.pNote,go:U.go,what:'Clavette',noCote:kw.form==='C'||kw.form==='T',noNote:true});
   fdynFoot(p,f);
 }
 function kwKeyPanel(p,f){
-  // La clavette se règle depuis sa rainure : ses cotes y sont recalculées à chaque rejeu
-  const n=document.createElement('div');n.className='pnl-note';
-  n.textContent='Corps de clavette, posé au fond de sa rainure. Ses cotes suivent la rainure et le Ø.';p.appendChild(n);
-  const el=cgGet(f.kwKey),sk=el&&kwSketchOf(el),rf=kwFeatureOf(sk);
+  // Le corps de clavette : ses cotes, et le chemin vers sa rainure pour la forme et la position
+  const U=kwUi(p),el=cgGet(f.kwKey),O=el&&el._kwOut,rf=el&&kwFeatureOf(kwSketchOf(el));
+  if(!el||!O){U.pNote('⚠ Rainure de cette clavette introuvable.');return;}
+  if(O.warn)U.pNote('⚠ '+O.warn);
+  kwKeyRows(U,el);
+  U.pNote('Une cote saisie ne suit plus le Ø ; ↺ ou un champ vidé la rend automatique.');
   if(rf){
     const d=document.createElement('div');d.className='pnl-btns';
-    const b=document.createElement('button');b.className='mini';b.textContent='Régler depuis la rainure';
-    b.onclick=()=>{sel={kind:'feature',id:rf.id};renderTree();renderProps();};
-    d.appendChild(b);p.appendChild(d);
+    d.appendChild(U.mini('Régler la rainure','Forme, largeur, profondeur et position de la rainure',()=>{sel={kind:'feature',id:rf.id};renderTree();renderProps();}));
+    p.appendChild(d);
   }
 }
 

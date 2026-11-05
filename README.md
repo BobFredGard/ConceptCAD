@@ -8,7 +8,7 @@
 
 ![Support de pédale déportée R1200RT en alu anodisé rouge sur béton, lancer de rayons de l'atelier RENDU (2048 échantillons)](docs/captures/rendu-pedale.jpg)
 
-Le noyau géométrique exact est **OpenCascade 8 compilé en WebAssembly** par nos soins (recette reproductible dans `occt-build/`). S'il n'est pas disponible, l'application bascule seule sur un moteur maillage (CSG). Version actuelle : **V0.62.1** (voir le [journal des modifications](CHANGELOG.md)).
+Le noyau géométrique exact est **OpenCascade 8 compilé en WebAssembly** par nos soins (recette reproductible dans `occt-build/`). S'il n'est pas disponible, l'application bascule seule sur un moteur maillage (CSG). Version actuelle : **V0.62.2** (voir le [journal des modifications](CHANGELOG.md)).
 
 | | |
 |---|---|
@@ -113,7 +113,7 @@ Historique rejouable, timeline à icônes (vert = ajout, rouge = enlèvement), m
 - **STEP multi-corps** : arborescence des sous-ensembles et pièces avec leurs noms, pièces **masquables** (👁), **une couleur par pièce ou par occurrence** ; les gros fichiers (44 Mo, 73 000 faces) s'ouvrent et se manipulent sans à-coups.
 - **Enregistrement sûr** : contenu vérifié avant écriture et relu après (jamais vide), version précédente gardée (`nom.conceptcad.bak` et copie dans le navigateur), menu **Copie de secours**.
 - **Perçage sur un cylindre** : un clic sur la face extérieure pose le trou ; direction, angle, cote depuis une face, une arête ou un sommet et décalage latéral se règlent dans le panneau, et le trou suit la pièce.
-- **Rainure de clavette automatique** : un clic sur un arbre ou un alésage, et le diamètre donne les cotes ISO 773. La clavette naît comme un corps séparé, posée au fond. Quatre formes, longueur et position réglables ; rainure et clavette suivent le diamètre si la pièce change.
+- **Rainure de clavette automatique** : un clic sur un arbre ou un alésage, et le diamètre donne les cotes ISO 773. La clavette naît comme un corps séparé, posée au fond. Quatre formes, position réglable, et chaque cote modifiable une par une pour les cas non standard ; les cotes non saisies suivent le diamètre si la pièce change.
 - **Grands changements de cote** : sur une pièce avec congés recopiés par une répétition (Barquette et ses renforts), changer une longueur ou une largeur puis revenir à la valeur d’origine redonne la pièce exacte, et les plans suivent aussitôt.
 - **Fil de construction** : une esquisse apparaît là où elle a été créée, une esquisse refermée vide disparaît, une répétition reste dans le corps de ses sources, et le **corps actif** se choisit dans le bandeau de timeline.
 - **Journal d’erreurs** : les plantages sont notés sur l’ordinateur, sans aucun envoi ni contenu de la pièce. Dans l’**Aide** (F1 hors esquisse) : enregistrer, copier ou vider le journal, pour faire analyser les pannes.

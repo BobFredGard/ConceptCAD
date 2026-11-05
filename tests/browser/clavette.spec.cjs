@@ -46,6 +46,14 @@ test('clavette : arbre et alésage reconnus au clic',async({page})=>{
   expect(await inside([40,0,18.5])).toBe(false);
   const panneau=page.locator('text=ISO 773 : clavette 8 × 7');
   await expect(panneau.first()).toBeVisible();
+  // vraie saisie : hauteur non standard, le reste ne bouge pas
+  const hauteur=page.locator('.pnl-row',{hasText:'Hauteur (mm)'}).locator('input');
+  await hauteur.fill('10');
+  await hauteur.press('Enter');
+  await page.waitForFunction(()=>doc.cgeo.find(c=>c.kw)._kwOut.h===10&&rebuildDepth===0);
+  expect(await inside([40,0,20.5])).toBe(true);
+  expect(await inside([40,0,21.5])).toBe(false);
+  await expect(page.locator('text=cotes modifiées').first()).toBeVisible();
   if(dir)await page.screenshot({path:path.join(dir,'arbre.png')});
   await page.locator('button.fdynOk').click();
   expect(await page.evaluate(()=>sel.id)).toBeFalsy();

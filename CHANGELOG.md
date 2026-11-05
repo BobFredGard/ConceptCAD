@@ -8,7 +8,7 @@ sont sorties le 2026-09-30j.
 Code dans `src/` · livrable `fusion_mvp.html` (généré par `build.js`) · architecture et
 garde-fous en tête de `src/00-entete-et-outils.js`.
 
-**583 versions**, de `2026-09-28b` à `V0.62.1` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
+**584 versions**, de `2026-09-28b` à `V0.62.2` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
 comme dans le fichier d'origine.
 
 ---
@@ -6768,3 +6768,13 @@ Défaut relevé en V0.60.0 : sur la Barquette enrichie, changer `longueur_barque
 - **Esquisses copiées** : leurs traits projetés de construction suivent la source (`repSourceSig`).
 - **Limite connue, du modèle et non du logiciel** : le haut de « Guide Renfort 1 » est tenu par un point fixe. Au-delà d’une largeur de 180 environ, le profil de 12 mm n’atteint plus le flanc et le congé R3,3 ne peut plus exister : c’est signalé et le retour reste exact, mais à 185 le saut et les petits pas ne donnent pas tout à fait la même forme. Sur une copie, relier ce point au bord projeté lève la limite (largeurs 185 et 200 exactes). `Exemples/` n’est pas modifié.
 - **Tests** : `test_noms_barquette` et `test_noms_socle` tournent aussi sur `tests/fixtures/barquette-renforts.conceptcad`, copie figée de la pièce récente. `CACHE_VER` ne change pas.
+
+## V0.62.2 - Clavette : chaque cote se modifie, pour les cas non standard
+
+Demande : « Il me faut pouvoir modifier les cotes de la clavette, des fois, ce n’est pas standard ».
+- **Cause** : il fallait décocher « Cotes ISO 773 », tout d’un bloc, et la clavette n’avait que sa hauteur à elle ; le panneau de son corps ne montrait aucune cote.
+- **Une cote à la fois** : largeur, profondeur et longueur de la rainure ; largeur, hauteur et longueur de la clavette. Une valeur saisie prime et ne suit plus le Ø, les autres restent automatiques. ↺ ou un champ vidé rend la cote automatique. La case « Cotes ISO 773 » disparaît ; les valeurs ISO restent rappelées en tête du panneau.
+- **Clavette distincte de sa rainure** : largeur et longueur reprennent par défaut celles de la rainure, et peuvent être plus petites (jeu, clavette courte), centrées. Plus grandes : signalé.
+- **Corps de la clavette** : le cliquer montre ses cotes, modifiables, et un bouton vers la rainure.
+- **Fichiers** : les cotes manuelles de la V0.62.0 sont relues telles quelles.
+- **Tests** : `test_clavette` section 13, `clavette.spec` (vraie saisie). `CACHE_VER` ne change pas.

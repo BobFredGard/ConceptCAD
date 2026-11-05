@@ -216,6 +216,50 @@ const {loadApp}=require('./appvm.cjs');
     const ebk=kwOnCylinder(hit(15,[20,0,15],true));fdynClose();sel={kind:null,id:null};
     A(ebk._kwOut.Lk===36&&solides()===2,'12u : alésage : clavette 36 (vu '+ebk._kwOut.Lk+')');
     A(inside(20,0,12)&&!inside(20,0,11)&&inside(20,0,18)&&inside(3,0,12)&&!inside(1,0,12),'12v : du fond 18,3 vers l’axe jusqu’à 11,3, centrée');
+
+    // ── 13. Cotes non standard, une par une : arbre Ø30, ISO 8 × 7 × 45, t1 4 ──
+    arbre();
+    const en=kwOnCylinder(hit(15,[40,0,15],false)),kn=en.kw;fdynClose();sel={kind:null,id:null};
+    const majK=()=>{markDirty();rebuild();};
+    kn.oh=10;majK();
+    A(en._kwOut.h===10&&en._kwOut.b===8&&en._kwOut.t===4&&!en._kwOut.iso,'13a : hauteur 10 seule, le reste reste ISO');
+    A(inside(40,0,20.5)&&!inside(40,0,21.5),'13b : fond 11 + 10 = sommet 21');
+    kn.ot=6;majK();
+    A(inside(40,0,18.5)&&!inside(40,0,19.5)&&inside(40,0,9.5),'13c : profondeur 6 : fond 9, la clavette descend avec, sommet 19');
+    kn.ob=10;majK();
+    A(inside(40,4.9,17)&&!inside(40,5.1,17),'13d : largeur de rainure 10 : la clavette suit');
+    kn.okb=6;majK();
+    A(inside(40,2.9,17)&&!inside(40,3.1,17)&&!inside(40,4,14)&&inside(40,5.2,13),'13e : clavette 6 dans la rainure 10, centrée, jeu de chaque côté');
+    A(!en._kwOut.warn,'13f : plus étroite que la rainure : pas d’alerte ('+en._kwOut.warn+')');
+    kn.okL=20;majK();
+    A(inside(49.5,0,17)&&!inside(50.5,0,17)&&!inside(55,0,14),'13g : clavette 20 centrée dans la rainure 45');
+    A(/^Clavette 6 × 10 × 20$/.test(doc.features.find(f=>f.kwKey).name),'13h : le nom suit : '+doc.features.find(f=>f.kwKey).name);
+    A(en._kwOut.L===45,'13i : la rainure garde sa longueur');
+    kn.okb=12;kn.okL=60;majK();
+    A(/plus large que la rainure/.test(en._kwOut.warn)&&/plus longue que la rainure/.test(en._kwOut.warn),'13j : plus grande que la rainure : signalé ('+en._kwOut.warn+')');
+    kn.okb=6;kn.okL=20;majK();
+    // une cote saisie ne suit plus le Ø, les autres si
+    doc.sketches[0].entities[0].r=20;majK();
+    A(en._kwOut.b===10&&en._kwOut.t===6&&en._kwOut.h===10&&en._kwOut.kb===6&&en._kwOut.Lk===20,'13k : Ø40 : les cotes saisies restent');
+    doc.sketches[0].entities[0].r=15;majK();
+    const Jn=serialise();await deserialise(Jn,{rebuild:false});majK();
+    const en2=doc.cgeo.find(c=>c.kw);
+    A(en2.kw.oh===10&&en2.kw.okb===6&&en2._kwOut.Lk===20&&inside(49.5,0,17)&&!inside(50.5,0,17),'13l : relues après sauvegarde');
+    // retour à l'automatique
+    const kn2=en2.kw;kn2.ob=kn2.ot=kn2.oh=kn2.okb=kn2.okL=0;majK();
+    A(en2._kwOut.iso&&en2._kwOut.b===8&&en2._kwOut.kb===8&&en2._kwOut.h===7&&en2._kwOut.t===4&&en2._kwOut.Lk===45,'13m : remises à zéro : tout redevient ISO');
+    kn2.oh=10;majK();
+    // panneaux : celui de la rainure et celui du corps
+    const flk=n=>{const o=[];(function w(x){o.push(x);(x.children||[]).forEach(w);})(n);return o;};
+    const tk=n=>flk(n).map(x=>x.textContent||'').join('|');
+    const px=document.createElement('div');sel={kind:'feature',id:doc.features.find(f=>f.kw).id};kwPanel(px,doc.features.find(f=>f.kw));fdynClose();
+    A(tk(px).includes('Profondeur (mm)')&&tk(px).includes('Hauteur (mm)')&&/cotes modifiées/.test(tk(px))&&/ISO 773 : clavette 8 × 7/.test(tk(px)),'13n : panneau rainure : toutes les cotes, valeurs ISO rappelées');
+    const py=document.createElement('div');kwKeyPanel(py,doc.features.find(f=>f.kwKey));
+    A(tk(py).includes('Hauteur (mm)')&&tk(py).includes('Largeur (mm)')&&/Régler la rainure/.test(tk(py)),'13o : panneau du corps : ses cotes');
+    const ret=flk(py).find(n=>n.textContent==='↺');
+    const u13=docUndoStack.length;ret.onclick();
+    A(en2.kw.oh===0&&en2._kwOut.h===7&&docUndoStack.length===u13+1,'13p : ↺ rend la cote automatique, une étape d’annulation');
+    sel={kind:null,id:null};
     return out;`;
   const o=await vm.runInContext('(async()=>{'+R+'})()',ctx);
   console.log('=== Rainure de clavette automatique ===');
