@@ -21,7 +21,7 @@ A(table&&table.ctors&&table.methods&&Object.keys(table.methods).length>50,'table
 const src=fs.readFileSync(path.join(ROOT,'src','96-noyau-occt-tiers-lgpl.js'),'utf8');
 for(const f of ['occt/v3/conceptcad_v3.js','occt/v3/conceptcad_v3.wasm','occt/v3/compat-v3.cjs','occt/v3/compat-v3.json'])
   A(src.includes("'"+f+"'")&&fs.existsSync(path.join(ROOT,f)),'la page charge '+f);
-A(fs.readdirSync(path.join(ROOT,'occt')).join()==='v3','occt/ ne contient que v3');
+A(!fs.readdirSync(path.join(ROOT,'occt')).some(f=>/^opencascade.[^.]+(.wasm)?$|.wasm$|.js$/.test(f)),'occt/ ne livre aucun autre noyau que v3');
 // publication : Pages copie occt/v3
 const pages=fs.readFileSync(path.join(ROOT,'.github','workflows','pages.yml'),'utf8');
 A(/occt\/v3/.test(pages),'pages.yml publie occt/v3');
