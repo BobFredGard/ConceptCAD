@@ -216,10 +216,10 @@
     const g=mepGeoOf(view);
     return g.els[hint.i]||null;
   }
-  function mepHoleFeatureText(f){
+  function mepHoleFeatureText(f,dp){
     if(!f||f.type!=='hole'||typeof holeNorm!=='function')return '';
     const N=holeNorm(f);
-    const fr=v=>mepFmtNum(v,2);
+    const fr=v=>mepFmtNum(v,dp===undefined?MEP_DIM_STYLE.prec:dp);
     const sk=(typeof doc!=='undefined'&&doc.sketches)?doc.sketches.find(s=>s.id===f.sketchId):null;
     let A=null;
     try{if(sk&&typeof holeAxis==='function')A=holeAxis(f,sk);}catch(e){A=null;}
@@ -1144,6 +1144,13 @@
     if(best)return best;
     try{return mepAxisGeoAt(sh,sx,sy);}catch(e){return null;} // 2026-11-02 : tout autre cercle
   }
+  /* précision d'une cote, en décimales : 0, 1, 2 ou 3 seulement (0 · 0.1 · 0.01 · 0.001).
+     Celle de la cote si elle en a une, sinon celle du plan ; un angle reste à 0.1 par défaut. */
+  function mepDimPrec(d){
+    const p=d&&d.prec;
+    if(p===0||p===1||p===2||p===3)return p;
+    return d&&d.kind==='ang'?1:MEP_DIM_STYLE.prec;
+  }
   function mepSignedTol(v){
     const n=+v||0;
     return (n<0?'−':'+')+mepFmtNum(Math.abs(n),3);
@@ -1157,7 +1164,7 @@
     if(d.kind==='hole')return{main:wrap((d.holeN>1&&!d.txt?d.holeN+'× ':'')+(d.txt||d.holeText||'')),up:'',lo:'',sym:''};
     if(d.txt)return{main:wrap(d.txt),up:'',lo:'',sym:''};
     const unit=d.kind==='ang'?'°':'';
-    const base=mepFmtNum(value,d.kind==='ang'?1:2)+unit;
+    const base=mepFmtNum(value,mepDimPrec(d))+unit;
     const t=d.tol||{};
     if(t.m==='pm'&&t.s>0){
       const sym='±'+mepFmtNum(t.s,3)+(post?' '+post:'');
@@ -1493,8 +1500,8 @@
       const on=hi!==null&&k-1===hi,L1=on?Ls:L,T1=on?Ts:T;
       // valeur toujours POSITIVE (distance à l'origine) — points des deux côtés du « 0 » compris
       const P=mepToSheet(v,p.x,p.y),val=Math.abs(mepOrdValue(d,p));
-      const s=mepFmtNum(val<1e-9?0:val,2);
-      const pp=(k>0&&p.tol)?mepDimTextParts({kind:'len',tol:p.tol},val<1e-9?0:val):null; // tolérance de CE point
+      const s=mepFmtNum(val<1e-9?0:val,mepDimPrec(d));
+      const pp=(k>0&&p.tol)?mepDimTextParts({kind:'len',tol:p.tol,prec:d.prec},val<1e-9?0:val):null; // tolérance de CE point
       const put=(x,y,anchor,tr)=>{
         if(!pp){const a={x,y,'text-anchor':anchor};if(tr)a.transform=tr;draw('text',Object.assign(a,T1)).textContent=s;return;}
         mepDimDrawText(draw,T1,pp.main,pp.up,pp.lo,x,y,anchor,tr,false,pp.sym,pp.par,pp.post);
@@ -1546,7 +1553,7 @@
       if(d.kind==='hole'&&d.holeFid&&typeof doc!=='undefined'){
         const f=(doc.features||[]).find(x=>x.id===d.holeFid);
         if(f){
-          d.holeText=mepHoleFeatureText(f);
+          d.holeText=mepHoleFeatureText(f,mepDimPrec(d));
           // nombre tenu à jour (répétition modifiée, trous ajoutés à l'esquisse…)
           // (flèche posée sur un trait : trou vu de côté, tous ceux de la famille)
           const hn=d.a&&d.a.hint&&d.a.hint.t==='seg'?mepHoleFamTotal(mepHoleFam(f)):mepHoleCount(sh,w.v1,mepHoleFam(f));if(hn>0)d.holeN=hn;
@@ -1698,8 +1705,8 @@
     const {a1,b1,sa,sb,ea,eb}=g;
     // rappels : perpendiculaires au trait, avec un vide de `gap` au départ de
     // la pièce et un dépassement `over` après la ligne de cote (paramètres).
-    draw('line',Object.assign({x1:sa.x,y1:sa.y,x2:ea.x,y2:ea.y},LX));
-    draw('line',Object.assign({x1:sb.x,y1:sb.y,x2:eb.x,y2:eb.y},LX));
+    if(Math.hypot(ea.x-sa.x,ea.y-sa.y)>1e-6)draw('line',Object.assign({x1:sa.x,y1:sa.y,x2:ea.x,y2:ea.y},LX));
+    if(Math.hypot(eb.x-sb.x,eb.y-sb.y)>1e-6)draw('line',Object.assign({x1:sb.x,y1:sb.y,x2:eb.x,y2:eb.y},LX));
     // point d'intersection dans le vide : arêtes / arcs prolongés jusqu'au point
     mepDrawSnapExt(draw,LX,w.v1,d.a);if(d.b)mepDrawSnapExt(draw,LX,w.v2||w.v1,d.b);
     // ligne de cote fléchée

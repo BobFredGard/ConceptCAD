@@ -671,6 +671,18 @@
     sel.onchange=()=>onPick(+sel.value);
     return sel;
   }
+  /* liste déroulante de la précision d'une cote : ces quatre valeurs et aucune autre */
+  function mepPrecSelect(dp,onPick){
+    const sel=document.createElement('select');
+    [[0,'0'],[1,'0.1'],[2,'0.01'],[3,'0.001']].forEach(([x,lab])=>{
+      const o=document.createElement('option');o.value=String(x);o.textContent=lab;
+      sel.appendChild(o);
+    });
+    sel.value=String(dp);
+    sel.title='Arrondi de la valeur affichée (0 = nombre entier). La pièce n’est pas modifiée.';
+    sel.onchange=()=>onPick(+sel.value);
+    return sel;
+  }
   function mepSideSkTools(root,K,sh){
     // outils de dessin de l'esquisse active (planche ou cartouche)
     const tools=[['▲','select','Sélection / déplacement (Maj+clic : ajouter)'],['━','line','Ligne (enchaînée, Échap termine)'],['▭','rect','Rectangle'],

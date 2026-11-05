@@ -435,6 +435,10 @@
     }
     dimNum('Angle des flèches','arrowAngle',10,90,1,'°');
     dimNum('Longueur des flèches','arrowLen',2,30,0.5,'mm');
+    dimRow('Précision (par défaut)',mepPrecSelect(MEP_DIM_STYLE.prec,v=>{
+      MEP_DIM_STYLE.prec=v;mepDimStyleSave();mepRender();
+      mepStatus('Cotes : précision par défaut réglée. Les cotes réglées une par une gardent la leur.');
+    })).title='Précision des cotes qui n’ont pas la leur (les angles restent à 0.1 par défaut)';
     r=rowEl();
     const bDimReset=mkBtn('Réinitialiser',()=>{
       mepDimStyleReset();mepSideShow();mepRender();
@@ -825,6 +829,12 @@
         }else if(op===-1)n.textContent+='\nOrigine « 0 » désignée : supprimez le groupe pour la retirer.';
       }
       if(!n.__done)root.appendChild(n);
+      if(d.kind==='ord'){
+        const rp=document.createElement('div');rp.className='row';
+        const Lp=document.createElement('label');Lp.textContent='Précision';rp.appendChild(Lp);
+        rp.appendChild(mepPrecSelect(mepDimPrec(d),v=>{mepEdit('précision de la cote',()=>{d.prec=v;});mepSideShow();mepRender();}));
+        root.appendChild(rp);
+      }
       mk('Supprimer',()=>{mepEdit('suppression cote',()=>{sh.dims=sh.dims.filter(x=>x.id!==d.id);mepSt.selDim=null;});mepSideShow();},'','danger');
       root.appendChild(r);
       return;
@@ -850,6 +860,7 @@
     post.type='text';post.value=d.post||'';post.placeholder='ex. THRU';
     post.onchange=()=>{mepEdit('texte après',()=>{d.post=post.value.trim()||undefined;});};
     row('Texte après',post);
+    row('Précision',mepPrecSelect(mepDimPrec(d),v=>{mepEdit('précision de la cote',()=>{d.prec=v;});mepSideShow();mepRender();}));
     mepTolEditor(row,d); // tolérance (aussi pour les perçages)
     if(d.kind!=='hole'){
     // référence

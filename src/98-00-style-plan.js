@@ -21,6 +21,7 @@ const MEP_DIM_STYLE = {
   leaderGap: 1.5,  // vide entre le bord et le trait de diamètre opposé
   arrowAngle: 36,  // ouverture totale de la pointe de flèche (ancien : ~46°)
   arrowLen: 7,     // longueur du marker SVG (unités de trait)
+  prec: 2,         // précision par défaut des cotes, en décimales : 0, 1, 2 ou 3
   textHeight: +(MEP_TEXT_STYLE.dimH / MEP_TEXT_STYLE.capRatio).toFixed(3), // CORPS du texte de cote, dérivé de MEP_TEXT_STYLE.dimH
   color: 'theme'  // cotes à l'écran : 'theme' = accent du thème, ou '#rrggbb' ; export et impression : noir (ISO)
 };

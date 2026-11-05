@@ -8,7 +8,7 @@ sont sorties le 2026-09-30j.
 Code dans `src/` · livrable `fusion_mvp.html` (généré par `build.js`) · architecture et
 garde-fous en tête de `src/00-entete-et-outils.js`.
 
-**585 versions**, de `2026-09-28b` à `V0.62.3` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
+**586 versions**, de `2026-09-28b` à `V0.63.0` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
 comme dans le fichier d'origine.
 
 ---
@@ -6790,3 +6790,12 @@ Demande : « Il me faut pouvoir modifier les cotes de la clavette, des fois, ce 
 - **Vu de bout** : inchangé. Une ligne jamais atteinte de `mepHoleDraft`, qui aurait planté si on lui donnait la position de l’étiquette, est retirée.
 - **Limite** : « Perçages auto » reste sur les vues de bout. Une vue sans traits cachés ne montre pas le trou intérieur : il faut alors une coupe ou les traits cachés.
 - **Tests** : `test_mep_percage_cote_cote`, `mep-percage.spec` (vrais clics). `CACHE_VER` ne change pas.
+
+## V0.63.0 - Plan : lignes de rappel du bon côté, précision des cotes réglable
+
+Demande : les cotes dépassaient du mauvais côté (Ø20.01 posé à hauteur de deux arêtes), et la précision doit se régler uniquement à 0, 0.1, 0.01 ou 0.001.
+- **Cause du dépassement** : le sens des rappels venait du signe du décalage, mesuré depuis le point d’ancrage pris sur l’arête ou depuis le milieu des deux points. Dès que la ligne de cote passait entre ce point et le coin de l’arête, le rappel partait du coin opposé et dépassait vers la pièce.
+- **Correctif** : chaque rappel a son propre sens, de son point vers la ligne de cote (`mepDimLine`). Entre deux arêtes parallèles, le rappel part du coin le plus proche ; si la ligne de cote est à hauteur de l’arête, il n’y a plus de rappel, l’arête en tient lieu, comme pour une cote d’angle. Une cote H/V dont la ligne tombe entre ses deux points est corrigée de la même façon.
+- **Précision** : liste « Précision » à quatre valeurs (`mepPrecSelect`) dans les propriétés de la cote (longueur, distance, Ø, R, angle, perçage, ordonnées) et « Précision (par défaut) » dans Paramètres — Plan, section Cotation. La cote garde `d.prec` ; sans réglage, elle suit le plan, 0.01 d’origine, et un angle reste à 0.1 (`mepDimPrec`). Les zéros inutiles restent masqués.
+- **`mepFmtNum`** : sans décimale, les zéros de fin font partie du nombre (20 s’affichait « 2 », 100 « 1 »).
+- **Tests** : `test_mise_en_plan` (cote à hauteur des arêtes, sens de chaque rappel, précisions). `CACHE_VER` ne change pas.

@@ -480,6 +480,31 @@ const A=(c,m)=>{if(!c){ko++;console.log('  x '+m);}else console.log('  ✓ '+m);
     const gParL=mepDimLine(d2);
     out.parExtGapLeft = !!gParL&&Math.abs(gParL.sa.x-48.5)<1e-9
       &&Math.abs(gParL.sb.x-48.5)<1e-9;
+    // 23c) ligne de cote à hauteur des arêtes : des deux côtés du point d'ancrage, l'arête tient
+    // lieu de rappel ; aucun trait ne part vers la pièce
+    const noExt=g=>!!g&&Math.hypot(g.ea.x-g.sa.x,g.ea.y-g.sa.y)<1e-9&&Math.hypot(g.eb.x-g.sb.x,g.eb.y-g.sb.y)<1e-9;
+    mepDimMoveTo(d2,{x:v2.x+1,y:v2.y+2.5});
+    out.parExtInsideL=noExt(mepDimLine(d2));
+    mepDimMoveTo(d2,{x:v2.x+9,y:v2.y+2.5});
+    out.parExtInsideR=noExt(mepDimLine(d2));
+    // 23d) cote H/V dont la ligne tombe entre ses deux points : chaque rappel dépasse dans SON sens
+    {const dS={id:'dSens',kind:'dist',vid:v2.id,vid2:null,a:{x:0,y:0},b:{x:10,y:5},orient:'v',off:2,ref:false,tol:null};
+     const gS=mepDimLine(dS),X=v2.x;
+     out.sensParRappel=!!gS&&Math.abs(gS.a1.x-(X+7))<1e-9
+       &&Math.abs(gS.sa.x-(X+MEP_DIM_STYLE.gap))<1e-9&&Math.abs(gS.ea.x-(X+7+MEP_DIM_STYLE.overrun))<1e-9
+       &&Math.abs(gS.sb.x-(X+10-MEP_DIM_STYLE.gap))<1e-9&&Math.abs(gS.eb.x-(X+7-MEP_DIM_STYLE.overrun))<1e-9;}
+    // 23e) précision : 0, 0.1, 0.01, 0.001 ; une cote entière garde ses zéros (100 ≠ 1)
+    {const tx=(v,prec,kind)=>window.__mepTest.dimTextParts({kind:kind||'len',prec},v).main;
+     out.prec0=tx(20.01,0)==='20'&&tx(100.4,0)==='100'&&tx(19.6,0)==='20'&&tx(0.4,0)==='0';
+     out.prec1=tx(20.26,1)==='20.3';
+     out.prec2=tx(20.014,2)==='20.01';
+     out.prec3=tx(20.0126,3)==='20.013'&&tx(12.5,3)==='12.5';
+     out.precDef=tx(20.014)==='20.01'&&tx(20.26,undefined,'ang')==='20.3°';
+     out.precAng=tx(20.26,0,'ang')==='20°';
+     out.precFaux=tx(20.014,7)==='20.01';
+     MEP_DIM_STYLE.prec=0;
+     out.precPlan=tx(20.014)==='20'&&tx(20.014,3)==='20.014'&&tx(20.26,undefined,'ang')==='20.3°';
+     MEP_DIM_STYLE.prec=2;}
 
 
     const selProbe=[{vid:v2.id,i:0,t:'L',sig:T.entSig(eA),lx:7,ly:0}];
@@ -961,6 +986,10 @@ const A=(c,m)=>{if(!c){ko++;console.log('  x '+m);}else console.log('  ✓ '+m);
   A(val&&val.ellipseRejected,'ellipse non assimilée à un cercle');
   A(val&&val.twoEntAnchorOK,'cote 2 entités : ancrage aux points cliqués/extrémités');
   A(val&&val.twoEntEndSnapOK,'cote 2 entités : accrochage exact aux extrémités proches');
+  A(val&&val.parExtInsideL&&val.parExtInsideR,'cote à hauteur des arêtes : pas de rappel parasite, de part et d’autre du point d’ancrage');
+  A(val&&val.sensParRappel,'ligne de cote entre ses deux points : chaque rappel dépasse dans son propre sens');
+  A(val&&val.prec0&&val.prec1&&val.prec2&&val.prec3,'précision 0, 0.1, 0.01, 0.001 (un entier garde ses zéros)');
+  A(val&&val.precDef&&val.precAng&&val.precFaux&&val.precPlan,'précision : réglage du plan, de la cote, angle à 0.1 par défaut, valeur hors liste refusée');
   A(val&&val.parExtGapRight&&val.parExtGapLeft,
     'cote entre droites parallèles : rappels depuis le coin côté cote (vide visible)');
   A(val&&val.holeSimpleOK,'cotation perçage : trou simple (Ø et profondeur)');

@@ -1230,8 +1230,15 @@
     // le vide de `gap` tombe le long de la pièce et devient invisible (la cote
     // semble « collée » à la pièce). On ne déplace que le DÉBUT du rappel, pas les
     // ancres de mesure ni la ligne de cote.
-    let sa={x:w.a.x+vx*gap*dir,y:w.a.y+vy*gap*dir};
-    let sb={x:w.b.x+vx*gap*dir,y:w.b.y+vy*gap*dir};
+    // Chaque rappel a son propre sens : celui qui va de SON point vers la ligne de cote. Le signe
+    // de `off` ne suffit pas : il se mesure depuis le milieu des points (cote H/V) ou un point
+    // pris sur l'arête, et le dépassement partirait alors vers la pièce.
+    const sideOf=(p,q)=>{const t=(q.x-p.x)*vx+(q.y-p.y)*vy;return Math.abs(t)<1e-9?dir:(t>0?1:-1);};
+    const ends=(p,q)=>{
+      const s=sideOf(p,q);
+      return{s:{x:p.x+vx*gap*s,y:p.y+vy*gap*s},e:{x:q.x+vx*over*s,y:q.y+vy*over*s}};
+    };
+    let endA=ends(w.a,a1),endB=ends(w.b,b1);
     if(d.kind==='dist'&&d.a&&d.a.hint&&d.a.hint.t==='seg'
       &&d.b&&d.b.hint&&d.b.hint.t==='seg'){
       const eA=mepEntByHint(w.v1,d.a.hint),eB=mepEntByHint(w.v1,d.b.hint);
@@ -1241,22 +1248,21 @@
         return Math.abs((lx*vx+ly*vy)/ll)>0.999;
       };
       if(eA&&eB&&parallelTo(eA)&&parallelTo(eB)){
-        const start=(e,ax,ay)=>{
+        const edgeEnds=(e,q)=>{
           const p1=mepToSheet(w.v1,e.x1,e.y1),p2=mepToSheet(w.v1,e.x2,e.y2);
-          const d1=(p1.x-ax)*vx*dir+(p1.y-ay)*vy*dir;
-          const d2=(p2.x-ax)*vx*dir+(p2.y-ay)*vy*dir;
-          const p=d1>=d2?p1:p2;
-          return{x:p.x+vx*gap*dir,y:p.y+vy*gap*dir};
+          const d1=(p1.x-q.x)*vx+(p1.y-q.y)*vy,d2=(p2.x-q.x)*vx+(p2.y-q.y)*vy;
+          // ligne de cote posée à hauteur de l'arête : l'arête tient lieu de rappel, comme en cote d'angle
+          if(Math.min(d1,d2)<-1e-9&&Math.max(d1,d2)>1e-9)return{s:{x:q.x,y:q.y},e:{x:q.x,y:q.y}};
+          return ends(Math.abs(d1)<=Math.abs(d2)?p1:p2,q); // le coin le plus proche de la ligne de cote
         };
-        sa=start(eA,w.a.x,w.a.y);
-        sb=start(eB,w.b.x,w.b.y);
+        endA=edgeEnds(eA,a1);
+        endB=edgeEnds(eB,b1);
       }
     }
     return{world:w,a:w.a,b:w.b,dx,dy,L,ux,uy,vx,vy,off,gap,over,dir,orient,
       a1,b1,
-      sa,sb,
-      ea:{x:a1.x+vx*over*dir,y:a1.y+vy*over*dir},
-      eb:{x:b1.x+vx*over*dir,y:b1.y+vy*over*dir}};
+      sa:endA.s,sb:endB.s,
+      ea:endA.e,eb:endB.e};
   }
   /* orientation d'une cote linéaire : alignée (a), horizontale X (h), verticale Y (v).
      Même logique que l'esquisse 2D : le secteur du curseur autour du milieu choisit

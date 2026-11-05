@@ -190,7 +190,7 @@
   function mepFmtNum(v,dp){
     if(!isFinite(v))return '—';
     let s=(+v).toFixed(dp===undefined?(Math.abs(v)>=10?1:(Math.abs(v)>=1?2:3)):dp);
-    s=s.replace(/\.?0+$/,'');
+    if(s.indexOf('.')>=0)s=s.replace(/\.?0+$/,''); // sans décimale, les zéros font partie du nombre (20, 100)
     return s==='-0'?'0':s;
   }
   /* ═══════════════ C. modèle doc.mep ═══════════════ */
@@ -232,6 +232,7 @@
       mepTextStyleSync();
       num('arrowAngle',10,90);
       num('arrowLen',2,30);
+      if(o.prec===0||o.prec===1||o.prec===2||o.prec===3)MEP_DIM_STYLE.prec=o.prec;
       if(o.color==='theme'||(typeof o.color==='string'&&/^#0a84ff$/i.test(o.color)))MEP_DIM_STYLE.color='theme'; // ancien défaut bleu → couleur du thème
       else if(typeof o.color==='string'&&/^#[0-9a-f]{6}$/i.test(o.color))MEP_DIM_STYLE.color=o.color;
     }catch(e){}
@@ -242,7 +243,8 @@
         dimH:MEP_TEXT_STYLE.dimH,lblH:MEP_TEXT_STYLE.lblH,noteH:MEP_TEXT_STYLE.noteH,
         color:MEP_DIM_STYLE.color,
         arrowAngle:MEP_DIM_STYLE.arrowAngle,
-        arrowLen:MEP_DIM_STYLE.arrowLen
+        arrowLen:MEP_DIM_STYLE.arrowLen,
+        prec:MEP_DIM_STYLE.prec
       }));
     }catch(e){}
   }
