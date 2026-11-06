@@ -14,7 +14,7 @@
 
 class Dessin {
  public:
-  enum Outil { SELECTION, LIGNE, RECTANGLE, CERCLE, ARC, COTE, AJUSTER, DECALER, OBLONG, POLYGONE, POINT_C, PERCAGE, CONGE, CHANFREIN, COINCIDENT, SPLINE, CSPLINE };  // les boutons connus d'abord : leurs numéros servent aux essais
+  enum Outil { SELECTION, LIGNE, RECTANGLE, CERCLE, ARC, COTE, AJUSTER, DECALER, OBLONG, POLYGONE, POINT_C, PERCAGE, CONGE, CHANFREIN, COINCIDENT, SPLINE, CSPLINE, PROJETER };  // les boutons connus d'abord : leurs numéros servent aux essais
   struct Accroche {
     enum Sorte { AUCUNE, POINT, MILIEU, SUR_LIGNE, SUR_CERCLE, SUR_SPLINE } sorte = AUCUNE;
     std::string id;  // le point, la ligne ou le cercle visé
@@ -55,6 +55,32 @@ class Dessin {
     std::string id;
     bool operator==(const Choix& o) const { return sorte == o.sorte && id == o.id; }
   };
+
+  // Outil Projeter : une arête 3D du solide, 11 points et son milieu ; ce qu'on projetterait sous la souris
+  struct Arete3D {
+    Vec3 mid{0, 0, 0};
+    std::vector<Vec3> pts;
+  };
+  struct Projetable {
+    enum Sorte { RIEN, LIGNE, CERCLE, ARC, COURBE, UN_POINT } sorte = RIEN;
+    double x1 = 0, y1 = 0, x2 = 0, y2 = 0, cx = 0, cy = 0, r = 0;
+    std::vector<P2d> pts;
+    bool closed = false, aMid = false;
+    int m = 0;
+    Vec3 mid{0, 0, 0};
+    std::string skSk, skPt, skEnt, srcNom;  // vient d'une autre esquisse
+    explicit operator bool() const { return sorte != RIEN; }
+  };
+  struct SourceProjection {
+    std::vector<Projetable> formes;
+    std::vector<P2d> pts;
+  };
+  std::function<const std::vector<Arete3D>*()> aretes3D;   // nul ou rien : pas de solide
+  const std::vector<Esquisse>* esquisses = nullptr;        // les autres esquisses du document
+  int* nomsProj = nullptr;                                 // entNames.proj, entNames.edge
+  int* nomsArete = nullptr;
+  const Projetable& survolProjection() const { return survolProj_; }
+  std::vector<SourceProjection> sourcesProjection() const;  // skpItems : le tracé bleu de l'outil
 
   Dessin(Esquisse& s, Edition& ed);
 
@@ -348,6 +374,15 @@ class Dessin {
   void finirTraceSpline(bool ferme);                                 // skSplFinish
   void clicSpline(double wx, double wy);                             // skSplClick
   void bougerSpline(double wx, double wy);                           // skSplMove
+  Projetable areteProjetable(double x, double y) const;              // projectEdgeAt
+  Projetable sourceSous(double x, double y) const;                   // skpHit
+  std::string creerProjection(const Projetable& pr);                 // skProjectCreate
+  std::string creerDepuisEsquisse(const Projetable& pr);             // skpCreer
+  std::string nomEntite(bool arete);                                 // entName
+  void nommer(Entite& e, const Projetable& pr);                      // projNames
+  void clicProjeter(double wx, double wy);
+  void bougerProjeter(double wx, double wy);
+  Projetable survolProj_;
   std::vector<P2d> apercuSpline(const std::vector<ClicSpline>& d, const Pt* cur, bool ferme, bool ctrl) const;  // skSplineDraftPoly
   bool attacherSpline(const std::string& pid, double x, double y, double tol);  // skSplineAttach
   void nettoyerSplines();                                            // skSplineCleanup

@@ -1067,6 +1067,16 @@ void Cadre::brancherDessin() {
     if (!annulations_.empty()) annulations_.pop_back();
   };
   dessin_->surMessage = [this](const std::string& m) { messageBandeau(tx(m)); };
+  dessin_->esquisses = &doc_.esquisses;
+  dessin_->nomsProj = &doc_.nomsProj;
+  dessin_->nomsArete = &doc_.nomsArete;
+  dessin_->aretes3D = [this, liste = std::make_shared<std::vector<Dessin::Arete3D>>(), faite = std::make_shared<bool>(false)]() -> const std::vector<Dessin::Arete3D>* {
+    if (!*faite) {
+      *faite = true;
+      for (AreteProjetable& a : aretesPourProjeter(doc_, esquisseOuverte_)) liste->push_back({a.mid, std::move(a.pts)});
+    }
+    return liste->empty() ? nullptr : liste.get();
+  };
   vueEsquisse_->surDessinChange = [this] {
     majTitre();
     infosPerimees_ = true;

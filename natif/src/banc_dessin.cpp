@@ -193,6 +193,10 @@ int wmain(int argc, wchar_t** argv) {
       Dessin::reglagesParDefaut();
       Dessin D(s, ed);
       D.vue(se["s"].get<double>());
+      std::vector<Dessin::Arete3D> aretes3D;
+      int nomsProj = 0, nomsArete = 0;
+      std::vector<Esquisse> esqDoc = docs.count(f) ? docs.at(f).esquisses : std::vector<Esquisse>{};
+      for (Esquisse& q : esqDoc) q.visible = true;
       D.premiere();
       bool bonne = true;
       std::string geste;
@@ -204,7 +208,7 @@ int wmain(int argc, wchar_t** argv) {
         const double x = st.contains("x") ? st["x"].get<double>() : 0, y = st.contains("y") ? st["y"].get<double>() : 0;
         if (a == "outil") {
           const std::string o = st["o"];
-          D.choisirOutil(o == "spline" ? Dessin::SPLINE : o == "cspline" ? Dessin::CSPLINE : o == "coincident" ? Dessin::COINCIDENT : o == "fillet" ? Dessin::CONGE : o == "chamfer" ? Dessin::CHANFREIN : o == "slot" ? Dessin::OBLONG : o == "polygon" ? Dessin::POLYGONE : o == "cpoint" ? Dessin::POINT_C : o == "hpoint" ? Dessin::PERCAGE : o == "line" ? Dessin::LIGNE : o == "rect" ? Dessin::RECTANGLE : o == "circle" ? Dessin::CERCLE : o == "arc" ? Dessin::ARC : o == "dim" ? Dessin::COTE : o == "trim" ? Dessin::AJUSTER : o == "offset" ? Dessin::DECALER : Dessin::SELECTION);
+          D.choisirOutil(o == "project" ? Dessin::PROJETER : o == "spline" ? Dessin::SPLINE : o == "cspline" ? Dessin::CSPLINE : o == "coincident" ? Dessin::COINCIDENT : o == "fillet" ? Dessin::CONGE : o == "chamfer" ? Dessin::CHANFREIN : o == "slot" ? Dessin::OBLONG : o == "polygon" ? Dessin::POLYGONE : o == "cpoint" ? Dessin::POINT_C : o == "hpoint" ? Dessin::PERCAGE : o == "line" ? Dessin::LIGNE : o == "rect" ? Dessin::RECTANGLE : o == "circle" ? Dessin::CERCLE : o == "arc" ? Dessin::ARC : o == "dim" ? Dessin::COTE : o == "trim" ? Dessin::AJUSTER : o == "offset" ? Dessin::DECALER : Dessin::SELECTION);
         } else if (a == "menu") {
           std::string titre;
           const auto entrees = D.menuContextuel(titre);
@@ -216,6 +220,18 @@ int wmain(int argc, wchar_t** argv) {
             if (x.libelle == st["c"].get<std::string>()) D.actionMenu(x.code);
         } else if (a == "poly") {
           D.lirePolygone(st["n"].get<int>(), st["d"].get<std::string>());
+        } else if (a == "projAretes") {
+          aretes3D.clear();
+          for (const json& x : st["l"]) {
+            Dessin::Arete3D n;
+            n.mid = {x["mid"][0].get<double>(), x["mid"][1].get<double>(), x["mid"][2].get<double>()};
+            for (const json& q : x["pts"]) n.pts.push_back({q[0].get<double>(), q[1].get<double>(), q[2].get<double>()});
+            aretes3D.push_back(std::move(n));
+          }
+          D.aretes3D = [&aretes3D]() { return &aretes3D; };
+          D.esquisses = &esqDoc;
+          D.nomsProj = &nomsProj;
+          D.nomsArete = &nomsArete;
         } else if (a == "splFin") {
           D.finirSpline();
         } else if (a == "polyEntree") {

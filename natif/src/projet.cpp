@@ -179,6 +179,14 @@ static void lireEsquisse(const json& js, Document& d, std::map<std::string, int>
           if (q.is_number()) e.knots.push_back(q.get<double>());
       if (auto x = je.find("deg"); x != je.end() && x->is_number()) e.deg = x->get<int>();
       e.proj = vrai(je, "proj");
+      e.projName = texte(je, "projName");
+      e.srcName = texte(je, "srcName");
+      if (auto x = je.find("skSrc"); x != je.end() && x->is_object()) {
+        e.skSrcSk = texte(*x, "sk");
+        e.skSrcPt = texte(*x, "pt");
+        e.skSrcEnt = texte(*x, "ent");
+        if (auto m = x->find("m"); m != x->end() && m->is_number()) e.skSrcM = m->get<int>();
+      }
       e.percage = vrai(je, "hole");
       e.ext = vrai(je, "isProj") || vrai(je, "isect") || vrai(je, "pierce") || vrai(je, "ext");
       e.aSrcMid = vec3(je, "srcMid", e.srcMid);
@@ -389,7 +397,8 @@ Document lireProjet(const std::wstring& chemin) {
   if (std::find(d.corps.begin(), d.corps.end(), d.corpsActif) == d.corps.end()) d.corpsActif = d.corps[0];
   if (auto x = j.find("entNames"); x != j.end() && x->is_object()) {
     if (auto y = x->find("face"); y != x->end() && y->is_number()) d.nomsFace = y->get<int>();
-    if (auto y = x->find("edge"); y != x->end() && y->is_number()) d.nomsArete = y->get<int>();
+    if (auto y = x->find("edge"); y != x->end() && y->is_number()) d.nomsArete = d.nomsAreteLu = y->get<int>();
+    if (auto y = x->find("proj"); y != x->end() && y->is_number()) d.nomsProj = d.nomsProjLu = y->get<int>();
   }
   for (auto& s : j["sketches"]) lireEsquisse(s, d, refus);
   for (auto& f : j["features"]) lireFonction(f, d, refus);

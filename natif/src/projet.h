@@ -22,6 +22,9 @@ struct Entite {
   std::vector<double> knots;   // nœuds explicites d'un morceau exact (Ajuster, Décaler)
   int deg = 0;
   std::string handle;          // ligne de construction qui est la poignée de cette spline
+  std::string projName, srcName;  // noms persistants d'une projection (« Projetée 3 », « Arête 7 »)
+  std::string skSrcSk, skSrcPt, skSrcEnt;  // projection d'une autre esquisse : l'esquisse, son point ou son élément
+  int skSrcM = 0;                          // courbe projetée : nombre de segments de l'échantillon
   bool aSrcMid = false;  // milieu 3D de l'arête source d'une projection : c'est par lui qu'on la retrouve
   Vec3 srcMid{0, 0, 0};
   bool suiviInconnu = false;  // projection qui suit autre chose qu'une arête retrouvée par position (nom, intersection, autre esquisse)
@@ -131,6 +134,8 @@ struct Document {
   bool compresse = false;
   int nomsFace = 0;  // entNames.face : compteur des noms « Face n », jamais réemployés
   int nomsArete = 0;  // entNames.edge : de même pour « Arête n »
+  int nomsProj = 0;   // entNames.proj : de même pour « Projetée n »
+  int nomsAreteLu = 0, nomsProjLu = 0;  // tels que lus dans le fichier
   bool modifie() const {
     if (esquisses.size() != esquissesFichier.size() || fonctions.size() != fonctionsFichier.size()) return true;
     for (size_t i = 0; i < fonctions.size(); i++)

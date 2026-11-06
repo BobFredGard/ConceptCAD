@@ -57,7 +57,7 @@ vm.runInContext(`
   $('sketchOverlay').classList.contains = () => true;  // les touches ne sont écoutées qu'esquisse ouverte
   function __ouvrir(src, s, cx, cy) {
     const sk = JSON.parse(JSON.stringify(src));
-    doc.sketches = [sk]; doc.features = [];
+    doc.sketches = [sk]; doc.features = []; doc.entNames = {};
     skView = { s, cx, cy }; skUpdateTols();
     $('skSnap').checked = true;
     migrateSketch(sk);
@@ -81,8 +81,14 @@ vm.runInContext(`
     svg.dispatchEvent(new PointerEvent(type, { clientX: px, clientY: py, button: 0, ctrlKey: !!ctrl, detail: 1 }));
   }
   function __exact(x, y) { const [px, py] = w2s(x, y); const [a, b] = s2w(px, py); return a === x && b === y; }
+  var __autres = [];
   function __pas(st) {
     if (st.a === 'outil') { skCancelDraft(); skTool = st.o; }
+    else if (st.a === 'projAretes') {  // le solide est remplacé par une liste d'arêtes, la même des deux côtés
+      occHas = () => true; occLive = { shape: { edges: st.l } }; skConsumerIdx = () => -1; _skpCache = null;
+      __autres.forEach(q => { q.visible = true; });  // visibles des deux côtés : sinon rien à reprendre
+      doc.sketches = [skEdit].concat(__autres);
+    }
     else if (st.a === 'bas') __evt('pointerdown', st.x, st.y, st.c);
     else if (st.a === 'gcEtiq' || st.a === 'gcLigne') {  // la zone cliquée est propre à l'écran : on la désigne
       const a = hitDimLabel, b = hitDimLine;
@@ -645,6 +651,49 @@ function session(src, graine, nbGestes) {
       faire({ a: 'f1' });
       faire({ a: 'outil', o: 'select' });
     },
+    projeter() {
+      const B = vm.runInContext('(function(){const b=sketchBasis(skEdit);return JSON.parse(JSON.stringify({o:b.o,u:b.u,v:b.v,n:b.n}));})()', ctx);
+      const monde = (x, y, z) => [B.o.x + B.u.x * x + B.v.x * y + B.n.x * z, B.o.y + B.u.y * x + B.v.y * y + B.n.y * z, B.o.z + B.u.z * x + B.v.z * y + B.n.z * z];
+      const g0 = geo(), pp = Object.values(g0.points);
+      const cx = pp.length ? pp[0].x : 0, cy = pp.length ? pp[0].y : 0;
+      const u = n => (r() * 2 - 1) * n;
+      const NP = 10, L = [], cibles = [];
+      const nb = 3 + Math.floor(r() * 6);
+      for (let i = 0; i < nb; i++) {
+        const sorte = Math.floor(r() * 7), x0 = cx + u(60), y0 = cy + u(60), z0 = pick([0, 0, 5, -12, 30]), R = 3 + r() * 30, a0 = r() * 6.28, big = 0.5 + r() * 5;
+        const pts2 = [];
+        for (let k = 0; k <= NP; k++) {
+          const t = k / NP;
+          if (sorte === 0) pts2.push([x0 + 40 * t, y0 + 25 * t, z0]);                                      // ligne dans un plan parallèle
+          else if (sorte === 1) pts2.push([x0 + 30 * t, y0 - 10 * t, z0 + 20 * t]);                        // ligne de biais
+          else if (sorte === 2) pts2.push([x0, y0, z0 + 20 * t]);                                          // perpendiculaire : rien à projeter
+          else if (sorte === 3) pts2.push([x0 + R * Math.cos(a0 + t * Math.PI * 2), y0 + R * Math.sin(a0 + t * Math.PI * 2), z0]);  // cercle
+          else if (sorte === 4) pts2.push([x0 + R * Math.cos(a0 + t * big), y0 + R * Math.sin(a0 + t * big), z0]);  // arc
+          else if (sorte === 5) pts2.push([x0 + 40 * t, y0 + 8 * Math.sin(t * 5), z0]);                    // courbe
+          else pts2.push([x0 + R * Math.cos(a0 + t * Math.PI * 2), y0 + 0.5 * R * Math.sin(a0 + t * Math.PI * 2), z0]);  // ellipse fermée
+        }
+        const pts = pts2.map(q => monde(q[0], q[1], q[2]));
+        L.push({ mid: pts[5].slice(), pts });
+        if (sorte !== 2) cibles.push(pts2);
+      }
+      faire({ a: 'outil', o: 'project' });
+      faire({ a: 'projAretes', l: L });
+      const coups = 2 + Math.floor(r() * 4);
+      for (let c = 0; c < coups; c++) {
+        let cible;
+        const autres = vm.runInContext('__autres.length', ctx);
+        if (autres && r() < 0.35) {  // un point d'une autre esquisse, vu d'ici
+          const q = vm.runInContext('(function(){const out=[];__autres.forEach(S=>Object.values(S.points||{}).forEach(p=>out.push(p)));return JSON.parse(JSON.stringify(out));})()', ctx);
+          if (q.length) { const p = pick(q); cible = { x: p.x + u(1), y: p.y + u(1) }; }
+        }
+        if (!cible && cibles.length) { const q = pick(pick(cibles)); cible = { x: q[0] + u(1.5), y: q[1] + u(1.5) }; }
+        if (!cible) cible = { x: cx + u(80), y: cy + u(80) };
+        cible.x = +cible.x.toFixed(3); cible.y = +cible.y.toFixed(3);
+        faire({ a: 'bouge', x: cible.x, y: cible.y });
+        clic(cible);
+      }
+      faire({ a: 'outil', o: 'select' });
+    },
     effacerPoint() {
       const g = geo(), ids = Object.keys(g.points);
       if (!ids.length) return;
@@ -664,6 +713,7 @@ function session(src, graine, nbGestes) {
   if (process.argv.includes('--selection')) noms.push(...Array(12).fill('glisseCote'), ...Array(12).fill('boite'), ...Array(6).fill('coincident2'));
   if (process.argv.includes('--menu')) noms.push(...Array(25).fill('menu'));
   if (process.argv.includes('--formes')) noms.push(...Array(10).fill('oblong'), ...Array(10).fill('polygone'), ...Array(8).fill('pointSeul'));
+  if (process.argv.includes('--projeter')) noms.push(...Array(25).fill('projeter'));
   if (process.argv.includes('--splines')) noms.push(...Array(25).fill('spline'), ...Array(14).fill('splineGlisse'), ...Array(18).fill('splineMenu'), ...Array(4).fill('splineEfface'), ...Array(8).fill('splineAjuster'), ...Array(6).fill('splineDecaler'), ...Array(3).fill('splineF1'));
   if (opt('seulement', '')) { noms.length = 0; noms.push(...opt('seulement', '').split(',')); }
   for (let i = 0; i < nbGestes; i++) {
@@ -699,6 +749,7 @@ for (const f of fichiers) {
     const sessions = [];
     const debut = horlogeReelle();
     const nbS = n > 120 ? 1 : nbSessions, nbGe = n > 120 ? 5 : 12;
+    run('__autres = JSON.parse(__v)', JSON.stringify(es.filter(x => x.id !== s.id)));
     for (let k = 0; k < nbS; k++) sessions.push(session(s, nE * 100 + k + 1, nbGe));
     sortie.push({ fichier: f, esquisse: s.id, sessions });
     sessions.forEach(x => { nG += x.pas.length; });

@@ -19,6 +19,13 @@ struct Edition {
   bool resolue = false;  // le navigateur résout à l'ouverture de l'esquisse
 };
 
+// Les arêtes du solide que voit cette esquisse : la pièce juste avant la fonction qui s'en sert, sinon la pièce finie
+struct AreteProjetable {
+  Vec3 mid{0, 0, 0};
+  std::vector<Vec3> pts;
+};
+std::vector<AreteProjetable> aretesPourProjeter(const Document& d, size_t i);
+
 // Rend false si le solveur refuse la valeur : rien n'a changé, raison dit pourquoi.
 // Les esquisses suivantes qui s'appuient sur le solide suivent l'esquisse i
 void suivreEsquisses(Document& d, size_t i);

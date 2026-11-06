@@ -117,6 +117,7 @@ class VueEsquisse : public wxWindow {
   void entites(wxGraphicsContext& g) const;
   void points(wxGraphicsContext& g) const;
   void cotes(wxGraphicsContext& g) const;
+  void projections(wxGraphicsContext& g) const;
   void coteLineaire(wxGraphicsContext& g, const Cote& d) const;
   void coteRayon(wxGraphicsContext& g, const Cote& d) const;
   void coteAngle(wxGraphicsContext& g, const Cote& d) const;

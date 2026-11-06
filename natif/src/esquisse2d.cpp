@@ -474,6 +474,7 @@ void VueEsquisse::surTouche(wxKeyEvent& ev) {
         case 'O': o = Dessin::DECALER; break;
         case 'H': o = Dessin::PERCAGE; break;
         case 'S': o = Dessin::SPLINE; break;
+        case 'P': o = Dessin::PROJETER; break;
         default: break;
       }
       if (o >= 0) return commande([o](Dessin& d) { d.choisirOutil(static_cast<Dessin::Outil>(o)); });
@@ -812,7 +813,69 @@ void VueEsquisse::dessiner(wxDC& dc) {
   points(*g);
   sante(*g);
   cotes(*g);
+  projections(*g);
   trace(*g);
+}
+
+// Outil Projeter : les autres esquisses en bleu, tiretées, et ce qui est sous la souris en orange (skpDessin)
+void VueEsquisse::projections(wxGraphicsContext& g) const {
+  if (!dessin_ || dessin_->outil() != Dessin::PROJETER) return;
+  using P = Dessin::Projetable;
+  const auto tracer = [&](const P& pr) {
+    wxGraphicsPath p = g.CreatePath();
+    if (pr.sorte == P::LIGNE) {
+      p.MoveToPoint(e(pr.x1, pr.y1));
+      p.AddLineToPoint(e(pr.x2, pr.y2));
+    } else if (pr.sorte == P::CERCLE || pr.sorte == P::ARC) {
+      double a1 = 0, dd = 2 * 3.14159265358979323846;
+      if (pr.sorte == P::ARC) {
+        a1 = std::atan2(pr.y1 - pr.cy, pr.x1 - pr.cx);
+        const double a2 = std::atan2(pr.y2 - pr.cy, pr.x2 - pr.cx);
+        dd = a2 - a1;
+        while (dd <= 0) dd += 2 * 3.14159265358979323846;
+      }
+      const int n = std::max(8, static_cast<int>(std::ceil(dd / 0.05)));
+      for (int i = 0; i <= n; i++) {
+        const double a = a1 + dd * i / n;
+        const auto q = e(pr.cx + pr.r * std::cos(a), pr.cy + pr.r * std::sin(a));
+        if (i) p.AddLineToPoint(q);
+        else p.MoveToPoint(q);
+      }
+    } else if (pr.sorte == P::COURBE && pr.pts.size() > 1) {
+      p.MoveToPoint(e(pr.pts[0][0], pr.pts[0][1]));
+      for (size_t i = 1; i < pr.pts.size(); i++) p.AddLineToPoint(e(pr.pts[i][0], pr.pts[i][1]));
+    }
+    g.StrokePath(p);
+  };
+  const wxColour BLEU(0x5a, 0xc8, 0xfa), ORANGE(0xff, 0x9f, 0x0a);
+  g.SetBrush(wxNullGraphicsBrush);
+  for (const Dessin::SourceProjection& it : dessin_->sourcesProjection()) {
+    g.SetPen(stylo(g, alpha(BLEU, 0.9), 1.5, {3, 3}));
+    for (const P& f : it.formes) tracer(f);
+    g.SetPen(stylo(g, BLEU, 1.2));
+    g.SetBrush(g.CreateBrush(wxBrush(wxColour(0x10, 0x10, 0x12))));
+    for (const P2d& q : it.pts) {
+      const auto c = e(q[0], q[1]);
+      g.DrawRectangle(c.m_x - 2.5, c.m_y - 2.5, 5, 5);
+    }
+    g.SetBrush(wxNullGraphicsBrush);
+  }
+  const P& pr = dessin_->survolProjection();
+  if (!pr) return;
+  g.SetPen(stylo(g, ORANGE, 3));
+  if (pr.sorte == P::UN_POINT) {
+    const auto c = e(pr.x1, pr.y1);
+    g.SetBrush(g.CreateBrush(wxBrush(ORANGE)));
+    g.DrawRectangle(c.m_x - 4.5, c.m_y - 4.5, 9, 9);
+    g.SetBrush(wxNullGraphicsBrush);
+    return;
+  }
+  tracer(pr);
+  if (pr.sorte == P::CERCLE || pr.sorte == P::ARC) {
+    const auto c = e(pr.cx, pr.cy);
+    g.SetPen(stylo(g, ORANGE, 1));
+    g.DrawRectangle(c.m_x - 3, c.m_y - 3, 6, 6);
+  }
 }
 
 // Le tracé en cours, l'accroche et les guides, par-dessus tout

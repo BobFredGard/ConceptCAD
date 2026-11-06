@@ -300,6 +300,17 @@ std::string nouvelleEntite(const Entite& e) {
   if (e.axe) o += ",\"axis\":true";
   if (e.construction) o += ",\"construction\":true";
   if (e.ref) o += ",\"ref\":true";
+  if (e.proj) o += ",\"proj\":true";
+  ajouterTexte(o, "projName", e.projName);
+  ajouterTexte(o, "srcName", e.srcName);
+  if (e.aSrcMid) o += ",\"srcMid\":[" + nombreJson(e.srcMid[0]) + "," + nombreJson(e.srcMid[1]) + "," + nombreJson(e.srcMid[2]) + "]";
+  if (!e.skSrcSk.empty()) {
+    o += ",\"skSrc\":{\"sk\":" + texteJson(e.skSrcSk);
+    ajouterTexte(o, "pt", e.skSrcPt);
+    ajouterTexte(o, "ent", e.skSrcEnt);
+    if (e.skSrcM) o += ",\"m\":" + std::to_string(e.skSrcM);
+    o += "}";
+  }
   if (!e.poly.empty()) {
     o += ",\"poly\":[";
     for (size_t i = 0; i < e.poly.size(); i++) o += (i ? "," : "") + texteJson(e.poly[i]);
@@ -746,6 +757,43 @@ std::string fonctionCreee(const Fonction& f) {
   if (f.through) o += ",\"through\":true";
   return o + "}";
 }
+// entNames : les compteurs de noms que ce travail a fait avancer
+std::string retoucherNoms(const std::string& texte, const Document& d) {
+  std::vector<std::tuple<std::string, std::string, bool>> champs;
+  std::string objet;
+  const auto noter = [&](const char* k, int v) {
+    champs.push_back({k, std::to_string(v), true});
+    objet += std::string(objet.empty() ? "" : ",") + "\"" + k + "\":" + std::to_string(v);
+  };
+  if (d.nomsProj != d.nomsProjLu) noter("proj", d.nomsProj);
+  if (d.nomsArete != d.nomsAreteLu) noter("edge", d.nomsArete);
+  if (champs.empty()) return texte;
+  Parcours p(texte);
+  allerAuDocument(p);
+  p.blancs();
+  const size_t ouverture = p.ici() + 1;
+  std::vector<Morceau> morceaux;
+  bool vu = false;
+  p.membres([&](const std::string& k) {
+    if (k == "entNames") {
+      vu = true;
+      if (p.voir() == '{') {
+        std::vector<Champ> L;
+        for (auto& c : champs) L.push_back(Champ{std::get<0>(c).c_str(), std::get<1>(c), std::get<2>(c)});
+        retoucherObjet(p, L, morceaux);
+      } else {
+        const size_t a = p.ici();
+        p.sauter();
+        morceaux.push_back({a, p.ici(), "{" + objet + "}"});
+      }
+    } else {
+      p.sauter();
+    }
+  });
+  if (!vu) morceaux.push_back({ouverture, ouverture, "\"entNames\":{" + objet + "},"});
+  return appliquer(texte, std::move(morceaux));
+}
+
 std::string ajouterFonctions(const std::string& texte, const std::vector<const Fonction*>& L, int nomsArete) {
   Parcours p(texte);
   allerAuDocument(p);
@@ -911,6 +959,7 @@ std::string texteEnregistre(const Document& d, const std::string& texteOrigine) 
     for (size_t i = d.fonctionsFichier.size(); i < d.fonctions.size(); i++) nouvelles.push_back(&d.fonctions[i]);
     texteFichier = ajouterFonctions(texteFichier, nouvelles, d.nomsArete);
   }
+  texteFichier = retoucherNoms(texteFichier, d);
   std::vector<Retouche> retouches;
   for (size_t i = 0; i < d.fonctionsFichier.size(); i++)
     if (!memesReglages(d.fonctions[i], d.fonctionsFichier[i])) {

@@ -1063,6 +1063,7 @@ std::vector<Dessin::Choix> Dessin::dansBoite(const Boite& box) const {
 void Dessin::enfonce(double wx, double wy, bool ctrl, const std::string& ligneCote) {
   premiere();
   sync();
+  if (outil_ == PROJETER) return clicProjeter(wx, wy);
   if (outil_ == SELECTION) {
     const std::string pid = pointProche(wx, wy, PT_);
     if (!pid.empty()) {
@@ -1270,6 +1271,7 @@ void Dessin::bouge(double wx, double wy, bool gaucheTenu) {
     return;
   }
   if (outil_ == SPLINE || outil_ == CSPLINE) return bougerSpline(wx, wy);
+  if (outil_ == PROJETER) return bougerProjeter(wx, wy);
   if (outil_ == COINCIDENT) {
     const Accroche a = accroche(wx, wy);
     aMarque_ = static_cast<bool>(a);
@@ -2960,6 +2962,7 @@ void Dessin::annulerTrace() {
 
 void Dessin::choisirOutil(Outil o) {
   annulerTrace();
+  survolProj_ = Projetable{};
   outil_ = o;
 }
 
@@ -6296,4 +6299,570 @@ double Dessin::distanceSplines(const std::vector<std::string>& ids, double wx, d
     if (e && splineDe(s_, *e, f)) m = jsmin(m, bsClosest(f, wx, wy, nullptr).d);
   }
   return m;
+}
+
+// ---- Projeter : projectEdgeAt (50-esquisse-1), skProjectCreate (50-esquisse-7), skSplineProject (50-esquisse-6),
+// et la projection des autres esquisses (50-esquisse-8)
+namespace {
+double distSeg2(double px, double py, double ax, double ay, double bx, double by) { return distSeg(px, py, Pt{ax, ay}, Pt{bx, by}); }
+double restePositif(double a) {  // ((a%T)+T)%T
+  const double T = PI_ * 2;
+  return std::fmod(std::fmod(a, T) + T, T);
+}
+void arcOriente(double cx, double cy, double x1, double y1, double x2, double y2, double mx, double my, double o[4]) {
+  // L'arc va toujours de pa à pb en sens direct : le secteur doit contenir le milieu réel de l'arête, jamais son complément
+  const double a1 = m_atan2(y1 - cy, x1 - cx), a2 = m_atan2(y2 - cy, x2 - cx), am = m_atan2(my - cy, mx - cx);
+  const bool garde = !std::isfinite(mx) || !std::isfinite(my) || dansArc(am, a1, a2);
+  o[0] = garde ? x1 : x2;
+  o[1] = garde ? y1 : y2;
+  o[2] = garde ? x2 : x1;
+  o[3] = garde ? y2 : y1;
+}
+struct PlanVers {  // skpPlan
+  const Esquisse& a;
+  const Esquisse& b;
+  bool par;
+  PlanVers(const Esquisse& A, const Esquisse& B) : a(A), b(B) {
+    par = std::abs(a.n[0] * b.n[0] + a.n[1] * b.n[1] + a.n[2] * b.n[2]) > 1 - 1e-9;
+  }
+  P2d operator()(double x, double y) const {
+    const double dx = a.o[0] + a.u[0] * x + a.v[0] * y - b.o[0], dy = a.o[1] + a.u[1] * x + a.v[1] * y - b.o[1], dz = a.o[2] + a.u[2] * x + a.v[2] * y - b.o[2];
+    return {dx * b.u[0] + dy * b.u[1] + dz * b.u[2], dx * b.v[0] + dy * b.v[1] + dz * b.v[2]};
+  }
+};
+bool plat(const std::vector<P2d>& pts) {  // skpPlat : la polyligne n'est qu'un trait droit
+  const P2d A = pts[0];
+  P2d B = A;
+  double dm = 0;
+  for (const P2d& p : pts) {
+    const double d = hyp(p[0] - A[0], p[1] - A[1]);
+    if (d > dm) {
+      dm = d;
+      B = p;
+    }
+  }
+  if (dm < 1e-4) return true;
+  for (const P2d& p : pts)
+    if (!(std::abs((p[0] - A[0]) * (B[1] - A[1]) - (p[1] - A[1]) * (B[0] - A[0])) / dm < 1e-4)) return false;
+  return true;
+}
+using Prj = Dessin::Projetable;
+Prj formeProjetee(const Esquisse& S, const Entite& e, const PlanVers& f) {  // skpForme
+  Prj r;
+  const auto courbe = [&](std::vector<P2d> pts, bool closed, int m) {
+    Prj c;
+    if (plat(pts)) return c;
+    c.sorte = Prj::COURBE;
+    c.pts = std::move(pts);
+    c.closed = closed;
+    c.m = m;
+    return c;
+  };
+  if (e.t == "line") {
+    const Pt* A = S.point(e.p1);
+    const Pt* B = S.point(e.p2);
+    if (!A || !B || !e.handle.empty()) return r;
+    const P2d a = f(A->x, A->y), b = f(B->x, B->y);
+    if (hyp(b[0] - a[0], b[1] - a[1]) < 1e-4) return r;
+    r.sorte = Prj::LIGNE;
+    r.x1 = a[0];
+    r.y1 = a[1];
+    r.x2 = b[0];
+    r.y2 = b[1];
+    return r;
+  }
+  if (e.t == "circle") {
+    const Pt* C = S.point(e.pc);
+    if (!C || !(e.r > 0)) return r;
+    if (f.par) {
+      const P2d c = f(C->x, C->y);
+      r.sorte = Prj::CERCLE;
+      r.cx = c[0];
+      r.cy = c[1];
+      r.r = e.r;
+      return r;
+    }
+    std::vector<P2d> pts;
+    for (int i = 0; i <= 96; i++) {
+      const double a = i / 96.0 * PI_ * 2;
+      pts.push_back(f(C->x + m_cos(a) * e.r, C->y + m_sin(a) * e.r));
+    }
+    return courbe(std::move(pts), true, 48);
+  }
+  if (e.t == "arc") {
+    const Pt* C = S.point(e.pc);
+    An an;
+    if (!C || !(e.r > 0) || !anglesArc2(S, e, an)) return r;
+    const auto en = [&](double a) { return f(C->x + m_cos(a) * e.r, C->y + m_sin(a) * e.r); };
+    if (f.par) {
+      const P2d c = f(C->x, C->y), u = en(an.a1), w = en(an.a2), m = en((an.a1 + an.a2) / 2);
+      double o[4];
+      arcOriente(c[0], c[1], u[0], u[1], w[0], w[1], m[0], m[1], o);  // plan retourné : le sens de l'arc s'inverse
+      r.sorte = Prj::ARC;
+      r.cx = c[0];
+      r.cy = c[1];
+      r.r = e.r;
+      r.x1 = o[0];
+      r.y1 = o[1];
+      r.x2 = o[2];
+      r.y2 = o[3];
+      return r;
+    }
+    const double d = an.a2 - an.a1;
+    const int n = std::max(8, static_cast<int>(std::ceil(d / (PI_ * 2) * 96)));
+    std::vector<P2d> pts;
+    for (int i = 0; i <= n; i++) pts.push_back(en(an.a1 + d * i / n));
+    return courbe(std::move(pts), false, std::max(6, static_cast<int>(std::ceil(n / 2.0))));
+  }
+  if (e.t == "spline") {
+    BSpline b;
+    if (!splineDe(S, e, b)) return r;
+    const std::vector<P2d> pl = bsSample(b, b.a, b.b, 16);
+    if (pl.size() < 2) return r;
+    std::vector<P2d> pts;
+    for (const P2d& q : pl) pts.push_back(f(q[0], q[1]));
+    return courbe(std::move(pts), e.closed, std::max(24, std::min(96, static_cast<int>(e.pts.size()) * 6)));
+  }
+  return r;
+}
+std::vector<std::string> pointsDesignables(const Esquisse& S) {  // skpPoints
+  std::vector<std::string> ids;
+  std::set<std::string> vus;
+  const auto mettre = [&](const std::string& p) {
+    if (!p.empty() && vus.insert(p).second) ids.push_back(p);
+  };
+  for (const Entite& e : S.entites) {
+    if (e.t == "line") {
+      mettre(e.p1);
+      if (e.handle.empty()) mettre(e.p2);
+    } else if (e.t == "circle") {
+      mettre(e.pc);
+    } else if (e.t == "arc") {
+      mettre(e.pc);
+      mettre(e.pa);
+      mettre(e.pb);
+    } else if (e.t == "cpoint") {
+      mettre(e.p);
+    } else if (e.t == "spline") {
+      for (const std::string& q : e.pts) mettre(q);
+    }
+  }
+  std::vector<std::string> L;
+  for (const std::string& p : ids)
+    if (S.point(p)) L.push_back(p);
+  return L;
+}
+const Esquisse* esquisseDe(const std::vector<Esquisse>& L, const std::string& id) {
+  for (const Esquisse& s : L)
+    if (s.id == id) return &s;
+  return nullptr;
+}
+bool depend(const std::vector<Esquisse>& L, const Esquisse& s, const std::string& id, std::set<std::string>& vu) {  // skpDepend
+  if (!vu.insert(s.id).second) return false;
+  for (const Entite& e : s.entites) {
+    if (e.skSrcSk.empty()) continue;
+    if (e.skSrcSk == id) return true;
+    const Esquisse* q = esquisseDe(L, e.skSrcSk);
+    if (q && depend(L, *q, id, vu)) return true;
+  }
+  return false;
+}
+bool cloneRepetition(const std::string& nom) {  // repCloneSkName : « (rép 2) » à la fin du nom
+  size_t i = nom.size();
+  while (i && nom[i - 1] == ' ') i--;
+  if (!i || nom[i - 1] != ')') return false;
+  i--;
+  const size_t fin = i;
+  while (i && nom[i - 1] >= '0' && nom[i - 1] <= '9') i--;
+  if (i == fin) return false;
+  while (i && nom[i - 1] == ' ') i--;
+  static const std::string REP = "(r\xC3\xA9p";
+  return i >= REP.size() && nom.compare(i - REP.size(), REP.size(), REP) == 0;
+}
+double distanceForme(const Prj& pr, double x, double y) {  // skpDistance
+  if (pr.sorte == Prj::LIGNE) return distSeg2(x, y, pr.x1, pr.y1, pr.x2, pr.y2);
+  if (pr.sorte == Prj::CERCLE) return std::abs(hyp(x - pr.cx, y - pr.cy) - pr.r);
+  if (pr.sorte == Prj::ARC) {
+    const double a = m_atan2(pr.y1 - pr.cy, pr.x1 - pr.cx), b = m_atan2(pr.y2 - pr.cy, pr.x2 - pr.cx);
+    if (dansArc(m_atan2(y - pr.cy, x - pr.cx), a, b)) return std::abs(hyp(x - pr.cx, y - pr.cy) - pr.r);
+    return jsmin(hyp(x - pr.x1, y - pr.y1), hyp(x - pr.x2, y - pr.y2));
+  }
+  double d = std::numeric_limits<double>::infinity();
+  for (size_t i = 0; i + 1 < pr.pts.size(); i++) d = jsmin(d, distSeg2(x, y, pr.pts[i][0], pr.pts[i][1], pr.pts[i + 1][0], pr.pts[i + 1][1]));
+  return d;
+}
+std::vector<P2d> echantillon(const std::vector<P2d>& pts, bool closed, int m) {  // skpEchantillon
+  std::vector<double> L{0};
+  for (size_t i = 1; i < pts.size(); i++) L.push_back(L[i - 1] + hyp(pts[i][0] - pts[i - 1][0], pts[i][1] - pts[i - 1][1]));
+  const double tot = L.back();
+  std::vector<P2d> Q;
+  for (int k = 0; k <= m; k++) {
+    const double s = tot * k / m;
+    size_t i = 1;
+    while (i < L.size() - 1 && L[i] < s) i++;
+    const double dl = L[i] - L[i - 1], w = (s - L[i - 1]) / (dl != 0 ? dl : 1);
+    Q.push_back({pts[i - 1][0] + (pts[i][0] - pts[i - 1][0]) * w, pts[i - 1][1] + (pts[i][1] - pts[i - 1][1]) * w});
+  }
+  if (closed) Q.pop_back();
+  return Q;
+}
+}  // namespace
+
+Dessin::Projetable Dessin::areteProjetable(double x, double y) const {
+  Projetable best;
+  const std::vector<Arete3D>* L = aretes3D ? aretes3D() : nullptr;
+  if (!L) return best;
+  const double tol = jsmax(4.0, 8 / jsmax(1.0, echelle_));
+  double bd = 1e9;
+  for (const Arete3D& e : *L) {
+    std::vector<P2d> pts2;
+    for (const Vec3& p : e.pts) {
+      const double dx = p[0] - s_.o[0], dy = p[1] - s_.o[1], dz = p[2] - s_.o[2];
+      pts2.push_back({dx * s_.u[0] + dy * s_.u[1] + dz * s_.u[2], dx * s_.v[0] + dy * s_.v[1] + dz * s_.v[2]});
+    }
+    bool ponctuelle = true;
+    for (const P2d& p : pts2) ponctuelle = ponctuelle && hyp(p[0] - pts2[0][0], p[1] - pts2[0][1]) < 1e-4;
+    if (ponctuelle) continue;  // arête perpendiculaire au plan : un point, rien à projeter
+    bool isCirc = false;
+    double cx = 0, cy = 0, r = 0, a1 = 0, a2 = 0;
+    if (pts2.size() >= 6) {
+      const P2d p0 = pts2[0], p1 = pts2[pts2.size() / 3], p2 = pts2[2 * pts2.size() / 3];
+      const double d = 2 * (p0[0] * (p1[1] - p2[1]) + p1[0] * (p2[1] - p0[1]) + p2[0] * (p0[1] - p1[1]));
+      if (std::abs(d) > 1e-9) {
+        const double s0 = p0[0] * p0[0] + p0[1] * p0[1], s1 = p1[0] * p1[0] + p1[1] * p1[1], s2 = p2[0] * p2[0] + p2[1] * p2[1];
+        cx = (s0 * (p1[1] - p2[1]) + s1 * (p2[1] - p0[1]) + s2 * (p0[1] - p1[1])) / d;
+        cy = (s0 * (p2[0] - p1[0]) + s1 * (p0[0] - p2[0]) + s2 * (p1[0] - p0[0])) / d;
+        r = hyp(p0[0] - cx, p0[1] - cy);
+        if (r > 0.5) {
+          double dev = 0;
+          for (const P2d& p : pts2) {
+            const double dd = std::abs(hyp(p[0] - cx, p[1] - cy) - r);
+            if (dd > dev) dev = dd;
+          }
+          if (dev < 0.35) {
+            isCirc = true;
+            a1 = m_atan2(p0[1] - cy, p0[0] - cx);
+            a2 = m_atan2(pts2.back()[1] - cy, pts2.back()[0] - cx);
+          }
+        }
+      }
+    }
+    bool isFull = false;
+    double d = 1e9;
+    if (isCirc) {
+      const double span = std::abs(restePositif(a2 - a1));
+      isFull = span > 6.0 || hyp(pts2[0][0] - pts2.back()[0], pts2[0][1] - pts2.back()[1]) < 0.5;
+      if (isFull) d = std::abs(hyp(x - cx, y - cy) - r);
+      else {
+        double bestA = 1e9;
+        for (size_t i = 0; i + 1 < pts2.size(); i++) bestA = jsmin(bestA, distSeg2(x, y, pts2[i][0], pts2[i][1], pts2[i + 1][0], pts2[i + 1][1]));
+        d = bestA;
+      }
+    } else {
+      for (size_t i = 0; i + 1 < pts2.size(); i++) d = jsmin(d, distSeg2(x, y, pts2[i][0], pts2[i][1], pts2[i + 1][0], pts2[i + 1][1]));
+    }
+    // Deux arêtes peuvent se superposer en 2D : celle du plan d'esquisse gagne
+    double dz = 1e9;
+    for (const Vec3& p : e.pts) {
+      const double t = std::abs((p[0] - s_.o[0]) * s_.n[0] + (p[1] - s_.o[1]) * s_.n[1] + (p[2] - s_.o[2]) * s_.n[2]);
+      if (t < dz) dz = t;
+    }
+    if (dz > 1e8) dz = 0;
+    if (d < tol && d + 0.25 * dz < bd) {
+      bd = d + 0.25 * dz;
+      best = Projetable{};
+      best.aMid = true;
+      best.mid = e.mid;
+      if (isCirc) {
+        best.cx = cx;
+        best.cy = cy;
+        best.r = r;
+        if (isFull) best.sorte = Projetable::CERCLE;
+        else {
+          const P2d m = pts2[pts2.size() / 2];
+          double o[4];
+          arcOriente(cx, cy, pts2[0][0], pts2[0][1], pts2.back()[0], pts2.back()[1], m[0], m[1], o);
+          best.sorte = Projetable::ARC;
+          best.x1 = o[0];
+          best.y1 = o[1];
+          best.x2 = o[2];
+          best.y2 = o[3];
+        }
+      } else {
+        const P2d A0 = pts2[0], B0 = pts2.back();
+        const double cl = hyp(B0[0] - A0[0], B0[1] - A0[1]);
+        double dv = 0;
+        for (const P2d& p : pts2)
+          dv = jsmax(dv, cl > 1e-9 ? std::abs((p[0] - A0[0]) * (B0[1] - A0[1]) - (p[1] - A0[1]) * (B0[0] - A0[0])) / cl : hyp(p[0] - A0[0], p[1] - A0[1]));
+        if (dv > 0.02) {
+          best.sorte = Projetable::COURBE;
+          best.pts = pts2;
+        } else {
+          best.sorte = Projetable::LIGNE;
+          best.x1 = A0[0];
+          best.y1 = A0[1];
+          best.x2 = B0[0];
+          best.y2 = B0[1];
+        }
+      }
+    }
+  }
+  return best;
+}
+
+std::string Dessin::nomEntite(bool arete) {
+  int* c = arete ? nomsArete : nomsProj;
+  static int secours = 0;
+  if (!c) c = &secours;
+  return std::string(arete ? "Ar\xC3\xAAte " : "Projet\xC3\xA9" "e ") + std::to_string(++*c);
+}
+
+void Dessin::nommer(Entite& e, const Projetable& pr) {  // projNames
+  e.projName = nomEntite(false);
+  if (pr.aMid) {
+    e.srcName = nomEntite(true);
+    e.aSrcMid = true;
+    e.srcMid = pr.mid;
+  }
+}
+
+std::string Dessin::creerProjection(const Projetable& pr) {  // skProjectCreate
+  const auto fixer = [&](const std::string& p) {
+    Contrainte c = contrainte("fix");
+    c.p = p;
+    lier(c);
+  };
+  const auto fixerEntite = [&](const std::string& id) {
+    Contrainte c = contrainte("fix");
+    c.ent = id;
+    lier(c);
+  };
+  Entite e;
+  e.construction = true;
+  e.proj = true;
+  if (pr.sorte == Projetable::CERCLE) {
+    const std::string pc = ajouterPoint(pr.cx, pr.cy);
+    fixer(pc);
+    e.id = nouvelE();
+    e.t = "circle";
+    e.pc = pc;
+    e.r = pr.r;
+    nommer(e, pr);
+    s_.entites.push_back(e);
+    fixerEntite(e.id);
+    return e.id;
+  }
+  if (pr.sorte == Projetable::ARC) {
+    const std::string pc = ajouterPoint(pr.cx, pr.cy), pa = ajouterPoint(pr.x1, pr.y1), pb = ajouterPoint(pr.x2, pr.y2);
+    fixer(pc);
+    fixer(pa);
+    fixer(pb);
+    e.id = nouvelE();
+    e.t = "arc";
+    e.pc = pc;
+    e.pa = pa;
+    e.pb = pb;
+    e.r = pr.r;
+    nommer(e, pr);
+    s_.entites.push_back(e);
+    fixerEntite(e.id);
+    return e.id;
+  }
+  if (pr.sorte == Projetable::COURBE) {  // skSplineProject : au plus 25 points fixés, répartis en longueur
+    const std::vector<P2d>& pts = pr.pts;
+    if (pts.size() < 2) return "";
+    std::vector<double> L{0};
+    for (size_t i = 1; i < pts.size(); i++) L.push_back(L[i - 1] + hyp(pts[i][0] - pts[i - 1][0], pts[i][1] - pts[i - 1][1]));
+    if (!(L.back() > 1e-6)) return "";
+    const bool closed = hyp(pts[0][0] - pts.back()[0], pts[0][1] - pts.back()[1]) < 1e-4;
+    const int m = std::max(3, std::min(25, static_cast<int>(pts.size()) - 1));
+    const std::vector<P2d> Q = echantillon(pts, closed, m);
+    std::vector<std::string> ids;
+    for (const P2d& q : Q) {
+      const std::string p = ajouterPoint(q[0], q[1]);
+      fixer(p);
+      ids.push_back(p);
+    }
+    e.id = nouvelE();
+    e.t = "spline";
+    e.pts = ids;
+    e.closed = closed && ids.size() >= 3;
+    s_.entites.push_back(e);
+    fixerEntite(e.id);
+    nommer(s_.entites.back(), pr);
+    return e.id;
+  }
+  const std::string p1 = ajouterPoint(pr.x1, pr.y1), p2 = ajouterPoint(pr.x2, pr.y2);
+  e.id = nouvelE();
+  e.t = "line";
+  e.p1 = p1;
+  e.p2 = p2;
+  nommer(e, pr);
+  s_.entites.push_back(e);
+  fixer(p1);
+  fixer(p2);
+  return e.id;
+}
+
+std::vector<Dessin::SourceProjection> Dessin::sourcesProjection() const {  // skpItems
+  std::vector<SourceProjection> out;
+  if (!esquisses) return out;
+  for (const Esquisse& S : *esquisses) {
+    std::set<std::string> vu;
+    if (S.id == s_.id || !S.visible || cloneRepetition(S.nom) || depend(*esquisses, S, s_.id, vu)) continue;
+    const PlanVers f(S, s_);
+    SourceProjection it;
+    for (const std::string& pid : pointsDesignables(S)) {
+      const Pt* q = S.point(pid);
+      it.pts.push_back(f(q->x, q->y));
+    }
+    for (const Entite& e : S.entites) {
+      if (e.t == "cpoint") continue;
+      Projetable pr = formeProjetee(S, e, f);
+      if (!pr) continue;
+      pr.skSk = S.id;
+      pr.skEnt = e.id;
+      pr.srcNom = S.nom;
+      it.formes.push_back(std::move(pr));
+    }
+    out.push_back(std::move(it));
+  }
+  return out;
+}
+
+Dessin::Projetable Dessin::sourceSous(double x, double y) const {  // skpHit : un point d'abord, puis une entité
+  Projetable best;
+  if (!esquisses) return best;
+  double bd = PT_;
+  for (const Esquisse& S : *esquisses) {
+    std::set<std::string> vu;
+    if (S.id == s_.id || !S.visible || cloneRepetition(S.nom) || depend(*esquisses, S, s_.id, vu)) continue;
+    const PlanVers f(S, s_);
+    for (const std::string& pid : pointsDesignables(S)) {
+      const Pt* q = S.point(pid);
+      const P2d c = f(q->x, q->y);
+      const double d = hyp(c[0] - x, c[1] - y);
+      if (d < bd) {
+        bd = d;
+        best = Projetable{};
+        best.sorte = Projetable::UN_POINT;
+        best.x1 = c[0];
+        best.y1 = c[1];
+        best.skSk = S.id;
+        best.skPt = pid;
+        best.srcNom = S.nom;
+      }
+    }
+  }
+  if (best) return best;
+  bd = PICK_;
+  for (const SourceProjection& it : sourcesProjection())
+    for (const Projetable& c : it.formes) {
+      const double d = distanceForme(c, x, y);
+      if (d < bd) {
+        bd = d;
+        best = c;
+      }
+    }
+  return best;
+}
+
+std::string Dessin::creerDepuisEsquisse(const Projetable& pr) {  // skpCreer
+  std::string id;
+  const auto fixer = [&](const std::string& p) {
+    Contrainte c = contrainte("fix");
+    c.p = p;
+    lier(c);
+  };
+  Projetable sansMid = pr;
+  sansMid.aMid = false;
+  if (pr.sorte == Projetable::UN_POINT) {
+    const std::string p = ajouterPoint(pr.x1, pr.y1);
+    fixer(p);
+    Entite e;
+    e.id = id = nouvelE();
+    e.t = "cpoint";
+    e.p = p;
+    e.construction = e.proj = true;
+    nommer(e, sansMid);
+    s_.entites.push_back(e);
+  } else if (pr.sorte == Projetable::COURBE) {
+    const std::vector<P2d> Q = echantillon(pr.pts, pr.closed, pr.m);
+    if (Q.size() < 3) return "";
+    Entite e;
+    for (const P2d& q : Q) {
+      const std::string p = ajouterPoint(q[0], q[1]);
+      fixer(p);
+      e.pts.push_back(p);
+    }
+    e.id = id = nouvelE();
+    e.t = "spline";
+    e.construction = e.proj = true;
+    e.closed = pr.closed;
+    nommer(e, sansMid);
+    s_.entites.push_back(e);
+    Contrainte c = contrainte("fix");
+    c.ent = id;
+    lier(c);
+  } else {
+    id = creerProjection(sansMid);
+  }
+  if (id.empty()) return id;
+  Entite* e = nullptr;
+  for (Entite& x : s_.entites)
+    if (x.id == id) e = &x;
+  e->skSrcSk = pr.skSk;
+  e->skSrcPt = pr.skPt;
+  e->skSrcEnt = pr.skEnt;
+  e->skSrcM = pr.sorte == Projetable::COURBE ? pr.m : 0;
+  e->srcName = "\xC2\xAB " + (pr.srcNom.empty() ? std::string("Esquisse") : pr.srcNom) + " \xC2\xBB";
+  e->suiviInconnu = true;
+  return id;
+}
+
+namespace {
+const char* nomForme(Dessin::Projetable::Sorte s) {  // skpNom
+  using P = Dessin::Projetable;
+  return s == P::UN_POINT ? "Point" : s == P::CERCLE ? "Cercle" : s == P::ARC ? "Arc" : s == P::COURBE ? "Courbe" : "Ligne";
+}
+}  // namespace
+
+void Dessin::clicProjeter(double wx, double wy) {
+  const Projetable src = sourceSous(wx, wy);
+  if (src) {
+    for (const Entite& e : s_.entites)
+      if (e.skSrcSk == src.skSk && (!src.skPt.empty() ? e.skSrcPt == src.skPt : e.skSrcEnt == src.skEnt))
+        return message(std::string(nomForme(src.sorte)) + " de « " + src.srcNom + " » déjà projeté(e) ici.");
+    pousser();
+    if (creerDepuisEsquisse(src).empty()) {
+      if (annulerPas) annulerPas();
+      return message("Élément trop court pour être projeté.");
+    }
+    apresEdition();
+    return message(std::string(nomForme(src.sorte)) + " de « " + src.srcNom + " » projeté(e) en construction : suit son esquisse.");
+  }
+  const std::vector<Arete3D>* L = aretes3D ? aretes3D() : nullptr;
+  if (!L) return message("Projeter : noyau OCCT requis et solide visible.");
+  const Projetable pr = areteProjetable(wx, wy);
+  if (!pr) return message("Aucune arête 3D sur ce plan à proximité.");
+  pousser();
+  if (creerProjection(pr).empty()) {
+    if (annulerPas) annulerPas();
+    return message("Arête courbe trop courte pour être projetée.");
+  }
+  apresEdition();
+  message(pr.sorte == Projetable::CERCLE ? "Cercle projeté en construction (centre fixe)."
+          : pr.sorte == Projetable::ARC  ? "Arc projeté en construction (fixe)."
+          : pr.sorte == Projetable::COURBE ? "Courbe projetée en construction : spline aux points fixés (non suivie au rejeu)."
+                                           : "Arête projetée en construction (fixe).");
+}
+
+void Dessin::bougerProjeter(double wx, double wy) {
+  Projetable pr = sourceSous(wx, wy);
+  const bool autre = static_cast<bool>(pr);
+  if (!autre) pr = areteProjetable(wx, wy);
+  survolProj_ = pr;
+  if (autre) message("⧉ " + std::string(nomForme(pr.sorte)) + " de « " + pr.srcNom + " » (suit cette esquisse) — clic pour projeter en construction.");
+  else if (pr) message("⧉ " + std::string(pr.sorte == Projetable::CERCLE ? "Cercle" : pr.sorte == Projetable::ARC ? "Arc" : pr.sorte == Projetable::COURBE ? "Courbe" : "Arête") + " — clic pour projeter en construction.");
+  else message("⧉ Survolez une arête 3D (même hors plan) ou le tracé bleu d'une autre esquisse visible — il s'illumine en orange.");
 }

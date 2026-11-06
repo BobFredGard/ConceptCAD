@@ -311,3 +311,14 @@ bool saisirCote(Document& d, size_t i, Edition& ed, const std::string& idCote, d
   suivreEsquisses(d, i);
   return true;
 }
+
+std::vector<AreteProjetable> aretesPourProjeter(const Document& d, size_t i) {
+  std::vector<AreteProjetable> out;
+  try {
+    Document copie = d;  // le rejeu replace les esquisses posées sur une face : pas celle qu'on est en train de modifier
+    const ResultatRejeu r = rejouer(copie, consommatrice(d, d.esquisses[i].id));
+    for (AreteSource& a : listerAretes(r.forme)) out.push_back({a.mid, std::move(a.pts)});
+  } catch (const std::exception&) {
+  }
+  return out;
+}
