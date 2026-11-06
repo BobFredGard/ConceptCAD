@@ -3,8 +3,7 @@
   "nom": "Noyau OCCT 8 compilé dans WebView2",
   "ok": true,
   "detail": {
-   "ver": "V0.64.3",
-   "v3": true,
+   "ver": "V0.65.0",
    "pret": true,
    "origine": "http://tauri.localhost",
    "msg": "OCCT : prêt — prismes exacts, booléens Fuse/Cut, congés toutes arêtes, STEP. (OCCT 8.0.1)",
@@ -16,7 +15,7 @@
   "nom": "Aucune demande vers Internet au démarrage",
   "ok": true,
   "detail": {
-   "demandes": 17,
+   "demandes": 22,
    "dehors": []
   }
  },
@@ -29,77 +28,77 @@
    "essais": [
     {
      "face": 0,
-     "ms": 1247,
+     "ms": 1378,
      "kept": 0,
      "err": "les faces voisines ne se rejoignent pas",
      "brep": 0
     },
     {
      "face": 1,
-     "ms": 87,
+     "ms": 96,
      "kept": 0,
      "err": "les faces voisines ne se rejoignent pas",
      "brep": 0
     },
     {
      "face": 2,
-     "ms": 94,
+     "ms": 105,
      "kept": 0,
      "err": "les faces voisines ne se rejoignent pas",
      "brep": 0
     },
     {
      "face": 3,
-     "ms": 88,
+     "ms": 104,
      "kept": 0,
      "err": "les faces voisines ne se rejoignent pas",
      "brep": 0
     },
     {
      "face": 4,
-     "ms": 94,
+     "ms": 104,
      "kept": 0,
      "err": "les faces voisines ne se rejoignent pas",
      "brep": 0
     },
     {
      "face": 5,
-     "ms": 90,
+     "ms": 102,
      "kept": 0,
      "err": "les faces voisines ne se rejoignent pas",
      "brep": 0
     },
     {
      "face": 6,
-     "ms": 90,
+     "ms": 100,
      "kept": 0,
      "err": "les faces voisines ne se rejoignent pas",
      "brep": 0
     },
     {
      "face": 7,
-     "ms": 88,
+     "ms": 99,
      "kept": 0,
      "err": "les faces voisines ne se rejoignent pas",
      "brep": 0
     },
     {
      "face": 8,
-     "ms": 92,
+     "ms": 104,
      "kept": 0,
      "err": "les faces voisines ne se rejoignent pas",
      "brep": 0
     },
     {
      "face": 9,
-     "ms": 82,
+     "ms": 98,
      "kept": 0,
      "err": "les faces voisines ne se rejoignent pas",
      "brep": 0
     },
     {
      "face": 10,
-     "ms": 128,
+     "ms": 62,
      "kept": 1,
      "err": null,
      "brep": 237368
@@ -143,7 +142,7 @@
    "fenetre": "FENETRE:Ouvrir\r\nOK",
    "lien": {
     "nom": "Pièce d’essai é",
-    "chemin": "C:\\Users\\PCCAO\\AppData\\Local\\Temp\\claude\\e73d25c6250389d8\\3ebb19e0-6bf5-4627-aeb4-2d440f4a1385\\scratchpad\\essai-fichiers\\Pièce d’essai é.conceptcad",
+    "chemin": "C:\\Users\\PCCAO\\AppData\\Local\\Temp\\claude\\e73d25c6250389d8\\3ebb19e0-6bf5-4627-aeb4-2d440f4a1385\\scratchpad\\essai-verif\\Pièce d’essai é.conceptcad",
     "fct": 26
    }
   }
@@ -189,7 +188,7 @@
   "detail": {
    "n": 2,
    "nom": "copie enregistrée.conceptcad",
-   "taille": 7390
+   "taille": 7388
   }
  },
  {
@@ -198,8 +197,8 @@
   "detail": {
    "fenetre": "FENETRE:S�lectionner un dossier\r\nOK",
    "dos": {
-    "nom": "essai-fichiers",
-    "chemin": "C:\\Users\\PCCAO\\AppData\\Local\\Temp\\claude\\e73d25c6250389d8\\3ebb19e0-6bf5-4627-aeb4-2d440f4a1385\\scratchpad\\essai-fichiers",
+    "nom": "essai-verif",
+    "chemin": "C:\\Users\\PCCAO\\AppData\\Local\\Temp\\claude\\e73d25c6250389d8\\3ebb19e0-6bf5-4627-aeb4-2d440f4a1385\\scratchpad\\essai-verif",
     "l": [
      "copie enregistrée.conceptcad",
      "Pièce d’essai é.conceptcad"
@@ -247,26 +246,18 @@
   }
  },
  {
-  "nom": "Modification non enregistrée retrouvée au redémarrage",
-  "ok": true,
-  "detail": {
-   "attendu": 65.8,
-   "lu": 65.8
-  }
- },
- {
   "nom": "Fichier reçu au démarrage (ce que fait le double-clic)",
   "ok": true,
   "detail": {
    "nom": "Pièce d’essai é",
-   "chemin": "C:\\Users\\PCCAO\\AppData\\Local\\Temp\\claude\\e73d25c6250389d8\\3ebb19e0-6bf5-4627-aeb4-2d440f4a1385\\scratchpad\\essai-fichiers\\Pièce d’essai é.conceptcad"
+   "chemin": "C:\\Users\\PCCAO\\AppData\\Local\\Temp\\claude\\e73d25c6250389d8\\3ebb19e0-6bf5-4627-aeb4-2d440f4a1385\\scratchpad\\essai-verif\\Pièce d’essai é.conceptcad"
   }
  },
  {
   "nom": "Double-clic réel (association Windows)",
   "ok": true,
   "detail": {
-   "titre": "double clic essai - ConceptCAD",
+   "titre": "? installateur essai - ConceptCAD",
    "choixPrecedent": null
   }
  },

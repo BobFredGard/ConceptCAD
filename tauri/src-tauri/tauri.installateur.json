@@ -1,6 +1,11 @@
 {
   "bundle": {
     "active": true,
-    "windows": { "nsis": { "installMode": "currentUser" } }
+    "windows": {
+      "nsis": {
+        "installMode": "currentUser",
+        "installerHooks": "./desinstallation.nsh"
+      }
+    }
   }
 }

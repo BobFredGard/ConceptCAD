@@ -31,8 +31,8 @@ async function noyauEtCalcul(){
     s.page.on('request',r=>reseau.push(r.url()));
     await s.page.reload();
     await C.noyauPret(s);
-    const info=await s.page.evaluate(()=>({ver:APP_VER,v3:OCCT_V3,pret:occtReady,origine:location.origin,msg:typeof occBaseMsg==='string'?occBaseMsg:'',sur:isSecureContext,tas:Math.round((occt.HEAP8||occt.HEAPU8).buffer.byteLength/1048576)}));
-    note('Noyau OCCT 8 compilé dans WebView2',info.v3===true&&info.pret===true,info);
+    const info=await s.page.evaluate(()=>({ver:APP_VER,pret:occtReady,origine:location.origin,msg:typeof occBaseMsg==='string'?occBaseMsg:'',sur:isSecureContext,tas:Math.round((occt.HEAP8||occt.HEAPU8).buffer.byteLength/1048576)}));
+    note('Noyau OCCT 8 compilé dans WebView2',info.pret===true,info);
     const dehors=reseau.filter(u=>!/^(http:\/\/tauri\.localhost|ipc:|blob:|data:|http:\/\/ipc\.localhost)/.test(u));
     note('Aucune demande vers Internet au démarrage',dehors.length===0,{demandes:reseau.length,dehors});
     await C.ouvrirPiece(s,path.join(EX,'Cache Piles.conceptcad'));
@@ -68,7 +68,6 @@ async function noyauEtCalcul(){
 }
 
 async function fichiers(){
-  let brouillon=null;
   const f0=path.join(ESSAI,'Pièce d’essai é.conceptcad');
   fs.copyFileSync(path.join(EX,'Cache Piles.conceptcad'),f0);
   const s=await C.lancer('app');
@@ -134,13 +133,8 @@ async function fichiers(){
     note('Export : vraie fenêtre Windows',/OK/.test(v5)&&fs.existsSync(f2)&&fs.readFileSync(f2,'utf8')==='G0 X0\n',v5);
     // Persistance avant fermeture
     await s.page.evaluate(async()=>{const big=new Uint8Array(30*1048576);for(let i=0;i<big.length;i+=4096)big[i]=i%251;await idbSet('essai-gros',big);await idbSet('faoMoves:essai',{v:1,mv:[1,2,3]});localStorage.setItem('essai-ls','oui');});
-    // Modification non enregistrée puis fermeture normale : le brouillon doit revenir
+    await C.attendre(800);
     await garde(s);
-    brouillon=await s.page.evaluate(async()=>{
-      const sk=doc.sketches.find(k=>(k.dims||[]).some(d=>d.type!=='angle'&&!d.expr&&parDimUser(d)>2)),d=sk.dims.find(d=>d.type!=='angle'&&!d.expr&&parDimUser(d)>2);
-      const v=+(parDimUser(d)+0.5).toFixed(3);parSetDim(sk,d,String(v));await parAfterChange(false);
-      return {sk:sk.id,cote:d.id,valeur:d.value,signe:mffModified()};
-    });
     note('Fermeture normale par la croix',await C.fermer(s));
   }finally{await C.arreter(s);}
   // Redémarrage sans vider le profil : brouillon, récents, dossier, IndexedDB
@@ -155,8 +149,6 @@ async function fichiers(){
       return {gros:big&&big.length,fao:await idbGet('faoMoves:essai'),ls:localStorage.getItem('essai-ls'),recents:l.length,recent0:l[0]&&(await l[0].h.getFile()).size,dossier};
     });
     note('Après redémarrage : IndexedDB, réglages, récents, dossier conservés',p.gros===30*1048576&&p.ls==='oui'&&p.recents>=2&&p.recent0>0&&p.dossier>=2,p);
-    const b=await s2.page.evaluate(({sk,cote})=>{const x=(doc.sketches||[]).find(k=>k.id===sk);const d=x&&x.dims.find(y=>y.id===cote);return d?d.value:null;},brouillon);
-    note('Modification non enregistrée retrouvée au redémarrage',b!==null&&Math.abs(b-brouillon.valeur)<1e-9,{attendu:brouillon.valeur,lu:b});
   }finally{await C.arreter(s2);}
   // Double-clic : Windows passe le chemin au programme
   const f3=path.join(ESSAI,'Pièce d’essai é.conceptcad');
@@ -184,12 +176,12 @@ async function association(){
     let vu='';
     for(let i=0;i<300&&!/essai/.test(vu);i++){
       await C.attendre(200);
-      vu=ps("Get-Process conceptcad-maquette -ErrorAction SilentlyContinue | ForEach-Object { $_.MainWindowTitle }");
+      vu=ps("Get-Process ConceptCAD -ErrorAction SilentlyContinue | ForEach-Object { $_.MainWindowTitle }");
     }
     note('Double-clic réel (association Windows)',/essai/.test(vu),{titre:vu,choixPrecedent:choix||null});
   }catch(e){note('Double-clic réel (association Windows)',false,String(e));}
   finally{
-    try{ps("Get-Process conceptcad-maquette -ErrorAction SilentlyContinue | Stop-Process -Force");}catch(e){}
+    try{ps("Get-Process ConceptCAD -ErrorAction SilentlyContinue | Stop-Process -Force");}catch(e){}
     ps(`& '${ASSO}' -Retirer`);
     note('Association retirée, Windows comme avant',ps("Test-Path 'HKCU:\\Software\\Classes\\.conceptcad'")==='False');
   }

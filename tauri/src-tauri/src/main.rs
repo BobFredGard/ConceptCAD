@@ -1,17 +1,18 @@
-// Maquette ConceptCAD en application Windows. Le logiciel lui-même est inchangé : ce programme
-// ouvre sa page dans WebView2 et donne au pont (../pont.js) l'accès aux vraies fenêtres et aux fichiers.
+// ConceptCAD en application Windows. Le logiciel lui-même est inchangé : ce programme ouvre sa page
+// dans WebView2 et donne au pont (../pont.js) l'accès aux vraies fenêtres et aux fichiers.
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 use percent_encoding::percent_decode_str;
-use rfd::FileDialog;
+use rfd::{FileDialog, MessageButtons, MessageDialog, MessageDialogResult, MessageLevel};
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::io::Write;
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Mutex;
-use std::time::UNIX_EPOCH;
+use std::time::{Duration, UNIX_EPOCH};
 use tauri::ipc::{InvokeBody, Request, Response};
-use tauri::{State, WebviewWindow};
+use tauri::{Emitter, Manager, State, WebviewWindow, WindowEvent};
 
 #[derive(Deserialize)]
 struct Filtre {
@@ -34,6 +35,13 @@ struct Entree {
 
 /// Fichier reçu par double-clic : donné une seule fois (pas de réouverture si la page se recharge).
 struct Demarrage(Mutex<Option<String>>);
+
+#[derive(Default)]
+struct Fermeture {
+    permise: AtomicBool,
+    reponse: AtomicBool,
+    veille: AtomicBool,
+}
 
 fn dialogue(fen: &WebviewWindow, filtres: Vec<Filtre>, depart: Option<String>) -> FileDialog {
     let mut d = FileDialog::new().set_parent(fen);
@@ -138,16 +146,81 @@ fn fichier_demarrage(etat: State<Demarrage>) -> Option<String> {
     etat.0.lock().ok()?.take()
 }
 
+/// La page a bien reçu la demande de fermeture : elle va poser sa question.
+#[tauri::command]
+fn fermeture_recue(etat: State<Fermeture>) {
+    etat.reponse.store(true, Ordering::SeqCst);
+}
+
+/// La page a fini (enregistré ou non) : fermeture normale, ses données en attente sont écrites.
+#[tauri::command]
+fn fermer(window: WebviewWindow, etat: State<Fermeture>) -> Result<(), String> {
+    etat.permise.store(true, Ordering::SeqCst);
+    window.close().map_err(|e| e.to_string())
+}
+
+/// Croix de la fenêtre : la question vient de la page. Si un long calcul l'empêche de répondre,
+/// Windows propose quand même de fermer : on ne reste jamais prisonnier de la fenêtre.
+fn demande_fermeture(fen: &tauri::Window) {
+    let etat = fen.state::<Fermeture>();
+    etat.reponse.store(false, Ordering::SeqCst);
+    let _ = fen.emit("demande-fermeture", ());
+    if etat.veille.swap(true, Ordering::SeqCst) {
+        return;
+    }
+    let fen = fen.clone();
+    std::thread::spawn(move || {
+        std::thread::sleep(Duration::from_secs(5));
+        let etat = fen.state::<Fermeture>();
+        if !etat.reponse.load(Ordering::SeqCst) {
+            let reponse = MessageDialog::new()
+                .set_level(MessageLevel::Warning)
+                .set_title("ConceptCAD")
+                .set_description("ConceptCAD est occupé par un calcul et ne répond pas.\n\nFermer quand même ? Les modifications non enregistrées peuvent être perdues.")
+                .set_buttons(MessageButtons::YesNo)
+                .show();
+            if reponse == MessageDialogResult::Yes {
+                etat.permise.store(true, Ordering::SeqCst);
+                let _ = fen.destroy();
+            }
+        }
+        etat.veille.store(false, Ordering::SeqCst);
+    });
+}
+
+fn premier_fichier(args: impl Iterator<Item = PathBuf>, dossier: &Path) -> Option<String> {
+    args.map(|a| dossier.join(a)).find(|p| p.is_file()).map(|p| std::path::absolute(&p).unwrap_or(p).to_string_lossy().into_owned())
+}
+
 fn main() {
-    let fichier = std::env::args_os()
-        .skip(1)
-        .map(PathBuf::from)
-        .find(|p| p.is_file())
-        .map(|p| std::path::absolute(&p).unwrap_or(p).to_string_lossy().into_owned());
+    let ici = std::env::current_dir().unwrap_or_default();
+    let fichier = premier_fichier(std::env::args_os().skip(1).map(PathBuf::from), &ici);
     tauri::Builder::default()
+        // Double-clic alors que l'application est ouverte : même fenêtre, ramenée devant.
+        .plugin(tauri_plugin_single_instance::init(|app, args, dossier| {
+            if let Some(f) = premier_fichier(args.into_iter().skip(1).map(PathBuf::from), Path::new(&dossier)) {
+                if let Ok(mut d) = app.state::<Demarrage>().0.lock() {
+                    *d = Some(f);
+                }
+                let _ = app.emit("fichier-recu", ());
+            }
+            if let Some(fen) = app.get_webview_window("main") {
+                let _ = fen.unminimize();
+                let _ = fen.set_focus();
+            }
+        }))
         .manage(Demarrage(Mutex::new(fichier)))
+        .manage(Fermeture::default())
+        .on_window_event(|fen, evenement| {
+            if let WindowEvent::CloseRequested { api, .. } = evenement {
+                if !fen.state::<Fermeture>().permise.load(Ordering::SeqCst) {
+                    api.prevent_close();
+                    demande_fermeture(fen);
+                }
+            }
+        })
         .invoke_handler(tauri::generate_handler![
-            dialogue_ouvrir, dialogue_enregistrer, dialogue_dossier, lire, infos, lister, creer_dossier, ecrire, titre, fichier_demarrage
+            dialogue_ouvrir, dialogue_enregistrer, dialogue_dossier, lire, infos, lister, creer_dossier, ecrire, titre, fichier_demarrage, fermeture_recue, fermer
         ])
         .run(tauri::generate_context!())
         .expect("démarrage de l'application impossible");

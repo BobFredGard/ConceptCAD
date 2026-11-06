@@ -1,81 +1,77 @@
 {
  "tailleSetupMo": 12.2,
- "installationS": 1,
+ "installationS": 3,
  "fichiers": [
-  "conceptcad-maquette.exe",
+  "ConceptCAD.exe",
   "uninstall.exe"
  ],
  "tailleInstalleeMo": 14.1,
  "associationPosee": true,
  "doubleClicOuvert": true,
  "titre": "installateur essai - ConceptCAD",
- "doubleClicJusquauTitreMs": 5575,
+ "doubleClicJusquauTitreMs": 4249,
  "ramOuvertSansPilotage": {
-  "prive": 410,
-  "ws": 737,
-  "engage": 807,
-  "gpuDed": 233,
+  "prive": 394,
+  "ws": 728,
+  "engage": 806,
+  "gpuDed": 231,
   "gpuPart": 7,
   "processus": 7,
   "detail": [
-   306,
-   61,
-   29,
-   6,
-   4,
-   3,
-   2
-  ]
- },
- "ramVideSansPilotageApp": {
-  "prive": 505,
-  "ws": 836,
-  "engage": 918,
-  "gpuDed": 232,
-  "gpuPart": 7,
-  "processus": 7,
-  "noms": {
-   "conceptcad-maquette.exe": 1,
-   "msedgewebview2.exe": 6
-  },
-  "detail": [
-   404,
-   58,
-   29,
+   280,
+   66,
+   32,
    7,
    4,
    3,
    2
   ]
  },
- "ramVideSansPilotageChrome": {
-  "prive": 222,
-  "ws": 676,
-  "engage": 495,
-  "gpuDed": 173,
-  "gpuPart": 3,
-  "processus": 12,
+ "ramVideSansPilotageApp": {
+  "prive": 507,
+  "ws": 845,
+  "engage": 910,
+  "gpuDed": 229,
+  "gpuPart": 6,
+  "processus": 7,
   "noms": {
-   "BraveCrashHandler.exe": 1,
-   "BraveCrashHandler64.exe": 1,
+   "ConceptCAD.exe": 1,
+   "msedgewebview2.exe": 6
+  },
+  "detail": [
+   402,
+   63,
+   27,
+   6,
+   4,
+   3,
+   2
+  ]
+ },
+ "ramVideSansPilotageChrome": {
+  "prive": 489,
+  "ws": 941,
+  "engage": 927,
+  "gpuDed": 218,
+  "gpuPart": 5,
+  "processus": 10,
+  "noms": {
    "chrome.exe": 10
   },
   "detail": [
-   57,
+   289,
+   66,
    49,
-   34,
-   33,
+   36,
    15,
    14,
    9,
    8,
    3,
-   2,
-   1,
-   0
+   2
   ]
  },
  "desinstalle": true,
- "associationRetiree": false,
- "classeRestante": ".conceptcad"
+ "associationRetiree": true,
+ "classeRestante": ""
 }

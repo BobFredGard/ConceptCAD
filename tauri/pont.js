@@ -1,4 +1,4 @@
-// Pont de la maquette : rend aux fonctions de fichiers du logiciel (showOpenFilePicker, etc.) le
+// Pont de l'application : rend aux fonctions de fichiers du logiciel (showOpenFilePicker, etc.) le
 // service qu'elles attendent, mais avec les vraies fenêtres Windows et sans demande de permission.
 // Le code de ConceptCAD n'est pas touché : tout passe par ce fichier, chargé avant lui.
 (function(){
@@ -132,12 +132,70 @@
     if(t){new MutationObserver(suivre).observe(t,{childList:true});suivre();}
   });
 
-  // Double-clic sur un .conceptcad : ouvert quand le noyau est prêt
+  // Raccourcis du navigateur sans objet dans un logiciel (recharger, imprimer la page, chercher…).
+  // Le code du logiciel reçoit toujours ces touches : seule l'action du navigateur est retirée.
+  addEventListener('keydown',e=>{
+    const k=e.key.toLowerCase();
+    if(/^f(3|5|7|12)$/.test(k)||((e.ctrlKey||e.metaKey)&&k.length===1&&'rpfghju'.includes(k))||(e.altKey&&/^arrow(left|right)$/.test(k)))e.preventDefault();
+  },true);
+  // Menu du clic droit du navigateur : gardé seulement dans les champs de texte (copier, coller).
+  addEventListener('contextmenu',e=>{
+    const c=e.target;
+    if(!(c&&c.closest&&c.closest('input,textarea,[contenteditable="true"]')))e.preventDefault();
+  },true);
+
+  const DERNIER='conceptcad-dernier-fichier';
+  const pret=async()=>{
+    const ok=()=>{try{return (occtReady===true||/échec|indisponible/.test(occBaseMsg))&&rebuildDepth===0&&!skEdit;}catch(e){return false;}};
+    while(!ok())await new Promise(k=>setTimeout(k,100));
+  };
+
+  // Seul un arrêt brutal laisse désormais un brouillon : relevé avant le démarrage du logiciel.
+  let brouillon=false;
+  try{brouillon=!!(localStorage.getItem('minifusion_auto')||localStorage.getItem('minifusion_auto_idb'));}catch(e){}
+
+  // Fichier reçu (double-clic, y compris application déjà ouverte) : l'un après l'autre, sans rien perdre.
+  let file=Promise.resolve();
+  const recevoir=()=>{
+    file=file.then(async()=>{
+      const c=await invoke('fichier_demarrage');
+      if(!c)return false;
+      await pret();
+      if(await mffConfirmDiscard())await mffOpenHandle(new LienFichier(c));
+      return true;
+    }).catch(e=>{alert('Ouverture impossible : '+(e&&e.message||e));return true;});
+    return file;
+  };
+  window.__TAURI__.event.listen('fichier-recu',recevoir);
   addEventListener('load',async()=>{
-    const c=await invoke('fichier_demarrage');
-    if(!c)return;
-    const pret=()=>{try{return occtReady===true||/échec|indisponible/.test(occBaseMsg);}catch(e){return false;}};
-    while(!pret())await new Promise(k=>setTimeout(k,100));
+    if(await recevoir()||brouillon)return;
+    // Démarrage normal : la pièce de la dernière fois, depuis son fichier, donc sans « modifié ».
+    let c=null;try{c=localStorage.getItem(DERNIER);}catch(e){}
+    if(!c||!(await invoke('infos',{chemin:c})))return;
+    await pret();
     await mffOpenHandle(new LienFichier(c));
+  });
+
+  // Croix de la fenêtre : question si la pièce est modifiée, puis fermeture sans brouillon.
+  let fermeture=false;
+  const oublierBrouillon=()=>{
+    window.__mfResetting=true; // le logiciel n'écrit plus de brouillon
+    try{
+      localStorage.removeItem('minifusion_auto');
+      localStorage.removeItem('minifusion_auto_idb');
+      if(mffHandle&&mffHandle.chemin)localStorage.setItem(DERNIER,mffHandle.chemin);else localStorage.removeItem(DERNIER);
+    }catch(e){}
+  };
+  window.__TAURI__.event.listen('demande-fermeture',async()=>{
+    invoke('fermeture_recue').catch(()=>{});
+    if(fermeture)return;
+    fermeture=true;
+    try{
+      if(typeof mffModified==='function'&&mffModified()&&!(await mffConfirmDiscard()))return;
+      if(typeof mffModified==='function')oublierBrouillon();
+      await invoke('fermer');
+    }catch(e){
+      alert('Fermeture impossible : '+(e&&e.message||e));
+    }finally{fermeture=false;}
   });
 })();

@@ -1,0 +1,203 @@
+[
+ {
+  "nom": "Double-clic, application déjà ouverte : même fenêtre",
+  "ok": true,
+  "detail": {
+   "secondLancementTermine": true,
+   "programmes": 1
+  }
+ },
+ {
+  "nom": "Double-clic sur pièce modifiée : la question protège, « Annuler » garde tout",
+  "ok": true,
+  "detail": {
+   "chemin": "C:\\Users\\PCCAO\\AppData\\Local\\Temp\\claude\\e73d25c6250389d8\\3ebb19e0-6bf5-4627-aeb4-2d440f4a1385\\scratchpad\\essai-appli\\Une fenêtre B.conceptcad",
+   "modifie": true
+  }
+ },
+ {
+  "nom": "« Ne pas enregistrer » : la pièce demandée s’ouvre",
+  "ok": true
+ },
+ {
+  "nom": "Aucune erreur de page (une fenêtre)",
+  "ok": true,
+  "detail": []
+ },
+ {
+  "nom": "Croix, pièce modifiée, « Annuler » : rien ne ferme",
+  "ok": true
+ },
+ {
+  "nom": "Croix, « Enregistrer » : fichier écrit, application fermée",
+  "ok": true,
+  "detail": {
+   "fin": true
+  }
+ },
+ {
+  "nom": "Redémarrage : dernier fichier repris, non marqué modifié, avec la cote enregistrée",
+  "ok": true,
+  "detail": {
+   "chemin": "C:\\Users\\PCCAO\\AppData\\Local\\Temp\\claude\\e73d25c6250389d8\\3ebb19e0-6bf5-4627-aeb4-2d440f4a1385\\scratchpad\\essai-appli\\Fermeture.conceptcad",
+   "modifie": false,
+   "titre": "Fermeture — ConceptCAD"
+  }
+ },
+ {
+  "nom": "Croix, « Ne pas enregistrer » : fichier intact, application fermée",
+  "ok": true,
+  "detail": {
+   "fin": true
+  }
+ },
+ {
+  "nom": "Modification refusée : elle ne revient pas",
+  "ok": true,
+  "detail": {
+   "modifie": false,
+   "lu": 65.2,
+   "attendu": 65.2
+  }
+ },
+ {
+  "nom": "Croix, pièce non modifiée : ferme sans question",
+  "ok": true
+ },
+ {
+  "nom": "Arrêt brutal : le brouillon revient",
+  "ok": true,
+  "detail": {
+   "lu": 65.95,
+   "attendu": 65.95,
+   "titre": "● Fermeture — ConceptCAD"
+  }
+ },
+ {
+  "nom": "Logiciel occupé : Windows propose de fermer quand même",
+  "ok": true
+ },
+ {
+  "nom": "F5 ne recharge plus la page",
+  "ok": true
+ },
+ {
+  "nom": "Ctrl+P et Ctrl+F : action du navigateur retirée",
+  "ok": true,
+  "detail": {
+   "f5": true,
+   "control": false,
+   "p": true,
+   "f": true
+  }
+ },
+ {
+  "nom": "Ctrl+Z et Ctrl+Y",
+  "ok": true,
+  "detail": {
+   "v1": 64.95,
+   "v2": 65.2,
+   "attendu": 65.2
+  }
+ },
+ {
+  "nom": "Ctrl+S enregistre sans fenêtre",
+  "ok": true
+ },
+ {
+  "nom": "Clic droit : menu du navigateur retiré, gardé dans les champs",
+  "ok": true,
+  "detail": {
+   "vue": true,
+   "champ": false
+  }
+ },
+ {
+  "nom": "Message de saisie (renommer, cote) affiché",
+  "ok": true,
+  "detail": [
+   "Nom d’essai :"
+  ]
+ },
+ {
+  "nom": "Aucune erreur de page (gestes)",
+  "ok": true,
+  "detail": []
+ },
+ {
+  "nom": "Vrai calcul FAO dans l’application, identique à Chrome",
+  "ok": true,
+  "detail": {
+   "app": {
+    "ms": 79,
+    "ops": [
+     {
+      "type": "facing",
+      "mouvements": 81,
+      "ms": 1,
+      "empreinte": "1jb7ak0"
+     },
+     {
+      "type": "contour",
+      "mouvements": 565,
+      "ms": 11,
+      "empreinte": "jnrr67"
+     },
+     {
+      "type": "pocket",
+      "mouvements": 3528,
+      "ms": 66,
+      "empreinte": "1ehm80m"
+     },
+     {
+      "type": "facing",
+      "mouvements": 43,
+      "ms": 0,
+      "empreinte": "1h6gbuj"
+     }
+    ]
+   },
+   "chrome": {
+    "ms": 79,
+    "ops": [
+     {
+      "type": "facing",
+      "mouvements": 81,
+      "ms": 1,
+      "empreinte": "1jb7ak0"
+     },
+     {
+      "type": "contour",
+      "mouvements": 565,
+      "ms": 11,
+      "empreinte": "jnrr67"
+     },
+     {
+      "type": "pocket",
+      "mouvements": 3528,
+      "ms": 67,
+      "empreinte": "1ehm80m"
+     },
+     {
+      "type": "facing",
+      "mouvements": 43,
+      "ms": 0,
+      "empreinte": "1h6gbuj"
+     }
+    ]
+   }
+  }
+ },
+ {
+  "nom": "Base locale du cache de parcours présente",
+  "ok": true,
+  "detail": {
+   "bases": 1
+  }
+ },
+ {
+  "nom": "Aucune erreur de page (FAO)",
+  "ok": true,
+  "detail": []
+ }
+]

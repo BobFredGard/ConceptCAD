@@ -1,8 +1,8 @@
 [package]
-name = "conceptcad-maquette"
-version = "0.64.3"
+name = "conceptcad"
+version = "0.65.0"
 edition = "2021"
-description = "Maquette : ConceptCAD en application Windows (mesures, pas de livraison)"
+description = "ConceptCAD en application Windows"
 
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
@@ -11,6 +11,7 @@ tauri-build = { version = "2", features = [] }
 tauri = { version = "2", features = [] }
 serde = { version = "1", features = ["derive"] }
 rfd = "0.15"
+tauri-plugin-single-instance = "2"
 percent-encoding = "2"
 
 [profile.release]

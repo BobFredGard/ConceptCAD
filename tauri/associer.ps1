@@ -3,13 +3,13 @@
 #   associer.ps1 -Retirer                  la retire (remet Windows comme avant)
 param([string]$Exe,[switch]$Retirer)
 $ext='HKCU:\Software\Classes\.conceptcad'
-$classe='HKCU:\Software\Classes\ConceptCAD.Maquette'
+$classe='HKCU:\Software\Classes\ConceptCAD.Essai'
 if($Retirer){
   Remove-Item $ext -Recurse -Force -ErrorAction SilentlyContinue
   Remove-Item $classe -Recurse -Force -ErrorAction SilentlyContinue
 }else{
   New-Item $ext -Force | Out-Null
-  Set-Item $ext -Value 'ConceptCAD.Maquette'
+  Set-Item $ext -Value 'ConceptCAD.Essai'
   New-Item "$classe\shell\open\command" -Force | Out-Null
   Set-Item $classe -Value 'Projet ConceptCAD'
   New-Item "$classe\DefaultIcon" -Force | Out-Null

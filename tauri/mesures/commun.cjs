@@ -6,9 +6,10 @@ const {spawn,execFile,execFileSync}=require('child_process');
 const {chromium}=require('playwright-core');
 
 const ICI=__dirname,DIST=path.join(ICI,'..','dist');
-const EXE=process.env.CC_EXE||path.join(ICI,'..','src-tauri','target','release','conceptcad-maquette.exe');
+const EXE=process.env.CC_EXE||path.join(ICI,'..','src-tauri','target','release','ConceptCAD.exe');
 const CHROME='C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe';
-const PROFIL_APP=path.join(process.env.LOCALAPPDATA,'fr.conceptcad.maquette');
+// Profil d'essai à part : le vrai profil de l'application (récents, brouillon) n'est jamais touché ni vidé.
+const PROFIL_APP=path.join(os.tmpdir(),'cc-essai-application');
 const PORT_CDP=9333,PORT_WEB=3000;
 // Mêmes réglages des deux côtés : un onglet ou une fenêtre masquée ne doit pas fausser le temps.
 const DRAPEAUX=['--remote-debugging-port='+PORT_CDP,'--disable-backgrounding-occluded-windows','--disable-renderer-backgrounding','--disable-background-timer-throttling'];
@@ -49,7 +50,9 @@ async function lancer(cible,{neuf=true,fichier=null,profil=null,sansPilote=false
   if(cible==='app'){
     dossier=PROFIL_APP;
     if(neuf)fs.rmSync(dossier,{recursive:true,force:true});
-    const env={...process.env,WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS:DRAPEAUX.join(' ')};
+    // Une application déjà ouverte recevrait le fichier d'essai dans sa fenêtre : on refuse.
+    if(execFileSync('powershell.exe',['-NoProfile','-Command','@(Get-Process ConceptCAD -ErrorAction SilentlyContinue).Count'],{encoding:'utf8'}).trim()!=='0')throw new Error('ConceptCAD est déjà ouvert : essai annulé');
+    const env={...process.env,WEBVIEW2_USER_DATA_FOLDER:dossier,WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS:DRAPEAUX.join(' ')};
     var t0=Date.now();
     enfant=spawn(EXE,fichier?[fichier]:[],{env,stdio:'ignore',detached:false});
   }else if(cible==='chrome'){

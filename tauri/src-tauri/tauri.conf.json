@@ -1,8 +1,9 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "ConceptCAD",
-  "version": "0.64.3",
-  "identifier": "fr.conceptcad.maquette",
+  "mainBinaryName": "ConceptCAD",
+  "version": "../../package.json",
+  "identifier": "fr.conceptcad.logiciel",
   "build": { "frontendDist": "../dist" },
   "app": {
     "withGlobalTauri": true,
