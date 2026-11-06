@@ -27,11 +27,15 @@ Une cote d'esquisse n'est modifiable que si le solide de la pièce se calcule : 
 
 Dessiner dans une esquisse modifiable : outils Sélection, Ligne, Rectangle, Cercle et Arc en haut de la vue, case « Grille 1 mm ». Accroches sur les points et les lignes, contraintes posées toutes seules avec guide (horizontal, vertical, perpendiculaire, parallèle, tangent). Glisser un point ou un élément, Suppr pour effacer, double-clic sur un élément pour le coter, clic droit pour finir un tracé, Échap pour revenir à Sélection puis sortir. Ctrl+Z, Ctrl+Y et Ctrl+S suivent. À l'enregistrement, ce qui n'a pas changé garde son texte d'origine.
 
-Il ne sait pas encore : polygone, oblong, ajuster, décaler, congé d'esquisse, l'outil Coïncident à deux clics, fenêtre de sélection, retirer une contrainte, déplacer l'étiquette d'une cote, s'accrocher aux arêtes du solide, supprimer une esquisse enregistrée, esquisse sur un plan de construction, nouvelle pièce. Une cote de référence nommée ou par formule reste figée.
+Il ne sait pas encore : polygone, oblong, congé d'esquisse, l'outil Coïncident à deux clics, fenêtre de sélection, retirer une contrainte, déplacer l'étiquette d'une cote, s'accrocher aux arêtes du solide, supprimer une esquisse enregistrée, esquisse sur un plan de construction, nouvelle pièce. Une cote de référence nommée ou par formule reste figée.
 
 Coter : outil **Cote**. Un clic sur une ligne donne sa longueur, sur un cercle son diamètre, sur un arc son rayon, sur deux points leur distance. Pendant que la cote suit la souris, un clic sur un second élément la transforme (entraxe de deux cercles, distance d'un centre à une ligne, angle ou écart de deux lignes). Un clic dans le vide la pose et ouvre sa valeur ; taper un chiffre ou Entrée la pose aussi là où elle est. Ctrl+clic sur deux lignes choisit l'angle ou l'entraxe. Échap retire la cote commencée, et une cote qui existe déjà est sélectionnée plutôt que doublée.
 
 Longueur tapée : pendant le tracé d'une ligne, taper le nombre, puis Entrée ou clic. Tab passe de la longueur à l'angle. La ligne reçoit sa cote de longueur, comme dans le navigateur.
+
+Ajuster : outil **Ajuster** ou touche T, puis un clic sur le morceau à retirer. Il part entre les deux croisements les plus proches, et la ligne croisée est partagée en deux au point de coupe, comme dans le navigateur. Un cercle coupé au moins deux fois devient un arc.
+
+Décaler : choisir les éléments avec **Sélection** (Ctrl+clic pour les suivants), outil **Décaler** ou touche O, un premier clic pour commencer, puis un clic du côté voulu : la distance est celle du curseur, affichée dans la barre du bas. Échap abandonne. Les éléments reliés sont décalés ensemble et gardent leurs coins ; chaque chaîne reçoit une seule cote, à double-cliquer pour changer la distance.
 
 Poser une contrainte : choisir les éléments (Ctrl+clic pour les suivants), puis menu **Contraintes** ou mêmes touches que le navigateur : F1 coïncident ou fusion de deux points, F2 horizontal ou vertical selon la ligne, F3 tangent, F4 égal, F5 parallèle, F6 perpendiculaire, F7 milieu, F8 concentrique, F9 colinéaire, F10 symétrique, F12 fixe, X construction. Une contrainte qui rendrait l'esquisse impossible est refusée, avec la raison : tout revient exactement à l'état d'avant.
 
@@ -223,6 +227,21 @@ Outil Cote et longueur tapée (`dessin-reference.cjs --contraintes --cotes`, `ve
 En maths normales, 8 sessions s'arrêtent sur une différence de structure et 25 au-delà de 0,001 mm : l'arrondi de sin, cos et atan2 s'accumule et finit par changer une décision. Disparaissant toutes à maths communes, elles ne viennent pas de la traduction. Le navigateur a un défaut, reproduit à l'identique ici : Ctrl+clic sur deux cercles crée une cote d'angle de valeur 0.
 
 La fenêtre, sur une copie du Drapeau : longueur tapée 40 mm, angle tapé 30°, diamètre posé puis tapé 30 mm, abandon par Échap, enregistrement relu (`length=40 | length=26 | diameter=30`). La comparaison a trouvé puis fait corriger un vrai défaut : le clic de pose perdait la cote.
+
+Ajuster et Décaler (`dessin-reference.cjs --contraintes --cotes --modifier`, `verifier-ajuster.ps1`), tirés au hasard au milieu des autres gestes, sur les 125 esquisses et une esquisse vide. L'essai a décalé 708 lignes, 80 arcs et 17 cercles, changé 21 cercles en arcs et scindé 11 arcs :
+
+| Comparaison au navigateur | Sessions identiques | États | Enregistrements identiques |
+|---|---:|---:|---:|
+| Mêmes sin, cos et atan2 des deux côtés | **383 sur 383** | 4 642, tous à moins de 10⁻⁹ mm | 375 sur 375 |
+| Maths de chaque programme | 348 sur 383 | 4 495 | 341 sur 341 |
+
+En maths normales, 5 sessions s'arrêtent sur une différence de structure et 30 au-delà de 0,001 mm, parfois de beaucoup sur ces gestes tirés au hasard : l'arrondi de sin, cos et atan2 s'accumule et finit par changer une décision. Disparaissant toutes à maths communes, elles ne viennent pas de la traduction. Sur un dessin qui s'emballe ainsi, les deux programmes peuvent donc arriver à des formes différentes.
+
+La comparaison a fait trouver et corriger trois vrais défauts : l'arrondi au croisement de deux droites décalées, le contrôle des cotes en trop sur un arc dont le centre et un bout sont fixes, et une cote d'écart devenue angle qui perdait ses marques à l'enregistrement.
+
+La fenêtre, sur une copie du Drapeau : ligne ajustée, Ctrl+Z et Ctrl+Y qui gardent l'outil, cercle enregistré puis changé en arc puis réenregistré, touches T et O, rectangle décalé de 9,16 mm (4 copies, une cote), abandon par Échap sans rien créer. Les essais en fenêtre précédents repassent.
+
+Pas traduits : les splines (ni coupées, ni comptées comme limite, ni décalées) et le menu contextuel « Décaler (auto) » du navigateur.
 
 ## Pas vérifié
 

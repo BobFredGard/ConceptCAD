@@ -2926,10 +2926,24 @@ Solveur::Rang Solveur::analyseRang(int sauterCote, bool detail) {
   }
   for (size_t j = 0; j < B.rad.size(); j++) x[2 * B.pts.size() + j] = E_[B.rad[j]].r;
   std::vector<D> sauve;
+  std::vector<char> verrousSauves;
   if (sauterCote >= 0) {
     sauve = D_;
     D_.erase(D_.begin() + sauterCote);
+    // Le navigateur relit rLocked sans la cote retirée : sans elle, un rayon n'est peut-être plus tenu
+    for (const E& e : E_) verrousSauves.push_back(e.verrouille);
+    for (size_t i = 0; i < E_.size(); i++) {
+      E& e = E_[i];
+      e.verrouille = e.proj;
+      for (const C& c : C_)
+        if (c.type == FIX && c.ent == static_cast<int>(i)) e.verrouille = true;
+      for (const D& d : D_)
+        if (d.ent == static_cast<int>(i) && (d.type == DIAMETER || d.type == RADIUS)) e.verrouille = true;
+    }
   }
+  const auto rendreVerrous = [&] {
+    for (size_t i = 0; i < verrousSauves.size(); i++) E_[i].verrouille = verrousSauves[i] != 0;
+  };
   pourRang_ = true;
   degen_.assign(E_.size(), 0);
   for (size_t i = 0; i < E_.size(); i++)
@@ -2954,6 +2968,7 @@ Solveur::Rang Solveur::analyseRang(int sauterCote, bool detail) {
   sklsApply(B, x);
   pourRang_ = false;
   if (sauterCote >= 0) D_ = std::move(sauve);
+  rendreVerrous();
 
   // skRref : lignes normalisées, pivot partiel
   double nMax = 0;

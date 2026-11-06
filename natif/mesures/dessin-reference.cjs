@@ -3,6 +3,7 @@
 // après chacun sont écrits pour BancDessin, qui rejoue les mêmes gestes dans le natif et compare.
 // node dessin-reference.cjs <dossier d'exemples> <sortie.json> [--communes] [--nom=extrait] [--sessions=n] [--contraintes] [--cotes]
 // --cotes : ajoute l'outil Cote et la longueur tapée aux gestes tirés
+// --modifier : ajoute Ajuster et Décaler aux gestes tirés
 // --contraintes : ajoute la pose de contraintes aux gestes tirés (sans cette option, les références déjà faites restent reproductibles)
 // Restent neutralisés, à dire honnêtement : l'accroche sur les arêtes du solide, et le clic sur une étiquette de cote.
 'use strict';
@@ -201,6 +202,64 @@ function session(src, graine, nbGestes) {
       else { const l = lieu(); clic(l); faire({ a: 'bouge', x: l.x + 1, y: l.y + 1 }); clic(vide()); }
       faire({ a: 'outil', o: 'select' });
     },
+    ajuster() {
+      // Une ligne qui traverse de temps en temps, pour de vraies coupes en plein milieu
+      if (r() < 0.5) {
+        const c = viser(geo(), r() < 0.6 ? 'ligne' : 'rond');
+        if (c) {
+          const a = r() * 6.283185307179586, l = (0.1 + r() * 0.4) * taille;
+          faire({ a: 'outil', o: 'line' });
+          clic({ x: c.x - l * Math.cos(a), y: c.y - l * Math.sin(a) });
+          faire({ a: 'bouge', x: c.x + l * Math.cos(a), y: c.y + l * Math.sin(a) });
+          clic({ x: c.x + l * Math.cos(a), y: c.y + l * Math.sin(a) });
+          faire({ a: 'echap' });
+        }
+      }
+      faire({ a: 'outil', o: 'trim' });
+      for (let i = 1 + Math.floor(r() * 3); i > 0; i--) {
+        const l = viser(geo(), r() < 0.65 ? 'ligne' : 'rond') || lieu();
+        clic({ x: l.x + px(4), y: l.y + px(4) });
+      }
+      if (r() < 0.2) clic(vide());
+      faire({ a: r() < 0.5 ? 'echap' : 'outil', o: 'select' });
+    },
+    decaler() {
+      const g = geo();
+      const utiles = g.entities.filter(e => (e.t === 'line' && g.points[e.p1] && g.points[e.p2]) || ((e.t === 'circle' || e.t === 'arc') && g.points[e.pc] && (e.t === 'circle' || (g.points[e.pa] && g.points[e.pb]))));
+      if (!utiles.length) return;
+      const surE = e => {
+        if (e.t === 'line') { const A = g.points[e.p1], B = g.points[e.p2]; return { x: (A.x + B.x) / 2, y: (A.y + B.y) / 2 }; }
+        const C = g.points[e.pc];
+        let a = r() * 6.28;
+        if (e.t === 'arc') {
+          const a1 = Math.atan2(g.points[e.pa].y - C.y, g.points[e.pa].x - C.x), a2 = Math.atan2(g.points[e.pb].y - C.y, g.points[e.pb].x - C.x);
+          a = a1 + (((a2 - a1) % 6.283185307179586 + 6.283185307179586) % 6.283185307179586) / 2;
+        }
+        return { x: C.x + e.r * Math.cos(a), y: C.y + e.r * Math.sin(a) };
+      };
+      // Une seule entité, quelques-unes au hasard, ou toute une chaîne reliée (contour fermé compris)
+      let choix = [pick(utiles)];
+      const u = r();
+      if (u < 0.2) { for (let i = 1 + Math.floor(r() * 2); i > 0; i--) choix.push(pick(utiles)); }
+      else if (u < 0.75) {
+        const pts = new Set(), bouts = e => e.t === 'line' ? [e.p1, e.p2] : e.t === 'arc' ? [e.pa, e.pb] : [];
+        bouts(choix[0]).forEach(p => pts.add(p));
+        for (let ajout = true; ajout && choix.length < 12;) {
+          ajout = false;
+          for (const e of utiles) if (!choix.includes(e) && bouts(e).some(p => pts.has(p))) { choix.push(e); bouts(e).forEach(p => pts.add(p)); ajout = true; if (choix.length >= 12) break; }
+        }
+      }
+      faire({ a: 'outil', o: 'select' });
+      choix.forEach((e, i) => clic(surE(e), i > 0));
+      faire({ a: 'outil', o: 'offset' });
+      clic(vide());
+      const cote = r() < 0.6 ? vide() : lieu();
+      faire({ a: 'bouge', x: cote.x, y: cote.y });
+      const fin = r();
+      if (fin < 0.85) clic(cote);
+      else if (fin < 0.92) clic({ x: choix[0].x || cote.x, y: choix[0].y || cote.y });
+      faire({ a: 'echap' });
+    },
     longueurTapee() {
       faire({ a: 'outil', o: 'line' });
       const dep = lieu();
@@ -320,6 +379,7 @@ function session(src, graine, nbGestes) {
   const noms = ['glissePoint', 'glissePoint', 'glisseEntite', 'glisseEntite', 'ligne', 'ligne', 'ligneGlissee', 'rectangle', 'rectangle', 'cercle', 'arc', 'coter', 'effacer', 'effacerPoint'];
   if (process.argv.includes('--contraintes')) noms.push(...Array(10).fill('contrainte'));
   if (process.argv.includes('--cotes')) noms.push(...Array(8).fill('coteOutil'), ...Array(5).fill('longueurTapee'));
+  if (process.argv.includes('--modifier')) noms.push(...Array(10).fill('ajuster'), ...Array(10).fill('decaler'));
   for (let i = 0; i < nbGestes; i++) {
     const avant = pas.length;
     const nom = pick(noms);

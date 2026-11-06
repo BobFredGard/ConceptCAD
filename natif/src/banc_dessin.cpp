@@ -137,7 +137,7 @@ int wmain(int argc, wchar_t** argv) {
         const double x = st.contains("x") ? st["x"].get<double>() : 0, y = st.contains("y") ? st["y"].get<double>() : 0;
         if (a == "outil") {
           const std::string o = st["o"];
-          D.choisirOutil(o == "line" ? Dessin::LIGNE : o == "rect" ? Dessin::RECTANGLE : o == "circle" ? Dessin::CERCLE : o == "arc" ? Dessin::ARC : o == "dim" ? Dessin::COTE : Dessin::SELECTION);
+          D.choisirOutil(o == "line" ? Dessin::LIGNE : o == "rect" ? Dessin::RECTANGLE : o == "circle" ? Dessin::CERCLE : o == "arc" ? Dessin::ARC : o == "dim" ? Dessin::COTE : o == "trim" ? Dessin::AJUSTER : o == "offset" ? Dessin::DECALER : Dessin::SELECTION);
         } else if (a == "bas") {
           D.enfonce(x, y, st.value("c", false));
         } else if (a == "bouge") {

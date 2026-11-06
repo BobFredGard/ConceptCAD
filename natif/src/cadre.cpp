@@ -539,10 +539,12 @@ void Cadre::poserEsquisses(const std::vector<Esquisse>& v) {
   doc_.esquisses = v;  // même taille : l'esquisse montrée ne change pas d'adresse
   dessinModifie_ = false;  // ces esquisses ont déjà suivi, ou seront remises à jour au prochain geste
   if (esquisseOuverte_ >= 0) {
+    const Dessin::Outil outil = dessin_ ? dessin_->outil() : Dessin::SELECTION;  // Ctrl+Z garde l'outil, comme le navigateur
     vueEsquisse_->poserDessin(nullptr);
     dessin_.reset();
     edition_ = figee_.empty() ? std::make_unique<Edition>(doc_.esquisses[esquisseOuverte_]) : nullptr;
     brancherDessin();
+    if (dessin_) vueEsquisse_->commande([outil](Dessin& d) { d.choisirOutil(outil); });
   }
   majTitre();
   recalculer();

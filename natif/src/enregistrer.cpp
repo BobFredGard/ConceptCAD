@@ -352,8 +352,10 @@ std::string retoucherBrut(const std::string& brut, const Ecarts& e) {
   return appliquer(brut, std::move(m));
 }
 std::string ecartsEntite(const std::string& brut, const Entite& a, const Entite& b) {
-  if (a.t != b.t || a.poly != b.poly) throw std::runtime_error("élément d'esquisse changé d'une façon pas encore reprise, rien n'a été écrit");
+  const bool devenuArc = a.t == "arc" && b.t == "circle";  // cercle ajusté : le reste de son texte est gardé
+  if ((a.t != b.t && !devenuArc) || a.poly != b.poly) throw std::runtime_error("élément d'esquisse changé d'une façon pas encore reprise, rien n'a été écrit");
   Ecarts e;
+  if (devenuArc) e.champs.push_back({"t", texteJson(a.t), true});
   e.texte("p1", a.p1, b.p1);
   e.texte("p2", a.p2, b.p2);
   e.texte("pc", a.pc, b.pc);
@@ -384,11 +386,15 @@ std::string coteDevenueAngle(const std::string& brut, const Cote& a) {
   q.membres([&](const std::string& k) {
     const size_t d = q.ici();
     q.sauter();
-    if (k == "orient" || k == "sgn" || k == "sl" || k == "ccw") return;
+    if (k == "orient" || k == "sgn" || k == "sl" || k == "ccw" || k == "chk" || k == "ref" || k == "refV" || k == "dia") return;  // réécrits ci-dessous
     const std::string v = k == "type" ? texteJson(a.type) : k == "value" ? nombreJson(a.value) : brut.substr(d, q.ici() - d);
     o += (o.size() > 1 ? "," : "") + texteJson(k) + ":" + v;
   });
+  if (a.chk) o += ",\"chk\":1";
   if (a.ccw >= 0) o += ",\"ccw\":" + std::to_string(a.ccw);
+  if (a.ref) o += ",\"ref\":true";
+  if (a.refV) o += ",\"refV\":" + std::to_string(a.refV);
+  if (a.dia) o += ",\"dia\":true";
   return o + "}";
 }
 std::string ecartsCote(const std::string& brut, const Cote& a, const Cote& b) {

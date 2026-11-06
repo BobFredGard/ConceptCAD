@@ -412,10 +412,11 @@ std::string Dessin::pointProche(double x, double y, double maxD, const std::stri
   return best;
 }
 
-const Entite* Dessin::entiteProche(double x, double y, double maxD) const {
+const Entite* Dessin::entiteProche(double x, double y, double maxD, bool sansConstruction) const {
   const Entite* best = nullptr;
   double bd = maxD;
   for (const Entite& e : s_.entites) {
+    if (sansConstruction && e.construction) continue;  // outil Ajuster : la construction ne se coupe pas
     double d = 1e9;
     if (e.t == "line") {
       const Pt* A = s_.point(e.p1);
@@ -913,6 +914,8 @@ void Dessin::enfonce(double wx, double wy, bool ctrl) {
     return;
   }
   if (outil_ == COTE) return enfonceCote(wx, wy, ctrl);
+  if (outil_ == AJUSTER) return clicAjuster(wx, wy);
+  if (outil_ == DECALER) return clicDecaler(wx, wy);
   if (outil_ == LIGNE) {
     if (dyn_.actif) return validerSaisie();
     if (bas_.actif) {
@@ -1003,6 +1006,29 @@ void Dessin::bouge(double wx, double wy) {
   if (outil_ == COTE && !dimPose_.empty()) {
     if (Cote* d = cote(dimPose_)) return suivreCote(*d, wx, wy);
     dimPose_.clear();
+  }
+  if (outil_ == AJUSTER) return;
+  if (outil_ == DECALER) {
+    if (offArme_) {  // la distance vivante, sans aperçu : le clic fige
+      const std::vector<std::string> ids = choixDecalables();
+      if (!ids.empty()) {
+        char b[96];
+        double best = 1e9;
+        for (const std::string& id : ids) {
+          const Entite* e = s_.entite(id);
+          if (e->t == "line") {
+            const Pt* A = s_.point(e->p1);
+            const Pt* B = s_.point(e->p2);
+            if (A && B) best = jsmin(best, distSeg(wx, wy, *A, *B));
+          } else if (const Pt* C = s_.point(e->pc)) {
+            if (e->r > 0) best = jsmin(best, std::abs(hyp(wx - C->x, wy - C->y) - e->r));
+          }
+        }
+        snprintf(b, sizeof b, "%.2f mm : clic pour appliquer, Échap annule.", best);
+        message(std::string("Décalage : ") + b);
+      }
+    }
+    return;
   }
   if (!glisseP_.empty()) {
     if (!glisseBouge_ && hyp(wx - deWx_, wy - deWy_) * echelle_ <= 4) return;
@@ -1595,6 +1621,7 @@ void Dessin::annulerTrace() {
   dimLigne_.clear();
   coteAOuvrir_.clear();
   dyn_ = Saisie{};
+  offArme_ = false;
   chaine_.clear();
   arcC_.clear();
   arcA1Pose_ = false;
@@ -2590,4 +2617,1153 @@ void Dessin::supprimer() {
   structure_ = true;
   resoudre();
   message((origine ? std::string("L'origine est permanente, elle reste. ") : std::string()) + std::to_string(n) + " élément(s) supprimé(s) : Ctrl+Z pour annuler.");
+}
+
+// ---------- Ajuster (src/60-trim-et-souris.js) ----------
+namespace {
+constexpr double FROLE = 0.05;  // TRIM_GRAZE : un frôlement compte comme une intersection, en mm
+struct Coupe {
+  double x = 0, y = 0, t = 0, u = 0;
+};
+bool croiseDroites(const Pt& A, const Pt& B, const Pt& C, const Pt& D, Coupe& o) {  // interLineLine
+  const double dx1 = B.x - A.x, dy1 = B.y - A.y, dx2 = D.x - C.x, dy2 = D.y - C.y;
+  const double den = dx1 * dy2 - dy1 * dx2;
+  if (std::abs(den) < 1e-12) return false;
+  const double t = ((C.x - A.x) * dy2 - (C.y - A.y) * dx2) / den, u = ((C.x - A.x) * dy1 - (C.y - A.y) * dx1) / den;
+  o = {A.x + dx1 * t, A.y + dy1 * t, t, u};
+  return true;
+}
+std::vector<Coupe> croiseCercle(const Pt& A, const Pt& B, const Pt& C, double r) {  // interLineCircle
+  const double dx = B.x - A.x, dy = B.y - A.y, L2 = dx * dx + dy * dy;
+  if (L2 < 1e-12) return {};
+  const double t0 = ((C.x - A.x) * dx + (C.y - A.y) * dy) / L2;
+  const double px = A.x + dx * t0, py = A.y + dy * t0;
+  const double h2 = r * r - (px - C.x) * (px - C.x) - (py - C.y) * (py - C.y);
+  if (h2 < -FROLE * FROLE) return {};
+  const double h = std::sqrt(jsmax(h2, 0)), L = std::sqrt(L2);
+  if (h < FROLE) return {{px, py, t0, 0}};
+  return {{px - dx / L * h, py - dy / L * h, t0 - h / L, 0}, {px + dx / L * h, py + dy / L * h, t0 + h / L, 0}};
+}
+std::vector<Pt> croiseRonds(const Pt& C0, double r0, const Pt& C1, double r1) {  // interCircCirc
+  const double dx = C1.x - C0.x, dy = C1.y - C0.y, d = hyp(dx, dy);
+  if (d < 1e-9 || d > r0 + r1 + FROLE || d < std::abs(r0 - r1) - FROLE) return {};
+  const double a = (r0 * r0 - r1 * r1 + d * d) / (2 * d), h = std::sqrt(jsmax(r0 * r0 - a * a, 0));
+  const double xm = C0.x + dx * a / d, ym = C0.y + dy * a / d;
+  if (h < FROLE) return {{xm, ym}};
+  return {{xm - dy * h / d, ym + dx * h / d}, {xm + dy * h / d, ym - dx * h / d}};
+}
+double angleNorme(double a) {  // angNorm
+  const double T = PI_ * 2;
+  a = std::fmod(a, T);
+  if (a < 0) a += T;
+  return a;
+}
+bool paireLignes(const std::string& t) { return t == "parallel" || t == "perpendicular" || t == "collinear" || t == "symmetric"; }  // skPairLineType
+// lineConstrsOf : la contrainte est-elle dédiée à cette ligne ?
+bool lienDeLigne(const Contrainte& c, const std::string& id) {
+  if (c.type == "h" || c.type == "v" || c.type == "tangent") return c.line == id;
+  if (paireLignes(c.type)) return c.a == id || c.b == id || (c.type == "symmetric" && c.mid == id);
+  if (c.type == "midpoint") return c.line == id || c.a == id || c.b == id;
+  if (c.type == "fix") return c.ent == id;
+  return false;
+}
+double mesureCote(const Pt& A, const Pt& B, const std::string& o) {  // dimMeasureOf
+  return o == "h" ? std::abs(B.x - A.x) : o == "v" ? std::abs(B.y - A.y) : hyp(B.x - A.x, B.y - A.y);
+}
+}  // namespace
+
+std::vector<Pt> Dessin::croisements(const Entite& ent) const {
+  std::vector<Pt> out;
+  const auto surArcEps = [](double a, const An& an) { return dansArc(a, an.a1, an.a2 + 1e-4); };  // bruit du solveur aux extrémités
+  const auto ignore = [&](const Entite& o) { return o.id == ent.id || (o.construction && !o.proj); };
+  if (ent.t == "line") {
+    const Pt* A = s_.point(ent.p1);
+    const Pt* B = s_.point(ent.p2);
+    if (!A || !B) return out;
+    for (const Entite& o : s_.entites) {
+      if (ignore(o)) continue;
+      if (o.t == "line") {
+        const Pt* C = s_.point(o.p1);
+        const Pt* D = s_.point(o.p2);
+        if (!C || !D) continue;
+        Coupe h;
+        if (croiseDroites(*A, *B, *C, *D, h) && h.t > -1e-6 && h.t < 1 + 1e-6 && h.u > -1e-6 && h.u < 1 + 1e-6) out.push_back({h.x, h.y});
+      }
+      if (o.t == "circle" || o.t == "arc") {
+        const Pt* C = s_.point(o.pc);
+        if (!C) continue;
+        for (const Coupe& h : croiseCercle(*A, *B, *C, o.r)) {
+          if (!(h.t > -1e-6 && h.t < 1 + 1e-6)) continue;
+          if (o.t == "arc") {
+            An an;
+            if (!anglesArc2(s_, o, an) || !surArcEps(m_atan2(h.y - C->y, h.x - C->x), an)) continue;
+          }
+          out.push_back({h.x, h.y});
+        }
+      }
+    }
+  }
+  if (ent.t == "circle" || ent.t == "arc") {
+    const Pt* C = s_.point(ent.pc);
+    if (!C) return out;
+    const auto surSoi = [&](double x, double y) {
+      if (ent.t == "circle") return true;
+      An an;
+      return anglesArc2(s_, ent, an) && surArcEps(m_atan2(y - C->y, x - C->x), an);
+    };
+    for (const Entite& o : s_.entites) {
+      if (ignore(o)) continue;
+      if (o.t == "line") {
+        const Pt* A = s_.point(o.p1);
+        const Pt* B = s_.point(o.p2);
+        if (!A || !B) continue;
+        const double h0 = hyp(B->x - A->x, B->y - A->y), span = h0 != 0 ? h0 : 1, tt = jsmax(1e-6, 0.02 / span);  // une tangence compte
+        for (const Coupe& h : croiseCercle(*A, *B, *C, ent.r))
+          if (h.t > -tt && h.t < 1 + tt && surSoi(h.x, h.y)) out.push_back({h.x, h.y});
+      }
+      if (o.t == "circle" || o.t == "arc") {
+        const Pt* C2 = s_.point(o.pc);
+        if (!C2) continue;
+        for (const Pt& h : croiseRonds(*C, ent.r, *C2, o.r)) {
+          if (!surSoi(h.x, h.y)) continue;
+          if (o.t == "arc") {
+            An an;
+            if (!anglesArc2(s_, o, an) || !surArcEps(m_atan2(h.y - C2->y, h.x - C2->x), an)) continue;
+          }
+          out.push_back(h);
+        }
+      }
+    }
+  }
+  std::vector<Pt> u;
+  for (const Pt& h : out)
+    if (std::none_of(u.begin(), u.end(), [&](const Pt& k) { return hyp(k.x - h.x, k.y - h.y) < 1e-6; })) u.push_back(h);
+  return u;
+}
+
+bool Dessin::piedDans(const Contrainte& c, const std::string& ligne) const {
+  const Entite* E = s_.entite(c.ent);
+  if (!E || E->pc.empty()) return false;
+  const Pt* C = s_.point(E->pc);
+  const Entite* L = s_.entite(ligne);
+  if (!C || !L) return false;
+  const Pt* A = s_.point(L->p1);
+  const Pt* B = s_.point(L->p2);
+  if (!A || !B) return false;
+  const double dx = B->x - A->x, dy = B->y - A->y, len2 = dx * dx + dy * dy;
+  if (len2 < 1e-12) return false;
+  const double t = ((C->x - A->x) * dx + (C->y - A->y) * dy) / len2;
+  return t >= -5e-3 && t <= 1 + 5e-3;
+}
+
+void Dessin::recopierLiens(const std::string& vieille, const std::vector<std::string>& neuves, bool retirer) {
+  std::vector<Contrainte> liens;
+  for (const Contrainte& c : s_.contraintes)
+    if (lienDeLigne(c, vieille)) liens.push_back(c);
+  for (const Contrainte& c : liens)
+    for (const std::string& nid : neuves) {
+      if (c.type == "h" || c.type == "v") {
+        if (!aHV(nid, c.type.c_str())) {
+          Contrainte k = contrainte(c.type.c_str());
+          k.line = nid;
+          lier(k);
+        }
+      } else if (c.type == "tangent") {
+        if (piedDans(c, nid) && !aContrainte([&](const Contrainte& x) { return x.type == "tangent" && x.line == nid && x.ent == c.ent; })) {
+          Contrainte k = contrainte("tangent");
+          k.line = nid;
+          k.ent = c.ent;
+          lier(k);
+        }
+      } else if (c.type == "fix") {
+        if (!aContrainte([&](const Contrainte& x) { return x.type == "fix" && x.ent == nid; })) {
+          Contrainte k = contrainte("fix");
+          k.ent = nid;
+          lier(k);
+        }
+      } else if (paireLignes(c.type)) {
+        const std::string a = c.a == vieille ? nid : c.a, b = c.b == vieille ? nid : c.b, mid = c.mid == vieille ? nid : c.mid;
+        if (a != b && a != mid && b != mid && !aContrainte([&](const Contrainte& x) { return x.type == c.type && x.mid == c.mid && ((x.a == a && x.b == b) || (c.type != "parallel" && x.a == b && x.b == a)); })) {
+          Contrainte k = contrainte(c.type.c_str());
+          k.a = a;
+          k.b = b;
+          if (!c.mid.empty()) k.mid = mid;
+          lier(k);
+        }
+      }
+    }
+  if (retirer) {
+    s_.contraintes.erase(std::remove_if(s_.contraintes.begin(), s_.contraintes.end(), [&](const Contrainte& c) { return lienDeLigne(c, vieille); }), s_.contraintes.end());
+    s_.cotes.erase(std::remove_if(s_.cotes.begin(), s_.cotes.end(), [&](const Cote& d) { return d.type == "length" && d.line == vieille; }), s_.cotes.end());
+    structure_ = true;
+  }
+}
+
+void Dessin::scinderLigne(const std::string& ligne, const std::string& pid) {
+  Entite* l = entite(ligne);
+  if (!l || l->t != "line" || l->p1 == pid || l->p2 == pid) return;
+  Entite nl;
+  nl.id = nouvelE();
+  nl.t = "line";
+  nl.p1 = pid;
+  nl.p2 = l->p2;
+  l->p2 = pid;
+  const std::string nid = nl.id;
+  s_.entites.push_back(std::move(nl));
+  structure_ = true;
+  recopierLiens(ligne, {nid}, false);
+  std::vector<Contrainte> tangences;
+  for (const Contrainte& c : s_.contraintes)
+    if (c.type == "tangent" && (c.line == ligne || c.line == nid)) tangences.push_back(c);
+  for (const Contrainte& c : tangences) {
+    const bool pied = piedDans(c, ligne), piedNeuf = piedDans(c, nid);
+    if (c.line == ligne && !pied && piedNeuf) {
+      const auto it = std::find_if(s_.contraintes.begin(), s_.contraintes.end(), [&](const Contrainte& x) { return x.id == c.id && x.type == c.type && x.line == c.line && x.ent == c.ent; });
+      if (it != s_.contraintes.end()) s_.contraintes.erase(it);
+    }
+    if ((pied || piedNeuf) && !aContrainte([&](const Contrainte& x) { return x.type == "parallel" && ((x.a == ligne && x.b == nid) || (x.a == nid && x.b == ligne)); })) {
+      Contrainte k = contrainte("parallel");
+      k.a = ligne;
+      k.b = nid;
+      lier(k);
+    }
+  }
+  for (Cote& d : s_.cotes)
+    if (d.type == "length" && d.line == ligne) {
+      const Entite* e = s_.entite(ligne);
+      const Pt* A = s_.point(e->p1);
+      const Pt* B = s_.point(e->p2);
+      if (A && B) d.value = mesureCote(*A, *B, d.orient);
+      else d.value = 0;
+      break;
+    }
+}
+
+std::string Dessin::pointCoupe(const std::string& soi, double x, double y) {
+  const double tol = jsmin(0.5, SNAP_ * 0.5);  // jonction en T : 5 pixels au plus
+  std::string pid;
+  double bd = tol;
+  for (const std::string& q : s_.ordre) {
+    const Pt& p = s_.points.at(q);
+    const double d = hyp(p.x - x, p.y - y);
+    if (d < bd) {
+      bd = d;
+      pid = q;
+    }
+  }
+  if (pid.empty()) pid = ajouterPoint(x, y);
+  const size_t n = s_.entites.size();  // les lignes créées en route ne sont pas revues
+  for (size_t i = 0; i < n; i++) {
+    const Entite o = s_.entites[i];
+    if (o.id == soi || o.t != "line") continue;
+    const Pt* A = s_.point(o.p1);
+    const Pt* B = s_.point(o.p2);
+    if (!A || !B || o.p1 == pid || o.p2 == pid) continue;
+    if (distSeg(x, y, *A, *B) >= tol) continue;
+    if (o.proj) {  // une projection ne se coupe pas : le point est posé sur la droite
+      if (!aContrainte([&](const Contrainte& c) { return c.type == "online" && c.p == pid && c.line == o.id; })) {
+        Contrainte k = contrainte("online");
+        k.p = pid;
+        k.line = o.id;
+        lier(k);
+      }
+      continue;
+    }
+    scinderLigne(o.id, pid);
+  }
+  return pid;
+}
+
+void Dessin::majCotesLigne(const std::string& ligne) {
+  const Entite* l = s_.entite(ligne);
+  if (!l) return;
+  const Pt* A = s_.point(l->p1);
+  const Pt* B = s_.point(l->p2);
+  if (!A || !B) return;
+  for (Cote& d : s_.cotes)
+    if (d.type == "length" && d.line == ligne) d.value = mesureCote(*A, *B, d.orient);
+}
+
+std::string Dessin::ajusterElement(const std::string& id, double cx, double cy) {
+  const Entite ent = *entite(id);
+  structure_ = true;
+  if (ent.proj && ent.t == "line") {  // la projetée repasse en construction, le tronçon gardé devient une droite posée dessus
+    Entite cl;
+    cl.id = nouvelE();
+    cl.t = "line";
+    cl.p1 = ent.p1;
+    cl.p2 = ent.p2;
+    const std::string cid = cl.id;
+    s_.entites.push_back(std::move(cl));
+    entite(id)->construction = true;
+    return ajusterElement(cid, cx, cy);
+  }
+  if (ent.proj) return "Projection : elle suit son arête source, elle ne s'ajuste pas (elle sert de limite aux autres).";
+  if (ent.construction) return "Entité de construction : repère de positionnement, rien à ajuster.";
+  const auto retirerSoi = [&] { s_.entites.erase(std::remove_if(s_.entites.begin(), s_.entites.end(), [&](const Entite& x) { return x.id == id; }), s_.entites.end()); };
+  if (ent.t == "line") {
+    const Pt* pA = s_.point(ent.p1);
+    const Pt* pB = s_.point(ent.p2);
+    if (!pA || !pB) return "Ligne invalide.";
+    const Pt A = *pA, B = *pB;
+    const double dx = B.x - A.x, dy = B.y - A.y, len2 = dx * dx + dy * dy;
+    if (len2 < 1e-12) return "Ligne dégénérée.";
+    const auto couper = [&](double x, double y) {
+      const std::string pid = pointCoupe(id, x, y);
+      attacherCourbe(pid, x, y, 1e-3);
+      return pid;
+    };
+    const double tc = ((cx - A.x) * dx + (cy - A.y) * dy) / len2;
+    std::vector<Coupe> bruts;
+    for (const Pt& h : croisements(ent)) {
+      const double t = ((h.x - A.x) * dx + (h.y - A.y) * dy) / len2;
+      if (t >= -1e-6 && t <= 1 + 1e-6) bruts.push_back({h.x, h.y, t, 0});
+    }
+    std::stable_sort(bruts.begin(), bruts.end(), [](const Coupe& p, const Coupe& q) { return p.t < q.t; });
+    std::vector<Coupe> hits;
+    for (const Coupe& h : bruts)
+      if (hits.empty() || hyp(h.x - hits.back().x, h.y - hits.back().y) > 1e-4) hits.push_back(h);
+    if (hits.empty()) return "Aucune intersection : rien à ajuster.";
+    const Coupe* prev = nullptr;
+    const Coupe* next = nullptr;
+    for (const Coupe& h : hits) {
+      if (h.t < tc - 1e-9) prev = &h;
+      else if (h.t > tc + 1e-9 && !next) next = &h;
+    }
+    const auto retirerLigne = [&] {
+      recopierLiens(id, {}, true);
+      retirerSoi();
+      return std::string("Ligne retirée.");
+    };
+    if (prev && next && prev->t <= 1e-9 && next->t >= 1 - 1e-9) return retirerLigne();
+    if (prev && next && prev->t <= 1e-9) {
+      const std::string q = couper(next->x, next->y);
+      entite(id)->p1 = q;
+      majCotesLigne(id);
+      return "Ligne ajustée.";
+    }
+    if (prev && next && next->t >= 1 - 1e-9) {
+      const std::string q = couper(prev->x, prev->y);
+      entite(id)->p2 = q;
+      majCotesLigne(id);
+      return "Ligne ajustée.";
+    }
+    if (prev && !next && prev->t <= 1e-9) return retirerLigne();
+    if (!prev && next && next->t >= 1 - 1e-9) return retirerLigne();
+    if (prev && next) {
+      const std::string qA = couper(prev->x, prev->y), qB = couper(next->x, next->y);
+      const std::string p1 = entite(id)->p1, p2 = entite(id)->p2;
+      retirerSoi();
+      Entite l1, l2;
+      l1.id = nouvelE();
+      l2.id = nouvelE();
+      l1.t = l2.t = "line";
+      l1.p1 = p1;
+      l1.p2 = qA;
+      l2.p1 = qB;
+      l2.p2 = p2;
+      const std::vector<std::string> neuves{l1.id, l2.id};
+      s_.entites.push_back(std::move(l1));
+      s_.entites.push_back(std::move(l2));
+      recopierLiens(id, neuves, true);
+      return "Tronçon retiré.";
+    }
+    if (prev && !next) {
+      const std::string q = couper(prev->x, prev->y);
+      entite(id)->p2 = q;
+      majCotesLigne(id);
+      return "Ligne ajustée.";
+    }
+    if (!prev && next) {
+      const std::string q = couper(next->x, next->y);
+      entite(id)->p1 = q;
+      majCotesLigne(id);
+      return "Ligne ajustée.";
+    }
+    return "Rien à ajuster ici.";
+  }
+  if (ent.t != "arc" && ent.t != "circle") return "Ajuster : lignes, arcs et cercles uniquement.";
+  const Pt* pC = s_.point(ent.pc);
+  if (!pC) return "Cercle invalide.";
+  const Pt C = *pC;
+  const std::vector<Pt> hits = croisements(ent);
+  if (ent.t == "circle" && hits.size() < 2) return "Il faut au moins 2 intersections pour ajuster un cercle.";
+  if (hits.empty()) return "Aucune intersection : rien à ajuster.";
+  std::vector<double> angs;
+  for (const Pt& h : hits) angs.push_back(angleNorme(m_atan2(h.y - C.y, h.x - C.x)));
+  std::sort(angs.begin(), angs.end());
+  const double clicA = angleNorme(m_atan2(cy - C.y, cx - C.x)), T = PI_ * 2;
+  if (ent.t == "circle") {  // le cercle devient l'arc complémentaire du segment cliqué
+    size_t i0 = angs.size() - 1;
+    for (size_t i = 0; i < angs.size(); i++) {
+      const double a0 = angs[i], a1 = angs[(i + 1) % angs.size()];
+      if (a1 > a0 ? (clicA >= a0 && clicA <= a1) : (clicA >= a0 || clicA <= a1)) {
+        i0 = i;
+        break;
+      }
+    }
+    const double aDebut = angs[(i0 + 1) % angs.size()];
+    double aFin = angs[i0];
+    if (aFin <= aDebut) aFin += T;
+    if (aFin - aDebut < 0.05) return "Arc restant trop petit.";
+    entite(id)->t = "arc";
+    const auto bout = [&](double ang) {
+      const double xx = C.x + ent.r * m_cos(ang), yy = C.y + ent.r * m_sin(ang);
+      std::string pid = pointCoupe(id, xx, yy);
+      if (pid == ent.pc) pid = ajouterPoint(xx, yy);
+      attacherCourbe(pid, xx, yy, 1e-3);
+      return pid;
+    };
+    const std::string pa = bout(aDebut);
+    entite(id)->pa = pa;
+    const std::string pb0 = bout(aFin);
+    entite(id)->pb = pb0;
+    if (pb0 == pa) {
+      const std::string q = ajouterPoint(C.x + ent.r * m_cos(aFin), C.y + ent.r * m_sin(aFin));
+      entite(id)->pb = q;
+    }
+    // Ce qui était ancré sur le segment retiré part avec lui
+    const auto dansRetire = [&](double a) {
+      const double s = aFin;
+      double e = aDebut;
+      if (e <= s) e += T;
+      double r = std::fmod(a - s, T);
+      if (r < 0) r += T;
+      return r > 1e-5 && r < (e - s) - 1e-5;
+    };
+    const auto ancre = [&](const Contrainte& c, double& a) {
+      if (c.type == "oncircle") {
+        const Pt* p = s_.point(c.p);
+        if (!p) return false;
+        a = angleNorme(m_atan2(p->y - C.y, p->x - C.x));
+        return true;
+      }
+      const Entite* L = s_.entite(c.line);
+      if (!L) return false;
+      const Pt* A = s_.point(L->p1);
+      const Pt* B = s_.point(L->p2);
+      if (!A || !B) return false;
+      const double dx = B->x - A->x, dy = B->y - A->y, L2 = dx * dx + dy * dy;
+      if (L2 < 1e-12) return false;
+      const double t = ((C.x - A->x) * dx + (C.y - A->y) * dy) / L2;
+      a = angleNorme(m_atan2(A->y + t * dy - C.y, A->x + t * dx - C.x));
+      return true;
+    };
+    std::vector<Contrainte> garde;
+    for (const Contrainte& c : s_.contraintes) {
+      double a = 0;
+      if (c.ent == id && (c.type == "oncircle" || c.type == "tangent") && ancre(c, a) && dansRetire(a)) continue;
+      garde.push_back(c);
+    }
+    s_.contraintes = std::move(garde);
+    return "Cercle ajusté en arc (cotes Ø conservées).";
+  }
+  An an0;
+  if (!anglesArc2(s_, ent, an0)) return "Arc invalide.";
+  const double A1 = an0.a1;
+  double d = an0.a2 - an0.a1;
+  if (d < 1e-9) d = T;
+  const auto rel = [&](double a) {
+    double r = std::fmod(a - A1, T);
+    if (r < 0) r += T;
+    return r;
+  };
+  const auto ancreRel = [&](const Contrainte& c, double& r) {
+    if (c.type == "oncircle") {
+      const Pt* p = s_.point(c.p);
+      if (!p) return false;
+      r = rel(m_atan2(p->y - C.y, p->x - C.x));
+      return true;
+    }
+    const Entite* L = s_.entite(c.line);
+    if (!L) return false;
+    const Pt* A = s_.point(L->p1);
+    const Pt* B = s_.point(L->p2);
+    if (!A || !B) return false;
+    const double dx = B->x - A->x, dy = B->y - A->y, L2 = dx * dx + dy * dy;
+    if (L2 < 1e-12) return false;
+    const double t = ((C.x - A->x) * dx + (C.y - A->y) * dy) / L2;
+    r = rel(m_atan2(A->y + t * dy - C.y, A->x + t * dx - C.x));
+    return true;
+  };
+  std::vector<double> dans;
+  for (const double a : angs) {
+    const double r = rel(a);
+    if (r > 1e-4 && r < d - 1e-4) dans.push_back(r);
+  }
+  std::sort(dans.begin(), dans.end());
+  if (dans.empty()) return "Rien à ajuster ici.";
+  const double rc = rel(clicA);
+  bool aP = false, aN = false;
+  double pB = 0, nB = 0;
+  for (const double r : dans) {
+    if (r < rc) {
+      pB = r;
+      aP = true;
+    } else if (!aN) {
+      nB = r;
+      aN = true;
+    }
+  }
+  constexpr double E = 1e-5;
+  // Point de coupe neuf : on ne déplace jamais un bout existant, partagé peut-être avec une ligne
+  const auto couperRel = [&](double r, const std::vector<std::string>& exclus) {
+    const double x = C.x + ent.r * m_cos(A1 + r), y = C.y + ent.r * m_sin(A1 + r);
+    std::string pid = pointCoupe(id, x, y);
+    if (pid.empty() || std::find(exclus.begin(), exclus.end(), pid) != exclus.end()) pid = ajouterPoint(x, y);
+    if (!aContrainte([&](const Contrainte& c) { return c.type == "oncircle" && c.p == pid && c.ent == id; })) {
+      Contrainte k = contrainte("oncircle");
+      k.p = pid;
+      k.ent = id;
+      lier(k);
+    }
+    return pid;
+  };
+  const auto router = [&](const std::string& neuf) {  // chaque ancrage suit le tronçon qui le porte, celui du tronçon retiré part
+    std::vector<Contrainte> garde;
+    for (Contrainte c : s_.contraintes) {
+      double r = 0;
+      if (c.ent == id && (c.type == "oncircle" || c.type == "tangent") && ancreRel(c, r)) {
+        if (aP && aN) {
+          if (r > pB + E) {
+            if (r >= nB - E) {
+              if (!neuf.empty()) c.ent = neuf;
+            } else {
+              continue;
+            }
+          }
+        } else if (aP) {
+          if (r > pB + E) continue;
+        } else if (r < nB - E) {
+          continue;
+        }
+      }
+      garde.push_back(std::move(c));
+    }
+    s_.contraintes = std::move(garde);
+  };
+  if (aP && aN) {
+    const std::string vieuxPb = ent.pb;
+    const std::string qB = couperRel(pB, {ent.pc, ent.pa, ent.pb});
+    entite(id)->pb = qB;
+    const std::string np = couperRel(nB, {ent.pc, ent.pa, qB, vieuxPb, qB});
+    Entite nA;
+    nA.id = nouvelE();
+    nA.t = "arc";
+    nA.pc = ent.pc;
+    nA.pa = np;
+    nA.pb = vieuxPb;
+    nA.r = ent.r;
+    const std::string nid = nA.id;
+    s_.entites.push_back(std::move(nA));
+    router(nid);
+    // Le nouveau tronçon hérite des liaisons sans ancrage angulaire, et des cotes de rayon
+    const size_t n = s_.contraintes.size();
+    for (size_t i = 0; i < n; i++) {
+      const Contrainte c = s_.contraintes[i];
+      if (paireLignes(c.type) && (c.a == id || c.b == id || c.mid == id)) {
+        const std::string a = c.a == id ? nid : c.a, b = c.b == id ? nid : c.b, mid = c.mid == id ? nid : c.mid;
+        if (a != b && a != mid && b != mid && !aContrainte([&](const Contrainte& x) { return x.type == c.type && x.mid == mid && ((x.a == a && x.b == b) || (c.type != "parallel" && x.a == b && x.b == a)); })) {
+          Contrainte k = contrainte(c.type.c_str());
+          k.a = a;
+          k.b = b;
+          if (!mid.empty()) k.mid = mid;
+          lier(k);
+        }
+      } else if (c.type == "fix" && c.ent == id) {
+        if (!aContrainte([&](const Contrainte& x) { return x.type == "fix" && x.ent == nid; })) {
+          Contrainte k = contrainte("fix");
+          k.ent = nid;
+          lier(k);
+        }
+      }
+    }
+    const std::vector<Cote> cotes = s_.cotes;
+    for (const Cote& dd : cotes) {
+      if (dd.type != "radius" || dd.ent != id) continue;
+      if (std::any_of(s_.cotes.begin(), s_.cotes.end(), [&](const Cote& x) { return x.type == "radius" && x.ent == nid; })) continue;
+      Cote k;
+      k.id = nouvelE();
+      k.type = "radius";
+      k.ent = nid;
+      k.value = dd.value;
+      k.ox = dd.ox;
+      k.oy = dd.oy;
+      s_.cotes.push_back(std::move(k));
+    }
+    return "Arc scindé.";
+  }
+  if (aP) {
+    const std::string q = couperRel(pB, {ent.pc, ent.pa, ent.pb});
+    entite(id)->pb = q;
+    router("");
+    return "Arc ajusté.";
+  }
+  if (aN) {
+    const std::string q = couperRel(nB, {ent.pc, ent.pa, ent.pb});
+    entite(id)->pa = q;
+    router("");
+    return "Arc ajusté.";
+  }
+  return "Rien à ajuster ici.";
+}
+
+void Dessin::clicAjuster(double wx, double wy) {
+  const Entite* e = entiteProche(wx, wy, 12 / echelle_, true);  // SK_PICKX
+  if (!e) {
+    message("Ajuster : cliquez un tronçon de ligne, d'arc ou de cercle près d'une intersection.");
+    return;
+  }
+  const std::string id = e->id;
+  pousser();
+  message(ajusterElement(id, wx, wy));
+  apresEdition();
+}
+
+// ---------- Décaler (src/50-esquisse-3-edition-geometrie.js, skOffsetApply) ----------
+std::vector<std::string> Dessin::choixDecalables() const {
+  std::vector<std::string> v;
+  for (const Entite* e : entitesChoisies())
+    if (((e->t == "line" && !e->poignee) || e->t == "circle" || e->t == "arc") && !e->ref) v.push_back(e->id);
+  return v;
+}
+
+void Dessin::clicDecaler(double wx, double wy) {
+  const std::vector<std::string> ids = choixDecalables();
+  if (ids.empty()) {
+    message("Décalage : sélectionnez d'abord une ou plusieurs lignes, cercles ou arcs (Ctrl+clic pour les suivants).");
+    return;
+  }
+  if (!offArme_) {
+    offArme_ = true;
+    message("Décalage : cliquez le côté (la distance est celle du curseur, une cote par chaîne pour l'ajuster). Échap annule.");
+    return;
+  }
+  double D = 1e9;
+  for (const std::string& id : ids) {
+    const Entite* e = s_.entite(id);
+    if (e->t == "line") {
+      const Pt* A = s_.point(e->p1);
+      const Pt* B = s_.point(e->p2);
+      if (A && B) D = jsmin(D, distSeg(wx, wy, *A, *B));
+    } else if (const Pt* C = s_.point(e->pc)) {
+      if (e->r > 0) D = jsmin(D, std::abs(hyp(wx - C->x, wy - C->y) - e->r));
+    }
+  }
+  offArme_ = false;
+  if (!(D >= 4 / echelle_)) {
+    message("Décalage : cliquez plus loin du profil.");
+    return;
+  }
+  pousser();
+  std::string msg;
+  if (!decalerElements(ids, D, Pt{wx, wy}, msg)) {
+    if (annulerPas) annulerPas();
+    message(msg);
+    return;
+  }
+  structure_ = true;
+  apresEdition();
+  message(msg + " Cote modifiable (double-clic).");
+}
+
+namespace {
+struct Maillon {
+  Entite e;
+  bool fwd = true;
+};
+struct Chaine {
+  std::vector<Maillon> ordre;
+  bool fermee = false;
+};
+struct BoutsE {
+  std::string a, b;
+};
+BoutsE boutsE(const Entite& e, bool fwd) {  // skEdgeEnds
+  if (e.t == "line") return fwd ? BoutsE{e.p1, e.p2} : BoutsE{e.p2, e.p1};
+  return fwd ? BoutsE{e.pa, e.pb} : BoutsE{e.pb, e.pa};
+}
+Pt normaleGauche(const Pt& A, const Pt& B) {  // skLeftNormal
+  const double dx = B.x - A.x, dy = B.y - A.y, L0 = hyp(dx, dy), L = L0 != 0 ? L0 : 1e-9;
+  return {-dy / L, dx / L};
+}
+bool dansAnneau(double x, double y, const std::vector<Pt>& ring) {  // pip
+  bool inside = false;
+  for (size_t i = 0, j = ring.size() - 1; i < ring.size(); j = i++) {
+    const double xi = ring[i].x, yi = ring[i].y, xj = ring[j].x, yj = ring[j].y;
+    if (((yi > y) != (yj > y)) && (x < (xj - xi) * (y - yi) / (yj - yi) + xi)) inside = !inside;
+  }
+  return inside;
+}
+std::vector<Pt> droiteCercle(const Pt& P, const Pt& D, const Pt& C, double r) {  // lineCircleInt
+  const double fx = P.x - C.x, fy = P.y - C.y;
+  const double b = fx * D.x + fy * D.y, cc = fx * fx + fy * fy - r * r, disc = b * b - cc;
+  if (disc < -1e-9) return {};
+  const double s = std::sqrt(jsmax(disc, 0));
+  return {{P.x + D.x * (-b + s), P.y + D.y * (-b + s)}, {P.x + D.x * (-b - s), P.y + D.y * (-b - s)}};
+}
+std::vector<Pt> cercleCercle(const Pt& C0, double r0, const Pt& C1, double r1) {  // circleCircleInt
+  const double dx = C1.x - C0.x, dy = C1.y - C0.y, d = hyp(dx, dy);
+  if (!(d > 1e-9) || d > r0 + r1 + 1e-9 || d < std::abs(r0 - r1) - 1e-9) return {};
+  const double a = (r0 * r0 - r1 * r1 + d * d) / (2 * d), h = std::sqrt(jsmax(r0 * r0 - a * a, 0));
+  const double xm = C0.x + dx * a / d, ym = C0.y + dy * a / d;
+  return {{xm - dy * h / d, ym + dx * h / d}, {xm + dy * h / d, ym - dx * h / d}};
+}
+// skOffsetVal : écart signé de la source à la copie
+bool valeurDecalage(const Esquisse& s, const std::string& aId, const std::string& bId, double& v) {
+  const Entite* A = s.entite(aId);
+  const Entite* B = s.entite(bId);
+  if (!A || !B) return false;
+  if (A->t == "line" && B->t == "line") {
+    const Pt* A1 = s.point(A->p1);
+    const Pt* A2 = s.point(A->p2);
+    const Pt* B1 = s.point(B->p1);
+    if (!A1 || !A2 || !B1) return false;
+    const double dx = A2->x - A1->x, dy = A2->y - A1->y, L = hyp(dx, dy);
+    if (!(L > 1e-9)) return false;
+    v = (B1->x - A1->x) * (-dy / L) + (B1->y - A1->y) * (dx / L);
+    return true;
+  }
+  if ((A->t == "circle" || A->t == "arc") && (B->t == "circle" || B->t == "arc")) {
+    v = B->r - A->r;
+    return true;
+  }
+  return false;
+}
+}  // namespace
+
+bool Dessin::decalerElements(const std::vector<std::string>& ids0, double D, const Pt& S, std::string& msg) {
+  if (!(D >= 0.001)) {
+    msg = "Décalage : distance d'au moins 0,001 mm requise.";
+    return false;
+  }
+  std::vector<Entite> ents;
+  for (const std::string& id : ids0) {
+    if (std::any_of(ents.begin(), ents.end(), [&](const Entite& x) { return x.id == id; })) continue;
+    const Entite* e = s_.entite(id);
+    if (e && (e->t == "line" || e->t == "circle" || e->t == "arc") && !e->ref) ents.push_back(*e);
+  }
+  if (ents.empty()) {
+    msg = "Décalage : sélectionnez lignes, cercles ou arcs.";
+    return false;
+  }
+  const auto memeBout = [&](const std::string& a, const std::string& b) {  // skSameEnd
+    if (a == b) return true;
+    return !a.empty() && !b.empty() && aContrainte([&](const Contrainte& c) { return c.type == "coincident" && ((c.a == a && c.b == b) || (c.a == b && c.b == a)); });
+  };
+  const auto jointMeme = [&](const std::string& a, const std::string& b) {  // skJointSame
+    if (memeBout(a, b)) return true;
+    if (a.empty() || b.empty()) return false;
+    const Pt* pa = s_.point(a);
+    const Pt* pb = s_.point(b);
+    return pa && pb && hyp(pa->x - pb->x, pa->y - pb->y) < 1e-6;
+  };
+  // skOffsetChains
+  std::vector<Entite> cand;
+  for (const Entite& e : s_.entites)
+    if ((e.t == "line" || e.t == "arc") && !e.ref && std::any_of(ents.begin(), ents.end(), [&](const Entite& x) { return x.id == e.id; })) cand.push_back(e);
+  std::set<std::string> vus;
+  std::vector<Chaine> chaines;
+  const auto touche = [&](const Entite& e, const std::string& p) {
+    const BoutsE b = boutsE(e, true);
+    return jointMeme(b.a, p) || jointMeme(b.b, p);
+  };
+  for (;;) {
+    const auto dep = std::find_if(cand.begin(), cand.end(), [&](const Entite& e) { return !vus.count(e.id); });
+    if (dep == cand.end()) break;
+    const Entite& start = *dep;
+    const auto degre = [&](const std::string& p) {
+      int n = 0;
+      for (const Entite& e : cand)
+        if (!vus.count(e.id) && touche(e, p)) n++;
+      return n;
+    };
+    const BoutsE ss = boutsE(start, true);
+    const std::string entree = degre(ss.a) <= 1 ? ss.a : ss.b;
+    Chaine ch;
+    ch.ordre.push_back({start, ss.a == entree});
+    vus.insert(start.id);
+    std::string sortie = ch.ordre[0].fwd ? ss.b : ss.a;
+    for (;;) {
+      const auto nx = std::find_if(cand.begin(), cand.end(), [&](const Entite& e) { return !vus.count(e.id) && touche(e, sortie); });
+      if (nx == cand.end()) break;
+      const BoutsE b = boutsE(*nx, true);
+      const bool fwd = jointMeme(b.a, sortie);
+      ch.ordre.push_back({*nx, fwd});
+      vus.insert(nx->id);
+      sortie = fwd ? b.b : b.a;
+      if (jointMeme(sortie, entree)) {
+        ch.fermee = true;
+        break;
+      }
+    }
+    chaines.push_back(std::move(ch));
+  }
+
+  const std::vector<Contrainte> cons0 = s_.contraintes;
+  std::map<std::string, std::string> copieDe;
+  std::vector<std::string> copies;
+  int jointsBad = 0, faites = 0;
+  const auto proche = [](const std::vector<Pt>& pts, const Pt& C, Pt& o) {
+    bool ok = false;
+    double bd = 1e9;
+    for (const Pt& p : pts) {
+      const double d = hyp(p.x - C.x, p.y - C.y);
+      if (d < bd) {
+        bd = d;
+        o = p;
+        ok = true;
+      }
+    }
+    return ok;
+  };
+  const auto aParallele = [&](const std::string& a, const std::string& b) {
+    return aContrainte([&](const Contrainte& c) { return c.type == "parallel" && ((c.a == a && c.b == b) || (c.a == b && c.b == a)); });
+  };
+  for (const Chaine& ch : chaines) {
+    const size_t n = ch.ordre.size();
+    double sg = 1;
+    std::vector<Maillon> ordre = ch.ordre;
+    if (ch.fermee) {
+      std::vector<Pt> ring;
+      for (const Maillon& o : ch.ordre)
+        if (const Pt* q = s_.point(boutsE(o.e, o.fwd).b)) ring.push_back(*q);
+      double aire = 0;
+      for (size_t i = 0; i < ring.size(); i++) {
+        const Pt& p = ring[i];
+        const Pt& w = ring[(i + 1) % ring.size()];
+        aire += p.x * w.y - w.x * p.y;
+      }
+      aire /= 2;
+      const bool ext = !dansAnneau(S.x, S.y, ring);
+      sg = ((aire > 0) == !ext) ? 1 : -1;
+    } else {
+      const BoutsE b = boutsE(ordre[0].e, ordre[0].fwd);
+      const Pt* U = s_.point(b.a);
+      const Pt* W = s_.point(b.b);
+      if (U && W) {
+        const double cr = (W->x - U->x) * (S.y - U->y) - (W->y - U->y) * (S.x - U->x);
+        if (cr < 0) {
+          std::reverse(ordre.begin(), ordre.end());
+          for (Maillon& o : ordre) o.fwd = !o.fwd;
+        }
+      }
+    }
+    struct Joint {
+      bool existe = false, force = false;
+      std::string pid;
+    };
+    std::vector<Joint> joints(n);
+    for (size_t i = 0; i < n; i++) {
+      if (i == n - 1 && !ch.fermee) continue;
+      const BoutsE la = boutsE(ordre[i].e, ordre[i].fwd), lb = boutsE(ordre[(i + 1) % n].e, ordre[(i + 1) % n].fwd);
+      const std::string* L[2] = {&la.a, &la.b};
+      const std::string* M[2] = {&lb.a, &lb.b};
+      Joint& J = joints[i];
+      for (int a = 0; a < 2 && !J.existe; a++)
+        for (int b = 0; b < 2 && !J.existe; b++)
+          if (*L[a] == *M[b]) J = {true, false, *L[a]};
+      for (int a = 0; a < 2 && !J.existe; a++)
+        for (int b = 0; b < 2 && !J.existe; b++)
+          if (memeBout(*L[a], *M[b])) J = {true, true, *L[a]};
+      if (!J.existe && jointMeme(la.b, lb.a)) J = {true, false, la.b};
+    }
+    struct Dec {
+      bool ligne = false;
+      Pt A, B, C;
+      double r = 0;
+    };
+    std::vector<Dec> offs;
+    bool bad = false;
+    for (const Maillon& o : ordre) {
+      const BoutsE b = boutsE(o.e, o.fwd);
+      const Pt* A = s_.point(b.a);
+      const Pt* B = s_.point(b.b);
+      if (!A || !B) {
+        bad = true;
+        break;
+      }
+      Dec d;
+      if (o.e.t == "line") {
+        const Pt nn = normaleGauche(*A, *B);
+        d.ligne = true;
+        d.A = {A->x + sg * D * nn.x, A->y + sg * D * nn.y};
+        d.B = {B->x + sg * D * nn.x, B->y + sg * D * nn.y};
+      } else {
+        const Pt* C = s_.point(o.e.pc);
+        if (!C) {
+          bad = true;
+          break;
+        }
+        const double rr = o.e.r + sg * D * (o.fwd ? -1 : 1);
+        if (!(rr > 0.5)) {
+          bad = true;
+          break;
+        }
+        d.C = *C;
+        d.r = rr;
+      }
+      offs.push_back(d);
+    }
+    if (bad) continue;
+    struct Fin {
+      std::string pid, pid2;
+      bool force = false;
+    };
+    std::vector<Fin> fins(n);
+    for (size_t i = 0; i < n; i++) {
+      if (i == n - 1 && !ch.fermee) break;
+      const size_t nx = (i + 1) % n;
+      const Joint& J0 = joints[i];
+      const Pt* pC0 = J0.existe ? s_.point(J0.pid) : nullptr;
+      const Dec& oi = offs[i];
+      const Dec& oj = offs[nx];
+      Pt M;
+      bool aM = false;
+      const Pt origine{0, 0};
+      const Pt& repere = pC0 ? *pC0 : origine;
+      struct Dr {
+        Pt P, D;
+      };
+      const auto droiteDe = [](const Dec& o) {
+        const double dx = o.B.x - o.A.x, dy = o.B.y - o.A.y, L0 = hyp(dx, dy), L = L0 != 0 ? L0 : 1e-9;
+        return Dr{o.A, {dx / L, dy / L}};
+      };
+      if (oi.ligne && oj.ligne) {
+        const Dr a = droiteDe(oi), b = droiteDe(oj);
+        // segInter : le navigateur repasse par un second point de chaque droite, l'arrondi de ces soustractions compte
+        const Pt P2{a.P.x + a.D.x, a.P.y + a.D.y}, P4{b.P.x + b.D.x, b.P.y + b.D.y};
+        const double dx1 = P2.x - a.P.x, dy1 = P2.y - a.P.y, dx2 = P4.x - b.P.x, dy2 = P4.y - b.P.y;
+        const double den = dx1 * dy2 - dy1 * dx2;
+        if (std::abs(den) >= 1e-12) {
+          const double t = ((b.P.x - a.P.x) * dy2 - (b.P.y - a.P.y) * dx2) / den;
+          M = {a.P.x + dx1 * t, a.P.y + dy1 * t};
+          aM = true;
+        }
+        if (!aM && pC0) {
+          const Pt n1 = normaleGauche(oi.A, oi.B);
+          M = {pC0->x + sg * D * n1.x, pC0->y + sg * D * n1.y};
+          aM = true;
+        }
+      } else if (oi.ligne || oj.ligne) {
+        const Dec& li = oi.ligne ? oi : oj;
+        const Dec& ci = oi.ligne ? oj : oi;
+        const Dr a = droiteDe(li);
+        aM = proche(droiteCercle(a.P, a.D, ci.C, ci.r), repere, M);
+        if (!aM && pC0) {  // jamais de trou : point commun approché
+          const double dx = li.B.x - li.A.x, dy = li.B.y - li.A.y, L0 = dx * dx + dy * dy, L = L0 != 0 ? L0 : 1e-12;
+          const double t = ((pC0->x - li.A.x) * dx + (pC0->y - li.A.y) * dy) / L;
+          const double lx = li.A.x + dx * t, ly = li.A.y + dy * t;
+          const double vx = pC0->x - ci.C.x, vy = pC0->y - ci.C.y, V0 = hyp(vx, vy), V = V0 != 0 ? V0 : 1e-12;
+          const double cx = ci.C.x + vx / V * ci.r, cy = ci.C.y + vy / V * ci.r;
+          M = {(lx + cx) / 2, (ly + cy) / 2};
+          aM = true;
+        }
+      } else {
+        aM = proche(cercleCercle(oi.C, oi.r, oj.C, oj.r), repere, M);
+        if (!aM && pC0) {  // centres confondus : les rayons décalés à l'angle du joint
+          const double vx = pC0->x - oi.C.x, vy = pC0->y - oi.C.y, V0 = hyp(vx, vy), V = V0 != 0 ? V0 : 1e-12;
+          const Pt p1{oi.C.x + vx / V * oi.r, oi.C.y + vy / V * oi.r}, p2{oj.C.x + vx / V * oj.r, oj.C.y + vy / V * oj.r};
+          M = {(p1.x + p2.x) / 2, (p1.y + p2.y) / 2};
+          aM = true;
+        }
+      }
+      if (!aM) {
+        jointsBad++;
+        continue;
+      }
+      fins[i].pid = ajouterPoint(M.x, M.y);
+      if (J0.existe && J0.force) {  // source contrainte : deux points distincts au joint, liés par un coïncident
+        fins[i].pid2 = ajouterPoint(M.x, M.y);
+        fins[i].force = true;
+      }
+    }
+    std::vector<std::string> copieIds(n);
+    struct PaireD {
+      std::string a, b;
+      bool ligne;
+    };
+    std::vector<PaireD> paires;
+    for (size_t i = 0; i < n; i++) {
+      const Maillon& o = ordre[i];
+      const Dec& off = offs[i];
+      static const Fin finVide;
+      const Fin& avantJ = ch.fermee ? fins[(i + n - 1) % n] : (i == 0 ? finVide : fins[i - 1]);
+      const Fin& apresJ = ch.fermee ? fins[i] : (i == n - 1 ? finVide : fins[i]);
+      const auto debut = [&](const Pt& p) {
+        if (!avantJ.pid.empty()) {
+          if (avantJ.force && !avantJ.pid2.empty() && !aContrainte([&](const Contrainte& c) { return c.type == "coincident" && ((c.a == avantJ.pid && c.b == avantJ.pid2) || (c.a == avantJ.pid2 && c.b == avantJ.pid)); })) {
+            Contrainte k = contrainte("coincident");
+            k.a = avantJ.pid;
+            k.b = avantJ.pid2;
+            lier(k);
+          }
+          return avantJ.pid2.empty() ? avantJ.pid : avantJ.pid2;
+        }
+        return ajouterPoint(p.x, p.y);
+      };
+      const auto fin = [&](const Pt& p) { return !apresJ.pid.empty() ? apresJ.pid : ajouterPoint(p.x, p.y); };
+      Entite cp;
+      cp.construction = o.e.construction;
+      if (o.e.t == "line") {
+        const std::string p1 = debut(off.A), p2 = fin(off.B);
+        cp.id = nouvelE();
+        cp.t = "line";
+        cp.p1 = p1;
+        cp.p2 = p2;
+        const std::string nid = cp.id;
+        s_.entites.push_back(std::move(cp));
+        if (!aParallele(o.e.id, nid)) {
+          Contrainte k = contrainte("parallel");
+          k.a = o.e.id;
+          k.b = nid;
+          lier(k);
+        }
+        paires.push_back({o.e.id, nid, true});
+        copies.push_back(nid);
+        copieIds[i] = nid;
+      } else {
+        const std::string pA = debut(off.C), pB = fin(off.C);
+        const auto poser = [&](const std::string& voulu, const Pt& reper) {
+          const double a = m_atan2(reper.y - off.C.y, reper.x - off.C.x);
+          Pt& q = s_.points.at(voulu);
+          q = {off.C.x + off.r * m_cos(a), off.C.y + off.r * m_sin(a)};
+        };
+        const BoutsE src = boutsE(o.e, o.fwd);
+        if (avantJ.pid.empty())
+          if (const Pt* A0 = s_.point(src.a)) poser(pA, Pt(*A0));
+        if (apresJ.pid.empty())
+          if (const Pt* B0 = s_.point(src.b)) poser(pB, Pt(*B0));
+        cp.id = nouvelE();
+        cp.t = "arc";
+        cp.pc = o.e.pc;
+        cp.pa = o.fwd ? pA : pB;
+        cp.pb = o.fwd ? pB : pA;
+        cp.r = off.r;
+        const std::string nid = cp.id;
+        s_.entites.push_back(std::move(cp));
+        paires.push_back({o.e.id, nid, false});
+        copies.push_back(nid);
+        copieIds[i] = nid;
+      }
+    }
+    // Une cote par chaîne ; les autres paires suivent par la contrainte « décalage égal »
+    const PaireD* refP = nullptr;
+    for (const PaireD& p : paires)
+      if (p.ligne) {
+        refP = &p;
+        break;
+      }
+    if (!refP && !paires.empty()) refP = &paires[0];
+    if (refP) {
+      Cote dc;
+      dc.id = nouvelE();
+      if (refP->ligne) {
+        dc.type = "gap";
+        dc.a = refP->a;
+        dc.b = refP->b;
+        dc.value = fixe(D, 3);
+      } else {
+        const Entite* cpE = s_.entite(refP->b);
+        dc.type = "radius";
+        dc.ent = refP->b;
+        dc.value = fixe(cpE ? cpE->r : D, 3);
+      }
+      s_.cotes.push_back(std::move(dc));
+      const auto signe = [&](const PaireD& p) {
+        double v = 0;
+        return valeurDecalage(s_, p.a, p.b, v) && v < 0 ? -1 : 1;
+      };
+      const int sa = signe(*refP);
+      for (const PaireD& p : paires) {
+        if (&p == refP) continue;
+        Contrainte k = contrainte("offset");
+        k.a = refP->a;
+        k.b = refP->b;
+        k.c = p.a;
+        k.d = p.b;
+        k.sa = sa;
+        k.sb = signe(p);
+        lier(k);
+      }
+    }
+    for (const PaireD& p : paires) copieDe[p.a] = p.b;
+    // Une tangence de la source se retrouve entre les copies
+    for (size_t i = 0; i < n; i++) {
+      if (!joints[i].existe) continue;
+      const size_t nx = (i + 1) % n;
+      const Entite& ea = ordre[i].e;
+      const Entite& eb = ordre[nx].e;
+      if (!((ea.t == "line" && eb.t == "arc") || (ea.t == "arc" && eb.t == "line"))) continue;
+      const std::string& lid = ea.t == "line" ? copieIds[i] : copieIds[nx];
+      const std::string& eid = ea.t == "arc" ? copieIds[i] : copieIds[nx];
+      if (lid.empty() || eid.empty()) continue;
+      const auto aTangence = [&](const std::string& l, const std::string& e) {
+        return aContrainte([&](const Contrainte& c) { return c.type == "tangent" && ((c.line == l && c.ent == e) || (c.line == e && c.ent == l)); });
+      };
+      if (aTangence(ea.id, eb.id) && !aTangence(lid, eid)) {
+        Contrainte k = contrainte("tangent");
+        k.line = lid;
+        k.ent = eid;
+        lier(k);
+      }
+    }
+    faites++;
+  }
+  // Les contraintes de la source se retrouvent entre les copies : la copie garde sa forme sans cote de plus
+  if (!copieDe.empty())
+    for (const Contrainte& c : cons0) {
+      if ((c.type == "h" || c.type == "v") && copieDe.count(c.line)) {
+        const std::string l = copieDe.at(c.line);
+        if (!aHV(l, c.type.c_str())) {
+          Contrainte k = contrainte(c.type.c_str());
+          k.line = l;
+          lier(k);
+        }
+      } else if ((c.type == "parallel" || c.type == "perpendicular" || c.type == "collinear") && copieDe.count(c.a) && copieDe.count(c.b)) {
+        const std::string a = copieDe.at(c.a), b = copieDe.at(c.b);
+        if (!aContrainte([&](const Contrainte& k) { return k.type == c.type && ((k.a == a && k.b == b) || (k.a == b && k.b == a)); })) {
+          Contrainte k = contrainte(c.type.c_str());
+          k.a = a;
+          k.b = b;
+          lier(k);
+        }
+      }
+    }
+  for (const Entite& e : ents) {
+    if (e.t != "circle") continue;
+    const Pt* C = s_.point(e.pc);
+    if (!C) continue;
+    const double rr = e.r + (hyp(S.x - C->x, S.y - C->y) >= e.r ? 1 : -1) * D;
+    if (!(rr > 0.5)) {
+      jointsBad++;
+      continue;
+    }
+    Entite cp;
+    cp.id = nouvelE();
+    cp.t = "circle";
+    cp.pc = e.pc;
+    cp.r = rr;
+    cp.construction = e.construction;
+    const std::string nid = cp.id;
+    s_.entites.push_back(std::move(cp));
+    Cote dc;
+    dc.id = nouvelE();
+    dc.type = "radius";
+    dc.ent = nid;
+    dc.value = fixe(rr, 3);
+    s_.cotes.push_back(std::move(dc));
+    copies.push_back(nid);
+  }
+  if (copies.empty()) {
+    msg = "Décalage impossible (arcs trop petits ou joints non résolus).";
+    return false;
+  }
+  char b[160];
+  snprintf(b, sizeof b, "Décalage de %.2f mm : %d copiée(s)", D, static_cast<int>(copies.size()));
+  msg = b;
+  if (faites > 1) msg += " en " + std::to_string(faites) + " chaînes";
+  if (jointsBad) msg += ", " + std::to_string(jointsBad) + " joint(s) non raccordé(s)";
+  msg += ".";
+  return true;
 }

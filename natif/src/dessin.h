@@ -13,7 +13,7 @@
 
 class Dessin {
  public:
-  enum Outil { SELECTION, LIGNE, RECTANGLE, CERCLE, ARC, COTE };
+  enum Outil { SELECTION, LIGNE, RECTANGLE, CERCLE, ARC, COTE, AJUSTER, DECALER };  // même ordre que les boutons
   struct Accroche {
     enum Sorte { AUCUNE, POINT, MILIEU, SUR_LIGNE, SUR_CERCLE } sorte = AUCUNE;
     std::string id;  // le point, la ligne ou le cercle visé
@@ -73,7 +73,7 @@ class Dessin {
   Pt marque() const { return marque_; }
   const std::vector<Choix>& selection() const { return selection_; }
   bool estChoisi(Choix::Sorte s, const std::string& id) const;
-  bool enCours() const { return bas_.actif || arcC_.size() || glisseP_.size() || glisseE_.actif || dyn_.actif || !dimPose_.empty() || !dimPoint_.empty() || !dimLigne_.empty(); }
+  bool enCours() const { return bas_.actif || arcC_.size() || glisseP_.size() || glisseE_.actif || dyn_.actif || !dimPose_.empty() || !dimPoint_.empty() || !dimLigne_.empty() || offArme_; }
   // Le centre de l'arc en cours, pour l'écran
   const std::string& centreArc() const { return arcC_; }
   // Le départ du tracé en cours
@@ -143,7 +143,7 @@ class Dessin {
 
   // Accroches
   std::string pointProche(double x, double y, double maxD, const std::string& sauf = "") const;  // nearestPoint
-  const Entite* entiteProche(double x, double y, double maxD) const;                             // nearestEntity
+  const Entite* entiteProche(double x, double y, double maxD, bool sansConstruction = false) const;  // nearestEntity
   Accroche accroche(double x, double y, const std::string& sauf = "") const;                     // findSnap
   Accroche accrocheGlisse(double x, double y, const std::string& pid) const;                     // skDragSnapFind
   std::string pointAccroche(double x, double y);                                                 // snapNewPoint
@@ -170,6 +170,22 @@ class Dessin {
   void validerSaisie();                               // skDynCommit
   std::string dimPose_, dimPoint_, dimLigne_, coteAOuvrir_;
   Saisie dyn_;
+
+  // Ajuster
+  void clicAjuster(double wx, double wy);
+  std::string ajusterElement(const std::string& id, double cx, double cy);  // trimEntity
+  std::vector<Pt> croisements(const Entite& e) const;                        // entHits
+  std::string pointCoupe(const std::string& soi, double x, double y);       // splitOtherAt
+  void scinderLigne(const std::string& ligne, const std::string& pid);      // splitLineAt
+  void recopierLiens(const std::string& ancienne, const std::vector<std::string>& neuves, bool retirer);  // cloneLineConstraints
+  bool piedDans(const Contrainte& c, const std::string& ligne) const;       // tangentFootSegs
+  void majCotesLigne(const std::string& ligne);                             // syncLineDims
+
+  // Décaler
+  void clicDecaler(double wx, double wy);
+  std::vector<std::string> choixDecalables() const;
+  bool decalerElements(const std::vector<std::string>& ids, double D, const Pt& S, std::string& msg);  // skOffsetApply
+  bool offArme_ = false;  // skOffArm : le prochain clic donne le côté
 
   // Contraintes
   void pousserAvant();                               // skPushUndo, en gardant de quoi revenir

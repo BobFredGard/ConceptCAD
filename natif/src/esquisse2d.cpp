@@ -224,7 +224,7 @@ VueEsquisse::VueEsquisse(wxWindow* parent) : wxWindow(parent, 2004, wxDefaultPos
     if (surQuitter) surQuitter();
   });
   // Identifiants fixes : natif/mesures/verifier-dessin.ps1 retrouve ces boutons par leur nom.
-  const std::pair<Dessin::Outil, const wchar_t*> noms[] = {{Dessin::SELECTION, L"Sélection"}, {Dessin::LIGNE, L"Ligne"}, {Dessin::RECTANGLE, L"Rectangle"}, {Dessin::CERCLE, L"Cercle"}, {Dessin::ARC, L"Arc"}, {Dessin::COTE, L"Cote"}};
+  const std::pair<Dessin::Outil, const wchar_t*> noms[] = {{Dessin::SELECTION, L"Sélection"}, {Dessin::LIGNE, L"Ligne"}, {Dessin::RECTANGLE, L"Rectangle"}, {Dessin::CERCLE, L"Cercle"}, {Dessin::ARC, L"Arc"}, {Dessin::COTE, L"Cote"}, {Dessin::AJUSTER, L"Ajuster"}, {Dessin::DECALER, L"Décaler"}};
   int idBouton = 2010;
   for (const auto& [outil, nom] : noms) {
     auto* b = new wxToggleButton(this, idBouton++, nom);
@@ -240,7 +240,7 @@ VueEsquisse::VueEsquisse(wxWindow* parent) : wxWindow(parent, 2004, wxDefaultPos
     b->Hide();
     outils_.push_back(b);
   }
-  caseGrille_ = new wxCheckBox(this, 2016, L"Grille 1 mm");
+  caseGrille_ = new wxCheckBox(this, 2020, L"Grille 1 mm");
   caseGrille_->SetValue(true);
   caseGrille_->Hide();
   caseGrille_->Bind(wxEVT_CHECKBOX, [this](wxCommandEvent&) {
@@ -468,6 +468,11 @@ void VueEsquisse::surTouche(wxKeyEvent& ev) {
   if (dessin_ && ev.GetKeyCode() == WXK_DELETE && !enSaisie()) {
     dessin_->supprimer();
     apresGeste();
+    return;
+  }
+  if ((ev.GetKeyCode() == 'T' || ev.GetKeyCode() == 'O') && !ev.HasAnyModifiers() && dessin_ && !enSaisie() && !dessin_->saisieTracee().actif) {
+    const Dessin::Outil o = ev.GetKeyCode() == 'T' ? Dessin::AJUSTER : Dessin::DECALER;
+    commande([o](Dessin& d) { d.choisirOutil(o); });
     return;
   }
   if (ev.GetKeyCode() == 'X' && !ev.HasAnyModifiers() && !(dessin_ && dessin_->saisieTracee().actif)) {
