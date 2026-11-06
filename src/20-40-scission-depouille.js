@@ -134,6 +134,7 @@ function occListEdges(shape){
   const out=[],bin=[];
   const SH=occt.TopAbs_ShapeEnum.TopAbs_SHAPE;
   const ex=new occt.TopExp_Explorer_2(shape,occt.TopAbs_ShapeEnum.TopAbs_EDGE,SH);bin.push(ex);
+  const P=new occt.gp_Pnt_1();bin.push(P); // un seul point relu (D0) : Value en créait 12 par arête, à chaque congé
   let src=0;
   while(ex.More()){
     const e=occEdgeCur(ex);bin.push(e);
@@ -141,12 +142,13 @@ function occListEdges(shape){
       const ad=new occt.BRepAdaptor_Curve_2(e);bin.push(ad);
       const u0=ad.FirstParameter(),u1=ad.LastParameter();
       if(u1>u0){
-        const m=ad.Value((u0+u1)/2);bin.push(m);
+        ad.D0((u0+u1)/2,P);
+        const mid=[P.X(),P.Y(),P.Z()];
         const pts=[],NP=10;
-        for(let i=0;i<=NP;i++){const p=ad.Value(u0+(u1-u0)*i/NP);bin.push(p);pts.push([p.X(),p.Y(),p.Z()]);}
+        for(let i=0;i<=NP;i++){ad.D0(u0+(u1-u0)*i/NP,P);pts.push([P.X(),P.Y(),P.Z()]);}
         let len=0;
         for(let i=1;i<pts.length;i++)len+=Math.hypot(pts[i][0]-pts[i-1][0],pts[i][1]-pts[i-1][1],pts[i][2]-pts[i-1][2]);
-        if(len>1e-6)out.push({mid:[m.X(),m.Y(),m.Z()],pts,len,src});
+        if(len>1e-6)out.push({mid,pts,len,src});
       }
     }catch(err){}
     src++;ex.Next();
