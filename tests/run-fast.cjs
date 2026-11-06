@@ -112,6 +112,7 @@ const SUITES = [
   'test_rendu_patine',
   'test_rendu_scene',
   'test_fuite_noyau',
+  'test_pile_noyau',
   'test_noms_globaux',
   'test_noms_socle',
   'test_noms_partout',

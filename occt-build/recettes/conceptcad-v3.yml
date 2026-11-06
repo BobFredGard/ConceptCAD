@@ -15,7 +15,7 @@ mainBuild:
     - -sEXPORT_ES6=1
     - -sMODULARIZE
     - -sALLOW_MEMORY_GROWTH=1
-    - -sEXPORTED_RUNTIME_METHODS=["FS","wasmMemory","HEAP8","HEAPU8","HEAP32","getExceptionMessage","incrementExceptionRefcount","decrementExceptionRefcount"]
+    - -sEXPORTED_RUNTIME_METHODS=["FS","wasmMemory","HEAP8","HEAPU8","HEAP32","getExceptionMessage","incrementExceptionRefcount","decrementExceptionRefcount","stackSave","stackRestore"]
     - -sINITIAL_MEMORY=128MB
     - -sMAXIMUM_MEMORY=4GB
     - -sUSE_FREETYPE=1

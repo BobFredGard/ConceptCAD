@@ -155,6 +155,7 @@ function rebuild(pass){
   // 2026-10-16-008 : paramètres ƒx (cotes nommées, expressions des fonctions 3D) à jour AVANT le rejeu
   if(!pass){try{if(typeof parApplyAll==='function')parApplyAll();}catch(e){}}
   if(!pass&&buildKeyUpToDate())return;
+  if(!pass&&!rebuildDepth&&occHas())occPileRemettre();
   // Mode « fraîcheur » : on jette les points de contrôle AVANT le rejeu, donc chaque
   // modification reconstruit le modèle depuis zéro — aucun sous-ensemble n'est réemployé
   // d'une reconstruction à l'autre. (Les rejeux imbriqués des projections gardent le cache

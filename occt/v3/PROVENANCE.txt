@@ -3,3 +3,4 @@ recette : occt-build/recettes/conceptcad-v3.yml + extras/conceptcad_extras.cpp
 date : 2026-11-03T07:04:20.578Z
 durée : 9.1 min
 conceptcad_v3.wasm 42.8 Mo
+colle retouchée le 2026-11-06, sans recompilation : Module.stackSave et Module.stackRestore (la recette les exporte désormais, le .wasm ne change pas)

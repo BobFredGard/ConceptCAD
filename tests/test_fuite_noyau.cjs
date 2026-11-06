@@ -56,6 +56,14 @@ const oublis=()=>{let n=0;for(const st of vivants.values())if(!garde(st))n++;ret
     for(let i=1;i<=24;i++){f.distance=d+Math.sign(d)*0.2*i;markDirty();rebuild();}f.distance=d;globalThis.__h1=occt.HEAP8.length;})()`,ctx);
   const h0=vm.runInContext('__h0',ctx)/1048576,h1=vm.runInContext('__h1',ctx)/1048576;
   A(h1<=h0,'tas du noyau stable sur 24 modifications de plus : '+h0.toFixed(0)+' → '+h1.toFixed(0)+' Mo');
+  // Barquette : autres fonctions (déplacement de face, dépouille, balayage, scission) ; 2 420 objets par modification avant
+  sandbox.__json=lireProjet(path.join(ROOT,'Exemples','Barquette.conceptcad'));
+  await vm.runInContext(String.raw`(async()=>{const raw=JSON.parse(__json);
+    if(raw.doc)await bundleRestore(__json,{rebuild:false});else await deserialise(__json,{rebuild:false});
+    markDirty();rebuild();})()`,ctx);
+  await tours("const P=doc.params.find(x=>x.name==='largeur_barquette');for(let i=1;i<=2;i++){parSetParam(P,String(165+0.01*i));markDirty();rebuild();}");
+  const barq=oublis();
+  A(barq<=20,'Barquette, cote modifiée : '+barq+' objet(s) oublié(s) en 2 tours'+(barq>20?' — '+lieux():''));
   console.log(ko?'ÉCHEC : '+ko:'*** TOUT PASSE ***');
   process.exit(ko?1:0);
 })().catch(e=>{console.error(e);process.exit(1);});

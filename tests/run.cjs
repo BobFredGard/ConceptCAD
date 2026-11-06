@@ -77,6 +77,8 @@ const SUITES = [
   "test_repeat_balayage",
   "test_repeat_decoupe_inclinee",
   "test_fuite_noyau",
+  "test_pile_noyau",
+  "test_barquette_120",
   "test_repeat_conges",
   "test_skctxmenu",
   "test_esquisse_transparence",

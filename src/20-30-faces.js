@@ -119,7 +119,7 @@ function occFindFace0(shape,ref){
       const dot=n[0]*ref.n[0]+n[1]*ref.n[1]+n[2]*ref.n[2];
       if(dot>=0.9)cands.push({f,b,n});
       else{try{f.delete();}catch(e){}}
-    }
+    }else occFree(f);
     ex.Next();
   }
   try{ex.delete();}catch(e){}
@@ -239,7 +239,7 @@ function occMoveFaceRuledTool(shape,face,n,dist){
   const V3=p=>[p.X(),p.Y(),p.Z()];
   const add=(a,b,k)=>[a[0]+b[0]*k,a[1]+b[1]*k,a[2]+b[2]*k];
   try{
-    if(occSubShapes(face,'TopAbs_WIRE').length!==1)return null;
+    {const ws=occSubShapes(face,'TopAbs_WIRE'),nw=ws.length;occDispose(ws);if(nw!==1)return null;}
     const T=occt.GeomAbs_SurfaceType;
     const ow=occBinPush(bin,occt.BRepTools.OuterWire(face));
     const wx=occBinPush(bin,new occt.BRepTools_WireExplorer_3(ow,face));
@@ -255,14 +255,14 @@ function occMoveFaceRuledTool(shape,face,n,dist){
       if(gt===T.GeomAbs_Plane){
         const ca=occBinPush(bin,new occt.BRepAdaptor_Curve_2(e));
         if(ca.GetType()!==occt.GeomAbs_CurveType.GeomAbs_Line)return null;
-        r={k:'pl',n:V3(occBinPush(bin,ad.Plane().Axis().Direction()))};
+        r={k:'pl',n:V3(occBinPush(bin,occBinPush(bin,occBinPush(bin,ad.Plane()).Axis()).Direction()))};
       }else if(gt===T.GeomAbs_SurfaceOfExtrusion||gt===T.GeomAbs_Cylinder){
-        let d=V3(occBinPush(bin,gt===T.GeomAbs_Cylinder?ad.Cylinder().Axis().Direction():ad.Direction()));
+        let d=V3(occBinPush(bin,gt===T.GeomAbs_Cylinder?occBinPush(bin,occBinPush(bin,ad.Cylinder()).Axis()).Direction():ad.Direction()));
         const du=occDot3(d,u);
         if(Math.abs(du)<1e-3)return null;
         r={k:'tr',d:d.map(x=>x*L/du),dv:L/du,f:o.f}; // relève exactement de L le long de u
       }else if(gt===T.GeomAbs_Cone){
-        r={k:'ap',a:V3(occBinPush(bin,ad.Cone().Apex()))};
+        r={k:'ap',a:V3(occBinPush(bin,occBinPush(bin,ad.Cone()).Apex()))};
       }else return null;
       it.push({e,v0,r});
     }
@@ -307,7 +307,7 @@ function occMoveFaceRuledTool(shape,face,n,dist){
         ne=occBinPush(bin,new occt.BRepBuilderAPI_MakeEdge_3(P3(p0),P3(p1))).Edge();
         const pg=occBinPush(bin,new occt.BRepBuilderAPI_MakePolygon_1());
         [it[k].v0,it[(k+1)%N].v0,p1,p0].forEach(q=>pg.Add_1(P3(q)));pg.Close();
-        const mf=occBinPush(bin,new occt.BRepBuilderAPI_MakeFace_15(pg.Wire(),true));
+        const mf=occBinPush(bin,new occt.BRepBuilderAPI_MakeFace_15(occBinPush(bin,pg.Wire()),true));
         if(!mf.IsDone())return null;
         side=mf.Face();
       }else{
@@ -315,7 +315,7 @@ function occMoveFaceRuledTool(shape,face,n,dist){
         if(r.k==='tr')t.SetTranslation_1(occBinPush(bin,new occt.gp_Vec_4(r.d[0],r.d[1],r.d[2])));
         else t.SetScale(P3(r.a),1+L/occDot3(occSub3(it[k].v0,r.a),u));
         const tb=occBinPush(bin,new occt.BRepBuilderAPI_Transform_2(e,t,true));
-        ne=occt.TopoDS.Edge_1(tb.Shape());
+        ne=occCastLibre(tb.Shape(),c=>occt.TopoDS.Edge_1(c));
         if(r.k==='tr'){
           // Sur la SURFACE MÊME de la voisine (rectangle UV : arête iso-V, V le long de la
           // génératrice unitaire) : l'unification la recolle alors à la voisine, sans couture.
@@ -338,18 +338,18 @@ function occMoveFaceRuledTool(shape,face,n,dist){
       if(!mw.IsDone())return null;
       sew.Add(side);
     }
-    const mf1=occBinPush(bin,new occt.BRepBuilderAPI_MakeFace_15(mw.Wire(),true));
+    const mf1=occBinPush(bin,new occt.BRepBuilderAPI_MakeFace_15(occBinPush(bin,mw.Wire()),true));
     if(!mf1.IsDone())return null;
-    sew.Add(mf1.Face());
+    sew.Add(occBinPush(bin,mf1.Face()));
     sew.Perform(occBinPush(bin,new occt.Handle_Message_ProgressIndicator_1()));
     if(sew.NbFreeEdges()>0)return null;
-    const ex=occBinPush(bin,new occt.TopExp_Explorer_2(sew.SewedShape(),occt.TopAbs_ShapeEnum.TopAbs_SHELL,occt.TopAbs_ShapeEnum.TopAbs_SHAPE));
+    const ex=occBinPush(bin,new occt.TopExp_Explorer_2(occBinPush(bin,sew.SewedShape()),occt.TopAbs_ShapeEnum.TopAbs_SHELL,occt.TopAbs_ShapeEnum.TopAbs_SHAPE));
     if(!ex.More())return null;
     const ms=occBinPush(bin,new occt.BRepBuilderAPI_MakeSolid_1());
-    ms.Add(occShellCur(ex));
-    let out=ms.Solid();
+    ms.Add(occBinPush(bin,occShellCur(ex)));
+    let out=occBinPush(bin,ms.Solid());
     const gp=occBinPush(bin,new occt.GProp_GProps_1());occt.BRepGProp.VolumeProperties_1(out,gp,false,false,false);
-    if(gp.Mass()<0)out=out.Reversed();
+    if(gp.Mass()<0)out=occBinPush(bin,out.Reversed());
     // copie SANS dupliquer la géométrie : les coins gardent la surface de leur voisine
     {const cb=occBinPush(bin,new occt.BRepBuilderAPI_Copy_2(out,false,false));out=cb.Shape();}
     if(!out||out.IsNull()||!occCoqueValide(out)){try{if(out)out.delete();}catch(e){}return null;}
@@ -524,8 +524,8 @@ function occFaceTrack(face){
     const ad=new occt.BRepAdaptor_Surface_2(face,true);
     try{
       if(ad.GetType()===occt.GeomAbs_SurfaceType.GeomAbs_Plane){
-        const l=ad.Plane().Location();
-        t.plane=true;t.d=n[0]*l.X()+n[1]*l.Y()+n[2]*l.Z();
+        const l=occAvec(ad.Plane(),q=>occXyz(q.Location()));
+        t.plane=true;t.d=n[0]*l[0]+n[1]*l[1]+n[2]*l[2];
       }
     }finally{try{ad.delete();}catch(e){}}
   }catch(e){}
@@ -657,10 +657,10 @@ function occShellToSolid(r){
     const ms=new occt.BRepBuilderAPI_MakeSolid_1();
     let out=null;
     try{
-      ms.Add(occt.TopoDS.Shell_1(sh[0]));
-      out=ms.Solid();
-      if(occShapeVolume(out)<0)out=out.Reversed();
-      out=occShapeCopy(out);
+      occAvec(occt.TopoDS.Shell_1(sh[0]),c=>ms.Add(c));
+      const so=ms.Solid(),re=occShapeVolume(so)<0?so.Reversed():null;
+      out=occShapeCopy(re||so);
+      occFree(re);occFree(so);
     }finally{try{ms.delete();}catch(e){}}
     if(!out||out.IsNull()||!occCoqueValide(out))return r;
     try{r.delete();}catch(e){}
@@ -953,7 +953,7 @@ function occDeleteFacesOnce(shape,faces){
     const SH=occt.TopAbs_ShapeEnum.TopAbs_SHAPE;
     const ex=new occt.TopExp_Explorer_2(r,occt.TopAbs_ShapeEnum.TopAbs_FACE,SH);
     let reste=false;
-    while(ex.More()&&!reste){const c=ex.Current();if(faces.some(h=>c.IsSame(h)))reste=true;ex.Next();}
+    while(ex.More()&&!reste){if(occAvec(ex.Current(),c=>faces.some(h=>c.IsSame(h))))reste=true;ex.Next();}
     try{ex.delete();}catch(e){}
     if(reste){try{r.delete();}catch(e){}throw new Error('les faces voisines ne se rejoignent pas');}
     r=occUnify(r);
@@ -985,8 +985,7 @@ function occBoxMinMax(sh){
   // Boîte englobante {lo:[x,y,z], hi:[x,y,z]} d'une forme, ou null.
   try{
     const box=new occt.Bnd_Box_1();occt.BRepBndLib.Add(sh,box,true);
-    const a=box.CornerMin(),b=box.CornerMax();
-    const r={lo:[a.X(),a.Y(),a.Z()],hi:[b.X(),b.Y(),b.Z()]};
+    const r={lo:occXyz(box.CornerMin()),hi:occXyz(box.CornerMax())};
     try{box.delete();}catch(e){}
     return r;
   }catch(e){return null;}

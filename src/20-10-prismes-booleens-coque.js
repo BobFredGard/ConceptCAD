@@ -92,6 +92,19 @@ function insertSketchFillet(data,fx,fy,r,fxPid){
    Validé par exécution : MakeEdge_3/ gp_Circ_2+MakeEdge_10 / MakeWire_1 / MakeFace_15 /
    MakePrism_1 / Fuse_3 / Cut_3 / MakeFillet+Add_2 / IncrementalMesh_2 / Triangulation. */
 function occHas(){return occtReady&&occt;}
+// PILE DU NOYAU : une erreur C++ qui remonte jusqu'à JavaScript ne redescend pas le pointeur de pile
+// du noyau, seul un rattrapage côté C++ le fait. La pile (8 Mo) s'use donc d'autant à chaque erreur
+// rattrapée ici, puis déborde sur les données du noyau, sans message : plus aucun solide, jusqu'au
+// rechargement. Mesuré sur Barquette : 80 Ko perdus par modification, solide perdu à la 107e.
+// Remise au plus haut déjà vu (la pile descend) avant un calcul : aucun appel au noyau n'est alors
+// en cours, le noyau n'appelant jamais le code de l'application.
+function occPileRemettre(){
+  try{
+    const sp=occt.stackSave();
+    if(!(occt._pileHaut>=sp))occt._pileHaut=sp;
+    else if(sp<occt._pileHaut)occt.stackRestore(occt._pileHaut);
+  }catch(e){}
+}
 function occBinPush(bin,h){if(h)bin.push(h);return h;}
 function occDispose(list){(list||[]).forEach(h=>{try{h.delete();}catch(e){}});}
 // V0.64.3 : le noyau rend une COPIE à chaque appel qui rend un objet (Current, FindKey, Corner…, Direction…), à

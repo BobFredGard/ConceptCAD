@@ -3554,6 +3554,19 @@ function insertSketchFillet(data,fx,fy,r,fxPid){
    Validé par exécution : MakeEdge_3/ gp_Circ_2+MakeEdge_10 / MakeWire_1 / MakeFace_15 /
    MakePrism_1 / Fuse_3 / Cut_3 / MakeFillet+Add_2 / IncrementalMesh_2 / Triangulation. */
 function occHas(){return occtReady&&occt;}
+// PILE DU NOYAU : une erreur C++ qui remonte jusqu'à JavaScript ne redescend pas le pointeur de pile
+// du noyau, seul un rattrapage côté C++ le fait. La pile (8 Mo) s'use donc d'autant à chaque erreur
+// rattrapée ici, puis déborde sur les données du noyau, sans message : plus aucun solide, jusqu'au
+// rechargement. Mesuré sur Barquette : 80 Ko perdus par modification, solide perdu à la 107e.
+// Remise au plus haut déjà vu (la pile descend) avant un calcul : aucun appel au noyau n'est alors
+// en cours, le noyau n'appelant jamais le code de l'application.
+function occPileRemettre(){
+  try{
+    const sp=occt.stackSave();
+    if(!(occt._pileHaut>=sp))occt._pileHaut=sp;
+    else if(sp<occt._pileHaut)occt.stackRestore(occt._pileHaut);
+  }catch(e){}
+}
 function occBinPush(bin,h){if(h)bin.push(h);return h;}
 function occDispose(list){(list||[]).forEach(h=>{try{h.delete();}catch(e){}});}
 // V0.64.3 : le noyau rend une COPIE à chaque appel qui rend un objet (Current, FindKey, Corner…, Direction…), à
@@ -4458,7 +4471,7 @@ function occEdgeFaces(shape,edge){
       const f=occFaceCur(fx);
       let has=false;
       const ee=new occt.TopExp_Explorer_2(f,occt.TopAbs_ShapeEnum.TopAbs_EDGE,SH);bin.push(ee);
-      while(ee.More()){if(ee.Current().IsSame(edge)){has=true;break;}ee.Next();}
+      while(ee.More()){if(occAvec(ee.Current(),c=>c.IsSame(edge))){has=true;break;}ee.Next();}
       if(!has){try{f.delete();}catch(e){}fx.Next();continue;}
       let n=null;
       try{
@@ -5148,7 +5161,7 @@ function occFindFace0(shape,ref){
       const dot=n[0]*ref.n[0]+n[1]*ref.n[1]+n[2]*ref.n[2];
       if(dot>=0.9)cands.push({f,b,n});
       else{try{f.delete();}catch(e){}}
-    }
+    }else occFree(f);
     ex.Next();
   }
   try{ex.delete();}catch(e){}
@@ -5268,7 +5281,7 @@ function occMoveFaceRuledTool(shape,face,n,dist){
   const V3=p=>[p.X(),p.Y(),p.Z()];
   const add=(a,b,k)=>[a[0]+b[0]*k,a[1]+b[1]*k,a[2]+b[2]*k];
   try{
-    if(occSubShapes(face,'TopAbs_WIRE').length!==1)return null;
+    {const ws=occSubShapes(face,'TopAbs_WIRE'),nw=ws.length;occDispose(ws);if(nw!==1)return null;}
     const T=occt.GeomAbs_SurfaceType;
     const ow=occBinPush(bin,occt.BRepTools.OuterWire(face));
     const wx=occBinPush(bin,new occt.BRepTools_WireExplorer_3(ow,face));
@@ -5284,14 +5297,14 @@ function occMoveFaceRuledTool(shape,face,n,dist){
       if(gt===T.GeomAbs_Plane){
         const ca=occBinPush(bin,new occt.BRepAdaptor_Curve_2(e));
         if(ca.GetType()!==occt.GeomAbs_CurveType.GeomAbs_Line)return null;
-        r={k:'pl',n:V3(occBinPush(bin,ad.Plane().Axis().Direction()))};
+        r={k:'pl',n:V3(occBinPush(bin,occBinPush(bin,occBinPush(bin,ad.Plane()).Axis()).Direction()))};
       }else if(gt===T.GeomAbs_SurfaceOfExtrusion||gt===T.GeomAbs_Cylinder){
-        let d=V3(occBinPush(bin,gt===T.GeomAbs_Cylinder?ad.Cylinder().Axis().Direction():ad.Direction()));
+        let d=V3(occBinPush(bin,gt===T.GeomAbs_Cylinder?occBinPush(bin,occBinPush(bin,ad.Cylinder()).Axis()).Direction():ad.Direction()));
         const du=occDot3(d,u);
         if(Math.abs(du)<1e-3)return null;
         r={k:'tr',d:d.map(x=>x*L/du),dv:L/du,f:o.f}; // relève exactement de L le long de u
       }else if(gt===T.GeomAbs_Cone){
-        r={k:'ap',a:V3(occBinPush(bin,ad.Cone().Apex()))};
+        r={k:'ap',a:V3(occBinPush(bin,occBinPush(bin,ad.Cone()).Apex()))};
       }else return null;
       it.push({e,v0,r});
     }
@@ -5336,7 +5349,7 @@ function occMoveFaceRuledTool(shape,face,n,dist){
         ne=occBinPush(bin,new occt.BRepBuilderAPI_MakeEdge_3(P3(p0),P3(p1))).Edge();
         const pg=occBinPush(bin,new occt.BRepBuilderAPI_MakePolygon_1());
         [it[k].v0,it[(k+1)%N].v0,p1,p0].forEach(q=>pg.Add_1(P3(q)));pg.Close();
-        const mf=occBinPush(bin,new occt.BRepBuilderAPI_MakeFace_15(pg.Wire(),true));
+        const mf=occBinPush(bin,new occt.BRepBuilderAPI_MakeFace_15(occBinPush(bin,pg.Wire()),true));
         if(!mf.IsDone())return null;
         side=mf.Face();
       }else{
@@ -5344,7 +5357,7 @@ function occMoveFaceRuledTool(shape,face,n,dist){
         if(r.k==='tr')t.SetTranslation_1(occBinPush(bin,new occt.gp_Vec_4(r.d[0],r.d[1],r.d[2])));
         else t.SetScale(P3(r.a),1+L/occDot3(occSub3(it[k].v0,r.a),u));
         const tb=occBinPush(bin,new occt.BRepBuilderAPI_Transform_2(e,t,true));
-        ne=occt.TopoDS.Edge_1(tb.Shape());
+        ne=occCastLibre(tb.Shape(),c=>occt.TopoDS.Edge_1(c));
         if(r.k==='tr'){
           // Sur la SURFACE MÊME de la voisine (rectangle UV : arête iso-V, V le long de la
           // génératrice unitaire) : l'unification la recolle alors à la voisine, sans couture.
@@ -5367,18 +5380,18 @@ function occMoveFaceRuledTool(shape,face,n,dist){
       if(!mw.IsDone())return null;
       sew.Add(side);
     }
-    const mf1=occBinPush(bin,new occt.BRepBuilderAPI_MakeFace_15(mw.Wire(),true));
+    const mf1=occBinPush(bin,new occt.BRepBuilderAPI_MakeFace_15(occBinPush(bin,mw.Wire()),true));
     if(!mf1.IsDone())return null;
-    sew.Add(mf1.Face());
+    sew.Add(occBinPush(bin,mf1.Face()));
     sew.Perform(occBinPush(bin,new occt.Handle_Message_ProgressIndicator_1()));
     if(sew.NbFreeEdges()>0)return null;
-    const ex=occBinPush(bin,new occt.TopExp_Explorer_2(sew.SewedShape(),occt.TopAbs_ShapeEnum.TopAbs_SHELL,occt.TopAbs_ShapeEnum.TopAbs_SHAPE));
+    const ex=occBinPush(bin,new occt.TopExp_Explorer_2(occBinPush(bin,sew.SewedShape()),occt.TopAbs_ShapeEnum.TopAbs_SHELL,occt.TopAbs_ShapeEnum.TopAbs_SHAPE));
     if(!ex.More())return null;
     const ms=occBinPush(bin,new occt.BRepBuilderAPI_MakeSolid_1());
-    ms.Add(occShellCur(ex));
-    let out=ms.Solid();
+    ms.Add(occBinPush(bin,occShellCur(ex)));
+    let out=occBinPush(bin,ms.Solid());
     const gp=occBinPush(bin,new occt.GProp_GProps_1());occt.BRepGProp.VolumeProperties_1(out,gp,false,false,false);
-    if(gp.Mass()<0)out=out.Reversed();
+    if(gp.Mass()<0)out=occBinPush(bin,out.Reversed());
     // copie SANS dupliquer la géométrie : les coins gardent la surface de leur voisine
     {const cb=occBinPush(bin,new occt.BRepBuilderAPI_Copy_2(out,false,false));out=cb.Shape();}
     if(!out||out.IsNull()||!occCoqueValide(out)){try{if(out)out.delete();}catch(e){}return null;}
@@ -5553,8 +5566,8 @@ function occFaceTrack(face){
     const ad=new occt.BRepAdaptor_Surface_2(face,true);
     try{
       if(ad.GetType()===occt.GeomAbs_SurfaceType.GeomAbs_Plane){
-        const l=ad.Plane().Location();
-        t.plane=true;t.d=n[0]*l.X()+n[1]*l.Y()+n[2]*l.Z();
+        const l=occAvec(ad.Plane(),q=>occXyz(q.Location()));
+        t.plane=true;t.d=n[0]*l[0]+n[1]*l[1]+n[2]*l[2];
       }
     }finally{try{ad.delete();}catch(e){}}
   }catch(e){}
@@ -5686,10 +5699,10 @@ function occShellToSolid(r){
     const ms=new occt.BRepBuilderAPI_MakeSolid_1();
     let out=null;
     try{
-      ms.Add(occt.TopoDS.Shell_1(sh[0]));
-      out=ms.Solid();
-      if(occShapeVolume(out)<0)out=out.Reversed();
-      out=occShapeCopy(out);
+      occAvec(occt.TopoDS.Shell_1(sh[0]),c=>ms.Add(c));
+      const so=ms.Solid(),re=occShapeVolume(so)<0?so.Reversed():null;
+      out=occShapeCopy(re||so);
+      occFree(re);occFree(so);
     }finally{try{ms.delete();}catch(e){}}
     if(!out||out.IsNull()||!occCoqueValide(out))return r;
     try{r.delete();}catch(e){}
@@ -5982,7 +5995,7 @@ function occDeleteFacesOnce(shape,faces){
     const SH=occt.TopAbs_ShapeEnum.TopAbs_SHAPE;
     const ex=new occt.TopExp_Explorer_2(r,occt.TopAbs_ShapeEnum.TopAbs_FACE,SH);
     let reste=false;
-    while(ex.More()&&!reste){const c=ex.Current();if(faces.some(h=>c.IsSame(h)))reste=true;ex.Next();}
+    while(ex.More()&&!reste){if(occAvec(ex.Current(),c=>faces.some(h=>c.IsSame(h))))reste=true;ex.Next();}
     try{ex.delete();}catch(e){}
     if(reste){try{r.delete();}catch(e){}throw new Error('les faces voisines ne se rejoignent pas');}
     r=occUnify(r);
@@ -6014,8 +6027,7 @@ function occBoxMinMax(sh){
   // Boîte englobante {lo:[x,y,z], hi:[x,y,z]} d'une forme, ou null.
   try{
     const box=new occt.Bnd_Box_1();occt.BRepBndLib.Add(sh,box,true);
-    const a=box.CornerMin(),b=box.CornerMax();
-    const r={lo:[a.X(),a.Y(),a.Z()],hi:[b.X(),b.Y(),b.Z()]};
+    const r={lo:occXyz(box.CornerMin()),hi:occXyz(box.CornerMax())};
     try{box.delete();}catch(e){}
     return r;
   }catch(e){return null;}
@@ -6115,7 +6127,7 @@ function splitCutPlanes(){
   try{(doc.features||[]).forEach(f=>{if(f&&f.type==='xsplit'&&f.mode!=='body'&&f.visible!==false&&!(occSkipFeat&&f.id===occSkipFeat))out.push(splitPlaneOf(f));});}catch(e){}
   return out;
 }
-function occSplitPln(P){return new occt.gp_Pln_3(new occt.gp_Pnt_3(P.o[0],P.o[1],P.o[2]),new occt.gp_Dir_4(P.n[0],P.n[1],P.n[2]));}
+function occSplitPln(P){const a=new occt.gp_Pnt_3(P.o[0],P.o[1],P.o[2]),b=new occt.gp_Dir_4(P.n[0],P.n[1],P.n[2]);try{return new occt.gp_Pln_3(a,b);}finally{occFree(a);occFree(b);}}
 function occSplitRun(shape,tools){
   // Splitter : `shape` découpé par `tools` (liste de shapes). Rend le résultat brut.
   const sp=new occt.BRepAlgoAPI_Splitter_1();
@@ -6270,7 +6282,9 @@ function occCurvePts(ad,u0,u1,tol,cap){
   // ── 1) cercle ou arc : le nombre de segments se CALCULE, pas subdivise à l'aveugle
   //    flèche d'une corde = R(1−cos(Δθ/2)) ≤ tol  ⇒  Δθ = 2·acos(1−tol/R)
   let R=-1;
-  try{
+  // Demander son cercle à une courbe qui n'en est pas un lève une erreur du noyau : une par arête
+  // droite ou courbe, à chaque rejeu, et chacune use sa pile (voir occPileRemettre).
+  if(ad.GetType()===occt.GeomAbs_CurveType.GeomAbs_Circle)try{
     const c=ad.Circle(),a1=c.Axis(),ax=occXyz(a1.Direction());
     if(isFinite(ax[0])&&isFinite(ax[1])&&isFinite(ax[2]))R=c.Radius();
     occFree(a1);occFree(c);
@@ -6366,7 +6380,9 @@ function occDraftThin(da,faces){
     const r0=occFaceDist(A.f,B.f);
     if(!r0||!(r0.d>1e-3))continue; // faces voisines (arête commune) : pas une épaisseur
     let r1=null;
-    try{r1=occFaceDist(da.ModifiedShape(A.f),da.ModifiedShape(B.f));}catch(e){continue;}
+    let ma=null,mb=null;
+    try{ma=da.ModifiedShape(A.f);mb=da.ModifiedShape(B.f);r1=occFaceDist(ma,mb);}catch(e){continue;}
+    finally{occFree(ma);occFree(mb);}
     if(!r1||!(r1.d<0.5*r0.d))continue;
     const k=r1.d/r0.d;
     if(!pire||k<pire.k)pire={k,d0:r0.d,d:r1.d,p:r1.p,paroi:dot([B.c[0]-A.c[0],B.c[1]-A.c[1],B.c[2]-A.c[2]],A.n)<0};
@@ -6404,12 +6420,11 @@ function occExtrudeDraft(shape,bs,sp,angleDeg){
       try{
         const ad=new occt.BRepAdaptor_Surface_2(fc,true);bin.push(ad);
         if(ad.GetType()===occt.GeomAbs_SurfaceType.GeomAbs_Plane){
-          const d=ad.Plane().Axis().Direction();
-          let nx=d.X(),ny=d.Y(),nz=d.Z();
+          const pl=ad.Plane(),ax=pl.Axis(),d=occXyz(ax.Direction()),Lp=occXyz(pl.Location());occFree(ax);occFree(pl);
+          let nx=d[0],ny=d[1],nz=d[2];
           try{if(fc.Orientation_1()===occt.TopAbs_Orientation.TopAbs_REVERSED){nx=-nx;ny=-ny;nz=-nz;}}catch(e){}
           if(Math.abs(nx*n[0]+ny*n[1]+nz*n[2])>0.999){
-            const Lp=ad.Plane().Location();
-            const off=(Lp.X()-o[0])*n[0]+(Lp.Y()-o[1])*n[1]+(Lp.Z()-o[2])*n[2];
+            const off=(Lp[0]-o[0])*n[0]+(Lp[1]-o[1])*n[1]+(Lp[2]-o[2])*n[2];
             if(Math.abs(off-sp.lo)<tol||Math.abs(off-sp.hi)<tol)cap=true;
           }
         }
@@ -8908,6 +8923,7 @@ function delWkMain(){
       return;
     }
     if(m.t!=='job')return;
+    occPileRemettre();
     self.postMessage({t:'debut',id:m.id});
     const t0=Date.now();let s=null,hs=[];
     const fin=o=>self.postMessage(Object.assign({t:'fin',id:m.id,kept:0,err:null,warnings:[],brep:null,ms:Date.now()-t0},o));
@@ -8941,7 +8957,7 @@ function delWkMain(){
 }
 function delWkSource(){
   // Le worker reçoit le code de CE fichier et de 20-noyau, pas une copie à entretenir.
-  const fns=[occFree,occCastLibre,occFaceCur,occEdgeCur,occSolidCur,occShellCur,occXyz,occAvec, // V0.64.3
+  const fns=[occPileRemettre,occFree,occCastLibre,occFaceCur,occEdgeCur,occSolidCur,occShellCur,occXyz,occAvec, // V0.64.3
     occBinPush,occDispose,occUnifyKeepEdges,occUnify,occCoqueValide,occBoxMinMax,occDelFaceDebord,
     occDeleteFacesOnce,occDelFacesTry,occBrepWrite,occBrepRead,occFaceAt,
     occCut,occCutEach,occCutKids,occThrCut,occtV3Compat];
@@ -9284,6 +9300,7 @@ function rebuild(pass){
   // 2026-10-16-008 : paramètres ƒx (cotes nommées, expressions des fonctions 3D) à jour AVANT le rejeu
   if(!pass){try{if(typeof parApplyAll==='function')parApplyAll();}catch(e){}}
   if(!pass&&buildKeyUpToDate())return;
+  if(!pass&&!rebuildDepth&&occHas())occPileRemettre();
   // Mode « fraîcheur » : on jette les points de contrôle AVANT le rejeu, donc chaque
   // modification reconstruit le modèle depuis zéro — aucun sous-ensemble n'est réemployé
   // d'une reconstruction à l'autre. (Les rejeux imbriqués des projections gardent le cache
@@ -31618,7 +31635,7 @@ function occShapeOfSweep(f){
     const mw=occBinPush(bins,new occt.BRepBuilderAPI_MakeWire_1());mw.Add_1(me.Edge());mw.Build();
     spine=mw.Wire();
   }else{
-    try{spine=occWireFromChain(pk,{pts:Object.assign({},pk.points,path.pts)},path.chain,bins,0);}
+    try{spine=occBinPush(bins,occWireFromChain(pk,{pts:Object.assign({},pk.points,path.pts)},path.chain,bins,0));}
     catch(e){occDispose(bins);throw new Error('chemin : '+e.message);}
   }
   const vol=s=>{let v=0;try{const G=new occt.GProp_GProps_1();occt.BRepGProp.VolumeProperties_1(s,G,false,false,false);v=G.Mass();G.delete();}catch(e){}return v;};
@@ -31642,7 +31659,7 @@ function occShapeOfSweep(f){
     return s;
   };
   // fil d'une boucle du profil, ou d'un cercle plein (même recette que diskOf de la révolution)
-  const wireOf=chain=>{const c=[],w=occWireFromChain(sk,tr,chain,bins,0,c);cotesDe.set(w,c);return w;};
+  const wireOf=chain=>{const c=[],w=occBinPush(bins,occWireFromChain(sk,tr,chain,bins,0,c));cotesDe.set(w,c);return w;};
   const circWire=c=>{
     const C=sk.points[c.pc];if(!C)throw new Error('pastille : centre introuvable');
     const n=sketchBasis(sk).n,w=occW(sk,C.x,C.y);

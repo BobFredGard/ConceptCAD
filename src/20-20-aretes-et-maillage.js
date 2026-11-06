@@ -103,7 +103,7 @@ function occEdgeFaces(shape,edge){
       const f=occFaceCur(fx);
       let has=false;
       const ee=new occt.TopExp_Explorer_2(f,occt.TopAbs_ShapeEnum.TopAbs_EDGE,SH);bin.push(ee);
-      while(ee.More()){if(ee.Current().IsSame(edge)){has=true;break;}ee.Next();}
+      while(ee.More()){if(occAvec(ee.Current(),c=>c.IsSame(edge))){has=true;break;}ee.Next();}
       if(!has){try{f.delete();}catch(e){}fx.Next();continue;}
       let n=null;
       try{
