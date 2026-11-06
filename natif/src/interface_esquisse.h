@@ -50,6 +50,7 @@ class BarreEsquisse : public wxWindow {
   std::function<void(Dessin::Outil)> surOutil;
   std::function<void(const std::string&)> surContrainte;
   std::function<void(const wxString&)> surIndisponible;
+  std::function<void()> surParametres, surParametresComplets;
   std::function<void()> surCadrer, surGrille, surGrilleMenu, surFantome, surAbandon, surTerminer;
   void outilActif(Dessin::Outil o);
   // Pour les essais : le clic sur un bouton d'outil, par son numéro

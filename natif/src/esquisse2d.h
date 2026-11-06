@@ -54,6 +54,9 @@ class VueEsquisse : public wxWindow {
   std::function<bool(const Cote& c, wxString& texte)> surDemandeCote;
   // La valeur tapée, validée par Entrée
   std::function<void(const std::string& idCote, const wxString& texte)> surSaisieCote;
+  // skDimEditPick : le nom de cette cote, nommée d<n> au besoin. False si elle ne peut pas servir de paramètre.
+  std::function<bool(const std::string& idCote, wxString& nom)> surNomCote;
+  std::function<void(wxTextCtrl*)> surChampFormule;  // la saisie vient d'être créée : la liste des noms s'y branche
   bool enSaisie() const { return saisie_ && saisie_->IsShown(); }
   void annulerSaisie();
   // Pour les essais : de vrais événements de souris et de clavier, sans prendre la main sur l'écran.
@@ -95,12 +98,14 @@ class VueEsquisse : public wxWindow {
   void ouvrirCote(const std::string& id, const wxString& texteDepart = wxString());
   void surGaucheBas(wxMouseEvent&);
   void surGaucheHaut(wxMouseEvent&);
+  void insererNomCote(const std::string& id);
   void surTouche(wxKeyEvent&);
   void surCaractere(wxKeyEvent&);
   void ouvrirCoteDemandee();
   void apresGeste();
   void sante(wxGraphicsContext& g) const;
   void halo(wxGraphicsContext& g) const;
+  void survolPlan(wxGraphicsContext& g) const;
   void trace(wxGraphicsContext& g) const;
   void surEnfonce(wxMouseEvent&);
   void surRelache(wxMouseEvent&);

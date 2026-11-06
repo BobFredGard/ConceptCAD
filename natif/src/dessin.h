@@ -16,10 +16,37 @@
 class Dessin {
  public:
   enum Outil { SELECTION, LIGNE, RECTANGLE, CERCLE, ARC, COTE, AJUSTER, DECALER, OBLONG, POLYGONE, POINT_C, PERCAGE, CONGE, CHANFREIN, COINCIDENT, SPLINE, CSPLINE, PROJETER, INTERSECTION };  // les boutons connus d'abord : leurs numéros servent aux essais
+  // Les arêtes du solide utilisables directement dans l'esquisse (src/50-esquisse-7) : formes vues dans le plan et points remarquables
+  struct FormePlan {
+    enum Sorte { LIGNE, CERCLE, ARC, COURBE } sorte = LIGNE;
+    double x1 = 0, y1 = 0, x2 = 0, y2 = 0, cx = 0, cy = 0, r = 0;
+    std::vector<P2d> pts;
+    bool aMid = false, loin = false;  // loin : hors du plan, vue en projection
+    Vec3 mid{0, 0, 0};
+  };
+  struct PointPlan {
+    enum Sorte { BOUT, MILIEU, CENTRE, CROISEMENT, TRAVERSEE } sorte = BOUT;
+    double x = 0, y = 0;
+    std::vector<int> e;
+    bool loin = false, aMid = false;
+    Vec3 mid{0, 0, 0};
+  };
+  struct CiblesPlan {
+    std::vector<FormePlan> E;
+    std::vector<PointPlan> P;
+  };
+  struct CiblePlan {  // ce qui est sous le curseur
+    bool existe = false, estPoint = false;
+    int i = -1;
+    PointPlan p;
+    double x = 0, y = 0;
+    explicit operator bool() const { return existe; }
+  };
   struct Accroche {
-    enum Sorte { AUCUNE, POINT, MILIEU, SUR_LIGNE, SUR_CERCLE, SUR_SPLINE } sorte = AUCUNE;
+    enum Sorte { AUCUNE, POINT, MILIEU, SUR_LIGNE, SUR_CERCLE, SUR_SPLINE, PLAN } sorte = AUCUNE;
     std::string id;  // le point, la ligne ou le cercle visé
     double x = 0, y = 0;
+    CiblePlan plan;
     explicit operator bool() const { return sorte != AUCUNE; }
   };
   // Le tracé en cours, pour l'écran
@@ -77,6 +104,10 @@ class Dessin {
     std::vector<P2d> pts;
   };
   std::function<const std::vector<Arete3D>*()> aretes3D;   // nul ou rien : pas de solide
+  bool planActif = true;                                   // arêtes du solide utilisables hors de l'outil Projeter
+  void oublierCiblesPlan() { ciblesFaites_ = false; }      // la liste d'arêtes a changé
+  const CiblesPlan& ciblesPlan() const;                    // skPlTargets
+  const CiblePlan& survolPlan() const { return survolPlan_; }  // skPlHover
   const std::vector<Esquisse>* esquisses = nullptr;        // les autres esquisses du document
   int* nomsProj = nullptr;                                 // entNames.proj, entNames.edge
   int* nomsArete = nullptr;
@@ -392,6 +423,18 @@ class Dessin {
   void clicProjeter(double wx, double wy);
   void bougerProjeter(double wx, double wy);
   Projetable survolProj_;
+  mutable CiblesPlan cibles_;
+  mutable bool ciblesFaites_ = false;
+  mutable CiblePlan survolPlan_;
+  bool outilPlan() const;
+  CiblePlan ciblePlan(double x, double y, bool sel = false) const;           // skPlHit
+  bool memeForme(const Entite& en, const FormePlan& s) const;                // skPlSame
+  const Entite* areteDansEsquisse(int i);                                    // skPlEnsureEdge
+  void poserSur(const std::string& pid, const Entite& en);                   // skPlPin
+  std::string materialiser(const CiblePlan& h);                              // skPlMaterialize
+  void pousserSiPlan(double x, double y);                                    // skPlUndoIfPlane
+  bool preparerCotePlan(double x, double y);                                 // skPlDimPrep
+  bool choisirPlan(double x, double y, bool multi);                          // skPlSelect
   struct SurvolIsect {
     bool ok = false, corps = false, aAt = false;
     std::string fk, ref, st;
@@ -448,3 +491,6 @@ class Dessin {
 
 // skpTrack : l'élément suit l'esquisse dont il est projeté. true s'il a bougé ; source perdue : il reste à sa dernière place.
 bool suivreEsquisseSource(const std::vector<Esquisse>& L, Esquisse& T, Entite& e);
+
+// skPlTouches : où une arête 3D rencontre le plan de l'esquisse
+std::vector<P2d> touchesPlan(const Esquisse& s, const std::vector<Vec3>& P);

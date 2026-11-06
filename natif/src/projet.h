@@ -25,6 +25,7 @@ struct Entite {
   std::string projName, srcName;  // noms persistants d'une projection (« Projetée 3 », « Arête 7 »)
   std::string skSrcSk, skSrcPt, skSrcEnt;  // projection d'une autre esquisse : l'esquisse, son point ou son élément
   int skSrcM = 0;                          // courbe projetée : nombre de segments de l'échantillon
+  bool pierce = false;                     // point où une arête du solide traverse le plan
   std::string isectJson;                   // Intersection : sa source, en JSON
   int isplN = 0;                           // courbe libre d'une intersection : ses n points de découpage
   bool aSrcMid = false;  // milieu 3D de l'arête source d'une projection : c'est par lui qu'on la retrouve
@@ -41,6 +42,7 @@ struct Contrainte {
 };
 struct Cote {
   std::string id, type, line, ent, a, b, p, orient, nom;
+  std::string expr, exprErr;  // formule et son erreur (src/51-parametres)
   std::string oa, ob;  // cote d'angle en pose : les deux lignes d'origine (skDimAngleAt)
   double value = 0, ox = 0, oy = 0, w = 0, sl = 0;
   bool aW = false, ref = false, dia = false, formule = false, formuleFausse = false, comp = false;
@@ -119,6 +121,28 @@ inline bool memesReglages(const Fonction& a, const Fonction& b) {
   return a.id == b.id && a.distance == b.distance && a.op == b.op && a.nom == b.nom && a.mid == b.mid && a.flip == b.flip && a.through == b.through;
 }
 
+// doc.params : un paramètre libre, un nom et une expression
+struct Parametre {
+  std::string nom, expr, err;
+  double value = 0;
+  bool aValeur = false, exprNombre = false;  // exprNombre : le fichier avait un nombre à la place du texte
+  bool operator==(const Parametre& o) const { return nom == o.nom && expr == o.expr && err == o.err && value == o.value && aValeur == o.aValeur; }
+};
+// doc.derive : un paramètre venu d'un autre fichier, en lecture seule
+struct ParamDerive {
+  std::string nom, lien;
+  double value = 0;
+  bool absent = false;
+};
+// Une valeur de fonction 3D nommée ou en formule (parHolders) : h.expr[clé], h.pname[clé]
+struct PorteurFx {
+  std::string fonction, origine, cle, nom, expr, err;
+  int arete = -1;       // rang de l'arête d'un congé, -1 pour la fonction elle-même
+  bool pris = false;    // ce programme sait changer cette valeur : la profondeur d'une extrusion
+  bool change = false;  // parResolve vient de la changer
+  double valeur = 0;
+};
+
 struct Document {
   std::string nom;
   std::vector<std::string> corps;
@@ -129,6 +153,10 @@ struct Document {
   std::vector<Esquisse> esquissesFichier;  // telles qu'écrites dans le fichier : ce qui en diffère reste à enregistrer
   std::vector<Fonction> fonctions;
   std::vector<Fonction> fonctionsFichier;  // telles qu'écrites dans le fichier
+  std::vector<Parametre> params, paramsFichier;
+  std::vector<ParamDerive> derives;
+  std::vector<PorteurFx> porteurs, porteursFichier;
+  std::vector<size_t> parEnAttente;  // parPending : les esquisses dont une cote a changé, à résoudre
   std::string corpsActif;  // où naît une nouvelle fonction
   std::vector<std::string> nonPrisEnCharge;  // vide = la pièce se rejoue entièrement
   std::wstring chemin;
@@ -141,10 +169,17 @@ struct Document {
   int nomsAreteLu = 0, nomsProjLu = 0, nomsIsectLu = 0;  // tels que lus dans le fichier
   bool modifie() const {
     if (esquisses.size() != esquissesFichier.size() || fonctions.size() != fonctionsFichier.size()) return true;
+    if (!(params == paramsFichier) || porteursChanges()) return true;
     for (size_t i = 0; i < fonctions.size(); i++)
       if (!memesReglages(fonctions[i], fonctionsFichier[i])) return true;
     for (size_t i = 0; i < esquisses.size(); i++)
       if (!memesValeurs(esquisses[i], esquissesFichier[i])) return true;
+    return false;
+  }
+  bool porteursChanges() const {
+    if (porteurs.size() != porteursFichier.size()) return true;
+    for (size_t i = 0; i < porteurs.size(); i++)
+      if (porteurs[i].nom != porteursFichier[i].nom || porteurs[i].expr != porteursFichier[i].expr) return true;
     return false;
   }
   Esquisse* esquisse(const std::string& id);

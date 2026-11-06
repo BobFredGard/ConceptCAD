@@ -15,6 +15,7 @@
 
 #include "dessin.h"
 #include "intersection.h"
+#include "parametres.h"
 #include "rejeu.h"
 
 namespace {
@@ -181,6 +182,39 @@ bool suivreProjections(Esquisse& s, const std::vector<AreteSource>& aretes) {
     e.srcMid = pr.mid;
   };
   for (Entite& e : s.entites) {
+    if (e.pierce && e.t == "cpoint") {  // skPlTrackPierce : le point de traversée suit son arête, retrouvée par son milieu
+      auto iq = s.points.find(e.p);
+      if (iq == s.points.end() || !e.aSrcMid || aretes.empty()) continue;
+      const AreteSource* src = nullptr;
+      double bd = 1e300;
+      for (const AreteSource& a : aretes) {
+        const double d = std::hypot(a.mid[0] - e.srcMid[0], a.mid[1] - e.srcMid[1], a.mid[2] - e.srcMid[2]);
+        if (d < bd) {
+          bd = d;
+          src = &a;
+        }
+      }
+      if (!src) continue;
+      e.srcMid = src->mid;
+      Pt& Q = iq->second;
+      bool aQ = false;
+      double qx = 0, qy = 0;
+      bd = 1e300;
+      for (const auto& t : touchesPlan(s, src->pts)) {
+        const double d = std::hypot(t[0] - Q.x, t[1] - Q.y);
+        if (d < bd) {
+          bd = d;
+          qx = t[0];
+          qy = t[1];
+          aQ = true;
+        }
+      }
+      if (aQ && std::hypot(qx - Q.x, qy - Q.y) > 0.02) {
+        Q = {qx, qy};
+        change = true;
+      }
+      continue;
+    }
     if (!e.isectJson.empty() || !e.skSrcSk.empty() || !estSuivie(s, e)) continue;  // celles-là suivent leur source
     const Vec3* pref = e.aSrcMid ? &e.srcMid : nullptr;
     if (e.t == "line") {
@@ -312,8 +346,6 @@ std::string esquisseFigee(const Document& d, size_t i) {
 
 std::string coteFigee(const Cote& c) {
   if (c.ref) return "cote de référence : elle mesure sans piloter";
-  if (c.formule) return "cote définie par une formule : à changer dans le navigateur pour l'instant";
-  if (!c.nom.empty()) return "cote nommée, peut-être utilisée ailleurs : à changer dans le navigateur pour l'instant";
   return "";
 }
 
@@ -349,15 +381,110 @@ void suivreEsquisses(Document& d, size_t i) {
   }
 }
 
-bool saisirCote(Document& d, size_t i, Edition& ed, const std::string& idCote, double valeur, std::string& raison) {
-  if (!ed.resolue) {
-    ed.solveur.resoudre();
-    ed.resolue = true;
+void EtatFormules::poser(Document& d) const {
+  d.esquisses = esquisses;
+  d.fonctions = fonctions;
+  d.params = params;
+  d.porteurs = porteurs;
+  d.parEnAttente.clear();
+}
+
+namespace {
+// parApplyAll puis skSolveOrRevert. La cote saisie (idCote) a déjà sa valeur dans le document.
+bool appliquer(Document& d, const EtatFormules& avant, int ouverte, Edition* ed, const std::string& idCote, double valeur, std::string& raison) {
+  const auto refuser = [&](const std::string& m) {
+    raison = m;
+    avant.poser(d);
+    return false;
+  };
+  parResoudre(d);
+  std::vector<size_t> attente = d.parEnAttente;
+  d.parEnAttente.clear();
+  // Ce que ce programme ne sait pas encore faire suivre : mieux vaut refuser que laisser une pièce fausse
+  std::vector<size_t> extrusions;
+  for (PorteurFx& h : d.porteurs) {
+    if (!h.change) continue;
+    h.change = false;
+    if (!h.pris) return refuser("la valeur « " + (h.nom.empty() ? h.cle : h.nom) + " » de « " + h.origine + " » en dépend, et ce programme ne sait pas encore la changer");
+    for (size_t k = 0; k < d.fonctions.size(); k++) {
+      if (d.fonctions[k].id != h.fonction) continue;
+      if (!d.profondeurModifiable(k)) return refuser("la profondeur de « " + h.origine + " » en dépend, et des esquisses liées au solide devraient suivre");
+      Fonction& f = d.fonctions[k];
+      f.distance = (f.distance < 0 ? -1 : 1) * h.valeur;  // parHolderSet : le sens reste celui choisi
+      f.aDistance = true;
+      f.nom = nomExtrusion(d, f);
+      extrusions.push_back(k);
+    }
   }
-  if (!ed.solveur.saisir(idCote, valeur, &raison)) return false;
-  ed.solveur.recopierDans(d.esquisses[i]);
-  suivreEsquisses(d, i);
+  for (const size_t j : attente) {
+    if (static_cast<int>(j) == ouverte) continue;
+    const Solveur S(d.esquisses[j]);
+    if (!S.prisEnCharge()) return refuser("l'esquisse « " + d.esquisses[j].nom + " » en dépend, et elle n'est pas encore prise en charge : " + S.raisonRefus());
+  }
+  if (ouverte >= 0 && ed) {
+    if (!ed->resolue) {
+      ed->solveur.resoudre();
+      ed->resolue = true;
+    }
+    const bool touchee = !idCote.empty() || std::find(attente.begin(), attente.end(), static_cast<size_t>(ouverte)) != attente.end();
+    if (touchee) {
+      std::string pourquoi;
+      if (!ed->solveur.saisir(idCote, valeur, &pourquoi, &d.esquisses[ouverte])) return refuser(pourquoi);
+      ed->solveur.recopierDans(d.esquisses[ouverte]);
+    }
+  }
+  std::vector<size_t> changees;
+  if (ouverte >= 0) changees.push_back(ouverte);
+  for (const size_t j : attente) {
+    if (static_cast<int>(j) != ouverte) {
+      // Le solveur voit d'abord l'état d'avant : sa mémoire décide du côté où restent les éléments libres
+      Esquisse cible = d.esquisses[j];
+      Solveur S(avant.esquisses[j]);
+      S.resoudre();
+      S.poserFormules(cible);
+      S.resoudre();
+      S.recopierDans(d.esquisses[j]);
+    }
+    changees.push_back(j);
+  }
+  for (const size_t k : extrusions)
+    for (size_t j = 0; j < d.esquisses.size(); j++)
+      if (d.esquisses[j].id == d.fonctions[k].esquisse) changees.push_back(j);
+  std::sort(changees.begin(), changees.end());
+  changees.erase(std::unique(changees.begin(), changees.end()), changees.end());
+  for (const size_t j : changees) suivreEsquisses(d, j);
   return true;
+}
+}  // namespace
+
+bool saisirCote(Document& d, size_t i, Edition& ed, const std::string& idCote, double valeur, std::string& raison) {
+  const EtatFormules avant(d);
+  for (Cote& c : d.esquisses[i].cotes)
+    if (c.id == idCote) c.value = valeur;
+  return appliquer(d, avant, static_cast<int>(i), &ed, idCote, valeur, raison);
+}
+
+bool saisirCoteTexte(Document& d, size_t i, Edition& ed, const std::string& idCote, const std::string& texte, std::string& raison) {
+  const EtatFormules avant(d);
+  Cote* c = nullptr;
+  for (Cote& x : d.esquisses[i].cotes)
+    if (x.id == idCote) c = &x;
+  if (!c) {
+    raison = "cote introuvable";
+    return false;
+  }
+  const SaisieCote r = parValiderCote(d, *c, texte);
+  if (!r.ok) {
+    raison = r.message;
+    avant.poser(d);
+    return false;
+  }
+  c->value = r.valeur;
+  return appliquer(d, avant, static_cast<int>(i), &ed, idCote, r.valeur, raison);
+}
+
+bool appliquerFormules(Document& d, const EtatFormules& avant, int ouverte, Edition* ed, std::string& raison) {
+  return appliquer(d, avant, ouverte, ed, "", 0, raison);
 }
 
 std::vector<AreteProjetable> aretesPourProjeter(const Document& d, size_t i) {

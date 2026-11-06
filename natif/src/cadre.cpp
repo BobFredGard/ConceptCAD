@@ -1,5 +1,7 @@
 #include "cadre.h"
 
+#include "parametres.h"
+
 #include <wx/dcmemory.h>
 #include <wx/file.h>
 #include <wx/filedlg.h>
@@ -102,6 +104,8 @@ Cadre::Cadre() : wxFrame(nullptr, wxID_ANY, L"ConceptCAD natif"), minuterie_(thi
   vueEsquisse_->surQuitter = [this] { quitterEsquisse(); };
   vueEsquisse_->surDemandeCote = [this](const Cote& c, wxString& t) { return demandeCote(c, t); };
   vueEsquisse_->surSaisieCote = [this](const std::string& id, const wxString& t) { saisieCote(id, t); };
+  vueEsquisse_->surNomCote = [this](const std::string& id, wxString& nom) { return nomCotePourSaisie(id, nom); };
+  vueEsquisse_->surChampFormule = [this](wxTextCtrl* c) { brancherListeNoms(c, [this]() -> const Document& { return doc_; }); };
   barreEsquisse_ = new BarreEsquisse(centre_);
   panneauEsquisse_ = new PanneauEsquisse(centre_);
   bandeauEsquisse_ = new BandeauEsquisse(centre_);
@@ -147,6 +151,11 @@ Cadre::Cadre() : wxFrame(nullptr, wxID_ANY, L"ConceptCAD natif"), minuterie_(thi
   colonneDroite_->AddStretchSpacer(1);
   rangee->Add(colonneDroite_, 0, wxEXPAND | wxLEFT | wxRIGHT | wxBOTTOM, FromDIP(12));
   margePanneau_ = rangee->Add(panneauEsquisse_, 0, wxEXPAND | wxLEFT | wxRIGHT | wxBOTTOM, FromDIP(12));
+  miniParams_ = new MiniParametres(centre_, actionsFormules());
+  miniParams_->surFermer = [this] { basculerMiniParametres(); };
+  miniParams_->surListeComplete = [this] { ouvrirFenetreParametres(this, actionsFormules()); };
+  miniParams_->Hide();
+  rangee->Add(miniParams_, 0, wxEXPAND | wxRIGHT | wxBOTTOM, FromDIP(12));
   auto* tout = new wxBoxSizer(wxVERTICAL);
   tout->Add(barreHaute_, 0, wxEXPAND);
   tout->Add(ruban_, 0, wxEXPAND);
@@ -174,6 +183,8 @@ Cadre::Cadre() : wxFrame(nullptr, wxID_ANY, L"ConceptCAD natif"), minuterie_(thi
     messageBandeau(nom + L" : pas encore dans le logiciel Windows.");
     vueEsquisse_->SetFocus();
   };
+  barreEsquisse_->surParametres = [this] { basculerMiniParametres(); };
+  barreEsquisse_->surParametresComplets = [this] { ouvrirFenetreParametres(this, actionsFormules()); };
   barreEsquisse_->surCadrer = [this] {
     vueEsquisse_->ajuster();
     vueEsquisse_->SetFocus();
@@ -239,7 +250,7 @@ void Cadre::creerEnvironnement() {
     if (esquisseOuverte_ < 0) recalculer();
   };
   barreHaute_->surIndisponible = [this](const wxString& n) { indisponible(n); };
-  ruban_->estRepris = [](Atelier a, const wxString& n) { return a == Atelier::CAO && (n == L"Esquisse" || n == L"Extrusion" || n == L"Congé" || n == L"Chanfrein"); };
+  ruban_->estRepris = [](Atelier a, const wxString& n) { return a == Atelier::CAO && (n == L"Esquisse" || n == L"Extrusion" || n == L"Congé" || n == L"Chanfrein" || n == L"Paramètres"); };
   ruban_->surBouton = [this](Atelier a, const wxString& n) { boutonRuban(a, n); };
   ruban_->surIndisponible = [this](const wxString& n) { indisponible(n); };
 
@@ -499,6 +510,7 @@ void Cadre::indisponible(const wxString& nom) { etat(nom + PAS_ENCORE + L"."); }
 
 void Cadre::boutonRuban(Atelier a, const wxString& nom) {
   if (a != Atelier::CAO) return;
+  if (nom == L"Paramètres") return basculerMiniParametres();
   if (nom == L"Congé") return entrerConge(false);
   if (nom == L"Chanfrein") return entrerConge(true);
   quitterConge();
@@ -932,10 +944,102 @@ bool Cadre::demandeCote(const Cote& c, wxString& texte) {
     etat(L"Cote non modifiable : " + tx(raison) + L".");
     return false;
   }
-  // parDimToUser : l'utilisateur voit des degrés et des diamètres, le fichier des radians et des rayons
-  const double v = c.type == "angle" ? c.value * 180 / 3.14159265358979323846 : c.dia ? c.value * 2 : c.value;
-  texte = wxString::Format("%.10g", v);
+  // parDimInputText : « nom = expression », en degrés et en diamètres ; le fichier a des radians et des rayons
+  texte = tx(parTexteSaisie(c));
+  saisieDepart_ = texte;
   return true;
+}
+
+// skDimEditPick : pendant la saisie, le nom d'une autre cote, qui est nommée d<n> au besoin
+bool Cadre::nomCotePourSaisie(const std::string& id, wxString& nom) {
+  if (esquisseOuverte_ < 0) return false;
+  Esquisse& s = doc_.esquisses[esquisseOuverte_];
+  const auto it = std::find_if(s.cotes.begin(), s.cotes.end(), [&](const Cote& c) { return c.id == id; });
+  if (it == s.cotes.end()) return false;
+  if (it->ref) {
+    messageBandeau(L"Une cote de RÉFÉRENCE mesure sans piloter : elle ne sert pas de paramètre.");
+    return false;
+  }
+  std::string nm = it->nom;
+  if (nm.empty()) {
+    ModifCote m;
+    m.esquissesAvant = doc_.esquisses;
+    nm = parNomAutomatique(doc_, *it);
+    if (nm.empty()) return false;
+    m.esquissesApres = doc_.esquisses;
+    annulations_.push_back(std::move(m));
+    retablissements_.clear();
+    majTitre();
+    vueEsquisse_->Refresh();
+  }
+  nom = tx(nm);
+  messageBandeau(L"« " + nom + L" » inséré dans la saisie : Entrée pour valider.");
+  return true;
+}
+
+ActionsFormules Cadre::actionsFormules() {
+  ActionsFormules a;
+  a.document = [this]() -> Document& { return doc_; };
+  a.changer = [this](const std::function<std::string()>& f) { return changerFormules(f); };
+  a.reglerCote = [this](size_t j, const std::string& id, const std::string& t) { return reglerCoteListe(j, id, t); };
+  return a;
+}
+
+std::string Cadre::reglerCoteListe(size_t j, const std::string& id, const std::string& texte) {
+  // parSetDim : l'esquisse est résolue, et une valeur impossible est refusée comme dans l'esquisse
+  const std::string fige = esquisseFigee(doc_, j);
+  if (!fige.empty()) return fige;
+  std::string raison;
+  if (static_cast<int>(j) == esquisseOuverte_ && edition_) {
+    saisirCoteTexte(doc_, j, *edition_, id, texte, raison);
+    return raison;
+  }
+  Edition ed(doc_.esquisses[j]);
+  saisirCoteTexte(doc_, j, ed, id, texte, raison);
+  return raison;
+}
+
+std::string Cadre::changerFormules(const std::function<std::string()>& f) {
+  const EtatFormules avant(doc_);
+  ModifCote m;
+  m.esquissesAvant = doc_.esquisses;
+  m.avecFonctions = true;
+  m.fonctionsAvant = doc_.fonctions;
+  m.avecFormules = true;
+  m.paramsAvant = doc_.params;
+  m.porteursAvant = doc_.porteurs;
+  std::string raison = f();
+  if (!raison.empty()) {
+    avant.poser(doc_);
+    return raison;
+  }
+  {
+    wxBusyCursor attente;
+    if (!appliquerFormules(doc_, avant, esquisseOuverte_, edition_.get(), raison)) return raison;
+  }
+  m.esquissesApres = doc_.esquisses;
+  m.fonctionsApres = doc_.fonctions;
+  m.paramsApres = doc_.params;
+  m.porteursApres = doc_.porteurs;
+  annulations_.push_back(std::move(m));
+  retablissements_.clear();
+  majTitre();
+  recalculer();
+  if (esquisseOuverte_ >= 0) {
+    vueEsquisse_->majPiece(formeAnterieure(esquisseOuverte_));
+    rafraichirEsquisse(false);
+    vueEsquisse_->Refresh();
+  }
+  if (miniParams_->IsShown()) CallAfter([this] { miniParams_->rafraichir(); });
+  return "";
+}
+
+void Cadre::basculerMiniParametres() {
+  const bool montrer = !miniParams_->IsShown();
+  if (montrer) miniParams_->rafraichir();
+  miniParams_->Show(montrer);
+  centre_->Layout();
+  placerScene();
 }
 
 void Cadre::saisieCote(const std::string& id, const wxString& texte) {
@@ -943,29 +1047,33 @@ void Cadre::saisieCote(const std::string& id, const wxString& texte) {
   Esquisse& s = doc_.esquisses[esquisseOuverte_];
   const auto it = std::find_if(s.cotes.begin(), s.cotes.end(), [&](const Cote& c) { return c.id == id; });
   if (it == s.cotes.end()) return;
-  // parDimCommit : mêmes refus, et « Ø20 », « R5 », « ∠45 » acceptés tels qu'affichés. Pas encore de formules.
+  // parDimCommit : « [nom =] valeur|expression ». Refus au bandeau, comme le navigateur. Le texte laissé tel quel ne change rien.
   wxString t = texte;
   t.Trim(true).Trim(false);
-  if (!t.empty() && wxString(L"ØøR∠").Find(t[0]) != wxNOT_FOUND) t = t.Mid(1).Trim(false);
-  t.Replace(",", ".");
-  double f = 0;
-  if (!t.ToCDouble(&f) || !std::isfinite(f) || f <= 0 || (it->type == "angle" && f >= 180)) {
-    wxMessageBox(it->type == "angle" ? L"Saisir un angle entre 0 et 180 degrés. Les formules ne sont pas encore reprises." : L"Saisir un nombre positif, en millimètres. Les formules ne sont pas encore reprises.", L"Cote incorrecte", wxOK | wxICON_WARNING, this);
-    return;
-  }
-  const double valeur = it->type == "angle" ? f * 3.14159265358979323846 / 180 : it->dia ? f / 2 : f;
-  if (valeur == it->value) return;
+  if (t == saisieDepart_) return;
   ModifCote m;
   m.esquissesAvant = doc_.esquisses;
+  m.avecFonctions = true;
+  m.fonctionsAvant = doc_.fonctions;
+  m.avecFormules = true;
+  m.paramsAvant = doc_.params;
+  m.porteursAvant = doc_.porteurs;
   std::string raison;
   {
     wxBusyCursor attente;
-    if (!saisirCote(doc_, esquisseOuverte_, *edition_, id, valeur, raison)) {
-      wxMessageBox(L"L'esquisse n'a pas changé : cette valeur ne peut pas être résolue.\n\n" + tx(raison), L"Valeur refusée", wxOK | wxICON_WARNING, this);
+    if (!saisirCoteTexte(doc_, esquisseOuverte_, *edition_, id, std::string(t.utf8_str()), raison)) {
+      messageBandeau(L"⛔ " + tx(raison));
+      vueEsquisse_->Refresh();
       return;
     }
   }
   m.esquissesApres = doc_.esquisses;
+  m.fonctionsApres = doc_.fonctions;
+  m.paramsApres = doc_.params;
+  m.porteursApres = doc_.porteurs;
+  if (const auto cote = std::find_if(s.cotes.begin(), s.cotes.end(), [&](const Cote& c) { return c.id == id; }); cote != s.cotes.end() && !cote->nom.empty())
+    messageBandeau(L"Cote nommée « " + tx(cote->nom) + L" » : utilisable dans les autres cotes (ƒx).");
+  if (miniParams_->IsShown()) CallAfter([this] { miniParams_->rafraichir(); });
   annulations_.push_back(std::move(m));
   retablissements_.clear();
   majTitre();
@@ -1222,6 +1330,9 @@ void Cadre::quitterEsquisse() {
   }
   if (suivre) {
     wxBusyCursor attente;
+    const EtatFormules avant(doc_);
+    std::string raison;
+    if (!appliquerFormules(doc_, avant, -1, nullptr, raison)) etat(tx(doc_.nom) + L"  |  " + tx(raison));
     suivreEsquisses(doc_, i);
     recalculer();
   }
@@ -1418,7 +1529,12 @@ void Cadre::annuler() {
   m.esquissesApres = doc_.esquisses;
   if (m.avecFonctions) m.fonctionsApres = doc_.fonctions;
   retablissements_.push_back(m);
+  if (m.avecFormules) {
+    doc_.params = m.paramsAvant;
+    doc_.porteurs = m.porteursAvant;
+  }
   poserPas(m.esquissesAvant, m.avecFonctions, m.fonctionsAvant);
+  if (m.avecFormules && miniParams_->IsShown()) miniParams_->rafraichir();
 }
 
 void Cadre::retablir() {
@@ -1426,7 +1542,12 @@ void Cadre::retablir() {
   const ModifCote m = retablissements_.back();
   retablissements_.pop_back();
   annulations_.push_back(m);
+  if (m.avecFormules) {
+    doc_.params = m.paramsApres;
+    doc_.porteurs = m.porteursApres;
+  }
   poserPas(m.esquissesApres, m.avecFonctions, m.fonctionsApres);
+  if (m.avecFormules && miniParams_->IsShown()) miniParams_->rafraichir();
 }
 
 void Cadre::surArbre(wxTreeEvent& e) {
@@ -1689,6 +1810,21 @@ bool Cadre::essaiEsquisse(const std::wstring& fichier, int rang, const std::wstr
       for (const char c : e["texte"].get<std::string>()) vueEsquisse_->essaiCaractere(c);
     if (e.contains("poly")) vueEsquisse_->essaiReglagesPolygone(wxString::Format("%d", e["poly"][0].get<int>()), wxString::FromUTF8(e["poly"][1].get<std::string>()));
     if (e.contains("annuler")) annuler();
+    // La saisie d'une cote telle que tapée, la mini-liste, la liste complète en photo
+    if (e.contains("coteTexte")) {
+      demandeCote(*std::find_if(doc_.esquisses[esquisseOuverte_].cotes.begin(), doc_.esquisses[esquisseOuverte_].cotes.end(), [&](const Cote& c) { return c.id == e["coteTexte"][0].get<std::string>(); }), saisieDepart_);
+      saisieCote(e["coteTexte"][0], wxString::FromUTF8(e["coteTexte"][1].get<std::string>()));
+      n["message"] = std::string(messageEsquisse_.utf8_str());
+    }
+    if (e.contains("miniFx")) basculerMiniParametres();
+    if (e.contains("listeFx")) {
+      wxDialog* f = creerFenetreParametres(this, actionsFormules());
+      f->Show();
+      wxYield();
+      f->Update();
+      capturerFenetre(dossier + L"\\" + wxString::FromUTF8(e["listeFx"].get<std::string>()).ToStdWstring() + L".png");
+      f->Destroy();
+    }
     wxYield();
     d = vueEsquisse_->dessin();
     if (e.contains("capture")) {

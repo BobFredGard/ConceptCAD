@@ -20,6 +20,7 @@
 #include "coter.h"
 #include "dessin.h"
 #include "enregistrer.h"
+#include "parametres.h"
 
 namespace {
 std::vector<std::wstring> gArgs;
@@ -128,6 +129,96 @@ int modeCoter(const std::vector<std::wstring>& a) {
       enregistrerProjet(d, a[2]);
       return 0;
     }
+  } catch (const std::exception& e) {
+    fprintf(stderr, "%s\n", e.what());
+  }
+  return 1;
+}
+
+// --formule <fichier> <sortie> <esquisse> <cote> <texte> : la saisie telle que tapée, « [nom =] valeur|expression »
+int modeFormule(const std::vector<std::wstring>& a) {
+  try {
+    Document d = lireProjet(a[1]);
+    const std::string id = utf8(a[3]);
+    for (size_t i = 0; i < d.esquisses.size(); i++) {
+      if (d.esquisses[i].id != id) continue;
+      std::string raison = esquisseFigee(d, i);
+      if (!raison.empty()) {
+        fprintf(stderr, "%s\n", raison.c_str());
+        return 5;
+      }
+      Edition ed(d.esquisses[i]);
+      if (!saisirCoteTexte(d, i, ed, utf8(a[4]), utf8(a[5]), raison)) {
+        fprintf(stderr, "%s\n", raison.c_str());
+        return 4;
+      }
+      enregistrerProjet(d, a[2]);
+      return 0;
+    }
+  } catch (const std::exception& e) {
+    fprintf(stderr, "%s\n", e.what());
+  }
+  return 1;
+}
+// --parametre <fichier> <sortie> <nom> <expression> : parSetParam, ou un nouveau paramètre si le nom n'existe pas
+int modeParametre(const std::vector<std::wstring>& a) {
+  try {
+    Document d = lireProjet(a[1]);
+    const EtatFormules avant(d);
+    const std::string nom = utf8(a[3]);
+    std::string raison;
+    Parametre* p = nullptr;
+    for (Parametre& q : d.params)
+      if (q.nom == nom) p = &q;
+    if (!p) {
+      raison = parControleNom(d, nom, nullptr, nullptr, nullptr);
+      if (raison.empty()) {
+        d.params.push_back(Parametre{nom, "10", "", 10, true});
+        p = &d.params.back();
+      }
+    }
+    if (raison.empty()) raison = parReglerParametre(d, *p, utf8(a[4]));
+    if (!raison.empty()) {
+      fprintf(stderr, "%s\n", raison.c_str());
+      return 4;
+    }
+    if (!appliquerFormules(d, avant, -1, nullptr, raison)) {
+      fprintf(stderr, "%s\n", raison.c_str());
+      return 4;
+    }
+    enregistrerProjet(d, a[2]);
+    return 0;
+  } catch (const std::exception& e) {
+    fprintf(stderr, "%s\n", e.what());
+  }
+  return 1;
+}
+// --evaluer <liste.json> <sortie.json> : parEval sur une liste de textes, avec les noms donnés dans le fichier
+int modeEvaluer(const std::vector<std::wstring>& a) {
+  try {
+    const nlohmann::json j = nlohmann::json::parse(lireOctets(a[1]));
+    const auto chercher = [&](const std::string& n) -> double {
+      if (!j["noms"].contains(n)) throw std::runtime_error("« " + n + " » inconnu");
+      return j["noms"][n].get<double>();
+    };
+    nlohmann::json sortie = nlohmann::json::array();
+    for (const auto& t : j["textes"]) {
+      nlohmann::json r;
+      r["t"] = t;
+      try {
+        r["v"] = parEval(t.get<std::string>(), chercher);
+      } catch (const std::exception& e) {
+        r["e"] = e.what();
+      }
+      r["n"] = parEstNombre(t.get<std::string>());
+      sortie.push_back(r);
+    }
+    const std::string texte = sortie.dump();
+    FILE* f = _wfopen(a[2].c_str(), L"wb");
+    if (!f) return 1;
+    fwrite(texte.data(), 1, texte.size(), f);
+    fclose(f);
+    return 0;
   } catch (const std::exception& e) {
     fprintf(stderr, "%s\n", e.what());
   }
@@ -398,6 +489,9 @@ int WINAPI wWinMain(HINSTANCE inst, HINSTANCE, PWSTR, int) {
   if (gArgs.size() >= 3 && gArgs[0] == L"--reenregistrer") return modeEnregistrer(gArgs);
   if (gArgs.size() >= 2 && gArgs[0] == L"--conflit") return modeEnregistrer(gArgs);
   if (gArgs.size() >= 6 && gArgs[0] == L"--coter") return modeCoter(gArgs);
+  if (gArgs.size() >= 6 && gArgs[0] == L"--formule") return modeFormule(gArgs);
+  if (gArgs.size() >= 5 && gArgs[0] == L"--parametre") return modeParametre(gArgs);
+  if (gArgs.size() >= 3 && gArgs[0] == L"--evaluer") return modeEvaluer(gArgs);
   if (gArgs.size() >= 5 && gArgs[0] == L"--dessiner") return modeDessiner(gArgs);
   if (gArgs.size() >= 4 && gArgs[0] == L"--nouvelle-esquisse") return modeNouvelleEsquisse(gArgs);
   if (gArgs.size() >= 3 && gArgs[0] == L"--esquisses-faces") return modeEsquissesFaces(gArgs);

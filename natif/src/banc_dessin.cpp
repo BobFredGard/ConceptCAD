@@ -229,6 +229,8 @@ int wmain(int argc, wchar_t** argv) {
             aretes3D.push_back(std::move(n));
           }
           D.aretes3D = [&aretes3D]() { return &aretes3D; };
+          D.planActif = st.value("plan", 0) != 0;
+          D.oublierCiblesPlan();
           D.esquisses = &esqDoc;
           D.nomsProj = &nomsProj;
           D.nomsArete = &nomsArete;

@@ -302,6 +302,7 @@ std::string nouvelleEntite(const Entite& e) {
   if (e.construction) o += ",\"construction\":true";
   if (e.ref) o += ",\"ref\":true";
   if (e.proj) o += ",\"proj\":true";
+  if (e.pierce) o += ",\"pierce\":true";
   if (!e.isectJson.empty()) o += ",\"isect\":" + e.isectJson;
   if (e.isplN) o += ",\"isplN\":" + std::to_string(e.isplN);
   ajouterTexte(o, "projName", e.projName);
@@ -359,6 +360,9 @@ std::string nouvelleCote(const Cote& d) {
   ajouterTexte(o, "orient", d.orient);
   o += ",\"value\":" + nombreJson(d.value);
   if (d.ox != 0 || d.oy != 0) o += ",\"ox\":" + nombreJson(d.ox) + ",\"oy\":" + nombreJson(d.oy);
+  ajouterTexte(o, "name", d.nom);
+  ajouterTexte(o, "expr", d.expr);
+  ajouterTexte(o, "exprErr", d.exprErr);
   if (d.aW) o += ",\"w\":" + nombreJson(d.w);
   if (d.sl != 0) o += ",\"sl\":" + nombreJson(d.sl);
   ajouterTexte(o, "oa", d.oa);
@@ -516,7 +520,15 @@ std::string ecartsCote(const std::string& brut0, const Cote& a, const Cote& b) {
   e.oui("ref", a.ref, b.ref);
   e.oui("dia", a.dia, b.dia);
   if (a.refV != b.refV) e.champs.push_back({"refV", std::to_string(a.refV), true});
-  const std::string fin = retoucherBrut(brut, e);
+  // parDimCommit : nom et formule ; delete d.expr et delete d.exprErr quand ils s'en vont
+  if (a.nom != b.nom && !a.nom.empty()) e.champs.push_back({"name", texteJson(a.nom), true});
+  if (a.expr != b.expr && !a.expr.empty()) e.champs.push_back({"expr", texteJson(a.expr), true});
+  if (a.exprErr != b.exprErr && !a.exprErr.empty()) e.champs.push_back({"exprErr", texteJson(a.exprErr), true});
+  std::vector<std::string> sans;
+  if (a.nom.empty() && !b.nom.empty()) sans.push_back("name");
+  if (a.expr.empty() && !b.expr.empty()) sans.push_back("expr");
+  if (a.exprErr.empty() && !b.exprErr.empty()) sans.push_back("exprErr");
+  const std::string fin = retoucherBrut(sans.empty() ? brut : sansCles(brut, sans), e);
   return a.ref && !b.ref && brut.find("\"expr") != std::string::npos ? sansFormule(fin) : fin;
 }
 
@@ -760,6 +772,54 @@ std::string fonctionCreee(const Fonction& f) {
   if (f.through) o += ",\"through\":true";
   return o + "}";
 }
+// doc.params, écrit en entier quand il a changé. Une expression restée telle quelle garde sa forme dans le fichier.
+std::string retoucherParametres(const std::string& texte, const Document& d) {
+  if (d.params == d.paramsFichier) return texte;
+  std::string neuf = "[";
+  for (size_t i = 0; i < d.params.size(); i++) {
+    const Parametre& q = d.params[i];
+    neuf += std::string(i ? "," : "") + "{\"name\":" + texteJson(q.nom) + ",\"expr\":" + (q.exprNombre ? q.expr : texteJson(q.expr));
+    if (q.aValeur) neuf += ",\"value\":" + nombreJson(q.value);
+    if (!q.err.empty()) neuf += ",\"err\":" + texteJson(q.err);
+    neuf += "}";
+  }
+  neuf += "]";
+  Parcours p(texte);
+  allerAuDocument(p);
+  p.blancs();
+  const size_t ouverture = p.ici() + 1;
+  std::vector<Morceau> morceaux;
+  bool vu = false;
+  p.membres([&](const std::string& k) {
+    const size_t a = p.ici();
+    p.sauter();
+    if (k == "params") {
+      vu = true;
+      morceaux.push_back({a, p.ici(), neuf});
+    }
+  });
+  if (!vu) morceaux.push_back({ouverture, ouverture, "\"params\":" + neuf + ","});
+  return appliquer(texte, std::move(morceaux));
+}
+// h.expr et h.pname d'une fonction, écrits en entier quand ils ont changé
+void retoucherPorteurs(Retouche& r, const Document& d, const std::string& id) {
+  std::string e, n;
+  for (const PorteurFx& h : d.porteurs) {
+    if (h.fonction != id || h.arete != -1) continue;
+    if (!h.expr.empty()) e += (e.empty() ? "" : ",") + texteJson(h.cle) + ":" + texteJson(h.expr);
+    if (!h.nom.empty()) n += (n.empty() ? "" : ",") + texteJson(h.cle) + ":" + texteJson(h.nom);
+  }
+  r.champs.push_back({"expr", "{" + e + "}"});
+  r.champs.push_back({"pname", "{" + n + "}"});
+}
+bool porteursDeChanges(const Document& d, const std::string& id) {
+  std::vector<std::string> a, b;
+  for (const PorteurFx& h : d.porteurs)
+    if (h.fonction == id && h.arete == -1) a.push_back(h.cle + "=" + h.nom + "=" + h.expr);
+  for (const PorteurFx& h : d.porteursFichier)
+    if (h.fonction == id && h.arete == -1) b.push_back(h.cle + "=" + h.nom + "=" + h.expr);
+  return a != b;
+}
 // entNames : les compteurs de noms que ce travail a fait avancer
 std::string retoucherNoms(const std::string& texte, const Document& d) {
   std::vector<std::tuple<std::string, std::string, bool>> champs;
@@ -964,12 +1024,16 @@ std::string texteEnregistre(const Document& d, const std::string& texteOrigine) 
     texteFichier = ajouterFonctions(texteFichier, nouvelles, d.nomsArete);
   }
   texteFichier = retoucherNoms(texteFichier, d);
+  texteFichier = retoucherParametres(texteFichier, d);
   std::vector<Retouche> retouches;
-  for (size_t i = 0; i < d.fonctionsFichier.size(); i++)
-    if (!memesReglages(d.fonctions[i], d.fonctionsFichier[i])) {
+  for (size_t i = 0; i < d.fonctionsFichier.size(); i++) {
+    const bool fx = porteursDeChanges(d, d.fonctions[i].id);
+    if (fx || !memesReglages(d.fonctions[i], d.fonctionsFichier[i])) {
       if (d.fonctions[i].id != d.fonctionsFichier[i].id) throw std::runtime_error("ordre des fonctions changé, rien n'a été écrit");
       retouches.push_back(retoucheFonction(i, d.fonctions[i], d.fonctionsFichier[i]));
+      if (fx) retoucherPorteurs(retouches.back(), d, d.fonctions[i].id);
     }
+  }
 
   std::vector<Refonte> refontes;
   std::vector<Esquisse> alignees;  // n'est lue que par rang, et réservée : les adresses restent justes

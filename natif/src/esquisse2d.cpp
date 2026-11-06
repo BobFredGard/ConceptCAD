@@ -1,5 +1,7 @@
 #include "esquisse2d.h"
 
+#include "parametres.h"
+
 #include <wx/dcbuffer.h>
 #include <wx/spinctrl.h>
 
@@ -317,7 +319,63 @@ void VueEsquisse::ouvrirCote(const std::string& id, const wxString& texteDepart)
   }
 }
 
+// skDimEditPick : pendant la saisie, un clic sur une autre cote insère son nom. Une valeur seule est remplacée, une expression complétée au curseur.
+void VueEsquisse::insererNomCote(const std::string& id) {
+  if (id == coteEnSaisie_ || !surNomCote) {
+    saisie_->SetFocus();
+    return;
+  }
+  wxString nm;
+  if (!surNomCote(id, nm) || nm.empty()) {
+    saisie_->SetFocus();
+    return;
+  }
+  const wxString cur = saisie_->GetValue();
+  long debutDroite = 0;
+  const int eg = cur.Find('=');
+  if (eg != wxNOT_FOUND && (eg + 1 >= static_cast<int>(cur.length()) || cur[eg + 1] != '=')) {
+    bool nom = eg > 0;
+    for (int i = 0; i < eg; i++) nom = nom && (wxIsalnum(cur[i]) || cur[i] == '_' || cur[i] == ' ');
+    if (nom) {
+      debutDroite = eg + 1;
+      while (debutDroite < static_cast<long>(cur.length()) && cur[debutDroite] == ' ') debutDroite++;
+    }
+  }
+  wxString droite = cur.Mid(debutDroite);
+  droite.Trim(true);
+  for (const wchar_t* u : {L"mm", L"°", L"deg"})
+    if (droite.Lower().EndsWith(u)) {
+      droite = droite.Left(droite.length() - wcslen(u));
+      droite.Trim(true);
+      break;
+    }
+  if (parEstNombre(std::string(droite.utf8_str()))) {
+    saisie_->ChangeValue(cur.Left(debutDroite) + nm);
+    saisie_->SetInsertionPointEnd();
+  } else {
+    long a = 0, b = 0;
+    saisie_->GetSelection(&a, &b);
+    a = std::max(a, debutDroite);
+    b = std::max(b, a);
+    saisie_->Replace(a, b, nm);
+    saisie_->SetInsertionPoint(a + static_cast<long>(nm.length()));
+  }
+  saisie_->SetFocus();
+  const wxSize t = FromDIP(wxSize(std::max(80, std::min(320, 8 * static_cast<int>(saisie_->GetValue().length()) + 24)), 24));
+  const wxRect r = saisie_->GetRect();
+  saisie_->SetSize(r.x + r.width / 2 - t.x / 2, r.y, t.x, t.y);
+}
+
 void VueEsquisse::surGaucheBas(wxMouseEvent& ev) {
+  if (enSaisie()) {
+    const wxPoint dip = ToDIP(ev.GetPosition());
+    std::string id = zoneSous(dip);
+    if (id.empty()) id = ligneSous(dip);
+    if (!id.empty()) {
+      insererNomCote(id);
+      return;
+    }
+  }
   SetFocus();
   if (!dessin_ || !s_) return;
   if (dessin_->outil() == Dessin::SELECTION) {
@@ -574,6 +632,7 @@ void VueEsquisse::ouvrirSaisie(const Cote& c, const wxString& texte, double x, d
       e.Skip();
       CallAfter([this] { annulerSaisie(); });
     });
+    if (surChampFormule) surChampFormule(saisie_);
   }
   coteEnSaisie_ = c.id;
   const wxSize t = FromDIP(wxSize(std::max(80, std::min(260, 8 * static_cast<int>(texte.length()) + 24)), 24));
@@ -819,6 +878,7 @@ void VueEsquisse::dessiner(wxDC& dc) {
   cotes(*g);
   projections(*g);
   sections(*g);
+  survolPlan(*g);
   trace(*g);
 }
 
@@ -923,6 +983,81 @@ void VueEsquisse::projections(wxGraphicsContext& g) const {
     g.SetPen(stylo(g, ORANGE, 1));
     g.DrawRectangle(c.m_x - 3, c.m_y - 3, 6, 6);
   }
+}
+
+// L'arête ou le point du solide sous la souris, en orange (skPlDrawHover) ; hors du plan : en tiretés
+void VueEsquisse::survolPlan(wxGraphicsContext& g) const {
+  if (!dessin_) return;
+  const Dessin::CiblePlan& h = dessin_->survolPlan();
+  const Dessin::Outil o = dessin_->outil();
+  if (!h || o == Dessin::PROJETER || o == Dessin::INTERSECTION || o == Dessin::AJUSTER || o == Dessin::DECALER || o == Dessin::CONGE || o == Dessin::CHANFREIN || o == Dessin::COINCIDENT) return;
+  using F = Dessin::FormePlan;
+  const Dessin::CiblesPlan& T = dessin_->ciblesPlan();
+  const wxColour C(0xff, 0x9f, 0x0a), FOND(0x10, 0x10, 0x12);
+  std::vector<const F*> lit;
+  if (!h.estPoint) {
+    if (h.i >= 0 && h.i < static_cast<int>(T.E.size())) lit.push_back(&T.E[h.i]);
+  } else {
+    for (const int i : h.p.e)
+      if (i >= 0 && i < static_cast<int>(T.E.size())) lit.push_back(&T.E[i]);
+  }
+  g.SetBrush(wxNullGraphicsBrush);
+  for (const F* s : lit) {
+    g.SetPen(s->loin ? stylo(g, alpha(C, 0.9), 3, {7, 4}) : stylo(g, alpha(C, 0.9), 3));
+    wxGraphicsPath p = g.CreatePath();
+    if (s->sorte == F::LIGNE) {
+      p.MoveToPoint(e(s->x1, s->y1));
+      p.AddLineToPoint(e(s->x2, s->y2));
+    } else if (s->sorte == F::COURBE) {
+      p.MoveToPoint(e(s->pts[0][0], s->pts[0][1]));
+      for (size_t i = 1; i < s->pts.size(); i++) p.AddLineToPoint(e(s->pts[i][0], s->pts[i][1]));
+    } else {
+      double a1 = 0, dd = 2 * 3.14159265358979323846;
+      if (s->sorte == F::ARC) {
+        a1 = std::atan2(s->y1 - s->cy, s->x1 - s->cx);
+        const double a2 = std::atan2(s->y2 - s->cy, s->x2 - s->cx);
+        dd = a2 - a1;
+        while (dd <= 0) dd += 2 * 3.14159265358979323846;
+      }
+      const int n = std::max(8, static_cast<int>(std::ceil(dd / 0.05)));
+      for (int i = 0; i <= n; i++) {
+        const double a = a1 + dd * i / n;
+        const auto q = e(s->cx + s->r * std::cos(a), s->cy + s->r * std::sin(a));
+        if (i) p.AddLineToPoint(q);
+        else p.MoveToPoint(q);
+      }
+    }
+    g.StrokePath(p);
+  }
+  // Les bouts des arêtes allumées : carrés creux
+  g.SetPen(stylo(g, C, 1.5));
+  g.SetBrush(g.CreateBrush(wxBrush(FOND)));
+  for (const F* s : lit) {
+    if (s->sorte == F::CERCLE) continue;
+    const double bx[2] = {s->sorte == F::COURBE ? s->pts[0][0] : s->x1, s->sorte == F::COURBE ? s->pts.back()[0] : s->x2};
+    const double by[2] = {s->sorte == F::COURBE ? s->pts[0][1] : s->y1, s->sorte == F::COURBE ? s->pts.back()[1] : s->y2};
+    for (int k = 0; k < 2; k++) {
+      const auto c = e(bx[k], by[k]);
+      g.DrawRectangle(c.m_x - 4, c.m_y - 4, 8, 8);
+    }
+  }
+  const auto c = e(h.x, h.y);
+  g.SetPen(stylo(g, FOND, 1));
+  g.SetBrush(g.CreateBrush(wxBrush(C)));
+  if (h.estPoint && h.p.sorte == Dessin::PointPlan::TRAVERSEE) {
+    wxGraphicsPath p = g.CreatePath();
+    p.MoveToPoint(c.m_x, c.m_y - 6);
+    p.AddLineToPoint(c.m_x + 6, c.m_y);
+    p.AddLineToPoint(c.m_x, c.m_y + 6);
+    p.AddLineToPoint(c.m_x - 6, c.m_y);
+    p.CloseSubpath();
+    g.DrawPath(p);
+  } else if (h.estPoint) {
+    g.DrawRectangle(c.m_x - 4.5, c.m_y - 4.5, 9, 9);
+  } else if (o != Dessin::SELECTION) {
+    g.DrawEllipse(c.m_x - 3.5, c.m_y - 3.5, 7, 7);
+  }
+  g.SetBrush(wxNullGraphicsBrush);
 }
 
 // Le tracé en cours, l'accroche et les guides, par-dessus tout

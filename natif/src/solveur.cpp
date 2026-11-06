@@ -2851,17 +2851,28 @@ void Solveur::premiereCoteEchelle(const D& d, double nv) {
     if (e.t == CERCLE || e.t == ARC) e.r *= k;
 }
 
-bool Solveur::saisir(const std::string& id, double valeur, std::string* raison) {
+void Solveur::poserFormules(const Esquisse& s) {
+  for (const Cote& c : s.cotes) {
+    if (c.ref || c.expr.empty()) continue;
+    for (D& x : D_)
+      if (x.id == c.id) x.value = c.value;
+  }
+}
+
+bool Solveur::saisir(const std::string& id, double valeur, std::string* raison, const Esquisse* formules) {
   D* d = nullptr;
   for (D& x : D_)
     if (x.id == id) d = &x;
-  if (!d) {
+  if (!d && !id.empty()) {
     if (raison) *raison = "cote introuvable";
     return false;
   }
   const Saisie avant = instantane();
-  premiereCoteEchelle(*d, valeur);
-  d->value = valeur;
+  if (d) {
+    premiereCoteEchelle(*d, valeur);
+    d->value = valeur;
+  }
+  if (formules) poserFormules(*formules);
   resoudre();
   for (const E& e : E_) {
     if (e.t != LIGNE || e.p1 < 0 || e.p2 < 0) continue;

@@ -351,12 +351,14 @@ BarreEsquisse::BarreEsquisse(wxWindow* parent) : wxWindow(parent, 2009, wxDefaul
     if (surFantome) surFantome();
   };
   ordre_.push_back(fantome_);
-  auto* parametres = new BoutonEsquisse(this, wxID_ANY, L"Paramètres", L"Paramètres : pas encore dans le logiciel Windows");
+  auto* parametres = new BoutonEsquisse(this, wxID_ANY, L"Paramètres", L"Paramètres : clic, mini-liste à droite ; clic droit, liste complète");
   parametres->icone("fx", C_TEXTE);
-  parametres->disponible(false);
   parametres->surClic = [this] {
-    if (surIndisponible) surIndisponible(L"Paramètres");
+    if (surParametres) surParametres();
   };
+  parametres->Bind(wxEVT_RIGHT_UP, [this](wxMouseEvent&) {
+    if (surParametresComplets) surParametresComplets();
+  });
   ordre_.push_back(parametres);
   abandon_ = new BoutonEsquisse(this, wxID_ANY, L"Abandonner", L"Refermer l'esquisse en oubliant ce qui a été fait depuis son ouverture", BoutonEsquisse::TEXTE);
   abandon_->titre(L"Abandonner");

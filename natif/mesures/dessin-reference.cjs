@@ -50,6 +50,7 @@ const lireDoc = f => {
 
 vm.runInContext(`
   // Ce qui dépend de l'écran ou du solide est coupé : le natif ne l'a pas dans cette comparaison
+  var __vraiPlan = { skPlSnap, skPlHit, skPlSelect, skPlUndoIfPlane };  // rendus par le geste qui donne un solide, avec --plan
   skPlSnap = () => null; skPlHit = () => null; skPlSelect = () => false; skPlUndoIfPlane = () => {};
   hitDimLabel = () => null; hitDimLine = () => null;
   drawSketch2D = () => {}; renderSkPanel = () => {}; skRefreshHealth = () => {};
@@ -86,6 +87,7 @@ vm.runInContext(`
     if (st.a === 'outil') { skCancelDraft(); skTool = st.o; }
     else if (st.a === 'projAretes') {  // le solide est remplacé par une liste d'arêtes, la même des deux côtés
       occHas = () => true; occLive = { shape: { edges: st.l } }; skConsumerIdx = () => -1; _skpCache = null;
+      if (st.plan) { skPlSnap = __vraiPlan.skPlSnap; skPlHit = __vraiPlan.skPlHit; skPlSelect = __vraiPlan.skPlSelect; skPlUndoIfPlane = __vraiPlan.skPlUndoIfPlane; }
       __autres.forEach(q => { q.visible = true; });  // visibles des deux côtés : sinon rien à reprendre
       doc.sketches = [skEdit].concat(__autres);
     }
@@ -676,8 +678,24 @@ function session(src, graine, nbGestes) {
         L.push({ mid: pts[5].slice(), pts });
         if (sorte !== 2) cibles.push(pts2);
       }
-      faire({ a: 'outil', o: 'project' });
-      faire({ a: 'projAretes', l: L });
+      const plan = process.argv.includes('--plan');
+      if (!plan) faire({ a: 'outil', o: 'project' });
+      faire(plan ? { a: 'projAretes', l: L, plan: 1 } : { a: 'projAretes', l: L });
+      if (plan) {  // les arêtes du solide sous les outils ordinaires : toute la suite des gestes s'y accroche aussi
+        for (let c = 2 + Math.floor(r() * 5); c > 0; c--) {
+          const q = cibles.length ? pick(pick(cibles)) : [cx + u(60), cy + u(60)];
+          const x = +(q[0] + u(1.2)).toFixed(3), y = +(q[1] + u(1.2)).toFixed(3);
+          faire({ a: 'outil', o: pick(['select', 'select', 'line', 'circle', 'rect', 'arc', 'cpoint', 'dim', 'slot']) });
+          faire({ a: 'bouge', x, y });
+          clic({ x, y });
+          const x2 = +(x + u(25)).toFixed(3), y2 = +(y + u(25)).toFixed(3);
+          faire({ a: 'bouge', x: x2, y: y2 });
+          clic({ x: x2, y: y2 });
+          faire({ a: 'echap' });
+        }
+        faire({ a: 'outil', o: 'select' });
+        return;
+      }
       const coups = 2 + Math.floor(r() * 4);
       for (let c = 0; c < coups; c++) {
         let cible;
@@ -713,7 +731,7 @@ function session(src, graine, nbGestes) {
   if (process.argv.includes('--selection')) noms.push(...Array(12).fill('glisseCote'), ...Array(12).fill('boite'), ...Array(6).fill('coincident2'));
   if (process.argv.includes('--menu')) noms.push(...Array(25).fill('menu'));
   if (process.argv.includes('--formes')) noms.push(...Array(10).fill('oblong'), ...Array(10).fill('polygone'), ...Array(8).fill('pointSeul'));
-  if (process.argv.includes('--projeter')) noms.push(...Array(25).fill('projeter'));
+  if (process.argv.includes('--projeter') || process.argv.includes('--plan')) noms.push(...Array(25).fill('projeter'));
   if (process.argv.includes('--splines')) noms.push(...Array(25).fill('spline'), ...Array(14).fill('splineGlisse'), ...Array(18).fill('splineMenu'), ...Array(4).fill('splineEfface'), ...Array(8).fill('splineAjuster'), ...Array(6).fill('splineDecaler'), ...Array(3).fill('splineF1'));
   if (opt('seulement', '')) { noms.length = 0; noms.push(...opt('seulement', '').split(',')); }
   for (let i = 0; i < nbGestes; i++) {

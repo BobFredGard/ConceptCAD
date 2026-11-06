@@ -37,7 +37,7 @@ bool memesLiens(const Esquisse& a, const Esquisse& b) {
   for (size_t i = 0; i < a.cotes.size(); i++) {
     const Cote& x = a.cotes[i];
     const Cote& y = b.cotes[i];
-    if (x.id != y.id || x.type != y.type || x.line != y.line || x.ent != y.ent || x.a != y.a || x.b != y.b || x.p != y.p || x.ref != y.ref || x.refV != y.refV || x.chk != y.chk || x.dia != y.dia) return false;
+    if (x.id != y.id || x.type != y.type || x.line != y.line || x.ent != y.ent || x.a != y.a || x.b != y.b || x.p != y.p || x.ref != y.ref || x.refV != y.refV || x.chk != y.chk || x.dia != y.dia || x.nom != y.nom || x.expr != y.expr || x.exprErr != y.exprErr) return false;
   }
   return true;
 }
@@ -191,7 +191,8 @@ static void lireEsquisse(const json& js, Document& d, std::map<std::string, int>
       e.ext = vrai(je, "isProj") || vrai(je, "isect") || vrai(je, "pierce") || vrai(je, "ext");
       e.aSrcMid = vec3(je, "srcMid", e.srcMid);
       // Suivis repris : arête retrouvée par position, autre esquisse, intersection. Pas encore : arête nommée, autre composant, traversée.
-      e.suiviInconnu = vrai(je, "isProj") || vrai(je, "pierce") || vrai(je, "ext") || je.contains("srcNom") || je.contains("seg");
+      e.pierce = vrai(je, "pierce");
+      e.suiviInconnu = vrai(je, "isProj") || vrai(je, "ext") || je.contains("srcNom") || je.contains("seg");
       if (auto x = je.find("isect"); x != je.end() && x->is_object()) {
         e.isectJson = x->dump();
         if (x->value("mode", "") == "mesh") e.suiviInconnu = true;
@@ -256,8 +257,10 @@ static void lireEsquisse(const json& js, Document& d, std::map<std::string, int>
       c.dia = vrai(jd, "dia");
       c.nom = texte(jd, "name");
       c.formuleFausse = jd.contains("exprErr") && !jd["exprErr"].is_null() && jd["exprErr"] != false && jd["exprErr"] != "";
+      c.exprErr = texte(jd, "exprErr");
       if (auto x = jd.find("expr"); x != jd.end() && !x->is_null()) {
-        c.formule = !x->is_string() || x->get<std::string>().find_first_not_of(" \t\r\n") != std::string::npos;
+        c.expr = x->is_string() ? x->get<std::string>() : x->dump();
+        c.formule = c.expr.find_first_not_of(" \t\r\n") != std::string::npos;
       }
       s.cotes.push_back(std::move(c));
     }
@@ -298,6 +301,42 @@ static bool lireVec3(const json& j, const char* cle, Vec3& v) {
   }
   return true;
 }
+// parHolders : la fonction, son taraudage, chaque arête d'un congé. Une clé par nom ou par formule.
+static void lirePorteursDe(const json& h, const Fonction& f, int arete, Document& d) {
+  std::vector<std::string> cles;
+  const auto ajouter = [&](const char* quoi) {
+    if (auto x = h.find(quoi); x != h.end() && x->is_object())
+      for (auto it = x->begin(); it != x->end(); ++it)
+        if (std::find(cles.begin(), cles.end(), it.key()) == cles.end()) cles.push_back(it.key());
+  };
+  ajouter("expr");
+  ajouter("pname");
+  for (const std::string& k : cles) {
+    PorteurFx p;
+    p.fonction = f.id;
+    p.origine = f.nom.empty() ? f.id : f.nom;
+    p.cle = k;
+    p.arete = arete;
+    p.pris = f.type == "extrude" && arete < 0 && k == "distance";
+    if (auto x = h.find("expr"); x != h.end() && x->is_object() && x->contains(k) && (*x)[k].is_string()) p.expr = (*x)[k].get<std::string>();
+    if (auto x = h.find("pname"); x != h.end() && x->is_object() && x->contains(k) && (*x)[k].is_string()) p.nom = (*x)[k].get<std::string>();
+    if (auto x = h.find("exprErr"); x != h.end() && x->is_object() && x->contains(k) && (*x)[k].is_string()) p.err = (*x)[k].get<std::string>();
+    const bool qte = k == "qty" || k == "qty2";
+    const std::string lue = k == "qty" ? "copies" : k == "qty2" ? "copies2" : k;
+    if (auto v = h.find(lue); v != h.end() && v->is_number()) p.valeur = v->get<double>();
+    if (qte) p.valeur = std::min(200.0, std::max(1.0, std::floor(p.valeur != 0 ? p.valeur : 1))) + 1;
+    if (k == "distance") p.valeur = std::abs(p.valeur);
+    d.porteurs.push_back(std::move(p));
+  }
+}
+static void lirePorteurs(const json& jf, const Fonction& f, Document& d) {
+  if (vrai(jf, "repeatId")) return;  // instances de répétition : elles suivent leur source
+  lirePorteursDe(jf, f, -1, d);
+  if (auto t = jf.find("thread"); t != jf.end() && t->is_object()) lirePorteursDe(*t, f, -2, d);
+  if (auto e = jf.find("edges"); e != jf.end() && e->is_array())
+    for (size_t i = 0; i < e->size(); i++)
+      if ((*e)[i].is_object()) lirePorteursDe((*e)[i], f, static_cast<int>(i), d);
+}
 static void lireConge(const json& jf, Fonction& f, std::map<std::string, int>& refus) {
   f.chamfer = vrai(jf, "chamfer");
   if (auto t = jf.find("tangent"); t != jf.end() && t->is_boolean()) f.tangent = t->get<bool>() ? 1 : 0;
@@ -314,7 +353,6 @@ static void lireConge(const json& jf, Fonction& f, std::map<std::string, int>& r
     if (je.contains("len") && je["len"].is_number()) a.len = je["len"].get<double>();
     a.seed = je.contains("seed") && (je["seed"].is_number() ? je["seed"].get<double>() != 0 : vrai(je, "seed"));
     a.nomAffiche = texte(je, "name");
-    if (je.contains("expr") && je["expr"].is_object() && !je["expr"].empty() && f.visible) refus["cote par formule"]++;
     if (auto x = je.find("anchor"); x != je.end() && x->is_object()) {
       AncreArete& n = a.ancre;
       n.existe = true;
@@ -363,8 +401,8 @@ static void lireFonction(const json& jf, Document& d, std::map<std::string, int>
       refus["extrusion limitée à certaines zones"]++;
     if (jf.contains("cutBodies") && jf["cutBodies"].is_array() && !jf["cutBodies"].empty())
       refus["découpe dans plusieurs corps"]++;
-    if (jf.contains("expr") && jf["expr"].is_object() && !jf["expr"].empty()) refus["cote par formule"]++;
   }
+  lirePorteurs(jf, f, d);
   d.fonctions.push_back(std::move(f));
 }
 
@@ -409,12 +447,48 @@ Document lireProjet(const std::wstring& chemin) {
   }
   for (auto& s : j["sketches"]) lireEsquisse(s, d, refus);
   for (auto& f : j["features"]) lireFonction(f, d, refus);
-  if (j.contains("params") && j["params"].is_array() && !j["params"].empty()) refus["paramètres nommés"]++;
+  if (auto x = j.find("params"); x != j.end() && x->is_array())
+    for (auto& jp : *x) {
+      if (!jp.is_object()) continue;
+      Parametre p;
+      p.nom = texte(jp, "name");
+      p.err = texte(jp, "err");
+      if (auto e = jp.find("expr"); e != jp.end() && !e->is_null()) {
+        p.exprNombre = !e->is_string();
+        p.expr = e->is_string() ? e->get<std::string>() : e->dump();
+      }
+      if (auto v = jp.find("value"); v != jp.end() && v->is_number()) {
+        p.value = v->get<double>();
+        p.aValeur = true;
+      }
+      d.params.push_back(std::move(p));
+    }
+  if (auto x = j.find("derive"); x != j.end() && x->is_array())
+    for (auto& L : *x)
+      if (auto y = L.find("params"); y != L.end() && y->is_array())
+        for (auto& jp : *y) {
+          ParamDerive p;
+          p.nom = texte(jp, "name");
+          p.lien = texte(L, "name");
+          p.absent = vrai(jp, "miss");
+          if (auto v = jp.find("value"); v != jp.end() && v->is_number()) p.value = v->get<double>();
+          d.derives.push_back(std::move(p));
+        }
+  if (auto x = j.find("cgeo"); x != j.end() && x->is_array())
+    for (auto& c : *x)
+      if (auto p = c.find("p"); p != c.end() && p->is_object()) {
+        Fonction f;
+        f.id = texte(c, "id");
+        f.nom = texte(c, "name");
+        lirePorteursDe(*p, f, -3, d);
+      }
   if (lot && racine.contains("imports") && !racine["imports"].empty()) refus["fichier importé"]++;
   if (j.contains("asm") && j["asm"].is_object()) refus["assemblage"]++;
   if (j.contains("components") && j["components"].is_array() && !j["components"].empty()) refus["assemblage"]++;
   for (auto& [k, n] : refus) d.nonPrisEnCharge.push_back(k + " × " + std::to_string(n));
   d.esquissesFichier = d.esquisses;
   d.fonctionsFichier = d.fonctions;
+  d.paramsFichier = d.params;
+  d.porteursFichier = d.porteurs;
   return d;
 }

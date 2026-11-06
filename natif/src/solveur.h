@@ -53,7 +53,9 @@ class Solveur {
 
   // Une valeur tapée par l'utilisateur (editDim et skSolveOrRevert) : si l'esquisse était résolue et ne l'est plus,
   // ou si une ligne est écrasée en un point, tout revient à l'état d'avant et la raison est rendue. Rend false en cas de refus.
-  bool saisir(const std::string& id, double valeur, std::string* raison = nullptr);
+  bool saisir(const std::string& id, double valeur, std::string* raison = nullptr, const Esquisse* formules = nullptr);
+  // Les cotes à formule prennent les valeurs de cette esquisse : parResolve vient de les changer
+  void poserFormules(const Esquisse& s);
   // skRevertTo, une fois l'esquisse rétablie et le solveur refait dessus : les valeurs sont notées, rien n'est résolu
   void apresRefus() { refuser(instantane()); }
   // L'annulation du navigateur (skUndoTrans) : l'état d'avant, puis une résolution

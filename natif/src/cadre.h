@@ -1,5 +1,6 @@
 // Fenêtre principale : l'environnement du navigateur autour de la vue 3D et de l'écran d'esquisse.
 #pragma once
+#include "fenetre_parametres.h"
 #include <wx/wx.h>
 #include <wx/propgrid/propgrid.h>
 #include <wx/treectrl.h>
@@ -43,7 +44,16 @@ class Cadre : public wxFrame {
     bool creation = false;  // ce pas a ajouté une esquisse à la pièce
     bool avecFonctions = false;
     std::vector<Fonction> fonctionsAvant, fonctionsApres;
+    bool avecFormules = false;
+    std::vector<Parametre> paramsAvant, paramsApres;
+    std::vector<PorteurFx> porteursAvant, porteursApres;
   };
+  // parAfterChange : la modification, ses conséquences, le recalcul, une annulation. Rend le message de refus, vide si accepté.
+  std::string changerFormules(const std::function<std::string()>& f);
+  std::string reglerCoteListe(size_t esquisse, const std::string& idCote, const std::string& texte);
+  ActionsFormules actionsFormules();
+  void basculerMiniParametres();
+  bool nomCotePourSaisie(const std::string& id, wxString& nom);
   void etat(const wxString& texte);
   void creerMenus();
   void creerEnvironnement();
@@ -163,6 +173,9 @@ public:
   int fonctionMontree_ = -1;
   double msRejeu_ = 0, msMaillage_ = 0;
   std::vector<ModifCote> annulations_, retablissements_;
+  MiniParametres* miniParams_ = nullptr;
+  wxBoxSizer* colonneFx_ = nullptr;
+  wxString saisieDepart_;  // le texte proposé à l'ouverture de la saisie : le laisser tel quel ne change rien
   std::vector<wxTreeItemId> lignesFonctions_, lignesEsquisses_;  // la ligne de l'arbre de chaque fonction, de chaque esquisse
   Protocole proto_;
 };

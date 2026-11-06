@@ -474,8 +474,30 @@ const Entite* Dessin::entiteProche(double x, double y, double maxD, bool sansCon
   return best;
 }
 
+std::vector<P2d> touchesPlan(const Esquisse& s, const std::vector<Vec3>& P) {  // skPlTouches
+  std::vector<P2d> out;
+  const auto z = [&](const Vec3& p) { return (p[0] - s.o[0]) * s.n[0] + (p[1] - s.o[1]) * s.n[1] + (p[2] - s.o[2]) * s.n[2]; };
+  const auto mettre = [&](const Vec3& p) { out.push_back({(p[0] - s.o[0]) * s.u[0] + (p[1] - s.o[1]) * s.u[1] + (p[2] - s.o[2]) * s.u[2], (p[0] - s.o[0]) * s.v[0] + (p[1] - s.o[1]) * s.v[1] + (p[2] - s.o[2]) * s.v[2]}); };
+  for (size_t i = 0; i < P.size(); i++) {
+    const double zi = z(P[i]);
+    if (std::abs(zi) < 2e-3) {
+      mettre(P[i]);
+      continue;
+    }
+    if (i + 1 < P.size()) {
+      const double zj = z(P[i + 1]);
+      if (std::abs(zj) >= 2e-3 && zi * zj < 0) {
+        const double t = zi / (zi - zj);
+        mettre({P[i][0] + (P[i + 1][0] - P[i][0]) * t, P[i][1] + (P[i + 1][1] - P[i][1]) * t, P[i][2] + (P[i + 1][2] - P[i][2]) * t});
+      }
+    }
+  }
+  return out;
+}
+
 Dessin::Accroche Dessin::accroche(double x, double y, const std::string& sauf) const {
   Accroche a;
+  survolPlan_ = CiblePlan{};
   const std::string pid = pointProche(x, y, SNAP_, sauf);
   if (!pid.empty()) {
     const Pt& p = s_.points.at(pid);
@@ -519,6 +541,16 @@ Dessin::Accroche Dessin::accroche(double x, double y, const std::string& sauf) c
     a.id = bc;
     a.x = p.x;
     a.y = p.y;
+    return a;
+  }
+  if (outilPlan()) {  // skPlSnap
+    survolPlan_ = ciblePlan(x, y);
+    if (survolPlan_) {
+      a.sorte = Accroche::PLAN;
+      a.x = survolPlan_.x;
+      a.y = survolPlan_.y;
+      a.plan = survolPlan_;
+    }
   }
   return a;
 }
@@ -669,6 +701,7 @@ bool Dessin::lacher(const std::string& pid, const Accroche& a) {
 std::string Dessin::pointAccroche(double x, double y) {
   const Accroche a = accroche(x, y);
   if (a.sorte == Accroche::POINT) return a.id;
+  if (a.sorte == Accroche::PLAN) return materialiser(a.plan);
   if (a.sorte == Accroche::MILIEU) {
     const std::string pid = ajouterPoint(a.x, a.y);
     Contrainte c = contrainte("midpoint");
@@ -1146,6 +1179,7 @@ void Dessin::enfonce(double wx, double wy, bool ctrl, const std::string& ligneCo
       ed_.solveur.glisserOublier();
       return;
     }
+    if (choisirPlan(wx, wy, ctrl)) return;
     if (!ctrl) selection_.clear();
     boite_ = Boite{};
     boite_.actif = true;
@@ -1169,7 +1203,10 @@ void Dessin::enfonce(double wx, double wy, bool ctrl, const std::string& ligneCo
     return;
   }
   if (outil_ == SPLINE || outil_ == CSPLINE) return clicSpline(wx, wy);
-  if (outil_ == COTE) return enfonceCote(wx, wy, ctrl);
+  if (outil_ == COTE) {
+    preparerCotePlan(wx, wy);
+    return enfonceCote(wx, wy, ctrl);
+  }
   if (outil_ == AJUSTER) return clicAjuster(wx, wy);
   if (outil_ == DECALER) return clicDecaler(wx, wy);
   if (outil_ == LIGNE) {
@@ -1179,6 +1216,7 @@ void Dessin::enfonce(double wx, double wy, bool ctrl, const std::string& ligneCo
       return;
     }
     const bool depuisChaine = !chaine_.empty();
+    if (chaine_.empty()) pousserSiPlan(wx, wy);
     const std::string dep = !chaine_.empty() ? chaine_ : pointAccroche(wx, wy);
     const Pt& S = *s_.point(dep);
     bas_ = Bas{};
@@ -1194,6 +1232,7 @@ void Dessin::enfonce(double wx, double wy, bool ctrl, const std::string& ligneCo
   }
   if (outil_ == RECTANGLE || outil_ == CERCLE || outil_ == OBLONG || outil_ == POLYGONE) {
     if (bas_.actif) return;
+    pousserSiPlan(wx, wy);
     const std::string pid = pointAccroche(wx, wy);
     const Pt& S = *s_.point(pid);
     bas_ = Bas{};
@@ -1270,6 +1309,10 @@ void Dessin::bouge(double wx, double wy, bool gaucheTenu) {
     boite_.x1 = wx;
     boite_.y1 = wy;
     return;
+  }
+  if (planActif && !bas_.actif && glisseP_.empty() && !glisseE_.actif && !glisseC_.actif) {  // les arêtes du solide s'allument au survol
+    if (outil_ == SELECTION) survolPlan_ = !pointProche(wx, wy, SNAP_).empty() || entiteProche(wx, wy, PICK_) ? CiblePlan{} : ciblePlan(wx, wy, true);
+    else if (outilPlan()) accroche(wx, wy);
   }
   if (outil_ == SPLINE || outil_ == CSPLINE) return bougerSpline(wx, wy);
   if (outil_ == PROJETER) return bougerProjeter(wx, wy);
@@ -1555,6 +1598,8 @@ std::string Dessin::validerLigne(const std::string& depuis, const Accroche& a, d
   std::string fin;
   if (a.sorte == Accroche::POINT) {
     fin = a.id;
+  } else if (a.sorte == Accroche::PLAN) {
+    fin = materialiser(a.plan);
   } else if (a.sorte == Accroche::MILIEU) {
     fin = ajouterPoint(a.x, a.y);
     Contrainte c = contrainte("midpoint");
@@ -2829,7 +2874,15 @@ void Dessin::relacherCercle(double wx, double wy) {
   s_.entites.push_back(nc);
   structure_ = true;
   if (const Pt* cp = s_.point(nc.pc)) accrocher(nc.pc, cp->x, cp->y, 1e-3);
-  if (s.sorte == Accroche::POINT && s.id != nc.pc && !aContrainte([&](const Contrainte& c) { return c.type == "oncircle" && c.p == s.id && c.ent == nc.id; })) {
+  if (s.sorte == Accroche::PLAN) {
+    const std::string q = materialiser(s.plan);
+    if (!q.empty() && q != nc.pc) {
+      Contrainte c = contrainte("oncircle");
+      c.p = q;
+      c.ent = nc.id;
+      lier(c);
+    }
+  } else if (s.sorte == Accroche::POINT && s.id != nc.pc && !aContrainte([&](const Contrainte& c) { return c.type == "oncircle" && c.p == s.id && c.ent == nc.id; })) {
     Contrainte c = contrainte("oncircle");
     c.p = s.id;
     c.ent = nc.id;
@@ -3081,6 +3134,8 @@ bool Dessin::basculerReference(const std::string& id) {
   d->refV = 1;  // choix de l'utilisateur, gardé (2 = sur-contrainte, réévaluée)
   d->formule = false;
   d->formuleFausse = false;
+  d->expr.clear();
+  d->exprErr.clear();
   structure_ = true;
   apresEdition();
   message("Cote de référence : elle mesure sans piloter.");
@@ -7183,4 +7238,495 @@ void Dessin::bougerIsect(double x, double y) {
   else if (!h.ok) message("\xE2\xA8\xAF Intersection : survolez une courbe de section (bleu clair) — clic : la face · Maj+clic : le corps entier · Ctrl+clic : plusieurs faces" + (ns ? " (" + std::to_string(ns) + " retenue" + pl + ", Entrée valide)" : std::string()) + ".");
   else if (h.corps) message("\xE2\xA8\xAF Corps entier — clic pour créer ses courbes d'intersection avec le plan.");
   else message("\xE2\xA8\xAF Face" + (h.st.empty() ? std::string() : " (" + h.st + ")") + " — clic : intersection de " + (ns ? "la sélection + cette face" : "cette face") + " · Ctrl+clic : ajouter/retirer · Maj : corps entier.");
+}
+
+// ---- Arêtes et points du solide utilisables directement (src/50-esquisse-7-plan-cibles.js)
+namespace {
+const double TOL_Z_PLAN = 2e-3;
+using FP = Dessin::FormePlan;
+using PP = Dessin::PointPlan;
+bool formeDe(const std::vector<P2d>& p2, FP& out) {  // skPlShape
+  if (p2.size() < 2) return false;
+  const P2d A = p2[0], B = p2.back();
+  if (p2.size() >= 6) {
+    const P2d p0 = A, p1 = p2[p2.size() / 3], q2 = p2[2 * p2.size() / 3];
+    const double d = 2 * (p0[0] * (p1[1] - q2[1]) + p1[0] * (q2[1] - p0[1]) + q2[0] * (p0[1] - p1[1]));
+    if (std::abs(d) > 1e-9) {
+      const double s0 = p0[0] * p0[0] + p0[1] * p0[1], s1 = p1[0] * p1[0] + p1[1] * p1[1], s2 = q2[0] * q2[0] + q2[1] * q2[1];
+      const double cx = (s0 * (p1[1] - q2[1]) + s1 * (q2[1] - p0[1]) + s2 * (p0[1] - p1[1])) / d, cy = (s0 * (q2[0] - p1[0]) + s1 * (p0[0] - q2[0]) + s2 * (p1[0] - p0[0])) / d;
+      const double r = hyp(p0[0] - cx, p0[1] - cy);
+      if (r > 0.5) {
+        double dev = 0;
+        for (const P2d& p : p2) dev = jsmax(dev, std::abs(hyp(p[0] - cx, p[1] - cy) - r));
+        if (dev < 0.35) {
+          out.cx = cx;
+          out.cy = cy;
+          out.r = r;
+          if (hyp(B[0] - A[0], B[1] - A[1]) < 0.5) {
+            out.sorte = FP::CERCLE;
+            return true;
+          }
+          const P2d pm = p2[p2.size() / 2];
+          double o[4];
+          arcOriente(cx, cy, A[0], A[1], B[0], B[1], pm[0], pm[1], o);
+          out.sorte = FP::ARC;
+          out.x1 = o[0];
+          out.y1 = o[1];
+          out.x2 = o[2];
+          out.y2 = o[3];
+          return true;
+        }
+      }
+    }
+  }
+  const double cl = hyp(B[0] - A[0], B[1] - A[1]);
+  if (cl < 1e-6) return false;
+  double dv = 0;
+  for (const P2d& p : p2) dv = jsmax(dv, std::abs((p[0] - A[0]) * (B[1] - A[1]) - (p[1] - A[1]) * (B[0] - A[0])) / cl);
+  if (dv > 0.02) {
+    out.sorte = FP::COURBE;
+    out.pts = p2;
+    return true;
+  }
+  out.sorte = FP::LIGNE;
+  out.x1 = A[0];
+  out.y1 = A[1];
+  out.x2 = B[0];
+  out.y2 = B[1];
+  return true;
+}
+std::vector<P2d> croisementsPlan(const FP& a, const FP& b) {  // skPlIsect
+  const auto sur = [](const FP& e, double x, double y) {
+    if (e.sorte == FP::LIGNE) {
+      const double dx = e.x2 - e.x1, dy = e.y2 - e.y1, L2 = dx * dx + dy * dy;
+      if (L2 < 1e-12) return false;
+      const double t = ((x - e.x1) * dx + (y - e.y1) * dy) / L2;
+      return t > -1e-6 && t < 1 + 1e-6;
+    }
+    if (e.sorte == FP::ARC) return dansArc(m_atan2(y - e.cy, x - e.cx), m_atan2(e.y1 - e.cy, e.x1 - e.cx), m_atan2(e.y2 - e.cy, e.x2 - e.cx));
+    return true;
+  };
+  const auto rond = [](const FP& e) { return e.sorte == FP::CERCLE || e.sorte == FP::ARC; };
+  std::vector<P2d> R;
+  if (a.sorte == FP::LIGNE && b.sorte == FP::LIGNE) {
+    const double dx1 = a.x2 - a.x1, dy1 = a.y2 - a.y1, dx2 = b.x2 - b.x1, dy2 = b.y2 - b.y1, den = dx1 * dy2 - dy1 * dx2;
+    if (std::abs(den) < 1e-12) return {};
+    const double t = ((b.x1 - a.x1) * dy2 - (b.y1 - a.y1) * dx2) / den;
+    R.push_back({a.x1 + t * dx1, a.y1 + t * dy1});
+  } else if ((a.sorte == FP::LIGNE && rond(b)) || (rond(a) && b.sorte == FP::LIGNE)) {
+    const FP& L = a.sorte == FP::LIGNE ? a : b;
+    const FP& K = a.sorte == FP::LIGNE ? b : a;
+    const double dx = L.x2 - L.x1, dy = L.y2 - L.y1, fx = L.x1 - K.cx, fy = L.y1 - K.cy, A2 = dx * dx + dy * dy, B2 = 2 * (fx * dx + fy * dy), C2 = fx * fx + fy * fy - K.r * K.r, D = B2 * B2 - 4 * A2 * C2;
+    if (A2 < 1e-12 || D < 0) return {};
+    const double s = std::sqrt(D);
+    for (const double t : {(-B2 - s) / (2 * A2), (-B2 + s) / (2 * A2)}) R.push_back({L.x1 + t * dx, L.y1 + t * dy});
+  } else if (rond(a) && rond(b)) {
+    const double dx = b.cx - a.cx, dy = b.cy - a.cy, d = hyp(dx, dy);
+    if (d < 1e-9 || d > a.r + b.r || d < std::abs(a.r - b.r)) return {};
+    const double l = (a.r * a.r - b.r * b.r + d * d) / (2 * d), h = std::sqrt(jsmax(0.0, a.r * a.r - l * l)), mx = a.cx + dx * l / d, my = a.cy + dy * l / d;
+    R.push_back({mx - dy * h / d, my + dx * h / d});
+    R.push_back({mx + dy * h / d, my - dx * h / d});
+  } else {
+    return {};
+  }
+  std::vector<P2d> out;
+  for (const P2d& p : R)
+    if (sur(a, p[0], p[1]) && sur(b, p[0], p[1])) out.push_back(p);
+  return out;
+}
+bool piedForme(const FP& s, double x, double y, double& d, double& fx, double& fy) {  // skPlFoot
+  if (s.sorte == FP::LIGNE) {
+    const double dx = s.x2 - s.x1, dy = s.y2 - s.y1;
+    double L2 = dx * dx + dy * dy;
+    if (L2 == 0) L2 = 1e-12;
+    const double t = jsmax(0.0, jsmin(1.0, ((x - s.x1) * dx + (y - s.y1) * dy) / L2));
+    fx = s.x1 + t * dx;
+    fy = s.y1 + t * dy;
+    d = hyp(x - fx, y - fy);
+    return true;
+  }
+  if (s.sorte == FP::CERCLE || s.sorte == FP::ARC) {
+    const double dc = hyp(x - s.cx, y - s.cy);
+    if (dc < 1e-9) return false;
+    if (s.sorte == FP::ARC && !dansArc(m_atan2(y - s.cy, x - s.cx), m_atan2(s.y1 - s.cy, s.x1 - s.cx), m_atan2(s.y2 - s.cy, s.x2 - s.cx))) return false;
+    d = std::abs(dc - s.r);
+    fx = s.cx + (x - s.cx) / dc * s.r;
+    fy = s.cy + (y - s.cy) / dc * s.r;
+    return true;
+  }
+  return false;
+}
+}  // namespace
+
+bool Dessin::outilPlan() const {  // SK_PL_TOOLS
+  switch (outil_) {
+    case LIGNE: case RECTANGLE: case OBLONG: case CERCLE: case POLYGONE: case ARC: case POINT_C: case PERCAGE: case SPLINE: case CSPLINE: case COTE:
+      return true;
+    default:
+      return false;
+  }
+}
+
+const Dessin::CiblesPlan& Dessin::ciblesPlan() const {  // skPlBuild
+  if (ciblesFaites_) return cibles_;
+  ciblesFaites_ = true;
+  cibles_ = CiblesPlan{};
+  const std::vector<Arete3D>* L = planActif && aretes3D ? aretes3D() : nullptr;
+  if (!L) return cibles_;
+  std::vector<FormePlan>& E = cibles_.E;
+  std::vector<PointPlan>& P = cibles_.P;
+  const auto z = [&](const Vec3& p) { return (p[0] - s_.o[0]) * s_.n[0] + (p[1] - s_.o[1]) * s_.n[1] + (p[2] - s_.o[2]) * s_.n[2]; };
+  const auto en2d = [&](const Vec3& p) { return P2d{(p[0] - s_.o[0]) * s_.u[0] + (p[1] - s_.o[1]) * s_.u[1] + (p[2] - s_.o[2]) * s_.u[2], (p[0] - s_.o[0]) * s_.v[0] + (p[1] - s_.o[1]) * s_.v[1] + (p[2] - s_.o[2]) * s_.v[2]}; };
+  std::set<std::string> vus;
+  const auto k = [](double x) {  // (Math.round(x*1e4)/1e4).toFixed(4)
+    double v = std::floor(x * 1e4 + 0.5) / 1e4;
+    if (v == 0) v = 0;
+    char b[64];
+    snprintf(b, sizeof b, "%.4f", v);
+    return std::string(b);
+  };
+  const auto cle = [&](const FormePlan& s) {
+    if (s.sorte == FormePlan::CERCLE) return "c" + k(s.cx) + k(s.cy) + k(s.r);
+    if (s.sorte == FormePlan::COURBE) {
+      std::string o = "s";
+      for (size_t i = 0; i < s.pts.size(); i++) o += (i ? "," : "") + k(s.pts[i][0]) + k(s.pts[i][1]);
+      return o;
+    }
+    std::string a = k(s.x1) + "," + k(s.y1), b = k(s.x2) + "," + k(s.y2);
+    if (b < a) std::swap(a, b);
+    return std::string(s.sorte == FormePlan::ARC ? "arc" : "line") + a + ";" + b + (s.sorte == FormePlan::ARC ? k(s.cx) + k(s.cy) : "");
+  };
+  const auto ajouterForme = [&](const FormePlan& s) {
+    if (vus.insert(cle(s)).second) E.push_back(s);
+  };
+  struct Traverse {
+    double x, y;
+    bool aMid;
+    Vec3 mid;
+  };
+  std::vector<Traverse> traverses;
+  std::vector<FormePlan> loin;
+  for (const Arete3D& e : *L) {
+    if (e.pts.size() < 2) continue;
+    bool dans = true;
+    for (const Vec3& p : e.pts) dans = dans && std::abs(z(p)) < TOL_Z_PLAN;
+    std::vector<P2d> p2;
+    for (const Vec3& p : e.pts) p2.push_back(en2d(p));
+    FormePlan s;
+    if (dans) {
+      if (formeDe(p2, s)) {
+        s.aMid = true;
+        s.mid = e.mid;
+        ajouterForme(s);
+      }
+      continue;
+    }
+    for (const P2d& q : touchesPlan(s_, e.pts)) traverses.push_back({q[0], q[1], true, e.mid});
+    if (formeDe(p2, s)) {
+      s.loin = true;
+      s.aMid = true;
+      s.mid = e.mid;
+      loin.push_back(std::move(s));
+    }
+  }
+  const int nIn = static_cast<int>(E.size());
+  for (const FormePlan& s : loin) ajouterForme(s);
+  const auto pres = [&](double x, double y) -> PointPlan* {
+    for (PointPlan& p : P)
+      if (hyp(p.x - x, p.y - y) < 1e-4) return &p;
+    return nullptr;
+  };
+  const auto ajouterPt = [&](PointPlan::Sorte sorte, double x, double y, int i) {
+    if (PointPlan* q = pres(x, y)) {
+      if (std::find(q->e.begin(), q->e.end(), i) == q->e.end() && !(i >= nIn && std::any_of(q->e.begin(), q->e.end(), [&](int j) { return j < nIn; }))) q->e.push_back(i);
+      return;
+    }
+    PointPlan p;
+    p.sorte = sorte;
+    p.x = x;
+    p.y = y;
+    p.e = {i};
+    p.loin = i >= nIn;
+    P.push_back(std::move(p));
+  };
+  const auto ptsDe = [&](bool lo) {
+    for (int i = 0; i < static_cast<int>(E.size()); i++) {
+      if ((i >= nIn) != lo) continue;
+      const FormePlan& s = E[i];
+      if (s.sorte == FormePlan::LIGNE || s.sorte == FormePlan::ARC) {
+        ajouterPt(PointPlan::BOUT, s.x1, s.y1, i);
+        ajouterPt(PointPlan::BOUT, s.x2, s.y2, i);
+      } else if (s.sorte == FormePlan::COURBE) {
+        ajouterPt(PointPlan::BOUT, s.pts[0][0], s.pts[0][1], i);
+        ajouterPt(PointPlan::BOUT, s.pts.back()[0], s.pts.back()[1], i);
+      }
+    }
+    // Centres et milieux après les sommets : un sommet confondu garde sa nature de sommet
+    for (int i = 0; i < static_cast<int>(E.size()); i++) {
+      if ((i >= nIn) != lo) continue;
+      const FormePlan& s = E[i];
+      PointPlan p;
+      p.e = {i};
+      p.loin = lo;
+      if (s.sorte == FormePlan::LIGNE) {
+        p.x = (s.x1 + s.x2) / 2;
+        p.y = (s.y1 + s.y2) / 2;
+        p.sorte = PointPlan::MILIEU;
+        if (!pres(p.x, p.y)) P.push_back(p);
+      } else if (s.sorte != FormePlan::COURBE && !pres(s.cx, s.cy)) {
+        p.x = s.cx;
+        p.y = s.cy;
+        p.sorte = PointPlan::CENTRE;
+        P.push_back(p);
+      }
+    }
+  };
+  ptsDe(false);
+  if (nIn <= 600)
+    for (int i = 0; i < nIn; i++)
+      for (int j = i + 1; j < nIn; j++)
+        for (const P2d& q : croisementsPlan(E[i], E[j]))
+          if (!pres(q[0], q[1])) {
+            PointPlan p;
+            p.sorte = PointPlan::CROISEMENT;
+            p.x = q[0];
+            p.y = q[1];
+            p.e = {i, j};
+            P.push_back(std::move(p));
+          }
+  for (const Traverse& q : traverses)
+    if (!pres(q.x, q.y)) {
+      PointPlan p;
+      p.sorte = PointPlan::TRAVERSEE;
+      p.x = q.x;
+      p.y = q.y;
+      p.aMid = q.aMid;
+      p.mid = q.mid;
+      P.push_back(std::move(p));
+    }
+  ptsDe(true);
+  return cibles_;
+}
+
+Dessin::CiblePlan Dessin::ciblePlan(double x, double y, bool sel) const {
+  CiblePlan best;
+  const CiblesPlan& T = ciblesPlan();
+  if (T.E.empty() && T.P.empty()) return best;
+  double bd = SNAP_;
+  for (const PointPlan& p : T.P) {
+    if (sel && p.sorte == PointPlan::CROISEMENT) continue;  // SK_PL_SELKINDS : bouts, milieux, centres, traversées
+    const double d = hyp(p.x - x, p.y - y) * (p.loin ? 1.5 : 1);
+    if (d < bd) {
+      bd = d;
+      best.existe = true;
+      best.estPoint = true;
+      best.p = p;
+      best.x = p.x;
+      best.y = p.y;
+    }
+  }
+  if (best) return best;
+  bd = PICK_;
+  for (size_t i = 0; i < T.E.size(); i++) {
+    double d, fx, fy;
+    if (!piedForme(T.E[i], x, y, d, fx, fy)) continue;
+    d *= T.E[i].loin ? 1.5 : 1;
+    if (d < bd) {
+      bd = d;
+      best.existe = true;
+      best.estPoint = false;
+      best.i = static_cast<int>(i);
+      best.x = fx;
+      best.y = fy;
+    }
+  }
+  return best;
+}
+
+bool Dessin::memeForme(const Entite& en, const FormePlan& s) const {
+  const auto eq = [&](const std::string& id, double x, double y) {
+    const Pt* p = s_.point(id);
+    return p && hyp(p->x - x, p->y - y) < 1e-4;
+  };
+  if (s.sorte == FormePlan::LIGNE && en.t == "line") return (eq(en.p1, s.x1, s.y1) && eq(en.p2, s.x2, s.y2)) || (eq(en.p1, s.x2, s.y2) && eq(en.p2, s.x1, s.y1));
+  if (s.sorte == FormePlan::CERCLE && en.t == "circle") return eq(en.pc, s.cx, s.cy) && std::abs(en.r - s.r) < 1e-4;
+  if (s.sorte == FormePlan::ARC && en.t == "arc") return eq(en.pc, s.cx, s.cy) && std::abs(en.r - s.r) < 1e-4 && eq(en.pa, s.x1, s.y1) && eq(en.pb, s.x2, s.y2);
+  if (s.sorte == FormePlan::COURBE && en.t == "spline" && !en.pts.empty()) {
+    const P2d a = s.pts[0], b = s.pts.back();
+    return (eq(en.pts[0], a[0], a[1]) && eq(en.pts.back(), b[0], b[1])) || (eq(en.pts[0], b[0], b[1]) && eq(en.pts.back(), a[0], a[1]));
+  }
+  return false;
+}
+
+const Entite* Dessin::areteDansEsquisse(int i) {
+  const CiblesPlan& T = ciblesPlan();
+  if (i < 0 || i >= static_cast<int>(T.E.size())) return nullptr;
+  const FormePlan& s = T.E[i];
+  for (const Entite& en : s_.entites)
+    if (memeForme(en, s)) return &en;
+  Projetable pr;
+  pr.sorte = s.sorte == FormePlan::LIGNE ? Projetable::LIGNE : s.sorte == FormePlan::CERCLE ? Projetable::CERCLE : s.sorte == FormePlan::ARC ? Projetable::ARC : Projetable::COURBE;
+  pr.x1 = s.x1;
+  pr.y1 = s.y1;
+  pr.x2 = s.x2;
+  pr.y2 = s.y2;
+  pr.cx = s.cx;
+  pr.cy = s.cy;
+  pr.r = s.r;
+  pr.pts = s.pts;
+  pr.aMid = s.aMid;
+  pr.mid = s.mid;
+  const std::string id = creerProjection(pr);
+  return id.empty() ? nullptr : s_.entite(id);
+}
+
+void Dessin::poserSur(const std::string& pid, const Entite& en) {
+  if (en.t == "line") {
+    if (en.p1 == pid || en.p2 == pid || aContrainte([&](const Contrainte& c) { return c.type == "online" && c.p == pid && c.line == en.id; })) return;
+    Contrainte c = contrainte("online");
+    c.p = pid;
+    c.line = en.id;
+    lier(c);
+  } else if (en.t == "circle" || en.t == "arc") {
+    if (en.pa == pid || en.pb == pid || aContrainte([&](const Contrainte& c) { return c.type == "oncircle" && c.p == pid && c.ent == en.id; })) return;
+    Contrainte c = contrainte("oncircle");
+    c.p = pid;
+    c.ent = en.id;
+    lier(c);
+  } else if (en.t == "spline") {
+    if (aContrainte([&](const Contrainte& c) { return c.type == "onspline" && c.p == pid && c.ent == en.id; })) return;
+    Contrainte c = contrainte("onspline");
+    c.p = pid;
+    c.ent = en.id;
+    lier(c);
+  }
+}
+
+std::string Dessin::materialiser(const CiblePlan& h) {
+  if (!h) return "";
+  const CiblesPlan& T = ciblesPlan();
+  if (!h.estPoint) {
+    const Entite* en = areteDansEsquisse(h.i);
+    const Entite copie = en ? *en : Entite{};  // ajouter un point peut déplacer la liste
+    const std::string pid = ajouterPoint(h.x, h.y);
+    if (en) poserSur(pid, copie);
+    return pid;
+  }
+  const PointPlan p = h.p;
+  const auto eq = [&](const std::string& id) {
+    const Pt* q = s_.point(id);
+    return q && hyp(q->x - p.x, q->y - p.y) < 1e-4;
+  };
+  if (p.sorte == PointPlan::BOUT) {
+    // L'arête déjà projetée d'abord, sinon une ligne, sinon un arc (le sommet en est une extrémité)
+    const auto rang = [&](int i) {
+      const FormePlan& s = T.E[i];
+      const bool deja = std::any_of(s_.entites.begin(), s_.entites.end(), [&](const Entite& en) { return memeForme(en, s); });
+      return (deja ? 0 : 10) + (s.sorte == FormePlan::LIGNE ? 0 : s.sorte == FormePlan::ARC ? 1 : 2);
+    };
+    std::vector<int> ordre = p.e;
+    std::stable_sort(ordre.begin(), ordre.end(), [&](int a, int b) { return rang(a) < rang(b); });
+    if (const Entite* en = areteDansEsquisse(ordre[0])) {
+      std::vector<std::string> bouts;
+      if (en->t == "line") bouts = {en->p1, en->p2};
+      else if (en->t == "arc") bouts = {en->pa, en->pb};
+      else if (en->t == "spline") bouts = {en->pts.front(), en->pts.back()};
+      for (const std::string& q : bouts)
+        if (eq(q)) return q;
+    }
+    return ajouterPoint(p.x, p.y);
+  }
+  if (p.sorte == PointPlan::CENTRE) {
+    const Entite* en = areteDansEsquisse(p.e[0]);
+    return en && !en->pc.empty() ? en->pc : ajouterPoint(p.x, p.y);
+  }
+  const std::string pid = ajouterPoint(p.x, p.y);
+  if (p.sorte == PointPlan::MILIEU) {
+    const Entite* en = areteDansEsquisse(p.e[0]);
+    if (en && en->t == "line") {
+      Contrainte c = contrainte("midpoint");
+      c.p = pid;
+      c.line = en->id;
+      lier(c);
+    }
+  } else if (p.sorte == PointPlan::CROISEMENT) {
+    for (const int i : p.e)
+      if (const Entite* en = areteDansEsquisse(i)) {
+        const Entite copie = *en;
+        poserSur(pid, copie);
+      }
+  } else if (p.sorte == PointPlan::TRAVERSEE) {
+    Contrainte c = contrainte("fix");
+    c.p = pid;
+    lier(c);
+    Entite e;
+    e.id = nouvelE();
+    e.t = "cpoint";
+    e.p = pid;
+    e.construction = true;
+    e.proj = true;
+    e.pierce = true;
+    Projetable pr;
+    pr.aMid = p.aMid;
+    pr.mid = p.mid;
+    nommer(e, pr);
+    s_.entites.push_back(e);
+    structure_ = true;
+  }
+  return pid;
+}
+
+void Dessin::pousserSiPlan(double x, double y) {
+  if (!outilPlan()) return;
+  if (!pointProche(x, y, SNAP_).empty()) return;
+  if (ciblePlan(x, y)) pousser();
+}
+
+bool Dessin::preparerCotePlan(double x, double y) {
+  if (!pointProche(x, y, PT_).empty() || entiteProche(x, y, PICK_)) return false;
+  const CiblePlan h = ciblePlan(x, y);
+  if (!h) return false;
+  pousser();
+  if (!h.estPoint) areteDansEsquisse(h.i);
+  else materialiser(h);
+  survolPlan_ = CiblePlan{};
+  return true;
+}
+
+bool Dessin::choisirPlan(double x, double y, bool multi) {
+  const CiblePlan h = ciblePlan(x, y, true);
+  if (!h) return false;
+  pousser();
+  bool trouve = false;
+  Choix c;
+  if (!h.estPoint) {
+    if (const Entite* en = areteDansEsquisse(h.i)) {
+      c = {Choix::ENTITE, en->id};
+      trouve = true;
+    }
+  } else if (h.p.sorte == PointPlan::CENTRE) {
+    if (const Entite* en = areteDansEsquisse(h.p.e[0])) {
+      c = !en->pc.empty() ? Choix{Choix::POINT, en->pc} : Choix{Choix::ENTITE, en->id};
+      trouve = true;
+    }
+  } else {
+    const std::string pid = materialiser(h);
+    if (!pid.empty()) {
+      c = {Choix::POINT, pid};
+      trouve = true;
+    }
+  }
+  if (!trouve) {
+    if (annulerPas) annulerPas();
+    return false;
+  }
+  if (multi && !selection_.empty()) {
+    if (std::find(selection_.begin(), selection_.end(), c) == selection_.end()) selection_.push_back(c);
+  } else {
+    sansTete_ = false;
+    selection_ = {c};
+  }
+  survolPlan_ = CiblePlan{};
+  apresEdition();
+  return true;
 }
