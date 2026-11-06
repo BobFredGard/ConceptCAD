@@ -166,35 +166,3 @@ function skSlotDrawDraft(d){
   const[mx,my]=w2s((c1.x+c2.x)/2,(c1.y+c2.y)/2);
   label(mx,my-10,(d.mode==='bouts'?L:D).toFixed(2)+' · R'+d.r.toFixed(2));
 }
-function skSlotBuild(){
-  const host=document.getElementById('skMain');if(!host)return null;
-  const b=document.createElement('div');b.id='skSlotBar';
-  b.style.cssText='position:absolute;left:10px;top:10px;z-index:20;display:flex;gap:6px;align-items:center;padding:6px 10px;border:1px solid var(--border);border-radius:8px;background:var(--panel,#1e1e1e);font-size:.8rem';
-  b.appendChild(document.createTextNode('Oblong par'));
-  SK_SLOT_MODES.forEach(([k,lab,tip])=>{
-    const c=document.createElement('button');c.type='button';c.dataset.slot=k;c.textContent=lab;c.title=tip;
-    c.addEventListener('click',()=>{
-      skSlot.mode=k;skSlotSync();
-      if(skEdit&&skDown&&skDown.slot&&skDraft&&skDraft.t==='slot'){skDraft.mode=k;drawSketch2D();}
-      else skStatus(SK_SLOT_MSG[k][0]);
-    });
-    b.appendChild(c);
-  });
-  host.appendChild(b);
-  return b;
-}
-function skSlotSync(){
-  // le choix n'existe à l'écran que pendant l'outil Oblong
-  const on=!!skEdit&&skTool==='slot';
-  let b=document.getElementById('skSlotBar');
-  if(!on){if(b)b.style.display='none';return;}
-  if(!b)b=skSlotBuild();
-  if(!b)return;
-  b.style.display='flex';
-  b.querySelectorAll('button').forEach(c=>{
-    const act=c.dataset.slot===skSlot.mode;
-    c.style.background=act?'var(--accent,#2f7ff0)':'';
-    c.style.color=act?'#fff':'';
-    c.setAttribute('aria-pressed',act?'true':'false');
-  });
-}

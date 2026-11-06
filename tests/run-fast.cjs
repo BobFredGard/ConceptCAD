@@ -72,6 +72,7 @@ const SUITES = [
   'test_mep_accrochages',
   'test_mep_chaine',
   'test_esquisse_oblong',
+  'test_esquisse_traces',
   'test_mep_oblong',
   'test_mep_oblong_reel',
   'test_mep_angle_texte',

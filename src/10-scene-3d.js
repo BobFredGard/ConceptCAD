@@ -1679,10 +1679,11 @@ function skLoopTrace(sk){ // traçage de faces déterministe (demi-arêtes, mur 
       else if(ed.kind==='spline'){const pl=skEdgePoly(ed,h.from);for(let k=1;k<pl.length;k++)ring.push([pl[k][0],pl[k][1]]);}
       else{const a=ed.e,Cc=pts[a.pc],an=arcAngles(sk,a);if(!an||!Cc)return;
         const fwd=(ed.a===h.from);
-        let sA=fwd?an.a1:an.a2,sB=fwd?an.a2:an.a1;
-        let dd=sB-sA;dd=((dd%TAU)+TAU)%TAU;if(dd<1e-9)dd=TAU;
+        // 2026-11-06 : à rebours, l'arc se parcourt en sens horaire (l'anneau prenait le RESTE du cercle : disque fantôme sur un arc creux)
+        const sA=fwd?an.a1:an.a2,sens=fwd?1:-1;
+        let dd=an.a2-an.a1;dd=((dd%TAU)+TAU)%TAU;if(dd<1e-9)dd=TAU;
         const n2=Math.max(2,Math.ceil(dd/TAU*24));
-        for(let k=1;k<=n2;k++){const t=sA+dd*k/n2;ring.push([Cc.x+a.r*Math.cos(t),Cc.y+a.r*Math.sin(t)]);}
+        for(let k=1;k<=n2;k++){const t=sA+sens*dd*k/n2;ring.push([Cc.x+a.r*Math.cos(t),Cc.y+a.r*Math.sin(t)]);}
       }
     });
     return ring;

@@ -11,7 +11,7 @@
 
 ![Support de pédale déportée R1200RT en alu anodisé rouge sur béton, lancer de rayons de l'atelier RENDU (2048 échantillons)](docs/captures/rendu-pedale.jpg)
 
-Le noyau géométrique exact est **OpenCascade 8 compilé en WebAssembly** par nos soins (recette reproductible dans `occt-build/`), en deux versions : **multicœur**, choisie toute seule quand le navigateur et le PC le permettent et écrite dans la barre d'état, et normale, sur un seul cœur, qui reste celle du fichier autonome. S'il n'est pas disponible, l'application bascule seule sur un moteur maillage (CSG). Version actuelle : **V0.68.0** (voir le [journal des modifications](CHANGELOG.md)).
+Le noyau géométrique exact est **OpenCascade 8 compilé en WebAssembly** par nos soins (recette reproductible dans `occt-build/`), en deux versions : **multicœur**, choisie toute seule quand le navigateur et le PC le permettent et écrite dans la barre d'état, et normale, sur un seul cœur, qui reste celle du fichier autonome. S'il n'est pas disponible, l'application bascule seule sur un moteur maillage (CSG). Version actuelle : **V0.69.0** (voir le [journal des modifications](CHANGELOG.md)).
 
 **Pas d'Internet sur le poste ?** La [version autonome](https://www.dropbox.com/scl/fi/sne7f5a9y8dr659b2xrow/ConceptCAD-autonome.html?rlkey=fgd0w1r5816ake50vxtd4fnuj&dl=0) tient en un seul fichier à télécharger, qui s'ouvre par double-clic (voir [Démarrage](#démarrage)).
 
@@ -101,7 +101,7 @@ Les gestes sont détaillés dans [Souris, clavier et doigts](#souris-clavier-et-
 ### Esquisse
 
 - **Tracé guidé** : accroche aux points, milieux et centres ; inférences H / V, ⟂, tangente, **parallèle** et **prolongement** d'une ligne (guide tracé, contrainte posée au clic) ; un point glissé s'accroche aux points, milieux, lignes et cercles et la **contrainte est posée au lâcher** ; longueur et angle tapés pendant le tracé.
-- **Outils** : ligne, rectangle, **oblong en 3 clics** (2 centres, 2 extrémités ou centre et écartement, puis le rayon ; cotes posées au 3e clic, touche `B`), cercle, **polygone régulier** (nombre de côtés + Ø intérieur tangent aux côtés, touche `G`), arc, **spline**, points de construction et de perçage (perçage = rond orange, point ordinaire = carré), **projection associative** d'arêtes, **intersection** du plan avec des faces ou un corps, congé, chanfrein, décalage 2D, ajustement. Une contrainte ou une cote cliquée dans le panneau surligne en jaune ce qu'elle vise.
+- **Outils** : ligne, rectangle, **oblong en 3 clics** (2 centres, 2 extrémités ou centre et écartement, puis le rayon ; cotes posées au 3e clic, touche `B`), **plusieurs façons de tracer choisies dans un bandeau** : rectangle (2 coins, centre et coin, 3 points en biais), cercle (centre et rayon, 2 points, 3 points, tangent à 2 ou 3 traits), arc (centre et 2 points, 3 points, tangent à 1 ou 2 traits, touche `A`), cercle, **polygone régulier** (nombre de côtés + Ø intérieur tangent aux côtés, touche `G`), arc, **spline**, points de construction et de perçage (perçage = rond orange, point ordinaire = carré), **projection associative** d'arêtes, **intersection** du plan avec des faces ou un corps, congé, chanfrein, décalage 2D, ajustement. Une contrainte ou une cote cliquée dans le panneau surligne en jaune ce qu'elle vise.
 - **Projection d'arêtes** : aussi celles des autres composants. Une projetée reste fixe et ne bouge qu'avec son arête source ; un point rendu coïncident avec elle vient s'y coller ; ajustée, elle reste entière en construction et le tronçon gardé devient une droite posée dessus.
 - **Arêtes du solide sans projeter** : les arêtes du solide situées dans le plan de l'esquisse (trait plein), et aussi celles hors du plan vues en projection (tiretés), leurs sommets, milieux, centres et croisements, et les points où une arête traverse le plan, s'allument au survol (bouts en carrés) et servent directement au tracé et à la cote (projetées d'office, associatives). Sans outil actif, un clic les sélectionne comme une entité d'esquisse (Ctrl pour ajouter).
 - **Projeter d'une esquisse à une autre** : avec **⧉ Projeter**, les autres esquisses visibles s'affichent en bleu ; un clic reprend un point, une ligne, un cercle, un arc ou une courbe, qui suit ensuite sa source (sur un plan incliné, un cercle devient une ellipse).
@@ -330,10 +330,10 @@ npx serve . -l 3000
 
 | Chemin | Rôle |
 |---|---|
-| `src/*.js` | **Les sources** : 165 fichiers concaténés dans l'ordre alphabétique (noyau, esquisse, fonctions 3D, assemblage, FAO découpée par domaine, mise en plan, rendu, interface téléphone `99-mobile*.js`). C'est ici qu'on travaille. |
+| `src/*.js` | **Les sources** : 166 fichiers concaténés dans l'ordre alphabétique (noyau, esquisse, fonctions 3D, assemblage, FAO découpée par domaine, mise en plan, rendu, interface téléphone `99-mobile*.js`). C'est ici qu'on travaille. |
 | `ConceptCAD.html` | **Livrable généré** par `node build.js`. On n'édite jamais son script à la main. |
 | `PostPro/` | Une fiche par machine (`siemens-630.js`, `siemens-1520.js`, `fagor-8065.js`). Nouvelle machine = copier une fiche, la modifier, `npm run build`. |
-| `tests/` | 286 suites Node lancées en parallèle (`npm run ci:full`), 126 rapides (`npm run ci`), non-régression des parcours FAO (`npm run parcours`), tests de référence (`tests/oracle/`, [docs/oracle.md](docs/oracle.md)). |
+| `tests/` | 287 suites Node lancées en parallèle (`npm run ci:full`), 127 rapides (`npm run ci`), non-régression des parcours FAO (`npm run parcours`), tests de référence (`tests/oracle/`, [docs/oracle.md](docs/oracle.md)). |
 | `tests/browser/` | Playwright dans un vrai Chromium : parcours critiques et Rendu (`npm run test:browser`, seul projet lancé par la CI GitHub, déclenchée à la main) et carte graphique réelle (`npm run test:gpu`, en local). |
 | `tools/` | Lint du script concaténé (`npm run lint`), serveur MCP, **captures du README** (`npm run captures`), **fichier autonome** (`npm run autonome`). |
 | `occt/`, `threejs/` | Noyau OpenCascade WebAssembly (`occt/v3` : OCCT 8), rendu three.js. |

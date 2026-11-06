@@ -628,7 +628,7 @@ function solveSketchRelax(sk,iters,anchor){
         if((A.t!=='circle'&&A.t!=='arc')||(B.t!=='circle'&&B.t!=='arc'))return;
         const CA=P[A.pc],CB=P[B.pc];if(!CA||!CB)return;
         const dx=CB.x-CA.x,dy=CB.y-CA.y,d=Math.hypot(dx,dy)||1e-9;
-        const err=d-(A.r+B.r);if(Math.abs(err)<1e-9)return;
+        const err=d-(c.inner?Math.abs(A.r-B.r):A.r+B.r);if(Math.abs(err)<1e-9)return; // inner : un cercle dans l'autre
         const ux=dx/d,uy=dy/d;
         const aF=fix.has(A.pc),bF=fix.has(B.pc);
         if(!aF&&!bF){CA.x+=ux*err*0.25;CA.y+=uy*err*0.25;CB.x-=ux*err*0.25;CB.y-=uy*err*0.25;}
@@ -829,14 +829,20 @@ function sklsCollect(sk,out,B){
           // bout d'arc posé sur la ligne (congé) : c'est le PIED du centre. Au contact,
           // « point sur l'arc » + « tangence » sont dégénérés au 1er ordre (le point glisse
           // le long de la ligne sans résidu) → rang faux (+2 DDL fantômes par congé).
-          if(skForRank&&E.t==='arc')[E.pa,E.pb].forEach(pe=>{if(pe&&(pe===L.p1||pe===L.p2)){const Q=P[pe];if(Q)push((CC.x-Q.x)*ux+(CC.y-Q.y)*uy);}});
+          if(skForRank&&E.t==='arc')[E.pa,E.pb].forEach(pe=>{if(pe&&(pe===L.p1||pe===L.p2||(sk.constraints||[]).some(k=>k.type==='online'&&k.p===pe&&k.line===L.id))){const Q=P[pe];if(Q)push((CC.x-Q.x)*ux+(CC.y-Q.y)*uy);}});
         }
       }
     }
     if(c.type==='tangent2'){
       const A=entById(sk,c.a),B=entById(sk,c.b);
       if(A&&B&&(A.t==='circle'||A.t==='arc')&&(B.t==='circle'||B.t==='arc')){
-        const CA=P[A.pc],CB=P[B.pc];if(CA&&CB)push(Math.hypot(CB.x-CA.x,CB.y-CA.y)-(A.r+B.r));
+        const CA=P[A.pc],CB=P[B.pc];if(CA&&CB){push(Math.hypot(CB.x-CA.x,CB.y-CA.y)-(c.inner?Math.abs(A.r-B.r):A.r+B.r));
+          // 2 arcs qui partagent leur point de contact : même dégénérescence au 1er ordre que le bout d'arc sur sa tangente
+          // (le point glisse sans résidu) → pour le rang, le contact est sur la droite des centres (sinon 1 DDL fantôme).
+          if(skForRank){
+            const bouts=e=>e.t==='arc'?[e.pa,e.pb]:[],pose=(x,y)=>bouts(x).find(q=>q&&(sk.constraints||[]).some(k=>k.type==='oncircle'&&k.p===q&&k.ent===y.id));
+            const pe=bouts(A).find(q=>q&&bouts(B).indexOf(q)>=0)||pose(A,B)||pose(B,A),Q=pe&&P[pe],dc=Math.hypot(CB.x-CA.x,CB.y-CA.y);
+            if(Q&&dc>1e-9)push(((CB.x-CA.x)*(Q.y-CA.y)-(CB.y-CA.y)*(Q.x-CA.x))/dc);}}
       }
     }
     if(c.type==='coaxial'){ // mêmes centres : 2 résidus (dx, dy)

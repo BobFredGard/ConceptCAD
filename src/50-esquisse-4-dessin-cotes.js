@@ -125,8 +125,8 @@ function drawSketch2D(){
         out.push({x:C.x+(fx-C.x)/fd*e.r,y:C.y+(fy-C.y)/fd*e.r});
       }else if(k.type==='tangent2'&&(k.a===e.id||k.b===e.id)){
         const O=entById(sk,k.a===e.id?k.b:k.a);if(!O||!P[O.pc])return;
-        const OC=P[O.pc],dd=Math.hypot(OC.x-C.x,OC.y-C.y)||1e-9;
-        out.push({x:C.x+(OC.x-C.x)/dd*e.r,y:C.y+(OC.y-C.y)/dd*e.r});
+        const OC=P[O.pc],dd=Math.hypot(OC.x-C.x,OC.y-C.y)||1e-9,sg=k.inner&&e.r<O.r?-1:1; // tangence intérieure : le petit cercle touche du côté opposé
+        out.push({x:C.x+sg*(OC.x-C.x)/dd*e.r,y:C.y+sg*(OC.y-C.y)/dd*e.r});
       }
     });
     return out;
@@ -323,6 +323,7 @@ function drawSketch2D(){
         if(skInfer&&skInfer.ext){const g=skEl('text',{x:mx+18,y:my+4,fill:'#bf5af2','font-size':13,'font-weight':'bold'});g.textContent='⟶ sur la droite';}
       }}
     if(d.t==='slot')skSlotDrawDraft(d);
+    else if(d.t==='trace')skTrDrawDraft(d);
     else if(d.t==='rect'){const[a,b]=w2s(Math.min(d.x1,d.x2),Math.max(d.y1,d.y2));
       skEl('rect',{x:a,y:b,width:Math.abs(d.x2-d.x1)*skView.s,height:Math.abs(d.y2-d.y1)*skView.s,fill:'rgba(255,255,255,.06)',stroke:'#fff','stroke-dasharray':'5 3'});
       const t=skEl('text',{x:a+Math.abs(d.x2-d.x1)*skView.s/2,y:b+Math.abs(d.y2-d.y1)*skView.s/2,fill:'#ffd60a','font-size':13,'font-weight':'bold','text-anchor':'middle'});
@@ -349,7 +350,7 @@ function drawSketch2D(){
     h.textContent='Tab angle/longueur · Entrée OK · Échap annule';
   }
   if(skRoot)skOrbUpright(skRoot); // orbite : textes et étiquettes restent lisibles
-  skPolySync();skSlotSync();
+  skPolySync();skModeBarSync();
 }
 function dimById(sk,id){return (sk.dims||[]).find(d=>d.id===id);}
 function angleArcInfo(sk,d){ // {V,rr,a1,dd} — secteur STOCKE (a1=rayon A, dd=±value), arc et texte toujours cohérents

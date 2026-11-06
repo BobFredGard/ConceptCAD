@@ -602,11 +602,13 @@ svg.addEventListener('pointerdown',e=>{
     skSlotStart(sk,wx,wy);
     return;
   }
+  if(skTrActif(skTool)){skTrDown(sk,wx,wy);return;} // nouveaux modes du bandeau (50-esquisse-91)
   if(skTool==='rect'||skTool==='circle'||skTool==='polygon'){
     if(skDown) return;
     skPlUndoIfPlane(sk,wx,wy);
+    const fa=!!findSnap(sk,wx,wy);
     const pid=snapNewPoint(sk,wx,wy);const S=sk.points[pid];
-    skDown={pid,x:S.x,y:S.y,center:skMulti(e)&&skTool!=='circle'&&skTool!=='polygon'};
+    skDown={pid,x:S.x,y:S.y,fa,center:skTool==='rect'&&(skMulti(e)||skTraceMode.rect==='centre')};
     if(skTool==='polygon'){skPoly.last=null;skPoly.ang=Math.PI/2;}
     return;
   }
@@ -629,10 +631,16 @@ svg.addEventListener('pointerdown',e=>{
     skPushUndo();
     const pb=snapNewPoint(sk,wx,wy);
     const na={id:skNewEid(sk),t:'arc',pc:skArcC,pa:skArcPa,pb,r:skDraft.r};
+    // cote R posée à la création, sauf si le centre et un bout sont déjà tenus par ce qu'on a cliqué
+    const tenuP=q=>q===SK_ORIGIN||sk.entities.some(x=>skEntPids(x).indexOf(q)>=0)||(sk.constraints||[]).some(x=>x.p===q||x.a===q||x.b===q);
+    if(!(tenuP(na.pc)&&(tenuP(na.pa)||tenuP(na.pb)))){
+      const Pa=sk.points[na.pa],Pb=sk.points[na.pb],Rr=+na.r.toFixed(2),demi=Math.hypot(Pb.x-Pa.x,Pb.y-Pa.y)/2;
+      sk.dims.push({id:skNewEid(sk),type:'radius',ent:na.id,value:Rr>demi?Rr:+na.r.toFixed(6)});
+    }
     sk.entities.push(na);
     [na.pa,na.pb].forEach(pid=>{const pp=sk.points[pid];if(pp)skAutoAttach(sk,pid,pp.x,pp.y);});
     {const cp=sk.points[na.pc];if(cp)skAutoAttach(sk,na.pc,cp.x,cp.y,1e-3);}
-    skArcC=null;skArcA1=null;skArcPa=null;skDraft=null;afterEdit();return;
+    skArcC=null;skArcA1=null;skArcPa=null;skDraft=null;afterEdit();skStatus('Arc créé — cliquez le centre du suivant (Échap = fin).');return;
   }
   if(skTool==='dim'){
     skPlDimPrep(sk,wx,wy); // V0.20.1 : arête / point du plan → entité cotable (projetée)
@@ -906,6 +914,7 @@ svg.addEventListener('pointermove',e=>{
     skDraft={t:'line',x1:skDown.x,y1:skDown.y,x2:gx,y2:gy,gx,gy,snap:s};
     drawSketch2D();return;
   }
+  if(skTrActif(skTool)&&!skDrag&&!skDimDrag&&(!skDown||skDown.tr)){skTrMove(sk,wx,wy);return;}
   if(skTool==='slot'&&skDown){skSlotMove(sk,wx,wy);return;}
   if(skTool==='rect'&&skDown){
     let bx=wx,by=wy;const s=findSnap(sk,wx,wy);
@@ -995,6 +1004,7 @@ svg.addEventListener('pointerup',e=>{
     else if(finish&&!nl&&skDown===null){/* statut déjà posé */}
     solveSketch(sk);skDraft=null;skInfer=null;skSnapMk=null;cleanupSk(sk);drawSketch2D();renderSkPanel();return;
   }
+  if(skDown&&skDown.tr){skTrUp(sk,wx,wy);return;}
   if(skTool==='slot'&&skDown){skSlotUp(sk,wx,wy);return;}
   if(skTool==='rect'&&skDown){
     let bx=wx,by=wy;const s=findSnap(sk,wx,wy);
@@ -1018,7 +1028,7 @@ svg.addEventListener('pointerup',e=>{
       const l1={id:skNewEid(sk),t:'line',p1:A,p2:Bp},l2={id:skNewEid(sk),t:'line',p1:Bp,p2:Cp},
             l3={id:skNewEid(sk),t:'line',p1:Cp,p2:D},l4={id:skNewEid(sk),t:'line',p1:D,p2:A};
       sk.entities.push(l1,l2,l3,l4);
-      [A,Bp,Cp,D].forEach(pid=>{const pp=sk.points[pid];if(pp)skAutoAttach(sk,pid,pp.x,pp.y);});
+      [A,Bp,Cp,D].forEach(pid=>{const pp=sk.points[pid];if(pp)skAutoAttach(sk,pid,pp.x,pp.y,pid===Cp||(pid===A&&!center)?undefined:1e-3);}); // les coins non cliqués ne s'attachent pas à ce qui passe à côté
       sk.constraints.push({id:skNewEid(sk),type:'h',line:l1.id},{id:skNewEid(sk),type:'h',line:l3.id},
                           {id:skNewEid(sk),type:'v',line:l2.id},{id:skNewEid(sk),type:'v',line:l4.id});
       if(center){
@@ -1044,7 +1054,7 @@ svg.addEventListener('pointerup',e=>{
       }catch(e){}
     }
     skDown=null;skDraft=null;afterEdit();
-    skTool='select';document.querySelectorAll('#skToolbar .tool').forEach(x=>x.classList.toggle('on',x.dataset.tool==='select'));skStatus('Sélection (➤).');return;
+    skStatus('Rectangle créé, cotes posées — '+skTraceMsg('rect').replace(/^[^:]*: c/,'c').replace(/\.$/,'')+' du suivant (Échap = fin).');return;
   }
   if(skTool==='polygon'&&skDown){skPolyUp(sk,wx,wy);return;}
   if(skTool==='circle'&&skDown){
@@ -1053,14 +1063,18 @@ svg.addEventListener('pointerup',e=>{
     const r=Math.hypot(bx-skDown.x,by-skDown.y);
     if(r<=skMinLen()){skDraft=null;drawSketch2D();skStatus('Cercle : centre armé — déplacez puis 2e clic pour valider le Ø.');return;}
     skPushUndo();
-    const nc={id:skNewEid(sk),t:'circle',pc:skDown.pid,r};
+    const O=+(2*r).toFixed(2); // Ø rond, sauf si le tour est posé sur un point
+    const nc={id:skNewEid(sk),t:'circle',pc:skDown.pid,r:s||!(O>0)?r:O/2};
     sk.entities.push(nc);
     {const cp=sk.points[nc.pc];if(cp)skAutoAttach(sk,nc.pc,cp.x,cp.y,1e-3);}
     if(s&&s.kind==='plane'){const q=skPlMaterialize(sk,s.pl);if(q&&q!==nc.pc)sk.constraints.push({id:skNewEid(sk),type:'oncircle',p:q,ent:nc.id});} // V0.20.1
     else if(s&&s.kind==='point'&&s.pid&&s.pid!==nc.pc&&!(sk.constraints||[]).some(c=>c.type==='oncircle'&&c.p===s.pid&&c.ent===nc.id))
       sk.constraints.push({id:skNewEid(sk),type:'oncircle',p:s.pid,ent:nc.id}); // rayon posé sur un point → point sur cercle
+    // cote Ø posée à la création, sauf si le centre et le tour sont déjà tenus par ce qu'on a cliqué
+    const coter=!(skDown.fa&&s&&(s.kind==='point'||s.kind==='plane'))&&O>0;
+    if(coter)sk.dims.push({id:skNewEid(sk),type:'diameter',ent:nc.id,value:O});
     skDown=null;skDraft=null;afterEdit();
-    skStatus('Cercle créé — cliquez le centre du suivant (Échap = fin).');return; // 2026-10-16-001 : l'outil reste actif
+    skStatus('Cercle créé'+(coter?', cote posée':'')+' — cliquez le centre du suivant (Échap = fin).');return; // 2026-10-16-001 : l'outil reste actif
   }
 });
 function skEscapeToSelect(){
@@ -1388,7 +1402,7 @@ window.addEventListener('keydown',e=>{
   mk('polygon','⬡','Polygone régulier (G) : réglez le nombre de côtés et le Ø intérieur (tangent aux côtés), cliquez le centre, puis cliquez pour orienter — Ø vide : à la souris');
   const pg=bar.querySelector('[data-tool="polygon"]'),ci=bar.querySelector('[data-tool="circle"]');
   if(pg&&ci&&ci.parentNode)ci.parentNode.insertBefore(pg,ci.nextSibling);
-  bar.addEventListener('click',()=>{skPolySync();skSlotSync();}); // tout changement d'outil : réglages du polygone montrés ou masqués
+  bar.addEventListener('click',()=>{skPolySync();skModeBarSync();if(skEdit&&SK_TRACE_MODES[skTool])skStatus(skTraceMsg(skTool));}); // tout changement d'outil : réglages du polygone montrés ou masqués
   const sp=bar.querySelector('[data-tool="spline"]'),cs=bar.querySelector('[data-tool="cspline"]'),arc=bar.querySelector('[data-tool="arc"]');
   if(sp&&arc&&arc.parentNode)arc.parentNode.insertBefore(sp,arc.nextSibling);
   if(cs&&sp&&sp.parentNode)sp.parentNode.insertBefore(cs,sp.nextSibling);

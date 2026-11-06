@@ -438,7 +438,7 @@ function skAudit(sk){
     }
     if(c.type==='tangent2'){const A=entById(sk,c.a),B=entById(sk,c.b);
       if(A&&B){const CA=P[A.pc],CB=P[B.pc];
-        if(CA&&CB)push(c.id,'tangence',Math.abs(Math.hypot(CB.x-CA.x,CB.y-CA.y)-(A.r+B.r)));}}
+        if(CA&&CB)push(c.id,'tangence',Math.abs(Math.hypot(CB.x-CA.x,CB.y-CA.y)-(c.inner?Math.abs(A.r-B.r):A.r+B.r)));}}
     if(c.type==='coaxial'){const A=entById(sk,c.a),B=entById(sk,c.b);
       if(A&&B&&(A.t==='circle'||A.t==='arc')&&(B.t==='circle'||B.t==='arc')){const CA=P[A.pc],CB=P[B.pc];
         if(CA&&CB)push(c.id,'coaxiaux',Math.hypot(CB.x-CA.x,CB.y-CA.y));}}

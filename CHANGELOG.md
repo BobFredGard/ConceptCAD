@@ -8,7 +8,7 @@ sont sorties le 2026-09-30j.
 Code dans `src/` · livrable `fusion_mvp.html` (généré par `build.js`) · architecture et
 garde-fous en tête de `src/00-entete-et-outils.js`.
 
-**607 versions**, de `2026-09-28b` à `V0.68.0` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
+**608 versions**, de `2026-09-28b` à `V0.69.0` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
 comme dans le fichier d'origine.
 
 ---
@@ -6989,5 +6989,19 @@ Barquette ne perd plus son solide à la 107e modification, et sa mémoire ne mon
 - **Correctif Plan** : l'oblong est reconnu à sa forme. Outil Axes : un clic pose ses 2 centres et son axe, orientés selon l'oblong ; la case « Axes des perçages » les pose aussi. Outil Cote : les 2 arcs donnent l'entraxe, un arc et un bord donnent la position du centre, et ces cotes suivent la pièce, même pour un grand allongement. Le clic et l'accrochage sur un arc marchent sur tout l'arc.
 - **Forme du fichier** : ajouts seulement (axe `slot`, référence de point `slot`). Parcours FAO et `CACHE_VER` inchangés.
 - **Test** : `test_esquisse_oblong`, `test_mep_oblong`, `test_mep_oblong_reel` (projection exacte du noyau) ; vérifié dans le vrai logiciel à la souris.
+
+---
+
+## V0.69.0 - Le bandeau de choix pour le rectangle, le cercle et l'arc, avec cercles et arcs tangents
+
+- **Demande** : le petit menu en haut à gauche de l'oblong est repris pour les autres outils de dessin.
+- **Rectangle** : 2 coins, centre et coin, ou 3 points pour un rectangle en biais (angle droit tenu, longueur et largeur cotées, rotation libre). L'outil reste actif après le tracé ; les coins non cliqués ne s'attachent plus à ce qui passe à côté.
+- **Cercle** : centre et rayon (cote Ø désormais posée à la création), 2 points (diamètre), 3 points, ou tangent : 2 traits puis la taille, ou un 3e trait, parmi lignes, cercles et arcs. Le centre suit le curseur et l'aperçu montre le cercle obtenu. Deux droites parallèles imposent le rayon, le cercle y glisse. Un point dans le vide ne reste pas sur le dessin.
+- **Arc** : centre et 2 points (cote R désormais posée), 3 points, ou tangent : un trait puis l'arrivée, ou 2 traits puis la taille. Un clic sur le corps d'un trait part de son bout le plus proche ; sur un cercle, du point cliqué. Les traits choisis s'allument.
+- **Cotes** : posées à la création, sauf si la forme est déjà tenue par ce qu'on a cliqué. Aucun « Fixe ». La touche `A` ouvre l'arc.
+- **Solveur** : la tangence entre deux cercles ou arcs connaît le cas intérieur (`inner`, ajout à la forme du fichier). Un point de contact partagé ou posé sur le trait ne compte plus un degré de liberté fantôme.
+- **Cause du disque fantôme** : quand un contour parcourait un arc à rebours (arc creux), l'anneau calculé prenait le reste du cercle : disque teinté sans bord dans l'esquisse, aire fausse et mauvais choix de zone possible. Après correction, le volume extrudé d'une telle forme correspond au volume exact (vérifié au noyau).
+- **Forme du fichier** : ajout seulement. Parcours FAO et `CACHE_VER` inchangés.
+- **Test** : `test_esquisse_traces` ; vérifié dans le vrai logiciel à la souris, grille active ou non.
 
 ---
