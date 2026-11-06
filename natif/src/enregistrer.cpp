@@ -539,6 +539,66 @@ std::string refondre(const std::string& texte, const std::vector<Refonte>& L) {
 
 // Le fichier ramené à la structure de s : les nombres de ce qui existait déjà, ceux de s pour le neuf.
 // La seconde passe, celle qui retouche les nombres, part de cette esquisse.
+std::string texteVec(const Vec3& v) { return "[" + nombreJson(v[0]) + "," + nombreJson(v[1]) + "," + nombreJson(v[2]) + "]"; }
+// L'esquisse telle que newSketch la pose, vide : ce qui y est dessiné s'ajoute ensuite comme dans une esquisse existante
+std::string esquisseCreee(const Esquisse& s) {
+  std::string o = "{\"id\":" + texteJson(s.id) + ",\"name\":" + texteJson(s.nom) + ",\"plane\":" + texteJson(s.plan);
+  o += ",\"entities\":[],\"points\":{},\"constraints\":[],\"dims\":[],\"seq\":1,\"visible\":true,\"origin\":" + texteVec(s.o);
+  o += ",\"at\":" + (s.at.empty() ? std::string("null") : texteJson(s.at));
+  o += ",\"axU\":" + texteVec(s.u) + ",\"axV\":" + texteVec(s.v) + ",\"axN\":" + texteVec(s.n);
+  if (s.plan == "FACE") {
+    o += ",\"host\":";
+    if (!s.hote.existe) {
+      o += "null";
+    } else {
+      o += "{\"feat\":" + texteJson(s.hote.feat) + ",\"tag\":" + texteJson(s.hote.tag) + ",\"x\":" + nombreJson(s.hote.x) + ",\"y\":" + nombreJson(s.hote.y) + ",\"name\":" + texteJson(s.hote.nom);
+      if (s.hote.tag == "SIDE") o += ",\"edge\":" + texteJson(s.hote.edge) + ",\"h\":" + nombreJson(s.hote.h);
+      o += "}";
+    }
+  }
+  return o + ",\"rdV\":1}";
+}
+// Ajoute les esquisses créées à la fin de la liste, et le compteur de noms de faces s'il a servi
+std::string ajouterEsquisses(const std::string& texte, const std::vector<const Esquisse*>& L, int nomsFace) {
+  Parcours p(texte);
+  allerAuDocument(p);
+  p.blancs();
+  const size_t ouverture = p.ici() + 1;
+  std::vector<Morceau> morceaux;
+  std::string neuf;
+  bool avecNom = false;
+  for (const Esquisse* s : L) {
+    neuf += (neuf.empty() ? "" : ",") + esquisseCreee(*s);
+    avecNom = avecNom || s->hote.existe;
+  }
+  bool vuListe = false, vuNoms = false;
+  p.membres([&](const std::string& k) {
+    if (k == "sketches" && p.voir() == '[') {
+      vuListe = true;
+      const size_t d = p.ici();
+      p.aller(d + 1);
+      const bool vide = p.voir() == ']';
+      p.aller(d);
+      p.sauter();
+      morceaux.push_back({p.ici() - 1, p.ici() - 1, (vide ? "" : ",") + neuf});
+    } else if (k == "entNames" && avecNom) {
+      vuNoms = true;
+      if (p.voir() == '{') {
+        retoucherObjet(p, {{"face", std::to_string(nomsFace), true}}, morceaux);
+      } else {
+        const size_t d = p.ici();
+        p.sauter();
+        morceaux.push_back({d, p.ici(), "{\"face\":" + std::to_string(nomsFace) + "}"});
+      }
+    } else {
+      p.sauter();
+    }
+  });
+  if (!vuListe) Parcours::panne();
+  if (avecNom && !vuNoms) morceaux.push_back({ouverture, ouverture, "\"entNames\":{\"face\":" + std::to_string(nomsFace) + "},"});
+  return appliquer(texte, std::move(morceaux));
+}
+
 Esquisse aligner(const Esquisse& s, const Esquisse& f) {
   Esquisse t = s;
   for (const std::string& id : t.ordre)
@@ -634,7 +694,26 @@ std::string retoucher(const std::string& texte, const std::vector<Retouche>& ret
   return appliquer(texte, std::move(morceaux));
 }
 
-std::string texteEnregistre(const Document& d, const std::string& texteFichier) {
+std::string texteEnregistre(const Document& d, const std::string& texteOrigine) {
+  // Les esquisses créées sont d'abord écrites vides : la suite les traite comme des esquisses du fichier
+  if (d.esquisses.size() < d.esquissesFichier.size()) throw std::runtime_error("esquisse retirée d'une façon pas encore reprise, rien n'a été écrit");
+  std::vector<Esquisse> fichiers = d.esquissesFichier;
+  std::string texteFichier = texteOrigine;
+  if (d.esquisses.size() > fichiers.size()) {
+    std::vector<const Esquisse*> nouvelles;
+    for (size_t i = fichiers.size(); i < d.esquisses.size(); i++) nouvelles.push_back(&d.esquisses[i]);
+    texteFichier = ajouterEsquisses(texteOrigine, nouvelles, d.nomsFace);
+    for (const Esquisse* s : nouvelles) {
+      Esquisse f = *s;
+      f.ordre.clear();
+      f.points.clear();
+      f.entites.clear();
+      f.contraintes.clear();
+      f.cotes.clear();
+      f.seq = 1;
+      fichiers.push_back(std::move(f));
+    }
+  }
   std::vector<Retouche> retouches;
   for (size_t i = 0; i < d.fonctions.size(); i++)
     if (d.fonctions[i].distance != d.fonctions[i].distanceFichier) retouches.push_back({i, d.fonctions[i].distance});
@@ -643,9 +722,9 @@ std::string texteEnregistre(const Document& d, const std::string& texteFichier) 
   std::vector<Esquisse> alignees;  // n'est lue que par rang, et réservée : les adresses restent justes
   alignees.reserve(d.esquisses.size());
   for (size_t i = 0; i < d.esquisses.size(); i++)
-    alignees.push_back(memesLiens(d.esquisses[i], d.esquissesFichier[i]) ? d.esquissesFichier[i] : aligner(d.esquisses[i], d.esquissesFichier[i]));
+    alignees.push_back(memesLiens(d.esquisses[i], fichiers[i]) ? fichiers[i] : aligner(d.esquisses[i], fichiers[i]));
   for (size_t i = 0; i < d.esquisses.size(); i++)
-    if (!memesLiens(d.esquisses[i], d.esquissesFichier[i])) refontes.push_back({i, &d.esquisses[i], &d.esquissesFichier[i]});
+    if (!memesLiens(d.esquisses[i], fichiers[i])) refontes.push_back({i, &d.esquisses[i], &fichiers[i]});
 
   std::vector<RetoucheEsquisse> esquisses;
   for (size_t i = 0; i < d.esquisses.size(); i++) {

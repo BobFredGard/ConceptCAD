@@ -256,7 +256,9 @@ std::vector<size_t> suivantes(const Document& d, size_t i) {
 }  // namespace
 
 std::string esquisseFigee(const Document& d, size_t i) {
-  if (!d.nonPrisEnCharge.empty()) return "le solide de cette pièce n'est pas encore calculé par ce programme";
+  // Une esquisse libre, sans fonction ni lien avec le solide, ne dépend pas de ce que le natif ne sait pas calculer
+  const Esquisse& e = d.esquisses[i];
+  if (!d.nonPrisEnCharge.empty() && (consommatrice(d, e.id) >= 0 || e.hote.existe || avecProjection(e))) return "le solide de cette pièce n'est pas encore calculé par ce programme";
   const Solveur S(d.esquisses[i]);
   if (!S.prisEnCharge()) return S.raisonRefus();
   if (S.coteConvertie()) return "cette esquisse contient une ancienne cote d'entraxe à convertir dans le navigateur";

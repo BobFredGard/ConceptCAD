@@ -27,7 +27,9 @@ Une cote d'esquisse n'est modifiable que si le solide de la pièce se calcule : 
 
 Dessiner dans une esquisse modifiable : outils Sélection, Ligne, Rectangle, Cercle et Arc en haut de la vue, case « Grille 1 mm ». Accroches sur les points et les lignes, contraintes posées toutes seules avec guide (horizontal, vertical, perpendiculaire, parallèle, tangent). Glisser un point ou un élément, Suppr pour effacer, double-clic sur un élément pour le coter, clic droit pour finir un tracé, Échap pour revenir à Sélection puis sortir. Ctrl+Z, Ctrl+Y et Ctrl+S suivent. À l'enregistrement, ce qui n'a pas changé garde son texte d'origine.
 
-Il ne sait pas encore : polygone, oblong, ajuster, décaler, congé d'esquisse, outil Cote entre deux éléments, contraintes au clavier (F1 à F12), longueur tapée pendant le tracé, fenêtre de sélection, retirer une contrainte, déplacer l'étiquette d'une cote, s'accrocher aux arêtes du solide, créer une esquisse ou une pièce. Une cote de référence nommée ou par formule reste figée.
+Il ne sait pas encore : polygone, oblong, ajuster, décaler, congé d'esquisse, outil Cote entre deux éléments, contraintes au clavier (F1 à F12), longueur tapée pendant le tracé, fenêtre de sélection, retirer une contrainte, déplacer l'étiquette d'une cote, s'accrocher aux arêtes du solide, extruder une esquisse, supprimer une esquisse enregistrée, esquisse sur un plan de construction, nouvelle pièce. Une cote de référence nommée ou par formule reste figée.
+
+Créer une esquisse : menu **Esquisse**, sur le plan XY, XZ ou YZ, ou sur la face plane cliquée (elle suit alors sa face porteuse, comme dans le navigateur). Refermée sans rien dessiner, elle disparaît, comme dans le navigateur. Ctrl+Z annule la création tant qu'elle n'est pas enregistrée. Une esquisse sur plan se dessine aussi sur une pièce dont le natif ne calcule pas encore le solide : sans fonction ni lien, elle n'en dépend pas ; il n'y a donc pas d'esquisse sur face sur ces pièces.
 
 L'annulation du natif revient exactement à l'état d'avant, alors que celle du navigateur résout à nouveau : le résultat peut y différer de très peu.
 
@@ -181,8 +183,17 @@ Dessin (`BancDessin`, références `mesures/dessin-reference.cjs`) : 383 session
 - `mesures/verifier-dessin.ps1`, messages de souris et de clavier envoyés à la fenêtre sur une copie du Drapeau, sans prendre la main : rectangle, lignes, clic droit, Échap, cercle, arc, glisser, Suppr, Ctrl+Z, Ctrl+Y, double-clic pour coter, Ctrl+S avec `.bak`, fermeture sans question. Sur cet essai, navigateur et natif rouvrent le même volume : 66 325,875 mm³.
 - `verifier-cote.ps1`, `verifier-esquisse.ps1` (vraie souris), `tester-cotes-navigateur.cjs` (36 cas : mêmes 33 identiques et 3 écarts qu'avant), `tester-enregistrement.cjs` (176/176) et `BancSolveur` repassent.
 
+Créer une esquisse (`mesures/tester-nouvelle-esquisse.cjs`, `verifier-nouvelle-esquisse.ps1`), sur le Drapeau :
+- Les 11 faces planes comparées au navigateur (origine, axes, nom, fonction et arête porteuses) : aucun écart. Un cas limite est tranché à la main : quand l'origine tombe pile sur le bord d'une autre face, le navigateur, qui vise un maillage, passe d'un côté ou de l'autre ; le natif ne garde ce point que s'il touche la face choisie. C'est ce qui donne le même résultat sur ces 11 faces, sans preuve que ce soit toujours le cas.
+- 6 fichiers écrits par le natif (3 plans, 3 faces, un rectangle dessiné) puis rouverts par le navigateur : même esquisse, reste du fichier intact, même volume, l'esquisse s'ouvre.
+- 53 suites de gestes au hasard sur 5 fichiers contenant une esquisse neuve (`BancDessinCommunes`) : toutes identiques, 736 états à moins de 10⁻⁹ mm, 45 écrites comme le navigateur.
+- Dans la fenêtre, par messages : création sur plan, retrait quand elle reste vide, rectangle, Ctrl+Z et Ctrl+Y sur le tracé et la création, enregistrement, refus de retirer une esquisse enregistrée, message sans face choisie, clic sur une face, esquisse sur cette face, cercle, enregistrement, fermeture sans question. Sur la Griffe, non calculée : esquisse YZ avec rectangle écrite, reste du fichier identique.
+
+Correction du test `verifier-dessin.ps1` : ses numéros de menus étaient décalés de 1 (`wxID_HIGHEST` vaut 6000), Ctrl+Y n'y était donc pas essayé. Corrigé ; il passe. Le rétablissement de Ctrl+Y est de plus éprouvé par l'essai de création ci-dessus.
+
 ## Pas vérifié
 
+- L'esquisse sur face sur une autre pièce que le Drapeau, seule calculable : faces inclinées, faces sans porteuse et faces dans une découpe de forme compliquée n'y sont pas ou peu représentées.
 - Le dessin à la vraie main, par une personne : les essais passent par des messages envoyés à la fenêtre. Le dessin n'est possible que sur les pièces calculables, donc le Drapeau parmi les exemples ; les autres sont comparées sans fenêtre.
 - Le solveur est comparé sur les 125 esquisses, mais la modification avec solide qui suit seulement sur les 2 esquisses du Drapeau : les autres pièces ne se calculent pas encore.
 - Les 3 pièces où changer une profondeur demande de recalculer une esquisse posée de biais (Barquette, Cache Piles, Support Pédale) : le refus reste en place, car leur solide ne se calcule pas.

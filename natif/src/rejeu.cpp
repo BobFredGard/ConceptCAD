@@ -6,6 +6,10 @@
 #include <BRepAlgoAPI_Cut.hxx>
 #include <BRepAlgoAPI_Fuse.hxx>
 #include <BRepBndLib.hxx>
+#include <BRepClass_FaceClassifier.hxx>
+#include <BRepTools.hxx>
+#include <IntCurvesFace_ShapeIntersector.hxx>
+#include <gp_Lin.hxx>
 #include <BRepBuilderAPI_MakeEdge.hxx>
 #include <BRepBuilderAPI_MakeFace.hxx>
 #include <BRepBuilderAPI_MakeWire.hxx>
@@ -35,6 +39,7 @@
 #include <gp_Vec.hxx>
 
 #include <algorithm>
+#include <chrono>
 #include <cmath>
 #include <cstdio>
 #include <map>
@@ -616,3 +621,329 @@ void reglerParallele(bool actif) {
   BOPAlgo_Options::SetParallelMode(actif);
 }
 bool parallele() { return gParallele; }
+
+// ---------- Créer une esquisse (src/50-esquisse-1-ouverture-references.js, src/10-scene-3d.js) ----------
+namespace {
+const double TOUR = 6.283185307179586476925;
+double produitVec(const Vec3& a, const Vec3& b) { return a[0] * b[0] + a[1] * b[1] + a[2] * b[2]; }
+Vec3 diff(const Vec3& a, const Vec3& b) { return {a[0] - b[0], a[1] - b[1], a[2] - b[2]}; }
+double fixe3(double v) {  // +v.toFixed(3)
+  char b[64];
+  snprintf(b, sizeof b, "%.3f", v);
+  return strtod(b, nullptr);
+}
+std::string base36(unsigned long long v) {
+  std::string s;
+  do {
+    s.insert(s.begin(), "0123456789abcdefghijklmnopqrstuvwxyz"[v % 36]);
+    v /= 36;
+  } while (v);
+  return s;
+}
+Esquisse esquisseVide(const Document& d, const std::string& plan) {
+  Esquisse s;
+  const unsigned long long ms = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch()).count();
+  size_t k = d.esquisses.size() + 1;
+  const auto pris = [&](const std::string& id) { return std::any_of(d.esquisses.begin(), d.esquisses.end(), [&](const Esquisse& x) { return x.id == id; }); };
+  do s.id = "sk_" + std::to_string(k++) + "_" + base36(ms);
+  while (pris(s.id));
+  s.nom = "Esquisse " + std::to_string(d.esquisses.size() + 1);
+  s.plan = plan;
+  if (!d.fonctions.empty()) s.at = d.fonctions.back().id;
+  return s;
+}
+
+using Anneau2 = std::vector<std::array<double, 2>>;
+Anneau2 polygoneChaine(const Esquisse& s, const Trace& tr, const Chaine& ch) {  // chainPolygon
+  Anneau2 r;
+  for (size_t i = 0; i < ch.size(); i++) {
+    const Pas& st = ch[i];
+    const Arete& ed = tr.aretes[st.arete];
+    if (!ed.arc) {
+      const Pt& q = tr.pts.at(ed.a == st.depuis ? ed.b : ed.a);
+      r.push_back({q.x, q.y});
+    } else {
+      const auto an = anglesArc(s, *ed.e);
+      if (!an) return {};
+      const Pt& C = tr.pts.at(ed.e->pc);
+      const bool av = ed.a == st.depuis;
+      const double a1 = av ? an->a1 : an->a2, a2 = av ? an->a2 : an->a1;
+      double dd = std::fmod(std::fmod(a2 - a1, TOUR) + TOUR, TOUR);
+      if (dd < 1e-9) dd = TOUR;
+      const int n = std::max(8, static_cast<int>(std::ceil(dd / TOUR * 48)));
+      for (int k = 1; k <= n; k++) {
+        const double t = a1 + dd * k / n;
+        r.push_back({C.x + ed.e->r * std::cos(t), C.y + ed.e->r * std::sin(t)});
+      }
+    }
+    if (i == 0) {
+      const Pt& a = tr.pts.at(st.depuis);
+      r.insert(r.begin(), {a.x, a.y});
+    }
+  }
+  return r;
+}
+bool dansPoly(double x, double y, const Anneau2& r) {  // pip
+  bool dedans = false;
+  for (size_t i = 0, j = r.size() - 1; i < r.size(); j = i++) {
+    const double xi = r[i][0], yi = r[i][1], xj = r[j][0], yj = r[j][1];
+    if (((yi > y) != (yj > y)) && (x < (xj - xi) * (y - yi) / (yj - yi) + xi)) dedans = !dedans;
+  }
+  return dedans;
+}
+double distSeg(double px, double py, double ax, double ay, double bx, double by) {  // distSeg2
+  const double dx = bx - ax, dy = by - ay;
+  double L2 = dx * dx + dy * dy;
+  if (L2 == 0) L2 = 1e-18;
+  const double t = std::max(0.0, std::min(1.0, ((px - ax) * dx + (py - ay) * dy) / L2));
+  return std::hypot(px - (ax + t * dx), py - (ay + t * dy));
+}
+bool surBord(double x, double y, const Anneau2& a) {
+  for (size_t i = 0; i < a.size(); i++) {
+    const auto& q = a[(i + 1) % a.size()];
+    if (distSeg(x, y, a[i][0], a[i][1], q[0], q[1]) < 0.6) return true;
+  }
+  return false;
+}
+
+struct HoteTrouve {
+  const Fonction* f = nullptr;
+  std::string tag, edge;
+  double x = 0, y = 0, h = 0;
+};
+HoteTrouve hotePourFace(const Document& d, const Vec3& pt, const Vec3& n) {  // findHostForFace, tol 1 mm
+  const double tol = 1.0;
+  HoteTrouve best;
+  double bd = 1e9;
+  for (const Fonction& f : d.fonctions) {
+    if (f.type != "extrude" || !f.visible) continue;
+    const Esquisse* hs = nullptr;
+    for (const Esquisse& s : d.esquisses)
+      if (s.id == f.esquisse) hs = &s;
+    if (!hs) continue;
+    const double dot = produitVec(n, hs->n);
+    if (std::abs(std::abs(dot) - 1) > 1e-2 && std::abs(dot) > 1e-2) continue;
+    const Plage sp = plageDe(f, hs, TopoDS_Shape());
+    const Vec3 dp = diff(pt, hs->o);
+    const double x = produitVec(dp, hs->u), y = produitVec(dp, hs->v);
+    if (std::abs(std::abs(dot) - 1) <= 1e-2) {
+      const bool onLo = f.op == "cut" ? dot > 0 : dot < 0;
+      const double h = onLo ? sp.lo : sp.hi;
+      const Vec3 cand{hs->o[0] + hs->n[0] * h, hs->o[1] + hs->n[1] * h, hs->o[2] + hs->n[2] * h};
+      const double mDist = std::abs(produitVec(n, diff(pt, cand)));
+      if (mDist > tol || mDist > bd) continue;
+      const Trace tr = tracerContours(*hs);
+      if (tr.solides.empty() && tr.cerclesSeuls.empty()) continue;
+      bool touche = false;
+      const auto essayer = [&](const Anneau2& ring, const std::vector<Anneau2>& trous) {
+        if (touche) return;
+        const bool bord = surBord(x, y, ring);
+        if (!dansPoly(x, y, ring) && !bord) return;
+        bool dansTrou = false;
+        for (const Anneau2& t : trous)
+          if (dansPoly(x, y, t) || surBord(x, y, t)) dansTrou = true;
+        if (!dansTrou || bord) touche = true;
+      };
+      for (const ContourPlein& c : tr.solides) {
+        if (c.chaine.empty()) continue;
+        const Anneau2 ring = polygoneChaine(*hs, tr, c.chaine);
+        if (ring.size() < 3) continue;
+        std::vector<Anneau2> trous;
+        for (const Chaine& t : c.trous) trous.push_back(polygoneChaine(*hs, tr, t));
+        essayer(ring, trous);
+      }
+      for (const Entite* c : tr.cerclesSeuls) {
+        const Pt* C = hs->point(c->pc);
+        if (!C) continue;
+        Anneau2 ring;
+        for (int i = 0; i < 48; i++) ring.push_back({C->x + c->r * std::cos(i / 48.0 * TOUR), C->y + c->r * std::sin(i / 48.0 * TOUR)});
+        essayer(ring, {});
+      }
+      if (!touche) continue;
+      best = HoteTrouve{&f, onLo ? "BOTTOM" : "TOP", "", fixe3(x), fixe3(y), 0};
+      bd = mDist;
+    } else {
+      const double zl = produitVec(dp, hs->n);
+      if (zl < sp.lo - tol || zl > sp.hi + tol) continue;
+      const double n2x = produitVec(n, hs->u), n2y = produitVec(n, hs->v);
+      if (std::hypot(n2x, n2y) < 0.99) continue;
+      const Entite* bE = nullptr;
+      double bd2 = 1e9, bx = 0, by = 0;
+      for (const Entite& en : hs->entites) {
+        if (en.t != "line" || en.construction) continue;
+        const Pt* a = hs->point(en.p1);
+        const Pt* b = hs->point(en.p2);
+        if (!a || !b) continue;
+        const double ex = b->x - a->x, ey = b->y - a->y, L2 = ex * ex + ey * ey;
+        if (L2 < 1e-12) continue;
+        const double ux = ex / std::sqrt(L2), uy = ey / std::sqrt(L2);
+        if (std::abs(ux * n2x + uy * n2y) > 0.1) continue;
+        const double u = ((x - a->x) * ex + (y - a->y) * ey) / L2;
+        const double px = a->x + ex * u, py = a->y + ey * u, dist = std::hypot(x - px, y - py);
+        if (dist > tol || dist > bd2) continue;
+        bd2 = dist;
+        bE = &en;
+        bx = px;
+        by = py;
+      }
+      if (!bE || bd2 > bd) continue;
+      best = HoteTrouve{&f, "SIDE", bE->id, fixe3(bx), fixe3(by), fixe3(zl)};
+      bd = bd2;
+    }
+  }
+  return best;
+}
+}  // namespace
+
+Esquisse nouvelleEsquissePlan(const Document& d, const std::string& plan) {
+  Esquisse s = esquisseVide(d, plan);
+  if (plan == "XZ") {  // planeBasis, comme à la lecture
+    s.u = {1, 0, 0};
+    s.v = {0, 0, 1};
+    s.n = {0, -1, 0};
+  } else if (plan == "YZ") {
+    s.u = {0, 1, 0};
+    s.v = {0, 0, 1};
+    s.n = {1, 0, 0};
+  }
+  return s;
+}
+
+bool pointDansFace(const TopoDS_Face& face, double p[3]) {
+  GProp_GProps g;
+  BRepGProp::SurfaceProperties(face, g);
+  const BRepAdaptor_Surface a(face);
+  const auto garder = [&](const gp_Pnt& q) {
+    p[0] = q.X();
+    p[1] = q.Y();
+    p[2] = q.Z();
+    return true;
+  };
+  double u0, u1, v0, v1;
+  BRepTools::UVBounds(face, u0, u1, v0, v1);
+  BRepClass_FaceClassifier c;
+  if (a.GetType() == GeomAbs_Plane) {
+    double uc = 0, vc = 0;
+    const gp_Pln pl = a.Plane();
+    const gp_Vec w(pl.Location(), g.CentreOfMass());
+    uc = w.Dot(gp_Vec(pl.XAxis().Direction()));
+    vc = w.Dot(gp_Vec(pl.YAxis().Direction()));
+    c.Perform(face, gp_Pnt2d(uc, vc), 1e-6);
+    if (c.State() == TopAbs_IN) return garder(a.Value(uc, vc));
+  }
+  // Centre hors de la face (trou, forme en U) : le point de la grille le plus loin de ce centre n'est pas utile, le premier dedans suffit
+  for (int n = 3; n <= 33; n += 2)
+    for (int i = 0; i < n; i++)
+      for (int j = 0; j < n; j++) {
+        const double u = u0 + (u1 - u0) * (i + 0.5) / n, v = v0 + (v1 - v0) * (j + 0.5) / n;
+        c.Perform(face, gp_Pnt2d(u, v), 1e-6);
+        if (c.State() == TopAbs_IN) return garder(a.Value(u, v));
+      }
+  return false;
+}
+
+bool nouvelleEsquisseFace(Document& d, const TopoDS_Shape& solide, const TopoDS_Face& face, Esquisse& out) {
+  const BRepAdaptor_Surface a(face);
+  if (a.GetType() != GeomAbs_Plane) return false;
+  double clic[3];
+  if (!pointDansFace(face, clic)) return false;
+  const gp_Pln pl = a.Plane();
+  gp_Vec nv = gp_Vec(pl.XAxis().Direction()).Crossed(gp_Vec(pl.YAxis().Direction()));
+  if (face.Orientation() == TopAbs_REVERSED) nv.Reverse();
+  nv.Normalize();
+  const Vec3 n{nv.X(), nv.Y(), nv.Z()}, pt{clic[0], clic[1], clic[2]};
+  // faceSketchOrigin : l'origine globale projetée si elle tombe sur le solide, sinon celle d'une esquisse, sinon le centre de la face
+  const double d0 = produitVec(n, pt);
+  const auto projeter = [&](const Vec3& o) {
+    const double k = produitVec(n, o) - d0;
+    return Vec3{o[0] - n[0] * k, o[1] - n[1] * k, o[2] - n[2] * k};
+  };
+  IntCurvesFace_ShapeIntersector inter;
+  inter.Load(solide, 1e-6);
+  const auto surSolide = [&](const Vec3& p) {
+    inter.PerformNearest(gp_Lin(gp_Pnt(p[0] + n[0], p[1] + n[1], p[2] + n[2]), gp_Dir(-n[0], -n[1], -n[2])), 0.01, 3);
+    if (inter.NbPnt() < 1) return false;
+    if (!(inter.WParameter(1) < 2.5 && inter.Pnt(1).Distance(gp_Pnt(p[0], p[1], p[2])) < 0.75)) return false;
+    if (inter.State(1) == TopAbs_IN) return true;
+    // Pile sur le bord d'une face : le navigateur, qui vise un maillage, tombe d'un côté ou de l'autre. On ne garde ce point que s'il touche la face choisie.
+    BRepClass_FaceClassifier c;
+    const gp_Vec w(pl.Location(), gp_Pnt(p[0], p[1], p[2]));
+    c.Perform(face, gp_Pnt2d(w.Dot(gp_Vec(pl.XAxis().Direction())), w.Dot(gp_Vec(pl.YAxis().Direction()))), 1e-3);
+    return c.State() == TopAbs_IN || c.State() == TopAbs_ON;
+  };
+  std::vector<Vec3> candidats{{0, 0, 0}};
+  for (size_t i = d.esquisses.size(); i-- > 0;) candidats.push_back(d.esquisses[i].o);
+  bool trouve = false;
+  Vec3 origine = pt;
+  for (const Vec3& c : candidats) {
+    const Vec3 p = projeter(c);
+    if (surSolide(p)) {
+      origine = p;
+      trouve = true;
+      break;
+    }
+  }
+  if (!trouve) {
+    GProp_GProps g;
+    BRepGProp::SurfaceProperties(face, g);
+    const gp_Pnt c = g.CentreOfMass();
+    origine = projeter({c.X(), c.Y(), c.Z()});
+  }
+  // faceRefU + basisOnFace : U de la dernière esquisse parallèle, sinon X du monde
+  Vec3 ref{1, 0, 0};
+  for (size_t i = d.esquisses.size(); i-- > 0;)
+    if (std::abs(std::abs(produitVec(d.esquisses[i].n, n)) - 1) < 1e-3) {
+      ref = d.esquisses[i].u;
+      break;
+    }
+  const auto projeteU = [&](const Vec3& r) {
+    const double k = produitVec(n, r);
+    return Vec3{r[0] - n[0] * k, r[1] - n[1] * k, r[2] - n[2] * k};
+  };
+  Vec3 u = projeteU(ref);
+  if (produitVec(u, u) < 1e-8) u = projeteU({1, 0, 0});
+  if (produitVec(u, u) < 1e-8) u = projeteU({0, 1, 0});
+  const double lu = std::sqrt(produitVec(u, u));
+  u = {u[0] / lu, u[1] / lu, u[2] / lu};
+  Vec3 v{n[1] * u[2] - n[2] * u[1], n[2] * u[0] - n[0] * u[2], n[0] * u[1] - n[1] * u[0]};
+  const double lv = std::sqrt(produitVec(v, v));
+  v = {v[0] / lv, v[1] / lv, v[2] / lv};
+  // Face verticale ou inclinée : v vers le haut, sinon l'esquisse s'ouvrait à l'envers
+  if (std::abs(n[2]) < 0.95 && v[2] < -1e-6) {
+    u = {-u[0], -u[1], -u[2]};
+    v = {-v[0], -v[1], -v[2]};
+  }
+  HoteTrouve h = hotePourFace(d, origine, n);
+  if (!h.f) {  // hostViaPoints : origine hors de la face visée, la face sous le clic ; jamais une face latérale
+    const HoteTrouve c = hotePourFace(d, pt, n);
+    if (c.f && c.tag != "SIDE") {
+      const Esquisse* hs = nullptr;
+      for (const Esquisse& s : d.esquisses)
+        if (s.id == c.f->esquisse) hs = &s;
+      if (hs) {
+        const Vec3 dp = diff(origine, hs->o);
+        h = HoteTrouve{c.f, c.tag, "", fixe3(produitVec(dp, hs->u)), fixe3(produitVec(dp, hs->v)), 0};
+      }
+    }
+  }
+  out = esquisseVide(d, "FACE");
+  out.nom += " (face)";
+  out.o = {fixe3(origine[0]), fixe3(origine[1]), fixe3(origine[2])};
+  out.u = u;
+  out.v = v;
+  out.n = n;
+  if (h.f) {
+    out.hote.existe = true;
+    out.hote.feat = h.f->id;
+    out.hote.tag = h.tag;
+    out.hote.x = h.x;
+    out.hote.y = h.y;
+    out.hote.nom = "Face " + std::to_string(++d.nomsFace);
+    if (h.tag == "SIDE") {
+      out.hote.edge = h.edge;
+      out.hote.h = h.h;
+      out.hote.aH = true;
+    }
+  }
+  return true;
+}

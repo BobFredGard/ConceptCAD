@@ -18,7 +18,7 @@
 #include "enregistrer.h"
 
 namespace {
-enum { ID_ANNULER = wxID_HIGHEST + 1, ID_RETABLIR, ID_AJUSTER, ID_QUITTER_ESQUISSE };
+enum { ID_ANNULER = wxID_HIGHEST + 1, ID_RETABLIR, ID_AJUSTER, ID_QUITTER_ESQUISSE, ID_ESQUISSE_XY, ID_ESQUISSE_XZ, ID_ESQUISSE_YZ, ID_ESQUISSE_FACE };
 // Identifiants fixes : natif/mesures/verifier-fenetre.ps1 retrouve ces fenêtres par eux.
 enum { ID_ARBRE = 2001, ID_PROPS = 2002, ID_ETAT = 2003 };
 const char* const PROP_PROFONDEUR = "profondeur";
@@ -132,9 +132,15 @@ void Cadre::creerMenus() {
   auto* affichage = new wxMenu;
   affichage->Append(ID_AJUSTER, L"&Ajuster la vue\tCtrl+F");
   affichage->Append(ID_QUITTER_ESQUISSE, L"&Terminer l'esquisse\tEsc");
+  auto* esquisse = new wxMenu;
+  esquisse->Append(ID_ESQUISSE_XY, L"Nouvelle esquisse sur le plan &XY");
+  esquisse->Append(ID_ESQUISSE_XZ, L"Nouvelle esquisse sur le plan X&Z");
+  esquisse->Append(ID_ESQUISSE_YZ, L"Nouvelle esquisse sur le plan &YZ");
+  esquisse->Append(ID_ESQUISSE_FACE, L"Nouvelle esquisse sur la &face choisie");
   auto* barre = new wxMenuBar;
   barre->Append(fichier, L"&Fichier");
   barre->Append(edition, L"&Édition");
+  barre->Append(esquisse, L"E&squisse");
   barre->Append(affichage, L"&Affichage");
   SetMenuBar(barre);
   Bind(wxEVT_MENU, &Cadre::surOuvrir, this, wxID_OPEN);
@@ -155,6 +161,11 @@ void Cadre::creerMenus() {
     if (vueEsquisse_->enSaisie()) vueEsquisse_->annulerSaisie();
     else if (!vueEsquisse_->echapDessin()) quitterEsquisse();
   }, ID_QUITTER_ESQUISSE);
+  Bind(wxEVT_MENU, [this](wxCommandEvent&) { creerEsquisse("XY"); }, ID_ESQUISSE_XY);
+  Bind(wxEVT_MENU, [this](wxCommandEvent&) { creerEsquisse("XZ"); }, ID_ESQUISSE_XZ);
+  Bind(wxEVT_MENU, [this](wxCommandEvent&) { creerEsquisse("YZ"); }, ID_ESQUISSE_YZ);
+  Bind(wxEVT_MENU, [this](wxCommandEvent&) { creerEsquisse(""); }, ID_ESQUISSE_FACE);
+  Bind(wxEVT_UPDATE_UI, [this](wxUpdateUIEvent& e) { e.Enable(docOuvert_); }, ID_ESQUISSE_XY, ID_ESQUISSE_FACE);
   Bind(wxEVT_UPDATE_UI, [this](wxUpdateUIEvent& e) { e.Enable(esquisseOuverte_ >= 0); }, ID_QUITTER_ESQUISSE);
   Bind(wxEVT_UPDATE_UI, [this](wxUpdateUIEvent& e) { e.Enable(!annulations_.empty()); }, ID_ANNULER);
   Bind(wxEVT_UPDATE_UI, [this](wxUpdateUIEvent& e) { e.Enable(!retablissements_.empty()); }, ID_RETABLIR);
@@ -445,6 +456,27 @@ void Cadre::faireSuivre() {
 }
 
 void Cadre::poserEsquisses(const std::vector<Esquisse>& v) {
+  if (v.size() != doc_.esquisses.size()) {  // création annulée ou rétablie : les adresses changent, on revient à la pièce
+    dessinModifie_ = false;
+    if (esquisseOuverte_ >= 0) {
+      // La vue lâche d'abord l'esquisse : sinon le retrait des esquisses vides toucherait à ce qu'on va remplacer
+      vueEsquisse_->poserDessin(nullptr);
+      dessin_.reset();
+      edition_.reset();
+      esquisseOuverte_ = -1;
+      vueEsquisse_->montrer(nullptr, TopoDS_Shape());
+      vueEsquisse_->Hide();
+      vue_->Show();
+      centre_->Layout();
+    }
+    doc_.esquisses = v;
+    remplirArbre();
+    montrerRien();
+    majTitre();
+    recalculer();
+    vue_->Refresh();
+    return;
+  }
   doc_.esquisses = v;  // même taille : l'esquisse montrée ne change pas d'adresse
   dessinModifie_ = false;  // ces esquisses ont déjà suivi, ou seront remises à jour au prochain geste
   if (esquisseOuverte_ >= 0) {
@@ -467,10 +499,30 @@ void Cadre::capturerEsquisses(const std::wstring& dossier) {
   quitterEsquisse();
 }
 
+void Cadre::creerEsquisse(const std::string& plan) {
+  if (!docOuvert_) return;
+  if (esquisseOuverte_ >= 0) quitterEsquisse();
+  Esquisse s;
+  if (!plan.empty()) {
+    s = nouvelleEsquissePlan(doc_, plan);
+  } else if (faceChoisie_.IsNull() || !nouvelleEsquisseFace(doc_, forme_, faceChoisie_, s)) {
+    etat(L"Esquisse sur face : cliquez d'abord une face plane du solide, puis reprenez le menu Esquisse.");
+    return;
+  }
+  ModifCote m{-1, 0, 0, doc_.esquisses, {}};
+  m.creation = true;
+  annulations_.push_back(std::move(m));
+  retablissements_.clear();
+  doc_.esquisses.push_back(std::move(s));
+  remplirArbre();
+  majTitre();
+  entrerEsquisse(static_cast<int>(doc_.esquisses.size()) - 1);
+}
+
 void Cadre::quitterEsquisse() {
   if (esquisseOuverte_ < 0) return;
   const int i = esquisseOuverte_;
-  const bool suivre = dessinModifie_;
+  bool suivre = dessinModifie_;
   dessinModifie_ = false;
   if (vueEsquisse_->enSaisie()) vueEsquisse_->annulerSaisie();
   vueEsquisse_->poserDessin(nullptr);
@@ -483,6 +535,20 @@ void Cadre::quitterEsquisse() {
   centre_->Layout();
   vue_->Refresh();
   etat(tx(doc_.nom));
+  // skIsGhost : créée puis refermée sans rien dessiner, elle ne reste pas dans la pièce, ni dans les annulations
+  const Esquisse& fin = doc_.esquisses[i];
+  const bool rienQueOrigine = fin.ordre.empty() || (fin.ordre.size() == 1 && fin.ordre[0] == "O");
+  if (static_cast<size_t>(i) >= doc_.esquissesFichier.size() && static_cast<size_t>(i) + 1 == doc_.esquisses.size() && fin.entites.empty() && fin.contraintes.empty() && fin.cotes.empty() && rienQueOrigine) {
+    doc_.esquisses.pop_back();
+    const size_t n = doc_.esquisses.size();
+    while (!annulations_.empty() && annulations_.back().fonction < 0 && annulations_.back().esquissesAvant.size() > n) annulations_.pop_back();
+    if (!annulations_.empty() && annulations_.back().creation && annulations_.back().esquissesAvant.size() == n) annulations_.pop_back();
+    retablissements_.clear();
+    suivre = false;
+    remplirArbre();
+    montrerRien();
+    majTitre();
+  }
   if (suivre) {
     wxBusyCursor attente;
     suivreEsquisses(doc_, i);
@@ -495,13 +561,16 @@ void Cadre::montrerForme(const TopoDS_Shape& s) {
   props_->Clear();
   props_->CenterSplitter();
   if (s.IsNull()) {
+    faceChoisie_.Nullify();
     montrerRien();
     etat(L"Rien de choisi.");
     return;
   }
   GProp_GProps g;
+  faceChoisie_.Nullify();
   if (s.ShapeType() == TopAbs_FACE) {
     const TopoDS_Face f = TopoDS::Face(s);
+    faceChoisie_ = f;
     BRepGProp::SurfaceProperties(f, g);
     props_->Append(new wxPropertyCategory(L"Face"));
     lectureSeule(props_, L"Forme", nomSurface(f));
@@ -571,6 +640,10 @@ void Cadre::annuler() {
   if (vueEsquisse_->enSaisie()) return vueEsquisse_->annulerSaisie();
   if (vueEsquisse_->abandonnerTrace()) return;
   if (annulations_.empty()) return;
+  if (annulations_.back().creation && annulations_.back().esquissesAvant.size() < doc_.esquissesFichier.size()) {
+    etat(L"Cette esquisse est déjà enregistrée dans le fichier : la retirer n'est pas encore repris dans ce programme.");
+    return;
+  }
   ModifCote m = annulations_.back();
   annulations_.pop_back();
   if (m.fonction < 0) {

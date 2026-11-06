@@ -118,10 +118,10 @@ Clic (X 0.97) (Y 0.60)
 Capture '6-choisi.png'
 Touche 0x2E
 Capture '7-efface.png'
-Menu 6000
-Capture '8-annule.png'
 Menu 6001
-Menu 6000
+Capture '8-annule.png'
+Menu 6002
+Menu 6001
 "7. Effacé, annulé, rétabli, annulé : $(Etat)"
 
 # Coter une ligne par double-clic

@@ -1,5 +1,8 @@
 // ConceptCAD natif : point d'entrée. Lance la fenêtre, ou le calcul sans fenêtre (--verif).
 #include <wx/wx.h>
+#include <TopExp_Explorer.hxx>
+#include <TopoDS.hxx>
+#include <TopoDS_Face.hxx>
 
 #include <chrono>
 #include <cstdio>
@@ -130,6 +133,65 @@ int modeCoter(const std::vector<std::wstring>& a) {
   return 1;
 }
 
+// --nouvelle-esquisse <fichier> <sortie> <XY|XZ|YZ|rang de face> : crée l'esquisse vide et enregistre.
+// --esquisses-faces <fichier> <sortie.json> : ce que donnerait chaque face plane, pour comparer au navigateur.
+TopoDS_Face faceDeRang(const TopoDS_Shape& forme, int rang) {
+  int k = 0;
+  for (TopExp_Explorer x(forme, TopAbs_FACE); x.More(); x.Next())
+    if (k++ == rang) return TopoDS::Face(x.Current());
+  return TopoDS_Face();
+}
+int modeNouvelleEsquisse(const std::vector<std::wstring>& a) {
+  try {
+    Document d = lireProjet(a[1]);
+    const std::string quoi = utf8(a[3]);
+    Esquisse s;
+    if (quoi == "XY" || quoi == "XZ" || quoi == "YZ") {
+      s = nouvelleEsquissePlan(d, quoi);
+    } else {
+      const TopoDS_Shape forme = rejouer(d).forme;
+      const TopoDS_Face f = faceDeRang(forme, std::stoi(quoi));
+      if (f.IsNull() || !nouvelleEsquisseFace(d, forme, f, s)) return 5;
+    }
+    d.esquisses.push_back(std::move(s));
+    enregistrerProjet(d, a[2]);
+    return 0;
+  } catch (const std::exception& e) {
+    fprintf(stderr, "%s\n", e.what());
+  }
+  return 1;
+}
+int modeEsquissesFaces(const std::vector<std::wstring>& a) {
+  try {
+    Document d = lireProjet(a[1]);
+    const TopoDS_Shape forme = rejouer(d).forme;
+    nlohmann::json liste = nlohmann::json::array();
+    int rang = -1;
+    for (TopExp_Explorer x(forme, TopAbs_FACE); x.More(); x.Next()) {
+      rang++;
+      const TopoDS_Face f = TopoDS::Face(x.Current());
+      Document c = d;
+      Esquisse s;
+      double p[3];
+      if (!pointDansFace(f, p) || !nouvelleEsquisseFace(c, forme, f, s)) continue;
+      nlohmann::json j{{"rang", rang}, {"point", {p[0], p[1], p[2]}}, {"name", s.nom}, {"origin", s.o}, {"axU", s.u}, {"axV", s.v}, {"axN", s.n}, {"at", s.at}};
+      if (s.hote.existe) {
+        j["host"] = {{"feat", s.hote.feat}, {"tag", s.hote.tag}, {"x", s.hote.x}, {"y", s.hote.y}, {"name", s.hote.nom}};
+        if (s.hote.tag == "SIDE") {
+          j["host"]["edge"] = s.hote.edge;
+          j["host"]["h"] = s.hote.h;
+        }
+      }
+      liste.push_back(j);
+    }
+    std::ofstream(a[2].c_str(), std::ios::binary) << liste.dump();
+    return 0;
+  } catch (const std::exception& e) {
+    fprintf(stderr, "%s\n", e.what());
+  }
+  return 1;
+}
+
 // --dessiner <fichier> <sortie> <esquisse> <gestes.json> : rejoue des gestes comme le ferait la fenêtre, puis enregistre.
 int modeDessiner(const std::vector<std::wstring>& a) {
   try {
@@ -226,6 +288,8 @@ int WINAPI wWinMain(HINSTANCE inst, HINSTANCE, PWSTR, int) {
   if (gArgs.size() >= 2 && gArgs[0] == L"--conflit") return modeEnregistrer(gArgs);
   if (gArgs.size() >= 6 && gArgs[0] == L"--coter") return modeCoter(gArgs);
   if (gArgs.size() >= 5 && gArgs[0] == L"--dessiner") return modeDessiner(gArgs);
+  if (gArgs.size() >= 4 && gArgs[0] == L"--nouvelle-esquisse") return modeNouvelleEsquisse(gArgs);
+  if (gArgs.size() >= 3 && gArgs[0] == L"--esquisses-faces") return modeEsquissesFaces(gArgs);
   // Processeurs à deux sortes de cœurs : un cœur économe calcule la même pièce 1,7 fois moins vite (345 → 585 ms mesurés).
   // On demande à Windows de ne pas traiter ce programme comme une tâche de fond, même quand sa fenêtre n'est pas devant.
   PROCESS_POWER_THROTTLING_STATE qos{PROCESS_POWER_THROTTLING_CURRENT_VERSION, PROCESS_POWER_THROTTLING_EXECUTION_SPEED, 0};

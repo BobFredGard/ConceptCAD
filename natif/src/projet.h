@@ -41,10 +41,12 @@ struct Hote {
   std::string feat, tag = "TOP", edge;
   double x = 0, y = 0, h = 0;
   bool aH = false;
+  std::string nom;  // nom de la face, écrit seulement quand l'esquisse est créée ici
 };
 
 struct Esquisse {
   std::string id, nom, plan;
+  std::string at;  // esquisse créée ici : la fonction après laquelle elle se place (cgAtNow), vide si aucune
   int seq = 1;  // prochain numéro d'identifiant
   Vec3 o{0, 0, 0}, u{1, 0, 0}, v{0, 1, 0}, n{0, 0, 1};
   std::vector<std::string> ordre;  // ordre d'enregistrement des points : il décide des fusions de noeuds
@@ -86,7 +88,9 @@ struct Document {
   std::wstring chemin;
   std::string octets;  // le fichier tel qu'il est sur le disque : l'enregistrement en repart
   bool compresse = false;
+  int nomsFace = 0;  // entNames.face : compteur des noms « Face n », jamais réemployés
   bool modifie() const {
+    if (esquisses.size() != esquissesFichier.size()) return true;
     for (const Fonction& f : fonctions)
       if (f.distance != f.distanceFichier) return true;
     for (size_t i = 0; i < esquisses.size(); i++)

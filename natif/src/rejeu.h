@@ -1,6 +1,7 @@
 // Rejeu des fonctions d'une pièce avec le noyau OCCT natif :
 // traduction de occFinalShapeGen / occReplayBodyGen (src/20-70) pour esquisses, extrusions et découpes.
 #pragma once
+#include <TopoDS_Face.hxx>
 #include <TopoDS_Shape.hxx>
 #include "projet.h"
 
@@ -19,6 +20,12 @@ struct Mesures {
 // Replace les esquisses posées sur une face (resolveAllSketchHosts) puis rejoue la pièce,
 // ou seulement ses n premières fonctions : ce que voit l'esquisse de la fonction suivante.
 ResultatRejeu rejouer(Document& d, int n = -1);
+// newSketch et newSketchOnFace (src/50-esquisse-1) : l'esquisse vide, pas encore ajoutée à la pièce.
+Esquisse nouvelleEsquissePlan(const Document& d, const std::string& plan);
+// solide : la forme affichée. Rend false si la face n'est pas plane. Prend un nom « Face n » si la face a une porteuse.
+bool nouvelleEsquisseFace(Document& d, const TopoDS_Shape& solide, const TopoDS_Face& face, Esquisse& out);
+// Un point à l'intérieur de la face (son centre si possible). Rend false si elle n'en a pas.
+bool pointDansFace(const TopoDS_Face& face, double p[3]);
 Mesures mesurer(const TopoDS_Shape& s);
 // Maillage d'affichage, aux mêmes finesses que occDisplayDefl (src/20-60).
 void mailler(const TopoDS_Shape& s, bool parallele);

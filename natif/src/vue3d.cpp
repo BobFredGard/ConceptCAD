@@ -22,7 +22,7 @@ void reglerStyle(const occ::handle<AIS_InteractiveContext>& c, Prs3d_TypeOfHighl
 }
 }  // namespace
 
-Vue3D::Vue3D(wxWindow* parent) : wxWindow(parent, wxID_ANY, wxDefaultPosition, wxDefaultSize, wxCLIP_CHILDREN | wxFULL_REPAINT_ON_RESIZE | wxWANTS_CHARS) {
+Vue3D::Vue3D(wxWindow* parent) : wxWindow(parent, 2005, wxDefaultPosition, wxDefaultSize, wxCLIP_CHILDREN | wxFULL_REPAINT_ON_RESIZE | wxWANTS_CHARS) {
   SetBackgroundStyle(wxBG_STYLE_PAINT);  // tout le dessin vient d'OCCT
   connexion_ = new Aspect_DisplayConnection();
   pilote_ = new OpenGl_GraphicDriver(connexion_);

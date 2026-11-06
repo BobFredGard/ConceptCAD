@@ -319,6 +319,8 @@ Document lireProjet(const std::wstring& chemin) {
   if (j.contains("bodies"))
     for (auto& c : j["bodies"]) d.corps.push_back(texte(c, "id"));
   if (d.corps.empty()) d.corps.push_back("b1");
+  if (auto x = j.find("entNames"); x != j.end() && x->is_object())
+    if (auto y = x->find("face"); y != x->end() && y->is_number()) d.nomsFace = y->get<int>();
   for (auto& s : j["sketches"]) lireEsquisse(s, d, refus);
   for (auto& f : j["features"]) lireFonction(f, d, refus);
   if (j.contains("params") && j["params"].is_array() && !j["params"].empty()) refus["paramètres nommés"]++;

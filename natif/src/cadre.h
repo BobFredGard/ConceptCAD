@@ -38,6 +38,7 @@ class Cadre : public wxFrame {
     int fonction;
     double avant, apres;
     std::vector<Esquisse> esquissesAvant, esquissesApres;
+    bool creation = false;  // ce pas a ajouté une esquisse à la pièce
   };
   void etat(const wxString& texte);
   void creerMenus();
@@ -52,6 +53,7 @@ public:
   void capturerEsquisses(const std::wstring& dossier);
  private:
   void quitterEsquisse();
+  void creerEsquisse(const std::string& plan);  // XY, XZ, YZ, ou vide pour la face choisie
   void brancherDessin();
   void faireSuivre();  // ce qui a été dessiné : les esquisses qui s'appuient sur le solide suivent, puis le solide
   double recalculer();
@@ -85,6 +87,7 @@ public:
   bool dessinModifie_ = false;      // des esquisses suivantes et le solide restent à mettre à jour
   std::string figee_;  // pourquoi l'esquisse ouverte ne peut pas changer
   TopoDS_Shape forme_;  // le solide affiché, pour le fantôme des esquisses
+  TopoDS_Face faceChoisie_;  // dernière face cliquée sur le solide affiché
   wxTimer minuterie_;
   Document doc_;
   bool docOuvert_ = false, ajusterVue_ = true, solideCalculable_ = false;
