@@ -264,6 +264,53 @@ static std::string nomFonction(const std::string& t) {
   return it != noms.end() ? it->second : "fonction « " + t + " »";
 }
 
+static bool lireVec3(const json& j, const char* cle, Vec3& v) {
+  auto x = j.find(cle);
+  if (x == j.end() || !x->is_array() || x->size() != 3) return false;
+  for (int k = 0; k < 3; k++) {
+    if (!(*x)[k].is_number()) return false;
+    v[k] = (*x)[k].get<double>();
+  }
+  return true;
+}
+static void lireConge(const json& jf, Fonction& f, std::map<std::string, int>& refus) {
+  f.chamfer = vrai(jf, "chamfer");
+  if (auto t = jf.find("tangent"); t != jf.end() && t->is_boolean()) f.tangent = t->get<bool>() ? 1 : 0;
+  if (jf.contains("cmode") && jf["cmode"].is_string() && jf["cmode"].get<std::string>() != "eq" && f.visible) refus["chanfrein à deux distances ou à angle"]++;
+  if (jf.contains("expr") && jf["expr"].is_object() && !jf["expr"].empty() && f.visible) refus["cote par formule"]++;
+  if (!jf.contains("edges") || !jf["edges"].is_array()) return;
+  for (auto& je : jf["edges"]) {
+    if (!je.is_object()) continue;
+    AreteConge a;
+    const bool aPos = lireVec3(je, "pos", a.pos);
+    a.aPos0 = lireVec3(je, "pos0", a.pos0);
+    if (!aPos && a.aPos0) a.pos = a.pos0;
+    if (je.contains("r") && je["r"].is_number()) a.r = je["r"].get<double>();
+    if (je.contains("len") && je["len"].is_number()) a.len = je["len"].get<double>();
+    a.seed = je.contains("seed") && (je["seed"].is_number() ? je["seed"].get<double>() != 0 : vrai(je, "seed"));
+    a.nomAffiche = texte(je, "name");
+    if (je.contains("expr") && je["expr"].is_object() && !je["expr"].empty() && f.visible) refus["cote par formule"]++;
+    if (auto x = je.find("anchor"); x != je.end() && x->is_object()) {
+      AncreArete& n = a.ancre;
+      n.existe = true;
+      n.t = texte(*x, "t");
+      n.sk = texte(*x, "sk");
+      n.id = texte(*x, "id");
+      if (auto z = x->find("z"); z != x->end() && z->is_number()) {
+        n.z = z->get<double>();
+        n.aZ = true;
+      }
+      if (auto s = x->find("side"); s != x->end() && s->is_number()) {
+        n.side = s->get<int>();
+        n.aSide = true;
+      }
+      if (auto v = x->find("dist"); v != x->end() && v->is_number()) n.dist = v->get<double>();
+      if (auto v = x->find("far"); v != x->end() && v->is_number()) n.loin = v->get<double>() != 0;
+    }
+    f.aretes.push_back(std::move(a));
+  }
+}
+
 static void lireFonction(const json& jf, Document& d, std::map<std::string, int>& refus) {
   Fonction f;
   f.id = texte(jf, "id");
@@ -280,8 +327,9 @@ static void lireFonction(const json& jf, Document& d, std::map<std::string, int>
   f.mid = vrai(jf, "mid");
   f.flip = vrai(jf, "flip");
   f.through = vrai(jf, "through");
+  if (f.type == "xfillet") lireConge(jf, f, refus);
   // La répétition se contente de créer des copies, rejouées comme des fonctions : sans effet ici.
-  if (f.visible && f.type != "extrude" && f.type != "repeat") refus[nomFonction(f.type)]++;
+  if (f.visible && f.type != "extrude" && f.type != "repeat" && f.type != "xfillet") refus[nomFonction(f.type)]++;
   if (f.visible && f.type == "extrude") {
     if (vrai(jf, "upto")) refus["extrusion « jusqu'à un objet »"]++;
     if (vrai(jf, "draft")) refus["extrusion avec dépouille"]++;
@@ -326,8 +374,10 @@ Document lireProjet(const std::wstring& chemin) {
   // ensureActiveBody : l'actif s'il existe, sinon le premier
   d.corpsActif = texte(j, "activeBody");
   if (std::find(d.corps.begin(), d.corps.end(), d.corpsActif) == d.corps.end()) d.corpsActif = d.corps[0];
-  if (auto x = j.find("entNames"); x != j.end() && x->is_object())
+  if (auto x = j.find("entNames"); x != j.end() && x->is_object()) {
     if (auto y = x->find("face"); y != x->end() && y->is_number()) d.nomsFace = y->get<int>();
+    if (auto y = x->find("edge"); y != x->end() && y->is_number()) d.nomsArete = y->get<int>();
+  }
   for (auto& s : j["sketches"]) lireEsquisse(s, d, refus);
   for (auto& f : j["features"]) lireFonction(f, d, refus);
   if (j.contains("params") && j["params"].is_array() && !j["params"].empty()) refus["paramètres nommés"]++;

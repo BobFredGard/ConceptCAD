@@ -1,5 +1,6 @@
 #include "cadre.h"
 
+#include <wx/dcmemory.h>
 #include <wx/filedlg.h>
 #include <wx/filename.h>
 #include <wx/propgrid/advprops.h>
@@ -7,6 +8,8 @@
 #include <BRepAdaptor_Curve.hxx>
 #include <BRepAdaptor_Surface.hxx>
 #include <BRepGProp.hxx>
+#include <BRep_Builder.hxx>
+#include <TopoDS_Compound.hxx>
 #include <GProp_GProps.hxx>
 #include <Standard_Failure.hxx>
 #include <TopoDS.hxx>
@@ -17,12 +20,16 @@
 #include <chrono>
 #include <cmath>
 
+#include <fstream>
+#include <nlohmann/json.hpp>
+
 #include "enregistrer.h"
 
 namespace {
 enum { ID_ANNULER = wxID_HIGHEST + 1, ID_RETABLIR, ID_AJUSTER, ID_QUITTER_ESQUISSE, ID_ESQUISSE_XY, ID_ESQUISSE_XZ, ID_ESQUISSE_YZ, ID_ESQUISSE_FACE, ID_EXTRUDER, ID_CONTRAINTE_1, ID_ACCROCHE_GRILLE = wxID_HIGHEST + 100 };
 // Identifiants fixes : natif/mesures/verifier-fenetre.ps1 retrouve ces fenêtres par eux.
 enum { ID_ARBRE = 2001, ID_PROPS = 2002, ID_ETAT = 2003 };
+const char* const PROP_CONGE_RAYON = "conge_rayon", * const PROP_CONGE_TANGENTES = "conge_tangentes", * const PROP_CONGE_ARETE = "conge_arete_";
 const char* const PROP_PROFONDEUR = "profondeur", * const PROP_OPERATION = "operation", * const PROP_ETENDUE = "etendue", * const PROP_DIRECTION = "direction", * const PROP_INVERSER = "inverser";
 
 struct LienArbre : wxTreeItemData {
@@ -49,6 +56,7 @@ wxString nombre(double v) { return wxString::Format("%.3f", v); }
 wxString nomType(const Fonction& f) {
   if (f.type == "extrude") return f.op == "cut" ? L"Découpe" : L"Extrusion";
   if (f.type == "repeat") return L"Répétition";
+  if (f.type == "xfillet") return f.chamfer ? L"Chanfrein" : L"Congé";
   return tx(f.type);
 }
 wxString nomSurface(const TopoDS_Face& f) {
@@ -109,6 +117,24 @@ Cadre::Cadre() : wxFrame(nullptr, wxID_ANY, L"ConceptCAD natif"), minuterie_(thi
   carteDroite_->contenu()->Add(props_, 1, wxEXPAND);
   carteDroite_->contenu()->Add(noteDroite_, 0, wxEXPAND | wxLEFT | wxRIGHT, FromDIP(5));
   carteDroite_->contenu()->Add(boutonRendu_, 0, wxEXPAND | wxTOP, FromDIP(12));
+  // Appliquer et Quitter du mode Congé
+  rangConge_ = new wxBoxSizer(wxHORIZONTAL);
+  {
+    auto* ok = new BoutonEsquisse(carteDroite_, wxID_ANY, L"Appliquer", L"Créer la fonction", BoutonEsquisse::PRINCIPAL);
+    auto* q = new BoutonEsquisse(carteDroite_, wxID_ANY, L"Quitter", L"Quitter sans rien créer (Échap)", BoutonEsquisse::ENCADRE);
+    for (BoutonEsquisse* b : {ok, q}) {
+      b->SetMinSize(FromDIP(wxSize(-1, 30)));
+      b->fond(C_CARTE);
+    }
+    ok->titre(L"Appliquer");
+    q->titre(L"Quitter");
+    ok->surClic = [this] { appliquerChoixConge(); };
+    q->surClic = [this] { quitterConge(); };
+    rangConge_->Add(ok, 1, wxEXPAND | wxRIGHT, FromDIP(6));
+    rangConge_->Add(q, 1, wxEXPAND);
+  }
+  carteDroite_->contenu()->Add(rangConge_, 0, wxEXPAND | wxTOP, FromDIP(12));
+  carteDroite_->contenu()->Show(rangConge_, false);
   auto* colonne = new wxBoxSizer(wxVERTICAL);
   colonne->Add(scene_, 1, wxEXPAND);
   colonne->Add(vueEsquisse_, 1, wxEXPAND);
@@ -172,7 +198,14 @@ Cadre::Cadre() : wxFrame(nullptr, wxID_ANY, L"ConceptCAD natif"), minuterie_(thi
   panneauEsquisse_->surOuvrirCote = [this](const std::string& id) { vueEsquisse_->ouvrirCoteParId(id); };
   panneauEsquisse_->surVoir = [this](double x, double y) { vueEsquisse_->centrerSur(x, y); };
   vueEsquisse_->surGeste = [this] { rafraichirEsquisse(false); };
-  vue_->surSelection = [this](const TopoDS_Shape& s) { montrerForme(s); };
+  vue_->surSelection = [this](const TopoDS_Shape& s) {
+    if (choix_) cliqueConge(s);
+    else montrerForme(s);
+  };
+  Bind(wxEVT_CHAR_HOOK, [this](wxKeyEvent& e) {
+    if (choix_ && e.GetKeyCode() == WXK_ESCAPE) quitterConge();
+    else e.Skip();
+  });
 
   etat(L"Noyau OCCT 8.0.1 · exact   Aucune pièce ouverte : Ouvrir (Ctrl+O). Clic gauche : tourner ou choisir. Clic droit : déplacer. Molette : zoom.");
 
@@ -201,10 +234,11 @@ void Cadre::creerEnvironnement() {
   barreHaute_->surEnregistrer = [this] { enregistrer(); };
   barreHaute_->surEnregistrerSous = [this] { enregistrerSous(); };
   barreHaute_->surRegenerer = [this] {
+    quitterConge();
     if (esquisseOuverte_ < 0) recalculer();
   };
   barreHaute_->surIndisponible = [this](const wxString& n) { indisponible(n); };
-  ruban_->estRepris = [](Atelier a, const wxString& n) { return a == Atelier::CAO && (n == L"Esquisse" || n == L"Extrusion"); };
+  ruban_->estRepris = [](Atelier a, const wxString& n) { return a == Atelier::CAO && (n == L"Esquisse" || n == L"Extrusion" || n == L"Congé" || n == L"Chanfrein"); };
   ruban_->surBouton = [this](Atelier a, const wxString& n) { boutonRuban(a, n); };
   ruban_->surIndisponible = [this](const wxString& n) { indisponible(n); };
 
@@ -390,6 +424,7 @@ void Cadre::placerScene() {
 }
 
 void Cadre::changerAtelier(Atelier a) {
+  quitterConge();
   if (esquisseOuverte_ >= 0 && a != Atelier::CAO) quitterEsquisse();
   atelier_ = a;
   barreHaute_->atelier(a);
@@ -442,7 +477,7 @@ void Cadre::ajusterDroite() {
   int rangs = 0;
   if (cao)
     for (wxPropertyGridIterator it = props_->GetGrid()->GetIterator(wxPG_ITERATE_VISIBLE); !it.AtEnd(); it++) rangs++;
-  const bool note = !cao || rangs <= 1;
+  const bool note = !cao || rangs <= 1 || choix_;
   if (note != noteMontree_) {
     noteMontree_ = note;
     noteDroite_->Show(note);
@@ -451,7 +486,7 @@ void Cadre::ajusterDroite() {
   int h = 34 + 12;
   if (rangs) h += rangs * ToDIP(props_->GetRowHeight()) + 4;
   if (note) h += ToDIP(noteDroite_->GetBestSize().y) + 6;
-  if (rendu) h += 42;
+  if (rendu || choix_) h += 42;
   h = std::min(h, ToDIP(centre_->GetClientSize().y) - 90);
   if (h == hauteurDroite_) return;
   hauteurDroite_ = h;
@@ -463,6 +498,9 @@ void Cadre::indisponible(const wxString& nom) { etat(nom + PAS_ENCORE + L"."); }
 
 void Cadre::boutonRuban(Atelier a, const wxString& nom) {
   if (a != Atelier::CAO) return;
+  if (nom == L"Congé") return entrerConge(false);
+  if (nom == L"Chanfrein") return entrerConge(true);
+  quitterConge();
   if (nom == L"Extrusion") extruder();
   else if (nom == L"Esquisse") menuEsquisse();
 }
@@ -695,6 +733,7 @@ bool Cadre::ouvrir(const std::wstring& chemin) {
   try {
     Document d = lireProjet(chemin);
     dessinModifie_ = false;  // peutAbandonner a déjà posé la question
+    quitterConge();
     quitterEsquisse();
     doc_ = std::move(d);
   } catch (const std::exception& e) {
@@ -795,6 +834,15 @@ void Cadre::montrerFonction(int i) {
   lectureSeule(props_, L"Type", nomType(f));
   if (!f.visible) lectureSeule(props_, L"État", L"Désactivée");
   fonctionMontree_ = -1;
+  if (f.type == "xfillet") {
+    lectureSeule(props_, L"Arêtes tangentes", f.tangent != 0 ? L"Suivies" : L"Non suivies");
+    for (const AreteConge& a : f.aretes) lectureSeule(props_, tx(a.nomAffiche), wxString::Format(L"%s %g", f.chamfer ? L"D" : L"R", a.r));
+    if (f.visible && f.congeTotal > 0 && f.congeTrouvees < f.congeTotal) lectureSeule(props_, L"Trouvées", wxString::Format(L"%d sur %d", f.congeTrouvees, f.congeTotal));
+    if (!f.congeAjuste.empty()) lectureSeule(props_, L"Ajusté", tx(f.congeAjuste));
+    if (!f.congeErreur.empty()) lectureSeule(props_, L"Erreur", tx(f.congeErreur));
+    lectureSeule(props_, L"Modification", L"Pas encore");
+    return;
+  }
   if (f.type != "extrude") return;
   const Esquisse* e = doc_.esquisse(f.esquisse);
   lectureSeule(props_, L"Esquisse", tx(e && !e->nom.empty() ? e->nom : f.esquisse));
@@ -839,6 +887,7 @@ void Cadre::montrerEsquisse(int i) {
 
 // Double-clic dans l'arbre : même repère que le navigateur.
 void Cadre::entrerEsquisse(int i) {
+  quitterConge();
   if (atelier_ != Atelier::CAO) changerAtelier(Atelier::CAO);
   const Esquisse& s = doc_.esquisses[i];
   esquisseOuverte_ = i;
@@ -1206,6 +1255,7 @@ double Cadre::recalculer() {
   const double tCalcul = msDepuis(t0);
   msMaillage_ = tCalcul - msRejeu_;
   forme_ = r.forme;
+  formesCorps_ = r.corps;
   vue_->afficher(r.forme, ajusterVue_);
   ajusterVue_ = false;
   // Le banc compte aussi le prix de la sélection, que le programme paierait dès que la souris passe sur la vue.
@@ -1319,6 +1369,7 @@ void Cadre::poserPas(const std::vector<Esquisse>& esquisses, bool avecFonctions,
 }
 
 void Cadre::annuler() {
+  if (choix_) return quitterConge();
   if (vueEsquisse_->enSaisie()) return vueEsquisse_->annulerSaisie();
   if (vueEsquisse_->abandonnerTrace()) return;
   if (annulations_.empty()) return;
@@ -1327,7 +1378,7 @@ void Cadre::annuler() {
     return;
   }
   if (annulations_.back().avecFonctions && annulations_.back().fonctionsAvant.size() < doc_.fonctionsFichier.size()) {
-    etat(L"Cette extrusion est déjà enregistrée dans le fichier : la retirer n'est pas encore repris dans ce programme.");
+    etat(L"Cette fonction est déjà enregistrée dans le fichier : la retirer n'est pas encore repris dans ce programme.");
     return;
   }
   ModifCote m = annulations_.back();
@@ -1348,6 +1399,7 @@ void Cadre::retablir() {
 }
 
 void Cadre::surArbre(wxTreeEvent& e) {
+  if (choix_) return;  // le panneau reste celui du congé en cours
   const auto* lien = dynamic_cast<LienArbre*>(arbre_->GetItemData(e.GetItem()));
   if (!lien || lien->i < 0) return montrerRien();
   if (lien->estFonction) montrerFonction(lien->i);
@@ -1362,6 +1414,10 @@ void Cadre::surArbreActive(wxTreeEvent& e) {
 }
 
 void Cadre::surPropriete(wxPropertyGridEvent& e) {
+  if (choix_) {
+    proprieteConge(e.GetPropertyName(), e.GetValue());
+    return;
+  }
   if (fonctionMontree_ < 0) return;
   const int fonction = fonctionMontree_;
   const wxString nom = e.GetPropertyName();
@@ -1392,6 +1448,245 @@ void Cadre::surPropriete(wxPropertyGridEvent& e) {
     return;
   }
   CallAfter([this, fonction, reglage] { modifierFonction(fonction, reglage); });  // jamais de recalcul au milieu de l'événement de la grille
+}
+
+// ---- Congé et chanfrein : le choix des arêtes (enterExactFilletMode, renderExactPanel, applyExactFillet) ----
+void Cadre::entrerConge(bool chanfrein) {
+  if (!docOuvert_) return etat(L"Ouvrez d'abord une pièce (Ctrl+O).");
+  if (esquisseOuverte_ >= 0) quitterEsquisse();
+  quitterConge();
+  const wxString nom = chanfrein ? L"Chanfrein" : L"Congé";
+  if (!solideCalculable_ || forme_.IsNull()) return etat(nom + L" : le solide de cette pièce n'est pas encore calculé par ce programme.");
+  wxBusyCursor attente;
+  auto c = std::make_unique<ChoixConge>(doc_, forme_, chanfrein, chanfrein ? memoChanfrein_ : memoConge_, memoTangentes_);
+  if (c->vives().empty()) return etat(nom + L" : aucune arête vive (que du tangentiel lisse).");
+  choix_ = std::move(c);
+  const auto compose = [](const std::vector<AreteVue>& l) {
+    TopoDS_Compound k;
+    BRep_Builder b;
+    b.MakeCompound(k);
+    for (const AreteVue& a : l) b.Add(k, a.arete);
+    return k;
+  };
+  vue_->debutChoix(compose(choix_->vives()), compose(choix_->lisses()));
+  messageConge_ = tx(choix_->libelle()) + wxString::Format(L" : cliquez des arêtes vives (%zu, affichées noires — les grises sont des raccords lisses) ou une face (toute sa boucle).", choix_->vives().size());
+  rafraichirConge();
+}
+
+void Cadre::quitterConge() {
+  if (!choix_) return;
+  choix_.reset();
+  vue_->finChoix();
+  carteDroite_->contenu()->Show(rangConge_, false);
+  montrerAtelier();
+  montrerRien();
+  carteDroite_->Layout();
+  etat(tx(doc_.nom));
+}
+
+void Cadre::cliqueConge(const TopoDS_Shape& s) {
+  messageConge_ = tx(choix_->cliquer(s));
+  rafraichirConge();
+}
+
+// Le panneau, le trait des arêtes choisies, l'aperçu
+void Cadre::rafraichirConge() {
+  ChoixConge& c = *choix_;
+  const bool ch = c.chanfrein();
+  const wxString dp = ch ? L"D" : L"R";
+  fonctionMontree_ = -1;
+  wxBusyCursor attente;
+  const ApercuConge& a = c.apercu();
+  if (!a.forme.IsNull()) mailler(a.forme, parallele());
+  TopoDS_Compound k;
+  BRep_Builder b;
+  b.MakeCompound(k);
+  int nb = 0;
+  for (int i : c.germes()) {
+    b.Add(k, c.vives()[i].arete);
+    nb++;
+  }
+  vue_->montrerChoix(nb ? TopoDS_Shape(k) : TopoDS_Shape(), a.forme, a.nouvelles);
+
+  props_->Freeze();
+  props_->Clear();
+  props_->CenterSplitter();
+  props_->Append(new wxPropertyCategory(tx(c.libelle())));
+  props_->Append(new wxStringProperty(ch ? L"Distance par défaut (mm)" : L"Rayon par défaut (mm)", PROP_CONGE_RAYON, wxString::Format("%.10g", c.rayon())));
+  if (ch) lectureSeule(props_, L"Type", L"Distance égale");
+  props_->SetPropertyAttribute(props_->Append(new wxBoolProperty(L"Arêtes tangentes", PROP_CONGE_TANGENTES, c.tangent())), wxPG_BOOL_USE_CHECKBOX, true);
+  for (size_t i = 0; i < c.selection().size(); i++) {
+    const SelConge& s = c.selection()[i];
+    props_->Append(new wxStringProperty(wxString::Format(L"%zu : %s · L%.1f", i + 1, dp, s.len), wxString::Format("%s%zu", PROP_CONGE_ARETE, i), wxString::Format("%.10g", s.r)));
+  }
+  props_->SetSplitterPosition(FromDIP(170));
+  props_->Thaw();
+
+  wxString note = c.tangent() ? wxString(L"Clic = une arête (le ") + (ch ? L"chanfrein" : L"congé") + L" suit sa chaîne tangente) · clic sur une arête choisie = la retirer."
+                              : wxString(L"Clic = ajouter / retirer une arête, sans recherche de tangences.");
+  if (ch) note += L"\nDeux distances et distance + angle : pas encore dans le logiciel Windows.";
+  if (!c.selection().empty()) {
+    note += wxString::Format(L"\n%zu arête(s) retenue(s).\n", c.selection().size());
+    if (!a.forme.IsNull()) note += L"Aperçu : la pièce telle qu'elle sera, les nouvelles faces en orange.";
+    else if (!a.message.empty()) note += L"Aperçu impossible — " + tx(a.message);
+    else note += L"Aperçu indisponible.";
+  }
+  noteDroite_->SetMinSize(wxDefaultSize);
+  noteDroite_->SetLabel(note);
+  noteDroite_->Wrap(-1);  // sans cela, wxWidgets ne recoupe pas le nouveau texte à la même largeur
+  noteDroite_->Wrap(FromDIP(255));
+  noteDroite_->InvalidateBestSize();
+  noteDroite_->SetMinSize(noteDroite_->GetBestSize());
+  noteMontree_ = !noteMontree_;  // que ajusterDroite remette la note à sa nouvelle taille
+  carteDroite_->contenu()->Show(rangConge_, true);
+  hauteurDroite_ = 0;
+  ajusterDroite();
+  carteDroite_->Layout();
+  etat(!a.message.empty() ? tx(c.libelle()) + L" : " + tx(a.message) : messageConge_);
+}
+
+void Cadre::appliquerChoixConge() {
+  if (!choix_) return;
+  const wxString nom = tx(choix_->libelle());
+  if (choix_->selection().empty()) return etat(nom + L" : sélectionnez au moins une arête.");
+  for (const SelConge& s : choix_->selection())
+    if (!(s.r > 0)) return etat(nom + (choix_->chanfrein() ? L" : distance invalide." : L" : rayon invalide."));
+  Fonction f = choix_->creer(doc_, formesCorps_);
+  quitterConge();
+  ModifCote m;
+  m.esquissesAvant = doc_.esquisses;
+  m.avecFonctions = true;
+  m.fonctionsAvant = doc_.fonctions;
+  annulations_.push_back(std::move(m));
+  retablissements_.clear();
+  doc_.fonctions.push_back(std::move(f));
+  remplirArbre();
+  majTitre();
+  recalculer();
+  choisirFonction(static_cast<int>(doc_.fonctions.size()) - 1);
+}
+
+bool Cadre::proprieteConge(const wxString& nom, const wxVariant& valeur) {
+  const auto lire = [&](double& v) {
+    wxString t = valeur.GetString();
+    t.Replace(",", ".");
+    return t.ToCDouble(&v) && std::isfinite(v) && v > 0;
+  };
+  ChoixConge* c = choix_.get();
+  double v = 0;
+  if (nom == PROP_CONGE_TANGENTES) {
+    memoTangentes_ = valeur.GetBool();
+    c->tangentes(memoTangentes_);
+  } else if (nom == PROP_CONGE_RAYON) {
+    if (!lire(v)) {
+      etat(L"Saisir un nombre positif, en millimètres.");
+      CallAfter([this] { if (choix_) rafraichirConge(); });
+      return true;
+    }
+    (c->chanfrein() ? memoChanfrein_ : memoConge_) = v;
+    c->rayonDefaut(v);
+  } else if (nom.StartsWith(PROP_CONGE_ARETE)) {
+    if (!lire(v)) {
+      etat(L"Saisir un nombre positif, en millimètres.");
+      CallAfter([this] { if (choix_) rafraichirConge(); });
+      return true;
+    }
+    unsigned long i = 0;
+    nom.Mid(strlen(PROP_CONGE_ARETE)).ToULong(&i);
+    c->rayonArete(i, v);
+  } else {
+    return false;
+  }
+  CallAfter([this] { if (choix_) rafraichirConge(); });  // jamais de recalcul au milieu de l'événement de la grille
+  return true;
+}
+
+// Essai sans vraie souris : de vrais clics passés à la vue, à l'emplacement de chaque arête à l'écran. Ne prend pas la main.
+// mids.json : {"chanfrein":false,"r":2,"tangent":true,"mids":[[x,y,z],...]}
+bool Cadre::essaiGestesConge(const std::wstring& fichier, const std::wstring& sortie, const std::wstring& json, const std::wstring& dossier) {
+  std::ifstream entree(json);
+  const nlohmann::json j = nlohmann::json::parse(entree);
+  if (!ouvrir(fichier)) return false;
+  wxYield();
+  nlohmann::json bilan;
+  const Mesures avant = mesurer(forme_);
+  // Quitter : plus rien du mode ne reste à l'écran, ni dans le document
+  entrerConge(true);
+  wxYield();
+  capturerFenetre(dossier + L"\\0-chanfrein.png");
+  quitterConge();
+  wxYield();
+  capturerFenetre(dossier + L"\\0-quitte.png");
+  bilan["fonctionsApresQuitter"] = doc_.fonctions.size();
+  entrerConge(j.value("chanfrein", false));
+  if (!choix_) return false;
+  memoTangentes_ = j.value("tangent", true);
+  choix_->tangentes(memoTangentes_);
+  choix_->rayonDefaut(j.value("r", 2.0));
+  rafraichirConge();
+  wxYield();
+  // Un clic sur une face prend toute sa boucle, un second la retire
+  if (j.contains("face")) {
+    const auto& m = j["face"];
+    const wxPoint px = vue_->pixelDe(m[0].get<double>(), m[1].get<double>(), m[2].get<double>());
+    vue_->cliquerEn(px);
+    wxYield();
+    bilan["faceMessage"] = messageConge_.utf8_string();
+    bilan["faceGermes"] = choix_->germes().size();
+    capturerFenetre(dossier + L"\\0-face.png");
+    vue_->cliquerEn(px);
+    wxYield();
+    bilan["faceGermesApres"] = choix_->germes().size();
+  }
+  nlohmann::json rapport = nlohmann::json::array();
+  for (const auto& m : j["mids"]) {
+    const Vec3 p{m[0].get<double>(), m[1].get<double>(), m[2].get<double>()};
+    const size_t avant = choix_->germes().size();
+    const wxPoint px = vue_->pixelDe(p[0], p[1], p[2]);
+    vue_->cliquerEn(px);
+    wxYield();
+    bool juste = false;
+    if (choix_->germes().size() == avant + 1) {
+      const Vec3 g = choix_->vives()[choix_->germes().back()].mid;
+      juste = std::abs(g[0] - p[0]) + std::abs(g[1] - p[1]) + std::abs(g[2] - p[2]) < 1e-6;
+    }
+    rapport.push_back({{"px", {px.x, px.y}}, {"germes", choix_->germes().size()}, {"juste", juste}, {"message", messageConge_.utf8_string()}});
+  }
+  bilan["clics"] = rapport;
+  bilan["note"] = noteDroite_->GetLabel().utf8_string();
+  bilan["selection"] = choix_->selection().size();
+  bilan["apercu"] = !choix_->apercu().forme.IsNull();
+  bilan["nouvelles"] = choix_->apercu().nouvelles.size();
+  capturerFenetre(dossier + L"\\1-choix.png");
+  appliquerChoixConge();
+  wxYield();
+  capturerFenetre(dossier + L"\\2-applique.png");
+  bilan["fonctions"] = doc_.fonctions.size();
+  bilan["erreur"] = doc_.fonctions.back().congeErreur;
+  bilan["volumeApplique"] = mesurer(forme_).volume;
+  annuler();
+  wxYield();
+  bilan["apresAnnuler"] = doc_.fonctions.size();
+  bilan["volumeAvant"] = avant.volume;
+  bilan["volumeAnnule"] = mesurer(forme_).volume;
+  capturerFenetre(dossier + L"\\3-annule.png");
+  retablir();
+  wxYield();
+  bilan["apresRetablir"] = doc_.fonctions.size();
+  bilan["volumeRetabli"] = mesurer(forme_).volume;
+  enregistrerProjet(doc_, sortie);
+  std::ofstream(dossier + L"\\bilan.json") << bilan.dump(1);
+  return true;
+}
+
+void Cadre::capturerFenetre(const std::wstring& png) {
+  const wxSize t = GetSize();
+  wxBitmap image(t.x, t.y, 32);
+  {
+    wxMemoryDC dc(image);
+    PrintWindow(GetHWND(), static_cast<HDC>(dc.GetHDC()), 2);  // 2 : PW_RENDERFULLCONTENT, avec ce que dessine OpenGL
+  }
+  image.ConvertToImage().SaveFile(png, wxBITMAP_TYPE_PNG);
 }
 
 bool Cadre::lancerProtocole(const std::wstring& fichier, const std::wstring& journal, int total) {

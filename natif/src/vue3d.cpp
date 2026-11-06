@@ -2,6 +2,7 @@
 
 #include <wx/dcclient.h>
 
+#include <AIS_ColoredShape.hxx>
 #include <Graphic3d_NameOfMaterial.hxx>
 #include <Graphic3d_TransformPers.hxx>
 #include <Prs3d_Drawer.hxx>
@@ -130,8 +131,11 @@ void Vue3D::surEnfonce(wxMouseEvent& e) {
 void Vue3D::surRelache(wxMouseEvent& e) {
   if (HasCapture()) ReleaseMouse();
   if (!e.LeftUp() || aBouge_) return;
+  cliquerEn(e.GetPosition());
+}
+
+void Vue3D::cliquerEn(const wxPoint& p) {
   preparerSelection();
-  const wxPoint p = e.GetPosition();
   contexte_->MoveTo(p.x, p.y, vue_, false);
   if (contexte_->HasDetected()) {
     const occ::handle<AIS_ViewCubeOwner> face = occ::down_cast<AIS_ViewCubeOwner>(contexte_->DetectedOwner());
@@ -147,7 +151,79 @@ void Vue3D::surRelache(wxMouseEvent& e) {
   TopoDS_Shape choisie;
   contexte_->InitSelected();
   if (contexte_->MoreSelected() && contexte_->HasSelectedShape()) choisie = contexte_->SelectedShape();
+  if (enChoix_) contexte_->ClearSelected(true);  // ce qui est retenu a son propre trait orange
   if (surSelection) surSelection(choisie);
+}
+
+wxPoint Vue3D::pixelDe(double x, double y, double z) const {
+  int X = 0, Y = 0;
+  vue_->Convert(x, y, z, X, Y);
+  return wxPoint(X, Y);
+}
+
+namespace {
+occ::handle<AIS_Shape> trait(const occ::handle<AIS_InteractiveContext>& c, const TopoDS_Shape& s, const Quantity_Color& couleur, double largeur) {
+  occ::handle<AIS_Shape> a = new AIS_Shape(s);
+  a->Attributes()->SetAutoTriangulation(false);
+  a->SetColor(couleur);
+  a->SetWidth(largeur);
+  c->Display(a, AIS_WireFrame, -1, false);
+  return a;
+}
+void retirer(const occ::handle<AIS_InteractiveContext>& c, occ::handle<AIS_Shape>& a) {
+  if (!a.IsNull()) c->Remove(a, false);
+  a.Nullify();
+}
+}  // namespace
+
+void Vue3D::debutChoix(const TopoDS_Shape& vives, const TopoDS_Shape& tangentes) {
+  if (affichee_.IsNull()) return;
+  preparerSelection();
+  enChoix_ = true;
+  contexte_->ClearSelected(false);
+  toleranceAvant_ = contexte_->PixelTolerance();
+  contexte_->SetPixelTolerance(7);  // 7 pixels autour de l'arête, comme edgePickScreen dans le navigateur
+  affichee_->Attributes()->SetFaceBoundaryDraw(false);
+  contexte_->Redisplay(affichee_, false);
+  traitsVifs_ = trait(contexte_, vives, couleur(0, 0, 0), 1.2);
+  traitsLisses_ = trait(contexte_, tangentes, couleur(0x8a, 0x8f, 0x99), 1.0);
+  vue_->Redraw();
+}
+
+void Vue3D::montrerChoix(const TopoDS_Shape& choisies, const TopoDS_Shape& apercu, const std::vector<TopoDS_Face>& nouvelles) {
+  retirer(contexte_, traitsChoisis_);
+  retirer(contexte_, apercu_);
+  if (!choisies.IsNull()) traitsChoisis_ = trait(contexte_, choisies, couleur(0xff, 0x9f, 0x0a), 3.0);
+  if (!apercu.IsNull()) {
+    occ::handle<AIS_ColoredShape> a = new AIS_ColoredShape(apercu);
+    a->Attributes()->SetAutoTriangulation(false);
+    a->SetMaterial(Graphic3d_NameOfMaterial_Plastified);
+    a->SetColor(couleur(0x14, 0xa8, 0xff));
+    for (const TopoDS_Face& f : nouvelles) a->SetCustomColor(f, couleur(0xff, 0x7a, 0x1f));
+    contexte_->Display(a, AIS_Shaded, -1, false);
+    apercu_ = a;
+    contexte_->SetTransparency(affichee_, 1.0, false);  // toujours là pour recevoir les clics, mais on voit l'aperçu
+  } else {
+    contexte_->UnsetTransparency(affichee_, false);
+  }
+  vue_->Redraw();
+}
+
+void Vue3D::finChoix() {
+  if (!enChoix_) return;
+  enChoix_ = false;
+  retirer(contexte_, traitsVifs_);
+  retirer(contexte_, traitsLisses_);
+  retirer(contexte_, traitsChoisis_);
+  retirer(contexte_, apercu_);
+  contexte_->SetPixelTolerance(static_cast<int>(toleranceAvant_));
+  contexte_->ClearSelected(false);
+  if (!affichee_.IsNull()) {
+    contexte_->UnsetTransparency(affichee_, false);
+    affichee_->Attributes()->SetFaceBoundaryDraw(true);
+    contexte_->Redisplay(affichee_, false);
+  }
+  vue_->Redraw();
 }
 
 void Vue3D::surMouvement(wxMouseEvent& e) {

@@ -91,7 +91,7 @@ Splines, projections et intersections sur le noyau natif, esquisses sur plan de 
 
 ## Interface recopiée du navigateur
 
-**Faite le 06/11/2026, à essayer** : écran d'esquisse puis tout l'environnement, voir [README.md](README.md). Suite demandée par Fred : remplir les boutons grisés, fonction par fonction.
+**Faite le 06/11/2026, à essayer** : écran d'esquisse puis tout l'environnement, voir [README.md](README.md). Suite demandée par Fred : remplir les boutons grisés, fonction par fonction. Fait à ce jour : Esquisse, Extrusion, Congé, Chanfrein à distance égale.
 
 ## Hors de ce plan
 

@@ -48,6 +48,7 @@
 #include <optional>
 #include <stdexcept>
 
+#include "conges.h"
 #include "contours.h"
 
 namespace {
@@ -517,11 +518,23 @@ std::optional<TopoDS_Shape> decoupeSansFaceFine(const Fonction& f, const Esquiss
   return std::nullopt;
 }
 
-TopoDS_Shape rejouerCorps(Document& d, const std::vector<const Fonction*>& liste, std::vector<std::string>& msgs) {
+// occThroughBase : le solide d'avant la dernière extrusion « à travers tout », seule mesure de son étendue pendant le rejeu
+TopoDS_Shape gBaseTraversante;
+
+TopoDS_Shape rejouerCorps(Document& d, const std::vector<Fonction*>& liste, std::vector<std::string>& msgs) {
   TopoDS_Shape resultat;
   for (auto* fp : liste) {
-    const Fonction& f = *fp;
+    Fonction& f = *fp;
+    if (f.type == "xfillet") {
+      if (resultat.IsNull()) {
+        msgs.push_back(f.nom + " : aucun volume à congédier — ignoré");
+        continue;
+      }
+      resultat = appliquerConge(d, f, resultat, msgs);
+      continue;
+    }
     if (f.type != "extrude") continue;
+    gBaseTraversante = f.through ? resultat : TopoDS_Shape();
     Esquisse* s = d.esquisse(f.esquisse);
     TopoDS_Shape outil;
     try {
@@ -559,7 +572,7 @@ TopoDS_Shape rejouerCorps(Document& d, const std::vector<const Fonction*>& liste
 ResultatRejeu rejouer(Document& d, int n) {
   replacerHotes(d);
   std::vector<std::string> ordre;
-  std::map<std::string, std::vector<const Fonction*>> parCorps;
+  std::map<std::string, std::vector<Fonction*>> parCorps;
   for (auto& f : d.fonctions) {
     if (n >= 0 && &f - d.fonctions.data() >= n) break;
     if (!f.visible) continue;
@@ -570,8 +583,14 @@ ResultatRejeu rejouer(Document& d, int n) {
   ResultatRejeu r;
   std::vector<TopoDS_Shape> pieces;
   for (auto& b : ordre) {
+    gBaseTraversante = TopoDS_Shape();
     TopoDS_Shape s = rejouerCorps(d, parCorps[b], r.messages);
-    if (!s.IsNull()) pieces.push_back(s);
+    // Un congé a pu scinder des faces voisines : recoudre celles de même surface (occUnifyAfterFillets)
+    if (!s.IsNull() && std::any_of(parCorps[b].begin(), parCorps[b].end(), [](const Fonction* f) { return f->type == "xfillet"; })) s = unifier(s);
+    if (!s.IsNull()) {
+      pieces.push_back(s);
+      r.corps.push_back({b, s});
+    }
   }
   if (pieces.size() == 1) r.forme = pieces[0];
   else if (pieces.size() > 1) {
@@ -582,6 +601,19 @@ ResultatRejeu rejouer(Document& d, int n) {
     r.forme = comp;
   }
   return r;
+}
+
+std::vector<Etendue> etenduesEsquisse(const Document& d, const std::string& esquisse) {
+  std::vector<Etendue> out;
+  const Esquisse* s = nullptr;
+  for (auto& e : d.esquisses)
+    if (e.id == esquisse) s = &e;
+  for (auto& f : d.fonctions)
+    if (f.type == "extrude" && f.esquisse == esquisse && f.visible) {
+      const Plage p = plageDe(f, s, gBaseTraversante);
+      out.push_back({p.lo, p.hi});
+    }
+  return out;
 }
 
 Mesures mesurer(const TopoDS_Shape& s) {
@@ -804,6 +836,16 @@ HoteTrouve hotePourFace(const Document& d, const Vec3& pt, const Vec3& n) {  // 
   return best;
 }
 }  // namespace
+
+std::string idFonction(const Document& d, const char* prefixe) {
+  const unsigned long long ms = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch()).count();
+  size_t k = d.fonctions.size() + d.esquisses.size() + 1;
+  const auto pris = [&](const std::string& id) { return std::any_of(d.fonctions.begin(), d.fonctions.end(), [&](const Fonction& x) { return x.id == id; }); };
+  std::string id;
+  do id = std::string(prefixe) + "_" + std::to_string(k++) + "_" + base36(ms);
+  while (pris(id));
+  return id;
+}
 
 Fonction nouvelleExtrusion(const Document& d, const Esquisse& s) {
   Fonction f;

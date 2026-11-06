@@ -7,6 +7,7 @@
 
 struct ResultatRejeu {
   TopoDS_Shape forme;  // composé si plusieurs corps
+  std::vector<std::pair<std::string, TopoDS_Shape>> corps;  // le solide de chaque corps
   std::vector<std::string> messages;
 };
 

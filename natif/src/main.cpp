@@ -16,6 +16,7 @@
 #include <sstream>
 
 #include "cadre.h"
+#include "conges.h"
 #include "coter.h"
 #include "dessin.h"
 #include "enregistrer.h"
@@ -186,6 +187,68 @@ int modeExtruder(const std::vector<std::wstring>& a) {
   }
   return 1;
 }
+// --conge <fichier> <sortie.conceptcad> <gestes.json> <rapport.json> : le choix des arêtes sans fenêtre, comparé au navigateur par tester-conges-gestes.cjs.
+int modeConge(const std::vector<std::wstring>& a) {
+  try {
+    Document d = lireProjet(a[1]);
+    const ResultatRejeu r = rejouer(d);
+    std::ifstream entree(a[3]);
+    const nlohmann::json j = nlohmann::json::parse(entree);
+    ChoixConge c(d, r.forme, j.value("chanfrein", false), j.value("r", 2.0), j.value("tangent", true));
+    nlohmann::json sortie, vives = nlohmann::json::array(), lisses = nlohmann::json::array();
+    for (auto& e : c.vives()) {
+      nlohmann::json l = {{"mid", e.mid}, {"len", e.len}};
+      AncreArete an;
+      if (ancrePour(d, e.mid, an) && an.existe) {
+        l["ancre"] = {{"t", an.t}, {"sk", an.sk}, {"id", an.id}, {"z", an.z}, {"far", an.loin ? 1 : 0}};
+        if (an.aSide) {
+          l["ancre"]["side"] = an.side;
+          l["ancre"]["dist"] = an.dist;
+        }
+      }
+      vives.push_back(std::move(l));
+    }
+    for (auto& e : c.lisses()) lisses.push_back({{"mid", e.mid}, {"len", e.len}});
+    sortie["vives"] = vives;
+    sortie["lisses"] = lisses;
+    if (j.contains("mids")) {
+      for (const auto& m : j["mids"]) {
+        int b = -1;
+        double bd = 1e-3;
+        for (size_t i = 0; i < c.vives().size(); i++) {
+          const auto& v = c.vives()[i].mid;
+          const double e = std::abs(v[0] - m[0].get<double>()) + std::abs(v[1] - m[1].get<double>()) + std::abs(v[2] - m[2].get<double>());
+          if (e < bd) {
+            bd = e;
+            b = static_cast<int>(i);
+          }
+        }
+        if (b >= 0) c.basculer(b);
+      }
+      const ApercuConge& ap = c.apercu();
+      sortie["apercu"] = !ap.forme.IsNull();
+      sortie["nouvelles"] = ap.nouvelles.size();
+      sortie["message"] = ap.message;
+      if (!ap.forme.IsNull()) {
+        const Mesures me = mesurer(ap.forme);
+        sortie["apercuVolume"] = me.volume;
+        sortie["apercuFaces"] = me.faces;
+      }
+      if (!c.selection().empty()) {
+        Fonction f = c.creer(d, r.corps);
+        d.fonctions.push_back(std::move(f));
+        rejouer(d);
+        enregistrerProjet(d, a[2]);
+        sortie["ecrit"] = true;
+      }
+    }
+    std::ofstream(a[4]) << sortie.dump();
+    return 0;
+  } catch (const std::exception& e) {
+    fprintf(stderr, "%s\n", e.what());
+  }
+  return 1;
+}
 int modeEsquissesFaces(const std::vector<std::wstring>& a) {
   try {
     Document d = lireProjet(a[1]);
@@ -273,13 +336,21 @@ class Appli : public wxApp {
     SetAppearance(Appearance::Dark);  // comme le thème par défaut de la version navigateur
     auto* cadre = new Cadre;
     // Les captures ne doivent pas prendre la main sur ce que fait la personne devant le PC.
-    if ((!gArgs.empty() && gArgs[0] == L"--captures") || _wgetenv(L"CONCEPTCAD_SANS_ACTIVER")) cadre->ShowWithoutActivating();
+    if ((!gArgs.empty() && (gArgs[0] == L"--captures" || gArgs[0] == L"--essai-conge")) || _wgetenv(L"CONCEPTCAD_SANS_ACTIVER")) cadre->ShowWithoutActivating();
     else cadre->Show();
     cadre->Update();
     // --protocole <fichier> <journal> [nb] : même suite de modifications que la version navigateur
     if (gArgs.size() >= 3 && gArgs[0] == L"--protocole") {
       const int nb = gArgs.size() >= 4 ? _wtoi(gArgs[3].c_str()) : 120;
       if (!cadre->lancerProtocole(gArgs[1], gArgs[2], nb)) return false;
+    } else if (gArgs.size() >= 5 && gArgs[0] == L"--essai-conge") {
+      // --essai-conge <fichier> <sortie> <gestes.json> <dossier> : de vrais clics dans la vue, des images, puis fermeture
+      wxImage::AddHandler(new wxPNGHandler);
+      cadre->SetClientSize(cadre->FromDIP(wxSize(1500, 900)));
+      cadre->Update();
+      wxYield();
+      if (!cadre->essaiGestesConge(gArgs[1], gArgs[2], gArgs[3], gArgs[4])) exit(3);
+      cadre->Close(true);
     } else if (gArgs.size() >= 3 && gArgs[0] == L"--captures") {
       // --captures <fichier> <dossier> : une image par esquisse, puis fermeture
       wxImage::AddHandler(new wxPNGHandler);
@@ -316,6 +387,7 @@ int WINAPI wWinMain(HINSTANCE inst, HINSTANCE, PWSTR, int) {
   if (gArgs.size() >= 4 && gArgs[0] == L"--nouvelle-esquisse") return modeNouvelleEsquisse(gArgs);
   if (gArgs.size() >= 3 && gArgs[0] == L"--esquisses-faces") return modeEsquissesFaces(gArgs);
   if (gArgs.size() >= 6 && gArgs[0] == L"--extruder") return modeExtruder(gArgs);
+  if (gArgs.size() >= 5 && gArgs[0] == L"--conge") return modeConge(gArgs);
   // Processeurs à deux sortes de cœurs : un cœur économe calcule la même pièce 1,7 fois moins vite (345 → 585 ms mesurés).
   // On demande à Windows de ne pas traiter ce programme comme une tâche de fond, même quand sa fenêtre n'est pas devant.
   PROCESS_POWER_THROTTLING_STATE qos{PROCESS_POWER_THROTTLING_CURRENT_VERSION, PROCESS_POWER_THROTTLING_EXECUTION_SPEED, 0};

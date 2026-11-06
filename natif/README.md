@@ -292,3 +292,21 @@ Preuve, contre le navigateur V0.67.3 : `BancDessinCommunes` 383 sessions identiq
 Maths normales (`BancDessin`, à 0,001 mm) contre cette référence : 330 sessions identiques sur 383. Ce chiffre n'a pas été mesuré juste avant la correction : on ne peut donc pas dire qu'elle ne l'a pas changé, seulement que les maths communes ne montrent aucun écart.
 
 Non résolu : `verifier-ajuster.ps1` réussit ses étapes 1 à 6 (Ajuster, annuler, rétablir, enregistrer) mais s'arrête à l'étape 10 (Décaler un rectangle choisi au Ctrl+clic : 1 copie au lieu de 4), avec ou sans cette correction. La distance obtenue est stable tant que la vraie souris ne bouge pas et change quand elle a bougé. La piste est donc la vraie souris posée sur la fenêtre pendant l'essai, sans preuve à ce stade.
+
+## Congés et chanfreins 3D
+
+Boutons **Congé** et **Chanfrein** du ruban. Les arêtes vives sont en noir, les raccords lisses en gris. Un clic sur une arête l'ajoute ou la retire, un clic sur une face prend toute sa boucle. Le panneau donne le rayon par défaut, la case « Arêtes tangentes » et le rayon de chaque arête. L'aperçu montre la pièce telle qu'elle sera, nouvelles faces en orange ; s'il est impossible, le panneau dit pourquoi et le rayon maximal vérifié. **Appliquer** crée la fonction, **Quitter** ou Échap n'en crée pas, Ctrl+Z la retire. Rayon et case sont retenus pendant la session. Les congés et chanfreins des fichiers sont rejoués, ce qui ouvre une pièce de plus sur les exemples (Poche et Contour) ; les autres attendent surtout perçages, dépouilles et répétitions.
+
+Écart voulu avec le navigateur, sans effet sur le fichier : changer le rayon par défaut change aussi les arêtes restées à ce rayon. Dans le navigateur, seules les arêtes choisies ensuite le prennent.
+
+Pas encore repris : modifier un congé existant, chanfrein à deux distances ou à angle, cotes par formule (ces fichiers restent refusés), noms uniques d'arêtes (la recherche passe par l'ancre d'esquisse et la position ; un nom est écrit, et le navigateur s'en sert à sa relecture), texte « paroi mince » du message d'erreur, mémoire des reprises NURBS.
+
+Preuves, contre le navigateur :
+- `tester-conges.cjs` (rejeu, 15 tirages par pièce : arêtes, rayons, congé ou chanfrein, tangentes) : 153 cas sur 153 identiques en volume, aire, faces, arêtes, solides et validité ; parmi les tirés au hasard, 135 changent la pièce et 15 échouent des deux côtés.
+- `tester-conges-gestes.cjs` (mêmes gestes des deux côtés, 8 tirages par pièce) : liste des arêtes vives et tangentes identique sur 11 pièces sur 11, ancres identiques sur 338 arêtes sur 338, 87 cas sur 88 identiques (champs écrits, aperçu, pièce, fichier du natif relu par le navigateur).
+- `--essai-conge` : de vrais clics dans la vue. Sur Poche et Contour, 5 clics sur 5 prennent la bonne arête, un clic sur une face prend 8 arêtes et un second les retire. Annuler rend le volume d'avant, Rétablir celui d'après.
+- `BancDessinCommunes` 383/383, `tester-enregistrement.cjs` 176/176 : rien de cassé.
+
+**Non résolu**, le 88e cas : Crochet, R0,3 sur 3 arêtes, tangentes décochées. Arête par arête, les deux sont identiques. Ensemble, le noyau rend un solide déchiré des deux côtés, puis chacun passe par la reprise NURBS : le navigateur y trouve un aperçu, pas le natif, et les pièces diffèrent (7943,6 contre 7918,1 mm³, la pièce d'avant faisant 7938,0). La cause n'est pas établie : défaut de traduction de `repriseNurbs` ou calcul différent du noyau. Le fichier écrit reste le même dans ses champs, et chaque programme recalcule sa pièce à l'ouverture.
+
+Pièges : la macro Windows `far` interdit ce nom de champ ; `TKFillet.dll` doit être dans `sortie/` (sinon arrêt sans message au lancement, code -1073741515) ; `wxStaticText::Wrap` à la même largeur ne recoupe pas un nouveau texte, passer d'abord par `Wrap(-1)` ; pour des clics sur l'aperçu, la pièce d'origine reste affichée en transparence totale. Une pièce coupée pour un banc peut faire bouger, côté navigateur, une esquisse non consommée qui suit des arêtes : à retirer du banc.

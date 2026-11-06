@@ -130,7 +130,7 @@ void controler(const std::wstring& temp, const std::string& octets, const Docume
   const Document r = lireProjet(temp);
   bool pareil = r.esquisses.size() == d.esquisses.size() && r.fonctions.size() == d.fonctions.size() && r.nonPrisEnCharge == d.nonPrisEnCharge;
   for (size_t i = 0; pareil && i < r.fonctions.size(); i++)
-    pareil = memesReglages(r.fonctions[i], d.fonctions[i]);
+    pareil = memesReglages(r.fonctions[i], d.fonctions[i]) && r.fonctions[i].aretes.size() == d.fonctions[i].aretes.size() && r.fonctions[i].tangent == d.fonctions[i].tangent && r.fonctions[i].chamfer == d.fonctions[i].chamfer;
   for (size_t i = 0; pareil && i < r.esquisses.size(); i++)
     pareil = r.esquisses[i].id == d.esquisses[i].id && memesValeurs(r.esquisses[i], d.esquisses[i]);
   if (!pareil) throw std::runtime_error("la relecture du fichier écrit ne redonne pas la même pièce");
@@ -645,7 +645,29 @@ std::string ajouterEsquisses(const std::string& texte, const std::vector<const E
 
 // Un nom : il peut contenir des accents et tout ce que l'utilisateur a tapé
 std::string nomJson(const std::string& v) { return nlohmann::json(v).dump(-1, ' ', false); }
+std::string ancreJson(const AncreArete& a) {
+  if (!a.existe) return "null";
+  std::string o = "{\"t\":" + texteJson(a.t) + ",\"sk\":" + texteJson(a.sk) + ",\"id\":" + texteJson(a.id) + ",\"z\":" + nombreJson(a.z);
+  if (a.aSide) o += ",\"side\":" + std::to_string(a.side) + ",\"dist\":" + nombreJson(a.dist);
+  return o + ",\"far\":" + (a.loin ? "1" : "0") + "}";
+}
+std::string vec3Json(const Vec3& v) { return "[" + nombreJson(v[0]) + "," + nombreJson(v[1]) + "," + nombreJson(v[2]) + "]"; }
+// applyExactFillet : le nom de chaque arête, puis seed, dans cet ordre
+std::string congeCree(const Fonction& f) {
+  std::string o = "{\"id\":" + texteJson(f.id) + ",\"type\":\"xfillet\",\"name\":" + nomJson(f.nom) + ",\"edges\":[";
+  for (size_t i = 0; i < f.aretes.size(); i++) {
+    const AreteConge& a = f.aretes[i];
+    o += std::string(i ? "," : "") + "{\"pos\":" + vec3Json(a.pos) + ",\"pos0\":" + vec3Json(a.aPos0 ? a.pos0 : a.pos) + ",\"r\":" + nombreJson(a.r) + ",\"len\":" + nombreJson(a.len);
+    o += ",\"anchor\":" + ancreJson(a.ancre) + ",\"name\":" + nomJson(a.nomAffiche);
+    if (a.seed) o += ",\"seed\":1";
+    o += "}";
+  }
+  o += std::string("],\"visible\":true,\"tangent\":") + (f.tangent != 0 ? "true" : "false");
+  if (f.chamfer) o += ",\"chamfer\":true,\"cmode\":\"eq\"";
+  return o + ",\"body\":" + texteJson(f.corps) + "}";
+}
 std::string fonctionCreee(const Fonction& f) {
+  if (f.type == "xfillet") return congeCree(f);
   std::string o = "{\"id\":" + texteJson(f.id) + ",\"type\":\"extrude\",\"name\":" + nomJson(f.nom) + ",\"sketchId\":" + texteJson(f.esquisse);
   o += ",\"distance\":" + (f.through ? std::string("null") : nombreJson(f.distance)) + ",\"op\":" + texteJson(f.op) + ",\"visible\":true";
   o += std::string(",\"mid\":") + (f.mid ? "true" : "false") + ",\"upto\":null,\"body\":" + texteJson(f.corps);
@@ -653,13 +675,19 @@ std::string fonctionCreee(const Fonction& f) {
   if (f.through) o += ",\"through\":true";
   return o + "}";
 }
-std::string ajouterFonctions(const std::string& texte, const std::vector<const Fonction*>& L) {
+std::string ajouterFonctions(const std::string& texte, const std::vector<const Fonction*>& L, int nomsArete) {
   Parcours p(texte);
   allerAuDocument(p);
+  p.blancs();
+  const size_t ouverture = p.ici() + 1;
   std::vector<Morceau> morceaux;
   std::string neuf;
-  for (const Fonction* f : L) neuf += (neuf.empty() ? "" : ",") + fonctionCreee(*f);
-  bool vu = false;
+  bool avecArete = false;
+  for (const Fonction* f : L) {
+    neuf += (neuf.empty() ? "" : ",") + fonctionCreee(*f);
+    avecArete = avecArete || f->type == "xfillet";
+  }
+  bool vu = false, vuNoms = false;
   p.membres([&](const std::string& k) {
     if (k == "features" && p.voir() == '[') {
       vu = true;
@@ -668,13 +696,22 @@ std::string ajouterFonctions(const std::string& texte, const std::vector<const F
       const bool vide = p.voir() == ']';
       p.aller(d);
       p.sauter();
-      morceaux.clear();
       morceaux.push_back({p.ici() - 1, p.ici() - 1, (vide ? "" : ",") + neuf});
+    } else if (k == "entNames" && avecArete) {
+      vuNoms = true;
+      if (p.voir() == '{') {
+        retoucherObjet(p, {{"edge", std::to_string(nomsArete), true}}, morceaux);
+      } else {
+        const size_t d = p.ici();
+        p.sauter();
+        morceaux.push_back({d, p.ici(), "{\"edge\":" + std::to_string(nomsArete) + "}"});
+      }
     } else {
       p.sauter();
     }
   });
   if (!vu) Parcours::panne();
+  if (avecArete && !vuNoms) morceaux.push_back({ouverture, ouverture, "\"entNames\":{\"edge\":" + std::to_string(nomsArete) + "},"});
   return appliquer(texte, std::move(morceaux));
 }
 Retouche retoucheFonction(size_t rang, const Fonction& a, const Fonction& b) {
@@ -801,7 +838,7 @@ std::string texteEnregistre(const Document& d, const std::string& texteOrigine) 
   if (d.fonctions.size() > d.fonctionsFichier.size()) {
     std::vector<const Fonction*> nouvelles;
     for (size_t i = d.fonctionsFichier.size(); i < d.fonctions.size(); i++) nouvelles.push_back(&d.fonctions[i]);
-    texteFichier = ajouterFonctions(texteFichier, nouvelles);
+    texteFichier = ajouterFonctions(texteFichier, nouvelles, d.nomsArete);
   }
   std::vector<Retouche> retouches;
   for (size_t i = 0; i < d.fonctionsFichier.size(); i++)

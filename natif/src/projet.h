@@ -73,10 +73,33 @@ bool memesValeurs(const Esquisse& a, const Esquisse& b);
 // La structure seule : éléments, identifiants, liens entre eux ; pas les coordonnées, rayons et valeurs de cotes
 bool memesLiens(const Esquisse& a, const Esquisse& b);
 
+// L'ancre d'une arête de congé dans une esquisse : point ou entité, à un niveau (xAnchorFor, src/20-60)
+struct AncreArete {
+  bool existe = false, aZ = false, aSide = false, loin = false;
+  std::string t, sk, id;
+  double z = 0, dist = 0;
+  int side = 0;
+};
+// Une arête retenue par un congé ou un chanfrein exact
+struct AreteConge {
+  Vec3 pos{0, 0, 0}, pos0{0, 0, 0};
+  bool aPos0 = false, seed = false;
+  double r = 0, len = 0;
+  AncreArete ancre;
+  std::string nomAffiche;  // name : « Arête 6 »
+};
+
 struct Fonction {
   std::string id, type, nom, esquisse, corps, op = "add";
   double distance = 10;
   bool aDistance = false, visible = true, mid = false, flip = false, through = false;
+  // Congé ou chanfrein exact (xfillet)
+  std::vector<AreteConge> aretes;
+  bool chamfer = false;
+  int tangent = -1;  // -1 : absent du fichier, 0 : case décochée, 1 : chaîne tangente suivie
+  // État du dernier calcul, jamais écrit dans le fichier
+  std::string congeErreur, congeAjuste;
+  int congeTrouvees = 0, congeTotal = 0;
 };
 // Ce que le logiciel sait changer et enregistrer dans une fonction
 inline bool memesReglages(const Fonction& a, const Fonction& b) {
@@ -97,6 +120,7 @@ struct Document {
   std::string octets;  // le fichier tel qu'il est sur le disque : l'enregistrement en repart
   bool compresse = false;
   int nomsFace = 0;  // entNames.face : compteur des noms « Face n », jamais réemployés
+  int nomsArete = 0;  // entNames.edge : de même pour « Arête n »
   bool modifie() const {
     if (esquisses.size() != esquissesFichier.size() || fonctions.size() != fonctionsFichier.size()) return true;
     for (size_t i = 0; i < fonctions.size(); i++)

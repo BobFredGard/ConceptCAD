@@ -10,6 +10,7 @@
 #include <string>
 #include <vector>
 
+#include "conges.h"
 #include "coter.h"
 #include "dessin.h"
 #include "environnement.h"
@@ -64,6 +65,7 @@ class Cadre : public wxFrame {
 public:
   void entrerEsquisse(int i);
   void capturerEsquisses(const std::wstring& dossier);
+  bool essaiGestesConge(const std::wstring& fichier, const std::wstring& sortie, const std::wstring& json, const std::wstring& dossier);
  private:
   void quitterEsquisse();
   void abandonnerEsquisse();  // Abandonner : l'esquisse revient à ce qu'elle était à son ouverture
@@ -76,6 +78,13 @@ public:
   void faireSuivre();  // ce qui a été dessiné : les esquisses qui s'appuient sur le solide suivent, puis le solide
   double recalculer();
   void extruder();
+  void entrerConge(bool chanfrein);
+  void quitterConge();
+  void cliqueConge(const TopoDS_Shape& s);
+  void rafraichirConge();
+  void appliquerChoixConge();
+  bool proprieteConge(const wxString& nom, const wxVariant& valeur);
+  void capturerFenetre(const std::wstring& png);
   void modifierFonction(int i, const std::function<void(Fonction&)>& reglage);
   void choisirFonction(int i);
   void poserPas(const std::vector<Esquisse>& esquisses, bool avecFonctions, const std::vector<Fonction>& fonctions);
@@ -138,6 +147,13 @@ public:
   bool dessinModifie_ = false;      // des esquisses suivantes et le solide restent à mettre à jour
   std::string figee_;  // pourquoi l'esquisse ouverte ne peut pas changer
   TopoDS_Shape forme_;  // le solide affiché, pour le fantôme des esquisses
+  std::vector<std::pair<std::string, TopoDS_Shape>> formesCorps_;  // le solide de chaque corps
+  std::unique_ptr<ChoixConge> choix_;  // pendant le choix des arêtes d'un congé ou d'un chanfrein
+  wxString messageConge_;
+  wxBoxSizer* rangConge_ = nullptr;
+  // filMemo : retenus le temps de la session
+  double memoConge_ = 10, memoChanfrein_ = 1;
+  bool memoTangentes_ = true;
   TopoDS_Face faceChoisie_;  // dernière face cliquée sur le solide affiché
   wxTimer minuterie_;
   Document doc_;
