@@ -336,7 +336,7 @@ class Appli : public wxApp {
     SetAppearance(Appearance::Dark);  // comme le thème par défaut de la version navigateur
     auto* cadre = new Cadre;
     // Les captures ne doivent pas prendre la main sur ce que fait la personne devant le PC.
-    if ((!gArgs.empty() && (gArgs[0] == L"--captures" || gArgs[0] == L"--essai-conge")) || _wgetenv(L"CONCEPTCAD_SANS_ACTIVER")) cadre->ShowWithoutActivating();
+    if ((!gArgs.empty() && (gArgs[0] == L"--captures" || gArgs[0] == L"--essai-conge" || gArgs[0] == L"--image3d")) || _wgetenv(L"CONCEPTCAD_SANS_ACTIVER")) cadre->ShowWithoutActivating();
     else cadre->Show();
     cadre->Update();
     // --protocole <fichier> <journal> [nb] : même suite de modifications que la version navigateur
@@ -350,6 +350,13 @@ class Appli : public wxApp {
       cadre->Update();
       wxYield();
       if (!cadre->essaiGestesConge(gArgs[1], gArgs[2], gArgs[3], gArgs[4])) exit(3);
+      cadre->Close(true);
+    } else if (gArgs.size() >= 3 && gArgs[0] == L"--image3d") {
+      // --image3d <fichier> <image.png> : la vue 3D dans une image, à comparer à la version navigateur, puis fermeture
+      cadre->SetClientSize(cadre->FromDIP(wxSize(1500, 900)));
+      cadre->ouvrir(gArgs[1]);
+      wxYield();
+      cadre->imageVue3D(gArgs[2]);
       cadre->Close(true);
     } else if (gArgs.size() >= 3 && gArgs[0] == L"--captures") {
       // --captures <fichier> <dossier> : une image par esquisse, puis fermeture

@@ -310,3 +310,12 @@ Preuves, contre le navigateur :
 **Non résolu**, le 88e cas : Crochet, R0,3 sur 3 arêtes, tangentes décochées. Arête par arête, les deux sont identiques. Ensemble, le noyau rend un solide déchiré des deux côtés, puis chacun passe par la reprise NURBS : le navigateur y trouve un aperçu, pas le natif, et les pièces diffèrent (7943,6 contre 7918,1 mm³, la pièce d'avant faisant 7938,0). La cause n'est pas établie : défaut de traduction de `repriseNurbs` ou calcul différent du noyau. Le fichier écrit reste le même dans ses champs, et chaque programme recalcule sa pièce à l'ouverture.
 
 Pièges : la macro Windows `far` interdit ce nom de champ ; `TKFillet.dll` doit être dans `sortie/` (sinon arrêt sans message au lancement, code -1073741515) ; `wxStaticText::Wrap` à la même largeur ne recoupe pas un nouveau texte, passer d'abord par `Wrap(-1)` ; pour des clics sur l'aperçu, la pièce d'origine reste affichée en transparence totale. Une pièce coupée pour un banc peut faire bouger, côté navigateur, une esquisse non consommée qui suit des arêtes : à retirer du banc.
+
+## Rendu de la vue 3D repris du navigateur
+
+La vue reprend les réglages de la scène Three.js (`src/10-scene-3d.js`) : matière métal 0,35 et rugosité 0,4, studio de reflets fabriqué sans fichier, perspective à 50°, bords lissés, couleur de chaque corps, arêtes vives noires et raccords tangents gris, reflet au sol. Le cube de vue est dessiné sans perspective pour rester un cube.
+
+- Les unités de lumière d'OCCT ne sont pas celles de Three.js : les intensités sont réglées sur les couleurs mesurées du Drapeau (dessus `#20b0fc` ici, `#10b0fc` dans le navigateur).
+- `--image3d <fichier> <image.png>` enregistre la vue sans prendre la main, et écrit à côté le temps d'affichage et le temps par image.
+- Mesuré : environ 60 images par seconde sur une plaque de 900 trous ; 11 à 12 Mo de plus en usage réel, environ 45 Mo de plus en mémoire réservée.
+- Écarts connus : le reflet est uniforme et ne s'estompe pas ; les côtés sont un peu moins lumineux ; le cube a des faces très sombres vu par-dessous.

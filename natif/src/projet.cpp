@@ -369,7 +369,9 @@ Document lireProjet(const std::wstring& chemin) {
     for (auto& c : j["bodies"]) {
       d.corps.push_back(texte(c, "id"));
       d.nomsCorps.push_back(texte(c, "name"));
+      d.couleursCorps.push_back(c.contains("color") && c["color"].is_number() ? c["color"].get<unsigned>() : 0u);
     }
+  if (j.contains("tint") && j["tint"].is_number()) d.teinte = j["tint"].get<unsigned>();
   if (d.corps.empty()) d.corps.push_back("b1");
   // ensureActiveBody : l'actif s'il existe, sinon le premier
   d.corpsActif = texte(j, "activeBody");
