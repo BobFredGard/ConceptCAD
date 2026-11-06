@@ -12,7 +12,7 @@ const reg=()=>ps("Test-Path 'HKCU:\\Software\\Classes\\.conceptcad'");
 const procApp=()=>ps(`Get-CimInstance Win32_Process -Filter "Name like 'conceptcad%' or Name='ConceptCAD.exe'" | Select-Object -First 1 -ExpandProperty ProcessId`);
 const fermerApp=()=>{try{ps(`Get-CimInstance Win32_Process -Filter "Name like 'conceptcad%'" | ForEach-Object { Stop-Process -Id $_.ProcessId -Force }`);}catch(e){}};
 (async()=>{
-  if(reg()==='True'||fs.existsSync(DOSSIER))throw new Error('déjà installé ou associé : essai annulé');
+  if(reg()==='True'||fs.existsSync(DOSSIER)||C.profilReelUtilise())throw new Error('déjà installé ou associé : essai annulé');
   fs.mkdirSync(ESSAI,{recursive:true});
   const piece=path.join(ESSAI,'installateur essai.conceptcad');
   fs.copyFileSync(path.join(__dirname,'..','..','Exemples','Cache Piles.conceptcad'),piece);
@@ -60,6 +60,7 @@ const fermerApp=()=>{try{ps(`Get-CimInstance Win32_Process -Filter "Name like 'c
   ps(`Start-Process -FilePath '${des}' -ArgumentList '/S' -Wait`);
   for(let i=0;i<60&&fs.existsSync(path.join(DOSSIER,exe));i++)await C.attendre(500);
   res.desinstalle=!fs.existsSync(path.join(DOSSIER,exe));
+  fs.rmSync(C.PROFIL_REEL,{recursive:true,force:true}); // les données de cet essai
   res.associationRetiree=reg()==='False';
   res.classeRestante=ps("Get-ChildItem 'HKCU:\\Software\\Classes' -ErrorAction SilentlyContinue | Where-Object { $_.PSChildName -match 'conceptcad' } | ForEach-Object { $_.PSChildName }");
   fs.writeFileSync(path.join(__dirname,'resultats','installateur.json'),JSON.stringify(res,null,1));

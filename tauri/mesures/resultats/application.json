@@ -129,7 +129,7 @@
   "ok": true,
   "detail": {
    "app": {
-    "ms": 79,
+    "ms": 78,
     "ops": [
      {
       "type": "facing",
@@ -140,13 +140,13 @@
      {
       "type": "contour",
       "mouvements": 565,
-      "ms": 11,
+      "ms": 12,
       "empreinte": "jnrr67"
      },
      {
       "type": "pocket",
       "mouvements": 3528,
-      "ms": 66,
+      "ms": 65,
       "empreinte": "1ehm80m"
      },
      {
@@ -158,7 +158,7 @@
     ]
    },
    "chrome": {
-    "ms": 79,
+    "ms": 76,
     "ops": [
      {
       "type": "facing",
@@ -169,13 +169,13 @@
      {
       "type": "contour",
       "mouvements": 565,
-      "ms": 11,
+      "ms": 10,
       "empreinte": "jnrr67"
      },
      {
       "type": "pocket",
       "mouvements": 3528,
-      "ms": 67,
+      "ms": 64,
       "empreinte": "1ehm80m"
      },
      {
@@ -197,6 +197,83 @@
  },
  {
   "nom": "Aucune erreur de page (FAO)",
+  "ok": true,
+  "detail": []
+ },
+ {
+  "nom": "Tout régénérer sur plusieurs cœurs, identique à Chrome",
+  "ok": true,
+  "detail": {
+   "app": {
+    "ms": 5535,
+    "workers": 2,
+    "coeurs": 16,
+    "restants": 0,
+    "parcours": [
+     {
+      "id": "op_4_mvqryqye",
+      "type": "facing",
+      "n": 63,
+      "empreinte": "807ef22ae3"
+     },
+     {
+      "id": "op_5_mvqs3025",
+      "type": "rough3d",
+      "n": 24105,
+      "empreinte": "3151d779c3"
+     },
+     {
+      "id": "op_3_mvqu822f",
+      "type": "geofinish",
+      "n": 92845,
+      "empreinte": "0d9bc210bd"
+     },
+     {
+      "id": "op_6_mvr0jnwn",
+      "type": "contour",
+      "n": 1472,
+      "empreinte": "1899936d24"
+     }
+    ],
+    "avis": []
+   },
+   "chrome": {
+    "ms": 5667,
+    "workers": 2,
+    "coeurs": 16,
+    "restants": 0,
+    "parcours": [
+     {
+      "id": "op_4_mvqryqye",
+      "type": "facing",
+      "n": 63,
+      "empreinte": "807ef22ae3"
+     },
+     {
+      "id": "op_5_mvqs3025",
+      "type": "rough3d",
+      "n": 24105,
+      "empreinte": "3151d779c3"
+     },
+     {
+      "id": "op_3_mvqu822f",
+      "type": "geofinish",
+      "n": 92845,
+      "empreinte": "0d9bc210bd"
+     },
+     {
+      "id": "op_6_mvr0jnwn",
+      "type": "contour",
+      "n": 1472,
+      "empreinte": "1899936d24"
+     }
+    ],
+    "avis": []
+   }
+  }
+ },
+ {
+  "nom": "Aucune erreur de page (plusieurs cœurs)",
   "ok": true,
   "detail": []
  }

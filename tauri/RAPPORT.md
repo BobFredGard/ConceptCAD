@@ -1,4 +1,32 @@
-# ConceptCAD en application Windows : rapport de la maquette
+# ConceptCAD en application Windows : rapport
+
+## Où on en est (6 novembre, V0.66.0)
+
+Vous avez décidé de continuer. L'application n'est plus une maquette : elle s'appelle ConceptCAD et suit la version du logiciel. **Toujours rien sur `main`, rien envoyé sur Internet, version web inchangée.**
+
+**Ajouté et vérifié :**
+
+- **Une seule fenêtre :** un double-clic sur un `.conceptcad` alors que l'application est ouverte l'ouvre dans la même fenêtre, ramenée devant. Si la pièce en cours est modifiée, la question habituelle protège votre travail.
+- **Fermeture :** la croix demande Enregistrer / Ne pas enregistrer / Annuler si la pièce est modifiée, sinon elle ferme sans rien demander.
+- **Au redémarrage :** la dernière pièce revient depuis son fichier, donc Ctrl+S réécrit le bon fichier. Une modification refusée ne revient pas.
+- **Logiciel occupé par un long calcul :** au bout de 5 secondes, Windows propose de fermer quand même. On n'est jamais bloqué.
+- **Comportements de navigateur retirés :** F5, Ctrl+P, Ctrl+F et le menu du clic droit, sauf dans les champs de texte pour copier et coller.
+- **Désinstallation propre :** plus aucune trace de `.conceptcad` dans le registre.
+
+**Essais :** 22 vérifications d'avant, 24 nouvelles, le vrai double-clic et l'installateur : tout passe.
+
+- **Vrai calcul FAO :** Poche et Contour donne des parcours identiques à Chrome.
+- **Plusieurs cœurs (V0.66.0) :** Cavité Test donne aussi des parcours identiques à Chrome, en 5,5 s contre 5,7 s.
+
+**Une limite à connaître :** après un arrêt brutal (coupure de courant, programme tué), les dernières modifications peuvent manquer, car le brouillon n'arrive sur le disque qu'avec jusqu'à une minute de retard. Après 70 secondes d'attente, l'essai le retrouve bien ; après 12 secondes, il revient à la version précédente, avec le bandeau de secours. Le stockage est le même que dans Chrome.
+
+**Les chiffres de RAM ci-dessous datent de V0.64.3.** Ils n'ont pas été remesurés.
+
+**Reste à faire :** essai à la main par vous, essai sur l'autre PC (hors ligne, autre carte graphique), Windows 10, mises à jour automatiques, signature, compilation à chaque `cpt`.
+
+---
+
+# Rapport de la maquette (5 et 6 novembre, V0.64.3)
 
 Essai du 5 au 6 novembre 2026, sur ConceptCAD V0.64.3. Rien n'est livré : tout est sur la branche `claude/vigorous-swanson-45df96`, dans le seul dossier `tauri/`.
 
@@ -80,13 +108,13 @@ D'autres sessions tournaient par moments sur le PC : les temps sont moins sûrs 
 | **Windows 10 sans WebView2** | **Pas testé**, aucun PC de ce type ici | Selon Microsoft, WebView2 est présent sur Windows 11 et a été poussé vers les Windows 10 éligibles, sans garantie. L'installateur actuel le télécharge s'il manque |
 | **PC sans Internet** | Fonctionnement sans demande extérieure vérifié ici, **mais pas sur un PC vraiment débranché** | Essai réel à faire sur votre PC hors ligne. S'il n'a pas WebView2 : installateur « hors ligne », environ 127 Mo de plus selon Tauri, ou moteur embarqué, environ 180 Mo de plus |
 | **Signature du programme** | Non signé | Windows peut avertir sur un programme téléchargé (non testé ici). Il faut un certificat payant pour une diffusion large ; pour vos propres PC, ce n'est pas bloquant |
-| **IndexedDB et parcours FAO** | Stockage testé (30 Mo, place disponible 10 Go) ; **aucun vrai calcul FAO lancé dans l'application** | L'application a son propre stockage, séparé de Chrome : récents, brouillons et cache des parcours ne suivent pas. Les parcours enregistrés dans un `.conceptcad` restent, eux, dans le fichier |
+| **IndexedDB et parcours FAO** | Stockage testé (30 Mo, place disponible 10 Go) ; **vrai calcul FAO réussi**, sur un et plusieurs cœurs, identique à Chrome | L'application a son propre stockage, séparé de Chrome : récents, brouillons et cache des parcours ne suivent pas. Les parcours enregistrés dans un `.conceptcad` restent, eux, dans le fichier |
 | **Carte graphique** | NVIDIA seule testée | Essai sur l'autre PC, surtout s'il a une carte faible ou deux cartes |
-| **Double-clic quand l'application est déjà ouverte** | **Pas testé** : ouvre probablement une seconde fenêtre | Décider si la pièce doit s'ouvrir dans la même fenêtre |
-| **Fermeture avec modifications non enregistrées** | Pas de question posée, le brouillon revient au redémarrage (comme aujourd'hui dans Chrome) | Ajouter la question Enregistrer / Ne pas enregistrer |
-| **Désinstallation** | Laisse la clé `.conceptcad` dans le registre | À corriger dans l'installateur |
-| **Essai à la main** | Toutes les vérifications sont automatiques. **Pas testés :** vrais raccourcis clavier, glisser-déposer d'un fichier, messages `prompt` | Une demi-heure d'usage réel par vous |
-| **Version emballée** | V0.64.3, alors que `main` est passé à V0.65.0 | Refaire : `node tauri/preparer.cjs`, puis compiler |
+| **Double-clic quand l'application est déjà ouverte** | **Réglé** : même fenêtre | Rien |
+| **Fermeture avec modifications non enregistrées** | **Réglé** : la question est posée | Rien |
+| **Désinstallation** | **Réglé** : registre propre | Rien |
+| **Essai à la main** | Toutes les vérifications sont automatiques. Raccourcis et messages de saisie vérifiés par pilotage, pas au vrai clavier. Le glisser-déposer d'un fichier n'existe pas non plus dans la version web | Une demi-heure d'usage réel par vous |
+| **Version emballée** | V0.66.0, la version suit `package.json` | Refaire à chaque version : `node tauri/preparer.cjs`, puis compiler |
 
 ## Le multicœur
 
@@ -126,9 +154,9 @@ C'est peut-être un seul et même problème. Il touche directement votre plainte
 ## Ce qui a été laissé sur le PC
 
 - L'association `.conceptcad` a été retirée : vos fichiers s'ouvrent comme avant. Il reste une ligne sans effet dans l'historique « Ouvrir avec » de Windows.
-- L'application a été désinstallée après l'essai et ses données d'essai effacées.
+- L'application a été désinstallée après chaque essai et ses données d'essai effacées. Le dossier `%LOCALAPPDATA%r.conceptcad.maquette` de l'ancien nom reste, sans effet, et peut être supprimé. Le dossier `fr.conceptcad.logiciel` reste vide.
 - L'outil NSIS (8 Mo) reste dans `%LOCALAPPDATA%\tauri`, téléchargé avec votre accord.
-- Pour l'essayer : `tauri/src-tauri/target/release/conceptcad-maquette.exe`, ou l'installateur `tauri/src-tauri/target/release/bundle/nsis/ConceptCAD_0.64.3_x64-setup.exe`. **Installer poserait l'association :** le double-clic ouvrirait alors vos pièces dans la maquette.
+- Pour l'essayer : `tauri/src-tauri/target/release/ConceptCAD.exe`, ou l'installateur `tauri/src-tauri/target/release/bundle/nsis/ConceptCAD_0.66.0_x64-setup.exe`. **Installer pose l'association :** le double-clic ouvre alors vos pièces dans l'application. La désinstallation remet tout comme avant.
 
 ## Pour refaire
 
@@ -136,6 +164,7 @@ C'est peut-être un seul et même problème. Il touche directement votre plainte
 node tauri/preparer.cjs
 cargo tauri build --no-bundle
 node tauri/mesures/verifier.cjs "<dossier d'essai vide>"
+node tauri/mesures/application.cjs "<dossier d'essai vide>"
 node tauri/mesures/mesurer.cjs repos ConceptCAD.html app,chrome 2
 ```
 

@@ -168,21 +168,24 @@ async function association(){
   const choix=ps("(Get-ItemProperty 'HKCU:\\Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\FileExts\\.conceptcad\\UserChoice' -ErrorAction SilentlyContinue).ProgId");
   const avant=ps("Test-Path 'HKCU:\\Software\\Classes\\.conceptcad'");
   if(avant==='True'){note('Association : essai sauté, une association existe déjà',false);return;}
+  if(C.profilReelUtilise()){note('Association : essai sauté, l’application a déjà servi sur ce PC (ses données ne sont pas touchées)',false);return;}
   try{
     ps(`& '${ASSO}' -Exe '${C.EXE}'`);
     const lanceur=path.join(ESSAI,'double clic essai.conceptcad');
     fs.copyFileSync(path.join(EX,'Cache Piles.conceptcad'),lanceur);
     ps(`Start-Process -FilePath '${lanceur}'`);
     let vu='';
-    for(let i=0;i<300&&!/essai/.test(vu);i++){
+    for(let i=0;i<300&&!/double clic essai/.test(vu);i++){
       await C.attendre(200);
       vu=ps("Get-Process ConceptCAD -ErrorAction SilentlyContinue | ForEach-Object { $_.MainWindowTitle }");
     }
-    note('Double-clic réel (association Windows)',/essai/.test(vu),{titre:vu,choixPrecedent:choix||null});
+    note('Double-clic réel (association Windows)',/double clic essai/.test(vu),{titre:vu,choixPrecedent:choix||null});
   }catch(e){note('Double-clic réel (association Windows)',false,String(e));}
   finally{
     try{ps("Get-Process ConceptCAD -ErrorAction SilentlyContinue | Stop-Process -Force");}catch(e){}
     ps(`& '${ASSO}' -Retirer`);
+    await C.attendre(1500);
+    fs.rmSync(C.PROFIL_REEL,{recursive:true,force:true});
     note('Association retirée, Windows comme avant',ps("Test-Path 'HKCU:\\Software\\Classes\\.conceptcad'")==='False');
   }
 }

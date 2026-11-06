@@ -180,8 +180,26 @@ const calculFAO=async s=>s.page.evaluate(async()=>{
   return {ms:Math.round(performance.now()-t0),ops};
 },null,{timeout:600000});
 
+// « Tout régénérer » réparti sur plusieurs cœurs (V0.66.0) : mêmes parcours que Chrome, sans repli.
+const calculMulti=async s=>{
+  const avis=[];s.page.on('console',m=>{if(/multicœur/.test(m.text()))avis.push(m.text());});
+  await s.page.waitForFunction(()=>{try{return doc.features.length>0&&rebuildDepth===0&&builtEngine==='exact'&&bodies.some(b=>b.shape)&&faoSolidSettled();}catch(e){return false;}},null,{timeout:300000,polling:200});
+  await C.attendre(1500);
+  const r=await s.page.evaluate(async()=>{
+    const N=window.Worker;let nb=0;window.Worker=function(u){nb++;return new N(u);};
+    const job=faoDoc(),ops=(job.ops||[]).filter(o=>o&&o.on!==false),t0=performance.now();
+    await faoPreviewGenerateAsync();
+    const ms=Math.round(performance.now()-t0);
+    window.Worker=N;
+    return {ms,workers:nb,coeurs:faoWkNbCoeurs(),restants:faoWkActifs.length,parcours:ops.map(o=>{const h=faoOpMovesHit(o);return {id:o.id,type:o.type,n:h&&h.mv?h.mv.length:-1,mv:h&&h.mv?JSON.stringify(h.mv):''};})};
+  },null,{timeout:900000});
+  r.parcours.forEach(p=>{p.empreinte=crypto.createHash('sha1').update(p.mv).digest('hex').slice(0,10);delete p.mv;});
+  return {...r,avis};
+};
+
 async function fao(){
-  const F=copie('Poche et Contour','FAO');
+  const F=copie('Poche et Contour','FAO'),G=copie('Cavité Test','FAO cœurs');
+  let chromeMulti,appMulti;
   const srv=await C.serveur(HTML);
   let chrome,app;
   try{
@@ -191,6 +209,8 @@ async function fao(){
       await C.ouvrirPiece(c,F);
       await C.attendre(1500);
       chrome=await calculFAO(c);
+      await C.ouvrirPiece(c,G);
+      chromeMulti=await calculMulti(c);
     }finally{await C.arreter(c);}
   }finally{srv.close();}
   const s=await C.lancer('app',{fichier:F});
@@ -205,6 +225,14 @@ async function fao(){
     note('Base locale du cache de parcours présente',cache>=1,{bases:cache});
     note('Aucune erreur de page (FAO)',s.erreurs.length===0,s.erreurs);
   }finally{await C.arreter(s);}
+  const s2=await C.lancer('app',{fichier:G});
+  try{
+    await attendreFichier(s2,G);
+    appMulti=await calculMulti(s2);
+    const sig=r=>JSON.stringify(r.parcours.map(p=>[p.id,p.n,p.empreinte]));
+    note('Tout régénérer sur plusieurs cœurs, identique à Chrome',appMulti.workers>1&&appMulti.restants===0&&!appMulti.avis.length&&appMulti.parcours.every(p=>p.n>0)&&sig(appMulti)===sig(chromeMulti),{app:appMulti,chrome:chromeMulti});
+    note('Aucune erreur de page (plusieurs cœurs)',s2.erreurs.length===0,s2.erreurs);
+  }finally{await C.arreter(s2);}
 }
 
 (async()=>{
