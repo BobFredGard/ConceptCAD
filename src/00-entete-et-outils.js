@@ -21,7 +21,7 @@
  * peut changer sans rien casser. CACHE_VER (parcours FAO) reste indépendant.
  */
 
-const APP_VER='V0.66.2';
+const APP_VER='V0.67.0';
 try{console.log('[ConceptCAD] version '+APP_VER);}catch(e){}
 try{var mfSv=document.getElementById('mfSplashVer');if(mfSv)mfSv.textContent=APP_VER;}catch(e){} // écran de démarrage
 
@@ -152,6 +152,8 @@ async function occtFinishBoot(){
     ?'OCCT : prêt — prismes exacts, booléens Fuse/Cut, congés toutes arêtes, STEP.'
     :'OCCT : chargé mais incomplet — repli sur maillage (CSG).';
   if(occtReady)occBaseMsg+=' (OCCT 8.0.1)';
+  if(occtMtFils)occBaseMsg+=' Multicœur : '+occtMtFils+' cœurs.';
+  else if(occtMtAvis)occBaseMsg+=' '+occtMtAvis+'.';
   occStatus();
   if(occtReady){
     // Recalcul systématique une fois le noyau prêt (même si un affichage existe) :

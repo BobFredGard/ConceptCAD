@@ -65,7 +65,7 @@ test('bouton Régénérer du ruban : calcul réparti, parcours dessinés, page u
   const err=[],avis=[];
   page.on('pageerror',e=>err.push(e.message));
   page.on('console',m=>{if(/multicœur/.test(m.text()))avis.push(m.text());});
-  await page.addInitScript(()=>{const N=window.Worker;window.__nbW=0;window.Worker=function(u){window.__nbW++;return new N(u);};});
+  await page.addInitScript(()=>{const N=window.Worker;window.__nbW=0;window.Worker=function(u,o){window.__nbW++;return new N(u,o);};});
   await page.goto('/ConceptCAD.html');
   await page.waitForFunction(()=>typeof occtReady!=='undefined'&&occtReady===true,null,{timeout:200000});
   await page.setInputFiles('#fileProj',path.join(RACINE,'Exemples','Cavité Test.conceptcad'));

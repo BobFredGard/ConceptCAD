@@ -1,9 +1,9 @@
 {
   "name": "fusion2",
-  "version": "0.66.2",
+  "version": "0.67.0",
   "description": "ConceptCAD (ex-MiniFusion) — CAO paramétrique, FAO et mise en plan dans un seul fichier HTML",
   "scripts": {
-    "start": "npx serve . -l 3000",
+    "start": "npx serve . -l 3000 -c tools/serve.json",
     "build": "node build.js",
     "check": "node build.js --check",
     "test": "node tests/run.cjs",

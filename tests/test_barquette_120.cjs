@@ -20,7 +20,7 @@ const A=(c,m)=>{if(!c){ko++;console.log('  ✗ '+m);}else console.log('  ✓ '+m
   const volume=()=>vm.runInContext("occShapeVolume(occLive.shape)",ctx);
   const poser=async v=>{sandbox.__val=String(v);
     await vm.runInContext("(async()=>{parSetParam(doc.params.find(x=>x.name==='largeur_barquette'),__val);await parAfterChange(true);})()",ctx);};
-  const NB=120;
+  const NB=+process.env.BARQ_NB||120;
   console.log('=== Barquette : '+NB+' modifications de suite ===');
   const v0=+vm.runInContext("doc.params.find(x=>x.name==='largeur_barquette').expr",ctx);
   const vol0=volume(),pile0=real.stackSave();

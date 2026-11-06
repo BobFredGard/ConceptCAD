@@ -8,7 +8,7 @@ sont sorties le 2026-09-30j.
 Code dans `src/` · livrable `fusion_mvp.html` (généré par `build.js`) · architecture et
 garde-fous en tête de `src/00-entete-et-outils.js`.
 
-**602 versions**, de `2026-09-28b` à `V0.66.2` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
+**603 versions**, de `2026-09-28b` à `V0.67.0` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
 comme dans le fichier d'origine.
 
 ---
@@ -6941,5 +6941,19 @@ Barquette ne perd plus son solide à la 107e modification, et sa mémoire ne mon
 - **Mesuré** (Barquette, tas du noyau) : 154 Mo stables jusqu'à 240 modifications, 266 Mo avant ; occupé après 120 modifications, caches vidés : 48 Mo, 118 Mo avant.
 - **Effet sur d'autres fichiers** : sur les 20 exemples, mêmes solides, noms et messages, et mêmes parcours FAO sur les 3 exemples comparés. `CACHE_VER` inchangé.
 - **Tests** : `test_pile_noyau`, `test_barquette_120`, Barquette dans `test_fuite_noyau`, qui refuse aussi tout `Append` direct.
+
+---
+
+## V0.67.0 - Noyau multicœur
+
+- **Tout seul** : quand le navigateur et le PC le permettent, ConceptCAD démarre le noyau multicœur avec 4 cœurs. La barre d'état l'écrit : « Noyau OCCT 8.0.1 · multicœur 4 cœurs ». Sinon, noyau normal, et la bulle de la barre d'état dit pourquoi.
+- **Mesuré** : Barquette, recalcul et modification de 4,2 s à 3,0 s. Presque rien sur les autres exemples. Seuls les booléens utilisent les cœurs. Mémoire du noyau : 319 Mo au lieu de 154 sur Barquette.
+- **Mêmes résultats** : sur les 20 exemples, mêmes solides, noms et messages. Parcours FAO identiques, `CACHE_VER` inchangé, le maillage et les workers restent sur le calcul normal.
+- **Où** : `Server.bat` envoie les en-têtes nécessaires ; sur le site, le service worker `isolation-sw.js` les ajoute à partir de la deuxième ouverture. Le fichier autonome garde le noyau normal, le double-clic ne permet pas les fils. Adresse `?mt=0` : noyau normal.
+- **Publication** : les objets Git LFS sont gardés en cache par `pages.yml`, pour ne pas retélécharger les deux noyaux à chaque version.
+- **Esquisse sur une face déplacée** : une esquisse posée sur une face baissée par un « Déplacement de face » suit maintenant cette face et son paramètre. Elle ne s'accroche plus à une fonction créée plus loin (Barquette : Esquisses 4, 16 et 28 sur le flanc d'un renfort, une boucle qui les bloquait à -4 après `epaisseur_levres` 4 puis 3,3). À l'ouverture, un tel fichier retrouve la bonne face s'il en existe une avant l'esquisse : sur la Barquette de Fred, le volume passe de 952 873 à 950 813 mm³ et les surfaces de 506 à 340.
+- **Reste connu** : après un aller-retour de paramètre sur cette pièce, environ 50 mm³ de plus (0,005 %) et 346 surfaces au lieu de 340 ; cause non cherchée.
+- **Fusion sans miettes** : les solides de volume nul laissés à côté de la pièce par une fusion sont retirés ; la fusion suivante ne rend plus un volume nul qui faisait s'effondrer la pièce.
+- **Tests** : `test_noyau_multicoeur`, `noyau-multicoeur.spec`, `test_moteur_v3` complété, `test_hote_face_deplacee`, `test_fusion_miettes`.
 
 ---

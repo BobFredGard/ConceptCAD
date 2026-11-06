@@ -69,3 +69,18 @@ repli ; s'il faut compléter ses arguments, l'ajouter à la main dans ce fichier
 
 Docker Desktop utilise WSL 2 : `wsl --install` (redémarrage), puis l'installeur de Docker Desktop. Le
 lancer avant `build.cjs`. L'image pèse plusieurs Go, téléchargés une seule fois.
+
+## Noyau multicœur (`occt/mt`)
+
+`node occt-build/build.cjs mt` puis `node occt-build/installer.cjs mt`. Même recette que `conceptcad-v3.yml`, sur l'image
+`ghcr.io/taucad/opencascade.js:3.1.0-multi-threaded` avec `--config multi-threaded`, plus `-pthread -sSHARED_MEMORY=1`,
+une réserve de 8 fils au plus (`-sPTHREAD_POOL_SIZE`, égale à `OCCT_MT_FILS_MAX` de `src/96`) et `-sENVIRONMENT=web,worker,node`.
+
+La page le choisit seule si elle est isolée (`crossOriginIsolated`) et si le PC a au moins 4 cœurs : en-têtes de
+`tools/serve.json` avec `Server.bat`, service worker `isolation-sw.js` sur le site, à partir de la deuxième ouverture.
+Adresse `?mt=0` : noyau normal ; `?mt=8` : 8 fils. Sur ce noyau, seuls les booléens utilisent les fils ; le maillage
+reste comme avant pour ne pas changer la FAO, et les workers gardent le noyau normal.
+
+Suite sur ce noyau : `OCCT_FILS=4 OCCT_DIR=occt/mt node tests/run.cjs`. Échecs attendus, propres à ce montage de test :
+`test_fuite_noyau` (retouche de la colle normale), `test_suppression_face_worker` et `test_filet_tache_fond` (leurs workers
+de test chargent le noyau testé, jamais l'application), `test_barquette_120` (seuils mémoire du noyau normal).

@@ -30,3 +30,6 @@ tests/.coeurs.json
 # noyau OCCT recompilé (occt-build/) : intermédiaires et résultats, trop gros pour Git
 occt-build/work/
 occt-build/out/
+
+# copie provisoire de la colle du noyau multicœur, faite par tests/noyau.cjs
+occt/mt/conceptcad_mt_*.mjs

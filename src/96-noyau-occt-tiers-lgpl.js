@@ -6,6 +6,42 @@ function occtFileUrl(p){ // chemin relatif : marche en http(s) comme en file://
 // Le traducteur occt/v3/compat-v3.cjs garde les appels d'opencascade.js 1.1.1 écrits dans src/.
 const OCCT_FILES={js:'occt/v3/conceptcad_v3.js',wasm:'occt/v3/conceptcad_v3.wasm',
   compat:'occt/v3/compat-v3.cjs',table:'occt/v3/compat-v3.json'};
+// Noyau multicœur (occt/mt) : choisi tout seul quand la page est isolée (en-têtes de Server.bat, ou
+// service worker isolation-sw.js sur le site) et le PC assez fourni ; sinon, ou s'il ne charge pas, noyau normal.
+// Le fichier autonome n'en a pas : file:// ne permet pas les fils. Adresse ?mt=0 : noyau normal ; ?mt=8 : 8 fils.
+// Seuls les booléens utilisent les fils : le maillage, dont dépend la FAO, reste comme avant.
+// Les workers (suppression de face, FAO) gardent le noyau normal : ils lisent OCCT_FILES.
+const OCCT_MT={js:'occt/mt/conceptcad_v3.js',wasm:'occt/mt/conceptcad_v3.wasm'};
+const OCCT_MT_FILS_DEFAUT=4; // mémoire du noyau : 165 Mo de plus à 4 fils, 305 Mo à 8
+const OCCT_MT_FILS_MAX=8;    // réserve de fils du noyau (occt-build/build.cjs) : au-delà, un calcul resterait bloqué
+let occtMtFils=0,occtMtAvis='';
+function occtMtDemande(){
+  // Nombre de fils à utiliser ici, 0 pour le noyau normal
+  if(window.__EMB)return 0;
+  const m=/[?&]mt=(\d+)(?:&|$)/.exec(String(location.search||''));
+  const coeurs=navigator.hardwareConcurrency||1;
+  if(m&&+m[1]===0){occtMtAvis='Un seul cœur (demandé par l’adresse)';return 0;}
+  if(!self.crossOriginIsolated){
+    occtMtAvis=location.protocol==='https:'?'Un seul cœur : multicœur à la prochaine ouverture':'Un seul cœur : ce serveur ne permet pas le multicœur';
+    return 0;
+  }
+  if(coeurs<OCCT_MT_FILS_DEFAUT||(navigator.deviceMemory&&navigator.deviceMemory<8)){occtMtAvis='Un seul cœur : PC trop juste pour le multicœur';return 0;}
+  return Math.max(2,Math.min(m?+m[1]:OCCT_MT_FILS_DEFAUT,OCCT_MT_FILS_MAX,coeurs));
+}
+function occtIsolerPage(){
+  // Le site (GitHub Pages) n'envoie pas les en-têtes d'isolation : le service worker les ajoute, à partir de
+  // la prochaine ouverture. Pas de rechargement à la volée, qui couperait le démarrage de l'application.
+  try{
+    if(window.__EMB||self.crossOriginIsolated||!('serviceWorker' in navigator))return;
+    if(location.protocol==='https:'||/[?&]sw(?:&|$)/.test(String(location.search||'')))navigator.serviceWorker.register('isolation-sw.js').catch(()=>{});
+  }catch(e){}
+}
+function occtMtActive(fils){
+  const pool=occt.OSD_ThreadPool.DefaultPool(fils);
+  pool.SetNbDefaultThreadsToLaunch(fils);
+  occt.BOPAlgo_Options.SetParallelMode(true);
+  occtMtFils=fils;
+}
 // Traducteur v3 (page et worker de suppression de face) : charge compat-v3.cjs + sa table, rend
 // une fabrique qui enveloppe celle du noyau. Le module CommonJS est évalué avec un `require` vide
 // (il ne lit des fichiers que pour sa génération, hors navigateur).
@@ -43,6 +79,7 @@ function occtEcranDoubleClic(){
     occStatus();occtEcranDoubleClic();
     return;
   }
+  occtIsolerPage();
   if(window.__EMB)await window.__EMB.pret(OCCT_FILES); // fichier autonome : adresses blob à la place des fichiers
   // V0.31.2 : fenêtre de l'écran de démarrage (2 s, ou clic / Échap) — le fil reste libre pour
   // le bouton de dépannage « Vider le cache » ; la compilation gèle sinon toute l'animation.
@@ -53,15 +90,23 @@ function occtEcranDoubleClic(){
   // Laisse le navigateur peindre l'étape AVANT la compilation : sans cela le message
   // s'affiche après coup, quand la tabulation est déjà gelée.
   const yieldUI=()=>new Promise(r=>{try{requestAnimationFrame(()=>setTimeout(r,0));}catch(e){setTimeout(r,0);}});
-  try{
+  const demarrer=async(js,wasm)=>{
     stage('chargement JS noyau (0,1 Mo)…');
-    const mod=await withTimeout(import(occtFileUrl(OCCT_FILES.js)),30000,'chargement JS');
+    const mod=await withTimeout(import(occtFileUrl(js)),30000,'chargement JS');
     if(typeof mod.default!=='function')throw new Error('factory absente (import vide ?)');
     stage('chargement du traducteur…');
     const factory=(await occtV3Compat(occtFileUrl(OCCT_FILES.compat),occtFileUrl(OCCT_FILES.table)))(mod.default);
     stage('JS noyau OK, compilation wasm (~43 Mo, ~10-60 s) — interface momentanément figée…');
     await yieldUI();
-    occt=await withTimeout(factory({locateFile:p=>String(p).endsWith('.wasm')?OCCT_FILES.wasm:p}),180000,'compilation wasm');
+    return withTimeout(factory({locateFile:p=>String(p).endsWith('.wasm')?wasm:p}),180000,'compilation wasm');
+  };
+  try{
+    const fils=occtMtDemande();
+    if(fils){
+      try{occt=await demarrer(OCCT_MT.js,OCCT_MT.wasm);occtMtActive(fils);}
+      catch(e){occt=null;occtMtFils=0;occtMtAvis='Un seul cœur : noyau multicœur non chargé';try{console.warn('[OCCT] '+occtMtAvis+' : '+((e&&e.message)||e));}catch(e2){}}
+    }
+    if(!occt)occt=await demarrer(OCCT_FILES.js,OCCT_FILES.wasm);
     occBaseMsg=`OCCT : prêt en ${((performance.now()-t0)/1000).toFixed(0)} s — vérification…`;occStatus();
     await occtFinishBoot();
   }catch(e){

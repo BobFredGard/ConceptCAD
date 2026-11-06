@@ -375,7 +375,7 @@ input[type=range]{accent-color:var(--primary);width:100%}
  * peut changer sans rien casser. CACHE_VER (parcours FAO) reste indépendant.
  */
 
-const APP_VER='V0.66.2';
+const APP_VER='V0.67.0';
 try{console.log('[ConceptCAD] version '+APP_VER);}catch(e){}
 try{var mfSv=document.getElementById('mfSplashVer');if(mfSv)mfSv.textContent=APP_VER;}catch(e){} // écran de démarrage
 
@@ -506,6 +506,8 @@ async function occtFinishBoot(){
     ?'OCCT : prêt — prismes exacts, booléens Fuse/Cut, congés toutes arêtes, STEP.'
     :'OCCT : chargé mais incomplet — repli sur maillage (CSG).';
   if(occtReady)occBaseMsg+=' (OCCT 8.0.1)';
+  if(occtMtFils)occBaseMsg+=' Multicœur : '+occtMtFils+' cœurs.';
+  else if(occtMtAvis)occBaseMsg+=' '+occtMtAvis+'.';
   occStatus();
   if(occtReady){
     // Recalcul systématique une fois le noyau prêt (même si un affichage existe) :
@@ -2097,15 +2099,57 @@ function sketchRestoreCamera(){
     try{viewCenterShift();}catch(e){} // recentrage sur la zone libre (neutre pendant l'esquisse)
   }catch(e){}
 }
-function findHostForFace(pt,n,tol){
+function skHostLimit(sk){
+  // Rang à partir duquel une fonction ne peut pas porter cette esquisse (-1 = sans limite) : sa
+  // première utilisatrice, sinon sa place dans le fil. Une face créée plus loin ferait une boucle.
+  const F=doc.features||[];
+  const u=F.findIndex(f=>skUsedBy(f,sk.id));
+  if(u>=0)return u;
+  const a=sk.at?F.findIndex(f=>f.id===sk.at):-1;
+  return a>=0?a+1:-1;
+}
+function hostMoves(f,fi,lim,n,hn,plan){
+  // Déplacements de face (xmove) appliqués au haut ou au bas de l'extrusion f avant le rang lim :
+  // {off : décalage total le long de hn, mv : [{id, s}]}. s = sens de la face par rapport à hn.
+  const F=doc.features||[],mv=[];let off=0;
+  const fin=lim>=0?lim:F.length;
+  for(let i=fi+1;i<fin;i++){
+    const m=F[i];if(!m||m.type!=='xmove'||m.visible===false)continue;
+    const vise=mvRefs(m).some(r=>{
+      if(!Array.isArray(r.n)||r.n[0]*n.x+r.n[1]*n.y+r.n[2]*n.z<0.99)return false;
+      if(r.nom)return r.nom.indexOf(f.id+'/')===0;
+      if(!Array.isArray(r.pos))return false;
+      const p=plan.clone().addScaledVector(hn,off);
+      return Math.abs((r.pos[0]-p.x)*n.x+(r.pos[1]-p.y)*n.y+(r.pos[2]-p.z)*n.z)<0.01;
+    });
+    if(!vise)continue;
+    const s=n.dot(hn)>0?1:-1;
+    off+=(+m.dist||0)*s;mv.push({id:m.id,s});
+  }
+  return {off,mv};
+}
+function hostFields(h,name){
+  // Champs d'hôte enregistrés dans l'esquisse, à partir du résultat de findHostForFace.
+  const o={feat:h.feat.id,tag:h.tag,x:h.x,y:h.y,name};
+  if(h.tag==='SIDE'){o.edge=h.edge;o.h=h.h;}
+  if(h.mv&&h.mv.length)o.mv=h.mv;
+  return o;
+}
+function findHostForFace(pt,n,tol,lim){
   // Face porteuse : extrusion antérieure contenant pt (tol 1 mm par défaut).
-  //  · TOP/BOTTOM : plan haut/bas, normale ∥ axe d'extrusion — comportement historique.
+  //  · TOP/BOTTOM : plan haut/bas, normale ∥ axe d'extrusion — comportement historique, décalé
+  //    des déplacements de cette face placés avant lim (hôte.mv : l'esquisse les suit).
   //  · SIDE : face latérale = ARÊTE du footprint extrudée (normale ⟂ axe) — le plan SUIT
   //    l'arête quand le profil bouge, et h est clampé à la course → poches latérales suivent.
   // Null si plan d'origine. `tol` : tolérance (mm) pour le réancrage d'un hôte périmé.
+  // `lim` : seules les fonctions de rang inférieur peuvent porter (voir skHostLimit).
   tol=(tol>0)?tol:1.0;
+  const lim2=(lim>=0)?lim:-1;
   let best=null,bd=1e9;
-  for(const f of (doc.features||[])){
+  const F0=doc.features||[];
+  for(let fi=0;fi<F0.length;fi++){
+    if(lim2>=0&&fi>=lim2)break;
+    const f=F0[fi];
     if(f.type!=='extrude'||f.visible===false)continue;
     const hs=doc.sketches.find(s=>s.id===f.sketchId);if(!hs)continue;
     try{
@@ -2119,7 +2163,12 @@ function findHostForFace(pt,n,tol){
       // esquisse posée au fond d'une rainure suit la rainure (avant : aucun hôte, plan figé).
       const cut=f.op==='cut',onLo=cut?dot>0:dot<0;
       const cand=onLo?bot:top; // pt doit être sur TOP si n==hn, BOTTOM si n==-hn (fond de découpe : l'inverse)
-      const mDist=Math.abs(n.dot(new THREE.Vector3().subVectors(pt,cand)));
+      let mDist=Math.abs(n.dot(new THREE.Vector3().subVectors(pt,cand)));
+      // face déplacée (xmove) : le plan réel est décalé ; une partie restée en place garde l'ancien
+      const hm=hostMoves(f,fi,lim2,n,hn,cand);
+      const mDist2=hm.mv.length?Math.abs(n.dot(new THREE.Vector3().subVectors(pt,cand.clone().addScaledVector(hn,hm.off)))):Infinity;
+      const surDeplacee=mDist2<mDist;
+      if(surDeplacee)mDist=mDist2;
       if(mDist>tol||mDist>bd)continue;
       // footprint : pt projeté sur le plan de l'esquisse porteuse
       const dx=pt.x-o.x,dy=pt.y-o.y,dz=pt.z-o.z;
@@ -2160,6 +2209,7 @@ function findHostForFace(pt,n,tol){
       }
       if(!hit)continue;
       best={feat:f,tag:onLo?'BOTTOM':'TOP',x:+x.toFixed(3),y:+y.toFixed(3)};bd=mDist;
+      if(surDeplacee)best.mv=hm.mv;
       }else{
         // ── SIDE : face latérale ⟂ à l'axe d'extrusion = arête footprint (lignes non construction)
         const dx=pt.x-o.x,dy=pt.y-o.y,dz=pt.z-o.z;
@@ -2251,7 +2301,12 @@ function resolveSketchHost(sk){
     ny2=oy+ny*h+uy*x2+vy*y2;
     nz2=oz+nz*h+uz*x2+vz*y2;
   }else{
-    const baseD=(tag==='TOP')?spH.hi:spH.lo;
+    let baseD=(tag==='TOP')?spH.hi:spH.lo;
+    // déplacements de cette face : l'esquisse suit leur distance (paramètre compris)
+    (sk.host.mv||[]).forEach(m=>{
+      const mf=doc.features.find(q=>q.id===m.id);
+      if(mf&&mf.type==='xmove'&&mf.visible!==false)baseD+=(+mf.dist||0)*(m.s||1);
+    });
     nx2=ox+nx*baseD+ux*x+vx*y;
     ny2=oy+ny*baseD+uy*x+vy*y;
     nz2=oz+nz*baseD+uz*x+vz*y;
@@ -2274,14 +2329,16 @@ function reanchorSketchHost(sk){
   if(!(nv.lengthSq()>1e-6))return false;
   nv.normalize();
   const set=h=>{
-    sk.host=Object.assign({feat:h.feat.id,tag:h.tag,x:h.x,y:h.y,name:name||entName('face')},
-      (h.tag==='SIDE')?{edge:h.edge,h:h.h}:{});
+    sk.host=hostFields(h,name||entName('face'));
     return true;
   };
-  const tryPt=(p,tol)=>{try{return findHostForFace(new THREE.Vector3(p[0],p[1],p[2]),nv.clone(),tol);}catch(e){return null;}};
+  const lim=skHostLimit(sk);
+  const tryPt=(p,tol,l)=>{try{return findHostForFace(new THREE.Vector3(p[0],p[1],p[2]),nv.clone(),tol,l);}catch(e){return null;}};
   // 1) l'ORIGINE d'abord : x/y/h sont ceux de l'origine → la position de l'esquisse est
   //    conservée (l'arête projetée ne sert qu'en secours, ses points pouvant l'avoir quittée).
+  //    Les faces d'avant l'esquisse d'abord ; une face d'après seulement si rien d'autre (⚠ de l'arbre).
   if(sk.origin&&isFinite(sk.origin[0])&&isFinite(sk.origin[1])&&isFinite(sk.origin[2])){
+    if(lim>=0)for(const tl of [1.0,5.0]){const h=tryPt(sk.origin,tl,lim);if(h&&h.feat)return set(h);}
     for(const tl of [1.0,5.0]){const h=tryPt(sk.origin,tl);if(h&&h.feat)return set(h);}
   }
   // 2) sinon les arêtes projetées (srcMid) : on garde l'hôte le plus fréquent.
@@ -2299,16 +2356,18 @@ function reanchorSketchHost(sk){
   for(const t of tally.values())if(t.n>bn){bn=t.n;best=t.h;}
   return best?set(best):false;
 }
-function hostViaPoints(origin,n,pts){
+function hostViaPoints(origin,n,pts,lim){
   // V0.30.3 : face porteuse trouvée par d'autres points de l'esquisse quand l'ORIGINE n'est pas
   // dessus (origine = repère global projeté : îlot plus haut que le fond de rainure visé). x/y
   // réexprimés depuis l'origine dans le repère de la porteuse → resolveSketchHost la garde en place.
   for(const p of pts){
-    let h=null;try{h=findHostForFace(p,n);}catch(e){}
+    let h=null;try{h=findHostForFace(p,n,undefined,lim);}catch(e){}
     if(!h||!h.feat||h.tag==='SIDE')continue;
     const hs=doc.sketches.find(s=>s.id===h.feat.sketchId);if(!hs)continue;
     const B=sketchBasis(hs),d=new THREE.Vector3(origin[0]-B.o.x,origin[1]-B.o.y,origin[2]-B.o.z);
-    return {feat:h.feat,tag:h.tag,x:+d.dot(B.u).toFixed(3),y:+d.dot(B.v).toFixed(3)};
+    const r={feat:h.feat,tag:h.tag,x:+d.dot(B.u).toFixed(3),y:+d.dot(B.v).toFixed(3)};
+    if(h.mv)r.mv=h.mv;
+    return r;
   }
   return null;
 }
@@ -2322,6 +2381,18 @@ function sketchPts3(sk){
 function resolveAllSketchHosts(){
   // Appelé en tête de chaque rebuild : matérialise toutes les esquisses sur faces.
   let ch=false;
+  // Hôte créé APRÈS l'esquisse (Barquette : Esquisse 4 sur le flanc d'un renfort qui dépend de la
+  // pièce, donc d'elle) : boucle, l'esquisse ne suit plus. S'il existe une face d'avant au même
+  // endroit, elle reprend sa place ; rien ne bouge. Sinon on ne touche à rien (⚠ de l'arbre).
+  for(const sk of (doc.sketches||[])){
+    if(sk.plane!=='FACE'||!sk.host||!sk.host.feat||!sk.axN||!sk.origin)continue;
+    const lim=skHostLimit(sk);if(lim<0)continue;
+    const hi=doc.features.findIndex(f=>f.id===sk.host.feat);
+    if(hi<lim)continue; // vivant et antérieur, ou périmé (réancrage plus bas)
+    let h=null;
+    try{h=findHostForFace(new THREE.Vector3(sk.origin[0],sk.origin[1],sk.origin[2]),new THREE.Vector3(sk.axN[0],sk.axN[1],sk.axN[2]).normalize(),1.0,lim);}catch(e){}
+    if(h&&h.feat){sk.host=hostFields(h,sk.host.name||entName('face'));ch=true;}
+  }
   for(let pass=0;pass<3;pass++){
     let any=false;
     for(const sk of (doc.sketches||[])){
@@ -2354,8 +2425,9 @@ function resolveAllSketchHosts(){
     if(!sk.axN)continue;
     const pt=new THREE.Vector3(sk.origin[0],sk.origin[1],sk.origin[2]);
     const n=new THREE.Vector3(sk.axN[0],sk.axN[1],sk.axN[2]).normalize();
-    const h=findHostForFace(pt,n)||(()=>{try{return hostViaPoints(sk.origin,n,sketchPts3(sk));}catch(e){return null;}})();
-    if(h){sk.host=Object.assign({feat:h.feat.id,tag:h.tag,x:h.x,y:h.y,name:entName('face')},(h.tag==='SIDE')?{edge:h.edge,h:h.h}:{});ch=true;}
+    const lim=skHostLimit(sk);
+    const h=findHostForFace(pt,n,undefined,lim)||(()=>{try{return hostViaPoints(sk.origin,n,sketchPts3(sk),lim);}catch(e){return null;}})();
+    if(h){sk.host=hostFields(h,entName('face'));ch=true;}
   }
   return ch;
 }
@@ -3844,6 +3916,20 @@ function occFuse(a,b){
   if(!ok||!s)throw new Error('fusion impossible');
   return s;
 }
+function occSansMiettes(s){
+  // Une fusion peut laisser, à côté du vrai solide, des solides de volume nul (Barquette, renfort
+  // posé pile sur une face : 2 miettes). La fusion suivante, sur ce composé, rendait un volume nul
+  // et la pièce s'effondrait. Les vrais corps séparés sont gardés. s est supprimé si remplacé.
+  const so=occSubShapes(s,'TopAbs_SOLID');
+  const ok=so.length>1?so.filter(x=>Math.abs(occShapeVolume(x))>=OCC_MIETTE_MM3):so;
+  if(so.length<2||ok.length===so.length||!ok.length){occDispose(so);return s;}
+  const res=ok.length===1?ok[0]:occCompoundOf(ok);
+  nomsTransmet([s],{},res); // mêmes faces : elles gardent leurs noms
+  so.forEach(x=>{if(x!==res)try{x.delete();}catch(e){}});
+  try{s.delete();}catch(e){}
+  return res;
+}
+const OCC_MIETTE_MM3=0.01;
 function occCut(a,b){
   const c=new occt.BRepAlgoAPI_Cut_3(a,b);
   const ok=c.IsDone();const s=ok?c.Shape():null;
@@ -8283,7 +8369,7 @@ function* occReplayBodyGen(bid,list){
       if(cpA){try{result.delete();}catch(e){}result=cpA;return;}
       // Union additive "Uni" : unification des faces coplanaires (pas de couture au
       // passage d'une fonction à l'autre — face verticale = UNE face, pas 2).
-      const u=occUnify(occFuse(result,shape));
+      const u=occSansMiettes(occUnify(occFuse(result,shape)));
       try{result.delete();}catch(e){}try{shape.delete();}catch(e){}
       result=u;
     }
@@ -10710,6 +10796,7 @@ function repCloneSketch(sk,i,skMap,featMap,cfg,reuse){
   };
   if(ns.host&&ns.host.feat&&featMap[ns.host.feat])ns.host.feat=featMap[ns.host.feat];
   else if(!(ns.host&&ns.host.feat&&hostKeep()))delete ns.host;
+  if(ns.host&&ns.host.mv)ns.host.mv.forEach(m=>{if(featMap[m.id])m.id=featMap[m.id];});
   if(reuse){
     const keep=reuse.id;
     for(const k of Object.keys(reuse))if(!(k in ns))delete reuse[k];
@@ -13638,6 +13725,7 @@ function antDeps(f,F,users){
     if(!skId)return;
     const sk=(doc.sketches||[]).find(s=>s.id===skId);
     if(sk&&sk.host&&sk.host.feat)add(sk.host.feat,'face portant l’esquisse « '+(sk.name||sk.id)+' »');
+    if(sk&&sk.host&&sk.host.mv)sk.host.mv.forEach(m=>add(m.id,'déplacement de la face portant l’esquisse « '+(sk.name||sk.id)+' »'));
     if(sk&&sk.plane==='CG'&&sk.cg&&sk.cg.id){
       const c=(doc.cgeo||[]).find(x=>x&&x.id===sk.cg.id);
       if(c&&c.at&&cgDependsOnModel(c))add(c.at,'plan de construction « '+(c.name||c.id)+' » de l’esquisse « '+(sk.name||sk.id)+' »');
@@ -20540,12 +20628,13 @@ function newSketchOnFace(){
   // host : face porteuse nommée (antériorité) — fait suivre l'esquisse quand la porteuse bouge
   // x/y stockés depuis l'origine (pas le point de clic) pour ne pas dériver
   // origine hors de la face cliquée (fond de rainure sous un îlot) : la face sous le CLIC
-  const host=findHostForFace(origin,n)||hostViaPoints([origin.x,origin.y,origin.z],n,[pt]);
+  const limH=tlIdx(); // marqueur temps actif : seules les fonctions rejouées peuvent porter
+  const host=findHostForFace(origin,n,undefined,limH)||hostViaPoints([origin.x,origin.y,origin.z],n,[pt],limH);
   const sk={id:uid('sk'),name:'Esquisse '+(doc.sketches.length+1)+' (face)',plane:'FACE',
     entities:[],points:{},constraints:[],dims:[],seq:1,visible:true,at:cgAtNow(),
     origin:[+origin.x.toFixed(3),+origin.y.toFixed(3),+origin.z.toFixed(3)],
     axU:[u.x,u.y,u.z],axV:[v.x,v.y,v.z],axN:[n.x,n.y,n.z],
-    host:host?Object.assign({feat:host.feat.id,tag:host.tag,x:host.x,y:host.y,name:entName('face')},(host.tag==='SIDE')?{edge:host.edge,h:host.h}:{}):null};
+    host:host?hostFields(host,entName('face')):null};
   doc.sketches.push(sk);markDirty();rebuild();openSketch(sk.id);
   faceEl.textContent='Esquisse '+sk.name+' posée sur '+(sk.host&&sk.host.name||'face')+' (normale '+n.x.toFixed(2)+','+n.y.toFixed(2)+','+n.z.toFixed(2)+') · origine '+sk.origin.join(', ')+' (repère projeté). Dessinez puis extrudez le long de la normale.';
 }
@@ -65787,6 +65876,42 @@ function occtFileUrl(p){ // chemin relatif : marche en http(s) comme en file://
 // Le traducteur occt/v3/compat-v3.cjs garde les appels d'opencascade.js 1.1.1 écrits dans src/.
 const OCCT_FILES={js:'occt/v3/conceptcad_v3.js',wasm:'occt/v3/conceptcad_v3.wasm',
   compat:'occt/v3/compat-v3.cjs',table:'occt/v3/compat-v3.json'};
+// Noyau multicœur (occt/mt) : choisi tout seul quand la page est isolée (en-têtes de Server.bat, ou
+// service worker isolation-sw.js sur le site) et le PC assez fourni ; sinon, ou s'il ne charge pas, noyau normal.
+// Le fichier autonome n'en a pas : file:// ne permet pas les fils. Adresse ?mt=0 : noyau normal ; ?mt=8 : 8 fils.
+// Seuls les booléens utilisent les fils : le maillage, dont dépend la FAO, reste comme avant.
+// Les workers (suppression de face, FAO) gardent le noyau normal : ils lisent OCCT_FILES.
+const OCCT_MT={js:'occt/mt/conceptcad_v3.js',wasm:'occt/mt/conceptcad_v3.wasm'};
+const OCCT_MT_FILS_DEFAUT=4; // mémoire du noyau : 165 Mo de plus à 4 fils, 305 Mo à 8
+const OCCT_MT_FILS_MAX=8;    // réserve de fils du noyau (occt-build/build.cjs) : au-delà, un calcul resterait bloqué
+let occtMtFils=0,occtMtAvis='';
+function occtMtDemande(){
+  // Nombre de fils à utiliser ici, 0 pour le noyau normal
+  if(window.__EMB)return 0;
+  const m=/[?&]mt=(\d+)(?:&|$)/.exec(String(location.search||''));
+  const coeurs=navigator.hardwareConcurrency||1;
+  if(m&&+m[1]===0){occtMtAvis='Un seul cœur (demandé par l’adresse)';return 0;}
+  if(!self.crossOriginIsolated){
+    occtMtAvis=location.protocol==='https:'?'Un seul cœur : multicœur à la prochaine ouverture':'Un seul cœur : ce serveur ne permet pas le multicœur';
+    return 0;
+  }
+  if(coeurs<OCCT_MT_FILS_DEFAUT||(navigator.deviceMemory&&navigator.deviceMemory<8)){occtMtAvis='Un seul cœur : PC trop juste pour le multicœur';return 0;}
+  return Math.max(2,Math.min(m?+m[1]:OCCT_MT_FILS_DEFAUT,OCCT_MT_FILS_MAX,coeurs));
+}
+function occtIsolerPage(){
+  // Le site (GitHub Pages) n'envoie pas les en-têtes d'isolation : le service worker les ajoute, à partir de
+  // la prochaine ouverture. Pas de rechargement à la volée, qui couperait le démarrage de l'application.
+  try{
+    if(window.__EMB||self.crossOriginIsolated||!('serviceWorker' in navigator))return;
+    if(location.protocol==='https:'||/[?&]sw(?:&|$)/.test(String(location.search||'')))navigator.serviceWorker.register('isolation-sw.js').catch(()=>{});
+  }catch(e){}
+}
+function occtMtActive(fils){
+  const pool=occt.OSD_ThreadPool.DefaultPool(fils);
+  pool.SetNbDefaultThreadsToLaunch(fils);
+  occt.BOPAlgo_Options.SetParallelMode(true);
+  occtMtFils=fils;
+}
 // Traducteur v3 (page et worker de suppression de face) : charge compat-v3.cjs + sa table, rend
 // une fabrique qui enveloppe celle du noyau. Le module CommonJS est évalué avec un `require` vide
 // (il ne lit des fichiers que pour sa génération, hors navigateur).
@@ -65824,6 +65949,7 @@ function occtEcranDoubleClic(){
     occStatus();occtEcranDoubleClic();
     return;
   }
+  occtIsolerPage();
   if(window.__EMB)await window.__EMB.pret(OCCT_FILES); // fichier autonome : adresses blob à la place des fichiers
   // V0.31.2 : fenêtre de l'écran de démarrage (2 s, ou clic / Échap) — le fil reste libre pour
   // le bouton de dépannage « Vider le cache » ; la compilation gèle sinon toute l'animation.
@@ -65834,15 +65960,23 @@ function occtEcranDoubleClic(){
   // Laisse le navigateur peindre l'étape AVANT la compilation : sans cela le message
   // s'affiche après coup, quand la tabulation est déjà gelée.
   const yieldUI=()=>new Promise(r=>{try{requestAnimationFrame(()=>setTimeout(r,0));}catch(e){setTimeout(r,0);}});
-  try{
+  const demarrer=async(js,wasm)=>{
     stage('chargement JS noyau (0,1 Mo)…');
-    const mod=await withTimeout(import(occtFileUrl(OCCT_FILES.js)),30000,'chargement JS');
+    const mod=await withTimeout(import(occtFileUrl(js)),30000,'chargement JS');
     if(typeof mod.default!=='function')throw new Error('factory absente (import vide ?)');
     stage('chargement du traducteur…');
     const factory=(await occtV3Compat(occtFileUrl(OCCT_FILES.compat),occtFileUrl(OCCT_FILES.table)))(mod.default);
     stage('JS noyau OK, compilation wasm (~43 Mo, ~10-60 s) — interface momentanément figée…');
     await yieldUI();
-    occt=await withTimeout(factory({locateFile:p=>String(p).endsWith('.wasm')?OCCT_FILES.wasm:p}),180000,'compilation wasm');
+    return withTimeout(factory({locateFile:p=>String(p).endsWith('.wasm')?wasm:p}),180000,'compilation wasm');
+  };
+  try{
+    const fils=occtMtDemande();
+    if(fils){
+      try{occt=await demarrer(OCCT_MT.js,OCCT_MT.wasm);occtMtActive(fils);}
+      catch(e){occt=null;occtMtFils=0;occtMtAvis='Un seul cœur : noyau multicœur non chargé';try{console.warn('[OCCT] '+occtMtAvis+' : '+((e&&e.message)||e));}catch(e2){}}
+    }
+    if(!occt)occt=await demarrer(OCCT_FILES.js,OCCT_FILES.wasm);
     occBaseMsg=`OCCT : prêt en ${((performance.now()-t0)/1000).toFixed(0)} s — vérification…`;occStatus();
     await occtFinishBoot();
   }catch(e){
@@ -67851,7 +67985,7 @@ function mfStatusBar(){
     try{
       const o=(document.getElementById('occtState')||{}).textContent||'';
       // Nom du noyau en clair
-      const eng=/prêt/i.test(o)?('Noyau OCCT 8.0.1 · '+((typeof builtEngine!=='undefined'&&builtEngine)||'')):(o.replace(/^OCCT\s*:\s*/,'').slice(0,60));
+      const eng=/prêt/i.test(o)?('Noyau OCCT 8.0.1 · '+(typeof occtMtFils!=='undefined'&&occtMtFils?'multicœur '+occtMtFils+' cœurs · ':'')+((typeof builtEngine!=='undefined'&&builtEngine)||'')):(o.replace(/^OCCT\s*:\s*/,'').slice(0,60));
       const se=document.getElementById('mfStEng');se.textContent=eng;
       se.title=o; // texte complet en bulle
       const f=((typeof faceEl!=='undefined'&&faceEl&&faceEl.textContent)||'').split('\n')[0];

@@ -382,6 +382,20 @@ function occFuse(a,b){
   if(!ok||!s)throw new Error('fusion impossible');
   return s;
 }
+function occSansMiettes(s){
+  // Une fusion peut laisser, à côté du vrai solide, des solides de volume nul (Barquette, renfort
+  // posé pile sur une face : 2 miettes). La fusion suivante, sur ce composé, rendait un volume nul
+  // et la pièce s'effondrait. Les vrais corps séparés sont gardés. s est supprimé si remplacé.
+  const so=occSubShapes(s,'TopAbs_SOLID');
+  const ok=so.length>1?so.filter(x=>Math.abs(occShapeVolume(x))>=OCC_MIETTE_MM3):so;
+  if(so.length<2||ok.length===so.length||!ok.length){occDispose(so);return s;}
+  const res=ok.length===1?ok[0]:occCompoundOf(ok);
+  nomsTransmet([s],{},res); // mêmes faces : elles gardent leurs noms
+  so.forEach(x=>{if(x!==res)try{x.delete();}catch(e){}});
+  try{s.delete();}catch(e){}
+  return res;
+}
+const OCC_MIETTE_MM3=0.01;
 function occCut(a,b){
   const c=new occt.BRepAlgoAPI_Cut_3(a,b);
   const ok=c.IsDone();const s=ok?c.Shape():null;

@@ -19,7 +19,10 @@ http.createServer((req,res)=>{
   if(!f.startsWith(RACINE)){res.writeHead(403);res.end();return;}
   fs.stat(f,(err,st)=>{
     if(err||!st.isFile()){res.writeHead(404);res.end('introuvable : '+p);return;}
-    res.writeHead(200,{'Content-Type':MIME[path.extname(f)]||'application/octet-stream','Content-Length':st.size,'Cache-Control':'no-store'});
+    // Isolation comme Server.bat seulement si l'adresse de la page contient ?isole (sous-ressources : toujours prêtes),
+    // pour que les autres tests gardent le noyau normal et que le service worker puisse être essayé avec ?sw.
+    const iso=!process.env.MF_ISOLE&&/\.html$/.test(p)&&!/[?&]isole/.test(req.url)?{}:{'Cross-Origin-Opener-Policy':'same-origin','Cross-Origin-Embedder-Policy':'require-corp','Cross-Origin-Resource-Policy':'same-origin'};
+    res.writeHead(200,{...iso,'Content-Type':MIME[path.extname(f)]||'application/octet-stream','Content-Length':st.size,'Cache-Control':'no-store'});
     fs.createReadStream(f).pipe(res);
   });
 }).listen(PORT,'127.0.0.1',()=>console.log('[serveur] http://127.0.0.1:'+PORT+'/ → '+RACINE));

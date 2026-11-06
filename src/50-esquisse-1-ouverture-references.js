@@ -63,12 +63,13 @@ function newSketchOnFace(){
   // host : face porteuse nommée (antériorité) — fait suivre l'esquisse quand la porteuse bouge
   // x/y stockés depuis l'origine (pas le point de clic) pour ne pas dériver
   // origine hors de la face cliquée (fond de rainure sous un îlot) : la face sous le CLIC
-  const host=findHostForFace(origin,n)||hostViaPoints([origin.x,origin.y,origin.z],n,[pt]);
+  const limH=tlIdx(); // marqueur temps actif : seules les fonctions rejouées peuvent porter
+  const host=findHostForFace(origin,n,undefined,limH)||hostViaPoints([origin.x,origin.y,origin.z],n,[pt],limH);
   const sk={id:uid('sk'),name:'Esquisse '+(doc.sketches.length+1)+' (face)',plane:'FACE',
     entities:[],points:{},constraints:[],dims:[],seq:1,visible:true,at:cgAtNow(),
     origin:[+origin.x.toFixed(3),+origin.y.toFixed(3),+origin.z.toFixed(3)],
     axU:[u.x,u.y,u.z],axV:[v.x,v.y,v.z],axN:[n.x,n.y,n.z],
-    host:host?Object.assign({feat:host.feat.id,tag:host.tag,x:host.x,y:host.y,name:entName('face')},(host.tag==='SIDE')?{edge:host.edge,h:host.h}:{}):null};
+    host:host?hostFields(host,entName('face')):null};
   doc.sketches.push(sk);markDirty();rebuild();openSketch(sk.id);
   faceEl.textContent='Esquisse '+sk.name+' posée sur '+(sk.host&&sk.host.name||'face')+' (normale '+n.x.toFixed(2)+','+n.y.toFixed(2)+','+n.z.toFixed(2)+') · origine '+sk.origin.join(', ')+' (repère projeté). Dessinez puis extrudez le long de la normale.';
 }

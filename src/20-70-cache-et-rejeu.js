@@ -538,7 +538,7 @@ function* occReplayBodyGen(bid,list){
       if(cpA){try{result.delete();}catch(e){}result=cpA;return;}
       // Union additive "Uni" : unification des faces coplanaires (pas de couture au
       // passage d'une fonction à l'autre — face verticale = UNE face, pas 2).
-      const u=occUnify(occFuse(result,shape));
+      const u=occSansMiettes(occUnify(occFuse(result,shape)));
       try{result.delete();}catch(e){}try{shape.delete();}catch(e){}
       result=u;
     }
