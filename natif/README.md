@@ -282,3 +282,13 @@ Tout le reste est visible et grisé, et dit « pas encore dans le logiciel Windo
 Preuves, sur des copies : `mesures/verifier-environnement.ps1` (15 étapes dans la vraie fenêtre), `verifier-dessin`, `verifier-nouvelle-esquisse`, `verifier-extrusion`, `verifier-contraintes`, `verifier-cotes`, `verifier-ajuster` réussis ; `tester-enregistrement.cjs` : 176/176. Comparaison au navigateur à maths communes : 383/383 sessions sans les gestes du panneau, 380/383 avec (`dessin-reference.cjs --panneau`). Les 3 écarts sont une cote d'écart que le navigateur change en angle sur des lignes dont une, sur les 2 cas vérifiés, a une longueur nulle : son sens n'y est que du bruit de calcul ; le 3e cas a la même forme, sa ligne n'a pas été vérifiée. Panneau : 123 esquisses sur 125 affichent le même état que le navigateur ; les 2 autres (la même esquisse dans « test angle » et « test esquisse ») annoncent un résidu de 7,89 mm dans le navigateur et 1 liberté ici, cause non établie.
 
 Non vérifié : `verifier-esquisse`, `verifier-cote`, `verifier-fenetre`, qui envoient de vraies touches et s'arrêtent seuls si une autre fenêtre est devant, n'ont pas pu aller au bout pendant que le PC servait. Le double-clic à la vraie souris dans l'arbre n'a donc pas été rejoué par une machine. Mise en page testée à 1500 × 900 seulement, à 100 % d'échelle d'écran.
+
+## Correction d'Ajuster reprise du navigateur V0.67.3
+
+Une ligne de construction ou une référence 3D coupée en deux garde sa nature sur les deux moitiés, et une référence coupée au milieu la garde sur ses deux tronçons. Le fichier écrit garde aussi la marque `ref` sur la ligne neuve, et les bancs comparent désormais cette marque.
+
+Preuve, contre le navigateur V0.67.3 : `BancDessinCommunes` 383 sessions identiques sur 383, 375 écrites comme le navigateur, 0 écart ; avec les gestes du panneau, les mêmes 3 écarts qu'avant (380/383, voir plus haut). Sans la correction, le banc s'arrête sur Ajuster dans 12 sessions : il voit donc bien ce cas. `tester-enregistrement.cjs` : 176/176.
+
+Maths normales (`BancDessin`, à 0,001 mm) contre cette référence : 330 sessions identiques sur 383. Ce chiffre n'a pas été mesuré juste avant la correction : on ne peut donc pas dire qu'elle ne l'a pas changé, seulement que les maths communes ne montrent aucun écart.
+
+Non résolu : `verifier-ajuster.ps1` réussit ses étapes 1 à 6 (Ajuster, annuler, rétablir, enregistrer) mais s'arrête à l'étape 10 (Décaler un rectangle choisi au Ctrl+clic : 1 copie au lieu de 4), avec ou sans cette correction. La distance obtenue est stable tant que la vraie souris ne bouge pas et change quand elle a bougé. La piste est donc la vraie souris posée sur la fenêtre pendant l'essai, sans preuve à ce stade.

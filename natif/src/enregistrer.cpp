@@ -291,6 +291,7 @@ std::string nouvelleEntite(const Entite& e) {
   ajouterTexte(o, "p", e.p);
   if (e.t == "circle" || e.t == "arc") o += ",\"r\":" + nombreJson(e.r);
   if (e.construction) o += ",\"construction\":true";
+  if (e.ref) o += ",\"ref\":true";
   return o + "}";
 }
 std::string nouvelleContrainte(const Contrainte& c) {

@@ -129,7 +129,7 @@ vm.runInContext(`
     const st = [
       sk.seq,
       Object.keys(P).join(','),
-      (sk.entities || []).map(e => [e.id, e.t, v(e.p1), v(e.p2), v(e.pc), v(e.pa), v(e.pb), v(e.p), e.construction ? 1 : 0].join(',')).join(';'),
+      (sk.entities || []).map(e => [e.id, e.t, v(e.p1), v(e.p2), v(e.pc), v(e.pa), v(e.pb), v(e.p), e.construction ? 1 : 0, e.ref ? 1 : 0].join(',')).join(';'),
       (sk.constraints || []).map(c => [v(c.id), c.type, v(c.p), v(c.line), v(c.ent), v(c.a), v(c.b), v(c.mid), v(c.c), v(c.d), c.inf ? 1 : 0].join(',')).join(';'),
       (sk.dims || []).map(d => [d.id, d.type, v(d.line), v(d.ent), v(d.a), v(d.b), v(d.p), v(d.orient), d.ref ? 1 : 0, d.chk ? 1 : 0, d.dia ? 1 : 0, d.sgn === 1 || d.sgn === -1 ? d.sgn : 0, d.ccw === 0 || d.ccw === 1 ? d.ccw : -1].join(',')).join(';'),
     ].join('#');

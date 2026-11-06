@@ -33,7 +33,7 @@ static std::string structure(const Esquisse& s) {
   o << '#';
   for (size_t i = 0; i < s.entites.size(); i++) {
     const Entite& e = s.entites[i];
-    o << (i ? ";" : "") << e.id << ',' << e.t << ',' << e.p1 << ',' << e.p2 << ',' << e.pc << ',' << e.pa << ',' << e.pb << ',' << e.p << ',' << (e.construction ? 1 : 0);
+    o << (i ? ";" : "") << e.id << ',' << e.t << ',' << e.p1 << ',' << e.p2 << ',' << e.pc << ',' << e.pa << ',' << e.pb << ',' << e.p << ',' << (e.construction ? 1 : 0) << ',' << (e.ref ? 1 : 0);
   }
   o << '#';
   for (size_t i = 0; i < s.contraintes.size(); i++) {

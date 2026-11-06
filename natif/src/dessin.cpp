@@ -3004,6 +3004,8 @@ void Dessin::scinderLigne(const std::string& ligne, const std::string& pid) {
   nl.t = "line";
   nl.p1 = pid;
   nl.p2 = l->p2;
+  nl.construction = l->construction;  // V0.67.3 : sa moitié neuve reste hors des profils
+  nl.ref = l->ref;
   l->p2 = pid;
   const std::string nid = nl.id;
   s_.entites.push_back(std::move(nl));
@@ -3150,8 +3152,10 @@ std::string Dessin::ajusterElement(const std::string& id, double cx, double cy) 
     if (prev && next) {
       const std::string qA = couper(prev->x, prev->y), qB = couper(next->x, next->y);
       const std::string p1 = entite(id)->p1, p2 = entite(id)->p2;
+      const bool reference = entite(id)->ref;  // V0.67.3 : une référence 3D le reste, ses tronçons n'entrent pas dans les profils
       retirerSoi();
       Entite l1, l2;
+      l1.ref = l2.ref = reference;
       l1.id = nouvelE();
       l2.id = nouvelE();
       l1.t = l2.t = "line";
