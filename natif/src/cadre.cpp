@@ -15,6 +15,8 @@
 #include <TopoDS_Compound.hxx>
 #include <GProp_GProps.hxx>
 #include <Standard_Failure.hxx>
+#include <TopExp.hxx>
+#include <TopTools_IndexedMapOfShape.hxx>
 #include <TopoDS.hxx>
 
 #include <wx/imaglist.h>
@@ -27,6 +29,10 @@
 #include <nlohmann/json.hpp>
 
 #include "enregistrer.h"
+#include "structure.h"
+#include <wx/colordlg.h>
+#include <wx/numdlg.h>
+#include <wx/textdlg.h>
 
 namespace {
 enum { ID_ANNULER = wxID_HIGHEST + 1, ID_RETABLIR, ID_AJUSTER, ID_QUITTER_ESQUISSE, ID_ESQUISSE_XY, ID_ESQUISSE_XZ, ID_ESQUISSE_YZ, ID_ESQUISSE_FACE, ID_EXTRUDER, ID_CONTRAINTE_1, ID_ACCROCHE_GRILLE = wxID_HIGHEST + 100 };
@@ -36,7 +42,8 @@ const char* const PROP_CONGE_RAYON = "conge_rayon", * const PROP_CONGE_TANGENTES
 const char* const PROP_PROFONDEUR = "profondeur", * const PROP_OPERATION = "operation", * const PROP_ETENDUE = "etendue", * const PROP_DIRECTION = "direction", * const PROP_INVERSER = "inverser";
 
 struct LienArbre : wxTreeItemData {
-  LienArbre(bool f, int n, const std::string& p = "") : estFonction(f), i(n), plan(p) {}
+  LienArbre(bool f, int n, const std::string& p = "", const std::string& c = "") : estFonction(f), i(n), plan(p), corps(c) {}
+  std::string corps;  // la ligne d'un corps
   bool estFonction;
   int i;  // -1 : une ligne de l'Origine
   std::string plan;  // XY, XZ ou YZ : un double-clic y ouvre une esquisse
@@ -215,6 +222,7 @@ Cadre::Cadre() : wxFrame(nullptr, wxID_ANY, L"ConceptCAD natif"), minuterie_(thi
   panneauEsquisse_->surOuvrirCote = [this](const std::string& id) { vueEsquisse_->ouvrirCoteParId(id); };
   panneauEsquisse_->surVoir = [this](double x, double y) { vueEsquisse_->centrerSur(x, y); };
   vueEsquisse_->surGeste = [this] { rafraichirEsquisse(false); };
+  vue_->surDroit = [this](const TopoDS_Shape& s) { surDroit3D(s); };
   vue_->surSelection = [this](const TopoDS_Shape& s) {
     if (choix_) cliqueConge(s);
     else montrerForme(s);
@@ -228,6 +236,7 @@ Cadre::Cadre() : wxFrame(nullptr, wxID_ANY, L"ConceptCAD natif"), minuterie_(thi
 
   arbre_->Bind(wxEVT_TREE_SEL_CHANGED, &Cadre::surArbre, this);
   arbre_->Bind(wxEVT_TREE_ITEM_ACTIVATED, &Cadre::surArbreActive, this);
+  arbre_->Bind(wxEVT_TREE_ITEM_MENU, &Cadre::surArbreMenu, this);
   props_->Bind(wxEVT_PG_CHANGED, &Cadre::surPropriete, this);
   Bind(wxEVT_TIMER, &Cadre::pasProtocole, this);
   Bind(wxEVT_IDLE, [this](wxIdleEvent& e) {
@@ -362,6 +371,12 @@ void Cadre::creerEnvironnement() {
   fil_->surDouble = [this](const FilFonctions::Element& e) {
     if (!e.estFonction) entrerEsquisse(e.i);
   };
+  fil_->surDroit = [this](const FilFonctions::Element& e) {
+    if (esquisseOuverte_ >= 0 || choix_) return;
+    if (e.estFonction) menuFonction(e.i);
+    else menuEsquisseArbre(e.i);
+  };
+  fil_->surMarqueur = [this](int b) { bougerMarqueur(b); };
   page_ = new PageAtelier(scene_);
   page_->Hide();
 
@@ -565,6 +580,9 @@ void Cadre::remplirFil() {
     e.type = f.type;
     e.op = f.op;
     e.nom = f.nom.empty() ? nomType(f) : tx(f.nom);
+    const int marque = indiceMarque();
+    e.apresMarque = marque >= 0 && static_cast<int>(i) >= marque;
+    e.grise = !f.visible || e.apresMarque;
     l.push_back(e);
   }
   for (size_t k = 0; k < doc_.esquisses.size(); k++)
@@ -764,6 +782,8 @@ bool Cadre::ouvrir(const std::wstring& chemin) {
   solideCalculable_ = doc_.nonPrisEnCharge.empty();
   annulations_.clear();
   retablissements_.clear();
+  marqueTemps_.clear();
+  messagesMontres_.clear();
   majTitre();
   remplirArbre();
   if (solideCalculable_) {
@@ -806,9 +826,10 @@ void Cadre::remplirArbre() {
   for (size_t c = 0; c < doc_.corps.size(); c++) {
     const bool corpsActif = doc_.corps[c] == doc_.corpsActif;
     const wxString nomCorps = c < doc_.nomsCorps.size() && !doc_.nomsCorps[c].empty() ? tx(doc_.nomsCorps[c]) : wxString::Format(L"Corps %zu", c + 1);
-    const wxTreeItemId corps = arbre_->AppendItem(racine, nomCorps, 3);
+    const wxTreeItemId corps = arbre_->AppendItem(racine, nomCorps, 3, -1, new LienArbre(false, -1, "", doc_.corps[c]));
     arbre_->SetItemBold(corps);
     if (corpsActif) arbre_->SetItemTextColour(corps, wxColour(0x0a, 0x84, 0xff));
+    if (std::find(doc_.corpsMasques.begin(), doc_.corpsMasques.end(), doc_.corps[c]) != doc_.corpsMasques.end()) arbre_->SetItemTextColour(corps, grise);
     int nbDuCorps = 0;
     for (size_t i = 0; i < doc_.fonctions.size(); i++) {
       const Fonction& f = doc_.fonctions[i];
@@ -817,7 +838,7 @@ void Cadre::remplirArbre() {
       const wxTreeItemId n = arbre_->AppendItem(corps, f.nom.empty() ? nomType(f) : tx(f.nom), f.op == "cut" ? 2 : 1, -1, new LienArbre(true, static_cast<int>(i)));
       lignesFonctions_[i] = n;
       nbDuCorps++;
-      if (!f.visible) arbre_->SetItemTextColour(n, grise);
+      if (!f.visible || (indiceMarque() >= 0 && static_cast<int>(i) >= indiceMarque())) arbre_->SetItemTextColour(n, grise);
     }
     arbre_->SetItemText(corps, nomCorps + (corpsActif ? L" ●" : L"") + wxString::Format(L" · %d fonction%s", nbDuCorps, nbDuCorps > 1 ? L"s" : L""));
     arbre_->Expand(corps);
@@ -1379,7 +1400,7 @@ double Cadre::recalculer() {
   const auto t0 = std::chrono::steady_clock::now();
   ResultatRejeu r;
   try {
-    r = rejouer(doc_);
+    r = rejouer(doc_, indiceMarque());
     msRejeu_ = msDepuis(t0);
     if (!r.forme.IsNull()) mailler(r.forme, parallele());
   } catch (const Standard_Failure& e) {
@@ -1395,14 +1416,32 @@ double Cadre::recalculer() {
     // bodyColorOf : la fiche du corps, sinon la teinte de la pièce, sinon la palette automatique selon le rang
     static const unsigned PALETTE[] = {0x0a84ff, 0x30d158, 0xff9f0a, 0xbf5af2, 0xff453a, 0x64d2ff, 0xffd60a, 0x5e5ce6};
     std::vector<std::pair<TopoDS_Shape, unsigned>> teintes;
+    std::vector<std::pair<TopoDS_Shape, double>> transparences;
+    std::vector<TopoDS_Shape> vus;
     for (const auto& [id, s] : r.corps) {
+      if (std::find(doc_.corpsMasques.begin(), doc_.corpsMasques.end(), id) != doc_.corpsMasques.end()) continue;  // l'œil du corps : la vue seule
+      vus.push_back(s);
       const size_t i = std::find(doc_.corps.begin(), doc_.corps.end(), id) - doc_.corps.begin();
+      if (i < doc_.opacitesCorps.size() && doc_.opacitesCorps[i] < 1) transparences.push_back({s, 1 - doc_.opacitesCorps[i]});
       unsigned c = i < doc_.couleursCorps.size() ? doc_.couleursCorps[i] : 0;
       if (!c) c = doc_.teinte;
       if (!c) c = PALETTE[(i < doc_.corps.size() ? i : 0) % 8];
       teintes.push_back({s, c});
     }
-    vue_->afficher(r.forme, ajusterVue_, teintes);
+    TopoDS_Shape montree = r.forme;
+    if (vus.size() != r.corps.size()) {
+      montree.Nullify();
+      if (vus.size() == 1) {
+        montree = vus[0];
+      } else if (!vus.empty()) {
+        BRep_Builder bd;
+        TopoDS_Compound comp;
+        bd.MakeCompound(comp);
+        for (const TopoDS_Shape& s : vus) bd.Add(comp, s);
+        montree = comp;
+      }
+    }
+    vue_->afficher(montree, ajusterVue_, teintes, transparences);
   }
   ajusterVue_ = false;
   // Le banc compte aussi le prix de la sélection, que le programme paierait dès que la souris passe sur la vue.
@@ -1416,7 +1455,9 @@ double Cadre::recalculer() {
   const Mesures m = mesurer(r.forme);
   etat(wxString::Format(L"%s  |  Volume %.3f mm³  |  %d faces  |  calcul %.0f ms, total %.0f ms%s", tx(doc_.nom), m.volume, m.faces, tCalcul, total, r.messages.empty() ? L"" : L"  |  ⚠ voir message"));
   // Pendant le dessin, une esquisse encore ouverte n'est pas une erreur : le message attend la fin de l'esquisse
-  if (!r.messages.empty() && esquisseOuverte_ < 0) {
+  const bool dejaMontres = r.messages == messagesMontres_;
+  if (esquisseOuverte_ < 0) messagesMontres_ = r.messages;
+  if (!r.messages.empty() && esquisseOuverte_ < 0 && !dejaMontres && !essaiSansBoite_) {
     wxString t;
     for (const std::string& x : r.messages) t += tx(x) + L"\n";
     wxMessageBox(t, L"Messages du rejeu", wxOK | wxICON_WARNING, this);
@@ -1490,8 +1531,9 @@ void Cadre::modifierFonction(int i, const std::function<void(Fonction&)>& reglag
   m.avecFonctions = true;
   m.fonctionsAvant = doc_.fonctions;
   Fonction& f = doc_.fonctions[i];
+  const bool nomAuto = f.nom == nomExtrusion(doc_, f);  // un nom donné par l'utilisateur reste
   reglage(f);
-  f.nom = nomExtrusion(doc_, f);
+  if (nomAuto) f.nom = nomExtrusion(doc_, f);
   if (memesReglages(f, m.fonctionsAvant[i])) {
     montrerFonction(i);
     return;
@@ -1520,6 +1562,14 @@ void Cadre::annuler() {
   if (vueEsquisse_->enSaisie()) return vueEsquisse_->annulerSaisie();
   if (vueEsquisse_->abandonnerTrace()) return;
   if (annulations_.empty()) return;
+  if (annulations_.back().docAvant) {
+    if (esquisseOuverte_ >= 0) return etat(L"Quittez l'esquisse pour annuler ce changement de la pièce.");
+    ModifCote m = annulations_.back();
+    annulations_.pop_back();
+    m.docApres = std::make_shared<Document>(doc_);
+    retablissements_.push_back(m);
+    return poserDocument(m.docAvant);
+  }
   if (annulations_.back().creation && annulations_.back().esquissesAvant.size() < doc_.esquissesFichier.size()) {
     etat(L"Cette esquisse est déjà enregistrée dans le fichier : la retirer n'est pas encore repris dans ce programme.");
     return;
@@ -1544,15 +1594,265 @@ void Cadre::annuler() {
 
 void Cadre::retablir() {
   if (retablissements_.empty()) return;
+  if (retablissements_.back().docApres && esquisseOuverte_ >= 0) return etat(L"Quittez l'esquisse pour rétablir ce changement de la pièce.");
   const ModifCote m = retablissements_.back();
   retablissements_.pop_back();
   annulations_.push_back(m);
+  if (m.docApres) return poserDocument(m.docApres);
   if (m.avecFormules) {
     doc_.params = m.paramsApres;
     doc_.porteurs = m.porteursApres;
   }
   poserPas(m.esquissesApres, m.avecFonctions, m.fonctionsApres);
   if (m.avecFormules && miniParams_->IsShown()) miniParams_->rafraichir();
+}
+
+// ---- Les menus contextuels de l'arbre et du fil ----
+int Cadre::indiceMarque() const {
+  if (marqueTemps_.empty()) return -1;
+  for (size_t i = 0; i < doc_.fonctions.size(); i++)
+    if (doc_.fonctions[i].id == marqueTemps_) return static_cast<int>(i);
+  return -1;
+}
+
+void Cadre::marquerTemps(const std::string& id) {
+  marqueTemps_ = id;
+  remplirArbre();
+  montrerRien();
+  if (solideCalculable_) recalculer();
+}
+
+void Cadre::bougerMarqueur(int bouton) {
+  if (esquisseOuverte_ >= 0 || choix_ || doc_.fonctions.empty()) return;
+  const int n = static_cast<int>(doc_.fonctions.size());
+  const int ici = indiceMarque() < 0 ? n : indiceMarque();
+  const int cible = bouton == 0 ? 0 : bouton == 1 ? std::max(0, ici - 1) : bouton == 2 ? std::min(n, ici + 1) : n;
+  if (cible != ici) marquerTemps(cible < n ? doc_.fonctions[cible].id : std::string());
+}
+
+void Cadre::apresStructure() {
+  solideCalculable_ = doc_.nonPrisEnCharge.empty();
+  if (indiceMarque() < 0) marqueTemps_.clear();
+  remplirArbre();
+  montrerRien();
+  majTitre();
+  if (solideCalculable_) {
+    recalculer();
+  } else {
+    vue_->afficher(TopoDS_Shape(), false);
+    montrerManques();
+  }
+}
+
+// Un enregistrement a pu avoir lieu depuis : ce document n'est plus celui du disque, il reste à enregistrer
+void Cadre::poserDocument(const std::shared_ptr<Document>& d) {
+  Document n = *d;
+  if (n.octets != doc_.octets || n.chemin != doc_.chemin) {
+    if (n.texteBase.empty()) n.texteBase = texteDuFichier(n);
+    n.octets = doc_.octets;
+    n.chemin = doc_.chemin;
+    n.compresse = doc_.compresse;
+  }
+  doc_ = std::move(n);
+  apresStructure();
+}
+
+void Cadre::changerStructure(const std::function<void(nlohmann::ordered_json&)>& changement, const wxString& message) {
+  auto avant = std::make_shared<Document>(doc_);
+  try {
+    modifierStructure(doc_, changement);
+  } catch (const std::exception& e) {
+    doc_ = *avant;
+    if (!essaiMenu_) wxMessageBox(tx(e.what()), L"Modification impossible", wxOK | wxICON_WARNING, this);
+    return;
+  }
+  ModifCote m;
+  m.docAvant = avant;
+  annulations_.push_back(std::move(m));
+  retablissements_.clear();
+  apresStructure();
+  if (!message.empty()) etat(etatVue_->texte() + L"  |  " + message);
+}
+
+int Cadre::choisirMenu(wxMenu& m) {
+  if (!essaiMenu_) return GetPopupMenuSelectionFromUser(m);
+  int choix = wxID_NONE;
+  essaiEntrees_.clear();
+  for (wxMenuItem* it : m.GetMenuItems()) {
+    if (it->IsSeparator()) continue;
+    const std::string l = it->GetItemLabelText().utf8_string();
+    essaiEntrees_.push_back(l + (it->IsEnabled() ? "" : " (grisé)"));
+    if (choix == wxID_NONE && it->IsEnabled() && !essaiChoix_.empty() && l.find(essaiChoix_) != std::string::npos) choix = it->GetId();
+  }
+  return choix;
+}
+
+wxString Cadre::demanderNom(const wxString& actuel) {
+  if (essaiMenu_) return wxString::FromUTF8(essaiNom_);
+  return wxGetTextFromUser(L"Nouveau nom :", L"Renommer", actuel, this);
+}
+
+bool Cadre::confirmerSuppression(const wxString& question) {
+  return essaiMenu_ || wxMessageBox(question, L"Supprimer", wxYES_NO | wxNO_DEFAULT | wxICON_QUESTION, this) == wxYES;
+}
+
+namespace {
+enum { M_RENOMMER = wxID_HIGHEST + 700, M_VOIR, M_EDITER, M_TEMPS, M_FIN, M_SUPPRIMER, M_ACTIF, M_COULEUR, M_TRANSPARENCE, M_RETIRER, M_FANTOME, M_ISOLER, M_TOUT };
+}
+
+void Cadre::menuFonction(int i) {
+  const Fonction f = doc_.fonctions[i];
+  const bool copie = !f.repeatId.empty();  // refaite depuis sa source : elle ne se règle pas à part
+  wxMenu m;
+  m.Append(M_RENOMMER, L"✏️ Renommer")->Enable(!copie);
+  m.Append(M_VOIR, L"👁 Afficher / masquer")->Enable(!copie);
+  m.Append(M_EDITER, L"🔧 Éditer l'esquisse")->Enable(!copie && !f.esquisse.empty() && doc_.esquisse(f.esquisse));
+  m.Append(M_TEMPS, L"⏱ Bloquer le temps à ce point");
+  m.Append(M_FIN, L"↗ Fin : rejouer tout")->Enable(!marqueTemps_.empty());
+  m.Append(M_SUPPRIMER, L"🗑 Supprimer")->Enable(!copie);
+  const int choix = choisirMenu(m);
+  if (choix == M_RENOMMER) {
+    const wxString n = demanderNom(tx(f.nom));
+    if (n.empty()) return;
+    const std::string nom = n.utf8_string();
+    changerStructure([&](nlohmann::ordered_json& d) { stRenommer(d, "features", f.id, nom); });
+  } else if (choix == M_VOIR) {
+    changerStructure([&](nlohmann::ordered_json& d) { stBasculerVisible(d, "features", f.id); });
+  } else if (choix == M_EDITER) {
+    if (indiceMarque() >= 0 && i >= indiceMarque()) marquerTemps("");
+    for (size_t k = 0; k < doc_.esquisses.size(); k++)
+      if (doc_.esquisses[k].id == f.esquisse) return entrerEsquisse(static_cast<int>(k));
+  } else if (choix == M_TEMPS) {
+    marquerTemps(f.id);
+  } else if (choix == M_FIN) {
+    marquerTemps("");
+  } else if (choix == M_SUPPRIMER) {
+    if (!confirmerSuppression(L"Supprimer ?")) return;
+    if (marqueTemps_ == f.id) marqueTemps_.clear();
+    changerStructure([&](nlohmann::ordered_json& d) { stSupprimerFonction(d, f.id); }, L"Ctrl+Z : annuler.");
+  }
+}
+
+void Cadre::menuEsquisseArbre(int i) {
+  const std::string id = doc_.esquisses[i].id, nomActuel = doc_.esquisses[i].nom;
+  wxMenu m;
+  m.Append(M_RENOMMER, L"✏️ Renommer");
+  m.Append(M_VOIR, L"👁 Afficher / masquer");
+  m.Append(M_EDITER, L"🔧 Éditer l'esquisse");
+  m.Append(M_FIN, L"↗ Fin : rejouer tout")->Enable(!marqueTemps_.empty());
+  m.Append(M_SUPPRIMER, L"🗑 Supprimer");
+  const int choix = choisirMenu(m);
+  if (choix == M_RENOMMER) {
+    const wxString n = demanderNom(tx(nomActuel));
+    if (n.empty()) return;
+    const std::string nom = n.utf8_string();
+    changerStructure([&](nlohmann::ordered_json& d) { stRenommer(d, "sketches", id, nom); });
+  } else if (choix == M_VOIR) {
+    changerStructure([&](nlohmann::ordered_json& d) { stBasculerVisible(d, "sketches", id); });
+  } else if (choix == M_EDITER) {
+    entrerEsquisse(i);
+  } else if (choix == M_FIN) {
+    marquerTemps("");
+  } else if (choix == M_SUPPRIMER) {
+    if (!confirmerSuppression(L"Supprimer ?")) return;
+    changerStructure([&](nlohmann::ordered_json& d) { stSupprimerEsquisse(d, id); }, L"Ctrl+Z : annuler.");
+  }
+}
+
+// Clic droit dans la vue 3D : le corps sous la souris (showCtx3D)
+void Cadre::surDroit3D(const TopoDS_Shape& sous) {
+  if (choix_ || esquisseOuverte_ >= 0 || !docOuvert_) return;
+  if (!sous.IsNull())
+    for (const auto& [id, s] : formesCorps_) {
+      TopTools_IndexedMapOfShape carte;
+      TopExp::MapShapes(s, sous.ShapeType(), carte);
+      if (carte.Contains(sous)) return menuCorps(id, true);
+    }
+  if (doc_.corpsMasques.empty()) return;
+  wxMenu m;
+  m.Append(M_TOUT, L"✅ Tout afficher");
+  if (choisirMenu(m) == M_TOUT) changerStructure([](nlohmann::ordered_json& d) { stCorpsMasques(d, {}); });
+}
+
+void Cadre::menuCorps(const std::string& id, bool vue3d) {
+  const size_t rang = std::find(doc_.corps.begin(), doc_.corps.end(), id) - doc_.corps.begin();
+  if (rang >= doc_.corps.size()) return;
+  const wxString nomActuel = rang < doc_.nomsCorps.size() ? tx(doc_.nomsCorps[rang]) : wxString();
+  int nb = 0;
+  for (const Fonction& f : doc_.fonctions)
+    if (f.corps == id && f.repeatId.empty()) nb++;
+  wxMenu m;
+  if (vue3d) {
+    m.Append(wxID_ANY, nomActuel)->Enable(false);
+    m.Append(M_VOIR, L"🙈 Masquer");
+    m.Append(M_FANTOME, L"👻 Transparent (25 %)");
+    m.Append(M_ISOLER, L"🎯 Isoler");
+    m.Append(M_TOUT, L"✅ Tout afficher");
+  } else {
+    m.Append(M_RENOMMER, L"✏️ Renommer");
+    m.Append(M_VOIR, L"👁 Afficher / masquer");
+    m.Append(M_ACTIF, L"● Corps actif")->Enable(id != doc_.corpsActif);
+  }
+  m.AppendSeparator();
+  m.Append(M_COULEUR, L"🎨 Couleur…");
+  m.Append(M_TRANSPARENCE, L"👻 Transparence…");
+  m.AppendSeparator();
+  m.Append(M_RETIRER, L"⊘ Retirer (étape de la timeline)");
+  if (!vue3d) m.Append(M_SUPPRIMER, L"🗑 Supprimer");
+  const int choix = choisirMenu(m);
+  if (choix == M_FANTOME) {
+    changerStructure([&](nlohmann::ordered_json& d) { stReglerCorps(d, id, "op", 0.25); });
+  } else if (choix == M_ISOLER) {
+    std::vector<std::string> autres;
+    for (const std::string& c : doc_.corps)
+      if (c != id) autres.push_back(c);
+    changerStructure([&](nlohmann::ordered_json& d) { stCorpsMasques(d, autres); });
+  } else if (choix == M_TOUT) {
+    changerStructure([](nlohmann::ordered_json& d) { stCorpsMasques(d, {}); });
+  } else if (choix == M_RENOMMER) {
+    const wxString n = demanderNom(nomActuel);
+    if (n.empty()) return;
+    const std::string nom = n.utf8_string();
+    changerStructure([&](nlohmann::ordered_json& d) { stRenommer(d, "bodies", id, nom); });
+  } else if (choix == M_VOIR) {
+    changerStructure([&](nlohmann::ordered_json& d) { stBasculerVueCorps(d, id); });
+  } else if (choix == M_ACTIF) {
+    changerStructure([&](nlohmann::ordered_json& d) { stCorpsActif(d, id); });
+  } else if (choix == M_COULEUR) {
+    const unsigned c0 = rang < doc_.couleursCorps.size() ? doc_.couleursCorps[rang] : 0;
+    const wxColour c = essaiMenu_ ? wxColour(std::stoi(essaiNom_, nullptr, 16) >> 16, (std::stoi(essaiNom_, nullptr, 16) >> 8) & 255, std::stoi(essaiNom_, nullptr, 16) & 255) : wxGetColourFromUser(this, wxColour((c0 >> 16) & 255, (c0 >> 8) & 255, c0 & 255));
+    if (!c.IsOk()) return;
+    const double v = (c.Red() << 16) | (c.Green() << 8) | c.Blue();
+    changerStructure([&](nlohmann::ordered_json& d) { stReglerCorps(d, id, "color", v); });
+  } else if (choix == M_TRANSPARENCE) {
+    const int op0 = static_cast<int>(std::lround((rang < doc_.opacitesCorps.size() ? doc_.opacitesCorps[rang] : 1) * 100));
+    const long op = essaiMenu_ ? std::stol(essaiNom_) : wxGetNumberFromUser(L"Opacité du corps, en % (100 : plein).", L"Opacité :", L"Transparence", op0, 5, 100, this);
+    if (op < 0) return;
+    changerStructure([&](nlohmann::ordered_json& d) { stReglerCorps(d, id, "op", op / 100.0); });
+  } else if (choix == M_RETIRER) {
+    std::string refus;
+    const int marque = indiceMarque();
+    changerStructure([&](nlohmann::ordered_json& d) { refus = stRetirerCorps(d, id, marque); }, L"Corps retiré à partir de cette étape : supprimez l'étape pour le faire revenir.");
+    if (!refus.empty()) etat(tx(refus));
+  } else if (choix == M_SUPPRIMER) {
+    const wxString q = wxString::Format(L"Supprimer « %s »%s ? Les autres corps sont conservés.", nomActuel, nb ? wxString::Format(L" et ses %d fonction(s)", nb) : wxString());
+    if (!confirmerSuppression(q)) return;
+    changerStructure([&](nlohmann::ordered_json& d) { stSupprimerCorps(d, id); }, L"Ctrl+Z : annuler.");
+  }
+}
+
+void Cadre::surArbreMenu(wxTreeEvent& e) {
+  if (choix_ || esquisseOuverte_ >= 0 || !docOuvert_) return;
+  const auto* lien = dynamic_cast<LienArbre*>(arbre_->GetItemData(e.GetItem()));
+  if (!lien) return;
+  const std::string corps = lien->corps;
+  const bool estFonction = lien->estFonction;
+  const int i = lien->i;
+  // Le menu peut refaire l'arbre : rien de la ligne n'est gardé
+  if (!corps.empty()) return menuCorps(corps);
+  if (i < 0) return;
+  if (estFonction) menuFonction(i);
+  else menuEsquisseArbre(i);
 }
 
 void Cadre::surArbre(wxTreeEvent& e) {
@@ -1764,13 +2064,14 @@ bool Cadre::proprieteConge(const wxString& nom, const wxVariant& valeur) {
 bool Cadre::essaiEsquisse(const std::wstring& fichier, int rang, const std::wstring& sortie, const std::wstring& json, const std::wstring& dossier) {
   std::ifstream entree(json);
   const nlohmann::json etapes = nlohmann::json::parse(entree);
+  essaiSansBoite_ = true;
   if (!ouvrir(fichier)) return false;
   wxYield();
   if (rang >= 0) entrerEsquisse(rang);
-  else creerEsquisse("XY");
+  else if (rang == -1) creerEsquisse("XY");  // -2 : aucune esquisse ouverte, pour les menus de la pièce
   wxYield();
   Dessin* d = vueEsquisse_->dessin();
-  if (!d) return false;
+  if (!d && rang != -2) return false;
   vueEsquisse_->essaiSansMenu = true;
   nlohmann::json bilan = nlohmann::json::array();
   std::string dernierMessage;
@@ -1816,6 +2117,45 @@ bool Cadre::essaiEsquisse(const std::wstring& fichier, int rang, const std::wstr
     if (e.contains("poly")) vueEsquisse_->essaiReglagesPolygone(wxString::Format("%d", e["poly"][0].get<int>()), wxString::FromUTF8(e["poly"][1].get<std::string>()));
     if (e.contains("mode")) vueEsquisse_->choisirModeTrace(e["mode"].get<std::string>());
     if (e.contains("annuler")) annuler();
+    if (e.contains("retablir")) retablir();
+    if (e.contains("menuFonction") || e.contains("menuEsquisse") || e.contains("menuCorps")) {
+      essaiMenu_ = true;
+      essaiChoix_ = e.value("choix", std::string());
+      essaiNom_ = e.value("nom", std::string());
+      const auto rangId = [](const auto& liste, const std::string& id) {
+        for (size_t k = 0; k < liste.size(); k++)
+          if (liste[k].id == id) return static_cast<int>(k);
+        return -1;
+      };
+      if (e.contains("menuFonction")) menuFonction(rangId(doc_.fonctions, e["menuFonction"].get<std::string>()));
+      else if (e.contains("menuEsquisse")) menuEsquisseArbre(rangId(doc_.esquisses, e["menuEsquisse"].get<std::string>()));
+      else menuCorps(e["menuCorps"].get<std::string>());
+      essaiMenu_ = false;
+      n["menu"] = essaiEntrees_;
+    }
+    if (e.contains("marqueur")) bougerMarqueur(e["marqueur"].get<int>());
+    if (e.contains("droit3d")) {
+      essaiMenu_ = true;
+      essaiChoix_ = e.value("choix", std::string());
+      essaiEntrees_.clear();
+      const auto& p = e["droit3d"];
+      vue_->droitEn(vue_->pixelDe(p[0], p[1], p[2]));
+      essaiMenu_ = false;
+      n["menu"] = essaiEntrees_;
+    }
+    if (e.contains("vue3d")) {
+      wxYield();
+      vue_->image(wxString(dossier) + L"\\" + wxString::FromUTF8(e["vue3d"].get<std::string>()) + L".png");
+    }
+    if (e.contains("mesure")) {
+      const Mesures me = mesurer(forme_);
+      n["volume"] = me.volume;
+      n["faces"] = me.faces;
+      n["fonctions"] = doc_.fonctions.size();
+      n["esquisses"] = doc_.esquisses.size();
+      n["corps"] = doc_.corps.size();
+      n["modifie"] = doc_.modifie();
+    }
     if (e.contains("orbite")) vueEsquisse_->essaiOrbite(e["orbite"][0], e["orbite"][1]);
     if (e.contains("inclinee")) vueEsquisse_->basculerVueInclinee();
     // La saisie d'une cote telle que tapée, la mini-liste, la liste complète en photo
@@ -1851,7 +2191,7 @@ bool Cadre::essaiEsquisse(const std::wstring& fichier, int rang, const std::wstr
     }
     bilan.push_back(std::move(n));
   }
-  std::ofstream(dossier + L"\\bilan.json") << bilan.dump(1);
+  std::ofstream(dossier + L"\\bilan.json") << bilan.dump(1, ' ', false, nlohmann::json::error_handler_t::replace);
   quitterEsquisse();
   wxYield();
   enregistrerProjet(doc_, sortie);

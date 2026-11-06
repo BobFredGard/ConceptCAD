@@ -340,18 +340,25 @@ FilFonctions::FilFonctions(wxWindow* parent) : wxWindow(parent, 2007, wxDefaultP
         wxColour c = C_DISCRET;
         if (!e.estFonction) c = C_ORANGE;
         else if (e.type == "extrude") c = e.op == "cut" ? C_ROUGE : C_VERT;
+        if (e.grise) c = wxColour(0x58, 0x5a, 0x60);
         g->SetBrush(g->CreateBrush(wxBrush(wxColour(c.Red(), c.Green(), c.Blue(), static_cast<int>(i) == survol_ ? 60 : 26))));
         g->SetPen(g->CreatePen(wxGraphicsPenInfo(wxColour(c.Red(), c.Green(), c.Blue(), 70), 1)));
         g->DrawRoundedRectangle(x + 0.5, yi + 0.5, FIL_L - 1, FIL_L - 1, 7);
         g->DrawBitmap(image(e, c), x + 7, yi + 7, 20, 20);
       }
       // Le marqueur de fin de fil
-      const double xm = FIL_X0 + static_cast<double>(fin - debut_) * FIL_PAS + 1;
+      size_t posMarque = fin;
+      for (size_t i = debut_; i < fin; i++)
+        if (elements_[i].apresMarque) {
+          posMarque = i;
+          break;
+        }
+      const double xm = FIL_X0 + static_cast<double>(posMarque - debut_) * FIL_PAS + (posMarque < fin ? -3 : 1);
       g->SetBrush(g->CreateBrush(wxBrush(wxColour(0xff, 0xd6, 0x0a))));
       g->SetPen(wxNullGraphicsPen);
       g->DrawRectangle(xm, yi - 4, 4, FIL_L + 6);
-      // Début, précédent, suivant, fin, film : grisés, le marqueur n'est pas encore repris
-      g->SetBrush(g->CreateBrush(wxBrush(wxColour(0x68, 0x6a, 0x70))));
+      // Début, précédent, suivant, fin ; le film reste grisé
+      g->SetBrush(g->CreateBrush(wxBrush(wxColour(0xc8, 0xca, 0xd0))));
       const double yc = t.y / 2.0;
       const auto triangle = [&](double x, double sens) {
         wxGraphicsPath p = g->CreatePath();
@@ -367,6 +374,7 @@ FilFonctions::FilFonctions(wxWindow* parent) : wxWindow(parent, 2007, wxDefaultP
       triangle(68, 1);
       triangle(90, 1);
       g->DrawRectangle(99, yc - 5, 2, 10);
+      g->SetBrush(g->CreateBrush(wxBrush(wxColour(0x68, 0x6a, 0x70))));
       g->DrawRoundedRectangle(113, yc - 4, 12, 9, 1.5);
     }
     const wxString n = wxString::Format(L"%d fonction(s)", nb_);
@@ -398,8 +406,18 @@ FilFonctions::FilFonctions(wxWindow* parent) : wxWindow(parent, 2007, wxDefaultP
     if (s >= 0) {
       const Element el = elements_[s];
       if (surClic) CallAfter([this, el] { surClic(el); });
-    } else if (ToDIP(e.GetPosition()).x < FIL_X0 && surIndisponible) {
-      surIndisponible(L"Marqueur du fil et film de construction");
+    } else if (const int x = ToDIP(e.GetPosition()).x; x < FIL_X0) {
+      // Les quatre boutons du marqueur, puis le film
+      const int b = x < 15 ? -1 : x < 40 ? 0 : x < 60 ? 1 : x < 82 ? 2 : x < 106 ? 3 : -1;
+      if (b >= 0 && surMarqueur) CallAfter([this, b] { surMarqueur(b); });
+      else if (b < 0 && x >= 106 && surIndisponible) surIndisponible(L"Film de construction");
+    }
+  });
+  Bind(wxEVT_RIGHT_DOWN, [this](wxMouseEvent& e) {
+    const int s = sous(e.GetPosition());
+    if (s >= 0) {
+      const Element el = elements_[s];
+      if (surDroit) CallAfter([this, el] { surDroit(el); });
     }
   });
   Bind(wxEVT_LEFT_DCLICK, [this](wxMouseEvent& e) {

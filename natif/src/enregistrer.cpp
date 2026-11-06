@@ -1,4 +1,5 @@
 #include "enregistrer.h"
+#include "repetitions.h"
 
 #include <set>
 #include <windows.h>
@@ -1083,10 +1084,24 @@ std::string texteEnregistre(const Document& d, const std::string& texteOrigine) 
   return retoucher(refontes.empty() ? texteFichier : refondre(texteFichier, refontes), retouches, esquisses);
 }
 
+std::string texteDuFichier(const Document& d) { return d.compresse ? degonfler(d.octets) : d.octets; }
+
+void modifierStructure(Document& d, const std::function<void(nlohmann::ordered_json&)>& changement) {
+  const std::string base = !d.texteBase.empty() ? d.texteBase : texteDuFichier(d);
+  const std::string texte = d.modifie() ? texteEnregistre(d, base) : base;
+  nlohmann::ordered_json racine = nlohmann::ordered_json::parse(texte);
+  const bool lot = racine.contains("doc") && racine["doc"].is_object();
+  nlohmann::ordered_json& j = lot ? racine["doc"] : racine;
+  changement(j);
+  regenererRepetitions(j, true);
+  Document n = lireTexteProjet(d, racine.dump(-1, ' ', false, nlohmann::ordered_json::error_handler_t::replace));
+  d = std::move(n);
+}
+
 void enregistrerProjet(Document& d, const std::wstring& cible, bool forcer) {
   std::string octets = d.octets;
   if (d.modifie()) {
-    const std::string texte = texteEnregistre(d, d.compresse ? degonfler(d.octets) : d.octets);
+    const std::string texte = texteEnregistre(d, !d.texteBase.empty() ? d.texteBase : texteDuFichier(d));
     octets = d.compresse ? gonfler(texte) : texte;
     if (d.compresse && degonfler(octets) != texte) throw std::runtime_error("la compression ne redonne pas le même texte, rien n'a été écrit");
   }
@@ -1116,7 +1131,10 @@ void enregistrerProjet(Document& d, const std::wstring& cible, bool forcer) {
   }
 
   d.octets = std::move(octets);
+  d.texteBase.clear();
   d.chemin = cible;
   d.fonctionsFichier = d.fonctions;
   d.esquissesFichier = d.esquisses;
+  d.paramsFichier = d.params;
+  d.porteursFichier = d.porteurs;
 }

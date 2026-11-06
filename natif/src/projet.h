@@ -213,6 +213,9 @@ struct Document {
   std::vector<std::string> corps;
   std::vector<std::string> nomsCorps;  // même rang que corps
   std::vector<unsigned> couleursCorps;  // même rang que corps ; 0 = pas de couleur dans la fiche
+  std::vector<double> opacitesCorps;  // même rang que corps ; bodyOpOf : 1 par défaut
+  std::vector<std::string> corpsMasques;  // doc.bodyVis : l'œil du corps, la vue seule
+  std::string texteBase;  // après un changement de structure : le texte de référence, à la place de celui du disque
   unsigned teinte = 0;  // teinte de la pièce (doc.tint), pour les corps sans couleur
   std::vector<Esquisse> esquisses;
   std::vector<Esquisse> esquissesFichier;  // telles qu'écrites dans le fichier : ce qui en diffère reste à enregistrer
@@ -234,6 +237,7 @@ struct Document {
   int nomsIsect = 0;  // entNames.isect : de même pour « Intersection n »
   int nomsAreteLu = 0, nomsProjLu = 0, nomsIsectLu = 0;  // tels que lus dans le fichier
   bool modifie() const {
+    if (!texteBase.empty()) return true;
     if (esquisses.size() != esquissesFichier.size() || fonctions.size() != fonctionsFichier.size()) return true;
     if (!(params == paramsFichier) || porteursChanges()) return true;
     for (size_t i = 0; i < fonctions.size(); i++)
@@ -257,5 +261,7 @@ struct Document {
 
 // Lève std::runtime_error si le fichier est illisible.
 Document lireProjet(const std::wstring& chemin);
+// Le même document d'après un nouveau texte (chemin et octets du disque gardés)
+Document lireTexteProjet(const Document& modele, const std::string& texte);
 std::string lireOctets(const std::wstring& chemin);
 std::string degonfler(const std::string& gz);

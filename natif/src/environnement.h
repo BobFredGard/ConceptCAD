@@ -77,11 +77,14 @@ class FilFonctions : public wxWindow {
     bool estFonction = false;
     int i = 0;
     std::string type, op;
+    bool grise = false;        // masquée, ou au-delà du marqueur
+    bool apresMarque = false;  // au-delà du marqueur de temps
     wxString nom;
   };
   explicit FilFonctions(wxWindow* parent);
   void montrer(const std::vector<Element>& e, int nbFonctions);
-  std::function<void(const Element&)> surClic, surDouble;
+  std::function<void(const Element&)> surClic, surDouble, surDroit;
+  std::function<void(int)> surMarqueur;  // 0 début, 1 précédent, 2 suivant, 3 fin
   std::function<void(const wxString&)> surIndisponible;
 
  private:

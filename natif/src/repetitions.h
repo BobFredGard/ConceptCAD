@@ -4,4 +4,5 @@
 
 // Refait les copies depuis leurs sources, dans le document lu (pas dans le texte du fichier).
 // Rend false, sans rien changer, si la liste des fonctions, des esquisses ou des corps en serait modifiée.
-bool regenererRepetitions(nlohmann::ordered_json& doc);
+// libre : la liste peut changer (le texte du fichier sera réécrit d'après ce document).
+bool regenererRepetitions(nlohmann::ordered_json& doc, bool libre = false);

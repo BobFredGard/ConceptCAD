@@ -1,5 +1,7 @@
 // Fenêtre principale : l'environnement du navigateur autour de la vue 3D et de l'écran d'esquisse.
 #pragma once
+#include <memory>
+#include <nlohmann/json.hpp>
 #include "fenetre_parametres.h"
 #include <wx/wx.h>
 #include <wx/propgrid/propgrid.h>
@@ -47,6 +49,7 @@ class Cadre : public wxFrame {
     bool avecFormules = false;
     std::vector<Parametre> paramsAvant, paramsApres;
     std::vector<PorteurFx> porteursAvant, porteursApres;
+    std::shared_ptr<Document> docAvant, docApres;  // un changement de structure : le document entier
   };
   // parAfterChange : la modification, ses conséquences, le recalcul, une annulation. Rend le message de refus, vide si accepté.
   std::string changerFormules(const std::function<std::string()>& f);
@@ -98,6 +101,27 @@ public:
   bool proprieteConge(const wxString& nom, const wxVariant& valeur);
   void capturerFenetre(const std::wstring& png);
   void modifierFonction(int i, const std::function<void(Fonction&)>& reglage);
+  // Les menus contextuels (src/90-20-menus-contextuels.js)
+  void changerStructure(const std::function<void(nlohmann::ordered_json&)>& changement, const wxString& message = wxString());
+  void apresStructure();
+  void poserDocument(const std::shared_ptr<Document>& d);
+  int choisirMenu(wxMenu& m);
+  wxString demanderNom(const wxString& actuel);
+  bool confirmerSuppression(const wxString& question);
+  void menuFonction(int i);
+  void menuEsquisseArbre(int i);
+  void menuCorps(const std::string& id, bool vue3d = false);
+  void surDroit3D(const TopoDS_Shape& sous);
+  void surArbreMenu(wxTreeEvent& e);
+  int indiceMarque() const;
+  void marquerTemps(const std::string& id);
+  void bougerMarqueur(int bouton);
+  std::string marqueTemps_;  // tlMark : la première fonction exclue du rejeu ; jamais enregistré
+  bool essaiSansBoite_ = false;
+  std::string essaiChoix_, essaiNom_;  // l'essai automatique répond à la place de la souris
+  bool essaiMenu_ = false;
+  std::vector<std::string> messagesMontres_;  // les mêmes messages ne reviennent pas à chaque recalcul
+  std::vector<std::string> essaiEntrees_;
   void choisirFonction(int i);
   void poserPas(const std::vector<Esquisse>& esquisses, bool avecFonctions, const std::vector<Fonction>& fonctions);
   bool demandeCote(const Cote& c, wxString& texte);

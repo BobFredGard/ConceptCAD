@@ -2,6 +2,8 @@
 // modifiés sont remplacés dans son texte. Tout ce que ce programme ne connaît pas (parcours FAO,
 // faces nommées, congés, mise en plan…) reste identique, octet pour octet.
 #pragma once
+#include <functional>
+#include <nlohmann/json.hpp>
 #include <stdexcept>
 #include <string>
 #include <vector>
@@ -40,3 +42,9 @@ std::string texteEnregistre(const Document& d, const std::string& texteFichier);
 // en cas d'échec, le fichier existant reste intact. Met à jour le document (chemin, état « enregistré »).
 // Lève FichierChangeAilleurs si cible est le fichier ouvert et a changé, sauf si forcer.
 void enregistrerProjet(Document& d, const std::wstring& cible, bool forcer = false);
+
+// Un changement de structure (renommer, masquer, supprimer…) : les modifications en cours sont reportées dans le texte,
+// le changement s'y applique, les copies de répétition sont refaites, le document est relu. Rien n'est écrit sur le disque.
+void modifierStructure(Document& d, const std::function<void(nlohmann::ordered_json&)>& changement);
+// Le texte tel qu'il est sur le disque
+std::string texteDuFichier(const Document& d);

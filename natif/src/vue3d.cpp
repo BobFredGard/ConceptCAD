@@ -228,7 +228,7 @@ Vue3D::Vue3D(wxWindow* parent) : wxWindow(parent, 2005, wxDefaultPosition, wxDef
   Bind(wxEVT_MOUSE_CAPTURE_LOST, &Vue3D::surPerteSouris, this);
 }
 
-void Vue3D::afficher(const TopoDS_Shape& forme, bool ajusterVue, const std::vector<std::pair<TopoDS_Shape, unsigned>>& teintes) {
+void Vue3D::afficher(const TopoDS_Shape& forme, bool ajusterVue, const std::vector<std::pair<TopoDS_Shape, unsigned>>& teintes, const std::vector<std::pair<TopoDS_Shape, double>>& transparences) {
   const auto oter = [this](occ::handle<AIS_Shape>& a) {
     if (!a.IsNull()) contexte_->Remove(a, false);
     a.Nullify();
@@ -247,6 +247,7 @@ void Vue3D::afficher(const TopoDS_Shape& forme, bool ajusterVue, const std::vect
     piece->SetColor(couleurHex(0x0a84ff));
     for (const auto& [corps, c] : teintes) piece->SetCustomColor(corps, couleurHex(c));
     piece->SetMaterial(matierePiece());
+    for (const auto& [corps, t] : transparences) piece->SetCustomTransparency(corps, t);
     affichee_ = piece;
     contexte_->Display(affichee_, AIS_Shaded, -1, false);  // sélection préparée plus tard : un recalcul n'en paie pas le prix
 
@@ -364,8 +365,21 @@ void Vue3D::surEnfonce(wxMouseEvent& e) {
 
 void Vue3D::surRelache(wxMouseEvent& e) {
   if (HasCapture()) ReleaseMouse();
-  if (!e.LeftUp() || aBouge_) return;
+  if (aBouge_) return;
+  if (e.RightUp()) return droitEn(e.GetPosition());
+  if (!e.LeftUp()) return;
   cliquerEn(e.GetPosition());
+}
+
+void Vue3D::droitEn(const wxPoint& p) {
+  if (!surDroit) return;
+  TopoDS_Shape sous;
+  if (!affichee_.IsNull() && !enChoix_) {
+    preparerSelection();
+    contexte_->MoveTo(p.x, p.y, vue_, false);
+    if (contexte_->HasDetected() && contexte_->HasDetectedShape()) sous = contexte_->DetectedShape();
+  }
+  surDroit(sous);
 }
 
 void Vue3D::cliquerEn(const wxPoint& p) {

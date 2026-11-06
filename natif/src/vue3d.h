@@ -21,7 +21,7 @@ class Vue3D : public wxWindow {
  public:
   explicit Vue3D(wxWindow* parent);
   // teintes : le solide de chaque corps et sa couleur (0xRRVVBB) ; sans elles, le bleu des pièces.
-  void afficher(const TopoDS_Shape& forme, bool ajusterVue, const std::vector<std::pair<TopoDS_Shape, unsigned>>& teintes = {});
+  void afficher(const TopoDS_Shape& forme, bool ajusterVue, const std::vector<std::pair<TopoDS_Shape, unsigned>>& teintes = {}, const std::vector<std::pair<TopoDS_Shape, double>>& transparences = {});
   // Pour les essais : la vue dans une image, et le temps des arêtes et du reflet au dernier affichage
   bool image(const wxString& chemin);
   double msAffichage() const { return msAffichage_; }
@@ -32,6 +32,9 @@ class Vue3D : public wxWindow {
   void preparerSelection();
   // Appelé après un clic : la face ou l'arête choisie, ou une forme vide.
   std::function<void(const TopoDS_Shape&)> surSelection;
+  // Clic droit sans déplacement : ce qui est sous la souris, ou une forme vide
+  std::function<void(const TopoDS_Shape&)> surDroit;
+  void droitEn(const wxPoint& p);
   // Le choix des arêtes d'un congé : arêtes vives en noir, tangentes en gris ; les clics restent sur la pièce d'origine, même quand l'aperçu la remplace.
   void debutChoix(const TopoDS_Shape& vives, const TopoDS_Shape& tangentes);
   void montrerChoix(const TopoDS_Shape& choisies, const TopoDS_Shape& apercu, const std::vector<TopoDS_Face>& nouvelles);

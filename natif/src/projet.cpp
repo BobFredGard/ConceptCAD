@@ -530,6 +530,8 @@ static void lireFonction(const json& jf, Document& d, std::map<std::string, int>
   d.fonctions.push_back(std::move(f));
 }
 
+static Document documentDepuis(json& racine);
+
 Document lireProjet(const std::wstring& chemin) {
   std::string octets = lireOctets(chemin);
   const bool compresse = octets.size() >= 2 && static_cast<unsigned char>(octets[0]) == 0x1f && static_cast<unsigned char>(octets[1]) == 0x8b;
@@ -542,6 +544,24 @@ Document lireProjet(const std::wstring& chemin) {
   }
   b.clear();
   b.shrink_to_fit();
+  Document d = documentDepuis(racine);
+  d.chemin = chemin;
+  d.octets = std::move(octets);
+  d.compresse = compresse;
+  return d;
+}
+
+Document lireTexteProjet(const Document& modele, const std::string& texte) {
+  json racine = json::parse(texte);
+  Document d = documentDepuis(racine);
+  d.chemin = modele.chemin;
+  d.octets = modele.octets;
+  d.compresse = modele.compresse;
+  d.texteBase = texte;
+  return d;
+}
+
+static Document documentDepuis(json& racine) {
   const bool lot = racine.contains("doc") && racine["doc"].is_object();
   json& j = lot ? racine["doc"] : racine;
   if (!j.contains("features") || !j.contains("sketches")) throw std::runtime_error("ce fichier ne contient pas de pièce");
@@ -549,16 +569,17 @@ Document lireProjet(const std::wstring& chemin) {
 
   Document d;
   std::map<std::string, int> refus;
-  d.chemin = chemin;
-  d.octets = std::move(octets);
-  d.compresse = compresse;
   d.nom = texte(j, "name");
   if (j.contains("bodies"))
     for (auto& c : j["bodies"]) {
       d.corps.push_back(texte(c, "id"));
       d.nomsCorps.push_back(texte(c, "name"));
       d.couleursCorps.push_back(c.contains("color") && c["color"].is_number() ? c["color"].get<unsigned>() : 0u);
+      d.opacitesCorps.push_back(c.contains("op") && c["op"].is_number() && c["op"].get<double>() > 0 ? c["op"].get<double>() : 1.0);
     }
+  if (auto x = j.find("bodyVis"); x != j.end() && x->is_object())
+    for (const auto& v : x->items())
+      if (v.value().is_boolean() && !v.value().get<bool>()) d.corpsMasques.push_back(v.key());
   if (j.contains("tint") && j["tint"].is_number()) d.teinte = j["tint"].get<unsigned>();
   if (d.corps.empty()) d.corps.push_back("b1");
   // ensureActiveBody : l'actif s'il existe, sinon le premier

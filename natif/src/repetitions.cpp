@@ -242,7 +242,12 @@ struct Regeneration {
       if (str(s, "id") == id) return &s;
     return nullptr;
   }
-  std::string neuf(const char* prefixe) { return std::string(prefixe) + "_rep" + std::to_string(++compteur); }
+  std::string neuf(const char* prefixe) {
+    for (;;) {
+      const std::string id = std::string(prefixe) + "_rep" + std::to_string(++compteur);
+      if (!fonction(id) && !esquisse(id)) return id;
+    }
+  }
 
   json faceRef(const json& r, int i, const std::map<std::string, std::string>& skMap, const Transfo& c) {
     if (!r.is_object() || !tableau(r, "pos")) return r;
@@ -797,7 +802,7 @@ std::vector<std::string> idsDe(const json& liste) {
 }
 }  // namespace
 
-bool regenererRepetitions(json& doc) {
+bool regenererRepetitions(json& doc, bool libre) {
   if (!doc.contains("features") || !doc["features"].is_array() || !doc.contains("sketches") || !doc["sketches"].is_array()) return false;
   std::vector<std::string> ids;
   for (const json& f : doc["features"])
@@ -812,7 +817,7 @@ bool regenererRepetitions(json& doc) {
   } catch (const std::exception&) {
     return false;
   }
-  if (idsDe(essai["features"]) != idsF || idsDe(essai["sketches"]) != idsS || idsDe(essai.value("bodies", json::array())) != idsC) return false;
+  if (!libre && (idsDe(essai["features"]) != idsF || idsDe(essai["sketches"]) != idsS || idsDe(essai.value("bodies", json::array())) != idsC)) return false;
   doc = std::move(essai);
   return true;
 }
