@@ -64,7 +64,7 @@ Solveur::Solveur(const Esquisse& s, bool ouverture) {
   for (const Entite& x : s.entites) {
     E e;
     e.id = x.id;
-    e.t = x.t == "line" ? LIGNE : x.t == "arc" ? ARC : x.t == "circle" ? CERCLE : x.t == "cpoint" ? CPOINT : AUTRE;
+    e.t = x.t == "line" ? LIGNE : x.t == "arc" ? ARC : x.t == "circle" ? CERCLE : x.t == "cpoint" ? CPOINT : x.t == "spline" ? SPLINE : AUTRE;
     if (e.t == AUTRE && raisonRefus_.empty()) raisonRefus_ = "l'esquisse contient une courbe que ce programme ne sait pas encore résoudre (" + x.t + ")";
     e.p1 = indexPoint(x.p1);
     e.p2 = indexPoint(x.p2);
@@ -79,10 +79,17 @@ Solveur::Solveur(const Esquisse& s, bool ouverture) {
     e.ext = x.proj || x.ext;
     e.construction = x.construction;
     for (const std::string& q : x.poly) e.poly.push_back(indexPoint(q));
+    for (const std::string& q : x.pts) e.pts.push_back(indexPoint(q));
+    e.closed = x.closed;
+    e.ctrl = x.mode == "ctrl";
+    e.knots = x.knots;
+    e.deg = x.deg;
     E_.push_back(std::move(e));
   }
+  for (size_t i = 0; i < s.entites.size(); i++)
+    if (!s.entites[i].handle.empty()) E_[i].handle = indexEntite(s.entites[i].handle);
   ensureOrigin();
-  static const std::map<std::string, TypeC> typesC = {{"h", H}, {"v", V}, {"coincident", COINCIDENT}, {"oncircle", ONCIRCLE}, {"online", ONLINE}, {"midpoint", MIDPOINT}, {"parallel", PARALLEL}, {"perpendicular", PERPENDICULAR}, {"collinear", COLLINEAR}, {"equal", EQUAL}, {"offset", OFFSET}, {"tangent", TANGENT}, {"tangent2", TANGENT2}, {"coaxial", COAXIAL}, {"symmetric", SYMMETRIC}, {"fix", FIX}};
+  static const std::map<std::string, TypeC> typesC = {{"h", H}, {"v", V}, {"coincident", COINCIDENT}, {"oncircle", ONCIRCLE}, {"online", ONLINE}, {"midpoint", MIDPOINT}, {"parallel", PARALLEL}, {"perpendicular", PERPENDICULAR}, {"collinear", COLLINEAR}, {"equal", EQUAL}, {"offset", OFFSET}, {"tangent", TANGENT}, {"tangent2", TANGENT2}, {"coaxial", COAXIAL}, {"symmetric", SYMMETRIC}, {"fix", FIX}, {"stangent", STANGENT}, {"scurv", SCURV}, {"onspline", ONSPLINE}};
   for (const Contrainte& x : s.contraintes) {
     C c;
     c.id = x.id;
@@ -100,6 +107,7 @@ Solveur::Solveur(const Esquisse& s, bool ouverture) {
     c.a = points ? indexPoint(x.a) : indexEntite(x.a);
     c.b = points ? indexPoint(x.b) : indexEntite(x.b);
     c.mid = indexEntite(x.mid);
+    c.s = indexEntite(x.s);
     c.c = indexEntite(x.c);
     c.d = indexEntite(x.d);
     c.inf = x.inf;
@@ -163,8 +171,221 @@ std::vector<int> Solveur::pidsEntite(const E& e) const {
     case ARC: return {e.pc, e.pa, e.pb};
     case CERCLE: return {e.pc};
     case CPOINT: return {e.p};
+    case SPLINE: return e.pts;
     default: return {};
   }
+}
+
+// skSplineHandleLine : le bout de la poignée du point q, -1 s'il n'y en a pas
+int Solveur::boutPoignee(const E& e, int q) const {
+  const int soi = static_cast<int>(&e - E_.data());
+  int h = -1;
+  for (const E& l : E_)
+    if (l.t == LIGNE && l.handle == soi && l.p1 == q && l.p2 >= 0) h = l.p2;
+  return h;
+}
+
+// skSplineAllPids
+std::vector<int> Solveur::pidsSpline(const E& e) const {
+  std::vector<int> v = e.pts;
+  const int soi = static_cast<int>(&e - E_.data());
+  for (const E& l : E_)
+    if (l.t == LIGNE && l.handle == soi && l.p1 >= 0 && l.p2 >= 0) v.push_back(l.p2);
+  return v;
+}
+
+// skSplineFit
+const BSpline* Solveur::courbe(const E& e) const {
+  if (e.t != SPLINE || e.pts.size() < 2) return nullptr;
+  std::vector<P2d> Q, H;
+  std::vector<char> A;
+  for (const int q : e.pts) {
+    if (q < 0) return nullptr;
+    Q.push_back({P_[q].x, P_[q].y});
+    const int h = e.ctrl ? -1 : boutPoignee(e, q);
+    H.push_back(h >= 0 ? P2d{P_[h].x, P_[h].y} : P2d{0, 0});
+    A.push_back(h >= 0);
+  }
+  if (e.cacheVu && Q == e.cacheQ && H == e.cacheH && A == e.cacheA) return e.cacheOk ? &e.cacheF : nullptr;
+  const bool ferme = e.closed && e.pts.size() >= 3;
+  e.cacheOk = e.ctrl ? bsControl(Q, ferme, e.knots.empty() ? nullptr : &e.knots, e.deg, e.cacheF) : bsInterpolate(Q, H, A, ferme, e.cacheF);
+  e.cacheVu = true;
+  e.cacheQ = std::move(Q);
+  e.cacheH = std::move(H);
+  e.cacheA = std::move(A);
+  return e.cacheOk ? &e.cacheF : nullptr;
+}
+
+// skSplineParam
+bool Solveur::paramSpline(const E& e, int q, double& u) const {
+  const BSpline* f = courbe(e);
+  const auto it = std::find(e.pts.begin(), e.pts.end(), q);
+  if (!f || it == e.pts.end()) return false;
+  const size_t k = it - e.pts.begin();
+  if (!f->ctrl) {
+    u = f->u[k];
+    return true;
+  }
+  if (f->closed) return false;
+  if (k == 0) u = f->a;
+  else if (k == e.pts.size() - 1) u = f->b;
+  else return false;
+  return true;
+}
+
+// skSplineTanPid
+int Solveur::pointTangente(const E& e, int q) const {
+  if (e.t != SPLINE) return -1;
+  if (e.ctrl) {
+    if (e.closed) return -1;
+    const size_t n = e.pts.size() - 1;
+    return q == e.pts[0] ? e.pts[1] : q == e.pts[n] ? e.pts[n - 1] : -1;
+  }
+  return boutPoignee(e, q);
+}
+
+// skSplineCurvature
+bool Solveur::courbureSpline(const E& e, int q, double& k, double& tx, double& ty) const {
+  double u;
+  if (!paramSpline(e, q, u)) return false;
+  const auto D = bsEval(*courbe(e), u, 2);
+  const double L = hyp(D[1][0], D[1][1]);
+  if (!(L > 1e-12)) return false;
+  k = (D[1][0] * D[2][1] - D[1][1] * D[2][0]) / (L * L * L);
+  tx = D[1][0] / L;
+  ty = D[1][1] / L;
+  return true;
+}
+
+// skStanResid
+bool Solveur::residuTangenceSpline(const C& c, double& r) const {
+  const E* S = enC(c.s);
+  const E* O = enC(c.ent);
+  const P2* Q = ptC(c.p);
+  if (!S || S->t != SPLINE || !O || !Q) return false;
+  const P2* H = ptC(pointTangente(*S, c.p));
+  if (!H) return false;
+  const double hx = H->x - Q->x, hy = H->y - Q->y;
+  if (O->t == LIGNE) {
+    const P2* A = ptC(O->p1);
+    const P2* B = ptC(O->p2);
+    if (!A || !B) return false;
+    const double L = hyp(B->x - A->x, B->y - A->y);
+    if (!(L > 1e-9)) return false;
+    r = (hx * (B->y - A->y) - hy * (B->x - A->x)) / L;
+    return true;
+  }
+  if (O->t == CERCLE || O->t == ARC) {
+    const P2* CC = ptC(O->pc);
+    if (!CC) return false;
+    const double R = hyp(Q->x - CC->x, Q->y - CC->y);
+    if (!(R > 1e-9)) return false;
+    r = (hx * (Q->x - CC->x) + hy * (Q->y - CC->y)) / R;
+    return true;
+  }
+  if (O->t == SPLINE) {
+    const P2* H2 = ptC(pointTangente(*O, c.p));
+    if (!H2) return false;
+    const double vx = H2->x - Q->x, vy = H2->y - Q->y, L = hyp(vx, vy);
+    if (!(L > 1e-9)) return false;
+    r = (hx * vy - hy * vx) / L;
+    return true;
+  }
+  return false;
+}
+
+// skStanRelax
+void Solveur::relacheTangenceSpline(const C& c) {
+  const E* S = enC(c.s);
+  const E* O = enC(c.ent);
+  const P2* Q = ptC(c.p);
+  if (!S || !O || !Q) return;
+  const int hp = pointTangente(*S, c.p);
+  if (hp < 0 || fixA_[hp]) return;
+  P2& H = P_[hp];
+  double tx = 0, ty = 0;
+  if (O->t == LIGNE) {
+    const P2* A = ptC(O->p1);
+    const P2* B = ptC(O->p2);
+    if (!A || !B) return;
+    tx = B->x - A->x;
+    ty = B->y - A->y;
+  } else if (O->t == CERCLE || O->t == ARC) {
+    const P2* CC = ptC(O->pc);
+    if (!CC) return;
+    tx = -(Q->y - CC->y);
+    ty = Q->x - CC->x;
+  } else if (O->t == SPLINE) {
+    const P2* H2 = ptC(pointTangente(*O, c.p));
+    if (!H2) return;
+    tx = H2->x - Q->x;
+    ty = H2->y - Q->y;
+  }
+  const double L = hyp(tx, ty), hx = H.x - Q->x, hy = H.y - Q->y, hl2 = hyp(hx, hy);
+  if (!(L > 1e-12) || !(hl2 > 1e-12)) return;
+  double ux = tx / L, uy = ty / L;
+  if (hx * ux + hy * uy < 0) {
+    ux = -ux;
+    uy = -uy;
+  }
+  const double qx = Q->x + ux * hl2, qy = Q->y + uy * hl2;
+  H.x += (qx - H.x) * 0.5;
+  H.y += (qy - H.y) * 0.5;
+}
+
+// skCurvResid
+bool Solveur::residuCourbure(const C& c, double& r) const {
+  const E* S = enC(c.s);
+  const E* O = enC(c.ent);
+  const P2* Q = ptC(c.p);
+  if (!S || !O || !Q) return false;
+  double ka, atx, aty;
+  if (!courbureSpline(*S, c.p, ka, atx, aty)) return false;
+  double k2;
+  if (O->t == LIGNE) {
+    k2 = 0;
+  } else if (O->t == CERCLE || O->t == ARC) {
+    const P2* CC = ptC(O->pc);
+    if (!CC || !(O->r > 0)) return false;
+    const double tx = -(Q->y - CC->y), ty = Q->x - CC->x;
+    k2 = (tx * atx + ty * aty >= 0 ? 1 : -1) / O->r;
+  } else if (O->t == SPLINE) {
+    double kb, btx, bty;
+    if (!courbureSpline(*O, c.p, kb, btx, bty)) return false;
+    k2 = (btx * atx + bty * aty >= 0 ? 1 : -1) * kb;
+  } else {
+    return false;
+  }
+  const P2* H = ptC(pointTangente(*S, c.p));
+  const double L = H ? jsmax(hyp(H->x - Q->x, H->y - Q->y), 1e-3) : 1;
+  r = (ka - k2) * L * L;
+  return true;
+}
+
+// skOnSplResid
+bool Solveur::residuSurSpline(const C& c, double& r) {
+  const E* X = enC(c.ent);
+  const P2* Q = ptC(c.p);
+  if (!X || X->t != SPLINE || !Q) return false;
+  const BSpline* f = courbe(*X);
+  if (!f) return false;
+  const PiedSpline h = bsClosest(*f, Q->x, Q->y, c.aU ? &c.u : nullptr);
+  c.u = h.u;
+  c.aU = true;
+  r = h.s;
+  return true;
+}
+
+// skOnSplRelax
+void Solveur::relacheSurSpline(const C& c) {
+  const E* X = enC(c.ent);
+  if (!X || X->t != SPLINE || c.p < 0 || fixA_[c.p]) return;
+  P2& Q = P_[c.p];
+  const BSpline* f = courbe(*X);
+  if (!f) return;
+  const PiedSpline h = bsClosest(*f, Q.x, Q.y, c.aU ? &c.u : nullptr);
+  Q.x += (h.x - Q.x) * 0.5;
+  Q.y += (h.y - Q.y) * 0.5;
 }
 
 void Solveur::calculerStructure() {
@@ -178,6 +399,9 @@ void Solveur::calculerStructure() {
       const int q = e->pc >= 0 ? e->pc : e->p;
       if (q >= 0) fix_[q] = 1;
     }
+    if (e && e->t == SPLINE)
+      for (const int q : pidsSpline(*e))
+        if (q >= 0) fix_[q] = 1;
   }
   for (const E& e : E_)
     if (e.proj)
@@ -705,6 +929,18 @@ Solveur::Bilan Solveur::audit(std::vector<Violation>* tout) {
       double v1, v2;
       if (offsetVal(c.a, c.b, c.sa, v1) && offsetVal(c.c, c.d, c.sb, v2)) pousse(false, "décalage égal", std::abs(v2 - v1));
     }
+    if (c.type == STANGENT) {
+      double r;
+      if (residuTangenceSpline(c, r)) pousse(false, "tangence spline", std::abs(r));
+    }
+    if (c.type == SCURV) {
+      double r;
+      if (residuCourbure(c, r)) pousse(false, "courbure G2", std::abs(r));
+    }
+    if (c.type == ONSPLINE) {
+      double r;
+      if (residuSurSpline(c, r)) pousse(false, "point sur spline", std::abs(r));
+    }
     if (c.type == ONCIRCLE) {
       const P2* Q = pt(c.p);
       const E* X = en(c.ent);
@@ -847,8 +1083,10 @@ std::vector<char> Solveur::composante(const E& l) {
         }
       } else if (c.type == TANGENT) {
         paire(c.line, c.ent);
-      } else if (c.type == ONCIRCLE || c.type == ONLINE) {
-        const int e = c.type == ONCIRCLE ? c.ent : c.line;
+      } else if (c.type == STANGENT || c.type == SCURV) {
+        paire(c.s, c.ent);
+      } else if (c.type == ONCIRCLE || c.type == ONLINE || c.type == ONSPLINE) {
+        const int e = c.type != ONLINE ? c.ent : c.line;
         if (e < 0 || c.p < 0) continue;
         if (pids[c.p] && !ents[e]) {
           ents[e] = 1;
@@ -1111,6 +1349,8 @@ void Solveur::relax(int iters) {
           B->y -= dy * 0.5;
         }
       }
+      if (c.type == STANGENT) relacheTangenceSpline(c);
+      if (c.type == ONSPLINE) relacheSurSpline(c);
       if (c.type == ONCIRCLE) {
         P2* Q = pt(c.p);
         const E* X = en(c.ent);
@@ -1553,7 +1793,7 @@ Solveur::Build Solveur::sklsBuild() {
     }
   B.slide.assign(P_.size(), 0);
   for (const C& c : C_)
-    if ((c.type == ONLINE || c.type == ONCIRCLE) && c.p >= 0) B.slide[c.p] = 1;
+    if ((c.type == ONLINE || c.type == ONCIRCLE || c.type == ONSPLINE) && c.p >= 0) B.slide[c.p] = 1;
   B.n = 2 * static_cast<int>(B.pts.size()) + static_cast<int>(B.rad.size());
   return B;
 }
@@ -1665,6 +1905,21 @@ void Solveur::collect(std::vector<double>& out, const Build& B) {
           push(A->x - Q->x);
           push(A->y - Q->y);
         }
+        break;
+      }
+      case STANGENT: {
+        double r;
+        if (residuTangenceSpline(c, r)) push(r);
+        break;
+      }
+      case SCURV: {
+        double r;
+        if (residuCourbure(c, r)) push(r);
+        break;
+      }
+      case ONSPLINE: {
+        double r;
+        if (residuSurSpline(c, r)) push(r);
         break;
       }
       case ONCIRCLE: {
@@ -2507,6 +2762,9 @@ std::string Solveur::cleContrainte(const C& c) const {
     case MIDPOINT: return c.p >= 0 ? "midpoint@" + ptn(c.p) + "|" + nom(c.line) : "midpoint@@" + paire(nom(c.a), nom(c.b));
     case ONLINE: return "online@" + ptn(c.p) + "|" + nom(c.line);
     case ONCIRCLE: return "oncircle@" + ptn(c.p) + "|" + nom(c.ent);
+    case STANGENT: return "stangent@" + nom(c.s) + "|" + ptn(c.p) + "|" + nom(c.ent);
+    case SCURV: return "scurv@" + nom(c.s) + "|" + ptn(c.p) + "|" + nom(c.ent);
+    case ONSPLINE: return "onspline@" + ptn(c.p) + "|" + nom(c.ent);
     default: return "id@" + c.id;
   }
 }
@@ -2724,6 +2982,8 @@ Solveur::Solveur(const Esquisse& s, const Solveur& m) : Solveur(s, false) {
   for (C& c : C_)
     for (const C& o : m.C_)
       if (o.id == c.id) {
+        c.aU = o.aU;
+        c.u = o.u;
         c.cote = o.cote;
         break;
       }
@@ -2888,7 +3148,16 @@ void Solveur::glisserPoint(const std::string& id, double x, double y, double vue
   const int q = indexPoint(id);
   if (q < 0) return;
   const std::vector<int> moi{q};
-  marcher(P_[q], P2{x, y}, [&](const P2& p) { P_[q] = p; }, tenus(moi), moi, vueS);
+  std::vector<int> poignees;
+  for (const E& l : E_)
+    if (l.t == LIGNE && l.handle >= 0 && l.p1 == q && l.p2 >= 0 && !fixA_[l.p2]) poignees.push_back(l.p2);
+  marcher(P_[q], P2{x, y}, [&](const P2& p) {
+    for (const int h : poignees) {
+      P_[h].x += p.x - P_[q].x;
+      P_[h].y += p.y - P_[q].y;
+    }
+    P_[q] = p;
+  }, tenus(moi), moi, vueS);
 }
 
 void Solveur::glisserGroupe(const std::vector<std::string>& ids, const std::vector<Pt>& depart, const std::vector<std::string>& ancre, double dx, double dy, bool bloc, double vueS) {

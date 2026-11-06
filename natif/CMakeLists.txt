@@ -9,7 +9,7 @@ set(OCCT "${TIERS}/occt-bin/opencascade-8.0.1-vc14-64")
 set(TROIS "${TIERS}/occt-bin/3rdparty-vc14-64")
 set(WX "${TIERS}/wx")
 
-add_executable(ConceptCADNatif WIN32 src/main.cpp src/cadre.cpp src/vue3d.cpp src/esquisse2d.cpp src/projet.cpp src/enregistrer.cpp src/contours.cpp src/rejeu.cpp src/conges.cpp src/solveur.cpp src/coter.cpp src/dessin.cpp src/infos_esquisse.cpp src/interface_esquisse.cpp src/environnement.cpp)
+add_executable(ConceptCADNatif WIN32 src/main.cpp src/cadre.cpp src/vue3d.cpp src/esquisse2d.cpp src/projet.cpp src/enregistrer.cpp src/contours.cpp src/rejeu.cpp src/conges.cpp src/solveur.cpp src/spline.cpp src/coter.cpp src/dessin.cpp src/infos_esquisse.cpp src/interface_esquisse.cpp src/environnement.cpp)
 target_compile_definitions(ConceptCADNatif PRIVATE UNICODE _UNICODE _CRT_SECURE_NO_WARNINGS NOMINMAX WXUSINGDLL __WXMSW__ wxNO_GL_LIB)
 target_compile_options(ConceptCADNatif PRIVATE /utf-8 /MP /EHa /W3)
 target_include_directories(ConceptCADNatif PRIVATE "${WX}/lib/vc14x_x64_dll/mswu" "${WX}/include" "${OCCT}/inc" "${TIERS}" "${TROIS}/zlib-1.2.8-vc14-64/include")
@@ -24,7 +24,7 @@ set_target_properties(ConceptCADNatif PROPERTIES RUNTIME_OUTPUT_DIRECTORY_RELEAS
 
 # Banc du dessin : les mêmes gestes que le navigateur, l'esquisse comparée après chacun
 foreach(BANC BancDessin BancDessinCommunes)
-  add_executable(${BANC} src/banc_dessin.cpp src/dessin.cpp src/solveur.cpp src/projet.cpp src/enregistrer.cpp src/infos_esquisse.cpp src/contours.cpp)
+  add_executable(${BANC} src/banc_dessin.cpp src/dessin.cpp src/solveur.cpp src/spline.cpp src/projet.cpp src/enregistrer.cpp src/infos_esquisse.cpp src/contours.cpp)
   target_compile_definitions(${BANC} PRIVATE UNICODE _UNICODE _CRT_SECURE_NO_WARNINGS NOMINMAX SANS_NOYAU)
   target_compile_options(${BANC} PRIVATE /utf-8 /MP /EHa /W3)
   target_include_directories(${BANC} PRIVATE "${TIERS}" "${TROIS}/zlib-1.2.8-vc14-64/include")
@@ -35,7 +35,7 @@ endforeach()
 target_compile_definitions(BancDessinCommunes PRIVATE SOLVEUR_MATHS_COMMUNES)
 
 # Banc du solveur d'esquisse : sans fenêtre ni noyau, comparé aux résultats du navigateur
-add_executable(BancSolveur src/banc_solveur.cpp src/solveur.cpp src/projet.cpp)
+add_executable(BancSolveur src/banc_solveur.cpp src/solveur.cpp src/spline.cpp src/projet.cpp)
 target_compile_definitions(BancSolveur PRIVATE UNICODE _UNICODE _CRT_SECURE_NO_WARNINGS NOMINMAX)
 target_compile_options(BancSolveur PRIVATE /utf-8 /MP /EHa /W3)
 target_include_directories(BancSolveur PRIVATE "${TIERS}" "${TROIS}/zlib-1.2.8-vc14-64/include")
@@ -44,7 +44,7 @@ target_link_libraries(BancSolveur PRIVATE zlib)
 set_target_properties(BancSolveur PROPERTIES RUNTIME_OUTPUT_DIRECTORY_RELEASE "${CMAKE_CURRENT_SOURCE_DIR}/sortie")
 
 # Le même banc avec les mêmes sinus, cosinus et arc tangente que la référence (--communes) : il doit tomber juste au dernier chiffre près
-add_executable(BancSolveurCommunes src/banc_solveur.cpp src/solveur.cpp src/projet.cpp)
+add_executable(BancSolveurCommunes src/banc_solveur.cpp src/solveur.cpp src/spline.cpp src/projet.cpp)
 target_compile_definitions(BancSolveurCommunes PRIVATE UNICODE _UNICODE _CRT_SECURE_NO_WARNINGS NOMINMAX SOLVEUR_MATHS_COMMUNES)
 target_compile_options(BancSolveurCommunes PRIVATE /utf-8 /MP /EHa /W3)
 target_include_directories(BancSolveurCommunes PRIVATE "${TIERS}" "${TROIS}/zlib-1.2.8-vc14-64/include")

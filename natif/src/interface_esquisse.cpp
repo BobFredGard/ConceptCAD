@@ -258,8 +258,8 @@ BarreEsquisse::BarreEsquisse(wxWindow* parent) : wxWindow(parent, 2009, wxDefaul
       {Dessin::CERCLE, "circle", L"Cercle", L"Cercle : clic 1 = centre, clic 2 = point du Ø"},
       {Dessin::POLYGONE, "polygon", L"Polygone", L"Polygone : clic 1 = centre, clic 2 = milieu d'un côté (réglages en haut à gauche)"},
       {Dessin::ARC, "arc", L"Arc", L"Arc : centre, début, fin (3 clics)"},
-      {-1, "spline", L"Spline", L"Spline par points de passage"},
-      {-1, "cspline", L"Spline de contrôle", L"Spline par points de contrôle"},
+      {Dessin::SPLINE, "spline", L"Spline", L"Spline (S) : cliquez les points de passage. Double-clic, Entrée ou clic droit : fin ; clic sur le 1er point : fermée. Clic droit sur un point : poignée de tangence"},
+      {Dessin::CSPLINE, "cspline", L"Spline de contrôle", L"Spline par points de contrôle (Maj+S) : cliquez les pôles. Double-clic, Entrée ou clic droit : fin ; clic sur le 1er pôle : fermée"},
       {Dessin::POINT_C, "cpoint", L"Point", L"Point de construction : un clic par point"},
       {Dessin::PERCAGE, "hpoint", L"Centre de perçage", L"Centre de perçage : un clic, à coter, pour la fonction 3D « Perçage »"},
       {-1, "project", L"Projeter", L"Projeter une arête 3D"},
@@ -270,7 +270,7 @@ BarreEsquisse::BarreEsquisse(wxWindow* parent) : wxWindow(parent, 2009, wxDefaul
       {Dessin::CHANFREIN, "chamfer", L"Chanfrein", L"Chanfrein : cliquez 2 lignes en coin, ou leur coin. Une seule cote pour tous les coins de la passe"},
       {Dessin::CONGE, "fillet", L"Congé", L"Congé : cliquez 2 lignes en coin, ou leur coin. Une seule cote pour tous les coins de la passe"},
   };
-  outils_.assign(14, nullptr);
+  outils_.assign(17, nullptr);
   for (const Fiche& f : fiches) {
     const bool ok = f.outil >= 0;
     auto* b = new BoutonEsquisse(this, ok ? 2010 + f.outil : wxID_ANY, f.nom, ok ? wxString(f.aide) : wxString(f.aide) + L" : pas encore dans le logiciel Windows");
@@ -439,10 +439,12 @@ bool BarreEsquisse::essaiCliquerOutil(Dessin::Outil o) {
 }
 
 void BarreEsquisse::outilActif(Dessin::Outil o) {
-  for (size_t i = 0; i < outils_.size(); i++) outils_[i]->actif(static_cast<int>(i) == static_cast<int>(o));
+  for (size_t i = 0; i < outils_.size(); i++)
+    if (outils_[i]) outils_[i]->actif(static_cast<int>(i) == static_cast<int>(o));
 }
 void BarreEsquisse::lectureSeule(bool oui) {
-  for (BoutonEsquisse* b : outils_) b->disponible(!oui);
+  for (BoutonEsquisse* b : outils_)
+    if (b) b->disponible(!oui);
   for (BoutonEsquisse* b : contraintes_) b->disponible(!oui);
 }
 void BarreEsquisse::grilleActive(bool oui) { grille_->actif(oui); }

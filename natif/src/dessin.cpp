@@ -304,12 +304,16 @@ void Dessin::dedoublonner() {
 void Dessin::nettoyer() {
   sync();
   if (ed_.solveur.convertirEntraxes()) ed_.solveur.recopierDans(s_);
+  nettoyerSplines();
   std::set<std::string> ref{"O", chaine_, arcC_, glisseP_, dimPoint_};
   if (bas_.actif) ref.insert(bas_.pid);
   ref.erase("");
   for (const Entite& e : s_.entites)
+  {
     for (const std::string* q : {&e.p1, &e.p2, &e.p, &e.pc, &e.pa, &e.pb})
       if (!q->empty()) ref.insert(*q);
+    for (const std::string& q : e.pts) ref.insert(q);
+  }
   for (const Cote& d : s_.cotes)
     for (const std::string* q : {&d.a, &d.b, &d.p})
       if (!q->empty()) ref.insert(*q);
@@ -330,6 +334,14 @@ void Dessin::nettoyer() {
     if (!c.line.empty() && !ent(c.line)) return false;
     if (!c.ent.empty() && !ent(c.ent)) return false;
     if (!c.p.empty() && !pt(c.p)) return false;
+    if (!c.s.empty() && !ent(c.s)) return false;
+    if (c.type == "stangent" || c.type == "scurv") {
+      const Entite* S = s_.entite(c.s);
+      const Entite* O = s_.entite(c.ent);
+      if (!S || S->t != "spline" || std::find(S->pts.begin(), S->pts.end(), c.p) == S->pts.end() || pointTangente(*S, c.p).empty()) return false;
+      if (O && O->t == "spline" && pointTangente(*O, c.p).empty()) return false;
+      if (c.type == "scurv" && !aContrainte([&](const Contrainte& k) { return k.type == "stangent" && k.s == c.s && k.p == c.p && k.ent == c.ent; })) return false;
+    }
     if (c.type == "coincident") return (c.a.empty() || pt(c.a)) && (c.b.empty() || pt(c.b));
     if (c.type == "symmetric") return ent(c.a) && ent(c.b) && ent(c.mid);
     if (c.type == "offset" && !(ent(c.c) && ent(c.d))) return false;
@@ -396,6 +408,7 @@ std::vector<std::string> Dessin::ptsEntite(const Entite& e) const {
   if (e.t == "arc") return {e.pc, e.pa, e.pb};
   if (e.t == "circle") return {e.pc};
   if (e.t == "cpoint") return {e.p};
+  if (e.t == "spline") return e.pts;
   return {};
 }
 
@@ -441,6 +454,17 @@ const Entite* Dessin::entiteProche(double x, double y, double maxD, bool sansCon
       }
     } else if (e.t == "cpoint") {
       if (const Pt* Q = s_.point(e.p)) d = hyp(x - Q->x, y - Q->y);
+    } else if (e.t == "spline") {
+      BSpline f;
+      if (splineDe(s_, e, f)) {  // skPolyDist
+        const std::vector<P2d> pl = bsSample(f, f.a, f.b, 16);
+        double m = 1e308;
+        for (size_t i = 0; i + 1 < pl.size(); i++) {
+          const Pt A{pl[i][0], pl[i][1]}, B{pl[i + 1][0], pl[i + 1][1]};
+          m = jsmin(m, distSeg(x, y, A, B));
+        }
+        d = m;
+      }
     }
     if (d < bd) {
       bd = d;
@@ -577,6 +601,17 @@ Dessin::Accroche Dessin::accrocheGlisse(double x, double y, const std::string& p
         best.x = qx;
         best.y = qy;
       }
+    } else if (e.t == "spline") {
+      BSpline f;
+      if (!splineDe(s_, e, f)) continue;
+      const PiedSpline h = bsClosest(f, x, y, nullptr);
+      if (h.d < bd) {
+        bd = h.d;
+        best.sorte = Accroche::SUR_SPLINE;
+        best.id = e.id;
+        best.x = h.x;
+        best.y = h.y;
+      }
     }
   }
   return best;
@@ -604,6 +639,12 @@ bool Dessin::lacher(const std::string& pid, const Accroche& a) {
     c.p = pid;
     c.line = a.id;
     msg = "Point sur la ligne.";
+  } else if (a.sorte == Accroche::SUR_SPLINE) {
+    if (aContrainte([&](const Contrainte& k) { return k.type == "onspline" && k.p == pid && k.ent == a.id; })) return false;
+    c.type = "onspline";
+    c.p = pid;
+    c.ent = a.id;
+    msg = "Point sur la spline.";
   } else {
     if (aContrainte([&](const Contrainte& k) { return k.type == "oncircle" && k.p == pid && k.ent == a.id; })) return false;
     c.type = "oncircle";
@@ -675,6 +716,7 @@ bool Dessin::attacherCourbe(const std::string& pid, double x, double y, double t
     lier(c);
     n = true;
   }
+  if (!n) n = attacherSpline(pid, x, y, tol);
   return n;
 }
 
@@ -793,7 +835,18 @@ Dessin::Compo Dessin::composante(const std::vector<std::string>& graines) const 
           avecPts(*L);
           change = true;
         }
-      } else if (c.type == "oncircle") {
+      } else if (c.type == "stangent" || c.type == "scurv") {
+        const Entite* S = s_.entite(c.s);
+        const Entite* E = s_.entite(c.ent);
+        if (!S || !E) continue;
+        if (ents.count(S->id) && !ents.count(E->id)) {
+          avecPts(*E);
+          change = true;
+        } else if (ents.count(E->id) && !ents.count(S->id)) {
+          avecPts(*S);
+          change = true;
+        }
+      } else if (c.type == "oncircle" || c.type == "onspline") {
         const Entite* E = s_.entite(c.ent);
         if (!E || !s_.point(c.p)) continue;
         if (pids.count(c.p) && !ents.count(E->id)) {
@@ -974,6 +1027,18 @@ std::vector<Dessin::Choix> Dessin::dansBoite(const Boite& box) const {
       if (A && B) pris = segDedans(*A, *B);
     } else if (e.t == "cpoint") {
       if (const Pt* Q = s_.point(e.p)) pris = dedans(Q->x, Q->y);
+    } else if (e.t == "spline") {
+      BSpline f;
+      if (splineDe(s_, e, f)) {
+        const std::vector<P2d> pl = bsSample(f, f.a, f.b, 8);
+        pris = pl.size() > 1;
+        if (avant) {
+          for (const P2d& q : pl) pris = pris && dedans(q[0], q[1]);
+        } else {
+          pris = false;
+          for (size_t i = 1; i < pl.size() && !pris; i++) pris = segDedans(Pt{pl[i - 1][0], pl[i - 1][1]}, Pt{pl[i][0], pl[i][1]});
+        }
+      }
     } else if (const Pt* C = s_.point(e.pc)) {
       pris = avant ? dedans(C->x, C->y) : (C->x + e.r >= x0 && C->x - e.r <= x1 && C->y + e.r >= y0 && C->y - e.r <= y1);
       An an;
@@ -1063,7 +1128,7 @@ void Dessin::enfonce(double wx, double wy, bool ctrl, const std::string& ligneCo
       if (rig) {
         comp = comp0;
       } else {
-        for (const std::string& q : ptsEntite(e))
+        for (const std::string& q : e.t == "spline" ? pidsSpline(e) : ptsEntite(e))
           if (!q.empty() && s_.point(q)) comp.pids.push_back(q);
       }
       glisseE_ = GlisseE{};
@@ -1101,6 +1166,7 @@ void Dessin::enfonce(double wx, double wy, bool ctrl, const std::string& ligneCo
     apresEdition();
     return;
   }
+  if (outil_ == SPLINE || outil_ == CSPLINE) return clicSpline(wx, wy);
   if (outil_ == COTE) return enfonceCote(wx, wy, ctrl);
   if (outil_ == AJUSTER) return clicAjuster(wx, wy);
   if (outil_ == DECALER) return clicDecaler(wx, wy);
@@ -1203,6 +1269,7 @@ void Dessin::bouge(double wx, double wy, bool gaucheTenu) {
     boite_.y1 = wy;
     return;
   }
+  if (outil_ == SPLINE || outil_ == CSPLINE) return bougerSpline(wx, wy);
   if (outil_ == COINCIDENT) {
     const Accroche a = accroche(wx, wy);
     aMarque_ = static_cast<bool>(a);
@@ -1236,6 +1303,10 @@ void Dessin::bouge(double wx, double wy, bool gaucheTenu) {
           }
         }
         snprintf(b, sizeof b, "%.2f mm : clic pour appliquer, Échap annule.", best);
+        message(std::string("Décalage : ") + b);
+      } else if (ids.empty() && !dyn_.actif && !splinesChoisies().empty()) {
+        char b[96];
+        snprintf(b, sizeof b, "%.2f mm : clic pour appliquer, Échap annule.", distanceSplines(splinesChoisies(), wx, wy));
         message(std::string("Décalage : ") + b);
       }
     }
@@ -2292,6 +2363,32 @@ std::vector<Dessin::EntreeMenu> Dessin::menuContextuel(std::string& titre) const
     add(uneNormale ? "Construction (X)" : "Géométrie normale (X)", "c:construction", "construction");
     has = true;
   }
+  std::vector<const Entite*> splines;
+  for (const Entite* e : ents)
+    if (e->t == "spline") splines.push_back(e);
+  if (pts.size() == 1 && ents.size() <= 1) {
+    for (const Entite& e : s_.entites) {
+      if (e.t != "spline" || e.mode == "ctrl" || std::find(e.pts.begin(), e.pts.end(), pts[0]) == e.pts.end() || (!ents.empty() && ents[0]->id != e.id)) continue;
+      const bool aH = lignePoignee(e, pts[0]) != nullptr;
+      add(aH ? "Retirer la poignée de tangence" : "Poignée de tangence (direction + tension)", (aH ? "spl:retire:" : "spl:poignee:") + e.id, "tangent");
+      has = true;
+      break;
+    }
+  }
+  if (pts.size() == 1 && splines.size() == 1 && ents.size() == 1 && std::find(splines[0]->pts.begin(), splines[0]->pts.end(), pts[0]) == splines[0]->pts.end()) {
+    add("Coïncident (point sur la spline)", "c:coincident", "coincident");
+    has = true;
+  }
+  if (splines.size() == 1 && tot == 1) {
+    con("Fixe", "fix");
+    add(peignes_.count(splines[0]->id) ? "Masquer le peigne de courbure" : "Peigne de courbure", "spl:peigne:" + splines[0]->id, "spline");
+    has = true;
+  }
+  if (!splines.empty() && ents.size() == 2 && std::all_of(ents.begin(), ents.end(), [](const Entite* e) { return e->t == "spline" || (e->t == "line" && !e->poignee) || e->t == "circle" || e->t == "arc"; })) {
+    add("Tangence", "c:tangent", "tangent");
+    add("Courbure continue (G2)", "c:curvature", "spline");
+    has = true;
+  }
   if (lignes.size() == 1 && tot == 1) {
     add("Longueur", "longueur", "length");
     con("Horizontal (H)", "h");
@@ -2446,6 +2543,23 @@ void Dessin::actionMenu(const std::string& code) {
   premiere();
   sync();
   if (code.rfind("c:", 0) == 0) return poserContrainte(code.substr(2));
+  if (code.rfind("spl:", 0) == 0) {
+    const size_t k = code.find(':', 4);
+    const std::string quoi = code.substr(4, k - 4), id = code.substr(k + 1);
+    if (quoi == "peigne") {
+      if (!peignes_.erase(id)) peignes_.insert(id);
+      return;
+    }
+    std::string pid;
+    for (const Choix& c : selection_)
+      if (c.sorte == Choix::POINT && pid.empty()) pid = c.id;
+    pousser();
+    if (quoi == "poignee") ajouterPoignee(id, pid);
+    else retirerPoignee(id, pid);
+    apresEdition();
+    message(quoi == "poignee" ? "Poignée posée : glissez son bout (losange violet) pour orienter la tangente et régler la tension." : "Poignée retirée : la courbe redevient libre en ce point.");
+    return;
+  }
   const std::vector<const Entite*> choisies = entitesChoisies();
   std::vector<Entite> ents;
   for (const Entite* e : choisies) ents.push_back(*e);
@@ -2751,6 +2865,10 @@ void Dessin::relache(double wx, double wy) {
 
 std::string Dessin::doubleClic(double wx, double wy) {
   premiere();
+  if (outil_ == SPLINE || outil_ == CSPLINE) {
+    if (splActif_ && !spl_.empty()) finirTraceSpline(false);
+    return "";
+  }
   if (outil_ != SELECTION) return "";
   const Entite* en = entiteProche(wx, wy, PT_);
   if (!en || (en->t != "line" && en->t != "circle" && en->t != "arc")) return "";
@@ -2807,6 +2925,8 @@ bool Dessin::rendrePilotante(const std::string& id) {
 
 void Dessin::annulerTrace() {
   premiere();
+  spl_.clear();
+  splActif_ = false;
   glisseC_.actif = false;
   boite_.actif = false;
   coinPt_.clear();
@@ -2844,6 +2964,7 @@ void Dessin::choisirOutil(Outil o) {
 }
 
 void Dessin::echap() {
+  finirSpline();  // Échap finit le tracé avant de revenir à la sélection
   annulerTrace();
   outil_ = SELECTION;
   message("Sélection.");
@@ -3517,6 +3638,7 @@ bool Dessin::retourArriere() {
 }
 
 bool Dessin::entree() {
+  if (finirSpline()) return true;
   if (outil_ == POLYGONE) {
     entreePolygone();
     return true;
@@ -3664,6 +3786,14 @@ bool Dessin::fusionner(std::string de, std::string vers) {
     suit(e.pc);
     suit(e.pa);
     suit(e.pb);
+    if (!e.pts.empty()) {  // spline : le doublon voisin part
+      std::vector<std::string> v;
+      for (std::string q : e.pts) {
+        suit(q);
+        if (v.empty() || q != v.back()) v.push_back(q);
+      }
+      e.pts = std::move(v);
+    }
   }
   for (Cote& d : s_.cotes) {
     suit(d.a);
@@ -3687,11 +3817,11 @@ void Dessin::basculerConstruction() {
   std::vector<std::string> ids;
   bool une = false;
   for (const Entite* e : entitesChoisies())
-    if ((e->t == "line" && !e->poignee) || e->t == "circle" || e->t == "arc") {
+    if ((e->t == "line" && !e->poignee) || e->t == "circle" || e->t == "arc" || e->t == "spline") {
       ids.push_back(e->id);
       une = une || e->construction;
     }
-  if (ids.empty()) return message("Sélectionnez une ligne, un cercle ou un arc, puis basculez en construction (X).");
+  if (ids.empty()) return message("Sélectionnez une ligne, un cercle, un arc ou une spline, puis basculez en construction (X).");
   pousser();
   for (const std::string& id : ids) entite(id)->construction = !une;
   structure_ = true;
@@ -3747,10 +3877,47 @@ void Dessin::poserContrainte(const std::string& type) {
       c.p = pts[0];
       c.ent = e;
       lier(c);
+    } else if (pts.size() == 1 && ents.size() == 1 && ents[0]->t == "spline") {
+      const Entite* E = ents[0];
+      const std::string id = E->id;
+      if (std::find(E->pts.begin(), E->pts.end(), pts[0]) != E->pts.end()) return message("Ce point appartient déjà à la spline.");
+      if (aContrainte([&](const Contrainte& c) { return c.type == "onspline" && c.p == pts[0] && c.ent == id; })) return message("Point déjà sur cette spline.");
+      pousserAvant();
+      Contrainte c;
+      c.type = "onspline";
+      c.p = pts[0];
+      c.ent = id;
+      lier(c);
     } else {
       return message("Coïncident : sélectionnez 2 points, ou 1 point + 1 ligne, ou 1 point + 1 cercle ou arc (Ctrl+clic pour le 2e).");
     }
     if (resoudreOuRefuser("Contrainte")) message(pts.size() == 2 ? "Points coïncidents." : ents.size() == 1 && lignes.size() == 1 ? "Point sur la droite : il peut glisser au-delà du segment." : "Point sur la courbe.");
+    return;
+  }
+  const auto aUneSpline = [&] { return std::any_of(ents.begin(), ents.end(), [](const Entite* e) { return e->t == "spline"; }); };
+  if (type == "curvature" || (type == "tangent" && ents.size() == 2 && aUneSpline())) {
+    const bool g2 = type == "curvature";
+    if (ents.size() != 2 || !aUneSpline()) return message("Courbure (G2) : sélectionnez une spline + une ligne, un cercle, un arc ou une spline.");
+    const Entite* S = ents[0]->t == "spline" ? ents[0] : ents[1];
+    const Entite* O = S == ents[0] ? ents[1] : ents[0];
+    std::string pid;
+    if (!g2 && !pts.empty() && std::find(S->pts.begin(), S->pts.end(), pts[0]) != S->pts.end()) pid = pts[0];
+    else pid = jointSpline(*S, *O);
+    if (pid.empty() && O->t == "spline") {
+      pid = jointSpline(*O, *S);
+      std::swap(S, O);
+    }
+    if (pid.empty()) return message(g2 ? "Courbure (G2) : joignez d'abord la spline à l'autre courbe (point commun, F1)." : "Tangence spline : joignez d'abord la spline à l'autre courbe (point commun, F1).");
+    const std::string sId = S->id, oId = O->id;
+    pousserAvant();
+    const std::string err = g2 ? courbureVers(sId, oId, pid) : tangenteVers(sId, oId, pid);
+    if (!err.empty()) {
+      if (annulerPas) annulerPas();
+      return message(err);
+    }
+    const bool ok = resoudreOuRefuser(g2 ? "Courbure G2" : "Tangence");
+    nettoyer();
+    if (ok) message(g2 ? "Courbure continue (G2) : raccord sans saut de courbure ; peigne de courbure au clic droit sur la spline." : "Spline tangente : la poignée suit la tangente, sa longueur règle la tension.");
     return;
   }
   if (type == "h" || type == "v") {
@@ -3846,7 +4013,7 @@ void Dessin::poserContrainte(const std::string& type) {
     }
     std::vector<std::string> ronds;
     for (const Entite* e : ents)
-      if (rond(e)) ronds.push_back(e->id);
+      if (rond(e) || e->t == "spline") ronds.push_back(e->id);  // spline : points de passage et poignées
     if (aFixer.empty() && ronds.empty()) return message("Fixe : sélectionnez un point, une ligne ou un cercle. L'origine est déjà fixe.");
     pousserAvant();
     for (const std::string& p : aFixer) {
@@ -3930,6 +4097,18 @@ void Dessin::toucheF1() {
   }
   if (pts.size() == 1 && ents.size() == 1) {
     const Entite* E = ents[0];
+    if (E->t == "spline" && std::find(E->pts.begin(), E->pts.end(), pts[0]) == E->pts.end()) {
+      const std::string id = E->id;
+      pousser();
+      Contrainte c;
+      c.p = pts[0];
+      c.type = "onspline";
+      c.ent = id;
+      lier(c);
+      apresEdition();
+      message("Point posé sur la spline.");
+      return;
+    }
     if (E->t != "line" && E->t != "circle" && E->t != "arc") return message("F1 : point + ligne ou cercle, ou 2 points.");
     const bool ligne = E->t == "line";
     const std::string id = E->id;
@@ -3984,6 +4163,8 @@ void Dessin::supprimer() {
     return false;
   };
   s_.entites.erase(std::remove_if(s_.entites.begin(), s_.entites.end(), meurt), s_.entites.end());
+  for (Entite& x : s_.entites)  // spline : le point de passage seul est retiré
+    if (x.t == "spline") x.pts.erase(std::remove_if(x.pts.begin(), x.pts.end(), [&](const std::string& q) { return pts.count(q) > 0; }), x.pts.end());
   // skProjFixOublier : les « fixe » des points qui n'appartiennent plus à aucune projection
   std::set<std::string> libres, reste;
   for (const auto& [id, v] : projAvant) {
@@ -4090,6 +4271,14 @@ std::vector<Pt> Dessin::croisements(const Entite& ent) const {
           out.push_back({h.x, h.y});
         }
       }
+      if (o.t == "spline")
+        for (const Pt& h : croiseSpline(o, ent)) out.push_back(h);
+    }
+  }
+  if (ent.t == "spline") {
+    for (const Entite& o : s_.entites) {
+      if (ignore(o)) continue;
+      for (const Pt& h : croiseSpline(ent, o)) out.push_back(h);
     }
   }
   if (ent.t == "circle" || ent.t == "arc") {
@@ -4122,6 +4311,8 @@ std::vector<Pt> Dessin::croisements(const Entite& ent) const {
           out.push_back(h);
         }
       }
+      if (o.t == "spline")
+        for (const Pt& h : croiseSpline(o, ent)) out.push_back(h);
     }
   }
   std::vector<Pt> u;
@@ -4375,7 +4566,8 @@ std::string Dessin::ajusterElement(const std::string& id, double cx, double cy) 
     }
     return "Rien à ajuster ici.";
   }
-  if (ent.t != "arc" && ent.t != "circle") return "Ajuster : lignes, arcs et cercles uniquement.";
+  if (ent.t == "spline") return ajusterSpline(id, cx, cy);
+  if (ent.t != "arc" && ent.t != "circle") return "Ajuster : lignes, arcs, cercles et splines uniquement.";
   const Pt* pC = s_.point(ent.pc);
   if (!pC) return "Cercle invalide.";
   const Pt C = *pC;
@@ -4760,9 +4952,9 @@ std::vector<std::string> Dessin::choixDecalables() const {
 }
 
 void Dessin::clicDecaler(double wx, double wy) {
-  const std::vector<std::string> ids = choixDecalables();
-  if (ids.empty()) {
-    message("Décalage : sélectionnez d'abord une ou plusieurs lignes, cercles ou arcs (Ctrl+clic pour les suivants).");
+  const std::vector<std::string> ids = choixDecalables(), spl = splinesChoisies();
+  if (ids.empty() && spl.empty()) {
+    message("Décalage : sélectionnez d'abord une ou plusieurs lignes, cercles, arcs ou splines (Ctrl+clic pour les suivants).");
     return;
   }
   if (!offArme_) {
@@ -4787,6 +4979,7 @@ void Dessin::clicDecaler(double wx, double wy) {
       if (e->r > 0) D = jsmin(D, std::abs(hyp(wx - C->x, wy - C->y) - e->r));
     }
   }
+  if (ids.empty()) D = distanceSplines(spl, wx, wy);
   offArme_ = false;
   if (!(D >= 4 / echelle_)) {
     message("Décalage : cliquez plus loin du profil.");
@@ -4801,15 +4994,33 @@ void Dessin::appliquerDecalage(const std::vector<std::string>& ids, double D, do
   pousser();
   std::string msg;
   const Pt cible{wx, wy};
-  if (!decalerElements(ids, D, &cible, msg)) {
-    if (annulerPas) annulerPas();
-    message(msg);
-    return;
+  if (!ids.empty()) {
+    if (!decalerElements(ids, D, &cible, msg)) {
+      if (annulerPas) annulerPas();
+      message(msg);
+      return;
+    }
+    msg += " Cote modifiable (double-clic).";
+  }
+  int nS = 0;
+  bool rebroussement = false;
+  for (const std::string& id : splinesChoisies()) {
+    BSpline f;
+    const Entite e = *entite(id);
+    if (!splineDe(s_, e, f)) continue;
+    bool fait = false;
+    decalerSpline(id, D, bsClosest(f, wx, wy, nullptr).s >= 0 ? 1 : -1, fait, rebroussement);
+    if (fait) nS++;
+  }
+  if (nS) {
+    char b[64];
+    snprintf(b, sizeof b, "%d spline(s) décalée(s) de %.2f mm", nS, D);
+    msg += std::string(msg.empty() ? "" : " ") + b + " (copie approchée à 0,005 mm, non associative)" + (rebroussement ? " : distance plus grande que le rayon de courbure, la copie se recoupe." : ".");
   }
   offsetD_ = D;
   structure_ = true;
   apresEdition();
-  message(msg + " Cote modifiable (double-clic).");
+  message(msg);
 }
 
 bool Dessin::distanceTapee(double& D) {
@@ -4824,7 +5035,7 @@ bool Dessin::distanceTapee(double& D) {
 void Dessin::validerDistance() {
   const std::vector<std::string> ids = choixDecalables();
   double D = 0;
-  if (ids.empty() || !dyn_.actif || !distanceTapee(D)) return;
+  if ((ids.empty() && splinesChoisies().empty()) || !dyn_.actif || !distanceTapee(D)) return;
   appliquerDecalage(ids, D, curseurDecalage_.x, curseurDecalage_.y);
 }
 
@@ -5327,4 +5538,762 @@ bool Dessin::decalerElements(const std::vector<std::string>& ids0, double D, con
   if (jointsBad) msg += ", " + std::to_string(jointsBad) + " joint(s) non raccordé(s)";
   msg += ".";
   return true;
+}
+
+// ---------- Spline (src/50-esquisse-6-spline.js) ----------
+std::vector<std::string> Dessin::pidsSpline(const Entite& e) const {
+  std::vector<std::string> v = e.pts;
+  std::vector<std::pair<std::string, std::string>> m;
+  for (const Entite& l : s_.entites) {
+    if (l.t != "line" || l.handle != e.id || l.p1.empty() || l.p2.empty()) continue;
+    const auto it = std::find_if(m.begin(), m.end(), [&](const auto& x) { return x.first == l.p1; });
+    if (it != m.end()) it->second = l.p2;
+    else m.push_back({l.p1, l.p2});
+  }
+  for (const auto& x : m) v.push_back(x.second);
+  return v;
+}
+
+const Entite* Dessin::lignePoignee(const Entite& S, const std::string& pid) const {
+  for (const Entite& l : s_.entites)
+    if (l.t == "line" && l.handle == S.id && l.p1 == pid) return &l;
+  return nullptr;
+}
+
+bool Dessin::paramSpline(const Entite& e, const std::string& pid, double& u) const {
+  BSpline f;
+  const auto it = std::find(e.pts.begin(), e.pts.end(), pid);
+  if (it == e.pts.end() || !splineDe(s_, e, f)) return false;
+  const size_t k = it - e.pts.begin();
+  if (!f.ctrl) {
+    u = f.u[k];
+    return true;
+  }
+  if (f.closed) return false;
+  if (k == 0) u = f.a;
+  else if (k == e.pts.size() - 1) u = f.b;
+  else return false;
+  return true;
+}
+
+std::string Dessin::pointTangente(const Entite& e, const std::string& pid) const {
+  if (e.t != "spline") return "";
+  if (e.mode == "ctrl") {
+    if (e.closed || e.pts.size() < 2) return "";
+    const size_t n = e.pts.size() - 1;
+    return pid == e.pts[0] ? e.pts[1] : pid == e.pts[n] ? e.pts[n - 1] : "";
+  }
+  const Entite* l = lignePoignee(e, pid);
+  return l ? l->p2 : "";
+}
+
+bool Dessin::tangenteSpline(const Entite& e, const std::string& pid, double& x, double& y) const {
+  BSpline f;
+  double u;
+  if (!splineDe(s_, e, f) || !paramSpline(e, pid, u)) return false;
+  const P2d d = bsEval(f, u, 1)[1];
+  const double L = hyp(d[0], d[1]);
+  if (!(L > 1e-12)) return false;
+  x = d[0] / L;
+  y = d[1] / L;
+  return true;
+}
+
+bool Dessin::versLInterieur(const Entite& ent, const std::string& pid, double& x, double& y) const {
+  const Pt* Q = s_.point(pid);
+  if (!Q) return false;
+  const auto unit = [&](double a, double b) {
+    const double L = hyp(a, b);
+    if (!(L > 1e-12)) return false;
+    x = a / L;
+    y = b / L;
+    return true;
+  };
+  if (ent.t == "line") {
+    const Pt* o = ent.p1 == pid ? s_.point(ent.p2) : ent.p2 == pid ? s_.point(ent.p1) : nullptr;
+    return o && unit(o->x - Q->x, o->y - Q->y);
+  }
+  if (ent.t == "arc") {
+    const Pt* C = s_.point(ent.pc);
+    if (!C) return false;
+    const double rx = Q->x - C->x, ry = Q->y - C->y;
+    if (ent.pa == pid) return unit(-ry, rx);
+    if (ent.pb == pid) return unit(ry, -rx);
+    return false;
+  }
+  if (ent.t == "spline") {
+    const auto it = std::find(ent.pts.begin(), ent.pts.end(), pid);
+    if (it == ent.pts.end() || ent.closed || !tangenteSpline(ent, pid, x, y)) return false;
+    if (it == ent.pts.begin()) return true;
+    if (it - ent.pts.begin() == static_cast<long long>(ent.pts.size()) - 1) {
+      x = -x;
+      y = -y;
+      return true;
+    }
+    return false;
+  }
+  return false;
+}
+
+std::string Dessin::ajouterPoignee(const std::string& idS, const std::string& pid) {
+  const Entite* S = s_.entite(idS);
+  if (!S || S->mode == "ctrl") return "";
+  if (const Entite* ex = lignePoignee(*S, pid)) return ex->id;
+  BSpline f;
+  const auto it = std::find(S->pts.begin(), S->pts.end(), pid);
+  const Pt* P = s_.point(pid);
+  if (!splineDe(s_, *S, f) || it == S->pts.end() || !P) return "";
+  const int k = static_cast<int>(it - S->pts.begin()), n = f.n;
+  const P2d der = bsEval(f, f.u[k], 1)[1];
+  double dl;
+  if (!S->closed && k == 0) {
+    dl = -f.d[1] / 3;
+  } else if (!S->closed && k == n) {
+    dl = f.d[n] / 3;
+  } else {
+    const double dp = k > 0 ? f.d[k] : f.d[n], dn = k < n ? f.d[k + 1] : f.d[1];
+    dl = (dp + dn) / 6;
+  }
+  double hx = P->x + der[0] * dl, hy = P->y + der[1] * dl;
+  if (!(hyp(hx - P->x, hy - P->y) > 1e-6)) {
+    hx = P->x + 1;
+    hy = P->y;
+  }
+  const std::string hp = ajouterPoint(hx, hy);
+  Entite l;
+  l.id = nouvelE();
+  l.t = "line";
+  l.p1 = pid;
+  l.p2 = hp;
+  l.construction = true;
+  l.handle = idS;
+  l.poignee = true;
+  const std::string id = l.id;
+  s_.entites.push_back(std::move(l));
+  structure_ = true;
+  return id;
+}
+
+void Dessin::retirerPoignee(const std::string& idS, const std::string& pid) {
+  const Entite* S = s_.entite(idS);
+  if (!S) return;
+  const Entite* l = lignePoignee(*S, pid);
+  if (!l) return;
+  const std::string id = l->id;
+  s_.entites.erase(std::remove_if(s_.entites.begin(), s_.entites.end(), [&](const Entite& x) { return x.id == id; }), s_.entites.end());
+  s_.contraintes.erase(std::remove_if(s_.contraintes.begin(), s_.contraintes.end(), [&](const Contrainte& c) { return c.type == "stangent" && c.p == pid && (c.s == idS || c.ent == idS); }), s_.contraintes.end());
+  structure_ = true;
+}
+
+std::string Dessin::tangenteVers(const std::string& idS, const std::string& idO, const std::string& pid) {
+  const Entite S = *s_.entite(idS);
+  const Entite O = *s_.entite(idO);
+  if (S.t != "spline" || O.id == S.id) return "Tangence spline : choisissez une autre courbe.";
+  if (std::find(S.pts.begin(), S.pts.end(), pid) == S.pts.end()) return "Tangence spline : le point n'est pas un point de passage de la spline.";
+  const char* bouts = "Spline par points de contrôle : tangence à son premier ou dernier pôle seulement, les autres ne sont pas sur la courbe.";
+  double u;
+  if (S.mode == "ctrl" && !paramSpline(S, pid, u)) return bouts;
+  if (aContrainte([&](const Contrainte& c) { return c.type == "stangent" && c.s == idS && c.p == pid && c.ent == idO; })) return "Tangence déjà posée.";
+  if (O.t == "spline") {
+    if (std::find(O.pts.begin(), O.pts.end(), pid) == O.pts.end()) return "Tangence entre splines : elles doivent partager ce point (joignez-les d'abord, F1).";
+    if (O.mode == "ctrl" && !paramSpline(O, pid, u)) return bouts;
+    ajouterPoignee(idO, pid);
+  } else if (O.t == "line") {
+    if (O.p1 != pid && O.p2 != pid && !aContrainte([&](const Contrainte& c) { return c.type == "online" && c.p == pid && c.line == idO; })) {
+      Contrainte c = contrainte("online");
+      c.p = pid;
+      c.line = idO;
+      lier(c);
+    }
+  } else if (O.t == "circle" || O.t == "arc") {
+    if (O.pa != pid && O.pb != pid && !aContrainte([&](const Contrainte& c) { return c.type == "oncircle" && c.p == pid && c.ent == idO; })) {
+      Contrainte c = contrainte("oncircle");
+      c.p = pid;
+      c.ent = idO;
+      lier(c);
+    }
+  } else {
+    return "Tangence spline : ligne, cercle, arc ou spline.";
+  }
+  ajouterPoignee(idS, pid);
+  if (pointTangente(*s_.entite(idS), pid).empty() || !s_.point(pid)) return "Tangence spline : poignée impossible.";
+  Contrainte c = contrainte("stangent");
+  c.s = idS;
+  c.p = pid;
+  c.ent = idO;
+  lier(c);
+  return "";
+}
+
+std::string Dessin::courbureVers(const std::string& idS, const std::string& idO, const std::string& pid) {
+  if (aContrainte([&](const Contrainte& c) { return c.type == "scurv" && c.s == idS && c.p == pid && c.ent == idO; })) return "Courbure (G2) déjà posée.";
+  if (!aContrainte([&](const Contrainte& c) { return c.type == "stangent" && c.s == idS && c.p == pid && c.ent == idO; })) {
+    const std::string r = tangenteVers(idS, idO, pid);
+    if (!r.empty()) return r;
+  }
+  Contrainte c = contrainte("scurv");
+  c.s = idS;
+  c.p = pid;
+  c.ent = idO;
+  lier(c);
+  return "";
+}
+
+std::string Dessin::jointSpline(const Entite& S, const Entite& O) const {
+  std::vector<std::string> bouts = S.pts;
+  if (!S.closed && !S.pts.empty()) bouts = {S.pts.front(), S.pts.back()};
+  const std::vector<std::string> vo = ptsEntite(O);
+  for (const std::string& p : bouts)
+    if (std::find(vo.begin(), vo.end(), p) != vo.end()) return p;
+  for (const std::string& p : S.pts)
+    if (std::find(vo.begin(), vo.end(), p) != vo.end()) return p;
+  std::string best;
+  double bd = 1e308;
+  for (const std::string& p : bouts) {
+    const Pt* q = s_.point(p);
+    if (!q) continue;
+    double d = 1e308;
+    if (O.t == "line") {
+      const Pt* A = s_.point(O.p1);
+      const Pt* B = s_.point(O.p2);
+      if (A && B) d = distSeg(q->x, q->y, *A, *B);
+    } else if (O.t == "circle" || O.t == "arc") {
+      if (const Pt* C = s_.point(O.pc)) d = std::abs(hyp(q->x - C->x, q->y - C->y) - O.r);
+    }
+    if (d < bd) {
+      bd = d;
+      best = p;
+    }
+  }
+  return O.t == "spline" ? "" : best;
+}
+
+int Dessin::tangentesAuto(const std::string& idS) {
+  const Entite S0 = *s_.entite(idS);
+  if (S0.closed) return 0;
+  int n = 0;
+  const std::vector<std::string> bouts{S0.pts.front(), S0.pts.back()};
+  for (const std::string& pid : bouts) {
+    const Entite S = *s_.entite(idS);
+    double ox, oy;
+    if (!tangenteSpline(S, pid, ox, oy)) continue;
+    const auto it = std::find(S.pts.begin(), S.pts.end(), pid);
+    if (!S.closed && it == S.pts.begin()) {  // skSplineOutward : vers l'extérieur
+      ox = -ox;
+      oy = -oy;
+    }
+    std::string best;
+    double bc = m_cos(20 * PI_ / 180);
+    for (const Entite& o : s_.entites) {
+      if (o.id == idS || o.construction || o.poignee) continue;
+      double vx, vy;
+      if (!versLInterieur(o, pid, vx, vy)) continue;
+      const double c = ox * vx + oy * vy;
+      if (c > bc) {
+        bc = c;
+        best = o.id;
+      }
+    }
+    if (!best.empty() && tangenteVers(idS, best, pid).empty()) n++;
+  }
+  return n;
+}
+
+std::string Dessin::validerSpline(const std::vector<ClicSpline>& d, bool ferme, bool ctrl) {
+  std::vector<std::string> pids, libres;
+  for (const ClicSpline& q : d) {
+    const bool vise = !q.pid.empty() && s_.point(q.pid);
+    const std::string pid = vise ? q.pid : ctrl ? ajouterPoint(q.x, q.y) : pointAccroche(q.x, q.y);  // pôle : jamais posé sur un milieu
+    if (pids.empty() || pids.back() != pid) {
+      pids.push_back(pid);
+      if (!vise) libres.push_back(pid);
+    }
+  }
+  if (ferme && pids.size() > 1 && pids.back() == pids.front()) pids.pop_back();
+  if (pids.size() < 2 || (ferme && pids.size() < 3)) return "";
+  Entite e;
+  e.id = nouvelE();
+  e.t = "spline";
+  e.pts = pids;
+  if (ctrl) e.mode = "ctrl";
+  e.closed = ferme;
+  const std::string id = e.id;
+  s_.entites.push_back(std::move(e));
+  structure_ = true;
+  for (const std::string& pid : libres) {  // pôles intérieurs : hors de la courbe, jamais attachés
+    if (ctrl && pid != pids.front() && pid != pids.back()) continue;
+    if (const Pt* q = s_.point(pid)) {
+      const Pt c = *q;
+      accrocher(pid, c.x, c.y, -1);
+    }
+  }
+  tangentesAuto(id);
+  return id;
+}
+
+std::vector<P2d> Dessin::apercuSpline(const std::vector<ClicSpline>& d, const Pt* cur, bool ferme, bool ctrl) const {
+  std::vector<P2d> U;
+  const auto ajoute = [&](double x, double y) {
+    if (U.empty() || hyp(x - U.back()[0], y - U.back()[1]) > 1e-9) U.push_back({x, y});
+  };
+  for (const ClicSpline& q : d) ajoute(q.x, q.y);
+  if (cur) ajoute(cur->x, cur->y);
+  if (U.size() < 2) return {};
+  const bool cl = ferme && U.size() >= 3;
+  BSpline f;
+  const std::vector<P2d> H(U.size(), P2d{0, 0});
+  const std::vector<char> A(U.size(), 0);
+  if (!(ctrl ? bsControl(U, cl, nullptr, 0, f) : bsInterpolate(U, H, A, cl, f))) return {};
+  return bsSample(f, f.a, f.b, 16);
+}
+
+void Dessin::finirTraceSpline(bool ferme) {
+  const std::vector<ClicSpline> d = spl_;
+  const bool ctrl = outil_ == CSPLINE;
+  spl_.clear();
+  splActif_ = false;
+  brouillon_ = Brouillon{};
+  aMarque_ = false;
+  const char* quoi = ctrl ? "pôles" : "points de passage";
+  if (d.size() < 2) return message(std::string("Spline : cliquez au moins 2 ") + quoi + ".");
+  pousser();
+  const std::string id = validerSpline(d, ferme, ctrl);
+  if (id.empty()) {
+    if (annulerPas) annulerPas();
+    return message("Spline : points confondus, rien de créé.");
+  }
+  int nT = 0;
+  for (const Contrainte& c : s_.contraintes)
+    if (c.type == "stangent" && c.s == id) nT++;
+  const size_t nb = s_.entite(id)->pts.size();
+  apresEdition();
+  message(std::string("Spline ") + (ferme ? "fermée " : "") + "créée (" + std::to_string(nb) + " " + quoi + ")" + (nT ? ", " + std::to_string(nT) + " bout(s) tangent(s)" : "") + (ctrl ? ". Glissez les pôles pour modeler la courbe." : ". Glissez les points ; clic droit sur un point : poignée de tangence.") + " Cliquez pour une nouvelle spline.");
+}
+
+bool Dessin::finirSpline() {
+  if ((outil_ != SPLINE && outil_ != CSPLINE) || !splActif_) return false;
+  finirTraceSpline(false);
+  return true;
+}
+
+void Dessin::clicSpline(double wx, double wy) {
+  const Accroche a = accroche(wx, wy);
+  double x = wx, y = wy;
+  if (a) {
+    x = a.x;
+    y = a.y;
+  } else if (grille) {
+    x = surGrille(x);
+    y = surGrille(y);
+  }
+  splActif_ = true;
+  const double tol = 6 / echelle_;
+  const bool ctrl = outil_ == CSPLINE;
+  if (spl_.size() >= 3 && hyp(x - spl_[0].x, y - spl_[0].y) < tol) return finirTraceSpline(true);
+  if (!spl_.empty() && hyp(x - spl_.back().x, y - spl_.back().y) < tol) return finirTraceSpline(false);
+  ClicSpline c;
+  c.x = x;
+  c.y = y;
+  if (a.sorte == Accroche::POINT) c.pid = a.id;
+  spl_.push_back(c);
+  brouillon_ = Brouillon{};
+  brouillon_.sorte = Brouillon::B_SPLINE;
+  brouillon_.ctrl = ctrl;
+  for (const ClicSpline& q : spl_) brouillon_.clics.push_back(Pt{q.x, q.y});
+  brouillon_.courbe = apercuSpline(spl_, nullptr, false, ctrl);
+  message("Spline : " + std::to_string(spl_.size()) + (ctrl ? " pôle(s)" : " point(s)") + ". Clic : suivant. Double-clic, Entrée ou clic droit : fin. Clic sur le 1er : fermée.");
+}
+
+void Dessin::bougerSpline(double wx, double wy) {
+  const Accroche a = accroche(wx, wy);
+  double x = wx, y = wy;
+  if (a) {
+    x = a.x;
+    y = a.y;
+    aMarque_ = true;
+    marque_ = {x, y};
+  } else {
+    aMarque_ = false;
+    if (grille) {
+      x = surGrille(x);
+      y = surGrille(y);
+    }
+  }
+  if (!splActif_ || spl_.empty()) return;
+  const bool ctrl = outil_ == CSPLINE, proche = spl_.size() >= 3 && hyp(x - spl_[0].x, y - spl_[0].y) < 6 / echelle_;
+  const Pt cur{x, y};
+  brouillon_ = Brouillon{};
+  brouillon_.sorte = Brouillon::B_SPLINE;
+  brouillon_.ctrl = ctrl;
+  for (const ClicSpline& q : spl_) brouillon_.clics.push_back(Pt{q.x, q.y});
+  brouillon_.aCurseur = !proche;
+  brouillon_.curseur = cur;
+  brouillon_.fermeture = proche;
+  brouillon_.courbe = apercuSpline(spl_, proche ? nullptr : &cur, proche, ctrl);
+}
+
+bool Dessin::attacherSpline(const std::string& pid, double x, double y, double tol) {
+  std::string best;
+  double bd = tol;
+  for (const Entite& e : s_.entites) {
+    if (e.t != "spline" || std::find(e.pts.begin(), e.pts.end(), pid) != e.pts.end()) continue;
+    BSpline f;
+    if (!splineDe(s_, e, f)) continue;
+    const PiedSpline h = bsClosest(f, x, y, nullptr);
+    if (h.d < bd) {
+      bd = h.d;
+      best = e.id;
+    }
+  }
+  if (best.empty() || aContrainte([&](const Contrainte& c) { return c.type == "onspline" && c.p == pid && c.ent == best; })) return false;
+  Contrainte c = contrainte("onspline");
+  c.p = pid;
+  c.ent = best;
+  lier(c);
+  return true;
+}
+
+void Dessin::nettoyerSplines() {
+  bool une = false;
+  for (Entite& e : s_.entites) {
+    if (e.t != "spline") continue;
+    une = true;
+    const size_t n = e.pts.size();
+    e.pts.erase(std::remove_if(e.pts.begin(), e.pts.end(), [&](const std::string& q) { return !s_.point(q); }), e.pts.end());
+    if (e.pts.size() != n) structure_ = true;
+    if (e.closed && e.pts.size() < 3) {
+      e.closed = false;
+      structure_ = true;
+    }
+  }
+  bool poignee = false;
+  for (const Entite& e : s_.entites) poignee = poignee || e.poignee;
+  if (!une && !poignee) return;
+  const size_t n = s_.entites.size();
+  std::map<std::string, const Entite*> parId;
+  for (const Entite& e : s_.entites)
+    if (e.t == "spline") parId[e.id] = &e;
+  std::vector<Entite> garde;
+  for (const Entite& e : s_.entites) {
+    if (e.t == "spline" && e.pts.size() < 2) continue;
+    if (e.t == "line" && !e.handle.empty()) {
+      const auto it = parId.find(e.handle);
+      if (it == parId.end() || it->second->pts.size() < 2 || std::find(it->second->pts.begin(), it->second->pts.end(), e.p1) == it->second->pts.end()) continue;
+    }
+    garde.push_back(e);
+  }
+  if (garde.size() != n) {
+    s_.entites = std::move(garde);
+    structure_ = true;
+    sync();
+  }
+}
+
+std::vector<Pt> Dessin::croiseSpline(const Entite& e, const Entite& o, std::vector<double>* us) const {
+  std::vector<Pt> out;
+  BSpline f;
+  if (o.id == e.id || !splineDe(s_, e, f)) return out;
+  const auto pousse = [&](double u) {
+    const P2d c = bsEval(f, u, 0)[0];
+    for (const Pt& h : out)
+      if (hyp(h.x - c[0], h.y - c[1]) < 1e-6) return;
+    out.push_back(Pt{c[0], c[1]});
+    if (us) us->push_back(u);
+  };
+  if (o.t == "line") {
+    const Pt* A = s_.point(o.p1);
+    const Pt* B = s_.point(o.p2);
+    if (!A || !B) return out;
+    const double dx = B->x - A->x, dy = B->y - A->y, L = hyp(dx, dy);
+    if (!(L > 1e-9)) return out;
+    const double nx = -dy / L, ny = dx / L;
+    for (const double u : bsRoots(f, [&](double t) {
+           const P2d c = bsEval(f, t, 0)[0];
+           return (c[0] - A->x) * nx + (c[1] - A->y) * ny;
+         })) {
+      const P2d c = bsEval(f, u, 0)[0];
+      const double t = ((c[0] - A->x) * dx + (c[1] - A->y) * dy) / (L * L);
+      if (t > -1e-6 && t < 1 + 1e-6) pousse(u);
+    }
+  } else if (o.t == "circle" || o.t == "arc") {
+    const Pt* C = s_.point(o.pc);
+    if (!C || !(o.r > 0)) return out;
+    An an;
+    if (o.t == "arc" && !anglesArc2(s_, o, an)) return out;
+    for (const double u : bsRoots(f, [&](double t) {
+           const P2d c = bsEval(f, t, 0)[0];
+           return hyp(c[0] - C->x, c[1] - C->y) - o.r;
+         })) {
+      const P2d c = bsEval(f, u, 0)[0];
+      if (o.t == "arc" && !dansArc(m_atan2(c[1] - C->y, c[0] - C->x), an.a1, an.a2 + 1e-6)) continue;
+      pousse(u);
+    }
+  } else if (o.t == "spline") {
+    BSpline g;
+    if (!splineDe(s_, o, g)) return out;
+    const auto S1 = bsSampleU(f, f.a, f.b, 12), S2 = bsSampleU(g, g.a, g.b, 12);
+    for (size_t i = 0; i + 1 < S1.size(); i++)
+      for (size_t j = 0; j + 1 < S2.size(); j++) {
+        Coupe h;
+        if (!croiseDroites(Pt{S1[i].x, S1[i].y}, Pt{S1[i + 1].x, S1[i + 1].y}, Pt{S2[j].x, S2[j].y}, Pt{S2[j + 1].x, S2[j + 1].y}, h) || h.t < -1e-9 || h.t > 1 + 1e-9 || h.u < -1e-9 || h.u > 1 + 1e-9) continue;
+        double u = S1[i].u + h.t * (S1[i + 1].u - S1[i].u), v = S2[j].u + h.u * (S2[j + 1].u - S2[j].u);
+        for (int it = 0; it < 15; it++) {  // Newton : C1(u) = C2(v)
+          const auto D1 = bsEval(f, u, 1), D2 = bsEval(g, v, 1);
+          const double rx = D1[0][0] - D2[0][0], ry = D1[0][1] - D2[0][1];
+          const double a = D1[1][0], b = -D2[1][0], c = D1[1][1], d = -D2[1][1], det = a * d - b * c;
+          if (std::abs(det) < 1e-18) break;
+          const double du = (d * rx - b * ry) / det, dv = (-c * rx + a * ry) / det;
+          u = jsmin(f.b, jsmax(f.a, u - du));
+          v = jsmin(g.b, jsmax(g.a, v - dv));
+          if (std::abs(du) + std::abs(dv) < 1e-13) break;
+        }
+        const P2d c1 = bsEval(f, u, 0)[0], c2 = bsEval(g, v, 0)[0];
+        if (hyp(c1[0] - c2[0], c1[1] - c2[1]) < 1e-6) pousse(u);
+      }
+  }
+  return out;
+}
+
+std::string Dessin::pointCoupeTol(double x, double y) {
+  const double tol = jsmin(0.5, SNAP_ * 0.5);
+  std::string best;
+  double bd = tol;
+  for (const std::string& q : s_.ordre) {
+    const Pt& p = s_.points.at(q);
+    const double d = hyp(p.x - x, p.y - y);
+    if (d < bd) {
+      bd = d;
+      best = q;
+    }
+  }
+  return !best.empty() ? best : ajouterPoint(x, y);
+}
+
+Entite Dessin::splineDepuis(const Entite& src, const BSpline& bs, const std::string& pa, const std::string& pb) {
+  const size_t n = bs.P.size() - 1;
+  const double U0 = bs.U[0], e0 = bs.U.back() - U0, sc = e0 != 0 ? e0 : 1;
+  Entite e;
+  for (size_t i = 0; i <= n; i++) {
+    const P2d& q = bs.P[i];
+    if (i == 0 && !pa.empty()) {
+      if (s_.point(pa)) s_.points[pa] = Pt{q[0], q[1]};
+      e.pts.push_back(pa);
+    } else if (i == n && !pb.empty()) {
+      if (s_.point(pb)) s_.points[pb] = Pt{q[0], q[1]};
+      e.pts.push_back(pb);
+    } else {
+      e.pts.push_back(ajouterPoint(q[0], q[1]));
+    }
+  }
+  e.id = nouvelE();
+  e.t = "spline";
+  e.mode = "ctrl";
+  for (const double v : bs.U) e.knots.push_back(fixe((v - U0) / sc, 12));
+  e.deg = bs.p;
+  e.construction = src.construction;
+  return e;
+}
+
+std::string Dessin::ajusterSpline(const std::string& id, double cx, double cy) {
+  const Entite ent = *entite(id);
+  BSpline f;
+  if (!splineDe(s_, ent, f)) return "Spline invalide.";
+  const std::vector<std::string>& ids = ent.pts;
+  const double eps = 1e-7 * (f.b - f.a);
+  std::vector<double> hu;
+  for (const Pt& h : croisements(ent)) {
+    const PiedSpline c = bsClosest(f, h.x, h.y, nullptr);
+    if (c.d < 1e-4 && std::none_of(hu.begin(), hu.end(), [&](double u) { return std::abs(u - c.u) < eps; })) hu.push_back(c.u);
+  }
+  std::sort(hu.begin(), hu.end());
+  std::vector<double> inner;
+  for (const double u : hu)
+    if (u > f.a + eps && u < f.b - eps) inner.push_back(u);
+  if (inner.empty() && !(!hu.empty() && !f.closed)) return "Aucune intersection : rien à ajuster.";
+  const double uc = bsClosest(f, cx, cy, nullptr).u;
+  const auto pt = [&](double u) { return bsEval(f, u, 0)[0]; };
+  std::vector<std::string> coupes;
+  const auto pointDe = [&](double u) {
+    const P2d c = pt(u);
+    const std::string pid = pointCoupeTol(c[0], c[1]);
+    if (std::find(ids.begin(), ids.end(), pid) == ids.end()) coupes.push_back(pid);
+    return pid;
+  };
+  struct Morceau {
+    BSpline bs;
+    std::string pa, pb;
+  };
+  std::vector<Morceau> pieces;
+  const bool boucle = f.closed || ids.front() == ids.back();
+  if (!boucle) {
+    double lo = f.a, hi = f.b;
+    for (const double u : inner) {
+      if (u < uc) lo = u;
+      else if (u > uc && hi == f.b) hi = u;
+    }
+    if (lo <= f.a + eps && hi >= f.b - eps) {
+      s_.entites.erase(std::remove_if(s_.entites.begin(), s_.entites.end(), [&](const Entite& x) { return x.id == id; }), s_.entites.end());
+      return "Spline retirée.";
+    }
+    if (lo > f.a + eps) {
+      const std::string pb = pointDe(lo);
+      const P2d q = pt(lo);
+      pieces.push_back({bsRange(f, f.a, lo, nullptr, &q), ids.front(), pb});
+    }
+    if (hi < f.b - eps) {
+      const std::string pa = pointDe(hi);
+      const P2d q = pt(hi);
+      pieces.push_back({bsRange(f, hi, f.b, &q, nullptr), pa, ids.back()});
+    }
+  } else {
+    if (inner.size() < 2 && !(inner.size() == 1 && !(f.ctrl && f.closed))) return "Spline fermée : il faut deux intersections pour ajuster.";
+    std::vector<double> cuts = inner;
+    if (cuts.size() == 1) cuts.push_back(f.a);  // une seule coupe : le point de départ sert de 2e bout
+    std::sort(cuts.begin(), cuts.end());
+    bool aLo = false, aHi = false;
+    double lo = 0, hi = 0;
+    for (const double u : cuts) {
+      if (u < uc) {
+        lo = u;
+        aLo = true;
+      } else if (u > uc && !aHi) {
+        hi = u;
+        aHi = true;
+      }
+    }
+    if (!aLo || !aHi) {  // tronçon à cheval sur le départ : on garde [premier, dernier]
+      const double u0 = cuts.front(), u1 = cuts.back();
+      if (!(u1 - u0 > eps)) return "Rien à ajuster ici.";
+      const P2d q0 = pt(u0), q1 = pt(u1);
+      const BSpline bs = bsRange(f, u0, u1, &q0, &q1);
+      const std::string pa = pointDe(u0), pb = pointDe(u1);
+      pieces.push_back({bs, pa, pb});
+    } else {  // garde [hi, b] + [a, lo], raccordés au départ de la boucle
+      const bool aA = hi < f.b - eps, aB = lo > f.a + eps;
+      if (!aA && !aB) return "Rien à ajuster ici.";
+      const P2d qh = pt(hi), qb = pt(f.b), qa = pt(f.a), ql = pt(lo);
+      BSpline A, B;
+      if (aA) A = bsRange(f, hi, f.b, &qh, &qb);
+      if (aB) B = bsRange(f, f.a, lo, &qa, &ql);
+      const BSpline bs = aA && aB ? bsJoin(A, B) : aA ? A : B;
+      const std::string pa = pointDe(hi), pb = pointDe(lo);
+      pieces.push_back({bs, pa, pb});
+    }
+  }
+  std::vector<Entite> neuves;
+  for (const Morceau& q : pieces) neuves.push_back(splineDepuis(ent, q.bs, q.pa, q.pb));
+  // Les contraintes qui visaient l'ancienne spline vont au morceau qui porte le point ; « Fixe » sur chaque morceau
+  const auto duPoint = [&](const std::string& pid) -> const Entite* {
+    for (const Entite& n : neuves)
+      if (n.pts.front() == pid || n.pts.back() == pid) return &n;
+    return nullptr;
+  };
+  std::vector<Contrainte> ajouts;
+  for (Contrainte& c : s_.contraintes) {
+    if (c.type == "fix" && c.ent == id) {
+      for (size_t i = 0; i < neuves.size(); i++) {
+        if (i == 0) {
+          c.ent = neuves[0].id;
+        } else {
+          Contrainte k = c;
+          k.id = nouvelE();
+          k.ent = neuves[i].id;
+          ajouts.push_back(k);
+        }
+      }
+      continue;
+    }
+    if (c.type == "stangent" || c.type == "scurv") {
+      if (const Entite* n = duPoint(c.p)) {
+        if (c.s == id) c.s = n->id;
+        if (c.ent == id) c.ent = n->id;
+      }
+    }
+    if (c.type == "onspline" && c.ent == id) {
+      if (const Pt* Q = s_.point(c.p)) {
+        for (const Entite& m : neuves) {
+          BSpline g;
+          if (splineDe(s_, m, g) && bsClosest(g, Q->x, Q->y, nullptr).d < 1e-3) {
+            c.ent = m.id;
+            break;
+          }
+        }
+      }
+    }
+  }
+  for (const Contrainte& k : ajouts) s_.contraintes.push_back(k);
+  s_.entites.erase(std::remove_if(s_.entites.begin(), s_.entites.end(), [&](const Entite& x) { return x.id == id; }), s_.entites.end());
+  for (Entite& n : neuves) s_.entites.push_back(std::move(n));
+  structure_ = true;
+  for (const std::string& pid : coupes)
+    if (const Pt* Q = s_.point(pid)) {
+      const Pt c = *Q;
+      accrocher(pid, c.x, c.y, 1e-3);  // bout coupé posé sur la courbe qui coupe
+    }
+  return "Spline ajustée (" + std::to_string(pieces.size()) + (pieces.size() > 1 ? " morceaux exacts" : " morceau exact") + ", en points de contrôle).";
+}
+
+std::string Dessin::decalerSpline(const std::string& id, double D, int cote, bool& fait, bool& rebroussement) {
+  const Entite e = *entite(id);
+  BSpline f;
+  if (!splineDe(s_, e, f)) return "Spline invalide.";
+  const bool boucle = f.closed || e.pts.front() == e.pts.back();
+  const auto off = [&](double u) {
+    const auto d = bsEval(f, u, 1);
+    const double L0 = hyp(d[1][0], d[1][1]), L = L0 != 0 ? L0 : 1e-12;
+    return P2d{d[0][0] - cote * D * d[1][1] / L, d[0][1] + cote * D * d[1][0] / L};
+  };
+  double km = 0;
+  for (const EchantillonU& s : bsSampleU(f, f.a, f.b, 16)) {
+    const auto d = bsEval(f, s.u, 2);
+    const double L = hyp(d[1][0], d[1][1]);
+    if (L > 1e-12) km = jsmax(km, std::abs((d[1][0] * d[2][1] - d[1][1] * d[2][0]) / (L * L * L)));
+  }
+  BSpline res;
+  bool aRes = false;
+  double err = 1e308;
+  for (int per = 4; per <= 64 && err > 0.005; per *= 2) {
+    const auto S = bsSampleU(f, f.a, f.b, per);
+    std::vector<P2d> Q;
+    for (size_t i = 0; i < S.size() - (boucle ? 1 : 0); i++) Q.push_back(off(S[i].u));
+    BSpline g;
+    const std::vector<P2d> H(Q.size(), P2d{0, 0});
+    const std::vector<char> A(Q.size(), 0);
+    if (!bsInterpolate(Q, H, A, boucle, g)) return "Décalage impossible.";
+    err = 0;
+    for (size_t i = 0; i + 1 < S.size(); i++) {
+      const double um = (S[i].u + S[i + 1].u) / 2;
+      const P2d t = off(um);
+      const double v = bsNewtonClosest(g, g.a + (g.b - g.a) * (static_cast<double>(i) + 0.5) / (static_cast<double>(S.size()) - 1), t[0], t[1]);
+      const P2d c = bsEval(g, v, 0)[0];
+      err = jsmax(err, hyp(c[0] - t[0], c[1] - t[1]));
+    }
+    res = g;
+    aRes = true;
+  }
+  if (!aRes) return "Décalage impossible.";
+  const size_t n = res.P.size() - 1;
+  const std::string pa = ajouterPoint(res.P[0][0], res.P[0][1]), pb = boucle ? pa : ajouterPoint(res.P[n][0], res.P[n][1]);
+  s_.entites.push_back(splineDepuis(e, res, pa, pb));
+  structure_ = true;
+  fait = true;
+  rebroussement = rebroussement || D * km >= 1;
+  return "";
+}
+
+std::vector<std::string> Dessin::splinesChoisies() const {
+  std::vector<std::string> v;
+  for (const Entite* e : const_cast<Dessin*>(this)->entitesChoisies())
+    if (e->t == "spline") v.push_back(e->id);
+  return v;
+}
+
+double Dessin::distanceSplines(const std::vector<std::string>& ids, double wx, double wy) const {
+  double m = 1e308;
+  for (const std::string& id : ids) {
+    const Entite* e = s_.entite(id);
+    BSpline f;
+    if (e && splineDe(s_, *e, f)) m = jsmin(m, bsClosest(f, wx, wy, nullptr).d);
+  }
+  return m;
 }

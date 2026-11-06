@@ -10,23 +10,29 @@
 
 #include "coter.h"
 #include "projet.h"
+#include "spline.h"
 
 class Dessin {
  public:
-  enum Outil { SELECTION, LIGNE, RECTANGLE, CERCLE, ARC, COTE, AJUSTER, DECALER, OBLONG, POLYGONE, POINT_C, PERCAGE, CONGE, CHANFREIN, COINCIDENT };  // les boutons connus d'abord : leurs numéros servent aux essais
+  enum Outil { SELECTION, LIGNE, RECTANGLE, CERCLE, ARC, COTE, AJUSTER, DECALER, OBLONG, POLYGONE, POINT_C, PERCAGE, CONGE, CHANFREIN, COINCIDENT, SPLINE, CSPLINE };  // les boutons connus d'abord : leurs numéros servent aux essais
   struct Accroche {
-    enum Sorte { AUCUNE, POINT, MILIEU, SUR_LIGNE, SUR_CERCLE } sorte = AUCUNE;
+    enum Sorte { AUCUNE, POINT, MILIEU, SUR_LIGNE, SUR_CERCLE, SUR_SPLINE } sorte = AUCUNE;
     std::string id;  // le point, la ligne ou le cercle visé
     double x = 0, y = 0;
     explicit operator bool() const { return sorte != AUCUNE; }
   };
   // Le tracé en cours, pour l'écran
   struct Brouillon {
-    enum Sorte { RIEN, B_LIGNE, B_RECT, B_CERCLE, B_ARC, B_OBLONG, B_POLYGONE } sorte = RIEN;
+    enum Sorte { RIEN, B_LIGNE, B_RECT, B_CERCLE, B_ARC, B_OBLONG, B_POLYGONE, B_SPLINE } sorte = RIEN;
     double x1 = 0, y1 = 0, x2 = 0, y2 = 0;  // ligne et rectangle
     double cx = 0, cy = 0, r = 0, a1 = 0, a2 = 0;  // cercle et arc ; polygone : a1 est son orientation
     int n = 0;                                     // polygone
     Accroche accroche;
+    // Spline en cours : les clics, le curseur, la courbe vivante
+    std::vector<Pt> clics;
+    std::vector<P2d> courbe;
+    bool ctrl = false, aCurseur = false, fermeture = false;
+    Pt curseur;
   };
   // Réglages du polygone (skPoly), gardés d'un polygone au suivant, même d'une esquisse à l'autre
   struct ReglagesPolygone {
@@ -75,6 +81,8 @@ class Dessin {
   std::string doubleClic(double x, double y);
   void echap();     // skEscapeToSelect
   void annulerTrace();  // skCancelDraft
+  bool finirSpline();   // la fin d'un tracé de spline (clic droit, Entrée) ; rend false s'il n'y en avait pas
+  bool peigneVisible(const std::string& id) const { return peignes_.count(id) > 0; }
   void supprimer();  // deleteSkSel
   // applyCon : h, v, equal, tangent, coaxial, parallel, perpendicular, collinear, symmetric, fix, midpoint, coincident, construction
   void poserContrainte(const std::string& type);
@@ -112,7 +120,7 @@ class Dessin {
   Pt marque() const { return marque_; }
   const std::vector<Choix>& selection() const { return selection_; }
   bool estChoisi(Choix::Sorte s, const std::string& id) const;
-  bool enCours() const { return bas_.actif || arcC_.size() || glisseP_.size() || glisseE_.actif || dyn_.actif || !dimPose_.empty() || !dimPoint_.empty() || !dimLigne_.empty() || offArme_ || !coinA_.empty() || glisseC_.actif || boite_.actif || !coinPt_.empty(); }
+  bool enCours() const { return bas_.actif || arcC_.size() || glisseP_.size() || glisseE_.actif || dyn_.actif || !dimPose_.empty() || !dimPoint_.empty() || !dimLigne_.empty() || offArme_ || !coinA_.empty() || glisseC_.actif || boite_.actif || !coinPt_.empty() || splActif_; }
   // Le centre de l'arc en cours, pour l'écran
   const std::string& centreArc() const { return arcC_; }
   // Le départ du tracé en cours
@@ -315,6 +323,41 @@ class Dessin {
   void coteAngleMenu(const Entite& A, const Entite& B);  // createAngleDim
   void relacherCercle(double wx, double wy);
   void enfonceArc(double wx, double wy);
+
+  // Spline (src/50-esquisse-6-spline.js)
+  struct ClicSpline {
+    double x = 0, y = 0;
+    std::string pid;  // le point existant visé
+  };
+  std::vector<ClicSpline> spl_;
+  bool splActif_ = false;
+  std::set<std::string> peignes_;  // skComb : les peignes affichés, jamais enregistrés
+  std::vector<std::string> pidsSpline(const Entite& e) const;  // skSplineAllPids
+  const Entite* lignePoignee(const Entite& S, const std::string& pid) const;  // skSplineHandleLine
+  bool paramSpline(const Entite& e, const std::string& pid, double& u) const;  // skSplineParam
+  std::string pointTangente(const Entite& e, const std::string& pid) const;   // skSplineTanPid
+  bool tangenteSpline(const Entite& e, const std::string& pid, double& x, double& y) const;  // skSplineTangent
+  bool versLInterieur(const Entite& ent, const std::string& pid, double& x, double& y) const;  // skCurveIntoDir
+  std::string ajouterPoignee(const std::string& S, const std::string& pid);  // skSplineAddHandle ; la ligne, vide si impossible
+  void retirerPoignee(const std::string& S, const std::string& pid);         // skSplineRemoveHandle
+  std::string tangenteVers(const std::string& S, const std::string& O, const std::string& pid);  // skSplineTangentTo ; un message si refusée
+  std::string courbureVers(const std::string& S, const std::string& O, const std::string& pid);  // skSplineCurvTo
+  std::string jointSpline(const Entite& S, const Entite& O) const;   // skSplineJoint
+  int tangentesAuto(const std::string& S);                           // skSplineAutoTangent
+  std::string validerSpline(const std::vector<ClicSpline>& d, bool ferme, bool ctrl);  // skSplineCommit ; l'identifiant, vide si rien
+  void finirTraceSpline(bool ferme);                                 // skSplFinish
+  void clicSpline(double wx, double wy);                             // skSplClick
+  void bougerSpline(double wx, double wy);                           // skSplMove
+  std::vector<P2d> apercuSpline(const std::vector<ClicSpline>& d, const Pt* cur, bool ferme, bool ctrl) const;  // skSplineDraftPoly
+  bool attacherSpline(const std::string& pid, double x, double y, double tol);  // skSplineAttach
+  void nettoyerSplines();                                            // skSplineCleanup
+  std::vector<Pt> croiseSpline(const Entite& e, const Entite& o, std::vector<double>* us = nullptr) const;  // skSplineHits
+  std::string pointCoupeTol(double x, double y);                     // pidAtTol
+  Entite splineDepuis(const Entite& src, const BSpline& bs, const std::string& pa, const std::string& pb);  // skSplineFromBs
+  std::string ajusterSpline(const std::string& id, double cx, double cy);    // skSplineTrim
+  std::string decalerSpline(const std::string& id, double D, int cote, bool& fait, bool& rebroussement);  // skSplineOffset
+  std::vector<std::string> splinesChoisies() const;
+  double distanceSplines(const std::vector<std::string>& ids, double wx, double wy) const;
 
   Esquisse& s_;
   Edition& ed_;

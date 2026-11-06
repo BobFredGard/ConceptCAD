@@ -23,6 +23,10 @@
 #include <Bnd_Box.hxx>
 #include <GProp_GProps.hxx>
 #include <ShapeUpgrade_UnifySameDomain.hxx>
+#include <Geom_BSplineCurve.hxx>
+#include <TColStd_Array1OfInteger.hxx>
+#include <TColStd_Array1OfReal.hxx>
+#include <TColgp_Array1OfPnt.hxx>
 #include <TopExp_Explorer.hxx>
 #include <TopoDS.hxx>
 #include <TopoDS_Compound.hxx>
@@ -173,6 +177,35 @@ TopoDS_Wire contourDe(const Esquisse& s, const Trace& tr, const Chaine& chaine, 
     const std::string& vers = ed.a == st.depuis ? ed.b : ed.a;
     const Pt& A = tr.pts.at(st.depuis);
     const Pt& B = tr.pts.at(vers);
+    if (ed.spline) {
+      // B-spline exacte : mêmes pôles et nœuds que le dessin 2D, posés dans le plan comme les lignes
+      const BSpline& bs = ed.bs;
+      if (static_cast<int>(bs.P.size()) < bs.p + 1) throw std::runtime_error("spline invalide");
+      TColgp_Array1OfPnt poles(1, static_cast<int>(bs.P.size()));
+      for (size_t i = 0; i < bs.P.size(); i++) poles.SetValue(static_cast<int>(i) + 1, mondeDe(s, bs.P[i][0], bs.P[i][1], z0));
+      std::vector<double> kv;  // skBsKnotMults : nœuds distincts et multiplicités
+      std::vector<int> mv;
+      for (double v : bs.U) {
+        if (!kv.empty() && kv.back() == v) mv.back()++;
+        else {
+          kv.push_back(v);
+          mv.push_back(1);
+        }
+      }
+      TColStd_Array1OfReal kn(1, static_cast<int>(kv.size()));
+      TColStd_Array1OfInteger mu(1, static_cast<int>(kv.size()));
+      for (size_t i = 0; i < kv.size(); i++) {
+        kn.SetValue(static_cast<int>(i) + 1, kv[i]);
+        mu.SetValue(static_cast<int>(i) + 1, mv[i]);
+      }
+      Handle(Geom_BSplineCurve) courbe = new Geom_BSplineCurve(poles, kn, mu, bs.p, false);
+      BRepBuilderAPI_MakeEdge me(courbe);
+      if (!me.IsDone()) throw std::runtime_error("arête spline impossible");
+      TopoDS_Edge e = me.Edge();
+      if (ed.a != st.depuis) e = TopoDS::Edge(e.Reversed());
+      mkW.Add(e);
+      continue;
+    }
     if (!ed.arc) {
       BRepBuilderAPI_MakeEdge me(mondeDe(s, A.x, A.y, z0), mondeDe(s, B.x, B.y, z0));
       if (!me.IsDone()) throw std::runtime_error("arête ligne impossible");
@@ -701,7 +734,10 @@ Anneau2 polygoneChaine(const Esquisse& s, const Trace& tr, const Chaine& ch) {  
   for (size_t i = 0; i < ch.size(); i++) {
     const Pas& st = ch[i];
     const Arete& ed = tr.aretes[st.arete];
-    if (!ed.arc) {
+    if (ed.spline) {
+      const std::vector<P2d> pl = polyArete(ed, st.depuis);
+      for (size_t k = 1; k < pl.size(); k++) r.push_back({pl[k][0], pl[k][1]});
+    } else if (!ed.arc) {
       const Pt& q = tr.pts.at(ed.a == st.depuis ? ed.b : ed.a);
       r.push_back({q.x, q.y});
     } else {

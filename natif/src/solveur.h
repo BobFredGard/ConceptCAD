@@ -8,6 +8,7 @@
 #include <vector>
 
 #include "projet.h"
+#include "spline.h"
 
 class Solveur {
  public:
@@ -98,7 +99,7 @@ class Solveur {
   Solveur(const Esquisse& s, bool ouverture);
   void refuser(const Saisie& s);  // restaurer, comme skRevertTo
   struct P2 { double x = 0, y = 0; };
-  enum TypeE { LIGNE, ARC, CERCLE, CPOINT, AUTRE };
+  enum TypeE { LIGNE, ARC, CERCLE, CPOINT, SPLINE, AUTRE };
   struct E {
     std::string id;
     TypeE t = AUTRE;
@@ -106,13 +107,26 @@ class Solveur {
     double r = 0;
     bool proj = false, ref = false, ext = false, construction = false, verrouille = false, conduit = false;
     std::vector<int> poly;
+    // Spline
+    std::vector<int> pts;
+    bool closed = false, ctrl = false;
+    std::vector<double> knots;
+    int deg = 0;
+    int handle = -1;  // ligne poignée : la spline qu'elle pilote
+    // La courbe se recalcule seulement si ses points ont bougé (SK_SPL_CACHE)
+    mutable bool cacheVu = false, cacheOk = false;
+    mutable std::vector<P2d> cacheQ, cacheH;
+    mutable std::vector<char> cacheA;
+    mutable BSpline cacheF;
   };
-  enum TypeC { H, V, COINCIDENT, ONCIRCLE, ONLINE, MIDPOINT, PARALLEL, PERPENDICULAR, COLLINEAR, EQUAL, OFFSET, TANGENT, TANGENT2, COAXIAL, SYMMETRIC, FIX, INCONNU };
+  enum TypeC { H, V, COINCIDENT, ONCIRCLE, ONLINE, MIDPOINT, PARALLEL, PERPENDICULAR, COLLINEAR, EQUAL, OFFSET, TANGENT, TANGENT2, COAXIAL, SYMMETRIC, FIX, STANGENT, SCURV, ONSPLINE, INCONNU };
   struct C {
     std::string id;
     TypeC type = INCONNU;
-    int p = -1, line = -1, ent = -1, a = -1, b = -1, mid = -1, c = -1, d = -1;
+    int p = -1, line = -1, ent = -1, a = -1, b = -1, mid = -1, c = -1, d = -1, s = -1;
     bool aP = false, aA = false, aB = false, inf = false;
+    mutable bool aU = false;  // SK_ONSPL_U : le dernier pied sur la spline, départ du suivant
+    mutable double u = 0;
     int sa = 0, sb = 0;
     int cote = 0;                                  // SK_TAN_SIDE
     bool surCote = false, partage1 = false, partage2 = false;  // tangence : ligne cotée, bouts partagés
@@ -169,6 +183,19 @@ class Solveur {
   void premiereCoteEchelle(const D& d, double nv);  // skFirstDimScale
   bool lignesParalleles(const E& A, const E& B);
   std::vector<int> pidsEntite(const E& e) const;
+  const P2* ptC(int i) const { return i >= 0 ? &P_[i] : nullptr; }
+  const E* enC(int i) const { return i >= 0 ? &E_[i] : nullptr; }
+  int boutPoignee(const E& e, int q) const;
+  std::vector<int> pidsSpline(const E& e) const;
+  const BSpline* courbe(const E& e) const;
+  bool paramSpline(const E& e, int q, double& u) const;
+  int pointTangente(const E& e, int q) const;
+  bool courbureSpline(const E& e, int q, double& k, double& tx, double& ty) const;
+  bool residuTangenceSpline(const C& c, double& r) const;
+  void relacheTangenceSpline(const C& c);
+  bool residuCourbure(const C& c, double& r) const;
+  bool residuSurSpline(const C& c, double& r);
+  void relacheSurSpline(const C& c);
   std::vector<char> composante(const E& l);  // skDragComp
 
   // Mesures

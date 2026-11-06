@@ -903,7 +903,7 @@ void Cadre::entrerEsquisse(int i) {
   messageEsquisse_.clear();
   rafraichirEsquisse(true);
   wxString t = L"Esquisse « " + tx(s.nom) + (figee_.empty() ? L" ». Outils en haut pour dessiner. Double-clic sur une cote pour la changer, sur un élément pour le coter. Suppr : effacer." : L" » en lecture seule : " + tx(figee_) + L".") + L" Clic droit : déplacer. Molette : zoom. Échap : outil Sélection, puis terminer.";
-  if (vueEsquisse_->nonDessines() > 0) t += wxString::Format(L"  |  ⚠ %d élément(s) pas encore dessiné(s), comme les splines.", vueEsquisse_->nonDessines());
+  if (vueEsquisse_->nonDessines() > 0) t += wxString::Format(L"  |  ⚠ %d élément(s) pas encore dessiné(s).", vueEsquisse_->nonDessines());
   etat(t);
   // Pour natif/mesures/verifier-cote.ps1 : où se trouve chaque valeur à l'écran
   if (const wchar_t* chemin = _wgetenv(L"CONCEPTCAD_JOURNAL_ETAT")) {

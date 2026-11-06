@@ -34,11 +34,18 @@ static std::string structure(const Esquisse& s) {
   for (size_t i = 0; i < s.entites.size(); i++) {
     const Entite& e = s.entites[i];
     o << (i ? ";" : "") << e.id << ',' << e.t << ',' << e.p1 << ',' << e.p2 << ',' << e.pc << ',' << e.pa << ',' << e.pb << ',' << e.p << ',' << (e.construction ? 1 : 0) << ',' << (e.ref ? 1 : 0);
+    if (e.t == "spline") {
+      o << ",S:";
+      for (size_t k = 0; k < e.pts.size(); k++) o << (k ? "/" : "") << e.pts[k];
+      o << ':' << (e.closed ? 1 : 0) << ':' << e.mode << ':' << e.deg << ':' << e.knots.size();
+    }
+    if (!e.handle.empty()) o << ",H:" << e.handle;
   }
   o << '#';
   for (size_t i = 0; i < s.contraintes.size(); i++) {
     const Contrainte& c = s.contraintes[i];
     o << (i ? ";" : "") << c.id << ',' << c.type << ',' << c.p << ',' << c.line << ',' << c.ent << ',' << c.a << ',' << c.b << ',' << c.mid << ',' << c.c << ',' << c.d << ',' << (c.inf ? 1 : 0);
+    if (!c.s.empty()) o << ",s:" << c.s;
   }
   o << '#';
   for (size_t i = 0; i < s.cotes.size(); i++) {
@@ -197,7 +204,7 @@ int wmain(int argc, wchar_t** argv) {
         const double x = st.contains("x") ? st["x"].get<double>() : 0, y = st.contains("y") ? st["y"].get<double>() : 0;
         if (a == "outil") {
           const std::string o = st["o"];
-          D.choisirOutil(o == "coincident" ? Dessin::COINCIDENT : o == "fillet" ? Dessin::CONGE : o == "chamfer" ? Dessin::CHANFREIN : o == "slot" ? Dessin::OBLONG : o == "polygon" ? Dessin::POLYGONE : o == "cpoint" ? Dessin::POINT_C : o == "hpoint" ? Dessin::PERCAGE : o == "line" ? Dessin::LIGNE : o == "rect" ? Dessin::RECTANGLE : o == "circle" ? Dessin::CERCLE : o == "arc" ? Dessin::ARC : o == "dim" ? Dessin::COTE : o == "trim" ? Dessin::AJUSTER : o == "offset" ? Dessin::DECALER : Dessin::SELECTION);
+          D.choisirOutil(o == "spline" ? Dessin::SPLINE : o == "cspline" ? Dessin::CSPLINE : o == "coincident" ? Dessin::COINCIDENT : o == "fillet" ? Dessin::CONGE : o == "chamfer" ? Dessin::CHANFREIN : o == "slot" ? Dessin::OBLONG : o == "polygon" ? Dessin::POLYGONE : o == "cpoint" ? Dessin::POINT_C : o == "hpoint" ? Dessin::PERCAGE : o == "line" ? Dessin::LIGNE : o == "rect" ? Dessin::RECTANGLE : o == "circle" ? Dessin::CERCLE : o == "arc" ? Dessin::ARC : o == "dim" ? Dessin::COTE : o == "trim" ? Dessin::AJUSTER : o == "offset" ? Dessin::DECALER : Dessin::SELECTION);
         } else if (a == "menu") {
           std::string titre;
           const auto entrees = D.menuContextuel(titre);
@@ -209,6 +216,8 @@ int wmain(int argc, wchar_t** argv) {
             if (x.libelle == st["c"].get<std::string>()) D.actionMenu(x.code);
         } else if (a == "poly") {
           D.lirePolygone(st["n"].get<int>(), st["d"].get<std::string>());
+        } else if (a == "splFin") {
+          D.finirSpline();
         } else if (a == "polyEntree") {
           D.entree();
         } else if (a == "offD") {

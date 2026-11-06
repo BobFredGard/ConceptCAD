@@ -27,12 +27,12 @@ bool memesLiens(const Esquisse& a, const Esquisse& b) {
   for (size_t i = 0; i < a.entites.size(); i++) {
     const Entite& x = a.entites[i];
     const Entite& y = b.entites[i];
-    if (x.id != y.id || x.t != y.t || x.p1 != y.p1 || x.p2 != y.p2 || x.pc != y.pc || x.pa != y.pa || x.pb != y.pb || x.p != y.p || x.construction != y.construction || x.poly != y.poly) return false;
+    if (x.id != y.id || x.t != y.t || x.p1 != y.p1 || x.p2 != y.p2 || x.pc != y.pc || x.pa != y.pa || x.pb != y.pb || x.p != y.p || x.construction != y.construction || x.poly != y.poly || x.pts != y.pts || x.closed != y.closed || x.knots != y.knots || x.handle != y.handle) return false;
   }
   for (size_t i = 0; i < a.contraintes.size(); i++) {
     const Contrainte& x = a.contraintes[i];
     const Contrainte& y = b.contraintes[i];
-    if (x.id != y.id || x.type != y.type || x.p != y.p || x.line != y.line || x.ent != y.ent || x.a != y.a || x.b != y.b || x.mid != y.mid || x.c != y.c || x.d != y.d || x.inf != y.inf) return false;
+    if (x.id != y.id || x.type != y.type || x.p != y.p || x.line != y.line || x.ent != y.ent || x.a != y.a || x.b != y.b || x.mid != y.mid || x.c != y.c || x.d != y.d || x.s != y.s || x.inf != y.inf) return false;
   }
   for (size_t i = 0; i < a.cotes.size(); i++) {
     const Cote& x = a.cotes[i];
@@ -167,7 +167,17 @@ static void lireEsquisse(const json& js, Document& d, std::map<std::string, int>
       e.ref = vrai(je, "ref");
       e.p = texte(je, "p");
       e.axe = vrai(je, "axis");
-      e.poignee = vrai(je, "handle");
+      e.handle = texte(je, "handle");
+      e.poignee = !e.handle.empty();
+      if (auto x = je.find("pts"); x != je.end() && x->is_array())
+        for (auto& q : *x)
+          if (q.is_string()) e.pts.push_back(q.get<std::string>());
+      e.closed = vrai(je, "closed");
+      e.mode = texte(je, "mode");
+      if (auto x = je.find("knots"); x != je.end() && x->is_array())
+        for (auto& q : *x)
+          if (q.is_number()) e.knots.push_back(q.get<double>());
+      if (auto x = je.find("deg"); x != je.end() && x->is_number()) e.deg = x->get<int>();
       e.proj = vrai(je, "proj");
       e.percage = vrai(je, "hole");
       e.ext = vrai(je, "isProj") || vrai(je, "isect") || vrai(je, "pierce") || vrai(je, "ext");
@@ -176,7 +186,7 @@ static void lireEsquisse(const json& js, Document& d, std::map<std::string, int>
       if (auto x = je.find("poly"); x != je.end() && x->is_array())
         for (auto& q : *x)
           if (q.is_string()) e.poly.push_back(q.get<std::string>());
-      if (e.t != "line" && e.t != "arc" && e.t != "circle" && e.t != "cpoint" && !e.construction)
+      if (e.t != "line" && e.t != "arc" && e.t != "circle" && e.t != "cpoint" && e.t != "spline" && !e.construction)
         refus["esquisse : « " + e.t + " »"]++;
       s.entites.push_back(std::move(e));
     }
@@ -196,6 +206,7 @@ static void lireEsquisse(const json& js, Document& d, std::map<std::string, int>
       c.a = texte(jc, "a");
       c.b = texte(jc, "b");
       c.mid = texte(jc, "mid");
+      c.s = texte(jc, "s");
       s.contraintes.push_back(std::move(c));
     }
   if (js.contains("dims") && js["dims"].is_array())

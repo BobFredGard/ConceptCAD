@@ -15,6 +15,13 @@ struct Entite {
   bool construction = false, ref = false, axe = false, poignee = false, proj = false, percage = false;
   bool ext = false;  // tenue par une source extérieure à l'esquisse (intersection, perçage...)
   std::vector<std::string> poly;  // sommets d'un polygone : ils suivent son diamètre
+  // Spline : ses points de passage ou ses pôles, dans l'ordre
+  std::vector<std::string> pts;
+  bool closed = false;
+  std::string mode;            // "ctrl" : par points de contrôle
+  std::vector<double> knots;   // nœuds explicites d'un morceau exact (Ajuster, Décaler)
+  int deg = 0;
+  std::string handle;          // ligne de construction qui est la poignée de cette spline
   bool aSrcMid = false;  // milieu 3D de l'arête source d'une projection : c'est par lui qu'on la retrouve
   Vec3 srcMid{0, 0, 0};
   bool suiviInconnu = false;  // projection qui suit autre chose qu'une arête retrouvée par position (nom, intersection, autre esquisse)
@@ -23,6 +30,7 @@ struct Entite {
 // Contrainte et cote d'esquisse : mêmes champs que le fichier (src/50-esquisse-2, 50-esquisse-4).
 struct Contrainte {
   std::string id, type, p, line, ent, a, b, mid, c, d;
+  std::string s;  // tangence ou courbure de spline : la spline
   bool inf = false;
   int sa = 0, sb = 0;
 };

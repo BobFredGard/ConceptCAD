@@ -90,6 +90,101 @@ std::optional<Angles> anglesArc(const Esquisse& s, const Entite& e) {
   return Angles{a1, a1 + d};
 }
 
+std::vector<P2d> polyArete(const Arete& ed, const std::string& depuis) {  // skEdgePoly
+  std::vector<P2d> pl = ed.poly;
+  if (ed.a != depuis) std::reverse(pl.begin(), pl.end());
+  return pl;
+}
+
+namespace {
+struct MorceauSpline {
+  std::string a, b;
+  const Entite* e = nullptr;
+  BSpline bs;
+  std::vector<P2d> poly;
+  double o = 0, i = 0;
+  std::vector<std::pair<std::string, P2d>> virt;
+};
+// skSplineEdges + skSplineCutsFor
+std::vector<MorceauSpline> morceauxSpline(const Esquisse& s, const Entite& e, const std::vector<std::string>& bouts) {
+  std::vector<MorceauSpline> out;
+  BSpline f;
+  if (!splineDe(s, e, f) || e.pts.empty()) return out;
+  struct Noeud {
+    double u;
+    std::string id;
+  };
+  std::vector<Noeud> coupes;
+  for (const std::string& pid : bouts) {
+    if (pid == e.pts.front() || pid == e.pts.back()) continue;
+    const Pt* Q = s.point(pid);
+    if (!Q) continue;
+    const PiedSpline h = bsClosest(f, Q->x, Q->y, nullptr);
+    if (h.d < 1e-3 && h.u > f.a + 1e-9 && h.u < f.b - 1e-9) coupes.push_back({h.u, pid});
+  }
+  std::vector<std::pair<std::string, P2d>> virt;
+  const auto en = [&](double u) { return bsEval(f, u, 0)[0]; };
+  const bool boucle = e.closed || e.pts.front() == e.pts.back();
+  std::vector<Noeud> noeuds;
+  if (!boucle) noeuds = {{f.a, e.pts.front()}, {f.b, e.pts.back()}};
+  else if (f.ctrl && f.closed) {
+    const std::string id = "__s" + e.id + "a";
+    virt.push_back({id, en(f.a)});
+    noeuds = {{f.a, id}, {f.b, id}};
+  } else noeuds = {{f.a, e.pts.front()}, {f.b, e.pts.front()}};
+  for (const Noeud& c : coupes) {
+    if (!(c.u > f.a + 1e-9 && c.u < f.b - 1e-9)) continue;
+    bool deja = false;
+    for (const Noeud& n : noeuds) deja = deja || std::abs(n.u - c.u) < 1e-9 || n.id == c.id;
+    if (!deja) noeuds.push_back(c);
+  }
+  std::stable_sort(noeuds.begin(), noeuds.end(), [](const Noeud& x, const Noeud& y) { return x.u < y.u; });
+  if (boucle && noeuds.size() < 3) {  // boucle sans autre nœud : coupée au milieu (point de passage, sinon nœud virtuel)
+    bool trouve = false;
+    Noeud mid{0, ""};
+    if (!f.ctrl && !f.u.empty()) {
+      const size_t m = std::max<size_t>(1, e.pts.size() / 2);
+      if (m < f.u.size() && f.u[m] > f.a && f.u[m] < f.b && s.point(e.pts[m])) {
+        mid = {f.u[m], e.pts[m]};
+        trouve = true;
+      }
+    }
+    if (!trouve) {
+      const std::string id = "__s" + e.id + "b";
+      const double u = (f.a + f.b) / 2;
+      virt.push_back({id, en(u)});
+      mid = {u, id};
+    }
+    noeuds.insert(noeuds.begin() + 1, mid);
+  }
+  const auto ptDe = [&](const Noeud& n) -> P2d {
+    for (auto& v : virt)
+      if (v.first == n.id) return v.second;
+    if (const Pt* q = s.point(n.id)) return {q->x, q->y};
+    return en(n.u);
+  };
+  for (size_t i = 0; i + 1 < noeuds.size(); i++) {
+    const Noeud& A = noeuds[i];
+    const Noeud& B = noeuds[i + 1];
+    if (!(B.u - A.u > 1e-12)) continue;
+    const P2d pa = ptDe(A), pb = ptDe(B);
+    MorceauSpline m;
+    m.a = A.id;
+    m.b = B.id;
+    m.e = &e;
+    m.bs = bsRange(f, A.u, B.u, &pa, &pb);
+    const double u0 = m.bs.U.front(), u1 = m.bs.U.back();
+    const P2d d0 = bsEval(m.bs, u0, 1)[1], d1 = bsEval(m.bs, u1, 1)[1];
+    m.poly = bsSample(m.bs, u0, u1, 16);
+    m.o = std::atan2(d0[1], d0[0]);
+    m.i = std::atan2(d1[1], d1[0]);
+    m.virt = virt;
+    out.push_back(std::move(m));
+  }
+  return out;
+}
+}  // namespace
+
 Trace tracerContours(const Esquisse& s) {
   Trace tr;
   tr.pts = s.points;
@@ -119,6 +214,39 @@ Trace tracerContours(const Esquisse& s) {
     ordre.push_back(pa);
     ordre.push_back(pb);
     boutsArc[a] = {pa, pb};
+  }
+  // Splines : arêtes calculées ici (skSplineEdges). Un bout de ligne, d'arc ou d'une autre spline posé sur la courbe
+  // la coupe (jonction en T) ; une spline fermée est coupée en deux, ses nœuds virtuels « __s… » s'ajoutent aux points.
+  std::vector<MorceauSpline> morceaux;
+  {
+    std::vector<std::string> bouts;
+    std::set<std::string> vus;
+    const auto bout = [&](const std::string& p) {
+      if (vus.insert(p).second) bouts.push_back(p);
+    };
+    for (auto* l : lignes) {
+      bout(l->p1);
+      bout(l->p2);
+    }
+    for (auto* a : arcs) {
+      bout(a->pa);
+      bout(a->pb);
+    }
+    for (auto& e : s.entites)
+      if (e.t == "spline" && !e.construction && !e.pts.empty()) {
+        bout(e.pts.front());
+        bout(e.pts.back());
+      }
+    for (auto& e : s.entites) {
+      if (e.t != "spline" || e.construction) continue;
+      for (MorceauSpline& m : morceauxSpline(s, e, bouts)) {
+        for (auto& v : m.virt) {
+          if (tr.pts.find(v.first) == tr.pts.end()) ordre.push_back(v.first);
+          tr.pts[v.first] = Pt{v.second[0], v.second[1]};
+        }
+        morceaux.push_back(std::move(m));
+      }
+    }
   }
   // Noeuds quasi confondus (1 micron) fusionnés sur le premier rencontré
   std::unordered_map<std::string, std::string> canon;
@@ -153,6 +281,14 @@ Trace tracerContours(const Esquisse& s) {
     auto it = boutsArc.find(a);
     if (it != boutsArc.end()) indiceArete[a] = pousser(it->second[0], it->second[1], a, true);
   }
+  std::vector<int> aretesSpline;
+  for (MorceauSpline& m : morceaux) {
+    const int ei = pousser(m.a, m.b, m.e, false);
+    tr.aretes[ei].spline = true;
+    tr.aretes[ei].bs = std::move(m.bs);
+    tr.aretes[ei].poly = std::move(m.poly);
+    aretesSpline.push_back(ei);
+  }
   std::vector<DemiArete> hes;
   auto ajouter = [&](int ei, double o, double i) {
     auto& ed = tr.aretes[ei];
@@ -172,6 +308,7 @@ Trace tracerContours(const Esquisse& s) {
     auto an = anglesArc(s, *a);
     if (an) ajouter(it->second, an->a1 + PI / 2, an->a2 + PI / 2);
   }
+  for (size_t k = 0; k < morceaux.size(); k++) ajouter(aretesSpline[k], morceaux[k].o, morceaux[k].i);  // tangentes de départ et d'arrivée
   std::unordered_map<std::string, std::vector<int>> sortants;
   for (int i = 0; i < static_cast<int>(hes.size()); i++) sortants[hes[i].de].push_back(i);
   // Successeur : plus petit virage horaire depuis le retour (mur à gauche)
@@ -220,7 +357,10 @@ Trace tracerContours(const Esquisse& s) {
     for (int ci : pas) {
       auto& h = hes[ci];
       auto& ed = tr.aretes[h.arete];
-      if (!ed.arc) {
+      if (ed.spline) {
+        const std::vector<P2d> pl = polyArete(ed, h.de);
+        for (size_t k = 1; k < pl.size(); k++) r.push_back({pl[k][0], pl[k][1]});
+      } else if (!ed.arc) {
         const Pt& q = tr.pts[h.vers];
         r.push_back({q.x, q.y});
       } else {

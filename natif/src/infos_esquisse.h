@@ -31,6 +31,12 @@ struct InfosEsquisse {
   SanteEsquisse sante;
   bool pointDetermine(const std::string& id) const { return !pointsLibres.count(id); }
   bool determinee(const Entite& e) const;  // blanc si vrai, bleu sinon
+  std::map<std::string, std::vector<std::string>> poignees;  // spline : les bouts de ses poignées
+  const std::vector<std::string>& poigneesDe_(const Entite& e) const {
+    static const std::vector<std::string> rien;
+    const auto it = poignees.find(e.id);
+    return it == poignees.end() ? rien : it->second;
+  }
 };
 
 SanteEsquisse santeDe(const Esquisse& s);

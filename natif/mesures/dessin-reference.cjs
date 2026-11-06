@@ -108,6 +108,7 @@ vm.runInContext(`
     else if (st.a === 'polyEntree') skPolyEnter();
     else if (st.a === 'menu') { const b = __menuEntrees().find(x => x.l === st.c); if (b) { b.b.onclick(); } }
     else if (st.a === 'pan') __panneau(st);
+    else if (st.a === 'splFin') { if (skSpl) skSplFinish(false); }
     else if (st.a === 'echap') skEscapeToSelect();
     else if (st.a === 'suppr') deleteSkSel();
     else if (st.a === 'con') applyCon(st.t);
@@ -150,14 +151,15 @@ vm.runInContext(`
     const st = [
       sk.seq,
       Object.keys(P).join(','),
-      (sk.entities || []).map(e => [e.id, e.t, v(e.p1), v(e.p2), v(e.pc), v(e.pa), v(e.pb), v(e.p), e.construction ? 1 : 0, e.ref ? 1 : 0].join(',')).join(';'),
-      (sk.constraints || []).map(c => [v(c.id), c.type, v(c.p), v(c.line), v(c.ent), v(c.a), v(c.b), v(c.mid), v(c.c), v(c.d), c.inf ? 1 : 0].join(',')).join(';'),
+      (sk.entities || []).map(e => [e.id, e.t, v(e.p1), v(e.p2), v(e.pc), v(e.pa), v(e.pb), v(e.p), e.construction ? 1 : 0, e.ref ? 1 : 0].concat(e.t === 'spline' ? ['S:' + (e.pts || []).join('/') + ':' + (e.closed ? 1 : 0) + ':' + (e.mode || '') + ':' + (e.deg || 0) + ':' + (e.knots ? e.knots.length : 0)] : [], e.handle ? ['H:' + e.handle] : []).join(',')).join(';'),
+      (sk.constraints || []).map(c => [v(c.id), c.type, v(c.p), v(c.line), v(c.ent), v(c.a), v(c.b), v(c.mid), v(c.c), v(c.d), c.inf ? 1 : 0].concat(c.s ? ['s:' + c.s] : []).join(',')).join(';'),
       (sk.dims || []).map(d => [d.id, d.type, v(d.line), v(d.ent), v(d.a), v(d.b), v(d.p), v(d.orient), d.ref ? 1 : 0, d.chk ? 1 : 0, d.dia ? 1 : 0, d.sgn === 1 || d.sgn === -1 ? d.sgn : 0, d.ccw === 0 || d.ccw === 1 ? d.ccw : -1].join(',')).join(';'),
     ].join('#');
     (sk.entities || []).forEach(e => { if (e.t === 'circle' || e.t === 'arc') ray.push(e.r); });
     (sk.dims || []).forEach(d => val.push(+d.value));
     return { pts, ray, val, st };
   }
+  function __splPoly(id) { const e = entById(skEdit, id); const p = e && skSplinePoly(skEdit, e, 4); return p ? JSON.parse(JSON.stringify(p)) : null; }
   function __geo() { return JSON.parse(JSON.stringify({ points: skEdit.points, entities: skEdit.entities })); }
 `, ctx);
 const run = (code, v) => { ctx.__v = v; return vm.runInContext(code, ctx); };
@@ -219,6 +221,13 @@ function session(src, graine, nbGestes) {
     if (e.t === 'arc' && g.points[e.pa] && g.points[e.pb]) { const A = g.points[e.pa]; return { e, x: A.x, y: A.y }; }
     return null;
   };
+  const surEntiteDe = (g, e) => {
+    if (e.t === 'line' && g.points[e.p1] && g.points[e.p2]) { const A = g.points[e.p1], B = g.points[e.p2], t = 0.25 + r() * 0.5; return { x: A.x + (B.x - A.x) * t, y: A.y + (B.y - A.y) * t }; }
+    if (e.t === 'circle' && g.points[e.pc]) { const C = g.points[e.pc], a = r() * 6.28; return { x: C.x + e.r * Math.cos(a), y: C.y + e.r * Math.sin(a) }; }
+    if (e.t === 'arc' && g.points[e.pa]) return g.points[e.pa];
+    return null;
+  };
+  const surSpline = e => { const pl = run('__splPoly(__v)', e.id); if (!pl || !pl.length) return null; const q = pick(pl); return { x: q[0], y: q[1] }; };
   // Un clic qui vise un point, une ligne ou un cercle ou arc
   const viser = (g, quoi) => {
     if (quoi === 'point') { const ids = Object.keys(g.points); return ids.length ? g.points[pick(ids)] : null; }
@@ -548,6 +557,94 @@ function session(src, graine, nbGestes) {
       else if (u < 0.98) faire({ a: 'pan', t: 'fus' });
       else faire({ a: 'pan', t: 'deg' });
     },
+    spline() {
+      const ctrl = r() < 0.35;
+      faire({ a: 'outil', o: ctrl ? 'cspline' : 'spline' });
+      const n = 2 + Math.floor(r() * 4);
+      let l0 = null;
+      for (let i = 0; i < n; i++) {
+        const l = lieu();
+        if (!l0) l0 = l;
+        if (r() < 0.6) faire({ a: 'bouge', x: l.x, y: l.y });
+        clic(l);
+      }
+      const u = r();
+      if (u < 0.25 && n >= 3) { faire({ a: 'bouge', x: l0.x, y: l0.y }); clic(l0); }
+      else if (u < 0.5) faire({ a: 'splFin' });
+      else if (u < 0.75) faire({ a: 'touche', k: 'Enter' });
+      else { faire({ a: 'splFin' }); faire({ a: 'echap' }); }
+      faire({ a: 'outil', o: 'select' });
+    },
+    splineGlisse() {
+      const g = geo(), spl = g.entities.filter(e => e.t === 'spline');
+      if (!spl.length) return;
+      faire({ a: 'outil', o: 'select' });
+      const e = pick(spl), u = r();
+      const bouts = g.entities.filter(l => l.handle === e.id).map(l => l.p2);
+      if (u < 0.4) { const p = g.points[pick(e.pts)]; if (p) glisser(p, 3); }
+      else if (u < 0.7 && bouts.length) { const p = g.points[pick(bouts)]; if (p) glisser(p, 3); }
+      else { const l = surSpline(e); if (l) glisser(l, 3); }
+    },
+    splineMenu() {
+      const g = geo(), spl = g.entities.filter(e => e.t === 'spline');
+      if (!spl.length) return;
+      faire({ a: 'outil', o: 'select' });
+      const e = pick(spl), u = r(), ids = Object.keys(g.points).filter(k => k !== 'O');
+      const P = () => g.points[pick(e.pts)];
+      const C = () => surSpline(e);
+      const autre = () => { const a = g.entities.filter(x => x.id !== e.id && !x.handle && (x.t === 'spline' || x.t === 'line' || x.t === 'circle' || x.t === 'arc')); const o = pick(a); if (!o) return null; return o.t === 'spline' ? surSpline(o) : surEntiteDe(g, o); };
+      let suite;
+      if (u < 0.35) suite = [P()];
+      else if (u < 0.5) suite = [C()];
+      else if (u < 0.85) suite = [C(), autre()];
+      else suite = [g.points[pick(ids)], C()];
+      suite.forEach((l, i) => { if (l) clic(l, i > 0); });
+      const libelles = run('__menuLibelles()');
+      const possibles = libelles.filter(x => !/^Modifier la valeur|^\(|Projeter/.test(x));
+      if (!possibles.length) return;
+      faire({ a: 'menu', l: libelles, c: pick(possibles) });
+      faire({ a: 'outil', o: 'select' });
+    },
+    splineEfface() {
+      const g = geo(), spl = g.entities.filter(e => e.t === 'spline');
+      if (!spl.length) return;
+      faire({ a: 'outil', o: 'select' });
+      const e = pick(spl);
+      if (r() < 0.5) { const l = surSpline(e); if (l) clic(l); }
+      else clic(g.points[pick(e.pts)]);
+      faire({ a: 'suppr' });
+    },
+    splineAjuster() {
+      const g = geo(), spl = g.entities.filter(e => e.t === 'spline');
+      if (!spl.length) return;
+      faire({ a: 'outil', o: 'trim' });
+      const l = surSpline(pick(spl));
+      if (l) clic(l);
+      faire({ a: 'echap' });
+    },
+    splineDecaler() {
+      const g = geo(), spl = g.entities.filter(e => e.t === 'spline');
+      if (!spl.length) return;
+      faire({ a: 'outil', o: 'select' });
+      const l = surSpline(pick(spl));
+      if (!l) return;
+      clic(l);
+      faire({ a: 'outil', o: 'offset' });
+      const c = { x: l.x + (r() - 0.5) * taille * 0.2, y: l.y + (r() - 0.5) * taille * 0.2 };
+      clic(c);
+      clic(c);
+      faire({ a: 'echap' });
+    },
+    splineF1() {
+      const g = geo(), spl = g.entities.filter(e => e.t === 'spline'), ids = Object.keys(g.points).filter(k => k !== 'O');
+      if (!spl.length || !ids.length) return;
+      faire({ a: 'outil', o: 'select' });
+      clic(g.points[pick(ids)]);
+      const l = surSpline(pick(spl));
+      if (l) clic(l, true);
+      faire({ a: 'f1' });
+      faire({ a: 'outil', o: 'select' });
+    },
     effacerPoint() {
       const g = geo(), ids = Object.keys(g.points);
       if (!ids.length) return;
@@ -567,6 +664,7 @@ function session(src, graine, nbGestes) {
   if (process.argv.includes('--selection')) noms.push(...Array(12).fill('glisseCote'), ...Array(12).fill('boite'), ...Array(6).fill('coincident2'));
   if (process.argv.includes('--menu')) noms.push(...Array(25).fill('menu'));
   if (process.argv.includes('--formes')) noms.push(...Array(10).fill('oblong'), ...Array(10).fill('polygone'), ...Array(8).fill('pointSeul'));
+  if (process.argv.includes('--splines')) noms.push(...Array(25).fill('spline'), ...Array(14).fill('splineGlisse'), ...Array(18).fill('splineMenu'), ...Array(4).fill('splineEfface'), ...Array(8).fill('splineAjuster'), ...Array(6).fill('splineDecaler'), ...Array(3).fill('splineF1'));
   if (opt('seulement', '')) { noms.length = 0; noms.push(...opt('seulement', '').split(',')); }
   for (let i = 0; i < nbGestes; i++) {
     const avant = pas.length;

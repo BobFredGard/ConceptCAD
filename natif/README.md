@@ -43,7 +43,7 @@ Créer une esquisse : menu **Esquisse**, sur le plan XY, XZ ou YZ, ou sur la fac
 
 L'annulation du natif revient exactement à l'état d'avant, alors que celle du navigateur résout à nouveau : le résultat peut y différer de très peu.
 
-Différences avec l'esquisse du navigateur : tout est en blanc, car le bleu « encore libre » demande un calcul de plus, non traduit ; pas de splines (un message le dit) ; pas de vue inclinée ; pas de flèches de degrés de liberté ni de bilan de santé ;
+Différences avec l'esquisse du navigateur : tout est en blanc, car le bleu « encore libre » demande un calcul de plus, non traduit ; pas de vue inclinée ; pas de flèches de degrés de liberté ni de bilan de santé ;
 pas de bouton pour la grille, masquée comme par défaut dans le navigateur. La pièce derrière l'esquisse n'est qu'un tracé de ses arêtes, et n'apparaît que si le solide est calculé.
 Les pointes des cotes d'angle suivent l'arc, alors que celles du navigateur en dévient légèrement.
 
@@ -212,7 +212,7 @@ Poser une contrainte (`dessin-reference.cjs --contraintes`, `verifier-contrainte
 - **Maths normales** (`BancDessin`) : 342 sessions identiques sur 383. 41 s'arrêtent sur un écart (6 de structure, 35 au-delà de 0,001 mm), dont 8 sur une contrainte, et 336 écrites comme le navigateur sans écart. Même nature que pour le dessin ci-dessus : en maths communes, tout disparaît.
 - Dans la fenêtre, par messages : F2, F5, refus d'une perpendiculaire sur deux parallèles, Ctrl+Z et Ctrl+Y après ce refus (il ne laisse aucun pas à annuler), F10 qui n'ouvre pas le menu de Windows, X dans les deux sens, F1 sur deux points, enregistrement, fermeture.
 - Écart voulu : F1 sans sélection qui convienne affiche un message, alors que le navigateur arme son outil Coïncident à deux clics, pas encore repris.
-- Pas repris : tout ce qui concerne les splines, encore refusées à l'ouverture dans le natif.
+- Les splines sont venues ensuite : voir « Splines » plus bas.
 - `BancDessinCommunes` sur l'ancienne référence (mêmes résultats), `BancSolveurCommunes` (0 décision différente), `verifier-dessin.ps1`, `verifier-extrusion.ps1` et `verifier-nouvelle-esquisse.ps1` repassent.
 
 Correction du test `verifier-dessin.ps1` : ses numéros de menus étaient décalés de 1 (`wxID_HIGHEST` vaut 6000), Ctrl+Y n'y était donc pas essayé. Corrigé ; il passe. Le rétablissement de Ctrl+Y est de plus éprouvé par l'essai de création ci-dessus.
@@ -248,7 +248,7 @@ Trois ajouts venus de SolidCraft, sans effet sur le fichier : l'aperçu rouge, l
 
 Défaut du navigateur, reproduit à l'identique : couper une ligne de construction au passage crée une moitié qui n'est plus en construction.
 
-Pas traduits : les splines (ni coupées, ni comptées comme limite, ni décalées) et le menu contextuel « Décaler (auto) » du navigateur.
+Pas traduit à ce stade (les splines sont venues ensuite, voir « Splines » plus bas) : le menu contextuel « Décaler (auto) » du navigateur.
 
 ## Pas vérifié
 
@@ -330,3 +330,16 @@ Comparaison au navigateur V0.67.3 (`dessin-reference.cjs --contraintes --cotes -
 Défauts du navigateur non recopiés, à décider plus tard pour le navigateur : le menu « Distance centres » plante sur un cercle + un arc (le natif pose la cote) ; une fenêtre de sélection avec Ctrl n'ajoute qu'un élément de chaque sorte (le natif ajoute tout, ce geste est donc hors du banc).
 
 Essai sans prendre la main sur l'écran : `ConceptCADNatif --essai-esquisse <fichier> <rang, -1 : nouvelle sur XY> <sortie> <etapes.json> <dossier>`. De vrais événements de souris et de clavier passent par la vue et les boutons ; un bilan et des captures sont écrits dans le dossier.
+
+## Splines (06/11/2026)
+
+Spline par points de passage et spline de contrôle : tracé (S, Maj+S), fermeture, poignées de tangence, tangence et courbure aux raccords, point sur la courbe, peigne de courbure, menu du clic droit, Ajuster, Décaler, annulation, écriture dans le fichier, et volume : une spline est une vraie courbe exacte dans la pièce (`spline.cpp`, `contours.cpp`, `rejeu.cpp`).
+
+Vérifié contre le navigateur V0.67.3 :
+- Gestes (`dessin-reference.cjs --splines`, Poche et Contour, 8 sessions de chaque sorte) : 24 sessions, 0 écart de structure, 20 identiques jusqu'au bout, 20 écrites comme le navigateur sur 20.
+- Écart accepté : 4 sessions à moins de 0,01 mm. C'est le bruit du point de départ de la recherche du pied sur la courbe : en le retirant des deux côtés, 2 écarts sur 3 examinés disparaissent ; le 3e est un point libre d'une esquisse en conflit.
+- Volume (`tester-splines.cjs`) : 40 pièces sur 40 identiques (volume, aire, faces, arêtes, solides, validité), 10 formes : fermée, de contrôle, ligne de fermeture, deux splines, jonction en T, poignée, trou, îlot, arc et spline, avec parfois une poche.
+- Sessions sans spline : 383/383 et 381/383 selon le jeu de gestes (les 2 écarts sont connus et antérieurs : Barquette, Cache Piles), enregistrement 176/176.
+- Vraie fenêtre (`--essai-esquisse`) : tracé en cours, spline finie, spline de contrôle, panneau santé.
+
+Pas vérifié : les splines à la souris par une personne, les splines dans un fichier réel (aucun exemple n'en contient), un congé 3D posé sur une arête issue d'une spline, le rejeu de Balayage et Révolution (ces fonctions ne sont pas encore dans le natif).

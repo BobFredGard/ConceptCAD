@@ -56,6 +56,10 @@ std::string iconeContrainte(const std::string& type) {
 bool InfosEsquisse::determinee(const Entite& e) const {
   for (const std::string* q : {&e.p1, &e.p2, &e.p, &e.pc, &e.pa, &e.pb})
     if (!q->empty() && !pointDetermine(*q)) return false;
+  for (const std::string& q : e.pts)
+    if (!pointDetermine(q)) return false;
+  for (const std::string& q : poigneesDe_(e))
+    if (!pointDetermine(q)) return false;
   if ((e.t == "circle" || e.t == "arc") && rayonsLibres.count(e.id)) return false;
   return true;
 }
@@ -152,6 +156,8 @@ InfosEsquisse infosDe(const Esquisse& s) {
     if (e.proj)
       for (const std::string* q : {&e.p1, &e.p2, &e.pc, &e.pa, &e.pb, &e.p})
         if (!q->empty()) I.fixes.insert(*q);
+  for (const Entite& l : s.entites)
+    if (!l.handle.empty()) I.poignees[l.handle].push_back(l.p2);
   I.calculees = true;
   return I;
 }
@@ -228,5 +234,13 @@ std::string noteEntite(const Esquisse& s, const Entite& e) {
   if (e.t == "circle") return "Cercle" + constr + " · Ø=" + fixe(e.r * 2, 2) + " mm";
   if (e.t == "arc") return "Arc" + constr + " · R=" + fixe(e.r, 2) + " mm";
   if (e.t == "cpoint") return e.percage ? "Centre de perçage (fonction 3D « Perçage »)" : "Point de construction";
+  if (e.t == "spline") {
+    int nh = 0;
+    for (const Entite& l : s.entites)
+      if (l.handle == e.id) nh++;
+    const std::string ferme = e.closed ? " fermée" : "";
+    if (e.mode == "ctrl") return "Spline par points de contrôle" + ferme + constr + " · " + std::to_string(e.pts.size()) + " pôles : clic droit, peigne de courbure";
+    return "Spline" + ferme + constr + " · " + std::to_string(e.pts.size()) + " points de passage" + (nh ? " · " + std::to_string(nh) + " poignée(s)" : "") + " : clic droit sur un point, poignée de tangence";
+  }
   return e.t;
 }

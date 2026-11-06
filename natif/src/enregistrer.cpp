@@ -280,6 +280,12 @@ void ajouterTexte(std::string& o, const char* k, const std::string& v) {
   if (!v.empty()) o += std::string(",\"") + k + "\":" + texteJson(v);
 }
 
+std::string listeTextes(const std::vector<std::string>& v) {
+  std::string o = "[";
+  for (size_t i = 0; i < v.size(); i++) o += (i ? "," : "") + texteJson(v[i]);
+  return o + "]";
+}
+
 // Les éléments créés ici, avec les clés et l'ordre du navigateur
 std::string nouvelleEntite(const Entite& e) {
   std::string o = "{\"id\":" + texteJson(e.id) + ",\"t\":" + texteJson(e.t);
@@ -299,6 +305,18 @@ std::string nouvelleEntite(const Entite& e) {
     for (size_t i = 0; i < e.poly.size(); i++) o += (i ? "," : "") + texteJson(e.poly[i]);
     o += "]";
   }
+  if (e.t == "spline") {
+    o += ",\"pts\":" + listeTextes(e.pts);
+    ajouterTexte(o, "mode", e.mode);
+    if (e.closed) o += ",\"closed\":true";
+    if (!e.knots.empty()) {
+      o += ",\"knots\":[";
+      for (size_t i = 0; i < e.knots.size(); i++) o += (i ? "," : "") + nombreJson(e.knots[i]);
+      o += "]";
+    }
+    if (e.deg) o += ",\"deg\":" + std::to_string(e.deg);
+  }
+  ajouterTexte(o, "handle", e.handle);
   return o + "}";
 }
 std::string nouvelleContrainte(const Contrainte& c) {
@@ -311,6 +329,7 @@ std::string nouvelleContrainte(const Contrainte& c) {
   ajouterTexte(o, "mid", c.mid);
   ajouterTexte(o, "c", c.c);
   ajouterTexte(o, "d", c.d);
+  ajouterTexte(o, "s", c.s);
   if (c.inf) o += ",\"inf\":true";
   if (c.sa) o += ",\"sa\":" + std::to_string(c.sa);
   if (c.sb) o += ",\"sb\":" + std::to_string(c.sb);
@@ -372,6 +391,8 @@ std::string ecartsEntite(const std::string& brut, const Entite& a, const Entite&
   e.texte("p", a.p, b.p);
   e.oui("construction", a.construction, b.construction);
   e.oui("axis", a.axe, b.axe);
+  if (a.pts != b.pts) e.champs.push_back({"pts", listeTextes(a.pts), true});
+  e.oui("closed", a.closed, b.closed);
   return retoucherBrut(brut, e);
 }
 std::string ecartsContrainte(const std::string& brut, const Contrainte& a, const Contrainte& b) {
@@ -385,6 +406,7 @@ std::string ecartsContrainte(const std::string& brut, const Contrainte& a, const
   e.texte("mid", a.mid, b.mid);
   e.texte("c", a.c, b.c);
   e.texte("d", a.d, b.d);
+  e.texte("s", a.s, b.s);
   e.oui("inf", a.inf, b.inf);
   return retoucherBrut(brut, e);
 }

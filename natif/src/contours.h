@@ -3,11 +3,15 @@
 #pragma once
 #include <optional>
 #include "projet.h"
+#include "spline.h"
 
 struct Arete {
   std::string a, b;
   const Entite* e = nullptr;
   bool arc = false;
+  bool spline = false;  // morceau de spline : la courbe exacte et sa polyligne, de a vers b
+  BSpline bs;
+  std::vector<P2d> poly;
 };
 struct Pas {
   int arete = 0;
@@ -39,5 +43,7 @@ struct Angles {
 };
 std::optional<Angles> anglesArc(const Esquisse& s, const Entite& e);
 Trace tracerContours(const Esquisse& s);
+// La polyligne d'un morceau de spline, parcourue depuis le nœud donné
+std::vector<P2d> polyArete(const Arete& ed, const std::string& depuis);
 // Copie de l'esquisse aux tangences exactes, ou rien s'il n'y a rien à corriger.
 std::optional<Esquisse> tangencesExactes(const Esquisse& s);

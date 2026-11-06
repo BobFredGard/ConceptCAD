@@ -473,9 +473,12 @@ void VueEsquisse::surTouche(wxKeyEvent& ev) {
         case 'F': o = Dessin::CONGE; break;
         case 'O': o = Dessin::DECALER; break;
         case 'H': o = Dessin::PERCAGE; break;
+        case 'S': o = Dessin::SPLINE; break;
         default: break;
       }
       if (o >= 0) return commande([o](Dessin& d) { d.choisirOutil(static_cast<Dessin::Outil>(o)); });
+    } else if (code == 'S') {
+      return commande([](Dessin& d) { d.choisirOutil(Dessin::CSPLINE); });
     }
   }
   if (ev.GetKeyCode() == 'X' && !ev.HasAnyModifiers() && !(dessin_ && dessin_->saisieTracee().actif)) {
@@ -502,7 +505,7 @@ void VueEsquisse::montrer(const Esquisse* s, const TopoDS_Shape& piece) {
       hautY_ = hy / hl;
     }
     for (const Entite& en : s_->entites)
-      if (en.t != "line" && en.t != "arc" && en.t != "circle" && en.t != "cpoint") nonDessines_++;
+      if (en.t != "line" && en.t != "arc" && en.t != "circle" && en.t != "cpoint" && en.t != "spline") nonDessines_++;
   }
   fantomeDe(piece);
   ajuster();
@@ -680,6 +683,10 @@ void VueEsquisse::essaiReglagesPolygone(const wxString& cotes, const wxString& d
 void VueEsquisse::clicDroitDessin(const wxPoint& ou) {
   if (!dessin_ || enSaisie()) return;
   dessin_->vue(echelle_);
+  if (dessin_->finirSpline()) {  // clic droit : fin du tracé
+    apresGeste();
+    return;
+  }
   if (dessin_->poseEnCours()) {
     dessin_->annulerPoseCote();
     apresGeste();
@@ -828,6 +835,35 @@ void VueEsquisse::trace(wxGraphicsContext& g) const {
   g.SetBrush(wxNullGraphicsBrush);
   g.SetPen(stylo(g, AXE, 1.6, {6, 4}));
   switch (b.sorte) {
+    case Dessin::Brouillon::B_SPLINE: {
+      const auto chemin = [&](const std::vector<wxPoint2DDouble>& v) {
+        if (v.size() < 2) return;
+        wxGraphicsPath p = g.CreatePath();
+        p.MoveToPoint(v[0]);
+        for (size_t i = 1; i < v.size(); i++) p.AddLineToPoint(v[i]);
+        g.StrokePath(p);
+      };
+      if (b.ctrl) {  // points de contrôle : polygone vivant
+        std::vector<wxPoint2DDouble> Q;
+        for (const Pt& q : b.clics) Q.push_back(e(q.x, q.y));
+        if (b.aCurseur) Q.push_back(e(b.curseur.x, b.curseur.y));
+        else if (b.fermeture && !Q.empty()) Q.push_back(Q[0]);
+        g.SetPen(stylo(g, VIOLET, 1.1, {3, 3}));
+        chemin(Q);
+      }
+      std::vector<wxPoint2DDouble> C;
+      for (const P2d& q : b.courbe) C.push_back(e(q[0], q[1]));
+      g.SetPen(stylo(g, *wxWHITE, 2, {5, 3}));
+      chemin(C);
+      for (size_t i = 0; i < b.clics.size(); i++) {
+        const auto q = e(b.clics[i].x, b.clics[i].y);
+        g.SetBrush(g.CreateBrush(wxBrush(i == 0 && b.fermeture ? wxColour(255, 214, 10) : FOND)));
+        g.SetPen(stylo(g, wxColour(255, 214, 10), 1.5));
+        g.DrawRectangle(q.m_x - 4, q.m_y - 4, 8, 8);
+      }
+      g.SetBrush(wxNullGraphicsBrush);
+      break;
+    }
     case Dessin::Brouillon::B_LIGNE:
       ligne(g, e(b.x1, b.y1), e(b.x2, b.y2));
       break;
@@ -1024,7 +1060,9 @@ void VueEsquisse::zones(wxGraphicsContext& g) const {
       if (itA == T.pts.end() || itB == T.pts.end()) continue;
       if (premier) p.MoveToPoint(e(itA->second.x, itA->second.y));
       premier = false;
-      if (A.arc && A.e) {
+      if (A.spline) {
+        for (const P2d& k : polyArete(A, q.depuis)) p.AddLineToPoint(e(k[0], k[1]));
+      } else if (A.arc && A.e) {
         const Pt* C = s_->point(A.e->pc);
         const auto an = anglesArc(*s_, *A.e);
         if (C && an) {
@@ -1100,8 +1138,16 @@ void VueEsquisse::entites(wxGraphicsContext& g) const {
         g.SetPen(stylo(g, alpha(ORANGE_AXE, 0.95), 1.6, {16, 4, 3, 4}));
         ligne(g, a - ext, b + ext);
       } else if (en.poignee) {
-        g.SetPen(stylo(g, alpha(VIOLET, 0.9), 1.3, {4, 3}));
-        ligne(g, a, b);
+        const Entite* S = s.entite(en.handle);
+        const auto kk = S ? std::find(S->pts.begin(), S->pts.end(), en.p1) : std::vector<std::string>::const_iterator();
+        const bool interieur = S && (S->closed || (kk != S->pts.end() && kk != S->pts.begin() && kk + 1 != S->pts.end()));  // symétrique à un point intérieur
+        g.SetPen(stylo(g, choisi(en) ? ORANGE_AXE : alpha(VIOLET, 0.9), choisi(en) ? 2.4 : 1.3, {4, 3}));
+        ligne(g, interieur ? wxPoint2DDouble(2 * a.m_x - b.m_x, 2 * a.m_y - b.m_y) : a, b);
+        for (const Contrainte& k : s.contraintes)
+          if (k.type == "stangent" && k.p == en.p1 && (k.s == en.handle || k.ent == en.handle)) {
+            sigleT(A->x, A->y);
+            break;
+          }
       } else {
         regler(en);
         ligne(g, a, b);
@@ -1135,6 +1181,66 @@ void VueEsquisse::entites(wxGraphicsContext& g) const {
         const double t = std::max(0.0, std::min(1.0, ((C->x - A->x) * dx + (C->y - A->y) * dy) / l2));
         sigleT(A->x + t * dx, A->y + t * dy);
       }
+    } else if (en.t == "spline") {
+      BSpline f;
+      if (!splineDe(s, en, f)) continue;
+      const auto chemin = [&](const std::vector<P2d>& v) {
+        if (v.size() < 2) return;
+        wxGraphicsPath p = g.CreatePath();
+        p.MoveToPoint(e(v[0][0], v[0][1]));
+        for (size_t i = 1; i < v.size(); i++) p.AddLineToPoint(e(v[i][0], v[i][1]));
+        g.StrokePath(p);
+      };
+      if (en.mode == "ctrl") {  // polygone de contrôle : pôles reliés en pointillé
+        std::vector<P2d> Q;
+        for (const std::string& id : en.pts)
+          if (const Pt* q = s.point(id)) Q.push_back({q->x, q->y});
+        if (en.closed && !Q.empty()) Q.push_back(Q[0]);
+        g.SetPen(stylo(g, choisi(en) ? ORANGE_AXE : alpha(VIOLET, 0.75), 1.1, {3, 3}));
+        chemin(Q);
+        for (const Contrainte& k : s.contraintes)
+          if (k.type == "stangent" && (k.s == en.id || k.ent == en.id))
+            if (const Pt* q = s.point(k.p)) sigleT(q->x, q->y);
+      }
+      if (dessin_ && dessin_->peigneVisible(en.id)) {  // skSplineComb : peigne de courbure
+        struct Dent {
+          double x, y, k, nx, ny;
+        };
+        std::vector<Dent> D;
+        double x0 = 1e308, x1 = -1e308, y0 = 1e308, y1 = -1e308, km = 0;
+        for (int i = 0; i <= 120; i++) {
+          const auto d = bsEval(f, f.a + (f.b - f.a) * i / 120, 2);
+          const double L = hyp(d[1][0], d[1][1]);
+          if (!(L > 1e-12)) continue;
+          const double k = (d[1][0] * d[2][1] - d[1][1] * d[2][0]) / (L * L * L);
+          D.push_back({d[0][0], d[0][1], k, -d[1][1] / L, d[1][0] / L});
+          km = std::max(km, std::abs(k));
+          x0 = std::min(x0, d[0][0]);
+          x1 = std::max(x1, d[0][0]);
+          y0 = std::min(y0, d[0][1]);
+          y1 = std::max(y1, d[0][1]);
+        }
+        const double sc = km > 1e-12 ? 0.2 * std::max(hyp(x1 - x0, y1 - y0), 1e-6) / km : 0;
+        std::vector<P2d> bord;
+        const wxColour peigne(255, 159, 10);
+        g.SetPen(stylo(g, alpha(peigne, 0.7), 0.8));
+        for (size_t i = 0; i < D.size(); i++) {
+          const double qx = D[i].x - D[i].nx * D[i].k * sc, qy = D[i].y - D[i].ny * D[i].k * sc;
+          if (i % 2 == 0) ligne(g, e(D[i].x, D[i].y), e(qx, qy));
+          bord.push_back({qx, qy});
+        }
+        g.SetPen(stylo(g, alpha(peigne, 0.85), 1.2));
+        chemin(bord);
+      }
+      for (const Contrainte& k : s.contraintes)
+        if (k.type == "scurv" && k.s == en.id)
+          if (const Pt* q = s.point(k.p)) {
+            const auto m = e(q->x, q->y);
+            g.SetFont(g.CreateFont(GetFont().Bold(), VERT));
+            g.DrawText("G2", m.m_x + 6, m.m_y + 4);
+          }
+      regler(en);
+      chemin(bsSample(f, f.a, f.b, 16));
     } else if (en.t == "circle" || en.t == "arc") {
       const Pt* C = s.point(en.pc);
       if (!C) continue;
@@ -1226,6 +1332,11 @@ void VueEsquisse::points(wxGraphicsContext& g) const {
     if (const Entite* en = c.ent.empty() ? nullptr : s.entite(c.ent)) {
       if (en->t == "circle" || en->t == "arc") fixes.insert(en->pc);
       if (en->t == "cpoint") fixes.insert(en->p);
+      if (en->t == "spline") {  // points de passage et poignées
+        for (const std::string& q : en->pts) fixes.insert(q);
+        for (const Entite& l : s.entites)
+          if (l.handle == en->id) fixes.insert(l.p2);
+      }
     }
   }
   std::map<std::string, int> usages;
@@ -1238,6 +1349,7 @@ void VueEsquisse::points(wxGraphicsContext& g) const {
     if (en.poignee) continue;
     for (const std::string* q : {&en.p1, &en.p2, &en.pc, &en.pa, &en.pb, &en.p})
       if (!q->empty()) usages[*q]++;
+    for (const std::string& q : en.pts) usages[q]++;
   }
   for (const std::string& id : s.ordre) {
     const Pt* p = s.point(id);
@@ -1255,7 +1367,21 @@ void VueEsquisse::points(wxGraphicsContext& g) const {
       continue;
     }
     const bool fixe = fixes.count(id) > 0;
-    if (poignees.count(id)) continue;
+    if (poignees.count(id)) {  // bout de poignée : petit losange
+      const bool pris = dessin_ && dessin_->estChoisi(Dessin::Choix::POINT, id);
+      wxGraphicsPath l = g.CreatePath();
+      l.MoveToPoint(a, b - 5);
+      l.AddLineToPoint(a + 5, b);
+      l.AddLineToPoint(a, b + 5);
+      l.AddLineToPoint(a - 5, b);
+      l.CloseSubpath();
+      g.SetBrush(g.CreateBrush(wxBrush(fixe ? TRAIT : pris ? ORANGE_AXE : FOND)));
+      g.SetPen(stylo(g, pris ? ORANGE_AXE : VIOLET, 1.5));
+      g.FillPath(l);
+      g.StrokePath(l);
+      g.SetBrush(wxNullGraphicsBrush);
+      continue;
+    }
     if (percages.count(id)) {
       g.SetBrush(g.CreateBrush(wxBrush(fixe ? ORANGE : FOND)));
       g.SetPen(stylo(g, ORANGE, 1.8));
@@ -1371,6 +1497,15 @@ void VueEsquisse::halo(wxGraphicsContext& g) const {
       }
     } else if (en.t == "cpoint") {
       pts.insert(en.p);
+    } else if (en.t == "spline") {
+      BSpline f;
+      if (splineDe(*s_, en, f)) {
+        const std::vector<P2d> pl = bsSample(f, f.a, f.b, 16);
+        wxGraphicsPath p = g.CreatePath();
+        p.MoveToPoint(e(pl[0][0], pl[0][1]));
+        for (size_t i = 1; i < pl.size(); i++) p.AddLineToPoint(e(pl[i][0], pl[i][1]));
+        g.StrokePath(p);
+      }
     }
   }
   g.SetBrush(g.CreateBrush(wxBrush(alpha(J, 0.18))));
