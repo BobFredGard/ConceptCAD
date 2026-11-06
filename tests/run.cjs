@@ -220,6 +220,7 @@ const SUITES = [
   "test_ctx_menu_viewport",
   "test_fao_reset",
   "test_fao_passes",
+  "test_fao_multicoeur",
   "test_fao_barre3d",
   "test_fao_zlim",
   "test_fao_pose_fond",

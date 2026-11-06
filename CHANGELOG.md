@@ -8,7 +8,7 @@ sont sorties le 2026-09-30j.
 Code dans `src/` · livrable `fusion_mvp.html` (généré par `build.js`) · architecture et
 garde-fous en tête de `src/00-entete-et-outils.js`.
 
-**599 versions**, de `2026-09-28b` à `V0.65.0` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
+**600 versions**, de `2026-09-28b` à `V0.66.0` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
 comme dans le fichier d'origine.
 
 ---
@@ -6907,3 +6907,14 @@ L'ancien noyau de secours OCCT 7.4 est retiré : 116 Mo de fichiers en moins dan
 - **Retirés** : `?noyau=actuel`, le bouton « ⚙ Noyau .wasm… » et son cache local (effacé au démarrage), le rattrapage `___cxa_can_catch` devenu inutile avec les exceptions natives d'OCCT 8, la variante `v2` de `occt-build/`, `docs/noyau-occt-listing.md` (classes d'OCCT 7.4).
 - **Tests** : tous chargent OCCT 8 par `tests/noyau.cjs`, y compris lancés seuls ; `test_fuite_noyau` ne saute plus.
 - **Recompilation** : la liste des appels à traduire, qui se relevait sur l'ancien noyau, est figée dans `occt-build/sonde-1.1.1.json`.
+
+## V0.66.0 - Parcours FAO sur plusieurs cœurs
+
+« Tout régénérer » confie les opérations longues (ébauche 3D, finition, géodésique, poche adaptative) à des calculs séparés, un par opération, en laissant un cœur à l'écran.
+
+- **Principe** : `src/88-fao-58-multicoeur.js`. Le worker exécute le code FAO de la page, sans copie à entretenir ; il reçoit la racine FAO et les maillages déjà calculés par le noyau. Il ne fait que remplir le cache des parcours, sous la clé calculée sur le fil principal : la boucle habituelle relit ce cache et calcule normalement tout ce qui manque.
+- **Garde-fou** : tout ce que le worker n'a pas (noyau, THREE, DOM, reste du document, finesse de maillage non envoyée, fonctions hors FAO) déclenche un piège qui annule son résultat ; l'opération repasse alors par le calcul normal. Sans cela, un `try/catch` du code FAO aurait pu se replier en silence et donner un autre parcours.
+- **Mesuré** (Chromium, 16 cœurs de calcul, « Tout régénérer », mêmes parcours au nombre près) : Cavité Test 13,0 → 7,5 s, Cavité Usinage 16,9 → 13,7 s, Malaxeur Retard 23,2 → 19,9 s, Perçages 3,4 → 2,1 s. Écran figé au plus : 3,2 → 0,1 s, 3,0 → 0,1 s, 0,7 → 0,1 s, 0,2 → 0,1 s. Les petites pièces ne gagnent rien : Poche et Contour 0,4 → 0,5 s (démarrage du worker).
+- **Limite** : le temps total reste celui de l'opération la plus longue. Les niveaux d'une ébauche 3D s'enchaînent (carte du brut restant, point de départ) : les répartir changerait le calcul de parcours validés, ce n'est pas fait. Le triangle ⚠ d'une seule opération, l'ouverture d'un document et les posages avec corps FAO (murs) restent sur le calcul normal.
+- **Effet sur d'autres fichiers** : aucun parcours ne change, `CACHE_VER` ne bouge pas. `?mono` dans l'adresse force l'ancien calcul pour comparer.
+- **Tests** : `test_fao_multicoeur` (toutes les opérations longues des exemples avec `--tout`, vrai fil de calcul, pièges), `tests/browser/multicoeur.spec.cjs` (mono contre multicœur sur les vrais maillages, bouton du ruban, calcul remplacé en cours, workers refusés, fichier autonome hors ligne).
