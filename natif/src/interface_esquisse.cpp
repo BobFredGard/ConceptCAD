@@ -263,14 +263,14 @@ BarreEsquisse::BarreEsquisse(wxWindow* parent) : wxWindow(parent, 2009, wxDefaul
       {Dessin::POINT_C, "cpoint", L"Point", L"Point de construction : un clic par point"},
       {Dessin::PERCAGE, "hpoint", L"Centre de perçage", L"Centre de perçage : un clic, à coter, pour la fonction 3D « Perçage »"},
       {Dessin::PROJETER, "project", L"Projeter", L"Projeter (P) : survolez une arête 3D ou le tracé bleu d'une autre esquisse visible, clic pour la projeter en construction"},
-      {-1, "isect", L"Intersection", L"Intersection du plan d'esquisse avec des faces"},
+      {Dessin::INTERSECTION, "isect", L"Intersection", L"Intersection (I) : courbes du plan d'esquisse avec des faces (clic, Ctrl+clic = plusieurs) ou un corps entier (Maj+clic)"},
       {Dessin::COTE, "dim", L"Cote", L"Cote : ligne = longueur, cercle = Ø, arc = rayon, 2 points = distance · Ctrl+clic 2 lignes = angle ou entraxe"},
       {Dessin::AJUSTER, "trim", L"Ajuster", L"Ajuster (T) : cliquez ou glissez sur le tronçon à retirer"},
       {Dessin::DECALER, "offset", L"Décaler", L"Décalage (O) : sélectionnez, cliquez, puis choisissez le côté ou tapez la distance"},
       {Dessin::CHANFREIN, "chamfer", L"Chanfrein", L"Chanfrein : cliquez 2 lignes en coin, ou leur coin. Une seule cote pour tous les coins de la passe"},
       {Dessin::CONGE, "fillet", L"Congé", L"Congé : cliquez 2 lignes en coin, ou leur coin. Une seule cote pour tous les coins de la passe"},
   };
-  outils_.assign(18, nullptr);
+  outils_.assign(19, nullptr);
   for (const Fiche& f : fiches) {
     const bool ok = f.outil >= 0;
     auto* b = new BoutonEsquisse(this, ok ? 2010 + f.outil : wxID_ANY, f.nom, ok ? wxString(f.aide) : wxString(f.aide) + L" : pas encore dans le logiciel Windows");

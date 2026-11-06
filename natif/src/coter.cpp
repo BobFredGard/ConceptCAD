@@ -8,9 +8,13 @@
 #include <algorithm>
 #include <cmath>
 #include <cstdio>
+#include <functional>
 #include <limits>
+#include <memory>
 #include <set>
 
+#include "dessin.h"
+#include "intersection.h"
 #include "rejeu.h"
 
 namespace {
@@ -177,7 +181,7 @@ bool suivreProjections(Esquisse& s, const std::vector<AreteSource>& aretes) {
     e.srcMid = pr.mid;
   };
   for (Entite& e : s.entites) {
-    if (!estSuivie(s, e)) continue;
+    if (!e.isectJson.empty() || !e.skSrcSk.empty() || !estSuivie(s, e)) continue;  // celles-là suivent leur source
     const Vec3* pref = e.aSrcMid ? &e.srcMid : nullptr;
     if (e.t == "line") {
       auto ia = s.points.find(e.p1), ib = s.points.find(e.p2);
@@ -243,14 +247,47 @@ int consommatrice(const Document& d, const std::string& id) {
 std::vector<size_t> suivantes(const Document& d, size_t i) {
   std::vector<size_t> out;
   const int k = consommatrice(d, d.esquisses[i].id);
-  if (k < 0) return out;
   const auto rang = [&](size_t j) {
     const int c = consommatrice(d, d.esquisses[j].id);
     return c < 0 ? std::numeric_limits<int>::max() : c;
   };
+  const auto rangDe = [&](const std::string& id) {
+    for (size_t j = 0; j < d.esquisses.size(); j++)
+      if (d.esquisses[j].id == id) return static_cast<int>(j);
+    return -1;
+  };
+  // skpDepend : reprend-elle, même de loin, un élément de l'esquisse i ? Son rang dans la pièce n'y change rien.
+  std::vector<int> etat(d.esquisses.size(), -1);
+  std::function<bool(size_t)> reprend = [&](size_t j) {
+    if (j == i) return true;
+    if (etat[j] >= 0) return etat[j] == 1;
+    etat[j] = 0;
+    bool oui = false;
+    for (const Entite& e : d.esquisses[j].entites)
+      if (!e.skSrcSk.empty()) {
+        const int q = rangDe(e.skSrcSk);
+        if (q >= 0 && reprend(static_cast<size_t>(q))) oui = true;
+      }
+    etat[j] = oui ? 1 : 0;
+    return oui;
+  };
+  std::vector<size_t> L;
   for (size_t j = 0; j < d.esquisses.size(); j++)
-    if (j != i && rang(j) > k && avecProjection(d.esquisses[j])) out.push_back(j);
-  std::stable_sort(out.begin(), out.end(), [&](size_t a, size_t b) { return rang(a) < rang(b); });
+    if (j != i && ((k >= 0 && rang(j) > k && avecProjection(d.esquisses[j])) || reprend(j))) L.push_back(j);
+  std::stable_sort(L.begin(), L.end(), [&](size_t a, size_t b) { return rang(a) < rang(b); });
+  // skpOrdre : chaque source avant les esquisses qui la reprennent
+  std::vector<char> vu(d.esquisses.size(), 0);
+  std::function<void(size_t)> voir = [&](size_t j) {
+    if (vu[j]) return;
+    vu[j] = 1;
+    for (const Entite& e : d.esquisses[j].entites)
+      if (!e.skSrcSk.empty()) {
+        const int q = rangDe(e.skSrcSk);
+        if (q >= 0 && std::find(L.begin(), L.end(), static_cast<size_t>(q)) != L.end()) voir(static_cast<size_t>(q));
+      }
+    out.push_back(j);
+  };
+  for (const size_t j : L) voir(j);
   return out;
 }
 }  // namespace
@@ -267,7 +304,7 @@ std::string esquisseFigee(const Document& d, size_t i) {
   for (const size_t j : suivantes(d, i)) {
     const Esquisse& s = d.esquisses[j];
     for (const Entite& e : s.entites)
-      if (e.suiviInconnu) return "l'esquisse « " + s.nom + " » suit cette pièce d'une façon pas encore reprise (arête nommée ou intersection)";
+      if (e.suiviInconnu) return "l'esquisse « " + s.nom + " » suit cette pièce d'une façon pas encore reprise (arête nommée)";
     if (!Solveur(s).prisEnCharge()) return "l'esquisse « " + s.nom + " », qui dépend de celle-ci, n'est pas encore prise en charge";
   }
   return "";
@@ -290,13 +327,24 @@ void suivreEsquisses(Document& d, size_t i) {
     S.resoudre();
     Esquisse t = s;
     S.recopierDans(t);
-    if (suivreProjections(t, listerAretes(r.forme))) {
+    const std::vector<AreteSource> aretes = listerAretes(r.forme);
+    const bool aSections = std::any_of(s.entites.begin(), s.entites.end(), [](const Entite& e) { return !e.isectJson.empty(); });
+    std::unique_ptr<SectionsEsquisse> sections = aSections ? std::make_unique<SectionsEsquisse>(d, j) : nullptr;
+    const auto suivre = [&](Esquisse& q) {
+      bool bouge = suivreProjections(q, aretes);
+      for (Entite& e : q.entites) {
+        if (!e.isectJson.empty() && suivreIntersection(q, e, *sections)) bouge = true;
+        if (!e.skSrcSk.empty() && suivreEsquisseSource(d.esquisses, q, e)) bouge = true;
+      }
+      return bouge;
+    };
+    if (suivre(t)) {
       S.reprendrePoints(t);
       S.resoudre();
       S.recopierDans(t);
       s = std::move(t);
     } else {
-      suivreProjections(s, listerAretes(r.forme));  // rien n'a bougé : seul le repère de l'arête source est rafraîchi
+      suivre(s);  // rien n'a bougé : seuls les repères des sources sont rafraîchis
     }
   }
 }

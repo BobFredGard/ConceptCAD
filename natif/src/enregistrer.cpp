@@ -220,6 +220,7 @@ void retoucherEsquisse(Parcours& p, const RetoucheEsquisse& r, std::vector<Morce
         std::vector<Champ> champs;
         if (it->aR) champs.push_back({"r", nombreJson(it->r), false});
         if (it->aMid) champs.push_back({"srcMid", "[" + nombreJson(it->mid[0]) + "," + nombreJson(it->mid[1]) + "," + nombreJson(it->mid[2]) + "]", true});
+        if (!it->isect.empty()) champs.push_back({"isect", it->isect, true});
         retoucherObjet(p, champs, morceaux);
       });
     } else if (k == "dims" && p.voir() == '[') {
@@ -301,6 +302,8 @@ std::string nouvelleEntite(const Entite& e) {
   if (e.construction) o += ",\"construction\":true";
   if (e.ref) o += ",\"ref\":true";
   if (e.proj) o += ",\"proj\":true";
+  if (!e.isectJson.empty()) o += ",\"isect\":" + e.isectJson;
+  if (e.isplN) o += ",\"isplN\":" + std::to_string(e.isplN);
   ajouterTexte(o, "projName", e.projName);
   ajouterTexte(o, "srcName", e.srcName);
   if (e.aSrcMid) o += ",\"srcMid\":[" + nombreJson(e.srcMid[0]) + "," + nombreJson(e.srcMid[1]) + "," + nombreJson(e.srcMid[2]) + "]";
@@ -766,6 +769,7 @@ std::string retoucherNoms(const std::string& texte, const Document& d) {
     objet += std::string(objet.empty() ? "" : ",") + "\"" + k + "\":" + std::to_string(v);
   };
   if (d.nomsProj != d.nomsProjLu) noter("proj", d.nomsProj);
+  if (d.nomsIsect != d.nomsIsectLu) noter("isect", d.nomsIsect);
   if (d.nomsArete != d.nomsAreteLu) noter("edge", d.nomsArete);
   if (champs.empty()) return texte;
   Parcours p(texte);
@@ -990,7 +994,8 @@ std::string texteEnregistre(const Document& d, const std::string& texteOrigine) 
     }
     for (size_t k = 0; k < s.entites.size(); k++) {
       const bool aR = s.entites[k].r != f.entites[k].r, aMid = s.entites[k].srcMid != f.entites[k].srcMid;
-      if (aR || aMid) r.elements.push_back({k, aR, s.entites[k].r, aMid, s.entites[k].srcMid});
+      const bool aSource = s.entites[k].isectJson != f.entites[k].isectJson;
+      if (aR || aMid || aSource) r.elements.push_back({k, aR, s.entites[k].r, aMid, s.entites[k].srcMid, aSource ? s.entites[k].isectJson : std::string()});
     }
     for (size_t k = 0; k < s.cotes.size(); k++) {
       const Cote& a = s.cotes[k];

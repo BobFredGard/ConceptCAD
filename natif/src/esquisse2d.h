@@ -28,6 +28,7 @@ class VueEsquisse : public wxWindow {
   void majPiece(const TopoDS_Shape& piece);
   // Le dessin à la souris ; nullptr : lecture seule
   void poserDessin(Dessin* d);
+  bool essaiMaj = false;  // essais sans fenêtre active : Maj tenue
   std::function<void()> surDessinChange;
   // Après chaque geste : l'outil ou la sélection ont pu changer
   std::function<void()> surGeste;
@@ -118,6 +119,7 @@ class VueEsquisse : public wxWindow {
   void points(wxGraphicsContext& g) const;
   void cotes(wxGraphicsContext& g) const;
   void projections(wxGraphicsContext& g) const;
+  void sections(wxGraphicsContext& g) const;
   void coteLineaire(wxGraphicsContext& g, const Cote& d) const;
   void coteRayon(wxGraphicsContext& g, const Cote& d) const;
   void coteAngle(wxGraphicsContext& g, const Cote& d) const;

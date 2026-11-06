@@ -1070,6 +1070,14 @@ void Cadre::brancherDessin() {
   dessin_->esquisses = &doc_.esquisses;
   dessin_->nomsProj = &doc_.nomsProj;
   dessin_->nomsArete = &doc_.nomsArete;
+  dessin_->nomsIsect = &doc_.nomsIsect;
+  auto sections = std::make_shared<std::unique_ptr<SectionsEsquisse>>();
+  const auto lesSections = [this, sections]() -> SectionsEsquisse& {
+    if (!*sections) *sections = std::make_unique<SectionsEsquisse>(doc_, esquisseOuverte_);
+    return **sections;
+  };
+  dessin_->sectionsCandidates = [lesSections]() -> const std::vector<CourbeSection>* { return &lesSections().candidates(); };
+  dessin_->sectionsDe = [lesSections](const SourceIntersection& s, std::vector<CourbeSection>& L, SourceIntersection& r) { return lesSections().courbesDe(s, L, r); };
   dessin_->aretes3D = [this, liste = std::make_shared<std::vector<Dessin::Arete3D>>(), faite = std::make_shared<bool>(false)]() -> const std::vector<Dessin::Arete3D>* {
     if (!*faite) {
       *faite = true;
@@ -1646,6 +1654,7 @@ bool Cadre::essaiEsquisse(const std::wstring& fichier, int rang, const std::wstr
     if (e.contains("bouge")) vueEsquisse_->essaiSouris(wxEVT_MOTION, e["bouge"][0], e["bouge"][1]);
     if (e.contains("clic")) {
       const bool ctrl = e.value("ctrl", false);
+      vueEsquisse_->essaiMaj = e.value("maj", false);
       vueEsquisse_->essaiSouris(wxEVT_MOTION, e["clic"][0], e["clic"][1], ctrl);
       vueEsquisse_->essaiSouris(wxEVT_LEFT_DOWN, e["clic"][0], e["clic"][1], ctrl);
       vueEsquisse_->essaiSouris(wxEVT_LEFT_UP, e["clic"][0], e["clic"][1], ctrl);

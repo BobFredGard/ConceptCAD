@@ -1098,3 +1098,16 @@ bool nouvelleEsquisseFace(Document& d, const TopoDS_Shape& solide, const TopoDS_
   }
   return true;
 }
+
+std::vector<std::pair<double, double>> plagesExtrusions(const Document& d, const std::string& idEsquisse) {
+  std::vector<std::pair<double, double>> out;
+  const Esquisse* s = nullptr;
+  for (const Esquisse& k : d.esquisses)
+    if (k.id == idEsquisse) s = &k;
+  for (const Fonction& f : d.fonctions)
+    if (f.visible && f.type == "extrude" && f.esquisse == idEsquisse) {
+      const Plage p = plageDe(f, s, TopoDS_Shape());
+      out.push_back({p.lo, p.hi});
+    }
+  return out;
+}

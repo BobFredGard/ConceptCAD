@@ -22,7 +22,7 @@ struct Retouche {
 struct RetoucheEsquisse {
   size_t esquisse;  // rang dans « sketches »
   struct Point { std::string id; double x, y; };
-  struct Element { size_t rang; bool aR; double r; bool aMid; Vec3 mid; };
+  struct Element { size_t rang; bool aR; double r; bool aMid; Vec3 mid; std::string isect; };  // isect vide : inchangée
   struct Mesure { size_t rang; bool aValeur; double valeur; int sgn, ccw; };  // sgn 0 ou ccw -1 : inchangé
   std::vector<Point> points;
   std::vector<Element> elements;

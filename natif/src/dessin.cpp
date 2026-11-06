@@ -1064,6 +1064,7 @@ void Dessin::enfonce(double wx, double wy, bool ctrl, const std::string& ligneCo
   premiere();
   sync();
   if (outil_ == PROJETER) return clicProjeter(wx, wy);
+  if (outil_ == INTERSECTION) return clicIsect(wx, wy, ctrl);
   if (outil_ == SELECTION) {
     const std::string pid = pointProche(wx, wy, PT_);
     if (!pid.empty()) {
@@ -1272,6 +1273,7 @@ void Dessin::bouge(double wx, double wy, bool gaucheTenu) {
   }
   if (outil_ == SPLINE || outil_ == CSPLINE) return bougerSpline(wx, wy);
   if (outil_ == PROJETER) return bougerProjeter(wx, wy);
+  if (outil_ == INTERSECTION) return bougerIsect(wx, wy);
   if (outil_ == COINCIDENT) {
     const Accroche a = accroche(wx, wy);
     aMarque_ = static_cast<bool>(a);
@@ -2332,6 +2334,17 @@ std::vector<Dessin::EntreeMenu> Dessin::menuContextuel(std::string& titre) const
   titre = "Cote / Contrainte";
   const auto add = [&](const std::string& libelle, const std::string& code, const char* icone = "") { m.push_back({libelle, code, icone, true}); };
   const auto con = [&](const std::string& libelle, const char* type) { add(libelle, std::string("c:") + type, type); };
+  if (outil_ == INTERSECTION) {  // skIsectCtx
+    titre = "Intersection \xE2\xA8\xAF";
+    const size_t n = isectSel_.size();
+    const std::string pl = n > 1 ? "s" : "";
+    if (n) add("\xE2\x9C\x93 Créer l'intersection des " + std::to_string(n) + " face" + pl + " retenue" + pl + " (Entrée)", "isect:valider");
+    if (survolIsect_.ok) add("\xE2\xA8\xAF Corps entier sous le curseur", "isect:corps");
+    add("\xE2\xA8\xAF Tous les corps coupés par le plan", "isect:tous");
+    add(std::string(isectNormale ? "\xE2\x98\x91" : "\xE2\x98\x90") + " Créer en géométrie normale (profil)", "isect:normale");
+    if (n) add("\xE2\x9C\x95 Vider la sélection", "isect:vider");
+    return m;
+  }
   const std::vector<const Entite*> ents = const_cast<Dessin*>(this)->entitesChoisies();
   std::vector<std::string> pts;  // pas pointsChoisis : le menu du navigateur compte deux fois un point choisi deux fois
   for (const Choix& c : selection_)
@@ -2545,6 +2558,24 @@ void Dessin::actionMenu(const std::string& code) {
   premiere();
   sync();
   if (code.rfind("c:", 0) == 0) return poserContrainte(code.substr(2));
+  if (code.rfind("isect:", 0) == 0) {
+    SourceIntersection src;
+    src.mode = "body";
+    if (code == "isect:valider") return validerIsect();
+    if (code == "isect:vider") {
+      isectSel_.clear();
+      return;
+    }
+    if (code == "isect:normale") {
+      isectNormale = !isectNormale;
+      return message(std::string("Intersection \xE2\xA8\xAF : courbes créées en ") + (isectNormale ? "géométrie normale (profil)." : "construction."));
+    }
+    if (code == "isect:corps" && survolIsect_.aAt) {
+      src.aPt = true;
+      src.pt = survolIsect_.at;
+    }
+    return appliquerIsect(src);
+  }
   if (code.rfind("spl:", 0) == 0) {
     const size_t k = code.find(':', 4);
     const std::string quoi = code.substr(4, k - 4), id = code.substr(k + 1);
@@ -2963,6 +2994,8 @@ void Dessin::annulerTrace() {
 void Dessin::choisirOutil(Outil o) {
   annulerTrace();
   survolProj_ = Projetable{};
+  survolIsect_ = SurvolIsect{};
+  isectSel_.clear();
   outil_ = o;
 }
 
@@ -3642,6 +3675,10 @@ bool Dessin::retourArriere() {
 
 bool Dessin::entree() {
   if (finirSpline()) return true;
+  if (outil_ == INTERSECTION) {
+    validerIsect();
+    return true;
+  }
   if (outil_ == POLYGONE) {
     entreePolygone();
     return true;
@@ -6704,6 +6741,58 @@ std::string Dessin::creerProjection(const Projetable& pr) {  // skProjectCreate
   return e.id;
 }
 
+bool suivreEsquisseSource(const std::vector<Esquisse>& L, Esquisse& T, Entite& e) {  // skpTrack
+  const Esquisse* S = esquisseDe(L, e.skSrcSk);
+  if (!S) return false;  // source perdue : l'élément reste à sa dernière place
+  const PlanVers f(*S, T);
+  const double TOL = 1e-5;
+  const auto pose = [&](const std::string& id, double x, double y) {
+    auto q = T.points.find(id);
+    if (q == T.points.end() || hyp(q->second.x - x, q->second.y - y) <= TOL) return false;
+    q->second.x = x;
+    q->second.y = y;
+    return true;
+  };
+  if (!e.skSrcPt.empty()) {
+    const Pt* q = S->point(e.skSrcPt);
+    if (!q || !T.point(e.p)) return false;
+    const P2d c = f(q->x, q->y);
+    return pose(e.p, c[0], c[1]);
+  }
+  const Entite* src = nullptr;
+  for (const Entite& x : S->entites)
+    if (x.id == e.skSrcEnt) src = &x;
+  if (!src) return false;
+  const Prj pr = formeProjetee(*S, *src, f);
+  const Prj::Sorte attendu = e.t == "line" ? Prj::LIGNE : e.t == "circle" ? Prj::CERCLE : e.t == "arc" ? Prj::ARC : Prj::COURBE;
+  if (!pr || pr.sorte != attendu) return false;
+  bool bouge = false;
+  const auto b = [&](bool v) { bouge = bouge || v; };
+  if (e.t == "line") {
+    b(pose(e.p1, pr.x1, pr.y1));
+    b(pose(e.p2, pr.x2, pr.y2));
+  } else if (e.t == "circle") {
+    b(pose(e.pc, pr.cx, pr.cy));
+    if (std::abs(e.r - pr.r) > TOL) {
+      e.r = pr.r;
+      bouge = true;
+    }
+  } else if (e.t == "arc") {
+    b(pose(e.pc, pr.cx, pr.cy));
+    b(pose(e.pa, pr.x1, pr.y1));
+    b(pose(e.pb, pr.x2, pr.y2));
+    if (std::abs(e.r - pr.r) > TOL) {
+      e.r = pr.r;
+      bouge = true;
+    }
+  } else {
+    const std::vector<P2d> Q = echantillon(pr.pts, pr.closed, e.skSrcM);
+    if (Q.size() != e.pts.size()) return false;
+    for (size_t i = 0; i < Q.size(); i++) b(pose(e.pts[i], Q[i][0], Q[i][1]));
+  }
+  return bouge;
+}
+
 std::vector<Dessin::SourceProjection> Dessin::sourcesProjection() const {  // skpItems
   std::vector<SourceProjection> out;
   if (!esquisses) return out;
@@ -6816,7 +6905,6 @@ std::string Dessin::creerDepuisEsquisse(const Projetable& pr) {  // skpCreer
   e->skSrcEnt = pr.skEnt;
   e->skSrcM = pr.sorte == Projetable::COURBE ? pr.m : 0;
   e->srcName = "\xC2\xAB " + (pr.srcNom.empty() ? std::string("Esquisse") : pr.srcNom) + " \xC2\xBB";
-  e->suiviInconnu = true;
   return id;
 }
 
@@ -6865,4 +6953,234 @@ void Dessin::bougerProjeter(double wx, double wy) {
   if (autre) message("⧉ " + std::string(nomForme(pr.sorte)) + " de « " + pr.srcNom + " » (suit cette esquisse) — clic pour projeter en construction.");
   else if (pr) message("⧉ " + std::string(pr.sorte == Projetable::CERCLE ? "Cercle" : pr.sorte == Projetable::ARC ? "Arc" : pr.sorte == Projetable::COURBE ? "Courbe" : "Arête") + " — clic pour projeter en construction.");
   else message("⧉ Survolez une arête 3D (même hors plan) ou le tracé bleu d'une autre esquisse visible — il s'illumine en orange.");
+}
+
+// ---- Intersection : le choix et la création (src/62-esquisse-intersection.js). Les courbes viennent du noyau.
+bool Dessin::isectNormale = false;
+namespace {
+double distSection(const CourbeSection& c, double x, double y) {  // isectDistTo
+  if (c.sorte == CourbeSection::LIGNE) return distSeg(x, y, Pt{c.x1, c.y1}, Pt{c.x2, c.y2});
+  if (c.sorte == CourbeSection::CERCLE) return std::abs(hyp(x - c.cx, y - c.cy) - c.r);
+  if (c.sorte == CourbeSection::ARC) {
+    const double a1 = m_atan2(c.y1 - c.cy, c.x1 - c.cx), a2 = m_atan2(c.y2 - c.cy, c.x2 - c.cx);
+    if (dansArc(m_atan2(y - c.cy, x - c.cx), a1, a2)) return std::abs(hyp(x - c.cx, y - c.cy) - c.r);
+    return jsmin(hyp(x - c.x1, y - c.y1), hyp(x - c.x2, y - c.y2));
+  }
+  double d = 1e18;
+  for (size_t i = 0; i + 1 < c.dense.size(); i++) d = jsmin(d, distSeg(x, y, Pt{c.dense[i][0], c.dense[i][1]}, Pt{c.dense[i + 1][0], c.dense[i + 1][1]}));
+  return d;
+}
+using Seg2 = std::array<std::array<double, 2>, 2>;
+std::vector<Seg2> segmentsDe(const CourbeSection& c, int n) {  // isectSegs
+  const int N = static_cast<int>(c.dense.size()) - 1;
+  const auto en = [&](double t) {
+    const double f = t * N;
+    const int i = std::min(N - 1, static_cast<int>(std::floor(f)));
+    const double w = f - i;
+    return std::array<double, 2>{c.dense[i][0] + (c.dense[i + 1][0] - c.dense[i][0]) * w, c.dense[i][1] + (c.dense[i + 1][1] - c.dense[i][1]) * w};
+  };
+  std::vector<Seg2> out;
+  for (int i = 0; i < n; i++) out.push_back({en(static_cast<double>(i) / n), en(static_cast<double>(i + 1) / n)});
+  return out;
+}
+}  // namespace
+
+Dessin::SurvolIsect Dessin::choixIsect(double x, double y, bool corps) const {
+  SurvolIsect h;
+  const std::vector<CourbeSection>* L = sectionsCandidates ? sectionsCandidates() : nullptr;
+  if (!L) return h;
+  const CourbeSection* best = nullptr;
+  double bd = 10 / jsmax(1e-9, echelle_);
+  for (const CourbeSection& c : *L) {
+    const double d = distSection(c, x, y);
+    if (d < bd) {
+      bd = d;
+      best = &c;
+    }
+  }
+  if (!best) return h;
+  h.ok = true;
+  h.corps = corps || best->fk.empty();
+  h.solide = best->solide;
+  h.aAt = true;
+  h.at = best->on3;
+  h.st = best->st;
+  if (!h.corps) {
+    h.fk = best->fk;
+    h.ref = best->ref;
+    h.fks = best->fks.empty() ? std::vector<std::string>{best->fk} : best->fks;
+    h.refs = best->refs.empty() ? std::vector<std::string>{best->ref} : best->refs;
+  }
+  return h;
+}
+
+std::vector<const CourbeSection*> Dessin::groupeSurvole() const {
+  std::vector<const CourbeSection*> out;
+  const std::vector<CourbeSection>* L = sectionsCandidates ? sectionsCandidates() : nullptr;
+  if (!L || !survolIsect_.ok) return out;
+  for (const CourbeSection& c : *L)
+    if (survolIsect_.corps ? c.solide == survolIsect_.solide
+                           : c.fk == survolIsect_.fk || std::find(c.fks.begin(), c.fks.end(), survolIsect_.fk) != c.fks.end())
+      out.push_back(&c);
+  return out;
+}
+
+bool Dessin::sectionRetenue(const CourbeSection& c) const {
+  for (const FaceRetenue& s : isectSel_)
+    if (c.fk == s.fk || std::find(c.fks.begin(), c.fks.end(), s.fk) != c.fks.end()) return true;
+  return false;
+}
+
+int Dessin::emettreIsect(const std::vector<CourbeSection>& L, const SourceIntersection& src) {
+  int faits = 0;
+  struct Q {
+    double x, y;
+    std::string id;
+  };
+  std::vector<Q> pts;
+  const auto pid = [&](double x, double y) {  // points partagés aux jonctions : le contour reste fermé
+    for (const Q& q : pts)
+      if (hyp(q.x - x, q.y - y) < 1e-5) return q.id;
+    const std::string p = ajouterPoint(x, y);
+    pts.push_back({x, y, p});
+    Contrainte c = contrainte("fix");
+    c.p = p;
+    lier(c);
+    return p;
+  };
+  const size_t nf = src.mode == "faces" ? src.faces.size() : 0;
+  const std::string srcName = src.mode == "faces" ? std::to_string(nf) + " face" + (nf > 1 ? "s" : "") : src.aPt ? "corps entier" : "tous les corps";
+  const std::string json = sourceEnJson(src);
+  const auto base = [&](Entite& e, const CourbeSection& c) {
+    e.proj = true;
+    e.ext = true;
+    e.isectJson = json;
+    static int secours = 0;
+    int* k = nomsIsect ? nomsIsect : &secours;
+    e.projName = "Intersection " + std::to_string(++*k);
+    e.srcName = srcName;
+    e.aSrcMid = true;
+    e.srcMid = c.mid3;
+    e.construction = !isectNormale;
+  };
+  const auto fixerEntite = [&](const std::string& id) {
+    Contrainte c = contrainte("fix");
+    c.ent = id;
+    lier(c);
+  };
+  for (const CourbeSection& c : L) {
+    Entite e;
+    if (c.sorte == CourbeSection::LIGNE) {
+      const std::string p1 = pid(c.x1, c.y1), p2 = pid(c.x2, c.y2);
+      if (p1 == p2) continue;
+      e.id = nouvelE();
+      e.t = "line";
+      e.p1 = p1;
+      e.p2 = p2;
+      base(e, c);
+      s_.entites.push_back(e);
+    } else if (c.sorte == CourbeSection::CERCLE) {
+      e.pc = pid(c.cx, c.cy);
+      e.id = nouvelE();
+      e.t = "circle";
+      e.r = c.r;
+      base(e, c);
+      s_.entites.push_back(e);
+      fixerEntite(e.id);
+    } else if (c.sorte == CourbeSection::ARC) {
+      e.pc = pid(c.cx, c.cy);
+      e.pa = pid(c.x1, c.y1);
+      e.pb = pid(c.x2, c.y2);
+      e.id = nouvelE();
+      e.t = "arc";
+      e.r = c.r;
+      base(e, c);
+      s_.entites.push_back(e);
+      fixerEntite(e.id);
+    } else {
+      const std::vector<Seg2> S = segmentsDe(c, c.n);
+      std::vector<std::string> ids{pid(S[0][0][0], S[0][0][1])};
+      for (const Seg2& q : S) {
+        const std::string p = pid(q[1][0], q[1][1]);
+        if (p != ids.back()) ids.push_back(p);
+      }
+      const bool ferme = ids.size() > 3 && ids.front() == ids.back();
+      if (ferme) ids.pop_back();
+      if (ids.size() < 2) continue;
+      e.id = nouvelE();
+      e.t = "spline";
+      e.pts = ids;
+      e.isplN = c.n;
+      e.closed = ferme;
+      base(e, c);
+      s_.entites.push_back(e);
+      fixerEntite(e.id);
+    }
+    faits++;
+  }
+  structure_ = true;
+  return faits;
+}
+
+void Dessin::appliquerIsect(const SourceIntersection& src) {
+  std::vector<CourbeSection> L;
+  SourceIntersection reb = src;
+  if (!sectionsDe || !sectionsDe(src, L, reb) || L.empty()) return message("Intersection \xE2\xA8\xAF : la sélection ne coupe pas le plan d'esquisse.");
+  pousser();
+  const int n = emettreIsect(L, reb);
+  if (!n) {
+    if (annulerPas) annulerPas();
+    return message("Intersection \xE2\xA8\xAF : aucune courbe exploitable.");
+  }
+  isectSel_.clear();
+  survolIsect_ = SurvolIsect{};
+  apresEdition();
+  const std::string pl = n > 1 ? "s" : "";
+  message("Intersection \xE2\xA8\xAF : " + std::to_string(n) + " courbe" + pl + " créée" + pl + (isectNormale ? " (géométrie normale)" : " en construction") + " — elles suivent le modèle au rejeu.");
+}
+
+void Dessin::validerIsect() {
+  if (isectSel_.empty()) return message("\xE2\xA8\xAF Intersection : aucune face retenue (Ctrl+clic sur les courbes de section).");
+  SourceIntersection src;
+  src.mode = "faces";
+  for (const FaceRetenue& s : isectSel_) src.faces.push_back(s.ref);
+  appliquerIsect(src);
+}
+
+void Dessin::clicIsect(double x, double y, bool ctrl) {
+  const SurvolIsect h = choixIsect(x, y, majTenue);
+  if (!h.ok) return message("\xE2\xA8\xAF Intersection : aucune courbe de section ici — survolez le trait bleu clair d'une face qui coupe le plan.");
+  if (h.corps) {
+    SourceIntersection src;
+    src.mode = "body";
+    src.aPt = h.aAt;
+    src.pt = h.at;
+    return appliquerIsect(src);
+  }
+  const bool deja = std::any_of(isectSel_.begin(), isectSel_.end(), [&](const FaceRetenue& s) { return s.fk == h.fk; });
+  const auto ajouter = [&] {
+    for (size_t j = 0; j < h.fks.size(); j++)
+      if (std::none_of(isectSel_.begin(), isectSel_.end(), [&](const FaceRetenue& s) { return s.fk == h.fks[j]; })) isectSel_.push_back({h.fks[j], h.refs[j]});
+  };
+  if (ctrl) {
+    if (deja) isectSel_.erase(std::remove_if(isectSel_.begin(), isectSel_.end(), [&](const FaceRetenue& s) { return std::find(h.fks.begin(), h.fks.end(), s.fk) != h.fks.end(); }), isectSel_.end());
+    else ajouter();
+    const size_t n = isectSel_.size();
+    const std::string pl = n > 1 ? "s" : "";
+    return message("\xE2\xA8\xAF Intersection : " + std::to_string(n) + " face" + pl + " retenue" + pl + " — Entrée (ou clic simple) pour créer, Échap annule.");
+  }
+  if (!deja) ajouter();
+  validerIsect();
+}
+
+void Dessin::bougerIsect(double x, double y) {
+  const SurvolIsect h = choixIsect(x, y, majTenue);
+  survolIsect_ = h;
+  const std::vector<CourbeSection>* L = sectionsCandidates ? sectionsCandidates() : nullptr;
+  const size_t ns = isectSel_.size();
+  const std::string pl = ns > 1 ? "s" : "";
+  if (!L || L->empty()) message("\xE2\xA8\xAF Intersection : aucun corps ne coupe ce plan.");
+  else if (!h.ok) message("\xE2\xA8\xAF Intersection : survolez une courbe de section (bleu clair) — clic : la face · Maj+clic : le corps entier · Ctrl+clic : plusieurs faces" + (ns ? " (" + std::to_string(ns) + " retenue" + pl + ", Entrée valide)" : std::string()) + ".");
+  else if (h.corps) message("\xE2\xA8\xAF Corps entier — clic pour créer ses courbes d'intersection avec le plan.");
+  else message("\xE2\xA8\xAF Face" + (h.st.empty() ? std::string() : " (" + h.st + ")") + " — clic : intersection de " + (ns ? "la sélection + cette face" : "cette face") + " · Ctrl+clic : ajouter/retirer · Maj : corps entier.");
 }

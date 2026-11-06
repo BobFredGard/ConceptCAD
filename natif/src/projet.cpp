@@ -52,7 +52,7 @@ bool memesValeurs(const Esquisse& a, const Esquisse& b) {
     if (!p || !q || p->x != q->x || p->y != q->y) return false;
   }
   for (size_t i = 0; i < a.entites.size(); i++)
-    if (a.entites[i].id != b.entites[i].id || a.entites[i].r != b.entites[i].r || a.entites[i].srcMid != b.entites[i].srcMid) return false;
+    if (a.entites[i].id != b.entites[i].id || a.entites[i].r != b.entites[i].r || a.entites[i].srcMid != b.entites[i].srcMid || a.entites[i].isectJson != b.entites[i].isectJson) return false;
   for (size_t i = 0; i < a.cotes.size(); i++)
     if (a.cotes[i].id != b.cotes[i].id || a.cotes[i].type != b.cotes[i].type || a.cotes[i].value != b.cotes[i].value || a.cotes[i].sgn != b.cotes[i].sgn || a.cotes[i].ccw != b.cotes[i].ccw || a.cotes[i].ref != b.cotes[i].ref || a.cotes[i].chk != b.cotes[i].chk || a.cotes[i].dia != b.cotes[i].dia) return false;
   return true;
@@ -190,7 +190,13 @@ static void lireEsquisse(const json& js, Document& d, std::map<std::string, int>
       e.percage = vrai(je, "hole");
       e.ext = vrai(je, "isProj") || vrai(je, "isect") || vrai(je, "pierce") || vrai(je, "ext");
       e.aSrcMid = vec3(je, "srcMid", e.srcMid);
-      e.suiviInconnu = e.ext || je.contains("srcNom") || je.contains("skSrc");
+      // Suivis repris : arête retrouvée par position, autre esquisse, intersection. Pas encore : arête nommée, autre composant, traversée.
+      e.suiviInconnu = vrai(je, "isProj") || vrai(je, "pierce") || vrai(je, "ext") || je.contains("srcNom") || je.contains("seg");
+      if (auto x = je.find("isect"); x != je.end() && x->is_object()) {
+        e.isectJson = x->dump();
+        if (x->value("mode", "") == "mesh") e.suiviInconnu = true;
+      }
+      if (auto x = je.find("isplN"); x != je.end() && x->is_number()) e.isplN = x->get<int>();
       if (auto x = je.find("poly"); x != je.end() && x->is_array())
         for (auto& q : *x)
           if (q.is_string()) e.poly.push_back(q.get<std::string>());
@@ -399,6 +405,7 @@ Document lireProjet(const std::wstring& chemin) {
     if (auto y = x->find("face"); y != x->end() && y->is_number()) d.nomsFace = y->get<int>();
     if (auto y = x->find("edge"); y != x->end() && y->is_number()) d.nomsArete = d.nomsAreteLu = y->get<int>();
     if (auto y = x->find("proj"); y != x->end() && y->is_number()) d.nomsProj = d.nomsProjLu = y->get<int>();
+    if (auto y = x->find("isect"); y != x->end() && y->is_number()) d.nomsIsect = d.nomsIsectLu = y->get<int>();
   }
   for (auto& s : j["sketches"]) lireEsquisse(s, d, refus);
   for (auto& f : j["features"]) lireFonction(f, d, refus);

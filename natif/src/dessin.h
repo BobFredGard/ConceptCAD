@@ -9,12 +9,13 @@
 #include <vector>
 
 #include "coter.h"
+#include "intersection.h"
 #include "projet.h"
 #include "spline.h"
 
 class Dessin {
  public:
-  enum Outil { SELECTION, LIGNE, RECTANGLE, CERCLE, ARC, COTE, AJUSTER, DECALER, OBLONG, POLYGONE, POINT_C, PERCAGE, CONGE, CHANFREIN, COINCIDENT, SPLINE, CSPLINE, PROJETER };  // les boutons connus d'abord : leurs numéros servent aux essais
+  enum Outil { SELECTION, LIGNE, RECTANGLE, CERCLE, ARC, COTE, AJUSTER, DECALER, OBLONG, POLYGONE, POINT_C, PERCAGE, CONGE, CHANFREIN, COINCIDENT, SPLINE, CSPLINE, PROJETER, INTERSECTION };  // les boutons connus d'abord : leurs numéros servent aux essais
   struct Accroche {
     enum Sorte { AUCUNE, POINT, MILIEU, SUR_LIGNE, SUR_CERCLE, SUR_SPLINE } sorte = AUCUNE;
     std::string id;  // le point, la ligne ou le cercle visé
@@ -79,6 +80,14 @@ class Dessin {
   const std::vector<Esquisse>* esquisses = nullptr;        // les autres esquisses du document
   int* nomsProj = nullptr;                                 // entNames.proj, entNames.edge
   int* nomsArete = nullptr;
+  // Outil Intersection : les courbes de section viennent du noyau, le dessin ne fait que les choisir
+  std::function<const std::vector<CourbeSection>*()> sectionsCandidates;
+  std::function<bool(const SourceIntersection&, std::vector<CourbeSection>&, SourceIntersection&)> sectionsDe;
+  int* nomsIsect = nullptr;
+  bool majTenue = false;      // Maj : le corps entier
+  static bool isectNormale;   // skIsectReal : créer en géométrie normale plutôt qu'en construction
+  std::vector<const CourbeSection*> groupeSurvole() const;  // skIsectGroup du survol
+  bool sectionRetenue(const CourbeSection& c) const;
   const Projetable& survolProjection() const { return survolProj_; }
   std::vector<SourceProjection> sourcesProjection() const;  // skpItems : le tracé bleu de l'outil
 
@@ -383,6 +392,24 @@ class Dessin {
   void clicProjeter(double wx, double wy);
   void bougerProjeter(double wx, double wy);
   Projetable survolProj_;
+  struct SurvolIsect {
+    bool ok = false, corps = false, aAt = false;
+    std::string fk, ref, st;
+    std::vector<std::string> refs, fks;
+    int solide = 0;
+    Vec3 at{0, 0, 0};
+  };
+  struct FaceRetenue {
+    std::string fk, ref;
+  };
+  SurvolIsect survolIsect_;
+  std::vector<FaceRetenue> isectSel_;
+  SurvolIsect choixIsect(double x, double y, bool corps) const;  // skIsectPick
+  int emettreIsect(const std::vector<CourbeSection>& L, const SourceIntersection& src);  // skIsectEmit
+  void appliquerIsect(const SourceIntersection& src);            // skIsectApply
+  void clicIsect(double x, double y, bool ctrl);
+  void bougerIsect(double x, double y);
+  void validerIsect();
   std::vector<P2d> apercuSpline(const std::vector<ClicSpline>& d, const Pt* cur, bool ferme, bool ctrl) const;  // skSplineDraftPoly
   bool attacherSpline(const std::string& pid, double x, double y, double tol);  // skSplineAttach
   void nettoyerSplines();                                            // skSplineCleanup
@@ -418,3 +445,6 @@ class Dessin {
   GlisseE glisseE_;
   std::vector<Choix> selection_;
 };
+
+// skpTrack : l'élément suit l'esquisse dont il est projeté. true s'il a bougé ; source perdue : il reste à sa dernière place.
+bool suivreEsquisseSource(const std::vector<Esquisse>& L, Esquisse& T, Entite& e);

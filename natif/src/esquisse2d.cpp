@@ -347,6 +347,7 @@ void VueEsquisse::surGaucheBas(wxMouseEvent& ev) {
   const auto w = plan(ev.GetPosition());
   dessin_->vue(echelle_);
   const bool select = dessin_->outil() == Dessin::SELECTION && !ev.LeftDClick();
+  dessin_->majTenue = ev.ShiftDown() || essaiMaj;
   dessin_->enfonce(w.m_x, w.m_y, ev.ControlDown(), select ? ligneSous(ToDIP(ev.GetPosition())) : std::string());
   apresGeste();
 }
@@ -475,6 +476,7 @@ void VueEsquisse::surTouche(wxKeyEvent& ev) {
         case 'H': o = Dessin::PERCAGE; break;
         case 'S': o = Dessin::SPLINE; break;
         case 'P': o = Dessin::PROJETER; break;
+        case 'I': o = Dessin::INTERSECTION; break;
         default: break;
       }
       if (o >= 0) return commande([o](Dessin& d) { d.choisirOutil(static_cast<Dessin::Outil>(o)); });
@@ -693,12 +695,13 @@ void VueEsquisse::clicDroitDessin(const wxPoint& ou) {
     apresGeste();
     return;
   }
-  const std::string sous = zoneSous(ToDIP(ou));
+  const bool outilIsect = dessin_->outil() == Dessin::INTERSECTION;
+  const std::string sous = outilIsect ? std::string() : zoneSous(ToDIP(ou));
   if (!sous.empty()) {
     dessin_->choisirCote(sous);
     apresGeste();
   }
-  if (!dessin_->aSelection()) {
+  if (!outilIsect && !dessin_->aSelection()) {
     abandonnerTrace();
     return;
   }
@@ -741,6 +744,7 @@ void VueEsquisse::surMouvement(wxMouseEvent& ev) {
     const auto w = plan(ev.GetPosition());
     dessin_->vue(echelle_);
     const bool avant = dessin_->enCours() || dessin_->outil() != Dessin::SELECTION;
+    dessin_->majTenue = ev.ShiftDown() || essaiMaj;
     dessin_->bouge(w.m_x, w.m_y, ev.LeftIsDown());
     if (avant || dessin_->enCours()) apresGeste();
     return;
@@ -814,7 +818,50 @@ void VueEsquisse::dessiner(wxDC& dc) {
   sante(*g);
   cotes(*g);
   projections(*g);
+  sections(*g);
   trace(*g);
+}
+
+// Outil Intersection : les courbes de section en bleu clair, les faces retenues en bleu, le survol en orange (skIsectDraw)
+void VueEsquisse::sections(wxGraphicsContext& g) const {
+  if (!dessin_ || dessin_->outil() != Dessin::INTERSECTION || !dessin_->sectionsCandidates) return;
+  const std::vector<CourbeSection>* L = dessin_->sectionsCandidates();
+  if (!L) return;
+  const auto tracer = [&](const CourbeSection& c) {
+    wxGraphicsPath p = g.CreatePath();
+    if (c.sorte == CourbeSection::LIGNE) {
+      p.MoveToPoint(e(c.x1, c.y1));
+      p.AddLineToPoint(e(c.x2, c.y2));
+    } else if (c.sorte == CourbeSection::COURBE) {
+      for (size_t i = 0; i < c.dense.size(); i++) {
+        if (i) p.AddLineToPoint(e(c.dense[i][0], c.dense[i][1]));
+        else p.MoveToPoint(e(c.dense[i][0], c.dense[i][1]));
+      }
+    } else {
+      double a1 = 0, dd = 2 * 3.14159265358979323846;
+      if (c.sorte == CourbeSection::ARC) {
+        a1 = std::atan2(c.y1 - c.cy, c.x1 - c.cx);
+        dd = std::atan2(c.y2 - c.cy, c.x2 - c.cx) - a1;
+        while (dd <= 0) dd += 2 * 3.14159265358979323846;
+      }
+      const int n = std::max(8, static_cast<int>(std::ceil(dd / 0.05)));
+      for (int i = 0; i <= n; i++) {
+        const double a = a1 + dd * i / n;
+        const auto q = e(c.cx + c.r * std::cos(a), c.cy + c.r * std::sin(a));
+        if (i) p.AddLineToPoint(q);
+        else p.MoveToPoint(q);
+      }
+    }
+    g.StrokePath(p);
+  };
+  g.SetBrush(wxNullGraphicsBrush);
+  g.SetPen(stylo(g, alpha(wxColour(0x64, 0xd2, 0xff), 0.7), 1.5, {5, 3}));
+  for (const CourbeSection& c : *L) tracer(c);
+  g.SetPen(stylo(g, alpha(wxColour(0x0a, 0x84, 0xff), 0.95), 3));
+  for (const CourbeSection& c : *L)
+    if (dessin_->sectionRetenue(c)) tracer(c);
+  g.SetPen(stylo(g, alpha(wxColour(0xff, 0x9f, 0x0a), 0.95), 3));
+  for (const CourbeSection* c : dessin_->groupeSurvole()) tracer(*c);
 }
 
 // Outil Projeter : les autres esquisses en bleu, tiretées, et ce qui est sous la souris en orange (skpDessin)

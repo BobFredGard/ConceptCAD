@@ -5,6 +5,8 @@
 const path = require('path'), fs = require('fs'), net = require('net'), os = require('os'), zlib = require('zlib');
 const { spawn, spawnSync } = require('child_process');
 const RACINE = path.resolve(__dirname, '..', '..');
+const SOURCE = process.env.CC_SOURCE || path.join(RACINE, 'Exemples');  // pièces à passer, Exemples par défaut
+const RACINE_NAV = process.env.CC_RACINE_NAV || RACINE;  // le dossier qui sert le ConceptCAD.html à comparer
 const EXE = path.join(__dirname, '..', 'sortie', 'ConceptCADNatif.exe');
 const { chromium } = require(path.join(RACINE, 'node_modules', '@playwright', 'test'));
 const dossier = process.argv[2], filtre = process.argv[3] || '';
@@ -20,7 +22,8 @@ const ETAT = () => {
 };
 // Différences entre deux documents : un nombre compte s'il s'écarte de plus du seuil, tout le reste doit être identique
 function ecarts(a, b, chemin, out) {
-  if (a === b || chemin[chemin.length - 1] === '_refNote') return out;  // _refNote : simple message d'information, selon le chemin suivi
+  // _refNote : simple message d'information, selon le chemin suivi. chk et rdV : marques posées à l'ouverture de l'esquisse.
+  if (a === b || ['_refNote', 'chk', 'rdV'].includes(chemin[chemin.length - 1])) return out;
   if (typeof a === 'number' && typeof b === 'number') {
     if (Math.abs(a - b) > SEUIL_MM) out.push(chemin.join('.') + ' ' + a + ' / ' + b);
     return out;
@@ -36,8 +39,8 @@ const pret = page => page.waitForFunction(() => typeof doc !== 'undefined' && do
 
 (async () => {
   const cas = [];
-  for (const f of fs.readdirSync(path.join(RACINE, 'Exemples')).filter(x => x.endsWith('.conceptcad') && x.includes(filtre))) {
-    const src = path.join(RACINE, 'Exemples', f);
+  for (const f of fs.readdirSync(SOURCE).filter(x => x.endsWith('.conceptcad') && x.includes(filtre))) {
+    const src = path.join(SOURCE, f);
     const doc = lire(src);
     for (const s of doc.sketches || [])
       for (const d of s.dims || []) {
@@ -48,7 +51,7 @@ const pret = page => page.waitForFunction(() => typeof doc !== 'undefined' && do
       }
   }
   const port = await portLibre();
-  const serveur = spawn(process.execPath, [path.join(RACINE, 'tests', 'browser', 'serveur.cjs'), String(port)], { stdio: 'ignore' });
+  const serveur = spawn(process.execPath, [path.join(RACINE_NAV, 'tests', 'browser', 'serveur.cjs'), String(port)], { stdio: 'ignore' });
   const url = 'http://127.0.0.1:' + port;
   let justes = 0, faux = 0, figes = 0, refusPareils = 0, refusDifferents = 0;
   try {
@@ -100,7 +103,7 @@ const pret = page => page.waitForFunction(() => typeof doc !== 'undefined' && do
           for (const k of new Set([...Object.keys(a), ...Object.keys(b)])) seulsNombres(a[k], b[k], chemin.concat(k));
           return;
         }
-        const permis = /^sketches\.\d+\.(points\.[^.]+\.[xy]|entities\.\d+\.(r|srcMid\.\d)|dims\.\d+\.(value|sgn|ccw))$/.test(chemin.join('.'));
+        const permis = /^sketches\.\d+\.(points\.[^.]+\.[xy]|entities\.\d+\.(r|srcMid\.\d|isect\..*)|dims\.\d+\.(value|sgn|ccw))$/.test(chemin.join('.'));
         if (!permis) horsNombres.push(chemin.join('.'));
       };
       seulsNombres(lire(c.src), lire(c.sortie), []);

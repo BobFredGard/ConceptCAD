@@ -18,6 +18,8 @@ struct Mesures {
   double boite[6] = {0, 0, 0, 0, 0, 0};
 };
 
+// Les tranches [lo, hi] le long de la normale des extrusions visibles qui se servent de cette esquisse (extrudeSpan)
+std::vector<std::pair<double, double>> plagesExtrusions(const Document& d, const std::string& idEsquisse);
 // Replace les esquisses posées sur une face (resolveAllSketchHosts) puis rejoue la pièce,
 // ou seulement ses n premières fonctions : ce que voit l'esquisse de la fonction suivante.
 ResultatRejeu rejouer(Document& d, int n = -1);
