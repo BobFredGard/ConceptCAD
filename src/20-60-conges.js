@@ -587,7 +587,7 @@ function occApplyXFillets(base,xfils){
       try{if(okSh)okSh.delete();}catch(e){}
       ok=r2;okSh=t;kOk=k;return true;
     };
-    // V0.44.1 (OCCT 8 refuse les congés trop grands que l'ancien noyau laissait passer) : le plus
+    // V0.44.1 (OCCT 8 refuse les congés trop grands) : le plus
     // grand rayon qui passe est cherché (petit rayon de référence d'abord, puis échelle et 3
     // dichotomies) puis APPLIQUÉ, avec un ⚠ — la pièce se construit au lieu de rester bloquée.
     // Le rayon demandé reste enregistré : si la géométrie s'agrandit, il revient tout seul.
@@ -629,11 +629,11 @@ function occWallAt(shape,eds){
     const P=[];
     const ex=occBinPush(bin,new occt.TopExp_Explorer_2(shape,occt.TopAbs_ShapeEnum.TopAbs_FACE,occt.TopAbs_ShapeEnum.TopAbs_SHAPE));
     for(;ex.More();ex.Next()){
-      const f=occBinPush(bin,occt.TopoDS.Face_1(ex.Current()));
+      const f=occBinPush(bin,occFaceCur(ex));
       const ad=occBinPush(bin,new occt.BRepAdaptor_Surface_2(f,true));
       if(ad.GetType()!==occt.GeomAbs_SurfaceType.GeomAbs_Plane)continue;
       const n=occFaceOutNormal(f);if(!n)continue;
-      const L=occBinPush(bin,ad.Plane().Location()),b=occFaceBox(f);
+      const L=occBinPush(bin,occBinPush(bin,ad.Plane()).Location()),b=occFaceBox(f);
       P.push({f,n,o:[L.X(),L.Y(),L.Z()],c:b?b.pos:null});
     }
     const I=occBinPush(bin,new occt.IntCurvesFace_ShapeIntersector());I.Load(shape,1e-6);
@@ -680,7 +680,7 @@ function occFacesValides(sh,zone){
   try{
     const ex=occBinPush(bin,new occt.TopExp_Explorer_2(sh,occt.TopAbs_ShapeEnum.TopAbs_FACE,occt.TopAbs_ShapeEnum.TopAbs_SHAPE));
     for(;ex.More();ex.Next()){
-      const f=occBinPush(bin,occt.TopoDS.Face_1(ex.Current()));
+      const f=occBinPush(bin,occFaceCur(ex));
       const b=occBinPush(bin,new occt.Bnd_Box_1());occt.BRepBndLib.Add(f,b,false);
       const a=occBinPush(bin,b.CornerMin()),z=occBinPush(bin,b.CornerMax());
       const A=[a.X(),a.Y(),a.Z()],Z=[z.X(),z.Y(),z.Z()];
@@ -719,7 +719,7 @@ function occFilletNurbs(base,js,chamfer,single,edges,cham){
     let nb=null;
     try{
       const nc=new occt.BRepBuilderAPI_NurbsConvert_2(sh,false);
-      try{nb=occShapeCopy(nc.Shape());}finally{del(nc);}
+      try{nb=occAvec(nc.Shape(),occShapeCopy);}finally{del(nc);}
       if(!nb||nb.IsNull())return null;
       const E=occListEdges(nb),js2=[];
       for(const j of js){
@@ -746,7 +746,7 @@ function occFilletNurbs(base,js,chamfer,single,edges,cham){
       js.forEach(j=>{const e=(edges||[]).find(x=>x.src===j.src);(e?e.pts:[j.mid]).forEach(q=>{for(let k=0;k<3;k++){lo[k]=Math.min(lo[k],q[k]);hi[k]=Math.max(hi[k],q[k]);}});});
       const m=Math.max.apply(null,js.map(j=>j.r))+1;
       for(let k=0;k<3;k++){lo[k]-=m;hi[k]+=m;}
-      const bx=occBinPush(bin,new occt.BRepPrimAPI_MakeBox_3(occBinPush(bin,new occt.gp_Pnt_3(lo[0],lo[1],lo[2])),occBinPush(bin,new occt.gp_Pnt_3(hi[0],hi[1],hi[2])))).Shape();
+      const bx=occBinPush(bin,occBinPush(bin,new occt.BRepPrimAPI_MakeBox_3(occBinPush(bin,new occt.gp_Pnt_3(lo[0],lo[1],lo[2])),occBinPush(bin,new occt.gp_Pnt_3(hi[0],hi[1],hi[2])))).Shape());
       // UNE passe (Splitter : corps coupé par le bloc, solides triés dedans / dehors) au lieu de
       // Common + Cut — deux booléens sur le corps entier, ~0,6 s chacun
       let loc=null,rest=null;const tri=Math.min(0.5,m/4);
@@ -757,19 +757,19 @@ function occFilletNurbs(base,js,chamfer,single,edges,cham){
         try{SP.Build();}catch(e){SP.Build(new occt.Message_ProgressRange());}
         if(SP.IsDone()){
           const ins=[],out=[];
-          const x=occBinPush(bin,new occt.TopExp_Explorer_2(SP.Shape(),occt.TopAbs_ShapeEnum.TopAbs_SOLID,occt.TopAbs_ShapeEnum.TopAbs_SHAPE));
+          const x=occBinPush(bin,new occt.TopExp_Explorer_2(occBinPush(bin,SP.Shape()),occt.TopAbs_ShapeEnum.TopAbs_SOLID,occt.TopAbs_ShapeEnum.TopAbs_SHAPE));
           while(x.More()){const so=x.Current();const bb=new occt.Bnd_Box_1();occt.BRepBndLib.Add(so,bb,false);
-            const q=bb.CornerMin(),z=bb.CornerMax(),A=[q.X(),q.Y(),q.Z()],Z=[z.X(),z.Y(),z.Z()];bb.delete();
+            const A=occXyz(bb.CornerMin()),Z=occXyz(bb.CornerMax());bb.delete();
             // boîte OCCT gonflée (tolérances, pôles des BSplines) : marge de tri m/4 — un solide
             // du dehors déborde du bloc de toute la taille du corps, pas de quelques dixièmes
-            ([0,1,2].every(k=>A[k]>=lo[k]-tri&&Z[k]<=hi[k]+tri)?ins:out).push(occBinPush(bin,occShapeCopy(so)));x.Next();}
+            ([0,1,2].every(k=>A[k]>=lo[k]-tri&&Z[k]<=hi[k]+tri)?ins:out).push(occBinPush(bin,occShapeCopy(so)));occFree(so);x.Next();}
           if(ins.length&&out.length){loc=occCompoundOf(ins);rest=occCompoundOf(out);if(ins.length>1)bin.push(loc);if(out.length>1)bin.push(rest);}
         }
       }catch(e){loc=rest=null;}
       if(!loc||!rest){loc=occBinPush(bin,occCommon(base,bx));rest=occBinPush(bin,occCut(base,bx));}
       // aire des faces posées sur les plans du bloc (faces de coupe) : l'arrondi ne doit pas les toucher
       const coupe=sh=>{let a=0;const x=new occt.TopExp_Explorer_2(sh,occt.TopAbs_ShapeEnum.TopAbs_FACE,occt.TopAbs_ShapeEnum.TopAbs_SHAPE);
-        while(x.More()){const f=occt.TopoDS.Face_1(x.Current());const G=new occt.GProp_GProps_1();occt.BRepGProp.SurfaceProperties_1(f,G,false,false);
+        while(x.More()){const f=occFaceCur(x);const G=new occt.GProp_GProps_1();occt.BRepGProp.SurfaceProperties_1(f,G,false,false);
           const c=G.CentreOfMass(),q=[c.X(),c.Y(),c.Z()];
           if([0,1,2].some(k=>Math.abs(q[k]-lo[k])<1e-6||Math.abs(q[k]-hi[k])<1e-6))a+=G.Mass();
           G.delete();x.Next();}
@@ -784,7 +784,7 @@ function occFilletNurbs(base,js,chamfer,single,edges,cham){
         const F=occBinPush(bin,new occt.BRepAlgoAPI_Fuse_1());F.SetArguments(L1);F.SetTools(L2);
         F.SetGlue(occt.BOPAlgo_GlueEnum.BOPAlgo_GlueShift); // le bloc et le reste ne se touchent que par les faces de coupe
         try{F.Build();}catch(e){F.Build(new occt.Message_ProgressRange());}
-        if(F.IsDone())g=occShapeCopy(F.Shape());
+        if(F.IsDone())g=occAvec(F.Shape(),occShapeCopy);
       }catch(e){g=null;}
       // BILAN DE FACES : en collage, recollé = reste + bloc − faces de coupe (des deux côtés).
       // Marge large mesurée : 49 faces au lieu de 53 et +2 375 mm³ d'un solide pourtant « valide ».
@@ -792,7 +792,7 @@ function occFilletNurbs(base,js,chamfer,single,edges,cham){
       // (UnifySameDomain a déformé un recollage : +1,19 mm³) — faces scindées au bord du bloc.
       const nF=sh=>{let n=0;const x=new occt.TopExp_Explorer_2(sh,occt.TopAbs_ShapeEnum.TopAbs_FACE,occt.TopAbs_ShapeEnum.TopAbs_SHAPE);while(x.More()){n++;x.Next();}x.delete();return n;};
       const nCaps=sh=>{let n=0;const x=new occt.TopExp_Explorer_2(sh,occt.TopAbs_ShapeEnum.TopAbs_FACE,occt.TopAbs_ShapeEnum.TopAbs_SHAPE);
-        while(x.More()){const bb=new occt.Bnd_Box_1();occt.BRepBndLib.Add(x.Current(),bb,false);const q=bb.CornerMin(),z=bb.CornerMax(),A=[q.X(),q.Y(),q.Z()],Z=[z.X(),z.Y(),z.Z()];
+        while(x.More()){const bb=new occt.Bnd_Box_1();occAvec(x.Current(),c=>occt.BRepBndLib.Add(c,bb,false));const A=occXyz(bb.CornerMin()),Z=occXyz(bb.CornerMax());
           if([0,1,2].some(k=>[lo[k],hi[k]].some(c=>Math.abs(A[k]-c)<1e-4&&Math.abs(Z[k]-c)<1e-4)))n++;
           bb.delete();x.Next();}
         x.delete();return n;};

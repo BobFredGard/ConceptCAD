@@ -1,72 +1,11 @@
-/* ---------- OCCT exact (opencascade.js 1.1.4 vendu localement) ---------- */
-/* V0.15.8 : rattrapage des exceptions C++ du noyau. La colle Emscripten de ce build appelle
-   ___cxa_can_catch (« ce catch(T&) attrape-t-il une exception de type U ? ») sans que le
-   .wasm ne l'exporte ni que la colle ne la définisse : dès qu'OCCT lançait une exception
-   d'un type DÉRIVÉ de celui de son propre catch (Standard_ConstructionError attrapée par
-   catch(Standard_Failure&), cas courant dans les booléens, la suppression de face…), on
-   avait « ReferenceError: ___cxa_can_catch is not defined » : l'opération entière avortait
-   au lieu que le noyau se rattrape (plantages après 64 s / 579 s sur le plateau et la
-   Cavité). L'identifiant libre se résout sur l'objet global : on l'y définit AVANT le
-   chargement de la colle. Réponse = vrai test d'héritage sur les type_info Itanium lus dans
-   la mémoire du noyau ; module inconnu → « oui » (toutes les exceptions OCCT dérivent de
-   Standard_Failure, l'attrapé courant). */
-function occtTypeName(H8,H32,t){
-  // Nom (mangled) d'un std::type_info : [vptr, const char* name] ; null si illisible.
-  try{
-    if(!(t>0)||(t>>2)+1>=H32.length)return null;
-    let p=H32[(t+4)>>2],s='';
-    if(!(p>0)||p>=H8.length)return null;
-    for(let i=0;i<256&&p+i<H8.length;i++){const c=H8[p+i];if(!c)break;s+=String.fromCharCode(c);}
-    return /^[0-9A-Za-z_]{2,255}$/.test(s)?s:null;
-  }catch(e){return null;}
-}
-function occtCanCatch(H8,H32,caught,thrown){
-  // Le type `thrown` est-il `caught` ou en dérive-t-il ? Parcours des bases (wasm32) :
-  // __si_class_type_info = [vptr, nom, base*] ; __vmi_class_type_info = [vptr, nom, flags,
-  // nb_bases, {base*, offset_flags}…]. Une base n'est suivie que si elle a un nom lisible.
-  if(!caught||!thrown)return false;
-  const cn=occtTypeName(H8,H32,caught);
-  const vu=new Set(),file=[thrown];
-  while(file.length&&vu.size<64){
-    const t=file.shift();
-    if(vu.has(t))continue;vu.add(t);
-    if(t===caught)return true;
-    const tn=occtTypeName(H8,H32,t);
-    if(cn&&tn===cn)return true; // même type vu par deux unités de compilation
-    if(!tn)continue;
-    const b=H32[(t+8)>>2];
-    if(occtTypeName(H8,H32,b)){file.push(b);continue;} // héritage simple
-    const flags=H32[(t+8)>>2],n=H32[(t+12)>>2];       // héritage multiple / virtuel
-    if(flags>=0&&flags<=3&&n>0&&n<16)
-      for(let i=0;i<n;i++){const bi=H32[(t+16+8*i)>>2];if(occtTypeName(H8,H32,bi))file.push(bi);}
-  }
-  return false;
-}
-function occtExcInstall(G){
-  // Pose les deux fonctions sur l'objet global G (page, ou worker de 21-suppression-face :
-  // `occt` y désigne alors le noyau du worker).
-  if(typeof G.___cxa_can_catch!=='function')G.___cxa_can_catch=function(caught,thrown){
-    let M=null;try{M=(typeof occt!=='undefined'&&occt&&occt.HEAP32&&occt.HEAPU8)?occt:null;}catch(e){M=null;}
-    if(!M)return 1;
-    try{return occtCanCatch(M.HEAPU8,M.HEAP32,caught,thrown)?1:0;}catch(e){return 1;}
-  };
-  // Exceptions lancées par pointeur : OCCT n'en lance pas (valeurs / handles).
-  if(typeof G.___cxa_is_pointer_type!=='function')G.___cxa_is_pointer_type=function(){return 0;};
-}
-occtExcInstall((typeof globalThis!=='undefined')?globalThis:window);
+/* ---------- Noyau OCCT 8.0.1 exact (occt/v3, libcascade 3.1, fabriqué par occt-build/) ---------- */
 function occtFileUrl(p){ // chemin relatif : marche en http(s) comme en file://
   try{const b=document.currentScript&&document.currentScript.src?document.currentScript.src:location.href;
     return new URL(p,b).href;}catch(e){return p;}
 }
-// Noyau (V0.43.0) : par défaut le noyau recompilé OCCT 8.0.1 (occt/v3, libcascade 3.1, fabriqué par
-// occt-build/), avec le traducteur des appels 1.1.1 (occt/v3/compat-v3.cjs). En secours :
-// « ?noyau=actuel » dans l'adresse = l'ancien noyau 1.1.1 (occt/opencascade.*). En file:// : l'ancien
-// (le .wasm s'y lit seulement par « ⚙ Noyau .wasm… » et la colle v3 est un module ES).
-const OCCT_V3=(()=>{try{if(window.__EMB)return true; /* fichier autonome (tools/autonome.cjs) : noyau 8 dans le HTML */ return location.protocol!=='file:'&&location.protocol!=='about:'&&new URLSearchParams(location.search).get('noyau')!=='actuel';}catch(e){return false;}})();
-const OCCT_FILES=OCCT_V3
-  ?{js:'occt/v3/conceptcad_v3.js',wasm:'occt/v3/conceptcad_v3.wasm',
-    compat:'occt/v3/compat-v3.cjs',table:'occt/v3/compat-v3.json'}
-  :{js:'occt/opencascade.full.js',wasm:'occt/opencascade.wasm.wasm'};
+// Le traducteur occt/v3/compat-v3.cjs garde les appels d'opencascade.js 1.1.1 écrits dans src/.
+const OCCT_FILES={js:'occt/v3/conceptcad_v3.js',wasm:'occt/v3/conceptcad_v3.wasm',
+  compat:'occt/v3/compat-v3.cjs',table:'occt/v3/compat-v3.json'};
 // Traducteur v3 (page et worker de suppression de face) : charge compat-v3.cjs + sa table, rend
 // une fabrique qui enveloppe celle du noyau. Le module CommonJS est évalué avec un `require` vide
 // (il ne lit des fichiers que pour sa génération, hors navigateur).
@@ -77,110 +16,59 @@ async function occtV3Compat(compatUrl,tableUrl){
   new Function('module','exports','require',src)(module,module.exports,()=>({}));
   return f=>async o=>module.exports.appliquer(await f(o),tab);
 }
-function occIdbOpen(){
-  if(typeof indexedDB==='undefined'||!indexedDB.open)return Promise.reject(new Error('IndexedDB indisponible'));
-  return new Promise((res,rej)=>{
-    try{
-      const r=indexedDB.open('minifusion_occ',1);
-      r.onupgradeneeded=()=>{try{r.result.createObjectStore('wasm');}catch(e){}};
-      r.onsuccess=()=>res(r.result);r.onerror=()=>rej(r.error);
-    }catch(e){rej(e);}
-  });
-}
-function idbBytes(v){
-  // Selon le navigateur, IndexedDB redonne un ArrayBuffer ou un octet[] — on normalise.
-  try{if(v instanceof ArrayBuffer)return v;
-    if(v&&typeof v.buffer==='object'&&v.buffer instanceof ArrayBuffer&&typeof v.byteOffset==='number'&&typeof v.byteLength==='number')
-      return v.buffer.slice(v.byteOffset,v.byteOffset+v.byteLength);}catch(e){}
-  return null;
-}
-function occCacheSave(buf){
-  const arr=idbBytes(buf);if(!arr)return Promise.resolve();
-  return occIdbOpen().then(db=>new Promise((res,rej)=>{
-    try{
-      const tx=db.transaction('wasm','readwrite');tx.objectStore('wasm').put(arr,'kernel');
-      tx.oncomplete=()=>{try{db.close();}catch(e){}res();};
-      tx.onerror=()=>{try{db.close();}catch(e){}rej(tx.error||new Error('idb put'));};
-    }catch(e){rej(e);}
-  })).catch(()=>{});
-}
-function occCacheLoad(){
-  return occIdbOpen().then(db=>new Promise((res,rej)=>{
-    try{
-      const tx=db.transaction('wasm','readonly');const q=tx.objectStore('wasm').get('kernel');
-      q.onsuccess=()=>{const v=q.result;try{db.close();}catch(e){}
-        const b=idbBytes(v);b?res(b):rej(new Error('cache vide'));};
-      q.onerror=()=>{try{db.close();}catch(e){}rej(q.error||new Error('idb get'));};
-    }catch(e){rej(e);}
-  }));
+// Ouverture par double-clic (file://) : le navigateur interdit à la page de lire le noyau. Rien ne
+// fonctionnerait correctement sans lui : on le dit et on renvoie vers ce qui marche, sans repli.
+function occtEcranDoubleClic(){
+  try{
+    const d=document.createElement('div');d.id='occtDoubleClic';
+    d.style.cssText='position:fixed;inset:0;z-index:2147483000;display:flex;align-items:center;justify-content:center;padding:24px;box-sizing:border-box;background:#1c1c1e;color:#f2f2f7;font:15px/1.5 system-ui,sans-serif;overflow:auto';
+    const lien='color:#64d2ff';
+    d.innerHTML='<div style="max-width:560px"><h1 style="font-size:22px;margin:0 0 12px">ConceptCAD ne peut pas démarrer par double-clic</h1>'+
+      '<p style="margin:0 0 16px">Le navigateur interdit à ce fichier de charger le noyau de calcul 3D. Vos pièces ne risquent rien. Trois façons d’ouvrir ConceptCAD :</p>'+
+      '<ul style="margin:0;padding-left:20px">'+
+      '<li style="margin-bottom:10px"><b>Sans Internet</b> : ouvrez <b>ConceptCAD-autonome.html</b> par double-clic. <a style="'+lien+'" target="_blank" rel="noopener" href="https://www.dropbox.com/scl/fi/sne7f5a9y8dr659b2xrow/ConceptCAD-autonome.html?rlkey=fgd0w1r5816ake50vxtd4fnuj&amp;dl=0">Le télécharger</a>.</li>'+
+      '<li style="margin-bottom:10px"><b>Depuis ce dossier</b> : lancez <b>Server.bat</b>, puis ouvrez <a style="'+lien+'" href="http://localhost:3000">http://localhost:3000</a>.</li>'+
+      '<li><b>En ligne</b> : <a style="'+lien+'" target="_blank" rel="noopener" href="https://bobfredgard.github.io/ConceptCAD/">bobfredgard.github.io/ConceptCAD</a>.</li></ul></div>';
+    document.body.appendChild(d);
+  }catch(e){}
 }
 (async()=>{
-  if(window.__occBootDone)return; // garde anti-double-démarrage (import lent + repli script)
+  if(window.__occBootDone)return; // garde anti-double-démarrage
   window.__occBootDone=true;
+  // Cache d'un .wasm désigné à la main (versions avant V0.65.0) : 65 Mo devenus inutiles
+  try{if(typeof indexedDB!=='undefined'&&indexedDB.deleteDatabase)indexedDB.deleteDatabase('minifusion_occ');}catch(e){}
+  if(!window.__EMB&&(location.protocol==='file:'||location.protocol==='about:')){
+    occtReady=false;
+    occBaseMsg='OCCT : noyau indisponible en double-clic. Ouvrez ConceptCAD-autonome.html, ou lancez Server.bat puis http://localhost:3000.';
+    occStatus();occtEcranDoubleClic();
+    return;
+  }
   if(window.__EMB)await window.__EMB.pret(OCCT_FILES); // fichier autonome : adresses blob à la place des fichiers
   // V0.31.2 : fenêtre de l'écran de démarrage (2 s, ou clic / Échap) — le fil reste libre pour
   // le bouton de dépannage « Vider le cache » ; la compilation gèle sinon toute l'animation.
   try{if(window.__mfGate)await window.__mfGate;}catch(e){}
   const t0=performance.now();
   const stage=s=>{occBaseMsg='OCCT : '+s;occStatus();try{console.log('[OCCT] '+s);}catch(e){}};
-  const fail=(where,err)=>{
-    occtReady=false;
-    const m=String((err&&(err.message||err))||err||'?').slice(0,160);
-    occBaseMsg=`OCCT : échec ${where} (${m}) — repli maillage. Vérifiez ${occtFileUrl(OCCT_FILES.wasm)} (${OCCT_V3?'43':'65'} Mo attendus).`;
-    occStatus();
-  };
   const withTimeout=(p,ms,what)=>Promise.race([p,new Promise((_,rej)=>setTimeout(()=>rej(new Error('délai dépassé '+what)),ms))]);
-  stage('chargement JS noyau (0,3 Mo)…');
   // Laisse le navigateur peindre l'étape AVANT la compilation : sans cela le message
   // s'affiche après coup, quand la tabulation est déjà gelée.
   const yieldUI=()=>new Promise(r=>{try{requestAnimationFrame(()=>setTimeout(r,0));}catch(e){setTimeout(r,0);}});
-  const boot=async factory=>{
-    stage(`JS noyau OK, compilation wasm (~${OCCT_V3?43:65} Mo, ~10-60 s) — interface momentanément figée…`);
+  try{
+    stage('chargement JS noyau (0,1 Mo)…');
+    const mod=await withTimeout(import(occtFileUrl(OCCT_FILES.js)),30000,'chargement JS');
+    if(typeof mod.default!=='function')throw new Error('factory absente (import vide ?)');
+    stage('chargement du traducteur…');
+    const factory=(await occtV3Compat(occtFileUrl(OCCT_FILES.compat),occtFileUrl(OCCT_FILES.table)))(mod.default);
+    stage('JS noyau OK, compilation wasm (~43 Mo, ~10-60 s) — interface momentanément figée…');
     await yieldUI();
     occt=await withTimeout(factory({locateFile:p=>String(p).endsWith('.wasm')?OCCT_FILES.wasm:p}),180000,'compilation wasm');
     occBaseMsg=`OCCT : prêt en ${((performance.now()-t0)/1000).toFixed(0)} s — vérification…`;occStatus();
     await occtFinishBoot();
-  };
-  const bootBin=async(factory,bin)=>{
-    stage(`JS noyau OK, compilation depuis le cache local (~${OCCT_V3?43:65} Mo) — interface momentanément figée…`);
-    await yieldUI();
-    try{
-      occt=await withTimeout(factory({wasmBinary:bin,locateFile:p=>String(p).endsWith('.wasm')?OCCT_FILES.wasm:p}),180000,'compilation wasm');
-      occBaseMsg=`OCCT : prêt depuis le cache local en ${((performance.now()-t0)/1000).toFixed(0)} s — vérification…`;occStatus();
-      await occtFinishBoot();
-    }catch(e){fail('démarrage (cache)',e);}
-  };
-  // Mode fichier (file://) : le fetch du .wasm est bloqué par CORS → après la première
-  // désignation manuelle (mise en cache IndexedDB), le noyau se relance AUTOMATIQUEMENT.
-  // SANS cache exploitable, on ne tente RIEN : en file:// le .wasm ne peut pas être lu, et la
-  // compilation des ~65 Mo monopolise le thread principal (onglet figé, aucun message) —
-  // on reste en moteur maillage avec une explication claire.
-  const isFile=!window.__EMB&&(location.protocol==='file:'||location.protocol==='about:');
-  let cached=null;
-  if(isFile){try{cached=await occCacheLoad();}catch(e){cached=null;}}
-  if(isFile&&!cached){
+  }catch(e){
     occtReady=false;
-    occBaseMsg='OCCT : noyau exact indisponible en mode fichier (le .wasm ne peut pas être lu en file://) — moteur maillage utilisé. Pour le noyau exact : servez le dossier en localhost, ou désignez le .wasm une fois via « ⚙ Noyau .wasm… ».';
+    const m=String((e&&(e.message||e))||e||'?').slice(0,160);
+    occBaseMsg=`OCCT : échec démarrage (${m}) — repli maillage. Vérifiez ${occtFileUrl(OCCT_FILES.wasm)} (43 Mo attendus).`;
     occStatus();
-    return;
-  }
-  try{
-    const mod=await withTimeout(import(occtFileUrl(OCCT_FILES.js)),30000,'chargement JS');
-    let factory=mod.default||mod.opencascadeFactory||window.opencascadeFactory||window.opencascade;
-    if(typeof factory!=='function')throw new Error('factory absente (import vide ?)');
-    if(OCCT_V3){stage('noyau OCCT 8 : chargement du traducteur…');
-      factory=(await occtV3Compat(occtFileUrl(OCCT_FILES.compat),occtFileUrl(OCCT_FILES.table)))(factory);}
-    if(cached){await bootBin(factory,cached);return;}
-    await boot(factory);return;
-  }catch(e1){
-    try{
-      stage('import ESM impossible, essai script classique…');
-      await withTimeout(new Promise((res,rej)=>{const s=document.createElement('script');s.src='occt/opencascade.full.js';s.onload=res;s.onerror=()=>rej(new Error('script 404/erreur'));document.head.appendChild(s);}),30000,'chargement script');
-      const factory=window.opencascadeFactory||window.opencascade;
-      if(typeof factory!=='function')throw new Error('factory absente (script)');
-      if(cached){await bootBin(factory,cached);return;}
-      await boot(factory);
-    }catch(e2){fail('démarrage',e2&&e2.message?e2:(e1&&e1.message?e1:e1));}
   }
 })();
 

@@ -6,14 +6,12 @@
 // régénération. Test STRUCTUREL (pas de chrono) : nombre de booléens et de congés refaits.
 const fs=require('fs'),vm=require('vm'),path=require('path');
 const ROOT=path.join(__dirname,'..');
-globalThis.__dirname=path.join(ROOT,'occt');
-vm.runInThisContext(fs.readFileSync(path.join(ROOT,'occt','opencascade.full.js'),'utf8'),{filename:'occt.js'});
 const {loadApp}=require('./appvm.cjs');
 // « test suppr » : copie figée (version du 2026-10-27, avec extrusions) — l'exemple vivant a
 // été retravaillé depuis (import seul) et ne porte plus d'extrusion à faire varier
 const lire=n=>require('./lire-projet.cjs')(n.startsWith('fixtures/')?path.join(__dirname,n):path.join(ROOT,'Exemples',n));
 (async()=>{
-  const real=await globalThis.opencascadeFactory({wasmBinary:fs.readFileSync(path.join(ROOT,'occt','opencascade.wasm.wasm'))});
+  const real=await require('./noyau.cjs').charger();
   const out={fails:[],log:[]};
   const cas=async(fichier,corps)=>{
     const {ctx,sandbox}=loadApp();

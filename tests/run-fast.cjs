@@ -1,11 +1,9 @@
 // Sous-ensemble rapide pour la CI : contrôles de structure, solveur, UI et
 // quelques parcours FAO. La suite complète reste `node tests/run.cjs`.
-require('./moteur-defaut.cjs'); // noyau des suites : OCCT 8 (occt/v3) ; OCCT_DIR=actuel → ancien
 const { execFileSync } = require('child_process'), path = require('path');
 const SUITES = [
   'test_fil_esquisses',
   'test_highlight_order',
-  'test_noyau_exceptions',
   'test_moteur_v3',
   'test_fresh_default',
   'test_validate',
@@ -113,6 +111,7 @@ const SUITES = [
   'test_environnement_piece',
   'test_rendu_patine',
   'test_rendu_scene',
+  'test_fuite_noyau',
   'test_noms_globaux',
   'test_noms_socle',
   'test_noms_partout',

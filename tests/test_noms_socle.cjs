@@ -2,15 +2,12 @@
 // issue d'une extrusion, d'une fusion, d'une découpe, d'une dépouille ou d'un congé porte un nom ;
 // aucun doublon ; le nom survit à un changement de longueur, d'un coup comme par petits pas, et le
 // bord de la lèvre garde le sien à la bonne position. Deux états de la pièce : d'origine et avec renforts.
-// Lancé seul : node tools/ci-moteur.cjs occt/v3 -- tests/test_noms_socle.cjs
+// Lancé seul : node tests/test_noms_socle.cjs
 const fs=require('fs'),vm=require('vm'),path=require('path');
 const ROOT=path.join(__dirname,'..');
-globalThis.__dirname=path.join(ROOT,'occt');
-vm.runInThisContext(fs.readFileSync(path.join(ROOT,'occt','opencascade.full.js'),'utf8'),{filename:'occt.js'});
 const {loadApp}=require('./appvm.cjs'),lire=require('./lire-projet.cjs');
 (async()=>{
-  const real=await globalThis.opencascadeFactory({wasmBinary:fs.readFileSync(path.join(ROOT,'occt','opencascade.wasm.wasm'))});
-  if(!real.NCollection_IndexedDataMap_TopoDS_Shape_NCollection_List_TopoDS_Shape_TopTools_ShapeMapHasher){console.log('=== Noms uniques : noyau sans carte indexée, sauté ===\n\n*** TOUT PASSE ***');return;}
+  const real=await require('./noyau.cjs').charger();
   let total=0;
   for(const P of [{nom:'d’origine',fichier:'barquette-noms.conceptcad',L:230},{nom:'avec renforts',fichier:'barquette-renforts.conceptcad',L:235}]){
   const {ctx,sandbox}=loadApp();

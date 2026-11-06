@@ -524,7 +524,7 @@ function occFaceAt(shape,ord){
   const SH=occt.TopAbs_ShapeEnum.TopAbs_SHAPE;
   const ex=new occt.TopExp_Explorer_2(shape,occt.TopAbs_ShapeEnum.TopAbs_FACE,SH);
   let k=0;
-  while(ex.More()){if(k===ord){const f=occt.TopoDS.Face_1(ex.Current());try{ex.delete();}catch(e){}return f;}k++;ex.Next();}
+  while(ex.More()){if(k===ord){const f=occFaceCur(ex);try{ex.delete();}catch(e){}return f;}k++;ex.Next();}
   try{ex.delete();}catch(e){}
   return null;
 }
@@ -624,7 +624,7 @@ function occShapeHasFace(shape,ref,p){
   let ok=false;
   try{
     while(!ok&&ex.More()){
-      const f=occt.TopoDS.Face_1(ex.Current());
+      const f=occFaceCur(ex);
       try{
         const b=occFaceBox(f);let inBox=!!b;
         if(b)for(let k=0;k<3;k++)if(Math.abs(p[k]-b.pos[k])>b.dim[k]/2+0.05){inBox=false;break;}

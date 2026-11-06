@@ -23,13 +23,16 @@ function nomsCarte(s,t,a){
 function nomsCarteFaces(s){const E=occt.TopAbs_ShapeEnum;return nomsCarte(s,E.TopAbs_FACE,E.TopAbs_SHELL);} // coques ouvertes comprises
 function nomsListe(l){
   // Le noyau rend une référence vers sa liste interne : copie avant de la consommer
+  // La liste reçue est une copie temporaire : consommée ici. Les éléments rendus sont à libérer (nomsChaque).
   const R=[];if(!l)return R;
-  const n=l.Size();if(!n)return R;
+  const n=l.Size();if(!n){occFree(l);return R;}
   const cp=new occt.TopTools_ListOfShape_1();
-  try{cp.Assign(l);for(let i=0;i<n;i++){R.push(cp.First_1?cp.First_1():cp.First());cp.RemoveFirst();}}
-  finally{try{cp.delete();}catch(e){}}
+  try{occFree(cp.Assign(l));for(let i=0;i<n;i++){R.push(cp.First_1?cp.First_1():cp.First());cp.RemoveFirst();}}
+  finally{try{cp.delete();}catch(e){}occFree(l);}
   return R;
 }
+function nomsChaque(l,fn){const R=nomsListe(l);try{return R.map(fn);}finally{occDispose(R);}} // chaque élément, puis libéré
+function nomsFaceCle(m,i){return occCastLibre(m.FindKey(i),c=>occt.TopoDS.Face_1(c));}
 function nomsDe(s){return s?(NOMS_TABLES.get(s)||null):null;}
 function nomsPartage(src,dst){
   // dst = copie exacte de src, ou src elle-même sous un autre objet
@@ -61,9 +64,10 @@ function nomsTransmet(entrees,api,res,opts){
           const x=mS.FindKey(i);
           const ici=mR.FindIndex(x);
           if(ici>0)par[ici-1].push({nom,seul:true});
-          let L=[];try{L=nomsListe(api.Modified(x));}catch(e){L=[];}
+          let L=[];try{ // x et L libérés en fin de tour
+          try{L=nomsListe(api.Modified(x));}catch(e){L=[];}
           // Dépouille : ses faces inclinées ne sont données que par ModifiedShape
-          if(!L.length&&ici<=0&&api.ModifiedShape){try{const y=api.ModifiedShape(x);if(y&&!y.IsNull())L=[y];}catch(e){}}
+          if(!L.length&&ici<=0&&api.ModifiedShape){try{const y=api.ModifiedShape(x);if(y&&!y.IsNull())L=[y];else occFree(y);}catch(e){}}
           const pieces=[];
           L.forEach(y=>{const j=mR.FindIndex(y);if(j>0&&pieces.every(p=>p.j!==j))pieces.push({j,y});});
           if(pieces.length===1)par[pieces[0].j-1].push({nom,seul:true});
@@ -73,6 +77,7 @@ function nomsTransmet(entrees,api,res,opts){
             pieces.sort((a,b)=>(a.c[0]-b.c[0])||(a.c[1]-b.c[1])||(a.c[2]-b.c[2]));
             pieces.forEach((p,k)=>par[p.j-1].push({nom:nom+'#'+(k+1),seul:false}));
           }
+          }finally{occDispose(L);occFree(x);}
         }
         Object.keys(T.a||{}).forEach(k=>seen.add(JSON.stringify([k,T.a[k]])));
       }finally{try{if(mS)mS.delete();}catch(e){}}
@@ -92,7 +97,7 @@ function nomsTransmet(entrees,api,res,opts){
     f.forEach((n,i)=>{if(n){if(!vus.has(n))vus.set(n,[]);vus.get(n).push(i);}});
     vus.forEach((L,n)=>{
       if(L.length<2)return;
-      const q=L.map(i=>({i,c:nomsCentre(mR.FindKey(i+1))}));
+      const q=L.map(i=>({i,c:occAvec(mR.FindKey(i+1),nomsCentre)}));
       q.sort((x,y)=>(x.c[0]-y.c[0])||(x.c[1]-y.c[1])||(x.c[2]-y.c[2]));
       q.forEach((x,k)=>{if(k)f[x.i]=n+'#'+(k+1);});
     });
@@ -117,10 +122,12 @@ function nomsNomme(res,fn){
 function nomsApresUnify(u,s,r){
   // ShapeUpgrade_UnifySameDomain : l'historique passe par une poignée
   if(!nomsActif||!NOMS_TABLES.get(s))return;
+  let h=null;
   try{
-    const h=u.History(),H=h&&h.get?h.get():h;
+    h=u.History();const H=h&&h.get?h.get():h;
     nomsTransmet([s],{Modified:x=>H.Modified(x)},r);
   }catch(e){}
+  finally{occFree(h);}
 }
 function nomsApresConge(mf,base,s,chamfer){
   // Faces gardées : historique. Face née : nom de l'arête dont elle vient (stable d'un rejeu à l'autre)
@@ -133,10 +140,10 @@ function nomsApresConge(mf,base,s,chamfer){
       const n=R.carte.Size(),pre=chamfer?'chanfrein':'congé';
       for(let i=1;i<=n;i++){
         let k=0;
-        nomsListe(mf.Generated(R.carte.FindKey(i))).forEach(y=>{
+        occAvec(R.carte.FindKey(i),cle=>nomsChaque(mf.Generated(cle),y=>{
           const j=m.FindIndex(y);
           if(j>0&&!f[j-1]){f[j-1]=pre+'['+R.noms[i-1]+']'+(k?'#'+(k+1):'');k++;}
-        });
+        }));
       }
     }});
   }catch(e){}
@@ -164,12 +171,14 @@ function nomsPrismeFaces(pr,res,cotes){
       let n=nom;for(let k=2;pris.has(n);k++)n=nom+'#'+k;
       f[j-1]=n;pris.add(n);
     };
-    (cotes||[]).forEach(c=>{try{nomsListe(pr.Generated(c.e)).forEach(y=>pose(y,c.id+'/flanc'));}catch(e){}});
+    (cotes||[]).forEach(c=>{try{nomsChaque(pr.Generated(c.e),y=>pose(y,c.id+'/flanc'));}catch(e){}});
+    let bouts=[];
     try{
-      const bouts=nomsBoutsPrisme(pr);
+      bouts=nomsBoutsPrisme(pr);
       if(bouts[0]&&!bouts[0].IsNull())pose(bouts[0],'bas');
       if(bouts[1]&&!bouts[1].IsNull())pose(bouts[1],'haut');
     }catch(e){}
+    finally{occDispose(bouts);}
   });
 }
 /* ----- arêtes : nom déduit des faces qu'elles séparent ----- */
@@ -183,7 +192,7 @@ function nomsAretes(s){
     const nomF=x=>{const j=mF.FindIndex(x);return j>0?(T.f[j-1]||'?'):'?';};
     const N=mE.Size(),rows=[];
     for(let i=1;i<=N;i++){
-      const paire=[...new Set(nomsListe(mE.FindFromIndex(i)).map(nomF))].sort();
+      const paire=[...new Set(nomsChaque(mE.FindFromIndex(i),nomF))].sort();
       rows.push({i,cle:paire.join('|'),paire});
     }
     // Deux arêtes entre les mêmes faces : départagées par les faces qui touchent leurs bouts
@@ -191,9 +200,10 @@ function nomsAretes(s){
     grp.forEach(L=>{
       if(L.length<2)return;
       L.forEach(r=>{
-        const e=occt.TopoDS.Edge_1(mE.FindKey(r.i)),v=new Set();
+        const e=occCastLibre(mE.FindKey(r.i),c=>occt.TopoDS.Edge_1(c)),v=new Set();
         [occt.TopExp.FirstVertex(e,false),occt.TopExp.LastVertex(e,false)].forEach(q=>{
-          const j=mV.FindIndex(q);if(j>0)nomsListe(mV.FindFromIndex(j)).forEach(fx=>v.add(nomF(fx)));});
+          const j=mV.FindIndex(q);if(j>0)nomsChaque(mV.FindFromIndex(j),fx=>v.add(nomF(fx)));occFree(q);});
+        occFree(e);
         r.bouts=[...v].filter(n=>r.paire.indexOf(n)<0).sort().join(',');
       });
       const g2=new Map();L.forEach(r=>{if(!g2.has(r.bouts))g2.set(r.bouts,[]);g2.get(r.bouts).push(r);});
@@ -202,7 +212,7 @@ function nomsAretes(s){
         if(M.length>1){
           M.forEach(r=>{
             r.c=[0,0,0];
-            try{const ad=new occt.BRepAdaptor_Curve_2(occt.TopoDS.Edge_1(mE.FindKey(r.i)));const p=ad.Value((ad.FirstParameter()+ad.LastParameter())/2);r.c=[p.X(),p.Y(),p.Z()];try{p.delete();}catch(e){}try{ad.delete();}catch(e){}}catch(e){}
+            try{const eM=occCastLibre(mE.FindKey(r.i),c=>occt.TopoDS.Edge_1(c));const ad=new occt.BRepAdaptor_Curve_2(eM);r.c=occXyz(ad.Value((ad.FirstParameter()+ad.LastParameter())/2));occFree(ad);occFree(eM);}catch(e){}
           });
           M.sort((x,y)=>(x.c[0]-y.c[0])||(x.c[1]-y.c[1])||(x.c[2]-y.c[2]));
         }
@@ -236,7 +246,7 @@ function nomsCompose(parts,res,ids){
         mP=nomsCarteFaces(p);
         for(let i=1;i<=mP.Size();i++){
           const n=T.f[i-1];if(!n)continue;
-          const j=m.FindIndex(mP.FindKey(i));if(j<=0)continue;
+          const j=occAvec(mP.FindKey(i),x=>m.FindIndex(x));if(j<=0)continue;
           const q=vus.has(n)?n+'@'+((ids&&ids[k])||k):n;
           vus.add(q);f[j-1]=q;
         }
@@ -269,7 +279,7 @@ function nomsInstantane(s){
     const L=[];
     for(let i=1;i<=m.Size();i++){
       const nom=T.f[i-1];if(!nom)continue;
-      const x=occt.TopoDS.Face_1(m.FindKey(i));
+      const x=nomsFaceCle(m,i);
       try{L.push({nom,d:occSurfDesc(x),c:nomsCentre(x)});}catch(e){}
       finally{try{x.delete();}catch(e){}}
     }
@@ -284,7 +294,7 @@ function nomsCompleter(res,fid,snap){
   if(!nomsActif||!res)return res;
   let T=NOMS_TABLES.get(res);
   if(T&&T.f.length&&T.f.indexOf(null)<0)return res;
-  let m=null;
+  let m=null,tous=[];
   try{
     m=nomsCarteFaces(res);if(!m)return res;
     const N=m.Size();
@@ -294,7 +304,7 @@ function nomsCompleter(res,fid,snap){
     const pris=new Set(f.filter(Boolean));
     const libre=n=>{if(!pris.has(n))return n;for(let k=2;;k++){const q=n+'#'+k;if(!pris.has(q))return q;}};
     let vides=[];
-    for(let i=0;i<N;i++)if(!f[i]){const x=occt.TopoDS.Face_1(m.FindKey(i+1));vides.push({i,x,c:nomsCentre(x)});}
+    for(let i=0;i<N;i++)if(!f[i]){const x=nomsFaceCle(m,i+1);tous.push(x);vides.push({i,x,c:nomsCentre(x)});}
     vides.sort((p,q)=>(p.c[0]-q.c[0])||(p.c[1]-q.c[1])||(p.c[2]-q.c[2]));
     if(snap&&snap.L.length)vides=vides.filter(v=>{
       let d=null;try{d=occSurfDesc(v.x);}catch(e){return true;}
@@ -309,7 +319,7 @@ function nomsCompleter(res,fid,snap){
     if(fid)vides.forEach((v,k)=>{const n=libre(fid+'/~'+(k+1));f[v.i]=n;pris.add(n);});
     if(!T)NOMS_TABLES.set(res,{f,a});
   }catch(e){}
-  finally{try{if(m)m.delete();}catch(e){}}
+  finally{occDispose(tous);try{if(m)m.delete();}catch(e){}}
   return res;
 }
 function nomsFaceSurSurface(res,nom,nd){
@@ -322,7 +332,7 @@ function nomsFaceSurSurface(res,nom,nd){
     const pris=new Set(T.f.filter(Boolean));let k=0;
     for(let i=0;i<T.f.length;i++){
       if(T.f[i])continue;
-      const x=occt.TopoDS.Face_1(m.FindKey(i+1));
+      const x=nomsFaceCle(m,i+1);
       try{
         if(occSameSurf(occSurfDesc(x),nd)){
           let n=nom;while(pris.has(n))n=nom+'#'+(++k+1);
@@ -365,7 +375,7 @@ function nomsRefFace(shape,ref){
     const proche=L=>{
       if(L.length<2||!Array.isArray(ref.pos))return L[0];
       let b=L[0],bd=1e18;
-      L.forEach(k=>{const x=m.FindKey(k+1),c=nomsCentre(x),d=Math.hypot(c[0]-ref.pos[0],c[1]-ref.pos[1],c[2]-ref.pos[2]);if(d<bd){bd=d;b=k;}});
+      L.forEach(k=>{const c=occAvec(m.FindKey(k+1),nomsCentre),d=Math.hypot(c[0]-ref.pos[0],c[1]-ref.pos[1],c[2]-ref.pos[2]);if(d<bd){bd=d;b=k;}});
       return b;
     };
     if(i<0){
@@ -375,7 +385,7 @@ function nomsRefFace(shape,ref){
       if(L.length)i=proche(L);
     }
     if(i<0){NOMS_PERTES.push('la face d’origine n’existe plus'+(ref.pos?' près de '+nomsPos(ref.pos):'')+' — recherche par position');return null;}
-    return occt.TopoDS.Face_1(m.FindKey(i+1));
+    return nomsFaceCle(m,i+1);
   }catch(e){return null;}
   finally{try{if(m)m.delete();}catch(e){}}
 }
@@ -415,7 +425,7 @@ function nomsSurAretes(shape,edges){
     ex=new occt.TopExp_Explorer_2(shape,E.TopAbs_EDGE,E.TopAbs_SHAPE);
     for(let k=0;ex.More();k++,ex.Next()){
       const e=par.get(k);if(!e)continue;
-      const j=R.carte.FindIndex(ex.Current());
+      const j=occAvec(ex.Current(),x=>R.carte.FindIndex(x));
       if(j>0)e.nom=R.noms[j-1];
     }
     edges.alias=T.a||{};

@@ -13,7 +13,7 @@
      bornée à DEL_ISOLE_MAX.
    • Résultat rangé par clé de point de contrôle (ckKey), comme le rejeu « STEP en cours de
      restauration » : la réponse relance le rejeu, qui le reprend tel quel.
-   • Pas de worker (harnais Node, file:// sans accès au .wasm, démarrage raté) : calcul
+   • Pas de worker (harnais Node, démarrage raté) : calcul
      synchrone, comme avant. */
 let DEL_WK_DELAI=20000; // ms ; réglable : localStorage minifusion_delFaceDelai (en secondes)
 try{const s=+localStorage.getItem('minifusion_delFaceDelai');if(s>0)DEL_WK_DELAI=s*1000;}catch(e){}
@@ -68,15 +68,10 @@ function delWkMain(){
     const ko=e=>self.postMessage({t:'ko',err:String((e&&e.message)||e)});
     if(m.t==='boot'){
       try{
-        let fac;
         // fichier autonome : en file://, le worker ne lit pas les adresses de la page, il recrée les siennes
-        if(m.emb){const U=k=>URL.createObjectURL(m.emb[k]);m.js=U('js');m.wasm=U('wasm');m.v3={compat:U('compat'),table:U('table')};}
-        if(m.v3){ // essai noyau v3 (?noyau=v3, 96-noyau) : colle en module ES + traducteur des appels
-          fac=(await occtV3Compat(m.v3.compat,m.v3.table))((await import(m.js)).default);
-        }else{
-          self.importScripts(m.js);
-          fac=self.opencascadeFactory||self.opencascade;
-        }
+        if(m.emb){const U=k=>URL.createObjectURL(m.emb[k]);m.js=U('js');m.wasm=U('wasm');m.compat=U('compat');m.table=U('table');}
+        // colle en module ES + traducteur des appels (96-noyau)
+        const fac=(await occtV3Compat(m.compat,m.table))((await import(m.js)).default);
         let mod=m.mod||null;
         occt=await fac({
           locateFile:()=>m.wasm,
@@ -130,13 +125,12 @@ function delWkMain(){
 }
 function delWkSource(){
   // Le worker reçoit le code de CE fichier et de 20-noyau, pas une copie à entretenir.
-  // + rattrapage des exceptions C++ du noyau (V0.15.8, 96-noyau) : la colle chargée par
-  // importScripts cherche ___cxa_can_catch sur self — posée AVANT ce chargement.
-  const fns=[occBinPush,occDispose,occUnifyKeepEdges,occUnify,occCoqueValide,occBoxMinMax,occDelFaceDebord,
-    occDeleteFacesOnce,occDelFacesTry,occBrepWrite,occBrepRead,occFaceAt,occtTypeName,occtCanCatch,occtExcInstall,
-    occCut,occCutEach,occThrCut,occtV3Compat];
+  const fns=[occFree,occCastLibre,occFaceCur,occEdgeCur,occSolidCur,occShellCur,occXyz,occAvec, // V0.64.3
+    occBinPush,occDispose,occUnifyKeepEdges,occUnify,occCoqueValide,occBoxMinMax,occDelFaceDebord,
+    occDeleteFacesOnce,occDelFacesTry,occBrepWrite,occBrepRead,occFaceAt,
+    occCut,occCutEach,occCutKids,occThrCut,occtV3Compat];
   // Noms uniques (20-05) : le worker n'en porte pas, le rejeu les redonne à la réponse (nomsCompleter)
-  return 'function nomsTransmet(a,b,r){return r;}\nfunction nomsApresUnify(){}\nlet occt=null,occtReady=false;const DEL_ISOLE_MAX='+DEL_ISOLE_MAX+',DEL_BREP_PATH='+JSON.stringify(DEL_BREP_PATH)+';\n'+fns.map(String).join('\n')+'\nocctExcInstall(self);\n('+delWkMain+')();\n';
+  return 'function nomsTransmet(a,b,r){return r;}\nfunction nomsApresUnify(){}\nlet occt=null,occtReady=false;const DEL_ISOLE_MAX='+DEL_ISOLE_MAX+',DEL_BREP_PATH='+JSON.stringify(DEL_BREP_PATH)+';\n'+fns.map(String).join('\n')+'\n('+delWkMain+')();\n';
 }
 function delWkStart(){
   if(delWk)return delWk;
@@ -147,7 +141,7 @@ function delWkStart(){
   me.w.onerror=ev=>{try{ev.preventDefault();}catch(e){}delWkCrash(me,(ev&&ev.message)||'erreur du worker');};
   me.boot=setTimeout(()=>delWkCrash(me,'démarrage du noyau de calcul trop long'),180000);
   const msg={t:'boot',emb:window.__EMB?window.__EMB.blobs:null,js:occtFileUrl(OCCT_FILES.js),wasm:occtFileUrl(OCCT_FILES.wasm),mod:delWkMod,
-    v3:OCCT_V3?{compat:occtFileUrl(OCCT_FILES.compat),table:occtFileUrl(OCCT_FILES.table)}:null};
+    compat:occtFileUrl(OCCT_FILES.compat),table:occtFileUrl(OCCT_FILES.table)};
   try{me.w.postMessage(msg);}catch(e){msg.mod=null;me.w.postMessage(msg);}
   return me;
 }
@@ -205,7 +199,7 @@ function delWkCrash(me,why){
   const j=me.job;
   delWkStop(me);
   if(!me.ready){
-    // Démarrage impossible (file://, .wasm illisible…) : retour au calcul synchrone d'avant.
+    // Démarrage impossible (.wasm illisible…) : retour au calcul synchrone d'avant.
     delWkOff=String(why||'?');
     try{console.warn('[Suppression de face] worker indisponible ('+delWkOff+') — calcul sur le thread principal');}catch(e){}
     delWkQ.length=0;

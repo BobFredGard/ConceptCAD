@@ -197,7 +197,7 @@ function skBRepPlanarRefs(shape){
     const SH=occt.TopAbs_ShapeEnum.TopAbs_SHAPE;
     const ex=new occt.TopExp_Explorer_2(shape, occt.TopAbs_ShapeEnum.TopAbs_EDGE, SH);
     while(ex.More() && out.length<4000){
-      const e=occt.TopoDS.Edge_1(ex.Current());
+      const e=occEdgeCur(ex);
       try{
         const ad=new occt.BRepAdaptor_Curve_2(e);
         const mid=ad.Value((ad.FirstParameter()+ad.LastParameter())/2);

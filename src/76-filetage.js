@@ -93,7 +93,7 @@ function threadResolve(shape,f){
   const ex=new occt.TopExp_Explorer_2(shape,occt.TopAbs_ShapeEnum.TopAbs_FACE,occt.TopAbs_ShapeEnum.TopAbs_SHAPE);
   try{
     for(;ex.More();ex.Next()){
-      const fc=occt.TopoDS.Face_1(ex.Current());
+      const fc=occFaceCur(ex);
       const C=threadCylOf(fc);
       if(!C||Math.abs(C.r-ref.r)>0.02){try{fc.delete();}catch(e){}continue;}
       const dot=C.u[0]*ref.u[0]+C.u[1]*ref.u[1]+C.u[2]*ref.u[2];if(Math.abs(dot)<0.9999){try{fc.delete();}catch(e){}continue;}
@@ -188,7 +188,7 @@ function occShaftThreadVoid(P,D,zStart,nT,th,Rout,lh,bins){
   const ex=occBinPush(bins,new occt.TopExp_Explorer_2(sewn,occt.TopAbs_ShapeEnum.TopAbs_SHELL,occt.TopAbs_ShapeEnum.TopAbs_SHAPE));
   if(!ex.More())throw new Error('coque de filet introuvable');
   const ms=occBinPush(bins,new occt.BRepBuilderAPI_MakeSolid_1());
-  ms.Add(occt.TopoDS.Shell_1(ex.Current()));
+  ms.Add(occShellCur(ex));
   let sol=ms.Solid();
   const gp=occBinPush(bins,new occt.GProp_GProps_1());occt.BRepGProp.VolumeProperties_1(sol,gp,false,false,false);
   if(gp.Mass()<0)sol=sol.Reversed();

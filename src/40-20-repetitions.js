@@ -263,7 +263,7 @@ function repFeatPreviewGeos(f){
     const ex=new occt.TopExp_Explorer_2(b.shape,occt.TopAbs_ShapeEnum.TopAbs_FACE,SH);
     let o=0;
     while(ex.More()){
-      const fc=occt.TopoDS.Face_1(ex.Current());
+      const fc=occFaceCur(ex);
       try{
         const bx=occFaceBox(fc);
         if(bx){

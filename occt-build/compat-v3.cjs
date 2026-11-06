@@ -1,17 +1,17 @@
 // Compatibilité « appels opencascade.js 1.1.1 » sur libcascade 3.x (OCCT 8, noyau v3).
-// L'API v3 diffère de l'actuel sur quatre points ; on les comble au chargement, sans toucher à src/ :
+// L'API v3 diffère de celle-là sur quatre points ; on les comble au chargement, sans toucher à src/ :
 //  1. Plus de suffixes : `new oc.gp_Pnt_3(…)`, `x.IsValid_1()`, `oc.TopoDS.Face_1(s)` → le nom nu ;
 //     v3 choisit la surcharge selon le nombre ET le type des arguments. Les noms suffixés manquants
 //     sont fournis à la demande (prototypes « de repli » : seul un nom absent passe par eux).
-//  2. Arguments ajoutés depuis OCCT 7.4 (booléens, Message_ProgressRange, énumérations…) : complétés
-//     par la valeur par défaut d'OCCT ; arguments retirés (ancien Handle_Message_ProgressIndicator) : ôtés.
+//  2. Arguments ajoutés depuis opencascade.js 1.1.1 (booléens, Message_ProgressRange, énumérations…) : complétés
+//     par la valeur par défaut d'OCCT ; arguments retirés (Handle_Message_ProgressIndicator de la 1.1.1) : ôtés.
 //     Les signatures viennent du .d.ts de v3 (table générée, compat-v3.json).
 //  3. Poignées (Handle) : v3 les rend transparentes. `new oc.Handle_X_2(o)` rend o, `h.get()` rend
 //     l'objet lui-même, une poignée nulle (rendue `null` par v3) devient NULLH (IsNull() vrai).
 //  4. Sorties numériques en « enveloppe » ({returnValue, First, Last…}) : on rend returnValue,
-//     comme l'ancien noyau (qui ne savait pas rendre ces sorties).
+//     comme opencascade.js 1.1.1 (qui ne savait pas rendre ces sorties).
 //
-//   Génération : node occt-build/compat-v3.cjs <v3.d.ts> <sonde-ancien.json> <compat-v3.json>
+//   Génération : node occt-build/compat-v3.cjs <v3.d.ts> occt-build/sonde-1.1.1.json <compat-v3.json>
 //   Usage      : require('occt-build/compat-v3.cjs').appliquer(oc, require(compat-v3.json))
 'use strict';
 const fs=require('fs');
@@ -55,13 +55,13 @@ function generer(dtsFile,sondeFile){
   const ok=(ovl,n)=>ovl.some(o=>o[1]<=n&&n<=o[0]);
   // suffixés : toujours enveloppés (repli), on garde leurs signatures
   for(const k of Object.keys(A.ctors||{})){const c=nu(k);if(/^Handle_/.test(c))continue;if(D[c]&&D[c].ctor.length){table.ctors[c]=D[c].ctor;
-    // surcharge de l'ancien noyau qu'aucun constructeur v3 ne peut recevoir (même complété) : absente
+    // surcharge 1.1.1 qu'aucun constructeur v3 ne peut recevoir (même complété) : absente
     const ar=A.ctors[k];if(typeof ar==='number'&&!D[c].ctor.some(o=>o[0]>=ar))table.sansEquivalent.push(k);}else if(!D[c]&&!table.manque.includes('classe '+c))table.manque.push('classe '+c);}
   for(const [kind,stat] of [['statics',true],['methods',false]])for(const k of Object.keys(A[kind]||{})){
     const [c,mN]=k.split('.'),M=nu(mN);if(!D[c])continue;
     const o=chercher(c,M,stat);if(o)table[kind][c+'.'+M]=o;else table.manque.push(k);
   }
-  // non suffixés appelés par l'ancien code : enveloppés seulement si le nombre d'arguments ne colle plus
+  // non suffixés appelés par src/ : enveloppés seulement si le nombre d'arguments ne colle plus
   table.envelopper={ctors:[],statics:[],methods:[]};
   for(const [k,ar] of Object.entries(A.ctorsNus||{})){if(typeof ar!=='number'||!D[k])continue;
     if(!ok(D[k].ctor,ar)){table.ctors[k]=D[k].ctor;table.envelopper.ctors.push(k);}}
@@ -114,7 +114,7 @@ function appliquer(oc,table){
     if(r===null)return NULLH;
     if(r&&typeof r==='object'&&Object.getPrototypeOf(r)===Object.prototype){
       if('returnValue' in r)return sortie(r.returnValue);
-      return undefined; // void C++ avec sorties : l'ancien noyau ne rendait rien
+      return undefined; // void C++ avec sorties : la 1.1.1 ne rendait rien
     }
     return r;
   };
@@ -126,7 +126,7 @@ function appliquer(oc,table){
   const repliModule=new Proxy(Object.create(Object.getPrototypeOf(oc)),{get(t,k,recv){
     if(typeof k!=='string')return Reflect.get(t,k,recv);
     let m=/^Handle_(\w+?)(?:_(\d+))?$/.exec(k);
-    // Handle_Message_ProgressIndicator : OCCT 7.5+ attend à sa place un Message_ProgressRange
+    // Handle_Message_ProgressIndicator : OCCT récent attend à sa place un Message_ProgressRange
     if(m&&m[1]==='Message_ProgressIndicator'){const W=function(){return new oc.Message_ProgressRange();};oc[k]=W;return W;}
     if(m){const W=function(o){return o===undefined||o===null?NULLH:o;};oc[k]=W;return W;}
     m=/^(\w+?)_(\d+)$/.exec(k);
@@ -182,7 +182,7 @@ module.exports={generer,appliquer,lireDts};
 
 if(require.main===module){
   const [,,dts,sonde,out]=process.argv;
-  if(!out){console.error('usage : node occt-build/compat-v3.cjs <v3.d.ts> <sonde-ancien.json> <compat-v3.json>');process.exit(2);}
+  if(!out){console.error('usage : node occt-build/compat-v3.cjs <v3.d.ts> occt-build/sonde-1.1.1.json <compat-v3.json>');process.exit(2);}
   const t=generer(dts,sonde);
   fs.writeFileSync(out,JSON.stringify(t));
   const n=o=>Object.keys(o).length;

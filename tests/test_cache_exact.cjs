@@ -16,11 +16,9 @@
 // invalidation totale en tête/milieu (hits===0, sinon solide périmé).
 const fs=require('fs'),vm=require('vm'),path=require('path');
 const ROOT=path.join(__dirname,'..');
-globalThis.__dirname=path.join(ROOT,'occt');
-vm.runInThisContext(fs.readFileSync(path.join(ROOT,'occt','opencascade.full.js'),'utf8'),{filename:'occt.js'});
 const {loadApp}=require('./appvm.cjs');
 (async()=>{
-  const real=await globalThis.opencascadeFactory({wasmBinary:fs.readFileSync(path.join(ROOT,'occt','opencascade.wasm.wasm'))});
+  const real=await require('./noyau.cjs').charger();
   const {ctx,sandbox}=loadApp();
   sandbox.__realOcct=real;
   sandbox.__src20=fs.readFileSync(path.join(ROOT,'src','20-70-cache-et-rejeu.js'),'utf8');

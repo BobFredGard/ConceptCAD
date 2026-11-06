@@ -1,15 +1,12 @@
 // Une valeur impossible ne doit rien laisser derrière elle : revenir à la valeur d'origine redonne le
 // solide d'origine. Cache Piles (largeur 81 : Esquisse 7 déformée, projections perdues) et Support Pédale
 // (Esquisse 6 : profil ouvert, projetées allongées par erreur).
-// Lancé seul : node tools/ci-moteur.cjs occt/v3 -- tests/test_noms_retour.cjs
+// Lancé seul : node tests/test_noms_retour.cjs
 const fs=require('fs'),vm=require('vm'),path=require('path');
 const ROOT=path.join(__dirname,'..');
-globalThis.__dirname=path.join(ROOT,'occt');
-vm.runInThisContext(fs.readFileSync(path.join(ROOT,'occt','opencascade.full.js'),'utf8'),{filename:'occt.js'});
 const {loadApp}=require('./appvm.cjs'),lire=require('./lire-projet.cjs');
 (async()=>{
-  const real=await globalThis.opencascadeFactory({wasmBinary:fs.readFileSync(path.join(ROOT,'occt','opencascade.wasm.wasm'))});
-  if(!real.NCollection_IndexedDataMap_TopoDS_Shape_NCollection_List_TopoDS_Shape_TopTools_ShapeMapHasher){console.log('=== Retour exact : noyau sans carte indexée, sauté ===\n\n*** TOUT PASSE ***');return;}
+  const real=await require('./noyau.cjs').charger();
   const fails=[],ok=[];
   const A=(c,m)=>{(c?ok:fails).push(m);};
   const cas=[

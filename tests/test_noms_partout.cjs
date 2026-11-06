@@ -1,16 +1,13 @@
 // Noms uniques partout (src/20-05-noms.js) : sur chaque exemple, chaque face de chaque corps a un nom,
 // aucun doublon ; chaque référence (congé, face, projection) a retenu le sien ; chaque élément d'esquisse
 // est désigné sans ambiguïté et ses contraintes et cotes visent des éléments qui existent.
-// Lancé seul : node tools/ci-moteur.cjs occt/v3 -- tests/test_noms_partout.cjs [filtre]
+// Lancé seul : node tests/test_noms_partout.cjs [filtre]
 const fs=require('fs'),vm=require('vm'),path=require('path');
 const ROOT=path.join(__dirname,'..');
-globalThis.__dirname=path.join(ROOT,'occt');
-vm.runInThisContext(fs.readFileSync(path.join(ROOT,'occt','opencascade.full.js'),'utf8'),{filename:'occt.js'});
 const {loadApp}=require('./appvm.cjs'),lire=require('./lire-projet.cjs');
 const filtre=process.argv[2]||'';
 (async()=>{
-  const real=await globalThis.opencascadeFactory({wasmBinary:fs.readFileSync(path.join(ROOT,'occt','opencascade.wasm.wasm'))});
-  if(!real.NCollection_IndexedDataMap_TopoDS_Shape_NCollection_List_TopoDS_Shape_TopTools_ShapeMapHasher){console.log('=== Noms partout : noyau sans carte indexée, sauté ===\n\n*** TOUT PASSE ***');return;}
+  const real=await require('./noyau.cjs').charger();
   const dir=path.join(ROOT,'Exemples');
   const L=fs.readdirSync(dir).filter(n=>n.endsWith('.conceptcad')&&n.toLowerCase().includes(filtre.toLowerCase()));
   let bad=0;

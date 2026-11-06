@@ -689,7 +689,7 @@ svg.addEventListener('pointerdown',e=>{
     // OCCT donne les arêtes BRep exactes (vives ET de tangence) ; sans noyau on garde le
     // repli sur les références projetées (corps visibles) — dégradé, mais utilisable.
     if(!(occHas()&&occLive&&occLive.shape)&&!((sk._refs||[]).length)&&!(typeof asmSkExtLists==='function'&&asmSkExtLists().length)){
-      skStatus('Projeter : noyau OCCT requis (⚙ Noyau .wasm ou serveur) et solide visible.');
+      skStatus('Projeter : noyau OCCT requis et solide visible.');
       return;
     }
     const pr=projectEdgeAt(sk,wx,wy);

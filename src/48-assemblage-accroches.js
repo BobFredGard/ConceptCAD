@@ -56,7 +56,7 @@ function asmSnapExtract(shapes){
     if(!sh)return;
     const ex=new occt.TopExp_Explorer_2(sh,FACE,SH);
     while(ex.More()){
-      const f=occt.TopoDS.Face_1(ex.Current());
+      const f=occFaceCur(ex);
       try{
         const ad=new occt.BRepAdaptor_Surface_2(f,true);const gt=ad.GetType();
         let F=null;
@@ -74,7 +74,7 @@ function asmSnapExtract(shapes){
           // arêtes de la face, échantillonnées (rectangle englobant, extrémités de l'axe)
           F.edges=[];const pts=[];
           const ee=new occt.TopExp_Explorer_2(f,EDGE,SH);
-          while(ee.More()){const info=asmSnapEdgeInfo(occt.TopoDS.Edge_1(ee.Current()));F.edges.push(info);info.pts.forEach(p=>pts.push(p));ee.Next();}
+          while(ee.More()){const info=asmSnapEdgeInfo(occEdgeCur(ee));F.edges.push(info);info.pts.forEach(p=>pts.push(p));ee.Next();}
           try{ee.delete();}catch(err){}
           const G=new occt.GProp_GProps_1();
           try{occt.BRepGProp.SurfaceProperties_1(f,G,false,false);const c=G.CentreOfMass();F.c=[c.X(),c.Y(),c.Z()];F.area=G.Mass();try{c.delete();}catch(err){}}

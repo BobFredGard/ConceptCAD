@@ -158,20 +158,6 @@ addEventListener('keydown',e=>{
     e.preventDefault();try{regenTout();}catch(err){}
   }
 });
-if($('btnOccWasm'))$('btnOccWasm').onclick=()=>$('fileWasm').click();
-if($('fileWasm'))$('fileWasm').addEventListener('change',async e=>{
-  const f=e.target.files[0];if(!f)return;
-  try{
-    occBaseMsg='OCCT : lecture du .wasm local…';occStatus();
-    const buf=await f.arrayBuffer();
-    // On met le noyau en cache : les lancements suivants démarrent automatiquement (file://).
-    if(!confirm('Compilation du noyau exact OCCT (~65 Mo).\n\nL’interface sera FIGÉE pendant la compilation (10 à 60 s, parfois plus).\n\nContinuer ?')){e.target.value='';return;}
-    occCacheSave(buf).then(()=>{occBaseMsg='OCCT : noyau mis en cache — prochain lancement automatique.';occStatus();}).catch(()=>{});
-    await bootWasmBinary(buf);
-  }
-  catch(err){occBaseMsg='OCCT : lecture impossible ('+err.message+')';occStatus();}
-  e.target.value='';
-});
 try{if($('optFloor')){$('optFloor').checked=floorOn;$('optFloor').onchange=()=>{floorOn=$('optFloor').checked;try{localStorage.setItem('minifusion_sol',floorOn?'on':'off');}catch(e){}refreshMirror();vEnvTouched();};}}catch(e){}
 try{if($('optMirror')){$('optMirror').checked=mirrorOn;$('optMirror').onchange=()=>{mirrorOn=$('optMirror').checked;try{localStorage.setItem('minifusion_mirror',mirrorOn?'on':'off');}catch(e){}refreshMirror();vEnvTouched();};}}catch(e){}
 try{if($('optAxes')){$('optAxes').checked=axHelper?axHelper.visible:true;$('optAxes').onchange=()=>{if(axHelper)axHelper.visible=$('optAxes').checked;markDirty();try{renderTree();}catch(e){}};}}catch(e){}

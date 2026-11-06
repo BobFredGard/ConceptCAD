@@ -38,7 +38,7 @@ function occSplitRun(shape,tools){
 function occSolidsOf(shape){
   const out=[],SH=occt.TopAbs_ShapeEnum.TopAbs_SHAPE;
   const ex=new occt.TopExp_Explorer_2(shape,occt.TopAbs_ShapeEnum.TopAbs_SOLID,SH);
-  while(ex.More()){out.push(occt.TopoDS.Solid_1(ex.Current()));ex.Next();}
+  while(ex.More()){out.push(occSolidCur(ex));ex.Next();}
   try{ex.delete();}catch(e){}
   return out;
 }
@@ -136,7 +136,7 @@ function occListEdges(shape){
   const ex=new occt.TopExp_Explorer_2(shape,occt.TopAbs_ShapeEnum.TopAbs_EDGE,SH);bin.push(ex);
   let src=0;
   while(ex.More()){
-    const e=occt.TopoDS.Edge_1(ex.Current());bin.push(e);
+    const e=occEdgeCur(ex);bin.push(e);
     try{
       const ad=new occt.BRepAdaptor_Curve_2(e);bin.push(ad);
       const u0=ad.FirstParameter(),u1=ad.LastParameter();
@@ -177,8 +177,9 @@ function occCurvePts(ad,u0,u1,tol,cap){
   //    flèche d'une corde = R(1−cos(Δθ/2)) ≤ tol  ⇒  Δθ = 2·acos(1−tol/R)
   let R=-1;
   try{
-    const c=ad.Circle(),ax=c.Axis().Direction();
-    if(isFinite(ax.X())&&isFinite(ax.Y())&&isFinite(ax.Z()))R=c.Radius();
+    const c=ad.Circle(),a1=c.Axis(),ax=occXyz(a1.Direction());
+    if(isFinite(ax[0])&&isFinite(ax[1])&&isFinite(ax[2]))R=c.Radius();
+    occFree(a1);occFree(c);
   }catch(e){}
   if(R>1e-6){
     let dth=2*Math.acos(Math.max(-1,Math.min(1,1-tol/R)));
@@ -236,7 +237,7 @@ function occDraftOnce(result,refFace,faces,angle,opts){
     let done=false;
     try{done=!!da.IsDone();}catch(e){}
     if(!done)throw new Error('dépouille refusée par le moteur');
-    const brut=da.Shape();
+    const brut=occBinPush(bin,da.Shape());
     nomsTransmet([result],da,brut);
     const out=occShapeCopy(brut);
     if(!out||out.IsNull())throw new Error('solide dépouillé vide');
@@ -250,8 +251,7 @@ function occFaceDist(a,b){
   const x=new occt.BRepExtrema_DistShapeShape_2(a,b,occt.Extrema_ExtFlag.Extrema_ExtFlag_MIN,occt.Extrema_ExtAlgo.Extrema_ExtAlgo_Grad);
   try{
     if(!x.IsDone()||!(x.NbSolution()>0))return null;
-    const q=x.PointOnShape1(1);
-    return{d:x.Value(),p:[q.X(),q.Y(),q.Z()]};
+    return{d:x.Value(),p:occXyz(x.PointOnShape1(1))};
   }finally{try{x.delete();}catch(e){}}
 }
 function occDraftThin(da,faces){
@@ -305,7 +305,7 @@ function occExtrudeDraft(shape,bs,sp,angleDeg){
     const SH=occt.TopAbs_ShapeEnum.TopAbs_SHAPE;
     const ex=new occt.TopExp_Explorer_2(shape,occt.TopAbs_ShapeEnum.TopAbs_FACE,SH);bin.push(ex);
     while(ex.More()){
-      const fc=occt.TopoDS.Face_1(ex.Current());bin.push(fc);
+      const fc=occFaceCur(ex);bin.push(fc);
       let cap=false;
       try{
         const ad=new occt.BRepAdaptor_Surface_2(fc,true);bin.push(ad);
@@ -369,7 +369,7 @@ function occSharpEdges(shape){
     };
     const faces=[];
     const fx=new occt.TopExp_Explorer_2(shape,occt.TopAbs_ShapeEnum.TopAbs_FACE,SH);bin.push(fx);
-    while(fx.More()){const f=occt.TopoDS.Face_1(fx.Current());bin.push(f);faces.push(f);fx.Next();}
+    while(fx.More()){const f=occFaceCur(fx);bin.push(f);faces.push(f);fx.Next();}
     const fmap=new Map();
     // 2026-10-23 : COUTURES — une face de révolution (cylindre, cône…) est bordée deux fois par
     // la même arête (sa couture) : vue deux fois DANS LA MÊME FACE. Ce n'est pas une arête de la
@@ -378,8 +378,8 @@ function occSharpEdges(shape){
     const seam=new Set(),cyl=faces.map(f=>{
       try{const ad=new occt.BRepAdaptor_Surface_2(f,true);bin.push(ad);
         if(ad.GetType()!==occt.GeomAbs_SurfaceType.GeomAbs_Cylinder)return null;
-        const C=ad.Cylinder(),A=C.Axis(),d=A.Direction(),o=A.Location();
-        return{r:C.Radius(),d:[d.X(),d.Y(),d.Z()],o:[o.X(),o.Y(),o.Z()]};
+        const C=ad.Cylinder(),A=C.Axis();
+        try{return{r:C.Radius(),d:occXyz(A.Direction()),o:occXyz(A.Location())};}finally{occFree(A);occFree(C);}
       }catch(err){return null;}
     });
     const sameCyl=fl=>{
@@ -392,7 +392,7 @@ function occSharpEdges(shape){
     faces.forEach((f,fi)=>{
       const ee=new occt.TopExp_Explorer_2(f,occt.TopAbs_ShapeEnum.TopAbs_EDGE,SH);bin.push(ee);
       while(ee.More()){
-        const e=occt.TopoDS.Edge_1(ee.Current());bin.push(e);
+        const e=occEdgeCur(ee);bin.push(e);
         try{
           const ad=new occt.BRepAdaptor_Curve_2(e);bin.push(ad);
           if(ad.LastParameter()>ad.FirstParameter()){
@@ -411,7 +411,7 @@ function occSharpEdges(shape){
     const ex=new occt.TopExp_Explorer_2(shape,occt.TopAbs_ShapeEnum.TopAbs_EDGE,SH);bin.push(ex);
     const seen=new Set();
     while(ex.More()){
-      const e=occt.TopoDS.Edge_1(ex.Current());bin.push(e);
+      const e=occEdgeCur(ex);bin.push(e);
       try{
         const ad=new occt.BRepAdaptor_Curve_2(e);bin.push(ad);
         const u0=ad.FirstParameter(),u1=ad.LastParameter();
@@ -452,8 +452,8 @@ function occSharpEdges(shape){
                       const g2=new occt.BRepAdaptor_Curve2d_2(e,E2);bin.push(g2);
                       const w0=g1.FirstParameter(),w1=g1.LastParameter();
                       if(!(w1>w0))continue; // arête vue comme point dans ce couple : rien à mesurer ici
-                      const s1=occt.BRep_Tool.Surface_1(E1,new occt.TopLoc_Location_1());bin.push(s1);
-                      const s2=occt.BRep_Tool.Surface_1(E2,new occt.TopLoc_Location_1());bin.push(s2);
+                      const s1=occt.BRep_Tool.Surface_1(E1,occBinPush(bin,new occt.TopLoc_Location_1()));bin.push(s1);
+                      const s2=occt.BRep_Tool.Surface_1(E2,occBinPush(bin,new occt.TopLoc_Location_1()));bin.push(s2);
                       for(const p of [0.25,0.5,0.75]){
                         const q1=g1.Value(w0+(w1-w0)*p),q2=g2.Value(w0+(w1-w0)*p);
                         bin.push(q1);bin.push(q2);

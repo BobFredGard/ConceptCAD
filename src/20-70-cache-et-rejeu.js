@@ -557,15 +557,18 @@ function* occReplayBodyGen(bid,list){
     while(i+n<list.length){const g=list[i+n];if(g.repeatId!==f.repeatId||opOf(g)!==op||occBodyOfFeat(g)!==bid||g.visible===false)break;n++;}
     return n;
   };
+  const kidBin=[]; // enfants lus des composés : libérés à la fin du groupe
   const kidsOf=s=>{
     const CP=occt.TopAbs_ShapeEnum.TopAbs_COMPOUND;
     if(s.ShapeType()!==CP)return [s];
     const out=[];const it=new occt.TopoDS_Iterator_2(s,true,true);
     try{for(;it.More();it.Next())out.push(it.Value());}finally{try{it.delete();}catch(e){}}
+    kidBin.push(...out);
     if(out.some(k=>k.ShapeType()===CP))return null; // composé à étapes (filet modélisé) : une à une
     return out;
   };
-  const batch=run=>{
+  const batch=run=>{try{return batchIn(run);}finally{occDispose(kidBin);kidBin.length=0;}};
+  const batchIn=run=>{
     const keys=[];let key=ckKey;run.forEach(g=>{key+=featSig(g)+';';keys.push(key);});
     const cut=run[0].type==='hole'||(run[0].op||'add')==='cut';
     const rs=[],tools=[];
@@ -813,9 +816,9 @@ function occSolidBox(sh){
   // Boîte + diagonale d'un solide (pour les tolérances relatives), ou null.
   try{
     const box=new occt.Bnd_Box_1();occt.BRepBndLib.Add(sh,box,true);
-    const a=box.CornerMin(),b=box.CornerMax();
-    const r={c:[(a.X()+b.X())/2,(a.Y()+b.Y())/2,(a.Z()+b.Z())/2],
-      dg:Math.hypot(b.X()-a.X(),b.Y()-a.Y(),b.Z()-a.Z())};
+    const a=occXyz(box.CornerMin()),b=occXyz(box.CornerMax());
+    const r={c:[(a[0]+b[0])/2,(a[1]+b[1])/2,(a[2]+b[2])/2],
+      dg:Math.hypot(b[0]-a[0],b[1]-a[1],b[2]-a[2])};
     try{box.delete();}catch(e){}
     return r;
   }catch(e){return null;}

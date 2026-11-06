@@ -143,7 +143,7 @@ function coqueOrdOf(ref){
       while(ex.More()){
         if(want.has(o)){
           let cur=null;
-          try{cur=coqueRefOf(occt.TopoDS.Face_1(ex.Current()));}catch(e){}
+          try{cur=coqueRefOf(occFaceCur(ex));}catch(e){}
           if(cur){const kk=coqueKey(cur);if(!idx.has(kk))idx.set(kk,o);} // 1ʳᵉ face de même clé, comme avant
         }
         o++;ex.Next();

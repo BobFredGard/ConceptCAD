@@ -4,15 +4,11 @@
 // Barquette (Exemples), corps « Corps 1 » : un clic sur le fond + « Faces tangentes » =
 // 17 faces (8 parois dont 4 coins obliques, 8 congés du fond dont 4 B-splines, le fond),
 // décalées par le noyau (CCFaceOffset, OCCT 8). Volume ≈ aire de l'intérieur × distance.
-// Ancien noyau (OCCT_DIR=actuel) : la chaîne est trouvée, mais seule la face cliquée bouge
-// (calcul historique), avec une alerte.
 const fs=require('fs'),vm=require('vm'),path=require('path');
 const ROOT=path.join(__dirname,'..');
-globalThis.__dirname=path.join(ROOT,'occt');
-vm.runInThisContext(fs.readFileSync(path.join(ROOT,'occt','opencascade.full.js'),'utf8'),{filename:'occt.js'});
 const {loadApp}=require('./appvm.cjs');
 (async()=>{
-  const real=await globalThis.opencascadeFactory({wasmBinary:fs.readFileSync(path.join(ROOT,'occt','opencascade.wasm.wasm'))});
+  const real=await require('./noyau.cjs').charger();
   const {ctx,sandbox}=loadApp();
   sandbox.__realOcct=real;
   sandbox.__doc=require('./lire-projet.cjs')(path.join(ROOT,'tests','fixtures','barquette-faces-tangentes.conceptcad'));
@@ -41,11 +37,6 @@ const {loadApp}=require('./appvm.cjs');
     '  const E=etat();doc.features.pop();markDirty();',
     '  return {sh:E.sh,v:occShapeVolume(E.sh),msgs:E.msgs.filter(m=>/Essai/.test(m))};',
     '};',
-    'if(!occHasFaceOffset()){',
-    '  const r=essai(1,true,refFond);',
-    '  A(r.v>V0&&r.v<V0+aire&&r.msgs.some(m=>/décalage indisponible/.test(m)),"ancien noyau : le fond seul bouge ("+(r.v-V0).toFixed(0)+" mm³), alerte ("+r.msgs.join(" | ")+")");',
-    '  return out;',
-    '}',
     'for(const d of [1,-1]){',
     '  const t1=Date.now(),r=essai(d,true,refFond),ms2=Date.now()-t1,dv=r.v-V0,q=dv/(aire*d);',
     '  A(!r.msgs.length,"Face "+(d>0?"+":"")+d+" mm, faces tangentes : sans alerte ("+(r.msgs.join(" | ")||"aucune")+")");',

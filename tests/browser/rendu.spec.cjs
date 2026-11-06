@@ -14,7 +14,7 @@ const AXE=path.join(RACINE,'Exemples','Axe.conceptcad');
 const REL_ID_SABLE=2; // REL_ID.sable (98-rendu-reliefs)
 
 test.beforeAll(()=>{
-  for(const f of ['occt/opencascade.wasm.wasm','occt/opencascade.full.wasm','Exemples/Axe.conceptcad']){
+  for(const f of ['occt/v3/conceptcad_v3.wasm','Exemples/Axe.conceptcad']){
     // Un .conceptcad compressé peut peser moins de 10 Ko (V0.46.0) : on reconnaît le pointeur à son contenu.
     if(fs.readFileSync(path.join(RACINE,f)).subarray(0,23).toString()==='version https://git-lfs')throw new Error(f+' est un pointeur Git LFS : lancez « git lfs pull ».');
   }
@@ -27,7 +27,7 @@ async function demarrerAxe(page){
   page.on('pageerror',e=>err.push('pageerror : '+e.message));
   page.on('dialog',d=>{err.push('dialog : '+d.message());d.dismiss().catch(()=>{});});
   page.on('console',m=>{if(m.type()==='error'&&/THREE|WebGL|shader/i.test(m.text()))err.push('console : '+m.text().slice(0,300));});
-  await page.goto('/ConceptCAD.html'+(process.env.MF_NOYAU?'?noyau='+process.env.MF_NOYAU:''));
+  await page.goto('/ConceptCAD.html');
   await page.waitForFunction(()=>typeof occtReady!=='undefined'&&(occtReady===true||/échec|indisponible/.test(occBaseMsg)),null,{timeout:200000});
   expect(await page.evaluate(()=>occtReady),'noyau OCCT').toBe(true);
   await page.waitForFunction(()=>!skEdit&&rebuildDepth===0);

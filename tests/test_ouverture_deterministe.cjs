@@ -10,8 +10,6 @@
 // du fichier ouvert ne revenait jamais.
 const fs=require('fs'),vm=require('vm'),path=require('path');
 const ROOT=path.join(__dirname,'..');
-globalThis.__dirname=path.join(ROOT,'occt');
-vm.runInThisContext(fs.readFileSync(path.join(ROOT,'occt','opencascade.full.js'),'utf8'),{filename:'occt.js'});
 const {loadApp}=require('./appvm.cjs');
 let ko=0;
 const A=(c,m)=>{if(!c){ko++;console.log('  ✗ '+m);}else console.log('  ✓ '+m);};
@@ -19,7 +17,7 @@ const pedale=require('./lire-projet.cjs')(path.join(ROOT,'Exemples','Support Pé
 const malaxeur=require('./lire-projet.cjs')(path.join(ROOT,'Exemples','Malaxeur Retard.conceptcad'));
 const crochet=require('./lire-projet.cjs')(path.join(ROOT,'Exemples','Crochet.conceptcad'));
 (async()=>{
-  const real=await globalThis.opencascadeFactory({wasmBinary:fs.readFileSync(path.join(ROOT,'occt','opencascade.wasm.wasm'))});
+  const real=await require('./noyau.cjs').charger();
   const {ctx,sandbox}=loadApp();
   sandbox.__realOcct=real;sandbox.__pedale=pedale;sandbox.__malaxeur=malaxeur;sandbox.__crochet=crochet;
   sandbox.btoa=globalThis.btoa;sandbox.atob=globalThis.atob; // sources des imports (base64)

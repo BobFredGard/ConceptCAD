@@ -71,13 +71,13 @@ function faoHolesDetect(shapes){
     try{ ex=new occt.TopExp_Explorer_2(sh,occt.TopAbs_ShapeEnum.TopAbs_FACE,occt.TopAbs_ShapeEnum.TopAbs_SHAPE); }catch(e){ return; }
     let k=0;
     while(ex.More()){
-      let f=null,ad=null;
+      let f=null,ad=null;const tmp=[];
       try{
-        f=occt.TopoDS.Face_1(ex.Current());
+        f=occFaceCur(ex);
         ad=new occt.BRepAdaptor_Surface_2(f,true);
         const ty=ad.GetType();
         if(ty===T.GeomAbs_Cylinder){
-          const c=ad.Cylinder(),ax=c.Axis(),L=ax.Location(),Dd=ax.Direction();
+          const c=ad.Cylinder(),ax=c.Axis(),L=ax.Location(),Dd=ax.Direction();tmp.push(c,ax,L,Dd);
           // Orientation de face NON fiable (repère direct/indirect selon la construction :
           // une découpe extrudée en −Z donne des trous « FORWARD ») → tri par la matière
           // autour du cylindre, plus bas (faoHoleIsHole).
@@ -90,17 +90,18 @@ function faoHolesDetect(shapes){
             g.rng.push({lo:Math.min(za,zb),hi:Math.max(za,zb),u:u,f:si+':'+k});
           }
         }else if(ty===T.GeomAbs_Cone){
-          const c=ad.Cone(),ax=c.Axis(),Dd=ax.Direction();
+          const c=ad.Cone(),ax=c.Axis(),Dd=ax.Direction();tmp.push(c,ax,Dd);
           if(Math.abs(Dd.Z())>0.9999){
-            const A=c.Apex(),za=ad.FirstVParameter(),zb=ad.LastVParameter();
+            const A=c.Apex(),za=ad.FirstVParameter(),zb=ad.LastVParameter();tmp.push(A);
             // v = distance le long de la génératrice depuis la base : z = Lz + v·cos(semi)·dz
-            const L=ax.Location(),cs=Math.cos(c.SemiAngle());
+            const L=ax.Location(),cs=Math.cos(c.SemiAngle());tmp.push(L);
             const z1=L.Z()+Dd.Z()*za*cs,z2=L.Z()+Dd.Z()*zb*cs;
             cones.push({x:A.X(),y:A.Y(),apex:A.Z(),semi:Math.abs(c.SemiAngle()),zLo:Math.min(z1,z2),zHi:Math.max(z1,z2),rev:f.Orientation_1()===REV});
           }
         }
       }catch(e){}
       try{ if(ad)ad.delete(); }catch(e){}
+      occDispose(tmp);occFree(f);
       k++;ex.Next();
     }
     try{ ex.delete(); }catch(e){}

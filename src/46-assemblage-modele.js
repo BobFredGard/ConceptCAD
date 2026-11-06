@@ -688,7 +688,7 @@ function asmSkCaptureFaces(){
       while(ex.More()&&out.length<4000){
         let f=null,ad=null;
         try{
-          f=occt.TopoDS.Face_1(ex.Current());
+          f=occFaceCur(ex);
           ad=new occt.BRepAdaptor_Surface_2(f,true);
           const gt=ad.GetType(),b=occFaceBox(f);
           if(b&&gt===T.GeomAbs_Plane){
