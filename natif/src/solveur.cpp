@@ -525,14 +525,16 @@ static inline double mesure(double ax, double ay, double bx, double by, char o) 
 
 Solveur::Bilan Solveur::audit(std::vector<Violation>* tout) {
   Bilan r;
+  std::string idAudit;
   const auto pousse = [&](bool cote, const char* desc, double viol) {
     if (viol > r.residual) r.residual = viol;
     const double v = viol * (cote ? 1 : SK_GEO_W);
     if (v > r.score) r.score = v;
-    if (tout) tout->push_back({desc, viol});
+    if (tout) tout->push_back({desc, viol, idAudit});
   };
   for (const D& d : D_) {
     if (d.ref) continue;
+    idAudit = d.id;
     if (d.type == LENGTH) {
       const E* l = en(d.line);
       if (l && l->t == LIGNE) {
@@ -591,6 +593,7 @@ Solveur::Bilan Solveur::audit(std::vector<Violation>* tout) {
     }
   }
   for (const C& c : C_) {
+    idAudit = c.id;
     if (c.type == H || c.type == V) {
       const E* l = en(c.line);
       if (l && l->t == LIGNE) {
@@ -3069,6 +3072,28 @@ void Solveur::poserReference(const std::string& id) {
   for (D& d : D_)
     if (d.id == id) d.ref = true;
   calculerStructure();
+}
+
+Solveur::Libertes Solveur::libertes() {
+  const Rang r = analyseRang(-1, true);
+  Libertes L;
+  L.nombre = r.n - r.rang;
+  for (size_t i = 0; i < r.B.pts.size() && !r.determine.empty(); i++)
+    if (!r.determine[2 * i] || !r.determine[2 * i + 1]) L.points.push_back(idP_[r.B.pts[i]]);
+  for (size_t j = 0; j < r.B.rad.size() && !r.determine.empty(); j++)
+    if (!r.determine[2 * r.B.pts.size() + j]) L.rayons.push_back(E_[r.B.rad[j]].id);
+  return L;
+}
+
+std::map<std::string, double> Solveur::ecarts() {
+  std::vector<Violation> v;
+  audit(&v);
+  std::map<std::string, double> m;
+  for (const Violation& o : v) {
+    const auto it = m.find(o.id);
+    if (it == m.end() || it->second < o.viol) m[o.id] = o.viol;
+  }
+  return m;
 }
 
 std::vector<std::string> Solveur::pointsLibres() {

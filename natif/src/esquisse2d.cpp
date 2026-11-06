@@ -16,7 +16,7 @@
 namespace {
 const double PI = 3.14159265358979323846, TAU = PI * 2;
 const double ECHELLE_MIN = 0.02, ECHELLE_MAX = 4000;
-const wxColour FOND_VUE(0x1c, 0x1c, 0x1e), FOND(0x10, 0x10, 0x12), GRILLE(0x2a, 0x2a, 0x2e), AXE(0x0a, 0x84, 0xff), TRAIT(0xe8, 0xe8, 0xea), GRIS(0x8e, 0x8e, 0x93);
+const wxColour FOND_VUE(0x13, 0x15, 0x19), FOND(0x10, 0x10, 0x12), GRILLE(0x2a, 0x2a, 0x2e), AXE(0x0a, 0x84, 0xff), TRAIT(0xe8, 0xe8, 0xea), GRIS(0x8e, 0x8e, 0x93);
 const wxColour VERT(0x30, 0xd1, 0x58), VERT_FOND(0x16, 0x26, 0x1b), ORANGE(0xff, 0xb3, 0x40), ORANGE_AXE(0xff, 0x9f, 0x0a), VIOLET(0xbf, 0x5a, 0xf2), CYAN(0x64, 0xd2, 0xff);
 
 struct P2 {
@@ -219,35 +219,6 @@ void texteCentre(wxGraphicsContext& g, const wxString& t, double x, double y) {
 
 VueEsquisse::VueEsquisse(wxWindow* parent) : wxWindow(parent, 2004, wxDefaultPosition, wxDefaultSize, wxFULL_REPAINT_ON_RESIZE | wxWANTS_CHARS) {
   SetBackgroundStyle(wxBG_STYLE_PAINT);
-  terminer_ = new wxButton(this, wxID_ANY, L"Terminer l'esquisse", FromDIP(wxPoint(12, 12)));
-  terminer_->Bind(wxEVT_BUTTON, [this](wxCommandEvent&) {
-    if (surQuitter) surQuitter();
-  });
-  // Identifiants fixes : natif/mesures/verifier-dessin.ps1 retrouve ces boutons par leur nom.
-  const std::pair<Dessin::Outil, const wchar_t*> noms[] = {{Dessin::SELECTION, L"Sélection"}, {Dessin::LIGNE, L"Ligne"}, {Dessin::RECTANGLE, L"Rectangle"}, {Dessin::CERCLE, L"Cercle"}, {Dessin::ARC, L"Arc"}, {Dessin::COTE, L"Cote"}, {Dessin::AJUSTER, L"Ajuster"}, {Dessin::DECALER, L"Décaler"}};
-  int idBouton = 2010;
-  for (const auto& [outil, nom] : noms) {
-    auto* b = new wxToggleButton(this, idBouton++, nom);
-    const Dessin::Outil o = outil;
-    b->Bind(wxEVT_TOGGLEBUTTON, [this, o](wxCommandEvent&) {
-      if (dessin_) {
-        dessin_->vue(echelle_);
-        dessin_->choisirOutil(o);
-        apresGeste();
-      }
-      SetFocus();
-    });
-    b->Hide();
-    outils_.push_back(b);
-  }
-  caseGrille_ = new wxCheckBox(this, 2020, L"Grille 1 mm");
-  caseGrille_->SetValue(true);
-  caseGrille_->Hide();
-  caseGrille_->Bind(wxEVT_CHECKBOX, [this](wxCommandEvent&) {
-    if (dessin_) dessin_->grille = caseGrille_->GetValue();
-    SetFocus();
-  });
-  placerOutils();
   Bind(wxEVT_PAINT, &VueEsquisse::surPeinture, this);
   Bind(wxEVT_LEFT_DOWN, &VueEsquisse::surGaucheBas, this);
   Bind(wxEVT_LEFT_UP, &VueEsquisse::surGaucheHaut, this);
@@ -266,38 +237,51 @@ VueEsquisse::VueEsquisse(wxWindow* parent) : wxWindow(parent, 2004, wxDefaultPos
   });
 }
 
-void VueEsquisse::placerOutils() {
-  int x = terminer_->GetPosition().x + terminer_->GetSize().x + FromDIP(16);
-  const int y = terminer_->GetPosition().y;
-  for (wxToggleButton* b : outils_) {
-    b->SetSize(x, y, FromDIP(82), terminer_->GetSize().y);
-    x += b->GetSize().x + FromDIP(2);
-  }
-  caseGrille_->SetPosition(wxPoint(x + FromDIP(14), y + FromDIP(4)));
-}
-
 void VueEsquisse::poserDessin(Dessin* d) {
   dessin_ = d;
   gauche_ = dblEnAttente_ = false;
-  for (wxToggleButton* b : outils_) b->Show(d != nullptr);
-  caseGrille_->Show(d != nullptr);
-  if (d) d->grille = caseGrille_->GetValue();
-  synchroniserOutils();
+  if (d) d->grille = accrocheGrille_;
   Refresh();
 }
 
-void VueEsquisse::synchroniserOutils() {
-  if (!dessin_) return;
-  for (size_t i = 0; i < outils_.size(); i++) outils_[i]->SetValue(static_cast<int>(dessin_->outil()) == static_cast<int>(i));
+void VueEsquisse::poserInfos(const InfosEsquisse& i) {
+  infos_ = i;
+  Refresh();
+}
+
+void VueEsquisse::basculerGrille() {
+  grille_ = !grille_;
+  Refresh();
+}
+
+void VueEsquisse::basculerFantome() {
+  voirFantome_ = !voirFantome_;
+  Refresh();
+}
+
+void VueEsquisse::reglerAccrocheGrille(bool oui) {
+  accrocheGrille_ = oui;
+  if (dessin_) dessin_->grille = oui;
+}
+
+void VueEsquisse::centrerSur(double x, double y) {
+  cx_ = x;
+  cy_ = y;
+  Refresh();
+}
+
+void VueEsquisse::ouvrirCoteParId(const std::string& id) {
+  Update();  // les zones des cotes doivent être à jour
+  ouvrirCote(id);
 }
 
 void VueEsquisse::apresGeste() {
   if (!dessin_) return;
-  synchroniserOutils();
   if (dessin_->aChange()) {
     dessin_->changeVu();
     if (surDessinChange) surDessinChange();
   }
+  if (surGeste) surGeste();
   Refresh();
 }
 
@@ -354,7 +338,7 @@ void VueEsquisse::surGaucheBas(wxMouseEvent& ev) {
     const std::string id = zoneSous(ToDIP(ev.GetPosition()));
     if (!id.empty()) {
       dessin_->choisirCote(id);
-      Refresh();
+      apresGeste();
       return;
     }
   }
@@ -484,6 +468,7 @@ void VueEsquisse::surTouche(wxKeyEvent& ev) {
 
 void VueEsquisse::montrer(const Esquisse* s, const TopoDS_Shape& piece) {
   s_ = s;
+  infos_ = InfosEsquisse();
   annulerSaisie();
   zonesCotes_.clear();
   nonDessines_ = 0;
@@ -670,6 +655,22 @@ void VueEsquisse::surMolette(wxMouseEvent& ev) {
 void VueEsquisse::surPeinture(wxPaintEvent&) {
   wxAutoBufferedPaintDC dc(this);
   dessiner(dc);
+  std::unique_ptr<wxGraphicsContext> g(wxGraphicsContext::CreateFromUnknownDC(dc));
+  if (!g) return;
+  const wxSize t = GetClientSize();
+  const double r = FromDIP(12);
+  wxGraphicsPath coins = g->CreatePath();
+  coins.MoveToPoint(0, 0);
+  coins.AddLineToPoint(r, 0);
+  coins.AddQuadCurveToPoint(0, 0, 0, r);
+  coins.CloseSubpath();
+  coins.MoveToPoint(t.x, 0);
+  coins.AddLineToPoint(t.x - r, 0);
+  coins.AddQuadCurveToPoint(t.x, 0, t.x, r);
+  coins.CloseSubpath();
+  g->SetBrush(g->CreateBrush(wxBrush(GetParent()->GetBackgroundColour())));
+  g->SetPen(wxNullGraphicsPen);
+  g->FillPath(coins);
 }
 
 bool VueEsquisse::enregistrer(const wxString& chemin) {
@@ -696,7 +697,9 @@ void VueEsquisse::dessiner(wxDC& dc) {
   fantome(*g);
   zones(*g);
   entites(*g);
+  halo(*g);
   points(*g);
+  sante(*g);
   cotes(*g);
   trace(*g);
 }
@@ -827,7 +830,7 @@ void VueEsquisse::grille(wxGraphicsContext& g, double W, double H) const {
 }
 
 void VueEsquisse::fantome(wxGraphicsContext& g) const {
-  if (traitsFantome_.empty()) return;
+  if (traitsFantome_.empty() || !voirFantome_) return;
   g.SetPen(stylo(g, wxColour(0xe6, 0xe6, 0xee, 107), 1.15));
   wxGraphicsPath p = g.CreatePath();
   for (const Trait& t : traitsFantome_) {
@@ -904,17 +907,21 @@ void VueEsquisse::pastilles(wxGraphicsContext& g, const std::vector<std::string>
 
 void VueEsquisse::entites(wxGraphicsContext& g) const {
   const Esquisse& s = *s_;
-  // Sans le calcul de rang (étape du solveur), on ne distingue pas encore le libre (bleu) du déterminé (blanc).
+  // Bleu : encore libre. Blanc : entièrement déterminé (analyse de rang).
+  const auto choisi = [&](const Entite& en) { return dessin_ && dessin_->estChoisi(Dessin::Choix::ENTITE, en.id); };
+  const auto couleur = [&](const Entite& en) { return choisi(en) ? ORANGE_AXE : (!infos_.calculees || infos_.determinee(en)) ? TRAIT : CYAN; };
   const auto regler = [&](const Entite& en) {
-    if (dessin_ && dessin_->estChoisi(Dessin::Choix::ENTITE, en.id)) g.SetPen(stylo(g, ORANGE_AXE, 2.6));
-    else if (en.construction) g.SetPen(stylo(g, alpha(TRAIT, 0.45), 2, {7, 5}));
-    else g.SetPen(stylo(g, TRAIT, 2));
+    const double l = choisi(en) ? 3.5 : 2;
+    if (en.construction) g.SetPen(stylo(g, alpha(couleur(en), 0.45), l, {7, 5}));
+    else g.SetPen(stylo(g, couleur(en), l));
   };
   g.SetBrush(wxNullGraphicsBrush);
   const auto sigleT = [&](double x, double y) {
     const auto q = e(x, y);
     g.SetFont(g.CreateFont(GetFont().Bold().Scaled(1.0f), VERT));
-    g.DrawText("T", q.m_x + 6, q.m_y - 18);
+    double L, H, dsc, ext;
+    g.GetTextExtent("T", &L, &H, &dsc, &ext);
+    g.DrawText("T", q.m_x + 6, q.m_y - 6 - (H - dsc));
   };
   for (const Entite& en : s.entites) {
     if (en.t == "line") {
@@ -992,12 +999,11 @@ void VueEsquisse::entites(wxGraphicsContext& g) const {
         }
         g.StrokePath(p);
       }
-      // Petit carré du centre
-      g.SetPen(stylo(g, TRAIT, 1));
-      g.StrokeLine(c.m_x - 3, c.m_y - 3, c.m_x + 3, c.m_y - 3);
-      g.StrokeLine(c.m_x + 3, c.m_y - 3, c.m_x + 3, c.m_y + 3);
-      g.StrokeLine(c.m_x + 3, c.m_y + 3, c.m_x - 3, c.m_y + 3);
-      g.StrokeLine(c.m_x - 3, c.m_y + 3, c.m_x - 3, c.m_y - 3);
+      // Petit carré du centre, plein si le centre d'un cercle est fixe
+      g.SetPen(stylo(g, couleur(en), 1));
+      if (en.t == "circle" && infos_.fixes.count(en.pc)) g.SetBrush(g.CreateBrush(wxBrush(TRAIT)));
+      g.DrawRectangle(c.m_x - 3, c.m_y - 3, 6, 6);
+      g.SetBrush(wxNullGraphicsBrush);
       // Sigle T au point de contact avec chaque ligne tangente
       std::vector<std::string> noms;
       const auto ajoute = [&](const std::string& n) {
@@ -1038,7 +1044,7 @@ void VueEsquisse::entites(wxGraphicsContext& g) const {
         g.StrokeLine(q.m_x - 11, q.m_y, q.m_x + 11, q.m_y);
         g.StrokeLine(q.m_x, q.m_y - 11, q.m_x, q.m_y + 11);
       } else {
-        g.SetPen(stylo(g, TRAIT, 2));
+        g.SetPen(stylo(g, couleur(en), choisi(en) ? 3.5 : 2));
         g.StrokeLine(q.m_x - 6, q.m_y, q.m_x + 6, q.m_y);
         g.StrokeLine(q.m_x, q.m_y - 6, q.m_x, q.m_y + 6);
       }
@@ -1092,8 +1098,8 @@ void VueEsquisse::points(wxGraphicsContext& g) const {
       g.DrawEllipse(a - 4.5, b - 4.5, 9, 9);
     } else {
       const bool choisi = dessin_ && dessin_->estChoisi(Dessin::Choix::POINT, id);
-      g.SetBrush(g.CreateBrush(wxBrush(choisi ? ORANGE_AXE : fixe ? TRAIT : FOND)));
-      g.SetPen(stylo(g, choisi ? ORANGE_AXE : TRAIT, 1.5));
+      g.SetBrush(g.CreateBrush(wxBrush(fixe ? TRAIT : choisi ? ORANGE_AXE : FOND)));
+      g.SetPen(stylo(g, choisi ? ORANGE_AXE : (!infos_.calculees || infos_.pointDetermine(id)) ? TRAIT : CYAN, 1.5));
       g.DrawRectangle(a - 4, b - 4, 8, 8);
     }
     g.SetBrush(wxNullGraphicsBrush);
@@ -1101,7 +1107,117 @@ void VueEsquisse::points(wxGraphicsContext& g) const {
       g.SetPen(stylo(g, alpha(VERT, 0.9), 1.2));
       cercle(g, a - 6, b - 6, 12, 12);
     }
+    // Flèche : ce point peut encore bouger, tant que l'esquisse n'est pas entièrement contrainte
+    if (infos_.calculees && infos_.libertes > 0 && !fixe) {
+      g.SetPen(stylo(g, alpha(VERT, 0.85), 1.4));
+      g.StrokeLine(a + 7, b - 7, a + 14, b - 7);
+      g.StrokeLine(a + 10.5, b - 10.5, a + 14, b - 7);
+      g.StrokeLine(a + 10.5, b - 3.5, a + 14, b - 7);
+    }
   }
+}
+
+// Santé : bouts ouverts en rouge avec leur écart, croisements en losanges orange
+void VueEsquisse::sante(wxGraphicsContext& g) const {
+  const SanteEsquisse& H = infos_.sante;
+  const wxColour ROUGE(0xff, 0x45, 0x3a);
+  g.SetBrush(wxNullGraphicsBrush);
+  g.SetPen(stylo(g, ROUGE, 2.5));
+  for (const Pt& o : H.ouverts) {
+    const auto q = e(o.x, o.y);
+    cercle(g, q.m_x - 7, q.m_y - 7, 14, 14);
+  }
+  if (H.aEcart && H.ecart < 25) {
+    const auto a = e(H.ecartA.x, H.ecartA.y), b = e(H.ecartB.x, H.ecartB.y);
+    g.SetPen(stylo(g, ROUGE, 1.5, {4, 3}));
+    ligne(g, a, b);
+    g.SetFont(g.CreateFont(wxFontInfo(wxSize(0, 12)).Bold().FaceName("Segoe UI"), ROUGE));
+    double L, H2, dsc, ext;
+    const wxString t = wxString::Format(L"⚠ %.1f", H.ecart);
+    g.GetTextExtent(t, &L, &H2, &dsc, &ext);
+    g.DrawText(t, (a.m_x + b.m_x) / 2, (a.m_y + b.m_y) / 2 - 8 - (H2 - dsc));
+  }
+  g.SetPen(stylo(g, ORANGE_AXE, 2));
+  for (const Pt& o : H.croisements) {
+    const auto q = e(o.x, o.y);
+    wxGraphicsPath p = g.CreatePath();
+    p.MoveToPoint(q.m_x, q.m_y - 7);
+    p.AddLineToPoint(q.m_x + 7, q.m_y);
+    p.AddLineToPoint(q.m_x, q.m_y + 7);
+    p.AddLineToPoint(q.m_x - 7, q.m_y);
+    p.CloseSubpath();
+    g.StrokePath(p);
+  }
+}
+
+namespace {
+// skConTargets : tous les champs qui peuvent nommer un point ou un élément
+std::vector<std::string> refsContrainte(const Contrainte& k) { return {k.p, k.a, k.b, k.c, k.d, k.line, k.ent, k.mid}; }
+std::vector<std::string> refsCote(const Cote& k) { return {k.p, k.a, k.b, k.line, k.ent}; }
+}  // namespace
+
+// skDrawConHalo : ce que vise la contrainte ou la cote choisie dans le panneau
+void VueEsquisse::halo(wxGraphicsContext& g) const {
+  if (!dessin_ || !s_) return;
+  const wxColour J(0xff, 0xd6, 0x0a);
+  std::set<std::string> pts, ents;
+  const auto viser = [&](const std::string& v) {
+    if (v.empty()) return;
+    if (s_->point(v)) pts.insert(v);
+    else if (s_->entite(v)) ents.insert(v);
+  };
+  for (const Dessin::Choix& c : dessin_->selection()) {
+    if (c.sorte == Dessin::Choix::CONTRAINTE) {
+      for (const Contrainte& k : s_->contraintes)
+        if (k.id == c.id) for (const std::string& v : refsContrainte(k)) viser(v);
+    } else if (c.sorte == Dessin::Choix::COTE) {
+      for (const Cote& k : s_->cotes)
+        if (k.id == c.id) for (const std::string& v : refsCote(k)) viser(v);
+    }
+  }
+  if (pts.empty() && ents.empty()) return;
+  g.SetBrush(wxNullGraphicsBrush);
+  g.SetPen(g.CreatePen(wxGraphicsPenInfo(alpha(J, 0.45), 8).Cap(wxCAP_ROUND)));
+  for (const std::string& id : ents) {
+    const Entite& en = *s_->entite(id);
+    if (en.t == "line") {
+      const Pt* A = s_->point(en.p1);
+      const Pt* B = s_->point(en.p2);
+      if (A && B) ligne(g, e(A->x, A->y), e(B->x, B->y));
+    } else if (en.t == "circle") {
+      if (const Pt* C = s_->point(en.pc)) {
+        const auto q = e(C->x, C->y);
+        const double r = std::abs(en.r) * echelle_;
+        cercle(g, q.m_x - r, q.m_y - r, 2 * r, 2 * r);
+      }
+    } else if (en.t == "arc") {
+      const Pt* C = s_->point(en.pc);
+      const auto an = anglesArc(*s_, en);
+      if (C && an) {
+        // Même découpage que les arcs de la vue : petits segments le long de l'arc
+        wxGraphicsPath p = g.CreatePath();
+        const int n = std::max(8, static_cast<int>((an->a2 - an->a1) * 24));
+        for (int i = 0; i <= n; i++) {
+          const double a = an->a1 + (an->a2 - an->a1) * i / n;
+          const auto q = e(C->x + en.r * std::cos(a), C->y + en.r * std::sin(a));
+          if (i == 0) p.MoveToPoint(q);
+          else p.AddLineToPoint(q);
+        }
+        g.StrokePath(p);
+      }
+    } else if (en.t == "cpoint") {
+      pts.insert(en.p);
+    }
+  }
+  g.SetBrush(g.CreateBrush(wxBrush(alpha(J, 0.18))));
+  g.SetPen(stylo(g, J, 2.5));
+  for (const std::string& id : pts) {
+    if (const Pt* p = s_->point(id)) {
+      const auto q = e(p->x, p->y);
+      cercle(g, q.m_x - 11, q.m_y - 11, 22, 22);
+    }
+  }
+  g.SetBrush(wxNullGraphicsBrush);
 }
 
 void VueEsquisse::cotes(wxGraphicsContext& g) const {

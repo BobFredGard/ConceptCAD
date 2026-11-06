@@ -6,6 +6,7 @@
 #include <chrono>
 #include <cmath>
 #include <cstdio>
+#include <filesystem>
 #include <fstream>
 #include <map>
 #include <nlohmann/json.hpp>
@@ -13,6 +14,7 @@
 
 #include "dessin.h"
 #include "enregistrer.h"
+#include "infos_esquisse.h"
 #include "projet.h"
 
 using json = nlohmann::json;
@@ -78,9 +80,64 @@ static std::string ecartJson(const json& a, const json& b, double seuil, const s
   return a == b ? "" : ou;
 }
 
+// BancDessin --panneau <dossier Exemples> <sortie.json> : ce que l'écran affiche pour chaque esquisse, à comparer au navigateur
+static int modePanneau(const std::wstring& dossier, const std::wstring& sortie) {
+  json out = json::array();
+  std::vector<std::filesystem::path> fichiers;
+  for (const auto& e : std::filesystem::directory_iterator(dossier))
+    if (e.path().extension() == L".conceptcad") fichiers.push_back(e.path());
+  std::sort(fichiers.begin(), fichiers.end());
+  for (const auto& p : fichiers) {
+    Document d;
+    try {
+      d = lireProjet(p.wstring());
+    } catch (const std::exception&) {
+      continue;
+    }
+    for (const Esquisse& b : d.esquisses) {
+      Esquisse s = b;
+      if (!Solveur(s).prisEnCharge()) continue;
+      Edition ed(s);
+      Dessin D(s, ed);
+      D.vue(1);
+      D.premiere();
+      const InfosEsquisse I = infosDe(s);
+      json o;
+      o["fichier"] = p.filename().u8string();
+      o["esquisse"] = s.id;
+      o["statut"] = statutEsquisse(s, I);
+      o["sante"] = texteSante(I.sante);
+      o["libertes"] = I.libertes;
+      o["pointsLibres"] = std::vector<std::string>(I.pointsLibres.begin(), I.pointsLibres.end());
+      std::vector<std::string> libres;
+      for (const Entite& e : s.entites)
+        if (!I.determinee(e)) libres.push_back(e.id);
+      o["entitesLibres"] = libres;
+      o["fixes"] = std::vector<std::string>(I.fixes.begin(), I.fixes.end());
+      o["ouverts"] = I.sante.ouverts.size();
+      o["doublons"] = I.sante.doublons.size();
+      o["degeneres"] = I.sante.degeneres.size();
+      o["croisements"] = I.sante.croisements.size();
+      json c = json::array(), k = json::array();
+      for (const Contrainte& x : s.contraintes) c.push_back(descContrainte(s, x));
+      for (const Cote& x : s.cotes) k.push_back(descCote(x));
+      o["contraintes"] = c;
+      o["cotes"] = k;
+      json n = json::array();
+      for (const Entite& e : s.entites) n.push_back(noteEntite(s, e));
+      o["notes"] = n;
+      out.push_back(o);
+    }
+  }
+  std::ofstream f(sortie, std::ios::binary);
+  f << out.dump(1);
+  return 0;
+}
+
 int wmain(int argc, wchar_t** argv) {
   if (argc < 3) return 2;
   SetConsoleOutputCP(CP_UTF8);
+  if (argc == 4 && wcscmp(argv[1], L"--panneau") == 0) return modePanneau(argv[2], argv[3]);
   const double seuil = argc > 3 ? _wtof(argv[3]) : 1e-6;
   const bool detail = argc > 4;
   std::ifstream in(argv[1], std::ios::binary);
@@ -209,6 +266,20 @@ int wmain(int argc, wchar_t** argv) {
           D.supprimer();
         } else if (a == "con") {
           D.poserContrainte(st["t"].get<std::string>());
+        } else if (a == "pan") {
+          const std::string t = st["t"], c = st.value("id", std::string());
+          const double v = st.value("v", 0.0);
+          if (t == "rc") D.retirerContrainte(c);
+          else if (t == "rd") D.retirerCote(c);
+          else if (t == "ref") D.basculerReference(c);
+          else if (t == "choixC") D.choisirContrainte(c);
+          else if (t == "choixD") D.choisirLigneCote(c);
+          else if (t == "val") D.reglerPoint(c, st["px"].get<double>(), st["py"].get<double>());
+          else if (t == "ray") D.reglerRayon(c, v);
+          else if (t == "a1" || t == "a2") D.reglerAngleArc(c, t == "a2", v);
+          else if (t == "ferme") D.refermerEcart();
+          else if (t == "fus") D.fusionnerDoublons();
+          else if (t == "deg") D.supprimerDegeneres();
         } else if (a == "f1") {
           D.toucheF1();
         } else if (a == "f2") {
@@ -283,7 +354,13 @@ int wmain(int argc, wchar_t** argv) {
           const bool lot = ancien.contains("doc") && ancien["doc"].is_object();
           const json& A = lot ? nouveau["doc"] : nouveau;
           const json& B = lot ? ancien["doc"] : ancien;
-          std::string e = ecartJson(A["sketches"][rang], se["final"], seuil < 1e-6 ? 1e-6 : seuil, "esquisse");
+          const auto sansPassager = [](json j) {
+            j.erase("_health");
+            if (j.contains("entities"))
+              for (json& x : j["entities"]) x.erase("_ei");
+            return j;
+          };
+          std::string e = ecartJson(sansPassager(A["sketches"][rang]), sansPassager(se["final"]), seuil < 1e-6 ? 1e-6 : seuil, "esquisse");
           for (const auto& [k, v] : B.items())
             if (e.empty() && k != "sketches" && !(A.contains(k) && A[k] == v)) e = "document." + k + " a changé";
           for (size_t i = 0; e.empty() && i < B["sketches"].size(); i++)

@@ -341,6 +341,34 @@ Trace tracerContours(const Esquisse& s) {
         }
     if (!pris) tr.cerclesSeuls.push_back(c);
   }
+  // Bouts ouverts. Un bout qui repose sur un vrai cercle ou arc est raccordé, pas ouvert.
+  std::vector<std::string> ordreDegre;
+  std::unordered_map<std::string, int> degre;
+  for (const Arete& ed : tr.aretes)
+    for (const std::string* q : {&ed.a, &ed.b})
+      if (degre[*q]++ == 0) ordreDegre.push_back(*q);
+  const auto surCourbe = [&](const Pt& q) {
+    for (const Entite* c : cercles) {
+      const Pt* C = s.point(c->pc);
+      if (C && std::abs(std::hypot(q.x - C->x, q.y - C->y) - c->r) < 0.02) return true;
+    }
+    for (const Entite* a : arcs) {
+      const Pt* C = s.point(a->pc);
+      if (!C || std::abs(std::hypot(q.x - C->x, q.y - C->y) - a->r) > 0.02) continue;
+      const auto an = anglesArc(s, *a);
+      if (!an) continue;
+      double d = std::fmod(an->a2 - an->a1, TAU);
+      if (d < 0) d += TAU;
+      double r = std::fmod(std::atan2(q.y - C->y, q.x - C->x) - an->a1, TAU);
+      if (r < 0) r += TAU;
+      if (r <= d) return true;
+    }
+    return false;
+  };
+  for (const std::string& id : ordreDegre) {
+    const auto it = tr.pts.find(id);
+    if (degre[id] == 1 && it != tr.pts.end() && !surCourbe(it->second)) tr.ouverts.push_back(it->second);
+  }
   return tr;
 }
 

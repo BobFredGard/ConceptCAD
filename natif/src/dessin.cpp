@@ -1,5 +1,7 @@
 #include "dessin.h"
 
+#include "infos_esquisse.h"
+
 #include <algorithm>
 #include <charconv>
 #include <cmath>
@@ -1664,6 +1666,168 @@ void Dessin::echap() {
 }
 
 void Dessin::choisirCote(const std::string& id) { selection_ = {{Choix::COTE, id}}; }
+void Dessin::choisirLigneCote(const std::string& id) {
+  if (selection_.empty()) selection_.push_back({Choix::COTE, id});
+  else selection_[0] = {Choix::COTE, id};
+}
+void Dessin::choisirContrainte(const std::string& id) {
+  if (selection_.empty()) selection_.push_back({Choix::CONTRAINTE, id});
+  else selection_[0] = {Choix::CONTRAINTE, id};
+}
+
+namespace {
+// skIsProjFix : le « fixe » d'une projection ne se retire pas, elle suit son arête source
+bool fixeDeProjection(const Esquisse& s, const Contrainte& c) {
+  if (c.type != "fix") return false;
+  for (const Entite& e : s.entites) {
+    if (!e.proj) continue;
+    if (c.ent == e.id) return true;
+    if (!c.p.empty())
+      for (const std::string* q : {&e.p1, &e.p2, &e.pc, &e.pa, &e.pb, &e.p})
+        if (*q == c.p) return true;
+  }
+  return false;
+}
+}  // namespace
+
+void Dessin::retirerContrainte(const std::string& id) {
+  premiere();
+  const auto it = std::find_if(s_.contraintes.begin(), s_.contraintes.end(), [&](const Contrainte& c) { return c.id == id; });
+  if (it == s_.contraintes.end()) return;
+  if (fixeDeProjection(s_, *it)) return message("Fixe d'une projection : elle suit son arête source. Supprimez la projection pour la libérer.");
+  pousser();
+  s_.contraintes.erase(it);
+  selection_.erase(std::remove_if(selection_.begin(), selection_.end(), [&](const Choix& c) { return c.id == id; }), selection_.end());
+  structure_ = true;
+  resoudre();
+}
+
+void Dessin::retirerCote(const std::string& id) {
+  premiere();
+  const auto it = std::find_if(s_.cotes.begin(), s_.cotes.end(), [&](const Cote& d) { return d.id == id; });
+  if (it == s_.cotes.end()) return;
+  pousser();
+  s_.cotes.erase(it);
+  selection_.erase(std::remove_if(selection_.begin(), selection_.end(), [&](const Choix& c) { return c.id == id; }), selection_.end());
+  structure_ = true;  // sans résoudre, comme le navigateur : le dessin reste où il est
+  sync();
+}
+
+bool Dessin::basculerReference(const std::string& id) {
+  premiere();
+  sync();
+  Cote* d = cote(id);
+  if (!d) return false;
+  if (d->ref) {
+    double v = d->value;
+    if (!ed_.solveur.pilotanteSiPossible(id, v)) {
+      message("Cote de référence (sur-contrainte) : elle mesure sans piloter. Retirez une contrainte ou une cote pour la rendre pilotante.");
+      return false;
+    }
+    pousser();
+    d->value = v;
+    d->ref = false;
+    d->refV = 0;
+    structure_ = true;
+    apresEdition();
+    message("Cote pilotante : double-clic pour changer la valeur.");
+    return true;
+  }
+  pousser();
+  d->ref = true;
+  d->refV = 1;  // choix de l'utilisateur, gardé (2 = sur-contrainte, réévaluée)
+  d->formule = false;
+  d->formuleFausse = false;
+  structure_ = true;
+  apresEdition();
+  message("Cote de référence : elle mesure sans piloter.");
+  return true;
+}
+
+void Dessin::reglerPoint(const std::string& id, double x, double y) {
+  premiere();
+  if (!s_.point(id)) return;
+  pousserAvant();
+  Pt& p = s_.points[id];
+  p.x = x;
+  p.y = y;
+  structure_ = true;
+  resoudreOuRefuser("Valeur");
+}
+
+void Dessin::reglerRayon(const std::string& id, double r) {
+  premiere();
+  Entite* e = entite(id);
+  if (!e) return;
+  pousserAvant();
+  e->r = std::max(r, 0.1);
+  structure_ = true;
+  resoudreOuRefuser("Valeur");
+}
+
+void Dessin::reglerAngleArc(const std::string& id, bool fin, double degres) {
+  premiere();
+  const Entite* e = entite(id);
+  const Pt* C = e ? s_.point(e->pc) : nullptr;
+  if (!C || !s_.point(fin ? e->pb : e->pa)) return;
+  pousserAvant();
+  const double a = degres * 3.141592653589793 / 180;
+  Pt& q = s_.points[fin ? e->pb : e->pa];
+  q.x = C->x + e->r * m_cos(a);
+  q.y = C->y + e->r * m_sin(a);
+  structure_ = true;
+  resoudreOuRefuser("Valeur");
+}
+
+void Dessin::refermerEcart() {
+  premiere();
+  const SanteEsquisse H = santeDe(s_);
+  if (!H.aEcart) return message("Rien à refermer.");
+  // pidNear, dans l'ordre des points
+  const auto proche = [&](const Pt& q) {
+    std::string m;
+    double bd = 50;
+    for (const std::string& k : s_.ordre) {
+      const Pt* p = s_.point(k);
+      const double d = p ? hyp(p->x - q.x, p->y - q.y) : 1e18;
+      if (d < bd) {
+        bd = d;
+        m = k;
+      }
+    }
+    return m;
+  };
+  const std::string pa = proche(H.ecartA), pb = proche(H.ecartB);
+  if (pa.empty() || pb.empty() || pa == pb) return message("Refermer : points introuvables.");
+  pousser();
+  fusionner(pb, pa);
+  structure_ = true;
+  apresEdition();
+  message("Bouts refermés.");
+}
+
+void Dessin::fusionnerDoublons() {
+  premiere();
+  const SanteEsquisse H = santeDe(s_);
+  if (H.doublons.empty()) return;
+  pousser();
+  for (const auto& [a, b] : H.doublons)
+    if (s_.point(a) && s_.point(b)) fusionner(b, a);
+  structure_ = true;
+  apresEdition();
+}
+
+void Dessin::supprimerDegeneres() {
+  premiere();
+  const SanteEsquisse H = santeDe(s_);
+  if (H.degeneres.empty()) return;
+  pousser();
+  const std::set<std::string> morts(H.degeneres.begin(), H.degeneres.end());
+  s_.entites.erase(std::remove_if(s_.entites.begin(), s_.entites.end(), [&](const Entite& e) { return morts.count(e.id) > 0; }), s_.entites.end());
+  selection_.erase(std::remove_if(selection_.begin(), selection_.end(), [&](const Choix& c) { return morts.count(c.id) > 0; }), selection_.end());
+  structure_ = true;
+  apresEdition();
+}
 
 // ---------- Outil Cote ----------
 Cote* Dessin::cote(const std::string& id) {
@@ -2594,13 +2758,23 @@ void Dessin::toucheF1() {
 
 void Dessin::supprimer() {
   premiere();
-  std::set<std::string> ents, pts, cotes;
+  std::set<std::string> ents, pts, cotes, contraintes;
+  bool projFixe = false;
   for (const Choix& c : selection_) {
     if (c.sorte == Choix::ENTITE) ents.insert(c.id);
     else if (c.sorte == Choix::POINT) pts.insert(c.id);
-    else cotes.insert(c.id);
+    else if (c.sorte == Choix::COTE) cotes.insert(c.id);
+    else if (c.sorte == Choix::CONTRAINTE) {
+      const auto it = std::find_if(s_.contraintes.begin(), s_.contraintes.end(), [&](const Contrainte& k) { return k.id == c.id; });
+      if (it != s_.contraintes.end() && !fixeDeProjection(s_, *it)) contraintes.insert(c.id);
+      else if (it != s_.contraintes.end()) projFixe = true;
+    }
   }
-  if (ents.empty() && pts.empty() && cotes.empty()) {
+  if (projFixe && ents.empty() && pts.empty() && cotes.empty() && contraintes.empty()) {
+    message("Fixe d'une projection : elle suit son arête source. Supprimez la projection pour la libérer.");
+    return;
+  }
+  if (ents.empty() && pts.empty() && cotes.empty() && contraintes.empty()) {
     message("Rien à supprimer : sélectionnez d'abord.");
     return;
   }
@@ -2630,8 +2804,9 @@ void Dessin::supprimer() {
         for (const std::string& q : ptsEntite(e)) reste.insert(q);
     s_.contraintes.erase(std::remove_if(s_.contraintes.begin(), s_.contraintes.end(), [&](const Contrainte& c) { return c.type == "fix" && !c.p.empty() && libres.count(c.p) && !reste.count(c.p); }), s_.contraintes.end());
   }
+  s_.contraintes.erase(std::remove_if(s_.contraintes.begin(), s_.contraintes.end(), [&](const Contrainte& c) { return contraintes.count(c.id) > 0; }), s_.contraintes.end());
   s_.cotes.erase(std::remove_if(s_.cotes.begin(), s_.cotes.end(), [&](const Cote& d) { return cotes.count(d.id) > 0; }), s_.cotes.end());
-  const size_t n = ents.size() + pts.size() + cotes.size();
+  const size_t n = ents.size() + pts.size() + cotes.size() + contraintes.size();
   selection_.clear();
   structure_ = true;
   // cleanupSk retire les points orphelins : ceux qui ont été choisis ne servent plus à rien non plus

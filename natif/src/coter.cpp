@@ -255,6 +255,8 @@ std::vector<size_t> suivantes(const Document& d, size_t i) {
 }
 }  // namespace
 
+int fonctionConsommatrice(const Document& d, const std::string& id) { return consommatrice(d, id); }
+
 std::string esquisseFigee(const Document& d, size_t i) {
   // Une esquisse libre, sans fonction ni lien avec le solide, ne dépend pas de ce que le natif ne sait pas calculer
   const Esquisse& e = d.esquisses[i];

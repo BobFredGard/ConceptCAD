@@ -3,7 +3,6 @@
 #pragma once
 #include <wx/wx.h>
 #include <wx/graphics.h>
-#include <wx/tglbtn.h>
 
 #include <TopoDS_Shape.hxx>
 
@@ -12,6 +11,7 @@
 
 #include "contours.h"
 #include "dessin.h"
+#include "infos_esquisse.h"
 #include "projet.h"
 
 class VueEsquisse : public wxWindow {
@@ -24,9 +24,23 @@ class VueEsquisse : public wxWindow {
   bool enregistrer(const wxString& chemin);
   // Le solide a changé : nouveau fantôme, sans toucher au cadrage
   void majPiece(const TopoDS_Shape& piece);
-  // Le dessin à la souris ; nullptr : lecture seule, sans barre d'outils
+  // Le dessin à la souris ; nullptr : lecture seule
   void poserDessin(Dessin* d);
   std::function<void()> surDessinChange;
+  // Après chaque geste : l'outil ou la sélection ont pu changer
+  std::function<void()> surGeste;
+  // Ce que le panneau affiche aussi : ce qui est encore libre, les bouts ouverts...
+  void poserInfos(const InfosEsquisse& i);
+  bool grilleVisible() const { return grille_; }
+  void basculerGrille();
+  bool fantomeVisible() const { return voirFantome_; }
+  void basculerFantome();
+  bool accrocheGrille() const { return accrocheGrille_; }
+  void reglerAccrocheGrille(bool oui);
+  void centrerSur(double x, double y);
+  void ouvrirCoteParId(const std::string& id);
+  Dessin* dessin() const { return dessin_; }
+  bool boutonEnfonce() const { return gauche_; }
   // Échap et Ctrl+Z : abandonnent d'abord le tracé en cours. Rend true si Échap a servi à cela.
   bool echapDessin();
   bool abandonnerTrace();
@@ -66,8 +80,8 @@ class VueEsquisse : public wxWindow {
   void surCaractere(wxKeyEvent&);
   void ouvrirCoteDemandee();
   void apresGeste();
-  void synchroniserOutils();
-  void placerOutils();
+  void sante(wxGraphicsContext& g) const;
+  void halo(wxGraphicsContext& g) const;
   void trace(wxGraphicsContext& g) const;
   void surEnfonce(wxMouseEvent&);
   void surRelache(wxMouseEvent&);
@@ -105,10 +119,9 @@ class VueEsquisse : public wxWindow {
   int nonDessines_ = 0;
   bool grille_ = false;
   Geste geste_;
-  wxButton* terminer_ = nullptr;
   Dessin* dessin_ = nullptr;
-  std::vector<wxToggleButton*> outils_;
-  wxCheckBox* caseGrille_ = nullptr;
+  InfosEsquisse infos_;
+  bool voirFantome_ = true, accrocheGrille_ = true;
   bool gauche_ = false, dblEnAttente_ = false;
   wxPoint2DDouble dblPlan_;
 };

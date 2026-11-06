@@ -36,7 +36,7 @@ class Dessin {
     bool actif() const { return h || v || !perp.empty() || !par.empty() || !ext.empty() || !tan.empty(); }
   };
   struct Choix {
-    enum Sorte { ENTITE, POINT, COTE } sorte = ENTITE;
+    enum Sorte { ENTITE, POINT, COTE, CONTRAINTE } sorte = ENTITE;
     std::string id;
     bool operator==(const Choix& o) const { return sorte == o.sorte && id == o.id; }
   };
@@ -64,6 +64,18 @@ class Dessin {
   void toucheF1();  // skShortcut : points fusionnés, ou point posé sur une courbe
   void toucheF2();  // H ou V selon l'inclinaison de chaque ligne
   void choisirCote(const std::string& id);
+  // Le panneau de droite (renderSkPanel) : le clic sur une ligne remplace le choix principal et garde les éléments ajoutés au Ctrl
+  void choisirLigneCote(const std::string& id);
+  void choisirContrainte(const std::string& id);
+  void retirerContrainte(const std::string& id);   // la croix de la liste ; une projection garde son « fixe »
+  void retirerCote(const std::string& id);         // la croix de la liste
+  bool basculerReference(const std::string& id);   // skDimToggleRef
+  void reglerPoint(const std::string& id, double x, double y);  // les champs du cadre Sélection
+  void reglerRayon(const std::string& id, double r);
+  void reglerAngleArc(const std::string& id, bool fin, double degres);
+  void refermerEcart();       // skCloseGap
+  void fusionnerDoublons();   // Santé : points quasi dupliqués
+  void supprimerDegeneres();  // Santé : éléments réduits à rien
   // Cote de référence ouverte en saisie : elle redevient pilotante si elle n'est plus en trop (editDim). Rend false sinon.
   bool rendrePilotante(const std::string& id);
 

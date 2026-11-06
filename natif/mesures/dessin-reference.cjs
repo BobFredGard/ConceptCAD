@@ -5,6 +5,7 @@
 // --cotes : ajoute l'outil Cote et la longueur tapée aux gestes tirés
 // --modifier : ajoute Ajuster et Décaler aux gestes tirés
 // --tape : ajoute Décaler à distance tapée. Le navigateur n'a pas ce geste : on appelle directement son skOffsetApply avec la distance
+// --panneau : ajoute les gestes du panneau de droite : retirer, basculer en référence, valeurs tapées, gestes de santé
 // --contraintes : ajoute la pose de contraintes aux gestes tirés (sans cette option, les références déjà faites restent reproductibles)
 // Restent neutralisés, à dire honnêtement : l'accroche sur les arêtes du solide, et le clic sur une étiquette de cote.
 'use strict';
@@ -93,11 +94,33 @@ vm.runInContext(`
         }
       }
     }
+    else if (st.a === 'pan') __panneau(st);
     else if (st.a === 'echap') skEscapeToSelect();
     else if (st.a === 'suppr') deleteSkSel();
     else if (st.a === 'con') applyCon(st.t);
     else if (st.a === 'touche') dispatchEvent(new KeyboardEvent('keydown', { key: st.k }));
     else if (st.a === 'f1' || st.a === 'f2') skShortcut({ key: st.a.toUpperCase(), shiftKey: false, preventDefault() {} });
+  }
+  // Le contenu même des gestionnaires de renderSkPanel : le panneau n'existe pas ici
+  function __panneau(st) {
+    const sk = skEdit, id = st.id;
+    if (st.t === 'rc') {
+      const c = sk.constraints.find(k => k.id === id); if (!c) return;
+      if (skIsProjFix(sk, c)) { skStatus('fixe'); return; }
+      skPushUndo(); sk.constraints = sk.constraints.filter(k => k.id !== c.id); if (skSel && skSel.id === c.id) skSel = null; solveSketch(sk);
+    } else if (st.t === 'rd') {
+      skPushUndo(); sk.dims = sk.dims.filter(k => k.id !== id); if (skSel && skSel.id === id) skSel = null;
+    } else if (st.t === 'ref') skDimToggleRef(id);
+    else if (st.t === 'choixC') skSel = { kind: 'con', id };
+    else if (st.t === 'choixD') skSel = { kind: 'dim', id };
+    else if (st.t === 'val') { skPushUndo(); sk.points[id].x = st.px; sk.points[id].y = st.py; skSolveOrRevert(sk, 'Valeur'); }
+    else if (st.t === 'ray') { const e = entById(sk, id); skPushUndo(); e.r = Math.max(st.v, .1); skSolveOrRevert(sk, 'Valeur'); }
+    else if (st.t === 'a1' || st.t === 'a2') {
+      const e = entById(sk, id), C = sk.points[e.pc], a = st.v * Math.PI / 180, Q = sk.points[st.t === 'a1' ? e.pa : e.pb];
+      skPushUndo(); Q.x = C.x + e.r * Math.cos(a); Q.y = C.y + e.r * Math.sin(a); skSolveOrRevert(sk, 'Valeur');
+    } else if (st.t === 'ferme') { sk._health = skHealth(sk); skCloseGap(); }
+    else if (st.t === 'fus') { const H0 = skHealth(sk); if (!H0.dupes.length) return; skPushUndo(); H0.dupes.forEach(([a, b]) => { if (sk.points[a] && sk.points[b]) mergePoints(sk, b, a); }); afterEdit(); }
+    else if (st.t === 'deg') { const H0 = skHealth(sk); if (!H0.degen.length) return; skPushUndo(); sk.entities = sk.entities.filter(e => !H0.degen.includes(e.id)); if (skSel && H0.degen.includes(skSel.id)) skSel = null; afterEdit(); }
   }
   function __etat(sk) {
     const P = sk.points, pts = [], ray = [], val = [];
@@ -393,6 +416,24 @@ function session(src, graine, nbGestes) {
       clic(l);
       faire({ a: 'suppr' });
     },
+    panneau() {
+      const g = vm.runInContext('JSON.parse(JSON.stringify({ points: skEdit.points, entities: skEdit.entities, cons: skEdit.constraints, dims: skEdit.dims }))', ctx);
+      const ids = Object.keys(g.points).filter(k => k !== 'O');
+      const ronds = g.entities.filter(e => e.t === 'circle' || e.t === 'arc'), arcs = g.entities.filter(e => e.t === 'arc');
+      const u = r();
+      faire({ a: 'outil', o: 'select' });
+      if (u < 0.2 && g.cons.length) faire({ a: 'pan', t: 'rc', id: pick(g.cons).id });
+      else if (u < 0.35 && g.dims.length) faire({ a: 'pan', t: 'rd', id: pick(g.dims).id });
+      else if (u < 0.5 && g.dims.length) faire({ a: 'pan', t: 'ref', id: pick(g.dims).id });
+      else if (u < 0.6 && g.cons.length) { faire({ a: 'pan', t: 'choixC', id: pick(g.cons).id }); faire({ a: 'suppr' }); }
+      else if (u < 0.68 && g.dims.length) { faire({ a: 'pan', t: 'choixD', id: pick(g.dims).id }); faire({ a: 'suppr' }); }
+      else if (u < 0.8 && ids.length) { const k = pick(ids), P = g.points[k], dx = r() < 0.5; const d = q((r() - 0.5) * taille * 0.1); faire({ a: 'pan', t: 'val', id: k, px: dx ? P.x + d : P.x, py: dx ? P.y : P.y + d }); }
+      else if (u < 0.87 && ronds.length) { const e = pick(ronds); faire({ a: 'pan', t: 'ray', id: e.id, v: q(e.r * (0.8 + r() * 0.4)) }); }
+      else if (u < 0.91 && arcs.length) faire({ a: 'pan', t: r() < 0.5 ? 'a1' : 'a2', id: pick(arcs).id, v: q(r() * 360 - 180) });
+      else if (u < 0.95) faire({ a: 'pan', t: 'ferme' });
+      else if (u < 0.98) faire({ a: 'pan', t: 'fus' });
+      else faire({ a: 'pan', t: 'deg' });
+    },
     effacerPoint() {
       const g = geo(), ids = Object.keys(g.points);
       if (!ids.length) return;
@@ -407,6 +448,7 @@ function session(src, graine, nbGestes) {
   if (process.argv.includes('--cotes')) noms.push(...Array(8).fill('coteOutil'), ...Array(5).fill('longueurTapee'));
   if (process.argv.includes('--modifier')) noms.push(...Array(10).fill('ajuster'), ...Array(10).fill('decaler'));
   if (process.argv.includes('--tape')) noms.push(...Array(8).fill('decalerTape'));
+  if (process.argv.includes('--panneau')) noms.push(...Array(20).fill('panneau'));
   for (let i = 0; i < nbGestes; i++) {
     const avant = pas.length;
     const nom = pick(noms);

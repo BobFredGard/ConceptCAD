@@ -3,6 +3,7 @@
 // mesures/solveur-reference.cjs, au solveur du navigateur : toute modification ici doit y rester juste.
 // Seule différence voulue : pas de budget de 400 ms, le calcul s'arrête après un nombre de pas, comme le banc.
 #pragma once
+#include <map>
 #include <string>
 #include <vector>
 
@@ -31,6 +32,13 @@ class Solveur {
   // solveSketch. Moins de 100 pas : le glisser, sans petits pas de cote ni dernier bon état.
   void resoudre(int iters = 120, const std::vector<int>* ancre = nullptr);
   double residu();  // skResid : le plus grand écart, en mm
+  // skDofInfo : ce qui reste libre ; ce qu'on ne cite pas est entièrement déterminé
+  struct Libertes {
+    int nombre = 0;
+    std::vector<std::string> points, rayons;
+  };
+  Libertes libertes();
+  std::map<std::string, double> ecarts();  // skAudit : l'écart de chaque contrainte et cote, par identifiant
   // Écarts au-delà du seuil d'alerte, du plus grand au plus petit (3 au plus)
   std::string pireEcart();
 
@@ -135,6 +143,7 @@ class Solveur {
   struct Violation {
     const char* desc;
     double viol;
+    std::string id;
   };
   struct Build {
     std::vector<int> pts, rad;

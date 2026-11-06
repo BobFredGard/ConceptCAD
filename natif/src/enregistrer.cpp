@@ -397,6 +397,18 @@ std::string coteDevenueAngle(const std::string& brut, const Cote& a) {
   if (a.dia) o += ",\"dia\":true";
   return o + "}";
 }
+// Une cote devenue référence perd sa formule, comme dans le navigateur. Le reste de son texte est gardé.
+std::string sansFormule(const std::string& brut) {
+  Parcours q(brut);
+  std::string o = "{";
+  q.membres([&](const std::string& k) {
+    const size_t d = q.ici();
+    q.sauter();
+    if (k == "expr" || k == "exprErr") return;
+    o += (o.size() > 1 ? "," : "") + texteJson(k) + ":" + brut.substr(d, q.ici() - d);
+  });
+  return o + "}";
+}
 std::string ecartsCote(const std::string& brut, const Cote& a, const Cote& b) {
   if (a.type == "angle" && b.type == "gap") return coteDevenueAngle(brut, a);
   if (a.type != b.type) throw std::runtime_error("cote changée d'une façon pas encore reprise, rien n'a été écrit");
@@ -418,7 +430,8 @@ std::string ecartsCote(const std::string& brut, const Cote& a, const Cote& b) {
   e.oui("ref", a.ref, b.ref);
   e.oui("dia", a.dia, b.dia);
   if (a.refV != b.refV) e.champs.push_back({"refV", std::to_string(a.refV), true});
-  return retoucherBrut(brut, e);
+  const std::string fin = retoucherBrut(brut, e);
+  return a.ref && !b.ref && brut.find("\"expr") != std::string::npos ? sansFormule(fin) : fin;
 }
 
 std::string idDe(const std::string& brut) {

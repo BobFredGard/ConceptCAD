@@ -14,6 +14,8 @@
 #include "coter.h"
 #include "dessin.h"
 #include "esquisse2d.h"
+#include "infos_esquisse.h"
+#include "interface_esquisse.h"
 #include "rejeu.h"
 #include "vue3d.h"
 
@@ -54,6 +56,11 @@ public:
   void capturerEsquisses(const std::wstring& dossier);
  private:
   void quitterEsquisse();
+  void abandonnerEsquisse();  // Abandonner : l'esquisse revient à ce qu'elle était à son ouverture
+  void modeEsquisse(bool oui);
+  TopoDS_Shape formeAnterieure(int i);
+  void rafraichirEsquisse(bool calculer);  // barre, panneau, bandeau et couleurs de la vue
+  void messageBandeau(const wxString& m);
   void creerEsquisse(const std::string& plan);  // XY, XZ, YZ, ou vide pour la face choisie
   void brancherDessin();
   void faireSuivre();  // ce qui a été dessiné : les esquisses qui s'appuient sur le solide suivent, puis le solide
@@ -85,6 +92,19 @@ public:
   wxPanel* centre_ = nullptr;
   Vue3D* vue_ = nullptr;
   VueEsquisse* vueEsquisse_ = nullptr;
+  BarreEsquisse* barreEsquisse_ = nullptr;
+  PanneauEsquisse* panneauEsquisse_ = nullptr;
+  BandeauEsquisse* bandeauEsquisse_ = nullptr;
+  InfosEsquisse infosEsquisse_;
+  bool infosPerimees_ = false;
+  wxString messageEsquisse_;  // le dernier message d'un outil ; il cède la place au prochain changement
+  bool messageNeuf_ = false;
+  std::string signaturePanneau_;
+  std::vector<Esquisse> esquissesEntree_;  // ce qu'on retrouve en abandonnant
+  size_t annulationsEntree_ = 0;
+  bool enModeEsquisse_ = false;
+  wxSizerItem* margeColonne_ = nullptr;
+  wxSizerItem* margePanneau_ = nullptr;
   int esquisseOuverte_ = -1;
   std::unique_ptr<Edition> edition_;
   std::unique_ptr<Dessin> dessin_;  // déclaré après edition_ : il s'en sert et disparaît avant lui

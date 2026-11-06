@@ -8,6 +8,8 @@
 
 // Vide si l'esquisse peut être modifiée, sinon la raison, à montrer telle quelle.
 std::string esquisseFigee(const Document& d, size_t i);
+// La fonction qui se sert de cette esquisse, -1 si aucune
+int fonctionConsommatrice(const Document& d, const std::string& id);
 std::string coteFigee(const Cote& c);
 
 // Le solveur reste vivant tant que l'esquisse est ouverte : sa mémoire compte, comme dans le navigateur.

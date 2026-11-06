@@ -18,7 +18,7 @@
 #include "enregistrer.h"
 
 namespace {
-enum { ID_ANNULER = wxID_HIGHEST + 1, ID_RETABLIR, ID_AJUSTER, ID_QUITTER_ESQUISSE, ID_ESQUISSE_XY, ID_ESQUISSE_XZ, ID_ESQUISSE_YZ, ID_ESQUISSE_FACE, ID_EXTRUDER, ID_CONTRAINTE_1 };
+enum { ID_ANNULER = wxID_HIGHEST + 1, ID_RETABLIR, ID_AJUSTER, ID_QUITTER_ESQUISSE, ID_ESQUISSE_XY, ID_ESQUISSE_XZ, ID_ESQUISSE_YZ, ID_ESQUISSE_FACE, ID_EXTRUDER, ID_ACCROCHE_GRILLE, ID_CONTRAINTE_1 };
 // Identifiants fixes : natif/mesures/verifier-fenetre.ps1 retrouve ces fenêtres par eux.
 enum { ID_ARBRE = 2001, ID_PROPS = 2002, ID_ETAT = 2003 };
 const char* const PROP_PROFONDEUR = "profondeur", * const PROP_OPERATION = "operation", * const PROP_ETENDUE = "etendue", * const PROP_DIRECTION = "direction", * const PROP_INVERSER = "inverser";
@@ -80,11 +80,62 @@ Cadre::Cadre() : wxFrame(nullptr, wxID_ANY, L"ConceptCAD natif"), minuterie_(thi
   vueEsquisse_->surQuitter = [this] { quitterEsquisse(); };
   vueEsquisse_->surDemandeCote = [this](const Cote& c, wxString& t) { return demandeCote(c, t); };
   vueEsquisse_->surSaisieCote = [this](const std::string& id, const wxString& t) { saisieCote(id, t); };
-  auto* rangee = new wxBoxSizer(wxVERTICAL);
-  rangee->Add(vue_, 1, wxEXPAND);
-  rangee->Add(vueEsquisse_, 1, wxEXPAND);
-  centre_->SetSizer(rangee);
+  barreEsquisse_ = new BarreEsquisse(centre_);
+  panneauEsquisse_ = new PanneauEsquisse(centre_);
+  bandeauEsquisse_ = new BandeauEsquisse(centre_);
+  panneauEsquisse_->SetMinSize(wxSize(FromDIP(288) + wxSystemSettings::GetMetric(wxSYS_VSCROLL_X, this), -1));
+  centre_->SetBackgroundColour(wxColour(0x1c, 0x1c, 0x1e));
+  auto* colonne = new wxBoxSizer(wxVERTICAL);
+  colonne->Add(vue_, 1, wxEXPAND);
+  colonne->Add(vueEsquisse_, 1, wxEXPAND);
+  colonne->Add(bandeauEsquisse_, 0, wxEXPAND);
+  auto* rangee = new wxBoxSizer(wxHORIZONTAL);
+  margeColonne_ = rangee->Add(colonne, 1, wxEXPAND | wxLEFT | wxBOTTOM, 0);
+  margePanneau_ = rangee->Add(panneauEsquisse_, 0, wxEXPAND | wxLEFT | wxRIGHT | wxBOTTOM, FromDIP(12));
+  auto* tout = new wxBoxSizer(wxVERTICAL);
+  tout->Add(barreEsquisse_, 0, wxEXPAND);
+  tout->Add(rangee, 1, wxEXPAND);
+  centre_->SetSizer(tout);
   vueEsquisse_->Hide();
+  barreEsquisse_->Hide();
+  panneauEsquisse_->Hide();
+  bandeauEsquisse_->Hide();
+  barreEsquisse_->surOutil = [this](Dessin::Outil o) {
+    vueEsquisse_->commande([o](Dessin& d) { d.choisirOutil(o); });
+    vueEsquisse_->SetFocus();
+  };
+  barreEsquisse_->surContrainte = [this](const std::string& type) {
+    vueEsquisse_->commande([&type](Dessin& d) { d.poserContrainte(type); });
+    vueEsquisse_->SetFocus();
+  };
+  barreEsquisse_->surIndisponible = [this](const wxString& nom) {
+    messageBandeau(nom + L" : pas encore dans le logiciel Windows.");
+    vueEsquisse_->SetFocus();
+  };
+  barreEsquisse_->surCadrer = [this] {
+    vueEsquisse_->ajuster();
+    vueEsquisse_->SetFocus();
+  };
+  barreEsquisse_->surGrille = [this] {
+    vueEsquisse_->basculerGrille();
+    barreEsquisse_->grilleActive(vueEsquisse_->grilleVisible());
+    vueEsquisse_->SetFocus();
+  };
+  barreEsquisse_->surFantome = [this] {
+    vueEsquisse_->basculerFantome();
+    barreEsquisse_->fantomeActif(vueEsquisse_->fantomeVisible());
+    vueEsquisse_->SetFocus();
+  };
+  // Depuis un bouton qui disparaît avec l'écran : la sortie attend la fin du clic
+  barreEsquisse_->surAbandon = [this] { CallAfter([this] { abandonnerEsquisse(); }); };
+  barreEsquisse_->surTerminer = [this] { CallAfter([this] { quitterEsquisse(); }); };
+  panneauEsquisse_->faire = [this](const std::function<void(Dessin&)>& f) {
+    vueEsquisse_->commande(f);
+    vueEsquisse_->SetFocus();
+  };
+  panneauEsquisse_->surOuvrirCote = [this](const std::string& id) { vueEsquisse_->ouvrirCoteParId(id); };
+  panneauEsquisse_->surVoir = [this](double x, double y) { vueEsquisse_->centrerSur(x, y); };
+  vueEsquisse_->surGeste = [this] { rafraichirEsquisse(false); };
   vue_->surSelection = [this](const TopoDS_Shape& s) { montrerForme(s); };
 
   aui_.AddPane(arbre_, wxAuiPaneInfo().Name("arbre").Caption(L"Pièce").Left().Layer(1).Position(0).BestSize(FromDIP(wxSize(280, 500))).CloseButton(false));
@@ -132,6 +183,8 @@ void Cadre::creerMenus() {
   auto* affichage = new wxMenu;
   affichage->Append(ID_AJUSTER, L"&Ajuster la vue\tCtrl+F");
   affichage->Append(ID_QUITTER_ESQUISSE, L"&Terminer l'esquisse\tEsc");
+  affichage->AppendCheckItem(ID_ACCROCHE_GRILLE, L"&Accrocher à la grille de 1 mm");
+  affichage->Check(ID_ACCROCHE_GRILLE, true);
   auto* esquisse = new wxMenu;
   esquisse->Append(ID_ESQUISSE_XY, L"Nouvelle esquisse sur le plan &XY");
   esquisse->Append(ID_ESQUISSE_XZ, L"Nouvelle esquisse sur le plan X&Z");
@@ -198,6 +251,7 @@ void Cadre::creerMenus() {
     if (vueEsquisse_->enSaisie()) vueEsquisse_->annulerSaisie();
     else if (!vueEsquisse_->echapDessin()) quitterEsquisse();
   }, ID_QUITTER_ESQUISSE);
+  Bind(wxEVT_MENU, [this](wxCommandEvent& e) { vueEsquisse_->reglerAccrocheGrille(e.IsChecked()); }, ID_ACCROCHE_GRILLE);
   Bind(wxEVT_MENU, [this](wxCommandEvent&) { creerEsquisse("XY"); }, ID_ESQUISSE_XY);
   Bind(wxEVT_MENU, [this](wxCommandEvent&) { creerEsquisse("XZ"); }, ID_ESQUISSE_XZ);
   Bind(wxEVT_MENU, [this](wxCommandEvent&) { creerEsquisse("YZ"); }, ID_ESQUISSE_YZ);
@@ -403,13 +457,15 @@ void Cadre::entrerEsquisse(int i) {
   esquisseOuverte_ = i;
   figee_ = esquisseFigee(doc_, i);
   edition_ = figee_.empty() ? std::make_unique<Edition>(s) : nullptr;
+  esquissesEntree_ = doc_.esquisses;
+  annulationsEntree_ = annulations_.size();
   brancherDessin();
-  vue_->Hide();
-  vueEsquisse_->Show();
-  centre_->Layout();
-  vueEsquisse_->montrer(&s, forme_);
+  modeEsquisse(true);
+  vueEsquisse_->montrer(&s, formeAnterieure(i));
   vueEsquisse_->SetFocus();
   montrerEsquisse(i);
+  messageEsquisse_.clear();
+  rafraichirEsquisse(true);
   wxString t = L"Esquisse « " + tx(s.nom) + (figee_.empty() ? L" ». Outils en haut pour dessiner. Double-clic sur une cote pour la changer, sur un élément pour le coter. Suppr : effacer." : L" » en lecture seule : " + tx(figee_) + L".") + L" Clic droit : déplacer. Molette : zoom. Échap : outil Sélection, puis terminer.";
   if (vueEsquisse_->nonDessines() > 0) t += wxString::Format(L"  |  ⚠ %d élément(s) pas encore dessiné(s), comme les splines.", vueEsquisse_->nonDessines());
   etat(t);
@@ -477,11 +533,91 @@ void Cadre::saisieCote(const std::string& id, const wxString& texte) {
   retablissements_.clear();
   majTitre();
   recalculer();
-  vueEsquisse_->majPiece(forme_);
+  vueEsquisse_->majPiece(formeAnterieure(esquisseOuverte_));
+}
+
+// Comme le navigateur : derrière l'esquisse, le solide d'avant la fonction qui s'en sert, pas le résultat de l'esquisse elle-même
+TopoDS_Shape Cadre::formeAnterieure(int i) {
+  if (!solideCalculable_) return forme_;
+  const int n = fonctionConsommatrice(doc_, doc_.esquisses[i].id);
+  if (n < 0) return forme_;
+  if (n == 0) return TopoDS_Shape();
+  try {
+    return rejouer(doc_, n).forme;
+  } catch (const std::exception&) {
+  } catch (const Standard_Failure&) {
+  }
+  return forme_;
+}
+
+void Cadre::modeEsquisse(bool oui) {
+  if (enModeEsquisse_ == oui) return;
+  enModeEsquisse_ = oui;
+  Freeze();
+  // L'arbre et les propriétés laissent la place, comme dans le navigateur ; la barre d'état devient le bandeau sous la vue
+  aui_.GetPane("arbre").Show(!oui);
+  aui_.GetPane("props").Show(!oui);
+  aui_.Update();
+  if (GetStatusBar()) GetStatusBar()->Show(!oui);
+  vue_->Show(!oui);
+  vueEsquisse_->Show(oui);
+  barreEsquisse_->Show(oui);
+  panneauEsquisse_->Show(oui);
+  bandeauEsquisse_->Show(oui);
+  if (!oui) panneauEsquisse_->vider();
+  margeColonne_->SetBorder(oui ? FromDIP(12) : 0);
+  SendSizeEvent();
+  centre_->Layout();
+  Thaw();
+}
+
+void Cadre::messageBandeau(const wxString& m) {
+  messageEsquisse_ = m;
+  messageNeuf_ = true;
+  bandeauEsquisse_->montrer(m);
+  etat(m);
+}
+
+// Le calcul de santé et de libertés attend que le bouton de la souris soit relâché : le glisser reste fluide.
+void Cadre::rafraichirEsquisse(bool calculer) {
+  if (esquisseOuverte_ < 0) return;
+  if (calculer) infosPerimees_ = true;
+  const Esquisse& s = doc_.esquisses[esquisseOuverte_];
+  Dessin* d = vueEsquisse_->dessin();
+  bool refaire = false;
+  if (infosPerimees_ && !vueEsquisse_->boutonEnfonce()) {
+    infosPerimees_ = false;
+    infosEsquisse_ = infosDe(s);
+    vueEsquisse_->poserInfos(infosEsquisse_);
+    refaire = true;
+    if (!messageNeuf_) messageEsquisse_.clear();
+  }
+  messageNeuf_ = false;
+  barreEsquisse_->lectureSeule(d == nullptr);
+  barreEsquisse_->outilActif(d ? d->outil() : Dessin::SELECTION);
+  barreEsquisse_->grilleActive(vueEsquisse_->grilleVisible());
+  // sketchFaceLabel
+  wxString plan = tx(s.plan);
+  if (s.plan == "FACE") plan = wxString::Format(L"FACE @(%.1f, %.1f, %.1f)", s.o[0], s.o[1], s.o[2]) + (s.hote.nom.empty() ? wxString() : L" · " + tx(s.hote.nom));
+  const wxString nomAffiche = s.nom.empty() ? tx(s.id) : tx(s.nom);
+  // Le panneau ne se refait que s'il a changé : pas à chaque mouvement de la souris
+  std::string signature = d ? std::to_string(d->outil()) : "-";
+  if (d)
+    for (const Dessin::Choix& c : d->selection()) signature += "|" + std::to_string(c.sorte) + c.id;
+  if (refaire || signature != signaturePanneau_) {
+    signaturePanneau_ = signature;
+    panneauEsquisse_->montrer(L"Esquisse — " + nomAffiche + L" (plan " + plan + L")", &s, d, infosEsquisse_, figee_);
+  }
+  if (!figee_.empty()) bandeauEsquisse_->montrer(L"Lecture seule : " + tx(figee_) + L".");
+  else if (!messageEsquisse_.empty()) bandeauEsquisse_->montrer(messageEsquisse_);
+  else bandeauEsquisse_->montrer(tx(statutEsquisse(s, infosEsquisse_)));
 }
 
 // Le dessin vit sur l'édition du moment ; le geste qui va modifier l'esquisse se note d'abord pour l'annulation.
 void Cadre::brancherDessin() {
+  panneauEsquisse_->vider();
+  signaturePanneau_.clear();
+  infosPerimees_ = true;
   vueEsquisse_->poserDessin(nullptr);
   dessin_.reset();
   if (esquisseOuverte_ < 0 || !edition_) return;
@@ -496,10 +632,10 @@ void Cadre::brancherDessin() {
   dessin_->annulerPas = [this] {
     if (!annulations_.empty()) annulations_.pop_back();
   };
-  dessin_->surMessage = [this](const std::string& m) { etat(tx(m)); };
+  dessin_->surMessage = [this](const std::string& m) { messageBandeau(tx(m)); };
   vueEsquisse_->surDessinChange = [this] {
     majTitre();
-    if (esquisseOuverte_ >= 0) montrerEsquisse(esquisseOuverte_);
+    infosPerimees_ = true;
   };
   vueEsquisse_->poserDessin(dessin_.get());
 }
@@ -511,7 +647,7 @@ void Cadre::faireSuivre() {
   wxBusyCursor attente;
   suivreEsquisses(doc_, esquisseOuverte_);
   recalculer();
-  vueEsquisse_->majPiece(forme_);
+  vueEsquisse_->majPiece(formeAnterieure(esquisseOuverte_));
 }
 
 void Cadre::poserEsquisses(const std::vector<Esquisse>& v) {
@@ -524,9 +660,7 @@ void Cadre::poserEsquisses(const std::vector<Esquisse>& v) {
       edition_.reset();
       esquisseOuverte_ = -1;
       vueEsquisse_->montrer(nullptr, TopoDS_Shape());
-      vueEsquisse_->Hide();
-      vue_->Show();
-      centre_->Layout();
+      modeEsquisse(false);
     }
     doc_.esquisses = v;
     remplirArbre();
@@ -548,7 +682,10 @@ void Cadre::poserEsquisses(const std::vector<Esquisse>& v) {
   }
   majTitre();
   recalculer();
-  if (esquisseOuverte_ >= 0) vueEsquisse_->majPiece(forme_);
+  if (esquisseOuverte_ >= 0) {
+    vueEsquisse_->majPiece(formeAnterieure(esquisseOuverte_));
+    rafraichirEsquisse(true);
+  }
 }
 
 void Cadre::capturerEsquisses(const std::wstring& dossier) {
@@ -581,6 +718,26 @@ void Cadre::creerEsquisse(const std::string& plan) {
   entrerEsquisse(static_cast<int>(doc_.esquisses.size()) - 1);
 }
 
+// Dans le navigateur, Abandonner garde aujourd'hui ce qui a été dessiné. Ici le mot dit ce qu'il fait.
+void Cadre::abandonnerEsquisse() {
+  if (esquisseOuverte_ < 0) return;
+  if (vueEsquisse_->enSaisie()) vueEsquisse_->annulerSaisie();
+  vueEsquisse_->abandonnerTrace();
+  if (annulations_.size() <= annulationsEntree_ && !dessinModifie_) return quitterEsquisse();
+  vueEsquisse_->poserDessin(nullptr);
+  dessin_.reset();
+  edition_.reset();
+  doc_.esquisses = esquissesEntree_;
+  if (annulations_.size() > annulationsEntree_) annulations_.resize(annulationsEntree_);
+  retablissements_.clear();
+  dessinModifie_ = false;
+  quitterEsquisse();
+  if (docOuvert_) {
+    majTitre();
+    recalculer();
+  }
+}
+
 void Cadre::quitterEsquisse() {
   if (esquisseOuverte_ < 0) return;
   const int i = esquisseOuverte_;
@@ -592,10 +749,9 @@ void Cadre::quitterEsquisse() {
   esquisseOuverte_ = -1;
   edition_.reset();
   vueEsquisse_->montrer(nullptr, TopoDS_Shape());
-  vueEsquisse_->Hide();
-  vue_->Show();
-  centre_->Layout();
+  modeEsquisse(false);
   vue_->Refresh();
+  montrerEsquisse(i);
   etat(tx(doc_.nom));
   // skIsGhost : créée puis refermée sans rien dessiner, elle ne reste pas dans la pièce, ni dans les annulations
   const Esquisse& fin = doc_.esquisses[i];

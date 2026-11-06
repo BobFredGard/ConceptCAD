@@ -31,6 +31,7 @@ struct Trace {
   std::vector<ContourPlein> solides;
   std::vector<const Entite*> cerclesSeuls;
   std::vector<TrouRond> trousRonds;
+  std::vector<Pt> ouverts;  // noeuds de degré 1 : opens
 };
 
 struct Angles {
