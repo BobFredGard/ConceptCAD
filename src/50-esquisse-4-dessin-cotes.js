@@ -322,24 +322,8 @@ function drawSketch2D(){
         if(skInfer&&skInfer.par){const g=skEl('text',{x:mx+18,y:my+4,fill:'#bf5af2','font-size':15,'font-weight':'bold'});g.textContent='∥';}
         if(skInfer&&skInfer.ext){const g=skEl('text',{x:mx+18,y:my+4,fill:'#bf5af2','font-size':13,'font-weight':'bold'});g.textContent='⟶ sur la droite';}
       }}
-    if(d.t==='slot'){
-      const x0=Math.min(d.x1,d.x2),x1=Math.max(d.x1,d.x2),y0=Math.min(d.y1,d.y2),y1=Math.max(d.y1,d.y2),w=x1-x0,h=y1-y0;
-      if(w>0.5&&h>0.5){
-        if(w>h){const r=h/2,ym=(y0+y1)/2;const[a1,b1]=w2s(x0+r, y1),[c1,d1]=w2s(x1-r, y1),[a2,b2]=w2s(x0+r, y0),[c2,d2]=w2s(x1-r, y0);
-          skEl('line',{x1:a1,y1:b1,x2:c1,y2:d1,stroke:'#fff','stroke-width':2,'stroke-dasharray':'5 3'});
-          skEl('line',{x1:a2,y1:b2,x2:c2,y2:d2,stroke:'#fff','stroke-width':2,'stroke-dasharray':'5 3'});
-          const[ac1,bc1]=w2s(x0+r, ym),[ac2,bc2]=w2s(x1-r, ym);
-          skEl('path',{d:`M ${a1} ${b1} A ${r*skView.s} ${r*skView.s} 0 0 0 ${a2} ${b2}`,fill:'none',stroke:'#fff','stroke-width':2,'stroke-dasharray':'5 3'});
-          skEl('path',{d:`M ${c1} ${d1} A ${r*skView.s} ${r*skView.s} 0 0 1 ${c2} ${d2}`,fill:'none',stroke:'#fff','stroke-width':2,'stroke-dasharray':'5 3'});
-        } else {const r=w/2,xm=(x0+x1)/2;const[a1,b1]=w2s(x0, y0+r),[a2,b2]=w2s(x0, y1-r),[c1,d1]=w2s(x1, y0+r),[c2,d2]=w2s(x1, y1-r);
-          skEl('line',{x1:a1,y1:b1,x2:a2,y2:b2,stroke:'#fff','stroke-width':2,'stroke-dasharray':'5 3'});
-          skEl('line',{x1:c1,y1:d1,x2:c2,y2:d2,stroke:'#fff','stroke-width':2,'stroke-dasharray':'5 3'});
-          const[ac1,bc1]=w2s(xm, y0+r),[ac2,bc2]=w2s(xm, y1-r);
-          skEl('path',{d:`M ${a1} ${b1} A ${r*skView.s} ${r*skView.s} 0 0 0 ${c1} ${d1}`,fill:'none',stroke:'#fff','stroke-width':2,'stroke-dasharray':'5 3'});
-          skEl('path',{d:`M ${a2} ${b2} A ${r*skView.s} ${r*skView.s} 0 0 1 ${c2} ${d2}`,fill:'none',stroke:'#fff','stroke-width':2,'stroke-dasharray':'5 3'});
-        }
-      }
-    } else if(d.t==='rect'){const[a,b]=w2s(Math.min(d.x1,d.x2),Math.max(d.y1,d.y2));
+    if(d.t==='slot')skSlotDrawDraft(d);
+    else if(d.t==='rect'){const[a,b]=w2s(Math.min(d.x1,d.x2),Math.max(d.y1,d.y2));
       skEl('rect',{x:a,y:b,width:Math.abs(d.x2-d.x1)*skView.s,height:Math.abs(d.y2-d.y1)*skView.s,fill:'rgba(255,255,255,.06)',stroke:'#fff','stroke-dasharray':'5 3'});
       const t=skEl('text',{x:a+Math.abs(d.x2-d.x1)*skView.s/2,y:b+Math.abs(d.y2-d.y1)*skView.s/2,fill:'#ffd60a','font-size':13,'font-weight':'bold','text-anchor':'middle'});
       t.textContent=Math.abs(d.x2-d.x1).toFixed(1)+' × '+Math.abs(d.y2-d.y1).toFixed(1);}
@@ -365,7 +349,7 @@ function drawSketch2D(){
     h.textContent='Tab angle/longueur · Entrée OK · Échap annule';
   }
   if(skRoot)skOrbUpright(skRoot); // orbite : textes et étiquettes restent lisibles
-  skPolySync();
+  skPolySync();skSlotSync();
 }
 function dimById(sk,id){return (sk.dims||[]).find(d=>d.id===id);}
 function angleArcInfo(sk,d){ // {V,rr,a1,dd} — secteur STOCKE (a1=rayon A, dd=±value), arc et texte toujours cohérents

@@ -259,7 +259,7 @@
             let aa=a;
             const lo=Math.min(e.a0,e.a1),hi=Math.max(e.a0,e.a1);
             let an=a;
-            while(an<lo)an+=2*Math.PI;
+            while(an<lo)an+=2*Math.PI;while(an-2*Math.PI>=lo)an-=2*Math.PI;
             if(an>hi){
               const d0=Math.abs(a-e.a0),d1=Math.abs(a-e.a1);
               aa=d0<d1?e.a0:e.a1;
@@ -344,7 +344,7 @@
             const dx=lx-e.cx,dy=ly-e.cy,dh=Math.hypot(dx,dy);
             const a=Math.atan2(dy,dx);
             const lo=Math.min(e.a0,e.a1),hi=Math.max(e.a0,e.a1);
-            let an=a;while(an<lo)an+=2*Math.PI;
+            let an=a;while(an<lo)an+=2*Math.PI;while(an-2*Math.PI>=lo)an-=2*Math.PI; // arc aux angles négatifs : ramené dans sa plage
             if(dh<1e-9||an>hi){
               // hors plage angulaire : distance à l'extrémité la plus proche
               const p0=[e.cx+e.r*Math.cos(e.a0),e.cy+e.r*Math.sin(e.a0)],p1=[e.cx+e.r*Math.cos(e.a1),e.cy+e.r*Math.sin(e.a1)];

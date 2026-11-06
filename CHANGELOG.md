@@ -8,7 +8,7 @@ sont sorties le 2026-09-30j.
 Code dans `src/` · livrable `fusion_mvp.html` (généré par `build.js`) · architecture et
 garde-fous en tête de `src/00-entete-et-outils.js`.
 
-**606 versions**, de `2026-09-28b` à `V0.67.3` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
+**607 versions**, de `2026-09-28b` à `V0.68.0` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
 comme dans le fichier d'origine.
 
 ---
@@ -6979,5 +6979,15 @@ Barquette ne perd plus son solide à la 107e modification, et sa mémoire ne mon
 - **Correctif** : la moitié neuve et les tronçons restants gardent leur nature. Forme du fichier, parcours FAO et `CACHE_VER` inchangés.
 - **Test** : `test_esquisse_ajuster_construction`.
 - **Exemples** : `Barquette.conceptcad` retiré d'`Exemples/` par Fred ; les tests lisent désormais une copie figée, `tests/fixtures/barquette-exemple.conceptcad`.
+
+---
+
+## V0.68.0 - Oblong en 3 clics comme Fusion 360, et repéré par ses 2 centres dans le Plan
+
+- **Cause** : l'oblong d'esquisse se traçait d'un coin à l'autre, seulement à plat, et le mode « depuis le centre » fixait son point même posé dans le vide. Dans le Plan, rien ne reconnaissait un oblong : ses centres se marquaient un par un, et une cote entre eux ne suivait pas la pièce. Sur une vue de dessus, la moitié d'un arc ne réagissait pas au clic, car les angles négatifs n'étaient pas ramenés dans la plage de l'arc.
+- **Correctif esquisse** : un bandeau en haut à gauche propose 3 façons de poser l'oblong : 2 centres, 2 extrémités ou centre et écartement, puis le rayon au 3e clic, dans toutes les directions (H ou V s'il est à plat à 3° près). Les cotes se posent au 3e clic : entraxe ou hors-tout, et rayon. Aucun point n'est fixé : un point dans le vide reste libre, un point cliqué sur une géométrie s'y accroche, et le contour ne s'attache plus à ce qui passe à côté. L'outil reste actif pour enchaîner (Échap = fin).
+- **Correctif Plan** : l'oblong est reconnu à sa forme. Outil Axes : un clic pose ses 2 centres et son axe, orientés selon l'oblong ; la case « Axes des perçages » les pose aussi. Outil Cote : les 2 arcs donnent l'entraxe, un arc et un bord donnent la position du centre, et ces cotes suivent la pièce, même pour un grand allongement. Le clic et l'accrochage sur un arc marchent sur tout l'arc.
+- **Forme du fichier** : ajouts seulement (axe `slot`, référence de point `slot`). Parcours FAO et `CACHE_VER` inchangés.
+- **Test** : `test_esquisse_oblong`, `test_mep_oblong`, `test_mep_oblong_reel` (projection exacte du noyau) ; vérifié dans le vrai logiciel à la souris.
 
 ---
