@@ -8,7 +8,7 @@ sont sorties le 2026-09-30j.
 Code dans `src/` · livrable `fusion_mvp.html` (généré par `build.js`) · architecture et
 garde-fous en tête de `src/00-entete-et-outils.js`.
 
-**601 versions**, de `2026-09-28b` à `V0.66.1` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
+**602 versions**, de `2026-09-28b` à `V0.66.2` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
 comme dans le fichier d'origine.
 
 ---
@@ -6928,5 +6928,18 @@ Fusions, découpes et intersections calculées une seule fois : Barquette se rec
 - **Gains mesurés** (recalcul complet, avant et après en alternance) : Barquette 1,46 fois plus rapide, Axe et Cache Piles 1,3 fois, Cavité Test et Cavité Usinage 1,17 fois, Support Pédale presque rien.
 - **Effet sur d'autres fichiers** : sur les 21 exemples, mêmes faces, arêtes, volumes, surfaces, noms de faces et messages. Le code FAO n'a pas bougé, `CACHE_VER` non plus.
 - **Tests** : `npm run ci:full`, pas de test dédié.
+
+---
+
+## V0.66.2 - Barquette : solide conservé et mémoire stable
+
+Barquette ne perd plus son solide à la 107e modification, et sa mémoire ne monte plus à chaque modification.
+
+- **Cause du solide perdu** : une erreur C++ rattrapée en JavaScript ne redescend pas le pointeur de pile du noyau. `occCurvePts` demandait son cercle à chaque arête, ce qui perdait 80 Ko par modification sur Barquette, jusqu'à déborder des 8 Mo de pile sur les données du noyau.
+- **Correctif** : `occCurvePts` ne lit le cercle que sur un cercle. `occPileRemettre` remet la pile au plus haut avant chaque rejeu et chaque travail du worker (`stackSave` et `stackRestore` exportés : colle retouchée, recette à jour, .wasm inchangé). 2 420 objets oubliés par modification ramenés à 2 ou 3.
+- **Cause de la fuite** : `liste.Append_1(s)` rend une copie de la forme, qui garde tout le solide en vie (0,45 Mo par modification). L'aide `occAjoute` sert maintenant à tous les ajouts, aussi dans le worker.
+- **Mesuré** (Barquette, tas du noyau) : 154 Mo stables jusqu'à 240 modifications, 266 Mo avant ; occupé après 120 modifications, caches vidés : 48 Mo, 118 Mo avant.
+- **Effet sur d'autres fichiers** : sur les 20 exemples, mêmes solides, noms et messages, et mêmes parcours FAO sur les 3 exemples comparés. `CACHE_VER` inchangé.
+- **Tests** : `test_pile_noyau`, `test_barquette_120`, Barquette dans `test_fuite_noyau`, qui refuse aussi tout `Append` direct.
 
 ---
