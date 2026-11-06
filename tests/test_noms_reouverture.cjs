@@ -10,7 +10,7 @@ const {loadApp}=require('./appvm.cjs'),lire=require('./lire-projet.cjs');
     const nb=v=>+(+v).toFixed(3);
     const lit=()=>{const FR=occFinalShape(null),m={v:nb(occShapeVolume(FR.shape)),box:occShapeBox(FR.shape,0).map(c=>c.map(nb)),msgs:(FR.msgs||[]).slice()};try{occCleanup(FR,null);}catch(e){}return m;};
     const noms=()=>{let n=0;(doc.features||[]).forEach(f=>{if(f.type==='xfillet')(f.edges||[]).forEach(e=>{if(e.nom)n++;});});return n;};`;
-  const A1=nouv();A1.sandbox.__txt=lire(path.join(ROOT,'Exemples','Barquette.conceptcad'));
+  const A1=nouv();A1.sandbox.__txt=lire(path.join(ROOT,'tests','fixtures','barquette-exemple.conceptcad'));
   const R1=lit+String.raw`
     await bundleRestore(__txt,{name:'banc'});occt=__realOcct;occtReady=true;
     const h0=docHash();

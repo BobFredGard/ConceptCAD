@@ -17,7 +17,7 @@ async function ouvrir(browser,url){
   return {c,page,err};
 }
 async function piece(page,nom){
-  await page.setInputFiles('#fileProj',path.join(RACINE,'Exemples',nom+'.conceptcad'));
+  await page.setInputFiles('#fileProj',nom==='Barquette'?path.join(RACINE,'tests','fixtures','barquette-exemple.conceptcad'):path.join(RACINE,'Exemples',nom+'.conceptcad'));
   await page.waitForFunction(()=>doc.features.length>0&&rebuildDepth===0&&builtEngine==='exact'&&bodies.some(b=>b.shape),null,{timeout:200000});
   await page.waitForTimeout(1500);
   const r=await page.evaluate(async()=>{

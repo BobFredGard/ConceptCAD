@@ -13,7 +13,7 @@ const A=(c,m)=>{if(!c){ko++;console.log('  ✗ '+m);}else console.log('  ✓ '+m
   const {ctx,sandbox}=loadApp();
   sandbox.__realOcct=real;
   vm.runInContext('occt=__realOcct;occtReady=true;',ctx);
-  const ouvrir=async f=>{sandbox.__json=lireProjet(path.join(ROOT,'Exemples',f));
+  const ouvrir=async f=>{sandbox.__json=lireProjet(path.join(ROOT,'tests','fixtures',f));
     await vm.runInContext(String.raw`(async()=>{const raw=JSON.parse(__json);
       if(raw.doc)await bundleRestore(__json,{rebuild:false});else await deserialise(__json,{rebuild:false});
       markDirty();rebuild();})()`,ctx);};
@@ -22,7 +22,7 @@ const A=(c,m)=>{if(!c){ko++;console.log('  ✗ '+m);}else console.log('  ✓ '+m
   A(typeof real.stackSave==='function'&&typeof real.stackRestore==='function','la colle donne accès à la pile du noyau');
   const haut=real.stackSave();
 
-  await ouvrir('Barquette.conceptcad');
+  await ouvrir('barquette-exemple.conceptcad');
   A(corps()===1,'Barquette ouverte : un solide');
   // Le rejeu complet ne doit plus lever d'erreur à chaque arête : la pile finit où elle a commencé.
   const avant=real.stackSave();

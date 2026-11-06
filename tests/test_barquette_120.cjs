@@ -12,7 +12,7 @@ const A=(c,m)=>{if(!c){ko++;console.log('  ✗ '+m);}else console.log('  ✓ '+m
   const {ctx,sandbox}=loadApp();
   sandbox.__realOcct=real;
   vm.runInContext('occt=__realOcct;occtReady=true;',ctx);
-  sandbox.__json=lireProjet(path.join(__dirname,'..','Exemples','Barquette.conceptcad'));
+  sandbox.__json=lireProjet(path.join(__dirname,'fixtures','barquette-exemple.conceptcad'));
   await vm.runInContext(String.raw`(async()=>{const raw=JSON.parse(__json);
     if(raw.doc)await bundleRestore(__json,{rebuild:false});else await deserialise(__json,{rebuild:false});
     markDirty();rebuild();})()`,ctx);

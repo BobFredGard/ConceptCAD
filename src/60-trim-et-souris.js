@@ -189,6 +189,7 @@ function trimEntity(sk,ent,cx,cy){
       const p1=ent.p1,p2=ent.p2;
       sk.entities=sk.entities.filter(x=>x.id!==ent.id);
       const l1={id:skNewEid(sk),t:'line',p1,p2:pA},l2={id:skNewEid(sk),t:'line',p1:pB,p2};
+      if(ent.ref){l1.ref=true;l2.ref=true;} // une référence 3D le reste : ses tronçons n'entrent pas dans les profils
       sk.entities.push(l1,l2);
       cloneLineConstraints(sk,ent.id,[l1.id,l2.id],true);
       return 'Tronçon retiré ✂.';

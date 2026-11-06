@@ -6,7 +6,7 @@ const {loadApp}=require('./appvm.cjs'),lire=require('./lire-projet.cjs');
 (async()=>{
   const real=await require('./noyau.cjs').charger();
   const {ctx,sandbox}=loadApp();
-  sandbox.__realOcct=real;sandbox.__txt=lire(path.join(ROOT,'Exemples','Barquette.conceptcad'));
+  sandbox.__realOcct=real;sandbox.__txt=lire(path.join(ROOT,'tests','fixtures','barquette-exemple.conceptcad'));
   vm.runInContext('occt=__realOcct;occtReady=true;window.alert=function(){};showAll=function(){};applyView=function(){};',ctx);
   const R=String.raw`
     await bundleRestore(__txt,{name:'banc'});occt=__realOcct;occtReady=true;markDirty();rebuild();
