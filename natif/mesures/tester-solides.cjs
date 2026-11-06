@@ -41,10 +41,32 @@ fs.mkdirSync(dossier, { recursive: true });
         await attendre(500);
         const q = await page.evaluate(() => {
           const sh = typeof occLive !== 'undefined' && occLive && occLive.shape;
-          if (!sh) return { rien: 1 };
+          if (!sh) {
+            // Une pièce importée seule dans son corps n'entre pas dans la chaîne exacte : on compte son solide gardé à part
+            const im = (doc.features || []).filter(f => f.type === 'import' && f.visible !== false).map(f => importGeom.get(f.id)).filter(e => e && e.brep);
+            if (!im.length) return { rien: 1 };
+            let v = 0, fa = 0, so = 0;
+            for (const e of im) {
+              const c = t => { const a = occSubShapes(e.brep, t), n = a.length; occDispose(a); return n; };
+              v += occCoqueVolume(e.brep); fa += c('TopAbs_FACE'); so += c('TopAbs_SOLID');
+            }
+            return { volume: v, faces: fa, solides: so, corps: im.length };
+          }
           const nb = t => { const a = occSubShapes(sh, t), n = a.length; occDispose(a); return n; };
           const coques = (bodies || []).filter(b => b.shape).length;
-          return { volume: occCoqueVolume(sh), faces: nb('TopAbs_FACE'), solides: nb('TopAbs_SOLID'), corps: coques };
+          // Les corps faits seulement d'imports restent hors de la chaîne exacte : on ajoute leurs solides
+          let v = occCoqueVolume(sh), fa = nb('TopAbs_FACE'), so = nb('TopAbs_SOLID');
+          const parCorps = {};
+          for (const f of doc.features || []) if (f.visible !== false) (parCorps[f.body] = parCorps[f.body] || []).push(f);
+          for (const L of Object.values(parCorps))
+            if (L.every(f => f.type === 'import'))
+              for (const f of L) {
+                const e = importGeom.get(f.id);
+                if (!e || !e.brep) continue;
+                const c = t => { const a = occSubShapes(e.brep, t), n = a.length; occDispose(a); return n; };
+                v += occCoqueVolume(e.brep); fa += c('TopAbs_FACE'); so += c('TopAbs_SOLID');
+              }
+          return { volume: v, faces: fa, solides: so, corps: coques };
         });
         const cle = JSON.stringify(q);
         pareil = m && JSON.stringify(m) === cle ? pareil + 1 : 0;

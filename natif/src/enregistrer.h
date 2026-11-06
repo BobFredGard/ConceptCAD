@@ -3,6 +3,7 @@
 // faces nommées, congés, mise en plan…) reste identique, octet pour octet.
 #pragma once
 #include <functional>
+#include <map>
 #include <nlohmann/json.hpp>
 #include <stdexcept>
 #include <string>
@@ -46,5 +47,7 @@ void enregistrerProjet(Document& d, const std::wstring& cible, bool forcer = fal
 // Un changement de structure (renommer, masquer, supprimer…) : les modifications en cours sont reportées dans le texte,
 // le changement s'y applique, les copies de répétition sont refaites, le document est relu. Rien n'est écrit sur le disque.
 void modifierStructure(Document& d, const std::function<void(nlohmann::ordered_json&)>& changement);
+// Le même, en ajoutant au fichier des sources d'import (clé → base64)
+void modifierStructure(Document& d, const std::function<void(nlohmann::ordered_json&)>& changement, const std::map<std::string, std::string>& nouvellesSources);
 // Le texte tel qu'il est sur le disque
 std::string texteDuFichier(const Document& d);

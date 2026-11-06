@@ -91,6 +91,30 @@ void stCorpsMasques(json& d, const std::vector<std::string>& ids) {
   for (const std::string& id : ids) d["bodyVis"][id] = false;
 }
 
+void stNouveauCorps(json& d) {
+  json& B = liste(d, "bodies");
+  int n = d.contains("bodySeq") && d["bodySeq"].is_number() ? d["bodySeq"].get<int>() : 1;
+  while (parId(B, "b" + std::to_string(n))) n++;
+  d["bodySeq"] = n + 1;
+  const std::string id = "b" + std::to_string(n);
+  B.push_back({{"id", id}, {"name", "Corps " + std::to_string(n)}, {"c", nullptr}});
+  d["activeBody"] = id;
+}
+
+std::string stImporter(json& d, const std::string& nom, const std::string& fmt, const std::string& cle, size_t taille, const std::string& fichier, int indiceMarque) {
+  json& F = liste(d, "features");
+  std::string fid;
+  for (int k = 1;; k++) {
+    fid = "im_nat" + std::to_string(k);
+    if (!parId(F, fid)) break;
+  }
+  json f = {{"id", fid}, {"type", "import"}, {"name", nom}, {"visible", true},
+            {"src", {{"fmt", fmt}, {"key", cle}, {"size", taille}, {"file", fichier}}}, {"body", str(d, "activeBody")}};
+  const size_t n = indiceMarque < 0 ? F.size() : std::min<size_t>(indiceMarque, F.size());
+  F.insert(F.begin() + n, std::move(f));
+  return fid;
+}
+
 void stCorpsActif(json& d, const std::string& id) { d["activeBody"] = id; }
 
 void stReglerCorps(json& d, const std::string& id, const char* champ, double valeur) {

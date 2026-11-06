@@ -1,5 +1,7 @@
 // Lecture d'un projet .conceptcad (JSON, gzip possible) : même format que la version navigateur.
 #pragma once
+#include <map>
+#include <memory>
 #include <array>
 #include <cmath>
 #include <string>
@@ -133,6 +135,7 @@ struct ReglagePercage {
 struct Fonction {
   std::string id, type, nom, esquisse, corps, op = "add";
   std::vector<std::string> corpsEnPlus;  // f.cutBodies : découpe rejouée aussi dans ces corps
+  std::string importFmt, importCle;  // f.src d'une pièce importée
   std::string repeatId;      // copie faite par cette répétition
   bool repetee = false;      // copie ou source d'une répétition : la changer n'est pas encore repris
   ReglagePercage percage;
@@ -204,6 +207,32 @@ struct ElementConstruction {
   bool aRepere = false;
   Vec3 o{0, 0, 0}, z{0, 0, 1};  // sa dernière position
 };
+// Un grand texte immuable : copier le document ne le recopie pas
+class TexteCommun {
+ public:
+  TexteCommun() : p_(vide()) {}
+  TexteCommun& operator=(std::string s) {
+    p_ = std::make_shared<const std::string>(std::move(s));
+    return *this;
+  }
+  operator const std::string&() const { return *p_; }
+  const std::string& str() const { return *p_; }
+  bool empty() const { return p_->empty(); }
+  size_t size() const { return p_->size(); }
+  void clear() { p_ = vide(); }
+  friend bool operator==(const TexteCommun& a, const TexteCommun& b) { return a.p_ == b.p_ || *a.p_ == *b.p_; }
+  friend bool operator!=(const TexteCommun& a, const TexteCommun& b) { return !(a == b); }
+  friend bool operator==(const std::string& a, const TexteCommun& b) { return a == *b.p_; }
+  friend bool operator!=(const std::string& a, const TexteCommun& b) { return a != *b.p_; }
+
+ private:
+  static const std::shared_ptr<const std::string>& vide() {
+    static const auto v = std::make_shared<const std::string>();
+    return v;
+  }
+  std::shared_ptr<const std::string> p_;
+};
+
 struct Document {
   std::vector<ElementConstruction> construction;
   // Le plan de cette esquisse suit-il la pièce ? (il ne se recalcule pas encore ici)
@@ -215,7 +244,7 @@ struct Document {
   std::vector<unsigned> couleursCorps;  // même rang que corps ; 0 = pas de couleur dans la fiche
   std::vector<double> opacitesCorps;  // même rang que corps ; bodyOpOf : 1 par défaut
   std::vector<std::string> corpsMasques;  // doc.bodyVis : l'œil du corps, la vue seule
-  std::string texteBase;  // après un changement de structure : le texte de référence, à la place de celui du disque
+  TexteCommun texteBase;  // après un changement de structure : le texte de référence, à la place de celui du disque
   unsigned teinte = 0;  // teinte de la pièce (doc.tint), pour les corps sans couleur
   std::vector<Esquisse> esquisses;
   std::vector<Esquisse> esquissesFichier;  // telles qu'écrites dans le fichier : ce qui en diffère reste à enregistrer
@@ -229,7 +258,8 @@ struct Document {
   std::vector<std::string> nonPrisEnCharge;  // vide = la pièce se rejoue entièrement
   std::vector<std::string> sourcesRepetees;  // les fonctions que copie une répétition
   std::wstring chemin;
-  std::string octets;  // le fichier tel qu'il est sur le disque : l'enregistrement en repart
+  TexteCommun octets;  // le fichier tel qu'il est sur le disque : l'enregistrement en repart
+  std::shared_ptr<const std::map<std::string, std::string>> imports;  // bundle.imports : les fichiers importés, en base64
   bool compresse = false;
   int nomsFace = 0;  // entNames.face : compteur des noms « Face n », jamais réemployés
   int nomsArete = 0;  // entNames.edge : de même pour « Arête n »

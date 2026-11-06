@@ -516,8 +516,12 @@ static void lireFonction(const json& jf, Document& d, std::map<std::string, int>
   }
   // La répétition se contente de créer des copies, rejouées comme des fonctions : sans effet ici.
   if (f.visible && f.type != "extrude" && f.type != "repeat" && f.type != "xfillet" && f.type != "hole" && f.type != "revolve" && f.type != "xdraft" &&
-      f.type != "xmove" && f.type != "xdelface" && f.type != "xsplit" && f.type != "bmove" && f.type != "bscale" && f.type != "bremove" && f.type != "sweep" && f.type != "combine")
+      f.type != "xmove" && f.type != "xdelface" && f.type != "xsplit" && f.type != "bmove" && f.type != "bscale" && f.type != "bremove" && f.type != "sweep" && f.type != "combine" && f.type != "import")
     refus[nomFonction(f.type)]++;
+  if (auto x = jf.find("src"); f.type == "import" && x != jf.end() && x->is_object()) {
+    f.importFmt = texte(*x, "fmt");
+    f.importCle = texte(*x, "key");
+  }
   if (f.visible && f.type == "extrude") {
     if (jf.contains("profiles") && jf["profiles"].is_array() && !jf["profiles"].empty())
       refus["extrusion limitée à certaines zones"]++;
@@ -561,7 +565,20 @@ Document lireTexteProjet(const Document& modele, const std::string& texte) {
   return d;
 }
 
+static Document documentDepuisDoc(json& racine);
+
 static Document documentDepuis(json& racine) {
+  Document d = documentDepuisDoc(racine);
+  if (auto x = racine.find("imports"); x != racine.end() && x->is_object()) {
+    auto m = std::make_shared<std::map<std::string, std::string>>();
+    for (const auto& v : x->items())
+      if (v.value().is_string()) (*m)[v.key()] = v.value().get<std::string>();
+    d.imports = m;
+  }
+  return d;
+}
+
+static Document documentDepuisDoc(json& racine) {
   const bool lot = racine.contains("doc") && racine["doc"].is_object();
   json& j = lot ? racine["doc"] : racine;
   if (!j.contains("features") || !j.contains("sketches")) throw std::runtime_error("ce fichier ne contient pas de pièce");
@@ -644,7 +661,6 @@ static Document documentDepuis(json& racine) {
         f.nom = texte(c, "name");
         lirePorteursDe(*p, f, -3, d);
       }
-  if (lot && racine.contains("imports") && !racine["imports"].empty()) refus["fichier importé"]++;
   if (j.contains("asm") && j["asm"].is_object()) refus["assemblage"]++;
   if (j.contains("components") && j["components"].is_array() && !j["components"].empty()) refus["assemblage"]++;
   for (auto& [k, n] : refus) d.nonPrisEnCharge.push_back(k + " × " + std::to_string(n));

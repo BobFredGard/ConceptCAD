@@ -29,6 +29,7 @@
 #include <nlohmann/json.hpp>
 
 #include "enregistrer.h"
+#include "echanges.h"
 #include "structure.h"
 #include <wx/colordlg.h>
 #include <wx/numdlg.h>
@@ -264,7 +265,7 @@ void Cadre::creerEnvironnement() {
     if (esquisseOuverte_ < 0) recalculer();
   };
   barreHaute_->surIndisponible = [this](const wxString& n) { indisponible(n); };
-  ruban_->estRepris = [](Atelier a, const wxString& n) { return a == Atelier::CAO && (n == L"Esquisse" || n == L"Extrusion" || n == L"Congé" || n == L"Chanfrein" || n == L"Paramètres"); };
+  ruban_->estRepris = [](Atelier a, const wxString& n) { return a == Atelier::CAO && (n == L"Esquisse" || n == L"Extrusion" || n == L"Congé" || n == L"Chanfrein" || n == L"Paramètres" || n == L"Corps" || n == L"Importer" || n == L"STEP" || n == L"STL" || n == L"OBJ"); };
   ruban_->surBouton = [this](Atelier a, const wxString& n) { boutonRuban(a, n); };
   ruban_->surIndisponible = [this](const wxString& n) { indisponible(n); };
 
@@ -536,6 +537,117 @@ void Cadre::boutonRuban(Atelier a, const wxString& nom) {
   quitterConge();
   if (nom == L"Extrusion") extruder();
   else if (nom == L"Esquisse") menuEsquisse();
+  else if (nom == L"Corps") nouveauCorps();
+  else if (nom == L"Importer") importer();
+  else if (nom == L"STEP") exporter("step");
+  else if (nom == L"STL") exporter("stl");
+  else if (nom == L"OBJ") exporter("obj");
+}
+
+void Cadre::nouveauCorps() {
+  if (!docOuvert_) return etat(L"Ouvrez d'abord une pièce (Ctrl+O).");
+  quitterEsquisse();
+  changerStructure([](nlohmann::ordered_json& d) { stNouveauCorps(d); });
+  const size_t i = std::find(doc_.corps.begin(), doc_.corps.end(), doc_.corpsActif) - doc_.corps.begin();
+  etat(L"« " + (i < doc_.nomsCorps.size() ? tx(doc_.nomsCorps[i]) : wxString()) + L" » créé et ACTIF (●) : esquissez puis extrudez — la fonction naîtra dedans.");
+}
+
+void Cadre::importer() {
+  if (!docOuvert_) return etat(L"Ouvrez d'abord une pièce (Ctrl+O).");
+  wxFileDialog choix(this, L"Importer une pièce", wxEmptyString, wxEmptyString, L"Pièces (*.step;*.stp;*.stl)|*.step;*.stp;*.STEP;*.STP;*.stl;*.STL", wxFD_OPEN | wxFD_FILE_MUST_EXIST);
+  if (choix.ShowModal() == wxID_OK) importerFichier(choix.GetPath().ToStdWstring());
+}
+
+bool Cadre::importerFichier(const std::wstring& chemin) {
+  quitterEsquisse();
+  std::string octets;
+  {
+    std::ifstream e(chemin, std::ios::binary);
+    octets.assign(std::istreambuf_iterator<char>(e), {});
+  }
+  if (octets.empty()) {
+    etat(L"Import : fichier vide ou illisible.");
+    return false;
+  }
+  const wxFileName nom(chemin);
+  const std::string fmt = nom.GetExt().Lower() == L"stl" ? "stl" : "step";
+  const std::string cle = cleImport(octets), base = nom.GetName().utf8_string(), fichier = nom.GetFullName().utf8_string();
+  // La source d'abord : un fichier illisible ne laisse rien dans la pièce
+  auto avant = std::make_shared<Document>(doc_);
+  const int marque = indiceMarque();
+  std::string id;
+  try {
+    modifierStructure(doc_, [&](nlohmann::ordered_json& d) { id = stImporter(d, base, fmt, cle, octets.size(), fichier, marque); }, {{cle, base64Coder(octets)}});
+    for (const Fonction& f : doc_.fonctions)
+      if (f.id == id && formeImportee(doc_, f).IsNull()) throw std::runtime_error("source absente");
+  } catch (const std::exception& e) {
+    doc_ = *avant;
+    if (!essaiMenu_) wxMessageBox(tx(e.what()), L"Import impossible", wxOK | wxICON_WARNING, this);
+    etat(L"Import impossible : " + tx(e.what()));
+    return false;
+  }
+  ModifCote m;
+  m.docAvant = avant;
+  annulations_.push_back(std::move(m));
+  retablissements_.clear();
+  ajusterVue_ = forme_.IsNull();
+  apresStructure();
+  etat(etatVue_->texte() + L"  |  " + tx(fmt == "stl" ? "STL" : "STEP") + L" importé : " + nom.GetFullName());
+  return true;
+}
+
+void Cadre::exporter(const std::string& format, const std::string& corps) {
+  if (forme_.IsNull()) return etat(L"Solide vide, rien à exporter.");
+  std::vector<TopoDS_Shape> formes;
+  wxString nomFichier = tx(doc_.nom);
+  for (const auto& [id, s] : formesCorps_)
+    if (corps.empty() ? std::find(doc_.corpsMasques.begin(), doc_.corpsMasques.end(), id) == doc_.corpsMasques.end() : id == corps) {
+      formes.push_back(s);
+      if (id == corps) {
+        const size_t i = std::find(doc_.corps.begin(), doc_.corps.end(), id) - doc_.corps.begin();
+        if (i < doc_.nomsCorps.size()) nomFichier = tx(doc_.nomsCorps[i]);
+      }
+    }
+  if (formes.empty()) return etat(L"Rien à exporter : tous les corps sont masqués.");
+  std::string schema = schemaStep_;
+  bool sansCourbes = stepSansCourbes2D_;
+  if (format == "step") {
+    wxDialog dlg(this, wxID_ANY, L"Export STEP");
+    auto* c = new wxBoxSizer(wxVERTICAL);
+    c->Add(new wxStaticText(&dlg, wxID_ANY, L"Format du fichier :"), 0, wxALL, 10);
+    auto* r1 = new wxRadioButton(&dlg, wxID_ANY, L"AP214 — automotive design (lu par tous les logiciels récents)", wxDefaultPosition, wxDefaultSize, wxRB_GROUP);
+    auto* r2 = new wxRadioButton(&dlg, wxID_ANY, L"AP203 — config control design (logiciels plus anciens)");
+    (schema == "AP203" ? r2 : r1)->SetValue(true);
+    auto* sc = new wxCheckBox(&dlg, wxID_ANY, L"Sans courbes 2D (pour les vieux logiciels : arêtes en 3D seulement)");
+    sc->SetValue(sansCourbes);
+    c->Add(r1, 0, wxLEFT | wxRIGHT | wxBOTTOM, 10);
+    c->Add(r2, 0, wxLEFT | wxRIGHT | wxBOTTOM, 10);
+    c->Add(sc, 0, wxLEFT | wxRIGHT | wxBOTTOM, 10);
+    c->Add(dlg.CreateStdDialogButtonSizer(wxOK | wxCANCEL), 0, wxEXPAND | wxALL, 10);
+    dlg.SetSizerAndFit(c);
+    if (dlg.ShowModal() != wxID_OK) return;
+    schema = schemaStep_ = r2->GetValue() ? "AP203" : "AP214";
+    sansCourbes = stepSansCourbes2D_ = sc->GetValue();
+  }
+  const wxString filtre = format == "step" ? L"STEP (*.step)|*.step" : format == "stl" ? L"STL (*.stl)|*.stl" : L"OBJ (*.obj)|*.obj";
+  wxFileDialog choix(this, L"Exporter", wxFileName(doc_.chemin).GetPath(), nomFichier + L"." + wxString::FromUTF8(format), filtre, wxFD_SAVE | wxFD_OVERWRITE_PROMPT);
+  if (choix.ShowModal() != wxID_OK) return;
+  ecrireExport(format, formes, choix.GetPath().ToStdWstring(), schema, sansCourbes);
+}
+
+bool Cadre::ecrireExport(const std::string& format, const std::vector<TopoDS_Shape>& formes, const std::wstring& chemin, const std::string& schema, bool sansCourbes) {
+  wxBusyCursor attente;
+  try {
+    if (format == "step") exporterStep(formes, chemin, schema, sansCourbes);
+    else if (format == "stl") exporterStl(formes, chemin);
+    else exporterObj(formes, chemin);
+  } catch (const std::exception& e) {
+    if (!essaiMenu_) wxMessageBox(tx(e.what()), L"Export impossible", wxOK | wxICON_WARNING, this);
+    etat(L"Export impossible : " + tx(e.what()));
+    return false;
+  }
+  etat(L"Exporté : " + wxString(chemin));
+  return true;
 }
 
 // Une face choisie sur le solide : l'esquisse y va tout droit. Sinon, on choisit le plan, comme dans l'arbre.
@@ -1697,7 +1809,7 @@ bool Cadre::confirmerSuppression(const wxString& question) {
 }
 
 namespace {
-enum { M_RENOMMER = wxID_HIGHEST + 700, M_VOIR, M_EDITER, M_TEMPS, M_FIN, M_SUPPRIMER, M_ACTIF, M_COULEUR, M_TRANSPARENCE, M_RETIRER, M_FANTOME, M_ISOLER, M_TOUT };
+enum { M_RENOMMER = wxID_HIGHEST + 700, M_VOIR, M_EDITER, M_TEMPS, M_FIN, M_SUPPRIMER, M_ACTIF, M_COULEUR, M_TRANSPARENCE, M_RETIRER, M_FANTOME, M_ISOLER, M_TOUT, M_STEP };
 }
 
 void Cadre::menuFonction(int i) {
@@ -1797,10 +1909,13 @@ void Cadre::menuCorps(const std::string& id, bool vue3d) {
   m.Append(M_COULEUR, L"🎨 Couleur…");
   m.Append(M_TRANSPARENCE, L"👻 Transparence…");
   m.AppendSeparator();
+  m.Append(M_STEP, L"⬇ Exporter ce corps en STEP…");
   m.Append(M_RETIRER, L"⊘ Retirer (étape de la timeline)");
   if (!vue3d) m.Append(M_SUPPRIMER, L"🗑 Supprimer");
   const int choix = choisirMenu(m);
-  if (choix == M_FANTOME) {
+  if (choix == M_STEP) {
+    exporter("step", id);
+  } else if (choix == M_FANTOME) {
     changerStructure([&](nlohmann::ordered_json& d) { stReglerCorps(d, id, "op", 0.25); });
   } else if (choix == M_ISOLER) {
     std::vector<std::string> autres;
@@ -2134,6 +2249,19 @@ bool Cadre::essaiEsquisse(const std::wstring& fichier, int rang, const std::wstr
       n["menu"] = essaiEntrees_;
     }
     if (e.contains("marqueur")) bougerMarqueur(e["marqueur"].get<int>());
+    if (e.contains("nouveauCorps")) nouveauCorps();
+    if (e.contains("importer")) {
+      essaiMenu_ = true;
+      n["ok"] = importerFichier(wxString::FromUTF8(e["importer"].get<std::string>()).ToStdWstring());
+      essaiMenu_ = false;
+    }
+    if (e.contains("exporter")) {
+      essaiMenu_ = true;
+      std::vector<TopoDS_Shape> fs;
+      for (const auto& [id, s] : formesCorps_) fs.push_back(s);
+      n["ok"] = ecrireExport(e["exporter"][0].get<std::string>(), fs, wxString::FromUTF8(e["exporter"][1].get<std::string>()).ToStdWstring(), e.value("schema", std::string("AP214")), e.value("sansCourbes", false));
+      essaiMenu_ = false;
+    }
     if (e.contains("droit3d")) {
       essaiMenu_ = true;
       essaiChoix_ = e.value("choix", std::string());

@@ -1430,6 +1430,25 @@ bool memeCylindre(const std::vector<int>& fl, const std::vector<AxeCylindre>& cy
 
 std::vector<AreteVue> aretesVisibles(const TopoDS_Shape& shape) {
   std::vector<AreteVue> out;
+  // Solide par solide : entre deux solides qui se touchent (un STEP à plusieurs pièces), une arête serait prise pour la voisine d'une face de l'autre, et le noyau plante
+  {
+    std::vector<TopoDS_Shape> parts;
+    for (TopExp_Explorer sx(shape, TopAbs_SOLID); sx.More(); sx.Next()) parts.push_back(sx.Current());
+    BRep_Builder bd;
+    TopoDS_Compound libres;
+    bd.MakeCompound(libres);
+    bool desLibres = false;
+    for (TopExp_Explorer fx(shape, TopAbs_FACE, TopAbs_SOLID); fx.More(); fx.Next()) {
+      bd.Add(libres, fx.Current());
+      desLibres = true;
+    }
+    if (parts.size() > 1 || (!parts.empty() && desLibres)) {
+      if (desLibres) parts.push_back(libres);
+      for (const TopoDS_Shape& p : parts)
+        for (AreteVue& a : aretesVisibles(p)) out.push_back(std::move(a));
+      return out;
+    }
+  }
   std::vector<TopoDS_Face> faces;
   std::vector<AxeCylindre> cyl;
   for (TopExp_Explorer fx(shape, TopAbs_FACE); fx.More(); fx.Next()) {

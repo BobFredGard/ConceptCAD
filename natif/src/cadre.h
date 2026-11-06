@@ -113,6 +113,13 @@ public:
   void menuCorps(const std::string& id, bool vue3d = false);
   void surDroit3D(const TopoDS_Shape& sous);
   void surArbreMenu(wxTreeEvent& e);
+  void nouveauCorps();
+  void importer();
+  bool importerFichier(const std::wstring& chemin);
+  void exporter(const std::string& format, const std::string& corps = "");
+  bool ecrireExport(const std::string& format, const std::vector<TopoDS_Shape>& formes, const std::wstring& chemin, const std::string& schema, bool sansCourbes);
+  std::string schemaStep_ = "AP214";  // stepSchema : le dernier choix
+  bool stepSansCourbes2D_ = false;
   int indiceMarque() const;
   void marquerTemps(const std::string& id);
   void bougerMarqueur(int bouton);

@@ -1,4 +1,6 @@
 #include "rejeu.h"
+#include "echanges.h"
+#include <BRepBuilderAPI_Copy.hxx>
 #include <BRepOffsetAPI_DraftAngle.hxx>
 #include <BRepPrimAPI_MakeRevol.hxx>
 #include <gp_Ax1.hxx>
@@ -978,6 +980,44 @@ TopoDS_Shape rejouerCorps(Document& d, const std::vector<Fonction*>& liste, cons
         ii += groupe.size() - 1;
         continue;
       }
+    }
+    if (f.type == "import") {
+      bool exacte = true;
+      TopoDS_Shape s;
+      try {
+        s = formeImportee(d, f, &exacte);
+      } catch (const std::exception& e) {
+        msgs.push_back(f.nom + " : " + e.what());
+        continue;
+      }
+      if (s.IsNull()) {
+        msgs.push_back(f.nom + " : source absente, réimportez le fichier");
+        continue;
+      }
+      // Seul dans son corps, il reste tel quel ; dès qu'une autre fonction coexiste, il entre dans la chaîne
+      const bool seul = std::all_of(liste.begin(), liste.end(), [](const Fonction* g) { return g->type == "import"; });
+      if (seul) {
+        enCours = nullptr;
+        if (resultat.IsNull()) {
+          resultat = s;
+        } else {
+          BRep_Builder bd;
+          TopoDS_Compound c;
+          bd.MakeCompound(c);
+          bd.Add(c, resultat);
+          bd.Add(c, s);
+          resultat = c;
+        }
+        continue;
+      }
+      if (!exacte) {
+        msgs.push_back(f.nom + " : solide exact indisponible (import STL) — combinaison réservée au repli maillage");
+        continue;
+      }
+      TopoDS_Shape copie = BRepBuilderAPI_Copy(s, true, false).Shape();
+      nomsCompleter(copie, f.id, nullptr);
+      resultat = resultat.IsNull() ? copie : unifier(fusion(resultat, copie));
+      continue;
     }
     if (f.type == "hole") {
       if (resultat.IsNull()) {

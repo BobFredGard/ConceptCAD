@@ -1084,12 +1084,26 @@ std::string texteEnregistre(const Document& d, const std::string& texteOrigine) 
   return retoucher(refontes.empty() ? texteFichier : refondre(texteFichier, refontes), retouches, esquisses);
 }
 
-std::string texteDuFichier(const Document& d) { return d.compresse ? degonfler(d.octets) : d.octets; }
+std::string texteDuFichier(const Document& d) { return d.compresse ? degonfler(d.octets) : d.octets.str(); }
 
-void modifierStructure(Document& d, const std::function<void(nlohmann::ordered_json&)>& changement) {
-  const std::string base = !d.texteBase.empty() ? d.texteBase : texteDuFichier(d);
+void modifierStructure(Document& d, const std::function<void(nlohmann::ordered_json&)>& changement) { modifierStructure(d, changement, {}); }
+
+void modifierStructure(Document& d, const std::function<void(nlohmann::ordered_json&)>& changement, const std::map<std::string, std::string>& nouvellesSources) {
+  const std::string base = !d.texteBase.empty() ? d.texteBase.str() : texteDuFichier(d);
   const std::string texte = d.modifie() ? texteEnregistre(d, base) : base;
   nlohmann::ordered_json racine = nlohmann::ordered_json::parse(texte);
+  if (!nouvellesSources.empty() && !(racine.contains("doc") && racine["doc"].is_object())) {
+    // Un fichier sans enveloppe : les sources ont besoin de celle du navigateur (bundleRestore)
+    nlohmann::ordered_json lot = {{"app", "ConceptCAD"}, {"bundle", 1}, {"v", 1}, {"name", racine.value("name", std::string())}};
+    lot["doc"] = std::move(racine);
+    lot["nMoves"] = 0;
+    lot["moves"] = nlohmann::ordered_json::object();
+    racine = std::move(lot);
+  }
+  if (!nouvellesSources.empty()) {
+    if (!racine.contains("imports") || !racine["imports"].is_object()) racine["imports"] = nlohmann::ordered_json::object();
+    for (const auto& [cle, v] : nouvellesSources) racine["imports"][cle] = v;
+  }
   const bool lot = racine.contains("doc") && racine["doc"].is_object();
   nlohmann::ordered_json& j = lot ? racine["doc"] : racine;
   changement(j);
@@ -1099,9 +1113,9 @@ void modifierStructure(Document& d, const std::function<void(nlohmann::ordered_j
 }
 
 void enregistrerProjet(Document& d, const std::wstring& cible, bool forcer) {
-  std::string octets = d.octets;
+  std::string octets = d.octets.str();
   if (d.modifie()) {
-    const std::string texte = texteEnregistre(d, !d.texteBase.empty() ? d.texteBase : texteDuFichier(d));
+    const std::string texte = texteEnregistre(d, !d.texteBase.empty() ? d.texteBase.str() : texteDuFichier(d));
     octets = d.compresse ? gonfler(texte) : texte;
     if (d.compresse && degonfler(octets) != texte) throw std::runtime_error("la compression ne redonne pas le même texte, rien n'a été écrit");
   }
