@@ -1,6 +1,7 @@
 // Lecture d'un projet .conceptcad (JSON, gzip possible) : même format que la version navigateur.
 #pragma once
 #include <array>
+#include <cmath>
 #include <string>
 #include <unordered_map>
 #include <vector>
@@ -62,6 +63,7 @@ struct Hote {
 };
 
 struct Esquisse {
+  std::string plan_cg;  // id de l'élément de construction qui porte l'esquisse
   std::string id, nom, plan;
   std::string at;  // esquisse créée ici : la fonction après laquelle elle se place (cgAtNow), vide si aucune
   int seq = 1;  // prochain numéro d'identifiant
@@ -103,10 +105,60 @@ struct AreteConge {
   double r = 0, len = 0;
   AncreArete ancre;
   std::string nomAffiche;  // name : « Arête 6 »
+  std::string nom;  // nom unique de l'arête, par les faces qu'elle sépare
+};
+
+// Une étape de « Déplacer le corps » (bmove) : translation, direction, rotation, point à point
+struct EtapeDeplacement {
+  std::string k;
+  Vec3 v{0, 0, 0}, o{0, 0, 0}, d{0, 0, 0}, a{0, 0, 0}, b{0, 0, 0};
+  double dist = 0, deg = 0;
+};
+// Une face retenue par une fonction : sa boîte, sa normale et son ancre d'esquisse
+struct RefFace {  // le nom se retient au premier passage, même sur une référence constante (nomsRefNote)
+  Vec3 pos{0, 0, 0}, dim{0, 0, 0}, n{0, 0, 0};
+  bool lue = false, aNormale = false;
+  std::string st;   // type de surface
+  mutable std::string nom;  // nom unique, retenu au premier passage (nomsRefNote)
+  AncreArete ancre;
+};
+// Réglages d'un perçage tels que dans le fichier (NaN : absent)
+struct ReglagePercage {
+  std::string kind, end, pilot;
+  double d = NAN, stD = NAN, stH = NAN, stTip = NAN, cbD = NAN, cbH = NAN, csD = NAN, csA = NAN, depth = NAN, tip = NAN, reamD = NAN, reamH = NAN, reamOff = NAN;
+  bool aPlan = false;
+  Vec3 planP{}, planN{};
 };
 
 struct Fonction {
   std::string id, type, nom, esquisse, corps, op = "add";
+  std::vector<std::string> corpsEnPlus;  // f.cutBodies : découpe rejouée aussi dans ces corps
+  std::string repeatId;      // copie faite par cette répétition
+  bool repetee = false;      // copie ou source d'une répétition : la changer n'est pas encore repris
+  ReglagePercage percage;
+  // Révolution : axe {k:'line',id} ou {k:'sys',d}
+  std::string axeK, axeId, axeD;
+  double angle = 360;
+  // Dépouille (xdraft) et extrusion dépouillée ou jusqu'à un objet
+  RefFace refFace;
+  std::vector<RefFace> facesVisees;
+  double angleDepouille = 0, draft = 0;
+  double dist = 0;       // xmove
+  bool facesTangentes = false;  // xmove
+  std::string chemin;    // sweep : esquisse du chemin
+  std::vector<std::string> outils;  // combine : corps outils
+  std::string modeFonction;  // combine : cut, intersect ; xsplit : body, face
+  bool garder = false;       // combine : garde les outils
+  std::string corpsNeuf;     // xsplit, bscale : le corps qui naît
+  std::string planSrc, planCg;  // xsplit
+  Vec3 planO{0, 0, 0}, planN{0, 0, 1};
+  bool aPlanON = false;
+  double decalage = 0;
+  std::vector<EtapeDeplacement> etapes;  // bmove
+  Vec3 centre{0, 0, 0};                  // bscale
+  double echelle = 1, echelleX = 1, echelleY = 1, echelleZ = 1;
+  bool echelleUni = true, copie = false;
+  bool upto = false;
   double distance = 10;
   bool aDistance = false, visible = true, mid = false, flip = false, through = false;
   // Congé ou chanfrein exact (xfillet)
@@ -144,7 +196,19 @@ struct PorteurFx {
   double valeur = 0;
 };
 
+// Élément de construction : ce programme ne le recalcule pas encore, il garde sa position
+struct ElementConstruction {
+  std::string id;
+  bool surPiece = false;                // une référence vise une face, une arête, un sommet ou une esquisse
+  std::vector<std::string> surElements;  // autres éléments de construction visés
+  bool aRepere = false;
+  Vec3 o{0, 0, 0}, z{0, 0, 1};  // sa dernière position
+};
 struct Document {
+  std::vector<ElementConstruction> construction;
+  // Le plan de cette esquisse suit-il la pièce ? (il ne se recalcule pas encore ici)
+  bool planSuitLaPiece(const std::string& id, int garde = 0) const;
+  bool unPlanSuitLaPiece() const;
   std::string nom;
   std::vector<std::string> corps;
   std::vector<std::string> nomsCorps;  // même rang que corps
@@ -160,6 +224,7 @@ struct Document {
   std::vector<size_t> parEnAttente;  // parPending : les esquisses dont une cote a changé, à résoudre
   std::string corpsActif;  // où naît une nouvelle fonction
   std::vector<std::string> nonPrisEnCharge;  // vide = la pièce se rejoue entièrement
+  std::vector<std::string> sourcesRepetees;  // les fonctions que copie une répétition
   std::wstring chemin;
   std::string octets;  // le fichier tel qu'il est sur le disque : l'enregistrement en repart
   bool compresse = false;

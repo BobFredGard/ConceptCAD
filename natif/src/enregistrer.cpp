@@ -1,5 +1,6 @@
 #include "enregistrer.h"
 
+#include <set>
 #include <windows.h>
 #include <io.h>
 #include <zlib.h>
@@ -129,10 +130,13 @@ void controler(const std::wstring& temp, const std::string& octets, const Docume
   if (lireOctets(temp) != octets) throw std::runtime_error("la relecture du fichier écrit ne redonne pas les mêmes octets");
   const Document r = lireProjet(temp);
   bool pareil = r.esquisses.size() == d.esquisses.size() && r.fonctions.size() == d.fonctions.size() && r.nonPrisEnCharge == d.nonPrisEnCharge;
+  // Les copies de répétition sont refaites à la lecture depuis leurs sources : elles suivent, on ne les compare pas
+  std::set<std::string> deCopies, deSources;
+  for (const Fonction& f : r.fonctions) (f.repeatId.empty() ? deSources : deCopies).insert(f.esquisse);
   for (size_t i = 0; pareil && i < r.fonctions.size(); i++)
-    pareil = memesReglages(r.fonctions[i], d.fonctions[i]) && r.fonctions[i].aretes.size() == d.fonctions[i].aretes.size() && r.fonctions[i].tangent == d.fonctions[i].tangent && r.fonctions[i].chamfer == d.fonctions[i].chamfer;
+    pareil = r.fonctions[i].id == d.fonctions[i].id && (!r.fonctions[i].repeatId.empty() || memesReglages(r.fonctions[i], d.fonctions[i])) && r.fonctions[i].aretes.size() == d.fonctions[i].aretes.size() && r.fonctions[i].tangent == d.fonctions[i].tangent && r.fonctions[i].chamfer == d.fonctions[i].chamfer;
   for (size_t i = 0; pareil && i < r.esquisses.size(); i++)
-    pareil = r.esquisses[i].id == d.esquisses[i].id && memesValeurs(r.esquisses[i], d.esquisses[i]);
+    pareil = r.esquisses[i].id == d.esquisses[i].id && ((deCopies.count(r.esquisses[i].id) && !deSources.count(r.esquisses[i].id)) || memesValeurs(r.esquisses[i], d.esquisses[i]));
   if (!pareil) throw std::runtime_error("la relecture du fichier écrit ne redonne pas la même pièce");
 }
 }  // namespace
@@ -759,6 +763,7 @@ std::string congeCree(const Fonction& f) {
     o += std::string(i ? "," : "") + "{\"pos\":" + vec3Json(a.pos) + ",\"pos0\":" + vec3Json(a.aPos0 ? a.pos0 : a.pos) + ",\"r\":" + nombreJson(a.r) + ",\"len\":" + nombreJson(a.len);
     o += ",\"anchor\":" + ancreJson(a.ancre) + ",\"name\":" + nomJson(a.nomAffiche);
     if (a.seed) o += ",\"seed\":1";
+    if (!a.nom.empty()) o += ",\"nom\":" + nomJson(a.nom);
     o += "}";
   }
   o += std::string("],\"visible\":true,\"tangent\":") + (f.tangent != 0 ? "true" : "false");

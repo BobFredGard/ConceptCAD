@@ -33,6 +33,32 @@ std::string utf8(const std::wstring& w) {
 }
 
 // --verif <fichier> <sortie.json> [nFonction=valeur ...] : calcule sans fenêtre, écrit les mesures.
+// Le solide de chaque corps après chaque fonction, pour trouver où deux programmes se séparent
+int modeEtapes(const std::vector<std::wstring>& a) {
+  if (a.size() < 3) return 2;
+  FILE* s = _wfopen(a[2].c_str(), L"wb");
+  if (!s) return 2;
+  Document d = lireProjet(a[1]);
+  fprintf(s, "[");
+  bool premier = true;
+  for (size_t n = 0; n < d.fonctions.size(); n++) {
+    if (!d.fonctions[n].visible) continue;
+    const ResultatRejeu r = rejouer(d, static_cast<int>(n) + 1);
+    fprintf(s, "%s{\"id\":\"%s\",\"corps\":{", premier ? "" : ",\n", d.fonctions[n].id.c_str());
+    premier = false;
+    bool v = false;
+    for (const auto& c : r.corps) {
+      const Mesures m = mesurer(c.second);
+      fprintf(s, "%s\"%s\":[%.6f,%d]", v ? "," : "", c.first.c_str(), m.volume, m.faces);
+      v = true;
+    }
+    fprintf(s, "}}");
+    fflush(s);
+  }
+  fprintf(s, "]");
+  fclose(s);
+  return 0;
+}
 int modeVerif(const std::vector<std::wstring>& a) {
   if (a.size() < 3) return 2;
   FILE* s = _wfopen(a[2].c_str(), L"wb");
@@ -55,8 +81,15 @@ int modeVerif(const std::vector<std::wstring>& a) {
       ResultatRejeu r = rejouer(d);
       const double ms = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - t0).count();
       Mesures m = mesurer(r.forme);
-      fprintf(s, "%s{\"nom\":\"%s\",\"volume\":%.9f,\"aire\":%.9f,\"faces\":%d,\"aretes\":%d,\"sommets\":%d,\"solides\":%d,\"valide\":%s,\"boite\":[%.6f,%.6f,%.6f,%.6f,%.6f,%.6f],\"ms\":%.3f,\"messages\":%zu}",
-              premier ? "" : ",", nom.c_str(), m.volume, m.aire, m.faces, m.aretes, m.sommets, m.solides, m.valide ? "true" : "false",
+      fprintf(s, "%s{\"textes\":[", premier ? "" : ",");
+      for (size_t k = 0; k < r.messages.size(); k++) {
+        std::string t = r.messages[k];
+        for (char& c : t)
+          if (c == '"' || c == '\\' || static_cast<unsigned char>(c) < 32) c = ' ';
+        fprintf(s, "%s\"%s\"", k ? "," : "", t.c_str());
+      }
+      fprintf(s, "],\"nom\":\"%s\",\"volume\":%.9f,\"aire\":%.9f,\"faces\":%d,\"aretes\":%d,\"sommets\":%d,\"solides\":%d,\"valide\":%s,\"boite\":[%.6f,%.6f,%.6f,%.6f,%.6f,%.6f],\"ms\":%.3f,\"messages\":%zu}",
+              nom.c_str(), m.volume, m.aire, m.faces, m.aretes, m.sommets, m.solides, m.valide ? "true" : "false",
               m.boite[0], m.boite[1], m.boite[2], m.boite[3], m.boite[4], m.boite[5], ms, r.messages.size());
       premier = false;
     };
@@ -486,6 +519,7 @@ int WINAPI wWinMain(HINSTANCE inst, HINSTANCE, PWSTR, int) {
   }
   LocalFree(argv);
   if (!gArgs.empty() && gArgs[0] == L"--verif") return modeVerif(gArgs);
+  if (!gArgs.empty() && gArgs[0] == L"--etapes") return modeEtapes(gArgs);
   if (gArgs.size() >= 3 && gArgs[0] == L"--reenregistrer") return modeEnregistrer(gArgs);
   if (gArgs.size() >= 2 && gArgs[0] == L"--conflit") return modeEnregistrer(gArgs);
   if (gArgs.size() >= 6 && gArgs[0] == L"--coter") return modeCoter(gArgs);

@@ -1,4 +1,5 @@
 #include "conges.h"
+#include "noms.h"
 
 #include <BRepAdaptor_Curve.hxx>
 #include <BRepAdaptor_Curve2d.hxx>
@@ -110,6 +111,18 @@ const Esquisse* esquisseDe(const Document& d, const std::string& id) {
   return nullptr;
 }
 
+// Extrusion dépouillée : l'arête s'écarte de l'entité d'esquisse selon sa hauteur et l'angle (xDraftDist)
+double distDepouille(const Document& d, const std::string& esquisse, double z2, double dist) {
+  double best = dist;
+  for (const Fonction& f : d.fonctions) {
+    if (f.type != "extrude" || f.esquisse != esquisse || !f.visible) continue;
+    const double a = std::abs(f.draft);
+    if (!(a > 1e-9 && a < 89)) continue;
+    best = std::min(best, std::abs(dist - std::abs(z2) * std::tan(a * M_PI / 180)));
+  }
+  return best;
+}
+
 // ---- Une sélection = une arête : recherche par l'ancre d'esquisse ----
 struct Ligne {
   int i = 0;
@@ -203,6 +216,7 @@ int chercherParAncre(const Document& d, const AreteConge& se, const std::vector<
     } else {
       continue;
     }
+    d2 = distDepouille(d, a.sk, q[2], d2);
     if (d2 > (a.loin ? 8.0 : 2.5)) continue;
     const double zErr = std::min(std::abs(q[2] - expectedZ), std::abs(q[2] - zRef));
     const double d0 = se.aPos0 ? ecart(ed.mid, se.pos0) : 0;
@@ -246,6 +260,7 @@ int ancreEncoreLa(const Document& d, const AreteConge& se) {
     } else {
       return -1;
     }
+    d2 = distDepouille(d, a.sk, q[2], d2);
     if (d2 > (a.loin ? 8.0 : 2.5)) return 0;
     std::vector<double> zs;
     if (a.aZ && std::isfinite(a.z)) zs.push_back(a.z);
@@ -294,17 +309,23 @@ bool valide(const TopoDS_Shape& s) {
 }
 TopoDS_Shape copie(const TopoDS_Shape& s) {  // occShapeCopy
   BRepBuilderAPI_Copy c(s, true, true);
-  return c.Shape();
+  const TopoDS_Shape r = c.Shape();
+  nomsPartage(s, r);
+  return r;
 }
 TopoDS_Shape coupe(const TopoDS_Shape& a, const TopoDS_Shape& b) {
   BRepAlgoAPI_Cut c(a, b);
   if (!c.IsDone()) throw std::runtime_error("découpe impossible");
-  return c.Shape();
+  const TopoDS_Shape s = c.Shape();
+  nomsTransmet({a, b}, histoireDe(c), s);
+  return s;
 }
 TopoDS_Shape fusion(const TopoDS_Shape& a, const TopoDS_Shape& b) {
   BRepAlgoAPI_Fuse f(a, b);
   if (!f.IsDone()) throw std::runtime_error("fusion impossible");
-  return f.Shape();
+  const TopoDS_Shape s = f.Shape();
+  nomsTransmet({a, b}, histoireDe(f), s);
+  return s;
 }
 // occFaceKeys : ce qui sert à compter les faces nées d'un congé
 std::vector<std::string> clesFaces(const TopoDS_Shape& s) {
@@ -507,12 +528,14 @@ TopoDS_Shape lancer(const TopoDS_Shape& base, const std::vector<Travail>& jobs, 
         mf.Build();
         if (!mf.IsDone()) return {};
         s = mf.Shape();
+        nomsApresConge([&mf](const TopoDS_Shape& x) { return mf.Generated(x); }, histoireDe(mf), cur, s, true);
       } else {
         BRepFilletAPI_MakeFillet mf(cur, ChFi3d_Rational);
         for (auto& h : hs) mf.Add(h.second, h.first);
         mf.Build();
         if (!mf.IsDone()) return {};
         s = mf.Shape();
+        nomsApresConge([&mf](const TopoDS_Shape& x) { return mf.Generated(x); }, histoireDe(mf), cur, s, false);
       }
       return s;
     } catch (...) {
@@ -946,7 +969,7 @@ bool ancrePour(const Document& d, const Vec3& m, AncreArete& out) {
           const Pt* A0 = s.point(e.p1);
           const Pt* B0 = s.point(e.p2);
           if (!A0 || !B0) continue;
-          const double dd = distSeg2(x2, y2, A0->x, A0->y, B0->x, B0->y);
+          const double dd = distDepouille(d, s.id, z2, distSeg2(x2, y2, A0->x, A0->y, B0->x, B0->y));
           if (dd < bdE) {
             bdE = dd;
             bestE = &e;
@@ -959,7 +982,7 @@ bool ancrePour(const Document& d, const Vec3& m, AncreArete& out) {
             if (!anglesArc(s, e, a1, a2)) continue;
             if (relatif(std::atan2(y2 - C->y, x2 - C->x), a1) > a2 - a1 + 0.05) continue;
           }
-          const double dd = std::abs(hyp(x2 - C->x, y2 - C->y) - e.r);
+          const double dd = distDepouille(d, s.id, z2, std::abs(hyp(x2 - C->x, y2 - C->y) - e.r));
           if (dd < bdE) {
             bdE = dd;
             bestE = &e;
@@ -1013,7 +1036,8 @@ TopoDS_Shape appliquerConge(const Document& d, Fonction& f, const TopoDS_Shape& 
   const auto dire = [&](const std::string& m) { messages.push_back(prefixe + m); };
   f.congeErreur.clear();
   f.congeAjuste.clear();
-  const std::vector<AreteListee> aretes = listerAretes(base);
+  std::vector<AreteListee> aretes = listerAretes(base);
+  const auto aliasAretes = nomsSurAretes(base, aretes);
   if (aretes.empty()) {
     dire(lab + " : aucune arête détectée");
     return base;
@@ -1065,6 +1089,7 @@ TopoDS_Shape appliquerConge(const Document& d, Fonction& f, const TopoDS_Shape& 
       }
       e.pos = aretes[bi].mid;
       e.len = arrondi(aretes[bi].len, 3);
+      if (e.nom.empty() && !aretes[bi].nom.empty()) e.nom = aretes[bi].nom;  // référence neuve ou document ancien : le nom est retenu
     }
     for (auto& j : jobs)
       if (j.bi == bi) {
@@ -1078,6 +1103,16 @@ TopoDS_Shape appliquerConge(const Document& d, Fonction& f, const TopoDS_Shape& 
     const int ks = static_cast<int>(k);
     AreteConge& se = f.aretes[k];
     if (!(se.r > 0)) continue;
+    // Le nom d'abord : l'arête est celle qui sépare les mêmes faces, où qu'elle soit partie
+    if (!se.nom.empty()) {
+      const int iN = nomsTrouveArete(aretes, aliasAretes, se.nom, &se.pos);
+      if (iN >= 0) {
+        se.nom = aretes[iN].nom;
+        prendre(iN, se.r, ks);
+        continue;
+      }
+      dire(std::string(chanfrein ? "chanfrein" : "congé") + " " + dp + xNum(se.r) + " : l’arête d’origine n’existe plus près de " + nomsPos(se.pos) + " — recherche par position");
+    }
     if (!se.ancre.existe) {
       AncreArete a0;
       if (ancrePour(d, se.pos, a0)) se.ancre = a0;

@@ -1,4 +1,5 @@
 #include "projet.h"
+#include "repetitions.h"
 
 #include <cmath>
 #include <cstdio>
@@ -58,11 +59,30 @@ bool memesValeurs(const Esquisse& a, const Esquisse& b) {
   return true;
 }
 
+bool Document::planSuitLaPiece(const std::string& id, int garde) const {
+  if (garde > 64) return true;
+  for (const ElementConstruction& e : construction)
+    if (e.id == id) {
+      if (e.surPiece) return true;
+      for (const std::string& a : e.surElements)
+        if (planSuitLaPiece(a, garde + 1)) return true;
+    }
+  return false;
+}
+bool Document::unPlanSuitLaPiece() const {
+  for (const Esquisse& s : esquisses)
+    if (!s.plan_cg.empty() && planSuitLaPiece(s.plan_cg)) return true;
+  return false;
+}
 bool Document::profondeurModifiable(size_t i) const {
   const Esquisse* e = nullptr;
   for (const Esquisse& s : esquisses)
     if (s.id == fonctions[i].esquisse) e = &s;
   if (!e) return false;
+  // Ce qui ne suit pas encore : les copies d'une répétition, les extrusions jusqu'à un objet
+  if (fonctions[i].repetee || fonctions[i].upto || unPlanSuitLaPiece()) return false;
+  for (const Fonction& f : fonctions)
+    if (f.upto) return false;
   for (const Esquisse& s : esquisses) {
     bool lie = s.hote.existe;
     for (const Entite& x : s.entites) lie = lie || x.proj || x.ref;
@@ -265,7 +285,7 @@ static void lireEsquisse(const json& js, Document& d, std::map<std::string, int>
       }
       s.cotes.push_back(std::move(c));
     }
-  if (vrai(js, "cg")) refus["esquisse sur plan de construction"]++;
+  if (auto c = js.find("cg"); c != js.end() && c->is_object()) s.plan_cg = texte(*c, "id");
   if (js.contains("host") && js["host"].is_object()) {
     auto& h = js["host"];
     s.hote.feat = texte(h, "feat");
@@ -338,6 +358,33 @@ static void lirePorteurs(const json& jf, const Fonction& f, Document& d) {
     for (size_t i = 0; i < e->size(); i++)
       if ((*e)[i].is_object()) lirePorteursDe((*e)[i], f, static_cast<int>(i), d);
 }
+static void lireAncre(const json& x, AncreArete& n) {
+  n.existe = true;
+  n.t = texte(x, "t");
+  n.sk = texte(x, "sk");
+  n.id = texte(x, "id");
+  if (auto z = x.find("z"); z != x.end() && z->is_number()) {
+    n.z = z->get<double>();
+    n.aZ = true;
+  }
+  if (auto s = x.find("side"); s != x.end() && s->is_number()) {
+    n.side = s->get<int>();
+    n.aSide = true;
+  }
+  if (auto v = x.find("dist"); v != x.end() && v->is_number()) n.dist = v->get<double>();
+  if (auto v = x.find("far"); v != x.end() && v->is_number()) n.loin = v->get<double>() != 0;
+}
+static RefFace lireRefFace(const json& j) {
+  RefFace r;
+  if (!j.is_object()) return r;
+  r.lue = lireVec3(j, "pos", r.pos);
+  r.aNormale = lireVec3(j, "n", r.n);
+  lireVec3(j, "dim", r.dim);
+  r.st = texte(j, "st");
+  r.nom = texte(j, "nom");
+  if (auto x = j.find("anchor"); x != j.end() && x->is_object()) lireAncre(*x, r.ancre);
+  return r;
+}
 static void lireConge(const json& jf, Fonction& f, std::map<std::string, int>& refus) {
   f.chamfer = vrai(jf, "chamfer");
   if (auto t = jf.find("tangent"); t != jf.end() && t->is_boolean()) f.tangent = t->get<bool>() ? 1 : 0;
@@ -353,24 +400,9 @@ static void lireConge(const json& jf, Fonction& f, std::map<std::string, int>& r
     if (je.contains("r") && je["r"].is_number()) a.r = je["r"].get<double>();
     if (je.contains("len") && je["len"].is_number()) a.len = je["len"].get<double>();
     a.seed = je.contains("seed") && (je["seed"].is_number() ? je["seed"].get<double>() != 0 : vrai(je, "seed"));
+    if (je.contains("nom") && je["nom"].is_string()) a.nom = je["nom"].get<std::string>();
     a.nomAffiche = texte(je, "name");
-    if (auto x = je.find("anchor"); x != je.end() && x->is_object()) {
-      AncreArete& n = a.ancre;
-      n.existe = true;
-      n.t = texte(*x, "t");
-      n.sk = texte(*x, "sk");
-      n.id = texte(*x, "id");
-      if (auto z = x->find("z"); z != x->end() && z->is_number()) {
-        n.z = z->get<double>();
-        n.aZ = true;
-      }
-      if (auto s = x->find("side"); s != x->end() && s->is_number()) {
-        n.side = s->get<int>();
-        n.aSide = true;
-      }
-      if (auto v = x->find("dist"); v != x->end() && v->is_number()) n.dist = v->get<double>();
-      if (auto v = x->find("far"); v != x->end() && v->is_number()) n.loin = v->get<double>() != 0;
-    }
+    if (auto x = je.find("anchor"); x != je.end() && x->is_object()) lireAncre(*x, a.ancre);
     f.aretes.push_back(std::move(a));
   }
 }
@@ -391,18 +423,109 @@ static void lireFonction(const json& jf, Document& d, std::map<std::string, int>
   f.mid = vrai(jf, "mid");
   f.flip = vrai(jf, "flip");
   f.through = vrai(jf, "through");
+  f.repeatId = texte(jf, "repeatId");
+  if (f.type == "xdraft" || f.type == "xmove" || f.type == "xdelface" || f.type == "xsplit") {
+    if (auto a = jf.find("angle"); f.type == "xdraft" && a != jf.end() && a->is_number()) f.angleDepouille = a->get<double>();
+    if (auto r = jf.find("ref"); r != jf.end()) f.refFace = lireRefFace(*r);
+    if (auto c = jf.find("faces"); c != jf.end() && c->is_array())
+      for (const auto& x : *c) f.facesVisees.push_back(lireRefFace(x));
+  }
+  const auto nombre = [&jf](const char* k, double defaut) {
+    auto a = jf.find(k);
+    return a != jf.end() && a->is_number() ? a->get<double>() : defaut;
+  };
+  if (f.type == "xmove") {
+    f.dist = nombre("dist", 0);
+    f.facesTangentes = vrai(jf, "tangent");
+  }
+  if (f.type == "sweep") f.chemin = texte(jf, "pathId");
+  if (f.type == "combine") {
+    f.modeFonction = texte(jf, "mode");
+    f.garder = vrai(jf, "keep");
+    if (auto c = jf.find("tools"); c != jf.end() && c->is_array())
+      for (const auto& x : *c)
+        if (x.is_string()) f.outils.push_back(x.get<std::string>());
+  }
+  if (f.type == "xsplit" || f.type == "bscale") f.corpsNeuf = texte(jf, "newBody");
+  if (f.type == "xsplit") {
+    f.modeFonction = texte(jf, "mode");
+    f.decalage = nombre("off", 0);
+    if (auto p = jf.find("pl"); p != jf.end() && p->is_object()) {
+      f.planSrc = texte(*p, "src");
+      f.planCg = texte(*p, "cg");
+      f.aPlanON = lireVec3(*p, "o", f.planO) && lireVec3(*p, "n", f.planN);
+    }
+  }
+  if (f.type == "bscale") {
+    lireVec3(jf, "o", f.centre);
+    f.echelle = nombre("s", 1);
+    f.echelleX = nombre("sx", 1);
+    f.echelleY = nombre("sy", 1);
+    f.echelleZ = nombre("sz", 1);
+    f.echelleUni = !(jf.contains("uni") && jf["uni"].is_boolean() && !jf["uni"].get<bool>());
+    f.copie = vrai(jf, "copy");
+  }
+  if (f.type == "bmove")
+    if (auto c = jf.find("steps"); c != jf.end() && c->is_array())
+      for (const auto& x : *c) {
+        if (!x.is_object()) continue;
+        EtapeDeplacement e;
+        e.k = texte(x, "k");
+        lireVec3(x, "v", e.v);
+        lireVec3(x, "o", e.o);
+        lireVec3(x, "d", e.d);
+        lireVec3(x, "a", e.a);
+        lireVec3(x, "b", e.b);
+        if (auto v = x.find("dist"); v != x.end() && v->is_number()) e.dist = v->get<double>();
+        if (auto v = x.find("deg"); v != x.end() && v->is_number()) e.deg = v->get<double>();
+        f.etapes.push_back(e);
+      }
+  if (f.type == "extrude") {
+    if (auto a = jf.find("draft"); a != jf.end() && a->is_number()) f.draft = a->get<double>();
+    f.upto = vrai(jf, "upto");
+  }
+  if (auto c = jf.find("cutBodies"); c != jf.end() && c->is_array())
+    for (const auto& x : *c)
+      if (x.is_string()) f.corpsEnPlus.push_back(x.get<std::string>());
+  if (f.type == "revolve") {
+    if (auto a = jf.find("axis"); a != jf.end() && a->is_object()) {
+      f.axeK = texte(*a, "k");
+      f.axeId = texte(*a, "id");
+      f.axeD = texte(*a, "d");
+    }
+    if (auto a = jf.find("angle"); a != jf.end() && a->is_number()) f.angle = a->get<double>();
+  }
   if (f.type == "xfillet") lireConge(jf, f, refus);
+  if (f.type == "hole") {
+    ReglagePercage& h = f.percage;
+    h.kind = texte(jf, "kind");
+    h.end = texte(jf, "end");
+    h.pilot = texte(jf, "pilot");
+    const auto nb = [&](const char* k, double& v) {
+      if (auto x = jf.find(k); x != jf.end()) {
+        if (x->is_number()) v = x->get<double>();
+        else if (x->is_string()) {
+          try { v = std::stod(x->get<std::string>()); } catch (const std::exception&) {}
+        }
+      }
+    };
+    nb("d", h.d); nb("stD", h.stD); nb("stH", h.stH); nb("stTip", h.stTip); nb("cbD", h.cbD); nb("cbH", h.cbH); nb("csD", h.csD);
+    nb("csA", h.csA); nb("depth", h.depth); nb("tip", h.tip); nb("reamD", h.reamD); nb("reamH", h.reamH); nb("reamOff", h.reamOff);
+    if (auto p = jf.find("uptoPlane"); p != jf.end() && p->is_object()) h.aPlan = lireVec3(*p, "p", h.planP) && lireVec3(*p, "n", h.planN);
+    if (auto t = jf.find("thread"); f.visible && h.kind != "ream" && t != jf.end() && t->is_object() && vrai(*t, "model") && !texte(*t, "size").empty()) refus["perçage à filet modélisé"]++;
+  }
   // La répétition se contente de créer des copies, rejouées comme des fonctions : sans effet ici.
-  if (f.visible && f.type != "extrude" && f.type != "repeat" && f.type != "xfillet") refus[nomFonction(f.type)]++;
+  if (f.visible && f.type != "extrude" && f.type != "repeat" && f.type != "xfillet" && f.type != "hole" && f.type != "revolve" && f.type != "xdraft" &&
+      f.type != "xmove" && f.type != "xdelface" && f.type != "xsplit" && f.type != "bmove" && f.type != "bscale" && f.type != "bremove" && f.type != "sweep" && f.type != "combine")
+    refus[nomFonction(f.type)]++;
   if (f.visible && f.type == "extrude") {
-    if (vrai(jf, "upto")) refus["extrusion « jusqu'à un objet »"]++;
-    if (vrai(jf, "draft")) refus["extrusion avec dépouille"]++;
-    if (vrai(jf, "repeatId")) refus["extrusion copiée par une répétition"]++;
     if (jf.contains("profiles") && jf["profiles"].is_array() && !jf["profiles"].empty())
       refus["extrusion limitée à certaines zones"]++;
-    if (jf.contains("cutBodies") && jf["cutBodies"].is_array() && !jf["cutBodies"].empty())
-      refus["découpe dans plusieurs corps"]++;
   }
+  if (f.type == "repeat")
+    if (auto b = jf.find("base"); b != jf.end() && b->is_array())
+      for (const auto& x : *b)
+        if (x.is_string()) d.sourcesRepetees.push_back(x.get<std::string>());
   lirePorteurs(jf, f, d);
   d.fonctions.push_back(std::move(f));
 }
@@ -420,8 +543,9 @@ Document lireProjet(const std::wstring& chemin) {
   b.clear();
   b.shrink_to_fit();
   const bool lot = racine.contains("doc") && racine["doc"].is_object();
-  const json& j = lot ? racine["doc"] : racine;
+  json& j = lot ? racine["doc"] : racine;
   if (!j.contains("features") || !j.contains("sketches")) throw std::runtime_error("ce fichier ne contient pas de pièce");
+  regenererRepetitions(j);  // les copies sont dérivées de leurs sources, comme à l'ouverture dans le navigateur
 
   Document d;
   std::map<std::string, int> refus;
@@ -446,8 +570,24 @@ Document lireProjet(const std::wstring& chemin) {
     if (auto y = x->find("proj"); y != x->end() && y->is_number()) d.nomsProj = d.nomsProjLu = y->get<int>();
     if (auto y = x->find("isect"); y != x->end() && y->is_number()) d.nomsIsect = d.nomsIsectLu = y->get<int>();
   }
+  if (auto x = j.find("cgeo"); x != j.end() && x->is_array())
+    for (const auto& c : *x) {
+      if (!c.is_object()) continue;
+      ElementConstruction e;
+      e.id = texte(c, "id");
+      if (auto fr = c.find("fr"); fr != c.end() && fr->is_object()) e.aRepere = lireVec3(*fr, "o", e.o) && lireVec3(*fr, "z", e.z);
+      if (auto r = c.find("refs"); r != c.end() && r->is_array())
+        for (const auto& q : *r) {
+          if (!q.is_object()) continue;
+          const std::string k = texte(q, "k");
+          if (k == "cg") e.surElements.push_back(texte(q, "id"));
+          else if (k != "o") e.surPiece = true;
+        }
+      d.construction.push_back(std::move(e));
+    }
   for (auto& s : j["sketches"]) lireEsquisse(s, d, refus);
   for (auto& f : j["features"]) lireFonction(f, d, refus);
+  for (Fonction& f : d.fonctions) f.repetee = !f.repeatId.empty() || std::find(d.sourcesRepetees.begin(), d.sourcesRepetees.end(), f.id) != d.sourcesRepetees.end();
   if (auto x = j.find("params"); x != j.end() && x->is_array())
     for (auto& jp : *x) {
       if (!jp.is_object()) continue;

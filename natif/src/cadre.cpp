@@ -195,6 +195,11 @@ Cadre::Cadre() : wxFrame(nullptr, wxID_ANY, L"ConceptCAD natif"), minuterie_(thi
     vueEsquisse_->SetFocus();
   };
   barreEsquisse_->surGrilleMenu = [this] { menuGrille(); };
+  barreEsquisse_->surVueInclinee = [this] {
+    vueEsquisse_->basculerVueInclinee();
+    vueEsquisse_->SetFocus();
+  };
+  vueEsquisse_->surVueChange = [this] { barreEsquisse_->vueInclineeActive(!vueEsquisse_->vueAPlat()); };
   barreEsquisse_->surFantome = [this] {
     vueEsquisse_->basculerFantome();
     barreEsquisse_->fantomeActif(vueEsquisse_->fantomeVisible());
@@ -1811,6 +1816,8 @@ bool Cadre::essaiEsquisse(const std::wstring& fichier, int rang, const std::wstr
     if (e.contains("poly")) vueEsquisse_->essaiReglagesPolygone(wxString::Format("%d", e["poly"][0].get<int>()), wxString::FromUTF8(e["poly"][1].get<std::string>()));
     if (e.contains("mode")) vueEsquisse_->choisirModeTrace(e["mode"].get<std::string>());
     if (e.contains("annuler")) annuler();
+    if (e.contains("orbite")) vueEsquisse_->essaiOrbite(e["orbite"][0], e["orbite"][1]);
+    if (e.contains("inclinee")) vueEsquisse_->basculerVueInclinee();
     // La saisie d'une cote telle que tapée, la mini-liste, la liste complète en photo
     if (e.contains("coteTexte")) {
       demandeCote(*std::find_if(doc_.esquisses[esquisseOuverte_].cotes.begin(), doc_.esquisses[esquisseOuverte_].cotes.end(), [&](const Cote& c) { return c.id == e["coteTexte"][0].get<std::string>(); }), saisieDepart_);

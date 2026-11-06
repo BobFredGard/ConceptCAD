@@ -1,4 +1,12 @@
 #include "rejeu.h"
+#include <BRepOffsetAPI_DraftAngle.hxx>
+#include <BRepPrimAPI_MakeRevol.hxx>
+#include <gp_Ax1.hxx>
+#include <set>
+#include "percage.h"
+#include "faces.h"
+#include "noms.h"
+#include <TopTools_ListOfShape.hxx>
 
 #include <charconv>
 
@@ -166,11 +174,14 @@ gp_Pnt mondeDe(const Esquisse& s, double x, double y, double z0) {
                 s.o[2] + s.u[2] * x + s.v[2] * y + s.n[2] * z0);
 }
 
-TopoDS_Wire contourDe(const Esquisse& s, const Trace& tr, const Chaine& chaine, double z0) {  // occWireFromChain
+TopoDS_Wire contourDe(const Esquisse& s, const Trace& tr, const Chaine& chaine, double z0, std::vector<CoteNom>* cotes = nullptr) {  // occWireFromChain
   gp_Dir dir(s.n[0], s.n[1], s.n[2]);
   Vec3 c{s.u[1] * s.v[2] - s.u[2] * s.v[1], s.u[2] * s.v[0] - s.u[0] * s.v[2], s.u[0] * s.v[1] - s.u[1] * s.v[0]};
   const bool gaucher = produit(c, s.n) < 0;  // esquisse miroir : le sens trigo tourne à l'envers
   BRepBuilderAPI_MakeWire mkW;
+  const auto noterCote = [&](const Arete& ed) {
+    if (cotes && ed.e) cotes->push_back({mkW.Edge(), ed.e->id});
+  };
   auto norm = [](double t) { return std::fmod(std::fmod(t, TAU) + TAU, TAU); };
   for (auto& st : chaine) {
     const Arete& ed = tr.aretes[st.arete];
@@ -204,12 +215,14 @@ TopoDS_Wire contourDe(const Esquisse& s, const Trace& tr, const Chaine& chaine, 
       TopoDS_Edge e = me.Edge();
       if (ed.a != st.depuis) e = TopoDS::Edge(e.Reversed());
       mkW.Add(e);
+      noterCote(ed);
       continue;
     }
     if (!ed.arc) {
       BRepBuilderAPI_MakeEdge me(mondeDe(s, A.x, A.y, z0), mondeDe(s, B.x, B.y, z0));
       if (!me.IsDone()) throw std::runtime_error("arête ligne impossible");
       mkW.Add(me.Edge());
+      noterCote(ed);
       continue;
     }
     const Entite& a = *ed.e;
@@ -222,6 +235,7 @@ TopoDS_Wire contourDe(const Esquisse& s, const Trace& tr, const Chaine& chaine, 
       BRepBuilderAPI_MakeEdge m1(circ);
       if (!m1.IsDone()) throw std::runtime_error("cercle complet impossible");
       mkW.Add(m1.Edge());
+      noterCote(ed);
       continue;
     }
     double aF = std::atan2(A.y - Cc.y, A.x - Cc.x), aT = std::atan2(B.y - Cc.y, B.x - Cc.x);
@@ -234,27 +248,31 @@ TopoDS_Wire contourDe(const Esquisse& s, const Trace& tr, const Chaine& chaine, 
     TopoDS_Edge e = me.Edge();
     if (!ccw) e = TopoDS::Edge(e.Reversed());
     mkW.Add(e);
+    noterCote(ed);
   }
   mkW.Build();
   if (!mkW.IsDone()) throw std::runtime_error("contour non fermé");
   return mkW.Wire();
 }
 
-TopoDS_Shape prismeDeFace(const TopoDS_Wire& w, const Esquisse& s, double longueur) {
+TopoDS_Shape prismeDeFace(const TopoDS_Wire& w, const Esquisse& s, double longueur, const std::vector<CoteNom>& cotes) {
   BRepBuilderAPI_MakeFace fm(w, true);
   if (!fm.IsDone()) throw std::runtime_error("face impossible");
   gp_Vec vec(s.n[0] * longueur, s.n[1] * longueur, s.n[2] * longueur);
   BRepPrimAPI_MakePrism pr(fm.Face(), vec, false, true);
   if (!pr.IsDone()) throw std::runtime_error("prisme impossible");
-  return pr.Shape();
+  const TopoDS_Shape r = pr.Shape();
+  nomsPrismeFaces([&pr](const TopoDS_Shape& x) { return pr.Generated(x); }, [&pr] { return pr.FirstShape(); }, [&pr] { return pr.LastShape(); }, r, cotes);
+  return r;
 }
 
 TopoDS_Shape prismeContour(const Esquisse& s, const Trace& tr, const Chaine& ch, const Plage& sp, double aire) {  // occSpanPrism
   double len = sp.hi - sp.lo;
   if (!(len > 1e-9)) throw std::runtime_error("prisme vide (course nulle)");
-  TopoDS_Wire w = contourDe(s, tr, ch, sp.lo);
+  std::vector<CoteNom> cotes;
+  TopoDS_Wire w = contourDe(s, tr, ch, sp.lo, &cotes);
   if (aire < 0) w = TopoDS::Wire(w.Reversed());
-  return prismeDeFace(w, s, len);
+  return prismeDeFace(w, s, len, cotes);
 }
 
 TopoDS_Shape prismeRond(const Esquisse& s, double cx, double cy, double r, const Plage& sp) {  // occDiskPrism
@@ -265,18 +283,22 @@ TopoDS_Shape prismeRond(const Esquisse& s, double cx, double cy, double r, const
   if (!m1.IsDone()) throw std::runtime_error("pastille impossible");
   BRepBuilderAPI_MakeWire mkW(m1.Edge());
   if (!mkW.IsDone()) throw std::runtime_error("pastille non fermée");
-  return prismeDeFace(mkW.Wire(), s, len);
+  return prismeDeFace(mkW.Wire(), s, len, {{mkW.Edge(), "cercle"}});
 }
 
 TopoDS_Shape fusion(const TopoDS_Shape& a, const TopoDS_Shape& b) {
   BRepAlgoAPI_Fuse f(a, b);
   if (!f.IsDone()) throw std::runtime_error("fusion impossible");
-  return f.Shape();
+  const TopoDS_Shape s = f.Shape();
+  nomsTransmet({a, b}, histoireDe(f), s);
+  return s;
 }
 TopoDS_Shape coupe(const TopoDS_Shape& a, const TopoDS_Shape& b) {
   BRepAlgoAPI_Cut c(a, b);
   if (!c.IsDone()) throw std::runtime_error("découpe impossible");
-  return c.Shape();
+  const TopoDS_Shape s = c.Shape();
+  nomsTransmet({a, b}, histoireDe(c), s);
+  return s;
 }
 
 std::optional<gp_Dir> normaleSortante(const TopoDS_Face& f) {  // occFaceOutNormal
@@ -364,7 +386,9 @@ TopoDS_Shape unifier(const TopoDS_Shape& s) {  // occUnify
     for (auto& e : aretesAGarder(s)) u.KeepShape(e);
     u.Build();
     TopoDS_Shape r = u.Shape();
-    return r.IsNull() ? s : r;
+    if (r.IsNull()) return s;
+    nomsApresUnify(u.History(), s, r);
+    return r;
   } catch (const Standard_Failure&) {
     return s;
   }
@@ -483,7 +507,9 @@ TopoDS_Shape sansCouturesParasites(const TopoDS_Shape& res, const TopoDS_Shape& 
     }
     u.Build();
     TopoDS_Shape r = u.Shape();
-    return r.IsNull() ? res : r;
+    if (r.IsNull()) return res;
+    nomsApresUnify(u.History(), res, r);
+    return r;
   } catch (const Standard_Failure&) {
     return res;
   }
@@ -504,32 +530,240 @@ double volumeDe(const TopoDS_Shape& s) {
   return G.Mass();
 }
 
+// occDraftOnce : l'angle autour du plan neutre. Lève une exception si le moteur refuse.
+TopoDS_Shape depouilleUneFois(const TopoDS_Shape& solide, const gp_Pnt& P, const gp_Dir& dir, const std::vector<TopoDS_Face>& faces, double angle, int* refusees) {
+  const gp_Pln pln(P, dir);
+  BRepOffsetAPI_DraftAngle da(solide);
+  int ok = 0;
+  for (const TopoDS_Face& f : faces) {
+    try {
+      da.Add(f, dir, angle, pln, false);
+      ok++;
+    } catch (const Standard_Failure&) {
+      if (refusees) (*refusees)++;
+    }
+  }
+  if (!ok) throw std::runtime_error(faces.empty() ? "aucune face à dépouiller" : "aucune face ne touche le plan neutre");
+  da.Build();
+  if (!da.IsDone()) throw std::runtime_error("dépouille refusée par le moteur");
+  const TopoDS_Shape r = da.Shape();
+  if (r.IsNull()) throw std::runtime_error("solide dépouillé vide");
+  HistoireNoms h = histoireDe(da);
+  h.modifieForme = [&da](const TopoDS_Shape& x) { return da.ModifiedShape(x); };
+  nomsTransmet({solide}, h, r);
+  return r;
+}
+
 TopoDS_Shape formeExtrusion(const Fonction& f, const Esquisse& s, const TopoDS_Shape& base) {  // occShapeOfExtrude
   Trace tr = tracerContours(s);
   if (tr.solides.empty() && tr.cerclesSeuls.empty()) throw std::runtime_error("profil non fermé");
   Plage sp = plageDe(f, &s, base);
   TopoDS_Shape forme;
   auto ajouter = [&](const TopoDS_Shape& x) { forme = forme.IsNull() ? x : unifier(fusion(forme, x)); };
+  // Noms uniques : chaque contour de l'outil est préfixé de la fonction (et du centre pour une pastille)
+  const auto nomme = [](const TopoDS_Shape& x, const std::string& pre) {
+    nomsPrefixe(x, pre);
+    return x;
+  };
   for (size_t si = 0; si < tr.solides.size(); si++) {
     auto& sol = tr.solides[si];
-    TopoDS_Shape x = prismeContour(s, tr, sol.chaine, sp, sol.aire);
-    for (auto& h : sol.trous) x = coupe(x, prismeContour(s, tr, h, sp, 1));
+    TopoDS_Shape x = nomme(prismeContour(s, tr, sol.chaine, sp, sol.aire), f.id);
+    for (auto& h : sol.trous) x = coupe(x, nomme(prismeContour(s, tr, h, sp, 1), f.id));
     for (auto& ch : tr.trousRonds) {
       if (ch.solide != static_cast<int>(si)) continue;
       const Pt* C = s.point(ch.cercle->pc);
       if (!C) throw std::runtime_error("pastille : centre introuvable");
-      x = coupe(x, prismeRond(s, C->x, C->y, ch.cercle->r, sp));
+      x = coupe(x, nomme(prismeRond(s, C->x, C->y, ch.cercle->r, sp), f.id + "/" + ch.cercle->id));
     }
     ajouter(x);
   }
   for (auto* c : tr.cerclesSeuls) {
     const Pt* C = s.point(c->pc);
     if (!C) throw std::runtime_error("pastille : centre introuvable");
-    ajouter(prismeRond(s, C->x, C->y, c->r, sp));
+    ajouter(nomme(prismeRond(s, C->x, C->y, c->r, sp), f.id + "/" + c->id));
   }
   if (forme.IsNull()) throw std::runtime_error("solide vide");
   // Des traits qui se croisent peuvent faire s'effondrer la fusion : ne jamais montrer ce qui reste comme un solide
   if (std::abs(volumeDe(forme)) < 1e-6) throw std::runtime_error("solide vide : les traits de l'esquisse se croisent peut-être");
+  // occExtrudeDraft : les parois, sauf les deux calottes, pivotent sur le plan d'esquisse. Échec : extrusion droite.
+  if (std::abs(f.draft) > 1e-9) {
+    try {
+      const double tol = std::max(0.02, (std::abs(sp.hi - sp.lo) != 0 ? std::abs(sp.hi - sp.lo) : 1) * 1e-4);
+      std::vector<TopoDS_Face> parois;
+      for (TopExp_Explorer ex(forme, TopAbs_FACE); ex.More(); ex.Next()) {
+        const TopoDS_Face fc = TopoDS::Face(ex.Current());
+        bool calotte = false;
+        BRepAdaptor_Surface ad(fc, true);
+        if (ad.GetType() == GeomAbs_Plane) {
+          const gp_Pln pl = ad.Plane();
+          const gp_Dir d = pl.Axis().Direction();
+          const gp_Pnt L = pl.Location();
+          if (std::abs(d.X() * s.n[0] + d.Y() * s.n[1] + d.Z() * s.n[2]) > 0.999) {
+            const double off = (L.X() - s.o[0]) * s.n[0] + (L.Y() - s.o[1]) * s.n[1] + (L.Z() - s.o[2]) * s.n[2];
+            calotte = std::abs(off - sp.lo) < tol || std::abs(off - sp.hi) < tol;
+          }
+        }
+        if (!calotte) parois.push_back(fc);
+      }
+      if (parois.empty()) throw std::runtime_error("aucune paroi latérale à dépouiller");
+      forme = depouilleUneFois(forme, gp_Pnt(s.o[0], s.o[1], s.o[2]), gp_Dir(s.n[0], s.n[1], s.n[2]), parois, f.draft * PI / 180, nullptr);
+    } catch (const Standard_Failure&) {
+    } catch (const std::exception&) {
+    }
+  }
+  return forme;
+}
+
+// occShapeOfRevolve (src/75-revolve)
+TopoDS_Shape formeRevolution(const Fonction& f, const Esquisse& s) {
+  // revolveAxis2D
+  Pt A2{}, d2{};
+  gp_Pnt P3;
+  gp_Dir D3;
+  if (f.axeK == "line") {
+    const Entite* e = nullptr;
+    for (const Entite& x : s.entites)
+      if (x.id == f.axeId) e = &x;
+    if (!e || e->t != "line") throw std::runtime_error("axe : ligne introuvable dans cette esquisse");
+    const Pt* a = s.point(e->p1);
+    const Pt* b = s.point(e->p2);
+    if (!a || !b) throw std::runtime_error("axe : extrémités manquantes");
+    const double L = std::hypot(b->x - a->x, b->y - a->y);
+    if (!(L > 1e-9)) throw std::runtime_error("axe : ligne dégénérée");
+    A2.x = a->x;
+    A2.y = a->y;
+    d2.x = (b->x - a->x) / L;
+    d2.y = (b->y - a->y) / L;
+    P3 = mondeDe(s, a->x, a->y, 0);
+    const gp_Pnt Q3 = mondeDe(s, b->x, b->y, 0);
+    D3 = gp_Dir(Q3.X() - P3.X(), Q3.Y() - P3.Y(), Q3.Z() - P3.Z());
+  } else if (f.axeK == "sys") {
+    const Vec3 w = f.axeD == "X" ? Vec3{1, 0, 0} : f.axeD == "Y" ? Vec3{0, 1, 0} : Vec3{0, 0, 1};
+    const double dn = produit(w, s.n);
+    const double px = w[0] - s.n[0] * dn, py = w[1] - s.n[1] * dn, pz = w[2] - s.n[2] * dn, L = std::hypot(px, py, pz);
+    if (!(L > 1e-9)) throw std::runtime_error("axe " + f.axeD + " : il ne passe pas par le plan de l'esquisse");
+    d2.x = (px * s.u[0] + py * s.u[1] + pz * s.u[2]) / L;
+    d2.y = (px * s.v[0] + py * s.v[1] + pz * s.v[2]) / L;
+    P3 = mondeDe(s, 0, 0, 0);
+    D3 = gp_Dir(px, py, pz);
+  } else {
+    throw std::runtime_error("aucun axe défini");
+  }
+  Trace tr = tracerContours(s);
+  if (tr.solides.empty() && tr.cerclesSeuls.empty()) throw std::runtime_error("profil non fermé");
+  // revolveSideCheck : un seul côté de l'axe
+  int pos = 0, neg = 0;
+  double rMax = 0;
+  const auto voir = [&](double x, double y) {
+    const double dx = x - A2.x, dy = y - A2.y, c = dx * -d2.y + dy * d2.x, t = dx * d2.x + dy * d2.y;
+    if (std::abs(c) > 1e-7) (c > 0 ? pos : neg)++;
+    rMax = std::max(rMax, std::hypot(dx - d2.x * t, dy - d2.y * t));
+  };
+  const auto suivre = [&](const Chaine& ch) {
+    for (const Pas& q : ch) {
+      const Arete& ed = tr.aretes[q.arete];
+      const std::string& vers = ed.a == q.depuis ? ed.b : ed.a;
+      if (auto i = tr.pts.find(q.depuis); i != tr.pts.end()) voir(i->second.x, i->second.y);
+      if (auto i = tr.pts.find(vers); i != tr.pts.end()) voir(i->second.x, i->second.y);
+      if (ed.spline) {
+        for (const P2d& k : polyArete(ed, q.depuis)) voir(k[0], k[1]);
+      } else if (ed.arc && ed.e) {
+        const auto i = tr.pts.find(ed.e->pc);
+        const Pt* C = i != tr.pts.end() ? &i->second : s.point(ed.e->pc);
+        if (!C) continue;
+        voir(C->x, C->y);
+        if (const auto an = anglesArc(s, *ed.e))
+          for (int k = 0; k <= 8; k++) {
+            const double t = an->a1 + (an->a2 - an->a1) * k / 8;
+            voir(C->x + ed.e->r * std::cos(t), C->y + ed.e->r * std::sin(t));
+          }
+      }
+    }
+  };
+  for (const auto& sol : tr.solides) {
+    suivre(sol.chaine);
+    for (const auto& h : sol.trous) suivre(h);
+  }
+  for (const Entite* c : tr.cerclesSeuls) {
+    const Pt* C = s.point(c->pc);
+    if (!C) continue;
+    voir(C->x, C->y);
+    for (int i = 0; i < 12; i++) voir(C->x + c->r * std::cos(i * PI / 6), C->y + c->r * std::sin(i * PI / 6));
+  }
+  if (pos > 0 && neg > 0) throw std::runtime_error("le profil est de part et d'autre de son axe : une révolution à 360° s'auto-intersecte");
+  if (!(rMax > 1e-7)) throw std::runtime_error("le profil est sur son axe : rien à révolutionner");
+  const double a0 = std::abs(f.angle), angle = (a0 > 0 ? std::min(360.0, a0) : 360.0) * PI / 180;
+  const auto tourner = [&](const TopoDS_Shape& face, const std::vector<CoteNom>& cotes) {
+    BRepPrimAPI_MakeRevol r(face, gp_Ax1(P3, D3), angle, false);
+    r.Build();
+    if (!r.IsDone()) throw std::runtime_error("révolution impossible (profil auto-intersecté ?)");
+    const TopoDS_Shape sh = r.Shape();
+    nomsPrismeFaces([&r](const TopoDS_Shape& x) { return r.Generated(x); }, [&r] { return r.FirstShape(); }, [&r] { return r.LastShape(); }, sh, cotes);
+    nomsPrefixe(sh, f.id);
+    return sh;
+  };
+  const auto faceDe = [&](const Chaine& ch, double aire, std::vector<CoteNom>& cotes) {
+    TopoDS_Wire w = contourDe(s, tr, ch, 0, &cotes);
+    if (aire < 0) w = TopoDS::Wire(w.Reversed());
+    BRepBuilderAPI_MakeFace fm(w, true);
+    if (!fm.IsDone()) throw std::runtime_error("face impossible");
+    return TopoDS_Shape(fm.Face());
+  };
+  const auto disque = [&](const Entite& c, std::vector<CoteNom>& cotes) {
+    const Pt* C = s.point(c.pc);
+    if (!C) throw std::runtime_error("pastille : centre introuvable");
+    const gp_Circ circ(gp_Ax2(mondeDe(s, C->x, C->y, 0), gp_Dir(s.n[0], s.n[1], s.n[2])), c.r);
+    const gp_Pnt a = mondeDe(s, C->x + c.r, C->y, 0), b = mondeDe(s, C->x - c.r, C->y, 0);
+    BRepBuilderAPI_MakeEdge m1(circ, a, b), m2(circ, b, a);
+    if (!m1.IsDone() || !m2.IsDone()) throw std::runtime_error("pastille impossible");
+    BRepBuilderAPI_MakeWire w;
+    w.Add(m1.Edge());
+    cotes.push_back({w.Edge(), c.id});
+    w.Add(m2.Edge());
+    cotes.push_back({w.Edge(), c.id});
+    w.Build();
+    if (!w.IsDone()) throw std::runtime_error("pastille non fermée");
+    BRepBuilderAPI_MakeFace fm(w.Wire(), true);
+    if (!fm.IsDone()) throw std::runtime_error("face pastille impossible");
+    return TopoDS_Shape(fm.Face());
+  };
+  TopoDS_Shape forme;
+  const auto ajouter = [&](const TopoDS_Shape& x) { forme = forme.IsNull() ? x : unifier(fusion(forme, x)); };
+  // Une même boucle peut revenir dans les deux sens : un seul exemplaire par jeu d'arêtes
+  std::set<std::string> vus;
+  for (size_t si = 0; si < tr.solides.size(); si++) {
+    const auto& sol = tr.solides[si];
+    std::vector<std::string> cles;
+    for (const Pas& q : sol.chaine) {
+      const Arete& ed = tr.aretes[q.arete];
+      cles.push_back(ed.e ? ed.e->id : ed.a + ">" + ed.b);
+    }
+    std::sort(cles.begin(), cles.end());
+    std::string cle;
+    for (const std::string& c : cles) cle += c + "|";
+    if (!vus.insert(cle).second) continue;
+    const auto tourContour = [&](const Chaine& ch, double aire) {
+      std::vector<CoteNom> cotes;
+      const TopoDS_Shape fc = faceDe(ch, aire, cotes);
+      return tourner(fc, cotes);
+    };
+    const auto tourDisque = [&](const Entite& c) {
+      std::vector<CoteNom> cotes;
+      const TopoDS_Shape fc = disque(c, cotes);
+      return tourner(fc, cotes);
+    };
+    TopoDS_Shape x = tourContour(sol.chaine, sol.aire);
+    for (const auto& h : sol.trous) x = coupe(x, tourContour(h, 1));
+    for (const auto& ch : tr.trousRonds)
+      if (ch.solide == static_cast<int>(si)) x = coupe(x, tourDisque(*ch.cercle));
+    ajouter(x);
+  }
+  for (const Entite* c : tr.cerclesSeuls) {
+    std::vector<CoteNom> cotes;
+    const TopoDS_Shape fc = disque(*c, cotes);
+    ajouter(tourner(fc, cotes));
+  }
+  if (forme.IsNull()) throw std::runtime_error("solide vide");
   return forme;
 }
 
@@ -554,25 +788,312 @@ std::optional<TopoDS_Shape> decoupeSansFaceFine(const Fonction& f, const Esquiss
 // occThroughBase : le solide d'avant la dernière extrusion « à travers tout », seule mesure de son étendue pendant le rejeu
 TopoDS_Shape gBaseTraversante;
 
-TopoDS_Shape rejouerCorps(Document& d, const std::vector<Fonction*>& liste, std::vector<std::string>& msgs) {
+// occApplyDraft
+TopoDS_Shape appliquerDepouille(const Document& d, const Fonction& f, const TopoDS_Shape& resultat, std::vector<std::string>& msgs) {
+  const double ang = (f.flip ? -1 : 1) * f.angleDepouille * PI / 180;
+  if (!(std::abs(ang) > 1e-9)) {
+    msgs.push_back(f.nom + " : angle nul, aucune dépouille");
+    return resultat;
+  }
+  if (!f.refFace.lue || f.facesVisees.empty()) {
+    msgs.push_back(f.nom + " : face de référence ou faces à dépouiller manquantes");
+    return resultat;
+  }
+  const auto ref = trouverFace(d, resultat, f.refFace);
+  if (!ref) {
+    msgs.push_back(f.nom + " : face de référence introuvable");
+    return resultat;
+  }
+  const auto rn = normaleSortante(*ref);
+  if (!rn) {
+    msgs.push_back(f.nom + " : face de référence non plane ni cylindrique");
+    return resultat;
+  }
+  Vec3 rp, rd;
+  boiteFace(*ref, rp, rd);
+  const gp_Pnt P(rp[0], rp[1], rp[2]);
+  std::vector<TopoDS_Face> trouvees;
+  for (const RefFace& r : f.facesVisees)
+    if (auto g = trouverFace(d, resultat, r)) trouvees.push_back(*g);
+  if (trouvees.empty()) {
+    msgs.push_back(f.nom + " : aucune face visée n'est retrouvée");
+    return resultat;
+  }
+  if (trouvees.size() < f.facesVisees.size()) msgs.push_back(f.nom + " : " + std::to_string(f.facesVisees.size() - trouvees.size()) + " face(s) visée(s) introuvable(s)");
+  const auto essayer = [&](const std::vector<TopoDS_Face>& l, TopoDS_Shape& out) {
+    try {
+      out = depouilleUneFois(resultat, P, *rn, l, ang, nullptr);
+      return true;
+    } catch (const Standard_Failure&) {
+    } catch (const std::exception&) {
+    }
+    return false;
+  };
+  TopoDS_Shape r;
+  if (!essayer(trouvees, r)) {
+    std::vector<TopoDS_Face> garde;
+    for (const TopoDS_Face& h : trouvees) {
+      auto t = garde;
+      t.push_back(h);
+      TopoDS_Shape x;
+      if (essayer(t, x)) garde.push_back(h);
+    }
+    if (garde.empty() || !essayer(garde, r)) {
+      msgs.push_back(f.nom + " : dépouille impossible");
+      return resultat;
+    }
+    msgs.push_back(f.nom + " : dépouillage partiel, " + std::to_string(garde.size()) + "/" + std::to_string(f.facesVisees.size()) + " face(s)");
+  }
+  return unifier(r);
+}
+
+TopoDS_Shape composeDe(const std::vector<TopoDS_Shape>& v) {
+  if (v.size() == 1) return v[0];
+  TopoDS_Compound c;
+  BRep_Builder b;
+  b.MakeCompound(c);
+  for (const TopoDS_Shape& s : v) b.Add(c, s);
+  return c;
+}
+// occCutKids : chaque corps de l'outil est un outil de la liste. Orientés par construction : pas de contrôle « solide retourné ».
+TopoDS_Shape coupeListe(const TopoDS_Shape& a, const std::vector<TopoDS_Shape>& outils, const std::vector<TopoDS_Shape>& porteursNoms) {
+  TopTools_ListOfShape la, lt;
+  la.Append(a);
+  for (const TopoDS_Shape& s : outils) lt.Append(s);
+  BRepAlgoAPI_Cut c;
+  c.SetArguments(la);
+  c.SetTools(lt);
+  c.SetCheckInverted(false);
+  c.Build();
+  if (!c.IsDone() || c.Shape().IsNull()) throw std::runtime_error("découpe impossible");
+  const TopoDS_Shape s = c.Shape();
+  std::vector<TopoDS_Shape> entrees{a};
+  entrees.insert(entrees.end(), porteursNoms.begin(), porteursNoms.end());
+  nomsTransmet(entrees, histoireDe(c), s);  // l'outil entier : ses enfants ne portent pas les noms
+  return s;
+}
+TopoDS_Shape fusionListe(const TopoDS_Shape& a, const std::vector<TopoDS_Shape>& outils, const std::vector<TopoDS_Shape>& porteursNoms) {
+  TopTools_ListOfShape la, lt;
+  la.Append(a);
+  for (const TopoDS_Shape& s : outils) lt.Append(s);
+  BRepAlgoAPI_Fuse c;
+  c.SetArguments(la);
+  c.SetTools(lt);
+  c.Build();
+  if (!c.IsDone() || c.Shape().IsNull()) throw std::runtime_error("fusion impossible");
+  const TopoDS_Shape s = c.Shape();
+  std::vector<TopoDS_Shape> entrees{a};
+  entrees.insert(entrees.end(), porteursNoms.begin(), porteursNoms.end());
+  nomsTransmet(entrees, histoireDe(c), s);
+  return s;
+}
+// Le composé des outils d'un perçage porte leurs noms
+TopoDS_Shape composeOutils(const std::vector<TopoDS_Shape>& v) {
+  const TopoDS_Shape c = composeDe(v);
+  if (v.size() > 1) nomsCompose(v, c);
+  return c;
+}
+// Le groupe de copies d'une répétition d'un seul booléen (batch de occReplayBodyGen). Rend false pour un rejeu une à une.
+bool rejouerCopies(Document& d, const std::vector<Fonction*>& groupe, TopoDS_Shape& resultat, std::vector<std::string>& msgs) {
+  const auto cut = groupe[0]->type == "hole" || groupe[0]->op == "cut";
+  std::vector<TopoDS_Shape> outils, parCopie;
+  std::vector<std::string> alertes;
+  try {
+    gBaseTraversante = cut ? resultat : TopoDS_Shape();
+    for (Fonction* g : groupe) {
+      Esquisse* s = d.esquisse(g->esquisse);
+      if (!s) return false;
+      if (g->type == "hole") {
+        auto v = formePercage(*g, *s, resultat, alertes);
+        outils.insert(outils.end(), v.begin(), v.end());
+        parCopie.push_back(composeOutils(v));
+      } else {
+        TopoDS_Shape x = formeExtrusion(*g, *s, resultat);
+        outils.push_back(x);
+        parCopie.push_back(x);
+      }
+    }
+    TopoDS_Shape r = cut ? coupeListe(resultat, outils, parCopie) : fusionListe(resultat, outils, parCopie);
+    resultat = cut ? sansCouturesParasites(r, resultat, composeDe(parCopie)) : unifier(r);
+  } catch (const Standard_Failure&) {
+    return false;
+  } catch (const std::exception&) {
+    return false;
+  }
+  for (const std::string& a : alertes) msgs.push_back(groupe[0]->nom + " : " + a);
+  return true;
+}
+
+std::string corpsDeFonction(const Document& d, const Fonction& f) {  // occBodyOfFeat
+  return std::find(d.corps.begin(), d.corps.end(), f.corps) != d.corps.end() ? f.corps : d.corps[0];
+}
+std::string corpsNeufDe(const Document& d, const Fonction& f) {  // occSplitNewBody
+  if (f.corpsNeuf.empty() || !((f.type == "xsplit" && f.modeFonction == "body") || (f.type == "bscale" && f.copie))) return "";
+  return f.corpsNeuf != corpsDeFonction(d, f) && std::find(d.corps.begin(), d.corps.end(), f.corpsNeuf) != d.corps.end() ? f.corpsNeuf : "";
+}
+std::vector<std::string> corpsEnPlusDe(const Document& d, const Fonction& f) {  // occCutExtraBodies
+  std::vector<std::string> out;
+  if (!(f.type == "hole" || f.op == "cut")) return out;
+  const std::string b = corpsDeFonction(d, f);
+  for (const std::string& x : f.corpsEnPlus)
+    if (x != b && std::find(out.begin(), out.end(), x) == out.end() && std::find(d.corps.begin(), d.corps.end(), x) != d.corps.end()) out.push_back(x);
+  return out;
+}
+TopoDS_Shape rejouerCorps(Document& d, const std::vector<Fonction*>& liste, const std::string& bid, std::vector<std::string>& msgs);
+// occCombineTool : le corps tb tel qu'il est juste avant la fonction f
+TopoDS_Shape corpsAvant(Document& d, const Fonction& f, const std::string& tb) {
+  std::vector<Fonction*> l;
+  for (Fonction& x : d.fonctions) {
+    if (&x == &f) break;
+    if (!x.visible || x.type == "repeat") continue;
+    const auto plus = corpsEnPlusDe(d, x);
+    if (corpsDeFonction(d, x) == tb || corpsNeufDe(d, x) == tb || std::find(plus.begin(), plus.end(), tb) != plus.end()) l.push_back(&x);
+  }
+  if (l.empty()) return TopoDS_Shape();
+  std::vector<std::string> ignores;
+  return rejouerCorps(d, l, tb, ignores);
+}
+
+TopoDS_Shape rejouerCorps(Document& d, const std::vector<Fonction*>& liste, const std::string& bid, std::vector<std::string>& msgs) {
   TopoDS_Shape resultat;
-  for (auto* fp : liste) {
-    Fonction& f = *fp;
+  const Fonction* enCours = nullptr;
+  const auto clore = [&] {  // aucune face sans nom, quelle que soit la fonction
+    if (!enCours) return;
+    nomsCompleter(resultat, enCours->id, nullptr);
+    std::set<std::string> dits;
+    for (const std::string& p : nomsPerteLue())
+      if (dits.insert(p).second) msgs.push_back(enCours->nom + " : " + p);
+    enCours = nullptr;
+  };
+  for (size_t ii = 0; ii < liste.size(); ii++) {
+    clore();
+    Fonction& f = *liste[ii];
+    enCours = &f;
+    // batchLen : les copies d'une répétition qui se suivent, même opération, au moins deux
+    if (!f.repeatId.empty() && !resultat.IsNull() && (f.type == "hole" || f.type == "extrude")) {
+      const auto opDe = [](const Fonction& g) { return g.type == "hole" ? std::string("cut") : g.type == "extrude" ? g.op : std::string(); };
+      std::vector<Fonction*> groupe;
+      for (size_t k = ii; k < liste.size() && liste[k]->repeatId == f.repeatId && opDe(*liste[k]) == opDe(f); k++) groupe.push_back(liste[k]);
+      if ((opDe(f) == "cut" || opDe(f) == "add") && groupe.size() > 1 && rejouerCopies(d, groupe, resultat, msgs)) {
+        ii += groupe.size() - 1;
+        continue;
+      }
+    }
+    if (f.type == "hole") {
+      if (resultat.IsNull()) {
+        msgs.push_back(f.nom + " : découpe dans le vide, ignorée");
+        continue;
+      }
+      try {
+        Esquisse* s = d.esquisse(f.esquisse);
+        if (!s) throw std::runtime_error("esquisse introuvable");
+        std::vector<std::string> alertes;
+        const auto outils = formePercage(f, *s, resultat, alertes);
+        for (const std::string& a : alertes) msgs.push_back(f.nom + " : " + a);
+        const TopoDS_Shape outilEntier = composeOutils(outils);
+        resultat = sansCouturesParasites(coupeListe(resultat, outils, {outilEntier}), resultat, outilEntier);
+      } catch (const Standard_Failure& e) {
+        msgs.push_back(f.nom + " : exclu (" + e.what() + ")");
+      } catch (const std::exception& e) {
+        msgs.push_back(f.nom + " : exclu (" + e.what() + ")");
+      }
+      continue;
+    }
+    if (f.type == "xmove" || f.type == "xdelface" || f.type == "bmove") {
+      if (resultat.IsNull()) {
+        msgs.push_back(f.nom + (f.type == "bmove" ? " : aucun volume à déplacer, ignoré" : " : aucun volume à déformer, ignoré"));
+        continue;
+      }
+      const auto snapM = f.type == "bmove" ? std::nullopt : nomsInstantane(resultat);  // suppression, décalage : pas d'historique
+      resultat = f.type == "xmove" ? appliquerDeplacementFace(d, f, resultat, msgs) : f.type == "bmove" ? appliquerDeplacementCorps(f, resultat, msgs) : appliquerSuppressionFaces(d, f, resultat, msgs);
+      if (snapM) nomsCompleter(resultat, "", &*snapM);
+      continue;
+    }
+    if (f.type == "bscale" || f.type == "xsplit") {
+      const std::string nb = corpsNeufDe(d, f);
+      if (f.type == "bscale" && !nb.empty() && bid != nb) continue;
+      const bool neuf = !nb.empty() && nb == bid;
+      TopoDS_Shape src = resultat;
+      if (neuf) {
+        if (!resultat.IsNull()) msgs.push_back(f.nom + " : fonctions du corps neuf placées avant, ignorées");
+        src = corpsAvant(d, f, corpsDeFonction(d, f));
+      }
+      if (src.IsNull()) {
+        if (f.type == "bscale" || !neuf) msgs.push_back(f.nom + (f.type == "bscale" ? " : aucun volume à mettre à l'échelle, ignoré" : " : aucun volume à scinder, ignoré"));
+        resultat.Nullify();
+        continue;
+      }
+      if (f.type == "bscale") {
+        resultat = appliquerEchelle(f, src, msgs);
+      } else {
+        std::vector<std::string> ignores;
+        resultat = appliquerScission(d, f, src, neuf, neuf ? ignores : msgs);
+      }
+      continue;
+    }
+    if (f.type == "combine") {
+      if (resultat.IsNull()) {
+        msgs.push_back(f.nom + " : corps cible vide, ignoré");
+        continue;
+      }
+      for (const std::string& tb : f.outils) {
+        if (tb == bid) continue;
+        TopoDS_Shape ts;
+        try {
+          ts = corpsAvant(d, f, tb);
+        } catch (const Standard_Failure& e) {
+          msgs.push_back(f.nom + " : corps outil illisible (" + e.what() + ")");
+        } catch (const std::exception& e) {
+          msgs.push_back(f.nom + " : corps outil illisible (" + e.what() + ")");
+        }
+        if (ts.IsNull()) {
+          msgs.push_back(f.nom + " : corps outil vide à cet endroit de la timeline");
+          continue;
+        }
+        if (!TopExp_Explorer(ts, TopAbs_SOLID).More()) msgs.push_back(f.nom + " : le corps outil n'est pas un volume fermé, la combinaison risque de rester sans effet");
+        try {
+          resultat = f.modeFonction == "cut" ? coupe(resultat, ts) : f.modeFonction == "intersect" ? communFormes(resultat, ts) : unifier(fusion(resultat, ts));
+        } catch (const Standard_Failure& e) {
+          msgs.push_back(f.nom + " : " + e.what());
+        } catch (const std::exception& e) {
+          msgs.push_back(f.nom + " : " + e.what());
+        }
+      }
+      continue;
+    }
+    if (f.type == "xdraft") {
+      if (resultat.IsNull()) {
+        msgs.push_back(f.nom + " : aucun volume à dépouiller, ignoré");
+      } else {
+        const auto snapD = nomsInstantane(resultat);
+        resultat = appliquerDepouille(d, f, resultat, msgs);
+        if (snapD) nomsCompleter(resultat, "", &*snapD);
+      }
+      continue;
+    }
     if (f.type == "xfillet") {
       if (resultat.IsNull()) {
         msgs.push_back(f.nom + " : aucun volume à congédier — ignoré");
         continue;
       }
+      const auto snapX = nomsInstantane(resultat);  // reprise NURBS : pas d'historique du noyau
       resultat = appliquerConge(d, f, resultat, msgs);
+      if (snapX) nomsCompleter(resultat, "", &*snapX);
       continue;
     }
-    if (f.type != "extrude") continue;
+    if (f.type != "extrude" && f.type != "revolve" && f.type != "sweep") continue;
     gBaseTraversante = f.through ? resultat : TopoDS_Shape();
     Esquisse* s = d.esquisse(f.esquisse);
     TopoDS_Shape outil;
     try {
       if (!s) throw std::runtime_error("esquisse introuvable");
-      outil = formeExtrusion(f, *s, resultat);
+      if (f.type == "sweep") {
+        std::vector<std::string> alertes;
+        outil = formeBalayage(d, f, alertes);
+        for (const std::string& a : alertes) msgs.push_back(f.nom + " : " + a);
+      } else {
+        outil = f.type == "revolve" ? formeRevolution(f, *s) : formeExtrusion(f, *s, resultat);
+      }
     } catch (const Standard_Failure& e) {
       msgs.push_back(f.nom + " : exclu (" + (e.what()) + ")");
       continue;
@@ -587,10 +1108,11 @@ TopoDS_Shape rejouerCorps(Document& d, const std::vector<Fonction*>& liste, std:
           continue;
         }
         TopoDS_Shape c = sansCouturesParasites(coupe(resultat, outil), resultat, outil);
-        if (auto c2 = decoupeSansFaceFine(f, *s, resultat, c)) c = *c2;
+        if (f.type == "extrude")
+          if (auto c2 = decoupeSansFaceFine(f, *s, resultat, c)) c = *c2;
         resultat = c;
       } else {
-        resultat = resultat.IsNull() ? outil : unifier(fusion(resultat, outil));
+        resultat = resultat.IsNull() ? outil : sansMiettes(unifier(fusion(resultat, outil)));
       }
     } catch (const Standard_Failure& e) {
       msgs.push_back(f.nom + " : " + (e.what()));
@@ -598,28 +1120,51 @@ TopoDS_Shape rejouerCorps(Document& d, const std::vector<Fonction*>& liste, std:
       msgs.push_back(f.nom + " : " + e.what());
     }
   }
+  clore();
   return resultat;
 }
 }  // namespace
+
+TopoDS_Shape unifierForme(const TopoDS_Shape& s) { return unifier(s); }
+TopoDS_Shape fusionFormes(const TopoDS_Shape& a, const TopoDS_Shape& b) { return fusion(a, b); }
+TopoDS_Shape coupeFormes(const TopoDS_Shape& a, const TopoDS_Shape& b) { return coupe(a, b); }
+std::optional<gp_Dir> normaleDeFace(const TopoDS_Face& f) { return normaleSortante(f); }
+TopoDS_Wire contourEsquisse(const Esquisse& s, const Trace& tr, const Chaine& chaine, std::vector<CoteNom>* cotes) { return contourDe(s, tr, chaine, 0, cotes); }
+gp_Pnt pointMonde(const Esquisse& s, double x, double y) { return mondeDe(s, x, y, 0); }
 
 ResultatRejeu rejouer(Document& d, int n) {
   replacerHotes(d);
   std::vector<std::string> ordre;
   std::map<std::string, std::vector<Fonction*>> parCorps;
+  std::set<std::string> consommes;  // corps outils d'une combinaison, corps retirés : plus affichés
   for (auto& f : d.fonctions) {
     if (n >= 0 && &f - d.fonctions.data() >= n) break;
     if (!f.visible) continue;
-    std::string b = std::find(d.corps.begin(), d.corps.end(), f.corps) != d.corps.end() ? f.corps : d.corps[0];
+    if (f.type == "combine" && !f.garder) consommes.insert(f.outils.begin(), f.outils.end());
+    if (f.type == "bremove" && !f.corps.empty()) consommes.insert(f.corps);
+    const std::string b = corpsDeFonction(d, f);
     if (!parCorps.count(b)) ordre.push_back(b);
     parCorps[b].push_back(&f);
+    if (const std::string nb = corpsNeufDe(d, f); !nb.empty()) {  // l'autre côté d'une scission naît dans le corps neuf
+      if (!parCorps.count(nb)) ordre.push_back(nb);
+      parCorps[nb].push_back(&f);
+    }
+    // occCutExtraBodies : une découpe peut viser d'autres corps, rejouée dans chacun à sa place
+    for (const std::string& x : corpsEnPlusDe(d, f)) {
+      if (!parCorps.count(x)) ordre.push_back(x);
+      parCorps[x].push_back(&f);
+    }
   }
   ResultatRejeu r;
   std::vector<TopoDS_Shape> pieces;
   for (auto& b : ordre) {
+    if (consommes.count(b)) continue;
     gBaseTraversante = TopoDS_Shape();
-    TopoDS_Shape s = rejouerCorps(d, parCorps[b], r.messages);
+    TopoDS_Shape s = rejouerCorps(d, parCorps[b], b, r.messages);
     // Un congé a pu scinder des faces voisines : recoudre celles de même surface (occUnifyAfterFillets)
-    if (!s.IsNull() && std::any_of(parCorps[b].begin(), parCorps[b].end(), [](const Fonction* f) { return f->type == "xfillet"; })) s = unifier(s);
+    if (!s.IsNull() && std::any_of(parCorps[b].begin(), parCorps[b].end(), [](const Fonction* f) { return f->type == "xfillet"; }) &&
+        std::none_of(parCorps[b].begin(), parCorps[b].end(), [](const Fonction* f) { return f->type == "xsplit" && f->modeFonction != "body"; }))
+      s = unifier(s);
     if (!s.IsNull()) {
       pieces.push_back(s);
       r.corps.push_back({b, s});
@@ -632,7 +1177,13 @@ ResultatRejeu rejouer(Document& d, int n) {
     bd.MakeCompound(comp);
     for (auto& s : pieces) bd.Add(comp, s);
     r.forme = comp;
+    std::vector<std::string> ids;
+    for (const auto& c : r.corps) ids.push_back(c.first);
+    nomsCompose(pieces, comp, ids);
   }
+  std::vector<TopoDS_Shape> finales = pieces;
+  if (!r.forme.IsNull()) finales.push_back(r.forme);
+  nomsFinDeRejeu(finales);
   return r;
 }
 

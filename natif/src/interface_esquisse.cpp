@@ -328,13 +328,12 @@ BarreEsquisse::BarreEsquisse(wxWindow* parent) : wxWindow(parent, 2009, wxDefaul
     if (surCadrer) surCadrer();
   };
   ordre_.push_back(cadrer);
-  auto* orbite = new BoutonEsquisse(this, wxID_ANY, L"Vue inclinée", L"Vue 3D inclinée : pas encore dans le logiciel Windows", BoutonEsquisse::ENCADRE);
-  orbite->icone("orbite", C_TEXTE);
-  orbite->disponible(false);
-  orbite->surClic = [this] {
-    if (surIndisponible) surIndisponible(L"Vue inclinée");
+  orbite_ = new BoutonEsquisse(this, wxID_ANY, L"Vue inclinée", L"Vue 3D inclinée en perspective. Orbite : clic-molette glissé. N = à plat", BoutonEsquisse::ENCADRE);
+  orbite_->icone("orbite", C_TEXTE);
+  orbite_->surClic = [this] {
+    if (surVueInclinee) surVueInclinee();
   };
-  ordre_.push_back(orbite);
+  ordre_.push_back(orbite_);
   grille_ = new BoutonEsquisse(this, wxID_ANY, L"Grille", L"Afficher / masquer la grille", BoutonEsquisse::ENCADRE);
   grille_->icone("grille", C_TEXTE);
   grille_->surClic = [this] {
@@ -450,6 +449,7 @@ void BarreEsquisse::lectureSeule(bool oui) {
   for (BoutonEsquisse* b : contraintes_) b->disponible(!oui);
 }
 void BarreEsquisse::grilleActive(bool oui) { grille_->actif(oui); }
+void BarreEsquisse::vueInclineeActive(bool oui) { orbite_->actif(oui); }
 void BarreEsquisse::fantomeActif(bool oui) { fantome_->icone("oeil", oui ? C_TEXTE : C_DISCRET); }
 
 // ---------- Panneau ----------

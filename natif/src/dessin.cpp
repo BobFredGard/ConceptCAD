@@ -1174,7 +1174,10 @@ void Dessin::enfonce(double wx, double wy, bool ctrl, const std::string& ligneCo
     return;
   }
   if (outil_ == OBLONG) {  // oblong en 3 clics
-    if (!bas_.actif) oblongDepart(wx, wy);
+    if (!bas_.actif) {
+      pousserSiPlan(wx, wy);
+      oblongDepart(wx, wy);
+    }
     return;
   }
   if (trActif(outil_)) return trEnfonce(wx, wy);  // nouveaux modes du bandeau
@@ -1444,8 +1447,9 @@ void Dessin::bougerLigne(double wx, double wy) {
   double gx = wx, gy = wy;
   guide_ = Guide{};
   aMarque_ = false;
-  const Accroche s = accroche(wx, wy, bas_.pid);
-  if (s.sorte == Accroche::POINT) {
+  Accroche s = accroche(wx, wy, bas_.pid);
+  // Point du plan : accroche exacte ; arête du plan : le pied, sauf guide H / V actif
+  if (s.sorte == Accroche::POINT || (s.sorte == Accroche::PLAN && s.plan.estPoint)) {
     gx = s.x;
     gy = s.y;
     aMarque_ = true;
@@ -1465,13 +1469,24 @@ void Dessin::bougerLigne(double wx, double wy) {
       guide_.h = true;
       guide_.y = gy;
     }
+    if (s.sorte == Accroche::PLAN) {
+      if (guide_.v || guide_.h) {
+        s = Accroche{};
+        survolPlan_ = CiblePlan{};
+      } else {
+        gx = s.x;
+        gy = s.y;
+        aMarque_ = true;
+        marque_ = {gx, gy};
+      }
+    }
     if (grille && !s) {
       if (!guide_.v) gx = surGrille(gx);
       if (!guide_.h) gy = surGrille(gy);
     }
   }
   const double dxB = gx - bas_.x, dyB = gy - bas_.y, lenB = hyp(dxB, dyB);
-  if (lenB > 1e-6) {
+  if (lenB > 1e-6 && s.sorte != Accroche::PLAN) {
     std::string bestPerp;
     double bestD = 1e9;
     for (const Entite& l : s_.entites) {
@@ -2758,7 +2773,7 @@ void Dessin::relacherCercle(double wx, double wy) {
     lier(c);
   }
   // cote Ø posée à la création, sauf si le centre et le tour sont déjà tenus par ce qu'on a cliqué
-  const bool coter = !(bas_.fa && s.sorte == Accroche::POINT) && O > 0;
+  const bool coter = !(bas_.fa && (s.sorte == Accroche::POINT || s.sorte == Accroche::PLAN)) && O > 0;
   if (coter) coteRond("diameter", nc.id, O);
   bas_ = Bas{};
   brouillon_ = Brouillon{};

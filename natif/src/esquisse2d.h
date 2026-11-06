@@ -3,6 +3,7 @@
 #pragma once
 #include <wx/wx.h>
 #include <wx/graphics.h>
+#include <wx/timer.h>
 
 #include <TopoDS_Shape.hxx>
 
@@ -41,6 +42,12 @@ class VueEsquisse : public wxWindow {
   bool accrocheGrille() const { return accrocheGrille_; }
   void reglerAccrocheGrille(bool oui);
   void centrerSur(double x, double y);
+  // Vue inclinée (skOrb, src/10-scene-3d) : à plat = orthographique, hors du plan = perspective
+  bool vueAPlat() const;
+  void remettreAPlat();                 // touche N
+  void basculerVueInclinee();           // bouton Vue inclinée
+  void essaiOrbite(double dx, double dy);  // un glissé de la molette, recalage compris
+  std::function<void()> surVueChange;   // pour allumer le bouton
   void ouvrirCoteParId(const std::string& id);
   Dessin* dessin() const { return dessin_; }
   bool boutonEnfonce() const { return gauche_; }
@@ -88,6 +95,7 @@ class VueEsquisse : public wxWindow {
   wxTextCtrl* polyD_ = nullptr;
   struct Trait {
     double x1, y1, x2, y2;
+    double z1 = 0, z2 = 0;  // hauteur au-dessus du plan : ne compte qu'en vue inclinée
   };
   struct Geste {
     wxPoint depart;
@@ -95,7 +103,21 @@ class VueEsquisse : public wxWindow {
     bool actif = false;
   };
   wxPoint2DDouble e(double x, double y) const;  // monde → écran
+  wxPoint2DDouble e3(double x, double y, double z) const;  // point hors du plan → écran
   wxPoint2DDouble direction(double x, double y) const;  // direction du plan → direction à l'écran
+  wxPoint2DDouble directionEn(double x, double y, double ux, double uy) const;  // la même, au point (x,y), de longueur 1
+  // Écran (par rapport au centre, en pixels logiques) → plan (par rapport au centre, en pixels à l'échelle)
+  wxPoint2DDouble ecranVersPlan(double sx, double sy) const;
+  double inverseW(double sx, double sy) const;  // poids du point d'écran : 0 sur l'horizon du plan
+  bool perspective() const { return std::abs(orbD_[2]) < 1 - 1e-9; }
+  bool parLaTranche() const;
+  double kPerspective() const;
+  void reglerRepere(const double* D, const double* U);  // skOrbSetFrame
+  void orbiter(double dx, double dy);                   // skOrbDragBy
+  void recalerDeFace();                                 // skOrbSnapFace
+  void surTopOrbite();                                  // skOrbTick
+  std::vector<wxPoint2DDouble> zoneVisible(double W, double H) const;  // skOrbVisPoly
+  wxGraphicsPath cheminCercle(wxGraphicsContext& g, double x, double y, double r) const;
   void surPeinture(wxPaintEvent&);
   void dessiner(wxDC& dc);
   wxPoint2DDouble plan(const wxPoint& p) const;  // position de la souris → point du plan
@@ -153,7 +175,13 @@ class VueEsquisse : public wxWindow {
   wxTextCtrl* saisie_ = nullptr;
   std::string coteEnSaisie_;
   double echelle_ = 2.2, cx_ = 0, cy_ = 0;
-  double hautX_ = 0, hautY_ = 1;  // le haut de l'écran, dans le plan de l'esquisse
+  double hautX_ = 0, hautY_ = 1;  // le haut de l'écran à plat, dans le plan de l'esquisse
+  // Repère de la vue dans celui du plan (u,v,n) : droite, haut, vers la caméra
+  double orbR_[3] = {1, 0, 0}, orbU_[3] = {0, 1, 0}, orbD_[3] = {0, 0, 1};
+  wxTimer* topOrbite_ = nullptr;
+  bool orbiteBas_ = false;
+  wxPoint orbiteDernier_;
+  double orbiteVx_ = 0, orbiteVy_ = 0;
   int nonDessines_ = 0;
   bool grille_ = false;
   Geste geste_;

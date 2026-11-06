@@ -151,8 +151,10 @@ const pret = page => page.waitForFunction(() => typeof doc !== 'undefined' && do
       await page.goto(url + '/ConceptCAD.html');
       await page.waitForFunction(() => typeof occtReady !== 'undefined' && occtReady === true, null, { timeout: 300000 });
       await pret(page);
+      // La page peut reprendre seule la dernière pièce : attendre que ce soit bien celle du fichier
+      await page.evaluate(() => { window.__docAvant = doc; });
       await page.setInputFiles('#fileProj', fichier);
-      await page.waitForFunction(() => doc && ((doc.features || []).length || (doc.sketches || []).length), null, { timeout: 300000 });
+      await page.waitForFunction(() => doc && doc !== window.__docAvant && ((doc.features || []).length || (doc.sketches || []).length), null, { timeout: 300000 });
       await attendre(1200);
       await pret(page);
       return { page, erreurs };
@@ -177,15 +179,14 @@ const pret = page => page.waitForFunction(() => typeof doc !== 'undefined' && do
       const a = await ouvrir(c.src);
       const dec = [];
       for (const p of c.pas) {
-        dec.push(await a.page.evaluate(p => {
+        dec.push(await a.page.evaluate(async p => {
           if (p.param) {
             if (!Array.isArray(doc.params)) doc.params = [];
             let P = doc.params.find(x => x.name === p.param);
             if (!P) { P = { name: p.param, expr: '10', value: 10 }; doc.params.push(P); }
             const r = parSetParam(P, p.expr);
             if (r !== true) { if (P.expr === '10' && P.name === p.param && P.value === 10) { /* resté tel quel */ } return { ok: false, msg: r, nouveau: 1 }; }
-            parApplyAll();
-            rebuild();
+            await parAfterChange(true);  // comme la fenêtre ƒx
             return { ok: true };
           }
           openSketch(p.sk);
@@ -203,7 +204,8 @@ const pret = page => page.waitForFunction(() => typeof doc !== 'undefined' && do
         await attendre(300);
         await pret(a.page);
       }
-      const ea = await a.page.evaluate(ETAT);
+      let ea = await a.page.evaluate(ETAT);
+      const fichierNav = await a.page.evaluate(() => mffData());
       await a.page.close();
       const dif = c.pas.map((p, i) => {
         const n = decisions[i], b = dec[i];
@@ -221,12 +223,21 @@ const pret = page => page.waitForFunction(() => typeof doc !== 'undefined' && do
       const b = await ouvrir(courant);
       const eb = await b.page.evaluate(ETAT);
       await b.page.close();
+      // Le navigateur ne donne pas forcément le même solide juste après la saisie et après réouverture :
+      // la bonne comparaison est alors son propre fichier rouvert
+      if (ea.volume != null && eb.volume != null && Math.abs(ea.volume - eb.volume) > 0.01) {
+        const copie = path.join(dossier, 'nav.conceptcad');
+        fs.writeFileSync(copie, fichierNav);
+        const c = await ouvrir(copie);
+        ea = await c.page.evaluate(ETAT);
+        await c.page.close();
+      }
       const champs = ecarts(ea.src, eb.src, [], []);
       const verif = path.join(dossier, 'verif.json');
       spawnSync(EXE, ['--verif', courant, verif], { stdio: 'ignore' });
       const n = JSON.parse(fs.readFileSync(verif, 'utf8'));
       const vn = n.cas[0] ? n.cas[0].volume : 0;
-      const calcule = n.cas[0] && n.cas[0].calcule !== false;
+      const calcule = n.cas[0] && !(n.nonPrisEnCharge || []).length;
       const volOk = ea.volume == null || eb.volume == null ? true : Math.abs(ea.volume - eb.volume) <= 0.01 && (!calcule || !vn || Math.abs(vn - eb.volume) <= 0.01);
       const err = a.erreurs.concat(b.erreurs);
       const ok = !champs.length && !champsFx.length && ea.corps === eb.corps && volOk && !err.length;

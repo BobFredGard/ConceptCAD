@@ -90,6 +90,7 @@ vm.runInContext(`
     if (st.a === 'outil') { skCancelDraft(); skTool = st.o; }
     else if (st.a === 'projAretes') {  // le solide est remplacé par une liste d'arêtes, la même des deux côtés
       occHas = () => true; occLive = { shape: { edges: st.l } }; skConsumerIdx = () => -1; _skpCache = null;
+      occListEdges = s => s.edges.map((e, i) => Object.assign({ src: i }, e)); nomsSurAretes = (s, e) => e; _skPlCache = null;
       if (st.plan) { skPlSnap = __vraiPlan.skPlSnap; skPlHit = __vraiPlan.skPlHit; skPlSelect = __vraiPlan.skPlSelect; skPlUndoIfPlane = __vraiPlan.skPlUndoIfPlane; }
       __autres.forEach(q => { q.visible = true; });  // visibles des deux côtés : sinon rien à reprendre
       doc.sketches = [skEdit].concat(__autres);

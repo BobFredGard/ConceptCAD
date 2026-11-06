@@ -1,7 +1,6 @@
 // Congés et chanfreins exacts : traduction de occApplyXFillets (src/20-60), occFilletRun et occSingleEdgeTool (src/20-20),
 // xAnchorFor et xAnchorMatch (src/20-60), xTangentChainOf (src/80).
-// Pas encore repris : les noms uniques d'arêtes (la recherche passe par l'ancre d'esquisse et la position, comme pour un
-// fichier d'avant V0.50), les chanfreins à deux distances ou à angle, le texte « paroi mince » d'occWallAt.
+// Pas encore repris : les chanfreins à deux distances ou à angle, le texte « paroi mince » d'occWallAt.
 #pragma once
 #include <TopoDS_Edge.hxx>
 #include <TopoDS_Face.hxx>
@@ -19,6 +18,7 @@ struct AreteListee {  // une ligne d'occListEdges
   std::vector<Vec3> pts;
   double len = 0;
   int src = 0;  // rang dans l'explorateur des arêtes
+  std::string nom;  // nomsSurAretes
 };
 std::vector<AreteListee> listerAretes(const TopoDS_Shape& s);
 // Chaîne tangente d'une arête, elle comprise

@@ -57,6 +57,8 @@ class BarreEsquisse : public wxWindow {
   bool essaiCliquerOutil(Dessin::Outil o);
   void lectureSeule(bool oui);
   void grilleActive(bool oui);
+  void vueInclineeActive(bool oui);
+  std::function<void()> surVueInclinee;
   void fantomeActif(bool oui);
 
  private:
@@ -64,6 +66,7 @@ class BarreEsquisse : public wxWindow {
   std::vector<wxWindow*> ordre_;   // dans l'ordre, nullptr pour un séparateur
   std::vector<BoutonEsquisse*> outils_, contraintes_;
   BoutonEsquisse* grille_ = nullptr;
+  BoutonEsquisse* orbite_ = nullptr;
   BoutonEsquisse* fantome_ = nullptr;
   BoutonEsquisse* abandon_ = nullptr;
   BoutonEsquisse* terminer_ = nullptr;

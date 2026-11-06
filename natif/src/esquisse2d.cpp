@@ -133,6 +133,8 @@ VueEsquisse::VueEsquisse(wxWindow* parent) : wxWindow(parent, 2004, wxDefaultPos
   Bind(wxEVT_LEFT_UP, &VueEsquisse::surGaucheHaut, this);
   Bind(wxEVT_KEY_DOWN, &VueEsquisse::surTouche, this);
   Bind(wxEVT_CHAR, &VueEsquisse::surCaractere, this);
+  topOrbite_ = new wxTimer(this);
+  Bind(wxEVT_TIMER, [this](wxTimerEvent&) { surTopOrbite(); }, topOrbite_->GetId());
   Bind(wxEVT_RIGHT_DOWN, &VueEsquisse::surEnfonce, this);
   Bind(wxEVT_MIDDLE_DOWN, &VueEsquisse::surEnfonce, this);
   Bind(wxEVT_RIGHT_UP, &VueEsquisse::surRelache, this);
@@ -369,8 +371,170 @@ bool VueEsquisse::abandonnerTrace() {
 wxPoint2DDouble VueEsquisse::plan(const wxPoint& p) const {
   const wxPoint q = ToDIP(p);
   const wxSize t = ToDIP(GetClientSize());
-  const double sx = q.x - t.x / 2.0, sy = q.y - t.y / 2.0;
-  return wxPoint2DDouble(cx_ + (hautY_ * sx - hautX_ * sy) / echelle_, cy_ + (-hautX_ * sx - hautY_ * sy) / echelle_);
+  const auto d = ecranVersPlan(q.x - t.x / 2.0, q.y - t.y / 2.0);
+  return wxPoint2DDouble(cx_ + d.m_x / echelle_, cy_ + d.m_y / echelle_);
+}
+
+// La caméra perspective de l'espace 3D (champ de 50°) à la distance qui donne l'échelle voulue au centre du dessin
+double VueEsquisse::kPerspective() const {
+  if (!perspective()) return 0;
+  const double H = std::max(1, ToDIP(GetClientSize()).y);
+  return 2 * std::tan(50 * 3.141592653589793 / 360) / H;
+}
+double VueEsquisse::inverseW(double sx, double sy) const {
+  const double k = kPerspective(), Y = -sy;
+  const double det = orbR_[0] * orbU_[1] - orbR_[1] * orbU_[0] + k * (orbR_[0] * Y * orbD_[1] + sx * orbD_[0] * orbU_[1] - orbR_[1] * Y * orbD_[0] - sx * orbD_[1] * orbU_[0]);
+  return det / (std::abs(orbD_[2]) < 1e-9 ? 1e-9 : orbD_[2]);
+}
+wxPoint2DDouble VueEsquisse::ecranVersPlan(double sx, double sy) const {
+  const double Y = -sy, Dz = std::abs(orbD_[2]) < 1e-9 ? 1e-9 : orbD_[2];
+  const double w = std::max(inverseW(sx, sy), 0.02);  // au-delà de l'horizon : un point lointain (skOrbInv)
+  return wxPoint2DDouble((sx * orbU_[1] - Y * orbR_[1]) / (Dz * w), (orbR_[0] * Y - orbU_[0] * sx) / (Dz * w));
+}
+bool VueEsquisse::parLaTranche() const { return std::abs(orbD_[2]) < std::sin(0.5 * 3.141592653589793 / 180); }
+
+bool VueEsquisse::vueAPlat() const {
+  return std::abs(orbD_[2] - 1) < 1e-9 && std::abs(orbU_[0] - hautX_) < 1e-9 && std::abs(orbU_[1] - hautY_) < 1e-9;
+}
+void VueEsquisse::reglerRepere(const double* Dv, const double* Uv) {
+  double d[3] = {Dv[0], Dv[1], Dv[2]};
+  double L = std::hypot(d[0], d[1], d[2]);
+  if (L < 1e-12) L = 1;
+  for (double& x : d) x /= L;
+  if (std::abs(d[2]) < 1e-3) {  // jamais EXACTEMENT par la tranche
+    const double sg = d[2] < 0 ? -1 : 1, h = std::max(std::hypot(d[0], d[1]), 1e-12), c = std::sqrt(1 - 1e-6);
+    d[0] = d[0] / h * c;
+    d[1] = d[1] / h * c;
+    d[2] = sg * 1e-3;
+  }
+  double u[3] = {Uv[0], Uv[1], Uv[2]};
+  double k = u[0] * d[0] + u[1] * d[1] + u[2] * d[2];
+  for (int i = 0; i < 3; i++) u[i] -= k * d[i];
+  L = std::hypot(u[0], u[1], u[2]);
+  if (L < 1e-6) {
+    u[0] = 0;
+    u[1] = std::abs(d[2]) < 0.9 ? 0 : 1;
+    u[2] = std::abs(d[2]) < 0.9 ? 1 : 0;
+    k = u[0] * d[0] + u[1] * d[1] + u[2] * d[2];
+    for (int i = 0; i < 3; i++) u[i] -= k * d[i];
+    L = std::hypot(u[0], u[1], u[2]);
+  }
+  for (double& x : u) x /= L;
+  orbR_[0] = u[1] * d[2] - u[2] * d[1];
+  orbR_[1] = u[2] * d[0] - u[0] * d[2];
+  orbR_[2] = u[0] * d[1] - u[1] * d[0];
+  for (int i = 0; i < 3; i++) {
+    orbU_[i] = u[i];
+    orbD_[i] = d[i];
+  }
+  if (surVueChange) surVueChange();
+  Refresh();
+}
+void VueEsquisse::remettreAPlat() {
+  const double D[3] = {0, 0, 1}, U[3] = {hautX_, hautY_, 0};
+  orbiteBas_ = false;
+  orbiteVx_ = orbiteVy_ = 0;
+  if (topOrbite_) topOrbite_->Stop();
+  reglerRepere(D, U);
+}
+void VueEsquisse::basculerVueInclinee() {
+  if (!s_) return;
+  if (!vueAPlat()) return remettreAPlat();
+  remettreAPlat();
+  orbiter(70, std::abs(s_->n[2]) > 0.95 ? -60 : 60);
+}
+namespace {
+void tourner(double* v, const double* a, double angle) {  // autour d'un axe de longueur 1
+  const double c = std::cos(angle), n = std::sin(angle), p = a[0] * v[0] + a[1] * v[1] + a[2] * v[2];
+  const double x[3] = {a[1] * v[2] - a[2] * v[1], a[2] * v[0] - a[0] * v[2], a[0] * v[1] - a[1] * v[0]};
+  for (int i = 0; i < 3; i++) v[i] = v[i] * c + x[i] * n + a[i] * p * (1 - c);
+}
+}  // namespace
+void VueEsquisse::orbiter(double dx, double dy) {
+  if (!s_) return;
+  // Orbite contrainte de l'espace 3D : tour autour du Z du monde, bascule bornée avant les pôles, Z en haut
+  const double k = 2 * 3.141592653589793 / std::max(1, ToDIP(GetClientSize()).y);
+  double mn[3] = {s_->u[2], s_->v[2], s_->n[2]};
+  const double lm = std::hypot(mn[0], mn[1], mn[2]);
+  if (lm > 1e-9)
+    for (double& x : mn) x /= lm;
+  double D[3] = {orbD_[0], orbD_[1], orbD_[2]}, U[3] = {orbU_[0], orbU_[1], orbU_[2]};
+  const double phi = std::acos(std::max(-1.0, std::min(1.0, D[0] * mn[0] + D[1] * mn[1] + D[2] * mn[2])));
+  const double pi = 3.141592653589793, lim = 1e-3;
+  const double a = std::max(lim, std::min(pi - lim, phi - dy * k)) - phi;
+  tourner(D, orbR_, a);
+  tourner(U, orbR_, a);
+  tourner(D, mn, -dx * k);
+  tourner(U, mn, -dx * k);
+  const double p = mn[0] * D[0] + mn[1] * D[1] + mn[2] * D[2];
+  double H[3] = {mn[0] - p * D[0], mn[1] - p * D[1], mn[2] - p * D[2]};
+  const double lh = std::hypot(H[0], H[1], H[2]);
+  if (lh > 1e-6)
+    for (int i = 0; i < 3; i++) U[i] = H[i] / lh;
+  reglerRepere(D, U);
+}
+void VueEsquisse::recalerDeFace() {
+  if (!perspective() || std::abs(orbD_[2]) < std::cos(4 * 3.141592653589793 / 180)) return;
+  const double D[3] = {0, 0, orbD_[2] < 0 ? -1.0 : 1.0}, U[3] = {orbU_[0], orbU_[1], 0};
+  reglerRepere(D, U);
+}
+void VueEsquisse::essaiOrbite(double dx, double dy) {
+  orbiter(dx, dy);
+  recalerDeFace();
+}
+// L'élan : à chaque image, 20 % de ce qui reste (ORBIT_ROT_DAMP)
+void VueEsquisse::surTopOrbite() {
+  if (orbiteVx_ != 0 || orbiteVy_ != 0) {
+    orbiter(orbiteVx_ * 0.2, orbiteVy_ * 0.2);
+    orbiteVx_ *= 0.8;
+    orbiteVy_ *= 0.8;
+    if (std::abs(orbiteVx_) < 0.01 && std::abs(orbiteVy_) < 0.01) orbiteVx_ = orbiteVy_ = 0;
+  }
+  if (!orbiteBas_ && orbiteVx_ == 0 && orbiteVy_ == 0) {
+    topOrbite_->Stop();
+    recalerDeFace();
+  }
+}
+// La zone du plan visible, en coordonnées du plan : le cadre est d'abord coupé sous l'horizon
+std::vector<wxPoint2DDouble> VueEsquisse::zoneVisible(double W, double H) const {
+  std::vector<wxPoint2DDouble> poly = {{-W / 2, -H / 2}, {W / 2, -H / 2}, {W / 2, H / 2}, {-W / 2, H / 2}};
+  if (perspective()) {
+    std::vector<wxPoint2DDouble> dedans;
+    for (size_t i = 0; i < poly.size(); i++) {
+      const auto& a = poly[i];
+      const auto& b = poly[(i + 1) % poly.size()];
+      const double ca = inverseW(a.m_x, a.m_y) - 0.35, cb = inverseW(b.m_x, b.m_y) - 0.35;
+      if (ca >= 0) dedans.push_back(a);
+      if ((ca >= 0) != (cb >= 0)) {
+        const double t = ca / (ca - cb);
+        dedans.emplace_back(a.m_x + (b.m_x - a.m_x) * t, a.m_y + (b.m_y - a.m_y) * t);
+      }
+    }
+    poly = dedans;
+  }
+  for (auto& p : poly) {
+    const auto d = ecranVersPlan(p.m_x, p.m_y);
+    p = wxPoint2DDouble(cx_ + d.m_x / echelle_, cy_ + d.m_y / echelle_);
+  }
+  return poly;
+}
+// Un cercle du plan : un vrai cercle à plat, une courbe suivie point par point en vue inclinée
+wxGraphicsPath VueEsquisse::cheminCercle(wxGraphicsContext& g, double x, double y, double r) const {
+  wxGraphicsPath p = g.CreatePath();
+  if (!perspective()) {
+    const auto c = e(x, y);
+    const double R = r * echelle_;
+    p.AddEllipse(c.m_x - R, c.m_y - R, 2 * R, 2 * R);
+    return p;
+  }
+  for (int i = 0; i < 96; i++) {
+    const double a = i * 2 * 3.141592653589793 / 96;
+    const auto q = e(x + r * std::cos(a), y + r * std::sin(a));
+    if (i == 0) p.MoveToPoint(q);
+    else p.AddLineToPoint(q);
+  }
+  p.CloseSubpath();
+  return p;
 }
 
 // La dernière dessinée est au-dessus
@@ -574,6 +738,10 @@ void VueEsquisse::surCaractere(wxKeyEvent& ev) {
 
 void VueEsquisse::surTouche(wxKeyEvent& ev) {
   const int code = ev.GetKeyCode();
+  if (code == 'N' && s_ && !enSaisie() && !ev.ControlDown() && !ev.AltDown() && !ev.ShiftDown()) {
+    remettreAPlat();  // skOrbFront : à plat, face de l'esquisse devant
+    return;
+  }
   if (dessin_ && !enSaisie()) {
     dessin_->vue(echelle_);
     if (code == WXK_TAB && dessin_->tabulation()) {
@@ -659,6 +827,7 @@ void VueEsquisse::montrer(const Esquisse* s, const TopoDS_Shape& piece) {
       hautX_ = hx / hl;
       hautY_ = hy / hl;
     }
+    remettreAPlat();
     for (const Entite& en : s_->entites)
       if (en.t != "line" && en.t != "arc" && en.t != "circle" && en.t != "cpoint" && en.t != "spline") nonDessines_++;
   }
@@ -683,7 +852,8 @@ void VueEsquisse::fantomeDe(const TopoDS_Shape& piece) {
     GCPnts_TangentialDeflection d(c, 0.2, 0.05);
     for (int i = 1; i < d.NbPoints(); i++) {
       const gp_Vec p(o, d.Value(i)), q(o, d.Value(i + 1));
-      traitsFantome_.push_back({p.Dot(gp_Vec(u)), p.Dot(gp_Vec(v)), q.Dot(gp_Vec(u)), q.Dot(gp_Vec(v))});
+      const gp_Vec n = gp_Vec(u).Crossed(gp_Vec(v));
+      traitsFantome_.push_back({p.Dot(gp_Vec(u)), p.Dot(gp_Vec(v)), q.Dot(gp_Vec(u)), q.Dot(gp_Vec(v)), p.Dot(n), q.Dot(n)});
     }
   }
 }
@@ -779,22 +949,46 @@ void VueEsquisse::ajuster() {
   Refresh();
 }
 
-wxPoint2DDouble VueEsquisse::e(double x, double y) const {
+wxPoint2DDouble VueEsquisse::e(double x, double y) const { return e3(x, y, 0); }
+
+wxPoint2DDouble VueEsquisse::e3(double x, double y, double z) const {
   const wxSize t = ToDIP(GetClientSize());
-  const auto d = direction(x - cx_, y - cy_);
-  return wxPoint2DDouble(t.x / 2.0 + d.m_x * echelle_, t.y / 2.0 + d.m_y * echelle_);
+  const double dx = x - cx_, dy = y - cy_;
+  const double xc = dx * orbR_[0] + dy * orbR_[1] + z * orbR_[2], yc = dx * orbU_[0] + dy * orbU_[1] + z * orbU_[2];
+  double w = 1;
+  if (perspective()) w = std::max(0.02, 1 - (dx * orbD_[0] + dy * orbD_[1] + z * orbD_[2]) * echelle_ * kPerspective());
+  return wxPoint2DDouble(t.x / 2.0 + xc * echelle_ / w, t.y / 2.0 - yc * echelle_ / w);
 }
 
 wxPoint2DDouble VueEsquisse::direction(double x, double y) const {
-  return wxPoint2DDouble(hautY_ * x - hautX_ * y, -(hautX_ * x + hautY_ * y));
+  return wxPoint2DDouble(orbR_[0] * x + orbR_[1] * y, -(orbU_[0] * x + orbU_[1] * y));
+}
+wxPoint2DDouble VueEsquisse::directionEn(double x, double y, double ux, double uy) const {
+  const double pas = 1 / echelle_;
+  const auto a = e(x, y), b = e(x + ux * pas, y + uy * pas);
+  const double l = std::max(std::hypot(b.m_x - a.m_x, b.m_y - a.m_y), 1e-9);
+  return wxPoint2DDouble((b.m_x - a.m_x) / l, (b.m_y - a.m_y) / l);
 }
 
 void VueEsquisse::surEnfonce(wxMouseEvent& ev) {
   SetFocus();
   if (!HasCapture()) CaptureMouse();
+  // Molette enfoncée = orbite, comme dans l'espace 3D ; clic droit ou Ctrl + molette = déplacement
+  if (ev.MiddleDown() && !ev.ControlDown()) {
+    orbiteBas_ = true;
+    orbiteDernier_ = ToDIP(ev.GetPosition());
+    orbiteVx_ = orbiteVy_ = 0;
+    topOrbite_->Start(16);
+    return;
+  }
   geste_ = {ev.GetPosition(), cx_, cy_, true};
 }
 void VueEsquisse::surRelache(wxMouseEvent& ev) {
+  if (orbiteBas_ && ev.MiddleUp()) {
+    orbiteBas_ = false;  // l'élan s'écoule
+    if (HasCapture() && !gauche_) ReleaseMouse();
+    return;
+  }
   const wxPoint d = ToDIP(ev.GetPosition() - geste_.depart);
   const bool clicDroit = geste_.actif && ev.RightUp() && std::abs(d.x) + std::abs(d.y) < 4;
   geste_.actif = false;
@@ -892,6 +1086,13 @@ void VueEsquisse::clicDroitDessin(const wxPoint& ou) {
   commande([&code](Dessin& de) { de.actionMenu(code); });
 }
 void VueEsquisse::surMouvement(wxMouseEvent& ev) {
+  if (orbiteBas_) {
+    const wxPoint q = ToDIP(ev.GetPosition());
+    orbiteVx_ += q.x - orbiteDernier_.x;
+    orbiteVy_ += q.y - orbiteDernier_.y;
+    orbiteDernier_ = q;
+    return;
+  }
   if (!geste_.actif) {
     if (!dessin_ || !s_) return;
     const auto w = plan(ev.GetPosition());
@@ -902,17 +1103,20 @@ void VueEsquisse::surMouvement(wxMouseEvent& ev) {
     if (avant || dessin_->enCours()) apresGeste();
     return;
   }
-  const wxPoint d = ToDIP(ev.GetPosition() - geste_.depart);
-  cx_ = geste_.cx - (hautY_ * d.x - hautX_ * d.y) / echelle_;
-  cy_ = geste_.cy - (-hautX_ * d.x - hautY_ * d.y) / echelle_;
+  // Le point saisi reste sous le curseur, vue inclinée comprise
+  const wxSize t = ToDIP(GetClientSize());
+  const wxPoint a = ToDIP(ev.GetPosition()), b = ToDIP(geste_.depart);
+  const auto pa = ecranVersPlan(a.x - t.x / 2.0, a.y - t.y / 2.0), pb = ecranVersPlan(b.x - t.x / 2.0, b.y - t.y / 2.0);
+  cx_ = geste_.cx - (pa.m_x - pb.m_x) / echelle_;
+  cy_ = geste_.cy - (pa.m_y - pb.m_y) / echelle_;
   Refresh();
 }
 void VueEsquisse::surMolette(wxMouseEvent& ev) {
   // Le point du monde sous le curseur ne bouge pas
   const wxPoint p = ToDIP(ev.GetPosition());
   const wxSize t = ToDIP(GetClientSize());
-  const double sx = p.x - t.x / 2.0, sy = p.y - t.y / 2.0;
-  const double dx = (hautY_ * sx - hautX_ * sy), dy = (-hautX_ * sx - hautY_ * sy);  // écran → plan
+  const auto dp = ecranVersPlan(p.x - t.x / 2.0, p.y - t.y / 2.0);
+  const double dx = dp.m_x, dy = dp.m_y;  // écran → plan
   const double wx0 = cx_ + dx / echelle_, wy0 = cy_ + dy / echelle_;
   const double k = std::pow(1.15, ev.GetWheelRotation() / 120.0);
   echelle_ = std::max(ECHELLE_MIN, std::min(ECHELLE_MAX, echelle_ * k));
@@ -964,6 +1168,7 @@ void VueEsquisse::dessiner(wxDC& dc) {
   const wxSize t = ToDIP(GetClientSize());
   grille(*g, t.x, t.y);
   fantome(*g);
+  if (parLaTranche()) return;  // le plan vu par la tranche : le dessin n'a plus d'image
   zones(*g);
   entites(*g);
   halo(*g);
@@ -1327,9 +1532,8 @@ void VueEsquisse::trace(wxGraphicsContext& g) const {
       g.StrokePath(p);
       const wxColour jaune(0xff, 0xd6, 0x0a);
       const auto c = e(b.cx, b.cy);
-      const double r = b.r * echelle_;
       g.SetPen(stylo(g, jaune, 1, {3, 3}));
-      cercle(g, c.m_x - r, c.m_y - r, 2 * r, 2 * r);
+      g.StrokePath(cheminCercle(g, b.cx, b.cy, b.r));
       const wxString texte = wxString::Format(L"%d côtés · ⌀%.2f", b.n, 2 * b.r);
       double L, H, dsc, ext;
       g.SetFont(g.CreateFont(wxFontInfo(10).Bold(), jaune));
@@ -1338,9 +1542,7 @@ void VueEsquisse::trace(wxGraphicsContext& g) const {
       break;
     }
     case Dessin::Brouillon::B_CERCLE: {
-      const auto c = e(b.cx, b.cy);
-      const double r = b.r * echelle_;
-      cercle(g, c.m_x - r, c.m_y - r, 2 * r, 2 * r);
+      g.StrokePath(cheminCercle(g, b.cx, b.cy, b.r));
       break;
     }
     case Dessin::Brouillon::B_ARC: {
@@ -1428,22 +1630,51 @@ void VueEsquisse::grille(wxGraphicsContext& g, double W, double H) const {
       pas = st;
       break;
     }
-  // Zone visible : une demi-diagonale autour du centre couvre l'écran quelle que soit la rotation
-  const double demi = std::hypot(W, H) / 2 / echelle_;
-  const double x0 = cx_ - demi, x1 = cx_ + demi, y0 = cy_ - demi, y1 = cy_ + demi;
+  // La zone visible ; chaque ligne y est coupée (skClipSeg)
+  const auto poly = zoneVisible(W, H);
+  if (poly.size() < 3) return;
+  double x0 = 1e300, x1 = -1e300, y0 = 1e300, y1 = -1e300;
+  for (const auto& q : poly) {
+    x0 = std::min(x0, q.m_x);
+    x1 = std::max(x1, q.m_x);
+    y0 = std::min(y0, q.m_y);
+    y1 = std::max(y1, q.m_y);
+  }
+  const auto ligneCoupee = [&](double xa, double ya, double xb, double yb) {
+    double ar = 0;
+    const size_t n = poly.size();
+    for (size_t i = 0; i < n; i++) ar += poly[i].m_x * poly[(i + 1) % n].m_y - poly[(i + 1) % n].m_x * poly[i].m_y;
+    const double sg = ar < 0 ? -1 : 1, dx = xb - xa, dy = yb - ya;
+    double t0 = 0, t1 = 1;
+    for (size_t i = 0; i < n; i++) {
+      const auto& a = poly[i];
+      const auto& b = poly[(i + 1) % n];
+      const double ex = b.m_x - a.m_x, ey = b.m_y - a.m_y;
+      const double num = sg * (ex * (ya - a.m_y) - ey * (xa - a.m_x)), den = sg * (ex * dy - ey * dx);
+      if (std::abs(den) < 1e-15) {
+        if (num < 0) return;
+        continue;
+      }
+      const double u = -num / den;
+      if (den > 0) t0 = std::max(t0, u);
+      else t1 = std::min(t1, u);
+      if (t0 > t1) return;
+    }
+    ligne(g, e(xa + dx * t0, ya + dy * t0), e(xa + dx * t1, ya + dy * t1));
+  };
   const auto kx0 = std::floor(x0 / pas), kx1 = std::ceil(x1 / pas), ky0 = std::floor(y0 / pas), ky1 = std::ceil(y1 / pas);
   if (grille_) {  // masquée par défaut, comme le navigateur : les axes seuls
     g.SetPen(stylo(g, GRILLE, 1));
     if (kx1 - kx0 < 600)
       for (double k = kx0; k <= kx1; k++)
-        if (std::abs(k * pas) > 1e-9) ligne(g, e(k * pas, y0), e(k * pas, y1));
+        if (std::abs(k * pas) > 1e-9) ligneCoupee(k * pas, y0, k * pas, y1);
     if (ky1 - ky0 < 600)
       for (double k = ky0; k <= ky1; k++)
-        if (std::abs(k * pas) > 1e-9) ligne(g, e(x0, k * pas), e(x1, k * pas));
+        if (std::abs(k * pas) > 1e-9) ligneCoupee(x0, k * pas, x1, k * pas);
   }
   g.SetPen(stylo(g, AXE, 1.5));
-  ligne(g, e(0, y0), e(0, y1));
-  ligne(g, e(x0, 0), e(x1, 0));
+  ligneCoupee(0, y0, 0, y1);
+  ligneCoupee(x0, 0, x1, 0);
 }
 
 void VueEsquisse::fantome(wxGraphicsContext& g) const {
@@ -1451,7 +1682,7 @@ void VueEsquisse::fantome(wxGraphicsContext& g) const {
   g.SetPen(stylo(g, wxColour(0xe6, 0xe6, 0xee, 107), 1.15));
   wxGraphicsPath p = g.CreatePath();
   for (const Trait& t : traitsFantome_) {
-    const auto a = e(t.x1, t.y1), b = e(t.x2, t.y2);
+    const auto a = e3(t.x1, t.y1, t.z1), b = e3(t.x2, t.y2, t.z2);
     p.MoveToPoint(a);
     p.AddLineToPoint(b);
   }
@@ -1667,11 +1898,11 @@ void VueEsquisse::entites(wxGraphicsContext& g) const {
         if (!en.construction) {
           g.SetBrush(g.CreateBrush(wxBrush(alpha(CYAN, 0.07))));
           g.SetPen(wxNullGraphicsPen);
-          g.DrawEllipse(c.m_x - r, c.m_y - r, 2 * r, 2 * r);
+          g.FillPath(cheminCercle(g, C->x, C->y, std::abs(en.r)));
           g.SetBrush(wxNullGraphicsBrush);
         }
         regler(en);
-        cercle(g, c.m_x - r, c.m_y - r, 2 * r, 2 * r);
+        g.StrokePath(cheminCercle(g, C->x, C->y, std::abs(en.r)));
       } else {
         const auto an = anglesArc(s, en);
         if (!an) continue;
@@ -1892,11 +2123,7 @@ void VueEsquisse::halo(wxGraphicsContext& g) const {
       const Pt* B = s_->point(en.p2);
       if (A && B) ligne(g, e(A->x, A->y), e(B->x, B->y));
     } else if (en.t == "circle") {
-      if (const Pt* C = s_->point(en.pc)) {
-        const auto q = e(C->x, C->y);
-        const double r = std::abs(en.r) * echelle_;
-        cercle(g, q.m_x - r, q.m_y - r, 2 * r, 2 * r);
-      }
+      if (const Pt* C = s_->point(en.pc)) g.StrokePath(cheminCercle(g, C->x, C->y, std::abs(en.r)));
     } else if (en.t == "arc") {
       const Pt* C = s_->point(en.pc);
       const auto an = anglesArc(*s_, en);
@@ -2132,7 +2359,8 @@ void VueEsquisse::coteAngle(wxGraphicsContext& g, const Cote& d) const {
   g.StrokePath(p);
   const auto q1 = e(V.x + rr * std::cos(sA), V.y + rr * std::sin(sA)), q2 = e(V.x + rr * std::cos(sA + dd), V.y + rr * std::sin(sA + dd));
   const double sg = dd >= 0 ? 1 : -1;
-  const auto t1 = direction(std::sin(sA) * sg, -std::cos(sA) * sg), t2 = direction(-std::sin(sA + dd) * sg, std::cos(sA + dd) * sg);
+  const auto t1 = directionEn(V.x + rr * std::cos(sA), V.y + rr * std::sin(sA), std::sin(sA) * sg, -std::cos(sA) * sg);
+  const auto t2 = directionEn(V.x + rr * std::cos(sA + dd), V.y + rr * std::sin(sA + dd), -std::sin(sA + dd) * sg, std::cos(sA + dd) * sg);
   fleche(g, q1.m_x, q1.m_y, t1.m_x, t1.m_y, c, 8);
   fleche(g, q2.m_x, q2.m_y, t2.m_x, t2.m_y, c, 8);
   const double am = sA + dd / 2;
