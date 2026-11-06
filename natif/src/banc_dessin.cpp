@@ -100,6 +100,8 @@ int wmain(int argc, wchar_t** argv) {
   std::map<std::string, std::string> textes;
   std::map<std::string, json> lus;
   long ecritOk = 0, ecritFaux = 0;
+  long apercuTotal = 0, apercuAnnonces = 0, apercuFideles = 0, apercuProches = 0, apercuProjetees = 0;
+  std::vector<std::string> apercuExemples;
   std::vector<std::string> fautesEcrit;
 
   for (const json& es : ref) {
@@ -138,8 +140,63 @@ int wmain(int argc, wchar_t** argv) {
         if (a == "outil") {
           const std::string o = st["o"];
           D.choisirOutil(o == "line" ? Dessin::LIGNE : o == "rect" ? Dessin::RECTANGLE : o == "circle" ? Dessin::CERCLE : o == "arc" ? Dessin::ARC : o == "dim" ? Dessin::COTE : o == "trim" ? Dessin::AJUSTER : o == "offset" ? Dessin::DECALER : Dessin::SELECTION);
+        } else if (a == "offD") {
+          D.bouge(x, y);
+          for (const char c : st["t"].get<std::string>()) D.caractere(c);
+          D.entree();
         } else if (a == "bas") {
-          D.enfonce(x, y, st.value("c", false));
+          if (D.outil() == Dessin::AJUSTER) {
+            // L'aperçu annonce-t-il bien ce que le clic retire ? Longueur totale avant et après
+            const auto longueur = [](const Esquisse& s) {
+              double t = 0;
+              for (const Entite& e : s.entites) {
+                if (e.t == "line") {
+                  const Pt* A = s.point(e.p1);
+                  const Pt* B = s.point(e.p2);
+                  if (A && B) t += std::hypot(B->x - A->x, B->y - A->y);
+                } else if (e.t == "circle") {
+                  t += 2 * 3.141592653589793 * e.r;
+                } else if (e.t == "arc") {
+                  const Pt* C = s.point(e.pc);
+                  const Pt* A = s.point(e.pa);
+                  const Pt* B = s.point(e.pb);
+                  if (C && A && B) {
+                    double d = std::fmod(std::atan2(B->y - C->y, B->x - C->x) - std::atan2(A->y - C->y, A->x - C->x), 2 * 3.141592653589793);
+                    if (d <= 1e-9) d += 2 * 3.141592653589793;
+                    t += d * e.r;
+                  }
+                }
+              }
+              return t;
+            };
+            const Dessin::ApercuCoupe ap = D.calculerApercu(x, y);
+            const double annonce = ap.sorte == Dessin::ApercuCoupe::TRAIT ? std::hypot(ap.B.x - ap.A.x, ap.B.y - ap.A.y) : ap.sorte == Dessin::ApercuCoupe::ROND ? (ap.a2 - ap.a1) * ap.r : 0;
+            const double avant = longueur(s);
+            Esquisse essai = s;
+            Edition edEssai(essai);
+            Dessin dEssai(essai, edEssai);
+            dEssai.vue(se["s"].get<double>());
+            std::string dit;
+            dEssai.surMessage = [&](const std::string& m) { dit = m; };
+            size_t nAvant = essai.entites.size();
+            dEssai.couperSansResoudre(x, y);
+            const double retire = avant - longueur(essai);
+            // Une projetée coupée passe en construction et reçoit une copie : le total des longueurs ne dit plus rien
+            bool projetee = false;
+            for (const Entite& e : s.entites)
+              if (e.proj && e.t == "line" && !e.construction)
+                for (const Entite& g : essai.entites)
+                  if (g.id == e.id && g.construction) projetee = true;
+            D.enfonce(x, y, st.value("c", false));
+            apercuTotal++;
+            if (annonce > 0) apercuAnnonces++;
+            if (projetee) apercuProjetees++;
+            else if (std::abs(retire - annonce) < 0.001) apercuFideles++;
+            else if (std::abs(retire - annonce) < 1) apercuProches++;
+            else if (apercuExemples.size() < 14) apercuExemples.push_back(f + " " + id + " graine " + std::to_string(se["graine"].get<int>()) + " sorte " + std::to_string(ap.sorte) + " éléments " + std::to_string(nAvant) + "->" + std::to_string(essai.entites.size()) + " : annonce " + std::to_string(annonce) + ", retiré " + std::to_string(retire) + " [" + dit + "] clic " + std::to_string(x) + "," + std::to_string(y) + " de " + std::to_string(ap.A.x) + "," + std::to_string(ap.A.y) + " à " + std::to_string(ap.B.x) + "," + std::to_string(ap.B.y));
+          } else {
+            D.enfonce(x, y, st.value("c", false));
+          }
         } else if (a == "bouge") {
           D.bouge(x, y);
         } else if (a == "haut") {
@@ -257,6 +314,8 @@ int wmain(int argc, wchar_t** argv) {
   for (size_t i = 0; i < fautes.size() && i < lim; i++) printf("  %s\n", fautes[i].c_str());
   for (size_t i = 0; i < pires.size() && i < lim; i++) printf("  %.3g  %s\n", pires[i].first, pires[i].second.c_str());
   printf("enregistrement : %ld sessions écrites comme le navigateur, %ld écarts\n", ecritOk, ecritFaux);
+  printf("aperçu d'Ajuster : %ld clics, %ld avec un morceau annoncé, %ld où la longueur retirée est celle annoncée, %ld à moins de 1 mm (accrochage à un point voisin), %ld sur une projetée, non comptées\n", apercuTotal, apercuAnnonces, apercuFideles, apercuProches, apercuProjetees);
+  for (const std::string& x : apercuExemples) printf("  %s\n", x.c_str());
   for (size_t i = 0; i < fautesEcrit.size() && i < lim; i++) printf("  %s\n", fautesEcrit[i].c_str());
   return sessionsOk == nSessions && !ecritFaux ? 0 : 1;
 }

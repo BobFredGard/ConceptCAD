@@ -180,7 +180,100 @@ $c = Comptes
 Verifie ($c -eq $avant) "Échap ne crée rien : $c"
 "12. Échap : $c"
 
+# Un peigne : deux montants et trois barreaux, pour comparer les clics et le glisser
+function Fiche { return (node -e "const f=require('fs'),z=require('zlib');let b=f.readFileSync(process.argv[1]);if(b[0]==0x1f)b=z.gunzipSync(b);const j=JSON.parse(b),d=j.doc||j,k=d.sketches.at(-1);console.log(require('crypto').createHash('sha1').update(JSON.stringify([k.entities,k.points,k.constraints,k.dims])).digest('hex'))" "$copie") }
+foreach ($fx in 0.52, 0.66) { Outil 'Ligne'; Clic (X $fx) (Y 0.56); Clic (X $fx) (Y 0.92); Touche 0x1B }
+foreach ($fy in 0.62, 0.74, 0.86) { Outil 'Ligne'; Clic (X 0.49) (Y $fy); Clic (X 0.69) (Y $fy); Touche 0x1B }
+Menu 5003
+$depart = Fiche
+"14. Peigne : $(Comptes)"
+
+# L'aperçu : le morceau sous la souris en rouge, rien ne change
+Outil 'Ajuster'
+Souris (X 0.59) (Y 0.74)
+Capture '5-apercu-ligne.png'
+Souris (X 0.85) (Y 0.30)
+Capture '6-apercu-arc.png'
+Menu 5003
+Verifie ((Fiche) -eq $depart) 'survoler ne change rien'
+"15. Aperçu : rien de changé"
+
+# Trois clics, un par barreau
+foreach ($fy in 0.62, 0.74, 0.86) { Clic (X 0.59) (Y $fy) }
+Menu 5003
+$parClics = Fiche
+Verifie ($parClics -ne $depart) 'les clics retirent les morceaux'
+"16. Trois clics : $(Comptes)"
+Menu 6001; Menu 6001; Menu 6001
+Menu 5003
+Verifie ((Fiche) -eq $depart) 'trois Ctrl+Z rendent le peigne'
+
+# Le même résultat en un seul glisser, sans passer par les montants
+$x = X 0.59
+Souris $x (Y 0.57)
+Msg $vue 0x201 1 (Pos $x (Y 0.57)); Start-Sleep -Milliseconds 40
+foreach ($fy in 0.60, 0.64, 0.68, 0.72, 0.76, 0.80, 0.84, 0.88, 0.90) { Souris $x (Y $fy) 1 }
+Msg $vue 0x202 0 (Pos $x (Y 0.90)); Start-Sleep -Milliseconds 300
+"17. Glisser : $(Etat)"
+Capture '7-apres-glisser.png'
+Menu 5003
+Verifie ((Fiche) -eq $parClics) "le glisser donne exactement le résultat des trois clics : $(Comptes)"
+"18. Identique aux trois clics"
+Menu 6001
+Menu 5003
+Verifie ((Fiche) -eq $depart) 'un seul Ctrl+Z rend les trois morceaux'
+"19. Un seul Ctrl+Z rend tout"
+Menu 6002
+Touche 0x1B
+
+# Distance tapée, validée par Entrée : la souris donne le côté
+function Car($c) { Msg $vue 0x102 ([int][char]$c) ([IntPtr]1); Start-Sleep -Milliseconds 80 }
+function Ecarts { return (node -e "const f=require('fs'),z=require('zlib');let b=f.readFileSync(process.argv[1]);if(b[0]==0x1f)b=z.gunzipSync(b);const j=JSON.parse(b),d=j.doc||j,k=d.sketches.at(-1);console.log(k.dims.filter(c=>c.type=='gap').map(c=>c.value).join(' '))" "$copie") }
+Outil 'Sélection'
+Clic (X 0.30) (Y 0.60)
+Outil 'Décaler'
+Clic (X 0.60) (Y 0.45)
+Souris (X 0.30) (Y 0.45)
+foreach ($c in '1','2',',','5') { Car $c }
+Capture '8-distance-tapee.png'
+Touche 0x0D
+Verifie ((Etat) -like '*12.50 mm*') "la distance tapée est prise : $(Etat)"
+"20. Tapé 12,5 puis Entrée : $(Etat)"
+Menu 5003
+$c = Ecarts
+Verifie ($c -like '* 12.5') "la cote vaut 12,5 : $c"
+"21. Cotes d'écart : $c"
+Touche 0x1B
+
+# Distance tapée, validée par un clic du côté voulu
+Outil 'Sélection'
+Clic (X 0.30) (Y 0.60)
+Outil 'Décaler'
+Clic (X 0.60) (Y 0.45)
+Car '7'
+Clic (X 0.30) (Y 0.70)
+Verifie ((Etat) -like '*7.00 mm*') "le clic valide la distance tapée : $(Etat)"
+"22. Tapé 7 puis clic : $(Etat)"
+Menu 5003
+$c = Ecarts
+Verifie ($c -like '* 7') "la cote vaut 7 : $c"
+Touche 0x1B
+
+# Effacer la frappe, puis Échap : rien de créé
+$avant = Comptes
+Outil 'Sélection'
+Clic (X 0.24) (Y 0.60)
+Outil 'Décaler'
+Clic (X 0.60) (Y 0.45)
+Car '3'
+Touche 0x08
+Touche 0x1B
+Menu 5003
+$apres = Comptes
+Verifie ($apres -eq $avant) "Échap pendant la frappe ne crée rien : $avant / $apres"
+"23. Échap pendant la frappe : rien de créé"
+
 [void]$p.CloseMainWindow()
 Start-Sleep -Milliseconds 300
 if (-not $p.WaitForExit(10000)) { $p.Kill(); throw 'la fenêtre ne se ferme pas' }
-"13. Fermeture propre, code $($p.ExitCode)"
+"24. Fermeture propre, code $($p.ExitCode)"

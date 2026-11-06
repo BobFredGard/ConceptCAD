@@ -4,6 +4,7 @@
 // node dessin-reference.cjs <dossier d'exemples> <sortie.json> [--communes] [--nom=extrait] [--sessions=n] [--contraintes] [--cotes]
 // --cotes : ajoute l'outil Cote et la longueur tapée aux gestes tirés
 // --modifier : ajoute Ajuster et Décaler aux gestes tirés
+// --tape : ajoute Décaler à distance tapée. Le navigateur n'a pas ce geste : on appelle directement son skOffsetApply avec la distance
 // --contraintes : ajoute la pose de contraintes aux gestes tirés (sans cette option, les références déjà faites restent reproductibles)
 // Restent neutralisés, à dire honnêtement : l'accroche sur les arêtes du solide, et le clic sur une étiquette de cote.
 'use strict';
@@ -81,6 +82,17 @@ vm.runInContext(`
     else if (st.a === 'bouge') __evt('pointermove', st.x, st.y);
     else if (st.a === 'haut') __evt('pointerup', st.x, st.y);
     else if (st.a === 'dbl') __evt('dblclick', st.x, st.y);
+    else if (st.a === 'offD') {
+      if (skOffArm) {
+        const sel = skSelectedEnts().filter(e => (e.t === 'line' && !e.handle || e.t === 'circle' || e.t === 'arc') && !e.ref);
+        skOffArm = false;
+        if (sel.length) {
+          skPushUndo();
+          const r = skOffsetApply(skEdit, sel.map(e => e.id), Number(st.t), { x: st.x, y: st.y });
+          if (!r.ok) { skUndoStack.pop(); skUndoBtn(); } else afterEdit();
+        }
+      }
+    }
     else if (st.a === 'echap') skEscapeToSelect();
     else if (st.a === 'suppr') deleteSkSel();
     else if (st.a === 'con') applyCon(st.t);
@@ -260,6 +272,20 @@ function session(src, graine, nbGestes) {
       else if (fin < 0.92) clic({ x: choix[0].x || cote.x, y: choix[0].y || cote.y });
       faire({ a: 'echap' });
     },
+    decalerTape() {
+      const g = geo();
+      const utiles = g.entities.filter(e => (e.t === 'line' && g.points[e.p1] && g.points[e.p2]) || (e.t === 'circle' && g.points[e.pc]) || (e.t === 'arc' && g.points[e.pc] && g.points[e.pa] && g.points[e.pb]));
+      if (!utiles.length) return;
+      const A = pick(utiles);
+      const sur = A.t === 'line' ? { x: (g.points[A.p1].x + g.points[A.p2].x) / 2, y: (g.points[A.p1].y + g.points[A.p2].y) / 2 } : { x: g.points[A.pc].x + A.r, y: g.points[A.pc].y };
+      faire({ a: 'outil', o: 'select' });
+      clic(sur);
+      faire({ a: 'outil', o: 'offset' });
+      clic(vide());
+      const cote = r() < 0.6 ? vide() : lieu();
+      faire({ a: 'offD', x: cote.x, y: cote.y, t: String(+(0.5 + r() * 30).toFixed(r() < 0.5 ? 1 : 3)) });
+      faire({ a: 'echap' });
+    },
     longueurTapee() {
       faire({ a: 'outil', o: 'line' });
       const dep = lieu();
@@ -380,6 +406,7 @@ function session(src, graine, nbGestes) {
   if (process.argv.includes('--contraintes')) noms.push(...Array(10).fill('contrainte'));
   if (process.argv.includes('--cotes')) noms.push(...Array(8).fill('coteOutil'), ...Array(5).fill('longueurTapee'));
   if (process.argv.includes('--modifier')) noms.push(...Array(10).fill('ajuster'), ...Array(10).fill('decaler'));
+  if (process.argv.includes('--tape')) noms.push(...Array(8).fill('decalerTape'));
   for (let i = 0; i < nbGestes; i++) {
     const avant = pas.length;
     const nom = pick(noms);

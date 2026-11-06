@@ -67,6 +67,16 @@ class Dessin {
   // Cote de référence ouverte en saisie : elle redevient pilotante si elle n'est plus en trop (editDim). Rend false sinon.
   bool rendrePilotante(const std::string& id);
 
+  // Outil Ajuster : le morceau qui partirait si on cliquait ici. Rien n'est modifié.
+  struct ApercuCoupe {
+    enum Sorte { RIEN, TRAIT, ROND } sorte = RIEN;
+    Pt A, B;                  // trait
+    Pt C;                     // rond : centre, rayon, de a1 à a2 dans le sens trigonométrique
+    double r = 0, a1 = 0, a2 = 0;
+  };
+  ApercuCoupe calculerApercu(double wx, double wy) const;
+  const ApercuCoupe& apercu() const { return apercu_; }
+
   const Brouillon& brouillon() const { return brouillon_; }
   const Guide& guide() const { return guide_; }
   bool aMarque() const { return aMarque_; }
@@ -102,6 +112,7 @@ class Dessin {
 
   // Pour les essais
   void premiere();
+  void couperSansResoudre(double wx, double wy);  // la coupe seule, pour contrôler l'aperçu avant que le solveur ne déplace tout
 
  private:
   struct Bas {  // skDown
@@ -186,6 +197,17 @@ class Dessin {
   std::vector<std::string> choixDecalables() const;
   bool decalerElements(const std::vector<std::string>& ids, double D, const Pt& S, std::string& msg);  // skOffsetApply
   bool offArme_ = false;  // skOffArm : le prochain clic donne le côté
+  void appliquerDecalage(const std::vector<std::string>& ids, double D, double wx, double wy);
+  bool distanceTapee(double& D);  // la distance en cours de frappe ; si elle est invalide, le dit et l'oublie
+  void validerDistance();
+  Pt curseurDecalage_;
+
+  // Ajuster en glissant : tout ce qui est traversé part, en une seule annulation
+  void glisserAjuster(double wx, double wy);
+  ApercuCoupe apercu_;
+  bool coupeGlisse_ = false, coupePoussee_ = false, coupeFaite_ = false;
+  int coupesGlissees_ = 0;
+  Pt coupePrec_, coupeDerniere_;
 
   // Contraintes
   void pousserAvant();                               // skPushUndo, en gardant de quoi revenir

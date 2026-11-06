@@ -33,9 +33,9 @@ Coter : outil **Cote**. Un clic sur une ligne donne sa longueur, sur un cercle s
 
 Longueur tapée : pendant le tracé d'une ligne, taper le nombre, puis Entrée ou clic. Tab passe de la longueur à l'angle. La ligne reçoit sa cote de longueur, comme dans le navigateur.
 
-Ajuster : outil **Ajuster** ou touche T, puis un clic sur le morceau à retirer. Il part entre les deux croisements les plus proches, et la ligne croisée est partagée en deux au point de coupe, comme dans le navigateur. Un cercle coupé au moins deux fois devient un arc.
+Ajuster : outil **Ajuster** ou touche T. Le morceau sous la souris s'affiche en rouge : c'est lui qui partira. Un clic le retire ; en gardant le bouton enfoncé et en glissant, tout ce que la souris traverse part, et un seul Ctrl+Z rend le tout. La ligne croisée est partagée en deux au point de coupe, comme dans le navigateur. Un cercle coupé au moins deux fois devient un arc.
 
-Décaler : choisir les éléments avec **Sélection** (Ctrl+clic pour les suivants), outil **Décaler** ou touche O, un premier clic pour commencer, puis un clic du côté voulu : la distance est celle du curseur, affichée dans la barre du bas. Échap abandonne. Les éléments reliés sont décalés ensemble et gardent leurs coins ; chaque chaîne reçoit une seule cote, à double-cliquer pour changer la distance.
+Décaler : choisir les éléments avec **Sélection** (Ctrl+clic pour les suivants), outil **Décaler** ou touche O, un premier clic pour commencer, puis un clic du côté voulu : la distance est celle du curseur, affichée dans la barre du bas. On peut aussi taper la distance : la souris donne le côté, Entrée ou un clic valide. Échap abandonne. Les éléments reliés sont décalés ensemble et gardent leurs coins ; chaque chaîne reçoit une seule cote, à double-cliquer pour changer la distance.
 
 Poser une contrainte : choisir les éléments (Ctrl+clic pour les suivants), puis menu **Contraintes** ou mêmes touches que le navigateur : F1 coïncident ou fusion de deux points, F2 horizontal ou vertical selon la ligne, F3 tangent, F4 égal, F5 parallèle, F6 perpendiculaire, F7 milieu, F8 concentrique, F9 colinéaire, F10 symétrique, F12 fixe, X construction. Une contrainte qui rendrait l'esquisse impossible est refusée, avec la raison : tout revient exactement à l'état d'avant.
 
@@ -240,6 +240,13 @@ En maths normales, 5 sessions s'arrêtent sur une différence de structure et 30
 La comparaison a fait trouver et corriger trois vrais défauts : l'arrondi au croisement de deux droites décalées, le contrôle des cotes en trop sur un arc dont le centre et un bout sont fixes, et une cote d'écart devenue angle qui perdait ses marques à l'enregistrement.
 
 La fenêtre, sur une copie du Drapeau : ligne ajustée, Ctrl+Z et Ctrl+Y qui gardent l'outil, cercle enregistré puis changé en arc puis réenregistré, touches T et O, rectangle décalé de 9,16 mm (4 copies, une cote), abandon par Échap sans rien créer. Les essais en fenêtre précédents repassent.
+
+Trois ajouts venus de SolidCraft, sans effet sur le fichier : l'aperçu rouge, le glisser et la distance tapée. Ils sont propres à ce programme, le navigateur ne les a pas. Comment ils sont vérifiés :
+- Distance tapée (`--tape`) : la référence appelle directement le calcul de décalage du navigateur avec la même distance. 528 états, dont 286 qui ajoutent des éléments ; **383 sessions sur 383** identiques à maths communes, 375 enregistrements identiques.
+- Glisser : dans `verifier-ajuster.ps1`, le glisser à travers trois barreaux donne exactement l'esquisse des trois clics, et un seul Ctrl+Z rend le peigne de départ.
+- Aperçu : le banc compare la longueur annoncée à celle que la coupe retire, avant que le solveur ne déplace le dessin. Sur 1 573 clics : 1 506 exacts, 41 à moins de 1 mm (accrochage à un point voisin), 24 sur une ligne projetée où le total ne dit rien, 2 écarts plus grands (1,4 et 3,2 mm).
+
+Défaut du navigateur, reproduit à l'identique : couper une ligne de construction au passage crée une moitié qui n'est plus en construction.
 
 Pas traduits : les splines (ni coupées, ni comptées comme limite, ni décalées) et le menu contextuel « Décaler (auto) » du navigateur.
 

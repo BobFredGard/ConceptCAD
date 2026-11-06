@@ -191,6 +191,10 @@ bool Dessin::estChoisi(Choix::Sorte so, const std::string& id) const {
 }
 
 bool Dessin::departTrace(Pt& p) const {
+  if (outil_ == DECALER && offArme_) {  // la distance tapée s'affiche près du curseur
+    p = curseurDecalage_;
+    return true;
+  }
   if (bas_.actif) {
     p = {bas_.x, bas_.y};
     return true;
@@ -1007,11 +1011,16 @@ void Dessin::bouge(double wx, double wy) {
     if (Cote* d = cote(dimPose_)) return suivreCote(*d, wx, wy);
     dimPose_.clear();
   }
-  if (outil_ == AJUSTER) return;
+  if (outil_ == AJUSTER) {
+    if (coupeGlisse_) glisserAjuster(wx, wy);
+    apercu_ = calculerApercu(wx, wy);
+    return;
+  }
   if (outil_ == DECALER) {
     if (offArme_) {  // la distance vivante, sans aperçu : le clic fige
+      curseurDecalage_ = Pt{wx, wy};
       const std::vector<std::string> ids = choixDecalables();
-      if (!ids.empty()) {
+      if (!ids.empty() && !dyn_.actif) {
         char b[96];
         double best = 1e9;
         for (const std::string& id : ids) {
@@ -1526,6 +1535,11 @@ void Dessin::relacherCercle(double wx, double wy) {
 }
 
 void Dessin::relache(double wx, double wy) {
+  if (coupeGlisse_) {
+    if (coupesGlissees_ > 1) message(std::to_string(coupesGlissees_) + " morceaux retirés en glissant. Ctrl+Z les rend tous.");
+    coupeGlisse_ = false;
+    return;
+  }
   if (!glisseP_.empty()) {
     const std::string pid = glisseP_;
     const Accroche a = glisseAcc_;
@@ -1622,6 +1636,8 @@ void Dessin::annulerTrace() {
   coteAOuvrir_.clear();
   dyn_ = Saisie{};
   offArme_ = false;
+  coupeGlisse_ = false;
+  apercu_ = ApercuCoupe{};
   chaine_.clear();
   arcC_.clear();
   arcA1Pose_ = false;
@@ -2109,6 +2125,10 @@ void Dessin::clicCote(double x, double y, bool ctrl) {
 // ---------- Longueur ou angle tapés pendant le tracé ----------
 bool Dessin::caractere(char c) {
   const bool chiffre = c >= '0' && c <= '9';
+  if (outil_ == DECALER && offArme_ && !dyn_.actif && (chiffre || c == '.' || c == ',')) {
+    dyn_ = Saisie{true, false, ""};
+    message("Décalage : distance tapée. La souris donne le côté, Entrée ou clic pour valider, Échap annule.");
+  }
   if (dyn_.actif) {
     if (chiffre) {
       dyn_.texte += c;
@@ -2128,6 +2148,7 @@ bool Dessin::caractere(char c) {
 }
 
 bool Dessin::tabulation() {
+  if (outil_ == DECALER) return false;  // une distance seulement, pas d'angle
   if (dyn_.actif) {
     dyn_ = Saisie{true, !dyn_.angle, ""};
     return true;
@@ -2152,6 +2173,7 @@ bool Dessin::entree() {
 }
 
 void Dessin::validerSaisie() {
+  if (outil_ == DECALER && offArme_) return validerDistance();
   if (!dyn_.actif || !bas_.actif) return;
   premiere();
   sync();
@@ -3209,15 +3231,153 @@ std::string Dessin::ajusterElement(const std::string& id, double cx, double cy) 
 }
 
 void Dessin::clicAjuster(double wx, double wy) {
+  coupeGlisse_ = true;
+  coupePoussee_ = coupeFaite_ = false;
+  coupesGlissees_ = 0;
+  coupePrec_ = Pt{wx, wy};
   const Entite* e = entiteProche(wx, wy, 12 / echelle_, true);  // SK_PICKX
   if (!e) {
-    message("Ajuster : cliquez un tronçon de ligne, d'arc ou de cercle près d'une intersection.");
+    message("Ajuster : cliquez un morceau de ligne, d'arc ou de cercle près d'une intersection, ou glissez à travers plusieurs morceaux.");
+    apercu_ = ApercuCoupe{};
     return;
   }
   const std::string id = e->id;
   pousser();
+  coupePoussee_ = true;
+  coupeFaite_ = true;
+  coupesGlissees_ = 1;
+  coupeDerniere_ = Pt{wx, wy};
   message(ajusterElement(id, wx, wy));
   apresEdition();
+  apercu_ = calculerApercu(wx, wy);
+}
+
+void Dessin::couperSansResoudre(double wx, double wy) {
+  if (const Entite* e = entiteProche(wx, wy, 12 / echelle_, true)) {
+    const std::string id = e->id;
+    ajusterElement(id, wx, wy);
+  }
+}
+
+// Ce que le clic retirerait : mêmes choix que ajusterElement, sans rien toucher
+Dessin::ApercuCoupe Dessin::calculerApercu(double wx, double wy) const {
+  ApercuCoupe o;
+  const Entite* pe = entiteProche(wx, wy, 12 / echelle_, true);
+  if (!pe || (pe->proj && pe->t != "line")) return o;
+  const Entite& ent = *pe;
+  if (ent.t == "line") {
+    const Pt* pA = s_.point(ent.p1);
+    const Pt* pB = s_.point(ent.p2);
+    if (!pA || !pB) return o;
+    const double dx = pB->x - pA->x, dy = pB->y - pA->y, len2 = dx * dx + dy * dy;
+    if (len2 < 1e-12) return o;
+    const double tc = ((wx - pA->x) * dx + (wy - pA->y) * dy) / len2;
+    bool aP = false, aN = false, vu = false;
+    double tP = 0, tN = 0;
+    for (const Pt& h : croisements(ent)) {
+      const double t = ((h.x - pA->x) * dx + (h.y - pA->y) * dy) / len2;
+      if (t < -1e-6 || t > 1 + 1e-6) continue;
+      vu = true;
+      if (t < tc - 1e-9) {
+        if (!aP || t > tP) tP = t;
+        aP = true;
+      } else if (t > tc + 1e-9) {
+        if (!aN || t < tN) tN = t;
+        aN = true;
+      }
+    }
+    if (!vu || (!aP && !aN)) return o;
+    const double t0 = aP ? tP : 0, t1 = aN ? tN : 1;
+    o.sorte = ApercuCoupe::TRAIT;
+    o.A = Pt{pA->x + dx * t0, pA->y + dy * t0};
+    o.B = Pt{pA->x + dx * t1, pA->y + dy * t1};
+    return o;
+  }
+  if (ent.t != "circle" && ent.t != "arc") return o;
+  const Pt* pC = s_.point(ent.pc);
+  if (!pC) return o;
+  const std::vector<Pt> hits = croisements(ent);
+  if (hits.empty() || (ent.t == "circle" && hits.size() < 2)) return o;
+  std::vector<double> angs;
+  for (const Pt& h : hits) angs.push_back(angleNorme(m_atan2(h.y - pC->y, h.x - pC->x)));
+  std::sort(angs.begin(), angs.end());
+  const double clicA = angleNorme(m_atan2(wy - pC->y, wx - pC->x)), T = PI_ * 2;
+  o.C = *pC;
+  o.r = ent.r;
+  if (ent.t == "circle") {
+    size_t i0 = angs.size() - 1;
+    for (size_t i = 0; i < angs.size(); i++) {
+      const double a0 = angs[i], a1 = angs[(i + 1) % angs.size()];
+      if (a1 > a0 ? (clicA >= a0 && clicA <= a1) : (clicA >= a0 || clicA <= a1)) {
+        i0 = i;
+        break;
+      }
+    }
+    const double aDebut = angs[(i0 + 1) % angs.size()];
+    double aFin = angs[i0];
+    if (aFin <= aDebut) aFin += T;
+    if (aFin - aDebut < 0.05) return o;
+    o.sorte = ApercuCoupe::ROND;
+    o.a1 = angs[i0];
+    o.a2 = aDebut;
+    if (o.a2 <= o.a1) o.a2 += T;
+    return o;
+  }
+  An an;
+  if (!anglesArc2(s_, ent, an)) return o;
+  double d = an.a2 - an.a1;
+  if (d < 1e-9) d = T;
+  const auto rel = [&](double a) {
+    double r = std::fmod(a - an.a1, T);
+    if (r < 0) r += T;
+    return r;
+  };
+  std::vector<double> dans;
+  for (const double a : angs) {
+    const double r = rel(a);
+    if (r > 1e-4 && r < d - 1e-4) dans.push_back(r);
+  }
+  std::sort(dans.begin(), dans.end());
+  if (dans.empty()) return o;
+  const double rc = rel(clicA);
+  double r0 = 0, r1 = d;
+  bool aN = false;
+  for (const double r : dans) {
+    if (r < rc) r0 = r;
+    else if (!aN) {
+      r1 = r;
+      aN = true;
+    }
+  }
+  o.sorte = ApercuCoupe::ROND;
+  o.a1 = an.a1 + r0;
+  o.a2 = an.a1 + r1;
+  return o;
+}
+
+// La souris passe sur un morceau, à quelques pixels près : il part. Après une coupe, il faut s'en éloigner
+// un peu : sans cela le voisin, de l'autre côté du croisement, partirait dans le même mouvement.
+void Dessin::glisserAjuster(double wx, double wy) {
+  const double L = hyp(wx - coupePrec_.x, wy - coupePrec_.y);
+  const int n = jsmax(1, std::ceil(L * echelle_ / 2));
+  const Pt de = coupePrec_;
+  coupePrec_ = Pt{wx, wy};
+  for (int i = 1; i <= n; i++) {
+    const double x = de.x + (wx - de.x) * i / n, y = de.y + (wy - de.y) * i / n;
+    if (coupeFaite_ && hyp(x - coupeDerniere_.x, y - coupeDerniere_.y) * echelle_ < 6) continue;
+    const Entite* e = entiteProche(x, y, 3 / echelle_, true);
+    if (!e || calculerApercu(x, y).sorte == ApercuCoupe::RIEN) continue;
+    const std::string id = e->id;
+    if (!coupePoussee_) {
+      pousser();
+      coupePoussee_ = true;
+    }
+    message(ajusterElement(id, x, y));
+    apresEdition();
+    coupeFaite_ = true;
+    coupesGlissees_++;
+    coupeDerniere_ = Pt{x, y};
+  }
 }
 
 // ---------- Décaler (src/50-esquisse-3-edition-geometrie.js, skOffsetApply) ----------
@@ -3236,7 +3396,13 @@ void Dessin::clicDecaler(double wx, double wy) {
   }
   if (!offArme_) {
     offArme_ = true;
-    message("Décalage : cliquez le côté (la distance est celle du curseur, une cote par chaîne pour l'ajuster). Échap annule.");
+    curseurDecalage_ = Pt{wx, wy};
+    message("Décalage : cliquez le côté (la distance est celle du curseur, ou tapez-la). Échap annule.");
+    return;
+  }
+  if (dyn_.actif) {  // distance tapée : le clic donne le côté
+    double tapee = 0;
+    if (distanceTapee(tapee)) appliquerDecalage(ids, tapee, wx, wy);
     return;
   }
   double D = 1e9;
@@ -3255,6 +3421,12 @@ void Dessin::clicDecaler(double wx, double wy) {
     message("Décalage : cliquez plus loin du profil.");
     return;
   }
+  appliquerDecalage(ids, D, wx, wy);
+}
+
+void Dessin::appliquerDecalage(const std::vector<std::string>& ids, double D, double wx, double wy) {
+  offArme_ = false;
+  dyn_ = Saisie{};
   pousser();
   std::string msg;
   if (!decalerElements(ids, D, Pt{wx, wy}, msg)) {
@@ -3265,6 +3437,22 @@ void Dessin::clicDecaler(double wx, double wy) {
   structure_ = true;
   apresEdition();
   message(msg + " Cote modifiable (double-clic).");
+}
+
+bool Dessin::distanceTapee(double& D) {
+  const char* debut = dyn_.texte.data();
+  const auto lu = std::from_chars(debut, debut + dyn_.texte.size(), D);
+  if (lu.ec == std::errc() && D >= 0.001) return true;
+  message("Décalage : distance invalide, retapez-la ou cliquez le côté.");
+  dyn_ = Saisie{};
+  return false;
+}
+
+void Dessin::validerDistance() {
+  const std::vector<std::string> ids = choixDecalables();
+  double D = 0;
+  if (ids.empty() || !dyn_.actif || !distanceTapee(D)) return;
+  appliquerDecalage(ids, D, curseurDecalage_.x, curseurDecalage_.y);
 }
 
 namespace {

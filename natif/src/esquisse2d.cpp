@@ -738,6 +738,24 @@ void VueEsquisse::trace(wxGraphicsContext& g) const {
     default:
       break;
   }
+  // Outil Ajuster : le morceau qui partira, en rouge
+  const Dessin::ApercuCoupe& coupe = dessin_->apercu();
+  if (coupe.sorte != Dessin::ApercuCoupe::RIEN) {
+    g.SetPen(stylo(g, wxColour(0xff, 0x45, 0x3a), 3.5));
+    if (coupe.sorte == Dessin::ApercuCoupe::TRAIT) {
+      ligne(g, e(coupe.A.x, coupe.A.y), e(coupe.B.x, coupe.B.y));
+    } else {
+      const int n = std::max(8, static_cast<int>(std::abs(coupe.a2 - coupe.a1) * 24));
+      wxGraphicsPath p = g.CreatePath();
+      for (int i = 0; i <= n; i++) {
+        const double a = coupe.a1 + (coupe.a2 - coupe.a1) * i / n;
+        const auto q = e(coupe.C.x + coupe.r * std::cos(a), coupe.C.y + coupe.r * std::sin(a));
+        if (i == 0) p.MoveToPoint(q);
+        else p.AddLineToPoint(q);
+      }
+      g.StrokePath(p);
+    }
+  }
   const auto rond = [&](double x, double y) {
     const auto q = e(x, y);
     g.SetPen(stylo(g, VERT, 2));
@@ -751,8 +769,9 @@ void VueEsquisse::trace(wxGraphicsContext& g) const {
   if (frappe.actif && dessin_->departTrace(depart)) {
     const bool enLigne = b.sorte == Dessin::Brouillon::B_LIGNE;
     const auto P = e(enLigne ? (b.x1 + b.x2) / 2 : depart.x, enLigne ? (b.y1 + b.y2) / 2 : depart.y);
-    const wxString libelle = (frappe.angle ? wxString(L"∠ = ") : wxString("L = ")) + wxString::FromUTF8(frappe.texte) + (frappe.angle ? wxString(L"°") : wxString(" mm"));
-    const wxString aide = L"Tab : angle ou longueur · Entrée : valider · Échap : annuler";
+    const bool decale = dessin_->outil() == Dessin::DECALER;
+    const wxString libelle = (decale ? wxString("D = ") : frappe.angle ? wxString(L"∠ = ") : wxString("L = ")) + wxString::FromUTF8(frappe.texte) + (frappe.angle ? wxString(L"°") : wxString(" mm"));
+    const wxString aide = decale ? wxString(L"La souris donne le côté · Entrée ou clic : valider · Échap : annuler") : wxString(L"Tab : angle ou longueur · Entrée : valider · Échap : annuler");
     const double larg = std::max(70.0, libelle.length() * 8.0 + 18);
     g.SetBrush(g.CreateBrush(wxBrush(wxColour(0x1e, 0x1e, 0x1e))));
     g.SetPen(stylo(g, wxColour(0x0a, 0x84, 0xff), 1.5));
