@@ -230,12 +230,14 @@ VueEsquisse::VueEsquisse(wxWindow* parent) : wxWindow(parent, 2004, wxDefaultPos
   Bind(wxEVT_MIDDLE_UP, &VueEsquisse::surRelache, this);
   Bind(wxEVT_MOTION, &VueEsquisse::surMouvement, this);
   Bind(wxEVT_MOUSEWHEEL, &VueEsquisse::surMolette, this);
+  Bind(wxEVT_LEFT_DCLICK, &VueEsquisse::surDoubleClic, this);
   Bind(wxEVT_MOUSE_CAPTURE_LOST, [this](wxMouseCaptureLostEvent&) { geste_.actif = false; });
 }
 
 void VueEsquisse::montrer(const Esquisse* s, const TopoDS_Shape& piece) {
   s_ = s;
-  traitsFantome_.clear();
+  annulerSaisie();
+  zonesCotes_.clear();
   nonDessines_ = 0;
   hautX_ = 0;
   hautY_ = 1;
@@ -249,27 +251,98 @@ void VueEsquisse::montrer(const Esquisse* s, const TopoDS_Shape& piece) {
     }
     for (const Entite& en : s_->entites)
       if (en.t != "line" && en.t != "arc" && en.t != "circle" && en.t != "cpoint") nonDessines_++;
-    if (!piece.IsNull()) {
-      // Fantôme : les arêtes de la pièce vues de face, projetées dans le plan de l'esquisse
-      const gp_Pnt o(s_->o[0], s_->o[1], s_->o[2]);
-      const gp_Dir u(s_->u[0], s_->u[1], s_->u[2]), v(s_->v[0], s_->v[1], s_->v[2]);
-      for (TopExp_Explorer x(piece, TopAbs_EDGE); x.More(); x.Next()) {
-        const TopoDS_Edge a = TopoDS::Edge(x.Current());
-        BRepAdaptor_Curve c;
-        try {
-          c.Initialize(a);
-        } catch (const Standard_Failure&) {
-          continue;
-        }
-        GCPnts_TangentialDeflection d(c, 0.2, 0.05);
-        for (int i = 1; i < d.NbPoints(); i++) {
-          const gp_Vec p(o, d.Value(i)), q(o, d.Value(i + 1));
-          traitsFantome_.push_back({p.Dot(gp_Vec(u)), p.Dot(gp_Vec(v)), q.Dot(gp_Vec(u)), q.Dot(gp_Vec(v))});
-        }
-      }
+  }
+  fantomeDe(piece);
+  ajuster();
+}
+
+// Fantôme : les arêtes de la pièce vues de face, projetées dans le plan de l'esquisse
+void VueEsquisse::fantomeDe(const TopoDS_Shape& piece) {
+  traitsFantome_.clear();
+  if (!s_ || piece.IsNull()) return;
+  const gp_Pnt o(s_->o[0], s_->o[1], s_->o[2]);
+  const gp_Dir u(s_->u[0], s_->u[1], s_->u[2]), v(s_->v[0], s_->v[1], s_->v[2]);
+  for (TopExp_Explorer x(piece, TopAbs_EDGE); x.More(); x.Next()) {
+    const TopoDS_Edge a = TopoDS::Edge(x.Current());
+    BRepAdaptor_Curve c;
+    try {
+      c.Initialize(a);
+    } catch (const Standard_Failure&) {
+      continue;
+    }
+    GCPnts_TangentialDeflection d(c, 0.2, 0.05);
+    for (int i = 1; i < d.NbPoints(); i++) {
+      const gp_Vec p(o, d.Value(i)), q(o, d.Value(i + 1));
+      traitsFantome_.push_back({p.Dot(gp_Vec(u)), p.Dot(gp_Vec(v)), q.Dot(gp_Vec(u)), q.Dot(gp_Vec(v))});
     }
   }
-  ajuster();
+}
+
+void VueEsquisse::majPiece(const TopoDS_Shape& piece) {
+  fantomeDe(piece);
+  Refresh();
+}
+
+void VueEsquisse::noterZone(const Cote& d, double x, double y, double demiL, double demiH, double angle) const {
+  zonesCotes_.push_back({d.id, x, y, demiL, demiH, angle});
+}
+
+bool VueEsquisse::positionCote(const std::string& id, wxPoint& p) const {
+  for (const ZoneCote& z : zonesCotes_)
+    if (z.id == id) {
+      p = FromDIP(wxPoint(static_cast<int>(z.x), static_cast<int>(z.y)));
+      return true;
+    }
+  return false;
+}
+
+void VueEsquisse::surDoubleClic(wxMouseEvent& ev) {
+  if (!s_) return;
+  const wxPoint q = ToDIP(ev.GetPosition());
+  // La dernière dessinée est au-dessus
+  for (auto z = zonesCotes_.rbegin(); z != zonesCotes_.rend(); ++z) {
+    const double dx = q.x - z->x, dy = q.y - z->y, c = std::cos(z->angle), n = std::sin(z->angle);
+    if (std::abs(dx * c + dy * n) > z->demiL || std::abs(-dx * n + dy * c) > z->demiH) continue;
+    for (const Cote& d : s_->cotes)
+      if (d.id == z->id) {
+        wxString texte;
+        if (surDemandeCote && surDemandeCote(d, texte)) ouvrirSaisie(d, texte, z->x, z->y);
+        return;
+      }
+  }
+}
+
+void VueEsquisse::ouvrirSaisie(const Cote& c, const wxString& texte, double x, double y) {
+  if (!saisie_) {
+    saisie_ = new wxTextCtrl(this, 2005, wxEmptyString, wxDefaultPosition, wxDefaultSize, wxTE_PROCESS_ENTER | wxTE_CENTER);
+    saisie_->Bind(wxEVT_TEXT_ENTER, [this](wxCommandEvent&) { validerSaisie(); });
+    saisie_->Bind(wxEVT_KILL_FOCUS, [this](wxFocusEvent& e) {
+      e.Skip();
+      CallAfter([this] { annulerSaisie(); });
+    });
+  }
+  coteEnSaisie_ = c.id;
+  const wxSize t = FromDIP(wxSize(std::max(80, std::min(260, 8 * static_cast<int>(texte.length()) + 24)), 24));
+  const wxPoint p = FromDIP(wxPoint(static_cast<int>(x), static_cast<int>(y)));
+  saisie_->SetSize(p.x - t.x / 2, p.y - t.y / 2, t.x, t.y);
+  saisie_->ChangeValue(texte);
+  saisie_->Show();
+  saisie_->SetFocus();
+  saisie_->SelectAll();
+}
+
+void VueEsquisse::validerSaisie() {
+  if (!enSaisie()) return;
+  const std::string id = coteEnSaisie_;
+  const wxString t = saisie_->GetValue();
+  annulerSaisie();
+  if (surSaisieCote) CallAfter([this, id, t] { surSaisieCote(id, t); });  // jamais de calcul au milieu de l'événement du champ
+}
+
+void VueEsquisse::annulerSaisie() {
+  if (!enSaisie()) return;
+  saisie_->Hide();
+  SetFocus();
 }
 
 // skFitView (src/50-esquisse-1) : l'origine n'entre pas dans le cadrage.
@@ -674,6 +747,7 @@ void VueEsquisse::points(wxGraphicsContext& g) const {
 }
 
 void VueEsquisse::cotes(wxGraphicsContext& g) const {
+  zonesCotes_.clear();
   g.SetBrush(wxNullGraphicsBrush);
   for (const Cote& d : s_->cotes) {
     if (d.type == "length" || d.type == "distance" || d.type == "gap" || d.type == "distline") coteLineaire(g, d);
@@ -759,6 +833,7 @@ void VueEsquisse::coteLineaire(wxGraphicsContext& g, const Cote& d) const {
   const wxString texte = texteValeur(d.dia ? 2 * d.value : d.value, d.ref);
   const wxString affiche = habille(d, d.dia ? L"Ø" + texte : texte);
   const double wpx = affiche.length() * 7.8 + 10;
+  noterZone(d, q.m_x, q.m_y, wpx / 2, 11, ang);
   g.PushState();
   g.Translate(q.m_x, q.m_y);
   g.Rotate(ang);
@@ -818,6 +893,7 @@ void VueEsquisse::coteRayon(wxGraphicsContext& g, const Cote& d) const {
   g.SetFont(g.CreateFont(wxFontInfo(wxSize(0, 13)).Bold().FaceName("Segoe UI"), FOND));
   g.GetTextExtent(t, &L, &H, &dsc, &ext);
   const double x = cote > 0 ? k.m_x + 5 : k.m_x - 5 - L, y = k.m_y - 4 - H;
+  noterZone(d, x + L / 2, y + H / 2, L / 2 + 3, H / 2 + 3, 0);
   for (int dx = -1; dx <= 1; dx++)
     for (int dy = -1; dy <= 1; dy++)
       if (dx || dy) g.DrawText(t, x + dx, y + dy);
@@ -871,6 +947,7 @@ void VueEsquisse::coteAngle(wxGraphicsContext& g, const Cote& d) const {
   g.SetFont(g.CreateFont(wxFontInfo(wxSize(0, 13)).Bold().FaceName("Segoe UI"), FOND));
   g.GetTextExtent(t, &L, &H, &dsc, &ext);
   const double x = w.m_x, y = w.m_y - 8 - (H - dsc);  // ligne de base à 8 px au-dessus, comme le SVG
+  noterZone(d, x + L / 2, y + H / 2, L / 2 + 3, H / 2 + 3, 0);
   for (int dx = -1; dx <= 1; dx++)
     for (int dy = -1; dy <= 1; dy++)
       if (dx || dy) g.DrawText(t, x + dx, y + dy);

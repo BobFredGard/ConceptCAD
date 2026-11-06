@@ -9,6 +9,7 @@
 #include <shellapi.h>
 
 #include "cadre.h"
+#include "coter.h"
 #include "enregistrer.h"
 
 namespace {
@@ -95,6 +96,35 @@ int modeEnregistrer(const std::vector<std::wstring>& a) {
   return 0;
 }
 
+// --coter <fichier> <sortie> <esquisse> <cote> <valeur> : change une cote comme le ferait la fenêtre, puis enregistre.
+// Code 4 : valeur refusée par le solveur ; 5 : esquisse ou cote figée, avec la raison sur la sortie d'erreur.
+int modeCoter(const std::vector<std::wstring>& a) {
+  try {
+    Document d = lireProjet(a[1]);
+    const std::string id = utf8(a[3]);
+    for (size_t i = 0; i < d.esquisses.size(); i++) {
+      if (d.esquisses[i].id != id) continue;
+      std::string raison = esquisseFigee(d, i);
+      for (const Cote& c : d.esquisses[i].cotes)
+        if (raison.empty() && c.id == utf8(a[4])) raison = coteFigee(c);
+      if (!raison.empty()) {
+        fprintf(stderr, "%s\n", raison.c_str());
+        return 5;
+      }
+      Edition ed(d.esquisses[i]);
+      if (!saisirCote(d, i, ed, utf8(a[4]), _wtof(a[5].c_str()), raison)) {
+        fprintf(stderr, "%s\n", raison.c_str());
+        return 4;
+      }
+      enregistrerProjet(d, a[2]);
+      return 0;
+    }
+  } catch (const std::exception& e) {
+    fprintf(stderr, "%s\n", e.what());
+  }
+  return 1;
+}
+
 class Appli : public wxApp {
  public:
   bool OnInit() override {
@@ -137,6 +167,7 @@ int WINAPI wWinMain(HINSTANCE inst, HINSTANCE, PWSTR, int) {
   if (!gArgs.empty() && gArgs[0] == L"--verif") return modeVerif(gArgs);
   if (gArgs.size() >= 3 && gArgs[0] == L"--reenregistrer") return modeEnregistrer(gArgs);
   if (gArgs.size() >= 2 && gArgs[0] == L"--conflit") return modeEnregistrer(gArgs);
+  if (gArgs.size() >= 6 && gArgs[0] == L"--coter") return modeCoter(gArgs);
   // Processeurs à deux sortes de cœurs : un cœur économe calcule la même pièce 1,7 fois moins vite (345 → 585 ms mesurés).
   // On demande à Windows de ne pas traiter ce programme comme une tâche de fond, même quand sa fenêtre n'est pas devant.
   PROCESS_POWER_THROTTLING_STATE qos{PROCESS_POWER_THROTTLING_CURRENT_VERSION, PROCESS_POWER_THROTTLING_EXECUTION_SPEED, 0};

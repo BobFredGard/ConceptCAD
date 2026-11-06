@@ -17,8 +17,18 @@ struct Retouche {
   size_t fonction;  // rang dans « features »
   double distance;
 };
-// Texte du projet avec les seules valeurs de « distance » remplacées. Lève std::runtime_error si le texte n'a pas la forme attendue.
-std::string retoucher(const std::string& texte, const std::vector<Retouche>& retouches);
+// Les nombres d'une esquisse qui ont changé
+struct RetoucheEsquisse {
+  size_t esquisse;  // rang dans « sketches »
+  struct Point { std::string id; double x, y; };
+  struct Element { size_t rang; bool aR; double r; bool aMid; Vec3 mid; };
+  struct Mesure { size_t rang; bool aValeur; double valeur; int sgn, ccw; };  // sgn 0 ou ccw -1 : inchangé
+  std::vector<Point> points;
+  std::vector<Element> elements;
+  std::vector<Mesure> cotes;
+};
+// Texte du projet avec ces seuls nombres remplacés. Lève std::runtime_error si le texte n'a pas la forme attendue.
+std::string retoucher(const std::string& texte, const std::vector<Retouche>& retouches, const std::vector<RetoucheEsquisse>& esquisses = {});
 
 // Écrit dans un fichier temporaire, relit, garde l'ancienne version en « .bak », puis remplace d'un seul coup :
 // en cas d'échec, le fichier existant reste intact. Met à jour le document (chemin, état « enregistré »).

@@ -6,9 +6,11 @@
 #include <wx/treectrl.h>
 
 #include <cstdio>
+#include <memory>
 #include <string>
 #include <vector>
 
+#include "coter.h"
 #include "esquisse2d.h"
 #include "rejeu.h"
 #include "vue3d.h"
@@ -30,9 +32,11 @@ class Cadre : public wxFrame {
   bool lancerProtocole(const std::wstring& fichier, const std::wstring& journal, int total);
 
  private:
+  // Une profondeur (fonction >= 0), ou une cote d'esquisse : alors toutes les esquisses, car celles qui suivent le solide bougent aussi
   struct ModifCote {
     int fonction;
     double avant, apres;
+    std::vector<Esquisse> esquissesAvant, esquissesApres;
   };
   void etat(const wxString& texte);
   void creerMenus();
@@ -49,6 +53,9 @@ class Cadre : public wxFrame {
   void quitterEsquisse();
   double recalculer();
   void changerCote(int fonction, double valeur, bool memoriser);
+  bool demandeCote(const Cote& c, wxString& texte);
+  void saisieCote(const std::string& id, const wxString& texte);
+  void poserEsquisses(const std::vector<Esquisse>& v);
   void annuler();
   void retablir();
   void surOuvrir(wxCommandEvent&);
@@ -70,6 +77,8 @@ class Cadre : public wxFrame {
   Vue3D* vue_ = nullptr;
   VueEsquisse* vueEsquisse_ = nullptr;
   int esquisseOuverte_ = -1;
+  std::unique_ptr<Edition> edition_;
+  std::string figee_;  // pourquoi l'esquisse ouverte ne peut pas changer
   TopoDS_Shape forme_;  // le solide affiché, pour le fantôme des esquisses
   wxTimer minuterie_;
   Document doc_;

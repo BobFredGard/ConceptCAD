@@ -13,7 +13,8 @@ Rien ici ne touche à `src/`, à `ConceptCAD.html` ni à la version du logiciel.
 - Montrer l'arbre de la pièce (esquisses, corps, fonctions) et un panneau de propriétés, dans une interface sombre aux panneaux déplaçables.
 - Survoler et choisir une face ou une arête : surbrillance, forme, aire ou longueur.
 - Modifier la profondeur d'une extrusion ou d'une découpe dans le panneau, annuler (Ctrl+Z) et rétablir (Ctrl+Y).
-- Afficher une esquisse, sans pouvoir la modifier : double-clic ou Entrée dans l'arbre, puis lignes, arcs, cercles, points, zones fermées, contraintes et cotes, orientés comme dans le navigateur. Échap ou « Terminer l'esquisse » pour sortir.
+- Afficher une esquisse : double-clic ou Entrée dans l'arbre, puis lignes, arcs, cercles, points, zones fermées, contraintes et cotes, orientés comme dans le navigateur. Échap ou « Terminer l'esquisse » pour sortir.
+- Changer une cote d'esquisse : double-clic sur la cote, nouvelle valeur, Entrée. L'esquisse se résout, le solide suit (39 ms sur le Drapeau), et les esquisses posées dessus suivent les arêtes qui bougent. Une valeur impossible est refusée et l'esquisse reste telle quelle. Ctrl+Z, Ctrl+Y et Ctrl+S fonctionnent.
 
 **Si une pièce contient autre chose** (congé, cote par formule, répétition, assemblage…), le programme montre son arbre et la liste de ce qui manque,
 mais **ne calcule pas le solide**. Il n'affiche jamais un solide faux.
@@ -22,9 +23,13 @@ mais **ne calcule pas le solide**. Il n'affiche jamais un solide faux.
 
 Une profondeur n'est modifiable que si le solide se calcule et si aucune esquisse liée au solide n'est posée de biais par rapport à elle : une telle esquisse suit les arêtes qui bougent, et seul le navigateur sait la recalculer aujourd'hui.
 
-Il ne sait pas : dessiner, changer une cote d'esquisse (il faudrait le solveur).
+Une cote d'esquisse n'est modifiable que si le solide de la pièce se calcule : **aujourd'hui, seul le Drapeau parmi les 20 pièces d'exemple**. Sur les autres, l'esquisse reste en lecture seule. Le sont aussi les cotes par formule, les cotes nommées et les cotes de référence. Une esquisse qui dépend d'une arête nommée, d'une intersection, d'une autre esquisse, d'un perçage ou d'un axe externe empêche aussi la modification, car le natif ne saurait pas la faire suivre.
 
-Différences avec l'esquisse du navigateur : tout est en blanc, car le bleu « encore libre » demande le solveur ; pas de splines (un message le dit) ; pas de vue inclinée ; pas de flèches de degrés de liberté ni de bilan de santé ;
+Il ne sait pas : dessiner, déplacer un point à la souris, ajouter une contrainte ou une cote.
+
+L'annulation du natif revient exactement à l'état d'avant, alors que celle du navigateur résout à nouveau : le résultat peut y différer de très peu.
+
+Différences avec l'esquisse du navigateur : tout est en blanc, car le bleu « encore libre » demande un calcul de plus, non traduit ; pas de splines (un message le dit) ; pas de vue inclinée ; pas de flèches de degrés de liberté ni de bilan de santé ;
 pas de bouton pour la grille, masquée comme par défaut dans le navigateur. La pièce derrière l'esquisse n'est qu'un tracé de ses arêtes, et n'apparaît que si le solide est calculé.
 Les pointes des cotes d'angle suivent l'arc, alors que celles du navigateur en dévient légèrement.
 
@@ -154,8 +159,23 @@ Enregistrement, sur des copies :
 - Sur les 11 autres pièces, modifiées seulement par ce test : 3 écarts (Barquette, Cache Piles, Support Pédale), tous sur des profondeurs que la règle refuse. La règle est prudente : elle en refuse aussi 6 qui auraient été justes.
 - `mesures/verifier-fenetre.ps1`, vrai clavier et vraie souris : cote changée, Ctrl+S, `.bak`, Ctrl+Z, question à la fermeture, Annuler, Ne pas enregistrer, fichier relu à 175 239,634 mm³. Cet essai a tourné juste avant l'ajout de la règle de modification ; sur la version finale, il s'est arrêté deux fois parce que le PC était utilisé, et n'est pas allé au bout.
 
+Solveur d'esquisse (`BancSolveur`), comparé au navigateur sur les 125 esquisses des 20 pièces : ouverture, cotes une à une, projections déplacées, puis saisies enchaînées avec valeurs impossibles et annulations (582 scénarios, environ 3 135 états, 20 à 33 s contre 350 à 380 s en Node). Références : `mesures/solveur-reference.cjs`.
+- **Avec les mêmes sin, cos et atan2 des deux côtés** (`BancSolveurCommunes`, `solveur-reference.cjs --communes`) : 3 133 états sur 3 133 à moins de 10⁻⁹ mm, 0 décision différente sur 1 136. La traduction est donc exacte sur ces essais.
+- **Avec les bibliothèques normales** (`BancSolveur`) : seuil fixé à 0,001 mm, 3 115 états sur 3 135 en dessous. 2 décisions différentes sur 1 136.
+- **Les 20 états au-delà sont expliqués** : ces 3 fonctions n'arrondissent pas exactement pareil dans Windows et dans Chrome, et puisque tout rentre dans l'ordre quand elles sont communes, il ne reste que cela. Ils touchent 4 pièces (test angle, test esquisse, Griffe, Drapeau), toujours dans des saisies enchaînées de valeurs extrêmes (×0,3 puis ×4). Sur ces esquisses à la limite du possible, une différence au 16ᵉ chiffre fait passer le solveur sur une autre solution, puis tout le reste de la chaîne diverge.
+- **Le navigateur fait pareil contre lui-même** (`mesures/solveur-bruit.cjs`) : un dernier chiffre décalé sur ces 3 fonctions donne 1 décision différente et 14 états au-delà de 0,001 mm.
+
+Changer une cote, le solide suivant, sur le Drapeau (`mesures/tester-cotes-navigateur.cjs`) : chaque cote à 4 valeurs, soit 36 modifications comparées entre le navigateur, le navigateur rouvrant le fichier écrit par le natif, et le natif. Aucun refus, aucune décision différente. 33 identiques, 3 écarts :
+- e30 à 163,2 : navigateur 82 640 mm³, natif 54 159. De 160 à 176 mm le volume monte de 360 mm³ par mm, ce qui donne 54 159. Le navigateur perd sa découpe, le natif reste logique. La cause exacte n'est pas établie.
+- e40 à 15,3 et 18,75 : même volume ; un segment libre de l'Esquisse 2, peu contraint, est décalé de 0,005 et 0,07 mm. Toutes les variantes de e40 donnent environ 81 500 mm³ des deux côtés : la découpe se perd pareillement.
+
+`mesures/verifier-cote.ps1`, vrai clavier et vraie souris sur une copie du Drapeau : Échap dans la saisie, « abc » refusé, cote à 100 (62 663,291 mm³), ● au titre, Ctrl+Z (retour à 53 007,291, sans ●), Ctrl+Y, Ctrl+S avec `.bak`, fermeture sans question. Mémoire 41 Mo au repos, 51 Mo après. `tester-enregistrement.cjs` (176/176) et sa comparaison au navigateur (0 écart sur ce que le logiciel laisse modifier) repassent.
+
 ## Pas vérifié
 
+- Le solveur est comparé sur les 125 esquisses, mais la modification avec solide qui suit seulement sur les 2 esquisses du Drapeau : les autres pièces ne se calculent pas encore.
+- Les 3 pièces où changer une profondeur demande de recalculer une esquisse posée de biais (Barquette, Cache Piles, Support Pédale) : le refus reste en place, car leur solide ne se calcule pas.
+- Une esquisse qui suit une arête nommée, et pas seulement sa position : refusée, non traduite.
 - La règle de modification n'est éprouvée dans le logiciel que sur le Drapeau, seule pièce calculable des exemples.
 - Enregistrer sur Dropbox ou un disque réseau, et « Enregistrer sous » au vrai clavier.
 - Les 118 autres esquisses n'ont pas été comparées au navigateur, seulement ouvertes.

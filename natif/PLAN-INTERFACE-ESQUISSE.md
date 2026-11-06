@@ -76,6 +76,9 @@ Le programme garde tout le fichier d'origine et ne change que ce qu'il connaît.
 Traduction du solveur et des contraintes. Le test est automatique : sur les 125 esquisses, rejeu sans modification, puis cotes changées en série, puis comparaison à la référence Node.
 **Fait quand** : les écarts sont sous un seuil à fixer, et toute esquisse qui s'écarte est expliquée. Le risque principal de tout le plan est ici : les esquisses mal conditionnées, comme Cavité Usinage.
 **Fred essaie** : changer des cotes d'esquisse et voir le solide suivre.
+**Critère atteint le 06/11/2026, reste l'essai de Fred** (preuves dans [README.md](README.md)). Seuil fixé à 0,001 mm : 3 115 états sur 3 135 en dessous. Les 20 autres viennent uniquement de l'arrondi de sin, cos et atan2 sur des valeurs extrêmes enchaînées : avec les mêmes fonctions des deux côtés, les 3 133 états sont à moins de 10⁻⁹ mm et aucune décision ne diffère.
+Correction de l'étape 3 : le refus de profondeur sur les esquisses posées de biais n'est **pas** levé. Le solveur saurait le faire, mais les 3 pièces de test ne se calculent pas encore dans le natif (elles attendent les congés et autres fonctions). À reprendre avec elles.
+Non fait : le bleu « encore libre » (calcul de rang non traduit), les esquisses qui suivent une arête nommée, une intersection ou une autre esquisse (étape 6 : refus, lecture seule), l'essai avec solide sur d'autres pièces que le Drapeau.
 
 ### 5. Dessiner et éditer (6 à 10 semaines)
 Lignes, arcs, cercles, rectangles, polygones, glisser à la souris, accroches, ajustement, cotes posées à la main, annulation.

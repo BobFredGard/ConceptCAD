@@ -13,6 +13,7 @@
 
 #include <algorithm>
 #include <chrono>
+#include <cmath>
 
 #include "enregistrer.h"
 
@@ -77,6 +78,8 @@ Cadre::Cadre() : wxFrame(nullptr, wxID_ANY, L"ConceptCAD natif"), minuterie_(thi
   vue_ = new Vue3D(centre_);
   vueEsquisse_ = new VueEsquisse(centre_);
   vueEsquisse_->surQuitter = [this] { quitterEsquisse(); };
+  vueEsquisse_->surDemandeCote = [this](const Cote& c, wxString& t) { return demandeCote(c, t); };
+  vueEsquisse_->surSaisieCote = [this](const std::string& id, const wxString& t) { saisieCote(id, t); };
   auto* rangee = new wxBoxSizer(wxVERTICAL);
   rangee->Add(vue_, 1, wxEXPAND);
   rangee->Add(vueEsquisse_, 1, wxEXPAND);
@@ -147,7 +150,11 @@ void Cadre::creerMenus() {
     if (esquisseOuverte_ >= 0) vueEsquisse_->ajuster();
     else vue_->ajuster();
   }, ID_AJUSTER);
-  Bind(wxEVT_MENU, [this](wxCommandEvent&) { quitterEsquisse(); }, ID_QUITTER_ESQUISSE);
+  Bind(wxEVT_MENU, [this](wxCommandEvent&) {
+    // Échap pendant une saisie : abandonne la saisie seulement
+    if (vueEsquisse_->enSaisie()) vueEsquisse_->annulerSaisie();
+    else quitterEsquisse();
+  }, ID_QUITTER_ESQUISSE);
   Bind(wxEVT_UPDATE_UI, [this](wxUpdateUIEvent& e) { e.Enable(esquisseOuverte_ >= 0); }, ID_QUITTER_ESQUISSE);
   Bind(wxEVT_UPDATE_UI, [this](wxUpdateUIEvent& e) { e.Enable(!annulations_.empty()); }, ID_ANNULER);
   Bind(wxEVT_UPDATE_UI, [this](wxUpdateUIEvent& e) { e.Enable(!retablissements_.empty()); }, ID_RETABLIR);
@@ -320,21 +327,93 @@ void Cadre::montrerEsquisse(int i) {
   lectureSeule(props_, L"Éléments", wxString::Format("%zu", s.entites.size()));
   lectureSeule(props_, L"Contraintes", wxString::Format("%zu", s.contraintes.size()));
   lectureSeule(props_, L"Cotes", wxString::Format("%zu", s.cotes.size()));
+  const std::string raison = esquisseFigee(doc_, i);
+  if (!raison.empty()) lectureSeule(props_, L"Modification", L"Pas encore : " + tx(raison));
 }
 
-// Double-clic dans l'arbre : même repère que le navigateur, sans modification possible à cette étape.
+// Double-clic dans l'arbre : même repère que le navigateur.
 void Cadre::entrerEsquisse(int i) {
   const Esquisse& s = doc_.esquisses[i];
   esquisseOuverte_ = i;
+  figee_ = esquisseFigee(doc_, i);
+  edition_ = figee_.empty() ? std::make_unique<Edition>(s) : nullptr;
   vue_->Hide();
   vueEsquisse_->Show();
   centre_->Layout();
   vueEsquisse_->montrer(&s, forme_);
   vueEsquisse_->SetFocus();
   montrerEsquisse(i);
-  wxString t = L"Esquisse « " + tx(s.nom) + L" » en lecture seule. Clic droit : déplacer. Molette : zoom. Échap : terminer.";
+  wxString t = L"Esquisse « " + tx(s.nom) + (figee_.empty() ? L" ». Double-clic sur une cote pour la changer." : L" » en lecture seule : " + tx(figee_) + L".") + L" Clic droit : déplacer. Molette : zoom. Échap : terminer.";
   if (vueEsquisse_->nonDessines() > 0) t += wxString::Format(L"  |  ⚠ %d élément(s) pas encore dessiné(s), comme les splines.", vueEsquisse_->nonDessines());
   etat(t);
+  // Pour natif/mesures/verifier-cote.ps1 : où se trouve chaque valeur à l'écran
+  if (const wchar_t* chemin = _wgetenv(L"CONCEPTCAD_JOURNAL_ETAT")) {
+    vueEsquisse_->Update();
+    if (FILE* f = _wfopen(chemin, L"ab")) {
+      for (const Cote& c : s.cotes) {
+        wxPoint p;
+        if (vueEsquisse_->positionCote(c.id, p)) {
+          p = vueEsquisse_->ClientToScreen(p);
+          fprintf(f, "cote %s %d %d\n", c.id.c_str(), p.x, p.y);
+        }
+      }
+      fclose(f);
+    }
+  }
+}
+
+bool Cadre::demandeCote(const Cote& c, wxString& texte) {
+  const std::string raison = figee_.empty() ? coteFigee(c) : figee_;
+  if (!raison.empty()) {
+    etat(L"Cote non modifiable : " + tx(raison) + L".");
+    return false;
+  }
+  // parDimToUser : l'utilisateur voit des degrés et des diamètres, le fichier des radians et des rayons
+  const double v = c.type == "angle" ? c.value * 180 / 3.14159265358979323846 : c.dia ? c.value * 2 : c.value;
+  texte = wxString::Format("%.10g", v);
+  return true;
+}
+
+void Cadre::saisieCote(const std::string& id, const wxString& texte) {
+  if (esquisseOuverte_ < 0 || !edition_) return;
+  Esquisse& s = doc_.esquisses[esquisseOuverte_];
+  const auto it = std::find_if(s.cotes.begin(), s.cotes.end(), [&](const Cote& c) { return c.id == id; });
+  if (it == s.cotes.end()) return;
+  // parDimCommit : mêmes refus, et « Ø20 », « R5 », « ∠45 » acceptés tels qu'affichés. Pas encore de formules.
+  wxString t = texte;
+  t.Trim(true).Trim(false);
+  if (!t.empty() && wxString(L"ØøR∠").Find(t[0]) != wxNOT_FOUND) t = t.Mid(1).Trim(false);
+  t.Replace(",", ".");
+  double f = 0;
+  if (!t.ToCDouble(&f) || !std::isfinite(f) || f <= 0 || (it->type == "angle" && f >= 180)) {
+    wxMessageBox(it->type == "angle" ? L"Saisir un angle entre 0 et 180 degrés. Les formules ne sont pas encore reprises." : L"Saisir un nombre positif, en millimètres. Les formules ne sont pas encore reprises.", L"Cote incorrecte", wxOK | wxICON_WARNING, this);
+    return;
+  }
+  const double valeur = it->type == "angle" ? f * 3.14159265358979323846 / 180 : it->dia ? f / 2 : f;
+  if (valeur == it->value) return;
+  ModifCote m{-1, 0, 0, doc_.esquisses, {}};
+  std::string raison;
+  {
+    wxBusyCursor attente;
+    if (!saisirCote(doc_, esquisseOuverte_, *edition_, id, valeur, raison)) {
+      wxMessageBox(L"L'esquisse n'a pas changé : cette valeur ne peut pas être résolue.\n\n" + tx(raison), L"Valeur refusée", wxOK | wxICON_WARNING, this);
+      return;
+    }
+  }
+  m.esquissesApres = doc_.esquisses;
+  annulations_.push_back(std::move(m));
+  retablissements_.clear();
+  majTitre();
+  recalculer();
+  vueEsquisse_->majPiece(forme_);
+}
+
+void Cadre::poserEsquisses(const std::vector<Esquisse>& v) {
+  doc_.esquisses = v;  // même taille : l'esquisse montrée ne change pas d'adresse
+  if (esquisseOuverte_ >= 0) edition_ = figee_.empty() ? std::make_unique<Edition>(doc_.esquisses[esquisseOuverte_]) : nullptr;
+  majTitre();
+  recalculer();
+  if (esquisseOuverte_ >= 0) vueEsquisse_->majPiece(forme_);
 }
 
 void Cadre::capturerEsquisses(const std::wstring& dossier) {
@@ -349,6 +428,7 @@ void Cadre::capturerEsquisses(const std::wstring& dossier) {
 void Cadre::quitterEsquisse() {
   if (esquisseOuverte_ < 0) return;
   esquisseOuverte_ = -1;
+  edition_.reset();
   vueEsquisse_->montrer(nullptr, TopoDS_Shape());
   vueEsquisse_->Hide();
   vue_->Show();
@@ -422,7 +502,7 @@ double Cadre::recalculer() {
 void Cadre::changerCote(int fonction, double valeur, bool memoriser) {
   Fonction& f = doc_.fonctions[fonction];
   if (memoriser) {
-    annulations_.push_back({fonction, f.distance, valeur});
+    annulations_.push_back({fonction, f.distance, valeur, {}, {}});
     retablissements_.clear();
   }
   f.distance = valeur;
@@ -432,11 +512,13 @@ void Cadre::changerCote(int fonction, double valeur, bool memoriser) {
 }
 
 void Cadre::annuler() {
+  if (vueEsquisse_->enSaisie()) return vueEsquisse_->annulerSaisie();
   if (annulations_.empty()) return;
   const ModifCote m = annulations_.back();
   annulations_.pop_back();
   retablissements_.push_back(m);
-  changerCote(m.fonction, m.avant, false);
+  if (m.fonction < 0) poserEsquisses(m.esquissesAvant);
+  else changerCote(m.fonction, m.avant, false);
 }
 
 void Cadre::retablir() {
@@ -444,7 +526,8 @@ void Cadre::retablir() {
   const ModifCote m = retablissements_.back();
   retablissements_.pop_back();
   annulations_.push_back(m);
-  changerCote(m.fonction, m.apres, false);
+  if (m.fonction < 0) poserEsquisses(m.esquissesApres);
+  else changerCote(m.fonction, m.apres, false);
 }
 
 void Cadre::surArbre(wxTreeEvent& e) {

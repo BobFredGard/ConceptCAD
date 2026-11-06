@@ -16,8 +16,9 @@ struct Mesures {
   double boite[6] = {0, 0, 0, 0, 0, 0};
 };
 
-// Replace les esquisses posées sur une face (resolveAllSketchHosts) puis rejoue toute la pièce.
-ResultatRejeu rejouer(Document& d);
+// Replace les esquisses posées sur une face (resolveAllSketchHosts) puis rejoue la pièce,
+// ou seulement ses n premières fonctions : ce que voit l'esquisse de la fonction suivante.
+ResultatRejeu rejouer(Document& d, int n = -1);
 Mesures mesurer(const TopoDS_Shape& s);
 // Maillage d'affichage, aux mêmes finesses que occDisplayDefl (src/20-60).
 void mailler(const TopoDS_Shape& s, bool parallele);

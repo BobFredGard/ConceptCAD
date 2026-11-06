@@ -22,6 +22,20 @@ const Fonction* Document::fonction(const std::string& id) const {
   return nullptr;
 }
 
+bool memesValeurs(const Esquisse& a, const Esquisse& b) {
+  if (a.ordre.size() != b.ordre.size() || a.entites.size() != b.entites.size() || a.cotes.size() != b.cotes.size()) return false;
+  for (const std::string& id : a.ordre) {
+    const Pt* p = a.point(id);
+    const Pt* q = b.point(id);
+    if (!p || !q || p->x != q->x || p->y != q->y) return false;
+  }
+  for (size_t i = 0; i < a.entites.size(); i++)
+    if (a.entites[i].r != b.entites[i].r || a.entites[i].srcMid != b.entites[i].srcMid) return false;
+  for (size_t i = 0; i < a.cotes.size(); i++)
+    if (a.cotes[i].value != b.cotes[i].value || a.cotes[i].sgn != b.cotes[i].sgn || a.cotes[i].ccw != b.cotes[i].ccw) return false;
+  return true;
+}
+
 bool Document::profondeurModifiable(size_t i) const {
   const Esquisse* e = nullptr;
   for (const Esquisse& s : esquisses)
@@ -132,6 +146,12 @@ static void lireEsquisse(const json& js, Document& d, std::map<std::string, int>
       e.poignee = vrai(je, "handle");
       e.proj = vrai(je, "proj");
       e.percage = vrai(je, "hole");
+      e.ext = vrai(je, "isProj") || vrai(je, "isect") || vrai(je, "pierce") || vrai(je, "ext");
+      e.aSrcMid = vec3(je, "srcMid", e.srcMid);
+      e.suiviInconnu = e.ext || je.contains("srcNom") || je.contains("skSrc");
+      if (auto x = je.find("poly"); x != je.end() && x->is_array())
+        for (auto& q : *x)
+          if (q.is_string()) e.poly.push_back(q.get<std::string>());
       if (e.t != "line" && e.t != "arc" && e.t != "circle" && e.t != "cpoint" && !e.construction)
         refus["esquisse : « " + e.t + " »"]++;
       s.entites.push_back(std::move(e));
@@ -139,7 +159,13 @@ static void lireEsquisse(const json& js, Document& d, std::map<std::string, int>
   if (js.contains("constraints") && js["constraints"].is_array())
     for (auto& jc : js["constraints"]) {
       Contrainte c;
+      c.id = texte(jc, "id");
       c.type = texte(jc, "type");
+      c.c = texte(jc, "c");
+      c.d = texte(jc, "d");
+      c.inf = vrai(jc, "inf");
+      if (auto x = jc.find("sa"); x != jc.end() && x->is_number()) c.sa = x->get<int>();
+      if (auto x = jc.find("sb"); x != jc.end() && x->is_number()) c.sb = x->get<int>();
       c.p = texte(jc, "p");
       c.line = texte(jc, "line");
       c.ent = texte(jc, "ent");
@@ -172,6 +198,9 @@ static void lireEsquisse(const json& js, Document& d, std::map<std::string, int>
       c.aW = nb("w", c.w);
       double ccw = -1;
       if (nb("ccw", ccw)) c.ccw = static_cast<int>(ccw);
+      double sgn = 0;
+      if (nb("sgn", sgn) && (sgn == 1 || sgn == -1)) c.sgn = static_cast<int>(sgn);
+      c.comp = vrai(jd, "comp");
       c.ref = vrai(jd, "ref");
       c.dia = vrai(jd, "dia");
       c.nom = texte(jd, "name");
@@ -273,5 +302,6 @@ Document lireProjet(const std::wstring& chemin) {
   if (j.contains("asm") && j["asm"].is_object()) refus["assemblage"]++;
   if (j.contains("components") && j["components"].is_array() && !j["components"].empty()) refus["assemblage"]++;
   for (auto& [k, n] : refus) d.nonPrisEnCharge.push_back(k + " × " + std::to_string(n));
+  d.esquissesFichier = d.esquisses;
   return d;
 }

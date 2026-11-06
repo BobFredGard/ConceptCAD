@@ -1,4 +1,4 @@
-// Vue 2D d'une esquisse, en lecture seule : traduction du dessin de la version navigateur
+// Vue 2D d'une esquisse : traduction du dessin de la version navigateur
 // (drawSketch2D et drawSkDims, src/50-esquisse-4). Toutes les tailles sont en pixels logiques, comme le SVG d'origine.
 #pragma once
 #include <wx/wx.h>
@@ -20,7 +20,17 @@ class VueEsquisse : public wxWindow {
   void ajuster();
   // Image de la vue, pour comparer au navigateur sans prendre la main sur l'écran.
   bool enregistrer(const wxString& chemin);
+  // Le solide a changé : nouveau fantôme, sans toucher au cadrage
+  void majPiece(const TopoDS_Shape& piece);
   std::function<void()> surQuitter;
+  // Double-clic sur une cote : rend true et le texte à proposer si elle peut changer.
+  std::function<bool(const Cote& c, wxString& texte)> surDemandeCote;
+  // La valeur tapée, validée par Entrée
+  std::function<void(const std::string& idCote, const wxString& texte)> surSaisieCote;
+  bool enSaisie() const { return saisie_ && saisie_->IsShown(); }
+  void annulerSaisie();
+  // Pour les essais : où double-cliquer sur cette cote, en coordonnées de la vue
+  bool positionCote(const std::string& id, wxPoint& p) const;
   // Éléments qu'on ne sait pas encore dessiner (splines), pour le dire à l'utilisateur.
   int nonDessines() const { return nonDessines_; }
 
@@ -41,6 +51,11 @@ class VueEsquisse : public wxWindow {
   void surRelache(wxMouseEvent&);
   void surMouvement(wxMouseEvent&);
   void surMolette(wxMouseEvent&);
+  void surDoubleClic(wxMouseEvent&);
+  void ouvrirSaisie(const Cote& c, const wxString& texte, double x, double y);
+  void validerSaisie();
+  void fantomeDe(const TopoDS_Shape& piece);
+  void noterZone(const Cote& d, double x, double y, double demiL, double demiH, double angle) const;
 
   void grille(wxGraphicsContext& g, double W, double H) const;
   void fantome(wxGraphicsContext& g) const;
@@ -56,6 +71,13 @@ class VueEsquisse : public wxWindow {
 
   const Esquisse* s_ = nullptr;
   std::vector<Trait> traitsFantome_;
+  struct ZoneCote {
+    std::string id;
+    double x, y, demiL, demiH, angle;  // en pixels logiques
+  };
+  mutable std::vector<ZoneCote> zonesCotes_;  // refaites à chaque dessin : là où chaque valeur est écrite
+  wxTextCtrl* saisie_ = nullptr;
+  std::string coteEnSaisie_;
   double echelle_ = 2.2, cx_ = 0, cy_ = 0;
   double hautX_ = 0, hautY_ = 1;  // le haut de l'écran, dans le plan de l'esquisse
   int nonDessines_ = 0;

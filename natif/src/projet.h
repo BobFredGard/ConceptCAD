@@ -6,23 +6,32 @@
 #include <vector>
 
 struct Pt { double x = 0, y = 0; };
+using Vec3 = std::array<double, 3>;
 
 struct Entite {
   std::string id, t, p1, p2, pc, pa, pb;
   std::string p;  // point porté par un « cpoint »
   double r = 0;
   bool construction = false, ref = false, axe = false, poignee = false, proj = false, percage = false;
+  bool ext = false;  // tenue par une source extérieure à l'esquisse (intersection, perçage...)
+  std::vector<std::string> poly;  // sommets d'un polygone : ils suivent son diamètre
+  bool aSrcMid = false;  // milieu 3D de l'arête source d'une projection : c'est par lui qu'on la retrouve
+  Vec3 srcMid{0, 0, 0};
+  bool suiviInconnu = false;  // projection qui suit autre chose qu'une arête retrouvée par position (nom, intersection, autre esquisse)
 };
 
 // Contrainte et cote d'esquisse : mêmes champs que le fichier (src/50-esquisse-2, 50-esquisse-4).
 struct Contrainte {
-  std::string type, p, line, ent, a, b, mid;
+  std::string id, type, p, line, ent, a, b, mid, c, d;
+  bool inf = false;
+  int sa = 0, sb = 0;
 };
 struct Cote {
   std::string id, type, line, ent, a, b, p, orient, nom;
   double value = 0, ox = 0, oy = 0, w = 0, sl = 0;
-  bool aW = false, ref = false, dia = false, formule = false, formuleFausse = false;
+  bool aW = false, ref = false, dia = false, formule = false, formuleFausse = false, comp = false;
   int ccw = -1;  // -1 : absent du fichier
+  int sgn = 0;   // côté mémorisé d'un entraxe, 0 : absent
 };
 
 struct Hote {
@@ -31,8 +40,6 @@ struct Hote {
   double x = 0, y = 0, h = 0;
   bool aH = false;
 };
-
-using Vec3 = std::array<double, 3>;
 
 struct Esquisse {
   std::string id, nom, plan;
@@ -54,6 +61,9 @@ struct Esquisse {
   }
 };
 
+// Les seuls nombres d'une esquisse que le logiciel sait changer et enregistrer
+bool memesValeurs(const Esquisse& a, const Esquisse& b);
+
 struct Fonction {
   std::string id, type, nom, esquisse, corps, op = "add";
   double distance = 10;
@@ -65,6 +75,7 @@ struct Document {
   std::string nom;
   std::vector<std::string> corps;
   std::vector<Esquisse> esquisses;
+  std::vector<Esquisse> esquissesFichier;  // telles qu'écrites dans le fichier : ce qui en diffère reste à enregistrer
   std::vector<Fonction> fonctions;
   std::vector<std::string> nonPrisEnCharge;  // vide = la pièce se rejoue entièrement
   std::wstring chemin;
@@ -73,6 +84,8 @@ struct Document {
   bool modifie() const {
     for (const Fonction& f : fonctions)
       if (f.distance != f.distanceFichier) return true;
+    for (size_t i = 0; i < esquisses.size(); i++)
+      if (!memesValeurs(esquisses[i], esquissesFichier[i])) return true;
     return false;
   }
   Esquisse* esquisse(const std::string& id);

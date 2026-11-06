@@ -547,11 +547,12 @@ TopoDS_Shape rejouerCorps(Document& d, const std::vector<const Fonction*>& liste
 }
 }  // namespace
 
-ResultatRejeu rejouer(Document& d) {
+ResultatRejeu rejouer(Document& d, int n) {
   replacerHotes(d);
   std::vector<std::string> ordre;
   std::map<std::string, std::vector<const Fonction*>> parCorps;
   for (auto& f : d.fonctions) {
+    if (n >= 0 && &f - d.fonctions.data() >= n) break;
     if (!f.visible) continue;
     std::string b = std::find(d.corps.begin(), d.corps.end(), f.corps) != d.corps.end() ? f.corps : d.corps[0];
     if (!parCorps.count(b)) ordre.push_back(b);

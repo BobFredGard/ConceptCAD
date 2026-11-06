@@ -40,7 +40,7 @@ function Capture($nom) {
 function Garde { if ([U]::GetForegroundWindow() -ne $w) { if (-not $p.HasExited) { $p.Kill() }; $q = 0; [void][U]::GetWindowThreadProcessId([U]::GetForegroundWindow(), [ref]$q); throw "une autre fenêtre est passée devant ($((Get-Process -Id $q -ErrorAction SilentlyContinue).ProcessName)) : arrêt, rien envoyé" } }
 function Touches($k) { Garde; [Windows.Forms.SendKeys]::SendWait($k); Start-Sleep -Milliseconds 200 }
 function Souris($x, $y) { Garde; [void][U]::SetCursorPos($x, $y); Start-Sleep -Milliseconds 80 }
-function Etat { Start-Sleep -Milliseconds 150; return (Get-Content $env:CONCEPTCAD_JOURNAL_ETAT -Encoding UTF8 -ErrorAction SilentlyContinue | Select-Object -Last 1) }
+function Etat { Start-Sleep -Milliseconds 150; return (Get-Content $env:CONCEPTCAD_JOURNAL_ETAT -Encoding UTF8 -ErrorAction SilentlyContinue | Where-Object { $_ -notlike 'cote *' } | Select-Object -Last 1) }
 function Rect($id) { $r = New-Object U+RECT; [void][U]::GetWindowRect([U]::GetDlgItem($w, $id), [ref]$r); return $r }
 function Prive { Start-Sleep -Seconds 2; $q = Get-CimInstance Win32_PerfRawData_PerfProc_Process -Filter "IDProcess=$($p.Id)"; return [math]::Round($q.WorkingSetPrivate / 1MB, 1) }
 function Double($x, $y) { Souris $x $y; foreach ($n in 1, 2) { [U]::mouse_event(2, 0, 0, 0, [IntPtr]::Zero); Start-Sleep -Milliseconds 40; [U]::mouse_event(4, 0, 0, 0, [IntPtr]::Zero); Start-Sleep -Milliseconds 60 }; Start-Sleep -Milliseconds 400 }
@@ -59,7 +59,7 @@ Souris ($a.L + 60) ($a.T + 12)
 Touches '{HOME}'
 $h3d = Capture '1-piece.png'
 Double ($a.L + 70) ($a.T + 27)
-if ((Etat) -notlike '*lecture seule*') { $p.Kill(); throw 'le double-clic n''ouvre pas l''esquisse' }
+if ((Etat) -notlike '*Esquisse*') { $p.Kill(); throw 'le double-clic n''ouvre pas l''esquisse' }
 "2. Double-clic dans l'arbre : $(Etat)"
 Start-Sleep -Milliseconds 500
 $h0 = Capture '2-esquisse.png'
@@ -85,7 +85,7 @@ $h4 = Capture '6-retour-3d.png'
 Souris ($a.L + 60) ($a.T + 12)
 [U]::mouse_event(2, 0, 0, 0, [IntPtr]::Zero); Start-Sleep -Milliseconds 60; [U]::mouse_event(4, 0, 0, 0, [IntPtr]::Zero); Start-Sleep -Milliseconds 200
 Touches '{HOME}'; Touches '{DOWN}'; Touches '{ENTER}'
-if ((Etat) -notlike '*lecture seule*') { $p.Kill(); throw 'Entrée n''ouvre pas l''esquisse' }
+if ((Etat) -notlike '*Esquisse*') { $p.Kill(); throw 'Entrée n''ouvre pas l''esquisse' }
 "7. Entrée dans l'arbre : esquisse rouverte"
 Start-Sleep -Milliseconds 400
 # Bouton « Terminer l'esquisse » en haut à gauche de la vue
