@@ -1,0 +1,123 @@
+// L'environnement du navigateur : barre du haut, ruban de chaque atelier, cartes flottantes, fil des fonctions.
+// Noms, infobulles, ordre et icônes viennent de environnement_donnees.inc, recopié du navigateur par mesures/extraire-environnement.cjs.
+// Ce qui n'est pas encore repris reste visible, grisé, et le dit quand on clique dessus.
+#pragma once
+#include <wx/wx.h>
+
+#include <functional>
+#include <map>
+#include <string>
+#include <vector>
+
+#include "interface_esquisse.h"
+
+enum class Atelier { CAO, FAO, PLAN, RENDU };
+
+class BarreHaute : public wxWindow {
+ public:
+  explicit BarreHaute(wxWindow* parent);
+  std::function<void(Atelier)> surAtelier;
+  std::function<void()> surAnnuler, surRetablir, surOuvrir, surEnregistrer, surEnregistrerSous, surRegenerer;
+  std::function<void(const wxString&)> surIndisponible;
+  void atelier(Atelier a);
+  void document(const wxString& nom);
+  void etats(bool annuler, bool retablir, bool enregistrer, bool document);
+
+ private:
+  void placer();
+  std::vector<BoutonEsquisse*> ateliers_, icones_;
+  std::vector<int> separateurs_;
+  BoutonEsquisse* regenerer_ = nullptr;
+  BoutonEsquisse* theme_ = nullptr;
+  wxString document_;
+  int finIcones_ = 0;
+};
+
+class Ruban : public wxWindow {
+ public:
+  explicit Ruban(wxWindow* parent);
+  // La fonction rend true si ce bouton est repris ; elle n'est appelée que pour dire disponible ou non
+  std::function<bool(Atelier, const wxString&)> estRepris;
+  std::function<void(Atelier, const wxString&)> surBouton;
+  std::function<void(const wxString&)> surIndisponible;
+  void atelier(Atelier a);
+
+ private:
+  void placer();
+  struct Groupe {
+    Atelier atelier;
+    std::vector<BoutonEsquisse*> boutons;
+    std::vector<bool> coupes;
+  };
+  std::vector<Groupe> groupes_;
+  Atelier courant_ = Atelier::CAO;
+  std::vector<wxRect> traits_;
+  int hauteur_ = 0;
+};
+
+// Une carte arrondie posée sur le fond : titre en petites capitales, contenu dessous.
+class Carte : public wxPanel {
+ public:
+  // Grand : titre en clair sur deux lignes au plus, comme l'arbre du navigateur
+  Carte(wxWindow* parent, const wxString& titre, const wxColour& fond, bool grand = false);
+  void titre(const wxString& t);
+  wxBoxSizer* contenu() { return contenu_; }
+
+ private:
+  wxString titre_;
+  wxColour fond_;
+  bool grand_ = false;
+  wxBoxSizer* contenu_ = nullptr;
+};
+
+// Le fil des fonctions, sous la vue 3D : esquisses et fonctions dans l'ordre
+class FilFonctions : public wxWindow {
+ public:
+  struct Element {
+    bool estFonction = false;
+    int i = 0;
+    std::string type, op;
+    wxString nom;
+  };
+  explicit FilFonctions(wxWindow* parent);
+  void montrer(const std::vector<Element>& e, int nbFonctions);
+  std::function<void(const Element&)> surClic, surDouble;
+  std::function<void(const wxString&)> surIndisponible;
+
+ private:
+  int sous(const wxPoint& p) const;
+  int visibles() const;
+  void bornerDebut();
+  const wxBitmap& image(const Element& e, const wxColour& c);
+  std::vector<Element> elements_;
+  std::map<std::string, wxBitmap> images_;
+  int nb_ = 0, survol_ = -1, debut_ = 0;
+};
+
+// Ligne de texte sur la vue : l'état du moment, comme en bas de la vue du navigateur
+class EtatVue : public wxWindow {
+ public:
+  EtatVue(wxWindow* parent, int id, const wxColour& fond);
+  void montrer(const wxString& t);
+  const wxString& texte() const { return texte_; }
+  int largeurVoulue() const;
+
+ private:
+  wxString texte_;
+  wxColour fond_;
+};
+
+const char* iconeVue(int i);  // Rendu, Rendu direct
+const char* iconeRubanCao(int i);  // dans l'ordre du ruban : 0 Esquisse, 1 Extrusion, 6 Corps
+
+// Ce qui reste à faire dans un atelier : une page d'attente au lieu d'un faux écran
+class PageAtelier : public wxWindow {
+ public:
+  explicit PageAtelier(wxWindow* parent);
+  void montrer(const wxString& titre, const wxString& texte, bool feuille);
+
+ private:
+  wxString titre_, texte_;
+  bool feuille_ = false;
+};
+

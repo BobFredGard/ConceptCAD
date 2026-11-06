@@ -1008,13 +1008,13 @@ void Dessin::enfonceArc(double wx, double wy) {
   apresEdition();
 }
 
-void Dessin::bouge(double wx, double wy) {
+void Dessin::bouge(double wx, double wy, bool gaucheTenu) {
   if (outil_ == COTE && !dimPose_.empty()) {
     if (Cote* d = cote(dimPose_)) return suivreCote(*d, wx, wy);
     dimPose_.clear();
   }
   if (outil_ == AJUSTER) {
-    if (coupeGlisse_) glisserAjuster(wx, wy);
+    if (coupeGlisse_ && gaucheTenu) glisserAjuster(wx, wy);  // Windows envoie aussi des mouvements fictifs : seul un bouton tenu coupe
     apercu_ = calculerApercu(wx, wy);
     return;
   }

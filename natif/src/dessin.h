@@ -52,7 +52,7 @@ class Dessin {
   Outil outil() const { return outil_; }
   void choisirOutil(Outil o);  // skCancelDraft, puis l'outil
   void enfonce(double x, double y, bool ctrl);
-  void bouge(double x, double y);
+  void bouge(double x, double y, bool gaucheTenu = true);
   void relache(double x, double y);
   // Rend la cote à ouvrir en saisie, s'il y en a une
   std::string doubleClic(double x, double y);

@@ -6,6 +6,14 @@ Add-Type -AssemblyName System.Windows.Forms, System.Drawing
 Add-Type @'
 using System; using System.Runtime.InteropServices;
 public static class U {
+  public delegate bool Rappel(IntPtr h, IntPtr l);
+  [DllImport("user32.dll")] public static extern bool EnumChildWindows(IntPtr h, Rappel f, IntPtr l);
+  [DllImport("user32.dll", CharSet = CharSet.Unicode)] public static extern int GetWindowText(IntPtr h, System.Text.StringBuilder s, int n);
+  public static IntPtr ParNom(IntPtr parent, string nom) {
+    IntPtr t = IntPtr.Zero;
+    EnumChildWindows(parent, (h, l) => { var s = new System.Text.StringBuilder(200); GetWindowText(h, s, 200); if (s.ToString() == nom) { t = h; return false; } return true; }, IntPtr.Zero);
+    return t;
+  }
   [DllImport("user32.dll")] public static extern bool SetProcessDPIAware();
   [DllImport("user32.dll")] public static extern bool SetForegroundWindow(IntPtr h);
   [DllImport("user32.dll")] public static extern bool ShowWindow(IntPtr h, int c);
@@ -58,7 +66,7 @@ Souris ($a.L + 60) ($a.T + 12)
 [U]::mouse_event(2, 0, 0, 0, [IntPtr]::Zero); Start-Sleep -Milliseconds 60; [U]::mouse_event(4, 0, 0, 0, [IntPtr]::Zero); Start-Sleep -Milliseconds 200
 Touches '{HOME}'
 $h3d = Capture '1-piece.png'
-Double ($a.L + 70) ($a.T + 27)
+Double ($a.L + 70) ($a.T + 218)
 if ((Etat) -notlike '*Esquisse*') { $p.Kill(); throw 'le double-clic n''ouvre pas l''esquisse' }
 "2. Double-clic dans l'arbre : $(Etat)"
 Start-Sleep -Milliseconds 500
@@ -84,13 +92,13 @@ $h4 = Capture '6-retour-3d.png'
 "   Retour à la pièce : $($h4 -ne $h3)"
 Souris ($a.L + 60) ($a.T + 12)
 [U]::mouse_event(2, 0, 0, 0, [IntPtr]::Zero); Start-Sleep -Milliseconds 60; [U]::mouse_event(4, 0, 0, 0, [IntPtr]::Zero); Start-Sleep -Milliseconds 200
-Touches '{HOME}'; Touches '{DOWN}'; Touches '{ENTER}'
+Touches '{HOME}'; Touches '{DOWN 9}'; Touches '{ENTER}'
 if ((Etat) -notlike '*Esquisse*') { $p.Kill(); throw 'Entrée n''ouvre pas l''esquisse' }
 "7. Entrée dans l'arbre : esquisse rouverte"
 Start-Sleep -Milliseconds 400
-# Bouton « Terminer l'esquisse » en haut à gauche de la vue
-$x = $a.R + 60; $y = $a.T + 8
-Souris $x $y
+# Le bouton Terminer de la barre d'esquisse, à la vraie souris
+$b = New-Object U+RECT; [void][U]::GetWindowRect([U]::ParNom($w, 'Terminer'), [ref]$b)
+Souris ([int](($b.L + $b.R) / 2)) ([int](($b.T + $b.B) / 2))
 [U]::mouse_event(2, 0, 0, 0, [IntPtr]::Zero); Start-Sleep -Milliseconds 60; [U]::mouse_event(4, 0, 0, 0, [IntPtr]::Zero); Start-Sleep -Milliseconds 500
 "8. Bouton Terminer : $(Etat)"
 Garde

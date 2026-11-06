@@ -11,6 +11,8 @@
 #include <Standard_Failure.hxx>
 #include <TopoDS.hxx>
 
+#include <wx/imaglist.h>
+
 #include <algorithm>
 #include <chrono>
 #include <cmath>
@@ -18,16 +20,25 @@
 #include "enregistrer.h"
 
 namespace {
-enum { ID_ANNULER = wxID_HIGHEST + 1, ID_RETABLIR, ID_AJUSTER, ID_QUITTER_ESQUISSE, ID_ESQUISSE_XY, ID_ESQUISSE_XZ, ID_ESQUISSE_YZ, ID_ESQUISSE_FACE, ID_EXTRUDER, ID_ACCROCHE_GRILLE, ID_CONTRAINTE_1 };
+enum { ID_ANNULER = wxID_HIGHEST + 1, ID_RETABLIR, ID_AJUSTER, ID_QUITTER_ESQUISSE, ID_ESQUISSE_XY, ID_ESQUISSE_XZ, ID_ESQUISSE_YZ, ID_ESQUISSE_FACE, ID_EXTRUDER, ID_CONTRAINTE_1, ID_ACCROCHE_GRILLE = wxID_HIGHEST + 100 };
 // Identifiants fixes : natif/mesures/verifier-fenetre.ps1 retrouve ces fenêtres par eux.
 enum { ID_ARBRE = 2001, ID_PROPS = 2002, ID_ETAT = 2003 };
 const char* const PROP_PROFONDEUR = "profondeur", * const PROP_OPERATION = "operation", * const PROP_ETENDUE = "etendue", * const PROP_DIRECTION = "direction", * const PROP_INVERSER = "inverser";
 
 struct LienArbre : wxTreeItemData {
-  LienArbre(bool f, int n) : estFonction(f), i(n) {}
+  LienArbre(bool f, int n, const std::string& p = "") : estFonction(f), i(n), plan(p) {}
   bool estFonction;
-  int i;
+  int i;  // -1 : une ligne de l'Origine
+  std::string plan;  // XY, XZ ou YZ : un double-clic y ouvre une esquisse
 };
+const wxColour C_SCENE(0x13, 0x15, 0x19), C_CARTE(0x2a, 0x2c, 0x30), C_CLAIR(0xf5, 0xf5, 0xf7), C_GRIS(0x98, 0x98, 0x9d);
+wxFont policeArial(const wxWindow* w, double px, bool gras = false) {
+  wxFontInfo i(wxSize(0, static_cast<int>(std::lround(px * w->GetDPIScaleFactor()))));
+  i.FaceName("Arial");
+  if (gras) i.Bold();
+  return wxFont(i);
+}
+const wchar_t* const PAS_ENCORE = L" : pas encore dans le logiciel Windows";
 
 double msDepuis(std::chrono::steady_clock::time_point t0) {
   return std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - t0).count();
@@ -66,16 +77,18 @@ wxPGProperty* lectureSeule(wxPropertyGrid* g, const wxString& nom, const wxStrin
 }  // namespace
 
 Cadre::Cadre() : wxFrame(nullptr, wxID_ANY, L"ConceptCAD natif"), minuterie_(this) {
-  SetClientSize(FromDIP(wxSize(1400, 900)));
-  Move(FromDIP(wxPoint(40, 40)));
-  aui_.SetManagedWindow(this);
+  SetClientSize(FromDIP(wxSize(1500, 900)));
+  SetMinClientSize(FromDIP(wxSize(1000, 600)));
+  Move(FromDIP(wxPoint(20, 20)));
   creerMenus();
+  // Les menus restent là pour les raccourcis clavier, mais l'écran est celui du navigateur, qui n'en a pas
+  ::SetMenu(GetHWND(), nullptr);
 
-  arbre_ = new wxTreeCtrl(this, ID_ARBRE, wxDefaultPosition, FromDIP(wxSize(280, 500)), wxTR_DEFAULT_STYLE | wxTR_HIDE_ROOT | wxTR_LINES_AT_ROOT | wxTR_SINGLE | wxBORDER_NONE);
-  props_ = new wxPropertyGrid(this, ID_PROPS, wxDefaultPosition, FromDIP(wxSize(280, 300)), wxPG_DEFAULT_STYLE);
-  // La vue 3D et la vue d'esquisse occupent la même place, l'une à la fois.
   centre_ = new wxPanel(this);
-  vue_ = new Vue3D(centre_);
+  // La scène et la vue d'esquisse occupent la même place, l'une à la fois.
+  scene_ = new wxPanel(centre_);
+  scene_->SetBackgroundColour(C_SCENE);
+  vue_ = new Vue3D(scene_);
   vueEsquisse_ = new VueEsquisse(centre_);
   vueEsquisse_->surQuitter = [this] { quitterEsquisse(); };
   vueEsquisse_->surDemandeCote = [this](const Cote& c, wxString& t) { return demandeCote(c, t); };
@@ -85,17 +98,39 @@ Cadre::Cadre() : wxFrame(nullptr, wxID_ANY, L"ConceptCAD natif"), minuterie_(thi
   bandeauEsquisse_ = new BandeauEsquisse(centre_);
   panneauEsquisse_->SetMinSize(wxSize(FromDIP(288) + wxSystemSettings::GetMetric(wxSYS_VSCROLL_X, this), -1));
   centre_->SetBackgroundColour(wxColour(0x1c, 0x1c, 0x1e));
+  barreHaute_ = new BarreHaute(centre_);
+  ruban_ = new Ruban(centre_);
+  carteDroite_ = new Carte(centre_, L"PARAMÈTRES", C_CARTE);
+  carteDroite_->SetMinSize(FromDIP(wxSize(288, -1)));
+  props_ = new wxPropertyGrid(carteDroite_, ID_PROPS, wxDefaultPosition, wxDefaultSize, wxPG_DEFAULT_STYLE | wxPG_HIDE_MARGIN | wxBORDER_NONE);
+  props_->SetMinSize(wxSize(-1, 0));
+  noteDroite_ = new wxStaticText(carteDroite_, wxID_ANY, wxEmptyString);
+  boutonRendu_ = new BoutonEsquisse(carteDroite_, wxID_ANY, L"Rendre et enregistrer le PNG", wxString(L"Rendre et enregistrer le PNG") + PAS_ENCORE, BoutonEsquisse::PRINCIPAL);
+  carteDroite_->contenu()->Add(props_, 1, wxEXPAND);
+  carteDroite_->contenu()->Add(noteDroite_, 0, wxEXPAND | wxLEFT | wxRIGHT, FromDIP(5));
+  carteDroite_->contenu()->Add(boutonRendu_, 0, wxEXPAND | wxTOP, FromDIP(12));
   auto* colonne = new wxBoxSizer(wxVERTICAL);
-  colonne->Add(vue_, 1, wxEXPAND);
+  colonne->Add(scene_, 1, wxEXPAND);
   colonne->Add(vueEsquisse_, 1, wxEXPAND);
   colonne->Add(bandeauEsquisse_, 0, wxEXPAND);
   auto* rangee = new wxBoxSizer(wxHORIZONTAL);
-  margeColonne_ = rangee->Add(colonne, 1, wxEXPAND | wxLEFT | wxBOTTOM, 0);
+  margeColonne_ = rangee->Add(colonne, 1, wxEXPAND | wxLEFT | wxBOTTOM, FromDIP(12));
+  colonneDroite_ = new wxBoxSizer(wxVERTICAL);
+  colonneDroite_->Add(carteDroite_, 0, wxEXPAND);
+  colonneDroite_->AddStretchSpacer(1);
+  rangee->Add(colonneDroite_, 0, wxEXPAND | wxLEFT | wxRIGHT | wxBOTTOM, FromDIP(12));
   margePanneau_ = rangee->Add(panneauEsquisse_, 0, wxEXPAND | wxLEFT | wxRIGHT | wxBOTTOM, FromDIP(12));
   auto* tout = new wxBoxSizer(wxVERTICAL);
+  tout->Add(barreHaute_, 0, wxEXPAND);
+  tout->Add(ruban_, 0, wxEXPAND);
   tout->Add(barreEsquisse_, 0, wxEXPAND);
+  tout->AddSpacer(FromDIP(3));
   tout->Add(rangee, 1, wxEXPAND);
   centre_->SetSizer(tout);
+  auto* cadreSizer = new wxBoxSizer(wxVERTICAL);
+  cadreSizer->Add(centre_, 1, wxEXPAND);
+  SetSizer(cadreSizer);
+  creerEnvironnement();
   vueEsquisse_->Hide();
   barreEsquisse_->Hide();
   panneauEsquisse_->Hide();
@@ -121,6 +156,7 @@ Cadre::Cadre() : wxFrame(nullptr, wxID_ANY, L"ConceptCAD natif"), minuterie_(thi
     barreEsquisse_->grilleActive(vueEsquisse_->grilleVisible());
     vueEsquisse_->SetFocus();
   };
+  barreEsquisse_->surGrilleMenu = [this] { menuGrille(); };
   barreEsquisse_->surFantome = [this] {
     vueEsquisse_->basculerFantome();
     barreEsquisse_->fantomeActif(vueEsquisse_->fantomeVisible());
@@ -138,29 +174,356 @@ Cadre::Cadre() : wxFrame(nullptr, wxID_ANY, L"ConceptCAD natif"), minuterie_(thi
   vueEsquisse_->surGeste = [this] { rafraichirEsquisse(false); };
   vue_->surSelection = [this](const TopoDS_Shape& s) { montrerForme(s); };
 
-  aui_.AddPane(arbre_, wxAuiPaneInfo().Name("arbre").Caption(L"Pièce").Left().Layer(1).Position(0).BestSize(FromDIP(wxSize(280, 500))).CloseButton(false));
-  aui_.AddPane(props_, wxAuiPaneInfo().Name("props").Caption(L"Propriétés").Left().Layer(1).Position(1).BestSize(FromDIP(wxSize(280, 300))).CloseButton(false));
-  aui_.AddPane(centre_, wxAuiPaneInfo().Name("vue").CenterPane());
-  aui_.Update();
-
-  CreateStatusBar(1, wxSTB_DEFAULT_STYLE, ID_ETAT);
-  etat(L"Aucune pièce ouverte. Ctrl+O pour ouvrir. Clic gauche : tourner ou choisir. Clic droit : déplacer. Molette : zoom.");
+  etat(L"Noyau OCCT 8.0.1 · exact   Aucune pièce ouverte : Ouvrir (Ctrl+O). Clic gauche : tourner ou choisir. Clic droit : déplacer. Molette : zoom.");
 
   arbre_->Bind(wxEVT_TREE_SEL_CHANGED, &Cadre::surArbre, this);
   arbre_->Bind(wxEVT_TREE_ITEM_ACTIVATED, &Cadre::surArbreActive, this);
   props_->Bind(wxEVT_PG_CHANGED, &Cadre::surPropriete, this);
   Bind(wxEVT_TIMER, &Cadre::pasProtocole, this);
+  Bind(wxEVT_IDLE, [this](wxIdleEvent& e) {
+    barreHaute_->etats(!annulations_.empty(), !retablissements_.empty(), docOuvert_ && doc_.modifie(), docOuvert_);
+    ajusterDroite();
+    e.Skip();
+  });
   montrerRien();
+  changerAtelier(Atelier::CAO);
+}
+
+// L'environnement du navigateur, recopié élément par élément. Ce qui n'est pas encore repris est là, grisé, et le dit.
+void Cadre::creerEnvironnement() {
+  barreHaute_->surAtelier = [this](Atelier a) { changerAtelier(a); };
+  barreHaute_->surAnnuler = [this] { annuler(); };
+  barreHaute_->surRetablir = [this] { retablir(); };
+  barreHaute_->surOuvrir = [this] {
+    wxCommandEvent e;
+    surOuvrir(e);
+  };
+  barreHaute_->surEnregistrer = [this] { enregistrer(); };
+  barreHaute_->surEnregistrerSous = [this] { enregistrerSous(); };
+  barreHaute_->surRegenerer = [this] {
+    if (esquisseOuverte_ < 0) recalculer();
+  };
+  barreHaute_->surIndisponible = [this](const wxString& n) { indisponible(n); };
+  ruban_->estRepris = [](Atelier a, const wxString& n) { return a == Atelier::CAO && (n == L"Esquisse" || n == L"Extrusion"); };
+  ruban_->surBouton = [this](Atelier a, const wxString& n) { boutonRuban(a, n); };
+  ruban_->surIndisponible = [this](const wxString& n) { indisponible(n); };
+
+  // Les onglets au-dessus de l'arbre
+  const wchar_t* const nomsOnglets[] = {L"Modèle", L"Usinage", L"Plan"};
+  const Atelier ateliersOnglets[] = {Atelier::CAO, Atelier::FAO, Atelier::PLAN};
+  for (int i = 0; i < 3; i++) {
+    auto* b = new BoutonEsquisse(scene_, wxID_ANY, nomsOnglets[i], wxEmptyString, BoutonEsquisse::PASTILLE);
+    b->titre(nomsOnglets[i]);
+    b->fond(C_SCENE);
+    const Atelier a = ateliersOnglets[i];
+    b->surClic = [this, a] { changerAtelier(a); };
+    onglets_.push_back(b);
+  }
+  repliArbre_ = new BoutonEsquisse(scene_, wxID_ANY, L"Replier l'arbre", L"Replier ou déplier l'arborescence", BoutonEsquisse::TEXTE);
+  repliArbre_->titre(L"‹");
+  repliArbre_->fond(C_SCENE);
+  repliArbre_->surClic = [this] {
+    arbreReplie_ = !arbreReplie_;
+    repliArbre_->titre(arbreReplie_ ? L"›" : L"‹");
+    placerScene();
+  };
+
+  // L'arbre flottant
+  carteArbre_ = new Carte(scene_, L"Arborescence", C_CARTE, true);
+  auto* recherche = new BoutonEsquisse(carteArbre_, wxID_ANY, L"Rechercher dans l'arbre", wxString(L"Rechercher dans l'arbre") + PAS_ENCORE, BoutonEsquisse::TEXTE);
+  recherche->titre(L"Rechercher dans l'arbre (nom, type…)");
+  recherche->fond(C_CARTE);
+  recherche->disponible(false);
+  recherche->SetMinSize(FromDIP(wxSize(-1, 22)));
+  recherche->surClic = [this] { indisponible(L"Rechercher dans l'arbre"); };
+  arbre_ = new wxTreeCtrl(carteArbre_, ID_ARBRE, wxDefaultPosition, wxDefaultSize, wxTR_HAS_BUTTONS | wxTR_NO_LINES | wxTR_HIDE_ROOT | wxTR_SINGLE | wxTR_FULL_ROW_HIGHLIGHT | wxBORDER_NONE);
+  ::SendMessageW(arbre_->GetHWND(), 0x111B /* TVM_SETITEMHEIGHT */, FromDIP(23), 0);
+  {
+    // Les petites images de l'arbre : celles du ruban, et les couleurs des plans et des axes
+    const int cote = FromDIP(16);
+    auto* images = new wxImageList(cote, cote, true);
+    const auto ajouter = [&](const std::string& svg, const wxColour& c) { images->Add(iconeSvgComplete(svg, c, 16).GetBitmap(wxSize(cote, cote))); };
+    const auto point = [&](const wxColour& c) { ajouter("<svg viewBox=\"0 0 24 24\"><circle cx=\"12\" cy=\"12\" r=\"6\" fill=\"currentColor\"/></svg>", c); };
+    const auto trait = [&](const wxColour& c) { ajouter("<svg viewBox=\"0 0 24 24\"><rect x=\"3\" y=\"10\" width=\"18\" height=\"4\" rx=\"1\" fill=\"currentColor\"/></svg>", c); };
+    ajouter(iconeRubanCao(0), wxColour(0xff, 0x9f, 0x0a));  // 0 esquisse
+    ajouter(iconeRubanCao(1), wxColour(0x30, 0xd1, 0x58));  // 1 extrusion
+    ajouter(iconeRubanCao(1), wxColour(0xff, 0x45, 0x3a));  // 2 découpe
+    ajouter(iconeRubanCao(6), wxColour(0x0a, 0x84, 0xff));  // 3 corps
+    point(wxColour(0x40, 0x62, 0x8c));  // 4 plan XY
+    point(wxColour(0x3c, 0x84, 0x55));  // 5 plan XZ
+    point(wxColour(0x9c, 0x6c, 0x28));  // 6 plan YZ
+    point(wxColour(0x70, 0x70, 0x75));  // 7 repère
+    trait(wxColour(0xff, 0x6b, 0x6b));  // 8 axe X
+    trait(wxColour(0x5e, 0xdc, 0x7a));  // 9 axe Y
+    trait(wxColour(0x4d, 0xa3, 0xff));  // 10 axe Z
+    ajouter(iconeRubanCao(8), C_GRIS);  // 11 origine
+    arbre_->AssignImageList(images);
+  }
+  arbre_->SetBackgroundColour(C_CARTE);
+  arbre_->SetForegroundColour(C_CLAIR);
+  arbre_->SetFont(policeArial(this, 12.5));
+  auto* aide = new wxStaticText(carteArbre_, wxID_ANY, L"Double-clic sur un plan ou une esquisse : dessiner");
+  aide->SetForegroundColour(C_GRIS);
+  aide->SetFont(policeArial(this, 11));
+  carteArbre_->contenu()->Add(recherche, 0, wxEXPAND | wxBOTTOM, FromDIP(6));
+  carteArbre_->contenu()->Add(arbre_, 1, wxEXPAND);
+  carteArbre_->contenu()->Add(aide, 0, wxEXPAND | wxTOP, FromDIP(6));
+
+  // Les posages de l'atelier FAO
+  carteFao_ = new Carte(scene_, L"FAO · POSAGES", C_CARTE, true);
+  auto* noteFao = new wxStaticText(carteFao_, wxID_ANY, L"Les posages, les opérations, la simulation et le G-code ne sont pas encore dans le logiciel Windows. Ils restent dans le navigateur.");
+  noteFao->SetForegroundColour(C_GRIS);
+  noteFao->SetFont(policeArial(this, 12));
+  noteFao->Wrap(FromDIP(220));
+  carteFao_->contenu()->Add(noteFao, 1, wxEXPAND);
+  // Mise à part du titre, sur une seule ligne : le texte remonte
+  carteFao_->GetSizer()->GetItem(size_t(0))->AssignSpacer(1, FromDIP(30));
+
+  // Les boutons de la vue
+  const struct {
+    const wchar_t* nom;
+    const char* icone;
+  } vueIcones[] = {{L"Rendu", nullptr}, {L"Rendu direct", nullptr}, {L"Réglages de la vue", nullptr}, {L"Vue initiale", "cadrer"}, {L"Annuler le mouvement de vue", "orbite"}};
+  for (const auto& v : vueIcones) {
+    auto* b = new BoutonEsquisse(scene_, wxID_ANY, v.nom, wxString(v.nom) + (v.icone && wxString(v.icone) == "cadrer" ? L"" : PAS_ENCORE), BoutonEsquisse::ENCADRE);
+    b->fond(C_SCENE);
+    if (v.icone) b->icone(v.icone, C_CLAIR);
+    boutonsVue_.push_back(b);
+  }
+  boutonsVue_[0]->iconeComplete(iconeVue(0), C_CLAIR);
+  boutonsVue_[1]->iconeComplete(iconeVue(1), C_CLAIR);
+  boutonsVue_[2]->titre(L"⚙");
+  for (size_t i = 0; i < boutonsVue_.size(); i++) {
+    if (i == 3) continue;
+    boutonsVue_[i]->disponible(false);
+    const wxString nom = boutonsVue_[i]->GetLabel();
+    boutonsVue_[i]->surClic = [this, nom] { indisponible(nom); };
+  }
+  boutonsVue_[3]->surClic = [this] { vue_->vueInitiale(); };
+
+  etatVue_ = new EtatVue(scene_, ID_ETAT, C_SCENE);
+  fil_ = new FilFonctions(scene_);
+  fil_->surIndisponible = [this](const wxString& n) { indisponible(n); };
+  fil_->surClic = [this](const FilFonctions::Element& e) {
+    if (e.estFonction) choisirFonction(e.i);
+    else if (e.i < static_cast<int>(lignesEsquisses_.size()) && lignesEsquisses_[e.i].IsOk()) arbre_->SelectItem(lignesEsquisses_[e.i]);
+  };
+  fil_->surDouble = [this](const FilFonctions::Element& e) {
+    if (!e.estFonction) entrerEsquisse(e.i);
+  };
+  page_ = new PageAtelier(scene_);
+  page_->Hide();
+
+  // Les fenêtres posées sur la vue 3D : OpenGL n'a pas le droit de les recouvrir
+  for (wxWindow* w : scene_->GetChildren()) {
+    const HWND h = w->GetHWND();
+    ::SetWindowLongPtrW(h, GWL_STYLE, ::GetWindowLongPtrW(h, GWL_STYLE) | WS_CLIPSIBLINGS);
+    ::SetWindowPos(h, nullptr, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE | SWP_FRAMECHANGED);
+    if (w != vue_) w->Raise();
+  }
+
+  // La grille de propriétés, aux couleurs du panneau du navigateur
+  props_->SetMarginColour(C_CARTE);
+  props_->SetCaptionBackgroundColour(C_CARTE);
+  props_->SetCaptionTextColour(C_GRIS);
+  props_->SetCellBackgroundColour(C_CARTE);
+  props_->SetCellTextColour(C_CLAIR);
+  props_->SetCellDisabledTextColour(C_GRIS);
+  props_->SetEmptySpaceColour(C_CARTE);
+  props_->SetLineColour(wxColour(0x3a, 0x3a, 0x3d));
+  props_->SetSelectionBackgroundColour(wxColour(0x0a, 0x84, 0xff));
+  props_->SetSelectionTextColour(*wxWHITE);
+  props_->SetFont(policeArial(this, 12.5));
+  noteDroite_->SetForegroundColour(C_GRIS);
+  noteDroite_->SetFont(policeArial(this, 12.5));
+  boutonRendu_->disponible(false);
+  boutonRendu_->SetMinSize(FromDIP(wxSize(-1, 30)));
+  boutonRendu_->titre(L"Rendre et enregistrer le PNG");
+  boutonRendu_->fond(C_CARTE);
+  boutonRendu_->surClic = [this] { indisponible(L"Rendre et enregistrer le PNG"); };
+
+  scene_->Bind(wxEVT_SIZE, [this](wxSizeEvent& e) {
+    placerScene();
+    const wxSize t = scene_->GetClientSize();
+    const int r = FromDIP(24);
+    ::SetWindowRgn(scene_->GetHWND(), ::CreateRoundRectRgn(0, 0, t.x + 1, t.y + 1, r, r), TRUE);
+    e.Skip();
+  });
+}
+
+// Les mêmes emplacements que dans le navigateur, à partir des bords de la scène
+void Cadre::placerScene() {
+  if (!fil_) return;
+  const wxSize t = scene_->ToDIP(scene_->GetClientSize());
+  if (t.x < 50 || t.y < 50) return;
+  const auto poser = [&](wxWindow* w, int x, int y, int l, int h) { w->SetSize(wxRect(scene_->FromDIP(wxPoint(x, y)), scene_->FromDIP(wxSize(l, h)))); };
+  const bool cao = atelier_ == Atelier::CAO, fao = atelier_ == Atelier::FAO, rendu = atelier_ == Atelier::RENDU;
+  const bool volume = cao || fao;
+  poser(vue_, 0, 0, t.x, t.y);
+  vue_->Show(volume);
+  poser(page_, 0, 0, t.x, t.y);
+  page_->Show(!volume);
+  const int xo[] = {8, 72, 140}, lo[] = {63, 67, 48};
+  for (int i = 0; i < 3; i++) {
+    poser(onglets_[i], xo[i], 14, lo[i], 20);
+    onglets_[i]->Show(!rendu);
+  }
+  poser(repliArbre_, 5, 41, 22, 88);
+  repliArbre_->Show(volume);
+  const int basFil = cao ? t.y - 64 : t.y - 34;
+  poser(carteArbre_, 32, 41, 300, std::max(120, std::min(470, basFil - 41)));
+  carteArbre_->Show(cao && !arbreReplie_);
+  poser(carteFao_, 32, 41, 244, 140);
+  carteFao_->Show(fao && !arbreReplie_);
+  poser(boutonsVue_[0], t.x - 214, 16, 36, 24);
+  poser(boutonsVue_[1], t.x - 173, 16, 36, 24);
+  poser(boutonsVue_[2], t.x - 132, 16, 32, 24);
+  poser(boutonsVue_[3], t.x - 104, 7, 18, 18);
+  poser(boutonsVue_[4], t.x - 104, 27, 18, 18);
+  for (BoutonEsquisse* b : boutonsVue_) b->Show(volume);
+  poser(fil_, 13, t.y - 60, t.x - 26, 48);
+  fil_->Show(cao);
+  const int largeurEtat = std::min(t.x - 40, etatVue_->largeurVoulue() + 8);
+  poser(etatVue_, t.x - 12 - largeurEtat, (cao ? t.y - 82 : t.y - 26), largeurEtat, 20);
+  etatVue_->Show(volume);
+  scene_->Refresh();
+}
+
+void Cadre::changerAtelier(Atelier a) {
+  if (esquisseOuverte_ >= 0 && a != Atelier::CAO) quitterEsquisse();
+  atelier_ = a;
+  barreHaute_->atelier(a);
+  ruban_->atelier(a);
+  for (int i = 0; i < 3; i++) onglets_[i]->actif(static_cast<int>(a) == i);
+  montrerAtelier();
+  placerScene();
+  centre_->Layout();
+}
+
+void Cadre::montrerAtelier() {
+  const bool enEsquisse = esquisseOuverte_ >= 0;
+  ruban_->Show(!enEsquisse && atelier_ != Atelier::RENDU);
+  const bool cao = atelier_ == Atelier::CAO;
+  props_->Show(cao);
+  boutonRendu_->Show(atelier_ == Atelier::RENDU);
+  noteMontree_ = noteDroite_->IsShown();
+  switch (atelier_) {
+    case Atelier::CAO:
+      carteDroite_->titre(L"PARAMÈTRES");
+      noteDroite_->SetLabel(L"Sélectionnez un plan, une esquisse ou une fonction dans l'arbre.");
+      break;
+    case Atelier::FAO:
+      carteDroite_->titre(L"PARAMÈTRES");
+      noteDroite_->SetLabel(L"Choisissez un posage ou une opération.");
+      break;
+    case Atelier::PLAN:
+      carteDroite_->titre(L"PARAMÈTRES");
+      noteDroite_->SetLabel(L"Les planches, les vues et les cotes de mise en plan ne sont pas encore dans le logiciel Windows.");
+      page_->montrer(L"Mise en plan", L"Pas encore dans le logiciel Windows : elle reste dans le navigateur.", true);
+      break;
+    case Atelier::RENDU:
+      carteDroite_->titre(L"PARAMÈTRES — RENDU");
+      noteDroite_->SetLabel(L"MOTEUR\n\nAMBIANCE\n\nFOND ET SOL\n\nAPPAREIL PHOTO\n\nCes réglages ne sont pas encore dans le logiciel Windows.");
+      page_->montrer(L"Rendu", L"Pas encore dans le logiciel Windows : il reste dans le navigateur.", false);
+      break;
+  }
+  noteDroite_->Wrap(FromDIP(255));
+  noteDroite_->InvalidateBestSize();
+  noteDroite_->SetMinSize(noteDroite_->GetBestSize());
+  hauteurDroite_ = 0;
+  ajusterDroite();
+  carteDroite_->Layout();
+}
+
+// La carte de droite a la hauteur de ce qu'elle contient, comme dans le navigateur
+void Cadre::ajusterDroite() {
+  if (esquisseOuverte_ >= 0) return;
+  const bool cao = atelier_ == Atelier::CAO, rendu = atelier_ == Atelier::RENDU;
+  int rangs = 0;
+  if (cao)
+    for (wxPropertyGridIterator it = props_->GetGrid()->GetIterator(wxPG_ITERATE_VISIBLE); !it.AtEnd(); it++) rangs++;
+  const bool note = !cao || rangs <= 1;
+  if (note != noteMontree_) {
+    noteMontree_ = note;
+    noteDroite_->Show(note);
+    carteDroite_->Layout();
+  }
+  int h = 34 + 12;
+  if (rangs) h += rangs * ToDIP(props_->GetRowHeight()) + 4;
+  if (note) h += ToDIP(noteDroite_->GetBestSize().y) + 6;
+  if (rendu) h += 42;
+  h = std::min(h, ToDIP(centre_->GetClientSize().y) - 90);
+  if (h == hauteurDroite_) return;
+  hauteurDroite_ = h;
+  carteDroite_->SetMinSize(FromDIP(wxSize(288, h)));
+  centre_->Layout();
+}
+
+void Cadre::indisponible(const wxString& nom) { etat(nom + PAS_ENCORE + L"."); }
+
+void Cadre::boutonRuban(Atelier a, const wxString& nom) {
+  if (a != Atelier::CAO) return;
+  if (nom == L"Extrusion") extruder();
+  else if (nom == L"Esquisse") menuEsquisse();
+}
+
+// Une face choisie sur le solide : l'esquisse y va tout droit. Sinon, on choisit le plan, comme dans l'arbre.
+void Cadre::menuEsquisse() {
+  if (!docOuvert_) return etat(L"Ouvrez d'abord une pièce (Ctrl+O). Créer une pièce vide n'est pas encore dans le logiciel Windows.");
+  if (!faceChoisie_.IsNull()) return creerEsquisse("");
+  wxMenu m;
+  m.Append(ID_ESQUISSE_XY, L"Plan XY · dessus");
+  m.Append(ID_ESQUISSE_XZ, L"Plan XZ · face");
+  m.Append(ID_ESQUISSE_YZ, L"Plan YZ · côté");
+  PopupMenu(&m);
+}
+
+void Cadre::menuGrille() {
+  const bool oui = GetMenuBar()->IsChecked(ID_ACCROCHE_GRILLE);
+  wxMenu m;
+  m.AppendCheckItem(ID_ACCROCHE_GRILLE + 500, L"Accrocher à la grille de 1 mm")->Check(oui);
+  if (GetPopupMenuSelectionFromUser(m) == ID_ACCROCHE_GRILLE + 500) {
+    GetMenuBar()->Check(ID_ACCROCHE_GRILLE, !oui);
+    vueEsquisse_->reglerAccrocheGrille(!oui);
+  }
+}
+
+// L'esquisse d'abord, puis la fonction qui s'en sert, comme le fil du navigateur
+void Cadre::remplirFil() {
+  std::vector<FilFonctions::Element> l;
+  std::vector<char> posee(doc_.esquisses.size(), 0);
+  const auto esquisse = [&](size_t i) {
+    FilFonctions::Element e;
+    e.i = static_cast<int>(i);
+    e.nom = doc_.esquisses[i].nom.empty() ? tx(doc_.esquisses[i].id) : tx(doc_.esquisses[i].nom);
+    l.push_back(e);
+    posee[i] = 1;
+  };
+  for (size_t i = 0; i < doc_.fonctions.size(); i++) {
+    const Fonction& f = doc_.fonctions[i];
+    for (size_t k = 0; k < doc_.esquisses.size(); k++)
+      if (!posee[k] && doc_.esquisses[k].id == f.esquisse) esquisse(k);
+    FilFonctions::Element e;
+    e.estFonction = true;
+    e.i = static_cast<int>(i);
+    e.type = f.type;
+    e.op = f.op;
+    e.nom = f.nom.empty() ? nomType(f) : tx(f.nom);
+    l.push_back(e);
+  }
+  for (size_t k = 0; k < doc_.esquisses.size(); k++)
+    if (!posee[k]) esquisse(k);
+  fil_->montrer(l, static_cast<int>(doc_.fonctions.size()));
 }
 
 Cadre::~Cadre() {
   minuterie_.Stop();
-  aui_.UnInit();
   if (proto_.journal) fclose(proto_.journal);
 }
 
 void Cadre::etat(const wxString& texte) {
-  SetStatusText(texte);
+  etatVue_->montrer(texte);
+  placerScene();
   // Windows ne laisse pas relire la barre d'état depuis un autre programme : journal pour natif/mesures/verifier-fenetre.ps1.
   if (const wchar_t* chemin = _wgetenv(L"CONCEPTCAD_JOURNAL_ETAT")) {
     if (FILE* f = _wfopen(chemin, L"ab")) {
@@ -183,7 +546,7 @@ void Cadre::creerMenus() {
   auto* affichage = new wxMenu;
   affichage->Append(ID_AJUSTER, L"&Ajuster la vue\tCtrl+F");
   affichage->Append(ID_QUITTER_ESQUISSE, L"&Terminer l'esquisse\tEsc");
-  affichage->AppendCheckItem(ID_ACCROCHE_GRILLE, L"&Accrocher à la grille de 1 mm");
+  affichage->AppendCheckItem(ID_ACCROCHE_GRILLE, L"&Accrocher à la grille de 1 mm");  // aussi au clic droit sur le bouton Grille
   affichage->Check(ID_ACCROCHE_GRILLE, true);
   auto* esquisse = new wxMenu;
   esquisse->Append(ID_ESQUISSE_XY, L"Nouvelle esquisse sur le plan &XY");
@@ -268,6 +631,7 @@ void Cadre::majTitre() {
   const size_t p = doc_.chemin.find_last_of(L"\\/");
   const wxString nom(doc_.chemin.substr(p == std::wstring::npos ? 0 : p + 1));
   SetTitle((doc_.modifie() ? L"● " : L"") + nom + L" — ConceptCAD natif");
+  barreHaute_->document((doc_.modifie() ? L"● " : L"") + tx(doc_.nom));
 }
 
 bool Cadre::ecrire(const std::wstring& cible) {
@@ -353,7 +717,7 @@ bool Cadre::ouvrir(const std::wstring& chemin) {
   // Pièce dont le logiciel natif ne sait pas tout rejouer : on montre son contenu, jamais un solide faux.
   vue_->afficher(TopoDS_Shape(), true);
   montrerManques();
-  etat(tx(doc_.nom) + L"  |  Solide non calculé : voir le panneau Propriétés.");
+  etat(tx(doc_.nom) + L"  |  Solide non calculé : voir le panneau Paramètres.");
   return false;
 }
 
@@ -361,34 +725,56 @@ void Cadre::remplirArbre() {
   arbre_->Freeze();
   arbre_->DeleteAllItems();
   lignesFonctions_.assign(doc_.fonctions.size(), wxTreeItemId());
+  lignesEsquisses_.assign(doc_.esquisses.size(), wxTreeItemId());
+  carteArbre_->titre(L"Arborescence — " + tx(doc_.nom));
   const wxTreeItemId racine = arbre_->AddRoot(tx(doc_.nom));
-  const wxTreeItemId esquisses = arbre_->AppendItem(racine, wxString::Format(L"Esquisses (%zu)", doc_.esquisses.size()));
+  const wxColour grise(0x78, 0x78, 0x7d);
+  const wxTreeItemId origine = arbre_->AppendItem(racine, L"Origine", 11);
+  arbre_->SetItemBold(origine);
+  arbre_->SetItemTextColour(arbre_->AppendItem(origine, L"Repère · X Y Z + plans", 7), grise);
+  arbre_->SetItemTextColour(arbre_->AppendItem(origine, L"Plan XY · dessus", 4, -1, new LienArbre(false, -1, "XY")), grise);
+  arbre_->SetItemTextColour(arbre_->AppendItem(origine, L"Plan XZ · face", 5, -1, new LienArbre(false, -1, "XZ")), grise);
+  arbre_->SetItemTextColour(arbre_->AppendItem(origine, L"Plan YZ · côté", 6, -1, new LienArbre(false, -1, "YZ")), grise);
+  arbre_->AppendItem(origine, L"Axe X · droite", 8);
+  arbre_->AppendItem(origine, L"Axe Y · arrière", 9);
+  arbre_->AppendItem(origine, L"Axe Z · haut", 10);
+  arbre_->Expand(origine);
+  const wxTreeItemId esquisses = arbre_->AppendItem(racine, wxString::Format(L"Esquisses (%zu)", doc_.esquisses.size()), 0);
+  arbre_->SetItemBold(esquisses);
   for (size_t i = 0; i < doc_.esquisses.size(); i++) {
     const std::string& n = doc_.esquisses[i].nom;
-    arbre_->AppendItem(esquisses, n.empty() ? wxString(tx(doc_.esquisses[i].id)) : tx(n), -1, -1, new LienArbre(false, static_cast<int>(i)));
+    lignesEsquisses_[i] = arbre_->AppendItem(esquisses, n.empty() ? wxString(tx(doc_.esquisses[i].id)) : tx(n), 0, -1, new LienArbre(false, static_cast<int>(i)));
+    if (!doc_.esquisses[i].visible) arbre_->SetItemTextColour(lignesEsquisses_[i], grise);
   }
   for (size_t c = 0; c < doc_.corps.size(); c++) {
-    const wxTreeItemId corps = arbre_->AppendItem(racine, wxString::Format(L"Corps %zu", c + 1));
+    const bool corpsActif = doc_.corps[c] == doc_.corpsActif;
+    const wxString nomCorps = c < doc_.nomsCorps.size() && !doc_.nomsCorps[c].empty() ? tx(doc_.nomsCorps[c]) : wxString::Format(L"Corps %zu", c + 1);
+    const wxTreeItemId corps = arbre_->AppendItem(racine, nomCorps, 3);
+    arbre_->SetItemBold(corps);
+    if (corpsActif) arbre_->SetItemTextColour(corps, wxColour(0x0a, 0x84, 0xff));
+    int nbDuCorps = 0;
     for (size_t i = 0; i < doc_.fonctions.size(); i++) {
       const Fonction& f = doc_.fonctions[i];
       const bool ici = f.corps == doc_.corps[c] || (c == 0 && std::find(doc_.corps.begin(), doc_.corps.end(), f.corps) == doc_.corps.end());
       if (!ici) continue;
-      const wxTreeItemId n = arbre_->AppendItem(corps, f.nom.empty() ? nomType(f) : tx(f.nom), -1, -1, new LienArbre(true, static_cast<int>(i)));
+      const wxTreeItemId n = arbre_->AppendItem(corps, f.nom.empty() ? nomType(f) : tx(f.nom), f.op == "cut" ? 2 : 1, -1, new LienArbre(true, static_cast<int>(i)));
       lignesFonctions_[i] = n;
-      if (!f.visible) arbre_->SetItemTextColour(n, wxSystemSettings::GetColour(wxSYS_COLOUR_GRAYTEXT));
+      nbDuCorps++;
+      if (!f.visible) arbre_->SetItemTextColour(n, grise);
     }
+    arbre_->SetItemText(corps, nomCorps + (corpsActif ? L" ●" : L"") + wxString::Format(L" · %d fonction%s", nbDuCorps, nbDuCorps > 1 ? L"s" : L""));
     arbre_->Expand(corps);
   }
   arbre_->Expand(esquisses);
   arbre_->Thaw();
+  remplirFil();
 }
 
 void Cadre::montrerRien() {
   fonctionMontree_ = -1;
   props_->Clear();
   props_->CenterSplitter();
-  props_->Append(new wxPropertyCategory(L"Sélection"));
-  lectureSeule(props_, L"Choix", L"Rien de choisi");
+  if (docOuvert_) lectureSeule(props_, L"Nom du document", tx(doc_.nom));
 }
 
 void Cadre::montrerManques() {
@@ -453,6 +839,7 @@ void Cadre::montrerEsquisse(int i) {
 
 // Double-clic dans l'arbre : même repère que le navigateur.
 void Cadre::entrerEsquisse(int i) {
+  if (atelier_ != Atelier::CAO) changerAtelier(Atelier::CAO);
   const Esquisse& s = doc_.esquisses[i];
   esquisseOuverte_ = i;
   figee_ = esquisseFigee(doc_, i);
@@ -554,20 +941,17 @@ void Cadre::modeEsquisse(bool oui) {
   if (enModeEsquisse_ == oui) return;
   enModeEsquisse_ = oui;
   Freeze();
-  // L'arbre et les propriétés laissent la place, comme dans le navigateur ; la barre d'état devient le bandeau sous la vue
-  aui_.GetPane("arbre").Show(!oui);
-  aui_.GetPane("props").Show(!oui);
-  aui_.Update();
-  if (GetStatusBar()) GetStatusBar()->Show(!oui);
-  vue_->Show(!oui);
+  // Comme dans le navigateur : la barre du haut reste, le ruban, l'arbre, le fil et les paramètres laissent la place
+  scene_->Show(!oui);
+  ruban_->Show(!oui && atelier_ != Atelier::RENDU);
+  colonneDroite_->ShowItems(!oui);
   vueEsquisse_->Show(oui);
   barreEsquisse_->Show(oui);
   panneauEsquisse_->Show(oui);
   bandeauEsquisse_->Show(oui);
   if (!oui) panneauEsquisse_->vider();
-  margeColonne_->SetBorder(oui ? FromDIP(12) : 0);
-  SendSizeEvent();
   centre_->Layout();
+  placerScene();
   Thaw();
 }
 
@@ -704,7 +1088,7 @@ void Cadre::creerEsquisse(const std::string& plan) {
   if (!plan.empty()) {
     s = nouvelleEsquissePlan(doc_, plan);
   } else if (faceChoisie_.IsNull() || !nouvelleEsquisseFace(doc_, forme_, faceChoisie_, s)) {
-    etat(L"Esquisse sur face : cliquez d'abord une face plane du solide, puis reprenez le menu Esquisse.");
+    etat(L"Esquisse sur face : cliquez d'abord une face plane du solide, puis reprenez le bouton Esquisse.");
     return;
   }
   ModifCote m;
@@ -855,7 +1239,7 @@ void Cadre::extruder() {
     id = doc_.esquisses[esquisseOuverte_].id;
   } else if (const wxTreeItemId ligne = arbre_->GetSelection(); ligne.IsOk()) {
     const auto* lien = dynamic_cast<LienArbre*>(arbre_->GetItemData(ligne));
-    if (lien && !lien->estFonction) id = doc_.esquisses[lien->i].id;
+    if (lien && !lien->estFonction && lien->i >= 0) id = doc_.esquisses[lien->i].id;
   }
   if (id.empty()) {
     id = doc_.esquisses.back().id;
@@ -892,7 +1276,7 @@ void Cadre::extruder() {
   majTitre();
   recalculer();
   choisirFonction(static_cast<int>(doc_.fonctions.size()) - 1);
-  etat(GetStatusBar()->GetStatusText() + L"  |  Réglez la profondeur dans Propriétés. Ctrl+Z : annuler.");
+  etat(etatVue_->texte() + L"  |  Réglez la profondeur dans Paramètres. Ctrl+Z : annuler.");
   props_->SelectProperty(PROP_PROFONDEUR, true);
 }
 
@@ -918,6 +1302,7 @@ void Cadre::modifierFonction(int i, const std::function<void(Fonction&)>& reglag
   annulations_.push_back(std::move(m));
   retablissements_.clear();
   arbre_->SetItemText(lignesFonctions_[i], tx(f.nom));
+  remplirFil();
   majTitre();
   recalculer();
   montrerFonction(i);
@@ -964,14 +1349,15 @@ void Cadre::retablir() {
 
 void Cadre::surArbre(wxTreeEvent& e) {
   const auto* lien = dynamic_cast<LienArbre*>(arbre_->GetItemData(e.GetItem()));
-  if (!lien) return montrerRien();
+  if (!lien || lien->i < 0) return montrerRien();
   if (lien->estFonction) montrerFonction(lien->i);
   else montrerEsquisse(lien->i);
 }
 
 void Cadre::surArbreActive(wxTreeEvent& e) {
   const auto* lien = dynamic_cast<LienArbre*>(arbre_->GetItemData(e.GetItem()));
-  if (lien && !lien->estFonction) entrerEsquisse(lien->i);
+  if (lien && !lien->plan.empty()) creerEsquisse(lien->plan);
+  else if (lien && !lien->estFonction && lien->i >= 0) entrerEsquisse(lien->i);
   else e.Skip();  // dépliage habituel des dossiers
 }
 

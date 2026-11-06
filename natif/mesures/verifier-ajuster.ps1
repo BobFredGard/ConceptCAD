@@ -247,7 +247,7 @@ Touche 0x1B
 
 # Distance tapée, validée par un clic du côté voulu
 Outil 'Sélection'
-Clic (X 0.30) (Y 0.60)
+Clic (X 0.24) (Y 0.60)  # à côté du chiffre de la cote posée au-dessus
 Outil 'Décaler'
 Clic (X 0.60) (Y 0.45)
 Car '7'

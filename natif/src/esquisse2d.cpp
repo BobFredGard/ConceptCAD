@@ -629,7 +629,7 @@ void VueEsquisse::surMouvement(wxMouseEvent& ev) {
     const auto w = plan(ev.GetPosition());
     dessin_->vue(echelle_);
     const bool avant = dessin_->enCours() || dessin_->outil() != Dessin::SELECTION;
-    dessin_->bouge(w.m_x, w.m_y);
+    dessin_->bouge(w.m_x, w.m_y, ev.LeftIsDown());
     if (avant || dessin_->enCours()) apresGeste();
     return;
   }

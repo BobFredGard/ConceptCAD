@@ -7,6 +7,7 @@
 
 #include <AIS_InteractiveContext.hxx>
 #include <AIS_Shape.hxx>
+#include <AIS_ViewCube.hxx>
 #include <Aspect_DisplayConnection.hxx>
 #include <OpenGl_GraphicDriver.hxx>
 #include <TopoDS_Shape.hxx>
@@ -18,6 +19,7 @@ class Vue3D : public wxWindow {
   explicit Vue3D(wxWindow* parent);
   void afficher(const TopoDS_Shape& forme, bool ajusterVue);
   void ajuster();
+  void vueInitiale();
   // Prépare la sélection de la forme affichée (fait tout seul au premier passage de la souris).
   void preparerSelection();
   // Appelé après un clic : la face ou l'arête choisie, ou une forme vide.
@@ -37,6 +39,7 @@ class Vue3D : public wxWindow {
   occ::handle<V3d_Viewer> visu_;
   occ::handle<V3d_View> vue_;
   occ::handle<AIS_InteractiveContext> contexte_;
+  occ::handle<AIS_ViewCube> cube_;
   occ::handle<AIS_Shape> affichee_;
   bool selectionPrete_ = false, aBouge_ = false;
   wxPoint depart_, precedent_;

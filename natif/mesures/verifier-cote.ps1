@@ -60,7 +60,7 @@ $a = Rect 2001
 Souris ($a.L + 60) ($a.T + 12)
 [U]::mouse_event(2, 0, 0, 0, [IntPtr]::Zero); Start-Sleep -Milliseconds 60; [U]::mouse_event(4, 0, 0, 0, [IntPtr]::Zero); Start-Sleep -Milliseconds 200
 Touches '{HOME}'
-Double ($a.L + 70) ($a.T + 27)
+Double ($a.L + 70) ($a.T + 218)
 "2. Esquisse ouverte : $(Etat)"
 Verifie ((Etat) -like '*Double-clic sur une cote*') 'l''esquisse devrait être modifiable'
 Start-Sleep -Milliseconds 500

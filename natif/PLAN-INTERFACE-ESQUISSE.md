@@ -89,6 +89,10 @@ Lignes, arcs, cercles, rectangles, polygones, glisser à la souris, accroches, a
 Splines, projections et intersections sur le noyau natif, esquisses sur plan de construction, panneau de contrôle.
 **Fait quand** : les esquisses des 20 pièces s'ouvrent et se modifient sans refus.
 
+## Interface recopiée du navigateur
+
+**Faite le 06/11/2026, à essayer** : écran d'esquisse puis tout l'environnement, voir [README.md](README.md). Suite demandée par Fred : remplir les boutons grisés, fonction par fonction.
+
 ## Hors de ce plan
 
 Fonctions 3D (congés, répétitions), FAO, mise en plan, rendu. Tant que les fonctions 3D manquent, la plupart des pièces montreront leurs esquisses mais pas tout leur solide :

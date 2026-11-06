@@ -10,7 +10,7 @@ Rien ici ne touche à `src/`, à `ConceptCAD.html` ni à la version du logiciel.
 - Ouvrir un `.conceptcad` (normal ou compressé) par la vraie fenêtre Windows, ou par son chemin en argument.
 - Rejouer : esquisses en lignes, arcs et cercles ; extrusion ; découpe ; « à travers tout » ; esquisse sur une face ; plusieurs corps.
 - Afficher le solide : clic gauche ou milieu pour tourner, clic droit pour déplacer, molette pour zoomer, comme le navigateur.
-- Montrer l'arbre de la pièce (esquisses, corps, fonctions) et un panneau de propriétés, dans une interface sombre aux panneaux déplaçables.
+- Montrer l'arbre de la pièce (esquisses, corps, fonctions) et un panneau de propriétés, dans l'environnement recopié du navigateur (barre du haut, ateliers, ruban, arbre, paramètres, fil des fonctions).
 - Survoler et choisir une face ou une arête : surbrillance, forme, aire ou longueur.
 - Modifier la profondeur d'une extrusion ou d'une découpe dans le panneau, annuler (Ctrl+Z) et rétablir (Ctrl+Y).
 - Afficher une esquisse : double-clic ou Entrée dans l'arbre, puis lignes, arcs, cercles, points, zones fermées, contraintes et cotes, orientés comme dans le navigateur. Échap ou « Terminer l'esquisse » pour sortir.
@@ -269,3 +269,16 @@ Pas traduits : les splines (ni coupées, ni comptées comme limite, ni décalée
 - Une reconstruction complète depuis un dossier vide avec téléchargement : le `.exe` final est construit sur les binaires déjà téléchargés.
 - La RAM d'un calcul FAO lancé depuis le `.exe` : ce chemin n'existe pas encore.
 - Les vraies pièces plus riches : aucune autre pièce de `Exemples/` n'est prise en charge (congés, répétitions, formules, assemblages).
+
+## L'environnement du navigateur
+
+Depuis le 06/11/2026, la fenêtre reprend celle du navigateur : barre du haut, ateliers CAO, FAO, PLAN et RENDU, ruban, onglets, arbre flottant, carte Paramètres, boutons et cube de vue, fil des fonctions, écran d'esquisse. Les noms, infobulles, icônes et l'ordre des boutons sont recopiés du navigateur par `mesures/extraire-environnement.cjs`, rien n'est retapé.
+
+Ce qui marche : Esquisse, Extrusion, Annuler, Rétablir, Ouvrir, Enregistrer, Enregistrer sous, Régénérer, l'arbre (double-clic sur un plan ou une esquisse), le fil des fonctions, le cube de vue, la vue initiale, le repli de l'arbre, les onglets.
+Tout le reste est visible et grisé, et dit « pas encore dans le logiciel Windows » quand on clique. Les ateliers FAO, PLAN et RENDU n'ont que leur ruban grisé et une page qui le dit : aucune donnée n'y est inventée.
+
+Écarts voulus avec le navigateur : **Abandonner** oublie vraiment ce qui a été fait depuis l'ouverture de l'esquisse, alors que le navigateur le garde. La lumière et le bleu de la pièce sont approchés, pas identiques. Les raccourcis des anciens menus restent, sans barre de menus visible. Accrocher à la grille : clic droit sur le bouton Grille.
+
+Preuves, sur des copies : `mesures/verifier-environnement.ps1` (15 étapes dans la vraie fenêtre), `verifier-dessin`, `verifier-nouvelle-esquisse`, `verifier-extrusion`, `verifier-contraintes`, `verifier-cotes`, `verifier-ajuster` réussis ; `tester-enregistrement.cjs` : 176/176. Comparaison au navigateur à maths communes : 383/383 sessions sans les gestes du panneau, 380/383 avec (`dessin-reference.cjs --panneau`). Les 3 écarts sont une cote d'écart que le navigateur change en angle sur des lignes dont une, sur les 2 cas vérifiés, a une longueur nulle : son sens n'y est que du bruit de calcul ; le 3e cas a la même forme, sa ligne n'a pas été vérifiée. Panneau : 123 esquisses sur 125 affichent le même état que le navigateur ; les 2 autres (la même esquisse dans « test angle » et « test esquisse ») annoncent un résidu de 7,89 mm dans le navigateur et 1 liberté ici, cause non établie.
+
+Non vérifié : `verifier-esquisse`, `verifier-cote`, `verifier-fenetre`, qui envoient de vraies touches et s'arrêtent seuls si une autre fenêtre est devant, n'ont pas pu aller au bout pendant que le PC servait. Le double-clic à la vraie souris dans l'arbre n'a donc pas été rejoué par une machine. Mise en page testée à 1500 × 900 seulement, à 100 % d'échelle d'écran.

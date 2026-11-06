@@ -16,9 +16,11 @@
 // Un bouton dessiné par nous. Une vraie fenêtre, avec son nom : les essais la retrouvent et lui envoient des clics.
 class BoutonEsquisse : public wxWindow {
  public:
-  enum Style { ICONE, ENCADRE, TEXTE, PRINCIPAL };
+  enum Style { ICONE, ENCADRE, TEXTE, PRINCIPAL, PASTILLE, RUBAN };
   BoutonEsquisse(wxWindow* parent, int id, const wxString& nom, const wxString& infobulle, Style style = ICONE);
   void icone(const std::string& corpsSvg, const wxColour& couleur);
+  void iconeComplete(const std::string& svg, const wxColour& couleur);  // un <svg> entier, tel que le navigateur le dessine
+  void fond(const wxColour& c);  // la couleur sur laquelle le bouton est posé
   void titre(const wxString& t);
   void actif(bool oui);
   void disponible(bool oui);
@@ -33,8 +35,11 @@ class BoutonEsquisse : public wxWindow {
   wxBitmapBundle imageActive_;
   wxString titre_;
   Style style_;
+  wxColour fond_;
   bool actif_ = false, disponible_ = true, survol_ = false, enfonce_ = false;
 };
+
+wxBitmapBundle iconeSvgComplete(const std::string& svg, const wxColour& c, int taille);
 
 class BarreEsquisse : public wxWindow {
  public:
@@ -42,7 +47,7 @@ class BarreEsquisse : public wxWindow {
   std::function<void(Dessin::Outil)> surOutil;
   std::function<void(const std::string&)> surContrainte;
   std::function<void(const wxString&)> surIndisponible;
-  std::function<void()> surCadrer, surGrille, surFantome, surAbandon, surTerminer;
+  std::function<void()> surCadrer, surGrille, surGrilleMenu, surFantome, surAbandon, surTerminer;
   void outilActif(Dessin::Outil o);
   void lectureSeule(bool oui);
   void grilleActive(bool oui);

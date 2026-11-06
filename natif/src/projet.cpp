@@ -318,7 +318,10 @@ Document lireProjet(const std::wstring& chemin) {
   d.compresse = compresse;
   d.nom = texte(j, "name");
   if (j.contains("bodies"))
-    for (auto& c : j["bodies"]) d.corps.push_back(texte(c, "id"));
+    for (auto& c : j["bodies"]) {
+      d.corps.push_back(texte(c, "id"));
+      d.nomsCorps.push_back(texte(c, "name"));
+    }
   if (d.corps.empty()) d.corps.push_back("b1");
   // ensureActiveBody : l'actif s'il existe, sinon le premier
   d.corpsActif = texte(j, "activeBody");

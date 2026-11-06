@@ -3,6 +3,7 @@
 #include <wx/dcclient.h>
 
 #include <Graphic3d_NameOfMaterial.hxx>
+#include <Graphic3d_TransformPers.hxx>
 #include <Prs3d_Drawer.hxx>
 #include <Prs3d_LineAspect.hxx>
 #include <Quantity_Color.hxx>
@@ -28,14 +29,31 @@ Vue3D::Vue3D(wxWindow* parent) : wxWindow(parent, 2005, wxDefaultPosition, wxDef
   pilote_ = new OpenGl_GraphicDriver(connexion_);
   visu_ = new V3d_Viewer(pilote_);
   visu_->SetDefaultLights();
+  // Plus de lumière que par défaut : la pièce garde le bleu franc du navigateur
+  for (const occ::handle<Graphic3d_CLight>& l : visu_->DefinedLights()) l->SetIntensity(l->Type() == Graphic3d_TypeOfLightSource_Ambient ? 2.2f : 1.3f);
   visu_->SetLightOn();
   vue_ = visu_->CreateView();
   vue_->SetWindow(new WNT_Window(reinterpret_cast<Aspect_Handle>(GetHWND())));
-  // Mêmes teintes que le thème sombre de la version navigateur (--bg #1c1c1e)
-  vue_->SetBgGradientColors(couleur(0x1c, 0x1c, 0x1e), couleur(0x3a, 0x3a, 0x3e), Aspect_GradientFillMethod_Vertical);
+  vue_->SetBackgroundColor(couleur(0x13, 0x15, 0x19));  // le fond de la scène du navigateur
   vue_->SetProj(V3d_XposYnegZpos);
-  vue_->TriedronDisplay(Aspect_TOTP_LEFT_LOWER, Quantity_NOC_WHITE, 0.09);
   contexte_ = new AIS_InteractiveContext(visu_);
+  // Le cube de vue, en haut à droite comme dans le navigateur
+  cube_ = new AIS_ViewCube();
+  cube_->SetSize(FromDIP(38));
+  cube_->SetFontHeight(FromDIP(8));
+  cube_->SetDrawAxes(false);
+  cube_->SetFont("Arial");
+  cube_->SetBoxSideLabel(V3d_Xpos, "DROITE");
+  cube_->SetBoxSideLabel(V3d_Xneg, "GAUCHE");
+  cube_->SetBoxSideLabel(V3d_Ypos, "ARRIERE");
+  cube_->SetBoxSideLabel(V3d_Yneg, "FACE");
+  cube_->SetBoxSideLabel(V3d_Zpos, "DESSUS");
+  cube_->SetBoxSideLabel(V3d_Zneg, "DESSOUS");
+  cube_->SetBoxColor(couleur(0x3a, 0x3c, 0x42));
+  cube_->SetTextColor(Quantity_NOC_WHITE);
+  cube_->SetTransformPersistence(new Graphic3d_TransformPers(Graphic3d_TMF_TriedronPers, Aspect_TOTP_RIGHT_UPPER, NCollection_Vec2<int>(FromDIP(58), FromDIP(58))));
+  cube_->SetZLayer(Graphic3d_ZLayerId_Topmost);
+  contexte_->Display(cube_, false);
   contexte_->SetPixelTolerance(4);
   reglerStyle(contexte_, Prs3d_TypeOfHighlight_LocalDynamic, couleur(0x0a, 0x84, 0xff));
   reglerStyle(contexte_, Prs3d_TypeOfHighlight_LocalSelected, couleur(0x30, 0xd1, 0x58));
@@ -61,20 +79,26 @@ void Vue3D::afficher(const TopoDS_Shape& forme, bool ajusterVue) {
   if (!forme.IsNull()) {
     affichee_ = new AIS_Shape(forme);
     affichee_->Attributes()->SetAutoTriangulation(false);  // le maillage vient de mailler()
+    affichee_->SetMaterial(Graphic3d_NameOfMaterial_Plastified);
+    affichee_->SetColor(couleur(0x14, 0xa8, 0xff));  // le bleu des pièces du navigateur
+    // Après la couleur, qui repeint aussi les arêtes
     affichee_->Attributes()->SetFaceBoundaryDraw(true);
     affichee_->Attributes()->SetFaceBoundaryAspect(new Prs3d_LineAspect(Quantity_NOC_BLACK, Aspect_TOL_SOLID, 1.0));
-    affichee_->SetColor(Quantity_Color(0.62, 0.68, 0.76, Quantity_TOC_sRGB));
-    affichee_->SetMaterial(Graphic3d_NameOfMaterial_Steel);
     contexte_->Display(affichee_, AIS_Shaded, -1, false);  // sélection préparée plus tard : un recalcul n'en paie pas le prix
   }
-  if (ajusterVue) vue_->FitAll(0.08, false);
+  if (ajusterVue) vue_->FitAll(0.2, false);
   else vue_->ZFitAll();
   vue_->Redraw();
 }
 
 void Vue3D::ajuster() {
-  vue_->FitAll(0.08, false);
+  vue_->FitAll(0.2, false);
   vue_->Redraw();
+}
+
+void Vue3D::vueInitiale() {
+  vue_->SetProj(V3d_XposYnegZpos);
+  ajuster();
 }
 
 void Vue3D::preparerSelection() {
@@ -105,10 +129,19 @@ void Vue3D::surEnfonce(wxMouseEvent& e) {
 
 void Vue3D::surRelache(wxMouseEvent& e) {
   if (HasCapture()) ReleaseMouse();
-  if (!e.LeftUp() || aBouge_ || affichee_.IsNull()) return;
+  if (!e.LeftUp() || aBouge_) return;
   preparerSelection();
   const wxPoint p = e.GetPosition();
   contexte_->MoveTo(p.x, p.y, vue_, false);
+  if (contexte_->HasDetected()) {
+    const occ::handle<AIS_ViewCubeOwner> face = occ::down_cast<AIS_ViewCubeOwner>(contexte_->DetectedOwner());
+    if (!face.IsNull()) {
+      cube_->HandleClick(face);
+      vue_->Redraw();
+      return;
+    }
+  }
+  if (affichee_.IsNull()) return;
   contexte_->SelectDetected(AIS_SelectionScheme_Replace);
   contexte_->UpdateCurrentViewer();
   TopoDS_Shape choisie;
@@ -127,7 +160,7 @@ void Vue3D::surMouvement(wxMouseEvent& e) {
     aBouge_ = true;
     vue_->Pan(p.x - precedent_.x, precedent_.y - p.y);
     precedent_ = p;
-  } else if (!affichee_.IsNull()) {
+  } else {
     preparerSelection();
     contexte_->MoveTo(p.x, p.y, vue_, true);
   }

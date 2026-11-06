@@ -113,7 +113,7 @@ Start-Sleep -Milliseconds 400
 
 $a = Rect 2001
 Clic ($a.L + 70) ($a.T + 12)
-Touches '{DOWN}{DOWN}{DOWN}{DOWN}'  # après le dossier Esquisses déplié, ses 2 esquisses et Corps 1
+Touches '{DOWN 12}'  # après l'Origine dépliée, le dossier Esquisses, ses 2 esquisses et le corps
 Start-Sleep -Milliseconds 400
 "6. Fonction choisie dans l'arbre (voir capture)"
 [void](Capture $w '4-fonction.png')

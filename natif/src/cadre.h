@@ -1,7 +1,6 @@
-// Fenêtre principale : menus, arbre de la pièce, panneau de propriétés, vue 3D, barre d'état.
+// Fenêtre principale : l'environnement du navigateur autour de la vue 3D et de l'écran d'esquisse.
 #pragma once
 #include <wx/wx.h>
-#include <wx/aui/aui.h>
 #include <wx/propgrid/propgrid.h>
 #include <wx/treectrl.h>
 
@@ -13,6 +12,7 @@
 
 #include "coter.h"
 #include "dessin.h"
+#include "environnement.h"
 #include "esquisse2d.h"
 #include "infos_esquisse.h"
 #include "interface_esquisse.h"
@@ -45,6 +45,16 @@ class Cadre : public wxFrame {
   };
   void etat(const wxString& texte);
   void creerMenus();
+  void creerEnvironnement();
+  void placerScene();
+  void changerAtelier(Atelier a);
+  void montrerAtelier();
+  void indisponible(const wxString& nom);
+  void boutonRuban(Atelier a, const wxString& nom);
+  void menuEsquisse();
+  void remplirFil();
+  void menuGrille();
+  void ajusterDroite();
   void remplirArbre();
   void montrerRien();
   void montrerManques();
@@ -86,10 +96,27 @@ public:
   void surPropriete(wxPropertyGridEvent&);
   void pasProtocole(wxTimerEvent&);
 
-  wxAuiManager aui_;
   wxTreeCtrl* arbre_ = nullptr;
   wxPropertyGrid* props_ = nullptr;
   wxPanel* centre_ = nullptr;
+  wxPanel* scene_ = nullptr;
+  BarreHaute* barreHaute_ = nullptr;
+  Ruban* ruban_ = nullptr;
+  Carte* carteArbre_ = nullptr;
+  Carte* carteFao_ = nullptr;
+  Carte* carteDroite_ = nullptr;
+  wxBoxSizer* colonneDroite_ = nullptr;
+  int hauteurDroite_ = 0;
+  bool noteMontree_ = false;
+  wxStaticText* noteDroite_ = nullptr;
+  BoutonEsquisse* boutonRendu_ = nullptr;
+  BoutonEsquisse* repliArbre_ = nullptr;
+  std::vector<BoutonEsquisse*> onglets_, boutonsVue_;
+  EtatVue* etatVue_ = nullptr;
+  FilFonctions* fil_ = nullptr;
+  PageAtelier* page_ = nullptr;
+  Atelier atelier_ = Atelier::CAO;
+  bool arbreReplie_ = false;
   Vue3D* vue_ = nullptr;
   VueEsquisse* vueEsquisse_ = nullptr;
   BarreEsquisse* barreEsquisse_ = nullptr;
@@ -118,6 +145,6 @@ public:
   int fonctionMontree_ = -1;
   double msRejeu_ = 0, msMaillage_ = 0;
   std::vector<ModifCote> annulations_, retablissements_;
-  std::vector<wxTreeItemId> lignesFonctions_;  // la ligne de l'arbre de chaque fonction
+  std::vector<wxTreeItemId> lignesFonctions_, lignesEsquisses_;  // la ligne de l'arbre de chaque fonction, de chaque esquisse
   Protocole proto_;
 };

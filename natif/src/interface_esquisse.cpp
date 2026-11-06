@@ -100,7 +100,7 @@ wxFont policeUI(double taille, bool gras = false) {
 }
 wxFont policeTexte(const wxString& t, double taille, bool gras) {
   wxFont p = policeUI(taille, gras);
-  if (t.Find(L"⇄") != wxNOT_FOUND || t.Find(L"🗑") != wxNOT_FOUND || t.Find(L"📐") != wxNOT_FOUND || t.Find(L"➤") != wxNOT_FOUND) p.SetFaceName("Segoe UI Symbol");
+  if (t.Find(L"⇄") != wxNOT_FOUND || t.Find(L"🗑") != wxNOT_FOUND || t.Find(L"📐") != wxNOT_FOUND || t.Find(L"➤") != wxNOT_FOUND || t.Find(L"⟳") != wxNOT_FOUND || t.Find(L"⚙") != wxNOT_FOUND) p.SetFaceName("Segoe UI Symbol");
   return p;
 }
 // Tailles et positions en pixels logiques
@@ -156,6 +156,21 @@ void BoutonEsquisse::icone(const std::string& corpsSvg, const wxColour& couleur)
   imageActive_ = imageSvg(corps, *wxWHITE, 20);
   Refresh();
 }
+wxBitmapBundle iconeSvgComplete(const std::string& svg, const wxColour& c, int taille) {
+  std::string s = svg;
+  const std::string h = hexa(c).ToStdString();
+  for (size_t p = 0; (p = s.find("currentColor", p)) != std::string::npos; p += h.size()) s.replace(p, 12, h);
+  return wxBitmapBundle::FromSVG(s.c_str(), wxSize(taille, taille));
+}
+void BoutonEsquisse::iconeComplete(const std::string& svg, const wxColour& couleur) {
+  image_ = iconeSvgComplete(svg, couleur, 20);
+  imageActive_ = iconeSvgComplete(svg, *wxWHITE, 20);
+  Refresh();
+}
+void BoutonEsquisse::fond(const wxColour& c) {
+  fond_ = c;
+  Refresh();
+}
 void BoutonEsquisse::titre(const wxString& t) {
   titre_ = t;
   Refresh();
@@ -173,16 +188,17 @@ void BoutonEsquisse::disponible(bool oui) {
 
 void BoutonEsquisse::peindre(wxPaintEvent&) {
   wxAutoBufferedPaintDC dc(this);
-  dc.SetBackground(wxBrush(C_BARRE));
+  dc.SetBackground(wxBrush(fond_.IsOk() ? fond_ : C_BARRE));
   dc.Clear();
   std::unique_ptr<wxGraphicsContext> g(wxGraphicsContext::CreateFromUnknownDC(dc));
   if (!g) return;
   const double f = GetDPIScaleFactor();
   g->Scale(f, f);
   const wxSize t = ToDIP(GetClientSize());
+  const bool enColonne = style_ == RUBAN;
   wxColour fond = wxTransparentColour, bord = wxTransparentColour;
   if (style_ == PRINCIPAL) {
-    fond = bord = C_BLEU;
+    fond = bord = disponible_ ? C_BLEU : wxColour(0x38, 0x3a, 0x3e);
   } else if (style_ == TEXTE || style_ == ENCADRE) {
     fond = wxColour(0x38, 0x3a, 0x3e);
     bord = wxColour(0x4a, 0x4c, 0x50);
@@ -195,7 +211,7 @@ void BoutonEsquisse::peindre(wxPaintEvent&) {
     g->DrawRoundedRectangle(0.5, 0.5, t.x - 1, t.y - 1, 8);
   }
   if (image_.IsOk()) {
-    const double L = 20, x = (t.x - L) / 2, y = (t.y - L) / 2;
+    const double L = std::min(20, t.y - 2), x = (t.x - L) / 2, y = enColonne ? 5 : (t.y - L) / 2;
     wxBitmap b = (actif_ ? imageActive_ : image_).GetBitmap(FromDIP(wxSize(20, 20)));
     if (!disponible_) {
       wxImage im = b.ConvertToImage();
@@ -210,8 +226,11 @@ void BoutonEsquisse::peindre(wxPaintEvent&) {
   g.reset();
   if (!titre_.empty()) {
     double L, H;
-    mesurer(this, titre_, 12.5, style_ == PRINCIPAL, &L, &H);
-    ecrire(dc, this, titre_, (t.x - L) / 2, (t.y - H) / 2, 12.5, style_ == PRINCIPAL || actif_ ? *wxWHITE : C_TEXTE, style_ == PRINCIPAL);
+    const double taille = enColonne ? 10.5 : 12.5;
+    const bool gras = style_ == PRINCIPAL || style_ == PASTILLE;
+    mesurer(this, titre_, taille, gras, &L, &H);
+    const wxColour c = !disponible_ ? (style_ == PRINCIPAL ? wxColour(0xc8, 0xd8, 0xee) : wxColour(0x68, 0x6a, 0x70)) : style_ == PRINCIPAL || actif_ ? *wxWHITE : C_TEXTE;
+    ecrire(dc, this, titre_, (t.x - L) / 2, enColonne ? t.y - H - 3 : (t.y - H) / 2, taille, c, gras);
   }
 }
 
@@ -315,6 +334,10 @@ BarreEsquisse::BarreEsquisse(wxWindow* parent) : wxWindow(parent, 2009, wxDefaul
   grille_->surClic = [this] {
     if (surGrille) surGrille();
   };
+  grille_->SetToolTip(L"Afficher / masquer la grille. Clic droit : accrocher à la grille de 1 mm");
+  grille_->Bind(wxEVT_RIGHT_UP, [this](wxMouseEvent&) {
+    if (surGrilleMenu) surGrilleMenu();
+  });
   ordre_.push_back(grille_);
   fantome_ = new BoutonEsquisse(this, wxID_ANY, L"Arêtes", L"Afficher / masquer les arêtes du solide derrière l'esquisse");
   fantome_->icone("oeil", C_TEXTE);
