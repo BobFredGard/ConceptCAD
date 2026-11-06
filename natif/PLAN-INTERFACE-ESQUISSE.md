@@ -50,9 +50,9 @@ et 7 types de cotes. Le solveur actuel tourne aussi en Node : on peut lui faire 
 Chaque étape se termine par une chose à essayer et une mesure de mémoire avec le banc (`mesures/banc.cjs`).
 **Garde-fou proposé** : si le natif dépasse 150 Mo au repos sur le Drapeau, on s'arrête pour en parler avant de continuer.
 
-### 0. Séparer calcul et affichage (2 à 4 jours)
-Essai du calcul dans un processus sans pilote graphique. Il faut savoir tôt si les 2 fois de vitesse possibles sur les pièces lourdes sont réelles (de 530 à 300 ms), car cela décide de l'organisation de toute l'interface.
-**Fait quand** : le recalcul est mesuré face à Chrome sur les deux pièces, et on sait si on garde cette organisation.
+### 0. Séparer calcul et affichage : abandonné, inutile
+Le ralentissement attribué à la vue 3D venait du placement sur les cœurs économes du processeur (345 contre 585 ms). Le programme demande maintenant à Windows de ne pas le traiter comme une tâche de fond,
+et le natif est 2 fois plus rapide que Chrome sur la plaque moyenne sans second processus (voir [README.md](README.md)). À revoir seulement si un recalcul long gêne l'interface : il se ferait alors dans un autre fil.
 
 ### 1. Socle de l'interface (3 à 5 semaines)
 Fenêtre avec wxWidgets, arbre de la pièce, panneau de propriétés, vue OCCT intégrée, sélection des faces et arêtes au survol et au clic, mise à l'échelle des écrans.

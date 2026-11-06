@@ -95,32 +95,24 @@ mémoire engagée, natif 327 → 385 Mo (1 cœur 151 → 156 Mo), Chrome 893 →
 
 Jusqu'à 600 modifications sur le Drapeau, le natif se stabilise à 60 Mo ; Chrome monte jusqu'à 706 Mo puis redescend à 450 Mo au repos.
 
-### Vitesse d'un recalcul (médiane de 30, tours courts alternés)
+### Vitesse d'un recalcul (médiane de 30, tours courts alternés, 3 tours)
 
-| Pièce | Natif multicœur | Natif 1 cœur | Chrome |
-|---|---:|---:|---:|
-| Drapeau | 15 ms | 17 ms | 48 à 50 ms |
-| Plaque moyenne (64 poches) | 640 à 658 ms | 760 à 770 ms | 718 à 731 ms |
+| Pièce | Placement | Natif multicœur | Natif 1 cœur | Chrome |
+|---|---|---:|---:|---:|
+| Drapeau | Laissé à Windows | 16 ms | 20 à 21 ms | 54 à 57 ms |
+| Drapeau | Cœurs rapides pour tous | 15 à 16 ms | 19 à 21 ms | 54 à 55 ms |
+| Plaque moyenne (64 poches) | Laissé à Windows | 404 à 458 ms | 447 à 494 ms | 803 à 880 ms |
+| Plaque moyenne (64 poches) | Cœurs rapides pour tous | 423 à 443 ms | 488 à 494 ms | 808 à 841 ms |
 
-Environ 3 fois plus rapide sur la petite pièce, mais **seulement 12 % sur la lourde**, et sur un seul cœur le natif y est **plus lent** que Chrome.
-Sur les très longues séries de la plaque d'essai, les temps varient trop (natif 3,5 à 5,3 s, Chrome 5,2 à 10,5 s) pour en tirer un chiffre.
+Environ **3,5 fois plus rapide** sur la petite pièce et **2 fois** sur la plaque moyenne. Sur les très longues séries de la plaque d'essai (398 faces), les temps variaient trop pour en tirer un chiffre, et elles n'ont pas été refaites.
+
+**Correction** : une première mesure donnait seulement 12 % d'écart sur la plaque moyenne (natif 650 ms, Chrome 725 ms). Elle était faussée. Ce processeur a 8 cœurs rapides et 16 économes, et le même calcul
+y prend 345 ms contre 585 ms. Windows plaçait le natif sur les cœurs économes. Le programme demande maintenant à Windows de ne pas le traiter comme une tâche de fond, et le banc peut tout placer sur les cœurs rapides (`--rapides`).
+Le lien de cause entre cette demande et le gain n'est pas isolé : sans elle, le natif restait parfois sur les cœurs rapides. Les mesures de 345 et 585 ms, elles, sont directes.
 
 ### Multicœur
 
-Le gain est modeste : 10 à 15 % sur les calculs de solide, davantage sur le maillage (100 ms au lieu de 164). Il coûte de la mémoire (245 Mo contre 150 sur la plaque d'essai).
-
-### Piste de gain non résolue
-
-Dès que la vue 3D est créée, le même calcul du solide devient nettement plus lent, **avant même d'afficher la pièce** :
-
-| Plaque moyenne, calcul seul | Avant la vue 3D | Après la vue 3D |
-|---|---:|---:|
-| Multicœur | 300 ms | 530 ms |
-| 1 cœur | 300 à 310 ms | 575 ms |
-
-Écartés par l'essai : les réglages du processeur pour les calculs (un fil neuf est aussi lent), et le multicœur (même effet sur 1 cœur).
-La cause reste inconnue ; le chargement du pilote graphique est le principal suspect. Le rejeu de Chrome étant à environ 560 ms, séparer le calcul de l'affichage
-(par exemple dans un second processus) pourrait donner **près de 2 fois plus vite** sur les pièces lourdes. Non essayé.
+Le gain est modeste : 0 à 15 % sur le calcul de solide, environ 30 % sur le maillage (80 ms au lieu de 122). Il coûte de la mémoire (245 Mo contre 150 sur la plaque d'essai).
 
 ### Ce qui avantage le natif dans ces chiffres
 

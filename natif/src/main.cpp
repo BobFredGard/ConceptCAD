@@ -424,6 +424,10 @@ int WINAPI wWinMain(HINSTANCE inst, HINSTANCE, PWSTR, int montrer) {
     for (auto& a : args) v.push_back(a.data());
     return modeVerif(static_cast<int>(v.size()), v.data());
   }
+  // Processeurs à deux sortes de cœurs : un cœur économe calcule la même pièce 1,7 fois moins vite (345 → 585 ms mesurés).
+  // On demande à Windows de ne pas traiter ce programme comme une tâche de fond, même quand sa fenêtre n'est pas devant.
+  PROCESS_POWER_THROTTLING_STATE qos{PROCESS_POWER_THROTTLING_CURRENT_VERSION, PROCESS_POWER_THROTTLING_EXECUTION_SPEED, 0};
+  SetProcessInformation(GetCurrentProcess(), ProcessPowerThrottling, &qos, sizeof qos);
   SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_SYSTEM_AWARE);
   CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED | COINIT_DISABLE_OLE1DDE);
   INITCOMMONCONTROLSEX cc{sizeof cc, ICC_STANDARD_CLASSES};

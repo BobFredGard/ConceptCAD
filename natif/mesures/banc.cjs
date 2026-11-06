@@ -27,6 +27,26 @@ function ram(pid) {
   const s = execFileSync('powershell', ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', psFichier, String(pid)], { encoding: 'utf8' });
   return JSON.parse(s.trim().split('\n').pop());
 }
+// Option --rapides : tout l'arbre de processus sur les cœurs rapides (processeur à deux sortes de cœurs). Sans cela, Windows
+// peut placer un côté sur les cœurs économes (1,7 fois plus lents) et la comparaison de vitesse ne vaut rien.
+const PS_EPINGLE = `
+param([int]$racine,[int64]$masque)
+$tous = Get-CimInstance Win32_Process | Select-Object ProcessId,ParentProcessId
+$garde = New-Object 'System.Collections.Generic.HashSet[int]'
+[void]$garde.Add($racine)
+do { $n = $garde.Count; foreach ($p in $tous) { if ($garde.Contains([int]$p.ParentProcessId)) { [void]$garde.Add([int]$p.ProcessId) } } } while ($garde.Count -ne $n)
+$ok = 0
+foreach ($i in $garde) { try { $q = Get-Process -Id $i -ErrorAction Stop; $q.ProcessorAffinity = [IntPtr]$masque; if ($q.ProcessorAffinity.ToInt64() -eq $masque) { $ok++ } } catch {} }
+Write-Output $ok
+`;
+const psEpingle = path.join(os.tmpdir(), 'cc-banc-epingle-' + process.pid + '.ps1');
+fs.writeFileSync(psEpingle, PS_EPINGLE);
+const MASQUE = process.argv.includes('--rapides') ? 0xff : 0;
+function epingler(pid) {
+  if (!MASQUE) return;
+  const ok = execFileSync('powershell', ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', psEpingle, String(pid), String(MASQUE)], { encoding: 'utf8' }).trim();
+  console.log('  processus sur coeurs rapides :', ok);
+}
 const attendre = ms => new Promise(r => setTimeout(r, ms));
 const mediane = a => { const b = [...a].sort((x, y) => x - y); return b.length ? b[b.length >> 1] : null; };
 const quantile = (a, q) => { const b = [...a].sort((x, y) => x - y); return b.length ? b[Math.floor((b.length - 1) * q)] : null; };
@@ -104,6 +124,7 @@ function pariteNatif(fichier, iF, valeurs) {
 
 async function tourNavigateur(fichier, iF, nb = 120, reposMs = 10000) {
   const n = await ouvrirNavigateur(fichier);
+  epingler(n.racine);
   await attendre(reposMs);
   const repos = ram(n.racine);
   const r = await n.page.evaluate(async ([i, nb]) => {
@@ -138,6 +159,7 @@ async function tourNatif(fichier, options) {
   const lire = () => { try { return fs.readFileSync(journal, 'utf8'); } catch (e) { return ''; } };
   for (let i = 0; i < 600 && !/pret/.test(lire()); i++) await attendre(100);
   if (!/pret/.test(lire())) { p.kill(); throw new Error('natif : pas prêt'); }
+  epingler(p.pid);
   await attendre(reposMs);
   const repos = ram(p.pid);
   fs.writeFileSync(journal + '.go', '1');
@@ -199,12 +221,12 @@ async function plateauNavigateur(fichier, iF) {
   if (argv.includes('--vitesse')) {  // durées seules : tours courts et alternés, pour voir la dispersion
     const nb = 30, S = { natif: [], natifUnCoeur: [], navigateur: [] };
     for (let t = 0; t < tours; t++) {
-      const a = await tourNatif(fichier, { nb, reposMs: 1000 }); S.natif.push(a.msTotal);
-      const c = await tourNatif(fichier, { nb, reposMs: 1000, sequentiel: true }); S.natifUnCoeur.push(c.msTotal);
-      const b = await tourNavigateur(fichier, iF, nb, 1000); S.navigateur.push(b.msCalc);
+      const a = await tourNatif(fichier, { nb, reposMs: 1000 }); S.natif.push({ total: a.msTotal, rejeu: a.msRejeu });
+      const c = await tourNatif(fichier, { nb, reposMs: 1000, sequentiel: true }); S.natifUnCoeur.push({ total: c.msTotal, rejeu: c.msRejeu });
+      const b = await tourNavigateur(fichier, iF, nb, 1000); S.navigateur.push({ total: b.msCalc, rejeu: b.msRejeu });
       console.log('tour', t + 1, 'natif', a.msTotal, '(rejeu', a.msRejeu, 'maillage', a.msMaillage, ') 1 coeur', c.msTotal, '(rejeu', c.msRejeu, 'maillage', c.msMaillage, ') chrome', b.msCalc, '(rejeu', b.msRejeu, ')');
     }
-    fs.writeFileSync(path.join(__dirname, 'vitesse-' + path.basename(fichier, '.conceptcad').replace(/[^\w-]+/g, '_') + '.json'), JSON.stringify({ modifsParTour: nb, ...S }, null, 1));
+    fs.writeFileSync(path.join(__dirname, 'vitesse-' + path.basename(fichier, '.conceptcad').replace(/[^\w-]+/g, '_') + (MASQUE ? '-coeurs-rapides' : '') + '.json'), JSON.stringify({ modifsParTour: nb, ...S }, null, 1));
     serveur.kill(); fs.unlinkSync(psFichier); return;
   }
   if (argv.includes('--plateau')) {
