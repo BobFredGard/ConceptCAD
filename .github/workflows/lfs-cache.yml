@@ -1,0 +1,33 @@
+# Tient à jour la réserve des objets Git LFS que lit pages.yml. GitHub ne partage pas un cache créé sur un
+# tag avec les autres tags : tous peuvent seulement lire ceux de la branche principale. Ne retélécharge que
+# les objets qui ont changé, et seulement quand un objet LFS peut avoir changé.
+
+name: Reserve LFS
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'occt/**/*.wasm'
+      - 'Exemples/**'
+      - '.gitattributes'
+      - '.github/workflows/lfs-cache.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  reserve:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Lister les objets LFS
+        run: git lfs ls-files -l | cut -d' ' -f1 | sort > .lfs-ids
+      - uses: actions/cache@v4
+        with:
+          path: .git/lfs
+          key: lfs-${{ hashFiles('.lfs-ids') }}
+          restore-keys: lfs-
+      - name: Récupérer les objets LFS
+        run: git lfs pull

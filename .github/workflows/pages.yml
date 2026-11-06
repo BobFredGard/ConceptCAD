@@ -3,7 +3,8 @@
 # WebAssembly et les Exemples : en http(s), le noyau exact démarre seul.
 # Déclenché à chaque tag de version (V0.x.y) — le site suit donc la dernière version livrée —
 # ou à la main (onglet Actions › Pages › Run workflow). Les deux noyaux pèsent 86 Mo sur le quota de bande
-# passante LFS : les objets LFS sont gardés en cache, seul ce qui a changé est retéléchargé.
+# passante LFS : les objets sont repris de la réserve de la branche principale (lfs-cache.yml), seul ce
+# qui a changé depuis est retéléchargé.
 
 name: Pages
 
@@ -31,7 +32,7 @@ jobs:
       - uses: actions/checkout@v4
       - name: Lister les objets LFS
         run: git lfs ls-files -l | cut -d' ' -f1 | sort > .lfs-ids
-      - uses: actions/cache@v4
+      - uses: actions/cache/restore@v4
         with:
           path: .git/lfs
           key: lfs-${{ hashFiles('.lfs-ids') }}
