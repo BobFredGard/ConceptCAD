@@ -343,3 +343,13 @@ Vérifié contre le navigateur V0.67.3 :
 - Vraie fenêtre (`--essai-esquisse`) : tracé en cours, spline finie, spline de contrôle, panneau santé.
 
 Pas vérifié : les splines à la souris par une personne, les splines dans un fichier réel (aucun exemple n'en contient), un congé 3D posé sur une arête issue d'une spline, le rejeu de Balayage et Révolution (ces fonctions ne sont pas encore dans le natif).
+
+## Rendu de la vue 3D repris du navigateur
+
+La vue reprend les réglages de la scène Three.js (`src/10-scene-3d.js`) : matière métal 0,35 et rugosité 0,4, studio de reflets fabriqué sans fichier, perspective à 50°, bords lissés, couleur de chaque corps, arêtes vives noires et raccords tangents gris, reflet au sol. Le cube de vue est dessiné sans perspective pour rester un cube.
+
+- Les unités de lumière d'OCCT ne sont pas celles de Three.js : les intensités sont réglées sur les couleurs mesurées du Drapeau (dessus `#20b0fc` ici, `#10b0fc` dans le navigateur).
+- `--image3d <fichier> <image.png>` enregistre la vue sans prendre la main, et écrit à côté le temps d'affichage et le temps par image.
+- Mesuré : environ 60 images par seconde sur une plaque de 900 trous ; 11 à 12 Mo de plus en usage réel, environ 45 Mo de plus en mémoire réservée.
+- Le reflet s'estompe avec le calcul du navigateur : point du sol percé par le rayon de l'œil, fondu selon sa distance au centre de la pièce.
+- Écarts connus : les côtés sont un peu moins lumineux ; le cube a des faces très sombres vu par-dessous.

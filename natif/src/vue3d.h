@@ -4,6 +4,7 @@
 #include <wx/wx.h>
 
 #include <functional>
+#include <utility>
 #include <vector>
 
 #include <AIS_InteractiveContext.hxx>
@@ -19,7 +20,12 @@
 class Vue3D : public wxWindow {
  public:
   explicit Vue3D(wxWindow* parent);
-  void afficher(const TopoDS_Shape& forme, bool ajusterVue);
+  // teintes : le solide de chaque corps et sa couleur (0xRRVVBB) ; sans elles, le bleu des pièces.
+  void afficher(const TopoDS_Shape& forme, bool ajusterVue, const std::vector<std::pair<TopoDS_Shape, unsigned>>& teintes = {});
+  // Pour les essais : la vue dans une image, et le temps des arêtes et du reflet au dernier affichage
+  bool image(const wxString& chemin);
+  double msAffichage() const { return msAffichage_; }
+  double msImage() const { return msImage_; }
   void ajuster();
   void vueInitiale();
   // Prépare la sélection de la forme affichée (fait tout seul au premier passage de la souris).
@@ -42,6 +48,7 @@ class Vue3D : public wxWindow {
   void surMouvement(wxMouseEvent&);
   void surMolette(wxMouseEvent&);
   void surPerteSouris(wxMouseCaptureLostEvent&);
+  void majReflets();
 
   occ::handle<Aspect_DisplayConnection> connexion_;
   occ::handle<OpenGl_GraphicDriver> pilote_;
@@ -51,6 +58,10 @@ class Vue3D : public wxWindow {
   occ::handle<AIS_ViewCube> cube_;
   occ::handle<AIS_Shape> affichee_;
   occ::handle<AIS_Shape> traitsVifs_, traitsLisses_, traitsChoisis_, apercu_;
+  occ::handle<AIS_Shape> aretesVives_, aretesLisses_;  // les traits de la pièce, hors du choix d'un congé
+  std::vector<occ::handle<AIS_Shape>> reflets_;  // chaque corps renversé sous le sol
+  double sol_ = 0, msAffichage_ = 0, msImage_ = 0;
+  bool refletsVus_ = false;
   bool enChoix_ = false;
   double toleranceAvant_ = 2;
   bool selectionPrete_ = false, aBouge_ = false;

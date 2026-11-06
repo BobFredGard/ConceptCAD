@@ -1,6 +1,7 @@
 #include "cadre.h"
 
 #include <wx/dcmemory.h>
+#include <wx/file.h>
 #include <wx/filedlg.h>
 #include <wx/filename.h>
 #include <wx/propgrid/advprops.h>
@@ -1256,7 +1257,19 @@ double Cadre::recalculer() {
   msMaillage_ = tCalcul - msRejeu_;
   forme_ = r.forme;
   formesCorps_ = r.corps;
-  vue_->afficher(r.forme, ajusterVue_);
+  {
+    // bodyColorOf : la fiche du corps, sinon la teinte de la pièce, sinon la palette automatique selon le rang
+    static const unsigned PALETTE[] = {0x0a84ff, 0x30d158, 0xff9f0a, 0xbf5af2, 0xff453a, 0x64d2ff, 0xffd60a, 0x5e5ce6};
+    std::vector<std::pair<TopoDS_Shape, unsigned>> teintes;
+    for (const auto& [id, s] : r.corps) {
+      const size_t i = std::find(doc_.corps.begin(), doc_.corps.end(), id) - doc_.corps.begin();
+      unsigned c = i < doc_.couleursCorps.size() ? doc_.couleursCorps[i] : 0;
+      if (!c) c = doc_.teinte;
+      if (!c) c = PALETTE[(i < doc_.corps.size() ? i : 0) % 8];
+      teintes.push_back({s, c});
+    }
+    vue_->afficher(r.forme, ajusterVue_, teintes);
+  }
   ajusterVue_ = false;
   // Le banc compte aussi le prix de la sélection, que le programme paierait dès que la souris passe sur la vue.
   if (proto_.actif) vue_->preparerSelection();
@@ -1807,4 +1820,11 @@ void Cadre::pasProtocole(wxTimerEvent&) {
   const double ms = recalculer();
   fprintf(P.journal, "modif %d %.3f %.3f %.3f\n", P.i, ms, msRejeu_, msMaillage_);
   fflush(P.journal);
+}
+
+// --image3d : la vue seule, à comparer à la version navigateur ; le temps des arêtes et du reflet à côté de l'image
+void Cadre::imageVue3D(const wxString& chemin) {
+  vue_->image(chemin);
+  wxFile f(chemin + ".txt", wxFile::write);
+  if (f.IsOpened()) f.Write(wxString::Format("%.0f ms pour afficher, %.1f ms par image\n", vue_->msAffichage(), vue_->msImage()));
 }

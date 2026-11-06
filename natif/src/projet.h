@@ -118,6 +118,8 @@ struct Document {
   std::string nom;
   std::vector<std::string> corps;
   std::vector<std::string> nomsCorps;  // même rang que corps
+  std::vector<unsigned> couleursCorps;  // même rang que corps ; 0 = pas de couleur dans la fiche
+  unsigned teinte = 0;  // teinte de la pièce (doc.tint), pour les corps sans couleur
   std::vector<Esquisse> esquisses;
   std::vector<Esquisse> esquissesFichier;  // telles qu'écrites dans le fichier : ce qui en diffère reste à enregistrer
   std::vector<Fonction> fonctions;
