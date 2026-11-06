@@ -383,10 +383,22 @@ void VueEsquisse::surGaucheHaut(wxMouseEvent& ev) {
   }
 }
 
+void VueEsquisse::commande(const std::function<void(Dessin&)>& f) {
+  if (!dessin_ || enSaisie()) return;
+  dessin_->vue(echelle_);
+  f(*dessin_);
+  apresGeste();
+  SetFocus();
+}
+
 void VueEsquisse::surTouche(wxKeyEvent& ev) {
   if (dessin_ && ev.GetKeyCode() == WXK_DELETE && !enSaisie()) {
     dessin_->supprimer();
     apresGeste();
+    return;
+  }
+  if (ev.GetKeyCode() == 'X' && !ev.HasAnyModifiers()) {
+    commande([](Dessin& d) { d.poserContrainte("construction"); });
     return;
   }
   ev.Skip();

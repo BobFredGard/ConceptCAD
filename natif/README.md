@@ -27,7 +27,9 @@ Une cote d'esquisse n'est modifiable que si le solide de la pièce se calcule : 
 
 Dessiner dans une esquisse modifiable : outils Sélection, Ligne, Rectangle, Cercle et Arc en haut de la vue, case « Grille 1 mm ». Accroches sur les points et les lignes, contraintes posées toutes seules avec guide (horizontal, vertical, perpendiculaire, parallèle, tangent). Glisser un point ou un élément, Suppr pour effacer, double-clic sur un élément pour le coter, clic droit pour finir un tracé, Échap pour revenir à Sélection puis sortir. Ctrl+Z, Ctrl+Y et Ctrl+S suivent. À l'enregistrement, ce qui n'a pas changé garde son texte d'origine.
 
-Il ne sait pas encore : polygone, oblong, ajuster, décaler, congé d'esquisse, outil Cote entre deux éléments, contraintes au clavier (F1 à F12), longueur tapée pendant le tracé, fenêtre de sélection, retirer une contrainte, déplacer l'étiquette d'une cote, s'accrocher aux arêtes du solide, extruder une esquisse, supprimer une esquisse enregistrée, esquisse sur un plan de construction, nouvelle pièce. Une cote de référence nommée ou par formule reste figée.
+Il ne sait pas encore : polygone, oblong, ajuster, décaler, congé d'esquisse, outil Cote entre deux éléments, l'outil Coïncident à deux clics, longueur tapée pendant le tracé, fenêtre de sélection, retirer une contrainte, déplacer l'étiquette d'une cote, s'accrocher aux arêtes du solide, supprimer une esquisse enregistrée, esquisse sur un plan de construction, nouvelle pièce. Une cote de référence nommée ou par formule reste figée.
+
+Poser une contrainte : choisir les éléments (Ctrl+clic pour les suivants), puis menu **Contraintes** ou mêmes touches que le navigateur : F1 coïncident ou fusion de deux points, F2 horizontal ou vertical selon la ligne, F3 tangent, F4 égal, F5 parallèle, F6 perpendiculaire, F7 milieu, F8 concentrique, F9 colinéaire, F10 symétrique, F12 fixe, X construction. Une contrainte qui rendrait l'esquisse impossible est refusée, avec la raison : tout revient exactement à l'état d'avant.
 
 Créer une esquisse : menu **Esquisse**, sur le plan XY, XZ ou YZ, ou sur la face plane cliquée (elle suit alors sa face porteuse, comme dans le navigateur). Refermée sans rien dessiner, elle disparaît, comme dans le navigateur. Ctrl+Z annule la création tant qu'elle n'est pas enregistrée. Une esquisse sur plan se dessine aussi sur une pièce dont le natif ne calcule pas encore le solide : sans fonction ni lien, elle n'en dépend pas ; il n'y a donc pas d'esquisse sur face sur ces pièces.
 
@@ -196,6 +198,14 @@ Extruder une esquisse (menu Fonctions, Ctrl+E ; `mesures/tester-extrusion.cjs`, 
 - Écart voulu : le navigateur crée aussi la fonction sur un profil ouvert, et l'exclut au calcul. Le natif refuse et dit pourquoi.
 - Pas encore repris : Nouveau corps, Jusqu'à la face, dépouille, choix des zones d'un profil, flèche à tirer dans la vue, retrait d'une fonction enregistrée.
 - `tester-enregistrement.cjs` (176/176), `BancSolveurCommunes` (0 décision différente), `BancDessinCommunes` (mêmes résultats, 374 enregistrements, 0 écart), `verifier-dessin.ps1` et `verifier-nouvelle-esquisse.ps1` repassent.
+
+Poser une contrainte (`dessin-reference.cjs --contraintes`, `verifier-contraintes.ps1`). 27 façons de poser, tirées au hasard au milieu des autres gestes, sur les 125 esquisses et une esquisse vide :
+- **Maths communes** (`BancDessinCommunes`) : 383 sessions identiques sur 383, 4 623 états à moins de 10⁻⁹ mm, dont 1 956 après une contrainte, 375 écrites comme le navigateur, 0 écart. La référence contient environ 700 poses réussies, 350 refus et 740 demandes sans effet (déjà posée, mauvais choix d'éléments).
+- **Maths normales** (`BancDessin`) : 342 sessions identiques sur 383. 41 s'arrêtent sur un écart (6 de structure, 35 au-delà de 0,001 mm), dont 8 sur une contrainte, et 336 écrites comme le navigateur sans écart. Même nature que pour le dessin ci-dessus : en maths communes, tout disparaît.
+- Dans la fenêtre, par messages : F2, F5, refus d'une perpendiculaire sur deux parallèles, Ctrl+Z et Ctrl+Y après ce refus (il ne laisse aucun pas à annuler), F10 qui n'ouvre pas le menu de Windows, X dans les deux sens, F1 sur deux points, enregistrement, fermeture.
+- Écart voulu : F1 sans sélection qui convienne affiche un message, alors que le navigateur arme son outil Coïncident à deux clics, pas encore repris.
+- Pas repris : tout ce qui concerne les splines, encore refusées à l'ouverture dans le natif.
+- `BancDessinCommunes` sur l'ancienne référence (mêmes résultats), `BancSolveurCommunes` (0 décision différente), `verifier-dessin.ps1`, `verifier-extrusion.ps1` et `verifier-nouvelle-esquisse.ps1` repassent.
 
 Correction du test `verifier-dessin.ps1` : ses numéros de menus étaient décalés de 1 (`wxID_HIGHEST` vaut 6000), Ctrl+Y n'y était donc pas essayé. Corrigé ; il passe. Le rétablissement de Ctrl+Y est de plus éprouvé par l'essai de création ci-dessus.
 

@@ -46,6 +46,7 @@ class Dessin {
   void vue(double pixelsParMm);  // skUpdateTols
   bool grille = true;            // case « Grille 1 mm » du navigateur, cochée par défaut
   std::function<void()> avantModif;                     // skPushUndo : l'état est encore celui d'avant
+  std::function<void()> annulerPas;                     // le dernier avantModif est sans objet : la modification est refusée
   std::function<void(const std::string&)> surMessage;   // skStatus
 
   Outil outil() const { return outil_; }
@@ -58,6 +59,10 @@ class Dessin {
   void echap();     // skEscapeToSelect
   void annulerTrace();  // skCancelDraft
   void supprimer();  // deleteSkSel
+  // applyCon : h, v, equal, tangent, coaxial, parallel, perpendicular, collinear, symmetric, fix, midpoint, coincident, construction
+  void poserContrainte(const std::string& type);
+  void toucheF1();  // skShortcut : points fusionnés, ou point posé sur une courbe
+  void toucheF2();  // H ou V selon l'inclinaison de chaque ligne
   void choisirCote(const std::string& id);
   // Cote de référence ouverte en saisie : elle redevient pilotante si elle n'est plus en trop (editDim). Rend false sinon.
   bool rendrePilotante(const std::string& id);
@@ -130,6 +135,15 @@ class Dessin {
   bool attacherCourbe(const std::string& pid, double x, double y, double tol);                   // skAttachOnCurve
   void epinglerTangence(const std::string& ligne, const std::string& ent);                       // skPinTangent
   bool lacher(const std::string& pid, const Accroche& a);                                        // skDragRelease
+
+  // Contraintes
+  void pousserAvant();                               // skPushUndo, en gardant de quoi revenir
+  bool resoudreOuRefuser(const std::string& quoi);   // skSolveOrRevert
+  std::vector<std::string> pointsChoisis() const;
+  std::vector<const Entite*> entitesChoisies() const;  // skSelectedEnts
+  bool fusionner(std::string de, std::string vers);  // mergePoints
+  void basculerConstruction();                       // toggleConstr
+  Esquisse avant_;
 
   // Glisser
   Compo composante(const std::vector<std::string>& graines) const;  // skDragComp

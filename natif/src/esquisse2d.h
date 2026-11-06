@@ -30,6 +30,8 @@ class VueEsquisse : public wxWindow {
   // Échap et Ctrl+Z : abandonnent d'abord le tracé en cours. Rend true si Échap a servi à cela.
   bool echapDessin();
   bool abandonnerTrace();
+  // Une commande du menu sur la sélection du moment, sauf pendant la saisie d'une cote
+  void commande(const std::function<void(Dessin&)>& f);
   std::function<void()> surQuitter;
   // Double-clic sur une cote : rend true et le texte à proposer si elle peut changer.
   std::function<bool(const Cote& c, wxString& texte)> surDemandeCote;

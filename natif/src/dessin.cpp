@@ -1528,6 +1528,376 @@ void Dessin::echap() {
 
 void Dessin::choisirCote(const std::string& id) { selection_ = {{Choix::COTE, id}}; }
 
+void Dessin::pousserAvant() {
+  pousser();
+  avant_ = s_;
+}
+
+bool Dessin::resoudreOuRefuser(const std::string& quoi) {
+  resoudre();
+  std::string pourquoi;
+  for (const Entite& e : s_.entites) {
+    if (e.t != "line") continue;
+    const Pt* A = s_.point(e.p1);
+    const Pt* B = s_.point(e.p2);
+    const Pt* A0 = avant_.point(e.p1);
+    const Pt* B0 = avant_.point(e.p2);
+    if (A && B && A0 && B0 && hyp(B->x - A->x, B->y - A->y) < 1e-4 && hyp(B0->x - A0->x, B0->y - A0->y) > 1e-3) {
+      pourquoi = "la ligne " + e.id + " serait réduite à un point : contraintes en conflit";
+      break;
+    }
+  }
+  if (pourquoi.empty()) {
+    if (ed_.solveur.residu() <= SK_OK) return true;
+    // Une esquisse déjà en défaut n'est pas bloquée. Mesurée comme le navigateur : sur une copie, sans mémoire
+    Solveur copie(avant_, ed_.solveur);
+    copie.restaurer(copie.instantane());
+    if (copie.residu() > SK_OK) return true;
+    pourquoi = ed_.solveur.pireEcart();
+  }
+  // skRevertTo : les coordonnées exactement celles d'avant, sans nouvelle résolution. Le compteur d'identifiants, lui, ne revient pas.
+  if (annulerPas) annulerPas();
+  s_.ordre = avant_.ordre;
+  s_.points = avant_.points;
+  s_.entites = avant_.entites;
+  s_.contraintes = avant_.contraintes;
+  s_.cotes = avant_.cotes;
+  structure_ = true;
+  sync();
+  ed_.solveur.apresRefus();
+  message(quoi + " impossible (" + pourquoi + ") : esquisse laissée telle quelle.");
+  return false;
+}
+
+std::vector<std::string> Dessin::pointsChoisis() const {
+  std::vector<std::string> v;
+  for (const Choix& c : selection_)
+    if (c.sorte == Choix::POINT && std::find(v.begin(), v.end(), c.id) == v.end()) v.push_back(c.id);
+  return v;
+}
+
+std::vector<const Entite*> Dessin::entitesChoisies() const {
+  std::vector<const Entite*> v;
+  for (const Choix& c : selection_)
+    if (c.sorte == Choix::ENTITE)
+      if (const Entite* e = s_.entite(c.id))
+        if (std::find(v.begin(), v.end(), e) == v.end()) v.push_back(e);
+  return v;
+}
+
+bool Dessin::fusionner(std::string de, std::string vers) {
+  if (de.empty() || vers.empty() || de == vers) return false;
+  sync();
+  if (de == "O") {
+    std::swap(de, vers);  // jamais l'origine
+  } else if (vers != "O" && ed_.solveur.pointFixe(de) && !ed_.solveur.pointFixe(vers)) {
+    std::swap(de, vers);  // le point fixe reste, c'est l'autre qui le rejoint
+  }
+  if (vers == "O") {  // translation de tout le reste du dessin
+    const Pt* P = s_.point(de);
+    const Pt* O = s_.point("O");
+    if (P && O && (P->x != O->x || P->y != O->y)) {
+      const double dx = O->x - P->x, dy = O->y - P->y;
+      for (const std::string& k : s_.ordre)
+        if (k != de && k != "O") {
+          Pt& q = s_.points[k];
+          q.x += dx;
+          q.y += dy;
+        }
+    }
+  }
+  const auto suit = [&](std::string& x) {
+    if (x == de) x = vers;
+  };
+  for (Entite& e : s_.entites) {
+    suit(e.p1);
+    suit(e.p2);
+    suit(e.p);
+    suit(e.pc);
+    suit(e.pa);
+    suit(e.pb);
+  }
+  for (Cote& d : s_.cotes) {
+    suit(d.a);
+    suit(d.b);
+    suit(d.p);
+  }
+  for (Contrainte& c : s_.contraintes) {
+    suit(c.p);
+    if (c.type == "coincident") {
+      suit(c.a);
+      suit(c.b);
+    }
+  }
+  s_.points.erase(de);
+  s_.ordre.erase(std::remove(s_.ordre.begin(), s_.ordre.end(), de), s_.ordre.end());
+  structure_ = true;
+  return true;
+}
+
+void Dessin::basculerConstruction() {
+  std::vector<std::string> ids;
+  bool une = false;
+  for (const Entite* e : entitesChoisies())
+    if ((e->t == "line" && !e->poignee) || e->t == "circle" || e->t == "arc") {
+      ids.push_back(e->id);
+      une = une || e->construction;
+    }
+  if (ids.empty()) return message("Sélectionnez une ligne, un cercle ou un arc, puis basculez en construction (X).");
+  pousser();
+  for (const std::string& id : ids) entite(id)->construction = !une;
+  structure_ = true;
+  apresEdition();
+  message(!une ? "Géométrie de construction : trait discontinu, hors profil." : "Géométrie normale : participe au profil.");
+}
+
+void Dessin::poserContrainte(const std::string& type) {
+  premiere();
+  sync();
+  if (type == "construction") return basculerConstruction();
+  const std::vector<const Entite*> ents = entitesChoisies();
+  std::vector<const Entite*> lignes;
+  for (const Entite* e : ents)
+    if (e->t == "line") lignes.push_back(e);
+  const auto rond = [](const Entite* e) { return e->t == "circle" || e->t == "arc"; };
+  const auto paire = [&](const char* t, const std::string& a, const std::string& b) {
+    return aContrainte([&](const Contrainte& c) { return c.type == t && ((c.a == a && c.b == b) || (c.a == b && c.b == a)); });
+  };
+  const auto deux = [&](const char* t, const std::string& a, const std::string& b) {
+    Contrainte c;
+    c.type = t;
+    c.a = a;
+    c.b = b;
+    return c;
+  };
+  const std::vector<std::string> pts = pointsChoisis();
+  if (type == "coincident") {
+    std::vector<const Entite*> ronds;
+    for (const Entite* e : ents)
+      if (rond(e)) ronds.push_back(e);
+    if (pts.size() == 2 && ents.empty()) {
+      if (paire("coincident", pts[0], pts[1])) return message("Coïncidence déjà posée.");
+      pousserAvant();
+      lier(deux("coincident", pts[0], pts[1]));
+    } else if (pts.size() == 1 && lignes.size() == 1 && ents.size() == 1) {
+      const std::string l = lignes[0]->id;
+      if (lignes[0]->p1 == pts[0] || lignes[0]->p2 == pts[0]) return message("Ce point est déjà une extrémité de la ligne.");
+      if (aContrainte([&](const Contrainte& c) { return c.type == "online" && c.p == pts[0] && c.line == l; })) return message("Point déjà sur cette ligne.");
+      pousserAvant();
+      Contrainte c;
+      c.type = "online";
+      c.p = pts[0];
+      c.line = l;
+      lier(c);
+    } else if (pts.size() == 1 && ronds.size() == 1 && ents.size() == 1) {
+      const std::string e = ronds[0]->id;
+      if (ronds[0]->pc == pts[0]) return message("Ce point est le centre : utilisez Concentrique ou déplacez-le.");
+      if (aContrainte([&](const Contrainte& c) { return c.type == "oncircle" && c.p == pts[0] && c.ent == e; })) return message("Point déjà sur ce cercle.");
+      pousserAvant();
+      Contrainte c;
+      c.type = "oncircle";
+      c.p = pts[0];
+      c.ent = e;
+      lier(c);
+    } else {
+      return message("Coïncident : sélectionnez 2 points, ou 1 point + 1 ligne, ou 1 point + 1 cercle ou arc (Ctrl+clic pour le 2e).");
+    }
+    if (resoudreOuRefuser("Contrainte")) message(pts.size() == 2 ? "Points coïncidents." : ents.size() == 1 && lignes.size() == 1 ? "Point sur la droite : il peut glisser au-delà du segment." : "Point sur la courbe.");
+    return;
+  }
+  if (type == "h" || type == "v") {
+    if (lignes.empty()) return message("Sélectionnez d'abord une ou plusieurs lignes.");
+    std::vector<std::string> ids;
+    for (const Entite* l : lignes) ids.push_back(l->id);
+    pousserAvant();
+    for (const std::string& id : ids)
+      if (!aHV(id, type.c_str())) {
+        Contrainte c;
+        c.type = type;
+        c.line = id;
+        lier(c);
+      }
+  } else if (type == "equal") {
+    if (ents.size() != 2) return message("Égal : sélectionnez exactement 2 lignes ou 2 cercles ou arcs.");
+    if (!((ents[0]->t == "line" && ents[1]->t == "line") || (rond(ents[0]) && rond(ents[1])))) return message("Égal : types incompatibles.");
+    const std::string a = ents[0]->id, b = ents[1]->id;
+    pousserAvant();
+    lier(deux("equal", a, b));
+  } else if (type == "tangent") {
+    if (ents.size() != 2) return message("Tangence : sélectionnez 1 ligne + 1 cercle ou arc, ou 2 cercles.");
+    const Entite* a = ents[0];
+    const Entite* b = ents[1];
+    const std::string ia = a->id, ib = b->id;
+    if ((a->t == "line" && rond(b)) || (b->t == "line" && rond(a))) {
+      const std::string l = a->t == "line" ? ia : ib, e = a->t == "line" ? ib : ia;
+      pousserAvant();
+      Contrainte c;
+      c.type = "tangent";
+      c.line = l;
+      c.ent = e;
+      lier(c);
+      epinglerTangence(l, e);
+    } else if (rond(a) && rond(b)) {
+      pousserAvant();
+      lier(deux("tangent2", ia, ib));
+    } else {
+      return message("Tangence : ligne et cercle, ou cercle et cercle uniquement.");
+    }
+  } else if (type == "coaxial") {
+    if (ents.size() != 2 || !rond(ents[0]) || !rond(ents[1])) return message("Concentrique : sélectionnez exactement 2 cercles ou arcs.");
+    if (ents[0]->id == ents[1]->id || ents[0]->pc == ents[1]->pc) return message("Ces deux courbes ont déjà le même centre.");
+    const std::string a = ents[0]->id, b = ents[1]->id;
+    if (paire("coaxial", a, b)) return message("Concentricité déjà posée.");
+    pousserAvant();
+    lier(deux("coaxial", a, b));
+  } else if (type == "parallel" || type == "perpendicular") {
+    if (lignes.size() != 2) return message((type == "parallel" ? std::string("Parallèle") : std::string("Perpendiculaire")) + " : sélectionnez exactement 2 lignes.");
+    const std::string a = lignes[0]->id, b = lignes[1]->id;
+    if (paire(type.c_str(), a, b)) return message(type == "parallel" ? "Parallèle déjà posée." : "Perpendiculaire déjà posée.");
+    if (type == "perpendicular" && ((aHV(a, "h") && aHV(b, "v")) || (aHV(a, "v") && aHV(b, "h")))) return message("Déjà perpendiculaires : l'une est horizontale, l'autre verticale.");
+    pousserAvant();
+    lier(deux(type.c_str(), a, b));
+  } else if (type == "collinear") {
+    if (lignes.size() != 2) return message("Colinéaire : sélectionnez exactement 2 lignes.");
+    const std::string a = lignes[0]->id, b = lignes[1]->id;
+    if (paire("collinear", a, b)) return message("Colinéaire déjà posée.");
+    if (paire("perpendicular", a, b)) return message("Colinéaire impossible : ces lignes sont perpendiculaires.");
+    pousserAvant();
+    lier(deux("collinear", a, b));
+    dedoublonner();
+    structure_ = true;
+    if (resoudreOuRefuser("Contrainte")) message("Colinéaire : les 2 lignes portées par la même droite.");
+    return;
+  } else if (type == "symmetric") {
+    if (lignes.size() != 3) return message("Symétrie : sélectionnez 3 lignes, les 2 à symétriser et l'axe (la ligne de construction, ou la dernière cliquée).");
+    int nCons = 0;
+    const Entite* axe = lignes[2];
+    for (const Entite* l : lignes)
+      if (l->construction) nCons++;
+    if (nCons == 1)
+      for (const Entite* l : lignes)
+        if (l->construction) axe = l;
+    std::vector<std::string> ids;
+    for (const Entite* l : lignes)
+      if (l != axe) ids.push_back(l->id);
+    const std::string mid = axe->id;
+    if (aContrainte([&](const Contrainte& c) { return c.type == "symmetric" && ((c.a == ids[0] && c.b == ids[1]) || (c.a == ids[1] && c.b == ids[0])) && c.mid == mid; })) return message("Symétrie déjà posée.");
+    pousserAvant();
+    Contrainte c = deux("symmetric", ids[0], ids[1]);
+    c.mid = mid;
+    lier(c);
+  } else if (type == "fix") {
+    std::vector<std::string> aFixer;
+    const auto garder = [&](const std::string& p) {
+      if (p != "O" && std::find(aFixer.begin(), aFixer.end(), p) == aFixer.end()) aFixer.push_back(p);
+    };
+    for (const std::string& p : pts) garder(p);
+    for (const Entite* l : lignes) {
+      garder(l->p1);
+      garder(l->p2);
+    }
+    std::vector<std::string> ronds;
+    for (const Entite* e : ents)
+      if (rond(e)) ronds.push_back(e->id);
+    if (aFixer.empty() && ronds.empty()) return message("Fixe : sélectionnez un point, une ligne ou un cercle. L'origine est déjà fixe.");
+    pousserAvant();
+    for (const std::string& p : aFixer) {
+      Contrainte c;
+      c.type = "fix";
+      c.p = p;
+      lier(c);
+    }
+    for (const std::string& e : ronds) {
+      Contrainte c;
+      c.type = "fix";
+      c.ent = e;
+      lier(c);
+    }
+  } else if (type == "midpoint") {
+    if (lignes.size() == 2 && pts.empty()) {
+      const std::string a = lignes[0]->id, b = lignes[1]->id;
+      if (paire("midpoint", a, b)) return message("Milieux égaux déjà posés.");
+      pousserAvant();
+      lier(deux("midpoint", a, b));
+      if (resoudreOuRefuser("Contrainte")) message("Milieux égaux : les 2 lignes se centrent l'une sur l'autre.");
+    } else if (lignes.size() == 1 && pts.size() == 1) {
+      const std::string l = lignes[0]->id;
+      if (aContrainte([&](const Contrainte& c) { return c.type == "midpoint" && c.p == pts[0] && c.line == l; })) return message("Point au milieu déjà posé.");
+      pousserAvant();
+      Contrainte c;
+      c.type = "midpoint";
+      c.p = pts[0];
+      c.line = l;
+      lier(c);
+      if (resoudreOuRefuser("Contrainte")) message("Point au milieu de la ligne.");
+    } else {
+      message("Milieu : sélectionnez 2 lignes (milieux égaux) ou 1 point + 1 ligne (point au centre).");
+    }
+    return;
+  } else {
+    return;
+  }
+  if (resoudreOuRefuser("Contrainte")) message("Contrainte posée. Ctrl+Z pour annuler.");
+}
+
+void Dessin::toucheF2() {
+  premiere();
+  sync();
+  std::vector<std::string> ids;
+  for (const Entite* e : entitesChoisies())
+    if (e->t == "line") ids.push_back(e->id);
+  if (ids.empty()) return message("F2 : sélectionnez une ou plusieurs lignes (H si plutôt horizontale, V si plutôt verticale).");
+  pousser();
+  int n = 0;
+  for (const std::string& id : ids) {
+    const Entite* l = s_.entite(id);
+    const Pt* A = s_.point(l->p1);
+    const Pt* B = s_.point(l->p2);
+    if (!A || !B) continue;
+    if (aHV(id, "h") || aHV(id, "v")) continue;
+    Contrainte c;
+    c.type = std::abs(B->x - A->x) >= std::abs(B->y - A->y) ? "h" : "v";
+    c.line = id;
+    lier(c);
+    n++;
+  }
+  structure_ = true;
+  apresEdition();
+  message(n ? std::to_string(n) + " contrainte(s) H ou V posée(s)." : "F2 : déjà horizontale(s) ou verticale(s).");
+}
+
+void Dessin::toucheF1() {
+  premiere();
+  sync();
+  const std::vector<std::string> pts = pointsChoisis();
+  const std::vector<const Entite*> ents = entitesChoisies();
+  if (pts.size() == 2) {
+    pousser();
+    if (fusionner(pts[1], pts[0])) {
+      selection_.clear();
+      apresEdition();
+      message("Points fusionnés.");
+    }
+    return;
+  }
+  if (pts.size() == 1 && ents.size() == 1) {
+    const Entite* E = ents[0];
+    if (E->t != "line" && E->t != "circle" && E->t != "arc") return message("F1 : point + ligne ou cercle, ou 2 points.");
+    const bool ligne = E->t == "line";
+    const std::string id = E->id;
+    pousser();
+    Contrainte c;
+    c.p = pts[0];
+    c.type = ligne ? "online" : "oncircle";
+    (ligne ? c.line : c.ent) = id;
+    lier(c);
+    apresEdition();
+    message(ligne ? "Point posé sur la ligne." : "Point posé sur le cercle.");
+    return;
+  }
+  message("Coïncident : sélectionnez 2 points, ou un point + une ligne ou un cercle (Ctrl+clic pour le 2e), puis F1.");
+}
+
 void Dessin::supprimer() {
   premiere();
   std::set<std::string> ents, pts, cotes;

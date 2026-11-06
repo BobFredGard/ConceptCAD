@@ -18,7 +18,7 @@
 #include "enregistrer.h"
 
 namespace {
-enum { ID_ANNULER = wxID_HIGHEST + 1, ID_RETABLIR, ID_AJUSTER, ID_QUITTER_ESQUISSE, ID_ESQUISSE_XY, ID_ESQUISSE_XZ, ID_ESQUISSE_YZ, ID_ESQUISSE_FACE, ID_EXTRUDER };
+enum { ID_ANNULER = wxID_HIGHEST + 1, ID_RETABLIR, ID_AJUSTER, ID_QUITTER_ESQUISSE, ID_ESQUISSE_XY, ID_ESQUISSE_XZ, ID_ESQUISSE_YZ, ID_ESQUISSE_FACE, ID_EXTRUDER, ID_CONTRAINTE_1 };
 // Identifiants fixes : natif/mesures/verifier-fenetre.ps1 retrouve ces fenêtres par eux.
 enum { ID_ARBRE = 2001, ID_PROPS = 2002, ID_ETAT = 2003 };
 const char* const PROP_PROFONDEUR = "profondeur", * const PROP_OPERATION = "operation", * const PROP_ETENDUE = "etendue", * const PROP_DIRECTION = "direction", * const PROP_INVERSER = "inverser";
@@ -139,10 +139,44 @@ void Cadre::creerMenus() {
   esquisse->Append(ID_ESQUISSE_FACE, L"Nouvelle esquisse sur la &face choisie");
   auto* fonctions = new wxMenu;
   fonctions->Append(ID_EXTRUDER, L"E&xtruder l'esquisse\tCtrl+E");
+  struct LigneContrainte {
+    const char* type;
+    const wchar_t* texte;
+  };
+  static const LigneContrainte lignesContrainte[] = {
+      {"f1", L"&Coïncident : 2 points, ou point et courbe\tF1"},
+      {"f2", L"&Horizontal ou vertical, selon la ligne\tF2"},
+      {"tangent", L"&Tangent\tF3"},
+      {"equal", L"É&gal\tF4"},
+      {"parallel", L"&Parallèle\tF5"},
+      {"perpendicular", L"P&erpendiculaire\tF6"},
+      {"midpoint", L"&Milieu\tF7"},
+      {"coaxial", L"C&oncentrique\tF8"},
+      {"collinear", L"Co&linéaire\tF9"},
+      {"symmetric", L"&Symétrique : 2 lignes et l'axe\tF10"},
+      {"fix", L"&Fixe\tF12"},
+      {"construction", L"Basculer en co&nstruction (touche X)"},
+  };
+  auto* contraintes = new wxMenu;
+  int idContrainte = ID_CONTRAINTE_1;
+  for (const LigneContrainte& l : lignesContrainte) {
+    contraintes->Append(idContrainte, l.texte);
+    const std::string type = l.type;
+    Bind(wxEVT_MENU, [this, type](wxCommandEvent&) {
+      vueEsquisse_->commande([&](Dessin& d) {
+        if (type == "f1") d.toucheF1();
+        else if (type == "f2") d.toucheF2();
+        else d.poserContrainte(type);
+      });
+    }, idContrainte);
+    Bind(wxEVT_UPDATE_UI, [this](wxUpdateUIEvent& e) { e.Enable(dessin_ != nullptr); }, idContrainte);
+    idContrainte++;
+  }
   auto* barre = new wxMenuBar;
   barre->Append(fichier, L"&Fichier");
   barre->Append(edition, L"&Édition");
   barre->Append(esquisse, L"E&squisse");
+  barre->Append(contraintes, L"&Contraintes");
   barre->Append(fonctions, L"Fo&nctions");
   barre->Append(affichage, L"&Affichage");
   SetMenuBar(barre);
@@ -458,6 +492,9 @@ void Cadre::brancherDessin() {
     annulations_.push_back(std::move(m));
     retablissements_.clear();
     dessinModifie_ = true;
+  };
+  dessin_->annulerPas = [this] {
+    if (!annulations_.empty()) annulations_.pop_back();
   };
   dessin_->surMessage = [this](const std::string& m) { etat(tx(m)); };
   vueEsquisse_->surDessinChange = [this] {

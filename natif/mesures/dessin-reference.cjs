@@ -1,7 +1,8 @@
 // Fait faire au navigateur (exécuté dans Node, sans toucher à src/) des gestes de dessin sur chaque esquisse :
 // vrais événements de souris sur la vue, tirés au hasard mais reproductibles. Les gestes et l'esquisse complète
 // après chacun sont écrits pour BancDessin, qui rejoue les mêmes gestes dans le natif et compare.
-// node dessin-reference.cjs <dossier d'exemples> <sortie.json> [--communes] [--nom=extrait] [--sessions=n]
+// node dessin-reference.cjs <dossier d'exemples> <sortie.json> [--communes] [--nom=extrait] [--sessions=n] [--contraintes]
+// --contraintes : ajoute la pose de contraintes aux gestes tirés (sans cette option, les références déjà faites restent reproductibles)
 // Restent neutralisés, à dire honnêtement : l'accroche sur les arêtes du solide, et le clic sur une étiquette de cote.
 'use strict';
 const fs = require('fs'), path = require('path'), zlib = require('zlib'), vm = require('vm');
@@ -79,6 +80,8 @@ vm.runInContext(`
     else if (st.a === 'dbl') __evt('dblclick', st.x, st.y);
     else if (st.a === 'echap') skEscapeToSelect();
     else if (st.a === 'suppr') deleteSkSel();
+    else if (st.a === 'con') applyCon(st.t);
+    else if (st.a === 'f1' || st.a === 'f2') skShortcut({ key: st.a.toUpperCase(), shiftKey: false, preventDefault() {} });
   }
   function __etat(sk) {
     const P = sk.points, pts = [], ray = [], val = [];
@@ -156,7 +159,37 @@ function session(src, graine, nbGestes) {
     if (e.t === 'arc' && g.points[e.pa] && g.points[e.pb]) { const A = g.points[e.pa]; return { e, x: A.x, y: A.y }; }
     return null;
   };
+  // Un clic qui vise un point, une ligne ou un cercle ou arc
+  const viser = (g, quoi) => {
+    if (quoi === 'point') { const ids = Object.keys(g.points); return ids.length ? g.points[pick(ids)] : null; }
+    const liste = g.entities.filter(e => quoi === 'ligne' ? e.t === 'line' && g.points[e.p1] && g.points[e.p2] : (e.t === 'circle' || e.t === 'arc') && g.points[e.pc]);
+    const e = pick(liste);
+    if (!e) return null;
+    if (e.t === 'line') { const A = g.points[e.p1], B = g.points[e.p2], t = 0.25 + r() * 0.5; return { x: A.x + (B.x - A.x) * t, y: A.y + (B.y - A.y) * t }; }
+    const C = g.points[e.pc];
+    let a = r() * 6.28;
+    if (e.t === 'arc' && g.points[e.pa] && g.points[e.pb]) {
+      const a1 = Math.atan2(g.points[e.pa].y - C.y, g.points[e.pa].x - C.x), a2 = Math.atan2(g.points[e.pb].y - C.y, g.points[e.pb].x - C.x);
+      a = a1 + (((a2 - a1) % 6.283185307179586 + 6.283185307179586) % 6.283185307179586) / 2;
+    }
+    return { x: C.x + e.r * Math.cos(a), y: C.y + e.r * Math.sin(a) };
+  };
+  const CAS = [
+    ['con', 'h', ['ligne']], ['con', 'v', ['ligne']], ['con', 'h', ['ligne', 'ligne']], ['con', 'parallel', ['ligne', 'ligne']], ['con', 'perpendicular', ['ligne', 'ligne']],
+    ['con', 'equal', ['ligne', 'ligne']], ['con', 'equal', ['rond', 'rond']], ['con', 'collinear', ['ligne', 'ligne']], ['con', 'tangent', ['ligne', 'rond']], ['con', 'tangent', ['rond', 'rond']],
+    ['con', 'coaxial', ['rond', 'rond']], ['con', 'symmetric', ['ligne', 'ligne', 'ligne']], ['con', 'fix', ['point']], ['con', 'fix', ['ligne']], ['con', 'fix', ['rond']],
+    ['con', 'midpoint', ['ligne', 'ligne']], ['con', 'midpoint', ['point', 'ligne']], ['con', 'coincident', ['point', 'point']], ['con', 'coincident', ['point', 'ligne']], ['con', 'coincident', ['point', 'rond']],
+    ['con', 'construction', ['ligne']], ['con', 'construction', ['rond']], ['f1', '', ['point', 'point']], ['f1', '', ['point', 'ligne']], ['f1', '', ['point', 'rond']], ['f2', '', ['ligne']], ['f2', '', ['ligne', 'ligne']],
+  ];
   const gestes = {
+    contrainte() {
+      const [a, t, cibles] = pick(CAS);
+      faire({ a: 'outil', o: 'select' });
+      cibles.forEach((q, i) => { const l = viser(geo(), q); if (l) clic(l, i > 0); });
+      faire(a === 'con' ? { a, t } : { a });
+      // F1 sans choix qui convienne arme l'outil Coïncident du navigateur, pas encore traduit : on en sort
+      faire({ a: 'outil', o: 'select' });
+    },
     glissePoint() {
       const g = geo(), ids = Object.keys(g.points);
       if (!ids.length) return;
@@ -241,13 +274,18 @@ function session(src, graine, nbGestes) {
     },
   };
   const noms = ['glissePoint', 'glissePoint', 'glisseEntite', 'glisseEntite', 'ligne', 'ligne', 'ligneGlissee', 'rectangle', 'rectangle', 'cercle', 'arc', 'coter', 'effacer', 'effacerPoint'];
+  if (process.argv.includes('--contraintes')) noms.push(...Array(10).fill('contrainte'));
   for (let i = 0; i < nbGestes; i++) {
     const avant = pas.length;
     const nom = pick(noms);
     gestes[nom]();
     if (pas.length > avant) { pas[avant].geste = nom; noter(); }
   }
-  return { graine, s, cx, cy, pas, final: JSON.parse(vm.runInContext('JSON.stringify(__sk)', ctx)) };
+  const final = JSON.parse(vm.runInContext('JSON.stringify(__sk)', ctx));
+  // Le refus d'une contrainte recalcule les formules des cotes. Ici le document n'a que cette esquisse, sans paramètres :
+  // une formule qui vise autre chose ne peut pas se calculer, garde sa valeur et s'en plaint. C'est propre au banc, pas à la pièce.
+  (final.dims || []).forEach(d => { if (d.exprErr && !(src.dims || []).some(o => o.id === d.id && o.exprErr)) delete d.exprErr; });
+  return { graine, s, cx, cy, pas, final };
 }
 
 const sortie = [];

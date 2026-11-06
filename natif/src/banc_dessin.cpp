@@ -150,6 +150,12 @@ int wmain(int argc, wchar_t** argv) {
           D.echap();
         } else if (a == "suppr") {
           D.supprimer();
+        } else if (a == "con") {
+          D.poserContrainte(st["t"].get<std::string>());
+        } else if (a == "f1") {
+          D.toucheF1();
+        } else if (a == "f2") {
+          D.toucheF2();
         }
         if (!st.contains("etat")) continue;
         nEtats++;
