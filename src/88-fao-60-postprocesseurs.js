@@ -653,6 +653,17 @@ async function faoRefreshPreviewStream(){
   faoAdd3D(faoPrevGroup);
   if(typeof faoVw!=='undefined'&&faoVw)faoPrevGroup.visible=false; // viewer : traces restent cachées
   const ops=((job&&job.ops)||[]).filter(function(op){ return op&&op.on!==false; });
+  // Opérations longues : calculées sur plusieurs cœurs (src/88-fao-58-multicoeur.js) et rangées
+  // au cache ; la boucle ci-dessous les relit et calcule normalement tout ce qui manque.
+  const fluxOp=new Map();
+  await faoWkRemplir(job,ops,function(){ return tok!==faoStreamTok; },function(op,delta){
+    if(op.hidden===true)return;
+    const sp=faoSegSplit(delta,faoSegClipper(op,job),fluxOp.get(op)||null);
+    fluxOp.set(op,sp.prev);
+    faoPrevAdd(faoPrevGroup,sp);
+  },function(n,total,coeurs){
+    if(typeof faceEl!=='undefined'&&faceEl)faceEl.textContent='FAO : génération sur '+coeurs+' cœur'+(coeurs>1?'s':'')+', '+n+'/'+total+' opération'+(total>1?'s':'')+' terminée'+(n>1?'s':'')+'…';
+  });
   for(let i=0;i<ops.length;i++){
     if(tok!==faoStreamTok)return -1; // un autre rafraîchissement a pris la main
     const op=ops[i];
