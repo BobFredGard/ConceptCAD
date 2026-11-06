@@ -14,6 +14,8 @@
 #include "infos_esquisse.h"
 #include "projet.h"
 
+class wxSpinCtrl;
+
 class VueEsquisse : public wxWindow {
  public:
   explicit VueEsquisse(wxWindow* parent);
@@ -53,12 +55,28 @@ class VueEsquisse : public wxWindow {
   std::function<void(const std::string& idCote, const wxString& texte)> surSaisieCote;
   bool enSaisie() const { return saisie_ && saisie_->IsShown(); }
   void annulerSaisie();
+  // Pour les essais : de vrais événements de souris et de clavier, sans prendre la main sur l'écran.
+  // Le menu du clic droit ne s'ouvre pas : ses entrées sont notées et celle qui est demandée est choisie.
+  void essaiSouris(wxEventType type, double x, double y, bool ctrl = false);
+  void essaiTouche(int code);
+  void essaiCaractere(wxChar c);
+  void essaiReglagesPolygone(const wxString& cotes, const wxString& diametre);
+  bool essaiBarrePolygoneVisible() const { return barrePoly_ && barrePoly_->IsShown(); }
+  bool essaiSansMenu = false;
+  std::string essaiChoixMenu;
+  std::vector<std::string> essaiEntreesMenu;
   // Pour les essais : où double-cliquer sur cette cote, en coordonnées de la vue
   bool positionCote(const std::string& id, wxPoint& p) const;
   // Éléments qu'on ne sait pas encore dessiner (splines), pour le dire à l'utilisateur.
   int nonDessines() const { return nonDessines_; }
 
  private:
+  void clicDroitDessin(const wxPoint& ou);  // le menu de l'écouteur contextmenu du navigateur
+  void majBarrePolygone();  // skPolySync : le bandeau n'existe à l'écran que pendant l'outil Polygone
+  void lireBarrePolygone();
+  wxPanel* barrePoly_ = nullptr;
+  wxSpinCtrl* polyN_ = nullptr;
+  wxTextCtrl* polyD_ = nullptr;
   struct Trait {
     double x1, y1, x2, y2;
   };
@@ -111,6 +129,13 @@ class VueEsquisse : public wxWindow {
     std::string id;
     double x, y, demiL, demiH, angle;  // en pixels logiques
   };
+  struct ZoneLigne {  // la ligne de cote telle que dessinée
+    std::string id;
+    bool arc = false;
+    std::vector<wxPoint2DDouble> pts;
+  };
+  mutable std::vector<ZoneLigne> zonesLignes_;
+  std::string ligneSous(const wxPoint& dip) const;  // hitDimLine
   mutable std::vector<ZoneCote> zonesCotes_;  // refaites à chaque dessin : là où chaque valeur est écrite
   wxTextCtrl* saisie_ = nullptr;
   std::string coteEnSaisie_;

@@ -183,6 +183,7 @@ int wmain(int argc, wchar_t** argv) {
       nSessions++;
       Esquisse s = base;
       Edition ed(s);
+      Dessin::reglagesParDefaut();
       Dessin D(s, ed);
       D.vue(se["s"].get<double>());
       D.premiere();
@@ -196,7 +197,20 @@ int wmain(int argc, wchar_t** argv) {
         const double x = st.contains("x") ? st["x"].get<double>() : 0, y = st.contains("y") ? st["y"].get<double>() : 0;
         if (a == "outil") {
           const std::string o = st["o"];
-          D.choisirOutil(o == "line" ? Dessin::LIGNE : o == "rect" ? Dessin::RECTANGLE : o == "circle" ? Dessin::CERCLE : o == "arc" ? Dessin::ARC : o == "dim" ? Dessin::COTE : o == "trim" ? Dessin::AJUSTER : o == "offset" ? Dessin::DECALER : Dessin::SELECTION);
+          D.choisirOutil(o == "coincident" ? Dessin::COINCIDENT : o == "fillet" ? Dessin::CONGE : o == "chamfer" ? Dessin::CHANFREIN : o == "slot" ? Dessin::OBLONG : o == "polygon" ? Dessin::POLYGONE : o == "cpoint" ? Dessin::POINT_C : o == "hpoint" ? Dessin::PERCAGE : o == "line" ? Dessin::LIGNE : o == "rect" ? Dessin::RECTANGLE : o == "circle" ? Dessin::CERCLE : o == "arc" ? Dessin::ARC : o == "dim" ? Dessin::COTE : o == "trim" ? Dessin::AJUSTER : o == "offset" ? Dessin::DECALER : Dessin::SELECTION);
+        } else if (a == "menu") {
+          std::string titre;
+          const auto entrees = D.menuContextuel(titre);
+          std::string miens, siens;
+          for (const auto& x : entrees) miens += x.libelle + "|";
+          for (const auto& x : st["l"]) siens += x.get<std::string>() + "|";
+          if (miens != siens) fautes.push_back(f + " " + id + " : MENU natif " + miens + " / navigateur " + siens);
+          for (const auto& x : entrees)
+            if (x.libelle == st["c"].get<std::string>()) D.actionMenu(x.code);
+        } else if (a == "poly") {
+          D.lirePolygone(st["n"].get<int>(), st["d"].get<std::string>());
+        } else if (a == "polyEntree") {
+          D.entree();
         } else if (a == "offD") {
           D.bouge(x, y);
           for (const char c : st["t"].get<std::string>()) D.caractere(c);
@@ -254,6 +268,10 @@ int wmain(int argc, wchar_t** argv) {
           } else {
             D.enfonce(x, y, st.value("c", false));
           }
+        } else if (a == "gcEtiq") {
+          D.prendreCote(st["id"].get<std::string>(), x, y);
+        } else if (a == "gcLigne") {
+          D.enfonce(x, y, false, st["id"].get<std::string>());
         } else if (a == "bouge") {
           D.bouge(x, y);
         } else if (a == "haut") {
@@ -306,6 +324,13 @@ int wmain(int argc, wchar_t** argv) {
           fautes.push_back(ou + " : STRUCTURE " + difference(mien, sien));
           fautesGeste[geste]++;
           bonne = false;
+          if (getenv("CONCEPTCAD_BANC_DETAIL")) {
+            printf("STRUCT %s\nN %s\nW %s\n", ou.c_str(), mien.c_str(), sien.c_str());
+            for (size_t k = 0; k < s.ordre.size(); k++) {
+              const Pt& q = s.points.at(s.ordre[k]);
+              if (2 * k + 1 < e["pts"].size()) printf("  %s natif %.6f %.6f navigateur %.6f %.6f\n", s.ordre[k].c_str(), q.x, q.y, e["pts"][2 * k].get<double>(), e["pts"][2 * k + 1].get<double>());
+            }
+          }
           break;  // la suite ne prouverait plus rien
         }
         double m = 0;
@@ -324,6 +349,24 @@ int wmain(int argc, wchar_t** argv) {
           pires.push_back({m, ou});
           fautesGeste[geste]++;
           bonne = false;
+          if (getenv("CONCEPTCAD_BANC_DETAIL")) {  // ce qui a bougé, pour comprendre un écart
+            printf("DETAIL %s\n", ou.c_str());
+            for (size_t k = 0; k < s.ordre.size(); k++) {
+              const Pt& q = s.points.at(s.ordre[k]);
+              const double ax = rp[2 * k].get<double>(), ay = rp[2 * k + 1].get<double>();
+              if (std::abs(q.x - ax) > seuil || std::abs(q.y - ay) > seuil) printf("  %s natif %.6f %.6f navigateur %.6f %.6f\n", s.ordre[k].c_str(), q.x, q.y, ax, ay);
+            }
+            nr = 0;
+            for (const Entite& en : s.entites)
+              if (en.t == "circle" || en.t == "arc") {
+                const double v = e["ray"][nr++].get<double>();
+                if (std::abs(en.r - v) > seuil) printf("  %s r natif %.6f navigateur %.6f\n", en.id.c_str(), en.r, v);
+              }
+            for (size_t k = 0; k < s.cotes.size(); k++) {
+              const double v = e["val"][k].get<double>();
+              if (std::abs(s.cotes[k].value - v) > seuil) printf("  %s %s natif %.6f navigateur %.6f\n", s.cotes[k].id.c_str(), s.cotes[k].type.c_str(), s.cotes[k].value, v);
+            }
+          }
           break;
         }
       }

@@ -1601,6 +1601,87 @@ bool Cadre::proprieteConge(const wxString& nom, const wxVariant& valeur) {
   return true;
 }
 
+// Essai de l'écran d'esquisse sans prendre la main : les boutons et la vue reçoivent de vrais événements.
+// Scénario : une liste d'étapes {"outil":n} {"clic":[x,y],"ctrl":b} {"bouge":[x,y]} {"droit":[x,y],"choix":"libellé"}
+// {"touche":"Enter"|"Escape"} {"texte":"12"} {"poly":[n,"d"]} {"capture":"nom"} {"annuler":1}. Le bilan note l'état après chaque étape.
+bool Cadre::essaiEsquisse(const std::wstring& fichier, int rang, const std::wstring& sortie, const std::wstring& json, const std::wstring& dossier) {
+  std::ifstream entree(json);
+  const nlohmann::json etapes = nlohmann::json::parse(entree);
+  if (!ouvrir(fichier)) return false;
+  wxYield();
+  if (rang >= 0) entrerEsquisse(rang);
+  else creerEsquisse("XY");
+  wxYield();
+  Dessin* d = vueEsquisse_->dessin();
+  if (!d) return false;
+  vueEsquisse_->essaiSansMenu = true;
+  nlohmann::json bilan = nlohmann::json::array();
+  std::string dernierMessage;
+  for (const auto& e : etapes) {
+    nlohmann::json n = e;
+    if (e.contains("outil")) n["ok"] = barreEsquisse_->essaiCliquerOutil(static_cast<Dessin::Outil>(e["outil"].get<int>()));
+    if (e.contains("bouge")) vueEsquisse_->essaiSouris(wxEVT_MOTION, e["bouge"][0], e["bouge"][1]);
+    if (e.contains("clic")) {
+      const bool ctrl = e.value("ctrl", false);
+      vueEsquisse_->essaiSouris(wxEVT_MOTION, e["clic"][0], e["clic"][1], ctrl);
+      vueEsquisse_->essaiSouris(wxEVT_LEFT_DOWN, e["clic"][0], e["clic"][1], ctrl);
+      vueEsquisse_->essaiSouris(wxEVT_LEFT_UP, e["clic"][0], e["clic"][1], ctrl);
+    }
+    if (e.contains("glisse")) {
+      const auto& g = e["glisse"];
+      const bool ctrl = e.value("ctrl", false);
+      vueEsquisse_->essaiSouris(wxEVT_MOTION, g[0], g[1], ctrl);
+      vueEsquisse_->essaiSouris(wxEVT_LEFT_DOWN, g[0], g[1], ctrl);
+      vueEsquisse_->essaiSouris(wxEVT_MOTION, g[2], g[3], ctrl);
+      if (e.contains("captureEnCours")) {
+        wxYield();
+        vueEsquisse_->Update();
+        capturerFenetre(dossier + L"\\" + wxString::FromUTF8(e["captureEnCours"].get<std::string>()).ToStdWstring() + L".png");
+      }
+      vueEsquisse_->essaiSouris(wxEVT_LEFT_UP, g[2], g[3], ctrl);
+      n["selection"] = d->selection().size();
+    }
+    if (e.contains("droit")) {
+      vueEsquisse_->essaiChoixMenu = e.value("choix", std::string());
+      vueEsquisse_->essaiEntreesMenu.clear();
+      vueEsquisse_->essaiSouris(wxEVT_RIGHT_DOWN, e["droit"][0], e["droit"][1]);
+      vueEsquisse_->essaiSouris(wxEVT_RIGHT_UP, e["droit"][0], e["droit"][1]);
+      n["menu"] = vueEsquisse_->essaiEntreesMenu;
+    }
+    if (e.contains("touche")) {
+      const std::string t = e["touche"];
+      if (t == "Escape") vueEsquisse_->echapDessin();  // Échap passe par le cadre
+      else vueEsquisse_->essaiTouche(t == "Enter" ? WXK_RETURN : t == "Delete" ? WXK_DELETE : (t[0] == 'F' && t.size() > 1) ? WXK_F1 + std::stoi(t.substr(1)) - 1 : t[0]);
+    }
+    if (e.contains("texte"))
+      for (const char c : e["texte"].get<std::string>()) vueEsquisse_->essaiCaractere(c);
+    if (e.contains("poly")) vueEsquisse_->essaiReglagesPolygone(wxString::Format("%d", e["poly"][0].get<int>()), wxString::FromUTF8(e["poly"][1].get<std::string>()));
+    if (e.contains("annuler")) annuler();
+    wxYield();
+    d = vueEsquisse_->dessin();
+    if (e.contains("capture")) {
+      vueEsquisse_->Update();
+      capturerFenetre(dossier + L"\\" + wxString::FromUTF8(e["capture"].get<std::string>()).ToStdWstring() + L".png");
+    }
+    if (d) {
+      const Esquisse* s = esquisseOuverte_ >= 0 ? &doc_.esquisses[esquisseOuverte_] : nullptr;
+      n["outilApres"] = static_cast<int>(d->outil());
+      n["barrePolygone"] = vueEsquisse_->essaiBarrePolygoneVisible();
+      if (s) {
+        n["entites"] = s->entites.size();
+        n["contraintes"] = s->contraintes.size();
+        n["cotes"] = s->cotes.size();
+      }
+    }
+    bilan.push_back(std::move(n));
+  }
+  std::ofstream(dossier + L"\\bilan.json") << bilan.dump(1);
+  quitterEsquisse();
+  wxYield();
+  enregistrerProjet(doc_, sortie);
+  return true;
+}
+
 // Essai sans vraie souris : de vrais clics passés à la vue, à l'emplacement de chaque arête à l'écran. Ne prend pas la main.
 // mids.json : {"chanfrein":false,"r":2,"tangent":true,"mids":[[x,y,z],...]}
 bool Cadre::essaiGestesConge(const std::wstring& fichier, const std::wstring& sortie, const std::wstring& json, const std::wstring& dossier) {

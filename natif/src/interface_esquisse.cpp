@@ -149,6 +149,12 @@ BoutonEsquisse::BoutonEsquisse(wxWindow* parent, int id, const wxString& nom, co
   });
 }
 
+wxBitmapBundle iconeMenuEsquisse(const std::string& nom) {
+  const auto i = ICONES().find(nom);
+  if (i == ICONES().end()) return wxBitmapBundle();
+  return imageSvg(i->second, wxSystemSettings::GetColour(wxSYS_COLOUR_MENUTEXT), 16);
+}
+
 void BoutonEsquisse::icone(const std::string& corpsSvg, const wxColour& couleur) {
   const auto it = ICONES().find(corpsSvg);
   const std::string& corps = it == ICONES().end() ? corpsSvg : it->second;
@@ -243,28 +249,28 @@ BarreEsquisse::BarreEsquisse(wxWindow* parent) : wxWindow(parent, 2009, wxDefaul
     const wchar_t* nom;
     const wchar_t* aide;
   };
-  // Même ordre que le navigateur. Les identifiants 2010 à 2017 restent ceux des outils déjà connus des essais.
+  // Même ordre que le navigateur. Les identifiants 2010 à 2023 restent ceux des outils déjà connus des essais.
   const Fiche fiches[] = {
       {Dessin::SELECTION, "select", L"Sélection", L"Sélectionner / déplacer les points (Suppr = effacer)"},
       {Dessin::LIGNE, "line", L"Ligne", L"Ligne : clic 1 = départ, clic 2 = arrivée"},
       {Dessin::RECTANGLE, "rect", L"Rectangle", L"Rectangle : clic 1 = 1er coin, clic 2 = 2e coin (Ctrl = centre)"},
-      {-1, "slot", L"Oblong", L"Oblong / rainure"},
+      {Dessin::OBLONG, "slot", L"Oblong", L"Oblong : clic 1 = 1er coin, clic 2 = 2e coin (Ctrl = centre)"},
       {Dessin::CERCLE, "circle", L"Cercle", L"Cercle : clic 1 = centre, clic 2 = point du Ø"},
-      {-1, "polygon", L"Polygone", L"Polygone régulier"},
+      {Dessin::POLYGONE, "polygon", L"Polygone", L"Polygone : clic 1 = centre, clic 2 = milieu d'un côté (réglages en haut à gauche)"},
       {Dessin::ARC, "arc", L"Arc", L"Arc : centre, début, fin (3 clics)"},
       {-1, "spline", L"Spline", L"Spline par points de passage"},
       {-1, "cspline", L"Spline de contrôle", L"Spline par points de contrôle"},
-      {-1, "cpoint", L"Point", L"Point de construction"},
-      {-1, "hpoint", L"Centre de perçage", L"Centre de perçage"},
+      {Dessin::POINT_C, "cpoint", L"Point", L"Point de construction : un clic par point"},
+      {Dessin::PERCAGE, "hpoint", L"Centre de perçage", L"Centre de perçage : un clic, à coter, pour la fonction 3D « Perçage »"},
       {-1, "project", L"Projeter", L"Projeter une arête 3D"},
       {-1, "isect", L"Intersection", L"Intersection du plan d'esquisse avec des faces"},
       {Dessin::COTE, "dim", L"Cote", L"Cote : ligne = longueur, cercle = Ø, arc = rayon, 2 points = distance · Ctrl+clic 2 lignes = angle ou entraxe"},
       {Dessin::AJUSTER, "trim", L"Ajuster", L"Ajuster (T) : cliquez ou glissez sur le tronçon à retirer"},
       {Dessin::DECALER, "offset", L"Décaler", L"Décalage (O) : sélectionnez, cliquez, puis choisissez le côté ou tapez la distance"},
-      {-1, "chamfer", L"Chanfrein", L"Chanfrein"},
-      {-1, "fillet", L"Congé", L"Congé"},
+      {Dessin::CHANFREIN, "chamfer", L"Chanfrein", L"Chanfrein : cliquez 2 lignes en coin, ou leur coin. Une seule cote pour tous les coins de la passe"},
+      {Dessin::CONGE, "fillet", L"Congé", L"Congé : cliquez 2 lignes en coin, ou leur coin. Une seule cote pour tous les coins de la passe"},
   };
-  outils_.assign(8, nullptr);
+  outils_.assign(14, nullptr);
   for (const Fiche& f : fiches) {
     const bool ok = f.outil >= 0;
     auto* b = new BoutonEsquisse(this, ok ? 2010 + f.outil : wxID_ANY, f.nom, ok ? wxString(f.aide) : wxString(f.aide) + L" : pas encore dans le logiciel Windows");
@@ -423,6 +429,13 @@ void BarreEsquisse::placer() {
     if (GetParent()) GetParent()->CallAfter([p = GetParent()] { p->Layout(); });
   }
   Refresh();
+}
+
+bool BarreEsquisse::essaiCliquerOutil(Dessin::Outil o) {
+  const size_t i = static_cast<size_t>(o);
+  if (i >= outils_.size() || !outils_[i] || !outils_[i]->surClic) return false;
+  outils_[i]->surClic();
+  return true;
 }
 
 void BarreEsquisse::outilActif(Dessin::Outil o) {

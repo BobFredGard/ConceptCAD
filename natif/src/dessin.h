@@ -13,7 +13,7 @@
 
 class Dessin {
  public:
-  enum Outil { SELECTION, LIGNE, RECTANGLE, CERCLE, ARC, COTE, AJUSTER, DECALER };  // même ordre que les boutons
+  enum Outil { SELECTION, LIGNE, RECTANGLE, CERCLE, ARC, COTE, AJUSTER, DECALER, OBLONG, POLYGONE, POINT_C, PERCAGE, CONGE, CHANFREIN, COINCIDENT };  // les boutons connus d'abord : leurs numéros servent aux essais
   struct Accroche {
     enum Sorte { AUCUNE, POINT, MILIEU, SUR_LIGNE, SUR_CERCLE } sorte = AUCUNE;
     std::string id;  // le point, la ligne ou le cercle visé
@@ -22,10 +22,19 @@ class Dessin {
   };
   // Le tracé en cours, pour l'écran
   struct Brouillon {
-    enum Sorte { RIEN, B_LIGNE, B_RECT, B_CERCLE, B_ARC } sorte = RIEN;
+    enum Sorte { RIEN, B_LIGNE, B_RECT, B_CERCLE, B_ARC, B_OBLONG, B_POLYGONE } sorte = RIEN;
     double x1 = 0, y1 = 0, x2 = 0, y2 = 0;  // ligne et rectangle
-    double cx = 0, cy = 0, r = 0, a1 = 0, a2 = 0;  // cercle et arc
+    double cx = 0, cy = 0, r = 0, a1 = 0, a2 = 0;  // cercle et arc ; polygone : a1 est son orientation
+    int n = 0;                                     // polygone
     Accroche accroche;
+  };
+  // Réglages du polygone (skPoly), gardés d'un polygone au suivant, même d'une esquisse à l'autre
+  struct ReglagesPolygone {
+    int n = 6;
+    double d = 0;  // Ø intérieur ; 0 : à la souris
+    double ang = 1.5707963267948966;
+    bool aDernier = false;  // la souris a bougé depuis le centre
+    Pt dernier;
   };
   // Le trait tiré est guidé (skInfer) : horizontal, vertical, perpendiculaire...
   struct Guide {
@@ -51,7 +60,15 @@ class Dessin {
 
   Outil outil() const { return outil_; }
   void choisirOutil(Outil o);  // skCancelDraft, puis l'outil
-  void enfonce(double x, double y, bool ctrl);
+  // ligneCote : la cote dont la ligne est sous la souris (la vue le sait, elle l'a dessinée)
+  void enfonce(double x, double y, bool ctrl, const std::string& ligneCote = "");
+  // Prendre une cote par sa valeur : glisser la déplace, sans toucher à la géométrie
+  void prendreCote(const std::string& id, double wx, double wy);
+  struct Boite {
+    bool actif = false, ajoute = false;
+    double x0 = 0, y0 = 0, x1 = 0, y1 = 0;
+  };
+  const Boite& boite() const { return boite_; }  // la fenêtre de sélection en cours
   void bouge(double x, double y, bool gaucheTenu = true);
   void relache(double x, double y);
   // Rend la cote à ouvrir en saisie, s'il y en a une
@@ -95,7 +112,7 @@ class Dessin {
   Pt marque() const { return marque_; }
   const std::vector<Choix>& selection() const { return selection_; }
   bool estChoisi(Choix::Sorte s, const std::string& id) const;
-  bool enCours() const { return bas_.actif || arcC_.size() || glisseP_.size() || glisseE_.actif || dyn_.actif || !dimPose_.empty() || !dimPoint_.empty() || !dimLigne_.empty() || offArme_; }
+  bool enCours() const { return bas_.actif || arcC_.size() || glisseP_.size() || glisseE_.actif || dyn_.actif || !dimPose_.empty() || !dimPoint_.empty() || !dimLigne_.empty() || offArme_ || !coinA_.empty() || glisseC_.actif || boite_.actif || !coinPt_.empty(); }
   // Le centre de l'arc en cours, pour l'écran
   const std::string& centreArc() const { return arcC_; }
   // Le départ du tracé en cours
@@ -121,6 +138,23 @@ class Dessin {
   bool tabulation();
   bool entree();
   bool retourArriere();
+
+  // Le bandeau de réglages du polygone (skPolyRead)
+  static const ReglagesPolygone& reglagesPolygone() { return poly_; }
+  void lirePolygone(int n, const std::string& diametre);
+
+  // Le menu du clic droit (showSkCtx). Une entrée sans code n'est qu'un texte ; une entrée indisponible est montrée grisée.
+  struct EntreeMenu {
+    std::string libelle, code, icone;
+    bool disponible = true;
+  };
+  bool aSelection() const { return selection_.size() > 1 || (selection_.size() == 1 && selection_[0].sorte != Choix::CONTRAINTE); }
+  std::vector<EntreeMenu> menuContextuel(std::string& titre) const;
+  void actionMenu(const std::string& code);
+  // Le menu vise cette cote : clic droit sur une étiquette
+  void annulerPoseCote() { annulerTrace(); message("Placement annulé."); }
+  static double distanceAuto() { return offsetD_; }
+  static void reglagesParDefaut() { poly_ = ReglagesPolygone{}; offsetD_ = 5; }  // pour le banc : la session suivante repart du même état
 
   // Pour les essais
   void premiere();
@@ -179,6 +213,18 @@ class Dessin {
   bool lacher(const std::string& pid, const Accroche& a);                                        // skDragRelease
 
   // Outil Cote
+  struct GlisseCote {
+    bool actif = false, etiquette = false, pousse = false;
+    std::string id;
+    double x0 = 0, y0 = 0, ox0 = 0, oy0 = 0, w0 = 0, sl0 = 0, gx = 0, gy = 0;
+  };
+  GlisseCote glisseC_;
+  Boite boite_;
+  std::string coinPt_;  // outil Coïncident : le premier point
+  bool sansTete_ = false;  // skSel vide : tous les éléments choisis sont des ajouts (skSelX)
+  void prendreLigneCote(const std::string& id, double wx, double wy);
+  void bougerCoteSaisie(double wx, double wy);
+  std::vector<Choix> dansBoite(const Boite& b) const;  // skBoxHits
   void enfonceCote(double wx, double wy, bool ctrl);  // branche skTool==='dim' de pointerdown
   void clicCote(double x, double y, bool ctrl);       // dimClick
   bool etendreCote(const std::string& id, const Entite* ent, const std::string& pid);  // tryExtendDim
@@ -207,7 +253,7 @@ class Dessin {
   // Décaler
   void clicDecaler(double wx, double wy);
   std::vector<std::string> choixDecalables() const;
-  bool decalerElements(const std::vector<std::string>& ids, double D, const Pt& S, std::string& msg);  // skOffsetApply
+  bool decalerElements(const std::vector<std::string>& ids, double D, const Pt* S, std::string& msg);  // skOffsetApply ; S nul : côté automatique
   bool offArme_ = false;  // skOffArm : le prochain clic donne le côté
   void appliquerDecalage(const std::vector<std::string>& ids, double D, double wx, double wy);
   bool distanceTapee(double& D);  // la distance en cours de frappe ; si elle est invalide, le dit et l'oublie
@@ -239,6 +285,34 @@ class Dessin {
   std::string validerLigne(const std::string& depuis, const Accroche& a, double ex, double ey);  // skCommitLine : l'identifiant de la nouvelle ligne
   void relacherLigne(double wx, double wy);
   void relacherRectangle(double wx, double wy);
+  void creerOblong(double ax, double ay, double bx, double by, bool centre, const std::string& cPid);
+  void poserPointSeul(double wx, double wy, bool percage);
+  bool viserPolygone(double wx, double wy, bool& bouge, double& r);  // skPolyAim
+  void brouillonPolygone(double r, double ang);                      // skPolyDraft
+  void bougerPolygone(double wx, double wy);                         // skPolyMove
+  void relacherPolygone(double wx, double wy);                       // skPolyUp
+  void finirPolygone(double r, double ang);                          // skPolyFinish
+  void creerPolygone(const std::string& pc, int n, double r, double ang);  // skPolyCreate
+  bool entreePolygone();                                             // skPolyEnter
+  // Congé et chanfrein d'esquisse
+  void clicCoin(double wx, double wy, bool conge);    // la branche fillet/chamfer de pointerdown
+  void congeSelection();                              // skApplyFilletSel
+  void chanfreinSelection();                          // skApplyChamferSel
+  bool coinCommun(const std::string& a, const std::string& b, std::string& pid, std::string& msg) const;  // skSharedCorner
+  void garderCoinVirtuel(const std::string& pid, const std::string& a, const std::string& b);             // skKeepVirtualSharp
+  void garderCotesHorsTout(const std::vector<std::string>& ids);                                          // skKeepOverallDims
+  bool congeCoin(const std::string& a, const std::string& b, double r, std::string& nouveau, std::string& msg);     // skFilletCorner
+  bool chanfreinCoin(const std::string& a, const std::string& b, double d, std::string& nouveau, std::string& msg);  // skChamferCorner
+  bool lierCoin(bool conge, const std::string& nouveau);  // skCornerLink
+  double longueurLigne(const std::string& id) const;
+  std::string coinA_, passeCoin_;  // skCornA ; skFilletSess : le premier coin de la passe
+  bool passeConge_ = false, coinOutilConge_ = false;
+  static constexpr double filletR_ = 5, chamferD_ = 5;  // skFilletR, skChamferD
+  static inline ReglagesPolygone poly_;
+  static inline double offsetD_ = 5;  // skOffsetD : la distance « auto » du menu
+  void reinitTexteCote(const std::string& id);  // skDimResetText
+  void basculerAxe(const std::string& ligne);   // skToggleAxis
+  void coteAngleMenu(const Entite& A, const Entite& B);  // createAngleDim
   void relacherCercle(double wx, double wy);
   void enfonceArc(double wx, double wy);
 

@@ -5,6 +5,9 @@
 // --cotes : ajoute l'outil Cote et la longueur tapée aux gestes tirés
 // --modifier : ajoute Ajuster et Décaler aux gestes tirés
 // --tape : ajoute Décaler à distance tapée. Le navigateur n'a pas ce geste : on appelle directement son skOffsetApply avec la distance
+// --coins : ajoute Congé et Chanfrein d'esquisse, à l'outil
+// --menu : ajoute le menu du clic droit, en comparant aussi la liste de ses entrées
+// --formes : ajoute Oblong, Polygone, Point et Centre de perçage
 // --panneau : ajoute les gestes du panneau de droite : retirer, basculer en référence, valeurs tapées, gestes de santé
 // --contraintes : ajoute la pose de contraintes aux gestes tirés (sans cette option, les références déjà faites restent reproductibles)
 // Restent neutralisés, à dire honnêtement : l'accroche sur les arêtes du solide, et le clic sur une étiquette de cote.
@@ -67,6 +70,7 @@ vm.runInContext(`
       if (c.type !== 'symmetric' || c.inf) return;
       if ([c.a, c.b].some(id => { const l = entById(sk, id); return l && (arcPts.has(l.p1) || arcPts.has(l.p2)); })) c.inf = true;
     });
+    skOffsetD = 5; skPoly.n = 6; skPoly.d = null;
     skEdit = sk; skTool = 'select'; skUndoStack = []; skRedoStack = []; skSel = null; skSelX = [];
     skCancelDraft();
     solveSketch(sk);
@@ -80,6 +84,12 @@ vm.runInContext(`
   function __pas(st) {
     if (st.a === 'outil') { skCancelDraft(); skTool = st.o; }
     else if (st.a === 'bas') __evt('pointerdown', st.x, st.y, st.c);
+    else if (st.a === 'gcEtiq' || st.a === 'gcLigne') {  // la zone cliquée est propre à l'écran : on la désigne
+      const a = hitDimLabel, b = hitDimLine;
+      if (st.a === 'gcEtiq') hitDimLabel = () => st.id; else hitDimLine = () => st.id;
+      __evt('pointerdown', st.x, st.y, false);
+      hitDimLabel = a; hitDimLine = b;
+    }
     else if (st.a === 'bouge') __evt('pointermove', st.x, st.y);
     else if (st.a === 'haut') __evt('pointerup', st.x, st.y);
     else if (st.a === 'dbl') __evt('dblclick', st.x, st.y);
@@ -90,10 +100,13 @@ vm.runInContext(`
         if (sel.length) {
           skPushUndo();
           const r = skOffsetApply(skEdit, sel.map(e => e.id), Number(st.t), { x: st.x, y: st.y });
-          if (!r.ok) { skUndoStack.pop(); skUndoBtn(); } else afterEdit();
+          if (!r.ok) { skUndoStack.pop(); skUndoBtn(); } else { skOffsetD = Number(st.t); afterEdit(); }
         }
       }
     }
+    else if (st.a === 'poly') { skPoly.n = st.n; skPoly.d = parseFloat(st.d) > 0 ? parseFloat(st.d) : null; }
+    else if (st.a === 'polyEntree') skPolyEnter();
+    else if (st.a === 'menu') { const b = __menuEntrees().find(x => x.l === st.c); if (b) { b.b.onclick(); } }
     else if (st.a === 'pan') __panneau(st);
     else if (st.a === 'echap') skEscapeToSelect();
     else if (st.a === 'suppr') deleteSkSel();
@@ -122,6 +135,14 @@ vm.runInContext(`
     else if (st.t === 'fus') { const H0 = skHealth(sk); if (!H0.dupes.length) return; skPushUndo(); H0.dupes.forEach(([a, b]) => { if (sk.points[a] && sk.points[b]) mergePoints(sk, b, a); }); afterEdit(); }
     else if (st.t === 'deg') { const H0 = skHealth(sk); if (!H0.degen.length) return; skPushUndo(); sk.entities = sk.entities.filter(e => !H0.degen.includes(e.id)); if (skSel && H0.degen.includes(skSel.id)) skSel = null; afterEdit(); }
   }
+  // showSkCtx construit de vrais boutons : on lit leurs libellés, sans le glyphe de tête que le natif remplace par une icône
+  function __menuEntrees() {
+    const m = $('skCtxMenu');
+    m.children = []; m.childNodes = [];
+    showSkCtx(0, 0);
+    return Array.from(m.children || m.childNodes).filter(b => b.onclick).map(b => ({ b, l: String(b.textContent).replace(/^[^A-Za-zÀ-ÿ(]+/, '').replace(/ — /, ' : ') }));
+  }
+  function __menuLibelles() { return JSON.parse(JSON.stringify(__menuEntrees().map(x => x.l))); }
   function __etat(sk) {
     const P = sk.points, pts = [], ray = [], val = [];
     Object.keys(P).forEach(k => pts.push(P[k].x, P[k].y));
@@ -403,6 +424,99 @@ function session(src, graine, nbGestes) {
       clic(c);
       faire({ a: 'echap' });
     },
+    menu() {
+      const g0 = geo(), ids = Object.keys(g0.points).filter(k => k !== 'O');
+      faire({ a: 'outil', o: 'select' });
+      const n = 1 + Math.floor(r() * 3);
+      for (let i = 0; i < n; i++) {
+        const g = geo();
+        const l = r() < 0.3 && ids.length ? g.points[pick(ids)] : surEntite(g);
+        if (l) clic(l, i > 0);
+      }
+      const libelles = run('__menuLibelles()');
+      // Cercle + arc : « Distance centres » plante dans le navigateur (circles[1]||arcs[1] n'existe pas). Le natif pose la cote : défaut à signaler.
+      const mixte = run('(() => { const e = skSelectedEnts(); return e.some(x => x.t === "circle") && e.some(x => x.t === "arc"); })()');
+      if (libelles.some(x => /spline|Peigne|Poignée|poignée|Courbure|Projeter/.test(x))) return;
+      const possibles = libelles.filter(x => !/^Modifier la valeur|^\(/.test(x) && !(mixte && x === 'Distance centres'));
+      if (!possibles.length) return;
+      faire({ a: 'menu', l: libelles, c: pick(possibles) });
+      faire({ a: 'outil', o: 'select' });
+    },
+    glisseCote() {
+      const g = vm.runInContext('JSON.parse(JSON.stringify({ dims: skEdit.dims || [], p: (skEdit.dims || []).map(d => dimLabelPos(skEdit, d)) }))', ctx);
+      const k = g.dims.map((d, i) => i).filter(i => g.p[i]);
+      if (!k.length) return;
+      faire({ a: 'outil', o: 'select' });
+      const i = pick(k), P = g.p[i], etiq = r() < 0.6, depl = () => (r() - 0.5) * taille * 0.3;
+      faire({ a: etiq ? 'gcEtiq' : 'gcLigne', id: g.dims[i].id, x: P.x + px(3), y: P.y + px(3) });
+      const X = P.x + depl(), Y = P.y + depl();
+      if (r() < 0.5) faire({ a: 'bouge', x: (P.x + X) / 2, y: (P.y + Y) / 2 });
+      faire({ a: 'bouge', x: X, y: Y });
+      faire({ a: 'haut', x: X, y: Y });
+    },
+    boite() {
+      faire({ a: 'outil', o: 'select' });
+      const coin = () => ({ x: x0 + (r() * 1.3 - 0.15) * (x1 - x0), y: y0 + (r() * 1.3 - 0.15) * (y1 - y0) });
+      const A = coin(), B = coin();
+      faire({ a: 'bas', x: A.x, y: A.y, c: false });
+      faire({ a: 'bouge', x: (A.x + B.x) / 2, y: (A.y + B.y) / 2 });
+      faire({ a: 'bouge', x: B.x, y: B.y });
+      faire({ a: 'haut', x: B.x, y: B.y });
+      const u = r();
+      if (u < 0.3) faire({ a: 'suppr' });
+      else if (u < 0.7) gestes.menu();
+      else faire({ a: 'con', t: pick(['h', 'v', 'fix', 'equal', 'parallel', 'construction']) });
+    },
+    coincident2() {
+      const g = geo(), ids = Object.keys(g.points);
+      if (ids.length < 2) return;
+      faire({ a: 'outil', o: 'coincident' });
+      clic(g.points[pick(ids)]);
+      clic(g.points[pick(ids)]);
+      faire({ a: 'echap' });
+    },
+    coin() {
+      faire({ a: 'outil', o: r() < 0.6 ? 'fillet' : 'chamfer' });
+      const n = 1 + Math.floor(r() * 3);
+      for (let i = 0; i < n; i++) {
+        const g = geo(), lignes = g.entities.filter(e => e.t === 'line' && !e.construction && g.points[e.p1] && g.points[e.p2]);
+        if (lignes.length < 2) break;
+        const L = pick(lignes), bout = r() < 0.5 ? L.p1 : L.p2;
+        const milieu = l => ({ x: (g.points[l.p1].x + g.points[l.p2].x) / 2, y: (g.points[l.p1].y + g.points[l.p2].y) / 2 });
+        const voisines = lignes.filter(e => e.id !== L.id && (e.p1 === bout || e.p2 === bout));
+        if (r() < 0.5) clic(g.points[bout]);
+        else if (voisines.length) { clic(milieu(L)); clic(milieu(voisines[0])); }
+        else { clic(milieu(L)); clic(milieu(pick(lignes))); }
+      }
+      faire({ a: 'echap' });
+    },
+    oblong() {
+      faire({ a: 'outil', o: 'slot' });
+      const a = lieu(), b = lieu(), c = r() < 0.35;
+      clic(a, c);
+      faire({ a: 'bouge', x: b.x, y: b.y });
+      clic(b);
+      faire({ a: 'echap' });
+    },
+    polygone() {
+      const tape = r() < 0.4;
+      faire({ a: 'poly', n: pick([3, 4, 5, 6, 8, 12]), d: tape ? String(Math.round(r() * 400) / 10 + 1) : '' });
+      faire({ a: 'outil', o: 'polygon' });
+      const a = lieu(), b = lieu();
+      clic(a);
+      if (tape && r() < 0.5) faire({ a: 'polyEntree' });
+      else {
+        faire({ a: 'bouge', x: b.x, y: b.y });
+        clic(b);
+      }
+      faire({ a: 'echap' });
+    },
+    pointSeul() {
+      faire({ a: 'outil', o: r() < 0.5 ? 'cpoint' : 'hpoint' });
+      clic(lieu());
+      if (r() < 0.5) clic(lieu());
+      faire({ a: 'echap' });
+    },
     coter() {
       const l = surEntite(geo());
       if (!l) return;
@@ -417,11 +531,11 @@ function session(src, graine, nbGestes) {
       faire({ a: 'suppr' });
     },
     panneau() {
+      faire({ a: 'outil', o: 'select' });  // d'abord : quitter un tracé peut retirer ses points
       const g = vm.runInContext('JSON.parse(JSON.stringify({ points: skEdit.points, entities: skEdit.entities, cons: skEdit.constraints, dims: skEdit.dims }))', ctx);
       const ids = Object.keys(g.points).filter(k => k !== 'O');
       const ronds = g.entities.filter(e => e.t === 'circle' || e.t === 'arc'), arcs = g.entities.filter(e => e.t === 'arc');
       const u = r();
-      faire({ a: 'outil', o: 'select' });
       if (u < 0.2 && g.cons.length) faire({ a: 'pan', t: 'rc', id: pick(g.cons).id });
       else if (u < 0.35 && g.dims.length) faire({ a: 'pan', t: 'rd', id: pick(g.dims).id });
       else if (u < 0.5 && g.dims.length) faire({ a: 'pan', t: 'ref', id: pick(g.dims).id });
@@ -449,6 +563,11 @@ function session(src, graine, nbGestes) {
   if (process.argv.includes('--modifier')) noms.push(...Array(10).fill('ajuster'), ...Array(10).fill('decaler'));
   if (process.argv.includes('--tape')) noms.push(...Array(8).fill('decalerTape'));
   if (process.argv.includes('--panneau')) noms.push(...Array(20).fill('panneau'));
+  if (process.argv.includes('--coins')) noms.push(...Array(15).fill('coin'));
+  if (process.argv.includes('--selection')) noms.push(...Array(12).fill('glisseCote'), ...Array(12).fill('boite'), ...Array(6).fill('coincident2'));
+  if (process.argv.includes('--menu')) noms.push(...Array(25).fill('menu'));
+  if (process.argv.includes('--formes')) noms.push(...Array(10).fill('oblong'), ...Array(10).fill('polygone'), ...Array(8).fill('pointSeul'));
+  if (opt('seulement', '')) { noms.length = 0; noms.push(...opt('seulement', '').split(',')); }
   for (let i = 0; i < nbGestes; i++) {
     const avant = pas.length;
     const nom = pick(noms);
