@@ -1,10 +1,10 @@
 # ConceptCAD en application Windows : rapport
 
-## Noyau multicœur dans l'application (6 novembre, V0.67.0)
+## Noyau multicœur dans l'application (6 novembre, V0.67.1)
 
-L'application suit V0.67.0 et utilise le noyau multicœur à 4 fils. Programme : 23,4 Mo. Installateur : 21,6 Mo.
+L'application suit V0.67.1 et utilise le noyau multicœur à 4 fils. Programme : 23,4 Mo. Installateur : 21,6 Mo.
 
-**Ce noyau double presque la mémoire.** Une seule série de mesures, sans pilote branché, en Mo :
+**Ce noyau double presque la mémoire.** Vous avez choisi de le garder en connaissant ces chiffres. Une seule série de mesures sur V0.67.0, sans pilote branché, en Mo (non refaite en V0.67.1) :
 
 | Pièce | Moment | Application multicœur | Chrome multicœur | Chrome normal |
 |---|---|---:|---:|---:|
@@ -142,7 +142,7 @@ D'autres sessions tournaient par moments sur le PC : les temps sont moins sûrs 
 | **Fermeture avec modifications non enregistrées** | **Réglé** : la question est posée | Rien |
 | **Désinstallation** | **Réglé** : registre propre | Rien |
 | **Essai à la main** | Toutes les vérifications sont automatiques. Raccourcis et messages de saisie vérifiés par pilotage, pas au vrai clavier. Le glisser-déposer d'un fichier n'existe pas non plus dans la version web | Une demi-heure d'usage réel par vous |
-| **Version emballée** | V0.67.0, la version suit `package.json` | Refaire à chaque version : `node tauri/preparer.cjs`, puis compiler |
+| **Version emballée** | V0.67.1, la version suit `package.json` | Refaire à chaque version : `node tauri/preparer.cjs`, puis compiler |
 
 ## Le multicœur
 
@@ -184,7 +184,7 @@ C'est peut-être un seul et même problème. Il touche directement votre plainte
 - L'association `.conceptcad` a été retirée : vos fichiers s'ouvrent comme avant. Il reste une ligne sans effet dans l'historique « Ouvrir avec » de Windows.
 - L'application a été désinstallée après chaque essai et ses données d'essai effacées. Le dossier `%LOCALAPPDATA%r.conceptcad.maquette` de l'ancien nom reste, sans effet, et peut être supprimé. Le dossier `fr.conceptcad.logiciel` reste vide.
 - L'outil NSIS (8 Mo) reste dans `%LOCALAPPDATA%\tauri`, téléchargé avec votre accord.
-- Pour l'essayer : `tauri/src-tauri/target/release/ConceptCAD.exe`, ou l'installateur `tauri/src-tauri/target/release/bundle/nsis/ConceptCAD_0.67.0_x64-setup.exe`. **Installer pose l'association :** le double-clic ouvre alors vos pièces dans l'application. La désinstallation remet tout comme avant.
+- Pour l'essayer : `tauri/src-tauri/target/release/ConceptCAD.exe`, ou l'installateur `tauri/src-tauri/target/release/bundle/nsis/ConceptCAD_0.67.1_x64-setup.exe`. **Installer pose l'association :** le double-clic ouvre alors vos pièces dans l'application. La désinstallation remet tout comme avant.
 
 ## Pour refaire
 

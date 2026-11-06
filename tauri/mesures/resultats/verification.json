@@ -1,5 +1,268 @@
 [
  {
+  "nom": "Noyau multicœur choisi tout seul (4 fils)",
+  "ok": true,
+  "detail": {
+   "isolee": true,
+   "fils": 4,
+   "avis": ""
+  }
+ },
+ {
+  "nom": "Noyau OCCT 8 compilé dans WebView2",
+  "ok": true,
+  "detail": {
+   "ver": "V0.67.1",
+   "pret": true,
+   "origine": "http://tauri.localhost",
+   "msg": "OCCT : prêt — prismes exacts, booléens Fuse/Cut, congés toutes arêtes, STEP. (OCCT 8.0.1) Multicœur : 4 cœurs.",
+   "sur": true,
+   "tas": 128
+  }
+ },
+ {
+  "nom": "Aucune demande vers Internet au démarrage",
+  "ok": true,
+  "detail": {
+   "demandes": 24,
+   "dehors": []
+  }
+ },
+ {
+  "nom": "Calcul de fond (suppression de face) dans son worker",
+  "ok": true,
+  "detail": {
+   "pret": true,
+   "hs": null,
+   "essais": [
+    {
+     "face": 0,
+     "ms": 1430,
+     "kept": 0,
+     "err": "les faces voisines ne se rejoignent pas",
+     "brep": 0
+    },
+    {
+     "face": 1,
+     "ms": 89,
+     "kept": 0,
+     "err": "les faces voisines ne se rejoignent pas",
+     "brep": 0
+    },
+    {
+     "face": 2,
+     "ms": 100,
+     "kept": 0,
+     "err": "les faces voisines ne se rejoignent pas",
+     "brep": 0
+    },
+    {
+     "face": 3,
+     "ms": 92,
+     "kept": 0,
+     "err": "les faces voisines ne se rejoignent pas",
+     "brep": 0
+    },
+    {
+     "face": 4,
+     "ms": 96,
+     "kept": 0,
+     "err": "les faces voisines ne se rejoignent pas",
+     "brep": 0
+    },
+    {
+     "face": 5,
+     "ms": 89,
+     "kept": 0,
+     "err": "les faces voisines ne se rejoignent pas",
+     "brep": 0
+    },
+    {
+     "face": 6,
+     "ms": 93,
+     "kept": 0,
+     "err": "les faces voisines ne se rejoignent pas",
+     "brep": 0
+    },
+    {
+     "face": 7,
+     "ms": 90,
+     "kept": 0,
+     "err": "les faces voisines ne se rejoignent pas",
+     "brep": 0
+    },
+    {
+     "face": 8,
+     "ms": 96,
+     "kept": 0,
+     "err": "les faces voisines ne se rejoignent pas",
+     "brep": 0
+    },
+    {
+     "face": 9,
+     "ms": 83,
+     "kept": 0,
+     "err": "les faces voisines ne se rejoignent pas",
+     "brep": 0
+    },
+    {
+     "face": 10,
+     "ms": 160,
+     "kept": 1,
+     "err": null,
+     "brep": 237398
+    }
+   ]
+  }
+ },
+ {
+  "nom": "Bibliothèque de rendu chargée",
+  "ok": true,
+  "detail": true
+ },
+ {
+  "nom": "Carte graphique utilisée par la 3D",
+  "ok": true,
+  "detail": "ANGLE (NVIDIA, NVIDIA GeForce RTX 5070 Ti (0x00002C05) Direct3D11 vs_5_0 ps_5_0, D3D11)"
+ },
+ {
+  "nom": "Stockage local : place disponible",
+  "ok": true,
+  "detail": {
+   "quotaGo": 10,
+   "persiste": false,
+   "demande": false
+  }
+ },
+ {
+  "nom": "Aucune erreur de page",
+  "ok": true,
+  "detail": []
+ },
+ {
+  "nom": "Aucun message inattendu",
+  "ok": true,
+  "detail": []
+ },
+ {
+  "nom": "Ouvrir : vraie fenêtre Windows",
+  "ok": true,
+  "detail": {
+   "fenetre": "FENETRE:Ouvrir\r\nOK",
+   "lien": {
+    "nom": "Pièce d’essai é",
+    "chemin": "C:\\Users\\PCCAO\\AppData\\Local\\Temp\\claude\\e73d25c6250389d8\\3ebb19e0-6bf5-4627-aeb4-2d440f4a1385\\scratchpad\\essai-verif\\Pièce d’essai é.conceptcad",
+    "fct": 26
+   }
+  }
+ },
+ {
+  "nom": "Enregistrer : même fichier, sans fenêtre, compressé, relu juste",
+  "ok": true,
+  "detail": {
+   "r": {
+    "set": true,
+    "ok": true,
+    "sk": "sk_1_mvpajl39",
+    "cote": "e23",
+    "valeur": 65.2,
+    "modifie": false,
+    "msg": "Enregistré dans Pièce d’essai é.conceptcad (document + trajectoires) — version précédente gardée dans le navigateur."
+   },
+   "gz": true
+  }
+ },
+ {
+  "nom": "Titre de la fenêtre suit le fichier",
+  "ok": true,
+  "detail": "Pi�ce d'essai � - ConceptCAD"
+ },
+ {
+  "nom": "Enregistrer sous : vraie fenêtre Windows",
+  "ok": true,
+  "detail": {
+   "fenetre": "FENETRE:Enregistrer sous\r\nOK",
+   "ok2": true,
+   "fichier": true
+  }
+ },
+ {
+  "nom": "Annuler « Enregistrer sous » : rien ne change",
+  "ok": true,
+  "detail": "FENETRE:Enregistrer sous\r\nANNULE"
+ },
+ {
+  "nom": "Fichiers récents relus",
+  "ok": true,
+  "detail": {
+   "n": 2,
+   "nom": "copie enregistrée.conceptcad",
+   "taille": 7391
+  }
+ },
+ {
+  "nom": "Dossier de projets : vraie fenêtre Windows et liste",
+  "ok": true,
+  "detail": {
+   "fenetre": "FENETRE:S�lectionner un dossier\r\nOK",
+   "dos": {
+    "nom": "essai-verif",
+    "chemin": "C:\\Users\\PCCAO\\AppData\\Local\\Temp\\claude\\e73d25c6250389d8\\3ebb19e0-6bf5-4627-aeb4-2d440f4a1385\\scratchpad\\essai-verif",
+    "l": [
+     "copie enregistrée.conceptcad",
+     "Pièce d’essai é.conceptcad"
+    ]
+   }
+  }
+ },
+ {
+  "nom": "Copie de secours .bak à côté du fichier",
+  "ok": true,
+  "detail": {
+   "ok": true,
+   "bak": {
+    "disk": "copie enregistrée.conceptcad.bak",
+    "idb": true
+   }
+  }
+ },
+ {
+  "nom": "Export : vraie fenêtre Windows",
+  "ok": true,
+  "detail": "FENETRE:Enregistrer sous\r\nOK"
+ },
+ {
+  "nom": "Fermeture normale par la croix",
+  "ok": true
+ },
+ {
+  "nom": "Après redémarrage : IndexedDB, réglages, récents, dossier conservés",
+  "ok": true,
+  "detail": {
+   "gros": 31457280,
+   "fao": {
+    "v": 1,
+    "mv": [
+     1,
+     2,
+     3
+    ]
+   },
+   "ls": "oui",
+   "recents": 2,
+   "recent0": 7361,
+   "dossier": 4
+  }
+ },
+ {
+  "nom": "Fichier reçu au démarrage (ce que fait le double-clic)",
+  "ok": true,
+  "detail": {
+   "nom": "Pièce d’essai é",
+   "chemin": "C:\\Users\\PCCAO\\AppData\\Local\\Temp\\claude\\e73d25c6250389d8\\3ebb19e0-6bf5-4627-aeb4-2d440f4a1385\\scratchpad\\essai-verif\\Pièce d’essai é.conceptcad"
+  }
+ },
+ {
   "nom": "Double-clic réel (association Windows)",
   "ok": true,
   "detail": {
