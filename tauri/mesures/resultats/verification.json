@@ -12,7 +12,7 @@
   "nom": "Noyau OCCT 8 compilé dans WebView2",
   "ok": true,
   "detail": {
-   "ver": "V0.67.1",
+   "ver": "V0.69.0",
    "pret": true,
    "origine": "http://tauri.localhost",
    "msg": "OCCT : prêt — prismes exacts, booléens Fuse/Cut, congés toutes arêtes, STEP. (OCCT 8.0.1) Multicœur : 4 cœurs.",
@@ -37,77 +37,77 @@
    "essais": [
     {
      "face": 0,
-     "ms": 1430,
+     "ms": 1503,
      "kept": 0,
      "err": "les faces voisines ne se rejoignent pas",
      "brep": 0
     },
     {
      "face": 1,
-     "ms": 89,
+     "ms": 95,
      "kept": 0,
      "err": "les faces voisines ne se rejoignent pas",
      "brep": 0
     },
     {
      "face": 2,
-     "ms": 100,
+     "ms": 104,
      "kept": 0,
      "err": "les faces voisines ne se rejoignent pas",
      "brep": 0
     },
     {
      "face": 3,
-     "ms": 92,
+     "ms": 97,
      "kept": 0,
      "err": "les faces voisines ne se rejoignent pas",
      "brep": 0
     },
     {
      "face": 4,
-     "ms": 96,
+     "ms": 105,
      "kept": 0,
      "err": "les faces voisines ne se rejoignent pas",
      "brep": 0
     },
     {
      "face": 5,
-     "ms": 89,
+     "ms": 99,
      "kept": 0,
      "err": "les faces voisines ne se rejoignent pas",
      "brep": 0
     },
     {
      "face": 6,
-     "ms": 93,
+     "ms": 101,
      "kept": 0,
      "err": "les faces voisines ne se rejoignent pas",
      "brep": 0
     },
     {
      "face": 7,
-     "ms": 90,
+     "ms": 95,
      "kept": 0,
      "err": "les faces voisines ne se rejoignent pas",
      "brep": 0
     },
     {
      "face": 8,
-     "ms": 96,
+     "ms": 102,
      "kept": 0,
      "err": "les faces voisines ne se rejoignent pas",
      "brep": 0
     },
     {
      "face": 9,
-     "ms": 83,
+     "ms": 90,
      "kept": 0,
      "err": "les faces voisines ne se rejoignent pas",
      "brep": 0
     },
     {
      "face": 10,
-     "ms": 160,
+     "ms": 172,
      "kept": 1,
      "err": null,
      "brep": 237398
@@ -151,7 +151,7 @@
    "fenetre": "FENETRE:Ouvrir\r\nOK",
    "lien": {
     "nom": "Pièce d’essai é",
-    "chemin": "C:\\Users\\PCCAO\\AppData\\Local\\Temp\\claude\\e73d25c6250389d8\\3ebb19e0-6bf5-4627-aeb4-2d440f4a1385\\scratchpad\\essai-verif\\Pièce d’essai é.conceptcad",
+    "chemin": "C:\\Users\\PCCAO\\AppData\\Local\\Temp\\cc-essai-verif\\Pièce d’essai é.conceptcad",
     "fct": 26
    }
   }
@@ -175,7 +175,7 @@
  {
   "nom": "Titre de la fenêtre suit le fichier",
   "ok": true,
-  "detail": "Pi�ce d'essai � - ConceptCAD"
+  "detail": "Pièce d’essai é — ConceptCAD"
  },
  {
   "nom": "Enregistrer sous : vraie fenêtre Windows",
@@ -197,17 +197,17 @@
   "detail": {
    "n": 2,
    "nom": "copie enregistrée.conceptcad",
-   "taille": 7391
+   "taille": 7389
   }
  },
  {
   "nom": "Dossier de projets : vraie fenêtre Windows et liste",
   "ok": true,
   "detail": {
-   "fenetre": "FENETRE:S�lectionner un dossier\r\nOK",
+   "fenetre": "FENETRE:Sélectionner un dossier\r\nOK",
    "dos": {
-    "nom": "essai-verif",
-    "chemin": "C:\\Users\\PCCAO\\AppData\\Local\\Temp\\claude\\e73d25c6250389d8\\3ebb19e0-6bf5-4627-aeb4-2d440f4a1385\\scratchpad\\essai-verif",
+    "nom": "cc-essai-verif",
+    "chemin": "C:\\Users\\PCCAO\\AppData\\Local\\Temp\\cc-essai-verif",
     "l": [
      "copie enregistrée.conceptcad",
      "Pièce d’essai é.conceptcad"
@@ -259,14 +259,14 @@
   "ok": true,
   "detail": {
    "nom": "Pièce d’essai é",
-   "chemin": "C:\\Users\\PCCAO\\AppData\\Local\\Temp\\claude\\e73d25c6250389d8\\3ebb19e0-6bf5-4627-aeb4-2d440f4a1385\\scratchpad\\essai-verif\\Pièce d’essai é.conceptcad"
+   "chemin": "C:\\Users\\PCCAO\\AppData\\Local\\Temp\\cc-essai-verif\\Pièce d’essai é.conceptcad"
   }
  },
  {
   "nom": "Double-clic réel (association Windows)",
   "ok": true,
   "detail": {
-   "titre": "? double clic essai - ConceptCAD",
+   "titre": "● double clic essai — ConceptCAD",
    "choixPrecedent": null
   }
  },

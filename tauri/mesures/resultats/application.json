@@ -11,7 +11,7 @@
   "nom": "Double-clic sur pièce modifiée : la question protège, « Annuler » garde tout",
   "ok": true,
   "detail": {
-   "chemin": "C:\\Users\\PCCAO\\AppData\\Local\\Temp\\claude\\e73d25c6250389d8\\3ebb19e0-6bf5-4627-aeb4-2d440f4a1385\\scratchpad\\essai-appli\\Une fenêtre B.conceptcad",
+   "chemin": "C:\\Users\\PCCAO\\AppData\\Local\\Temp\\cc-essai-appli\\Une fenêtre B.conceptcad",
    "modifie": true
   }
  },
@@ -39,7 +39,7 @@
   "nom": "Redémarrage : dernier fichier repris, non marqué modifié, avec la cote enregistrée",
   "ok": true,
   "detail": {
-   "chemin": "C:\\Users\\PCCAO\\AppData\\Local\\Temp\\claude\\e73d25c6250389d8\\3ebb19e0-6bf5-4627-aeb4-2d440f4a1385\\scratchpad\\essai-appli\\Fermeture.conceptcad",
+   "chemin": "C:\\Users\\PCCAO\\AppData\\Local\\Temp\\cc-essai-appli\\Fermeture.conceptcad",
    "modifie": false,
    "titre": "Fermeture — ConceptCAD"
   }
@@ -129,7 +129,7 @@
   "ok": true,
   "detail": {
    "app": {
-    "ms": 67,
+    "ms": 71,
     "ops": [
      {
       "type": "facing",
@@ -146,7 +146,7 @@
      {
       "type": "pocket",
       "mouvements": 3528,
-      "ms": 57,
+      "ms": 59,
       "empreinte": "1ehm80m"
      },
      {
@@ -158,7 +158,7 @@
     ]
    },
    "chrome": {
-    "ms": 68,
+    "ms": 71,
     "ops": [
      {
       "type": "facing",
@@ -169,13 +169,13 @@
      {
       "type": "contour",
       "mouvements": 565,
-      "ms": 9,
+      "ms": 10,
       "empreinte": "jnrr67"
      },
      {
       "type": "pocket",
       "mouvements": 3528,
-      "ms": 57,
+      "ms": 60,
       "empreinte": "1ehm80m"
      },
      {
@@ -205,7 +205,7 @@
   "ok": true,
   "detail": {
    "app": {
-    "ms": 5199,
+    "ms": 5088,
     "workers": 2,
     "coeurs": 16,
     "restants": 0,
@@ -238,7 +238,7 @@
     "avis": []
    },
    "chrome": {
-    "ms": 4812,
+    "ms": 5101,
     "workers": 2,
     "coeurs": 16,
     "restants": 0,
