@@ -387,7 +387,11 @@ function occSansMiettes(s){
   // posé pile sur une face : 2 miettes). La fusion suivante, sur ce composé, rendait un volume nul
   // et la pièce s'effondrait. Les vrais corps séparés sont gardés. s est supprimé si remplacé.
   const so=occSubShapes(s,'TopAbs_SOLID');
-  const ok=so.length>1?so.filter(x=>Math.abs(occShapeVolume(x))>=OCC_MIETTE_MM3):so;
+  // Le solide qui a le plus de faces n'est pas pesé : c'est la pièce, et son volume est de loin le plus long à
+  // calculer (Barquette : 0,4 s pour 314 faces). Les autres le sont tous.
+  let iPiece=0,nPiece=-1;
+  if(so.length>1)so.forEach((x,i)=>{const f=occSubShapes(x,'TopAbs_FACE');if(f.length>nPiece){nPiece=f.length;iPiece=i;}occDispose(f);});
+  const ok=so.length>1?so.filter((x,i)=>i===iPiece||Math.abs(occShapeVolume(x))>=OCC_MIETTE_MM3):so;
   if(so.length<2||ok.length===so.length||!ok.length){occDispose(so);return s;}
   const res=ok.length===1?ok[0]:occCompoundOf(ok);
   nomsTransmet([s],{},res); // mêmes faces : elles gardent leurs noms

@@ -8,7 +8,7 @@ sont sorties le 2026-09-30j.
 Code dans `src/` · livrable `fusion_mvp.html` (généré par `build.js`) · architecture et
 garde-fous en tête de `src/00-entete-et-outils.js`.
 
-**603 versions**, de `2026-09-28b` à `V0.67.0` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
+**604 versions**, de `2026-09-28b` à `V0.67.1` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
 comme dans le fichier d'origine.
 
 ---
@@ -6955,5 +6955,13 @@ Barquette ne perd plus son solide à la 107e modification, et sa mémoire ne mon
 - **Reste connu** : après un aller-retour de paramètre sur cette pièce, environ 50 mm³ de plus (0,005 %) et 346 surfaces au lieu de 340 ; cause non cherchée.
 - **Fusion sans miettes** : les solides de volume nul laissés à côté de la pièce par une fusion sont retirés ; la fusion suivante ne rend plus un volume nul qui faisait s'effondrer la pièce.
 - **Tests** : `test_noyau_multicoeur`, `noyau-multicoeur.spec`, `test_moteur_v3` complété, `test_hote_face_deplacee`, `test_fusion_miettes`.
+
+---
+
+## V0.67.1 - Calcul un peu allégé
+
+- **Moins de relectures** : la liste des arêtes, refaite à chaque congé, relit ses points sans en créer un par lecture, et le retrait des solides de volume nul ne pèse plus la pièce elle-même.
+- **Mesuré** (Barquette de Fred, recalcul complet) : 5,4 → 4,9 s en multicœur, 6,0 → 5,5 s avec un seul cœur.
+- **Mêmes résultats** : sur 21 pièces, mêmes faces, arêtes, volumes, aires, noms et messages, et mêmes parcours FAO sur les 3 exemples comparés. `CACHE_VER` inchangé.
 
 ---

@@ -375,7 +375,7 @@ input[type=range]{accent-color:var(--primary);width:100%}
  * peut changer sans rien casser. CACHE_VER (parcours FAO) reste indépendant.
  */
 
-const APP_VER='V0.67.0';
+const APP_VER='V0.67.1';
 try{console.log('[ConceptCAD] version '+APP_VER);}catch(e){}
 try{var mfSv=document.getElementById('mfSplashVer');if(mfSv)mfSv.textContent=APP_VER;}catch(e){} // écran de démarrage
 
@@ -3921,7 +3921,11 @@ function occSansMiettes(s){
   // posé pile sur une face : 2 miettes). La fusion suivante, sur ce composé, rendait un volume nul
   // et la pièce s'effondrait. Les vrais corps séparés sont gardés. s est supprimé si remplacé.
   const so=occSubShapes(s,'TopAbs_SOLID');
-  const ok=so.length>1?so.filter(x=>Math.abs(occShapeVolume(x))>=OCC_MIETTE_MM3):so;
+  // Le solide qui a le plus de faces n'est pas pesé : c'est la pièce, et son volume est de loin le plus long à
+  // calculer (Barquette : 0,4 s pour 314 faces). Les autres le sont tous.
+  let iPiece=0,nPiece=-1;
+  if(so.length>1)so.forEach((x,i)=>{const f=occSubShapes(x,'TopAbs_FACE');if(f.length>nPiece){nPiece=f.length;iPiece=i;}occDispose(f);});
+  const ok=so.length>1?so.filter((x,i)=>i===iPiece||Math.abs(occShapeVolume(x))>=OCC_MIETTE_MM3):so;
   if(so.length<2||ok.length===so.length||!ok.length){occDispose(so);return s;}
   const res=ok.length===1?ok[0]:occCompoundOf(ok);
   nomsTransmet([s],{},res); // mêmes faces : elles gardent leurs noms
@@ -6329,6 +6333,7 @@ function occListEdges(shape){
   const out=[],bin=[];
   const SH=occt.TopAbs_ShapeEnum.TopAbs_SHAPE;
   const ex=new occt.TopExp_Explorer_2(shape,occt.TopAbs_ShapeEnum.TopAbs_EDGE,SH);bin.push(ex);
+  const P=new occt.gp_Pnt_1();bin.push(P); // un seul point relu (D0) : Value en créait 12 par arête, à chaque congé
   let src=0;
   while(ex.More()){
     const e=occEdgeCur(ex);bin.push(e);
@@ -6336,12 +6341,13 @@ function occListEdges(shape){
       const ad=new occt.BRepAdaptor_Curve_2(e);bin.push(ad);
       const u0=ad.FirstParameter(),u1=ad.LastParameter();
       if(u1>u0){
-        const m=ad.Value((u0+u1)/2);bin.push(m);
+        ad.D0((u0+u1)/2,P);
+        const mid=[P.X(),P.Y(),P.Z()];
         const pts=[],NP=10;
-        for(let i=0;i<=NP;i++){const p=ad.Value(u0+(u1-u0)*i/NP);bin.push(p);pts.push([p.X(),p.Y(),p.Z()]);}
+        for(let i=0;i<=NP;i++){ad.D0(u0+(u1-u0)*i/NP,P);pts.push([P.X(),P.Y(),P.Z()]);}
         let len=0;
         for(let i=1;i<pts.length;i++)len+=Math.hypot(pts[i][0]-pts[i-1][0],pts[i][1]-pts[i-1][1],pts[i][2]-pts[i-1][2]);
-        if(len>1e-6)out.push({mid:[m.X(),m.Y(),m.Z()],pts,len,src});
+        if(len>1e-6)out.push({mid,pts,len,src});
       }
     }catch(err){}
     src++;ex.Next();
