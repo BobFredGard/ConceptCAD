@@ -338,4 +338,5 @@ La vue reprend les réglages de la scène Three.js (`src/10-scene-3d.js`) : mati
 - Les unités de lumière d'OCCT ne sont pas celles de Three.js : les intensités sont réglées sur les couleurs mesurées du Drapeau (dessus `#20b0fc` ici, `#10b0fc` dans le navigateur).
 - `--image3d <fichier> <image.png>` enregistre la vue sans prendre la main, et écrit à côté le temps d'affichage et le temps par image.
 - Mesuré : environ 60 images par seconde sur une plaque de 900 trous ; 11 à 12 Mo de plus en usage réel, environ 45 Mo de plus en mémoire réservée.
-- Écarts connus : le reflet est uniforme et ne s'estompe pas ; les côtés sont un peu moins lumineux ; le cube a des faces très sombres vu par-dessous.
+- Le reflet s'estompe avec le calcul du navigateur : point du sol percé par le rayon de l'œil, fondu selon sa distance au centre de la pièce.
+- Écarts connus : les côtés sont un peu moins lumineux ; le cube a des faces très sombres vu par-dessous.

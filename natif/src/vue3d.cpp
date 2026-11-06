@@ -12,6 +12,8 @@
 #include <Graphic3d_NameOfMaterial.hxx>
 #include <Graphic3d_PBRMaterial.hxx>
 #include <Graphic3d_RenderingParams.hxx>
+#include <Graphic3d_ShaderObject.hxx>
+#include <Graphic3d_ShaderProgram.hxx>
 #include <Graphic3d_TransformPers.hxx>
 #include <Image_PixMap.hxx>
 #include <NCollection_Array1.hxx>
@@ -56,6 +58,55 @@ Graphic3d_MaterialAspect matierePiece() {
   m.SetPBRMaterial(p);
   return m;
 }
+
+// Le reflet au sol, avec le calcul du navigateur (floorMesh, src/10-scene-3d.js) : le rayon de l'œil vers le point renversé
+// perce le sol ; plus ce point du sol est loin du centre de la pièce, plus le fond reprend le dessus. La lumière est celle de la pièce d'origine.
+const char* const REFLET_SOMMET = R"(
+THE_SHADER_OUT vec3 vMonde;
+THE_SHADER_OUT vec3 vNormale;
+void main() {
+  vec4 p = occModelWorldMatrix * occVertex;
+  vMonde = p.xyz;
+  vNormale = (occModelWorldMatrixInverseTranspose * vec4(occNormal, 0.0)).xyz;
+  gl_Position = occProjectionMatrix * occWorldViewMatrix * p;
+}
+)";
+const char* const REFLET_PIXEL = R"(
+uniform vec3 uCouleur;
+uniform vec3 uFond;
+uniform vec3 uCentre;
+uniform float uRayon;
+THE_SHADER_IN vec3 vMonde;
+THE_SHADER_IN vec3 vNormale;
+void main() {
+  vec3 oeil = occWorldViewMatrixInverse[3].xyz;
+  float t = (uCentre.z - oeil.z) / (vMonde.z - oeil.z);
+  float d = distance(oeil + (vMonde - oeil) * t, uCentre);
+  float f = exp(-pow(d / max(uRayon * 1.15, 0.001), 2.0) * 2.0) * 0.85;
+  vec3 n = normalize(vNormale);
+  n.z = -n.z;
+  float ciel = mix(0.2, 0.75, (n.z + 1.0) * 0.5);
+  float cle = max(dot(n, normalize(vec3(60.0, -40.0, 120.0))), 0.0);
+  // Le navigateur mélange le reflet, en lumière brute, avec la couleur du sol telle qu'elle s'affiche : c'est ce qui le rend sombre
+  // La part neutre tient lieu des reflets du studio, que le reflet du navigateur contient aussi ; réglée sur ses couleurs mesurées
+  vec3 reflet = min(uCouleur * (ciel + cle), vec3(1.0)) * 0.45 + vec3(0.07);
+  vec3 ecran = mix(pow(uFond, vec3(1.0 / 2.2)), reflet, clamp(f, 0.0, 0.85));
+  occSetFragColor(vec4(pow(ecran, vec3(2.2)), 1.0));
+}
+)";
+
+occ::handle<Graphic3d_ShaderProgram> programmeReflet(const Quantity_Color& c, const Quantity_Color& fond, const gp_Pnt& centre, double rayon) {
+  occ::handle<Graphic3d_ShaderProgram> p = new Graphic3d_ShaderProgram();
+  p->AttachShader(Graphic3d_ShaderObject::CreateFromSource(Graphic3d_TOS_VERTEX, REFLET_SOMMET));
+  p->AttachShader(Graphic3d_ShaderObject::CreateFromSource(Graphic3d_TOS_FRAGMENT, REFLET_PIXEL));
+  p->PushVariableVec3("uCouleur", NCollection_Vec3<float>(float(c.Red()), float(c.Green()), float(c.Blue())));
+  p->PushVariableVec3("uFond", NCollection_Vec3<float>(float(fond.Red()), float(fond.Green()), float(fond.Blue())));
+  p->PushVariableVec3("uCentre", NCollection_Vec3<float>(float(centre.X()), float(centre.Y()), float(centre.Z())));
+  p->PushVariableFloat("uRayon", float(rayon));
+  return p;
+}
+
+Quantity_Color couleurFond() { return couleur(0x13, 0x15, 0x19); }  // le fond tel qu'il apparaît dans le navigateur, sol compris
 
 Quantity_Color couleurHex(unsigned c) { return couleur((c >> 16) & 255, (c >> 8) & 255, c & 255); }
 
@@ -134,7 +185,7 @@ Vue3D::Vue3D(wxWindow* parent) : wxWindow(parent, 2005, wxDefaultPosition, wxDef
   // Le studio ne sert qu'aux reflets : le fond reste uni
   vue_->SetBackgroundCubeMap(environnementStudio(), true);
   vue_->View()->SetBackgroundType(Graphic3d_TOB_NONE);
-  vue_->SetBackgroundColor(couleur(0x13, 0x15, 0x19));  // le fond tel qu'il apparaît dans le navigateur, sol compris
+  vue_->SetBackgroundColor(couleurFond());
   // Perspective à 50°, le réglage de départ du navigateur
   vue_->Camera()->SetProjectionType(Graphic3d_Camera::Projection_Perspective);
   vue_->Camera()->SetFOVy(50);
@@ -221,24 +272,25 @@ void Vue3D::afficher(const TopoDS_Shape& forme, bool ajusterVue, const std::vect
     aretesVives_ = traits(vives, couleur(5, 5, 6));
     aretesLisses_ = traits(lisses, couleur(0x9a, 0x9f, 0xa6));
 
-    // Le reflet au sol : chaque corps renversé sous la pièce, assombri, jamais cliquable
+    // Le reflet au sol : chaque corps renversé sous la pièce, fondu dans le fond, jamais cliquable
     Bnd_Box boite;
     BRepBndLib::Add(forme, boite, true);
     if (!boite.IsVoid()) {
       sol_ = boite.CornerMin().Z();
       gp_Trsf miroir;
       miroir.SetMirror(gp_Ax2(gp_Pnt(0, 0, sol_), gp_Dir(0, 0, 1)));
+      const gp_Pnt bas = boite.CornerMin(), haut = boite.CornerMax();
+      const gp_Pnt centre((bas.X() + haut.X()) / 2, (bas.Y() + haut.Y()) / 2, sol_);
+      const double rayon = bas.Distance(haut) / 2;
       std::vector<std::pair<TopoDS_Shape, unsigned>> liste = teintes;
       if (liste.empty()) liste.push_back({forme, 0x0a84ff});
       for (const auto& [corps, c] : liste) {
         occ::handle<AIS_Shape> r = new AIS_Shape(corps);
         r->Attributes()->SetAutoTriangulation(false);
         r->Attributes()->SetFaceBoundaryDraw(false);
-        // Un cinquième de la couleur sur le fond, comme le reflet estompé du sol
-        const auto melange = [](unsigned v) { return static_cast<int>(v) * 22 / 100 + 0x15 * 78 / 100; };
-        r->SetColor(couleur(melange((c >> 16) & 255), melange((c >> 8) & 255), melange(c & 255)));
-        r->SetMaterial(Graphic3d_NameOfMaterial_Plastified);
+        r->SetColor(couleurHex(c));
         r->Attributes()->ShadingAspect()->Aspect()->SetFaceCulling(Graphic3d_TypeOfBackfacingModel_DoubleSided);
+        r->Attributes()->ShadingAspect()->Aspect()->SetShaderProgram(programmeReflet(couleurHex(c), couleurFond(), centre, rayon));
         r->SetLocalTransformation(miroir);
         reflets_.push_back(r);
       }
