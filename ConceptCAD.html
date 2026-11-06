@@ -375,7 +375,7 @@ input[type=range]{accent-color:var(--primary);width:100%}
  * peut changer sans rien casser. CACHE_VER (parcours FAO) reste indépendant.
  */
 
-const APP_VER='V0.66.0';
+const APP_VER='V0.66.1';
 try{console.log('[ConceptCAD] version '+APP_VER);}catch(e){}
 try{var mfSv=document.getElementById('mfSplashVer');if(mfSv)mfSv.textContent=APP_VER;}catch(e){} // écran de démarrage
 
@@ -3819,9 +3819,10 @@ function occSpanPrism(sk,tr,chain,sp,area){
   if(!(len>1e-9))throw new Error('prisme vide (course nulle)');
   return occPrismOfChain(sk,tr,chain,len,area,sp.lo);
 }
+// Ces constructeurs à deux solides calculent déjà le booléen : un Build() de plus le refait en entier.
 function occFuse(a,b){
   const f=new occt.BRepAlgoAPI_Fuse_3(a,b);
-  f.Build();const ok=f.IsDone();const s=ok?f.Shape():null;
+  const ok=f.IsDone();const s=ok?f.Shape():null;
   if(s)nomsTransmet([a,b],f,s);
   try{f.delete();}catch(e){}
   if(!ok||!s)throw new Error('fusion impossible');
@@ -3829,7 +3830,7 @@ function occFuse(a,b){
 }
 function occCut(a,b){
   const c=new occt.BRepAlgoAPI_Cut_3(a,b);
-  c.Build();const ok=c.IsDone();const s=ok?c.Shape():null;
+  const ok=c.IsDone();const s=ok?c.Shape():null;
   if(s)nomsTransmet([a,b],c,s);
   try{c.delete();}catch(e){}
   if(!ok||!s)throw new Error('découpe impossible');
@@ -3870,7 +3871,7 @@ function occCutKids(a,b,kids){
 }
 function occCommon(a,b){
   const c=new occt.BRepAlgoAPI_Common_3(a,b);
-  c.Build();const ok=c.IsDone();const s=ok?c.Shape():null;
+  const ok=c.IsDone();const s=ok?c.Shape():null;
   if(s)nomsTransmet([a,b],c,s);
   try{c.delete();}catch(e){}
   if(!ok||!s)throw new Error('intersection impossible');
@@ -32774,7 +32775,6 @@ function gearRackSolid(g,bin){
   const pnt=(x,y,z)=>occBinPush(bin,new occt.gp_Pnt_3(x,y,z));
   const box=occBinPush(bin,new occt.BRepPrimAPI_MakeBox_3(pnt(-g.L/2,g.yb-1,-1),pnt(g.L/2,g.ya+1,g.b+1)));
   const c=occBinPush(bin,new occt.BRepAlgoAPI_Common_3(pr.Shape(),box.Shape()));
-  c.Build();
   if(!c.IsDone())throw new Error('coupe des bouts de la crémaillère impossible');
   return c.Shape();
 }

@@ -8,7 +8,7 @@ sont sorties le 2026-09-30j.
 Code dans `src/` · livrable `fusion_mvp.html` (généré par `build.js`) · architecture et
 garde-fous en tête de `src/00-entete-et-outils.js`.
 
-**600 versions**, de `2026-09-28b` à `V0.66.0` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
+**601 versions**, de `2026-09-28b` à `V0.66.1` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
 comme dans le fichier d'origine.
 
 ---
@@ -6918,3 +6918,15 @@ L'ancien noyau de secours OCCT 7.4 est retiré : 116 Mo de fichiers en moins dan
 - **Limite** : le temps total reste celui de l'opération la plus longue. Les niveaux d'une ébauche 3D s'enchaînent (carte du brut restant, point de départ) : les répartir changerait le calcul de parcours validés, ce n'est pas fait. Le triangle ⚠ d'une seule opération, l'ouverture d'un document et les posages avec corps FAO (murs) restent sur le calcul normal.
 - **Effet sur d'autres fichiers** : aucun parcours ne change, `CACHE_VER` ne bouge pas. `?mono` dans l'adresse force l'ancien calcul pour comparer.
 - **Tests** : `test_fao_multicoeur` (toutes les opérations longues des exemples avec `--tout`, vrai fil de calcul, pièges), `tests/browser/multicoeur.spec.cjs` (mono contre multicœur sur les vrais maillages, bouton du ruban, calcul remplacé en cours, workers refusés, fichier autonome hors ligne).
+
+## V0.66.1 - Booléens calculés une seule fois
+
+Fusions, découpes et intersections calculées une seule fois : Barquette se recalcule en 4,2 s au lieu de 6,1 s.
+
+- **Cause** : le noyau calcule déjà le booléen à la création de `BRepAlgoAPI_Cut`, `Fuse` ou `Common` à deux solides. `occCut`, `occFuse`, `occCommon` et la coupe de la crémaillère rappelaient `Build()` derrière, ce qui refaisait tout le calcul.
+- **Correctif** : le `Build()` en trop est retiré (`src/20-10-prismes-booleens-coque.js`, `src/76-engrenage.js`).
+- **Gains mesurés** (recalcul complet, avant et après en alternance) : Barquette 1,46 fois plus rapide, Axe et Cache Piles 1,3 fois, Cavité Test et Cavité Usinage 1,17 fois, Support Pédale presque rien.
+- **Effet sur d'autres fichiers** : sur les 21 exemples, mêmes faces, arêtes, volumes, surfaces, noms de faces et messages. Le code FAO n'a pas bougé, `CACHE_VER` non plus.
+- **Tests** : `npm run ci:full`, pas de test dédié.
+
+---

@@ -357,9 +357,10 @@ function occSpanPrism(sk,tr,chain,sp,area){
   if(!(len>1e-9))throw new Error('prisme vide (course nulle)');
   return occPrismOfChain(sk,tr,chain,len,area,sp.lo);
 }
+// Ces constructeurs à deux solides calculent déjà le booléen : un Build() de plus le refait en entier.
 function occFuse(a,b){
   const f=new occt.BRepAlgoAPI_Fuse_3(a,b);
-  f.Build();const ok=f.IsDone();const s=ok?f.Shape():null;
+  const ok=f.IsDone();const s=ok?f.Shape():null;
   if(s)nomsTransmet([a,b],f,s);
   try{f.delete();}catch(e){}
   if(!ok||!s)throw new Error('fusion impossible');
@@ -367,7 +368,7 @@ function occFuse(a,b){
 }
 function occCut(a,b){
   const c=new occt.BRepAlgoAPI_Cut_3(a,b);
-  c.Build();const ok=c.IsDone();const s=ok?c.Shape():null;
+  const ok=c.IsDone();const s=ok?c.Shape():null;
   if(s)nomsTransmet([a,b],c,s);
   try{c.delete();}catch(e){}
   if(!ok||!s)throw new Error('découpe impossible');
@@ -408,7 +409,7 @@ function occCutKids(a,b,kids){
 }
 function occCommon(a,b){
   const c=new occt.BRepAlgoAPI_Common_3(a,b);
-  c.Build();const ok=c.IsDone();const s=ok?c.Shape():null;
+  const ok=c.IsDone();const s=ok?c.Shape():null;
   if(s)nomsTransmet([a,b],c,s);
   try{c.delete();}catch(e){}
   if(!ok||!s)throw new Error('intersection impossible');
