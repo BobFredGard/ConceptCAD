@@ -64,6 +64,8 @@ Fenêtre avec wxWidgets, arbre de la pièce, panneau de propriétés, vue OCCT i
 ### 2. Afficher les esquisses (1 à 2 semaines)
 Entrer dans une esquisse depuis l'arbre, vue de face, lignes, arcs, cercles, points, contraintes et cotes dessinés, lecture seule.
 **Fred essaie** : ses pièces, côte à côte avec le navigateur.
+**Première version faite le 06/11/2026** : double-clic ou Entrée dans l'arbre, Échap ou bouton pour sortir, déplacement et zoom. Les 125 esquisses s'ouvrent sans plantage. Comparaison à l'œil avec le navigateur sur 7 esquisses de 6 pièces ; les autres sont seulement ouvertes.
+Reste volontairement pour plus tard : tout est en blanc, sans le bleu « encore libre », car il faut le solveur (étape 4) ; pas de splines (étape 6, aucune dans les exemples) ; pas de vue inclinée ; pièce derrière en simples contours, et seulement si le solide est calculé ; pas de bouton pour la grille.
 
 ### 3. Enregistrer sans rien perdre (1 à 2 semaines)
 Le programme garde tout le fichier d'origine et ne change que ce qu'il connaît. Faces nommées, parcours FAO, congés et réglages inconnus restent intacts.

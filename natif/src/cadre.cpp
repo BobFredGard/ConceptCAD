@@ -14,7 +14,7 @@
 #include <chrono>
 
 namespace {
-enum { ID_ANNULER = wxID_HIGHEST + 1, ID_RETABLIR, ID_AJUSTER };
+enum { ID_ANNULER = wxID_HIGHEST + 1, ID_RETABLIR, ID_AJUSTER, ID_QUITTER_ESQUISSE };
 // Identifiants fixes : natif/mesures/verifier-fenetre.ps1 retrouve ces fenêtres par eux.
 enum { ID_ARBRE = 2001, ID_PROPS = 2002, ID_ETAT = 2003 };
 const char* const PROP_PROFONDEUR = "profondeur";
@@ -69,18 +69,28 @@ Cadre::Cadre() : wxFrame(nullptr, wxID_ANY, L"ConceptCAD natif"), minuterie_(thi
 
   arbre_ = new wxTreeCtrl(this, ID_ARBRE, wxDefaultPosition, FromDIP(wxSize(280, 500)), wxTR_DEFAULT_STYLE | wxTR_HIDE_ROOT | wxTR_LINES_AT_ROOT | wxTR_SINGLE | wxBORDER_NONE);
   props_ = new wxPropertyGrid(this, ID_PROPS, wxDefaultPosition, FromDIP(wxSize(280, 300)), wxPG_DEFAULT_STYLE);
-  vue_ = new Vue3D(this);
+  // La vue 3D et la vue d'esquisse occupent la même place, l'une à la fois.
+  centre_ = new wxPanel(this);
+  vue_ = new Vue3D(centre_);
+  vueEsquisse_ = new VueEsquisse(centre_);
+  vueEsquisse_->surQuitter = [this] { quitterEsquisse(); };
+  auto* rangee = new wxBoxSizer(wxVERTICAL);
+  rangee->Add(vue_, 1, wxEXPAND);
+  rangee->Add(vueEsquisse_, 1, wxEXPAND);
+  centre_->SetSizer(rangee);
+  vueEsquisse_->Hide();
   vue_->surSelection = [this](const TopoDS_Shape& s) { montrerForme(s); };
 
   aui_.AddPane(arbre_, wxAuiPaneInfo().Name("arbre").Caption(L"Pièce").Left().Layer(1).Position(0).BestSize(FromDIP(wxSize(280, 500))).CloseButton(false));
   aui_.AddPane(props_, wxAuiPaneInfo().Name("props").Caption(L"Propriétés").Left().Layer(1).Position(1).BestSize(FromDIP(wxSize(280, 300))).CloseButton(false));
-  aui_.AddPane(vue_, wxAuiPaneInfo().Name("vue").CenterPane());
+  aui_.AddPane(centre_, wxAuiPaneInfo().Name("vue").CenterPane());
   aui_.Update();
 
   CreateStatusBar(1, wxSTB_DEFAULT_STYLE, ID_ETAT);
   etat(L"Aucune pièce ouverte. Ctrl+O pour ouvrir. Clic gauche : tourner ou choisir. Clic droit : déplacer. Molette : zoom.");
 
   arbre_->Bind(wxEVT_TREE_SEL_CHANGED, &Cadre::surArbre, this);
+  arbre_->Bind(wxEVT_TREE_ITEM_ACTIVATED, &Cadre::surArbreActive, this);
   props_->Bind(wxEVT_PG_CHANGED, &Cadre::surPropriete, this);
   Bind(wxEVT_TIMER, &Cadre::pasProtocole, this);
   montrerRien();
@@ -113,6 +123,7 @@ void Cadre::creerMenus() {
   edition->Append(ID_RETABLIR, L"&Rétablir\tCtrl+Y");
   auto* affichage = new wxMenu;
   affichage->Append(ID_AJUSTER, L"&Ajuster la vue\tCtrl+F");
+  affichage->Append(ID_QUITTER_ESQUISSE, L"&Terminer l'esquisse\tEsc");
   auto* barre = new wxMenuBar;
   barre->Append(fichier, L"&Fichier");
   barre->Append(edition, L"&Édition");
@@ -122,7 +133,12 @@ void Cadre::creerMenus() {
   Bind(wxEVT_MENU, [this](wxCommandEvent&) { Close(); }, wxID_EXIT);
   Bind(wxEVT_MENU, [this](wxCommandEvent&) { annuler(); }, ID_ANNULER);
   Bind(wxEVT_MENU, [this](wxCommandEvent&) { retablir(); }, ID_RETABLIR);
-  Bind(wxEVT_MENU, [this](wxCommandEvent&) { vue_->ajuster(); }, ID_AJUSTER);
+  Bind(wxEVT_MENU, [this](wxCommandEvent&) {
+    if (esquisseOuverte_ >= 0) vueEsquisse_->ajuster();
+    else vue_->ajuster();
+  }, ID_AJUSTER);
+  Bind(wxEVT_MENU, [this](wxCommandEvent&) { quitterEsquisse(); }, ID_QUITTER_ESQUISSE);
+  Bind(wxEVT_UPDATE_UI, [this](wxUpdateUIEvent& e) { e.Enable(esquisseOuverte_ >= 0); }, ID_QUITTER_ESQUISSE);
   Bind(wxEVT_UPDATE_UI, [this](wxUpdateUIEvent& e) { e.Enable(!annulations_.empty()); }, ID_ANNULER);
   Bind(wxEVT_UPDATE_UI, [this](wxUpdateUIEvent& e) { e.Enable(!retablissements_.empty()); }, ID_RETABLIR);
 }
@@ -140,6 +156,8 @@ bool Cadre::ouvrir(const std::wstring& chemin) {
     if (!proto_.actif) wxMessageBox(tx(e.what()), L"Ouverture impossible", wxOK | wxICON_ERROR, this);
     return false;
   }
+  quitterEsquisse();
+  forme_.Nullify();
   docOuvert_ = true;
   ajusterVue_ = true;
   solideCalculable_ = doc_.nonPrisEnCharge.empty();
@@ -180,6 +198,7 @@ void Cadre::remplirArbre() {
     }
     arbre_->Expand(corps);
   }
+  arbre_->Expand(esquisses);
   arbre_->Thaw();
 }
 
@@ -232,6 +251,43 @@ void Cadre::montrerEsquisse(int i) {
   lectureSeule(props_, L"Plan", tx(s.plan));
   lectureSeule(props_, L"Points", wxString::Format("%zu", s.points.size()));
   lectureSeule(props_, L"Éléments", wxString::Format("%zu", s.entites.size()));
+  lectureSeule(props_, L"Contraintes", wxString::Format("%zu", s.contraintes.size()));
+  lectureSeule(props_, L"Cotes", wxString::Format("%zu", s.cotes.size()));
+}
+
+// Double-clic dans l'arbre : même repère que le navigateur, sans modification possible à cette étape.
+void Cadre::entrerEsquisse(int i) {
+  const Esquisse& s = doc_.esquisses[i];
+  esquisseOuverte_ = i;
+  vue_->Hide();
+  vueEsquisse_->Show();
+  centre_->Layout();
+  vueEsquisse_->montrer(&s, forme_);
+  vueEsquisse_->SetFocus();
+  montrerEsquisse(i);
+  wxString t = L"Esquisse « " + tx(s.nom) + L" » en lecture seule. Clic droit : déplacer. Molette : zoom. Échap : terminer.";
+  if (vueEsquisse_->nonDessines() > 0) t += wxString::Format(L"  |  ⚠ %d élément(s) pas encore dessiné(s), comme les splines.", vueEsquisse_->nonDessines());
+  etat(t);
+}
+
+void Cadre::capturerEsquisses(const std::wstring& dossier) {
+  for (size_t i = 0; i < doc_.esquisses.size(); i++) {
+    entrerEsquisse(static_cast<int>(i));
+    wxYield();
+    vueEsquisse_->enregistrer(wxString::Format(L"%s\\%03zu.png", dossier, i));
+  }
+  quitterEsquisse();
+}
+
+void Cadre::quitterEsquisse() {
+  if (esquisseOuverte_ < 0) return;
+  esquisseOuverte_ = -1;
+  vueEsquisse_->montrer(nullptr, TopoDS_Shape());
+  vueEsquisse_->Hide();
+  vue_->Show();
+  centre_->Layout();
+  vue_->Refresh();
+  etat(tx(doc_.nom));
 }
 
 void Cadre::montrerForme(const TopoDS_Shape& s) {
@@ -275,6 +331,7 @@ double Cadre::recalculer() {
   }
   const double tCalcul = msDepuis(t0);
   msMaillage_ = tCalcul - msRejeu_;
+  forme_ = r.forme;
   vue_->afficher(r.forme, ajusterVue_);
   ajusterVue_ = false;
   // Le banc compte aussi le prix de la sélection, que le programme paierait dès que la souris passe sur la vue.
@@ -327,6 +384,12 @@ void Cadre::surArbre(wxTreeEvent& e) {
   if (!lien) return montrerRien();
   if (lien->estFonction) montrerFonction(lien->i);
   else montrerEsquisse(lien->i);
+}
+
+void Cadre::surArbreActive(wxTreeEvent& e) {
+  const auto* lien = dynamic_cast<LienArbre*>(arbre_->GetItemData(e.GetItem()));
+  if (lien && !lien->estFonction) entrerEsquisse(lien->i);
+  else e.Skip();  // dépliage habituel des dossiers
 }
 
 void Cadre::surPropriete(wxPropertyGridEvent& e) {

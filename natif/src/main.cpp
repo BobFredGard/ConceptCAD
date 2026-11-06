@@ -63,12 +63,21 @@ class Appli : public wxApp {
   bool OnInit() override {
     SetAppearance(Appearance::Dark);  // comme le thème par défaut de la version navigateur
     auto* cadre = new Cadre;
-    cadre->Show();
+    // Les captures ne doivent pas prendre la main sur ce que fait la personne devant le PC.
+    if (!gArgs.empty() && gArgs[0] == L"--captures") cadre->ShowWithoutActivating();
+    else cadre->Show();
     cadre->Update();
     // --protocole <fichier> <journal> [nb] : même suite de modifications que la version navigateur
     if (gArgs.size() >= 3 && gArgs[0] == L"--protocole") {
       const int nb = gArgs.size() >= 4 ? _wtoi(gArgs[3].c_str()) : 120;
       if (!cadre->lancerProtocole(gArgs[1], gArgs[2], nb)) return false;
+    } else if (gArgs.size() >= 3 && gArgs[0] == L"--captures") {
+      // --captures <fichier> <dossier> : une image par esquisse, puis fermeture
+      wxImage::AddHandler(new wxPNGHandler);
+      cadre->SetClientSize(cadre->FromDIP(wxSize(1500, 900)));
+      cadre->ouvrir(gArgs[1]);
+      cadre->capturerEsquisses(gArgs[2]);
+      cadre->Close(true);
     } else if (!gArgs.empty()) {
       cadre->ouvrir(gArgs[0]);
     }

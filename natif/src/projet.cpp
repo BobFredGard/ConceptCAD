@@ -112,9 +112,59 @@ static void lireEsquisse(const json& js, Document& d, std::map<std::string, int>
       if (je.contains("r") && je["r"].is_number()) e.r = je["r"].get<double>();
       e.construction = vrai(je, "construction");
       e.ref = vrai(je, "ref");
+      e.p = texte(je, "p");
+      e.axe = vrai(je, "axis");
+      e.poignee = vrai(je, "handle");
+      e.proj = vrai(je, "proj");
+      e.percage = vrai(je, "hole");
       if (e.t != "line" && e.t != "arc" && e.t != "circle" && e.t != "cpoint" && !e.construction)
         refus["esquisse : « " + e.t + " »"]++;
       s.entites.push_back(std::move(e));
+    }
+  if (js.contains("constraints") && js["constraints"].is_array())
+    for (auto& jc : js["constraints"]) {
+      Contrainte c;
+      c.type = texte(jc, "type");
+      c.p = texte(jc, "p");
+      c.line = texte(jc, "line");
+      c.ent = texte(jc, "ent");
+      c.a = texte(jc, "a");
+      c.b = texte(jc, "b");
+      c.mid = texte(jc, "mid");
+      s.contraintes.push_back(std::move(c));
+    }
+  if (js.contains("dims") && js["dims"].is_array())
+    for (auto& jd : js["dims"]) {
+      Cote c;
+      c.id = texte(jd, "id");
+      c.type = texte(jd, "type");
+      c.line = texte(jd, "line");
+      c.ent = texte(jd, "ent");
+      c.a = texte(jd, "a");
+      c.b = texte(jd, "b");
+      c.p = texte(jd, "p");
+      c.orient = texte(jd, "orient");
+      auto nb = [&](const char* k, double& v) {
+        auto it = jd.find(k);
+        if (it == jd.end() || !it->is_number()) return false;
+        v = it->get<double>();
+        return true;
+      };
+      nb("value", c.value);
+      nb("ox", c.ox);
+      nb("oy", c.oy);
+      nb("sl", c.sl);
+      c.aW = nb("w", c.w);
+      double ccw = -1;
+      if (nb("ccw", ccw)) c.ccw = static_cast<int>(ccw);
+      c.ref = vrai(jd, "ref");
+      c.dia = vrai(jd, "dia");
+      c.nom = texte(jd, "name");
+      c.formuleFausse = jd.contains("exprErr") && !jd["exprErr"].is_null() && jd["exprErr"] != false && jd["exprErr"] != "";
+      if (auto x = jd.find("expr"); x != jd.end() && !x->is_null()) {
+        c.formule = !x->is_string() || x->get<std::string>().find_first_not_of(" \t\r\n") != std::string::npos;
+      }
+      s.cotes.push_back(std::move(c));
     }
   if (vrai(js, "cg")) refus["esquisse sur plan de construction"]++;
   if (js.contains("host") && js["host"].is_object()) {

@@ -13,11 +13,16 @@ Rien ici ne touche à `src/`, à `ConceptCAD.html` ni à la version du logiciel.
 - Montrer l'arbre de la pièce (esquisses, corps, fonctions) et un panneau de propriétés, dans une interface sombre aux panneaux déplaçables.
 - Survoler et choisir une face ou une arête : surbrillance, forme, aire ou longueur.
 - Modifier la profondeur d'une extrusion ou d'une découpe dans le panneau, annuler (Ctrl+Z) et rétablir (Ctrl+Y).
+- Afficher une esquisse, sans pouvoir la modifier : double-clic ou Entrée dans l'arbre, puis lignes, arcs, cercles, points, zones fermées, contraintes et cotes, orientés comme dans le navigateur. Échap ou « Terminer l'esquisse » pour sortir.
 
 **Si une pièce contient autre chose** (congé, cote par formule, répétition, assemblage…), le programme montre son arbre et la liste de ce qui manque,
 mais **ne calcule pas le solide**. Il n'affiche jamais un solide faux.
 
-Il ne sait pas : enregistrer, dessiner, afficher une esquisse, changer une cote d'esquisse (il faudrait le solveur).
+Il ne sait pas : enregistrer, dessiner, changer une cote d'esquisse (il faudrait le solveur).
+
+Différences avec l'esquisse du navigateur : tout est en blanc, car le bleu « encore libre » demande le solveur ; pas de splines (un message le dit) ; pas de vue inclinée ; pas de flèches de degrés de liberté ni de bilan de santé ;
+pas de bouton pour la grille, masquée comme par défaut dans le navigateur. La pièce derrière l'esquisse n'est qu'un tracé de ses arêtes, et n'apparaît que si le solide est calculé.
+Les pointes des cotes d'angle suivent l'arc, alors que celles du navigateur en dévient légèrement.
 
 ## Lancer et reconstruire
 
@@ -133,8 +138,16 @@ ouverte (53 007,291 mm³, 15 faces), survol en surbrillance, clic sur une face (
 
 Après le passage à wxWidgets, le banc redonne des résultats identiques au navigateur sur les 4 valeurs (écart de 4,2 × 10⁻¹⁰ mm³ au maximum).
 
+Esquisses, sur le `.exe` final :
+- `--captures` ouvre les 125 esquisses des 20 pièces et enregistre une image de chacune, sans plantage ni blocage.
+- `mesures/captures-navigateur.cjs` produit les mêmes images côté navigateur. Comparaison à l'œil sur 7 esquisses de 6 pièces (Cache Piles, Griffe, Crochet, Drapeau, Support Pédale, Barquette) : géométrie, cotes, contraintes, orientation identiques, à part les différences listées plus haut.
+- `mesures/verifier-esquisse.ps1`, vrai clavier et vraie souris sur le Drapeau : double-clic, molette, glissé, Ctrl+F, Échap, Entrée, bouton Terminer, fermeture propre.
+- Mémoire propre sur le Drapeau, avec cette dernière version : 42 à 49 Mo pièce ouverte, 46 à 48 Mo dans une esquisse. C'est une lecture rapide au repos, pas le protocole complet du banc.
+
 ## Pas vérifié
 
+- Les 118 autres esquisses n'ont pas été comparées au navigateur, seulement ouvertes.
+- Le double-clic réel n'a été essayé que sur le Drapeau.
 - Un autre PC sans Visual Studio, une carte graphique faible, un écran à forte mise à l'échelle (le code le prévoit, mais ce PC est à 100 %).
 - L'aire et la longueur affichées à la sélection n'ont pas été comparées au navigateur.
 - La grosse plaque d'essai n'a pas été remesurée avec l'interface wxWidgets.

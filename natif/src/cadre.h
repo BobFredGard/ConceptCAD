@@ -9,6 +9,7 @@
 #include <string>
 #include <vector>
 
+#include "esquisse2d.h"
 #include "rejeu.h"
 #include "vue3d.h"
 
@@ -41,19 +42,29 @@ class Cadre : public wxFrame {
   void montrerFonction(int i);
   void montrerEsquisse(int i);
   void montrerForme(const TopoDS_Shape& s);
+  void entrerEsquisse(int i);
+ public:
+  void capturerEsquisses(const std::wstring& dossier);
+ private:
+  void quitterEsquisse();
   double recalculer();
   void changerCote(int fonction, double valeur, bool memoriser);
   void annuler();
   void retablir();
   void surOuvrir(wxCommandEvent&);
   void surArbre(wxTreeEvent&);
+  void surArbreActive(wxTreeEvent&);
   void surPropriete(wxPropertyGridEvent&);
   void pasProtocole(wxTimerEvent&);
 
   wxAuiManager aui_;
   wxTreeCtrl* arbre_ = nullptr;
   wxPropertyGrid* props_ = nullptr;
+  wxPanel* centre_ = nullptr;
   Vue3D* vue_ = nullptr;
+  VueEsquisse* vueEsquisse_ = nullptr;
+  int esquisseOuverte_ = -1;
+  TopoDS_Shape forme_;  // le solide affiché, pour le fantôme des esquisses
   wxTimer minuterie_;
   Document doc_;
   bool docOuvert_ = false, ajusterVue_ = true, solideCalculable_ = false;
