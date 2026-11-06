@@ -52,6 +52,12 @@ class Cadre : public wxFrame {
   void annuler();
   void retablir();
   void surOuvrir(wxCommandEvent&);
+  void surFermer(wxCloseEvent&);
+  bool enregistrer();
+  bool enregistrerSous();
+  bool ecrire(const std::wstring& cible);
+  bool peutAbandonner();
+  void majTitre();
   void surArbre(wxTreeEvent&);
   void surArbreActive(wxTreeEvent&);
   void surPropriete(wxPropertyGridEvent&);

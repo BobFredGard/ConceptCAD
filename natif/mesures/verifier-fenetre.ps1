@@ -36,6 +36,7 @@ public static class U {
 $exe = Join-Path $PSScriptRoot '..\sortie\ConceptCADNatif.exe'
 New-Item -ItemType Directory -Force $Dossier | Out-Null
 $Fichier = (Resolve-Path $Fichier).Path
+if ($Fichier -like '*\Exemples\*') { throw 'ce script enregistre dans le fichier : lui donner une copie, jamais une pièce de Exemples' }
 
 function Devant($h) { [U]::keybd_event(0x12, 0, 0, [IntPtr]::Zero); [U]::keybd_event(0x12, 0, 2, [IntPtr]::Zero); [void][U]::ShowWindow($h, 9); [void][U]::SetForegroundWindow($h); Start-Sleep -Milliseconds 300 }
 function Capture($h, $nom) {
@@ -112,7 +113,7 @@ Start-Sleep -Milliseconds 400
 
 $a = Rect 2001
 Clic ($a.L + 70) ($a.T + 12)
-Touches '{DOWN}{DOWN}'
+Touches '{DOWN}{DOWN}{DOWN}{DOWN}'  # après le dossier Esquisses déplié, ses 2 esquisses et Corps 1
 Start-Sleep -Milliseconds 400
 "6. Fonction choisie dans l'arbre (voir capture)"
 [void](Capture $w '4-fonction.png')
@@ -159,7 +160,33 @@ Garde
 Start-Sleep -Milliseconds 400
 $az = Capture $w '9-apres-zoom.png'
 "   Zoom (molette) : image changée = $($ad -ne $az)"
-[void][U]::PostMessage($w, 0x0010, [IntPtr]::Zero, [IntPtr]::Zero)
+"10. Pièce modifiée, titre : '$([U]::Texte($w))'"
+Touches '^s'
+Start-Sleep -Seconds 1
+"    Ctrl+S : $(Etat)"
+"    Titre : '$([U]::Texte($w))' ; copie .bak présente : $(Test-Path ($Fichier + '.bak'))"
+Touches '^z'
+Start-Sleep -Seconds 1
+"11. Ctrl+Z, de nouveau à enregistrer, titre : '$([U]::Texte($w))'"
+function DemanderFermeture {
+  [void][U]::PostMessage($w, 0x0010, [IntPtr]::Zero, [IntPtr]::Zero)
+  $q = [IntPtr]::Zero
+  for ($i = 0; $i -lt 30 -and $q -eq [IntPtr]::Zero; $i++) { Start-Sleep -Milliseconds 100; $q = [U]::Dialogue([uint32]$p.Id) }
+  if ($q -eq [IntPtr]::Zero) { throw 'pas de question avant de fermer une pièce modifiée' }
+  Start-Sleep -Milliseconds 400
+  $script:cible = $q
+  Garde
+}
+DemanderFermeture
+Touches '{ESC}'
+Start-Sleep -Seconds 1
+"12. Fermeture demandée, puis Annuler : fenêtre toujours ouverte = $(-not $p.HasExited)"
+$script:cible = $w
+DemanderFermeture
+Touches '{TAB}{ENTER}'
 Start-Sleep -Seconds 2
-"10. Fermeture propre : $($p.HasExited)"
+"13. Fermeture, Ne pas enregistrer : $($p.HasExited)"
 if (-not $p.HasExited) { $p.Kill() }
+$v = Join-Path $Dossier 'relu.json'
+Start-Process $exe -ArgumentList '--verif', "`"$Fichier`"", "`"$v`"" -Wait
+"14. Fichier relu après fermeture : $((Get-Content $v -Raw) -replace '.*"volume":([0-9.]+).*', '$1') mm³ (attendu : celui de la cote à $Cote mm)"

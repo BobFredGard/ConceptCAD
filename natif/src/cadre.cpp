@@ -1,6 +1,7 @@
 #include "cadre.h"
 
 #include <wx/filedlg.h>
+#include <wx/filename.h>
 #include <wx/propgrid/advprops.h>
 
 #include <BRepAdaptor_Curve.hxx>
@@ -12,6 +13,8 @@
 
 #include <algorithm>
 #include <chrono>
+
+#include "enregistrer.h"
 
 namespace {
 enum { ID_ANNULER = wxID_HIGHEST + 1, ID_RETABLIR, ID_AJUSTER, ID_QUITTER_ESQUISSE };
@@ -116,6 +119,8 @@ void Cadre::etat(const wxString& texte) {
 void Cadre::creerMenus() {
   auto* fichier = new wxMenu;
   fichier->Append(wxID_OPEN, L"&Ouvrir…\tCtrl+O");
+  fichier->Append(wxID_SAVE, L"&Enregistrer\tCtrl+S");
+  fichier->Append(wxID_SAVEAS, L"Enregistrer &sous…\tCtrl+Shift+S");
   fichier->AppendSeparator();
   fichier->Append(wxID_EXIT, L"&Quitter");
   auto* edition = new wxMenu;
@@ -130,6 +135,11 @@ void Cadre::creerMenus() {
   barre->Append(affichage, L"&Affichage");
   SetMenuBar(barre);
   Bind(wxEVT_MENU, &Cadre::surOuvrir, this, wxID_OPEN);
+  Bind(wxEVT_MENU, [this](wxCommandEvent&) { enregistrer(); }, wxID_SAVE);
+  Bind(wxEVT_MENU, [this](wxCommandEvent&) { enregistrerSous(); }, wxID_SAVEAS);
+  Bind(wxEVT_UPDATE_UI, [this](wxUpdateUIEvent& e) { e.Enable(docOuvert_ && doc_.modifie()); }, wxID_SAVE);
+  Bind(wxEVT_UPDATE_UI, [this](wxUpdateUIEvent& e) { e.Enable(docOuvert_); }, wxID_SAVEAS);
+  Bind(wxEVT_CLOSE_WINDOW, &Cadre::surFermer, this);
   Bind(wxEVT_MENU, [this](wxCommandEvent&) { Close(); }, wxID_EXIT);
   Bind(wxEVT_MENU, [this](wxCommandEvent&) { annuler(); }, ID_ANNULER);
   Bind(wxEVT_MENU, [this](wxCommandEvent&) { retablir(); }, ID_RETABLIR);
@@ -143,7 +153,64 @@ void Cadre::creerMenus() {
   Bind(wxEVT_UPDATE_UI, [this](wxUpdateUIEvent& e) { e.Enable(!retablissements_.empty()); }, ID_RETABLIR);
 }
 
+void Cadre::majTitre() {
+  const size_t p = doc_.chemin.find_last_of(L"\\/");
+  const wxString nom(doc_.chemin.substr(p == std::wstring::npos ? 0 : p + 1));
+  SetTitle((doc_.modifie() ? L"● " : L"") + nom + L" — ConceptCAD natif");
+}
+
+bool Cadre::ecrire(const std::wstring& cible) {
+  try {
+    try {
+      enregistrerProjet(doc_, cible);
+    } catch (const FichierChangeAilleurs&) {
+      wxMessageDialog q(this, L"Le fichier a changé sur le disque depuis son ouverture, peut-être enregistré depuis le navigateur.\n\nRemplacer quand même ? L'autre version sera gardée dans le fichier .bak.", L"Fichier modifié ailleurs", wxYES_NO | wxNO_DEFAULT | wxICON_WARNING);
+      q.SetYesNoLabels(L"Remplacer", L"Ne rien écrire");
+      if (q.ShowModal() != wxID_YES) return false;
+      enregistrerProjet(doc_, cible, true);
+    }
+  } catch (const std::exception& e) {
+    wxMessageBox(tx(e.what()) + L"\n\nLe fichier existant n'a pas été touché.", L"Enregistrement impossible", wxOK | wxICON_ERROR, this);
+    return false;
+  }
+  majTitre();
+  etat(L"Enregistré dans " + wxString(cible) + L".");
+  return true;
+}
+
+bool Cadre::enregistrer() {
+  if (!docOuvert_) return false;
+  return ecrire(doc_.chemin);
+}
+
+bool Cadre::enregistrerSous() {
+  if (!docOuvert_) return false;
+  wxFileName n(doc_.chemin);
+  wxFileDialog d(this, L"Enregistrer la pièce sous", n.GetPath(), n.GetFullName(), L"Projets ConceptCAD (*.conceptcad)|*.conceptcad", wxFD_SAVE | wxFD_OVERWRITE_PROMPT);
+  if (d.ShowModal() != wxID_OK) return false;
+  return ecrire(d.GetPath().ToStdWstring());
+}
+
+// Des modifications non enregistrées seraient perdues : on demande d'abord.
+bool Cadre::peutAbandonner() {
+  if (!docOuvert_ || proto_.actif || !doc_.modifie()) return true;
+  wxMessageDialog q(this, L"Enregistrer les modifications de cette pièce ?", L"ConceptCAD natif", wxYES_NO | wxCANCEL | wxYES_DEFAULT | wxICON_QUESTION);
+  q.SetYesNoCancelLabels(L"Enregistrer", L"Ne pas enregistrer", L"Annuler");
+  const int r = q.ShowModal();
+  if (r == wxID_YES) return enregistrer();
+  return r == wxID_NO;
+}
+
+void Cadre::surFermer(wxCloseEvent& e) {
+  if (e.CanVeto() && !peutAbandonner()) {
+    e.Veto();
+    return;
+  }
+  Destroy();
+}
+
 void Cadre::surOuvrir(wxCommandEvent&) {
+  if (!peutAbandonner()) return;
   wxFileDialog d(this, L"Ouvrir une pièce ConceptCAD", wxEmptyString, wxEmptyString, L"Projets ConceptCAD (*.conceptcad)|*.conceptcad|Tous les fichiers (*.*)|*.*", wxFD_OPEN | wxFD_FILE_MUST_EXIST);
   if (d.ShowModal() == wxID_OK) ouvrir(d.GetPath().ToStdWstring());
 }
@@ -163,8 +230,7 @@ bool Cadre::ouvrir(const std::wstring& chemin) {
   solideCalculable_ = doc_.nonPrisEnCharge.empty();
   annulations_.clear();
   retablissements_.clear();
-  const size_t p = chemin.find_last_of(L"\\/");
-  SetTitle(wxString(chemin.substr(p == std::wstring::npos ? 0 : p + 1)) + L" — ConceptCAD natif");
+  majTitre();
   remplirArbre();
   if (solideCalculable_) {
     montrerRien();
@@ -233,11 +299,12 @@ void Cadre::montrerFonction(int i) {
   lectureSeule(props_, L"Esquisse", tx(e && !e->nom.empty() ? e->nom : f.esquisse));
   if (f.through) {
     lectureSeule(props_, L"Profondeur", L"À travers tout");
-  } else if (f.visible && solideCalculable_) {
+  } else if (f.visible && solideCalculable_ && doc_.profondeurModifiable(i)) {
     props_->Append(new wxStringProperty(L"Profondeur (mm)", PROP_PROFONDEUR, wxString::Format("%g", f.distance)));
     fonctionMontree_ = i;
   } else {
     lectureSeule(props_, L"Profondeur (mm)", wxString::Format("%g", f.distance));
+    if (f.visible && solideCalculable_) lectureSeule(props_, L"Modification", L"Pas encore : une esquisse posée de biais suit cette profondeur");
   }
 }
 
@@ -359,6 +426,7 @@ void Cadre::changerCote(int fonction, double valeur, bool memoriser) {
     retablissements_.clear();
   }
   f.distance = valeur;
+  if (!proto_.actif) majTitre();
   recalculer();
   if (fonctionMontree_ == fonction) props_->SetPropertyValue(PROP_PROFONDEUR, wxString::Format("%g", valeur));
 }

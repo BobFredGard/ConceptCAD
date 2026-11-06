@@ -9,6 +9,7 @@
 #include <shellapi.h>
 
 #include "cadre.h"
+#include "enregistrer.h"
 
 namespace {
 std::vector<std::wstring> gArgs;
@@ -29,6 +30,13 @@ int modeVerif(const std::vector<std::wstring>& a) {
     Document d = lireProjet(a[1]);
     fprintf(s, "{\"nonPrisEnCharge\":[");
     for (size_t i = 0; i < d.nonPrisEnCharge.size(); i++) fprintf(s, "%s\"%s\"", i ? "," : "", d.nonPrisEnCharge[i].c_str());
+    fprintf(s, "],\"modifiables\":[");
+    bool virgule = false;
+    for (size_t i = 0; i < d.fonctions.size(); i++)
+      if (d.fonctions[i].type == "extrude" && d.profondeurModifiable(i)) {
+        fprintf(s, "%s%zu", virgule ? "," : "", i);
+        virgule = true;
+      }
     fprintf(s, "],\"parallele\":%s,\"cas\":[", parallele() ? "true" : "false");
     bool premier = true;
     auto cas = [&](const std::string& nom) {
@@ -55,6 +63,35 @@ int modeVerif(const std::vector<std::wstring>& a) {
     return 1;
   }
   fclose(s);
+  return 0;
+}
+
+// --reenregistrer <fichier> <sortie> [nFonction=valeur ...] : enregistre sans fenêtre, pour les essais.
+// --conflit <fichier> : le fichier change après l'ouverture ; l'enregistrement doit refuser (code 3).
+int modeEnregistrer(const std::vector<std::wstring>& a) {
+  try {
+    Document d = lireProjet(a[1]);
+    if (a[0] == L"--conflit") {
+      FILE* f = _wfopen(a[1].c_str(), L"ab");
+      if (!f) return 2;
+      fputc(' ', f);
+      fclose(f);
+      d.fonctions.at(0).distance += 1;
+      try {
+        enregistrerProjet(d, a[1]);
+      } catch (const FichierChangeAilleurs&) {
+        return 3;
+      }
+      return 0;
+    }
+    for (size_t i = 3; i < a.size(); i++) {
+      const size_t eq = a[i].find(L'=');
+      if (eq != std::wstring::npos) d.fonctions.at(_wtoi(a[i].substr(0, eq).c_str())).distance = _wtof(a[i].substr(eq + 1).c_str());
+    }
+    enregistrerProjet(d, a[2]);
+  } catch (const std::exception&) {
+    return 1;
+  }
   return 0;
 }
 
@@ -98,6 +135,8 @@ int WINAPI wWinMain(HINSTANCE inst, HINSTANCE, PWSTR, int) {
   }
   LocalFree(argv);
   if (!gArgs.empty() && gArgs[0] == L"--verif") return modeVerif(gArgs);
+  if (gArgs.size() >= 3 && gArgs[0] == L"--reenregistrer") return modeEnregistrer(gArgs);
+  if (gArgs.size() >= 2 && gArgs[0] == L"--conflit") return modeEnregistrer(gArgs);
   // Processeurs à deux sortes de cœurs : un cœur économe calcule la même pièce 1,7 fois moins vite (345 → 585 ms mesurés).
   // On demande à Windows de ne pas traiter ce programme comme une tâche de fond, même quand sa fenêtre n'est pas devant.
   PROCESS_POWER_THROTTLING_STATE qos{PROCESS_POWER_THROTTLING_CURRENT_VERSION, PROCESS_POWER_THROTTLING_EXECUTION_SPEED, 0};

@@ -70,6 +70,7 @@ Reste volontairement pour plus tard : tout est en blanc, sans le bleu « encore 
 ### 3. Enregistrer sans rien perdre (1 à 2 semaines)
 Le programme garde tout le fichier d'origine et ne change que ce qu'il connaît. Faces nommées, parcours FAO, congés et réglages inconnus restent intacts.
 **Fait quand** : sur les 20 pièces, ouvrir puis enregistrer redonne le même contenu, et le navigateur rouvre le résultat à l'identique. Cette étape vient avant toute modification, pour ne jamais abîmer une vraie pièce.
+**Faite le 06/11/2026** (preuves dans [README.md](README.md)). Enseignement pour la suite : le fichier stocke aussi le résultat du solveur. Changer une profondeur peut déplacer les points d'une esquisse posée de biais, et le natif refuse ce cas tant qu'il ne sait pas les recalculer. L'étape 4 devra lever ce refus et les 3 écarts mesurés servent de test (Barquette, Cache Piles, Support Pédale).
 
 ### 4. Solveur (4 à 8 semaines)
 Traduction du solveur et des contraintes. Le test est automatique : sur les 125 esquisses, rejeu sans modification, puis cotes changées en série, puis comparaison à la référence Node.

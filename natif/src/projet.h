@@ -57,6 +57,7 @@ struct Esquisse {
 struct Fonction {
   std::string id, type, nom, esquisse, corps, op = "add";
   double distance = 10;
+  double distanceFichier = 10;  // la valeur écrite dans le fichier : ce qui en diffère reste à enregistrer
   bool aDistance = false, visible = true, mid = false, flip = false, through = false;
 };
 
@@ -66,9 +67,22 @@ struct Document {
   std::vector<Esquisse> esquisses;
   std::vector<Fonction> fonctions;
   std::vector<std::string> nonPrisEnCharge;  // vide = la pièce se rejoue entièrement
+  std::wstring chemin;
+  std::string octets;  // le fichier tel qu'il est sur le disque : l'enregistrement en repart
+  bool compresse = false;
+  bool modifie() const {
+    for (const Fonction& f : fonctions)
+      if (f.distance != f.distanceFichier) return true;
+    return false;
+  }
   Esquisse* esquisse(const std::string& id);
   const Fonction* fonction(const std::string& id) const;
+  // Changer cette profondeur laisse-t-il les autres esquisses justes sans le solveur ? Une esquisse liée au solide
+  // (projection, face d'appui) dans un plan non parallèle suit les arêtes qui bougent : le navigateur la recalcule, pas ce programme.
+  bool profondeurModifiable(size_t i) const;
 };
 
 // Lève std::runtime_error si le fichier est illisible.
 Document lireProjet(const std::wstring& chemin);
+std::string lireOctets(const std::wstring& chemin);
+std::string degonfler(const std::string& gz);

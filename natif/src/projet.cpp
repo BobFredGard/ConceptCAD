@@ -1,5 +1,6 @@
 #include "projet.h"
 
+#include <cmath>
 #include <cstdio>
 #include <map>
 #include <nlohmann/json.hpp>
@@ -21,7 +22,21 @@ const Fonction* Document::fonction(const std::string& id) const {
   return nullptr;
 }
 
-static std::string lireOctets(const std::wstring& chemin) {
+bool Document::profondeurModifiable(size_t i) const {
+  const Esquisse* e = nullptr;
+  for (const Esquisse& s : esquisses)
+    if (s.id == fonctions[i].esquisse) e = &s;
+  if (!e) return false;
+  for (const Esquisse& s : esquisses) {
+    bool lie = s.hote.existe;
+    for (const Entite& x : s.entites) lie = lie || x.proj || x.ref;
+    const double d = s.n[0] * e->n[0] + s.n[1] * e->n[1] + s.n[2] * e->n[2];
+    if (lie && std::abs(d) < 1 - 1e-9) return false;
+  }
+  return true;
+}
+
+std::string lireOctets(const std::wstring& chemin) {
   FILE* f = _wfopen(chemin.c_str(), L"rb");
   if (!f) throw std::runtime_error("fichier introuvable ou illisible");
   std::string b;
@@ -32,7 +47,7 @@ static std::string lireOctets(const std::wstring& chemin) {
   return b;
 }
 
-static std::string degonfler(const std::string& gz) {
+std::string degonfler(const std::string& gz) {
   z_stream z{};
   if (inflateInit2(&z, 16 + MAX_WBITS) != Z_OK) throw std::runtime_error("décompression impossible");
   z.next_in = reinterpret_cast<Bytef*>(const_cast<char*>(gz.data()));
@@ -206,6 +221,7 @@ static void lireFonction(const json& jf, Document& d, std::map<std::string, int>
     f.distance = jf["distance"].get<double>();
     f.aDistance = true;
   }
+  f.distanceFichier = f.distance;
   f.visible = !(jf.contains("visible") && jf["visible"].is_boolean() && !jf["visible"].get<bool>());
   f.mid = vrai(jf, "mid");
   f.flip = vrai(jf, "flip");
@@ -226,9 +242,9 @@ static void lireFonction(const json& jf, Document& d, std::map<std::string, int>
 }
 
 Document lireProjet(const std::wstring& chemin) {
-  std::string b = lireOctets(chemin);
-  if (b.size() >= 2 && static_cast<unsigned char>(b[0]) == 0x1f && static_cast<unsigned char>(b[1]) == 0x8b)
-    b = degonfler(b);
+  std::string octets = lireOctets(chemin);
+  const bool compresse = octets.size() >= 2 && static_cast<unsigned char>(octets[0]) == 0x1f && static_cast<unsigned char>(octets[1]) == 0x8b;
+  std::string b = compresse ? degonfler(octets) : octets;
   json racine;
   try {
     racine = json::parse(b);
@@ -243,6 +259,9 @@ Document lireProjet(const std::wstring& chemin) {
 
   Document d;
   std::map<std::string, int> refus;
+  d.chemin = chemin;
+  d.octets = std::move(octets);
+  d.compresse = compresse;
   d.nom = texte(j, "name");
   if (j.contains("bodies"))
     for (auto& c : j["bodies"]) d.corps.push_back(texte(c, "id"));

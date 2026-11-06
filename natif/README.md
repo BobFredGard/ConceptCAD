@@ -18,7 +18,11 @@ Rien ici ne touche à `src/`, à `ConceptCAD.html` ni à la version du logiciel.
 **Si une pièce contient autre chose** (congé, cote par formule, répétition, assemblage…), le programme montre son arbre et la liste de ce qui manque,
 mais **ne calcule pas le solide**. Il n'affiche jamais un solide faux.
 
-Il ne sait pas : enregistrer, dessiner, changer une cote d'esquisse (il faudrait le solveur).
+- Enregistrer (Ctrl+S) et enregistrer sous (Ctrl+Maj+S) sans rien perdre : seul le nombre modifié change dans le fichier, le reste ne bouge pas d'un octet. Copie `.bak` de la version précédente, relecture avant de remplacer le fichier, question avant de fermer une pièce modifiée (● dans le titre), refus si le fichier a changé ailleurs depuis l'ouverture. La date interne du fichier n'est pas mise à jour.
+
+Une profondeur n'est modifiable que si le solide se calcule et si aucune esquisse liée au solide n'est posée de biais par rapport à elle : une telle esquisse suit les arêtes qui bougent, et seul le navigateur sait la recalculer aujourd'hui.
+
+Il ne sait pas : dessiner, changer une cote d'esquisse (il faudrait le solveur).
 
 Différences avec l'esquisse du navigateur : tout est en blanc, car le bleu « encore libre » demande le solveur ; pas de splines (un message le dit) ; pas de vue inclinée ; pas de flèches de degrés de liberté ni de bilan de santé ;
 pas de bouton pour la grille, masquée comme par défaut dans le navigateur. La pièce derrière l'esquisse n'est qu'un tracé de ses arêtes, et n'apparaît que si le solide est calculé.
@@ -144,8 +148,16 @@ Esquisses, sur le `.exe` final :
 - `mesures/verifier-esquisse.ps1`, vrai clavier et vraie souris sur le Drapeau : double-clic, molette, glissé, Ctrl+F, Échap, Entrée, bouton Terminer, fermeture propre.
 - Mémoire propre sur le Drapeau, avec cette dernière version : 42 à 49 Mo pièce ouverte, 46 à 48 Mo dans une esquisse. C'est une lecture rapide au repos, pas le protocole complet du banc.
 
+Enregistrement, sur des copies :
+- `mesures/tester-enregistrement.cjs`, 176 contrôles sur les 20 pièces : mêmes octets sans modification ; une profondeur changée sur 12 pièces, seul ce nombre diffère ; retour à la valeur d'origine, même texte ; `.bak` exact ; refus si le fichier a changé ailleurs.
+- `mesures/tester-enregistrement-navigateur.cjs` compare le fichier rouvert par le navigateur à la même modification faite dans le navigateur. Les 2 profondeurs du Drapeau, seules modifiables dans le logiciel : aucun champ différent, même volume dans les 3 cas.
+- Sur les 11 autres pièces, modifiées seulement par ce test : 3 écarts (Barquette, Cache Piles, Support Pédale), tous sur des profondeurs que la règle refuse. La règle est prudente : elle en refuse aussi 6 qui auraient été justes.
+- `mesures/verifier-fenetre.ps1`, vrai clavier et vraie souris : cote changée, Ctrl+S, `.bak`, Ctrl+Z, question à la fermeture, Annuler, Ne pas enregistrer, fichier relu à 175 239,634 mm³. Cet essai a tourné juste avant l'ajout de la règle de modification ; sur la version finale, il s'est arrêté deux fois parce que le PC était utilisé, et n'est pas allé au bout.
+
 ## Pas vérifié
 
+- La règle de modification n'est éprouvée dans le logiciel que sur le Drapeau, seule pièce calculable des exemples.
+- Enregistrer sur Dropbox ou un disque réseau, et « Enregistrer sous » au vrai clavier.
 - Les 118 autres esquisses n'ont pas été comparées au navigateur, seulement ouvertes.
 - Le double-clic réel n'a été essayé que sur le Drapeau.
 - Un autre PC sans Visual Studio, une carte graphique faible, un écran à forte mise à l'échelle (le code le prévoit, mais ce PC est à 100 %).
