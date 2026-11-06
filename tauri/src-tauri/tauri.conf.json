@@ -18,6 +18,13 @@
       }
     }
   },
+  "plugins": {
+    "updater": {
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDZFQzczMDk3REM5QzhDQTIKUldTaWpKemNsekRIYmd5UE10bUZNNEtHTGxwL0Jkc1dsdjhaT28xcnNwZkhEZytwejhFSlpyVUwK",
+      "endpoints": ["https://github.com/BobFredGard/ConceptCAD/releases/latest/download/latest.json"],
+      "windows": { "installMode": "passive" }
+    }
+  },
   "bundle": {
     "active": false,
     "targets": ["nsis"],

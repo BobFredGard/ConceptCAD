@@ -13,6 +13,7 @@ use std::sync::Mutex;
 use std::time::{Duration, UNIX_EPOCH};
 use tauri::ipc::{InvokeBody, Request, Response};
 use tauri::{AppHandle, Emitter, Manager, State, WebviewWindow, WindowEvent};
+use tauri_plugin_updater::{Update, UpdaterExt};
 
 #[derive(Deserialize)]
 struct Filtre {
@@ -41,6 +42,14 @@ struct Fermeture {
     permise: AtomicBool,
     reponse: AtomicBool,
     veille: AtomicBool,
+}
+
+/// Mise à jour trouvée, puis téléchargée : installée seulement une fois l'application fermée normalement.
+#[derive(Default)]
+struct MiseAJour {
+    trouvee: Mutex<Option<Update>>,
+    octets: Mutex<Option<Vec<u8>>>,
+    demandee: AtomicBool,
 }
 
 fn dialogue(fen: &WebviewWindow, filtres: Vec<Filtre>, depart: Option<String>) -> FileDialog {
@@ -159,6 +168,63 @@ fn fermer(window: WebviewWindow, etat: State<Fermeture>) -> Result<(), String> {
     window.close().map_err(|e| e.to_string())
 }
 
+/// Une version plus récente est-elle publiée ? Sans Internet, ou sans version pour ce système : rien.
+#[tauri::command]
+async fn maj_chercher(app: AppHandle) -> Option<String> {
+    let trouvee = app.updater().ok()?.check().await.ok()??;
+    let version = trouvee.version.clone();
+    *app.state::<MiseAJour>().trouvee.lock().ok()? = Some(trouvee);
+    Some(version)
+}
+
+/// Télécharge et contrôle la signature : un fichier qui ne vient pas de nous est refusé ici.
+#[tauri::command]
+async fn maj_telecharger(app: AppHandle) -> Result<(), String> {
+    let trouvee = app.state::<MiseAJour>().trouvee.lock().map_err(|e| e.to_string())?.clone().ok_or("aucune mise à jour trouvée")?;
+    let emetteur = app.clone();
+    let mut recu: u64 = 0;
+    let octets = trouvee
+        .download(
+            move |morceau, total| {
+                recu += morceau as u64;
+                if let Some(t) = total.filter(|t| *t > 0) {
+                    let _ = emetteur.emit("maj-progres", recu * 100 / t);
+                }
+            },
+            || {},
+        )
+        .await
+        .map_err(|e| e.to_string())?;
+    *app.state::<MiseAJour>().octets.lock().map_err(|e| e.to_string())? = Some(octets);
+    Ok(())
+}
+
+/// Ferme normalement (les données en attente de la page sont écrites) : l'installation suit à la sortie.
+#[tauri::command]
+fn maj_installer(window: WebviewWindow, fermeture: State<Fermeture>, maj: State<MiseAJour>) -> Result<(), String> {
+    maj.demandee.store(true, Ordering::SeqCst);
+    fermeture.permise.store(true, Ordering::SeqCst);
+    window.close().map_err(|e| e.to_string())
+}
+
+fn installer_maj(app: &AppHandle) {
+    let maj = app.state::<MiseAJour>();
+    if !maj.demandee.load(Ordering::SeqCst) {
+        return;
+    }
+    let trouvee = maj.trouvee.lock().ok().and_then(|mut x| x.take());
+    let octets = maj.octets.lock().ok().and_then(|mut x| x.take());
+    if let (Some(trouvee), Some(octets)) = (trouvee, octets) {
+        if let Err(e) = trouvee.install(octets) {
+            MessageDialog::new()
+                .set_level(MessageLevel::Error)
+                .set_title("ConceptCAD")
+                .set_description(format!("La mise à jour n'a pas pu s'installer : {e}\n\nVos pièces ne sont pas touchées. Rouvrez ConceptCAD, ou relancez l'installateur téléchargé sur GitHub."))
+                .show();
+        }
+    }
+}
+
 /// Croix de la fenêtre (ou Cmd+Q sur Mac) : la question vient de la page. Si un long calcul l'empêche
 /// de répondre, le système propose quand même de fermer : on ne reste jamais prisonnier de la fenêtre.
 fn demande_fermeture(app: &AppHandle) {
@@ -255,8 +321,10 @@ fn main() {
                 }
             }
         }))
+        .plugin(tauri_plugin_updater::Builder::new().build())
         .manage(Demarrage(Mutex::new(fichier)))
         .manage(Fermeture::default())
+        .manage(MiseAJour::default())
         .on_window_event(|fen, evenement| {
             if let WindowEvent::CloseRequested { api, .. } = evenement {
                 if !fen.state::<Fermeture>().permise.load(Ordering::SeqCst) {
@@ -266,7 +334,7 @@ fn main() {
             }
         })
         .invoke_handler(tauri::generate_handler![
-            dialogue_ouvrir, dialogue_enregistrer, dialogue_dossier, lire, infos, lister, creer_dossier, ecrire, titre, fichier_demarrage, fermeture_recue, fermer
+            dialogue_ouvrir, dialogue_enregistrer, dialogue_dossier, lire, infos, lister, creer_dossier, ecrire, titre, fichier_demarrage, fermeture_recue, fermer, maj_chercher, maj_telecharger, maj_installer
         ]);
     #[cfg(target_os = "macos")]
     let constructeur = constructeur.menu(menu_mac).on_menu_event(|app, e| {
@@ -277,13 +345,16 @@ fn main() {
     constructeur
         .build(tauri::generate_context!())
         .expect("démarrage de l'application impossible")
-        .run(|_app, _evenement| {
+        .run(|app, evenement| {
+            if matches!(evenement, tauri::RunEvent::Exit) {
+                installer_maj(app);
+            }
             // Sur Mac, le double-clic sur un fichier arrive par un message du système, pas au lancement.
             #[cfg(target_os = "macos")]
-            if let tauri::RunEvent::Opened { urls } = _evenement {
+            if let tauri::RunEvent::Opened { urls } = evenement {
                 let f = urls.iter().filter_map(|u| u.to_file_path().ok()).find(|p| p.is_file());
                 if let Some(f) = f {
-                    fichier_recu(_app, f.to_string_lossy().into_owned());
+                    fichier_recu(app, f.to_string_lossy().into_owned());
                 }
             }
         });

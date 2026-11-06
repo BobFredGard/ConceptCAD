@@ -198,4 +198,37 @@
       alert('Fermeture impossible : '+(e&&e.message||e));
     }finally{fermeture=false;}
   });
+
+  // Mise à jour par Internet : la question vient une fois le logiciel prêt, jamais d'installation sans accord.
+  // Sans Internet, rien ne s'affiche. Pendant le téléchargement, la pièce ne peut plus changer.
+  const bloquer=e=>{e.stopImmediatePropagation();e.preventDefault();};
+  const majVoile=()=>{
+    const v=document.createElement('div');
+    v.id='majVoile';
+    v.style.cssText='position:fixed;inset:0;z-index:2147483647;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,.55);color:#fff;font:600 18px system-ui,sans-serif';
+    v.textContent='Téléchargement de la mise à jour…';
+    document.body.appendChild(v);
+    addEventListener('keydown',bloquer,true);
+    return v;
+  };
+  const majInstaller=async()=>{
+    const version=await invoke('maj_chercher');
+    if(!version)return;
+    await pret();
+    const r=await mffAsk('ConceptCAD '+version+' est disponible (vous avez la '+String(APP_VER).replace(/^V/,'')+'). ConceptCAD se fermera puis se rouvrira tout seul.',[['oui','Installer maintenant',true],['non','Plus tard']]);
+    if(r!=='oui'||(typeof mffModified==='function'&&mffModified()&&!(await mffConfirmDiscard())))return;
+    const voile=majVoile();
+    const finProgres=await window.__TAURI__.event.listen('maj-progres',e=>{voile.textContent='Téléchargement de la mise à jour : '+e.payload+' %';});
+    try{
+      await invoke('maj_telecharger');
+      oublierBrouillon();
+      voile.textContent='Installation de la mise à jour…';
+      await invoke('maj_installer');
+    }catch(e){
+      voile.remove();
+      removeEventListener('keydown',bloquer,true);
+      alert('Mise à jour impossible : '+(e&&e.message||e)+'\n\nVotre travail n’est pas touché, vous pouvez continuer.');
+    }finally{finProgres();}
+  };
+  addEventListener('load',()=>setTimeout(()=>majInstaller().catch(()=>{}),5000));
 })();

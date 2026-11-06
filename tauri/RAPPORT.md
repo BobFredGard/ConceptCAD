@@ -198,6 +198,13 @@ node tauri/mesures/mesurer.cjs repos ConceptCAD.html app,chrome 2
 
 **Icône :** `node tauri/icone.cjs` la refait à partir du logo de la barre du logiciel, relu dans `ConceptCAD.html`. Elle reste donc identique à ce logo : si le logo change, relancer cette commande, puis compiler.
 
+**Mise à jour par Internet (Windows) :** au démarrage, l'application lit `latest.json` sur la dernière release GitHub. Si une version plus récente existe, elle pose la question, propose d'enregistrer une pièce modifiée, télécharge, contrôle la signature, se ferme, s'installe et se rouvre. Sans Internet, rien ne s'affiche. Sur Mac, `latest.json` n'annonce rien pour l'instant : aucune question.
+
+- **Publier une version :** `node tauri/construire-windows.cjs`, puis joindre à la release les deux fichiers de `tauri/src-tauri/target/release/bundle/publication`. Sans `latest.json` dans la release, personne n'est prévenu.
+- **Clé secrète :** `~/.tauri/conceptcad-maj.key`, hors du dépôt et à sauvegarder. Sans elle, les applications installées ne pourront plus se mettre à jour : il faudrait les réinstaller à la main.
+- **Essai réel sans rien publier :** `node tauri/mesures/mise-a-jour.cjs "<dossier d'essai vide>"` (15 vérifications). Il installe un programme d'essai à part, ConceptCADEssai, et remplace GitHub par un serveur local.
+- **Contrôle « aucune demande vers Internet » de `verifier.cjs` :** il regarde les demandes de la page. La vérification de version part du programme, elle n'y apparaît donc pas.
+
 **Mac :** préparé mais pas encore essayé sur un vrai Mac, voir `tauri/mac/A-ESSAYER.md`.
 
 `cargo tauri build` se lance depuis `tauri/src-tauri`. Résultats bruts : `tauri/mesures/resultats/`. Les séries de référence sont `repos-V0.64.3.jsonl` et `repos-V0.67.0-*.jsonl` : **la mémoire y est lue sans pilote branché**, car le pilote alourdit Chrome d'environ 150 Mo à vide. Les autres séries (`ram-serie1.jsonl`, `ram.jsonl`) ne servent que pour les temps.

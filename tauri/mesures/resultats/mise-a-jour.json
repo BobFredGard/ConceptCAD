@@ -1,0 +1,87 @@
+[
+ {
+  "nom": "Version de départ installée",
+  "ok": true,
+  "detail": "0.0.1"
+ },
+ {
+  "nom": "Rien de publié ou pas d’Internet : aucune question, aucun message",
+  "ok": true,
+  "detail": {
+   "demandes": 1,
+   "dialogues": [],
+   "erreurs": []
+  }
+ },
+ {
+  "nom": "Même version publiée : aucune question",
+  "ok": true
+ },
+ {
+  "nom": "« Plus tard » : rien de téléchargé, on continue",
+  "ok": true
+ },
+ {
+  "nom": "Pièce modifiée, « Annuler » : pas de mise à jour, la modification reste",
+  "ok": true
+ },
+ {
+  "nom": "Fichier signé par quelqu’un d’autre : refusé, application toujours ouverte",
+  "ok": true,
+  "detail": {
+   "message": [
+    "Mise à jour impossible : The signature was created with a different key than the one provided\n\nVotre travail n’est pas touché, vous pouvez continuer."
+   ],
+   "voile": false
+  }
+ },
+ {
+  "nom": "Version installée après la mise à jour",
+  "ok": true,
+  "detail": "0.0.2"
+ },
+ {
+  "nom": "Se rouvre toute seule, sur la même pièce, non marquée modifiée",
+  "ok": true,
+  "detail": {
+   "titre": "● Pièce mise à jour — ConceptCAD",
+   "titreStable": "Pièce mise à jour — ConceptCAD",
+   "secondes": 13
+  }
+ },
+ {
+  "nom": "Association .conceptcad conservée",
+  "ok": true
+ },
+ {
+  "nom": "Après la mise à jour, la croix ferme sans question : la pièce est bien enregistrée",
+  "ok": true,
+  "detail": "0"
+ },
+ {
+  "nom": "Cote enregistrée avant la mise à jour bien relue",
+  "ok": true,
+  "detail": {
+   "lu": 65.45,
+   "attendu": 65.45
+  }
+ },
+ {
+  "nom": "Réglages locaux conservés",
+  "ok": true,
+  "detail": "garde"
+ },
+ {
+  "nom": "Déjà à jour : plus de question",
+  "ok": true,
+  "detail": []
+ },
+ {
+  "nom": "Désinstallé, association retirée",
+  "ok": true
+ },
+ {
+  "nom": "Vraies données de l’application intactes",
+  "ok": true
+ }
+]
