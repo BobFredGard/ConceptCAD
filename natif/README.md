@@ -344,6 +344,19 @@ Vérifié contre le navigateur V0.67.3 :
 
 Pas vérifié : les splines à la souris par une personne, les splines dans un fichier réel (aucun exemple n'en contient), un congé 3D posé sur une arête issue d'une spline, le rejeu de Balayage et Révolution (ces fonctions ne sont pas encore dans le natif).
 
+## Projeter, Intersection et ce qui suit (06/11/2026)
+
+- **Projeter** (touche P) : arêtes du solide et éléments ou points d'une autre esquisse, noms « Projetée n » et « Arête n » gardés dans le fichier. 258 sessions sur 258 identiques au navigateur V0.67.3 (`dessin-reference.cjs --projeter`).
+- **Intersection** (touche I) : courbes du plan d'esquisse avec le solide. Clic sur une face, Maj+clic pour le corps entier, Ctrl+clic pour plusieurs faces puis Entrée, menu du clic droit. `mesures/tester-intersection.cjs` joue les gestes dans la vraie fenêtre et compare au navigateur : **52 gestes sur 52 identiques**, sur 3 pièces (Drapeau, Poche et Contour, un oblong percé fabriqué par le banc) et 5 plans, avec droites, cercles, arcs et courbes libres.
+- **Suivi** : quand une cote change plus haut dans la pièce, les intersections et les projections d'une autre esquisse se recalent. `mesures/tester-suivi.cjs` fabrique une pièce par de vrais gestes (corps entier, deux faces, un point et un côté projetés) puis change chaque cote des deux côtés : **48 cas sur 48 identiques**, fichier écrit compris.
+
+Écarts connus, sans effet mesuré :
+
+- La boîte d'une face courbe dépend de son maillage (45,108 mm contre 45) : le navigateur retrouve la face la plus proche, le banc accepte 0,5 mm sur ces dimensions.
+- Les références de face écrites par le programme n'ont pas de nom de face (`nom`) : le navigateur les retrouve par position et les nomme ensuite.
+
+Pas encore repris : le suivi d'une arête par son nom (`srcNom`), d'une arête d'un autre composant et d'un point de traversée. La cote en amont reste alors refusée, avec un message. Une source perdue laisse l'élément à sa place, sans l'avertissement du navigateur.
+
 ## Rendu de la vue 3D repris du navigateur
 
 La vue reprend les réglages de la scène Three.js (`src/10-scene-3d.js`) : matière métal 0,35 et rugosité 0,4, studio de reflets fabriqué sans fichier, perspective à 50°, bords lissés, couleur de chaque corps, arêtes vives noires et raccords tangents gris, reflet au sol. Le cube de vue est dessiné sans perspective pour rester un cube.
