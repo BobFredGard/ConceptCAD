@@ -132,6 +132,8 @@ function splitLineAt(sk,lineId,pid){
   const l=entById(sk,lineId);if(!l||l.t!=='line')return;
   if(l.p1===pid||l.p2===pid)return;
   const nl={id:skNewEid(sk),t:'line',p1:pid,p2:l.p2};l.p2=pid;sk.entities.push(nl);
+  if(l.construction)nl.construction=true; // construction ou référence 3D le reste : sa moitié neuve ne doit pas entrer dans les profils
+  if(l.ref)nl.ref=true;
   // la moitié conservée garde ses contraintes ; la nouvelle moitié hérite des liaisons valides (h/v, //, ⟂, sym, fix)
   // et des tangences dont le pied tombe dans son étendue. La cote length de la moitié conservée suit sa longueur.
   cloneLineConstraints(sk,lineId,[nl.id],false);

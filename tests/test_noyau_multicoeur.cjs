@@ -13,7 +13,7 @@ if(process.argv[2]==='--un'){
     require('./noyau.cjs').brancherFichiers(sandbox,ctx);
     const res={};
     for(const nom of EXEMPLES){
-      sandbox.__json=lireProjet(path.join(__dirname,'..','Exemples',nom+'.conceptcad'));
+      sandbox.__json=lireProjet(nom==='Barquette'?path.join(__dirname,'fixtures','barquette-exemple.conceptcad'):path.join(__dirname,'..','Exemples',nom+'.conceptcad'));
       res[nom]=await vm.runInContext(String.raw`(async()=>{const raw=JSON.parse(__json);
         if(raw.doc)await bundleRestore(__json,{rebuild:false});else await deserialise(__json,{rebuild:false});
         occCkClear();markDirty();rebuild();

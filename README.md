@@ -7,10 +7,11 @@
 [![▶ Lancer ConceptCAD dans le navigateur](https://img.shields.io/badge/%E2%96%B6%20Lancer%20ConceptCAD-noyau%20OCCT%20inclus-2ea44f?style=for-the-badge)](https://bobfredgard.github.io/ConceptCAD/)
 
 [![⬇ Télécharger la version autonome, sans Internet](https://img.shields.io/badge/%E2%AC%87%20Version%20autonome-sans%20Internet%2C%2023%20Mo-1f6feb?style=for-the-badge)](https://www.dropbox.com/scl/fi/sne7f5a9y8dr659b2xrow/ConceptCAD-autonome.html?rlkey=fgd0w1r5816ake50vxtd4fnuj&dl=0)
+[![⬇ Télécharger l’application Windows](https://img.shields.io/badge/%E2%AC%87%20Application%20Windows-installateur%2C%2022%20Mo-1f6feb?style=for-the-badge)](https://github.com/BobFredGard/ConceptCAD/releases/latest/download/ConceptCAD-Windows-setup.exe)
 
 ![Support de pédale déportée R1200RT en alu anodisé rouge sur béton, lancer de rayons de l'atelier RENDU (2048 échantillons)](docs/captures/rendu-pedale.jpg)
 
-Le noyau géométrique exact est **OpenCascade 8 compilé en WebAssembly** par nos soins (recette reproductible dans `occt-build/`), en deux versions : **multicœur**, choisie toute seule quand le navigateur et le PC le permettent et écrite dans la barre d'état, et normale, sur un seul cœur, qui reste celle du fichier autonome. S'il n'est pas disponible, l'application bascule seule sur un moteur maillage (CSG). Version actuelle : **V0.67.1** (voir le [journal des modifications](CHANGELOG.md)).
+Le noyau géométrique exact est **OpenCascade 8 compilé en WebAssembly** par nos soins (recette reproductible dans `occt-build/`), en deux versions : **multicœur**, choisie toute seule quand le navigateur et le PC le permettent et écrite dans la barre d'état, et normale, sur un seul cœur, qui reste celle du fichier autonome. S'il n'est pas disponible, l'application bascule seule sur un moteur maillage (CSG). Version actuelle : **V0.67.3** (voir le [journal des modifications](CHANGELOG.md)).
 
 **Pas d'Internet sur le poste ?** La [version autonome](https://www.dropbox.com/scl/fi/sne7f5a9y8dr659b2xrow/ConceptCAD-autonome.html?rlkey=fgd0w1r5816ake50vxtd4fnuj&dl=0) tient en un seul fichier à télécharger, qui s'ouvre par double-clic (voir [Démarrage](#démarrage)).
 
@@ -42,9 +43,12 @@ C'est le même logiciel partout, et les projets `.conceptcad` passent de l'un à
 |---|---|---|
 | **En ligne** | Essayer, ou travailler avec une connexion, sur PC ou téléphone | Ouvrir [bobfredgard.github.io/ConceptCAD](https://bobfredgard.github.io/ConceptCAD/). Le noyau se télécharge au premier lancement (≈ 43 Mo, de préférence en Wi-Fi), puis reste en cache. |
 | **Version autonome** | PC sans Internet, ou pour garder le logiciel avec soi | [Télécharger `ConceptCAD-autonome.html`](https://www.dropbox.com/scl/fi/sne7f5a9y8dr659b2xrow/ConceptCAD-autonome.html?rlkey=fgd0w1r5816ake50vxtd4fnuj&dl=0) (≈ 23 Mo), puis l'ouvrir par double-clic dans Chrome ou Edge. Le fichier contient tout. Il est remplacé à chaque version : le même lien donne toujours la dernière. |
+| **Application Windows** | Travailler sur PC avec de vraies fenêtres Ouvrir et Enregistrer, et le double-clic sur un `.conceptcad` | [Télécharger l’installateur](https://github.com/BobFredGard/ConceptCAD/releases/latest/download/ConceptCAD-Windows-setup.exe) (≈ 22 Mo), sans droits d’administrateur. Comptez environ 1 Go de RAM pièce ouverte. Le programme n’est pas signé : Windows peut afficher un avertissement. Publiée à la main, cette version peut avoir un peu de retard sur le site ([notes de version](https://github.com/BobFredGard/ConceptCAD/releases/latest)). |
 | **Depuis les sources** | Développeurs | Voir [Développement](#développement). |
 
 **Version autonome : ce qui n'est pas encore vérifié.** L'enregistrement et la carte graphique réelle ne passent pas par les tests automatiques, et Firefox n'a pas été essayé.
+
+**Application Windows : ce qui n’est pas encore vérifié.** Windows 10, un PC vraiment débranché et les cartes graphiques autres que NVIDIA n’ont pas été essayés. Elle a besoin de WebView2, déjà présent sur Windows 11 ; s’il manque, l’installateur essaie de le télécharger.
 
 **Ne pas ouvrir `ConceptCAD.html` par double-clic.** Le navigateur lui refuse le noyau de calcul : la page affiche alors un message qui renvoie vers les solutions ci-dessus, et rien d'autre. Hors ligne, prendre la version autonome.
 
@@ -328,7 +332,7 @@ npx serve . -l 3000
 | `src/*.js` | **Les sources** : 163 fichiers concaténés dans l'ordre alphabétique (noyau, esquisse, fonctions 3D, assemblage, FAO découpée par domaine, mise en plan, rendu, interface téléphone `99-mobile*.js`). C'est ici qu'on travaille. |
 | `ConceptCAD.html` | **Livrable généré** par `node build.js`. On n'édite jamais son script à la main. |
 | `PostPro/` | Une fiche par machine (`siemens-630.js`, `siemens-1520.js`, `fagor-8065.js`). Nouvelle machine = copier une fiche, la modifier, `npm run build`. |
-| `tests/` | 282 suites Node lancées en parallèle (`npm run ci:full`), 122 rapides (`npm run ci`), non-régression des parcours FAO (`npm run parcours`), tests de référence (`tests/oracle/`, [docs/oracle.md](docs/oracle.md)). |
+| `tests/` | 283 suites Node lancées en parallèle (`npm run ci:full`), 123 rapides (`npm run ci`), non-régression des parcours FAO (`npm run parcours`), tests de référence (`tests/oracle/`, [docs/oracle.md](docs/oracle.md)). |
 | `tests/browser/` | Playwright dans un vrai Chromium : parcours critiques et Rendu (`npm run test:browser`, seul projet lancé par la CI GitHub, déclenchée à la main) et carte graphique réelle (`npm run test:gpu`, en local). |
 | `tools/` | Lint du script concaténé (`npm run lint`), serveur MCP, **captures du README** (`npm run captures`), **fichier autonome** (`npm run autonome`). |
 | `occt/`, `threejs/` | Noyau OpenCascade WebAssembly (`occt/v3` : OCCT 8), rendu three.js. |

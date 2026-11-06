@@ -1,4 +1,4 @@
-﻿# Journal des modifications
+# Journal des modifications
 
 Une entrée par version : **cause, correctif, test**. Source de vérité de l'historique.
 Ces entrées vivaient en commentaire dans `fusion_mvp.html` (577 lignes, 50 Ko) : un
@@ -8,7 +8,7 @@ sont sorties le 2026-09-30j.
 Code dans `src/` · livrable `fusion_mvp.html` (généré par `build.js`) · architecture et
 garde-fous en tête de `src/00-entete-et-outils.js`.
 
-**604 versions**, de `2026-09-28b` à `V0.67.1` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
+**606 versions**, de `2026-09-28b` à `V0.67.3` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
 comme dans le fichier d'origine.
 
 ---
@@ -6963,5 +6963,21 @@ Barquette ne perd plus son solide à la 107e modification, et sa mémoire ne mon
 - **Moins de relectures** : la liste des arêtes, refaite à chaque congé, relit ses points sans en créer un par lecture, et le retrait des solides de volume nul ne pèse plus la pièce elle-même.
 - **Mesuré** (Barquette de Fred, recalcul complet) : 5,4 → 4,9 s en multicœur, 6,0 → 5,5 s avec un seul cœur.
 - **Mêmes résultats** : sur 21 pièces, mêmes faces, arêtes, volumes, aires, noms et messages, et mêmes parcours FAO sur les 3 exemples comparés. `CACHE_VER` inchangé.
+
+---
+
+## V0.67.2 - Publication plus légère
+
+- **Réserve des fichiers lourds** : les noyaux ne sont plus retéléchargés à chaque publication. La réserve créée lors d'une version n'était pas lisible par la suivante ; elle est maintenant tenue sur la branche principale, que toutes les versions peuvent lire.
+- **Logiciel inchangé** : aucun calcul ni écran modifié, seul le numéro de version change. `CACHE_VER` inchangé.
+
+---
+
+## V0.67.3 - Ajuster : les lignes de construction et de référence restent ce qu'elles sont
+
+- **Cause** : quand Ajuster partage une ligne qui passe par le point de coupe, la moitié neuve perdait sa nature ; une ligne de construction ou de référence 3D redevenait une ligne normale et pouvait fermer un profil. Une référence ajustée en son milieu perdait aussi cette nature sur ses deux tronçons.
+- **Correctif** : la moitié neuve et les tronçons restants gardent leur nature. Forme du fichier, parcours FAO et `CACHE_VER` inchangés.
+- **Test** : `test_esquisse_ajuster_construction`.
+- **Exemples** : `Barquette.conceptcad` retiré d'`Exemples/` par Fred ; les tests lisent désormais une copie figée, `tests/fixtures/barquette-exemple.conceptcad`.
 
 ---

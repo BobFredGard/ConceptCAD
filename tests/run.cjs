@@ -107,6 +107,7 @@ const SUITES = [
   "test_esquisse_plan_cibles",
   "test_proj_arc_sens",
   "test_esquisse_contraintes",
+  "test_esquisse_ajuster_construction",
   "test_fao",
   "test_fao3d",
   "test_fao_minipasses_pentes",

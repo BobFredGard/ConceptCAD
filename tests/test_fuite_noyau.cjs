@@ -57,7 +57,7 @@ const oublis=()=>{let n=0;for(const st of vivants.values())if(!garde(st))n++;ret
   const h0=vm.runInContext('__h0',ctx)/1048576,h1=vm.runInContext('__h1',ctx)/1048576;
   A(h1<=h0,'tas du noyau stable sur 24 modifications de plus : '+h0.toFixed(0)+' → '+h1.toFixed(0)+' Mo');
   // Barquette : autres fonctions (déplacement de face, dépouille, balayage, scission) ; 2 420 objets par modification avant
-  sandbox.__json=lireProjet(path.join(ROOT,'Exemples','Barquette.conceptcad'));
+  sandbox.__json=lireProjet(path.join(ROOT,'tests','fixtures','barquette-exemple.conceptcad'));
   await vm.runInContext(String.raw`(async()=>{const raw=JSON.parse(__json);
     if(raw.doc)await bundleRestore(__json,{rebuild:false});else await deserialise(__json,{rebuild:false});
     markDirty();rebuild();})()`,ctx);

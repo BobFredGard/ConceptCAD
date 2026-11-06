@@ -15,6 +15,7 @@ const SUITES = [
   'test_raccourcis',
   'test_precision_affichage',
   'test_esquisse_contraintes',
+  'test_esquisse_ajuster_construction',
   'test_esquisse_moindre_deplacement',
   'test_esquisse_retour_arriere',
   'test_esquisse_aleatoire',
