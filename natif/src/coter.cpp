@@ -276,13 +276,7 @@ std::string coteFigee(const Cote& c) {
   return "";
 }
 
-bool saisirCote(Document& d, size_t i, Edition& ed, const std::string& idCote, double valeur, std::string& raison) {
-  if (!ed.resolue) {
-    ed.solveur.resoudre();
-    ed.resolue = true;
-  }
-  if (!ed.solveur.saisir(idCote, valeur, &raison)) return false;
-  ed.solveur.recopierDans(d.esquisses[i]);
+void suivreEsquisses(Document& d, size_t i) {
   for (const size_t j : suivantes(d, i)) {
     Esquisse& s = d.esquisses[j];
     ResultatRejeu r = rejouer(d, consommatrice(d, s.id));  // replace aussi les esquisses posées sur une face
@@ -301,5 +295,15 @@ bool saisirCote(Document& d, size_t i, Edition& ed, const std::string& idCote, d
       suivreProjections(s, listerAretes(r.forme));  // rien n'a bougé : seul le repère de l'arête source est rafraîchi
     }
   }
+}
+
+bool saisirCote(Document& d, size_t i, Edition& ed, const std::string& idCote, double valeur, std::string& raison) {
+  if (!ed.resolue) {
+    ed.solveur.resoudre();
+    ed.resolue = true;
+  }
+  if (!ed.solveur.saisir(idCote, valeur, &raison)) return false;
+  ed.solveur.recopierDans(d.esquisses[i]);
+  suivreEsquisses(d, i);
   return true;
 }

@@ -22,17 +22,38 @@ const Fonction* Document::fonction(const std::string& id) const {
   return nullptr;
 }
 
+bool memesLiens(const Esquisse& a, const Esquisse& b) {
+  if (a.ordre != b.ordre || a.seq != b.seq || a.entites.size() != b.entites.size() || a.contraintes.size() != b.contraintes.size() || a.cotes.size() != b.cotes.size()) return false;
+  for (size_t i = 0; i < a.entites.size(); i++) {
+    const Entite& x = a.entites[i];
+    const Entite& y = b.entites[i];
+    if (x.id != y.id || x.t != y.t || x.p1 != y.p1 || x.p2 != y.p2 || x.pc != y.pc || x.pa != y.pa || x.pb != y.pb || x.p != y.p || x.construction != y.construction || x.poly != y.poly) return false;
+  }
+  for (size_t i = 0; i < a.contraintes.size(); i++) {
+    const Contrainte& x = a.contraintes[i];
+    const Contrainte& y = b.contraintes[i];
+    if (x.id != y.id || x.type != y.type || x.p != y.p || x.line != y.line || x.ent != y.ent || x.a != y.a || x.b != y.b || x.mid != y.mid || x.c != y.c || x.d != y.d || x.inf != y.inf) return false;
+  }
+  for (size_t i = 0; i < a.cotes.size(); i++) {
+    const Cote& x = a.cotes[i];
+    const Cote& y = b.cotes[i];
+    if (x.id != y.id || x.type != y.type || x.line != y.line || x.ent != y.ent || x.a != y.a || x.b != y.b || x.p != y.p || x.ref != y.ref || x.refV != y.refV || x.chk != y.chk || x.dia != y.dia) return false;
+  }
+  return true;
+}
+
 bool memesValeurs(const Esquisse& a, const Esquisse& b) {
-  if (a.ordre.size() != b.ordre.size() || a.entites.size() != b.entites.size() || a.cotes.size() != b.cotes.size()) return false;
+  if (a.ordre != b.ordre || a.seq != b.seq || a.entites.size() != b.entites.size() || a.contraintes.size() != b.contraintes.size() || a.cotes.size() != b.cotes.size()) return false;
+  if (!memesLiens(a, b)) return false;
   for (const std::string& id : a.ordre) {
     const Pt* p = a.point(id);
     const Pt* q = b.point(id);
     if (!p || !q || p->x != q->x || p->y != q->y) return false;
   }
   for (size_t i = 0; i < a.entites.size(); i++)
-    if (a.entites[i].r != b.entites[i].r || a.entites[i].srcMid != b.entites[i].srcMid) return false;
+    if (a.entites[i].id != b.entites[i].id || a.entites[i].r != b.entites[i].r || a.entites[i].srcMid != b.entites[i].srcMid) return false;
   for (size_t i = 0; i < a.cotes.size(); i++)
-    if (a.cotes[i].value != b.cotes[i].value || a.cotes[i].sgn != b.cotes[i].sgn || a.cotes[i].ccw != b.cotes[i].ccw) return false;
+    if (a.cotes[i].id != b.cotes[i].id || a.cotes[i].type != b.cotes[i].type || a.cotes[i].value != b.cotes[i].value || a.cotes[i].sgn != b.cotes[i].sgn || a.cotes[i].ccw != b.cotes[i].ccw || a.cotes[i].ref != b.cotes[i].ref || a.cotes[i].chk != b.cotes[i].chk || a.cotes[i].dia != b.cotes[i].dia) return false;
   return true;
 }
 
@@ -107,6 +128,7 @@ static void lireEsquisse(const json& js, Document& d, std::map<std::string, int>
   s.id = texte(js, "id");
   s.nom = texte(js, "name");
   s.plan = texte(js, "plane");
+  if (auto x = js.find("seq"); x != js.end() && x->is_number() && x->get<int>() > 0) s.seq = x->get<int>();
   // planeBasis (src/10-scene-3d.js) : axes portés par l'esquisse, sinon les 3 plans d'origine
   Vec3 u, v, n;
   if (vec3(js, "axU", u) && vec3(js, "axV", v) && vec3(js, "axN", n)) {
@@ -201,6 +223,8 @@ static void lireEsquisse(const json& js, Document& d, std::map<std::string, int>
       double sgn = 0;
       if (nb("sgn", sgn) && (sgn == 1 || sgn == -1)) c.sgn = static_cast<int>(sgn);
       c.comp = vrai(jd, "comp");
+      c.chk = vrai(jd, "chk");
+      if (auto x = jd.find("refV"); x != jd.end() && x->is_number()) c.refV = x->get<int>();
       c.ref = vrai(jd, "ref");
       c.dia = vrai(jd, "dia");
       c.nom = texte(jd, "name");

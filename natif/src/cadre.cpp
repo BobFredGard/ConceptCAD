@@ -151,9 +151,9 @@ void Cadre::creerMenus() {
     else vue_->ajuster();
   }, ID_AJUSTER);
   Bind(wxEVT_MENU, [this](wxCommandEvent&) {
-    // Échap pendant une saisie : abandonne la saisie seulement
+    // Échap pendant une saisie ou un tracé : abandonne cela seulement
     if (vueEsquisse_->enSaisie()) vueEsquisse_->annulerSaisie();
-    else quitterEsquisse();
+    else if (!vueEsquisse_->echapDessin()) quitterEsquisse();
   }, ID_QUITTER_ESQUISSE);
   Bind(wxEVT_UPDATE_UI, [this](wxUpdateUIEvent& e) { e.Enable(esquisseOuverte_ >= 0); }, ID_QUITTER_ESQUISSE);
   Bind(wxEVT_UPDATE_UI, [this](wxUpdateUIEvent& e) { e.Enable(!annulations_.empty()); }, ID_ANNULER);
@@ -167,6 +167,7 @@ void Cadre::majTitre() {
 }
 
 bool Cadre::ecrire(const std::wstring& cible) {
+  faireSuivre();
   try {
     try {
       enregistrerProjet(doc_, cible);
@@ -225,12 +226,13 @@ void Cadre::surOuvrir(wxCommandEvent&) {
 bool Cadre::ouvrir(const std::wstring& chemin) {
   try {
     Document d = lireProjet(chemin);
+    dessinModifie_ = false;  // peutAbandonner a déjà posé la question
+    quitterEsquisse();
     doc_ = std::move(d);
   } catch (const std::exception& e) {
     if (!proto_.actif) wxMessageBox(tx(e.what()), L"Ouverture impossible", wxOK | wxICON_ERROR, this);
     return false;
   }
-  quitterEsquisse();
   forme_.Nullify();
   docOuvert_ = true;
   ajusterVue_ = true;
@@ -337,13 +339,14 @@ void Cadre::entrerEsquisse(int i) {
   esquisseOuverte_ = i;
   figee_ = esquisseFigee(doc_, i);
   edition_ = figee_.empty() ? std::make_unique<Edition>(s) : nullptr;
+  brancherDessin();
   vue_->Hide();
   vueEsquisse_->Show();
   centre_->Layout();
   vueEsquisse_->montrer(&s, forme_);
   vueEsquisse_->SetFocus();
   montrerEsquisse(i);
-  wxString t = L"Esquisse « " + tx(s.nom) + (figee_.empty() ? L" ». Double-clic sur une cote pour la changer." : L" » en lecture seule : " + tx(figee_) + L".") + L" Clic droit : déplacer. Molette : zoom. Échap : terminer.";
+  wxString t = L"Esquisse « " + tx(s.nom) + (figee_.empty() ? L" ». Outils en haut pour dessiner. Double-clic sur une cote pour la changer, sur un élément pour le coter. Suppr : effacer." : L" » en lecture seule : " + tx(figee_) + L".") + L" Clic droit : déplacer. Molette : zoom. Échap : outil Sélection, puis terminer.";
   if (vueEsquisse_->nonDessines() > 0) t += wxString::Format(L"  |  ⚠ %d élément(s) pas encore dessiné(s), comme les splines.", vueEsquisse_->nonDessines());
   etat(t);
   // Pour natif/mesures/verifier-cote.ps1 : où se trouve chaque valeur à l'écran
@@ -363,6 +366,10 @@ void Cadre::entrerEsquisse(int i) {
 }
 
 bool Cadre::demandeCote(const Cote& c, wxString& texte) {
+  if (c.ref && dessin_) {
+    if (!dessin_->rendrePilotante(c.id)) return false;
+    majTitre();
+  }
   const std::string raison = figee_.empty() ? coteFigee(c) : figee_;
   if (!raison.empty()) {
     etat(L"Cote non modifiable : " + tx(raison) + L".");
@@ -408,9 +415,44 @@ void Cadre::saisieCote(const std::string& id, const wxString& texte) {
   vueEsquisse_->majPiece(forme_);
 }
 
+// Le dessin vit sur l'édition du moment ; le geste qui va modifier l'esquisse se note d'abord pour l'annulation.
+void Cadre::brancherDessin() {
+  vueEsquisse_->poserDessin(nullptr);
+  dessin_.reset();
+  if (esquisseOuverte_ < 0 || !edition_) return;
+  dessin_ = std::make_unique<Dessin>(doc_.esquisses[esquisseOuverte_], *edition_);
+  dessin_->avantModif = [this] {
+    annulations_.push_back({-1, 0, 0, doc_.esquisses, {}});
+    retablissements_.clear();
+    dessinModifie_ = true;
+  };
+  dessin_->surMessage = [this](const std::string& m) { etat(tx(m)); };
+  vueEsquisse_->surDessinChange = [this] {
+    majTitre();
+    if (esquisseOuverte_ >= 0) montrerEsquisse(esquisseOuverte_);
+  };
+  vueEsquisse_->poserDessin(dessin_.get());
+}
+
+void Cadre::faireSuivre() {
+  if (!dessinModifie_) return;
+  dessinModifie_ = false;
+  if (esquisseOuverte_ < 0) return;
+  wxBusyCursor attente;
+  suivreEsquisses(doc_, esquisseOuverte_);
+  recalculer();
+  vueEsquisse_->majPiece(forme_);
+}
+
 void Cadre::poserEsquisses(const std::vector<Esquisse>& v) {
   doc_.esquisses = v;  // même taille : l'esquisse montrée ne change pas d'adresse
-  if (esquisseOuverte_ >= 0) edition_ = figee_.empty() ? std::make_unique<Edition>(doc_.esquisses[esquisseOuverte_]) : nullptr;
+  dessinModifie_ = false;  // ces esquisses ont déjà suivi, ou seront remises à jour au prochain geste
+  if (esquisseOuverte_ >= 0) {
+    vueEsquisse_->poserDessin(nullptr);
+    dessin_.reset();
+    edition_ = figee_.empty() ? std::make_unique<Edition>(doc_.esquisses[esquisseOuverte_]) : nullptr;
+    brancherDessin();
+  }
   majTitre();
   recalculer();
   if (esquisseOuverte_ >= 0) vueEsquisse_->majPiece(forme_);
@@ -427,6 +469,12 @@ void Cadre::capturerEsquisses(const std::wstring& dossier) {
 
 void Cadre::quitterEsquisse() {
   if (esquisseOuverte_ < 0) return;
+  const int i = esquisseOuverte_;
+  const bool suivre = dessinModifie_;
+  dessinModifie_ = false;
+  if (vueEsquisse_->enSaisie()) vueEsquisse_->annulerSaisie();
+  vueEsquisse_->poserDessin(nullptr);
+  dessin_.reset();
   esquisseOuverte_ = -1;
   edition_.reset();
   vueEsquisse_->montrer(nullptr, TopoDS_Shape());
@@ -435,6 +483,11 @@ void Cadre::quitterEsquisse() {
   centre_->Layout();
   vue_->Refresh();
   etat(tx(doc_.nom));
+  if (suivre) {
+    wxBusyCursor attente;
+    suivreEsquisses(doc_, i);
+    recalculer();
+  }
 }
 
 void Cadre::montrerForme(const TopoDS_Shape& s) {
@@ -475,6 +528,8 @@ double Cadre::recalculer() {
     if (!r.forme.IsNull()) mailler(r.forme, parallele());
   } catch (const Standard_Failure& e) {
     r.messages.push_back(e.what());
+  } catch (const std::exception& e) {
+    r.messages.push_back(e.what());
   }
   const double tCalcul = msDepuis(t0);
   msMaillage_ = tCalcul - msRejeu_;
@@ -491,7 +546,8 @@ double Cadre::recalculer() {
   }
   const Mesures m = mesurer(r.forme);
   etat(wxString::Format(L"%s  |  Volume %.3f mm³  |  %d faces  |  calcul %.0f ms, total %.0f ms%s", tx(doc_.nom), m.volume, m.faces, tCalcul, total, r.messages.empty() ? L"" : L"  |  ⚠ voir message"));
-  if (!r.messages.empty()) {
+  // Pendant le dessin, une esquisse encore ouverte n'est pas une erreur : le message attend la fin de l'esquisse
+  if (!r.messages.empty() && esquisseOuverte_ < 0) {
     wxString t;
     for (const std::string& x : r.messages) t += tx(x) + L"\n";
     wxMessageBox(t, L"Messages du rejeu", wxOK | wxICON_WARNING, this);
@@ -513,9 +569,14 @@ void Cadre::changerCote(int fonction, double valeur, bool memoriser) {
 
 void Cadre::annuler() {
   if (vueEsquisse_->enSaisie()) return vueEsquisse_->annulerSaisie();
+  if (vueEsquisse_->abandonnerTrace()) return;
   if (annulations_.empty()) return;
-  const ModifCote m = annulations_.back();
+  ModifCote m = annulations_.back();
   annulations_.pop_back();
+  if (m.fonction < 0) {
+    faireSuivre();  // l'état à rétablir est complet
+    m.esquissesApres = doc_.esquisses;
+  }
   retablissements_.push_back(m);
   if (m.fonction < 0) poserEsquisses(m.esquissesAvant);
   else changerCote(m.fonction, m.avant, false);

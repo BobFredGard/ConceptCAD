@@ -30,6 +30,8 @@ struct Cote {
   std::string id, type, line, ent, a, b, p, orient, nom;
   double value = 0, ox = 0, oy = 0, w = 0, sl = 0;
   bool aW = false, ref = false, dia = false, formule = false, formuleFausse = false, comp = false;
+  bool chk = false;  // déjà contrôlée (skCheckNewDims)
+  int refV = 0;      // 2 : référence posée automatiquement
   int ccw = -1;  // -1 : absent du fichier
   int sgn = 0;   // côté mémorisé d'un entraxe, 0 : absent
 };
@@ -43,6 +45,7 @@ struct Hote {
 
 struct Esquisse {
   std::string id, nom, plan;
+  int seq = 1;  // prochain numéro d'identifiant
   Vec3 o{0, 0, 0}, u{1, 0, 0}, v{0, 1, 0}, n{0, 0, 1};
   std::vector<std::string> ordre;  // ordre d'enregistrement des points : il décide des fusions de noeuds
   std::unordered_map<std::string, Pt> points;
@@ -61,8 +64,10 @@ struct Esquisse {
   }
 };
 
-// Les seuls nombres d'une esquisse que le logiciel sait changer et enregistrer
+// Les nombres et la structure d'une esquisse : ce que le logiciel sait changer et enregistrer
 bool memesValeurs(const Esquisse& a, const Esquisse& b);
+// La structure seule : éléments, identifiants, liens entre eux ; pas les coordonnées, rayons et valeurs de cotes
+bool memesLiens(const Esquisse& a, const Esquisse& b);
 
 struct Fonction {
   std::string id, type, nom, esquisse, corps, op = "add";

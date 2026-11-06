@@ -487,6 +487,8 @@ TopoDS_Shape formeExtrusion(const Fonction& f, const Esquisse& s, const TopoDS_S
     ajouter(prismeRond(s, C->x, C->y, c->r, sp));
   }
   if (forme.IsNull()) throw std::runtime_error("solide vide");
+  // Des traits qui se croisent peuvent faire s'effondrer la fusion : ne jamais montrer ce qui reste comme un solide
+  if (std::abs(volumeDe(forme)) < 1e-6) throw std::runtime_error("solide vide : les traits de l'esquisse se croisent peut-être");
   return forme;
 }
 

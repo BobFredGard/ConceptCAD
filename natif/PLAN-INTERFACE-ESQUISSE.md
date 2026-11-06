@@ -83,6 +83,7 @@ Non fait : le bleu « encore libre » (calcul de rang non traduit), les esquisse
 ### 5. Dessiner et éditer (6 à 10 semaines)
 Lignes, arcs, cercles, rectangles, polygones, glisser à la souris, accroches, ajustement, cotes posées à la main, annulation.
 **Fred essaie** : refaire une vraie esquisse, et dire ce qui gêne par rapport à ce qu'il a l'habitude de faire.
+**Première tranche le 06/11/2026, à essayer** (preuves dans [README.md](README.md)) : lignes, rectangles, cercles, arcs, glisser, accroches, contraintes automatiques, effacer, cote par double-clic, annulation, enregistrement sans rien perdre. Reste : polygone, oblong, ajuster, décaler, congé d'esquisse, outil Cote, contraintes au clavier, longueur tapée, fenêtre de sélection, retrait d'une contrainte, déplacement des étiquettes, accroche sur les arêtes du solide, nouvelle esquisse ou pièce. À traiter : le bleu « encore libre », et les 3 écarts de solide sur dessins abîmés (suivi de l'Esquisse 2 quand sa base disparaît, traits croisés).
 
 ### 6. Le reste de l'esquisse (4 à 8 semaines)
 Splines, projections et intersections sur le noyau natif, esquisses sur plan de construction, panneau de contrôle.

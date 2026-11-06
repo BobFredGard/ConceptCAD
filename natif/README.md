@@ -25,7 +25,9 @@ Une profondeur n'est modifiable que si le solide se calcule et si aucune esquiss
 
 Une cote d'esquisse n'est modifiable que si le solide de la pièce se calcule : **aujourd'hui, seul le Drapeau parmi les 20 pièces d'exemple**. Sur les autres, l'esquisse reste en lecture seule. Le sont aussi les cotes par formule, les cotes nommées et les cotes de référence. Une esquisse qui dépend d'une arête nommée, d'une intersection, d'une autre esquisse, d'un perçage ou d'un axe externe empêche aussi la modification, car le natif ne saurait pas la faire suivre.
 
-Il ne sait pas : dessiner, déplacer un point à la souris, ajouter une contrainte ou une cote.
+Dessiner dans une esquisse modifiable : outils Sélection, Ligne, Rectangle, Cercle et Arc en haut de la vue, case « Grille 1 mm ». Accroches sur les points et les lignes, contraintes posées toutes seules avec guide (horizontal, vertical, perpendiculaire, parallèle, tangent). Glisser un point ou un élément, Suppr pour effacer, double-clic sur un élément pour le coter, clic droit pour finir un tracé, Échap pour revenir à Sélection puis sortir. Ctrl+Z, Ctrl+Y et Ctrl+S suivent. À l'enregistrement, ce qui n'a pas changé garde son texte d'origine.
+
+Il ne sait pas encore : polygone, oblong, ajuster, décaler, congé d'esquisse, outil Cote entre deux éléments, contraintes au clavier (F1 à F12), longueur tapée pendant le tracé, fenêtre de sélection, retirer une contrainte, déplacer l'étiquette d'une cote, s'accrocher aux arêtes du solide, créer une esquisse ou une pièce. Une cote de référence nommée ou par formule reste figée.
 
 L'annulation du natif revient exactement à l'état d'avant, alors que celle du navigateur résout à nouveau : le résultat peut y différer de très peu.
 
@@ -171,8 +173,17 @@ Changer une cote, le solide suivant, sur le Drapeau (`mesures/tester-cotes-navig
 
 `mesures/verifier-cote.ps1`, vrai clavier et vraie souris sur une copie du Drapeau : Échap dans la saisie, « abc » refusé, cote à 100 (62 663,291 mm³), ● au titre, Ctrl+Z (retour à 53 007,291, sans ●), Ctrl+Y, Ctrl+S avec `.bak`, fermeture sans question. Mémoire 41 Mo au repos, 51 Mo après. `tester-enregistrement.cjs` (176/176) et sa comparaison au navigateur (0 écart sur ce que le logiciel laisse modifier) repassent.
 
+Dessin (`BancDessin`, références `mesures/dessin-reference.cjs`) : 383 sessions de gestes au hasard sur les 125 esquisses, les mêmes gestes rejoués sans fenêtre des deux côtés.
+- **Mêmes sin, cos et atan2 des deux côtés** (`BancDessinCommunes`) : 382 sessions identiques jusqu'au bout, 4 577 états sur 4 578 à moins de 10⁻⁹ mm, 0 écart de structure. Reste Griffe, sk_10, graine 6203, pas 71 : 0,006 mm après 70 gestes, sur une esquisse aux points distants de 0,006 mm. Cause non établie.
+- **Maths normales** (`BancDessin`) : 330 sessions identiques sur 383. 53 s'arrêtent sur un écart (7 de structure, 46 au-delà de 0,001 mm, jusqu'à 2 550 mm une fois l'esquisse partie sur une autre solution). Ces écarts disparaissent tous sauf un avec les maths communes ; ils viennent donc de l'arrondi, mais ce résultat ne dit pas lequel des deux côtés a « raison », et le navigateur n'a pas été comparé à lui-même sur le dessin.
+- **Écriture** : 374 sessions en maths communes et 325 en maths normales écrites comme le navigateur, tout le reste du fichier intact, aucun refus. Corrigés grâce à ce banc : une pièce sans fonction ne s'enregistrait pas ; une cote d'écart devenue angle était refusée.
+- **Rouvert dans le navigateur** (`mesures/tester-dessin-navigateur.cjs`), 12 sessions au hasard sur le Drapeau : 9 identiques, 3 écarts, tous sur des dessins très abîmés. Graine 3 : base effacée, l'Esquisse 2 (sur face) suit autrement, la découpe du navigateur passe, celle du natif non (164 897 contre 412 241 mm³). Graine 5 : traits croisés, la fusion du natif s'effondre, il annonce désormais un solide vide là où le navigateur donne 120 469 mm³. Graine 106 : même esquisse, traits croisés, 68 309 contre 68 364 mm³ (0,08 %). Non résolus.
+- `mesures/verifier-dessin.ps1`, messages de souris et de clavier envoyés à la fenêtre sur une copie du Drapeau, sans prendre la main : rectangle, lignes, clic droit, Échap, cercle, arc, glisser, Suppr, Ctrl+Z, Ctrl+Y, double-clic pour coter, Ctrl+S avec `.bak`, fermeture sans question. Sur cet essai, navigateur et natif rouvrent le même volume : 66 325,875 mm³.
+- `verifier-cote.ps1`, `verifier-esquisse.ps1` (vraie souris), `tester-cotes-navigateur.cjs` (36 cas : mêmes 33 identiques et 3 écarts qu'avant), `tester-enregistrement.cjs` (176/176) et `BancSolveur` repassent.
+
 ## Pas vérifié
 
+- Le dessin à la vraie main, par une personne : les essais passent par des messages envoyés à la fenêtre. Le dessin n'est possible que sur les pièces calculables, donc le Drapeau parmi les exemples ; les autres sont comparées sans fenêtre.
 - Le solveur est comparé sur les 125 esquisses, mais la modification avec solide qui suit seulement sur les 2 esquisses du Drapeau : les autres pièces ne se calculent pas encore.
 - Les 3 pièces où changer une profondeur demande de recalculer une esquisse posée de biais (Barquette, Cache Piles, Support Pédale) : le refus reste en place, car leur solide ne se calcule pas.
 - Une esquisse qui suit une arête nommée, et pas seulement sa position : refusée, non traduite.

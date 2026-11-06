@@ -11,6 +11,7 @@
 #include <vector>
 
 #include "coter.h"
+#include "dessin.h"
 #include "esquisse2d.h"
 #include "rejeu.h"
 #include "vue3d.h"
@@ -46,11 +47,13 @@ class Cadre : public wxFrame {
   void montrerFonction(int i);
   void montrerEsquisse(int i);
   void montrerForme(const TopoDS_Shape& s);
+public:
   void entrerEsquisse(int i);
- public:
   void capturerEsquisses(const std::wstring& dossier);
  private:
   void quitterEsquisse();
+  void brancherDessin();
+  void faireSuivre();  // ce qui a été dessiné : les esquisses qui s'appuient sur le solide suivent, puis le solide
   double recalculer();
   void changerCote(int fonction, double valeur, bool memoriser);
   bool demandeCote(const Cote& c, wxString& texte);
@@ -78,6 +81,8 @@ class Cadre : public wxFrame {
   VueEsquisse* vueEsquisse_ = nullptr;
   int esquisseOuverte_ = -1;
   std::unique_ptr<Edition> edition_;
+  std::unique_ptr<Dessin> dessin_;  // déclaré après edition_ : il s'en sert et disparaît avant lui
+  bool dessinModifie_ = false;      // des esquisses suivantes et le solide restent à mettre à jour
   std::string figee_;  // pourquoi l'esquisse ouverte ne peut pas changer
   TopoDS_Shape forme_;  // le solide affiché, pour le fantôme des esquisses
   wxTimer minuterie_;

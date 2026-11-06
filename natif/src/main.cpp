@@ -8,8 +8,13 @@
 
 #include <shellapi.h>
 
+#include <fstream>
+#include <nlohmann/json.hpp>
+#include <sstream>
+
 #include "cadre.h"
 #include "coter.h"
+#include "dessin.h"
 #include "enregistrer.h"
 
 namespace {
@@ -125,13 +130,63 @@ int modeCoter(const std::vector<std::wstring>& a) {
   return 1;
 }
 
+// --dessiner <fichier> <sortie> <esquisse> <gestes.json> : rejoue des gestes comme le ferait la fenêtre, puis enregistre.
+int modeDessiner(const std::vector<std::wstring>& a) {
+  try {
+    Document d = lireProjet(a[1]);
+    const std::string id = utf8(a[3]);
+    std::ifstream in(a[4].c_str(), std::ios::binary);
+    std::stringstream ss;
+    ss << in.rdbuf();
+    const nlohmann::json script = nlohmann::json::parse(ss.str());
+    for (size_t i = 0; i < d.esquisses.size(); i++) {
+      if (d.esquisses[i].id != id) continue;
+      const std::string raison = esquisseFigee(d, i);
+      if (!raison.empty()) {
+        fprintf(stderr, "%s\n", raison.c_str());
+        return 5;
+      }
+      Edition ed(d.esquisses[i]);
+      Dessin D(d.esquisses[i], ed);
+      D.vue(script.value("s", 1.0));
+      D.premiere();
+      for (const auto& st : script["pas"]) {
+        const std::string g = st["a"];
+        const double x = st.value("x", 0.0), y = st.value("y", 0.0);
+        if (g == "outil") {
+          const std::string o = st["o"];
+          D.choisirOutil(o == "line" ? Dessin::LIGNE : o == "rect" ? Dessin::RECTANGLE : o == "circle" ? Dessin::CERCLE : o == "arc" ? Dessin::ARC : Dessin::SELECTION);
+        } else if (g == "bas") {
+          D.enfonce(x, y, st.value("c", false));
+        } else if (g == "bouge") {
+          D.bouge(x, y);
+        } else if (g == "haut") {
+          D.relache(x, y);
+        } else if (g == "dbl") {
+          D.doubleClic(x, y);
+        } else if (g == "echap") {
+          D.echap();
+        } else if (g == "suppr") {
+          D.supprimer();
+        }
+      }
+      suivreEsquisses(d, i);
+      enregistrerProjet(d, a[2]);
+      return 0;
+    }
+  } catch (const std::exception& e) {
+    fprintf(stderr, "%s\n", e.what());
+  }
+  return 1;
+}
+
 class Appli : public wxApp {
  public:
   bool OnInit() override {
     SetAppearance(Appearance::Dark);  // comme le thème par défaut de la version navigateur
     auto* cadre = new Cadre;
     // Les captures ne doivent pas prendre la main sur ce que fait la personne devant le PC.
-    if (!gArgs.empty() && gArgs[0] == L"--captures") cadre->ShowWithoutActivating();
+    if ((!gArgs.empty() && gArgs[0] == L"--captures") || _wgetenv(L"CONCEPTCAD_SANS_ACTIVER")) cadre->ShowWithoutActivating();
     else cadre->Show();
     cadre->Update();
     // --protocole <fichier> <journal> [nb] : même suite de modifications que la version navigateur
@@ -147,6 +202,8 @@ class Appli : public wxApp {
       cadre->Close(true);
     } else if (!gArgs.empty()) {
       cadre->ouvrir(gArgs[0]);
+      // Pour natif/mesures/verifier-dessin.ps1 : un double-clic dans l'arbre ne passe pas par des messages envoyés de l'extérieur
+      if (const wchar_t* rang = _wgetenv(L"CONCEPTCAD_OUVRIR_ESQUISSE")) cadre->entrerEsquisse(_wtoi(rang));
     }
     return true;
   }
@@ -168,6 +225,7 @@ int WINAPI wWinMain(HINSTANCE inst, HINSTANCE, PWSTR, int) {
   if (gArgs.size() >= 3 && gArgs[0] == L"--reenregistrer") return modeEnregistrer(gArgs);
   if (gArgs.size() >= 2 && gArgs[0] == L"--conflit") return modeEnregistrer(gArgs);
   if (gArgs.size() >= 6 && gArgs[0] == L"--coter") return modeCoter(gArgs);
+  if (gArgs.size() >= 5 && gArgs[0] == L"--dessiner") return modeDessiner(gArgs);
   // Processeurs à deux sortes de cœurs : un cœur économe calcule la même pièce 1,7 fois moins vite (345 → 585 ms mesurés).
   // On demande à Windows de ne pas traiter ce programme comme une tâche de fond, même quand sa fenêtre n'est pas devant.
   PROCESS_POWER_THROTTLING_STATE qos{PROCESS_POWER_THROTTLING_CURRENT_VERSION, PROCESS_POWER_THROTTLING_EXECUTION_SPEED, 0};

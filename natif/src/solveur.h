@@ -19,7 +19,17 @@ class Solveur {
   // Une ancienne cote d'entraxe a été changée en angle à l'ouverture : le fichier ne saurait pas encore le dire
   bool coteConvertie() const { return coteConvertie_; }
 
-  void resoudre();  // solveSketch
+  // Ce que l'ouverture a ajouté (identifiants provisoires « +n ») ou retiré parmi les contraintes lues (migrateSketch)
+  std::vector<Contrainte> contraintesNouvelles(std::vector<std::string>& retirees, const std::vector<Contrainte>& lues) const;
+  // skGapToAngle en cours d'édition : rend true si une cote a changé de nature
+  bool convertirEntraxes();
+
+  // Comme ci-dessus, en reprenant la mémoire du solveur précédent de la même esquisse, dont la structure a changé :
+  // le navigateur la garde sur chaque objet, et un objet nouveau n'en a pas.
+  Solveur(const Esquisse& s, const Solveur& memoire);
+
+  // solveSketch. Moins de 100 pas : le glisser, sans petits pas de cote ni dernier bon état.
+  void resoudre(int iters = 120, const std::vector<int>* ancre = nullptr);
   double residu();  // skResid : le plus grand écart, en mm
   // Écarts au-delà du seuil d'alerte, du plus grand au plus petit (3 au plus)
   std::string pireEcart();
@@ -48,6 +58,24 @@ class Solveur {
   // Ce qui peut changer dans le fichier : à recopier dans le modèle affiché
   void recopierDans(Esquisse& s) const;
 
+  // Glisser (skDragWalkTo). vueS : l'échelle de la vue, en pixels par mm, car le pas ne descend jamais sous 2 pixels.
+  void glisserOublier() { marche_.actif = false; }
+  void glisserPoint(const std::string& id, double x, double y, double vueS);
+  // Un groupe, décalé depuis sa position d'origine. En bloc : simple translation ; sinon le solveur ajuste le reste.
+  void glisserGroupe(const std::vector<std::string>& ids, const std::vector<Pt>& depart, const std::vector<std::string>& ancre, double dx, double dy, bool bloc, double vueS);
+  bool pointFixe(const std::string& id) const;
+  bool lirePoint(const std::string& id, double& x, double& y) const;
+  std::vector<std::string> centresSymetrie() const;  // skSymCenters
+
+  // Analyse de rang (skJacobian, skRref, skDofInfo)
+  int degresLibres();
+  bool coteRedondante(const std::string& id);  // skCheckNewDims : retirer cette cote ne change rien au rang
+  void poserReference(const std::string& id);
+  // skDimCanDrive et skDimMeasure : la cote de référence ajouterait-elle du rang en pilotant ? valeur : ce qu'elle mesure
+  bool pilotanteSiPossible(const std::string& id, double& valeur);
+  // Les points encore libres, pour le bleu du navigateur
+  std::vector<std::string> pointsLibres();
+
   // Pour le banc
   const std::vector<std::string>& idsPoints() const { return idP_; }
   void etat(std::vector<double>& pts, std::vector<double>& rayons) const;
@@ -57,6 +85,7 @@ class Solveur {
   void reprendrePoints(const Esquisse& s);
 
  private:
+  Solveur(const Esquisse& s, bool ouverture);
   void refuser(const Saisie& s);  // restaurer, comme skRevertTo
   struct P2 { double x = 0, y = 0; };
   enum TypeE { LIGNE, ARC, CERCLE, CPOINT, AUTRE };
@@ -159,9 +188,9 @@ class Solveur {
   void tangentExtend();
   void tangentSlide();
   void solveFinal();
-  void solve1(int iters);
-  void bonReprise();
-  void bonNote();
+  void solve1(int iters, const std::vector<int>* ancre = nullptr);
+  void bonReprise(const std::vector<int>* ancre);
+  void bonNote(int iters = 120);
   void ptsNote();
   void tanSideRec();
 
@@ -175,6 +204,27 @@ class Solveur {
   std::vector<C> C_;
   std::vector<D> D_;
   std::vector<char> fix_;
+  std::vector<char> fixA_;  // avec l'ancre du glisser en cours
+  bool pourRang_ = false;
+  std::vector<char> degen_;
+  struct Rang {
+    int rang = 0, n = 0;
+    std::vector<char> determine;  // par inconnue
+    Build B;
+  };
+  Rang analyseRang(int sauterCote, bool detail);
+  struct Marche {
+    bool actif = false;
+    Instantane last;
+    double r = 0, step = 0;
+    P2 at;
+    std::vector<std::pair<bool, P2>> vec;
+  } marche_;
+  std::vector<std::pair<bool, P2>> vecteursBranche() const;  // skBranchVecs
+  double pasGlisser(const std::vector<int>& pids, double vueS) const;  // skDragStep
+  template <class F>
+  void marcher(P2 de, P2 vers, F placer, const std::vector<int>& ancre, const std::vector<int>& pids, double vueS);  // skDragWalkTo
+  std::vector<int> tenus(std::vector<int> ancre) const;  // skDragHold
   int suivant_ = 0;
 
   // Mémoire entre résolutions (WeakMap du navigateur, jamais dans le fichier)

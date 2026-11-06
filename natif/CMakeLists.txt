@@ -9,7 +9,7 @@ set(OCCT "${TIERS}/occt-bin/opencascade-8.0.1-vc14-64")
 set(TROIS "${TIERS}/occt-bin/3rdparty-vc14-64")
 set(WX "${TIERS}/wx")
 
-add_executable(ConceptCADNatif WIN32 src/main.cpp src/cadre.cpp src/vue3d.cpp src/esquisse2d.cpp src/projet.cpp src/enregistrer.cpp src/contours.cpp src/rejeu.cpp src/solveur.cpp src/coter.cpp)
+add_executable(ConceptCADNatif WIN32 src/main.cpp src/cadre.cpp src/vue3d.cpp src/esquisse2d.cpp src/projet.cpp src/enregistrer.cpp src/contours.cpp src/rejeu.cpp src/solveur.cpp src/coter.cpp src/dessin.cpp)
 target_compile_definitions(ConceptCADNatif PRIVATE UNICODE _UNICODE _CRT_SECURE_NO_WARNINGS NOMINMAX WXUSINGDLL __WXMSW__ wxNO_GL_LIB)
 target_compile_options(ConceptCADNatif PRIVATE /utf-8 /MP /EHa /W3)
 target_include_directories(ConceptCADNatif PRIVATE "${WX}/lib/vc14x_x64_dll/mswu" "${WX}/include" "${OCCT}/inc" "${TIERS}" "${TROIS}/zlib-1.2.8-vc14-64/include")
@@ -21,6 +21,18 @@ target_link_libraries(ConceptCADNatif PRIVATE
 # Contrôles Windows modernes (nécessaires à wxWidgets)
 target_link_options(ConceptCADNatif PRIVATE "/MANIFESTDEPENDENCY:type='win32' name='Microsoft.Windows.Common-Controls' version='6.0.0.0' processorArchitecture='*' publicKeyToken='6595b64144ccf1df' language='*'")
 set_target_properties(ConceptCADNatif PROPERTIES RUNTIME_OUTPUT_DIRECTORY_RELEASE "${CMAKE_CURRENT_SOURCE_DIR}/sortie")
+
+# Banc du dessin : les mêmes gestes que le navigateur, l'esquisse comparée après chacun
+foreach(BANC BancDessin BancDessinCommunes)
+  add_executable(${BANC} src/banc_dessin.cpp src/dessin.cpp src/solveur.cpp src/projet.cpp src/enregistrer.cpp)
+  target_compile_definitions(${BANC} PRIVATE UNICODE _UNICODE _CRT_SECURE_NO_WARNINGS NOMINMAX SANS_NOYAU)
+  target_compile_options(${BANC} PRIVATE /utf-8 /MP /EHa /W3)
+  target_include_directories(${BANC} PRIVATE "${TIERS}" "${TROIS}/zlib-1.2.8-vc14-64/include")
+  target_link_directories(${BANC} PRIVATE "${TROIS}/zlib-1.2.8-vc14-64/lib")
+  target_link_libraries(${BANC} PRIVATE zlib)
+  set_target_properties(${BANC} PROPERTIES RUNTIME_OUTPUT_DIRECTORY_RELEASE "${CMAKE_CURRENT_SOURCE_DIR}/sortie")
+endforeach()
+target_compile_definitions(BancDessinCommunes PRIVATE SOLVEUR_MATHS_COMMUNES)
 
 # Banc du solveur d'esquisse : sans fenêtre ni noyau, comparé aux résultats du navigateur
 add_executable(BancSolveur src/banc_solveur.cpp src/solveur.cpp src/projet.cpp)

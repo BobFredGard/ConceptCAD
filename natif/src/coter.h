@@ -18,4 +18,6 @@ struct Edition {
 };
 
 // Rend false si le solveur refuse la valeur : rien n'a changé, raison dit pourquoi.
+// Les esquisses suivantes qui s'appuient sur le solide suivent l'esquisse i
+void suivreEsquisses(Document& d, size_t i);
 bool saisirCote(Document& d, size_t i, Edition& ed, const std::string& idCote, double valeur, std::string& raison);

@@ -1,4 +1,4 @@
-#include "maths_communes.h"
+#include "maths_js.h"
 #include "solveur.h"
 
 #include <algorithm>
@@ -13,44 +13,6 @@ namespace {
 constexpr double SK_GEO_W = 300, SK_SLIDE_W = 0.01, SK_OK_RES = 0.05, PI = 3.141592653589793;
 constexpr double INFINI = std::numeric_limits<double>::infinity();
 
-// Même calcul que Math.hypot du moteur JavaScript, au dernier chiffre près : la somme de Kahan et l'échelle
-// y sont propres, std::hypot donne un arrondi différent.
-// Le banc peut remplacer ces trois fonctions par les mêmes des deux côtés (maths_communes.h)
-#ifdef SOLVEUR_MATHS_COMMUNES
-inline double m_atan2(double y, double x) { return communes::atan2_(y, x); }
-inline double m_sin(double x) { return communes::sin_(x); }
-inline double m_cos(double x) { return communes::cos_(x); }
-#else
-inline double m_atan2(double y, double x) { return std::atan2(y, x); }
-inline double m_sin(double x) { return std::sin(x); }
-inline double m_cos(double x) { return std::cos(x); }
-#endif
-inline double hyp(double a, double b) {
-  a = std::abs(a);
-  b = std::abs(b);
-  if (std::isnan(a) || std::isnan(b)) return std::numeric_limits<double>::quiet_NaN();
-  const double m = a > b ? a : b;
-  if (m == INFINI) return INFINI;
-  if (m == 0) return 0;
-  double somme = 0, comp = 0;
-  double n = a / m, s = n * n - comp, pre = somme + s;
-  comp = (pre - somme) - s;
-  somme = pre;
-  n = b / m;
-  s = n * n - comp;
-  pre = somme + s;
-  somme = pre;
-  return std::sqrt(somme) * m;
-}
-// Math.max et Math.min rendent NaN dès qu'un argument l'est
-inline double jsmax(double a, double b) {
-  if (std::isnan(a) || std::isnan(b)) return std::numeric_limits<double>::quiet_NaN();
-  return a > b ? a : b;
-}
-inline double jsmin(double a, double b) {
-  if (std::isnan(a) || std::isnan(b)) return std::numeric_limits<double>::quiet_NaN();
-  return a < b ? a : b;
-}
 template <class Q>
 inline void rotP(Q* q, double Cx, double Cy, double a) {
   const double dx = q->x - Cx, dy = q->y - Cy, c = m_cos(a), s = m_sin(a);
@@ -91,7 +53,9 @@ int Solveur::indexEntite(const std::string& s) const {
   return -1;
 }
 
-Solveur::Solveur(const Esquisse& s) {
+Solveur::Solveur(const Esquisse& s) : Solveur(s, true) {}
+
+Solveur::Solveur(const Esquisse& s, bool ouverture) {
   for (const std::string& k : s.ordre) {
     idP_.push_back(k);
     const Pt& p = s.points.at(k);
@@ -165,13 +129,17 @@ Solveur::Solveur(const Esquisse& s) {
   }
 
   // Dans l'ordre de l'application : chargement (migrateSketch, réparation, valeurs de départ), puis ouverture
-  skDimSides();
-  skProjFixRepair();
-  skFixSurProjRepair();
+  if (ouverture) {
+    skDimSides();
+    skProjFixRepair();
+    skFixSurProjRepair();
+  }
   calculerStructure();
   noterValeurs();
-  skGapToAngle();
-  symetriesSurDroites();
+  if (ouverture) {
+    skGapToAngle();
+    symetriesSurDroites();
+  }
   calculerStructure();
 }
 
@@ -216,6 +184,7 @@ void Solveur::calculerStructure() {
       for (int q : pidsEntite(e))
         if (q >= 0) fix_[q] = 1;
   if (origine_ >= 0) fix_[origine_] = 1;
+  fixA_ = fix_;
 
   // rLocked
   for (size_t i = 0; i < E_.size(); i++) {
@@ -537,6 +506,7 @@ bool Solveur::offsetVal(int ia, int ib, int sgn, double& v) {
     const P2* A2 = pt(A->p2);
     const P2* B1 = pt(B->p1);
     if (!A1 || !A2 || !B1) return false;
+    if (pourRang_ && degen_[ia]) return false;
     const double dx = A2->x - A1->x, dy = A2->y - A1->y, L = hyp(dx, dy);
     if (!(L > 1e-9)) return false;
     v = s * ((B1->x - A1->x) * (-dy / L) + (B1->y - A1->y) * (dx / L));
@@ -807,7 +777,7 @@ void Solveur::scaleLine(E& l, double target) {
   const double dx = B->x - A->x, dy = B->y - A->y, len = hyp(dx, dy);
   if (!(len > 1e-6)) return;
   const double k = target / len;
-  const bool aF = fix_[l.p1], bF = fix_[l.p2];
+  const bool aF = fixA_[l.p1], bF = fixA_[l.p2];
   if (aF && !bF) {
     B->x = A->x + dx * k;
     B->y = A->y + dy * k;
@@ -899,7 +869,7 @@ void Solveur::scaleLineDist(E& l, double target) {
   const double dx = B->x - A->x, dy = B->y - A->y, len = hyp(dx, dy);
   if (!(len > 1e-6)) return;
   const double k = target / len, ux = dx / len, uy = dy / len;
-  const bool aF = fix_[l.p1], bF = fix_[l.p2];
+  const bool aF = fixA_[l.p1], bF = fixA_[l.p2];
   double rx, ry;
   if (aF && !bF) {
     rx = A->x;
@@ -913,7 +883,7 @@ void Solveur::scaleLineDist(E& l, double target) {
   }
   const std::vector<char> pc = composante(l);
   for (size_t q = 0; q < P_.size(); q++) {
-    if (!pc[q] || fix_[q]) continue;
+    if (!pc[q] || fixA_[q]) continue;
     P2& Q = P_[q];
     const double t = (Q.x - rx) * ux + (Q.y - ry) * uy;
     Q.x += ux * t * (k - 1);
@@ -928,7 +898,7 @@ void Solveur::scaleAxisPts(int pa, int pb, double val, int axis) {
   const double av = axis ? A->y : A->x, bv = axis ? B->y : B->x, dd = bv - av;
   if (!(std::abs(dd) > 1e-9)) return;
   const double k = jsmax(val, 0) / std::abs(dd);
-  const bool aF = fix_[pa], bF = fix_[pb];
+  const bool aF = fixA_[pa], bF = fixA_[pb];
   if (aF && !bF) {
     if (axis) B->y = av + dd * k;
     else B->x = av + dd * k;
@@ -948,7 +918,7 @@ void Solveur::scaleAxisPts(int pa, int pb, double val, int axis) {
 }
 
 void Solveur::relax(int iters) {
-  const auto fx = [&](int q) { return q >= 0 && fix_[q]; };
+  const auto fx = [&](int q) { return q >= 0 && fixA_[q]; };
   for (int it = 0; it < iters; it++) {
     for (D& d : D_) {
       if (d.ref) continue;
@@ -1571,7 +1541,7 @@ void Solveur::relax(int iters) {
 Solveur::Build Solveur::sklsBuild() {
   Build B;
   for (size_t q = 0; q < P_.size(); q++)
-    if (!fix_[q]) B.pts.push_back(static_cast<int>(q));
+    if (!fixA_[q]) B.pts.push_back(static_cast<int>(q));
   for (size_t i = 0; i < E_.size(); i++)
     if ((E_[i].t == CERCLE || E_[i].t == ARC) && !E_[i].verrouille) {
       B.rad.push_back(static_cast<int>(i));
@@ -1605,6 +1575,7 @@ void Solveur::collect(std::vector<double>& out, const Build& B) {
     const P2* A = pt(l.p1);
     const P2* Q = pt(l.p2);
     if (!A || !Q) return false;
+    if (pourRang_ && degen_[&l - E_.data()]) return false;
     const double L0 = hyp(Q->x - A->x, Q->y - A->y), L = L0 != 0 ? L0 : 1e-9;
     v = {(Q->x - A->x) / L, (Q->y - A->y) / L, L};
     return true;
@@ -1797,12 +1768,18 @@ void Solveur::collect(std::vector<double>& out, const Build& B) {
           const P2* A = pt(L->p1);
           const P2* W = pt(L->p2);
           const P2* CC = pt(X->pc);
-          if (A && W && CC) {
+          if (A && W && CC && !(pourRang_ && degen_[c.line])) {
             const double dx = W->x - A->x, dy = W->y - A->y, l0 = hyp(dx, dy), len = l0 != 0 ? l0 : 1e-9;
             const double ux = dx / len, uy = dy / len;
             const double d = (CC->x - A->x) * (-uy) + (CC->y - A->y) * ux;
             if (c.cote) push(d - c.cote * X->r);
             else push((d * d - X->r * X->r) / jsmax(1e-6, std::abs(d) + std::abs(X->r)));
+            if (pourRang_ && X->t == ARC)
+              for (int pe : {X->pa, X->pb})
+                if (pe >= 0 && (pe == L->p1 || pe == L->p2)) {
+                  const P2& Q = P_[pe];
+                  push((CC->x - Q.x) * ux + (CC->y - Q.y) * uy);
+                }
           }
         }
         break;
@@ -1886,7 +1863,7 @@ void Solveur::collect(std::vector<double>& out, const Build& B) {
     if (W && !(fix_[e.pb] && rigid)) push(hyp(W->x - CC->x, W->y - CC->y) - e.r);
   }
   for (size_t gi = g0; gi < out.size(); gi++) out[gi] *= SK_GEO_W;
-  for (size_t j = 0; j < B.rad.size(); j++) {
+  for (size_t j = 0; j < B.rad.size() && j < B.r0.size(); j++) {
     const E& e = E_[B.rad[j]];
     if (e.conduit) continue;
     push((e.r - B.r0[j]) * 1.0);
@@ -2137,10 +2114,12 @@ Solveur::Instantane Solveur::snap() const {
   for (const E& e : E_) s.R.push_back(e.r);
   return s;
 }
+// Une valeur inconnue de l'instantané (point ou rayon ajouté depuis : NaN) garde sa valeur du moment, comme skRestoreCoords
 void Solveur::restaure(const Instantane& s) {
-  P_ = s.P;
+  for (size_t q = 0; q < P_.size(); q++)
+    if (!std::isnan(s.P[q].x)) P_[q] = s.P[q];
   for (size_t i = 0; i < E_.size(); i++)
-    if (E_[i].t == CERCLE || E_[i].t == ARC) E_[i].r = s.R[i];
+    if ((E_[i].t == CERCLE || E_[i].t == ARC) && !std::isnan(s.R[i])) E_[i].r = s.R[i];
 }
 
 void Solveur::tangentExtend() {
@@ -2156,11 +2135,11 @@ void Solveur::tangentExtend() {
     const double dx = B->x - A->x, dy = B->y - A->y, l0 = hyp(dx, dy), len = l0 != 0 ? l0 : 1e-9, ux = dx / len, uy = dy / len;
     if (c.surCote) continue;
     const double t = ((CC->x - A->x) * ux + (CC->y - A->y) * uy) / len;
-    if (t < 0 && !fix_[L->p1] && !c.partage1) {
+    if (t < 0 && !fixA_[L->p1] && !c.partage1) {
       const double d = -t * len + jsmax(0.5, len * 1e-3);
       A->x -= ux * d;
       A->y -= uy * d;
-    } else if (t > 1 && !fix_[L->p2] && !c.partage2) {
+    } else if (t > 1 && !fixA_[L->p2] && !c.partage2) {
       const double d = (t - 1) * len + jsmax(0.5, len * 1e-3);
       B->x += ux * d;
       B->y += uy * d;
@@ -2178,7 +2157,7 @@ void Solveur::tangentSlide() {
     P2* B = pt(L->p2);
     P2* CC = pt(X->pc);
     if (!A || !B || !CC) continue;
-    if (fix_[X->pc]) continue;
+    if (fixA_[X->pc]) continue;
     const double dx = B->x - A->x, dy = B->y - A->y, l0 = hyp(dx, dy), len = l0 != 0 ? l0 : 1e-9, ux = dx / len, uy = dy / len;
     const double t = ((CC->x - A->x) * ux + (CC->y - A->y) * uy) / len;
     if (t >= -1e-4 && t <= 1 + 1e-4) continue;
@@ -2216,7 +2195,10 @@ void Solveur::solveFinal() {
   restaure(best);
 }
 
-void Solveur::solve1(int iters) {
+void Solveur::solve1(int iters, const std::vector<int>* ancre) {
+  if (ancre)
+    for (int q : *ancre)
+      if (q >= 0) fixA_[q] = 1;
   if (origine_ >= 0 && (P_[origine_].x != 0 || P_[origine_].y != 0)) P_[origine_] = {0, 0};
   skDimSides();
   const Instantane base = snap();
@@ -2279,6 +2261,18 @@ void Solveur::solve1(int iters) {
   } else {
     solveFinal();
   }
+  fixA_ = fix_;
+  // Pendant un glisser, le point tenu peut rivaliser avec une contrainte : on réessaie sans lui,
+  // et ce second essai n'est gardé que s'il fait vraiment mieux
+  if (ancre && !ancre->empty()) {
+    const double rA = audit().score;
+    if (rA > 1e-4) {
+      const Instantane snapA = snap();
+      resoudre(iters);
+      const double rB = audit().score;
+      if (!(rB < rA - 1e-9)) restaure(snapA);
+    }
+  }
   if (origine_ >= 0 && (P_[origine_].x != 0 || P_[origine_].y != 0)) P_[origine_] = {0, 0};
   tanSideRec();
 }
@@ -2305,7 +2299,11 @@ void Solveur::ptsNote() {
   aPts_ = true;
 }
 
-void Solveur::bonNote() {
+void Solveur::bonNote(int iters) {
+  if (iters < 100) {
+    aBon_ = false;
+    return;
+  }
   const double r = residu();
   if (r <= 1e-3) {
     bonVals_.clear();
@@ -2319,9 +2317,11 @@ void Solveur::bonNote() {
   if (aBon_) bonMauvais_ = true;
 }
 
-void Solveur::bonReprise() {
+void Solveur::bonReprise(const std::vector<int>* ancre) {
   if (!aBon_ || !bonMauvais_) return;
   std::vector<char> ext(P_.size(), 0);
+  if (ancre)
+    for (int q : *ancre) ext[q] = 1;
   if (origine_ >= 0) ext[origine_] = 1;
   for (const E& e : E_)
     if (e.ext)
@@ -2333,7 +2333,8 @@ void Solveur::bonReprise() {
       cur.push_back({static_cast<int>(k), P_[k]});
       continue;
     }
-    if (!aPts_ || hyp(P_[k].x - memPts_[k].x, P_[k].y - memPts_[k].y) > 1e-6) {
+    const double ecart = aPts_ ? hyp(P_[k].x - memPts_[k].x, P_[k].y - memPts_[k].y) : INFINI;
+    if (!(ecart <= 1e-6)) {  // un point nouveau n'a pas de mémoire : NaN
       aBon_ = false;
       return;
     }
@@ -2347,9 +2348,8 @@ void Solveur::bonReprise() {
   }
 }
 
-void Solveur::resoudre() {
-  const int iters = 120;
-  bonReprise();
+void Solveur::resoudre(int iters, const std::vector<int>* ancre) {
+  if (iters >= 100) bonReprise(ancre);
   std::vector<int> Di;
   std::vector<double> fin, dep;
   for (size_t i = 0; i < D_.size(); i++)
@@ -2372,7 +2372,7 @@ void Solveur::resoudre() {
   };
   std::vector<Glisse> F;
   double fmx = 0;
-  if (aPts_) {
+  if (aPts_ && iters >= 100) {
     bool libre = false;
     for (size_t q = 0; q < P_.size() && !libre; q++) {
       const P2& m = memPts_[q];
@@ -2398,7 +2398,7 @@ void Solveur::resoudre() {
     if (std::isfinite(cote) && fmx > cote / 2) N = std::max(N, static_cast<int>(std::ceil(fmx / (cote / 2))));
   }
   N = std::min(8, N);
-  if (N > 1) {
+  if (N > 1 && iters >= 100) {
     const Instantane avant = snap();
     const auto pose = [&](double t) {
       for (size_t i = 0; i < Di.size(); i++) D_[Di[i]].value = dep[i] + (fin[i] - dep[i]) * t;
@@ -2409,20 +2409,20 @@ void Solveur::resoudre() {
     };
     for (int s = 1; s < N; s++) {
       pose(static_cast<double>(s) / N);
-      solve1(iters);
+      solve1(iters, ancre);
     }
     pose(1);
     for (size_t i = 0; i < Di.size(); i++) D_[Di[i]].value = fin[i];
-    solve1(iters);
+    solve1(iters, ancre);
     if (residu() > SK_OK_RES) {
       const Instantane parPas = snap();
       const double rp = residu();
       restaure(avant);
-      solve1(iters);
+      solve1(iters, ancre);
       if (residu() >= rp) restaure(parPas);
     }
   } else {
-    solve1(iters);
+    solve1(iters, ancre);
   }
   for (D& d : D_)
     if (std::isfinite(d.value)) {
@@ -2430,7 +2430,7 @@ void Solveur::resoudre() {
       d.val = d.value;
     }
   ptsNote();
-  bonNote();
+  bonNote(iters);
 }
 
 bool Solveur::poserCote(const std::string& id, double valeur) {
@@ -2632,7 +2632,47 @@ void Solveur::recopierDans(Esquisse& s) const {
         c.value = d.value;
         c.sgn = d.sgn;
         c.ccw = d.ccw;
+        if (d.type == ANGLE && c.type == "gap") {  // skGapToAngle
+          c.type = "angle";
+          c.orient.clear();
+          c.sl = 0;
+          c.w = 0;
+          c.aW = false;
+        }
       }
+  for (Contrainte& k : s.contraintes)
+    for (const C& c : C_)
+      if (c.id == k.id) k.inf = c.inf;
+}
+
+std::vector<Contrainte> Solveur::contraintesNouvelles(std::vector<std::string>& retirees, const std::vector<Contrainte>& lues) const {
+  retirees.clear();
+  for (const Contrainte& k : lues)
+    if (std::none_of(C_.begin(), C_.end(), [&](const C& c) { return c.id == k.id; })) retirees.push_back(k.id);
+  std::vector<Contrainte> out;
+  for (const C& c : C_) {
+    if (c.id.empty() || c.id[0] != '+') continue;
+    Contrainte k;
+    k.id = c.id;
+    k.type = c.type == FIX ? "fix" : "coincident";
+    if (c.p >= 0) k.p = idP_[c.p];
+    if (c.ent >= 0) k.ent = E_[c.ent].id;
+    if (c.type == COINCIDENT) {
+      k.a = idP_[c.a];
+      k.b = idP_[c.b];
+    }
+    out.push_back(std::move(k));
+  }
+  return out;
+}
+
+bool Solveur::convertirEntraxes() {
+  const bool avant = coteConvertie_;
+  coteConvertie_ = false;
+  skGapToAngle();
+  const bool change = coteConvertie_;
+  coteConvertie_ = avant || change;
+  return change;
 }
 
 void Solveur::reprendrePoints(const Esquisse& s) {
@@ -2664,4 +2704,362 @@ void Solveur::deplacerProjections(double dx, double dy) {
           P_[q].x += dx;
           P_[q].y += dy;
         }
+}
+
+Solveur::Solveur(const Esquisse& s, const Solveur& m) : Solveur(s, false) {
+  const auto trouverP = [&](const std::string& id) { const auto it = std::find(m.idP_.begin(), m.idP_.end(), id); return it == m.idP_.end() ? -1 : static_cast<int>(it - m.idP_.begin()); };
+  for (D& d : D_) {
+    d.aVal = false;
+    for (const D& o : m.D_)
+      if (o.id == d.id) {
+        d.aVal = o.aVal;
+        d.val = o.val;
+        break;
+      }
+  }
+  for (C& c : C_)
+    for (const C& o : m.C_)
+      if (o.id == c.id) {
+        c.cote = o.cote;
+        break;
+      }
+  aPts_ = m.aPts_;
+  aBon_ = m.aBon_;
+  bonMauvais_ = m.bonMauvais_;
+  if (aPts_) {
+    memPts_.assign(P_.size(), P2{NAN, NAN});
+    for (size_t q = 0; q < P_.size(); q++) {
+      const int o = trouverP(idP_[q]);
+      if (o >= 0) memPts_[q] = m.memPts_[o];
+    }
+  }
+  bonVals_.clear();
+  if (aBon_) {
+    bonSnap_.P.assign(P_.size(), P2{NAN, NAN});
+    bonSnap_.R.assign(E_.size(), NAN);
+    for (size_t q = 0; q < P_.size(); q++) {
+      const int o = trouverP(idP_[q]);
+      if (o >= 0) bonSnap_.P[q] = m.bonSnap_.P[o];
+    }
+    for (size_t i = 0; i < E_.size(); i++)
+      for (size_t o = 0; o < m.E_.size(); o++)
+        if (m.E_[o].id == E_[i].id) {
+          bonSnap_.R[i] = m.bonSnap_.R[o];
+          break;
+        }
+    for (const auto& v : m.bonVals_)
+      for (size_t i = 0; i < D_.size(); i++)
+        if (D_[i].id == m.D_[v.first].id) bonVals_.push_back({static_cast<int>(i), v.second});
+  }
+  aPat_ = m.aPat_;
+  patSig_ = m.patSig_;
+  pat_ = m.pat_;
+}
+
+bool Solveur::pointFixe(const std::string& id) const {
+  const int q = indexPoint(id);
+  return q >= 0 && fix_[q];
+}
+bool Solveur::lirePoint(const std::string& id, double& x, double& y) const {
+  const int q = indexPoint(id);
+  if (q < 0) return false;
+  x = P_[q].x;
+  y = P_[q].y;
+  return true;
+}
+
+std::vector<std::string> Solveur::centresSymetrie() const {
+  std::vector<int> compte(P_.size(), 0);
+  for (const C& c : C_)
+    if (c.type == SYMMETRIC && c.mid >= 0 && E_[c.mid].t == LIGNE)
+      for (int q : {E_[c.mid].p1, E_[c.mid].p2})
+        if (q >= 0) compte[q]++;
+  std::vector<std::string> out;
+  for (size_t q = 0; q < P_.size(); q++)
+    if (compte[q] >= 2) out.push_back(idP_[q]);
+  return out;
+}
+
+std::vector<std::pair<bool, Solveur::P2>> Solveur::vecteursBranche() const {
+  std::vector<std::pair<bool, P2>> V;
+  const auto add = [&](int a, int b) {
+    if (a >= 0 && b >= 0) V.push_back({true, P2{P_[b].x - P_[a].x, P_[b].y - P_[a].y}});
+    else V.push_back({false, P2{}});
+  };
+  for (const E& e : E_) {
+    if (e.t == LIGNE) add(e.p1, e.p2);
+    else if (e.t == ARC) {
+      add(e.pc, e.pa);
+      add(e.pc, e.pb);
+    }
+  }
+  for (const D& d : D_)
+    if (d.type == DISTANCE) add(d.a, d.b);
+  return V;
+}
+
+double Solveur::pasGlisser(const std::vector<int>& pids, double vueS) const {
+  double m = INFINI;
+  const auto take = [&](double v) {
+    v = std::abs(v);
+    if (v > 1e-6 && v < m) m = v;
+  };
+  for (const D& d : D_) {
+    if (d.ref || d.type == ANGLE) continue;
+    take(d.type == DIAMETER ? d.value / 2 : d.value);
+  }
+  for (const E& e : E_) {
+    if (e.t == CERCLE || e.t == ARC) take(e.r);
+    else if (e.t == LIGNE && (std::find(pids.begin(), pids.end(), e.p1) != pids.end() || std::find(pids.begin(), pids.end(), e.p2) != pids.end()) && e.p1 >= 0 && e.p2 >= 0)
+      take(hyp(P_[e.p2].x - P_[e.p1].x, P_[e.p2].y - P_[e.p1].y));
+  }
+  const double px = vueS > 0 ? 2 / vueS : 0.05;
+  return jsmax(jsmax(std::isfinite(m) ? m * 0.25 : 1, px), 1e-3);
+}
+
+template <class F>
+void Solveur::marcher(P2 de, P2 vers, F placer, const std::vector<int>& ancre, const std::vector<int>& pids, double vueS) {
+  constexpr int MAX_PAS = 24, MAX_RESOLUTIONS = 40;
+  if (!marche_.actif) {
+    marche_.actif = true;
+    marche_.last = snap();
+    marche_.r = residu();
+    marche_.vec = vecteursBranche();
+    marche_.at = de;
+    marche_.step = pasGlisser(pids, vueS);
+  }
+  const P2 a = marche_.at;
+  const double D = hyp(vers.x - a.x, vers.y - a.y);
+  if (!(D > 1e-9)) {
+    restaure(marche_.last);
+    return;
+  }
+  const double S = jsmax(marche_.step, D / MAX_PAS), hMax = jsmin(1, S / D);
+  double t = 0, h = hMax;
+  int n = 0;
+  P2 at = a;
+  while (t < 1 - 1e-12 && n < MAX_RESOLUTIONS) {
+    const double nt = jsmin(1, t + h);
+    const P2 q{a.x + (vers.x - a.x) * nt, a.y + (vers.y - a.y) * nt};
+    restaure(marche_.last);
+    placer(q);
+    resoudre(40, &ancre);
+    n++;
+    const double r = residu();
+    const auto vec = vecteursBranche();
+    // skBranchJump : une composante change de signe alors qu'elle portait plus de la moitié du vecteur avant et après
+    bool saut = false;
+    for (size_t i = 0; i < marche_.vec.size() && i < vec.size() && !saut; i++) {
+      if (!marche_.vec[i].first || !vec[i].first) continue;
+      const P2 u = marche_.vec[i].second, w = vec[i].second;
+      const double la = hyp(u.x, u.y), lb = hyp(w.x, w.y);
+      if (!(la > 1e-6 && lb > 1e-6)) continue;
+      if ((u.x * w.x < 0 && std::abs(u.x) > 0.5 * la && std::abs(w.x) > 0.5 * lb) || (u.y * w.y < 0 && std::abs(u.y) > 0.5 * la && std::abs(w.y) > 0.5 * lb)) saut = true;
+    }
+    if (r <= jsmax(SK_OK_RES, marche_.r + 1e-6) && !saut) {
+      marche_.last = snap();
+      marche_.r = r;
+      marche_.vec = vec;
+      at = q;
+      t = nt;
+      h = jsmin(hMax, h * 2);
+    } else {
+      h /= 2;
+      if (h * D < S / 8) break;
+    }
+  }
+  marche_.at = at;
+  restaure(marche_.last);
+}
+
+std::vector<int> Solveur::tenus(std::vector<int> a) const {
+  for (const std::string& c : centresSymetrie()) {
+    const int q = indexPoint(c);
+    if (std::find(a.begin(), a.end(), q) == a.end()) a.push_back(q);
+  }
+  return a;
+}
+
+void Solveur::glisserPoint(const std::string& id, double x, double y, double vueS) {
+  const int q = indexPoint(id);
+  if (q < 0) return;
+  const std::vector<int> moi{q};
+  marcher(P_[q], P2{x, y}, [&](const P2& p) { P_[q] = p; }, tenus(moi), moi, vueS);
+}
+
+void Solveur::glisserGroupe(const std::vector<std::string>& ids, const std::vector<Pt>& depart, const std::vector<std::string>& ancre, double dx, double dy, bool bloc, double vueS) {
+  std::vector<int> pids, tient;
+  for (const std::string& s : ids) pids.push_back(indexPoint(s));
+  for (const std::string& s : ancre) tient.push_back(indexPoint(s));
+  const auto placer = [&](const P2& d) {
+    for (size_t i = 0; i < pids.size(); i++)
+      if (pids[i] >= 0 && !fix_[pids[i]]) P_[pids[i]] = P2{depart[i].x + d.x, depart[i].y + d.y};
+  };
+  if (bloc) {
+    placer(P2{dx, dy});
+    resoudre(40, &tient);
+    return;
+  }
+  marcher(P2{0, 0}, P2{dx, dy}, placer, tenus(tient), pids, vueS);
+}
+
+Solveur::Rang Solveur::analyseRang(int sauterCote, bool detail) {
+  Rang res;
+  Build B = sklsBuild();
+  B.r0.clear();  // aucun ancrage des rayons ici
+  for (size_t i = 0; i < E_.size(); i++) {
+    if ((E_[i].t != CERCLE && E_[i].t != ARC) || std::find(B.rad.begin(), B.rad.end(), static_cast<int>(i)) != B.rad.end()) continue;
+    bool fixe = false;
+    for (const C& c : C_)
+      if (c.type == FIX && c.ent == static_cast<int>(i)) fixe = true;
+    if (!fixe) B.rad.push_back(static_cast<int>(i));
+  }
+  B.n = 2 * static_cast<int>(B.pts.size()) + static_cast<int>(B.rad.size());
+  const int n = B.n;
+  res.n = n;
+  res.B = B;
+  if (!n) return res;
+  std::vector<double> x(n);
+  for (size_t i = 0; i < B.pts.size(); i++) {
+    x[2 * i] = P_[B.pts[i]].x;
+    x[2 * i + 1] = P_[B.pts[i]].y;
+  }
+  for (size_t j = 0; j < B.rad.size(); j++) x[2 * B.pts.size() + j] = E_[B.rad[j]].r;
+  std::vector<D> sauve;
+  if (sauterCote >= 0) {
+    sauve = D_;
+    D_.erase(D_.begin() + sauterCote);
+  }
+  pourRang_ = true;
+  degen_.assign(E_.size(), 0);
+  for (size_t i = 0; i < E_.size(); i++)
+    if (E_[i].t == LIGNE && E_[i].p1 >= 0 && E_[i].p2 >= 0 && hyp(P_[E_[i].p2].x - P_[E_[i].p1].x, P_[E_[i].p2].y - P_[E_[i].p1].y) < 1e-6) degen_[i] = 1;
+  std::vector<double> f0, fp, fm;
+  sklsApply(B, x);
+  collect(f0, B);
+  const int m = static_cast<int>(f0.size());
+  std::vector<std::vector<double>> A(m, std::vector<double>(n, 0.0));
+  for (int j = 0; j < n; j++) {
+    const double xj = x[j], h = 1e-6 * jsmax(1, std::abs(xj));
+    x[j] = xj + h;
+    sklsApply(B, x);
+    collect(fp, B);
+    x[j] = xj - h;
+    sklsApply(B, x);
+    collect(fm, B);
+    x[j] = xj;
+    if (static_cast<int>(fp.size()) == m && static_cast<int>(fm.size()) == m)
+      for (int r = 0; r < m; r++) A[r][j] = (fp[r] - fm[r]) / (2 * h);
+  }
+  sklsApply(B, x);
+  pourRang_ = false;
+  if (sauterCote >= 0) D_ = std::move(sauve);
+
+  // skRref : lignes normalisées, pivot partiel
+  double nMax = 0;
+  std::vector<double> nr(m);
+  for (int r = 0; r < m; r++) {
+    double q = 0;
+    for (double v : A[r]) q += v * v;
+    nr[r] = std::sqrt(q);
+    nMax = jsmax(nMax, nr[r]);
+  }
+  double scale = 0;
+  for (int r = 0; r < m; r++)
+    for (int k = 0; k < n; k++) {
+      A[r][k] = nr[r] > nMax * 1e-6 ? A[r][k] / nr[r] : 0;
+      scale = jsmax(scale, std::abs(A[r][k]));
+    }
+  const double tol = jsmax(1e-9, scale * 1e-7);
+  std::vector<int> piv;
+  int row = 0;
+  for (int k = 0; k < n && row < m; k++) {
+    int best = row;
+    double bv = std::abs(A[row][k]);
+    for (int r = row + 1; r < m; r++) {
+      const double v = std::abs(A[r][k]);
+      if (v > bv) {
+        bv = v;
+        best = r;
+      }
+    }
+    if (bv <= tol) continue;
+    std::swap(A[row], A[best]);
+    const double pv = A[row][k];
+    for (int q = k; q < n; q++) A[row][q] /= pv;
+    for (int r = 0; r < m; r++) {
+      if (r == row) continue;
+      const double f = A[r][k];
+      if (std::abs(f) < 1e-15) continue;
+      for (int q = k; q < n; q++) A[r][q] -= f * A[row][q];
+    }
+    piv.push_back(k);
+    row++;
+  }
+  res.rang = static_cast<int>(piv.size());
+  if (detail) {
+    std::vector<char> estPivot(n, 0);
+    for (int k : piv) estPivot[k] = 1;
+    res.determine.assign(n, 0);
+    for (size_t k = 0; k < piv.size(); k++) {
+      bool ok = true;
+      for (int c = 0; c < n && ok; c++)
+        if (!estPivot[c] && std::abs(A[k][c]) > 1e-6) ok = false;
+      if (ok) res.determine[piv[k]] = 1;
+    }
+  }
+  return res;
+}
+
+int Solveur::degresLibres() {
+  const Rang r = analyseRang(-1, false);
+  return r.n - r.rang;
+}
+
+bool Solveur::coteRedondante(const std::string& id) {
+  for (size_t i = 0; i < D_.size(); i++)
+    if (D_[i].id == id) return analyseRang(-1, false).rang <= analyseRang(static_cast<int>(i), false).rang;
+  return false;
+}
+
+bool Solveur::pilotanteSiPossible(const std::string& id, double& valeur) {
+  for (size_t i = 0; i < D_.size(); i++) {
+    if (D_[i].id != id) continue;
+    const bool avant = D_[i].ref;
+    D_[i].ref = false;
+    calculerStructure();
+    const bool peut = analyseRang(-1, false).rang > analyseRang(static_cast<int>(i), false).rang;
+    D_[i].ref = avant;
+    calculerStructure();
+    if (!peut) return false;
+    const D& d = D_[i];
+    if (d.type == LENGTH || d.type == DISTANCE) {
+      const int a = d.type == LENGTH ? (d.line >= 0 ? E_[d.line].p1 : -1) : d.a, b = d.type == LENGTH ? (d.line >= 0 ? E_[d.line].p2 : -1) : d.b;
+      if (a >= 0 && b >= 0) valeur = mesure(P_[a].x, P_[a].y, P_[b].x, P_[b].y, d.orient);
+    } else if (d.type == DIAMETER || d.type == RADIUS) {
+      if (d.ent >= 0) valeur = d.type == DIAMETER ? 2 * E_[d.ent].r : E_[d.ent].r;
+    } else if (d.type == ANGLE) {
+      Cadre fr;
+      if (angleFrame(d, fr)) valeur = std::abs(fr.delta);
+    } else if (d.type == GAP || d.type == DISTLINE) {
+      double sg;
+      if (dimSigne(d, sg)) valeur = std::abs(sg);
+    }
+    return true;
+  }
+  return false;
+}
+
+void Solveur::poserReference(const std::string& id) {
+  for (D& d : D_)
+    if (d.id == id) d.ref = true;
+  calculerStructure();
+}
+
+std::vector<std::string> Solveur::pointsLibres() {
+  const Rang r = analyseRang(-1, true);
+  std::vector<std::string> out;
+  for (size_t i = 0; i < r.B.pts.size() && !r.determine.empty(); i++)
+    if (!r.determine[2 * i] || !r.determine[2 * i + 1]) out.push_back(idP_[r.B.pts[i]]);
+  return out;
 }

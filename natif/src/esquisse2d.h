@@ -3,6 +3,7 @@
 #pragma once
 #include <wx/wx.h>
 #include <wx/graphics.h>
+#include <wx/tglbtn.h>
 
 #include <TopoDS_Shape.hxx>
 
@@ -10,6 +11,7 @@
 #include <vector>
 
 #include "contours.h"
+#include "dessin.h"
 #include "projet.h"
 
 class VueEsquisse : public wxWindow {
@@ -22,6 +24,12 @@ class VueEsquisse : public wxWindow {
   bool enregistrer(const wxString& chemin);
   // Le solide a changé : nouveau fantôme, sans toucher au cadrage
   void majPiece(const TopoDS_Shape& piece);
+  // Le dessin à la souris ; nullptr : lecture seule, sans barre d'outils
+  void poserDessin(Dessin* d);
+  std::function<void()> surDessinChange;
+  // Échap et Ctrl+Z : abandonnent d'abord le tracé en cours. Rend true si Échap a servi à cela.
+  bool echapDessin();
+  bool abandonnerTrace();
   std::function<void()> surQuitter;
   // Double-clic sur une cote : rend true et le texte à proposer si elle peut changer.
   std::function<bool(const Cote& c, wxString& texte)> surDemandeCote;
@@ -47,6 +55,16 @@ class VueEsquisse : public wxWindow {
   wxPoint2DDouble direction(double x, double y) const;  // direction du plan → direction à l'écran
   void surPeinture(wxPaintEvent&);
   void dessiner(wxDC& dc);
+  wxPoint2DDouble plan(const wxPoint& p) const;  // position de la souris → point du plan
+  std::string zoneSous(const wxPoint& dip) const;
+  void ouvrirCote(const std::string& id);
+  void surGaucheBas(wxMouseEvent&);
+  void surGaucheHaut(wxMouseEvent&);
+  void surTouche(wxKeyEvent&);
+  void apresGeste();
+  void synchroniserOutils();
+  void placerOutils();
+  void trace(wxGraphicsContext& g) const;
   void surEnfonce(wxMouseEvent&);
   void surRelache(wxMouseEvent&);
   void surMouvement(wxMouseEvent&);
@@ -84,4 +102,9 @@ class VueEsquisse : public wxWindow {
   bool grille_ = false;
   Geste geste_;
   wxButton* terminer_ = nullptr;
+  Dessin* dessin_ = nullptr;
+  std::vector<wxToggleButton*> outils_;
+  wxCheckBox* caseGrille_ = nullptr;
+  bool gauche_ = false, dblEnAttente_ = false;
+  wxPoint2DDouble dblPlan_;
 };
