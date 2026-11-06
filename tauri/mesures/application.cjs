@@ -186,7 +186,7 @@ const calculMulti=async s=>{
   await s.page.waitForFunction(()=>{try{return doc.features.length>0&&rebuildDepth===0&&builtEngine==='exact'&&bodies.some(b=>b.shape)&&faoSolidSettled();}catch(e){return false;}},null,{timeout:300000,polling:200});
   await C.attendre(1500);
   const r=await s.page.evaluate(async()=>{
-    const N=window.Worker;let nb=0;window.Worker=function(u){nb++;return new N(u);};
+    const N=window.Worker;let nb=0;window.Worker=function(u,o){nb++;return new N(u,o);};
     const job=faoDoc(),ops=(job.ops||[]).filter(o=>o&&o.on!==false),t0=performance.now();
     await faoPreviewGenerateAsync();
     const ms=Math.round(performance.now()-t0);

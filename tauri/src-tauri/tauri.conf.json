@@ -10,7 +10,13 @@
     "windows": [
       { "title": "ConceptCAD", "width": 1400, "height": 900, "url": "index.html", "dragDropEnabled": false }
     ],
-    "security": { "csp": null }
+    "security": {
+      "csp": null,
+      "headers": {
+        "Cross-Origin-Opener-Policy": "same-origin",
+        "Cross-Origin-Embedder-Policy": "require-corp"
+      }
+    }
   },
   "bundle": {
     "active": false,

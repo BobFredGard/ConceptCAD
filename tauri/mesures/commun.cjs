@@ -11,8 +11,8 @@ const CHROME='C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe';
 // Profil d'essai à part : le vrai profil de l'application (récents, brouillon) n'est jamais touché ni vidé.
 const PROFIL_APP=path.join(os.tmpdir(),'cc-essai-application');
 const PROFIL_REEL=path.join(process.env.LOCALAPPDATA,'fr.conceptcad.logiciel');
-// Le programme crée toujours ce dossier : seul son contenu dit que l'application a vraiment servi.
-const profilReelUtilise=()=>{try{return fs.readdirSync(PROFIL_REEL).length>0;}catch(e){return false;}};
+// Empreinte du vrai profil : les essais passant par Windows doivent le laisser intact.
+const empreinteProfil=()=>{let n=0,t=0;const voir=d=>{for(const e of fs.readdirSync(d,{withFileTypes:true})){const p=path.join(d,e.name);if(e.isDirectory())voir(p);else{n++;t=Math.max(t,fs.statSync(p).mtimeMs);}}};try{voir(PROFIL_REEL);}catch(e){}return n+'/'+t;};
 const PORT_CDP=9333,PORT_WEB=3000;
 // Mêmes réglages des deux côtés : un onglet ou une fenêtre masquée ne doit pas fausser le temps.
 const DRAPEAUX=['--remote-debugging-port='+PORT_CDP,'--disable-backgrounding-occluded-windows','--disable-renderer-backgrounding','--disable-background-timer-throttling'];
@@ -155,4 +155,4 @@ async function ouvrirPiece(s,fichier){
 }
 
 const empreinte=f=>crypto.createHash('md5').update(fs.readFileSync(f)).digest('hex');
-module.exports={PROFIL_REEL,profilReelUtilise,EXE,CHROME,PROFIL_APP,PORT_WEB,attendre,serveur,lancer,brancher,arreter,fermer,noyauPret,memoire,memoireStable,ouvrirPiece,empreinte};
+module.exports={PROFIL_REEL,empreinteProfil,EXE,CHROME,PROFIL_APP,PORT_WEB,attendre,serveur,lancer,brancher,arreter,fermer,noyauPret,memoire,memoireStable,ouvrirPiece,empreinte};

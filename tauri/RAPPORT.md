@@ -1,5 +1,33 @@
 # ConceptCAD en application Windows : rapport
 
+## Noyau multicœur dans l'application (6 novembre, V0.67.0)
+
+L'application suit V0.67.0 et utilise le noyau multicœur à 4 fils. Programme : 23,4 Mo. Installateur : 21,6 Mo.
+
+**Ce noyau double presque la mémoire.** Une seule série de mesures, sans pilote branché, en Mo :
+
+| Pièce | Moment | Application multicœur | Chrome multicœur | Chrome normal |
+|---|---|---:|---:|---:|
+| Cache Piles | ouverte | 906 | 943 | 408 |
+| Cache Piles | après 120 modifications | 987 | 1 042 | 518 |
+| Barquette | ouverte | 1 094 | 1 108 | 501 |
+| Barquette | après 120 modifications | 1 032 | 1 154 | 615 |
+
+Temps médian d'une modification :
+
+| Pièce | Application multicœur | Chrome multicœur | Chrome normal |
+|---|---:|---:|---:|
+| Cache Piles | 0,59 s | 1,01 s | 0,53 s |
+| Barquette | 3,35 s | 2,73 s | 3,89 s |
+
+Le chiffre de 165 Mo annoncé pour ce noyau ne compte que sa mémoire propre : au total, c'est 500 à 600 Mo de plus à l'ouverture. Le gain ne porte que sur Barquette. L'application en noyau normal n'a pas été mesurée en V0.67.0.
+
+**« Tout régénérer » sur Cavité Test (3 essais) :** application 6,5 s, Chrome multicœur 7,0 à 9,2 s, Chrome normal 7,0 à 9,0 s. Ce calcul FAO n'utilise pas le noyau multicœur.
+
+**Essais :** 24 vérifications générales, 24 gestes, vrai double-clic et installateur : tout passe. Ils n'ont pas touché aux vraies données de l'application : c'est contrôlé avant et après.
+
+---
+
 ## Où on en est (6 novembre, V0.66.0)
 
 Vous avez décidé de continuer. L'application n'est plus une maquette : elle s'appelle ConceptCAD et suit la version du logiciel. **Toujours rien sur `main`, rien envoyé sur Internet, version web inchangée.**
@@ -114,7 +142,7 @@ D'autres sessions tournaient par moments sur le PC : les temps sont moins sûrs 
 | **Fermeture avec modifications non enregistrées** | **Réglé** : la question est posée | Rien |
 | **Désinstallation** | **Réglé** : registre propre | Rien |
 | **Essai à la main** | Toutes les vérifications sont automatiques. Raccourcis et messages de saisie vérifiés par pilotage, pas au vrai clavier. Le glisser-déposer d'un fichier n'existe pas non plus dans la version web | Une demi-heure d'usage réel par vous |
-| **Version emballée** | V0.66.0, la version suit `package.json` | Refaire à chaque version : `node tauri/preparer.cjs`, puis compiler |
+| **Version emballée** | V0.67.0, la version suit `package.json` | Refaire à chaque version : `node tauri/preparer.cjs`, puis compiler |
 
 ## Le multicœur
 
@@ -156,7 +184,7 @@ C'est peut-être un seul et même problème. Il touche directement votre plainte
 - L'association `.conceptcad` a été retirée : vos fichiers s'ouvrent comme avant. Il reste une ligne sans effet dans l'historique « Ouvrir avec » de Windows.
 - L'application a été désinstallée après chaque essai et ses données d'essai effacées. Le dossier `%LOCALAPPDATA%r.conceptcad.maquette` de l'ancien nom reste, sans effet, et peut être supprimé. Le dossier `fr.conceptcad.logiciel` reste vide.
 - L'outil NSIS (8 Mo) reste dans `%LOCALAPPDATA%\tauri`, téléchargé avec votre accord.
-- Pour l'essayer : `tauri/src-tauri/target/release/ConceptCAD.exe`, ou l'installateur `tauri/src-tauri/target/release/bundle/nsis/ConceptCAD_0.66.0_x64-setup.exe`. **Installer pose l'association :** le double-clic ouvre alors vos pièces dans l'application. La désinstallation remet tout comme avant.
+- Pour l'essayer : `tauri/src-tauri/target/release/ConceptCAD.exe`, ou l'installateur `tauri/src-tauri/target/release/bundle/nsis/ConceptCAD_0.67.0_x64-setup.exe`. **Installer pose l'association :** le double-clic ouvre alors vos pièces dans l'application. La désinstallation remet tout comme avant.
 
 ## Pour refaire
 
@@ -168,6 +196,6 @@ node tauri/mesures/application.cjs "<dossier d'essai vide>"
 node tauri/mesures/mesurer.cjs repos ConceptCAD.html app,chrome 2
 ```
 
-`cargo tauri build` se lance depuis `tauri/src-tauri`. Résultats bruts : `tauri/mesures/resultats/`. La série de référence est `repos.jsonl` : **la mémoire y est lue sans pilote branché**, car le pilote alourdit Chrome d'environ 150 Mo à vide. Les autres séries (`ram-serie1.jsonl`, `ram.jsonl`) ne servent que pour les temps.
+`cargo tauri build` se lance depuis `tauri/src-tauri`. Résultats bruts : `tauri/mesures/resultats/`. Les séries de référence sont `repos-V0.64.3.jsonl` et `repos-V0.67.0-*.jsonl` : **la mémoire y est lue sans pilote branché**, car le pilote alourdit Chrome d'environ 150 Mo à vide. Les autres séries (`ram-serie1.jsonl`, `ram.jsonl`) ne servent que pour les temps.
 
 Sources : [Tauri, installateur Windows](https://v2.tauri.app/distribute/windows-installer/), [Microsoft, distribuer WebView2](https://learn.microsoft.com/en-us/microsoft-edge/webview2/concepts/distribution).

@@ -5,14 +5,17 @@ const fs=require('fs'),path=require('path'),os=require('os');
 const {execFileSync,spawn}=require('child_process');
 const C=require('./commun.cjs');
 const [,,SETUP,ESSAI,HTML]=process.argv;
-const ps=c=>execFileSync('powershell.exe',['-NoProfile','-ExecutionPolicy','Bypass','-Command',c],{encoding:'utf8'}).trim();
+const envEssai={...process.env,WEBVIEW2_USER_DATA_FOLDER:C.PROFIL_APP};
+const ps=c=>execFileSync('powershell.exe',['-NoProfile','-ExecutionPolicy','Bypass','-Command',c],{encoding:'utf8',env:envEssai}).trim();
 const DOSSIER=path.join(process.env.LOCALAPPDATA,'ConceptCAD');
 const res={};
 const reg=()=>ps("Test-Path 'HKCU:\\Software\\Classes\\.conceptcad'");
 const procApp=()=>ps(`Get-CimInstance Win32_Process -Filter "Name like 'conceptcad%' or Name='ConceptCAD.exe'" | Select-Object -First 1 -ExpandProperty ProcessId`);
 const fermerApp=()=>{try{ps(`Get-CimInstance Win32_Process -Filter "Name like 'conceptcad%'" | ForEach-Object { Stop-Process -Id $_.ProcessId -Force }`);}catch(e){}};
 (async()=>{
-  if(reg()==='True'||fs.existsSync(DOSSIER)||C.profilReelUtilise())throw new Error('déjà installé ou associé : essai annulé');
+  if(reg()==='True'||fs.existsSync(DOSSIER))throw new Error('déjà installé ou associé : essai annulé');
+  const profilAvant=C.empreinteProfil();
+  fs.rmSync(C.PROFIL_APP,{recursive:true,force:true});
   fs.mkdirSync(ESSAI,{recursive:true});
   const piece=path.join(ESSAI,'installateur essai.conceptcad');
   fs.copyFileSync(path.join(__dirname,'..','..','Exemples','Cache Piles.conceptcad'),piece);
@@ -41,7 +44,7 @@ const fermerApp=()=>{try{ps(`Get-CimInstance Win32_Process -Filter "Name like 'c
     delete res.ramOuvertSansPilotage.noms;
   }finally{fermerApp();await C.attendre(2000);}
   // Contrôle sans pilotage, logiciel vide
-  const a=spawn(path.join(DOSSIER,exe),[],{stdio:'ignore'});
+  const a=spawn(path.join(DOSSIER,exe),[],{stdio:'ignore',env:envEssai});
   await C.attendre(25000);
   res.ramVideSansPilotageApp=await C.memoireStable({enfant:{pid:a.pid}});
   fermerApp();await C.attendre(2000);
@@ -60,7 +63,7 @@ const fermerApp=()=>{try{ps(`Get-CimInstance Win32_Process -Filter "Name like 'c
   ps(`Start-Process -FilePath '${des}' -ArgumentList '/S' -Wait`);
   for(let i=0;i<60&&fs.existsSync(path.join(DOSSIER,exe));i++)await C.attendre(500);
   res.desinstalle=!fs.existsSync(path.join(DOSSIER,exe));
-  fs.rmSync(C.PROFIL_REEL,{recursive:true,force:true}); // les données de cet essai
+  res.vraiesDonneesIntactes=C.empreinteProfil()===profilAvant;
   res.associationRetiree=reg()==='False';
   res.classeRestante=ps("Get-ChildItem 'HKCU:\\Software\\Classes' -ErrorAction SilentlyContinue | Where-Object { $_.PSChildName -match 'conceptcad' } | ForEach-Object { $_.PSChildName }");
   fs.writeFileSync(path.join(__dirname,'resultats','installateur.json'),JSON.stringify(res,null,1));

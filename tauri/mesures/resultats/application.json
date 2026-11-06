@@ -129,36 +129,7 @@
   "ok": true,
   "detail": {
    "app": {
-    "ms": 78,
-    "ops": [
-     {
-      "type": "facing",
-      "mouvements": 81,
-      "ms": 1,
-      "empreinte": "1jb7ak0"
-     },
-     {
-      "type": "contour",
-      "mouvements": 565,
-      "ms": 12,
-      "empreinte": "jnrr67"
-     },
-     {
-      "type": "pocket",
-      "mouvements": 3528,
-      "ms": 65,
-      "empreinte": "1ehm80m"
-     },
-     {
-      "type": "facing",
-      "mouvements": 43,
-      "ms": 0,
-      "empreinte": "1h6gbuj"
-     }
-    ]
-   },
-   "chrome": {
-    "ms": 76,
+    "ms": 70,
     "ops": [
      {
       "type": "facing",
@@ -175,7 +146,36 @@
      {
       "type": "pocket",
       "mouvements": 3528,
-      "ms": 64,
+      "ms": 59,
+      "empreinte": "1ehm80m"
+     },
+     {
+      "type": "facing",
+      "mouvements": 43,
+      "ms": 0,
+      "empreinte": "1h6gbuj"
+     }
+    ]
+   },
+   "chrome": {
+    "ms": 70,
+    "ops": [
+     {
+      "type": "facing",
+      "mouvements": 81,
+      "ms": 1,
+      "empreinte": "1jb7ak0"
+     },
+     {
+      "type": "contour",
+      "mouvements": 565,
+      "ms": 9,
+      "empreinte": "jnrr67"
+     },
+     {
+      "type": "pocket",
+      "mouvements": 3528,
+      "ms": 60,
       "empreinte": "1ehm80m"
      },
      {
@@ -205,7 +205,7 @@
   "ok": true,
   "detail": {
    "app": {
-    "ms": 5535,
+    "ms": 8424,
     "workers": 2,
     "coeurs": 16,
     "restants": 0,
@@ -238,7 +238,7 @@
     "avis": []
    },
    "chrome": {
-    "ms": 5667,
+    "ms": 5053,
     "workers": 2,
     "coeurs": 16,
     "restants": 0,

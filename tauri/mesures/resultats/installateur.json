@@ -1,26 +1,26 @@
 {
- "tailleSetupMo": 12.2,
- "installationS": 3,
+ "tailleSetupMo": 21.6,
+ "installationS": 4,
  "fichiers": [
   "ConceptCAD.exe",
   "uninstall.exe"
  ],
- "tailleInstalleeMo": 14.1,
+ "tailleInstalleeMo": 23.4,
  "associationPosee": true,
  "doubleClicOuvert": true,
  "titre": "? installateur essai - ConceptCAD",
- "doubleClicJusquauTitreMs": 4152,
+ "doubleClicJusquauTitreMs": 5332,
  "ramOuvertSansPilotage": {
-  "prive": 385,
-  "ws": 719,
-  "engage": 809,
-  "gpuDed": 237,
-  "gpuPart": 6,
+  "prive": 922,
+  "ws": 1258,
+  "engage": 1361,
+  "gpuDed": 236,
+  "gpuPart": 7,
   "processus": 7,
   "detail": [
-   269,
-   68,
-   32,
+   805,
+   65,
+   35,
    7,
    4,
    3,
@@ -28,30 +28,30 @@
   ]
  },
  "ramVideSansPilotageApp": {
-  "prive": 520,
-  "ws": 848,
-  "engage": 930,
+  "prive": 1017,
+  "ws": 1347,
+  "engage": 1443,
   "gpuDed": 228,
-  "gpuPart": 8,
+  "gpuPart": 7,
   "processus": 7,
   "noms": {
    "ConceptCAD.exe": 1,
    "msedgewebview2.exe": 6
   },
   "detail": [
-   416,
-   61,
-   28,
-   6,
+   907,
+   64,
+   30,
+   7,
    4,
    3,
    2
   ]
  },
  "ramVideSansPilotageChrome": {
-  "prive": 489,
-  "ws": 940,
-  "engage": 925,
+  "prive": 490,
+  "ws": 963,
+  "engage": 927,
   "gpuDed": 217,
   "gpuPart": 7,
   "processus": 10,
@@ -59,12 +59,12 @@
    "chrome.exe": 10
   },
   "detail": [
-   291,
-   67,
-   47,
-   37,
+   287,
+   65,
+   48,
+   40,
    15,
-   11,
+   14,
    9,
    8,
    3,
@@ -72,6 +72,7 @@
   ]
  },
  "desinstalle": true,
+ "vraiesDonneesIntactes": true,
  "associationRetiree": true,
  "classeRestante": ""
 }

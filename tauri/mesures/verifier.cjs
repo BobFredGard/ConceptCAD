@@ -32,6 +32,8 @@ async function noyauEtCalcul(){
     await s.page.reload();
     await C.noyauPret(s);
     const info=await s.page.evaluate(()=>({ver:APP_VER,pret:occtReady,origine:location.origin,msg:typeof occBaseMsg==='string'?occBaseMsg:'',sur:isSecureContext,tas:Math.round((occt.HEAP8||occt.HEAPU8).buffer.byteLength/1048576)}));
+    const mt=await s.page.evaluate(()=>({isolee:self.crossOriginIsolated,fils:occtMtFils,avis:occtMtAvis}));
+    note('Noyau multicœur choisi tout seul (4 fils)',mt.isolee===true&&mt.fils===4,mt);
     note('Noyau OCCT 8 compilé dans WebView2',info.pret===true,info);
     const dehors=reseau.filter(u=>!/^(http:\/\/tauri\.localhost|ipc:|blob:|data:|http:\/\/ipc\.localhost)/.test(u));
     note('Aucune demande vers Internet au démarrage',dehors.length===0,{demandes:reseau.length,dehors});
@@ -163,12 +165,13 @@ async function fichiers(){
 
 // Vrai double-clic : l'association est posée pour l'utilisateur, essayée, puis retirée.
 async function association(){
-  const ps=(cmd)=>execFileSync('powershell.exe',['-NoProfile','-ExecutionPolicy','Bypass','-Command',cmd],{encoding:'utf8'}).trim();
+  const ps=(cmd)=>execFileSync('powershell.exe',['-NoProfile','-ExecutionPolicy','Bypass','-Command',cmd],{encoding:'utf8',env:{...process.env,WEBVIEW2_USER_DATA_FOLDER:C.PROFIL_APP}}).trim();
   const ASSO=path.join(__dirname,'..','associer.ps1');
   const choix=ps("(Get-ItemProperty 'HKCU:\\Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\FileExts\\.conceptcad\\UserChoice' -ErrorAction SilentlyContinue).ProgId");
   const avant=ps("Test-Path 'HKCU:\\Software\\Classes\\.conceptcad'");
   if(avant==='True'){note('Association : essai sauté, une association existe déjà',false);return;}
-  if(C.profilReelUtilise()){note('Association : essai sauté, l’application a déjà servi sur ce PC (ses données ne sont pas touchées)',false);return;}
+  const profilAvant=C.empreinteProfil();
+  fs.rmSync(C.PROFIL_APP,{recursive:true,force:true});
   try{
     ps(`& '${ASSO}' -Exe '${C.EXE}'`);
     const lanceur=path.join(ESSAI,'double clic essai.conceptcad');
@@ -185,7 +188,7 @@ async function association(){
     try{ps("Get-Process ConceptCAD -ErrorAction SilentlyContinue | Stop-Process -Force");}catch(e){}
     ps(`& '${ASSO}' -Retirer`);
     await C.attendre(1500);
-    fs.rmSync(C.PROFIL_REEL,{recursive:true,force:true});
+    note('Vraies données de l’application intactes',C.empreinteProfil()===profilAvant);
     note('Association retirée, Windows comme avant',ps("Test-Path 'HKCU:\\Software\\Classes\\.conceptcad'")==='False');
   }
 }

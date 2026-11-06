@@ -223,7 +223,8 @@ async function repos(){
         await s.page.evaluate(()=>{autosaveWrite();});
         await C.attendre(6000);
         await C.fermer(s);s=null;
-        s=await C.lancer(cible,{neuf:false,profil,sansPilote:true});
+        // L'application ne garde plus de brouillon à la fermeture : la pièce lui est redonnée par son fichier.
+        s=await C.lancer(cible,{neuf:false,profil,sansPilote:true,fichier:cible==='app'?path.join(EX,P.fichier):null});
         await sansPilote();
         o.ouvert=await C.memoireStable(s);
         await C.brancher(s);

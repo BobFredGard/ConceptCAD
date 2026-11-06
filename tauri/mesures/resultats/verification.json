@@ -8,6 +8,10 @@
   }
  },
  {
+  "nom": "Vraies données de l’application intactes",
+  "ok": true
+ },
+ {
   "nom": "Association retirée, Windows comme avant",
   "ok": true
  }

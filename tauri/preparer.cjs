@@ -5,11 +5,10 @@
 const fs=require('fs'),path=require('path');
 const ICI=__dirname,ROOT=path.join(ICI,'..'),DIST=path.join(ICI,'dist');
 const source=path.resolve(process.argv[2]||path.join(ROOT,'ConceptCAD.html'));
-const wasm=path.join(ROOT,'occt/v3/conceptcad_v3.wasm');
-if(fs.statSync(wasm).size<1e7)throw new Error('noyau réduit à un pointeur LFS : lancer git lfs checkout');
+for(const n of ['v3','mt'])if(fs.statSync(path.join(ROOT,'occt',n,'conceptcad_v3.wasm')).size<1e7)throw new Error('noyau '+n+' réduit à un pointeur LFS : lancer git lfs checkout');
 fs.rmSync(DIST,{recursive:true,force:true});
 fs.mkdirSync(path.join(DIST,'occt'),{recursive:true});
-fs.cpSync(path.join(ROOT,'occt/v3'),path.join(DIST,'occt/v3'),{recursive:true});
+for(const n of ['v3','mt'])fs.cpSync(path.join(ROOT,'occt',n),path.join(DIST,'occt',n),{recursive:true});
 fs.cpSync(path.join(ROOT,'threejs'),path.join(DIST,'threejs'),{recursive:true});
 fs.copyFileSync(path.join(ICI,'pont.js'),path.join(DIST,'pont.js'));
 const page=fs.readFileSync(source,'utf8');
