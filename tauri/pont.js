@@ -1,0 +1,143 @@
+// Pont de la maquette : rend aux fonctions de fichiers du logiciel (showOpenFilePicker, etc.) le
+// service qu'elles attendent, mais avec les vraies fenêtres Windows et sans demande de permission.
+// Le code de ConceptCAD n'est pas touché : tout passe par ce fichier, chargé avant lui.
+(function(){
+  'use strict';
+  const invoke=window.__TAURI__.core.invoke;
+  const annule=()=>new DOMException('Annulé','AbortError');
+  const introuvable=n=>new DOMException('Introuvable : '+n,'NotFoundError');
+  const BS=String.fromCharCode(92); // la barre oblique inverse des chemins Windows
+  const sansFin=p=>p.endsWith(BS)?p.slice(0,-1):p;
+  const dossierDe=p=>p.slice(0,Math.max(p.lastIndexOf(BS),0));
+  const nomDe=p=>p.slice(p.lastIndexOf(BS)+1);
+  const joindre=(d,n)=>sansFin(d)+BS+n;
+  const ecrire=(chemin,octets)=>invoke('ecrire',octets,{headers:{'x-chemin':encodeURIComponent(chemin)}});
+
+  // Pas de méthode propre à l'objet : un lien doit pouvoir se ranger dans IndexedDB (fichiers récents).
+  class Lien{
+    constructor(kind,chemin){this.__pont=1;this.kind=kind;this.chemin=chemin;this.name=nomDe(chemin);}
+    async queryPermission(){return 'granted';}
+    async requestPermission(){return 'granted';}
+    async isSameEntry(o){return !!o&&o.kind===this.kind&&String(o.chemin).toLowerCase()===this.chemin.toLowerCase();}
+  }
+  class LienFichier extends Lien{
+    constructor(chemin){super('file',chemin);}
+    async getFile(){
+      const i=await invoke('infos',{chemin:this.chemin});
+      if(!i||i.dossier)throw introuvable(this.name);
+      const b=await invoke('lire',{chemin:this.chemin});
+      return new File([b],this.name,{lastModified:i.modif});
+    }
+    async createWritable(){
+      const morceaux=[],chemin=this.chemin;
+      return {
+        async write(d){morceaux.push(d&&d.type==='write'?d.data:d);},
+        async close(){await ecrire(chemin,new Uint8Array(await new Blob(morceaux).arrayBuffer()));},
+        async abort(){morceaux.length=0;}
+      };
+    }
+  }
+  class LienDossier extends Lien{
+    constructor(chemin){super('directory',chemin);}
+    async getFileHandle(n,o){
+      const c=joindre(this.chemin,n);
+      if(!(await invoke('infos',{chemin:c}))){
+        if(!(o&&o.create))throw introuvable(n);
+        await ecrire(c,new Uint8Array(0));
+      }
+      return new LienFichier(c);
+    }
+    async getDirectoryHandle(n,o){
+      const c=joindre(this.chemin,n);
+      if(!(await invoke('infos',{chemin:c}))){
+        if(!(o&&o.create))throw introuvable(n);
+        await invoke('creer_dossier',{chemin:c});
+      }
+      return new LienDossier(c);
+    }
+    async resolve(h){
+      const a=sansFin(this.chemin).toLowerCase(),c=String(h&&h.chemin);
+      if(c.toLowerCase()===a)return [];
+      return c.toLowerCase().startsWith(a+BS)?c.slice(a.length+1).split(BS):null;
+    }
+    async *entries(){
+      for(const e of await invoke('lister',{chemin:this.chemin})){
+        const c=joindre(this.chemin,e.nom);
+        yield [e.nom,e.dossier?new LienDossier(c):new LienFichier(c)];
+      }
+    }
+    async *keys(){for await(const [k] of this.entries())yield k;}
+    async *values(){for await(const [,v] of this.entries())yield v;}
+    [Symbol.asyncIterator](){return this.entries();}
+  }
+
+  // Un lien relu dans IndexedDB a perdu ses fonctions : on les lui rend à la lecture.
+  function ranimer(v){
+    if(!v||typeof v!=='object')return v;
+    if(v.__pont===1&&!(v instanceof Lien))return v.kind==='directory'?new LienDossier(v.chemin):new LienFichier(v.chemin);
+    if(Array.isArray(v))for(const x of v)if(x&&typeof x==='object'&&x.h&&x.h.__pont===1)x.h=ranimer(x.h);
+    return v;
+  }
+  const lecture=Object.getOwnPropertyDescriptor(IDBRequest.prototype,'result');
+  Object.defineProperty(IDBRequest.prototype,'result',{configurable:true,enumerable:true,get(){return ranimer(lecture.get.call(this));}});
+
+  const filtres=o=>((o&&o.types)||[]).map(t=>({
+    description:t.description||'Fichiers',
+    extensions:Object.values(t.accept||{}).flat().map(e=>String(e).replace(/^\./,''))
+  }));
+  const depart=o=>{
+    const s=o&&o.startIn;
+    if(!s||!s.chemin)return null;
+    return s.kind==='directory'?s.chemin:dossierDe(s.chemin);
+  };
+
+  window.showOpenFilePicker=async o=>{
+    const c=await invoke('dialogue_ouvrir',{filtres:filtres(o),depart:depart(o)});
+    if(!c)throw annule();
+    return [new LienFichier(c)];
+  };
+  window.showSaveFilePicker=async o=>{
+    const nom=(o&&o.suggestedName)||null;
+    let c=await invoke('dialogue_enregistrer',{filtres:filtres(o),depart:depart(o),nom});
+    if(!c)throw annule();
+    // nom tapé sans extension : celle du nom proposé
+    const ext=nom&&/\.[^.]+$/.exec(nom);
+    if(ext&&!nomDe(c).includes('.'))c+=ext[0];
+    return new LienFichier(c);
+  };
+  window.showDirectoryPicker=async o=>{
+    const c=await invoke('dialogue_dossier',{depart:depart(o)});
+    if(!c)throw annule();
+    return new LienDossier(c);
+  };
+
+  // Exports (STEP, G-code, images…) : la vraie fenêtre « Enregistrer sous » au lieu d'un téléchargement.
+  const clicNatif=HTMLAnchorElement.prototype.click;
+  HTMLAnchorElement.prototype.click=function(){
+    if(!this.download||!/^(blob|data):/.test(this.href))return clicNatif.call(this);
+    const nom=this.download,ext=/\.([^.]+)$/.exec(nom),adresse=this.href;
+    (async()=>{
+      const b=await (await fetch(adresse)).blob(); // tout de suite : l'adresse est libérée peu après
+      const types=ext?[{description:ext[1].toUpperCase(),accept:{'x/x':['.'+ext[1]]}}]:[];
+      let h;
+      try{h=await window.showSaveFilePicker({suggestedName:nom,types});}catch(e){return;}
+      const w=await h.createWritable();await w.write(b);await w.close();
+    })().catch(e=>alert('Export impossible : '+(e&&e.message||e)));
+  };
+
+  // Titre de la fenêtre = titre de la page (nom du fichier, point « modifié »)
+  addEventListener('DOMContentLoaded',()=>{
+    const t=document.querySelector('title');
+    const suivre=()=>invoke('titre',{texte:document.title}).catch(()=>{});
+    if(t){new MutationObserver(suivre).observe(t,{childList:true});suivre();}
+  });
+
+  // Double-clic sur un .conceptcad : ouvert quand le noyau est prêt
+  addEventListener('load',async()=>{
+    const c=await invoke('fichier_demarrage');
+    if(!c)return;
+    const pret=()=>{try{return occtReady===true||/échec|indisponible/.test(occBaseMsg);}catch(e){return false;}};
+    while(!pret())await new Promise(k=>setTimeout(k,100));
+    await mffOpenHandle(new LienFichier(c));
+  });
+})();

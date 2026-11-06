@@ -1,0 +1,36 @@
+[
+ {
+  "prive": 371,
+  "engage": 784,
+  "ws": 764,
+  "gpuDed": 210,
+  "noms": {
+   "chrome.exe": 8
+  },
+  "detail": [
+   208,
+   64,
+   48,
+   30,
+   9
+  ],
+  "noyauDemande": true
+ },
+ {
+  "prive": 371,
+  "engage": 787,
+  "ws": 764,
+  "gpuDed": 212,
+  "noms": {
+   "chrome.exe": 8
+  },
+  "detail": [
+   210,
+   66,
+   47,
+   27,
+   9
+  ],
+  "noyauDemande": true
+ }
+]

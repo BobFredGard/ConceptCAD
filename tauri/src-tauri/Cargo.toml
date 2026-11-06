@@ -1,0 +1,25 @@
+[package]
+name = "conceptcad-maquette"
+version = "0.64.3"
+edition = "2021"
+description = "Maquette : ConceptCAD en application Windows (mesures, pas de livraison)"
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = [] }
+serde = { version = "1", features = ["derive"] }
+rfd = "0.15"
+percent-encoding = "2"
+
+[profile.release]
+opt-level = "s"
+codegen-units = 1
+lto = true
+panic = "abort"
+strip = true
+
+# compresser le noyau (43 Mo) à la compilation : sans ça, l'outil de compression tourne en lent
+[profile.release.build-override]
+opt-level = 3

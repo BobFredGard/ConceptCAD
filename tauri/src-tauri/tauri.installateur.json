@@ -1,0 +1,6 @@
+{
+  "bundle": {
+    "active": true,
+    "windows": { "nsis": { "installMode": "currentUser" } }
+  }
+}

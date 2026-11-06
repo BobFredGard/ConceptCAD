@@ -1,0 +1,48 @@
+{
+ "applicationMulticoeur": {
+  "isole": true,
+  "sab": true,
+  "coeurs": 24,
+  "memoireWasmPartagee": true,
+  "ms": {
+   "1": 8014,
+   "4": 2190,
+   "12": 788
+  },
+  "gain4": 3.7,
+  "gain12": 10.2
+ },
+ "logicielDansCetteVariante": {
+  "v3": true,
+  "corps": 1,
+  "calculDeFond": true,
+  "rendu": true
+ },
+ "erreurs": [],
+ "dialogues": [],
+ "chromeLocalhostActuel": {
+  "isole": false,
+  "sab": false,
+  "coeurs": 24,
+  "memoireWasmPartagee": true
+ },
+ "chromeLocalhostAvecReglages": {
+  "isole": true,
+  "sab": true,
+  "coeurs": 24,
+  "memoireWasmPartagee": true,
+  "ms": {
+   "1": 7958,
+   "4": 1991,
+   "12": 764
+  },
+  "gain4": 4,
+  "gain12": 10.4
+ },
+ "chromeDoubleClicFichier": {
+  "isole": false,
+  "sab": false,
+  "coeurs": 24,
+  "memoireWasmPartagee": true
+ }
+}
