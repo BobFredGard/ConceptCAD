@@ -6,6 +6,7 @@
 #include <wx/treectrl.h>
 
 #include <cstdio>
+#include <functional>
 #include <memory>
 #include <string>
 #include <vector>
@@ -33,12 +34,12 @@ class Cadre : public wxFrame {
   bool lancerProtocole(const std::wstring& fichier, const std::wstring& journal, int total);
 
  private:
-  // Une profondeur (fonction >= 0), ou une cote d'esquisse : alors toutes les esquisses, car celles qui suivent le solide bougent aussi
+  // Toutes les esquisses, car celles qui suivent le solide bougent aussi ; et les fonctions si ce pas les a touchées
   struct ModifCote {
-    int fonction;
-    double avant, apres;
     std::vector<Esquisse> esquissesAvant, esquissesApres;
     bool creation = false;  // ce pas a ajouté une esquisse à la pièce
+    bool avecFonctions = false;
+    std::vector<Fonction> fonctionsAvant, fonctionsApres;
   };
   void etat(const wxString& texte);
   void creerMenus();
@@ -57,7 +58,10 @@ public:
   void brancherDessin();
   void faireSuivre();  // ce qui a été dessiné : les esquisses qui s'appuient sur le solide suivent, puis le solide
   double recalculer();
-  void changerCote(int fonction, double valeur, bool memoriser);
+  void extruder();
+  void modifierFonction(int i, const std::function<void(Fonction&)>& reglage);
+  void choisirFonction(int i);
+  void poserPas(const std::vector<Esquisse>& esquisses, bool avecFonctions, const std::vector<Fonction>& fonctions);
   bool demandeCote(const Cote& c, wxString& texte);
   void saisieCote(const std::string& id, const wxString& texte);
   void poserEsquisses(const std::vector<Esquisse>& v);
@@ -94,5 +98,6 @@ public:
   int fonctionMontree_ = -1;
   double msRejeu_ = 0, msMaillage_ = 0;
   std::vector<ModifCote> annulations_, retablissements_;
+  std::vector<wxTreeItemId> lignesFonctions_;  // la ligne de l'arbre de chaque fonction
   Protocole proto_;
 };

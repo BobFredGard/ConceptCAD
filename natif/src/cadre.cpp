@@ -18,10 +18,10 @@
 #include "enregistrer.h"
 
 namespace {
-enum { ID_ANNULER = wxID_HIGHEST + 1, ID_RETABLIR, ID_AJUSTER, ID_QUITTER_ESQUISSE, ID_ESQUISSE_XY, ID_ESQUISSE_XZ, ID_ESQUISSE_YZ, ID_ESQUISSE_FACE };
+enum { ID_ANNULER = wxID_HIGHEST + 1, ID_RETABLIR, ID_AJUSTER, ID_QUITTER_ESQUISSE, ID_ESQUISSE_XY, ID_ESQUISSE_XZ, ID_ESQUISSE_YZ, ID_ESQUISSE_FACE, ID_EXTRUDER };
 // Identifiants fixes : natif/mesures/verifier-fenetre.ps1 retrouve ces fenêtres par eux.
 enum { ID_ARBRE = 2001, ID_PROPS = 2002, ID_ETAT = 2003 };
-const char* const PROP_PROFONDEUR = "profondeur";
+const char* const PROP_PROFONDEUR = "profondeur", * const PROP_OPERATION = "operation", * const PROP_ETENDUE = "etendue", * const PROP_DIRECTION = "direction", * const PROP_INVERSER = "inverser";
 
 struct LienArbre : wxTreeItemData {
   LienArbre(bool f, int n) : estFonction(f), i(n) {}
@@ -137,10 +137,13 @@ void Cadre::creerMenus() {
   esquisse->Append(ID_ESQUISSE_XZ, L"Nouvelle esquisse sur le plan X&Z");
   esquisse->Append(ID_ESQUISSE_YZ, L"Nouvelle esquisse sur le plan &YZ");
   esquisse->Append(ID_ESQUISSE_FACE, L"Nouvelle esquisse sur la &face choisie");
+  auto* fonctions = new wxMenu;
+  fonctions->Append(ID_EXTRUDER, L"E&xtruder l'esquisse\tCtrl+E");
   auto* barre = new wxMenuBar;
   barre->Append(fichier, L"&Fichier");
   barre->Append(edition, L"&Édition");
   barre->Append(esquisse, L"E&squisse");
+  barre->Append(fonctions, L"Fo&nctions");
   barre->Append(affichage, L"&Affichage");
   SetMenuBar(barre);
   Bind(wxEVT_MENU, &Cadre::surOuvrir, this, wxID_OPEN);
@@ -165,7 +168,9 @@ void Cadre::creerMenus() {
   Bind(wxEVT_MENU, [this](wxCommandEvent&) { creerEsquisse("XZ"); }, ID_ESQUISSE_XZ);
   Bind(wxEVT_MENU, [this](wxCommandEvent&) { creerEsquisse("YZ"); }, ID_ESQUISSE_YZ);
   Bind(wxEVT_MENU, [this](wxCommandEvent&) { creerEsquisse(""); }, ID_ESQUISSE_FACE);
+  Bind(wxEVT_MENU, [this](wxCommandEvent&) { extruder(); }, ID_EXTRUDER);
   Bind(wxEVT_UPDATE_UI, [this](wxUpdateUIEvent& e) { e.Enable(docOuvert_); }, ID_ESQUISSE_XY, ID_ESQUISSE_FACE);
+  Bind(wxEVT_UPDATE_UI, [this](wxUpdateUIEvent& e) { e.Enable(docOuvert_ && !doc_.esquisses.empty()); }, ID_EXTRUDER);
   Bind(wxEVT_UPDATE_UI, [this](wxUpdateUIEvent& e) { e.Enable(esquisseOuverte_ >= 0); }, ID_QUITTER_ESQUISSE);
   Bind(wxEVT_UPDATE_UI, [this](wxUpdateUIEvent& e) { e.Enable(!annulations_.empty()); }, ID_ANNULER);
   Bind(wxEVT_UPDATE_UI, [this](wxUpdateUIEvent& e) { e.Enable(!retablissements_.empty()); }, ID_RETABLIR);
@@ -267,6 +272,7 @@ bool Cadre::ouvrir(const std::wstring& chemin) {
 void Cadre::remplirArbre() {
   arbre_->Freeze();
   arbre_->DeleteAllItems();
+  lignesFonctions_.assign(doc_.fonctions.size(), wxTreeItemId());
   const wxTreeItemId racine = arbre_->AddRoot(tx(doc_.nom));
   const wxTreeItemId esquisses = arbre_->AppendItem(racine, wxString::Format(L"Esquisses (%zu)", doc_.esquisses.size()));
   for (size_t i = 0; i < doc_.esquisses.size(); i++) {
@@ -280,6 +286,7 @@ void Cadre::remplirArbre() {
       const bool ici = f.corps == doc_.corps[c] || (c == 0 && std::find(doc_.corps.begin(), doc_.corps.end(), f.corps) == doc_.corps.end());
       if (!ici) continue;
       const wxTreeItemId n = arbre_->AppendItem(corps, f.nom.empty() ? nomType(f) : tx(f.nom), -1, -1, new LienArbre(true, static_cast<int>(i)));
+      lignesFonctions_[i] = n;
       if (!f.visible) arbre_->SetItemTextColour(n, wxSystemSettings::GetColour(wxSYS_COLOUR_GRAYTEXT));
     }
     arbre_->Expand(corps);
@@ -317,11 +324,23 @@ void Cadre::montrerFonction(int i) {
   if (f.type != "extrude") return;
   const Esquisse* e = doc_.esquisse(f.esquisse);
   lectureSeule(props_, L"Esquisse", tx(e && !e->nom.empty() ? e->nom : f.esquisse));
-  if (f.through) {
-    lectureSeule(props_, L"Profondeur", L"À travers tout");
-  } else if (f.visible && solideCalculable_ && doc_.profondeurModifiable(i)) {
-    props_->Append(new wxStringProperty(L"Profondeur (mm)", PROP_PROFONDEUR, wxString::Format("%g", f.distance)));
+  if (f.visible && solideCalculable_ && doc_.profondeurModifiable(i)) {
+    // Le panneau de l'extrusion du navigateur : le signe de la distance vient de l'opération
+    wxPGChoices operations, etendues, directions;
+    operations.Add(L"Plot : ajoute de la matière", 0);
+    operations.Add(L"Poche : retire de la matière", 1);
+    etendues.Add(L"Distance", 0);
+    etendues.Add(L"À travers tout", 1);
+    directions.Add(L"Un côté", 0);
+    directions.Add(L"Symétrique", 1);
+    props_->Append(new wxEnumProperty(L"Opération", PROP_OPERATION, operations, f.op == "cut" ? 1 : 0));
+    props_->Append(new wxEnumProperty(L"Étendue", PROP_ETENDUE, etendues, f.through ? 1 : 0));
+    if (!f.through) props_->Append(new wxStringProperty(f.mid ? L"Profondeur totale (mm)" : L"Profondeur (mm)", PROP_PROFONDEUR, wxString::Format("%.10g", std::abs(f.distance))));
+    props_->Append(new wxEnumProperty(L"Direction", PROP_DIRECTION, directions, f.mid ? 1 : 0));
+    props_->SetPropertyAttribute(props_->Append(new wxBoolProperty(L"Inverser le sens", PROP_INVERSER, f.flip)), wxPG_BOOL_USE_CHECKBOX, true);
     fonctionMontree_ = i;
+  } else if (f.through) {
+    lectureSeule(props_, L"Profondeur", L"À travers tout");
   } else {
     lectureSeule(props_, L"Profondeur (mm)", wxString::Format("%g", f.distance));
     if (f.visible && solideCalculable_) lectureSeule(props_, L"Modification", L"Pas encore : une esquisse posée de biais suit cette profondeur");
@@ -409,7 +428,8 @@ void Cadre::saisieCote(const std::string& id, const wxString& texte) {
   }
   const double valeur = it->type == "angle" ? f * 3.14159265358979323846 / 180 : it->dia ? f / 2 : f;
   if (valeur == it->value) return;
-  ModifCote m{-1, 0, 0, doc_.esquisses, {}};
+  ModifCote m;
+  m.esquissesAvant = doc_.esquisses;
   std::string raison;
   {
     wxBusyCursor attente;
@@ -433,7 +453,9 @@ void Cadre::brancherDessin() {
   if (esquisseOuverte_ < 0 || !edition_) return;
   dessin_ = std::make_unique<Dessin>(doc_.esquisses[esquisseOuverte_], *edition_);
   dessin_->avantModif = [this] {
-    annulations_.push_back({-1, 0, 0, doc_.esquisses, {}});
+    ModifCote m;
+    m.esquissesAvant = doc_.esquisses;
+    annulations_.push_back(std::move(m));
     retablissements_.clear();
     dessinModifie_ = true;
   };
@@ -509,7 +531,8 @@ void Cadre::creerEsquisse(const std::string& plan) {
     etat(L"Esquisse sur face : cliquez d'abord une face plane du solide, puis reprenez le menu Esquisse.");
     return;
   }
-  ModifCote m{-1, 0, 0, doc_.esquisses, {}};
+  ModifCote m;
+  m.esquissesAvant = doc_.esquisses;
   m.creation = true;
   annulations_.push_back(std::move(m));
   retablissements_.clear();
@@ -538,10 +561,11 @@ void Cadre::quitterEsquisse() {
   // skIsGhost : créée puis refermée sans rien dessiner, elle ne reste pas dans la pièce, ni dans les annulations
   const Esquisse& fin = doc_.esquisses[i];
   const bool rienQueOrigine = fin.ordre.empty() || (fin.ordre.size() == 1 && fin.ordre[0] == "O");
-  if (static_cast<size_t>(i) >= doc_.esquissesFichier.size() && static_cast<size_t>(i) + 1 == doc_.esquisses.size() && fin.entites.empty() && fin.contraintes.empty() && fin.cotes.empty() && rienQueOrigine) {
+  const bool citee = std::any_of(doc_.fonctions.begin(), doc_.fonctions.end(), [&](const Fonction& f) { return f.esquisse == fin.id; });
+  if (!citee && static_cast<size_t>(i) >= doc_.esquissesFichier.size() && static_cast<size_t>(i) + 1 == doc_.esquisses.size() && fin.entites.empty() && fin.contraintes.empty() && fin.cotes.empty() && rienQueOrigine) {
     doc_.esquisses.pop_back();
     const size_t n = doc_.esquisses.size();
-    while (!annulations_.empty() && annulations_.back().fonction < 0 && annulations_.back().esquissesAvant.size() > n) annulations_.pop_back();
+    while (!annulations_.empty() && !annulations_.back().avecFonctions && annulations_.back().esquissesAvant.size() > n) annulations_.pop_back();
     if (!annulations_.empty() && annulations_.back().creation && annulations_.back().esquissesAvant.size() == n) annulations_.pop_back();
     retablissements_.clear();
     suivre = false;
@@ -624,16 +648,94 @@ double Cadre::recalculer() {
   return total;
 }
 
-void Cadre::changerCote(int fonction, double valeur, bool memoriser) {
-  Fonction& f = doc_.fonctions[fonction];
-  if (memoriser) {
-    annulations_.push_back({fonction, f.distance, valeur, {}, {}});
-    retablissements_.clear();
+// Ctrl+E : l'esquisse ouverte, sinon celle choisie dans l'arbre, sinon la dernière (askExtrude). La fonction naît tout de suite : ce qu'on voit est le résultat.
+void Cadre::extruder() {
+  if (!docOuvert_ || doc_.esquisses.empty()) return;
+  if (!solideCalculable_) {
+    etat(L"Extrusion : le solide de cette pièce n'est pas encore calculé par ce programme.");
+    return;
   }
-  f.distance = valeur;
-  if (!proto_.actif) majTitre();
+  std::string id;
+  if (esquisseOuverte_ >= 0) {
+    id = doc_.esquisses[esquisseOuverte_].id;
+  } else if (const wxTreeItemId ligne = arbre_->GetSelection(); ligne.IsOk()) {
+    const auto* lien = dynamic_cast<LienArbre*>(arbre_->GetItemData(ligne));
+    if (lien && !lien->estFonction) id = doc_.esquisses[lien->i].id;
+  }
+  if (id.empty()) {
+    id = doc_.esquisses.back().id;
+    for (size_t i = doc_.esquisses.size(); i-- > 0;) {  // repCloneSkName : les copies d'une répétition ne sont jamais la source
+      const std::string& n = doc_.esquisses[i].nom;
+      const size_t r = n.rfind("(r\xC3\xA9p");
+      if (r == std::string::npos || n.back() != ')') {
+        id = doc_.esquisses[i].id;
+        break;
+      }
+    }
+  }
+  quitterEsquisse();  // peut retirer une esquisse restée vide
+  Esquisse* s = doc_.esquisse(id);
+  if (!s) {
+    etat(L"Extrusion : dessinez d'abord un contour fermé dans l'esquisse.");
+    return;
+  }
+  const std::string raison = raisonSansVolume(*s);
+  if (!raison.empty()) {
+    etat(L"Extrusion impossible pour « " + tx(s->nom) + L" » : " + tx(raison) + L".");
+    return;
+  }
+  ModifCote m;
+  m.esquissesAvant = doc_.esquisses;
+  m.avecFonctions = true;
+  m.fonctionsAvant = doc_.fonctions;
+  annulations_.push_back(std::move(m));
+  retablissements_.clear();
+  doc_.fonctions.push_back(nouvelleExtrusion(doc_, *s));
+  s->visible = false;
+  ajusterVue_ = forme_.IsNull();
+  remplirArbre();
+  majTitre();
   recalculer();
-  if (fonctionMontree_ == fonction) props_->SetPropertyValue(PROP_PROFONDEUR, wxString::Format("%g", valeur));
+  choisirFonction(static_cast<int>(doc_.fonctions.size()) - 1);
+  etat(GetStatusBar()->GetStatusText() + L"  |  Réglez la profondeur dans Propriétés. Ctrl+Z : annuler.");
+  props_->SelectProperty(PROP_PROFONDEUR, true);
+}
+
+void Cadre::choisirFonction(int i) {
+  if (i < 0 || i >= static_cast<int>(lignesFonctions_.size())) return;
+  if (!lignesFonctions_[i].IsOk()) return;
+  if (arbre_->GetSelection() == lignesFonctions_[i]) montrerFonction(i);
+  else arbre_->SelectItem(lignesFonctions_[i]);
+}
+
+void Cadre::modifierFonction(int i, const std::function<void(Fonction&)>& reglage) {
+  ModifCote m;
+  m.esquissesAvant = doc_.esquisses;
+  m.avecFonctions = true;
+  m.fonctionsAvant = doc_.fonctions;
+  Fonction& f = doc_.fonctions[i];
+  reglage(f);
+  f.nom = nomExtrusion(doc_, f);
+  if (memesReglages(f, m.fonctionsAvant[i])) {
+    montrerFonction(i);
+    return;
+  }
+  annulations_.push_back(std::move(m));
+  retablissements_.clear();
+  arbre_->SetItemText(lignesFonctions_[i], tx(f.nom));
+  majTitre();
+  recalculer();
+  montrerFonction(i);
+}
+
+void Cadre::poserPas(const std::vector<Esquisse>& esquisses, bool avecFonctions, const std::vector<Fonction>& fonctions) {
+  const int montree = fonctionMontree_;
+  if (avecFonctions) doc_.fonctions = fonctions;
+  poserEsquisses(esquisses);
+  if (!avecFonctions) return;
+  remplirArbre();
+  montrerRien();
+  choisirFonction(montree);
 }
 
 void Cadre::annuler() {
@@ -644,15 +746,17 @@ void Cadre::annuler() {
     etat(L"Cette esquisse est déjà enregistrée dans le fichier : la retirer n'est pas encore repris dans ce programme.");
     return;
   }
+  if (annulations_.back().avecFonctions && annulations_.back().fonctionsAvant.size() < doc_.fonctionsFichier.size()) {
+    etat(L"Cette extrusion est déjà enregistrée dans le fichier : la retirer n'est pas encore repris dans ce programme.");
+    return;
+  }
   ModifCote m = annulations_.back();
   annulations_.pop_back();
-  if (m.fonction < 0) {
-    faireSuivre();  // l'état à rétablir est complet
-    m.esquissesApres = doc_.esquisses;
-  }
+  faireSuivre();  // l'état à rétablir est complet
+  m.esquissesApres = doc_.esquisses;
+  if (m.avecFonctions) m.fonctionsApres = doc_.fonctions;
   retablissements_.push_back(m);
-  if (m.fonction < 0) poserEsquisses(m.esquissesAvant);
-  else changerCote(m.fonction, m.avant, false);
+  poserPas(m.esquissesAvant, m.avecFonctions, m.fonctionsAvant);
 }
 
 void Cadre::retablir() {
@@ -660,8 +764,7 @@ void Cadre::retablir() {
   const ModifCote m = retablissements_.back();
   retablissements_.pop_back();
   annulations_.push_back(m);
-  if (m.fonction < 0) poserEsquisses(m.esquissesApres);
-  else changerCote(m.fonction, m.apres, false);
+  poserPas(m.esquissesApres, m.avecFonctions, m.fonctionsApres);
 }
 
 void Cadre::surArbre(wxTreeEvent& e) {
@@ -678,17 +781,36 @@ void Cadre::surArbreActive(wxTreeEvent& e) {
 }
 
 void Cadre::surPropriete(wxPropertyGridEvent& e) {
-  if (e.GetPropertyName() != PROP_PROFONDEUR || fonctionMontree_ < 0) return;
+  if (fonctionMontree_ < 0) return;
   const int fonction = fonctionMontree_;
-  wxString t = e.GetValue().GetString();
-  t.Replace(",", ".");
-  double v = 0;
-  if (!t.ToCDouble(&v) || v == 0) {
-    wxMessageBox(L"Saisir un nombre différent de zéro, en millimètres.", L"Cote incorrecte", wxOK | wxICON_WARNING, this);
-    props_->SetPropertyValue(PROP_PROFONDEUR, wxString::Format("%g", doc_.fonctions[fonction].distance));
+  const wxString nom = e.GetPropertyName();
+  std::function<void(Fonction&)> reglage;
+  if (nom == PROP_PROFONDEUR) {
+    wxString t = e.GetValue().GetString();
+    t.Replace(",", ".");
+    double v = 0;
+    if (!t.ToCDouble(&v) || !std::isfinite(v) || v == 0) {
+      wxMessageBox(L"Saisir un nombre différent de zéro, en millimètres.", L"Cote incorrecte", wxOK | wxICON_WARNING, this);
+      props_->SetPropertyValue(PROP_PROFONDEUR, wxString::Format("%.10g", std::abs(doc_.fonctions[fonction].distance)));
+      return;
+    }
+    reglage = [v](Fonction& f) { reglerProfondeur(f, v); };
+  } else if (nom == PROP_OPERATION) {
+    const std::string op = e.GetValue().GetLong() == 1 ? "cut" : "add";
+    reglage = [op](Fonction& f) { reglerOperation(f, op); };
+  } else if (nom == PROP_ETENDUE) {
+    const bool oui = e.GetValue().GetLong() == 1;
+    reglage = [oui](Fonction& f) { reglerATravers(f, oui); };
+  } else if (nom == PROP_DIRECTION) {
+    const bool oui = e.GetValue().GetLong() == 1;
+    reglage = [oui](Fonction& f) { f.mid = oui; };
+  } else if (nom == PROP_INVERSER) {
+    const bool oui = e.GetValue().GetBool();
+    reglage = [oui](Fonction& f) { f.flip = oui; };
+  } else {
     return;
   }
-  CallAfter([this, fonction, v] { changerCote(fonction, v, true); });  // jamais de recalcul au milieu de l'événement de la grille
+  CallAfter([this, fonction, reglage] { modifierFonction(fonction, reglage); });  // jamais de recalcul au milieu de l'événement de la grille
 }
 
 bool Cadre::lancerProtocole(const std::wstring& fichier, const std::wstring& journal, int total) {

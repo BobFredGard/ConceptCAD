@@ -10,6 +10,8 @@
 #include <cstdio>
 #include <map>
 
+#include <nlohmann/json.hpp>
+
 namespace {
 // Parcours du texte JSON, sans le décoder : on y cherche seulement la place de chaque « distance ».
 // Le fichier a déjà été lu sans erreur à l'ouverture ; tout écart ici arrête l'enregistrement.
@@ -128,7 +130,7 @@ void controler(const std::wstring& temp, const std::string& octets, const Docume
   const Document r = lireProjet(temp);
   bool pareil = r.esquisses.size() == d.esquisses.size() && r.fonctions.size() == d.fonctions.size() && r.nonPrisEnCharge == d.nonPrisEnCharge;
   for (size_t i = 0; pareil && i < r.fonctions.size(); i++)
-    pareil = r.fonctions[i].id == d.fonctions[i].id && r.fonctions[i].distance == d.fonctions[i].distance;
+    pareil = memesReglages(r.fonctions[i], d.fonctions[i]);
   for (size_t i = 0; pareil && i < r.esquisses.size(); i++)
     pareil = r.esquisses[i].id == d.esquisses[i].id && memesValeurs(r.esquisses[i], d.esquisses[i]);
   if (!pareil) throw std::runtime_error("la relecture du fichier écrit ne redonne pas la même pièce");
@@ -189,8 +191,16 @@ std::string entierJson(int v) { return std::to_string(v); }
 
 void retoucherEsquisse(Parcours& p, const RetoucheEsquisse& r, std::vector<Morceau>& morceaux) {
   size_t points = 0;
+  p.blancs();
+  const size_t ouverture = p.ici() + 1;
+  bool vuVisible = false;
   p.membres([&](const std::string& k) {
-    if (k == "points" && p.voir() == '{') {
+    if (k == "visible" && r.visible >= 0) {
+      vuVisible = true;
+      const size_t d = p.ici();
+      p.sauter();
+      morceaux.push_back({d, p.ici(), r.visible ? "true" : "false"});
+    } else if (k == "points" && p.voir() == '{') {
       p.membres([&](const std::string& id) {
         const auto it = std::find_if(r.points.begin(), r.points.end(), [&](const RetoucheEsquisse::Point& q) { return q.id == id; });
         if (it == r.points.end()) {
@@ -230,6 +240,7 @@ void retoucherEsquisse(Parcours& p, const RetoucheEsquisse& r, std::vector<Morce
     }
   });
   if (points != r.points.size()) Parcours::panne();
+  if (r.visible >= 0 && !vuVisible) morceaux.push_back({ouverture, ouverture, std::string("\"visible\":") + (r.visible ? "true" : "false") + ","});
 }
 }  // namespace
 
@@ -599,8 +610,55 @@ std::string ajouterEsquisses(const std::string& texte, const std::vector<const E
   return appliquer(texte, std::move(morceaux));
 }
 
+// Un nom : il peut contenir des accents et tout ce que l'utilisateur a tapé
+std::string nomJson(const std::string& v) { return nlohmann::json(v).dump(-1, ' ', false); }
+std::string fonctionCreee(const Fonction& f) {
+  std::string o = "{\"id\":" + texteJson(f.id) + ",\"type\":\"extrude\",\"name\":" + nomJson(f.nom) + ",\"sketchId\":" + texteJson(f.esquisse);
+  o += ",\"distance\":" + (f.through ? std::string("null") : nombreJson(f.distance)) + ",\"op\":" + texteJson(f.op) + ",\"visible\":true";
+  o += std::string(",\"mid\":") + (f.mid ? "true" : "false") + ",\"upto\":null,\"body\":" + texteJson(f.corps);
+  if (f.flip) o += ",\"flip\":true";
+  if (f.through) o += ",\"through\":true";
+  return o + "}";
+}
+std::string ajouterFonctions(const std::string& texte, const std::vector<const Fonction*>& L) {
+  Parcours p(texte);
+  allerAuDocument(p);
+  std::vector<Morceau> morceaux;
+  std::string neuf;
+  for (const Fonction* f : L) neuf += (neuf.empty() ? "" : ",") + fonctionCreee(*f);
+  bool vu = false;
+  p.membres([&](const std::string& k) {
+    if (k == "features" && p.voir() == '[') {
+      vu = true;
+      const size_t d = p.ici();
+      p.aller(d + 1);
+      const bool vide = p.voir() == ']';
+      p.aller(d);
+      p.sauter();
+      morceaux.clear();
+      morceaux.push_back({p.ici() - 1, p.ici() - 1, (vide ? "" : ",") + neuf});
+    } else {
+      p.sauter();
+    }
+  });
+  if (!vu) Parcours::panne();
+  return appliquer(texte, std::move(morceaux));
+}
+Retouche retoucheFonction(size_t rang, const Fonction& a, const Fonction& b) {
+  Retouche r{rang, {}};
+  const auto oui = [](bool v) { return std::string(v ? "true" : "false"); };
+  if (a.nom != b.nom) r.champs.push_back({"name", nomJson(a.nom)});
+  if (a.distance != b.distance || a.through != b.through) r.champs.push_back({"distance", a.through ? "null" : nombreJson(a.distance)});
+  if (a.op != b.op) r.champs.push_back({"op", texteJson(a.op)});
+  if (a.mid != b.mid) r.champs.push_back({"mid", oui(a.mid)});
+  if (a.flip != b.flip) r.champs.push_back({"flip", oui(a.flip)});
+  if (a.through != b.through) r.champs.push_back({"through", oui(a.through)});
+  return r;
+}
+
 Esquisse aligner(const Esquisse& s, const Esquisse& f) {
   Esquisse t = s;
+  t.visible = f.visible;
   for (const std::string& id : t.ordre)
     if (const Pt* q = f.point(id)) t.points[id] = *q;
   for (Entite& e : t.entites)
@@ -623,9 +681,11 @@ Esquisse aligner(const Esquisse& s, const Esquisse& f) {
 
 std::string retoucher(const std::string& texte, const std::vector<Retouche>& retouches, const std::vector<RetoucheEsquisse>& esquisses) {
   std::vector<Morceau> morceaux, deEsquisses;
+  size_t fonctionsVues = 0;
   const auto lireFonctions = [&](Parcours& p) {
     p.attendre('[');
     size_t rang = 0;
+    fonctionsVues = 0;
     if (p.voir() == ']') {  // pièce sans fonction, seulement des esquisses
       p.aller(p.ici() + 1);
       return;
@@ -635,22 +695,10 @@ std::string retoucher(const std::string& texte, const std::vector<Retouche>& ret
       if (it == retouches.end()) {
         p.sauter();
       } else {
-        // S'il y a plusieurs « distance » dans l'objet, la dernière compte, comme à la lecture
-        bool trouve = false;
-        size_t debut = 0, fin = 0;
-        p.blancs();
-        const size_t ouverture = p.ici() + 1;
-        p.membres([&](const std::string& k) {
-          const size_t d = p.ici();
-          p.sauter();
-          if (k == "distance") {
-            trouve = true;
-            debut = d;
-            fin = p.ici();
-          }
-        });
-        if (trouve) morceaux.push_back({debut, fin, nombreJson(it->distance)});
-        else morceaux.push_back({ouverture, ouverture, "\"distance\":" + nombreJson(it->distance) + ","});
+        std::vector<Champ> champs;
+        for (const Retouche::Valeur& v : it->champs) champs.push_back({v.nom, v.texte, true});
+        retoucherObjet(p, champs, morceaux);
+        fonctionsVues++;
       }
       rang++;
       const char c = p.voir();
@@ -689,7 +737,7 @@ std::string retoucher(const std::string& texte, const std::vector<Retouche>& ret
   Parcours p(texte);
   allerAuDocument(p);
   lireDocument(p);
-  if (morceaux.size() != retouches.size() || (deEsquisses.empty() && !esquisses.empty())) Parcours::panne();
+  if (fonctionsVues != retouches.size() || (deEsquisses.empty() && !esquisses.empty())) Parcours::panne();
   morceaux.insert(morceaux.end(), deEsquisses.begin(), deEsquisses.end());
   return appliquer(texte, std::move(morceaux));
 }
@@ -711,12 +759,23 @@ std::string texteEnregistre(const Document& d, const std::string& texteOrigine) 
       f.contraintes.clear();
       f.cotes.clear();
       f.seq = 1;
+      f.visible = true;  // telle qu'esquisseCreee vient de l'écrire
       fichiers.push_back(std::move(f));
     }
   }
+  // De même pour les fonctions : celles créées ici sont écrites telles quelles, à la fin de la liste
+  if (d.fonctions.size() < d.fonctionsFichier.size()) throw std::runtime_error("fonction retirée d'une façon pas encore reprise, rien n'a été écrit");
+  if (d.fonctions.size() > d.fonctionsFichier.size()) {
+    std::vector<const Fonction*> nouvelles;
+    for (size_t i = d.fonctionsFichier.size(); i < d.fonctions.size(); i++) nouvelles.push_back(&d.fonctions[i]);
+    texteFichier = ajouterFonctions(texteFichier, nouvelles);
+  }
   std::vector<Retouche> retouches;
-  for (size_t i = 0; i < d.fonctions.size(); i++)
-    if (d.fonctions[i].distance != d.fonctions[i].distanceFichier) retouches.push_back({i, d.fonctions[i].distance});
+  for (size_t i = 0; i < d.fonctionsFichier.size(); i++)
+    if (!memesReglages(d.fonctions[i], d.fonctionsFichier[i])) {
+      if (d.fonctions[i].id != d.fonctionsFichier[i].id) throw std::runtime_error("ordre des fonctions changé, rien n'a été écrit");
+      retouches.push_back(retoucheFonction(i, d.fonctions[i], d.fonctionsFichier[i]));
+    }
 
   std::vector<Refonte> refontes;
   std::vector<Esquisse> alignees;  // n'est lue que par rang, et réservée : les adresses restent justes
@@ -733,6 +792,7 @@ std::string texteEnregistre(const Document& d, const std::string& texteOrigine) 
     if (memesValeurs(s, f)) continue;
     RetoucheEsquisse r;
     r.esquisse = i;
+    if (s.visible != f.visible) r.visible = s.visible ? 1 : 0;
     for (const std::string& id : s.ordre) {
       const Pt* a = s.point(id);
       const Pt* b = f.point(id);
@@ -791,6 +851,6 @@ void enregistrerProjet(Document& d, const std::wstring& cible, bool forcer) {
 
   d.octets = std::move(octets);
   d.chemin = cible;
-  for (Fonction& f : d.fonctions) f.distanceFichier = f.distance;
+  d.fonctionsFichier = d.fonctions;
   d.esquissesFichier = d.esquisses;
 }

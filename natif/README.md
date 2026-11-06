@@ -189,10 +189,19 @@ Créer une esquisse (`mesures/tester-nouvelle-esquisse.cjs`, `verifier-nouvelle-
 - 53 suites de gestes au hasard sur 5 fichiers contenant une esquisse neuve (`BancDessinCommunes`) : toutes identiques, 736 états à moins de 10⁻⁹ mm, 45 écrites comme le navigateur.
 - Dans la fenêtre, par messages : création sur plan, retrait quand elle reste vide, rectangle, Ctrl+Z et Ctrl+Y sur le tracé et la création, enregistrement, refus de retirer une esquisse enregistrée, message sans face choisie, clic sur une face, esquisse sur cette face, cercle, enregistrement, fermeture sans question. Sur la Griffe, non calculée : esquisse YZ avec rectangle écrite, reste du fichier identique.
 
+Extruder une esquisse (menu Fonctions, Ctrl+E ; `mesures/tester-extrusion.cjs`, `verifier-extrusion.ps1`). La fonction naît à 20 mm comme dans le navigateur ; Propriétés règle Plot ou Poche, Distance ou À travers tout, la profondeur, Symétrique, Inverser. Modifier aussi une extrusion déjà dans le fichier met son nom à jour, comme le navigateur.
+- 6 réglages sur les 2 esquisses du Drapeau, puis 5 esquisses d'une pièce enrichie par le natif (esquisses neuves, esquisse sur la face d'une extrusion neuve), soit 42 cas : même texte de fonction que le panneau du navigateur (sauf l'identifiant), esquisse masquée, reste du fichier intact, même volume dans le natif, dans le navigateur et dans le fichier rouvert.
+- 123 esquisses des 20 pièces, chacune seule dans une pièce vide et extrudée de 20 mm : 70 donnent un volume, le même des deux côtés ; 53 n'en donnent aucun, des deux côtés ; 2 ignorées. C'est le test des contours trouvés.
+- Dans la fenêtre, par messages : Ctrl+E puis Ctrl+Z, refus d'une esquisse vide et d'un trait ouvert, rectangle extrudé, profondeur tapée, Inverser, Poche, Ctrl+Z et Ctrl+Y, enregistrement, refus de retirer une extrusion enregistrée, découpe qui retire tout le solide (volume 0, pas de plantage).
+- Écart voulu : le navigateur crée aussi la fonction sur un profil ouvert, et l'exclut au calcul. Le natif refuse et dit pourquoi.
+- Pas encore repris : Nouveau corps, Jusqu'à la face, dépouille, choix des zones d'un profil, flèche à tirer dans la vue, retrait d'une fonction enregistrée.
+- `tester-enregistrement.cjs` (176/176), `BancSolveurCommunes` (0 décision différente), `BancDessinCommunes` (mêmes résultats, 374 enregistrements, 0 écart), `verifier-dessin.ps1` et `verifier-nouvelle-esquisse.ps1` repassent.
+
 Correction du test `verifier-dessin.ps1` : ses numéros de menus étaient décalés de 1 (`wxID_HIGHEST` vaut 6000), Ctrl+Y n'y était donc pas essayé. Corrigé ; il passe. Le rétablissement de Ctrl+Y est de plus éprouvé par l'essai de création ci-dessus.
 
 ## Pas vérifié
 
+- L'extrusion sur une autre pièce complète que le Drapeau, seule calculable : les autres ne sont essayées qu'esquisse par esquisse, dans une pièce vide. Et le fichier avec plusieurs corps : une nouvelle fonction va dans le corps actif, comme le navigateur, sans essai dédié.
 - L'esquisse sur face sur une autre pièce que le Drapeau, seule calculable : faces inclinées, faces sans porteuse et faces dans une découpe de forme compliquée n'y sont pas ou peu représentées.
 - Le dessin à la vraie main, par une personne : les essais passent par des messages envoyés à la fenêtre. Le dessin n'est possible que sur les pièces calculables, donc le Drapeau parmi les exemples ; les autres sont comparées sans fenêtre.
 - Le solveur est comparé sur les 125 esquisses, mais la modification avec solide qui suit seulement sur les 2 esquisses du Drapeau : les autres pièces ne se calculent pas encore.

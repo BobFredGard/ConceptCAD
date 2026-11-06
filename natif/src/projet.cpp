@@ -43,6 +43,7 @@ bool memesLiens(const Esquisse& a, const Esquisse& b) {
 }
 
 bool memesValeurs(const Esquisse& a, const Esquisse& b) {
+  if (a.visible != b.visible) return false;
   if (a.ordre != b.ordre || a.seq != b.seq || a.entites.size() != b.entites.size() || a.contraintes.size() != b.contraintes.size() || a.cotes.size() != b.cotes.size()) return false;
   if (!memesLiens(a, b)) return false;
   for (const std::string& id : a.ordre) {
@@ -128,6 +129,7 @@ static void lireEsquisse(const json& js, Document& d, std::map<std::string, int>
   s.id = texte(js, "id");
   s.nom = texte(js, "name");
   s.plan = texte(js, "plane");
+  s.visible = !(js.contains("visible") && js["visible"].is_boolean() && !js["visible"].get<bool>());
   if (auto x = js.find("seq"); x != js.end() && x->is_number() && x->get<int>() > 0) s.seq = x->get<int>();
   // planeBasis (src/10-scene-3d.js) : axes portés par l'esquisse, sinon les 3 plans d'origine
   Vec3 u, v, n;
@@ -274,7 +276,6 @@ static void lireFonction(const json& jf, Document& d, std::map<std::string, int>
     f.distance = jf["distance"].get<double>();
     f.aDistance = true;
   }
-  f.distanceFichier = f.distance;
   f.visible = !(jf.contains("visible") && jf["visible"].is_boolean() && !jf["visible"].get<bool>());
   f.mid = vrai(jf, "mid");
   f.flip = vrai(jf, "flip");
@@ -319,6 +320,9 @@ Document lireProjet(const std::wstring& chemin) {
   if (j.contains("bodies"))
     for (auto& c : j["bodies"]) d.corps.push_back(texte(c, "id"));
   if (d.corps.empty()) d.corps.push_back("b1");
+  // ensureActiveBody : l'actif s'il existe, sinon le premier
+  d.corpsActif = texte(j, "activeBody");
+  if (std::find(d.corps.begin(), d.corps.end(), d.corpsActif) == d.corps.end()) d.corpsActif = d.corps[0];
   if (auto x = j.find("entNames"); x != j.end() && x->is_object())
     if (auto y = x->find("face"); y != x->end() && y->is_number()) d.nomsFace = y->get<int>();
   for (auto& s : j["sketches"]) lireEsquisse(s, d, refus);
@@ -329,5 +333,6 @@ Document lireProjet(const std::wstring& chemin) {
   if (j.contains("components") && j["components"].is_array() && !j["components"].empty()) refus["assemblage"]++;
   for (auto& [k, n] : refus) d.nonPrisEnCharge.push_back(k + " × " + std::to_string(n));
   d.esquissesFichier = d.esquisses;
+  d.fonctionsFichier = d.fonctions;
   return d;
 }

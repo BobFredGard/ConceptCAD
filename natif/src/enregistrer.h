@@ -15,7 +15,8 @@ struct FichierChangeAilleurs : std::runtime_error {
 
 struct Retouche {
   size_t fonction;  // rang dans « features »
-  double distance;
+  struct Valeur { const char* nom; std::string texte; };
+  std::vector<Valeur> champs;  // texte JSON de chaque champ qui change
 };
 // Les nombres d'une esquisse qui ont changé
 struct RetoucheEsquisse {
@@ -26,6 +27,7 @@ struct RetoucheEsquisse {
   std::vector<Point> points;
   std::vector<Element> elements;
   std::vector<Mesure> cotes;
+  int visible = -1;  // -1 : inchangé
 };
 // Texte du projet avec ces seuls nombres remplacés. Lève std::runtime_error si le texte n'a pas la forme attendue.
 std::string retoucher(const std::string& texte, const std::vector<Retouche>& retouches, const std::vector<RetoucheEsquisse>& esquisses = {});

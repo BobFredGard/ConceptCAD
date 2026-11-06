@@ -1,5 +1,7 @@
 #include "rejeu.h"
 
+#include <charconv>
+
 #include <BOPAlgo_Options.hxx>
 #include <BRepAdaptor_Curve.hxx>
 #include <BRepAdaptor_Surface.hxx>
@@ -602,6 +604,7 @@ Mesures mesurer(const TopoDS_Shape& s) {
   m.valide = verif.IsValid();
   Bnd_Box b;
   BRepBndLib::Add(s, b, true);
+  if (b.IsVoid()) return m;  // une découpe qui a tout retiré : plus rien à mesurer
   gp_Pnt a = b.CornerMin(), z = b.CornerMax();
   double v[6] = {a.X(), a.Y(), a.Z(), z.X(), z.Y(), z.Z()};
   std::copy(v, v + 6, m.boite);
@@ -651,6 +654,13 @@ Esquisse esquisseVide(const Document& d, const std::string& plan) {
   s.plan = plan;
   if (!d.fonctions.empty()) s.at = d.fonctions.back().id;
   return s;
+}
+
+std::string nombreNom(double v) {  // comme un nombre JavaScript écrit dans un nom
+  if (v == 0) return "0";
+  char b[64];
+  const auto r = std::to_chars(b, b + sizeof b, v, std::chars_format::fixed);
+  return std::string(b, r.ptr);
 }
 
 using Anneau2 = std::vector<std::array<double, 2>>;
@@ -794,6 +804,69 @@ HoteTrouve hotePourFace(const Document& d, const Vec3& pt, const Vec3& n) {  // 
   return best;
 }
 }  // namespace
+
+Fonction nouvelleExtrusion(const Document& d, const Esquisse& s) {
+  Fonction f;
+  const unsigned long long ms = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch()).count();
+  size_t k = d.fonctions.size() + d.esquisses.size() + 1;
+  const auto pris = [&](const std::string& id) { return std::any_of(d.fonctions.begin(), d.fonctions.end(), [&](const Fonction& x) { return x.id == id; }); };
+  do f.id = "ex_" + std::to_string(k++) + "_" + base36(ms);
+  while (pris(f.id));
+  f.type = "extrude";
+  f.esquisse = s.id;
+  f.corps = d.corpsActif;
+  f.distance = 20;
+  f.aDistance = true;
+  f.nom = nomExtrusion(d, f);
+  return f;
+}
+
+std::string nomExtrusion(const Document& d, const Fonction& f) {
+  std::string nom = "?";
+  for (const Esquisse& s : d.esquisses)
+    if (s.id == f.esquisse) {
+      nom = s.nom;
+      break;
+    }
+  const std::string base = (f.op == "cut" ? "Découpe " : "Extrusion ") + nom;
+  const std::string suite = f.flip ? " ⇄" : "";
+  // À travers tout : le fichier n'a pas de distance, le navigateur écrit alors 0
+  const double v = f.through ? 0 : f.distance;
+  if (f.mid) return base + " ±" + nombreNom(std::abs(v) / 2) + "mm" + suite;
+  return base + " " + nombreNom(v) + "mm" + suite;
+}
+
+void reglerOperation(Fonction& f, const std::string& op) {
+  f.op = op;
+  if (!f.through) f.distance = std::abs(f.distance) * (op == "cut" ? -1 : 1);
+}
+
+void reglerProfondeur(Fonction& f, double valeur) {
+  char b[64];
+  snprintf(b, sizeof b, "%.3f", std::abs(valeur) * (f.op == "cut" ? -1 : 1));  // extDistSet : +v.toFixed(3)
+  f.distance = strtod(b, nullptr);
+  f.aDistance = true;
+}
+
+void reglerATravers(Fonction& f, bool oui) {
+  f.through = oui;
+  f.aDistance = !oui;
+  f.distance = 10 * (!oui && f.op == "cut" ? -1 : 1);  // à la relecture, sans distance : 10
+}
+
+std::string raisonSansVolume(const Esquisse& s) {
+  try {
+    Fonction f;
+    f.distance = 20;
+    f.aDistance = true;
+    formeExtrusion(f, s, TopoDS_Shape());
+    return "";
+  } catch (const Standard_Failure& e) {
+    return e.what();
+  } catch (const std::exception& e) {
+    return e.what();
+  }
+}
 
 Esquisse nouvelleEsquissePlan(const Document& d, const std::string& plan) {
   Esquisse s = esquisseVide(d, plan);

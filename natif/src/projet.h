@@ -49,6 +49,7 @@ struct Esquisse {
   std::string at;  // esquisse créée ici : la fonction après laquelle elle se place (cgAtNow), vide si aucune
   int seq = 1;  // prochain numéro d'identifiant
   Vec3 o{0, 0, 0}, u{1, 0, 0}, v{0, 1, 0}, n{0, 0, 1};
+  bool visible = true;
   std::vector<std::string> ordre;  // ordre d'enregistrement des points : il décide des fusions de noeuds
   std::unordered_map<std::string, Pt> points;
   std::vector<Entite> entites;
@@ -74,9 +75,12 @@ bool memesLiens(const Esquisse& a, const Esquisse& b);
 struct Fonction {
   std::string id, type, nom, esquisse, corps, op = "add";
   double distance = 10;
-  double distanceFichier = 10;  // la valeur écrite dans le fichier : ce qui en diffère reste à enregistrer
   bool aDistance = false, visible = true, mid = false, flip = false, through = false;
 };
+// Ce que le logiciel sait changer et enregistrer dans une fonction
+inline bool memesReglages(const Fonction& a, const Fonction& b) {
+  return a.id == b.id && a.distance == b.distance && a.op == b.op && a.nom == b.nom && a.mid == b.mid && a.flip == b.flip && a.through == b.through;
+}
 
 struct Document {
   std::string nom;
@@ -84,15 +88,17 @@ struct Document {
   std::vector<Esquisse> esquisses;
   std::vector<Esquisse> esquissesFichier;  // telles qu'écrites dans le fichier : ce qui en diffère reste à enregistrer
   std::vector<Fonction> fonctions;
+  std::vector<Fonction> fonctionsFichier;  // telles qu'écrites dans le fichier
+  std::string corpsActif;  // où naît une nouvelle fonction
   std::vector<std::string> nonPrisEnCharge;  // vide = la pièce se rejoue entièrement
   std::wstring chemin;
   std::string octets;  // le fichier tel qu'il est sur le disque : l'enregistrement en repart
   bool compresse = false;
   int nomsFace = 0;  // entNames.face : compteur des noms « Face n », jamais réemployés
   bool modifie() const {
-    if (esquisses.size() != esquissesFichier.size()) return true;
-    for (const Fonction& f : fonctions)
-      if (f.distance != f.distanceFichier) return true;
+    if (esquisses.size() != esquissesFichier.size() || fonctions.size() != fonctionsFichier.size()) return true;
+    for (size_t i = 0; i < fonctions.size(); i++)
+      if (!memesReglages(fonctions[i], fonctionsFichier[i])) return true;
     for (size_t i = 0; i < esquisses.size(); i++)
       if (!memesValeurs(esquisses[i], esquissesFichier[i])) return true;
     return false;

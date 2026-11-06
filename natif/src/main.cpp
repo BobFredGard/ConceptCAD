@@ -161,6 +161,31 @@ int modeNouvelleEsquisse(const std::vector<std::wstring>& a) {
   }
   return 1;
 }
+// --extruder <fichier> <sortie> <rang d'esquisse> <profondeur> <add|cut> [mid] [flip] [through] : crée l'extrusion par les mêmes réglages que le panneau, et enregistre.
+int modeExtruder(const std::vector<std::wstring>& a) {
+  try {
+    Document d = lireProjet(a[1]);
+    const size_t rang = std::stoul(a[3]);
+    if (rang >= d.esquisses.size()) return 5;
+    Esquisse& s = d.esquisses[rang];
+    Fonction f = nouvelleExtrusion(d, s);
+    reglerOperation(f, utf8(a[5]));
+    reglerProfondeur(f, _wtof(a[4].c_str()));
+    for (size_t i = 6; i < a.size(); i++) {
+      if (a[i] == L"mid") f.mid = true;
+      if (a[i] == L"flip") f.flip = true;
+      if (a[i] == L"through") reglerATravers(f, true);
+    }
+    f.nom = nomExtrusion(d, f);
+    d.fonctions.push_back(std::move(f));
+    s.visible = false;
+    enregistrerProjet(d, a[2]);
+    return 0;
+  } catch (const std::exception& e) {
+    fprintf(stderr, "%s\n", e.what());
+  }
+  return 1;
+}
 int modeEsquissesFaces(const std::vector<std::wstring>& a) {
   try {
     Document d = lireProjet(a[1]);
@@ -290,6 +315,7 @@ int WINAPI wWinMain(HINSTANCE inst, HINSTANCE, PWSTR, int) {
   if (gArgs.size() >= 5 && gArgs[0] == L"--dessiner") return modeDessiner(gArgs);
   if (gArgs.size() >= 4 && gArgs[0] == L"--nouvelle-esquisse") return modeNouvelleEsquisse(gArgs);
   if (gArgs.size() >= 3 && gArgs[0] == L"--esquisses-faces") return modeEsquissesFaces(gArgs);
+  if (gArgs.size() >= 6 && gArgs[0] == L"--extruder") return modeExtruder(gArgs);
   // Processeurs à deux sortes de cœurs : un cœur économe calcule la même pièce 1,7 fois moins vite (345 → 585 ms mesurés).
   // On demande à Windows de ne pas traiter ce programme comme une tâche de fond, même quand sa fenêtre n'est pas devant.
   PROCESS_POWER_THROTTLING_STATE qos{PROCESS_POWER_THROTTLING_CURRENT_VERSION, PROCESS_POWER_THROTTLING_EXECUTION_SPEED, 0};
