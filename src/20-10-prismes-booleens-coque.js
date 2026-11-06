@@ -92,6 +92,19 @@ function insertSketchFillet(data,fx,fy,r,fxPid){
    Validé par exécution : MakeEdge_3/ gp_Circ_2+MakeEdge_10 / MakeWire_1 / MakeFace_15 /
    MakePrism_1 / Fuse_3 / Cut_3 / MakeFillet+Add_2 / IncrementalMesh_2 / Triangulation. */
 function occHas(){return occtReady&&occt;}
+// PILE DU NOYAU : une erreur C++ qui remonte jusqu'à JavaScript ne redescend pas le pointeur de pile
+// du noyau, seul un rattrapage côté C++ le fait. La pile (8 Mo) s'use donc d'autant à chaque erreur
+// rattrapée ici, puis déborde sur les données du noyau, sans message : plus aucun solide, jusqu'au
+// rechargement. Mesuré sur Barquette : 80 Ko perdus par modification, solide perdu à la 107e.
+// Remise au plus haut déjà vu (la pile descend) avant un calcul : aucun appel au noyau n'est alors
+// en cours, le noyau n'appelant jamais le code de l'application.
+function occPileRemettre(){
+  try{
+    const sp=occt.stackSave();
+    if(!(occt._pileHaut>=sp))occt._pileHaut=sp;
+    else if(sp<occt._pileHaut)occt.stackRestore(occt._pileHaut);
+  }catch(e){}
+}
 function occBinPush(bin,h){if(h)bin.push(h);return h;}
 function occDispose(list){(list||[]).forEach(h=>{try{h.delete();}catch(e){}});}
 // V0.64.3 : le noyau rend une COPIE à chaque appel qui rend un objet (Current, FindKey, Corner…, Direction…), à
@@ -105,6 +118,9 @@ function occSolidCur(x){return occCastLibre(x.Current(),c=>occt.TopoDS.Solid_1(c
 function occShellCur(x){return occCastLibre(x.Current(),c=>occt.TopoDS.Shell_1(c));}
 function occXyz(p){try{return[p.X(),p.Y(),p.Z()];}finally{occFree(p);}} // lit un point / une direction, puis le libère
 function occAvec(h,fn){try{return fn(h);}finally{occFree(h);}} // prête h à fn le temps de l'appel
+// Append rend une COPIE de la forme ajoutée. Oubliée, elle garde en vie tout le solide, sa géométrie et son
+// maillage : Barquette perdait ainsi 0,45 Mo par modification. Toujours ajouter à une liste par cette aide.
+function occAjoute(liste,s){occFree(liste.Append_1(s));}
 function occClassifier(shape){
   // Point dedans / dehors RAPIDE (V0.44.1) : même usage que BRepClass3d_SolidClassifier_2
   // (Perform(p,tol), State(), delete()). Sous OCCT 8 le classifieur coûte ~22 ms par point sur un
@@ -357,17 +373,32 @@ function occSpanPrism(sk,tr,chain,sp,area){
   if(!(len>1e-9))throw new Error('prisme vide (course nulle)');
   return occPrismOfChain(sk,tr,chain,len,area,sp.lo);
 }
+// Ces constructeurs à deux solides calculent déjà le booléen : un Build() de plus le refait en entier.
 function occFuse(a,b){
   const f=new occt.BRepAlgoAPI_Fuse_3(a,b);
-  f.Build();const ok=f.IsDone();const s=ok?f.Shape():null;
+  const ok=f.IsDone();const s=ok?f.Shape():null;
   if(s)nomsTransmet([a,b],f,s);
   try{f.delete();}catch(e){}
   if(!ok||!s)throw new Error('fusion impossible');
   return s;
 }
+function occSansMiettes(s){
+  // Une fusion peut laisser, à côté du vrai solide, des solides de volume nul (Barquette, renfort
+  // posé pile sur une face : 2 miettes). La fusion suivante, sur ce composé, rendait un volume nul
+  // et la pièce s'effondrait. Les vrais corps séparés sont gardés. s est supprimé si remplacé.
+  const so=occSubShapes(s,'TopAbs_SOLID');
+  const ok=so.length>1?so.filter(x=>Math.abs(occShapeVolume(x))>=OCC_MIETTE_MM3):so;
+  if(so.length<2||ok.length===so.length||!ok.length){occDispose(so);return s;}
+  const res=ok.length===1?ok[0]:occCompoundOf(ok);
+  nomsTransmet([s],{},res); // mêmes faces : elles gardent leurs noms
+  so.forEach(x=>{if(x!==res)try{x.delete();}catch(e){}});
+  try{s.delete();}catch(e){}
+  return res;
+}
+const OCC_MIETTE_MM3=0.01;
 function occCut(a,b){
   const c=new occt.BRepAlgoAPI_Cut_3(a,b);
-  c.Build();const ok=c.IsDone();const s=ok?c.Shape():null;
+  const ok=c.IsDone();const s=ok?c.Shape():null;
   if(s)nomsTransmet([a,b],c,s);
   try{c.delete();}catch(e){}
   if(!ok||!s)throw new Error('découpe impossible');
@@ -396,7 +427,7 @@ function occCutKids(a,b,kids){
   }
   const la=new occt.TopTools_ListOfShape_1(),lt=new occt.TopTools_ListOfShape_1(),c=new occt.BRepAlgoAPI_Cut_1();
   try{
-    la.Append_1(a);kids.forEach(k=>lt.Append_1(k));
+    occAjoute(la,a);kids.forEach(k=>occAjoute(lt,k));
     // outils de perçage orientés par construction : le contrôle « solide retourné »
     // (une classification complète contre les faces du filet) est superflu
     c.SetArguments(la);c.SetTools(lt);c.SetCheckInverted(false);c.Build();
@@ -408,7 +439,7 @@ function occCutKids(a,b,kids){
 }
 function occCommon(a,b){
   const c=new occt.BRepAlgoAPI_Common_3(a,b);
-  c.Build();const ok=c.IsDone();const s=ok?c.Shape():null;
+  const ok=c.IsDone();const s=ok?c.Shape():null;
   if(s)nomsTransmet([a,b],c,s);
   try{c.delete();}catch(e){}
   if(!ok||!s)throw new Error('intersection impossible');
@@ -670,7 +701,7 @@ function occCoqueThick(result,faces,thick,join,inter){
   const bin=[];
   try{
     const L=occBinPush(bin,new occt.TopTools_ListOfShape_1());
-    for(const f of faces)L.Append_1(occBinPush(bin,occt.TopoDS.Face_1(f)));
+    for(const f of faces)occAjoute(L,occBinPush(bin,occt.TopoDS.Face_1(f)));
     let mk;
     if(occt.BRepOffsetAPI_MakeThickSolid_2){
       mk=occBinPush(bin,new occt.BRepOffsetAPI_MakeThickSolid_2(

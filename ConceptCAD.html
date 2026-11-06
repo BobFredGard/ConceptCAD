@@ -375,7 +375,7 @@ input[type=range]{accent-color:var(--primary);width:100%}
  * peut changer sans rien casser. CACHE_VER (parcours FAO) reste indépendant.
  */
 
-const APP_VER='V0.66.0';
+const APP_VER='V0.67.0';
 try{console.log('[ConceptCAD] version '+APP_VER);}catch(e){}
 try{var mfSv=document.getElementById('mfSplashVer');if(mfSv)mfSv.textContent=APP_VER;}catch(e){} // écran de démarrage
 
@@ -506,6 +506,8 @@ async function occtFinishBoot(){
     ?'OCCT : prêt — prismes exacts, booléens Fuse/Cut, congés toutes arêtes, STEP.'
     :'OCCT : chargé mais incomplet — repli sur maillage (CSG).';
   if(occtReady)occBaseMsg+=' (OCCT 8.0.1)';
+  if(occtMtFils)occBaseMsg+=' Multicœur : '+occtMtFils+' cœurs.';
+  else if(occtMtAvis)occBaseMsg+=' '+occtMtAvis+'.';
   occStatus();
   if(occtReady){
     // Recalcul systématique une fois le noyau prêt (même si un affichage existe) :
@@ -2097,15 +2099,57 @@ function sketchRestoreCamera(){
     try{viewCenterShift();}catch(e){} // recentrage sur la zone libre (neutre pendant l'esquisse)
   }catch(e){}
 }
-function findHostForFace(pt,n,tol){
+function skHostLimit(sk){
+  // Rang à partir duquel une fonction ne peut pas porter cette esquisse (-1 = sans limite) : sa
+  // première utilisatrice, sinon sa place dans le fil. Une face créée plus loin ferait une boucle.
+  const F=doc.features||[];
+  const u=F.findIndex(f=>skUsedBy(f,sk.id));
+  if(u>=0)return u;
+  const a=sk.at?F.findIndex(f=>f.id===sk.at):-1;
+  return a>=0?a+1:-1;
+}
+function hostMoves(f,fi,lim,n,hn,plan){
+  // Déplacements de face (xmove) appliqués au haut ou au bas de l'extrusion f avant le rang lim :
+  // {off : décalage total le long de hn, mv : [{id, s}]}. s = sens de la face par rapport à hn.
+  const F=doc.features||[],mv=[];let off=0;
+  const fin=lim>=0?lim:F.length;
+  for(let i=fi+1;i<fin;i++){
+    const m=F[i];if(!m||m.type!=='xmove'||m.visible===false)continue;
+    const vise=mvRefs(m).some(r=>{
+      if(!Array.isArray(r.n)||r.n[0]*n.x+r.n[1]*n.y+r.n[2]*n.z<0.99)return false;
+      if(r.nom)return r.nom.indexOf(f.id+'/')===0;
+      if(!Array.isArray(r.pos))return false;
+      const p=plan.clone().addScaledVector(hn,off);
+      return Math.abs((r.pos[0]-p.x)*n.x+(r.pos[1]-p.y)*n.y+(r.pos[2]-p.z)*n.z)<0.01;
+    });
+    if(!vise)continue;
+    const s=n.dot(hn)>0?1:-1;
+    off+=(+m.dist||0)*s;mv.push({id:m.id,s});
+  }
+  return {off,mv};
+}
+function hostFields(h,name){
+  // Champs d'hôte enregistrés dans l'esquisse, à partir du résultat de findHostForFace.
+  const o={feat:h.feat.id,tag:h.tag,x:h.x,y:h.y,name};
+  if(h.tag==='SIDE'){o.edge=h.edge;o.h=h.h;}
+  if(h.mv&&h.mv.length)o.mv=h.mv;
+  return o;
+}
+function findHostForFace(pt,n,tol,lim){
   // Face porteuse : extrusion antérieure contenant pt (tol 1 mm par défaut).
-  //  · TOP/BOTTOM : plan haut/bas, normale ∥ axe d'extrusion — comportement historique.
+  //  · TOP/BOTTOM : plan haut/bas, normale ∥ axe d'extrusion — comportement historique, décalé
+  //    des déplacements de cette face placés avant lim (hôte.mv : l'esquisse les suit).
   //  · SIDE : face latérale = ARÊTE du footprint extrudée (normale ⟂ axe) — le plan SUIT
   //    l'arête quand le profil bouge, et h est clampé à la course → poches latérales suivent.
   // Null si plan d'origine. `tol` : tolérance (mm) pour le réancrage d'un hôte périmé.
+  // `lim` : seules les fonctions de rang inférieur peuvent porter (voir skHostLimit).
   tol=(tol>0)?tol:1.0;
+  const lim2=(lim>=0)?lim:-1;
   let best=null,bd=1e9;
-  for(const f of (doc.features||[])){
+  const F0=doc.features||[];
+  for(let fi=0;fi<F0.length;fi++){
+    if(lim2>=0&&fi>=lim2)break;
+    const f=F0[fi];
     if(f.type!=='extrude'||f.visible===false)continue;
     const hs=doc.sketches.find(s=>s.id===f.sketchId);if(!hs)continue;
     try{
@@ -2119,7 +2163,12 @@ function findHostForFace(pt,n,tol){
       // esquisse posée au fond d'une rainure suit la rainure (avant : aucun hôte, plan figé).
       const cut=f.op==='cut',onLo=cut?dot>0:dot<0;
       const cand=onLo?bot:top; // pt doit être sur TOP si n==hn, BOTTOM si n==-hn (fond de découpe : l'inverse)
-      const mDist=Math.abs(n.dot(new THREE.Vector3().subVectors(pt,cand)));
+      let mDist=Math.abs(n.dot(new THREE.Vector3().subVectors(pt,cand)));
+      // face déplacée (xmove) : le plan réel est décalé ; une partie restée en place garde l'ancien
+      const hm=hostMoves(f,fi,lim2,n,hn,cand);
+      const mDist2=hm.mv.length?Math.abs(n.dot(new THREE.Vector3().subVectors(pt,cand.clone().addScaledVector(hn,hm.off)))):Infinity;
+      const surDeplacee=mDist2<mDist;
+      if(surDeplacee)mDist=mDist2;
       if(mDist>tol||mDist>bd)continue;
       // footprint : pt projeté sur le plan de l'esquisse porteuse
       const dx=pt.x-o.x,dy=pt.y-o.y,dz=pt.z-o.z;
@@ -2160,6 +2209,7 @@ function findHostForFace(pt,n,tol){
       }
       if(!hit)continue;
       best={feat:f,tag:onLo?'BOTTOM':'TOP',x:+x.toFixed(3),y:+y.toFixed(3)};bd=mDist;
+      if(surDeplacee)best.mv=hm.mv;
       }else{
         // ── SIDE : face latérale ⟂ à l'axe d'extrusion = arête footprint (lignes non construction)
         const dx=pt.x-o.x,dy=pt.y-o.y,dz=pt.z-o.z;
@@ -2251,7 +2301,12 @@ function resolveSketchHost(sk){
     ny2=oy+ny*h+uy*x2+vy*y2;
     nz2=oz+nz*h+uz*x2+vz*y2;
   }else{
-    const baseD=(tag==='TOP')?spH.hi:spH.lo;
+    let baseD=(tag==='TOP')?spH.hi:spH.lo;
+    // déplacements de cette face : l'esquisse suit leur distance (paramètre compris)
+    (sk.host.mv||[]).forEach(m=>{
+      const mf=doc.features.find(q=>q.id===m.id);
+      if(mf&&mf.type==='xmove'&&mf.visible!==false)baseD+=(+mf.dist||0)*(m.s||1);
+    });
     nx2=ox+nx*baseD+ux*x+vx*y;
     ny2=oy+ny*baseD+uy*x+vy*y;
     nz2=oz+nz*baseD+uz*x+vz*y;
@@ -2274,14 +2329,16 @@ function reanchorSketchHost(sk){
   if(!(nv.lengthSq()>1e-6))return false;
   nv.normalize();
   const set=h=>{
-    sk.host=Object.assign({feat:h.feat.id,tag:h.tag,x:h.x,y:h.y,name:name||entName('face')},
-      (h.tag==='SIDE')?{edge:h.edge,h:h.h}:{});
+    sk.host=hostFields(h,name||entName('face'));
     return true;
   };
-  const tryPt=(p,tol)=>{try{return findHostForFace(new THREE.Vector3(p[0],p[1],p[2]),nv.clone(),tol);}catch(e){return null;}};
+  const lim=skHostLimit(sk);
+  const tryPt=(p,tol,l)=>{try{return findHostForFace(new THREE.Vector3(p[0],p[1],p[2]),nv.clone(),tol,l);}catch(e){return null;}};
   // 1) l'ORIGINE d'abord : x/y/h sont ceux de l'origine → la position de l'esquisse est
   //    conservée (l'arête projetée ne sert qu'en secours, ses points pouvant l'avoir quittée).
+  //    Les faces d'avant l'esquisse d'abord ; une face d'après seulement si rien d'autre (⚠ de l'arbre).
   if(sk.origin&&isFinite(sk.origin[0])&&isFinite(sk.origin[1])&&isFinite(sk.origin[2])){
+    if(lim>=0)for(const tl of [1.0,5.0]){const h=tryPt(sk.origin,tl,lim);if(h&&h.feat)return set(h);}
     for(const tl of [1.0,5.0]){const h=tryPt(sk.origin,tl);if(h&&h.feat)return set(h);}
   }
   // 2) sinon les arêtes projetées (srcMid) : on garde l'hôte le plus fréquent.
@@ -2299,16 +2356,18 @@ function reanchorSketchHost(sk){
   for(const t of tally.values())if(t.n>bn){bn=t.n;best=t.h;}
   return best?set(best):false;
 }
-function hostViaPoints(origin,n,pts){
+function hostViaPoints(origin,n,pts,lim){
   // V0.30.3 : face porteuse trouvée par d'autres points de l'esquisse quand l'ORIGINE n'est pas
   // dessus (origine = repère global projeté : îlot plus haut que le fond de rainure visé). x/y
   // réexprimés depuis l'origine dans le repère de la porteuse → resolveSketchHost la garde en place.
   for(const p of pts){
-    let h=null;try{h=findHostForFace(p,n);}catch(e){}
+    let h=null;try{h=findHostForFace(p,n,undefined,lim);}catch(e){}
     if(!h||!h.feat||h.tag==='SIDE')continue;
     const hs=doc.sketches.find(s=>s.id===h.feat.sketchId);if(!hs)continue;
     const B=sketchBasis(hs),d=new THREE.Vector3(origin[0]-B.o.x,origin[1]-B.o.y,origin[2]-B.o.z);
-    return {feat:h.feat,tag:h.tag,x:+d.dot(B.u).toFixed(3),y:+d.dot(B.v).toFixed(3)};
+    const r={feat:h.feat,tag:h.tag,x:+d.dot(B.u).toFixed(3),y:+d.dot(B.v).toFixed(3)};
+    if(h.mv)r.mv=h.mv;
+    return r;
   }
   return null;
 }
@@ -2322,6 +2381,18 @@ function sketchPts3(sk){
 function resolveAllSketchHosts(){
   // Appelé en tête de chaque rebuild : matérialise toutes les esquisses sur faces.
   let ch=false;
+  // Hôte créé APRÈS l'esquisse (Barquette : Esquisse 4 sur le flanc d'un renfort qui dépend de la
+  // pièce, donc d'elle) : boucle, l'esquisse ne suit plus. S'il existe une face d'avant au même
+  // endroit, elle reprend sa place ; rien ne bouge. Sinon on ne touche à rien (⚠ de l'arbre).
+  for(const sk of (doc.sketches||[])){
+    if(sk.plane!=='FACE'||!sk.host||!sk.host.feat||!sk.axN||!sk.origin)continue;
+    const lim=skHostLimit(sk);if(lim<0)continue;
+    const hi=doc.features.findIndex(f=>f.id===sk.host.feat);
+    if(hi<lim)continue; // vivant et antérieur, ou périmé (réancrage plus bas)
+    let h=null;
+    try{h=findHostForFace(new THREE.Vector3(sk.origin[0],sk.origin[1],sk.origin[2]),new THREE.Vector3(sk.axN[0],sk.axN[1],sk.axN[2]).normalize(),1.0,lim);}catch(e){}
+    if(h&&h.feat){sk.host=hostFields(h,sk.host.name||entName('face'));ch=true;}
+  }
   for(let pass=0;pass<3;pass++){
     let any=false;
     for(const sk of (doc.sketches||[])){
@@ -2354,8 +2425,9 @@ function resolveAllSketchHosts(){
     if(!sk.axN)continue;
     const pt=new THREE.Vector3(sk.origin[0],sk.origin[1],sk.origin[2]);
     const n=new THREE.Vector3(sk.axN[0],sk.axN[1],sk.axN[2]).normalize();
-    const h=findHostForFace(pt,n)||(()=>{try{return hostViaPoints(sk.origin,n,sketchPts3(sk));}catch(e){return null;}})();
-    if(h){sk.host=Object.assign({feat:h.feat.id,tag:h.tag,x:h.x,y:h.y,name:entName('face')},(h.tag==='SIDE')?{edge:h.edge,h:h.h}:{});ch=true;}
+    const lim=skHostLimit(sk);
+    const h=findHostForFace(pt,n,undefined,lim)||(()=>{try{return hostViaPoints(sk.origin,n,sketchPts3(sk),lim);}catch(e){return null;}})();
+    if(h){sk.host=hostFields(h,entName('face'));ch=true;}
   }
   return ch;
 }
@@ -3554,6 +3626,19 @@ function insertSketchFillet(data,fx,fy,r,fxPid){
    Validé par exécution : MakeEdge_3/ gp_Circ_2+MakeEdge_10 / MakeWire_1 / MakeFace_15 /
    MakePrism_1 / Fuse_3 / Cut_3 / MakeFillet+Add_2 / IncrementalMesh_2 / Triangulation. */
 function occHas(){return occtReady&&occt;}
+// PILE DU NOYAU : une erreur C++ qui remonte jusqu'à JavaScript ne redescend pas le pointeur de pile
+// du noyau, seul un rattrapage côté C++ le fait. La pile (8 Mo) s'use donc d'autant à chaque erreur
+// rattrapée ici, puis déborde sur les données du noyau, sans message : plus aucun solide, jusqu'au
+// rechargement. Mesuré sur Barquette : 80 Ko perdus par modification, solide perdu à la 107e.
+// Remise au plus haut déjà vu (la pile descend) avant un calcul : aucun appel au noyau n'est alors
+// en cours, le noyau n'appelant jamais le code de l'application.
+function occPileRemettre(){
+  try{
+    const sp=occt.stackSave();
+    if(!(occt._pileHaut>=sp))occt._pileHaut=sp;
+    else if(sp<occt._pileHaut)occt.stackRestore(occt._pileHaut);
+  }catch(e){}
+}
 function occBinPush(bin,h){if(h)bin.push(h);return h;}
 function occDispose(list){(list||[]).forEach(h=>{try{h.delete();}catch(e){}});}
 // V0.64.3 : le noyau rend une COPIE à chaque appel qui rend un objet (Current, FindKey, Corner…, Direction…), à
@@ -3567,6 +3652,9 @@ function occSolidCur(x){return occCastLibre(x.Current(),c=>occt.TopoDS.Solid_1(c
 function occShellCur(x){return occCastLibre(x.Current(),c=>occt.TopoDS.Shell_1(c));}
 function occXyz(p){try{return[p.X(),p.Y(),p.Z()];}finally{occFree(p);}} // lit un point / une direction, puis le libère
 function occAvec(h,fn){try{return fn(h);}finally{occFree(h);}} // prête h à fn le temps de l'appel
+// Append rend une COPIE de la forme ajoutée. Oubliée, elle garde en vie tout le solide, sa géométrie et son
+// maillage : Barquette perdait ainsi 0,45 Mo par modification. Toujours ajouter à une liste par cette aide.
+function occAjoute(liste,s){occFree(liste.Append_1(s));}
 function occClassifier(shape){
   // Point dedans / dehors RAPIDE (V0.44.1) : même usage que BRepClass3d_SolidClassifier_2
   // (Perform(p,tol), State(), delete()). Sous OCCT 8 le classifieur coûte ~22 ms par point sur un
@@ -3819,17 +3907,32 @@ function occSpanPrism(sk,tr,chain,sp,area){
   if(!(len>1e-9))throw new Error('prisme vide (course nulle)');
   return occPrismOfChain(sk,tr,chain,len,area,sp.lo);
 }
+// Ces constructeurs à deux solides calculent déjà le booléen : un Build() de plus le refait en entier.
 function occFuse(a,b){
   const f=new occt.BRepAlgoAPI_Fuse_3(a,b);
-  f.Build();const ok=f.IsDone();const s=ok?f.Shape():null;
+  const ok=f.IsDone();const s=ok?f.Shape():null;
   if(s)nomsTransmet([a,b],f,s);
   try{f.delete();}catch(e){}
   if(!ok||!s)throw new Error('fusion impossible');
   return s;
 }
+function occSansMiettes(s){
+  // Une fusion peut laisser, à côté du vrai solide, des solides de volume nul (Barquette, renfort
+  // posé pile sur une face : 2 miettes). La fusion suivante, sur ce composé, rendait un volume nul
+  // et la pièce s'effondrait. Les vrais corps séparés sont gardés. s est supprimé si remplacé.
+  const so=occSubShapes(s,'TopAbs_SOLID');
+  const ok=so.length>1?so.filter(x=>Math.abs(occShapeVolume(x))>=OCC_MIETTE_MM3):so;
+  if(so.length<2||ok.length===so.length||!ok.length){occDispose(so);return s;}
+  const res=ok.length===1?ok[0]:occCompoundOf(ok);
+  nomsTransmet([s],{},res); // mêmes faces : elles gardent leurs noms
+  so.forEach(x=>{if(x!==res)try{x.delete();}catch(e){}});
+  try{s.delete();}catch(e){}
+  return res;
+}
+const OCC_MIETTE_MM3=0.01;
 function occCut(a,b){
   const c=new occt.BRepAlgoAPI_Cut_3(a,b);
-  c.Build();const ok=c.IsDone();const s=ok?c.Shape():null;
+  const ok=c.IsDone();const s=ok?c.Shape():null;
   if(s)nomsTransmet([a,b],c,s);
   try{c.delete();}catch(e){}
   if(!ok||!s)throw new Error('découpe impossible');
@@ -3858,7 +3961,7 @@ function occCutKids(a,b,kids){
   }
   const la=new occt.TopTools_ListOfShape_1(),lt=new occt.TopTools_ListOfShape_1(),c=new occt.BRepAlgoAPI_Cut_1();
   try{
-    la.Append_1(a);kids.forEach(k=>lt.Append_1(k));
+    occAjoute(la,a);kids.forEach(k=>occAjoute(lt,k));
     // outils de perçage orientés par construction : le contrôle « solide retourné »
     // (une classification complète contre les faces du filet) est superflu
     c.SetArguments(la);c.SetTools(lt);c.SetCheckInverted(false);c.Build();
@@ -3870,7 +3973,7 @@ function occCutKids(a,b,kids){
 }
 function occCommon(a,b){
   const c=new occt.BRepAlgoAPI_Common_3(a,b);
-  c.Build();const ok=c.IsDone();const s=ok?c.Shape():null;
+  const ok=c.IsDone();const s=ok?c.Shape():null;
   if(s)nomsTransmet([a,b],c,s);
   try{c.delete();}catch(e){}
   if(!ok||!s)throw new Error('intersection impossible');
@@ -4132,7 +4235,7 @@ function occCoqueThick(result,faces,thick,join,inter){
   const bin=[];
   try{
     const L=occBinPush(bin,new occt.TopTools_ListOfShape_1());
-    for(const f of faces)L.Append_1(occBinPush(bin,occt.TopoDS.Face_1(f)));
+    for(const f of faces)occAjoute(L,occBinPush(bin,occt.TopoDS.Face_1(f)));
     let mk;
     if(occt.BRepOffsetAPI_MakeThickSolid_2){
       mk=occBinPush(bin,new occt.BRepOffsetAPI_MakeThickSolid_2(
@@ -4457,7 +4560,7 @@ function occEdgeFaces(shape,edge){
       const f=occFaceCur(fx);
       let has=false;
       const ee=new occt.TopExp_Explorer_2(f,occt.TopAbs_ShapeEnum.TopAbs_EDGE,SH);bin.push(ee);
-      while(ee.More()){if(ee.Current().IsSame(edge)){has=true;break;}ee.Next();}
+      while(ee.More()){if(occAvec(ee.Current(),c=>c.IsSame(edge))){has=true;break;}ee.Next();}
       if(!has){try{f.delete();}catch(e){}fx.Next();continue;}
       let n=null;
       try{
@@ -5147,7 +5250,7 @@ function occFindFace0(shape,ref){
       const dot=n[0]*ref.n[0]+n[1]*ref.n[1]+n[2]*ref.n[2];
       if(dot>=0.9)cands.push({f,b,n});
       else{try{f.delete();}catch(e){}}
-    }
+    }else occFree(f);
     ex.Next();
   }
   try{ex.delete();}catch(e){}
@@ -5267,7 +5370,7 @@ function occMoveFaceRuledTool(shape,face,n,dist){
   const V3=p=>[p.X(),p.Y(),p.Z()];
   const add=(a,b,k)=>[a[0]+b[0]*k,a[1]+b[1]*k,a[2]+b[2]*k];
   try{
-    if(occSubShapes(face,'TopAbs_WIRE').length!==1)return null;
+    {const ws=occSubShapes(face,'TopAbs_WIRE'),nw=ws.length;occDispose(ws);if(nw!==1)return null;}
     const T=occt.GeomAbs_SurfaceType;
     const ow=occBinPush(bin,occt.BRepTools.OuterWire(face));
     const wx=occBinPush(bin,new occt.BRepTools_WireExplorer_3(ow,face));
@@ -5283,14 +5386,14 @@ function occMoveFaceRuledTool(shape,face,n,dist){
       if(gt===T.GeomAbs_Plane){
         const ca=occBinPush(bin,new occt.BRepAdaptor_Curve_2(e));
         if(ca.GetType()!==occt.GeomAbs_CurveType.GeomAbs_Line)return null;
-        r={k:'pl',n:V3(occBinPush(bin,ad.Plane().Axis().Direction()))};
+        r={k:'pl',n:V3(occBinPush(bin,occBinPush(bin,occBinPush(bin,ad.Plane()).Axis()).Direction()))};
       }else if(gt===T.GeomAbs_SurfaceOfExtrusion||gt===T.GeomAbs_Cylinder){
-        let d=V3(occBinPush(bin,gt===T.GeomAbs_Cylinder?ad.Cylinder().Axis().Direction():ad.Direction()));
+        let d=V3(occBinPush(bin,gt===T.GeomAbs_Cylinder?occBinPush(bin,occBinPush(bin,ad.Cylinder()).Axis()).Direction():ad.Direction()));
         const du=occDot3(d,u);
         if(Math.abs(du)<1e-3)return null;
         r={k:'tr',d:d.map(x=>x*L/du),dv:L/du,f:o.f}; // relève exactement de L le long de u
       }else if(gt===T.GeomAbs_Cone){
-        r={k:'ap',a:V3(occBinPush(bin,ad.Cone().Apex()))};
+        r={k:'ap',a:V3(occBinPush(bin,occBinPush(bin,ad.Cone()).Apex()))};
       }else return null;
       it.push({e,v0,r});
     }
@@ -5335,7 +5438,7 @@ function occMoveFaceRuledTool(shape,face,n,dist){
         ne=occBinPush(bin,new occt.BRepBuilderAPI_MakeEdge_3(P3(p0),P3(p1))).Edge();
         const pg=occBinPush(bin,new occt.BRepBuilderAPI_MakePolygon_1());
         [it[k].v0,it[(k+1)%N].v0,p1,p0].forEach(q=>pg.Add_1(P3(q)));pg.Close();
-        const mf=occBinPush(bin,new occt.BRepBuilderAPI_MakeFace_15(pg.Wire(),true));
+        const mf=occBinPush(bin,new occt.BRepBuilderAPI_MakeFace_15(occBinPush(bin,pg.Wire()),true));
         if(!mf.IsDone())return null;
         side=mf.Face();
       }else{
@@ -5343,7 +5446,7 @@ function occMoveFaceRuledTool(shape,face,n,dist){
         if(r.k==='tr')t.SetTranslation_1(occBinPush(bin,new occt.gp_Vec_4(r.d[0],r.d[1],r.d[2])));
         else t.SetScale(P3(r.a),1+L/occDot3(occSub3(it[k].v0,r.a),u));
         const tb=occBinPush(bin,new occt.BRepBuilderAPI_Transform_2(e,t,true));
-        ne=occt.TopoDS.Edge_1(tb.Shape());
+        ne=occCastLibre(tb.Shape(),c=>occt.TopoDS.Edge_1(c));
         if(r.k==='tr'){
           // Sur la SURFACE MÊME de la voisine (rectangle UV : arête iso-V, V le long de la
           // génératrice unitaire) : l'unification la recolle alors à la voisine, sans couture.
@@ -5366,18 +5469,18 @@ function occMoveFaceRuledTool(shape,face,n,dist){
       if(!mw.IsDone())return null;
       sew.Add(side);
     }
-    const mf1=occBinPush(bin,new occt.BRepBuilderAPI_MakeFace_15(mw.Wire(),true));
+    const mf1=occBinPush(bin,new occt.BRepBuilderAPI_MakeFace_15(occBinPush(bin,mw.Wire()),true));
     if(!mf1.IsDone())return null;
-    sew.Add(mf1.Face());
+    sew.Add(occBinPush(bin,mf1.Face()));
     sew.Perform(occBinPush(bin,new occt.Handle_Message_ProgressIndicator_1()));
     if(sew.NbFreeEdges()>0)return null;
-    const ex=occBinPush(bin,new occt.TopExp_Explorer_2(sew.SewedShape(),occt.TopAbs_ShapeEnum.TopAbs_SHELL,occt.TopAbs_ShapeEnum.TopAbs_SHAPE));
+    const ex=occBinPush(bin,new occt.TopExp_Explorer_2(occBinPush(bin,sew.SewedShape()),occt.TopAbs_ShapeEnum.TopAbs_SHELL,occt.TopAbs_ShapeEnum.TopAbs_SHAPE));
     if(!ex.More())return null;
     const ms=occBinPush(bin,new occt.BRepBuilderAPI_MakeSolid_1());
-    ms.Add(occShellCur(ex));
-    let out=ms.Solid();
+    ms.Add(occBinPush(bin,occShellCur(ex)));
+    let out=occBinPush(bin,ms.Solid());
     const gp=occBinPush(bin,new occt.GProp_GProps_1());occt.BRepGProp.VolumeProperties_1(out,gp,false,false,false);
-    if(gp.Mass()<0)out=out.Reversed();
+    if(gp.Mass()<0)out=occBinPush(bin,out.Reversed());
     // copie SANS dupliquer la géométrie : les coins gardent la surface de leur voisine
     {const cb=occBinPush(bin,new occt.BRepBuilderAPI_Copy_2(out,false,false));out=cb.Shape();}
     if(!out||out.IsNull()||!occCoqueValide(out)){try{if(out)out.delete();}catch(e){}return null;}
@@ -5552,8 +5655,8 @@ function occFaceTrack(face){
     const ad=new occt.BRepAdaptor_Surface_2(face,true);
     try{
       if(ad.GetType()===occt.GeomAbs_SurfaceType.GeomAbs_Plane){
-        const l=ad.Plane().Location();
-        t.plane=true;t.d=n[0]*l.X()+n[1]*l.Y()+n[2]*l.Z();
+        const l=occAvec(ad.Plane(),q=>occXyz(q.Location()));
+        t.plane=true;t.d=n[0]*l[0]+n[1]*l[1]+n[2]*l[2];
       }
     }finally{try{ad.delete();}catch(e){}}
   }catch(e){}
@@ -5685,10 +5788,10 @@ function occShellToSolid(r){
     const ms=new occt.BRepBuilderAPI_MakeSolid_1();
     let out=null;
     try{
-      ms.Add(occt.TopoDS.Shell_1(sh[0]));
-      out=ms.Solid();
-      if(occShapeVolume(out)<0)out=out.Reversed();
-      out=occShapeCopy(out);
+      occAvec(occt.TopoDS.Shell_1(sh[0]),c=>ms.Add(c));
+      const so=ms.Solid(),re=occShapeVolume(so)<0?so.Reversed():null;
+      out=occShapeCopy(re||so);
+      occFree(re);occFree(so);
     }finally{try{ms.delete();}catch(e){}}
     if(!out||out.IsNull()||!occCoqueValide(out))return r;
     try{r.delete();}catch(e){}
@@ -5981,7 +6084,7 @@ function occDeleteFacesOnce(shape,faces){
     const SH=occt.TopAbs_ShapeEnum.TopAbs_SHAPE;
     const ex=new occt.TopExp_Explorer_2(r,occt.TopAbs_ShapeEnum.TopAbs_FACE,SH);
     let reste=false;
-    while(ex.More()&&!reste){const c=ex.Current();if(faces.some(h=>c.IsSame(h)))reste=true;ex.Next();}
+    while(ex.More()&&!reste){if(occAvec(ex.Current(),c=>faces.some(h=>c.IsSame(h))))reste=true;ex.Next();}
     try{ex.delete();}catch(e){}
     if(reste){try{r.delete();}catch(e){}throw new Error('les faces voisines ne se rejoignent pas');}
     r=occUnify(r);
@@ -6013,8 +6116,7 @@ function occBoxMinMax(sh){
   // Boîte englobante {lo:[x,y,z], hi:[x,y,z]} d'une forme, ou null.
   try{
     const box=new occt.Bnd_Box_1();occt.BRepBndLib.Add(sh,box,true);
-    const a=box.CornerMin(),b=box.CornerMax();
-    const r={lo:[a.X(),a.Y(),a.Z()],hi:[b.X(),b.Y(),b.Z()]};
+    const r={lo:occXyz(box.CornerMin()),hi:occXyz(box.CornerMax())};
     try{box.delete();}catch(e){}
     return r;
   }catch(e){return null;}
@@ -6114,13 +6216,13 @@ function splitCutPlanes(){
   try{(doc.features||[]).forEach(f=>{if(f&&f.type==='xsplit'&&f.mode!=='body'&&f.visible!==false&&!(occSkipFeat&&f.id===occSkipFeat))out.push(splitPlaneOf(f));});}catch(e){}
   return out;
 }
-function occSplitPln(P){return new occt.gp_Pln_3(new occt.gp_Pnt_3(P.o[0],P.o[1],P.o[2]),new occt.gp_Dir_4(P.n[0],P.n[1],P.n[2]));}
+function occSplitPln(P){const a=new occt.gp_Pnt_3(P.o[0],P.o[1],P.o[2]),b=new occt.gp_Dir_4(P.n[0],P.n[1],P.n[2]);try{return new occt.gp_Pln_3(a,b);}finally{occFree(a);occFree(b);}}
 function occSplitRun(shape,tools){
   // Splitter : `shape` découpé par `tools` (liste de shapes). Rend le résultat brut.
   const sp=new occt.BRepAlgoAPI_Splitter_1();
   const la=new occt.TopTools_ListOfShape_1(),lt=new occt.TopTools_ListOfShape_1();
   try{
-    la.Append_1(shape);tools.forEach(t=>lt.Append_1(t));
+    occAjoute(la,shape);tools.forEach(t=>occAjoute(lt,t));
     sp.SetArguments(la);sp.SetTools(lt);sp.Build();
     if(!sp.IsDone())throw new Error('découpe refusée par le noyau');
     const r=sp.Shape();if(!r||r.IsNull())throw new Error('résultat vide');
@@ -6269,7 +6371,9 @@ function occCurvePts(ad,u0,u1,tol,cap){
   // ── 1) cercle ou arc : le nombre de segments se CALCULE, pas subdivise à l'aveugle
   //    flèche d'une corde = R(1−cos(Δθ/2)) ≤ tol  ⇒  Δθ = 2·acos(1−tol/R)
   let R=-1;
-  try{
+  // Demander son cercle à une courbe qui n'en est pas un lève une erreur du noyau : une par arête
+  // droite ou courbe, à chaque rejeu, et chacune use sa pile (voir occPileRemettre).
+  if(ad.GetType()===occt.GeomAbs_CurveType.GeomAbs_Circle)try{
     const c=ad.Circle(),a1=c.Axis(),ax=occXyz(a1.Direction());
     if(isFinite(ax[0])&&isFinite(ax[1])&&isFinite(ax[2]))R=c.Radius();
     occFree(a1);occFree(c);
@@ -6365,7 +6469,9 @@ function occDraftThin(da,faces){
     const r0=occFaceDist(A.f,B.f);
     if(!r0||!(r0.d>1e-3))continue; // faces voisines (arête commune) : pas une épaisseur
     let r1=null;
-    try{r1=occFaceDist(da.ModifiedShape(A.f),da.ModifiedShape(B.f));}catch(e){continue;}
+    let ma=null,mb=null;
+    try{ma=da.ModifiedShape(A.f);mb=da.ModifiedShape(B.f);r1=occFaceDist(ma,mb);}catch(e){continue;}
+    finally{occFree(ma);occFree(mb);}
     if(!r1||!(r1.d<0.5*r0.d))continue;
     const k=r1.d/r0.d;
     if(!pire||k<pire.k)pire={k,d0:r0.d,d:r1.d,p:r1.p,paroi:dot([B.c[0]-A.c[0],B.c[1]-A.c[1],B.c[2]-A.c[2]],A.n)<0};
@@ -6403,12 +6509,11 @@ function occExtrudeDraft(shape,bs,sp,angleDeg){
       try{
         const ad=new occt.BRepAdaptor_Surface_2(fc,true);bin.push(ad);
         if(ad.GetType()===occt.GeomAbs_SurfaceType.GeomAbs_Plane){
-          const d=ad.Plane().Axis().Direction();
-          let nx=d.X(),ny=d.Y(),nz=d.Z();
+          const pl=ad.Plane(),ax=pl.Axis(),d=occXyz(ax.Direction()),Lp=occXyz(pl.Location());occFree(ax);occFree(pl);
+          let nx=d[0],ny=d[1],nz=d[2];
           try{if(fc.Orientation_1()===occt.TopAbs_Orientation.TopAbs_REVERSED){nx=-nx;ny=-ny;nz=-nz;}}catch(e){}
           if(Math.abs(nx*n[0]+ny*n[1]+nz*n[2])>0.999){
-            const Lp=ad.Plane().Location();
-            const off=(Lp.X()-o[0])*n[0]+(Lp.Y()-o[1])*n[1]+(Lp.Z()-o[2])*n[2];
+            const off=(Lp[0]-o[0])*n[0]+(Lp[1]-o[1])*n[1]+(Lp[2]-o[2])*n[2];
             if(Math.abs(off-sp.lo)<tol||Math.abs(off-sp.hi)<tol)cap=true;
           }
         }
@@ -7597,8 +7702,8 @@ function occFilletNurbs(base,js,chamfer,single,edges,cham){
       // Common + Cut — deux booléens sur le corps entier, ~0,6 s chacun
       let loc=null,rest=null;const tri=Math.min(0.5,m/4);
       try{
-        const L1=occBinPush(bin,new occt.TopTools_ListOfShape_1());L1.Append_1(base);
-        const L2=occBinPush(bin,new occt.TopTools_ListOfShape_1());L2.Append_1(bx);
+        const L1=occBinPush(bin,new occt.TopTools_ListOfShape_1());occAjoute(L1,base);
+        const L2=occBinPush(bin,new occt.TopTools_ListOfShape_1());occAjoute(L2,bx);
         const SP=occBinPush(bin,new occt.BRepAlgoAPI_Splitter_1());SP.SetArguments(L1);SP.SetTools(L2);
         try{SP.Build();}catch(e){SP.Build(new occt.Message_ProgressRange());}
         if(SP.IsDone()){
@@ -7625,8 +7730,8 @@ function occFilletNurbs(base,js,chamfer,single,edges,cham){
       if(!(Math.abs(a1-a0)<=1e-6*Math.max(1,a0)))return null; // l'arrondi a débordé du bloc
       let g=null;
       try{
-        const L1=occBinPush(bin,new occt.TopTools_ListOfShape_1());L1.Append_1(rest);
-        const L2=occBinPush(bin,new occt.TopTools_ListOfShape_1());L2.Append_1(f);
+        const L1=occBinPush(bin,new occt.TopTools_ListOfShape_1());occAjoute(L1,rest);
+        const L2=occBinPush(bin,new occt.TopTools_ListOfShape_1());occAjoute(L2,f);
         const F=occBinPush(bin,new occt.BRepAlgoAPI_Fuse_1());F.SetArguments(L1);F.SetTools(L2);
         F.SetGlue(occt.BOPAlgo_GlueEnum.BOPAlgo_GlueShift); // le bloc et le reste ne se touchent que par les faces de coupe
         try{F.Build();}catch(e){F.Build(new occt.Message_ProgressRange());}
@@ -8264,7 +8369,7 @@ function* occReplayBodyGen(bid,list){
       if(cpA){try{result.delete();}catch(e){}result=cpA;return;}
       // Union additive "Uni" : unification des faces coplanaires (pas de couture au
       // passage d'une fonction à l'autre — face verticale = UNE face, pas 2).
-      const u=occUnify(occFuse(result,shape));
+      const u=occSansMiettes(occUnify(occFuse(result,shape)));
       try{result.delete();}catch(e){}try{shape.delete();}catch(e){}
       result=u;
     }
@@ -8316,7 +8421,7 @@ function* occReplayBodyGen(bid,list){
       const la=new occt.TopTools_ListOfShape_1(),lt=new occt.TopTools_ListOfShape_1();
       const c=cut?new occt.BRepAlgoAPI_Cut_1():new occt.BRepAlgoAPI_Fuse_1();
       try{
-        la.Append_1(result);tools.forEach(t=>lt.Append_1(t));
+        occAjoute(la,result);tools.forEach(t=>occAjoute(lt,t));
         c.SetArguments(la);c.SetTools(lt);if(cut)c.SetCheckInverted(false);c.Build();
         const s=c.IsDone()?c.Shape():null;
         if(!s||s.IsNull())throw new Error('booléen groupé refusé');
@@ -8907,6 +9012,7 @@ function delWkMain(){
       return;
     }
     if(m.t!=='job')return;
+    occPileRemettre();
     self.postMessage({t:'debut',id:m.id});
     const t0=Date.now();let s=null,hs=[];
     const fin=o=>self.postMessage(Object.assign({t:'fin',id:m.id,kept:0,err:null,warnings:[],brep:null,ms:Date.now()-t0},o));
@@ -8940,7 +9046,7 @@ function delWkMain(){
 }
 function delWkSource(){
   // Le worker reçoit le code de CE fichier et de 20-noyau, pas une copie à entretenir.
-  const fns=[occFree,occCastLibre,occFaceCur,occEdgeCur,occSolidCur,occShellCur,occXyz,occAvec, // V0.64.3
+  const fns=[occPileRemettre,occAjoute,occFree,occCastLibre,occFaceCur,occEdgeCur,occSolidCur,occShellCur,occXyz,occAvec, // V0.64.3
     occBinPush,occDispose,occUnifyKeepEdges,occUnify,occCoqueValide,occBoxMinMax,occDelFaceDebord,
     occDeleteFacesOnce,occDelFacesTry,occBrepWrite,occBrepRead,occFaceAt,
     occCut,occCutEach,occCutKids,occThrCut,occtV3Compat];
@@ -9283,6 +9389,7 @@ function rebuild(pass){
   // 2026-10-16-008 : paramètres ƒx (cotes nommées, expressions des fonctions 3D) à jour AVANT le rejeu
   if(!pass){try{if(typeof parApplyAll==='function')parApplyAll();}catch(e){}}
   if(!pass&&buildKeyUpToDate())return;
+  if(!pass&&!rebuildDepth&&occHas())occPileRemettre();
   // Mode « fraîcheur » : on jette les points de contrôle AVANT le rejeu, donc chaque
   // modification reconstruit le modèle depuis zéro — aucun sous-ensemble n'est réemployé
   // d'une reconstruction à l'autre. (Les rejeux imbriqués des projections gardent le cache
@@ -10689,6 +10796,7 @@ function repCloneSketch(sk,i,skMap,featMap,cfg,reuse){
   };
   if(ns.host&&ns.host.feat&&featMap[ns.host.feat])ns.host.feat=featMap[ns.host.feat];
   else if(!(ns.host&&ns.host.feat&&hostKeep()))delete ns.host;
+  if(ns.host&&ns.host.mv)ns.host.mv.forEach(m=>{if(featMap[m.id])m.id=featMap[m.id];});
   if(reuse){
     const keep=reuse.id;
     for(const k of Object.keys(reuse))if(!(k in ns))delete reuse[k];
@@ -13617,6 +13725,7 @@ function antDeps(f,F,users){
     if(!skId)return;
     const sk=(doc.sketches||[]).find(s=>s.id===skId);
     if(sk&&sk.host&&sk.host.feat)add(sk.host.feat,'face portant l’esquisse « '+(sk.name||sk.id)+' »');
+    if(sk&&sk.host&&sk.host.mv)sk.host.mv.forEach(m=>add(m.id,'déplacement de la face portant l’esquisse « '+(sk.name||sk.id)+' »'));
     if(sk&&sk.plane==='CG'&&sk.cg&&sk.cg.id){
       const c=(doc.cgeo||[]).find(x=>x&&x.id===sk.cg.id);
       if(c&&c.at&&cgDependsOnModel(c))add(c.at,'plan de construction « '+(c.name||c.id)+' » de l’esquisse « '+(sk.name||sk.id)+' »');
@@ -20519,12 +20628,13 @@ function newSketchOnFace(){
   // host : face porteuse nommée (antériorité) — fait suivre l'esquisse quand la porteuse bouge
   // x/y stockés depuis l'origine (pas le point de clic) pour ne pas dériver
   // origine hors de la face cliquée (fond de rainure sous un îlot) : la face sous le CLIC
-  const host=findHostForFace(origin,n)||hostViaPoints([origin.x,origin.y,origin.z],n,[pt]);
+  const limH=tlIdx(); // marqueur temps actif : seules les fonctions rejouées peuvent porter
+  const host=findHostForFace(origin,n,undefined,limH)||hostViaPoints([origin.x,origin.y,origin.z],n,[pt],limH);
   const sk={id:uid('sk'),name:'Esquisse '+(doc.sketches.length+1)+' (face)',plane:'FACE',
     entities:[],points:{},constraints:[],dims:[],seq:1,visible:true,at:cgAtNow(),
     origin:[+origin.x.toFixed(3),+origin.y.toFixed(3),+origin.z.toFixed(3)],
     axU:[u.x,u.y,u.z],axV:[v.x,v.y,v.z],axN:[n.x,n.y,n.z],
-    host:host?Object.assign({feat:host.feat.id,tag:host.tag,x:host.x,y:host.y,name:entName('face')},(host.tag==='SIDE')?{edge:host.edge,h:host.h}:{}):null};
+    host:host?hostFields(host,entName('face')):null};
   doc.sketches.push(sk);markDirty();rebuild();openSketch(sk.id);
   faceEl.textContent='Esquisse '+sk.name+' posée sur '+(sk.host&&sk.host.name||'face')+' (normale '+n.x.toFixed(2)+','+n.y.toFixed(2)+','+n.z.toFixed(2)+') · origine '+sk.origin.join(', ')+' (repère projeté). Dessinez puis extrudez le long de la normale.';
 }
@@ -31617,7 +31727,7 @@ function occShapeOfSweep(f){
     const mw=occBinPush(bins,new occt.BRepBuilderAPI_MakeWire_1());mw.Add_1(me.Edge());mw.Build();
     spine=mw.Wire();
   }else{
-    try{spine=occWireFromChain(pk,{pts:Object.assign({},pk.points,path.pts)},path.chain,bins,0);}
+    try{spine=occBinPush(bins,occWireFromChain(pk,{pts:Object.assign({},pk.points,path.pts)},path.chain,bins,0));}
     catch(e){occDispose(bins);throw new Error('chemin : '+e.message);}
   }
   const vol=s=>{let v=0;try{const G=new occt.GProp_GProps_1();occt.BRepGProp.VolumeProperties_1(s,G,false,false,false);v=G.Mass();G.delete();}catch(e){}return v;};
@@ -31641,7 +31751,7 @@ function occShapeOfSweep(f){
     return s;
   };
   // fil d'une boucle du profil, ou d'un cercle plein (même recette que diskOf de la révolution)
-  const wireOf=chain=>{const c=[],w=occWireFromChain(sk,tr,chain,bins,0,c);cotesDe.set(w,c);return w;};
+  const wireOf=chain=>{const c=[],w=occBinPush(bins,occWireFromChain(sk,tr,chain,bins,0,c));cotesDe.set(w,c);return w;};
   const circWire=c=>{
     const C=sk.points[c.pc];if(!C)throw new Error('pastille : centre introuvable');
     const n=sketchBasis(sk).n,w=occW(sk,C.x,C.y);
@@ -32774,7 +32884,6 @@ function gearRackSolid(g,bin){
   const pnt=(x,y,z)=>occBinPush(bin,new occt.gp_Pnt_3(x,y,z));
   const box=occBinPush(bin,new occt.BRepPrimAPI_MakeBox_3(pnt(-g.L/2,g.yb-1,-1),pnt(g.L/2,g.ya+1,g.b+1)));
   const c=occBinPush(bin,new occt.BRepAlgoAPI_Common_3(pr.Shape(),box.Shape()));
-  c.Build();
   if(!c.IsDone())throw new Error('coupe des bouts de la crémaillère impossible');
   return c.Shape();
 }
@@ -65767,6 +65876,42 @@ function occtFileUrl(p){ // chemin relatif : marche en http(s) comme en file://
 // Le traducteur occt/v3/compat-v3.cjs garde les appels d'opencascade.js 1.1.1 écrits dans src/.
 const OCCT_FILES={js:'occt/v3/conceptcad_v3.js',wasm:'occt/v3/conceptcad_v3.wasm',
   compat:'occt/v3/compat-v3.cjs',table:'occt/v3/compat-v3.json'};
+// Noyau multicœur (occt/mt) : choisi tout seul quand la page est isolée (en-têtes de Server.bat, ou
+// service worker isolation-sw.js sur le site) et le PC assez fourni ; sinon, ou s'il ne charge pas, noyau normal.
+// Le fichier autonome n'en a pas : file:// ne permet pas les fils. Adresse ?mt=0 : noyau normal ; ?mt=8 : 8 fils.
+// Seuls les booléens utilisent les fils : le maillage, dont dépend la FAO, reste comme avant.
+// Les workers (suppression de face, FAO) gardent le noyau normal : ils lisent OCCT_FILES.
+const OCCT_MT={js:'occt/mt/conceptcad_v3.js',wasm:'occt/mt/conceptcad_v3.wasm'};
+const OCCT_MT_FILS_DEFAUT=4; // mémoire du noyau : 165 Mo de plus à 4 fils, 305 Mo à 8
+const OCCT_MT_FILS_MAX=8;    // réserve de fils du noyau (occt-build/build.cjs) : au-delà, un calcul resterait bloqué
+let occtMtFils=0,occtMtAvis='';
+function occtMtDemande(){
+  // Nombre de fils à utiliser ici, 0 pour le noyau normal
+  if(window.__EMB)return 0;
+  const m=/[?&]mt=(\d+)(?:&|$)/.exec(String(location.search||''));
+  const coeurs=navigator.hardwareConcurrency||1;
+  if(m&&+m[1]===0){occtMtAvis='Un seul cœur (demandé par l’adresse)';return 0;}
+  if(!self.crossOriginIsolated){
+    occtMtAvis=location.protocol==='https:'?'Un seul cœur : multicœur à la prochaine ouverture':'Un seul cœur : ce serveur ne permet pas le multicœur';
+    return 0;
+  }
+  if(coeurs<OCCT_MT_FILS_DEFAUT||(navigator.deviceMemory&&navigator.deviceMemory<8)){occtMtAvis='Un seul cœur : PC trop juste pour le multicœur';return 0;}
+  return Math.max(2,Math.min(m?+m[1]:OCCT_MT_FILS_DEFAUT,OCCT_MT_FILS_MAX,coeurs));
+}
+function occtIsolerPage(){
+  // Le site (GitHub Pages) n'envoie pas les en-têtes d'isolation : le service worker les ajoute, à partir de
+  // la prochaine ouverture. Pas de rechargement à la volée, qui couperait le démarrage de l'application.
+  try{
+    if(window.__EMB||self.crossOriginIsolated||!('serviceWorker' in navigator))return;
+    if(location.protocol==='https:'||/[?&]sw(?:&|$)/.test(String(location.search||'')))navigator.serviceWorker.register('isolation-sw.js').catch(()=>{});
+  }catch(e){}
+}
+function occtMtActive(fils){
+  const pool=occt.OSD_ThreadPool.DefaultPool(fils);
+  pool.SetNbDefaultThreadsToLaunch(fils);
+  occt.BOPAlgo_Options.SetParallelMode(true);
+  occtMtFils=fils;
+}
 // Traducteur v3 (page et worker de suppression de face) : charge compat-v3.cjs + sa table, rend
 // une fabrique qui enveloppe celle du noyau. Le module CommonJS est évalué avec un `require` vide
 // (il ne lit des fichiers que pour sa génération, hors navigateur).
@@ -65804,6 +65949,7 @@ function occtEcranDoubleClic(){
     occStatus();occtEcranDoubleClic();
     return;
   }
+  occtIsolerPage();
   if(window.__EMB)await window.__EMB.pret(OCCT_FILES); // fichier autonome : adresses blob à la place des fichiers
   // V0.31.2 : fenêtre de l'écran de démarrage (2 s, ou clic / Échap) — le fil reste libre pour
   // le bouton de dépannage « Vider le cache » ; la compilation gèle sinon toute l'animation.
@@ -65814,15 +65960,23 @@ function occtEcranDoubleClic(){
   // Laisse le navigateur peindre l'étape AVANT la compilation : sans cela le message
   // s'affiche après coup, quand la tabulation est déjà gelée.
   const yieldUI=()=>new Promise(r=>{try{requestAnimationFrame(()=>setTimeout(r,0));}catch(e){setTimeout(r,0);}});
-  try{
+  const demarrer=async(js,wasm)=>{
     stage('chargement JS noyau (0,1 Mo)…');
-    const mod=await withTimeout(import(occtFileUrl(OCCT_FILES.js)),30000,'chargement JS');
+    const mod=await withTimeout(import(occtFileUrl(js)),30000,'chargement JS');
     if(typeof mod.default!=='function')throw new Error('factory absente (import vide ?)');
     stage('chargement du traducteur…');
     const factory=(await occtV3Compat(occtFileUrl(OCCT_FILES.compat),occtFileUrl(OCCT_FILES.table)))(mod.default);
     stage('JS noyau OK, compilation wasm (~43 Mo, ~10-60 s) — interface momentanément figée…');
     await yieldUI();
-    occt=await withTimeout(factory({locateFile:p=>String(p).endsWith('.wasm')?OCCT_FILES.wasm:p}),180000,'compilation wasm');
+    return withTimeout(factory({locateFile:p=>String(p).endsWith('.wasm')?wasm:p}),180000,'compilation wasm');
+  };
+  try{
+    const fils=occtMtDemande();
+    if(fils){
+      try{occt=await demarrer(OCCT_MT.js,OCCT_MT.wasm);occtMtActive(fils);}
+      catch(e){occt=null;occtMtFils=0;occtMtAvis='Un seul cœur : noyau multicœur non chargé';try{console.warn('[OCCT] '+occtMtAvis+' : '+((e&&e.message)||e));}catch(e2){}}
+    }
+    if(!occt)occt=await demarrer(OCCT_FILES.js,OCCT_FILES.wasm);
     occBaseMsg=`OCCT : prêt en ${((performance.now()-t0)/1000).toFixed(0)} s — vérification…`;occStatus();
     await occtFinishBoot();
   }catch(e){
@@ -67831,7 +67985,7 @@ function mfStatusBar(){
     try{
       const o=(document.getElementById('occtState')||{}).textContent||'';
       // Nom du noyau en clair
-      const eng=/prêt/i.test(o)?('Noyau OCCT 8.0.1 · '+((typeof builtEngine!=='undefined'&&builtEngine)||'')):(o.replace(/^OCCT\s*:\s*/,'').slice(0,60));
+      const eng=/prêt/i.test(o)?('Noyau OCCT 8.0.1 · '+(typeof occtMtFils!=='undefined'&&occtMtFils?'multicœur '+occtMtFils+' cœurs · ':'')+((typeof builtEngine!=='undefined'&&builtEngine)||'')):(o.replace(/^OCCT\s*:\s*/,'').slice(0,60));
       const se=document.getElementById('mfStEng');se.textContent=eng;
       se.title=o; // texte complet en bulle
       const f=((typeof faceEl!=='undefined'&&faceEl&&faceEl.textContent)||'').split('\n')[0];

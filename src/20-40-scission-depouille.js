@@ -21,13 +21,13 @@ function splitCutPlanes(){
   try{(doc.features||[]).forEach(f=>{if(f&&f.type==='xsplit'&&f.mode!=='body'&&f.visible!==false&&!(occSkipFeat&&f.id===occSkipFeat))out.push(splitPlaneOf(f));});}catch(e){}
   return out;
 }
-function occSplitPln(P){return new occt.gp_Pln_3(new occt.gp_Pnt_3(P.o[0],P.o[1],P.o[2]),new occt.gp_Dir_4(P.n[0],P.n[1],P.n[2]));}
+function occSplitPln(P){const a=new occt.gp_Pnt_3(P.o[0],P.o[1],P.o[2]),b=new occt.gp_Dir_4(P.n[0],P.n[1],P.n[2]);try{return new occt.gp_Pln_3(a,b);}finally{occFree(a);occFree(b);}}
 function occSplitRun(shape,tools){
   // Splitter : `shape` découpé par `tools` (liste de shapes). Rend le résultat brut.
   const sp=new occt.BRepAlgoAPI_Splitter_1();
   const la=new occt.TopTools_ListOfShape_1(),lt=new occt.TopTools_ListOfShape_1();
   try{
-    la.Append_1(shape);tools.forEach(t=>lt.Append_1(t));
+    occAjoute(la,shape);tools.forEach(t=>occAjoute(lt,t));
     sp.SetArguments(la);sp.SetTools(lt);sp.Build();
     if(!sp.IsDone())throw new Error('découpe refusée par le noyau');
     const r=sp.Shape();if(!r||r.IsNull())throw new Error('résultat vide');
@@ -176,7 +176,9 @@ function occCurvePts(ad,u0,u1,tol,cap){
   // ── 1) cercle ou arc : le nombre de segments se CALCULE, pas subdivise à l'aveugle
   //    flèche d'une corde = R(1−cos(Δθ/2)) ≤ tol  ⇒  Δθ = 2·acos(1−tol/R)
   let R=-1;
-  try{
+  // Demander son cercle à une courbe qui n'en est pas un lève une erreur du noyau : une par arête
+  // droite ou courbe, à chaque rejeu, et chacune use sa pile (voir occPileRemettre).
+  if(ad.GetType()===occt.GeomAbs_CurveType.GeomAbs_Circle)try{
     const c=ad.Circle(),a1=c.Axis(),ax=occXyz(a1.Direction());
     if(isFinite(ax[0])&&isFinite(ax[1])&&isFinite(ax[2]))R=c.Radius();
     occFree(a1);occFree(c);
@@ -272,7 +274,9 @@ function occDraftThin(da,faces){
     const r0=occFaceDist(A.f,B.f);
     if(!r0||!(r0.d>1e-3))continue; // faces voisines (arête commune) : pas une épaisseur
     let r1=null;
-    try{r1=occFaceDist(da.ModifiedShape(A.f),da.ModifiedShape(B.f));}catch(e){continue;}
+    let ma=null,mb=null;
+    try{ma=da.ModifiedShape(A.f);mb=da.ModifiedShape(B.f);r1=occFaceDist(ma,mb);}catch(e){continue;}
+    finally{occFree(ma);occFree(mb);}
     if(!r1||!(r1.d<0.5*r0.d))continue;
     const k=r1.d/r0.d;
     if(!pire||k<pire.k)pire={k,d0:r0.d,d:r1.d,p:r1.p,paroi:dot([B.c[0]-A.c[0],B.c[1]-A.c[1],B.c[2]-A.c[2]],A.n)<0};
@@ -310,12 +314,11 @@ function occExtrudeDraft(shape,bs,sp,angleDeg){
       try{
         const ad=new occt.BRepAdaptor_Surface_2(fc,true);bin.push(ad);
         if(ad.GetType()===occt.GeomAbs_SurfaceType.GeomAbs_Plane){
-          const d=ad.Plane().Axis().Direction();
-          let nx=d.X(),ny=d.Y(),nz=d.Z();
+          const pl=ad.Plane(),ax=pl.Axis(),d=occXyz(ax.Direction()),Lp=occXyz(pl.Location());occFree(ax);occFree(pl);
+          let nx=d[0],ny=d[1],nz=d[2];
           try{if(fc.Orientation_1()===occt.TopAbs_Orientation.TopAbs_REVERSED){nx=-nx;ny=-ny;nz=-nz;}}catch(e){}
           if(Math.abs(nx*n[0]+ny*n[1]+nz*n[2])>0.999){
-            const Lp=ad.Plane().Location();
-            const off=(Lp.X()-o[0])*n[0]+(Lp.Y()-o[1])*n[1]+(Lp.Z()-o[2])*n[2];
+            const off=(Lp[0]-o[0])*n[0]+(Lp[1]-o[1])*n[1]+(Lp[2]-o[2])*n[2];
             if(Math.abs(off-sp.lo)<tol||Math.abs(off-sp.hi)<tol)cap=true;
           }
         }

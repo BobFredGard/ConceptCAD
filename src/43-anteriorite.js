@@ -65,6 +65,7 @@ function antDeps(f,F,users){
     if(!skId)return;
     const sk=(doc.sketches||[]).find(s=>s.id===skId);
     if(sk&&sk.host&&sk.host.feat)add(sk.host.feat,'face portant l’esquisse « '+(sk.name||sk.id)+' »');
+    if(sk&&sk.host&&sk.host.mv)sk.host.mv.forEach(m=>add(m.id,'déplacement de la face portant l’esquisse « '+(sk.name||sk.id)+' »'));
     if(sk&&sk.plane==='CG'&&sk.cg&&sk.cg.id){
       const c=(doc.cgeo||[]).find(x=>x&&x.id===sk.cg.id);
       if(c&&c.at&&cgDependsOnModel(c))add(c.at,'plan de construction « '+(c.name||c.id)+' » de l’esquisse « '+(sk.name||sk.id)+' »');

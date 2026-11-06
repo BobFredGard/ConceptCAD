@@ -10,7 +10,7 @@
 
 ![Support de pédale déportée R1200RT en alu anodisé rouge sur béton, lancer de rayons de l'atelier RENDU (2048 échantillons)](docs/captures/rendu-pedale.jpg)
 
-Le noyau géométrique exact est **OpenCascade 8 compilé en WebAssembly** par nos soins (recette reproductible dans `occt-build/`). S'il n'est pas disponible, l'application bascule seule sur un moteur maillage (CSG). Version actuelle : **V0.66.0** (voir le [journal des modifications](CHANGELOG.md)).
+Le noyau géométrique exact est **OpenCascade 8 compilé en WebAssembly** par nos soins (recette reproductible dans `occt-build/`), en deux versions : **multicœur**, choisie toute seule quand le navigateur et le PC le permettent et écrite dans la barre d'état, et normale, sur un seul cœur, qui reste celle du fichier autonome. S'il n'est pas disponible, l'application bascule seule sur un moteur maillage (CSG). Version actuelle : **V0.67.0** (voir le [journal des modifications](CHANGELOG.md)).
 
 **Pas d'Internet sur le poste ?** La [version autonome](https://www.dropbox.com/scl/fi/sne7f5a9y8dr659b2xrow/ConceptCAD-autonome.html?rlkey=fgd0w1r5816ake50vxtd4fnuj&dl=0) tient en un seul fichier à télécharger, qui s'ouvre par double-clic (voir [Démarrage](#démarrage)).
 
@@ -309,13 +309,13 @@ Une image soignée de la pièce ou de l'assemblage, en **1920×1080 ou 4K**, enr
 
 ### Lancer depuis les sources
 
-Il faut Node.js et Git LFS : le dépôt stocke les gros binaires (`occt/v3/*.wasm`, `Exemples/*.conceptcad`, `Exemples/*.miniFusion`, `Exemples/*.step`, `Exemples/*.stp`) via **Git LFS**. Après un clone : `git lfs install` puis `git lfs pull`.
+Il faut Node.js et Git LFS : le dépôt stocke les gros binaires (`occt/v3/*.wasm`, `occt/mt/*.wasm`, `Exemples/*.conceptcad`, `Exemples/*.miniFusion`, `Exemples/*.step`, `Exemples/*.stp`) via **Git LFS**. Après un clone : `git lfs install` puis `git lfs pull`.
 
 ```bat
 Server.bat
 ```
 
-`Server.bat` sert le dossier sur `http://localhost:3000` (et sur le réseau local, pour essayer depuis un téléphone : `http://<adresse du PC>:3000/ConceptCAD.html`). N'importe quel serveur statique convient aussi :
+`Server.bat` sert le dossier sur `http://localhost:3000` (et sur le réseau local, pour essayer depuis un téléphone : `http://<adresse du PC>:3000/ConceptCAD.html`). Il envoie les en-têtes qui permettent le noyau multicœur. N'importe quel serveur statique convient aussi, avec un seul cœur sans ces en-têtes :
 
 ```bash
 npx serve . -l 3000
@@ -328,7 +328,7 @@ npx serve . -l 3000
 | `src/*.js` | **Les sources** : 163 fichiers concaténés dans l'ordre alphabétique (noyau, esquisse, fonctions 3D, assemblage, FAO découpée par domaine, mise en plan, rendu, interface téléphone `99-mobile*.js`). C'est ici qu'on travaille. |
 | `ConceptCAD.html` | **Livrable généré** par `node build.js`. On n'édite jamais son script à la main. |
 | `PostPro/` | Une fiche par machine (`siemens-630.js`, `siemens-1520.js`, `fagor-8065.js`). Nouvelle machine = copier une fiche, la modifier, `npm run build`. |
-| `tests/` | 277 suites Node lancées en parallèle (`npm run ci:full`), 121 rapides (`npm run ci`), non-régression des parcours FAO (`npm run parcours`), tests de référence (`tests/oracle/`, [docs/oracle.md](docs/oracle.md)). |
+| `tests/` | 282 suites Node lancées en parallèle (`npm run ci:full`), 122 rapides (`npm run ci`), non-régression des parcours FAO (`npm run parcours`), tests de référence (`tests/oracle/`, [docs/oracle.md](docs/oracle.md)). |
 | `tests/browser/` | Playwright dans un vrai Chromium : parcours critiques et Rendu (`npm run test:browser`, seul projet lancé par la CI GitHub, déclenchée à la main) et carte graphique réelle (`npm run test:gpu`, en local). |
 | `tools/` | Lint du script concaténé (`npm run lint`), serveur MCP, **captures du README** (`npm run captures`), **fichier autonome** (`npm run autonome`). |
 | `occt/`, `threejs/` | Noyau OpenCascade WebAssembly (`occt/v3` : OCCT 8), rendu three.js. |

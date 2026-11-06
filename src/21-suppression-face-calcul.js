@@ -92,6 +92,7 @@ function delWkMain(){
       return;
     }
     if(m.t!=='job')return;
+    occPileRemettre();
     self.postMessage({t:'debut',id:m.id});
     const t0=Date.now();let s=null,hs=[];
     const fin=o=>self.postMessage(Object.assign({t:'fin',id:m.id,kept:0,err:null,warnings:[],brep:null,ms:Date.now()-t0},o));
@@ -125,7 +126,7 @@ function delWkMain(){
 }
 function delWkSource(){
   // Le worker reçoit le code de CE fichier et de 20-noyau, pas une copie à entretenir.
-  const fns=[occFree,occCastLibre,occFaceCur,occEdgeCur,occSolidCur,occShellCur,occXyz,occAvec, // V0.64.3
+  const fns=[occPileRemettre,occAjoute,occFree,occCastLibre,occFaceCur,occEdgeCur,occSolidCur,occShellCur,occXyz,occAvec, // V0.64.3
     occBinPush,occDispose,occUnifyKeepEdges,occUnify,occCoqueValide,occBoxMinMax,occDelFaceDebord,
     occDeleteFacesOnce,occDelFacesTry,occBrepWrite,occBrepRead,occFaceAt,
     occCut,occCutEach,occCutKids,occThrCut,occtV3Compat];

@@ -110,7 +110,6 @@ function gearRackSolid(g,bin){
   const pnt=(x,y,z)=>occBinPush(bin,new occt.gp_Pnt_3(x,y,z));
   const box=occBinPush(bin,new occt.BRepPrimAPI_MakeBox_3(pnt(-g.L/2,g.yb-1,-1),pnt(g.L/2,g.ya+1,g.b+1)));
   const c=occBinPush(bin,new occt.BRepAlgoAPI_Common_3(pr.Shape(),box.Shape()));
-  c.Build();
   if(!c.IsDone())throw new Error('coupe des bouts de la crémaillère impossible');
   return c.Shape();
 }

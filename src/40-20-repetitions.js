@@ -512,6 +512,7 @@ function repCloneSketch(sk,i,skMap,featMap,cfg,reuse){
   };
   if(ns.host&&ns.host.feat&&featMap[ns.host.feat])ns.host.feat=featMap[ns.host.feat];
   else if(!(ns.host&&ns.host.feat&&hostKeep()))delete ns.host;
+  if(ns.host&&ns.host.mv)ns.host.mv.forEach(m=>{if(featMap[m.id])m.id=featMap[m.id];});
   if(reuse){
     const keep=reuse.id;
     for(const k of Object.keys(reuse))if(!(k in ns))delete reuse[k];

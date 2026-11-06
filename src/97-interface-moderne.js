@@ -580,7 +580,7 @@ function mfStatusBar(){
     try{
       const o=(document.getElementById('occtState')||{}).textContent||'';
       // Nom du noyau en clair
-      const eng=/prêt/i.test(o)?('Noyau OCCT 8.0.1 · '+((typeof builtEngine!=='undefined'&&builtEngine)||'')):(o.replace(/^OCCT\s*:\s*/,'').slice(0,60));
+      const eng=/prêt/i.test(o)?('Noyau OCCT 8.0.1 · '+(typeof occtMtFils!=='undefined'&&occtMtFils?'multicœur '+occtMtFils+' cœurs · ':'')+((typeof builtEngine!=='undefined'&&builtEngine)||'')):(o.replace(/^OCCT\s*:\s*/,'').slice(0,60));
       const se=document.getElementById('mfStEng');se.textContent=eng;
       se.title=o; // texte complet en bulle
       const f=((typeof faceEl!=='undefined'&&faceEl&&faceEl.textContent)||'').split('\n')[0];

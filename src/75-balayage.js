@@ -187,7 +187,7 @@ function occShapeOfSweep(f){
     const mw=occBinPush(bins,new occt.BRepBuilderAPI_MakeWire_1());mw.Add_1(me.Edge());mw.Build();
     spine=mw.Wire();
   }else{
-    try{spine=occWireFromChain(pk,{pts:Object.assign({},pk.points,path.pts)},path.chain,bins,0);}
+    try{spine=occBinPush(bins,occWireFromChain(pk,{pts:Object.assign({},pk.points,path.pts)},path.chain,bins,0));}
     catch(e){occDispose(bins);throw new Error('chemin : '+e.message);}
   }
   const vol=s=>{let v=0;try{const G=new occt.GProp_GProps_1();occt.BRepGProp.VolumeProperties_1(s,G,false,false,false);v=G.Mass();G.delete();}catch(e){}return v;};
@@ -211,7 +211,7 @@ function occShapeOfSweep(f){
     return s;
   };
   // fil d'une boucle du profil, ou d'un cercle plein (même recette que diskOf de la révolution)
-  const wireOf=chain=>{const c=[],w=occWireFromChain(sk,tr,chain,bins,0,c);cotesDe.set(w,c);return w;};
+  const wireOf=chain=>{const c=[],w=occBinPush(bins,occWireFromChain(sk,tr,chain,bins,0,c));cotesDe.set(w,c);return w;};
   const circWire=c=>{
     const C=sk.points[c.pc];if(!C)throw new Error('pastille : centre introuvable');
     const n=sketchBasis(sk).n,w=occW(sk,C.x,C.y);

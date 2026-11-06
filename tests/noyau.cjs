@@ -19,6 +19,7 @@ function evaluer(retouche){
   // globale, import.meta et import("node:module") n'existant pas dans un script.
   let src=fs.readFileSync(JS,'utf8');
   if(retouche)src=retouche(src);
+  if(/em-pthread/.test(src))return evaluerMultifil(src);
   src=src.replace(/export default (\w+);\s*$/,'globalThis.opencascadeFactory=$1;\n')
     .replace(/import\.meta\.url/g,'globalThis.__occtGlueUrl')
     .replace(/await import\("node:module"\)/g,'globalThis.__occtRequire("node:module")');
@@ -29,6 +30,25 @@ function evaluer(retouche){
   const table=JSON.parse(fs.readFileSync(path.join(DIR,'compat-v3.json'),'utf8'));
   const f=globalThis.opencascadeFactory;
   return async o=>appliquer(await f(o),table);
+}
+function evaluerMultifil(src){
+  // Noyau multicœur (occt/mt) : sa colle doit rester un vrai module, ses fils se relancent depuis ce fichier.
+  // OCCT_FILS=<n> met les booléens en parallèle, comme ?mt=<n> dans la page.
+  const mjs=path.join(DIR,'conceptcad_mt_'+process.pid+'.mjs'); // à côté du .wasm, que les fils relisent
+  fs.writeFileSync(mjs,src);
+  process.on('exit',()=>{try{fs.unlinkSync(mjs);}catch(e){}});
+  const {appliquer}=require(path.join(ROOT,'occt-build','compat-v3.cjs'));
+  const table=JSON.parse(fs.readFileSync(path.join(DIR,'compat-v3.json'),'utf8'));
+  // Les fils en attente ne doivent pas empêcher le test de se terminer
+  const wt=require('worker_threads'),fils0=[],W0=wt.Worker;
+  wt.Worker=class extends W0{constructor(...a){super(...a);fils0.push(this);}};
+  return async o=>{
+    const oc=appliquer(await (await import(url.pathToFileURL(mjs).href)).default(o),table);
+    fils0.forEach(w=>w.unref());
+    const fils=+process.env.OCCT_FILS||0;
+    if(fils){oc.OSD_ThreadPool.DefaultPool(fils).SetNbDefaultThreadsToLaunch(fils);oc.BOPAlgo_Options.SetParallelMode(true);}
+    return oc;
+  };
 }
 async function charger(opts){
   const {colle,...o}=opts||{};

@@ -538,7 +538,7 @@ function* occReplayBodyGen(bid,list){
       if(cpA){try{result.delete();}catch(e){}result=cpA;return;}
       // Union additive "Uni" : unification des faces coplanaires (pas de couture au
       // passage d'une fonction à l'autre — face verticale = UNE face, pas 2).
-      const u=occUnify(occFuse(result,shape));
+      const u=occSansMiettes(occUnify(occFuse(result,shape)));
       try{result.delete();}catch(e){}try{shape.delete();}catch(e){}
       result=u;
     }
@@ -590,7 +590,7 @@ function* occReplayBodyGen(bid,list){
       const la=new occt.TopTools_ListOfShape_1(),lt=new occt.TopTools_ListOfShape_1();
       const c=cut?new occt.BRepAlgoAPI_Cut_1():new occt.BRepAlgoAPI_Fuse_1();
       try{
-        la.Append_1(result);tools.forEach(t=>lt.Append_1(t));
+        occAjoute(la,result);tools.forEach(t=>occAjoute(lt,t));
         c.SetArguments(la);c.SetTools(lt);if(cut)c.SetCheckInverted(false);c.Build();
         const s=c.IsDone()?c.Shape():null;
         if(!s||s.IsNull())throw new Error('booléen groupé refusé');

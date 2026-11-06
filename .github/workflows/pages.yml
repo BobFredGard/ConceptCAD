@@ -2,8 +2,8 @@
 # Le site sert le livrable ConceptCAD.html (en index.html) avec threejs/, le noyau OCCT
 # WebAssembly et les Exemples : en http(s), le noyau exact démarre seul.
 # Déclenché à chaque tag de version (V0.x.y) — le site suit donc la dernière version livrée —
-# ou à la main (onglet Actions › Pages › Run workflow). Un seul checkout LFS par version :
-# le quota de bande passante LFS gratuit est de 1 Go par mois.
+# ou à la main (onglet Actions › Pages › Run workflow). Les deux noyaux pèsent 86 Mo sur le quota de bande
+# passante LFS : les objets LFS sont gardés en cache, seul ce qui a changé est retéléchargé.
 
 name: Pages
 
@@ -29,17 +29,27 @@ jobs:
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
       - uses: actions/checkout@v4
+      - name: Lister les objets LFS
+        run: git lfs ls-files -l | cut -d' ' -f1 | sort > .lfs-ids
+      - uses: actions/cache@v4
         with:
-          lfs: true
+          path: .git/lfs
+          key: lfs-${{ hashFiles('.lfs-ids') }}
+          restore-keys: lfs-
+      - name: Récupérer les objets LFS
+        run: git lfs pull
       - name: Assembler le site
         run: |
           mkdir -p _site/occt
           cp ConceptCAD.html _site/index.html
           cp -r threejs Exemples _site/
-          # noyau de l'application : OCCT 8, occt/v3 (colle, .wasm, traducteur et sa table)
-          cp -r occt/v3 _site/occt/
+          # noyaux de l'application : OCCT 8, occt/v3 (colle, .wasm, traducteur et sa table) et occt/mt (multicœur)
+          cp -r occt/v3 occt/mt _site/occt/
+          # le site n'envoie pas les en-têtes d'isolation : ce service worker les ajoute pour le noyau multicœur
+          cp isolation-sw.js _site/
           # un pointeur LFS (≈ 130 octets) à la place du .wasm ferait retomber l'app en mode maillage
           test "$(head -c 4 _site/occt/v3/conceptcad_v3.wasm | od -An -c | tr -d ' ')" = '\0asm'
+          test "$(head -c 4 _site/occt/mt/conceptcad_v3.wasm | od -An -c | tr -d ' ')" = '\0asm'
           touch _site/.nojekyll
           du -sh _site
       - uses: actions/configure-pages@v5

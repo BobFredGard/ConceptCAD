@@ -8,7 +8,7 @@ sont sorties le 2026-09-30j.
 Code dans `src/` · livrable `fusion_mvp.html` (généré par `build.js`) · architecture et
 garde-fous en tête de `src/00-entete-et-outils.js`.
 
-**600 versions**, de `2026-09-28b` à `V0.66.0` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
+**603 versions**, de `2026-09-28b` à `V0.67.0` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
 comme dans le fichier d'origine.
 
 ---
@@ -6918,3 +6918,42 @@ L'ancien noyau de secours OCCT 7.4 est retiré : 116 Mo de fichiers en moins dan
 - **Limite** : le temps total reste celui de l'opération la plus longue. Les niveaux d'une ébauche 3D s'enchaînent (carte du brut restant, point de départ) : les répartir changerait le calcul de parcours validés, ce n'est pas fait. Le triangle ⚠ d'une seule opération, l'ouverture d'un document et les posages avec corps FAO (murs) restent sur le calcul normal.
 - **Effet sur d'autres fichiers** : aucun parcours ne change, `CACHE_VER` ne bouge pas. `?mono` dans l'adresse force l'ancien calcul pour comparer.
 - **Tests** : `test_fao_multicoeur` (toutes les opérations longues des exemples avec `--tout`, vrai fil de calcul, pièges), `tests/browser/multicoeur.spec.cjs` (mono contre multicœur sur les vrais maillages, bouton du ruban, calcul remplacé en cours, workers refusés, fichier autonome hors ligne).
+
+## V0.66.1 - Booléens calculés une seule fois
+
+Fusions, découpes et intersections calculées une seule fois : Barquette se recalcule en 4,2 s au lieu de 6,1 s.
+
+- **Cause** : le noyau calcule déjà le booléen à la création de `BRepAlgoAPI_Cut`, `Fuse` ou `Common` à deux solides. `occCut`, `occFuse`, `occCommon` et la coupe de la crémaillère rappelaient `Build()` derrière, ce qui refaisait tout le calcul.
+- **Correctif** : le `Build()` en trop est retiré (`src/20-10-prismes-booleens-coque.js`, `src/76-engrenage.js`).
+- **Gains mesurés** (recalcul complet, avant et après en alternance) : Barquette 1,46 fois plus rapide, Axe et Cache Piles 1,3 fois, Cavité Test et Cavité Usinage 1,17 fois, Support Pédale presque rien.
+- **Effet sur d'autres fichiers** : sur les 21 exemples, mêmes faces, arêtes, volumes, surfaces, noms de faces et messages. Le code FAO n'a pas bougé, `CACHE_VER` non plus.
+- **Tests** : `npm run ci:full`, pas de test dédié.
+
+---
+
+## V0.66.2 - Barquette : solide conservé et mémoire stable
+
+Barquette ne perd plus son solide à la 107e modification, et sa mémoire ne monte plus à chaque modification.
+
+- **Cause du solide perdu** : une erreur C++ rattrapée en JavaScript ne redescend pas le pointeur de pile du noyau. `occCurvePts` demandait son cercle à chaque arête, ce qui perdait 80 Ko par modification sur Barquette, jusqu'à déborder des 8 Mo de pile sur les données du noyau.
+- **Correctif** : `occCurvePts` ne lit le cercle que sur un cercle. `occPileRemettre` remet la pile au plus haut avant chaque rejeu et chaque travail du worker (`stackSave` et `stackRestore` exportés : colle retouchée, recette à jour, .wasm inchangé). 2 420 objets oubliés par modification ramenés à 2 ou 3.
+- **Cause de la fuite** : `liste.Append_1(s)` rend une copie de la forme, qui garde tout le solide en vie (0,45 Mo par modification). L'aide `occAjoute` sert maintenant à tous les ajouts, aussi dans le worker.
+- **Mesuré** (Barquette, tas du noyau) : 154 Mo stables jusqu'à 240 modifications, 266 Mo avant ; occupé après 120 modifications, caches vidés : 48 Mo, 118 Mo avant.
+- **Effet sur d'autres fichiers** : sur les 20 exemples, mêmes solides, noms et messages, et mêmes parcours FAO sur les 3 exemples comparés. `CACHE_VER` inchangé.
+- **Tests** : `test_pile_noyau`, `test_barquette_120`, Barquette dans `test_fuite_noyau`, qui refuse aussi tout `Append` direct.
+
+---
+
+## V0.67.0 - Noyau multicœur
+
+- **Tout seul** : quand le navigateur et le PC le permettent, ConceptCAD démarre le noyau multicœur avec 4 cœurs. La barre d'état l'écrit : « Noyau OCCT 8.0.1 · multicœur 4 cœurs ». Sinon, noyau normal, et la bulle de la barre d'état dit pourquoi.
+- **Mesuré** : Barquette, recalcul et modification de 4,2 s à 3,0 s. Presque rien sur les autres exemples. Seuls les booléens utilisent les cœurs. Mémoire du noyau : 319 Mo au lieu de 154 sur Barquette.
+- **Mêmes résultats** : sur les 20 exemples, mêmes solides, noms et messages. Parcours FAO identiques, `CACHE_VER` inchangé, le maillage et les workers restent sur le calcul normal.
+- **Où** : `Server.bat` envoie les en-têtes nécessaires ; sur le site, le service worker `isolation-sw.js` les ajoute à partir de la deuxième ouverture. Le fichier autonome garde le noyau normal, le double-clic ne permet pas les fils. Adresse `?mt=0` : noyau normal.
+- **Publication** : les objets Git LFS sont gardés en cache par `pages.yml`, pour ne pas retélécharger les deux noyaux à chaque version.
+- **Esquisse sur une face déplacée** : une esquisse posée sur une face baissée par un « Déplacement de face » suit maintenant cette face et son paramètre. Elle ne s'accroche plus à une fonction créée plus loin (Barquette : Esquisses 4, 16 et 28 sur le flanc d'un renfort, une boucle qui les bloquait à -4 après `epaisseur_levres` 4 puis 3,3). À l'ouverture, un tel fichier retrouve la bonne face s'il en existe une avant l'esquisse : sur la Barquette de Fred, le volume passe de 952 873 à 950 813 mm³ et les surfaces de 506 à 340.
+- **Reste connu** : après un aller-retour de paramètre sur cette pièce, environ 50 mm³ de plus (0,005 %) et 346 surfaces au lieu de 340 ; cause non cherchée.
+- **Fusion sans miettes** : les solides de volume nul laissés à côté de la pièce par une fusion sont retirés ; la fusion suivante ne rend plus un volume nul qui faisait s'effondrer la pièce.
+- **Tests** : `test_noyau_multicoeur`, `noyau-multicoeur.spec`, `test_moteur_v3` complété, `test_hote_face_deplacee`, `test_fusion_miettes`.
+
+---

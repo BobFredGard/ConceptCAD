@@ -1,0 +1,5 @@
+image : ghcr.io/taucad/opencascade.js@sha256:10b1b3c60c88d090bef61f27f00ad838af233066a8d2e04541557c71599e9373
+recette : occt-build/recettes/conceptcad-v3.yml + options de la variante mt (occt-build/build.cjs) + extras/conceptcad_extras.cpp
+date : 2026-11-06T10:09:15.444Z
+durée : 10.5 min
+conceptcad_v3.wasm 42.7 Mo
