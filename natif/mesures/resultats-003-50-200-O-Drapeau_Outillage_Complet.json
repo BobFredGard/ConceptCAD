@@ -1,14 +1,14 @@
 {
  "piece": "003-50-200-O-Drapeau Outillage Complet.conceptcad",
  "fonction": 0,
- "date": "2026-11-05T21:57:29.175Z",
+ "date": "2026-11-06T06:37:37.102Z",
  "machine": {
   "coeurs": 24,
   "memoireGo": 64,
   "processeur": "Intel(R) Core(TM) i9-14900KF"
  },
  "serveur": {
-  "port": 58959,
+  "port": 57653,
   "empreinte": "c208ae63f2935b4d"
  },
  "parite": {
@@ -104,7 +104,7 @@
      95,
      10
     ],
-    "ms": 45.93,
+    "ms": 26.389,
     "messages": 0
    },
    {
@@ -124,7 +124,7 @@
      95,
      5
     ],
-    "ms": 32.251,
+    "ms": 21.243,
     "messages": 0
    },
    {
@@ -144,7 +144,7 @@
      95,
      12.5
     ],
-    "ms": 27.996,
+    "ms": 17.033,
     "messages": 0
    },
    {
@@ -164,7 +164,7 @@
      95,
      30
     ],
-    "ms": 30.215,
+    "ms": 17.935,
     "messages": 0
    }
   ],
@@ -177,64 +177,45 @@
   {
    "repos": {
     "processus": 8,
-    "prive": 462.3,
-    "detail": "chrome#10=40 chrome#11=2 chrome#12=58 chrome#13=7 chrome#14=3 chrome#15=34 chrome#16=7 chrome#17=312",
-    "ws": 833.5,
-    "engage": 893.6
+    "prive": 461,
+    "detail": "chrome=40 chrome#1=2 chrome#2=59 chrome#3=7 chrome#4=3 chrome#5=36 chrome#6=7 chrome#7=307",
+    "ws": 824.6,
+    "engage": 892.8
    },
    "apres": {
     "processus": 8,
-    "prive": 432.3,
-    "detail": "chrome#10=41 chrome#11=1 chrome#12=61 chrome#13=7 chrome#14=3 chrome#15=26 chrome#16=7 chrome#17=285",
-    "ws": 808.7,
-    "engage": 860.3
+    "prive": 439.2,
+    "detail": "chrome=41 chrome#1=1 chrome#2=64 chrome#3=7 chrome#4=3 chrome#5=29 chrome#6=7 chrome#7=286",
+    "ws": 808.5,
+    "engage": 869
    },
-   "msCalc": 62.900000005960464,
-   "msTotal": 63.79999998211861,
-   "ms90": 69.5,
+   "msCalc": 61.30000001192093,
+   "msTotal": 62.20000001788139,
+   "ms90": 85.59999999403954,
    "tasNoyauMo": 128,
+   "msRejeu": 37.400000005960464,
    "erreurs": []
   },
   {
    "repos": {
     "processus": 8,
-    "prive": 458.1,
-    "detail": "chrome#10=39 chrome#11=2 chrome#12=56 chrome#13=7 chrome#14=3 chrome#15=34 chrome#16=7 chrome#17=310",
-    "ws": 830.6,
-    "engage": 889.2
+    "prive": 459.3,
+    "detail": "chrome=40 chrome#1=2 chrome#2=58 chrome#3=7 chrome#4=3 chrome#5=33 chrome#6=7 chrome#7=309",
+    "ws": 825.1,
+    "engage": 886.3
    },
    "apres": {
     "processus": 8,
-    "prive": 433.3,
-    "detail": "chrome#10=41 chrome#11=1 chrome#12=62 chrome#13=7 chrome#14=3 chrome#15=27 chrome#16=7 chrome#17=286",
-    "ws": 810.8,
-    "engage": 856.7
+    "prive": 436.9,
+    "detail": "chrome=41 chrome#1=2 chrome#2=63 chrome#3=7 chrome#4=3 chrome#5=26 chrome#6=7 chrome#7=288",
+    "ws": 807.9,
+    "engage": 857.6
    },
-   "msCalc": 68.30000001192093,
-   "msTotal": 69,
-   "ms90": 80.39999997615814,
+   "msCalc": 58.20000001788139,
+   "msTotal": 59.19999998807907,
+   "ms90": 85,
    "tasNoyauMo": 128,
-   "erreurs": []
-  },
-  {
-   "repos": {
-    "processus": 8,
-    "prive": 463.9,
-    "detail": "chrome#10=41 chrome#11=2 chrome#12=61 chrome#13=7 chrome#14=3 chrome#15=33 chrome#16=7 chrome#17=310",
-    "ws": 836.4,
-    "engage": 897.9
-   },
-   "apres": {
-    "processus": 8,
-    "prive": 448.5,
-    "detail": "chrome#10=42 chrome#11=1 chrome#12=66 chrome#13=7 chrome#14=3 chrome#15=26 chrome#16=7 chrome#17=296",
-    "ws": 826.3,
-    "engage": 874.7
-   },
-   "msCalc": 61.5,
-   "msTotal": 62.30000001192093,
-   "ms90": 102.60000002384186,
-   "tasNoyauMo": 128,
+   "msRejeu": 35,
    "erreurs": []
   }
  ],
@@ -242,118 +223,88 @@
   {
    "repos": {
     "processus": 1,
-    "prive": 40.1,
-    "detail": "ConceptCADNatif=40",
-    "ws": 80.5,
-    "engage": 326.9
+    "prive": 44.2,
+    "detail": "ConceptCADNatif=44",
+    "ws": 89.2,
+    "engage": 320.7
    },
    "apres": {
     "processus": 1,
-    "prive": 55,
-    "detail": "ConceptCADNatif=55",
-    "ws": 95.3,
-    "engage": 385.3
+    "prive": 60,
+    "detail": "ConceptCADNatif=60",
+    "ws": 105,
+    "engage": 390.3
    },
-   "msTotal": 19.685,
-   "ms90": 23.742,
-   "nb": 120
+   "msTotal": 17.819,
+   "ms90": 19.064,
+   "nb": 120,
+   "msRejeu": 15.756,
+   "msMaillage": 1.111
   },
   {
    "repos": {
     "processus": 1,
-    "prive": 40.3,
-    "detail": "ConceptCADNatif=40",
-    "ws": 80.8,
-    "engage": 329.2
+    "prive": 43.8,
+    "detail": "ConceptCADNatif=44",
+    "ws": 90.7,
+    "engage": 322.9
    },
    "apres": {
     "processus": 1,
-    "prive": 55.1,
-    "detail": "ConceptCADNatif=55",
-    "ws": 95.7,
-    "engage": 388.3
+    "prive": 59.7,
+    "detail": "ConceptCADNatif=60",
+    "ws": 106.6,
+    "engage": 388
    },
-   "msTotal": 35.449,
-   "ms90": 44.351,
-   "nb": 120
-  },
-  {
-   "repos": {
-    "processus": 1,
-    "prive": 40.8,
-    "detail": "ConceptCADNatif=41",
-    "ws": 81.3,
-    "engage": 326.4
-   },
-   "apres": {
-    "processus": 1,
-    "prive": 55,
-    "detail": "ConceptCADNatif=55",
-    "ws": 95.6,
-    "engage": 385.3
-   },
-   "msTotal": 19.21,
-   "ms90": 20.065,
-   "nb": 120
+   "msTotal": 17.356,
+   "ms90": 18.165,
+   "nb": 120,
+   "msRejeu": 15.423,
+   "msMaillage": 1.066
   }
  ],
  "natifSequentiel": [
   {
    "repos": {
     "processus": 1,
-    "prive": 28.4,
-    "detail": "ConceptCADNatif=28",
-    "ws": 68.7,
-    "engage": 151.1
+    "prive": 32.4,
+    "detail": "ConceptCADNatif=32",
+    "ws": 79.1,
+    "engage": 143.3
    },
    "apres": {
     "processus": 1,
-    "prive": 34.1,
-    "detail": "ConceptCADNatif=34",
-    "ws": 74.5,
-    "engage": 156.4
+    "prive": 39.3,
+    "detail": "ConceptCADNatif=39",
+    "ws": 86.3,
+    "engage": 144.9
    },
-   "msTotal": 24.026,
-   "ms90": 26.44,
-   "nb": 120
+   "msTotal": 22.306,
+   "ms90": 23.216,
+   "nb": 120,
+   "msRejeu": 19.033,
+   "msMaillage": 2.009
   },
   {
    "repos": {
     "processus": 1,
-    "prive": 28.5,
-    "detail": "ConceptCADNatif=29",
-    "ws": 68.9,
-    "engage": 151.1
+    "prive": 32.4,
+    "detail": "ConceptCADNatif=32",
+    "ws": 79.3,
+    "engage": 145.6
    },
    "apres": {
     "processus": 1,
-    "prive": 34.1,
-    "detail": "ConceptCADNatif=34",
-    "ws": 74.6,
-    "engage": 156.3
+    "prive": 37.6,
+    "detail": "ConceptCADNatif=38",
+    "ws": 84.6,
+    "engage": 137.1
    },
-   "msTotal": 22.103,
-   "ms90": 23.592,
-   "nb": 120
-  },
-  {
-   "repos": {
-    "processus": 1,
-    "prive": 28.5,
-    "detail": "ConceptCADNatif=29",
-    "ws": 68.8,
-    "engage": 150.8
-   },
-   "apres": {
-    "processus": 1,
-    "prive": 34.2,
-    "detail": "ConceptCADNatif=34",
-    "ws": 74.6,
-    "engage": 156.1
-   },
-   "msTotal": 21.322,
-   "ms90": 25.606,
-   "nb": 120
+   "msTotal": 21.881,
+   "ms90": 22.621,
+   "nb": 120,
+   "msRejeu": 18.859,
+   "msMaillage": 2.007
   }
  ]
 }

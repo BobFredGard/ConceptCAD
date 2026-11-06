@@ -9,13 +9,15 @@ Rien ici ne touche à `src/`, à `ConceptCAD.html` ni à la version du logiciel.
 
 - Ouvrir un `.conceptcad` (normal ou compressé) par la vraie fenêtre Windows, ou par son chemin en argument.
 - Rejouer : esquisses en lignes, arcs et cercles ; extrusion ; découpe ; « à travers tout » ; esquisse sur une face ; plusieurs corps.
-- Afficher le solide : clic gauche ou milieu pour tourner, clic droit pour déplacer, molette pour zoomer.
-- Modifier la profondeur d'une extrusion ou d'une découpe, puis recalculer.
+- Afficher le solide : clic gauche ou milieu pour tourner, clic droit pour déplacer, molette pour zoomer, comme le navigateur.
+- Montrer l'arbre de la pièce (esquisses, corps, fonctions) et un panneau de propriétés, dans une interface sombre aux panneaux déplaçables.
+- Survoler et choisir une face ou une arête : surbrillance, forme, aire ou longueur.
+- Modifier la profondeur d'une extrusion ou d'une découpe dans le panneau, annuler (Ctrl+Z) et rétablir (Ctrl+Y).
 
-**Si une pièce contient autre chose** (congé, cote par formule, répétition, assemblage…), le programme **refuse** et donne la liste.
-Il n'affiche jamais un solide faux.
+**Si une pièce contient autre chose** (congé, cote par formule, répétition, assemblage…), le programme montre son arbre et la liste de ce qui manque,
+mais **ne calcule pas le solide**. Il n'affiche jamais un solide faux.
 
-Il ne sait pas : enregistrer, dessiner, sélectionner, annuler, changer une cote d'esquisse (il faudrait le solveur).
+Il ne sait pas : enregistrer, dessiner, afficher une esquisse, changer une cote d'esquisse (il faudrait le solveur).
 
 ## Lancer et reconstruire
 
@@ -29,7 +31,7 @@ Reconstruire depuis la racine du dépôt (Visual Studio 2022 et CMake nécessair
 powershell -NoProfile -ExecutionPolicy Bypass -File natif\construire.ps1
 ```
 
-`.tiers/`, `sortie/` et `mesures/brut/` restent hors de Git. Le dossier `sortie/` pèse 59 Mo avec les bibliothèques ; `.tiers/` 1,5 Go.
+`.tiers/`, `sortie/` et `mesures/brut/` restent hors de Git. Le dossier `sortie/` pèse 73 Mo avec les bibliothèques ; `.tiers/` 1,5 Go.
 
 ## Choix des outils
 
@@ -37,7 +39,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File natif\construire.ps1
 |---|---|---|---|
 | Noyau de CAO | OCCT 8.0.1, binaires officiels du dépôt Open-Cascade-SAS | Même noyau et même version que le navigateur : c'est ce qui rend les résultats comparables | LGPL 2.1 avec exception Open CASCADE |
 | Vue 3D | Module de visualisation d'OCCT (OpenGL) | Déjà fourni, rien à ajouter | Idem |
-| Fenêtres | Windows pur (Win32), vraie fenêtre de choix de fichier | Rien à installer, le plus petit possible | Fait partie de Windows |
+| Fenêtres | wxWidgets 3.3.4, binaires officiels (voir [le plan](PLAN-INTERFACE-ESQUISSE.md)) | Pas de source à joindre, rien à installer, très léger : 4 à 5 Mo de plus que des fenêtres Windows pures. Série 3.3 dite « de développement » par ses auteurs mais jugée bonne pour la production ; choisie pour le thème sombre | wxWindows 3.1 : binaires diffusables à ses propres conditions |
 | Lecture du fichier | nlohmann/json, zlib | Garde l'ordre des clés, dont dépend le tracé des esquisses | MIT, zlib |
 | Calcul multicœur | Mode parallèle d'OCCT (booléens et maillage) | Déjà dans OCCT. Désactivable avec `--sequentiel` | Apache 2 (TBB) |
 
@@ -81,14 +83,17 @@ Sur la plaque d'essai (398 faces) : 398 faces, 1 200 arêtes, écart de volume d
 
 | Pièce | | Repos | Après 120 modifications |
 |---|---|---:|---:|
-| **Drapeau**, 3 tours | Natif multicœur | 40 à 41 Mo | 55 Mo |
+| **Drapeau**, fenêtre minimale, 3 tours | Natif multicœur | 40 à 41 Mo | 55 Mo |
 | | Natif 1 cœur | 28 Mo | 34 Mo |
 | | Chrome (8 processus) | 458 à 464 Mo | 432 à 449 Mo |
-| **Plaque d'essai** (398 faces), 2 tours | Natif multicœur | 165 Mo | 212 à 245 Mo |
+| **Drapeau, avec l'interface wxWidgets**, 2 tours | Natif multicœur | 44 Mo | 60 Mo |
+| | Natif 1 cœur | 32 Mo | 38 à 39 Mo |
+| | Chrome | 459 à 461 Mo | 437 à 439 Mo |
+| **Plaque d'essai** (398 faces), fenêtre minimale, 2 tours | Natif multicœur | 165 Mo | 212 à 245 Mo |
 | | Natif 1 cœur | 140 Mo | 150 Mo |
 | | Chrome | 574 à 581 Mo | 1 102 à 1 144 Mo |
 
-Soit **8 à 11 fois moins** sur la vraie pièce, **3,5 à 5 fois moins** sur la pièce lourde.
+Soit **7 à 11 fois moins** sur la vraie pièce, **3,5 à 5 fois moins** sur la pièce lourde.
 
 Autres façons de compter, sur le Drapeau au repos puis après 120 : mémoire visible partagée comprise, natif 80 → 95 Mo, Chrome 833 → 815 Mo ;
 mémoire engagée, natif 327 → 385 Mo (1 cœur 151 → 156 Mo), Chrome 893 → 860 Mo. Selon le compteur, l'écart va donc de **2,2 à 11 fois**.
@@ -116,18 +121,23 @@ Le gain est modeste : 0 à 15 % sur le calcul de solide, environ 30 % sur le mai
 
 ### Ce qui avantage le natif dans ces chiffres
 
-- Le natif n'a ni sélection, ni tracé des arêtes, ni arbre, ni annulation, ni cache, ni panneaux. Le produit complet pèsera plus : 100 à 200 Mo sur une petite pièce à
+- Le natif n'a encore ni esquisseur, ni cache de reconstruction, ni la plupart des panneaux. Le produit complet pèsera plus : 100 à 200 Mo sur une petite pièce à
   vue de nez, **non mesuré**. Le côté navigateur, lui, contient déjà tout le logiciel.
 - Une seule vraie pièce de Fred est mesurée ; les plaques sont des pièces d'essai générées (`mesures/piece-lourde.cjs`).
 
 ## Vérifié
 
 Avec `mesures/verifier-fenetre.ps1`, vrai clavier et vraie souris sur le `.exe` final : Ctrl+O, vraie fenêtre « Ouvrir une pièce ConceptCAD », pièce
-ouverte (53 007,291 mm³, 15 faces), rotation à la souris, cote à 25 mm et Recalculer (175 239,634 mm³, 15 faces), fermeture propre.
+ouverte (53 007,291 mm³, 15 faces), survol en surbrillance, clic sur une face (plane, 3 402 mm²) et une arête (droite, 94,5 mm), fonction choisie dans l'arbre, profondeur à 25 mm dans le panneau
+(175 239,634 mm³), Ctrl+Z et Ctrl+Y, rotation, déplacement, zoom, fermeture propre. Le script s'arrête sans rien envoyer si une autre fenêtre passe devant.
+
+Après le passage à wxWidgets, le banc redonne des résultats identiques au navigateur sur les 4 valeurs (écart de 4,2 × 10⁻¹⁰ mm³ au maximum).
 
 ## Pas vérifié
 
-- Un autre PC sans Visual Studio, une carte graphique faible, un écran à forte mise à l'échelle.
+- Un autre PC sans Visual Studio, une carte graphique faible, un écran à forte mise à l'échelle (le code le prévoit, mais ce PC est à 100 %).
+- L'aire et la longueur affichées à la sélection n'ont pas été comparées au navigateur.
+- La grosse plaque d'essai n'a pas été remesurée avec l'interface wxWidgets.
 - Le volume à 25 mm n'a pas été comparé au navigateur (les 4 autres valeurs l'ont été).
 - Une reconstruction complète depuis un dossier vide avec téléchargement : le `.exe` final est construit sur les binaires déjà téléchargés.
 - La RAM d'un calcul FAO lancé depuis le `.exe` : ce chemin n'existe pas encore.

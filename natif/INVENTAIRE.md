@@ -13,7 +13,7 @@ ce premier morceau : une session pour environ 1 100 lignes de géométrie tradui
 | Mise en plan | 11 775 | Rien | 3 à 5 mois | Cotes et souris à refaire entièrement, sortie PDF/DXF |
 | Rendu réaliste | 3 149 | Rien | 1 à 3 mois | Le moteur à rayons actuel vit dans le navigateur : à remplacer, rendu différent |
 | Import, export, fichiers | 1 840 | Lecture seule du `.conceptcad` | 2 à 4 semaines | Écrire le fichier sans perdre ce que le natif ne connaît pas encore |
-| Interface et vue 3D | 9 869 | Une fenêtre, un bouton, une liste de cotes | 3 à 5 mois | Panneaux, arbre, annulation, sélection : tout est à refaire |
+| Interface et vue 3D | 9 869 | Fenêtre wxWidgets, arbre, propriétés, sélection, annulation des cotes | 3 à 5 mois | Panneaux, arbre, annulation, sélection : tout est à refaire |
 | **Total** | **82 602** | environ 2 % | **1,5 à 3 ans** | |
 
 Plusieurs sessions en parallèle peuvent raccourcir l'écriture. La validation par Fred ne se parallélise pas, et c'est elle

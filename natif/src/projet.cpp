@@ -133,6 +133,17 @@ static void lireEsquisse(const json& js, Document& d, std::map<std::string, int>
   d.esquisses.push_back(std::move(s));
 }
 
+// Le nom que connaît l'utilisateur : tous les types présents dans Exemples/. Un type inconnu reste affiché tel quel.
+static std::string nomFonction(const std::string& t) {
+  static const std::map<std::string, std::string> noms = {
+      {"revolve", "révolution"}, {"hole", "perçage"}, {"xfillet", "congé ou chanfrein"}, {"xdraft", "dépouille"},
+      {"bscale", "mise à l'échelle d'un corps"}, {"xsplit", "scission"}, {"bremove", "suppression d'un corps"},
+      {"xmove", "déplacement de face"}, {"sweep", "balayage"}, {"combine", "combinaison de corps"},
+      {"import", "pièce importée"}, {"bmove", "déplacement d'un corps"}, {"xdelface", "suppression de face"}};
+  const auto it = noms.find(t);
+  return it != noms.end() ? it->second : "fonction « " + t + " »";
+}
+
 static void lireFonction(const json& jf, Document& d, std::map<std::string, int>& refus) {
   Fonction f;
   f.id = texte(jf, "id");
@@ -150,7 +161,7 @@ static void lireFonction(const json& jf, Document& d, std::map<std::string, int>
   f.flip = vrai(jf, "flip");
   f.through = vrai(jf, "through");
   // La répétition se contente de créer des copies, rejouées comme des fonctions : sans effet ici.
-  if (f.visible && f.type != "extrude" && f.type != "repeat") refus["fonction « " + f.type + " »"]++;
+  if (f.visible && f.type != "extrude" && f.type != "repeat") refus[nomFonction(f.type)]++;
   if (f.visible && f.type == "extrude") {
     if (vrai(jf, "upto")) refus["extrusion « jusqu'à un objet »"]++;
     if (vrai(jf, "draft")) refus["extrusion avec dépouille"]++;

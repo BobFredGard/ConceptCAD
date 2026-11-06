@@ -22,10 +22,10 @@ Lu le 06/11/2026 sur les pages officielles. Ce n'est pas un avis juridique.
 Le code de ConceptCAD est déclaré sous licence ISC et public : la LGPL de Qt n'a donc rien d'impossible. La contrainte est pratique : joindre la source de Qt
 (ou tenir une offre écrite) à chaque diffusion.
 
-**Recommandation : commencer par wxWidgets**, parce qu'il respecte le mieux les deux raisons du natif (mémoire, simplicité de diffusion) et s'essaie sans rien installer.
+**Choix de Fred : wxWidgets**, qui respecte le mieux les deux raisons du natif (mémoire, simplicité de diffusion) et s'essaie sans rien installer.
 L'étape 1 sert de test : si l'apparence ne plaît pas à Fred ou si un panneau résiste, on passe à Qt avant d'avoir beaucoup écrit.
 
-Point à contrôler à l'étape 1 : 3.3.4 est la dernière version publiée sur GitHub, mais je n'ai pas vérifié si la série 3.3 est considérée comme stable ou en développement.
+La série 3.3 est dite « de développement » par ses auteurs : ils la jugent bonne pour la production, mais une future version peut demander de petites retouches (la 3.2 est la série stable). Choisie pour le thème sombre.
 
 ## Ce que le code actuel apprend
 
@@ -58,6 +58,8 @@ et le natif est 2 fois plus rapide que Chrome sur la plaque moyenne sans second 
 Fenêtre avec wxWidgets, arbre de la pièce, panneau de propriétés, vue OCCT intégrée, sélection des faces et arêtes au survol et au clic, mise à l'échelle des écrans.
 **Fred essaie** : ouvrir une pièce, cliquer dans l'arbre et sur les faces, juger l'apparence. C'est ici qu'on tranche entre wxWidgets et Qt.
 **Fait quand** : les parcours sont vérifiés au vrai clavier et à la vraie souris, sur le `.exe` lancé, et sur un second PC ou un écran à forte mise à l'échelle si Fred en a un.
+
+**État** : première version faite et vérifiée sur ce PC (arbre, propriétés, panneaux, sélection, annulation des cotes) : 44 Mo au repos, 60 Mo après 120 modifications. Reste à faire : l'avis de Fred sur l'apparence, le second PC ou écran, mémoriser la disposition des panneaux, les barres d'outils et les icônes.
 
 ### 2. Afficher les esquisses (1 à 2 semaines)
 Entrer dans une esquisse depuis l'arbre, vue de face, lignes, arcs, cercles, points, contraintes et cotes dessinés, lecture seule.

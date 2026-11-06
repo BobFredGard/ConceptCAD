@@ -3,6 +3,7 @@
 # Prérequis : Visual Studio 2022 (C++), CMake. Téléchargements, depuis les sources officielles :
 #   OCCT V8.0.1 : https://github.com/Open-Cascade-SAS/OCCT/releases/tag/V8.0.1 (occt-combined-release-no-pch.zip)
 #   JSON 3.12.0 : https://github.com/nlohmann/json/releases/download/v3.12.0/json.hpp
+#   wxWidgets 3.3.4 : https://github.com/wxWidgets/wxWidgets/releases/tag/v3.3.4
 param([switch]$SansTelechargement)
 $ErrorActionPreference = 'Stop'
 $N = Join-Path $PSScriptRoot '.'
@@ -19,6 +20,15 @@ if (-not $SansTelechargement) {
     & gh release download V8.0.1 -R Open-Cascade-SAS/OCCT -p occt-combined-release-no-pch.zip -D $Z --clobber
     Expand-Archive "$Z\occt-combined-release-no-pch.zip" $Z -Force
     Expand-Archive "$Z\opencascade-8.0.1-vc14-64-combined.zip" $Bin -Force
+  }
+  if (-not (Test-Path "$T\wx\lib\vc14x_x64_dll\wxbase334u_vc14x_x64.dll")) {
+    $Dl = "$T\wx\dl"
+    New-Item -ItemType Directory -Force $Dl | Out-Null
+    foreach ($p in 'wxMSW-3.3.4_vc14x_x64_Dev.7z', 'wxMSW-3.3.4_vc14x_x64_ReleaseDLL.7z', 'wxWidgets-3.3.4-headers.7z') {
+      & gh release download v3.3.4 -R wxWidgets/wxWidgets -p $p -D $Dl --clobber
+      & "$env:WINDIR\System32\tar.exe" -xf "$Dl\$p" -C "$T\wx"
+      if ($LASTEXITCODE) { exit $LASTEXITCODE }
+    }
   }
 }
 & cmake -S $N -B "$T\build" -G "Visual Studio 17 2022" -A x64
@@ -38,5 +48,6 @@ $tiers = @(
   "$P\msvc-vc14-64\msvcp140.dll","$P\msvc-vc14-64\vcruntime140.dll","$P\msvc-vc14-64\vcruntime140_1.dll","$P\msvc-vc14-64\vcomp140.dll",
   "$P\zlib-1.2.8-vc14-64\bin\zlib.dll")
 foreach ($d in $tiers) { Copy-Item $d $S -Force }
+foreach ($d in 'wxbase334u','wxmsw334u_core','wxmsw334u_aui','wxmsw334u_propgrid') { Copy-Item "$T\wx\lib\vc14x_x64_dll\${d}_vc14x_x64.dll" $S -Force }
 $Mo = [math]::Round(((Get-ChildItem $S | Measure-Object Length -Sum).Sum) / 1MB)
 Write-Output "Pret : $S\ConceptCADNatif.exe ($Mo Mo avec les DLL)"
