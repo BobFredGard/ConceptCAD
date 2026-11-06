@@ -27,6 +27,9 @@ const fermerApp=()=>{try{ps(`Get-CimInstance Win32_Process -Filter "Name like 'c
   const exe=res.fichiers.find(f=>/\.exe$/i.test(f)&&!/uninstall/i.test(f));
   res.tailleInstalleeMo=+(fs.statSync(path.join(DOSSIER,exe)).size/1048576).toFixed(1);
   res.associationPosee=reg()==='True';
+  // L'icône d'un fichier .conceptcad doit être celle du programme. On lit le registre : les images
+  // rendues par Windows pour un fichier et pour un programme diffèrent de quelques nuances.
+  res.iconeFichierCommeProgramme=ps(`$c=(Get-Item 'HKCU:\\Software\\Classes\\.conceptcad').GetValue('');(Get-Item "HKCU:\\Software\\Classes\\$c\\DefaultIcon").GetValue('')`).toLowerCase()===(path.join(DOSSIER,exe)+',0').toLowerCase();
   try{
     t=Date.now();
     ps(`Start-Process -FilePath '${piece}'`);

@@ -196,6 +196,8 @@ node tauri/mesures/application.cjs "<dossier d'essai vide>"
 node tauri/mesures/mesurer.cjs repos ConceptCAD.html app,chrome 2
 ```
 
+**Icône :** `node tauri/icone.cjs` la refait à partir du logo de la barre du logiciel, relu dans `ConceptCAD.html`. Elle reste donc identique à ce logo : si le logo change, relancer cette commande, puis compiler.
+
 `cargo tauri build` se lance depuis `tauri/src-tauri`. Résultats bruts : `tauri/mesures/resultats/`. Les séries de référence sont `repos-V0.64.3.jsonl` et `repos-V0.67.0-*.jsonl` : **la mémoire y est lue sans pilote branché**, car le pilote alourdit Chrome d'environ 150 Mo à vide. Les autres séries (`ram-serie1.jsonl`, `ram.jsonl`) ne servent que pour les temps.
 
 Sources : [Tauri, installateur Windows](https://v2.tauri.app/distribute/windows-installer/), [Microsoft, distribuer WebView2](https://learn.microsoft.com/en-us/microsoft-edge/webview2/concepts/distribution).

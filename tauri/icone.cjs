@@ -1,4 +1,5 @@
-// Fabrique icons/icon.ico depuis icons/icone.svg, à toutes les tailles utilisées par Windows.
+// Fabrique icons/icon.ico à partir du logo de la barre du logiciel, à toutes les tailles utilisées
+// par Windows. Les règles sont relues dans ConceptCAD.html : l'icône est ce logo, pas un dessin à part.
 //   node tauri/icone.cjs
 'use strict';
 const fs=require('fs'),path=require('path');
@@ -6,6 +7,15 @@ const {chromium}=require('playwright-core');
 const DOSSIER=path.join(__dirname,'src-tauri','icons');
 const CHROME='C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe';
 const TAILLES=[16,24,32,48,64,128,256];
+const COTE=15;              // côté du logo dans la barre, en pixels
+const TRAIT='#f5f5f7';      // --text du thème par défaut
+const FOND='#2a2a2c';       // la barre telle qu'on la voit : --surface posée sur --bg
+function reglesDuLogo(){
+  const html=fs.readFileSync(path.join(__dirname,'..','ConceptCAD.html'),'utf8');
+  const regles=html.match(/\.brand \.mk(?:::(?:before|after))?\{[^}]*\}/g)||[];
+  if(regles.length!==3)throw new Error('logo introuvable dans ConceptCAD.html : '+regles.length+' règles au lieu de 3');
+  return regles.join('\n');
+}
 // Format classique des petites icônes : lu par tous les outils de Windows, même anciens.
 function bmp(px,t){
   const masque=Math.ceil(t/32)*4*t,o=Buffer.alloc(40+t*t*4+masque);
@@ -18,14 +28,17 @@ function bmp(px,t){
   return o;
 }
 (async()=>{
-  const svg=fs.readFileSync(path.join(DOSSIER,'icone.svg'),'utf8');
+  const regles=reglesDuLogo();
   const nav=await chromium.launch({executablePath:CHROME,headless:true});
   const images=[];
   try{
     for(const t of TAILLES){
-      const page=await nav.newPage({viewport:{width:t,height:t}});
-      await page.setContent('<!doctype html><style>html,body{margin:0;background:transparent}svg{display:block;width:'+t+'px;height:'+t+'px}</style>'+svg);
-      const png=await page.screenshot({omitBackground:true});
+      // Le logo est agrandi comme sur un écran à haute densité : ses proportions ne bougent pas.
+      const page=await nav.newPage({viewport:{width:COTE,height:COTE},deviceScaleFactor:t/COTE});
+      await page.setContent('<!doctype html><style>html,body{margin:0;background:transparent}'+regles+
+        '.brand{color:'+TRAIT+'}.brand .mk{display:block;margin:0;background:'+FOND+'}</style>'+
+        '<div class="brand"><span class="mk"></span></div>');
+      const png=await page.screenshot({omitBackground:true,clip:{x:0,y:0,width:COTE,height:COTE}});
       if(t===256)images.push(png); // la grande taille reste en PNG, comme le veut Windows
       else{
         const px=await page.evaluate(async b64=>{
