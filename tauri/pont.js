@@ -1,12 +1,12 @@
 // Pont de l'application : rend aux fonctions de fichiers du logiciel (showOpenFilePicker, etc.) le
-// service qu'elles attendent, mais avec les vraies fenêtres Windows et sans demande de permission.
+// service qu'elles attendent, mais avec les vraies fenêtres du système et sans demande de permission.
 // Le code de ConceptCAD n'est pas touché : tout passe par ce fichier, chargé avant lui.
 (function(){
   'use strict';
   const invoke=window.__TAURI__.core.invoke;
   const annule=()=>new DOMException('Annulé','AbortError');
   const introuvable=n=>new DOMException('Introuvable : '+n,'NotFoundError');
-  const BS=String.fromCharCode(92); // la barre oblique inverse des chemins Windows
+  const BS=/^Mac/.test(navigator.platform)?'/':String.fromCharCode(92); // séparateur des chemins : / sur Mac, \ sur Windows
   const sansFin=p=>p.endsWith(BS)?p.slice(0,-1):p;
   const dossierDe=p=>p.slice(0,Math.max(p.lastIndexOf(BS),0));
   const nomDe=p=>p.slice(p.lastIndexOf(BS)+1);

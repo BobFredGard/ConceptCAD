@@ -1,0 +1,83 @@
+# Fabrique le DMG de l'application sur un Mac de GitHub (puces Apple et Intel dans le même fichier), puis
+# l'installe et le lance pour une première vérification. Le DMG et les captures sont à télécharger en bas de
+# la page du passage ; rien n'est publié. Les noyaux passent par la réserve LFS, comme pour pages.yml.
+
+name: Application Mac
+
+on:
+  push:
+    branches: ['claude/vigorous-swanson-45df96']
+    paths:
+      - 'tauri/**'
+      - '.github/workflows/application-mac.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  dmg:
+    runs-on: macos-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - name: Lister les objets LFS
+        run: git lfs ls-files -l | cut -d' ' -f1 | sort > .lfs-ids
+      - uses: actions/cache/restore@v4
+        with:
+          path: .git/lfs
+          key: lfs-${{ hashFiles('.lfs-ids') }}
+          restore-keys: lfs-
+      - name: Récupérer les noyaux et une pièce d'essai
+        run: git lfs pull --include "occt/**,Exemples/Cache Piles.conceptcad"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Préparer la compilation
+        run: rustup target add aarch64-apple-darwin x86_64-apple-darwin
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/bin
+            ~/.cargo/registry
+            tauri/src-tauri/target
+          key: mac-${{ hashFiles('tauri/src-tauri/Cargo.lock') }}
+          restore-keys: mac-
+      - name: Installer l'outil de compilation
+        run: cargo tauri --version || cargo install tauri-cli --version 2.11.4 --locked
+      - name: Emballer le logiciel
+        run: node tauri/preparer.cjs
+      - name: Compiler et fabriquer le DMG
+        working-directory: tauri/src-tauri
+        run: cargo tauri build --config tauri.mac.json --target universal-apple-darwin
+      - name: Installer et lancer
+        run: |
+          mkdir captures
+          DMG=$(ls tauri/src-tauri/target/universal-apple-darwin/release/bundle/dmg/*.dmg)
+          ls -l "$DMG"
+          hdiutil attach "$DMG" -mountpoint /tmp/cc-dmg -nobrowse
+          cp -R /tmp/cc-dmg/ConceptCAD.app /Applications/
+          hdiutil detach /tmp/cc-dmg
+          lipo -archs /Applications/ConceptCAD.app/Contents/MacOS/ConceptCAD
+          codesign --verify --deep /Applications/ConceptCAD.app
+          /usr/libexec/PlistBuddy -c 'Print :CFBundleDocumentTypes' /Applications/ConceptCAD.app/Contents/Info.plist
+          open /Applications/ConceptCAD.app
+          sleep 45
+          pgrep -x ConceptCAD
+          screencapture -x captures/1-demarrage.png || true
+          open "Exemples/Cache Piles.conceptcad"
+          sleep 45
+          pgrep -x ConceptCAD
+          screencapture -x captures/2-fichier-ouvert.png || true
+          ls ~/Library/Logs/DiagnosticReports/ || true
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ConceptCAD-Mac-dmg
+          path: tauri/src-tauri/target/universal-apple-darwin/release/bundle/dmg/*.dmg
+          if-no-files-found: error
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: captures
+          path: captures
+          if-no-files-found: ignore

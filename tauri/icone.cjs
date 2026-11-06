@@ -65,4 +65,24 @@ function bmp(px,t){
   });
   fs.writeFileSync(path.join(DOSSIER,'icon.ico'),Buffer.concat([tete,...images]));
   console.log('icon.ico : '+TAILLES.join(', ')+' px, '+pos+' octets');
+  // Mac : même logo, avec la marge autour que le Dock attend (824 px sur 1024, règle d'Apple).
+  const nav2=await chromium.launch({executablePath:CHROME,headless:true});
+  try{
+    const mac=[];
+    for(const [t,code] of [[128,'ic07'],[256,'ic08'],[512,'ic09'],[1024,'ic10']]){
+      const cote=t*824/1024,page=await nav2.newPage({viewport:{width:t,height:t}});
+      await page.setContent('<!doctype html><style>html,body{margin:0;background:transparent}'+regles+
+        '.brand{color:'+TRAIT+';position:absolute;left:'+((t-cote)/2)/(cote/COTE)+'px;top:'+((t-cote)/2)/(cote/COTE)+'px;zoom:'+cote/COTE+'}'+
+        '.brand .mk{display:block;margin:0;background:'+FOND+'}</style><div class="brand"><span class="mk"></span></div>');
+      const png=await page.screenshot({omitBackground:true});
+      await page.close();
+      const e=Buffer.alloc(8);e.write(code,0,'latin1');e.writeUInt32BE(png.length+8,4);
+      mac.push(e,png);
+      if(t===512)fs.writeFileSync(path.join(DOSSIER,'icon.png'),png);
+    }
+    const corps=Buffer.concat(mac),t8=Buffer.alloc(8);
+    t8.write('icns',0,'latin1');t8.writeUInt32BE(corps.length+8,4);
+    fs.writeFileSync(path.join(DOSSIER,'icon.icns'),Buffer.concat([t8,corps]));
+    console.log('icon.icns et icon.png : '+(corps.length+8)+' octets');
+  }finally{await nav2.close();}
 })().catch(e=>{console.error(e);process.exit(1);});

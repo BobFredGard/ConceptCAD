@@ -1,5 +1,5 @@
-// ConceptCAD en application Windows. Le logiciel lui-même est inchangé : ce programme ouvre sa page
-// dans WebView2 et donne au pont (../pont.js) l'accès aux vraies fenêtres et aux fichiers.
+// ConceptCAD en application Windows et Mac. Le logiciel lui-même est inchangé : ce programme ouvre sa
+// page dans l'affichage web du système et donne au pont (../pont.js) l'accès aux vraies fenêtres et aux fichiers.
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 use percent_encoding::percent_decode_str;
@@ -12,7 +12,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Mutex;
 use std::time::{Duration, UNIX_EPOCH};
 use tauri::ipc::{InvokeBody, Request, Response};
-use tauri::{Emitter, Manager, State, WebviewWindow, WindowEvent};
+use tauri::{AppHandle, Emitter, Manager, State, WebviewWindow, WindowEvent};
 
 #[derive(Deserialize)]
 struct Filtre {
@@ -159,19 +159,19 @@ fn fermer(window: WebviewWindow, etat: State<Fermeture>) -> Result<(), String> {
     window.close().map_err(|e| e.to_string())
 }
 
-/// Croix de la fenêtre : la question vient de la page. Si un long calcul l'empêche de répondre,
-/// Windows propose quand même de fermer : on ne reste jamais prisonnier de la fenêtre.
-fn demande_fermeture(fen: &tauri::Window) {
-    let etat = fen.state::<Fermeture>();
+/// Croix de la fenêtre (ou Cmd+Q sur Mac) : la question vient de la page. Si un long calcul l'empêche
+/// de répondre, le système propose quand même de fermer : on ne reste jamais prisonnier de la fenêtre.
+fn demande_fermeture(app: &AppHandle) {
+    let etat = app.state::<Fermeture>();
     etat.reponse.store(false, Ordering::SeqCst);
-    let _ = fen.emit("demande-fermeture", ());
+    let _ = app.emit("demande-fermeture", ());
     if etat.veille.swap(true, Ordering::SeqCst) {
         return;
     }
-    let fen = fen.clone();
+    let app = app.clone();
     std::thread::spawn(move || {
         std::thread::sleep(Duration::from_secs(5));
-        let etat = fen.state::<Fermeture>();
+        let etat = app.state::<Fermeture>();
         if !etat.reponse.load(Ordering::SeqCst) {
             let reponse = MessageDialog::new()
                 .set_level(MessageLevel::Warning)
@@ -181,7 +181,9 @@ fn demande_fermeture(fen: &tauri::Window) {
                 .show();
             if reponse == MessageDialogResult::Yes {
                 etat.permise.store(true, Ordering::SeqCst);
-                let _ = fen.destroy();
+                if let Some(fen) = app.get_webview_window("main") {
+                    let _ = fen.destroy();
+                }
             }
         }
         etat.veille.store(false, Ordering::SeqCst);
@@ -192,21 +194,65 @@ fn premier_fichier(args: impl Iterator<Item = PathBuf>, dossier: &Path) -> Optio
     args.map(|a| dossier.join(a)).find(|p| p.is_file()).map(|p| std::path::absolute(&p).unwrap_or(p).to_string_lossy().into_owned())
 }
 
+/// Double-clic alors que l'application tourne : la page reprend le fichier et la fenêtre revient devant.
+fn fichier_recu(app: &AppHandle, f: String) {
+    if let Ok(mut d) = app.state::<Demarrage>().0.lock() {
+        *d = Some(f);
+    }
+    let _ = app.emit("fichier-recu", ());
+    if let Some(fen) = app.get_webview_window("main") {
+        let _ = fen.unminimize();
+        let _ = fen.set_focus();
+    }
+}
+
+/// Le Mac exige une barre de menus : sans « Édition », copier et coller ne marchent pas dans les champs.
+/// « Quitter » est à nous : celui du système fermerait sans poser la question d'enregistrement.
+#[cfg(target_os = "macos")]
+fn menu_mac(app: &AppHandle) -> tauri::Result<tauri::menu::Menu<tauri::Wry>> {
+    use tauri::menu::{Menu, MenuItem, PredefinedMenuItem as P, Submenu};
+    let quitter = MenuItem::with_id(app, "quitter", "Quitter ConceptCAD", true, Some("Cmd+Q"))?;
+    Menu::with_items(app, &[
+        &Submenu::with_items(app, "ConceptCAD", true, &[
+            &P::about(app, Some("À propos de ConceptCAD"), None)?,
+            &P::separator(app)?,
+            &P::hide(app, Some("Masquer ConceptCAD"))?,
+            &P::hide_others(app, Some("Masquer les autres"))?,
+            &P::show_all(app, Some("Tout afficher"))?,
+            &P::separator(app)?,
+            &quitter,
+        ])?,
+        &Submenu::with_items(app, "Édition", true, &[
+            &P::undo(app, Some("Annuler"))?,
+            &P::redo(app, Some("Rétablir"))?,
+            &P::separator(app)?,
+            &P::cut(app, Some("Couper"))?,
+            &P::copy(app, Some("Copier"))?,
+            &P::paste(app, Some("Coller"))?,
+            &P::select_all(app, Some("Tout sélectionner"))?,
+        ])?,
+        &Submenu::with_items(app, "Fenêtre", true, &[
+            &P::minimize(app, Some("Réduire"))?,
+            &P::fullscreen(app, Some("Plein écran"))?,
+            &P::close_window(app, Some("Fermer"))?,
+        ])?,
+    ])
+}
+
 fn main() {
     let ici = std::env::current_dir().unwrap_or_default();
     let fichier = premier_fichier(std::env::args_os().skip(1).map(PathBuf::from), &ici);
-    tauri::Builder::default()
+    let constructeur = tauri::Builder::default()
         // Double-clic alors que l'application est ouverte : même fenêtre, ramenée devant.
         .plugin(tauri_plugin_single_instance::init(|app, args, dossier| {
-            if let Some(f) = premier_fichier(args.into_iter().skip(1).map(PathBuf::from), Path::new(&dossier)) {
-                if let Ok(mut d) = app.state::<Demarrage>().0.lock() {
-                    *d = Some(f);
+            match premier_fichier(args.into_iter().skip(1).map(PathBuf::from), Path::new(&dossier)) {
+                Some(f) => fichier_recu(app, f),
+                None => {
+                    if let Some(fen) = app.get_webview_window("main") {
+                        let _ = fen.unminimize();
+                        let _ = fen.set_focus();
+                    }
                 }
-                let _ = app.emit("fichier-recu", ());
-            }
-            if let Some(fen) = app.get_webview_window("main") {
-                let _ = fen.unminimize();
-                let _ = fen.set_focus();
             }
         }))
         .manage(Demarrage(Mutex::new(fichier)))
@@ -215,13 +261,30 @@ fn main() {
             if let WindowEvent::CloseRequested { api, .. } = evenement {
                 if !fen.state::<Fermeture>().permise.load(Ordering::SeqCst) {
                     api.prevent_close();
-                    demande_fermeture(fen);
+                    demande_fermeture(fen.app_handle());
                 }
             }
         })
         .invoke_handler(tauri::generate_handler![
             dialogue_ouvrir, dialogue_enregistrer, dialogue_dossier, lire, infos, lister, creer_dossier, ecrire, titre, fichier_demarrage, fermeture_recue, fermer
-        ])
-        .run(tauri::generate_context!())
-        .expect("démarrage de l'application impossible");
+        ]);
+    #[cfg(target_os = "macos")]
+    let constructeur = constructeur.menu(menu_mac).on_menu_event(|app, e| {
+        if e.id().as_ref() == "quitter" {
+            demande_fermeture(app);
+        }
+    });
+    constructeur
+        .build(tauri::generate_context!())
+        .expect("démarrage de l'application impossible")
+        .run(|_app, _evenement| {
+            // Sur Mac, le double-clic sur un fichier arrive par un message du système, pas au lancement.
+            #[cfg(target_os = "macos")]
+            if let tauri::RunEvent::Opened { urls } = _evenement {
+                let f = urls.iter().filter_map(|u| u.to_file_path().ok()).find(|p| p.is_file());
+                if let Some(f) = f {
+                    fichier_recu(_app, f.to_string_lossy().into_owned());
+                }
+            }
+        });
 }
