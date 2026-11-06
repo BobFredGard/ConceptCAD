@@ -4,7 +4,8 @@
     "windows": {
       "nsis": {
         "installMode": "currentUser",
-        "installerHooks": "./desinstallation.nsh"
+        "installerHooks": "./desinstallation.nsh",
+        "installerIcon": "icons/icon.ico"
       }
     }
   }
