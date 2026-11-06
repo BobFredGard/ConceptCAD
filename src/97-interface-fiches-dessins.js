@@ -213,8 +213,8 @@ function mfFiTable(){
   const TRIM_B=ficL(50,38,16,60)+ficL(16,16,84,60);
   F('Dessin/Ligne','Ligne','Trace des traits sur le plan, à la suite les uns des autres.',['Cliquez chaque point','Échap pour terminer'],LINE_A,LINE_B,null,CL,RES);
   F('Dessin/Rectangle','Rectangle','Trace un rectangle à partir de deux coins opposés.',[],RECT_A,RECT_B,null,CL,RES);
-  F('Dessin/Cercle','Cercle','Trace un cercle : le centre, puis un point du tour.',[],CIRC_A,CIRC_B,null,CL,RES);
-  F('Dessin/Arc','Arc','Trace un morceau de cercle : le centre, le départ, l’arrivée.',[],ARC_A,ARC_B,null,CL,RES);
+  F('Dessin/Cercle','Cercle','Trace un cercle : le centre et un point du tour, 2 points d’un diamètre, 3 points du tour, ou tangent à 2 ou 3 traits. Choisissez dans le bandeau en haut à gauche.',[],CIRC_A,CIRC_B,null,CL,RES);
+  F('Dessin/Arc','Arc','Trace un morceau de cercle : le centre et 2 points, 3 points, dans le prolongement d’un trait existant, ou tangent à 2 traits. Choisissez dans le bandeau en haut à gauche.',[],ARC_A,ARC_B,'A',CL,RES);
   F('Dessin/Point','Point','Pose un point de repère sur le plan.',[],NUM(50,38,'1'),POINT_B,null,CL,RES);
   F('Dessin/Ajuster','Ajuster','Efface un morceau de trait en le cliquant, jusqu’au croisement suivant.',[],TRIM_A,TRIM_B,null,'Clic sur le morceau',RES);
   F('Dessin/Texte','Texte','Écrit un texte libre ou un champ automatique : matière, traitements…',[],NUM(24,40,'1'),ficT(24,44,'Matière : Alu',11,'#111827','start'),null,CL,RES);
@@ -242,8 +242,8 @@ function mfFiTable(){
   /* ========== esquisse ========== */
   F('sk/select','Sélection','Choisit et déplace ce qui est dessiné. Suppr efface.',['Cliquez un élément','Glissez un point pour le déplacer'],SEG(20,56,60,20)+CURS(60,22),SEG(20,56,82,30,OR)+ficL(60,20,82,30,GY,.8,'2 1.6')+CURS(82,32),null,'Vous attrapez','Vous déplacez');
   F('sk/line','Ligne','Trace un trait entre deux points. Le deuxième clic enchaîne le trait suivant.',['Cliquez le départ','Cliquez l’arrivée'],LINE_A,LINE_B,'L',CL,RES);
-  F('sk/rect','Rectangle','Trace un rectangle à partir de deux coins opposés (Ctrl : depuis le centre).',[],RECT_A,RECT_B,'R',CL,RES);
-  F('sk/slot','Oblong','Trace un trou allongé aux bouts arrondis, pour une rainure.',[],NUM(16,20,'1')+NUM(84,56,'2'),ficD('M34 20H66A18 18 0 0 1 66 56H34A18 18 0 0 1 34 20Z',SK,1.6,null,'#dbeafe')+PTS(34,38)+PTS(66,38),'B',CL,RES);
+  F('sk/rect','Rectangle','Trace un rectangle : 2 coins opposés, le centre et un coin, ou 3 points pour un rectangle en biais. Choisissez dans le bandeau en haut à gauche.',[],RECT_A,RECT_B,'R',CL,RES);
+  F('sk/slot','Oblong','Trou allongé en 3 clics : 2 centres, 2 extrémités ou le centre et l’écartement, puis le rayon. Les cotes se posent au 3e clic.',[],NUM(16,20,'1')+NUM(84,56,'2'),ficD('M34 20H66A18 18 0 0 1 66 56H34A18 18 0 0 1 34 20Z',SK,1.6,null,'#dbeafe')+PTS(34,38)+PTS(66,38),'B',CL,RES);
   F('sk/circle','Cercle','Trace un cercle : le centre, puis un point du tour.',[],CIRC_A,CIRC_B,'C',CL,RES);
   F('sk/polygon','Polygone','Trace un polygone régulier : pentagone, 6 pans ou plus. Réglez le nombre de côtés et le Ø intérieur, celui du cercle qui touche chaque côté.',['Réglez les côtés et le Ø intérieur','Cliquez le centre, puis l’orientation'],ficC(50,38,20,GY,1,'2 1.8')+PTS(50,38),ficD('M50 12L72.5 25V51L50 64L27.5 51V25Z',SK,1.6,null,'#dbeafe')+ficC(50,38,22.5,GY,.9,'2 1.8')+PTS(50,38),'G','Le cercle intérieur','Les côtés lui sont tangents');
   F('sk/arc','Arc','Trace un morceau de cercle : le centre, le départ, l’arrivée.',[],ARC_A,ARC_B,null,CL,RES);

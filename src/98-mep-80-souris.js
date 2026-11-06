@@ -58,7 +58,7 @@
       trim:'Ajuster : cliquez le tronçon à couper entre 2 intersections.',
       dim:'Cote : cliquez une arête/cercle · 2ᵉ entité pour distance/angle · cliquez pour poser · clic droit : accrochage (extrémité, milieu, extrême X/Y, intersection)',
       hole:'Perçage : cliquez le trou, de bout (cercle) ou de côté (paroi, axe, fond), puis posez l’étiquette.',
-      axis:'Axes : cliquez un trou, un cercle, un arc ou le contour d’une forme de révolution (ou Alignement / Cercle / Libre dans le panneau).',
+      axis:'Axes : cliquez un trou, un cercle, un arc, un oblong ou le contour d’une forme de révolution (ou Alignement / Cercle / Libre dans le panneau).',
       cut2:'Coupe : 2 clics sur la ligne de coupe.',
       det2:'Détail : centre + rayon.'
     }[t]||'';
@@ -71,7 +71,7 @@
     if(m==='pitch')return 'Cercle de perçage : '+n+' trou(s) sélectionné(s) — cliquez encore ou Entrée pour créer.';
     if(m==='free')return 'Axe libre : cliquez le départ puis l’arrivée.';
     if(m==='sym')return mepSt.axisSym?'Axe de symétrie : cliquez la 2ᵉ droite.':'Axe de symétrie : cliquez 2 droites (parallèles : axe médian ; sécantes : bissectrice).';
-    return 'Axe : cliquez un trou, un cercle, un arc ou le contour d’une forme de révolution.';
+    return 'Axe : cliquez un trou, un cercle, un arc, un oblong ou le contour d’une forme de révolution.';
   }
   function mepSetAxisMode(m){
     mepSt.axisMode=m||'hole';mepSt.axisSym=null;
@@ -268,8 +268,9 @@
       mepAxisCommitFree(a,{x:snap.x,y:snap.y,vid:v.id});
       return;
     }
+    if(mode==='hole'&&mepSlotAxisClick(sh,P))return; // oblong : ses 2 centres d'un seul clic
     const ref=mepAxisHoleAt(sh,P.x,P.y);
-    if(!ref){mepStatus('Axe : cliquez un cercle, un arc ou le contour d’une forme de révolution.');return;}
+    if(!ref){mepStatus('Axe : cliquez un cercle, un arc, un oblong ou le contour d’une forme de révolution.');return;}
     const v=mepView(sh,ref.vid);if(!v)return;
     if(mode==='hole'){
       if(!Array.isArray(v.axes))v.axes=[];

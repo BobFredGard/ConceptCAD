@@ -596,11 +596,19 @@ svg.addEventListener('pointerdown',e=>{
     skStatus('1er point armé — déplacez puis 2e clic (ou tapez une longueur + Entrée).');
     return;
   }
-  if(skTool==='rect'||skTool==='circle'||skTool==='slot'||skTool==='polygon'){
+  if(skTool==='slot'){ // oblong en 3 clics (50-esquisse-9-oblong)
+    if(skDown)return;
+    skPlUndoIfPlane(sk,wx,wy);
+    skSlotStart(sk,wx,wy);
+    return;
+  }
+  if(skTrActif(skTool)){skTrDown(sk,wx,wy);return;} // nouveaux modes du bandeau (50-esquisse-91)
+  if(skTool==='rect'||skTool==='circle'||skTool==='polygon'){
     if(skDown) return;
     skPlUndoIfPlane(sk,wx,wy);
+    const fa=!!findSnap(sk,wx,wy);
     const pid=snapNewPoint(sk,wx,wy);const S=sk.points[pid];
-    skDown={pid,x:S.x,y:S.y,center:skMulti(e)&&skTool!=='circle'&&skTool!=='polygon'};
+    skDown={pid,x:S.x,y:S.y,fa,center:skTool==='rect'&&(skMulti(e)||skTraceMode.rect==='centre')};
     if(skTool==='polygon'){skPoly.last=null;skPoly.ang=Math.PI/2;}
     return;
   }
@@ -623,10 +631,16 @@ svg.addEventListener('pointerdown',e=>{
     skPushUndo();
     const pb=snapNewPoint(sk,wx,wy);
     const na={id:skNewEid(sk),t:'arc',pc:skArcC,pa:skArcPa,pb,r:skDraft.r};
+    // cote R posée à la création, sauf si le centre et un bout sont déjà tenus par ce qu'on a cliqué
+    const tenuP=q=>q===SK_ORIGIN||sk.entities.some(x=>skEntPids(x).indexOf(q)>=0)||(sk.constraints||[]).some(x=>x.p===q||x.a===q||x.b===q);
+    if(!(tenuP(na.pc)&&(tenuP(na.pa)||tenuP(na.pb)))){
+      const Pa=sk.points[na.pa],Pb=sk.points[na.pb],Rr=+na.r.toFixed(2),demi=Math.hypot(Pb.x-Pa.x,Pb.y-Pa.y)/2;
+      sk.dims.push({id:skNewEid(sk),type:'radius',ent:na.id,value:Rr>demi?Rr:+na.r.toFixed(6)});
+    }
     sk.entities.push(na);
     [na.pa,na.pb].forEach(pid=>{const pp=sk.points[pid];if(pp)skAutoAttach(sk,pid,pp.x,pp.y);});
     {const cp=sk.points[na.pc];if(cp)skAutoAttach(sk,na.pc,cp.x,cp.y,1e-3);}
-    skArcC=null;skArcA1=null;skArcPa=null;skDraft=null;afterEdit();return;
+    skArcC=null;skArcA1=null;skArcPa=null;skDraft=null;afterEdit();skStatus('Arc créé — cliquez le centre du suivant (Échap = fin).');return;
   }
   if(skTool==='dim'){
     skPlDimPrep(sk,wx,wy); // V0.20.1 : arête / point du plan → entité cotable (projetée)
@@ -900,12 +914,14 @@ svg.addEventListener('pointermove',e=>{
     skDraft={t:'line',x1:skDown.x,y1:skDown.y,x2:gx,y2:gy,gx,gy,snap:s};
     drawSketch2D();return;
   }
-  if((skTool==='rect'||skTool==='slot')&&skDown){
+  if(skTrActif(skTool)&&!skDrag&&!skDimDrag&&(!skDown||skDown.tr)){skTrMove(sk,wx,wy);return;}
+  if(skTool==='slot'&&skDown){skSlotMove(sk,wx,wy);return;}
+  if(skTool==='rect'&&skDown){
     let bx=wx,by=wy;const s=findSnap(sk,wx,wy);
     if(s){bx=s.x;by=s.y;}else if($('skSnap').checked){bx=skSnapVal(bx);by=skSnapVal(by);}
     let x1=skDown.x,y1=skDown.y;
     if(skDown.center){x1=2*skDown.x-bx;y1=2*skDown.y-by;}
-    skDraft={t:skTool==='slot'?'slot':'rect',x1,y1,x2:bx,y2:by};drawSketch2D();return;
+    skDraft={t:'rect',x1,y1,x2:bx,y2:by};drawSketch2D();return;
   }
   if(skTool==='circle'&&skDown){
     let bx=wx,by=wy;const s=findSnap(sk,wx,wy);
@@ -988,7 +1004,9 @@ svg.addEventListener('pointerup',e=>{
     else if(finish&&!nl&&skDown===null){/* statut déjà posé */}
     solveSketch(sk);skDraft=null;skInfer=null;skSnapMk=null;cleanupSk(sk);drawSketch2D();renderSkPanel();return;
   }
-  if((skTool==='rect'||skTool==='slot')&&skDown){
+  if(skDown&&skDown.tr){skTrUp(sk,wx,wy);return;}
+  if(skTool==='slot'&&skDown){skSlotUp(sk,wx,wy);return;}
+  if(skTool==='rect'&&skDown){
     let bx=wx,by=wy;const s=findSnap(sk,wx,wy);
     if(s){bx=s.x;by=s.y;}else if($('skSnap').checked){bx=skSnapVal(bx);by=skSnapVal(by);}
     let ax=skDown.x,ay=skDown.y;
@@ -996,105 +1014,47 @@ svg.addEventListener('pointerup',e=>{
     if(center){ax=2*ax-bx;ay=2*ay-by;}
     if(!(Math.abs(bx-ax)>skMinLen()&&Math.abs(by-ay)>skMinLen())){
       skDraft=null;drawSketch2D();
-      skStatus((skTool==='slot'?'Oblong':'Rectangle')+(center?' (depuis le centre)':'')+' : 1er point armé — déplacez puis 2e clic.');
+      skStatus('Rectangle'+(center?' (depuis le centre)':'')+' : 1er point armé — déplacez puis 2e clic.');
       return;
     }
     if(Math.abs(bx-ax)>skMinLen()&&Math.abs(by-ay)>skMinLen()){
       skPushUndo();
-      if(skTool==='slot'){
-        const x0=Math.min(ax,bx),x1=Math.max(ax,bx),y0=Math.min(ay,by),y1=Math.max(ay,by);
-        const w=x1-x0,h=y1-y0;
-        if(w>1&&h>1){
-          if(w>=h){
-            const r=h/2,ym=(y0+y1)/2,xm0=x0+r,xm1=x1-r;
-            const pTL=pidAt(sk,xm0,y1),pTR=pidAt(sk,xm1,y1),pBL=pidAt(sk,xm0,y0),pBR=pidAt(sk,xm1,y0);
-            const pcL=pidAt(sk,xm0,ym),pcR=pidAt(sk,xm1,ym);
-            const lT={id:skNewEid(sk),t:'line',p1:pTL,p2:pTR},lB={id:skNewEid(sk),t:'line',p1:pBL,p2:pBR};
-            const aL={id:skNewEid(sk),t:'arc',pc:pcL,pa:pTL,pb:pBL,r};
-            const aR={id:skNewEid(sk),t:'arc',pc:pcR,pa:pBR,pb:pTR,r};
-            // ligne de construction entre les 2 centres : le centre d'un arc devient un point
-            // partagé (2+ entités) → le glisser du centre reste un corps rigide, la forme se pilote
-            // par la cote longueur (entraxe) contre la droite de construction, sans casser.
-            const lC={id:skNewEid(sk),t:'line',p1:pcL,p2:pcR,construction:true};
-            sk.entities.push(lT,lB,aL,aR,lC);
-            [pTL,pTR,pBL,pBR].forEach(pid=>{const pp=sk.points[pid];if(pp)skAutoAttach(sk,pid,pp.x,pp.y);});
-            [pcL,pcR].forEach(pid=>{const pp=sk.points[pid];if(pp)skAutoAttach(sk,pid,pp.x,pp.y,1e-3);});
-            sk.constraints.push(
-              {id:skNewEid(sk),type:'h',line:lT.id},{id:skNewEid(sk),type:'h',line:lB.id},
-              {id:skNewEid(sk),type:'h',line:lC.id},
-              {id:skNewEid(sk),type:'tangent',line:lT.id,ent:aL.id},{id:skNewEid(sk),type:'tangent',line:lT.id,ent:aR.id},
-              {id:skNewEid(sk),type:'tangent',line:lB.id,ent:aL.id},{id:skNewEid(sk),type:'tangent',line:lB.id,ent:aR.id},
-              {id:skNewEid(sk),type:'equal',a:aL.id,b:aR.id});
-            try{
-              const entraxe=Math.abs(xm1-xm0);
-              if(entraxe>1e-4)sk.dims.push({id:skNewEid(sk),type:'length',line:lC.id,value:+entraxe.toFixed(2)});
-              sk.dims.push({id:skNewEid(sk),type:'radius',ent:aL.id,value:+r.toFixed(2)});
-            }catch(e){}
-            if(center)sk.constraints.push({id:skNewEid(sk),type:'fix',p:cPid});
-          } else {
-            const r=w/2,xm=(x0+x1)/2,ym0=y0+r,ym1=y1-r;
-            const pL0=pidAt(sk,x0,ym0),pL1=pidAt(sk,x0,ym1),pR0=pidAt(sk,x1,ym0),pR1=pidAt(sk,x1,ym1);
-            const pcB=pidAt(sk,xm,ym0),pcT=pidAt(sk,xm,ym1);
-            const lL={id:skNewEid(sk),t:'line',p1:pL0,p2:pL1},lR={id:skNewEid(sk),t:'line',p1:pR0,p2:pR1};
-            const aB={id:skNewEid(sk),t:'arc',pc:pcB,pa:pL0,pb:pR0,r};
-            const aT={id:skNewEid(sk),t:'arc',pc:pcT,pa:pR1,pb:pL1,r};
-            // ligne de construction verticale entre les 2 centres (même logique que l'oblong horizontal)
-            const lA={id:skNewEid(sk),t:'line',p1:pcB,p2:pcT,construction:true};
-            sk.entities.push(lL,lR,aB,aT,lA);
-            [pL0,pL1,pR0,pR1].forEach(pid=>{const pp=sk.points[pid];if(pp)skAutoAttach(sk,pid,pp.x,pp.y);});
-            [pcB,pcT].forEach(pid=>{const pp=sk.points[pid];if(pp)skAutoAttach(sk,pid,pp.x,pp.y,1e-3);});
-            sk.constraints.push(
-              {id:skNewEid(sk),type:'v',line:lL.id},{id:skNewEid(sk),type:'v',line:lR.id},
-              {id:skNewEid(sk),type:'v',line:lA.id},
-              {id:skNewEid(sk),type:'tangent',line:lL.id,ent:aB.id},{id:skNewEid(sk),type:'tangent',line:lL.id,ent:aT.id},
-              {id:skNewEid(sk),type:'tangent',line:lR.id,ent:aB.id},{id:skNewEid(sk),type:'tangent',line:lR.id,ent:aT.id},
-              {id:skNewEid(sk),type:'equal',a:aB.id,b:aT.id});
-            try{
-              const entraxe=Math.abs(ym1-ym0);
-              if(entraxe>1e-4)sk.dims.push({id:skNewEid(sk),type:'length',line:lA.id,value:+entraxe.toFixed(2)});
-              sk.dims.push({id:skNewEid(sk),type:'radius',ent:aB.id,value:+r.toFixed(2)});
-            }catch(e){}
-            if(center)sk.constraints.push({id:skNewEid(sk),type:'fix',p:cPid});
-          }
-        }
+      let A,Bp,Cp,D;
+      if(center){
+        A=pidAt(sk,ax,ay);Bp=pidAt(sk,bx,ay);Cp=pidAt(sk,bx,by);D=pidAt(sk,ax,by);
       } else {
-        let A,Bp,Cp,D;
-        if(center){
-          A=pidAt(sk,ax,ay);Bp=pidAt(sk,bx,ay);Cp=pidAt(sk,bx,by);D=pidAt(sk,ax,by);
-        } else {
-          A=cPid;Bp=pidAt(sk,bx,ay);Cp=pidAt(sk,bx,by);D=pidAt(sk,ax,by);
-        }
-        const l1={id:skNewEid(sk),t:'line',p1:A,p2:Bp},l2={id:skNewEid(sk),t:'line',p1:Bp,p2:Cp},
-              l3={id:skNewEid(sk),t:'line',p1:Cp,p2:D},l4={id:skNewEid(sk),t:'line',p1:D,p2:A};
-        sk.entities.push(l1,l2,l3,l4);
-        [A,Bp,Cp,D].forEach(pid=>{const pp=sk.points[pid];if(pp)skAutoAttach(sk,pid,pp.x,pp.y);});
-        sk.constraints.push({id:skNewEid(sk),type:'h',line:l1.id},{id:skNewEid(sk),type:'h',line:l3.id},
-                            {id:skNewEid(sk),type:'v',line:l2.id},{id:skNewEid(sk),type:'v',line:l4.id});
-        if(center){
-          const cx=sk.points[cPid].x,cy=sk.points[cPid].y;
-          const halfW=Math.abs(bx-ax),halfH=Math.abs(by-ay);
-          const pH=addPoint(sk,cx+halfW,cy),pV=addPoint(sk,cx,cy+halfH);
-          const axisH={id:skNewEid(sk),t:'line',p1:cPid,p2:pH,construction:true};
-          const axisV={id:skNewEid(sk),t:'line',p1:cPid,p2:pV,construction:true};
-          sk.entities.push(axisH,axisV);
-          sk.constraints.push(
-            {id:skNewEid(sk),type:'h',line:axisH.id},
-            {id:skNewEid(sk),type:'v',line:axisV.id},
-            {id:skNewEid(sk),type:'symmetric',a:l4.id,b:l2.id,mid:axisV.id,inf:true},
-            {id:skNewEid(sk),type:'symmetric',a:l1.id,b:l3.id,mid:axisH.id,inf:true}, // droites : congés / chanfreins possibles
-            // bouts des axes sur les côtés : plus de longueur d'axe libre (2 DDL fantômes)
-            {id:skNewEid(sk),type:'online',p:pH,line:l2.id},
-            {id:skNewEid(sk),type:'online',p:pV,line:l3.id});
-        }
-        try{
-          const w=Math.abs(bx-ax),h=Math.abs(by-ay);
-          if(w>1e-4)sk.dims.push({id:skNewEid(sk),type:'length',line:l1.id,value:+w.toFixed(4),ox:0,oy:6});
-          if(h>1e-4)sk.dims.push({id:skNewEid(sk),type:'length',line:l2.id,value:+h.toFixed(4),ox:6,oy:0});
-        }catch(e){}
+        A=cPid;Bp=pidAt(sk,bx,ay);Cp=pidAt(sk,bx,by);D=pidAt(sk,ax,by);
       }
+      const l1={id:skNewEid(sk),t:'line',p1:A,p2:Bp},l2={id:skNewEid(sk),t:'line',p1:Bp,p2:Cp},
+            l3={id:skNewEid(sk),t:'line',p1:Cp,p2:D},l4={id:skNewEid(sk),t:'line',p1:D,p2:A};
+      sk.entities.push(l1,l2,l3,l4);
+      [A,Bp,Cp,D].forEach(pid=>{const pp=sk.points[pid];if(pp)skAutoAttach(sk,pid,pp.x,pp.y,pid===Cp||(pid===A&&!center)?undefined:1e-3);}); // les coins non cliqués ne s'attachent pas à ce qui passe à côté
+      sk.constraints.push({id:skNewEid(sk),type:'h',line:l1.id},{id:skNewEid(sk),type:'h',line:l3.id},
+                          {id:skNewEid(sk),type:'v',line:l2.id},{id:skNewEid(sk),type:'v',line:l4.id});
+      if(center){
+        const cx=sk.points[cPid].x,cy=sk.points[cPid].y;
+        const halfW=Math.abs(bx-ax),halfH=Math.abs(by-ay);
+        const pH=addPoint(sk,cx+halfW,cy),pV=addPoint(sk,cx,cy+halfH);
+        const axisH={id:skNewEid(sk),t:'line',p1:cPid,p2:pH,construction:true};
+        const axisV={id:skNewEid(sk),t:'line',p1:cPid,p2:pV,construction:true};
+        sk.entities.push(axisH,axisV);
+        sk.constraints.push(
+          {id:skNewEid(sk),type:'h',line:axisH.id},
+          {id:skNewEid(sk),type:'v',line:axisV.id},
+          {id:skNewEid(sk),type:'symmetric',a:l4.id,b:l2.id,mid:axisV.id,inf:true},
+          {id:skNewEid(sk),type:'symmetric',a:l1.id,b:l3.id,mid:axisH.id,inf:true}, // droites : congés / chanfreins possibles
+          // bouts des axes sur les côtés : plus de longueur d'axe libre (2 DDL fantômes)
+          {id:skNewEid(sk),type:'online',p:pH,line:l2.id},
+          {id:skNewEid(sk),type:'online',p:pV,line:l3.id});
+      }
+      try{
+        const w=Math.abs(bx-ax),h=Math.abs(by-ay);
+        if(w>1e-4)sk.dims.push({id:skNewEid(sk),type:'length',line:l1.id,value:+w.toFixed(4),ox:0,oy:6});
+        if(h>1e-4)sk.dims.push({id:skNewEid(sk),type:'length',line:l2.id,value:+h.toFixed(4),ox:6,oy:0});
+      }catch(e){}
     }
     skDown=null;skDraft=null;afterEdit();
-    skTool='select';document.querySelectorAll('#skToolbar .tool').forEach(x=>x.classList.toggle('on',x.dataset.tool==='select'));skStatus('Sélection (➤).');return;
+    skStatus('Rectangle créé, cotes posées — '+skTraceMsg('rect').replace(/^[^:]*: c/,'c').replace(/\.$/,'')+' du suivant (Échap = fin).');return;
   }
   if(skTool==='polygon'&&skDown){skPolyUp(sk,wx,wy);return;}
   if(skTool==='circle'&&skDown){
@@ -1103,14 +1063,18 @@ svg.addEventListener('pointerup',e=>{
     const r=Math.hypot(bx-skDown.x,by-skDown.y);
     if(r<=skMinLen()){skDraft=null;drawSketch2D();skStatus('Cercle : centre armé — déplacez puis 2e clic pour valider le Ø.');return;}
     skPushUndo();
-    const nc={id:skNewEid(sk),t:'circle',pc:skDown.pid,r};
+    const O=+(2*r).toFixed(2); // Ø rond, sauf si le tour est posé sur un point
+    const nc={id:skNewEid(sk),t:'circle',pc:skDown.pid,r:s||!(O>0)?r:O/2};
     sk.entities.push(nc);
     {const cp=sk.points[nc.pc];if(cp)skAutoAttach(sk,nc.pc,cp.x,cp.y,1e-3);}
     if(s&&s.kind==='plane'){const q=skPlMaterialize(sk,s.pl);if(q&&q!==nc.pc)sk.constraints.push({id:skNewEid(sk),type:'oncircle',p:q,ent:nc.id});} // V0.20.1
     else if(s&&s.kind==='point'&&s.pid&&s.pid!==nc.pc&&!(sk.constraints||[]).some(c=>c.type==='oncircle'&&c.p===s.pid&&c.ent===nc.id))
       sk.constraints.push({id:skNewEid(sk),type:'oncircle',p:s.pid,ent:nc.id}); // rayon posé sur un point → point sur cercle
+    // cote Ø posée à la création, sauf si le centre et le tour sont déjà tenus par ce qu'on a cliqué
+    const coter=!(skDown.fa&&s&&(s.kind==='point'||s.kind==='plane'))&&O>0;
+    if(coter)sk.dims.push({id:skNewEid(sk),type:'diameter',ent:nc.id,value:O});
     skDown=null;skDraft=null;afterEdit();
-    skStatus('Cercle créé — cliquez le centre du suivant (Échap = fin).');return; // 2026-10-16-001 : l'outil reste actif
+    skStatus('Cercle créé'+(coter?', cote posée':'')+' — cliquez le centre du suivant (Échap = fin).');return; // 2026-10-16-001 : l'outil reste actif
   }
 });
 function skEscapeToSelect(){
@@ -1438,7 +1402,7 @@ window.addEventListener('keydown',e=>{
   mk('polygon','⬡','Polygone régulier (G) : réglez le nombre de côtés et le Ø intérieur (tangent aux côtés), cliquez le centre, puis cliquez pour orienter — Ø vide : à la souris');
   const pg=bar.querySelector('[data-tool="polygon"]'),ci=bar.querySelector('[data-tool="circle"]');
   if(pg&&ci&&ci.parentNode)ci.parentNode.insertBefore(pg,ci.nextSibling);
-  bar.addEventListener('click',()=>skPolySync()); // tout changement d'outil : réglages du polygone montrés ou masqués
+  bar.addEventListener('click',()=>{skPolySync();skModeBarSync();if(skEdit&&SK_TRACE_MODES[skTool])skStatus(skTraceMsg(skTool));}); // tout changement d'outil : réglages du polygone montrés ou masqués
   const sp=bar.querySelector('[data-tool="spline"]'),cs=bar.querySelector('[data-tool="cspline"]'),arc=bar.querySelector('[data-tool="arc"]');
   if(sp&&arc&&arc.parentNode)arc.parentNode.insertBefore(sp,arc.nextSibling);
   if(cs&&sp&&sp.parentNode)sp.parentNode.insertBefore(cs,sp.nextSibling);

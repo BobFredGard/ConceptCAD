@@ -24,6 +24,7 @@
       q.x=e.x1+(e.x2-e.x1)*h.f;q.y=e.y1+(e.y2-e.y1)*h.f;
       return q;
     }
+    if(h&&h.t==='slot'&&h.s)return mepSlotPtRefresh(v,q); // centre d'un oblong
     if(h&&(h.t==='axp'||h.t==='axc')){
       const e=mepAxisLineByKey(sh,v,h.ak);if(!e)return q; // axe disparu : dernière position connue
       if(h.t==='axc'){if(e.cx!=null){q.x=e.cx;q.y=e.cy;}return q;}
@@ -662,6 +663,7 @@
       const G=mepAxisSymTrack(v,ann);
       return G?[{t:'L',x1:G.a.x,y1:G.a.y,x2:G.b.x,y2:G.b.y,cls:'mepAxis'}]:[];
     }
+    if(ann.kind==='slot')return ann.s?mepSlotPrims(mepSlotFollow(v,ann.s),v):[];
     if(ann.kind==='hole'){
       const h=mepAxisRefGeom(sh,v,ann.ref);if(!h)return[];
       if(h.rev)return mepRevPrims(h.rev,v,mepBasisOf(v),MEP_AXIS.overrun/mepAxisScale(v));
@@ -915,6 +917,13 @@
   }
   function mepAxisCylPrims(sh,v){
     const out=[],b=mepBasisOf(v),over=MEP_AXIS.overrun/mepAxisScale(v);
+    // bouts d'un oblong vus de face : leurs centres sont déjà tracés avec l'axe de l'oblong
+    const slots=mepSlotsOf(v);
+    const onSlot=g=>{
+      if(!slots.length||Math.abs(mepDot(g.d,b.dir))<=0.999)return false;
+      const x=mepDot(g.o,b.u),y=mepDot(g.o,b.v),n=(p,q)=>Math.hypot(p-x,q-y)<0.01;
+      return slots.some(s=>n(s.x1,s.y1)||n(s.x2,s.y2));
+    };
     let holes=null;
     mepMeshesOf(v).forEach(bd=>{
       // cylindres d'abord (tracé inchangé : les clés des axes déjà allongés restent valides),
@@ -928,7 +937,7 @@
         if(!holes)holes=mepHoleFeatAxes();
         return !holes.some(h=>mepRevSameAxis(h,g,0.1));
       });
-      list.forEach(g=>out.push(...mepRevPrims(g,v,b,over)));
+      list.forEach(g=>{if(!onSlot(g))out.push(...mepRevPrims(g,v,b,over));});
     });
     return out;
   }
@@ -1049,6 +1058,7 @@
         if(!manual.has(mepAxisKey(h))&&Math.abs(h.facing)<0.02)out.push(...mepAxisSideLine(h,v,g));
       });
       try{out.push(...mepAxisCylPrims(sh,v));}catch(e){} // 2026-10-22-012 : cylindres d'un STEP
+      mepSlotsAuto(v).forEach(s=>out.push(...mepSlotPrims(s,v))); // 2026-11-06 : oblongs, sur leurs 2 centres
     }
     return out;
   }
@@ -1436,7 +1446,7 @@
     // référence durable d'un point accroché : trait d'axe (suivi à chaque dessin) ou entité (re-ancrage au rejeu)
     const h=sn&&sn.hit;if(!h)return null;
     if(h.ak&&(h.t==='axEnd'||h.t==='axMid'||h.t==='onAx'||h.t==='ctr'))return mepAxisRefOf(sh,v,q,h.ak);
-    if(isFinite(h.i)){if(h.t==='end')return{t:'seg',i:h.i};if(h.t==='ctr')return{t:'ctr',i:h.i};
+    if(isFinite(h.i)){if(h.t==='end')return{t:'seg',i:h.i};if(h.t==='ctr')return mepSlotCtrHint(v,h.i);
       if(h.t==='mid'||h.t==='onSeg'){const g=mepGeoOf(v),e=g&&g.els[h.i];if(e&&e.t==='L'&&mepGeoExact(g))return mepEdgeRefOf(e,q);}}
     return null;
   }
@@ -1632,7 +1642,7 @@
       let ang=Math.atan2(uy,ux);
       if(e&&e.t==='A'){
         const lo=Math.min(e.a0,e.a1),hi=Math.max(e.a0,e.a1);
-        let an=ang;while(an<lo)an+=2*Math.PI;
+        let an=ang;while(an<lo)an+=2*Math.PI;while(an-2*Math.PI>=lo)an-=2*Math.PI;
         if(an>hi){
           const d0=Math.abs(ang-e.a0),d1=Math.abs(ang-e.a1);
           ang=d0<d1?e.a0:e.a1;

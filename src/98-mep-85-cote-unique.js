@@ -117,6 +117,13 @@
     const B=mepEntRef(sh,sel[1]);if(!B)return null;
     const Av=A.v,Ae=A.e,Ai=A.i,Bv=B.v,Be=B.e,Bi=B.i;
     const isL=x=>x.t==='L',isC=x=>x.t==='C'||x.t==='A';
+    // centre d'un cercle ou d'un arc, référencé : la cote le suit quand la pièce change
+    const ctrPt=(v,e,i)=>{
+      const q={x:e.cx,y:e.cy};
+      const h=typeof i==='number'?mepSlotCtrHint(v,i):e.ak?mepAxisRefOf(sh,v,q,e.ak):null;
+      if(h)q.hint=h;
+      return q;
+    };
     if(isL(Ae)&&isL(Be)){
       const ax=Ae.x2-Ae.x1,ay=Ae.y2-Ae.y1,bx=Be.x2-Be.x1,by=Be.y2-Be.y1;
       const la=Math.hypot(ax,ay)||1,lb=Math.hypot(bx,by)||1;
@@ -153,7 +160,7 @@
       // entraxe : les deux centres doivent être dans la même vue (repère commun)
       if(Av.id!==Bv.id)return null;
       return Object.assign(base,{kind:'dist',vid:Av.id,vid2:null,
-        a:{x:Ae.cx,y:Ae.cy},b:{x:Be.cx,y:Be.cy}});
+        a:ctrPt(Av,Ae,Ai),b:ctrPt(Bv,Be,Bi)});
     }
     // cercle + droite : distance centre ↔ droite (pied de perpendiculaire)
     const line=isL(Ae)?Ae:(isL(Be)?Be:null),circ=isC(Ae)?Ae:(isC(Be)?Be:null);
@@ -164,7 +171,7 @@
       let t=((circ.cx-line.x1)*ax+(circ.cy-line.y1)*ay)/(la*la);
       t=t<0?0:(t>1?1:t);
       return Object.assign(base,{kind:'dist',vid:lv.id,vid2:null,
-        a:{x:line.x1+ax*t,y:line.y1+ay*t},b:{x:circ.cx,y:circ.cy}});
+        a:{x:line.x1+ax*t,y:line.y1+ay*t,hint:{t:'seg',i:isL(Ae)?Ai:Bi}},b:ctrPt(cv,circ,isL(Ae)?Bi:Ai)});
     }
     return null;
   }

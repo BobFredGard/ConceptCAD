@@ -485,6 +485,7 @@
       shapeCyls:bd=>mepShapeCyls(bd),
       shapeRevs:bd=>mepShapeRevs(bd),axisGeoAt:(x,y)=>{mepSt.zoom=1;return mepAxisGeoAt(mepSheet(),x,y);},axisRefGeom:(view,ref)=>mepAxisRefGeom(mepSheet(),view,ref),
       axisManual:(view,ann)=>mepAxisManualGeom(mepSheet(),view,ann),
+      slotsOf:view=>mepSlotsOf(view),axisClick:P=>mepAxisClick(mepSheet(),P),hitEnt:(x,y)=>mepHitViewEnt(mepSheet(),x,y,{axes:true}),dimSelect:hit=>mepDimSelectEnt(hit,false),dimAdd:hit=>mepDimAddEnt(hit),dimCommit:P=>mepDimCommitDraft(mepSheet(),P,false),
       axisAt:(x,y)=>mepAxisAt(mepSheet(),x,y),
       axisLines:(view,auto)=>{if(auto){mepAxGen++;const l=mepAxisLines(mepSheet(),view,auto);mepAxLinesCache.set(view,{gen:mepAxGen,geo:mepGeoOf(view),list:l});return l;}return mepAxisLines(mepSheet(),view);},
       snapPt:(x,y,o)=>mepSnapPt(x,y,mepSheet(),o),
