@@ -9,36 +9,11 @@
 #include <limits>
 
 #include "cote_geometrie.h"
+#include "dessin_commun.h"
 #include "maths_js.h"
 
 namespace {
-constexpr double PI_ = 3.141592653589793, SK_OK = 0.05;
-
-// Number.prototype.toFixed : le plus proche, et le plus grand en cas d'égalité exacte (printf choisit le pair)
-double fixe(double v, int chiffres) {
-  char b[512];
-  snprintf(b, sizeof b, "%.*f", chiffres + 60, v);  // tous les chiffres exacts du nombre
-  std::string t(b);
-  const size_t coupe = t.size() - 60;
-  const bool plus = t[coupe] >= '5';
-  t.resize(coupe);
-  if (plus) {
-    for (size_t i = t.size(); i-- > 0;) {
-      if (t[i] == '.' || t[i] == '-') continue;
-      if (t[i] == '9') {
-        t[i] = '0';
-        if (i == 0 || (i == 1 && t[0] == '-')) t.insert(i, 1, '1');
-        else continue;
-        break;
-      }
-      t[i]++;
-      break;
-    }
-  }
-  double r = 0;
-  std::from_chars(t.data(), t.data() + t.size(), r);  // sans dépendre des réglages régionaux
-  return r;
-}
+constexpr double SK_OK = 0.05;
 
 double distSeg(double px, double py, const Pt& A, const Pt& B) {
   const double dx = B.x - A.x, dy = B.y - A.y;
@@ -47,33 +22,6 @@ double distSeg(double px, double py, const Pt& A, const Pt& B) {
   double t = ((px - A.x) * dx + (py - A.y) * dy) / L2;
   t = jsmax(0, jsmin(1, t));
   return hyp(px - (A.x + t * dx), py - (A.y + t * dy));
-}
-bool dansArc(double a, double a1, double a2) {  // angInArc
-  const double T = PI_ * 2;
-  double d = std::fmod(a2 - a1, T);
-  if (d < 0) d += T;
-  double r = std::fmod(a - a1, T);
-  if (r < 0) r += T;
-  return r <= d;
-}
-struct An {
-  double a1, a2;
-};
-bool anglesArc2(const Esquisse& s, const Entite& e, An& o) {  // arcAngles
-  const Pt* C = s.point(e.pc);
-  const Pt* A = s.point(e.pa);
-  const Pt* B = s.point(e.pb);
-  if (!C || !A || !B) return false;
-  const double a1 = m_atan2(A->y - C->y, A->x - C->x);
-  if (e.pa == e.pb) {
-    o = {a1, a1 + PI_ * 2};
-    return true;
-  }
-  const double a2 = m_atan2(B->y - C->y, B->x - C->x);
-  double d = std::fmod(a2 - a1, PI_ * 2);
-  if (d <= 0) d += PI_ * 2;
-  o = {a1, a1 + d};
-  return true;
 }
 std::string paire(const std::string& x, const std::string& y) { return x < y ? x + "|" + y : y + "|" + x; }
 // angleVertex : sommet commun, sinon intersection des deux droites
@@ -168,11 +116,6 @@ std::string cleContrainte(const Contrainte& c) {
   if (t == "online") return "online@" + c.p + "|" + c.line;
   if (t == "oncircle") return "oncircle@" + c.p + "|" + c.ent;
   return t + "@" + c.id;
-}
-Contrainte contrainte(const char* type) {
-  Contrainte c;
-  c.type = type;
-  return c;
 }
 }  // namespace
 
@@ -1192,8 +1135,14 @@ void Dessin::enfonce(double wx, double wy, bool ctrl, const std::string& ligneCo
     message("Premier point posé : déplacez puis cliquez le second.");
     return;
   }
-  if (outil_ == RECTANGLE || outil_ == CERCLE || outil_ == OBLONG || outil_ == POLYGONE) {
+  if (outil_ == OBLONG) {  // oblong en 3 clics
+    if (!bas_.actif) oblongDepart(wx, wy);
+    return;
+  }
+  if (trActif(outil_)) return trEnfonce(wx, wy);  // nouveaux modes du bandeau
+  if (outil_ == RECTANGLE || outil_ == CERCLE || outil_ == POLYGONE) {
     if (bas_.actif) return;
+    const bool fa = static_cast<bool>(accroche(wx, wy));
     const std::string pid = pointAccroche(wx, wy);
     const Pt& S = *s_.point(pid);
     bas_ = Bas{};
@@ -1201,7 +1150,8 @@ void Dessin::enfonce(double wx, double wy, bool ctrl, const std::string& ligneCo
     bas_.pid = pid;
     bas_.x = S.x;
     bas_.y = S.y;
-    bas_.centre = ctrl && outil_ != CERCLE && outil_ != POLYGONE;
+    bas_.fa = fa;
+    bas_.centre = outil_ == RECTANGLE && (ctrl || modeRect_ == "centre");
     if (outil_ == POLYGONE) {
       poly_.aDernier = false;
       poly_.ang = PI_ / 2;
@@ -1252,6 +1202,21 @@ void Dessin::enfonceArc(double wx, double wy) {
   na.pa = arcPa_;
   na.pb = pb;
   na.r = brouillon_.r;
+  // cote R posée à la création, sauf si le centre et un bout sont déjà tenus par ce qu'on a cliqué
+  const auto tenu = [&](const std::string& q) {
+    if (q == "O") return true;
+    for (const Entite& x : s_.entites) {
+      const std::vector<std::string> v = ptsEntite(x);
+      if (std::find(v.begin(), v.end(), q) != v.end()) return true;
+    }
+    return aContrainte([&](const Contrainte& x) { return x.p == q || x.a == q || x.b == q; });
+  };
+  if (!(tenu(na.pc) && (tenu(na.pa) || tenu(na.pb)))) {
+    const Pt& Pa = *s_.point(na.pa);
+    const Pt& Pb = *s_.point(na.pb);
+    const double Rr = fixe(na.r, 2), demi = hyp(Pb.x - Pa.x, Pb.y - Pa.y) / 2;
+    coteRond("radius", na.id, Rr > demi ? Rr : fixe(na.r, 6));
+  }
   s_.entites.push_back(na);
   structure_ = true;
   for (const std::string* q : {&na.pa, &na.pb})
@@ -1262,6 +1227,7 @@ void Dessin::enfonceArc(double wx, double wy) {
   arcA1Pose_ = false;
   brouillon_ = Brouillon{};
   apresEdition();
+  message("Arc créé — cliquez le centre du suivant (Échap = fin).");
 }
 
 void Dessin::bouge(double wx, double wy, bool gaucheTenu) {
@@ -1371,7 +1337,9 @@ void Dessin::bouge(double wx, double wy, bool gaucheTenu) {
     bougerPolygone(wx, wy);
     return;
   }
-  if ((outil_ == RECTANGLE || outil_ == OBLONG) && bas_.actif) {
+  if (trActif(outil_) && glisseP_.empty() && !glisseE_.actif && (!bas_.actif || tr_.actif)) return trBouge(wx, wy);
+  if (outil_ == OBLONG && bas_.actif) return oblongBouge(wx, wy);
+  if (outil_ == RECTANGLE && bas_.actif) {
     double bx = wx, by = wy;
     const Accroche a = accroche(wx, wy);
     if (a) {
@@ -1387,7 +1355,7 @@ void Dessin::bouge(double wx, double wy, bool gaucheTenu) {
       y1 = 2 * bas_.y - by;
     }
     brouillon_ = Brouillon{};
-    brouillon_.sorte = outil_ == OBLONG ? Brouillon::B_OBLONG : Brouillon::B_RECT;
+    brouillon_.sorte = Brouillon::B_RECT;
     brouillon_.x1 = x1;
     brouillon_.y1 = y1;
     brouillon_.x2 = bx;
@@ -1681,99 +1649,6 @@ void Dessin::relacherLigne(double wx, double wy) {
 
 // Oblong : deux droites, deux arcs tangents et la droite de construction entre les centres.
 // Couché ou debout, le navigateur écrit deux fois la même chose : seuls les noms et H ou V changent.
-void Dessin::creerOblong(double ax, double ay, double bx, double by, bool centre, const std::string& cPid) {
-  const double x0 = std::min(ax, bx), x1 = std::max(ax, bx), y0 = std::min(ay, by), y1 = std::max(ay, by);
-  const double w = x1 - x0, h = y1 - y0;
-  if (!(w > 1 && h > 1)) return;
-  const bool couche = w >= h;
-  const double r = (couche ? h : w) / 2;
-  std::string p1, p2, p3, p4, c1, c2;
-  double entraxe;
-  if (couche) {
-    const double ym = (y0 + y1) / 2, xm0 = x0 + r, xm1 = x1 - r;
-    p1 = pointA(xm0, y1);
-    p2 = pointA(xm1, y1);
-    p3 = pointA(xm0, y0);
-    p4 = pointA(xm1, y0);
-    c1 = pointA(xm0, ym);
-    c2 = pointA(xm1, ym);
-    entraxe = std::abs(xm1 - xm0);
-  } else {
-    const double xm = (x0 + x1) / 2, ym0 = y0 + r, ym1 = y1 - r;
-    p1 = pointA(x0, ym0);
-    p2 = pointA(x0, ym1);
-    p3 = pointA(x1, ym0);
-    p4 = pointA(x1, ym1);
-    c1 = pointA(xm, ym0);
-    c2 = pointA(xm, ym1);
-    entraxe = std::abs(ym1 - ym0);
-  }
-  const auto ligne = [&](const std::string& a, const std::string& b, bool construction) {
-    Entite e;
-    e.id = nouvelE();
-    e.t = "line";
-    e.p1 = a;
-    e.p2 = b;
-    e.construction = construction;
-    return e;
-  };
-  const auto arc = [&](const std::string& c, const std::string& a, const std::string& b) {
-    Entite e;
-    e.id = nouvelE();
-    e.t = "arc";
-    e.pc = c;
-    e.pa = a;
-    e.pb = b;
-    e.r = r;
-    return e;
-  };
-  const Entite l1 = ligne(p1, p2, false), l2 = ligne(p3, p4, false);
-  const Entite a1 = arc(c1, p1, p3), a2 = arc(c2, p4, p2);
-  const Entite axe = ligne(c1, c2, true);
-  s_.entites.insert(s_.entites.end(), {l1, l2, a1, a2, axe});
-  structure_ = true;
-  for (const std::string* q : {&p1, &p2, &p3, &p4})
-    if (const Pt* pp = s_.point(*q)) accrocher(*q, pp->x, pp->y, -1);
-  for (const std::string* q : {&c1, &c2})
-    if (const Pt* pp = s_.point(*q)) accrocher(*q, pp->x, pp->y, 1e-3);
-  const char* sens = couche ? "h" : "v";
-  for (const Entite* l : {&l1, &l2, &axe}) {
-    Contrainte c = contrainte(sens);
-    c.line = l->id;
-    lier(c);
-  }
-  for (const Entite* l : {&l1, &l2})
-    for (const Entite* a : {&a1, &a2}) {
-      Contrainte c = contrainte("tangent");
-      c.line = l->id;
-      c.ent = a->id;
-      lier(c);
-    }
-  Contrainte eg = contrainte("equal");
-  eg.a = a1.id;
-  eg.b = a2.id;
-  lier(eg);
-  if (entraxe > 1e-4) {
-    Cote d;
-    d.id = nouvelE();
-    d.type = "length";
-    d.line = axe.id;
-    d.value = fixe(entraxe, 2);
-    s_.cotes.push_back(std::move(d));
-  }
-  Cote d;
-  d.id = nouvelE();
-  d.type = "radius";
-  d.ent = a1.id;
-  d.value = fixe(r, 2);
-  s_.cotes.push_back(std::move(d));
-  if (centre) {
-    Contrainte c = contrainte("fix");
-    c.p = cPid;
-    lier(c);
-  }
-}
-
 // Point de construction et centre de perçage : un clic, et l'outil reste
 void Dessin::poserPointSeul(double wx, double wy, bool percage) {
   pousser();
@@ -2715,19 +2590,10 @@ void Dessin::relacherRectangle(double wx, double wy) {
   }
   if (!(std::abs(bx - ax) > longueurMini() && std::abs(by - ay) > longueurMini())) {
     brouillon_ = Brouillon{};
-    message(std::string(outil_ == OBLONG ? "Oblong" : "Rectangle") + (centre ? " (depuis le centre)" : "") + " : premier point posé, déplacez puis second clic.");
+    message(std::string("Rectangle") + (centre ? " (depuis le centre)" : "") + " : premier point posé, déplacez puis second clic.");
     return;
   }
   pousser();
-  if (outil_ == OBLONG) {
-    creerOblong(ax, ay, bx, by, centre, cPid);
-    bas_ = Bas{};
-    brouillon_ = Brouillon{};
-    apresEdition();
-    outil_ = SELECTION;
-    message("Oblong créé.");
-    return;
-  }
   const std::string A = centre ? pointA(ax, ay) : cPid;
   const std::string Bp = pointA(bx, ay), Cp = pointA(bx, by), D = pointA(ax, by);
   const auto ligne = [&](const std::string& p1, const std::string& p2, bool construction = false) {
@@ -2745,8 +2611,8 @@ void Dessin::relacherRectangle(double wx, double wy) {
   const Entite l4 = ligne(D, A);
   s_.entites.insert(s_.entites.end(), {l1, l2, l3, l4});
   structure_ = true;
-  for (const std::string* q : {&A, &Bp, &Cp, &D})
-    if (const Pt* pp = s_.point(*q)) accrocher(*q, pp->x, pp->y, -1);
+  for (const std::string* q : {&A, &Bp, &Cp, &D})  // les coins non cliqués ne s'attachent pas à ce qui passe à côté
+    if (const Pt* pp = s_.point(*q)) accrocher(*q, pp->x, pp->y, *q == Cp || (*q == A && !centre) ? -1 : 1e-3);
   const auto hv = [&](const char* t, const Entite& l) {
     Contrainte c = contrainte(t);
     c.line = l.id;
@@ -2800,8 +2666,10 @@ void Dessin::relacherRectangle(double wx, double wy) {
   bas_ = Bas{};
   brouillon_ = Brouillon{};
   apresEdition();
-  outil_ = SELECTION;
-  message("Rectangle créé.");
+  std::string suite = messageTrace(RECTANGLE);
+  suite = suite.substr(suite.find(": c") + 2);
+  suite.pop_back();
+  message("Rectangle créé, cotes posées — " + suite + " du suivant (Échap = fin).");
 }
 
 void Dessin::relacherCercle(double wx, double wy) {
@@ -2821,11 +2689,12 @@ void Dessin::relacherCercle(double wx, double wy) {
     return;
   }
   pousser();
+  const double O = fixe(2 * r, 2);  // Ø rond, sauf si le tour est posé sur un point
   Entite nc;
   nc.id = nouvelE();
   nc.t = "circle";
   nc.pc = bas_.pid;
-  nc.r = r;
+  nc.r = s || !(O > 0) ? r : O / 2;
   s_.entites.push_back(nc);
   structure_ = true;
   if (const Pt* cp = s_.point(nc.pc)) accrocher(nc.pc, cp->x, cp->y, 1e-3);
@@ -2835,10 +2704,13 @@ void Dessin::relacherCercle(double wx, double wy) {
     c.ent = nc.id;
     lier(c);
   }
+  // cote Ø posée à la création, sauf si le centre et le tour sont déjà tenus par ce qu'on a cliqué
+  const bool coter = !(bas_.fa && s.sorte == Accroche::POINT) && O > 0;
+  if (coter) coteRond("diameter", nc.id, O);
   bas_ = Bas{};
   brouillon_ = Brouillon{};
   apresEdition();
-  message("Cercle créé : cliquez le centre du suivant (Échap : fin).");
+  message(std::string("Cercle créé") + (coter ? ", cote posée" : "") + " — cliquez le centre du suivant (Échap = fin).");
 }
 
 void Dessin::relache(double wx, double wy) {
@@ -2891,7 +2763,9 @@ void Dessin::relache(double wx, double wy) {
   }
   if (outil_ == LIGNE && bas_.actif) {
     if (!dyn_.actif) relacherLigne(wx, wy);  // saisie en cours : c'est le clic suivant qui valide
-  } else if ((outil_ == RECTANGLE || outil_ == OBLONG) && bas_.actif) relacherRectangle(wx, wy);
+  } else if (tr_.actif) trRelache(wx, wy);
+  else if (outil_ == OBLONG && bas_.actif) oblongRelache(wx, wy);
+  else if (outil_ == RECTANGLE && bas_.actif) relacherRectangle(wx, wy);
   else if (outil_ == POLYGONE && bas_.actif) relacherPolygone(wx, wy);
   else if (outil_ == CERCLE && bas_.actif) relacherCercle(wx, wy);
 }
@@ -2983,6 +2857,8 @@ void Dessin::annulerTrace() {
   arcPa_.clear();
   brouillon_ = Brouillon{};
   bas_ = Bas{};
+  tr_ = Trace{};
+  slot_ = SlotEnCours{};
   glisseP_.clear();
   glisseE_ = GlisseE{};
   ed_.solveur.glisserOublier();
@@ -2997,6 +2873,7 @@ void Dessin::choisirOutil(Outil o) {
   survolIsect_ = SurvolIsect{};
   isectSel_.clear();
   outil_ = o;
+  if (titreModes(o)) message(messageTrace(o));
 }
 
 void Dessin::echap() {

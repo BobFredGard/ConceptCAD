@@ -345,6 +345,7 @@ std::string nouvelleContrainte(const Contrainte& c) {
   ajouterTexte(o, "d", c.d);
   ajouterTexte(o, "s", c.s);
   if (c.inf) o += ",\"inf\":true";
+  if (c.inner) o += ",\"inner\":true";
   if (c.sa) o += ",\"sa\":" + std::to_string(c.sa);
   if (c.sb) o += ",\"sb\":" + std::to_string(c.sb);
   return o + "}";
@@ -422,6 +423,7 @@ std::string ecartsContrainte(const std::string& brut, const Contrainte& a, const
   e.texte("d", a.d, b.d);
   e.texte("s", a.s, b.s);
   e.oui("inf", a.inf, b.inf);
+  e.oui("inner", a.inner, b.inner);
   return retoucherBrut(brut, e);
 }
 // skDimsSyncAngles : deux lignes cotées qui ne sont plus parallèles, l'écart devient un angle. Tout le reste du texte de la cote est gardé.

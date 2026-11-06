@@ -37,6 +37,7 @@ struct Contrainte {
   std::string id, type, p, line, ent, a, b, mid, c, d;
   std::string s;  // tangence ou courbure de spline : la spline
   bool inf = false;
+  bool inner = false;  // tangent2 : un cercle dans l'autre
   int sa = 0, sb = 0;
 };
 struct Cote {

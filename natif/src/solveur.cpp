@@ -111,6 +111,7 @@ Solveur::Solveur(const Esquisse& s, bool ouverture) {
     c.c = indexEntite(x.c);
     c.d = indexEntite(x.d);
     c.inf = x.inf;
+    c.inner = x.inner;
     c.sa = x.sa;
     c.sb = x.sb;
     C_.push_back(std::move(c));
@@ -908,7 +909,7 @@ Solveur::Bilan Solveur::audit(std::vector<Violation>* tout) {
       if (A && B) {
         const P2* CA = pt(A->pc);
         const P2* CB = pt(B->pc);
-        if (CA && CB) pousse(false, "tangence", std::abs(hyp(CB->x - CA->x, CB->y - CA->y) - (A->r + B->r)));
+        if (CA && CB) pousse(false, "tangence", std::abs(hyp(CB->x - CA->x, CB->y - CA->y) - (c.inner ? std::abs(A->r - B->r) : A->r + B->r)));
       }
     }
     if (c.type == COAXIAL) {
@@ -1691,7 +1692,7 @@ void Solveur::relax(int iters) {
         P2* CB = pt(B->pc);
         if (!CA || !CB) continue;
         const double dx = CB->x - CA->x, dy = CB->y - CA->y, d0 = hyp(dx, dy), d = d0 != 0 ? d0 : 1e-9;
-        const double err = d - (A->r + B->r);
+        const double err = d - (c.inner ? std::abs(A->r - B->r) : A->r + B->r);  // inner : un cercle dans l'autre
         if (std::abs(err) < 1e-9) continue;
         const double ux = dx / d, uy = dy / d;
         const bool aF = fx(A->pc), bF = fx(B->pc);
@@ -2035,7 +2036,7 @@ void Solveur::collect(std::vector<double>& out, const Build& B) {
             else push((d * d - X->r * X->r) / jsmax(1e-6, std::abs(d) + std::abs(X->r)));
             if (pourRang_ && X->t == ARC)
               for (int pe : {X->pa, X->pb})
-                if (pe >= 0 && (pe == L->p1 || pe == L->p2)) {
+                if (pe >= 0 && (pe == L->p1 || pe == L->p2 || std::any_of(C_.begin(), C_.end(), [&](const C& k) { return k.type == ONLINE && k.p == pe && k.line == c.line; }))) {
                   const P2& Q = P_[pe];
                   push((CC->x - Q.x) * ux + (CC->y - Q.y) * uy);
                 }
@@ -2049,7 +2050,37 @@ void Solveur::collect(std::vector<double>& out, const Build& B) {
         if (A && W && (A->t == CERCLE || A->t == ARC) && (W->t == CERCLE || W->t == ARC)) {
           const P2* CA = pt(A->pc);
           const P2* CB = pt(W->pc);
-          if (CA && CB) push(hyp(CB->x - CA->x, CB->y - CA->y) - (A->r + W->r));
+          if (CA && CB) {
+            push(hyp(CB->x - CA->x, CB->y - CA->y) - (c.inner ? std::abs(A->r - W->r) : A->r + W->r));
+            // 2 arcs qui partagent leur point de contact : même dégénérescence au 1er ordre que le bout d'arc sur sa tangente
+            // (le point glisse sans résidu) → pour le rang, le contact est sur la droite des centres (sinon 1 DDL fantôme).
+            if (pourRang_) {
+              const auto bouts = [](const E* e, int o[2]) {
+                o[0] = e->t == ARC ? e->pa : -1;
+                o[1] = e->t == ARC ? e->pb : -1;
+              };
+              int bA[2], bW[2];
+              bouts(A, bA);
+              bouts(W, bW);
+              const auto pose = [&](const int b[2], int ent) {
+                for (int i = 0; i < 2; i++)
+                  if (b[i] >= 0)
+                    for (const C& k : C_)
+                      if (k.type == ONCIRCLE && k.p == b[i] && k.ent == ent) return b[i];
+                return -1;
+              };
+              int pe = -1;
+              for (int i = 0; i < 2 && pe < 0; i++)
+                if (bA[i] >= 0 && (bA[i] == bW[0] || bA[i] == bW[1])) pe = bA[i];
+              if (pe < 0) pe = pose(bA, c.b);
+              if (pe < 0) pe = pose(bW, c.a);
+              if (pe >= 0) {
+                const P2& Q = P_[pe];
+                const double dc = hyp(CB->x - CA->x, CB->y - CA->y);
+                if (dc > 1e-9) push(((CB->x - CA->x) * (Q.y - CA->y) - (CB->y - CA->y) * (Q.x - CA->x)) / dc);
+              }
+            }
+          }
         }
         break;
       }

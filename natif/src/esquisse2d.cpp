@@ -152,7 +152,100 @@ void VueEsquisse::lireBarrePolygone() {
   Refresh();
 }
 
+namespace {
+// Un choix du bandeau : le choix en cours est en bleu, comme dans le navigateur
+class BoutonMode : public wxPanel {
+ public:
+  BoutonMode(wxWindow* parent, const wxString& libelle, const wxString& aide, std::function<void()> clic) : wxPanel(parent, wxID_ANY), libelle_(libelle), clic_(std::move(clic)) {
+    SetBackgroundStyle(wxBG_STYLE_PAINT);
+    SetToolTip(aide);
+    wxClientDC dc(this);
+    dc.SetFont(GetFont());
+    const wxSize t = dc.GetTextExtent(libelle);
+    SetMinSize(wxSize(t.x + FromDIP(16), t.y + FromDIP(10)));
+    SetSize(GetMinSize());
+    SetCursor(wxCursor(wxCURSOR_HAND));
+    Bind(wxEVT_PAINT, [this](wxPaintEvent&) {
+      wxAutoBufferedPaintDC dc(this);
+      const wxSize z = GetClientSize();
+      dc.SetBackground(wxBrush(GetParent()->GetBackgroundColour()));
+      dc.Clear();
+      dc.SetPen(wxPen(actif_ ? wxColour(0x2f, 0x7f, 0xf0) : wxColour(0x55, 0x55, 0x5a)));
+      dc.SetBrush(wxBrush(actif_ ? wxColour(0x2f, 0x7f, 0xf0) : survol_ ? wxColour(0x3a, 0x3a, 0x3e) : wxColour(0x2c, 0x2c, 0x2e)));
+      dc.DrawRoundedRectangle(0, 0, z.x, z.y, FromDIP(4));
+      dc.SetFont(GetFont());
+      dc.SetTextForeground(actif_ ? *wxWHITE : wxColour(0xe8, 0xe8, 0xea));
+      const wxSize t = dc.GetTextExtent(libelle_);
+      dc.DrawText(libelle_, (z.x - t.x) / 2, (z.y - t.y) / 2);
+    });
+    Bind(wxEVT_LEFT_UP, [this](wxMouseEvent&) { clic_(); });
+    Bind(wxEVT_ENTER_WINDOW, [this](wxMouseEvent&) {
+      survol_ = true;
+      Refresh();
+    });
+    Bind(wxEVT_LEAVE_WINDOW, [this](wxMouseEvent&) {
+      survol_ = false;
+      Refresh();
+    });
+  }
+  void actif(bool a) {
+    if (a == actif_) return;
+    actif_ = a;
+    Refresh();
+  }
+
+ private:
+  wxString libelle_;
+  std::function<void()> clic_;
+  bool actif_ = false, survol_ = false;
+};
+}  // namespace
+
+void VueEsquisse::choisirModeTrace(const std::string& code) {
+  if (!dessin_) return;
+  dessin_->vue(echelle_);
+  dessin_->choisirMode(dessin_->outil(), code);
+  apresGeste();
+  majBarreTrace();
+  SetFocus();
+}
+
+void VueEsquisse::majBarreTrace() {
+  const int o = dessin_ ? static_cast<int>(dessin_->outil()) : -1;
+  const char* titre = dessin_ ? Dessin::titreModes(dessin_->outil()) : nullptr;
+  if (!titre) {
+    if (barreTrace_ && barreTrace_->IsShown()) barreTrace_->Hide();
+    return;
+  }
+  if (!barreTrace_) {
+    barreTrace_ = new wxPanel(this, wxID_ANY, FromDIP(wxPoint(10, 10)));
+    barreTrace_->SetBackgroundColour(wxColour(0x1e, 0x1e, 0x1e));
+  }
+  const Dessin::Outil outil = dessin_->outil();
+  const std::vector<Dessin::ModeTrace>& modes = Dessin::modesDe(outil);
+  if (outilBarre_ != o) {  // les boutons ne sont refaits qu'au changement d'outil
+    outilBarre_ = o;
+    barreTrace_->DestroyChildren();
+    boutonsTrace_.clear();
+    auto* ligne = new wxBoxSizer(wxHORIZONTAL);
+    auto* l = new wxStaticText(barreTrace_, wxID_ANY, wxString::FromUTF8(titre));
+    l->SetForegroundColour(wxColour(0xe8, 0xe8, 0xea));
+    ligne->Add(l, 0, wxALIGN_CENTER_VERTICAL | wxLEFT | wxRIGHT, FromDIP(10));
+    for (const Dessin::ModeTrace& m : modes) {
+      const std::string code = m.code;
+      auto* b = new BoutonMode(barreTrace_, wxString::FromUTF8(m.libelle), wxString::FromUTF8(m.aide), [this, code] { choisirModeTrace(code); });
+      ligne->Add(b, 0, wxALIGN_CENTER_VERTICAL | wxRIGHT | wxTOP | wxBOTTOM, FromDIP(6));
+      boutonsTrace_.push_back(b);
+    }
+    ligne->AddSpacer(FromDIP(4));
+    barreTrace_->SetSizerAndFit(ligne);
+  }
+  for (size_t i = 0; i < boutonsTrace_.size() && i < modes.size(); i++) static_cast<BoutonMode*>(boutonsTrace_[i])->actif(Dessin::modeDe(outil) == modes[i].code);
+  if (!barreTrace_->IsShown()) barreTrace_->Show();
+}
+
 void VueEsquisse::majBarrePolygone() {
+  majBarreTrace();
   const bool oui = dessin_ && dessin_->outil() == Dessin::POLYGONE;
   if (!barrePoly_) {
     if (!oui) return;
@@ -464,6 +557,7 @@ void VueEsquisse::surTouche(wxKeyEvent& ev) {
     if (!ev.ShiftDown()) {
       int o = -1;
       switch (code) {
+        case 'A': o = Dessin::ARC; break;
         case 'L': o = Dessin::LIGNE; break;
         case 'C': o = Dessin::CERCLE; break;
         case 'G': o = Dessin::POLYGONE; break;
@@ -983,27 +1077,105 @@ void VueEsquisse::trace(wxGraphicsContext& g) const {
       ligne(g, e(b.x2, b.y2), e(b.x1, b.y2));
       ligne(g, e(b.x1, b.y2), e(b.x1, b.y1));
       break;
-    case Dessin::Brouillon::B_OBLONG: {
-      const double x0 = std::min(b.x1, b.x2), x1 = std::max(b.x1, b.x2), y0 = std::min(b.y1, b.y2), y1 = std::max(b.y1, b.y2), w = x1 - x0, h = y1 - y0;
-      if (w > 0.5 && h > 0.5) {
-        const double r = std::min(w, h) / 2, pi = 3.141592653589793;
-        const bool couche = w > h;
-        const double c1x = couche ? x0 + r : (x0 + x1) / 2, c1y = couche ? (y0 + y1) / 2 : y0 + r;
-        const double c2x = couche ? x1 - r : c1x, c2y = couche ? c1y : y1 - r;
-        const double d1 = couche ? pi / 2 : pi, d2 = couche ? -pi / 2 : 0;
+    case Dessin::Brouillon::B_OBLONG: {  // skSlotDrawDraft
+      const wxColour jaune(0xff, 0xd6, 0x0a);
+      const auto point = [&](const Pt& P) {
+        const auto q = e(P.x, P.y);
+        wxGraphicsPath c = g.CreatePath();
+        c.AddCircle(q.m_x, q.m_y, 3);
+        g.SetBrush(g.CreateBrush(wxBrush(jaune)));
+        g.FillPath(c);
+        g.SetBrush(wxNullGraphicsBrush);
+      };
+      const auto etiquette = [&](const Pt& m, const wxString& t) {
+        const auto q = e(m.x, m.y);
+        double L, H, dsc, ext;
+        g.SetFont(g.CreateFont(wxFontInfo(10).Bold(), jaune));
+        g.GetTextExtent(t, &L, &H, &dsc, &ext);
+        g.DrawText(t, q.m_x - L / 2, q.m_y - 10 - H);
+      };
+      const auto axe = [&](const Pt& c1, const Pt& c2) {
+        g.SetPen(stylo(g, jaune, 1, {6, 3, 1, 3}));
+        ligne(g, e(c1.x, c1.y), e(c2.x, c2.y));
+      };
+      point(b.A);
+      point(b.B);
+      const double L = std::hypot(b.B.x - b.A.x, b.B.y - b.A.y);
+      Pt c1, c2;
+      if (!(b.r > 0) || !b.ok) {
+        Dessin::centresOblong(b.mode, b.A, b.B, 0, c1, c2);
+        axe(c1, c2);
+        etiquette({(c1.x + c2.x) / 2, (c1.y + c2.y) / 2}, wxString::Format("%.2f", b.mode == "milieu" ? 2 * L : L));
+        break;
+      }
+      Dessin::centresOblong(b.mode, b.A, b.B, b.r, c1, c2);
+      const double D = std::hypot(c2.x - c1.x, c2.y - c1.y), a0 = std::atan2(c2.y - c1.y, c2.x - c1.x), pi = 3.141592653589793;
+      wxGraphicsPath p = g.CreatePath();
+      for (int k = 0; k <= 24; k++) {
+        const double t = a0 + pi / 2 + k * pi / 24;
+        const auto q = e(c1.x + b.r * std::cos(t), c1.y + b.r * std::sin(t));
+        if (k == 0) p.MoveToPoint(q);
+        else p.AddLineToPoint(q);
+      }
+      for (int k = 0; k <= 24; k++) {
+        const double t = a0 - pi / 2 + k * pi / 24;
+        p.AddLineToPoint(e(c2.x + b.r * std::cos(t), c2.y + b.r * std::sin(t)));
+      }
+      p.CloseSubpath();
+      g.SetBrush(g.CreateBrush(wxBrush(wxColour(255, 255, 255, 15))));
+      g.FillPath(p);
+      g.SetBrush(wxNullGraphicsBrush);
+      g.SetPen(stylo(g, *wxWHITE, 2, {5, 3}));
+      g.StrokePath(p);
+      axe(c1, c2);
+      etiquette({(c1.x + c2.x) / 2, (c1.y + c2.y) / 2}, wxString::Format(L"%.2f · R%.2f", b.mode == "bouts" ? L : D, b.r));
+      break;
+    }
+    case Dessin::Brouillon::B_TRACE: {  // skTrDrawDraft
+      const wxColour jaune(0xff, 0xd6, 0x0a);
+      const auto chemin = [&](const std::vector<Pt>& v, bool ferme) {
         wxGraphicsPath p = g.CreatePath();
-        for (int i = 0; i <= 24; i++) {
-          const double a = d1 + pi * i / 24;
-          const auto q = e(c1x + r * std::cos(a), c1y + r * std::sin(a));
+        for (size_t i = 0; i < v.size(); i++) {
+          const auto q = e(v[i].x, v[i].y);
           if (i == 0) p.MoveToPoint(q);
           else p.AddLineToPoint(q);
         }
-        for (int i = 0; i <= 24; i++) {
-          const double a = d2 + pi * i / 24;
-          p.AddLineToPoint(e(c2x + r * std::cos(a), c2y + r * std::sin(a)));
+        if (ferme) p.CloseSubpath();
+        return p;
+      };
+      g.SetPen(stylo(g, wxColour(255, 214, 10, 190), 3));
+      for (const std::vector<Pt>& v : b.surlignes) g.StrokePath(chemin(v, false));
+      if (b.poly.size() > 1) {
+        wxGraphicsPath p = chemin(b.poly, b.ferme);
+        if (b.ferme) {
+          g.SetBrush(g.CreateBrush(wxBrush(wxColour(255, 255, 255, 15))));
+          g.FillPath(p);
+          g.SetBrush(wxNullGraphicsBrush);
         }
-        p.CloseSubpath();
+        g.SetPen(stylo(g, *wxWHITE, 2, {5, 3}));
         g.StrokePath(p);
+      }
+      g.SetBrush(g.CreateBrush(wxBrush(jaune)));
+      for (const Pt& m : b.marques) {
+        const auto q = e(m.x, m.y);
+        wxGraphicsPath c = g.CreatePath();
+        c.AddCircle(q.m_x, q.m_y, 3);
+        g.FillPath(c);
+      }
+      g.SetBrush(wxNullGraphicsBrush);
+      if (!b.etiquette.empty() && !b.poly.empty()) {  // au-dessus du tracé, centrée
+        double gx = 1e300, dx = -1e300, hy = 1e300;
+        for (const Pt& m : b.poly) {
+          const auto q = e(m.x, m.y);
+          gx = std::min(gx, q.m_x);
+          dx = std::max(dx, q.m_x);
+          hy = std::min(hy, q.m_y);
+        }
+        const wxString t = wxString::FromUTF8(b.etiquette);
+        double L, H, dsc, ext;
+        g.SetFont(g.CreateFont(wxFontInfo(10).Bold(), jaune));
+        g.GetTextExtent(t, &L, &H, &dsc, &ext);
+        g.DrawText(t, (gx + dx) / 2 - L / 2, hy - 8 - H);
       }
       break;
     }

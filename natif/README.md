@@ -344,6 +344,20 @@ Vérifié contre le navigateur V0.67.3 :
 
 Pas vérifié : les splines à la souris par une personne, les splines dans un fichier réel (aucun exemple n'en contient), un congé 3D posé sur une arête issue d'une spline, le rejeu de Balayage et Révolution (ces fonctions ne sont pas encore dans le natif).
 
+## Rectangles, cercles, arcs et oblongs de V0.69.0 (06/11/2026)
+
+Report des V0.68.0 et V0.69.0 du navigateur (`src/traces.cpp`) :
+
+- **Bandeau de choix** en haut à gauche, gardé d'un tracé au suivant : Oblong (2 centres, 2 extrémités, Centre), Rectangle (2 coins, Centre et coin, 3 points), Cercle (Centre et rayon, 2 points, 3 points, Tangent), Arc (Centre et 2 points, 3 points, Tangent). Touche A pour l'arc.
+- **Oblong en 3 clics**, dans toutes les directions ; cotes posées au 3e clic ; aucun « Fixe ». L'outil reste actif, le rectangle aussi. Cotes Ø et R posées à la création du cercle et de l'arc.
+- **Tangence intérieure** (`inner`) : lue, écrite, résolue, comptée dans le rang. Le contour d'un arc parcouru à rebours ne prend plus le reste du cercle.
+
+Comparaison au navigateur V0.69.0 (`dessin-reference.cjs --traces --contraintes --cotes --modifier --tape --panneau --formes --menu --coins --selection --sessions=3`, maths communes) : 343 sessions identiques sur 344, 4 176 états à moins de 10⁻⁹ mm ; les 1 316 états oblong, rectangle, cercle et arc des nouveaux modes sans aucun arrêt, 331 sessions écrites comme le navigateur.
+
+Écarts restants, hors du code de ce report : le menu « Fixe » sur une esquisse de Crochet (numérotation différente, 1 session) ; `sl` ou `w` de la première cote après glissement de son étiquette (4 sessions).
+
+`--gestes=fichier` rejoue une suite de pas écrite à la main. La référence doit maintenant être faite avec une page V0.69.0 ou plus récente (les modes n'existent pas avant).
+
 ## Projeter, Intersection et ce qui suit (06/11/2026)
 
 - **Projeter** (touche P) : arêtes du solide et éléments ou points d'une autre esquisse, noms « Projetée n » et « Arête n » gardés dans le fichier. 258 sessions sur 258 identiques au navigateur V0.67.3 (`dessin-reference.cjs --projeter`).

@@ -32,7 +32,7 @@ bool memesLiens(const Esquisse& a, const Esquisse& b) {
   for (size_t i = 0; i < a.contraintes.size(); i++) {
     const Contrainte& x = a.contraintes[i];
     const Contrainte& y = b.contraintes[i];
-    if (x.id != y.id || x.type != y.type || x.p != y.p || x.line != y.line || x.ent != y.ent || x.a != y.a || x.b != y.b || x.mid != y.mid || x.c != y.c || x.d != y.d || x.s != y.s || x.inf != y.inf) return false;
+    if (x.id != y.id || x.type != y.type || x.p != y.p || x.line != y.line || x.ent != y.ent || x.a != y.a || x.b != y.b || x.mid != y.mid || x.c != y.c || x.d != y.d || x.s != y.s || x.inf != y.inf || x.inner != y.inner) return false;
   }
   for (size_t i = 0; i < a.cotes.size(); i++) {
     const Cote& x = a.cotes[i];
@@ -212,6 +212,7 @@ static void lireEsquisse(const json& js, Document& d, std::map<std::string, int>
       c.c = texte(jc, "c");
       c.d = texte(jc, "d");
       c.inf = vrai(jc, "inf");
+      c.inner = vrai(jc, "inner");
       if (auto x = jc.find("sa"); x != jc.end() && x->is_number()) c.sa = x->get<int>();
       if (auto x = jc.find("sb"); x != jc.end() && x->is_number()) c.sb = x->get<int>();
       c.p = texte(jc, "p");

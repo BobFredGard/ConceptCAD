@@ -4,6 +4,7 @@
 #pragma once
 #include <functional>
 #include <map>
+#include <optional>
 #include <set>
 #include <string>
 #include <vector>
@@ -24,7 +25,7 @@ class Dessin {
   };
   // Le tracé en cours, pour l'écran
   struct Brouillon {
-    enum Sorte { RIEN, B_LIGNE, B_RECT, B_CERCLE, B_ARC, B_OBLONG, B_POLYGONE, B_SPLINE } sorte = RIEN;
+    enum Sorte { RIEN, B_LIGNE, B_RECT, B_CERCLE, B_ARC, B_OBLONG, B_POLYGONE, B_SPLINE, B_TRACE } sorte = RIEN;
     double x1 = 0, y1 = 0, x2 = 0, y2 = 0;  // ligne et rectangle
     double cx = 0, cy = 0, r = 0, a1 = 0, a2 = 0;  // cercle et arc ; polygone : a1 est son orientation
     int n = 0;                                     // polygone
@@ -34,6 +35,13 @@ class Dessin {
     std::vector<P2d> courbe;
     bool ctrl = false, aCurseur = false, fermeture = false;
     Pt curseur;
+    // Oblong : ses 2 points cliqués, r et ok une fois le rayon visé. Autres tracés du bandeau : la forme, ses points, son étiquette
+    std::string mode, etiquette;
+    Pt A, B;
+    bool ok = false, ferme = false;
+    std::vector<Pt> poly, marques;
+    std::vector<std::string> ents;
+    std::vector<std::vector<Pt>> surlignes;  // les traits choisis
   };
   // Réglages du polygone (skPoly), gardés d'un polygone au suivant, même d'une esquisse à l'autre
   struct ReglagesPolygone {
@@ -197,7 +205,26 @@ class Dessin {
   // Le menu vise cette cote : clic droit sur une étiquette
   void annulerPoseCote() { annulerTrace(); message("Placement annulé."); }
   static double distanceAuto() { return offsetD_; }
-  static void reglagesParDefaut() { poly_ = ReglagesPolygone{}; offsetD_ = 5; }  // pour le banc : la session suivante repart du même état
+  static void reglagesParDefaut() {  // pour le banc : la session suivante repart du même état
+    poly_ = ReglagesPolygone{};
+    offsetD_ = 5;
+    modeOblong_ = "centres";
+    modeRect_ = "coins";
+    modeCercle_ = "centre";
+    modeArc_ = "centre";
+  }
+  // Le bandeau de choix de l'oblong, du rectangle, du cercle et de l'arc (SK_TRACE_MODES). Le choix est gardé d'un tracé au suivant.
+  struct ModeTrace {
+    const char* code;
+    const char* libelle;
+    const char* aide;
+  };
+  static const char* titreModes(Outil o);  // nul : l'outil n'a pas de bandeau
+  static const std::vector<ModeTrace>& modesDe(Outil o);
+  static const std::string& modeDe(Outil o);
+  static std::string messageTrace(Outil o);                                       // skTraceMsg
+  void choisirMode(Outil o, const std::string& code);                             // skModeSet
+  static void centresOblong(const std::string& mode, Pt A, Pt B, double r, Pt& c1, Pt& c2);  // skSlotCentres
 
   // Pour les essais
   void premiere();
@@ -208,7 +235,7 @@ class Dessin {
     bool actif = false;
     std::string pid;
     double x = 0, y = 0;
-    bool depuisChaine = false, clique = false, centre = false;
+    bool depuisChaine = false, clique = false, centre = false, fa = false;
     double wx = 0, wy = 0;  // position de la souris au moment du clic
   };
   struct GlisseE {  // skDragEnt
@@ -328,7 +355,58 @@ class Dessin {
   std::string validerLigne(const std::string& depuis, const Accroche& a, double ex, double ey);  // skCommitLine : l'identifiant de la nouvelle ligne
   void relacherLigne(double wx, double wy);
   void relacherRectangle(double wx, double wy);
-  void creerOblong(double ax, double ay, double bx, double by, bool centre, const std::string& cPid);
+  // Oblong en 3 clics et nouveaux modes du bandeau (traces.cpp)
+  struct ClicTrace {
+    double x = 0, y = 0, rx = 0, ry = 0, tx = 0, ty = 0;  // le point visé, la souris, la direction de départ d'un arc tangent
+    std::string pid, ent;
+    bool cercle = false;
+    Accroche acc;
+  };
+  struct Trace {  // skDown.tr
+    bool actif = false, up = false, deux = false;
+    Outil outil = SELECTION;
+    std::string mode;
+    std::vector<ClicTrace> pts;
+  };
+  struct SlotEnCours {  // skDown.slot
+    bool actif = false, fa = false, aP2 = false, p2Accroche = false;
+    Pt p2;
+    double rawX = 0, rawY = 0;
+  };
+  struct GeoTrace;
+  Trace tr_;
+  SlotEnCours slot_;
+  static inline std::string modeOblong_ = "centres", modeRect_ = "coins", modeCercle_ = "centre", modeArc_ = "centre";
+  bool rayonOblongOk(const Pt& A, const Pt& B, double r) const;
+  Accroche viser(double wx, double wy, const Pt* from, double& x, double& y) const;  // skSlotAim
+  void oblongDepart(double wx, double wy);
+  void oblongBouge(double wx, double wy);
+  void oblongRelache(double wx, double wy);
+  bool creerOblong(const std::string& mode, const std::string& a, const std::string& b, double r0, bool fa, bool fb);  // skSlotCreate
+  void coteRond(const char* type, const std::string& ent, double value);
+  static bool trActif(Outil o);
+  std::optional<Entite> trEnt(double x, double y, const std::vector<std::string>& sauf) const;
+  bool trBoutDe(const Entite& E, const std::string& pid, ClicTrace& o) const;
+  bool trBout(double x, double y, ClicTrace& o) const;
+  ClicTrace trViser(const Trace* tr, double wx, double wy) const;
+  std::optional<Entite> trDeuxieme(const ClicTrace& m, const ClicTrace& A) const;
+  Brouillon trApercu(const Trace& tr, const ClicTrace& m, GeoTrace* geo) const;
+  void trSurlignes(Brouillon& d) const;
+  void trMarque(const ClicTrace* m);
+  void trBouge(double wx, double wy);
+  void trEnfonce(double wx, double wy);
+  void trRelache(double wx, double wy);
+  void trFin(const ClicTrace& m);
+  void trPid(ClicTrace& c);
+  void trAttache(const ClicTrace& c, const std::string& pid);
+  void trLien(const std::string& id, const std::string& cible, bool inner);
+  void trOnCircle(const std::string& p, const std::string& ent);
+  std::string trCercle(double x, double y, double r);
+  bool trRect3(const ClicTrace& a, const ClicTrace& b, double w0);
+  bool trCercle2Pts(const ClicTrace& a, const ClicTrace& b);
+  bool trCercle3Pts(const ClicTrace& a, const ClicTrace& b, const ClicTrace& c);
+  bool trArc3Pts(const ClicTrace& a, const ClicTrace& b, const ClicTrace& m);
+  bool trArcTangent(const ClicTrace& b, const ClicTrace& q);
   void poserPointSeul(double wx, double wy, bool percage);
   bool viserPolygone(double wx, double wy, bool& bouge, double& r);  // skPolyAim
   void brouillonPolygone(double r, double ang);                      // skPolyDraft

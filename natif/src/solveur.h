@@ -124,7 +124,7 @@ class Solveur {
     std::string id;
     TypeC type = INCONNU;
     int p = -1, line = -1, ent = -1, a = -1, b = -1, mid = -1, c = -1, d = -1, s = -1;
-    bool aP = false, aA = false, aB = false, inf = false;
+    bool aP = false, aA = false, aB = false, inf = false, inner = false;
     mutable bool aU = false;  // SK_ONSPL_U : le dernier pied sur la spline, départ du suivant
     mutable double u = 0;
     int sa = 0, sb = 0;

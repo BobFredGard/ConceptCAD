@@ -8,6 +8,8 @@
 // --coins : ajoute Congé et Chanfrein d'esquisse, à l'outil
 // --menu : ajoute le menu du clic droit, en comparant aussi la liste de ses entrées
 // --formes : ajoute Oblong, Polygone, Point et Centre de perçage
+// --gestes=fichier : rejoue une suite de pas écrite à la main (avec un dossier d'exemples vide : sur l'esquisse vide)
+// --traces : ajoute les modes du bandeau (V0.69.0) : oblong 3 façons, rectangle en 3 points, cercles et arcs par points ou tangents
 // --panneau : ajoute les gestes du panneau de droite : retirer, basculer en référence, valeurs tapées, gestes de santé
 // --contraintes : ajoute la pose de contraintes aux gestes tirés (sans cette option, les références déjà faites restent reproductibles)
 // Restent neutralisés, à dire honnêtement : l'accroche sur les arêtes du solide, et le clic sur une étiquette de cote.
@@ -71,6 +73,7 @@ vm.runInContext(`
       if ([c.a, c.b].some(id => { const l = entById(sk, id); return l && (arcPts.has(l.p1) || arcPts.has(l.p2)); })) c.inf = true;
     });
     skOffsetD = 5; skPoly.n = 6; skPoly.d = null;
+    skSlot.mode = 'centres'; skTraceMode.rect = 'coins'; skTraceMode.circle = 'centre'; skTraceMode.arc = 'centre';
     skEdit = sk; skTool = 'select'; skUndoStack = []; skRedoStack = []; skSel = null; skSelX = [];
     skCancelDraft();
     solveSketch(sk);
@@ -110,6 +113,7 @@ vm.runInContext(`
         }
       }
     }
+    else if (st.a === 'mode') skModeSet(st.t, st.k);
     else if (st.a === 'poly') { skPoly.n = st.n; skPoly.d = parseFloat(st.d) > 0 ? parseFloat(st.d) : null; }
     else if (st.a === 'polyEntree') skPolyEnter();
     else if (st.a === 'menu') { const b = __menuEntrees().find(x => x.l === st.c); if (b) { b.b.onclick(); } }
@@ -158,7 +162,7 @@ vm.runInContext(`
       sk.seq,
       Object.keys(P).join(','),
       (sk.entities || []).map(e => [e.id, e.t, v(e.p1), v(e.p2), v(e.pc), v(e.pa), v(e.pb), v(e.p), e.construction ? 1 : 0, e.ref ? 1 : 0].concat(e.t === 'spline' ? ['S:' + (e.pts || []).join('/') + ':' + (e.closed ? 1 : 0) + ':' + (e.mode || '') + ':' + (e.deg || 0) + ':' + (e.knots ? e.knots.length : 0)] : [], e.handle ? ['H:' + e.handle] : []).join(',')).join(';'),
-      (sk.constraints || []).map(c => [v(c.id), c.type, v(c.p), v(c.line), v(c.ent), v(c.a), v(c.b), v(c.mid), v(c.c), v(c.d), c.inf ? 1 : 0].concat(c.s ? ['s:' + c.s] : []).join(',')).join(';'),
+      (sk.constraints || []).map(c => [v(c.id), c.type, v(c.p), v(c.line), v(c.ent), v(c.a), v(c.b), v(c.mid), v(c.c), v(c.d), c.inf ? 1 : 0].concat(c.s ? ['s:' + c.s] : [], c.inner ? ['i'] : []).join(',')).join(';'),
       (sk.dims || []).map(d => [d.id, d.type, v(d.line), v(d.ent), v(d.a), v(d.b), v(d.p), v(d.orient), d.ref ? 1 : 0, d.chk ? 1 : 0, d.dia ? 1 : 0, d.sgn === 1 || d.sgn === -1 ? d.sgn : 0, d.ccw === 0 || d.ccw === 1 ? d.ccw : -1].join(',')).join(';'),
     ].join('#');
     (sk.entities || []).forEach(e => { if (e.t === 'circle' || e.t === 'arc') ray.push(e.r); });
@@ -211,6 +215,7 @@ function session(src, graine, nbGestes) {
     return { x: x0 + (r() * 1.3 - 0.15) * (x1 - x0), y: y0 + (r() * 1.3 - 0.15) * (y1 - y0) };
   };
   const clic = (l, c) => { faire({ a: 'bas', x: l.x, y: l.y, c: !!c }); faire({ a: 'haut', x: l.x, y: l.y }); };
+  const vise = (l, ens) => { clic(l); faire({ a: 'bouge', x: ens.x, y: ens.y }); };
   const glisser = (l, k) => {
     faire({ a: 'bas', x: l.x, y: l.y });
     let d = { x: l.x, y: l.y };
@@ -506,11 +511,58 @@ function session(src, graine, nbGestes) {
       faire({ a: 'echap' });
     },
     oblong() {
+      faire({ a: 'mode', t: 'slot', k: pick(['centres', 'bouts', 'milieu']) });
       faire({ a: 'outil', o: 'slot' });
-      const a = lieu(), b = lieu(), c = r() < 0.35;
-      clic(a, c);
-      faire({ a: 'bouge', x: b.x, y: b.y });
-      clic(b);
+      const a = lieu(), b = lieu(a), c = lieu();
+      vise(a, b);
+      vise(b, c);
+      clic(c);
+      faire({ a: 'echap' });
+    },
+    traceRect() {
+      faire({ a: 'mode', t: 'rect', k: pick(['coins', 'centre', '3pts', '3pts']) });
+      faire({ a: 'outil', o: 'rect' });
+      const a = lieu(), b = lieu(a), c = lieu();
+      vise(a, b);
+      vise(b, c);
+      clic(c);
+      if (r() < 0.3) { const d = lieu(); vise(c, d); clic(d); }
+      faire({ a: 'echap' });
+    },
+    traceCercle() {
+      const m = pick(['2pts', '3pts', '3pts', 'tangent', 'tangent', 'tangent']);
+      faire({ a: 'mode', t: 'circle', k: m });
+      faire({ a: 'outil', o: 'circle' });
+      if (m === 'tangent') {
+        const g1 = geo(), l1 = surEntite(g1), l2 = surEntite(g1), c = r() < 0.4 ? surEntite(g1) : null, d = c || lieu();
+        if (!l1 || !l2) { faire({ a: 'echap' }); return; }
+        vise(l1, l2);
+        vise(l2, d);
+        clic(d);
+      } else {
+        const a = lieu(), b = lieu(a), c = lieu();
+        vise(a, b);
+        if (m === '3pts') vise(b, c);
+        clic(m === '3pts' ? c : b);
+      }
+      faire({ a: 'echap' });
+    },
+    traceArc() {
+      const m = pick(['centre', '3pts', '3pts', 'tangent', 'tangent', 'tangent']);
+      faire({ a: 'mode', t: 'arc', k: m });
+      faire({ a: 'outil', o: 'arc' });
+      if (m === 'tangent') {
+        const g1 = geo(), l1 = surEntite(g1), d = r() < 0.3 ? surEntite(g1) : null, b = d || lieu(), c = lieu();
+        if (!l1) { faire({ a: 'echap' }); return; }
+        vise(l1, b);
+        vise(b, c);
+        clic(c);
+      } else {
+        const a = lieu(), b = lieu(), c = lieu();
+        vise(a, b);
+        vise(b, c);
+        clic(c);
+      }
       faire({ a: 'echap' });
     },
     polygone() {
@@ -545,6 +597,7 @@ function session(src, graine, nbGestes) {
       clic(l);
       faire({ a: 'suppr' });
     },
+    fixe() { JSON.parse(fs.readFileSync(opt('gestes', ''), 'utf8')).forEach(st => faire(st)); },
     panneau() {
       faire({ a: 'outil', o: 'select' });  // d'abord : quitter un tracé peut retirer ses points
       const g = vm.runInContext('JSON.parse(JSON.stringify({ points: skEdit.points, entities: skEdit.entities, cons: skEdit.constraints, dims: skEdit.dims }))', ctx);
@@ -713,8 +766,10 @@ function session(src, graine, nbGestes) {
   if (process.argv.includes('--selection')) noms.push(...Array(12).fill('glisseCote'), ...Array(12).fill('boite'), ...Array(6).fill('coincident2'));
   if (process.argv.includes('--menu')) noms.push(...Array(25).fill('menu'));
   if (process.argv.includes('--formes')) noms.push(...Array(10).fill('oblong'), ...Array(10).fill('polygone'), ...Array(8).fill('pointSeul'));
+  if (process.argv.includes('--traces')) noms.push(...Array(12).fill('oblong'), ...Array(12).fill('traceRect'), ...Array(20).fill('traceCercle'), ...Array(20).fill('traceArc'));
   if (process.argv.includes('--projeter')) noms.push(...Array(25).fill('projeter'));
   if (process.argv.includes('--splines')) noms.push(...Array(25).fill('spline'), ...Array(14).fill('splineGlisse'), ...Array(18).fill('splineMenu'), ...Array(4).fill('splineEfface'), ...Array(8).fill('splineAjuster'), ...Array(6).fill('splineDecaler'), ...Array(3).fill('splineF1'));
+  if (opt('gestes', '')) { noms.length = 0; noms.push('fixe'); nbGestes = 1; }
   if (opt('seulement', '')) { noms.length = 0; noms.push(...opt('seulement', '').split(',')); }
   for (let i = 0; i < nbGestes; i++) {
     const avant = pas.length;
