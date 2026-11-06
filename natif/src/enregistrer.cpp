@@ -318,6 +318,11 @@ std::string nouvelleCote(const Cote& d) {
   ajouterTexte(o, "orient", d.orient);
   o += ",\"value\":" + nombreJson(d.value);
   if (d.ox != 0 || d.oy != 0) o += ",\"ox\":" + nombreJson(d.ox) + ",\"oy\":" + nombreJson(d.oy);
+  if (d.aW) o += ",\"w\":" + nombreJson(d.w);
+  if (d.sl != 0) o += ",\"sl\":" + nombreJson(d.sl);
+  ajouterTexte(o, "oa", d.oa);
+  ajouterTexte(o, "ob", d.ob);
+  if (d.comp) o += ",\"comp\":1";
   if (d.chk) o += ",\"chk\":1";
   if (d.ref) o += ",\"ref\":true";
   if (d.refV) o += ",\"refV\":" + std::to_string(d.refV);
@@ -395,6 +400,14 @@ std::string ecartsCote(const std::string& brut, const Cote& a, const Cote& b) {
   e.texte("a", a.a, b.a);
   e.texte("b", a.b, b.b);
   e.texte("p", a.p, b.p);
+  e.texte("orient", a.orient, b.orient);
+  e.texte("oa", a.oa, b.oa);
+  e.texte("ob", a.ob, b.ob);
+  if (a.aW && (a.w != b.w || !b.aW)) e.champs.push_back({"w", nombreJson(a.w), true});
+  if (a.sl != b.sl) e.champs.push_back({"sl", nombreJson(a.sl), true});
+  if (a.ox != b.ox) e.champs.push_back({"ox", nombreJson(a.ox), true});
+  if (a.oy != b.oy) e.champs.push_back({"oy", nombreJson(a.oy), true});
+  if (a.comp != b.comp) e.champs.push_back({"comp", a.comp ? "1" : "0", true});
   if (a.chk != b.chk) e.champs.push_back({"chk", a.chk ? "1" : "0", true});  // le navigateur écrit 1
   e.oui("ref", a.ref, b.ref);
   e.oui("dia", a.dia, b.dia);

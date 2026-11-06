@@ -59,10 +59,12 @@ class VueEsquisse : public wxWindow {
   void dessiner(wxDC& dc);
   wxPoint2DDouble plan(const wxPoint& p) const;  // position de la souris → point du plan
   std::string zoneSous(const wxPoint& dip) const;
-  void ouvrirCote(const std::string& id);
+  void ouvrirCote(const std::string& id, const wxString& texteDepart = wxString());
   void surGaucheBas(wxMouseEvent&);
   void surGaucheHaut(wxMouseEvent&);
   void surTouche(wxKeyEvent&);
+  void surCaractere(wxKeyEvent&);
+  void ouvrirCoteDemandee();
   void apresGeste();
   void synchroniserOutils();
   void placerOutils();

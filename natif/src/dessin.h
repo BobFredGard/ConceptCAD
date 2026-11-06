@@ -13,7 +13,7 @@
 
 class Dessin {
  public:
-  enum Outil { SELECTION, LIGNE, RECTANGLE, CERCLE, ARC };
+  enum Outil { SELECTION, LIGNE, RECTANGLE, CERCLE, ARC, COTE };
   struct Accroche {
     enum Sorte { AUCUNE, POINT, MILIEU, SUR_LIGNE, SUR_CERCLE } sorte = AUCUNE;
     std::string id;  // le point, la ligne ou le cercle visé
@@ -73,13 +73,32 @@ class Dessin {
   Pt marque() const { return marque_; }
   const std::vector<Choix>& selection() const { return selection_; }
   bool estChoisi(Choix::Sorte s, const std::string& id) const;
-  bool enCours() const { return bas_.actif || arcC_.size() || glisseP_.size() || glisseE_.actif; }
+  bool enCours() const { return bas_.actif || arcC_.size() || glisseP_.size() || glisseE_.actif || dyn_.actif || !dimPose_.empty() || !dimPoint_.empty() || !dimLigne_.empty(); }
   // Le centre de l'arc en cours, pour l'écran
   const std::string& centreArc() const { return arcC_; }
   // Le départ du tracé en cours
   bool departTrace(Pt& p) const;
   bool aChange() const { return change_; }
   void changeVu() { change_ = false; }
+
+  // Outil Cote : une cote à ouvrir en saisie après ce clic, une seule fois ; la cote qui suit la souris ; un premier choix en attente
+  std::string prendreCoteAOuvrir();
+  bool poseEnCours() const { return !dimPose_.empty(); }
+  bool coteCommencee() const { return !dimPoint_.empty() || !dimLigne_.empty(); }
+  const std::string& pointCoteEnAttente() const { return dimPoint_; }
+  // Pendant la pose, une valeur tapée ou Entrée : la cote reste là où elle est, sa saisie s'ouvre
+  std::string poserCoteIci();
+
+  // Longueur ou angle tapés pendant le tracé d'une ligne
+  struct Saisie {
+    bool actif = false, angle = false;
+    std::string texte;
+  };
+  const Saisie& saisieTracee() const { return dyn_; }
+  bool caractere(char c);  // chiffres et séparateur ; rend true s'il a servi
+  bool tabulation();
+  bool entree();
+  bool retourArriere();
 
   // Pour les essais
   void premiere();
@@ -135,6 +154,22 @@ class Dessin {
   bool attacherCourbe(const std::string& pid, double x, double y, double tol);                   // skAttachOnCurve
   void epinglerTangence(const std::string& ligne, const std::string& ent);                       // skPinTangent
   bool lacher(const std::string& pid, const Accroche& a);                                        // skDragRelease
+
+  // Outil Cote
+  void enfonceCote(double wx, double wy, bool ctrl);  // branche skTool==='dim' de pointerdown
+  void clicCote(double x, double y, bool ctrl);       // dimClick
+  bool etendreCote(const std::string& id, const Entite* ent, const std::string& pid);  // tryExtendDim
+  bool versDistanceLigne(const std::string& id, const std::string& pt, const std::string& ligne);
+  void versDistanceCentres(const std::string& id, const std::string& a, const std::string& b, const char* quoi);
+  std::string poserCote(const std::string id);       // skDimPlaceCommit, sans la saisie : l'identifiant, ou vide si c'était un doublon
+  void suivreCote(Cote& d, double wx, double wy);     // la cote de pose suit le curseur
+  void orienterCote(Cote& d, double wx, double wy);   // skDimOrientAt
+  void angleCote(Cote& d, double wx, double wy);      // skDimAngleAt
+  Cote* cote(const std::string& id);
+  bool lignesParalleles(const Entite& A, const Entite& B) const;  // skParallelPair
+  void validerSaisie();                               // skDynCommit
+  std::string dimPose_, dimPoint_, dimLigne_, coteAOuvrir_;
+  Saisie dyn_;
 
   // Contraintes
   void pousserAvant();                               // skPushUndo, en gardant de quoi revenir

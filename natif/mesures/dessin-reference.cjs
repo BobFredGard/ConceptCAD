@@ -1,7 +1,8 @@
 // Fait faire au navigateur (exécuté dans Node, sans toucher à src/) des gestes de dessin sur chaque esquisse :
 // vrais événements de souris sur la vue, tirés au hasard mais reproductibles. Les gestes et l'esquisse complète
 // après chacun sont écrits pour BancDessin, qui rejoue les mêmes gestes dans le natif et compare.
-// node dessin-reference.cjs <dossier d'exemples> <sortie.json> [--communes] [--nom=extrait] [--sessions=n] [--contraintes]
+// node dessin-reference.cjs <dossier d'exemples> <sortie.json> [--communes] [--nom=extrait] [--sessions=n] [--contraintes] [--cotes]
+// --cotes : ajoute l'outil Cote et la longueur tapée aux gestes tirés
 // --contraintes : ajoute la pose de contraintes aux gestes tirés (sans cette option, les références déjà faites restent reproductibles)
 // Restent neutralisés, à dire honnêtement : l'accroche sur les arêtes du solide, et le clic sur une étiquette de cote.
 'use strict';
@@ -47,6 +48,7 @@ vm.runInContext(`
   hitDimLabel = () => null; hitDimLine = () => null;
   drawSketch2D = () => {}; renderSkPanel = () => {}; skRefreshHealth = () => {};
   skStatus = () => {}; skUndoBtn = () => {};
+  $('sketchOverlay').classList.contains = () => true;  // les touches ne sont écoutées qu'esquisse ouverte
   function __ouvrir(src, s, cx, cy) {
     const sk = JSON.parse(JSON.stringify(src));
     doc.sketches = [sk]; doc.features = [];
@@ -81,6 +83,7 @@ vm.runInContext(`
     else if (st.a === 'echap') skEscapeToSelect();
     else if (st.a === 'suppr') deleteSkSel();
     else if (st.a === 'con') applyCon(st.t);
+    else if (st.a === 'touche') dispatchEvent(new KeyboardEvent('keydown', { key: st.k }));
     else if (st.a === 'f1' || st.a === 'f2') skShortcut({ key: st.a.toUpperCase(), shiftKey: false, preventDefault() {} });
   }
   function __etat(sk) {
@@ -181,7 +184,48 @@ function session(src, graine, nbGestes) {
     ['con', 'midpoint', ['ligne', 'ligne']], ['con', 'midpoint', ['point', 'ligne']], ['con', 'coincident', ['point', 'point']], ['con', 'coincident', ['point', 'ligne']], ['con', 'coincident', ['point', 'rond']],
     ['con', 'construction', ['ligne']], ['con', 'construction', ['rond']], ['f1', '', ['point', 'point']], ['f1', '', ['point', 'ligne']], ['f1', '', ['point', 'rond']], ['f2', '', ['ligne']], ['f2', '', ['ligne', 'ligne']],
   ];
+  const vide = () => { const u = () => (r() < 0.5 ? -1 : 1) * (0.1 + r() * 0.5) * taille; return { x: (x0 + x1) / 2 + u(), y: (y0 + y1) / 2 + u() }; };
+  const SORTES_COTE = [['ligne'], ['ligne'], ['rond'], ['rond'], ['point', 'point'], ['ligne', 'ligne'], ['ligne', 'rond'], ['ligne', 'point'], ['rond', 'rond'], ['rond', 'ligne'], ['rond', 'point'], ['L', 'L'], ['L', 'L'], ['L', 'L']];
   const gestes = {
+    coteOutil() {
+      const cibles = pick(SORTES_COTE);
+      faire({ a: 'outil', o: 'dim' });
+      const paire = cibles[0] === 'L';
+      cibles.forEach((q, i) => { const l = viser(geo(), q === 'L' ? 'ligne' : q); if (l) clic(l, paire); });
+      for (let i = 1 + Math.floor(r() * 3); i > 0; i--) { const l = r() < 0.5 ? vide() : lieu(); faire({ a: 'bouge', x: l.x, y: l.y }); }
+      const fin = r();
+      if (fin < 0.6) clic(vide());
+      else if (fin < 0.7) faire({ a: 'touche', k: 'Enter' });
+      else if (fin < 0.8) faire({ a: 'touche', k: '5' });
+      else if (fin < 0.9) faire({ a: 'echap' });
+      else { const l = lieu(); clic(l); faire({ a: 'bouge', x: l.x + 1, y: l.y + 1 }); clic(vide()); }
+      faire({ a: 'outil', o: 'select' });
+    },
+    longueurTapee() {
+      faire({ a: 'outil', o: 'line' });
+      const dep = lieu();
+      clic(dep);
+      if (r() < 0.85) { const l = lieu(dep); faire({ a: 'bouge', x: l.x, y: l.y }); }
+      const mode = r();
+      if (mode < 0.5) {
+        faire({ a: 'touche', k: String(1 + Math.floor(r() * 9)) });
+        faire({ a: 'touche', k: String(Math.floor(r() * 10)) });
+        if (r() < 0.3) { faire({ a: 'touche', k: r() < 0.5 ? ',' : '.' }); faire({ a: 'touche', k: String(Math.floor(r() * 10)) }); }
+        if (r() < 0.2) faire({ a: 'touche', k: 'Backspace' });
+      } else if (mode < 0.8) {
+        faire({ a: 'touche', k: 'Tab' });
+        faire({ a: 'touche', k: 'Tab' });
+        faire({ a: 'touche', k: String(1 + Math.floor(r() * 9)) });
+        faire({ a: 'touche', k: '0' });
+      } else {
+        faire({ a: 'touche', k: 'Tab' });
+        if (r() < 0.3) faire({ a: 'touche', k: '0' });
+      }
+      const fin = r();
+      if (fin < 0.6) faire({ a: 'touche', k: 'Enter' });
+      else if (fin < 0.85) { const l = lieu(); clic(l); }
+      faire({ a: 'echap' });
+    },
     contrainte() {
       const [a, t, cibles] = pick(CAS);
       faire({ a: 'outil', o: 'select' });
@@ -275,6 +319,7 @@ function session(src, graine, nbGestes) {
   };
   const noms = ['glissePoint', 'glissePoint', 'glisseEntite', 'glisseEntite', 'ligne', 'ligne', 'ligneGlissee', 'rectangle', 'rectangle', 'cercle', 'arc', 'coter', 'effacer', 'effacerPoint'];
   if (process.argv.includes('--contraintes')) noms.push(...Array(10).fill('contrainte'));
+  if (process.argv.includes('--cotes')) noms.push(...Array(8).fill('coteOutil'), ...Array(5).fill('longueurTapee'));
   for (let i = 0; i < nbGestes; i++) {
     const avant = pas.length;
     const nom = pick(noms);

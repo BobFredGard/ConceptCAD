@@ -27,7 +27,11 @@ Une cote d'esquisse n'est modifiable que si le solide de la pièce se calcule : 
 
 Dessiner dans une esquisse modifiable : outils Sélection, Ligne, Rectangle, Cercle et Arc en haut de la vue, case « Grille 1 mm ». Accroches sur les points et les lignes, contraintes posées toutes seules avec guide (horizontal, vertical, perpendiculaire, parallèle, tangent). Glisser un point ou un élément, Suppr pour effacer, double-clic sur un élément pour le coter, clic droit pour finir un tracé, Échap pour revenir à Sélection puis sortir. Ctrl+Z, Ctrl+Y et Ctrl+S suivent. À l'enregistrement, ce qui n'a pas changé garde son texte d'origine.
 
-Il ne sait pas encore : polygone, oblong, ajuster, décaler, congé d'esquisse, outil Cote entre deux éléments, l'outil Coïncident à deux clics, longueur tapée pendant le tracé, fenêtre de sélection, retirer une contrainte, déplacer l'étiquette d'une cote, s'accrocher aux arêtes du solide, supprimer une esquisse enregistrée, esquisse sur un plan de construction, nouvelle pièce. Une cote de référence nommée ou par formule reste figée.
+Il ne sait pas encore : polygone, oblong, ajuster, décaler, congé d'esquisse, l'outil Coïncident à deux clics, fenêtre de sélection, retirer une contrainte, déplacer l'étiquette d'une cote, s'accrocher aux arêtes du solide, supprimer une esquisse enregistrée, esquisse sur un plan de construction, nouvelle pièce. Une cote de référence nommée ou par formule reste figée.
+
+Coter : outil **Cote**. Un clic sur une ligne donne sa longueur, sur un cercle son diamètre, sur un arc son rayon, sur deux points leur distance. Pendant que la cote suit la souris, un clic sur un second élément la transforme (entraxe de deux cercles, distance d'un centre à une ligne, angle ou écart de deux lignes). Un clic dans le vide la pose et ouvre sa valeur ; taper un chiffre ou Entrée la pose aussi là où elle est. Ctrl+clic sur deux lignes choisit l'angle ou l'entraxe. Échap retire la cote commencée, et une cote qui existe déjà est sélectionnée plutôt que doublée.
+
+Longueur tapée : pendant le tracé d'une ligne, taper le nombre, puis Entrée ou clic. Tab passe de la longueur à l'angle. La ligne reçoit sa cote de longueur, comme dans le navigateur.
 
 Poser une contrainte : choisir les éléments (Ctrl+clic pour les suivants), puis menu **Contraintes** ou mêmes touches que le navigateur : F1 coïncident ou fusion de deux points, F2 horizontal ou vertical selon la ligne, F3 tangent, F4 égal, F5 parallèle, F6 perpendiculaire, F7 milieu, F8 concentrique, F9 colinéaire, F10 symétrique, F12 fixe, X construction. Une contrainte qui rendrait l'esquisse impossible est refusée, avec la raison : tout revient exactement à l'état d'avant.
 
@@ -208,6 +212,17 @@ Poser une contrainte (`dessin-reference.cjs --contraintes`, `verifier-contrainte
 - `BancDessinCommunes` sur l'ancienne référence (mêmes résultats), `BancSolveurCommunes` (0 décision différente), `verifier-dessin.ps1`, `verifier-extrusion.ps1` et `verifier-nouvelle-esquisse.ps1` repassent.
 
 Correction du test `verifier-dessin.ps1` : ses numéros de menus étaient décalés de 1 (`wxID_HIGHEST` vaut 6000), Ctrl+Y n'y était donc pas essayé. Corrigé ; il passe. Le rétablissement de Ctrl+Y est de plus éprouvé par l'essai de création ci-dessus.
+
+Outil Cote et longueur tapée (`dessin-reference.cjs --contraintes --cotes`, `verifier-cotes.ps1`), tirés au hasard au milieu des autres gestes, sur les 125 esquisses et une esquisse vide. L'essai a créé avec l'outil Cote les 7 types de cotes (113 angles, 113 distances, 112 distances à une ligne, 96 longueurs, 53 rayons, 36 écarts, 17 diamètres), et 343 lignes à longueur tapée :
+
+| Comparaison au navigateur | Sessions identiques | États | Enregistrements identiques |
+|---|---:|---:|---:|
+| Mêmes sin, cos et atan2 des deux côtés | **383 sur 383** | 4 642, tous à moins de 10⁻⁹ mm | 375 sur 375 |
+| Maths de chaque programme | 350 sur 383 | 4 515 | 345 sur 345 |
+
+En maths normales, 8 sessions s'arrêtent sur une différence de structure et 25 au-delà de 0,001 mm : l'arrondi de sin, cos et atan2 s'accumule et finit par changer une décision. Disparaissant toutes à maths communes, elles ne viennent pas de la traduction. Le navigateur a un défaut, reproduit à l'identique ici : Ctrl+clic sur deux cercles crée une cote d'angle de valeur 0.
+
+La fenêtre, sur une copie du Drapeau : longueur tapée 40 mm, angle tapé 30°, diamètre posé puis tapé 30 mm, abandon par Échap, enregistrement relu (`length=40 | length=26 | diameter=30`). La comparaison a trouvé puis fait corriger un vrai défaut : le clic de pose perdait la cote.
 
 ## Pas vérifié
 

@@ -137,7 +137,7 @@ int wmain(int argc, wchar_t** argv) {
         const double x = st.contains("x") ? st["x"].get<double>() : 0, y = st.contains("y") ? st["y"].get<double>() : 0;
         if (a == "outil") {
           const std::string o = st["o"];
-          D.choisirOutil(o == "line" ? Dessin::LIGNE : o == "rect" ? Dessin::RECTANGLE : o == "circle" ? Dessin::CERCLE : o == "arc" ? Dessin::ARC : Dessin::SELECTION);
+          D.choisirOutil(o == "line" ? Dessin::LIGNE : o == "rect" ? Dessin::RECTANGLE : o == "circle" ? Dessin::CERCLE : o == "arc" ? Dessin::ARC : o == "dim" ? Dessin::COTE : Dessin::SELECTION);
         } else if (a == "bas") {
           D.enfonce(x, y, st.value("c", false));
         } else if (a == "bouge") {
@@ -156,6 +156,17 @@ int wmain(int argc, wchar_t** argv) {
           D.toucheF1();
         } else if (a == "f2") {
           D.toucheF2();
+        } else if (a == "touche") {
+          const std::string k = st["k"];
+          if (k == "Enter") {
+            if (!D.entree() && D.outil() == Dessin::COTE) D.poserCoteIci();
+          } else if (k == "Tab") {
+            D.tabulation();
+          } else if (k == "Backspace") {
+            if (!D.retourArriere()) D.supprimer();
+          } else if (!D.caractere(k[0]) && D.outil() == Dessin::COTE && D.poseEnCours()) {
+            D.poserCoteIci();
+          }
         }
         if (!st.contains("etat")) continue;
         nEtats++;

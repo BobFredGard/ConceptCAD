@@ -224,7 +224,7 @@ VueEsquisse::VueEsquisse(wxWindow* parent) : wxWindow(parent, 2004, wxDefaultPos
     if (surQuitter) surQuitter();
   });
   // Identifiants fixes : natif/mesures/verifier-dessin.ps1 retrouve ces boutons par leur nom.
-  const std::pair<Dessin::Outil, const wchar_t*> noms[] = {{Dessin::SELECTION, L"Sélection"}, {Dessin::LIGNE, L"Ligne"}, {Dessin::RECTANGLE, L"Rectangle"}, {Dessin::CERCLE, L"Cercle"}, {Dessin::ARC, L"Arc"}};
+  const std::pair<Dessin::Outil, const wchar_t*> noms[] = {{Dessin::SELECTION, L"Sélection"}, {Dessin::LIGNE, L"Ligne"}, {Dessin::RECTANGLE, L"Rectangle"}, {Dessin::CERCLE, L"Cercle"}, {Dessin::ARC, L"Arc"}, {Dessin::COTE, L"Cote"}};
   int idBouton = 2010;
   for (const auto& [outil, nom] : noms) {
     auto* b = new wxToggleButton(this, idBouton++, nom);
@@ -240,7 +240,7 @@ VueEsquisse::VueEsquisse(wxWindow* parent) : wxWindow(parent, 2004, wxDefaultPos
     b->Hide();
     outils_.push_back(b);
   }
-  caseGrille_ = new wxCheckBox(this, 2015, L"Grille 1 mm");
+  caseGrille_ = new wxCheckBox(this, 2016, L"Grille 1 mm");
   caseGrille_->SetValue(true);
   caseGrille_->Hide();
   caseGrille_->Bind(wxEVT_CHECKBOX, [this](wxCommandEvent&) {
@@ -252,6 +252,7 @@ VueEsquisse::VueEsquisse(wxWindow* parent) : wxWindow(parent, 2004, wxDefaultPos
   Bind(wxEVT_LEFT_DOWN, &VueEsquisse::surGaucheBas, this);
   Bind(wxEVT_LEFT_UP, &VueEsquisse::surGaucheHaut, this);
   Bind(wxEVT_KEY_DOWN, &VueEsquisse::surTouche, this);
+  Bind(wxEVT_CHAR, &VueEsquisse::surCaractere, this);
   Bind(wxEVT_RIGHT_DOWN, &VueEsquisse::surEnfonce, this);
   Bind(wxEVT_MIDDLE_DOWN, &VueEsquisse::surEnfonce, this);
   Bind(wxEVT_RIGHT_UP, &VueEsquisse::surRelache, this);
@@ -330,13 +331,16 @@ std::string VueEsquisse::zoneSous(const wxPoint& q) const {
   return "";
 }
 
-void VueEsquisse::ouvrirCote(const std::string& id) {
+void VueEsquisse::ouvrirCote(const std::string& id, const wxString& texteDepart) {
   for (const Cote& d : s_->cotes) {
     if (d.id != id) continue;
     for (const ZoneCote& z : zonesCotes_)
       if (z.id == id) {
         wxString texte;
-        if (surDemandeCote && surDemandeCote(d, texte)) ouvrirSaisie(d, texte, z.x, z.y);
+        if (surDemandeCote && surDemandeCote(d, texte)) {
+          ouvrirSaisie(d, texteDepart.empty() ? texte : texteDepart, z.x, z.y);
+          if (!texteDepart.empty()) saisie_->SetInsertionPointEnd();
+        }
         return;
       }
     return;
@@ -351,6 +355,16 @@ void VueEsquisse::surGaucheBas(wxMouseEvent& ev) {
     if (!id.empty()) {
       dessin_->choisirCote(id);
       Refresh();
+      return;
+    }
+  }
+  // Avec l'outil Cote, un clic sur une valeur existante l'ouvre, sans repasser par Sélection
+  if (dessin_->outil() == Dessin::COTE && !dessin_->poseEnCours() && !dessin_->coteCommencee()) {
+    const std::string id = zoneSous(ToDIP(ev.GetPosition()));
+    if (!id.empty()) {
+      dessin_->choisirCote(id);
+      if (dessin_->rendrePilotante(id)) ouvrirCote(id);
+      apresGeste();
       return;
     }
   }
@@ -371,6 +385,7 @@ void VueEsquisse::surGaucheHaut(wxMouseEvent& ev) {
     dessin_->vue(echelle_);
     dessin_->relache(w.m_x, w.m_y);
     apresGeste();
+    ouvrirCoteDemandee();
   }
   if (dblEnAttente_) {
     dblEnAttente_ = false;
@@ -391,13 +406,71 @@ void VueEsquisse::commande(const std::function<void(Dessin&)>& f) {
   SetFocus();
 }
 
+void VueEsquisse::ouvrirCoteDemandee() {
+  if (!dessin_) return;
+  const std::string id = dessin_->prendreCoteAOuvrir();
+  if (id.empty()) return;
+  Update();  // les zones des cotes doivent être à jour
+  ouvrirCote(id);
+}
+
+// Longueur tapée pendant le tracé, valeur tapée pendant la pose d'une cote : le caractère vraiment produit, quel que soit le clavier
+void VueEsquisse::surCaractere(wxKeyEvent& ev) {
+  const wxChar c = ev.GetUnicodeKey();
+  if (!dessin_ || enSaisie() || ev.ControlDown() || ev.AltDown() || c == WXK_NONE || c > 127) return ev.Skip();
+  const char k = static_cast<char>(c);
+  dessin_->vue(echelle_);
+  if (dessin_->caractere(k)) {
+    Refresh();
+    return;
+  }
+  if (dessin_->poseEnCours() && ((k >= '0' && k <= '9') || k == '.' || k == ',' || k == '-')) {
+    const std::string id = dessin_->poserCoteIci();
+    apresGeste();
+    if (!id.empty()) {
+      Update();
+      ouvrirCote(id, wxString(k == ',' ? '.' : k));
+    }
+    return;
+  }
+  ev.Skip();
+}
+
 void VueEsquisse::surTouche(wxKeyEvent& ev) {
+  const int code = ev.GetKeyCode();
+  if (dessin_ && !enSaisie()) {
+    dessin_->vue(echelle_);
+    if (code == WXK_TAB && dessin_->tabulation()) {
+      Refresh();
+      return;
+    }
+    if (code == WXK_RETURN || code == WXK_NUMPAD_ENTER) {
+      if (dessin_->entree()) {
+        apresGeste();
+        return;
+      }
+      if (dessin_->poseEnCours()) {
+        const std::string id = dessin_->poserCoteIci();
+        apresGeste();
+        if (!id.empty()) {
+          Update();
+          ouvrirCote(id);
+        }
+        return;
+      }
+    }
+    if (code == WXK_BACK) {
+      if (!dessin_->retourArriere()) dessin_->supprimer();
+      apresGeste();
+      return;
+    }
+  }
   if (dessin_ && ev.GetKeyCode() == WXK_DELETE && !enSaisie()) {
     dessin_->supprimer();
     apresGeste();
     return;
   }
-  if (ev.GetKeyCode() == 'X' && !ev.HasAnyModifiers()) {
+  if (ev.GetKeyCode() == 'X' && !ev.HasAnyModifiers() && !(dessin_ && dessin_->saisieTracee().actif)) {
     commande([](Dessin& d) { d.poserContrainte("construction"); });
     return;
   }
@@ -667,6 +740,27 @@ void VueEsquisse::trace(wxGraphicsContext& g) const {
   };
   if (b.accroche) rond(b.accroche.x, b.accroche.y);
   if (dessin_->aMarque()) rond(dessin_->marque().x, dessin_->marque().y);
+  // La longueur ou l'angle en cours de frappe, au-dessus du trait
+  const Dessin::Saisie& frappe = dessin_->saisieTracee();
+  Pt depart;
+  if (frappe.actif && dessin_->departTrace(depart)) {
+    const bool enLigne = b.sorte == Dessin::Brouillon::B_LIGNE;
+    const auto P = e(enLigne ? (b.x1 + b.x2) / 2 : depart.x, enLigne ? (b.y1 + b.y2) / 2 : depart.y);
+    const wxString libelle = (frappe.angle ? wxString(L"∠ = ") : wxString("L = ")) + wxString::FromUTF8(frappe.texte) + (frappe.angle ? wxString(L"°") : wxString(" mm"));
+    const wxString aide = L"Tab : angle ou longueur · Entrée : valider · Échap : annuler";
+    const double larg = std::max(70.0, libelle.length() * 8.0 + 18);
+    g.SetBrush(g.CreateBrush(wxBrush(wxColour(0x1e, 0x1e, 0x1e))));
+    g.SetPen(stylo(g, wxColour(0x0a, 0x84, 0xff), 1.5));
+    g.DrawRoundedRectangle(P.m_x - larg / 2, P.m_y - 44, larg, 24, 5);
+    g.SetBrush(wxNullGraphicsBrush);
+    double L, H, dsc, ext;
+    g.SetFont(g.CreateFont(wxFontInfo(10).Bold(), *wxWHITE));
+    g.GetTextExtent(libelle, &L, &H, &dsc, &ext);
+    g.DrawText(libelle, P.m_x - L / 2, P.m_y - 32 - H / 2);
+    g.SetFont(g.CreateFont(wxFontInfo(8), wxColour(0x8a, 0x8f, 0x99)));
+    g.GetTextExtent(aide, &L, &H, &dsc, &ext);
+    g.DrawText(aide, P.m_x - L / 2, P.m_y - 50 - H);
+  }
   // Le guide du trait : horizontal, vertical, perpendiculaire...
   const Dessin::Guide& G = dessin_->guide();
   if (b.sorte == Dessin::Brouillon::B_LIGNE && G.actif()) {

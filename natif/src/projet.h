@@ -28,6 +28,7 @@ struct Contrainte {
 };
 struct Cote {
   std::string id, type, line, ent, a, b, p, orient, nom;
+  std::string oa, ob;  // cote d'angle en pose : les deux lignes d'origine (skDimAngleAt)
   double value = 0, ox = 0, oy = 0, w = 0, sl = 0;
   bool aW = false, ref = false, dia = false, formule = false, formuleFausse = false, comp = false;
   bool chk = false;  // déjà contrôlée (skCheckNewDims)
