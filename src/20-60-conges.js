@@ -751,8 +751,8 @@ function occFilletNurbs(base,js,chamfer,single,edges,cham){
       // Common + Cut — deux booléens sur le corps entier, ~0,6 s chacun
       let loc=null,rest=null;const tri=Math.min(0.5,m/4);
       try{
-        const L1=occBinPush(bin,new occt.TopTools_ListOfShape_1());L1.Append_1(base);
-        const L2=occBinPush(bin,new occt.TopTools_ListOfShape_1());L2.Append_1(bx);
+        const L1=occBinPush(bin,new occt.TopTools_ListOfShape_1());occAjoute(L1,base);
+        const L2=occBinPush(bin,new occt.TopTools_ListOfShape_1());occAjoute(L2,bx);
         const SP=occBinPush(bin,new occt.BRepAlgoAPI_Splitter_1());SP.SetArguments(L1);SP.SetTools(L2);
         try{SP.Build();}catch(e){SP.Build(new occt.Message_ProgressRange());}
         if(SP.IsDone()){
@@ -779,8 +779,8 @@ function occFilletNurbs(base,js,chamfer,single,edges,cham){
       if(!(Math.abs(a1-a0)<=1e-6*Math.max(1,a0)))return null; // l'arrondi a débordé du bloc
       let g=null;
       try{
-        const L1=occBinPush(bin,new occt.TopTools_ListOfShape_1());L1.Append_1(rest);
-        const L2=occBinPush(bin,new occt.TopTools_ListOfShape_1());L2.Append_1(f);
+        const L1=occBinPush(bin,new occt.TopTools_ListOfShape_1());occAjoute(L1,rest);
+        const L2=occBinPush(bin,new occt.TopTools_ListOfShape_1());occAjoute(L2,f);
         const F=occBinPush(bin,new occt.BRepAlgoAPI_Fuse_1());F.SetArguments(L1);F.SetTools(L2);
         F.SetGlue(occt.BOPAlgo_GlueEnum.BOPAlgo_GlueShift); // le bloc et le reste ne se touchent que par les faces de coupe
         try{F.Build();}catch(e){F.Build(new occt.Message_ProgressRange());}

@@ -126,7 +126,7 @@ function delWkMain(){
 }
 function delWkSource(){
   // Le worker reçoit le code de CE fichier et de 20-noyau, pas une copie à entretenir.
-  const fns=[occPileRemettre,occFree,occCastLibre,occFaceCur,occEdgeCur,occSolidCur,occShellCur,occXyz,occAvec, // V0.64.3
+  const fns=[occPileRemettre,occAjoute,occFree,occCastLibre,occFaceCur,occEdgeCur,occSolidCur,occShellCur,occXyz,occAvec, // V0.64.3
     occBinPush,occDispose,occUnifyKeepEdges,occUnify,occCoqueValide,occBoxMinMax,occDelFaceDebord,
     occDeleteFacesOnce,occDelFacesTry,occBrepWrite,occBrepRead,occFaceAt,
     occCut,occCutEach,occCutKids,occThrCut,occtV3Compat];

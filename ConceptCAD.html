@@ -3580,6 +3580,9 @@ function occSolidCur(x){return occCastLibre(x.Current(),c=>occt.TopoDS.Solid_1(c
 function occShellCur(x){return occCastLibre(x.Current(),c=>occt.TopoDS.Shell_1(c));}
 function occXyz(p){try{return[p.X(),p.Y(),p.Z()];}finally{occFree(p);}} // lit un point / une direction, puis le libère
 function occAvec(h,fn){try{return fn(h);}finally{occFree(h);}} // prête h à fn le temps de l'appel
+// Append rend une COPIE de la forme ajoutée. Oubliée, elle garde en vie tout le solide, sa géométrie et son
+// maillage : Barquette perdait ainsi 0,45 Mo par modification. Toujours ajouter à une liste par cette aide.
+function occAjoute(liste,s){occFree(liste.Append_1(s));}
 function occClassifier(shape){
   // Point dedans / dehors RAPIDE (V0.44.1) : même usage que BRepClass3d_SolidClassifier_2
   // (Perform(p,tol), State(), delete()). Sous OCCT 8 le classifieur coûte ~22 ms par point sur un
@@ -3872,7 +3875,7 @@ function occCutKids(a,b,kids){
   }
   const la=new occt.TopTools_ListOfShape_1(),lt=new occt.TopTools_ListOfShape_1(),c=new occt.BRepAlgoAPI_Cut_1();
   try{
-    la.Append_1(a);kids.forEach(k=>lt.Append_1(k));
+    occAjoute(la,a);kids.forEach(k=>occAjoute(lt,k));
     // outils de perçage orientés par construction : le contrôle « solide retourné »
     // (une classification complète contre les faces du filet) est superflu
     c.SetArguments(la);c.SetTools(lt);c.SetCheckInverted(false);c.Build();
@@ -4146,7 +4149,7 @@ function occCoqueThick(result,faces,thick,join,inter){
   const bin=[];
   try{
     const L=occBinPush(bin,new occt.TopTools_ListOfShape_1());
-    for(const f of faces)L.Append_1(occBinPush(bin,occt.TopoDS.Face_1(f)));
+    for(const f of faces)occAjoute(L,occBinPush(bin,occt.TopoDS.Face_1(f)));
     let mk;
     if(occt.BRepOffsetAPI_MakeThickSolid_2){
       mk=occBinPush(bin,new occt.BRepOffsetAPI_MakeThickSolid_2(
@@ -6133,7 +6136,7 @@ function occSplitRun(shape,tools){
   const sp=new occt.BRepAlgoAPI_Splitter_1();
   const la=new occt.TopTools_ListOfShape_1(),lt=new occt.TopTools_ListOfShape_1();
   try{
-    la.Append_1(shape);tools.forEach(t=>lt.Append_1(t));
+    occAjoute(la,shape);tools.forEach(t=>occAjoute(lt,t));
     sp.SetArguments(la);sp.SetTools(lt);sp.Build();
     if(!sp.IsDone())throw new Error('découpe refusée par le noyau');
     const r=sp.Shape();if(!r||r.IsNull())throw new Error('résultat vide');
@@ -7613,8 +7616,8 @@ function occFilletNurbs(base,js,chamfer,single,edges,cham){
       // Common + Cut — deux booléens sur le corps entier, ~0,6 s chacun
       let loc=null,rest=null;const tri=Math.min(0.5,m/4);
       try{
-        const L1=occBinPush(bin,new occt.TopTools_ListOfShape_1());L1.Append_1(base);
-        const L2=occBinPush(bin,new occt.TopTools_ListOfShape_1());L2.Append_1(bx);
+        const L1=occBinPush(bin,new occt.TopTools_ListOfShape_1());occAjoute(L1,base);
+        const L2=occBinPush(bin,new occt.TopTools_ListOfShape_1());occAjoute(L2,bx);
         const SP=occBinPush(bin,new occt.BRepAlgoAPI_Splitter_1());SP.SetArguments(L1);SP.SetTools(L2);
         try{SP.Build();}catch(e){SP.Build(new occt.Message_ProgressRange());}
         if(SP.IsDone()){
@@ -7641,8 +7644,8 @@ function occFilletNurbs(base,js,chamfer,single,edges,cham){
       if(!(Math.abs(a1-a0)<=1e-6*Math.max(1,a0)))return null; // l'arrondi a débordé du bloc
       let g=null;
       try{
-        const L1=occBinPush(bin,new occt.TopTools_ListOfShape_1());L1.Append_1(rest);
-        const L2=occBinPush(bin,new occt.TopTools_ListOfShape_1());L2.Append_1(f);
+        const L1=occBinPush(bin,new occt.TopTools_ListOfShape_1());occAjoute(L1,rest);
+        const L2=occBinPush(bin,new occt.TopTools_ListOfShape_1());occAjoute(L2,f);
         const F=occBinPush(bin,new occt.BRepAlgoAPI_Fuse_1());F.SetArguments(L1);F.SetTools(L2);
         F.SetGlue(occt.BOPAlgo_GlueEnum.BOPAlgo_GlueShift); // le bloc et le reste ne se touchent que par les faces de coupe
         try{F.Build();}catch(e){F.Build(new occt.Message_ProgressRange());}
@@ -8332,7 +8335,7 @@ function* occReplayBodyGen(bid,list){
       const la=new occt.TopTools_ListOfShape_1(),lt=new occt.TopTools_ListOfShape_1();
       const c=cut?new occt.BRepAlgoAPI_Cut_1():new occt.BRepAlgoAPI_Fuse_1();
       try{
-        la.Append_1(result);tools.forEach(t=>lt.Append_1(t));
+        occAjoute(la,result);tools.forEach(t=>occAjoute(lt,t));
         c.SetArguments(la);c.SetTools(lt);if(cut)c.SetCheckInverted(false);c.Build();
         const s=c.IsDone()?c.Shape():null;
         if(!s||s.IsNull())throw new Error('booléen groupé refusé');
@@ -8957,7 +8960,7 @@ function delWkMain(){
 }
 function delWkSource(){
   // Le worker reçoit le code de CE fichier et de 20-noyau, pas une copie à entretenir.
-  const fns=[occPileRemettre,occFree,occCastLibre,occFaceCur,occEdgeCur,occSolidCur,occShellCur,occXyz,occAvec, // V0.64.3
+  const fns=[occPileRemettre,occAjoute,occFree,occCastLibre,occFaceCur,occEdgeCur,occSolidCur,occShellCur,occXyz,occAvec, // V0.64.3
     occBinPush,occDispose,occUnifyKeepEdges,occUnify,occCoqueValide,occBoxMinMax,occDelFaceDebord,
     occDeleteFacesOnce,occDelFacesTry,occBrepWrite,occBrepRead,occFaceAt,
     occCut,occCutEach,occCutKids,occThrCut,occtV3Compat];

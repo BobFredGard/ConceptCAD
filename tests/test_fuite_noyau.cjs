@@ -9,7 +9,7 @@ const vivants=new Map();let actif=false;
 class Suivi{
   register(obj,info,jeton){
     if(!actif)return;
-    const L=Error.stackTraceLimit;Error.stackTraceLimit=12;const st=new Error().stack;Error.stackTraceLimit=L;
+    const L=Error.stackTraceLimit;Error.stackTraceLimit=40;const st=new Error().stack;Error.stackTraceLimit=L;
     vivants.set(jeton,st);
   }
   unregister(jeton){vivants.delete(jeton);}
@@ -45,11 +45,11 @@ const oublis=()=>{let n=0;for(const st of vivants.values())if(!garde(st))n++;ret
   const tours=async code=>{vivants.clear();actif=true;await vm.runInContext('(async()=>{'+code+'})()',ctx);actif=false;};
   await tours('for(let i=0;i<3;i++){markDirty();rebuild();}');
   const repos=oublis();
-  A(repos<=3,'rejeu sans changement : '+repos+' objet(s) oublié(s) en 3 tours (2 011 par tour avant)'+(repos>3?' — '+lieux():''));
+  A(repos<=3,'rejeu sans changement : '+repos+' objet(s) oublié(s) en 3 tours (2 011 par tour avant)'+' — '+lieux());
   await tours(`const f=doc.features.filter(f=>f.type==='extrude'&&+f.distance&&!f.repeatId)[0];const d=+f.distance;
     for(let i=1;i<=3;i++){f.distance=d+Math.sign(d)*0.01*i;markDirty();rebuild();}f.distance=d;`);
   const modif=oublis();
-  A(modif<=9,'cote modifiée : '+modif+' objet(s) oublié(s) en 3 tours (18 600 par tour avant)'+(modif>9?' — '+lieux():''));
+  A(modif<=9,'cote modifiée : '+modif+' objet(s) oublié(s) en 3 tours (18 600 par tour avant)'+' — '+lieux());
   // Le tas du noyau se stabilise : cache plein, plus de montée (128 → 221 Mo avant, en 60 modifications)
   await vm.runInContext(`(async()=>{const f=doc.features.filter(f=>f.type==='extrude'&&+f.distance&&!f.repeatId)[0];const d=+f.distance;
     for(let i=1;i<=8;i++){f.distance=d+Math.sign(d)*0.1*i;markDirty();rebuild();}f.distance=d;globalThis.__h0=occt.HEAP8.length;
@@ -63,7 +63,10 @@ const oublis=()=>{let n=0;for(const st of vivants.values())if(!garde(st))n++;ret
     markDirty();rebuild();})()`,ctx);
   await tours("const P=doc.params.find(x=>x.name==='largeur_barquette');for(let i=1;i<=2;i++){parSetParam(P,String(165+0.01*i));markDirty();rebuild();}");
   const barq=oublis();
-  A(barq<=20,'Barquette, cote modifiée : '+barq+' objet(s) oublié(s) en 2 tours'+(barq>20?' — '+lieux():''));
+  A(barq<=20,'Barquette, cote modifiée : '+barq+' objet(s) oublié(s) en 2 tours — '+lieux());
+  // Append rend une copie, oubliée partout jusqu'en V0.65 : passer par occAjoute (mémoire mesurée dans test_barquette_120)
+  const nus=fs.readdirSync(path.join(ROOT,'src')).filter(f=>/\.js$/.test(f)).flatMap(f=>fs.readFileSync(path.join(ROOT,'src',f),'utf8').split('\n').filter(l=>/\.Append(_\d)?\(/.test(l)&&!/function occAjoute/.test(l)).map(l=>f+' : '+l.trim().slice(0,80)));
+  A(!nus.length,'aucun ajout direct à une liste du noyau'+(nus.length?' — '+nus.join(' | '):''));
   console.log(ko?'ÉCHEC : '+ko:'*** TOUT PASSE ***');
   process.exit(ko?1:0);
 })().catch(e=>{console.error(e);process.exit(1);});

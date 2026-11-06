@@ -27,7 +27,7 @@ function occSplitRun(shape,tools){
   const sp=new occt.BRepAlgoAPI_Splitter_1();
   const la=new occt.TopTools_ListOfShape_1(),lt=new occt.TopTools_ListOfShape_1();
   try{
-    la.Append_1(shape);tools.forEach(t=>lt.Append_1(t));
+    occAjoute(la,shape);tools.forEach(t=>occAjoute(lt,t));
     sp.SetArguments(la);sp.SetTools(lt);sp.Build();
     if(!sp.IsDone())throw new Error('découpe refusée par le noyau');
     const r=sp.Shape();if(!r||r.IsNull())throw new Error('résultat vide');

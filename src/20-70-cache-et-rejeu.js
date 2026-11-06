@@ -590,7 +590,7 @@ function* occReplayBodyGen(bid,list){
       const la=new occt.TopTools_ListOfShape_1(),lt=new occt.TopTools_ListOfShape_1();
       const c=cut?new occt.BRepAlgoAPI_Cut_1():new occt.BRepAlgoAPI_Fuse_1();
       try{
-        la.Append_1(result);tools.forEach(t=>lt.Append_1(t));
+        occAjoute(la,result);tools.forEach(t=>occAjoute(lt,t));
         c.SetArguments(la);c.SetTools(lt);if(cut)c.SetCheckInverted(false);c.Build();
         const s=c.IsDone()?c.Shape():null;
         if(!s||s.IsNull())throw new Error('booléen groupé refusé');

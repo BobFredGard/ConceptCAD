@@ -118,6 +118,9 @@ function occSolidCur(x){return occCastLibre(x.Current(),c=>occt.TopoDS.Solid_1(c
 function occShellCur(x){return occCastLibre(x.Current(),c=>occt.TopoDS.Shell_1(c));}
 function occXyz(p){try{return[p.X(),p.Y(),p.Z()];}finally{occFree(p);}} // lit un point / une direction, puis le libère
 function occAvec(h,fn){try{return fn(h);}finally{occFree(h);}} // prête h à fn le temps de l'appel
+// Append rend une COPIE de la forme ajoutée. Oubliée, elle garde en vie tout le solide, sa géométrie et son
+// maillage : Barquette perdait ainsi 0,45 Mo par modification. Toujours ajouter à une liste par cette aide.
+function occAjoute(liste,s){occFree(liste.Append_1(s));}
 function occClassifier(shape){
   // Point dedans / dehors RAPIDE (V0.44.1) : même usage que BRepClass3d_SolidClassifier_2
   // (Perform(p,tol), State(), delete()). Sous OCCT 8 le classifieur coûte ~22 ms par point sur un
@@ -410,7 +413,7 @@ function occCutKids(a,b,kids){
   }
   const la=new occt.TopTools_ListOfShape_1(),lt=new occt.TopTools_ListOfShape_1(),c=new occt.BRepAlgoAPI_Cut_1();
   try{
-    la.Append_1(a);kids.forEach(k=>lt.Append_1(k));
+    occAjoute(la,a);kids.forEach(k=>occAjoute(lt,k));
     // outils de perçage orientés par construction : le contrôle « solide retourné »
     // (une classification complète contre les faces du filet) est superflu
     c.SetArguments(la);c.SetTools(lt);c.SetCheckInverted(false);c.Build();
@@ -684,7 +687,7 @@ function occCoqueThick(result,faces,thick,join,inter){
   const bin=[];
   try{
     const L=occBinPush(bin,new occt.TopTools_ListOfShape_1());
-    for(const f of faces)L.Append_1(occBinPush(bin,occt.TopoDS.Face_1(f)));
+    for(const f of faces)occAjoute(L,occBinPush(bin,occt.TopoDS.Face_1(f)));
     let mk;
     if(occt.BRepOffsetAPI_MakeThickSolid_2){
       mk=occBinPush(bin,new occt.BRepOffsetAPI_MakeThickSolid_2(
