@@ -66,6 +66,7 @@ class VueEsquisse : public wxWindow {
   void essaiCaractere(wxChar c);
   void essaiReglagesPolygone(const wxString& cotes, const wxString& diametre);
   bool essaiBarrePolygoneVisible() const { return barrePoly_ && barrePoly_->IsShown(); }
+  void choisirModeTrace(const std::string& code);  // le clic sur un choix du bandeau
   bool essaiSansMenu = false;
   std::string essaiChoixMenu;
   std::vector<std::string> essaiEntreesMenu;
@@ -78,6 +79,10 @@ class VueEsquisse : public wxWindow {
   void clicDroitDessin(const wxPoint& ou);  // le menu de l'écouteur contextmenu du navigateur
   void majBarrePolygone();  // skPolySync : le bandeau n'existe à l'écran que pendant l'outil Polygone
   void lireBarrePolygone();
+  void majBarreTrace();  // skModeBarSync : le bandeau de choix de l'oblong, du rectangle, du cercle et de l'arc
+  wxPanel* barreTrace_ = nullptr;
+  int outilBarre_ = -1;
+  std::vector<wxWindow*> boutonsTrace_;
   wxPanel* barrePoly_ = nullptr;
   wxSpinCtrl* polyN_ = nullptr;
   wxTextCtrl* polyD_ = nullptr;

@@ -1809,6 +1809,7 @@ bool Cadre::essaiEsquisse(const std::wstring& fichier, int rang, const std::wstr
     if (e.contains("texte"))
       for (const char c : e["texte"].get<std::string>()) vueEsquisse_->essaiCaractere(c);
     if (e.contains("poly")) vueEsquisse_->essaiReglagesPolygone(wxString::Format("%d", e["poly"][0].get<int>()), wxString::FromUTF8(e["poly"][1].get<std::string>()));
+    if (e.contains("mode")) vueEsquisse_->choisirModeTrace(e["mode"].get<std::string>());
     if (e.contains("annuler")) annuler();
     // La saisie d'une cote telle que tapée, la mini-liste, la liste complète en photo
     if (e.contains("coteTexte")) {

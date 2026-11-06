@@ -46,6 +46,7 @@ static std::string structure(const Esquisse& s) {
     const Contrainte& c = s.contraintes[i];
     o << (i ? ";" : "") << c.id << ',' << c.type << ',' << c.p << ',' << c.line << ',' << c.ent << ',' << c.a << ',' << c.b << ',' << c.mid << ',' << c.c << ',' << c.d << ',' << (c.inf ? 1 : 0);
     if (!c.s.empty()) o << ",s:" << c.s;
+    if (c.inner) o << ",i";
   }
   o << '#';
   for (size_t i = 0; i < s.cotes.size(); i++) {
@@ -218,6 +219,9 @@ int wmain(int argc, wchar_t** argv) {
           if (miens != siens) fautes.push_back(f + " " + id + " : MENU natif " + miens + " / navigateur " + siens);
           for (const auto& x : entrees)
             if (x.libelle == st["c"].get<std::string>()) D.actionMenu(x.code);
+        } else if (a == "mode") {
+          const std::string t = st["t"];
+          D.choisirMode(t == "slot" ? Dessin::OBLONG : t == "rect" ? Dessin::RECTANGLE : t == "circle" ? Dessin::CERCLE : Dessin::ARC, st["k"].get<std::string>());
         } else if (a == "poly") {
           D.lirePolygone(st["n"].get<int>(), st["d"].get<std::string>());
         } else if (a == "projAretes") {

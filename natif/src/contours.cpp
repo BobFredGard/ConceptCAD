@@ -369,12 +369,13 @@ Trace tracerContours(const Esquisse& s) {
         auto an = anglesArc(s, a);
         if (!an) continue;
         bool av = ed.a == h.de;
-        double sA = av ? an->a1 : an->a2, sB = av ? an->a2 : an->a1;
-        double dd = std::fmod(std::fmod(sB - sA, TAU) + TAU, TAU);
+        // À rebours, l'arc se parcourt en sens horaire (l'anneau prenait le RESTE du cercle : disque fantôme sur un arc creux)
+        const double sA = av ? an->a1 : an->a2, sens = av ? 1 : -1;
+        double dd = std::fmod(std::fmod(an->a2 - an->a1, TAU) + TAU, TAU);
         if (dd < 1e-9) dd = TAU;
         int n2 = std::max(2, static_cast<int>(std::ceil(dd / TAU * 24)));
         for (int k = 1; k <= n2; k++) {
-          double t = sA + dd * k / n2;
+          double t = sA + sens * dd * k / n2;
           r.push_back({Cc.x + a.r * std::cos(t), Cc.y + a.r * std::sin(t)});
         }
       }
