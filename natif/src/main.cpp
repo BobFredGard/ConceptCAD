@@ -305,7 +305,7 @@ int modeDessiner(const std::vector<std::wstring>& a) {
         const double x = st.value("x", 0.0), y = st.value("y", 0.0);
         if (g == "outil") {
           const std::string o = st["o"];
-          D.choisirOutil(o == "line" ? Dessin::LIGNE : o == "rect" ? Dessin::RECTANGLE : o == "circle" ? Dessin::CERCLE : o == "arc" ? Dessin::ARC : Dessin::SELECTION);
+          D.choisirOutil(o == "coincident" ? Dessin::COINCIDENT : o == "fillet" ? Dessin::CONGE : o == "chamfer" ? Dessin::CHANFREIN : o == "slot" ? Dessin::OBLONG : o == "polygon" ? Dessin::POLYGONE : o == "cpoint" ? Dessin::POINT_C : o == "hpoint" ? Dessin::PERCAGE : o == "line" ? Dessin::LIGNE : o == "rect" ? Dessin::RECTANGLE : o == "circle" ? Dessin::CERCLE : o == "arc" ? Dessin::ARC : Dessin::SELECTION);
         } else if (g == "bas") {
           D.enfonce(x, y, st.value("c", false));
         } else if (g == "bouge") {
@@ -336,13 +336,21 @@ class Appli : public wxApp {
     SetAppearance(Appearance::Dark);  // comme le thème par défaut de la version navigateur
     auto* cadre = new Cadre;
     // Les captures ne doivent pas prendre la main sur ce que fait la personne devant le PC.
-    if ((!gArgs.empty() && (gArgs[0] == L"--captures" || gArgs[0] == L"--essai-conge" || gArgs[0] == L"--image3d")) || _wgetenv(L"CONCEPTCAD_SANS_ACTIVER")) cadre->ShowWithoutActivating();
+    if ((!gArgs.empty() && (gArgs[0] == L"--captures" || gArgs[0] == L"--essai-conge" || gArgs[0] == L"--essai-esquisse" || gArgs[0] == L"--image3d")) || _wgetenv(L"CONCEPTCAD_SANS_ACTIVER")) cadre->ShowWithoutActivating();
     else cadre->Show();
     cadre->Update();
     // --protocole <fichier> <journal> [nb] : même suite de modifications que la version navigateur
     if (gArgs.size() >= 3 && gArgs[0] == L"--protocole") {
       const int nb = gArgs.size() >= 4 ? _wtoi(gArgs[3].c_str()) : 120;
       if (!cadre->lancerProtocole(gArgs[1], gArgs[2], nb)) return false;
+    } else if (gArgs.size() >= 6 && gArgs[0] == L"--essai-esquisse") {
+      // --essai-esquisse <fichier> <rang, -1 : nouvelle sur XY> <sortie> <etapes.json> <dossier>
+      wxImage::AddHandler(new wxPNGHandler);
+      cadre->SetClientSize(cadre->FromDIP(wxSize(1500, 900)));
+      cadre->Update();
+      wxYield();
+      if (!cadre->essaiEsquisse(gArgs[1], _wtoi(gArgs[2].c_str()), gArgs[3], gArgs[4], gArgs[5])) exit(3);
+      cadre->Close(true);
     } else if (gArgs.size() >= 5 && gArgs[0] == L"--essai-conge") {
       // --essai-conge <fichier> <sortie> <gestes.json> <dossier> : de vrais clics dans la vue, des images, puis fermeture
       wxImage::AddHandler(new wxPNGHandler);

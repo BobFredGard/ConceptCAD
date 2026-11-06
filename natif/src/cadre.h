@@ -65,6 +65,7 @@ class Cadre : public wxFrame {
 public:
   void entrerEsquisse(int i);
   void capturerEsquisses(const std::wstring& dossier);
+  bool essaiEsquisse(const std::wstring& fichier, int rang, const std::wstring& sortie, const std::wstring& json, const std::wstring& dossier);
   void imageVue3D(const wxString& chemin);
   bool essaiGestesConge(const std::wstring& fichier, const std::wstring& sortie, const std::wstring& json, const std::wstring& dossier);
  private:

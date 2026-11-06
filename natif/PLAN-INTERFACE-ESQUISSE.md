@@ -93,6 +93,12 @@ Splines, projections et intersections sur le noyau natif, esquisses sur plan de 
 
 **Faite le 06/11/2026, à essayer** : écran d'esquisse puis tout l'environnement, voir [README.md](README.md). Suite demandée par Fred : remplir les boutons grisés, fonction par fonction. Fait à ce jour : Esquisse, Extrusion, Congé, Chanfrein à distance égale.
 
+## Ordre de travail décidé par Fred (06/11/2026)
+
+1. Finir l'atelier esquisse. 2. Atelier CAO. 3. Atelier Assemblage et son menu. 4. Mise en plan. 5. FAO et rendu.
+
+Reste pour l'esquisse : Spline, Spline de contrôle, Projeter, Intersection ; Vue inclinée ; Paramètres ; retrait d'une contrainte (à vérifier), accroche et sélection sur les arêtes du solide, suppression d'une esquisse, entrées spline du menu, insertion d'une cote dans une saisie ouverte.
+
 ## Hors de ce plan
 
 Fonctions 3D (congés, répétitions), FAO, mise en plan, rendu. Tant que les fonctions 3D manquent, la plupart des pièces montreront leurs esquisses mais pas tout leur solide :

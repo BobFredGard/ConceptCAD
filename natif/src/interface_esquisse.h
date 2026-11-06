@@ -14,6 +14,9 @@
 #include "infos_esquisse.h"
 
 // Un bouton dessiné par nous. Une vraie fenêtre, avec son nom : les essais la retrouvent et lui envoient des clics.
+// L'icône d'une entrée du menu clic droit, dans la couleur du texte des menus
+wxBitmapBundle iconeMenuEsquisse(const std::string& nom);
+
 class BoutonEsquisse : public wxWindow {
  public:
   enum Style { ICONE, ENCADRE, TEXTE, PRINCIPAL, PASTILLE, RUBAN };
@@ -49,6 +52,8 @@ class BarreEsquisse : public wxWindow {
   std::function<void(const wxString&)> surIndisponible;
   std::function<void()> surCadrer, surGrille, surGrilleMenu, surFantome, surAbandon, surTerminer;
   void outilActif(Dessin::Outil o);
+  // Pour les essais : le clic sur un bouton d'outil, par son numéro
+  bool essaiCliquerOutil(Dessin::Outil o);
   void lectureSeule(bool oui);
   void grilleActive(bool oui);
   void fantomeActif(bool oui);

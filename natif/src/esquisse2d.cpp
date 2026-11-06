@@ -1,6 +1,10 @@
 #include "esquisse2d.h"
 
 #include <wx/dcbuffer.h>
+#include <wx/spinctrl.h>
+
+#include "cote_geometrie.h"
+#include "interface_esquisse.h"
 
 #include <BRepAdaptor_Curve.hxx>
 #include <GCPnts_TangentialDeflection.hxx>
@@ -19,10 +23,6 @@ const double ECHELLE_MIN = 0.02, ECHELLE_MAX = 4000;
 const wxColour FOND_VUE(0x13, 0x15, 0x19), FOND(0x10, 0x10, 0x12), GRILLE(0x2a, 0x2a, 0x2e), AXE(0x0a, 0x84, 0xff), TRAIT(0xe8, 0xe8, 0xea), GRIS(0x8e, 0x8e, 0x93);
 const wxColour VERT(0x30, 0xd1, 0x58), VERT_FOND(0x16, 0x26, 0x1b), ORANGE(0xff, 0xb3, 0x40), ORANGE_AXE(0xff, 0x9f, 0x0a), VIOLET(0xbf, 0x5a, 0xf2), CYAN(0x64, 0xd2, 0xff);
 
-struct P2 {
-  double x, y;
-};
-double dist(const P2& a, const P2& b) { return std::hypot(a.x - b.x, a.y - b.y); }
 
 wxColour alpha(const wxColour& c, double a) { return wxColour(c.Red(), c.Green(), c.Blue(), static_cast<unsigned char>(a * 255)); }
 
@@ -88,99 +88,6 @@ void icone(wxGraphicsContext& g, const std::string& n) {
   else if (n == "coaxial") { cercle(g, 3.5, 3.5, 17, 17); cercle(g, 7.5, 7.5, 9, 9); }
 }
 
-// Géométrie d'une cote linéaire : dimSeg (src/50-esquisse-4). Rend false s'il manque une référence.
-struct Seg {
-  P2 a{}, b{}, A{}, B{};
-  double nx = 0, ny = 0, w = 0, ux = 0, uy = 0;
-  char hv = 0;
-  double cx = 0, cy = 0;
-};
-bool segment(const Esquisse& s, const Cote& d, Seg& S) {
-  auto pt = [&](const std::string& id, P2& o) {
-    const Pt* q = s.point(id);
-    if (!q) return false;
-    o = {q->x, q->y};
-    return true;
-  };
-  if (d.type == "length" || d.type == "distance") {
-    if (d.type == "length") {
-      const Entite* l = s.entite(d.line);
-      if (!l || !pt(l->p1, S.A) || !pt(l->p2, S.B)) return false;
-    } else if (!pt(d.a, S.A) || !pt(d.b, S.B)) {
-      return false;
-    }
-    const double w = d.aW ? d.w : (d.type == "length" ? 5 : 0);
-    S.w = w;
-    if (d.orient == "h") {
-      S.cy = (S.A.y + S.B.y) / 2 + w;
-      S.a = {S.A.x, S.cy};
-      S.b = {S.B.x, S.cy};
-      S.nx = 0;
-      S.ny = 1;
-      S.hv = 'h';
-    } else if (d.orient == "v") {
-      S.cx = (S.A.x + S.B.x) / 2 + w;
-      S.a = {S.cx, S.A.y};
-      S.b = {S.cx, S.B.y};
-      S.nx = 1;
-      S.ny = 0;
-      S.hv = 'v';
-    } else {
-      double L = dist(S.A, S.B);
-      if (L == 0) L = 1e-9;
-      S.nx = -(S.B.y - S.A.y) / L;
-      S.ny = (S.B.x - S.A.x) / L;
-      S.a = {S.A.x + S.nx * w, S.A.y + S.ny * w};
-      S.b = {S.B.x + S.nx * w, S.B.y + S.ny * w};
-    }
-    return true;
-  }
-  if (d.type == "gap") {
-    const Entite* A = s.entite(d.a);
-    const Entite* B = s.entite(d.b);
-    P2 A1, A2, B1, B2;
-    if (!A || !B || !pt(A->p1, A1) || !pt(A->p2, A2) || !pt(B->p1, B1) || !pt(B->p2, B2)) return false;
-    double L = dist(A1, A2);
-    if (L == 0) L = 1e-9;
-    S.ux = (A2.x - A1.x) / L;
-    S.uy = (A2.y - A1.y) / L;
-    S.nx = -S.uy;
-    S.ny = S.ux;
-    const P2 Am{(A1.x + A2.x) / 2, (A1.y + A2.y) / 2}, Bm{(B1.x + B2.x) / 2, (B1.y + B2.y) / 2};
-    const double ecart = (Bm.x - Am.x) * S.nx + (Bm.y - Am.y) * S.ny;
-    S.a = {Am.x + S.ux * d.sl, Am.y + S.uy * d.sl};
-    S.b = {S.a.x + S.nx * ecart, S.a.y + S.ny * ecart};
-    return true;
-  }
-  if (d.type == "distline") {
-    const Entite* l = s.entite(d.line);
-    P2 Q, A, B;
-    if (!l || l->t != "line" || !pt(d.p, Q) || !pt(l->p1, A) || !pt(l->p2, B)) return false;
-    const double dx = B.x - A.x, dy = B.y - A.y;
-    double L2 = dx * dx + dy * dy;
-    if (L2 == 0) L2 = 1e-9;
-    const double t = ((Q.x - A.x) * dx + (Q.y - A.y) * dy) / L2;
-    const P2 F{A.x + dx * t, A.y + dy * t};
-    double L = dist(Q, F);
-    if (L > 1e-9) {
-      S.nx = -(F.y - Q.y) / L;
-      S.ny = (F.x - Q.x) / L;
-    } else {
-      L = std::hypot(dx, dy);
-      if (L == 0) L = 1e-9;
-      S.nx = dx / L;
-      S.ny = dy / L;
-    }
-    S.w = d.aW ? d.w : 0;
-    S.a = {Q.x + S.nx * S.w, Q.y + S.ny * S.w};
-    S.b = {F.x + S.nx * S.w, F.y + S.ny * S.w};
-    S.A = Q;
-    S.B = F;
-    return true;
-  }
-  return false;
-}
-
 // Sommet d'une cote d'angle : angleVertex (src/50-esquisse-4)
 bool sommetAngle(const Esquisse& s, const Cote& d, P2& V) {
   const Entite* A = s.entite(d.a);
@@ -237,10 +144,74 @@ VueEsquisse::VueEsquisse(wxWindow* parent) : wxWindow(parent, 2004, wxDefaultPos
   });
 }
 
+void VueEsquisse::lireBarrePolygone() {
+  if (!dessin_ || !polyN_) return;
+  dessin_->vue(echelle_);
+  dessin_->lirePolygone(polyN_->GetValue(), std::string(polyD_->GetValue().ToUTF8()));
+  if (surGeste) surGeste();
+  Refresh();
+}
+
+void VueEsquisse::majBarrePolygone() {
+  const bool oui = dessin_ && dessin_->outil() == Dessin::POLYGONE;
+  if (!barrePoly_) {
+    if (!oui) return;
+    const wxColour fond(0x1e, 0x1e, 0x1e), texte(0xe8, 0xe8, 0xea);
+    barrePoly_ = new wxPanel(this, 2006, FromDIP(wxPoint(10, 10)));
+    barrePoly_->SetBackgroundColour(fond);
+    barrePoly_->SetForegroundColour(texte);
+    auto* ligne = new wxBoxSizer(wxHORIZONTAL);
+    const auto libelle = [&](const wxString& t) {
+      auto* l = new wxStaticText(barrePoly_, wxID_ANY, t);
+      l->SetForegroundColour(texte);
+      return l;
+    };
+    const Dessin::ReglagesPolygone& reglages = Dessin::reglagesPolygone();
+    polyN_ = new wxSpinCtrl(barrePoly_, 2007, wxEmptyString, wxDefaultPosition, FromDIP(wxSize(58, -1)), wxSP_ARROW_KEYS | wxTE_PROCESS_ENTER, 3, 64, reglages.n);
+    polyN_->SetToolTip(L"Nombre de côtés (3 à 64)");
+    polyD_ = new wxTextCtrl(barrePoly_, 2008, reglages.d > 0 ? wxString::FromCDouble(reglages.d) : wxString(), wxDefaultPosition, FromDIP(wxSize(92, -1)), wxTE_PROCESS_ENTER);
+    polyD_->SetHint(L"à la souris");
+    polyD_->SetToolTip(L"Ø du cercle tangent aux côtés (sur-plats). Vide : à la souris");
+    ligne->Add(libelle(L"Côtés"), 0, wxALIGN_CENTER_VERTICAL | wxLEFT, FromDIP(10));
+    ligne->Add(polyN_, 0, wxALIGN_CENTER_VERTICAL | wxLEFT | wxTOP | wxBOTTOM, FromDIP(6));
+    ligne->Add(libelle(L"Ø intérieur"), 0, wxALIGN_CENTER_VERTICAL | wxLEFT, FromDIP(10));
+    ligne->Add(polyD_, 0, wxALIGN_CENTER_VERTICAL | wxLEFT | wxRIGHT, FromDIP(6));
+    barrePoly_->SetSizerAndFit(ligne);
+    polyN_->Bind(wxEVT_SPINCTRL, [this](wxSpinEvent&) { lireBarrePolygone(); });
+    polyN_->Bind(wxEVT_TEXT, [this](wxCommandEvent& e) {
+      e.Skip();
+      lireBarrePolygone();
+    });
+    polyD_->Bind(wxEVT_TEXT, [this](wxCommandEvent& e) {
+      e.Skip();
+      lireBarrePolygone();
+    });
+    const auto valider = [this](wxCommandEvent&) {
+      lireBarrePolygone();
+      SetFocus();
+      if (!dessin_) return;
+      dessin_->vue(echelle_);
+      dessin_->entree();
+      apresGeste();
+    };
+    polyN_->Bind(wxEVT_TEXT_ENTER, valider);
+    polyD_->Bind(wxEVT_TEXT_ENTER, valider);
+    const auto echap = [this](wxKeyEvent& e) {
+      if (e.GetKeyCode() != WXK_ESCAPE) return e.Skip();
+      SetFocus();
+      echapDessin();
+    };
+    polyN_->Bind(wxEVT_CHAR_HOOK, echap);
+    polyD_->Bind(wxEVT_CHAR_HOOK, echap);
+  }
+  if (barrePoly_->IsShown() != oui) barrePoly_->Show(oui);
+}
+
 void VueEsquisse::poserDessin(Dessin* d) {
   dessin_ = d;
   gauche_ = dblEnAttente_ = false;
   if (d) d->grille = accrocheGrille_;
+  majBarrePolygone();
   Refresh();
 }
 
@@ -277,6 +248,7 @@ void VueEsquisse::ouvrirCoteParId(const std::string& id) {
 
 void VueEsquisse::apresGeste() {
   if (!dessin_) return;
+  majBarrePolygone();
   if (dessin_->aChange()) {
     dessin_->changeVu();
     if (surDessinChange) surDessinChange();
@@ -315,6 +287,20 @@ std::string VueEsquisse::zoneSous(const wxPoint& q) const {
   return "";
 }
 
+std::string VueEsquisse::ligneSous(const wxPoint& q) const {
+  for (const ZoneLigne& z : zonesLignes_) {
+    if (z.arc) {
+      for (const wxPoint2DDouble& p : z.pts)
+        if (std::hypot(p.m_x - q.x, p.m_y - q.y) < 7) return z.id;
+    } else if (z.pts.size() == 2) {
+      const double dx = z.pts[1].m_x - z.pts[0].m_x, dy = z.pts[1].m_y - z.pts[0].m_y, L2 = dx * dx + dy * dy;
+      const double t = L2 > 0 ? std::clamp(((q.x - z.pts[0].m_x) * dx + (q.y - z.pts[0].m_y) * dy) / L2, 0.0, 1.0) : 0;
+      if (std::hypot(q.x - (z.pts[0].m_x + t * dx), q.y - (z.pts[0].m_y + t * dy)) < 7) return z.id;
+    }
+  }
+  return "";
+}
+
 void VueEsquisse::ouvrirCote(const std::string& id, const wxString& texteDepart) {
   for (const Cote& d : s_->cotes) {
     if (d.id != id) continue;
@@ -336,8 +322,12 @@ void VueEsquisse::surGaucheBas(wxMouseEvent& ev) {
   if (!dessin_ || !s_) return;
   if (dessin_->outil() == Dessin::SELECTION) {
     const std::string id = zoneSous(ToDIP(ev.GetPosition()));
-    if (!id.empty()) {
-      dessin_->choisirCote(id);
+    if (!id.empty()) {  // une valeur se déplace au glisser, s'ouvre au double-clic
+      if (!HasCapture()) CaptureMouse();
+      gauche_ = true;
+      const auto w = plan(ev.GetPosition());
+      dessin_->vue(echelle_);
+      dessin_->prendreCote(id, w.m_x, w.m_y);
       apresGeste();
       return;
     }
@@ -356,7 +346,8 @@ void VueEsquisse::surGaucheBas(wxMouseEvent& ev) {
   gauche_ = true;
   const auto w = plan(ev.GetPosition());
   dessin_->vue(echelle_);
-  dessin_->enfonce(w.m_x, w.m_y, ev.ControlDown());
+  const bool select = dessin_->outil() == Dessin::SELECTION && !ev.LeftDClick();
+  dessin_->enfonce(w.m_x, w.m_y, ev.ControlDown(), select ? ligneSous(ToDIP(ev.GetPosition())) : std::string());
   apresGeste();
 }
 
@@ -404,6 +395,15 @@ void VueEsquisse::surCaractere(wxKeyEvent& ev) {
   if (!dessin_ || enSaisie() || ev.ControlDown() || ev.AltDown() || c == WXK_NONE || c > 127) return ev.Skip();
   const char k = static_cast<char>(c);
   dessin_->vue(echelle_);
+  if (dessin_->outil() == Dessin::POLYGONE && k >= '0' && k <= '9') {  // skPolyType : le chiffre part dans le champ Ø
+    majBarrePolygone();
+    if (polyD_) {
+      polyD_->SetValue(wxString(k));
+      polyD_->SetFocus();
+      polyD_->SetInsertionPointEnd();
+    }
+    return;
+  }
   if (dessin_->caractere(k)) {
     Refresh();
     return;
@@ -454,10 +454,29 @@ void VueEsquisse::surTouche(wxKeyEvent& ev) {
     apresGeste();
     return;
   }
-  if ((ev.GetKeyCode() == 'T' || ev.GetKeyCode() == 'O') && !ev.HasAnyModifiers() && dessin_ && !enSaisie() && !dessin_->saisieTracee().actif) {
-    const Dessin::Outil o = ev.GetKeyCode() == 'T' ? Dessin::AJUSTER : Dessin::DECALER;
-    commande([o](Dessin& d) { d.choisirOutil(o); });
-    return;
+  // Les raccourcis du navigateur : une lettre pour un outil, F1 à F12 pour les contraintes (skShortcut)
+  if (dessin_ && !enSaisie() && !ev.ControlDown() && !ev.AltDown() && !dessin_->saisieTracee().actif) {
+    if (code == WXK_F1) return commande([](Dessin& d) { d.toucheF1(); });
+    if (code == WXK_F2) return commande([](Dessin& d) { d.toucheF2(); });
+    const char* type = code == WXK_F3 ? "tangent" : code == WXK_F4 ? "equal" : code == WXK_F5 ? "parallel" : code == WXK_F6 ? "perpendicular" : code == WXK_F7 ? "midpoint" : code == WXK_F8 ? "coaxial" : code == WXK_F9 ? "collinear" : code == WXK_F10 ? "symmetric" : code == WXK_F12 ? "fix" : nullptr;
+    if (type) return commande([type](Dessin& d) { d.poserContrainte(type); });
+    if (!ev.ShiftDown()) {
+      int o = -1;
+      switch (code) {
+        case 'L': o = Dessin::LIGNE; break;
+        case 'C': o = Dessin::CERCLE; break;
+        case 'G': o = Dessin::POLYGONE; break;
+        case 'R': o = Dessin::RECTANGLE; break;
+        case 'B': o = Dessin::OBLONG; break;
+        case 'T': o = Dessin::AJUSTER; break;
+        case 'D': o = Dessin::COTE; break;
+        case 'F': o = Dessin::CONGE; break;
+        case 'O': o = Dessin::DECALER; break;
+        case 'H': o = Dessin::PERCAGE; break;
+        default: break;
+      }
+      if (o >= 0) return commande([o](Dessin& d) { d.choisirOutil(static_cast<Dessin::Outil>(o)); });
+    }
   }
   if (ev.GetKeyCode() == 'X' && !ev.HasAnyModifiers() && !(dessin_ && dessin_->saisieTracee().actif)) {
     commande([](Dessin& d) { d.poserContrainte("construction"); });
@@ -618,10 +637,95 @@ void VueEsquisse::surEnfonce(wxMouseEvent& ev) {
 }
 void VueEsquisse::surRelache(wxMouseEvent& ev) {
   const wxPoint d = ToDIP(ev.GetPosition() - geste_.depart);
-  // Clic droit sans glisser : fin du tracé, comme le navigateur
-  if (geste_.actif && ev.RightUp() && std::abs(d.x) + std::abs(d.y) < 4) abandonnerTrace();
+  const bool clicDroit = geste_.actif && ev.RightUp() && std::abs(d.x) + std::abs(d.y) < 4;
   geste_.actif = false;
   if (HasCapture() && !gauche_) ReleaseMouse();
+  // Clic droit sans glisser, comme le navigateur (écouteur contextmenu)
+  if (clicDroit) clicDroitDessin(ev.GetPosition());
+}
+
+void VueEsquisse::essaiSouris(wxEventType type, double x, double y, bool ctrl) {
+  const wxPoint2DDouble q = e(x, y);
+  wxMouseEvent ev(type);
+  ev.SetEventObject(this);
+  ev.SetId(GetId());
+  ev.SetPosition(FromDIP(wxPoint(static_cast<int>(std::lround(q.m_x)), static_cast<int>(std::lround(q.m_y)))));
+  ev.SetControlDown(ctrl);
+  ev.SetLeftDown(type == wxEVT_LEFT_DOWN);
+  ev.SetRightDown(type == wxEVT_RIGHT_DOWN);
+  GetEventHandler()->ProcessEvent(ev);
+}
+void VueEsquisse::essaiTouche(int code) {
+  wxKeyEvent ev(wxEVT_KEY_DOWN);
+  ev.SetEventObject(this);
+  ev.m_keyCode = code;
+  GetEventHandler()->ProcessEvent(ev);
+}
+void VueEsquisse::essaiCaractere(wxChar c) {
+  wxKeyEvent ev(wxEVT_CHAR);
+  ev.SetEventObject(this);
+  ev.m_keyCode = c;
+  ev.m_uniChar = c;
+  GetEventHandler()->ProcessEvent(ev);
+}
+void VueEsquisse::essaiReglagesPolygone(const wxString& cotes, const wxString& diametre) {
+  majBarrePolygone();
+  if (!polyN_) return;
+  long n = 0;
+  if (cotes.ToLong(&n)) polyN_->SetValue(static_cast<int>(n));
+  polyD_->SetValue(diametre);
+  lireBarrePolygone();
+}
+
+void VueEsquisse::clicDroitDessin(const wxPoint& ou) {
+  if (!dessin_ || enSaisie()) return;
+  dessin_->vue(echelle_);
+  if (dessin_->poseEnCours()) {
+    dessin_->annulerPoseCote();
+    apresGeste();
+    return;
+  }
+  const std::string sous = zoneSous(ToDIP(ou));
+  if (!sous.empty()) {
+    dessin_->choisirCote(sous);
+    apresGeste();
+  }
+  if (!dessin_->aSelection()) {
+    abandonnerTrace();
+    return;
+  }
+  std::string titre;
+  const std::vector<Dessin::EntreeMenu> entrees = dessin_->menuContextuel(titre);
+  wxMenu menu;
+  auto* entete = menu.Append(wxID_ANY, wxString::FromUTF8(titre));
+  entete->Enable(false);
+  menu.AppendSeparator();
+  const int base = 7000;
+  for (size_t i = 0; i < entrees.size(); i++) {
+    auto* item = new wxMenuItem(&menu, base + static_cast<int>(i), wxString::FromUTF8(entrees[i].libelle));
+    if (!entrees[i].icone.empty()) item->SetBitmap(iconeMenuEsquisse(entrees[i].icone));
+    menu.Append(item);
+    if (!entrees[i].disponible) item->Enable(false);
+  }
+  int choix = wxID_NONE;
+  if (essaiSansMenu) {
+    essaiEntreesMenu.clear();
+    for (size_t i = 0; i < entrees.size(); i++) {
+      essaiEntreesMenu.push_back(entrees[i].libelle);
+      if (entrees[i].libelle == essaiChoixMenu && entrees[i].disponible) choix = base + static_cast<int>(i);
+    }
+  } else {
+    choix = GetPopupMenuSelectionFromUser(menu, ou);
+  }
+  if (choix < base || choix >= base + static_cast<int>(entrees.size())) return;
+  const std::string code = entrees[choix - base].code;
+  if (code.empty()) return;
+  if (code == "modifier") {
+    const std::vector<Dessin::Choix>& sel = dessin_->selection();
+    if (!sel.empty()) ouvrirCoteParId(sel[0].id);
+    return;
+  }
+  commande([&code](Dessin& de) { de.actionMenu(code); });
 }
 void VueEsquisse::surMouvement(wxMouseEvent& ev) {
   if (!geste_.actif) {
@@ -707,6 +811,19 @@ void VueEsquisse::dessiner(wxDC& dc) {
 // Le tracé en cours, l'accroche et les guides, par-dessus tout
 void VueEsquisse::trace(wxGraphicsContext& g) const {
   if (!dessin_) return;
+  const Dessin::Boite& bx = dessin_->boite();
+  if (bx.actif) {  // la fenêtre de sélection
+    wxGraphicsPath p = g.CreatePath();
+    p.MoveToPoint(e(bx.x0, bx.y0));
+    p.AddLineToPoint(e(bx.x1, bx.y0));
+    p.AddLineToPoint(e(bx.x1, bx.y1));
+    p.AddLineToPoint(e(bx.x0, bx.y1));
+    p.CloseSubpath();
+    g.SetBrush(g.CreateBrush(wxBrush(alpha(AXE, 0.08))));
+    g.SetPen(stylo(g, AXE, 1, {4, 3}));
+    g.FillPath(p);
+    g.StrokePath(p);
+  }
   const Dessin::Brouillon& b = dessin_->brouillon();
   g.SetBrush(wxNullGraphicsBrush);
   g.SetPen(stylo(g, AXE, 1.6, {6, 4}));
@@ -720,6 +837,53 @@ void VueEsquisse::trace(wxGraphicsContext& g) const {
       ligne(g, e(b.x2, b.y2), e(b.x1, b.y2));
       ligne(g, e(b.x1, b.y2), e(b.x1, b.y1));
       break;
+    case Dessin::Brouillon::B_OBLONG: {
+      const double x0 = std::min(b.x1, b.x2), x1 = std::max(b.x1, b.x2), y0 = std::min(b.y1, b.y2), y1 = std::max(b.y1, b.y2), w = x1 - x0, h = y1 - y0;
+      if (w > 0.5 && h > 0.5) {
+        const double r = std::min(w, h) / 2, pi = 3.141592653589793;
+        const bool couche = w > h;
+        const double c1x = couche ? x0 + r : (x0 + x1) / 2, c1y = couche ? (y0 + y1) / 2 : y0 + r;
+        const double c2x = couche ? x1 - r : c1x, c2y = couche ? c1y : y1 - r;
+        const double d1 = couche ? pi / 2 : pi, d2 = couche ? -pi / 2 : 0;
+        wxGraphicsPath p = g.CreatePath();
+        for (int i = 0; i <= 24; i++) {
+          const double a = d1 + pi * i / 24;
+          const auto q = e(c1x + r * std::cos(a), c1y + r * std::sin(a));
+          if (i == 0) p.MoveToPoint(q);
+          else p.AddLineToPoint(q);
+        }
+        for (int i = 0; i <= 24; i++) {
+          const double a = d2 + pi * i / 24;
+          p.AddLineToPoint(e(c2x + r * std::cos(a), c2y + r * std::sin(a)));
+        }
+        p.CloseSubpath();
+        g.StrokePath(p);
+      }
+      break;
+    }
+    case Dessin::Brouillon::B_POLYGONE: {
+      const double a = 3.141592653589793 / b.n, R = b.r / std::cos(a);
+      wxGraphicsPath p = g.CreatePath();
+      for (int i = 0; i < b.n; i++) {
+        const double t = b.a1 - a + i * 2 * a;
+        const auto q = e(b.cx + R * std::cos(t), b.cy + R * std::sin(t));
+        if (i == 0) p.MoveToPoint(q);
+        else p.AddLineToPoint(q);
+      }
+      p.CloseSubpath();
+      g.StrokePath(p);
+      const wxColour jaune(0xff, 0xd6, 0x0a);
+      const auto c = e(b.cx, b.cy);
+      const double r = b.r * echelle_;
+      g.SetPen(stylo(g, jaune, 1, {3, 3}));
+      cercle(g, c.m_x - r, c.m_y - r, 2 * r, 2 * r);
+      const wxString texte = wxString::Format(L"%d côtés · ⌀%.2f", b.n, 2 * b.r);
+      double L, H, dsc, ext;
+      g.SetFont(g.CreateFont(wxFontInfo(10).Bold(), jaune));
+      g.GetTextExtent(texte, &L, &H, &dsc, &ext);
+      g.DrawText(texte, c.m_x - L / 2, c.m_y - R * echelle_ - 10 - H);
+      break;
+    }
     case Dessin::Brouillon::B_CERCLE: {
       const auto c = e(b.cx, b.cy);
       const double r = b.r * echelle_;
@@ -1222,6 +1386,7 @@ void VueEsquisse::halo(wxGraphicsContext& g) const {
 
 void VueEsquisse::cotes(wxGraphicsContext& g) const {
   zonesCotes_.clear();
+  zonesLignes_.clear();
   g.SetBrush(wxNullGraphicsBrush);
   for (const Cote& d : s_->cotes) {
     if (d.type == "length" || d.type == "distance" || d.type == "gap" || d.type == "distline") coteLineaire(g, d);
@@ -1250,6 +1415,7 @@ void VueEsquisse::prolonge(wxGraphicsContext& g, const std::string& idLigne, dou
 void VueEsquisse::coteLineaire(wxGraphicsContext& g, const Cote& d) const {
   Seg S;
   if (!segment(*s_, d, S)) return;
+  zonesLignes_.push_back({d.id, false, {e(S.a.x, S.a.y), e(S.b.x, S.b.y)}});
   const wxColour c = dessin_ && dessin_->estChoisi(Dessin::Choix::COTE, d.id) ? ORANGE_AXE : d.ref ? GRIS : VERT;
   const double over = 10 / echelle_;
   const auto a = e(S.a.x, S.a.y), b = e(S.b.x, S.b.y);
@@ -1396,6 +1562,11 @@ void VueEsquisse::coteAngle(wxGraphicsContext& g, const Cote& d) const {
   const double rr = d.aW ? std::abs(d.w) : 14 / echelle_;
   const int ccw = (d.ccw == 0 || d.ccw == 1) ? d.ccw : (delta >= 0 ? 1 : 0);
   const double dd = (ccw ? 1 : -1) * std::max(0.02, std::min(PI - 0.02, d.value));
+  {
+    ZoneLigne z{d.id, true, {}};
+    for (int i = 0; i <= 16; i++) z.pts.push_back(e(V.x + rr * std::cos(sA + dd * i / 16), V.y + rr * std::sin(sA + dd * i / 16)));
+    zonesLignes_.push_back(std::move(z));
+  }
   const wxColour c = dessin_ && dessin_->estChoisi(Dessin::Choix::COTE, d.id) ? ORANGE_AXE : d.ref ? GRIS : VERT;
   g.SetPen(stylo(g, c, 1.5));
   const int n = std::max(8, static_cast<int>(std::abs(dd) * std::max(8.0, std::sqrt(rr * echelle_))));

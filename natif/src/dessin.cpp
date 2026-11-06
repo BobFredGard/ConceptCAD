@@ -6,7 +6,9 @@
 #include <charconv>
 #include <cmath>
 #include <cstdio>
+#include <limits>
 
+#include "cote_geometrie.h"
 #include "maths_js.h"
 
 namespace {
@@ -835,17 +837,176 @@ bool Dessin::rigide(const Compo& c) {
   return ed_.solveur.degresLibres() <= 3;
 }
 
-void Dessin::enfonce(double wx, double wy, bool ctrl) {
+void Dessin::prendreCote(const std::string& id, double wx, double wy) {
+  premiere();
+  const Cote* d = cote(id);
+  if (!d) return;
+  sansTete_ = false, selection_ = {{Choix::COTE, id}};
+  glisseC_ = GlisseCote{};
+  glisseC_.actif = true;
+  glisseC_.etiquette = true;
+  glisseC_.id = id;
+  glisseC_.x0 = wx;
+  glisseC_.y0 = wy;
+  glisseC_.ox0 = d->ox;
+  glisseC_.oy0 = d->oy;
+  // Le texte ne saute pas sous le curseur : l'écart entre la prise et le texte est gardé (dimLabelPos)
+  Seg S;
+  if ((d->type == "length" || d->type == "distance" || d->type == "gap" || d->type == "distline") && segment(s_, *d, S)) {
+    P2 T{(S.a.x + S.b.x) / 2, (S.a.y + S.b.y) / 2};
+    if (d->type != "gap" && d->sl != 0) {
+      const double L0 = dist(S.a, S.b), L = L0 != 0 ? L0 : 1e-9;
+      T.x += (S.b.x - S.a.x) / L * d->sl;
+      T.y += (S.b.y - S.a.y) / L * d->sl;
+    }
+    glisseC_.gx = T.x - wx;
+    glisseC_.gy = T.y - wy;
+  }
+}
+
+void Dessin::prendreLigneCote(const std::string& id, double wx, double wy) {
+  const Cote* d = cote(id);
+  if (!d) return;
+  sansTete_ = false, selection_ = {{Choix::COTE, id}};
+  glisseC_ = GlisseCote{};
+  glisseC_.actif = true;
+  glisseC_.id = id;
+  glisseC_.x0 = wx;
+  glisseC_.y0 = wy;
+  glisseC_.w0 = d->aW ? d->w : (d->type == "length" ? 5 : 0);
+  glisseC_.sl0 = d->sl;
+}
+
+// La branche skDimDrag de pointermove
+void Dessin::bougerCoteSaisie(double wx, double wy) {
+  Cote* d = cote(glisseC_.id);
+  if (!d) {
+    glisseC_.actif = false;
+    return;
+  }
+  const bool lineaire = d->type == "length" || d->type == "distance" || d->type == "distline";
+  const double ddx = wx - glisseC_.x0, ddy = wy - glisseC_.y0;
+  if (!glisseC_.etiquette) {
+    if (!glisseC_.pousse && std::abs(ddx) + std::abs(ddy) > 1e-6) {
+      pousser();
+      glisseC_.pousse = true;
+    }
+    Seg S;
+    if (lineaire) {
+      if (segment(s_, *d, S)) {
+        d->w = glisseC_.w0 + ddx * S.nx + ddy * S.ny;
+        d->aW = true;
+      }
+    } else if (d->type == "gap") {
+      if (segment(s_, *d, S)) d->sl = glisseC_.sl0 + ddx * S.ux + ddy * S.uy;
+    } else if (d->type == "angle") {
+      Pt V;
+      if (sommetAngle(s_, d->a, d->b, V)) {
+        d->w = jsmax(1, hyp(wx - V.x, wy - V.y));
+        d->aW = true;
+      }
+    }
+    return;
+  }
+  if (lineaire || d->type == "gap") {
+    const double tx = wx + glisseC_.gx, ty = wy + glisseC_.gy;
+    if (!glisseC_.pousse && hyp(ddx, ddy) * echelle_ > 1) {
+      pousser();
+      glisseC_.pousse = true;
+    }
+    // skDimTextTo : l'écart suit le texte, puis le texte glisse le long de sa ligne
+    Seg S;
+    if (!segment(s_, *d, S)) return;
+    if (d->type == "gap") {
+      const double bx = (S.a.x + S.b.x) / 2 - S.ux * d->sl, by = (S.a.y + S.b.y) / 2 - S.uy * d->sl;
+      d->sl = (tx - bx) * S.ux + (ty - by) * S.uy;
+      return;
+    }
+    d->w = (tx - (S.A.x + S.B.x) / 2) * S.nx + (ty - (S.A.y + S.B.y) / 2) * S.ny;
+    d->aW = true;
+    if (!segment(s_, *d, S)) return;
+    const double dx = S.b.x - S.a.x, dy = S.b.y - S.a.y, L = hyp(dx, dy);
+    if (L < 1e-9) {
+      d->sl = 0;
+      return;
+    }
+    d->sl = ((tx - (S.a.x + S.b.x) / 2) * dx + (ty - (S.a.y + S.b.y) / 2) * dy) / L;
+    if (std::abs(d->sl) < 0.5 / echelle_) d->sl = 0;
+    return;
+  }
+  d->ox = glisseC_.ox0 + ddx;
+  d->oy = glisseC_.oy0 + ddy;
+}
+
+namespace {
+double signe(double v) { return v > 0 ? 1 : v < 0 ? -1 : 0; }
+// segSegHit
+bool segmentsSeCoupent(const Pt& a, const Pt& b, const Pt& c, const Pt& d) {
+  const auto o = [](const Pt& p, const Pt& q, const Pt& r) { return signe((q.x - p.x) * (r.y - p.y) - (q.y - p.y) * (r.x - p.x)); };
+  const double o1 = o(a, b, c), o2 = o(a, b, d), o3 = o(c, d, a), o4 = o(c, d, b);
+  if (o1 != o2 && o3 != o4) return true;
+  const auto sur = [](const Pt& p, const Pt& q, const Pt& r) { return p.x <= jsmax(q.x, r.x) && p.x >= jsmin(q.x, r.x) && p.y <= jsmax(q.y, r.y) && p.y >= jsmin(q.y, r.y); };
+  return (o1 == 0 && sur(c, a, b)) || (o2 == 0 && sur(d, a, b)) || (o3 == 0 && sur(a, c, d)) || (o4 == 0 && sur(b, c, d));
+}
+}  // namespace
+
+// Gauche → droite : entièrement dedans. Droite → gauche : tout ce que la fenêtre touche.
+std::vector<Dessin::Choix> Dessin::dansBoite(const Boite& box) const {
+  const double x0 = jsmin(box.x0, box.x1), x1 = jsmax(box.x0, box.x1), y0 = jsmin(box.y0, box.y1), y1 = jsmax(box.y0, box.y1);
+  const bool avant = box.x1 >= box.x0;
+  const auto dedans = [&](double x, double y) { return x >= x0 && x <= x1 && y >= y0 && y <= y1; };
+  const auto segDedans = [&](const Pt& a, const Pt& b) {
+    if (avant) return dedans(a.x, a.y) && dedans(b.x, b.y);
+    if (dedans(a.x, a.y) || dedans(b.x, b.y)) return true;
+    Pt c1, c2, c3, c4;
+    c1.x = x0; c1.y = y0;
+    c2.x = x1; c2.y = y0;
+    c3.x = x1; c3.y = y1;
+    c4.x = x0; c4.y = y1;
+    return segmentsSeCoupent(a, b, c1, c2) || segmentsSeCoupent(a, b, c2, c3) || segmentsSeCoupent(a, b, c3, c4) || segmentsSeCoupent(a, b, c4, c1);
+  };
+  std::vector<Choix> r;
+  for (const Entite& e : s_.entites) {
+    bool pris = false;
+    if (e.t == "line") {
+      const Pt* A = s_.point(e.p1);
+      const Pt* B = s_.point(e.p2);
+      if (A && B) pris = segDedans(*A, *B);
+    } else if (e.t == "cpoint") {
+      if (const Pt* Q = s_.point(e.p)) pris = dedans(Q->x, Q->y);
+    } else if (const Pt* C = s_.point(e.pc)) {
+      pris = avant ? dedans(C->x, C->y) : (C->x + e.r >= x0 && C->x - e.r <= x1 && C->y + e.r >= y0 && C->y - e.r <= y1);
+      An an;
+      if (e.t == "arc" && anglesArc2(s_, e, an)) {
+        Pt p1, p2;
+        p1.x = C->x + e.r * m_cos(an.a1);
+        p1.y = C->y + e.r * m_sin(an.a1);
+        p2.x = C->x + e.r * m_cos(an.a2);
+        p2.y = C->y + e.r * m_sin(an.a2);
+        pris = pris || dedans(p1.x, p1.y) || dedans(p2.x, p2.y) || (avant ? false : segDedans(p1, p2));
+      }
+    }
+    if (pris) r.push_back({Choix::ENTITE, e.id});
+  }
+  for (const std::string& q : s_.ordre) {
+    const Pt& p = s_.points.at(q);
+    if (dedans(p.x, p.y)) r.push_back({Choix::POINT, q});
+  }
+  return r;
+}
+
+void Dessin::enfonce(double wx, double wy, bool ctrl, const std::string& ligneCote) {
   premiere();
   sync();
   if (outil_ == SELECTION) {
     const std::string pid = pointProche(wx, wy, PT_);
     if (!pid.empty()) {
       if (ctrl) {
+        if (selection_.empty()) sansTete_ = true;
         selection_.push_back({Choix::POINT, pid});
         return;
       }
-      selection_ = {{Choix::POINT, pid}};
+      sansTete_ = false, selection_ = {{Choix::POINT, pid}};
       int partages = 0;
       for (const Entite& e : s_.entites) {
         const auto v = ptsEntite(e);
@@ -886,13 +1047,15 @@ void Dessin::enfonce(double wx, double wy, bool ctrl) {
       deY_ = p.y;
       return;
     }
+    if (!ligneCote.empty() && cote(ligneCote)) return prendreLigneCote(ligneCote, wx, wy);
     const Entite* en = entiteProche(wx, wy, PICK_);
     if (en) {
       const Entite e = *en;
       if (ctrl) {
-        if (!(selection_.size() && selection_[0] == Choix{Choix::ENTITE, e.id})) selection_.push_back({Choix::ENTITE, e.id});
+        if (selection_.empty()) sansTete_ = true;
+        if (!(!sansTete_ && selection_.size() && selection_[0] == Choix{Choix::ENTITE, e.id})) selection_.push_back({Choix::ENTITE, e.id});
       } else {
-        selection_ = {{Choix::ENTITE, e.id}};
+        sansTete_ = false, selection_ = {{Choix::ENTITE, e.id}};
       }
       const Compo comp0 = composante(ptsEntite(e));
       const bool rig = rigide(comp0);
@@ -917,6 +1080,25 @@ void Dessin::enfonce(double wx, double wy, bool ctrl) {
       return;
     }
     if (!ctrl) selection_.clear();
+    boite_ = Boite{};
+    boite_.actif = true;
+    boite_.ajoute = ctrl;
+    boite_.x0 = boite_.x1 = wx;
+    boite_.y0 = boite_.y1 = wy;
+    return;
+  }
+  if (outil_ == COINCIDENT) {
+    const std::string pid = pointProche(wx, wy, SNAP_);
+    if (pid.empty()) return message("Coïncident : cliquez une extrémité existante.");
+    if (coinPt_.empty()) {
+      coinPt_ = pid;
+      message("Coïncident : cliquez la 2e extrémité à fusionner.");
+      return;
+    }
+    if (pid != coinPt_) pousser();
+    if (fusionner(pid, coinPt_)) message("Points fusionnés.");
+    coinPt_.clear();
+    apresEdition();
     return;
   }
   if (outil_ == COTE) return enfonceCote(wx, wy, ctrl);
@@ -942,7 +1124,7 @@ void Dessin::enfonce(double wx, double wy, bool ctrl) {
     message("Premier point posé : déplacez puis cliquez le second.");
     return;
   }
-  if (outil_ == RECTANGLE || outil_ == CERCLE) {
+  if (outil_ == RECTANGLE || outil_ == CERCLE || outil_ == OBLONG || outil_ == POLYGONE) {
     if (bas_.actif) return;
     const std::string pid = pointAccroche(wx, wy);
     const Pt& S = *s_.point(pid);
@@ -951,9 +1133,15 @@ void Dessin::enfonce(double wx, double wy, bool ctrl) {
     bas_.pid = pid;
     bas_.x = S.x;
     bas_.y = S.y;
-    bas_.centre = ctrl && outil_ != CERCLE;
+    bas_.centre = ctrl && outil_ != CERCLE && outil_ != POLYGONE;
+    if (outil_ == POLYGONE) {
+      poly_.aDernier = false;
+      poly_.ang = PI_ / 2;
+    }
     return;
   }
+  if (outil_ == POINT_C || outil_ == PERCAGE) return poserPointSeul(wx, wy, outil_ == PERCAGE);
+  if (outil_ == CONGE || outil_ == CHANFREIN) return clicCoin(wx, wy, outil_ == CONGE);
   if (outil_ == ARC) enfonceArc(wx, wy);
 }
 
@@ -1009,6 +1197,18 @@ void Dessin::enfonceArc(double wx, double wy) {
 }
 
 void Dessin::bouge(double wx, double wy, bool gaucheTenu) {
+  if (glisseC_.actif) return bougerCoteSaisie(wx, wy);
+  if (boite_.actif) {
+    boite_.x1 = wx;
+    boite_.y1 = wy;
+    return;
+  }
+  if (outil_ == COINCIDENT) {
+    const Accroche a = accroche(wx, wy);
+    aMarque_ = static_cast<bool>(a);
+    marque_ = {a.x, a.y};
+    return;
+  }
   if (outil_ == COTE && !dimPose_.empty()) {
     if (Cote* d = cote(dimPose_)) return suivreCote(*d, wx, wy);
     dimPose_.clear();
@@ -1092,7 +1292,11 @@ void Dessin::bouge(double wx, double wy, bool gaucheTenu) {
     bougerLigne(wx, wy);
     return;
   }
-  if (outil_ == RECTANGLE && bas_.actif) {
+  if (outil_ == POLYGONE && bas_.actif) {
+    bougerPolygone(wx, wy);
+    return;
+  }
+  if ((outil_ == RECTANGLE || outil_ == OBLONG) && bas_.actif) {
     double bx = wx, by = wy;
     const Accroche a = accroche(wx, wy);
     if (a) {
@@ -1108,7 +1312,7 @@ void Dessin::bouge(double wx, double wy, bool gaucheTenu) {
       y1 = 2 * bas_.y - by;
     }
     brouillon_ = Brouillon{};
-    brouillon_.sorte = Brouillon::B_RECT;
+    brouillon_.sorte = outil_ == OBLONG ? Brouillon::B_OBLONG : Brouillon::B_RECT;
     brouillon_.x1 = x1;
     brouillon_.y1 = y1;
     brouillon_.x2 = bx;
@@ -1400,6 +1604,951 @@ void Dessin::relacherLigne(double wx, double wy) {
   nettoyer();
 }
 
+// Oblong : deux droites, deux arcs tangents et la droite de construction entre les centres.
+// Couché ou debout, le navigateur écrit deux fois la même chose : seuls les noms et H ou V changent.
+void Dessin::creerOblong(double ax, double ay, double bx, double by, bool centre, const std::string& cPid) {
+  const double x0 = std::min(ax, bx), x1 = std::max(ax, bx), y0 = std::min(ay, by), y1 = std::max(ay, by);
+  const double w = x1 - x0, h = y1 - y0;
+  if (!(w > 1 && h > 1)) return;
+  const bool couche = w >= h;
+  const double r = (couche ? h : w) / 2;
+  std::string p1, p2, p3, p4, c1, c2;
+  double entraxe;
+  if (couche) {
+    const double ym = (y0 + y1) / 2, xm0 = x0 + r, xm1 = x1 - r;
+    p1 = pointA(xm0, y1);
+    p2 = pointA(xm1, y1);
+    p3 = pointA(xm0, y0);
+    p4 = pointA(xm1, y0);
+    c1 = pointA(xm0, ym);
+    c2 = pointA(xm1, ym);
+    entraxe = std::abs(xm1 - xm0);
+  } else {
+    const double xm = (x0 + x1) / 2, ym0 = y0 + r, ym1 = y1 - r;
+    p1 = pointA(x0, ym0);
+    p2 = pointA(x0, ym1);
+    p3 = pointA(x1, ym0);
+    p4 = pointA(x1, ym1);
+    c1 = pointA(xm, ym0);
+    c2 = pointA(xm, ym1);
+    entraxe = std::abs(ym1 - ym0);
+  }
+  const auto ligne = [&](const std::string& a, const std::string& b, bool construction) {
+    Entite e;
+    e.id = nouvelE();
+    e.t = "line";
+    e.p1 = a;
+    e.p2 = b;
+    e.construction = construction;
+    return e;
+  };
+  const auto arc = [&](const std::string& c, const std::string& a, const std::string& b) {
+    Entite e;
+    e.id = nouvelE();
+    e.t = "arc";
+    e.pc = c;
+    e.pa = a;
+    e.pb = b;
+    e.r = r;
+    return e;
+  };
+  const Entite l1 = ligne(p1, p2, false), l2 = ligne(p3, p4, false);
+  const Entite a1 = arc(c1, p1, p3), a2 = arc(c2, p4, p2);
+  const Entite axe = ligne(c1, c2, true);
+  s_.entites.insert(s_.entites.end(), {l1, l2, a1, a2, axe});
+  structure_ = true;
+  for (const std::string* q : {&p1, &p2, &p3, &p4})
+    if (const Pt* pp = s_.point(*q)) accrocher(*q, pp->x, pp->y, -1);
+  for (const std::string* q : {&c1, &c2})
+    if (const Pt* pp = s_.point(*q)) accrocher(*q, pp->x, pp->y, 1e-3);
+  const char* sens = couche ? "h" : "v";
+  for (const Entite* l : {&l1, &l2, &axe}) {
+    Contrainte c = contrainte(sens);
+    c.line = l->id;
+    lier(c);
+  }
+  for (const Entite* l : {&l1, &l2})
+    for (const Entite* a : {&a1, &a2}) {
+      Contrainte c = contrainte("tangent");
+      c.line = l->id;
+      c.ent = a->id;
+      lier(c);
+    }
+  Contrainte eg = contrainte("equal");
+  eg.a = a1.id;
+  eg.b = a2.id;
+  lier(eg);
+  if (entraxe > 1e-4) {
+    Cote d;
+    d.id = nouvelE();
+    d.type = "length";
+    d.line = axe.id;
+    d.value = fixe(entraxe, 2);
+    s_.cotes.push_back(std::move(d));
+  }
+  Cote d;
+  d.id = nouvelE();
+  d.type = "radius";
+  d.ent = a1.id;
+  d.value = fixe(r, 2);
+  s_.cotes.push_back(std::move(d));
+  if (centre) {
+    Contrainte c = contrainte("fix");
+    c.p = cPid;
+    lier(c);
+  }
+}
+
+// Point de construction et centre de perçage : un clic, et l'outil reste
+void Dessin::poserPointSeul(double wx, double wy, bool percage) {
+  pousser();
+  const std::string pid = pointAccroche(wx, wy);
+  Entite e;
+  e.id = nouvelE();
+  e.t = "cpoint";
+  e.p = pid;
+  e.percage = percage;
+  s_.entites.push_back(std::move(e));
+  structure_ = true;
+  accrocher(pid, wx, wy, -1);
+  apresEdition();
+  if (percage) message("Centre de perçage posé : cotez-le, puis fonction 3D « Perçage ».");
+}
+
+// ---------- Polygone (50-esquisse-8-polygone.js) ----------
+bool Dessin::viserPolygone(double wx, double wy, bool& bouge, double& r) {
+  if (!bas_.actif) return false;
+  double bx = wx, by = wy;
+  const Accroche s = accroche(wx, wy);
+  if (s) {
+    bx = s.x;
+    by = s.y;
+  } else if (grille) {
+    bx = surGrille(bx);
+    by = surGrille(by);
+  }
+  bouge = hyp(wx - bas_.x, wy - bas_.y) > longueurMini();
+  if (bouge) {
+    // Aimant tous les 15° : les côtés tombent facilement à plat
+    const double a = m_atan2(wy - bas_.y, wx - bas_.x), pas = PI_ / 12, k = std::floor(a / pas + 0.5);
+    poly_.ang = std::abs(a - k * pas) < 4 * PI_ / 180 ? k * pas : a;
+  }
+  r = poly_.d != 0 ? poly_.d / 2 : hyp(bx - bas_.x, by - bas_.y);
+  return true;
+}
+void Dessin::brouillonPolygone(double r, double ang) {
+  brouillon_ = Brouillon{};
+  if (r <= 0) return;
+  brouillon_.sorte = Brouillon::B_POLYGONE;
+  brouillon_.cx = bas_.x;
+  brouillon_.cy = bas_.y;
+  brouillon_.n = poly_.n;
+  brouillon_.r = r;
+  brouillon_.a1 = ang;
+}
+void Dessin::bougerPolygone(double wx, double wy) {
+  bool bouge = false;
+  double r = 0;
+  if (!viserPolygone(wx, wy, bouge, r)) return;
+  poly_.aDernier = true;
+  poly_.dernier = Pt{wx, wy};
+  brouillonPolygone(r, poly_.ang);
+}
+void Dessin::relacherPolygone(double wx, double wy) {
+  bool bouge = false;
+  double r = 0;
+  if (!viserPolygone(wx, wy, bouge, r)) return;
+  if (!bouge || r <= longueurMini()) {
+    brouillon_ = Brouillon{};
+    message(poly_.d != 0 ? "Polygone : centre posé, cliquez pour orienter (Entrée : un côté à plat en haut)." : "Polygone : centre posé, cliquez le milieu d'un côté, ou tapez le diamètre intérieur.");
+    return;
+  }
+  finirPolygone(r, poly_.ang);
+}
+void Dessin::finirPolygone(double r, double ang) {
+  pousser();
+  creerPolygone(bas_.pid, poly_.n, r, ang);
+  bas_ = Bas{};
+  brouillon_ = Brouillon{};
+  poly_.aDernier = false;
+  apresEdition();
+  message("Polygone créé : cliquez le centre du suivant (Échap : fin).");
+}
+void Dessin::creerPolygone(const std::string& pc, int n, double r, double ang) {
+  const Pt* cp = s_.point(pc);
+  if (!cp) return;
+  const Pt C = *cp;
+  const double dVal = fixe(2 * r, 3);
+  r = dVal / 2;
+  // Sommets : ang vise le milieu du premier côté, r est le rayon intérieur
+  const double a = PI_ / n, R = r / m_cos(a);
+  std::vector<std::string> pids;
+  for (int i = 0; i < n; i++) {
+    const double t = ang - a + i * 2 * a;
+    pids.push_back(ajouterPoint(C.x + R * m_cos(t), C.y + R * m_sin(t)));
+  }
+  Entite inner;
+  inner.id = nouvelE();
+  inner.t = "circle";
+  inner.pc = pc;
+  inner.r = r;
+  inner.construction = true;
+  inner.poly = pids;
+  std::vector<Entite> lignes;
+  for (int i = 0; i < n; i++) {
+    Entite l;
+    l.id = nouvelE();
+    l.t = "line";
+    l.p1 = pids[i];
+    l.p2 = pids[(i + 1) % n];
+    lignes.push_back(std::move(l));
+  }
+  for (const Entite& l : lignes) {
+    Contrainte c = contrainte("tangent");
+    c.line = l.id;
+    c.ent = inner.id;
+    lier(c);
+  }
+  for (size_t i = 1; i < lignes.size(); i++) {
+    Contrainte c = contrainte("equal");
+    c.a = lignes[0].id;
+    c.b = lignes[i].id;
+    lier(c);
+  }
+  const std::string mid = ajouterPoint(C.x + r * m_cos(ang), C.y + r * m_sin(ang));
+  Entite rayon;
+  rayon.id = nouvelE();
+  rayon.t = "line";
+  rayon.p1 = pc;
+  rayon.p2 = mid;
+  rayon.construction = true;
+  inner.poly.push_back(mid);
+  s_.entites.insert(s_.entites.end(), lignes.begin(), lignes.end());
+  s_.entites.push_back(inner);
+  s_.entites.push_back(rayon);
+  structure_ = true;
+  Contrainte m = contrainte("midpoint");
+  m.p = mid;
+  m.line = lignes[0].id;
+  lier(m);
+  Contrainte pp = contrainte("perpendicular");
+  pp.a = rayon.id;
+  pp.b = lignes[0].id;
+  lier(pp);
+  if (std::abs(m_cos(ang)) < 1e-9) {
+    Contrainte c = contrainte("h");
+    c.line = lignes[0].id;
+    lier(c);
+  } else if (std::abs(m_sin(ang)) < 1e-9) {
+    Contrainte c = contrainte("v");
+    c.line = lignes[0].id;
+    lier(c);
+  }
+  Cote d;
+  d.id = nouvelE();
+  d.type = "diameter";
+  d.ent = inner.id;
+  d.value = dVal;
+  s_.cotes.push_back(std::move(d));
+  accrocher(pc, C.x, C.y, 1e-3);
+}
+bool Dessin::entreePolygone() {
+  if (!bas_.actif) return false;
+  premiere();
+  sync();
+  const double r = brouillon_.sorte == Brouillon::B_POLYGONE ? brouillon_.r : (poly_.d != 0 ? poly_.d / 2 : 0);
+  if (!(r > longueurMini())) {
+    message("Polygone : indiquez le diamètre intérieur.");
+    return false;
+  }
+  finirPolygone(poly_.d != 0 ? poly_.d / 2 : r, poly_.aDernier ? poly_.ang : PI_ / 2);
+  return true;
+}
+void Dessin::lirePolygone(int n, const std::string& diametre) {
+  if (n >= 3 && n <= 64) poly_.n = n;
+  std::string t = diametre;
+  const size_t virgule = t.find(',');
+  if (virgule != std::string::npos) t[virgule] = '.';
+  const double dv = t.empty() ? 0 : std::strtod(t.c_str(), nullptr);
+  poly_.d = dv > 0 ? dv : 0;
+  if (bas_.actif && outil_ == POLYGONE) {
+    if (poly_.d != 0) message("Polygone : cliquez pour orienter, ou Entrée (un côté à plat en haut).");
+    if (poly_.aDernier) bougerPolygone(poly_.dernier.x, poly_.dernier.y);
+    else brouillonPolygone(poly_.d != 0 ? poly_.d / 2 : 0, PI_ / 2);
+  }
+}
+
+// ---------- Congé et chanfrein d'esquisse (50-esquisse-3-edition-geometrie.js) ----------
+namespace {
+// skNiceVal : valeur ronde au plus égale à v, dans la série 1-2-5
+double valeurRonde(double v) {
+  if (!(v > 0)) return 0.1;
+  const double e = std::pow(10.0, std::floor(std::log10(v)));
+  const double m = v / e;
+  return (m >= 5 ? 5 : (m >= 2 ? 2 : 1)) * e;
+}
+struct GeomConge {
+  bool ok = false;
+  const char* motif = "";
+  double rEff = 0;
+  Pt T1, T2, C1, C2;
+};
+// filletCornerGeom
+GeomConge geomConge(const Pt& A, const Pt& V, const Pt& B, double r) {
+  GeomConge g;
+  const double lIn = hyp(V.x - A.x, V.y - A.y), lOut = hyp(B.x - V.x, B.y - V.y);
+  if (!(lIn > 1e-9) || !(lOut > 1e-9)) {
+    g.motif = "coin dégénéré";
+    return g;
+  }
+  const double ux = (A.x - V.x) / lIn, uy = (A.y - V.y) / lIn, wx = (B.x - V.x) / lOut, wy = (B.y - V.y) / lOut;
+  const double cosA = jsmin(1.0, jsmax(-1.0, ux * wx + uy * wy));
+  const double sinH = std::sqrt(jsmax((1 - cosA) / 2, 1e-12)), cosH = std::sqrt(jsmax((1 + cosA) / 2, 1e-12));
+  const double rEff = jsmin(r, 0.49 * jsmin(lIn, lOut) * sinH / jsmax(cosH, 1e-12));
+  if (!(rEff > 1e-3)) {
+    g.motif = "coin trop tangent, pas de place pour le rayon";
+    return g;
+  }
+  const double t = rEff * cosH / jsmax(sinH, 1e-12);
+  if (!(t > 1e-9)) {
+    g.motif = "rayon invalide";
+    return g;
+  }
+  double bx = ux + wx, by = uy + wy;
+  const double bl = hyp(bx, by);
+  if (!(bl > 1e-9)) {
+    g.motif = "coin droit (180°), rien à arrondir";
+    return g;
+  }
+  bx /= bl;
+  by /= bl;
+  const double off = rEff / jsmax(sinH, 1e-12);
+  g.ok = true;
+  g.rEff = rEff;
+  g.T1 = Pt{V.x + ux * t, V.y + uy * t};
+  g.T2 = Pt{V.x + wx * t, V.y + wy * t};
+  g.C1 = Pt{V.x + bx * off, V.y + by * off};
+  g.C2 = Pt{V.x - bx * off, V.y - by * off};
+  return g;
+}
+}  // namespace
+
+double Dessin::longueurLigne(const std::string& id) const {
+  const Entite* e = s_.entite(id);
+  if (!e) return 0;
+  const Pt* A = s_.point(e->p1);
+  const Pt* B = s_.point(e->p2);
+  return A && B ? hyp(B->x - A->x, B->y - A->y) : 0;
+}
+
+bool Dessin::coinCommun(const std::string& a, const std::string& b, std::string& pid, std::string& msg) const {
+  const Entite* A = s_.entite(a);
+  const Entite* B = s_.entite(b);
+  if (!A || !B || A->t != "line" || B->t != "line") {
+    msg = "Congé ou chanfrein : sélectionnez 2 lignes droites.";
+    return false;
+  }
+  if (a == b) {
+    msg = "Sélectionnez 2 lignes distinctes.";
+    return false;
+  }
+  pid = (A->p1 == B->p1 || A->p1 == B->p2) ? A->p1 : (A->p2 == B->p1 || A->p2 == B->p2) ? A->p2 : "";
+  if (pid.empty()) {
+    msg = "Les 2 lignes doivent se toucher (coin commun).";
+    return false;
+  }
+  for (const Entite& e : s_.entites) {
+    if (e.id == a || e.id == b || e.construction || e.t == "cpoint") continue;
+    if (e.p1 == pid || e.p2 == pid || e.pa == pid || e.pb == pid || e.p == pid) {
+      msg = "Coin partagé avec une autre entité : congé ou chanfrein impossible ici.";
+      return false;
+    }
+  }
+  return true;
+}
+
+void Dessin::garderCoinVirtuel(const std::string& pid, const std::string& a, const std::string& b) {
+  const bool sert = aContrainte([&](const Contrainte& c) { return c.p == pid || c.a == pid || c.b == pid; }) ||
+                    std::any_of(s_.cotes.begin(), s_.cotes.end(), [&](const Cote& d) { return d.a == pid || d.b == pid || d.p == pid; });
+  if (!sert) return;
+  for (const std::string* l : {&a, &b})
+    if (!aContrainte([&](const Contrainte& c) { return c.type == "online" && c.p == pid && c.line == *l; })) {
+      Contrainte c = contrainte("online");
+      c.p = pid;
+      c.line = *l;
+      lier(c);
+    }
+}
+
+void Dessin::garderCotesHorsTout(const std::vector<std::string>& ids) {
+  for (Contrainte& c : s_.contraintes)
+    if (c.type == "symmetric" && (std::find(ids.begin(), ids.end(), c.a) != ids.end() || std::find(ids.begin(), ids.end(), c.b) != ids.end())) c.inf = true;
+  for (const std::string& id : ids) {
+    const Entite* L = s_.entite(id);
+    if (!L || L->t != "line") continue;
+    const auto voisine = [&](const std::string& pid) -> const Entite* {
+      for (const Entite& e : s_.entites)
+        if (e.id != id && e.t == "line" && (e.p1 == pid || e.p2 == pid)) return &e;
+      return nullptr;
+    };
+    const Entite* N1 = voisine(L->p1);
+    const Entite* N2 = voisine(L->p2);
+    if (!N1 || !N2 || N1 == N2) continue;
+    const auto sens = [&](const Entite& e) {
+      const Pt* a = s_.point(e.p1);
+      const Pt* b = s_.point(e.p2);
+      const double dx = b->x - a->x, dy = b->y - a->y, l0 = hyp(dx, dy), l = l0 != 0 ? l0 : 1;
+      return Pt{dx / l, dy / l};
+    };
+    if (!s_.point(N1->p1) || !s_.point(N1->p2) || !s_.point(N2->p1) || !s_.point(N2->p2)) continue;
+    const Pt a = sens(*N1), b = sens(*N2);
+    if (std::abs(a.x * b.y - a.y * b.x) > 1e-6) continue;
+    for (Cote& d : s_.cotes) {
+      if (d.type != "length" || d.line != id) continue;
+      const Pt* A1 = s_.point(N1->p1);
+      const Pt* B1 = s_.point(N2->p1);
+      const double g = std::abs((B1->x - A1->x) * (-a.y) + (B1->y - A1->y) * a.x);
+      d.type = "gap";
+      d.a = N1->id;
+      d.b = N2->id;
+      d.value = fixe(g, 4);
+      d.line.clear();
+      d.orient.clear();
+      d.aW = false;
+      d.w = 0;
+      d.sgn = 0;
+    }
+  }
+}
+
+bool Dessin::congeCoin(const std::string& a, const std::string& b, double r, std::string& nouveau, std::string& msg) {
+  std::string pid;
+  if (!coinCommun(a, b, pid, msg)) return false;
+  const Entite A0 = *s_.entite(a), B0 = *s_.entite(b);
+  const Pt* Vp = s_.point(pid);
+  const Pt* Aop = s_.point(A0.p1 == pid ? A0.p2 : A0.p1);
+  const Pt* Bop = s_.point(B0.p1 == pid ? B0.p2 : B0.p1);
+  if (!Vp || !Aop || !Bop) {
+    msg = "Congé : coin illisible.";
+    return false;
+  }
+  const Pt V = *Vp;
+  const GeomConge g = geomConge(*Aop, V, *Bop, r);
+  if (!g.ok) {
+    msg = std::string("Congé : ") + g.motif + (std::string(g.motif).find("place") != std::string::npos ? " : essayez un rayon plus petit." : ".");
+    return false;
+  }
+  garderCotesHorsTout({a, b});
+  garderCoinVirtuel(pid, a, b);
+  const bool plafonne = g.rEff < r - 1e-6;
+  // filletCenterFor : le centre qui remplace la pointe, de l'autre côté de la corde par rapport à V
+  const double sV = (g.T2.x - g.T1.x) * (V.y - g.T1.y) - (g.T2.y - g.T1.y) * (V.x - g.T1.x);
+  const double s1 = (g.T2.x - g.T1.x) * (g.C1.y - g.T1.y) - (g.T2.y - g.T1.y) * (g.C1.x - g.T1.x);
+  const Pt C = (sV != 0 && s1 * sV >= 0) ? g.C2 : g.C1;
+  const std::string idT1 = ajouterPoint(g.T1.x, g.T1.y), idT2 = ajouterPoint(g.T2.x, g.T2.y), idC = ajouterPoint(C.x, C.y);
+  Entite* A = entite(a);
+  Entite* B = entite(b);
+  if (A->p1 == pid) A->p1 = idT1;
+  else A->p2 = idT1;
+  if (B->p1 == pid) B->p1 = idT2;
+  else B->p2 = idT2;
+  std::string pa = idT1, pb = idT2;
+  {
+    const double b1 = m_atan2(g.T1.y - C.y, g.T1.x - C.x), b2 = m_atan2(g.T2.y - C.y, g.T2.x - C.x);
+    double d = std::fmod(b2 - b1, PI_ * 2);
+    if (d <= 0) d += PI_ * 2;
+    if (d > PI_) {
+      pa = idT2;
+      pb = idT1;
+    }
+  }
+  Entite arc;
+  arc.id = nouvelE();
+  arc.t = "arc";
+  arc.pc = idC;
+  arc.pa = pa;
+  arc.pb = pb;
+  arc.r = g.rEff;
+  const std::string arcId = arc.id;
+  s_.entites.push_back(std::move(arc));
+  structure_ = true;
+  for (const std::string* l : {&a, &b})
+    if (!aContrainte([&](const Contrainte& c) { return c.type == "tangent" && c.line == *l && c.ent == arcId; })) {
+      Contrainte c = contrainte("tangent");
+      c.line = *l;
+      c.ent = arcId;
+      lier(c);
+    }
+  epinglerTangence(a, arcId);
+  epinglerTangence(b, arcId);
+  Cote d;
+  d.id = nouvelE();
+  d.type = "radius";
+  d.ent = arcId;
+  d.value = fixe(g.rEff, 3);
+  s_.cotes.push_back(std::move(d));
+  nouveau = arcId;
+  char t[80];
+  snprintf(t, sizeof t, "Congé R%.2f%s", g.rEff, plafonne ? " (plafonné pour tenir)" : "");
+  msg = t;
+  return true;
+}
+
+bool Dessin::chanfreinCoin(const std::string& a, const std::string& b, double dVoulu, std::string& nouveau, std::string& msg) {
+  std::string pid;
+  if (!coinCommun(a, b, pid, msg)) return false;
+  const Entite A0 = *s_.entite(a), B0 = *s_.entite(b);
+  const Pt* Vp = s_.point(pid);
+  const Pt* Aop = s_.point(A0.p1 == pid ? A0.p2 : A0.p1);
+  const Pt* Bop = s_.point(B0.p1 == pid ? B0.p2 : B0.p1);
+  if (!Vp || !Aop || !Bop) {
+    msg = "Chanfrein : coin illisible.";
+    return false;
+  }
+  const Pt V = *Vp, Ao = *Aop, Bo = *Bop;
+  const double lA = hyp(Ao.x - V.x, Ao.y - V.y), lB = hyp(Bo.x - V.x, Bo.y - V.y);
+  if (!(jsmin(lA, lB) > 1)) {
+    msg = "Chanfrein : segment trop court.";
+    return false;
+  }
+  const double dd = jsmin(dVoulu, 0.95 * jsmin(lA, lB));
+  const bool plafonne = dd < dVoulu - 1e-9;
+  const Pt P1{V.x + (Ao.x - V.x) / lA * dd, V.y + (Ao.y - V.y) / lA * dd};
+  const Pt P2{V.x + (Bo.x - V.x) / lB * dd, V.y + (Bo.y - V.y) / lB * dd};
+  garderCotesHorsTout({a, b});
+  garderCoinVirtuel(pid, a, b);
+  const std::string id1 = ajouterPoint(P1.x, P1.y), id2 = ajouterPoint(P2.x, P2.y);
+  Entite* A = entite(a);
+  Entite* B = entite(b);
+  if (A->p1 == pid) A->p1 = id1;
+  else A->p2 = id1;
+  if (B->p1 == pid) B->p1 = id2;
+  else B->p2 = id2;
+  Entite seg;
+  seg.id = nouvelE();
+  seg.t = "line";
+  seg.p1 = id1;
+  seg.p2 = id2;
+  const std::string segId = seg.id;
+  s_.entites.push_back(std::move(seg));
+  structure_ = true;
+  Cote d;
+  d.id = nouvelE();
+  d.type = "length";
+  d.line = segId;
+  d.value = fixe(hyp(P2.x - P1.x, P2.y - P1.y), 3);
+  s_.cotes.push_back(std::move(d));
+  nouveau = segId;
+  char t[80];
+  snprintf(t, sizeof t, "Chanfrein %.2f mm%s", dd, plafonne ? " (plafonné au segment)" : "");
+  msg = t;
+  return true;
+}
+
+bool Dessin::lierCoin(bool conge, const std::string& nouveau) {
+  if (nouveau.empty()) return false;
+  if (passeCoin_.empty() || passeConge_ != conge || !s_.entite(passeCoin_)) {
+    passeCoin_ = nouveau;
+    passeConge_ = conge;
+    return false;
+  }
+  s_.cotes.erase(std::remove_if(s_.cotes.begin(), s_.cotes.end(), [&](const Cote& d) { return conge ? d.type == "radius" && d.ent == nouveau : d.type == "length" && d.line == nouveau; }), s_.cotes.end());
+  Contrainte c = contrainte("equal");
+  c.a = passeCoin_;
+  c.b = nouveau;
+  lier(c);
+  return true;
+}
+
+void Dessin::clicCoin(double wx, double wy, bool conge) {
+  const char* nom = conge ? "Congé" : "Chanfrein";
+  std::string depuisCoin;
+  if (coinA_.empty()) {
+    const std::string cp = pointProche(wx, wy, SNAP_);
+    if (!cp.empty()) {
+      std::vector<std::string> ls;
+      for (const Entite& e : s_.entites)
+        if (e.t == "line" && !e.construction && (e.p1 == cp || e.p2 == cp)) ls.push_back(e.id);
+      if (ls.size() == 2) {
+        coinA_ = ls[0];
+        coinOutilConge_ = conge;
+        depuisCoin = ls[1];
+      }
+    }
+  }
+  const Entite* ent = !depuisCoin.empty() ? s_.entite(depuisCoin) : entiteProche(wx, wy, 12 / echelle_, false);
+  if (!ent || ent->t != "line") return message(std::string(nom) + " : cliquez une ligne droite.");
+  const std::string idE = ent->id;
+  if (coinA_.empty() || coinOutilConge_ != conge) {
+    coinA_ = idE;
+    coinOutilConge_ = conge;
+    return message(std::string(nom) + " : première arête choisie, cliquez la seconde (coin commun).");
+  }
+  if (idE == coinA_) return message("Même ligne : cliquez une autre ligne.");
+  pousser();
+  const double lA = longueurLigne(coinA_), lB = longueurLigne(idE);
+  const double cap = valeurRonde(0.2 * jsmin(lA, lB));
+  std::string neuf, msg;
+  const std::string a = coinA_;
+  const bool ok = conge ? congeCoin(a, idE, jsmin(filletR_, cap), neuf, msg) : chanfreinCoin(a, idE, jsmin(chamferD_, cap), neuf, msg);
+  coinA_.clear();
+  if (!ok) {
+    if (annulerPas) annulerPas();
+    return message(msg);
+  }
+  const bool lie = lierCoin(conge, neuf);
+  apresEdition();
+  message(msg + (lie ? " : lié au premier, une seule cote pilote tous les coins de la passe (Échap : nouvelle passe)." : conge ? " : R modifiable (double-clic sur la cote), les coins suivants suivront cette cote." : " : retrait modifiable (double-clic sur la cote), les coins suivants suivront cette cote."));
+}
+
+void Dessin::congeSelection() {
+  std::vector<std::string> ls;
+  for (const Entite* e : entitesChoisies())
+    if (e->t == "line" && !e->construction) ls.push_back(e->id);
+  std::vector<std::pair<std::string, std::string>> paires;
+  for (size_t i = 0; i < ls.size(); i++)
+    for (size_t j = i + 1; j < ls.size(); j++) {
+      const Entite* a = s_.entite(ls[i]);
+      const Entite* b = s_.entite(ls[j]);
+      if (a->p1 == b->p1 || a->p1 == b->p2 || a->p2 == b->p1 || a->p2 == b->p2) paires.push_back({ls[i], ls[j]});
+    }
+  if (paires.empty()) return message("Congé : sélectionnez des lignes qui forment un coin (2 ou plus).");
+  pousser();
+  double minL = std::numeric_limits<double>::infinity();
+  for (const std::string& l : ls) minL = jsmin(minL, longueurLigne(l));
+  const double R = jsmin(filletR_, valeurRonde(0.2 * minL));
+  passeCoin_.clear();
+  int n = 0;
+  std::string msg;
+  for (const auto& [a, b] : paires) {
+    std::string neuf;
+    if (congeCoin(a, b, R, neuf, msg)) {
+      lierCoin(true, neuf);
+      n++;
+    }
+  }
+  passeCoin_.clear();
+  if (!n) {
+    if (annulerPas) annulerPas();
+    return message(msg.empty() ? "Congé impossible." : msg);
+  }
+  apresEdition();
+  char t[100];
+  snprintf(t, sizeof t, "%d congé(s) R%g : une seule cote pilote (double-clic pour la modifier).", n, R);
+  message(t);
+}
+
+void Dessin::chanfreinSelection() {
+  std::vector<std::string> ls;
+  for (const Entite* e : entitesChoisies())
+    if (e->t == "line") ls.push_back(e->id);
+  if (ls.size() != 2) return message("Chanfrein : sélectionnez exactement 2 lignes.");
+  pousser();
+  std::string neuf, msg;
+  if (!chanfreinCoin(ls[0], ls[1], jsmin(chamferD_, valeurRonde(0.2 * jsmin(longueurLigne(ls[0]), longueurLigne(ls[1])))), neuf, msg)) {
+    if (annulerPas) annulerPas();
+    return message(msg);
+  }
+  apresEdition();
+  message(msg + " : retrait modifiable (double-clic sur la cote).");
+}
+
+// ---------- Le menu du clic droit (showSkCtx) ----------
+std::vector<Dessin::EntreeMenu> Dessin::menuContextuel(std::string& titre) const {
+  std::vector<EntreeMenu> m;
+  titre = "Cote / Contrainte";
+  const auto add = [&](const std::string& libelle, const std::string& code, const char* icone = "") { m.push_back({libelle, code, icone, true}); };
+  const auto con = [&](const std::string& libelle, const char* type) { add(libelle, std::string("c:") + type, type); };
+  const std::vector<const Entite*> ents = const_cast<Dessin*>(this)->entitesChoisies();
+  std::vector<std::string> pts;  // pas pointsChoisis : le menu du navigateur compte deux fois un point choisi deux fois
+  for (const Choix& c : selection_)
+    if (c.sorte == Choix::POINT) pts.push_back(c.id);
+  std::vector<const Entite*> lignes, cercles, arcs;
+  for (const Entite* e : ents) {
+    if (e->t == "line") lignes.push_back(e);
+    if (e->t == "circle") cercles.push_back(e);
+    if (e->t == "arc") arcs.push_back(e);
+  }
+  const size_t tot = ents.size() + pts.size();
+  bool has = false;
+  if (!selection_.empty() && selection_[0].sorte == Choix::COTE && ents.empty() && pts.empty()) {
+    for (const Cote& d : s_.cotes)
+      if (d.id == selection_[0].id) {
+        titre = "Cote " + descCote(d) + (d.ref ? " (référence)" : "");
+        add("Modifier la valeur", "modifier");
+        add(d.ref ? "Rendre PILOTANTE" : "Rendre RÉFÉRENCE (mesure seulement)", "reference");
+        add("Replacer le texte", "replacer");
+        add("Supprimer", "supprimerCote");
+        return m;
+      }
+  }
+  bool uneNormale = false, uneBasculable = false;
+  for (const Entite* e : ents)
+    if ((e->t == "line" && !e->poignee) || e->t == "circle" || e->t == "arc" || e->t == "spline") {
+      uneBasculable = true;
+      uneNormale = uneNormale || !e->construction;
+    }
+  if (uneBasculable) {
+    add(uneNormale ? "Construction (X)" : "Géométrie normale (X)", "c:construction", "construction");
+    has = true;
+  }
+  if (lignes.size() == 1 && tot == 1) {
+    add("Longueur", "longueur", "length");
+    con("Horizontal (H)", "h");
+    con("Vertical (V)", "v");
+    con("Fixe", "fix");
+    has = true;
+    add(lignes[0]->axe ? "Retirer l’axe de rotation" : "Axe de rotation", "axe");
+  }
+  if (cercles.size() == 1 && tot == 1) {
+    add("Diamètre", "diametre", "diameter");
+    add("Rayon", "rayon", "radius");
+    if (cercles[0]->pc != "O") add("Centre à l’origine", "centreOrigine", "coincident");
+    con("Fixe", "fix");
+    has = true;
+  }
+  if (arcs.size() == 1 && tot == 1) {
+    add("Rayon", "rayon", "radius");
+    if (arcs[0]->pc != "O") add("Centre à l’origine", "centreOrigine", "coincident");
+    con("Fixe", "fix");
+    has = true;
+  }
+  if (pts.size() == 1 && tot == 1) {
+    if (pts[0] == "O") m.push_back({"(Origine 0,0 : point fixe permanent)", "", "", false});
+    else {
+      add("Fixer à l’origine", "pointOrigine", "coincident");
+      con("Fixe", "fix");
+    }
+    has = true;
+  }
+  if (lignes.size() == 2) {
+    add("Entraxe (//)", "entraxe", "gap");
+    add("Angle", "angle", "angle");
+    con("Parallèle", "parallel");
+    con("Perpendiculaire", "perpendicular");
+    con("Colinéaire", "collinear");
+    con("Égal", "equal");
+    con("Horizontal", "h");
+    con("Vertical", "v");
+    con("Milieux égaux (2 lignes)", "midpoint");
+    has = true;
+    add("Congé (arc tangent + R)", "conge", "fillet");
+    add("Chanfrein (coupe + cote)", "chanfrein", "chamfer");
+    bool decalable = false;
+    for (const Entite* e : ents) decalable = decalable || ((e->t == "line" || e->t == "circle" || e->t == "arc") && !e->ref);
+    if (decalable) {
+      char t[64];
+      snprintf(t, sizeof t, "%.1f", fixe(offsetD_, 1));
+      std::string v(t);
+      v[v.find('.')] = ',';
+      add("Décaler (" + v + " mm, auto)", "decaler", "offset");
+    }
+  }
+  if (pts.size() == 2) {
+    add("Distance points", "distancePoints", "distance");
+    add("Coïncident", "coincidentPoints", "coincident");
+    con("Fixe", "fix");
+    has = true;
+  }
+  if (lignes.size() > 2) {
+    add("Congé sur tous les coins (une seule cote R)", "conge", "fillet");
+    has = true;
+  }
+  if (pts.size() == 1 && lignes.size() == 1) {
+    add("Distance point–ligne", "distancePointLigne", "distline");
+    con("Coïncident (point sur la droite)", "coincident");
+    con("Milieu (point au centre)", "midpoint");
+    con("Fixe", "fix");
+    has = true;
+  }
+  if (pts.size() == 1 && (cercles.size() == 1 || arcs.size() == 1)) {
+    const Entite* c = !cercles.empty() ? cercles[0] : arcs[0];
+    if (c->pc != pts[0]) {
+      con(std::string("Coïncident (point sur ") + (!cercles.empty() ? "le cercle" : "l’arc") + ")", "coincident");
+      add("Coïncident centre–point", "coincidentCentre", "coincident");
+    }
+    con("Fixe", "fix");
+    has = true;
+  }
+  if (lignes.size() == 1 && (cercles.size() == 1 || arcs.size() == 1)) {
+    con("Tangence", "tangent");
+    add("Distance", "distanceLigneCentre", "distline");
+    has = true;
+  }
+  if (lignes.size() == 3) {
+    con("Symétrie (2 + axe)", "symmetric");
+    has = true;
+  }
+  if (cercles.size() + arcs.size() == 2) {
+    con("Égal", "equal");
+    con("Tangence", "tangent");
+    con("Coaxial (concentriques)", "coaxial");
+    add("Distance centres", "distanceCentres", "distance");
+    has = true;
+  }
+  if (!has) m.push_back({"(sélectionnez 1–2 entités : ligne, point, cercle, arc, ou 3D violet)", "", "", false});
+  return m;
+}
+
+void Dessin::reinitTexteCote(const std::string& id) {
+  Cote* d = cote(id);
+  if (!d) return;
+  pousser();
+  d->aW = false;
+  d->w = 0;
+  d->sl = 0;
+  d->ox = 0;
+  d->oy = 0;
+  message("Texte de la cote replacé.");
+}
+
+void Dessin::basculerAxe(const std::string& id) {
+  Entite* e = entite(id);
+  if (!e || e->t != "line") return;
+  pousser();
+  if (e->axe) e->axe = false;
+  else {
+    e->axe = true;
+    e->construction = true;
+  }
+  const bool axe = e->axe;
+  for (Cote& d : s_.cotes)
+    if ((d.type == "distline" && d.line == id) || (d.type == "gap" && (d.a == id || d.b == id))) d.dia = axe;
+  structure_ = true;
+  apresEdition();
+  message(axe ? "Axe de rotation : les cotes depuis cet axe sont en Ø." : "Ligne normale (axe retiré).");
+}
+
+void Dessin::coteAngleMenu(const Entite& A, const Entite& B) {
+  SecteurAngle fr;
+  const bool aFr = secteurAngle(s_, A.id, B.id, fr);
+  const double ad = aFr ? std::abs(fr.delta) : 0;
+  if (!aFr || ad < 0.03 || PI_ - ad < 0.03) return message("Angle trop proche de 0° ou 180° : non cotable.");
+  for (const Cote& d : s_.cotes)
+    if (d.type == "angle" && ((d.a == A.id && d.b == B.id) || (d.a == B.id && d.b == A.id))) {  // déjà là : rien de neuf, le navigateur repasse seulement la résolution
+      apresEdition();
+      return;
+    }
+  pousser();
+  Cote d;
+  d.id = nouvelE();
+  d.type = "angle";
+  d.a = A.id;
+  d.b = B.id;
+  d.value = fixe(ad, 4);
+  d.ccw = fr.delta > 0 ? 1 : 0;
+  s_.cotes.push_back(std::move(d));
+  structure_ = true;
+  apresEdition();
+}
+
+void Dessin::actionMenu(const std::string& code) {
+  premiere();
+  sync();
+  if (code.rfind("c:", 0) == 0) return poserContrainte(code.substr(2));
+  const std::vector<const Entite*> choisies = entitesChoisies();
+  std::vector<Entite> ents;
+  for (const Entite* e : choisies) ents.push_back(*e);
+  std::vector<std::string> pts;
+  for (const Choix& c : selection_)
+    if (c.sorte == Choix::POINT) pts.push_back(c.id);
+  std::vector<Entite> lignes, ronds;
+  for (const Entite& e : ents) {
+    if (e.t == "line") lignes.push_back(e);
+    if (e.t == "circle" || e.t == "arc") ronds.push_back(e);
+  }
+  // Dans le navigateur, le cercle passe avant l'arc pour les menus à un seul rond
+  std::stable_sort(ronds.begin(), ronds.end(), [](const Entite& a, const Entite& b) { return a.t == "circle" && b.t != "circle"; });
+  const std::string idCote = !selection_.empty() && selection_[0].sorte == Choix::COTE ? selection_[0].id : "";
+  const auto nouvelleCote = [&](const char* type, double valeur, const std::function<void(Cote&)>& f) {
+    pousser();
+    Cote d;
+    d.id = nouvelE();
+    d.type = type;
+    f(d);
+    d.value = fixe(valeur, 2);
+    s_.cotes.push_back(std::move(d));
+    structure_ = true;
+    apresEdition();
+  };
+  const auto nouvelleCoincidence = [&](const std::string& a, const std::string& b, const char* msg) {
+    pousser();
+    Contrainte c = contrainte("coincident");
+    c.a = a;
+    c.b = b;
+    lier(c);
+    apresEdition();
+    message(msg);
+  };
+  if (code == "conge") congeSelection();
+  else if (code == "chanfrein") chanfreinSelection();
+  else if (code == "reference") basculerReference(idCote);
+  else if (code == "replacer") reinitTexteCote(idCote);
+  else if (code == "supprimerCote") {
+    sansTete_ = false, selection_ = {{Choix::COTE, idCote}};
+    supprimer();
+  } else if (code == "longueur" && !lignes.empty()) {
+    const Pt* A = s_.point(lignes[0].p1);
+    const Pt* B = s_.point(lignes[0].p2);
+    nouvelleCote("length", A && B ? hyp(B->x - A->x, B->y - A->y) : 0, [&](Cote& d) { d.line = lignes[0].id; });
+  } else if (code == "axe" && !lignes.empty()) basculerAxe(lignes[0].id);
+  else if (code == "diametre" && !ronds.empty()) nouvelleCote("diameter", ronds[0].r * 2, [&](Cote& d) { d.ent = ronds[0].id; });
+  else if (code == "rayon" && !ronds.empty()) nouvelleCote("radius", ronds[0].r, [&](Cote& d) { d.ent = ronds[0].id; });
+  else if (code == "centreOrigine" && !ronds.empty()) nouvelleCoincidence(ronds[0].pc, "O", "Centre fixé à l’origine.");
+  else if (code == "pointOrigine" && !pts.empty()) nouvelleCoincidence(pts[0], "O", "Point fixé à l’origine.");
+  else if (code == "entraxe" && lignes.size() >= 2) nouvelleCote("gap", ecartLignes(s_, lignes[0], lignes[1]), [&](Cote& d) {
+    d.a = lignes[0].id;
+    d.b = lignes[1].id;
+  });
+  else if (code == "angle" && lignes.size() >= 2) coteAngleMenu(lignes[0], lignes[1]);
+  else if (code == "decaler") {
+    std::vector<std::string> ids;
+    for (const Entite& e : ents)
+      if ((e.t == "line" || e.t == "circle" || e.t == "arc") && !e.ref) ids.push_back(e.id);
+    pousser();
+    std::string msg;
+    if (!decalerElements(ids, offsetD_, nullptr, msg)) {
+      if (annulerPas) annulerPas();
+      return message(msg);
+    }
+    structure_ = true;
+    apresEdition();
+    message(msg + " Cote modifiable (double-clic).");
+  } else if (code == "distancePoints" && pts.size() >= 2) {
+    const Pt* A = s_.point(pts[0]);
+    const Pt* B = s_.point(pts[1]);
+    if (A && B) nouvelleCote("distance", hyp(B->x - A->x, B->y - A->y), [&](Cote& d) {
+      d.a = pts[0];
+      d.b = pts[1];
+    });
+  } else if (code == "coincidentPoints" && pts.size() >= 2) nouvelleCoincidence(pts[0], pts[1], "Points coïncidents.");
+  else if (code == "distancePointLigne" && !pts.empty() && !lignes.empty()) {
+    const Pt* p = s_.point(pts[0]);
+    const Pt* A = s_.point(lignes[0].p1);
+    const Pt* B = s_.point(lignes[0].p2);
+    if (p && A && B) nouvelleCote("distline", distSeg(p->x, p->y, *A, *B), [&](Cote& d) {
+      d.line = lignes[0].id;
+      d.p = pts[0];
+    });
+  } else if (code == "coincidentCentre" && !pts.empty() && !ronds.empty()) nouvelleCoincidence(ronds[0].pc, pts[0], "Centre et point coïncidents.");
+  else if (code == "distanceLigneCentre" && !lignes.empty() && !ronds.empty()) {
+    const Pt* C = s_.point(ronds[0].pc);
+    const Pt* A = s_.point(lignes[0].p1);
+    const Pt* B = s_.point(lignes[0].p2);
+    if (C && A && B) nouvelleCote("distline", distSeg(C->x, C->y, *A, *B), [&](Cote& d) {
+      d.line = lignes[0].id;
+      d.p = ronds[0].pc;
+    });
+  } else if (code == "distanceCentres" && ronds.size() >= 2) {
+    const Pt* A = s_.point(ronds[0].pc);
+    const Pt* B = s_.point(ronds[1].pc);
+    if (A && B) nouvelleCote("distance", hyp(B->x - A->x, B->y - A->y), [&](Cote& d) {
+      d.a = ronds[0].pc;
+      d.b = ronds[1].pc;
+    });
+  }
+}
+
 void Dessin::relacherRectangle(double wx, double wy) {
   double bx = wx, by = wy;
   const Accroche s = accroche(wx, wy);
@@ -1419,10 +2568,19 @@ void Dessin::relacherRectangle(double wx, double wy) {
   }
   if (!(std::abs(bx - ax) > longueurMini() && std::abs(by - ay) > longueurMini())) {
     brouillon_ = Brouillon{};
-    message(std::string("Rectangle") + (centre ? " (depuis le centre)" : "") + " : premier point posé, déplacez puis second clic.");
+    message(std::string(outil_ == OBLONG ? "Oblong" : "Rectangle") + (centre ? " (depuis le centre)" : "") + " : premier point posé, déplacez puis second clic.");
     return;
   }
   pousser();
+  if (outil_ == OBLONG) {
+    creerOblong(ax, ay, bx, by, centre, cPid);
+    bas_ = Bas{};
+    brouillon_ = Brouillon{};
+    apresEdition();
+    outil_ = SELECTION;
+    message("Oblong créé.");
+    return;
+  }
   const std::string A = centre ? pointA(ax, ay) : cPid;
   const std::string Bp = pointA(bx, ay), Cp = pointA(bx, by), D = pointA(ax, by);
   const auto ligne = [&](const std::string& p1, const std::string& p2, bool construction = false) {
@@ -1537,6 +2695,26 @@ void Dessin::relacherCercle(double wx, double wy) {
 }
 
 void Dessin::relache(double wx, double wy) {
+  if (glisseC_.actif) {
+    glisseC_.actif = false;
+    return;
+  }
+  if (boite_.actif) {
+    const Boite b = boite_;
+    boite_.actif = false;
+    if (hyp(b.x1 - b.x0, b.y1 - b.y0) * echelle_ > 5) {
+      const std::vector<Choix> pris = dansBoite(b);
+      if (b.ajoute) {
+        for (const Choix& c : pris)
+          if (std::find(selection_.begin(), selection_.end(), c) == selection_.end()) selection_.push_back(c);
+      } else {
+        selection_ = pris;
+        sansTete_ = true;
+      }
+      message(std::to_string(pris.size()) + " élément(s) sélectionné(s) : Ctrl+clic pour ajouter.");
+    }
+    return;
+  }
   if (coupeGlisse_) {
     if (coupesGlissees_ > 1) message(std::to_string(coupesGlissees_) + " morceaux retirés en glissant. Ctrl+Z les rend tous.");
     coupeGlisse_ = false;
@@ -1566,7 +2744,8 @@ void Dessin::relache(double wx, double wy) {
   }
   if (outil_ == LIGNE && bas_.actif) {
     if (!dyn_.actif) relacherLigne(wx, wy);  // saisie en cours : c'est le clic suivant qui valide
-  } else if (outil_ == RECTANGLE && bas_.actif) relacherRectangle(wx, wy);
+  } else if ((outil_ == RECTANGLE || outil_ == OBLONG) && bas_.actif) relacherRectangle(wx, wy);
+  else if (outil_ == POLYGONE && bas_.actif) relacherPolygone(wx, wy);
   else if (outil_ == CERCLE && bas_.actif) relacherCercle(wx, wy);
 }
 
@@ -1628,6 +2807,9 @@ bool Dessin::rendrePilotante(const std::string& id) {
 
 void Dessin::annulerTrace() {
   premiere();
+  glisseC_.actif = false;
+  boite_.actif = false;
+  coinPt_.clear();
   if (!dimPose_.empty()) {  // Échap pendant la pose annule la cote
     s_.cotes.erase(std::remove_if(s_.cotes.begin(), s_.cotes.end(), [&](const Cote& d) { return d.id == dimPose_; }), s_.cotes.end());
     dimPose_.clear();
@@ -1636,6 +2818,8 @@ void Dessin::annulerTrace() {
   dimPoint_.clear();
   dimLigne_.clear();
   coteAOuvrir_.clear();
+  coinA_.clear();
+  passeCoin_.clear();
   dyn_ = Saisie{};
   offArme_ = false;
   coupeGlisse_ = false;
@@ -1665,14 +2849,16 @@ void Dessin::echap() {
   message("Sélection.");
 }
 
-void Dessin::choisirCote(const std::string& id) { selection_ = {{Choix::COTE, id}}; }
+void Dessin::choisirCote(const std::string& id) { sansTete_ = false, selection_ = {{Choix::COTE, id}}; }
 void Dessin::choisirLigneCote(const std::string& id) {
-  if (selection_.empty()) selection_.push_back({Choix::COTE, id});
+  if (selection_.empty() || sansTete_) selection_.insert(selection_.begin(), {Choix::COTE, id});
   else selection_[0] = {Choix::COTE, id};
+  sansTete_ = false;
 }
 void Dessin::choisirContrainte(const std::string& id) {
-  if (selection_.empty()) selection_.push_back({Choix::CONTRAINTE, id});
+  if (selection_.empty() || sansTete_) selection_.insert(selection_.begin(), {Choix::CONTRAINTE, id});
   else selection_[0] = {Choix::CONTRAINTE, id};
+  sansTete_ = false;
 }
 
 namespace {
@@ -2133,7 +3319,7 @@ std::string Dessin::poserCote(const std::string id) {  // par valeur : on reçoi
   s_.cotes.erase(std::remove_if(s_.cotes.begin(), s_.cotes.end(), [&](const Cote& x) { return x.id == id; }), s_.cotes.end());
   structure_ = true;
   apresEdition();
-  selection_ = {{Choix::COTE, dup}};
+  sansTete_ = false, selection_ = {{Choix::COTE, dup}};
   message("Cote déjà existante : sélectionnée, pas de doublon.");
   return "";
 }
@@ -2173,7 +3359,7 @@ void Dessin::clicCote(double x, double y, bool ctrl) {
           for (const Cote& x2 : s_.cotes)
             if (x2.type == "gap" && ((x2.a == A.id && x2.b == B.id) || (x2.a == B.id && x2.b == A.id))) {
               dimLigne_.clear();
-              selection_ = {{Choix::COTE, x2.id}};
+              sansTete_ = false, selection_ = {{Choix::COTE, x2.id}};
               message("Cote déjà existante : sélectionnée, pas de doublon.");
               return;
             }
@@ -2190,7 +3376,7 @@ void Dessin::clicCote(double x, double y, bool ctrl) {
           for (const Cote& x2 : s_.cotes)
             if (x2.type == "angle" && ((x2.a == A.id && x2.b == B.id) || (x2.a == B.id && x2.b == A.id))) {
               dimLigne_.clear();
-              selection_ = {{Choix::COTE, x2.id}};
+              sansTete_ = false, selection_ = {{Choix::COTE, x2.id}};
               message("Cote déjà existante : sélectionnée, pas de doublon.");
               return;
             }
@@ -2331,6 +3517,10 @@ bool Dessin::retourArriere() {
 }
 
 bool Dessin::entree() {
+  if (outil_ == POLYGONE) {
+    entreePolygone();
+    return true;
+  }
   if (!dyn_.actif) return false;
   validerSaisie();
   return true;
@@ -2753,7 +3943,9 @@ void Dessin::toucheF1() {
     message(ligne ? "Point posé sur la ligne." : "Point posé sur le cercle.");
     return;
   }
-  message("Coïncident : sélectionnez 2 points, ou un point + une ligne ou un cercle (Ctrl+clic pour le 2e), puis F1.");
+  annulerTrace();
+  outil_ = COINCIDENT;
+  message("Coïncident : cliquez 2 extrémités à fusionner, ou sélectionnez 2 points, ou un point + une ligne ou un cercle (Ctrl+clic pour le 2e), puis F1.");
 }
 
 void Dessin::supprimer() {
@@ -3608,11 +4800,13 @@ void Dessin::appliquerDecalage(const std::vector<std::string>& ids, double D, do
   dyn_ = Saisie{};
   pousser();
   std::string msg;
-  if (!decalerElements(ids, D, Pt{wx, wy}, msg)) {
+  const Pt cible{wx, wy};
+  if (!decalerElements(ids, D, &cible, msg)) {
     if (annulerPas) annulerPas();
     message(msg);
     return;
   }
+  offsetD_ = D;
   structure_ = true;
   apresEdition();
   message(msg + " Cote modifiable (double-clic).");
@@ -3699,7 +4893,7 @@ bool valeurDecalage(const Esquisse& s, const std::string& aId, const std::string
 }
 }  // namespace
 
-bool Dessin::decalerElements(const std::vector<std::string>& ids0, double D, const Pt& S, std::string& msg) {
+bool Dessin::decalerElements(const std::vector<std::string>& ids0, double D, const Pt* S, std::string& msg) {
   if (!(D >= 0.001)) {
     msg = "Décalage : distance d'au moins 0,001 mm requise.";
     return false;
@@ -3802,14 +4996,14 @@ bool Dessin::decalerElements(const std::vector<std::string>& ids0, double D, con
         aire += p.x * w.y - w.x * p.y;
       }
       aire /= 2;
-      const bool ext = !dansAnneau(S.x, S.y, ring);
+      const bool ext = S ? !dansAnneau(S->x, S->y, ring) : true;
       sg = ((aire > 0) == !ext) ? 1 : -1;
-    } else {
+    } else if (S) {
       const BoutsE b = boutsE(ordre[0].e, ordre[0].fwd);
       const Pt* U = s_.point(b.a);
       const Pt* W = s_.point(b.b);
       if (U && W) {
-        const double cr = (W->x - U->x) * (S.y - U->y) - (W->y - U->y) * (S.x - U->x);
+        const double cr = (W->x - U->x) * (S->y - U->y) - (W->y - U->y) * (S->x - U->x);
         if (cr < 0) {
           std::reverse(ordre.begin(), ordre.end());
           for (Maillon& o : ordre) o.fwd = !o.fwd;
@@ -4101,7 +5295,7 @@ bool Dessin::decalerElements(const std::vector<std::string>& ids0, double D, con
     if (e.t != "circle") continue;
     const Pt* C = s_.point(e.pc);
     if (!C) continue;
-    const double rr = e.r + (hyp(S.x - C->x, S.y - C->y) >= e.r ? 1 : -1) * D;
+    const double rr = e.r + (!S || hyp(S->x - C->x, S->y - C->y) >= e.r ? 1 : -1) * D;
     if (!(rr > 0.5)) {
       jointsBad++;
       continue;

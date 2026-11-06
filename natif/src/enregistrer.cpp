@@ -290,8 +290,15 @@ std::string nouvelleEntite(const Entite& e) {
   ajouterTexte(o, "pb", e.pb);
   ajouterTexte(o, "p", e.p);
   if (e.t == "circle" || e.t == "arc") o += ",\"r\":" + nombreJson(e.r);
+  if (e.percage) o += ",\"hole\":true";
+  if (e.axe) o += ",\"axis\":true";
   if (e.construction) o += ",\"construction\":true";
   if (e.ref) o += ",\"ref\":true";
+  if (!e.poly.empty()) {
+    o += ",\"poly\":[";
+    for (size_t i = 0; i < e.poly.size(); i++) o += (i ? "," : "") + texteJson(e.poly[i]);
+    o += "]";
+  }
   return o + "}";
 }
 std::string nouvelleContrainte(const Contrainte& c) {
@@ -364,6 +371,7 @@ std::string ecartsEntite(const std::string& brut, const Entite& a, const Entite&
   e.texte("pb", a.pb, b.pb);
   e.texte("p", a.p, b.p);
   e.oui("construction", a.construction, b.construction);
+  e.oui("axis", a.axe, b.axe);
   return retoucherBrut(brut, e);
 }
 std::string ecartsContrainte(const std::string& brut, const Contrainte& a, const Contrainte& b) {
@@ -387,10 +395,13 @@ std::string coteDevenueAngle(const std::string& brut, const Cote& a) {
   q.membres([&](const std::string& k) {
     const size_t d = q.ici();
     q.sauter();
-    if (k == "orient" || k == "sgn" || k == "sl" || k == "ccw" || k == "chk" || k == "ref" || k == "refV" || k == "dia") return;  // réécrits ci-dessous
+    if (k == "line" || k == "a" || k == "b" || k == "orient" || k == "sgn" || k == "sl" || k == "w" || k == "ox" || k == "oy" || k == "ccw" || k == "chk" || k == "ref" || k == "refV" || k == "dia") return;  // réécrits ci-dessous
     const std::string v = k == "type" ? texteJson(a.type) : k == "value" ? nombreJson(a.value) : brut.substr(d, q.ici() - d);
     o += (o.size() > 1 ? "," : "") + texteJson(k) + ":" + v;
   });
+  o += ",\"a\":" + texteJson(a.a) + ",\"b\":" + texteJson(a.b);
+  if (a.aW) o += ",\"w\":" + nombreJson(a.w);
+  if (a.ox != 0 || a.oy != 0) o += ",\"ox\":" + nombreJson(a.ox) + ",\"oy\":" + nombreJson(a.oy);
   if (a.chk) o += ",\"chk\":1";
   if (a.ccw >= 0) o += ",\"ccw\":" + std::to_string(a.ccw);
   if (a.ref) o += ",\"ref\":true";
@@ -410,9 +421,46 @@ std::string sansFormule(const std::string& brut) {
   });
   return o + "}";
 }
-std::string ecartsCote(const std::string& brut, const Cote& a, const Cote& b) {
-  if (a.type == "angle" && b.type == "gap") return coteDevenueAngle(brut, a);
-  if (a.type != b.type) throw std::runtime_error("cote changée d'une façon pas encore reprise, rien n'a été écrit");
+// skKeepOverallDims : la longueur d'un côté rogné devient l'entraxe de ses deux voisines ; le reste de son texte est gardé
+std::string coteDevenueEntraxe(const std::string& brut, const Cote& a) {
+  Parcours q(brut);
+  std::string o = "{";
+  bool vuChk = false;
+  q.membres([&](const std::string& k) {
+    const size_t d = q.ici();
+    q.sauter();
+    if (k == "line" || k == "orient" || k == "w" || k == "sgn" || k == "ref" || k == "refV") return;
+    if (k == "chk") vuChk = true;
+    const std::string v = k == "type" ? texteJson(a.type) : k == "value" ? nombreJson(a.value) : brut.substr(d, q.ici() - d);
+    o += (o.size() > 1 ? "," : "") + texteJson(k) + ":" + v;
+  });
+  o += ",\"a\":" + texteJson(a.a) + ",\"b\":" + texteJson(a.b);
+  if (a.sgn) o += ",\"sgn\":" + std::to_string(a.sgn);
+  if (a.ref) o += ",\"ref\":true";
+  if (a.refV) o += ",\"refV\":" + std::to_string(a.refV);
+  if (a.chk && !vuChk) o += ",\"chk\":1";
+  return o + "}";
+}
+std::string sansCles(const std::string& brut, const std::vector<std::string>& cles) {
+  Parcours q(brut);
+  std::string o = "{";
+  q.membres([&](const std::string& k) {
+    const size_t d = q.ici();
+    q.sauter();
+    if (std::find(cles.begin(), cles.end(), k) != cles.end()) return;
+    o += (o.size() > 1 ? "," : "") + texteJson(k) + ":" + brut.substr(d, q.ici() - d);
+  });
+  return o + "}";
+}
+std::string ecartsCote(const std::string& brut0, const Cote& a, const Cote& b) {
+  if (a.type == "angle" && (b.type == "gap" || b.type == "length")) return coteDevenueAngle(brut0, a);
+  if (a.type == "gap" && b.type == "length") return coteDevenueEntraxe(brut0, a);
+  // « Replacer le texte » retire la largeur et le glissement
+  std::vector<std::string> retirees;
+  if (!a.aW && b.aW) retirees.push_back("w");
+  if (a.sl == 0 && b.sl != 0) retirees.push_back("sl");
+  const std::string brut = retirees.empty() ? brut0 : sansCles(brut0, retirees);
+  if (a.type != b.type) throw std::runtime_error("cote changée d'une façon pas encore reprise (" + b.type + " vers " + a.type + "), rien n'a été écrit");
   Ecarts e;
   e.texte("line", a.line, b.line);
   e.texte("ent", a.ent, b.ent);
@@ -423,9 +471,10 @@ std::string ecartsCote(const std::string& brut, const Cote& a, const Cote& b) {
   e.texte("oa", a.oa, b.oa);
   e.texte("ob", a.ob, b.ob);
   if (a.aW && (a.w != b.w || !b.aW)) e.champs.push_back({"w", nombreJson(a.w), true});
-  if (a.sl != b.sl) e.champs.push_back({"sl", nombreJson(a.sl), true});
+  if (a.sl != b.sl && a.sl != 0) e.champs.push_back({"sl", nombreJson(a.sl), true});
   if (a.ox != b.ox) e.champs.push_back({"ox", nombreJson(a.ox), true});
   if (a.oy != b.oy) e.champs.push_back({"oy", nombreJson(a.oy), true});
+  if (a.sgn != b.sgn && a.sgn != 0) e.champs.push_back({"sgn", std::to_string(a.sgn), true});
   if (a.comp != b.comp) e.champs.push_back({"comp", a.comp ? "1" : "0", true});
   if (a.chk != b.chk) e.champs.push_back({"chk", a.chk ? "1" : "0", true});  // le navigateur écrit 1
   e.oui("ref", a.ref, b.ref);

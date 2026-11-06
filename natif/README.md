@@ -311,6 +311,26 @@ Preuves, contre le navigateur :
 
 Pièges : la macro Windows `far` interdit ce nom de champ ; `TKFillet.dll` doit être dans `sortie/` (sinon arrêt sans message au lancement, code -1073741515) ; `wxStaticText::Wrap` à la même largeur ne recoupe pas un nouveau texte, passer d'abord par `Wrap(-1)` ; pour des clics sur l'aperçu, la pièce d'origine reste affichée en transparence totale. Une pièce coupée pour un banc peut faire bouger, côté navigateur, une esquisse non consommée qui suit des arêtes : à retirer du banc.
 
+## Esquisse : formes, menu du clic droit, Congé et Chanfrein, sélection (06/11/2026)
+
+Repris du navigateur V0.67.3 : Oblong, Polygone (bandeau côtés et Ø), Point, Centre de perçage, Congé et Chanfrein, le menu du clic droit avec ses icônes, la fenêtre de sélection (gauche → droite : ce qui est dedans ; droite → gauche : ce qu'elle touche), le déplacement d'une cote par sa valeur ou sa ligne, Coïncident à deux clics, les touches F1 à F12, H, L, C, G, R, B, D, F, T, O.
+
+Comparaison au navigateur V0.67.3 (`dessin-reference.cjs --contraintes --cotes --modifier --tape --panneau --formes --menu --coins`), maths communes :
+
+| Essai | Sessions identiques | États | Écrites comme le navigateur |
+| --- | --- | --- | --- |
+| Tous les gestes tirés au hasard | 381 sur 383 | 4 652, aucun écart de position | 373 sur 373 |
+| Sélection, cotes déplacées, Coïncident (`--selection --seulement=glisseCote,boite,coincident2`) | 258 sur 258 | 2 668 | 250 sur 250 |
+| Non-régression sur la référence précédente | 383 sur 383 | 4 632 | 375 sur 375 |
+
+`tester-enregistrement.cjs` : 176 sur 176.
+
+**Deux écarts restent ouverts** : Barquette, graine 1603, « Fixe » sur une sélection de plusieurs sortes (le natif pose plus de contraintes) ; Cache Piles, graine 3201, une cote R de congé que le natif passe en référence et pas le navigateur.
+
+Défauts du navigateur non recopiés, à décider plus tard pour le navigateur : le menu « Distance centres » plante sur un cercle + un arc (le natif pose la cote) ; une fenêtre de sélection avec Ctrl n'ajoute qu'un élément de chaque sorte (le natif ajoute tout, ce geste est donc hors du banc).
+
+Essai sans prendre la main sur l'écran : `ConceptCADNatif --essai-esquisse <fichier> <rang, -1 : nouvelle sur XY> <sortie> <etapes.json> <dossier>`. De vrais événements de souris et de clavier passent par la vue et les boutons ; un bilan et des captures sont écrits dans le dossier.
+
 ## Rendu de la vue 3D repris du navigateur
 
 La vue reprend les réglages de la scène Three.js (`src/10-scene-3d.js`) : matière métal 0,35 et rugosité 0,4, studio de reflets fabriqué sans fichier, perspective à 50°, bords lissés, couleur de chaque corps, arêtes vives noires et raccords tangents gris, reflet au sol. Le cube de vue est dessiné sans perspective pour rester un cube.

@@ -369,7 +369,8 @@ bool Solveur::lignesParalleles(const E& A, const E& B) {
   const P2* B1 = pt(B.p1);
   const P2* B2 = pt(B.p2);
   if (!A1 || !A2 || !B1 || !B2) return false;
-  // skLinesAngle (src/50-esquisse-4) : angle entre droites non orientées
+  // skLinesAngle (src/50-esquisse-4) : angle entre droites non orientées ; une ligne réduite à un point n'est parallèle à rien
+  if (hyp(A2->x - A1->x, A2->y - A1->y) < 1e-9 || hyp(B2->x - B1->x, B2->y - B1->y) < 1e-9) return false;
   const double sA = m_atan2(A2->y - A1->y, A2->x - A1->x), sB = m_atan2(B2->y - B1->y, B2->x - B1->x);
   const double x = std::fmod(std::fmod(sB - sA, PI) + PI, PI);
   return jsmin(x, PI - x) < 0.5 * PI / 180;
