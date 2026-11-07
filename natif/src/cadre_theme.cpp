@@ -49,6 +49,7 @@ void Cadre::appliquerTheme(int t) {
   remplirArbre();
   Thaw();
   majVueEnv();
+  dessinerEsquisses();
   Refresh();
   Update();
   etat(wxString(L"Thème : ") + theme::palette(t).nom);

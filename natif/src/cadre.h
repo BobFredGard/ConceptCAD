@@ -269,6 +269,7 @@ public:
   nlohmann::ordered_json referenceCliquee(const TopoDS_Shape& s, const std::string& type);
   void creerSurCylindre(bool clavette);
   void piocherCylindre(const std::string& fonction, const std::string& cle, const std::string& valeur);
+  void dessinerEsquisses();
   void dessinerConstruction();
   void poserChamps(const std::vector<ChampFiche>& champs, bool copie);
   std::string constructionMontree_;

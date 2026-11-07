@@ -754,6 +754,7 @@ void Cadre::changerAtelier(Atelier a) {
   placerScene();
   centre_->Layout();
   if (sortRendu || a == Atelier::CAO || a == Atelier::FAO) majVueEnv();
+  dessinerEsquisses();
 }
 
 // Molette : zoom. Bouton du milieu : déplacer ; double-clic du milieu : toute la feuille.
@@ -2086,6 +2087,7 @@ void Cadre::entrerEsquisse(int i) {
   }
   const Esquisse& s = doc_.esquisses[i];
   esquisseOuverte_ = i;
+  dessinerEsquisses();
   figee_ = esquisseFigee(doc_, i);
   edition_ = figee_.empty() ? std::make_unique<Edition>(s) : nullptr;
   esquissesEntree_ = doc_.esquisses;
@@ -2509,6 +2511,7 @@ void Cadre::quitterEsquisse() {
   edition_.reset();
   vueEsquisse_->montrer(nullptr, TopoDS_Shape());
   modeEsquisse(false);
+  dessinerEsquisses();
   vue_->Refresh();
   montrerEsquisse(i);
   etat(tx(doc_.nom));
@@ -2640,6 +2643,7 @@ double Cadre::recalculer() {
     dessinerConstruction();
     asmApresRejeu(r, ajusterVue_);
   }
+  dessinerEsquisses();
   ajusterVue_ = false;
   // Le banc compte aussi le prix de la sélection, que le programme paierait dès que la souris passe sur la vue.
   if (proto_.actif) vue_->preparerSelection();
@@ -3117,6 +3121,53 @@ void Cadre::choisirConstruction(const std::string& id) {
   const auto it = lignesConstruction_.find(id);
   if (it != lignesConstruction_.end() && it->second.IsOk() && arbre_->GetSelection() != it->second) arbre_->SelectItem(it->second);
   montrerConstruction(id);
+}
+
+gp_Pnt pointMonde(const Esquisse& s, double x, double y);  // faces.h
+
+void Cadre::dessinerEsquisses() {  // drawSketchHelpers : l'esquisse ouverte se dessine à plat dans son écran
+  std::vector<std::vector<gp_Pnt>> forts, aides, axes;
+  if (docOuvert_ && atelier_ == Atelier::CAO)
+    for (size_t i = 0; i < doc_.esquisses.size(); i++) {
+      const Esquisse& s = doc_.esquisses[i];
+      if (!s.visible || static_cast<int>(i) == esquisseOuverte_) continue;
+      for (const Entite& e : s.entites) {
+        std::vector<gp_Pnt> P;
+        const auto monde = [&](double x, double y) { P.push_back(pointMonde(s, x, y)); };
+        if (e.t == "line") {
+          const Pt* a = s.point(e.p1);
+          const Pt* b = s.point(e.p2);
+          if (!a || !b || e.poignee) continue;
+          monde(a->x, a->y);
+          monde(b->x, b->y);
+        } else if (e.t == "circle" || e.t == "arc") {
+          const Pt* c = s.point(e.pc);
+          if (!c || !(e.r > 0)) continue;
+          double a1 = 0, d = 2 * M_PI;
+          int n = 48;
+          if (e.t == "arc") {
+            const auto an = anglesArc(s, e);
+            if (!an) continue;
+            a1 = an->a1;
+            d = an->a2 - an->a1;
+            n = std::max(2, static_cast<int>(std::ceil(d / (2 * M_PI) * 48)));
+          }
+          for (int k = 0; k <= n; k++) {
+            const double a = a1 + d * k / n;
+            monde(c->x + std::cos(a) * e.r, c->y + std::sin(a) * e.r);
+          }
+        } else if (e.t == "spline") {
+          BSpline f;
+          if (!splineDe(s, e, f)) continue;
+          for (const P2d& q : bsSample(f, f.a, f.b, 16)) monde(q[0], q[1]);
+        } else {
+          continue;
+        }
+        (e.axe ? axes : e.construction ? aides : forts).push_back(std::move(P));
+      }
+    }
+  const Quantity_Color fort = theme::courant() == theme::CLAIR ? Quantity_Color(0x2a / 255.0, 0x2d / 255.0, 0x33 / 255.0, Quantity_TOC_sRGB) : Quantity_Color(1, 1, 1, Quantity_TOC_sRGB);
+  vue_->montrerEsquisses(forts, aides, axes, fort);
 }
 
 void Cadre::dessinerConstruction() {
@@ -4261,6 +4312,7 @@ bool Cadre::essaiEsquisse(const std::wstring& fichier, int rang, const std::wstr
       wxYield();
     }
     if (e.contains("fao")) faoEssai(e["fao"]);
+    if (e.contains("imageVue")) vue_->image(wxString(dossier) + L"\\" + wxString::FromUTF8(e["imageVue"].get<std::string>()) + L".png");
     if (e.contains("capture")) {
       vueEsquisse_->Update();
       capturerFenetre(dossier + L"\\" + wxString::FromUTF8(e["capture"].get<std::string>()).ToStdWstring() + L".png");

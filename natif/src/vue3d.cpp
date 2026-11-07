@@ -1014,6 +1014,52 @@ void Vue3D::montrerFilets(const std::vector<std::vector<gp_Pnt>>& helices, const
   vue_->Redraw();
 }
 
+// sk3dTraits : ce qu'un solide cache reste dessiné plus fin, ce qui est vu est plein. La passe « cachée » a sa propre profondeur (Topmost), la passe « vue » celle de la scène.
+void Vue3D::montrerEsquisses(const std::vector<std::vector<gp_Pnt>>& forts, const std::vector<std::vector<gp_Pnt>>& aides, const std::vector<std::vector<gp_Pnt>>& axes, const Quantity_Color& couleurForts) {
+  for (auto& a : traitsEsquisses_) contexte_->Remove(a, false);
+  traitsEsquisses_.clear();
+  const auto passe = [&](const TopoDS_Shape& c, const Quantity_Color& coul, double larg, int tiret, bool cache) {
+    occ::handle<AIS_Shape> a = new AIS_Shape(c);
+    a->Attributes()->SetAutoTriangulation(false);
+    a->SetColor(coul);
+    occ::handle<Prs3d_LineAspect> asp = new Prs3d_LineAspect(coul, tiret ? Aspect_TOL_DASH : Aspect_TOL_SOLID, larg);
+    if (tiret == 2) asp->Aspect()->SetLinePattern(0xFFF0), asp->Aspect()->SetLineStippleFactor(2);
+    a->Attributes()->SetWireAspect(asp);
+    a->Attributes()->SetFreeBoundaryAspect(asp);
+    a->Attributes()->SetUnFreeBoundaryAspect(asp);
+    if (cache) a->SetZLayer(Graphic3d_ZLayerId_Topmost);
+    contexte_->Display(a, AIS_WireFrame, -1, false);
+    traitsEsquisses_.push_back(a);
+  };
+  const auto style = [&](const std::vector<std::vector<gp_Pnt>>& L, const Quantity_Color& coul, double vu, double cache, int tiret) {
+    BRep_Builder bb;
+    TopoDS_Compound c;
+    bb.MakeCompound(c);
+    bool plein = false;
+    for (const auto& l : L) {
+      BRepBuilderAPI_MakePolygon p;
+      gp_Pnt der;
+      bool premier = true;
+      int n = 0;
+      for (const gp_Pnt& q : l) {
+        if (!premier && q.Distance(der) < 1e-7) continue;
+        p.Add(q);
+        der = q;
+        premier = false;
+        n++;
+      }
+      if (n >= 2 && p.IsDone()) bb.Add(c, p.Wire()), plein = true;
+    }
+    if (!plein) return;
+    passe(c, coul, cache, tiret, true);
+    passe(c, coul, vu, tiret, false);
+  };
+  style(forts, couleurForts, 3, 2, 0);
+  style(aides, couleur(0xff, 0xd6, 0x0a), 2, 1.5, 1);
+  style(axes, couleur(0xff, 0x9f, 0x0a), 2, 1.5, 2);
+  vue_->Redraw();
+}
+
 void Vue3D::montrerConstruction(const std::vector<DessinConstruction>& L, const double C[3], double h) {
   for (auto& a : construction_) contexte_->Remove(a, false);
   construction_.clear();

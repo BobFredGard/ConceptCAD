@@ -79,6 +79,8 @@ class Vue3D : public wxWindow {
   // mepAddCameraView : de la cible vers l'œil
   bool directionCamera(std::array<double, 3>& d) const;
   void montrerFilets(const std::vector<std::vector<gp_Pnt>>& helices, const std::vector<std::vector<gp_Pnt>>& anneaux);
+  // Les esquisses visibles (drawSketchHelpers) : traits forts, construction en tiretés, axes en tiretés longs
+  void montrerEsquisses(const std::vector<std::vector<gp_Pnt>>& forts, const std::vector<std::vector<gp_Pnt>>& aides, const std::vector<std::vector<gp_Pnt>>& axes, const Quantity_Color& couleurForts);
   // cgDraw : plans translucides, axes en pointillés, points, repères. Rien de tout cela ne se clique ici : on les choisit dans l'arbre ou les listes.
   struct DessinConstruction {
     std::string kind;
@@ -316,7 +318,7 @@ class Vue3D : public wxWindow {
   occ::handle<AIS_Shape> facesRetenues_, faceReference_, planChoix_;
   bool modeFaces_ = false;
   occ::handle<AIS_Shape> filetsHelices_, filetsAnneaux_;
-  std::vector<occ::handle<AIS_Shape>> construction_;
+  std::vector<occ::handle<AIS_Shape>> construction_, traitsEsquisses_;
   wxPoint dernierClic_;
   double dernierPoint_[3] = {0, 0, 0};  // les filets cosmétiques
   occ::handle<AIS_Shape> aretesVives_, aretesLisses_;  // les traits de la pièce, hors du choix d'un congé
