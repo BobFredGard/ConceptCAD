@@ -1075,6 +1075,7 @@ void Cadre::montrerFiche(int i) {
   std::vector<ChampFiche> champs = ficheFonction(doc_, fj);
   std::vector<std::pair<wxString, std::function<void()>>> boutons;
   derFiche(fj, champs, boutons);
+  if (f.type == "xfillet" && !copie) boutons.push_back({L"✏️ Modifier la sélection", [this, i] { editerConge(i); }});
   poserChamps(champs, copie);
   if (!boutons.empty() || !boutonsAsm_.empty()) poserBoutonsPanneau(boutons);
   if (!copie) ficheId_ = f.id;
@@ -1723,14 +1724,10 @@ void Cadre::montrerFonction(int i) {
   if ((f.type != "xfillet" && f.type != "extrude") || f.kw || !f.kwKey.empty()) return montrerFiche(i);
   if (f.type == "xfillet") {
     lectureSeule(props_, L"Arêtes tangentes", f.tangent != 0 ? L"Suivies" : L"Non suivies");
-    for (const AreteConge& a : f.aretes) lectureSeule(props_, tx(a.nomAffiche), wxString::Format(L"%s %g", f.chamfer ? L"D" : L"R", a.r));
     if (f.visible && f.congeTotal > 0 && f.congeTrouvees < f.congeTotal) lectureSeule(props_, L"Trouvées", wxString::Format(L"%d sur %d", f.congeTrouvees, f.congeTotal));
     if (!f.congeAjuste.empty()) lectureSeule(props_, L"Ajusté", tx(f.congeAjuste));
     if (!f.congeErreur.empty()) lectureSeule(props_, L"Erreur", tx(f.congeErreur));
-    // Le type du chanfrein et ses valeurs se changent ici ; les distances par arête restent à leur place
-    if (f.chamfer) return montrerFiche(i);
-    lectureSeule(props_, L"Modification", L"Pas encore");
-    return;
+    return montrerFiche(i);
   }
   if (f.type != "extrude") return;
   const Esquisse* e = doc_.esquisse(f.esquisse);
@@ -2448,14 +2445,9 @@ void Cadre::annuler() {
     if (m.planSeul) return reprendrePlan(m.docAvant);
     return poserDocument(m.docAvant);
   }
-  if (annulations_.back().creation && annulations_.back().esquissesAvant.size() < doc_.esquissesFichier.size()) {
-    etat(L"Cette esquisse est déjà enregistrée dans le fichier : la retirer n'est pas encore repris dans ce programme.");
-    return;
-  }
-  if (annulations_.back().avecFonctions && annulations_.back().fonctionsAvant.size() < doc_.fonctionsFichier.size()) {
-    etat(L"Cette fonction est déjà enregistrée dans le fichier : la retirer n'est pas encore repris dans ce programme.");
-    return;
-  }
+  // Créée puis enregistrée : elle sort du fichier par le même chemin que Supprimer
+  if ((annulations_.back().creation && annulations_.back().esquissesAvant.size() < doc_.esquissesFichier.size()) ||
+      (annulations_.back().avecFonctions && annulations_.back().fonctionsAvant.size() < doc_.fonctionsFichier.size())) return annulerDejaEnregistre();
   ModifCote m = annulations_.back();
   annulations_.pop_back();
   faireSuivre();  // l'état à rétablir est complet
@@ -2468,6 +2460,31 @@ void Cadre::annuler() {
   }
   poserPas(m.esquissesAvant, m.avecFonctions, m.fonctionsAvant);
   if (m.avecFormules && miniParams_->IsShown()) miniParams_->rafraichir();
+}
+
+void Cadre::annulerDejaEnregistre() {
+  const ModifCote m = annulations_.back();
+  std::vector<std::string> fonctions, esquisses;
+  if (m.avecFonctions)
+    for (const Fonction& f : doc_.fonctions)
+      if (std::none_of(m.fonctionsAvant.begin(), m.fonctionsAvant.end(), [&](const Fonction& a) { return a.id == f.id; })) fonctions.push_back(f.id);
+  for (const Esquisse& e : doc_.esquisses)
+    if (std::none_of(m.esquissesAvant.begin(), m.esquissesAvant.end(), [&](const Esquisse& a) { return a.id == e.id; })) esquisses.push_back(e.id);
+  const auto refaire = retablissements_;
+  const size_t nb = annulations_.size();
+  faireSuivre();
+  changerStructure([&](nlohmann::ordered_json& d) {
+    for (const std::string& id : fonctions) stSupprimerFonction(d, id);
+    for (const std::string& id : esquisses) stSupprimerEsquisse(d, id);
+  }, wxString());
+  retablissements_ = refaire;
+  if (annulations_.size() != nb + 1) return;  // refusé : le message est déjà parti
+  ModifCote r;
+  r.docApres = annulations_.back().docAvant;
+  annulations_.pop_back();
+  annulations_.pop_back();
+  r.docAvant = std::make_shared<Document>(doc_);
+  retablissements_.push_back(std::move(r));
 }
 
 void Cadre::retablir() {
@@ -2615,11 +2632,14 @@ void Cadre::menuFonction(int i) {
   m.Append(M_VOIR, L"👁 Afficher / masquer")->Enable(!copie);
   m.Append(M_EDITER, L"🔧 Éditer l'esquisse")->Enable(!copie && !f.esquisse.empty() && doc_.esquisse(f.esquisse));
   if (fonctionDeFaces(f)) m.Append(M_RESELECTION, L"🎯 Re-sélectionner les faces");
+  if (f.type == "xfillet" && !copie) m.Append(M_RESELECTION, L"✏️ Modifier la sélection");
   m.Append(M_TEMPS, L"⏱ Bloquer le temps à ce point");
   m.Append(M_FIN, L"↗ Fin : rejouer tout")->Enable(!marqueTemps_.empty());
   m.Append(M_SUPPRIMER, L"🗑 Supprimer")->Enable(!copie);
   const int choix = choisirMenu(m);
-  if (choix == M_RESELECTION) {
+  if (choix == M_RESELECTION && f.type == "xfillet") {
+    editerConge(i);
+  } else if (choix == M_RESELECTION) {
     entrerFaces(sorteDeFaces(f), f.id);
   } else if (choix == M_RENOMMER) {
     const wxString n = demanderNom(tx(f.nom));
@@ -3088,6 +3108,27 @@ void Cadre::quitterConge() {
   montrerRien();
   carteDroite_->Layout();
   etat(tx(doc_.nom));
+  // Une modification abandonnée : la pièce revient entière
+  if (!editionConge_.empty()) {
+    editionConge_.clear();
+    marquerTemps(marqueAvantEdition_);
+  }
+}
+
+// enterExactFilletMode(f) : la pièce rejouée jusque juste avant la fonction, ses arêtes déjà choisies
+void Cadre::editerConge(int i) {
+  if (esquisseOuverte_ >= 0) quitterEsquisse();
+  quitterConge();
+  const Fonction f = doc_.fonctions[i];
+  const std::string avant = marqueTemps_;
+  marquerTemps(f.id);
+  entrerConge(f.chamfer);
+  if (!choix_) return marquerTemps(avant);
+  marqueAvantEdition_ = avant;
+  editionConge_ = f.id;
+  choix_->charger(f);
+  messageConge_ = L"Édition « " + tx(f.nom) + wxString::Format(L" » : clic sur une arête ou une face : ajouter ou retirer · %zu arêtes · OK valide, Échap restitue.", choix_->vives().size());
+  rafraichirConge();
 }
 
 void Cadre::cliqueConge(const TopoDS_Shape& s) {
@@ -3171,6 +3212,33 @@ void Cadre::appliquerChoixConge() {
   if (choix_->selection().empty()) return etat(nom + L" : sélectionnez au moins une arête.");
   for (const SelConge& s : choix_->selection())
     if (!(s.r > 0)) return etat(nom + (choix_->chanfrein() ? L" : distance invalide." : L" : rayon invalide."));
+  if (!editionConge_.empty()) {
+    // Édition en place : pas de seconde fonction
+    Document copie = doc_;
+    const Fonction g = choix_->creer(copie, formesCorps_);
+    const std::string id = editionConge_;
+    const nlohmann::ordered_json neuf = nlohmann::ordered_json::parse(texteCongeCree(g));
+    const int nomsArete = copie.nomsArete;
+    editionConge_.clear();
+    quitterConge();
+    marqueTemps_ = marqueAvantEdition_;
+    changerStructure([&](nlohmann::ordered_json& d) {
+      for (auto& x : d["features"])
+        if (x.value("id", std::string()) == id) {
+          x["edges"] = neuf["edges"];
+          x["tangent"] = neuf["tangent"];
+          x["name"] = neuf["name"];
+          for (const char* k : {"cmode", "cd2", "cang", "cflip"}) {
+            if (neuf.contains(k)) x[k] = neuf[k];
+            else x.erase(k);
+          }
+        }
+      d["entNames"]["edge"] = nomsArete;
+    }, L"Ctrl+Z : annuler.");
+    for (size_t k = 0; k < doc_.fonctions.size(); k++)
+      if (doc_.fonctions[k].id == id) choisirFonction(static_cast<int>(k));
+    return;
+  }
   Fonction f = choix_->creer(doc_, formesCorps_);
   quitterConge();
   ModifCote m;
@@ -3364,6 +3432,43 @@ bool Cadre::essaiEsquisse(const std::wstring& fichier, int rang, const std::wstr
       appliquerFiche(e["fiche"][0].get<std::string>() == "@" ? ficheId_ : e["fiche"][0].get<std::string>(), e["fiche"][1].get<std::string>(), e["fiche"][2].get<std::string>());
       essaiMenu_ = false;
       n["etat"] = std::string(etatVue_->texte().utf8_str());
+    }
+    if (e.contains("congeEditer")) {
+      const plan::J& q = e["congeEditer"];
+      for (size_t k = 0; k < doc_.fonctions.size(); k++)
+        if (doc_.fonctions[k].id == q["id"].get<std::string>()) {
+          editerConge(static_cast<int>(k));
+          break;
+        }
+      wxYield();
+      if (choix_) {
+        n["germes"] = choix_->germes().size();
+        n["selection"] = choix_->selection().size();
+        n["apercu"] = !choix_->apercu().forme.IsNull();
+        n["cmode"] = choix_->optionsChanfrein().mode;
+        n["message"] = std::string(messageConge_.utf8_str());
+        if (q.contains("r")) { choix_->rayonDefaut(q["r"].get<double>()); rafraichirConge(); }
+        if (q.value("capture", false)) capturerFenetre(dossier + L"\\t_edition.png");
+        if (q.value("abandon", false)) quitterConge();
+        else appliquerChoixConge();
+        wxYield();
+      }
+      n["etat"] = std::string(etatVue_->texte().utf8_str());
+      n["nbFonctions"] = doc_.fonctions.size();
+      n["marque"] = marqueTemps_;
+    }
+    if (e.contains("annuler")) {
+      annuler();
+      wxYield();
+      n["etat"] = std::string(etatVue_->texte().utf8_str());
+      n["nbFonctions"] = doc_.fonctions.size();
+      n["nbEsquisses"] = doc_.esquisses.size();
+    }
+    if (e.contains("retablir")) {
+      retablir();
+      wxYield();
+      n["nbFonctions"] = doc_.fonctions.size();
+      n["nbEsquisses"] = doc_.esquisses.size();
     }
     if (e.contains("arbreCherche")) {
       rechercheArbre_->SetValue(wxString::FromUTF8(e["arbreCherche"].get<std::string>()));

@@ -206,6 +206,7 @@ std::string nomAuto(const json& d, const json& f) {
     return "Dépouillage " + s + "° · " + std::to_string(nbFaces(f)) + " face(s)";
   }
   if (t == "xdelface") return nbFaces(f) > 1 ? "Suppression de " + std::to_string(nbFaces(f)) + " faces" : std::string("Suppression de face");
+  if (t == "xfillet") return std::string(vrai(f, "chamfer") ? "Chanfrein exact" : "Congé exact") + " (" + std::to_string(f.contains("edges") && f["edges"].is_array() ? f["edges"].size() : 0) + " arête(s))";
   if (t == "xshell") return "Coque " + fmt(std::round(num(f, "thick") * 100) / 100, 2) + " mm · " + std::to_string(nbFaces(f)) + " face(s) retirée(s)";
   if (t == "repeat") return nomRepetition(f);
   if (t == "hole") return nomPercage(d, f);
@@ -675,13 +676,30 @@ std::vector<ChampFiche> ficheFonction(const Document& d, const json& f) {
     c.push_back(lecture("Faces supprimées", std::to_string(nbFaces(f))));
   } else if (t == "bremove") {
     c.push_back(choix("Corps retiré", "s/body", str(f, "body"), listeCorps(d)));
-  } else if (t == "xfillet" && vrai(f, "chamfer")) {
-    const std::string m = str(f, "cmode");
-    const std::string mode = m == "d2" || m == "da" ? m : "eq";
-    c.push_back(choix("Type de chanfrein", "s/cmode", mode, {{"eq", "Distance égale"}, {"d2", "Deux distances"}, {"da", "Distance + angle"}}));
-    if (mode == "d2") c.push_back(nombre("Distance 2 (mm)", "n/cd2", num(f, "cd2")));
-    if (mode == "da") c.push_back(nombre("Angle (°)", "n/cang", num(f, "cang") > 0 ? num(f, "cang") : 45));
-    if (mode != "eq") c.push_back(booleen("⇄ Inverser les faces", "b/cflip", vrai(f, "cflip")));
+  } else if (t == "xfillet") {
+    const bool ch = vrai(f, "chamfer");
+    const std::string dp = ch ? "D" : "R";
+    std::vector<std::pair<std::string, std::string>> retrait{{"", "Choisir…"}};
+    if (f.contains("edges") && f["edges"].is_array()) {
+      for (size_t i = 0; i < f["edges"].size(); i++) {
+        const json& e = f["edges"][i];
+        const std::string nm = str(e, "name").empty() ? "Arête " + std::to_string(i + 1) : str(e, "name");
+        c.push_back(nombre(nm + " · " + dp, "n/edges/" + std::to_string(i) + "/r", num(e, "r")));
+        retrait.push_back({std::to_string(i), nm});
+      }
+      if (!f["edges"].empty()) {
+        c.push_back(nombre(std::string(ch ? "Distance" : "Rayon") + " (toutes)", "x/toutes", num(f["edges"][0], "r") > 0 ? num(f["edges"][0], "r") : 1));
+        c.push_back(choix("Retirer une arête", "x/retirer", "", retrait));
+      }
+    }
+    if (ch) {
+      const std::string m = str(f, "cmode");
+      const std::string mode = m == "d2" || m == "da" ? m : "eq";
+      c.push_back(choix("Type de chanfrein", "s/cmode", mode, {{"eq", "Distance égale"}, {"d2", "Deux distances"}, {"da", "Distance + angle"}}));
+      if (mode == "d2") c.push_back(nombre("Distance 2 (mm)", "n/cd2", num(f, "cd2")));
+      if (mode == "da") c.push_back(nombre("Angle (°)", "n/cang", num(f, "cang") > 0 ? num(f, "cang") : 45));
+      if (mode != "eq") c.push_back(booleen("⇄ Inverser les faces", "b/cflip", vrai(f, "cflip")));
+    }
   } else if (t == "import") {
     if (f.contains("src") && f["src"].is_object()) {
       c.push_back(lecture("Fichier", str(f["src"], "file")));
@@ -947,6 +965,25 @@ std::string ficheAppliquer(json& d, const std::string& id, const std::string& cl
   const bool nomEtaitAuto = str(f, "name").empty() || str(f, "name") == nomAuto(d, f);
   const std::string t = str(f, "type");
   const std::string sorte = cle.substr(0, 1), chemin = cle.size() > 2 ? cle.substr(2) : "";
+  if (t == "xfillet" && cle == "x/retirer") {
+    if (valeur.empty() || !f.contains("edges")) return "";
+    const size_t i = std::stoul(valeur);
+    if (i < f["edges"].size()) f["edges"].erase(i);
+    if (nomEtaitAuto) f["name"] = nomAuto(d, f);
+    return "";
+  }
+  if (t == "xfillet" && cle == "x/toutes") {
+    std::string texte = valeur;
+    std::replace(texte.begin(), texte.end(), ',', '.');
+    double v = 0;
+    try {
+      v = std::stod(texte);
+    } catch (const std::exception&) {
+    }
+    if (!(v > 0) || !std::isfinite(v)) return vrai(f, "chamfer") ? "Distance invalide." : "Rayon invalide.";
+    for (json& e : f["edges"]) e["r"] = v;
+    return "";
+  }
   if (t == "xfillet" && cle == "s/cmode") {
     f["cmode"] = valeur;
     if (valeur == "d2" && !(num(f, "cd2") > 0)) f["cd2"] = f.contains("edges") && !f["edges"].empty() && num(f["edges"][0], "r") > 0 ? num(f["edges"][0], "r") : 1.0;
@@ -973,6 +1010,7 @@ std::string ficheAppliquer(json& d, const std::string& id, const std::string& cl
     if (t == "xshell" && chemin == "thick" && !(v > 0)) return "L'épaisseur doit être positive.";
     if (t == "xfillet" && chemin == "cang" && !(v > 0 && v < 90)) return "Angle du chanfrein : 0 < a < 90°.";
     if (t == "xfillet" && chemin == "cd2" && !(v > 0)) return "Distance 2 : valeur strictement positive.";
+    if (t == "xfillet" && chemin.rfind("edges/", 0) == 0 && !(v > 0)) return vrai(f, "chamfer") ? "Distance invalide." : "Rayon invalide.";
     if (chemin == "thread/clear" || (t == "xthread" && chemin == "clear")) {
       if (!(v >= 0)) return "La valeur ne peut pas être négative.";
     } else if (t == "hole" && !(v > 0)) {

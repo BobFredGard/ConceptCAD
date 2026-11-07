@@ -38,6 +38,7 @@ std::string retoucher(const std::string& texte, const std::vector<Retouche>& ret
 // Le texte du fichier une fois toutes les modifications du document portées : éléments ajoutés ou retirés, puis nombres.
 // Ce qui ne change pas garde ses octets. Lève std::runtime_error plutôt que d'écrire un doute.
 std::string texteEnregistre(const Document& d, const std::string& texteFichier);
+std::string texteCongeCree(const Fonction& f);
 
 // Écrit dans un fichier temporaire, relit, garde l'ancienne version en « .bak », puis remplace d'un seul coup :
 // en cas d'échec, le fichier existant reste intact. Met à jour le document (chemin, état « enregistré »).

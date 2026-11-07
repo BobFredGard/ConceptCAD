@@ -1014,6 +1014,8 @@ std::string retoucher(const std::string& texte, const std::vector<Retouche>& ret
   return appliquer(texte, std::move(morceaux));
 }
 
+std::string texteCongeCree(const Fonction& f) { return congeCree(f); }
+
 std::string texteEnregistre(const Document& d, const std::string& texteOrigine) {
   // Les esquisses créées sont d'abord écrites vides : la suite les traite comme des esquisses du fichier
   if (d.esquisses.size() < d.esquissesFichier.size()) throw std::runtime_error("esquisse retirée d'une façon pas encore reprise, rien n'a été écrit");

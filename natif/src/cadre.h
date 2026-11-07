@@ -113,6 +113,9 @@ class Cadre : public wxFrame {
   void menuGrille();
   void ajusterDroite();
   void remplirArbre();
+  void editerConge(int i);
+  std::string editionConge_, marqueAvantEdition_;
+  void annulerDejaEnregistre();
   // Les deux recherches : cadre_recherche.cpp
   struct CommandeCherchee {
     wxString libelle, aide;

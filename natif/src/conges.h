@@ -50,6 +50,10 @@ struct SelConge {
   Vec3 pos{0, 0, 0};
   double r = 0, len = 0;
   AncreArete ancre;
+  // Repris d'une fonction en cours de modification
+  bool aPos0 = false, aFn = false;
+  Vec3 pos0{0, 0, 0}, fn{0, 0, 0};
+  std::string nomAffiche, nom;
 };
 struct ApercuConge {
   TopoDS_Shape forme;  // vide : pas d'aperçu
@@ -76,6 +80,8 @@ class ChoixConge {
   const std::vector<int>& germes() const { return germes_; }
   const std::vector<SelConge>& selection() const { return sel_; }
   void basculer(int i);
+  // Modifier la sélection d'une fonction déjà faite (enterExactFilletMode(editF)) : ses arêtes, ses germes, son type
+  void charger(const Fonction& f);
   // Un clic sur une arête ou une face de la pièce (exactToggle) : rend le message à montrer
   std::string cliquer(const TopoDS_Shape& s);
   void rayonDefaut(double r);

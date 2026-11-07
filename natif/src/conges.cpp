@@ -1757,10 +1757,63 @@ void ChoixConge::synchroniser() {
   for (const SelConge& s : sel_)
     for (SelConge& k : gardees)
       if (ecart(k.pos, s.pos) < 0.75) {
-        k.r = s.r;
+        const Vec3 ici = k.pos;
+        const double l = k.len;
+        const AncreArete an = k.ancre;
+        k = s;
+        k.pos = ici;
+        k.len = l;
+        if (!k.ancre.existe) k.ancre = an;
         break;
       }
   sel_ = std::move(gardees);
+}
+
+void ChoixConge::charger(const Fonction& f) {
+  sel_.clear();
+  germes_.clear();
+  tangent_ = f.tangent != 0;
+  if (chanfrein_) {
+    cham_.mode = f.cmode == "d2" || f.cmode == "da" ? f.cmode : "eq";
+    if (f.cd2 > 0) cham_.d2 = f.cd2;
+    if (f.cang > 0 && f.cang < 90) cham_.ang = f.cang;
+    cham_.flip = f.cflip;
+  }
+  for (const AreteConge& a : f.aretes) {
+    bool deja = false;
+    for (const SelConge& u : sel_) deja = deja || (std::abs(u.r - a.r) < 1e-9 && ecart(u.pos, a.pos) <= 0.75);
+    if (deja) continue;
+    SelConge s;
+    s.pos = a.pos;
+    s.r = a.r > 0 ? a.r : 2;
+    s.len = a.len;
+    s.ancre = a.ancre;
+    s.aPos0 = true;
+    s.pos0 = a.aPos0 ? a.pos0 : a.pos;
+    s.aFn = a.aFn;
+    s.fn = a.fn;
+    s.nomAffiche = a.nomAffiche;
+    s.nom = a.nom;
+    sel_.push_back(std::move(s));
+  }
+  for (const SelConge& s : sel_)
+    if (s.r > 0) {
+      rayon_ = s.r;
+      break;
+    }
+  // Germes : les arêtes cliquées à la création ; un fichier sans ce drapeau : toutes
+  const bool unGerme = std::any_of(f.aretes.begin(), f.aretes.end(), [](const AreteConge& a) { return a.seed; });
+  for (const SelConge& s : sel_) {
+    bool germe = !unGerme;
+    for (const AreteConge& a : f.aretes) germe = germe || (a.seed && ecart(a.pos, s.pos) <= 0.75);
+    if (!germe) continue;
+    for (size_t i = 0; i < vives_.size(); i++)
+      if (ecart(vives_[i].mid, s.pos) < 0.75) {
+        if (std::find(germes_.begin(), germes_.end(), static_cast<int>(i)) == germes_.end()) germes_.push_back(static_cast<int>(i));
+        break;
+      }
+  }
+  synchroniser();
 }
 
 void ChoixConge::basculer(int i) {
@@ -1976,9 +2029,13 @@ Fonction ChoixConge::creer(Document& d, const std::vector<std::pair<std::string,
   for (const SelConge& s : sel_) {
     AreteConge a;
     a.pos = s.pos;
-    a.pos0 = s.pos;
+    a.pos0 = s.aPos0 ? s.pos0 : s.pos;
     a.aPos0 = true;
-    if (asym) {
+    a.nom = s.nom;
+    if (s.aFn) {
+      a.aFn = true;
+      a.fn = s.fn;
+    } else if (asym) {
       // La normale de la première face (règle « vers le haut », sans l'inversion) : le rejeu et les copies d'une répétition retrouvent la même face
       int bi = -1;
       double bd = 1e9;
@@ -2009,7 +2066,7 @@ Fonction ChoixConge::creer(Document& d, const std::vector<std::pair<std::string,
     a.r = s.r;
     a.len = s.len;
     a.ancre = s.ancre;
-    a.nomAffiche = "Arête " + std::to_string(++d.nomsArete);
+    a.nomAffiche = !s.nomAffiche.empty() ? s.nomAffiche : "Arête " + std::to_string(++d.nomsArete);
     f.aretes.push_back(std::move(a));
   }
   f.corps = d.corpsActif;
