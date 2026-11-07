@@ -2,13 +2,11 @@
 // page dans l'affichage web du système et donne au pont (../pont.js) l'accès aux vraies fenêtres et aux fichiers.
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
-use flate2::read::{GzEncoder, MultiGzDecoder};
-use flate2::Compression;
 use percent_encoding::percent_decode_str;
 use rfd::{FileDialog, MessageButtons, MessageDialog, MessageDialogResult, MessageLevel};
 use serde::{Deserialize, Serialize};
 use std::fs;
-use std::io::{Read, Write};
+use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Mutex;
@@ -156,21 +154,6 @@ fn journal(texte: String) -> Result<(), String> {
     };
     let mut f = fs::OpenOptions::new().create(true).append(true).open(chemin).map_err(|e| e.to_string())?;
     writeln!(f, "{texte}").map_err(|e| e.to_string())
-}
-
-/// Compresse ou décompresse pour le pont : sur Mac, ne dépend pas de la version de Safari.
-#[tauri::command]
-fn gzip(request: Request) -> Result<Response, String> {
-    let InvokeBody::Raw(octets) = request.body() else {
-        return Err("contenu binaire attendu".into());
-    };
-    let mut sortie = Vec::new();
-    let resultat = if request.headers().contains_key("x-decompresser") {
-        MultiGzDecoder::new(&octets[..]).read_to_end(&mut sortie)
-    } else {
-        GzEncoder::new(&octets[..], Compression::default()).read_to_end(&mut sortie)
-    };
-    resultat.map(|_| Response::new(sortie)).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -362,7 +345,7 @@ fn main() {
             }
         })
         .invoke_handler(tauri::generate_handler![
-            dialogue_ouvrir, dialogue_enregistrer, dialogue_dossier, lire, infos, lister, creer_dossier, ecrire, gzip, journal, titre, fichier_demarrage, fermeture_recue, fermer, maj_chercher, maj_telecharger, maj_installer
+            dialogue_ouvrir, dialogue_enregistrer, dialogue_dossier, lire, infos, lister, creer_dossier, ecrire, journal, titre, fichier_demarrage, fermeture_recue, fermer, maj_chercher, maj_telecharger, maj_installer
         ]);
     #[cfg(target_os = "macos")]
     let constructeur = constructeur.menu(menu_mac).on_menu_event(|app, e| {

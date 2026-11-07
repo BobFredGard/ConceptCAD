@@ -18,7 +18,7 @@
   const JOURNAL=/^Mac/.test(navigator.platform)||window.__ccJournal===true;
   const trace=m=>{if(JOURNAL)invoke('journal',{texte:new Date().toISOString().slice(11,23)+' '+m}).catch(()=>{});};
   if(JOURNAL){
-    trace('=== démarrage '+navigator.userAgent+' ; isolé='+window.crossOriginIsolated);
+    trace('=== démarrage '+navigator.userAgent+' ; isolé='+window.crossOriginIsolated+' ; cœurs='+navigator.hardwareConcurrency+' ; adresse='+location.search);
     addEventListener('error',e=>trace('ERREUR '+e.message+' '+e.filename+':'+e.lineno));
     addEventListener('unhandledrejection',e=>trace('REJET '+(e.reason&&e.reason.message||e.reason)));
     addEventListener('webglcontextlost',e=>trace('CONTEXTE 3D PERDU'),true);
@@ -50,35 +50,16 @@
       }
       setInterval(()=>{
         let etat='';
-        try{etat='noyau='+occtReady+' calcul='+rebuildDepth+'/'+regenRun+'/'+regenUi+' fonctions='+(doc.features||[]).length;}catch(e){}
+        try{etat='noyau='+occtReady+' fils='+occtMtFils+' calcul='+rebuildDepth+'/'+regenRun+'/'+regenUi+' fonctions='+(doc.features||[]).length;}catch(e){}
         trace('vivant images='+images+' '+etat);
       },2000);
     });
   }
 
-  // Compression des pièces (gzip) : un Safari ancien ne la connaît pas. Il enregistre alors sans compresser
-  // et ne peut plus lire les pièces venues de Windows. Sur Mac, c'est toujours l'application qui s'en charge.
-  const fluxGzip=(Natif,entetes)=>class{
-    constructor(format){
-      if(format!=='gzip'){
-        if(Natif)return new Natif(format);
-        throw new TypeError('Format non pris en charge : '+format);
-      }
-      const morceaux=[];
-      const t=new TransformStream({
-        transform(m){morceaux.push(m);},
-        async flush(sortie){
-          const entree=new Uint8Array(await new Blob(morceaux).arrayBuffer());
-          const r=new Uint8Array(await invoke('gzip',entree,{headers:entetes}));
-          if(r.length)sortie.enqueue(r);
-        }
-      });
-      this.readable=t.readable;this.writable=t.writable;
-    }
-  };
-  if(/^Mac/.test(navigator.platform)||typeof CompressionStream==='undefined'||typeof DecompressionStream==='undefined'){
-    window.CompressionStream=fluxGzip(window.CompressionStream,{});
-    window.DecompressionStream=fluxGzip(window.DecompressionStream,{'x-decompresser':'1'});
+  // Sur Mac, le noyau multicœur fige l'application dès qu'il reconstruit une vraie pièce (Mac à 4 cœurs ou
+  // plus, moteur Safari ; il marche dans Brave). L'adresse ?mt=0, prévue par le logiciel, choisit le noyau normal.
+  if((/^Mac/.test(navigator.platform)||window.__ccSansMulticoeur===true)&&!/[?&]mt=0(?:&|$)/.test(location.search)){
+    history.replaceState(null,'',location.pathname+(location.search?location.search+'&':'?')+'mt=0'+location.hash);
   }
 
   // Pas de méthode propre à l'objet : un lien doit pouvoir se ranger dans IndexedDB (fichiers récents).

@@ -44,7 +44,7 @@ Pour chaque essai qui échoue, notez son numéro et ce que vous voyez. Une photo
 
 ## Points à surveiller
 
-- **Noyau multicœur :** rien ne garantit qu'il démarre sur Mac. S'il ne démarre pas, le logiciel prend le noyau normal : tout marche, parfois moins vite.
+- **Noyau multicœur :** coupé sur Mac (`?mt=0`, posé par `tauri/pont.js`), car il figeait l'application dès qu'il reconstruisait une vraie pièce. Les Mac de GitHub ont 3 cœurs et prennent toujours le noyau normal : ils ne peuvent pas révéler ce blocage.
 - **macOS :** réglé pour macOS 12 ou plus récent. Le noyau a besoin d'un Safari à jour (16.4 ou plus).
 - **Pour diffuser à d'autres :** il faudra un compte développeur Apple (environ 99 $ par an) pour supprimer le blocage au premier lancement.
 
