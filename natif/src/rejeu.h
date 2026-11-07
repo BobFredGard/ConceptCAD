@@ -1,6 +1,7 @@
 // Rejeu des fonctions d'une pièce avec le noyau OCCT natif :
 // traduction de occFinalShapeGen / occReplayBodyGen (src/20-70) pour esquisses, extrusions et découpes.
 #pragma once
+#include "filets.h"
 #include <TopoDS_Face.hxx>
 #include <TopoDS_Shape.hxx>
 #include "projet.h"
@@ -9,6 +10,7 @@ struct ResultatRejeu {
   TopoDS_Shape forme;  // composé si plusieurs corps
   std::vector<std::pair<std::string, TopoDS_Shape>> corps;  // le solide de chaque corps
   std::vector<std::string> messages;
+  std::vector<SpiraleFilet> spirales;  // les filets cosmétiques à dessiner
 };
 
 struct Mesures {

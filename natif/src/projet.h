@@ -127,7 +127,24 @@ struct RefFace {  // le nom se retient au premier passage, même sur une référ
 };
 RefFace lireRefFaceJson(const nlohmann::ordered_json& j);
 // Réglages d'un perçage tels que dans le fichier (NaN : absent)
+struct ReglageEngrenage {  // gear
+  double m = NAN, z = NAN, alpha = NAN, b = NAN, x = 0, beta = 0, D = 0, H = 0, j = 0, ks = 0;
+  std::string hand, kind;
+};
+struct ReglageFilet {  // f.thread d'un perçage, ou les réglages d'un filetage d'axe
+  std::string size, lenMode;
+  double p = 0, clear = 0, len = 0;
+  bool lh = false, model = false, aPlan = false;
+  Vec3 planP{}, planN{};
+};
+struct CylindreFiletage {  // f.cyl
+  Vec3 c{}, u{}, p{};
+  double r = 0;
+  bool lu = false, aP = false;
+  std::string nom;
+};
 struct ReglagePercage {
+  ReglageFilet filet;
   std::string kind, end, pilot;
   double d = NAN, stD = NAN, stH = NAN, stTip = NAN, cbD = NAN, cbH = NAN, csD = NAN, csA = NAN, depth = NAN, tip = NAN, reamD = NAN, reamH = NAN, reamOff = NAN;
   bool aPlan = false;
@@ -141,6 +158,9 @@ struct Fonction {
   std::string repeatId;      // copie faite par cette répétition
   bool repetee = false;      // copie ou source d'une répétition : la changer n'est pas encore repris
   ReglagePercage percage;
+  ReglageEngrenage engrenage;  // gear
+  ReglageFilet filetage;      // xthread
+  CylindreFiletage cylindre;  // xthread
   // Révolution : axe {k:'line',id} ou {k:'sys',d}
   std::string axeK, axeId, axeD;
   double angle = 360;

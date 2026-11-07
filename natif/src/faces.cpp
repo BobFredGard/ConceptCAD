@@ -323,6 +323,8 @@ bool areteTangente(const TopoDS_Edge& e, const TopoDS_Face& f1, const TopoDS_Fac
   } catch (const Standard_Failure&) {
   }
   try {
+    double pc0, pc1;  // une arête sans courbe sur sa face (rencontre d'un filet et d'un cône) : pas mesurable
+    if (BRep_Tool::CurveOnSurface(e, f1, pc0, pc1).IsNull() || BRep_Tool::CurveOnSurface(e, f2, pc0, pc1).IsNull()) return false;
     BRepAdaptor_Curve2d g1(e, f1), g2(e, f2);
     TopLoc_Location l1, l2;
     const Handle(Geom_Surface) s1 = BRep_Tool::Surface(f1, l1), s2 = BRep_Tool::Surface(f2, l2);

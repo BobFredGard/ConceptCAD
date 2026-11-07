@@ -168,6 +168,7 @@ public:
   std::function<bool(const TopoDS_Shape&)> pioche_;  // le prochain clic dans la vue lui revient ; false : encore un
   void demanderClicFiche(const std::string& id, const std::string& cle, const std::string& valeur);
   void creerPercageVise();
+  void creerFiletageVise(const std::string& idExistant = "");
   int esquisseDeLArbre();
   void montrerFiche(int i);
   void appliquerFiche(const std::string& id, const std::string& cle, const std::string& valeur);

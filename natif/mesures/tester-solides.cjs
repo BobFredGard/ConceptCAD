@@ -39,6 +39,8 @@ fs.mkdirSync(dossier, { recursive: true });
       let m = null, pareil = 0;
       for (let k = 0; k < 400 && pareil < 4; k++) {
         await attendre(500);
+        // Les filets modélisés se calculent à part : pas de stabilité tant qu'ils ne sont pas revenus
+        if (await page.evaluate(() => typeof occThrPending !== 'undefined' && occThrPending)) { pareil = 0; continue; }
         const q = await page.evaluate(() => {
           const sh = typeof occLive !== 'undefined' && occLive && occLive.shape;
           if (!sh) {

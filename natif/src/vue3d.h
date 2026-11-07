@@ -16,6 +16,7 @@
 #include <TopoDS_Shape.hxx>
 #include <V3d_View.hxx>
 #include <V3d_Viewer.hxx>
+#include <gp_Pnt.hxx>
 
 class Vue3D : public wxWindow {
  public:
@@ -24,6 +25,7 @@ class Vue3D : public wxWindow {
   void afficher(const TopoDS_Shape& forme, bool ajusterVue, const std::vector<std::pair<TopoDS_Shape, unsigned>>& teintes = {}, const std::vector<std::pair<TopoDS_Shape, double>>& transparences = {});
   // Pour les essais : la vue dans une image, et le temps des arêtes et du reflet au dernier affichage
   bool image(const wxString& chemin);
+  void montrerFilets(const std::vector<std::vector<gp_Pnt>>& helices, const std::vector<std::vector<gp_Pnt>>& anneaux);
   double msAffichage() const { return msAffichage_; }
   double msImage() const { return msImage_; }
   void ajuster();
@@ -67,6 +69,7 @@ class Vue3D : public wxWindow {
   occ::handle<AIS_Shape> traitsVifs_, traitsLisses_, traitsChoisis_, apercu_;
   occ::handle<AIS_Shape> facesRetenues_, faceReference_, planChoix_;
   bool modeFaces_ = false;
+  occ::handle<AIS_Shape> filetsHelices_, filetsAnneaux_;  // les filets cosmétiques
   occ::handle<AIS_Shape> aretesVives_, aretesLisses_;  // les traits de la pièce, hors du choix d'un congé
   std::vector<occ::handle<AIS_Shape>> reflets_;  // chaque corps renversé sous le sol
   double sol_ = 0, msAffichage_ = 0, msImage_ = 0;

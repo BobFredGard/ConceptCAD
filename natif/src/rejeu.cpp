@@ -1,5 +1,6 @@
 #include "rejeu.h"
 #include "echanges.h"
+#include "engrenage.h"
 #include <BRepBuilderAPI_Copy.hxx>
 #include <BRepOffsetAPI_DraftAngle.hxx>
 #include <BRepPrimAPI_MakeRevol.hxx>
@@ -789,6 +790,9 @@ std::optional<TopoDS_Shape> decoupeSansFaceFine(const Fonction& f, const Esquiss
 
 // occThroughBase : le solide d'avant la dernière extrusion « à travers tout », seule mesure de son étendue pendant le rejeu
 TopoDS_Shape gBaseTraversante;
+bool gFiletsSautes = false;  // occThreadSkip : rejeu partiel, filets modélisés sautés
+bool gCorpsRecousu = false;  // les filets ont été creusés : le corps est déjà recousu
+std::map<std::string, std::vector<SpiraleFilet>> gSpirales;  // par fonction
 
 // occApplyDraft
 TopoDS_Shape appliquerDepouille(const Document& d, const Fonction& f, const TopoDS_Shape& resultat, std::vector<std::string>& msgs) {
@@ -896,7 +900,7 @@ TopoDS_Shape composeOutils(const std::vector<TopoDS_Shape>& v) {
   return c;
 }
 // Le groupe de copies d'une répétition d'un seul booléen (batch de occReplayBodyGen). Rend false pour un rejeu une à une.
-bool rejouerCopies(Document& d, const std::vector<Fonction*>& groupe, TopoDS_Shape& resultat, std::vector<std::string>& msgs) {
+bool rejouerCopies(Document& d, const std::vector<Fonction*>& groupe, TopoDS_Shape& resultat, std::vector<std::string>& msgs, std::vector<std::pair<std::string, TopoDS_Shape>>& vides) {
   const auto cut = groupe[0]->type == "hole" || groupe[0]->op == "cut";
   std::vector<TopoDS_Shape> outils, parCopie;
   std::vector<std::string> alertes;
@@ -906,7 +910,10 @@ bool rejouerCopies(Document& d, const std::vector<Fonction*>& groupe, TopoDS_Sha
       Esquisse* s = d.esquisse(g->esquisse);
       if (!s) return false;
       if (g->type == "hole") {
-        auto v = formePercage(*g, *s, resultat, alertes);
+        FiletsPercage fil;
+        auto v = formePercage(*g, *s, resultat, alertes, gFiletsSautes ? nullptr : &fil);
+        if (!fil.vides.IsNull()) vides.push_back({g->nom, fil.vides});
+        if (!fil.spirales.empty()) gSpirales[g->id] = fil.spirales;
         outils.insert(outils.end(), v.begin(), v.end());
         parCopie.push_back(composeOutils(v));
       } else {
@@ -942,6 +949,11 @@ std::vector<std::string> corpsEnPlusDe(const Document& d, const Fonction& f) {  
   return out;
 }
 TopoDS_Shape rejouerCorps(Document& d, const std::vector<Fonction*>& liste, const std::string& bid, std::vector<std::string>& msgs);
+// occUnifyAfterFillets : un congé a pu scinder des faces voisines, recoudre celles de même surface
+bool recoudreApresConges(const std::vector<Fonction*>& l) {
+  return std::any_of(l.begin(), l.end(), [](const Fonction* f) { return f->type == "xfillet"; }) &&
+         std::none_of(l.begin(), l.end(), [](const Fonction* f) { return f->type == "xsplit" && f->modeFonction != "body"; });
+}
 // occCombineTool : le corps tb tel qu'il est juste avant la fonction f
 TopoDS_Shape corpsAvant(Document& d, const Fonction& f, const std::string& tb) {
   std::vector<Fonction*> l;
@@ -958,6 +970,7 @@ TopoDS_Shape corpsAvant(Document& d, const Fonction& f, const std::string& tb) {
 
 TopoDS_Shape rejouerCorps(Document& d, const std::vector<Fonction*>& liste, const std::string& bid, std::vector<std::string>& msgs) {
   TopoDS_Shape resultat;
+  std::vector<std::pair<std::string, TopoDS_Shape>> vides;  // filets modélisés, creusés en fin de rejeu
   const Fonction* enCours = nullptr;
   const auto clore = [&] {  // aucune face sans nom, quelle que soit la fonction
     if (!enCours) return;
@@ -978,10 +991,39 @@ TopoDS_Shape rejouerCorps(Document& d, const std::vector<Fonction*>& liste, cons
       const auto opDe = [](const Fonction& g) { return g.type == "hole" ? std::string("cut") : g.type == "extrude" ? g.op : std::string(); };
       std::vector<Fonction*> groupe;
       for (size_t k = ii; k < liste.size() && liste[k]->repeatId == f.repeatId && opDe(*liste[k]) == opDe(f); k++) groupe.push_back(liste[k]);
-      if ((opDe(f) == "cut" || opDe(f) == "add") && groupe.size() > 1 && rejouerCopies(d, groupe, resultat, msgs)) {
+      if ((opDe(f) == "cut" || opDe(f) == "add") && groupe.size() > 1 && rejouerCopies(d, groupe, resultat, msgs, vides)) {
         ii += groupe.size() - 1;
         continue;
       }
+    }
+    if (f.type == "gear") {  // la denture va directement au noyau
+      try {
+        const TopoDS_Shape gs = formeEngrenage(f.engrenage);
+        resultat = resultat.IsNull() ? gs : unifier(fusion(resultat, gs));
+      } catch (const Standard_Failure& e) {
+        msgs.push_back(f.nom + " : " + e.what());
+      } catch (const std::exception& e) {
+        msgs.push_back(f.nom + " : " + e.what());
+      }
+      continue;
+    }
+    if (f.type == "xthread") {  // threadReplayStep : le solide n'est pas modifié
+      if (gFiletsSautes) continue;
+      if (resultat.IsNull()) {
+        msgs.push_back(f.nom + " : aucun axe à fileter — ignoré");
+        continue;
+      }
+      try {
+        FiletageCalcule c = calculerFiletage(resultat, f);
+        for (const std::string& a : c.alertes) msgs.push_back(f.nom + " : " + a);
+        if (!c.vide.IsNull()) vides.push_back({f.nom, c.vide});
+        if (c.cosmetique) gSpirales[f.id] = {c.spirale};
+      } catch (const Standard_Failure& e) {
+        msgs.push_back(f.nom + " : " + e.what());
+      } catch (const std::exception& e) {
+        msgs.push_back(f.nom + " : " + e.what());
+      }
+      continue;
     }
     if (f.type == "import") {
       bool exacte = true;
@@ -1030,7 +1072,10 @@ TopoDS_Shape rejouerCorps(Document& d, const std::vector<Fonction*>& liste, cons
         Esquisse* s = d.esquisse(f.esquisse);
         if (!s) throw std::runtime_error("esquisse introuvable");
         std::vector<std::string> alertes;
-        const auto outils = formePercage(f, *s, resultat, alertes);
+        FiletsPercage fil;
+        const auto outils = formePercage(f, *s, resultat, alertes, gFiletsSautes ? nullptr : &fil);
+        if (!fil.vides.IsNull()) vides.push_back({f.nom, fil.vides});
+        if (!fil.spirales.empty()) gSpirales[f.id] = fil.spirales;
         for (const std::string& a : alertes) msgs.push_back(f.nom + " : " + a);
         const TopoDS_Shape outilEntier = composeOutils(outils);
         resultat = sansCouturesParasites(coupeListe(resultat, outils, {outilEntier}), resultat, outilEntier);
@@ -1173,6 +1218,24 @@ TopoDS_Shape rejouerCorps(Document& d, const std::vector<Fonction*>& liste, cons
     }
   }
   clore();
+  // Filets modélisés creusés en dernier, en une seule découpe : les fonctions n'ont jamais vu leurs faces hélicoïdales
+  gCorpsRecousu = !vides.empty() && !resultat.IsNull() && !gFiletsSautes;
+  if (gCorpsRecousu) {
+    if (recoudreApresConges(liste)) resultat = unifier(resultat);
+    std::string noms;
+    std::vector<TopoDS_Shape> v;
+    for (const auto& [n, s] : vides) {
+      noms += (noms.empty() ? "" : ", ") + n;
+      v.push_back(s);
+    }
+    try {
+      resultat = creuserFilets(resultat, composeFilets(v));
+    } catch (const Standard_Failure& e) {
+      msgs.push_back(noms + " : filet modélisé impossible (" + e.what() + ")");
+    } catch (const std::exception& e) {
+      msgs.push_back(noms + " : filet modélisé impossible (" + e.what() + ")");
+    }
+  }
   return resultat;
 }
 }  // namespace
@@ -1210,14 +1273,16 @@ ResultatRejeu rejouer(Document& d, int n) {
   }
   ResultatRejeu r;
   std::vector<TopoDS_Shape> pieces;
+  gSpirales.clear();
+  gFiletsSautes = false;  // rejeu partiel = la liste s'arrête avant la fin ; le marqueur compte aussi
+  if (n >= 0)
+    for (size_t i = n; i < d.fonctions.size(); i++)
+      if (d.fonctions[i].visible) gFiletsSautes = true;
   for (auto& b : ordre) {
     if (consommes.count(b)) continue;
     gBaseTraversante = TopoDS_Shape();
     TopoDS_Shape s = rejouerCorps(d, parCorps[b], b, r.messages);
-    // Un congé a pu scinder des faces voisines : recoudre celles de même surface (occUnifyAfterFillets)
-    if (!s.IsNull() && std::any_of(parCorps[b].begin(), parCorps[b].end(), [](const Fonction* f) { return f->type == "xfillet"; }) &&
-        std::none_of(parCorps[b].begin(), parCorps[b].end(), [](const Fonction* f) { return f->type == "xsplit" && f->modeFonction != "body"; }))
-      s = unifier(s);
+    if (!s.IsNull() && !gCorpsRecousu && recoudreApresConges(parCorps[b])) s = unifier(s);
     if (!s.IsNull()) {
       pieces.push_back(s);
       r.corps.push_back({b, s});
@@ -1234,6 +1299,12 @@ ResultatRejeu rejouer(Document& d, int n) {
     for (const auto& c : r.corps) ids.push_back(c.first);
     nomsCompose(pieces, comp, ids);
   }
+  for (const Fonction& f : d.fonctions)
+    if (const auto it = gSpirales.find(f.id); it != gSpirales.end())
+      for (SpiraleFilet s : it->second) {
+        s.corps = corpsDeFonction(d, f);
+        if (std::find_if(r.corps.begin(), r.corps.end(), [&](const auto& c) { return c.first == s.corps; }) != r.corps.end()) r.spirales.push_back(std::move(s));
+      }
   std::vector<TopoDS_Shape> finales = pieces;
   if (!r.forme.IsNull()) finales.push_back(r.forme);
   nomsFinDeRejeu(finales);

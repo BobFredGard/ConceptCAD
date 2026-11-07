@@ -2,6 +2,10 @@
 #include "percage.h"
 #include "noms.h"
 
+#include <BRepBuilderAPI_Transform.hxx>
+#include <Standard_Failure.hxx>
+#include <gp_Trsf.hxx>
+#include <gp_Vec.hxx>
 #include <BRepAlgoAPI_Fuse.hxx>
 #include <BRepBndLib.hxx>
 #include <BRepClass3d_SolidClassifier.hxx>
@@ -20,6 +24,7 @@
 #include <stdexcept>
 
 namespace {
+using json_t = nlohmann::ordered_json;
 const double PI = 3.141592653589793;
 
 struct Norme {
@@ -86,6 +91,13 @@ struct Segment {
   double z, h, r0, r1;
 };
 
+double entreeTrou(const Norme& N) {  // holeEntryOff
+  if (N.kind == "cbore") return N.cbH;
+  if (N.kind == "csink") return std::max(0.0, (N.csD - N.d) / 2 / std::tan(N.csA * PI / 360));
+  if (N.kind == "step") return N.stH + (N.stTip > 0 ? (N.stD - N.d) / 2 / std::tan(N.stTip * PI / 360) : 0);
+  return 0;
+}
+
 std::vector<Segment> profil(const Norme& N, double zFin) {  // holeProfileSegs
   std::vector<Segment> s;
   double z = 0;
@@ -112,7 +124,8 @@ std::vector<Segment> profil(const Norme& N, double zFin) {  // holeProfileSegs
 }
 
 // holePlaneDist : distance le long de l'axe jusqu'au plan choisi ; rien s'il est absent, parallèle ou derrière
-std::optional<double> distancePlan(const ReglagePercage& f, const gp_Pnt& P, const gp_Dir& D) {
+template <class R>
+std::optional<double> distancePlan(const R& f, const gp_Pnt& P, const gp_Dir& D) {
   if (!f.aPlan) return std::nullopt;
   const double dn = D.X() * f.planN[0] + D.Y() * f.planN[1] + D.Z() * f.planN[2];
   if (std::abs(dn) < 1e-6) return std::nullopt;
@@ -156,7 +169,7 @@ std::optional<double> prochaineSortie(const TopoDS_Shape& sh, const gp_Pnt& P, c
 }
 }  // namespace
 
-std::vector<TopoDS_Shape> formePercage(const Fonction& f, const Esquisse& s, const TopoDS_Shape& base, std::vector<std::string>& alertes) {
+std::vector<TopoDS_Shape> formePercage(const Fonction& f, const Esquisse& s, const TopoDS_Shape& base, std::vector<std::string>& alertes, FiletsPercage* fil) {
   std::vector<gp_Pnt> centres;
   for (const Entite& e : s.entites) {
     if (e.t != "cpoint" || !e.percage) continue;
@@ -166,6 +179,14 @@ std::vector<TopoDS_Shape> formePercage(const Fonction& f, const Esquisse& s, con
   }
   if (centres.empty()) throw std::runtime_error("aucun centre de perçage dans l'esquisse");
   Norme N = normer(f.percage);
+  const ReglageFilet& F = f.percage.filet;
+  const bool taraude = N.kind != "ream" && !F.size.empty();
+  std::optional<FiletInterieur> thModel;
+  if (taraude && F.model) thModel = filetInterieur(F.size, F.p, F.clear);
+  if (thModel) {
+    thModel->lh = F.lh;
+    N.r = std::max(N.r, thModel->rCrete);  // le corps n'est jamais plus étroit que la crête du filet
+  }
   const double sg = f.flip ? 1 : -1;
   const gp_Dir D(s.n[0] * sg, s.n[1] * sg, s.n[2] * sg);
   // Débouchant : course limitée à la pièce déjà construite (+1 mm)
@@ -194,13 +215,26 @@ std::vector<TopoDS_Shape> formePercage(const Fonction& f, const Esquisse& s, con
     if (N.through) return N.thruLen != 0 ? N.thruLen : 2000.0;
     return N.depth;
   };
+  // Longueur filetée effective
+  double thLen = 0;
+  if (taraude) {
+    const std::string m = F.lenMode.empty() ? "len" : F.lenMode;
+    thLen = F.len;
+    if (m == "upto") {
+      if (auto t = distancePlan(F, centres[0], D)) thLen = *t;
+      else alertes.push_back("longueur filetée « jusqu'à la face » : face non choisie");
+    } else if (m == "next") {
+      if (auto t = prochaineSortie(base, centres[0], D)) thLen = *t;
+    } else if (m == "through") {
+      thLen = std::max(0.0, finDe(centres[0]) - entreeTrou(N));
+    }
+  }
   const double OVER = 0.02;  // départ légèrement au-dessus du plan : jamais de face coplanaire
-  std::vector<TopoDS_Shape> outils;
+  std::vector<TopoDS_Shape> outils, vides;
   int iCentre = -1;
-  for (const gp_Pnt& P : centres) {
-    iCentre++;
+  const auto fusionne = [&](const gp_Pnt& P, double zFin) {
     TopoDS_Shape prof;
-    const auto segs = profil(N, finDe(P));
+    const auto segs = profil(N, zFin);
     for (size_t i = 0; i < segs.size(); i++) {
       const Segment& g = segs[i];
       const bool premier = i == 0;
@@ -224,7 +258,90 @@ std::vector<TopoDS_Shape> formePercage(const Fonction& f, const Esquisse& s, con
       nomsTransmet({prof, x}, histoireDe(fu), nx);
       prof = nx;
     }
-    outils.push_back(prof);
+    return prof;
+  };
+  const double rC = N.r + 0.01;
+  std::string cleV0;
+  gp_Pnt P0;
+  TopoDS_Shape v0;
+  for (const gp_Pnt& P : centres) {
+    iCentre++;
+    const double zEnd = finDe(P);
+    if (!thModel) {
+      outils.push_back(fusionne(P, zEnd));
+      continue;
+    }
+    const double p = thModel->P, off = entreeTrou(N);
+    const double L = (F.lenMode.empty() ? "len" : F.lenMode) == std::string("through") ? std::max(0.0, zEnd - off) : std::min(thLen != 0 ? thLen : (F.len != 0 ? F.len : N.depth), zEnd - off);
+    // Le vide commence un pas avant l'entrée et, pour un débouchant, finit un pas après la sortie ; borgne : un pas lisse sous la dernière crête
+    const double zStart = off - p;
+    const bool borgne = !(N.through || N.end == "next");
+    int nT = std::max(1, static_cast<int>(std::lround((L + p + (borgne ? 0 : p)) / p)));
+    double zB = zEnd;
+    if (borgne) while (nT > 1 && zStart + (nT + 1) * p > zEnd - 0.05) nT--;
+    else zB = std::max(zEnd, zStart + (nT + 1) * p + 0.1);
+    const double tip = borgne && N.end == "blind" ? N.tip : 0;
+    bool creux = false;
+    if (L > 0.9 * p) {
+      if (!fil) {
+        creux = true;  // rejeu partiel : même avant-trou, le filet n'est pas construit
+      } else {
+        char cle[160];
+        std::snprintf(cle, sizeof cle, "%.4f|%d|%.4f|%.4f", zStart, nT, zB, tip);
+        TopoDS_Shape v;
+        try {
+          if (!v0.IsNull() && cleV0 == cle) {  // même filet sur plusieurs centres : construit une fois, puis translaté
+            gp_Trsf g;
+            g.SetTranslation(gp_Vec(P0, P));
+            v = BRepBuilderAPI_Transform(v0, g, false).Shape();
+          } else {
+            v = videTaraude(P, D, zStart, nT, *thModel, rC, zB, tip);
+            if (!v.IsNull()) {
+              v0 = v;
+              cleV0 = cle;
+              P0 = P;
+            }
+          }
+        } catch (const Standard_Failure& e) {
+          alertes.push_back(std::string("filet modélisé impossible (trou lisse) : ") + e.what());
+        } catch (const std::exception& e) {
+          alertes.push_back(std::string("filet modélisé impossible (trou lisse) : ") + e.what());
+        }
+        if (v.IsNull() && alertes.empty()) alertes.push_back("filet modélisé ignoré : trou trop court pour le filet");
+        if (!v.IsNull()) {
+          vides.push_back(v);
+          creux = true;
+        }
+      }
+    } else {
+      alertes.push_back("filet modélisé ignoré : longueur filetée inférieure à un pas");
+    }
+    // avant-trou : fond 0,01 au-dessus de celui du vide (jamais de faces coplanaires)
+    outils.push_back(fusionne(P, creux && borgne ? zEnd - 0.01 : zEnd));
+  }
+  if (fil) {
+    fil->vides = composeFilets(vides);
+    // holeThreadPaths : le dessin du filet qui n'est pas dans le solide
+    if (const json_t* t = filetageDe(F.size); taraude && !F.model && t) {
+      const double pz = F.p != 0 ? F.p : (*t)[2].get<double>(), Rn = (*t)[1].get<double>() / 2;
+      const double rh = std::max(0.05, N.r - 0.04), len = std::max(pz, thLen != 0 ? thLen : (F.len != 0 ? F.len : N.depth));
+      const gp_Vec dv(D), ref = std::abs(D.Z()) < 0.9 ? gp_Vec(0, 0, 1) : gp_Vec(1, 0, 0);
+      const gp_Vec U = dv.Crossed(ref).Normalized(), V = dv.Crossed(U);
+      const double off = N.kind == "cbore" || N.kind == "step" ? entreeTrou(N) : 0, tours = len / pz;
+      const int pas = std::max(24, static_cast<int>(std::ceil(tours * 24)));
+      for (const gp_Pnt& P : centres) {
+        SpiraleFilet sp;
+        for (int i = 0; i <= pas; i++) {
+          const double u = static_cast<double>(i) / pas, a = (F.lh ? -1 : 1) * u * tours * 2 * PI;
+          sp.helice.push_back(P.Translated(dv * (off + u * len) + (U * std::cos(a) + V * std::sin(a)) * rh));
+        }
+        for (int k = 0; k <= 48; k++) {
+          const double a = k / 48.0 * 2 * PI;
+          sp.anneau.push_back(P.Translated(dv * (off - 0.03) + (U * std::cos(a) + V * std::sin(a)) * Rn));
+        }
+        fil->spirales.push_back(sp);
+      }
+    }
   }
   return outils;
 }

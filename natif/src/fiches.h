@@ -35,6 +35,7 @@ std::string creerRevolution(nlohmann::ordered_json& d, const std::string& esquis
 std::string creerBalayage(nlohmann::ordered_json& d, const std::string& profil, const std::string& chemin, int marque);
 std::string creerPercage(nlohmann::ordered_json& d, const std::string& esquisse, bool inverse, int marque);
 std::string creerRepetition(nlohmann::ordered_json& d, const std::string& source, int marque);
+std::string creerFiletage(nlohmann::ordered_json& d, const nlohmann::ordered_json& cyl, const std::string& corps, int marque);
 std::string creerDeplacement(nlohmann::ordered_json& d, const std::string& corps, int marque);
 std::string creerEchelle(nlohmann::ordered_json& d, const std::string& corps, int marque);
 std::string creerScission(nlohmann::ordered_json& d, const std::string& corps, int marque);

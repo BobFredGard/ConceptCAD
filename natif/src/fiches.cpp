@@ -7,8 +7,9 @@
 #include <set>
 #include <stdexcept>
 
+#include "engrenage.h"
+#include "filets.h"
 #include "projet.h"
-#include "tables_percage.h"
 
 using json = nlohmann::ordered_json;
 
@@ -85,22 +86,6 @@ std::string nomRepetition(const json& f) {
   if (m == "lin" && vrai(f, "lin2")) return "Linéaire 2 directions";
   return m == "mir" ? "Symétrie" : m == "circ" ? "Circulaire" : m == "path" ? "Suivant un profil" : "Linéaire";
 }
-const json& tablesPercage() {
-  static const json T = json::parse(TABLES_PERCAGE);
-  return T;
-}
-const json* filetageDe(const std::string& taille) {  // isoThread
-  const json& T = tablesPercage();
-  for (const char* k : {"iso", "un", "gaz"})
-    for (const json& l : T[k])
-      if (l[0] == taille) return &l;
-  return nullptr;
-}
-const json* infoFiletage(const std::string& taille) {  // threadInfo, absent : métrique
-  const json& I = tablesPercage()["info"];
-  const auto it = I.find(taille);
-  return it == I.end() ? nullptr : &*it;
-}
 double percageTaraud(const std::string& taille, double p) {  // tapDrill
   const json* t = filetageDe(taille);
   if (!t) return 0;
@@ -118,6 +103,12 @@ std::string libelleFiletage(const json& th) {  // holeThreadLabel
   if (size.empty()) return "";
   const json* t = filetageDe(size);
   return size + (t && num(th, "p") != (*t)[2].get<double>() ? "×" + nombreJs(num(th, "p")) : std::string()) + (vrai(th, "lh") ? "-LH" : "");
+}
+std::string nomFiletage(const json& f) {  // threadName
+  std::string l = libelleFiletage(f);
+  std::string L = " (toute la face)";
+  if (str(f, "lenMode") == "len") L = " × " + fmt(std::round(num(f, "len") * 100) / 100, 2);
+  return "Filetage " + l + L;
 }
 // holeNorm, juste ce que montrent le nom et le panneau
 double ou0(double x, double y) { return x == 0 || !std::isfinite(x) ? y : x; }
@@ -215,6 +206,7 @@ std::string nomAuto(const json& d, const json& f) {
   if (t == "xshell") return "Coque " + fmt(std::round(num(f, "thick") * 100) / 100, 2) + " mm · " + std::to_string(nbFaces(f)) + " face(s) retirée(s)";
   if (t == "repeat") return nomRepetition(f);
   if (t == "hole") return nomPercage(d, f);
+  if (t == "xthread") return nomFiletage(f);
   return str(f, "name");
 }
 
@@ -389,7 +381,17 @@ void champsPercage(const Document& d, const json& f, std::vector<ChampFiche>& c)
     c.push_back(choix("Longueur filetée", "x/thlen", tm, {{"len", "Longueur"}, {"through", "Débouchant tout (à travers)"}, {"upto", "Jusqu'à la face…"}, {"next", "Prochaine face"}}));
     if (tm == "len") c.push_back(nombre("Longueur (mm)", "n/thread/len", num(th, "len") > 0 ? num(th, "len") : num(f, "depth")));
     if (tm == "upto") c.push_back(choix("Face de fin du filet", "x/facethr", "", {{"", vrai(th, "aFace") || th.contains("uptoPlane") ? "retenue" : "à choisir"}, {"pick", "🎯 Cliquer une face"}}));
-    c.push_back(lecture("Filet", "Cosmétique : le trou reste lisse dans le solide"));
+    if (const std::string ts = str(th, "size"); !filetModelable(ts)) {
+      const json* I = infoFiletage(ts);
+      c.push_back(lecture("Filet", std::string(I && vrai(*I, "cone") ? "Conique, c" : "C") + "osmétique seulement (profil non modélisé)"));
+    } else {
+      c.push_back(choix("Filet", "x/filet", vrai(th, "model") ? "model" : "cosmetic", {{"model", "Modélisé : profil ISO dans le corps"}, {"cosmetic", "Cosmétique : dessin seul, trou lisse"}}));
+      if (vrai(th, "model")) {
+        c.push_back(nombre("Jeu (Ø mm, impression 3D)", "n/thread/clear", num(th, "clear")));
+        if (const auto F = filetInterieur(ts, num(th, "p"), num(th, "clear")))
+          c.push_back(lecture("Profil", std::string(infoFiletage(ts) ? "ASME B1.1" : "ISO 261 / ISO 965-1") + " : Ø mineur " + fmt(F->D1) + " / Ø majeur " + fmt(F->D) + ", pas " + fmt(F->P) + " mm"));
+      }
+    }
   }
   if (kind == "cbore") {
     c.push_back(nombre("Ø lamage (mm)", "n/cbD", num(f, "cbD")));
@@ -504,6 +506,98 @@ void champsRepetition(const Document& d, const json& f, std::vector<ChampFiche>&
 }
 }  // namespace
 
+namespace {
+void champsFiletage(const json& f, std::vector<ChampFiche>& c) {  // renderThreadProps
+  const double D = f.contains("cyl") && f["cyl"].is_object() ? 2 * num(f["cyl"], "r") : 0;
+  c.push_back(lecture("Axe", "Ø" + fmt(D)));
+  std::vector<std::pair<std::string, std::string>> tailles;
+  const auto ajoute = [&](const json& t) {
+    const std::string n = t[0];
+    if (!infoFiletage(n)) {
+      for (size_t k = 2; k < t.size(); k++) tailles.push_back({n + "|" + nombreJs(t[k].get<double>()), libelleTaraud(t, k)});
+    } else {
+      tailles.push_back({n + "|" + nombreJs(t[2].get<double>()), libelleTaraud(t, 2)});
+    }
+  };
+  const json& T = tablesPercage();
+  const auto conique = [](const json& t) {
+    const json* I = infoFiletage(t[0].get<std::string>());
+    return I && vrai(*I, "cone");
+  };
+  for (const char* k : {"iso", "un", "gaz"})  // celles proches du Ø de l'axe d'abord
+    for (const json& t : T[k])
+      if (!conique(t) && std::fabs(t[1].get<double>() - D) < std::max(0.6, 0.08 * D)) ajoute(t);
+  for (const char* k : {"iso", "un", "gaz"})
+    for (const json& t : T[k])
+      if (!conique(t)) ajoute(t);
+  std::vector<std::pair<std::string, std::string>> uniques;
+  for (const auto& x : tailles)
+    if (std::none_of(uniques.begin(), uniques.end(), [&](const auto& y) { return y.first == x.first; })) uniques.push_back(x);
+  c.push_back(choix("Taille", "x/taille", str(f, "size") + "|" + nombreJs(num(f, "p")), uniques));
+  c.push_back(choix("Sens du filet", "x/sens", vrai(f, "lh") ? "lh" : "rh", {{"rh", "À droite"}, {"lh", "À gauche (LH)"}}));
+  const std::string lm = str(f, "lenMode") == "len" ? "len" : "full";
+  c.push_back(choix("Longueur filetée", "x/lenMode", lm, {{"full", "Toute la face"}, {"len", "Longueur"}}));
+  if (lm == "len") c.push_back(nombre("Longueur (mm)", "n/len", num(f, "len") > 0 ? num(f, "len") : 10));
+  c.push_back(choix("Départ", "x/depart", vrai(f, "flip") ? "1" : "0", {{"0", "Bout libre (auto)"}, {"1", "Autre bout"}}));
+  if (filetModelable(str(f, "size"))) {
+    c.push_back(choix("Filet", "x/filet", vrai(f, "model") ? "model" : "cosmetic", {{"cosmetic", "Cosmétique : spirale dessinée, axe lisse"}, {"model", "Modélisé : profil ISO dans le corps"}}));
+    if (vrai(f, "model")) c.push_back(nombre("Jeu (Ø mm, impression 3D)", "n/clear", num(f, "clear")));
+  } else {
+    c.push_back(lecture("Filet", "Filet gaz (55°) : cosmétique seulement"));
+  }
+  c.push_back(choix("Face de l'axe", "x/face", "", {{"", "retenue"}, {"pick", "🎯 Changer la face"}}));
+}
+// threadSizeFor : la taille la plus proche du Ø (métrique ISO d'abord, à Ø égal), pas gros
+json tailleProche(double D, double* ecart) {
+  json best;
+  double bd = 1e9;
+  for (const char* k : {"iso", "un", "gaz"})
+    for (const json& t : tablesPercage()[k]) {
+      const json* I = infoFiletage(t[0].get<std::string>());
+      if (I && vrai(*I, "cone")) continue;
+      const double e = std::fabs(t[1].get<double>() - D) + (!I || str(*I, "fam") == "M" ? 0 : 1e-3);
+      if (e < bd) {
+        bd = e;
+        best = t;
+      }
+    }
+  if (ecart) *ecart = bd;
+  return best;
+}
+std::string appliquerFiletage(json& f, const std::string& cle, const std::string& v) {
+  if (cle == "x/taille") {
+    const size_t b = v.find('|');
+    if (b == std::string::npos) return "";
+    f["size"] = v.substr(0, b);
+    f["p"] = std::stod(v.substr(b + 1));
+    if (!filetModelable(str(f, "size"))) f["model"] = false;
+  } else if (cle == "x/sens") {
+    f["lh"] = v == "lh";
+  } else if (cle == "x/lenMode") {
+    f["lenMode"] = v;
+  } else if (cle == "x/depart") {
+    f["flip"] = v == "1";
+  } else if (cle == "x/filet") {
+    f["model"] = v == "model";
+  } else if (cle == "x/face") {
+    return "";  // le clic dans la vue est demandé par le cadre
+  } else if (cle == "x/cyl") {
+    const json q = json::parse(v);
+    f["cyl"] = q["cyl"];
+    if (!str(q, "body").empty()) f["body"] = q["body"];
+    double e = 0;
+    const json z = tailleProche(2 * num(f["cyl"], "r"), &e);
+    if (!z.is_null() && e < 0.5) {
+      f["size"] = z[0];
+      f["p"] = z[2];
+    }
+  } else {
+    return "Réglage inconnu.";
+  }
+  return "";
+}
+}  // namespace
+
 std::vector<ChampFiche> ficheFonction(const Document& d, const json& f) {
   std::vector<ChampFiche> c;
   const std::string t = str(f, "type");
@@ -584,6 +678,42 @@ std::vector<ChampFiche> ficheFonction(const Document& d, const json& f) {
       c.push_back(lecture("Format", str(f["src"], "fmt") == "stl" ? "STL (maillage)" : "STEP (solide exact)"));
       c.push_back(lecture("Taille", fmt(num(f["src"], "size") / 1024, 1) + " Ko"));
     }
+  } else if (t == "gear") {
+    // renderGearProps : on change la roue depuis l'assemblage, le panneau ne fait que la décrire
+    const Fonction* fn = nullptr;
+    for (const Fonction& x : d.fonctions)
+      if (x.id == str(f, "id")) fn = &x;
+    try {
+      if (!fn) throw std::runtime_error("fonction introuvable");
+      const GeoEngrenage g = geoEngrenage(fn->engrenage);
+      const std::string main = g.hand == "L" ? " main gauche" : " main droite";
+      c.push_back(lecture(g.rack ? "Crémaillère" : g.internal ? "Couronne" : "Engrenage", g.rack ? "à crémaillère" : g.internal ? "à denture intérieure" : "à denture extérieure"));
+      c.push_back(lecture(g.betaDeg != 0 && !g.rack ? "Module normal" : "Module", fmt(g.m) + " mm"));
+      c.push_back(lecture("Dents", std::to_string(g.z)));
+      c.push_back(lecture("Angle de pression", fmt(g.aDeg) + "°"));
+      if (g.betaDeg != 0) c.push_back(lecture(g.rack ? "Inclinaison" : "Hélice", fmt(g.betaDeg) + "°" + main));
+      if (g.rack) {
+        c.push_back(lecture("Largeur", fmt(g.b) + " mm"));
+        c.push_back(lecture("Pas", fmt(g.pt) + " mm"));
+        c.push_back(lecture("Longueur", fmt(g.L) + " mm"));
+        c.push_back(lecture("Hauteur totale", fmt(g.ya - g.yb) + " mm"));
+      } else {
+        if (g.betaDeg != 0) c.push_back(lecture("Module apparent", fmt(g.mt) + " mm"));
+        c.push_back(lecture("Déport x", fmt(g.x)));
+        c.push_back(lecture("Largeur", fmt(g.b) + " mm"));
+        c.push_back(lecture("Ø primitif", fmt(2 * g.rp) + " mm"));
+        c.push_back(lecture("Ø de tête", fmt(2 * g.ra) + " mm"));
+        c.push_back(lecture("Ø de pied", fmt(2 * g.rf) + " mm"));
+        c.push_back(lecture("Ø de base", fmt(2 * g.rb) + " mm"));
+        if (g.internal) c.push_back(lecture("Ø extérieur", fmt(g.D) + " mm"));
+      }
+      for (const auto& [bon, txt] : controlesEngrenage(g)) c.push_back(lecture(bon ? "✓" : "⚠", txt));
+      c.push_back(lecture("Modifier", "En assemblage, clic droit sur la pièce"));
+    } catch (const std::exception& e) {
+      c.push_back(lecture("⚠", e.what()));
+    }
+  } else if (t == "xthread") {
+    champsFiletage(f, c);
   } else if (t == "hole") {
     champsPercage(d, f, c);
   } else if (t == "repeat") {
@@ -670,8 +800,7 @@ std::string appliquerPercage(json& f, const std::string& cle, const std::string&
       json th = f.contains("thread") && f["thread"].is_object() ? f["thread"] : json::object();
       th["size"] = size;
       th["p"] = pz;
-      // Le filet modélisé n'est pas encore repris : le trou reste lisse
-      th["model"] = false;
+      if (!filetModelable(size)) th["model"] = false;  // pas du gaz : filet cosmétique seulement
       const json* t = filetageDe(size);
       const double dn = t ? (*t)[1].get<double>() : 0;
       if (!(num(th, "len") > 0)) th["len"] = std::max(2 * dn, num(f, "depth") - 2 * pz);
@@ -705,6 +834,9 @@ std::string appliquerPercage(json& f, const std::string& cle, const std::string&
   } else if (cle == "x/uptoplan") {
     f["uptoPlane"] = planDeTexte(v);
     f["end"] = "upto";
+  } else if (cle == "x/filet") {
+    f["thread"]["model"] = v == "model";
+    if (v == "model" && !f["thread"].contains("clear")) f["thread"]["clear"] = 0;
   } else if (cle == "x/uptofil") {
     f["thread"]["uptoPlane"] = planDeTexte(v);
     f["thread"]["lenMode"] = "upto";
@@ -816,7 +948,12 @@ std::string ficheAppliquer(json& d, const std::string& id, const std::string& cl
     if (t == "bscale" && (chemin == "s" || chemin == "sx" || chemin == "sy" || chemin == "sz") && !(v > 0)) return "Échelle : le facteur doit être strictement positif.";
     if (t == "xdraft" && chemin == "angle" && !(std::fabs(v) > 1e-9 && std::fabs(v) < 90)) return "Angle hors bornes : −90 < a < 90°, non nul (négatif = sens inversé).";
     if (t == "xshell" && chemin == "thick" && !(v > 0)) return "L'épaisseur doit être positive.";
-    if (t == "hole" && !(v > 0)) return "La valeur doit être positive.";
+    if (chemin == "thread/clear" || (t == "xthread" && chemin == "clear")) {
+      if (!(v >= 0)) return "La valeur ne peut pas être négative.";
+    } else if (t == "hole" && !(v > 0)) {
+      return "La valeur doit être positive.";
+    }
+    if (t == "xthread" && chemin == "len" && !(v >= 0.1)) return "La longueur doit valoir au moins 0,1 mm.";
     if (t == "repeat" && (chemin == "qty" || chemin == "qty2")) {
       const double q = std::floor(v - 1);
       f[chemin == "qty" ? "copies" : "copies2"] = static_cast<int>(std::min(200.0, std::max(1.0, q)));
@@ -834,6 +971,9 @@ std::string ficheAppliquer(json& d, const std::string& id, const std::string& cl
     if (chemin == "sketchId" || chemin == "pathId")
       if (json* s = parId(liste(d, "sketches"), valeur)) (*s)["visible"] = false;  // hide(v) du panneau
     if (t == "sweep" && chemin == "sketchId" && str(f, "pathId") == valeur) return "Le profil et le chemin doivent être deux esquisses différentes.";
+  } else if (t == "xthread" && cle.rfind("x/", 0) == 0) {
+    const std::string r = appliquerFiletage(f, cle, valeur);
+    if (!r.empty()) return r;
   } else if (t == "hole" && cle.rfind("x/", 0) == 0 && !cle.empty()) {
     const std::string r = appliquerPercage(f, cle, valeur);
     if (!r.empty()) return r;
@@ -1014,6 +1154,17 @@ std::string creerBalayage(json& d, const std::string& profil, const std::string&
   cacherEsquisse(d, profil);
   cacherEsquisse(d, chemin);
   return id;
+}
+
+std::string creerFiletage(json& d, const json& cyl, const std::string& corps, int marque) {  // threadCreate
+  double e = 0;
+  const double D = 2 * num(cyl, "r");
+  const json z = tailleProche(D, &e);
+  const double p = z.is_null() ? 1.25 : z[2].get<double>();
+  json f = {{"type", "xthread"}, {"name", ""}, {"cyl", cyl}, {"size", z.is_null() ? json("M8") : z[0]}, {"p", p}, {"lh", false}, {"model", false}, {"clear", 0},
+            {"lenMode", "full"}, {"len", std::round(std::max(p * 3, D * 1.5) * 10) / 10}, {"flip", false}, {"visible", true}};
+  if (!corps.empty()) f["body"] = corps;
+  return ajouterFonction(d, f, "th", marque);
 }
 
 std::string creerPercage(json& d, const std::string& esquisse, bool inverse, int marque) {

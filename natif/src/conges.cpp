@@ -1512,6 +1512,8 @@ std::vector<AreteVue> aretesVisibles(const TopoDS_Shape& shape) {
             try {
               const TopoDS_Face& E1 = faces[fl[i]];
               const TopoDS_Face& E2 = faces[fl[j]];
+              double pc0, pc1;
+              if (BRep_Tool::CurveOnSurface(e, E1, pc0, pc1).IsNull() || BRep_Tool::CurveOnSurface(e, E2, pc0, pc1).IsNull()) continue;
               BRepAdaptor_Curve2d g1(e, E1), g2(e, E2);
               const double w0 = g1.FirstParameter(), w1 = g1.LastParameter();
               if (!(w1 > w0)) continue;

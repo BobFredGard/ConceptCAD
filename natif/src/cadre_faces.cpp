@@ -25,6 +25,8 @@
 #include "cadre.h"
 #include "faces.h"
 #include "fiches.h"
+#include "filets.h"
+#include "noms.h"
 
 namespace {
 using json = nlohmann::ordered_json;
@@ -180,6 +182,10 @@ void Cadre::demanderClicFiche(const std::string& id, const std::string& cle, con
   for (const Fonction& x : doc_.fonctions)
     if (x.id == id) f = &x;
   if (!f) return;
+  if (f->type == "xthread") {
+    if (cle == "x/face") creerFiletageVise(id);
+    return;
+  }
   if (f->type == "hole") {
     if (cle == "x/facefin" || (cle == "x/end" && valeur == "upto")) plan("x/uptoplan", L"Perçage : cliquez la face plane où le trou s'arrête (Échap pour annuler).");
     else if (cle == "x/facethr" || (cle == "x/thlen" && valeur == "upto")) plan("x/uptofil", L"Perçage : cliquez la face plane où le filet s'arrête (Échap pour annuler).");
@@ -199,6 +205,37 @@ void Cadre::demanderClicFiche(const std::string& id, const std::string& cle, con
     return true;
   };
   etat(mir ? L"Répétition : cliquez la face qui donne le plan (Échap pour annuler)." : L"Répétition : cliquez la face ou l'arête qui donne la direction (Échap pour annuler).");
+}
+
+// Bouton Filetage (askThread, threadPickStart) : la face déjà choisie, sinon un clic sur l'axe
+void Cadre::creerFiletageVise(const std::string& idExistant) {
+  if (!docOuvert_) return etat(L"Ouvrez d'abord une pièce (Ctrl+O).");
+  const auto prendre = [this, idExistant](const TopoDS_Face& face, bool dire) {
+    double p[3];
+    if (!pointDansFace(face, p)) return false;
+    const std::string corps = corpsDeForme(face);
+    const TopoDS_Shape solide = solideDuCorps(corps).IsNull() ? forme_ : solideDuCorps(corps);
+    std::string erreur;
+    nlohmann::ordered_json cyl = cylindreDeFiletage(solide, face, p, erreur);
+    if (!erreur.empty()) {
+      if (dire) etat(tx("Filetage : " + erreur + " (Échap pour annuler)."));
+      return false;
+    }
+    const std::string nom = nomsFaceDe(solide, face);
+    if (!nom.empty()) cyl["nom"] = nom;
+    if (idExistant.empty()) creerFonction([&](nlohmann::ordered_json& d) { return creerFiletage(d, cyl, corps, indiceMarque()); }, L"Filetage : réglez la taille, la longueur et le type de filet.");
+    else appliquerFiche(idExistant, "x/cyl", nlohmann::ordered_json{{"cyl", cyl}, {"body", corps}}.dump());
+    return true;
+  };
+  if (idExistant.empty()) {
+    const auto choisies = vue_->facesChoisies();
+    if (choisies.size() == 1 && prendre(choisies[0], false)) return;
+  }
+  pioche_ = [prendre](const TopoDS_Shape& s) {
+    if (s.ShapeType() != TopAbs_FACE) return false;
+    return prendre(TopoDS::Face(s), true);
+  };
+  etat(L"Filetage : cliquez la face cylindrique de l'axe à fileter (Échap pour annuler).");
 }
 
 // Bouton Perçage (holeStart, askHole) : l'esquisse choisie si elle a des centres, sinon la dernière dont les centres ne sont pas encore percés

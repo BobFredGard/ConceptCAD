@@ -1,4 +1,6 @@
 #include "vue3d.h"
+#include <BRepBuilderAPI_MakePolygon.hxx>
+#include <Prs3d_LineAspect.hxx>
 
 #include <wx/dcclient.h>
 
@@ -236,6 +238,8 @@ void Vue3D::afficher(const TopoDS_Shape& forme, bool ajusterVue, const std::vect
     a.Nullify();
   };
   oter(affichee_);
+  oter(filetsHelices_);
+  oter(filetsAnneaux_);
   oter(aretesVives_);
   oter(aretesLisses_);
   for (occ::handle<AIS_Shape>& r : reflets_) contexte_->Remove(r, false);
@@ -439,6 +443,32 @@ void Vue3D::debutChoix(const TopoDS_Shape& vives, const TopoDS_Shape& tangentes)
   if (!aretesLisses_.IsNull()) contexte_->Erase(aretesLisses_, false);
   traitsVifs_ = trait(contexte_, vives, couleur(0, 0, 0), 1.2);
   traitsLisses_ = trait(contexte_, tangentes, couleur(0x8a, 0x8f, 0x99), 1.0);
+  vue_->Redraw();
+}
+
+// La couleur des filets du navigateur (holeThreadGrp) : l'hélice en trait plein, le cercle en pointillé
+void Vue3D::montrerFilets(const std::vector<std::vector<gp_Pnt>>& helices, const std::vector<std::vector<gp_Pnt>>& anneaux) {
+  retirer(contexte_, filetsHelices_);
+  retirer(contexte_, filetsAnneaux_);
+  const auto compose = [](const std::vector<std::vector<gp_Pnt>>& lignes) {
+    BRep_Builder bb;
+    TopoDS_Compound c;
+    bb.MakeCompound(c);
+    for (const auto& l : lignes) {
+      BRepBuilderAPI_MakePolygon p;
+      for (const gp_Pnt& q : l) p.Add(q);
+      if (p.IsDone()) bb.Add(c, p.Wire());
+    }
+    return c;
+  };
+  if (!helices.empty()) filetsHelices_ = trait(contexte_, compose(helices), couleur(0xff, 0xb3, 0x40), 1.0);
+  if (!anneaux.empty()) {
+    filetsAnneaux_ = new AIS_Shape(compose(anneaux));
+    filetsAnneaux_->Attributes()->SetAutoTriangulation(false);
+    filetsAnneaux_->SetColor(couleur(0xff, 0xb3, 0x40));
+    filetsAnneaux_->Attributes()->SetWireAspect(new Prs3d_LineAspect(couleur(0xff, 0xb3, 0x40), Aspect_TOL_DASH, 1.0));
+    contexte_->Display(filetsAnneaux_, AIS_WireFrame, -1, false);
+  }
   vue_->Redraw();
 }
 

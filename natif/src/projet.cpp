@@ -313,6 +313,27 @@ static std::string nomFonction(const std::string& t) {
   return it != noms.end() ? it->second : "fonction « " + t + " »";
 }
 
+static bool lireVec3(const json& j, const char* cle, Vec3& v);
+static void lireFilet(const json& t, ReglageFilet& F) {
+  const auto nb = [&](const char* k, double& v) {
+    if (auto x = t.find(k); x != t.end()) {
+      if (x->is_number()) v = x->get<double>();
+      else if (x->is_string()) {
+        try { v = std::stod(x->get<std::string>()); } catch (const std::exception&) {}
+      }
+    }
+  };
+  const auto oui = [&](const char* k) { auto x = t.find(k); return x != t.end() && x->is_boolean() && x->get<bool>(); };
+  const auto mot = [&](const char* k) { auto x = t.find(k); return x != t.end() && x->is_string() ? x->get<std::string>() : std::string(); };
+  F.size = mot("size");
+  F.lenMode = mot("lenMode");
+  nb("p", F.p);
+  nb("clear", F.clear);
+  nb("len", F.len);
+  F.lh = oui("lh");
+  F.model = oui("model");
+  if (auto p = t.find("uptoPlane"); p != t.end() && p->is_object()) F.aPlan = lireVec3(*p, "p", F.planP) && lireVec3(*p, "n", F.planN);
+}
 static bool lireVec3(const json& j, const char* cle, Vec3& v) {
   auto x = j.find(cle);
   if (x == j.end() || !x->is_array() || x->size() != 3) return false;
@@ -502,6 +523,30 @@ static void lireFonction(const json& jf, Document& d, std::map<std::string, int>
     if (auto a = jf.find("angle"); a != jf.end() && a->is_number()) f.angle = a->get<double>();
   }
   if (f.type == "xfillet") lireConge(jf, f, refus);
+  if (f.type == "gear") {
+    ReglageEngrenage& g = f.engrenage;
+    const auto nb = [&](const char* k, double& v, bool garde0 = true) {
+      if (auto x = jf.find(k); x != jf.end()) {
+        if (x->is_number()) v = x->get<double>();
+        else if (x->is_string()) {
+          try { v = std::stod(x->get<std::string>()); } catch (const std::exception&) {}
+        }
+      }
+      (void)garde0;
+    };
+    nb("m", g.m); nb("z", g.z); nb("alpha", g.alpha); nb("b", g.b); nb("x", g.x); nb("beta", g.beta); nb("D", g.D); nb("H", g.H); nb("j", g.j); nb("ks", g.ks);
+    g.hand = texte(jf, "hand");
+    g.kind = texte(jf, "kind");
+  }
+  if (f.type == "xthread") {
+    lireFilet(jf, f.filetage);
+    if (auto c = jf.find("cyl"); c != jf.end() && c->is_object()) {
+      f.cylindre.lu = lireVec3(*c, "c", f.cylindre.c) && lireVec3(*c, "u", f.cylindre.u);
+      f.cylindre.aP = lireVec3(*c, "p", f.cylindre.p);
+      if (auto r = c->find("r"); r != c->end() && r->is_number()) f.cylindre.r = r->get<double>();
+      f.cylindre.nom = texte(*c, "nom");
+    }
+  }
   if (f.type == "hole") {
     ReglagePercage& h = f.percage;
     h.kind = texte(jf, "kind");
@@ -518,10 +563,10 @@ static void lireFonction(const json& jf, Document& d, std::map<std::string, int>
     nb("d", h.d); nb("stD", h.stD); nb("stH", h.stH); nb("stTip", h.stTip); nb("cbD", h.cbD); nb("cbH", h.cbH); nb("csD", h.csD);
     nb("csA", h.csA); nb("depth", h.depth); nb("tip", h.tip); nb("reamD", h.reamD); nb("reamH", h.reamH); nb("reamOff", h.reamOff);
     if (auto p = jf.find("uptoPlane"); p != jf.end() && p->is_object()) h.aPlan = lireVec3(*p, "p", h.planP) && lireVec3(*p, "n", h.planN);
-    if (auto t = jf.find("thread"); f.visible && h.kind != "ream" && t != jf.end() && t->is_object() && vrai(*t, "model") && !texte(*t, "size").empty()) refus["perçage à filet modélisé"]++;
+    if (auto t = jf.find("thread"); h.kind != "ream" && t != jf.end() && t->is_object()) lireFilet(*t, h.filet);
   }
   // La répétition se contente de créer des copies, rejouées comme des fonctions : sans effet ici.
-  if (f.visible && f.type != "extrude" && f.type != "repeat" && f.type != "xfillet" && f.type != "hole" && f.type != "revolve" && f.type != "xdraft" &&
+  if (f.visible && f.type != "extrude" && f.type != "repeat" && f.type != "xfillet" && f.type != "hole" && f.type != "xthread" && f.type != "gear" && f.type != "revolve" && f.type != "xdraft" &&
       f.type != "xshell" && f.type != "xmove" && f.type != "xdelface" && f.type != "xsplit" && f.type != "bmove" && f.type != "bscale" && f.type != "bremove" && f.type != "sweep" && f.type != "combine" && f.type != "import")
     refus[nomFonction(f.type)]++;
   if (auto x = jf.find("src"); f.type == "import" && x != jf.end() && x->is_object()) {

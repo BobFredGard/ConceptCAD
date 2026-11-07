@@ -77,6 +77,8 @@ wxString nomType(const Fonction& f) {
   if (f.type == "revolve") return f.op == "cut" ? L"Révolution (découpe)" : L"Révolution";
   if (f.type == "sweep") return f.op == "cut" ? L"Balayage (découpe)" : L"Balayage";
   if (f.type == "hole") return L"Perçage";
+  if (f.type == "xthread") return L"Filetage";
+  if (f.type == "gear") return L"Engrenage";
   if (f.type == "combine") return L"Combinaison de corps";
   if (f.type == "bmove") return L"Déplacement de corps";
   if (f.type == "bscale") return L"Échelle de corps";
@@ -290,7 +292,7 @@ void Cadre::creerEnvironnement() {
     if (esquisseOuverte_ < 0) recalculer();
   };
   barreHaute_->surIndisponible = [this](const wxString& n) { indisponible(n); };
-  ruban_->estRepris = [](Atelier a, const wxString& n) { return a == Atelier::CAO && (n == L"Esquisse" || n == L"Extrusion" || n == L"Congé" || n == L"Chanfrein" || n == L"Paramètres" || n == L"Corps" || n == L"Perçage" || n == L"Répétition" || n == L"Révolution" || n == L"Balayage" || n == L"Face" || n == L"Dépouille" || n == L"Coque" || n == L"Combiner" || n == L"Déplacer" || n == L"Échelle" || n == L"Scinder" || n == L"Importer" || n == L"STEP" || n == L"STL" || n == L"OBJ"); };
+  ruban_->estRepris = [](Atelier a, const wxString& n) { return a == Atelier::CAO && (n == L"Esquisse" || n == L"Extrusion" || n == L"Congé" || n == L"Chanfrein" || n == L"Paramètres" || n == L"Corps" || n == L"Perçage" || n == L"Filetage" || n == L"Répétition" || n == L"Révolution" || n == L"Balayage" || n == L"Face" || n == L"Dépouille" || n == L"Coque" || n == L"Combiner" || n == L"Déplacer" || n == L"Échelle" || n == L"Scinder" || n == L"Importer" || n == L"STEP" || n == L"STL" || n == L"OBJ"); };
   ruban_->surBouton = [this](Atelier a, const wxString& n) { boutonRuban(a, n); };
   ruban_->surIndisponible = [this](const wxString& n) { indisponible(n); };
 
@@ -568,6 +570,7 @@ void Cadre::boutonRuban(Atelier a, const wxString& nom) {
   else if (nom == L"Esquisse") menuEsquisse();
   else if (nom == L"Corps") nouveauCorps();
   else if (nom == L"Perçage") creerPercageVise();
+  else if (nom == L"Filetage") creerFiletageVise();
   else if (nom == L"Répétition") {
     const int choisie = fonctionMontree_ >= 0 ? fonctionMontree_ : -1;
     std::string source;
@@ -1702,6 +1705,13 @@ double Cadre::recalculer() {
       }
     }
     vue_->afficher(montree, ajusterVue_, teintes, transparences);
+    std::vector<std::vector<gp_Pnt>> helices, anneaux;
+    for (const SpiraleFilet& s : r.spirales) {
+      if (std::find(doc_.corpsMasques.begin(), doc_.corpsMasques.end(), s.corps) != doc_.corpsMasques.end()) continue;
+      helices.push_back(s.helice);
+      anneaux.push_back(s.anneau);
+    }
+    vue_->montrerFilets(helices, anneaux);
   }
   ajusterVue_ = false;
   // Le banc compte aussi le prix de la sélection, que le programme paierait dès que la souris passe sur la vue.
