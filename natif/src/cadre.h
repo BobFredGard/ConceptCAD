@@ -113,6 +113,23 @@ class Cadre : public wxFrame {
   void menuGrille();
   void ajusterDroite();
   void remplirArbre();
+  // Les deux recherches : cadre_recherche.cpp
+  struct CommandeCherchee {
+    wxString libelle, aide;
+    std::function<void()> fn;
+  };
+  std::vector<CommandeCherchee> commandesCherchees();
+  void rechercheInit();
+  void filtrerArbre(const wxTreeItemId& racine);
+  void cmdDessiner();
+  void cmdFermer();
+  void cmdLancer(int i);
+  wxTextCtrl* rechercheArbre_ = nullptr;
+  wxString filtreArbre_;
+  std::vector<CommandeCherchee> resultatsCmd_;
+  class wxPopupWindow* popCmd_ = nullptr;
+  class wxListBox* listeCmd_ = nullptr;
+  bool cmdClavier_ = false;
   void montrerRien();
   void montrerManques();
   void montrerFonction(int i);
@@ -121,6 +138,7 @@ class Cadre : public wxFrame {
 public:
   void entrerEsquisse(int i);
   void capturerEsquisses(const std::wstring& dossier);
+  void demarrerVide() { nouveau(); }
   bool essaiEsquisse(const std::wstring& fichier, int rang, const std::wstring& sortie, const std::wstring& json, const std::wstring& dossier);
   void imageVue3D(const wxString& chemin);
   bool essaiGestesConge(const std::wstring& fichier, const std::wstring& sortie, const std::wstring& json, const std::wstring& dossier);
@@ -556,6 +574,7 @@ public:
   wxBoxSizer* rangConge_ = nullptr;
   // filMemo : retenus le temps de la session
   double memoConge_ = 10, memoChanfrein_ = 1;
+  OptChanfrein memoCham_;
   bool memoTangentes_ = true;
   TopoDS_Face faceChoisie_;  // dernière face cliquée sur le solide affiché
   wxTimer minuterie_;

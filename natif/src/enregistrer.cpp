@@ -773,10 +773,12 @@ std::string congeCree(const Fonction& f) {
     o += ",\"anchor\":" + ancreJson(a.ancre) + ",\"name\":" + nomJson(a.nomAffiche);
     if (a.seed) o += ",\"seed\":1";
     if (!a.nom.empty()) o += ",\"nom\":" + nomJson(a.nom);
+    if (a.aFn) o += ",\"fn\":" + vec3Json(a.fn);
     o += "}";
   }
   o += std::string("],\"visible\":true,\"tangent\":") + (f.tangent != 0 ? "true" : "false");
-  if (f.chamfer) o += ",\"chamfer\":true,\"cmode\":\"eq\"";
+  if (f.chamfer && (f.cmode == "d2" || f.cmode == "da")) o += ",\"chamfer\":true,\"cmode\":\"" + f.cmode + "\",\"cd2\":" + nombreJson(f.cd2) + ",\"cang\":" + nombreJson(f.cang) + ",\"cflip\":" + (f.cflip ? "true" : "false");
+  else if (f.chamfer) o += ",\"chamfer\":true,\"cmode\":\"eq\"";
   return o + ",\"body\":" + texteJson(f.corps) + "}";
 }
 std::string fonctionCreee(const Fonction& f) {

@@ -400,7 +400,10 @@ RefFace lireRefFaceJson(const nlohmann::ordered_json& j) { return lireRefFace(j)
 static void lireConge(const json& jf, Fonction& f, std::map<std::string, int>& refus) {
   f.chamfer = vrai(jf, "chamfer");
   if (auto t = jf.find("tangent"); t != jf.end() && t->is_boolean()) f.tangent = t->get<bool>() ? 1 : 0;
-  if (jf.contains("cmode") && jf["cmode"].is_string() && jf["cmode"].get<std::string>() != "eq" && f.visible) refus["chanfrein à deux distances ou à angle"]++;
+  if (jf.contains("cmode") && jf["cmode"].is_string()) f.cmode = jf["cmode"].get<std::string>();
+  if (auto v = jf.find("cd2"); v != jf.end() && v->is_number()) f.cd2 = v->get<double>();
+  if (auto v = jf.find("cang"); v != jf.end() && v->is_number()) f.cang = v->get<double>();
+  f.cflip = vrai(jf, "cflip");
   if (jf.contains("expr") && jf["expr"].is_object() && !jf["expr"].empty() && f.visible) refus["cote par formule"]++;
   if (!jf.contains("edges") || !jf["edges"].is_array()) return;
   for (auto& je : jf["edges"]) {
@@ -408,6 +411,7 @@ static void lireConge(const json& jf, Fonction& f, std::map<std::string, int>& r
     AreteConge a;
     const bool aPos = lireVec3(je, "pos", a.pos);
     a.aPos0 = lireVec3(je, "pos0", a.pos0);
+    a.aFn = lireVec3(je, "fn", a.fn);
     if (!aPos && a.aPos0) a.pos = a.pos0;
     if (je.contains("r") && je["r"].is_number()) a.r = je["r"].get<double>();
     if (je.contains("len") && je["len"].is_number()) a.len = je["len"].get<double>();

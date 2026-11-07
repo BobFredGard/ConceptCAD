@@ -675,6 +675,13 @@ std::vector<ChampFiche> ficheFonction(const Document& d, const json& f) {
     c.push_back(lecture("Faces supprimées", std::to_string(nbFaces(f))));
   } else if (t == "bremove") {
     c.push_back(choix("Corps retiré", "s/body", str(f, "body"), listeCorps(d)));
+  } else if (t == "xfillet" && vrai(f, "chamfer")) {
+    const std::string m = str(f, "cmode");
+    const std::string mode = m == "d2" || m == "da" ? m : "eq";
+    c.push_back(choix("Type de chanfrein", "s/cmode", mode, {{"eq", "Distance égale"}, {"d2", "Deux distances"}, {"da", "Distance + angle"}}));
+    if (mode == "d2") c.push_back(nombre("Distance 2 (mm)", "n/cd2", num(f, "cd2")));
+    if (mode == "da") c.push_back(nombre("Angle (°)", "n/cang", num(f, "cang") > 0 ? num(f, "cang") : 45));
+    if (mode != "eq") c.push_back(booleen("⇄ Inverser les faces", "b/cflip", vrai(f, "cflip")));
   } else if (t == "import") {
     if (f.contains("src") && f["src"].is_object()) {
       c.push_back(lecture("Fichier", str(f["src"], "file")));
@@ -940,6 +947,13 @@ std::string ficheAppliquer(json& d, const std::string& id, const std::string& cl
   const bool nomEtaitAuto = str(f, "name").empty() || str(f, "name") == nomAuto(d, f);
   const std::string t = str(f, "type");
   const std::string sorte = cle.substr(0, 1), chemin = cle.size() > 2 ? cle.substr(2) : "";
+  if (t == "xfillet" && cle == "s/cmode") {
+    f["cmode"] = valeur;
+    if (valeur == "d2" && !(num(f, "cd2") > 0)) f["cd2"] = f.contains("edges") && !f["edges"].empty() && num(f["edges"][0], "r") > 0 ? num(f["edges"][0], "r") : 1.0;
+    if (valeur == "da" && !(num(f, "cang") > 0 && num(f, "cang") < 90)) f["cang"] = 45.0;
+    if (valeur == "eq") f.erase("cflip");
+    return "";
+  }
   if (sorte == "n") {
     std::string texte = valeur;
     std::replace(texte.begin(), texte.end(), ',', '.');
@@ -957,6 +971,8 @@ std::string ficheAppliquer(json& d, const std::string& id, const std::string& cl
     if (t == "bscale" && (chemin == "s" || chemin == "sx" || chemin == "sy" || chemin == "sz") && !(v > 0)) return "Échelle : le facteur doit être strictement positif.";
     if (t == "xdraft" && chemin == "angle" && !(std::fabs(v) > 1e-9 && std::fabs(v) < 90)) return "Angle hors bornes : −90 < a < 90°, non nul (négatif = sens inversé).";
     if (t == "xshell" && chemin == "thick" && !(v > 0)) return "L'épaisseur doit être positive.";
+    if (t == "xfillet" && chemin == "cang" && !(v > 0 && v < 90)) return "Angle du chanfrein : 0 < a < 90°.";
+    if (t == "xfillet" && chemin == "cd2" && !(v > 0)) return "Distance 2 : valeur strictement positive.";
     if (chemin == "thread/clear" || (t == "xthread" && chemin == "clear")) {
       if (!(v >= 0)) return "La valeur ne peut pas être négative.";
     } else if (t == "hole" && !(v > 0)) {

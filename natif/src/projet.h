@@ -110,6 +110,8 @@ struct AreteConge {
   AncreArete ancre;
   std::string nomAffiche;  // name : « Arête 6 »
   std::string nom;  // nom unique de l'arête, par les faces qu'elle sépare
+  bool aFn = false;  // la normale de la première face d'un chanfrein à deux distances ou à angle
+  Vec3 fn{0, 0, 0};
 };
 
 // Une étape de « Déplacer le corps » (bmove) : translation, direction, rotation, point à point
@@ -193,6 +195,9 @@ struct Fonction {
   // Congé ou chanfrein exact (xfillet)
   std::vector<AreteConge> aretes;
   bool chamfer = false;
+  std::string cmode;  // chanfrein : eq (ou vide), d2, da
+  double cd2 = 0, cang = 0;
+  bool cflip = false;
   int tangent = -1;  // -1 : absent du fichier, 0 : case décochée, 1 : chaîne tangente suivie
   // État du dernier calcul, jamais écrit dans le fichier
   std::string congeErreur, congeAjuste;
@@ -200,7 +205,7 @@ struct Fonction {
 };
 // Ce que le logiciel sait changer et enregistrer dans une fonction
 inline bool memesReglages(const Fonction& a, const Fonction& b) {
-  return a.id == b.id && a.distance == b.distance && a.op == b.op && a.nom == b.nom && a.mid == b.mid && a.flip == b.flip && a.through == b.through;
+  return a.id == b.id && a.distance == b.distance && a.op == b.op && a.nom == b.nom && a.mid == b.mid && a.flip == b.flip && a.through == b.through && a.cmode == b.cmode && a.cd2 == b.cd2 && a.cang == b.cang && a.cflip == b.cflip;
 }
 
 // doc.params : un paramètre libre, un nom et une expression

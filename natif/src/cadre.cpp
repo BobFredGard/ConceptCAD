@@ -56,6 +56,7 @@ namespace {
 enum { ID_ANNULER = wxID_HIGHEST + 1, ID_RETABLIR, ID_AJUSTER, ID_QUITTER_ESQUISSE, ID_ESQUISSE_XY, ID_ESQUISSE_XZ, ID_ESQUISSE_YZ, ID_ESQUISSE_FACE, ID_EXTRUDER, ID_CONTRAINTE_1, ID_ACCROCHE_GRILLE = wxID_HIGHEST + 100 };
 // Identifiants fixes : natif/mesures/verifier-fenetre.ps1 retrouve ces fenêtres par eux.
 enum { ID_ARBRE = 2001, ID_PROPS = 2002, ID_ETAT = 2003 };
+const char* const PROP_CHAM_TYPE = "cham_type", * const PROP_CHAM_VALEUR = "cham_valeur", * const PROP_CHAM_FLIP = "cham_flip";
 const char* const PROP_CONGE_RAYON = "conge_rayon", * const PROP_CONGE_TANGENTES = "conge_tangentes", * const PROP_CONGE_ARETE = "conge_arete_";
 const char* const PROP_PROFONDEUR = "profondeur", * const PROP_OPERATION = "operation", * const PROP_ETENDUE = "etendue", * const PROP_DIRECTION = "direction", * const PROP_INVERSER = "inverser";
 
@@ -283,6 +284,11 @@ Cadre::Cadre() : wxFrame(nullptr, wxID_ANY, L"ConceptCAD natif"), asmAnim_(this)
     else montrerForme(s);
   };
   Bind(wxEVT_CHAR_HOOK, [this](wxKeyEvent& e) {
+    if (e.ControlDown() && !e.ShiftDown() && e.GetKeyCode() == 'K') {
+      barreHaute_->champRecherche()->SetFocus();
+      barreHaute_->champRecherche()->SelectAll();
+      return;
+    }
     // La FAO garde ses raccourcis, sauf quand on tape dans un champ
     if (atelier_ == Atelier::FAO && !dynamic_cast<wxTextCtrl*>(FindFocus())) {
       const int k = e.GetKeyCode();
@@ -367,12 +373,11 @@ void Cadre::creerEnvironnement() {
 
   // L'arbre flottant
   carteArbre_ = new Carte(scene_, L"Arborescence", C_CARTE, true);
-  auto* recherche = new BoutonEsquisse(carteArbre_, wxID_ANY, L"Rechercher dans l'arbre", wxString(L"Rechercher dans l'arbre") + PAS_ENCORE, BoutonEsquisse::TEXTE);
-  recherche->titre(L"Rechercher dans l'arbre (nom, type…)");
-  recherche->fond(C_CARTE);
-  recherche->disponible(false);
-  recherche->SetMinSize(FromDIP(wxSize(-1, 22)));
-  recherche->surClic = [this] { indisponible(L"Rechercher dans l'arbre"); };
+  rechercheArbre_ = new wxTextCtrl(carteArbre_, wxID_ANY, wxEmptyString, wxDefaultPosition, wxDefaultSize, wxBORDER_NONE);
+  rechercheArbre_->SetBackgroundColour(wxColour(0x33, 0x35, 0x39));
+  rechercheArbre_->SetForegroundColour(C_CLAIR);
+  rechercheArbre_->SetFont(policeArial(this, 12.5));
+  rechercheArbre_->SetHint(L"Rechercher dans l'arbre (nom, type…)");
   arbre_ = new wxTreeCtrl(carteArbre_, ID_ARBRE, wxDefaultPosition, wxDefaultSize, wxTR_HAS_BUTTONS | wxTR_NO_LINES | wxTR_HIDE_ROOT | wxTR_SINGLE | wxTR_FULL_ROW_HIGHLIGHT | wxBORDER_NONE);
   ::SendMessageW(arbre_->GetHWND(), 0x111B /* TVM_SETITEMHEIGHT */, FromDIP(23), 0);
   {
@@ -407,7 +412,8 @@ void Cadre::creerEnvironnement() {
   auto* aide = new wxStaticText(carteArbre_, wxID_ANY, L"Double-clic sur un plan ou une esquisse : dessiner");
   aide->SetForegroundColour(C_GRIS);
   aide->SetFont(policeArial(this, 11));
-  carteArbre_->contenu()->Add(recherche, 0, wxEXPAND | wxBOTTOM, FromDIP(6));
+  carteArbre_->contenu()->Add(rechercheArbre_, 0, wxEXPAND | wxBOTTOM, FromDIP(6));
+  rechercheInit();
   carteArbre_->contenu()->Add(arbre_, 1, wxEXPAND);
   carteArbre_->contenu()->Add(aide, 0, wxEXPAND | wxTOP, FromDIP(6));
 
@@ -1249,7 +1255,7 @@ bool Cadre::ecrireExport(const std::string& format, const std::vector<TopoDS_Sha
 
 // Une face choisie sur le solide : l'esquisse y va tout droit. Sinon, on choisit le plan, comme dans l'arbre.
 void Cadre::menuEsquisse() {
-  if (!docOuvert_) return etat(L"Ouvrez d'abord une pièce (Ctrl+O). Créer une pièce vide n'est pas encore dans le logiciel Windows.");
+  if (!docOuvert_) return etat(L"Ouvrez d'abord une pièce (Ctrl+O).");
   if (!faceChoisie_.IsNull()) return creerEsquisse("");
   wxMenu m;
   m.Append(ID_ESQUISSE_XY, L"Plan XY · dessus");
@@ -1621,6 +1627,7 @@ void Cadre::remplirArbre() {
   lignesOcc_.clear();
   if (asmOn()) remplirComposants(racineArbre);
   else remplirPiece(racineArbre);
+  if (!filtreArbre_.empty()) filtrerArbre(racineArbre);
   asmSansEvenement_ = false;
   arbre_->Thaw();
   remplirFil();
@@ -1720,6 +1727,8 @@ void Cadre::montrerFonction(int i) {
     if (f.visible && f.congeTotal > 0 && f.congeTrouvees < f.congeTotal) lectureSeule(props_, L"Trouvées", wxString::Format(L"%d sur %d", f.congeTrouvees, f.congeTotal));
     if (!f.congeAjuste.empty()) lectureSeule(props_, L"Ajusté", tx(f.congeAjuste));
     if (!f.congeErreur.empty()) lectureSeule(props_, L"Erreur", tx(f.congeErreur));
+    // Le type du chanfrein et ses valeurs se changent ici ; les distances par arête restent à leur place
+    if (f.chamfer) return montrerFiche(i);
     lectureSeule(props_, L"Modification", L"Pas encore");
     return;
   }
@@ -2407,7 +2416,7 @@ void Cadre::modifierFonction(int i, const std::function<void(Fonction&)>& reglag
   }
   annulations_.push_back(std::move(m));
   retablissements_.clear();
-  arbre_->SetItemText(lignesFonctions_[i], tx(f.nom));
+  if (lignesFonctions_[i].IsOk()) arbre_->SetItemText(lignesFonctions_[i], tx(f.nom));
   remplirFil();
   majTitre();
   recalculer();
@@ -3050,6 +3059,11 @@ void Cadre::entrerConge(bool chanfrein) {
   if (!solideCalculable_ || forme_.IsNull()) return etat(nom + L" : le solide de cette pièce n'est pas encore calculé par ce programme.");
   wxBusyCursor attente;
   auto c = std::make_unique<ChoixConge>(doc_, forme_, chanfrein, chanfrein ? memoChanfrein_ : memoConge_, memoTangentes_);
+  if (chanfrein) {
+    OptChanfrein oc = memoCham_;
+    oc.flip = false;
+    c->optionsChanfrein(oc);
+  }
   if (c->vives().empty()) return etat(nom + L" : aucune arête vive (que du tangentiel lisse).");
   choix_ = std::move(c);
   const auto compose = [](const std::vector<AreteVue>& l) {
@@ -3105,7 +3119,19 @@ void Cadre::rafraichirConge() {
   props_->CenterSplitter();
   props_->Append(new wxPropertyCategory(tx(c.libelle())));
   props_->Append(new wxStringProperty(ch ? L"Distance par défaut (mm)" : L"Rayon par défaut (mm)", PROP_CONGE_RAYON, wxString::Format("%.10g", c.rayon())));
-  if (ch) lectureSeule(props_, L"Type", L"Distance égale");
+  if (ch) {
+    const OptChanfrein& oc = c.optionsChanfrein();
+    wxPGChoices types;
+    types.Add(L"Distance égale", 0);
+    types.Add(L"Deux distances", 1);
+    types.Add(L"Distance + angle", 2);
+    props_->Append(new wxEnumProperty(L"Type", PROP_CHAM_TYPE, types, oc.mode == "d2" ? 1 : oc.mode == "da" ? 2 : 0));
+    if (oc.actif()) {
+      const bool da = oc.mode == "da";
+      props_->Append(new wxStringProperty(da ? L"Angle (°)" : L"Distance 2 (mm)", PROP_CHAM_VALEUR, wxString::Format("%.10g", da ? oc.ang : oc.d2)));
+      props_->SetPropertyAttribute(props_->Append(new wxBoolProperty(L"⇄ Inverser les faces", PROP_CHAM_FLIP, oc.flip)), wxPG_BOOL_USE_CHECKBOX, true);
+    }
+  }
   props_->SetPropertyAttribute(props_->Append(new wxBoolProperty(L"Arêtes tangentes", PROP_CONGE_TANGENTES, c.tangent())), wxPG_BOOL_USE_CHECKBOX, true);
   for (size_t i = 0; i < c.selection().size(); i++) {
     const SelConge& s = c.selection()[i];
@@ -3116,7 +3142,8 @@ void Cadre::rafraichirConge() {
 
   wxString note = c.tangent() ? wxString(L"Clic = une arête (le ") + (ch ? L"chanfrein" : L"congé") + L" suit sa chaîne tangente) · clic sur une arête choisie = la retirer."
                               : wxString(L"Clic = ajouter / retirer une arête, sans recherche de tangences.");
-  if (ch) note += L"\nDeux distances et distance + angle : pas encore dans le logiciel Windows.";
+  if (ch && c.optionsChanfrein().actif())
+    note += (c.optionsChanfrein().mode == "da" ? wxString(L"\nD1 (distance par arête) sur la première face, angle mesuré entre le chanfrein et cette face.") : wxString(L"\nD1 (distance par arête) sur la première face, D2 sur l'autre.")) + L" Première face : celle qui regarde le plus vers le haut, sinon vers +X puis +Y.";
   if (!c.selection().empty()) {
     note += wxString::Format(L"\n%zu arête(s) retenue(s).\n", c.selection().size());
     if (!a.forme.IsNull()) note += L"Aperçu : la pièce telle qu'elle sera, les nouvelles faces en orange.";
@@ -3167,7 +3194,29 @@ bool Cadre::proprieteConge(const wxString& nom, const wxVariant& valeur) {
   };
   ChoixConge* c = choix_.get();
   double v = 0;
-  if (nom == PROP_CONGE_TANGENTES) {
+  if (nom == PROP_CHAM_TYPE) {
+    OptChanfrein o = c->optionsChanfrein();
+    const long k = valeur.GetLong();
+    o.mode = k == 1 ? "d2" : k == 2 ? "da" : "eq";
+    c->optionsChanfrein(o);
+    memoCham_ = o;
+  } else if (nom == PROP_CHAM_FLIP) {
+    OptChanfrein o = c->optionsChanfrein();
+    o.flip = valeur.GetBool();
+    c->optionsChanfrein(o);
+  } else if (nom == PROP_CHAM_VALEUR) {
+    OptChanfrein o = c->optionsChanfrein();
+    const bool da = o.mode == "da";
+    if (!lire(v) || (da && v >= 90)) {
+      etat(da ? L"Angle du chanfrein : 0 < a < 90°." : L"Distance 2 : valeur strictement positive.");
+      CallAfter([this] { if (choix_) rafraichirConge(); });
+      return true;
+    }
+    (da ? o.ang : o.d2) = v;
+    c->optionsChanfrein(o);
+    memoCham_ = o;
+    memoCham_.flip = false;
+  } else if (nom == PROP_CONGE_TANGENTES) {
     memoTangentes_ = valeur.GetBool();
     c->tangentes(memoTangentes_);
   } else if (nom == PROP_CONGE_RAYON) {
@@ -3315,6 +3364,32 @@ bool Cadre::essaiEsquisse(const std::wstring& fichier, int rang, const std::wstr
       appliquerFiche(e["fiche"][0].get<std::string>() == "@" ? ficheId_ : e["fiche"][0].get<std::string>(), e["fiche"][1].get<std::string>(), e["fiche"][2].get<std::string>());
       essaiMenu_ = false;
       n["etat"] = std::string(etatVue_->texte().utf8_str());
+    }
+    if (e.contains("arbreCherche")) {
+      rechercheArbre_->SetValue(wxString::FromUTF8(e["arbreCherche"].get<std::string>()));
+      n["lignes"] = plan::J::array();
+      const std::function<void(const wxTreeItemId&)> voir = [&](const wxTreeItemId& l) {
+        wxTreeItemIdValue c;
+        for (wxTreeItemId x = arbre_->GetFirstChild(l, c); x.IsOk(); x = arbre_->GetNextChild(l, c)) {
+          n["lignes"].push_back(std::string(arbre_->GetItemText(x).utf8_str()));
+          voir(x);
+        }
+      };
+      voir(arbre_->GetRootItem());
+    }
+    if (e.contains("cmdCherche")) {
+      const plan::J& q = e["cmdCherche"];
+      barreHaute_->champRecherche()->SetValue(wxString::FromUTF8(q["texte"].get<std::string>()));
+      n["resultats"] = plan::J::array();
+      for (const CommandeCherchee& c : resultatsCmd_) n["resultats"].push_back(std::string(c.libelle.utf8_str()));
+      if (q.contains("choisir")) {
+        essaiMenu_ = true;
+        cmdLancer(q["choisir"].get<int>());
+        wxYield();
+        essaiMenu_ = false;
+        n["atelier"] = static_cast<int>(atelier_);
+        n["etat"] = std::string(etatVue_->texte().utf8_str());
+      }
     }
     if (e.contains("deriver")) {
       essaiMenu_ = true;
@@ -3554,6 +3629,14 @@ bool Cadre::essaiGestesConge(const std::wstring& fichier, const std::wstring& so
   bilan["fonctionsApresQuitter"] = doc_.fonctions.size();
   entrerConge(j.value("chanfrein", false));
   if (!choix_) return false;
+  if (j.contains("cham")) {
+    OptChanfrein oc;
+    oc.mode = j["cham"].value("mode", std::string("d2"));
+    oc.d2 = j["cham"].value("d2", 1.0);
+    oc.ang = j["cham"].value("ang", 45.0);
+    oc.flip = j["cham"].value("flip", false);
+    choix_->optionsChanfrein(oc);
+  }
   memoTangentes_ = j.value("tangent", true);
   choix_->tangentes(memoTangentes_);
   choix_->rayonDefaut(j.value("r", 2.0));

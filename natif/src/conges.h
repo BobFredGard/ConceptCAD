@@ -1,6 +1,6 @@
 // Congés et chanfreins exacts : traduction de occApplyXFillets (src/20-60), occFilletRun et occSingleEdgeTool (src/20-20),
 // xAnchorFor et xAnchorMatch (src/20-60), xTangentChainOf (src/80).
-// Pas encore repris : les chanfreins à deux distances ou à angle, le texte « paroi mince » d'occWallAt.
+// Pas encore repris : le texte « paroi mince » d'occWallAt.
 #pragma once
 #include <TopoDS_Edge.hxx>
 #include <TopoDS_Face.hxx>
@@ -56,6 +56,13 @@ struct ApercuConge {
   std::vector<TopoDS_Face> nouvelles;  // les faces nées du congé, en orange
   std::string message;  // pourquoi il n'y a pas d'aperçu
 };
+// Chanfrein à deux distances (D1 par arête, D2 sur l'autre face) ou à distance + angle (xChamOpts)
+struct OptChanfrein {
+  std::string mode = "eq";
+  double d2 = 1, ang = 45;
+  bool flip = false;
+  bool actif() const { return mode == "d2" || mode == "da"; }
+};
 // Ce que la personne a choisi pendant le mode Congé ou Chanfrein, sans fenêtre : filModeX du navigateur
 class ChoixConge {
  public:
@@ -74,6 +81,8 @@ class ChoixConge {
   void rayonDefaut(double r);
   void rayonArete(size_t i, double r);
   void tangentes(bool oui);
+  void optionsChanfrein(const OptChanfrein& o) { cham_ = o; }
+  const OptChanfrein& optionsChanfrein() const { return cham_; }
   const ApercuConge& apercu();
   // corps : le solide de chaque corps ; le compteur des noms d'arêtes du document avance
   Fonction creer(Document& d, const std::vector<std::pair<std::string, TopoDS_Shape>>& corps) const;
@@ -83,6 +92,7 @@ class ChoixConge {
   const Document& doc_;
   TopoDS_Shape base_;
   bool chanfrein_ = false;
+  OptChanfrein cham_;
   double rayon_ = 10;
   bool tangent_ = true;
   std::vector<AreteVue> vives_, tangentes_;

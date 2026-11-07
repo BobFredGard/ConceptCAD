@@ -110,6 +110,12 @@ BarreHaute::BarreHaute(wxWindow* parent) : wxWindow(parent, wxID_ANY, wxDefaultP
   theme_->surClic = [this] {
     if (surIndisponible) surIndisponible(L"Couleurs et icônes");
   };
+  recherche_ = new wxTextCtrl(this, wxID_ANY, wxEmptyString, wxDefaultPosition, wxDefaultSize, wxBORDER_NONE);
+  recherche_->SetBackgroundColour(wxColour(0x33, 0x35, 0x39));
+  recherche_->SetForegroundColour(C_TEXTE);
+  recherche_->SetFont(police(12.5));
+  recherche_->SetHint(L"Rechercher");
+  recherche_->SetToolTip(L"Rechercher une commande…  Ctrl+K");
   Bind(wxEVT_SIZE, [this](wxSizeEvent& e) {
     placer();
     e.Skip();
@@ -137,14 +143,13 @@ BarreHaute::BarreHaute(wxWindow* parent) : wxWindow(parent, wxID_ANY, wxDefaultP
       g->DrawRoundedRectangle(165, 19, 251, 26, 10);
       g->SetPen(g->CreatePen(wxGraphicsPenInfo(wxColour(0x44, 0x46, 0x4a), 1)));
       g->StrokeLine(508.5, 22, 508.5, 42);
-      // Le champ de recherche, pas encore repris
+      // Le cadre du champ de recherche
       g->SetBrush(g->CreateBrush(wxBrush(wxColour(0x33, 0x35, 0x39))));
       g->DrawRoundedRectangle(753.5, 18.5, 104, 27, 7);
     }
     ecrire(dc, this, L"Concept", 47, 24, 16.5, C_TEXTE, true);
     const int L = mesure(this, L"Concept", 16.5, true).x;
     ecrire(dc, this, L"CAD", 47 + L, 24, 16.5, C_BLEU, true);
-    ecrire(dc, this, L"Rechercher", 765, 25, 12.5, wxColour(0x70, 0x70, 0x75));
     ecrire(dc, this, document_, 883, 25, 12.5, C_DISCRET);
     // Le numéro : ce programme n'a pas encore de version à lui
     ecrire(dc, this, L"Essai Windows", t.x - 165, 25, 11.5, C_TEXTE, true);
@@ -160,6 +165,7 @@ void BarreHaute::placer() {
   for (size_t i = 0; i < icones_.size(); i++) icones_[i]->SetSize(rectDip(this, xi[i], 18, 38, 28));
   regenerer_->SetSize(rectDip(this, W - 278, 21, 92, 22));
   theme_->SetSize(rectDip(this, W - 63, 18, 38, 28));
+  recherche_->SetSize(rectDip(this, 763, 24, 90, 17));
   Refresh();
 }
 
@@ -259,6 +265,19 @@ Ruban::Ruban(wxWindow* parent) : wxWindow(parent, wxID_ANY, wxDefaultPosition, w
     g->SetPen(g->CreatePen(wxGraphicsPenInfo(wxColour(0x44, 0x46, 0x4a), 1)));
     for (const wxRect& r : traits_) g->StrokeLine(r.x + 0.5, r.y, r.x + 0.5, r.y + r.height);
   });
+}
+
+std::vector<CommandeRuban> Ruban::commandes() const {
+  std::vector<CommandeRuban> L;
+  for (const Groupe& g : groupes_)
+    for (BoutonEsquisse* b : g.boutons) {
+      if (assemblage_ && g.atelier == Atelier::CAO && b != boutonAssembler_) continue;
+      if (!estRepris || estRepris(g.atelier, b->GetName())) L.push_back({g.atelier, b->GetName(), b->GetToolTipText()});
+    }
+  if (assemblage_)
+    for (BoutonEsquisse* b : boutonsAsm_)
+      if (!estRepris || estRepris(Atelier::CAO, b->GetLabel())) L.push_back({Atelier::CAO, b->GetLabel(), b->GetToolTipText()});
+  return L;
 }
 
 void Ruban::atelier(Atelier a) {

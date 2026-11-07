@@ -22,9 +22,11 @@ class BarreHaute : public wxWindow {
   void atelier(Atelier a);
   void document(const wxString& nom);
   void etats(bool annuler, bool retablir, bool enregistrer, bool document);
+  wxTextCtrl* champRecherche() const { return recherche_; }
 
  private:
   void placer();
+  wxTextCtrl* recherche_ = nullptr;
   std::vector<BoutonEsquisse*> ateliers_, icones_;
   std::vector<int> separateurs_;
   BoutonEsquisse* regenerer_ = nullptr;
@@ -33,9 +35,16 @@ class BarreHaute : public wxWindow {
   int finIcones_ = 0;
 };
 
+struct CommandeRuban {
+  Atelier a;
+  wxString nom, aide;
+};
+
 class Ruban : public wxWindow {
  public:
   explicit Ruban(wxWindow* parent);
+  // Ce que la recherche de commandes peut lancer : les boutons repris, ceux du moment en assemblage
+  std::vector<CommandeRuban> commandes() const;
   // La fonction rend true si ce bouton est repris ; elle n'est appelée que pour dire disponible ou non
   std::function<bool(Atelier, const wxString&)> estRepris;
   std::function<void(Atelier, const wxString&)> surBouton;

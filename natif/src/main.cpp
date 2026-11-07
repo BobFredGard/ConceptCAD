@@ -687,6 +687,8 @@ class Appli : public wxApp {
       cadre->ouvrir(gArgs[0]);
       // Pour natif/mesures/verifier-dessin.ps1 : un double-clic dans l'arbre ne passe pas par des messages envoyés de l'extérieur
       if (const wchar_t* rang = _wgetenv(L"CONCEPTCAD_OUVRIR_ESQUISSE")) cadre->entrerEsquisse(_wtoi(rang));
+    } else {
+      cadre->demarrerVide();  // comme le navigateur, on démarre sur un modèle vide : on peut dessiner tout de suite
     }
     return true;
   }
