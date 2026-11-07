@@ -100,7 +100,7 @@ wxFont policeUI(double taille, bool gras = false) {
 }
 wxFont policeTexte(const wxString& t, double taille, bool gras) {
   wxFont p = policeUI(taille, gras);
-  if (t.Find(L"⇄") != wxNOT_FOUND || t.Find(L"🗑") != wxNOT_FOUND || t.Find(L"📐") != wxNOT_FOUND || t.Find(L"➤") != wxNOT_FOUND || t.Find(L"⟳") != wxNOT_FOUND || t.Find(L"⚙") != wxNOT_FOUND) p.SetFaceName("Segoe UI Symbol");
+  if (t.Find(L"⇄") != wxNOT_FOUND || t.find_first_of(L"▶⏸⏹✕◼◻◈■") != wxString::npos || t.Find(L"🗑") != wxNOT_FOUND || t.Find(L"📐") != wxNOT_FOUND || t.Find(L"➤") != wxNOT_FOUND || t.Find(L"⟳") != wxNOT_FOUND || t.Find(L"⚙") != wxNOT_FOUND) p.SetFaceName("Segoe UI Symbol");
   return p;
 }
 // Tailles et positions en pixels logiques

@@ -334,7 +334,7 @@ void Cadre::creerEnvironnement() {
     if (esquisseOuverte_ < 0) recalculer();
   };
   barreHaute_->surIndisponible = [this](const wxString& n) { indisponible(n); };
-  ruban_->estRepris = [this](Atelier a, const wxString& n) { if (a == Atelier::PLAN) return planVue_->estRepris(n); if (a == Atelier::FAO) return n != L"Esquisse" && n != L"Extrusion" && n != L"Usinage"; return a == Atelier::CAO && (n == L"Esquisse" || n == L"Extrusion" || n == L"Congé" || n == L"Chanfrein" || n == L"Paramètres" || n == L"Corps" || n == L"Perçage" || n == L"Filetage" || n == L"Clavette" || n == L"Plan" || n == L"Axe" || n == L"Point" || n == L"Repère" || n == L"Répétition" || n == L"Révolution" || n == L"Balayage" || n == L"Face" || n == L"Dépouille" || n == L"Coque" || n == L"Combiner" || n == L"Déplacer" || n == L"Échelle" || n == L"Scinder" || n == L"Importer" || n == L"STEP" || n == L"STL" || n == L"OBJ" || n == L"Assembler" || n == L"Modéliser" || n == L"Composant" || n == L"Occurrence" || n == L"Insérer" || n == L"Inspecter" || n == L"Normalisés" || n == L"Aimants" || n == L"Depuis corps"); };
+  ruban_->estRepris = [this](Atelier a, const wxString& n) { if (a == Atelier::PLAN) return planVue_->estRepris(n); if (a == Atelier::FAO) return n != L"Esquisse" && n != L"Extrusion"; return a == Atelier::CAO && (n == L"Esquisse" || n == L"Extrusion" || n == L"Congé" || n == L"Chanfrein" || n == L"Paramètres" || n == L"Corps" || n == L"Perçage" || n == L"Filetage" || n == L"Clavette" || n == L"Plan" || n == L"Axe" || n == L"Point" || n == L"Repère" || n == L"Répétition" || n == L"Révolution" || n == L"Balayage" || n == L"Face" || n == L"Dépouille" || n == L"Coque" || n == L"Combiner" || n == L"Déplacer" || n == L"Échelle" || n == L"Scinder" || n == L"Importer" || n == L"STEP" || n == L"STL" || n == L"OBJ" || n == L"Assembler" || n == L"Modéliser" || n == L"Composant" || n == L"Occurrence" || n == L"Insérer" || n == L"Inspecter" || n == L"Normalisés" || n == L"Aimants" || n == L"Depuis corps"); };
   ruban_->surBouton = [this](Atelier a, const wxString& n) { boutonRuban(a, n); };
   ruban_->surIndisponible = [this](const wxString& n) { indisponible(n); };
 
@@ -462,6 +462,27 @@ void Cadre::creerEnvironnement() {
   ficheFao_->Hide();
   carteDroite_->contenu()->Add(ficheFao_, 1, wxEXPAND);
   ficheFao_->surToucher = [this](long el, const std::string& s, const plan::J& v, bool c, bool m) { faoToucher(el, s, v, c, m); };
+  // La barre de lecture d'usinage, en bas de la vue comme dans la page
+  barreSim_ = new wxPanel(scene_);
+  barreSim_->SetBackgroundColour(wxColour(18, 20, 24));
+  barreSimDom_ = new VueDom(barreSim_, wxColour(18, 20, 24));
+  barreSimDom_->surToucher = [this](long el, const std::string& s, const plan::J& v, bool c, bool m) { faoToucher(el, s, v, c, m); };
+  tempsSim_ = new wxStaticText(barreSim_, wxID_ANY, wxEmptyString);
+  tempsSim_->SetForegroundColour(wxColour(220, 222, 226));
+  {
+    auto* s = new wxBoxSizer(wxHORIZONTAL);
+    s->Add(barreSimDom_, 1, wxEXPAND);
+    s->Add(tempsSim_, 0, wxALIGN_CENTER_VERTICAL | wxLEFT | wxRIGHT, FromDIP(8));
+    barreSim_->SetSizer(s);
+  }
+  barreSim_->Hide();
+  minuteurSim_.Bind(wxEVT_TIMER, [this](wxTimerEvent&) {
+    if (!simActif_ || !simJoue_ || simEnAttente_ || simManuel_) return;
+    const wxLongLong t = wxGetLocalTimeMillis();
+    double dt = (t - simDernier_).ToDouble() / 1000.0;
+    simDernier_ = t;
+    faoTrame(std::min(0.25, dt));
+  });
   panneauPlan_ = new PanneauPlan(carteDroite_, planVue_);
   panneauPlan_->Hide();
   carteDroite_->contenu()->Add(panneauPlan_, 1, wxEXPAND);
@@ -547,6 +568,12 @@ void Cadre::placerScene() {
   const int largeurEtat = std::min(t.x - 40, etatVue_->largeurVoulue() + 8);
   poser(etatVue_, t.x - 12 - largeurEtat, (cao ? t.y - 82 : t.y - 26), largeurEtat, 20);
   etatVue_->Show(volume);
+  {
+    const int l = std::min(t.x - 24, 820);
+    poser(barreSim_, (t.x - l) / 2, t.y - (l < 780 ? 112 : 78), l, l < 780 ? 76 : 42);
+    barreSim_->Show(fao && simActif_);
+    if (fao && simActif_) barreSim_->Raise();
+  }
   scene_->Refresh();
 }
 
@@ -656,6 +683,7 @@ void Cadre::boutonRuban(Atelier a, const wxString& nom) {
     if (nom == L"Outils") return faoAction("outils", "");
     if (nom == L"Rapides") return faoAction("rapides", "");
     if (nom == L"Régénérer") return faoAction("regenerer", "");
+    if (nom == L"Usinage") return faoAction("usinage", "");
     if (nom == L"G-code") return faoAction("gcode", "");
     if (nom == L"Surfaçage" || nom == L"Chanfrein" || nom == L"Contour" || nom == L"Perçage" || nom == L"Ébauche 3D" || nom == L"Finition" || nom == L"Géodésique") return faoAction("ajout", nom.ToStdString(wxConvUTF8));
     return indisponible(nom);

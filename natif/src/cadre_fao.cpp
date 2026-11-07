@@ -1,4 +1,5 @@
 // L'atelier FAO : le programme montre et transmet, le moteur JavaScript validé décide et calcule.
+#include <wx/base64.h>
 #include <wx/file.h>
 #include <wx/filedlg.h>
 #include <wx/filename.h>
@@ -100,6 +101,23 @@ void Cadre::faoAppliquer(const plan::J& r) {
   }
   if (atelier_ == Atelier::FAO) faoScene();
   carteDroite_->Layout();
+  const bool sim = r.value("sim", false);
+  if (sim && atelier_ == Atelier::FAO) {
+    if (!simActif_) {
+      simActif_ = true;
+      simDernier_ = wxGetLocalTimeMillis();
+      simVox_ = 0;
+      minuteurSim_.Start(30);
+    }
+    const std::string d = r["barre"].dump(-1, ' ', false, plan::J::error_handler_t::replace);
+    if (d != simBarre_) {
+      simBarre_ = d;
+      barreSimDom_->montrer(r["barre"]);
+    }
+    placerScene();
+    barreSim_->Layout();
+    faoTrame(0);
+  } else if (!sim && simActif_) faoSimFin();
 }
 
 void Cadre::faoToucher(long el, const std::string& sorte, const plan::J& valeur, bool ctrl, bool maj) {
@@ -202,6 +220,7 @@ void Cadre::faoTraces(const std::string& rapides) {
         pos += n;
       }
     }
+    if (r.value("cache", false)) D = Vue3D::DessinFao{};
     const auto& F = r["frame"];
     const auto lire = [](const plan::J& p, double q[3]) {
       if (p.is_array()) for (int i = 0; i < 3; i++) q[i] = p[i].get<double>();
@@ -268,8 +287,20 @@ void Cadre::faoScene() {
       x.alpha = o.value("al", 1.0);
       x.taille = o.value("pl", 0.0);
       x.profondeur = o.value("dep", true);
+      if (o.contains("ancre") && o["ancre"].is_array()) {
+        x.ancre = true;
+        x.ax = o["ancre"][0];
+        x.ay = o["ancre"][1];
+        x.az = o["ancre"][2];
+      }
       x.a.resize(o.value("n", 0));
       if (!x.a.empty()) in.read(reinterpret_cast<char*>(x.a.data()), x.a.size() * sizeof(float));
+      if (o.value("lit", false)) {
+        x.n.resize(x.a.size());
+        in.read(reinterpret_cast<char*>(x.n.data()), x.n.size() * sizeof(float));
+        x.reflet = o.value("sp", 0x111111u);
+        x.brillance = o.value("sh", 30.0);
+      }
       L.push_back(std::move(x));
     }
     in.close();
@@ -278,7 +309,108 @@ void Cadre::faoScene() {
   });
 }
 
+namespace {
+std::vector<float> flottants(const std::string& b64) {
+  const wxMemoryBuffer m = wxBase64Decode(b64.data(), b64.size());
+  std::vector<float> v(m.GetDataLen() / sizeof(float));
+  if (!v.empty()) memcpy(v.data(), m.GetData(), v.size() * sizeof(float));
+  return v;
+}
+}  // namespace
+
+// Une image de la lecture : on n'en demande pas une nouvelle tant que la précédente n'est pas dessinée
+void Cadre::faoTrame(double dt) {
+  if (!moteurFao_ || simEnAttente_) return;
+  simEnAttente_ = true;
+  faoEnCours_++;
+  moteurFao_->commande("simuler", {{"dt", dt}}, [this](bool ok, const plan::J& r, const std::string& err) {
+    faoEnCours_--;
+    simEnAttente_ = false;
+    if (!ok) {
+      faoSimFin();
+      return faoMessage(tx(err).BeforeFirst('\n'));
+    }
+    if (r.value("sim", false) && atelier_ == Atelier::FAO) faoAppliquerTrame(r);
+  });
+}
+
+void Cadre::faoAppliquerTrame(const plan::J& r) {
+  double racine[16];
+  const bool aRacine = r.contains("racine") && r["racine"].is_array();
+  if (aRacine)
+    for (int i = 0; i < 16; i++) racine[i] = r["racine"][i].get<double>();
+  std::vector<float> cols;
+  if (r.contains("cols")) cols = flottants(r["cols"].get<std::string>());
+  if (r.value("sans", false)) vue_->simSansMatiere();
+  else if (r.contains("grille")) {
+    const auto& G = r["grille"];
+    GrilleFao g;
+    g.nx = G["nx"];
+    g.ny = G["ny"];
+    g.pas = G["pas"];
+    g.ox = G["ox"];
+    g.oy = G["oy"];
+    g.oz = G["oz"];
+    g.sx1 = G["sx1"];
+    g.sy1 = G["sy1"];
+    g.full = G["full"];
+    g.lisse = G["lisse"];
+    g.couleur = G["c"];
+    g.reflet = G["sp"];
+    g.brillance = G["sh"];
+    vue_->simMatiere(g, cols.data(), cols.size() / 8, aRacine ? racine : nullptr);
+  } else if (!cols.empty()) vue_->simColonnes(cols.data(), cols.size() / 8);
+  if (r.contains("pieces")) {
+    std::vector<Vue3D::ObjetFao> fixes, tournants;
+    for (const auto& p : r["pieces"]) {
+      Vue3D::ObjetFao x;
+      x.sorte = 'T';
+      x.a = flottants(p["a"].get<std::string>());
+      x.n = flottants(p["nrm"].get<std::string>());
+      x.couleur = p.value("c", 0x9ad1ffu);
+      x.reflet = p.value("sp", 0x111111u);
+      x.brillance = p.value("sh", 30.0);
+      (p.value("tourne", false) ? tournants : fixes).push_back(std::move(x));
+    }
+    vue_->simOutil(fixes, tournants);
+  }
+  if (r.contains("outil") && r["outil"].is_array()) {
+    double m[16];
+    for (int i = 0; i < 16; i++) m[i] = r["outil"][i].get<double>();
+    vue_->simPoseOutil(m, r.value("spin", 0.0));
+  }
+  vue_->simLigne(r.contains("ligne") ? flottants(r["ligne"].get<std::string>()) : std::vector<float>(), aRacine ? racine : nullptr);
+  vue_->simMasquerPiece(!r.value("piece", true));
+  tempsSim_->SetLabel(tx(r.value("temps", std::string())));
+  barreSim_->Layout();
+  const bool jouait = simJoue_;
+  simJoue_ = r.value("jouer", false);
+  if (simJoue_ && !jouait) simDernier_ = wxGetLocalTimeMillis();
+  // Les cavités d'un posage 3+2 sont refaites de temps en temps par la page
+  const double vox = r.value("vox", 0.0);
+  if (vox != simVox_) {
+    simVox_ = vox;
+    faoScene();
+  }
+  vue_->simDessiner();
+}
+
+void Cadre::faoSimFin() {
+  simActif_ = false;
+  simJoue_ = false;
+  simBarre_.clear();
+  minuteurSim_.Stop();
+  if (vue_) vue_->simFin();
+  barreSim_->Hide();
+  placerScene();
+  if (vue_) vue_->simDessiner();
+}
+
 void Cadre::faoQuitterVue() {
+  if (simActif_ && moteurFao_) {
+    moteurFao_->commande("evaluer", {{"code", "try{faoViewerClose();}catch(e){}0"}}, [](bool, const plan::J&, const std::string&) {});
+    faoSimFin();
+  }
   if (vue_) {
     vue_->montrerFao(Vue3D::DessinFao{});
     vue_->montrerSceneFao({});
@@ -319,11 +451,37 @@ void Cadre::faoEssai(const plan::J& e) {
   };
   attendre();
   if (e.contains("clic")) {
-    if (!arbreFao_->essaiCliquer(e["clic"].get<std::string>(), e.value("rang", 0))) ficheFao_->essaiCliquer(e["clic"].get<std::string>(), e.value("rang", 0));
+    if (!arbreFao_->essaiCliquer(e["clic"].get<std::string>(), e.value("rang", 0)) && !ficheFao_->essaiCliquer(e["clic"].get<std::string>(), e.value("rang", 0))) barreSimDom_->essaiCliquer(e["clic"].get<std::string>(), e.value("rang", 0));
   }
   if (e.contains("champ")) ficheFao_->essaiChamp(e["champ"].get<std::string>(), e["valeur"]);
   if (e.contains("touche")) faoTouche(e["touche"].get<std::string>(), e.value("ctrl", false), e.value("maj", false));
   if (e.contains("action")) faoAction(e["action"].get<std::string>(), e.value("type", std::string()));
+  if (e.contains("pause")) {
+    const wxLongLong fin = wxGetLocalTimeMillis() + e["pause"].get<long>();
+    // Comme la vraie boucle du programme : l'essai tourne avant elle, et les minuteries ne passent pas par wxYield
+    while (wxGetLocalTimeMillis() < fin) {
+      MSG msg;
+      while (PeekMessage(&msg, nullptr, 0, 0, PM_REMOVE)) {
+        TranslateMessage(&msg);
+        DispatchMessage(&msg);
+      }
+      wxTheApp->ProcessPendingEvents();
+      Sleep(2);
+    }
+  }
+  if (e.contains("code")) {
+    faoEnCours_++;
+    moteurFao_->commande("evaluer", {{"code", e["code"]}}, [this](bool, const plan::J&, const std::string&) { faoEnCours_--; });
+    faoRafraichir();
+    attendre();
+  }
+  if (e.contains("sim")) {
+    // Avancer la lecture de tant de secondes d'usinage, d'un coup
+    simManuel_ = true;
+    attendre();
+    faoTrame(e["sim"].get<double>());
+  }
+  if (e.contains("simManuel")) simManuel_ = e["simManuel"].get<bool>();
   if (e.contains("sortie")) faoSortieEssai_ = wxString::FromUTF8(e["sortie"].get<std::string>()).ToStdWstring();
   attendre();
   // Deux tours : les traces partent d'une réponse

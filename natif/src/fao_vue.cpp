@@ -98,6 +98,7 @@ void VueDom::poser(wxWindow* parent, wxSizer* s, const plan::J& e, long cliquabl
       c->Append(tx(opts[i][1].get<std::string>()));
       if (opts[i][0].get<std::string>() == v) cur = static_cast<int>(i);
     }
+    if (cur < 0 && !opts.empty()) cur = 0;
     if (cur >= 0) c->SetSelection(cur);
     if (!bulle.empty()) c->SetToolTip(bulle);
     c->Enable(!e.contains("off"));

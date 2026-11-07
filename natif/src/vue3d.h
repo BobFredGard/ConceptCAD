@@ -24,6 +24,7 @@
 
 #include "mesure.h"
 #include "plan.h"
+#include "fao_matiere.h"
 
 class Vue3D : public wxWindow {
  public:
@@ -140,8 +141,23 @@ class Vue3D : public wxWindow {
     unsigned couleur = 0xffffff;
     double alpha = 1, taille = 0;
     bool profondeur = true;
+    std::vector<float> n;  // des normales : la matière est alors éclairée
+    bool ancre = false;   // un repère : même taille à l'écran quel que soit le zoom, posé en ax ay az
+    double ax = 0, ay = 0, az = 0;
+    unsigned reflet = 0x111111;
+    double brillance = 30;
   };
   void montrerSceneFao(const std::vector<ObjetFao>& L);
+  // La lecture d'usinage : la matière, l'outil qui suit le parcours, le bout de trace derrière lui
+  void simMatiere(const GrilleFao& g, const float* cols, size_t n, const double* racine);
+  void simColonnes(const float* cols, size_t n);
+  void simSansMatiere();
+  void simOutil(const std::vector<ObjetFao>& fixes, const std::vector<ObjetFao>& tournants);
+  void simPoseOutil(const double m[16], double angle);
+  void simLigne(const std::vector<float>& xyzrgb, const double* racine);
+  void simMasquerPiece(bool oui);
+  void simFin();
+  void simDessiner();
   // L'atelier FAO prend les clics de la vue, avec la caméra
   struct ClicFao {
     int x = 0, y = 0, w = 0, h = 0, bouton = 0;
@@ -179,6 +195,10 @@ class Vue3D : public wxWindow {
   };
   std::vector<OccAffichee> occs_;
   std::vector<occ::handle<AIS_InteractiveObject>> faoAis_, faoScene_;
+  occ::handle<MatiereFao> simMatiere_;
+  occ::handle<AIS_InteractiveObject> simLigne_;
+  std::vector<occ::handle<AIS_InteractiveObject>> simFixes_, simTournants_, simCaches_;
+  bool simPieceMasquee_ = false;
   bool faoPrisClic_ = false;
   bool placer_ = false, ignorerRelache_ = false, aligner_ = false;
   std::vector<std::string> cheminPiece_;

@@ -1208,6 +1208,13 @@ class ObjetSceneFao : public AIS_InteractiveObject {
     const Quantity_Color c((o_.couleur >> 16) / 255.0, ((o_.couleur >> 8) & 255) / 255.0, (o_.couleur & 255) / 255.0, Quantity_TOC_sRGB);
     occ::handle<Graphic3d_Group> g = prs->CurrentGroup();
     const auto V = [&](int i) { return gp_Pnt(o_.a[3 * i], o_.a[3 * i + 1], o_.a[3 * i + 2]); };
+    if (o_.sorte == 'T' && !o_.n.empty()) {
+      g->SetGroupPrimitivesAspect(aspectEclaire(o_.couleur, o_.reflet, o_.brillance));
+      occ::handle<Graphic3d_ArrayOfTriangles> T = new Graphic3d_ArrayOfTriangles(n, 0, Graphic3d_ArrayFlags_VertexNormal);
+      for (int i = 0; i < n; i++) T->AddVertex(o_.a[3 * i], o_.a[3 * i + 1], o_.a[3 * i + 2], o_.n[3 * i], o_.n[3 * i + 1], o_.n[3 * i + 2]);
+      g->AddPrimitiveArray(T);
+      return;
+    }
     if (o_.sorte == 'T') {
       occ::handle<Graphic3d_AspectFillArea3d> A = new Graphic3d_AspectFillArea3d();
       A->SetInteriorStyle(Aspect_IS_SOLID);
@@ -1216,7 +1223,10 @@ class ObjetSceneFao : public AIS_InteractiveObject {
       A->SetShadingModel(Graphic3d_TypeOfShadingModel_Unlit);
       A->SetDistinguish(false);
       A->SetSuppressBackFaces(false);
-      if (o_.alpha < 1) A->SetAlphaMode(Graphic3d_AlphaMode_Blend);
+      if (o_.alpha < 1) {
+        A->SetAlphaMode(Graphic3d_AlphaMode_Blend);
+        A->SetPolygonOffsets(Aspect_POM_Fill, -1.f, -2.f);  // posé sur la matière : jamais à moitié dedans
+      }
       g->SetGroupPrimitivesAspect(A);
       occ::handle<Graphic3d_ArrayOfTriangles> T = new Graphic3d_ArrayOfTriangles(n);
       for (int i = 0; i < n; i++) T->AddVertex(V(i));
@@ -1224,7 +1234,7 @@ class ObjetSceneFao : public AIS_InteractiveObject {
       return;
     }
     if (o_.sorte == 'P') {
-      g->SetGroupPrimitivesAspect(new Graphic3d_AspectMarker3d(Aspect_TOM_POINT, c, std::max(1.0, o_.taille / 3.0)));
+      g->SetGroupPrimitivesAspect(new Graphic3d_AspectMarker3d(Aspect_TOM_POINT, c, std::max(1.0, o_.taille / 1.5)));
       occ::handle<Graphic3d_ArrayOfPoints> P = new Graphic3d_ArrayOfPoints(n);
       for (int i = 0; i < n; i++) P->AddVertex(V(i));
       g->AddPrimitiveArray(P);
@@ -1259,11 +1269,130 @@ void Vue3D::montrerSceneFao(const std::vector<ObjetFao>& L) {
     if (o.a.size() < 3) continue;
     occ::handle<ObjetSceneFao> a = new ObjetSceneFao(o);
     if (!o.profondeur) a->SetZLayer(Graphic3d_ZLayerId_Topmost);
+    if (o.ancre) a->SetTransformPersistence(new Graphic3d_TransformPers(Graphic3d_TMF_ZoomPers, gp_Pnt(o.ax, o.ay, o.az)));
     contexte_->Display(a, 0, -1, false);
     contexte_->Deactivate(a);
     faoScene_.push_back(a);
   }
   vue_->ZFitAll();
+  vue_->Redraw();
+}
+
+namespace {
+// Le bout de parcours derrière l'outil : une couleur par point
+class LigneSimFao : public AIS_InteractiveObject {
+ public:
+  explicit LigneSimFao(std::vector<float> v) : v_(std::move(v)) {}
+  void Compute(const occ::handle<PrsMgr_PresentationManager>&, const occ::handle<Prs3d_Presentation>& prs, const int) override {
+    const int n = static_cast<int>(v_.size() / 6);
+    occ::handle<Graphic3d_ArrayOfPolylines> L = new Graphic3d_ArrayOfPolylines(n, 0, 0, true);
+    for (int i = 0; i < n; i++) L->AddVertex(gp_Pnt(v_[6 * i], v_[6 * i + 1], v_[6 * i + 2]), Quantity_Color(v_[6 * i + 3], v_[6 * i + 4], v_[6 * i + 5], Quantity_TOC_sRGB));
+    occ::handle<Graphic3d_Group> g = prs->CurrentGroup();
+    g->SetGroupPrimitivesAspect(new Graphic3d_AspectLine3d(Quantity_NOC_WHITE, Aspect_TOL_SOLID, 1.5));
+    g->AddPrimitiveArray(L);
+  }
+  void ComputeSelection(const occ::handle<SelectMgr_Selection>&, const int) override {}
+
+ private:
+  std::vector<float> v_;
+};
+gp_Trsf matriceEnTrsf(const double* m) {
+  gp_Trsf t;
+  t.SetValues(m[0], m[4], m[8], m[12], m[1], m[5], m[9], m[13], m[2], m[6], m[10], m[14]);
+  return t;
+}
+}  // namespace
+
+void Vue3D::simMatiere(const GrilleFao& g, const float* cols, size_t n, const double* racine) {
+  simSansMatiere();
+  simMatiere_ = new MatiereFao(g);
+  simMatiere_->colonnes(cols, n);
+  if (racine) simMatiere_->SetLocalTransformation(matriceEnTrsf(racine));
+  contexte_->Display(simMatiere_, 0, -1, false);
+  contexte_->Deactivate(simMatiere_);
+  vue_->ZFitAll();
+}
+
+void Vue3D::simColonnes(const float* cols, size_t n) {
+  if (!simMatiere_.IsNull()) simMatiere_->colonnes(cols, n);
+}
+
+void Vue3D::simSansMatiere() {
+  if (simMatiere_.IsNull()) return;
+  contexte_->Remove(simMatiere_, false);
+  simMatiere_.Nullify();
+}
+
+void Vue3D::simOutil(const std::vector<ObjetFao>& fixes, const std::vector<ObjetFao>& tournants) {
+  for (auto& a : simFixes_) contexte_->Remove(a, false);
+  for (auto& a : simTournants_) contexte_->Remove(a, false);
+  simFixes_.clear();
+  simTournants_.clear();
+  const auto poser = [&](const std::vector<ObjetFao>& L, std::vector<occ::handle<AIS_InteractiveObject>>& D) {
+    for (const ObjetFao& o : L) {
+      occ::handle<ObjetSceneFao> a = new ObjetSceneFao(o);
+      contexte_->Display(a, 0, -1, false);
+      contexte_->Deactivate(a);
+      D.push_back(a);
+    }
+  };
+  poser(fixes, simFixes_);
+  poser(tournants, simTournants_);
+}
+
+void Vue3D::simPoseOutil(const double m[16], double angle) {
+  const gp_Trsf t = matriceEnTrsf(m);
+  gp_Trsf r;
+  r.SetRotation(gp_Ax1(gp_Pnt(0, 0, 0), gp_Dir(0, 0, 1)), angle);
+  for (auto& a : simFixes_) a->SetLocalTransformation(t);
+  for (auto& a : simTournants_) a->SetLocalTransformation(t * r);
+}
+
+void Vue3D::simLigne(const std::vector<float>& v, const double* racine) {
+  if (!simLigne_.IsNull()) contexte_->Remove(simLigne_, false);
+  simLigne_.Nullify();
+  if (v.size() < 12) return;
+  simLigne_ = new LigneSimFao(v);
+  if (racine) simLigne_->SetLocalTransformation(matriceEnTrsf(racine));
+  contexte_->Display(simLigne_, 0, -1, false);
+  contexte_->Deactivate(simLigne_);
+}
+
+// Les corps s'effacent pendant la lecture : la matière les remplace. Le reste de la scène FAO reste là.
+void Vue3D::simMasquerPiece(bool oui) {
+  if (oui == simPieceMasquee_) return;
+  simPieceMasquee_ = oui;
+  if (!oui) {
+    for (auto& a : simCaches_) contexte_->Display(a, false);
+    for (auto& a : simCaches_) contexte_->Deactivate(a);
+    simCaches_.clear();
+    return;
+  }
+  NCollection_List<occ::handle<AIS_InteractiveObject>> L;
+  contexte_->DisplayedObjects(L);
+  const auto garde = [&](const occ::handle<AIS_InteractiveObject>& a) {
+    if (a == cube_ || a == simMatiere_ || a == simLigne_) return true;
+    for (const auto* V : {&faoAis_, &faoScene_, &simFixes_, &simTournants_})
+      for (const auto& x : *V)
+        if (x == a) return true;
+    return false;
+  };
+  for (NCollection_List<occ::handle<AIS_InteractiveObject>>::Iterator i(L); i.More(); i.Next())
+    if (!garde(i.Value())) {
+      simCaches_.push_back(i.Value());
+      contexte_->Erase(i.Value(), false);
+    }
+}
+
+void Vue3D::simFin() {
+  simSansMatiere();
+  simOutil({}, {});
+  simLigne({}, nullptr);
+  simMasquerPiece(false);
+}
+
+void Vue3D::simDessiner() {
+  vue_->Invalidate();
   vue_->Redraw();
 }
 

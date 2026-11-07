@@ -458,6 +458,17 @@ public:
   void faoTouche(const std::string& cle, bool ctrl, bool maj);
   bool faoClic(const Vue3D::ClicFao& c);
   void faoFaireSuivre();
+  wxPanel* barreSim_ = nullptr;
+  VueDom* barreSimDom_ = nullptr;
+  wxStaticText* tempsSim_ = nullptr;
+  wxTimer minuteurSim_;
+  wxLongLong simDernier_ = 0;
+  bool simActif_ = false, simJoue_ = false, simEnAttente_ = false, simManuel_ = false;
+  double simVox_ = 0;
+  std::string simBarre_;
+  void faoTrame(double dt);
+  void faoAppliquerTrame(const plan::J& r);
+  void faoSimFin();
   void faoEssai(const plan::J& e);
   std::unique_ptr<MoteurFao> moteurFao_;
   VueDom* arbreFao_ = nullptr;
