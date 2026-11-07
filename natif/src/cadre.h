@@ -665,7 +665,6 @@ public:
   int hauteurDroite_ = 0;
   bool noteMontree_ = false;
   wxStaticText* noteDroite_ = nullptr;
-  BoutonEsquisse* boutonRendu_ = nullptr;
   BoutonEsquisse* repliArbre_ = nullptr;
   std::vector<BoutonEsquisse*> onglets_, boutonsVue_;
   EtatVue* etatVue_ = nullptr;

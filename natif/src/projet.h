@@ -290,7 +290,8 @@ struct Document {
   std::string matiere;                 // doc.mat : le calcul des masses
   double densite = 0;
   std::vector<unsigned> couleursCorps;  // même rang que corps ; 0 = pas de couleur dans la fiche
-  std::vector<double> opacitesCorps;  // même rang que corps ; bodyOpOf : 1 par défaut
+  std::vector<double> opacitesCorps;  // même rang que corps : ce que montre la vue, le plus transparent des deux réglages
+  std::vector<double> intensitesCorps, verresCorps;  // bodyOpOf (Intensité) et bodyGlassOf (Transparence), 1 par défaut
   std::vector<std::string> corpsMasques;  // doc.bodyVis : l'œil du corps, la vue seule
   TexteCommun texteBase;  // après un changement de structure : le texte de référence, à la place de celui du disque
   unsigned teinte = 0;  // teinte de la pièce (doc.tint), pour les corps sans couleur

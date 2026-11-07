@@ -162,10 +162,8 @@ Cadre::Cadre() : wxFrame(nullptr, wxID_ANY, L"ConceptCAD natif"), asmAnim_(this)
   props_ = new wxPropertyGrid(carteDroite_, ID_PROPS, wxDefaultPosition, wxDefaultSize, wxPG_DEFAULT_STYLE | wxPG_HIDE_MARGIN | wxBORDER_NONE);
   props_->SetMinSize(wxSize(-1, 0));
   noteDroite_ = new wxStaticText(carteDroite_, wxID_ANY, wxEmptyString);
-  boutonRendu_ = new BoutonEsquisse(carteDroite_, wxID_ANY, L"Rendre et enregistrer le PNG", wxString(L"Rendre et enregistrer le PNG") + PAS_ENCORE, BoutonEsquisse::PRINCIPAL);
   carteDroite_->contenu()->Add(props_, 1, wxEXPAND);
   carteDroite_->contenu()->Add(noteDroite_, 0, wxEXPAND | wxLEFT | wxRIGHT, FromDIP(5));
-  carteDroite_->contenu()->Add(boutonRendu_, 0, wxEXPAND | wxTOP, FromDIP(12));
   // Appliquer et Quitter du mode Congé
   rangConge_ = new wxBoxSizer(wxHORIZONTAL);
   {
@@ -715,11 +713,6 @@ void Cadre::creerEnvironnement() {
   stylerProps();
   noteDroite_->SetForegroundColour(C_GRIS);
   noteDroite_->SetFont(policeArial(this, 12.5));
-  boutonRendu_->disponible(false);
-  boutonRendu_->SetMinSize(FromDIP(wxSize(-1, 30)));
-  boutonRendu_->titre(L"Rendre et enregistrer le PNG");
-  boutonRendu_->fond(C_CARTE);
-  boutonRendu_->surClic = [this] { indisponible(L"Rendre et enregistrer le PNG"); };
 
   scene_->Bind(wxEVT_SIZE, [this](wxSizeEvent& e) {
     placerScene();
@@ -1027,7 +1020,6 @@ void Cadre::montrerAtelier() {
   panneauPlan_->Show(atelier_ == Atelier::PLAN);
   ficheFao_->Show(atelier_ == Atelier::FAO);
   panneauRendu_->Show(atelier_ == Atelier::RENDU);
-  boutonRendu_->Show(false);
   noteMontree_ = noteDroite_->IsShown();
   switch (atelier_) {
     case Atelier::CAO:
@@ -3722,6 +3714,7 @@ void Cadre::menuCorps(const std::string& id, bool vue3d) {
   m.AppendSeparator();
   if (vue3d) m.Append(wxID_HIGHEST + 7390, L"✨ Matériau de rendu…");
   m.Append(M_COULEUR, L"🎨 Couleur…");
+  m.Append(wxID_HIGHEST + 7391, L"🔆 Intensité…");
   m.Append(M_TRANSPARENCE, L"👻 Transparence…");
   m.AppendSeparator();
   m.Append(M_DEPLACER, L"✥ Déplacer…");
@@ -3777,8 +3770,15 @@ void Cadre::menuCorps(const std::string& id, bool vue3d) {
     const double v = (c.Red() << 16) | (c.Green() << 8) | c.Blue();
     changerStructure([&](nlohmann::ordered_json& d) { stReglerCorps(d, id, "color", v); });
   } else if (choix == M_TRANSPARENCE) {
-    const int op0 = static_cast<int>(std::lround((rang < doc_.opacitesCorps.size() ? doc_.opacitesCorps[rang] : 1) * 100));
-    const long op = essaiMenu_ ? std::stol(essaiNom_) : wxGetNumberFromUser(L"Opacité du corps, en % (100 : plein).", L"Opacité :", L"Transparence", op0, 5, 100, this);
+    // On voit l'intérieur de la pièce : poches, perçages, arêtes cachées
+    const int t0 = static_cast<int>(std::lround((1 - (rang < doc_.verresCorps.size() ? doc_.verresCorps[rang] : 1)) * 100));
+    const long t = essaiMenu_ ? std::stol(essaiNom_) : wxGetNumberFromUser(L"0 % : opaque. On voit au travers de la pièce : poches, perçages, arêtes cachées.", L"Transparence (%) :", L"Transparence", t0, 0, 90, this);
+    if (t < 0) return;
+    changerStructure([&](nlohmann::ordered_json& d) { stReglerCorps(d, id, "gl", t > 0 ? 1 - t / 100.0 : 0.0); });
+  } else if (choix == wxID_HIGHEST + 7391) {
+    // La pièce s'estompe sur le fond sans montrer son intérieur
+    const int op0 = static_cast<int>(std::lround((rang < doc_.intensitesCorps.size() ? doc_.intensitesCorps[rang] : 1) * 100));
+    const long op = essaiMenu_ ? std::stol(essaiNom_) : wxGetNumberFromUser(L"100 % : opaque. La pièce s'estompe sur le fond sans perdre son éclat.", L"Intensité (%) :", L"Intensité", op0, 15, 100, this);
     if (op < 0) return;
     changerStructure([&](nlohmann::ordered_json& d) { stReglerCorps(d, id, "op", op / 100.0); });
   } else if (choix == M_RETIRER) {

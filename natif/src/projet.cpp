@@ -697,7 +697,13 @@ static Document documentDepuisDoc(json& racine) {
       d.corps.push_back(texte(c, "id"));
       d.nomsCorps.push_back(texte(c, "name"));
       d.couleursCorps.push_back(c.contains("color") && c["color"].is_number() ? c["color"].get<unsigned>() : 0u);
-      d.opacitesCorps.push_back(c.contains("op") && c["op"].is_number() && c["op"].get<double>() > 0 ? c["op"].get<double>() : 1.0);
+      const auto reglage = [&](const char* k) {
+        const double v = c.contains(k) && c[k].is_number() ? c[k].get<double>() : 1.0;
+        return v > 0 && v < 1 ? v : 1.0;
+      };
+      d.intensitesCorps.push_back(reglage("op"));
+      d.verresCorps.push_back(reglage("gl"));
+      d.opacitesCorps.push_back(std::min(reglage("op"), reglage("gl")));
     }
   if (auto x = j.find("bodyVis"); x != j.end() && x->is_object())
     for (const auto& v : x->items())
