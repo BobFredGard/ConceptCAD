@@ -65,6 +65,12 @@ struct Geo {
   std::vector<Boucle> hatch;
   std::vector<std::vector<Boucle>> hatchG;  // une boucle de hachures par pièce
   std::string src;
+  struct FaceOmbree {  // « Ombrage (faces) » : un triangle projeté, du plus loin au plus proche
+    std::array<double, 6> p{};
+    std::string c;
+    double o = 1, d = 0;
+  };
+  std::vector<FaceOmbree> faces;
 };
 
 // Les corps : ce que la pièce rejouée montre

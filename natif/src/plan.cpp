@@ -2019,6 +2019,12 @@ void dessinerVue(Ctx& c, J& v) {
     const CadreImage& im = c.calc.imageDe(v, c.piece);
     if (im.ok) c.mk("image").n("x", arr3(X(im.l))).n("y", arr3(Y(im.t))).n("width", arr3(im.largeur * sc)).n("height", arr3(im.hauteur * sc)).s("href", "vue:" + im.cle).s("class", "mepRender3d");
   }
+  for (const Geo::FaceOmbree& f : g.faces) {
+    const auto tx3 = [](double x) { return tx(arr3(x)); };
+    const std::string d = "M" + tx3(X(f.p[0])) + " " + tx3(Y(f.p[1])) + " L" + tx3(X(f.p[2])) + " " + tx3(Y(f.p[3])) + " L" + tx3(X(f.p[4])) + " " + tx3(Y(f.p[5])) + " Z";
+    if (f.o < 0.999) c.mk("path").s("d", d).s("class", "mepFace").s("fill", f.c).n("fill-opacity", f.o).s("stroke", "none");
+    else c.mk("path").s("d", d).s("class", "mepFace").s("fill", f.c).s("stroke", f.c).n("stroke-width", 0.12);
+  }
   dessinerAxesVue(c, v);
   for (const Ent& e : g.els) {
     const std::string cls = classeEnt(e);
@@ -2296,7 +2302,7 @@ const Geo& Calcul::geoDe(const J& vue, const J& planche, const J& mep, const Pie
   (void)mep;
   const std::string id = chaine(vue, "id");
   J cle = J::object();
-  for (const char* k : {"kind", "vk", "bodyId", "asm", "dir", "u", "v", "flip", "mode", "tangent", "section", "detail", "obl", "persp", "camera", "parent"})
+  for (const char* k : {"kind", "vk", "bodyId", "asm", "dir", "u", "v", "flip", "mode", "shade", "render3d", "real", "tangent", "section", "detail", "obl", "persp", "camera", "parent"})
     if (vue.is_object() && vue.contains(k)) cle[k] = vue[k];
   std::string sig = cle.dump(-1, ' ', false, J::error_handler_t::replace);
   if (const J* dv = vueDxfDe(vue, planche)) sig += "dxf:" + sous(sous(*dv, "dxf"), "rev").dump();
@@ -2312,6 +2318,75 @@ const Geo& Calcul::geoDe(const J& vue, const J& planche, const J& mep, const Pie
   auto it = cache_.find(id);
   if (it != cache_.end() && it->second.first == sig) return *it->second.second;
   auto g = std::make_shared<Geo>(construire(vue, planche, p));
+  // mepShadedFaces : les triangles vus, éclairés de deux lampes liées à la vue
+  if (vrai(vue, "shade") && !vrai(vue, "render3d") && !vrai(vue, "real") && !vrai(vue, "section") && !vrai(vue, "detail")) {
+    const Base b = baseDe(vue);
+    const bool oblique = obliqueDe(vue);
+    const auto vise = [&](const TopoDS_Shape& s) { return oblique ? cisaillement(s, vue, b) : s; };
+    struct Source {
+      std::vector<Tri> t;
+      unsigned couleur;
+      double opacite;
+    };
+    std::vector<Source> L;
+    const std::string bodyId = chaine(vue, "bodyId");
+    const bool vueAsm = vrai(vue, "asm") && p.assemblage;
+    for (const Corps& c : p.corps) {
+      if (!vueAsm && !bodyId.empty() && c.id != bodyId) continue;
+      L.push_back({trianglesDe(vise(c.forme)), c.couleur, c.opacite});
+    }
+    if (vueAsm)
+      for (const CorpsInstance& c : p.instances) L.push_back({trianglesDe(vise(c.forme)), c.couleur, c.opacite});
+    std::vector<std::vector<Tri>> maillages;
+    for (const Source& q : L) maillages.push_back(q.t);
+    CamPersp K;
+    const bool persp = perspDe(vue) && camPersp(vue, maillages, K);
+    const auto unit = [](const V3& a) {
+      const double l = std::max(1e-30, std::sqrt(dot(a, a)));
+      return V3{a[0] / l, a[1] / l, a[2] / l};
+    };
+    V3 L1{}, L2{};
+    for (int k = 0; k < 3; k++) {
+      L1[k] = b.dir[k] * 0.50 + b.u[k] * 0.65 - b.v[k] * 0.35;
+      L2[k] = b.dir[k] * 0.35 - b.u[k] * 0.60 + b.v[k] * 0.50;
+    }
+    L1 = unit(L1), L2 = unit(L2);
+    const auto teinte = [](unsigned c, double k) {
+      const auto sh = [&](int x) { return std::clamp(static_cast<int>(std::lround(x * k + 14)), 0, 255); };
+      char t[8];
+      snprintf(t, sizeof t, "#%02x%02x%02x", sh((c >> 16) & 255), sh((c >> 8) & 255), sh(c & 255));
+      return std::string(t);
+    };
+    for (const Source& q : L)
+      for (size_t i = 0; i < q.t.size() && i < 160000; i++) {
+        const Tri& t = q.t[i];
+        const V3 e1{t.b[0] - t.a[0], t.b[1] - t.a[1], t.b[2] - t.a[2]}, e2{t.c[0] - t.a[0], t.c[1] - t.a[1], t.c[2] - t.a[2]};
+        V3 n{e1[1] * e2[2] - e1[2] * e2[1], e1[2] * e2[0] - e1[0] * e2[2], e1[0] * e2[1] - e1[1] * e2[0]};
+        if (!(std::sqrt(dot(n, n)) > 1e-9)) continue;
+        n = unit(n);
+        if (persp) {
+          if (dot(n, V3{K.E[0] - t.a[0], K.E[1] - t.a[1], K.E[2] - t.a[2]}) <= 1e-7) continue;
+        } else if (dot(n, b.dir) <= 1e-7) continue;
+        Geo::FaceOmbree f;
+        double dd = 0;
+        int j = 0;
+        for (const V3* w : {&t.a, &t.b, &t.c}) {
+          if (persp) {
+            const auto r = K.proj(*w);
+            f.p[j] = r[0], f.p[j + 1] = r[1], dd -= r[2];
+          } else {
+            f.p[j] = dot(*w, b.u), f.p[j + 1] = dot(*w, b.v), dd += dot(*w, b.dir);
+          }
+          j += 2;
+        }
+        const double aire = (f.p[2] - f.p[0]) * (f.p[5] - f.p[1]) - (f.p[3] - f.p[1]) * (f.p[4] - f.p[0]);
+        if (std::abs(aire) < 1e-6) continue;
+        const double k = std::min(1.08, 0.34 + 0.62 * std::max(0.0, dot(n, L1)) + 0.22 * std::max(0.0, dot(n, L2)));
+        f.c = teinte(q.couleur, k), f.o = q.opacite, f.d = dd / 3;
+        g->faces.push_back(std::move(f));
+      }
+    std::stable_sort(g->faces.begin(), g->faces.end(), [](const Geo::FaceOmbree& x, const Geo::FaceOmbree& y) { return x.d < y.d; });
+  }
   cache_[id] = {sig, g};
   return *g;
 }
