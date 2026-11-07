@@ -271,6 +271,10 @@ std::shared_ptr<wxBitmap> imageDe(const std::string& href) {
 PlanVue::PlanVue(wxWindow* parent) : wxWindow(parent, wxID_ANY, wxDefaultPosition, wxDefaultSize, wxBORDER_NONE | wxWANTS_CHARS) {
   SetBackgroundStyle(wxBG_STYLE_PAINT);
   SetCursor(wxCursor(wxCURSOR_CROSS));
+  calcul_.rendreImage = [this](const plan::DemandeImage& d) {
+    wxImage im;
+    if (rendreImage && rendreImage(d, im) && im.IsOk()) images3d_[d.cle] = std::make_shared<wxBitmap>(im);
+  };
   Bind(wxEVT_PAINT, [this](wxPaintEvent&) {
     wxAutoBufferedPaintDC dc(this);
     const wxSize t = GetClientSize();
@@ -290,6 +294,7 @@ PlanVue::PlanVue(wxWindow* parent) : wxWindow(parent, wxID_ANY, wxDefaultPositio
     dc.SetBackground(wxBrush(bureau_));
     dc.Clear();
     dc.DrawBitmap(image_, decalage_.x, decalage_.y);
+    peindreRegles(dc, t);
     // Les onglets restent en place pendant qu'on déplace la feuille
     const int ho = hauteurOnglets();
     dc.SetPen(*wxTRANSPARENT_PEN);
@@ -303,7 +308,12 @@ PlanVue::PlanVue(wxWindow* parent) : wxWindow(parent, wxID_ANY, wxDefaultPositio
       for (int i = 0; i < static_cast<int>(sheets.size()); i++) {
         const J& s = sheets[i];
         std::string nom = s.is_object() && s.contains("name") && s["name"].is_string() ? s["name"].get<std::string>() : "Planche";
-        if (s.is_object() && s.contains("format") && s["format"].is_string()) nom += " · " + s["format"].get<std::string>();
+        // mepFmtCode : le format et son sens
+        if (s.is_object() && s.contains("format") && s["format"].is_string()) {
+          const std::string f = s["format"].get<std::string>();
+          nom += " · " + f;
+          if (f != "Manuel") nom += s.contains("orient") && s["orient"].is_string() && s["orient"].get<std::string>() == "landscape" ? "H" : "V";
+        }
         const wxString lib = wxString::FromUTF8(nom);
         const wxSize tl = dc.GetTextExtent(lib);
         const wxRect r(x, FromDIP(4), tl.x + FromDIP(18), ho - FromDIP(4));
@@ -355,8 +365,16 @@ PlanVue::PlanVue(wxWindow* parent) : wxWindow(parent, wxID_ANY, wxDefaultPositio
   Bind(wxEVT_MIDDLE_DOWN, saisir);
   Bind(wxEVT_MIDDLE_UP, lacher);
   Bind(wxEVT_MOUSE_CAPTURE_LOST, [this](wxMouseCaptureLostEvent&) { glisse_ = false; });
+  Bind(wxEVT_LEAVE_WINDOW, [this](wxMouseEvent& e) {
+    curseurDedans_ = false;
+    Refresh(false);
+    e.Skip();
+  });
   Bind(wxEVT_MOTION, [this](wxMouseEvent& e) {
+    curseurX_ = (e.GetX() - ox_) / zoom_, curseurY_ = (e.GetY() - oy_) / zoom_;
+    curseurDedans_ = e.GetY() >= hauteurOnglets() && curseurX_ >= 0 && curseurY_ >= 0 && curseurX_ <= largeurPage_ && curseurY_ <= hauteurPage_;
     if (!glisse_) {
+      Refresh(false);
       e.Skip();
       return;
     }
@@ -378,6 +396,67 @@ PlanVue::PlanVue(wxWindow* parent) : wxWindow(parent, wxID_ANY, wxDefaultPositio
 
 int PlanVue::hauteurOnglets() const { return FromDIP(30); }
 
+// mepRulers, mepCoordShow : les règles en mm du papier, alignées sur la feuille quel que soit le zoom ; Y part du bas de la planche
+void PlanVue::peindreRegles(wxDC& dc, const wxSize& t) {
+  const int E = FromDIP(16), ho = hauteurOnglets();
+  const wxColour fond(0x18, 0x1a, 0x1e), encre(0xc9, 0xcc, 0xd1), accent(0x4d, 0xa3, 0xff);
+  const double S = zoom_, ox = ox_ + decalage_.x, oy = oy_ + decalage_.y;
+  dc.SetPen(*wxTRANSPARENT_PEN);
+  dc.SetBrush(wxBrush(fond));
+  dc.DrawRectangle(0, ho, t.x, E);
+  dc.DrawRectangle(0, ho, E, t.y - ho);
+  double st = 200;
+  for (const double v : {1., 2., 5., 10., 20., 50., 100., 200.})
+    if (v * S >= FromDIP(6)) {
+      st = v;
+      break;
+    }
+  const double big = st <= 2 ? 10 : st <= 10 ? 50 : st <= 50 ? 100 : 500;
+  dc.SetPen(wxPen(encre));
+  dc.SetTextForeground(encre);
+  wxFont f = GetFont();
+  f.SetPixelSize(wxSize(0, FromDIP(9)));
+  dc.SetFont(f);
+  const auto multiple = [](double v, double m) { return std::abs(std::fmod(v, m)) < 1e-6; };
+  for (double x = 0; x <= largeurPage_ + 1e-6; x += st) {
+    const int X = static_cast<int>(ox + x * S);
+    if (X < E || X > t.x) continue;
+    const bool M = multiple(x, big);
+    const int h = M ? E : multiple(x, st * 5) ? FromDIP(9) : FromDIP(5);
+    dc.DrawLine(X, ho + E - h, X, ho + E);
+    if (M) dc.DrawText(wxString::Format("%g", x), X + FromDIP(2), ho);
+  }
+  for (double y = 0; y <= hauteurPage_ + 1e-6; y += st) {
+    const int Y = static_cast<int>(oy + (hauteurPage_ - y) * S);
+    if (Y < ho + E || Y > t.y) continue;
+    const bool M = multiple(y, big);
+    const int h = M ? E : multiple(y, st * 5) ? FromDIP(9) : FromDIP(5);
+    dc.DrawLine(E - h, Y, E, Y);
+    if (M) dc.DrawRotatedText(wxString::Format("%g", y), 0, Y - FromDIP(2), 90);
+  }
+  if (curseurDedans_) {
+    const int cx = static_cast<int>(ox + curseurX_ * S), cy = static_cast<int>(oy + curseurY_ * S);
+    dc.SetPen(wxPen(accent, FromDIP(1) + 1));
+    if (cx >= E) dc.DrawLine(cx, ho, cx, ho + E);
+    if (cy >= ho + E) dc.DrawLine(0, cy, E, cy);
+    // Les coordonnées, en bas à droite
+    const wxString lib = wxString::Format("X %.1f  Y %.1f mm", curseurX_, hauteurPage_ - curseurY_);
+    wxFont fc = GetFont();
+    fc.SetWeight(wxFONTWEIGHT_SEMIBOLD);
+    dc.SetFont(fc);
+    const wxSize tl = dc.GetTextExtent(lib);
+    const wxRect r(t.x - tl.x - FromDIP(22), t.y - tl.y - FromDIP(10), tl.x + FromDIP(14), tl.y + FromDIP(4));
+    dc.SetPen(*wxTRANSPARENT_PEN);
+    dc.SetBrush(wxBrush(wxColour(0x30, 0x33, 0x39)));
+    dc.DrawRoundedRectangle(r, FromDIP(6));
+    dc.SetTextForeground(*wxWHITE);
+    dc.DrawText(lib, r.x + FromDIP(7), r.y + FromDIP(2));
+  }
+  dc.SetPen(*wxTRANSPARENT_PEN);
+  dc.SetBrush(wxBrush(fond));
+  dc.DrawRectangle(0, ho, E, E);
+}
+
 int PlanVue::ongletSous(const wxPoint& p) const {
   for (size_t i = 0; i < onglets_.size(); i++)
     if (onglets_[i].Contains(p)) return static_cast<int>(i);
@@ -387,6 +466,7 @@ int PlanVue::ongletSous(const wxPoint& p) const {
 void PlanVue::oublier() {
   aJour_ = false;
   calcul_.oublier();
+  images3d_.clear();
 }
 
 void PlanVue::charger(const std::string& texteDoc, const Document& d, const ResultatRejeu& r) {
@@ -579,6 +659,16 @@ void PlanVue::construire() {
       if (const std::string* h = attrDe(e, "href")) {
         Prim q;
         q.genre = Prim::IMAGE, q.x = nombre(e, "x"), q.y = nombre(e, "y"), q.l = nombre(e, "width"), q.h = nombre(e, "height");
+        if (h->rfind("vue:", 0) == 0) {
+          // Le rendu d'une vue : il remplit exactement son cadre
+          const auto it = images3d_.find(h->substr(4));
+          if (it != images3d_.end()) {
+            q.image = it->second;
+            prims_.push_back(std::move(q));
+          }
+          i++;
+          continue;
+        }
         q.image = imageDe(*h);
         if (q.image && q.image->IsOk()) {
           // xMidYMid meet
@@ -600,6 +690,7 @@ void PlanVue::construire() {
 
 void PlanVue::peindre(wxGraphicsContext& g) {
   g.SetAntialiasMode(wxANTIALIAS_DEFAULT);
+  g.SetInterpolationQuality(wxINTERPOLATION_BEST);
   // L'ombre de la feuille
   g.SetPen(wxNullGraphicsPen);
   g.SetBrush(g.CreateBrush(wxBrush(wxColour(0, 0, 0, 70))));

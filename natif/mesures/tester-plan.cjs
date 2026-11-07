@@ -49,13 +49,14 @@ const garde = e => !SANS.some(s => (e.at.class || '').includes(s)) && !(e.tag ==
     await page.setInputFiles('#fileProj', f);
     await page.waitForFunction(() => doc && doc !== window.__d, null, { timeout: 60000 });
     await attendre(2500);
+    await page.evaluate(v => { window.__avecPersp = v; }, process.argv.includes('--avec-persp'));
     const nav = await page.evaluate(async () => {
       mepSetActive(true);
       await new Promise(r => setTimeout(r, 300));
       const res = [];
       const n = doc.mep.sheets.length;
       // Perspective : pas encore au programme du natif
-      doc.mep.sheets.forEach(s => { s.views = s.views.filter(v => !(v.persp && v.kind === 'base' && !v.section && !v.detail)); });
+      if (!window.__avecPersp) doc.mep.sheets.forEach(s => { s.views = s.views.filter(v => !(v.persp && v.kind === 'base' && !v.section && !v.detail)); });
       for (let i = 0; i < n; i++) {
         doc.mep.cur = i;
         window.mepThemeApply();

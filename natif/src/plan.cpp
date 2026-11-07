@@ -13,6 +13,8 @@
 #include <Bnd_Box.hxx>
 #include <HLRAppli_ReflectLines.hxx>
 #include <HLRBRep_TypeOfResultingEdge.hxx>
+#include <Poly_Triangulation.hxx>
+#include <BRep_Tool.hxx>
 #include <TopExp_Explorer.hxx>
 #include <TopoDS.hxx>
 #include <TopoDS_Compound.hxx>
@@ -26,6 +28,7 @@
 #include <sstream>
 #include <unordered_map>
 
+#include "conges.h"
 #include "filets.h"
 #include "rejeu.h"
 #include "percage.h"
@@ -757,6 +760,228 @@ TopoDS_Shape cisaillement(const TopoDS_Shape& sh, const J& view, const Base& b) 
   }
 }
 bool obliqueDe(const J& v) { return chaine(v, "kind") == "base" && !vrai(v, "section") && !vrai(v, "detail") && vrai(v, "obl"); }
+bool perspDe(const J& v) { return chaine(v, "kind") == "base" && !vrai(v, "section") && !vrai(v, "detail") && vrai(v, "persp"); }
+
+// Les triangles d'un solide, sens de la face respecté
+struct Tri {
+  V3 a, b, c;
+};
+std::vector<Tri> trianglesDe(const TopoDS_Shape& s) {
+  std::vector<Tri> out;
+  for (int essai = 0; essai < 2; essai++) {
+    bool manque = false;
+    out.clear();
+    for (TopExp_Explorer fx(s, TopAbs_FACE); fx.More(); fx.Next()) {
+      const TopoDS_Face f = TopoDS::Face(fx.Current());
+      TopLoc_Location L;
+      const occ::handle<Poly_Triangulation> T = BRep_Tool::Triangulation(f, L);
+      if (T.IsNull()) {
+        manque = true;
+        break;
+      }
+      const gp_Trsf tr = L.Transformation();
+      const bool inverse = f.Orientation() == TopAbs_REVERSED;
+      const auto P = [&](int i) {
+        const gp_Pnt q = T->Node(i).Transformed(tr);
+        return V3{q.X(), q.Y(), q.Z()};
+      };
+      for (int i = 1; i <= T->NbTriangles(); i++) {
+        int a, b, c;
+        T->Triangle(i).Get(a, b, c);
+        if (inverse) std::swap(b, c);
+        out.push_back({P(a), P(b), P(c)});
+      }
+    }
+    if (!manque) break;
+    mailler(s, false);
+  }
+  return out;
+}
+// Le réglage de la perspective : le plan qui passe par le centre de la pièce reste en vraie grandeur (mepPerspCam)
+struct CamPersp {
+  double fov = 35, S = 1, dist = 1, cu = 0, cv = 0;
+  V3 E{0, 0, 0}, C{0, 0, 0};
+  Base b;
+  std::array<double, 3> proj(const V3& p) const {
+    const V3 q = moins(p, E);
+    const double dep = std::max(1e-6, -dot(q, b.dir)), f = dist / dep;
+    return {cu + dot(q, b.u) * f, cv + dot(q, b.v) * f, dep};
+  }
+};
+bool camPersp(const J& view, const std::vector<std::vector<Tri>>& maillages, CamPersp& K) {
+  const J& o = sous(view, "persp");
+  K.fov = o.is_object() && o.contains("fov") && o["fov"].is_number() ? std::max(5.0, std::min(120.0, num(o, "fov"))) : 35;
+  K.b = baseDe(view);
+  V3 lo{1e9, 1e9, 1e9}, hi{-1e9, -1e9, -1e9};
+  bool un = false;
+  for (const auto& m : maillages)
+    for (const Tri& t : m)
+      for (const V3* q : {&t.a, &t.b, &t.c})
+        for (int j = 0; j < 3; j++) {
+          lo[j] = std::min(lo[j], (*q)[j]);
+          hi[j] = std::max(hi[j], (*q)[j]);
+          un = true;
+        }
+  if (!un) return false;
+  K.C = {(lo[0] + hi[0]) / 2, (lo[1] + hi[1]) / 2, (lo[2] + hi[2]) / 2};
+  K.S = std::max(1.0, std::hypot(hi[0] - lo[0], hi[1] - lo[1], hi[2] - lo[2]));
+  K.dist = (K.S / 2) / std::tan(K.fov * PI / 360) + K.S / 2;  // l'œil reste hors de la pièce
+  K.E = {K.C[0] + K.b.dir[0] * K.dist, K.C[1] + K.b.dir[1] * K.dist, K.C[2] + K.b.dir[2] * K.dist};
+  K.cu = dot(K.C, K.b.u);
+  K.cv = dot(K.C, K.b.v);
+  return true;
+}
+// Le rayon de l'œil vers un point : les triangles sont rangés par case de leur image sur le papier
+class Occulteur {
+ public:
+  Occulteur(const CamPersp& K, const std::vector<std::vector<Tri>>& maillages) : K_(K) {
+    for (const auto& m : maillages)
+      for (const Tri& t : m) tris_.push_back(&t);
+    x0_ = y0_ = 1e18;
+    double x1 = -1e18, y1 = -1e18;
+    std::vector<std::array<double, 4>> boites;
+    boites.reserve(tris_.size());
+    for (const Tri* t : tris_) {
+      std::array<double, 4> bo{1e18, 1e18, -1e18, -1e18};
+      for (const V3* q : {&t->a, &t->b, &t->c}) {
+        const auto r = K_.proj(*q);
+        bo[0] = std::min(bo[0], r[0]), bo[1] = std::min(bo[1], r[1]), bo[2] = std::max(bo[2], r[0]), bo[3] = std::max(bo[3], r[1]);
+      }
+      x0_ = std::min(x0_, bo[0]), y0_ = std::min(y0_, bo[1]), x1 = std::max(x1, bo[2]), y1 = std::max(y1, bo[3]);
+      boites.push_back(bo);
+    }
+    dx_ = std::max(1e-9, (x1 - x0_) / N), dy_ = std::max(1e-9, (y1 - y0_) / N);
+    cases_.resize(N * N);
+    for (size_t i = 0; i < tris_.size(); i++) {
+      const auto& bo = boites[i];
+      for (int y = caseDe(bo[1], y0_, dy_); y <= caseDe(bo[3], y0_, dy_); y++)
+        for (int x = caseDe(bo[0], x0_, dx_); x <= caseDe(bo[2], x0_, dx_); x++) cases_[y * N + x].push_back(static_cast<int>(i));
+    }
+  }
+  // true si rien n'est touché avant le point, à la tolérance près
+  bool voit(const V3& p, double tol) const {
+    const V3 d0 = moins(p, K_.E);
+    const double L = std::hypot(d0[0], d0[1], d0[2]);
+    if (!(L > 1e-9)) return true;
+    const V3 D{d0[0] / L, d0[1] / L, d0[2] / L};
+    const auto r = K_.proj(p);
+    const double loin = L - tol;
+    for (int i : cases_[caseDe(r[1], y0_, dy_) * N + caseDe(r[0], x0_, dx_)]) {
+      const Tri& t = *tris_[i];
+      const V3 e1 = moins(t.b, t.a), e2 = moins(t.c, t.a);
+      const V3 q{D[1] * e2[2] - D[2] * e2[1], D[2] * e2[0] - D[0] * e2[2], D[0] * e2[1] - D[1] * e2[0]};
+      const double det = dot(e1, q);
+      if (std::abs(det) < 1e-14) continue;
+      const double inv = 1 / det;
+      const V3 s = moins(K_.E, t.a);
+      const double uu = dot(s, q) * inv;
+      if (uu < 0 || uu > 1) continue;
+      const V3 w{s[1] * e1[2] - s[2] * e1[1], s[2] * e1[0] - s[0] * e1[2], s[0] * e1[1] - s[1] * e1[0]};
+      const double vv = dot(D, w) * inv;
+      if (vv < 0 || uu + vv > 1) continue;
+      const double tt = dot(e2, w) * inv;
+      if (tt > 0 && tt < loin) return false;
+    }
+    return true;
+  }
+
+ private:
+  static const int N = 256;
+  static int caseDe(double x, double x0, double dx) { return std::max(0, std::min(N - 1, static_cast<int>((x - x0) / dx))); }
+  const CamPersp& K_;
+  std::vector<const Tri*> tris_;
+  std::vector<std::vector<int>> cases_;
+  double x0_, y0_, dx_ = 1, dy_ = 1;
+};
+// mepPerspBuild : les arêtes exactes et les contours apparents du maillage vus de l'œil, la visibilité par rayon
+void perspective(Geo& geo, const J& view, const std::vector<TopoDS_Shape>& shapes) {
+  std::vector<std::vector<Tri>> maillages;
+  for (const TopoDS_Shape& s : shapes) maillages.push_back(trianglesDe(s));
+  CamPersp K;
+  if (!camPersp(view, maillages, K)) {
+    geo.src = "aucun corps";
+    return;
+  }
+  const std::string mode = chaine(view, "mode").empty() ? "hide" : chaine(view, "mode");
+  const Occulteur occ1(K, maillages);
+  const double tol = std::max(0.05, K.S * 0.004), step = std::max(0.3, K.S / 120);
+  const auto emit = [&](const std::vector<V3>& pts, const char* kind) {
+    std::vector<V3> P;
+    for (size_t i = 0; i + 1 < pts.size(); i++) {
+      const V3& a = pts[i];
+      const V3& c = pts[i + 1];
+      const double L = std::hypot(c[0] - a[0], c[1] - a[1], c[2] - a[2]);
+      const int n = std::min(200, std::max(1, static_cast<int>(std::ceil(L / step))));
+      for (int k = i ? 1 : 0; k <= n; k++) {
+        const double t = static_cast<double>(k) / n;
+        P.push_back({a[0] + (c[0] - a[0]) * t, a[1] + (c[1] - a[1]) * t, a[2] + (c[2] - a[2]) * t});
+      }
+    }
+    if (P.size() < 2) return;
+    std::vector<char> V(P.size());
+    for (size_t i = 0; i < P.size(); i++) V[i] = mode == "wire" || occ1.voit(P[i], tol);
+    for (size_t i = 0; i + 1 < P.size(); i++) {
+      const bool vis = V[i] && V[i + 1];
+      if (!vis && mode != "dash") continue;
+      const auto a = K.proj(P[i]), c = K.proj(P[i + 1]);
+      if (std::hypot(c[0] - a[0], c[1] - a[1]) < 1e-6) continue;
+      Ent e;
+      e.t = 'L', e.x1 = a[0], e.y1 = a[1], e.x2 = c[0], e.y2 = c[1], e.k = vis ? kind : "hidden";
+      geo.els.push_back(std::move(e));
+    }
+  };
+  for (const TopoDS_Shape& s : shapes)
+    for (const AreteVue& a : aretesVisibles(s)) {
+      if (!a.vive && !vrai(view, "tangent")) continue;
+      const BRepAdaptor_Curve ad(a.arete);
+      emit(pointsCourbe(ad, ad.FirstParameter(), ad.LastParameter(), 0.02, 600), a.vive ? "sharp" : "tangent");
+    }
+  // Les contours apparents
+  for (const auto& m : maillages) {
+    struct Cote {
+      V3 a, c;
+      int n = 0;
+      bool front[2] = {false, false};
+      V3 N[2];
+    };
+    using Cle = std::array<long long, 6>;
+    std::map<Cle, int> table;
+    std::vector<Cote> cotes;
+    const auto cle = [](const V3& p, const V3& q) {
+      const auto r = [](double x) { return static_cast<long long>(std::floor(x * 1e3 + 0.5)); };
+      const std::array<long long, 3> A{r(p[0]), r(p[1]), r(p[2])}, B{r(q[0]), r(q[1]), r(q[2])};
+      return A < B ? Cle{A[0], A[1], A[2], B[0], B[1], B[2]} : Cle{B[0], B[1], B[2], A[0], A[1], A[2]};
+    };
+    const size_t nT = std::min<size_t>(120000, m.size());
+    for (size_t t = 0; t < nT; t++) {
+      const Tri& T = m[t];
+      const V3 e1 = moins(T.b, T.a), e2 = moins(T.c, T.a);
+      const V3 nn{e1[1] * e2[2] - e1[2] * e2[1], e1[2] * e2[0] - e1[0] * e2[2], e1[0] * e2[1] - e1[1] * e2[0]};
+      const double nl = std::hypot(nn[0], nn[1], nn[2]);
+      if (!(nl > 1e-12)) continue;
+      const V3 N{nn[0] / nl, nn[1] / nl, nn[2] / nl};
+      const V3 mil{(T.a[0] + T.b[0] + T.c[0]) / 3, (T.a[1] + T.b[1] + T.c[1]) / 3, (T.a[2] + T.b[2] + T.c[2]) / 3};
+      const bool front = dot(N, moins(K.E, mil)) > 0;
+      const V3* S[3] = {&T.a, &T.b, &T.c};
+      for (int k = 0; k < 3; k++) {
+        const V3& a = *S[k];
+        const V3& c = *S[(k + 1) % 3];
+        const auto ins = table.emplace(cle(a, c), static_cast<int>(cotes.size()));
+        if (ins.second) {
+          Cote q;
+          q.a = a, q.c = c;
+          cotes.push_back(q);
+        }
+        Cote& r = cotes[ins.first->second];
+        if (r.n < 2) r.front[r.n] = front, r.N[r.n] = N;
+        r.n++;
+      }
+    }
+    for (const Cote& r : cotes)
+      if (r.n == 2 && r.front[0] != r.front[1] && dot(r.N[0], r.N[1]) > 0.85) emit({r.a, r.c}, "sharp");
+  }
+  geo.src = "OCCT (perspective)";
+}
 
 Geo construire(const J& view, const J& sh, const Piece& piece) {  // mepBuildGeo
   Geo geo;
@@ -787,6 +1012,11 @@ Geo construire(const J& view, const J& sh, const Piece& piece) {  // mepBuildGeo
       TopoDS_Shape cs = brisee ? coupePrisme(f, st) : coupeDemiEspace(f, tous, v3(sous(s, "p")), v3(sous(s, "n")));
       cutShapes.push_back(cs.IsNull() ? f : cs);
     }
+  }
+  if (perspDe(view)) {
+    perspective(geo, view, cutShapes);
+    souder(geo.els);
+    return geo;
   }
   if (obliqueDe(view))
     for (TopoDS_Shape& f : cutShapes) f = cisaillement(f, view, b);
@@ -1331,11 +1561,15 @@ std::string classeEnt(const Ent& e) {
   return "mepEnt mepSharp";
 }
 void dessinerVue(Ctx& c, J& v) {
-  if (chaine(v, "kind") == "base" && !vrai(v, "section") && !vrai(v, "detail") && vrai(v, "persp")) return;  // perspective : à venir
   const Geo& g = c.calc.geoDe(v, c.sh, c.mep, c.piece);
   const double vx = num(v, "x"), vy = num(v, "y"), sc = num(v, "scale");
   const auto X = [&](double l) { return vx + l * sc; };
   const auto Y = [&](double l) { return vy + l * sc; };
+  if (vrai(v, "render3d") || vrai(v, "real")) {
+    // Le rendu 3D derrière les arêtes (mepImg3dRect)
+    const CadreImage& im = c.calc.imageDe(v, c.piece);
+    if (im.ok) c.mk("image").n("x", arr3(X(im.l))).n("y", arr3(Y(im.t))).n("width", arr3(im.largeur * sc)).n("height", arr3(im.hauteur * sc)).s("href", "vue:" + im.cle).s("class", "mepRender3d");
+  }
   dessinerAxesVue(c, v);
   for (const Ent& e : g.els) {
     const std::string cls = classeEnt(e);
@@ -1455,7 +1689,24 @@ Piece pieceDe(const Document& d, const ResultatRejeu& r, const J& doc) {
       b.Get(x0, y0, z0, x1, y1, z1);
       q.taille = {x1 - x0, y1 - y0, z1 - z0};
     }
+    {  // bodyColorOf : la fiche du corps, sinon la teinte de la pièce, sinon la palette automatique selon le rang
+      static const unsigned PALETTE[] = {0x0a84ff, 0x30d158, 0xff9f0a, 0xbf5af2, 0xff453a, 0x64d2ff, 0xffd60a, 0x5e5ce6};
+      const size_t i = std::find(d.corps.begin(), d.corps.end(), id) - d.corps.begin();
+      unsigned c = i < d.couleursCorps.size() ? d.couleursCorps[i] : 0;
+      if (!c) c = d.teinte;
+      if (!c) c = PALETTE[(i < d.corps.size() ? i : 0) % 8];
+      q.couleur = c;
+      if (i < d.opacitesCorps.size()) q.opacite = d.opacitesCorps[i];
+    }
     p.corps.push_back(std::move(q));
+  }
+  for (const SpiraleFilet& s : r.spirales) {
+    if (std::find(d.corpsMasques.begin(), d.corpsMasques.end(), s.corps) != d.corpsMasques.end()) continue;
+    FiletImage f;
+    f.corps = s.corps;
+    for (const gp_Pnt& q : s.helice) f.helice.push_back({q.X(), q.Y(), q.Z()});
+    for (const gp_Pnt& q : s.anneau) f.anneau.push_back({q.X(), q.Y(), q.Z()});
+    p.helices.push_back(std::move(f));
   }
   for (const J& b : sous(doc, "bodies")) p.nomsCorps.push_back({chaine(b, "id"), chaine(b, "name")});
   // Les perçages
@@ -1598,6 +1849,76 @@ const Geo& Calcul::geoDe(const J& vue, const J& planche, const J& mep, const Pie
   auto g = std::make_shared<Geo>(construire(vue, planche, p));
   cache_[id] = {sig, g};
   return *g;
+}
+
+// mepRender3dImage : le cadre de l'image et ce qu'elle montre ; le rendu lui-même revient à la fenêtre 3D
+const CadreImage& Calcul::imageDe(const J& vue, const Piece& p) {
+  const std::string id = chaine(vue, "id");
+  J cle = J::object();
+  for (const char* k : {"kind", "vk", "bodyId", "dir", "u", "v", "flip", "persp", "camera", "section", "detail", "obl", "render3d", "real", "mirror"})
+    if (vue.is_object() && vue.contains(k)) cle[k] = vue[k];
+  const std::string sig = cle.dump(-1, ' ', false, J::error_handler_t::replace);
+  auto it = images_.find(id);
+  if (it != images_.end() && it->second.first == sig) return it->second.second;
+  CadreImage im;
+  // L'image d'une coupe, d'un détail ou d'une vue cavalière n'existe pas encore ici
+  if (rendreImage && !vrai(vue, "section") && !vrai(vue, "detail") && !obliqueDe(vue)) {
+    const Base b = baseDe(vue);
+    const std::string bodyId = chaine(vue, "bodyId");
+    DemandeImage d;
+    std::vector<std::vector<Tri>> maillages;
+    for (const Corps& c : p.corps) {
+      if (!bodyId.empty() && c.id != bodyId) continue;
+      d.corps.push_back({c.forme, c.couleur, c.opacite});
+      maillages.push_back(trianglesDe(c.forme));
+    }
+    for (const FiletImage& f : p.helices)
+      if (bodyId.empty() || f.corps.empty() || f.corps == bodyId) d.filets.push_back(f);
+    CamPersp K;
+    const bool persp = perspDe(vue) && camPersp(vue, maillages, K);
+    double minu = 1e9, maxu = -1e9, minv = 1e9, maxv = -1e9, mind = 1e9, maxd = -1e9, su0 = 1e9, su1 = -1e9, sv0 = 1e9, sv1 = -1e9;
+    for (const auto& m : maillages)
+      for (const Tri& t : m)
+        for (const V3* q : {&t.a, &t.b, &t.c}) {
+          const double du = dot(*q, b.u), dv = dot(*q, b.v), dd = dot(*q, b.dir);
+          minu = std::min(minu, du), maxu = std::max(maxu, du), minv = std::min(minv, dv), maxv = std::max(maxv, dv), mind = std::min(mind, dd), maxd = std::max(maxd, dd);
+          double su = du, sv = dv;
+          if (persp) {
+            const auto r = K.proj(*q);
+            su = r[0], sv = r[1];
+          }
+          su0 = std::min(su0, su), su1 = std::max(su1, su), sv0 = std::min(sv0, sv), sv1 = std::max(sv1, sv);
+        }
+    if (maxu > minu && maxv > minv) {
+      const double pad = std::max(0.5, (maxu - minu + maxv - minv) * 0.012);
+      double l = su0 - pad, r = su1 + pad, t = sv0 - pad, bas = sv1 + pad;
+      d.u = b.u, d.v = b.v, d.dir = b.dir, d.persp = persp;
+      if (persp) {
+        // La caméra d'OCCT vise le milieu de l'image : le cadre est rendu symétrique autour du centre de la pièce
+        const double hw = std::max(std::abs(l - K.cu), std::abs(r - K.cu)), hh = std::max(std::abs(t - K.cv), std::abs(bas - K.cv));
+        l = K.cu - hw, r = K.cu + hw, t = K.cv - hh, bas = K.cv + hh;
+        d.oeil = K.E, d.vise = K.C;
+        d.fov = 2 * std::atan(hh / K.dist) * 180 / PI;
+      } else {
+        const double cx = (l + r) / 2, cy = (t + bas) / 2, cd = (mind + maxd) / 2;
+        d.vise = {b.u[0] * cx + b.v[0] * cy + b.dir[0] * cd, b.u[1] * cx + b.v[1] * cy + b.dir[1] * cd, b.u[2] * cx + b.v[2] * cy + b.dir[2] * cd};
+        const double depth = std::max(1.0, maxd - mind), dist = depth * 2 + std::max(10.0, maxu - minu + maxv - minv);
+        d.oeil = {d.vise[0] + b.dir[0] * dist, d.vise[1] + b.dir[1] * dist, d.vise[2] + b.dir[2] * dist};
+      }
+      const double aspect = (r - l) / std::max(1e-9, bas - t);
+      const int LONG = 1600;
+      if (aspect >= 1) {
+        d.W = LONG, d.H = std::max(64, static_cast<int>(std::round(LONG / aspect)));
+      } else {
+        d.H = LONG, d.W = std::max(64, static_cast<int>(std::round(LONG * aspect)));
+      }
+      d.l = l, d.t = t, d.r = r, d.b = bas;
+      d.cle = id + "#" + std::to_string(++compteurImages_);
+      rendreImage(d);
+      im.ok = true, im.l = l, im.t = t, im.largeur = r - l, im.hauteur = bas - t, im.cle = d.cle;
+    }
+  }
+  return (images_[id] = {sig, im}).second;
 }
 
 void tailleFeuille(const J& planche, double& w, double& h) { pageWH(planche, w, h); }

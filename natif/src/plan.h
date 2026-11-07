@@ -6,6 +6,7 @@
 #include <TopoDS_Shape.hxx>
 
 #include <array>
+#include <functional>
 #include <map>
 #include <memory>
 #include <nlohmann/json.hpp>
@@ -58,6 +59,8 @@ struct Corps {
   TopoDS_Shape forme;
   bool import = false;  // fait de pièces importées seules
   std::array<double, 3> taille{0, 0, 0};  // dimensions de sa boîte (nomenclature)
+  unsigned couleur = 0x9a9aa0;
+  double opacite = 1;
 };
 // Un perçage : ce que les axes et les cotes en lisent (holeNorm, holeAxis)
 struct PointTrou {
@@ -84,8 +87,14 @@ struct Filet {
   V3 dir{0, 0, 0};
   std::vector<V3> centres;
 };
+// L'hélice d'un filet, comme dans la vue 3D : pour l'image ombrée d'une vue
+struct FiletImage {
+  std::string corps;
+  std::vector<V3> helice, anneau;
+};
 struct Piece {
   std::vector<Corps> corps;
+  std::vector<FiletImage> helices;
   std::vector<Filet> filets;
   std::vector<Trou> trous;
   std::vector<std::pair<std::string, std::string>> nomsCorps;  // doc.bodies : id, nom
@@ -96,18 +105,47 @@ Piece pieceDe(const Document& d, const ResultatRejeu& r, const J& doc);
 // doc.mep : les planches, complétées comme à l'ouverture (mepEnsure, mepNormSheet)
 void normaliser(J& mep);
 
+// Ce qu'il faut pour l'image ombrée d'une vue (mepRender3dImage). Le cadre (l, t, r, b) est en mm modèle, repère de la vue.
+struct DemandeImage {
+  std::string cle;
+  V3 u{1, 0, 0}, v{0, 0, -1}, dir{0, -1, 0};
+  bool persp = false;
+  V3 oeil{0, 0, 0}, vise{0, 0, 0};
+  double fov = 35;
+  double l = 0, t = 0, r = 0, b = 0;
+  int W = 64, H = 64;
+  struct Teinte {
+    TopoDS_Shape forme;
+    unsigned couleur = 0;
+    double opacite = 1;
+  };
+  std::vector<Teinte> corps;
+  std::vector<FiletImage> filets;
+};
+struct CadreImage {
+  bool ok = false;
+  double l = 0, t = 0, largeur = 0, hauteur = 0;
+  std::string cle;
+};
+
 // Les vues calculées d'un document : refaites seulement si la vue change
 class Calcul {
  public:
   void oublier() {
+    images_.clear();
     cache_.clear();
     cylindres.clear();
     revolutions.clear();
   }
   const Geo& geoDe(const J& vue, const J& planche, const J& mep, const Piece& p);
+  // L'image ombrée d'une vue, refaite seulement si la vue change ; sans fonction de rendu, pas d'image
+  const CadreImage& imageDe(const J& vue, const Piece& p);
+  std::function<void(const DemandeImage&)> rendreImage;
   std::map<std::string, std::vector<RevAxe>> cylindres, revolutions;
 
  private:
+  std::map<std::string, std::pair<std::string, CadreImage>> images_;
+  int compteurImages_ = 0;
   std::map<std::string, std::pair<std::string, std::shared_ptr<Geo>>> cache_;
 };
 

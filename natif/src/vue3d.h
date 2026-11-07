@@ -23,6 +23,7 @@
 #include <gp_Trsf.hxx>
 
 #include "mesure.h"
+#include "plan.h"
 
 class Vue3D : public wxWindow {
  public:
@@ -31,6 +32,8 @@ class Vue3D : public wxWindow {
   void afficher(const TopoDS_Shape& forme, bool ajusterVue, const std::vector<std::pair<TopoDS_Shape, unsigned>>& teintes = {}, const std::vector<std::pair<TopoDS_Shape, double>>& transparences = {});
   // Pour les essais : la vue dans une image, et le temps des arêtes et du reflet au dernier affichage
   bool image(const wxString& chemin);
+  // L'image ombrée d'une vue de mise en plan : hors écran, fond transparent, seulement ces corps
+  bool imagePlan(const plan::DemandeImage& d, wxImage& sortie);
   void montrerFilets(const std::vector<std::vector<gp_Pnt>>& helices, const std::vector<std::vector<gp_Pnt>>& anneaux);
   // cgDraw : plans translucides, axes en pointillés, points, repères. Rien de tout cela ne se clique ici : on les choisit dans l'arbre ou les listes.
   struct DessinConstruction {
@@ -164,7 +167,10 @@ class Vue3D : public wxWindow {
 
   occ::handle<Aspect_DisplayConnection> connexion_;
   occ::handle<OpenGl_GraphicDriver> pilote_;
-  occ::handle<V3d_Viewer> visu_;
+  occ::handle<V3d_Viewer> visu_, visuImage_;
+  occ::handle<V3d_View> vueImage_;
+  occ::handle<AIS_InteractiveContext> contexteImage_;
+  wxWindow* fenetreImage_ = nullptr;
   occ::handle<V3d_View> vue_;
   occ::handle<AIS_InteractiveContext> contexte_;
   occ::handle<AIS_ViewCube> cube_;

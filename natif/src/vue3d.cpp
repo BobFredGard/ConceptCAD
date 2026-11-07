@@ -60,6 +60,8 @@
 #include <Quantity_Color.hxx>
 #include <TopAbs_ShapeEnum.hxx>
 #include <WNT_Window.hxx>
+#include <Image_AlienPixMap.hxx>
+#include <V3d_ImageDumpOptions.hxx>
 
 namespace {
 const double MARGE_VUE = 0.45;  // de l'air autour de la pièce, sinon la perspective à 50° la déforme
@@ -345,6 +347,116 @@ void Vue3D::majReflets() {
     if (voir) contexte_->Display(r, AIS_Shaded, -1, false);
     else contexte_->Erase(r, false);
   }
+}
+
+bool Vue3D::imagePlan(const plan::DemandeImage& d, wxImage& sortie) {
+  if (vueImage_.IsNull()) {
+    // Un second visualiseur, sans sol, cube ni arêtes : même pilote, mêmes lumières et même matière que la vue 3D
+    visuImage_ = new V3d_Viewer(pilote_);
+    occ::handle<V3d_AmbientLight> ambiance = new V3d_AmbientLight();
+    ambiance->SetIntensity(2.0f);
+    visuImage_->AddLight(ambiance);
+    occ::handle<V3d_DirectionalLight> cle = new V3d_DirectionalLight(gp_Dir(-60, 40, -120));
+    cle->SetIntensity(7.5f);
+    visuImage_->AddLight(cle);
+    occ::handle<V3d_DirectionalLight> ciel = new V3d_DirectionalLight(gp_Dir(0, 0, -1));
+    ciel->SetIntensity(3.0f);
+    visuImage_->AddLight(ciel);
+    visuImage_->SetLightOn();
+    fenetreImage_ = new wxWindow(this, wxID_ANY, wxDefaultPosition, wxSize(64, 64));
+    fenetreImage_->Hide();
+    vueImage_ = visuImage_->CreateView();
+    vueImage_->SetWindow(new WNT_Window(reinterpret_cast<Aspect_Handle>(fenetreImage_->GetHWND())));
+    Graphic3d_RenderingParams& rendu = vueImage_->ChangeRenderingParams();
+    rendu.NbMsaaSamples = 4;
+    rendu.PbrEnvPow2Size = 8;
+    vueImage_->SetShadingModel(Graphic3d_TypeOfShadingModel_Pbr);
+    vueImage_->SetBackgroundCubeMap(environnementStudio(), true);
+    vueImage_->View()->SetBackgroundType(Graphic3d_TOB_NONE);
+    vueImage_->SetBackgroundColor(Quantity_NOC_BLACK);
+    contexteImage_ = new AIS_InteractiveContext(visuImage_);
+  }
+  std::vector<occ::handle<AIS_InteractiveObject>> poses;
+  for (const plan::DemandeImage::Teinte& c : d.corps) {
+    // Construit comme la pièce de la vue 3D : la teinte est la même
+    occ::handle<AIS_ColoredShape> a = new AIS_ColoredShape(c.forme);
+    a->Attributes()->SetAutoTriangulation(false);
+    a->SetColor(couleurHex(0x0a84ff));
+    a->SetCustomColor(c.forme, couleurHex(c.couleur));
+    a->SetMaterial(matierePiece());
+    if (c.opacite < 1) a->SetCustomTransparency(c.forme, 1 - c.opacite);
+    contexteImage_->Display(a, AIS_Shaded, -1, false);
+    poses.push_back(a);
+  }
+  {
+    // Les filets cosmétiques, comme la 3D : l'hélice en trait plein, l'anneau en tirets
+    const auto compose = [&](bool anneau) {
+      BRep_Builder bb;
+      TopoDS_Compound c;
+      bb.MakeCompound(c);
+      bool un = false;
+      for (const plan::FiletImage& f : d.filets) {
+        BRepBuilderAPI_MakePolygon p;
+        for (const auto& q : anneau ? f.anneau : f.helice) p.Add(gp_Pnt(q[0], q[1], q[2]));
+        if (p.IsDone()) {
+          bb.Add(c, p.Wire());
+          un = true;
+        }
+      }
+      return std::make_pair(c, un);
+    };
+    for (const bool anneau : {false, true}) {
+      const auto [c, un] = compose(anneau);
+      if (!un) continue;
+      const Quantity_Color orange = couleur(0xe8, 0x93, 0x0c);
+      occ::handle<AIS_Shape> a = new AIS_Shape(c);
+      a->Attributes()->SetAutoTriangulation(false);
+      a->SetColor(orange);
+      if (anneau) a->Attributes()->SetWireAspect(new Prs3d_LineAspect(orange, Aspect_TOL_DASH, 1.0));
+      contexteImage_->Display(a, AIS_WireFrame, -1, false);
+      poses.push_back(a);
+    }
+  }
+  const occ::handle<Graphic3d_Camera>& cam = vueImage_->Camera();
+  const double aspect = (d.r - d.l) / std::max(1e-9, d.b - d.t);
+  cam->SetProjectionType(d.persp ? Graphic3d_Camera::Projection_Perspective : Graphic3d_Camera::Projection_Orthographic);
+  cam->SetEye(gp_Pnt(d.oeil[0], d.oeil[1], d.oeil[2]));
+  cam->SetCenter(gp_Pnt(d.vise[0], d.vise[1], d.vise[2]));
+  cam->SetUp(gp_Dir(-d.v[0], -d.v[1], -d.v[2]));
+  cam->SetAspect(aspect);
+  if (d.persp) cam->SetFOVy(d.fov);
+  else cam->SetScale(d.b - d.t);
+  vueImage_->ZFitAll();
+  V3d_ImageDumpOptions o;
+  o.Width = d.W, o.Height = d.H;
+  o.BufferType = Graphic3d_BT_RGBA;
+  o.ToAdjustAspect = true;
+  // Le fond transparent : la même image sur fond noir puis sur fond blanc. Ce qui change d'une à l'autre, c'est le fond qui transparaît.
+  Image_AlienPixMap surNoir, surBlanc;
+  bool ok = false;
+  try {
+    o.BufferType = Graphic3d_BT_RGB;
+    vueImage_->SetBackgroundColor(Quantity_NOC_BLACK);
+    ok = vueImage_->ToPixMap(surNoir, o);
+    vueImage_->SetBackgroundColor(Quantity_NOC_WHITE);
+    ok = ok && vueImage_->ToPixMap(surBlanc, o);
+  } catch (const Standard_Failure&) {
+    ok = false;
+  }
+  for (const occ::handle<AIS_InteractiveObject>& a : poses) contexteImage_->Remove(a, false);
+  if (!ok || surNoir.Width() != surBlanc.Width() || surNoir.Height() != surBlanc.Height()) return false;
+  wxImage im(static_cast<int>(surNoir.Width()), static_cast<int>(surNoir.Height()), false);
+  im.SetAlpha();
+  for (int y = 0; y < im.GetHeight(); y++)
+    for (int x = 0; x < im.GetWidth(); x++) {
+      const Quantity_Color n = surNoir.PixelColor(x, y, false).GetRGB(), b = surBlanc.PixelColor(x, y, false).GetRGB();
+      const double a = std::max(0.0, std::min(1.0, 1 - ((b.Red() - n.Red()) + (b.Green() - n.Green()) + (b.Blue() - n.Blue())) / 3));
+      const auto oct = [&](double v) { return static_cast<unsigned char>(std::max(0.0, std::min(255.0, std::round((a > 0 ? v / a : 0) * 255)))); };
+      im.SetRGB(x, y, oct(n.Red()), oct(n.Green()), oct(n.Blue()));
+      im.SetAlpha(x, y, static_cast<unsigned char>(std::round(a * 255)));
+    }
+  sortie = im;
+  return true;
 }
 
 bool Vue3D::image(const wxString& chemin) {

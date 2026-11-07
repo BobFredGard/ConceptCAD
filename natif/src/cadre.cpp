@@ -440,6 +440,7 @@ void Cadre::creerEnvironnement() {
   page_ = new PageAtelier(scene_);
   planVue_ = new PlanVue(scene_);
   planVue_->Hide();
+  planVue_->rendreImage = [this](const plan::DemandeImage& d, wxImage& im) { return vue_->imagePlan(d, im); };
   page_->Hide();
 
   // Les fenêtres posées sur la vue 3D : OpenGL n'a pas le droit de les recouvrir

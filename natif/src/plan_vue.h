@@ -5,6 +5,7 @@
 #include <wx/window.h>
 
 #include <array>
+#include <functional>
 #include <map>
 #include <memory>
 #include <string>
@@ -21,6 +22,8 @@ class PlanVue : public wxWindow {
   void oublier();
   // Pour la note de droite : ce que contient la planche courante
   wxString resume() const;
+  // Le rendu des vues ombrées : c'est la vue 3D qui sait le faire
+  std::function<bool(const plan::DemandeImage&, wxImage&)> rendreImage;
 
  private:
   struct Trait {
@@ -51,6 +54,7 @@ class PlanVue : public wxWindow {
   void peindre(wxGraphicsContext& g);
   void changerPlanche(int i);
   int ongletSous(const wxPoint& p) const;
+  void peindreRegles(wxDC& dc, const wxSize& t);
   int hauteurOnglets() const;
 
   plan::J top_, mep_;
@@ -67,5 +71,8 @@ class PlanVue : public wxWindow {
   wxBitmap image_;
   bool imageBonne_ = false;
   std::vector<wxRect> onglets_;
+  std::map<std::string, std::shared_ptr<wxBitmap>> images3d_;
+  bool curseurDedans_ = false;
+  double curseurX_ = 0, curseurY_ = 0;  // mm papier
   wxColour bureau_{0x2b, 0x2e, 0x34};
 };
