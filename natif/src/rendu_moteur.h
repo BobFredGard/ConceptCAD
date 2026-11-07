@@ -18,6 +18,8 @@
 #include <V3d_View.hxx>
 #include <V3d_Viewer.hxx>
 
+#include "rendu_scene.h"
+
 struct MatiereRendu {
   const char* cle;
   const wchar_t* nom;
@@ -34,6 +36,7 @@ struct ReglagesRendu {
   double envRot = 0, envInt = 1, lum = 1, ombre = 0.45, douceur = 6, focale = 50, ev = 0, ech = 64, ouv = 0, map = 0;
   double pDen = 0.5, pHalo = 0, pVig = 0, pGrain = 0, pCon = 0, pSat = 0, pTemp = 0;
   bool solOn = true, miroir = true, ombreOn = true, calques = false;
+  std::shared_ptr<const ImageHdri> hdri;  // quand amb vaut « hdri »
 };
 
 struct PieceRendu {
@@ -55,6 +58,9 @@ struct ImageLineaire {
   int w = 0, h = 0;
   std::vector<float> px;  // 4 × w × h, du haut vers le bas
 };
+
+// Le fond « Image » : la lumière de l'image HDRI vue dans chaque direction de la caméra (rgb linéaires, du haut vers le bas)
+void fondPanorama(const ReglagesRendu& s, const CameraRendu& c, double focale, int w, int h, std::vector<float>& rgb);
 
 class MoteurRendu {
  public:
@@ -101,6 +107,7 @@ class MoteurRendu {
   int mw_ = 0, mh_ = 0;
   ImageLineaire image_;
   bool rayons_ = false;
+  bool rayonsSansTexture_ = false;  // la carte graphique ne sait pas lire de texture dans le lancer de rayons
   occ::handle<Standard_Transient> tampon_, tamponOmbre_;
   int tw_ = 0, th_ = 0;
 };

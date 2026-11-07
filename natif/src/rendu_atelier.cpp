@@ -13,6 +13,7 @@
 #include <wx/menu.h>
 #include <wx/progdlg.h>
 #include <wx/stdpaths.h>
+#include <cstring>
 
 #include <algorithm>
 #include <cmath>
@@ -70,13 +71,14 @@ wxString cheminMemoire() { return wxStandardPaths::Get().GetUserConfigDir() + wx
 plan::J versJson(const ReglagesRendu& s) {
   plan::J j;
 #define C(n) j[#n] = s.n;
-  C(amb) C(fond) C(fc1) C(fc2) C(tons) C(res) C(aretes) C(solCol) C(moteur) C(envRot) C(envInt) C(lum) C(ombre) C(douceur) C(focale) C(ev) C(ech) C(ouv) C(pDen) C(pHalo) C(pVig) C(pGrain) C(pCon) C(pSat) C(pTemp) C(solOn) C(miroir) C(ombreOn)
+  C(amb) C(fond) C(fc1) C(fc2) C(tons) C(res) C(aretes) C(solCol) C(moteur) C(support) C(envRot) C(envInt) C(lum) C(ombre) C(douceur) C(focale) C(ev) C(ech) C(ouv) C(pDen) C(pHalo) C(pVig) C(pGrain) C(pCon) C(pSat) C(pTemp) C(solOn) C(miroir) C(ombreOn)
 #undef C
+  if (s.hdri) j["hdri"] = wxString(s.hdri->chemin).utf8_string();
   return j;
 }
 void depuisJson(ReglagesRendu& s, const plan::J& j) {
 #define C(n) if (j.contains(#n)) { try { j.at(#n).get_to(s.n); } catch (const std::exception&) {} }
-  C(amb) C(fond) C(fc1) C(fc2) C(tons) C(res) C(aretes) C(solCol) C(moteur) C(envRot) C(envInt) C(lum) C(ombre) C(douceur) C(focale) C(ev) C(ech) C(ouv) C(map) C(pDen) C(pHalo) C(pVig) C(pGrain) C(pCon) C(pSat) C(pTemp) C(solOn) C(miroir) C(ombreOn)
+  C(amb) C(fond) C(fc1) C(fc2) C(tons) C(res) C(aretes) C(solCol) C(moteur) C(support) C(envRot) C(envInt) C(lum) C(ombre) C(douceur) C(focale) C(ev) C(ech) C(ouv) C(map) C(pDen) C(pHalo) C(pVig) C(pGrain) C(pCon) C(pSat) C(pTemp) C(solOn) C(miroir) C(ombreOn)
 #undef C
 }
 
@@ -158,6 +160,9 @@ AtelierRendu::AtelierRendu(wxWindow* parent) : wxWindow(parent, wxID_ANY), minut
     e.Skip();
   });
   lireMemoire();
+  // Une image disparue depuis la dernière fois : retour au studio
+  if (st.amb == "hdri" && !st.hdri) st.amb = "studio";
+  if (st.fond == "hdri" && (!st.hdri || st.amb != "hdri")) st.fond = "degrade";
 }
 
 AtelierRendu::~AtelierRendu() { minuteur_.Stop(); }
@@ -168,12 +173,31 @@ void AtelierRendu::lireMemoire() {
   try {
     std::stringstream t;
     t << f.rdbuf();
-    depuisJson(st, plan::J::parse(t.str()));
+    const plan::J j = plan::J::parse(t.str());
+    depuisJson(st, j);
+    if (j.contains("hdri") && j["hdri"].is_string()) {
+      std::string e;
+      st.hdri = lireHdri(wxString::FromUTF8(j["hdri"].get<std::string>()).ToStdWstring(), e);
+    }
   } catch (const std::exception&) {
   }
 }
 
 void AtelierRendu::memoriser() { memoireSale_ = true; }
+
+bool AtelierRendu::importerHdri(const std::wstring& chemin, wxString& message) {
+  std::string e;
+  const auto h = lireHdri(chemin, e);
+  if (!h) {
+    message = L"HDRI illisible : " + wxString::FromUTF8(e);
+    return false;
+  }
+  st.hdri = h;
+  st.amb = "hdri";
+  scene();
+  message = wxString::Format(L"HDRI « %s » : %d × %d%s.", h->nom, h->w, h->h, h->soleil ? L", soleil repéré (il devient la lampe)" : L", sans soleil marqué");
+  return true;
+}
 
 void AtelierRendu::calculerBoite() {
   Bnd_Box b;
@@ -287,11 +311,13 @@ bool AtelierRendu::synchroniser(Etat& e, bool rayons) {
     ReglagesRendu r = st;
     r.moteur = rayons ? "rayons" : "rapide";
     if (st.fond == "studio") {
-      // Le fond courbe viendra plus tard : un fond uni et un sol de la même couleur
+      // Le fond courbe : un sol qui se fond dans un fond uni de la même couleur, sans bord visible
       r.fond = "uni";
       r.fc1 = r.fc2 = solStudio(st);
       r.solCol = r.fc1;
       r.solOn = true;
+      r.ombreOn = true;
+      r.support.clear();
     }
     e.m->appliquer(r);
     e.vs = vs_;
@@ -324,9 +350,23 @@ Finition AtelierRendu::reglerFinition(bool rayons) const {
   return f;
 }
 
+void AtelierRendu::poserFondImage(const ImageLineaire& im, std::vector<float>& sortie) const {
+  std::vector<float> bg;
+  fondPanorama(st, cam, st.focale, im.w, im.h, bg);
+  sortie.resize(im.px.size());
+  for (size_t n = 0, N = static_cast<size_t>(im.w) * im.h; n < N; n++) {
+    const float a = im.px[4 * n + 3];
+    for (int k = 0; k < 3; k++) sortie[4 * n + k] = im.px[4 * n + k] + bg[3 * n + k] * (1 - a);
+    sortie[4 * n + 3] = 1;
+  }
+}
+
 void AtelierRendu::montrerImage(const ImageLineaire& im, bool rayons) {
   std::vector<unsigned char> px;
-  finir(im.px.data(), im.w, im.h, reglerFinition(rayons), px);
+  const bool image = st.fond == "hdri" && st.hdri;
+  std::vector<float> avecFond;
+  if (image) poserFondImage(im, avecFond);
+  finir(image ? avecFond.data() : im.px.data(), im.w, im.h, reglerFinition(rayons), px);
   wxImage i(im.w, im.h);
   unsigned char* d = i.GetData();
   const bool transparent = st.fond == "transparent";
@@ -653,7 +693,10 @@ wxString AtelierRendu::exporter(const wxString& chemin, bool avecDialogue) {
   if (!ok) retour = L"Rendu impossible : " + wxString::FromUTF8(e.m->erreur);
   if (retour.empty()) {
     std::vector<unsigned char> px;
-    finir(e.m->image().px.data(), W, H, reglerFinition(rayons), px);
+    const bool image = st.fond == "hdri" && st.hdri;
+    std::vector<float> avecFond;
+    if (image) poserFondImage(e.m->image(), avecFond);
+    finir(image ? avecFond.data() : e.m->image().px.data(), W, H, reglerFinition(rayons), px);
     wxImage im(W, H);
     const bool transparent = st.fond == "transparent";
     if (transparent) im.SetAlpha();
@@ -867,10 +910,23 @@ void PanneauRendu::refaire() {
   if (ray) note(L"Sans arêtes CAO. Pendant un glisser, l'aperçu rapide reprend la main.");
 
   titre(L"Ambiance");
-  choix(L"Lumière", {{"studio", L"Studio"}, {"clair", L"Clair"}, {"atelier", L"Atelier"}, {"exterieur", L"Extérieur"}, {"noir", L"Noir"}}, st.amb, [A, &st](const std::string& k) {
-    st.amb = k;
-    A->scene();
-  });
+  {
+    std::vector<std::pair<std::string, wxString>> L = {{"studio", L"Studio"}, {"clair", L"Clair"}, {"atelier", L"Atelier"}, {"exterieur", L"Extérieur"}, {"noir", L"Noir"}};
+    if (st.hdri) L.push_back({"hdri", wxString(L"Image HDRI : ") + st.hdri->nom});
+    choix(L"Lumière", L, st.amb, [A, &st](const std::string& k) {
+      st.amb = k;
+      if (k != "hdri" && st.fond == "hdri") st.fond = "degrade";
+      A->scene();
+    });
+  }
+  boutons({{st.hdri ? L"Autre image HDRI…" : L"Importer une image HDRI…", [this, A] {
+              wxFileDialog d(this, L"Image HDRI", wxEmptyString, wxEmptyString, L"Panorama HDR (*.hdr;*.exr)|*.hdr;*.exr", wxFD_OPEN | wxFD_FILE_MUST_EXIST);
+              if (d.ShowModal() != wxID_OK) return;
+              wxString m;
+              A->importerHdri(d.GetPath().ToStdWstring(), m);
+              message(m);
+            }}},
+          1);
   curseur(L"Rotation", &st.envRot, 0, 360, 5, [](double v) { return wxString::Format(L"%d°", static_cast<int>(v)); }, scene);
   curseur(L"Reflets", &st.envInt, 0, 3, 0.05, v2, scene);
   curseur(L"Lampe", &st.lum, 0, 3, 0.05, v2, scene);
@@ -880,19 +936,24 @@ void PanneauRendu::refaire() {
     st.tons = k;
     A->finition();
   });
-  note(L"Importer une image HDRI : pas encore dans le logiciel Windows.");
 
   titre(L"Fond et sol");
-  segments(L"Fond", {{"degrade", L"Dégradé"}, {"uni", L"Uni"}, {"studio", L"Studio"}, {"transparent", L"Transp."}}, st.fond, [A, &st](const std::string& k) {
-    st.fond = k;
-    A->scene();
-  });
+  {
+    const auto f = [A, &st](const std::string& k) {
+      st.fond = k;
+      A->scene();
+    };
+    if (st.amb == "hdri" && st.hdri) {
+      sousTitre(L"Fond");
+      segments(wxEmptyString, {{"degrade", L"Dégradé"}, {"uni", L"Uni"}, {"studio", L"Studio"}, {"hdri", L"Image"}, {"transparent", L"Transp."}}, st.fond, f);
+    } else segments(L"Fond", {{"degrade", L"Dégradé"}, {"uni", L"Uni"}, {"studio", L"Studio"}, {"transparent", L"Transp."}}, st.fond, f);
+  }
   if (st.fond == "degrade" || st.fond == "uni") {
     auto* r = rang(L"Couleurs");
     couleur(r, &st.fc1, "#f2f3f5");
     if (st.fond == "degrade") couleur(r, &st.fc2, "#c3c7ce");
   }
-  if (st.fond != "studio") {
+  if (st.fond != "studio" && st.fond != "hdri") {
     const auto pre = [A, &st](const char* a, const char* b) {
       return [A, &st, a, b] {
         st.fc1 = a;
@@ -907,7 +968,7 @@ void PanneauRendu::refaire() {
   if (st.fond == "studio") {
     auto* r = rang(L"Couleur");
     couleur(r, &st.solCol, "#d9dbdf");
-    note(L"Le fond courbe arrive plus tard : pour l'instant un fond uni et un sol de la même couleur.");
+    coche(r, L"Brillant", &st.miroir);
   } else {
     auto* r = rang(wxEmptyString);
     coche(r, L"Sol", &st.solOn);
@@ -915,7 +976,80 @@ void PanneauRendu::refaire() {
     coche(r, L"Miroir", &st.miroir);
     coche(r, L"Ombre", &st.ombreOn);
     curseur(L"Ombre", &st.ombre, 0, 1, 0.05, pct, scene);
-    note(L"Supports texturés : pas encore dans le logiciel Windows.");
+    {
+      auto* s = rang(L"Support");
+      const SupportRendu* sup = st.support.empty() ? nullptr : supportRendu(st.support);
+      const wxString nom = sup ? wxString(sup->nom) : wxString(L"Uni");
+      auto* b = new BoutonEsquisse(defile_, wxID_ANY, L"Support", L"Matière du sol, à l'échelle réelle : pierre, bois, carrelage, métal, peintures, textiles, verres dépolis, LED…", BoutonEsquisse::ENCADRE);
+      b->titre(nom);
+      b->fond(FOND);
+      b->SetMinSize(FromDIP(wxSize(-1, 24)));
+      b->surClic = [this, b, A, &st] {
+        wxMenu m;
+        enum { UNI = wxID_HIGHEST + 1, BASE };
+        const auto& L = supportsRendu();
+        m.AppendCheckItem(UNI, L"Uni")->Check(st.support.empty());
+        std::vector<std::wstring> ordre;
+        std::map<std::wstring, wxMenu*> sous;
+        for (size_t i = 0; i < L.size(); i++) {
+          if (!sous.count(L[i].famille)) {
+            sous[L[i].famille] = new wxMenu;
+            ordre.push_back(L[i].famille);
+          }
+          sous[L[i].famille]->AppendCheckItem(BASE + static_cast<int>(i), L[i].nom)->Check(st.support == L[i].cle);
+        }
+        for (const auto& f : ordre) m.AppendSubMenu(sous[f], f);
+        const int id = b->GetPopupMenuSelectionFromUser(m);
+        if (id == wxID_NONE) return;
+        aPres([A, &st, id] {
+          st.support = id == UNI ? std::string() : std::string(supportsRendu()[id - BASE].cle);
+          if (!st.support.empty()) st.solOn = true;
+          A->scene();
+        });
+      };
+      s->Add(b, 1);
+    }
+    boutons({{A->voirSols ? L"Cacher les sols" : L"Voir tous les sols", [A] { A->voirSols = !A->voirSols; }}}, 1);
+    if (A->voirSols) {
+      // Une vignette par sol, par famille
+      std::wstring famille;
+      wxBoxSizer* ligne = nullptr;
+      int n = 0;
+      const int cote = FromDIP(32), parLigne = 6;
+      for (const SupportRendu& q : supportsRendu()) {
+        if (famille != q.famille) {
+          famille = q.famille;
+          sousTitre(famille);
+          n = 0;
+        }
+        if (n % parLigne == 0) ligne = rang(wxEmptyString);
+        n++;
+        const auto T = tuileSupport(q.cle, 48);
+        wxImage im(48, 48);
+        memcpy(im.GetData(), T->rgb.data(), T->rgb.size());
+        const wxBitmap bm(im.Scale(cote, cote, wxIMAGE_QUALITY_BILINEAR));
+        auto* v = new wxWindow(defile_, wxID_ANY, wxDefaultPosition, wxSize(cote, cote));
+        v->SetBackgroundStyle(wxBG_STYLE_PAINT);
+        v->SetToolTip(q.nom);
+        const bool choisi = st.support == q.cle;
+        v->Bind(wxEVT_PAINT, [v, bm, choisi](wxPaintEvent&) {
+          wxAutoBufferedPaintDC dc(v);
+          dc.DrawBitmap(bm, 0, 0);
+          dc.SetBrush(*wxTRANSPARENT_BRUSH);
+          dc.SetPen(wxPen(choisi ? BLEU : TRAIT, choisi ? v->FromDIP(2) : 1));
+          dc.DrawRectangle(v->GetClientSize());
+        });
+        const std::string cle = q.cle;
+        v->Bind(wxEVT_LEFT_UP, [this, A, &st, cle](wxMouseEvent&) {
+          aPres([A, &st, cle] {
+            st.support = cle;
+            st.solOn = true;
+            A->scene();
+          });
+        });
+        ligne->Add(v, 0, wxRIGHT, FromDIP(3));
+      }
+    }
   }
   sousTitre(L"Dessin");
   segments(L"Arêtes", {{"non", L"Sans"}, {"cao", L"CAO"}}, st.aretes, [A, &st](const std::string& k) {

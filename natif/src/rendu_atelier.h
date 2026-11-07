@@ -44,6 +44,8 @@ class AtelierRendu : public wxWindow {
   void changerFocale(double f);
   void allerVue(const plan::J& k);
   void memoriser();  // réglages gardés pour la prochaine fois
+  bool importerHdri(const std::wstring& chemin, wxString& message);
+  bool voirSols = false;
 
   const std::vector<PieceRendu>& pieces() const { return pieces_; }
   void menuPiece(int i, wxWindow* ou);
@@ -75,6 +77,7 @@ class AtelierRendu : public wxWindow {
   bool synchroniser(Etat& e, bool rayons);
   Finition reglerFinition(bool rayons) const;
   void montrerImage(const ImageLineaire& im, bool rayons);
+  void poserFondImage(const ImageLineaire& im, std::vector<float>& sortie) const;
   wxRect cadreImage() const;
   void souris(wxMouseEvent& e);
   int viser(const wxPoint& p, double& distance) const;

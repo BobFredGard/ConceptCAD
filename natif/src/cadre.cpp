@@ -3165,7 +3165,7 @@ bool Cadre::essaiEsquisse(const std::wstring& fichier, int rang, const std::wstr
       if (q.contains("reglages")) {
         plan::J j = q["reglages"];
         #define C(n) if (j.contains(#n)) j.at(#n).get_to(A.st.n);
-        C(amb) C(fond) C(fc1) C(fc2) C(tons) C(res) C(aretes) C(solCol) C(moteur) C(envRot) C(envInt) C(lum) C(ombre) C(douceur) C(focale) C(ev) C(ech) C(ouv) C(map) C(pDen) C(pHalo) C(pVig) C(pGrain) C(pCon) C(pSat) C(pTemp) C(solOn) C(miroir) C(ombreOn)
+        C(amb) C(fond) C(fc1) C(fc2) C(tons) C(res) C(aretes) C(solCol) C(moteur) C(support) C(envRot) C(envInt) C(lum) C(ombre) C(douceur) C(focale) C(ev) C(ech) C(ouv) C(map) C(pDen) C(pHalo) C(pVig) C(pGrain) C(pCon) C(pSat) C(pTemp) C(solOn) C(miroir) C(ombreOn)
         #undef C
         A.scene();
         A.vue();
@@ -3183,6 +3183,12 @@ bool Cadre::essaiEsquisse(const std::wstring& fichier, int rang, const std::wstr
           wxYield();
           wxMilliSleep(5);
         }
+      }
+      if (q.contains("hdri")) {
+        wxString m;
+        if (!A.importerHdri(wxString::FromUTF8(q["hdri"].get<std::string>()).ToStdWstring(), m)) throw std::runtime_error(m.utf8_string());
+        panneauRendu_->message(m);
+        panneauRendu_->refaire();
       }
       if (q.contains("glisser")) {
         const plan::J& g = q["glisser"];

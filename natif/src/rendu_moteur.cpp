@@ -23,7 +23,11 @@
 #include <Prs3d_Drawer.hxx>
 #include <Prs3d_ShadingAspect.hxx>
 #include <Quantity_Color.hxx>
+#include <Graphic3d_Texture2D.hxx>
+#include <OpenGl_Context.hxx>
 #include <Prs3d_LineAspect.hxx>
+#include <Prs3d_ShadingAspect.hxx>
+#include <gp_Pnt2d.hxx>
 #include <V3d_AmbientLight.hxx>
 #include <V3d_ImageDumpOptions.hxx>
 #include <WNT_Window.hxx>
@@ -71,6 +75,10 @@ struct Panneau {
   V3 centre, axeL, axeH, n;
 };
 struct Ambiance {
+  const ImageHdri* hdri = nullptr;
+  double soleilK = 1;      // le soleil de l'image, multiplié
+  bool soleilCoupe = false;  // ôté : la lampe le remplace (calcul rapide)
+  V3 dirSoleil{};
   V3 haut, horizon, bas;
   std::vector<Panneau> panneaux;
   std::array<double, 2> cle;
@@ -90,8 +98,19 @@ struct Ambiance {
     panneaux.push_back(p);
   }
 };
-Ambiance ambiance(const std::string& amb) {
+Ambiance ambiance(const std::string& amb, const ImageHdri* h = nullptr, double soleilK = 1, bool soleilCoupe = false) {
   Ambiance D;
+  if (amb == "hdri" && h) {
+    D.hdri = h;
+    D.soleilK = soleilK;
+    D.soleilCoupe = soleilCoupe;
+    if (h->soleil) {
+      const double a = h->az * PI / 180, e = h->el * PI / 180;
+      D.dirSoleil = {std::cos(e) * std::cos(a), std::cos(e) * std::sin(a), std::sin(e)};
+      D.cle = {h->az, h->el};
+    } else D.cle = {0, 80};
+    return D;
+  }
   const auto ciel = [&](V3 t, V3 h, V3 b) { D.haut = t, D.horizon = h, D.bas = b; };
   const auto x = [](V3 c, double k) { return V3{c[0] * k, c[1] * k, c[2] * k}; };
   D.cle = {-60, 40};
@@ -132,6 +151,28 @@ Ambiance ambiance(const std::string& amb) {
 // La lumière qui vient de la direction d (unitaire, Z en haut), sans la rotation
 V3 lumiere(const Ambiance& A, const V3& d) {
   V3 c;
+  if (A.hdri) {
+    // Monde → image : Y en haut dans l'image
+    const ImageHdri& H = *A.hdri;
+    const double ix = d[0], iy = d[2], iz = -d[1];
+    const double u = (std::atan2(iz, ix) / (2 * PI) + 0.5) * H.w - 0.5, v = std::acos(std::clamp(iy, -1.0, 1.0)) / PI * H.h - 0.5;
+    const double u0f = std::floor(u);
+    const int v0 = std::clamp(static_cast<int>(std::floor(v)), 0, H.h - 1), v1 = std::min(H.h - 1, v0 + 1);
+    const double fu = u - u0f, fv = std::clamp(v - v0, 0.0, 1.0);
+    const int a = ((static_cast<int>(u0f) % H.w) + H.w) % H.w, b = (a + 1) % H.w;
+    const float* L0 = &H.rgb[3 * static_cast<size_t>(v0) * H.w];
+    const float* L1 = &H.rgb[3 * static_cast<size_t>(v1) * H.w];
+    for (int k = 0; k < 3; k++) c[k] = (L0[3 * a + k] * (1 - fu) + L0[3 * b + k] * fu) * (1 - fv) + (L1[3 * a + k] * (1 - fu) + L1[3 * b + k] * fu) * fv;
+    if (H.soleil && d[0] * A.dirSoleil[0] + d[1] * A.dirSoleil[1] + d[2] * A.dirSoleil[2] >= std::cos(4 * PI / 180)) {
+      if (A.soleilCoupe) {
+        const double m = H.sl * 0.02;
+        for (int k = 0; k < 3; k++) c[k] = std::min(c[k], m);
+      } else {
+        for (int k = 0; k < 3; k++) c[k] *= A.soleilK;
+      }
+    }
+    return c;
+  }
   const auto mel = [&](const V3& a, const V3& b, double t) {
     for (int k = 0; k < 3; k++) c[k] = a[k] + (b[k] - a[k]) * t;
   };
@@ -175,7 +216,7 @@ std::array<double, 3> eclairement(const Ambiance& A) {
 
 // Le panorama du lancer de rayons (Latlong de RaytraceBase.fs : Z en haut)
 occ::handle<Image_PixMap> panorama(const Ambiance& A, double rot, double force) {
-  const int W = 1024, H = 512;
+  const int W = A.hdri ? 2048 : 1024, H = W / 2;
   occ::handle<Image_PixMap> im = new Image_PixMap();
   im->SetTopDown(false);
   im->InitTrash(Image_Format_RGBF, W, H);
@@ -283,6 +324,8 @@ MoteurRendu::MoteurRendu(wxWindow* parent, const occ::handle<OpenGl_GraphicDrive
   vue_->Camera()->SetProjectionType(Graphic3d_Camera::Projection_Perspective);
   vue_->SetAutoZFitMode(false);
   contexte_ = new AIS_InteractiveContext(visu_);
+  const occ::handle<OpenGl_Context> gl = pilote->GetSharedContext();
+  rayonsSansTexture_ = gl.IsNull() || !gl->HasRayTracingTextures();
 }
 
 MoteurRendu::~MoteurRendu() {
@@ -356,7 +399,9 @@ void MoteurRendu::appliquer(const ReglagesRendu& s) {
       contexte_->Redisplay(o, false);
     }
   st_ = s;
-  const Ambiance A = ambiance(s.amb);
+  // Le soleil de l'image devient la lampe, dans les deux calculs : un point si brillant, tiré au hasard dans le ciel, sèmerait des grains blancs
+  const Ambiance A = ambiance(s.amb, s.hdri.get(), s.lum, true);
+  const bool image = A.hdri != nullptr;
   cle_ = A.cle;
   const double rot = s.envRot * PI / 180;
   reglerRayons(s.moteur == "rayons");
@@ -376,7 +421,7 @@ void MoteurRendu::appliquer(const ReglagesRendu& s) {
   // La lampe : la direction de l'ambiance tournée avec elle
   const double a = (cle_[0] + s.envRot) * PI / 180, e = cle_[1] * PI / 180;
   lampe_->SetDirection(gp_Dir(-std::cos(e) * std::cos(a), -std::cos(e) * std::sin(a), -std::sin(e)));
-  const double force = s.lum * (s.amb == "noir" ? 0.6 : 1.4) * PI;
+  const double force = image ? s.lum * A.hdri->E : s.lum * (s.amb == "noir" ? 0.6 : 1.4) * PI;
   const double cone = std::max(s.douceur, 0.5) * 0.4 * PI / 180;
   const double omega = 2 * PI * (1 - std::cos(cone));
   lampe_->SetIntensity(static_cast<float>(rayons_ ? force / omega : force / ECH_RAPIDE));
@@ -412,6 +457,56 @@ void MoteurRendu::appliquer(const ReglagesRendu& s) {
     if (s.miroir) {
       b.Kc = NCollection_Vec4<float>(1, 1, 1, 0.02f);
       b.FresnelCoat = Graphic3d_Fresnel::CreateConstant(0.25f);
+    }
+    const SupportRendu* sup = s.support.empty() ? nullptr : supportRendu(s.support);
+    const std::shared_ptr<const TuileSupport> tuile = sup ? tuileSupport(s.support) : nullptr;
+    if (tuile) {
+      // La tuile porte la couleur ; le matériau la cale sur la lumière reçue, comme le sol uni
+      const int N = tuile->n;
+      double moy[3] = {0, 0, 0};
+      occ::handle<Image_PixMap> im = new Image_PixMap();
+      im->SetTopDown(false);
+      im->InitTrash(Image_Format_RGB, N, N);
+      for (int y = 0; y < N; y++)
+        for (int x = 0; x < N; x++) {
+          const unsigned char* q = &tuile->rgb[3 * (static_cast<size_t>(y) * N + x)];
+          unsigned char* o = im->ChangeRawValue(y, x);
+          for (int k = 0; k < 3; k++) o[k] = q[k], moy[k] += lin(q[k] / 255.0);
+        }
+      for (double& v : moy) v /= static_cast<double>(N) * N;
+      V3 cal;
+      const bool textures = !rayonsSansTexture_;
+      for (int k = 0; k < 3; k++) cal[k] = std::min(1.0, (textures ? 1.0 : moy[k]) * PI / std::max(1e-3, eUp[k] * s.envInt + eKey));
+      const NCollection_Vec3<float> kd(static_cast<float>(cal[0]), static_cast<float>(cal[1]), static_cast<float>(cal[2]));
+      b = Graphic3d_BSDF::CreateDiffuse(kd);
+      if (sup->m > 0) {
+        Graphic3d_PBRMaterial q;
+        q.SetColor(Quantity_ColorRGBA(kd.r(), kd.g(), kd.b(), 1.f));
+        q.SetMetallic(static_cast<float>(sup->m));
+        q.SetRoughness(static_cast<float>(std::max(0.04, sup->r)));
+        q.SetIOR(1.5f);
+        b = Graphic3d_BSDF::CreateMetallicRoughness(q);
+      }
+      if (sup->cc > 0) {
+        const float kc = static_cast<float>(sup->cc);
+        b.Kc = NCollection_Vec4<float>(kc, kc, kc, static_cast<float>(std::max(0.02, sup->r)));
+        b.FresnelCoat = Graphic3d_Fresnel::CreateDielectric(1.5f);
+      }
+      if (sup->em > 1) b.Le = NCollection_Vec3<float>(static_cast<float>(moy[0] * sup->em), static_cast<float>(moy[1] * sup->em), static_cast<float>(moy[2] * sup->em));
+      if (textures) {
+        occ::handle<Graphic3d_Texture2D> tx = new Graphic3d_Texture2D(im);
+        tx->EnableModulate();
+        tx->EnableRepeat();
+        tx->GetParams()->SetFilter(Graphic3d_TOTF_TRILINEAR);
+        m.SetBSDF(b);
+        sol_->SetMaterial(m);
+        const occ::handle<Graphic3d_AspectFillArea3d>& asp = sol_->Attributes()->ShadingAspect()->Aspect();
+        asp->SetTextureMap(tx);
+        asp->SetTextureMapOn();
+        // Le disque fait 16 R de large : autant de tuiles qu'il en faut, à l'échelle réelle
+        const double rep = R_ * 16 / tuile->t;
+        sol_->SetTextureRepeatUV(gp_Pnt2d(rep, rep));
+      }
     }
     m.SetBSDF(b);
     sol_->SetMaterial(m);
@@ -714,6 +809,10 @@ bool MoteurRendu::passeRapide(int w, int h) {
   }
   const Repere Rc = repere(c, fovy, 16.0 / 9);
   const V3 base = linTexte(solHex());
+  const SupportRendu* sup = st_.support.empty() ? nullptr : supportRendu(st_.support);
+  const std::shared_ptr<const TuileSupport> tuile = sup ? tuileSupport(st_.support) : nullptr;
+  // Le flou du reflet d'un support : le reflet glisse un peu à chaque passe, la moyenne le rend flou
+  const double bx = sup && sup->b > 0 ? sup->b * 2 * (halton(passes_ + 1, 2) - 0.5) : 0, by = sup && sup->b > 0 ? sup->b * 2 * (halton(passes_ + 1, 3) - 0.5) : 0;
   if (somme_.size() != 4 * static_cast<size_t>(w) * h) somme_.assign(4 * static_cast<size_t>(w) * h, 0.0);
   const double ombreForce = st_.ombre;
   const auto ligne = [&](int y) {
@@ -740,7 +839,7 @@ bool MoteurRendu::passeRapide(int w, int h) {
                 const double xq = (qx * M.d[0] + qy * M.d[1] + qz * M.d[2]) / (zq * M.tanV * M.asp), yq = (qx * M.u[0] + qy * M.u[1] + qz * M.u[2]) / (zq * M.tanV);
                 if (std::abs(xq) < 1 && std::abs(yq) < 1) {
                   float r4[4];
-                  lirePx(reflet_, w, h, (xq + 1) / 2, (1 - yq) / 2, r4);
+                  lirePx(reflet_, w, h, (xq + 1) / 2 + bx, (1 - yq) / 2 + by, r4);
                   ra = r4[3];
                   if (ra > 1e-4)
                     for (int k = 0; k < 3; k++) refl[k] = r4[k] / ra;
@@ -750,8 +849,18 @@ bool MoteurRendu::passeRapide(int w, int h) {
               }
             }
             if (st_.solOn) {
-              const double m = std::clamp(f * ra * 0.7, 0.0, 1.0);
-              for (int k = 0; k < 3; k++) under[k] = (base[k] + (refl[k] - base[k]) * m) * al;
+              double m = std::clamp(f * ra * 0.7, 0.0, 1.0);
+              V3 fond = base;
+              if (tuile) {
+                // L'échelle est réelle : un pixel de la tuile vaut t / n mm
+                const int N = tuile->n;
+                const double px = P[0] / tuile->t, py = P[1] / tuile->t;
+                const int ix = static_cast<int>((px - std::floor(px)) * N) % N, iy = static_cast<int>((py - std::floor(py)) * N) % N;
+                const unsigned char* q = &tuile->rgb[3 * (static_cast<size_t>(iy) * N + ix)];
+                for (int k = 0; k < 3; k++) fond[k] = lin(q[k] / 255.0) * sup->em;
+                m *= sup->k;
+              }
+              for (int k = 0; k < 3; k++) under[k] = (fond[k] + (refl[k] - fond[k]) * m) * al;
               under[3] = al;
             } else {
               const double af = ra * f * 0.6;
@@ -795,5 +904,45 @@ bool MoteurRendu::passeRapide(int w, int h) {
 
 std::string MoteurRendu::solHex() const {
   if (!st_.solCol.empty()) return st_.solCol;
+  if (st_.fond == "hdri" && st_.hdri) {
+    const auto s = [](double v) {
+      v = std::clamp(v, 0.0, 1.0);
+      v = v <= 0.0031308 ? 12.92 * v : 1.055 * std::pow(v, 1 / 2.4) - 0.055;
+      return static_cast<int>(std::lround(v * 255));
+    };
+    char t[16];
+    snprintf(t, sizeof t, "#%02x%02x%02x", s(st_.hdri->sol[0]), s(st_.hdri->sol[1]), s(st_.hdri->sol[2]));
+    return t;
+  }
   return st_.fond == "degrade" ? st_.fc2 : st_.fond == "uni" ? st_.fc1 : st_.fond == "studio" ? "#d9dbdf" : "#9a9ea6";
+}
+
+void fondPanorama(const ReglagesRendu& s, const CameraRendu& c, double focale, int w, int h, std::vector<float>& rgb) {
+  rgb.assign(3 * static_cast<size_t>(w) * h, 0.f);
+  if (!s.hdri) return;
+  const Ambiance A = ambiance("hdri", s.hdri.get(), 1, false);
+  const double rot = s.envRot * PI / 180;
+  const double tanV = 18 / focale / (16.0 / 9), tanH = 18 / focale;
+  const auto norme = [](V3 a) {
+    const double l = std::sqrt(a[0] * a[0] + a[1] * a[1] + a[2] * a[2]);
+    return V3{a[0] / l, a[1] / l, a[2] / l};
+  };
+  const auto vect = [](const V3& a, const V3& b) { return V3{a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]}; };
+  const V3 f = norme({c.cible[0] - c.oeil[0], c.cible[1] - c.oeil[1], c.cible[2] - c.oeil[2]}), d = norme(vect(f, {c.haut[0], c.haut[1], c.haut[2]})), u = vect(d, f);
+  const auto ligne = [&](int y) {
+    const double ny = (1 - 2 * (y + 0.5) / h) * tanV;
+    float* o = rgb.data() + 3 * static_cast<size_t>(y) * w;
+    for (int x = 0; x < w; x++) {
+      const double nx = (2 * (x + 0.5) / w - 1) * tanH;
+      const V3 q = lumiere(A, tourne(norme({f[0] + d[0] * nx + u[0] * ny, f[1] + d[1] * nx + u[1] * ny, f[2] + d[2] * nx + u[2] * ny}), rot));
+      for (int k = 0; k < 3; k++) o[3 * x + k] = static_cast<float>(q[k] * s.envInt);
+    }
+  };
+  const int n = std::max(1u, std::min(16u, std::thread::hardware_concurrency()));
+  std::vector<std::thread> T;
+  for (int t = 0; t < n; t++)
+    T.emplace_back([&, t] {
+      for (int y = t; y < h; y += n) ligne(y);
+    });
+  for (auto& t : T) t.join();
 }
