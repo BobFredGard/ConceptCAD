@@ -1,4 +1,5 @@
 // ConceptCAD natif : point d'entrée. Lance la fenêtre, ou le calcul sans fenêtre (--verif).
+#include "theme.h"
 #include <wx/wx.h>
 #include <TopExp_Explorer.hxx>
 #include <TopoDS.hxx>
@@ -649,7 +650,8 @@ int modeDessiner(const std::vector<std::wstring>& a) {
 class Appli : public wxApp {
  public:
   bool OnInit() override {
-    SetAppearance(Appearance::Dark);  // comme le thème par défaut de la version navigateur
+    theme::charger();
+    SetAppearance(theme::courant() == theme::CLAIR ? Appearance::Light : Appearance::Dark);  // comme le thème choisi dans la version navigateur
     auto* cadre = new Cadre;
     // Les captures ne doivent pas prendre la main sur ce que fait la personne devant le PC.
     if ((!gArgs.empty() && (gArgs[0] == L"--captures" || gArgs[0] == L"--essai-conge" || gArgs[0] == L"--essai-esquisse" || gArgs[0] == L"--image3d")) || _wgetenv(L"CONCEPTCAD_SANS_ACTIVER")) cadre->ShowWithoutActivating();

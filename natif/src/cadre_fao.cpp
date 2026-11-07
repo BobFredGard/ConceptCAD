@@ -1,4 +1,5 @@
 // L'atelier FAO : le programme montre et transmet, le moteur JavaScript validé décide et calcule.
+#include "theme.h"
 #include <wx/base64.h>
 #include <wx/file.h>
 #include <wx/filedlg.h>
@@ -180,7 +181,7 @@ void Cadre::faoFenetreOutils(const plan::J& d) {
   }
   if (!fenetreOutilsFao_) {
     fenetreOutilsFao_ = new wxFrame(this, wxID_ANY, L"Bibliothèque d'outils", wxDefaultPosition, FromDIP(wxSize(640, 620)), wxDEFAULT_FRAME_STYLE | wxFRAME_FLOAT_ON_PARENT);
-    outilsFao_ = new VueDom(fenetreOutilsFao_, wxColour(0x24, 0x26, 0x2b));
+    outilsFao_ = new VueDom(fenetreOutilsFao_, th(wxColour(0x24, 0x26, 0x2b)));
     outilsFao_->surToucher = [this](long el, const std::string& s, const plan::J& v, bool c, bool m) { faoToucher(el, s, v, c, m); };
     fenetreOutilsFao_->Bind(wxEVT_CLOSE_WINDOW, [this](wxCloseEvent&) { faoAction("outils", ""); });
   }

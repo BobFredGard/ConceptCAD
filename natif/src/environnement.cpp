@@ -1,3 +1,4 @@
+#include "theme.h"
 #include "environnement.h"
 
 #include <wx/dcbuffer.h>
@@ -21,7 +22,16 @@ struct FicheHaut {
 };
 #include "environnement_donnees.inc"
 
-const wxColour C_FOND(0x1c, 0x1c, 0x1e), C_BARRE(0x2a, 0x2c, 0x30), C_BORD(0x3a, 0x3a, 0x3d), C_TEXTE(0xf5, 0xf5, 0xf7), C_DISCRET(0x98, 0x98, 0x9d), C_BLEU(0x0a, 0x84, 0xff), C_VERT(0x30, 0xd1, 0x58), C_ROUGE(0xff, 0x45, 0x3a), C_ORANGE(0xff, 0x9f, 0x0a), C_CHAMP(0x38, 0x3a, 0x3e);
+#define C_FOND th(wxColour(0x1c, 0x1c, 0x1e))
+#define C_BARRE th(wxColour(0x2a, 0x2c, 0x30))
+#define C_BORD th(wxColour(0x3a, 0x3a, 0x3d))
+#define C_TEXTE th(wxColour(0xf5, 0xf5, 0xf7))
+#define C_DISCRET th(wxColour(0x98, 0x98, 0x9d))
+#define C_BLEU th(wxColour(0x0a, 0x84, 0xff))
+#define C_VERT th(wxColour(0x30, 0xd1, 0x58))
+#define C_ROUGE th(wxColour(0xff, 0x45, 0x3a))
+#define C_ORANGE th(wxColour(0xff, 0x9f, 0x0a))
+#define C_CHAMP th(wxColour(0x38, 0x3a, 0x3e))
 
 wxFont police(double px, bool gras = false) {
   wxFontInfo i(wxSize(0, static_cast<int>(std::lround(px))));
@@ -103,15 +113,14 @@ BarreHaute::BarreHaute(wxWindow* parent) : wxWindow(parent, wxID_ANY, wxDefaultP
   regenerer_->surClic = [this] {
     if (regenerer_->estDisponible() && surRegenerer) surRegenerer();
   };
-  theme_ = new BoutonEsquisse(this, wxID_ANY, L"Couleurs", L"Couleurs et icônes de l'interface : pas encore dans le logiciel Windows", BoutonEsquisse::ENCADRE);
+  theme_ = new BoutonEsquisse(this, wxID_ANY, L"Couleurs", L"Couleurs et icônes de l'interface", BoutonEsquisse::ENCADRE);
   for (size_t i = 0; BARRE_HAUTE[i].titre; i++)
     if (wxString(BARRE_HAUTE[i].titre).StartsWith(L"Couleurs")) theme_->iconeComplete(BARRE_HAUTE[i].svg, C_TEXTE);
-  theme_->disponible(false);
   theme_->surClic = [this] {
-    if (surIndisponible) surIndisponible(L"Couleurs et icônes");
+    if (surTheme) surTheme();
   };
   recherche_ = new wxTextCtrl(this, wxID_ANY, wxEmptyString, wxDefaultPosition, wxDefaultSize, wxBORDER_NONE);
-  recherche_->SetBackgroundColour(wxColour(0x33, 0x35, 0x39));
+  recherche_->SetBackgroundColour(th(wxColour(0x33, 0x35, 0x39)));
   recherche_->SetForegroundColour(C_TEXTE);
   recherche_->SetFont(police(12.5));
   recherche_->SetHint(L"Rechercher");
@@ -141,10 +150,10 @@ BarreHaute::BarreHaute(wxWindow* parent) : wxWindow(parent, wxID_ANY, wxDefaultP
       g->SetPen(wxNullGraphicsPen);
       g->SetBrush(g->CreateBrush(wxBrush(C_CHAMP)));
       g->DrawRoundedRectangle(165, 19, 251, 26, 10);
-      g->SetPen(g->CreatePen(wxGraphicsPenInfo(wxColour(0x44, 0x46, 0x4a), 1)));
+      g->SetPen(g->CreatePen(wxGraphicsPenInfo(th(wxColour(0x44, 0x46, 0x4a)), 1)));
       g->StrokeLine(508.5, 22, 508.5, 42);
       // Le cadre du champ de recherche
-      g->SetBrush(g->CreateBrush(wxBrush(wxColour(0x33, 0x35, 0x39))));
+      g->SetBrush(g->CreateBrush(wxBrush(th(wxColour(0x33, 0x35, 0x39)))));
       g->DrawRoundedRectangle(753.5, 18.5, 104, 27, 7);
     }
     ecrire(dc, this, L"Concept", 47, 24, 16.5, C_TEXTE, true);
@@ -187,6 +196,26 @@ void BarreHaute::document(const wxString& nom) {
 }
 
 // ---------- Ruban ----------
+// La couleur de chaque famille, atelier par atelier (MF_GC, src/97-interface-icones.js)
+void Ruban::couleursFamilles() {
+  static const std::vector<unsigned> FAM[] = {
+      {0x22c55e, 0x3b82f6, 0xf59e0b, 0xa855f7, 0x14b8a6, 0x94a3b8, 0xec4899},  // Esquisse, Créer, Construire, Modifier, Ensembles, Fichier, Composants
+      {0x06b6d4, 0xf43f5e, 0xf59e0b, 0x22c55e, 0xef4444, 0x3b82f6},            // Posage, Limites, Opérations, Simulation, Calcul, Export
+      {0x94a3b8, 0x06b6d4, 0x22c55e, 0xf59e0b, 0xa855f7, 0x3b82f6}};           // Planches, Vues, Dessin, Cotes, Axes, Sortie
+  int n = 0;
+  for (Groupe& g : groupes_) {
+    const std::vector<unsigned>& L = FAM[std::min(n++, 2)];
+    size_t k = 0;
+    for (size_t i = 0; i < g.boutons.size(); i++) {
+      if (i < g.coupes.size() && g.coupes[i] && i > 0) k++;
+      auto* f = static_cast<const FicheRuban*>(g.boutons[i]->GetClientData());
+      const unsigned c = L[std::min(k, L.size() - 1)];
+      const wxString o = f ? wxString(f->couleur) : wxString();
+      g.boutons[i]->couleurIcone(theme::iconesCouleur() ? wxColour((c >> 16) & 255, (c >> 8) & 255, c & 255) : o.empty() ? C_TEXTE : wxColour(o));
+    }
+  }
+}
+
 Ruban::Ruban(wxWindow* parent) : wxWindow(parent, wxID_ANY, wxDefaultPosition, wxDefaultSize, wxBORDER_NONE | wxFULL_REPAINT_ON_RESIZE) {
   SetBackgroundStyle(wxBG_STYLE_PAINT);
   const struct {
@@ -202,6 +231,7 @@ Ruban::Ruban(wxWindow* parent) : wxWindow(parent, wxID_ANY, wxDefaultPosition, w
       const wxString c = f->couleur;
       b->iconeComplete(f->svg, c.empty() ? C_TEXTE : wxColour(c));
       b->Hide();
+      b->SetClientData(const_cast<FicheRuban*>(f));
       wxString nom = f->texte;
       // Deux boutons de même nom dans la mise en plan : ils se distinguent par leur bulle
       if (x.a == Atelier::PLAN && nom == L"Cercle" && wxString(f->titre).StartsWith(L"Axes")) nom = L"Cercle axes";
@@ -262,8 +292,12 @@ Ruban::Ruban(wxWindow* parent) : wxWindow(parent, wxID_ANY, wxDefaultPosition, w
     g->SetBrush(g->CreateBrush(wxBrush(C_BARRE)));
     g->SetPen(g->CreatePen(wxGraphicsPenInfo(C_BORD, 1)));
     g->DrawRoundedRectangle(12.5, 6.5, t.x - 25, t.y - 12, 12);
-    g->SetPen(g->CreatePen(wxGraphicsPenInfo(wxColour(0x44, 0x46, 0x4a), 1)));
+    g->SetPen(g->CreatePen(wxGraphicsPenInfo(th(wxColour(0x44, 0x46, 0x4a)), 1)));
     for (const wxRect& r : traits_) g->StrokeLine(r.x + 0.5, r.y, r.x + 0.5, r.y + r.height);
+    for (const auto& l : libelles_) {
+      const wxSize m = mesure(this, l.second, 9);
+      ecrire(dc, this, l.second, l.first.x + (l.first.width - m.x) / 2.0, l.first.y, 9, C_DISCRET);
+    }
   });
 }
 
@@ -305,39 +339,67 @@ void Ruban::modeAssemblage(bool oui) {
 
 void Ruban::placer() {
   const int W = std::max(300, ToDIP(GetClientSize()).x);
-  const int H = 44, gauche = 25, droite = W - 25;
+  // Sous chaque groupe, son nom (mfRibbon)
+  const int H = 44, NOM = 13, gauche = 25, droite = W - 25;
   int x = gauche, y = 13;
   traits_.clear();
+  libelles_.clear();
+  static const std::vector<const wchar_t*> NOMS[] = {
+      {L"ESQUISSE", L"CRÉER", L"CONSTRUIRE", L"MODIFIER", L"ENSEMBLES", L"FICHIER", L"COMPOSANTS"},
+      {L"POSAGE", L"LIMITES", L"OPÉRATIONS", L"SIMULATION", L"CALCUL", L"EXPORT"},
+      {L"PLANCHES", L"VUES", L"DESSIN", L"COTES", L"AXES", L"SORTIE"}};
+  const int rangAtelier = courant_ == Atelier::CAO ? 0 : courant_ == Atelier::FAO ? 1 : 2;
+  int debut = -1, rang = 0;
+  const auto fermer = [&](int fin) {
+    if (debut >= 0 && rang < static_cast<int>(NOMS[rangAtelier].size())) libelles_.push_back({wxRect(debut, y + H, fin - debut, NOM), NOMS[rangAtelier][rang]});
+    debut = -1;
+  };
   for (const Groupe& g : groupes_) {
     if (g.atelier != courant_) continue;
     for (size_t i = 0; i < g.boutons.size(); i++) {
       BoutonEsquisse* b = g.boutons[i];
+      const bool coupe = g.coupes[i] && i > 0;
+      if (coupe) {
+        if (debut >= 0) {
+          fermer(x - 2);
+          x += 3;
+          traits_.push_back(wxRect(x, y + 2, 1, H + NOM - 6));
+          x += 6;
+        }
+        rang++;
+      }
       if (!b->IsShown()) continue;
       const int L = std::max(38, mesure(this, b->GetLabel(), 10.5).x + 4);
-      if (g.coupes[i] && x > gauche) {
-        x += 3;
-        traits_.push_back(wxRect(x, y + 2, 1, H - 4));
-        x += 6;
-      }
       if (x + L > droite) {
+        fermer(x - 2);
         x = gauche;
-        y += H + 4;
+        y += H + NOM + 4;
       }
+      if (debut < 0) debut = x;
       b->SetSize(rectDip(this, x, y, L, H));
       x += L + 2;
     }
   }
-  if (assemblage_ && courant_ == Atelier::CAO)
+  fermer(x - 2);
+  if (assemblage_ && courant_ == Atelier::CAO) {
+    rang = 6;
+    x += 3;
+    traits_.push_back(wxRect(x, y + 2, 1, H + NOM - 6));
+    x += 6;
     for (BoutonEsquisse* b : boutonsAsm_) {
       const int L = std::max(38, mesure(this, b->GetLabel(), 10.5).x + 4);
       if (x + L > droite) {
+        fermer(x - 2);
         x = gauche;
-        y += H + 4;
+        y += H + NOM + 4;
       }
+      if (debut < 0) debut = x;
       b->SetSize(rectDip(this, x, y, L, H));
       x += L + 2;
     }
-  const int h = y + H + 12;
+    fermer(x - 2);
+  }
+  const int h = y + H + NOM + 12;
   if (h != hauteur_) {
     hauteur_ = h;
     SetMinSize(FromDIP(wxSize(-1, h)));
@@ -431,14 +493,14 @@ FilFonctions::FilFonctions(wxWindow* parent) : wxWindow(parent, 2007, wxDefaultP
   SetBackgroundStyle(wxBG_STYLE_PAINT);
   Bind(wxEVT_PAINT, [this](wxPaintEvent&) {
     wxAutoBufferedPaintDC dc(this);
-    dc.SetBackground(wxBrush(wxColour(0x13, 0x15, 0x19)));
+    dc.SetBackground(wxBrush(th(wxColour(0x13, 0x15, 0x19))));
     dc.Clear();
     const wxSize t = ToDIP(GetClientSize());
     const int yi = (t.y - FIL_L) / 2;
     {
       auto g = contexte(dc, this);
       if (!g) return;
-      g->SetBrush(g->CreateBrush(wxBrush(wxColour(0x2a, 0x2c, 0x30))));
+      g->SetBrush(g->CreateBrush(wxBrush(th(wxColour(0x2a, 0x2c, 0x30)))));
       g->SetPen(g->CreatePen(wxGraphicsPenInfo(C_BORD, 1)));
       g->DrawRoundedRectangle(0.5, 0.5, t.x - 1, t.y - 1, 12);
       const size_t fin = std::min(elements_.size(), static_cast<size_t>(debut_ + visibles()));
@@ -446,7 +508,7 @@ FilFonctions::FilFonctions(wxWindow* parent) : wxWindow(parent, 2007, wxDefaultP
         const Element& e = elements_[i];
         const double x = FIL_X0 + static_cast<double>(i - debut_) * FIL_PAS;
         wxColour c = e.couleur.IsOk() ? e.couleur : C_DISCRET;
-        if (e.apresMarque) c = wxColour(0x58, 0x5a, 0x60);
+        if (e.apresMarque) c = th(wxColour(0x58, 0x5a, 0x60));
         else if (e.grise) c = wxColour(c.Red() * 6 / 10 + 8, c.Green() * 6 / 10 + 8, c.Blue() * 6 / 10 + 8);  // masquée : .hid, atténuée
         g->SetBrush(g->CreateBrush(wxBrush(wxColour(c.Red(), c.Green(), c.Blue(), static_cast<int>(i) == survol_ ? 60 : 26))));
         g->SetPen(g->CreatePen(wxGraphicsPenInfo(wxColour(c.Red(), c.Green(), c.Blue(), 70), 1)));
@@ -466,11 +528,11 @@ FilFonctions::FilFonctions(wxWindow* parent) : wxWindow(parent, 2007, wxDefaultP
           break;
         }
       const double xm = FIL_X0 + static_cast<double>(posMarque - debut_) * FIL_PAS + (posMarque < fin ? -3 : 1);
-      g->SetBrush(g->CreateBrush(wxBrush(wxColour(0xff, 0xd6, 0x0a))));
+      g->SetBrush(g->CreateBrush(wxBrush(th(wxColour(0xff, 0xd6, 0x0a)))));
       g->SetPen(wxNullGraphicsPen);
       g->DrawRectangle(xm, yi - 4, 4, FIL_L + 6);
       // Début, précédent, suivant, fin ; le film reste grisé
-      g->SetBrush(g->CreateBrush(wxBrush(wxColour(0xc8, 0xca, 0xd0))));
+      g->SetBrush(g->CreateBrush(wxBrush(th(wxColour(0xc8, 0xca, 0xd0)))));
       const double yc = t.y / 2.0;
       const auto triangle = [&](double x, double sens) {
         wxGraphicsPath p = g->CreatePath();
@@ -486,7 +548,7 @@ FilFonctions::FilFonctions(wxWindow* parent) : wxWindow(parent, 2007, wxDefaultP
       triangle(68, 1);
       triangle(90, 1);
       g->DrawRectangle(99, yc - 5, 2, 10);
-      g->SetBrush(g->CreateBrush(wxBrush(wxColour(0x68, 0x6a, 0x70))));
+      g->SetBrush(g->CreateBrush(wxBrush(th(wxColour(0x68, 0x6a, 0x70)))));
       g->DrawRoundedRectangle(113, yc - 4, 12, 9, 1.5);
     }
     const wxString n = wxString::Format(L"%d fonction(s)", nb_);
@@ -572,6 +634,11 @@ void FilFonctions::montrer(const std::vector<Element>& e, int nbFonctions) {
 }
 
 // ---------- État ----------
+void Carte::themeChange(int de, int vers) {
+  fond_ = theme::passer(fond_, de, vers);
+  Refresh();
+}
+
 EtatVue::EtatVue(wxWindow* parent, int id, const wxColour& fond) : wxWindow(parent, id, wxDefaultPosition, wxDefaultSize, wxBORDER_NONE | wxFULL_REPAINT_ON_RESIZE), fond_(fond) {
   SetBackgroundStyle(wxBG_STYLE_PAINT);
   Bind(wxEVT_PAINT, [this](wxPaintEvent&) {
@@ -596,7 +663,7 @@ PageAtelier::PageAtelier(wxWindow* parent) : wxWindow(parent, wxID_ANY, wxDefaul
   SetBackgroundStyle(wxBG_STYLE_PAINT);
   Bind(wxEVT_PAINT, [this](wxPaintEvent&) {
     wxAutoBufferedPaintDC dc(this);
-    dc.SetBackground(wxBrush(wxColour(0x13, 0x15, 0x19)));
+    dc.SetBackground(wxBrush(th(wxColour(0x13, 0x15, 0x19))));
     dc.Clear();
     const wxSize t = ToDIP(GetClientSize());
     if (feuille_) {
@@ -610,9 +677,9 @@ PageAtelier::PageAtelier(wxWindow* parent) : wxWindow(parent, wxID_ANY, wxDefaul
       }
     }
     const wxSize a = mesure(this, titre_, 18, true);
-    ecrire(dc, this, titre_, (t.x - a.x) / 2.0, t.y / 2.0 - 34, 18, feuille_ ? wxColour(0x22, 0x22, 0x24) : C_TEXTE, true);
+    ecrire(dc, this, titre_, (t.x - a.x) / 2.0, t.y / 2.0 - 34, 18, feuille_ ? th(wxColour(0x22, 0x22, 0x24)) : C_TEXTE, true);
     const wxSize b = mesure(this, texte_, 13);
-    ecrire(dc, this, texte_, (t.x - b.x) / 2.0, t.y / 2.0, 13, feuille_ ? wxColour(0x60, 0x60, 0x65) : C_DISCRET);
+    ecrire(dc, this, texte_, (t.x - b.x) / 2.0, t.y / 2.0, 13, feuille_ ? th(wxColour(0x60, 0x60, 0x65)) : C_DISCRET);
   });
 }
 

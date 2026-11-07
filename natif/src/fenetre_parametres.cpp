@@ -1,3 +1,4 @@
+#include "theme.h"
 #include "fenetre_parametres.h"
 
 #include <wx/dcbuffer.h>
@@ -407,7 +408,7 @@ void ouvrirFenetreParametres(wxWindow* parent, const ActionsFormules& a) {
 }
 
 MiniParametres::MiniParametres(wxWindow* parent, const ActionsFormules& a) : wxPanel(parent), a_(a) {
-  SetBackgroundColour(wxColour(0x28, 0x29, 0x2c));
+  SetBackgroundColour(th(wxColour(0x28, 0x29, 0x2c)));
   auto* tout = new wxBoxSizer(wxVERTICAL);
   auto* tete = new wxBoxSizer(wxHORIZONTAL);
   tete->Add(texteSombre(this, L"ƒx PARAMÈTRES", DISCRET), 1, wxALIGN_CENTER_VERTICAL);
@@ -492,7 +493,7 @@ void MiniParametres::reconstruire() {
       continue;
     }
     auto* c = new wxTextCtrl(liste_, wxID_ANY, r.valeur.empty() ? tx(r.edition) : r.valeur, wxDefaultPosition, FromDIP(wxSize(96, -1)), wxTE_PROCESS_ENTER | wxTE_RIGHT | wxBORDER_SIMPLE);
-    c->SetBackgroundColour(wxColour(0x28, 0x29, 0x2c));
+    c->SetBackgroundColour(th(wxColour(0x28, 0x29, 0x2c)));
     c->SetForegroundColour(r.attention ? ORANGE : TEXTE);
     c->SetToolTip(r.bulle);
     brancherListeNoms(c, [this]() -> const Document& { return a_.document(); });

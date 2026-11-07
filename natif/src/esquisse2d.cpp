@@ -1,3 +1,4 @@
+#include "theme.h"
 #include "esquisse2d.h"
 
 #include "parametres.h"
@@ -174,11 +175,11 @@ class BoutonMode : public wxPanel {
       const wxSize z = GetClientSize();
       dc.SetBackground(wxBrush(GetParent()->GetBackgroundColour()));
       dc.Clear();
-      dc.SetPen(wxPen(actif_ ? wxColour(0x2f, 0x7f, 0xf0) : wxColour(0x55, 0x55, 0x5a)));
-      dc.SetBrush(wxBrush(actif_ ? wxColour(0x2f, 0x7f, 0xf0) : survol_ ? wxColour(0x3a, 0x3a, 0x3e) : wxColour(0x2c, 0x2c, 0x2e)));
+      dc.SetPen(wxPen(actif_ ? th(wxColour(0x2f, 0x7f, 0xf0)) : th(wxColour(0x55, 0x55, 0x5a))));
+      dc.SetBrush(wxBrush(actif_ ? th(wxColour(0x2f, 0x7f, 0xf0)) : survol_ ? th(wxColour(0x3a, 0x3a, 0x3e)) : th(wxColour(0x2c, 0x2c, 0x2e))));
       dc.DrawRoundedRectangle(0, 0, z.x, z.y, FromDIP(4));
       dc.SetFont(GetFont());
-      dc.SetTextForeground(actif_ ? *wxWHITE : wxColour(0xe8, 0xe8, 0xea));
+      dc.SetTextForeground(actif_ ? *wxWHITE : th(wxColour(0xe8, 0xe8, 0xea)));
       const wxSize t = dc.GetTextExtent(libelle_);
       dc.DrawText(libelle_, (z.x - t.x) / 2, (z.y - t.y) / 2);
     });
@@ -223,7 +224,7 @@ void VueEsquisse::majBarreTrace() {
   }
   if (!barreTrace_) {
     barreTrace_ = new wxPanel(this, wxID_ANY, FromDIP(wxPoint(10, 10)));
-    barreTrace_->SetBackgroundColour(wxColour(0x1e, 0x1e, 0x1e));
+    barreTrace_->SetBackgroundColour(th(wxColour(0x1e, 0x1e, 0x1e)));
   }
   const Dessin::Outil outil = dessin_->outil();
   const std::vector<Dessin::ModeTrace>& modes = Dessin::modesDe(outil);
@@ -233,7 +234,7 @@ void VueEsquisse::majBarreTrace() {
     boutonsTrace_.clear();
     auto* ligne = new wxBoxSizer(wxHORIZONTAL);
     auto* l = new wxStaticText(barreTrace_, wxID_ANY, wxString::FromUTF8(titre));
-    l->SetForegroundColour(wxColour(0xe8, 0xe8, 0xea));
+    l->SetForegroundColour(th(wxColour(0xe8, 0xe8, 0xea)));
     ligne->Add(l, 0, wxALIGN_CENTER_VERTICAL | wxLEFT | wxRIGHT, FromDIP(10));
     for (const Dessin::ModeTrace& m : modes) {
       const std::string code = m.code;
@@ -1214,12 +1215,12 @@ void VueEsquisse::sections(wxGraphicsContext& g) const {
     g.StrokePath(p);
   };
   g.SetBrush(wxNullGraphicsBrush);
-  g.SetPen(stylo(g, alpha(wxColour(0x64, 0xd2, 0xff), 0.7), 1.5, {5, 3}));
+  g.SetPen(stylo(g, alpha(th(wxColour(0x64, 0xd2, 0xff)), 0.7), 1.5, {5, 3}));
   for (const CourbeSection& c : *L) tracer(c);
-  g.SetPen(stylo(g, alpha(wxColour(0x0a, 0x84, 0xff), 0.95), 3));
+  g.SetPen(stylo(g, alpha(th(wxColour(0x0a, 0x84, 0xff)), 0.95), 3));
   for (const CourbeSection& c : *L)
     if (dessin_->sectionRetenue(c)) tracer(c);
-  g.SetPen(stylo(g, alpha(wxColour(0xff, 0x9f, 0x0a), 0.95), 3));
+  g.SetPen(stylo(g, alpha(th(wxColour(0xff, 0x9f, 0x0a)), 0.95), 3));
   for (const CourbeSection* c : dessin_->groupeSurvole()) tracer(*c);
 }
 
@@ -1259,7 +1260,7 @@ void VueEsquisse::projections(wxGraphicsContext& g) const {
     g.SetPen(stylo(g, alpha(BLEU, 0.9), 1.5, {3, 3}));
     for (const P& f : it.formes) tracer(f);
     g.SetPen(stylo(g, BLEU, 1.2));
-    g.SetBrush(g.CreateBrush(wxBrush(wxColour(0x10, 0x10, 0x12))));
+    g.SetBrush(g.CreateBrush(wxBrush(th(wxColour(0x10, 0x10, 0x12)))));
     for (const P2d& q : it.pts) {
       const auto c = e(q[0], q[1]);
       g.DrawRectangle(c.m_x - 2.5, c.m_y - 2.5, 5, 5);
@@ -1563,7 +1564,7 @@ void VueEsquisse::trace(wxGraphicsContext& g) const {
   // Outil Ajuster : le morceau qui partira, en rouge
   const Dessin::ApercuCoupe& coupe = dessin_->apercu();
   if (coupe.sorte != Dessin::ApercuCoupe::RIEN) {
-    g.SetPen(stylo(g, wxColour(0xff, 0x45, 0x3a), 3.5));
+    g.SetPen(stylo(g, th(wxColour(0xff, 0x45, 0x3a)), 3.5));
     if (coupe.sorte == Dessin::ApercuCoupe::TRAIT) {
       ligne(g, e(coupe.A.x, coupe.A.y), e(coupe.B.x, coupe.B.y));
     } else {
@@ -1595,15 +1596,15 @@ void VueEsquisse::trace(wxGraphicsContext& g) const {
     const wxString libelle = (decale ? wxString("D = ") : frappe.angle ? wxString(L"∠ = ") : wxString("L = ")) + wxString::FromUTF8(frappe.texte) + (frappe.angle ? wxString(L"°") : wxString(" mm"));
     const wxString aide = decale ? wxString(L"La souris donne le côté · Entrée ou clic : valider · Échap : annuler") : wxString(L"Tab : angle ou longueur · Entrée : valider · Échap : annuler");
     const double larg = std::max(70.0, libelle.length() * 8.0 + 18);
-    g.SetBrush(g.CreateBrush(wxBrush(wxColour(0x1e, 0x1e, 0x1e))));
-    g.SetPen(stylo(g, wxColour(0x0a, 0x84, 0xff), 1.5));
+    g.SetBrush(g.CreateBrush(wxBrush(th(wxColour(0x1e, 0x1e, 0x1e)))));
+    g.SetPen(stylo(g, th(wxColour(0x0a, 0x84, 0xff)), 1.5));
     g.DrawRoundedRectangle(P.m_x - larg / 2, P.m_y - 44, larg, 24, 5);
     g.SetBrush(wxNullGraphicsBrush);
     double L, H, dsc, ext;
     g.SetFont(g.CreateFont(wxFontInfo(10).Bold(), *wxWHITE));
     g.GetTextExtent(libelle, &L, &H, &dsc, &ext);
     g.DrawText(libelle, P.m_x - L / 2, P.m_y - 32 - H / 2);
-    g.SetFont(g.CreateFont(wxFontInfo(8), wxColour(0x8a, 0x8f, 0x99)));
+    g.SetFont(g.CreateFont(wxFontInfo(8), th(wxColour(0x8a, 0x8f, 0x99))));
     g.GetTextExtent(aide, &L, &H, &dsc, &ext);
     g.DrawText(aide, P.m_x - L / 2, P.m_y - 50 - H);
   }
@@ -1679,7 +1680,7 @@ void VueEsquisse::grille(wxGraphicsContext& g, double W, double H) const {
 
 void VueEsquisse::fantome(wxGraphicsContext& g) const {
   if (traitsFantome_.empty() || !voirFantome_) return;
-  g.SetPen(stylo(g, wxColour(0xe6, 0xe6, 0xee, 107), 1.15));
+  g.SetPen(stylo(g, th(wxColour(0xe6, 0xe6, 0xee, 107)), 1.15));
   wxGraphicsPath p = g.CreatePath();
   for (const Trait& t : traitsFantome_) {
     const auto a = e3(t.x1, t.y1, t.z1), b = e3(t.x2, t.y2, t.z2);

@@ -19,6 +19,7 @@ class BarreHaute : public wxWindow {
   std::function<void(Atelier)> surAtelier;
   std::function<void()> surAnnuler, surRetablir, surNouveau, surRecent, surOuvrir, surEnregistrer, surEnregistrerSous, surRegenerer;
   std::function<void()> surDossier;
+  std::function<void()> surTheme;
   std::function<void(const wxString&)> surIndisponible;
   void atelier(Atelier a);
   void document(const wxString& nom);
@@ -51,6 +52,7 @@ class Ruban : public wxWindow {
   std::function<void(Atelier, const wxString&)> surBouton;
   std::function<void(const wxString&)> surIndisponible;
   void atelier(Atelier a);
+  void couleursFamilles();  // « Couleurs par famille » ou au trait, selon le réglage
   // Vue d'assemblage : seuls les boutons de composants, et « Assembler » devient « Modéliser »
   void modeAssemblage(bool oui);
   bool enAssemblage() const { return assemblage_; }
@@ -68,6 +70,7 @@ class Ruban : public wxWindow {
   std::vector<Groupe> groupes_;
   Atelier courant_ = Atelier::CAO;
   std::vector<wxRect> traits_;
+  std::vector<std::pair<wxRect, wxString>> libelles_;  // le nom de chaque groupe
   int hauteur_ = 0;
 };
 
@@ -77,6 +80,7 @@ class Carte : public wxPanel {
   // Grand : titre en clair sur deux lignes au plus, comme l'arbre du navigateur
   Carte(wxWindow* parent, const wxString& titre, const wxColour& fond, bool grand = false);
   void titre(const wxString& t);
+  void themeChange(int de, int vers);
   wxBoxSizer* contenu() { return contenu_; }
 
  private:

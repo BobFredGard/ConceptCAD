@@ -1,3 +1,4 @@
+#include "theme.h"
 #include "fao_vue.h"
 
 #include <wx/checkbox.h>
@@ -187,7 +188,7 @@ void VueDom::poser(wxWindow* parent, wxSizer* s, const plan::J& e, long cliquabl
     } else if (classe(e, "hbtn")) {
       c = classe(e, "on") ? BLEU : DISCRET;
     } else if (classe(e, "eye")) {
-      c = classe(e, "off") ? DISCRET : wxColour(0x30, 0xd1, 0x58);
+      c = classe(e, "off") ? DISCRET : th(wxColour(0x30, 0xd1, 0x58));
     }
     couleurDe(e, "co", c);
     if (e.contains("gr") && e["gr"].get<std::string>() != "normal" && e["gr"].get<std::string>() != "400") f.SetWeight(wxFONTWEIGHT_SEMIBOLD);

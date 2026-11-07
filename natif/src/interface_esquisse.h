@@ -24,6 +24,8 @@ class BoutonEsquisse : public wxWindow {
   void icone(const std::string& corpsSvg, const wxColour& couleur);
   void iconeComplete(const std::string& svg, const wxColour& couleur);  // un <svg> entier, tel que le navigateur le dessine
   void fond(const wxColour& c);  // la couleur sur laquelle le bouton est posé
+  void themeChange(int de, int vers);  // redessine l'icône et le fond dans un autre thème
+  void couleurIcone(const wxColour& c);
   void titre(const wxString& t);
   void actif(bool oui);
   void disponible(bool oui);
@@ -39,6 +41,9 @@ class BoutonEsquisse : public wxWindow {
   wxString titre_;
   Style style_;
   wxColour fond_;
+  std::string svgIcone_;      // l'icône, pour la refaire quand le thème change
+  bool iconeEntiere_ = false;
+  wxColour couleurIcone_;
   bool actif_ = false, disponible_ = true, survol_ = false, enfonce_ = false;
 };
 

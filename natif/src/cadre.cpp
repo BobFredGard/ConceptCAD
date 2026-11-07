@@ -1,3 +1,4 @@
+#include "theme.h"
 #include <wx/config.h>
 #include "cadre.h"
 #include "rendu_moteur.h"
@@ -61,7 +62,10 @@ const char* const PROP_CONGE_RAYON = "conge_rayon", * const PROP_CONGE_TANGENTES
 const char* const PROP_PROFONDEUR = "profondeur", * const PROP_OPERATION = "operation", * const PROP_ETENDUE = "etendue", * const PROP_DIRECTION = "direction", * const PROP_INVERSER = "inverser";
 
 wxString memoireVue() { return wxStandardPaths::Get().GetUserConfigDir() + wxFileName::GetPathSeparator() + L"ConceptCADNatif-vue.json"; }
-const wxColour C_SCENE(0x13, 0x15, 0x19), C_CARTE(0x2a, 0x2c, 0x30), C_CLAIR(0xf5, 0xf5, 0xf7), C_GRIS(0x98, 0x98, 0x9d);
+#define C_SCENE th(wxColour(0x13, 0x15, 0x19))
+#define C_CARTE th(wxColour(0x2a, 0x2c, 0x30))
+#define C_CLAIR th(wxColour(0xf5, 0xf5, 0xf7))
+#define C_GRIS th(wxColour(0x98, 0x98, 0x9d))
 wxFont policeArial(const wxWindow* w, double px, bool gras = false) {
   wxFontInfo i(wxSize(0, static_cast<int>(std::lround(px * w->GetDPIScaleFactor()))));
   i.FaceName("Arial");
@@ -145,7 +149,7 @@ Cadre::Cadre() : wxFrame(nullptr, wxID_ANY, L"ConceptCAD natif"), asmAnim_(this)
   panneauEsquisse_ = new PanneauEsquisse(centre_);
   bandeauEsquisse_ = new BandeauEsquisse(centre_);
   panneauEsquisse_->SetMinSize(wxSize(FromDIP(288) + wxSystemSettings::GetMetric(wxSYS_VSCROLL_X, this), -1));
-  centre_->SetBackgroundColour(wxColour(0x1c, 0x1c, 0x1e));
+  centre_->SetBackgroundColour(th(wxColour(0x1c, 0x1c, 0x1e)));
   barreHaute_ = new BarreHaute(centre_);
   ruban_ = new Ruban(centre_);
   carteDroite_ = new Carte(centre_, L"PARAMÈTRES", C_CARTE);
@@ -348,6 +352,7 @@ void Cadre::creerEnvironnement() {
   barreHaute_->surEnregistrer = [this] { enregistrer(); };
   barreHaute_->surEnregistrerSous = [this] { enregistrerSous(); };
   barreHaute_->surDossier = [this] { panneauDossier(); };
+  barreHaute_->surTheme = [this] { menuTheme(); };
   barreHaute_->surRegenerer = [this] {
     quitterConge();
     if (esquisseOuverte_ < 0) recalculer();
@@ -380,7 +385,7 @@ void Cadre::creerEnvironnement() {
   // L'arbre flottant
   carteArbre_ = new Carte(scene_, L"Arborescence", C_CARTE, true);
   rechercheArbre_ = new wxTextCtrl(carteArbre_, wxID_ANY, wxEmptyString, wxDefaultPosition, wxDefaultSize, wxBORDER_NONE);
-  rechercheArbre_->SetBackgroundColour(wxColour(0x33, 0x35, 0x39));
+  rechercheArbre_->SetBackgroundColour(th(wxColour(0x33, 0x35, 0x39)));
   rechercheArbre_->SetForegroundColour(C_CLAIR);
   rechercheArbre_->SetFont(policeArial(this, 12.5));
   rechercheArbre_->SetHint(L"Rechercher dans l'arbre (nom, type…)");
@@ -393,23 +398,23 @@ void Cadre::creerEnvironnement() {
     const auto ajouter = [&](const std::string& svg, const wxColour& c) { images->Add(iconeSvgComplete(svg, c, 16).GetBitmap(wxSize(cote, cote))); };
     const auto point = [&](const wxColour& c) { ajouter("<svg viewBox=\"0 0 24 24\"><circle cx=\"12\" cy=\"12\" r=\"6\" fill=\"currentColor\"/></svg>", c); };
     const auto trait = [&](const wxColour& c) { ajouter("<svg viewBox=\"0 0 24 24\"><rect x=\"3\" y=\"10\" width=\"18\" height=\"4\" rx=\"1\" fill=\"currentColor\"/></svg>", c); };
-    ajouter(iconeRubanCao(0), wxColour(0xff, 0x9f, 0x0a));  // 0 esquisse
-    ajouter(iconeRubanCao(1), wxColour(0x30, 0xd1, 0x58));  // 1 extrusion
-    ajouter(iconeRubanCao(1), wxColour(0xff, 0x45, 0x3a));  // 2 découpe
-    ajouter(iconeRubanCao(6), wxColour(0x0a, 0x84, 0xff));  // 3 corps
-    point(wxColour(0x40, 0x62, 0x8c));  // 4 plan XY
-    point(wxColour(0x3c, 0x84, 0x55));  // 5 plan XZ
-    point(wxColour(0x9c, 0x6c, 0x28));  // 6 plan YZ
-    point(wxColour(0x70, 0x70, 0x75));  // 7 repère
-    trait(wxColour(0xff, 0x6b, 0x6b));  // 8 axe X
-    trait(wxColour(0x5e, 0xdc, 0x7a));  // 9 axe Y
-    trait(wxColour(0x4d, 0xa3, 0xff));  // 10 axe Z
+    ajouter(iconeRubanCao(0), th(wxColour(0xff, 0x9f, 0x0a)));  // 0 esquisse
+    ajouter(iconeRubanCao(1), th(wxColour(0x30, 0xd1, 0x58)));  // 1 extrusion
+    ajouter(iconeRubanCao(1), th(wxColour(0xff, 0x45, 0x3a)));  // 2 découpe
+    ajouter(iconeRubanCao(6), th(wxColour(0x0a, 0x84, 0xff)));  // 3 corps
+    point(th(wxColour(0x40, 0x62, 0x8c)));  // 4 plan XY
+    point(th(wxColour(0x3c, 0x84, 0x55)));  // 5 plan XZ
+    point(th(wxColour(0x9c, 0x6c, 0x28)));  // 6 plan YZ
+    point(th(wxColour(0x70, 0x70, 0x75)));  // 7 repère
+    trait(th(wxColour(0xff, 0x6b, 0x6b)));  // 8 axe X
+    trait(th(wxColour(0x5e, 0xdc, 0x7a)));  // 9 axe Y
+    trait(th(wxColour(0x4d, 0xa3, 0xff)));  // 10 axe Z
     ajouter(iconeRubanCao(8), C_GRIS);  // 11 origine
     const char* const cube = "<svg viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.8\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M4 8l8-4 8 4v8l-8 4-8-4z\"/><path d=\"M4 8l8 4 8-4M12 12v8\"/></svg>";
-    ajouter(cube, wxColour(0xc8, 0xa8, 0x6a));  // 12 occurrence
-    ajouter(cube, wxColour(0x0a, 0x84, 0xff));  // 13 composant actif
-    ajouter("<svg viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\"><circle cx=\"12\" cy=\"12\" r=\"4\"/><path d=\"M12 3v4M12 17v4M3 12h4M17 12h4\"/></svg>", wxColour(0x98, 0x98, 0x9d));  // 14 liaison
-    ajouter("<svg viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\"><rect x=\"3\" y=\"3\" width=\"6\" height=\"6\" rx=\"1\"/><rect x=\"15\" y=\"3\" width=\"6\" height=\"6\" rx=\"1\"/><rect x=\"3\" y=\"15\" width=\"6\" height=\"6\" rx=\"1\"/><rect x=\"15\" y=\"15\" width=\"6\" height=\"6\" rx=\"1\"/></svg>", wxColour(0x98, 0x98, 0x9d));  // 15 répétition
+    ajouter(cube, th(wxColour(0xc8, 0xa8, 0x6a)));  // 12 occurrence
+    ajouter(cube, th(wxColour(0x0a, 0x84, 0xff)));  // 13 composant actif
+    ajouter("<svg viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\"><circle cx=\"12\" cy=\"12\" r=\"4\"/><path d=\"M12 3v4M12 17v4M3 12h4M17 12h4\"/></svg>", th(wxColour(0x98, 0x98, 0x9d)));  // 14 liaison
+    ajouter("<svg viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\"><rect x=\"3\" y=\"3\" width=\"6\" height=\"6\" rx=\"1\"/><rect x=\"15\" y=\"3\" width=\"6\" height=\"6\" rx=\"1\"/><rect x=\"3\" y=\"15\" width=\"6\" height=\"6\" rx=\"1\"/><rect x=\"15\" y=\"15\" width=\"6\" height=\"6\" rx=\"1\"/></svg>", th(wxColour(0x98, 0x98, 0x9d)));  // 15 répétition
     arbre_->AssignImageList(images);
   }
   arbre_->SetBackgroundColour(C_CARTE);
@@ -435,7 +440,7 @@ void Cadre::creerEnvironnement() {
   const struct {
     const wchar_t* nom;
     const char* icone;
-  } vueIcones[] = {{L"Rendu", nullptr}, {L"Rendu direct", nullptr}, {L"Réglages de la vue", nullptr}, {L"Vue initiale", "cadrer"}, {L"Annuler le mouvement de vue", "orbite"}};
+  } vueIcones[] = {{L"Rendu", nullptr}, {L"Rendu direct", nullptr}, {L"Réglages de la vue", nullptr}, {L"Vue initiale", "cadrer"}, {L"Mode d'orbite", "orbite"}};
   for (const auto& v : vueIcones) {
     auto* b = new BoutonEsquisse(scene_, wxID_ANY, v.nom, wxString(v.nom) + (wxString(v.nom).StartsWith(L"Annuler") ? PAS_ENCORE : L""), BoutonEsquisse::ENCADRE);
     b->fond(C_SCENE);
@@ -445,12 +450,18 @@ void Cadre::creerEnvironnement() {
   boutonsVue_[0]->iconeComplete(iconeVue(0), C_CLAIR);
   boutonsVue_[1]->iconeComplete(iconeVue(1), C_CLAIR);
   boutonsVue_[2]->titre(L"⚙");
-  for (size_t i = 0; i < boutonsVue_.size(); i++) {
-    if (i != 4) continue;
-    boutonsVue_[i]->disponible(false);
-    const wxString nom = boutonsVue_[i]->GetLabel();
-    boutonsVue_[i]->surClic = [this, nom] { indisponible(nom); };
-  }
+  const auto majOrbite = [this] {
+    boutonsVue_[4]->actif(optionsVue_.orbiteLibre);
+    boutonsVue_[4]->SetToolTip(optionsVue_.orbiteLibre ? L"Orbite LIBRE : la pièce tourne dans tous les sens — cliquer pour l'orbite contrainte (Z en haut)" : L"Orbite contrainte : Z reste en haut — cliquer pour l'orbite libre (tour complet)");
+  };
+  boutonsVue_[4]->surClic = [this, majOrbite] {
+    optionsVue_.orbiteLibre = !optionsVue_.orbiteLibre;
+    majOrbite();
+    majVueEnv();
+    memoriserVue();
+  };
+  CallAfter(majOrbite);
+  if (theme::iconesCouleur()) CallAfter([this] { ruban_->couleursFamilles(); });
   boutonsVue_[3]->surClic = [this] { vue_->vueInitiale(); };
   boutonsVue_[0]->surClic = [this] { changerAtelier(Atelier::RENDU); };
   boutonsVue_[1]->SetToolTip(L"Rendu direct : la vue rendue comme dans l'atelier RENDU (lumière, reflets, fond, matériaux de chaque pièce). Fond et ambiance se règlent dans la fenêtre RENDU.");
@@ -537,17 +548,17 @@ void Cadre::creerEnvironnement() {
   planVue_->surEtat = [this](const wxString& t) { etat(t); };
   planVue_->surVuesAutomatiques = [this](const plan::J& mep) { modifierStructure(doc_, [&](nlohmann::ordered_json& d) { d["mep"] = mep; }); };
   planVue_->directionCamera = [this](std::array<double, 3>& d) { return vue_->directionCamera(d); };
-  ficheFao_ = new VueDom(carteDroite_, wxColour(0x24, 0x26, 0x2b));
+  ficheFao_ = new VueDom(carteDroite_, th(wxColour(0x24, 0x26, 0x2b)));
   ficheFao_->Hide();
   carteDroite_->contenu()->Add(ficheFao_, 1, wxEXPAND);
   ficheFao_->surToucher = [this](long el, const std::string& s, const plan::J& v, bool c, bool m) { faoToucher(el, s, v, c, m); };
   // La barre de lecture d'usinage, en bas de la vue comme dans la page
   barreSim_ = new wxPanel(scene_);
-  barreSim_->SetBackgroundColour(wxColour(18, 20, 24));
+  barreSim_->SetBackgroundColour(th(wxColour(18, 20, 24)));
   barreSimDom_ = new VueDom(barreSim_, wxColour(18, 20, 24));
   barreSimDom_->surToucher = [this](long el, const std::string& s, const plan::J& v, bool c, bool m) { faoToucher(el, s, v, c, m); };
   tempsSim_ = new wxStaticText(barreSim_, wxID_ANY, wxEmptyString);
-  tempsSim_->SetForegroundColour(wxColour(220, 222, 226));
+  tempsSim_->SetForegroundColour(th(wxColour(220, 222, 226)));
   {
     auto* s = new wxBoxSizer(wxHORIZONTAL);
     s->Add(barreSimDom_, 1, wxEXPAND);
@@ -591,18 +602,7 @@ void Cadre::creerEnvironnement() {
     if (w != vue_) w->Raise();
   }
 
-  // La grille de propriétés, aux couleurs du panneau du navigateur
-  props_->SetMarginColour(C_CARTE);
-  props_->SetCaptionBackgroundColour(C_CARTE);
-  props_->SetCaptionTextColour(C_GRIS);
-  props_->SetCellBackgroundColour(C_CARTE);
-  props_->SetCellTextColour(C_CLAIR);
-  props_->SetCellDisabledTextColour(C_GRIS);
-  props_->SetEmptySpaceColour(C_CARTE);
-  props_->SetLineColour(wxColour(0x3a, 0x3a, 0x3d));
-  props_->SetSelectionBackgroundColour(wxColour(0x0a, 0x84, 0xff));
-  props_->SetSelectionTextColour(*wxWHITE);
-  props_->SetFont(policeArial(this, 12.5));
+  stylerProps();
   noteDroite_->SetForegroundColour(C_GRIS);
   noteDroite_->SetFont(policeArial(this, 12.5));
   boutonRendu_->disponible(false);
@@ -618,6 +618,21 @@ void Cadre::creerEnvironnement() {
     ::SetWindowRgn(scene_->GetHWND(), ::CreateRoundRectRgn(0, 0, t.x + 1, t.y + 1, r, r), TRUE);
     e.Skip();
   });
+}
+
+// La grille de propriétés, aux couleurs du panneau du navigateur
+void Cadre::stylerProps() {
+  props_->SetMarginColour(C_CARTE);
+  props_->SetCaptionBackgroundColour(C_CARTE);
+  props_->SetCaptionTextColour(C_GRIS);
+  props_->SetCellBackgroundColour(C_CARTE);
+  props_->SetCellTextColour(C_CLAIR);
+  props_->SetCellDisabledTextColour(C_GRIS);
+  props_->SetEmptySpaceColour(C_CARTE);
+  props_->SetLineColour(th(wxColour(0x3a, 0x3a, 0x3d)));
+  props_->SetSelectionBackgroundColour(th(wxColour(0x0a, 0x84, 0xff)));
+  props_->SetSelectionTextColour(*wxWHITE);
+  props_->SetFont(policeArial(this, 12.5));
 }
 
 // Les mêmes emplacements que dans le navigateur, à partir des bords de la scène
@@ -774,8 +789,8 @@ void Cadre::majVueEnv(bool apparences) {
   }
   vue_->options(o);
   const bool actif = o.env != "actuel";
-  boutonsVue_[1]->fond(actif ? wxColour(0xff, 0x9f, 0x0a) : C_SCENE);
-  boutonsVue_[1]->iconeComplete(iconeVue(1), actif ? wxColour(0x1c, 0x1c, 0x1e) : C_CLAIR);
+  boutonsVue_[1]->fond(actif ? th(wxColour(0xff, 0x9f, 0x0a)) : C_SCENE);
+  boutonsVue_[1]->iconeComplete(iconeVue(1), actif ? th(wxColour(0x1c, 0x1c, 0x1e)) : C_CLAIR);
   boutonsVue_[1]->Refresh();
 }
 
@@ -1340,7 +1355,7 @@ void Cadre::remplirFil() {
     e.i = -1;
     e.cg = c.id;
     e.ruban = c.kind == "axis" ? 8 : c.kind == "point" ? 9 : c.kind == "frame" ? 10 : 7;
-    e.couleur = wxColour(0xff, 0xd6, 0x0a);
+    e.couleur = th(wxColour(0xff, 0xd6, 0x0a));
     e.nom = tx(libelleConstruction(c));
     const int p = rangConstruction(doc_, c);
     e.apresMarque = marque >= 0 && 4 * p + 3 > 4 * marque;
@@ -1366,7 +1381,7 @@ void Cadre::remplirFil() {
     FilFonctions::Element e;
     e.i = static_cast<int>(i);
     e.ruban = 0;
-    e.couleur = wxColour(0xff, 0x9f, 0x0a);
+    e.couleur = th(wxColour(0xff, 0x9f, 0x0a));
     e.nom = (s.nom.empty() ? tx(s.id) : tx(s.nom)) + L" · esquisse";
     e.apresMarque = marque >= 0 && cle > 4 * marque;
     e.grise = !s.visible || e.apresMarque;
@@ -1774,14 +1789,14 @@ void Cadre::remplirPiece(const wxTreeItemId& racine) {
   }
   if (const int m = indiceMarque(); m >= 0) {  // le temps est bloqué : un clic rejoue tout
     const wxTreeItemId t = arbre_->AppendItem(racine, wxString::Format(L"⏱ Temps bloqué avant « %s » — %d fonction(s) rejouée(s) · clic = rejouer tout", libelleArbre(doc_.fonctions[m]), m), -1, -1, new LienArbre(false, -1, "temps"));
-    arbre_->SetItemTextColour(t, wxColour(0xe8, 0xb3, 0x4a));
+    arbre_->SetItemTextColour(t, th(wxColour(0xe8, 0xb3, 0x4a)));
   }
   for (size_t c = 0; c < doc_.corps.size(); c++) {
     const bool corpsActif = doc_.corps[c] == doc_.corpsActif;
     const wxString nomCorps = c < doc_.nomsCorps.size() && !doc_.nomsCorps[c].empty() ? tx(doc_.nomsCorps[c]) : wxString::Format(L"Corps %zu", c + 1);
     const wxTreeItemId corps = arbre_->AppendItem(racine, nomCorps, 3, -1, new LienArbre(false, -1, "", doc_.corps[c]));
     arbre_->SetItemBold(corps);
-    if (corpsActif) arbre_->SetItemTextColour(corps, wxColour(0x0a, 0x84, 0xff));
+    if (corpsActif) arbre_->SetItemTextColour(corps, th(wxColour(0x0a, 0x84, 0xff)));
     if (std::find(doc_.corpsMasques.begin(), doc_.corpsMasques.end(), doc_.corps[c]) != doc_.corpsMasques.end()) arbre_->SetItemTextColour(corps, grise);
     int nbDuCorps = 0;
     for (size_t i = 0; i < doc_.fonctions.size(); i++) {
@@ -3572,8 +3587,6 @@ bool Cadre::essaiEsquisse(const std::wstring& fichier, int rang, const std::wstr
     if (e.contains("nouveau")) nouveau();
     if (e.contains("nouvelleEsquisse")) creerEsquisse(e["nouvelleEsquisse"].get<std::string>());
     if (e.contains("quitterEsquisse")) quitterEsquisse();
-    if (e.contains("annuler")) annuler();
-    if (e.contains("retablir")) retablir();
     if (e.contains("menuFonction") || e.contains("menuEsquisse") || e.contains("menuCorps")) {
       essaiMenu_ = true;
       essaiChoix_ = e.value("choix", std::string());
@@ -3632,6 +3645,8 @@ bool Cadre::essaiEsquisse(const std::wstring& fichier, int rang, const std::wstr
       essaiMenu_ = false;
       n["etat"] = std::string(etatVue_->texte().utf8_str());
     }
+    if (e.contains("theme")) { essaiMenu_ = true; appliquerTheme(e["theme"].get<int>()); essaiMenu_ = false; }
+    if (e.contains("iconesCouleur")) { essaiMenu_ = true; appliquerIcones(e["iconesCouleur"].get<bool>()); essaiMenu_ = false; }
     if (e.contains("dossierProjets")) {
       nlohmann::ordered_json l = nlohmann::ordered_json::array();
       for (const ProjetDossier& p : projetsDuDossier(wxString::FromUTF8(e["dossierProjets"].get<std::string>()))) l.push_back(std::string(p.nom.utf8_str()));

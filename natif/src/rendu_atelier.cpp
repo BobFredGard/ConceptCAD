@@ -1,3 +1,4 @@
+#include "theme.h"
 #include "rendu_atelier.h"
 
 #include <wx/mstream.h>
@@ -438,7 +439,7 @@ wxRect AtelierRendu::cadreImage() const {
 
 void AtelierRendu::peindre(wxPaintEvent&) {
   wxAutoBufferedPaintDC dc(this);
-  dc.SetBackground(wxColour(0x16, 0x17, 0x1a));
+  dc.SetBackground(th(wxColour(0x16, 0x17, 0x1a)));
   dc.Clear();
   const wxRect c = cadreImage();
   const wxSize t = GetClientSize();
@@ -447,7 +448,7 @@ void AtelierRendu::peindre(wxPaintEvent&) {
     dc.StretchBlit(c.x, c.y, c.width, c.height, &mem, 0, 0, image_.GetWidth(), image_.GetHeight());
     mem.SelectObject(wxNullBitmap);
   }
-  dc.SetPen(wxPen(wxColour(0x3a, 0x3c, 0x42)));
+  dc.SetPen(wxPen(th(wxColour(0x3a, 0x3c, 0x42))));
   dc.SetBrush(*wxTRANSPARENT_BRUSH);
   dc.DrawRectangle(c.x - 1, c.y - 1, c.width + 2, c.height + 2);
   dc.SetFont(GetFont());
@@ -457,7 +458,7 @@ void AtelierRendu::peindre(wxPaintEvent&) {
     dc.DrawLabel(L"Aucune pièce à l'écran.", c, wxALIGN_CENTER);
     return;
   }
-  dc.SetTextForeground(erreur_.empty() ? TEXTE : wxColour(0xff, 0x6b, 0x60));
+  dc.SetTextForeground(erreur_.empty() ? TEXTE : th(wxColour(0xff, 0x6b, 0x60)));
   dc.DrawText(erreur_.empty() ? compteur_ : wxString::FromUTF8(erreur_), c.x, y);
   dc.SetTextForeground(DISCRET);
   const wxString indice = L"Glisser ou clic molette : tourner · clic droit : déplacer · clic droit sur une pièce : son matériau · molette : avancer / reculer · clic : mise au point — le cadre est l'image finale (16:9)";

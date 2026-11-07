@@ -1,3 +1,4 @@
+#include "theme.h"
 #include <BRepMesh_IncrementalMesh.hxx>
 #include "vue3d.h"
 #include <AIS_InteractiveObject.hxx>
@@ -223,7 +224,10 @@ occ::handle<Graphic3d_ShaderProgram> programmeDisque(const ParamSol& P) {
   return p;
 }
 
-Quantity_Color couleurFond() { return couleur(0x13, 0x15, 0x19); }  // le fond tel qu'il apparaît dans le navigateur, sol compris
+Quantity_Color couleurFond() {
+  const wxColour c = th(wxColour(0x13, 0x15, 0x19));
+  return couleur(c.Red(), c.Green(), c.Blue());
+}  // le fond tel qu'il apparaît dans le navigateur, sol compris
 
 Quantity_Color couleurHex(unsigned c) { return couleur((c >> 16) & 255, (c >> 8) & 255, c & 255); }
 

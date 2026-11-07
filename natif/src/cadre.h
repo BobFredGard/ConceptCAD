@@ -614,6 +614,11 @@ public:
   MiniParametres* miniParams_ = nullptr;
   wxBoxSizer* colonneFx_ = nullptr;
   wxString saisieDepart_;  // le texte proposé à l'ouverture de la saisie : le laisser tel quel ne change rien
+  // Les thèmes de couleur et le style d'icônes
+  void menuTheme();
+  void appliquerTheme(int t);
+  void appliquerIcones(bool couleur);
+  void stylerProps();
   wxString libelleArbre(const Fonction& f) const;
   int imageFonctionArbre(const Fonction& f);
   std::map<std::string, int> imagesArbre_;

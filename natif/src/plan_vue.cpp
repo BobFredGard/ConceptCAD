@@ -1,4 +1,5 @@
 // L'atelier Mise en plan : les éléments d'une planche (plan::dessiner) dessinés à l'écran, avec les mêmes styles que le navigateur.
+#include "theme.h"
 #include "plan_vue.h"
 
 #include <wx/base64.h>
@@ -307,7 +308,7 @@ PlanVue::PlanVue(wxWindow* parent) : wxWindow(parent, wxID_ANY, wxDefaultPositio
     if (!imageBonne_ || !image_.IsOk() || image_.GetWidth() != t.x || image_.GetHeight() != t.y) {
       image_ = wxBitmap(std::max(1, t.x), std::max(1, t.y), 24);
       wxMemoryDC m(image_);
-      m.SetBackground(wxBrush(bureau_));
+      m.SetBackground(wxBrush(theme::palette(theme::courant()).bureau));
       m.Clear();
       {
         std::unique_ptr<wxGraphicsContext> g(wxGraphicsContext::Create(m));
@@ -316,7 +317,7 @@ PlanVue::PlanVue(wxWindow* parent) : wxWindow(parent, wxID_ANY, wxDefaultPositio
       m.SelectObject(wxNullBitmap);
       imageBonne_ = true;
     }
-    dc.SetBackground(wxBrush(bureau_));
+    dc.SetBackground(wxBrush(theme::palette(theme::courant()).bureau));
     dc.Clear();
     dc.DrawBitmap(image_, decalage_.x, decalage_.y);
     peindreSelection(dc);
@@ -324,7 +325,7 @@ PlanVue::PlanVue(wxWindow* parent) : wxWindow(parent, wxID_ANY, wxDefaultPositio
     // Les onglets restent en place pendant qu'on déplace la feuille
     const int ho = hauteurOnglets();
     dc.SetPen(*wxTRANSPARENT_PEN);
-    dc.SetBrush(wxBrush(wxColour(0x1c, 0x1e, 0x23)));
+    dc.SetBrush(wxBrush(th(wxColour(0x1c, 0x1e, 0x23))));
     dc.DrawRectangle(0, 0, t.x, ho);
     onglets_.clear();
     const J& sheets = mep_.is_object() && mep_.contains("sheets") ? mep_["sheets"] : J();
@@ -344,10 +345,10 @@ PlanVue::PlanVue(wxWindow* parent) : wxWindow(parent, wxID_ANY, wxDefaultPositio
         const wxSize tl = dc.GetTextExtent(lib);
         const wxRect r(x, FromDIP(4), tl.x + FromDIP(18), ho - FromDIP(4));
         const bool actif = i == planche_;
-        dc.SetBrush(wxBrush(actif ? wxColour(0x2b, 0x2e, 0x34) : wxColour(0x1c, 0x1e, 0x23)));
-        dc.SetPen(wxPen(wxColour(0x3a, 0x3f, 0x47)));
+        dc.SetBrush(wxBrush(actif ? th(wxColour(0x2b, 0x2e, 0x34)) : th(wxColour(0x1c, 0x1e, 0x23))));
+        dc.SetPen(wxPen(th(wxColour(0x3a, 0x3f, 0x47))));
         dc.DrawRoundedRectangle(r.x, r.y, r.width, r.height + FromDIP(4), FromDIP(5));
-        dc.SetTextForeground(actif ? wxColour(0x4d, 0xa3, 0xff) : wxColour(0xc9, 0xcc, 0xd1));
+        dc.SetTextForeground(actif ? th(wxColour(0x4d, 0xa3, 0xff)) : th(wxColour(0xc9, 0xcc, 0xd1)));
         dc.DrawText(lib, r.x + FromDIP(9), r.y + (r.height - tl.y) / 2);
         onglets_.push_back(r);
         x = r.GetRight() + FromDIP(3);
@@ -355,10 +356,10 @@ PlanVue::PlanVue(wxWindow* parent) : wxWindow(parent, wxID_ANY, wxDefaultPositio
       actionsOnglets_.clear();
       for (const wchar_t* lab : {L"＋", L"⧉", L"🗑"}) {
         const wxRect r(x + FromDIP(2), FromDIP(5), FromDIP(24), ho - FromDIP(9));
-        dc.SetBrush(wxBrush(wxColour(0x2b, 0x2e, 0x34)));
-        dc.SetPen(wxPen(wxColour(0x3a, 0x3f, 0x47)));
+        dc.SetBrush(wxBrush(th(wxColour(0x2b, 0x2e, 0x34))));
+        dc.SetPen(wxPen(th(wxColour(0x3a, 0x3f, 0x47))));
         dc.DrawRoundedRectangle(r, FromDIP(4));
-        dc.SetTextForeground(wxColour(0xc9, 0xcc, 0xd1));
+        dc.SetTextForeground(th(wxColour(0xc9, 0xcc, 0xd1)));
         const wxSize tl = dc.GetTextExtent(lab);
         dc.DrawText(lab, r.x + (r.width - tl.x) / 2, r.y + (r.height - tl.y) / 2);
         actionsOnglets_.push_back(r);
@@ -705,7 +706,7 @@ void PlanVue::dialogueHachures() {
   auto* angle = new wxSpinCtrlDouble(&dlg, wxID_ANY, wxEmptyString, wxDefaultPosition, wxDefaultSize, wxSP_ARROW_KEYS, -360, 360, a0, 15);
   auto* echelle = new wxSpinCtrlDouble(&dlg, wxID_ANY, wxEmptyString, wxDefaultPosition, wxDefaultSize, wxSP_ARROW_KEYS, 0.1, 10, s0, 0.25);
   const std::string c0 = h.value("col", std::string());
-  auto* couleur = new wxColourPickerCtrl(&dlg, wxID_ANY, c0.empty() ? wxColour(0x33, 0x33, 0x33) : wxColour(wxString::FromUTF8(c0)));
+  auto* couleur = new wxColourPickerCtrl(&dlg, wxID_ANY, c0.empty() ? th(wxColour(0x33, 0x33, 0x33)) : wxColour(wxString::FromUTF8(c0)));
   auto* theme = new wxCheckBox(&dlg, wxID_ANY, L"couleur du thème");
   theme->SetValue(c0.empty());
   couleur->Bind(wxEVT_COLOURPICKER_CHANGED, [theme](wxColourPickerEvent&) { theme->SetValue(false); });
@@ -1876,7 +1877,7 @@ void PlanVue::peindreSelection(wxDC& dc) {
   if (!mep_.is_object() || !mep_.contains("sheets") || mep_["sheets"].empty()) return;
   J& sh = planche();
   if (grille_) {  // tous les 10 mm
-    dc.SetPen(wxPen(wxColour(0xb4, 0xb8, 0xc0)));
+    dc.SetPen(wxPen(th(wxColour(0xb4, 0xb8, 0xc0))));
     dc.SetBrush(*wxTRANSPARENT_BRUSH);
     const double gx = ox_ + decalage_.x, gy = oy_ + decalage_.y;
     for (double x = 0; x <= largeurPage_; x += 10) dc.DrawLine(static_cast<int>(gx + x * zoom_), static_cast<int>(gy), static_cast<int>(gx + x * zoom_), static_cast<int>(gy + hauteurPage_ * zoom_));
@@ -1933,7 +1934,7 @@ void PlanVue::peindreSelection(wxDC& dc) {
       dc.DrawCircle(X(r.x), Y(r.y), std::max(1, L(r.r)));
     }
     for (const auto& s : a.traits) {
-      const wxColour coul = s.mauvais ? wxColour(0xff, 0x45, 0x3a) : bleu;
+      const wxColour coul = s.mauvais ? th(wxColour(0xff, 0x45, 0x3a)) : bleu;
       dc.SetPen(wxPen(coul, FromDIP(2)));
       dc.DrawLine(X(s.x1), Y(s.y1), X(s.x2), Y(s.y2));
       if (s.fleche) {
@@ -1943,15 +1944,15 @@ void PlanVue::peindreSelection(wxDC& dc) {
     }
     if (a.aSnap) {
       const int h = FromDIP(5);
-      dc.SetPen(wxPen(a.snapAxe ? wxColour(0xff, 0x45, 0x3a) : wxColour(0xff, 0xd6, 0x0a), FromDIP(2)));
+      dc.SetPen(wxPen(a.snapAxe ? th(wxColour(0xff, 0x45, 0x3a)) : th(wxColour(0xff, 0xd6, 0x0a)), FromDIP(2)));
       dc.DrawRectangle(X(a.snapX) - h, Y(a.snapY) - h, 2 * h, 2 * h);
     }
     dc.SetFont(GetFont());
     dc.SetTextForeground(bleu);
     if (!a.texte.empty()) dc.DrawText(wxString::FromUTF8(a.texte), X(a.tx), Y(a.ty));
     for (const plan::BoutonCoupe& b : a.boutons) {
-      dc.SetBrush(wxBrush(b.act == "ok" ? wxColour(0x30, 0xd1, 0x58) : wxColour(0x2b, 0x2e, 0x34)));
-      dc.SetPen(wxPen(wxColour(0xc9, 0xcc, 0xd1)));
+      dc.SetBrush(wxBrush(b.act == "ok" ? th(wxColour(0x30, 0xd1, 0x58)) : th(wxColour(0x2b, 0x2e, 0x34))));
+      dc.SetPen(wxPen(th(wxColour(0xc9, 0xcc, 0xd1))));
       dc.DrawRoundedRectangle(X(b.x), Y(b.y), L(b.w), L(b.h), FromDIP(3));
       dc.SetTextForeground(*wxWHITE);
       const wxString lab = b.act == "ok" ? wxString(L"✓") : wxString(L"↶");
@@ -1978,7 +1979,7 @@ void PlanVue::peindreSelection(wxDC& dc) {
       for (size_t i = 0; i + 1 < l.pts.size(); i++) dc.DrawLine(PX(l.pts[i][0]), PY(l.pts[i][1]), PX(l.pts[i + 1][0]), PY(l.pts[i + 1][1]));
     }
     for (const auto& r : a.ronds) {
-      const wxColour coul = r.genre == 1 ? orange : r.genre == 2 ? wxColour(0xbf, 0x5a, 0xf2) : r.genre == 3 ? wxColour(0xff, 0x45, 0x3a) : wxColour(0x64, 0xd2, 0xff);
+      const wxColour coul = r.genre == 1 ? orange : r.genre == 2 ? th(wxColour(0xbf, 0x5a, 0xf2)) : r.genre == 3 ? th(wxColour(0xff, 0x45, 0x3a)) : th(wxColour(0x64, 0xd2, 0xff));
       dc.SetPen(wxPen(coul, FromDIP(1)));
       dc.SetBrush(r.genre == 1 ? wxBrush(orange) : *wxWHITE_BRUSH);
       dc.DrawCircle(PX(r.x), PY(r.y), std::max(FromDIP(3), static_cast<int>(r.r * zoom_)));
@@ -1991,7 +1992,7 @@ void PlanVue::peindreSelection(wxDC& dc) {
         dc.SetFont(f);
         const wxColour coul = q.choisi ? orange : bleu;
         dc.SetPen(wxPen(coul));
-        dc.SetBrush(q.choisi ? wxBrush(wxColour(0xff, 0xe6, 0xc2)) : wxBrush(wxColour(0xdc, 0xec, 0xff)));
+        dc.SetBrush(q.choisi ? wxBrush(th(wxColour(0xff, 0xe6, 0xc2))) : wxBrush(th(wxColour(0xdc, 0xec, 0xff))));
         dc.DrawRoundedRectangle(PX(q.x - q.w / 2), PY(q.y - q.h / 2), static_cast<int>(q.w * zoom_), static_cast<int>(q.h * zoom_), 2);
         const wxString t = wxString::FromUTF8(q.texte);
         const wxSize e = dc.GetTextExtent(t);
@@ -2004,7 +2005,7 @@ void PlanVue::peindreSelection(wxDC& dc) {
   }
   if (geste_.sorte == Geste::CADRE && geste_.commence) {
     const bool capture = geste_.curX < geste_.ox;
-    dc.SetPen(wxPen(capture ? wxColour(0x30, 0xd1, 0x58) : bleu, 1, capture ? wxPENSTYLE_SHORT_DASH : wxPENSTYLE_SOLID));
+    dc.SetPen(wxPen(capture ? th(wxColour(0x30, 0xd1, 0x58)) : bleu, 1, capture ? wxPENSTYLE_SHORT_DASH : wxPENSTYLE_SOLID));
     const double x0 = std::min(geste_.ox, geste_.curX), y0 = std::min(geste_.oy, geste_.curY);
     dc.DrawRectangle(static_cast<int>(ox + x0 * zoom_), static_cast<int>(oy + y0 * zoom_), static_cast<int>(std::abs(geste_.curX - geste_.ox) * zoom_), static_cast<int>(std::abs(geste_.curY - geste_.oy) * zoom_));
   }
@@ -2131,7 +2132,7 @@ void PlanVue::peindreRegles(wxDC& dc, const wxSize& t) {
     const wxSize tl = dc.GetTextExtent(lib);
     const wxRect r(t.x - tl.x - FromDIP(22), t.y - tl.y - FromDIP(10), tl.x + FromDIP(14), tl.y + FromDIP(4));
     dc.SetPen(*wxTRANSPARENT_PEN);
-    dc.SetBrush(wxBrush(wxColour(0x30, 0x33, 0x39)));
+    dc.SetBrush(wxBrush(th(wxColour(0x30, 0x33, 0x39))));
     dc.DrawRoundedRectangle(r, FromDIP(6));
     dc.SetTextForeground(*wxWHITE);
     dc.DrawText(lib, r.x + FromDIP(7), r.y + FromDIP(2));

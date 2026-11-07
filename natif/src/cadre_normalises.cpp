@@ -1,4 +1,5 @@
 // La fenêtre des composants normalisés et leur pose dans l'assemblage (stdDlg, stdInsert, stdHolePickAt de src/48-composants-normalises.js)
+#include "theme.h"
 #include <BRepAdaptor_Surface.hxx>
 #include <IntCurvesFace_ShapeIntersector.hxx>
 #include <gp_Lin.hxx>
@@ -84,7 +85,7 @@ class Apercu : public wxPanel {
  private:
   void peindre(wxPaintEvent&) {
     wxAutoBufferedPaintDC dc(this);
-    dc.SetBackground(wxBrush(wxColour(0x10, 0x10, 0x12)));
+    dc.SetBackground(wxBrush(th(wxColour(0x10, 0x10, 0x12))));
     dc.Clear();
     double x0 = 1e300, x1 = -1e300, y0 = 1e300, y1 = -1e300;
     const auto voir = [&](const std::vector<std::vector<std::array<double, 2>>>& L) {
@@ -106,24 +107,24 @@ class Apercu : public wxPanel {
       for (const auto& q : f) P.emplace_back(static_cast<int>(std::lround(ox + k * q[0])), static_cast<int>(std::lround(oy - k * q[1])));
       return P;
     };
-    dc.SetPen(wxPen(wxColour(0xc8, 0xcc, 0xd2), 1));
-    dc.SetBrush(wxBrush(wxColour(0x5a, 0x62, 0x6c)));
+    dc.SetPen(wxPen(th(wxColour(0xc8, 0xcc, 0xd2)), 1));
+    dc.SetBrush(wxBrush(th(wxColour(0x5a, 0x62, 0x6c))));
     for (const auto& f : a_.formes) {
       const auto P = points(f);
       if (P.size() >= 3) dc.DrawPolygon(static_cast<int>(P.size()), P.data());
     }
-    dc.SetBrush(wxBrush(wxColour(0x10, 0x10, 0x12)));
+    dc.SetBrush(wxBrush(th(wxColour(0x10, 0x10, 0x12))));
     for (const auto& f : a_.trous) {
       const auto P = points(f);
       if (P.size() >= 3) dc.DrawPolygon(static_cast<int>(P.size()), P.data());
     }
-    dc.SetPen(wxPen(wxColour(0xe8, 0xe8, 0xea), 1, wxPENSTYLE_SHORT_DASH));
+    dc.SetPen(wxPen(th(wxColour(0xe8, 0xe8, 0xea)), 1, wxPENSTYLE_SHORT_DASH));
     for (const auto& f : a_.caches) {
       const auto P = points(f);
       if (P.size() >= 2) dc.DrawLines(static_cast<int>(P.size()), P.data());
     }
     if (a_.axe) {
-      dc.SetPen(wxPen(wxColour(0xff, 0x9f, 0x0a), 1, wxPENSTYLE_DOT_DASH));
+      dc.SetPen(wxPen(th(wxColour(0xff, 0x9f, 0x0a)), 1, wxPENSTYLE_DOT_DASH));
       const int x = static_cast<int>(std::lround(ox));
       dc.DrawLine(x, FromDIP(4), x, T.y - FromDIP(4));
     }

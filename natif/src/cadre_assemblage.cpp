@@ -1,4 +1,5 @@
 // L'assemblage à l'écran : traduction de src/47-assemblage-interface.js, 48-assemblage-placement.js et de treeComps (42-arbre-modele.js).
+#include "theme.h"
 #include <BRepAlgoAPI_Common.hxx>
 #include <BRepBndLib.hxx>
 #include <BRepBuilderAPI_Transform.hxx>
@@ -207,7 +208,7 @@ void Cadre::asmMontrerChoix() {
   for (const auto& [id, ligne] : lignesOcc_) {
     if (!ligne.IsOk()) continue;
     const bool on = std::find(lot.begin(), lot.end(), id) != lot.end();
-    arbre_->SetItemBackgroundColour(ligne, on ? wxColour(0x0a, 0x4a, 0x8a) : wxColour(0x2a, 0x2c, 0x30));
+    arbre_->SetItemBackgroundColour(ligne, on ? th(wxColour(0x0a, 0x4a, 0x8a)) : th(wxColour(0x2a, 0x2c, 0x30)));
   }
 }
 
@@ -1127,7 +1128,7 @@ void Cadre::poserBoutonsPanneau(const std::vector<std::pair<wxString, std::funct
   for (const auto& [t, f] : L) {
     auto* b = new BoutonEsquisse(carteDroite_, wxID_ANY, t, t, BoutonEsquisse::ENCADRE);
     b->titre(t);
-    b->fond(wxColour(0x2a, 0x2c, 0x30));
+    b->fond(th(wxColour(0x2a, 0x2c, 0x30)));
     b->SetMinSize(FromDIP(wxSize(-1, 26)));
     const auto action = f;
     b->surClic = [this, action] { CallAfter([action] { action(); }); };

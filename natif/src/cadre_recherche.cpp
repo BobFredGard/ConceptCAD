@@ -1,5 +1,6 @@
 // Les deux recherches de la version navigateur : treeFilter (src/42-arbre-modele.js), la ligne reste si elle correspond
 // ou si une ligne plus profonde correspond ; mfCommands et mfSearchBox (src/97-interface-moderne.js), Ctrl+K.
+#include "theme.h"
 #include <wx/listbox.h>
 #include <wx/popupwin.h>
 #include <wx/textctrl.h>
@@ -66,7 +67,7 @@ void Cadre::filtrerArbre(const wxTreeItemId& racine) {
   retirer(lignesConstruction_);
   if (!trouve) {
     const wxTreeItemId l = arbre_->AppendItem(racine, L"Aucun résultat pour « " + wxString(filtreArbre_).Trim().Trim(false) + L" ».");
-    arbre_->SetItemTextColour(l, wxColour(0x8e, 0x8e, 0x93));
+    arbre_->SetItemTextColour(l, th(wxColour(0x8e, 0x8e, 0x93)));
   }
 }
 
@@ -95,6 +96,7 @@ std::vector<Cadre::CommandeCherchee> Cadre::commandesCherchees() {
   ajouter(L"Enregistrer", ici(barreHaute_->surEnregistrer));
   ajouter(L"Enregistrer sous…", ici(barreHaute_->surEnregistrerSous));
   ajouter(L"Dossier de projets…", ici(barreHaute_->surDossier));
+  for (int t = 0; t < theme::NB; t++) ajouter(wxString(L"Thème : ") + theme::palette(t).nom, [this, t] { appliquerTheme(t); });
   ajouter(L"Régénérer le modèle", ici(barreHaute_->surRegenerer));
   ajouter(L"Tout afficher (cadrer)", [this] { vue_->vueInitiale(); });
   ajouter(L"Réglages de visualisation", [this] { basculerFicheVue(); });
@@ -141,8 +143,8 @@ void Cadre::cmdDessiner() {
     popCmd_ = new wxPopupWindow(this, wxBORDER_SIMPLE);
     listeCmd_ = new wxListBox(popCmd_, wxID_ANY, wxDefaultPosition, wxDefaultSize, 0, nullptr, wxLB_SINGLE | wxBORDER_NONE);
     { wxFontInfo fi(wxSize(0, static_cast<int>(std::lround(12.5 * GetDPIScaleFactor())))); fi.FaceName("Arial"); listeCmd_->SetFont(wxFont(fi)); }
-    listeCmd_->SetBackgroundColour(wxColour(0x2c, 0x2c, 0x2e));
-    listeCmd_->SetForegroundColour(wxColour(0xe5, 0xe5, 0xea));
+    listeCmd_->SetBackgroundColour(th(wxColour(0x2c, 0x2c, 0x2e)));
+    listeCmd_->SetForegroundColour(th(wxColour(0xe5, 0xe5, 0xea)));
     listeCmd_->Bind(wxEVT_LISTBOX, [this](wxCommandEvent& e) {
       const int i = e.GetSelection();
       if (!cmdClavier_) cmdLancer(i);

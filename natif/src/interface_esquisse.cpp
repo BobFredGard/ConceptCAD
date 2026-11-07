@@ -1,3 +1,4 @@
+#include "theme.h"
 #include "interface_esquisse.h"
 
 #include <wx/dcbuffer.h>
@@ -11,8 +12,20 @@
 
 namespace {
 // Couleurs relevées sur l'écran du navigateur, thème nuit
-const wxColour C_FOND(0x1c, 0x1c, 0x1e), C_BARRE(0x2a, 0x2c, 0x30), C_PANNEAU(0x28, 0x29, 0x2c), C_RANG(0x33, 0x34, 0x36), C_BORD(0x3d, 0x3e, 0x42), C_BANDEAU(0x2a, 0x2a, 0x2d);
-const wxColour C_TEXTE(0xf5, 0xf5, 0xf7), C_DISCRET(0x98, 0x98, 0x9d), C_BLEU(0x0a, 0x84, 0xff), C_VERT(0x30, 0xd1, 0x58), C_JAUNE(0xff, 0xd6, 0x0a), C_ROUGE(0xff, 0x45, 0x3a), C_ORANGE(0xff, 0x9f, 0x0a), C_GRIS_C(0xc7, 0xc7, 0xcc);
+#define C_FOND th(wxColour(0x1c, 0x1c, 0x1e))
+#define C_BARRE th(wxColour(0x2a, 0x2c, 0x30))
+#define C_PANNEAU th(wxColour(0x28, 0x29, 0x2c))
+#define C_RANG th(wxColour(0x33, 0x34, 0x36))
+#define C_BORD th(wxColour(0x3d, 0x3e, 0x42))
+#define C_BANDEAU th(wxColour(0x2a, 0x2a, 0x2d))
+#define C_TEXTE th(wxColour(0xf5, 0xf5, 0xf7))
+#define C_DISCRET th(wxColour(0x98, 0x98, 0x9d))
+#define C_BLEU th(wxColour(0x0a, 0x84, 0xff))
+#define C_VERT th(wxColour(0x30, 0xd1, 0x58))
+#define C_JAUNE th(wxColour(0xff, 0xd6, 0x0a))
+#define C_ROUGE th(wxColour(0xff, 0x45, 0x3a))
+#define C_ORANGE th(wxColour(0xff, 0x9f, 0x0a))
+#define C_GRIS_C th(wxColour(0xc7, 0xc7, 0xcc))
 
 // src/49-esquisse-registre-icones.js : SK_ICONS
 const std::map<std::string, std::string>& ICONES() {
@@ -160,6 +173,9 @@ void BoutonEsquisse::icone(const std::string& corpsSvg, const wxColour& couleur)
   const std::string& corps = it == ICONES().end() ? corpsSvg : it->second;
   image_ = imageSvg(corps, couleur, 20);
   imageActive_ = imageSvg(corps, *wxWHITE, 20);
+  svgIcone_ = corps;
+  iconeEntiere_ = false;
+  couleurIcone_ = couleur;
   Refresh();
 }
 wxBitmapBundle iconeSvgComplete(const std::string& svg, const wxColour& c, int taille) {
@@ -171,6 +187,25 @@ wxBitmapBundle iconeSvgComplete(const std::string& svg, const wxColour& c, int t
 void BoutonEsquisse::iconeComplete(const std::string& svg, const wxColour& couleur) {
   image_ = iconeSvgComplete(svg, couleur, 20);
   imageActive_ = iconeSvgComplete(svg, *wxWHITE, 20);
+  svgIcone_ = svg;
+  iconeEntiere_ = true;
+  couleurIcone_ = couleur;
+  Refresh();
+}
+void BoutonEsquisse::couleurIcone(const wxColour& c) {
+  if (svgIcone_.empty()) return;
+  const std::string svg = svgIcone_;
+  if (iconeEntiere_) iconeComplete(svg, c);
+  else icone(svg, c);
+}
+void BoutonEsquisse::themeChange(int de, int vers) {
+  if (fond_.IsOk()) fond_ = theme::passer(fond_, de, vers);
+  if (!svgIcone_.empty()) {
+    const std::string svg = svgIcone_;
+    const wxColour c = theme::passer(couleurIcone_, de, vers);
+    if (iconeEntiere_) iconeComplete(svg, c);
+    else icone(svg, c);
+  }
   Refresh();
 }
 void BoutonEsquisse::fond(const wxColour& c) {
@@ -204,13 +239,13 @@ void BoutonEsquisse::peindre(wxPaintEvent&) {
   const bool enColonne = style_ == RUBAN;
   wxColour fond = wxTransparentColour, bord = wxTransparentColour;
   if (style_ == PRINCIPAL) {
-    fond = bord = disponible_ ? C_BLEU : wxColour(0x38, 0x3a, 0x3e);
+    fond = bord = disponible_ ? C_BLEU : th(wxColour(0x38, 0x3a, 0x3e));
   } else if (style_ == TEXTE || style_ == ENCADRE) {
-    fond = wxColour(0x38, 0x3a, 0x3e);
-    bord = wxColour(0x4a, 0x4c, 0x50);
+    fond = th(wxColour(0x38, 0x3a, 0x3e));
+    bord = th(wxColour(0x4a, 0x4c, 0x50));
   }
   if (actif_) fond = bord = C_BLEU;
-  else if (disponible_ && survol_) fond = style_ == PRINCIPAL ? assombri(C_BLEU, 0.85, *wxWHITE) : wxColour(0x44, 0x46, 0x4b);
+  else if (disponible_ && survol_) fond = style_ == PRINCIPAL ? assombri(C_BLEU, 0.85, *wxWHITE) : th(wxColour(0x44, 0x46, 0x4b));
   if (fond.Alpha() != 0) {
     g->SetBrush(g->CreateBrush(wxBrush(fond)));
     g->SetPen(bord.Alpha() != 0 ? g->CreatePen(wxGraphicsPenInfo(bord, 1)) : wxNullGraphicsPen);
@@ -235,7 +270,7 @@ void BoutonEsquisse::peindre(wxPaintEvent&) {
     const double taille = enColonne ? 10.5 : 12.5;
     const bool gras = style_ == PRINCIPAL || style_ == PASTILLE;
     mesurer(this, titre_, taille, gras, &L, &H);
-    const wxColour c = !disponible_ ? (style_ == PRINCIPAL ? wxColour(0xc8, 0xd8, 0xee) : wxColour(0x68, 0x6a, 0x70)) : style_ == PRINCIPAL || actif_ ? *wxWHITE : C_TEXTE;
+    const wxColour c = !disponible_ ? (style_ == PRINCIPAL ? th(wxColour(0xc8, 0xd8, 0xee)) : th(wxColour(0x68, 0x6a, 0x70))) : style_ == PRINCIPAL || actif_ ? *wxWHITE : C_TEXTE;
     ecrire(dc, this, titre_, (t.x - L) / 2, enColonne ? t.y - H - 3 : (t.y - H) / 2, taille, c, gras);
   }
 }
@@ -383,9 +418,9 @@ BarreEsquisse::BarreEsquisse(wxWindow* parent) : wxWindow(parent, 2009, wxDefaul
     g->Scale(f, f);
     const wxSize t = ToDIP(GetClientSize());
     g->SetBrush(g->CreateBrush(wxBrush(C_BARRE)));
-    g->SetPen(g->CreatePen(wxGraphicsPenInfo(wxColour(0x3a, 0x3a, 0x3d), 1)));
+    g->SetPen(g->CreatePen(wxGraphicsPenInfo(th(wxColour(0x3a, 0x3a, 0x3d)), 1)));
     g->DrawRoundedRectangle(12.5, 8.5, t.x - 25, t.y - 13, 12);
-    g->SetPen(g->CreatePen(wxGraphicsPenInfo(wxColour(0x44, 0x46, 0x4a), 1)));
+    g->SetPen(g->CreatePen(wxGraphicsPenInfo(th(wxColour(0x44, 0x46, 0x4a)), 1)));
     for (int x : separateurs_) {
       const int y = (x >> 16) & 0x7fff;
       g->StrokeLine(x & 0xffff, y, x & 0xffff, y + 34);
@@ -460,7 +495,7 @@ PanneauEsquisse::PanneauEsquisse(wxWindow* parent) : wxScrolledWindow(parent, 20
   champs_.resize(5);
   for (size_t i = 0; i < champs_.size(); i++) {
     auto* c = new wxTextCtrl(this, wxID_ANY, wxEmptyString, wxDefaultPosition, wxDefaultSize, wxTE_PROCESS_ENTER | wxTE_RIGHT);
-    c->SetBackgroundColour(wxColour(0x1e, 0x1f, 0x22));
+    c->SetBackgroundColour(th(wxColour(0x1e, 0x1f, 0x22)));
     c->SetForegroundColour(C_TEXTE);
     c->SetFont(policeUI(12));
     c->Hide();
@@ -849,7 +884,7 @@ void PanneauEsquisse::peindre(wxPaintEvent&) {
   {
     const wxSize t = ToDIP(GetClientSize());
     g->SetBrush(g->CreateBrush(wxBrush(C_PANNEAU)));
-    g->SetPen(g->CreatePen(wxGraphicsPenInfo(wxColour(0x3a, 0x3a, 0x3d), 1)));
+    g->SetPen(g->CreatePen(wxGraphicsPenInfo(th(wxColour(0x3a, 0x3a, 0x3d)), 1)));
     g->DrawRoundedRectangle(0.5, 0.5, t.x - 1, t.y - 1, 12);
   }
   if (!s_) return;
@@ -867,8 +902,8 @@ void PanneauEsquisse::peindre(wxPaintEvent&) {
     }
     for (const Action& a : r.actions) {
       if (!a.bouton) continue;
-      g->SetBrush(g->CreateBrush(wxBrush(a.r.Contains(survol_) ? wxColour(0x44, 0x46, 0x4b) : wxColour(0x38, 0x3a, 0x3e))));
-      g->SetPen(g->CreatePen(wxGraphicsPenInfo(wxColour(0x4a, 0x4c, 0x50), 1)));
+      g->SetBrush(g->CreateBrush(wxBrush(a.r.Contains(survol_) ? th(wxColour(0x44, 0x46, 0x4b)) : th(wxColour(0x38, 0x3a, 0x3e)))));
+      g->SetPen(g->CreatePen(wxGraphicsPenInfo(th(wxColour(0x4a, 0x4c, 0x50)), 1)));
       g->DrawRoundedRectangle(a.r.x + 0.5, a.r.y + 0.5, a.r.width - 1, a.r.height - 1, 6);
     }
   }
@@ -939,8 +974,8 @@ BandeauEsquisse::BandeauEsquisse(wxWindow* parent) : wxWindow(parent, 2008, wxDe
       g->DrawEllipse(x, t.y / 2.0 - 5.5, 11, 11);
       x += 18;
     };
-    if (texte.StartsWith(L"⚫ ", &texte)) pastille(wxColour(0x3a, 0x3a, 0x3e), wxColour(0x6a, 0x6a, 0x70));
-    else if (texte.StartsWith(L"🔵 ", &texte)) pastille(C_BLEU, wxColour(0x4f, 0xa8, 0xff));
+    if (texte.StartsWith(L"⚫ ", &texte)) pastille(th(wxColour(0x3a, 0x3a, 0x3e)), th(wxColour(0x6a, 0x6a, 0x70)));
+    else if (texte.StartsWith(L"🔵 ", &texte)) pastille(C_BLEU, th(wxColour(0x4f, 0xa8, 0xff)));
     g.reset();
     double H;
     mesurer(this, texte, 12, false, nullptr, &H);
