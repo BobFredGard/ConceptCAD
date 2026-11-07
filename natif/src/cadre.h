@@ -480,7 +480,8 @@ public:
   VueDom* outilsFao_ = nullptr;
   wxFrame* fenetreOutilsFao_ = nullptr;
   bool faoOuvert_ = false, faoSale_ = false;
-  int faoEnCours_ = 0, faoAbsentes_ = 0, faoMasquees_ = 0;
+  int faoEnCours_ = 0, faoAbsentes_ = 0, faoMasquees_ = 0, faoSurvolDessine_ = -1;
+  wxLongLong faoDernierSurvol_ = 0;
   std::string faoTexteOuvert_, faoSigTraces_;
   std::wstring faoSortieEssai_;
   Carte* carteDroite_ = nullptr;

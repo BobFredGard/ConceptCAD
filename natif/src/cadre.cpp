@@ -608,6 +608,7 @@ void Cadre::montrerPlan() {
 
 void Cadre::montrerAtelier() {
   const bool enEsquisse = esquisseOuverte_ >= 0;
+  if (atelier_ != Atelier::FAO) vue_->faoModeChoix("");
   ruban_->Show(!enEsquisse && atelier_ != Atelier::RENDU);
   const bool cao = atelier_ == Atelier::CAO;
   props_->Show(cao);

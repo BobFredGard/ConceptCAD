@@ -161,11 +161,13 @@ class Vue3D : public wxWindow {
   // L'atelier FAO prend les clics de la vue, avec la caméra
   struct ClicFao {
     int x = 0, y = 0, w = 0, h = 0, bouton = 0;
-    bool ctrl = false, maj = false, persp = true;
+    bool ctrl = false, maj = false, persp = true, survol = false;
     double proj[16], vue[16], pres = 0.1, loin = 1000;
   };
   std::function<bool(const ClicFao&)> surClicFao;
-  void cliquerFao(const wxPoint& p, int bouton, bool ctrl, bool maj);
+  bool faoSurvol = false;
+  void cliquerFao(const wxPoint& p, int bouton, bool ctrl, bool maj, bool survol = false);
+  void faoModeChoix(const std::string& mode);  // "chaine" : le survol allume les arêtes ; "point" : curseur en croix
   int essaiCtrl = -1, essaiMaj = -1;  // l'essai automatique tient les touches à la place de l'utilisateur
 
  private:

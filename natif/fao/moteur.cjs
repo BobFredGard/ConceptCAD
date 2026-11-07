@@ -122,7 +122,8 @@ async function demarrer() {
     function __natifVue(){
       const r=faoRoot();
       try{faoRenderTree();}catch(e){}
-      return {active:r.activeSetupId,prev:!!faoPrevOn,perime:!!faoPrevStale,rap:faoViewerRap,message:String(faceEl&&faceEl.textContent||''),
+      const choix=faoChainMode?'chaine':((faoPlanePick||faoZPlanePick||(typeof faoHolePick!=='undefined'&&faoHolePick)||(typeof faoFramePick!=='undefined'&&faoFramePick)||(typeof faoFacePick!=='undefined'&&faoFacePick))?'point':'');
+      return {choix:choix,survol:(faoChainHover===null||faoChainHover===undefined)?-1:faoChainHover,active:r.activeSetupId,prev:!!faoPrevOn,perime:!!faoPrevStale,rap:faoViewerRap,message:String(faceEl&&faceEl.textContent||''),
         calcul:!!(faoGenBtnEl&&faoGenBtnEl.disabled),
         arbreEl:document.getElementById('faoTree'),ficheEl:document.getElementById('props'),outilsEl:(faoToolsWin&&faoToolsWin.style.display!=='none')?faoToolsWin:null};
     }
@@ -135,7 +136,23 @@ async function demarrer() {
       if(!g)return O;
       g.updateWorldMatrix(true,true);
       const v=new THREE.Vector3();
+      const chaine=function(gr){
+        const l=gr.children[0],segs=l&&l.userData.segs,se=l&&l.userData.segEdge;
+        if(!segs||!se||!faoChainMode)return;
+        gr.updateWorldMatrix(true,true);
+        const groupes=new Map(),tout=[];
+        const st=function(i){const seed=faoChainIsSeed(i),sl=faoChainIsSel(i),hv=faoChainHover===i;return {c:seed?0xffd60a:(sl?0xff453a:(hv?0xffd60a:0x0a84ff)),w:(seed||sl||hv)?FAO_CHAIN_WH:FAO_CHAIN_W};};
+        const memo=new Map();
+        for(let k=0;k<se.length;k++){
+          const i=se[k];let s=memo.get(i);if(!s){s=st(i);memo.set(i,s);}
+          const cle=s.c+'|'+s.w;let g=groupes.get(cle);if(!g){g={c:s.c,w:s.w,a:[]};groupes.set(cle,g);}
+          for(let q=0;q<2;q++){v.set(segs[k*6+q*3],segs[k*6+q*3+1],segs[k*6+q*3+2]).applyMatrix4(gr.matrixWorld);g.a.push(v.x,v.y,v.z);tout.push(v.x,v.y,v.z);}
+        }
+        O.push({k:'S',nom:'faoChainHalo',a:tout,c:0x08080d,al:1,pl:FAO_CHAIN_W+4,dep:true,ancre:null});
+        groupes.forEach(function(g){O.push({k:'S',nom:'faoChainEdges',a:g.a,c:g.c,al:1,pl:g.w,dep:true,ancre:null});});
+      };
       const voir=function(o){
+        if(o.name==='faoChainEdges'){chaine(o);return;}
         if(o===faoPrevGroup||o.visible===false||o.name==='faoViewerTool'||o.name==='faoMatter'||o.name==='faoViewerLine')return;
         const m=o.material,ge=o.geometry,p=ge&&ge.attributes&&ge.attributes.position;
         const mat=Array.isArray(m)?m[0]:m;
@@ -166,6 +183,11 @@ async function demarrer() {
       (j.ops||[]).forEach(function(op){const h=faoOpMovesHit(op);o.push([op.id,op.on!==false,op.hidden===true,op.stale===true,h?h.key:'',h&&h.mv?h.mv.length:0]);});
       return JSON.stringify([j.id,j.stock,j.origin,j.orient,j.wcs,o,faoPrevOn,faoViewerRap,!!faoVw]);
     }
+    // Comme la page avec son cache persistant : une fiche ou une estimation ne calcule jamais un parcours absent
+    faoMovesStat=function(op,job){
+      if(op&&op.type==='drill'){try{return faoOpMoves(op,job);}catch(e){return null;}}
+      return faoOpMovesTry(op,job)||null;
+    };
     faoSkOpen=function(id){
       const f=faoSkFind(id);if(!f||faoSkEditId)return false;
       f.sk.fao=f.setup.id;faoSkEditId=id;
@@ -281,7 +303,7 @@ let baseMoves = null;
 function vue() {
   const v = vm.runInContext('__natifVue()', ctx);
   const barre = vm.runInContext('__natifBarre()', ctx);
-  return { active: v.active, prev: v.prev, perime: v.perime, rap: v.rap, message: v.message, calcul: v.calcul, sig: vm.runInContext('__natifSig()', ctx), arbre: DOM.decrire(v.arbreEl), fiche: DOM.decrire(v.ficheEl), outils: v.outilsEl ? DOM.decrire(v.outilsEl) : null, sim: !!barre, barre: barre ? DOM.decrire(barre) : null };
+  return { choix: v.choix, survol: v.survol, active: v.active, prev: v.prev, perime: v.perime, rap: v.rap, message: v.message, calcul: v.calcul, sig: vm.runInContext('__natifSig()', ctx), arbre: DOM.decrire(v.arbreEl), fiche: DOM.decrire(v.ficheEl), outils: v.outilsEl ? DOM.decrire(v.outilsEl) : null, sim: !!barre, barre: barre ? DOM.decrire(barre) : null };
 }
 // Les traces en nombres bruts dans un fichier : Perçages en a déjà plusieurs Mo
 function tracesFichier(a) {

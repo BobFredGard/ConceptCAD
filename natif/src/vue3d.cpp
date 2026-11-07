@@ -543,10 +543,16 @@ void Vue3D::surRelache(wxMouseEvent& e) {
   cliquerEn(e.GetPosition());
 }
 
-void Vue3D::cliquerFao(const wxPoint& p, int bouton, bool ctrl, bool maj) {
+void Vue3D::faoModeChoix(const std::string& mode) {
+  faoSurvol = mode == "chaine";
+  SetCursor(mode.empty() ? wxNullCursor : wxCursor(mode == "point" ? wxCURSOR_CROSS : wxCURSOR_HAND));
+}
+
+void Vue3D::cliquerFao(const wxPoint& p, int bouton, bool ctrl, bool maj, bool survol) {
   faoPrisClic_ = false;
   if (!surClicFao) return;
   ClicFao c;
+  c.survol = survol;
   c.x = p.x;
   c.y = p.y;
   const wxSize t = GetClientSize();
@@ -565,7 +571,8 @@ void Vue3D::cliquerFao(const wxPoint& p, int bouton, bool ctrl, bool maj) {
     c.proj[i] = P.GetData()[i];
     c.vue[i] = O.GetData()[i];
   }
-  faoPrisClic_ = surClicFao(c);
+  const bool pris = surClicFao(c);
+  if (!survol) faoPrisClic_ = pris;
 }
 
 void Vue3D::droitEn(const wxPoint& p) {
@@ -1047,6 +1054,8 @@ void Vue3D::surMouvement(wxMouseEvent& e) {
     vue_->Pan(p.x - precedent_.x, precedent_.y - p.y);
     precedent_ = p;
     majTailles();
+  } else if (faoSurvol) {
+    cliquerFao(p, 0, false, false, true);
   } else {
     if (!placer_) preparerSelection();
     contexte_->MoveTo(p.x, p.y, vue_, true);
@@ -1243,7 +1252,7 @@ class ObjetSceneFao : public AIS_InteractiveObject {
     // Les traits translucides de la page : même teinte, mêlée au fond
     const double al = o_.alpha;
     const Quantity_Color cl(c.Red() * al + 0.08 * (1 - al), c.Green() * al + 0.08 * (1 - al), c.Blue() * al + 0.09 * (1 - al), Quantity_TOC_RGB);
-    g->SetGroupPrimitivesAspect(new Graphic3d_AspectLine3d(cl, Aspect_TOL_SOLID, 1.0));
+    g->SetGroupPrimitivesAspect(new Graphic3d_AspectLine3d(cl, Aspect_TOL_SOLID, std::max(1.0, o_.taille)));
     if (o_.sorte == 'S') {
       occ::handle<Graphic3d_ArrayOfSegments> S = new Graphic3d_ArrayOfSegments(n);
       for (int i = 0; i < n; i++) S->AddVertex(V(i));

@@ -90,6 +90,8 @@ void Cadre::faoRafraichir() {
 }
 
 void Cadre::faoAppliquer(const plan::J& r) {
+  vue_->faoModeChoix(r.value("choix", std::string()));
+  faoSurvolDessine_ = r.value("survol", -1);
   arbreFao_->montrer(r.value("arbre", plan::J()));
   ficheFao_->montrer(r.value("fiche", plan::J()));
   faoFenetreOutils(r.contains("outils") ? r["outils"] : plan::J());
@@ -248,6 +250,8 @@ void Cadre::faoTraces(const std::string& rapides) {
 
 bool Cadre::faoClic(const Vue3D::ClicFao& c) {
   if (atelier_ != Atelier::FAO || !moteurFao_ || !faoOuvert_) return false;
+  // Le survol ne s'empile jamais : le prochain mouvement remplace celui qu'on n'a pas eu le temps de traiter
+  if (c.survol && (faoEnCours_ > 0 || wxGetLocalTimeMillis() - faoDernierSurvol_ < 65)) return true;
   plan::J a = {{"x", c.x}, {"y", c.y}, {"w", c.w}, {"h", c.h}, {"bouton", c.bouton}, {"ctrl", c.ctrl}, {"maj", c.maj}, {"persp", c.persp}, {"near", c.pres}, {"far", c.loin}};
   plan::J p = plan::J::array(), v = plan::J::array();
   for (int i = 0; i < 16; i++) {
@@ -256,6 +260,19 @@ bool Cadre::faoClic(const Vue3D::ClicFao& c) {
   }
   a["proj"] = p;
   a["vue"] = v;
+  if (c.survol) {
+    faoDernierSurvol_ = wxGetLocalTimeMillis();
+    a["sortes"] = plan::J::array({"pointermove"});
+    faoEnCours_++;
+    moteurFao_->commande("souris", a, [this](bool ok, const plan::J& r, const std::string&) {
+      faoEnCours_--;
+      if (ok && atelier_ == Atelier::FAO && r.value("survol", -1) != faoSurvolDessine_) {
+        faoSurvolDessine_ = r.value("survol", -1);
+        faoScene();
+      }
+    });
+    return true;
+  }
   faoEnCours_++;
   faoSale_ = true;
   moteurFao_->commande("souris", a, [this](bool ok, const plan::J& r, const std::string& err) {
@@ -513,6 +530,7 @@ void Cadre::faoEssai(const plan::J& e) {
   if (e.contains("champ")) ficheFao_->essaiChamp(e["champ"].get<std::string>(), e["valeur"]);
   if (e.contains("touche")) faoTouche(e["touche"].get<std::string>(), e.value("ctrl", false), e.value("maj", false));
   if (e.contains("action")) faoAction(e["action"].get<std::string>(), e.value("type", std::string()));
+  if (e.contains("survol3d")) vue_->cliquerFao(wxPoint(e["survol3d"][0].get<int>(), e["survol3d"][1].get<int>()), 0, false, false, true);
   if (e.contains("clic3d")) vue_->cliquerFao(wxPoint(e["clic3d"][0].get<int>(), e["clic3d"][1].get<int>()), 0, false, false);
   if (e.contains("pause")) {
     const wxLongLong fin = wxGetLocalTimeMillis() + e["pause"].get<long>();
