@@ -109,7 +109,10 @@ class FilFonctions : public wxWindow {
   };
   explicit FilFonctions(wxWindow* parent);
   void montrer(const std::vector<Element>& e, int nbFonctions);
+  const std::vector<Element>& liste() const { return elements_; }
   std::function<void(const Element&)> surClic, surDouble, surDroit;
+  // Glisser une fonction : l'interstice où elle est déposée, dans la liste des éléments
+  std::function<void(const std::vector<Element>&, int source, int interstice)> surDepot;
   std::function<void(int)> surMarqueur;  // 0 début, 1 précédent, 2 suivant, 3 fin
   std::function<void()> surFilm;
   std::function<void(const wxString&)> surIndisponible;
@@ -122,6 +125,8 @@ class FilFonctions : public wxWindow {
   std::vector<Element> elements_;
   std::map<std::string, wxBitmap> images_;
   int nb_ = 0, survol_ = -1, debut_ = 0;
+  int tire_ = -1, tireX0_ = 0, depot_ = -1;  // le glisser d'une fonction
+  int interstice(const wxPoint& p) const;
 };
 
 // Ligne de texte sur la vue : l'état du moment, comme en bas de la vue du navigateur

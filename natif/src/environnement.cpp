@@ -550,6 +550,11 @@ FilFonctions::FilFonctions(wxWindow* parent) : wxWindow(parent, 2007, wxDefaultP
       g->DrawRectangle(99, yc - 5, 2, 10);
       g->SetBrush(g->CreateBrush(wxBrush(th(wxColour(0x68, 0x6a, 0x70)))));
       g->DrawRoundedRectangle(113, yc - 4, 12, 9, 1.5);
+      if (depot_ >= 0) {  // le trait de dépôt (tlbD)
+        g->SetPen(*wxTRANSPARENT_PEN);
+        g->SetBrush(g->CreateBrush(wxBrush(th(wxColour(0x0a, 0x84, 0xff)))));
+        g->DrawRectangle(FIL_X0 + (depot_ - debut_) * FIL_PAS - 3, yi - 2, 2, FIL_L + 4);
+      }
     }
     const wxString n = wxString::Format(L"%d fonction(s)", nb_);
     ecrire(dc, this, n, t.x - 10 - mesure(this, n, 11).x, t.y / 2.0 - 7, 11, C_DISCRET);
@@ -563,7 +568,25 @@ FilFonctions::FilFonctions(wxWindow* parent) : wxWindow(parent, 2007, wxDefaultP
     bornerDebut();
     e.Skip();
   });
+  Bind(wxEVT_LEFT_UP, [this](wxMouseEvent&) {
+    if (HasCapture()) ReleaseMouse();
+    const int source = tire_, gap = depot_;
+    tire_ = -1, depot_ = -1;
+    if (source < 0 || gap < 0) return;
+    Refresh();
+    const std::vector<Element> L = elements_;
+    if (surDepot) CallAfter([this, L, source, gap] { surDepot(L, source, gap); });
+  });
+  Bind(wxEVT_MOUSE_CAPTURE_LOST, [this](wxMouseCaptureLostEvent&) {
+    tire_ = -1, depot_ = -1;
+    Refresh();
+  });
   Bind(wxEVT_MOTION, [this](wxMouseEvent& e) {
+    if (tire_ >= 0 && e.LeftIsDown() && (depot_ >= 0 || std::abs(e.GetPosition().x - tireX0_) >= FromDIP(5))) {
+      depot_ = interstice(e.GetPosition());
+      Refresh();
+      return;
+    }
     const int s = sous(e.GetPosition());
     if (s != survol_) {
       survol_ = s;
@@ -579,6 +602,10 @@ FilFonctions::FilFonctions(wxWindow* parent) : wxWindow(parent, 2007, wxDefaultP
     const int s = sous(e.GetPosition());
     if (s >= 0) {
       const Element el = elements_[s];
+      if (el.estFonction) {
+        tire_ = s, tireX0_ = e.GetPosition().x, depot_ = -1;
+        CaptureMouse();
+      }
       if (surClic) CallAfter([this, el] { surClic(el); });
     } else if (const int x = ToDIP(e.GetPosition()).x; x < FIL_X0) {
       // Les quatre boutons du marqueur, puis le film
@@ -601,6 +628,11 @@ FilFonctions::FilFonctions(wxWindow* parent) : wxWindow(parent, 2007, wxDefaultP
       if (surDouble) CallAfter([this, el] { surDouble(el); });
     }
   });
+}
+
+int FilFonctions::interstice(const wxPoint& p) const {
+  const int g = (ToDIP(p).x - FIL_X0 + FIL_PAS / 2) / FIL_PAS + debut_;
+  return std::max(debut_, std::min(g, static_cast<int>(elements_.size())));
 }
 
 int FilFonctions::sous(const wxPoint& p) const {

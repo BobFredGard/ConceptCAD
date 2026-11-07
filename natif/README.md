@@ -380,3 +380,19 @@ La vue reprend les réglages de la scène Three.js (`src/10-scene-3d.js`) : mati
 - Mesuré : environ 60 images par seconde sur une plaque de 900 trous ; 11 à 12 Mo de plus en usage réel, environ 45 Mo de plus en mémoire réservée.
 - Le reflet s'estompe avec le calcul du navigateur : point du sol percé par le rayon de l'œil, fondu selon sa distance au centre de la pièce.
 - Écarts connus : les côtés sont un peu moins lumineux ; le cube a des faces très sombres vu par-dessous.
+
+## Ce qui s'est ajouté jusqu'au 07/11/2026
+
+- **FAO** : le calcul reste le JavaScript validé de V0.69.0, lancé par `natif/fao/moteur.cjs` dans Node. Rien n'est traduit tant qu'il n'y a pas de preuve d'identité avec `tests/parcours/reference.json`.
+- **Rendu** : rendu par lancer de rayons, matériau et couleur par occurrence d'assemblage, archive des calques (beauté, masque, profondeur, normales, identifiants, ombre).
+- **Dériver** : paramètres et corps d'un autre fichier, suivi de la source, source déplacée, rupture du lien.
+- **Chanfrein** à deux distances et à distance + angle ; modifier un congé ou un chanfrein déjà fait.
+- **Recherches** : dans l'arbre et Ctrl+K pour les commandes, y compris « Thème : … ».
+- **Esquisses liées** : jusqu'à la face suivie par son nom, projetées nommées (`nommerProjections`, une fois par document, avant tout changement).
+- **Répétition suivant une courbe** (`profil_guide.*`, mode `path` de `repetitions.cpp`).
+- **Vue cavalière** avec son image dans la mise en plan.
+- **Film de construction** en MP4 (`cadre_film.cpp`, `video_mp4.*`), **dossier de projets** (`cadre_dossier.cpp`).
+- **Thèmes** (`theme.*`, `cadre_theme.cpp`) : `th(couleur Nuit)` traduit vers le thème courant. En Nuit c'est l'identité : les bancs ne voient aucun changement. Couleurs par famille, nom des groupes sous le ruban, mode d'orbite.
+- **Ordre des fonctions et antériorité** (`anteriorite.*`, copie de `43-anteriorite.js` et de `featMove`) : monter et descendre dans le menu, glisser dans le fil ou dans l'arbre, glisser sur l'en-tête d'un autre corps, ⚠ dans l'arbre, refus expliqué dans la barre d'état.
+
+Différences assumées avec le navigateur : Studio à sol fondu, pas de reliefs ni de patine, `.exr` sans compression ou ZIP, Rendu direct sans tons ACES, moteur FAO « distance » absent, film en MP4 plutôt qu'en WebM, point de départ de la courbe choisi dans une liste, icônes dessinées au lieu d'emoji dans l'arbre.

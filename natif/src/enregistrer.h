@@ -60,3 +60,4 @@ void poserFao(Document& d, const nlohmann::ordered_json& fao, const nlohmann::or
 void ecrireProjetSur(const std::wstring& cible, const std::string& texte, bool compresser);
 // Le texte tel qu'il est sur le disque
 std::string texteDuFichier(const Document& d);
+nlohmann::ordered_json documentJson(const Document& d);  // le document tel qu'il serait enregistré, sans son enveloppe

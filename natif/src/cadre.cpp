@@ -1,6 +1,7 @@
 #include "theme.h"
 #include <wx/config.h>
 #include "cadre.h"
+#include "anteriorite.h"
 #include "rendu_moteur.h"
 #include "rendu_finition.h"
 #include "rendu_atelier.h"
@@ -326,6 +327,33 @@ Cadre::Cadre() : wxFrame(nullptr, wxID_ANY, L"ConceptCAD natif"), asmAnim_(this)
   arbre_->Bind(wxEVT_TREE_SEL_CHANGED, &Cadre::surArbre, this);
   arbre_->Bind(wxEVT_TREE_ITEM_ACTIVATED, &Cadre::surArbreActive, this);
   arbre_->Bind(wxEVT_TREE_ITEM_MENU, &Cadre::surArbreMenu, this);
+  arbre_->Bind(wxEVT_TREE_BEGIN_DRAG, [this](wxTreeEvent& e) {
+    const auto* l = dynamic_cast<LienArbre*>(arbre_->GetItemData(e.GetItem()));
+    if (!l || !l->estFonction || l->i < 0 || enChoix() || esquisseOuverte_ >= 0 || !doc_.fonctions[l->i].repeatId.empty()) return;
+    tireeArbre_ = doc_.fonctions[l->i].id;
+    e.Allow();
+  });
+  arbre_->Bind(wxEVT_TREE_END_DRAG, [this](wxTreeEvent& e) {
+    const std::string id = tireeArbre_;
+    tireeArbre_.clear();
+    if (id.empty() || !e.GetItem().IsOk()) return;
+    const auto* l = dynamic_cast<LienArbre*>(arbre_->GetItemData(e.GetItem()));
+    if (!l) return;
+    if (l->estFonction && l->i >= 0) {
+      const std::string cible = doc_.fonctions[l->i].id;
+      if (cible != id) CallAfter([this, id, cible] { changerStructure([&](nlohmann::ordered_json& d) { anteriorite::deplacerSur(d, id, cible); }, L"Ctrl+Z : annuler."); });
+    } else if (!l->corps.empty()) {
+      const std::string corps = l->corps;
+      CallAfter([this, id, corps] { fonctionVersCorps(id, corps); });
+    }
+  });
+  arbre_->Bind(wxEVT_TREE_ITEM_GETTOOLTIP, [this](wxTreeEvent& e) {
+    const auto* l = e.GetItem().IsOk() ? dynamic_cast<LienArbre*>(arbre_->GetItemData(e.GetItem())) : nullptr;
+    if (l && l->estFonction && l->i >= 0 && l->i < static_cast<int>(doc_.fonctions.size())) {
+      const auto a = antAvert_.find(doc_.fonctions[l->i].id);
+      if (a != antAvert_.end()) e.SetToolTip(tx(a->second));
+    }
+  });
   props_->Bind(wxEVT_PG_CHANGED, &Cadre::surPropriete, this);
   Bind(wxEVT_TIMER, &Cadre::pasProtocole, this, minuterie_.GetId());
   Bind(wxEVT_IDLE, [this](wxIdleEvent& e) {
@@ -525,6 +553,10 @@ void Cadre::creerEnvironnement() {
     else menuEsquisseArbre(e.i);
   };
   fil_->surMarqueur = [this](int b) { bougerMarqueur(b); };
+  fil_->surDepot = [this](const std::vector<FilFonctions::Element>& L, int source, int gap) {
+    if (esquisseOuverte_ >= 0 || enChoix()) return;
+    deposerDansFil(L, source, gap);
+  };
   fil_->surFilm = [this] { filmLancer(); };
   page_ = new PageAtelier(scene_);
   planVue_ = new PlanVue(scene_);
@@ -1682,6 +1714,7 @@ void Cadre::apresOuverture() {
   majTitre();
   remplirArbre();
   lireEnvVue();
+  if (!antBilan_.empty()) journalOuverture_ = antBilan_;
   if (solideCalculable_) {
     montrerRien();
     recalculer();
@@ -1748,7 +1781,45 @@ int Cadre::imageFonctionArbre(const Fonction& f) {
   return n;
 }
 
+// treeFeatToBody : extrusion, révolution, balayage et perçage seulement. Les autres visent des faces de leur corps.
+void Cadre::fonctionVersCorps(const std::string& id, const std::string& corps) {
+  int i = -1;
+  for (size_t k = 0; k < doc_.fonctions.size(); k++)
+    if (doc_.fonctions[k].id == id) i = static_cast<int>(k);
+  if (i < 0 || doc_.fonctions[i].corps == corps) return;
+  const Fonction f = doc_.fonctions[i];
+  const wxString nom = f.nom.empty() ? nomType(f) : tx(f.nom);
+  if (f.type != "extrude" && f.type != "revolve" && f.type != "sweep" && f.type != "hole")
+    return etat(wxString::Format(L"« %s » vise des faces ou arêtes de son corps : elle ne change pas de corps (seules extrusion, révolution et perçage le peuvent).", nom));
+  bool verrou = false;
+  changerStructure([&](nlohmann::ordered_json& d) {
+    for (const auto& r : d["features"]) {
+      if (r.value("type", std::string()) != "repeat" || !r.contains("base") || !r["base"].is_array()) continue;
+      const bool nouveauCorps = r.value("op", std::string()) == "new";  // repIsNewBody
+      if (nouveauCorps)
+        for (const auto& b : r["base"])
+          if (b == id) verrou = true;
+    }
+    if (verrou) throw anteriorite::Refus("« " + nom.utf8_string() + " » est la source d’une répétition « nouveau corps » : la changer de corps recréerait ses exemplaires.");
+    for (auto& k : d["features"])
+      if (k.value("id", std::string()) == id) k["body"] = corps;
+  }, L"Ctrl+Z : annuler.");
+}
+
 void Cadre::remplirPiece(const wxTreeItemId& racine) {
+  // Le ⚠ des liens vers une fonction placée plus loin (antTag), relu seulement si la structure a changé
+  if (antPour_ != doc_.fonctionsJson || !antLu_) {
+    antPour_ = doc_.fonctionsJson;
+    antLu_ = true;
+    antAvert_.clear();
+    antBilan_.clear();
+    try {
+      const nlohmann::ordered_json j = documentJson(doc_);
+      antAvert_ = anteriorite::avertissements(j);
+      antBilan_ = anteriorite::bilanOuverture(j);
+    } catch (const std::exception&) {
+    }
+  }
   const wxColour grise(0x78, 0x78, 0x7d);
   const wxTreeItemId origine = arbre_->AppendItem(racine, L"Origine", 11);
   arbre_->SetItemBold(origine);
@@ -1804,9 +1875,11 @@ void Cadre::remplirPiece(const wxTreeItemId& racine) {
       const bool ici = f.corps == doc_.corps[c] || (c == 0 && std::find(doc_.corps.begin(), doc_.corps.end(), f.corps) == doc_.corps.end());
       if (!ici || !f.repeatId.empty()) continue;  // les copies vont sous leur répétition
       if (indiceMarque() >= 0 && static_cast<int>(i) >= indiceMarque()) continue;  // tlLocked
-      const wxTreeItemId n = arbre_->AppendItem(corps, libelleArbre(f), imageFonctionArbre(f), -1, new LienArbre(true, static_cast<int>(i)));
+      const bool alerte = antAvert_.count(f.id) > 0;
+      const wxTreeItemId n = arbre_->AppendItem(corps, libelleArbre(f) + (alerte ? L" ⚠" : L""), imageFonctionArbre(f), -1, new LienArbre(true, static_cast<int>(i)));
       lignesFonctions_[i] = n;
       nbDuCorps++;
+      if (alerte) arbre_->SetItemTextColour(n, wxColour(0xff, 0x9f, 0x0a));
       if (!f.visible) arbre_->SetItemTextColour(n, grise);
       if (f.type != "repeat") continue;
       for (const Fonction& k : doc_.fonctions) {
@@ -2466,6 +2539,10 @@ double Cadre::recalculer() {
   const Mesures m = mesurer(r.forme);
   etat(wxString::Format(L"%s  |  Volume %.3f mm³  |  %d faces  |  calcul %.0f ms, total %.0f ms%s", tx(doc_.nom), m.volume, m.faces, tCalcul, total, r.messages.empty() ? L"" : L"  |  ⚠ voir message"));
   // Pendant le dessin, une esquisse encore ouverte n'est pas une erreur : le message attend la fin de l'esquisse
+  if (!journalOuverture_.empty() && esquisseOuverte_ < 0) {
+    etat(etatVue_->texte() + L"  |  " + tx(journalOuverture_));
+    journalOuverture_.clear();
+  }
   const bool dejaMontres = r.messages == messagesMontres_;
   if (esquisseOuverte_ < 0) messagesMontres_ = r.messages;
   if (!r.messages.empty() && esquisseOuverte_ < 0 && !dejaMontres && !essaiSansBoite_) {
@@ -2743,6 +2820,10 @@ void Cadre::changerStructure(const std::function<void(nlohmann::ordered_json&)>&
   auto avant = std::make_shared<Document>(doc_);
   try {
     modifierStructure(doc_, changement);
+  } catch (const anteriorite::Refus& e) {
+    doc_ = *avant;
+    etat(tx(e.what()));
+    return;
   } catch (const std::exception& e) {
     doc_ = *avant;
     if (!essaiMenu_) wxMessageBox(tx(e.what()), L"Modification impossible", wxOK | wxICON_WARNING, this);
@@ -2806,7 +2887,23 @@ bool Cadre::confirmerSuppression(const wxString& question) {
 }
 
 namespace {
-enum { M_RENOMMER = wxID_HIGHEST + 700, M_VOIR, M_EDITER, M_TEMPS, M_FIN, M_SUPPRIMER, M_ACTIF, M_COULEUR, M_TRANSPARENCE, M_RETIRER, M_FANTOME, M_ISOLER, M_TOUT, M_STEP, M_DEPLACER, M_ECHELLE, M_RESELECTION, M_DEPUIS_CORPS, M_VERS_COMPOSANT_CORPS };
+enum { M_RENOMMER = wxID_HIGHEST + 700, M_VOIR, M_EDITER, M_TEMPS, M_FIN, M_SUPPRIMER, M_ACTIF, M_COULEUR, M_TRANSPARENCE, M_RETIRER, M_FANTOME, M_ISOLER, M_TOUT, M_STEP, M_DEPLACER, M_ECHELLE, M_RESELECTION, M_DEPUIS_CORPS, M_VERS_COMPOSANT_CORPS, M_MONTER, M_DESCENDRE };
+}
+
+// tlbMoveTo : la fonction va dans l'interstice, par crans, en restant dans son corps
+void Cadre::deposerDansFil(const std::vector<FilFonctions::Element>& L, int source, int gap) {
+  if (source < 0 || source >= static_cast<int>(L.size()) || !L[source].estFonction || gap == source || gap == source + 1) return;
+  const std::string id = doc_.fonctions[L[source].i].id;
+  const bool droite = gap > source;
+  std::string voisine;
+  if (droite) {
+    for (size_t k = gap; k < L.size() && voisine.empty(); k++)
+      if (L[k].estFonction && doc_.fonctions[L[k].i].id != id) voisine = doc_.fonctions[L[k].i].id;
+  } else {
+    for (int k = std::min<int>(gap, static_cast<int>(L.size())) - 1; k >= 0 && voisine.empty(); k--)
+      if (L[k].estFonction && doc_.fonctions[L[k].i].id != id) voisine = doc_.fonctions[L[k].i].id;
+  }
+  changerStructure([&](nlohmann::ordered_json& d) { anteriorite::deplacerDansFil(d, id, droite, voisine); }, L"Ctrl+Z : annuler.");
 }
 
 void Cadre::menuFonction(int i) {
@@ -2818,11 +2915,16 @@ void Cadre::menuFonction(int i) {
   m.Append(M_EDITER, L"🔧 Éditer l'esquisse")->Enable(!copie && !f.esquisse.empty() && doc_.esquisse(f.esquisse));
   if (fonctionDeFaces(f)) m.Append(M_RESELECTION, L"🎯 Re-sélectionner les faces");
   if (f.type == "xfillet" && !copie) m.Append(M_RESELECTION, L"✏️ Modifier la sélection");
+  m.Append(M_MONTER, L"▲ Monter dans le corps")->Enable(!copie);
+  m.Append(M_DESCENDRE, L"▼ Descendre dans le corps")->Enable(!copie);
   m.Append(M_TEMPS, L"⏱ Bloquer le temps à ce point");
   m.Append(M_FIN, L"↗ Fin : rejouer tout")->Enable(!marqueTemps_.empty());
   m.Append(M_SUPPRIMER, L"🗑 Supprimer")->Enable(!copie);
   const int choix = choisirMenu(m);
-  if (choix == M_RESELECTION && f.type == "xfillet") {
+  if (choix == M_MONTER || choix == M_DESCENDRE) {
+    const int dir = choix == M_MONTER ? -1 : 1;
+    changerStructure([&](nlohmann::ordered_json& d) { anteriorite::deplacerCran(d, f.id, dir); }, L"Ctrl+Z : annuler.");
+  } else if (choix == M_RESELECTION && f.type == "xfillet") {
     editerConge(i);
   } else if (choix == M_RESELECTION) {
     entrerFaces(sorteDeFaces(f), f.id);
@@ -3742,6 +3844,35 @@ bool Cadre::essaiEsquisse(const std::wstring& fichier, int rang, const std::wstr
         }
       };
       voir(arbre_->GetRootItem());
+    }
+    if (e.contains("deplacer")) {
+      const plan::J& q = e["deplacer"];
+      const std::string id = q.value("id", std::string());
+      if (q.contains("sur")) {
+        const std::string cible = q["sur"].get<std::string>();
+        changerStructure([&](nlohmann::ordered_json& d) { anteriorite::deplacerSur(d, id, cible); });
+      } else if (q.contains("fil")) {
+        const int gap = q["fil"].get<int>();
+        std::vector<FilFonctions::Element> L = fil_->liste();
+        int source = -1;
+        for (size_t k = 0; k < L.size(); k++)
+          if (L[k].estFonction && doc_.fonctions[L[k].i].id == id) source = static_cast<int>(k);
+        deposerDansFil(L, source, gap);
+      } else if (q.contains("corps")) {
+        fonctionVersCorps(id, q["corps"].get<std::string>());
+      } else {
+        const int dir = q.value("dir", 1);
+        changerStructure([&](nlohmann::ordered_json& d) { anteriorite::deplacerCran(d, id, dir); });
+      }
+      wxYield();
+      n["etat"] = std::string(etatVue_->texte().utf8_str());
+      n["ordre"] = plan::J::array();
+      for (const Fonction& f : doc_.fonctions) n["ordre"].push_back(f.id);
+    }
+    if (e.contains("anteriorite")) {
+      n["avert"] = plan::J::object();
+      for (const auto& [k, v] : antAvert_) n["avert"][k] = v;
+      n["bilan"] = antBilan_;
     }
     if (e.contains("cmdCherche")) {
       const plan::J& q = e["cmdCherche"];

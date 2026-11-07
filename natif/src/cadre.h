@@ -223,6 +223,13 @@ public:
   wxString demanderNom(const wxString& actuel);
   bool confirmerSuppression(const wxString& question);
   void menuFonction(int i);
+  void deposerDansFil(const std::vector<FilFonctions::Element>& L, int source, int gap);
+  void fonctionVersCorps(const std::string& id, const std::string& corps);
+  std::string tireeArbre_;  // la fonction qu'on glisse dans l'arbre
+  std::map<std::string, std::string> antAvert_;  // le ⚠ de l'arbre
+  std::string antBilan_, journalOuverture_;
+  decltype(Document::fonctionsJson) antPour_;
+  bool antLu_ = false;
   void menuEsquisseArbre(int i);
   // Plans, axes, points, repères (79-construction-interface)
   void menuConstruction(const std::string& id);

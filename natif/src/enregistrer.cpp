@@ -1102,6 +1102,13 @@ std::string texteEnregistre(const Document& d, const std::string& texteOrigine) 
 
 std::string texteDuFichier(const Document& d) { return d.compresse ? degonfler(d.octets) : d.octets.str(); }
 
+nlohmann::ordered_json documentJson(const Document& d) {
+  const std::string base = !d.texteBase.empty() ? d.texteBase.str() : texteDuFichier(d);
+  nlohmann::ordered_json racine = nlohmann::ordered_json::parse(d.modifie() ? texteEnregistre(d, base) : base);
+  if (racine.contains("doc") && racine["doc"].is_object()) return std::move(racine["doc"]);
+  return racine;
+}
+
 void modifierStructure(Document& d, const std::function<void(nlohmann::ordered_json&)>& changement) { modifierStructure(d, changement, {}); }
 
 void modifierStructure(Document& d, const std::function<void(nlohmann::ordered_json&)>& changement, const std::map<std::string, std::string>& nouvellesSources) {
