@@ -1,3 +1,4 @@
+#include "assemblage_refs.h"
 #include "coter.h"
 
 #include <BRepAdaptor_Curve.hxx>
@@ -191,13 +192,14 @@ struct AretesNommees {
   std::vector<AreteListee> L;
   std::map<std::string, std::string> alias;
 };
-bool suivreProjections(Esquisse& s, const std::vector<AreteSource>& aretes, const AretesNommees* noms = nullptr) {
+bool suivreProjections(Esquisse& s, const std::vector<AreteSource>& aretes, const AretesNommees* noms = nullptr, const std::string* seul = nullptr) {
   bool change = false;
   const auto noter = [](Entite& e, const Trouvee& pr) {
     e.aSrcMid = true;
     e.srcMid = pr.mid;
   };
   for (Entite& e : s.entites) {
+    if (seul ? e.extRef != *seul : !e.extRef.empty()) continue;  // l'arête d'un autre composant : suivreExternes
     if (e.pierce && e.t == "cpoint") {  // skPlTrackPierce : le point de traversée suit son arête, retrouvée par son milieu
       auto iq = s.points.find(e.p);
       if (iq == s.points.end() || !e.aSrcMid || aretes.empty()) continue;
@@ -471,6 +473,37 @@ void suivreEsquisses(Document& d, size_t i) {
       suivre(s);  // rien n'a bougé : seuls les repères des sources sont rafraîchis
     }
   }
+}
+
+// V0.8.1 : les arêtes d'autres composants projetées dans une esquisse
+bool suivreExternes(Document& d) {
+  bool bouge = false;
+  for (Esquisse& s : d.esquisses) {
+    std::set<std::string> cles;
+    for (const Entite& e : s.entites)
+      if (!e.extRef.empty()) cles.insert(e.extRef);
+    if (cles.empty()) continue;
+    Solveur S(s);
+    S.resoudre();
+    Esquisse t = s;
+    S.recopierDans(t);
+    bool b = false;
+    for (const std::string& cle : cles) {
+      AretesNommees noms;
+      if (!assemblage::aretesExternes(d, nlohmann::ordered_json::parse(cle), noms.L, noms.alias)) continue;
+      std::vector<AreteSource> A;
+      for (const AreteListee& q : noms.L) A.push_back({q.mid, q.pts});
+      if (suivreProjections(t, A, &noms, &cle)) b = true;
+    }
+    if (b) {
+      S.reprendrePoints(t);
+      S.resoudre();
+      S.recopierDans(t);
+      s = std::move(t);
+      bouge = true;
+    }
+  }
+  return bouge;
 }
 
 void EtatFormules::poser(Document& d) const {

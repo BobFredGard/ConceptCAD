@@ -32,6 +32,10 @@
 #include "normalises.h"
 #include "rejeu.h"
 #include "rendu_moteur.h"
+#include <IntCurvesFace_ShapeIntersector.hxx>
+#include <gp_Lin.hxx>
+#include "assemblage_refs.h"
+#include "construction.h"
 
 namespace as = assemblage;
 using J = nlohmann::ordered_json;
@@ -117,8 +121,31 @@ void Cadre::asmApresRejeu(const ResultatRejeu& r, bool ajuster) {
   doc_.assemblage = copie;
   {
     wxBusyCursor attente;
+    as::memoriserSolides(&asmSolides_);
     as::majSolides(asmSolides_, doc_, r);
-    if (as::resoudre(*copie, asmSolides_)) remplirArbre();
+    bool bouge = as::resoudre(*copie, asmSolides_);
+    // asmExtSync : ce que l'on vient de placer ou de rejouer a pu bouger ce que visent les autres ; trois passes au plus
+    if (as::aDesReferences(*copie))
+      for (int passe = 0; passe < 3 && as::majReferences(asmSolides_, doc_); passe++)
+        if (as::resoudre(*copie, asmSolides_)) bouge = true;
+    if (bouge) remplirArbre();
+  }
+  // Les références du composant actif : son rejeu les a lues avant ; si ce qu'elles voient a changé, il se rejoue
+  const std::string sigActif = as::signatureActif(doc_, asmSolides_);
+  if (sigActif != asmSigActif_) {
+    asmSigActif_ = sigActif;
+    if (!sigActif.empty() && asmPassesRefs_ < 3) {
+      asmPassesRefs_++;
+      CallAfter([this] {
+        if (!doc_.assemblage || esquisseOuverte_ >= 0) return;
+        as::suivreExternesActif(doc_);
+        recalculer();
+      });
+    } else if (!sigActif.empty()) {
+      etat(L"Références circulaires entre composants : position mémorisée.");
+    }
+  } else {
+    asmPassesRefs_ = 0;
   }
   if (asmLiensNeufs_) {
     asmLiensNeufs_ = false;
@@ -129,6 +156,143 @@ void Cadre::asmApresRejeu(const ResultatRejeu& r, bool ajuster) {
   }
   asmDessiner();
   if (ajuster) vue_->ajuster();
+}
+
+// cgPickOtherComp, cgPickOtherEdge : pendant le choix d'une référence, les autres composants répondent aussi
+bool Cadre::cgPiocheAutre(const gp_Pnt& o, const gp_Dir& d) {
+  if (!pioche_ || refAttendue_.empty() || !doc_.assemblage || asmMode_ == "asm" || esquisseOuverte_ >= 0) return false;
+  const J& a = *doc_.assemblage;
+  if (!as::aDesEnfants(a)) return false;
+  const ElementConstruction* el = nullptr;
+  for (const ElementConstruction& c : doc_.construction)
+    if (c.id == refAttendue_) el = &c;
+  std::string type, titre;
+  if (!el || !emplacementConstruction(*el, rangAttendu_, type, titre) || (type != "plane" && type != "axis" && type != "point")) return false;
+  const auto toucher = [](const TopoDS_Shape& forme, const gp_Pnt& p, const gp_Dir& dir, double& w, TopoDS_Face& f) {
+    if (forme.IsNull()) return false;
+    try {
+      IntCurvesFace_ShapeIntersector inter;
+      inter.Load(forme, 1e-6);
+      inter.Perform(gp_Lin(p, dir), -1e9, 1e9);
+      bool oui = false;
+      for (int i = 1; i <= inter.NbPnt(); i++)
+        if (!oui || inter.WParameter(i) < w) {
+          w = inter.WParameter(i);
+          f = inter.Face(i);
+          oui = true;
+        }
+      return oui;
+    } catch (const Standard_Failure&) {
+      return false;
+    }
+  };
+  double wActif = 1e300;
+  TopoDS_Face fActif;
+  if (!toucher(forme_, o, d, wActif, fActif)) wActif = 1e300;
+  std::vector<as::ListeExterne> listes = as::listesExternes(a, asmSolides_);
+  // La surface la plus proche parmi les autres composants
+  const as::ListeExterne* lF = nullptr;
+  TopoDS_Face fF;
+  double wF = 1e300;
+  for (const as::ListeExterne& L : listes) {
+    const auto it = asmSolides_.find(L.comp);
+    if (it == asmSolides_.end()) continue;
+    const as::Repere Fi = as::inverser(L.passage);
+    const as::V3 p = as::appliquer(Fi, {o.X(), o.Y(), o.Z()}), v = as::tourner(Fi, {d.X(), d.Y(), d.Z()});
+    double w = 0;
+    TopoDS_Face f;
+    if (toucher(it->second->forme, gp_Pnt(p[0], p[1], p[2]), gp_Dir(v[0], v[1], v[2]), w, f) && w < wF) {
+      wF = w;
+      fF = f;
+      lF = &L;
+    }
+  }
+  const auto nomDe = [&](const as::ListeExterne& L) {
+    const J* oc = L.chemin.empty() ? nullptr : as::occurrence(a, L.chemin.back());
+    return oc ? oc->value("name", L.nom) : L.nom;
+  };
+  J r;
+  // Une arête à 7 pixels au plus, que rien ne cache
+  {
+    const wxPoint c = vue_->dernierClic();
+    const double pres = std::min(wActif, wF);
+    const as::ListeExterne* lE = nullptr;
+    const AreteListee* best = nullptr;
+    double bd = 7;
+    for (const as::ListeExterne& L : listes)
+      for (const AreteListee& E : L.aretes) {
+        wxPoint A = vue_->pixelDe(E.pts[0][0], E.pts[0][1], E.pts[0][2]);
+        for (size_t k = 1; k < E.pts.size(); k++) {
+          const wxPoint B = vue_->pixelDe(E.pts[k][0], E.pts[k][1], E.pts[k][2]);
+          const double dx = B.x - A.x, dy = B.y - A.y, l2 = std::max(dx * dx + dy * dy, 1e-9);
+          const double t = std::max(0.0, std::min(1.0, ((c.x - A.x) * dx + (c.y - A.y) * dy) / l2));
+          const double q = std::hypot(c.x - (A.x + t * dx), c.y - (A.y + t * dy));
+          if (q < bd) {
+            const Vec3 P0 = E.pts[k - 1], P1 = E.pts[k];
+            const double wx = P0[0] + (P1[0] - P0[0]) * t - o.X(), wy = P0[1] + (P1[1] - P0[1]) * t - o.Y(), wz = P0[2] + (P1[2] - P0[2]) * t - o.Z();
+            if (wx * d.X() + wy * d.Y() + wz * d.Z() <= pres + 0.3 + std::abs(pres) * 0.004 || pres > 1e299) {
+              bd = q;
+              best = &E;
+              lE = &L;
+            }
+          }
+          A = B;
+        }
+      }
+    if (best) {
+      const GeoArete G = geoArete(best->pts);
+      const as::Repere Fi = as::inverser(lE->passage);
+      const auto local = [&](const Vec3& p) {
+        as::V3 q = as::appliquer(Fi, p);
+        for (double& x : q) x = std::round(x * 1e4) / 1e4;
+        return J::array({q[0], q[1], q[2]});
+      };
+      double len = 0;
+      for (size_t i = 1; i < best->pts.size(); i++) len += std::hypot(best->pts[i][0] - best->pts[i - 1][0], best->pts[i][1] - best->pts[i - 1][1], best->pts[i][2] - best->pts[i - 1][2]);
+      J base = {{"k", "xe"}, {"ctx", lE->ext["ctx"]}, {"path", lE->ext["path"]}, {"pos", local(best->mid)}, {"len", std::round(len * 1e4) / 1e4}, {"sig", nullptr}};
+      if (!best->nom.empty()) base["nom"] = best->nom;
+      const std::string nm = nomDe(*lE);
+      if (type == "point") {
+        const auto ecran = [&](const Vec3& p) {
+          const wxPoint q = vue_->pixelDe(p[0], p[1], p[2]);
+          return std::hypot(static_cast<double>(q.x - c.x), static_cast<double>(q.y - c.y));
+        };
+        const double d0 = ecran(best->pts.front()), d1 = ecran(best->pts.back());
+        base["sub"] = "edge";
+        if (G.cercle && std::min(d0, d1) > 12) {
+          base["name"] = "Centre · " + nm;
+        } else {
+          base["sub"] = "vtx";
+          base["vpos"] = local(d0 <= d1 ? best->pts.front() : best->pts.back());
+          base["name"] = "Sommet · " + nm;
+        }
+        r = base;
+      } else if (type == "axis" && (G.droite || G.cercle)) {
+        base["sub"] = "edge";
+        base["name"] = std::string(G.cercle ? "Axe du cercle" : "Arête") + " · " + nm;
+        r = base;
+      } else if (type == "plane" && G.cercle) {
+        base["sub"] = "edge";
+        base["name"] = "Plan du cercle · " + nm;
+        r = base;
+      }
+    }
+  }
+  if (r.is_null()) {
+    if (type == "point" || !lF || wActif < wF - 1e-6) return false;  // la pièce active est devant
+    const auto it = asmSolides_.find(lF->comp);
+    as::FaceCapturee C;
+    if (it == asmSolides_.end() || !as::capturerFace(it->second->forme, fF, C)) return false;
+    if ((type == "plane") != C.plan) return false;
+    r = {{"k", "xf"}, {"ctx", lF->ext["ctx"]}, {"path", lF->ext["path"]}, {"ref", C.ref}, {"loc", as::localisationFace(C)},
+         {"name", std::string(C.plan ? "Face" : "Axe de face") + " · " + nomDe(*lF)}, {"sig", nullptr}};
+    if (!C.nom.empty()) r["nom"] = C.nom;
+  }
+  const std::string id = refAttendue_;
+  const int rang = rangAttendu_;
+  pioche_ = nullptr;
+  reglerConstruction(id, "r/" + std::to_string(rang), r.dump());
+  return true;
 }
 
 // asmFill : tout l'arbre, dans le repère de l'instance éditée

@@ -1,4 +1,5 @@
 // Calcul et fiche des éléments de construction : mêmes formules, dans le même ordre, que src/78-construction-modele.js
+#include "assemblage_refs.h"
 #include "construction.h"
 
 #include <BRepAdaptor_Curve.hxx>
@@ -166,20 +167,24 @@ const std::vector<Methode>& methodes(const std::string& kind) {
         {"mid", "Médian", {{"plane", "Plan 1", false}, {"plane", "Plan 2", false}}, {}, true},
         {"normal", "Normal à un axe", {{"axis", "Axe", false}, {"point", "Point", true}}, {}, true},
         {"curve", "Perpendiculaire à une courbe", {{"curve", "Droite, arc ou spline", false}}, {{"t", "Position (0 début → 1 fin)", 0.5, "ratio"}}, true},
+        {"ext", "Depuis un autre composant", {}, {}, true},
         {"tangent", "Tangent à un cylindre", {{"axis", "Face cylindrique", false}, {"axis", "Direction", true}, {"point", "Référence de cote", true}}, {{"a", "Angle autour de l’axe", 0, "°"}, {"d", "Cote depuis la référence", 0, "mm"}, {"e", "Décalage latéral", 0, "mm"}}, false}}},
       {"axis",
        {{"ref", "Arête, cylindre ou axe", {{"axis", "Arête droite, cylindre ou axe", false}}, {}, true},
         {"2pts", "Par 2 points", {{"point", "Point 1", false}, {"point", "Point 2", false}}, {}, true},
         {"inter", "Intersection de 2 plans", {{"plane", "Plan 1", false}, {"plane", "Plan 2", false}}, {}, true},
-        {"normal", "Normal à un plan", {{"plane", "Plan ou face", false}, {"point", "Point", false}}, {}, true}}},
+        {"normal", "Normal à un plan", {{"plane", "Plan ou face", false}, {"point", "Point", false}}, {}, true},
+        {"ext", "Depuis un autre composant", {}, {}, true}}},
       {"point",
        {{"xyz", "Coordonnées", {{"frame", "Repère (origine si vide)", true}}, {{"dx", "X", 0, "mm"}, {"dy", "Y", 0, "mm"}, {"dz", "Z", 0, "mm"}}, false},
         {"ref", "Sommet, centre ou point d’esquisse", {{"point", "Point", false}}, {}, false},
-        {"inter", "Intersection axe / plan", {{"axis", "Axe", false}, {"plane", "Plan ou face", false}}, {}, false}}},
+        {"inter", "Intersection axe / plan", {{"axis", "Axe", false}, {"plane", "Plan ou face", false}}, {}, false},
+        {"ext", "Depuis un autre composant", {}, {}, false}}},
       {"frame",
        {{"zx", "Origine, Z et X", {{"point", "Origine", false}, {"axis", "Direction Z", false}, {"axis", "Direction X", true}}, PAR_REPERE, true},
         {"face", "Sur un plan ou une face", {{"plane", "Plan ou face", false}, {"axis", "Direction X", true}}, PAR_REPERE, true},
-        {"3pts", "Par 3 points", {{"point", "Origine", false}, {"point", "Point sur X", false}, {"point", "Point dans XY", false}}, PAR_REPERE, true}}}};
+        {"3pts", "Par 3 points", {{"point", "Origine", false}, {"point", "Point sur X", false}, {"point", "Point dans XY", false}}, PAR_REPERE, true},
+        {"ext", "Depuis un autre composant", {}, PAR_REPERE, true}}}};
   static const std::vector<Methode> vide;
   const auto it = M.find(kind);
   return it == M.end() ? vide : it->second;
@@ -468,7 +473,53 @@ std::optional<Formes> evaluerRef(json& ref, Contexte* c) {  // cgEvalRef
     g.point = add(add(sk->o, mul(sk->u, q->x)), mul(sk->v, q->y));
     return g;
   }
-  if (k == "xf" || k == "xe") return std::nullopt;  // autre composant : avec l'assemblage
+  if (k == "xf") {  // asmXfEval
+    assemblage::FaceCapturee E;
+    assemblage::Repere F;
+    if (!assemblage::faceExterne(c->d, ref, E, F)) return std::nullopt;
+    Formes g;
+    if (E.plan) {
+      const Vec3 o = assemblage::appliquer(F, E.o);
+      const Base B = baseN(assemblage::tourner(F, E.n), nullptr);
+      g.plane = Plan{o, B.u, B.v, B.n};
+      g.point = o;
+    } else {
+      const Vec3 o = assemblage::appliquer(F, E.ao);
+      g.axis = Axe{o, unit(assemblage::tourner(F, E.ad))};
+      g.point = o;
+    }
+    return g;
+  }
+  if (k == "xe") {  // asmXeEval
+    AreteListee E;
+    assemblage::Repere F;
+    if (!assemblage::areteExterne(c->d, ref, E, F)) return std::nullopt;
+    const auto Pp = [&](const Vec3& p) { return assemblage::appliquer(F, p); };
+    const auto Vv = [&](const Vec3& v) { return assemblage::tourner(F, v); };
+    Formes g;
+    if (str(ref, "sub") == "vtx") {
+      const Vec3 a = E.pts.front(), b = E.pts.back();
+      const Vec3 q = ref.contains("vpos") ? lireV(ref, "vpos") : a;
+      const Vec3 o = len(sub(a, q)) <= len(sub(b, q)) ? a : b;
+      ref["vpos"] = json::array({std::round(o[0] * 1e4) / 1e4, std::round(o[1] * 1e4) / 1e4, std::round(o[2] * 1e4) / 1e4});
+      g.point = Pp(o);
+      return g;
+    }
+    const GeoArete G = geoArete(E.pts);
+    if (G.droite) {
+      g.axis = Axe{Pp(E.mid), unit(Vv(sub(G.b, G.a)))};
+      g.point = Pp(E.mid);
+    } else if (G.cercle) {
+      const Vec3 o = Pp(G.c);
+      const Base B = baseN(Vv(G.n), nullptr);
+      g.point = o;
+      g.axis = Axe{o, B.n};
+      g.plane = Plan{o, B.u, B.v, B.n};
+    } else {
+      g.point = Pp(E.mid);
+    }
+    return g;
+  }
   return evaluerModele(ref, *c);
 }
 
@@ -588,6 +639,8 @@ Bati batir(ElementConstruction& el, Contexte& ctx) {  // cgBuild
     if (!g) {
       const std::string k = str(refs[i], "k");
       if (k == "cg") throw std::runtime_error("référence " + std::to_string(i + 1) + " supprimée ou non résolue");
+      if (k == "xf") throw std::runtime_error("référence " + std::to_string(i + 1) + " : face de l’autre composant introuvable — position mémorisée");
+      if (k == "xe") throw std::runtime_error("référence " + std::to_string(i + 1) + " : arête de l’autre composant introuvable — position mémorisée");
       throw std::runtime_error("référence " + std::to_string(i + 1) + " introuvable — la pièce a changé");
     }
     return g;
@@ -634,9 +687,29 @@ Bati batir(ElementConstruction& el, Contexte& ctx) {  // cgBuild
   Repere fr{};
   bool fait = false;
   std::string warn;
+  const auto X = [&]() -> Repere {  // asmExtFrame
+    const auto xe = J.find("ext");
+    assemblage::Repere F;
+    if (xe == J.end() || !xe->is_object() || !assemblage::repereExterne(ctx.d, *xe, F)) throw std::runtime_error("référence externe introuvable : position mémorisée");
+    Repere R{F.o, F.x, F.y, F.z};
+    (*xe)["last"] = {{"o", jv(R.o)}, {"x", jv(R.x)}, {"y", jv(R.y)}, {"z", jv(R.z)}};
+    return R;
+  };
+  if (how == "ext") {
+    const auto xe = J.find("ext");
+    Repere gele;
+    if (xe != J.end() && xe->is_object() && xe->value("frozen", false) && lireRepere(J, gele)) {
+      Bati b;
+      b.fr = gele;
+      return b;
+    }
+  }
   if (el.kind == "plane") {
     fait = true;
-    if (how == "offset") {
+    if (how == "ext") {
+      const Repere F = X();
+      fr = frPlan(F.o, F.x, F.y, F.z);
+    } else if (how == "offset") {
       const Plan p = P(0);
       fr = frPlan(add(p.o, mul(p.n, N("d"))), p.u, p.v, p.n);
     } else if (how == "angle") {
@@ -712,7 +785,11 @@ Bati batir(ElementConstruction& el, Contexte& ctx) {  // cgBuild
   } else if (el.kind == "axis") {
     Vec3 o{}, d{};
     fait = true;
-    if (how == "ref") {
+    if (how == "ext") {
+      const Repere F = X();
+      o = F.o;
+      d = F.z;
+    } else if (how == "ref") {
       const Axe ax = A(0);
       o = ax.o;
       d = ax.d;
@@ -745,7 +822,8 @@ Bati batir(ElementConstruction& el, Contexte& ctx) {  // cgBuild
   } else if (el.kind == "point") {
     Vec3 o{};
     fait = true;
-    if (how == "ref") o = Pt3(0);
+    if (how == "ext") o = X().o;
+    else if (how == "ref") o = Pt3(0);
     else if (how == "xyz") {
       auto g = slot(0, true);
       if (g && !g->frame) throw refuse(0, "un repère");
@@ -766,7 +844,13 @@ Bati batir(ElementConstruction& el, Contexte& ctx) {  // cgBuild
     Vec3 O{};
     Ortho R;
     fait = true;
-    if (how == "zx") {
+    if (how == "ext") {
+      const Repere F = X();
+      O = F.o;
+      R.x = F.x;
+      R.y = F.y;
+      R.z = F.z;
+    } else if (how == "zx") {
       O = Pt3(0);
       const Axe Z = A(1);
       const auto X = Ao(2);
@@ -1364,9 +1448,26 @@ std::vector<ChampFiche> ficheConstruction(const Document& d, const ElementConstr
     f.titre = "Méthode";
     f.cle = "x/how";
     f.texte = how;
-    for (const Methode& x : methodes(e.kind)) f.choix.push_back({x.how, x.titre});
+    const std::vector<assemblage::CandidatExterne> ext = d.assemblage ? assemblage::candidatsExternes(*d.assemblage, e.kind) : std::vector<assemblage::CandidatExterne>();
+    for (const Methode& x : methodes(e.kind))
+      if (std::string(x.how) != "ext" || how == "ext" || !ext.empty()) f.choix.push_back({x.how, x.titre});  // pas d'autre instance : pas de choix
     if (!m) f.choix.push_back({how, "Depuis un autre composant"});
     c.push_back(std::move(f));
+    if (how == "ext") {
+      ChampFiche g;
+      g.sorte = ChampFiche::CHOIX;
+      g.titre = "Élément visé";
+      g.cle = "x/ext";
+      const auto xe = e.j.find("ext");
+      const auto cle = [](const json& v) { return v.value("path", json::array()).dump() + "|" + (v.contains("cg") ? v["cg"].dump() : "") + "|" + (v.contains("o") ? v["o"].dump() : ""); };
+      g.choix.push_back({"", "— choisir —"});
+      for (const assemblage::CandidatExterne& q : ext) {
+        g.choix.push_back({q.valeur.dump(), q.titre});
+        if (xe != e.j.end() && xe->is_object() && cle(*xe) == cle(q.valeur)) g.texte = q.valeur.dump();
+      }
+      c.push_back(std::move(g));
+      if (xe != e.j.end() && xe->is_object()) booleen("Figer à la position actuelle", "b/frozen", xe->value("frozen", false));
+    }
   }
   if (m) {
     const auto refs = e.j.find("refs");
@@ -1461,6 +1562,7 @@ std::string appliquerConstruction(json& d, const std::string& id, const std::str
     }
     e["how"] = valeur;
     e["refs"] = refs;
+    if (valeur != "ext") e.erase("ext");
     json p = json::object();
     for (const Valeur& v : n->par) p[v.cle] = e["p"].contains(v.cle) ? e["p"][v.cle] : json(v.def);
     for (const char* k : {"flip", "expr", "pname"})
@@ -1505,6 +1607,16 @@ std::string appliquerConstruction(json& d, const std::string& id, const std::str
     }
     if (!std::isfinite(v)) return "Saisir un nombre.";
     e["p"][chemin] = v;
+    return "";
+  }
+  if (cle == "x/ext") {  // cgRefresh : l'élément visé
+    if (valeur.empty()) return "";
+    e["ext"] = json::parse(valeur);
+    return "";
+  }
+  if (cle == "b/frozen") {
+    if (!e.contains("ext") || !e["ext"].is_object()) return "";
+    e["ext"]["frozen"] = valeur == "1" || valeur == "true" || valeur == "oui";
     return "";
   }
   if (cle == "b/flip") {

@@ -35,6 +35,7 @@ struct Entite {
   bool aSrcMid = false;  // milieu 3D de l'arête source d'une projection : c'est par lui qu'on la retrouve
   Vec3 srcMid{0, 0, 0};
   std::string srcNom;  // le nom de l'arête projetée : il prime sur le milieu mémorisé (projPreferMid)
+  std::string extRef;  // e.ext : arête d'un autre composant, { ctx, path, sig } en JSON
   bool suiviInconnu = false;  // projection qui suit autre chose qu'une arête retrouvée par position (nom, intersection, autre esquisse)
 };
 

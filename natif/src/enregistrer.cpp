@@ -310,6 +310,7 @@ std::string nouvelleEntite(const Entite& e) {
   if (e.ref) o += ",\"ref\":true";
   if (e.proj) o += ",\"proj\":true";
   if (e.pierce) o += ",\"pierce\":true";
+  if (!e.extRef.empty()) o += ",\"ext\":" + e.extRef;
   if (!e.isectJson.empty()) o += ",\"isect\":" + e.isectJson;
   if (e.isplN) o += ",\"isplN\":" + std::to_string(e.isplN);
   ajouterTexte(o, "projName", e.projName);

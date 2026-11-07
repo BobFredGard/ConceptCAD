@@ -6555,6 +6555,7 @@ Dessin::Projetable Dessin::areteProjetable(double x, double y) const {
     if (d < tol && d + 0.25 * dz < bd) {
       bd = d + 0.25 * dz;
       best = Projetable{};
+      best.ext = e.ext;
       best.aMid = true;
       best.mid = e.mid;
       if (isCirc) {
@@ -6603,6 +6604,7 @@ std::string Dessin::nomEntite(bool arete) {
 
 void Dessin::nommer(Entite& e, const Projetable& pr) {  // projNames
   e.projName = nomEntite(false);
+  e.extRef = pr.ext;
   if (pr.aMid) {
     e.srcName = nomEntite(true);
     e.aSrcMid = true;

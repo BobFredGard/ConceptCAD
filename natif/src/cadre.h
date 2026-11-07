@@ -480,6 +480,9 @@ public:
   };
   std::vector<CorpsExact> asmCorpsExacts(const std::string& cid) const;
   std::vector<assemblage::Instance> asmInstancesVisibles() const;
+  bool cgPiocheAutre(const gp_Pnt& origine, const gp_Dir& direction);  // cgPickOtherComp
+  std::string asmSigActif_;
+  int asmPassesRefs_ = 0;
   std::vector<TopoDS_Shape> asmFormesStep(std::string& nom, std::vector<std::string>& manquants) const;
   struct Inspection {
     struct Item {

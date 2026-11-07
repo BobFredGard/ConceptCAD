@@ -61,7 +61,9 @@ J referenceAccroche(const FaceAccroche& F, const PointAccroche& p);  // asmSnapR
 const FaceAccroche* faceSous(const std::vector<FaceAccroche>& G, const V3& p, const V3* n);  // asmSnapHitFace
 
 // Ce qui a été calculé pour un composant
+struct CaptureRefs;  // assemblage_refs.cpp
 struct SolideComposant {
+  std::shared_ptr<CaptureRefs> capture;  // ce que voient les références des autres composants
   std::string empreinte;  // le document qui a donné ce solide
   std::string nom;
   TopoDS_Shape forme;
@@ -79,6 +81,7 @@ struct SolideComposant {
   bool maille = false;
 };
 using Solides = std::map<std::string, std::shared_ptr<SolideComposant>>;
+void memoriserSolides(Solides* S);  // ceux que lit le composant actif pendant son rejeu
 // bodyColorOf : la fiche du corps, sinon la teinte de la pièce, sinon la palette selon le rang
 void poserTeintes(const Document& d, SolideComposant& s);
 const std::vector<FaceAccroche>& accrochesDe(SolideComposant& s);

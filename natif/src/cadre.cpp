@@ -56,6 +56,7 @@
 #include <wx/textdlg.h>
 
 #include "lien_arbre.h"
+#include "assemblage_refs.h"
 
 namespace {
 enum { ID_ANNULER = wxID_HIGHEST + 1, ID_RETABLIR, ID_AJUSTER, ID_QUITTER_ESQUISSE, ID_ESQUISSE_XY, ID_ESQUISSE_XZ, ID_ESQUISSE_YZ, ID_ESQUISSE_FACE, ID_EXTRUDER, ID_CONTRAINTE_1, ID_ACCROCHE_GRILLE = wxID_HIGHEST + 100 };
@@ -296,7 +297,7 @@ Cadre::Cadre() : wxFrame(nullptr, wxID_ANY, L"ConceptCAD natif"), asmAnim_(this)
     asmGeste(phase, sorte, axe, degre, valeur, libre);
   };
   vue_->surMarque = [this](int i) { asmAlignClicMarque(i); };
-  vue_->surRayon = [this](const gp_Pnt& o, const gp_Dir& d) { return asmNormRayon(o, d); };
+  vue_->surRayon = [this](const gp_Pnt& o, const gp_Dir& d) { return asmNormRayon(o, d) || cgPiocheAutre(o, d); };
   vue_->surMesure = [this](const Vue3D::CoupVue* c, bool ctrl, bool maj) { mesureCoup(c, ctrl, maj); };
   vue_->surFaceOcc = [this](const assemblage::Chemin& c, const gp_Pnt& p, bool plan, const assemblage::V3& n) { asmAlignClicFace(c, p, plan, n); };
   Bind(wxEVT_TIMER, [this](wxTimerEvent&) { asmPasAnimation(); }, asmAnim_.GetId());
@@ -2604,7 +2605,12 @@ void Cadre::brancherDessin() {
   dessin_->aretes3D = [this, liste = std::make_shared<std::vector<Dessin::Arete3D>>(), faite = std::make_shared<bool>(false)]() -> const std::vector<Dessin::Arete3D>* {
     if (!*faite) {
       *faite = true;
-      for (AreteProjetable& a : aretesPourProjeter(doc_, esquisseOuverte_)) liste->push_back({a.mid, std::move(a.pts)});
+      for (AreteProjetable& a : aretesPourProjeter(doc_, esquisseOuverte_)) liste->push_back({a.mid, std::move(a.pts), std::string()});
+      if (doc_.assemblage)  // asmSkExtLists : les arêtes des autres instances
+        for (assemblage::ListeExterne& L : assemblage::listesExternes(*doc_.assemblage, asmSolides_)) {
+          const std::string ext = L.ext.dump();
+          for (AreteListee& e : L.aretes) liste->push_back({e.mid, std::move(e.pts), ext});
+        }
     }
     return liste->empty() ? nullptr : liste.get();
   };
@@ -4611,6 +4617,10 @@ bool Cadre::essaiEsquisse(const std::wstring& fichier, int rang, const std::wstr
       n["corps"] = doc_.corps.size();
       n["modifie"] = doc_.modifie();
       asmMesureEssai(n);
+    }
+    if (e.contains("asmRefs") && doc_.assemblage) {
+      n["refs"] = assemblage::bilanReferences(*doc_.assemblage, asmSolides_);
+      n["passes"] = asmPassesRefs_;
     }
     if (e.contains("orbite")) vueEsquisse_->essaiOrbite(e["orbite"][0], e["orbite"][1]);
     if (e.contains("inclinee")) vueEsquisse_->basculerVueInclinee();

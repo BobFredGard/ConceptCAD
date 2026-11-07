@@ -202,6 +202,10 @@ static void lireEsquisse(const json& js, Document& d, std::map<std::string, int>
       e.pierce = vrai(je, "pierce");
       e.srcNom = texte(je, "srcNom");
       e.suiviInconnu = vrai(je, "isProj") || vrai(je, "ext") || je.contains("seg");
+      if (auto x = je.find("ext"); x != je.end() && x->is_object()) {
+        e.extRef = x->dump();
+        e.suiviInconnu = vrai(je, "isProj") || je.contains("seg");
+      }
       if (auto x = je.find("isect"); x != je.end() && x->is_object()) {
         e.isectJson = x->dump();
         if (x->value("mode", "") == "mesh") e.suiviInconnu = true;

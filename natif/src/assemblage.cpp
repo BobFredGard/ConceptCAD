@@ -1,6 +1,8 @@
 #include <cstdint>
 // Voir assemblage.h. Les noms des fonctions du navigateur sont donnés en regard de leur traduction.
 #include "assemblage.h"
+#include "assemblage_refs.h"
+#include "coter.h"
 
 #include <BRepAdaptor_Curve.hxx>
 #include <BRepAdaptor_Surface.hxx>
@@ -618,6 +620,52 @@ const char* nomLiaison(const std::string& t) {
 }
 
 // ---- Le calcul ----
+// Rejoue ceux qui ont changé : leur document, ou ce que voient leurs références vers les autres
+static bool majAutres(Solides& S, Document& haut) {
+  const J& a = *haut.assemblage;
+  const std::string act = actif(a);
+  bool rejoue = false;
+  if (a.contains("comps") && a["comps"].is_array())
+    for (const J& c : a["comps"]) {
+      const std::string id = texteDe(c, "id");
+      if (id == act || !c.contains("doc") || !c["doc"].is_object()) continue;
+      const std::string texte = c["doc"].dump(-1, ' ', false, J::error_handler_t::replace);
+      const std::string sig = signatureDocument(a, S, id, c["doc"]);
+      const std::string emp = std::to_string(std::hash<std::string>()(texte)) + ":" + std::to_string(texte.size()) + (sig.empty() ? "" : ":" + std::to_string(std::hash<std::string>()(sig)));
+      const auto it = S.find(id);
+      if (it != S.end() && it->second->empreinte == emp) continue;
+      auto s = std::make_shared<SolideComposant>();
+      s->empreinte = emp;
+      rejoue = true;
+      try {
+        PoseRefs pose(a, S, id);
+        Document d = documentDeComposant(c["doc"], haut);
+        s->nom = d.nom;
+        if (d.nonPrisEnCharge.empty()) {
+          if (!sig.empty()) suivreExternes(d);
+          ResultatRejeu r = rejouer(d);
+          if (!r.forme.IsNull()) mailler(r.forme, parallele());
+          s->forme = r.forme;
+          s->corps = r.corps;
+          s->spirales = r.spirales;
+          s->messages = r.messages;
+          s->construction = d.construction;
+          poserTeintes(d, *s);
+        } else {
+          for (const std::string& m : d.nonPrisEnCharge) s->messages.push_back("pas encore repris : " + m);
+        }
+      } catch (const Standard_Failure& e) {
+        s->messages.push_back(e.what());
+      } catch (const std::exception& e) {
+        s->messages.push_back(e.what());
+      }
+      S[id] = s;
+    }
+  return rejoue;
+}
+
+bool majReferences(Solides& S, Document& haut) { return haut.assemblage && majAutres(S, haut); }
+
 void majSolides(Solides& S, Document& haut, const ResultatRejeu& rActif) {
   if (!haut.assemblage) {
     S.clear();
@@ -640,40 +688,12 @@ void majSolides(Solides& S, Document& haut, const ResultatRejeu& rActif) {
         s->messages = rActif.messages;
         s->construction = haut.construction;
         poserTeintes(haut, *s);
-        if (c.contains("pats") && c["pats"].is_array() && std::any_of(c["pats"].begin(), c["pats"].end(), [](const J& p) { return p.is_object() && p.value("type", std::string()) == "path"; }))
+        if (c.contains("pats") && c["pats"].is_array() && std::any_of(c["pats"].begin(), c["pats"].end(), [](const J& p) { return p.is_object() && p.value("along", std::string()) == "curve"; }))
           s->docGuide = std::make_shared<J>(documentActuelJson(haut));
         S[id] = s;
-        continue;
       }
-      if (!c.contains("doc") || !c["doc"].is_object()) continue;
-      const std::string texte = c["doc"].dump(-1, ' ', false, J::error_handler_t::replace);
-      const std::string emp = std::to_string(std::hash<std::string>()(texte)) + ":" + std::to_string(texte.size());
-      const auto it = S.find(id);
-      if (it != S.end() && it->second->empreinte == emp) continue;
-      auto s = std::make_shared<SolideComposant>();
-      s->empreinte = emp;
-      try {
-        Document d = documentDeComposant(c["doc"], haut);
-        s->nom = d.nom;
-        if (d.nonPrisEnCharge.empty()) {
-          ResultatRejeu r = rejouer(d);
-          if (!r.forme.IsNull()) mailler(r.forme, parallele());
-          s->forme = r.forme;
-          s->corps = r.corps;
-          s->spirales = r.spirales;
-          s->messages = r.messages;
-          s->construction = d.construction;
-          poserTeintes(d, *s);
-        } else {
-          for (const std::string& m : d.nonPrisEnCharge) s->messages.push_back("pas encore repris : " + m);
-        }
-      } catch (const Standard_Failure& e) {
-        s->messages.push_back(e.what());
-      } catch (const std::exception& e) {
-        s->messages.push_back(e.what());
-      }
-      S[id] = s;
     }
+  majAutres(S, haut);
   for (auto it = S.begin(); it != S.end();)
     it = vus.count(it->first) ? std::next(it) : S.erase(it);
 }

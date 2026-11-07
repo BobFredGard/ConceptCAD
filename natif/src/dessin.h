@@ -96,6 +96,7 @@ class Dessin {
   struct Arete3D {
     Vec3 mid{0, 0, 0};
     std::vector<Vec3> pts;
+    std::string ext;  // arête d'un autre composant : { ctx, path } en JSON
   };
   struct Projetable {
     enum Sorte { RIEN, LIGNE, CERCLE, ARC, COURBE, UN_POINT } sorte = RIEN;
@@ -105,6 +106,7 @@ class Dessin {
     int m = 0;
     Vec3 mid{0, 0, 0};
     std::string skSk, skPt, skEnt, srcNom;  // vient d'une autre esquisse
+    std::string ext;
     explicit operator bool() const { return sorte != RIEN; }
   };
   struct SourceProjection {
