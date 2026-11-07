@@ -32,6 +32,12 @@ TopoDS_Shape appliquerScission(const Document& d, const Fonction& f, const TopoD
 TopoDS_Shape appliquerDeplacementCorps(const Fonction& f, const TopoDS_Shape& solide, std::vector<std::string>& msgs);  // occApplyBodyMove
 TopoDS_Shape appliquerEchelle(const Fonction& f, const TopoDS_Shape& solide, std::vector<std::string>& msgs);  // occApplyBodyScale
 TopoDS_Shape formeBalayage(const Document& d, const Fonction& f, std::vector<std::string>& alertes);  // occShapeOfSweep
+TopoDS_Shape appliquerCoque(const Document& d, const Fonction& f, const TopoDS_Shape& solide, std::vector<std::string>& msgs);  // occApplyCoque
+TopoDS_Shape depouilleFaces(const Document& d, const Fonction& f, const TopoDS_Shape& solide, std::vector<std::string>& msgs);  // occApplyDraft (dans rejeu.cpp)
+std::optional<TopoDS_Face> trouverFaceLibre(const Document& d, const TopoDS_Shape& solide, const RefFace& ref);  // occFindFaceAny
+const char* natureSurface(const TopoDS_Face& f);  // occSurfKind
+std::vector<int> facesTangentesDe(const std::vector<TopoDS_Face>& faces, const std::vector<int>& germes);  // occTangentChainIdx
+std::vector<TopoDS_Face> facesVoisinesDe(const std::vector<TopoDS_Face>& faces, const std::vector<TopoDS_Face>& groupe);  // occFacesTouching
 TopoDS_Shape sansMiettes(const TopoDS_Shape& s);  // occSansMiettes
 TopoDS_Shape communFormes(const TopoDS_Shape& a, const TopoDS_Shape& b);  // occCommon
 

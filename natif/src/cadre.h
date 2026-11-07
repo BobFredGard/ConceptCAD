@@ -1,5 +1,6 @@
 // Fenêtre principale : l'environnement du navigateur autour de la vue 3D et de l'écran d'esquisse.
 #pragma once
+#include <map>
 #include <memory>
 #include <nlohmann/json.hpp>
 #include "fenetre_parametres.h"
@@ -30,6 +31,35 @@ struct Protocole {
   double base = 0, pas = 0.05;
   FILE* journal = nullptr;
   std::wstring signal;
+};
+
+// Une face retenue : sa référence durable (ce qui s'écrit dans le fichier) et, si elle est retrouvée, la face elle-même
+struct Retenue {
+  nlohmann::ordered_json ref;
+  TopoDS_Face forme;
+  std::string corps;
+};
+// Le mode de choix des faces (mvMode, draftMode, coqueMode, splitMode)
+struct ChoixFaces {
+  enum { DEPLACER, DEPOUILLE, COQUE, SUPPRESSION, SCINDER };
+  int sorte = DEPLACER;
+  std::string edition, marqueAvant, corps;
+  std::vector<Retenue> faces;
+  Retenue reference;
+  bool phaseRef = false, tangent = true, flip = false, piocherPlan = false;
+  double dist = 5, angle = 5, epaisseur = 2, decalage = 0;
+  std::string mode = "face";
+  nlohmann::ordered_json plan;
+  // La face d'un congé : on règle sa taille
+  std::string blendFonction, blendNom, blendCorps;
+  std::vector<int> blendIdx;
+  double blendRayon = 0;
+  bool blendChanfrein = false;
+  TopoDS_Face blendForme;
+  // L'aperçu : recalculé seulement si le réglage a changé
+  std::string signature;
+  TopoDS_Shape apercu;
+  wxString alerte;
 };
 
 class Cadre : public wxFrame {
@@ -99,6 +129,28 @@ public:
   void rafraichirConge();
   void appliquerChoixConge();
   bool proprieteConge(const wxString& nom, const wxVariant& valeur);
+  // Le choix des faces (cadre_faces.cpp)
+  void entrerFaces(int sorte, const std::string& edition = "");
+  void quitterFaces();
+  void quitterFacesSansCalcul();
+  void cliqueFaces(const TopoDS_Shape& s);
+  void rafraichirFaces();
+  void reglerFaces(const std::string& cle, const std::string& valeur);
+  void appliquerChoixFaces();
+  bool supprimerFacesChoisies();
+  void cliqueFacePres(const Vec3& p);
+  bool chercherTaille(const TopoDS_Face& face, const std::string& corps);
+  void planScission(Vec3& o, Vec3& n) const;
+  bool normaleOk(const TopoDS_Face& f) const;
+  std::string corpsDeForme(const TopoDS_Shape& s) const;
+  TopoDS_Shape solideDuCorps(const std::string& id) const;
+  static bool fonctionDeFaces(const Fonction& f);
+  static int sorteDeFaces(const Fonction& f);
+  bool enChoix() const { return choix_ || faces_; }
+  std::unique_ptr<ChoixFaces> faces_;
+  bool memoFacesTangentes_ = true;
+  std::map<std::string, std::vector<std::string>> facesListes_;
+  BoutonEsquisse* boutonOkChoix_ = nullptr;
   void capturerFenetre(const std::wstring& png);
   void modifierFonction(int i, const std::function<void(Fonction&)>& reglage);
   // Les menus contextuels (src/90-20-menus-contextuels.js)
@@ -113,6 +165,16 @@ public:
   void menuCorps(const std::string& id, bool vue3d = false);
   void surDroit3D(const TopoDS_Shape& sous);
   void surArbreMenu(wxTreeEvent& e);
+  std::function<bool(const TopoDS_Shape&)> pioche_;  // le prochain clic dans la vue lui revient ; false : encore un
+  void demanderClicFiche(const std::string& id, const std::string& cle, const std::string& valeur);
+  void creerPercageVise();
+  int esquisseDeLArbre();
+  void montrerFiche(int i);
+  void appliquerFiche(const std::string& id, const std::string& cle, const std::string& valeur);
+  std::string esquisseVisee(bool profilFerme);
+  void creerFonction(const std::function<std::string(nlohmann::ordered_json&)>& f, const wxString& message);
+  std::string ficheId_;  // la fonction montrée dans le panneau
+  std::map<std::string, std::vector<std::string>> ficheChoix_;  // cle → valeurs de la liste montrée
   void nouveauCorps();
   void importer();
   bool importerFichier(const std::wstring& chemin);

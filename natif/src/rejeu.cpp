@@ -971,6 +971,8 @@ TopoDS_Shape rejouerCorps(Document& d, const std::vector<Fonction*>& liste, cons
     clore();
     Fonction& f = *liste[ii];
     enCours = &f;
+    // La mesure « à travers tout » ne vaut que pour la fonction qui la demande : la suite (congés) retombe sur la position d'origine
+    gBaseTraversante = TopoDS_Shape();
     // batchLen : les copies d'une répétition qui se suivent, même opération, au moins deux
     if (!f.repeatId.empty() && !resultat.IsNull() && (f.type == "hole" || f.type == "extrude")) {
       const auto opDe = [](const Fonction& g) { return g.type == "hole" ? std::string("cut") : g.type == "extrude" ? g.op : std::string(); };
@@ -1111,6 +1113,16 @@ TopoDS_Shape rejouerCorps(Document& d, const std::vector<Fonction*>& liste, cons
       }
       continue;
     }
+    if (f.type == "xshell") {
+      if (resultat.IsNull()) {
+        msgs.push_back(f.nom + " : aucun volume à évider — ignoré");
+      } else {
+        const auto snapC = nomsInstantane(resultat);  // recette B-spline, réparation : pas d'historique
+        resultat = appliquerCoque(d, f, resultat, msgs);
+        if (snapC) nomsCompleter(resultat, "", &*snapC);
+      }
+      continue;
+    }
     if (f.type == "xfillet") {
       if (resultat.IsNull()) {
         msgs.push_back(f.nom + " : aucun volume à congédier — ignoré");
@@ -1165,6 +1177,7 @@ TopoDS_Shape rejouerCorps(Document& d, const std::vector<Fonction*>& liste, cons
 }
 }  // namespace
 
+TopoDS_Shape depouilleFaces(const Document& d, const Fonction& f, const TopoDS_Shape& solide, std::vector<std::string>& msgs) { return appliquerDepouille(d, f, solide, msgs); }
 TopoDS_Shape unifierForme(const TopoDS_Shape& s) { return unifier(s); }
 TopoDS_Shape fusionFormes(const TopoDS_Shape& a, const TopoDS_Shape& b) { return fusion(a, b); }
 TopoDS_Shape coupeFormes(const TopoDS_Shape& a, const TopoDS_Shape& b) { return coupe(a, b); }

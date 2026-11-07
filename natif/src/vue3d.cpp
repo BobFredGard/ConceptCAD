@@ -18,6 +18,8 @@
 #include <Image_PixMap.hxx>
 #include <NCollection_Array1.hxx>
 #include <Prs3d_ShadingAspect.hxx>
+#include <Graphic3d_ZLayerId.hxx>
+#include <TopoDS.hxx>
 #include <TopoDS_Compound.hxx>
 #include <V3d_AmbientLight.hxx>
 #include <V3d_DirectionalLight.hxx>
@@ -396,7 +398,7 @@ void Vue3D::cliquerEn(const wxPoint& p) {
     }
   }
   if (affichee_.IsNull()) return;
-  contexte_->SelectDetected(AIS_SelectionScheme_Replace);
+  contexte_->SelectDetected(!enChoix_ && wxGetKeyState(WXK_CONTROL) ? AIS_SelectionScheme_XOR : AIS_SelectionScheme_Replace);
   contexte_->UpdateCurrentViewer();
   TopoDS_Shape choisie;
   contexte_->InitSelected();
@@ -459,9 +461,78 @@ void Vue3D::montrerChoix(const TopoDS_Shape& choisies, const TopoDS_Shape& aperc
   vue_->Redraw();
 }
 
+void Vue3D::debutChoixFaces() {
+  if (affichee_.IsNull()) return;
+  preparerSelection();
+  enChoix_ = true;
+  modeFaces_ = true;
+  contexte_->ClearSelected(false);
+  toleranceAvant_ = contexte_->PixelTolerance();
+  contexte_->Deactivate(affichee_, AIS_Shape::SelectionMode(TopAbs_EDGE));  // un clic près d'une arête vise la face
+  vue_->Redraw();
+}
+
+namespace {
+occ::handle<AIS_Shape> nappe(const occ::handle<AIS_InteractiveContext>& c, const std::vector<TopoDS_Face>& faces, const Quantity_Color& teinte) {
+  TopoDS_Compound k;
+  BRep_Builder b;
+  b.MakeCompound(k);
+  for (const TopoDS_Face& f : faces) b.Add(k, f);
+  occ::handle<AIS_Shape> a = new AIS_Shape(k);
+  a->Attributes()->SetAutoTriangulation(false);
+  a->SetColor(teinte);
+  c->Display(a, AIS_Shaded, -1, false);
+  c->SetZLayer(a, Graphic3d_ZLayerId_Topmost);  // toujours visible, comme depthTest:false dans le navigateur
+  c->SetTransparency(a, 0.45, false);
+  return a;
+}
+}  // namespace
+
+void Vue3D::montrerFaces(const std::vector<TopoDS_Face>& retenues, const std::vector<TopoDS_Face>& reference, const TopoDS_Shape& apercu, unsigned couleurApercu, const TopoDS_Shape& plan) {
+  retirer(contexte_, facesRetenues_);
+  retirer(contexte_, faceReference_);
+  retirer(contexte_, planChoix_);
+  retirer(contexte_, apercu_);
+  if (!retenues.empty()) facesRetenues_ = nappe(contexte_, retenues, couleur(0xff, 0x9f, 0x0a));
+  if (!reference.empty()) faceReference_ = nappe(contexte_, reference, couleur(0x0a, 0x84, 0xff));
+  if (!plan.IsNull()) {
+    occ::handle<AIS_Shape> a = new AIS_Shape(plan);
+    a->Attributes()->SetAutoTriangulation(false);
+    a->SetColor(couleur(0x0a, 0x84, 0xff));
+    contexte_->Display(a, AIS_Shaded, -1, false);
+    contexte_->SetTransparency(a, 0.82, false);
+    planChoix_ = a;
+  }
+  if (!apercu.IsNull()) {
+    occ::handle<AIS_Shape> a = new AIS_Shape(apercu);
+    a->Attributes()->SetAutoTriangulation(false);
+    a->SetColor(couleurHex(couleurApercu));
+    a->SetMaterial(matierePiece());
+    contexte_->Display(a, AIS_Shaded, -1, false);
+    contexte_->SetTransparency(a, 0.45, false);
+    apercu_ = a;
+    contexte_->SetTransparency(affichee_, 0.72, false);  // la pièce s'estompe et reçoit toujours les clics
+  } else if (!affichee_.IsNull()) {
+    contexte_->UnsetTransparency(affichee_, false);
+  }
+  vue_->Redraw();
+}
+
+std::vector<TopoDS_Face> Vue3D::facesChoisies() const {
+  std::vector<TopoDS_Face> v;
+  for (contexte_->InitSelected(); contexte_->MoreSelected(); contexte_->NextSelected())
+    if (contexte_->HasSelectedShape() && contexte_->SelectedShape().ShapeType() == TopAbs_FACE) v.push_back(TopoDS::Face(contexte_->SelectedShape()));
+  return v;
+}
+
 void Vue3D::finChoix() {
   if (!enChoix_) return;
   enChoix_ = false;
+  retirer(contexte_, facesRetenues_);
+  retirer(contexte_, faceReference_);
+  retirer(contexte_, planChoix_);
+  if (modeFaces_ && !affichee_.IsNull()) contexte_->Activate(affichee_, AIS_Shape::SelectionMode(TopAbs_EDGE));
+  modeFaces_ = false;
   retirer(contexte_, traitsVifs_);
   retirer(contexte_, traitsLisses_);
   retirer(contexte_, traitsChoisis_);

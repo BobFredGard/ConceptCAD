@@ -39,6 +39,10 @@ class Vue3D : public wxWindow {
   void debutChoix(const TopoDS_Shape& vives, const TopoDS_Shape& tangentes);
   void montrerChoix(const TopoDS_Shape& choisies, const TopoDS_Shape& apercu, const std::vector<TopoDS_Face>& nouvelles);
   void finChoix();
+  // Le choix de faces : seules les faces se cliquent ; les retenues en orange, la référence en bleu, par-dessus la pièce
+  void debutChoixFaces();
+  void montrerFaces(const std::vector<TopoDS_Face>& retenues, const std::vector<TopoDS_Face>& reference, const TopoDS_Shape& apercu, unsigned couleurApercu, const TopoDS_Shape& plan);
+  std::vector<TopoDS_Face> facesChoisies() const;  // hors choix : les faces sélectionnées (Ctrl+clic pour en ajouter)
   // Pour les essais : là où un point de la pièce tombe à l'écran, et un clic à cet endroit
   wxPoint pixelDe(double x, double y, double z) const;
   void cliquerEn(const wxPoint& p);
@@ -61,6 +65,8 @@ class Vue3D : public wxWindow {
   occ::handle<AIS_ViewCube> cube_;
   occ::handle<AIS_Shape> affichee_;
   occ::handle<AIS_Shape> traitsVifs_, traitsLisses_, traitsChoisis_, apercu_;
+  occ::handle<AIS_Shape> facesRetenues_, faceReference_, planChoix_;
+  bool modeFaces_ = false;
   occ::handle<AIS_Shape> aretesVives_, aretesLisses_;  // les traits de la pièce, hors du choix d'un congé
   std::vector<occ::handle<AIS_Shape>> reflets_;  // chaque corps renversé sous le sol
   double sol_ = 0, msAffichage_ = 0, msImage_ = 0;

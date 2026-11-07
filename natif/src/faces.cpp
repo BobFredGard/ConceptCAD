@@ -22,6 +22,8 @@
 #include <BRepFill.hxx>
 #include <BRepGProp.hxx>
 #include <BRepOffsetAPI_MakePipeShell.hxx>
+#include <BRepOffsetAPI_MakeThickSolid.hxx>
+#include <ShapeCustom.hxx>
 #include <BRepOffset_MakeOffset.hxx>
 #include <BRepPrimAPI_MakeCone.hxx>
 #include <BRepPrimAPI_MakeCylinder.hxx>
@@ -1072,6 +1074,186 @@ TopoDS_Shape appliquerSuppressionFaces(const Document& d, const Fonction& f, con
   }
   if (gardees < hs.size()) msgs.push_back(f.nom + " : suppression partielle, " + std::to_string(gardees) + "/" + std::to_string(total) + " face(s), " + std::to_string(hs.size() - gardees) + " refusée(s) par le noyau");
   return r;
+}
+
+std::optional<TopoDS_Face> trouverFaceLibre(const Document& d, const TopoDS_Shape& solide, const RefFace& ref) { return trouverFaceQuelconque(d, solide, ref); }
+const char* natureSurface(const TopoDS_Face& f) { return nomSurface(f); }
+std::vector<int> facesTangentesDe(const std::vector<TopoDS_Face>& faces, const std::vector<int>& germes) { return chaineFacesTangentes(faces, germes); }
+std::vector<TopoDS_Face> facesVoisinesDe(const std::vector<TopoDS_Face>& faces, const std::vector<TopoDS_Face>& groupe) { return facesVoisines(faces, groupe); }
+
+// ── coque (src/20-10-prismes-booleens-coque.js) ──────────────────────────────
+namespace {
+// occCoqueThick : le cœur de toutes les recettes
+TopoDS_Shape coqueEpaisse(const TopoDS_Shape& result, const std::vector<TopoDS_Face>& faces, double thick, GeomAbs_JoinType join, bool inter) {
+  TopTools_ListOfShape L;
+  for (const TopoDS_Face& f : faces) L.Append(f);
+  BRepOffsetAPI_MakeThickSolid mk;
+  mk.MakeThickSolidByJoin(result, L, -std::abs(thick), 0.01, BRepOffset_Skin, inter, false, join, false);
+  mk.Build();
+  if (!mk.IsDone()) throw std::runtime_error("évidage refusé par le moteur (paroi trop épaisse ? ouverture mal placée ?)");
+  const TopoDS_Shape brut = mk.Shape();
+  // Paroi intérieure : née de la face extérieure qu'elle double (« nom/int »)
+  try {
+    if (nomsConnus(result))
+      nomsTransmet({result}, histoireDe(mk), brut, [&](const CarteFaces& m, std::vector<std::string>& noms) {
+        for (const TopoDS_Face& face : facesDe(result)) {
+          const std::string nom = nomsFaceDe(result, face);
+          if (nom.empty()) continue;
+          for (const TopoDS_Shape& y : mk.Generated(face)) {
+            const int j = m.FindIndex(y);
+            if (j > 0 && noms[j - 1].empty()) noms[j - 1] = nom + "/int";
+          }
+        }
+      });
+  } catch (const Standard_Failure&) {
+  }
+  if (brut.IsNull()) throw std::runtime_error("solide évidé vide");
+  return brut;
+}
+int nombreDeFaces(const TopoDS_Shape& s) {
+  int n = 0;
+  for (TopExp_Explorer x(s, TopAbs_FACE); x.More(); x.Next()) n++;
+  return n;
+}
+// occCoqueEvidage : le moteur rend parfois un résultat non évidé. Boîte serrée, au moins 2 faces de plus, moins de la moitié du volume.
+bool vraiEvidage(const TopoDS_Shape& base, const TopoDS_Shape& out, double thick) {
+  try {
+    Bnd_Box bb, bo;
+    BRepBndLib::AddOptimal(base, bb, true, false);
+    BRepBndLib::AddOptimal(out, bo, true, false);
+    const Vec3 b0 = xyz(bb.CornerMin()), b1 = xyz(bb.CornerMax()), o0 = xyz(bo.CornerMin()), o1 = xyz(bo.CornerMax());
+    const double m = 2 + 2 * std::abs(thick);
+    for (int i = 0; i < 3; i++)
+      if (o0[i] < b0[i] - m || o1[i] > b1[i] + m) return false;
+    if (nombreDeFaces(out) - nombreDeFaces(base) < 2) return false;
+    const double v0 = volumeForme(base), v1 = volumeForme(out);
+    return v1 > 0 && v1 < v0 * 0.5;
+  } catch (const Standard_Failure&) {
+    return false;
+  }
+}
+struct EntreeCoque {
+  const RefFace* fr;
+  TopoDS_Face h;
+};
+// occCoqueRecettes : Arc direct, Intersection, conversion en B-spline puis Arc ; acceptées seulement après validation
+TopoDS_Shape recettesCoque(const Document& d, const TopoDS_Shape& result, const std::vector<EntreeCoque>& entrees, double thick) {
+  const auto essai = [&](const TopoDS_Shape& forme, const std::vector<TopoDS_Face>& faces, GeomAbs_JoinType join, bool inter) -> TopoDS_Shape {
+    const TopoDS_Shape out = coqueEpaisse(forme, faces, thick, join, inter);
+    if (!vraiEvidage(result, out, thick)) return TopoDS_Shape();
+    if (valide(out)) return out;
+    const TopoDS_Shape fix = reparer(out);
+    if (!fix.IsNull() && valide(fix) && vraiEvidage(result, fix, thick)) return fix;
+    return out;
+  };
+  std::vector<TopoDS_Face> hs;
+  for (const EntreeCoque& e : entrees) hs.push_back(e.h);
+  std::string erreur;
+  const auto note = [&](const char* m) {
+    if (erreur.empty()) erreur = m;
+  };
+  try {
+    const TopoDS_Shape r = essai(result, hs, GeomAbs_Arc, false);
+    if (!r.IsNull()) return r;
+  } catch (const Standard_Failure& e) {
+    note(e.what());
+  } catch (const std::exception& e) {
+    note(e.what());
+  }
+  try {
+    const TopoDS_Shape r = essai(result, hs, GeomAbs_Intersection, true);
+    if (!r.IsNull()) return r;
+  } catch (const Standard_Failure& e) {
+    note(e.what());
+  } catch (const std::exception& e) {
+    note(e.what());
+  }
+  try {
+    const TopoDS_Shape cv = ShapeCustom::ConvertToBSpline(result, true, false, false, false);
+    if (!cv.IsNull()) {
+      std::vector<TopoDS_Face> fc;
+      for (const EntreeCoque& e : entrees)
+        if (auto h = trouverFace(d, cv, *e.fr)) fc.push_back(*h);
+      if (!fc.empty()) {
+        const TopoDS_Shape r = essai(cv, fc, GeomAbs_Arc, false);
+        if (!r.IsNull()) return r;
+      }
+    }
+  } catch (const Standard_Failure& e) {
+    note(e.what());
+  } catch (const std::exception& e) {
+    note(e.what());
+  }
+  throw std::runtime_error(erreur.empty() ? "évidage refusé par le moteur (paroi trop épaisse ? ouverture mal placée ?)" : erreur);
+}
+}  // namespace
+
+// occApplyCoque
+TopoDS_Shape appliquerCoque(const Document& d, const Fonction& f, const TopoDS_Shape& result, std::vector<std::string>& msgs) {
+  const double t = f.epaisseur;
+  if (!(t > 1e-9)) {
+    msgs.push_back(f.nom + " : épaisseur nulle — aucune coque");
+    return result;
+  }
+  const size_t total = f.facesVisees.size();
+  if (!total) {
+    msgs.push_back(f.nom + " : aucune face à retirer (ouverture) — la coque resterait fermée et invisible");
+    return result;
+  }
+  std::vector<EntreeCoque> entrees;
+  for (const RefFace& r : f.facesVisees) {
+    try {
+      if (auto h = trouverFace(d, result, r)) entrees.push_back({&r, *h});
+    } catch (const Standard_Failure&) {
+    }
+  }
+  if (entrees.empty()) {
+    msgs.push_back(f.nom + " : aucune des " + std::to_string(total) + " face(s) à retirer n'est retrouvée — la pièce a changé");
+    return result;
+  }
+  if (entrees.size() < total) msgs.push_back(f.nom + " : " + std::to_string(total - entrees.size()) + " face(s) à retirer introuvable(s) sur la pièce courante");
+  TopoDS_Shape r;
+  std::string echec;
+  try {
+    r = recettesCoque(d, result, entrees, t);
+  } catch (const Standard_Failure& e) {
+    echec = e.what();
+  } catch (const std::exception& e) {
+    echec = e.what();
+  }
+  if (r.IsNull()) {
+    // Isolation : quelles faces le moteur refuse
+    std::vector<EntreeCoque> garde;
+    for (const EntreeCoque& e : entrees) {
+      auto essai = garde;
+      essai.push_back(e);
+      try {
+        recettesCoque(d, result, essai, t);
+        garde.push_back(e);
+      } catch (const Standard_Failure&) {
+      } catch (const std::exception&) {
+      }
+    }
+    if (garde.empty()) {
+      msgs.push_back(f.nom + " : coque impossible — " + echec + ". Essayez une paroi plus fine ou une autre face d'ouverture.");
+      return result;
+    }
+    try {
+      r = recettesCoque(d, result, garde, t);
+    } catch (const Standard_Failure& e) {
+      msgs.push_back(f.nom + " : coque impossible (" + e.what() + ")");
+      return result;
+    } catch (const std::exception& e) {
+      msgs.push_back(f.nom + " : coque impossible (" + e.what() + ")");
+      return result;
+    }
+    msgs.push_back(f.nom + " : coque partielle : " + std::to_string(garde.size()) + "/" + std::to_string(total) + " face(s) retirée(s), " + std::to_string(total - garde.size()) + " écartée(s) par le moteur");
+  }
+  try {
+    return unifierForme(r);
+  } catch (const Standard_Failure&) {
+    return r;
+  }
 }
 
 // occApplySplit

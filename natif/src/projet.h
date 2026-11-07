@@ -1,5 +1,6 @@
 // Lecture d'un projet .conceptcad (JSON, gzip possible) : même format que la version navigateur.
 #pragma once
+#include <nlohmann/json.hpp>
 #include <map>
 #include <memory>
 #include <array>
@@ -124,6 +125,7 @@ struct RefFace {  // le nom se retient au premier passage, même sur une référ
   mutable std::string nom;  // nom unique, retenu au premier passage (nomsRefNote)
   AncreArete ancre;
 };
+RefFace lireRefFaceJson(const nlohmann::ordered_json& j);
 // Réglages d'un perçage tels que dans le fichier (NaN : absent)
 struct ReglagePercage {
   std::string kind, end, pilot;
@@ -146,6 +148,7 @@ struct Fonction {
   RefFace refFace;
   std::vector<RefFace> facesVisees;
   double angleDepouille = 0, draft = 0;
+  double epaisseur = 0;  // xshell
   double dist = 0;       // xmove
   bool facesTangentes = false;  // xmove
   std::string chemin;    // sweep : esquisse du chemin
@@ -201,7 +204,7 @@ struct PorteurFx {
 
 // Élément de construction : ce programme ne le recalcule pas encore, il garde sa position
 struct ElementConstruction {
-  std::string id;
+  std::string id, kind, nom;
   bool surPiece = false;                // une référence vise une face, une arête, un sommet ou une esquisse
   std::vector<std::string> surElements;  // autres éléments de construction visés
   bool aRepere = false;
@@ -259,6 +262,7 @@ struct Document {
   std::vector<std::string> sourcesRepetees;  // les fonctions que copie une répétition
   std::wstring chemin;
   TexteCommun octets;  // le fichier tel qu'il est sur le disque : l'enregistrement en repart
+  std::shared_ptr<const std::map<std::string, std::string>> fonctionsJson;  // id → texte de la fonction : les fiches du panneau
   std::shared_ptr<const std::map<std::string, std::string>> imports;  // bundle.imports : les fichiers importés, en base64
   bool compresse = false;
   int nomsFace = 0;  // entNames.face : compteur des noms « Face n », jamais réemployés

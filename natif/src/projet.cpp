@@ -307,7 +307,7 @@ static std::string nomFonction(const std::string& t) {
   static const std::map<std::string, std::string> noms = {
       {"revolve", "révolution"}, {"hole", "perçage"}, {"xfillet", "congé ou chanfrein"}, {"xdraft", "dépouille"},
       {"bscale", "mise à l'échelle d'un corps"}, {"xsplit", "scission"}, {"bremove", "suppression d'un corps"},
-      {"xmove", "déplacement de face"}, {"sweep", "balayage"}, {"combine", "combinaison de corps"},
+      {"xmove", "déplacement de face"}, {"xshell", "coque"}, {"sweep", "balayage"}, {"combine", "combinaison de corps"},
       {"import", "pièce importée"}, {"bmove", "déplacement d'un corps"}, {"xdelface", "suppression de face"}};
   const auto it = noms.find(t);
   return it != noms.end() ? it->second : "fonction « " + t + " »";
@@ -385,6 +385,7 @@ static RefFace lireRefFace(const json& j) {
   if (auto x = j.find("anchor"); x != j.end() && x->is_object()) lireAncre(*x, r.ancre);
   return r;
 }
+RefFace lireRefFaceJson(const nlohmann::ordered_json& j) { return lireRefFace(j); }
 static void lireConge(const json& jf, Fonction& f, std::map<std::string, int>& refus) {
   f.chamfer = vrai(jf, "chamfer");
   if (auto t = jf.find("tangent"); t != jf.end() && t->is_boolean()) f.tangent = t->get<bool>() ? 1 : 0;
@@ -424,6 +425,11 @@ static void lireFonction(const json& jf, Document& d, std::map<std::string, int>
   f.flip = vrai(jf, "flip");
   f.through = vrai(jf, "through");
   f.repeatId = texte(jf, "repeatId");
+  if (f.type == "xshell") {
+    if (auto a = jf.find("thick"); a != jf.end() && a->is_number()) f.epaisseur = a->get<double>();
+    if (auto c = jf.find("faces"); c != jf.end() && c->is_array())
+      for (const auto& x : *c) f.facesVisees.push_back(lireRefFace(x));
+  }
   if (f.type == "xdraft" || f.type == "xmove" || f.type == "xdelface" || f.type == "xsplit") {
     if (auto a = jf.find("angle"); f.type == "xdraft" && a != jf.end() && a->is_number()) f.angleDepouille = a->get<double>();
     if (auto r = jf.find("ref"); r != jf.end()) f.refFace = lireRefFace(*r);
@@ -516,7 +522,7 @@ static void lireFonction(const json& jf, Document& d, std::map<std::string, int>
   }
   // La répétition se contente de créer des copies, rejouées comme des fonctions : sans effet ici.
   if (f.visible && f.type != "extrude" && f.type != "repeat" && f.type != "xfillet" && f.type != "hole" && f.type != "revolve" && f.type != "xdraft" &&
-      f.type != "xmove" && f.type != "xdelface" && f.type != "xsplit" && f.type != "bmove" && f.type != "bscale" && f.type != "bremove" && f.type != "sweep" && f.type != "combine" && f.type != "import")
+      f.type != "xshell" && f.type != "xmove" && f.type != "xdelface" && f.type != "xsplit" && f.type != "bmove" && f.type != "bscale" && f.type != "bremove" && f.type != "sweep" && f.type != "combine" && f.type != "import")
     refus[nomFonction(f.type)]++;
   if (auto x = jf.find("src"); f.type == "import" && x != jf.end() && x->is_object()) {
     f.importFmt = texte(*x, "fmt");
@@ -569,6 +575,14 @@ static Document documentDepuisDoc(json& racine);
 
 static Document documentDepuis(json& racine) {
   Document d = documentDepuisDoc(racine);
+  {
+    const json& j = racine.contains("doc") && racine["doc"].is_object() ? racine["doc"] : racine;
+    auto m = std::make_shared<std::map<std::string, std::string>>();
+    if (auto x = j.find("features"); x != j.end() && x->is_array())
+      for (const json& f : *x)
+        if (f.is_object()) (*m)[texte(f, "id")] = f.dump(-1, ' ', false, json::error_handler_t::replace);
+    d.fonctionsJson = m;
+  }
   if (auto x = racine.find("imports"); x != racine.end() && x->is_object()) {
     auto m = std::make_shared<std::map<std::string, std::string>>();
     for (const auto& v : x->items())
@@ -613,6 +627,8 @@ static Document documentDepuisDoc(json& racine) {
       if (!c.is_object()) continue;
       ElementConstruction e;
       e.id = texte(c, "id");
+      e.kind = texte(c, "kind");
+      e.nom = texte(c, "name");
       if (auto fr = c.find("fr"); fr != c.end() && fr->is_object()) e.aRepere = lireVec3(*fr, "o", e.o) && lireVec3(*fr, "z", e.z);
       if (auto r = c.find("refs"); r != c.end() && r->is_array())
         for (const auto& q : *r) {
