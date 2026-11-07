@@ -409,6 +409,9 @@ public:
     wxString label, unite;
     std::string cle;
   };
+  void ouvrirScript();
+  nlohmann::ordered_json scriptExecuter(const std::string& texte);
+  nlohmann::ordered_json scriptInfo();
   void dynCreer();
   void dynSelection(int i);
   void dynCalculer();

@@ -96,6 +96,7 @@ std::vector<Cadre::CommandeCherchee> Cadre::commandesCherchees() {
   ajouter(L"Enregistrer", ici(barreHaute_->surEnregistrer));
   ajouter(L"Enregistrer sous…", ici(barreHaute_->surEnregistrerSous));
   ajouter(L"Dossier de projets…", ici(barreHaute_->surDossier));
+  ajouter(L"Script JSON…", [this] { ouvrirScript(); });
   for (int t = 0; t < theme::NB; t++) ajouter(wxString(L"Thème : ") + theme::palette(t).nom, [this, t] { appliquerTheme(t); });
   ajouter(L"Régénérer le modèle", ici(barreHaute_->surRegenerer));
   ajouter(L"Tout afficher (cadrer)", [this] { vue_->vueInitiale(); });

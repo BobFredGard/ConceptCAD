@@ -1187,7 +1187,7 @@ void Cadre::creerFonction(const std::function<std::string(nlohmann::ordered_json
       choisirFonction(static_cast<int>(i));
       if (fonctionMontree_ < 0 && ficheId_ != id) montrerFonction(static_cast<int>(i));
     }
-  etat(etatVue_->texte() + L"  |  " + message);
+  if (!dyn_ || !dyn_->neuf || dyn_->id != id) etat(etatVue_->texte() + L"  |  " + message);
 }
 
 // Le panneau d'une fonction : les réglages que décrit sa fiche
@@ -4463,6 +4463,13 @@ bool Cadre::essaiEsquisse(const std::wstring& fichier, int rang, const std::wstr
           }
     }
     if (e.contains("dyn")) dynEssai(e["dyn"], n);
+    if (e.contains("script")) {
+      const nlohmann::ordered_json r = scriptExecuter(e["script"].dump());
+      n["script"] = nlohmann::json::parse(r.dump(-1, ' ', false, nlohmann::ordered_json::error_handler_t::replace));
+      n["etat"] = std::string(etatVue_->texte().utf8_str());
+      n["nb"] = doc_.fonctions.size();
+      n["nbAnnul"] = annulations_.size();
+    }
     if (e.contains("aide")) {
       wxDialog* f = creerAide(this);
       f->Show();
