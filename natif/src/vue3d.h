@@ -126,6 +126,30 @@ class Vue3D : public wxWindow {
   };
   std::function<void(const CoupVue* c, bool ctrl, bool maj)> surMesure;
   void montrerMesure(const mesure::Dessin& d);
+  // La FAO : traces en couleurs dans le repère du posage, et le brut
+  struct DessinFao {
+    std::vector<float> coupe, rapides, remontees, plongees;  // des segments : x y z x y z
+    double x[3] = {1, 0, 0}, y[3] = {0, 1, 0}, z[3] = {0, 0, 1}, o[3] = {0, 0, 0};
+    bool fondu = false, masque = false;
+  };
+  void montrerFao(const DessinFao& d);
+  // Le reste de la scène FAO, déjà en coordonnées de la pièce : traits, faces translucides, points
+  struct ObjetFao {
+    char sorte = 'S';  // S : segments ; L : ligne ; B : boucle ; T : triangles ; P : points
+    std::vector<float> a;
+    unsigned couleur = 0xffffff;
+    double alpha = 1, taille = 0;
+    bool profondeur = true;
+  };
+  void montrerSceneFao(const std::vector<ObjetFao>& L);
+  // L'atelier FAO prend les clics de la vue, avec la caméra
+  struct ClicFao {
+    int x = 0, y = 0, w = 0, h = 0, bouton = 0;
+    bool ctrl = false, maj = false, persp = true;
+    double proj[16], vue[16], pres = 0.1, loin = 1000;
+  };
+  std::function<bool(const ClicFao&)> surClicFao;
+  void cliquerFao(const wxPoint& p, int bouton, bool ctrl, bool maj);
   int essaiCtrl = -1, essaiMaj = -1;  // l'essai automatique tient les touches à la place de l'utilisateur
 
  private:
@@ -154,6 +178,8 @@ class Vue3D : public wxWindow {
     OccVue v;
   };
   std::vector<OccAffichee> occs_;
+  std::vector<occ::handle<AIS_InteractiveObject>> faoAis_, faoScene_;
+  bool faoPrisClic_ = false;
   bool placer_ = false, ignorerRelache_ = false, aligner_ = false;
   std::vector<std::string> cheminPiece_;
   std::vector<std::pair<TopoDS_Shape, unsigned>> teintesPiece_;

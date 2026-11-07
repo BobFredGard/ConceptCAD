@@ -64,11 +64,15 @@ struct ChoixFaces {
   wxString alerte;
 };
 
+#include "plan.h"
+
 struct ChampFiche;
 struct LienArbre;
 namespace normalises { struct Piece; }
 class FenetreNormalises;
 class PlanVue;
+class MoteurFao;
+class VueDom;
 class Cadre : public wxFrame {
  public:
   Cadre();
@@ -438,6 +442,32 @@ public:
   Ruban* ruban_ = nullptr;
   Carte* carteArbre_ = nullptr;
   Carte* carteFao_ = nullptr;
+  // L'atelier FAO (cadre_fao.cpp)
+  std::string faoTexteCourant();
+  void faoEntrer();
+  void faoQuitterVue();
+  void faoMessage(const wxString& m);
+  void faoRafraichir();
+  void faoAppliquer(const plan::J& r);
+  void faoToucher(long el, const std::string& sorte, const plan::J& valeur, bool ctrl, bool maj);
+  void faoAction(const std::string& nom, const std::string& type);
+  void faoEvenement(const plan::J& e);
+  void faoFenetreOutils(const plan::J& d);
+  void faoTraces(const std::string& rapides);
+  void faoScene();
+  void faoTouche(const std::string& cle, bool ctrl, bool maj);
+  bool faoClic(const Vue3D::ClicFao& c);
+  void faoFaireSuivre();
+  void faoEssai(const plan::J& e);
+  std::unique_ptr<MoteurFao> moteurFao_;
+  VueDom* arbreFao_ = nullptr;
+  VueDom* ficheFao_ = nullptr;
+  VueDom* outilsFao_ = nullptr;
+  wxFrame* fenetreOutilsFao_ = nullptr;
+  bool faoOuvert_ = false, faoSale_ = false;
+  int faoEnCours_ = 0, faoAbsentes_ = 0, faoMasquees_ = 0;
+  std::string faoTexteOuvert_, faoSigTraces_;
+  std::wstring faoSortieEssai_;
   Carte* carteDroite_ = nullptr;
   wxBoxSizer* colonneDroite_ = nullptr;
   int hauteurDroite_ = 0;

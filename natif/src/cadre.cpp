@@ -35,6 +35,8 @@
 #include <fstream>
 #include <nlohmann/json.hpp>
 
+#include "fao_moteur.h"
+#include "fao_vue.h"
 #include "enregistrer.h"
 #include "echanges.h"
 #include "fiches.h"
@@ -275,6 +277,17 @@ Cadre::Cadre() : wxFrame(nullptr, wxID_ANY, L"ConceptCAD natif"), asmAnim_(this)
     else montrerForme(s);
   };
   Bind(wxEVT_CHAR_HOOK, [this](wxKeyEvent& e) {
+    // La FAO garde ses raccourcis, sauf quand on tape dans un champ
+    if (atelier_ == Atelier::FAO && !dynamic_cast<wxTextCtrl*>(FindFocus())) {
+      const int k = e.GetKeyCode();
+      const bool c = e.ControlDown();
+      std::string cle;
+      if (k == WXK_ESCAPE) cle = "Escape";
+      else if (k == WXK_DELETE) cle = "Delete";
+      else if (k == WXK_RETURN || k == WXK_NUMPAD_ENTER) cle = "Enter";
+      else if (c && (k == 'C' || k == 'V' || k == 'Z' || k == 'Y')) cle = std::string(1, static_cast<char>(k + 32));
+      if (!cle.empty()) return faoTouche(cle, c, e.ShiftDown());
+    }
     if (pioche_ && e.GetKeyCode() == WXK_ESCAPE) {
       pioche_ = nullptr;
       etat(L"Choix dans la vue annulé.");
@@ -294,7 +307,7 @@ Cadre::Cadre() : wxFrame(nullptr, wxID_ANY, L"ConceptCAD natif"), asmAnim_(this)
   props_->Bind(wxEVT_PG_CHANGED, &Cadre::surPropriete, this);
   Bind(wxEVT_TIMER, &Cadre::pasProtocole, this, minuterie_.GetId());
   Bind(wxEVT_IDLE, [this](wxIdleEvent& e) {
-    barreHaute_->etats(!annulations_.empty(), !retablissements_.empty(), docOuvert_ && doc_.modifie(), docOuvert_);
+    barreHaute_->etats(atelier_ == Atelier::FAO || !annulations_.empty(), atelier_ == Atelier::FAO || !retablissements_.empty(), docOuvert_ && doc_.modifie(), docOuvert_);
     ajusterDroite();
     e.Skip();
   });
@@ -305,6 +318,7 @@ Cadre::Cadre() : wxFrame(nullptr, wxID_ANY, L"ConceptCAD natif"), asmAnim_(this)
 // L'environnement du navigateur, recopié élément par élément. Ce qui n'est pas encore repris est là, grisé, et le dit.
 void Cadre::creerEnvironnement() {
   barreHaute_->surAtelier = [this](Atelier a) { changerAtelier(a); };
+  vue_->surClicFao = [this](const Vue3D::ClicFao& c) { return faoClic(c); };
   barreHaute_->surAnnuler = [this] { annuler(); };
   barreHaute_->surRetablir = [this] { retablir(); };
   barreHaute_->surOuvrir = [this] {
@@ -320,7 +334,7 @@ void Cadre::creerEnvironnement() {
     if (esquisseOuverte_ < 0) recalculer();
   };
   barreHaute_->surIndisponible = [this](const wxString& n) { indisponible(n); };
-  ruban_->estRepris = [this](Atelier a, const wxString& n) { if (a == Atelier::PLAN) return planVue_->estRepris(n); return a == Atelier::CAO && (n == L"Esquisse" || n == L"Extrusion" || n == L"Congé" || n == L"Chanfrein" || n == L"Paramètres" || n == L"Corps" || n == L"Perçage" || n == L"Filetage" || n == L"Clavette" || n == L"Plan" || n == L"Axe" || n == L"Point" || n == L"Repère" || n == L"Répétition" || n == L"Révolution" || n == L"Balayage" || n == L"Face" || n == L"Dépouille" || n == L"Coque" || n == L"Combiner" || n == L"Déplacer" || n == L"Échelle" || n == L"Scinder" || n == L"Importer" || n == L"STEP" || n == L"STL" || n == L"OBJ" || n == L"Assembler" || n == L"Modéliser" || n == L"Composant" || n == L"Occurrence" || n == L"Insérer" || n == L"Inspecter" || n == L"Normalisés" || n == L"Aimants" || n == L"Depuis corps"); };
+  ruban_->estRepris = [this](Atelier a, const wxString& n) { if (a == Atelier::PLAN) return planVue_->estRepris(n); if (a == Atelier::FAO) return n != L"Esquisse" && n != L"Extrusion" && n != L"Usinage"; return a == Atelier::CAO && (n == L"Esquisse" || n == L"Extrusion" || n == L"Congé" || n == L"Chanfrein" || n == L"Paramètres" || n == L"Corps" || n == L"Perçage" || n == L"Filetage" || n == L"Clavette" || n == L"Plan" || n == L"Axe" || n == L"Point" || n == L"Repère" || n == L"Répétition" || n == L"Révolution" || n == L"Balayage" || n == L"Face" || n == L"Dépouille" || n == L"Coque" || n == L"Combiner" || n == L"Déplacer" || n == L"Échelle" || n == L"Scinder" || n == L"Importer" || n == L"STEP" || n == L"STL" || n == L"OBJ" || n == L"Assembler" || n == L"Modéliser" || n == L"Composant" || n == L"Occurrence" || n == L"Insérer" || n == L"Inspecter" || n == L"Normalisés" || n == L"Aimants" || n == L"Depuis corps"); };
   ruban_->surBouton = [this](Atelier a, const wxString& n) { boutonRuban(a, n); };
   ruban_->surIndisponible = [this](const wxString& n) { indisponible(n); };
 
@@ -392,11 +406,9 @@ void Cadre::creerEnvironnement() {
 
   // Les posages de l'atelier FAO
   carteFao_ = new Carte(scene_, L"FAO · POSAGES", C_CARTE, true);
-  auto* noteFao = new wxStaticText(carteFao_, wxID_ANY, L"Les posages, les opérations, la simulation et le G-code ne sont pas encore dans le logiciel Windows. Ils restent dans le navigateur.");
-  noteFao->SetForegroundColour(C_GRIS);
-  noteFao->SetFont(policeArial(this, 12));
-  noteFao->Wrap(FromDIP(220));
-  carteFao_->contenu()->Add(noteFao, 1, wxEXPAND);
+  arbreFao_ = new VueDom(carteFao_, C_CARTE);
+  arbreFao_->surToucher = [this](long el, const std::string& s, const plan::J& v, bool c, bool m) { faoToucher(el, s, v, c, m); };
+  carteFao_->contenu()->Add(arbreFao_, 1, wxEXPAND);
   // Mise à part du titre, sur une seule ligne : le texte remonte
   carteFao_->GetSizer()->GetItem(size_t(0))->AssignSpacer(1, FromDIP(30));
 
@@ -446,6 +458,10 @@ void Cadre::creerEnvironnement() {
   planVue_->surEtat = [this](const wxString& t) { etat(t); };
   planVue_->surVuesAutomatiques = [this](const plan::J& mep) { modifierStructure(doc_, [&](nlohmann::ordered_json& d) { d["mep"] = mep; }); };
   planVue_->directionCamera = [this](std::array<double, 3>& d) { return vue_->directionCamera(d); };
+  ficheFao_ = new VueDom(carteDroite_, wxColour(0x24, 0x26, 0x2b));
+  ficheFao_->Hide();
+  carteDroite_->contenu()->Add(ficheFao_, 1, wxEXPAND);
+  ficheFao_->surToucher = [this](long el, const std::string& s, const plan::J& v, bool c, bool m) { faoToucher(el, s, v, c, m); };
   panneauPlan_ = new PanneauPlan(carteDroite_, planVue_);
   panneauPlan_->Hide();
   carteDroite_->contenu()->Add(panneauPlan_, 1, wxEXPAND);
@@ -518,7 +534,7 @@ void Cadre::placerScene() {
   const int basFil = cao ? t.y - 64 : t.y - 34;
   poser(carteArbre_, 32, 41, 300, std::max(120, std::min(470, basFil - 41)));
   carteArbre_->Show(cao && !arbreReplie_);
-  poser(carteFao_, 32, 41, 244, 140);
+  poser(carteFao_, 32, 41, 300, std::max(120, std::min(560, t.y - 41 - 34)));
   carteFao_->Show(fao && !arbreReplie_);
   poser(boutonsVue_[0], t.x - 214, 16, 36, 24);
   poser(boutonsVue_[1], t.x - 173, 16, 36, 24);
@@ -537,6 +553,10 @@ void Cadre::placerScene() {
 void Cadre::changerAtelier(Atelier a) {
   quitterConge();
   if (esquisseOuverte_ >= 0 && a != Atelier::CAO) quitterEsquisse();
+  if (atelier_ == Atelier::FAO && a != Atelier::FAO) {
+    faoFaireSuivre();
+    faoQuitterVue();
+  }
   atelier_ = a;
   barreHaute_->atelier(a);
   ruban_->atelier(a);
@@ -565,6 +585,7 @@ void Cadre::montrerAtelier() {
   const bool cao = atelier_ == Atelier::CAO;
   props_->Show(cao);
   panneauPlan_->Show(atelier_ == Atelier::PLAN);
+  ficheFao_->Show(atelier_ == Atelier::FAO);
   boutonRendu_->Show(atelier_ == Atelier::RENDU);
   noteMontree_ = noteDroite_->IsShown();
   switch (atelier_) {
@@ -574,7 +595,8 @@ void Cadre::montrerAtelier() {
       break;
     case Atelier::FAO:
       carteDroite_->titre(L"PARAMÈTRES");
-      noteDroite_->SetLabel(L"Choisissez un posage ou une opération.");
+      noteDroite_->SetLabel(wxEmptyString);
+      faoEntrer();
       break;
     case Atelier::PLAN:
       carteDroite_->titre(L"PARAMÈTRES");
@@ -602,7 +624,7 @@ void Cadre::ajusterDroite() {
   if (cao)
     for (wxPropertyGridIterator it = props_->GetGrid()->GetIterator(wxPG_ITERATE_VISIBLE); !it.AtEnd(); it++) rangs++;
   const bool asmPanneau = cao && !boutonsAsm_.empty();
-  const bool surPlan = atelier_ == Atelier::PLAN;
+  const bool surPlan = atelier_ == Atelier::PLAN || atelier_ == Atelier::FAO;
   const bool note = (!cao || rangs <= 1 || enChoix()) && !asmPanneau && !surPlan;
   if (note != noteMontree_) {
     noteMontree_ = note;
@@ -628,6 +650,15 @@ void Cadre::boutonRuban(Atelier a, const wxString& nom) {
   if (a == Atelier::PLAN) {
     if (!planVue_->boutonRuban(nom)) indisponible(nom);
     return;
+  }
+  if (a == Atelier::FAO) {
+    if (nom == L"Posage") return faoAction("posage", "");
+    if (nom == L"Outils") return faoAction("outils", "");
+    if (nom == L"Rapides") return faoAction("rapides", "");
+    if (nom == L"Régénérer") return faoAction("regenerer", "");
+    if (nom == L"G-code") return faoAction("gcode", "");
+    if (nom == L"Surfaçage" || nom == L"Chanfrein" || nom == L"Contour" || nom == L"Perçage" || nom == L"Ébauche 3D" || nom == L"Finition" || nom == L"Géodésique") return faoAction("ajout", nom.ToStdString(wxConvUTF8));
+    return indisponible(nom);
   }
   if (a != Atelier::CAO) return;
   if (nom == L"Assembler") return asmBasculer();
@@ -1098,6 +1129,7 @@ void Cadre::majTitre() {
 bool Cadre::ecrire(const std::wstring& cible) {
   retenirRecent(cible);
   faireSuivre();
+  faoFaireSuivre();
   try {
     asmLiensEcrire();
     if (doc_.assemblage) {
@@ -2072,6 +2104,7 @@ void Cadre::poserPas(const std::vector<Esquisse>& esquisses, bool avecFonctions,
 }
 
 void Cadre::annuler() {
+  if (atelier_ == Atelier::FAO) return faoTouche("z", true, false);
   if (enChoix()) return quitterConge();
   if (vueEsquisse_->enSaisie()) return vueEsquisse_->annulerSaisie();
   if (vueEsquisse_->abandonnerTrace()) return;
@@ -2108,6 +2141,7 @@ void Cadre::annuler() {
 }
 
 void Cadre::retablir() {
+  if (atelier_ == Atelier::FAO) return faoTouche("y", true, false);
   if (retablissements_.empty()) return;
   if (retablissements_.back().docApres && esquisseOuverte_ >= 0) return etat(L"Quittez l'esquisse pour rétablir ce changement de la pièce.");
   const ModifCote m = retablissements_.back();
@@ -3032,6 +3066,7 @@ bool Cadre::essaiEsquisse(const std::wstring& fichier, int rang, const std::wstr
       changerAtelier(a == "plan" ? Atelier::PLAN : a == "fao" ? Atelier::FAO : a == "rendu" ? Atelier::RENDU : Atelier::CAO);
       wxYield();
     }
+    if (e.contains("fao")) faoEssai(e["fao"]);
     if (e.contains("capture")) {
       vueEsquisse_->Update();
       capturerFenetre(dossier + L"\\" + wxString::FromUTF8(e["capture"].get<std::string>()).ToStdWstring() + L".png");
@@ -3051,6 +3086,7 @@ bool Cadre::essaiEsquisse(const std::wstring& fichier, int rang, const std::wstr
   std::ofstream(dossier + L"\\bilan.json") << bilan.dump(1, ' ', false, nlohmann::json::error_handler_t::replace);
   quitterEsquisse();
   wxYield();
+  faoFaireSuivre();
   try {
     enregistrerProjet(doc_, sortie);
   } catch (const std::exception& e) {

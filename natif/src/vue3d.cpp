@@ -7,7 +7,12 @@
 #include <Prs3d_TextAspect.hxx>
 #include <Graphic3d_AspectText3d.hxx>
 #include <TCollection_ExtendedString.hxx>
+#include <Graphic3d_ArrayOfPoints.hxx>
+#include <Graphic3d_ArrayOfPolylines.hxx>
 #include <Graphic3d_ArrayOfSegments.hxx>
+#include <Graphic3d_ArrayOfTriangles.hxx>
+#include <Graphic3d_AspectFillArea3d.hxx>
+#include <Graphic3d_AspectMarker3d.hxx>
 #include <Graphic3d_AspectLine3d.hxx>
 #include <Graphic3d_Group.hxx>
 #include <Prs3d_Presentation.hxx>
@@ -529,9 +534,38 @@ void Vue3D::surRelache(wxMouseEvent& e) {
     return;
   }
   if (aBouge_) return;
+  if (surClicFao && (e.LeftUp() || e.RightUp())) {
+    cliquerFao(e.GetPosition(), e.RightUp() ? 2 : 0, e.ControlDown(), e.ShiftDown());
+    if (faoPrisClic_) return;
+  }
   if (e.RightUp()) return droitEn(e.GetPosition());
   if (!e.LeftUp()) return;
   cliquerEn(e.GetPosition());
+}
+
+void Vue3D::cliquerFao(const wxPoint& p, int bouton, bool ctrl, bool maj) {
+  faoPrisClic_ = false;
+  if (!surClicFao) return;
+  ClicFao c;
+  c.x = p.x;
+  c.y = p.y;
+  const wxSize t = GetClientSize();
+  c.w = t.x;
+  c.h = t.y;
+  c.bouton = bouton;
+  c.ctrl = ctrl;
+  c.maj = maj;
+  const occ::handle<Graphic3d_Camera>& cam = vue_->Camera();
+  c.persp = cam->ProjectionType() != Graphic3d_Camera::Projection_Orthographic;
+  c.pres = cam->ZNear();
+  c.loin = cam->ZFar();
+  const auto& P = cam->ProjectionMatrix();
+  const auto& O = cam->OrientationMatrix();
+  for (int i = 0; i < 16; i++) {
+    c.proj[i] = P.GetData()[i];
+    c.vue[i] = O.GetData()[i];
+  }
+  faoPrisClic_ = surClicFao(c);
 }
 
 void Vue3D::droitEn(const wxPoint& p) {
@@ -1111,6 +1145,124 @@ void Vue3D::montrerOccurrences(const std::vector<OccVue>& L) {
   }
   refaireReflets();
   majReflets();
+  vue_->ZFitAll();
+  vue_->Redraw();
+}
+
+namespace {
+// Beaucoup de segments d'une seule couleur : dessinés d'un coup, sans passer par des formes OCCT
+class TraitsFao : public AIS_InteractiveObject {
+ public:
+  TraitsFao(std::vector<float> v, const Quantity_Color& c, double l) : v_(std::move(v)), c_(c), l_(l) {}
+  void Compute(const occ::handle<PrsMgr_PresentationManager>&, const occ::handle<Prs3d_Presentation>& prs, const int) override {
+    const int n = static_cast<int>(v_.size() / 3);
+    occ::handle<Graphic3d_ArrayOfSegments> A = new Graphic3d_ArrayOfSegments(n);
+    for (int i = 0; i + 1 < n; i += 2) {
+      A->AddVertex(v_[3 * i], v_[3 * i + 1], v_[3 * i + 2]);
+      A->AddVertex(v_[3 * i + 3], v_[3 * i + 4], v_[3 * i + 5]);
+    }
+    occ::handle<Graphic3d_Group> g = prs->CurrentGroup();
+    g->SetGroupPrimitivesAspect(new Graphic3d_AspectLine3d(c_, Aspect_TOL_SOLID, l_));
+    g->AddPrimitiveArray(A);
+  }
+  void ComputeSelection(const occ::handle<SelectMgr_Selection>&, const int) override {}
+
+ private:
+  std::vector<float> v_;
+  Quantity_Color c_;
+  double l_;
+};
+}  // namespace
+
+void Vue3D::montrerFao(const DessinFao& d) {
+  for (auto& a : faoAis_) contexte_->Remove(a, false);
+  faoAis_.clear();
+  gp_Trsf t;
+  t.SetValues(d.x[0], d.y[0], d.z[0], d.o[0], d.x[1], d.y[1], d.z[1], d.o[1], d.x[2], d.y[2], d.z[2], d.o[2]);
+  const auto couche = [&](const std::vector<float>& v, unsigned rgb, double l) {
+    if (v.size() < 6) return;
+    occ::handle<TraitsFao> a = new TraitsFao(v, couleur(rgb >> 16, (rgb >> 8) & 255, rgb & 255), l);
+    a->SetLocalTransformation(t);
+    contexte_->Display(a, 0, -1, false);
+    contexte_->Deactivate(a);
+    faoAis_.push_back(a);
+  };
+  couche(d.coupe, 0x2f80ff, 1.0);
+  couche(d.plongees, 0x30d158, 2.0);
+  if (!d.masque) {
+    // « Fondus » : 8 % sur le fond, une couleur éteinte fait le même effet sans trier les traits
+    couche(d.rapides, d.fondu ? 0x3a3a30 : 0xffd60a, d.fondu ? 1.0 : 2.0);
+    couche(d.remontees, d.fondu ? 0x3a2a33 : 0xff2d92, d.fondu ? 1.0 : 2.0);
+  }
+  vue_->ZFitAll();
+  vue_->Redraw();
+}
+
+namespace {
+// Un objet de la scène FAO : sans éclairage, comme les matières « Basic » de la page
+class ObjetSceneFao : public AIS_InteractiveObject {
+ public:
+  explicit ObjetSceneFao(const Vue3D::ObjetFao& o) : o_(o) {}
+  void Compute(const occ::handle<PrsMgr_PresentationManager>&, const occ::handle<Prs3d_Presentation>& prs, const int) override {
+    const int n = static_cast<int>(o_.a.size() / 3);
+    const Quantity_Color c((o_.couleur >> 16) / 255.0, ((o_.couleur >> 8) & 255) / 255.0, (o_.couleur & 255) / 255.0, Quantity_TOC_sRGB);
+    occ::handle<Graphic3d_Group> g = prs->CurrentGroup();
+    const auto V = [&](int i) { return gp_Pnt(o_.a[3 * i], o_.a[3 * i + 1], o_.a[3 * i + 2]); };
+    if (o_.sorte == 'T') {
+      occ::handle<Graphic3d_AspectFillArea3d> A = new Graphic3d_AspectFillArea3d();
+      A->SetInteriorStyle(Aspect_IS_SOLID);
+      A->SetInteriorColor(Quantity_ColorRGBA(c, static_cast<float>(o_.alpha)));
+      A->SetBackInteriorColor(Quantity_ColorRGBA(c, static_cast<float>(o_.alpha)));
+      A->SetShadingModel(Graphic3d_TypeOfShadingModel_Unlit);
+      A->SetDistinguish(false);
+      A->SetSuppressBackFaces(false);
+      if (o_.alpha < 1) A->SetAlphaMode(Graphic3d_AlphaMode_Blend);
+      g->SetGroupPrimitivesAspect(A);
+      occ::handle<Graphic3d_ArrayOfTriangles> T = new Graphic3d_ArrayOfTriangles(n);
+      for (int i = 0; i < n; i++) T->AddVertex(V(i));
+      g->AddPrimitiveArray(T);
+      return;
+    }
+    if (o_.sorte == 'P') {
+      g->SetGroupPrimitivesAspect(new Graphic3d_AspectMarker3d(Aspect_TOM_POINT, c, std::max(1.0, o_.taille / 3.0)));
+      occ::handle<Graphic3d_ArrayOfPoints> P = new Graphic3d_ArrayOfPoints(n);
+      for (int i = 0; i < n; i++) P->AddVertex(V(i));
+      g->AddPrimitiveArray(P);
+      return;
+    }
+    // Les traits translucides de la page : même teinte, mêlée au fond
+    const double al = o_.alpha;
+    const Quantity_Color cl(c.Red() * al + 0.08 * (1 - al), c.Green() * al + 0.08 * (1 - al), c.Blue() * al + 0.09 * (1 - al), Quantity_TOC_RGB);
+    g->SetGroupPrimitivesAspect(new Graphic3d_AspectLine3d(cl, Aspect_TOL_SOLID, 1.0));
+    if (o_.sorte == 'S') {
+      occ::handle<Graphic3d_ArrayOfSegments> S = new Graphic3d_ArrayOfSegments(n);
+      for (int i = 0; i < n; i++) S->AddVertex(V(i));
+      g->AddPrimitiveArray(S);
+    } else {
+      occ::handle<Graphic3d_ArrayOfPolylines> L = new Graphic3d_ArrayOfPolylines(o_.sorte == 'B' ? n + 1 : n);
+      for (int i = 0; i < n; i++) L->AddVertex(V(i));
+      if (o_.sorte == 'B' && n) L->AddVertex(V(0));
+      g->AddPrimitiveArray(L);
+    }
+  }
+  void ComputeSelection(const occ::handle<SelectMgr_Selection>&, const int) override {}
+
+ private:
+  Vue3D::ObjetFao o_;
+};
+}  // namespace
+
+void Vue3D::montrerSceneFao(const std::vector<ObjetFao>& L) {
+  for (auto& a : faoScene_) contexte_->Remove(a, false);
+  faoScene_.clear();
+  for (const ObjetFao& o : L) {
+    if (o.a.size() < 3) continue;
+    occ::handle<ObjetSceneFao> a = new ObjetSceneFao(o);
+    if (!o.profondeur) a->SetZLayer(Graphic3d_ZLayerId_Topmost);
+    contexte_->Display(a, 0, -1, false);
+    contexte_->Deactivate(a);
+    faoScene_.push_back(a);
+  }
   vue_->ZFitAll();
   vue_->Redraw();
 }

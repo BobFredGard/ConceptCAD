@@ -8,12 +8,15 @@ const RACINE = opt('racine', 'D:/ConceptCAD'), TAG = opt('tag', 'V0.69.0');
 const KIT = path.resolve(__dirname, '..', 'sortie', 'fao');
 const git = f => execFileSync('git', ['-C', RACINE, 'show', TAG + ':' + f], { maxBuffer: 1 << 30 });
 const ecrire = (f, d) => { const p = path.join(KIT, f); fs.mkdirSync(path.dirname(p), { recursive: true }); fs.writeFileSync(p, d); };
-for (const f of ['ConceptCAD.html', 'tests/appvm.cjs', 'tests/noyau.cjs', 'tests/lire-projet.cjs', 'occt-build/compat-v3.cjs', 'occt/v3/compat-v3.json', 'occt/v3/conceptcad_v3.js', 'PostPro']) {
+for (const f of ['ConceptCAD.html', 'tests/appvm.cjs', 'tests/noyau.cjs', 'tests/lire-projet.cjs', 'occt-build/compat-v3.cjs', 'occt/v3/compat-v3.json', 'occt/v3/conceptcad_v3.js', 'threejs/three.min.js', 'PostPro']) {
   if (f === 'PostPro') continue;
   ecrire(f, git(f));
 }
 // Le noyau lui-même : un gros fichier, pris sur le disque
 for (const f of ['occt/v3/conceptcad_v3.wasm']) { fs.mkdirSync(path.dirname(path.join(KIT, f)), { recursive: true }); fs.copyFileSync(path.join(RACINE, f), path.join(KIT, f)); }
 for (const f of ['moteur.cjs', 'minidom.cjs']) fs.copyFileSync(path.join(__dirname, f), path.join(KIT, f));
+// Node lui-même, pour que le programme marche sur un ordinateur qui ne l'a pas
+const nodeKit = path.join(KIT, 'node.exe');
+if (!fs.existsSync(nodeKit)) fs.copyFileSync(process.execPath, nodeKit);
 fs.writeFileSync(path.join(KIT, 'VERSION.txt'), TAG + '\n');
 console.log('moteur prêt : ' + KIT);

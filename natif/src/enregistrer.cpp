@@ -1125,6 +1125,22 @@ void modifierStructure(Document& d, const std::function<void(nlohmann::ordered_j
   d = std::move(n);
 }
 
+void poserFao(Document& d, const nlohmann::ordered_json& fao, const nlohmann::ordered_json& moves) {
+  const std::string base = !d.texteBase.empty() ? d.texteBase.str() : texteDuFichier(d);
+  const std::string texte = d.modifie() ? texteEnregistre(d, base) : base;
+  nlohmann::ordered_json racine = nlohmann::ordered_json::parse(texte);
+  if (!(racine.contains("doc") && racine["doc"].is_object())) {
+    nlohmann::ordered_json lot = {{"app", "ConceptCAD"}, {"bundle", 1}, {"v", 1}, {"name", racine.value("name", std::string())}};
+    lot["doc"] = std::move(racine);
+    racine = std::move(lot);
+  }
+  racine["doc"]["fao"] = fao;
+  racine["nMoves"] = moves.size();
+  racine["moves"] = moves;
+  Document n = lireTexteProjet(d, racine.dump(-1, ' ', false, nlohmann::ordered_json::error_handler_t::replace));
+  d = std::move(n);
+}
+
 void ecrireProjetSur(const std::wstring& cible, const std::string& texte, bool compresser) {
   const auto j = nlohmann::ordered_json::parse(texte);
   const auto& top = j.contains("doc") && j["doc"].is_object() ? j["doc"] : j;

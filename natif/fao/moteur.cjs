@@ -57,52 +57,21 @@ async function demarrer() {
   sandbox.__realOcct = real;
   sandbox.btoa = globalThis.btoa;
   sandbox.atob = globalThis.atob;
-  // THREE du harnais = stub : BufferGeometry minimale (maillage FAO des imports STEP)
+  // Le vrai Three.js, sauf ce qui demande un écran : les boîtes, les repères, le brut et les marques
+  // se construisent comme dans la page, et le programme dessine ce qu'ils sont devenus.
   const T0 = sandbox.THREE;
-  class BG {
-    constructor() { this.attributes = {}; this.userData = {}; this.index = null; }
-    setAttribute(n, a) { this.attributes[n] = a; return this; } getAttribute(n) { return this.attributes[n]; }
-    setIndex(i) { this.index = i; return this; } computeVertexNormals() {} computeBoundingBox() {} computeBoundingSphere() {} dispose() {}
-  }
-  class F32 { constructor(a, n) { this.array = a instanceof Float32Array ? a : Float32Array.from(a); this.itemSize = n; this.count = this.array.length / n; } }
-  // Le maillage garde sa vraie géométrie et la boîte englobante se calcule pour de bon : le point
-  // d'origine d'un repère d'opération (« dessus du modèle ») en dépend, donc l'empreinte des parcours.
-  const IDENTITE = { elements: [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1] };
-  const V3 = T0.Vector3;
-  V3.prototype.fromBufferAttribute = function (a, i) { const r = a.array, n = a.itemSize || 3; this.x = r[i * n]; this.y = r[i * n + 1]; this.z = r[i * n + 2]; return this; };
-  V3.prototype.applyMatrix4 = function (m) {
-    const e = m.elements, x = this.x, y = this.y, z = this.z, w = 1 / (e[3] * x + e[7] * y + e[11] * z + e[15]);
-    this.x = (e[0] * x + e[4] * y + e[8] * z + e[12]) * w; this.y = (e[1] * x + e[5] * y + e[9] * z + e[13]) * w; this.z = (e[2] * x + e[6] * y + e[10] * z + e[14]) * w;
-    return this;
-  };
-  const Mesh = function (g, m) {
-    const o = new T0.Mesh();
-    if (g && g.attributes) o.geometry = g;
-    if (m) o.material = m;
-    o.matrixWorld = IDENTITE;
-    o.updateMatrixWorld = function () {};
-    return o;
-  };
-  class Box3 {
-    constructor() { this.min = new V3(Infinity, Infinity, Infinity); this.max = new V3(-Infinity, -Infinity, -Infinity); }
-    isEmpty() { return this.max.x < this.min.x || this.max.y < this.min.y || this.max.z < this.min.z; }
-    makeEmpty() { this.min.set(Infinity, Infinity, Infinity); this.max.set(-Infinity, -Infinity, -Infinity); return this; }
-    expandByPoint(p) {
-      this.min.x = Math.min(this.min.x, p.x); this.min.y = Math.min(this.min.y, p.y); this.min.z = Math.min(this.min.z, p.z);
-      this.max.x = Math.max(this.max.x, p.x); this.max.y = Math.max(this.max.y, p.y); this.max.z = Math.max(this.max.z, p.z);
-      return this;
-    }
-    expandByObject(o) {
-      const a = o && o.geometry && o.geometry.attributes && o.geometry.attributes.position;
-      if (a) { const v = new V3(); for (let i = 0; i < a.count; i++) this.expandByPoint(v.fromBufferAttribute(a, i).applyMatrix4(o.matrixWorld || IDENTITE)); }
-      return this;
-    }
-    setFromObject(o) { return this.makeEmpty().expandByObject(o); }
-    getCenter(t) { t.x = (this.min.x + this.max.x) / 2; t.y = (this.min.y + this.max.y) / 2; t.z = (this.min.z + this.max.z) / 2; return t; }
-    getSize(t) { t.x = this.max.x - this.min.x; t.y = this.max.y - this.min.y; t.z = this.max.z - this.min.z; return t; }
-  }
-  const PROPRES = { BufferGeometry: BG, Float32BufferAttribute: F32, BufferAttribute: F32, Mesh, Box3 };
-  sandbox.THREE = new Proxy({}, { get(t, k) { return PROPRES[k] || T0[k]; } });
+  vm.runInContext(fs.readFileSync(path.join(ROOT, 'threejs', 'three.min.js'), 'utf8'), ctx, { filename: 'three.min.js' });
+  const T1 = sandbox.THREE;
+  const ECRAN = /^(WebGL|OrbitControls|TransformControls|PMREM|CanvasTexture)/;
+  sandbox.THREE = new Proxy({}, { get(t, k) { return typeof k === 'string' && !ECRAN.test(k) && T1[k] !== undefined ? T1[k] : T0[k]; } });
+  vm.runInContext('scene=new THREE.Scene();camera=new THREE.PerspectiveCamera();camera.matrixAutoUpdate=false;rayc=new THREE.Raycaster();', ctx);
+  // La souris : les gestionnaires de la page écoutent ce faux écran
+  const ecran = documentStub.getElementById('viewport');
+  sandbox.__ecran = ecran;
+  sandbox.__tailleEcran = { w: 800, h: 600 };
+  ecran.getBoundingClientRect = () => { const t = sandbox.__tailleEcran; return { left: 0, top: 0, right: t.w, bottom: t.h, width: t.w, height: t.h, x: 0, y: 0 }; };
+  vm.runInContext('(function(){const r0=renderer;renderer=new Proxy({},{get(t,k){return k==="domElement"?__ecran:r0[k];},set(t,k,v){return true;}});wirePick();})()', ctx);
+  documentStub.body.setAttribute('data-ws', 'fao');
   vm.runInContext('occt=__realOcct;occtReady=true;window.confirm=function(){return true;};viewUserMoved=true;', ctx);
   // Les fonctions qui parlent au programme natif, dans le bac à sable de l'application
   vm.runInContext(`
@@ -155,6 +124,32 @@ async function demarrer() {
       return {active:r.activeSetupId,prev:!!faoPrevOn,perime:!!faoPrevStale,rap:faoViewerRap,message:String(faceEl&&faceEl.textContent||''),
         calcul:!!(faoGenBtnEl&&faoGenBtnEl.disabled),
         arbreEl:document.getElementById('faoTree'),ficheEl:document.getElementById('props'),outilsEl:(faoToolsWin&&faoToolsWin.style.display!=='none')?faoToolsWin:null};
+    }
+    // Tout ce que la page a posé dans la scène FAO, hors traces : en coordonnées de la pièce
+    function __natifScene(){
+      try{faoPoseSync();}catch(e){}
+      try{faoWalls3D();}catch(e){}
+      const O=[];
+      const g=faoRoot3D();
+      if(!g)return O;
+      g.updateWorldMatrix(true,true);
+      const v=new THREE.Vector3();
+      const voir=function(o){
+        if(o===faoPrevGroup||o.visible===false)return;
+        const m=o.material,ge=o.geometry,p=ge&&ge.attributes&&ge.attributes.position;
+        const mat=Array.isArray(m)?m[0]:m;
+        if(p&&mat&&!o.isInstancedMesh&&!mat.isShaderMaterial){
+          const k=o.isMesh?'T':(o.isLineSegments?'S':(o.isLine?(o.isLineLoop?'B':'L'):(o.isPoints?'P':'')));
+          if(k){
+            const idx=ge.index?ge.index.array:null,n=idx?idx.length:p.count,a=new Float32Array(n*3);
+            for(let i=0;i<n;i++){const q=idx?idx[i]:i;v.fromBufferAttribute(p,q).applyMatrix4(o.matrixWorld);a[3*i]=v.x;a[3*i+1]=v.y;a[3*i+2]=v.z;}
+            O.push({k:k,nom:o.name||'',a:a,c:mat.color?mat.color.getHex():0xffffff,al:mat.transparent?mat.opacity:1,pl:mat.size||0,dep:mat.depthTest!==false});
+          }
+        }
+        (o.children||[]).forEach(voir);
+      };
+      (g.children||[]).forEach(voir);
+      return O;
     }
     function __natifSig(){
       const j=faoDoc(),o=[];
@@ -209,11 +204,40 @@ const attendreCalcul = () => new Promise(fin => {
     if (!v.c) { clearInterval(t); fin(); } else ecrireEvt({ evt: 'message', texte: v.m });
   }, 400);
 });
+// La scène FAO hors traces, dans un fichier : les nombres à la suite, la description en réponse
+function sceneFichier(a) {
+  const O = vm.runInContext('__natifScene()', ctx);
+  const B = [];
+  const objets = O.map(o => { const f = Float32Array.from(o.a); B.push(Buffer.from(f.buffer, f.byteOffset, f.byteLength)); return { k: o.k, nom: o.nom, n: f.length, c: o.c, al: o.al, pl: o.pl, dep: o.dep }; });
+  fs.writeFileSync(a.fichier, Buffer.concat(B));
+  return { objets };
+}
 const COMMANDES = {
   vue,
   tracesFichier,
+  sceneFichier,
   toucher(a) {
     DOM.toucher(a.el, a.sorte, a.valeur, { ctrlKey: !!a.ctrl, shiftKey: !!a.maj, key: a.touche || '' });
+    return vue();
+  },
+  // Un clic dans la vue : la caméra du programme, puis les mêmes événements que la page
+  souris(a) {
+    sandbox.__tailleEcran = { w: a.w, h: a.h };
+    sandbox.__cam = a;
+    vm.runInContext(`(function(a){
+      const c=camera;
+      c.isPerspectiveCamera=!!a.persp;c.isOrthographicCamera=!a.persp;c.near=a.near;c.far=a.far;
+      c.projectionMatrix.fromArray(a.proj);c.projectionMatrixInverse.copy(c.projectionMatrix).invert();
+      c.matrixWorldInverse.fromArray(a.vue);c.matrixWorld.copy(c.matrixWorldInverse).invert();c.matrix.copy(c.matrixWorld);
+      c.position.setFromMatrixPosition(c.matrixWorld);
+    })(__cam)`, ctx);
+    const m = { clientX: a.x, clientY: a.y, offsetX: a.x, offsetY: a.y, button: a.bouton || 0, buttons: 0, ctrlKey: !!a.ctrl, shiftKey: !!a.maj, altKey: false, metaKey: false };
+    const e = documentStub.getElementById('viewport');
+    for (const s of a.sortes || ['pointerdown', 'pointerup']) e.dispatchEvent(DOM.evenement(s, { ...m, bubbles: false }));
+    return vue();
+  },
+  touche(a) {
+    documentStub.dispatchEvent(DOM.evenement('keydown', { key: a.key, code: a.code || '', ctrlKey: !!a.ctrl, shiftKey: !!a.maj, target: documentStub.body }));
     return vue();
   },
   async action(a) {
