@@ -53,7 +53,6 @@
 #include "structure.h"
 #include <wx/colordlg.h>
 #include <wx/numdlg.h>
-#include <wx/gauge.h>
 #include <wx/textdlg.h>
 
 #include "lien_arbre.h"
@@ -2828,40 +2827,42 @@ class BarreRejeu {
     if (t - t0_ < std::chrono::milliseconds(300) || !vue_->IsShownOnScreen()) return;
     if (cadre_ && t - dernier_ < std::chrono::milliseconds(40)) return;
     dernier_ = t;
+    // Dessinée à la main : le calcul ne rend pas la main, des contrôles intérieurs ne se repeindraient pas
     if (!cadre_) {
-      cadre_ = new wxFrame(wxGetTopLevelParent(vue_), wxID_ANY, wxString(), wxDefaultPosition, wxDefaultSize, wxFRAME_TOOL_WINDOW | wxFRAME_FLOAT_ON_PARENT | wxFRAME_NO_TASKBAR | wxBORDER_SIMPLE);
-      auto* p = new wxPanel(cadre_);
-      auto* s = new wxBoxSizer(wxVERTICAL);
-      titre_ = new wxStaticText(p, wxID_ANY, L"⟳ Régénération du modèle…");
-      nom_ = new wxStaticText(p, wxID_ANY, wxString(), wxDefaultPosition, wxDefaultSize, wxST_NO_AUTORESIZE | wxST_ELLIPSIZE_END);
-      barre_ = new wxGauge(p, wxID_ANY, 100, wxDefaultPosition, p->FromDIP(wxSize(360, 10)));
-      s->Add(titre_, 0, wxEXPAND | wxLEFT | wxRIGHT | wxTOP, p->FromDIP(10));
-      s->Add(barre_, 0, wxEXPAND | wxALL, p->FromDIP(10));
-      s->Add(nom_, 0, wxEXPAND | wxLEFT | wxRIGHT | wxBOTTOM, p->FromDIP(10));
-      p->SetSizer(s);
-      s->SetSizeHints(cadre_);
+      cadre_ = new wxFrame(wxGetTopLevelParent(vue_), wxID_ANY, wxString(), wxDefaultPosition, vue_->FromDIP(wxSize(380, 78)), wxFRAME_TOOL_WINDOW | wxFRAME_FLOAT_ON_PARENT | wxFRAME_NO_TASKBAR | wxBORDER_SIMPLE);
       const wxRect v = vue_->GetScreenRect();
       const wxSize c = cadre_->GetSize();
       cadre_->SetPosition(wxPoint(v.x + (v.width - c.x) / 2, v.y + (v.height - c.y) / 2));
       cadre_->ShowWithoutActivating();
     }
     if (total > 0) {
-      titre_->SetLabel(wxString::Format(L"⟳ Régénération du modèle… %d / %d", n, total));
-      barre_->SetValue(std::min(100, n * 100 / std::max(1, total)));
+      titre_ = wxString::Format(L"⟳ Régénération du modèle… %d / %d", n, total);
+      part_ = static_cast<double>(n) / std::max(1, total);
     } else {
-      barre_->SetValue(100);
+      part_ = 1;
     }
-    nom_->SetLabel(nom);
-    cadre_->Update();
-    cadre_->Refresh();
-    cadre_->Update();
+    wxClientDC dc(cadre_);
+    const wxSize t2 = cadre_->GetClientSize();
+    const int m = cadre_->FromDIP(10);
+    dc.SetPen(*wxTRANSPARENT_PEN);
+    dc.SetBrush(wxBrush(th(wxColour(0x2a, 0x2c, 0x30))));
+    dc.DrawRectangle(0, 0, t2.x, t2.y);
+    dc.SetFont(vue_->GetFont());
+    dc.SetTextForeground(th(wxColour(0xf0, 0xf0, 0xf2)));
+    dc.DrawText(titre_, m, m);
+    const int y = m + dc.GetCharHeight() + cadre_->FromDIP(6), h = cadre_->FromDIP(6);
+    dc.SetBrush(wxBrush(th(wxColour(0x48, 0x4a, 0x50))));
+    dc.DrawRoundedRectangle(m, y, t2.x - 2 * m, h, h / 2);
+    dc.SetBrush(wxBrush(wxColour(0x0a, 0x84, 0xff)));
+    dc.DrawRoundedRectangle(m, y, std::max(h, static_cast<int>((t2.x - 2 * m) * part_)), h, h / 2);
+    dc.SetTextForeground(th(wxColour(0xa0, 0xa0, 0xa8)));
+    dc.DrawText(wxControl::Ellipsize(nom, dc, wxELLIPSIZE_END, t2.x - 2 * m), m, y + h + cadre_->FromDIP(6));
   }
   wxWindow* vue_;
   std::chrono::steady_clock::time_point t0_, dernier_;
   wxFrame* cadre_ = nullptr;
-  wxStaticText* titre_ = nullptr;
-  wxStaticText* nom_ = nullptr;
-  wxGauge* barre_ = nullptr;
+  wxString titre_ = L"⟳ Régénération du modèle…";
+  double part_ = 0;
 };
 }  // namespace
 
