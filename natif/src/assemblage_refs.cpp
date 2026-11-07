@@ -507,6 +507,7 @@ nlohmann::json bilanReferences(const J& a, Solides& S) {
     GProp_GProps g;
     if (!s->forme.IsNull()) BRepGProp::VolumeProperties(s->forme, g);
     x["volume"] = r3(g.Mass());
+    x["spirales"] = s->spirales.size();
     nlohmann::json cg = nlohmann::json::object();
     for (const ElementConstruction& el : s->construction) {
       nlohmann::json k = {{"st", el.j.value("st", std::string())}, {"msg", el.j.value("msg", std::string())}};

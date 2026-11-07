@@ -4621,6 +4621,7 @@ bool Cadre::essaiEsquisse(const std::wstring& fichier, int rang, const std::wstr
     if (e.contains("asmRefs") && doc_.assemblage) {
       n["refs"] = assemblage::bilanReferences(*doc_.assemblage, asmSolides_);
       n["passes"] = asmPassesRefs_;
+      n["filets"] = asmNbFilets_;
     }
     if (e.contains("orbite")) vueEsquisse_->essaiOrbite(e["orbite"][0], e["orbite"][1]);
     if (e.contains("inclinee")) vueEsquisse_->basculerVueInclinee();

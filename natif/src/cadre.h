@@ -482,6 +482,7 @@ public:
   std::vector<assemblage::Instance> asmInstancesVisibles() const;
   bool cgPiocheAutre(const gp_Pnt& origine, const gp_Dir& direction);  // cgPickOtherComp
   std::string asmSigActif_;
+  int asmNbFilets_ = 0;
   int asmPassesRefs_ = 0;
   std::vector<TopoDS_Shape> asmFormesStep(std::string& nom, std::vector<std::string>& manquants) const;
   struct Inspection {

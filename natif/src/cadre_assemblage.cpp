@@ -298,6 +298,7 @@ bool Cadre::cgPiocheAutre(const gp_Pnt& o, const gp_Dir& d) {
 // asmFill : tout l'arbre, dans le repère de l'instance éditée
 void Cadre::asmDessiner() {
   std::vector<Vue3D::OccVue> L;
+  std::vector<std::vector<gp_Pnt>> filetsH, filetsA;
   if (doc_.assemblage && atelier_ == Atelier::CAO) {
     const J& a = *doc_.assemblage;
     const as::Chemin P = as::cheminActif(a);
@@ -322,6 +323,23 @@ void Cadre::asmDessiner() {
       v.cliquable = mine && placer;
       if (v.cliquable) v.cle = inst.chemin[n];
       v.chemin = inst.chemin;
+      if (!v.fantome) {  // asmThrLines : les filets des corps affichés
+        const as::Repere Fv = as::composer(V, inst.F);
+        const auto placer = [&Fv](const std::vector<gp_Pnt>& P) {
+          std::vector<gp_Pnt> Q;
+          Q.reserve(P.size());
+          for (const gp_Pnt& p : P) {
+            const as::V3 q = as::appliquer(Fv, {p.X(), p.Y(), p.Z()});
+            Q.emplace_back(q[0], q[1], q[2]);
+          }
+          return Q;
+        };
+        for (const SpiraleFilet& sf : S.spirales)
+          if (std::any_of(S.corps.begin(), S.corps.end(), [&](const auto& c) { return c.first == sf.corps; })) {
+            filetsH.push_back(placer(sf.helice));
+            filetsA.push_back(placer(sf.anneau));
+          }
+      }
       double op, gl;
       std::string ar;
       as::apparenceDe(a, inst.chemin, op, gl, ar);
@@ -362,6 +380,8 @@ void Cadre::asmDessiner() {
   vue_->cheminPiece(doc_.assemblage ? as::cheminActif(*doc_.assemblage) : as::Chemin{});
   vue_->modePlacer(asmMode_ == "asm" && atelier_ == Atelier::CAO);
   vue_->montrerOccurrences(L);
+  vue_->montrerFiletsAutres(filetsH, filetsA);
+  asmNbFilets_ = static_cast<int>(filetsH.size());
   asmMontrerChoix();
 }
 
