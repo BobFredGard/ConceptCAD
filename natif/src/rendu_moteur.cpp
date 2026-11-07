@@ -24,6 +24,15 @@
 #include <Prs3d_ShadingAspect.hxx>
 #include <Quantity_Color.hxx>
 #include <Graphic3d_Texture2D.hxx>
+#include <Graphic3d_ArrayOfSegments.hxx>
+#include <Graphic3d_ArrayOfTriangles.hxx>
+#include <Graphic3d_AspectFillArea3d.hxx>
+#include <Graphic3d_Group.hxx>
+#include <Graphic3d_TextureSet.hxx>
+#include <Prs3d_Presentation.hxx>
+#include <StdPrs_ShadedShape.hxx>
+#include <cstdint>
+#include <map>
 #include <OpenGl_Context.hxx>
 #include <Prs3d_LineAspect.hxx>
 #include <Prs3d_ShadingAspect.hxx>
@@ -281,12 +290,13 @@ occ::handle<Graphic3d_CubeMap> cubeAmbiance(const Ambiance& A, double rot, doubl
   return new Graphic3d_CubeMapSeparate(F);
 }
 
-Graphic3d_MaterialAspect matiere(const MatiereRendu* d, unsigned hex) {
-  const V3 c = linHex(hex);
+Graphic3d_MaterialAspect matiere(const MatiereRendu* d, unsigned hex, const std::array<double, 3>& teinte = {1, 1, 1}, double rugoForcee = -1) {
+  V3 c = linHex(hex);
+  for (int k = 0; k < 3; k++) c[k] = std::clamp(c[k] * teinte[k], 0.0, 1.0);  // OCCT refuse une couleur au-delà de 1
   Graphic3d_MaterialAspect m(Graphic3d_NameOfMaterial_DEFAULT);
   m.SetMaterialType(Graphic3d_MATERIAL_PHYSIC);
   const float rg = static_cast<float>(c[0]), vt = static_cast<float>(c[1]), bl = static_cast<float>(c[2]);
-  const double metal = d ? d->metal : 0.15, rugo = d ? d->rugosite : 0.42;
+  const double metal = d ? d->metal : 0.15, rugo = rugoForcee >= 0 ? rugoForcee : d ? d->rugosite : 0.42;
   Graphic3d_PBRMaterial p;
   p.SetColor(Quantity_ColorRGBA(rg, vt, bl, 1.f));
   p.SetMetallic(static_cast<float>(metal));
@@ -307,6 +317,160 @@ Graphic3d_MaterialAspect matiere(const MatiereRendu* d, unsigned hex) {
   return m;
 }
 }  // namespace
+
+// Un morceau d'une pièce : le lancer de rayons d'OCCT perd la couleur diffuse quand une même
+// présentation porte plusieurs matières (la pièce sort noire) : chacune a donc son objet
+class MorceauSurface : public AIS_InteractiveObject {
+ public:
+  DEFINE_STANDARD_RTTI_INLINE(MorceauSurface, AIS_InteractiveObject)
+  MorceauSurface(const occ::handle<Graphic3d_ArrayOfTriangles>& t, const occ::handle<Graphic3d_AspectFillArea3d>& a) : triangles_(t), aspect_(a) {}
+  bool AcceptDisplayMode(const int m) const override { return m == AIS_Shaded; }
+
+ protected:
+  void Compute(const occ::handle<PrsMgr_PresentationManager>&, const occ::handle<Prs3d_Presentation>& prs, const int) override {
+    prs->Clear();
+    const occ::handle<Graphic3d_Group> gr = prs->NewGroup();
+    gr->SetGroupPrimitivesAspect(aspect_);
+    gr->AddPrimitiveArray(triangles_);
+  }
+  void ComputeSelection(const occ::handle<SelectMgr_Selection>&, const int) override {}
+
+ private:
+  occ::handle<Graphic3d_ArrayOfTriangles> triangles_;
+  occ::handle<Graphic3d_AspectFillArea3d> aspect_;
+};
+
+// Une pièce avec ses textures (rtSurfMesh) : un morceau par plan de projection et par niveau d'usure ;
+// l'objet lui-même ne dessine que les arêtes de la CAO
+class PieceSurface : public AIS_Shape {
+ public:
+  DEFINE_STANDARD_RTTI_INLINE(PieceSurface, AIS_Shape)
+  std::vector<occ::handle<MorceauSurface>> morceaux;
+  PieceSurface(const PieceRendu& P) : AIS_Shape(P.forme) {
+    const MatiereRendu* d = matiereRendu(P.cle);
+    const Patine pat = patineDe(P.rel.p);
+    Paillettes fl;
+    const bool aFl = paillettesDe(P.cle, fl);
+    ReliefEffectif rel;
+    const bool aRel = reliefEffectif(P.rel, P.cle, rel);
+    const bool usure = pat.w > 0 || pat.s > 0;
+    const std::vector<TriangleSurface> T = maillageSurface(P.forme, usure);
+    const double rugoBase = d ? d->rugosite : 0.42;
+    // La carte de rugosité d'OCCT porte aussi le métal, et son lancer de rayons en déduit la couleur
+    // diffuse : avec du métal à 1 sur une peinture, tout est noir. Pas de carte pour ce qui n'est pas du métal
+    const double rugoCarte = d && d->metal >= 0.5 ? rugoBase : -1;
+    const int Dax = aRel ? (rel.d == 'y' ? 1 : rel.d == 'z' ? 2 : 0) : 0;
+    const bool peinture = d && std::wstring(d->famille) == L"Peintures";
+    const V3 cBase = linHex(P.couleur);
+    // Les triangles rangés par plan dominant et niveau d'usure et de salissure
+    constexpr int NW = 5, NS = 4;
+    std::map<int, std::vector<const TriangleSurface*>> parGroupe;
+    for (const TriangleSurface& t : T) {
+      double sn[3] = {0, 0, 0}, w = 0, s = 0;
+      for (int j = 0; j < 3; j++) {
+        for (int k = 0; k < 3; k++) sn[k] += t.n[j][k];
+        if (usure) {
+          // Pas d'éclats au pixel : un bruit le long des arêtes rend l'usure inégale d'une portion à l'autre
+          const double x = t.p[j][0], y = t.p[j][1], z = t.p[j][2];
+          const double nz = bruitUsure(0.45 * (x + 0.37 * z), 0.45 * (y - 0.61 * z));
+          w = std::max(w, std::min(1.0, t.usage[j][0] * pat.w * 0.7 * std::clamp(nz * 1.8 - 0.35, 0.0, 1.0)));
+          s = std::max(s, std::min(1.0, t.usage[j][1] * pat.s));
+        }
+      }
+      const int a = std::abs(sn[0]) >= std::abs(sn[1]) && std::abs(sn[0]) >= std::abs(sn[2]) ? 0 : std::abs(sn[1]) >= std::abs(sn[2]) ? 1 : 2;
+      const int lw = static_cast<int>(std::lround(w * (NW - 1))), ls = static_cast<int>(std::lround(s * (NS - 1)));
+      parGroupe[a * 100 + lw * 10 + ls].push_back(&t);
+    }
+    for (const auto& [cle, L] : parGroupe) {
+      const int a = cle / 100, lw = (cle / 10) % 10, ls = cle % 10;
+      const bool bout = aRel && Dax == a;
+      std::shared_ptr<const KitSurface> K;
+      if (pat.v > 0 || aFl || aRel) K = kitSurface(aRel ? &rel : nullptr, aFl ? &fl : nullptr, pat.v, rugoCarte, bout);
+      // (u, v) : u le long de D (brossé, bois, stries) ou v le long de D (couches) quand D est dans le plan
+      int ua = a == 0 ? 1 : 0, va = a == 2 ? 1 : 2;
+      if (aRel && Dax != a) {
+        if (rel.t == "couches") {
+          if (Dax == ua) std::swap(ua, va);
+        } else if (Dax == va) std::swap(ua, va);
+      }
+      const double w = 1.0 * lw / (NW - 1), s = 1.0 * ls / (NS - 1), kS = 1 - 0.6 * s;
+      std::array<double, 3> teinte{1, 1, 1};
+      const double gris[3] = {0.42, 0.43, 0.45};
+      for (int ch = 0; ch < 3; ch++) {
+        const double cc = std::max(1e-3, cBase[ch]);
+        teinte[ch] = (peinture ? 1 + (gris[ch] / cc - 1) * w : 1 + 0.3 * w) * kS;
+        if (K) teinte[ch] *= K->cMax;
+      }
+      double rugo = K && K->rugosite ? K->rMax : rugoBase;
+      if (K && !K->rugosite && aRel) rugo = rugoBase;
+      Graphic3d_MaterialAspect mat = matiere(d, P.couleur, teinte, rugo);
+      occ::handle<Prs3d_ShadingAspect> sa = new Prs3d_ShadingAspect();
+      sa->SetMaterial(mat);
+      occ::handle<Graphic3d_AspectFillArea3d> asp = sa->Aspect();
+      asp->SetInteriorColor(mat.PBRMaterial().Color().GetRGB());  // le matériau physique prend sa couleur ici
+      // OCCT n'accepte que 32 images au lancer de rayons : le même jeu pour tous les morceaux qui ont les mêmes cartes
+      const auto carte = [](const occ::handle<Image_PixMap>& im, Graphic3d_TextureUnit unite) {
+        occ::handle<Graphic3d_Texture2D> tx = new Graphic3d_Texture2D(im);
+        tx->GetParams()->SetTextureUnit(unite);
+        tx->SetColorMap(false);
+        tx->EnableModulate();
+        tx->EnableRepeat();
+        tx->GetParams()->SetFilter(Graphic3d_TOTF_TRILINEAR);
+        tx->GetParams()->SetAnisoFilter(Graphic3d_LOTA_QUALITY);
+        return tx;
+      };
+      if (K && K->jeu.IsNull()) {
+        std::vector<occ::handle<Graphic3d_TextureMap>> C;
+        // Sans teinte, le blanc : la première carte reste la couleur de base
+        if (!K->teinte.IsNull()) C.push_back(carte(K->teinte, Graphic3d_TextureUnit_BaseColor));
+        if (!K->normales.IsNull()) C.push_back(carte(K->normales, Graphic3d_TextureUnit_Normal));
+        if (!K->rugosite.IsNull()) C.push_back(carte(K->rugosite, Graphic3d_TextureUnit_MetallicRoughness));
+        if (!C.empty()) {
+          K->jeu = new Graphic3d_TextureSet(static_cast<int>(C.size()));
+          for (size_t i = 0; i < C.size(); i++) K->jeu->SetValue(static_cast<int>(i), C[i]);
+        }
+      }
+      if (K && !K->jeu.IsNull()) {
+        asp->SetTextureSet(K->jeu);
+        asp->SetTextureMapOn();
+      }
+      const int nb = static_cast<int>(L.size()) * 3;
+      occ::handle<Graphic3d_ArrayOfTriangles> tri = new Graphic3d_ArrayOfTriangles(nb, 0, Graphic3d_ArrayFlags_VertexNormal | Graphic3d_ArrayFlags_VertexTexel);
+      const double tuile = K ? K->tuile : 48;
+      for (const TriangleSurface* t : L)
+        for (int j = 0; j < 3; j++)
+          tri->AddVertex(gp_Pnt(t->p[j][0], t->p[j][1], t->p[j][2]), gp_Dir(t->n[j][0], t->n[j][1], t->n[j][2]), gp_Pnt2d(t->p[j][ua] / tuile, t->p[j][va] / tuile));
+      morceaux.push_back(new MorceauSurface(tri, asp));
+    }
+  }
+
+ protected:
+  void Compute(const occ::handle<PrsMgr_PresentationManager>&, const occ::handle<Prs3d_Presentation>& prs, const int) override {
+    prs->Clear();
+    if (Attributes()->FaceBoundaryDraw()) {
+      const occ::handle<Graphic3d_ArrayOfSegments> aretes = StdPrs_ShadedShape::FillFaceBoundaries(Shape());
+      if (!aretes.IsNull()) {
+        const occ::handle<Graphic3d_Group> gr = prs->NewGroup();
+        gr->SetGroupPrimitivesAspect(Attributes()->FaceBoundaryAspect()->Aspect());
+        gr->AddPrimitiveArray(aretes);
+      }
+    }
+  }
+
+ private:
+  static double bruitUsure(double x, double y) {
+    const auto h = [](int i, int j) {
+      uint32_t k = static_cast<uint32_t>(i) * 374761393u + static_cast<uint32_t>(j) * 668265263u + 5u * 1442695041u;
+      k = (k ^ (k >> 13)) * 1274126177u;
+      k ^= k >> 16;
+      return k / 4294967296.0;
+    };
+    const int i = static_cast<int>(std::floor(x)), j = static_cast<int>(std::floor(y));
+    const double fx = x - i, fy = y - j, u = fx * fx * (3 - 2 * fx), v = fy * fy * (3 - 2 * fy);
+    const double a = h(i, j), b = h(i + 1, j), c = h(i, j + 1), d = h(i + 1, j + 1);
+    return a + (b - a) * u + (c - a) * v + (a - b - c + d) * u * v;
+  }
+};
 
 occ::handle<Graphic3d_CubeMap> cubeVue(const std::string& amb, const ImageHdri* h, double rot, double hemi, std::array<double, 2>& cle) {
   const Ambiance A = ambiance(amb, h, 1, true);
@@ -344,17 +508,26 @@ MoteurRendu::~MoteurRendu() {
   if (!tampon_.IsNull()) vue_->View()->FBORelease(tampon_);
   if (!tamponOmbre_.IsNull()) vue_->View()->FBORelease(tamponOmbre_);
   objets_.clear();
+  morceaux_.clear();
   sol_.Nullify();
   contexte_.Nullify();
   vue_->Remove();
   vue_.Nullify();
   visu_.Nullify();
+  if (fenetre_) fenetre_->Destroy();
 }
 
 void MoteurRendu::pieces(const std::vector<PieceRendu>& L) {
   for (auto& o : objets_) contexte_->Remove(o, false);
+  for (auto& o : morceaux_) contexte_->Remove(o, false);
   objets_.clear();
+  morceaux_.clear();
   pieces_ = L;
+  verre_ = false;
+  for (const PieceRendu& p : pieces_) {
+    const MatiereRendu* d = matiereRendu(p.cle);
+    if (d && d->transmission > 0) verre_ = true;
+  }
   Bnd_Box b;
   for (const PieceRendu& p : pieces_) {
     if (p.forme.IsNull()) continue;
@@ -367,14 +540,17 @@ void MoteurRendu::pieces(const std::vector<PieceRendu>& L) {
   if (R_ <= 0) R_ = 50;
   for (const PieceRendu& p : pieces_) {
     if (p.forme.IsNull()) continue;
-    occ::handle<AIS_Shape> a = new AIS_Shape(p.forme);
+    occ::handle<PieceSurface> a = new PieceSurface(p);
     a->Attributes()->SetAutoTriangulation(false);
-    const MatiereRendu* d = matiereRendu(p.cle);
-    a->SetMaterial(matiere(d, p.couleur));
     a->Attributes()->SetFaceBoundaryDraw(false);
     contexte_->Display(a, AIS_Shaded, -1, false);
     contexte_->Deactivate(a);
     objets_.push_back(a);
+    for (const occ::handle<MorceauSurface>& m : a->morceaux) {
+      contexte_->Display(m, AIS_Shaded, -1, false);
+      contexte_->Deactivate(m);
+      morceaux_.push_back(m);
+    }
   }
   reprendre();
 }
@@ -737,6 +913,26 @@ bool MoteurRendu::rendre(const CameraRendu& c, double fovy, bool ortho, double e
   }
   px.resize(4 * static_cast<size_t>(w) * h);
   const bool hautEnBas = im.IsTopDown();
+  // Une pièce en verre laisserait passer le fond magenta : une seconde image sur fond noir donne
+  // sa couleur seule, et l'écart entre les deux fonds dit ce qu'elle laisse passer
+  if (verre_) {
+    Image_PixMap noir;
+    noir.SetTopDown(true);
+    noir.InitZero(Image_Format_RGBA, w, h);
+    vue_->SetBackgroundColor(Quantity_NOC_BLACK);
+    if (!vue_->ToPixMap(noir, op)) return false;
+    for (int y = 0; y < h; y++) {
+      const unsigned char* l = im.Row(hautEnBas ? y : h - 1 - y);
+      const unsigned char* n = noir.Row(noir.IsTopDown() ? y : h - 1 - y);
+      float* o = px.data() + 4 * static_cast<size_t>(y) * w;
+      for (int x = 0; x < w; x++) {
+        o[4 * x] = TABLE[n[4 * x]], o[4 * x + 1] = TABLE[n[4 * x + 1]], o[4 * x + 2] = TABLE[n[4 * x + 2]];
+        const double passe = std::clamp((l[4 * x + 2] - n[4 * x + 2]) / 255.0, 0.0, 1.0);
+        o[4 * x + 3] = static_cast<float>(1 - passe);
+      }
+    }
+    return true;
+  }
   for (int y = 0; y < h; y++) {
     const unsigned char* l = im.Row(hautEnBas ? y : h - 1 - y);
     float* o = px.data() + 4 * static_cast<size_t>(y) * w;

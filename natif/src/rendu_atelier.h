@@ -51,6 +51,7 @@ class AtelierRendu : public wxWindow {
   void menuPiece(int i, wxWindow* ou);
   wxString ecrireCalques(MoteurRendu& m, const wxImage& beaute, int w, int h, const wxString& chemin);
   void preparerMenu(const std::vector<PieceRendu>& L, const plan::J& doc);  // le même menu, atelier fermé (clic droit de la vue CAO)
+  void poserRelief(int i, const ReliefChoisi& r);
   void poserApparence(int i, const std::string& mat, long couleur);
   void effacerApparence(int i);
   void toutesOccurrences(int i);

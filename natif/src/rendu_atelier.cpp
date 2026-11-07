@@ -597,7 +597,7 @@ void AtelierRendu::menuPiece(int i, wxWindow* ou) {
   if (i < 0 || i >= static_cast<int>(pieces_.size()) || (pieces_[i].id.empty() && pieces_[i].occ.empty())) return;
   const PieceRendu& P = pieces_[i];
   wxMenu m;
-  enum { SANS = wxID_HIGHEST + 1, COULEUR, CAO_, TOUS, BASE };
+  enum { SANS = wxID_HIGHEST + 1, COULEUR, CAO_, TOUS, ECHELLE, REL_MAT, REL0, REL_FIN = REL0 + 20, DIR0, DIR_FIN = DIR0 + 3, PAT0, PAT_FIN = PAT0 + 10, BASE };
   std::vector<std::wstring> familles;
   std::map<std::wstring, wxMenu*> sous;
   const auto& B = bibliothequeRendu();
@@ -614,11 +614,52 @@ void AtelierRendu::menuPiece(int i, wxWindow* ou) {
   m.AppendSeparator();
   m.AppendCheckItem(SANS, L"Sans matériau")->Check(P.cle.empty());
   m.Append(COULEUR, L"Couleur…");
+  {
+    ReliefEffectif eff;
+    const bool aEff = reliefEffectif(P.rel, P.cle, eff);
+    auto* sr = new wxMenu;
+    const std::string tMat = reliefDuMateriau(P.cle);
+    wxString selon = L"Selon le matériau (aucun)";
+    for (const ChoixTexte& c : typesRelief())
+      if (tMat == c.cle) selon = wxString(L"Selon le matériau (") + c.nom + L")";
+    sr->AppendCheckItem(REL_MAT, selon)->Check(P.rel.t.empty());
+    int k = 0;
+    for (const ChoixTexte& c : typesRelief()) sr->AppendCheckItem(REL0 + k++, c.nom)->Check(P.rel.t == c.cle);
+    m.AppendSubMenu(sr, L"Relief");
+    if (aEff) {
+      auto* sd = new wxMenu;
+      for (int a = 0; a < 3; a++) sd->AppendCheckItem(DIR0 + a, wxString(static_cast<wxChar>(L'X' + a)))->Check(eff.d == 'x' + a);
+      m.AppendSubMenu(sd, L"Direction du motif");
+      m.Append(ECHELLE, wxString::Format(L"Échelle du motif (%g mm)…", eff.e));
+    }
+    auto* sp = new wxMenu;
+    k = 0;
+    for (const ChoixTexte& c : typesPatine()) sp->AppendCheckItem(PAT0 + k++, c.nom)->Check(P.rel.p == c.cle);
+    m.AppendSubMenu(sp, L"Patine");
+  }
   wxMenuItem* retour = m.Append(CAO_, L"Reprendre l'apparence de la CAO");
   retour->Enable(P.propre);
   if (!P.occ.empty()) m.Append(TOUS, L"Même apparence pour toutes les occurrences de ce composant");
   const int id = ou->GetPopupMenuSelectionFromUser(m);
   if (id == wxID_NONE) return;
+  if (id == REL_MAT || (id >= REL0 && id < REL_FIN) || (id >= DIR0 && id < DIR_FIN) || (id >= PAT0 && id < PAT_FIN) || id == ECHELLE) {
+    ReliefChoisi r = P.rel;
+    if (id == REL_MAT) r.t.clear();
+    else if (id >= REL0 && id < REL_FIN) r.t = typesRelief()[id - REL0].cle;
+    else if (id >= DIR0 && id < DIR_FIN) r.d = std::string(1, static_cast<char>('x' + (id - DIR0)));
+    else if (id >= PAT0 && id < PAT_FIN) r.p = typesPatine()[id - PAT0].cle;
+    else {
+      ReliefEffectif eff;
+      reliefEffectif(P.rel, P.cle, eff);
+      wxString t = wxGetTextFromUser(L"Échelle du motif (mm), de 0,01 à 50", L"Relief", wxString::Format(L"%g", eff.e), ou);
+      t.Replace(L",", L".");
+      double v = 0;
+      if (!t.ToCDouble(&v) || !(v > 0.005 && v < 50)) return;
+      r.e = v;
+    }
+    poserRelief(i, r);
+    return;
+  }
   if (id == SANS) poserApparence(i, "", -1);
   else if (id == CAO_) effacerApparence(i);
   else if (id == TOUS) toutesOccurrences(i);
@@ -627,6 +668,28 @@ void AtelierRendu::menuPiece(int i, wxWindow* ou) {
     const wxColour c = wxGetColourFromUser(ou, wxColour((u >> 16) & 255, (u >> 8) & 255, u & 255), L"Couleur de la pièce");
     if (c.IsOk()) poserApparence(i, P.cle, (static_cast<long>(c.Red()) << 16) | (c.Green() << 8) | c.Blue());
   } else if (id >= BASE) poserApparence(i, B[id - BASE].cle, -1);
+}
+
+// relNorm : les champs valides seulement
+void AtelierRendu::poserRelief(int i, const ReliefChoisi& r) {
+  const PieceRendu& P = pieces_[i];
+  plan::J o;
+  o["mat"] = P.cle;
+  o["col"] = P.couleur;
+  plan::J rel = plan::J::object();
+  if (!r.t.empty()) rel["t"] = r.t;
+  if (r.e > 0) rel["e"] = std::round(r.e * 1000) / 1000;
+  if (!r.d.empty()) rel["d"] = r.d;
+  if (!r.p.empty()) rel["p"] = r.p;
+  if (!rel.empty()) o["rel"] = rel;
+  if (!P.occ.empty()) {
+    if (surOccurrence) surOccurrence(P, &o, false);
+    return;
+  }
+  if (!docRendu.is_object()) docRendu = plan::J::object();
+  if (!docRendu.contains("corps")) docRendu["corps"] = plan::J::object();
+  docRendu["corps"][P.id] = o;
+  if (surDoc) surDoc(docRendu);
 }
 
 void AtelierRendu::poserApparence(int i, const std::string& mat, long couleur) {
@@ -654,6 +717,14 @@ void AtelierRendu::toutesOccurrences(int i) {
   plan::J o;
   o["mat"] = P.cle;
   o["col"] = P.couleur;
+  if (!P.rel.vide()) {  // même apparence, relief et patine compris
+    plan::J rel = plan::J::object();
+    if (!P.rel.t.empty()) rel["t"] = P.rel.t;
+    if (P.rel.e > 0) rel["e"] = P.rel.e;
+    if (!P.rel.d.empty()) rel["d"] = P.rel.d;
+    if (!P.rel.p.empty()) rel["p"] = P.rel.p;
+    o["rel"] = rel;
+  }
   if (surOccurrence) surOccurrence(P, &o, true);
 }
 
@@ -1229,9 +1300,8 @@ void PanneauRendu::refaire() {
       l->Bind(wxEVT_RIGHT_UP, clic);
       racine_->Add(l, 0, wxEXPAND | wxLEFT | wxRIGHT | wxTOP, FromDIP(4));
     }
-    note(L"Clic droit sur une pièce dans l'image (ou clic sur sa ligne) : matériau et couleur. • = apparence propre au rendu.");
+    note(L"Clic droit sur une pièce dans l'image (ou clic sur sa ligne) : matériau, couleur, relief, patine. • = apparence propre au rendu.");
     if (occurrences) note(L"Les autres composants de l'assemblage gardent leur couleur : leur matériau de rendu n'est pas encore réglable.");
-    note(L"Reliefs et patine : pas encore dans le logiciel Windows.");
   }
 
   titre(L"Finition");

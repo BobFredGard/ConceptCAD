@@ -1775,6 +1775,7 @@ void Cadre::surFermer(wxCloseEvent& e) {
     return;
   }
   secoursEffacer();  // fermeture voulue : la question vient d'être posée
+  if (atelierRendu_) atelierRendu_->fermer();  // la carte graphique pendant que tout existe encore
   Destroy();
 }
 
@@ -4760,6 +4761,15 @@ bool Cadre::essaiEsquisse(const std::wstring& fichier, int rang, const std::wstr
         A.essaiGlisser(g[0].get<int>(), g[1].get<double>(), g[2].get<double>(), g[3].get<double>(), g[4].get<double>());
       }
       if (q.contains("matiere")) A.poserApparence(q.value("piece", 0), q["matiere"].get<std::string>(), q.value("couleur", -1L));
+      if (q.contains("relief")) {
+        const plan::J& g = q["relief"];
+        ReliefChoisi r;
+        r.t = g.value("t", std::string());
+        r.d = g.value("d", std::string());
+        r.p = g.value("p", std::string());
+        r.e = g.value("e", 0.0);
+        A.poserRelief(q.value("piece", 0), r);
+      }
       if (q.value("effacer", false)) A.effacerApparence(q.value("piece", 0));
       if (q.value("tous", false)) A.toutesOccurrences(q.value("piece", 0));
       if (q.contains("clic")) A.cliquer(q["clic"][0].get<double>(), q["clic"][1].get<double>());
@@ -4969,7 +4979,9 @@ void Cadre::renduEssai(const plan::J& e) {
     p.forme = s;
     p.id = id;
     p.cle = e.value("mat", std::string());
-    p.couleur = e.value("col", 0x9a9aa0);
+    const MatiereRendu* dm = matiereRendu(p.cle);
+    p.couleur = e.value("col", dm ? dm->couleur : 0x9a9aa0u);
+    p.rel = reliefDeJson(e);
     L.push_back(p);
   }
   m.pieces(L);

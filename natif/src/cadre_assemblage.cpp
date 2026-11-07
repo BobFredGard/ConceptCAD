@@ -3036,6 +3036,7 @@ std::vector<PieceRendu> Cadre::renduPieces(const plan::J& racine) {
       p.propre = true;
       if (r.contains("mat") && r["mat"].is_string()) p.cle = r["mat"].get<std::string>();
       if (r.contains("col") && r["col"].is_number()) p.couleur = r["col"].get<unsigned>();
+      p.rel = reliefDeJson(r);
     }
     if (!matiereRendu(p.cle)) p.cle.clear();
     L.push_back(p);
@@ -3065,6 +3066,7 @@ std::vector<PieceRendu> Cadre::renduPieces(const plan::J& racine) {
         const auto lireLook = [&q](const J& r) {
           if (r.contains("mat") && r["mat"].is_string()) q.cle = r["mat"].get<std::string>();
           if (r.contains("col") && r["col"].is_number()) q.couleur = r["col"].get<unsigned>();
+          q.rel = reliefDeJson(r);
         };
         // La CAO du composant, puis l'apparence de rendu de sa pièce (doc.rendu), puis l'occurrence la plus profonde qui en a une (asmOccRenduOf)
         if (const J* cc = as::composant(a, inst.comp); cc && cc->contains("doc") && (*cc)["doc"].is_object()) {

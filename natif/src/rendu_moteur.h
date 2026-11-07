@@ -3,6 +3,7 @@
 // tout finit en nombres linéaires, repris par la finition (rendu_finition) pour l'exposition, les tons, le fond.
 #pragma once
 
+#include "rendu_relief.h"
 #include <array>
 #include <memory>
 #include <string>
@@ -41,6 +42,7 @@ struct ReglagesRendu {
 };
 
 struct PieceRendu {
+  ReliefChoisi rel;     // relief et patine propres à cette pièce (rendu_relief.h)
   TopoDS_Shape forme;
   std::string cle;      // le matériau ; vide : plastique de la CAO
   unsigned couleur = 0x9a9aa0;
@@ -50,6 +52,29 @@ struct PieceRendu {
   unsigned couleurCao = 0x9a9aa0;  // l'apparence de la CAO
   bool propre = false;             // une apparence propre au rendu
 };
+
+// relNorm : relu du fichier, champs valides seulement ; le gabarit évite d'imposer le type de JSON ici
+template <class J>
+ReliefChoisi reliefDeJson(const J& look) {
+  ReliefChoisi o;
+  if (!look.contains("rel") || !look["rel"].is_object()) return o;
+  const J& r = look["rel"];
+  if (r.contains("t") && r["t"].is_string()) {
+    const std::string t = r["t"].template get<std::string>();
+    for (const ChoixTexte& c : typesRelief())
+      if (t == c.cle) o.t = t;
+  }
+  if (r.contains("e") && r["e"].is_number() && r["e"].template get<double>() > 0.005 && r["e"].template get<double>() < 50) o.e = r["e"].template get<double>();
+  if (r.contains("d") && r["d"].is_string()) {
+    const std::string d = r["d"].template get<std::string>();
+    if (d == "x" || d == "y" || d == "z") o.d = d;
+  }
+  if (r.contains("p") && r["p"].is_string()) {
+    const std::string p = r["p"].template get<std::string>();
+    if (p == "aucune" || p == "legere" || p == "usee" || p == "tres") o.p = p;
+  }
+  return o;
+}
 
 struct CameraRendu {
   std::array<double, 3> oeil{}, cible{}, haut{0, 0, 1};
@@ -102,8 +127,10 @@ class MoteurRendu {
   occ::handle<AIS_InteractiveContext> contexte_;
   occ::handle<V3d_DirectionalLight> lampe_;
   wxWindow* fenetre_ = nullptr;
+  bool verre_ = false;  // au moins une pièce laisse passer la lumière
   std::vector<PieceRendu> pieces_;
   std::vector<occ::handle<AIS_Shape>> objets_;
+  std::vector<occ::handle<AIS_InteractiveObject>> morceaux_;
   occ::handle<AIS_Shape> sol_;
   ReglagesRendu st_;
   CameraRendu cam_;
