@@ -14,6 +14,7 @@
 #include <utility>
 #include <vector>
 
+#include "assemblage.h"
 #include "projet.h"
 #include "rejeu.h"
 
@@ -92,15 +93,33 @@ struct FiletImage {
   std::string corps;
   std::vector<V3> helice, anneau;
 };
+// Pour les vues « Assemblage » (48-composants-plan) : un corps d'une instance, déjà placé
+struct CorpsInstance {
+  std::string comp, id;
+  TopoDS_Shape forme;
+  unsigned couleur = 0x9a9aa0;
+  double opacite = 1;
+};
+// Une instance dans la nomenclature des composants
+struct LigneInstance {
+  std::string comp, nom, mat, dims;
+  int profondeur = 1;
+  bool feuille = true;
+};
 struct Piece {
   std::vector<Corps> corps;
   std::vector<FiletImage> helices;
+  bool assemblage = false;  // asmPlanOn : le composant actif a des occurrences
+  std::vector<CorpsInstance> instances;
+  std::vector<LigneInstance> lignesInstances;
   std::vector<Filet> filets;
   std::vector<Trou> trous;
   std::vector<std::pair<std::string, std::string>> nomsCorps;  // doc.bodies : id, nom
 };
 // doc : le fichier, pour ce que le modèle ne garde pas
 Piece pieceDe(const Document& d, const ResultatRejeu& r, const J& doc);
+// Ajoute ce que montrent les vues « Assemblage » : les corps des instances sous le composant actif
+void completerAssemblage(Piece& p, const Document& d, const assemblage::Solides& S);
 
 // doc.mep : les planches, complétées comme à l'ouverture (mepEnsure, mepNormSheet)
 void normaliser(J& mep);

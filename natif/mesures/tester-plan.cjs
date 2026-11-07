@@ -6,7 +6,7 @@ const { chromium } = require('playwright');
 const opt = (n, d) => { const a = process.argv.find(x => x.startsWith('--' + n + '=')); return a ? a.slice(n.length + 3) : d; };
 const dossier = path.resolve(process.argv[2]);
 const RACINE = opt('racine', path.resolve(__dirname, '..', '..'));
-const EX = path.resolve(__dirname, '..', '..', 'Exemples');
+const EX = opt('dossier', path.resolve(__dirname, '..', '..', 'Exemples'));
 const EXE = path.resolve(__dirname, '..', 'sortie', 'ConceptCADNatif.exe');
 const PIECES = opt('pieces', 'Barquette,Cache Piles,Cavité Usinage,Crochet,Goupille,Griffe,Malaxeur Retard,Perçages,Support Pédale Déportée R1200RT 2011').split(',');
 const SANS = opt('sans', '').split(',').filter(Boolean);

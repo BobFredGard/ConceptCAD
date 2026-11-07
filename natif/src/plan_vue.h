@@ -17,7 +17,7 @@ class PlanVue : public wxWindow {
  public:
   explicit PlanVue(wxWindow* parent);
   // Le fichier tel qu'il serait enregistré et le dernier calcul de la pièce.
-  void charger(const std::string& texteDoc, const Document& d, const ResultatRejeu& r);
+  void charger(const std::string& texteDoc, const Document& d, const ResultatRejeu& r, const assemblage::Solides& S);
   // Pièce modifiée : tout sera recalculé au prochain passage dans l'atelier
   void oublier();
   // Pour la note de droite : ce que contient la planche courante

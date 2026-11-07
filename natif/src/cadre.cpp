@@ -540,7 +540,7 @@ void Cadre::montrerPlan() {
     if (!base.empty()) texte = texteEnregistre(doc_, base);
   } catch (const std::exception&) {
   }
-  planVue_->charger(texte, doc_, dernierRejeu_);
+  planVue_->charger(texte, doc_, dernierRejeu_, asmSolides_);
   noteDroite_->SetLabel(planVue_->resume() + L"\n\nMolette : zoom. Bouton du milieu : déplacer la feuille ; double-clic du milieu : la voir en entier.\n\nPour l'instant on regarde : modifier les vues et les cotes viendra ensuite.");
 }
 

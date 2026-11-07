@@ -469,7 +469,7 @@ void PlanVue::oublier() {
   images3d_.clear();
 }
 
-void PlanVue::charger(const std::string& texteDoc, const Document& d, const ResultatRejeu& r) {
+void PlanVue::charger(const std::string& texteDoc, const Document& d, const ResultatRejeu& r, const assemblage::Solides& S) {
   if (aJour_) return;
   wxBusyCursor attente;
   J racine;
@@ -482,6 +482,7 @@ void PlanVue::charger(const std::string& texteDoc, const Document& d, const Resu
   mep_ = top_.contains("mep") ? top_["mep"] : J::object();
   plan::normaliser(mep_);
   piece_ = plan::pieceDe(d, r, top_);
+  plan::completerAssemblage(piece_, d, S);
   planche_ = mep_.contains("cur") && mep_["cur"].is_number() ? mep_["cur"].get<int>() : 0;
   if (planche_ < 0 || planche_ >= static_cast<int>(mep_["sheets"].size())) planche_ = 0;
   aJour_ = true;
@@ -648,7 +649,9 @@ void PlanVue::construire() {
       const int n = std::min(720, std::max(24, static_cast<int>(2 * PI * rr / 0.1)));
       std::vector<std::array<double, 2>> l;
       for (int q = 0; q <= n; q++) l.push_back({cx + rr * std::cos(2 * PI * q / n), cy + rr * std::sin(2 * PI * q / n)});
-      if (!r.fond.empty() && attrDe(e, "class") && attrDe(e, "class")->find("mepEnt") == std::string::npos && r.fond != "#000000") plein(r.fond, l, r.opacite);
+      // fill="currentColor" : la couleur du trait
+      if (const std::string* fa = attrDe(e, "fill"); fa && *fa == "currentColor") plein(r.trait.empty() ? P.encre : r.trait, l);
+      else if (!r.fond.empty() && attrDe(e, "class") && attrDe(e, "class")->find("mepEnt") == std::string::npos && r.fond != "#000000") plein(r.fond, l, r.opacite);
       if (!r.trait.empty()) traits(r, {l});
     } else if (e.tag == "rect") {
       const double x = nombre(e, "x"), y = nombre(e, "y"), w = nombre(e, "width"), h = nombre(e, "height");

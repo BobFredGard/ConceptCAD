@@ -112,7 +112,12 @@ int modePlan(const std::vector<std::wstring>& a) {
   J& top = racine.contains("doc") && racine["doc"].is_object() ? racine["doc"] : racine;
   J mep = top.contains("mep") ? top["mep"] : J::object();
   plan::normaliser(mep);
-  const plan::Piece p = plan::pieceDe(d, r, top);
+  plan::Piece p = plan::pieceDe(d, r, top);
+  if (d.assemblage) {
+    assemblage::Solides S;
+    assemblage::majSolides(S, d, r);
+    plan::completerAssemblage(p, d, S);
+  }
   plan::Calcul c;
   J sortie = J::array();
   for (int i = 0; i < static_cast<int>(mep["sheets"].size()); i++) {

@@ -8,6 +8,7 @@
 #include <BRepBuilderAPI_GTransform.hxx>
 #include <BRepBuilderAPI_MakeFace.hxx>
 #include <BRepBuilderAPI_MakePolygon.hxx>
+#include <BRepBuilderAPI_Transform.hxx>
 #include <BRepPrimAPI_MakePrism.hxx>
 #include <BRep_Builder.hxx>
 #include <Bnd_Box.hxx>
@@ -989,17 +990,25 @@ Geo construire(const J& view, const J& sh, const Piece& piece) {  // mepBuildGeo
   const std::string bodyId = chaine(view, "bodyId");
   std::vector<TopoDS_Shape> shapes;
   std::vector<std::string> cles;
+  const bool vueAsm = vrai(view, "asm") && piece.assemblage;  // mepMeshesOf : le composant et tout ce qu'il contient
   for (const Corps& c : piece.corps) {
-    if (!bodyId.empty() && c.id != bodyId) continue;
+    if (!vueAsm && !bodyId.empty() && c.id != bodyId) continue;
     shapes.push_back(c.forme);
     cles.push_back("b:" + c.id);
   }
+  if (vueAsm)
+    for (const CorpsInstance& c : piece.instances) {
+      shapes.push_back(c.forme);
+      cles.push_back("c:" + c.comp);
+    }
   if (shapes.empty()) {
     geo.src = "aucun corps";
     return geo;
   }
   std::vector<TopoDS_Shape> tous;
   for (const Corps& c : piece.corps) tous.push_back(c.forme);
+  if (vueAsm)
+    for (const CorpsInstance& c : piece.instances) tous.push_back(c.forme);
   const bool section = vrai(view, "section");
   std::vector<TopoDS_Shape> cutShapes = shapes;
   Brisee st;
@@ -1370,15 +1379,29 @@ void dessinerRevisions(Ctx& c, const Page& pd, double ty) {  // mepDrawRevs
     for (int q = 0; q < 4; q++) T(cols[q].x + 1.2, y + ly, fit(chaine(r, F[q]), cols[q].w));
   }
 }
-void dessinerNomenclature(Ctx& c, const Page& pd, double ty0) {  // mepDrawBom, mepBomRows (corps)
+struct LigneBom {
+  std::string name, dims, mat;
+  int qty = 1;
+  std::string id;  // le premier corps ou composant de la ligne
+};
+std::vector<LigneBom> lignesBom(const Ctx& c) {  // mepBomRows, asmBomRows
+  std::vector<LigneBom> rows;
   const J& bom = sous(c.sh, "bom");
-  if (!vrai(bom, "on")) return;
-  struct Ligne {
-    std::string name, dims, mat;
-    int qty = 1;
-  };
-  std::vector<Ligne> rows;
   const J& bm = sous(bom, "mat");
+  const std::string lvl = chaine(bom, "lvl");
+  if (!lvl.empty() && lvl != "corps" && c.piece.assemblage) {
+    for (const LigneInstance& i : c.piece.lignesInstances) {
+      if (lvl == "comp1" && i.profondeur != 1) continue;
+      if (lvl == "parts" && !i.feuille) continue;
+      bool fait = false;
+      for (LigneBom& q : rows)
+        if (q.id == i.comp) q.qty++, fait = true;
+      if (fait) continue;
+      const std::string m = chaine(bm, i.comp.c_str());
+      rows.push_back({i.nom, i.dims, m.empty() ? i.mat : m, 1, i.comp});
+    }
+    return rows;
+  }
   for (const auto& [id, nom] : c.piece.nomsCorps) {
     const auto it = std::find_if(c.piece.corps.begin(), c.piece.corps.end(), [&, idc = id](const Corps& q) { return q.id == idc; });
     if (it == c.piece.corps.end()) continue;
@@ -1387,10 +1410,42 @@ void dessinerNomenclature(Ctx& c, const Page& pd, double ty0) {  // mepDrawBom, 
     std::string mat = chaine(bm, id.c_str());
     if (mat.empty()) mat = chaine(sous(c.sh, "title"), "matiere");
     bool fait = false;
-    for (Ligne& q : rows)
+    for (LigneBom& q : rows)
       if (q.name == name && q.dims == dims && q.mat == mat) q.qty++, fait = true;
-    if (!fait) rows.push_back({name, dims, mat, 1});
+    if (!fait) rows.push_back({name, dims, mat, 1, id});
   }
+  return rows;
+}
+// Les bulles : le numéro est celui de la ligne du composant dans la nomenclature (mepDrawBalloons)
+void dessinerBulles(Ctx& c) {
+  const J& bl = sous(c.sh, "balloons");
+  if (!bl.is_array() || bl.empty()) return;
+  const std::vector<LigneBom> rows = lignesBom(c);
+  for (const J& b : bl) {
+    const J* v = vueDe(c.sh, chaine(b, "view"));
+    if (!v) continue;
+    int rang = -1;
+    for (size_t i = 0; i < rows.size(); i++)
+      if (rows[i].id == chaine(b, "comp")) {
+        rang = static_cast<int>(i);
+        break;
+      }
+    if (rang < 0) continue;
+    const Base B0 = baseDe(*v);
+    const V3 p = v3(sous(b, "p"));
+    const double ax = num(*v, "x") + dot(p, B0.u) * num(*v, "scale"), ay = num(*v, "y") + dot(p, B0.v) * num(*v, "scale");
+    const double bx = ax + num(b, "dx"), by = ay + num(b, "dy"), Rb = 3.6;
+    const double d = std::hypot(bx - ax, by - ay) == 0 ? 1 : std::hypot(bx - ax, by - ay);
+    c.mk("line").n("x1", ax).n("y1", ay).n("x2", bx - (bx - ax) / d * Rb).n("y2", by - (by - ay) / d * Rb).s("class", "mepTitleBlock");
+    c.mk("circle").n("cx", ax).n("cy", ay).n("r", 0.6).s("class", "mepTitleBlock").s("fill", "currentColor");
+    c.mk("circle").n("cx", bx).n("cy", by).n("r", Rb).s("class", "mepTitleBlock");
+    c.mk("text").n("x", bx).n("y", by + 1.3).s("class", "mepRevText").s("text-anchor", "middle").t(std::to_string(rang + 1));
+  }
+}
+void dessinerNomenclature(Ctx& c, const Page& pd, double ty0) {  // mepDrawBom
+  const J& bom = sous(c.sh, "bom");
+  if (!vrai(bom, "on")) return;
+  const std::vector<LigneBom> rows = lignesBom(c);
   if (rows.empty()) return;
   const double RH = 5.5;
   const std::pair<const char*, double> cols[5] = {{"REP.", 10}, {"QTÉ", 10}, {"DÉSIGNATION", 62}, {"MATIÈRE", 40}, {"DIMENSIONS (mm)", 42}};
@@ -1837,7 +1892,7 @@ const Geo& Calcul::geoDe(const J& vue, const J& planche, const J& mep, const Pie
   (void)mep;
   const std::string id = chaine(vue, "id");
   J cle = J::object();
-  for (const char* k : {"kind", "vk", "bodyId", "dir", "u", "v", "flip", "mode", "tangent", "section", "detail", "obl", "persp", "camera", "parent"})
+  for (const char* k : {"kind", "vk", "bodyId", "asm", "dir", "u", "v", "flip", "mode", "tangent", "section", "detail", "obl", "persp", "camera", "parent"})
     if (vue.is_object() && vue.contains(k)) cle[k] = vue[k];
   std::string sig = cle.dump(-1, ' ', false, J::error_handler_t::replace);
   // Une vue dépend aussi de sa mère (coupe brisée) : son repère est dans la clé
@@ -1851,11 +1906,75 @@ const Geo& Calcul::geoDe(const J& vue, const J& planche, const J& mep, const Pie
   return *g;
 }
 
+// asmPlanInstances, asmPlanBodies : les instances sous le composant actif, lui exclu, sans celles masquées
+void completerAssemblage(Piece& p, const Document& d, const assemblage::Solides& S) {
+  namespace as = assemblage;
+  if (!d.assemblage) return;
+  const J& a = *d.assemblage;
+  const J* base = as::composant(a, as::actif(a));
+  const bool aDesOcc = base && base->contains("occ") && (*base)["occ"].is_array() && !(*base)["occ"].empty();
+  if (!aDesOcc) return;
+  p.assemblage = true;
+  const auto texte = [](const J& o, const char* k) { return chaine(o, k); };
+  for (const as::Instance& I : as::instances(a, as::actif(a))) {
+    if (I.chemin.empty()) continue;
+    bool masquee = false;
+    for (const std::string& id : I.chemin) {
+      const J* o = as::occurrence(a, id);
+      if (!o || (o->contains("visible") && (*o)["visible"].is_boolean() && !(*o)["visible"].get<bool>())) masquee = true;
+    }
+    if (masquee) continue;
+    const J* c = as::composant(a, I.comp);
+    if (!c) continue;
+    const J& doc = sous(*c, "doc");
+    const J& vis = sous(doc, "bodyVis");
+    LigneInstance L;
+    L.comp = I.comp, L.nom = texte(*c, "name"), L.profondeur = static_cast<int>(I.chemin.size());
+    L.feuille = !(c->contains("occ") && (*c)["occ"].is_array() && !(*c)["occ"].empty());
+    const J& mat = sous(doc, "mat");
+    L.mat = mat.is_object() && num(mat, "rho") > 0 ? texte(mat, "name") : "Acier";
+    gp_Trsf t;
+    t.SetValues(I.F.x[0], I.F.y[0], I.F.z[0], I.F.o[0], I.F.x[1], I.F.y[1], I.F.z[1], I.F.o[1], I.F.x[2], I.F.y[2], I.F.z[2], I.F.o[2]);
+    const auto it = S.find(I.comp);
+    V3 lo{1e18, 1e18, 1e18}, hi{-1e18, -1e18, -1e18};
+    bool un = false;
+    if (it != S.end() && it->second)
+      for (const auto& [id, forme] : it->second->corps) {
+        if (forme.IsNull()) continue;
+        if (vis.is_object() && vis.contains(id) && vis[id].is_boolean() && !vis[id].get<bool>()) continue;
+        for (const Tri& q : trianglesDe(forme))
+          for (const V3* w : {&q.a, &q.b, &q.c})
+            for (int j = 0; j < 3; j++) {
+              lo[j] = std::min(lo[j], (*w)[j]);
+              hi[j] = std::max(hi[j], (*w)[j]);
+              un = true;
+            }
+        CorpsInstance x;
+        x.comp = I.comp, x.id = id;
+        x.forme = BRepBuilderAPI_Transform(forme, t, true).Shape();
+        for (const auto& q : it->second->teintes)
+          if (q.first.IsSame(forme)) x.couleur = q.second;
+        for (const auto& q : it->second->transparences)
+          if (q.first.IsSame(forme)) x.opacite = 1 - q.second;
+        p.instances.push_back(std::move(x));
+      }
+    if (un) {
+      const auto f = [](double v) {
+        std::string s = js::fixe(v, 1);
+        std::replace(s.begin(), s.end(), '.', ',');
+        return s;
+      };
+      L.dims = f(hi[0] - lo[0]) + " × " + f(hi[1] - lo[1]) + " × " + f(hi[2] - lo[2]);
+    }
+    p.lignesInstances.push_back(std::move(L));
+  }
+}
+
 // mepRender3dImage : le cadre de l'image et ce qu'elle montre ; le rendu lui-même revient à la fenêtre 3D
 const CadreImage& Calcul::imageDe(const J& vue, const Piece& p) {
   const std::string id = chaine(vue, "id");
   J cle = J::object();
-  for (const char* k : {"kind", "vk", "bodyId", "dir", "u", "v", "flip", "persp", "camera", "section", "detail", "obl", "render3d", "real", "mirror"})
+  for (const char* k : {"kind", "vk", "bodyId", "asm", "dir", "u", "v", "flip", "persp", "camera", "section", "detail", "obl", "render3d", "real", "mirror"})
     if (vue.is_object() && vue.contains(k)) cle[k] = vue[k];
   const std::string sig = cle.dump(-1, ' ', false, J::error_handler_t::replace);
   auto it = images_.find(id);
@@ -1867,11 +1986,17 @@ const CadreImage& Calcul::imageDe(const J& vue, const Piece& p) {
     const std::string bodyId = chaine(vue, "bodyId");
     DemandeImage d;
     std::vector<std::vector<Tri>> maillages;
+    const bool vueAsm = vrai(vue, "asm") && p.assemblage;
     for (const Corps& c : p.corps) {
-      if (!bodyId.empty() && c.id != bodyId) continue;
+      if (!vueAsm && !bodyId.empty() && c.id != bodyId) continue;
       d.corps.push_back({c.forme, c.couleur, c.opacite});
       maillages.push_back(trianglesDe(c.forme));
     }
+    if (vueAsm)
+      for (const CorpsInstance& c : p.instances) {
+        maillages.push_back(trianglesDe(c.forme));  // maille la forme, s'il le faut, avant son affichage
+        d.corps.push_back({c.forme, c.couleur, c.opacite});
+      }
     for (const FiletImage& f : p.helices)
       if (bodyId.empty() || f.corps.empty() || f.corps == bodyId) d.filets.push_back(f);
     CamPersp K;
@@ -1986,6 +2111,10 @@ std::vector<Elt> dessiner(J& mep, int planche, const Piece& p, Calcul& calc) {  
       } catch (const std::exception&) {
       }
     }
+  try {
+    dessinerBulles(c);
+  } catch (const std::exception&) {
+  }
   if (vrai(sh, "sk")) dessinerEsquisse(c, sh["sk"], 0, 0, true);
   return out;
 }
