@@ -19,11 +19,18 @@ struct Pas {
 };
 using Chaine = std::vector<Pas>;
 
+using Anneau = std::vector<std::array<double, 2>>;
+struct FaceTrace {
+  Anneau ring;
+  double aire = 0;
+  Chaine chaine;
+};
 struct ContourPlein {
   Chaine chaine;
   std::vector<Chaine> trous;
   double aire = 0;
   std::vector<int> faces;
+  const Entite* cercle = nullptr;  // zone choisie : un disque à trous, sans chaîne
 };
 struct TrouRond {
   const Entite* cercle = nullptr;
@@ -36,6 +43,8 @@ struct Trace {
   std::vector<const Entite*> cerclesSeuls;
   std::vector<TrouRond> trousRonds;
   std::vector<Pt> ouverts;  // noeuds de degré 1 : opens
+  std::vector<FaceTrace> faces;           // matière première des zones fermées
+  std::vector<const Entite*> cercles;
 };
 
 struct Angles {
@@ -43,6 +52,29 @@ struct Angles {
 };
 std::optional<Angles> anglesArc(const Esquisse& s, const Entite& e);
 Trace tracerContours(const Esquisse& s);
+
+// Les zones fermées d'une esquisse, profils à choisir (src/70-extrusion-profils.js)
+struct BordZone {
+  bool cercle = false;
+  int face = -1;
+  const Entite* c = nullptr;
+  Pt C;
+  double r = 0;
+  Anneau ring;
+  double aire = 0;
+};
+struct ZoneEsq {
+  BordZone K;
+  std::vector<BordZone> trous;
+  double aire = 0;
+  bool aPoint = false;  // skRegInner : un point bien au large des bords, ancre du choix
+  std::array<double, 2> pt{};
+  bool parDefaut = false;  // dans la matière de l'extrusion « toutes zones »
+};
+std::vector<ZoneEsq> zonesEsquisse(const Esquisse& s, const Trace& tr);  // skRegions
+void completerZones(const Esquisse& s, const Trace& tr, std::vector<ZoneEsq>& zones);  // skRegionsCached
+int zoneEn(const std::vector<ZoneEsq>& zones, double x, double y);  // skRegionAt : la plus petite, -1 si aucune
+Trace tracePourZones(const Esquisse& s, const std::vector<std::array<double, 2>>& choix);  // skTracePick
 // La polyligne d'un morceau de spline, parcourue depuis le nœud donné
 std::vector<P2d> polyArete(const Arete& ed, const std::string& depuis);
 // Copie de l'esquisse aux tangences exactes, ou rien s'il n'y a rien à corriger.

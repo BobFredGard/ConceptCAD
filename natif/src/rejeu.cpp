@@ -579,7 +579,7 @@ std::optional<double> distanceJusquA(const Fonction& f, const Esquisse& s, const
 }
 
 TopoDS_Shape formeExtrusion(const Fonction& f, const Esquisse& s, const TopoDS_Shape& base) {  // occShapeOfExtrude
-  Trace tr = tracerContours(s);
+  Trace tr = tracePourZones(s, f.profils);
   if (tr.solides.empty() && tr.cerclesSeuls.empty()) throw std::runtime_error("profil non fermé");
   Plage sp = plageDe(f, &s, base);
   TopoDS_Shape forme;
@@ -591,7 +591,14 @@ TopoDS_Shape formeExtrusion(const Fonction& f, const Esquisse& s, const TopoDS_S
   };
   for (size_t si = 0; si < tr.solides.size(); si++) {
     auto& sol = tr.solides[si];
-    TopoDS_Shape x = nomme(prismeContour(s, tr, sol.chaine, sp, sol.aire), f.id);
+    TopoDS_Shape x;
+    if (sol.cercle) {
+      const Pt* Cc = s.point(sol.cercle->pc);
+      if (!Cc) throw std::runtime_error("zone : centre introuvable");
+      x = nomme(prismeRond(s, Cc->x, Cc->y, sol.cercle->r, sp), f.id + "/" + sol.cercle->id);
+    } else {
+      x = nomme(prismeContour(s, tr, sol.chaine, sp, sol.aire), f.id);
+    }
     for (auto& h : sol.trous) x = coupe(x, nomme(prismeContour(s, tr, h, sp, 1), f.id));
     for (auto& ch : tr.trousRonds) {
       if (ch.solide != static_cast<int>(si)) continue;

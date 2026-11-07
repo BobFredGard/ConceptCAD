@@ -588,10 +588,9 @@ static void lireFonction(const json& jf, Document& d, std::map<std::string, int>
     f.importFmt = texte(*x, "fmt");
     f.importCle = texte(*x, "key");
   }
-  if (f.visible && f.type == "extrude") {
-    if (jf.contains("profiles") && jf["profiles"].is_array() && !jf["profiles"].empty())
-      refus["extrusion limitée à certaines zones"]++;
-  }
+  if (auto p = jf.find("profiles"); f.type == "extrude" && p != jf.end() && p->is_array())
+    for (const auto& q : *p)
+      if (q.is_array() && q.size() >= 2 && q[0].is_number() && q[1].is_number()) f.profils.push_back({q[0].get<double>(), q[1].get<double>()});
   if (f.type == "repeat")
     if (auto b = jf.find("base"); b != jf.end() && b->is_array())
       for (const auto& x : *b)

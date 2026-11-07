@@ -18,6 +18,7 @@
 
 #include "assemblage.h"
 #include "conges.h"
+#include "contours.h"
 #include "coter.h"
 #include "dessin.h"
 #include "environnement.h"
@@ -270,6 +271,11 @@ public:
   void creerSurCylindre(bool clavette);
   void piocherCylindre(const std::string& fonction, const std::string& cle, const std::string& valeur);
   void dessinerEsquisses();
+  void majZones();                                  // extProfTick
+  bool zoneSousSouris(const wxPoint& p, bool clic);  // extProfHover, extProfClick
+  std::vector<ZoneEsq> zones_;
+  std::string zonesCle_, zonesFonction_;
+  int zoneSurvol_ = -1;
   void dessinerConstruction();
   void poserChamps(const std::vector<ChampFiche>& champs, bool copie);
   std::string constructionMontree_;

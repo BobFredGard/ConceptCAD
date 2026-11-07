@@ -161,6 +161,7 @@ struct ReglagePercage {
 struct Fonction {
   std::string id, type, nom, esquisse, corps, op = "add";
   std::vector<std::string> corpsEnPlus;  // f.cutBodies : découpe rejouée aussi dans ces corps
+  std::vector<std::array<double, 2>> profils;  // f.profiles : les zones choisies, par un point intérieur
   std::string importFmt, importCle;  // f.src d'une pièce importée
   std::string repeatId;      // copie faite par cette répétition
   bool repetee = false;      // copie ou source d'une répétition : la changer n'est pas encore repris
@@ -215,7 +216,7 @@ struct Fonction {
 };
 // Ce que le logiciel sait changer et enregistrer dans une fonction
 inline bool memesReglages(const Fonction& a, const Fonction& b) {
-  return a.id == b.id && a.distance == b.distance && a.op == b.op && a.nom == b.nom && a.mid == b.mid && a.flip == b.flip && a.through == b.through && a.cmode == b.cmode && a.cd2 == b.cd2 && a.cang == b.cang && a.cflip == b.cflip;
+  return a.profils == b.profils && a.id == b.id && a.distance == b.distance && a.op == b.op && a.nom == b.nom && a.mid == b.mid && a.flip == b.flip && a.through == b.through && a.cmode == b.cmode && a.cd2 == b.cd2 && a.cang == b.cang && a.cflip == b.cflip;
 }
 
 // doc.params : un paramètre libre, un nom et une expression

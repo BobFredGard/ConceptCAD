@@ -768,6 +768,7 @@ void Vue3D::cliquerEn(const wxPoint& p) {
   }
   // La mesure passe avant toute commande : Ctrl ne sélectionne ni n'active rien (ctrlMesureEv)
   const bool ctrl = essaiCtrl >= 0 ? essaiCtrl != 0 : wxGetKeyState(WXK_CONTROL), maj = essaiMaj >= 0 ? essaiMaj != 0 : wxGetKeyState(WXK_SHIFT);
+  if (surZone && !ctrl && surZone(p, true)) return;
   const bool libre = surMesure && marques_.empty() && !aligner_ && !enChoix_ && !modeFaces_;
   CoupVue coup;
   bool aCoup = false;
@@ -1014,6 +1015,49 @@ void Vue3D::montrerFilets(const std::vector<std::vector<gp_Pnt>>& helices, const
   vue_->Redraw();
 }
 
+wxPoint Vue3D::ecranDe(const gp_Pnt& p) const {
+  int x = 0, y = 0;
+  vue_->Convert(p.X(), p.Y(), p.Z(), x, y);
+  return wxPoint(x, y);
+}
+
+void Vue3D::montrerZones(const std::vector<ZoneVue>& L) {
+  for (auto& a : zonesVue_) contexte_->Remove(a, false);
+  zonesVue_.clear();
+  const auto fil = [](const std::vector<gp_Pnt>& r) {
+    BRepBuilderAPI_MakePolygon p;
+    for (const gp_Pnt& q : r) p.Add(q);
+    p.Close();
+    return p.Wire();
+  };
+  for (const ZoneVue& z : L) {
+    if (z.anneaux.empty()) continue;
+    try {
+      const gp_Pln pln(gp_Ax3(z.o, gp_Dir(z.u.XYZ().Crossed(z.v.XYZ())), z.u));
+      BRepBuilderAPI_MakeFace mf(pln, fil(z.anneaux[0]), true);
+      for (size_t k = 1; k < z.anneaux.size(); k++) mf.Add(fil(z.anneaux[k]));
+      if (!mf.IsDone()) continue;
+      const Quantity_Color fond = z.choisie ? couleur(0x0a, 0x84, 0xff) : couleur(0x64, 0xd2, 0xff);
+      occ::handle<AIS_Shape> a = new AIS_Shape(mf.Face());
+      a->SetColor(fond);
+      a->SetTransparency(1 - (z.choisie ? (z.survol ? 0.6 : 0.42) : (z.survol ? 0.32 : 0.08)));
+      a->Attributes()->ShadingAspect()->Aspect()->SetShadingModel(Graphic3d_TypeOfShadingModel_Unlit);
+      a->SetZLayer(Graphic3d_ZLayerId_Topmost);
+      contexte_->Display(a, AIS_Shaded, -1, false);
+      zonesVue_.push_back(a);
+      BRep_Builder bb;
+      TopoDS_Compound c;
+      bb.MakeCompound(c);
+      for (const auto& r : z.anneaux) bb.Add(c, fil(r));
+      occ::handle<AIS_Shape> t = trait(contexte_, c, z.choisie ? couleur(0x64, 0xd2, 0xff) : couleur(0x8e, 0x8e, 0x93), 1.0);
+      contexte_->SetZLayer(t, Graphic3d_ZLayerId_Topmost);
+      zonesVue_.push_back(t);
+    } catch (const Standard_Failure&) {
+    }
+  }
+  vue_->Redraw();
+}
+
 // sk3dTraits : ce qu'un solide cache reste dessiné plus fin, ce qui est vu est plein. La passe « cachée » a sa propre profondeur (Topmost), la passe « vue » celle de la scène.
 void Vue3D::montrerEsquisses(const std::vector<std::vector<gp_Pnt>>& forts, const std::vector<std::vector<gp_Pnt>>& aides, const std::vector<std::vector<gp_Pnt>>& axes, const Quantity_Color& couleurForts) {
   for (auto& a : traitsEsquisses_) contexte_->Remove(a, false);
@@ -1245,6 +1289,12 @@ void Vue3D::surMouvement(wxMouseEvent& e) {
   } else if (faoSurvol) {
     cliquerFao(p, 0, false, false, true);
   } else {
+    const bool surUneZone = surZone && surZone(p, false);
+    if (surUneZone != mainZone_) {
+      mainZone_ = surUneZone;
+      SetCursor(surUneZone ? wxCursor(wxCURSOR_HAND) : wxNullCursor);
+    }
+    if (surUneZone) return;
     if (!placer_) preparerSelection();
     contexte_->MoveTo(p.x, p.y, vue_, true);
   }

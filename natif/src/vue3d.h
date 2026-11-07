@@ -78,6 +78,17 @@ class Vue3D : public wxWindow {
   bool imagePlan(const plan::DemandeImage& d, wxImage& sortie, const OptionsVue* reel = nullptr, const std::vector<ApparenceVue>* apparences = nullptr);
   // mepAddCameraView : de la cible vers l'œil
   bool directionCamera(std::array<double, 3>& d) const;
+  // Les zones de l'extrusion dans la vue (extProfTick) : un clic en ajoute ou en retire une
+  struct ZoneVue {
+    std::vector<std::vector<gp_Pnt>> anneaux;  // l'extérieur dans le sens direct, puis les trous dans l'autre
+    gp_Pnt o;
+    gp_Dir u, v;
+    bool choisie = false, survol = false;
+  };
+  void montrerZones(const std::vector<ZoneVue>& L);
+  std::function<bool(const wxPoint&, bool clic)> surZone;
+  void rayonEcran(int x, int y, gp_Pnt& o, gp_Dir& d) const { rayon(x, y, o, d); }
+  wxPoint ecranDe(const gp_Pnt& p) const;
   void montrerFilets(const std::vector<std::vector<gp_Pnt>>& helices, const std::vector<std::vector<gp_Pnt>>& anneaux);
   // Les esquisses visibles (drawSketchHelpers) : traits forts, construction en tiretés, axes en tiretés longs
   void montrerEsquisses(const std::vector<std::vector<gp_Pnt>>& forts, const std::vector<std::vector<gp_Pnt>>& aides, const std::vector<std::vector<gp_Pnt>>& axes, const Quantity_Color& couleurForts);
@@ -318,7 +329,8 @@ class Vue3D : public wxWindow {
   occ::handle<AIS_Shape> facesRetenues_, faceReference_, planChoix_;
   bool modeFaces_ = false;
   occ::handle<AIS_Shape> filetsHelices_, filetsAnneaux_;
-  std::vector<occ::handle<AIS_Shape>> construction_, traitsEsquisses_;
+  std::vector<occ::handle<AIS_Shape>> construction_, traitsEsquisses_, zonesVue_;
+  bool mainZone_ = false;
   wxPoint dernierClic_;
   double dernierPoint_[3] = {0, 0, 0};  // les filets cosmétiques
   occ::handle<AIS_Shape> aretesVives_, aretesLisses_;  // les traits de la pièce, hors du choix d'un congé

@@ -365,6 +365,7 @@ Cadre::Cadre() : wxFrame(nullptr, wxID_ANY, L"ConceptCAD natif"), asmAnim_(this)
   Bind(wxEVT_IDLE, [this](wxIdleEvent& e) {
     barreHaute_->etats(atelier_ == Atelier::FAO || !annulations_.empty(), atelier_ == Atelier::FAO || !retablissements_.empty(), docOuvert_ && doc_.modifie(), docOuvert_);
     ajusterDroite();
+    majZones();
     e.Skip();
   });
   montrerRien();
@@ -375,6 +376,7 @@ Cadre::Cadre() : wxFrame(nullptr, wxID_ANY, L"ConceptCAD natif"), asmAnim_(this)
 void Cadre::creerEnvironnement() {
   barreHaute_->surAtelier = [this](Atelier a) { changerAtelier(a); };
   vue_->surClicFao = [this](const Vue3D::ClicFao& c) { return faoClic(c); };
+  vue_->surZone = [this](const wxPoint& p, bool clic) { return zoneSousSouris(p, clic); };
   barreHaute_->surAnnuler = [this] { annuler(); };
   barreHaute_->surRetablir = [this] { retablir(); };
   barreHaute_->surOuvrir = [this] {
@@ -2033,6 +2035,41 @@ void Cadre::montrerFonction(int i) {
   if (f.type != "extrude") return;
   const Esquisse* e = doc_.esquisse(f.esquisse);
   lectureSeule(props_, L"Esquisse", tx(e && !e->nom.empty() ? e->nom : f.esquisse));
+  if (e && f.repeatId.empty()) {  // extProfPanel
+    try {
+      const Trace tr = tracerContours(*e);
+      std::vector<ZoneEsq> Z = zonesEsquisse(*e, tr);
+      completerZones(*e, tr, Z);
+      wxString t = L"⚠ aucune zone fermée dans l’esquisse";
+      if (!Z.empty()) {
+        std::set<int> pris;
+        int perdues = 0;
+        for (const auto& q : f.profils) {
+          const int k = zoneEn(Z, q[0], q[1]);
+          if (k >= 0) pris.insert(k);
+          else perdues++;
+        }
+        if (f.profils.empty())
+          for (size_t k = 0; k < Z.size(); k++)
+            if (Z[k].parDefaut) pris.insert(static_cast<int>(k));
+        const size_t k = pris.size();
+        t = wxString::Format(L"▦ %zu zone%s sur %zu%s", k, k > 1 ? L"s" : L"", Z.size(), f.profils.empty() ? L" (auto)" : L"");
+        if (perdues) t += wxString::Format(L" — ⚠ %d zone%s perdue%s", perdues, perdues > 1 ? L"s" : L"", perdues > 1 ? L"s" : L"");
+      }
+      lectureSeule(props_, L"Profil", t);
+    } catch (const std::exception&) {
+    }
+    if (!f.profils.empty()) {
+      const std::string idZ = f.id;
+      poserBoutonsPanneau({{L"↺ Auto", [this, idZ, i] {
+        changerStructure([&](nlohmann::ordered_json& d) {
+          for (auto& k : d["features"])
+            if (k.value("id", std::string()) == idZ) k.erase("profiles");
+        });
+        if (i < static_cast<int>(doc_.fonctions.size())) montrerFonction(i);
+      }}});
+    }
+  }
   if (f.visible && solideCalculable_ && (doc_.profondeurModifiable(i) || (f.upto && f.repeatId.empty()))) {
     // Le panneau de l'extrusion du navigateur : le signe de la distance vient de l'opération
     wxPGChoices operations, etendues, directions;
@@ -3170,6 +3207,133 @@ void Cadre::dessinerEsquisses() {  // drawSketchHelpers : l'esquisse ouverte se 
   vue_->montrerEsquisses(forts, aides, axes, fort);
 }
 
+void Cadre::majZones() {
+  const bool libre = docOuvert_ && atelier_ == Atelier::CAO && esquisseOuverte_ < 0 && !enChoix() && !pioche_ && fonctionMontree_ >= 0 && fonctionMontree_ < static_cast<int>(doc_.fonctions.size());
+  const Fonction* f = libre ? &doc_.fonctions[fonctionMontree_] : nullptr;
+  const Esquisse* s = f && f->type == "extrude" && f->visible && f->repeatId.empty() ? doc_.esquisse(f->esquisse) : nullptr;
+  if (!s) {
+    if (!zonesCle_.empty()) {
+      zonesCle_.clear();
+      zonesFonction_.clear();
+      zones_.clear();
+      zoneSurvol_ = -1;
+      vue_->montrerZones({});
+    }
+    return;
+  }
+  const std::string cle = f->id + "|" + std::to_string(reinterpret_cast<uintptr_t>(doc_.fonctionsJson.get())) + "|" + std::to_string(zoneSurvol_) + "|" + std::to_string(f->profils.size());
+  if (cle == zonesCle_) return;
+  std::vector<Vue3D::ZoneVue> L;
+  try {
+    const Trace tr = tracerContours(*s);
+    zones_ = zonesEsquisse(*s, tr);
+    completerZones(*s, tr, zones_);
+    std::set<int> pris;
+    if (!f->profils.empty()) {
+      for (const auto& p : f->profils)
+        if (const int k = zoneEn(zones_, p[0], p[1]); k >= 0) pris.insert(k);
+    } else {
+      for (size_t i = 0; i < zones_.size(); i++)
+        if (zones_[i].parDefaut) pris.insert(static_cast<int>(i));
+    }
+    const gp_Pnt O(s->o[0], s->o[1], s->o[2]);
+    const auto monde = [&](const Anneau& r, bool direct) {
+      double a = 0;
+      for (size_t i = 0; i < r.size(); i++) a += r[i][0] * r[(i + 1) % r.size()][1] - r[(i + 1) % r.size()][0] * r[i][1];
+      std::vector<gp_Pnt> P;
+      for (const auto& q : r) P.push_back(pointMonde(*s, q[0], q[1]));
+      if ((a > 0) != direct) std::reverse(P.begin(), P.end());
+      return P;
+    };
+    for (size_t i = 0; i < zones_.size(); i++) {
+      Vue3D::ZoneVue z;
+      z.o = O;
+      z.u = gp_Dir(s->u[0], s->u[1], s->u[2]);
+      z.v = gp_Dir(s->v[0], s->v[1], s->v[2]);
+      z.choisie = pris.count(static_cast<int>(i)) > 0;
+      z.survol = static_cast<int>(i) == zoneSurvol_;
+      z.anneaux.push_back(monde(zones_[i].K.ring, true));
+      for (const BordZone& t : zones_[i].trous) z.anneaux.push_back(monde(t.ring, false));
+      L.push_back(std::move(z));
+    }
+  } catch (const std::exception&) {
+    zones_.clear();
+    L.clear();
+  }
+  zonesCle_ = cle;
+  zonesFonction_ = f->id;
+  vue_->montrerZones(L);
+}
+
+bool Cadre::zoneSousSouris(const wxPoint& p, bool clic) {
+  if (zones_.empty() || zonesCle_.empty() || fonctionMontree_ < 0 || fonctionMontree_ >= static_cast<int>(doc_.fonctions.size())) return false;
+  const Fonction& f = doc_.fonctions[fonctionMontree_];
+  const Esquisse* s = f.id == zonesFonction_ ? doc_.esquisse(f.esquisse) : nullptr;
+  if (!s) return false;
+  gp_Pnt ro;
+  gp_Dir rd;
+  vue_->rayonEcran(p.x, p.y, ro, rd);
+  const gp_Vec n(s->n[0], s->n[1], s->n[2]);
+  const double den = n.Dot(gp_Vec(rd));
+  int best = -1;
+  if (std::abs(den) >= 1e-6) {  // plan vu par la tranche : rien
+    const gp_Pnt O(s->o[0], s->o[1], s->o[2]);
+    const double t = n.Dot(gp_Vec(ro, O)) / den;
+    if (t > 0) {
+      const gp_Vec P(O, ro.Translated(gp_Vec(rd) * t));
+      best = zoneEn(zones_, P.Dot(gp_Vec(s->u[0], s->u[1], s->u[2])), P.Dot(gp_Vec(s->v[0], s->v[1], s->v[2])));
+    }
+  }
+  if (!clic) {
+    if (best != zoneSurvol_) {
+      zoneSurvol_ = best;
+      zonesCle_.clear();
+      majZones();
+    }
+    return best >= 0;
+  }
+  if (best < 0) return false;
+  if (!zones_[best].aPoint) {
+    etat(L"Zone trop fine pour être choisie.");
+    return true;
+  }
+  std::set<int> pris;
+  if (!f.profils.empty()) {
+    for (const auto& q : f.profils)
+      if (const int k = zoneEn(zones_, q[0], q[1]); k >= 0) pris.insert(k);
+  } else {
+    for (size_t i = 0; i < zones_.size(); i++)
+      if (zones_[i].parDefaut) pris.insert(static_cast<int>(i));
+  }
+  if (pris.count(best)) {
+    if (pris.size() <= 1) {
+      etat(L"Extrusion : il faut au moins une zone — choisissez-en une autre avant de retirer celle-ci.");
+      return true;
+    }
+    pris.erase(best);
+  } else {
+    pris.insert(best);
+  }
+  nlohmann::ordered_json pts = nlohmann::ordered_json::array();
+  size_t nb = 0;
+  for (size_t i = 0; i < zones_.size(); i++)
+    if (pris.count(static_cast<int>(i)) && zones_[i].aPoint) {
+      const auto arrondi = [](double v) { return std::round(v * 10000) / 10000; };
+      pts.push_back({arrondi(zones_[i].pt[0]), arrondi(zones_[i].pt[1])});
+      nb++;
+    }
+  const std::string id = f.id;
+  const int rang = fonctionMontree_;
+  const size_t total = zones_.size();
+  changerStructure([&](nlohmann::ordered_json& d) {
+    for (auto& k : d["features"])
+      if (k.value("id", std::string()) == id) k["profiles"] = pts;
+  });
+  if (rang < static_cast<int>(doc_.fonctions.size()) && doc_.fonctions[rang].id == id) montrerFonction(rang);
+  etat(wxString::Format(L"Extrusion : %zu zone%s sur %zu. Cliquez une zone pour l’ajouter ou la retirer.", nb, nb > 1 ? L"s" : L"", total));
+  return true;
+}
+
 void Cadre::dessinerConstruction() {
   std::vector<Vue3D::DessinConstruction> L;
   for (const ElementConstruction& e : doc_.construction) {
@@ -4052,6 +4216,25 @@ bool Cadre::essaiEsquisse(const std::wstring& fichier, int rang, const std::wstr
       n["etat"] = std::string(etatVue_->texte().utf8_str());
       for (const Fonction& f : doc_.fonctions)
         if (f.type == "bmove" || f.type == "bscale") n["nom"] = f.nom;
+    }
+    if (e.contains("choisir") && e["choisir"].is_string()) {
+      for (size_t k = 0; k < doc_.fonctions.size(); k++)
+        if (doc_.fonctions[k].id == e["choisir"].get<std::string>()) {
+          choisirFonction(static_cast<int>(k));
+          montrerFonction(static_cast<int>(k));
+        }
+      n["fonctionMontree"] = fonctionMontree_;
+    }
+    if (e.contains("zoneClic")) {
+      majZones();
+      n["zones"] = zones_.size();
+      const Esquisse* s = fonctionMontree_ >= 0 && fonctionMontree_ < static_cast<int>(doc_.fonctions.size()) ? doc_.esquisse(doc_.fonctions[fonctionMontree_].esquisse) : nullptr;
+      if (s) {
+        const wxPoint p = vue_->ecranDe(pointMonde(*s, e["zoneClic"][0].get<double>(), e["zoneClic"][1].get<double>()));
+        n["pris"] = zoneSousSouris(p, true);
+      }
+      majZones();
+      n["etat"] = std::string(etatVue_->texte().utf8_str());
     }
     if (e.contains("ficheLire")) {
       const std::string id = e["ficheLire"].get<std::string>();

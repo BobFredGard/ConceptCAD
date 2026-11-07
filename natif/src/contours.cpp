@@ -9,7 +9,6 @@
 
 namespace {
 const double PI = 3.14159265358979323846, TAU = PI * 2;
-using Anneau = std::vector<std::array<double, 2>>;
 
 double normAng(double a) {
   a = std::fmod(a, TAU);
@@ -431,6 +430,7 @@ Trace tracerContours(const Esquisse& s) {
     return c;
   };
   auto estTrou = [](const FaceBrute& f) { return f.profondeur % 2 == 1 && f.aire < 0; };
+  for (const auto& f : faces) tr.faces.push_back({f.anneau, f.aire, versChaine(f.pas)});
   for (size_t i = 0; i < faces.size(); i++) {
     auto& f = faces[i];
     if (f.parent < 0 && f.aire < 0) continue;  // face infinie
@@ -510,6 +510,214 @@ Trace tracerContours(const Esquisse& s) {
     const auto it = tr.pts.find(id);
     if (degre[id] == 1 && it != tr.pts.end() && !surCourbe(it->second)) tr.ouverts.push_back(it->second);
   }
+  tr.cercles = cercles;
+  return tr;
+}
+
+// ---- Zones fermées : une zone est une face du découpage du plan par les traits, moins ce qui est posé dedans
+namespace {
+double distBord(double x, double y, const Anneau& rg) {  // skRingDist
+  double m = 1e18;
+  for (size_t i = 0; i < rg.size(); i++) {
+    const auto& a = rg[i];
+    const auto& b = rg[(i + 1) % rg.size()];
+    const double dx = b[0] - a[0], dy = b[1] - a[1];
+    double L2 = dx * dx + dy * dy;
+    if (L2 == 0) L2 = 1e-18;
+    double t = ((x - a[0]) * dx + (y - a[1]) * dy) / L2;
+    t = std::max(0.0, std::min(1.0, t));
+    m = std::min(m, std::hypot(x - (a[0] + t * dx), y - (a[1] + t * dy)));
+  }
+  return m;
+}
+bool bordContient(const BordZone& b, double x, double y) {  // skRegBoundIn : frontière exclue
+  if (b.cercle) return std::hypot(x - b.C.x, y - b.C.y) < b.r - 1e-6;
+  return dansAnneau(x, y, b.ring) && distBord(x, y, b.ring) > 1e-6;
+}
+bool zoneContient(const ZoneEsq& R, double x, double y) {  // skRegHas
+  if (!bordContient(R.K, x, y)) return false;
+  for (const BordZone& b : R.trous)
+    if (bordContient(b, x, y)) return false;
+  return true;
+}
+bool pointMatiere(const Trace& tr, const Esquisse& s, double x, double y) {  // skTraceMatter
+  const auto dansC = [&](const Entite* c) {
+    const Pt* C = s.point(c->pc);
+    return C && std::hypot(x - C->x, y - C->y) < c->r;
+  };
+  for (const Entite* c : tr.cerclesSeuls)
+    if (dansC(c)) return true;
+  for (size_t si = 0; si < tr.solides.size(); si++) {
+    const ContourPlein& sol = tr.solides[si];
+    if (sol.faces.empty() || sol.faces[0] >= static_cast<int>(tr.faces.size()) || !dansAnneau(x, y, tr.faces[sol.faces[0]].ring)) continue;
+    bool dehors = false;
+    for (size_t k = 1; k < sol.faces.size(); k++)
+      if (sol.faces[k] < static_cast<int>(tr.faces.size()) && dansAnneau(x, y, tr.faces[sol.faces[k]].ring)) dehors = true;
+    if (dehors) continue;
+    for (const TrouRond& ch : tr.trousRonds)
+      if (ch.solide == static_cast<int>(si) && dansC(ch.cercle)) dehors = true;
+    if (!dehors) return true;
+  }
+  return false;
+}
+bool pointInterieur(ZoneEsq& R) {  // skRegInner : grille puis affinage
+  double x0 = 1e18, y0 = 1e18, x1 = -1e18, y1 = -1e18;
+  for (const auto& p : R.K.ring) {
+    x0 = std::min(x0, p[0]);
+    y0 = std::min(y0, p[1]);
+    x1 = std::max(x1, p[0]);
+    y1 = std::max(y1, p[1]);
+  }
+  if (!(x1 > x0 && y1 > y0)) return false;
+  const auto large = [&](double x, double y) {
+    if (!zoneContient(R, x, y)) return -1.0;
+    double d = R.K.cercle ? R.K.r - std::hypot(x - R.K.C.x, y - R.K.C.y) : distBord(x, y, R.K.ring);
+    for (const BordZone& b : R.trous) d = std::min(d, b.cercle ? std::hypot(x - b.C.x, y - b.C.y) - b.r : distBord(x, y, b.ring));
+    return d;
+  };
+  bool trouve = false;
+  std::array<double, 2> best{};
+  double bd = 0, sx = (x1 - x0) / 32, sy = (y1 - y0) / 32;
+  for (int i = 0; i < 32; i++)
+    for (int j = 0; j < 32; j++) {
+      const double x = x0 + (i + 0.5) * sx, y = y0 + (j + 0.5) * sy, d = large(x, y);
+      if (d > bd) {
+        bd = d;
+        best = {x, y};
+        trouve = true;
+      }
+    }
+  if (!trouve) {  // zone très fine : centre d'un triangle de l'anneau
+    const Anneau& r = R.K.ring;
+    for (size_t i = 1; i + 1 < r.size(); i++) {
+      const double x = (r[0][0] + r[i][0] + r[i + 1][0]) / 3, y = (r[0][1] + r[i][1] + r[i + 1][1]) / 3;
+      if (large(x, y) > 0) {
+        R.pt = {x, y};
+        return true;
+      }
+    }
+    return false;
+  }
+  for (int k = 0; k < 3; k++) {
+    sx /= 2;
+    sy /= 2;
+    const std::array<double, 2> c = best;
+    for (int i = -2; i <= 2; i++)
+      for (int j = -2; j <= 2; j++) {
+        const double x = c[0] + i * sx, y = c[1] + j * sy, d = large(x, y);
+        if (d > bd) {
+          bd = d;
+          best = {x, y};
+        }
+      }
+  }
+  R.pt = best;
+  return true;
+}
+}  // namespace
+
+std::vector<ZoneEsq> zonesEsquisse(const Esquisse& s, const Trace& tr) {
+  std::vector<BordZone> conts, bords;
+  for (size_t i = 0; i < tr.faces.size(); i++) {
+    BordZone b;
+    b.face = static_cast<int>(i);
+    b.ring = tr.faces[i].ring;
+    b.aire = std::abs(tr.faces[i].aire);
+    (tr.faces[i].aire > 0 ? conts : bords).push_back(std::move(b));
+  }
+  for (const Entite* c : tr.cercles) {
+    const Pt* C = s.point(c->pc);
+    if (!C || !(c->r > 0)) continue;
+    BordZone b;
+    b.cercle = true;
+    b.c = c;
+    b.C = *C;
+    b.r = c->r;
+    b.aire = PI * c->r * c->r;
+    for (int i = 0; i < 64; i++) {
+      const double a = static_cast<double>(i) / 64 * PI * 2;
+      b.ring.push_back({C->x + c->r * std::cos(a), C->y + c->r * std::sin(a)});
+    }
+    conts.push_back(b);
+    bords.push_back(std::move(b));
+  }
+  std::vector<ZoneEsq> regs;
+  for (const BordZone& K : conts) {
+    ZoneEsq R;
+    R.K = K;
+    R.aire = K.aire;
+    regs.push_back(std::move(R));
+  }
+  for (const BordZone& b : bords) {
+    // Le conteneur : la plus petite zone qui l'entoure strictement (jamais lui-même ni son jumeau)
+    ZoneEsq* best = nullptr;
+    for (ZoneEsq& R : regs) {
+      const BordZone& K = R.K;
+      if ((K.cercle && b.cercle && K.c == b.c) || !(K.aire > b.aire * (1 + 1e-9) + 1e-12)) continue;
+      if (best && K.aire >= best->K.aire) continue;
+      bool dedans = true;
+      for (const auto& p : b.ring)
+        if (!bordContient(K, p[0], p[1])) {
+          dedans = false;
+          break;
+        }
+      if (dedans) best = &R;
+    }
+    if (best) {
+      best->trous.push_back(b);
+      best->aire -= b.aire;
+    }
+  }
+  regs.erase(std::remove_if(regs.begin(), regs.end(), [](const ZoneEsq& R) { return !(R.aire > 1e-6); }), regs.end());
+  return regs;
+}
+
+void completerZones(const Esquisse& s, const Trace& tr, std::vector<ZoneEsq>& zones) {
+  for (ZoneEsq& R : zones) {
+    R.aPoint = pointInterieur(R);
+    R.parDefaut = R.aPoint && pointMatiere(tr, s, R.pt[0], R.pt[1]);
+  }
+}
+
+int zoneEn(const std::vector<ZoneEsq>& zones, double x, double y) {
+  int best = -1;
+  for (size_t i = 0; i < zones.size(); i++)
+    if (zoneContient(zones[i], x, y) && (best < 0 || zones[i].aire < zones[best].aire)) best = static_cast<int>(i);
+  return best;
+}
+
+Trace tracePourZones(const Esquisse& s, const std::vector<std::array<double, 2>>& choix) {
+  Trace tr = tracerContours(s);
+  if (choix.empty()) return tr;
+  const std::vector<ZoneEsq> regs = zonesEsquisse(s, tr);
+  std::vector<int> pris;
+  for (const auto& p : choix) {
+    const int k = zoneEn(regs, p[0], p[1]);
+    if (k >= 0 && std::find(pris.begin(), pris.end(), k) == pris.end()) pris.push_back(k);
+  }
+  std::vector<ContourPlein> solides;
+  std::vector<const Entite*> seuls;
+  std::vector<TrouRond> ronds;
+  for (int k : pris) {
+    const ZoneEsq& R = regs[k];
+    if (R.K.cercle && R.trous.empty()) {
+      seuls.push_back(R.K.c);
+      continue;
+    }
+    const int si = static_cast<int>(solides.size());
+    ContourPlein c;
+    c.aire = R.K.aire;
+    for (const BordZone& b : R.trous)
+      if (!b.cercle) c.trous.push_back(tr.faces[b.face].chaine);
+    if (R.K.cercle) c.cercle = R.K.c;
+    else c.chaine = tr.faces[R.K.face].chaine;
+    solides.push_back(std::move(c));
+    for (const BordZone& b : R.trous)
+      if (b.cercle) ronds.push_back({b.c, si});
+  }
+  tr.solides = std::move(solides);
+  tr.cerclesSeuls = std::move(seuls);
+  tr.trousRonds = std::move(ronds);
   return tr;
 }
 

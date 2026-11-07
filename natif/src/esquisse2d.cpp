@@ -1699,43 +1699,20 @@ void VueEsquisse::zones(wxGraphicsContext& g) const {
   } catch (const std::exception&) {
     return;
   }
-  const auto ajouterChaine = [&](wxGraphicsPath& p, const Chaine& ch) {
-    bool premier = true;
-    for (const Pas& q : ch) {
-      const Arete& A = T.aretes[q.arete];
-      const bool sens = q.depuis == A.a;
-      const std::string& vers = sens ? A.b : A.a;
-      const auto itA = T.pts.find(q.depuis), itB = T.pts.find(vers);
-      if (itA == T.pts.end() || itB == T.pts.end()) continue;
-      if (premier) p.MoveToPoint(e(itA->second.x, itA->second.y));
-      premier = false;
-      if (A.spline) {
-        for (const P2d& k : polyArete(A, q.depuis)) p.AddLineToPoint(e(k[0], k[1]));
-      } else if (A.arc && A.e) {
-        const Pt* C = s_->point(A.e->pc);
-        const auto an = anglesArc(*s_, *A.e);
-        if (C && an) {
-          // L'arc va de pa vers pb dans le sens direct : dans quel sens le suit-on ici ?
-          const Pt* debut = s_->point(A.e->pa);
-          const bool endroit = !debut || std::hypot(debut->x - itA->second.x, debut->y - itA->second.y) <= std::hypot(debut->x - itB->second.x, debut->y - itB->second.y);
-          const double a1 = endroit ? an->a1 : an->a2, a2 = endroit ? an->a2 : an->a1;
-          const int n = std::max(6, static_cast<int>(std::ceil(std::abs(a2 - a1) / 0.1)));
-          for (int i = 1; i < n; i++) {
-            const double a = a1 + (a2 - a1) * i / n;
-            p.AddLineToPoint(e(C->x + A.e->r * std::cos(a), C->y + A.e->r * std::sin(a)));
-          }
-        }
-      }
-      p.AddLineToPoint(e(itB->second.x, itB->second.y));
+  const std::vector<ZoneEsq> regs = zonesEsquisse(*s_, T);
+  const auto ajouter = [&](wxGraphicsPath& p, const Anneau& r) {
+    for (size_t i = 0; i < r.size(); i++) {
+      if (i == 0) p.MoveToPoint(e(r[i][0], r[i][1]));
+      else p.AddLineToPoint(e(r[i][0], r[i][1]));
     }
     p.CloseSubpath();
   };
   g.SetBrush(g.CreateBrush(wxBrush(alpha(CYAN, 0.10))));
   g.SetPen(wxNullGraphicsPen);
-  for (const ContourPlein& c : T.solides) {
+  for (const ZoneEsq& R : regs) {
     wxGraphicsPath p = g.CreatePath();
-    ajouterChaine(p, c.chaine);
-    for (const Chaine& tr : c.trous) ajouterChaine(p, tr);
+    ajouter(p, R.K.ring);
+    for (const BordZone& t : R.trous) ajouter(p, t.ring);
     g.FillPath(p, wxODDEVEN_RULE);
   }
 }
