@@ -23,6 +23,7 @@
 #include <Prs3d_Drawer.hxx>
 #include <Prs3d_ShadingAspect.hxx>
 #include <Quantity_Color.hxx>
+#include <Prs3d_LineAspect.hxx>
 #include <V3d_AmbientLight.hxx>
 #include <V3d_ImageDumpOptions.hxx>
 #include <WNT_Window.hxx>
@@ -346,6 +347,14 @@ void MoteurRendu::reglerRayons(bool oui) {
 }
 
 void MoteurRendu::appliquer(const ReglagesRendu& s) {
+  // Les arêtes de la CAO : en rapide seulement
+  const bool aretes = s.aretes == "cao" && s.moteur != "rayons";
+  for (auto& o : objets_)
+    if (o->Attributes()->FaceBoundaryDraw() != aretes) {
+      o->Attributes()->SetFaceBoundaryDraw(aretes);
+      o->Attributes()->SetFaceBoundaryAspect(new Prs3d_LineAspect(Quantity_NOC_BLACK, Aspect_TOL_SOLID, 1.0));
+      contexte_->Redisplay(o, false);
+    }
   st_ = s;
   const Ambiance A = ambiance(s.amb);
   cle_ = A.cle;

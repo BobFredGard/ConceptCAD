@@ -28,6 +28,7 @@
 #include "lien_arbre.h"
 #include "normalises.h"
 #include "rejeu.h"
+#include "rendu_moteur.h"
 
 namespace as = assemblage;
 using J = nlohmann::ordered_json;
@@ -2725,4 +2726,59 @@ void Cadre::asmPanneauInspection(std::vector<ChampFiche>& ch, std::vector<std::p
   }
   B.push_back({L"↻ Relancer", [this] { asmInspecter(); }});
   B.push_back({L"Fermer", [this] { asmInspectFermer(); montrerRien(); ajusterDroite(); }});
+}
+
+// Ce que l'atelier Rendu photographie : les corps visibles avec leur apparence (renderLookOf), puis les autres composants placés
+std::vector<PieceRendu> Cadre::renduPieces(const plan::J& racine) {
+  static const unsigned PALETTE[] = {0x0a84ff, 0x30d158, 0xff9f0a, 0xbf5af2, 0xff453a, 0x64d2ff, 0xffd60a, 0x5e5ce6};
+  const plan::J& d = racine.contains("doc") && racine["doc"].is_object() ? racine["doc"] : racine;
+  std::vector<PieceRendu> L;
+  for (const auto& [id, forme] : dernierRejeu_.corpsVus) {
+    if (std::find(doc_.corpsMasques.begin(), doc_.corpsMasques.end(), id) != doc_.corpsMasques.end()) continue;
+    const size_t i = std::find(doc_.corps.begin(), doc_.corps.end(), id) - doc_.corps.begin();
+    unsigned c = i < doc_.couleursCorps.size() ? doc_.couleursCorps[i] : 0;
+    if (!c) c = doc_.teinte;
+    if (!c) c = PALETTE[(i < doc_.corps.size() ? i : 0) % 8];
+    PieceRendu p;
+    p.forme = forme;
+    p.id = id;
+    p.nom = i < doc_.nomsCorps.size() && !doc_.nomsCorps[i].empty() ? doc_.nomsCorps[i] : id;
+    p.couleur = p.couleurCao = c;
+    if (d.contains("bodies") && d["bodies"].is_array())
+      for (const auto& b : d["bodies"])
+        if (b.is_object() && b.value("id", std::string()) == id && b.contains("mat") && b["mat"].is_string()) p.cle = b["mat"].get<std::string>();
+    if (d.contains("rendu") && d["rendu"].contains("corps") && d["rendu"]["corps"].contains(id)) {
+      const plan::J& r = d["rendu"]["corps"][id];
+      p.propre = true;
+      if (r.contains("mat") && r["mat"].is_string()) p.cle = r["mat"].get<std::string>();
+      if (r.contains("col") && r["col"].is_number()) p.couleur = r["col"].get<unsigned>();
+    }
+    if (!matiereRendu(p.cle)) p.cle.clear();
+    L.push_back(p);
+  }
+  if (doc_.assemblage) {
+    const J& a = *doc_.assemblage;
+    const as::Chemin P = as::cheminActif(a);
+    as::Repere W;
+    as::monde(a, P, W);
+    const as::Repere V = as::inverser(W);
+    for (const as::Instance& inst : as::instances(a, as::racine(a))) {
+      const auto it = asmSolides_.find(inst.comp);
+      if (it == asmSolides_.end() || it->second->forme.IsNull() || as::cheminMasque(a, inst.chemin)) continue;
+      if (estPrefixe(P, inst.chemin) && inst.chemin.size() == P.size()) continue;  // le composant actif est déjà là
+      const as::SolideComposant& S = *it->second;
+      const TopLoc_Location loc(trsfDe(as::composer(V, inst.F)));
+      for (const auto& c : S.corps) {
+        PieceRendu q;
+        q.forme = c.second.Moved(loc);
+        q.nom = S.nom.empty() ? inst.comp : S.nom;
+        unsigned u = 0x9a9aa0;
+        for (const auto& t : S.teintes)
+          if (t.first.IsSame(c.second)) u = t.second;
+        q.couleur = q.couleurCao = u;
+        L.push_back(q);
+      }
+    }
+  }
+  return L;
 }

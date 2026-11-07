@@ -2,6 +2,7 @@
 #include "cadre.h"
 #include "rendu_moteur.h"
 #include "rendu_finition.h"
+#include "rendu_atelier.h"
 #include "plan_panneau.h"
 #include "plan_vue.h"
 #include "construction.h"
@@ -290,6 +291,7 @@ Cadre::Cadre() : wxFrame(nullptr, wxID_ANY, L"ConceptCAD natif"), asmAnim_(this)
       else if (c && (k == 'C' || k == 'V' || k == 'Z' || k == 'Y')) cle = std::string(1, static_cast<char>(k + 32));
       if (!cle.empty()) return faoTouche(cle, c, e.ShiftDown());
     }
+    if (atelier_ == Atelier::RENDU && e.GetKeyCode() == WXK_ESCAPE) return changerAtelier(avantRendu_);
     if (pioche_ && e.GetKeyCode() == WXK_ESCAPE) {
       pioche_ = nullptr;
       etat(L"Choix dans la vue annulé.");
@@ -429,12 +431,13 @@ void Cadre::creerEnvironnement() {
   boutonsVue_[1]->iconeComplete(iconeVue(1), C_CLAIR);
   boutonsVue_[2]->titre(L"⚙");
   for (size_t i = 0; i < boutonsVue_.size(); i++) {
-    if (i == 3) continue;
+    if (i == 3 || i == 0) continue;
     boutonsVue_[i]->disponible(false);
     const wxString nom = boutonsVue_[i]->GetLabel();
     boutonsVue_[i]->surClic = [this, nom] { indisponible(nom); };
   }
   boutonsVue_[3]->surClic = [this] { vue_->vueInitiale(); };
+  boutonsVue_[0]->surClic = [this] { changerAtelier(Atelier::RENDU); };
 
   etatVue_ = new EtatVue(scene_, ID_ETAT, C_SCENE);
   fil_ = new FilFonctions(scene_);
@@ -489,6 +492,14 @@ void Cadre::creerEnvironnement() {
   panneauPlan_->Hide();
   carteDroite_->contenu()->Add(panneauPlan_, 1, wxEXPAND);
   panneauPlan_->surIndisponible = [this](const wxString& n) { indisponible(n); };
+  atelierRendu_ = new AtelierRendu(scene_);
+  atelierRendu_->Hide();
+  panneauRendu_ = new PanneauRendu(carteDroite_, atelierRendu_);
+  panneauRendu_->Hide();
+  carteDroite_->contenu()->Add(panneauRendu_, 1, wxEXPAND);
+  atelierRendu_->surPanneau = [this] { CallAfter([this] { if (atelier_ == Atelier::RENDU) panneauRendu_->refaire(); }); };
+  atelierRendu_->surDoc = [this](const plan::J& r) { changerRendu(r); };
+  atelierRendu_->surFermer = [this] { changerAtelier(avantRendu_); };
   planVue_->surSelection = [this] {
     CallAfter([this] {
       if (atelier_ == Atelier::PLAN) panneauPlan_->refaire();
@@ -544,7 +555,9 @@ void Cadre::placerScene() {
   poser(vue_, 0, 0, t.x, t.y);
   vue_->Show(volume);
   poser(page_, 0, 0, t.x, t.y);
-  page_->Show(rendu);
+  page_->Show(false);
+  poser(atelierRendu_, 0, 0, t.x, t.y);
+  atelierRendu_->Show(rendu);
   poser(planVue_, 0, 0, t.x, t.y);
   planVue_->Show(atelier_ == Atelier::PLAN);
   const int xo[] = {8, 72, 140}, lo[] = {63, 67, 48};
@@ -586,6 +599,8 @@ void Cadre::changerAtelier(Atelier a) {
     faoFaireSuivre();
     faoQuitterVue();
   }
+  if (a == Atelier::RENDU && atelier_ != Atelier::RENDU) avantRendu_ = atelier_;
+  if (atelier_ == Atelier::RENDU && a != Atelier::RENDU) atelierRendu_->fermer();
   atelier_ = a;
   barreHaute_->atelier(a);
   ruban_->atelier(a);
@@ -608,6 +623,51 @@ void Cadre::montrerPlan() {
   noteDroite_->SetLabel(planVue_->resume() + L"\n\nMolette : zoom. Bouton du milieu : déplacer la feuille ; double-clic du milieu : la voir en entier.\n\nPour l'instant on regarde : modifier les vues et les cotes viendra ensuite.");
 }
 
+// Le texte du fichier, et doc.rendu dedans
+plan::J Cadre::renduDocCourant(plan::J& racine) {
+  racine = plan::J::object();
+  try {
+    const std::string t = faoTexteCourant();
+    if (!t.empty()) racine = plan::J::parse(t);
+  } catch (const std::exception&) {
+  }
+  const plan::J& d = racine.contains("doc") && racine["doc"].is_object() ? racine["doc"] : racine;
+  return d.contains("rendu") && d["rendu"].is_object() ? d["rendu"] : plan::J::object();
+}
+
+void Cadre::montrerRendu(bool ouverture) {
+  plan::J racine;
+  const plan::J r = renduDocCourant(racine);
+  const std::vector<PieceRendu> L = renduPieces(racine);
+  atelierRendu_->SetName(docOuvert_ && !doc_.chemin.empty() ? wxFileName(doc_.chemin).GetName() : wxString(L"piece"));
+  if (ouverture) {
+    atelierRendu_->ouvrir(vue_->pilote(), L, r, vue_->oeil(), vue_->cibleVue());
+    panneauRendu_->refaire();
+  } else atelierRendu_->changerPieces(L, r);  // le panneau se refait juste après : on est peut-être dans une de ses lignes
+}
+
+// doc.rendu : sans recalculer la pièce, annulable, enregistré avec elle
+void Cadre::changerRendu(const plan::J& rendu) {
+  auto avant = std::make_shared<Document>(doc_);
+  try {
+    modifierStructure(doc_, [&](nlohmann::ordered_json& d) {
+      if (rendu.is_object() && !rendu.empty()) d["rendu"] = rendu;
+      else d.erase("rendu");
+    });
+  } catch (const std::exception& e) {
+    doc_ = *avant;
+    if (!essaiMenu_) wxMessageBox(tx(e.what()), L"Modification impossible", wxOK | wxICON_WARNING, this);
+    return;
+  }
+  ModifCote m;
+  m.docAvant = avant;
+  m.planSeul = true;
+  annulations_.push_back(std::move(m));
+  retablissements_.clear();
+  majTitre();
+  if (atelier_ == Atelier::RENDU) montrerRendu(false);
+}
+
 void Cadre::montrerAtelier() {
   const bool enEsquisse = esquisseOuverte_ >= 0;
   if (atelier_ != Atelier::FAO) vue_->faoModeChoix("");
@@ -616,7 +676,8 @@ void Cadre::montrerAtelier() {
   props_->Show(cao);
   panneauPlan_->Show(atelier_ == Atelier::PLAN);
   ficheFao_->Show(atelier_ == Atelier::FAO);
-  boutonRendu_->Show(atelier_ == Atelier::RENDU);
+  panneauRendu_->Show(atelier_ == Atelier::RENDU);
+  boutonRendu_->Show(false);
   noteMontree_ = noteDroite_->IsShown();
   switch (atelier_) {
     case Atelier::CAO:
@@ -634,8 +695,8 @@ void Cadre::montrerAtelier() {
       break;
     case Atelier::RENDU:
       carteDroite_->titre(L"PARAMÈTRES — RENDU");
-      noteDroite_->SetLabel(L"MOTEUR\n\nAMBIANCE\n\nFOND ET SOL\n\nAPPAREIL PHOTO\n\nCes réglages ne sont pas encore dans le logiciel Windows.");
-      page_->montrer(L"Rendu", L"Pas encore dans le logiciel Windows : il reste dans le navigateur.", false);
+      noteDroite_->SetLabel(wxEmptyString);
+      montrerRendu(true);
       break;
   }
   noteDroite_->Wrap(FromDIP(255));
@@ -654,7 +715,7 @@ void Cadre::ajusterDroite() {
   if (cao)
     for (wxPropertyGridIterator it = props_->GetGrid()->GetIterator(wxPG_ITERATE_VISIBLE); !it.AtEnd(); it++) rangs++;
   const bool asmPanneau = cao && !boutonsAsm_.empty();
-  const bool surPlan = atelier_ == Atelier::PLAN || atelier_ == Atelier::FAO;
+  const bool surPlan = atelier_ == Atelier::PLAN || atelier_ == Atelier::FAO || rendu;
   const bool note = (!cao || rangs <= 1 || enChoix()) && !asmPanneau && !surPlan;
   if (note != noteMontree_) {
     noteMontree_ = note;
@@ -1982,6 +2043,7 @@ double Cadre::recalculer() {
     planVue_->oublier();
     if (atelier_ == Atelier::PLAN) montrerPlan();
   }
+  if (atelier_ == Atelier::RENDU) montrerRendu(false);
   {
     // bodyColorOf : la fiche du corps, sinon la teinte de la pièce, sinon la palette automatique selon le rang
     static const unsigned PALETTE[] = {0x0a84ff, 0x30d158, 0xff9f0a, 0xbf5af2, 0xff453a, 0x64d2ff, 0xffd60a, 0x5e5ce6};
@@ -2276,6 +2338,7 @@ void Cadre::changerPlan(const nlohmann::ordered_json& mep) {
 
 void Cadre::reprendrePlan(const std::shared_ptr<Document>& d) {
   doc_ = *d;
+  if (atelier_ == Atelier::RENDU) montrerRendu(false);
   if (atelier_ != Atelier::PLAN) {
     if (planVue_) planVue_->oublier();
     return;
@@ -3096,6 +3159,57 @@ bool Cadre::essaiEsquisse(const std::wstring& fichier, int rang, const std::wstr
       }
     }
     if (e.contains("renduEssai")) renduEssai(e["renduEssai"]);
+    if (e.contains("rendu")) {
+      const plan::J& q = e["rendu"];
+      AtelierRendu& A = *atelierRendu_;
+      if (q.contains("reglages")) {
+        plan::J j = q["reglages"];
+        #define C(n) if (j.contains(#n)) j.at(#n).get_to(A.st.n);
+        C(amb) C(fond) C(fc1) C(fc2) C(tons) C(res) C(aretes) C(solCol) C(moteur) C(envRot) C(envInt) C(lum) C(ombre) C(douceur) C(focale) C(ev) C(ech) C(ouv) C(map) C(pDen) C(pHalo) C(pVig) C(pGrain) C(pCon) C(pSat) C(pTemp) C(solOn) C(miroir) C(ombreOn)
+        #undef C
+        A.scene();
+        A.vue();
+        A.finition();
+        panneauRendu_->refaire();
+      }
+      if (q.contains("bouton")) {
+        wxWindow* moi = this;
+        (void)moi;
+        if (!panneauRendu_->essaiBouton(wxString::FromUTF8(q["bouton"].get<std::string>()))) throw std::runtime_error("bouton du rendu absent : " + q["bouton"].get<std::string>());
+      }
+      if (q.contains("pause")) {
+        const wxLongLong fin = wxGetLocalTimeMillis() + q["pause"].get<long>();
+        while (wxGetLocalTimeMillis() < fin) {
+          wxYield();
+          wxMilliSleep(5);
+        }
+      }
+      if (q.contains("glisser")) {
+        const plan::J& g = q["glisser"];
+        A.essaiGlisser(g[0].get<int>(), g[1].get<double>(), g[2].get<double>(), g[3].get<double>(), g[4].get<double>());
+      }
+      if (q.contains("matiere")) A.poserApparence(q.value("piece", 0), q["matiere"].get<std::string>(), q.value("couleur", -1L));
+      if (q.value("effacer", false)) A.effacerApparence(q.value("piece", 0));
+      if (q.contains("clic")) A.cliquer(q["clic"][0].get<double>(), q["clic"][1].get<double>());
+      if (q.value("attendre", false)) {
+        wxYield();
+        A.attendreFin();
+      }
+      if (q.contains("apercu")) A.enregistrerApercu(wxString::FromUTF8(q["apercu"].get<std::string>()));
+      if (q.contains("exporter")) panneauRendu_->message(A.exporter(wxString::FromUTF8(q["exporter"].get<std::string>()), false));
+      if (q.contains("etat")) {
+        plan::J s;
+        s["map"] = A.st.map;
+        s["focale"] = A.st.focale;
+        s["oeil"] = A.cam.oeil;
+        s["cible"] = A.cam.cible;
+        s["doc"] = A.docRendu;
+        s["modifie"] = doc_.modifie();
+        s["pieces"] = plan::J::array();
+        for (const PieceRendu& p : A.pieces()) s["pieces"].push_back({{"id", p.id}, {"nom", p.nom}, {"cle", p.cle}, {"couleur", p.couleur}, {"propre", p.propre}});
+        std::ofstream(wxString::FromUTF8(q["etat"].get<std::string>()).ToStdWstring()) << s.dump(1);
+      }
+    }
     if (e.contains("atelier")) {
       const std::string a = e["atelier"].get<std::string>();
       changerAtelier(a == "plan" ? Atelier::PLAN : a == "fao" ? Atelier::FAO : a == "rendu" ? Atelier::RENDU : Atelier::CAO);

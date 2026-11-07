@@ -42,6 +42,8 @@ struct PieceRendu {
   unsigned couleur = 0x9a9aa0;
   std::string id;       // le corps (clic droit)
   std::string nom;
+  unsigned couleurCao = 0x9a9aa0;  // l'apparence de la CAO
+  bool propre = false;             // une apparence propre au rendu
 };
 
 struct CameraRendu {

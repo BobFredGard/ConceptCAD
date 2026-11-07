@@ -498,6 +498,13 @@ public:
   PageAtelier* page_ = nullptr;
   PlanVue* planVue_ = nullptr;
   class PanneauPlan* panneauPlan_ = nullptr;
+  class AtelierRendu* atelierRendu_ = nullptr;
+  class PanneauRendu* panneauRendu_ = nullptr;
+  Atelier avantRendu_ = Atelier::CAO;
+  std::vector<struct PieceRendu> renduPieces(const plan::J& racine);
+  plan::J renduDocCourant(plan::J& racine);
+  void montrerRendu(bool ouverture);
+  void changerRendu(const plan::J& rendu);
   ResultatRejeu dernierRejeu_;  // ce que voit la mise en plan
   void montrerPlan();
   Atelier atelier_ = Atelier::CAO;
