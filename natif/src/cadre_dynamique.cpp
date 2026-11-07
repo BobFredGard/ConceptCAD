@@ -62,6 +62,9 @@ void Cadre::dynCreer() {
   oui->surClic = [this] { CallAfter([this] { dynOk(); }); };
   rangDyn_->Add(non, 1, wxEXPAND | wxRIGHT, FromDIP(6));
   rangDyn_->Add(oui, 1, wxEXPAND);
+  segDyn_ = new wxBoxSizer(wxVERTICAL);
+  carteDroite_->contenu()->Add(segDyn_, 0, wxEXPAND);
+  carteDroite_->contenu()->Show(segDyn_, false);
   carteDroite_->contenu()->Add(rangDyn_, 0, wxEXPAND | wxTOP, FromDIP(12));
   carteDroite_->contenu()->Show(rangDyn_, false);
 
@@ -85,6 +88,114 @@ void Cadre::dynCreer() {
     vue_->SetFocus();
     CallAfter([this, t] { dynSaisie(t); });
   });
+}
+
+// extSeg : les rangées de boutons du panneau. Reconstruites seulement quand leur état change (un geste rappelle ceci à chaque pas).
+void Cadre::dynPanneau(int i) {
+  struct Choix {
+    wxString titre, aide;
+    bool actif;
+    std::function<void()> faire;
+  };
+  std::vector<std::pair<wxString, std::vector<Choix>>> rangs;
+  std::string sig;
+  if (i >= 0 && i < static_cast<int>(doc_.fonctions.size())) {
+    const Fonction& f = doc_.fonctions[i];
+    const std::string id = f.id;
+    const bool reglable = f.visible && solideCalculable_ && typeDynamique(f);
+    if (reglable && f.type == "extrude" && !f.kw && (doc_.profondeurModifiable(i) || f.upto)) {
+      sig = id + "|" + f.op + "|" + (f.corpsPropre ? "n" : "") + (f.mid ? "m" : "") + (f.flip ? "f" : "") + (f.upto ? "u" : "") + (f.through ? "t" : "");
+      const auto op = [this, id](const std::string& q) {
+        return [this, id, q] {
+          const Fonction* g = doc_.fonction(id);
+          if (!g) return;
+          if (q == "new" || g->corpsPropre) return dynOperation(id, q);
+          dynRegler(id, [q](Fonction& x) { reglerOperation(x, q); });
+        };
+      };
+      rangs.push_back({L"Opération",
+                       {{L"➕ Plot", L"Ajoute de la matière (bossage)", !f.corpsPropre && f.op != "cut", op("add")},
+                        {L"➖ Poche", L"Retire de la matière", !f.corpsPropre && f.op == "cut", op("cut")},
+                        {L"■ Nouveau corps", L"Solide séparé", f.corpsPropre, op("new")}}});
+      const bool flip = f.flip;
+      rangs.push_back({L"Direction",
+                       {{L"→ Un côté", L"Depuis le plan de l’esquisse, d’un seul côté", !f.mid, [this, id] { dynRegler(id, [](Fonction& x) { x.mid = false; }); }},
+                        {L"↕ Symétrique", L"De part et d’autre du plan (la distance est la course totale)", f.mid, [this, id] { dynRegler(id, [](Fonction& x) { x.mid = true; }); }},
+                        {L"⇄ Inverser", L"Inverser le sens", flip, [this, id] { dynRegler(id, [](Fonction& x) { x.flip = !x.flip; }); }}}});
+      rangs.push_back({L"Étendue",
+                       {{L"📏 Distance", L"Une distance donnée", !f.upto && !f.through, [this, id] { dynEtendue(id, "dist"); }},
+                        {L"🎯 Jusqu’à la face", L"S’arrête sur une face du corps cible", f.upto, [this, id] { dynEtendue(id, "upto"); }},
+                        {L"↑ À travers", L"Traverse toute la matière", f.through, [this, id] { dynEtendue(id, "through"); }}}});
+    } else if (reglable && f.type == "revolve") {
+      const double a = f.angle != 0 ? std::min(360.0, std::abs(f.angle)) : 360;
+      sig = id + "|" + f.op + "|" + nombreTexte(a);
+      const auto poser = [this, id](const char* cle, const char* val) { return [this, id, cle, val] { appliquerFiche(id, cle, val); }; };
+      rangs.push_back({L"Opération",
+                       {{L"➕ Plot", L"Ajoute de la matière", f.op != "cut", poser("s/op", "add")},
+                        {L"➖ Poche", L"Retire de la matière", f.op == "cut", poser("s/op", "cut")}}});
+      rangs.push_back({L"Angle",
+                       {{L"90°", L"", a == 90, poser("n/angle", "90")},
+                        {L"180°", L"", a == 180, poser("n/angle", "180")},
+                        {L"270°", L"", a == 270, poser("n/angle", "270")},
+                        {L"360°", L"Tour complet", a == 360, poser("n/angle", "360")}}});
+    }
+  }
+  if (sig == segSignature_) return;
+  segSignature_ = sig;
+  segDyn_->Clear(true);
+  hauteurSeg_ = 0;
+  for (const auto& [nom, choix] : rangs) {
+    auto* t = new wxStaticText(carteDroite_, wxID_ANY, nom);
+    t->SetForegroundColour(th(wxColour(0xc8, 0xc8, 0xcc)));
+    segDyn_->Add(t, 0, wxLEFT | wxTOP, FromDIP(4));
+    auto* h = new wxBoxSizer(wxHORIZONTAL);
+    for (const Choix& c : choix) {
+      auto* b = new BoutonEsquisse(carteDroite_, wxID_ANY, c.titre, c.aide.empty() ? c.titre : c.aide, BoutonEsquisse::ENCADRE);
+      b->titre(c.titre);
+      b->fond(th(C_CARTE_DYN));
+      b->actif(c.actif);
+      b->SetMinSize(FromDIP(wxSize(-1, 26)));
+      const auto faire = c.faire;
+      b->surClic = [this, faire] { CallAfter([faire] { faire(); }); };
+      h->Add(b, static_cast<int>(c.titre.length()) + 3, wxEXPAND | wxTOP | wxRIGHT, FromDIP(3));
+    }
+    segDyn_->Add(h, 0, wxEXPAND);
+    hauteurSeg_ += 52;
+  }
+  carteDroite_->contenu()->Show(segDyn_, !rangs.empty());
+  carteDroite_->Layout();
+  carteDroite_->Refresh();
+}
+
+void Cadre::dynRegler(const std::string& id, const std::function<void(Fonction&)>& reglage) {
+  for (size_t k = 0; k < doc_.fonctions.size(); k++)
+    if (doc_.fonctions[k].id == id) return modifierFonction(static_cast<int>(k), reglage);
+}
+
+// Distance, jusqu'à la face, à travers tout
+void Cadre::dynEtendue(const std::string& id, const std::string& quoi) {
+  const Fonction* f = doc_.fonction(id);
+  if (!f) return;
+  if (quoi == "upto") return uptoChoisir(id);
+  const bool oui = quoi == "through";
+  if (f->upto) {
+    // Quitter « Jusqu'à la face » : la fonction change de nature, le document suit
+    changerStructure([&](J& d) {
+      for (J& x : d["features"])
+        if (x.value("id", std::string()) == id) {
+          x["upto"] = nullptr;
+          x["through"] = oui;
+          if (oui) x["distance"] = nullptr;
+        }
+    }, L"Ctrl+Z : annuler.");
+    for (size_t q = 0; q < doc_.fonctions.size(); q++)
+      if (doc_.fonctions[q].id == id) {
+        doc_.fonctions[q].nom = nomExtrusion(doc_, doc_.fonctions[q]);
+        choisirFonction(static_cast<int>(q));
+      }
+    return;
+  }
+  dynRegler(id, [oui](Fonction& x) { reglerATravers(x, oui); });
 }
 
 // À chaque sélection d'une fonction : la session s'ouvre, ou continue si c'est la même
@@ -615,6 +726,18 @@ void Cadre::dynEssai(const nlohmann::json& e, nlohmann::json& n) {
     dynDepouille(std::string(dynSel_), tx8(e["depouille"].get<std::string>()));
     rejouer();
   }
+  if (e.contains("bouton")) {
+    const std::string q = e["bouton"].get<std::string>(), id = dynSel_;
+    if (q == "cut" || q == "add" || q == "new") {
+      const Fonction* g = doc_.fonction(id);
+      if (q == "new" || (g && g->corpsPropre)) dynOperation(id, q);
+      else dynRegler(id, [q](Fonction& x) { reglerOperation(x, q); });
+    } else if (q == "one" || q == "mid") dynRegler(id, [q](Fonction& x) { x.mid = q == "mid"; });
+    else if (q == "flip") dynRegler(id, [](Fonction& x) { x.flip = !x.flip; });
+    else dynEtendue(id, q);
+    rejouer();
+  }
+  n["hauteurSeg"] = hauteurSeg_;
   if (e.contains("ok")) dynOk();
   if (e.contains("annuler")) dynAnnuler();
   if (e.contains("echap")) n["echap"] = dynEchap();

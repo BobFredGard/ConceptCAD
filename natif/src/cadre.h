@@ -413,6 +413,9 @@ public:
   nlohmann::ordered_json scriptExecuter(const std::string& texte);
   nlohmann::ordered_json scriptInfo();
   void dynCreer();
+  void dynPanneau(int i);
+  void dynEtendue(const std::string& id, const std::string& quoi);
+  void dynRegler(const std::string& id, const std::function<void(Fonction&)>& reglage);
   void dynSelection(int i);
   void dynCalculer();
   void dynTick();
@@ -438,6 +441,9 @@ public:
   size_t dynBase_ = 0;
   double dynV0_ = 0, dynV_ = 0, dynSens_ = 1;
   wxBoxSizer* rangDyn_ = nullptr;
+  wxBoxSizer* segDyn_ = nullptr;  // les rangées de boutons : opération, direction, étendue, angle
+  std::string segSignature_;
+  int hauteurSeg_ = 0;
   wxPanel* champDyn_ = nullptr;
   wxStaticText* champDynNom_ = nullptr;
   wxStaticText* champDynUnite_ = nullptr;

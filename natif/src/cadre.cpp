@@ -63,7 +63,7 @@ enum { ID_ANNULER = wxID_HIGHEST + 1, ID_RETABLIR, ID_AJUSTER, ID_QUITTER_ESQUIS
 enum { ID_ARBRE = 2001, ID_PROPS = 2002, ID_ETAT = 2003 };
 const char* const PROP_CHAM_TYPE = "cham_type", * const PROP_CHAM_VALEUR = "cham_valeur", * const PROP_CHAM_FLIP = "cham_flip";
 const char* const PROP_CONGE_RAYON = "conge_rayon", * const PROP_CONGE_TANGENTES = "conge_tangentes", * const PROP_CONGE_ARETE = "conge_arete_";
-const char* const PROP_PROFONDEUR = "profondeur", * const PROP_OPERATION = "operation", * const PROP_ETENDUE = "etendue", * const PROP_DIRECTION = "direction", * const PROP_INVERSER = "inverser";
+const char* const PROP_PROFONDEUR = "profondeur";
 
 wxString memoireVue() { return wxStandardPaths::Get().GetUserConfigDir() + wxFileName::GetPathSeparator() + L"ConceptCADNatif-vue.json"; }
 #define C_SCENE th(wxColour(0x13, 0x15, 0x19))
@@ -1066,6 +1066,7 @@ void Cadre::ajusterDroite() {
   if (rangs) h += rangs * ToDIP(props_->GetRowHeight()) + 4;
   if (note) h += ToDIP(noteDroite_->GetBestSize().y) + 6;
   if (rendu || enChoix() || rangDynMontre_) h += 42;
+  if (cao) h += hauteurSeg_;
   if (asmPanneau) h += hauteurBoutonsAsm_ + 6;
   if (surPlan) h = 100000;
   h = std::min(h, ToDIP(centre_->GetClientSize().y) - 90);
@@ -2059,6 +2060,7 @@ void Cadre::selectionVide() {
 
 void Cadre::montrerRien() {
   dynSel_.clear();
+  dynPanneau(-1);
   if ((asmMode_ == "asm" || asmInspect_) && doc_.assemblage && esquisseOuverte_ < 0) return montrerAssemblage();
   if (!boutonsAsm_.empty()) poserBoutonsPanneau({});
   fonctionMontree_ = -1;
@@ -2078,6 +2080,7 @@ void Cadre::montrerManques() {
 
 void Cadre::montrerFonction(int i) {
   dynSelection(i);
+  dynPanneau(i);
   const Fonction& f = doc_.fonctions[i];
   props_->Clear();
   props_->CenterSplitter();
@@ -2134,25 +2137,12 @@ void Cadre::montrerFonction(int i) {
     }
   }
   if (f.visible && solideCalculable_ && (doc_.profondeurModifiable(i) || (f.upto && f.repeatId.empty()))) {
-    // Le panneau de l'extrusion du navigateur : le signe de la distance vient de l'opération
-    wxPGChoices operations, etendues, directions;
-    operations.Add(L"Plot : ajoute de la matière", 0);
-    operations.Add(L"Poche : retire de la matière", 1);
-    operations.Add(L"Nouveau corps : solide séparé", 2);
-    etendues.Add(L"Distance", 0);
-    etendues.Add(L"À travers tout", 1);
-    etendues.Add(L"Jusqu'à la face", 2);
-    directions.Add(L"Un côté", 0);
-    directions.Add(L"Symétrique", 1);
-    props_->Append(new wxEnumProperty(L"Opération", PROP_OPERATION, operations, f.corpsPropre ? 2 : f.op == "cut" ? 1 : 0));
-    props_->Append(new wxEnumProperty(L"Étendue", PROP_ETENDUE, etendues, f.upto ? 2 : f.through ? 1 : 0));
+    // Le panneau de l'extrusion du navigateur : opération, direction et étendue sont des boutons (dynPanneau)
     if (f.upto) {
       lectureSeule(props_, L"Face cible", f.uptoFace ? wxString::Format(L"🎯 face choisie — %g mm", std::abs(f.distance)) : wxString(L"🎯 cliquez une face dans la vue"));
       const std::string idF = f.id;
       poserBoutonsPanneau({{L"🎯 Choisir une autre face", [this, idF] { uptoChoisir(idF); }}});
-    } else if (!f.through) props_->Append(new wxStringProperty(f.mid ? L"Profondeur totale (mm)" : L"Profondeur (mm)", PROP_PROFONDEUR, wxString::Format("%.10g", std::abs(f.distance))));
-    props_->Append(new wxEnumProperty(L"Direction", PROP_DIRECTION, directions, f.mid ? 1 : 0));
-    props_->SetPropertyAttribute(props_->Append(new wxBoolProperty(L"Inverser le sens", PROP_INVERSER, f.flip)), wxPG_BOOL_USE_CHECKBOX, true);
+    } else if (!f.through) props_->Append(new wxStringProperty(f.mid ? L"Course totale (mm)" : L"Distance (mm)", PROP_PROFONDEUR, wxString::Format("%.10g", std::abs(f.distance))));
     props_->Append(new wxStringProperty(L"Dépouille (°)", L"depouille", wxString::Format("%.10g", f.draft)));
     fonctionMontree_ = i;
   } else if (f.through) {
@@ -2165,6 +2155,7 @@ void Cadre::montrerFonction(int i) {
 
 void Cadre::montrerEsquisse(int i) {
   dynSel_.clear();
+  dynPanneau(-1);
   const Esquisse& s = doc_.esquisses[i];
   fonctionMontree_ = -1;
   props_->Clear();
@@ -3906,49 +3897,6 @@ void Cadre::surPropriete(wxPropertyGridEvent& e) {
     const wxString t = e.GetValue().GetString();
     CallAfter([this, idF, t] { dynDepouille(idF, t); });
     return;
-  } else if (nom == PROP_OPERATION) {
-    const long k = e.GetValue().GetLong();
-    const std::string op = k == 2 ? "new" : k == 1 ? "cut" : "add";
-    if (op == "new" || doc_.fonctions[fonction].corpsPropre) {
-      const std::string idF = doc_.fonctions[fonction].id;
-      CallAfter([this, idF, op] { dynOperation(idF, op); });
-      return;
-    }
-    reglage = [op](Fonction& f) { reglerOperation(f, op); };
-  } else if (nom == PROP_ETENDUE) {
-    const long k = e.GetValue().GetLong();
-    const std::string idF = doc_.fonctions[fonction].id;
-    if (k == 2) {
-      CallAfter([this, idF] { uptoChoisir(idF); });
-      return;
-    }
-    const bool oui = k == 1;
-    if (doc_.fonctions[fonction].upto) {
-      // Quitter « Jusqu'à la face » : la fonction change de nature, le document suit
-      CallAfter([this, idF, oui] {
-        changerStructure([&](nlohmann::ordered_json& d) {
-          for (auto& x : d["features"])
-            if (x.value("id", std::string()) == idF) {
-              x["upto"] = nullptr;
-              x["through"] = oui;
-              if (oui) x["distance"] = nullptr;
-            }
-        }, L"Ctrl+Z : annuler.");
-        for (size_t q = 0; q < doc_.fonctions.size(); q++)
-          if (doc_.fonctions[q].id == idF) {
-            doc_.fonctions[q].nom = nomExtrusion(doc_, doc_.fonctions[q]);
-            choisirFonction(static_cast<int>(q));
-          }
-      });
-      return;
-    }
-    reglage = [oui](Fonction& f) { reglerATravers(f, oui); };
-  } else if (nom == PROP_DIRECTION) {
-    const bool oui = e.GetValue().GetLong() == 1;
-    reglage = [oui](Fonction& f) { f.mid = oui; };
-  } else if (nom == PROP_INVERSER) {
-    const bool oui = e.GetValue().GetBool();
-    reglage = [oui](Fonction& f) { f.flip = oui; };
   } else {
     return;
   }
