@@ -1894,7 +1894,7 @@ const ElementConstruction* planDuCylindre(const Document& d, const std::string& 
   return e && e->kind == "plane" && str(e->j, "how") == "tangent" ? e : nullptr;
 }
 
-void ficheCylindre(const Document& d, const ElementConstruction& e, bool sansCote, std::vector<ChampFiche>& c) {  // renderHoleCylProps
+void ficheCylindre(const Document& d, const ElementConstruction& e, bool sansCote, std::vector<ChampFiche>& c, bool noteProfondeur) {  // renderHoleCylProps
   const auto ajout = [&](ChampFiche::Sorte so, const std::string& t, const std::string& cle) -> ChampFiche& {
     ChampFiche f;
     f.sorte = so;
@@ -1936,6 +1936,13 @@ void ficheCylindre(const Document& d, const ElementConstruction& e, bool sansCot
     ajout(ChampFiche::BOOLEEN, "Autre côté de la référence", "z/side").oui = numero(e.j, "side") < 0;
   }
   ajout(ChampFiche::NOMBRE, "Décalage latéral (mm)", "z/e").nombre = numero(e.j, "e");
+  if (noteProfondeur) {
+    ChampFiche note;
+    note.sorte = ChampFiche::LECTURE;
+    note.titre = "Note";
+    note.texte = "La profondeur se compte depuis le sommet du cylindre (plan tangent).";
+    c.push_back(std::move(note));
+  }
 }
 
 void ficheClavette(const Document& d, const json& f, std::vector<ChampFiche>& c) {  // kwPanel, kwKeyPanel

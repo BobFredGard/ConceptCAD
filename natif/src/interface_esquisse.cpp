@@ -396,6 +396,11 @@ BarreEsquisse::BarreEsquisse(wxWindow* parent) : wxWindow(parent, 2009, wxDefaul
     if (surParametresComplets) surParametresComplets();
   });
   ordre_.push_back(parametres);
+  effacer_ = new BoutonEsquisse(this, wxID_ANY, L"Effacer tout", L"Effacer tout le dessin de cette esquisse");
+  effacer_->titre(L"Effacer tout");
+  effacer_->surClic = [this] {
+    if (surEffacerTout) surEffacerTout();
+  };
   abandon_ = new BoutonEsquisse(this, wxID_ANY, L"Abandonner", L"Refermer l'esquisse en oubliant ce qui a été fait depuis son ouverture", BoutonEsquisse::TEXTE);
   abandon_->titre(L"Abandonner");
   abandon_->surClic = [this] {
@@ -436,7 +441,7 @@ void BarreEsquisse::placer() {
   const int W = std::max(300, ToDIP(GetClientSize()).x);
   const int gauche = 23, droite = W - 23, finLigne = droite;
   int x = gauche, y = 15;
-  const int H = 34, L = 32, pas = 34, largeursFin = 88 + 3 + 86 + 18;
+  const int H = 34, L = 32, pas = 34, largeursFin = 84 + 3 + 88 + 3 + 86 + 18;
   separateurs_.clear();
   for (wxWindow* b : ordre_) {
     if (!b) {
@@ -458,6 +463,7 @@ void BarreEsquisse::placer() {
     x = gauche;
     y += H + 2;
   }
+  effacer_->SetSize(wxRect(FromDIP(wxPoint(droite - 86 - 3 - 88 - 3 - 84, y + 3)), FromDIP(wxSize(84, 28))));
   abandon_->SetSize(wxRect(FromDIP(wxPoint(droite - 86 - 3 - 88, y + 3)), FromDIP(wxSize(88, 28))));
   terminer_->SetSize(wxRect(FromDIP(wxPoint(droite - 86, y + 2)), FromDIP(wxSize(86, 30))));
   const int h = y + H + 12;

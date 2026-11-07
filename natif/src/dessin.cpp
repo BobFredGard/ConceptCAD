@@ -3107,6 +3107,22 @@ void Dessin::fusionnerDoublons() {
   apresEdition();
 }
 
+void Dessin::effacerTout() {
+  premiere();
+  annulerTrace();
+  pousser();
+  s_.entites.clear();
+  s_.contraintes.clear();
+  s_.cotes.clear();
+  s_.points.clear();
+  s_.ordre.clear();
+  s_.points["O"] = Pt{0, 0};  // ensureOrigin
+  s_.ordre.push_back("O");
+  selection_.clear();
+  structure_ = true;
+  apresEdition();
+}
+
 void Dessin::supprimerDegeneres() {
   premiere();
   const SanteEsquisse H = santeDe(s_);

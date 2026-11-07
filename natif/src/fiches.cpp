@@ -224,6 +224,26 @@ ChampFiche lecture(const std::string& titre, const std::string& texte, const std
   c.categorie = cat;
   return c;
 }
+// La position d'une face visée, comme les notes du panneau : (x ; y ; z), un chiffre après la virgule
+std::string coordsFace(const json& v, int chiffres) {
+  if (!v.is_array()) return "?";
+  std::string t = "(";
+  char b[48];
+  for (size_t i = 0; i < v.size(); i++) {
+    snprintf(b, sizeof b, "%.*f", chiffres, v[i].is_number() ? v[i].get<double>() : 0.0);
+    t += (i ? " ; " : "") + std::string(b);
+  }
+  return t + ")";
+}
+std::string centresFaces(const json& L) {
+  std::string t;
+  if (L.is_array())
+    for (const json& r : L) {
+      if (!r.is_object() || !r.contains("pos")) continue;
+      t += (t.empty() ? "" : " · ") + coordsFace(r["pos"], 1);
+    }
+  return t;
+}
 ChampFiche nombre(const std::string& titre, const std::string& cle, double v, const std::string& cat = "") {
   ChampFiche c;
   c.sorte = ChampFiche::NOMBRE;
@@ -324,6 +344,7 @@ void champsPercage(const Document& d, const json& f, std::vector<ChampFiche>& c)
     for (const Entite& e : s->entites)
       if (e.t == "cpoint" && e.percage) nP++;
   c.push_back(lecture("Centres", std::to_string(nP) + " dans « " + (s ? s->nom : str(f, "sketchId")) + " »"));
+  if (const ElementConstruction* elCyl = planDuCylindre(d, str(f, "sketchId"))) ficheCylindre(d, *elCyl, false, c, true);  // holeCylPlane
   c.push_back(choix("Type", "x/kind", kind, {{"simple", "⊚ Simple"}, {"cbore", "⊡ Lamage"}, {"csink", "⊽ Fraisure"}, {"step", "◎ Double"}, {"ream", "⌀ Alésé"}}));
   const std::string sens = vrai(f, "flip") ? "1" : "0";
   const std::vector<std::pair<std::string, std::string>> SENS = {{"0", "Vers la matière (auto)"}, {"1", "Inversé"}};
@@ -332,6 +353,8 @@ void champsPercage(const Document& d, const json& f, std::vector<ChampFiche>& c)
     const std::string pil = casAlesage(f);
     const double D = std::max(0.2, ou0(num(f, "reamD"), 6)), H = std::max(0.1, ou0(num(f, "reamH"), D * 1.5));
     c.push_back(choix("Cas", "x/pilot", pil, {{"none", "Alésage fond plat seul"}, {"blind", "+ perçage non débouchant"}, {"through", "+ perçage débouchant"}, {"open", "Alésage débouchant"}}));
+    if (pil == "open") c.push_back(lecture("Note", "Alésage débouchant : traverse toute la pièce."));
+    if (pil == "none") c.push_back(lecture("Note", "Fond plat. L’avant-trou d’usinage n’est pas modélisé."));
     c.push_back(nombre("Ø alésage (mm)", "n/reamD", D));
     std::string tol = str(f, "reamTol").empty() ? "H7" : str(f, "reamTol");
     size_t rang = 0;
@@ -407,6 +430,7 @@ void champsPercage(const Document& d, const json& f, std::vector<ChampFiche>& c)
     const double d0 = std::max(0.2, ou0(num(f, "d"), 6.6));
     c.push_back(nombre("Ø avant-trou (mm)", "n/stD", ou0(num(f, "stD"), std::max(d0 + 0.2, std::max(8.0, d0 * 2)))));
     c.push_back(nombre("Prof. avant-trou, plein Ø (mm)", "n/stH", ou0(num(f, "stH"), 5)));
+    if (num(f, "stD") > 0 && num(f, "stD") < num(f, "d") + 0.2) c.push_back(lecture("Note", "Le Ø de l’avant-trou doit dépasser le Ø du trou (ramené à Ø" + fmt(std::max(d0 + 0.2, std::max(8.0, d0 * 2))) + ")."));
     c.push_back(choix("Fond avant-trou", "x/stTip", texteAngle(num(f, "stTip", 118)), POINTES));
   }
   if (kind == "csink") {
@@ -498,6 +522,7 @@ void champsRepetition(const Document& d, const json& f, std::vector<ChampFiche>&
     const std::string p2 = str(f, "plane2");
     c.push_back(booleen("2ᵉ plan (double)", "x/dbl", !p2.empty()));
     if (!p2.empty()) c.push_back(choix("2ᵉ plan", "x/rep2", p2, listeAxes(true, p2 == "Face" && f.contains("planeN2"))));
+    if (!p2.empty() && vrai(f, "_samePlane")) c.push_back(lecture("⚠", "Les deux plans sont identiques : la 2ᵉ passe est sans effet."));
   } else {
     const bool aDir = f.contains("dir") && f["dir"].is_array();
     const std::string ax = aDir && str(f, "axis").empty() ? "Face" : str(f, "axis").empty() ? "X" : str(f, "axis");
@@ -846,14 +871,21 @@ std::vector<ChampFiche> ficheFonction(const Document& d, const json& f) {
     c.push_back(booleen("Inverser", "b/flip", vrai(f, "flip")));
   } else if (t == "xmove") {
     c.push_back(lecture("Faces visées", std::to_string(std::max<size_t>(nbFaces(f), f.contains("ref") ? 1 : 0))));
+    {  // mvRefs : faces, ou l'ancienne référence unique
+      const json L = f.contains("faces") && f["faces"].is_array() && !f["faces"].empty() ? f["faces"] : f.contains("ref") && f["ref"].is_object() ? json::array({f["ref"]}) : json::array();
+      if (L.size() == 1 && L[0].contains("pos")) c.push_back(lecture("Face visée", "centre " + coordsFace(L[0]["pos"], 1) + " mm, normale " + coordsFace(L[0].value("n", json::array()), 2)));
+      else if (L.size() > 1) c.push_back(lecture("Centres", centresFaces(L) + " mm"));
+    }
     c.push_back(nombre("Distance (mm)", "n/dist", num(f, "dist")));
     c.push_back(lecture("Sens", "Positif : la face avance. Négatif : elle rentre."));
   } else if (t == "xdraft") {
     c.push_back(lecture("Faces", std::to_string(nbFaces(f))));
+    if (f.contains("ref") && f["ref"].is_object() && f["ref"].contains("pos")) c.push_back(lecture("Plan neutre", "face de référence, centre " + coordsFace(f["ref"]["pos"], 1) + " mm"));
     c.push_back(nombre("Angle (°)", "n/angle", num(f, "angle")));
     c.push_back(booleen("Inverser le sens", "b/flip", vrai(f, "flip")));
   } else if (t == "xshell") {
     c.push_back(lecture("Faces retirées", std::to_string(nbFaces(f))));
+    if (f.contains("faces") && !centresFaces(f["faces"]).empty()) c.push_back(lecture("Ouverture(s)", centresFaces(f["faces"])));
     c.push_back(nombre("Épaisseur (mm)", "n/thick", num(f, "thick")));
   } else if (t == "xdelface") {
     c.push_back(lecture("Faces supprimées", std::to_string(nbFaces(f))));

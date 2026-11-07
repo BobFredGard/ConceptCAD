@@ -157,6 +157,7 @@ class Dessin {
   std::string doubleClic(double x, double y);
   void echap();     // skEscapeToSelect
   void annulerTrace();  // skCancelDraft
+  void effacerTout();   // skClearAll, après confirmation : l'annulation le rattrape
   bool finirSpline();   // la fin d'un tracé de spline (clic droit, Entrée) ; rend false s'il n'y en avait pas
   bool peigneVisible(const std::string& id) const { return peignes_.count(id) > 0; }
   void supprimer();  // deleteSkSel

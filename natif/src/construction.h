@@ -55,7 +55,7 @@ std::string creerPercageCylindre(nlohmann::ordered_json& d, const ClicCylindre& 
 std::string creerClavette(nlohmann::ordered_json& d, const ClicCylindre& c, int marque);  // kwOnCylinder
 void clavetteSupprimee(nlohmann::ordered_json& d, const nlohmann::ordered_json& f);  // kwOnDelete, la fonction déjà retirée
 // La partie de la fiche d'un perçage sur cylindre ou d'une rainure : clés z/...
-void ficheCylindre(const Document& d, const ElementConstruction& e, bool sansCote, std::vector<ChampFiche>& c);
+void ficheCylindre(const Document& d, const ElementConstruction& e, bool sansCote, std::vector<ChampFiche>& c, bool note = false);
 void ficheClavette(const Document& d, const nlohmann::ordered_json& f, std::vector<ChampFiche>& c);
 const ElementConstruction* planDuCylindre(const Document& d, const std::string& esquisse);  // holeCylPlane
 std::string appliquerCylindre(nlohmann::ordered_json& d, const nlohmann::ordered_json& f, const std::string& cle, const std::string& valeur);

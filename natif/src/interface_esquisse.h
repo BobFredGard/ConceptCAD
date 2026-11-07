@@ -56,7 +56,7 @@ class BarreEsquisse : public wxWindow {
   std::function<void(const std::string&)> surContrainte;
   std::function<void(const wxString&)> surIndisponible;
   std::function<void()> surParametres, surParametresComplets;
-  std::function<void()> surCadrer, surGrille, surGrilleMenu, surFantome, surAbandon, surTerminer;
+  std::function<void()> surCadrer, surGrille, surGrilleMenu, surFantome, surAbandon, surTerminer, surEffacerTout;
   void outilActif(Dessin::Outil o);
   // Pour les essais : le clic sur un bouton d'outil, par son numéro
   bool essaiCliquerOutil(Dessin::Outil o);
@@ -73,6 +73,7 @@ class BarreEsquisse : public wxWindow {
   BoutonEsquisse* grille_ = nullptr;
   BoutonEsquisse* orbite_ = nullptr;
   BoutonEsquisse* fantome_ = nullptr;
+  BoutonEsquisse* effacer_ = nullptr;
   BoutonEsquisse* abandon_ = nullptr;
   BoutonEsquisse* terminer_ = nullptr;
   std::vector<int> separateurs_;

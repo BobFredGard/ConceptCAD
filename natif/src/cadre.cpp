@@ -257,6 +257,15 @@ Cadre::Cadre() : wxFrame(nullptr, wxID_ANY, L"ConceptCAD natif"), asmAnim_(this)
   // Depuis un bouton qui disparaît avec l'écran : la sortie attend la fin du clic
   barreEsquisse_->surAbandon = [this] { CallAfter([this] { abandonnerEsquisse(); }); };
   barreEsquisse_->surTerminer = [this] { CallAfter([this] { quitterEsquisse(); }); };
+  barreEsquisse_->surEffacerTout = [this] {
+    if (!essaiSansBoite_) {
+      wxMessageDialog q(this, L"Tout effacer ?", L"ConceptCAD natif", wxYES_NO | wxNO_DEFAULT | wxICON_WARNING);
+      q.SetYesNoLabels(L"Effacer", L"Garder");
+      if (q.ShowModal() != wxID_YES) return;
+    }
+    vueEsquisse_->commande([](Dessin& d) { d.effacerTout(); });
+    vueEsquisse_->SetFocus();
+  };
   panneauEsquisse_->faire = [this](const std::function<void(Dessin&)>& f) {
     vueEsquisse_->commande(f);
     vueEsquisse_->SetFocus();
@@ -4410,7 +4419,7 @@ bool Cadre::essaiEsquisse(const std::wstring& fichier, int rang, const std::wstr
       n["etat"] = std::string(etatVue_->texte().utf8_str());
     }
     if (e.contains("ficheLire")) {
-      const std::string id = e["ficheLire"].get<std::string>();
+      const std::string id = e["ficheLire"].get<std::string>() == "@" ? ficheId_ : e["ficheLire"].get<std::string>();
       if (doc_.fonctionsJson)
         if (const auto it = doc_.fonctionsJson->find(id); it != doc_.fonctionsJson->end())
           for (const ChampFiche& c : ficheFonction(doc_, nlohmann::ordered_json::parse(it->second))) {
@@ -4443,6 +4452,7 @@ bool Cadre::essaiEsquisse(const std::wstring& fichier, int rang, const std::wstr
     }
     if (e.contains("journal")) journal::ajouter("essai", e["journal"].get<std::string>(), "D:\\Dossier\\Secret\\essai.cpp");
     if (e.contains("journalLire")) n["journal"] = journal::texte();
+    if (e.contains("effacerTout") && barreEsquisse_->surEffacerTout) barreEsquisse_->surEffacerTout();
     if (e.contains("secours")) n["secours"] = secoursEssai(e["secours"].get<std::string>());
     if (e.contains("secoursBoite")) {
       wxDialog* b = secoursProposer();
