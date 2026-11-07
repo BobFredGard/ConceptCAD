@@ -307,6 +307,20 @@ int consommatrice(const Document& d, const std::string& id) {
 }
 
 // Les esquisses qui voient ce que l'esquisse i produit, dans l'ordre de la pièce
+// repCloneSkName : « (rép 2) » à la fin du nom
+bool copieDeRepetition(const std::string& nom) {  // comme cloneRepetition de dessin.cpp
+  size_t i = nom.size();
+  while (i && nom[i - 1] == ' ') i--;
+  if (!i || nom[i - 1] != ')') return false;
+  i--;
+  const size_t fin = i;
+  while (i && nom[i - 1] >= '0' && nom[i - 1] <= '9') i--;
+  if (i == fin) return false;
+  while (i && nom[i - 1] == ' ') i--;
+  static const std::string REP = "(r\xC3\xA9p";
+  return i >= REP.size() && nom.compare(i - REP.size(), REP.size(), REP) == 0;
+}
+
 std::vector<size_t> suivantes(const Document& d, size_t i) {
   std::vector<size_t> out;
   const int k = consommatrice(d, d.esquisses[i].id);
@@ -336,7 +350,8 @@ std::vector<size_t> suivantes(const Document& d, size_t i) {
   };
   std::vector<size_t> L;
   for (size_t j = 0; j < d.esquisses.size(); j++)
-    if (j != i && ((k >= 0 && rang(j) > k && avecProjection(d.esquisses[j])) || reprend(j))) L.push_back(j);
+    // updateAllProjections : une copie de répétition « (rép N) » ne suit rien, elle est refaite depuis sa source
+    if (j != i && !copieDeRepetition(d.esquisses[j].nom) && ((k >= 0 && rang(j) > k && avecProjection(d.esquisses[j])) || reprend(j))) L.push_back(j);
   std::stable_sort(L.begin(), L.end(), [&](size_t a, size_t b) { return rang(a) < rang(b); });
   // skpOrdre : chaque source avant les esquisses qui la reprennent
   std::vector<char> vu(d.esquisses.size(), 0);
