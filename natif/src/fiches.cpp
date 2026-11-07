@@ -675,6 +675,7 @@ std::vector<ChampFiche> ficheFonction(const Document& d, const json& f) {
     c.push_back(choix("Type", "x/uni", uni ? "u" : "n", {{"u", "Uniforme (homothétie)"}, {"n", "Non uniforme (X, Y, Z)"}}));
     if (uni) {
       c.push_back(nombre("Facteur", "n/s", num(f, "s", 1)));
+      c.push_back(choix("Raccourci", "x/facteur", "", {{"", "—"}, {"2", "× 2"}, {"0.5", "× ½"}, {"25.4", "pouce → mm (× 25,4)"}, {"0.03937007874015748", "mm → pouce (÷ 25,4)"}}));
     } else {
       c.push_back(nombre("Facteur X", "n/sx", num(f, "sx", 1)));
       c.push_back(nombre("Facteur Y", "n/sy", num(f, "sy", 1)));
@@ -1176,6 +1177,18 @@ std::string ficheAppliquer(json& d, const std::string& id, const std::string& cl
     } else {
       f["pl"] = {{"src", valeur}};
     }
+  } else if (cle == "x/etapeJson") {  // bmAddStep
+    if (!f.contains("steps") || !f["steps"].is_array()) f["steps"] = json::array();
+    f["steps"].push_back(json::parse(valeur));
+  } else if (cle == "x/centre") {  // bsSetCentre
+    const json v = json::parse(valeur);
+    f["o"] = v["p"];
+    f["oname"] = v["name"];
+  } else if (cle == "x/facteur") {  // BS_UNITS
+    const double k = std::stod(valeur), s = f.contains("s") && f["s"].is_number() && f["s"].get<double>() != 0 ? f["s"].get<double>() : 1;
+    char b[64];
+    snprintf(b, sizeof b, "%.12g", k == 2 || k == 0.5 ? s * k : k);
+    f["s"] = std::stod(b);
   } else if (cle == "x/ajout") {
     if (!f.contains("steps") || !f["steps"].is_array()) f["steps"] = json::array();
     if (valeur == "t") {

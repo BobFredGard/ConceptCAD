@@ -1,5 +1,6 @@
 // Fenêtre principale : l'environnement du navigateur autour de la vue 3D et de l'écran d'esquisse.
 #pragma once
+#include <array>
 #include <map>
 #include <memory>
 #include <nlohmann/json.hpp>
@@ -223,6 +224,28 @@ public:
   wxString demanderNom(const wxString& actuel);
   bool confirmerSuppression(const wxString& question);
   void menuFonction(int i);
+  // Déplacer et Échelle : choisir un axe, une direction, un point (cadre_deplacer.cpp)
+  struct OptionBm {
+    std::string nom;
+    std::array<double, 3> p{}, o{}, d{};
+  };
+  bool bmCentreCorps(const std::string& id, std::array<double, 3>& c) const;
+  std::vector<OptionBm> bmOptionsFixes(const std::string& corps, bool axes) const;
+  std::vector<OptionBm> bmOptionsFace(const TopoDS_Shape& s, bool axes) const;
+  void bmDemarrer(const std::string& fid, const std::string& want);
+  void bmEtape();
+  void bmMenu(const std::vector<OptionBm>& L, bool avecFace);
+  bool bmFaceCliquee(const TopoDS_Shape& s);
+  void bmPoser(const OptionBm& o);
+  void bmAnnuler();
+  void bmFin();
+  void bmSansEchelle(const std::string& fid, bool sans);
+  void bsCentreCorps(const std::string& fid);
+  void boutonsDeplacer(const Fonction& f, std::vector<std::pair<wxString, std::function<void()>>>& boutons);
+  std::string bmFid_, bmWant_, bmMasquee_;
+  OptionBm bmFrom_;
+  bool bmAFrom_ = false;
+  std::function<void()> piocheAnnulee_;  // Échap pendant un choix qui a quelque chose à défaire
   void deposerDansFil(const std::vector<FilFonctions::Element>& L, int source, int gap);
   void fonctionVersCorps(const std::string& id, const std::string& corps);
   std::string tireeArbre_;  // la fonction qu'on glisse dans l'arbre

@@ -313,6 +313,12 @@ Cadre::Cadre() : wxFrame(nullptr, wxID_ANY, L"ConceptCAD natif"), asmAnim_(this)
     if (atelier_ == Atelier::RENDU && e.GetKeyCode() == WXK_ESCAPE) return changerAtelier(avantRendu_);
     if (pioche_ && e.GetKeyCode() == WXK_ESCAPE) {
       pioche_ = nullptr;
+      if (piocheAnnulee_) {
+        const auto a = piocheAnnulee_;
+        piocheAnnulee_ = nullptr;
+        a();
+        return;
+      }
       etat(L"Choix dans la vue annulé.");
     } else if (enChoix() && e.GetKeyCode() == WXK_ESCAPE) quitterConge();
     else if (e.GetKeyCode() == WXK_ESCAPE && esquisseOuverte_ < 0 && asmEchap()) return;
@@ -1135,6 +1141,7 @@ void Cadre::montrerFiche(int i) {
   std::vector<std::pair<wxString, std::function<void()>>> boutons;
   derFiche(fj, champs, boutons);
   if (f.type == "xfillet" && !copie) boutons.push_back({L"✏️ Modifier la sélection", [this, i] { editerConge(i); }});
+  if (!copie) boutonsDeplacer(f, boutons);
   poserChamps(champs, copie);
   if (!boutons.empty() || !boutonsAsm_.empty()) poserBoutonsPanneau(boutons);
   if (!copie) ficheId_ = f.id;
@@ -3844,6 +3851,29 @@ bool Cadre::essaiEsquisse(const std::wstring& fichier, int rang, const std::wstr
         }
       };
       voir(arbre_->GetRootItem());
+    }
+    if (e.contains("bmPick")) {  // choisit dans le menu des options fixes, ou demande le clic sur une face
+      const plan::J& q = e["bmPick"];
+      essaiMenu_ = true;
+      essaiChoix_ = q.value("choix", std::string());
+      if (q.contains("id")) bmDemarrer(q["id"].get<std::string>(), q["want"].get<std::string>());
+      else bmEtape();
+      n["entrees"] = essaiEntrees_;
+      if (q.contains("clic")) {
+        essaiChoix_ = q["clic"]["choix"].get<std::string>();
+        const auto& P = q["clic"]["p"];
+        vue_->cliquerEn(vue_->pixelDe(P[0].get<double>(), P[1].get<double>(), P[2].get<double>()));
+        wxYield();
+        n["entreesFace"] = essaiEntrees_;
+      }
+      essaiMenu_ = false;
+      n["etat"] = std::string(etatVue_->texte().utf8_str());
+      for (const Fonction& f : doc_.fonctions)
+        if (f.type == "bmove" || f.type == "bscale") n["nom"] = f.nom;
+    }
+    if (e.contains("bsCentre")) {
+      bsCentreCorps(e["bsCentre"].get<std::string>());
+      n["etat"] = std::string(etatVue_->texte().utf8_str());
     }
     if (e.contains("deplacer")) {
       const plan::J& q = e["deplacer"];
