@@ -1,6 +1,6 @@
 # ConceptCAD sur Mac : quoi faire
 
-Les réglages Mac sont sur la branche `claude/vigorous-swanson-45df96`. Ils ne sont pas encore essayés sur un vrai Mac.
+Les réglages Mac sont sur la branche `claude/vigorous-swanson-45df96`. Fred a confirmé sur son Mac, le 07/11/2026, que les pièces venues de Windows s'ouvrent ; les autres essais ci-dessous restent à faire.
 
 ## Obtenir le DMG
 
@@ -44,7 +44,7 @@ Pour chaque essai qui échoue, notez son numéro et ce que vous voyez. Une photo
 
 ## Points à surveiller
 
-- **Noyau multicœur :** coupé sur Mac (`?mt=0`, posé par `tauri/pont.js`), car il figeait l'application dès qu'il reconstruisait une vraie pièce. Les Mac de GitHub ont 3 cœurs et prennent toujours le noyau normal : ils ne peuvent pas révéler ce blocage.
+- **Noyau multicœur :** coupé sur Mac (`?mt=0`, posé par `tauri/pont.js`), car il figeait l'application dès qu'il reconstruisait une vraie pièce. Les Mac de GitHub ont 3 cœurs et prennent toujours le noyau normal : ils ne peuvent pas révéler ce blocage. L'ouverture a été rétablie sur le Mac de Fred par ce seul changement.
 - **macOS :** réglé pour macOS 12 ou plus récent. Le noyau a besoin d'un Safari à jour (16.4 ou plus).
 - **Pour diffuser à d'autres :** il faudra un compte développeur Apple (environ 99 $ par an) pour supprimer le blocage au premier lancement.
 

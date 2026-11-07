@@ -13,52 +13,9 @@
   const joindre=(d,n)=>sansFin(d)+BS+n;
   const ecrire=(chemin,octets)=>invoke('ecrire',octets,{headers:{'x-chemin':encodeURIComponent(chemin)}});
 
-  // Journal provisoire de l'essai Mac (blocage à l'ouverture d'une pièce) : chaque étape, l'heure, et un
-  // signe de vie régulier. S'il s'arrête, la page est bloquée ; la dernière étape dit où. À retirer ensuite.
-  const JOURNAL=/^Mac/.test(navigator.platform)||window.__ccJournal===true;
-  const trace=m=>{if(JOURNAL)invoke('journal',{texte:new Date().toISOString().slice(11,23)+' '+m}).catch(()=>{});};
-  if(JOURNAL){
-    trace('=== démarrage '+navigator.userAgent+' ; isolé='+window.crossOriginIsolated+' ; cœurs='+navigator.hardwareConcurrency+' ; adresse='+location.search);
-    addEventListener('error',e=>trace('ERREUR '+e.message+' '+e.filename+':'+e.lineno));
-    addEventListener('unhandledrejection',e=>trace('REJET '+(e.reason&&e.reason.message||e.reason)));
-    addEventListener('webglcontextlost',e=>trace('CONTEXTE 3D PERDU'),true);
-    addEventListener('webglcontextrestored',e=>trace('contexte 3D rétabli'),true);
-    const erreurConsole=console.error;
-    console.error=function(...a){trace('console.error '+a.map(String).join(' ').slice(0,300));return erreurConsole.apply(this,a);};
-    const alerte=window.alert;
-    window.alert=function(m){trace('message '+String(m).slice(0,300));return alerte.call(this,m);};
-    let images=0;
-    const image=()=>{images++;requestAnimationFrame(image);};
-    requestAnimationFrame(image);
-    addEventListener('load',()=>{
-      try{
-        const g=document.createElement('canvas').getContext('webgl2'),x=g&&g.getExtension('WEBGL_debug_renderer_info');
-        trace('carte 3D : '+(x?g.getParameter(x.UNMASKED_RENDERER_WEBGL):'inconnue'));
-      }catch(e){trace('carte 3D : '+e);}
-      for(const n of ['mffOpen','mffOpenHandle','mffFileText','mffCheckData','mffLoadText','mffConfirmDiscard','docResetEmpty','bundleRestore','deserialise','rebuild','showAll','renderTree','renderProps','mffMark','mffRecentAdd']){
-        const f=window[n];
-        if(typeof f!=='function'){trace('fonction absente : '+n);continue;}
-        window[n]=function(...a){
-          trace('> '+n);
-          try{
-            const r=f.apply(this,a);
-            if(r&&typeof r.then==='function')return r.then(v=>{trace('< '+n);return v;},e=>{trace('! '+n+' '+(e&&e.message||e));throw e;});
-            trace('< '+n);
-            return r;
-          }catch(e){trace('! '+n+' '+(e&&e.message||e));throw e;}
-        };
-      }
-      setInterval(()=>{
-        let etat='';
-        try{etat='noyau='+occtReady+' fils='+occtMtFils+' calcul='+rebuildDepth+'/'+regenRun+'/'+regenUi+' fonctions='+(doc.features||[]).length;}catch(e){}
-        trace('vivant images='+images+' '+etat);
-      },2000);
-    });
-  }
-
   // Sur Mac, le noyau multicœur fige l'application dès qu'il reconstruit une vraie pièce (Mac à 4 cœurs ou
   // plus, moteur Safari ; il marche dans Brave). L'adresse ?mt=0, prévue par le logiciel, choisit le noyau normal.
-  if((/^Mac/.test(navigator.platform)||window.__ccSansMulticoeur===true)&&!/[?&]mt=0(?:&|$)/.test(location.search)){
+  if(/^Mac/.test(navigator.platform)&&!/[?&]mt=0(?:&|$)/.test(location.search)){
     history.replaceState(null,'',location.pathname+(location.search?location.search+'&':'?')+'mt=0'+location.hash);
   }
 
@@ -74,9 +31,7 @@
     async getFile(){
       const i=await invoke('infos',{chemin:this.chemin});
       if(!i||i.dossier)throw introuvable(this.name);
-      trace('lecture '+this.chemin+' ('+i.taille+' octets)');
       const b=await invoke('lire',{chemin:this.chemin});
-      trace('lu '+(b&&b.byteLength)+' octets');
       return new File([b],this.name,{lastModified:i.modif});
     }
     async createWritable(){
