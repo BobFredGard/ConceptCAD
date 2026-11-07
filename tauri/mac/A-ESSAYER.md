@@ -30,7 +30,7 @@ Travaillez sur une **copie** de pièce, pas sur un original.
 
 1. **Démarrage :** l'application s'ouvre, le logo est dans le Dock, le noyau finit de charger sans message d'erreur.
 2. **3D :** une pièce s'affiche, elle tourne et se déplace normalement à la souris.
-3. **Ouvrir :** Fichier > Ouvrir montre la vraie fenêtre du Mac et ouvre la pièce.
+3. **Ouvrir :** Fichier > Ouvrir montre la vraie fenêtre du Mac et ouvre la pièce, y compris une pièce enregistrée sous Windows.
 4. **Modifier :** changez une cote, la pièce se recalcule.
 5. **Enregistrer :** Cmd+S enregistre sans question. Fermez, rouvrez : la modification est là.
 6. **Enregistrer sous :** un nouveau nom crée bien un nouveau fichier, dans le dossier choisi.

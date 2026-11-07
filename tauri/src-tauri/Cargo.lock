@@ -530,6 +530,7 @@ dependencies = [
 name = "conceptcad"
 version = "0.65.0"
 dependencies = [
+ "flate2",
  "percent-encoding",
  "rfd",
  "serde",

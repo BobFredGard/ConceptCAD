@@ -13,6 +13,31 @@
   const joindre=(d,n)=>sansFin(d)+BS+n;
   const ecrire=(chemin,octets)=>invoke('ecrire',octets,{headers:{'x-chemin':encodeURIComponent(chemin)}});
 
+  // Compression des pièces (gzip) : un Safari ancien ne la connaît pas. Il enregistre alors sans compresser
+  // et ne peut plus lire les pièces venues de Windows. Sur Mac, c'est toujours l'application qui s'en charge.
+  const fluxGzip=(Natif,entetes)=>class{
+    constructor(format){
+      if(format!=='gzip'){
+        if(Natif)return new Natif(format);
+        throw new TypeError('Format non pris en charge : '+format);
+      }
+      const morceaux=[];
+      const t=new TransformStream({
+        transform(m){morceaux.push(m);},
+        async flush(sortie){
+          const entree=new Uint8Array(await new Blob(morceaux).arrayBuffer());
+          const r=new Uint8Array(await invoke('gzip',entree,{headers:entetes}));
+          if(r.length)sortie.enqueue(r);
+        }
+      });
+      this.readable=t.readable;this.writable=t.writable;
+    }
+  };
+  if(/^Mac/.test(navigator.platform)||typeof CompressionStream==='undefined'||typeof DecompressionStream==='undefined'){
+    window.CompressionStream=fluxGzip(window.CompressionStream,{});
+    window.DecompressionStream=fluxGzip(window.DecompressionStream,{'x-decompresser':'1'});
+  }
+
   // Pas de méthode propre à l'objet : un lien doit pouvoir se ranger dans IndexedDB (fichiers récents).
   class Lien{
     constructor(kind,chemin){this.__pont=1;this.kind=kind;this.chemin=chemin;this.name=nomDe(chemin);}

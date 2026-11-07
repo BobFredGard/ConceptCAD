@@ -29,7 +29,7 @@ jobs:
           key: lfs-${{ hashFiles('.lfs-ids') }}
           restore-keys: lfs-
       - name: Récupérer les noyaux et une pièce d'essai
-        run: git lfs pull --include "occt/**,Exemples/Cache Piles.conceptcad"
+        run: git lfs pull --include "occt/**,Exemples/Cache Piles.conceptcad,Exemples/Griffe.conceptcad"
       - uses: actions/setup-node@v4
         with:
           node-version: 22
@@ -69,6 +69,11 @@ jobs:
           sleep 45
           pgrep -x ConceptCAD
           screencapture -x captures/2-fichier-ouvert.png || true
+          sw_vers
+          open "Exemples/Griffe.conceptcad"
+          sleep 45
+          pgrep -x ConceptCAD
+          screencapture -x captures/3-autre-fichier-compresse.png || true
           ls ~/Library/Logs/DiagnosticReports/ || true
       - uses: actions/upload-artifact@v4
         with:
