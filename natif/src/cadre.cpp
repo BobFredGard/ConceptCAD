@@ -187,6 +187,7 @@ Cadre::Cadre() : wxFrame(nullptr, wxID_ANY, L"ConceptCAD natif"), asmAnim_(this)
   rangAsm_ = new wxBoxSizer(wxVERTICAL);
   carteDroite_->contenu()->Add(rangAsm_, 0, wxEXPAND | wxTOP, FromDIP(6));
   carteDroite_->contenu()->Show(rangAsm_, false);
+  dynCreer();
   auto* colonne = new wxBoxSizer(wxVERTICAL);
   colonne->Add(scene_, 1, wxEXPAND);
   colonne->Add(vueEsquisse_, 1, wxEXPAND);
@@ -290,7 +291,10 @@ Cadre::Cadre() : wxFrame(nullptr, wxID_ANY, L"ConceptCAD natif"), asmAnim_(this)
     P.push_back(cle);
     asmMenuOccurrence(P, cle, true);
   };
-  vue_->surGeste = [this](int phase, const std::string& sorte, int axe, const std::string& degre, double valeur, bool libre) { asmGeste(phase, sorte, axe, degre, valeur, libre); };
+  vue_->surGeste = [this](int phase, const std::string& sorte, int axe, const std::string& degre, double valeur, bool libre) {
+    if (dynPosee_) return dynGeste(phase, valeur, libre);
+    asmGeste(phase, sorte, axe, degre, valeur, libre);
+  };
   vue_->surMarque = [this](int i) { asmAlignClicMarque(i); };
   vue_->surRayon = [this](const gp_Pnt& o, const gp_Dir& d) { return asmNormRayon(o, d); };
   vue_->surMesure = [this](const Vue3D::CoupVue* c, bool ctrl, bool maj) { mesureCoup(c, ctrl, maj); };
@@ -348,6 +352,7 @@ Cadre::Cadre() : wxFrame(nullptr, wxID_ANY, L"ConceptCAD natif"), asmAnim_(this)
       }
       etat(L"Choix dans la vue annulé.");
     } else if (enChoix() && e.GetKeyCode() == WXK_ESCAPE) quitterConge();
+    else if (e.GetKeyCode() == WXK_ESCAPE && dynEchap()) return;
     else if (e.GetKeyCode() == WXK_ESCAPE && esquisseOuverte_ < 0 && asmEchap()) return;
     else if (e.GetKeyCode() == WXK_DELETE && asmMode_ == "asm" && !asmSel_.empty() && esquisseOuverte_ < 0 && (FindFocus() == vue_ || FindFocus() == arbre_)) asmSupprimer(asmLot());
     else if (faces_ && (e.GetKeyCode() == WXK_RETURN || e.GetKeyCode() == WXK_NUMPAD_ENTER) && FindFocus() == vue_) appliquerChoixFaces();
@@ -391,6 +396,7 @@ Cadre::Cadre() : wxFrame(nullptr, wxID_ANY, L"ConceptCAD natif"), asmAnim_(this)
   Bind(wxEVT_TIMER, &Cadre::pasProtocole, this, minuterie_.GetId());
   Bind(wxEVT_IDLE, [this](wxIdleEvent& e) {
     barreHaute_->etats(atelier_ == Atelier::FAO || !annulations_.empty(), atelier_ == Atelier::FAO || !retablissements_.empty(), docOuvert_ && doc_.modifie(), docOuvert_);
+    dynTick();
     ajusterDroite();
     majZones();
     e.Skip();
@@ -1059,7 +1065,7 @@ void Cadre::ajusterDroite() {
   int h = 34 + 12;
   if (rangs) h += rangs * ToDIP(props_->GetRowHeight()) + 4;
   if (note) h += ToDIP(noteDroite_->GetBestSize().y) + 6;
-  if (rendu || enChoix()) h += 42;
+  if (rendu || enChoix() || rangDynMontre_) h += 42;
   if (asmPanneau) h += hauteurBoutonsAsm_ + 6;
   if (surPlan) h = 100000;
   h = std::min(h, ToDIP(centre_->GetClientSize().y) - 90);
@@ -2045,7 +2051,14 @@ void Cadre::remplirPiece(const wxTreeItemId& racine) {
   arbre_->Expand(esquisses);
 }
 
+void Cadre::selectionVide() {
+  const wxTreeItemId l = arbre_->GetSelection();
+  if (l.IsOk()) arbre_->Unselect();
+  montrerRien();
+}
+
 void Cadre::montrerRien() {
+  dynSel_.clear();
   if ((asmMode_ == "asm" || asmInspect_) && doc_.assemblage && esquisseOuverte_ < 0) return montrerAssemblage();
   if (!boutonsAsm_.empty()) poserBoutonsPanneau({});
   fonctionMontree_ = -1;
@@ -2064,6 +2077,7 @@ void Cadre::montrerManques() {
 }
 
 void Cadre::montrerFonction(int i) {
+  dynSelection(i);
   const Fonction& f = doc_.fonctions[i];
   props_->Clear();
   props_->CenterSplitter();
@@ -2124,12 +2138,13 @@ void Cadre::montrerFonction(int i) {
     wxPGChoices operations, etendues, directions;
     operations.Add(L"Plot : ajoute de la matière", 0);
     operations.Add(L"Poche : retire de la matière", 1);
+    operations.Add(L"Nouveau corps : solide séparé", 2);
     etendues.Add(L"Distance", 0);
     etendues.Add(L"À travers tout", 1);
     etendues.Add(L"Jusqu'à la face", 2);
     directions.Add(L"Un côté", 0);
     directions.Add(L"Symétrique", 1);
-    props_->Append(new wxEnumProperty(L"Opération", PROP_OPERATION, operations, f.op == "cut" ? 1 : 0));
+    props_->Append(new wxEnumProperty(L"Opération", PROP_OPERATION, operations, f.corpsPropre ? 2 : f.op == "cut" ? 1 : 0));
     props_->Append(new wxEnumProperty(L"Étendue", PROP_ETENDUE, etendues, f.upto ? 2 : f.through ? 1 : 0));
     if (f.upto) {
       lectureSeule(props_, L"Face cible", f.uptoFace ? wxString::Format(L"🎯 face choisie — %g mm", std::abs(f.distance)) : wxString(L"🎯 cliquez une face dans la vue"));
@@ -2138,6 +2153,7 @@ void Cadre::montrerFonction(int i) {
     } else if (!f.through) props_->Append(new wxStringProperty(f.mid ? L"Profondeur totale (mm)" : L"Profondeur (mm)", PROP_PROFONDEUR, wxString::Format("%.10g", std::abs(f.distance))));
     props_->Append(new wxEnumProperty(L"Direction", PROP_DIRECTION, directions, f.mid ? 1 : 0));
     props_->SetPropertyAttribute(props_->Append(new wxBoolProperty(L"Inverser le sens", PROP_INVERSER, f.flip)), wxPG_BOOL_USE_CHECKBOX, true);
+    props_->Append(new wxStringProperty(L"Dépouille (°)", L"depouille", wxString::Format("%.10g", f.draft)));
     fonctionMontree_ = i;
   } else if (f.through) {
     lectureSeule(props_, L"Profondeur", L"À travers tout");
@@ -2148,6 +2164,7 @@ void Cadre::montrerFonction(int i) {
 }
 
 void Cadre::montrerEsquisse(int i) {
+  dynSel_.clear();
   const Esquisse& s = doc_.esquisses[i];
   fonctionMontree_ = -1;
   props_->Clear();
@@ -2926,8 +2943,6 @@ void Cadre::extruder() {
   majTitre();
   recalculer();
   choisirFonction(static_cast<int>(doc_.fonctions.size()) - 1);
-  etat(etatVue_->texte() + L"  |  Réglez la profondeur dans Paramètres. Ctrl+Z : annuler.");
-  props_->SelectProperty(PROP_PROFONDEUR, true);
 }
 
 void Cadre::choisirFonction(int i) {
@@ -2966,13 +2981,12 @@ void Cadre::modifierFonction(int i, const std::function<void(Fonction&)>& reglag
   m.fonctionsAvant = doc_.fonctions;
   Fonction& f = doc_.fonctions[i];
   if (solideCalculable_) nommerProjections(doc_);
-  const bool nomAuto = f.nom == nomExtrusion(doc_, f);  // un nom donné par l'utilisateur reste
   reglage(f);
-  if (nomAuto) f.nom = nomExtrusion(doc_, f);
   if (memesReglages(f, m.fonctionsAvant[i])) {
     montrerFonction(i);
     return;
   }
+  f.nom = nomExtrusion(doc_, f);  // extDynSet : le nom suit toujours les réglages
   annulations_.push_back(std::move(m));
   retablissements_.clear();
   if (lignesFonctions_[i].IsOk()) arbre_->SetItemText(lignesFonctions_[i], libelleArbre(f));
@@ -2994,13 +3008,20 @@ void Cadre::poserPas(const std::vector<Esquisse>& esquisses, bool avecFonctions,
   if (avecFonctions) doc_.fonctions = fonctions;
   poserEsquisses(esquisses);
   if (!avecFonctions) return;
+  const std::string garde = dynSel_;
+  dynOccupe_++;
   remplirArbre();
   montrerRien();
   choisirFonction(montree);
+  if (dynSel_.empty() && !garde.empty())  // la fenêtre dynamique reste ouverte tant que la fonction existe
+    for (size_t k = 0; k < doc_.fonctions.size(); k++)
+      if (doc_.fonctions[k].id == garde) choisirFonction(static_cast<int>(k));
+  dynOccupe_--;
 }
 
 void Cadre::annuler() {
   if (atelier_ == Atelier::FAO) return faoTouche("z", true, false);
+  const std::string gardeDyn = dynSel_;
   if (enChoix()) return quitterConge();
   if (vueEsquisse_->enSaisie()) return vueEsquisse_->annulerSaisie();
   if (vueEsquisse_->abandonnerTrace()) return;
@@ -3012,7 +3033,9 @@ void Cadre::annuler() {
     m.docApres = std::make_shared<Document>(doc_);
     retablissements_.push_back(m);
     if (m.planSeul) return reprendrePlan(m.docAvant);
-    return poserDocument(m.docAvant);
+    poserDocument(m.docAvant);
+    dynRetrouver(gardeDyn);
+    return;
   }
   // Créée puis enregistrée : elle sort du fichier par le même chemin que Supprimer
   if ((annulations_.back().creation && annulations_.back().esquissesAvant.size() < doc_.esquissesFichier.size()) ||
@@ -3030,8 +3053,11 @@ void Cadre::annuler() {
   poserPas(m.esquissesAvant, m.avecFonctions, m.fonctionsAvant);
   if (m.avecFormules && miniParams_->IsShown()) miniParams_->rafraichir();
   if (esquisseOuverte_ < 0 && !doc_.sourcesRepetees.empty()) {
+    dynOccupe_++;
     suivreCopies();
     recalculer();
+    dynOccupe_--;
+    dynRetrouver(gardeDyn);
   }
 }
 
@@ -3062,13 +3088,18 @@ void Cadre::annulerDejaEnregistre() {
 
 void Cadre::retablir() {
   if (atelier_ == Atelier::FAO) return faoTouche("y", true, false);
+  const std::string gardeDyn = dynSel_;
   if (retablissements_.empty()) return;
   if (retablissements_.back().docApres && esquisseOuverte_ >= 0) return etat(L"Quittez l'esquisse pour rétablir ce changement de la pièce.");
   const ModifCote m = retablissements_.back();
   retablissements_.pop_back();
   annulations_.push_back(m);
   if (m.planSeul) return reprendrePlan(m.docApres);
-  if (m.docApres) return poserDocument(m.docApres);
+  if (m.docApres) {
+    poserDocument(m.docApres);
+    dynRetrouver(gardeDyn);
+    return;
+  }
   if (m.avecFormules) {
     doc_.params = m.paramsApres;
     doc_.porteurs = m.porteursApres;
@@ -3076,8 +3107,11 @@ void Cadre::retablir() {
   poserPas(m.esquissesApres, m.avecFonctions, m.fonctionsApres);
   if (m.avecFormules && miniParams_->IsShown()) miniParams_->rafraichir();
   if (esquisseOuverte_ < 0 && !doc_.sourcesRepetees.empty()) {
+    dynOccupe_++;
     suivreCopies();
     recalculer();
+    dynOccupe_--;
+    dynRetrouver(gardeDyn);
   }
 }
 
@@ -3114,6 +3148,7 @@ void Cadre::bougerMarqueur(int bouton) {
 }
 
 void Cadre::apresStructure() {
+  dynOccupe_++;  // la sélection revient juste après : la session continue
   solideCalculable_ = doc_.nonPrisEnCharge.empty();
   if (indiceMarque() < 0) marqueTemps_.clear();
   remplirArbre();
@@ -3125,6 +3160,7 @@ void Cadre::apresStructure() {
     vue_->afficher(TopoDS_Shape(), false);
     montrerManques();
   }
+  dynOccupe_--;
 }
 
 // Un enregistrement a pu avoir lieu depuis : ce document n'est plus celui du disque, il reste à enregistrer
@@ -3865,8 +3901,19 @@ void Cadre::surPropriete(wxPropertyGridEvent& e) {
       return;
     }
     reglage = [v](Fonction& f) { reglerProfondeur(f, v); };
+  } else if (nom == L"depouille") {
+    const std::string idF = doc_.fonctions[fonction].id;
+    const wxString t = e.GetValue().GetString();
+    CallAfter([this, idF, t] { dynDepouille(idF, t); });
+    return;
   } else if (nom == PROP_OPERATION) {
-    const std::string op = e.GetValue().GetLong() == 1 ? "cut" : "add";
+    const long k = e.GetValue().GetLong();
+    const std::string op = k == 2 ? "new" : k == 1 ? "cut" : "add";
+    if (op == "new" || doc_.fonctions[fonction].corpsPropre) {
+      const std::string idF = doc_.fonctions[fonction].id;
+      CallAfter([this, idF, op] { dynOperation(idF, op); });
+      return;
+    }
     reglage = [op](Fonction& f) { reglerOperation(f, op); };
   } else if (nom == PROP_ETENDUE) {
     const long k = e.GetValue().GetLong();
@@ -4415,6 +4462,7 @@ bool Cadre::essaiEsquisse(const std::wstring& fichier, int rang, const std::wstr
             n["champs"].push_back(x);
           }
     }
+    if (e.contains("dyn")) dynEssai(e["dyn"], n);
     if (e.contains("aide")) {
       wxDialog* f = creerAide(this);
       f->Show();

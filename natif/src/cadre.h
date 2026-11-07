@@ -1,6 +1,7 @@
 // Fenêtre principale : l'environnement du navigateur autour de la vue 3D et de l'écran d'esquisse.
 #pragma once
 #include <array>
+#include <set>
 #include <map>
 #include <memory>
 #include <nlohmann/json.hpp>
@@ -393,6 +394,51 @@ public:
   void asmPasAnimation();
   void asmGizmo();
   void asmGeste(int phase, const std::string& sorte, int axe, const std::string& degre, double valeur, bool libre);
+  // La fenêtre dynamique : flèche ou anneau dans la vue, champ flottant, OK / Annuler / Échap
+  struct SessionDyn {
+    std::string id;
+    bool neuf = false;
+    std::shared_ptr<Document> snap;
+    size_t annul = 0;
+  };
+  struct PoigneeDyn {
+    bool actif = false, rot = false, extrusion = false, toutesAretes = false;
+    gp_Pnt C, P;
+    gp_Vec n{0, 0, 1}, A{0, 0, 1};
+    double val = 0, fin = 0, step = 1, mini = 0, maxi = 0;
+    wxString label, unite;
+    std::string cle;
+  };
+  void dynCreer();
+  void dynSelection(int i);
+  void dynCalculer();
+  void dynTick();
+  void dynGeste(int phase, double v, bool libre);
+  void dynAppliquerGeste();
+  void dynPoser(double valeur);
+  void dynSaisie(const wxString& texte);
+  void dynFermer();
+  void dynRetrouver(const std::string& id);
+  void dynOk();
+  void dynAnnuler();
+  bool dynEchap();
+  void dynOperation(const std::string& id, const std::string& op);
+  void dynDepouille(const std::string& id, const wxString& texte);
+  void dynEssai(const nlohmann::json& e, nlohmann::json& n);
+  void selectionVide();
+  std::optional<SessionDyn> dyn_;
+  std::string dynSel_;
+  std::set<std::string> dynVus_;
+  PoigneeDyn dynP_;
+  bool dynPCalculee_ = false, dynPosee_ = false, dynAttente_ = false, dynLibre_ = false, dynGesteEnCours_ = false, dynFinGeste_ = false, rangDynMontre_ = false;
+  int dynOccupe_ = 0;
+  size_t dynBase_ = 0;
+  double dynV0_ = 0, dynV_ = 0, dynSens_ = 1;
+  wxBoxSizer* rangDyn_ = nullptr;
+  wxPanel* champDyn_ = nullptr;
+  wxStaticText* champDynNom_ = nullptr;
+  wxStaticText* champDynUnite_ = nullptr;
+  wxTextCtrl* champDynTexte_ = nullptr;
   std::vector<RepereCandidat> asmReperesSous(const std::string& cid, const std::string& saufOcc);
   void asmAlignDebut(const std::string& id);
   void asmAlignRafraichir();

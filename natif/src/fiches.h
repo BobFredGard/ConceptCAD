@@ -31,6 +31,7 @@ std::string ficheAppliquer(nlohmann::ordered_json& d, const std::string& id, con
 std::string creerCombiner(nlohmann::ordered_json& d, int marque);
 std::string ajouterFonction(nlohmann::ordered_json& d, nlohmann::ordered_json f, const char* prefixe, int marque);
 std::string nomAutoFonction(const nlohmann::ordered_json& d, const nlohmann::ordered_json& f);
+std::string piloteAlesage(const nlohmann::ordered_json& f);  // holeReamPilot
 std::string corpsNeufScission(nlohmann::ordered_json& d, const std::string& source);  // splitNewBodyFor
 std::string creerRevolution(nlohmann::ordered_json& d, const std::string& esquisse, int marque);
 std::string creerBalayage(nlohmann::ordered_json& d, const std::string& profil, const std::string& chemin, int marque);

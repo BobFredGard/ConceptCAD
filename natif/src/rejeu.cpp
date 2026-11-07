@@ -540,20 +540,43 @@ double volumeDe(const TopoDS_Shape& s) {
 }
 
 // occDraftOnce : l'angle autour du plan neutre. Lève une exception si le moteur refuse.
+// Certaines formes (plusieurs solides d'un coup) font tomber le moteur de dépouille : dans le navigateur, c'est une erreur rattrapée
+static int appelProtege(void (*f)(void*), void* a) {
+  __try {
+    f(a);
+    return 0;
+  } __except (1) {  // EXCEPTION_EXECUTE_HANDLER
+    return 1;
+  }
+}
+
 TopoDS_Shape depouilleUneFois(const TopoDS_Shape& solide, const gp_Pnt& P, const gp_Dir& dir, const std::vector<TopoDS_Face>& faces, double angle, int* refusees) {
   const gp_Pln pln(P, dir);
   BRepOffsetAPI_DraftAngle da(solide);
   int ok = 0;
   for (const TopoDS_Face& f : faces) {
-    try {
-      da.Add(f, dir, angle, pln, false);
-      ok++;
-    } catch (const Standard_Failure&) {
-      if (refusees) (*refusees)++;
-    }
+    struct Ajout {
+      BRepOffsetAPI_DraftAngle& da;
+      const TopoDS_Face& f;
+      const gp_Dir& dir;
+      double angle;
+      const gp_Pln& pln;
+      bool ok;
+    } ajout{da, f, dir, angle, pln, false};
+    const auto ajouter = [](void* p) {
+      auto* q = static_cast<Ajout*>(p);
+      try {
+        q->da.Add(q->f, q->dir, q->angle, q->pln, false);
+        q->ok = true;
+      } catch (const Standard_Failure&) {
+      }
+    };
+    if (appelProtege(ajouter, &ajout) == 0 && ajout.ok) ok++;
+    else if (refusees) (*refusees)++;
   }
   if (!ok) throw std::runtime_error(faces.empty() ? "aucune face à dépouiller" : "aucune face ne touche le plan neutre");
-  da.Build();
+  const auto construire = [](void* a) { static_cast<BRepOffsetAPI_DraftAngle*>(a)->Build(); };
+  if (appelProtege(construire, &da)) throw std::runtime_error("dépouille refusée par le moteur");
   if (!da.IsDone()) throw std::runtime_error("dépouille refusée par le moteur");
   const TopoDS_Shape r = da.Shape();
   if (r.IsNull()) throw std::runtime_error("solide dépouillé vide");
@@ -1701,7 +1724,7 @@ std::string nomExtrusion(const Document& d, const Fonction& f) {
       break;
     }
   const std::string base = (f.op == "cut" ? "Découpe " : "Extrusion ") + nom;
-  const std::string suite = f.flip ? " ⇄" : "";
+  const std::string suite = std::string(f.flip ? " ⇄" : "") + (f.draft != 0 ? " ∠" + nombreNom(f.draft) + "°" : "");
   if (f.upto && !f.uptoEx.empty()) {
     if (f.uptoFace) return base + " → face" + suite;
     const Fonction* t = d.fonction(f.uptoEx);

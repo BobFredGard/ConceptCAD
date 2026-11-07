@@ -1549,6 +1549,8 @@ void Cadre::asmPasAnimation() {
 
 // ---- Le manipulateur (asmGizmoSpec, asmGizmoDown, asmGizmoMove) ----
 void Cadre::asmGizmo() {
+  if (asmMode_ == "asm") dynPosee_ = false;
+  else if (dynPosee_) return;
   Vue3D::Gizmo G;
   if (doc_.assemblage && asmMode_ == "asm" && !asmAlign_ && asmLot().size() == 1) {
     const J* o = as::occurrence(*doc_.assemblage, asmSel_);

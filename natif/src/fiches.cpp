@@ -1414,6 +1414,7 @@ std::string corpsVise(json& d, const std::string& voulu, const char* action) {
 
 std::string ajouterFonction(json& d, json f, const char* prefixe, int marque) { return ajouter(d, std::move(f), prefixe, marque); }
 std::string nomAutoFonction(const json& d, const json& f) { return nomAuto(d, f); }
+std::string piloteAlesage(const json& f) { return casAlesage(f); }
 std::string corpsNeufScission(json& d, const std::string& source) {
   const int n = d.contains("bodySeq") && d["bodySeq"].is_number() ? d["bodySeq"].get<int>() : 1;
   d["bodySeq"] = n + 1;

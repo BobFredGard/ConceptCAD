@@ -172,6 +172,11 @@ class Vue3D : public wxWindow {
     std::string degreFleche[3], degreAnneau[3];
   };
   void poserGizmo(const Gizmo& g);
+  bool gizmoActif() const { return gizmo_.actif; }
+  bool gizmoEnMain() const { return gizmoSaisi_ >= 0; }
+  void deplacerGizmo(const std::array<double, 3>& o, const std::array<double, 3>& axe);  // la poignée suit pendant le geste
+  wxPoint pointeGizmo() const;                                                           // la pointe de la flèche ou de l'anneau, à l'écran
+  bool essaiTirer(const wxPoint& a, const wxPoint& b, bool libre);                       // pour les essais : un vrai geste, du pixel a au pixel b
   std::function<void(int phase, const std::string& sorte, int axe, const std::string& degre, double valeur, bool libre)> surGeste;
   // Les marques de la commande Aligner : triades et points, cliquables
   struct Marque {
@@ -305,7 +310,7 @@ class Vue3D : public wxWindow {
   std::vector<std::pair<TopoDS_Shape, unsigned>> teintesPiece_;
   TopoDS_Shape formePiece_;
   std::vector<occ::handle<AIS_Shape>> gizmoAis_, inspectionAis_;
-  Gizmo gizmo_;
+  Gizmo gizmo_, gizmoTenu_;  // gizmoTenu_ : tel qu'à la saisie, la référence du geste
   int gizmoSaisi_ = -1;  // 0..2 : flèche ; 3..5 : anneau
   bool gizmoBouge_ = false;
   double gizmoT0_ = 0;

@@ -10,6 +10,7 @@ void stBasculerVisible(nlohmann::ordered_json& d, const char* liste, const std::
 void stBasculerVueCorps(nlohmann::ordered_json& d, const std::string& id);  // doc.bodyVis : la vue seule
 void stCorpsMasques(nlohmann::ordered_json& d, const std::vector<std::string>& ids);  // Isoler, Tout afficher
 void stNouveauCorps(nlohmann::ordered_json& d);  // newBody : vide et actif
+std::string stCorpsSupplementaire(nlohmann::ordered_json& d);
 // Une pièce importée, dans le corps actif (addFeature), avant le marqueur s'il y en a un. Rend son identifiant.
 std::string stImporter(nlohmann::ordered_json& d, const std::string& nom, const std::string& fmt, const std::string& cle, size_t taille, const std::string& fichier, int indiceMarque);
 void stCorpsActif(nlohmann::ordered_json& d, const std::string& id);

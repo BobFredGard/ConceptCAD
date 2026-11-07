@@ -620,6 +620,7 @@ void Vue3D::ajuster() {
   vue_->FitAll(MARGE_VUE, false);
   majReflets();
   vue_->ZFitAll();
+  majTailles();
   vue_->Redraw();
 }
 
@@ -1971,6 +1972,7 @@ bool Vue3D::saisirGizmo(const wxPoint& p, wxMouseEvent& e) {
   if (best < 0) return false;
   (void)e;
   gizmoSaisi_ = best;
+  gizmoTenu_ = gizmo_;
   gp_Pnt ro;
   gp_Dir rd;
   rayon(p.x, p.y, ro, rd);
@@ -1989,27 +1991,54 @@ bool Vue3D::saisirGizmo(const wxPoint& p, wxMouseEvent& e) {
   return true;
 }
 
-void Vue3D::bougerGizmo(const wxPoint& p, bool libre) {
+void Vue3D::deplacerGizmo(const std::array<double, 3>& o, const std::array<double, 3>& axe) {
+  if (!gizmo_.actif) return;
+  gizmo_.o = o;
+  gizmo_.ax[2] = axe;
+  majTailles();
+  vue_->Redraw();
+  Refresh();
+}
+
+wxPoint Vue3D::pointeGizmo() const {
+  if (!gizmo_.actif) return wxPoint(-100000, -100000);
   const gp_Pnt O(gizmo_.o[0], gizmo_.o[1], gizmo_.o[2]);
+  const double s = echelleEn(O) * FromDIP(TAILLE_GIZMO);
+  const gp_Dir z(gizmo_.ax[2][0], gizmo_.ax[2][1], gizmo_.ax[2][2]);
+  if (gizmo_.anneau[2]) return ecranDe(O.Translated(gp_Vec(gp_Ax3(O, z).XDirection()) * (0.62 * s)));
+  return ecranDe(O.Translated(gp_Vec(z) * s));
+}
+
+bool Vue3D::essaiTirer(const wxPoint& a, const wxPoint& b, bool libre) {
+  wxMouseEvent e(wxEVT_LEFT_DOWN);
+  if (!saisirGizmo(a, e)) return false;
+  bougerGizmo(b, libre);
+  gizmoSaisi_ = -1;
+  if (surGeste) surGeste(2, "", 0, "", 0, false);
+  return true;
+}
+
+void Vue3D::bougerGizmo(const wxPoint& p, bool libre) {
+  const gp_Pnt O(gizmoTenu_.o[0], gizmoTenu_.o[1], gizmoTenu_.o[2]);
   gp_Pnt ro;
   gp_Dir rd;
   rayon(p.x, p.y, ro, rd);
   const int i = gizmoSaisi_ % 3;
-  const gp_Vec a(gizmo_.ax[i][0], gizmo_.ax[i][1], gizmo_.ax[i][2]);
+  const gp_Vec a(gizmoTenu_.ax[i][0], gizmoTenu_.ax[i][1], gizmoTenu_.ax[i][2]);
   double v;
   if (gizmoSaisi_ < 3) {
     const gp_Vec w(O, ro);
     const double b = a.Dot(gp_Vec(rd)), d = a.Dot(w), ee = gp_Vec(rd).Dot(w), den = 1 - b * b;
     if (std::abs(den) < 1e-9) return;
     v = (d - b * ee) / den - gizmoT0_;
-    if (surGeste) surGeste(1, "move", i, gizmo_.degreFleche[i], v, libre);
+    if (surGeste) surGeste(1, "move", i, gizmoTenu_.degreFleche[i], v, libre);
   } else {
     const double den = a.Dot(gp_Vec(rd));
     if (std::abs(den) < 1e-9) return;
     const double t = a.Dot(gp_Vec(ro, O)) / den;
     const gp_Vec q(O, ro.Translated(gp_Vec(rd) * t));
     v = std::atan2(a.Dot(gizmoP0_.Crossed(q)), gizmoP0_.Dot(q)) * 180 / 3.14159265358979;
-    if (surGeste) surGeste(1, "rot", i, gizmo_.degreAnneau[i], v, libre);
+    if (surGeste) surGeste(1, "rot", i, gizmoTenu_.degreAnneau[i], v, libre);
   }
 }
 

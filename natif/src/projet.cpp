@@ -509,6 +509,7 @@ static void lireFonction(const json& jf, Document& d, std::map<std::string, int>
       }
   if (f.type == "extrude") {
     if (auto a = jf.find("draft"); a != jf.end() && a->is_number()) f.draft = a->get<double>();
+    if (auto a = jf.find("newBody"); a != jf.end() && a->is_boolean()) f.corpsPropre = a->get<bool>();
     f.upto = vrai(jf, "upto");
     if (auto u = jf.find("upto"); u != jf.end() && u->is_object()) {
       f.uptoEx = texte(*u, "ex");

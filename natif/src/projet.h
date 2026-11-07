@@ -178,6 +178,7 @@ struct Fonction {
   RefFace refFace;
   std::vector<RefFace> facesVisees;
   double angleDepouille = 0, draft = 0;
+  bool corpsPropre = false;  // extrusion : newBody, « Nouveau corps »
   double epaisseur = 0;  // xshell
   double dist = 0;       // xmove
   bool facesTangentes = false;  // xmove

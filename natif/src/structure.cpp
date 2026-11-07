@@ -106,6 +106,17 @@ void stNouveauCorps(json& d) {
   d["activeBody"] = id;
 }
 
+// extNewBody : l'entrée d'un nouveau corps, le corps actif reste inchangé
+std::string stCorpsSupplementaire(json& d) {
+  json& B = liste(d, "bodies");
+  int n = d.contains("bodySeq") && d["bodySeq"].is_number() ? d["bodySeq"].get<int>() : 1;
+  while (parId(B, "b" + std::to_string(n))) n++;
+  d["bodySeq"] = n + 1;
+  const std::string id = "b" + std::to_string(n);
+  B.push_back({{"id", id}, {"name", "Corps " + std::to_string(n)}, {"c", nullptr}});
+  return id;
+}
+
 std::string stImporter(json& d, const std::string& nom, const std::string& fmt, const std::string& cle, size_t taille, const std::string& fichier, int indiceMarque) {
   json& F = liste(d, "features");
   std::string fid;
