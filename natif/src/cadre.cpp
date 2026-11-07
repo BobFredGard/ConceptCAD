@@ -362,9 +362,11 @@ Cadre::Cadre() : wxFrame(nullptr, wxID_ANY, L"ConceptCAD natif"), asmAnim_(this)
     } else if (enChoix() && e.GetKeyCode() == WXK_ESCAPE) quitterConge();
     else if (e.GetKeyCode() == WXK_ESCAPE && dynEchap()) return;
     else if (e.GetKeyCode() == WXK_ESCAPE && esquisseOuverte_ < 0 && asmEchap()) return;
+    else if (e.GetKeyCode() == WXK_ESCAPE && esquisseOuverte_ < 0 && lotVider()) return;
     else if (e.GetKeyCode() == WXK_DELETE && asmMode_ == "asm" && !asmSel_.empty() && esquisseOuverte_ < 0 && (FindFocus() == vue_ || FindFocus() == arbre_)) asmSupprimer(asmLot());
     else if (faces_ && (e.GetKeyCode() == WXK_RETURN || e.GetKeyCode() == WXK_NUMPAD_ENTER) && FindFocus() == vue_) appliquerChoixFaces();
     else if (e.GetKeyCode() == WXK_DELETE && FindFocus() == vue_ && supprimerFacesChoisies()) return;
+    else if (e.GetKeyCode() == WXK_DELETE && esquisseOuverte_ < 0 && !enChoix() && (FindFocus() == arbre_ || (FindFocus() == vue_ && !lotArbre_.empty())) && lotSupprimer()) return;
     else e.Skip();
   });
 
@@ -620,7 +622,11 @@ void Cadre::creerEnvironnement() {
     } else if (e.i < static_cast<int>(lignesEsquisses_.size()) && lignesEsquisses_[e.i].IsOk()) arbre_->SelectItem(lignesEsquisses_[e.i]);
   };
   fil_->surDouble = [this](const FilFonctions::Element& e) {
-    if (!e.estFonction && e.cg.empty()) entrerEsquisse(e.i);
+    // tlbDbl : chaque ligne s'ouvre comme dans l'arbre
+    if (esquisseOuverte_ >= 0 || enChoix()) return;
+    if (!e.cg.empty()) choisirConstruction(e.cg);
+    else if (!e.estFonction) entrerEsquisse(e.i);
+    else if (e.i >= 0 && e.i < static_cast<int>(doc_.fonctions.size()) && fonctionDeFaces(doc_.fonctions[e.i])) entrerFaces(sorteDeFaces(doc_.fonctions[e.i]), doc_.fonctions[e.i].id);
   };
   fil_->surDroit = [this](const FilFonctions::Element& e) {
     if (esquisseOuverte_ >= 0 || enChoix()) return;
@@ -1899,6 +1905,7 @@ void Cadre::remplirArbre() {
   if (!filtreArbre_.empty()) filtrerArbre(racineArbre);
   asmSansEvenement_ = false;
   arbre_->Thaw();
+  { auto& L = lotArbre_; L.erase(std::remove_if(L.begin(), L.end(), [&](const std::string& id) { return !lignesConstruction_.count(id) && std::none_of(doc_.fonctions.begin(), doc_.fonctions.end(), [&](const auto& f) { return f.id == id; }) && std::none_of(doc_.esquisses.begin(), doc_.esquisses.end(), [&](const auto& s) { return s.id == id; }); }), L.end()); if (!L.empty()) lotMontrer(); }
   remplirFil();
 }
 
@@ -3835,6 +3842,7 @@ void Cadre::surArbre(wxTreeEvent& e) {
   if (enChoix()) return;  // le panneau reste celui du congé en cours
   const auto* lien = dynamic_cast<LienArbre*>(arbre_->GetItemData(e.GetItem()));
   if (asmSansEvenement_ || asmSurArbre(lien)) return;
+  if (!pioche_ && lotClic(lien, wxGetKeyState(WXK_CONTROL), wxGetKeyState(WXK_SHIFT))) return;
   if (pioche_ && !refAttendue_.empty() && lien && (!lien->plan.empty() || !lien->cg.empty()) && lien->cg != refAttendue_) {  // cgTreePick
     const std::string id = refAttendue_, cle = "r/" + std::to_string(rangAttendu_), val = lien->cg.empty() ? "o:" + lien->plan : "cg:" + lien->cg;
     CallAfter([this, id, cle, val] { reglerConstruction(id, cle, val); });
@@ -3848,6 +3856,111 @@ void Cadre::surArbre(wxTreeEvent& e) {
   if (!lien || lien->i < 0) return montrerRien();
   if (lien->estFonction) montrerFonction(lien->i);
   else montrerEsquisse(lien->i);
+}
+
+std::string Cadre::idDeLigne(const LienArbre* l, std::string* sorte) const {
+  if (!l || l->sorte != LienArbre::PIECE || !l->corps.empty()) return {};
+  const auto dit = [&](const char* s) {
+    if (sorte) *sorte = s;
+  };
+  if (!l->cg.empty()) return dit("cg"), l->cg;
+  if (l->i < 0) return {};
+  if (l->estFonction) return l->i < static_cast<int>(doc_.fonctions.size()) ? (dit("f"), doc_.fonctions[l->i].id) : std::string();
+  return l->i < static_cast<int>(doc_.esquisses.size()) ? (dit("s"), doc_.esquisses[l->i].id) : std::string();
+}
+
+// treeSelClick : vrai si le clic a fait le lot. Le panneau suit la ligne cliquée, comme le navigateur.
+bool Cadre::lotClic(const LienArbre* l, bool ctrl, bool maj) {
+  std::string sorte;
+  const std::string id = idDeLigne(l, &sorte);
+  if (id.empty() || (!ctrl && !maj)) {
+    lotVider();
+    lotAncre_ = lotDernier_ = id;
+    return false;
+  }
+  if (maj) {
+    std::vector<std::string> ord;
+    if (sorte == "f") for (const auto& f : doc_.fonctions) ord.push_back(f.id);
+    if (sorte == "s") for (const auto& s : doc_.esquisses) ord.push_back(s.id);
+    if (sorte == "cg") for (const auto& c : doc_.construction) ord.push_back(c.id);
+    const auto rang = [&](const std::string& x) {
+      const auto k = std::find(ord.begin(), ord.end(), x);
+      return k == ord.end() ? -1 : static_cast<int>(k - ord.begin());
+    };
+    int a = rang(lotAncre_) >= 0 ? rang(lotAncre_) : rang(lotDernier_);
+    const int b = rang(id);
+    if (b < 0) return false;
+    if (a < 0) a = b;
+    if (!ctrl) lotArbre_.clear();
+    for (int k = std::min(a, b); k <= std::max(a, b); k++)
+      if (std::find(lotArbre_.begin(), lotArbre_.end(), ord[k]) == lotArbre_.end()) lotArbre_.push_back(ord[k]);
+  } else {
+    // le clic simple d'avant n'est pas encore dans le lot : il en fait partie
+    if (lotArbre_.empty() && !lotDernier_.empty() && lotDernier_ != id) lotArbre_.push_back(lotDernier_);
+    const auto k = std::find(lotArbre_.begin(), lotArbre_.end(), id);
+    if (k != lotArbre_.end()) lotArbre_.erase(k);
+    else lotArbre_.push_back(id);
+    lotAncre_ = id;
+  }
+  lotDernier_ = id;
+  lotMontrer();
+  etat(lotArbre_.empty() ? wxString(L"Sélection vidée.") : wxString::Format(L"%zu élément(s) sélectionné(s) — Suppr pour supprimer, Échap pour désélectionner.", lotArbre_.size()));
+  return false;  // le panneau de propriétés suit le dernier clic
+}
+
+void Cadre::lotMontrer() {
+  const auto dedans = [&](const std::string& id) { return std::find(lotArbre_.begin(), lotArbre_.end(), id) != lotArbre_.end(); };
+  const auto peindre = [&](const wxTreeItemId& l, const std::string& id) {
+    if (l.IsOk()) arbre_->SetItemBackgroundColour(l, dedans(id) ? th(wxColour(0x0a, 0x4a, 0x8a)) : wxNullColour);
+  };
+  for (size_t i = 0; i < lignesFonctions_.size() && i < doc_.fonctions.size(); i++) peindre(lignesFonctions_[i], doc_.fonctions[i].id);
+  for (size_t i = 0; i < lignesEsquisses_.size() && i < doc_.esquisses.size(); i++) peindre(lignesEsquisses_[i], doc_.esquisses[i].id);
+  for (const auto& [id, l] : lignesConstruction_) peindre(l, id);
+}
+
+bool Cadre::lotVider() {
+  if (lotArbre_.empty()) return false;
+  lotArbre_.clear();
+  lotMontrer();
+  etat(L"Sélection vidée.");
+  return true;
+}
+
+// treeDeleteSel
+bool Cadre::lotSupprimer() {
+  std::vector<std::string> lot = lotArbre_;
+  if (lot.empty()) {
+    const wxTreeItemId ligne = arbre_->GetSelection();
+    const std::string id = ligne.IsOk() ? idDeLigne(dynamic_cast<LienArbre*>(arbre_->GetItemData(ligne))) : std::string();
+    if (id.empty()) return false;
+    lot.push_back(id);
+  }
+  const nlohmann::ordered_json j = documentJson(doc_);
+  const BilanLot b = stBilanLot(j, lot);
+  if (!b.total()) return false;
+  wxString msg;
+  if (b.total() == 1 && b.constructions.size() == 1) msg = tx(questionSuppressionConstruction(doc_, b.constructions[0]));
+  else if (b.total() == 1) msg = L"Supprimer « " + tx(b.noms[0]) + L" » ?";
+  else {
+    wxArrayString p;
+    if (!b.esquisses.empty()) p.Add(wxString::Format(L"%zu esquisse(s)", b.esquisses.size()));
+    if (!b.constructions.empty()) p.Add(wxString::Format(L"%zu élément(s) de construction", b.constructions.size()));
+    if (b.fonctions.size() + b.dependances.size()) p.Add(wxString::Format(L"%zu fonction(s)", b.fonctions.size() + b.dependances.size()));
+    msg = L"Supprimer ";
+    for (size_t k = 0; k < p.size(); k++) msg += (k ? L", " : L"") + p[k];
+    msg += L" ?\n";
+    for (const std::string& n : b.noms) msg += L"\n· " + tx(n);
+  }
+  if (!b.dependances.empty()) msg += wxString::Format(L"\n\n%zu fonction(s) en dépendent : elles seront supprimées aussi.", b.dependances.size());
+  if (b.sansHote) msg += wxString::Format(L"\n%d esquisse(s) sont posées sur ses faces : elles resteront, sans hôte.", b.sansHote);
+  if (!confirmerSuppression(msg)) return true;
+  if (std::find(b.fonctions.begin(), b.fonctions.end(), marqueTemps_) != b.fonctions.end() || std::find(b.dependances.begin(), b.dependances.end(), marqueTemps_) != b.dependances.end()) marqueTemps_.clear();
+  wxString noms;
+  for (const std::string& n : b.noms) noms += (noms.empty() ? L"" : L", ") + tx(n);
+  lotArbre_.clear();
+  lotAncre_.clear(), lotDernier_.clear();
+  changerStructure([&](nlohmann::ordered_json& d) { stSupprimerLot(d, b); }, L"🗑 Supprimé : " + noms + L"  —  Ctrl+Z pour annuler.");
+  return true;
 }
 
 void Cadre::surArbreActive(wxTreeEvent& e) {
@@ -4418,6 +4531,36 @@ bool Cadre::essaiEsquisse(const std::wstring& fichier, int rang, const std::wstr
       }
       majZones();
       n["etat"] = std::string(etatVue_->texte().utf8_str());
+    }
+    if (e.contains("lotClic")) {  // {"lotClic":{"id":"…","ctrl":1,"maj":0}}
+      const auto& q = e["lotClic"];
+      const std::string id = q["id"].get<std::string>();
+      const wxTreeItemId* ligne = nullptr;
+      for (size_t i = 0; i < doc_.fonctions.size() && i < lignesFonctions_.size(); i++) if (doc_.fonctions[i].id == id) ligne = &lignesFonctions_[i];
+      for (size_t i = 0; i < doc_.esquisses.size() && i < lignesEsquisses_.size(); i++) if (doc_.esquisses[i].id == id) ligne = &lignesEsquisses_[i];
+      if (const auto it = lignesConstruction_.find(id); it != lignesConstruction_.end()) ligne = &it->second;
+      if (ligne && ligne->IsOk()) lotClic(dynamic_cast<LienArbre*>(arbre_->GetItemData(*ligne)), q.value("ctrl", 0) != 0, q.value("maj", 0) != 0);
+      n["lot"] = lotArbre_;
+    }
+    if (e.contains("lotSuppr")) {
+      essaiMenu_ = true;
+      const nlohmann::ordered_json j = documentJson(doc_);
+      n["lotAvant"] = lotArbre_;
+      n["lotBilan"] = stBilanLot(j, lotArbre_).noms;
+      n["lotSuppr"] = lotSupprimer();
+      essaiMenu_ = false;
+      n["nFonctions"] = doc_.fonctions.size();
+      n["nEsquisses"] = doc_.esquisses.size();
+    }
+    if (e.contains("lotVider")) n["lotVide"] = lotVider();
+    if (e.contains("filDouble")) {  // {"filDouble":"id"} : ce que ferait le double-clic sur le fil
+      const std::string id = e["filDouble"].get<std::string>();
+      for (const auto& x : std::vector<FilFonctions::Element>(fil_->liste()))
+        if ((x.estFonction && x.i >= 0 && doc_.fonctions[x.i].id == id) || (!x.estFonction && x.cg.empty() && x.i >= 0 && doc_.esquisses[x.i].id == id) || x.cg == id) {
+          fil_->surDouble(x);
+          break;
+        }
+      n["filOuvert"] = {{"esquisse", esquisseOuverte_}, {"choix", enChoix()}, {"faces", static_cast<bool>(faces_)}};
     }
     if (e.contains("ficheLire")) {
       const std::string id = e["ficheLire"].get<std::string>() == "@" ? ficheId_ : e["ficheLire"].get<std::string>();

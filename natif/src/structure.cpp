@@ -159,6 +159,55 @@ void stSupprimerEsquisse(json& d, const std::string& id) {
   filtrer(liste(d, "features"), [&](const json& f) { return str(f, "sketchId") != id; });
 }
 
+BilanLot stBilanLot(const json& d, const std::vector<std::string>& lot) {
+  BilanLot b;
+  const auto a = [](const std::vector<std::string>& L, const std::string& x) { return std::find(L.begin(), L.end(), x) != L.end(); };
+  const auto tableau = [&](const char* k) -> const json& {
+    static const json vide = json::array();
+    return d.contains(k) && d[k].is_array() ? d[k] : vide;
+  };
+  for (const json& s : tableau("sketches"))
+    if (a(lot, str(s, "id"))) b.esquisses.push_back(str(s, "id"));
+  for (const json& c : tableau("cgeo"))
+    if (a(lot, str(c, "id"))) b.constructions.push_back(str(c, "id"));
+  for (const json& f : tableau("features"))
+    if (a(lot, str(f, "id"))) b.fonctions.push_back(str(f, "id"));
+  // une esquisse emporte les fonctions tracées dessus
+  for (const json& f : tableau("features"))
+    if (a(b.esquisses, str(f, "sketchId")) && !a(b.fonctions, str(f, "id"))) b.fonctions.push_back(str(f, "id"));
+  // treeSelDeps : congés et répétitions bâtis sur les fonctions visées
+  std::vector<std::string> vus = b.fonctions;
+  for (int tour = 0; tour < 4; tour++) {
+    bool trouve = false;
+    for (const json& f : tableau("features")) {
+      const std::string id = str(f, "id"), t = str(f, "type");
+      if (a(vus, id)) continue;
+      bool lie = (t == "xfillet" || t == "fillet") && a(vus, str(f, "target"));
+      if (t == "repeat" && f.contains("base") && f["base"].is_array())
+        for (const json& x : f["base"])
+          if (x.is_string() && a(vus, x.get<std::string>())) lie = true;
+      if (lie) vus.push_back(id), b.dependances.push_back(id), trouve = true;
+    }
+    if (!trouve) break;
+  }
+  for (const json& s : tableau("sketches"))
+    if (s.contains("host") && s["host"].is_object() && a(b.fonctions, str(s["host"], "feat")) && !a(b.esquisses, str(s, "id"))) b.sansHote++;
+  const auto nom = [&](const char* k, const std::vector<std::string>& ids) {
+    for (const std::string& id : ids)
+      for (const json& x : tableau(k))
+        if (str(x, "id") == id) b.noms.push_back(str(x, "name").empty() ? id : str(x, "name"));
+  };
+  nom("sketches", b.esquisses), nom("cgeo", b.constructions), nom("features", b.fonctions), nom("features", b.dependances);
+  return b;
+}
+
+void stSupprimerLot(json& d, const BilanLot& b) {
+  for (const std::string& id : b.fonctions) stSupprimerFonction(d, id);
+  for (const std::string& id : b.dependances) stSupprimerFonction(d, id);
+  for (const std::string& id : b.esquisses) stSupprimerEsquisse(d, id);
+  for (const std::string& id : b.constructions) supprimerConstruction(d, id);
+}
+
 void stSupprimerCorps(json& d, const std::string& id) {
   json& F = liste(d, "features");
   // 1) exemplaire d'une répétition « nouveau corps » : retiré de la répétition, qui part s'il n'en reste aucun

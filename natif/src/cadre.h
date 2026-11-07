@@ -269,6 +269,14 @@ public:
   void menuEsquisseArbre(int i);
   // Plans, axes, points, repères (79-construction-interface)
   void menuConstruction(const std::string& id);
+  // treeSel : plusieurs lignes de l'arbre, Ctrl = ajouter ou retirer, Maj = plage ; Suppr, Échap
+  std::vector<std::string> lotArbre_;
+  std::string lotAncre_, lotDernier_;
+  std::string idDeLigne(const LienArbre* l, std::string* sorte = nullptr) const;
+  bool lotClic(const LienArbre* l, bool ctrl, bool maj);
+  void lotMontrer();
+  bool lotVider();
+  bool lotSupprimer();
   void montrerConstruction(const std::string& id);
   void choisirConstruction(const std::string& id);
   void creerConstructionRuban(const std::string& kind);
