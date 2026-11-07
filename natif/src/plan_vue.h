@@ -9,6 +9,7 @@
 #include <map>
 #include <memory>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "plan.h"
@@ -29,6 +30,34 @@ class PlanVue : public wxWindow {
   // Annuler, Rétablir : le plan du document revient, le calcul des vues reste bon
   void reprendre(const std::string& texteDoc);
   const plan::SelectionPlan& selection() const { return sel_; }
+  // Pour le panneau
+  bool planPret() const { return mep_.is_object() && mep_.contains("sheets") && mep_["sheets"].is_array() && !mep_["sheets"].empty(); }
+  plan::J& mep() { return mep_; }
+  plan::J& planche() { return mep_["sheets"][planche_]; }
+  plan::J* vueCourante(const std::string& id) { return plan::vueParId(planche(), id); }
+  plan::J* coteCourante(const std::string& id) { return plan::coteParId(planche(), id); }
+  void editer(const wxString& libelle, const std::function<void()>& f);  // mepEdit
+  void etat(const wxString& t) {
+    if (surEtat) surEtat(t);
+  }
+  bool assemblage() const { return piece_.assemblage; }
+  std::vector<plan::RangNomenclature> nomenclature() { return plan::rangsNomenclature(mep_, planche_, piece_, calcul_); }
+  std::vector<std::pair<std::string, std::string>> corpsDuDoc() const { return piece_.nomsCorps; }
+  std::string logoDepuisFichier(const wxString& chemin);
+  bool grille() const { return grille_; }
+  void basculerGrille();
+  void zoomer(double k);
+  void ajuster();
+  void cadrerVue(const std::string& id);
+  void ajouterBrisure(const std::string& id) { plan::ajouterBrisure(mep_, planche_, piece_, calcul_, id); }
+  void enleverBrisure(const std::string& id) { plan::enleverBrisure(mep_, planche_, piece_, calcul_, id); }
+  void enleverVue(const std::string& id);
+  void enleverCote(const std::string& id);
+  std::string texteDeCote(const std::string& id);
+  double accrocherTexte(plan::J& d, double v) { return plan::accrocherTexteCote(mep_, planche_, piece_, calcul_, d, v); }
+  std::string toleranceAutoPercage(const plan::J& d) { return plan::toleranceAuto(mep_, planche_, piece_, calcul_, d); }
+  void supprimerSelection() { supprimer(); }
+  void viderSelection();
   // Les gestes de l'essai automatique, en mm sur la feuille
   void essaiGeste(const plan::J& e);
   // Le rendu des vues ombrées : c'est la vue 3D qui sait le faire
@@ -72,7 +101,6 @@ class PlanVue : public wxWindow {
   void valider(const wxString& libelle);
   void redessiner();
   double zoomRelatif() const { return zoomEntier_ > 0 ? zoom_ / zoomEntier_ : 1; }
-  plan::J& planche() { return mep_["sheets"][planche_]; }
   int hauteurOnglets() const;
 
   plan::J top_, mep_;
@@ -100,6 +128,7 @@ class PlanVue : public wxWindow {
     plan::GesteCoupe coupe;
   } geste_;
   double zoomEntier_ = 0;
+  bool grille_ = false;
   std::string coteAppui_;
   wxLongLong tempsAppui_ = 0;
   double appuiPx_ = 0, appuiPy_ = 0;

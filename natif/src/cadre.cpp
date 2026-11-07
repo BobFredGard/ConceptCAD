@@ -1,5 +1,6 @@
 #include <wx/config.h>
 #include "cadre.h"
+#include "plan_panneau.h"
 #include "plan_vue.h"
 #include "construction.h"
 
@@ -443,6 +444,15 @@ void Cadre::creerEnvironnement() {
   planVue_->rendreImage = [this](const plan::DemandeImage& d, wxImage& im) { return vue_->imagePlan(d, im); };
   planVue_->surChangement = [this](const plan::J& mep, const wxString&) { changerPlan(mep); };
   planVue_->surEtat = [this](const wxString& t) { etat(t); };
+  panneauPlan_ = new PanneauPlan(carteDroite_, planVue_);
+  panneauPlan_->Hide();
+  carteDroite_->contenu()->Add(panneauPlan_, 1, wxEXPAND);
+  panneauPlan_->surIndisponible = [this](const wxString& n) { indisponible(n); };
+  planVue_->surSelection = [this] {
+    CallAfter([this] {
+      if (atelier_ == Atelier::PLAN) panneauPlan_->refaire();
+    });
+  };
   page_->Hide();
 
   // Les fenêtres posées sur la vue 3D : OpenGL n'a pas le droit de les recouvrir
@@ -543,6 +553,7 @@ void Cadre::montrerPlan() {
   } catch (const std::exception&) {
   }
   planVue_->charger(texte, doc_, dernierRejeu_, asmSolides_);
+  panneauPlan_->refaire();
   noteDroite_->SetLabel(planVue_->resume() + L"\n\nMolette : zoom. Bouton du milieu : déplacer la feuille ; double-clic du milieu : la voir en entier.\n\nPour l'instant on regarde : modifier les vues et les cotes viendra ensuite.");
 }
 
@@ -551,6 +562,7 @@ void Cadre::montrerAtelier() {
   ruban_->Show(!enEsquisse && atelier_ != Atelier::RENDU);
   const bool cao = atelier_ == Atelier::CAO;
   props_->Show(cao);
+  panneauPlan_->Show(atelier_ == Atelier::PLAN);
   boutonRendu_->Show(atelier_ == Atelier::RENDU);
   noteMontree_ = noteDroite_->IsShown();
   switch (atelier_) {
@@ -588,7 +600,8 @@ void Cadre::ajusterDroite() {
   if (cao)
     for (wxPropertyGridIterator it = props_->GetGrid()->GetIterator(wxPG_ITERATE_VISIBLE); !it.AtEnd(); it++) rangs++;
   const bool asmPanneau = cao && !boutonsAsm_.empty();
-  const bool note = (!cao || rangs <= 1 || enChoix()) && !asmPanneau;
+  const bool surPlan = atelier_ == Atelier::PLAN;
+  const bool note = (!cao || rangs <= 1 || enChoix()) && !asmPanneau && !surPlan;
   if (note != noteMontree_) {
     noteMontree_ = note;
     noteDroite_->Show(note);
@@ -599,6 +612,7 @@ void Cadre::ajusterDroite() {
   if (note) h += ToDIP(noteDroite_->GetBestSize().y) + 6;
   if (rendu || enChoix()) h += 42;
   if (asmPanneau) h += hauteurBoutonsAsm_ + 6;
+  if (surPlan) h = 100000;
   h = std::min(h, ToDIP(centre_->GetClientSize().y) - 90);
   if (h == hauteurDroite_) return;
   hauteurDroite_ = h;
@@ -2996,6 +3010,16 @@ bool Cadre::essaiEsquisse(const std::wstring& fichier, int rang, const std::wstr
     if (e.contains("plan")) {
       planVue_->essaiGeste(e["plan"]);
       wxYield();
+    }
+    if (e.contains("reglagePlan")) {
+      wxYield();
+      panneauPlan_->refaire();
+      try {
+        n["trouve"] = panneauPlan_->essai(e["reglagePlan"]);
+      } catch (const std::exception& ex) {
+        std::ofstream(dossier + L"\\erreur.txt") << ex.what();
+        throw;
+      }
     }
     if (e.contains("atelier")) {
       const std::string a = e["atelier"].get<std::string>();

@@ -450,6 +450,7 @@ public:
   FilFonctions* fil_ = nullptr;
   PageAtelier* page_ = nullptr;
   PlanVue* planVue_ = nullptr;
+  class PanneauPlan* panneauPlan_ = nullptr;
   ResultatRejeu dernierRejeu_;  // ce que voit la mise en plan
   void montrerPlan();
   Atelier atelier_ = Atelier::CAO;

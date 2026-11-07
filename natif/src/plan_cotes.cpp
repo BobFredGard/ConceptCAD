@@ -2778,4 +2778,96 @@ bool retirerBrisure(J& mep, int planche, const Piece& p, Calcul& calc, const Ges
   coupeDepuisModele(c.sh, *v, *M);
   return true;
 }
+
+// ---- Pour le panneau ----
+int nombreBrisures(const J& v) {
+  const auto M = modeleCoupe(v);
+  return M ? static_cast<int>(M->steps.size()) : 0;
+}
+std::pair<int, int> liensCoupe(const J& v) {
+  const auto M = modeleCoupe(v);
+  if (!M) return {0, 0};
+  int n = 0;
+  for (const J& r : M->refs)
+    if (r.is_object()) n++;
+  return {n, static_cast<int>(M->c.size())};
+}
+bool ajouterBrisure(J& mep, int planche, const Piece& p, Calcul& calc, const std::string& id) {  // mepCutAddBreak, mepCutAutoRefs
+  Ctx c = contexteGeste(mep, planche, p, calc);
+  J* v = vueParId(c.sh, id);
+  auto M = v ? modeleCoupe(*v) : std::nullopt;
+  if (!M) return false;
+  const int m = static_cast<int>(M->c.size()) - 1;
+  const double lo = m ? M->steps[m - 1] : M->s0, L = std::abs(M->sE - lo);
+  if (L < 1e-6) return false;
+  M->steps.push_back((lo + M->sE) / 2);
+  M->c.push_back(M->c[m] + std::max(2.0, L / 4));
+  M->refs.push_back(J());
+  coupeDepuisModele(c.sh, *v, *M);
+  J* par = vueParId(c.sh, chaine((*v)["section"], "pid"));
+  auto N = par ? modeleCoupe(*v) : std::nullopt;
+  if (!N) return true;
+  std::vector<CandidatCoupe> cands;
+  bool lus = false;
+  for (size_t k = 0; k < N->c.size(); k++) {
+    if (N->refs[k].is_object()) continue;
+    if (!lus) cands = candidatsCoupe(c, *par, *N), lus = true;
+    const double cv = N->c[k], lo2 = k == 0 ? N->s0 : N->steps[k - 1], hi2 = k == N->c.size() - 1 ? N->sE : N->steps[k];
+    const double a = std::min(lo2, hi2), b = std::max(lo2, hi2);
+    const CandidatCoupe* pick = nullptr;
+    const auto prendre = [&](const std::function<bool(const CandidatCoupe&)>& f) {
+      if (pick) return;
+      for (const CandidatCoupe& q : cands)
+        if (std::abs(q.c - cv) < 0.05 && f(q)) {
+          pick = &q;
+          return;
+        }
+    };
+    prendre([&](const CandidatCoupe& q) { return chaine(q.ref, "t") == "hole" && q.s >= a - 0.05 && q.s <= b + 0.05; });
+    prendre([&](const CandidatCoupe& q) { return chaine(q.ref, "t") == "hole"; });
+    prendre([&](const CandidatCoupe& q) { return chaine(q.ref, "t") == "ax"; });
+    prendre([&](const CandidatCoupe& q) { return chaine(q.ref, "t") == "edge"; });
+    if (pick) N->refs[k] = pick->ref;
+  }
+  coupeDepuisModele(c.sh, *v, *N);
+  return true;
+}
+bool enleverBrisure(J& mep, int planche, const Piece& p, Calcul& calc, const std::string& id) {  // mepCutDelBreak
+  Ctx c = contexteGeste(mep, planche, p, calc);
+  J* v = vueParId(c.sh, id);
+  auto M = v ? modeleCoupe(*v) : std::nullopt;
+  if (!M || M->steps.empty()) return false;
+  M->steps.pop_back();
+  M->c.pop_back();
+  M->refs.pop_back();
+  coupeDepuisModele(c.sh, *v, *M);
+  return true;
+}
+std::string texteLuDeCote(J& mep, int planche, const Piece& p, Calcul& calc, J& d) {
+  Ctx c = contexteGeste(mep, planche, p, calc);
+  return texteCote(c, d, mesureCote(c, d));
+}
+double accrocherTexteCote(J& mep, int planche, const Piece& p, Calcul& calc, J& d, double v) {
+  Ctx c = contexteGeste(mep, planche, p, calc);
+  const auto w = mondeCote(c, d);
+  const auto g = w ? ligneCote(c, d, *w) : std::nullopt;
+  if (!g || g->L == 0) return v;
+  const double value = d.contains("value") && !d["value"].is_null() ? num(d, "value") : mesureCote(c, d);
+  double lo, hi;
+  etendueTexte(c, d, value, lo, hi);
+  const double ang = std::atan2(g->dy, g->dx) * 180 / PI;
+  const int k = std::abs(g->ux) < 1e-6 ? (g->uy > 0 ? -1 : 1) : ((ang > 90 || ang < -90) ? -1 : 1);
+  if (k < 0) {
+    const double l0 = lo;
+    lo = -hi, hi = -l0;
+  }
+  const double half = g->L / 2;
+  const auto tient = [&](double q) { return q + lo >= -half - 1e-9 && q + hi <= half + 1e-9; };
+  return tient(v) && tient(0) ? 0 : v;
+}
+std::string toleranceAuto(J& mep, int planche, const Piece& p, Calcul& calc, const J& d) {  // mepHoleAutoTol
+  Ctx c = contexteGeste(mep, planche, p, calc);
+  const Trou* f = trouDe(c, chaine(d, "holeFid"));
+  return f && f->kind == "ream" ? f->tolAlesage : std::string();
+}
 }  // namespace plan

@@ -2101,6 +2101,13 @@ std::vector<Elt> dessiner(J& mep, int planche, const Piece& p, Calcul& calc) {  
   } catch (const std::exception&) {
   }
   for (J& v : sh["views"]) {
+    // mepBuildGeo : la base de la vue, retournement compris, reste écrite dans la vue
+    if (chaine(v, "kind") != "dxf" && vrai(v, "flip")) {
+      const Base b = baseDe(v);
+      v["dir"] = {b.dir[0], b.dir[1], b.dir[2]}, v["u"] = {b.u[0], b.u[1], b.u[2]}, v["v"] = {b.v[0], b.v[1], b.v[2]};
+    }
+  }
+  for (J& v : sh["views"]) {
     if (!v.is_object()) continue;
     try {
       dessinerVue(c, v);
@@ -2346,6 +2353,20 @@ void supprimerVues(J& sh, const std::set<std::string>& ids) {
       if (!gone.count(chaine(d, "vid")) && !gone.count(chaine(d, "vid2"))) ds.push_back(std::move(d));
   sh["views"] = std::move(vs);
   sh["dims"] = std::move(ds);
+}
+bool cartoucheDessine(const J& sh) { return cartoucheEsquisse(sh); }
+double largeurCartouche(const J& sh) {
+  const Page pd = pageDe(sh);
+  if (!cartoucheEsquisse(sh)) return pd.iw;
+  double mx, my;
+  tbBoite(sh["title"]["tb"]["sk"], pd.W - pd.fr.l - pd.fr.r, pd.H - pd.fr.t - pd.fr.b, mx, my);
+  return std::max(0.0, -mx);
+}
+std::vector<RangNomenclature> rangsNomenclature(J& mep, int planche, const Piece& p, Calcul& calc) {
+  Ctx c = contexteGeste(mep, planche, p, calc);
+  std::vector<RangNomenclature> o;
+  for (const LigneBom& l : lignesBom(c)) o.push_back({l.id, l.name, static_cast<int>(l.qty)});
+  return o;
 }
 Ctx contexteGeste(J& mep, int planche, const Piece& p, Calcul& calc) {
   static std::vector<Elt> poubelle;

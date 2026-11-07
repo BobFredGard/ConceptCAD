@@ -230,6 +230,21 @@ void bougerTroncon(J& mep, int planche, const Piece& p, Calcul& c, GesteCoupe& g
 bool lacherTroncon(J& mep, int planche, const Piece& p, Calcul& c, GesteCoupe& g);
 bool retirerBrisure(J& mep, int planche, const Piece& p, Calcul& c, const GesteCoupe& g);  // mepCutDelBreakAt
 void inverserFleches(J& d);  // mepDimToggleArrows
+// Pour le panneau
+bool cartoucheDessine(const J& sh);  // mepTbIsSk
+double largeurCartouche(const J& sh);  // mepTbW
+int nombreBrisures(const J& v);  // mepCutBreaks
+std::pair<int, int> liensCoupe(const J& v);  // plans accrochés, plans
+bool ajouterBrisure(J& mep, int planche, const Piece& p, Calcul& c, const std::string& vue);  // mepCutAddBreak
+bool enleverBrisure(J& mep, int planche, const Piece& p, Calcul& c, const std::string& vue);  // mepCutDelBreak
+struct RangNomenclature {
+  std::string id, nom;
+  int qte = 1;
+};
+std::vector<RangNomenclature> rangsNomenclature(J& mep, int planche, const Piece& p, Calcul& c);  // mepBomRows
+std::string texteLuDeCote(J& mep, int planche, const Piece& p, Calcul& c, J& d);  // mepDimText(d, mepDimMeasure)
+double accrocherTexteCote(J& mep, int planche, const Piece& p, Calcul& c, J& d, double v);  // mepDimTxtOffSnap
+std::string toleranceAuto(J& mep, int planche, const Piece& p, Calcul& c, const J& d);  // mepHoleAutoTol
 void inverserAngle(J& mep, int planche, const Piece& p, Calcul& c, J& d);  // mepDimToggleBig
 
 // Taille de la feuille en mm

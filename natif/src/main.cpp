@@ -659,7 +659,7 @@ class Appli : public wxApp {
       cadre->SetClientSize(cadre->FromDIP(wxSize(1500, 900)));
       cadre->Update();
       wxYield();
-      if (!cadre->essaiEsquisse(gArgs[1], _wtoi(gArgs[2].c_str()), gArgs[3], gArgs[4], gArgs[5])) exit(3);
+      try { if (!cadre->essaiEsquisse(gArgs[1], _wtoi(gArgs[2].c_str()), gArgs[3], gArgs[4], gArgs[5])) exit(3); } catch (const std::exception& ex) { std::ofstream(gArgs[5] + L"\\erreur.txt") << ex.what(); exit(4); }
       cadre->Close(true);
     } else if (gArgs.size() >= 5 && gArgs[0] == L"--essai-conge") {
       // --essai-conge <fichier> <sortie> <gestes.json> <dossier> : de vrais clics dans la vue, des images, puis fermeture

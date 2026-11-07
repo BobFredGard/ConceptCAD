@@ -343,7 +343,8 @@ PlanVue::PlanVue(wxWindow* parent) : wxWindow(parent, wxID_ANY, wxDefaultPositio
     e.Skip();
   });
   Bind(wxEVT_MOUSEWHEEL, [this](wxMouseEvent& e) {
-    const double f = std::pow(1.0015, e.GetWheelRotation());
+    const bool inverse = mep_.is_object() && mep_.contains("prefs") && mep_["prefs"].is_object() && mep_["prefs"].contains("ls") && mep_["prefs"]["ls"].value("minifusion_mepZoomRev", std::string()) == "1";
+    const double f = std::pow(1.0015, inverse ? -e.GetWheelRotation() : e.GetWheelRotation());
     const double z2 = std::max(0.05, std::min(400.0, zoom_ * f));
     const wxPoint p = e.GetPosition();
     ox_ = p.x - (p.x - ox_) * z2 / zoom_;
@@ -433,6 +434,83 @@ PlanVue::PlanVue(wxWindow* parent) : wxWindow(parent, wxID_ANY, wxDefaultPositio
 }
 
 int PlanVue::hauteurOnglets() const { return FromDIP(30); }
+
+// ---- Pour le panneau ----
+void PlanVue::editer(const wxString& libelle, const std::function<void()>& f) {
+  try {
+    f();
+  } catch (const std::exception&) {
+  }
+  wxBusyCursor attente;
+  redessiner();
+  valider(libelle);
+}
+std::string PlanVue::logoDepuisFichier(const wxString& chemin) {
+  wxImage im;
+  wxLogNull silence;
+  if (!im.LoadFile(chemin)) return "";
+  const double k = std::min(1.0, 240.0 / std::max(im.GetWidth(), im.GetHeight()));
+  im.Rescale(std::max(1, static_cast<int>(std::floor(im.GetWidth() * k + 0.5))), std::max(1, static_cast<int>(std::floor(im.GetHeight() * k + 0.5))), wxIMAGE_QUALITY_HIGH);
+  wxMemoryOutputStream sortie;
+  if (!im.SaveFile(sortie, wxBITMAP_TYPE_PNG)) return "";
+  const size_t n = sortie.GetLength();
+  std::string octets(n, '\0');
+  sortie.CopyTo(octets.data(), n);
+  return "data:image/png;base64," + std::string(wxBase64Encode(octets.data(), n).utf8_string());
+}
+void PlanVue::basculerGrille() {
+  grille_ = !grille_;
+  Refresh(false);
+}
+void PlanVue::zoomer(double k) {
+  const wxSize t = GetClientSize();
+  const double cx = (t.x / 2.0 - ox_) / zoom_, cy = (t.y / 2.0 - oy_) / zoom_;
+  zoom_ = std::max(0.05, std::min(400.0, zoom_ * k));
+  ox_ = t.x / 2.0 - cx * zoom_;
+  oy_ = t.y / 2.0 - cy * zoom_;
+  ajuster_ = false;
+  imageBonne_ = false;
+  Refresh(false);
+}
+void PlanVue::ajuster() {
+  ajuster_ = true;
+  imageBonne_ = false;
+  Refresh(false);
+}
+void PlanVue::cadrerVue(const std::string& id) {  // mepFitViewContent
+  J* v = vueCourante(id);
+  double x, y, w, h;
+  if (!v || !plan::boiteDeVue(*v, planche(), mep_, piece_, calcul_, x, y, w, h)) return;
+  const wxSize t = GetClientSize();
+  const int ho = hauteurOnglets();
+  const double pad = 14, W = w + pad * 2, H = h + pad * 2;
+  zoom_ = std::max(0.05, std::min(400.0, std::min(t.x / W, (t.y - ho) / H)));
+  ajuster_ = false;
+  ox_ = t.x / 2.0 - (x + w / 2) * zoom_;
+  oy_ = ho + (t.y - ho) / 2.0 - (y + h / 2) * zoom_;
+  imageBonne_ = false;
+  Refresh(false);
+}
+void PlanVue::enleverVue(const std::string& id) {
+  plan::supprimerVue(planche(), id);
+  if (sel_.vue == id) sel_.vue.clear();
+}
+void PlanVue::enleverCote(const std::string& id) {
+  J ds = J::array();
+  for (J& d : planche()["dims"])
+    if (d.value("id", std::string()) != id) ds.push_back(std::move(d));
+  planche()["dims"] = std::move(ds);
+  if (sel_.cote == id) sel_.cote.clear();
+}
+std::string PlanVue::texteDeCote(const std::string& id) {
+  J* d = coteCourante(id);
+  return d ? plan::texteLuDeCote(mep_, planche_, piece_, calcul_, *d) : std::string();
+}
+void PlanVue::viderSelection() {
+  sel_ = plan::SelectionPlan();
+  redessiner();
+  if (surSelection) surSelection();
+}
 
 // ---- Les gestes (mepOnDown, mepOnMove, mepOnUp, mepOnKey) ----
 void PlanVue::redessiner() {
@@ -760,6 +838,13 @@ void PlanVue::supprimer() {
 void PlanVue::peindreSelection(wxDC& dc) {
   if (!mep_.is_object() || !mep_.contains("sheets") || mep_["sheets"].empty()) return;
   J& sh = planche();
+  if (grille_) {  // tous les 10 mm
+    dc.SetPen(wxPen(wxColour(0xb4, 0xb8, 0xc0)));
+    dc.SetBrush(*wxTRANSPARENT_BRUSH);
+    const double gx = ox_ + decalage_.x, gy = oy_ + decalage_.y;
+    for (double x = 0; x <= largeurPage_; x += 10) dc.DrawLine(static_cast<int>(gx + x * zoom_), static_cast<int>(gy), static_cast<int>(gx + x * zoom_), static_cast<int>(gy + hauteurPage_ * zoom_));
+    for (double y = 0; y <= hauteurPage_; y += 10) dc.DrawLine(static_cast<int>(gx), static_cast<int>(gy + y * zoom_), static_cast<int>(gx + largeurPage_ * zoom_), static_cast<int>(gy + y * zoom_));
+  }
   const wxColour bleu(0x0a, 0x84, 0xff);
   dc.SetBrush(*wxTRANSPARENT_BRUSH);
   const double ox = ox_ + decalage_.x, oy = oy_ + decalage_.y;
@@ -817,11 +902,13 @@ void PlanVue::essaiGeste(const J& e) {
   if (e.contains("touche")) {
     const std::string t = e["touche"];
     if (t == "Suppr") supprimer();
+    if (t == "Echap") viderSelection();
   }
 }
 
 // mepRulers, mepCoordShow : les règles en mm du papier, alignées sur la feuille quel que soit le zoom ; Y part du bas de la planche
 void PlanVue::peindreRegles(wxDC& dc, const wxSize& t) {
+  if (mep_.is_object() && mep_.contains("prefs") && mep_["prefs"].is_object() && mep_["prefs"].contains("ls") && mep_["prefs"]["ls"].value("mep_rulers", std::string()) == "0") return;
   const int E = FromDIP(16), ho = hauteurOnglets();
   const wxColour fond(0x18, 0x1a, 0x1e), encre(0xc9, 0xcc, 0xd1), accent(0x4d, 0xa3, 0xff);
   const double S = zoom_, ox = ox_ + decalage_.x, oy = oy_ + decalage_.y;
@@ -935,6 +1022,7 @@ void PlanVue::changerPlanche(int i) {
   construire();
   imageBonne_ = false;
   Refresh();
+  if (surSelection) surSelection();
 }
 
 void PlanVue::ajusterFeuille() {
