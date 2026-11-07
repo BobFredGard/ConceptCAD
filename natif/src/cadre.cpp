@@ -1,3 +1,5 @@
+#include "aide.h"
+#include "journal.h"
 #include "configurations.h"
 #include "theme.h"
 #include <wx/config.h>
@@ -261,6 +263,20 @@ Cadre::Cadre() : wxFrame(nullptr, wxID_ANY, L"ConceptCAD natif"), asmAnim_(this)
   panneauEsquisse_->surVoir = [this](double x, double y) { vueEsquisse_->centrerSur(x, y); };
   vueEsquisse_->surGeste = [this] { rafraichirEsquisse(false); };
   vue_->surDroit = [this](const TopoDS_Shape& s) { surDroit3D(s); };
+  vue_->surAltDouble = [this](const TopoDS_Shape& sous) {
+    if (enChoix() || esquisseOuverte_ >= 0 || !docOuvert_ || sous.IsNull()) return;
+    for (const auto& [id, s] : formesCorps_) {
+      TopTools_IndexedMapOfShape carte;
+      TopExp::MapShapes(s, sous.ShapeType(), carte);
+      if (!carte.Contains(sous)) continue;
+      std::vector<std::string> autres;
+      for (const std::string& c : doc_.corps)
+        if (c != id) autres.push_back(c);
+      changerStructure([&](nlohmann::ordered_json& d) { stCorpsMasques(d, autres); });
+      return;
+    }
+  };
+  journal::surErreur = [this] { CallAfter([this] { etat(L"⚠ Une erreur interne a été notée dans le journal (bouton Aide)."); }); };
   vue_->surOccurrence = [this](const std::string& cle, bool ctrl, bool maj) { asmCliqueOcc(cle, ctrl, maj); };
   vue_->surOccDouble = [this](const std::string& cle) {
     if (cle.empty() || !doc_.assemblage) return;
@@ -299,6 +315,16 @@ Cadre::Cadre() : wxFrame(nullptr, wxID_ANY, L"ConceptCAD natif"), asmAnim_(this)
       barreHaute_->champRecherche()->SetFocus();
       barreHaute_->champRecherche()->SelectAll();
       return;
+    }
+    {
+      // Le caractère tapé, selon le clavier : « ? » est Maj + virgule sur un clavier français
+      wchar_t car = 0;
+      if (e.ShiftDown() && !e.ControlDown() && !e.AltDown()) {
+        BYTE touches[256] = {};
+        wchar_t b[4] = {};
+        if (GetKeyboardState(touches) && ToUnicode(e.GetRawKeyCode(), MapVirtualKeyW(e.GetRawKeyCode(), MAPVK_VK_TO_VSC), touches, b, 4, 4) == 1) car = b[0];
+      }
+      if (raccourciGlobal(e.GetKeyCode(), car, e.ControlDown(), e.AltDown(), e.ShiftDown(), (e.GetRawKeyFlags() & (1u << 30)) != 0)) return;
     }
     // La FAO garde ses raccourcis, sauf quand on tape dans un champ
     if (atelier_ == Atelier::FAO && !dynamic_cast<wxTextCtrl*>(FindFocus())) {
@@ -390,6 +416,7 @@ void Cadre::creerEnvironnement() {
   barreHaute_->surEnregistrerSous = [this] { enregistrerSous(); };
   barreHaute_->surDossier = [this] { panneauDossier(); };
   barreHaute_->surTheme = [this] { menuTheme(); };
+  barreHaute_->surAide = [this] { ouvrirAide(this); };
   barreHaute_->surRegenerer = [this] {
     quitterConge();
     if (esquisseOuverte_ < 0) recalculer();
@@ -2307,6 +2334,34 @@ std::string Cadre::configurer(const std::function<void(nlohmann::ordered_json&)>
   apresStructure();
   if (!message.empty()) etat(tx(message));
   return "";
+}
+
+// Les raccourcis de l'application (src/90-10-selection-mesure, src/95-toolbar, src/96-aide-raccourcis) ; jamais pendant une saisie
+bool Cadre::raccourciGlobal(int code, wchar_t caractere, bool ctrl, bool alt, bool maj, bool repete) {
+  const wxWindow* f = FindFocus();
+  if (dynamic_cast<const wxTextCtrl*>(f) || dynamic_cast<const wxChoice*>(f) || dynamic_cast<const wxComboBox*>(f)) return false;
+  if (!IsActive() && !essaiMenu_) return false;
+  const bool enEsquisse = esquisseOuverte_ >= 0;
+  if (ctrl && maj && !alt && code == 'R') {
+    if (barreHaute_->surRegenerer && docOuvert_ && !enEsquisse) barreHaute_->surRegenerer();
+    return true;
+  }
+  if (ctrl || alt) return false;
+  if (caractere == L'?' || (code == WXK_F1 && !enEsquisse)) {
+    ouvrirAide(this);
+    return true;
+  }
+  if (enEsquisse) return false;
+  if (code == WXK_F5 && (atelier_ == Atelier::CAO || atelier_ == Atelier::FAO)) {
+    vue_->vueInitiale();
+    vue_->ajuster();
+    return true;
+  }
+  if (atelier_ != Atelier::CAO || maj || repete || enChoix() || pioche_ || !docOuvert_) return false;
+  const wxString nom = code == 'E' ? L"Extrusion" : code == 'H' ? L"Perçage" : code == 'R' ? L"Révolution" : code == 'F' ? L"Congé" : code == 'C' ? L"Chanfrein" : code == 'M' ? L"Répétition" : L"";
+  if (nom.empty()) return false;
+  boutonRuban(Atelier::CAO, nom);
+  return true;
 }
 
 // cfgTreeRow : le sélecteur en tête de l'arbre, seulement s'il y a une table
@@ -4359,6 +4414,36 @@ bool Cadre::essaiEsquisse(const std::wstring& fichier, int rang, const std::wstr
             for (const auto& o : c.choix) x["choix"].push_back({o.first, o.second});
             n["champs"].push_back(x);
           }
+    }
+    if (e.contains("aide")) {
+      wxDialog* f = creerAide(this);
+      f->Show();
+      wxYield();
+      f->Update();
+      const wxSize tf = f->GetSize();
+      wxBitmap imageF(tf.x, tf.y, 32);
+      {
+        wxMemoryDC dc(imageF);
+        PrintWindow(f->GetHWND(), static_cast<HDC>(dc.GetHDC()), 2);
+      }
+      imageF.ConvertToImage().SaveFile(dossier + L"\\" + wxString::FromUTF8(e["aide"].get<std::string>()).ToStdWstring() + L".png", wxBITMAP_TYPE_PNG);
+      f->Destroy();
+    }
+    if (e.contains("journal")) journal::ajouter("essai", e["journal"].get<std::string>(), "D:\\Dossier\\Secret\\essai.cpp");
+    if (e.contains("journalLire")) n["journal"] = journal::texte();
+    if (e.contains("planter")) {
+      volatile int* zero = nullptr;
+      *zero = 1;
+    }
+    if (e.contains("erreurBoucle")) CallAfter([] { throw std::runtime_error("erreur d'essai dans la boucle"); });
+    if (e.contains("raccourci")) {
+      essaiMenu_ = true;
+      const std::string t = e["raccourci"].get<std::string>();
+      const int code = t == "F5" ? WXK_F5 : t[0];
+      n["pris"] = raccourciGlobal(code, 0, false, false, false, false);
+      essaiMenu_ = false;
+      n["etat"] = std::string(etatVue_->texte().utf8_str());
+      n["choix"] = enChoix();
     }
     if (e.contains("cfg")) {
       const auto& c = e["cfg"];

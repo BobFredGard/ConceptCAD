@@ -1,4 +1,5 @@
 // ConceptCAD natif : point d'entrée. Lance la fenêtre, ou le calcul sans fenêtre (--verif).
+#include "journal.h"
 #include "theme.h"
 #include <wx/wx.h>
 #include <TopExp_Explorer.hxx>
@@ -649,7 +650,24 @@ int modeDessiner(const std::vector<std::wstring>& a) {
 
 class Appli : public wxApp {
  public:
+  // Une erreur qui remonte jusqu'ici est notée, et le logiciel continue
+  static void noterErreur(const char* lieu) {
+    try {
+      throw;
+    } catch (const std::exception& e) {
+      journal::ajouter("erreur", e.what(), lieu);
+    } catch (...) {
+      journal::ajouter("erreur", "Erreur inconnue", lieu);
+    }
+    if (journal::surErreur) journal::surErreur();
+  }
+  bool OnExceptionInMainLoop() override {
+    noterErreur("boucle principale");
+    return true;
+  }
+  void OnUnhandledException() override { noterErreur("hors boucle"); }
   bool OnInit() override {
+    journal::demarrer();
     theme::charger();
     SetAppearance(theme::courant() == theme::CLAIR ? Appearance::Light : Appearance::Dark);  // comme le thème choisi dans la version navigateur
     auto* cadre = new Cadre;

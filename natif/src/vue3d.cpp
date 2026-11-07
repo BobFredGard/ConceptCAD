@@ -672,6 +672,7 @@ void Vue3D::surRelache(wxMouseEvent& e) {
     return;
   }
   if (aBouge_) return;
+  if (e.RightUp() && e.ControlDown() && !placer_) return recentrerEn(e.GetPosition());
   if (surClicFao && (e.LeftUp() || e.RightUp())) {
     cliquerFao(e.GetPosition(), e.RightUp() ? 2 : 0, e.ControlDown(), e.ShiftDown());
     if (faoPrisClic_) return;
@@ -711,6 +712,18 @@ void Vue3D::cliquerFao(const wxPoint& p, int bouton, bool ctrl, bool maj, bool s
   }
   const bool pris = surClicFao(c);
   if (!survol) faoPrisClic_ = pris;
+}
+
+// recenter : le point visé devient le centre de la vue, la direction ne change pas
+void Vue3D::recentrerEn(const wxPoint& p) {
+  CoupVue c;
+  if (!coupMesure(p, c)) return;
+  const occ::handle<Graphic3d_Camera> k = vue_->Camera();
+  const gp_XYZ ecart = k->Eye().XYZ() - k->Center().XYZ();
+  k->SetCenter(c.p);
+  k->SetEye(gp_Pnt(c.p.XYZ() + ecart));
+  vue_->Redraw();
+  Refresh();
 }
 
 void Vue3D::droitEn(const wxPoint& p) {
@@ -1723,6 +1736,12 @@ void Vue3D::choisirOccurrences(const std::set<std::string>& cles) {
 
 void Vue3D::surDouble(wxMouseEvent& e) {
   ignorerRelache_ = true;
+  if (e.AltDown() && !placer_ && surAltDouble && !affichee_.IsNull() && !enChoix_) {
+    preparerSelection();
+    contexte_->MoveTo(e.GetX(), e.GetY(), vue_, false);
+    if (contexte_->HasDetected() && contexte_->HasDetectedShape()) surAltDouble(contexte_->DetectedShape());
+    return;
+  }
   if (!placer_ || !surOccDouble) return;
   const wxPoint p = e.GetPosition();
   contexte_->MoveTo(p.x, p.y, vue_, false);

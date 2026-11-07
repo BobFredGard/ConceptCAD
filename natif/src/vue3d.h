@@ -128,6 +128,8 @@ class Vue3D : public wxWindow {
   std::function<void(const TopoDS_Shape&)> surSelection;
   // Clic droit sans déplacement : ce qui est sous la souris, ou une forme vide
   std::function<void(const TopoDS_Shape&)> surDroit;
+  std::function<void(const TopoDS_Shape&)> surAltDouble;  // Alt + double-clic : isoler ce corps
+  void recentrerEn(const wxPoint& p);                     // Ctrl + clic droit
   void droitEn(const wxPoint& p);
   // Le choix des arêtes d'un congé : arêtes vives en noir, tangentes en gris ; les clics restent sur la pièce d'origine, même quand l'aperçu la remplace.
   void debutChoix(const TopoDS_Shape& vives, const TopoDS_Shape& tangentes);

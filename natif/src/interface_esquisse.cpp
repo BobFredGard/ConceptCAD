@@ -1,3 +1,4 @@
+#include "journal.h"
 #include "theme.h"
 #include "interface_esquisse.h"
 
@@ -158,6 +159,7 @@ BoutonEsquisse::BoutonEsquisse(wxWindow* parent, int id, const wxString& nom, co
     if (!enfonce_) return;
     enfonce_ = false;
     Refresh();
+    journal::geste(std::string(GetToolTipText().utf8_str()));
     if (surClic) surClic();
   });
 }

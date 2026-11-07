@@ -20,6 +20,7 @@ class BarreHaute : public wxWindow {
   std::function<void()> surAnnuler, surRetablir, surNouveau, surRecent, surOuvrir, surEnregistrer, surEnregistrerSous, surRegenerer;
   std::function<void()> surDossier;
   std::function<void()> surTheme;
+  std::function<void()> surAide;
   std::function<void(const wxString&)> surIndisponible;
   void atelier(Atelier a);
   void document(const wxString& nom);
@@ -32,6 +33,7 @@ class BarreHaute : public wxWindow {
   std::vector<BoutonEsquisse*> ateliers_, icones_;
   std::vector<int> separateurs_;
   BoutonEsquisse* regenerer_ = nullptr;
+  BoutonEsquisse* aide_ = nullptr;
   BoutonEsquisse* theme_ = nullptr;
   wxString document_;
   int finIcones_ = 0;

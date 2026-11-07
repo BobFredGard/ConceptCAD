@@ -99,6 +99,7 @@ class Cadre : public wxFrame {
   std::string changerFormules(const std::function<std::string()>& f);
   std::string configurer(const std::function<void(nlohmann::ordered_json&)>& changement, const std::string& activer);
   void majChoixConfig();
+  bool raccourciGlobal(int code, wchar_t caractere, bool ctrl, bool alt, bool maj, bool repete);
   wxBoxSizer* ligneConfig_ = nullptr;
   wxChoice* choixConfig_ = nullptr;
   std::string reglerCoteListe(size_t esquisse, const std::string& idCote, const std::string& texte);

@@ -113,6 +113,11 @@ BarreHaute::BarreHaute(wxWindow* parent) : wxWindow(parent, wxID_ANY, wxDefaultP
   regenerer_->surClic = [this] {
     if (regenerer_->estDisponible() && surRegenerer) surRegenerer();
   };
+  aide_ = new BoutonEsquisse(this, wxID_ANY, L"Aide", L"Raccourcis clavier et informations utiles (F1 hors esquisse, ou « ? »)", BoutonEsquisse::TEXTE);
+  aide_->titre(L"❔ Aide");
+  aide_->surClic = [this] {
+    if (surAide) surAide();
+  };
   theme_ = new BoutonEsquisse(this, wxID_ANY, L"Couleurs", L"Couleurs et icônes de l'interface", BoutonEsquisse::ENCADRE);
   for (size_t i = 0; BARRE_HAUTE[i].titre; i++)
     if (wxString(BARRE_HAUTE[i].titre).StartsWith(L"Couleurs")) theme_->iconeComplete(BARRE_HAUTE[i].svg, C_TEXTE);
@@ -173,6 +178,7 @@ void BarreHaute::placer() {
   const int xi[] = {428, 466, 513, 551, 589, 627, 665, 703};
   for (size_t i = 0; i < icones_.size(); i++) icones_[i]->SetSize(rectDip(this, xi[i], 18, 38, 28));
   regenerer_->SetSize(rectDip(this, W - 278, 21, 92, 22));
+  aide_->SetSize(rectDip(this, W - 338, 21, 56, 22));
   theme_->SetSize(rectDip(this, W - 63, 18, 38, 28));
   recherche_->SetSize(rectDip(this, 763, 24, 90, 17));
   Refresh();
