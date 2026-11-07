@@ -7,6 +7,9 @@
 #include <wx/image.h>
 #include <wx/log.h>
 #include <wx/mstream.h>
+#include <wx/textdlg.h>
+#include "nombres_js.h"
+#include <wx/time.h>
 
 #include <algorithm>
 #include <cmath>
@@ -106,6 +109,10 @@ Rendu renduDe(const plan::Elt& e, const Palette& P) {
   if (a("mepDimL")) r.trait = P.cotes, r.largeur = P.dim, r.fond = "";
   if (a("mepDimL") && a("mepDimX")) r.largeur = P.ext;
   if (a("mepDimT")) r.corps = P.corpsCote, r.fond = P.cotes, r.gras = true, r.halo = 1.5;
+  if (a("mepDimSel")) {
+    if (a("mepDimL")) r.trait = "#ff3b30";
+    else r.fond = "#ff3b30";
+  }
   if (a("mepDimRef")) r.fond = P.cache;
   if (a("mepLbl")) r.corps = P.corpsLbl, r.fond = P.texte, r.gras = true, r.halo = 1.6;
   if (a("mepCutLine")) r.trait = P.encre, r.largeur = P.thin, r.tirets = {10, 2, 1.5, 2}, r.fond = "";
@@ -294,6 +301,7 @@ PlanVue::PlanVue(wxWindow* parent) : wxWindow(parent, wxID_ANY, wxDefaultPositio
     dc.SetBackground(wxBrush(bureau_));
     dc.Clear();
     dc.DrawBitmap(image_, decalage_.x, decalage_.y);
+    peindreSelection(dc);
     peindreRegles(dc, t);
     // Les onglets restent en place pendant qu'on déplace la feuille
     const int ho = hauteurOnglets();
@@ -374,6 +382,13 @@ PlanVue::PlanVue(wxWindow* parent) : wxWindow(parent, wxID_ANY, wxDefaultPositio
     curseurX_ = (e.GetX() - ox_) / zoom_, curseurY_ = (e.GetY() - oy_) / zoom_;
     curseurDedans_ = e.GetY() >= hauteurOnglets() && curseurX_ >= 0 && curseurY_ >= 0 && curseurX_ <= largeurPage_ && curseurY_ <= hauteurPage_;
     if (!glisse_) {
+      if (geste_.sorte != Geste::RIEN) {
+        bouge(curseurX_, curseurY_, e.GetX(), e.GetY());
+      } else if (mep_.is_object() && mep_.contains("sheets") && !mep_["sheets"].empty()) {
+        // Le survol : un cadre en pointillés autour de la vue
+        const std::string s = curseurDedans_ ? plan::vueSous(planche(), mep_, piece_, calcul_, curseurX_, curseurY_) : std::string();
+        vueSurvol_ = s;
+      }
       Refresh(false);
       e.Skip();
       return;
@@ -387,14 +402,423 @@ PlanVue::PlanVue(wxWindow* parent) : wxWindow(parent, wxID_ANY, wxDefaultPositio
     Refresh();
   });
   Bind(wxEVT_LEFT_DOWN, [this](wxMouseEvent& e) {
-    const int i = ongletSous(e.GetPosition());
-    if (i >= 0) changerPlanche(i);
     SetFocus();
+    const int i = ongletSous(e.GetPosition());
+    if (i >= 0) return changerPlanche(i);
+    if (e.GetY() < hauteurOnglets() || !mep_.is_object() || !mep_.contains("sheets") || mep_["sheets"].empty()) return;
+    if (!HasCapture()) CaptureMouse();
+    enfonce((e.GetX() - ox_) / zoom_, (e.GetY() - oy_) / zoom_, e.ShiftDown(), e.ControlDown(), e.GetX(), e.GetY());
+  });
+  Bind(wxEVT_LEFT_UP, [this](wxMouseEvent&) {
+    if (HasCapture()) ReleaseMouse();
+    relache();
+  });
+  Bind(wxEVT_KEY_DOWN, [this](wxKeyEvent& e) {
+    const int k = e.GetKeyCode();
+    if (k == WXK_DELETE || k == WXK_BACK) return supprimer();
+    if (k == WXK_ESCAPE) {
+      geste_ = Geste();
+      sel_ = plan::SelectionPlan();
+      redessiner();
+      if (surSelection) surSelection();
+      return;
+    }
+    if (k == 'F' && e.ShiftDown()) {
+      ajuster_ = true;
+      imageBonne_ = false;
+      return Refresh();
+    }
     e.Skip();
   });
 }
 
 int PlanVue::hauteurOnglets() const { return FromDIP(30); }
+
+// ---- Les gestes (mepOnDown, mepOnMove, mepOnUp, mepOnKey) ----
+void PlanVue::redessiner() {
+  calcul_.selection = &sel_;
+  construire();
+  imageBonne_ = false;
+  Refresh(false);
+}
+
+void PlanVue::valider(const wxString& libelle) {
+  imageBonne_ = false;
+  if (surChangement) surChangement(mep_, libelle);
+}
+
+void PlanVue::enfonce(double x, double y, bool maj, bool ctrl, double px, double py) {
+  const bool ajout = maj || ctrl;
+  J& sh = planche();
+  const double z = zoomRelatif();
+  const auto toutEffacer = [&]() { sel_ = plan::SelectionPlan(); };
+  Geste g;
+  g.px0 = px, g.py0 = py, g.curX = x, g.curY = y, g.ajout = ajout;
+  // Maj ou Ctrl + clic sur une cote : sélection multiple
+  if (ajout) {
+    const std::string c = plan::coteSous(sh, calcul_, x, y, z);
+    if (!c.empty()) {
+      if (!sel_.cote.empty() && sel_.cote != c && sel_.lotCotes.empty()) sel_.lotCotes.insert(sel_.cote);
+      if (sel_.lotCotes.count(c)) sel_.lotCotes.erase(c);
+      else sel_.lotCotes.insert(c);
+      sel_.cote.clear();
+      sel_.vue.clear();
+      if (surEtat) surEtat(wxString::Format(L"%zu cote(s) sélectionnée(s).", sel_.lotCotes.size()));
+      redessiner();
+      if (surSelection) surSelection();
+      return;
+    }
+  } else {
+    sel_.lotVues.clear();
+    sel_.lotCotes.clear();
+  }
+  // La flèche d'une coupe : elle glisse le long de la ligne
+  plan::GesteCoupe gc;
+  if (plan::flecheCoupeSous(mep_, planche_, piece_, calcul_, x, y, z, gc)) {
+    sel_.vue = gc.vue, sel_.cote.clear(), sel_.bulle.clear();
+    g.sorte = Geste::FLECHE, g.id = gc.vue, g.coupe = gc;
+    geste_ = g;
+    redessiner();
+    if (surSelection) surSelection();
+    return;
+  }
+  // Un tronçon de ligne de coupe : tirer le déplace, Ctrl le brise, Maj + clic retire une brisure
+  gc = plan::GesteCoupe();
+  if (plan::tronconCoupeSous(mep_, planche_, piece_, calcul_, x, y, z, gc)) {
+    sel_.vue = gc.vue, sel_.cote.clear(), sel_.bulle.clear();
+    if (maj) {
+      wxBusyCursor attente;
+      const bool ok = plan::retirerBrisure(mep_, planche_, piece_, calcul_, gc);
+      if (surEtat) surEtat(ok ? L"Ligne de coupe : brisure retirée." : L"Ligne de coupe : aucune brisure à retirer.");
+      redessiner();
+      if (ok) valider(L"ligne de coupe : brisure retirée");
+      if (surSelection) surSelection();
+      return;
+    }
+    gc.brk = ctrl;
+    g.sorte = Geste::TRONCON, g.id = gc.vue, g.coupe = gc;
+    geste_ = g;
+    redessiner();
+    if (surSelection) surSelection();
+    return;
+  }
+  // Une bulle : sélection, et glisser pour la placer
+  const std::string bl = plan::bulleSous(sh, x, y);
+  if (!bl.empty()) {
+    const J* b = plan::bulleParId(sh, bl);
+    double ax, ay;
+    plan::pointBulle(sh, *b, ax, ay);
+    sel_.bulle = bl, sel_.vue.clear(), sel_.cote.clear();
+    g.sorte = Geste::BULLE, g.id = bl;
+    g.ox = x - (ax + b->value("dx", 0.0)), g.oy = y - (ay + b->value("dy", 0.0));
+    geste_ = g;
+    if (surEtat) surEtat(L"Bulle : glissez pour la placer, Suppr pour la retirer.");
+    redessiner();
+    if (surSelection) surSelection();
+    return;
+  }
+  sel_.bulle.clear();
+  // Le titre d'une vue : il glisse le long de son axe
+  double ecart = 0;
+  const std::string tv = plan::titreSous(sh, mep_, piece_, calcul_, x, y, z, ecart);
+  if (!tv.empty()) {
+    sel_.vue = tv, sel_.cote.clear();
+    g.sorte = Geste::TITRE, g.id = tv, g.oy = ecart;
+    geste_ = g;
+    redessiner();
+    if (surSelection) surSelection();
+    return;
+  }
+  // Une cote : sélection, glisser pour la déplacer ; deuxième appui rapproché : le double-clic
+  const std::string fl = plan::flecheSous(sh, calcul_, x, y, z);
+  const std::string dim = plan::coteSous(sh, calcul_, x, y, z);
+  const std::string touche = !fl.empty() ? fl : dim;
+  const wxLongLong t = wxGetLocalTimeMillis();
+  if (!touche.empty() && touche == coteAppui_ && (t - tempsAppui_).ToLong() < 450 && std::hypot(px - appuiPx_, py - appuiPy_) < 6) {
+    coteAppui_.clear();
+    if (J* d = plan::coteParId(sh, touche)) {
+      const std::string k = d->value("kind", std::string());
+      if (k == "len" || k == "dist" || !fl.empty()) {
+        plan::inverserFleches(*d);
+        redessiner();
+        valider(L"flèches");
+      } else if (k == "ang") {
+        plan::inverserAngle(mep_, planche_, piece_, calcul_, *d);
+        redessiner();
+        valider(L"angle rentrant");
+      } else if (k != "ord") {
+        // Un texte de note ou une valeur écrite à la main
+        const wxString lib = k == "note" ? L"Texte de la note :" : L"Texte de cote (vide = calculé) :";
+        wxTextEntryDialog dlg(this, lib, L"Mise en plan", wxString::FromUTF8(d->value("txt", std::string())));
+        if (dlg.ShowModal() == wxID_OK) {
+          const std::string s = dlg.GetValue().utf8_string();
+          if (!s.empty()) (*d)["txt"] = s;
+          else if (k != "note") d->erase("txt");
+          else {
+            J ds = J::array();
+            for (J& x : sh["dims"])
+              if (x.value("id", std::string()) != touche) ds.push_back(std::move(x));
+            sh["dims"] = std::move(ds);
+            sel_.cote.clear();
+          }
+          redessiner();
+          valider(L"texte cote");
+        }
+      }
+    }
+    return;
+  }
+  coteAppui_ = touche, tempsAppui_ = t, appuiPx_ = px, appuiPy_ = py;
+  if (!dim.empty()) {
+    sel_.cote = dim, sel_.vue.clear();
+    if (J* d = plan::coteParId(sh, dim)) g.cote = plan::saisirCote(mep_, planche_, piece_, calcul_, *d, x, y, z);
+    g.sorte = Geste::COTE, g.id = dim;
+    geste_ = g;
+    redessiner();
+    if (surSelection) surSelection();
+    return;
+  }
+  // Une vue : sélection, glisser pour la déplacer
+  const std::string v = plan::vueSous(sh, mep_, piece_, calcul_, x, y);
+  if (!v.empty()) {
+    const J* w = plan::vueParId(sh, v);
+    const bool avaitCote = !sel_.cote.empty();
+    sel_.vue = v, sel_.cote.clear();
+    g.sorte = Geste::VUE, g.id = v;
+    g.ox = x - w->value("x", 0.0), g.oy = y - w->value("y", 0.0);
+    geste_ = g;
+    if (avaitCote) redessiner();
+    else Refresh(false);
+    if (surSelection) surSelection();
+    return;
+  }
+  // Le fond de la planche : sélection au cadre
+  const bool avaitCote = !sel_.cote.empty();
+  if (!ajout) toutEffacer();
+  g.sorte = Geste::CADRE, g.ox = x, g.oy = y;
+  geste_ = g;
+  if (avaitCote) redessiner();
+  else Refresh(false);
+  if (surSelection) surSelection();
+}
+
+void PlanVue::bouge(double x, double y, double px, double py) {
+  J& sh = planche();
+  geste_.curX = x, geste_.curY = y;
+  // Un clic ne doit pas déplacer : 3 pixels avant de commencer
+  if (!geste_.commence) {
+    if (std::hypot(px - geste_.px0, py - geste_.py0) < 3) return;
+    geste_.commence = true;
+  }
+  switch (geste_.sorte) {
+    case Geste::FLECHE:
+      if (plan::bougerFlecheCoupe(mep_, planche_, piece_, calcul_, geste_.coupe, x, y)) {
+        geste_.bouge = true;
+        redessiner();
+      }
+      break;
+    case Geste::TRONCON:
+      plan::bougerTroncon(mep_, planche_, piece_, calcul_, geste_.coupe, x, y, zoomRelatif());
+      if (surEtat) surEtat(L"Ligne de coupe : relâchez pour la placer.");
+      break;
+    case Geste::VUE:
+      if (J* v = plan::vueParId(sh, geste_.id)) {
+        plan::deplacerVue(sh, *v, x - geste_.ox, y - geste_.oy);
+        geste_.bouge = true;
+        redessiner();
+      }
+      break;
+    case Geste::COTE:
+      if (J* d = plan::coteParId(sh, geste_.id)) {
+        if (plan::deplacerCote(mep_, planche_, piece_, calcul_, *d, x, y, geste_.cote)) {
+          geste_.bouge = true;
+          redessiner();
+        }
+      }
+      break;
+    case Geste::BULLE:
+      if (J* b = plan::bulleParId(sh, geste_.id)) {
+        double ax, ay;
+        plan::pointBulle(sh, *b, ax, ay);
+        (*b)["dx"] = js::arrondi(x - geste_.ox - ax, 2);
+        (*b)["dy"] = js::arrondi(y - geste_.oy - ay, 2);
+        geste_.bouge = true;
+        redessiner();
+      }
+      break;
+    case Geste::TITRE:
+      if (J* v = plan::vueParId(sh, geste_.id)) {
+        plan::deplacerTitre(sh, mep_, piece_, calcul_, *v, y, geste_.oy);
+        geste_.bouge = true;
+        redessiner();
+      }
+      break;
+    default:
+      break;
+  }
+}
+
+void PlanVue::relache() {
+  const Geste g = geste_;
+  geste_ = Geste();
+  if (g.sorte == Geste::CADRE) {
+    if (g.commence) {
+      // De gauche à droite : ce qui est entièrement dans le cadre ; de droite à gauche : tout ce qu'il touche (mepBoxSelect)
+      const double x0 = std::min(g.ox, g.curX), x1 = std::max(g.ox, g.curX), y0 = std::min(g.oy, g.curY), y1 = std::max(g.oy, g.curY);
+      const bool capture = g.curX < g.ox;
+      J& sh = planche();
+      if (!g.ajout) sel_ = plan::SelectionPlan();
+      int n = 0;
+      if (sh["views"].is_array())
+        for (const J& v : sh["views"]) {
+          const std::string id = v.value("id", std::string());
+          double x, y, w, h;
+          if (sel_.lotVues.count(id) || !plan::boiteDeVue(v, sh, mep_, piece_, calcul_, x, y, w, h)) continue;
+          const bool dans = x >= x0 && x + w <= x1 && y >= y0 && y + h <= y1;
+          const bool touche = x <= x1 && x + w >= x0 && y <= y1 && y + h >= y0;
+          if (capture ? touche : dans) sel_.lotVues.insert(id), n++;
+        }
+      if (sh.contains("dims") && sh["dims"].is_array())
+        for (const J& d : sh["dims"]) {
+          const std::string id = d.value("id", std::string());
+          const auto it = calcul_.cotesVues.find(id);
+          if (sel_.lotCotes.count(id) || it == calcul_.cotesVues.end()) continue;
+          bool tous = !it->second.traits.empty(), un = false;
+          const auto inside = [&](double qx, double qy) { return qx >= x0 && qx <= x1 && qy >= y0 && qy <= y1; };
+          for (const plan::CoteVue::Seg& s : it->second.traits) {
+            const bool a = inside(s.x1, s.y1), b = inside(s.x2, s.y2);
+            if (!(a && b)) tous = false;
+            if (a || b) un = true;
+          }
+          const bool tin = it->second.aTexte && inside(it->second.tx, it->second.ty);
+          if (it->second.aTexte && !tin) tous = false;
+          if (capture ? (un || tin) : tous) sel_.lotCotes.insert(id), n++;
+        }
+      if (surEtat) surEtat(wxString::Format(L"%s : %d élément(s) ajouté(s) à la sélection.", capture ? L"Capture" : L"Fenêtre", n));
+      redessiner();
+      if (surSelection) surSelection();
+    } else {
+      Refresh(false);
+    }
+    return;
+  }
+  if (g.sorte == Geste::TRONCON) {
+    Geste h = g;
+    wxBusyCursor attente;
+    if (plan::lacherTroncon(mep_, planche_, piece_, calcul_, h.coupe)) {
+      redessiner();
+      valider(L"ligne de coupe");
+    }
+    return;
+  }
+  if (!g.bouge) return;
+  valider(g.sorte == Geste::FLECHE ? L"flèche de coupe" : g.sorte == Geste::VUE ? L"déplacement vue" : g.sorte == Geste::COTE ? L"déplacement cote" : g.sorte == Geste::BULLE ? L"bulle" : L"titre de vue");
+}
+
+void PlanVue::supprimer() {
+  J& sh = planche();
+  if (!sel_.lotVues.empty() || !sel_.lotCotes.empty()) {
+    const size_t nv = sel_.lotVues.size(), nd = sel_.lotCotes.size();
+    if (!sel_.lotVues.empty()) plan::supprimerVues(sh, sel_.lotVues);
+    J ds = J::array();
+    if (sh.contains("dims") && sh["dims"].is_array())
+      for (J& d : sh["dims"])
+        if (!sel_.lotCotes.count(d.value("id", std::string()))) ds.push_back(std::move(d));
+    sh["dims"] = std::move(ds);
+    sel_ = plan::SelectionPlan();
+    if (surEtat) surEtat(wxString::Format(L"Supprimé : %zu vue(s), %zu cote(s).", nv, nd));
+    redessiner();
+    valider(L"suppression de la sélection");
+  } else if (!sel_.bulle.empty()) {
+    J bs = J::array();
+    for (J& b : sh["balloons"])
+      if (b.value("id", std::string()) != sel_.bulle) bs.push_back(std::move(b));
+    sh["balloons"] = std::move(bs);
+    sel_.bulle.clear();
+    redessiner();
+    valider(L"suppression bulle");
+  } else if (!sel_.cote.empty()) {
+    J ds = J::array();
+    for (J& d : sh["dims"])
+      if (d.value("id", std::string()) != sel_.cote) ds.push_back(std::move(d));
+    sh["dims"] = std::move(ds);
+    sel_.cote.clear();
+    redessiner();
+    valider(L"suppression cote");
+  } else if (!sel_.vue.empty()) {
+    plan::supprimerVue(sh, sel_.vue);
+    sel_.vue.clear();
+    redessiner();
+    valider(L"suppression de vue");
+  } else {
+    return;
+  }
+  if (surSelection) surSelection();
+}
+
+// Le cadre bleu de la sélection, en pointillés pour le survol, et le cadre de sélection
+void PlanVue::peindreSelection(wxDC& dc) {
+  if (!mep_.is_object() || !mep_.contains("sheets") || mep_["sheets"].empty()) return;
+  J& sh = planche();
+  const wxColour bleu(0x0a, 0x84, 0xff);
+  dc.SetBrush(*wxTRANSPARENT_BRUSH);
+  const double ox = ox_ + decalage_.x, oy = oy_ + decalage_.y;
+  const auto cadre = [&](const std::string& id, bool plein) {
+    const J* v = plan::vueParId(sh, id);
+    double x, y, w, h;
+    if (!v || !plan::boiteDeVue(*v, sh, mep_, piece_, calcul_, x, y, w, h)) return;
+    wxPen p(bleu, plein ? FromDIP(2) : FromDIP(1), plein ? wxPENSTYLE_SOLID : wxPENSTYLE_SHORT_DASH);
+    dc.SetPen(p);
+    dc.DrawRectangle(static_cast<int>(ox + (x - 4) * zoom_), static_cast<int>(oy + (y - 4) * zoom_), static_cast<int>((w + 8) * zoom_), static_cast<int>((h + 8) * zoom_));
+  };
+  if (!vueSurvol_.empty() && vueSurvol_ != sel_.vue && !sel_.lotVues.count(vueSurvol_)) cadre(vueSurvol_, false);
+  if (!sel_.vue.empty()) cadre(sel_.vue, true);
+  for (const std::string& id : sel_.lotVues) cadre(id, true);
+  if (geste_.sorte == Geste::CADRE && geste_.commence) {
+    const bool capture = geste_.curX < geste_.ox;
+    dc.SetPen(wxPen(capture ? wxColour(0x30, 0xd1, 0x58) : bleu, 1, capture ? wxPENSTYLE_SHORT_DASH : wxPENSTYLE_SOLID));
+    const double x0 = std::min(geste_.ox, geste_.curX), y0 = std::min(geste_.oy, geste_.curY);
+    dc.DrawRectangle(static_cast<int>(ox + x0 * zoom_), static_cast<int>(oy + y0 * zoom_), static_cast<int>(std::abs(geste_.curX - geste_.ox) * zoom_), static_cast<int>(std::abs(geste_.curY - geste_.oy) * zoom_));
+  }
+}
+
+void PlanVue::reprendre(const std::string& texteDoc) {
+  J racine;
+  try {
+    racine = J::parse(texteDoc);
+  } catch (const std::exception&) {
+    return;
+  }
+  top_ = racine.contains("doc") && racine["doc"].is_object() ? racine["doc"] : racine;
+  mep_ = top_.contains("mep") ? top_["mep"] : J::object();
+  plan::normaliser(mep_);
+  if (planche_ >= static_cast<int>(mep_["sheets"].size())) planche_ = 0;
+  sel_ = plan::SelectionPlan();
+  geste_ = Geste();
+  aJour_ = true;
+  redessiner();
+  if (surSelection) surSelection();
+}
+
+// {"presse":[x,y]}, {"glisse":[x,y]}, {"lache":1}, {"touche":"Suppr"}, en mm sur la feuille
+void PlanVue::essaiGeste(const J& e) {
+  const auto pixelsX = [&](double x) { return ox_ + x * zoom_; };
+  const auto pixelsY = [&](double y) { return oy_ + y * zoom_; };
+  if (ajuster_) ajusterFeuille();
+  if (e.contains("presse")) {
+    const double x = e["presse"][0], y = e["presse"][1];
+    enfonce(x, y, e.value("maj", false), e.value("ctrl", false), pixelsX(x), pixelsY(y));
+  }
+  if (e.contains("glisse")) {
+    const double x = e["glisse"][0], y = e["glisse"][1];
+    bouge(x, y, pixelsX(x), pixelsY(y));
+  }
+  if (e.contains("lache")) relache();
+  if (e.contains("touche")) {
+    const std::string t = e["touche"];
+    if (t == "Suppr") supprimer();
+  }
+}
 
 // mepRulers, mepCoordShow : les règles en mm du papier, alignées sur la feuille quel que soit le zoom ; Y part du bas de la planche
 void PlanVue::peindreRegles(wxDC& dc, const wxSize& t) {
@@ -504,6 +928,9 @@ void PlanVue::changerPlanche(int i) {
   if (i == planche_ || !mep_.contains("sheets") || i >= static_cast<int>(mep_["sheets"].size())) return;
   wxBusyCursor attente;
   planche_ = i;
+  sel_ = plan::SelectionPlan();
+  geste_ = Geste();
+  vueSurvol_.clear();
   ajuster_ = true;
   construire();
   imageBonne_ = false;
@@ -515,6 +942,7 @@ void PlanVue::ajusterFeuille() {
   const int ho = hauteurOnglets(), m = FromDIP(14);
   const double l = std::max(10, t.x - 2 * m), h = std::max(10, t.y - ho - 2 * m);
   zoom_ = std::min(l / largeurPage_, h / hauteurPage_);
+  zoomEntier_ = zoom_;
   ox_ = (t.x - largeurPage_ * zoom_) / 2;
   oy_ = ho + (t.y - ho - hauteurPage_ * zoom_) / 2;
   ajuster_ = false;
@@ -523,6 +951,7 @@ void PlanVue::ajusterFeuille() {
 
 void PlanVue::construire() {
   prims_.clear();
+  calcul_.selection = &sel_;
   if (!mep_.contains("sheets") || !mep_["sheets"].is_array() || mep_["sheets"].empty()) return;
   plan::tailleFeuille(mep_["sheets"][planche_], largeurPage_, hauteurPage_);
   std::vector<plan::Elt> els;
@@ -558,7 +987,7 @@ void PlanVue::construire() {
   };
   const auto fleches = [&](const plan::Elt& e, const Rendu& r, const std::vector<std::array<double, 2>>& l) {
     if (l.size() < 2) return;
-    const auto couleur = [&](const std::string& m) { return m.find("mepArrK") != std::string::npos ? P.encre : P.cotes; };
+    const auto couleur = [&](const std::string& m) { return m.find("Sel") != std::string::npos ? std::string("#ff3b30") : m.find("mepArrK") != std::string::npos ? P.encre : P.cotes; };
     if (const std::string* m = attrDe(e, "marker-end")) {
       std::vector<std::array<double, 2>> tri;
       const auto& a = l[l.size() - 2];

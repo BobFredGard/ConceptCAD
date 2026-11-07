@@ -1474,7 +1474,7 @@ std::optional<Monde> mondeCote(Ctx& c, J& d) {  // mepDimWorld
 // ── angles ──
 struct GeoAngle {
   XY O;
-  double a1 = 0, a2 = 0, dd = 0;
+  double a1 = 0, a2 = 0, dd = 0, b1 = 0, b2 = 0;
   bool aExt = false;
   std::array<double, 2> e1{0, 0}, e2{0, 0};
 };
@@ -1512,6 +1512,7 @@ std::optional<GeoAngle> geoAngle(Ctx& c, J& d) {  // mepAngGeom, mepAngSector
     g.aExt = true;
     g.O = versFeuille(*w->v1, ox, oy);
   }
+  g.b1 = g.a1, g.b2 = g.a2;
   const int q = static_cast<int>(num(d, "q")) & 3;
   const auto flip = [&](double& a, std::array<double, 2>& e) {
     a += PI;
@@ -2253,5 +2254,528 @@ void dessinerCote(Ctx& c, J& d) {  // mepDrawDim
   const Parts pp = partiesTexte(c, dtDe(d), val);
   const std::string main = vrai(d, "ref") ? "(" + pp.main + ")" : pp.main;
   dessinerTexte(c, T, main, pp, mx, my, "middle", tr);
+}
+
+// ---- Les gestes ----
+void ceQuiSaisitLaCote(Ctx& c, J& d, CoteVue& q) {  // mepDimTextPos, mepDimArrowAt
+  const auto w = mondeCote(c, d);
+  if (!w) return;
+  const std::string kind = chaine(d, "kind");
+  if (kind == "dia" || kind == "rad" || kind == "hole" || kind == "note") {
+    q.aTexte = true, q.tx = w->b.x, q.ty = w->b.y;
+    return;
+  }
+  if (kind == "ord") {
+    const J* v = vueDe(c.sh, chaine(d, "vid"));
+    const XY o = v ? versFeuille(*v, num(sous(d, "o"), "x"), num(sous(d, "o"), "y")) : w->a;
+    q.aTexte = true;
+    if (chaine(d, "axis") == "y") q.tx = o.x + num(d, "off"), q.ty = o.y;
+    else q.tx = o.x, q.ty = o.y + num(d, "off");
+    return;
+  }
+  if (kind == "ang") {
+    q.aTexte = true, q.tx = w->b.x, q.ty = w->b.y;
+    if (const auto g = geoAngle(c, d)) {
+      const double r = rayonAngle(d), t = g->a1 + g->dd / 2 + num(d, "txtOff") / r;
+      const double val = d.contains("value") && !d["value"].is_null() ? num(d, "value") : mesureCote(c, d);
+      double lo, hi;
+      etendueTexte(c, d, val, lo, hi);
+      const double hw = std::max(-lo, hi), hh = c.st.dimH / 2, nx = std::cos(t), ny = std::sin(t);
+      const double k = r + 1.2 + std::abs(nx) * hw + std::abs(ny) * hh;
+      q.tx = g->O.x + nx * k, q.ty = g->O.y + ny * k;
+    }
+    return;
+  }
+  const auto g = ligneCote(c, d, *w);
+  if (!g) {
+    q.aTexte = true, q.tx = w->a.x, q.ty = w->a.y;
+    return;
+  }
+  q.aFleches = true, q.fx1 = g->a1.x, q.fy1 = g->a1.y, q.fx2 = g->b1.x, q.fy2 = g->b1.y;
+  const double toff = num(d, "txtOff"), th = c.st.textHeight;
+  q.aTexte = true;
+  q.tx = (g->a1.x + g->b1.x) / 2 + g->ux * toff, q.ty = (g->a1.y + g->b1.y) / 2 + g->uy * toff;
+  if (std::abs(g->ux) < 1e-6) q.tx -= std::max(2.0, th * 0.28);
+  else q.ty -= 2;
+}
+GesteCote saisirCoteDans(Ctx& c, J& d, double x, double y, double zoom) {  // mepDimDragStart
+  GesteCote g;
+  g.sx = x, g.sy = y;
+  g.aOff0 = d.contains("off") && !d["off"].is_null();
+  g.off0 = num(d, "off");
+  g.txtOff0 = num(d, "txtOff");
+  const auto w = mondeCote(c, d);
+  if (w) g.aCentre = true, g.cx = w->b.x, g.cy = w->b.y;
+  CoteVue q;
+  ceQuiSaisitLaCote(c, d, q);
+  g.labelHit = q.aTexte && std::hypot(x - q.tx, y - q.ty) <= 18 / zoom;
+  if (chaine(d, "kind") == "ang") {
+    const double val = d.contains("value") && !d["value"].is_null() ? num(d, "value") : mesureCote(c, d);
+    double lo, hi;
+    etendueTexte(c, d, val, lo, hi);
+    const double hw = std::max(-lo, hi), hh = c.st.dimH / 2, m = 1.5 / zoom;
+    g.labelHit = q.aTexte && std::abs(x - q.tx) <= hw + m && std::abs(y - q.ty) <= hh + m;
+  }
+  return g;
+}
+namespace {
+double decalageDepuisPoints(double ax, double ay, double bx, double by, const std::string& o, double x, double y) {  // mepDimOffsetFromPts
+  if (o == "h") return y - (ay + by) / 2;
+  if (o == "v") return x - (ax + bx) / 2;
+  const double dx = bx - ax, dy = by - ay;
+  double L = hyp(dx, dy);
+  if (L == 0) L = 1;
+  return (x - ax) * (-dy / L) + (y - ay) * (dx / L);
+}
+int secteurVers(double b1, double b2, double phi) {  // mepAngSectorAt
+  for (int q = 0; q < 4; q++) {
+    const double s1 = b1 + ((q & 1) ? PI : 0), s2 = b2 + ((q & 2) ? PI : 0);
+    double dd = s2 - s1;
+    while (dd <= -PI) dd += 2 * PI;
+    while (dd > PI) dd -= 2 * PI;
+    double t = (phi - s1) * (dd >= 0 ? 1 : -1);
+    t = std::fmod(std::fmod(t, 2 * PI) + 2 * PI, 2 * PI);
+    if (t <= std::abs(dd) + 1e-9) return q;
+  }
+  return 0;
+}
+}  // namespace
+bool deplacerCoteDans(Ctx& c, J& d, double x, double y, const GesteCote& pk) {  // mepDimMoveTo
+  const auto w = mondeCote(c, d);
+  if (!w) return false;
+  const std::string kind = chaine(d, "kind");
+  if (kind == "len" || kind == "dist") {
+    if (!vrai(d, "b")) return false;
+    const std::string o = chaine(d, "orient", "a");
+    // Le geste déplace la cote le long des rappels (décalage) et le long de sa ligne (valeur), en relatif
+    if (pk.aOff0) {
+      const auto offAt = [&](double qx, double qy) {
+        if (o == "h" || o == "v") return decalageDepuisPoints(w->a.x, w->a.y, w->b.x, w->b.y, o, qx, qy);
+        const double dx = w->b.x - w->a.x, dy = w->b.y - w->a.y, L = hyp(dx, dy);
+        return L < 1e-9 ? 0.0 : (qx - w->a.x) * (-dy / L) + (qy - w->a.y) * (dx / L);
+      };
+      d["off"] = pk.off0 + offAt(x, y) - offAt(pk.sx, pk.sy);
+      if (const auto w2 = mondeCote(c, d))
+        if (const auto g = ligneCote(c, d, *w2)) {
+          double to = pk.txtOff0 + (x - pk.sx) * g->ux + (y - pk.sy) * g->uy;
+          // mepDimTxtOffSnap : entre les flèches ici comme au centre, le texte revient au centre
+          if (g->L != 0) {
+            const double value = d.contains("value") && !d["value"].is_null() ? num(d, "value") : mesureCote(c, d);
+            double lo, hi;
+            etendueTexte(c, d, value, lo, hi);
+            const double ang = std::atan2(g->dy, g->dx) * 180 / PI;
+            const int k = std::abs(g->ux) < 1e-6 ? (g->uy > 0 ? -1 : 1) : ((ang > 90 || ang < -90) ? -1 : 1);
+            if (k < 0) {
+              const double l0 = lo;
+              lo = -hi, hi = -l0;
+            }
+            const double half = g->L / 2;
+            const auto tient = [&](double q) { return q + lo >= -half - 1e-9 && q + hi <= half + 1e-9; };
+            if (tient(to) && tient(0)) to = 0;
+          }
+          d["txtOff"] = to;
+        }
+      return true;
+    }
+    d["off"] = decalageDepuisPoints(w->a.x, w->a.y, w->b.x, w->b.y, o, x, y);
+    return true;
+  }
+  if (kind == "ang") {
+    auto g = geoAngle(c, d);
+    if (!g) return false;
+    if (pk.labelHit) {
+      const double r = rayonAngle(d);
+      const auto ang = [&](double qx, double qy) { return std::atan2(qy - g->O.y, qx - g->O.x); };
+      double da = ang(x, y) - ang(pk.sx, pk.sy);
+      while (da > PI) da -= 2 * PI;
+      while (da <= -PI) da += 2 * PI;
+      double to = pk.txtOff0 + da * r;
+      if (std::abs(to) < 3) to = 0;
+      if (to != 0) d["txtOff"] = js::arrondi(to, 3);
+      else d.erase("txtOff");
+      return true;
+    }
+    if (hyp(x - g->O.x, y - g->O.y) > 1e-6) {
+      const int q = secteurVers(g->b1, g->b2, std::atan2(y - g->O.y, x - g->O.x)) ^ (vrai(d, "big") ? 3 : 0);
+      if (q != (static_cast<int>(num(d, "q")) & 3)) {
+        if (q) d["q"] = q;
+        else d.erase("q");
+        if (auto g2 = geoAngle(c, d)) g = g2;
+      }
+    }
+    d["off"] = std::max(6.0, std::min(80.0, hyp(x - g->O.x, y - g->O.y)));
+    return true;
+  }
+  J* v = vueParId(c.sh, chaine(d, "vid"));
+  if (!v) return false;
+  double sx = x, sy = y;
+  if (pk.aCentre) sx = pk.cx + (x - pk.sx), sy = pk.cy + (y - pk.sy);
+  if (kind == "dia" || kind == "rad" || kind == "hole" || kind == "note") {
+    J b = J::object();
+    b["x"] = (sx - num(*v, "x")) / num(*v, "scale");
+    b["y"] = (sy - num(*v, "y")) / num(*v, "scale");
+    d["b"] = b;
+    return true;
+  }
+  if (kind == "ord" && pk.aOff0) {
+    d["off"] = pk.off0 + (chaine(d, "axis") == "y" ? x - pk.sx : y - pk.sy);
+    return true;
+  }
+  return false;
+}
+void inverserFleches(J& d) {  // mepDimToggleArrows
+  d["arr"] = chaine(d, "arr") != "out" ? "out" : "in";
+}
+void inverserAngleDans(Ctx& c, J& d) {  // mepDimToggleBig : l'arc garde le même côté
+  (void)c;
+  const int q = static_cast<int>(num(d, "q")) & 3;
+  const int q2 = q ^ 3;
+  if (q2) d["q"] = q2;
+  else d.erase("q");
+  if (vrai(d, "big")) d.erase("big");
+  else d["big"] = true;
+}
+
+// ---- La ligne de coupe ----
+namespace {
+struct ModeleCoupe {  // mepCutModel
+  double tx = 0, ty = 0, nx = 0, ny = 0, s0 = 0, sE = 0;
+  std::vector<double> c, steps;
+  std::vector<J> refs;
+};
+std::vector<XY> pointsCoupe(const J& v) {  // mepCutPts
+  const J& s = sous(v, "section");
+  std::vector<XY> P;
+  if (sous(s, "pts").is_array() && s["pts"].size() > 2) {
+    for (const J& q : s["pts"]) P.push_back({nv(q[0]), nv(q[1])});
+    return P;
+  }
+  if (!sous(s, "a").is_array() || !sous(s, "b").is_array()) return P;
+  P.push_back({nv(s["a"][0]), nv(s["a"][1])});
+  P.push_back({nv(s["b"][0]), nv(s["b"][1])});
+  return P;
+}
+std::optional<ModeleCoupe> modeleCoupe(const J& v) {
+  const std::vector<XY> P = pointsCoupe(v);
+  if (P.size() < 2) return std::nullopt;
+  const double tl = hyp(P[1].x - P[0].x, P[1].y - P[0].y);
+  if (tl < 1e-9) return std::nullopt;
+  ModeleCoupe M;
+  M.tx = (P[1].x - P[0].x) / tl, M.ty = (P[1].y - P[0].y) / tl;
+  M.nx = -M.ty, M.ny = M.tx;
+  const auto S = [&](const XY& q) { return q.x * M.tx + q.y * M.ty; };
+  const auto C = [&](const XY& q) { return q.x * M.nx + q.y * M.ny; };
+  for (size_t j = 0; j + 1 < P.size(); j += 2) M.c.push_back(C(P[j]));
+  for (size_t j = 1; j + 1 < P.size(); j += 2) M.steps.push_back(S(P[j]));
+  M.s0 = S(P[0]), M.sE = S(P.back());
+  const J& refs = sous(sous(v, "section"), "refs");
+  if (refs.is_array())
+    for (size_t i = 0; i < refs.size() && i < M.c.size(); i++) M.refs.push_back(refs[i]);
+  while (M.refs.size() < M.c.size()) M.refs.push_back(J());
+  return M;
+}
+void coupeDepuisModele(J& sh, J& v, const ModeleCoupe& M) {  // mepCutFromModel, mepCutSetPts
+  J& s = v["section"];
+  const J* par = vueDe(sh, chaine(s, "pid"));
+  if (!par) return;
+  const auto Q = [&](double sv, double cv) { return XY{M.tx * sv + M.nx * cv, M.ty * sv + M.ny * cv}; };
+  std::vector<XY> P{Q(M.s0, M.c[0])};
+  for (size_t k = 0; k < M.steps.size(); k++) {
+    P.push_back(Q(M.steps[k], M.c[k]));
+    P.push_back(Q(M.steps[k], M.c[k + 1]));
+  }
+  P.push_back(Q(M.sE, M.c.back()));
+  const auto r4 = [](const XY& q) {
+    J a = J::array();
+    a.push_back(js::arrondi(q.x, 4));
+    a.push_back(js::arrondi(q.y, 4));
+    return a;
+  };
+  s["a"] = r4(P[0]);
+  s["b"] = r4(P[1]);
+  if (P.size() > 2) {
+    J pts = J::array();
+    for (const XY& q : P) pts.push_back(r4(q));
+    s["pts"] = pts;
+  } else {
+    s.erase("pts");
+  }
+  const Base pb = baseDe(*par);
+  const double x = nv(s["a"][0]), y = nv(s["a"][1]);
+  J p3 = J::array();
+  p3.push_back(pb.u[0] * x + pb.v[0] * y);
+  p3.push_back(pb.u[1] * x + pb.v[1] * y);
+  p3.push_back(pb.u[2] * x + pb.v[2] * y);
+  s["p"] = p3;
+  bool lien = false;
+  J refs = J::array();
+  for (const J& r : M.refs) {
+    refs.push_back(r);
+    if (!r.is_null()) lien = true;
+  }
+  if (lien) s["refs"] = refs;
+  else s.erase("refs");
+}
+struct CandidatCoupe {
+  J ref;
+  double c = 0, s = 0;
+};
+std::vector<CandidatCoupe> candidatsCoupe(Ctx& c, J& par, const ModeleCoupe& M) {  // mepCutCands
+  std::vector<CandidatCoupe> out;
+  const Base b = baseDe(par);
+  const V3 n3{b.u[0] * M.nx + b.v[0] * M.ny, b.u[1] * M.nx + b.v[1] * M.ny, b.u[2] * M.nx + b.v[2] * M.ny};
+  for (const Trou& f : c.piece.trous) {
+    if (!f.visible || std::abs(dot(f.dir, n3)) > 1e-3) continue;
+    for (const PointTrou& P : f.pts) {
+      const V3& w = P.p;
+      const double lx = dot(w, b.u), ly = dot(w, b.v);
+      J r = J::object();
+      r["t"] = "hole", r["fid"] = f.fid, r["pid"] = P.id;
+      out.push_back({r, lx * M.nx + ly * M.ny, lx * M.tx + ly * M.ty});
+    }
+  }
+  for (const Axe& e : lignesAxes(c, par)) {
+    if (e.t != 'L' || e.ak.empty()) continue;
+    const double dx = e.x2 - e.x1, dy = e.y2 - e.y1, l = hyp(dx, dy) != 0 ? hyp(dx, dy) : 1;
+    if (std::abs((dx * M.nx + dy * M.ny) / l) > 1e-3) continue;
+    J r = J::object();
+    r["t"] = "ax", r["ak"] = e.ak;
+    out.push_back({r, e.x1 * M.nx + e.y1 * M.ny, 0});
+  }
+  for (const Ent& e : c.calc.geoDe(par, c.sh, c.mep, c.piece).els) {
+    if (e.t != 'L') continue;
+    const double dx = e.x2 - e.x1, dy = e.y2 - e.y1, l = hyp(dx, dy) != 0 ? hyp(dx, dy) : 1;
+    if (std::abs((dx * M.nx + dy * M.ny) / l) > 1e-3) continue;
+    const double cv = e.x1 * M.nx + e.y1 * M.ny;
+    J r = J::object();
+    r["t"] = "edge", r["c"] = js::arrondi(cv, 4);
+    out.push_back({r, cv, 0});
+  }
+  return out;
+}
+// Les deux bouts : mepCutEnds
+struct BoutCoupeE {
+  int end = 0;
+  XY M, tail, lbl;
+  double ux = 0, uy = 0, L = 0;
+};
+std::vector<BoutCoupeE> boutsCoupe(Ctx& c, const J& v) {
+  std::vector<BoutCoupeE> out;
+  const J& sec = sous(v, "section");
+  if (!vrai(sec, "a") || !vrai(sec, "pid")) return out;
+  const J* par = vueDe(c.sh, chaine(sec, "pid"));
+  if (!par) return out;
+  const XY A = versFeuille(*par, nv(sec["a"][0]), nv(sec["a"][1])), B0 = versFeuille(*par, nv(sous(sec, "b")[0]), nv(sous(sec, "b")[1]));
+  const double dx = B0.x - A.x, dy = B0.y - A.y, L = hyp(dx, dy) != 0 ? hyp(dx, dy) : 1, tx = dx / L, ty = dy / L;
+  XY B = B0;
+  if (sous(sec, "pts").is_array() && sec["pts"].size() > 2) B = versFeuille(*par, nv(sec["pts"].back()[0]), nv(sec["pts"].back()[1]));
+  const Base pb = baseDe(*par);
+  const V3 nd = vrai(sec, "n") ? v3(sec["n"]) : v3(sous(v, "dir"));
+  double ax = -dot(nd, pb.u), ay = -dot(nd, pb.v);
+  const double La = hyp(ax, ay);
+  if (La < 1e-6) ax = -ty, ay = tx;
+  else ax /= La, ay /= La;
+  const double off = c.st.lblH / 2 + 1.6;
+  const J& shf = sous(sec, "sh");
+  for (int end = 0; end < 2; end++) {
+    const XY Pp = end ? B : A;
+    const double sg = end ? 1 : -1, s0 = shf.is_array() && static_cast<int>(shf.size()) > end ? nv(shf[end]) : 0, ux = tx * sg, uy = ty * sg;
+    const XY Q{Pp.x + ux * s0, Pp.y + uy * s0}, M{Q.x - ux, Q.y - uy};
+    BoutCoupeE E;
+    E.end = end, E.M = M, E.ux = ux, E.uy = uy, E.L = L;
+    E.tail = {M.x - ax * 10, M.y - ay * 10};
+    E.lbl = {M.x - ax * 6 + ux * off, M.y - ay * 6 + uy * off};
+    out.push_back(E);
+  }
+  return out;
+}
+}  // namespace
+void suivreLiensCoupes(Ctx& c) {
+  for (J& v : c.sh["views"]) {
+    if (chaine(v, "kind") != "section" || !sous(sous(v, "section"), "refs").is_array()) continue;
+    J* par = vueParId(c.sh, chaine(v["section"], "pid"));
+    auto M = par ? modeleCoupe(v) : std::nullopt;
+    if (!M) continue;
+    bool ch = false;
+    for (size_t m = 0; m < M->refs.size(); m++) {
+      J& r = M->refs[m];
+      if (!r.is_object()) continue;
+      const std::string t = chaine(r, "t");
+      std::optional<double> cv;
+      const auto cands = candidatsCoupe(c, *par, *M);
+      if (t == "edge") {
+        double best = 5;
+        for (const CandidatCoupe& q : cands)
+          if (chaine(q.ref, "t") == "edge" && std::abs(q.c - num(r, "c")) < best) best = std::abs(q.c - num(r, "c")), cv = q.c;
+      } else {
+        for (const CandidatCoupe& q : cands)
+          if (chaine(q.ref, "t") == t && (t == "ax" ? chaine(q.ref, "ak") == chaine(r, "ak") : chaine(q.ref, "fid") == chaine(r, "fid") && chaine(q.ref, "pid") == chaine(r, "pid"))) {
+            cv = q.c;
+            break;
+          }
+      }
+      if (cv && std::abs(*cv - M->c[m]) > 1e-4) {
+        M->c[m] = *cv;
+        ch = true;
+        if (t == "edge") r["c"] = js::arrondi(*cv, 4);
+      }
+    }
+    if (ch) coupeDepuisModele(c.sh, v, *M);
+  }
+}
+bool flecheCoupeSous(J& mep, int planche, const Piece& p, Calcul& calc, double px, double py, double zoom, GesteCoupe& g) {
+  Ctx c = contexteGeste(mep, planche, p, calc);
+  const double tol = 2 / zoom + 0.6;
+  J& vs = c.sh["views"];
+  for (size_t k = vs.size(); k-- > 0;) {
+    const J& v = vs[k];
+    if (chaine(v, "kind") != "section" || !vrai(v, "section")) continue;
+    for (const BoutCoupeE& E : boutsCoupe(c, v)) {
+      const double vx = E.M.x - E.tail.x, vy = E.M.y - E.tail.y, l2 = vx * vx + vy * vy != 0 ? vx * vx + vy * vy : 1;
+      const double t = std::max(0.0, std::min(1.0, ((px - E.tail.x) * vx + (py - E.tail.y) * vy) / l2));
+      const double dS = hyp(px - (E.tail.x + vx * t), py - (E.tail.y + vy * t)), dL = hyp(px - E.lbl.x, py - E.lbl.y);
+      if (dS <= tol || dL <= c.st.lblH * 0.8) {
+        g.vue = chaine(v, "id"), g.bout = E.end, g.sx = px, g.sy = py;
+        const J& shf = sous(v["section"], "sh");
+        g.s0 = shf.is_array() && static_cast<int>(shf.size()) > E.end ? nv(shf[E.end]) : 0;
+        return true;
+      }
+    }
+  }
+  return false;
+}
+bool tronconCoupeSous(J& mep, int planche, const Piece& p, Calcul& calc, double px, double py, double zoom, GesteCoupe& g) {
+  Ctx c = contexteGeste(mep, planche, p, calc);
+  const double tol = 1.5 / zoom + 0.4;
+  J& vs = c.sh["views"];
+  for (size_t k = vs.size(); k-- > 0;) {
+    const J& v = vs[k];
+    if (chaine(v, "kind") != "section" || !vrai(v, "section") || !vrai(v["section"], "pid")) continue;
+    const J* par = vueDe(c.sh, chaine(v["section"], "pid"));
+    if (!par) continue;
+    const std::vector<XY> L = pointsCoupe(v);
+    for (size_t j = 0; j + 1 < L.size(); j++) {
+      const XY a = versFeuille(*par, L[j].x, L[j].y), b = versFeuille(*par, L[j + 1].x, L[j + 1].y);
+      const double vx = b.x - a.x, vy = b.y - a.y, l2 = vx * vx + vy * vy != 0 ? vx * vx + vy * vy : 1;
+      const double t = std::max(0.0, std::min(1.0, ((px - a.x) * vx + (py - a.y) * vy) / l2));
+      if (hyp(px - (a.x + vx * t), py - (a.y + vy * t)) <= tol) {
+        g.vue = chaine(v, "id"), g.j = static_cast<int>(j), g.sx = px, g.sy = py;
+        const auto M = modeleCoupe(v);
+        const double sc = num(*par, "scale");
+        g.sG = M ? (px - num(*par, "x")) / sc * M->tx + (py - num(*par, "y")) / sc * M->ty : 0;
+        return true;
+      }
+    }
+  }
+  return false;
+}
+bool bougerFlecheCoupe(J& mep, int planche, const Piece& p, Calcul& calc, GesteCoupe& g, double x, double y) {
+  Ctx c = contexteGeste(mep, planche, p, calc);
+  J* v = vueParId(c.sh, g.vue);
+  if (!v) return false;
+  const auto bs = boutsCoupe(c, *v);
+  if (g.bout < 0 || g.bout >= static_cast<int>(bs.size())) return false;
+  const BoutCoupeE& E = bs[g.bout];
+  double sv = g.s0 + (x - g.sx) * E.ux + (y - g.sy) * E.uy;
+  sv = std::floor(std::max(-(E.L / 2 - 6), std::min(150.0, sv)) * 2 + 0.5) / 2;
+  J& sec = (*v)["section"];
+  J shf = sec.contains("sh") && sec["sh"].is_array() ? sec["sh"] : J::array({0, 0});
+  while (shf.size() < 2) shf.push_back(0);
+  if (nv(shf[g.bout]) == sv) return false;
+  shf[g.bout] = sv;
+  sec["sh"] = shf;
+  return true;
+}
+void bougerTroncon(J& mep, int planche, const Piece& p, Calcul& calc, GesteCoupe& g, double x, double y, double zoom) {
+  Ctx c = contexteGeste(mep, planche, p, calc);
+  J* v = vueParId(c.sh, g.vue);
+  J* par = v ? vueParId(c.sh, chaine((*v)["section"], "pid")) : nullptr;
+  const auto M = par ? modeleCoupe(*v) : std::nullopt;
+  if (!M) return;
+  const double sc = num(*par, "scale"), lx = (x - num(*par, "x")) / sc, ly = (y - num(*par, "y")) / sc;
+  if (g.j % 2) {  // marche : glisse le long du 1er tronçon, entre ses voisines
+    const int k = (g.j - 1) / 2;
+    const double lo = k ? M->steps[k - 1] : M->s0, hi = k == static_cast<int>(M->steps.size()) - 1 ? M->sE : M->steps[k + 1];
+    double sv = lx * M->tx + ly * M->ty;
+    const double a = std::min(lo, hi) + 0.5, b = std::max(lo, hi) - 0.5;
+    sv = std::max(a, std::min(b, std::floor(sv * 2 + 0.5) / 2));
+    g.prev = GesteCoupe::MARCHE, g.k = k, g.valeur = sv;
+    return;
+  }
+  // plan : brisure au point saisi, le morceau suivant s'accroche au centre / à la ligne visé(e)
+  const double cv = lx * M->nx + ly * M->ny, tol = 4 / zoom / sc;
+  const CandidatCoupe* best = nullptr;
+  double bd = 0;
+  const auto cands = candidatsCoupe(c, *par, *M);
+  for (const CandidatCoupe& q : cands) {
+    const double d = std::abs(q.c - cv);
+    if (d <= tol && (!best || d < bd || (d == bd && chaine(q.ref, "t") == "hole"))) best = &q, bd = d;
+  }
+  g.prev = g.brk ? GesteCoupe::BRISURE : GesteCoupe::PLAN;
+  g.k = g.j / 2;
+  g.valeur = best ? best->c : std::floor(cv * 2 + 0.5) / 2;
+  g.ref = best ? best->ref : J();
+}
+namespace {
+bool briserCoupe(J& sh, J& v, int m, double sG, double cNew, const J& ref) {  // mepCutBreakAt
+  auto M = modeleCoupe(v);
+  if (!M) return false;
+  const double lo = m ? M->steps[m - 1] : M->s0, hi = m == static_cast<int>(M->c.size()) - 1 ? M->sE : M->steps[m];
+  if ((sG - lo) * (hi - sG) <= 0 || std::abs(cNew - M->c[m]) < 1e-6) return false;
+  M->steps.insert(M->steps.begin() + m, sG);
+  M->c.insert(M->c.begin() + m + 1, cNew);
+  M->refs.insert(M->refs.begin() + m + 1, ref);
+  coupeDepuisModele(sh, v, *M);
+  return true;
+}
+}  // namespace
+bool lacherTroncon(J& mep, int planche, const Piece& p, Calcul& calc, GesteCoupe& g) {
+  Ctx c = contexteGeste(mep, planche, p, calc);
+  J* v = vueParId(c.sh, g.vue);
+  if (!v) return false;
+  auto M = modeleCoupe(*v);
+  if (!M) return false;
+  if (g.prev == GesteCoupe::RIEN) {
+    if (!g.brk || (g.j % 2)) return false;
+    // Ctrl + clic sans tirer : le morceau après le curseur part d'un décalage par défaut (mepCutBreakClick)
+    const J* par = vueDe(c.sh, chaine((*v)["section"], "pid"));
+    if (!par) return false;
+    const int m = g.j / 2;
+    const double hi = m == static_cast<int>(M->c.size()) - 1 ? M->sE : M->steps[m];
+    const double L = std::abs(hi - g.sG), dc = std::max(2.0, std::min(10 / num(*par, "scale"), L / 2));
+    return briserCoupe(c.sh, *v, m, g.sG, M->c[m] + dc, J());
+  }
+  if (g.prev == GesteCoupe::MARCHE) M->steps[g.k] = g.valeur;
+  else if (g.prev == GesteCoupe::PLAN) {
+    M->c[g.k] = g.valeur;
+    M->refs[g.k] = g.ref;
+  } else {
+    return briserCoupe(c.sh, *v, g.k, g.sG, g.valeur, g.ref);
+  }
+  coupeDepuisModele(c.sh, *v, *M);
+  return true;
+}
+bool retirerBrisure(J& mep, int planche, const Piece& p, Calcul& calc, const GesteCoupe& g) {
+  Ctx c = contexteGeste(mep, planche, p, calc);
+  J* v = vueParId(c.sh, g.vue);
+  auto M = v ? modeleCoupe(*v) : std::nullopt;
+  if (!M || M->steps.empty()) return false;
+  int k;
+  bool garderApres;
+  if (g.j % 2) {
+    k = (g.j - 1) / 2, garderApres = false;
+  } else {
+    const int m = g.j / 2, kb = m - 1, ka = m;
+    const double db = kb >= 0 ? std::abs(M->steps[kb] - g.sG) : 1e300, da = ka < static_cast<int>(M->steps.size()) ? std::abs(M->steps[ka] - g.sG) : 1e300;
+    if (db <= da) k = kb, garderApres = true;
+    else k = ka, garderApres = false;
+  }
+  if (k < 0 || k >= static_cast<int>(M->steps.size())) return false;
+  const int drop = garderApres ? k : k + 1;
+  M->steps.erase(M->steps.begin() + k);
+  M->c.erase(M->c.begin() + drop);
+  M->refs.erase(M->refs.begin() + drop);
+  coupeDepuisModele(c.sh, *v, *M);
+  return true;
 }
 }  // namespace plan

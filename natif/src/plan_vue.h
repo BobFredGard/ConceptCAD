@@ -22,6 +22,15 @@ class PlanVue : public wxWindow {
   void oublier();
   // Pour la note de droite : ce que contient la planche courante
   wxString resume() const;
+  // La planche a changé : le fichier reçoit le plan, sans recalculer la pièce
+  std::function<void(const plan::J& mep, const wxString& libelle)> surChangement;
+  std::function<void(const wxString&)> surEtat;
+  std::function<void()> surSelection;  // ce qui est choisi a changé
+  // Annuler, Rétablir : le plan du document revient, le calcul des vues reste bon
+  void reprendre(const std::string& texteDoc);
+  const plan::SelectionPlan& selection() const { return sel_; }
+  // Les gestes de l'essai automatique, en mm sur la feuille
+  void essaiGeste(const plan::J& e);
   // Le rendu des vues ombrées : c'est la vue 3D qui sait le faire
   std::function<bool(const plan::DemandeImage&, wxImage&)> rendreImage;
 
@@ -55,6 +64,15 @@ class PlanVue : public wxWindow {
   void changerPlanche(int i);
   int ongletSous(const wxPoint& p) const;
   void peindreRegles(wxDC& dc, const wxSize& t);
+  void peindreSelection(wxDC& dc);
+  void enfonce(double x, double y, bool maj, bool ctrl, double px, double py);
+  void bouge(double x, double y, double px, double py);
+  void relache();
+  void supprimer();
+  void valider(const wxString& libelle);
+  void redessiner();
+  double zoomRelatif() const { return zoomEntier_ > 0 ? zoom_ / zoomEntier_ : 1; }
+  plan::J& planche() { return mep_["sheets"][planche_]; }
   int hauteurOnglets() const;
 
   plan::J top_, mep_;
@@ -71,6 +89,20 @@ class PlanVue : public wxWindow {
   wxBitmap image_;
   bool imageBonne_ = false;
   std::vector<wxRect> onglets_;
+  plan::SelectionPlan sel_;
+  std::string vueSurvol_;
+  struct Geste {
+    enum Sorte { RIEN, VUE, COTE, BULLE, TITRE, CADRE, FLECHE, TRONCON } sorte = RIEN;
+    std::string id;
+    double ox = 0, oy = 0, px0 = 0, py0 = 0, curX = 0, curY = 0;
+    bool commence = false, bouge = false, ajout = false;
+    plan::GesteCote cote;
+    plan::GesteCoupe coupe;
+  } geste_;
+  double zoomEntier_ = 0;
+  std::string coteAppui_;
+  wxLongLong tempsAppui_ = 0;
+  double appuiPx_ = 0, appuiPy_ = 0;
   std::map<std::string, std::shared_ptr<wxBitmap>> images3d_;
   bool curseurDedans_ = false;
   double curseurX_ = 0, curseurY_ = 0;  // mm papier

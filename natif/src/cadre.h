@@ -87,6 +87,7 @@ class Cadre : public wxFrame {
     std::vector<Parametre> paramsAvant, paramsApres;
     std::vector<PorteurFx> porteursAvant, porteursApres;
     std::shared_ptr<Document> docAvant, docApres;  // un changement de structure : le document entier
+    bool planSeul = false;  // seule la mise en plan change : rien à recalculer
   };
   // parAfterChange : la modification, ses conséquences, le recalcul, une annulation. Rend le message de refus, vide si accepté.
   std::string changerFormules(const std::function<std::string()>& f);
@@ -164,6 +165,9 @@ public:
   void changerStructure(const std::function<void(nlohmann::ordered_json&)>& changement, const wxString& message = wxString());
   void apresStructure();
   void poserDocument(const std::shared_ptr<Document>& d);
+  // La mise en plan change : le fichier la reçoit, la pièce n'est pas recalculée
+  void changerPlan(const nlohmann::ordered_json& mep);
+  void reprendrePlan(const std::shared_ptr<Document>& d);
   int choisirMenu(wxMenu& m);
   wxString demanderNom(const wxString& actuel);
   bool confirmerSuppression(const wxString& question);

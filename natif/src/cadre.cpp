@@ -441,6 +441,8 @@ void Cadre::creerEnvironnement() {
   planVue_ = new PlanVue(scene_);
   planVue_->Hide();
   planVue_->rendreImage = [this](const plan::DemandeImage& d, wxImage& im) { return vue_->imagePlan(d, im); };
+  planVue_->surChangement = [this](const plan::J& mep, const wxString&) { changerPlan(mep); };
+  planVue_->surEtat = [this](const wxString& t) { etat(t); };
   page_->Hide();
 
   // Les fenêtres posées sur la vue 3D : OpenGL n'a pas le droit de les recouvrir
@@ -2060,6 +2062,7 @@ void Cadre::annuler() {
     annulations_.pop_back();
     m.docApres = std::make_shared<Document>(doc_);
     retablissements_.push_back(m);
+    if (m.planSeul) return reprendrePlan(m.docAvant);
     return poserDocument(m.docAvant);
   }
   if (annulations_.back().creation && annulations_.back().esquissesAvant.size() < doc_.esquissesFichier.size()) {
@@ -2090,6 +2093,7 @@ void Cadre::retablir() {
   const ModifCote m = retablissements_.back();
   retablissements_.pop_back();
   annulations_.push_back(m);
+  if (m.planSeul) return reprendrePlan(m.docApres);
   if (m.docApres) return poserDocument(m.docApres);
   if (m.avecFormules) {
     doc_.params = m.paramsApres;
@@ -2164,6 +2168,32 @@ void Cadre::changerStructure(const std::function<void(nlohmann::ordered_json&)>&
   retablissements_.clear();
   apresStructure();
   if (!message.empty()) etat(etatVue_->texte() + L"  |  " + message);
+}
+
+void Cadre::changerPlan(const nlohmann::ordered_json& mep) {
+  auto avant = std::make_shared<Document>(doc_);
+  try {
+    modifierStructure(doc_, [&](nlohmann::ordered_json& d) { d["mep"] = mep; });
+  } catch (const std::exception& e) {
+    doc_ = *avant;
+    if (!essaiMenu_) wxMessageBox(tx(e.what()), L"Modification impossible", wxOK | wxICON_WARNING, this);
+    return;
+  }
+  ModifCote m;
+  m.docAvant = avant;
+  m.planSeul = true;
+  annulations_.push_back(std::move(m));
+  retablissements_.clear();
+}
+
+void Cadre::reprendrePlan(const std::shared_ptr<Document>& d) {
+  doc_ = *d;
+  if (atelier_ != Atelier::PLAN) {
+    if (planVue_) planVue_->oublier();
+    return;
+  }
+  const std::string base = !doc_.texteBase.empty() ? doc_.texteBase.str() : texteDuFichier(doc_);
+  planVue_->reprendre(base);
 }
 
 int Cadre::choisirMenu(wxMenu& m) {
@@ -2963,6 +2993,10 @@ bool Cadre::essaiEsquisse(const std::wstring& fichier, int rang, const std::wstr
     }
     wxYield();
     d = vueEsquisse_->dessin();
+    if (e.contains("plan")) {
+      planVue_->essaiGeste(e["plan"]);
+      wxYield();
+    }
     if (e.contains("atelier")) {
       const std::string a = e["atelier"].get<std::string>();
       changerAtelier(a == "plan" ? Atelier::PLAN : a == "fao" ? Atelier::FAO : a == "rendu" ? Atelier::RENDU : Atelier::CAO);

@@ -2079,6 +2079,7 @@ TaillesCotes taillesCotes(const J& mep) {
 
 std::vector<Elt> dessiner(J& mep, int planche, const Piece& p, Calcul& calc) {  // mepRenderCorps
   std::vector<Elt> out;
+  calc.cotesVues.clear();
   J& sh = mep["sheets"][planche];
   Ctx c{out, mep, sh, planche, p, calc};
   c.st = styleCotes(mep);
@@ -2095,6 +2096,10 @@ std::vector<Elt> dessiner(J& mep, int planche, const Piece& p, Calcul& calc) {  
   }
   dessinerRevisions(c, pd, ty);
   dessinerNomenclature(c, pd, ty);
+  try {
+    suivreLiensCoupes(c);
+  } catch (const std::exception&) {
+  }
   for (J& v : sh["views"]) {
     if (!v.is_object()) continue;
     try {
@@ -2105,11 +2110,38 @@ std::vector<Elt> dessiner(J& mep, int planche, const Piece& p, Calcul& calc) {  
   }
   if (sh.contains("dims") && sh["dims"].is_array())
     for (J& d : sh["dims"]) {
+      const size_t n0 = out.size();
       try {
         dessinerCote(c, d);
       } catch (const Standard_Failure&) {
       } catch (const std::exception&) {
       }
+      const std::string idc = chaine(d, "id");
+      const bool choisie = calc.selection && (calc.selection->cote == idc || calc.selection->lotCotes.count(idc));
+      CoteVue q;
+      for (size_t i = n0; i < out.size(); i++) {
+        Elt& e = out[i];
+        if (e.tag == "line") {
+          const auto val = [&](const char* k) {
+            const std::string* a = e.attr(k);
+            return a ? std::strtod(a->c_str(), nullptr) : 0.0;
+          };
+          q.traits.push_back({val("x1"), val("y1"), val("x2"), val("y2")});
+        }
+        if (!choisie) continue;
+        for (auto& a : e.at) {
+          if (a.first == "class") {
+            if (a.second.rfind("mepDimL", 0) == 0 || a.second.rfind("mepDimT", 0) == 0) a.second += " mepDimSel";
+          } else if ((a.first == "marker-start" || a.first == "marker-end") && a.second.find("mepArr") != std::string::npos && a.second.find("Sel") == std::string::npos) {
+            a.second.insert(a.second.size() - 1, "Sel");
+          }
+        }
+      }
+      try {
+        ceQuiSaisitLaCote(c, d, q);
+      } catch (const std::exception&) {
+      }
+      calc.cotesVues[idc] = std::move(q);
     }
   try {
     dessinerBulles(c);
@@ -2117,6 +2149,231 @@ std::vector<Elt> dessiner(J& mep, int planche, const Piece& p, Calcul& calc) {  
   }
   if (vrai(sh, "sk")) dessinerEsquisse(c, sh["sk"], 0, 0, true);
   return out;
+}
+
+// ---- Les gestes de la souris ----
+J* vueParId(J& sh, const std::string& id) {
+  if (sh.contains("views") && sh["views"].is_array())
+    for (J& v : sh["views"])
+      if (chaine(v, "id") == id) return &v;
+  return nullptr;
+}
+J* coteParId(J& sh, const std::string& id) {
+  if (sh.contains("dims") && sh["dims"].is_array())
+    for (J& v : sh["dims"])
+      if (chaine(v, "id") == id) return &v;
+  return nullptr;
+}
+J* bulleParId(J& sh, const std::string& id) {
+  if (sh.contains("balloons") && sh["balloons"].is_array())
+    for (J& v : sh["balloons"])
+      if (chaine(v, "id") == id) return &v;
+  return nullptr;
+}
+bool boiteDeVue(const J& v, const J& sh, const J& mep, const Piece& p, Calcul& c, double& x, double& y, double& w, double& h) {
+  const Geo& g = c.geoDe(v, sh, mep, p);
+  Boite b;
+  if (!boiteVue(v, g, b)) return false;
+  x = b.x, y = b.y, w = b.w, h = b.h;
+  return true;
+}
+std::string vueSous(const J& sh, const J& mep, const Piece& p, Calcul& c, double sx, double sy) {
+  std::string best;
+  double aire = 1e18;
+  const J& vs = sous(sh, "views");
+  if (!vs.is_array()) return best;
+  for (const J& v : vs) {
+    double x, y, w, h;
+    if (!boiteDeVue(v, sh, mep, p, c, x, y, w, h)) continue;
+    const double pad = 2;
+    if (sx >= x - pad && sx <= x + w + pad && sy >= y - pad && sy <= y + h + pad) {
+      const double a = (w + pad * 2) * (h + pad * 2);
+      if (a < aire) aire = a, best = chaine(v, "id");
+    }
+  }
+  return best;
+}
+std::string titreSous(const J& sh, const J& mep, const Piece& p, Calcul& c, double px, double py, double zoom, double& ecartY) {
+  const J& vs = sous(sh, "views");
+  if (!vs.is_array()) return "";
+  const double tol = 1.5 / zoom, lh = styleCotes(mep).lblH;
+  const double fs = js::arrondi(lh / CAP_RATIO, 3);
+  for (size_t i = vs.size(); i-- > 0;) {
+    const J& v = vs[i];
+    const std::string txt = texteTitreVue(v);
+    if (txt.empty()) continue;
+    double x, y, w, h;
+    if (!boiteDeVue(v, sh, mep, p, c, x, y, w, h)) continue;
+    const J& t = sous(v, "ttl");
+    const double gap = t.is_object() && t.contains("gap") && std::isfinite(nv(t["gap"], NAN)) ? nv(t["gap"]) : 5;
+    const double tx0 = x + w / 2, ty = chaine(t, "side") == "above" ? y - gap : y + h + gap + lh;
+    const double larg = longueurCar(txt) * fs * 0.64;
+    if (std::abs(px - tx0) <= larg / 2 + tol && py >= ty - lh - tol && py <= ty + tol + 0.8) {
+      ecartY = py - (ty - lh / 2);
+      return chaine(v, "id");
+    }
+  }
+  return "";
+}
+void deplacerTitre(J& sh, const J& mep, const Piece& p, Calcul& c, J& v, double y, double dy) {
+  double x0, y0, w, h;
+  if (!boiteDeVue(v, sh, mep, p, c, x0, y0, w, h)) return;
+  const double lh = styleCotes(mep).lblH, tc = y - dy;
+  const bool above = tc < y0 + h / 2;
+  const double gap = std::max(1.0, std::floor((above ? y0 - tc - lh / 2 : tc - y0 - h - lh / 2) * 2 + 0.5) / 2);
+  J t = J::object();
+  t["side"] = above ? "above" : "below";
+  t["gap"] = gap;
+  v["ttl"] = t;
+}
+std::string coteSous(const J& sh, const Calcul& c, double sx, double sy, double zoom) {
+  std::string best;
+  double score = 1e18;
+  const double bd = 6 / zoom, bdTxt = 18 / zoom;
+  const J& ds = sous(sh, "dims");
+  if (!ds.is_array()) return best;
+  const auto segDist = [&](const CoteVue::Seg& s) {
+    const double dx = s.x2 - s.x1, dy = s.y2 - s.y1, L2 = dx * dx + dy * dy;
+    double t = 0;
+    if (L2 > 1e-12) t = std::max(0.0, std::min(1.0, ((sx - s.x1) * dx + (sy - s.y1) * dy) / L2));
+    return std::hypot(sx - (s.x1 + dx * t), sy - (s.y1 + dy * t));
+  };
+  for (const J& d : ds) {
+    const auto it = c.cotesVues.find(chaine(d, "id"));
+    if (it == c.cotesVues.end()) continue;
+    double d1 = 1e9;
+    for (const CoteVue::Seg& s : it->second.traits) d1 = std::min(d1, segDist(s));
+    const double d2 = it->second.aTexte ? std::hypot(sx - it->second.tx, sy - it->second.ty) : 1e9;
+    if (d1 < bd || d2 < bdTxt) {
+      const double sc = std::min(d1 / bd, d2 / bdTxt);
+      if (sc < score) score = sc, best = chaine(d, "id");
+    }
+  }
+  return best;
+}
+std::string flecheSous(const J& sh, const Calcul& c, double sx, double sy, double zoom) {
+  std::string best;
+  double bd = 8 / zoom;
+  const J& ds = sous(sh, "dims");
+  if (!ds.is_array()) return best;
+  for (const J& d : ds) {
+    const std::string k = chaine(d, "kind");
+    if (k != "len" && k != "dist") continue;
+    const auto it = c.cotesVues.find(chaine(d, "id"));
+    if (it == c.cotesVues.end() || !it->second.aFleches) continue;
+    const double e = std::min(std::hypot(sx - it->second.fx1, sy - it->second.fy1), std::hypot(sx - it->second.fx2, sy - it->second.fy2));
+    if (e < bd) bd = e, best = chaine(d, "id");
+  }
+  return best;
+}
+void pointBulle(const J& sh, const J& b, double& ax, double& ay) {
+  const J* v = vueDe(sh, chaine(b, "view"));
+  ax = ay = 0;
+  if (!v) return;
+  const Base B0 = baseDe(*v);
+  const V3 q = v3(sous(b, "p"));
+  ax = num(*v, "x") + dot(q, B0.u) * num(*v, "scale"), ay = num(*v, "y") + dot(q, B0.v) * num(*v, "scale");
+}
+std::string bulleSous(const J& sh, double x, double y) {
+  const J& B = sous(sh, "balloons");
+  if (!B.is_array()) return "";
+  for (size_t k = B.size(); k-- > 0;) {
+    if (!vueDe(sh, chaine(B[k], "view"))) continue;
+    double ax, ay;
+    pointBulle(sh, B[k], ax, ay);
+    if (std::hypot(x - (ax + num(B[k], "dx")), y - (ay + num(B[k], "dy"))) <= 4.4) return chaine(B[k], "id");
+  }
+  return "";
+}
+namespace {
+void suivreFilles(J& sh, const std::string& id, double dx, double dy) {  // mepProjFollow
+  for (J& c : sh["views"])
+    if ((chaine(c, "kind") == "proj" || vrai(c, "align")) && chaine(c, "parent") == id) {
+      c["x"] = num(c, "x") + dx;
+      c["y"] = num(c, "y") + dy;
+      suivreFilles(sh, chaine(c, "id"), dx, dy);
+    }
+}
+}  // namespace
+void deplacerVue(J& sh, J& v, double nx, double ny) {
+  const std::string kind = chaine(v, "kind");
+  const double x0 = num(v, "x"), y0 = num(v, "y");
+  if (vrai(v, "align") && kind != "proj") {
+    // coupe / auxiliaire alignées : glissement sur la ligne de rappel
+    const double ax = num(v["align"], "x"), ay = num(v["align"], "y");
+    const double t = (nx - x0) * ax + (ny - y0) * ay;
+    nx = x0 + t * ax, ny = y0 + t * ay;
+  }
+  if (kind == "proj") {
+    // vue projetée : l'axe commun reste verrouillé sur la mère
+    if (const J* par = vueDe(sh, chaine(v, "parent"))) {
+      const std::string pr = chaine(v, "proj");
+      if (pr == "top" || pr == "bottom") nx = num(*par, "x");
+      else ny = num(*par, "y");
+    }
+  }
+  const double dx = nx - x0, dy = ny - y0;
+  v["x"] = nx;
+  v["y"] = ny;
+  if (std::abs(dx) > 1e-9 || std::abs(dy) > 1e-9) suivreFilles(sh, chaine(v, "id"), dx, dy);
+}
+void supprimerVue(J& sh, const std::string& id) {
+  J vs = J::array(), ds = J::array();
+  for (J& v : sh["views"])
+    if (chaine(v, "id") != id && chaine(v, "parent") != id) vs.push_back(std::move(v));
+  if (sh.contains("dims") && sh["dims"].is_array())
+    for (J& d : sh["dims"])
+      if (chaine(d, "vid") != id && chaine(d, "vid2") != id) ds.push_back(std::move(d));
+  sh["views"] = std::move(vs);
+  sh["dims"] = std::move(ds);
+}
+void supprimerVues(J& sh, const std::set<std::string>& ids) {
+  std::set<std::string> gone = ids;
+  bool grew = true;
+  while (grew) {
+    grew = false;
+    for (const J& v : sh["views"])
+      if (vrai(v, "parent") && gone.count(chaine(v, "parent")) && !gone.count(chaine(v, "id"))) {
+        gone.insert(chaine(v, "id"));
+        grew = true;
+      }
+  }
+  J vs = J::array(), ds = J::array();
+  for (J& v : sh["views"])
+    if (!gone.count(chaine(v, "id"))) vs.push_back(std::move(v));
+  if (sh.contains("dims") && sh["dims"].is_array())
+    for (J& d : sh["dims"])
+      if (!gone.count(chaine(d, "vid")) && !gone.count(chaine(d, "vid2"))) ds.push_back(std::move(d));
+  sh["views"] = std::move(vs);
+  sh["dims"] = std::move(ds);
+}
+Ctx contexteGeste(J& mep, int planche, const Piece& p, Calcul& calc) {
+  static std::vector<Elt> poubelle;
+  poubelle.clear();
+  Ctx c{poubelle, mep, mep["sheets"][planche], planche, p, calc};
+  c.st = styleCotes(mep);
+  return c;
+}
+GesteCote saisirCote(J& mep, int planche, const Piece& p, Calcul& calc, J& d, double x, double y, double zoom) {
+  std::vector<Elt> poubelle;
+  J& sh = mep["sheets"][planche];
+  Ctx c{poubelle, mep, sh, planche, p, calc};
+  c.st = styleCotes(mep);
+  return saisirCoteDans(c, d, x, y, zoom);
+}
+bool deplacerCote(J& mep, int planche, const Piece& p, Calcul& calc, J& d, double x, double y, const GesteCote& g) {
+  std::vector<Elt> poubelle;
+  J& sh = mep["sheets"][planche];
+  Ctx c{poubelle, mep, sh, planche, p, calc};
+  c.st = styleCotes(mep);
+  return deplacerCoteDans(c, d, x, y, g);
+}
+void inverserAngle(J& mep, int planche, const Piece& p, Calcul& calc, J& d) {
+  std::vector<Elt> poubelle;
+  J& sh = mep["sheets"][planche];
+  Ctx c{poubelle, mep, sh, planche, p, calc};
+  c.st = styleCotes(mep);
+  inverserAngleDans(c, d);
 }
 
 std::string versSvg(const std::vector<Elt>& e, const J& planche, const Style& s) {

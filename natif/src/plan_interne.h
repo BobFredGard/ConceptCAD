@@ -250,4 +250,10 @@ std::string debutCar(const std::string& s, size_t n) {  // .slice(0,n), caractè
 // Les axes d'une vue et les cotes (98-mep-70-cotes.js, 98-mep-71-oblong.js)
 void dessinerAxesVue(Ctx& c, J& v);
 void dessinerCote(Ctx& c, J& d);
+void ceQuiSaisitLaCote(Ctx& c, J& d, CoteVue& q);  // mepDimTextPos, les flèches
+GesteCote saisirCoteDans(Ctx& c, J& d, double x, double y, double zoom);
+bool deplacerCoteDans(Ctx& c, J& d, double x, double y, const GesteCote& g);
+void inverserAngleDans(Ctx& c, J& d);
+Ctx contexteGeste(J& mep, int planche, const Piece& p, Calcul& calc);
+void suivreLiensCoupes(Ctx& c);  // mepCutFollowAll
 }  // namespace plan

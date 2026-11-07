@@ -10,6 +10,7 @@
 #include <map>
 #include <memory>
 #include <nlohmann/json.hpp>
+#include <set>
 #include <string>
 #include <utility>
 #include <vector>
@@ -147,6 +148,22 @@ struct CadreImage {
   std::string cle;
 };
 
+// Ce qui est sélectionné dans la planche (mepSt.sel, selDim, selBl, lot)
+struct SelectionPlan {
+  std::string vue, cote, bulle;
+  std::set<std::string> lotVues, lotCotes;
+  bool vide() const { return vue.empty() && cote.empty() && bulle.empty() && lotVues.empty() && lotCotes.empty(); }
+};
+// Une cote telle qu'elle vient d'être dessinée : ce qui sert à la saisir (mepDimHits, mepDimTextPos)
+struct CoteVue {
+  struct Seg {
+    double x1, y1, x2, y2;
+  };
+  std::vector<Seg> traits;
+  bool aTexte = false, aFleches = false;
+  double tx = 0, ty = 0, fx1 = 0, fy1 = 0, fx2 = 0, fy2 = 0;
+};
+
 // Les vues calculées d'un document : refaites seulement si la vue change
 class Calcul {
  public:
@@ -161,6 +178,8 @@ class Calcul {
   const CadreImage& imageDe(const J& vue, const Piece& p);
   std::function<void(const DemandeImage&)> rendreImage;
   std::map<std::string, std::vector<RevAxe>> cylindres, revolutions;
+  const SelectionPlan* selection = nullptr;  // à montrer au prochain dessin
+  std::map<std::string, CoteVue> cotesVues;  // remplie par le dessin
 
  private:
   std::map<std::string, std::pair<std::string, CadreImage>> images_;
@@ -171,6 +190,48 @@ class Calcul {
 // Le dessin de la planche courante, sans les aides de la souris (mepRenderCorps)
 // Les points de cote suivent la géométrie : mep est mis à jour comme dans le navigateur.
 std::vector<Elt> dessiner(J& mep, int planche, const Piece& p, Calcul& c);
+// Les gestes de la souris sur la planche (src/98-mep-80-souris.js). x, y : mm papier ; zoom : 1 = la feuille entière.
+bool boiteDeVue(const J& v, const J& sh, const J& mep, const Piece& p, Calcul& c, double& x, double& y, double& w, double& h);  // mepViewSheetBBox
+std::string vueSous(const J& sh, const J& mep, const Piece& p, Calcul& c, double x, double y);  // mepViewAt
+std::string titreSous(const J& sh, const J& mep, const Piece& p, Calcul& c, double x, double y, double zoom, double& ecartY);  // mepViewTitleAt
+std::string coteSous(const J& sh, const Calcul& c, double x, double y, double zoom);  // mepDimAt
+std::string flecheSous(const J& sh, const Calcul& c, double x, double y, double zoom);  // mepDimArrowAt
+std::string bulleSous(const J& sh, double x, double y);  // mepBalloonAt
+J* vueParId(J& sh, const std::string& id);
+J* coteParId(J& sh, const std::string& id);
+J* bulleParId(J& sh, const std::string& id);
+void deplacerVue(J& sh, J& v, double nx, double ny);  // le glisser d'une vue : contrainte de projection, mepProjFollow
+void deplacerTitre(J& sh, const J& mep, const Piece& p, Calcul& c, J& v, double y, double dy);  // ttlDrag
+void supprimerVue(J& sh, const std::string& id);  // mepDelView : la vue, ses filles directes, ses cotes
+void supprimerVues(J& sh, const std::set<std::string>& ids);  // mepDeleteLot : avec les filles et leurs cotes
+void pointBulle(const J& sh, const J& b, double& ax, double& ay);
+// Le début du glisser d'une cote (mepDimDragStart), puis chaque mouvement (mepDimMoveTo)
+struct GesteCote {
+  double sx = 0, sy = 0, off0 = 0, txtOff0 = 0, cx = 0, cy = 0;
+  bool aOff0 = false, aCentre = false, labelHit = false;
+};
+GesteCote saisirCote(J& mep, int planche, const Piece& p, Calcul& c, J& d, double x, double y, double zoom);
+bool deplacerCote(J& mep, int planche, const Piece& p, Calcul& c, J& d, double x, double y, const GesteCote& g);
+// La ligne de coupe sur la vue mère : la flèche d'un bout (cutDrag), un tronçon (cutSeg)
+struct GesteCoupe {
+  std::string vue;
+  int bout = -1, j = -1;
+  double s0 = 0, sx = 0, sy = 0, sG = 0;
+  bool brk = false;
+  enum Sorte { RIEN, MARCHE, PLAN, BRISURE } prev = RIEN;
+  int k = 0;
+  double valeur = 0;
+  J ref;
+};
+bool flecheCoupeSous(J& mep, int planche, const Piece& p, Calcul& c, double x, double y, double zoom, GesteCoupe& g);  // mepCutArrowAt
+bool tronconCoupeSous(J& mep, int planche, const Piece& p, Calcul& c, double x, double y, double zoom, GesteCoupe& g);  // mepCutSegAt
+bool bougerFlecheCoupe(J& mep, int planche, const Piece& p, Calcul& c, GesteCoupe& g, double x, double y);
+void bougerTroncon(J& mep, int planche, const Piece& p, Calcul& c, GesteCoupe& g, double x, double y, double zoom);
+bool lacherTroncon(J& mep, int planche, const Piece& p, Calcul& c, GesteCoupe& g);
+bool retirerBrisure(J& mep, int planche, const Piece& p, Calcul& c, const GesteCoupe& g);  // mepCutDelBreakAt
+void inverserFleches(J& d);  // mepDimToggleArrows
+void inverserAngle(J& mep, int planche, const Piece& p, Calcul& c, J& d);  // mepDimToggleBig
+
 // Taille de la feuille en mm
 void tailleFeuille(const J& planche, double& w, double& h);
 // Couleurs et épaisseurs réglées dans le fichier
