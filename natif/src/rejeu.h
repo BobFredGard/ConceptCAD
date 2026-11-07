@@ -2,6 +2,7 @@
 // traduction de occFinalShapeGen / occReplayBodyGen (src/20-70) pour esquisses, extrusions et découpes.
 #pragma once
 #include "filets.h"
+#include <functional>
 #include <TopoDS_Face.hxx>
 #include <TopoDS_Shape.hxx>
 #include "projet.h"
@@ -31,6 +32,8 @@ std::vector<std::pair<double, double>> plagesExtrusions(const Document& d, const
 // Replace les esquisses posées sur une face (resolveAllSketchHosts) puis rejoue la pièce,
 // ou seulement ses n premières fonctions : ce que voit l'esquisse de la fonction suivante.
 ResultatRejeu rejouer(Document& d, int n = -1);
+// La barre de progression (31-regen-progression.js) : rang, total, fonction sur le point d'être calculée
+extern thread_local std::function<void(int, int, const Fonction&)> gSuiviRejeu;
 // Sans recalculer les éléments de construction : le solide sur lequel on les pose
 ResultatRejeu rejouerSansConstruction(Document& d, int n);
 // newSketch et newSketchOnFace (src/50-esquisse-1) : l'esquisse vide, pas encore ajoutée à la pièce.

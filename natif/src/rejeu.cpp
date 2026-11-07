@@ -1031,7 +1031,14 @@ TopoDS_Shape corpsAvant(Document& d, const Fonction& f, const std::string& tb) {
   return rejouerCorps(d, l, tb, ignores);
 }
 
+static thread_local int gSuiviRang = 0, gSuiviTotal = 0, gSuiviProfond = 0;
+
 TopoDS_Shape rejouerCorps(Document& d, const std::vector<Fonction*>& liste, const std::string& bid, std::vector<std::string>& msgs) {
+  // Un corps outil rejoué au milieu d'une combinaison ne compte pas : sa fonction a déjà son rang
+  struct Profond {
+    Profond() { gSuiviProfond++; }
+    ~Profond() { gSuiviProfond--; }
+  } profond;
   TopoDS_Shape resultat;
   std::vector<std::pair<std::string, TopoDS_Shape>> vides;  // filets modélisés, creusés en fin de rejeu
   const Fonction* enCours = nullptr;
@@ -1044,6 +1051,7 @@ TopoDS_Shape rejouerCorps(Document& d, const std::vector<Fonction*>& liste, cons
     enCours = nullptr;
   };
   for (size_t ii = 0; ii < liste.size(); ii++) {
+    if (gSuiviRejeu && gSuiviProfond == 1) gSuiviRejeu(++gSuiviRang, gSuiviTotal, *liste[ii]);
     clore();
     Fonction& f = *liste[ii];
     enCours = &f;
@@ -1374,6 +1382,9 @@ ResultatRejeu rejouer(Document& d, int n) {
   if (n >= 0)
     for (size_t i = n; i < d.fonctions.size(); i++)
       if (d.fonctions[i].visible) gFiletsSautes = true;
+  gSuiviRang = gSuiviTotal = 0;
+  for (auto& b : ordre)
+    if (!consommes.count(b)) gSuiviTotal += static_cast<int>(parCorps[b].size());
   for (auto& b : ordre) {
     if (consommes.count(b)) continue;
     gBaseTraversante = TopoDS_Shape();
@@ -1971,3 +1982,5 @@ std::vector<std::pair<double, double>> plagesExtrusions(const Document& d, const
     }
   return out;
 }
+
+thread_local std::function<void(int, int, const Fonction&)> gSuiviRejeu;

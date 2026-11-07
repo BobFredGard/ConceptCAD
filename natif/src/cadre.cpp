@@ -53,6 +53,7 @@
 #include "structure.h"
 #include <wx/colordlg.h>
 #include <wx/numdlg.h>
+#include <wx/gauge.h>
 #include <wx/textdlg.h>
 
 #include "lien_arbre.h"
@@ -2803,15 +2804,78 @@ void Cadre::montrerForme(const TopoDS_Shape& s) {
   }
 }
 
+namespace {
+// regenUi : rien sur une petite pièce, une barre passé 0,3 s. Le calcul ne rend pas la main : la barre se repeint elle-même.
+class BarreRejeu {
+ public:
+  explicit BarreRejeu(wxWindow* vue) : vue_(vue), t0_(std::chrono::steady_clock::now()) {
+    gSuiviRejeu = [this](int n, int total, const Fonction& f) {
+      montrer(n, total, tx(f.nom.empty() ? f.type : f.nom));
+    };
+  }
+  ~BarreRejeu() {
+    gSuiviRejeu = nullptr;
+    if (cadre_) cadre_->Destroy();
+  }
+  void fin() {
+    gSuiviRejeu = nullptr;
+    if (cadre_) montrer(0, 0, L"Affichage…");
+  }
+
+ private:
+  void montrer(int n, int total, const wxString& nom) {
+    const auto t = std::chrono::steady_clock::now();
+    if (t - t0_ < std::chrono::milliseconds(300) || !vue_->IsShownOnScreen()) return;
+    if (cadre_ && t - dernier_ < std::chrono::milliseconds(40)) return;
+    dernier_ = t;
+    if (!cadre_) {
+      cadre_ = new wxFrame(wxGetTopLevelParent(vue_), wxID_ANY, wxString(), wxDefaultPosition, wxDefaultSize, wxFRAME_TOOL_WINDOW | wxFRAME_FLOAT_ON_PARENT | wxFRAME_NO_TASKBAR | wxBORDER_SIMPLE);
+      auto* p = new wxPanel(cadre_);
+      auto* s = new wxBoxSizer(wxVERTICAL);
+      titre_ = new wxStaticText(p, wxID_ANY, L"⟳ Régénération du modèle…");
+      nom_ = new wxStaticText(p, wxID_ANY, wxString(), wxDefaultPosition, wxDefaultSize, wxST_NO_AUTORESIZE | wxST_ELLIPSIZE_END);
+      barre_ = new wxGauge(p, wxID_ANY, 100, wxDefaultPosition, p->FromDIP(wxSize(360, 10)));
+      s->Add(titre_, 0, wxEXPAND | wxLEFT | wxRIGHT | wxTOP, p->FromDIP(10));
+      s->Add(barre_, 0, wxEXPAND | wxALL, p->FromDIP(10));
+      s->Add(nom_, 0, wxEXPAND | wxLEFT | wxRIGHT | wxBOTTOM, p->FromDIP(10));
+      p->SetSizer(s);
+      s->SetSizeHints(cadre_);
+      const wxRect v = vue_->GetScreenRect();
+      const wxSize c = cadre_->GetSize();
+      cadre_->SetPosition(wxPoint(v.x + (v.width - c.x) / 2, v.y + (v.height - c.y) / 2));
+      cadre_->ShowWithoutActivating();
+    }
+    if (total > 0) {
+      titre_->SetLabel(wxString::Format(L"⟳ Régénération du modèle… %d / %d", n, total));
+      barre_->SetValue(std::min(100, n * 100 / std::max(1, total)));
+    } else {
+      barre_->SetValue(100);
+    }
+    nom_->SetLabel(nom);
+    cadre_->Update();
+    cadre_->Refresh();
+    cadre_->Update();
+  }
+  wxWindow* vue_;
+  std::chrono::steady_clock::time_point t0_, dernier_;
+  wxFrame* cadre_ = nullptr;
+  wxStaticText* titre_ = nullptr;
+  wxStaticText* nom_ = nullptr;
+  wxGauge* barre_ = nullptr;
+};
+}  // namespace
+
 // Rejoue et affiche. Rend la durée totale en ms (calcul + maillage + dessin).
 double Cadre::recalculer() {
   wxBusyCursor attente;
   mesureEffacer(true);  // les faces mesurées ne sont peut-être plus les mêmes
   const auto t0 = std::chrono::steady_clock::now();
   ResultatRejeu r;
+  BarreRejeu barre(vue_);
   try {
     r = rejouer(doc_, indiceMarque());
     msRejeu_ = msDepuis(t0);
+    barre.fin();
     if (!r.forme.IsNull()) mailler(r.forme, parallele());
   } catch (const Standard_Failure& e) {
     r.messages.push_back(e.what());
