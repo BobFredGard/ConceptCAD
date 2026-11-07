@@ -3063,6 +3063,13 @@ std::vector<PieceRendu> Cadre::renduPieces(const plan::J& racine) {
         q.couleur = q.couleurCao = u;
         q.bid = c.first;
         q.occ = inst.chemin.empty() ? std::string() : inst.chemin.back();
+        if (const J* oc = q.occ.empty() ? nullptr : as::occurrence(a, q.occ); oc && !oc->value("name", std::string()).empty()) {
+          std::string corps = c.first;
+          if (const J* cc = as::composant(a, inst.comp); cc && cc->contains("doc") && (*cc)["doc"].is_object() && (*cc)["doc"].contains("bodies") && (*cc)["doc"]["bodies"].is_array())
+            for (const J& b : (*cc)["doc"]["bodies"])
+              if (b.is_object() && b.value("id", std::string()) == c.first && !b.value("name", std::string()).empty()) corps = b.value("name", std::string());
+          q.nom = oc->value("name", std::string()) + " · " + corps;
+        }
         const auto lireLook = [&q](const J& r) {
           if (r.contains("mat") && r["mat"].is_string()) q.cle = r["mat"].get<std::string>();
           if (r.contains("col") && r["col"].is_number()) q.couleur = r["col"].get<unsigned>();

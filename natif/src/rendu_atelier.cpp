@@ -1261,14 +1261,12 @@ void PanneauRendu::refaire() {
 
   titre(L"Matériaux et reliefs");
   {
-    bool occurrences = false;
+    std::set<std::string> vues;  // une ligne par pièce d'occurrence, même répétée dans un sous-assemblage
     const auto& P = A->pieces();
     if (P.empty()) note(L"Aucune pièce à l'écran.");
     for (size_t i = 0; i < P.size(); i++) {
-      if (P[i].id.empty()) {
-        occurrences = true;
-        continue;
-      }
+      if (P[i].id.empty() && P[i].occ.empty()) continue;
+      if (!vues.insert(P[i].id + "|" + P[i].occ + "|" + P[i].bid).second) continue;
       const MatiereRendu* d = matiereRendu(P[i].cle);
       auto* l = new wxWindow(defile_, wxID_ANY, wxDefaultPosition, FromDIP(wxSize(-1, 26)));
       l->SetBackgroundStyle(wxBG_STYLE_PAINT);
@@ -1301,7 +1299,6 @@ void PanneauRendu::refaire() {
       racine_->Add(l, 0, wxEXPAND | wxLEFT | wxRIGHT | wxTOP, FromDIP(4));
     }
     note(L"Clic droit sur une pièce dans l'image (ou clic sur sa ligne) : matériau, couleur, relief, patine. • = apparence propre au rendu.");
-    if (occurrences) note(L"Les autres composants de l'assemblage gardent leur couleur : leur matériau de rendu n'est pas encore réglable.");
   }
 
   titre(L"Finition");

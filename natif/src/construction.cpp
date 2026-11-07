@@ -1466,7 +1466,7 @@ std::vector<ChampFiche> ficheConstruction(const Document& d, const ElementConstr
         if (xe != e.j.end() && xe->is_object() && cle(*xe) == cle(q.valeur)) g.texte = q.valeur.dump();
       }
       c.push_back(std::move(g));
-      if (xe != e.j.end() && xe->is_object()) booleen("Figer à la position actuelle", "b/frozen", xe->value("frozen", false));
+      if (xe != e.j.end() && xe->is_object()) booleen("Figer (ne suit plus)", "b/frozen", xe->value("frozen", false));
     }
   }
   if (m) {
