@@ -1722,6 +1722,7 @@ bool Cadre::ecrire(const std::wstring& cible) {
     wxMessageBox(tx(e.what()) + L"\n\nLe fichier existant n'a pas été touché.", L"Enregistrement impossible", wxOK | wxICON_ERROR, this);
     return false;
   }
+  secoursEffacer();
   majTitre();
   etat(L"Enregistré dans " + wxString(cible) + L".");
   return true;
@@ -1764,6 +1765,7 @@ void Cadre::surFermer(wxCloseEvent& e) {
     e.Veto();
     return;
   }
+  secoursEffacer();  // fermeture voulue : la question vient d'être posée
   Destroy();
 }
 
@@ -1842,6 +1844,7 @@ void Cadre::menuRecents() {
 }
 
 void Cadre::apresOuverture() {
+  secoursEffacer();  // autre pièce : celle d'avant a eu sa question
   asmAlign_.reset();
   asmAnim_.Stop();
   vue_->poserMarques({});
@@ -4440,6 +4443,26 @@ bool Cadre::essaiEsquisse(const std::wstring& fichier, int rang, const std::wstr
     }
     if (e.contains("journal")) journal::ajouter("essai", e["journal"].get<std::string>(), "D:\\Dossier\\Secret\\essai.cpp");
     if (e.contains("journalLire")) n["journal"] = journal::texte();
+    if (e.contains("secours")) n["secours"] = secoursEssai(e["secours"].get<std::string>());
+    if (e.contains("secoursBoite")) {
+      wxDialog* b = secoursProposer();
+      n["boite"] = b != nullptr;
+      if (b) {
+        for (int k = 0; k < 15; k++) {
+          wxYield();
+          b->Refresh();
+          b->Update();
+          Sleep(60);
+        }
+        wxBitmap image(b->GetSize().x, b->GetSize().y, 32);
+        {
+          wxMemoryDC dc(image);
+          PrintWindow(b->GetHWND(), static_cast<HDC>(dc.GetHDC()), 2);
+        }
+        image.ConvertToImage().SaveFile(dossier + L"\\" + wxString::FromUTF8(e["secoursBoite"].get<std::string>()).ToStdWstring() + L".png", wxBITMAP_TYPE_PNG);
+        b->Destroy();
+      }
+    }
     if (e.contains("planter")) {
       volatile int* zero = nullptr;
       *zero = 1;

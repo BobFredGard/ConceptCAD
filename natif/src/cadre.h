@@ -1,5 +1,6 @@
 // Fenêtre principale : l'environnement du navigateur autour de la vue 3D et de l'écran d'esquisse.
 #pragma once
+#include <chrono>
 #include <array>
 #include <set>
 #include <map>
@@ -174,6 +175,7 @@ class Cadre : public wxFrame {
 public:
   void entrerEsquisse(int i);
   void capturerEsquisses(const std::wstring& dossier);
+  void secoursDemarrer();  // la copie de secours : seulement pour une vraie session, jamais pour les essais
   void demarrerVide() { nouveau(); }
   bool essaiEsquisse(const std::wstring& fichier, int rang, const std::wstring& sortie, const std::wstring& json, const std::wstring& dossier);
   void imageVue3D(const wxString& chemin);
@@ -482,6 +484,19 @@ public:
   std::vector<assemblage::Instance> asmInstancesVisibles() const;
   bool cgPiocheAutre(const gp_Pnt& origine, const gp_Dir& direction);  // cgPickOtherComp
   std::string asmSigActif_;
+  // La copie de secours (cadre_secours.cpp)
+  std::string secoursTexte();
+  void secoursEffacer();
+  void secoursEcrire(bool force);
+  bool secoursRouvrir(const std::wstring& brouillon, const std::wstring& meta, const std::wstring& origine);
+  wxDialog* secoursProposer();
+  nlohmann::json secoursEssai(const std::string& quoi);
+  std::wstring secoursId_;
+  void* secoursVerrou_ = nullptr;
+  wxTimer secoursMinuteur_;
+  size_t secoursEmpreinte_ = 0;
+  size_t secoursRang_ = 0;
+  std::chrono::steady_clock::time_point secoursProchain_{};
   int asmNbFilets_ = 0;
   int asmPassesRefs_ = 0;
   std::vector<TopoDS_Shape> asmFormesStep(std::string& nom, std::vector<std::string>& manquants) const;
