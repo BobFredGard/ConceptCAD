@@ -164,6 +164,9 @@ class Vue3D : public wxWindow {
     bool ctrl = false, maj = false, persp = true, survol = false;
     double proj[16], vue[16], pres = 0.1, loin = 1000;
   };
+  const occ::handle<OpenGl_GraphicDriver>& pilote() const { return pilote_; }
+  std::array<double, 3> oeil() const;
+  std::array<double, 3> cibleVue() const;
   std::function<bool(const ClicFao&)> surClicFao;
   bool faoSurvol = false;
   void cliquerFao(const wxPoint& p, int bouton, bool ctrl, bool maj, bool survol = false);

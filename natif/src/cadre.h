@@ -104,6 +104,7 @@ class Cadre : public wxFrame {
   void creerEnvironnement();
   void placerScene();
   void changerAtelier(Atelier a);
+  void renduEssai(const plan::J& e);
   void montrerAtelier();
   void indisponible(const wxString& nom);
   void boutonRuban(Atelier a, const wxString& nom);

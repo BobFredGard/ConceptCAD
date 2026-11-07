@@ -354,6 +354,15 @@ void Vue3D::majReflets() {
   }
 }
 
+std::array<double, 3> Vue3D::oeil() const {
+  const gp_Pnt p = vue_->Camera()->Eye();
+  return {p.X(), p.Y(), p.Z()};
+}
+std::array<double, 3> Vue3D::cibleVue() const {
+  const gp_Pnt p = vue_->Camera()->Center();
+  return {p.X(), p.Y(), p.Z()};
+}
+
 bool Vue3D::directionCamera(std::array<double, 3>& d) const {
   if (vue_.IsNull()) return false;
   const gp_Pnt o = vue_->Camera()->Eye(), c = vue_->Camera()->Center();

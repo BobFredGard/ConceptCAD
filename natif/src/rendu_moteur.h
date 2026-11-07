@@ -1,0 +1,104 @@
+// L'atelier Rendu : sa propre scène et son propre calcul, la vue de modélisation n'est jamais touchée
+// (comme src/98-rendu.js du navigateur). Le dessin vient d'OCCT : matières physiques et lancer de rayons ;
+// tout finit en nombres linéaires, repris par la finition (rendu_finition) pour l'exposition, les tons, le fond.
+#pragma once
+
+#include <array>
+#include <memory>
+#include <string>
+#include <vector>
+
+#include <wx/window.h>
+
+#include <AIS_InteractiveContext.hxx>
+#include <AIS_Shape.hxx>
+#include <OpenGl_GraphicDriver.hxx>
+#include <TopoDS_Shape.hxx>
+#include <V3d_DirectionalLight.hxx>
+#include <V3d_View.hxx>
+#include <V3d_Viewer.hxx>
+
+struct MatiereRendu {
+  const char* cle;
+  const wchar_t* nom;
+  const wchar_t* famille;
+  unsigned couleur;
+  double metal, rugosite, vernis, vernisRugosite, transmission, indice, velours, densite;
+};
+const std::vector<MatiereRendu>& bibliothequeRendu();
+const MatiereRendu* matiereRendu(const std::string& cle);
+
+// Les réglages de l'atelier, mêmes noms et mêmes valeurs de départ que RD_DEF
+struct ReglagesRendu {
+  std::string amb = "studio", fond = "degrade", fc1 = "#f2f3f5", fc2 = "#c3c7ce", tons = "aces", res = "1080", aretes = "non", solCol, moteur = "rapide", support;
+  double envRot = 0, envInt = 1, lum = 1, ombre = 0.45, douceur = 6, focale = 50, ev = 0, ech = 64, ouv = 0, map = 0;
+  double pDen = 0.5, pHalo = 0, pVig = 0, pGrain = 0, pCon = 0, pSat = 0, pTemp = 0;
+  bool solOn = true, miroir = true, ombreOn = true, calques = false;
+};
+
+struct PieceRendu {
+  TopoDS_Shape forme;
+  std::string cle;      // le matériau ; vide : plastique de la CAO
+  unsigned couleur = 0x9a9aa0;
+  std::string id;       // le corps (clic droit)
+  std::string nom;
+};
+
+struct CameraRendu {
+  std::array<double, 3> oeil{}, cible{}, haut{0, 0, 1};
+};
+
+// Une image en nombres : rgb linéaires prémultipliés par a, a la couverture
+struct ImageLineaire {
+  int w = 0, h = 0;
+  std::vector<float> px;  // 4 × w × h, du haut vers le bas
+};
+
+class MoteurRendu {
+ public:
+  MoteurRendu(wxWindow* parent, const occ::handle<OpenGl_GraphicDriver>& pilote);
+  ~MoteurRendu();
+  void pieces(const std::vector<PieceRendu>& L);
+  // Tout ce qui dépend des réglages : ambiance, lampe, sol, matières. Remet l'affinage à zéro.
+  void appliquer(const ReglagesRendu& r);
+  void camera(const CameraRendu& c, double focale);
+  void boite(double b[6]) const;
+  void reprendre() { passes_ = 0; somme_.clear(); }
+  int passes() const { return passes_; }
+  // Une passe de plus : le résultat moyen est dans image()
+  bool passe(int w, int h);
+  const ImageLineaire& image() const { return image_; }
+  std::string erreur;
+  double msPasse = 0;
+
+ private:
+  bool passeRayons(int w, int h);
+  bool passeRapide(int w, int h);
+  bool masque(int w, int h, const CameraRendu& c);
+  bool rendre(const CameraRendu& c, double fovy, bool ortho, double echelle, int w, int h, std::vector<float>& px);
+  double alphaSol(const double P[3]) const;
+  std::string solHex() const;
+  std::vector<float> pieces1_, reflet_, ombre_;
+  void poserCamera(const CameraRendu& c);
+  void reglerRayons(bool oui);
+  occ::handle<V3d_Viewer> visu_;
+  occ::handle<V3d_View> vue_;
+  occ::handle<AIS_InteractiveContext> contexte_;
+  occ::handle<V3d_DirectionalLight> lampe_;
+  wxWindow* fenetre_ = nullptr;
+  std::vector<PieceRendu> pieces_;
+  std::vector<occ::handle<AIS_Shape>> objets_;
+  occ::handle<AIS_Shape> sol_;
+  ReglagesRendu st_;
+  CameraRendu cam_;
+  double focale_ = 50, cx_ = 0, cy_ = 0, z0_ = 0, R_ = 50, box_[6] = {-50, -50, 0, 50, 50, 50};
+  int passes_ = 0;
+  std::array<double, 2> cle_{-55, 45};
+  std::vector<double> somme_;
+  std::vector<float> masque_;
+  int mw_ = 0, mh_ = 0;
+  ImageLineaire image_;
+  bool rayons_ = false;
+  occ::handle<Standard_Transient> tampon_, tamponOmbre_;
+  int tw_ = 0, th_ = 0;
+};

@@ -1,5 +1,7 @@
 #include <wx/config.h>
 #include "cadre.h"
+#include "rendu_moteur.h"
+#include "rendu_finition.h"
 #include "plan_panneau.h"
 #include "plan_vue.h"
 #include "construction.h"
@@ -3093,6 +3095,7 @@ bool Cadre::essaiEsquisse(const std::wstring& fichier, int rang, const std::wstr
         throw;
       }
     }
+    if (e.contains("renduEssai")) renduEssai(e["renduEssai"]);
     if (e.contains("atelier")) {
       const std::string a = e["atelier"].get<std::string>();
       changerAtelier(a == "plan" ? Atelier::PLAN : a == "fao" ? Atelier::FAO : a == "rendu" ? Atelier::RENDU : Atelier::CAO);
@@ -3260,4 +3263,67 @@ void Cadre::imageVue3D(const wxString& chemin) {
   vue_->image(chemin);
   wxFile f(chemin + ".txt", wxFile::write);
   if (f.IsOpened()) f.Write(wxString::Format("%.0f ms pour afficher, %.1f ms par image\n", vue_->msAffichage(), vue_->msImage()));
+}
+
+// Une image de l'atelier Rendu, pour l'essai automatique
+void Cadre::renduEssai(const plan::J& e) {
+  MoteurRendu m(vue_, vue_->pilote());
+  std::vector<PieceRendu> L;
+  for (const auto& [id, s] : dernierRejeu_.corpsVus) {
+    PieceRendu p;
+    p.forme = s;
+    p.id = id;
+    p.cle = e.value("mat", std::string());
+    p.couleur = e.value("col", 0x9a9aa0);
+    L.push_back(p);
+  }
+  m.pieces(L);
+  ReglagesRendu st;
+  st.moteur = e.value("moteur", st.moteur);
+  st.amb = e.value("amb", st.amb);
+  st.fond = e.value("fond", st.fond);
+  st.solOn = e.value("sol", st.solOn);
+  st.miroir = e.value("miroir", st.miroir);
+  st.focale = e.value("focale", st.focale);
+  st.pHalo = e.value("halo", 0.0);
+  st.pVig = e.value("vig", 0.0);
+  m.appliquer(st);
+  CameraRendu c;
+  c.oeil = vue_->oeil();
+  c.cible = vue_->cibleVue();
+  double b[6];
+  m.boite(b);
+  c.cible = {(b[0] + b[3]) / 2, (b[1] + b[4]) / 2, (b[2] + b[5]) / 2};
+  const double dx = c.oeil[0] - c.cible[0], dy = c.oeil[1] - c.cible[1], dz = c.oeil[2] - c.cible[2], L0 = std::sqrt(dx * dx + dy * dy + dz * dz);
+  const double R = 0.5 * std::sqrt((b[3] - b[0]) * (b[3] - b[0]) + (b[4] - b[1]) * (b[4] - b[1]) + (b[5] - b[2]) * (b[5] - b[2]));
+  const double D = R * 2.6 * 50 / 24;
+  c.oeil = {c.cible[0] + dx / L0 * D, c.cible[1] + dy / L0 * D, c.cible[2] + dz / L0 * D};
+  if (e.contains("oeil")) {
+    for (int k = 0; k < 3; k++) c.oeil[k] = e["oeil"][k], c.cible[k] = e["cible"][k];
+  }
+  m.camera(c, st.focale);
+  const int w = e.value("w", 960), h = e.value("h", 540), n = e.value("passes", 16);
+  double total = 0;
+  bool ok = true;
+  for (int i = 0; i < n && ok; i++) {
+    ok = m.passe(w, h);
+    total += m.msPasse;
+  }
+  std::vector<unsigned char> px;
+  Finition f;
+  f.halo = st.pHalo;
+  f.vig = st.pVig;
+  f.den = st.moteur == "rayons" ? e.value("den", 0.5) : 0;
+  const auto hex = [](const std::string& s) {
+    const unsigned v = static_cast<unsigned>(std::strtoul(s.c_str() + 1, nullptr, 16));
+    return std::array<double, 3>{((v >> 16) & 255) / 255.0, ((v >> 8) & 255) / 255.0, (v & 255) / 255.0};
+  };
+  f.c1 = hex(st.fc1), f.c2 = hex(st.fc2);
+  if (ok) {
+    finir(m.image().px.data(), w, h, f, px);
+    wxImage im(w, h);
+    for (int i = 0; i < w * h; i++) im.SetRGB(i % w, i / w, px[4 * i], px[4 * i + 1], px[4 * i + 2]);
+    im.SaveFile(wxString::FromUTF8(e["image"].get<std::string>()), wxBITMAP_TYPE_PNG);
+  }
+  std::ofstream(wxString::FromUTF8(e["image"].get<std::string>() + ".txt").ToStdWstring()) << "ok " << ok << " passes " << m.passes() << " ms/passe " << total / std::max(1, n) << " erreur " << m.erreur << "\n";
 }
