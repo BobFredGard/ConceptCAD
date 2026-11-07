@@ -2111,13 +2111,43 @@ void Cadre::montrerEsquisse(int i) {
   lectureSeule(props_, L"Contraintes", wxString::Format("%zu", s.contraintes.size()));
   lectureSeule(props_, L"Cotes", wxString::Format("%zu", s.cotes.size()));
   const std::string raison = esquisseFigee(doc_, i);
-  if (!raison.empty()) lectureSeule(props_, L"Modification", L"Pas encore : " + tx(raison));
+  if (!raison.empty() && !Solveur(s).coteConvertie()) lectureSeule(props_, L"Modification", L"Pas encore : " + tx(raison));
 }
 
 // Double-clic dans l'arbre : même repère que le navigateur.
 void Cadre::entrerEsquisse(int i) {
   quitterConge();
   if (atelier_ != Atelier::CAO) changerAtelier(Atelier::CAO);
+  // skGapToAngle : un entraxe entre deux lignes non parallèles devient une cote d'angle à la valeur mesurée, rien ne bouge
+  wxString coteChangee;
+  try {
+    const Solveur S(doc_.esquisses[i]);
+    if (S.coteConvertie() && S.prisEnCharge()) {
+      Esquisse apres = doc_.esquisses[i];
+      S.recopierDans(apres);
+      const std::string idE = apres.id;
+      int nb = 0;
+      changerStructure([&](nlohmann::ordered_json& d) {
+        for (auto& sk : d["sketches"]) {
+          if (sk.value("id", std::string()) != idE || !sk.contains("dims")) continue;
+          for (auto& x : sk["dims"])
+            for (const Cote& c : apres.cotes)
+              if (c.id == x.value("id", std::string()) && c.type == "angle" && x.value("type", std::string()) == "gap") {
+                x["type"] = "angle";
+                x["value"] = c.value;
+                x["ccw"] = c.ccw;
+                x.erase("sgn");
+                x.erase("sl");
+                x.erase("orient");
+                x.erase("w");
+                nb++;
+              }
+        }
+      });
+      if (nb) coteChangee = wxString::Format(L"%d cote(s) d’entraxe entre lignes non parallèles changée(s) en cote(s) d’angle (valeur mesurée).", nb);
+    }
+  } catch (const std::exception&) {
+  }
   if (solideCalculable_) {
     wxBusyCursor attente;
     nommerProjections(doc_);
@@ -2138,6 +2168,7 @@ void Cadre::entrerEsquisse(int i) {
   rafraichirEsquisse(true);
   wxString t = L"Esquisse « " + tx(s.nom) + (figee_.empty() ? L" ». Outils en haut pour dessiner. Double-clic sur une cote pour la changer, sur un élément pour le coter. Suppr : effacer." : L" » en lecture seule : " + tx(figee_) + L".") + L" Clic droit : déplacer. Molette : zoom. Échap : outil Sélection, puis terminer.";
   if (vueEsquisse_->nonDessines() > 0) t += wxString::Format(L"  |  ⚠ %d élément(s) pas encore dessiné(s).", vueEsquisse_->nonDessines());
+  if (!coteChangee.IsEmpty()) t += L"  |  " + coteChangee;
   etat(t);
   // Pour natif/mesures/verifier-cote.ps1 : où se trouve chaque valeur à l'écran
   if (const wchar_t* chemin = _wgetenv(L"CONCEPTCAD_JOURNAL_ETAT")) {
