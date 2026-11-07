@@ -432,3 +432,9 @@ TopoDS_Shape creuserFilets(const TopoDS_Shape& a, const TopoDS_Shape& b) {
   if (!c.IsDone() || c.Shape().IsNull()) throw std::runtime_error("découpe impossible");
   return c.Shape();
 }
+
+std::optional<std::array<double, 3>> dimsFiletExterieur(const std::string& taille, double p, double jeu, double R) {
+  const auto t = filetExterieur(taille, p, jeu, R);
+  if (!t) return std::nullopt;
+  return std::array<double, 3>{t->rC, t->rR, t->P};
+}

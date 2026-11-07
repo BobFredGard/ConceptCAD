@@ -6,6 +6,7 @@
 #include <gp_Pnt.hxx>
 #include <nlohmann/json.hpp>
 
+#include <array>
 #include <optional>
 #include <string>
 #include <vector>
@@ -29,6 +30,8 @@ struct FiletInterieur {
   bool lh = false;
 };
 std::optional<FiletInterieur> filetInterieur(const std::string& taille, double p, double jeu);
+// threadDims, pour la fiche : rayon de crête, rayon de racine, pas
+std::optional<std::array<double, 3>> dimsFiletExterieur(const std::string& taille, double p, double jeu, double R);
 
 // occHoleThreadVoid : le vide fileté d'un trou, de l'axe à la paroi, sans aucun booléen. Forme nulle s'il ne peut pas exister ; lève une exception s'il rate.
 TopoDS_Shape videTaraude(const gp_Pnt& P, const gp_Dir& D, double zStart, int nT, const FiletInterieur& th, double rb, double zEnd, double tip);

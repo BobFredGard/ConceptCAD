@@ -416,6 +416,12 @@ void champsPercage(const Document& d, const json& f, std::vector<ChampFiche>& c)
     } else {
       c.push_back(choix("Filet", "x/filet", vrai(th, "model") ? "model" : "cosmetic", {{"model", "Modélisé : profil ISO dans le corps"}, {"cosmetic", "Cosmétique : dessin seul, trou lisse"}}));
       if (vrai(th, "model")) {
+        if (const auto d = filetInterieur(ts, num(th, "p"), num(th, "clear"))) {
+          const json* I = infoFiletage(ts);
+          std::string n = std::string(!I || str(*I, "fam") == "M" ? "ISO 261 / ISO 965-1" : "ASME B1.1 (profil 60°)") + " : Ø mineur " + fmt(d->D1) + " (crête) / Ø majeur " + fmt(d->D) + " (racine), pas " + fmt(d->P) + " mm";
+          if (tm == "len") n += " — " + std::to_string(std::max(1, static_cast<int>(std::lround((num(th, "len") > 0 ? num(th, "len") : d->P * 3) / d->P)))) + " spire(s)";
+          c.push_back(lecture("Norme", n));
+        }
         c.push_back(nombre("Jeu (Ø mm, impression 3D)", "n/thread/clear", num(th, "clear")));
         if (const auto F = filetInterieur(ts, num(th, "p"), num(th, "clear")))
           c.push_back(lecture("Profil", std::string(infoFiletage(ts) ? "ASME B1.1" : "ISO 261 / ISO 965-1") + " : Ø mineur " + fmt(F->D1) + " / Ø majeur " + fmt(F->D) + ", pas " + fmt(F->P) + " mm"));
@@ -604,7 +610,13 @@ void champsFiletage(const json& f, std::vector<ChampFiche>& c) {  // renderThrea
   c.push_back(choix("Départ", "x/depart", vrai(f, "flip") ? "1" : "0", {{"0", "Bout libre (auto)"}, {"1", "Autre bout"}}));
   if (filetModelable(str(f, "size"))) {
     c.push_back(choix("Filet", "x/filet", vrai(f, "model") ? "model" : "cosmetic", {{"cosmetic", "Cosmétique : spirale dessinée, axe lisse"}, {"model", "Modélisé : profil ISO dans le corps"}}));
-    if (vrai(f, "model")) c.push_back(nombre("Jeu (Ø mm, impression 3D)", "n/clear", num(f, "clear")));
+    if (vrai(f, "model")) {
+      c.push_back(nombre("Jeu (Ø mm, impression 3D)", "n/clear", num(f, "clear")));
+      if (const auto d = dimsFiletExterieur(str(f, "size"), num(f, "p"), num(f, "clear"), D / 2)) {
+        const json* I = infoFiletage(str(f, "size"));
+        c.push_back(lecture("Norme", std::string(!I || str(*I, "fam") == "M" ? "ISO 68-1 / ISO 965-1" : "ASME B1.1 (profil 60°)") + " : Ø majeur " + fmt(2 * (*d)[0] + 0.02) + " (crête) / Ø mineur " + fmt(2 * (*d)[1]) + " (racine), pas " + fmt((*d)[2]) + " mm"));
+      }
+    }
   } else {
     c.push_back(lecture("Filet", "Filet gaz (55°) : cosmétique seulement"));
   }

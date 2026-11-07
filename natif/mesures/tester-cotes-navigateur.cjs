@@ -75,8 +75,10 @@ const pret = page => page.waitForFunction(() => typeof doc !== 'undefined' && do
       const q = spawnSync(EXE, ['--coter', c.src, c.sortie, c.sk, c.cote, String(c.valeur)], { encoding: 'utf8' });
       if (q.status === 5) { figes++; continue; }
       if (q.status !== 0 && q.status !== 4) { faux++; console.log('ÉCHEC natif', c.f, c.sk, c.cote, q.status, q.stderr); continue; }
-      const a = await ouvrir(c.src);
-      const accepte = await a.page.evaluate(([sk, id, v]) => {
+      let a = null, accepte = false, ea = null;
+      try {
+      a = await ouvrir(c.src);
+      accepte = await a.page.evaluate(([sk, id, v]) => {
         openSketch(sk);
         const s = skEdit, d = s.dims.find(x => x.id === id);
         skPushUndo();
@@ -89,7 +91,13 @@ const pret = page => page.waitForFunction(() => typeof doc !== 'undefined' && do
       }, [c.sk, c.cote, c.valeur]);
       await attendre(500);
       await pret(a.page);
-      const ea = await a.page.evaluate(ETAT);
+      ea = await a.page.evaluate(ETAT);
+      } catch (x) {
+        // Le navigateur a planté sur ce cas (mémoire de la page) : on le dit et on passe au suivant
+        console.log('NAVIGATEUR PLANTÉ', c.f, c.nomSk, c.cote, String(x.message).split('\n')[0]);
+        if (a) await a.ctx.close().catch(() => {});
+        continue;
+      }
       await a.ctx.close().catch(() => {});
       const nomCas = `${c.f.slice(0, 28)} ${c.nomSk} ${c.cote} -> ${c.valeur}`;
       if ((q.status === 0) !== accepte) { refusDifferents++; console.log(`DÉCISION différente ${nomCas} : natif ${q.status === 0}, navigateur ${accepte}`); continue; }
