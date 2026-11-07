@@ -317,11 +317,14 @@ struct Document {
   int nomsAreteLu = 0, nomsProjLu = 0, nomsIsectLu = 0;  // tels que lus dans le fichier
   // Le bloc d'assemblage du fichier, occurrences replacées ; nul pour une pièce seule
   std::shared_ptr<nlohmann::ordered_json> assemblage;
+  // doc.configs normalisée (configurations.h) ; changée seulement par le renommage d'une colonne, le reste passe par le fichier
+  std::shared_ptr<const nlohmann::ordered_json> configs;
+  bool configsChangees = false;
   // Le composant actif a seulement changé : pour le navigateur, ce n'est pas une modification
   bool basculeSeule = false;
   bool projNommees = false;  // nommerProjections déjà passée sur ce document
   bool modifie() const {
-    if (!texteBase.empty() && !basculeSeule) return true;
+    if ((!texteBase.empty() && !basculeSeule) || configsChangees) return true;
     if (esquisses.size() != esquissesFichier.size() || fonctions.size() != fonctionsFichier.size()) return true;
     if (!(params == paramsFichier) || porteursChanges()) return true;
     for (size_t i = 0; i < fonctions.size(); i++)

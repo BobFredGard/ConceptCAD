@@ -97,6 +97,10 @@ class Cadre : public wxFrame {
   };
   // parAfterChange : la modification, ses conséquences, le recalcul, une annulation. Rend le message de refus, vide si accepté.
   std::string changerFormules(const std::function<std::string()>& f);
+  std::string configurer(const std::function<void(nlohmann::ordered_json&)>& changement, const std::string& activer);
+  void majChoixConfig();
+  wxBoxSizer* ligneConfig_ = nullptr;
+  wxChoice* choixConfig_ = nullptr;
   std::string reglerCoteListe(size_t esquisse, const std::string& idCote, const std::string& texte);
   ActionsFormules actionsFormules();
   void basculerMiniParametres();

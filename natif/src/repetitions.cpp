@@ -864,5 +864,10 @@ bool regenererRepetitions(json& doc, bool libre) {
   }
   if (!libre && (idsDe(essai["features"]) != idsF || idsDe(essai["sketches"]) != idsS || idsDe(essai.value("bodies", json::array())) != idsC)) return false;
   doc = std::move(essai);
+  // Une répétition masquée le reste, ses copies avec. Le navigateur les réaffiche à la réouverture : défaut non recopié.
+  for (const json& f : doc["features"])
+    if (str(f, "type") == "repeat" && f.contains("visible") && f["visible"] == false)
+      for (json& k : doc["features"])
+        if (str(k, "repeatId") == str(f, "id")) k["visible"] = false;
   return true;
 }

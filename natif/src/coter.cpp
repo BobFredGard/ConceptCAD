@@ -478,6 +478,8 @@ void EtatFormules::poser(Document& d) const {
   d.fonctions = fonctions;
   d.params = params;
   d.porteurs = porteurs;
+  d.configs = configs;
+  d.configsChangees = configsChangees;
   d.parEnAttente.clear();
 }
 

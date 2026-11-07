@@ -1,3 +1,4 @@
+#include "configurations.h"
 #include "parametres.h"
 
 #include <algorithm>
@@ -631,6 +632,7 @@ void parRenommer(Document& d, const std::string& ancien, const std::string& nouv
   for (Esquisse& s : d.esquisses)
     for (Cote& c : s.cotes) dans(c.expr);
   for (PorteurFx& h : d.porteurs) dans(h.expr);
+  cfgRenommerColonne(d, ancien, nouveau);
 }
 
 SaisieCote parValiderCote(Document& d, Cote& c, const std::string& texte) {

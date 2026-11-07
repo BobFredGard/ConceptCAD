@@ -1019,7 +1019,7 @@ std::string retoucher(const std::string& texte, const std::vector<Retouche>& ret
 
 std::string texteCongeCree(const Fonction& f) { return congeCree(f); }
 
-std::string texteEnregistre(const Document& d, const std::string& texteOrigine) {
+static std::string texteEnregistreSansTable(const Document& d, const std::string& texteOrigine) {
   // Les esquisses créées sont d'abord écrites vides : la suite les traite comme des esquisses du fichier
   if (d.esquisses.size() < d.esquissesFichier.size()) throw std::runtime_error("esquisse retirée d'une façon pas encore reprise, rien n'a été écrit");
   std::vector<Esquisse> fichiers = d.esquissesFichier;
@@ -1099,6 +1099,16 @@ std::string texteEnregistre(const Document& d, const std::string& texteOrigine) 
   }
   if (retouches.empty() && esquisses.empty() && refontes.empty()) return texteFichier;
   return retoucher(refontes.empty() ? texteFichier : refondre(texteFichier, refontes), retouches, esquisses);
+}
+
+std::string texteEnregistre(const Document& d, const std::string& texteOrigine) {
+  std::string texte = texteEnregistreSansTable(d, texteOrigine);
+  if (!d.configsChangees || !d.configs) return texte;
+  // Une colonne de configuration suit la valeur renommée
+  nlohmann::ordered_json racine = nlohmann::ordered_json::parse(texte);
+  nlohmann::ordered_json& j = racine.contains("doc") && racine["doc"].is_object() ? racine["doc"] : racine;
+  j["configs"] = *d.configs;
+  return racine.dump(-1, ' ', false, nlohmann::ordered_json::error_handler_t::replace);
 }
 
 std::string texteDuFichier(const Document& d) { return d.compresse ? degonfler(d.octets) : d.octets.str(); }

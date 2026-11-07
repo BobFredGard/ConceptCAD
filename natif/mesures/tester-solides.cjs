@@ -7,7 +7,7 @@ const { chromium } = require('playwright');
 const opt = (n, d) => { const a = process.argv.find(x => x.startsWith('--' + n + '=')); return a ? a.slice(n.length + 3) : d; };
 const dossierEx = path.resolve(process.argv[2]), dossier = path.resolve(process.argv[3]);
 const RACINE = path.resolve(opt('racine', path.join(__dirname, '..', '..')));
-const EXE = path.join(__dirname, '..', 'sortie', 'ConceptCADNatif.exe');
+const EXE = opt('exe', path.join(__dirname, '..', 'sortie', 'ConceptCADNatif.exe'));  // --exe= : une copie, pour pouvoir recompiler pendant le banc
 const voulues = opt('pieces', '').split(',').filter(Boolean);
 const attendre = ms => new Promise(r => setTimeout(r, ms));
 fs.mkdirSync(dossier, { recursive: true });
@@ -24,7 +24,7 @@ fs.mkdirSync(dossier, { recursive: true });
       const chemin = path.join(dossierEx, f), nom = f.replace('.conceptcad', '');
       const sortie = path.join(dossier, 'v.json');
       fs.rmSync(sortie, { force: true });
-      const t = spawnSync(EXE, ['--verif', chemin, sortie], { encoding: 'utf8', timeout: 240000 });
+      const t = spawnSync(EXE, ['--verif', chemin, sortie], { encoding: 'utf8', timeout: 900000 });
       if (!fs.existsSync(sortie)) { ecarts++; console.log(`ÉCART   ${nom} : le natif n'a rien rendu (code ${t.status})`); continue; }
       const n = JSON.parse(fs.readFileSync(sortie, 'utf8'));
       if ((n.nonPrisEnCharge || []).length) { nonCalcules++; console.log(`manque  ${nom} : ${n.nonPrisEnCharge.join(', ')}`); continue; }
@@ -34,10 +34,10 @@ fs.mkdirSync(dossier, { recursive: true });
       await page.waitForFunction(() => typeof occtReady !== 'undefined' && occtReady === true, null, { timeout: 300000 });
       await page.evaluate(() => { window.__docAvant = doc; });
       await page.setInputFiles('#fileProj', chemin);
-      await page.waitForFunction(() => doc && doc !== window.__docAvant, null, { timeout: 300000 });
+      await page.waitForFunction(() => doc && doc !== window.__docAvant, null, { timeout: 1200000 });
       // Le navigateur rejoue par tranches : attendre que le solide ne bouge plus
       let m = null, pareil = 0;
-      for (let k = 0; k < 400 && pareil < 4; k++) {
+      for (let k = 0; k < 1200 && pareil < 4; k++) {
         await attendre(500);
         // Les filets modélisés se calculent à part : pas de stabilité tant qu'ils ne sont pas revenus
         if (await page.evaluate(() => typeof occThrPending !== 'undefined' && occThrPending)) { pareil = 0; continue; }
@@ -70,6 +70,8 @@ fs.mkdirSync(dossier, { recursive: true });
               }
           return { volume: v, faces: fa, solides: so, corps: coques };
         });
+        // Une grosse pièce : le premier solide exact arrive tard, le natif en a un
+        if (q.rien && c.volume > 0 && k < 1100) { pareil = 0; m = q; continue; }
         const cle = JSON.stringify(q);
         pareil = m && JSON.stringify(m) === cle ? pareil + 1 : 0;
         m = q;

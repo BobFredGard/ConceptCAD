@@ -1,3 +1,4 @@
+#include "configurations.h"
 #include "theme.h"
 #include "fenetre_parametres.h"
 
@@ -261,6 +262,141 @@ class FenetreParametres : public wxDialog {
     Layout();
     CallAfter([this] { remplir(); });
   }
+  void configurer(const std::function<void(nlohmann::ordered_json&)>& c, const std::string& activer) {
+    const std::string m = a_.configurer(c, activer);
+    erreur_->SetLabel(m.empty() ? wxString() : tx("⚠ " + m));
+    Layout();
+    CallAfter([this] { remplir(); });
+  }
+  // cfgSection : une ligne par variante, valeurs des paramètres et fonctions supprimées
+  void sectionConfigurations(wxBoxSizer* tout) {
+    using J = nlohmann::ordered_json;
+    const Document& d = a_.document();
+    auto* tete = new wxBoxSizer(wxHORIZONTAL);
+    auto* titre = texteSombre(corps_, L"Configurations");
+    titre->SetFont(titre->GetFont().Bold());
+    tete->Add(titre, 0, wxALIGN_BOTTOM | wxRIGHT, FromDIP(10));
+    tete->Add(texteSombre(corps_, L"une ligne par variante : valeurs des paramètres, fonctions supprimées ; le rond coché = active", DISCRET), 0, wxALIGN_BOTTOM);
+    tout->Add(tete, 0, wxTOP | wxBOTTOM, FromDIP(8));
+    const J* tp = cfgDe(d);
+    if (tp) {
+      const J t = *tp;  // chaque action relit le document
+      const std::string actif = t["active"].is_string() ? t["active"].get<std::string>() : std::string();
+      auto* g = new wxFlexGridSizer(static_cast<int>(t["cols"].size()) + 4, FromDIP(3), FromDIP(8));
+      g->AddGrowableCol(1, 1);
+      g->AddSpacer(0);
+      g->Add(texteSombre(corps_, L"Variante", DISCRET), 0, wxALIGN_CENTER_VERTICAL);
+      for (const J& c : t["cols"]) {
+        const std::string nom = c.get<std::string>();
+        auto* h = new wxBoxSizer(wxHORIZONTAL);
+        h->Add(texteSombre(corps_, tx(nom), DISCRET), 0, wxALIGN_CENTER_VERTICAL | wxRIGHT, FromDIP(4));
+        auto* x = new wxButton(corps_, wxID_ANY, L"✕", wxDefaultPosition, wxDefaultSize, wxBU_EXACTFIT);
+        x->SetToolTip(L"Retirer la colonne");
+        x->Bind(wxEVT_BUTTON, [this, nom](wxCommandEvent&) { configurer([nom](J& j) { cfgSupprimerColonne(j, nom); }, ""); });
+        h->Add(x, 0, wxALIGN_CENTER_VERTICAL);
+        g->Add(h, 0, wxALIGN_CENTER_VERTICAL);
+      }
+      g->Add(texteSombre(corps_, L"Supprimées", DISCRET), 0, wxALIGN_CENTER_VERTICAL);
+      g->AddSpacer(0);
+      bool premiere = true;
+      for (const J& r : t["rows"]) {
+        const std::string id = r["id"].get<std::string>();
+        auto* rb = new wxRadioButton(corps_, wxID_ANY, wxEmptyString, wxDefaultPosition, wxDefaultSize, premiere ? wxRB_GROUP : 0);
+        premiere = false;
+        rb->SetValue(id == actif);
+        rb->SetToolTip(L"Activer cette configuration");
+        rb->Bind(wxEVT_RADIOBUTTON, [this, id](wxCommandEvent&) { configurer(nullptr, id); });
+        g->Add(rb, 0, wxALIGN_CENTER_VERTICAL);
+        auto* nomLigne = champSombre(corps_, tx(r["name"].get<std::string>()));
+        nomLigne->SetMinSize(FromDIP(wxSize(140, -1)));
+        const std::string n0 = r["name"].get<std::string>();
+        const auto validerNom = [this, nomLigne, n0, id] {
+          const std::string v = u8(wxString(nomLigne->GetValue()).Trim(true).Trim(false));
+          if (v.empty() || v == n0) return;
+          configurer([id, v](J& j) { cfgRenommerLigne(j, id, v); }, "");
+        };
+        nomLigne->Bind(wxEVT_TEXT_ENTER, [validerNom](wxCommandEvent&) { validerNom(); });
+        nomLigne->Bind(wxEVT_KILL_FOCUS, [validerNom](wxFocusEvent& e) {
+          e.Skip();
+          validerNom();
+        });
+        g->Add(nomLigne, 0, wxEXPAND);
+        for (const J& c : t["cols"]) {
+          const std::string nom = c.get<std::string>();
+          const std::string v0 = r["vals"].contains(nom) ? r["vals"][nom].get<std::string>() : std::string();
+          auto* x = champSombre(corps_, tx(v0));
+          x->SetHint(L"—");
+          x->SetMinSize(FromDIP(wxSize(70, -1)));
+          brancherListeNoms(x, [this]() -> const Document& { return a_.document(); });
+          const auto valider = [this, x, v0, id, nom, actif] {
+            const std::string v = u8(wxString(x->GetValue()).Trim(true).Trim(false));
+            if (v == v0) return;
+            configurer([id, nom, v](J& j) { cfgPoserCellule(j, id, nom, v); }, actif == id ? id : "");
+          };
+          x->Bind(wxEVT_TEXT_ENTER, [valider](wxCommandEvent&) { valider(); });
+          x->Bind(wxEVT_KILL_FOCUS, [valider](wxFocusEvent& e) {
+            e.Skip();
+            valider();
+          });
+          g->Add(x, 0, wxEXPAND);
+        }
+        const size_t nb = r["off"].size();
+        auto* so = new wxButton(corps_, wxID_ANY, nb ? wxString::Format(L"%d fonction(s)", static_cast<int>(nb)) : wxString(L"aucune"), wxDefaultPosition, wxDefaultSize, wxBU_EXACTFIT);
+        so->SetToolTip(L"Fonctions supprimées dans cette variante");
+        std::set<std::string> off;
+        for (const J& x : r["off"]) off.insert(x.get<std::string>());
+        so->Bind(wxEVT_BUTTON, [this, so, id, off, actif](wxCommandEvent&) {
+          wxMenu m;
+          std::vector<std::string> ids;
+          for (const Fonction& f : a_.document().fonctions) {
+            if (!f.repeatId.empty()) continue;
+            auto* it = m.AppendCheckItem(wxID_HIGHEST + 100 + static_cast<int>(ids.size()), tx(f.nom.empty() ? f.id : f.nom));
+            it->Check(off.count(f.id) > 0);
+            ids.push_back(f.id);
+          }
+          if (ids.empty()) m.Append(wxID_ANY, L"Aucune fonction")->Enable(false);
+          const int r2 = so->GetPopupMenuSelectionFromUser(m);
+          const int k = r2 - (wxID_HIGHEST + 100);
+          if (k < 0 || k >= static_cast<int>(ids.size())) return;
+          const std::string fid = ids[static_cast<size_t>(k)];
+          configurer([id, fid](J& j) { cfgBasculerSupprimee(j, id, fid); }, actif == id ? id : "");
+        });
+        g->Add(so, 0, wxALIGN_CENTER_VERTICAL);
+        auto* del = new wxButton(corps_, wxID_ANY, L"🗑", wxDefaultPosition, wxDefaultSize, wxBU_EXACTFIT);
+        del->SetToolTip(L"Supprimer la configuration");
+        del->Bind(wxEVT_BUTTON, [this, id](wxCommandEvent&) { configurer([id](J& j) { cfgSupprimerLigne(j, id); }, ""); });
+        g->Add(del, 0, wxALIGN_CENTER_VERTICAL);
+      }
+      tout->Add(g, 0, wxEXPAND);
+    }
+    auto* bar = new wxBoxSizer(wxHORIZONTAL);
+    auto* add = new wxButton(corps_, wxID_ANY, L"+ Configuration");
+    add->SetToolTip(L"Nouvelle variante = l’état actuel du modèle");
+    add->Bind(wxEVT_BUTTON, [this](wxCommandEvent&) { configurer([this](J& j) { cfgAjouterLigne(a_.document(), j); }, ""); });
+    bar->Add(add, 0, wxRIGHT, FromDIP(8));
+    const std::vector<std::string> libres = cfgNomsLibres(d);
+    if (!libres.empty()) {
+      auto* s = new wxChoice(corps_, wxID_ANY);
+      s->Append(L"+ Colonne…");
+      for (const std::string& n : libres) s->Append(tx(n));
+      s->SetSelection(0);
+      s->Bind(wxEVT_CHOICE, [this, libres](wxCommandEvent& e) {
+        const int k = e.GetSelection() - 1;
+        if (k < 0 || k >= static_cast<int>(libres.size())) return;
+        const std::string nom = libres[static_cast<size_t>(k)];
+        configurer([this, nom](J& j) { cfgAjouterColonne(a_.document(), j, nom); }, "");
+      });
+      bar->Add(s, 0, wxRIGHT, FromDIP(8));
+    }
+    if (tp && (*tp)["active"].is_string()) {
+      const std::string actif = (*tp)["active"].get<std::string>();
+      auto* cap = new wxButton(corps_, wxID_ANY, L"Mémoriser l’état actuel");
+      cap->SetToolTip(L"Les valeurs actuelles du modèle et les fonctions masquées deviennent celles de la configuration active");
+      cap->Bind(wxEVT_BUTTON, [this, actif](wxCommandEvent&) { configurer([this, actif](J& j) { cfgCapturer(a_.document(), j, actif); }, ""); });
+      bar->Add(cap, 0);
+    }
+    tout->Add(bar, 0, wxTOP | wxBOTTOM, FromDIP(8));
+  }
   void remplir() {
     corps_->Freeze();
     corps_->DestroyChildren();
@@ -314,7 +450,10 @@ class FenetreParametres : public wxDialog {
         valider(x, x0, reg);
       });
     }
-    corps_->SetSizer(g, true);
+    auto* tout = new wxBoxSizer(wxVERTICAL);
+    tout->Add(g, 0, wxEXPAND);
+    sectionConfigurations(tout);
+    corps_->SetSizer(tout, true);
     corps_->FitInside();
     corps_->Layout();
     corps_->Thaw();

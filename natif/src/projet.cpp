@@ -1,3 +1,4 @@
+#include "configurations.h"
 #include "projet.h"
 #include "repetitions.h"
 
@@ -765,6 +766,10 @@ static Document documentDepuisDoc(json& racine) {
     else refus["assemblage ancien"]++;
   }
   if (j.contains("components") && j["components"].is_array() && !j["components"].empty()) refus["assemblage"]++;
+  if (j.contains("configs")) {
+    nlohmann::ordered_json table = cfgNorm(j["configs"]);
+    if (!table.is_null()) d.configs = std::make_shared<const nlohmann::ordered_json>(std::move(table));
+  }
   for (auto& [k, n] : refus) d.nonPrisEnCharge.push_back(k + " × " + std::to_string(n));
   d.esquissesFichier = d.esquisses;
   d.fonctionsFichier = d.fonctions;

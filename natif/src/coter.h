@@ -40,7 +40,9 @@ struct EtatFormules {
   std::vector<Fonction> fonctions;
   std::vector<Parametre> params;
   std::vector<PorteurFx> porteurs;
-  explicit EtatFormules(const Document& d) : esquisses(d.esquisses), fonctions(d.fonctions), params(d.params), porteurs(d.porteurs) {}
+  std::shared_ptr<const nlohmann::ordered_json> configs;
+  bool configsChangees;
+  explicit EtatFormules(const Document& d) : esquisses(d.esquisses), fonctions(d.fonctions), params(d.params), porteurs(d.porteurs), configs(d.configs), configsChangees(d.configsChangees) {}
   void poser(Document& d) const;
 };
 bool appliquerFormules(Document& d, const EtatFormules& avant, int ouverte, Edition* ed, std::string& raison);

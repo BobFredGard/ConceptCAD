@@ -1,3 +1,4 @@
+#include "configurations.h"
 #include "theme.h"
 #include <wx/config.h>
 #include "cadre.h"
@@ -467,6 +468,26 @@ void Cadre::creerEnvironnement() {
   aide->SetFont(policeArial(this, 11));
   carteArbre_->contenu()->Add(rechercheArbre_, 0, wxEXPAND | wxBOTTOM, FromDIP(6));
   rechercheInit();
+  ligneConfig_ = new wxBoxSizer(wxHORIZONTAL);
+  auto* etiquetteConfig = new wxStaticText(carteArbre_, wxID_ANY, L"⚙ Configuration");
+  etiquetteConfig->SetForegroundColour(C_CLAIR);
+  choixConfig_ = new wxChoice(carteArbre_, wxID_ANY);
+  ligneConfig_->Add(etiquetteConfig, 0, wxALIGN_CENTER_VERTICAL | wxRIGHT, FromDIP(6));
+  ligneConfig_->Add(choixConfig_, 1, wxALIGN_CENTER_VERTICAL);
+  carteArbre_->contenu()->Add(ligneConfig_, 0, wxEXPAND | wxBOTTOM, FromDIP(6));
+  carteArbre_->contenu()->Show(ligneConfig_, false);
+  choixConfig_->Bind(wxEVT_CHOICE, [this](wxCommandEvent& e) {
+    const nlohmann::ordered_json* t = cfgDe(doc_);
+    if (!t) return;
+    const int k = e.GetSelection() - ((*t)["active"].is_string() ? 0 : 1);
+    if (k < 0 || k >= static_cast<int>((*t)["rows"].size())) return;
+    const std::string id = (*t)["rows"][static_cast<size_t>(k)]["id"].get<std::string>();
+    const std::string m = configurer(nullptr, id);
+    if (!m.empty()) {
+      etat(L"⚠ " + tx(m));
+      majChoixConfig();
+    }
+  });
   carteArbre_->contenu()->Add(arbre_, 1, wxEXPAND);
   carteArbre_->contenu()->Add(aide, 0, wxEXPAND | wxTOP, FromDIP(6));
 
@@ -1824,6 +1845,7 @@ void Cadre::apresOuverture() {
 }
 
 void Cadre::remplirArbre() {
+  majChoixConfig();
   arbre_->Freeze();
   arbre_->DeleteAllItems();
   lignesFonctions_.assign(doc_.fonctions.size(), wxTreeItemId());
@@ -2235,6 +2257,7 @@ ActionsFormules Cadre::actionsFormules() {
   a.changer = [this](const std::function<std::string()>& f) { return changerFormules(f); };
   a.reglerCote = [this](size_t j, const std::string& id, const std::string& t) { return reglerCoteListe(j, id, t); };
   a.menuDerivees = [this](wxWindow* ou) { derMenu(ou); };
+  a.configurer = [this](const std::function<void(nlohmann::ordered_json&)>& c, const std::string& id) { return configurer(c, id); };
   return a;
 }
 
@@ -2250,6 +2273,66 @@ std::string Cadre::reglerCoteListe(size_t j, const std::string& id, const std::s
   Edition ed(doc_.esquisses[j]);
   saisirCoteTexte(doc_, j, ed, id, texte, raison);
   return raison;
+}
+
+// cfgApply et les changements de la table : tout le document revient en arrière si une conséquence est refusée
+std::string Cadre::configurer(const std::function<void(nlohmann::ordered_json&)>& changement, const std::string& activer) {
+  if (esquisseOuverte_ >= 0) return std::string(wxString(L"Quittez d’abord l’esquisse.").utf8_str());
+  const auto avant = std::make_shared<Document>(doc_);
+  const EtatFormules etatAvant(doc_);
+  std::string message;
+  try {
+    wxBusyCursor attente;
+    modifierStructure(doc_, [&](nlohmann::ordered_json& j) {
+      if (changement) changement(j);
+      if (!activer.empty()) cfgStructureActive(j, activer);
+      cfgRanger(j);
+    });
+    if (!activer.empty()) {
+      const std::vector<std::string> absents = cfgPoserValeurs(doc_, activer);
+      std::string raison;
+      if (!appliquerFormules(doc_, etatAvant, -1, nullptr, raison)) throw std::runtime_error(raison);
+      message = cfgMessage(doc_, activer, absents);
+    }
+  } catch (const std::exception& e) {
+    doc_ = *avant;
+    return e.what();
+  }
+  doc_.structureTouchee = false;
+  ModifCote m;
+  m.docAvant = avant;
+  annulations_.push_back(std::move(m));
+  retablissements_.clear();
+  suivreCopies();
+  apresStructure();
+  if (!message.empty()) etat(tx(message));
+  return "";
+}
+
+// cfgTreeRow : le sélecteur en tête de l'arbre, seulement s'il y a une table
+void Cadre::majChoixConfig() {
+  if (!choixConfig_) return;
+  const nlohmann::ordered_json* t = cfgDe(doc_);
+  choixConfig_->Clear();
+  if (t) {
+    int choisi = -1;
+    const bool actif = (*t)["active"].is_string();
+    if (!actif) {
+      choixConfig_->Append(L"—");
+      choisi = 0;
+    }
+    for (const auto& r : (*t)["rows"]) {
+      if (actif && r["id"] == (*t)["active"]) choisi = static_cast<int>(choixConfig_->GetCount());
+      choixConfig_->Append(tx(r["name"].get<std::string>()));
+    }
+    choixConfig_->SetSelection(choisi);
+  }
+  const bool montrer = t != nullptr;
+  if (ligneConfig_ && carteArbre_->contenu()->IsShown(ligneConfig_) != montrer) {
+    carteArbre_->contenu()->Show(ligneConfig_, montrer);
+    carteArbre_->contenu()->Layout();
+    carteArbre_->Layout();
+  }
 }
 
 std::string Cadre::changerFormules(const std::function<std::string()>& f) {
@@ -4277,6 +4360,44 @@ bool Cadre::essaiEsquisse(const std::wstring& fichier, int rang, const std::wstr
             n["champs"].push_back(x);
           }
     }
+    if (e.contains("cfg")) {
+      const auto& c = e["cfg"];
+      const auto tabl = [this]() { return cfgDe(doc_) ? *cfgDe(doc_) : nlohmann::ordered_json(); };
+      std::string m;
+      std::string actif;
+      if (c.contains("ajouter")) m = configurer([&](nlohmann::ordered_json& j) { cfgAjouterLigne(doc_, j); }, "");
+      if (c.contains("colonne")) m = configurer([&](nlohmann::ordered_json& j) { cfgAjouterColonne(doc_, j, c["colonne"].get<std::string>()); }, "");
+      if (c.contains("cellule")) {
+        const auto t = tabl();
+        const std::string id = c["cellule"][0].get<std::string>();
+        m = configurer([&](nlohmann::ordered_json& j) { cfgPoserCellule(j, id, c["cellule"][1].get<std::string>(), c["cellule"][2].get<std::string>()); }, t["active"] == id ? id : "");
+      }
+      if (c.contains("off")) {
+        const auto t = tabl();
+        const std::string id = c["off"][0].get<std::string>();
+        m = configurer([&](nlohmann::ordered_json& j) { cfgBasculerSupprimee(j, id, c["off"][1].get<std::string>()); }, t["active"] == id ? id : "");
+      }
+      if (c.contains("activer")) m = configurer(nullptr, c["activer"].get<std::string>());
+      if (c.contains("capturer")) m = configurer([&](nlohmann::ordered_json& j) { cfgCapturer(doc_, j, j["configs"]["active"].get<std::string>()); }, "");
+      if (c.contains("supprLigne")) m = configurer([&](nlohmann::ordered_json& j) { cfgSupprimerLigne(j, c["supprLigne"].get<std::string>()); }, "");
+      if (c.contains("supprColonne")) m = configurer([&](nlohmann::ordered_json& j) { cfgSupprimerColonne(j, c["supprColonne"].get<std::string>()); }, "");
+      if (c.contains("renommerParam")) {
+        const std::string de = c["renommerParam"][0].get<std::string>(), vers = c["renommerParam"][1].get<std::string>();
+        m = changerFormules([&]() -> std::string {
+          for (Parametre& p : doc_.params)
+            if (p.nom == de) {
+              parRenommer(doc_, de, vers);
+              p.nom = vers;
+            }
+          return "";
+        });
+      }
+      n["refus"] = m;
+      n["table"] = tabl();
+      n["libres"] = cfgNomsLibres(doc_);
+      n["etat"] = std::string(etatVue_->texte().utf8_str());
+      n["choix"] = std::string(choixConfig_->GetStringSelection().utf8_str());
+    }
     if (e.contains("oeilArbre")) {
       const std::string id = e["oeilArbre"].get<std::string>();
       for (size_t k = 0; k < doc_.fonctions.size(); k++)
@@ -4418,6 +4539,15 @@ bool Cadre::essaiEsquisse(const std::wstring& fichier, int rang, const std::wstr
       wxYield();
       f->Update();
       capturerFenetre(dossier + L"\\" + wxString::FromUTF8(e["listeFx"].get<std::string>()).ToStdWstring() + L".png");
+      {
+        const wxSize tf = f->GetSize();
+        wxBitmap imageF(tf.x, tf.y, 32);
+        {
+          wxMemoryDC dc(imageF);
+          PrintWindow(f->GetHWND(), static_cast<HDC>(dc.GetHDC()), 2);
+        }
+        imageF.ConvertToImage().SaveFile(dossier + L"\\" + wxString::FromUTF8(e["listeFx"].get<std::string>()).ToStdWstring() + L"-f.png", wxBITMAP_TYPE_PNG);
+      }
       f->Destroy();
     }
     wxYield();

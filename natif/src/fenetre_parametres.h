@@ -18,6 +18,8 @@ struct ActionsFormules {
   // parSetDim : la saisie d'une cote de n'importe quelle esquisse
   std::function<std::string(size_t esquisse, const std::string& idCote, const std::string& texte)> reglerCote;
   std::function<void(wxWindow*)> menuDerivees;  // les fichiers dont celui-ci dérive
+  // La table des configurations : change le JSON du document, active la variante donnée si elle n'est pas vide. Une étape d'annulation.
+  std::function<std::string(const std::function<void(nlohmann::ordered_json&)>&, const std::string&)> configurer;
 };
 
 // Clic droit sur le bouton ƒx : la liste complète

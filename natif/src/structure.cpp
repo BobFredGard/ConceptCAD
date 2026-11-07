@@ -78,6 +78,9 @@ void stBasculerVisible(json& d, const char* liste_, const std::string& id) {
   if (json* x = parId(liste(d, liste_), id)) {
     const bool vu = !(x->contains("visible") && (*x)["visible"].is_boolean() && !(*x)["visible"].get<bool>());
     (*x)["visible"] = !vu;
+    if (x->value("type", std::string()) == "repeat" && std::string(liste_) == "features")
+      for (json& k : liste(d, liste_))
+        if (k.value("repeatId", std::string()) == id) k["visible"] = !vu;
   }
 }
 
