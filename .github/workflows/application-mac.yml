@@ -52,7 +52,9 @@ jobs:
         run: cargo tauri build --config tauri.mac.json --target universal-apple-darwin
       - name: Emballer l'application pour la mise à jour par Internet
         run: |
-          COPYFILE_DISABLE=1 tar czf ConceptCAD.app.tar.gz -C tauri/src-tauri/target/universal-apple-darwin/release/bundle/macos ConceptCAD.app
+          hdiutil attach tauri/src-tauri/target/universal-apple-darwin/release/bundle/dmg/*.dmg -mountpoint /tmp/cc-maj -nobrowse
+          COPYFILE_DISABLE=1 tar czf ConceptCAD.app.tar.gz -C /tmp/cc-maj ConceptCAD.app
+          hdiutil detach /tmp/cc-maj
           tar tzf ConceptCAD.app.tar.gz | grep -x 'ConceptCAD.app/Contents/MacOS/ConceptCAD'
       - name: Installer et lancer
         run: |
