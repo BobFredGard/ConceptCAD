@@ -21,6 +21,7 @@
 #include "coter.h"
 #include "dessin.h"
 #include "enregistrer.h"
+#include "mesure.h"
 #include "normalises.h"
 #include "parametres.h"
 
@@ -61,6 +62,45 @@ nlohmann::ordered_json decrirePiece(const normalises::Piece& sp) {
   }
   r["paire"] = p;
   return r;
+}
+// --mesures : les mêmes paires que le navigateur, sans fenêtre
+int modeMesures(const std::vector<std::wstring>& a) {
+  using J = nlohmann::ordered_json;
+  std::ifstream f(a[1], std::ios::binary);
+  std::stringstream ss;
+  ss << f.rdbuf();
+  const J e = J::parse(ss.str());
+  Document d = lireProjet(wxString::FromUTF8(e["piece"].get<std::string>()).ToStdWstring());
+  const ResultatRejeu r = rejouer(d);
+  std::vector<std::vector<TopoDS_Face>> faces;
+  std::vector<std::vector<TopoDS_Edge>> aretes;
+  for (const auto& c : r.corps) {
+    faces.emplace_back();
+    aretes.emplace_back();
+    for (TopExp_Explorer ex(c.second, TopAbs_FACE); ex.More(); ex.Next()) faces.back().push_back(TopoDS::Face(ex.Current()));
+    for (TopExp_Explorer ex(c.second, TopAbs_EDGE); ex.More(); ex.Next()) aretes.back().push_back(TopoDS::Edge(ex.Current()));
+  }
+  J sortie = J::array();
+  const auto pnt = [](const J& v) { return gp_Pnt(v[0].get<double>(), v[1].get<double>(), v[2].get<double>()); };
+  for (const J& c : e["cas"]) {
+    J s = J::object();
+    const size_t ca = c["ca"], cb = c["cb"], ia = c["a"], ib = c["b"];
+    mesure::Dessin des;
+    std::string texte;
+    if (c["t"] == "f") {
+      s["ok"] = mesure::mesurerFaces(mesure::geoFace(faces[ca][ia]), pnt(c["pa"]), mesure::geoFace(faces[cb][ib]), pnt(c["pb"]), des, texte);
+    } else {
+      const mesure::GeoArete A = mesure::geoArete(mesure::pointsArete(aretes[ca][ia])), B = mesure::geoArete(mesure::pointsArete(aretes[cb][ib]));
+      s["ok"] = true;
+      s["desc"] = mesure::decrireArete(A);
+      texte = mesure::mesurerAretes(A, B, des);
+    }
+    s["texte"] = texte;
+    sortie.push_back(s);
+  }
+  std::ofstream o(a[2], std::ios::binary);
+  o << sortie.dump(0, ' ', false, J::error_handler_t::replace);
+  return 0;
 }
 int modeNormalises(const std::vector<std::wstring>& a) {
   using J = nlohmann::ordered_json;
@@ -630,6 +670,7 @@ int WINAPI wWinMain(HINSTANCE inst, HINSTANCE, PWSTR, int) {
   LocalFree(argv);
   if (!gArgs.empty() && gArgs[0] == L"--verif") return modeVerif(gArgs);
   if (gArgs.size() >= 3 && gArgs[0] == L"--normalises") return modeNormalises(gArgs);
+  if (gArgs.size() >= 3 && gArgs[0] == L"--mesures") return modeMesures(gArgs);
   if (!gArgs.empty() && gArgs[0] == L"--etapes") return modeEtapes(gArgs);
   if (gArgs.size() >= 3 && gArgs[0] == L"--reenregistrer") return modeEnregistrer(gArgs);
   if (gArgs.size() >= 2 && gArgs[0] == L"--conflit") return modeEnregistrer(gArgs);

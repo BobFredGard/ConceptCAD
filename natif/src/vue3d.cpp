@@ -1,6 +1,12 @@
 #include <BRepMesh_IncrementalMesh.hxx>
 #include "vue3d.h"
 #include <AIS_InteractiveObject.hxx>
+#include <AIS_Point.hxx>
+#include <AIS_TextLabel.hxx>
+#include <Geom_CartesianPoint.hxx>
+#include <Prs3d_TextAspect.hxx>
+#include <Graphic3d_AspectText3d.hxx>
+#include <TCollection_ExtendedString.hxx>
 #include <Graphic3d_ArrayOfSegments.hxx>
 #include <Graphic3d_AspectLine3d.hxx>
 #include <Graphic3d_Group.hxx>
@@ -428,6 +434,10 @@ void Vue3D::droitEn(const wxPoint& p) {
   surDroit(sous);
 }
 
+namespace {
+occ::handle<AIS_Shape> nappe(const occ::handle<AIS_InteractiveContext>& c, const std::vector<TopoDS_Face>& faces, const Quantity_Color& teinte);
+}
+
 void Vue3D::cliquerEn(const wxPoint& p) {
   dernierClic_ = p;
   if (!marques_.empty()) {
@@ -455,6 +465,18 @@ void Vue3D::cliquerEn(const wxPoint& p) {
       return;
     }
   }
+  // La mesure passe avant toute commande : Ctrl ne sélectionne ni n'active rien (ctrlMesureEv)
+  const bool ctrl = essaiCtrl >= 0 ? essaiCtrl != 0 : wxGetKeyState(WXK_CONTROL), maj = essaiMaj >= 0 ? essaiMaj != 0 : wxGetKeyState(WXK_SHIFT);
+  const bool libre = surMesure && marques_.empty() && !aligner_ && !enChoix_ && !modeFaces_;
+  CoupVue coup;
+  bool aCoup = false;
+  if (libre && ctrl && !maj) {
+    aCoup = coupMesure(p, coup);
+    if (placer_ || (aCoup && !coup.propre)) {
+      surMesure(aCoup ? &coup : nullptr, true, false);
+      return;
+    }
+  } else if (libre && !placer_) aCoup = lireCoup(p, coup);
   if (surRayon) {
     gp_Pnt o;
     gp_Dir d;
@@ -495,6 +517,139 @@ void Vue3D::cliquerEn(const wxPoint& p) {
   if (contexte_->MoreSelected() && contexte_->HasSelectedShape()) choisie = contexte_->SelectedShape();
   if (enChoix_) contexte_->ClearSelected(true);  // ce qui est retenu a son propre trait orange
   if (surSelection) surSelection(choisie);
+  if (libre) surMesure(aCoup ? &coup : nullptr, ctrl, maj);
+}
+
+// Ce qui est sous le dernier passage de la souris : une face ou une arête de la pièce, ou d'une occurrence
+bool Vue3D::lireCoup(const wxPoint& p, CoupVue& c) {
+  contexte_->MoveTo(p.x, p.y, vue_, false);
+  if (!contexte_->HasDetected() || !contexte_->HasDetectedShape()) return false;
+  const TopoDS_Shape s = contexte_->DetectedShape();
+  if (s.IsNull() || (s.ShapeType() != TopAbs_FACE && s.ShapeType() != TopAbs_EDGE)) return false;
+  const occ::handle<AIS_InteractiveObject> io = contexte_->DetectedInteractive();
+  c = CoupVue();
+  bool trouve = false;
+  if (!affichee_.IsNull() && affichee_ == io) {
+    c.propre = true;
+    c.chemin = cheminPiece_;
+    trouve = true;
+  } else
+    for (const OccAffichee& o : occs_)
+      if (o.piece == io) {
+        c.t = o.v.t;
+        c.chemin = o.v.chemin;
+        trouve = true;
+        break;
+      }
+  if (!trouve || contexte_->MainSelector()->NbPicked() <= 0) return false;
+  c.s = s;
+  c.p = contexte_->MainSelector()->PickedPoint(1);
+  return true;
+}
+
+// Ctrl+clic : pour mesurer, les occurrences donnent aussi leurs faces et leurs arêtes ; les pièces
+// estompées d'une autre branche de l'assemblage seulement si rien d'autre n'est sous la souris (mesPick)
+bool Vue3D::coupMesure(const wxPoint& p, CoupVue& c) {
+  const bool pieceOuverte = !selectionPrete_ && !affichee_.IsNull();
+  if (pieceOuverte) {
+    contexte_->Load(affichee_, -1);
+    contexte_->Activate(affichee_, AIS_Shape::SelectionMode(TopAbs_EDGE));
+    contexte_->Activate(affichee_, AIS_Shape::SelectionMode(TopAbs_FACE));
+  }
+  std::vector<const OccAffichee*> ouvertes;
+  const auto ouvrir = [&](bool fantomes) {
+    for (const OccAffichee& o : occs_) {
+      if (o.v.fantome != fantomes) continue;
+      contexte_->Load(o.piece, -1);
+      contexte_->Deactivate(o.piece);
+      contexte_->Activate(o.piece, AIS_Shape::SelectionMode(TopAbs_EDGE));
+      contexte_->Activate(o.piece, AIS_Shape::SelectionMode(TopAbs_FACE));
+      ouvertes.push_back(&o);
+    }
+  };
+  ouvrir(false);
+  bool ok = lireCoup(p, c);
+  if (!ok) {
+    ouvrir(true);
+    ok = lireCoup(p, c);
+  }
+  for (const OccAffichee* o : ouvertes) {
+    contexte_->Deactivate(o->piece);
+    if (o->v.cliquable) contexte_->Activate(o->piece, 0);
+  }
+  if (pieceOuverte) contexte_->Deactivate(affichee_);
+  contexte_->MoveTo(p.x, p.y, vue_, false);
+  return ok;
+}
+
+void Vue3D::montrerMesure(const mesure::Dessin& d) {
+  for (const auto& a : mesureAis_) contexte_->Remove(a, false);
+  mesureAis_.clear();
+  if (d.vide()) {
+    vue_->Redraw();
+    return;
+  }
+  const Quantity_Color vert(0x30 / 255.0, 0xd1 / 255.0, 0x58 / 255.0, Quantity_TOC_sRGB), orange(1.0, 0x9f / 255.0, 0x0a / 255.0, Quantity_TOC_sRGB);
+  const auto ajouter = [&](const occ::handle<AIS_InteractiveObject>& a) {
+    contexte_->SetZLayer(a, Graphic3d_ZLayerId_TopOSD);
+    mesureAis_.push_back(a);
+  };
+  const auto ligne = [&](const std::vector<gp_Pnt>& P, const Quantity_Color& c, double largeur, bool tirets) {
+    if (P.size() < 2) return;
+    BRepBuilderAPI_MakePolygon m;
+    for (const gp_Pnt& q : P) m.Add(q);
+    if (!m.IsDone()) return;
+    occ::handle<AIS_Shape> a = new AIS_Shape(m.Wire());
+    a->Attributes()->SetAutoTriangulation(false);
+    a->SetColor(c);
+    a->SetWidth(largeur);
+    if (tirets) a->Attributes()->WireAspect()->SetTypeOfLine(Aspect_TOL_DASH);
+    contexte_->Display(a, AIS_WireFrame, -1, false);
+    ajouter(a);
+  };
+  const auto point = [&](const gp_Pnt& q) {
+    occ::handle<AIS_Point> a = new AIS_Point(new Geom_CartesianPoint(q));
+    a->SetMarker(Aspect_TOM_BALL);
+    a->SetColor(vert);
+    contexte_->Display(a, 0, -1, false);
+    ajouter(a);
+  };
+  const auto etiquette = [&](const std::string& t, const gp_Pnt& q) {
+    occ::handle<AIS_TextLabel> a = new AIS_TextLabel();
+    a->SetText(TCollection_ExtendedString(t.c_str(), true));
+    a->SetPosition(q);
+    a->SetFont("Segoe UI");
+    a->SetHeight(14);
+    a->SetColor(Quantity_NOC_WHITE);
+    a->SetHJustification(Graphic3d_HTA_CENTER);
+    a->SetVJustification(Graphic3d_VTA_CENTER);
+    a->Attributes()->TextAspect()->Aspect()->SetDisplayType(Aspect_TODT_SUBTITLE);
+    a->Attributes()->TextAspect()->Aspect()->SetColorSubTitle(Quantity_Color(0.10, 0.35, 0.16, Quantity_TOC_sRGB));
+    contexte_->Display(a, 0, -1, false);
+    ajouter(a);
+  };
+  if (!d.faces.empty()) {
+    std::vector<TopoDS_Face> F;
+    for (const TopoDS_Shape& s : d.faces) F.push_back(TopoDS::Face(s));
+    mesureAis_.push_back(nappe(contexte_, F, orange));
+  }
+  for (const auto& P : d.aretes) ligne(P, orange, 3, false);
+  const double lg = std::max(20.0, vue_->Camera()->Scale() * 0.4);  // axisLen
+  for (const mesure::Axe& x : d.axes) {
+    const gp_Pnt a(x.c.X() - x.a.X() * lg / 2, x.c.Y() - x.a.Y() * lg / 2, x.c.Z() - x.a.Z() * lg / 2), b(x.c.X() + x.a.X() * lg / 2, x.c.Y() + x.a.Y() * lg / 2, x.c.Z() + x.a.Z() * lg / 2);
+    ligne({a, b}, orange, 1, true);
+  }
+  for (const mesure::Cote& k : d.cotes) {
+    ligne({k.a, k.b}, vert, 2, false);
+    point(k.a);
+    point(k.b);
+    etiquette(k.texte, gp_Pnt((k.a.X() + k.b.X()) / 2, (k.a.Y() + k.b.Y()) / 2, (k.a.Z() + k.b.Z()) / 2));
+  }
+  for (const mesure::Etiquette& t : d.etiquettes) {
+    point(t.p);
+    etiquette(t.texte, t.p);
+  }
+  vue_->Redraw();
 }
 
 wxPoint Vue3D::pixelDe(double x, double y, double z) const {
@@ -655,6 +810,7 @@ occ::handle<AIS_Shape> nappe(const occ::handle<AIS_InteractiveContext>& c, const
   occ::handle<AIS_Shape> a = new AIS_Shape(k);
   a->Attributes()->SetAutoTriangulation(false);
   a->SetColor(teinte);
+  a->Attributes()->ShadingAspect()->Aspect()->SetShadingModel(Graphic3d_TypeOfShadingModel_Unlit);
   c->Display(a, AIS_Shaded, -1, false);
   c->SetZLayer(a, Graphic3d_ZLayerId_Topmost);  // toujours visible, comme depthTest:false dans le navigateur
   c->SetTransparency(a, 0.45, false);

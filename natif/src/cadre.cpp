@@ -260,6 +260,7 @@ Cadre::Cadre() : wxFrame(nullptr, wxID_ANY, L"ConceptCAD natif"), asmAnim_(this)
   vue_->surGeste = [this](int phase, const std::string& sorte, int axe, const std::string& degre, double valeur, bool libre) { asmGeste(phase, sorte, axe, degre, valeur, libre); };
   vue_->surMarque = [this](int i) { asmAlignClicMarque(i); };
   vue_->surRayon = [this](const gp_Pnt& o, const gp_Dir& d) { return asmNormRayon(o, d); };
+  vue_->surMesure = [this](const Vue3D::CoupVue* c, bool ctrl, bool maj) { mesureCoup(c, ctrl, maj); };
   vue_->surFaceOcc = [this](const assemblage::Chemin& c, const gp_Pnt& p, bool plan, const assemblage::V3& n) { asmAlignClicFace(c, p, plan, n); };
   Bind(wxEVT_TIMER, [this](wxTimerEvent&) { asmPasAnimation(); }, asmAnim_.GetId());
   vue_->surSelection = [this](const TopoDS_Shape& s) {
@@ -1855,6 +1856,7 @@ void Cadre::montrerForme(const TopoDS_Shape& s) {
 // Rejoue et affiche. Rend la durée totale en ms (calcul + maillage + dessin).
 double Cadre::recalculer() {
   wxBusyCursor attente;
+  mesureEffacer(true);  // les faces mesurées ne sont peut-être plus les mêmes
   const auto t0 = std::chrono::steady_clock::now();
   ResultatRejeu r;
   try {

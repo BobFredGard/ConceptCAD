@@ -342,6 +342,7 @@ void Cadre::changerAssemblage(const std::function<void(J&)>& f, const wxString& 
 
 void Cadre::asmCliqueOcc(const std::string& id, bool ctrl, bool maj) {
   if (asmAlign_) return;
+  mesureEffacer(true);
   if (!doc_.assemblage) return;
   const J* c = as::composant(*doc_.assemblage, as::actif(*doc_.assemblage));
   if (id.empty() || !c) {
@@ -386,6 +387,10 @@ void Cadre::asmCliqueOcc(const std::string& id, bool ctrl, bool maj) {
 }
 
 bool Cadre::asmEchap() {
+  if (!mesDessin_.vide()) {
+    mesureEffacer(false);
+    return true;
+  }
   if (asmNormPose_) {
     asmNormPoseAnnuler();
     return true;
@@ -1958,6 +1963,7 @@ bool Cadre::asmEtapeEssai(const nlohmann::json& e, nlohmann::json& n) {
   bool fait = false;
   essaiMenu_ = true;
   if (asmNormEtapeEssai(e, n)) fait = true;
+  if (mesureEtapeEssai(e, n)) fait = true;
   if (e.contains("asm")) {
     const std::string q = e["asm"].get<std::string>();
     if (q == "basculer") asmBasculer();

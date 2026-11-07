@@ -22,6 +22,8 @@
 #include <gp_Pnt.hxx>
 #include <gp_Trsf.hxx>
 
+#include "mesure.h"
+
 class Vue3D : public wxWindow {
  public:
   explicit Vue3D(wxWindow* parent);
@@ -109,6 +111,17 @@ class Vue3D : public wxWindow {
   // Une commande qui prend le rayon du clic (pose sur des trous) : rend vrai si le clic est consommé
   std::function<bool(const gp_Pnt& o, const gp_Dir& d)> surRayon;
   std::function<void(const std::vector<std::string>& chemin, const gp_Pnt& p, bool plan, const std::array<double, 3>& normaleLocale)> surFaceOcc;
+  // La mesure : la face ou l'arête sous le clic (propre : la pièce affichée, sinon une occurrence), et ce qu'il faut tracer
+  struct CoupVue {
+    TopoDS_Shape s;
+    gp_Trsf t;
+    gp_Pnt p;
+    bool propre = false;
+    std::vector<std::string> chemin;
+  };
+  std::function<void(const CoupVue* c, bool ctrl, bool maj)> surMesure;
+  void montrerMesure(const mesure::Dessin& d);
+  int essaiCtrl = -1, essaiMaj = -1;  // l'essai automatique tient les touches à la place de l'utilisateur
 
  private:
   void surPeinture(wxPaintEvent&);
@@ -124,6 +137,9 @@ class Vue3D : public wxWindow {
   void majTailles();
   double echelleEn(const gp_Pnt& p) const;
   void rayon(int x, int y, gp_Pnt& o, gp_Dir& d) const;
+  bool lireCoup(const wxPoint& p, CoupVue& c);
+  bool coupMesure(const wxPoint& p, CoupVue& c);
+  std::vector<occ::handle<AIS_InteractiveObject>> mesureAis_;
   bool saisirGizmo(const wxPoint& p, wxMouseEvent& e);
   void bougerGizmo(const wxPoint& p, bool libre);
   int marqueSous(const wxPoint& p) const;

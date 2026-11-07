@@ -11,6 +11,7 @@
 #include <cstdio>
 #include <functional>
 #include <memory>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -375,6 +376,25 @@ public:
   void asmDepuisCorps(std::vector<std::string> ids);
   void asmDeplacerVers(bool corps, const std::string& id);
   bool asmEtapeEssai(const nlohmann::json& e, nlohmann::json& n);
+  // La mesure à la souris (cadre_mesure.cpp)
+  struct MesureCoup {
+    TopoDS_Shape s, corps;
+    gp_Trsf t;
+    gp_Pnt p;
+    mesure::GeoFace g;
+    std::string nom;
+    int rang = 0;
+    bool propre = false;
+  };
+  std::optional<MesureCoup> mesA_;
+  std::vector<mesure::GeoArete> mesAretes_;
+  mesure::Dessin mesDessin_;
+  void mesureCoup(const Vue3D::CoupVue* c, bool ctrl, bool maj);
+  void mesureEffacer(bool discret);
+  MesureCoup mesureLire(const Vue3D::CoupVue& c) const;
+  std::string mesureLibelleFace(const MesureCoup& m) const;
+  std::string mesureOrigine(const TopoDS_Shape& corps, const std::vector<TopoDS_Shape>& faces) const;
+  bool mesureEtapeEssai(const nlohmann::json& e, nlohmann::json& n);
   // Les composants normalisés (cadre_normalises.cpp)
   friend class FenetreNormalises;
   void asmNormalises(const std::string& cat = "");
