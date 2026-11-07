@@ -461,6 +461,58 @@ bool Vue3D::directionCamera(std::array<double, 3>& d) const {
   d = {x / L, y / L, z / L};
   return true;
 }
+namespace {
+// Les pièces retournées, sans lumière : le rouge de chaque point dit combien son reflet reste visible
+class FonduReflet : public AIS_InteractiveObject {
+ public:
+  DEFINE_STANDARD_RTTI_INLINE(FonduReflet, AIS_InteractiveObject)
+  FonduReflet(const TopoDS_Shape& forme, double zBas, double fondu) : forme_(forme), zBas_(zBas), fondu_(fondu) {}
+  bool AcceptDisplayMode(const int m) const override { return m == 1; }
+
+ protected:
+  void Compute(const occ::handle<PrsMgr_PresentationManager>&, const occ::handle<Prs3d_Presentation>& prs, const int) override {
+    prs->Clear();
+    int nb = 0;
+    for (TopExp_Explorer x(forme_, TopAbs_FACE); x.More(); x.Next()) {
+      TopLoc_Location loc;
+      const occ::handle<Poly_Triangulation> T = BRep_Tool::Triangulation(TopoDS::Face(x.Current()), loc);
+      if (!T.IsNull()) nb += T->NbTriangles() * 3;
+    }
+    if (!nb) return;
+    occ::handle<Graphic3d_ArrayOfTriangles> tri = new Graphic3d_ArrayOfTriangles(nb, 0, Graphic3d_ArrayFlags_VertexColor);
+    for (TopExp_Explorer x(forme_, TopAbs_FACE); x.More(); x.Next()) {
+      TopLoc_Location loc;
+      const occ::handle<Poly_Triangulation> T = BRep_Tool::Triangulation(TopoDS::Face(x.Current()), loc);
+      if (T.IsNull()) continue;
+      const gp_Trsf tr = loc.Transformation();
+      for (int t = 1; t <= T->NbTriangles(); t++) {
+        int n[3];
+        T->Triangle(t).Get(n[0], n[1], n[2]);
+        for (const int i : n) {
+          gp_Pnt p = T->Node(i).Transformed(tr);
+          p.SetZ(2 * zBas_ - p.Z());
+          const double k = std::max(0.0, std::min(1.0, (zBas_ - p.Z()) / fondu_)), f = 0.5 * (1 - k) * (1 - k);
+          tri->AddVertex(p, Quantity_Color(static_cast<float>(f), 0.f, 0.f, Quantity_TOC_RGB));
+        }
+      }
+    }
+    occ::handle<Graphic3d_AspectFillArea3d> asp = new Graphic3d_AspectFillArea3d();
+    asp->SetInteriorStyle(Aspect_IS_SOLID);
+    asp->SetShadingModel(Graphic3d_TypeOfShadingModel_Unlit);
+    asp->SetInteriorColor(Quantity_NOC_WHITE);
+    asp->SetFaceCulling(Graphic3d_TypeOfBackfacingModel_DoubleSided);
+    const occ::handle<Graphic3d_Group> gr = prs->NewGroup();
+    gr->SetGroupPrimitivesAspect(asp);
+    gr->AddPrimitiveArray(tri);
+  }
+  void ComputeSelection(const occ::handle<SelectMgr_Selection>&, const int) override {}
+
+ private:
+  TopoDS_Shape forme_;
+  double zBas_, fondu_;
+};
+}  // namespace
+
 bool Vue3D::imagePlan(const plan::DemandeImage& d, wxImage& sortie, const OptionsVue* reel, const std::vector<ApparenceVue>* apparences) {
   if (vueImage_.IsNull()) {
     // Un second visualiseur, sans sol, cube ni arêtes : même pilote, mêmes lumières et même matière que la vue 3D
@@ -576,27 +628,67 @@ bool Vue3D::imagePlan(const plan::DemandeImage& d, wxImage& sortie, const Option
   o.BufferType = Graphic3d_BT_RGBA;
   o.ToAdjustAspect = true;
   // Le fond transparent : la même image sur fond noir puis sur fond blanc. Ce qui change d'une à l'autre, c'est le fond qui transparaît.
-  Image_AlienPixMap surNoir, surBlanc;
+  Image_AlienPixMap surNoir, surBlanc, refletNoir, refletBlanc;
+  Image_AlienPixMap fondus;
   bool ok = false;
+  bool avecReflet = false;
   try {
     o.BufferType = Graphic3d_BT_RGB;
     vueImage_->SetBackgroundColor(Quantity_NOC_BLACK);
     ok = vueImage_->ToPixMap(surNoir, o);
     vueImage_->SetBackgroundColor(Quantity_NOC_WHITE);
     ok = ok && vueImage_->ToPixMap(surBlanc, o);
+    if (ok && d.miroir) {
+      // Le reflet : les mêmes pièces retournées autour du point le plus bas (les filets ne se reflètent pas,
+      // comme dans le navigateur). Une dernière image, sans lumière, donne le fondu de chaque point
+      gp_Trsf retourne;
+      retourne.SetMirror(gp_Ax2(gp_Pnt(0, 0, d.zBas), gp_Dir(0, 0, 1)));
+      for (size_t i = 0; i < poses.size(); i++) {
+        if (i < d.corps.size()) poses[i]->SetLocalTransformation(retourne);
+        else contexteImage_->Erase(poses[i], false);
+      }
+      vueImage_->ZFitAll();
+      vueImage_->SetBackgroundColor(Quantity_NOC_BLACK);
+      avecReflet = vueImage_->ToPixMap(refletNoir, o);
+      vueImage_->SetBackgroundColor(Quantity_NOC_WHITE);
+      avecReflet = avecReflet && vueImage_->ToPixMap(refletBlanc, o);
+      if (avecReflet) {
+        for (size_t i = 0; i < d.corps.size() && i < poses.size(); i++) contexteImage_->Erase(poses[i], false);
+        std::vector<occ::handle<AIS_InteractiveObject>> masques;
+        for (const plan::DemandeImage::Teinte& c : d.corps) {
+          occ::handle<AIS_InteractiveObject> m = new FonduReflet(c.forme, d.zBas, d.fondu);
+          contexteImage_->Display(m, 1, -1, false);
+          masques.push_back(m);
+        }
+        vueImage_->SetBackgroundColor(Quantity_NOC_BLACK);
+        avecReflet = vueImage_->ToPixMap(fondus, o);
+        for (const occ::handle<AIS_InteractiveObject>& m : masques) contexteImage_->Remove(m, false);
+      }
+    }
   } catch (const Standard_Failure&) {
     ok = false;
   }
   for (const occ::handle<AIS_InteractiveObject>& a : poses) contexteImage_->Remove(a, false);
   if (!ok || surNoir.Width() != surBlanc.Width() || surNoir.Height() != surBlanc.Height()) return false;
+  if (avecReflet && (refletNoir.Width() != surNoir.Width() || refletNoir.Height() != surNoir.Height() || fondus.Width() != surNoir.Width() || fondus.Height() != surNoir.Height())) avecReflet = false;
   wxImage im(static_cast<int>(surNoir.Width()), static_cast<int>(surNoir.Height()), false);
   im.SetAlpha();
   for (int y = 0; y < im.GetHeight(); y++)
     for (int x = 0; x < im.GetWidth(); x++) {
       const Quantity_Color n = surNoir.PixelColor(x, y, false).GetRGB(), b = surBlanc.PixelColor(x, y, false).GetRGB();
-      const double a = std::max(0.0, std::min(1.0, 1 - ((b.Red() - n.Red()) + (b.Green() - n.Green()) + (b.Blue() - n.Blue())) / 3));
+      double a = std::max(0.0, std::min(1.0, 1 - ((b.Red() - n.Red()) + (b.Green() - n.Green()) + (b.Blue() - n.Blue())) / 3));
+      double nr = n.Red(), nv = n.Green(), nb = n.Blue();
+      if (avecReflet && a < 0.999) {
+        const Quantity_Color rn = refletNoir.PixelColor(x, y, false).GetRGB(), rb = refletBlanc.PixelColor(x, y, false).GetRGB();
+        const double ar = std::max(0.0, std::min(1.0, 1 - ((rb.Red() - rn.Red()) + (rb.Green() - rn.Green()) + (rb.Blue() - rn.Blue())) / 3));
+        if (ar > 0) {
+          const double f = fondus.PixelColor(x, y, true).GetRGB().Red();
+          nr += (1 - a) * rn.Red() * f, nv += (1 - a) * rn.Green() * f, nb += (1 - a) * rn.Blue() * f;
+          a += (1 - a) * ar * f;
+        }
+      }
       const auto oct = [&](double v) { return static_cast<unsigned char>(std::max(0.0, std::min(255.0, std::round((a > 0 ? v / a : 0) * 255)))); };
-      im.SetRGB(x, y, oct(n.Red()), oct(n.Green()), oct(n.Blue()));
+      im.SetRGB(x, y, oct(nr), oct(nv), oct(nb));
       im.SetAlpha(x, y, static_cast<unsigned char>(std::round(a * 255)));
     }
   sortie = im;

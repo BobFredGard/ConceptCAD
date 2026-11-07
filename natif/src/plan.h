@@ -155,6 +155,8 @@ struct DemandeImage {
   std::vector<Teinte> corps;
   std::vector<FiletImage> filets;
   bool reel = false;  // « Rendu réaliste » : comme le Rendu direct
+  bool miroir = false;  // le reflet de la pièce sous son point le plus bas, estompé vers le bas
+  double zBas = 0, fondu = 1;
 };
 struct CadreImage {
   bool ok = false;

@@ -2431,6 +2431,30 @@ const CadreImage& Calcul::imageDe(const J& vue, const Piece& p) {
           }
           su0 = std::min(su0, su), su1 = std::max(su1, su), sv0 = std::min(sv0, sv), sv1 = std::max(sv1, sv);
         }
+    // Le miroir : le reflet entre dans le cadre, borné à la zone de fondu (60 % de la hauteur)
+    if (vrai(vue, "mirror")) {
+      double fz = 1e30, tz = -1e30;
+      for (const auto& m : maillages)
+        for (const Tri& t : m)
+          for (const V3* q : {&t.a, &t.b, &t.c}) fz = std::min(fz, (*q)[2]), tz = std::max(tz, (*q)[2]);
+      if (fz < 1e29) {
+        const double fondu = std::max(1.0, (tz - fz) * 0.6);
+        d.miroir = true, d.zBas = fz, d.fondu = fondu;
+        for (const auto& m : maillages)
+          for (const Tri& t : m)
+            for (const V3* q : {&t.a, &t.b, &t.c}) {
+              const V3 p{(*q)[0], (*q)[1], std::max(fz - fondu, 2 * fz - (*q)[2])};
+              const double du = dot(p, b.u), dv = dot(p, b.v), dd = dot(p, b.dir);
+              minu = std::min(minu, du), maxu = std::max(maxu, du), minv = std::min(minv, dv), maxv = std::max(maxv, dv), mind = std::min(mind, dd), maxd = std::max(maxd, dd);
+              double su = du, sv = dv;
+              if (persp) {
+                const auto r = K.proj(p);
+                su = r[0], sv = r[1];
+              }
+              su0 = std::min(su0, su), su1 = std::max(su1, su), sv0 = std::min(sv0, sv), sv1 = std::max(sv1, sv);
+            }
+      }
+    }
     if (maxu > minu && maxv > minv) {
       const double pad = std::max(0.5, (maxu - minu + maxv - minv) * 0.012);
       double l = su0 - pad, r = su1 + pad, t = sv0 - pad, bas = sv1 + pad;
