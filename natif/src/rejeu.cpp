@@ -601,6 +601,10 @@ std::optional<double> distanceJusquA(const Fonction& f, const Esquisse& s, const
   return std::round(t * 10000) / 10000;
 }
 
+// Les avertissements de l'extrusion qu'on vient de bâtir : celui qui l'appelle les met au nom de la fonction
+thread_local std::vector<std::string> avertExtrusion;
+std::string nombreNom(double v);
+
 TopoDS_Shape formeExtrusion(const Fonction& f, const Esquisse& s, const TopoDS_Shape& base) {  // occShapeOfExtrude
   Trace tr = tracePourZones(s, f.profils);
   if (tr.solides.empty() && tr.cerclesSeuls.empty()) throw std::runtime_error("profil non fermé");
@@ -660,9 +664,13 @@ TopoDS_Shape formeExtrusion(const Fonction& f, const Esquisse& s, const TopoDS_S
         if (!calotte) parois.push_back(fc);
       }
       if (parois.empty()) throw std::runtime_error("aucune paroi latérale à dépouiller");
-      forme = depouilleUneFois(forme, gp_Pnt(s.o[0], s.o[1], s.o[2]), gp_Dir(s.n[0], s.n[1], s.n[2]), parois, f.draft * PI / 180, nullptr);
-    } catch (const Standard_Failure&) {
-    } catch (const std::exception&) {
+      int refusees = 0;
+      forme = depouilleUneFois(forme, gp_Pnt(s.o[0], s.o[1], s.o[2]), gp_Dir(s.n[0], s.n[1], s.n[2]), parois, f.draft * PI / 180, &refusees);
+      if (refusees) avertExtrusion.push_back(std::to_string(refusees) + " face(s) ne touchent pas le plan d’esquisse — non dépouillées");
+    } catch (const Standard_Failure& e) {
+      avertExtrusion.push_back("dépouille " + nombreNom(f.draft) + "° impossible (" + std::string(e.what()).substr(0, 120) + ") : extrusion droite conservée");
+    } catch (const std::exception& e) {
+      avertExtrusion.push_back("dépouille " + nombreNom(f.draft) + "° impossible (" + std::string(e.what()).substr(0, 120) + ") : extrusion droite conservée");
     }
   }
   return forme;
@@ -1257,7 +1265,9 @@ TopoDS_Shape rejouerCorps(Document& d, const std::vector<Fonction*>& liste, cons
         outil = formeBalayage(d, f, alertes);
         for (const std::string& a : alertes) msgs.push_back(f.nom + " : " + a);
       } else {
+        avertExtrusion.clear();
         outil = f.type == "revolve" ? formeRevolution(f, *s) : formeExtrusion(f, *s, resultat);
+        for (const std::string& a : avertExtrusion) msgs.push_back(f.nom + " : " + a);
       }
     } catch (const Standard_Failure& e) {
       msgs.push_back(f.nom + " : exclu (" + (e.what()) + ")");

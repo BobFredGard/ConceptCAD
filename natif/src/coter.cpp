@@ -364,7 +364,7 @@ std::string esquisseFigee(const Document& d, size_t i) {
   if (const int c = consommatrice(d, e.id); c >= 0 && !d.fonctions[c].repeatId.empty()) return "c'est la copie d'une répétition : modifiez l'esquisse de la fonction d'origine";
   const Solveur S(d.esquisses[i]);
   if (!S.prisEnCharge()) return S.raisonRefus();
-  if (S.coteConvertie()) return "cette esquisse contient une ancienne cote d'entraxe à convertir dans le navigateur";
+  if (S.coteConvertie()) return "cette esquisse contient une ancienne cote d'entraxe : ouvrez-la une fois (double-clic), elle devient une cote d'angle";
   for (const size_t j : suivantes(d, i)) {
     const Esquisse& s = d.esquisses[j];
     for (const Entite& e : s.entites)
