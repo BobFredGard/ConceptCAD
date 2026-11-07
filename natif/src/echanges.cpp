@@ -122,7 +122,7 @@ TopoDS_Shape lireStl(const std::string& octets) {
   b.Get(x0, y0, z0, x1, y1, z1);
   const gp_XYZ c((x0 + x1) / 2, (y0 + y1) / 2, (z0 + z1) / 2);
   // Une face plane par triangle : la vue, la sélection, les mesures et l'export s'en servent comme du reste
-  if (tri->NbTriangles() > 200000) throw std::runtime_error("STL de plus de 200 000 triangles : pas encore repris dans le logiciel Windows");
+  if (tri->NbTriangles() > 2000000) throw std::runtime_error("STL de plus de 2 millions de triangles : trop lourd pour être ouvert ici");
   BRep_Builder bd;
   TopoDS_Compound comp;
   bd.MakeCompound(comp);
