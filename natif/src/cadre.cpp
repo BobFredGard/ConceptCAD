@@ -341,7 +341,7 @@ void Cadre::creerEnvironnement() {
     if (esquisseOuverte_ < 0) recalculer();
   };
   barreHaute_->surIndisponible = [this](const wxString& n) { indisponible(n); };
-  ruban_->estRepris = [this](Atelier a, const wxString& n) { if (a == Atelier::PLAN) return planVue_->estRepris(n); if (a == Atelier::FAO) return true; return a == Atelier::CAO && (n == L"Esquisse" || n == L"Extrusion" || n == L"Congé" || n == L"Chanfrein" || n == L"Paramètres" || n == L"Corps" || n == L"Perçage" || n == L"Filetage" || n == L"Clavette" || n == L"Plan" || n == L"Axe" || n == L"Point" || n == L"Repère" || n == L"Répétition" || n == L"Révolution" || n == L"Balayage" || n == L"Face" || n == L"Dépouille" || n == L"Coque" || n == L"Combiner" || n == L"Déplacer" || n == L"Échelle" || n == L"Scinder" || n == L"Importer" || n == L"STEP" || n == L"STL" || n == L"OBJ" || n == L"Assembler" || n == L"Modéliser" || n == L"Composant" || n == L"Occurrence" || n == L"Insérer" || n == L"Inspecter" || n == L"Normalisés" || n == L"Aimants" || n == L"Depuis corps"); };
+  ruban_->estRepris = [this](Atelier a, const wxString& n) { if (a == Atelier::PLAN) return planVue_->estRepris(n); if (a == Atelier::FAO) return true; return a == Atelier::CAO && (n == L"Esquisse" || n == L"Extrusion" || n == L"Congé" || n == L"Chanfrein" || n == L"Paramètres" || n == L"Corps" || n == L"Perçage" || n == L"Filetage" || n == L"Clavette" || n == L"Plan" || n == L"Axe" || n == L"Point" || n == L"Repère" || n == L"Répétition" || n == L"Révolution" || n == L"Balayage" || n == L"Face" || n == L"Dépouille" || n == L"Coque" || n == L"Combiner" || n == L"Déplacer" || n == L"Échelle" || n == L"Scinder" || n == L"Importer" || n == L"Dériver" || n == L"STEP" || n == L"STL" || n == L"OBJ" || n == L"Assembler" || n == L"Modéliser" || n == L"Composant" || n == L"Occurrence" || n == L"Insérer" || n == L"Inspecter" || n == L"Normalisés" || n == L"Aimants" || n == L"Depuis corps"); };
   ruban_->surBouton = [this](Atelier a, const wxString& n) { boutonRuban(a, n); };
   ruban_->surIndisponible = [this](const wxString& n) { indisponible(n); };
 
@@ -1015,6 +1015,7 @@ void Cadre::boutonRuban(Atelier a, const wxString& nom) {
     creerFonction([&, profil, chemin](nlohmann::ordered_json& d) { return creerBalayage(d, profil, chemin, indiceMarque()); }, L"Balayage : vérifiez le profil et le chemin dans Paramètres. Ctrl+Z : annuler.");
   }
   else if (nom == L"Importer") importer();
+  else if (nom == L"Dériver") derCommande();
   else if (nom == L"STEP") exporter("step");
   else if (nom == L"STL") exporter("stl");
   else if (nom == L"OBJ") exporter("obj");
@@ -1064,7 +1065,12 @@ void Cadre::montrerFiche(int i) {
   const auto it = doc_.fonctionsJson->find(f.id);
   if (it == doc_.fonctionsJson->end()) return;
   const bool copie = !f.repeatId.empty();
-  poserChamps(ficheFonction(doc_, nlohmann::ordered_json::parse(it->second)), copie);
+  const nlohmann::ordered_json fj = nlohmann::ordered_json::parse(it->second);
+  std::vector<ChampFiche> champs = ficheFonction(doc_, fj);
+  std::vector<std::pair<wxString, std::function<void()>>> boutons;
+  derFiche(fj, champs, boutons);
+  poserChamps(champs, copie);
+  if (!boutons.empty() || !boutonsAsm_.empty()) poserBoutonsPanneau(boutons);
   if (!copie) ficheId_ = f.id;
 }
 
@@ -1575,6 +1581,8 @@ void Cadre::apresOuverture() {
   asmLiensEtat_.clear();
   asmLiensBase_.clear();
   asmLiensNeufs_ = true;
+  derEtat_.clear();
+  if (!essaiMenu_) CallAfter([this] { derVerifier(false); });
   asmSolides_.clear();
   asmSel_.clear();
   asmLot_.clear();
@@ -1841,6 +1849,7 @@ ActionsFormules Cadre::actionsFormules() {
   a.document = [this]() -> Document& { return doc_; };
   a.changer = [this](const std::function<std::string()>& f) { return changerFormules(f); };
   a.reglerCote = [this](size_t j, const std::string& id, const std::string& t) { return reglerCoteListe(j, id, t); };
+  a.menuDerivees = [this](wxWindow* ou) { derMenu(ou); };
   return a;
 }
 
@@ -3306,6 +3315,30 @@ bool Cadre::essaiEsquisse(const std::wstring& fichier, int rang, const std::wstr
       appliquerFiche(e["fiche"][0].get<std::string>() == "@" ? ficheId_ : e["fiche"][0].get<std::string>(), e["fiche"][1].get<std::string>(), e["fiche"][2].get<std::string>());
       essaiMenu_ = false;
       n["etat"] = std::string(etatVue_->texte().utf8_str());
+    }
+    if (e.contains("deriver")) {
+      essaiMenu_ = true;
+      const plan::J& q = e["deriver"];
+      try {
+        if (q.contains("liste")) {
+          // Ce que propose un fichier : par le même chemin que la fenêtre de choix
+          const std::string id = derInserer(wxString::FromUTF8(q["fichier"].get<std::string>()).ToStdWstring(), q.value("params", std::vector<std::string>()), q.value("corps", std::vector<std::string>()), q.value("tous", false));
+          n["lien"] = id;
+        } else if (q.value("verifier", false)) {
+          n["maj"] = derVerifier(false);
+        } else if (q.contains("rompre")) {
+          derRompre(q["rompre"].get<std::string>());
+        } else if (q.contains("relier")) {
+          derRelier(q["relier"][0].get<std::string>(), wxString::FromUTF8(q["relier"][1].get<std::string>()).ToStdWstring());
+        }
+        n["etat"] = std::string(etatVue_->texte().utf8_str());
+        n["derives"] = plan::J::array();
+        for (const std::string& t : doc_.derivesJson) n["derives"].push_back(plan::J::parse(t));
+        n["corps"] = doc_.corps;
+      } catch (const std::exception& x) {
+        n["erreur"] = x.what();
+      }
+      essaiMenu_ = false;
     }
     if (e.contains("importer")) {
       essaiMenu_ = true;

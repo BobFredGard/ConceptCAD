@@ -282,6 +282,7 @@ struct Document {
   std::vector<Fonction> fonctionsFichier;  // telles qu'écrites dans le fichier
   std::vector<Parametre> params, paramsFichier;
   std::vector<ParamDerive> derives;
+  std::vector<std::string> derivesJson;  // chaque lien de doc.derive, tel quel
   std::vector<PorteurFx> porteurs, porteursFichier;
   std::vector<size_t> parEnAttente;  // parPending : les esquisses dont une cote a changé, à résoudre
   std::string corpsActif;  // où naît une nouvelle fonction

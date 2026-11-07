@@ -707,6 +707,9 @@ static Document documentDepuisDoc(json& racine) {
     }
   if (auto x = j.find("derive"); x != j.end() && x->is_array())
     for (auto& L : *x)
+      d.derivesJson.push_back(L.dump(-1, ' ', false, nlohmann::ordered_json::error_handler_t::replace));
+  if (auto x = j.find("derive"); x != j.end() && x->is_array())
+    for (auto& L : *x)
       if (auto y = L.find("params"); y != L.end() && y->is_array())
         for (auto& jp : *y) {
           ParamDerive p;

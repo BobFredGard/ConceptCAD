@@ -121,6 +121,13 @@ class FenetreParametres : public wxDialog {
     bas->Add(erreur_, 1, wxALIGN_CENTER_VERTICAL);
     auto* plus = new wxButton(this, wxID_ANY, L"+ Paramètre");
     auto* fermer = new wxButton(this, wxID_CANCEL, L"Fermer");
+    auto* derivees = new wxButton(this, wxID_ANY, L"🔗 Dérivées");
+    derivees->SetToolTip(L"Les fichiers dont celui-ci dérive : vérifier, rompre, ou en ajouter un");
+    derivees->Bind(wxEVT_BUTTON, [this, derivees](wxCommandEvent&) {
+      if (a_.menuDerivees) a_.menuDerivees(derivees);
+      remplir();
+    });
+    bas->Add(derivees, 0, wxLEFT, FromDIP(8));
     bas->Add(plus, 0, wxLEFT, FromDIP(8));
     bas->Add(fermer, 0, wxLEFT, FromDIP(8));
     tout->Add(bas, 0, wxEXPAND | wxLEFT | wxRIGHT | wxBOTTOM, FromDIP(12));

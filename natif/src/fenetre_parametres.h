@@ -17,6 +17,7 @@ struct ActionsFormules {
   std::function<std::string(const std::function<std::string()>&)> changer;
   // parSetDim : la saisie d'une cote de n'importe quelle esquisse
   std::function<std::string(size_t esquisse, const std::string& idCote, const std::string& texte)> reglerCote;
+  std::function<void(wxWindow*)> menuDerivees;  // les fichiers dont celui-ci dérive
 };
 
 // Clic droit sur le bouton ƒx : la liste complète

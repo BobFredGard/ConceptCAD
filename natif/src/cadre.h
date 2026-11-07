@@ -362,6 +362,15 @@ public:
     std::string sigVue;
   };
   std::map<std::string, EtatLien> asmLiensEtat_;
+  std::map<std::string, EtatLien> derEtat_;  // l'état des dérivées, jamais dans le fichier
+  bool derOccupe_ = false;
+  void derCommande();
+  std::string derInserer(const std::wstring& chemin, const std::vector<std::string>& params, const std::vector<std::string>& corps, bool tous);
+  std::vector<std::string> derVerifier(bool demander);
+  void derRelier(const std::string& idLien, std::wstring chemin = std::wstring());
+  void derRompre(const std::string& idLien);
+  void derMenu(wxWindow* ou);
+  void derFiche(const nlohmann::ordered_json& f, std::vector<ChampFiche>& champs, std::vector<std::pair<wxString, std::function<void()>>>& boutons);
   std::map<std::string, std::string> asmLiensBase_;
   bool asmLiensOccupe_ = false, asmLiensNeufs_ = false;
   nlohmann::ordered_json asmDocComplet() const;

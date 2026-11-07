@@ -329,6 +329,7 @@ void Cadre::asmLiensVerifier(bool demander) {
 }
 
 void Cadre::asmLiensFenetreActive() {
+  if (docOuvert_ && !essaiMenu_ && esquisseOuverte_ < 0 && !asmAlign_ && !asmPatEd_) derVerifier(false);
   if (!docOuvert_ || !doc_.assemblage || essaiMenu_ || asmLiensOccupe_ || esquisseOuverte_ >= 0 || asmAlign_ || asmPatEd_ || asmLies().empty()) return;
   asmLiensVerifier(false);
 }
