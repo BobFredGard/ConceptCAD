@@ -1,3 +1,4 @@
+#include <cstdint>
 // Voir assemblage.h. Les noms des fonctions du navigateur sont donnés en regard de leur traduction.
 #include "assemblage.h"
 
@@ -796,10 +797,234 @@ struct Calcul {
     R.o = {val("tx"), val("ty"), val("tz")};
     return R;
   }
+  // asmPatCells : les cases de la répétition, original exclu, dans le repère du porteur
+  struct Case {
+    std::string k;
+    Repere M;
+  };
+  static V3 unitaire(const V3& v) {
+    const double l = std::sqrt(v[0] * v[0] + v[1] * v[1] + v[2] * v[2]);
+    return l > 0 ? V3{v[0] / l, v[1] / l, v[2] / l} : V3{1, 0, 0};
+  }
+  static V3 axeDe(const Repere& F, const std::string& a) { return unitaire(a == "Y" ? F.y : a == "Z" ? F.z : F.x); }
+  static Repere rotationPat(const V3& P, const V3& a, double ang) {
+    const double c = std::cos(ang), s = std::sin(ang), x = a[0], y = a[1], z = a[2];
+    const auto R = [&](const V3& v) {
+      const double d = x * v[0] + y * v[1] + z * v[2];
+      return V3{v[0] * c + (y * v[2] - z * v[1]) * s + x * d * (1 - c), v[1] * c + (z * v[0] - x * v[2]) * s + y * d * (1 - c), v[2] * c + (x * v[1] - y * v[0]) * s + z * d * (1 - c)};
+    };
+    const V3 rp = R(P);
+    Repere M;
+    M.o = {P[0] - rp[0], P[1] - rp[1], P[2] - rp[2]};
+    M.x = R({1, 0, 0});
+    M.y = R({0, 1, 0});
+    M.z = R({0, 0, 1});
+    return M;
+  }
+  static Repere miroirPat(const V3& P, const V3& n) {
+    const auto R = [&](const V3& v) {
+      const double d = 2 * (n[0] * v[0] + n[1] * v[1] + n[2] * v[2]);
+      return V3{v[0] - d * n[0], v[1] - d * n[1], v[2] - d * n[2]};
+    };
+    const V3 rp = R(P);
+    Repere M;
+    M.o = {P[0] - rp[0], P[1] - rp[1], P[2] - rp[2]};
+    M.x = R({1, 0, 0});
+    M.y = R({0, 1, 0});
+    M.z = R({0, 0, 1});
+    return M;
+  }
+  static double nombreDe(const J& p, const char* k, double d) { return p.contains(k) && p[k].is_number() ? p[k].get<double>() : d; }
+  bool casesDe(const J& owner, const J& p, std::vector<Case>& out, std::string& pourquoi) {
+    const std::string type = texteDe(p, "type");
+    if (type == "path") {
+      pourquoi = "répétition suivant un profil : calcul pas encore repris ici, instances laissées en place";
+      return false;
+    }
+    Repere F;
+    const std::string cg = p.contains("ref") && p["ref"].is_object() ? texteDe(p["ref"], "cg") : std::string();
+    if (!repereComposant(texteDe(owner, "id"), cg, F)) return false;
+    if (type == "lin") {
+      const V3 d1 = axeDe(F, texteDe(p, "axis"));
+      const int n1 = std::max(1, static_cast<int>(nombreDe(p, "copies", 1)));
+      const double s1 = nombreDe(p, "dist", 0);
+      const bool deux = p.value("lin2", false);
+      const V3 d2 = deux ? axeDe(F, texteDe(p, "axis2")) : V3{0, 0, 0};
+      const int n2 = deux ? std::max(1, static_cast<int>(nombreDe(p, "copies2", 1))) : 0;
+      const double s2 = deux ? nombreDe(p, "dist2", 0) : 0;
+      for (int j = 0; j <= n2; j++)
+        for (int i = 0; i <= n1; i++) {
+          if (!i && !j) continue;
+          Repere M;
+          M.o = {d1[0] * s1 * i + d2[0] * s2 * j, d1[1] * s1 * i + d2[1] * s2 * j, d1[2] * s1 * i + d2[2] * s2 * j};
+          out.push_back({std::to_string(i) + "," + std::to_string(j), M});
+        }
+    } else if (type == "circ") {
+      const V3 a = axeDe(F, texteDe(p, "axis"));
+      const int n = std::max(1, static_cast<int>(nombreDe(p, "copies", 1)));
+      double an = nombreDe(p, "angle", 360);
+      if (an == 0) an = 360;
+      const double pas = std::abs(an) >= 360 - 1e-9 ? an / (n + 1) : an / n;
+      for (int i = 1; i <= n; i++) out.push_back({"r" + std::to_string(i), rotationPat(F.o, a, pas * i * PI / 180)});
+    } else if (type == "mir") {
+      const Repere M1 = miroirPat(F.o, axeDe(F, texteDe(p, "axis")));
+      out.push_back({"m1", M1});
+      if (p.contains("plane2") && p["plane2"].is_string()) {
+        const Repere M2 = miroirPat(F.o, axeDe(F, p["plane2"].get<std::string>()));
+        out.push_back({"m2", M2});
+        out.push_back({"m12", composer(M1, M2)});
+      }
+    }
+    if (out.size() > 500) out.resize(500);
+    return true;
+  }
+  // asmPatGen : instances créées, placées, retirées
+  bool genererInstances(J& owner) {
+    if (!owner.contains("occ") || !owner["occ"].is_array()) return false;
+    bool ch = false;
+    const auto occDe = [&](const std::string& id) -> J* {
+      for (J& o : owner["occ"])
+        if (texteDe(o, "id") == id) return &o;
+      return nullptr;
+    };
+    const bool aPats = owner.contains("pats") && owner["pats"].is_array();
+    if (aPats) {
+      J garde = J::array();
+      for (J& p : owner["pats"]) {
+        J src = J::array();
+        if (p.contains("src") && p["src"].is_array())
+          for (const J& x : p["src"]) {
+            if (!x.is_string()) continue;
+            const J* o = occDe(x.get<std::string>());
+            if (o && !(o->contains("pat") && (*o)["pat"].is_object())) src.push_back(x);
+          }
+        p["src"] = std::move(src);
+        if (p["src"].empty()) ch = true;
+        else garde.push_back(std::move(p));
+      }
+      if (garde.empty()) owner.erase("pats");
+      else owner["pats"] = std::move(garde);
+    }
+    std::set<std::string> garder;
+    std::vector<J> neuves;
+    std::map<std::string, std::string> connues;  // répétition#clé → identifiant
+    for (const J& o : owner["occ"])
+      if (o.contains("pat") && o["pat"].is_object()) connues[texteDe(o["pat"], "id") + "#" + texteDe(o["pat"], "k")] = texteDe(o, "id");
+    if (owner.contains("pats"))
+      for (J& p : owner["pats"]) {
+        p["st"] = "ok";
+        p["msg"] = "";
+        const std::string pid = texteDe(p, "id");
+        std::vector<Case> cases;
+        std::string pourquoi;
+        if (!casesDe(owner, p, cases, pourquoi)) {
+          p["st"] = "warn";
+          p["msg"] = pourquoi.empty() ? "repère de référence introuvable : instances laissées en place" : pourquoi;
+          for (const J& o : owner["occ"])
+            if (o.contains("pat") && o["pat"].is_object() && texteDe(o["pat"], "id") == pid) garder.insert(texteDe(o, "id"));
+          continue;
+        }
+        std::set<std::string> saute;
+        if (p.contains("skip") && p["skip"].is_array())
+          for (const J& x : p["skip"])
+            if (x.is_string()) saute.insert(x.get<std::string>());
+        for (const J& sidJ : p["src"]) {
+          const std::string sid = sidJ.get<std::string>();
+          const J* s = occDe(sid);
+          if (!s) continue;
+          const Repere Fs = repereDe(s->value("fr", J::object()));
+          for (const Case& cell : cases) {
+            const std::string k = sid + "|" + cell.k;
+            if (saute.count(k)) continue;
+            const auto it = connues.find(pid + "#" + k);
+            J* o = it == connues.end() ? nullptr : occDe(it->second);
+            J nv;
+            if (!o) {
+              nv = nouvelleOccurrenceObjet(texteDe(*s, "comp"), "", Repere());
+              J pat = J::object();
+              pat["id"] = pid;
+              pat["k"] = k;
+              nv["pat"] = std::move(pat);
+              ch = true;
+              o = &nv;
+            }
+            if (texteDe(*o, "comp") != texteDe(*s, "comp")) {
+              (*o)["comp"] = (*s)["comp"];
+              ch = true;
+            }
+            const Repere fr = arrondir(composer(cell.M, Fs));
+            const Repere A = repereDe(o->value("fr", J::object()));
+            for (int q = 0; q < 3; q++)
+              if (std::abs(fr.o[q] - A.o[q]) > 1e-9 || std::abs(fr.x[q] - A.x[q]) > 1e-9 || std::abs(fr.y[q] - A.y[q]) > 1e-9 || std::abs(fr.z[q] - A.z[q]) > 1e-9) {
+                (*o)["fr"] = jsonDe(fr);
+                ch = true;
+                break;
+              }
+            if (o->contains("align") && (*o)["align"].is_object()) {
+              (*o)["align"] = nullptr;
+              ch = true;
+            }
+            (*o)["fixed"] = false;
+            for (const char* cle : {"look", "rendu"}) {
+              const std::string a = s->contains(cle) ? (*s)[cle].dump() : std::string(), b = o->contains(cle) ? (*o)[cle].dump() : std::string();
+              if (a != b) {
+                if (a.empty()) o->erase(cle);
+                else (*o)[cle] = (*s)[cle];
+                ch = true;
+              }
+            }
+            (*o)["st"] = "ok";
+            (*o)["msg"] = "";
+            if (o == &nv) neuves.push_back(std::move(nv));
+            else garder.insert(texteDe(*o, "id"));
+          }
+        }
+      }
+    // Les instances neuves se rangent après leur source, puis sont nommées une à une
+    std::vector<std::string> neufsIds;
+    for (J& o : neuves) {
+      const std::string k = texteDe(o["pat"], "k"), pid = texteDe(o["pat"], "id"), sid = k.substr(0, k.find('|'));
+      int at = -1;
+      for (size_t i = 0; i < owner["occ"].size(); i++) {
+        const J& q = owner["occ"][i];
+        if (texteDe(q, "id") == sid || (q.contains("pat") && q["pat"].is_object() && texteDe(q["pat"], "id") == pid && texteDe(q["pat"], "k").substr(0, texteDe(q["pat"], "k").find('|')) == sid)) at = static_cast<int>(i);
+      }
+      garder.insert(texteDe(o, "id"));
+      neufsIds.push_back(texteDe(o, "id"));
+      owner["occ"].insert(at < 0 ? owner["occ"].end() : owner["occ"].begin() + at + 1, std::move(o));
+    }
+    for (const std::string& id : neufsIds)
+      if (J* o = occDe(id)) (*o)["name"] = nomOccurrence(a, texteDe(*o, "comp"));
+    // Une instance sur le chemin de l'instance éditée reste : on ne retire pas la pièce sous les pieds
+    const Chemin chemin = cheminActif(a);
+    std::set<std::string> partis;
+    for (const J& o : owner["occ"]) {
+      const std::string id = texteDe(o, "id");
+      if (o.contains("pat") && o["pat"].is_object() && !garder.count(id) && std::find(chemin.begin(), chemin.end(), id) == chemin.end()) partis.insert(id);
+    }
+    if (!partis.empty()) {
+      ch = true;
+      J reste = J::array();
+      for (J& o : owner["occ"])
+        if (!partis.count(texteDe(o, "id"))) reste.push_back(std::move(o));
+      owner["occ"] = std::move(reste);
+      const auto passe = [&](const J& r) {
+        if (!r.is_object() || !r.contains("path") || !r["path"].is_array()) return false;
+        for (const J& x : r["path"])
+          if (x.is_string() && partis.count(x.get<std::string>())) return true;
+        return false;
+      };
+      for (J& c : a["comps"])
+        if (c.contains("occ") && c["occ"].is_array())
+          for (J& q : c["occ"])
+            if (q.contains("align") && q["align"].is_object() && ((q["align"].contains("dst") && passe(q["align"]["dst"])) || (q["align"].contains("src") && passe(q["align"]["src"])))) q["align"] = nullptr;
+    }
+    return ch;
+  }
   bool resoudreDans(J& owner) {
     // asmResolveIn
-    bool ch = false;
-    if (!owner.contains("occ") || !owner["occ"].is_array()) return false;
+    bool ch = genererInstances(owner);
+    if (!owner.contains("occ") || !owner["occ"].is_array()) return ch;
     std::vector<J*> todo;
     std::set<std::string> faits, freres;
     for (J& o : owner["occ"]) {
@@ -863,6 +1088,7 @@ struct Calcul {
       (*o)["st"] = "warn";
       (*o)["msg"] = "alignement circulaire : position mémorisée";
     }
+    if (genererInstances(owner)) ch = true;
     return ch;
   }
 };
@@ -986,6 +1212,361 @@ J& assurer(J& haut) {
   }
   return haut["asm"];
 }
+J documentVide(const std::string& nom) {
+  J doc = J::object();
+  doc["name"] = nom;
+  doc["tint"] = 0;
+  doc["sketches"] = J::array();
+  doc["features"] = J::array();
+  doc["cgeo"] = J::array();
+  doc["bodyVis"] = J::object();
+  doc["bodies"] = J::array();
+  doc["bodySeq"] = 1;
+  doc["activeBody"] = nullptr;
+  doc["mep"] = nullptr;
+  return doc;
+}
+
+const char* nomRepetition(const J& p) {
+  const std::string t = texteDe(p, "type");
+  if (t == "mir") return p.contains("plane2") && p["plane2"].is_string() ? "Symétrie double" : "Symétrie";
+  if (t == "lin") return p.value("lin2", false) ? "Linéaire 2 directions" : "Linéaire";
+  if (t == "circ") return "Circulaire";
+  if (t == "path") return "Suivant un profil";
+  return "Répétition";
+}
+
+J nouvelleRepetition(J& owner, const std::vector<std::string>& ids, double pas) {
+  if (!owner.contains("pats") || !owner["pats"].is_array()) owner["pats"] = J::array();
+  J p = J::object();
+  p["id"] = nouvelIdentifiant("pt");
+  p["name"] = "Répétition " + std::to_string(owner["pats"].size() + 1);
+  p["type"] = "lin";
+  p["src"] = J::array();
+  for (const std::string& s : ids) p["src"].push_back(s);
+  p["ref"] = J::object();
+  p["ref"]["cg"] = nullptr;
+  p["axis"] = "X";
+  p["copies"] = 2;
+  p["dist"] = pas;
+  p["angle"] = 360;
+  p["skip"] = J::array();
+  owner["pats"].push_back(p);
+  return p;
+}
+
+// ---- Depuis un corps ----
+namespace {
+struct ElementDoc {
+  int sorte = 0;  // 0 fonction, 1 esquisse, 2 construction
+  const J* o = nullptr;
+};
+std::map<std::string, ElementDoc> indexDoc(const J& d) {
+  std::map<std::string, ElementDoc> m;
+  const auto ajouter = [&](const char* cle, int sorte) {
+    if (d.contains(cle) && d[cle].is_array())
+      for (const J& x : d[cle])
+        if (x.is_object() && x.contains("id") && x["id"].is_string()) m[x["id"].get<std::string>()] = {sorte, &x};
+  };
+  ajouter("features", 0);
+  ajouter("sketches", 1);
+  ajouter("cgeo", 2);
+  return m;
+}
+void idsDans(const J& v, bool haut, const std::map<std::string, ElementDoc>& idx, const std::string& soi, std::set<std::string>& out) {
+  if (v.is_string()) {
+    const std::string s = v.get<std::string>();
+    if (s != soi && idx.count(s)) out.insert(s);
+  } else if (v.is_array()) {
+    for (const J& x : v) idsDans(x, false, idx, soi, out);
+  } else if (v.is_object()) {
+    for (auto it = v.begin(); it != v.end(); ++it) {
+      if (!it.key().empty() && it.key()[0] == '_') continue;
+      if (haut && it.key() == "at") continue;
+      idsDans(it.value(), false, idx, soi, out);
+    }
+  }
+}
+J sansTransitoires(const J& v) {
+  if (v.is_object()) {
+    J r = J::object();
+    for (auto it = v.begin(); it != v.end(); ++it)
+      if (it.key().empty() || it.key()[0] != '_') r[it.key()] = sansTransitoires(it.value());
+    return r;
+  }
+  if (v.is_array()) {
+    J r = J::array();
+    for (const J& x : v) r.push_back(sansTransitoires(x));
+    return r;
+  }
+  return v;
+}
+J renommerIds(const J& v, const std::map<std::string, std::string>& m) {
+  if (v.is_string()) {
+    const auto it = m.find(v.get<std::string>());
+    return it == m.end() ? v : J(it->second);
+  }
+  if (v.is_array()) {
+    J r = J::array();
+    for (const J& x : v) r.push_back(renommerIds(x, m));
+    return r;
+  }
+  if (v.is_object()) {
+    J r = J::object();
+    for (auto it = v.begin(); it != v.end(); ++it) r[it.key()] = renommerIds(it.value(), m);
+    return r;
+  }
+  return v;
+}
+unsigned couleurAuto(size_t i) {
+  static const unsigned PALETTE[] = {0x0a84ff, 0x30d158, 0xff9f0a, 0xbf5af2, 0xff453a, 0x64d2ff, 0xffd60a, 0x5e5ce6};
+  return PALETTE[i % 8];
+}
+}  // namespace
+
+PlanSeparation planSeparation(const J& d, const std::vector<std::string>& corps, const std::vector<std::string>& esquisses) {
+  PlanSeparation P;
+  P.corps = corps;
+  const auto idx = indexDoc(d);
+  const std::set<std::string> bodies(corps.begin(), corps.end());
+  std::set<std::string> why;
+  const auto nm = [&](const std::string& id) {
+    const auto it = idx.find(id);
+    const std::string n = it == idx.end() ? std::string() : texteDe(*it->second.o, "name");
+    return "« " + (n.empty() ? id : n) + " »";
+  };
+  const auto bn = [&](const std::string& b) {
+    std::string n = b;
+    if (d.contains("bodies") && d["bodies"].is_array())
+      for (const J& e : d["bodies"])
+        if (texteDe(e, "id") == b) n = texteDe(e, "name");
+    return "« " + n + " »";
+  };
+  if (!bodies.empty() && d.contains("features"))
+    for (const J& f : d["features"])
+      if (f.is_object() && bodies.count(texteDe(f, "body"))) P.M.insert(texteDe(f, "id"));
+  for (const std::string& s : esquisses)
+    if (idx.count(s)) P.M.insert(s);
+  std::map<std::string, std::set<std::string>> refs;
+  const auto R = [&](const std::string& id) -> const std::set<std::string>& {
+    auto it = refs.find(id);
+    if (it == refs.end()) {
+      std::set<std::string> s;
+      idsDans(*idx.at(id).o, true, idx, id, s);
+      it = refs.emplace(id, std::move(s)).first;
+    }
+    return it->second;
+  };
+  const auto outils = [](const J& f) {
+    std::vector<std::string> L;
+    if (f.contains("tools") && f["tools"].is_array())
+      for (const J& x : f["tools"])
+        if (x.is_string()) L.push_back(x.get<std::string>());
+    return L;
+  };
+  std::set<std::string> need = P.M;
+  std::vector<std::string> q(P.M.begin(), P.M.end());
+  while (!q.empty()) {
+    const std::string id = q.back();
+    q.pop_back();
+    const ElementDoc& it = idx.at(id);
+    if (it.sorte == 0)
+      for (const std::string& b : outils(*it.o))
+        if (!bodies.count(b)) why.insert(nm(id) + " combine avec le corps " + bn(b) + " qui reste");
+    for (const std::string& r : R(id)) {
+      if (idx.at(r).sorte == 0 && !P.M.count(r)) {
+        why.insert(nm(id) + " s’appuie sur " + nm(r) + ", qui reste");
+        continue;
+      }
+      if (need.insert(r).second) q.push_back(r);
+    }
+  }
+  for (const std::string& id : need)
+    if (!P.M.count(id)) P.deplacer.insert(id);
+  for (bool ch = true; ch;) {
+    ch = false;
+    for (const std::string& x : std::set<std::string>(P.deplacer)) {
+      for (const auto& [id, e] : idx) {
+        if (P.M.count(id) || P.deplacer.count(id)) continue;
+        if (R(id).count(x)) {
+          P.deplacer.erase(x);
+          ch = true;
+          break;
+        }
+      }
+    }
+  }
+  for (const std::string& id : need)
+    if (!P.M.count(id) && !P.deplacer.count(id)) P.copier.insert(id);
+  for (const auto& [id, it] : idx) {
+    if (P.M.count(id) || P.deplacer.count(id)) continue;
+    if (it.sorte == 0)
+      for (const std::string& b : outils(*it.o))
+        if (bodies.count(b)) {
+          why.insert(nm(id) + " combine avec un corps qui part");
+          break;
+        }
+    for (const std::string& r : R(id))
+      if (P.M.count(r)) why.insert(nm(id) + ", qui reste, utilise " + nm(r));
+  }
+  P.pourquoi.assign(why.begin(), why.end());
+  P.ok = why.empty();
+  return P;
+}
+
+void appliquerSeparation(J& src, J& dst, const PlanSeparation& plan) {
+  const auto prend = [&](const std::string& id) { return plan.M.count(id) || plan.deplacer.count(id) || plan.copier.count(id); };
+  for (const char* k : {"features", "sketches", "cgeo", "bodies", "params"})
+    if (!dst.contains(k) || !dst[k].is_array()) dst[k] = J::array();
+  std::set<std::string> pris;
+  for (const char* k : {"features", "sketches", "cgeo"})
+    for (const J& x : dst[k]) pris.insert(texteDe(x, "id"));
+  std::map<std::string, std::string> carte;
+  for (const std::set<std::string>* s : {&plan.M, &plan.deplacer, &plan.copier})
+    for (const std::string& id : *s)
+      if (pris.count(id)) carte[id] = nouvelIdentifiant(id.substr(0, id.find('_')).c_str());
+  int seq = dst.contains("bodySeq") && dst["bodySeq"].is_number() ? dst["bodySeq"].get<int>() : 1;
+  for (const J& e : dst["bodies"]) {
+    const std::string b = texteDe(e, "id");
+    if (b.size() > 1 && b[0] == 'b' && b.find_first_not_of("0123456789", 1) == std::string::npos) seq = std::max(seq, std::atoi(b.c_str() + 1) + 1);
+  }
+  std::map<std::string, std::string> cartesCorps;
+  for (const std::string& b : plan.corps) {
+    bool existe = false;
+    for (const J& e : dst["bodies"]) existe = existe || texteDe(e, "id") == b;
+    cartesCorps[b] = existe ? "b" + std::to_string(seq++) : b;
+  }
+  dst["bodySeq"] = seq;
+  const size_t n0 = dst["features"].size();
+  const J vide = J::array();
+  const J& sf = src.contains("features") && src["features"].is_array() ? src["features"] : vide;
+  for (const J& f : sf) {
+    if (!plan.M.count(texteDe(f, "id"))) continue;
+    J g = renommerIds(sansTransitoires(f), carte);
+    const std::string b = texteDe(g, "body");
+    if (cartesCorps.count(b)) g["body"] = cartesCorps[b];
+    if (g.contains("tools") && g["tools"].is_array())
+      for (J& t : g["tools"])
+        if (t.is_string() && cartesCorps.count(t.get<std::string>())) t = cartesCorps[t.get<std::string>()];
+    dst["features"].push_back(std::move(g));
+  }
+  if (src.contains("sketches") && src["sketches"].is_array())
+    for (const J& s : src["sketches"])
+      if (prend(texteDe(s, "id"))) dst["sketches"].push_back(renommerIds(sansTransitoires(s), carte));
+  // La construction : ancrée après la dernière fonction transférée qui la précédait, sinon après celles que la cible avait déjà
+  if (src.contains("cgeo") && src["cgeo"].is_array())
+    for (const J& o : src["cgeo"]) {
+      if (!prend(texteDe(o, "id"))) continue;
+      J c = renommerIds(sansTransitoires(o), carte);
+      const bool sansAt = !o.contains("at") || o["at"].is_null();
+      int i = -1;
+      if (!sansAt) {
+        const std::string at0 = texteDe(o, "at");
+        int trouve = -1;
+        for (size_t k = 0; k < sf.size(); k++)
+          if (texteDe(sf[k], "id") == at0) trouve = static_cast<int>(k);
+        i = trouve >= 0 ? trouve : std::min(o.contains("ai") && o["ai"].is_number() ? o["ai"].get<int>() : 0, static_cast<int>(sf.size())) - 1;
+      }
+      std::string at;
+      for (; i >= 0; i--) {
+        const std::string fid = texteDe(sf[i], "id");
+        if (plan.M.count(fid)) {
+          at = carte.count(fid) ? carte[fid] : fid;
+          break;
+        }
+      }
+      if (at.empty() && !sansAt && n0 > 0) at = texteDe(dst["features"][n0 - 1], "id");
+      if (sansAt || at.empty()) {
+        c["at"] = nullptr;
+        c["ai"] = 0;
+      } else {
+        c["at"] = at;
+        int rang = 0;
+        for (size_t k = 0; k < dst["features"].size(); k++)
+          if (texteDe(dst["features"][k], "id") == at) rang = static_cast<int>(k) + 1;
+        c["ai"] = rang;
+      }
+      dst["cgeo"].push_back(std::move(c));
+    }
+  const auto couleur = [&](const J& e, size_t rang) -> unsigned {
+    const unsigned teinte = src.contains("tint") && src["tint"].is_number() ? src["tint"].get<unsigned>() : 0;
+    (void)e;
+    return teinte ? teinte : couleurAuto(rang);
+  };
+  for (const std::string& b : plan.corps) {
+    if (src.contains("bodies") && src["bodies"].is_array())
+      for (size_t i = 0; i < src["bodies"].size(); i++) {
+        const J& e = src["bodies"][i];
+        if (texteDe(e, "id") != b) continue;
+        J k = sansTransitoires(e);
+        k["id"] = cartesCorps[b];
+        if (!(k.contains("color") && k["color"].is_number() && k["color"].get<double>() > 0)) k["color"] = couleur(e, i);
+        dst["bodies"].push_back(std::move(k));
+      }
+    if (src.contains("bodyVis") && src["bodyVis"].is_object() && src["bodyVis"].contains(b) && src["bodyVis"][b] == false) {
+      if (!dst.contains("bodyVis") || !dst["bodyVis"].is_object()) dst["bodyVis"] = J::object();
+      dst["bodyVis"][cartesCorps[b]] = false;
+    }
+  }
+  if (src.contains("params") && src["params"].is_array())
+    for (const J& p : src["params"]) {
+      const std::string nom = texteDe(p, "name");
+      if (nom.empty()) continue;
+      bool la = false;
+      for (const J& q : dst["params"]) la = la || texteDe(q, "name") == nom;
+      if (!la) dst["params"].push_back(sansTransitoires(p));
+    }
+  if (src.contains("derive") && src["derive"].is_array())
+    for (const J& L : src["derive"]) {
+      if (!dst.contains("derive") || !dst["derive"].is_array()) dst["derive"] = J::array();
+      bool la = false;
+      for (const J& q : dst["derive"]) la = la || texteDe(q, "id") == texteDe(L, "id");
+      if (!la) dst["derive"].push_back(sansTransitoires(L));
+    }
+  bool actifLa = false;
+  const std::string ab = texteDe(dst, "activeBody");
+  for (const J& e : dst["bodies"]) actifLa = actifLa || texteDe(e, "id") == ab;
+  if (!actifLa) dst["activeBody"] = dst["bodies"].empty() ? J() : dst["bodies"][0]["id"];
+  // Le retrait de la source
+  const auto filtrer = [&](const char* cle, const std::function<bool(const std::string&)>& part) {
+    if (!src.contains(cle) || !src[cle].is_array()) return;
+    J reste = J::array();
+    for (J& x : src[cle])
+      if (!part(texteDe(x, "id"))) reste.push_back(std::move(x));
+    src[cle] = std::move(reste);
+  };
+  filtrer("features", [&](const std::string& id) { return plan.M.count(id) > 0; });
+  filtrer("sketches", [&](const std::string& id) { return plan.M.count(id) || plan.deplacer.count(id); });
+  filtrer("cgeo", [&](const std::string& id) { return plan.deplacer.count(id) > 0; });
+  if (!plan.corps.empty() && src.contains("bodies") && src["bodies"].is_array()) {
+    // La couleur automatique dépend du rang : on fige celle des corps qui restent
+    const std::set<std::string> partent(plan.corps.begin(), plan.corps.end());
+    J reste = J::array();
+    for (size_t i = 0; i < src["bodies"].size(); i++) {
+      J& e = src["bodies"][i];
+      if (partent.count(texteDe(e, "id"))) continue;
+      if (!(e.contains("color") && e["color"].is_number() && e["color"].get<double>() > 0)) e["color"] = couleur(e, i);
+      reste.push_back(std::move(e));
+    }
+    src["bodies"] = std::move(reste);
+    if (src.contains("bodyVis") && src["bodyVis"].is_object())
+      for (const std::string& b : plan.corps) src["bodyVis"].erase(b);
+    if (src["bodies"].empty()) {
+      const int n = src.contains("bodySeq") && src["bodySeq"].is_number() ? src["bodySeq"].get<int>() : 1;
+      src["bodySeq"] = n + 1;
+      J e = J::object();
+      e["id"] = "b" + std::to_string(n);
+      e["name"] = "Corps " + std::to_string(n);
+      e["c"] = nullptr;
+      src["bodies"].push_back(std::move(e));
+    }
+    bool ok = false;
+    const std::string sa = texteDe(src, "activeBody");
+    for (const J& e : src["bodies"]) ok = ok || texteDe(e, "id") == sa;
+    if (!ok) src["activeBody"] = src["bodies"][0]["id"];
+  }
+}
+
 J nouvelleOccurrenceObjet(const std::string& cid, const std::string& nom, const Repere& fr) {
   J o = J::object();
   o["id"] = nouvelIdentifiant("oc");
@@ -1015,6 +1596,30 @@ std::string nomOccurrence(const J& a, const std::string& cid) {
 void supprimerOccurrence(J& a, const std::string& id) {
   J* ow = porteur(a, id);
   if (!ow) return;
+  // Répétitions : une instance est notée supprimée ; une source part avec ses instances, avant la purge
+  if (const J* o = occurrence(a, id); o && ow->contains("pats") && (*ow)["pats"].is_array()) {
+    if (o->contains("pat") && (*o)["pat"].is_object()) {
+      for (J& p : (*ow)["pats"])
+        if (texteDe(p, "id") == texteDe((*o)["pat"], "id")) {
+          if (!p.contains("skip") || !p["skip"].is_array()) p["skip"] = J::array();
+          p["skip"].push_back((*o)["pat"]["k"]);
+        }
+    } else {
+      for (J& p : (*ow)["pats"])
+        if (p.contains("src") && p["src"].is_array()) {
+          J s = J::array();
+          for (const J& x : p["src"])
+            if (!x.is_string() || x.get<std::string>() != id) s.push_back(x);
+          p["src"] = std::move(s);
+        }
+      J reste = J::array();
+      for (J& q : (*ow)["occ"]) {
+        const bool sienne = q.contains("pat") && q["pat"].is_object() && texteDe(q["pat"], "k").rfind(id + "|", 0) == 0;
+        if (!sienne) reste.push_back(std::move(q));
+      }
+      (*ow)["occ"] = std::move(reste);
+    }
+  }
   J garde = J::array();
   for (J& o : (*ow)["occ"])
     if (texteDe(o, "id") != id) garde.push_back(std::move(o));
@@ -1091,5 +1696,353 @@ void renommerComposant(J& a, const std::string& idOcc, const std::string& nom) {
           if (!ancien.empty() && n.rfind(ancien, 0) == 0) q["name"] = nom + n.substr(ancien.size());
         }
   if (c->contains("doc") && (*c)["doc"].is_object()) (*c)["doc"]["name"] = nom;
+}
+
+// ---- Composants liés à un fichier (47-composants-lies) ----
+std::string empreinteTexte(const std::string& s) {
+  uint32_t h = 2166136261u;
+  size_t n = 0;
+  const auto mange = [&](uint32_t u) {
+    h ^= u;
+    h *= 16777619u;
+    n++;
+  };
+  for (size_t i = 0; i < s.size();) {
+    const unsigned char c = s[i];
+    uint32_t p = c;
+    int k = 0;
+    if (c >= 0xf0) { p = c & 7; k = 3; }
+    else if (c >= 0xe0) { p = c & 15; k = 2; }
+    else if (c >= 0xc0) { p = c & 31; k = 1; }
+    i++;
+    for (; k > 0 && i < s.size(); k--, i++) p = (p << 6) | (static_cast<unsigned char>(s[i]) & 63);
+    if (p >= 0x10000) {
+      p -= 0x10000;
+      mange(0xd800 + (p >> 10));
+      mange(0xdc00 + (p & 0x3ff));
+    } else mange(p);
+  }
+  std::string b;
+  uint32_t v = h;
+  do {
+    b.insert(b.begin(), "0123456789abcdefghijklmnopqrstuvwxyz"[v % 36]);
+    v /= 36;
+  } while (v);
+  return b + "_" + std::to_string(n);
+}
+
+const J* proprietaireLien(const J& a, const std::string& cid) {
+  const J* c = composant(a, cid);
+  if (!c) return nullptr;
+  if (c->contains("link") && (*c)["link"].is_object()) return c;
+  const std::string of = texteDe(*c, "of");
+  return of.empty() ? nullptr : composant(a, of);
+}
+
+std::vector<std::string> membresLien(const J& a, const std::string& cid) {
+  std::vector<std::string> r{cid};
+  std::set<std::string> s{cid};
+  for (bool ch = true; ch;) {
+    ch = false;
+    for (const J& c : a["comps"]) {
+      const std::string id = texteDe(c, "id"), of = texteDe(c, "of");
+      if (!of.empty() && s.count(of) && !s.count(id)) {
+        s.insert(id);
+        r.push_back(id);
+        ch = true;
+      }
+    }
+  }
+  return r;
+}
+
+namespace {
+J remplaceChemin(const J& rel, const std::function<std::string(const std::string&)>& M) {
+  J r = rel;
+  if (r.is_object() && r.contains("path") && r["path"].is_array())
+    for (J& x : r["path"])
+      if (x.is_string()) x = M(x.get<std::string>());
+  return r;
+}
+std::string cleNeuve(const std::string& k, const std::function<std::string(const std::string&)>& M) {
+  const size_t i = k.find('|');
+  return i == std::string::npos ? k : M(k.substr(0, i)) + k.substr(i);
+}
+J repetitionsNeuves(const J& pats, const std::function<std::string(const std::string&)>& M) {
+  J L = J::array();
+  for (const J& p0 : pats) {
+    J p = J::object();
+    for (auto it = p0.begin(); it != p0.end(); ++it)
+      if (it.key() != "st" && it.key() != "msg" && it.key()[0] != '_') p[it.key()] = it.value();
+    J src = J::array(), skip = J::array();
+    if (p.contains("src") && p["src"].is_array())
+      for (const J& x : p["src"]) src.push_back(x.is_string() ? J(M(x.get<std::string>())) : x);
+    if (p.contains("skip") && p["skip"].is_array())
+      for (const J& x : p["skip"]) skip.push_back(x.is_string() ? J(cleNeuve(x.get<std::string>(), M)) : x);
+    p["src"] = std::move(src);
+    p["skip"] = std::move(skip);
+    L.push_back(std::move(p));
+  }
+  return L;
+}
+J lienSansEtat(const J& l) {  // asmLinkSerial, sans pend
+  if (!l.is_object()) return J();
+  J o = J::object();
+  for (auto it = l.begin(); it != l.end(); ++it)
+    if (it.key() != "st" && it.key() != "msg" && it.key() != "pend" && it.key() != "base" && it.key()[0] != '_') o[it.key()] = it.value();
+  return o;
+}
+J sansAsm(const J& haut) {
+  J d = J::object();
+  for (auto it = haut.begin(); it != haut.end(); ++it)
+    if (it.key() != "asm") d[it.key()] = it.value();
+  return d;
+}
+}  // namespace
+
+J sousArbreLien(const J& haut, const std::string& cid) {
+  const J& a = haut["asm"];
+  const std::string act = actif(a);
+  const J* L = composant(a, cid);
+  const auto docDe = [&](const J& c) { return texteDe(c, "id") == act ? sansAsm(haut) : c.value("doc", J()); };
+  std::map<std::string, std::string> inv;
+  const J* lk = L->contains("link") && (*L)["link"].is_object() ? &(*L)["link"] : nullptr;
+  if (lk && lk->contains("map") && (*lk)["map"].is_object())
+    for (auto it = (*lk)["map"].begin(); it != (*lk)["map"].end(); ++it)
+      if (it.value().is_string()) inv[it.value().get<std::string>()] = it.key();
+  const std::string sr = lk ? texteDe(*lk, "srcRoot") : std::string();
+  inv[cid] = sr.empty() ? cid : sr;
+  const std::function<std::string(const std::string&)> I = [&](const std::string& id) {
+    const auto it = inv.find(id);
+    return it == inv.end() ? id : it->second;
+  };
+  const std::string nom = texteDe(*L, "name");
+  J top = docDe(*L);
+  if (!top.is_object()) top = J::object();
+  top["name"] = nom;
+  const std::vector<std::string> mem = membresLien(a, cid);
+  if (mem.size() > 1 || (L->contains("occ") && !(*L)["occ"].empty())) {
+    J t = J::object();
+    t["v"] = 2;
+    t["name"] = nom;
+    t["root"] = I(cid);
+    t["active"] = I(cid);
+    t["path"] = J::array();
+    t["mode"] = "part";
+    t["comps"] = J::array();
+    for (const std::string& mid : mem) {
+      const J& c = *composant(a, mid);
+      J k = J::object();
+      k["id"] = I(mid);
+      k["kind"] = "comp";
+      k["name"] = texteDe(c, "name");
+      k["doc"] = mid == cid ? J() : docDe(c);
+      k["occ"] = J::array();
+      if (c.contains("occ") && c["occ"].is_array())
+        for (const J& o : c["occ"]) {
+          J q = J::object();
+          q["id"] = I(texteDe(o, "id"));
+          q["comp"] = I(texteDe(o, "comp"));
+          q["name"] = texteDe(o, "name");
+          q["fr"] = o.value("fr", J());
+          q["fixed"] = o.value("fixed", false);
+          q["visible"] = !(o.contains("visible") && o["visible"].is_boolean() && !o["visible"].get<bool>());
+          if (o.contains("align") && o["align"].is_object()) {
+            J al = o["align"];
+            if (al.contains("src")) al["src"] = remplaceChemin(al["src"], I);
+            if (al.contains("dst")) al["dst"] = remplaceChemin(al["dst"], I);
+            q["align"] = std::move(al);
+          } else q["align"] = nullptr;
+          if (o.contains("pat") && o["pat"].is_object()) q["pat"] = J{{"id", texteDe(o["pat"], "id")}, {"k", cleNeuve(texteDe(o["pat"], "k"), I)}};
+          k["occ"].push_back(std::move(q));
+        }
+      k["link"] = mid == cid ? J() : lienSansEtat(c.value("link", J()));
+      const std::string of = texteDe(c, "of");
+      if (!of.empty() && of != cid) k["of"] = I(of);
+      if (c.contains("pats") && c["pats"].is_array() && !c["pats"].empty()) k["pats"] = repetitionsNeuves(c["pats"], I);
+      t["comps"].push_back(std::move(k));
+    }
+    top["asm"] = std::move(t);
+  } else top.erase("asm");
+  return top;
+}
+
+void chargerLien(J& haut, const std::string& cid, const J& top, const std::string& sig) {
+  // asmTreeOfFile
+  J comps = J::array();
+  std::string racineSrc = "_r";
+  if (top.contains("asm") && top["asm"].is_object() && top["asm"].contains("comps") && top["asm"]["comps"].is_array() && !top["asm"]["comps"].empty()) {
+    racineSrc = texteDe(top["asm"], "root");
+    for (const J& c0 : top["asm"]["comps"]) {
+      J c = c0;
+      if (!c.contains("doc") || !c["doc"].is_object()) c["doc"] = sansAsm(top);
+      comps.push_back(std::move(c));
+    }
+  } else {
+    J c = J::object();
+    c["id"] = racineSrc;
+    c["kind"] = "comp";
+    c["name"] = top.contains("name") && top["name"].is_string() ? top["name"] : J("Composant");
+    c["doc"] = top;
+    c["occ"] = J::array();
+    c["link"] = nullptr;
+    comps.push_back(std::move(c));
+  }
+  J& a = haut["asm"];
+  std::map<std::string, std::string> map;
+  {
+    const J* L = composant(a, cid);
+    if (L && L->contains("link") && (*L)["link"].is_object() && (*L)["link"].contains("map") && (*L)["link"]["map"].is_object())
+      for (auto it = (*L)["link"]["map"].begin(); it != (*L)["link"]["map"].end(); ++it)
+        if (it.value().is_string()) map[it.key()] = it.value().get<std::string>();
+  }
+  std::vector<std::string> oldM = membresLien(a, cid);
+  oldM.erase(oldM.begin());
+  const std::set<std::string> old(oldM.begin(), oldM.end());
+  std::set<std::string> pris;
+  for (const J& c : a["comps"]) {
+    const std::string id = texteDe(c, "id");
+    if (id == cid || old.count(id)) continue;
+    pris.insert(id);
+    if (c.contains("occ") && c["occ"].is_array())
+      for (const J& o : c["occ"]) pris.insert(texteDe(o, "id"));
+  }
+  const std::function<std::string(const std::string&)> M = [&](const std::string& id) {
+    if (id == racineSrc) return cid;
+    const auto it = map.find(id);
+    if (it != map.end()) return it->second;
+    if (pris.count(id) || id == cid) {
+      const size_t u = id.find('_');
+      map[id] = nouvelIdentifiant(u == std::string::npos || u == 0 ? "id" : id.substr(0, u).c_str());
+      return map[id];
+    }
+    return id;
+  };
+  std::set<std::string> garde;
+  for (const J& c : comps) {
+    const std::string n = M(texteDe(c, "id"));
+    if (texteDe(c, "id") != racineSrc) garde.insert(n);
+    if (c.contains("occ") && c["occ"].is_array())
+      for (const J& o : c["occ"]) M(texteDe(o, "id"));
+  }
+  // Le composant actif disparaît avec la source : on remonte d'abord à la racine
+  if (old.count(actif(a)) && !garde.count(actif(a))) activer(haut, racine(a), {});
+  const auto occNeuve = [&](const J& o0) {
+    J o = o0;
+    o["id"] = M(texteDe(o0, "id"));
+    o["comp"] = M(texteDe(o0, "comp"));
+    o["st"] = "ok";
+    o["msg"] = "";
+    if (o.contains("align") && o["align"].is_object()) {
+      if (o["align"].contains("src")) o["align"]["src"] = remplaceChemin(o["align"]["src"], M);
+      if (o["align"].contains("dst")) o["align"]["dst"] = remplaceChemin(o["align"]["dst"], M);
+    }
+    if (o.contains("pat") && o["pat"].is_object()) o["pat"] = J{{"id", texteDe(o["pat"], "id")}, {"k", cleNeuve(texteDe(o["pat"], "k"), M)}};
+    return o;
+  };
+  const auto occsDe = [&](const J& c) {
+    J L = J::array();
+    if (c.contains("occ") && c["occ"].is_array())
+      for (const J& o : c["occ"]) L.push_back(occNeuve(o));
+    return L;
+  };
+  // Le bloc peut changer de place : chaque composant est retrouvé par son identifiant
+  std::string nomL = texteDe(*composant(haut["asm"], cid), "name");
+  for (const J& c : comps) {
+    const bool estRacine = texteDe(c, "id") == racineSrc;
+    const std::string id = M(texteDe(c, "id"));
+    const J occs = occsDe(c);
+    const J pats = c.contains("pats") && c["pats"].is_array() && !c["pats"].empty() ? repetitionsNeuves(c["pats"], M) : J();
+    J& ha = haut["asm"];
+    J* h = composant(ha, id);
+    if (estRacine) {
+      J nd = c["doc"];
+      nd["name"] = nomL;
+      const bool etaitActif = id == actif(ha);
+      if (etaitActif) {
+        J bloc = ha;
+        haut = std::move(nd);
+        haut["asm"] = std::move(bloc);
+      } else (*h)["doc"] = std::move(nd);
+      h = composant(haut["asm"], id);
+      (*h)["occ"] = occs;
+      if (pats.is_null()) h->erase("pats");
+      else (*h)["pats"] = pats;
+    } else if (h) {
+      const bool etaitActif = id == actif(ha);
+      if (etaitActif) {
+        J bloc = ha;
+        J nd = c["doc"];
+        haut = std::move(nd);
+        haut["asm"] = std::move(bloc);
+      } else (*h)["doc"] = c["doc"];
+      h = composant(haut["asm"], id);
+      (*h)["name"] = c.value("name", J());
+      (*h)["occ"] = occs;
+      (*h)["link"] = c.value("link", J());
+      (*h)["of"] = c.contains("of") && c["of"].is_string() ? M(c["of"].get<std::string>()) : cid;
+      if (pats.is_null()) h->erase("pats");
+      else (*h)["pats"] = pats;
+    } else {
+      J n = J::object();
+      n["id"] = id;
+      n["kind"] = "comp";
+      n["name"] = c.value("name", J());
+      n["doc"] = c["doc"];
+      n["occ"] = occs;
+      n["link"] = c.value("link", J());
+      n["of"] = c.contains("of") && c["of"].is_string() ? M(c["of"].get<std::string>()) : cid;
+      if (!pats.is_null()) n["pats"] = pats;
+      ha["comps"].push_back(std::move(n));
+    }
+  }
+  J& a2 = haut["asm"];
+  J reste = J::array();
+  for (J& c : a2["comps"]) {
+    const std::string id = texteDe(c, "id");
+    if (!old.count(id) || garde.count(id)) reste.push_back(std::move(c));
+  }
+  a2["comps"] = std::move(reste);
+  for (auto it = map.begin(); it != map.end();) it = it->first == it->second ? map.erase(it) : std::next(it);
+  J& lk = (*composant(a2, cid))["link"];
+  J mj = J::object();
+  for (const auto& [k, v] : map) mj[k] = v;
+  lk["map"] = std::move(mj);
+  lk["srcRoot"] = racineSrc;
+  lk["sig"] = sig;
+  lk.erase("pend");
+  lk.erase("st");
+  lk.erase("msg");
+}
+
+std::set<std::string> sousComposants(const J& a, const std::string& cid) {
+  std::set<std::string> s;
+  for (const Instance& i : instances(a, cid)) s.insert(i.comp);
+  s.erase(cid);
+  return s;
+}
+
+std::string refusExtraction(const J& a, const std::string& cid) {
+  const J* C = composant(a, cid);
+  if (!C || cid == racine(a)) return "la racine ne s'extrait pas";
+  if (C->contains("link") && (*C)["link"].is_object()) return "« " + texteDe(*C, "name") + " » est déjà lié à " + texteDe((*C)["link"], "name");
+  if (proprietaireLien(a, cid)) return "« " + texteDe(*C, "name") + " » fait partie d'un composant lié : extrayez plutôt celui-ci";
+  const std::set<std::string> sub = sousComposants(a, cid);
+  std::vector<std::string> bad;
+  for (const J& c : a["comps"]) {
+    const std::string own = texteDe(c, "id");
+    if (own == cid || sub.count(own) || !c.contains("occ")) continue;
+    for (const J& o : c["occ"]) {
+      const std::string oc = texteDe(o, "comp");
+      if (sub.count(oc)) {
+        const std::string n = texteDe(*composant(a, oc), "name");
+        if (std::find(bad.begin(), bad.end(), n) == bad.end()) bad.push_back(n);
+      }
+    }
+  }
+  if (bad.empty()) return "";
+  std::string m;
+  for (const std::string& n : bad) m += (m.empty() ? "" : ", ") + n;
+  return m + " sert aussi ailleurs dans l'assemblage";
 }
 }  // namespace assemblage

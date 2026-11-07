@@ -13,7 +13,7 @@ struct LienArbre : wxTreeItemData {
   int i;  // -1 : une ligne de l'Origine
   std::string plan;  // XY, XZ ou YZ : un double-clic y ouvre une esquisse
   // Assemblage : la ligne d'une instance, d'une ligne de son contenu en lecture seule, d'un groupe ou d'une liaison
-  enum Sorte { PIECE, INSTANCE, CONTENU, GROUPE, LIAISON } sorte = PIECE;
+  enum Sorte { PIECE, INSTANCE, CONTENU, GROUPE, LIAISON, REPETITION, LIENS } sorte = PIECE;
   std::vector<std::string> chemin;
   std::string occ;  // l'occurrence au bout du chemin
   bool direct = false;  // enfant direct du composant actif

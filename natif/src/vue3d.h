@@ -102,6 +102,8 @@ class Vue3D : public wxWindow {
     bool point = false, orange = false, grand = false;
   };
   void poserMarques(const std::vector<Marque>& L);
+  // L'inspection : les volumes en interférence en rouge, le centre de gravité en jaune
+  void montrerInspection(const std::vector<TopoDS_Shape>& rouges, bool aCentre, const gp_Pnt& centre);
   std::function<void(int)> surMarque;
   std::function<void(const std::vector<std::string>& chemin, const gp_Pnt& p, bool plan, const std::array<double, 3>& normaleLocale)> surFaceOcc;
 
@@ -131,7 +133,7 @@ class Vue3D : public wxWindow {
   std::vector<std::string> cheminPiece_;
   std::vector<std::pair<TopoDS_Shape, unsigned>> teintesPiece_;
   TopoDS_Shape formePiece_;
-  std::vector<occ::handle<AIS_Shape>> gizmoAis_;
+  std::vector<occ::handle<AIS_Shape>> gizmoAis_, inspectionAis_;
   Gizmo gizmo_;
   int gizmoSaisi_ = -1;  // 0..2 : flèche ; 3..5 : anneau
   bool gizmoBouge_ = false;

@@ -49,5 +49,7 @@ void enregistrerProjet(Document& d, const std::wstring& cible, bool forcer = fal
 void modifierStructure(Document& d, const std::function<void(nlohmann::ordered_json&)>& changement);
 // Le même, en ajoutant au fichier des sources d'import (clé → base64)
 void modifierStructure(Document& d, const std::function<void(nlohmann::ordered_json&)>& changement, const std::map<std::string, std::string>& nouvellesSources);
+// Écrit un autre fichier de projet (source d'un composant lié) : temporaire relu, ancienne version en « .bak », remplacement d'un seul coup
+void ecrireProjetSur(const std::wstring& cible, const std::string& texte, bool compresser);
 // Le texte tel qu'il est sur le disque
 std::string texteDuFichier(const Document& d);

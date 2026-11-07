@@ -1,5 +1,11 @@
 // L'assemblage à l'écran : traduction de src/47-assemblage-interface.js, 48-assemblage-placement.js et de treeComps (42-arbre-modele.js).
+#include <BRepAlgoAPI_Common.hxx>
+#include <BRepBndLib.hxx>
+#include <BRepBuilderAPI_Transform.hxx>
+#include <BRepGProp.hxx>
 #include <BRep_Builder.hxx>
+#include <Bnd_Box.hxx>
+#include <GProp_GProps.hxx>
 #include <TopoDS_Compound.hxx>
 #include <gp_Ax1.hxx>
 #include <gp_Quaternion.hxx>
@@ -74,10 +80,23 @@ as::Repere rotationAutour(const as::Repere& F, const as::V3& O, const as::V3& a,
 }
 }  // namespace
 
+namespace {
+const std::vector<std::pair<std::string, double>> MATIERES = {{"Acier", 7.85}, {"Inox", 7.93}, {"Aluminium", 2.70}, {"Laiton", 8.50}, {"Bronze", 8.80}, {"Cuivre", 8.96}, {"Fonte", 7.20}, {"Titane", 4.43}, {"PLA", 1.24}, {"ABS", 1.04}, {"PETG", 1.27}, {"Nylon (PA)", 1.14}, {"POM", 1.41}, {"Bois (chêne)", 0.75}};
+std::string fmt(double v, int d = 2) {
+  char b[64];
+  snprintf(b, sizeof b, "%.*f", d, v);
+  std::string s = b;
+  for (char& c : s)
+    if (c == '.') c = ',';
+  return s;
+}
+}  // namespace
+
 bool Cadre::asmOn() const { return doc_.assemblage && (asmMode_ == "asm" || as::aDesEnfants(*doc_.assemblage)); }
 
 void Cadre::asmApresRejeu(const ResultatRejeu& r, bool ajuster) {
   if (!doc_.assemblage) {
+    asmInspectFermer();
     asmSolides_.clear();
     vue_->montrerOccurrences({});
     vue_->modePlacer(false);
@@ -90,7 +109,14 @@ void Cadre::asmApresRejeu(const ResultatRejeu& r, bool ajuster) {
   {
     wxBusyCursor attente;
     as::majSolides(asmSolides_, doc_, r);
-    as::resoudre(*copie, asmSolides_);
+    if (as::resoudre(*copie, asmSolides_)) remplirArbre();
+  }
+  if (asmLiensNeufs_) {
+    asmLiensNeufs_ = false;
+    if (!asmLies().empty()) CallAfter([this] {
+      asmLiensRefBase(asmLies());
+      asmLiensVerifier(false);
+    });
   }
   asmDessiner();
   if (ajuster) vue_->ajuster();
@@ -188,7 +214,9 @@ void Cadre::asmAller(const as::Chemin& chemin, const std::string& mode, const st
   if (!docOuvert_) return;
   if (esquisseOuverte_ >= 0) return etat(L"Fermez d'abord l'esquisse.");
   quitterConge();
+  asmInspectFermer();
   asmAlignAnnuler(false);
+  asmPatAnnuler(false);
   if (!doc_.assemblage) {
     // asmEnsure : le document devient la racine d'un assemblage
     const bool etaitModifie = doc_.modifie();
@@ -292,6 +320,7 @@ void Cadre::changerAssemblage(const std::function<void(J&)>& f, const wxString& 
   changerStructure([&](J& d) {
     d["asm"] = resolu;
     f(d["asm"]);
+    as::resoudre(d["asm"], asmSolides_);
   }, message);
 }
 
@@ -346,6 +375,10 @@ bool Cadre::asmEchap() {
     asmAlignAnnuler(true);
     return true;
   }
+  if (asmPatEd_) {
+    asmPatAnnuler(true);
+    return true;
+  }
   if (asmAnim_.IsRunning()) {
     asmAnim_.Stop();
     montrerRien();
@@ -382,18 +415,7 @@ void Cadre::asmNouveauComposant() {
     c["id"] = id;
     c["kind"] = "comp";
     c["name"] = nomC;
-    J doc = J::object();
-    doc["name"] = nomC;
-    doc["tint"] = 0;
-    doc["sketches"] = J::array();
-    doc["features"] = J::array();
-    doc["cgeo"] = J::array();
-    doc["bodyVis"] = J::object();
-    doc["bodies"] = J::array();
-    doc["bodySeq"] = 1;
-    doc["activeBody"] = nullptr;
-    doc["mep"] = nullptr;
-    c["doc"] = std::move(doc);
+    c["doc"] = as::documentVide(nomC);
     c["occ"] = J::array();
     c["link"] = nullptr;
     J o = as::nouvelleOccurrenceObjet(id, nomC + ":1", as::Repere());
@@ -485,7 +507,39 @@ void Cadre::asmLotChaque(const std::function<void(J&)>& f) {
 void Cadre::asmInserer() {
   if (!docOuvert_) return etat(L"Ouvrez d'abord une pièce (Ctrl+O).");
   wxFileDialog choix(this, L"Insérer un fichier comme composant", wxEmptyString, wxEmptyString, L"Projets ConceptCAD (*.conceptcad)|*.conceptcad", wxFD_OPEN | wxFD_FILE_MUST_EXIST);
-  if (choix.ShowModal() == wxID_OK) asmInsererFichier(choix.GetPath().ToStdWstring());
+  if (choix.ShowModal() != wxID_OK) return;
+  wxMessageDialog q(this, L"Insérer " + wxFileName(choix.GetPath()).GetFullName() + L" :", L"Insérer", wxYES_NO | wxCANCEL | wxYES_DEFAULT | wxICON_QUESTION);
+  q.SetYesNoCancelLabels(L"Lier (modifiable ici, la source suit)", L"Copier (indépendant)", L"Annuler");
+  const int r = q.ShowModal();
+  if (r == wxID_YES) asmLienInserer(choix.GetPath().ToStdWstring());
+  else if (r == wxID_NO) asmInsererFichier(choix.GetPath().ToStdWstring());
+}
+
+// À droite de ce qui est déjà affiché
+double Cadre::asmDroiteDeTout() const {
+  const J& a = *doc_.assemblage;
+  bool vu = false;
+  double hi = 0;
+  for (const as::Instance& inst : as::instances(a, as::actif(a))) {
+    const auto it = asmSolides_.find(inst.comp);
+    if (it == asmSolides_.end() || it->second->forme.IsNull()) continue;
+    const Mesures m = mesurer(it->second->forme);
+    const double h = inst.F.o[0] + std::abs(inst.F.x[0]) * m.boite[3] + std::abs(inst.F.y[0]) * m.boite[4] + std::abs(inst.F.z[0]) * m.boite[5];
+    hi = vu ? std::max(hi, h) : h;
+    vu = true;
+  }
+  return vu ? hi + 20 : 0;
+}
+
+// Les sources d'import d'un fichier inséré viennent avec lui
+void Cadre::asmAjouterSources(const J& racineFichier) {
+  if (!racineFichier.contains("imports") || !racineFichier["imports"].is_object() || racineFichier["imports"].empty()) return;
+  std::map<std::string, std::string> S;
+  for (auto it = racineFichier["imports"].begin(); it != racineFichier["imports"].end(); ++it)
+    if (it.value().is_string()) S[it.key()] = it.value().get<std::string>();
+  if (S.empty() || !doc_.assemblage) return;
+  const J resolu = *doc_.assemblage;
+  modifierStructure(doc_, [&](J& j) { j["asm"] = resolu; }, S);
 }
 
 // asmInsertText : une copie du fichier, dont la racine devient un composant enfant du composant actif, identifiants renouvelés
@@ -497,8 +551,7 @@ bool Cadre::asmInsererFichier(const std::wstring& chemin) {
     J racine = J::parse(b);
     top = racine.contains("doc") && racine["doc"].is_object() ? racine["doc"] : racine;
     if (!top.contains("features") || !top["features"].is_array()) throw std::runtime_error("ce n'est pas un projet ConceptCAD");
-    if (racine.contains("imports") && racine["imports"].is_object() && !racine["imports"].empty()) asmImports_ = racine["imports"];
-    else asmImports_ = J();
+    asmImports_ = racine;
   } catch (const std::exception& e) {
     if (!essaiMenu_) wxMessageBox(tx(e.what()), L"Insertion impossible", wxOK | wxICON_WARNING, this);
     return false;
@@ -510,22 +563,8 @@ bool Cadre::asmInsererFichier(const std::wstring& chemin) {
     doc_.basculeSeule = !etaitModifie;
   }
   std::string base = wxFileName(chemin).GetName().utf8_string();
-  // à droite de ce qui est déjà affiché
-  double dx = 0;
-  {
-    const J& a = *doc_.assemblage;
-    bool vu = false;
-    double hi = 0;
-    for (const as::Instance& inst : as::instances(a, as::actif(a))) {
-      const auto it = asmSolides_.find(inst.comp);
-      if (it == asmSolides_.end() || it->second->forme.IsNull()) continue;
-      const Mesures m = mesurer(it->second->forme);
-      const double h = inst.F.o[0] + std::abs(inst.F.x[0]) * m.boite[3] + std::abs(inst.F.y[0]) * m.boite[4] + std::abs(inst.F.z[0]) * m.boite[5];
-      hi = vu ? std::max(hi, h) : h;
-      vu = true;
-    }
-    if (vu) dx = hi + 20;
-  }
+  const double dx = asmDroiteDeTout();
+  asmAjouterSources(asmImports_);
   std::string idOcc;
   changerAssemblage([&](J& a) {
     std::map<std::string, std::string> cm, om;
@@ -567,8 +606,24 @@ bool Cadre::asmInsererFichier(const std::wstring& chemin) {
         c["doc"]["name"] = base;
       }
       c["id"] = cm[ancien];
+      const auto cleNeuve = [&](const std::string& k) {
+        const size_t i = k.find('|');
+        if (i == std::string::npos) return k;
+        const auto it = om.find(k.substr(0, i));
+        return (it == om.end() ? k.substr(0, i) : it->second) + k.substr(i);
+      };
+      if (c.contains("pats") && c["pats"].is_array())
+        for (J& p : c["pats"]) {
+          if (p.contains("src") && p["src"].is_array())
+            for (J& x : p["src"])
+              if (x.is_string() && om.count(x.get<std::string>())) x = om[x.get<std::string>()];
+          if (p.contains("skip") && p["skip"].is_array())
+            for (J& x : p["skip"])
+              if (x.is_string()) x = cleNeuve(x.get<std::string>());
+        }
       if (c.contains("occ"))
         for (J& o : c["occ"]) {
+          if (o.contains("pat") && o["pat"].is_object()) o["pat"]["k"] = cleNeuve(texteDe(o["pat"], "k"));
           o["id"] = om[texteDe(o, "id")];
           o["comp"] = cm[texteDe(o, "comp")];
           if (o.contains("align") && o["align"].is_object()) {
@@ -664,6 +719,13 @@ void Cadre::remplirComposants(const wxTreeItemId& racineArbre) {
     if (o->value("fixed", false)) t += L"  📌 fixe";
     if (o->contains("align") && (*o)["align"].is_object()) t += L"  ⚙ " + tx(as::nomLiaison(texteDe((*o)["align"], "type")));
     if (texteDe(*o, "st") == "warn") t += L"  ⚠";
+    // asmLinkBadge : 🔗 lié, ✎ modifié ici, ⚠ problème
+    if (c->contains("link") && (*c)["link"].is_object()) {
+      t += L"  🔗";
+      if (asmLienSale(cid)) t += L" ✎";
+      const auto eL = asmLiensEtat_.find(cid);
+      if (eL != asmLiensEtat_.end() && eL->second.alerte) t += L" ⚠";
+    } else if (!texteDe(*c, "of").empty()) t += L"  🔗";
     const wxTreeItemId ligne = arbre_->AppendItem(parent, t, self ? 13 : 12, -1, lien(LienArbre::INSTANCE, chemin, id, direct));
     if (self) {
       arbre_->SetItemTextColour(ligne, bleu);
@@ -736,8 +798,49 @@ void Cadre::remplirComposants(const wxTreeItemId& racineArbre) {
   const std::vector<as::Instance> tout = as::instances(a, rid);
   const wxTreeItemId sec = arbre_->AppendItem(r, wxString::Format(L"Composants (%zu)", tout.size() - 1), 12);
   arbre_->SetItemBold(sec);
+  if (const std::vector<std::string> lies = asmLies(); !lies.empty()) {
+    bool alerte = false;
+    for (const std::string& id : lies) {
+      const auto eL = asmLiensEtat_.find(id);
+      alerte = alerte || (eL != asmLiensEtat_.end() && eL->second.alerte);
+    }
+    arbre_->AppendItem(sec, wxString::Format(L"🔗 %zu composant(s) lié(s)%s  🔄", lies.size(), alerte ? L" ⚠" : L""), 12, -1, lien(LienArbre::LIENS, {}, "", false));
+  }
   enfants(rid, {}, sec);
   arbre_->Expand(sec);
+  // treePatterns
+  {
+    struct LignePat {
+      const J* c;
+      const J* p;
+      as::Chemin chemin;
+    };
+    std::vector<LignePat> R;
+    std::set<std::string> vus;
+    for (const as::Instance& i : tout) {
+      if (!vus.insert(i.comp).second) continue;
+      const J* c = as::composant(a, i.comp);
+      if (c && c->contains("pats") && (*c)["pats"].is_array())
+        for (const J& p : (*c)["pats"]) R.push_back({c, &p, i.chemin});
+    }
+    if (!R.empty()) {
+      const wxTreeItemId s = arbre_->AppendItem(r, wxString::Format(L"Répétitions (%zu)", R.size()), 15);
+      arbre_->SetItemBold(s);
+      for (const LignePat& q : R) {
+        int n = 0;
+        for (const J& o : (*q.c)["occ"]) n += o.contains("pat") && o["pat"].is_object() && texteDe(o["pat"], "id") == texteDe(*q.p, "id") ? 1 : 0;
+        std::string src;
+        for (const J& x : (*q.p)["src"])
+          if (const J* o = as::occurrence(a, x.get<std::string>())) src += (src.empty() ? "" : ", ") + texteDe(*o, "name");
+        wxString t = tx(texteDe(*q.p, "name")) + L"  " + tx(as::nomRepetition(*q.p)) + L" · " + tx(src) + wxString::Format(L" ×%zu", n + (*q.p)["src"].size());
+        if (texteDe(*q.p, "st") == "warn") t += L"  ⚠";
+        auto* l = lien(LienArbre::REPETITION, q.chemin, texteDe(*q.p, "id"), false);
+        l->plan = texteDe(*q.c, "id");
+        arbre_->AppendItem(s, t, 15, -1, l);
+      }
+      arbre_->Expand(s);
+    }
+  }
   // treeJoints
   std::vector<std::pair<const J*, as::Chemin>> Lj;
   std::set<std::string> vus;
@@ -799,6 +902,20 @@ std::string Cadre::nomRel(const std::string& cid, const J& r, bool normal) const
 bool Cadre::asmSurArbre(const LienArbre* l) {
   if (!l || l->sorte == LienArbre::PIECE) return false;
   if (asmSansEvenement_) return true;
+  if (l->sorte == LienArbre::LIENS) {
+    CallAfter([this] { asmLiensVerifier(true); });
+    return true;
+  }
+  if (l->sorte == LienArbre::REPETITION) {
+    const as::Chemin ch = l->chemin;
+    const std::string owner = l->plan, pat = l->occ;
+    CallAfter([this, ch, owner, pat] {
+      if (asmPatEd_) return;
+      if (asmMode_ != "asm" || ch != as::cheminActif(*doc_.assemblage)) asmAller(ch, "asm");
+      asmPatDebut(owner, pat, std::make_shared<J>(*doc_.assemblage));
+    });
+    return true;
+  }
   if (l->sorte == LienArbre::LIAISON || (l->sorte == LienArbre::INSTANCE && l->direct)) {
     const std::string id = l->occ;
     const bool ctrl = wxGetKeyState(WXK_CONTROL), maj = wxGetKeyState(WXK_SHIFT);
@@ -829,6 +946,22 @@ bool Cadre::asmSurArbreActive(const LienArbre* l) {
 
 bool Cadre::asmSurArbreMenu(const LienArbre* l) {
   if (!l || l->sorte == LienArbre::PIECE) return false;
+  if (l->sorte == LienArbre::REPETITION) {
+    const std::string owner = l->plan, pat = l->occ;
+    const as::Chemin ch = l->chemin;
+    CallAfter([this, owner, pat, ch] {
+      wxMenu m;
+      enum { MOD = wxID_HIGHEST + 7500, SUP };
+      m.Append(MOD, L"🔁 Modifier");
+      m.Append(SUP, L"🗑 Supprimer la répétition");
+      const int c = choisirMenu(m);
+      if (c != MOD && c != SUP) return;
+      if (asmMode_ != "asm" || ch != as::cheminActif(*doc_.assemblage)) asmAller(ch, "asm");
+      if (c == MOD) asmPatDebut(owner, pat, std::make_shared<J>(*doc_.assemblage));
+      else asmPatSupprimer(owner, pat);
+    });
+    return true;
+  }
   if (l->sorte != LienArbre::INSTANCE || l->chemin.empty()) return true;
   const as::Chemin chemin = l->chemin;
   const std::string id = l->occ;
@@ -844,7 +977,7 @@ void Cadre::asmMenuOccurrence(const as::Chemin& chemin, const std::string& id, b
   const J* c = as::composant(*doc_.assemblage, texteDe(*o, "comp"));
   if (!c) return;
   const as::Chemin AP = as::cheminActif(*doc_.assemblage);
-  enum { MODELER = wxID_HIGHEST + 7000, PLACER, DEPLACER, OCCURRENCE, FIXER, RENOMMER, SUPPRIMER, MASQUER };
+  enum { MODELER = wxID_HIGHEST + 7000, PLACER, DEPLACER, OCCURRENCE, FIXER, RENOMMER, SUPPRIMER, MASQUER, REPETER, LIEN_MAJ, LIEN_RELIER, LIEN_ROMPRE, LIEN_EXTRAIRE, LIEN_REMPLACER };
   if (direct && asmMode_ == "asm") {
     const std::vector<std::string> L = asmLot();
     if (std::find(L.begin(), L.end(), id) == L.end()) {
@@ -862,12 +995,29 @@ void Cadre::asmMenuOccurrence(const as::Chemin& chemin, const std::string& id, b
   if (direct) {
     m.Append(DEPLACER, L"✥ Déplacer");
     m.Append(OCCURRENCE, L"➕ Nouvelle occurrence");
+    m.Append(REPETER, L"🔁 Répétition");
     m.Append(FIXER, o->value("fixed", false) ? L"📌 Libérer" : L"📌 Fixer");
     m.Append(MASQUER, o->contains("visible") && (*o)["visible"].is_boolean() && !(*o)["visible"].get<bool>() ? L"👁 Afficher" : L"🙈 Masquer");
     m.Append(RENOMMER, L"🏷 Renommer le composant");
     m.Append(SUPPRIMER, dansLot ? wxString::Format(L"🗑 Supprimer le lot (%zu)", lot.size()) : wxString(L"🗑 Supprimer"));
   }
+  const std::string cidOcc = texteDe(*o, "comp");
+  if (cidOcc != as::racine(*doc_.assemblage)) {
+    if (c->contains("link") && (*c)["link"].is_object()) {
+      m.Append(LIEN_MAJ, L"🔄 Mettre à jour les liens");
+      m.Append(LIEN_RELIER, L"🔗 Relier la source…");
+      m.Append(LIEN_ROMPRE, L"✂ Rompre le lien");
+    } else if (texteDe(*c, "of").empty()) {
+      m.Append(LIEN_EXTRAIRE, L"📤 Extraire vers un fichier…");
+      m.Append(LIEN_REMPLACER, L"🔗 Remplacer par un lien…");
+    }
+  }
   const int choix = choisirMenu(m);
+  if (choix == LIEN_MAJ) return asmLiensVerifier(true);
+  if (choix == LIEN_RELIER) return asmLienRelier(cidOcc);
+  if (choix == LIEN_ROMPRE) return asmLienRompre(cidOcc);
+  if (choix == LIEN_EXTRAIRE) return asmLienExtraire(cidOcc);
+  if (choix == LIEN_REMPLACER) return asmLienRemplacer(cidOcc);
   const bool fixe = o->value("fixed", false);
   const bool cache = o->contains("visible") && (*o)["visible"].is_boolean() && !(*o)["visible"].get<bool>();
   const wxString nomAncien = tx(texteDe(*c, "name"));
@@ -893,6 +1043,13 @@ void Cadre::asmMenuOccurrence(const as::Chemin& chemin, const std::string& id, b
     asmSel_ = id;
     asmLot_.clear();
     asmNouvelleOccurrence();
+  } else if (choix == REPETER) {
+    if (asmMode_ != "asm") asmAller(AP, "asm", id);
+    else if (std::find(lot.begin(), lot.end(), id) == lot.end()) {
+      asmSel_ = id;
+      asmLot_.clear();
+    }
+    asmRepetition();
   } else if (choix == FIXER) changerAssemblage([&](J& a) {
     if (J* q = as::occurrence(a, id)) (*q)["fixed"] = !fixe;
   });
@@ -922,6 +1079,7 @@ void Cadre::poserBoutonsPanneau(const std::vector<std::pair<wxString, std::funct
   carteDroite_->contenu()->Show(rangAsm_, !L.empty());
   hauteurBoutonsAsm_ = static_cast<int>(L.size()) * 30;
   carteDroite_->Layout();
+  carteDroite_->Refresh();
 }
 
 void Cadre::montrerAssemblage() {
@@ -988,7 +1146,7 @@ void Cadre::montrerAssemblage() {
         ChampFiche c;
         c.categorie = cat;
         c.cle = "lim/" + id + "/" + k + "/" + std::to_string(i);
-        c.titre = std::string(i ? "   limite haute" : "   limite basse") + " (vide = libre)";
+        c.titre = i ? "   limite haute" : "   limite basse";
         c.sorte = ChampFiche::LECTURE;
         c.texte = aLim ? nombreCourt(al["lim"][k][i].get<double>()) : "";
         c.libre = true;
@@ -1001,7 +1159,10 @@ void Cadre::montrerAssemblage() {
   const std::string actif = as::actif(a);
   const J* c = as::composant(a, actif);
   const J* o = lot.size() == 1 ? as::occurrence(a, lot[0]) : nullptr;
-  if (asmAlign_) {
+  if (asmInspect_) asmPanneauInspection(ch, B);
+  else if (asmPatEd_) asmPanneauRepetition(ch, B);
+  if (asmInspect_ || asmPatEd_) {
+  } else if (asmAlign_) {
     asmPanneauAligner(ch, B);
   } else if (lot.empty()) {
     const std::string cat = "🧩 " + (c ? texteDe(*c, "name") : std::string());
@@ -1040,7 +1201,20 @@ void Cadre::montrerAssemblage() {
     const as::Repere fr = as::repereDe(o->value("fr", J::object()));
     const bool al = o->contains("align") && (*o)["align"].is_object();
     const std::string plc = "Placement";
-    if (al) {
+    const bool instance = o->contains("pat") && (*o)["pat"].is_object();
+    if (instance) {
+      const std::string pid = texteDe((*o)["pat"], "id");
+      std::string nomP = "?", sorteP;
+      const std::string oid = c ? texteDe(*c, "id") : std::string();
+      if (c && c->contains("pats"))
+        for (const J& q : (*c)["pats"])
+          if (texteDe(q, "id") == pid) {
+            nomP = texteDe(q, "name");
+            sorteP = as::nomRepetition(q);
+          }
+      lecture(plc, "🔁 Instance de", nomP + " (" + sorteP + ") : position imposée, elle suit sa source");
+      B.push_back({L"🔁 Modifier la répétition", [this, oid, pid] { asmPatDebut(oid, pid, std::make_shared<J>(*doc_.assemblage)); }});
+    } else if (al) {
       const J& A = (*o)["align"];
       const bool rel = A.contains("rel") && A["rel"].is_object();
       lecture(plc, "Liée à", rel ? "telle que construite" : nomRel(texteDe(*o, "comp"), A.value("src", J()), true) + " → " + nomRel(actif, A.value("dst", J()), true));
@@ -1080,7 +1254,7 @@ void Cadre::montrerAssemblage() {
                                                 (*q)["fr"] = as::jsonDe(rotationAutour(F, F.o, d, s * 3.14159265358979323846 / 180));
                                               }); }});
     }
-    if (!o->value("fixed", false)) {
+    if (!o->value("fixed", false) && !instance) {
       B.push_back({L"🔗 Aligner un repère…", [this, id] { asmAlignDebut(id); }});
       if (!al) B.push_back({L"⚙ Liaison telle que construite…", [this, id] { asmMenuTelleQueConstruite(id); }});
     }
@@ -1104,9 +1278,21 @@ void Cadre::montrerAssemblage() {
     B.push_back({L"✏️ Modéliser", [this, Pi] { asmAller(Pi, "part"); }});
     if (cc && cc->contains("occ") && !(*cc)["occ"].empty()) B.push_back({L"🧩 Placer ses composants", [this, Pi] { asmAller(Pi, "asm"); }});
     B.push_back({L"➕ Occurrence", [this] { asmNouvelleOccurrence(); }});
+    if (!instance) B.push_back({L"🔁 Répétition", [this] { asmRepetition(); }});
     const bool fx = o->value("fixed", false);
     B.push_back({fx ? L"📌 Libérer" : L"📌 Fixer", [this, id, fx] { changerAssemblage([&](J& a2) { (*as::occurrence(a2, id))["fixed"] = !fx; }); }});
     B.push_back({L"🗑 Supprimer", [this, id] { asmSupprimer({id}); }});
+    if (cc && texteDe(*cc, "id") != as::racine(a)) {
+      const std::string cidc = texteDe(*cc, "id");
+      if (cc->contains("link") && (*cc)["link"].is_object()) {
+        B.push_back({L"🔄 Mettre à jour les liens", [this] { asmLiensVerifier(true); }});
+        B.push_back({L"🔗 Relier la source…", [this, cidc] { asmLienRelier(cidc); }});
+        B.push_back({L"✂ Rompre le lien", [this, cidc] { asmLienRompre(cidc); }});
+      } else if (texteDe(*cc, "of").empty()) {
+        B.push_back({L"📤 Extraire vers un fichier…", [this, cidc] { asmLienExtraire(cidc); }});
+        B.push_back({L"🔗 Remplacer par un lien…", [this, cidc] { asmLienRemplacer(cidc); }});
+      }
+    }
   }
   poserChamps(ch, false);
   ficheId_ = "@asm";
@@ -1116,6 +1302,24 @@ void Cadre::montrerAssemblage() {
 // Un réglage du panneau
 void Cadre::asmFiche(const std::string& cle, const std::string& valeur) {
   if (!doc_.assemblage) return;
+  if (cle.rfind("mat/", 0) == 0) {
+    // La matière d'un composant : asmInspectProps
+    const std::string cid = cle.substr(4);
+    J m;
+    for (const auto& [nom, rho] : MATIERES)
+      if (nom == valeur) m = J{{"name", nom}, {"rho", rho}};
+    if (m.is_null()) return;
+    const J* c0 = as::composant(*doc_.assemblage, cid);
+    const J resolu = *doc_.assemblage;
+    const std::string act = as::actif(resolu);
+    changerStructure([&](J& d) {
+      d["asm"] = resolu;
+      if (cid == act) d["mat"] = m;
+      else (*as::composant(d["asm"], cid))["doc"]["mat"] = m;
+    }, L"Matière de « " + (c0 ? tx(texteDe(*c0, "name")) : wxString()) + L" »");
+    return asmInspecter();
+  }
+  if (asmPatFiche(cle, valeur)) return;
   if (asmAlign_ && asmAlignFiche(cle, valeur)) return;
   const auto nombreDe = [&](double& v) {
     std::string s = valeur;
@@ -1288,7 +1492,7 @@ void Cadre::asmGizmo() {
   if (doc_.assemblage && asmMode_ == "asm" && !asmAlign_ && asmLot().size() == 1) {
     const J* o = as::occurrence(*doc_.assemblage, asmSel_);
     const J& a = *doc_.assemblage;
-    if (o) {
+    if (o && !(o->contains("pat") && (*o)["pat"].is_object())) {
       const bool al = o->contains("align") && (*o)["align"].is_object();
       if (!al && !o->value("fixed", false)) {
         const as::Repere F = as::repereDe(o->value("fr", J::object()));
@@ -1712,6 +1916,9 @@ bool Cadre::asmEtapeEssai(const nlohmann::json& e, nlohmann::json& n) {
     else if (q == "echap") n["echap"] = asmEchap();
     else if (q == "composant") asmNouveauComposant();
     else if (q == "occurrence") asmNouvelleOccurrence();
+    else if (q == "repetition") asmRepetition();
+    else if (q == "inspecter") asmInspecter();
+    else if (q == "depuisCorps") asmDepuisCorps({});
     else if (q == "valider") asmAlignValider();
     fait = true;
   }
@@ -1758,6 +1965,31 @@ bool Cadre::asmEtapeEssai(const nlohmann::json& e, nlohmann::json& n) {
     asmGeste(0, "", 0, "", 0, false);
     asmGeste(1, e["geste"][0].get<std::string>(), e["geste"][1].get<int>(), e.value("degre", std::string()), e["geste"][2].get<double>(), e.value("libre", false));
     asmGeste(2, "", 0, "", 0, false);
+    fait = true;
+  }
+  if (e.contains("versComposant")) {
+    // {"versComposant":"sk_1", "corps":false, "choix":"…"}
+    essaiChoix_ = e.value("choix", std::string());
+    asmDeplacerVers(e.value("corps", false), e["versComposant"].get<std::string>());
+    n["entrees"] = essaiEntrees_;
+    fait = true;
+  }
+  if (e.contains("liens") || e.contains("lierAsm") || e.contains("lienRompre") || e.contains("lienExtraire") || e.contains("lienRemplacer") || e.contains("lienRelier")) {
+    essaiChoix_ = e.value("choix", std::string());
+    const auto cidDe = [&](const std::string& nom) {
+      const J* o = as::occurrence(*doc_.assemblage, idDe(nom));
+      return o ? texteDe(*o, "comp") : std::string();
+    };
+    if (e.contains("lierAsm")) n["ok"] = asmLienInserer(wxString::FromUTF8(e["lierAsm"].get<std::string>()).ToStdWstring());
+    if (e.contains("lienRompre")) asmLienRompre(cidDe(e["lienRompre"].get<std::string>()));
+    if (e.contains("lienExtraire")) asmLienExtraire(cidDe(e["lienExtraire"][0].get<std::string>()), wxString::FromUTF8(e["lienExtraire"][1].get<std::string>()).ToStdWstring());
+    if (e.contains("lienRemplacer")) asmLienRemplacer(cidDe(e["lienRemplacer"][0].get<std::string>()), wxString::FromUTF8(e["lienRemplacer"][1].get<std::string>()).ToStdWstring());
+    if (e.contains("lienRelier")) asmLienRelier(cidDe(e["lienRelier"][0].get<std::string>()), wxString::FromUTF8(e["lienRelier"][1].get<std::string>()).ToStdWstring());
+    if (e.contains("liens")) {
+      const std::string q = e["liens"].get<std::string>();
+      if (q == "verifier") asmLiensVerifier(true);
+      else if (q == "ecrire") asmLiensEcrire();
+    }
     fait = true;
   }
   if (e.contains("alignPoint")) {
@@ -1816,4 +2048,626 @@ void Cadre::asmMesureEssai(nlohmann::json& n) {
     L.push_back(std::move(l));
   }
   n["instances"] = std::move(L);
+  asmLiensMesure(n);
+  if (asmInspect_) {
+    nlohmann::json I = {{"volume", asmInspect_->volume}, {"masse", asmInspect_->masse}, {"com", asmInspect_->com}};
+    I["items"] = nlohmann::json::array();
+    for (const Inspection::Item& x : asmInspect_->items) I["items"].push_back({{"label", x.nom}, {"mat", x.matiere}, {"rho", x.rho}, {"v", x.v}, {"mass", x.masse}, {"c", x.c}});
+    I["inter"] = nlohmann::json::array();
+    for (const Inspection::Inter& x : asmInspect_->inter) I["inter"].push_back({{"a", x.a}, {"b", x.b}, {"v", x.v}});
+    n["inspection"] = std::move(I);
+  }
+}
+
+// ---- Les répétitions de composants (asmPatStart, asmPatProps…) ----
+nlohmann::ordered_json* Cadre::asmPatCourant() {
+  if (!asmPatEd_ || !doc_.assemblage) return nullptr;
+  J* o = as::composant(*doc_.assemblage, asmPatEd_->owner);
+  if (!o || !o->contains("pats") || !(*o)["pats"].is_array()) return nullptr;
+  for (J& p : (*o)["pats"])
+    if (texteDe(p, "id") == asmPatEd_->pat) return &p;
+  return nullptr;
+}
+
+void Cadre::asmRepetition() {
+  if (!docOuvert_) return etat(L"Ouvrez d'abord une pièce (Ctrl+O).");
+  if (esquisseOuverte_ >= 0) return etat(L"Fermez d'abord l'esquisse.");
+  if (asmMode_ != "asm") asmBasculer();
+  if (asmPatEd_ || !doc_.assemblage) return;
+  if (const J* o = asmSel_.empty() ? nullptr : as::occurrence(*doc_.assemblage, asmSel_); o && o->contains("pat") && (*o)["pat"].is_object()) {
+    const J* ow = as::porteur(*doc_.assemblage, asmSel_) ;
+    if (ow) asmPatDebut(texteDe(*ow, "id"), texteDe((*o)["pat"], "id"), std::make_shared<J>(*doc_.assemblage));
+    return;
+  }
+  std::vector<std::string> ids;
+  const J& a = *doc_.assemblage;
+  for (const std::string& id : asmLot()) {
+    const J* o = as::occurrence(a, id);
+    if (o && !(o->contains("pat") && (*o)["pat"].is_object())) ids.push_back(id);
+  }
+  if (ids.empty()) return etat(L"Répétition : cliquez d'abord l'occurrence à répéter (Ctrl+clic pour un lot), puis « Répétition ».");
+  // Le pas proposé : la taille de la première source le long de X, sinon 50 mm
+  double pas = 50;
+  if (const J* s = as::occurrence(a, ids[0])) {
+    const auto it = asmSolides_.find(texteDe(*s, "comp"));
+    if (it != asmSolides_.end() && !it->second->forme.IsNull()) {
+      const Mesures m = mesurer(it->second->forme);
+      pas = std::max(5.0, std::ceil(1.2 * (m.boite[3] - m.boite[0])));
+    }
+  }
+  auto avant = std::make_shared<J>(a);
+  auto copie = std::make_shared<J>(a);
+  const std::string owner = as::actif(a);
+  const J p = as::nouvelleRepetition(*as::composant(*copie, owner), ids, pas);
+  doc_.assemblage = copie;
+  asmPatDebut(owner, texteDe(p, "id"), avant);
+  etat(wxString::Format(L"Répétition de %zu occurrence(s) : type, direction, quantité et pas dans le panneau (aperçu en direct) · ✓ OK pour garder · Échap pour annuler.", ids.size()));
+}
+
+void Cadre::asmPatDebut(const std::string& owner, const std::string& pat, std::shared_ptr<J> avant) {
+  asmPatEd_ = std::make_unique<PatEnCours>();
+  asmPatEd_->owner = owner;
+  asmPatEd_->pat = pat;
+  asmPatEd_->avant = std::move(avant);
+  asmPatRafraichir();
+}
+
+void Cadre::asmPatRafraichir() {
+  if (!doc_.assemblage) return;
+  auto copie = std::make_shared<J>(*doc_.assemblage);
+  as::resoudre(*copie, asmSolides_);
+  doc_.assemblage = copie;
+  asmDessiner();
+  remplirArbre();
+  montrerAssemblage();
+}
+
+void Cadre::asmPatValider() {
+  if (!asmPatEd_) return;
+  auto avant = asmPatEd_->avant;
+  asmPatEd_.reset();
+  const J fin = *doc_.assemblage;
+  doc_.assemblage = avant;
+  changerAssemblage([&](J& a) { a = fin; });
+}
+
+void Cadre::asmPatAnnuler(bool dessiner) {
+  if (!asmPatEd_) return;
+  doc_.assemblage = asmPatEd_->avant;
+  asmPatEd_.reset();
+  if (dessiner) {
+    asmDessiner();
+    remplirArbre();
+    montrerRien();
+    etat(L"Répétition annulée.");
+  }
+}
+
+void Cadre::asmPatSupprimer(const std::string& owner, const std::string& pat) {
+  J* c = doc_.assemblage ? as::composant(*doc_.assemblage, owner) : nullptr;
+  if (!c) return;
+  wxString nom;
+  int n = 0;
+  if (c->contains("pats"))
+    for (const J& p : (*c)["pats"])
+      if (texteDe(p, "id") == pat) nom = tx(texteDe(p, "name"));
+  for (const J& o : (*c)["occ"]) n += o.contains("pat") && (*o.find("pat")).is_object() && texteDe(o["pat"], "id") == pat ? 1 : 0;
+  if (!confirmerSuppression(L"Supprimer « " + nom + wxString::Format(L" » ? Ses %d instance(s) partent, les sources restent (Ctrl+Z pour annuler).", n))) return;
+  if (asmPatEd_ && asmPatEd_->pat == pat) asmPatAnnuler(false);
+  changerAssemblage([&](J& a) {
+    J* k = as::composant(a, owner);
+    if (!k || !k->contains("pats")) return;
+    J reste = J::array();
+    for (J& p : (*k)["pats"])
+      if (texteDe(p, "id") != pat) reste.push_back(std::move(p));
+    if (reste.empty()) k->erase("pats");
+    else (*k)["pats"] = std::move(reste);
+  });
+}
+
+void Cadre::asmPanneauRepetition(std::vector<ChampFiche>& ch, std::vector<std::pair<wxString, std::function<void()>>>& B) {
+  J* pp = asmPatCourant();
+  if (!pp) {
+    asmPatEd_.reset();
+    return;
+  }
+  const J& p = *pp;
+  const J* owner = as::composant(*doc_.assemblage, asmPatEd_->owner);
+  const std::string cat = "🔁 " + texteDe(p, "name") + " · " + as::nomRepetition(p);
+  const auto lecture = [&](const std::string& t, const std::string& v) {
+    ChampFiche c;
+    c.categorie = cat;
+    c.cle = "l/" + t;
+    c.titre = t;
+    c.texte = v;
+    ch.push_back(std::move(c));
+  };
+  const auto liste = [&](const std::string& cle, const std::string& titre, const std::string& v, const std::vector<std::pair<std::string, std::string>>& L) {
+    ChampFiche c;
+    c.sorte = ChampFiche::CHOIX;
+    c.categorie = cat;
+    c.cle = cle;
+    c.titre = titre;
+    c.texte = v;
+    c.choix = L;
+    ch.push_back(std::move(c));
+  };
+  const auto nombre = [&](const std::string& cle, const std::string& titre, double v) {
+    ChampFiche c;
+    c.sorte = ChampFiche::NOMBRE;
+    c.categorie = cat;
+    c.cle = cle;
+    c.titre = titre;
+    c.nombre = v;
+    ch.push_back(std::move(c));
+  };
+  const auto oui = [&](const std::string& cle, const std::string& titre, bool v) {
+    ChampFiche c;
+    c.sorte = ChampFiche::BOOLEEN;
+    c.categorie = cat;
+    c.cle = cle;
+    c.titre = titre;
+    c.oui = v;
+    ch.push_back(std::move(c));
+  };
+  std::string sources;
+  for (const J& id : p["src"])
+    if (const J* o = as::occurrence(*doc_.assemblage, id.get<std::string>())) sources += (sources.empty() ? "" : ", ") + texteDe(*o, "name");
+  int n = 0;
+  for (const J& o : (*owner)["occ"]) n += o.contains("pat") && o["pat"].is_object() && texteDe(o["pat"], "id") == asmPatEd_->pat ? 1 : 0;
+  const std::string type = texteDe(p, "type");
+  lecture("Sources", sources + " · " + std::to_string(n) + " instance(s)" + (type == "mir" ? " (en miroir)" : ""));
+  if (texteDe(p, "st") == "warn") lecture("⚠", texteDe(p, "msg"));
+  ChampFiche nomC;
+  nomC.categorie = cat;
+  nomC.cle = "pat/name";
+  nomC.titre = "Nom";
+  nomC.texte = texteDe(p, "name");
+  nomC.libre = true;
+  ch.push_back(std::move(nomC));
+  std::vector<std::pair<std::string, std::string>> types{{"lin", "Linéaire"}, {"circ", "Circulaire"}, {"mir", "Symétrie"}};
+  if (type == "path") types.push_back({"path", "Suivant un profil"});
+  liste("pat/type", "Type", type, types);
+  const std::vector<std::pair<std::string, std::string>> AX{{"X", "X"}, {"Y", "Y"}, {"Z", "Z"}}, PL{{"X", "YZ (normale X)"}, {"Y", "XZ (normale Y)"}, {"Z", "XY (normale Z)"}};
+  const double copies = p.value("copies", 1.0);
+  if (type != "path") {
+    std::vector<std::pair<std::string, std::string>> fr{{"", "Origine de « " + texteDe(*owner, "name") + " »"}};
+    const auto it = asmSolides_.find(asmPatEd_->owner);
+    if (it != asmSolides_.end())
+      for (const ElementConstruction& e : it->second->construction)
+        if (e.kind == "frame") fr.push_back({e.id, e.nom});
+    liste("pat/ref", "Référence", p.contains("ref") && p["ref"].is_object() ? texteDe(p["ref"], "cg") : std::string(), fr);
+  }
+  if (type == "lin") {
+    liste("pat/axis", "Direction", texteDe(p, "axis"), AX);
+    nombre("pat/n", "Quantité totale", copies + 1);
+    nombre("pat/dist", "Pas (mm, négatif = sens inverse)", p.value("dist", 0.0));
+    oui("pat/lin2", "2ᵉ direction", p.value("lin2", false));
+    if (p.value("lin2", false)) {
+      liste("pat/axis2", "Direction 2", texteDe(p, "axis2"), AX);
+      nombre("pat/n2", "Quantité 2", p.value("copies2", 1.0) + 1);
+      nombre("pat/dist2", "Pas 2 (mm)", p.value("dist2", 0.0));
+    }
+  } else if (type == "circ") {
+    liste("pat/axis", "Axe", texteDe(p, "axis"), AX);
+    nombre("pat/n", "Quantité totale", copies + 1);
+    nombre("pat/angle", "Angle total (°, 360 = tour complet)", p.value("angle", 360.0));
+  } else if (type == "mir") {
+    liste("pat/axis", "Plan", texteDe(p, "axis"), PL);
+    const bool dbl = p.contains("plane2") && p["plane2"].is_string();
+    oui("pat/double", "Symétrie double", dbl);
+    if (dbl) liste("pat/plane2", "Plan 2", texteDe(p, "plane2"), PL);
+  }
+  if (p.contains("skip") && p["skip"].is_array() && !p["skip"].empty()) {
+    const size_t k = p["skip"].size();
+    B.push_back({wxString::Format(L"↺ Rétablir %zu instance(s) supprimée(s)", k), [this] {
+                   if (J* q = asmPatCourant()) (*q)["skip"] = J::array();
+                   asmPatRafraichir();
+                 }});
+  }
+  B.push_back({L"✓ OK", [this] { asmPatValider(); }});
+  B.push_back({L"Annuler", [this] { asmPatAnnuler(true); }});
+  const std::string ow = asmPatEd_->owner, id = asmPatEd_->pat;
+  B.push_back({L"🗑 Supprimer", [this, ow, id] { asmPatSupprimer(ow, id); }});
+}
+
+bool Cadre::asmPatFiche(const std::string& cle, const std::string& valeur) {
+  if (cle.rfind("pat/", 0) != 0) return false;
+  J* q = asmPatCourant();
+  if (!q) return true;
+  double v = 0;
+  std::string s = valeur;
+  for (char& c : s)
+    if (c == ',') c = '.';
+  char* fin = nullptr;
+  v = strtod(s.c_str(), &fin);
+  const bool lu = fin != s.c_str();
+  const auto compte = [](double x) { return std::max(1.0, std::min(500.0, std::floor(x) - 1)); };
+  const std::string k = cle.substr(4);
+  if (k == "name") {
+    if (!valeur.empty()) (*q)["name"] = valeur;
+  } else if (k == "type") {
+    if (texteDe(*q, "type") != valeur) {
+      (*q)["type"] = valeur;
+      if (valeur == "circ") {
+        (*q)["axis"] = "Z";
+        if (q->value("copies", 1.0) < 2) (*q)["copies"] = 5;
+      } else if (valeur == "mir") (*q)["copies"] = 1;
+      else if (valeur == "lin" && q->value("copies", 1.0) < 2) (*q)["copies"] = 2;
+    }
+  } else if (k == "ref") {
+    J r = J::object();
+    r["cg"] = valeur.empty() ? J() : J(valeur);
+    (*q)["ref"] = std::move(r);
+  } else if (k == "axis" || k == "axis2" || k == "plane2") (*q)[k] = valeur;
+  else if (k == "n" && lu) (*q)["copies"] = compte(v);
+  else if (k == "n2" && lu) (*q)["copies2"] = compte(v);
+  else if (k == "dist" && lu) (*q)["dist"] = v;
+  else if (k == "dist2" && lu) (*q)["dist2"] = v;
+  else if (k == "angle" && lu) (*q)["angle"] = v != 0 ? v : 360;
+  else if (k == "lin2") {
+    if (valeur == "1") {
+      (*q)["lin2"] = true;
+      if (!q->contains("axis2")) (*q)["axis2"] = texteDe(*q, "axis") == "X" ? "Y" : "X";
+      if (!q->contains("copies2")) (*q)["copies2"] = 1;
+      if (!q->contains("dist2")) (*q)["dist2"] = (*q)["dist"];
+    } else q->erase("lin2");
+  } else if (k == "double") {
+    if (valeur == "1") (*q)["plane2"] = texteDe(*q, "axis") == "X" ? "Y" : "X";
+    else q->erase("plane2");
+  }
+  asmPatRafraichir();
+  return true;
+}
+
+// ---- Depuis un corps, vers un composant (asmCmdFromBodies, asmCmdMoveTo) ----
+void Cadre::asmDepuisCorps(std::vector<std::string> ids) {
+  if (!docOuvert_) return etat(L"Ouvrez d'abord une pièce (Ctrl+O).");
+  if (esquisseOuverte_ >= 0) return etat(L"Fermez d'abord l'esquisse.");
+  if (asmMode_ == "asm") return etat(L"Composants depuis les corps : modélisez d'abord le composant qui porte les corps.");
+  if (ids.empty()) {
+    for (const std::string& b : doc_.corps) {
+      bool utile = false;
+      for (const Fonction& f : doc_.fonctions) utile = utile || f.corps == b;
+      if (utile) ids.push_back(b);
+    }
+    if (ids.empty()) return etat(L"Aucun corps avec des fonctions à transformer en composant.");
+    if (!confirmerSuppression(wxString::Format(L"Créer un composant pour chacun des %zu corps ?", ids.size()))) return;
+  }
+  faireSuivre();
+  size_t faits = 0;
+  wxString noms, refus;
+  changerStructure([&](J& d) {
+    if (doc_.assemblage) d["asm"] = *doc_.assemblage;
+    else as::assurer(d);
+    J& a = d["asm"];
+    const auto nomCorps = [&](const std::string& b) {
+      if (d.contains("bodies"))
+        for (const J& e : d["bodies"])
+          if (texteDe(e, "id") == b) return texteDe(e, "name");
+      return b;
+    };
+    for (const std::string& b : ids) {
+      const as::PlanSeparation p = as::planSeparation(d, {b}, {});
+      const std::string nom = nomCorps(b);
+      if (!p.ok) {
+        refus += L"• " + tx(nom) + L" : ";
+        for (size_t i = 0; i < p.pourquoi.size() && i < 3; i++) refus += (i ? L" ; " : L"") + tx(p.pourquoi[i]);
+        refus += L"\n";
+        continue;
+      }
+      J c = J::object();
+      const std::string cid = as::nouvelIdentifiant("cp");
+      c["id"] = cid;
+      c["kind"] = "comp";
+      c["name"] = nom;
+      c["doc"] = as::documentVide(nom);
+      c["occ"] = J::array();
+      c["link"] = nullptr;
+      as::appliquerSeparation(d, c["doc"], p);
+      a["comps"].push_back(std::move(c));
+      (*as::composant(a, as::actif(a)))["occ"].push_back(as::nouvelleOccurrenceObjet(cid, nom + ":1", as::Repere()));
+      noms += (faits++ ? L", " : L"") + tx(nom);
+    }
+  });
+  if (!refus.empty() && !essaiMenu_) wxMessageBox(L"Non converti(s) :\n" + refus, L"Composants depuis les corps", wxOK | wxICON_WARNING, this);
+  if (faits) etat(wxString::Format(L"%zu composant(s) créé(s) depuis les corps (", faits) + noms + L"), à la même place. Double-clic pour les modéliser, « Assembler » pour les déplacer.");
+  else if (!refus.empty()) etat(L"Non converti : " + refus);
+}
+
+void Cadre::asmDeplacerVers(bool corps, const std::string& id) {
+  if (esquisseOuverte_ >= 0) return etat(L"Fermez d'abord l'esquisse.");
+  if (asmMode_ == "asm") return;
+  // asmMoveTargets : tous les composants sauf l'actif, nommés par leur chemin
+  struct Cible {
+    std::string id;
+    wxString nom;
+  };
+  std::vector<Cible> L;
+  if (doc_.assemblage) {
+    const J& a = *doc_.assemblage;
+    std::set<std::string> vus{as::actif(a)};
+    for (const as::Instance& inst : as::instances(a, as::racine(a))) {
+      if (!vus.insert(inst.comp).second) continue;
+      wxString nom;
+      const J* c = as::composant(a, as::racine(a));
+      for (const std::string& o : inst.chemin) {
+        const J* q = as::occurrence(a, o);
+        nom += (nom.empty() ? L"" : L" › ") + (q ? tx(texteDe(*q, "name")) : wxString());
+        c = q ? as::composant(a, texteDe(*q, "comp")) : nullptr;
+      }
+      if (inst.chemin.empty() && c) nom = L"« " + tx(texteDe(*c, "name")) + L" » (racine)";
+      L.push_back({inst.comp, nom});
+    }
+  }
+  wxMenu m;
+  for (size_t i = 0; i < L.size(); i++) m.Append(wxID_HIGHEST + 7400 + static_cast<int>(i), L"🧩 " + L[i].nom);
+  m.Append(wxID_HIGHEST + 7399, L"➕ Nouveau composant");
+  const int ch = choisirMenu(m);
+  if (ch == wxID_NONE || ch == 0) return;
+  if (ch == wxID_HIGHEST + 7399 && corps) return asmDepuisCorps({id});
+  std::string cible;
+  if (ch != wxID_HIGHEST + 7399) {
+    const int k = ch - wxID_HIGHEST - 7400;
+    if (k < 0 || k >= static_cast<int>(L.size())) return;
+    cible = L[k].id;
+    // asmRelToComp : la géométrie garde ses coordonnées
+    const J& a = *doc_.assemblage;
+    as::Repere W, T;
+    as::monde(a, as::cheminActif(a), W);
+    const as::Chemin tp = as::premierChemin(a, cible);
+    if (as::monde(a, tp, T)) {
+      const as::Repere R = as::composer(as::inverser(T), W);
+      const as::Repere I;
+      bool identite = true;
+      for (int q = 0; q < 3; q++)
+        if (std::abs(R.o[q]) > 1e-7 || std::abs(R.x[q] - I.x[q]) > 1e-7 || std::abs(R.y[q] - I.y[q]) > 1e-7 || std::abs(R.z[q] - I.z[q]) > 1e-7) identite = false;
+      const J* c = as::composant(a, cible);
+      if (!identite && !confirmerSuppression(L"« " + (c ? tx(texteDe(*c, "name")) : wxString()) + L" » n'est pas placé comme ce composant : la géométrie gardera ses coordonnées, donc se retrouvera décalée dans l'assemblage.\nContinuer ?")) return;
+    }
+  }
+  faireSuivre();
+  wxString refus, nomCible;
+  std::string nomEsq;
+  for (const Esquisse& e : doc_.esquisses)
+    if (e.id == id) nomEsq = e.nom;
+  changerStructure([&](J& d) {
+    if (doc_.assemblage) d["asm"] = *doc_.assemblage;
+    else as::assurer(d);
+    J& a = d["asm"];
+    const as::PlanSeparation p = corps ? as::planSeparation(d, {id}, {}) : as::planSeparation(d, {}, {id});
+    if (!p.ok) {
+      for (size_t i = 0; i < p.pourquoi.size() && i < 5; i++) refus += L"\n• " + tx(p.pourquoi[i]);
+      return;
+    }
+    J* T = cible.empty() ? nullptr : as::composant(a, cible);
+    if (!T) {
+      const std::string nom = nomEsq.empty() ? "Composant" : nomEsq;
+      J c = J::object();
+      const std::string cid = as::nouvelIdentifiant("cp");
+      c["id"] = cid;
+      c["kind"] = "comp";
+      c["name"] = nom;
+      c["doc"] = as::documentVide(nom);
+      c["occ"] = J::array();
+      c["link"] = nullptr;
+      a["comps"].push_back(std::move(c));
+      (*as::composant(a, as::actif(a)))["occ"].push_back(as::nouvelleOccurrenceObjet(cid, nom + ":1", as::Repere()));
+      T = as::composant(a, cid);
+    }
+    nomCible = tx(texteDe(*T, "name"));
+    as::appliquerSeparation(d, (*T)["doc"], p);
+  });
+  if (!refus.empty()) {
+    if (!essaiMenu_) wxMessageBox(L"Déplacement impossible :" + refus, L"Déplacer vers un composant", wxOK | wxICON_WARNING, this);
+    etat(L"Déplacement impossible :" + refus);
+  } else etat((corps ? L"Corps déplacé vers « " : L"Esquisse déplacée vers « ") + nomCible + L" ». Ctrl+Z pour annuler.");
+}
+
+// ---- L'inspection (48-composants-inspection) ----
+// Les corps d'un composant, sans ceux qu'il masque
+std::vector<Cadre::CorpsExact> Cadre::asmCorpsExacts(const std::string& cid) const {
+  std::vector<CorpsExact> r;
+  const auto it = asmSolides_.find(cid);
+  if (!doc_.assemblage || it == asmSolides_.end()) return r;
+  const bool estActif = cid == as::actif(*doc_.assemblage);
+  const J* c = as::composant(*doc_.assemblage, cid);
+  const J* d = c && c->contains("doc") && (*c)["doc"].is_object() ? &(*c)["doc"] : nullptr;
+  for (const auto& [id, forme] : it->second->corps) {
+    if (forme.IsNull()) continue;
+    std::string nom = id;
+    bool visible = true;
+    if (estActif) {
+      visible = std::find(doc_.corpsMasques.begin(), doc_.corpsMasques.end(), id) == doc_.corpsMasques.end();
+      const size_t i = std::find(doc_.corps.begin(), doc_.corps.end(), id) - doc_.corps.begin();
+      if (i < doc_.nomsCorps.size() && !doc_.nomsCorps[i].empty()) nom = doc_.nomsCorps[i];
+    } else if (d) {
+      if (d->contains("bodyVis") && (*d)["bodyVis"].is_object() && (*d)["bodyVis"].contains(id) && (*d)["bodyVis"][id].is_boolean()) visible = (*d)["bodyVis"][id].get<bool>();
+      if (d->contains("bodies") && (*d)["bodies"].is_array())
+        for (const J& b : (*d)["bodies"])
+          if (texteDe(b, "id") == id && !texteDe(b, "name").empty()) nom = texteDe(b, "name");
+    }
+    if (visible) r.push_back({id, nom, forme});
+  }
+  return r;
+}
+
+// asmVisibleInstances : sous le composant actif (lui compris), sans celles masquées à un niveau quelconque du chemin
+std::vector<as::Instance> Cadre::asmInstancesVisibles() const {
+  std::vector<as::Instance> r;
+  if (!doc_.assemblage) return r;
+  const J& a = *doc_.assemblage;
+  const std::string base = as::actif(a);
+  for (const as::Instance& I : as::instances(a, base)) {
+    bool masquee = false;
+    for (const std::string& id : I.chemin) {
+      const J* o = as::occurrence(a, id);
+      if (!o || (o->contains("visible") && (*o)["visible"].is_boolean() && !(*o)["visible"].get<bool>())) masquee = true;
+    }
+    if (!masquee) r.push_back(I);
+  }
+  return r;
+}
+
+namespace {
+TopoDS_Shape place(const TopoDS_Shape& s, const as::Repere& F) { return BRepBuilderAPI_Transform(s, trsfDe(F), true).Shape(); }
+}  // namespace
+
+// asmStepShapes
+std::vector<TopoDS_Shape> Cadre::asmFormesStep(std::string& nom, std::vector<std::string>& manquants) const {
+  std::vector<TopoDS_Shape> r;
+  if (!doc_.assemblage) return r;
+  const J& a = *doc_.assemblage;
+  const std::string base = as::actif(a);
+  if (const J* c = as::composant(a, base)) nom = texteDe(*c, "name");
+  std::set<std::string> vus;
+  for (const as::Instance& I : asmInstancesVisibles()) {
+    const std::vector<CorpsExact> L = asmCorpsExacts(I.comp);
+    if (L.empty() && !vus.count(I.comp)) {
+      const J* c = as::composant(a, I.comp);
+      bool aDesFonctions = false;
+      if (I.comp == base) aDesFonctions = !doc_.fonctions.empty();
+      else if (c && c->contains("doc") && (*c)["doc"].is_object() && (*c)["doc"].contains("features") && (*c)["doc"]["features"].is_array())
+        for (const J& f : (*c)["doc"]["features"])
+          if (f.is_object() && !(f.contains("visible") && f["visible"].is_boolean() && !f["visible"].get<bool>())) aDesFonctions = true;
+      if (aDesFonctions && c) manquants.push_back(texteDe(*c, "name"));
+    }
+    vus.insert(I.comp);
+    for (const CorpsExact& b : L) r.push_back(place(b.forme, I.F));
+  }
+  return r;
+}
+
+// asmCmdInspect, asmInspectRun
+void Cadre::asmInspecter() {
+  if (!docOuvert_) return etat(L"Ouvrez d'abord une pièce (Ctrl+O).");
+  if (esquisseOuverte_ >= 0) return etat(L"Fermez d'abord l'esquisse.");
+  if (!doc_.assemblage) {
+    const bool etaitModifie = doc_.modifie();
+    modifierStructure(doc_, [](J& d) { as::assurer(d); });
+    doc_.basculeSeule = !etaitModifie;
+    solideCalculable_ = doc_.nonPrisEnCharge.empty();
+    recalculer();
+  }
+  wxBusyCursor attente;
+  etat(L"Inspection : formes exactes, masses, interférences…");
+  const J& a = *doc_.assemblage;
+  const std::string base = as::actif(a);
+  auto R = std::make_unique<Inspection>();
+  struct Place {
+    TopoDS_Shape s;
+    Bnd_Box b;
+  };
+  std::vector<Place> P;
+  const auto nomChemin = [&](const as::Chemin& ch) {
+    std::string n;
+    for (const std::string& id : ch)
+      if (const J* o = as::occurrence(a, id)) n += (n.empty() ? "" : " › ") + texteDe(*o, "name");
+    return n;
+  };
+  for (const as::Instance& I : asmInstancesVisibles()) {
+    std::string mat = "Acier";
+    double rho = 7.85;
+    if (I.comp == base) {
+      if (doc_.densite > 0) {
+        mat = doc_.matiere;
+        rho = doc_.densite;
+      }
+    } else if (const J* c = as::composant(a, I.comp); c && c->contains("doc") && (*c)["doc"].is_object() && (*c)["doc"].contains("mat") && (*c)["doc"]["mat"].is_object()) {
+      const J& m = (*c)["doc"]["mat"];
+      if (m.contains("rho") && m["rho"].is_number() && m["rho"].get<double>() > 0) {
+        mat = texteDe(m, "name");
+        rho = m["rho"].get<double>();
+      }
+    }
+    for (const CorpsExact& b : asmCorpsExacts(I.comp)) {
+      Place q;
+      q.s = place(b.forme, I.F);
+      BRepBndLib::Add(q.s, q.b);
+      GProp_GProps G;
+      BRepGProp::VolumeProperties(q.s, G, false, false, false);
+      Inspection::Item x;
+      x.comp = I.comp;
+      const std::string ch = nomChemin(I.chemin);
+      x.nom = (ch.empty() ? "" : ch + " › ") + b.nom;
+      x.matiere = mat;
+      x.rho = rho;
+      x.v = G.Mass();
+      x.masse = x.v * rho / 1000;
+      const gp_Pnt c = G.CentreOfMass();
+      x.c = {c.X(), c.Y(), c.Z()};
+      R->items.push_back(std::move(x));
+      P.push_back(std::move(q));
+    }
+  }
+  for (const Inspection::Item& x : R->items) {
+    R->volume += x.v;
+    R->masse += x.masse;
+    for (int i = 0; i < 3; i++) R->com[i] += x.masse * x.c[i];
+  }
+  for (int i = 0; i < 3; i++) R->com[i] = R->masse > 0 ? R->com[i] / R->masse : 0;
+  for (size_t i = 0; i < P.size(); i++)
+    for (size_t j = i + 1; j < P.size(); j++) {
+      if (P[i].b.IsOut(P[j].b)) continue;
+      try {
+        BRepAlgoAPI_Common c(P[i].s, P[j].s);
+        if (!c.IsDone()) continue;
+        GProp_GProps G;
+        BRepGProp::VolumeProperties(c.Shape(), G, false, false, false);
+        if (G.Mass() > 1e-3) R->inter.push_back({R->items[i].nom, R->items[j].nom, G.Mass(), c.Shape()});
+      } catch (const Standard_Failure&) {
+      }
+    }
+  asmInspect_ = std::move(R);
+  std::vector<TopoDS_Shape> rouges;
+  for (const Inspection::Inter& x : asmInspect_->inter) rouges.push_back(x.forme);
+  vue_->montrerInspection(rouges, asmInspect_->masse > 0, gp_Pnt(asmInspect_->com[0], asmInspect_->com[1], asmInspect_->com[2]));
+  montrerRien();
+  ajusterDroite();
+  etat(L"Inspection : " + wxString::Format("%d", static_cast<int>(asmInspect_->items.size())) + L" corps, " + tx(fmt(asmInspect_->masse / 1000, 3)) + L" kg, " + (asmInspect_->inter.empty() ? wxString(L"aucune interférence") : wxString::Format(L"%d interférence(s) (en rouge)", static_cast<int>(asmInspect_->inter.size()))) + L".");
+}
+
+void Cadre::asmInspectFermer() {
+  if (!asmInspect_) return;
+  asmInspect_.reset();
+  vue_->montrerInspection({}, false, gp_Pnt());
+}
+
+void Cadre::asmPanneauInspection(std::vector<ChampFiche>& ch, std::vector<std::pair<wxString, std::function<void()>>>& B) {
+  const Inspection& R = *asmInspect_;
+  int k = 0;
+  const auto ligne = [&](const std::string& cat, const std::string& titre, const std::string& texte) {
+    ChampFiche c;
+    c.categorie = cat;
+    c.titre = titre;
+    c.texte = texte;
+    c.cle = "l/" + std::to_string(k++);
+    ch.push_back(std::move(c));
+  };
+  const std::string phys = "⚖ Propriétés physiques";
+  for (const Inspection::Item& x : R.items) ligne(phys, x.nom, fmt(x.v / 1000) + " cm³ · " + fmt(x.masse, 1) + " g");
+  ligne(phys, "Total", fmt(R.volume / 1000) + " cm³ · " + fmt(R.masse / 1000, 3) + " kg");
+  ligne(phys, "Centre de gravité", "(" + fmt(R.com[0]) + " ; " + fmt(R.com[1]) + " ; " + fmt(R.com[2]) + ") mm");
+  std::set<std::string> vus;
+  for (const Inspection::Item& x : R.items) {
+    if (!vus.insert(x.comp).second) continue;
+    const J* c = as::composant(*doc_.assemblage, x.comp);
+    ChampFiche f;
+    f.sorte = ChampFiche::CHOIX;
+    f.categorie = "Matière";
+    f.cle = "mat/" + x.comp;
+    f.titre = c ? texteDe(*c, "name") : x.comp;
+    f.texte = x.matiere;
+    for (const auto& [nom, rho] : MATIERES) f.choix.push_back({nom, nom + " (" + fmt(rho) + " g/cm³)"});
+    if (std::none_of(MATIERES.begin(), MATIERES.end(), [&](const auto& m) { return m.first == x.matiere; })) f.choix.push_back({x.matiere, x.matiere + " (" + fmt(x.rho) + " g/cm³)"});
+    ch.push_back(std::move(f));
+  }
+  const std::string it = "⚠ Interférences (" + std::to_string(R.inter.size()) + ")";
+  if (R.inter.empty()) ligne(it, "Aucune", "aucun volume commun entre deux corps");
+  for (const Inspection::Inter& x : R.inter) {
+    ligne(it, x.a, "∩ " + x.b);
+    ligne(it, "   volume commun", fmt(x.v) + " mm³");
+  }
+  B.push_back({L"↻ Relancer", [this] { asmInspecter(); }});
+  B.push_back({L"Fermer", [this] { asmInspectFermer(); montrerRien(); ajusterDroite(); }});
 }

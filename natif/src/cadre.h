@@ -300,6 +300,78 @@ public:
   void asmAlignClicFace(const assemblage::Chemin& chemin, const gp_Pnt& pointActif, bool plan, const assemblage::V3& normaleLocale);
   void asmAlignValider();
   void asmAlignAnnuler(bool dessiner);
+  struct PatEnCours {
+    std::string owner, pat;
+    std::shared_ptr<nlohmann::ordered_json> avant;
+  };
+  std::unique_ptr<PatEnCours> asmPatEd_;
+  nlohmann::ordered_json* asmPatCourant();
+  void asmRepetition();
+  void asmPatDebut(const std::string& owner, const std::string& pat, std::shared_ptr<nlohmann::ordered_json> avant);
+  void asmPatValider();
+  void asmPatAnnuler(bool dessiner);
+  void asmPatSupprimer(const std::string& owner, const std::string& pat);
+  void asmPatRafraichir();
+  bool asmPatFiche(const std::string& cle, const std::string& valeur);
+  void asmPanneauRepetition(std::vector<ChampFiche>& ch, std::vector<std::pair<wxString, std::function<void()>>>& B);
+  struct CorpsExact {
+    std::string id, nom;
+    TopoDS_Shape forme;
+  };
+  std::vector<CorpsExact> asmCorpsExacts(const std::string& cid) const;
+  std::vector<assemblage::Instance> asmInstancesVisibles() const;
+  std::vector<TopoDS_Shape> asmFormesStep(std::string& nom, std::vector<std::string>& manquants) const;
+  struct Inspection {
+    struct Item {
+      std::string comp, nom, matiere;
+      double rho = 0, v = 0, masse = 0;
+      assemblage::V3 c{};
+    };
+    struct Inter {
+      std::string a, b;
+      double v = 0;
+      TopoDS_Shape forme;
+    };
+    std::vector<Item> items;
+    std::vector<Inter> inter;
+    double volume = 0, masse = 0;
+    assemblage::V3 com{};
+  };
+  std::unique_ptr<Inspection> asmInspect_;
+  void asmInspecter();
+  void asmInspectFermer();
+  void asmPanneauInspection(std::vector<ChampFiche>& ch, std::vector<std::pair<wxString, std::function<void()>>>& B);
+  // Les composants liés à un fichier (cadre_liens.cpp)
+  struct EtatLien {
+    bool alerte = false;
+    std::string message;
+    long long date = 0, taille = -1;
+    std::string sigVue;
+  };
+  std::map<std::string, EtatLien> asmLiensEtat_;
+  std::map<std::string, std::string> asmLiensBase_;
+  bool asmLiensOccupe_ = false, asmLiensNeufs_ = false;
+  nlohmann::ordered_json asmDocComplet() const;
+  std::vector<std::string> asmLies() const;  // asmLinked
+  bool asmLienSale(const std::string& cid);  // asmLinkDirty
+  void asmLiensRefBase(const std::vector<std::string>& L);  // asmLinkRebase
+  std::wstring asmLienChemin(const nlohmann::ordered_json& link, std::string& pourquoi) const;
+  nlohmann::ordered_json asmLienRef(const std::wstring& chemin) const;
+  std::string asmLienTexte(const nlohmann::ordered_json& haut, const std::string& cid, const std::string& cur) const;
+  void asmAjouterSources(const nlohmann::ordered_json& racineFichier);
+  void asmLiensVerifier(bool demander);
+  void asmLienRelier(const std::string& cid, std::wstring chemin = L"");
+  void asmLienRompre(const std::string& cid);
+  bool asmLienInserer(const std::wstring& chemin);
+  void asmLienExtraire(const std::string& cid, std::wstring chemin = L"");
+  void asmLienRemplacer(const std::string& cid, std::wstring chemin = L"");
+  void asmLiensEcrire();
+  void asmLiensFenetreActive();
+  void asmLiensEssai(const nlohmann::json& e, nlohmann::json& n);
+  void asmLiensMesure(nlohmann::json& n);
+  double asmDroiteDeTout() const;
+  void asmDepuisCorps(std::vector<std::string> ids);
+  void asmDeplacerVers(bool corps, const std::string& id);
   bool asmEtapeEssai(const nlohmann::json& e, nlohmann::json& n);
   void asmMesureEssai(nlohmann::json& n);
   assemblage::Solides asmSolides_;

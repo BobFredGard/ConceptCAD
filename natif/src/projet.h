@@ -268,6 +268,8 @@ struct Document {
   std::string nom;
   std::vector<std::string> corps;
   std::vector<std::string> nomsCorps;  // même rang que corps
+  std::string matiere;                 // doc.mat : le calcul des masses
+  double densite = 0;
   std::vector<unsigned> couleursCorps;  // même rang que corps ; 0 = pas de couleur dans la fiche
   std::vector<double> opacitesCorps;  // même rang que corps ; bodyOpOf : 1 par défaut
   std::vector<std::string> corpsMasques;  // doc.bodyVis : l'œil du corps, la vue seule

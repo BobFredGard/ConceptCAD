@@ -9,7 +9,7 @@ set(OCCT "${TIERS}/occt-bin/opencascade-8.0.1-vc14-64")
 set(TROIS "${TIERS}/occt-bin/3rdparty-vc14-64")
 set(WX "${TIERS}/wx")
 
-add_executable(ConceptCADNatif WIN32 src/construction.cpp src/engrenage.cpp src/filets.cpp src/cadre_faces.cpp src/fiches.cpp src/echanges.cpp src/structure.cpp src/parametres.cpp src/fenetre_parametres.cpp src/intersection.cpp src/main.cpp src/cadre.cpp src/assemblage.cpp src/cadre_assemblage.cpp src/vue3d.cpp src/esquisse2d.cpp src/traces.cpp src/projet.cpp src/repetitions.cpp src/enregistrer.cpp src/contours.cpp src/rejeu.cpp src/noms.cpp src/faces.cpp src/percage.cpp src/conges.cpp src/solveur.cpp src/spline.cpp src/coter.cpp src/dessin.cpp src/infos_esquisse.cpp src/interface_esquisse.cpp src/environnement.cpp)
+add_executable(ConceptCADNatif WIN32 src/construction.cpp src/engrenage.cpp src/filets.cpp src/cadre_faces.cpp src/fiches.cpp src/echanges.cpp src/structure.cpp src/parametres.cpp src/fenetre_parametres.cpp src/intersection.cpp src/main.cpp src/cadre.cpp src/assemblage.cpp src/cadre_assemblage.cpp src/cadre_liens.cpp src/vue3d.cpp src/esquisse2d.cpp src/traces.cpp src/projet.cpp src/repetitions.cpp src/enregistrer.cpp src/contours.cpp src/rejeu.cpp src/noms.cpp src/faces.cpp src/percage.cpp src/conges.cpp src/solveur.cpp src/spline.cpp src/coter.cpp src/dessin.cpp src/infos_esquisse.cpp src/interface_esquisse.cpp src/environnement.cpp)
 target_compile_definitions(ConceptCADNatif PRIVATE UNICODE _UNICODE _CRT_SECURE_NO_WARNINGS NOMINMAX WXUSINGDLL __WXMSW__ wxNO_GL_LIB)
 target_compile_options(ConceptCADNatif PRIVATE /utf-8 /MP /EHa /W3)
 target_include_directories(ConceptCADNatif PRIVATE "${WX}/lib/vc14x_x64_dll/mswu" "${WX}/include" "${OCCT}/inc" "${TIERS}" "${TROIS}/zlib-1.2.8-vc14-64/include")

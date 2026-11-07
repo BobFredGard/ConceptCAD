@@ -7,6 +7,7 @@
 #include <functional>
 #include <map>
 #include <memory>
+#include <set>
 #include <string>
 #include <vector>
 
@@ -126,7 +127,28 @@ J nouvelleOccurrenceObjet(const std::string& cid, const std::string& nom, const 
 std::string nomOccurrence(const J& a, const std::string& cid);  // asmOccName
 void supprimerOccurrence(J& a, const std::string& id);          // asmDeleteOcc, sans le changement de composant actif
 J alignementTelQueConstruit(const J& occ, const std::string& type, const std::string& axe);  // asmAsBuilt
+J documentVide(const std::string& nom);  // asmEmptyDoc
+// ---- Répétitions de composants (48-assemblage-repetitions) ----
+const char* nomRepetition(const J& p);  // asmPatName
+J nouvelleRepetition(J& owner, const std::vector<std::string>& ids, double pas);  // asmPatNew, rendue pour être réglée
+// ---- Depuis un corps, déplacer vers un composant (48-composants-depuis-corps) ----
+struct PlanSeparation {
+  bool ok = true;
+  std::vector<std::string> pourquoi;
+  std::set<std::string> M, deplacer, copier;
+  std::vector<std::string> corps;
+};
+PlanSeparation planSeparation(const J& d, const std::vector<std::string>& corps, const std::vector<std::string>& esquisses);  // asmSplitPlan
+void appliquerSeparation(J& src, J& dst, const PlanSeparation& plan);                                                     // asmSplitApply
 void renommerComposant(J& a, const std::string& idOcc, const std::string& nom);              // asmRename
+// ---- Composants liés à un fichier (47-composants-lies) ----
+std::string empreinteTexte(const std::string& utf8);  // asmHash
+const J* proprietaireLien(const J& a, const std::string& cid);  // asmLinkOwner
+std::vector<std::string> membresLien(const J& a, const std::string& cid);  // asmLinkMembers
+J sousArbreLien(const J& haut, const std::string& cid);  // asmSubtreeObj ; haut : le document du premier niveau, avec son bloc asm
+void chargerLien(J& haut, const std::string& cid, const J& top, const std::string& sig);  // asmLinkLoad
+std::string refusExtraction(const J& a, const std::string& cid);  // asmExtractCheck, "" : rien ne s'y oppose
+std::set<std::string> sousComposants(const J& a, const std::string& cid);  // asmExclusiveSubtree.sub
 }  // namespace assemblage
 
 // La pièce d'un composant, à partir du document rangé dans l'arbre

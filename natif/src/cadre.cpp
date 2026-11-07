@@ -316,7 +316,7 @@ void Cadre::creerEnvironnement() {
     if (esquisseOuverte_ < 0) recalculer();
   };
   barreHaute_->surIndisponible = [this](const wxString& n) { indisponible(n); };
-  ruban_->estRepris = [](Atelier a, const wxString& n) { return a == Atelier::CAO && (n == L"Esquisse" || n == L"Extrusion" || n == L"Congé" || n == L"Chanfrein" || n == L"Paramètres" || n == L"Corps" || n == L"Perçage" || n == L"Filetage" || n == L"Clavette" || n == L"Plan" || n == L"Axe" || n == L"Point" || n == L"Repère" || n == L"Répétition" || n == L"Révolution" || n == L"Balayage" || n == L"Face" || n == L"Dépouille" || n == L"Coque" || n == L"Combiner" || n == L"Déplacer" || n == L"Échelle" || n == L"Scinder" || n == L"Importer" || n == L"STEP" || n == L"STL" || n == L"OBJ" || n == L"Assembler" || n == L"Modéliser" || n == L"Composant" || n == L"Occurrence" || n == L"Insérer"); };
+  ruban_->estRepris = [](Atelier a, const wxString& n) { return a == Atelier::CAO && (n == L"Esquisse" || n == L"Extrusion" || n == L"Congé" || n == L"Chanfrein" || n == L"Paramètres" || n == L"Corps" || n == L"Perçage" || n == L"Filetage" || n == L"Clavette" || n == L"Plan" || n == L"Axe" || n == L"Point" || n == L"Repère" || n == L"Répétition" || n == L"Révolution" || n == L"Balayage" || n == L"Face" || n == L"Dépouille" || n == L"Coque" || n == L"Combiner" || n == L"Déplacer" || n == L"Échelle" || n == L"Scinder" || n == L"Importer" || n == L"STEP" || n == L"STL" || n == L"OBJ" || n == L"Assembler" || n == L"Modéliser" || n == L"Composant" || n == L"Occurrence" || n == L"Insérer" || n == L"Inspecter" || n == L"Depuis corps"); };
   ruban_->surBouton = [this](Atelier a, const wxString& n) { boutonRuban(a, n); };
   ruban_->surIndisponible = [this](const wxString& n) { indisponible(n); };
 
@@ -373,6 +373,7 @@ void Cadre::creerEnvironnement() {
     ajouter(cube, wxColour(0xc8, 0xa8, 0x6a));  // 12 occurrence
     ajouter(cube, wxColour(0x0a, 0x84, 0xff));  // 13 composant actif
     ajouter("<svg viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\"><circle cx=\"12\" cy=\"12\" r=\"4\"/><path d=\"M12 3v4M12 17v4M3 12h4M17 12h4\"/></svg>", wxColour(0x98, 0x98, 0x9d));  // 14 liaison
+    ajouter("<svg viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\"><rect x=\"3\" y=\"3\" width=\"6\" height=\"6\" rx=\"1\"/><rect x=\"15\" y=\"3\" width=\"6\" height=\"6\" rx=\"1\"/><rect x=\"3\" y=\"15\" width=\"6\" height=\"6\" rx=\"1\"/><rect x=\"15\" y=\"15\" width=\"6\" height=\"6\" rx=\"1\"/></svg>", wxColour(0x98, 0x98, 0x9d));  // 15 répétition
     arbre_->AssignImageList(images);
   }
   arbre_->SetBackgroundColour(C_CARTE);
@@ -591,6 +592,9 @@ void Cadre::boutonRuban(Atelier a, const wxString& nom) {
   if (nom == L"Assembler") return asmBasculer();
   if (nom == L"Composant") return asmNouveauComposant();
   if (nom == L"Occurrence") return asmNouvelleOccurrence();
+  if (nom == L"Répétition" && (ruban_->enAssemblage())) return asmRepetition();
+  if (nom == L"Depuis corps") return asmDepuisCorps({});
+  if (nom == L"Inspecter") return asmInspecter();
   if (nom == L"Insérer") return asmInserer();
   if (nom == L"Paramètres") return basculerMiniParametres();
   if (nom == L"Congé") return entrerConge(false);
@@ -795,9 +799,18 @@ bool Cadre::importerFichier(const std::wstring& chemin) {
 }
 
 void Cadre::exporter(const std::string& format, const std::string& corps) {
-  if (forme_.IsNull()) return etat(L"Solide vide, rien à exporter.");
+  // Vue d'assemblage, ou composant sans solide propre mais qui en contient : tout ce qui est visible, placé
+  const bool toutAssemblage = format == "step" && corps.empty() && doc_.assemblage && (asmMode_ == "asm" || (forme_.IsNull() && assemblage::aDesEnfants(*doc_.assemblage)));
+  if (forme_.IsNull() && !toutAssemblage) return etat(L"Solide vide, rien à exporter.");
   std::vector<TopoDS_Shape> formes;
   wxString nomFichier = tx(doc_.nom);
+  std::vector<std::string> manquants;
+  if (toutAssemblage) {
+    std::string nomAsm;
+    wxBusyCursor attente;
+    formes = asmFormesStep(nomAsm, manquants);
+    nomFichier = tx(nomAsm);
+  } else
   for (const auto& [id, s] : formesCorps_)
     if (corps.empty() ? std::find(doc_.corpsMasques.begin(), doc_.corpsMasques.end(), id) == doc_.corpsMasques.end() : id == corps) {
       formes.push_back(s);
@@ -830,7 +843,13 @@ void Cadre::exporter(const std::string& format, const std::string& corps) {
   const wxString filtre = format == "step" ? L"STEP (*.step)|*.step" : format == "stl" ? L"STL (*.stl)|*.stl" : L"OBJ (*.obj)|*.obj";
   wxFileDialog choix(this, L"Exporter", wxFileName(doc_.chemin).GetPath(), nomFichier + L"." + wxString::FromUTF8(format), filtre, wxFD_SAVE | wxFD_OVERWRITE_PROMPT);
   if (choix.ShowModal() != wxID_OK) return;
-  ecrireExport(format, formes, choix.GetPath().ToStdWstring(), schema, sansCourbes);
+  const bool ecrit = ecrireExport(format, formes, choix.GetPath().ToStdWstring(), schema, sansCourbes);
+  if (ecrit && toutAssemblage) etat(wxString::Format(L"STEP exporté : %d solides.", static_cast<int>(formes.size())));
+  if (ecrit && !manquants.empty()) {
+    wxString noms;
+    for (const std::string& m : manquants) noms += (noms.empty() ? L"" : L", ") + tx(m);
+    wxMessageBox(L"Attention : pièce(s) sans solide exact, absentes du fichier STEP : " + noms + L".", L"Export STEP", wxOK | wxICON_WARNING, this);
+  }
 }
 
 bool Cadre::ecrireExport(const std::string& format, const std::vector<TopoDS_Shape>& formes, const std::wstring& chemin, const std::string& schema, bool sansCourbes) {
@@ -997,6 +1016,10 @@ void Cadre::creerMenus() {
   Bind(wxEVT_UPDATE_UI, [this](wxUpdateUIEvent& e) { e.Enable(docOuvert_ && doc_.modifie()); }, wxID_SAVE);
   Bind(wxEVT_UPDATE_UI, [this](wxUpdateUIEvent& e) { e.Enable(docOuvert_); }, wxID_SAVEAS);
   Bind(wxEVT_CLOSE_WINDOW, &Cadre::surFermer, this);
+  Bind(wxEVT_ACTIVATE, [this](wxActivateEvent& e) {
+    e.Skip();
+    if (e.GetActive()) CallAfter([this] { asmLiensFenetreActive(); });
+  });
   Bind(wxEVT_MENU, [this](wxCommandEvent&) { Close(); }, wxID_EXIT);
   Bind(wxEVT_MENU, [this](wxCommandEvent&) { annuler(); }, ID_ANNULER);
   Bind(wxEVT_MENU, [this](wxCommandEvent&) { retablir(); }, ID_RETABLIR);
@@ -1033,6 +1056,7 @@ bool Cadre::ecrire(const std::wstring& cible) {
   retenirRecent(cible);
   faireSuivre();
   try {
+    asmLiensEcrire();
     if (doc_.assemblage) {
       const nlohmann::ordered_json resolu = *doc_.assemblage;
       modifierStructure(doc_, [&](nlohmann::ordered_json& j) { j["asm"] = resolu; });
@@ -1170,6 +1194,10 @@ void Cadre::apresOuverture() {
   asmAlign_.reset();
   asmAnim_.Stop();
   vue_->poserMarques({});
+  asmInspectFermer();
+  asmLiensEtat_.clear();
+  asmLiensBase_.clear();
+  asmLiensNeufs_ = true;
   asmSolides_.clear();
   asmSel_.clear();
   asmLot_.clear();
@@ -1272,7 +1300,7 @@ void Cadre::remplirPiece(const wxTreeItemId& racine) {
 }
 
 void Cadre::montrerRien() {
-  if (asmMode_ == "asm" && doc_.assemblage && esquisseOuverte_ < 0) return montrerAssemblage();
+  if ((asmMode_ == "asm" || asmInspect_) && doc_.assemblage && esquisseOuverte_ < 0) return montrerAssemblage();
   if (!boutonsAsm_.empty()) poserBoutonsPanneau({});
   fonctionMontree_ = -1;
   props_->Clear();
@@ -2134,7 +2162,7 @@ bool Cadre::confirmerSuppression(const wxString& question) {
 }
 
 namespace {
-enum { M_RENOMMER = wxID_HIGHEST + 700, M_VOIR, M_EDITER, M_TEMPS, M_FIN, M_SUPPRIMER, M_ACTIF, M_COULEUR, M_TRANSPARENCE, M_RETIRER, M_FANTOME, M_ISOLER, M_TOUT, M_STEP, M_DEPLACER, M_ECHELLE, M_RESELECTION };
+enum { M_RENOMMER = wxID_HIGHEST + 700, M_VOIR, M_EDITER, M_TEMPS, M_FIN, M_SUPPRIMER, M_ACTIF, M_COULEUR, M_TRANSPARENCE, M_RETIRER, M_FANTOME, M_ISOLER, M_TOUT, M_STEP, M_DEPLACER, M_ECHELLE, M_RESELECTION, M_DEPUIS_CORPS, M_VERS_COMPOSANT_CORPS };
 }
 
 void Cadre::menuFonction(int i) {
@@ -2181,7 +2209,10 @@ void Cadre::menuEsquisseArbre(int i) {
   m.Append(M_EDITER, L"🔧 Éditer l'esquisse");
   m.Append(M_FIN, L"↗ Fin : rejouer tout")->Enable(!marqueTemps_.empty());
   m.Append(M_SUPPRIMER, L"🗑 Supprimer");
+  enum { M_VERS_COMPOSANT = wxID_HIGHEST + 7300 };
+  m.Append(M_VERS_COMPOSANT, L"➡ Déplacer vers un composant…");
   const int choix = choisirMenu(m);
+  if (choix == M_VERS_COMPOSANT) return asmDeplacerVers(false, id);
   if (choix == M_RENOMMER) {
     const wxString n = demanderNom(tx(nomActuel));
     if (n.empty()) return;
@@ -2402,6 +2433,10 @@ void Cadre::menuCorps(const std::string& id, bool vue3d) {
   m.Append(M_STEP, L"⬇ Exporter ce corps en STEP…");
   m.Append(M_RETIRER, L"⊘ Retirer (étape de la timeline)");
   if (!vue3d) m.Append(M_SUPPRIMER, L"🗑 Supprimer");
+  if (!vue3d) {
+    m.Append(M_DEPUIS_CORPS, L"🧩 Créer un composant depuis ce corps");
+    m.Append(M_VERS_COMPOSANT_CORPS, L"➡ Déplacer vers un composant…");
+  }
   const int choix = choisirMenu(m);
   if (choix == M_STEP) {
     exporter("step", id);
@@ -2425,6 +2460,10 @@ void Cadre::menuCorps(const std::string& id, bool vue3d) {
     changerStructure([&](nlohmann::ordered_json& d) { stRenommer(d, "bodies", id, nom); });
   } else if (choix == M_VOIR) {
     changerStructure([&](nlohmann::ordered_json& d) { stBasculerVueCorps(d, id); });
+  } else if (choix == M_DEPUIS_CORPS) {
+    asmDepuisCorps({id});
+  } else if (choix == M_VERS_COMPOSANT_CORPS) {
+    asmDeplacerVers(true, id);
   } else if (choix == M_ACTIF) {
     changerStructure([&](nlohmann::ordered_json& d) { stCorpsActif(d, id); });
   } else if (choix == M_COULEUR) {
@@ -2790,6 +2829,7 @@ bool Cadre::essaiEsquisse(const std::wstring& fichier, int rang, const std::wstr
       else if (e.contains("menuEsquisse")) menuEsquisseArbre(rangId(doc_.esquisses, e["menuEsquisse"].get<std::string>()));
       else menuCorps(e["menuCorps"].get<std::string>());
       essaiMenu_ = false;
+      n["etat"] = std::string(etatVue_->texte().utf8_str());
       n["menu"] = essaiEntrees_;
     }
     if (e.contains("marqueur")) bougerMarqueur(e["marqueur"].get<int>());
@@ -2842,6 +2882,13 @@ bool Cadre::essaiEsquisse(const std::wstring& fichier, int rang, const std::wstr
     if (e.contains("exporter")) {
       essaiMenu_ = true;
       std::vector<TopoDS_Shape> fs;
+      if (doc_.assemblage && asmMode_ == "asm") {
+        std::string nomAsm;
+        std::vector<std::string> manquants;
+        fs = asmFormesStep(nomAsm, manquants);
+        n["manquants"] = manquants;
+        n["nFormes"] = fs.size();
+      } else
       for (const auto& [id, s] : formesCorps_) fs.push_back(s);
       n["ok"] = ecrireExport(e["exporter"][0].get<std::string>(), fs, wxString::FromUTF8(e["exporter"][1].get<std::string>()).ToStdWstring(), e.value("schema", std::string("AP214")), e.value("sansCourbes", false));
       essaiMenu_ = false;

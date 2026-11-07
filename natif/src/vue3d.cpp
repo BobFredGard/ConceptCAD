@@ -1,3 +1,4 @@
+#include <BRepMesh_IncrementalMesh.hxx>
 #include "vue3d.h"
 #include <StdSelect_ViewerSelector3d.hxx>
 #include <BRepBuilderAPI_MakeEdge.hxx>
@@ -919,6 +920,24 @@ void Vue3D::poserGizmo(const Gizmo& g) {
       }
   }
   majTailles();
+  vue_->Redraw();
+}
+
+void Vue3D::montrerInspection(const std::vector<TopoDS_Shape>& rouges, bool aCentre, const gp_Pnt& centre) {
+  for (auto& a : inspectionAis_) contexte_->Remove(a, false);
+  inspectionAis_.clear();
+  const auto poser = [&](const TopoDS_Shape& s, const Quantity_Color& c, double tr) {
+    BRepMesh_IncrementalMesh(s, 0.3, false, 0.3);
+    occ::handle<AIS_Shape> a = new AIS_Shape(s);
+    a->Attributes()->SetAutoTriangulation(false);
+    a->SetColor(c);
+    if (tr > 0) a->SetTransparency(tr);
+    a->SetZLayer(Graphic3d_ZLayerId_Topmost);
+    contexte_->Display(a, AIS_Shaded, -1, false);
+    inspectionAis_.push_back(a);
+  };
+  for (const TopoDS_Shape& s : rouges) poser(s, couleurHex(0xff3b30), 0.15);
+  if (aCentre) poser(BRepPrimAPI_MakeSphere(centre, 1.5).Shape(), couleurHex(0xffd60a), 0);
   vue_->Redraw();
 }
 

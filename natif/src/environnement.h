@@ -43,6 +43,7 @@ class Ruban : public wxWindow {
   void atelier(Atelier a);
   // Vue d'assemblage : seuls les boutons de composants, et « Assembler » devient « Modéliser »
   void modeAssemblage(bool oui);
+  bool enAssemblage() const { return assemblage_; }
 
  private:
   void placer();

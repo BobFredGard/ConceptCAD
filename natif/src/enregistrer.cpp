@@ -1120,6 +1120,29 @@ void modifierStructure(Document& d, const std::function<void(nlohmann::ordered_j
   d = std::move(n);
 }
 
+void ecrireProjetSur(const std::wstring& cible, const std::string& texte, bool compresser) {
+  const auto j = nlohmann::ordered_json::parse(texte);
+  const auto& top = j.contains("doc") && j["doc"].is_object() ? j["doc"] : j;
+  if (!top.contains("features") || !top["features"].is_array()) throw std::runtime_error("ce n'est pas un projet ConceptCAD");
+  const std::string octets = compresser ? gonfler(texte) : texte;
+  if (compresser && degonfler(octets) != texte) throw std::runtime_error("la compression ne redonne pas le même texte, rien n'a été écrit");
+  const std::wstring temp = cible + L".tmp" + std::to_wstring(GetCurrentProcessId());
+  ecrireFichier(temp, octets);
+  try {
+    if (lireOctets(temp) != octets) throw std::runtime_error("la relecture du fichier écrit ne redonne pas les mêmes octets");
+    if (existe(cible)) ecrireFichier(cible + L".bak", lireOctets(cible));
+    bool remplace = false;
+    for (int essai = 0; essai < 5 && !remplace; essai++) {
+      remplace = MoveFileExW(temp.c_str(), cible.c_str(), MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH) != 0;
+      if (!remplace) Sleep(200);
+    }
+    if (!remplace) throw std::runtime_error("le fichier est protégé ou ouvert par un autre programme");
+  } catch (...) {
+    _wremove(temp.c_str());
+    throw;
+  }
+}
+
 void enregistrerProjet(Document& d, const std::wstring& cible, bool forcer) {
   if (d.assemblage && (d.basculeSeule || d.modifie())) {
     const nlohmann::ordered_json resolu = *d.assemblage;

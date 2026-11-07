@@ -662,6 +662,10 @@ static Document documentDepuisDoc(json& racine) {
     for (const auto& v : x->items())
       if (v.value().is_boolean() && !v.value().get<bool>()) d.corpsMasques.push_back(v.key());
   if (j.contains("tint") && j["tint"].is_number()) d.teinte = j["tint"].get<unsigned>();
+  if (j.contains("mat") && j["mat"].is_object()) {
+    if (j["mat"].contains("name") && j["mat"]["name"].is_string()) d.matiere = j["mat"]["name"].get<std::string>();
+    if (j["mat"].contains("rho") && j["mat"]["rho"].is_number()) d.densite = j["mat"]["rho"].get<double>();
+  }
   if (d.corps.empty()) d.corps.push_back("b1");
   // ensureActiveBody : l'actif s'il existe, sinon le premier
   d.corpsActif = texte(j, "activeBody");
