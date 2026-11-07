@@ -258,18 +258,23 @@ void inverserAngleDans(Ctx& c, J& d);
 Ctx contexteGeste(J& mep, int planche, const Piece& p, Calcul& calc);
 void suivreLiensCoupes(Ctx& c);  // mepCutFollowAll
 void liensAutoCoupe(Ctx& c, J& v);  // mepCutAutoRefs
+void suivreLesFilles(J& sh, const std::string& id, double dx, double dy);  // mepProjFollow
+std::optional<Ent> entiteParHint(Ctx& c, J& v, const J& hint);  // mepEntByHint
 struct Accroche {  // mepSnapPt
   double x = 0, y = 0;
   bool hit = false;
-  std::string t, vid;
+  std::string t, vid, ak;
+  int i = -1;
 };
-Accroche accrocher(Ctx& c, double x, double y, double zoom);
+Accroche accrocher(Ctx& c, double x, double y, double zoom, bool sansAxes = false);
 struct EntTouchee {  // mepHitViewEnt
-  std::string vid;
+  std::string vid, ak;
   int i = -1;
   Ent e;
   double lx = 0, ly = 0;
 };
 std::optional<EntTouchee> entiteSousCurseur(Ctx& c, double x, double y, double zoom, bool avecAxes);
 void surfaceUtile(const J& sh, double& ix, double& iy, double& iw, double& ih);  // mepPageDim
+std::string texteEsquisse(Ctx& c, const J& e, bool edition);  // mepSkTextValue
+void rafraichirLiensEsquisse(Ctx& c);  // mepSkLinksRefresh
 }  // namespace plan

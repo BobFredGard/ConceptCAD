@@ -28,9 +28,15 @@ class PanneauPlan : public wxScrolledWindow {
   void accueil();
   void vueChoisie(const std::string& id);
   void coteChoisie(const std::string& id);
+  void axeChoisi();
   void lot();
-  void tolerance(const std::string& idCote);
-  void classeIso(const std::string& idCote);
+  void modelesCartouche();
+  void esquisse();  // mepSideSk
+  void cartoucheEdition();  // mepSideTbEdit
+  void esquisseOutils();  // mepSideSkTools
+  void esquisseStyle(const std::vector<std::string>* ids, bool tb);  // mepSideSkStyle
+  void tolerance(const std::string& idCote, int point = -1);
+  void classeIso(const std::string& idCote, int point = -1);
 
   // Les briques du panneau
   void section(const wxString& titre);

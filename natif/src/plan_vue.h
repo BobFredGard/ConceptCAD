@@ -34,7 +34,36 @@ class PlanVue : public wxWindow {
   bool planPret() const { return mep_.is_object() && mep_.contains("sheets") && mep_["sheets"].is_array() && !mep_["sheets"].empty(); }
   plan::J& mep() { return mep_; }
   plan::J& planche() { return mep_["sheets"][planche_]; }
+  const plan::J& planche() const { return mep_["sheets"][planche_]; }
+  void bullesAuto();
+  void exporter(const std::string& format);  // svg, pdf, dxf : demande le fichier
+  wxString exporterVers(const std::string& format, const std::string& chemin);
+  void imprimer();
+  void importerDxf(const std::string& chemin = std::string());  // chemin vide : demande le fichier
+  void remplacerDxf(const std::string& id, const std::string& chemin = std::string());
+  void supprimerLocale(const std::string& vid, const std::string& id);
+  void retirerPointLocale(const std::string& vid, const std::string& id, int i);
+  void changerAreteLocale(const std::string& vid, const std::string& id);
+  void choisirLocale(const std::string& vid, const std::string& id);
+  void supprimerPointOrdonnee(const std::string& id, int i);
+  bool ajoutBulle() const { return ajoutBulle_; }
+  void basculerAjoutBulle();
+  void commencerAlignement(const std::vector<std::string>& ids);
+  void ajouterPointsOrdonnees(const std::string& id, const std::string& outil);
   plan::J* vueCourante(const std::string& id) { return plan::vueParId(planche(), id); }
+  void lancerAxes(const std::string& mode);  // mepSetAxisMode
+  void lancerOutil(const std::string& tool);
+  void quitterOutil();
+  plan::EtatEsquisse& esq() { return esq_; }
+  void basculerCartouche(bool on);  // mepTbEdit
+  void choisirSk(const std::vector<std::string>& cles);
+  void redessinerPlan() { redessiner(); }
+  void appliquerContrainte(const std::string& id);  // mepSkApply
+  void valeurContrainte(const std::string& id, double v);  // mepSkSetVal
+  void valider2(const wxString& libelle) { valider(libelle); }
+  void effacerAxeChoisi() { sel_.axeVue.clear(), sel_.axeId.clear(), sel_.axeAk.clear(); }
+  const std::string outilCourant() const { return outilActif_ ? outil_.tool : std::string(); }
+  const std::string modeAxes() const { return outilActif_ && outil_.tool == "axis" ? outil_.axisMode : std::string(); }
   plan::J* coteCourante(const std::string& id) { return plan::coteParId(planche(), id); }
   void editer(const wxString& libelle, const std::function<void()>& f);  // mepEdit
   void etat(const wxString& t) {
@@ -61,6 +90,8 @@ class PlanVue : public wxWindow {
   // Le ruban de la mise en plan. Faux : pas encore repris.
   bool boutonRuban(const wxString& nom);
   bool estRepris(const wxString& nom) const;
+  void rejeter(const std::string& id);
+  void orienter(const std::string& id, const std::string& vk);
   std::function<bool(std::array<double, 3>&)> directionCamera;
   std::function<void(const plan::J&)> surVuesAutomatiques;
   // Les gestes de l'essai automatique, en mm sur la feuille
@@ -93,6 +124,13 @@ class PlanVue : public wxWindow {
   };
 
   void construire();
+  std::string svgDesPrimitives() const;
+  std::string pdfDesPrimitives() const;
+  void dessinerSurImprimante(wxDC& dc, int largeurPx, int hauteurPx, double pxParMmX, double pxParMmY) const;
+  std::string nomDeSortie() const;
+  template <typename F>
+  void pourExport(F&& faire);
+  bool exportEnCours_ = false, noirSeul_ = false;
   void ajusterFeuille();
   void peindre(wxGraphicsContext& g);
   void changerPlanche(int i);
@@ -106,8 +144,12 @@ class PlanVue : public wxWindow {
   void valider(const wxString& libelle);
   void redessiner();
   void lancerCommande(const std::string& kind);
+  void menuContextuel(double x, double y, const std::string& essai);  // mepOnContext ; essai : le libellé à choisir sans ouvrir le menu
+  bool echapEsquisse();
+  void saisirNote(const std::string& id);
   void finirCommande(const wxString& message);
   void apresPlanche();
+  bool essaiEnCours_ = false;
   double zoomRelatif() const { return zoomEntier_ > 0 ? zoom_ / zoomEntier_ : 1; }
   int hauteurOnglets() const;
 
@@ -128,20 +170,40 @@ class PlanVue : public wxWindow {
   plan::SelectionPlan sel_;
   std::string vueSurvol_;
   struct Geste {
-    enum Sorte { RIEN, VUE, COTE, BULLE, TITRE, CADRE, FLECHE, TRONCON } sorte = RIEN;
+    enum Sorte { RIEN, VUE, COTE, BULLE, TITRE, CADRE, FLECHE, TRONCON, AXE, ESQUISSE, LOCALE } sorte = RIEN;
+    std::vector<std::array<double, 2>> locPts;  // mepSt.pick « locPt »
+    int locI = -1;
+    bool locIns = false;
+    std::string cleSk;
+    plan::J baseSk;
+    bool averti = false;
     std::string id;
     double ox = 0, oy = 0, px0 = 0, py0 = 0, curX = 0, curY = 0;
     bool commence = false, bouge = false, ajout = false;
     plan::GesteCote cote;
+    int jogI = -1;  // cassure d'une ordonnée
+    double jogJ0 = 0;
     plan::GesteCoupe coupe;
+    std::string rappel;
+    plan::AxeTouche axe;
+    bool debut = false;
   } geste_;
   double zoomEntier_ = 0;
   bool grille_ = false;
   bool commandeActive_ = false;
   plan::CommandeVue commande_;
+  bool outilActif_ = false;
+  plan::OutilPlan outil_;
+  plan::EtatEsquisse esq_;
+  bool ajoutBulle_ = false;  // mepSt.blAdd
+  std::vector<std::string> alignement_;  // mepSt.alignDims
   std::vector<wxRect> actionsOnglets_;
   std::string coteAppui_;
   wxLongLong tempsAppui_ = 0;
+  std::string vueAppui_;  // le double-clic sur une vue
+  wxLongLong tempsVue_ = 0;
+  double vueAppuiPx_ = 0, vueAppuiPy_ = 0;
+  void dialogueHachures();
   double appuiPx_ = 0, appuiPy_ = 0;
   std::map<std::string, std::shared_ptr<wxBitmap>> images3d_;
   bool curseurDedans_ = false;

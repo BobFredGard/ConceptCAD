@@ -306,6 +306,48 @@ J heritage(const J& par) {  // ce qu'une vue reçoit de sa mère
 }
 }  // namespace
 
+J* coupeLocale(J& sh, const std::string& vid, const std::string& id) {
+  J* v = vueParId(sh, vid);
+  if (!v || !v->contains("locals") || !(*v)["locals"].is_array()) return nullptr;
+  for (J& l : (*v)["locals"])
+    if (l.value("id", std::string()) == id) return &l;
+  return nullptr;
+}
+ToucheLocale localeSous(J& sh, const SelectionPlan& sel, double x, double y, double zoom) {  // mepLocHit
+  ToucheLocale r;
+  if (!sel.locId.empty() && sel.locVue == sel.vue)
+    if (J* l = coupeLocale(sh, sel.locVue, sel.locId)) {
+      const J* v = vueParId(sh, sel.locVue);
+      double bd = 3 / zoom;
+      for (size_t i = 0; i < (*l)["pts"].size(); i++) {
+        const XY p = vers(*v, nv((*l)["pts"][i][0]), nv((*l)["pts"][i][1]));
+        const double d = std::hypot(x - p.x, y - p.y);
+        if (d < bd) bd = d, r.ok = true, r.vid = sel.locVue, r.id = sel.locId, r.i = static_cast<int>(i);
+      }
+      if (r.ok) return r;
+    }
+  double bd = 2.5 / zoom;
+  if (!sh.contains("views") || !sh["views"].is_array()) return r;
+  for (const J& v : sh["views"]) {
+    if (!v.contains("locals") || !v["locals"].is_array()) continue;
+    for (const J& l : v["locals"]) {
+      if (!l.contains("pts") || l["pts"].size() < 3) continue;
+      std::vector<std::array<double, 2>> P;
+      for (const J& q : l["pts"]) P.push_back({nv(q[0]), nv(q[1])});
+      const int n = 12;
+      const auto C = courbeLocale(P, n);
+      for (size_t k = 0; k < C.size(); k++) {
+        const XY a = vers(v, C[k][0], C[k][1]), b = vers(v, C[(k + 1) % C.size()][0], C[(k + 1) % C.size()][1]);
+        const double dx = b.x - a.x, dy = b.y - a.y, L2 = dx * dx + dy * dy > 0 ? dx * dx + dy * dy : 1e-12;
+        const double t = std::max(0.0, std::min(1.0, ((x - a.x) * dx + (y - a.y) * dy) / L2)), d = std::hypot(x - a.x - dx * t, y - a.y - dy * t);
+        if (d < bd) {
+          bd = d, r.ok = true, r.vid = v.value("id", std::string()), r.id = l.value("id", std::string()), r.i = -1, r.seg = static_cast<int>(k) / n;
+        }
+      }
+    }
+  }
+  return r;
+}
 std::string identifiantPlan(const char* p) {  // mepUid
   static int seq = 0;
   const unsigned long long ms = static_cast<unsigned long long>(std::time(nullptr)) * 1000ull + GetTickCount() % 1000;
@@ -372,6 +414,72 @@ void dupliquerPlanche(J& mep, int cur) {  // mepDupSheetCmd
 }
 
 // ---- Les nouvelles vues ----
+namespace {
+J donneesDxf(const J& r, const std::string& nom, int rev) {  // mepDxfData
+  J d = J::object();
+  d["name"] = nom;
+  d["els"] = r["els"];
+  d["n"] = r["n"];
+  d["bbox"] = r["bbox"];
+  d["units"] = r["units"];
+  d["skipped"] = r["skipped"];
+  d["rev"] = rev;
+  return d;
+}
+}  // namespace
+std::string importerDxf(J& mep, int planche, const Piece& p, Calcul& calc, const J& r, const std::string& nom, int& cotes, int& perdues) {
+  Ctx c = contexteGeste(mep, planche, p, calc);
+  double ix, iy, iw, ih;
+  surfaceUtile(c.sh, ix, iy, iw, ih);
+  J opts = J::object();
+  opts["kind"] = "dxf", opts["vk"] = "", opts["label"] = "", opts["dxf"] = donneesDxf(r, nom, 1), opts["mode"] = "wire", opts["tangent"] = false, opts["hlrExact"] = false;
+  const std::string id = chaine(ajouterVue(c, opts, nullptr, false, ix, iy, iw, ih), "id");
+  // mepDxfDims : les cotes du fichier deviennent des cotes du plan
+  J& v = *vueParId(c.sh, id);
+  const J& els = v["dxf"]["els"];
+  J sortie = J::array();
+  cotes = 0, perdues = 0;
+  for (const J& D : r["dims"]) {
+    if (chaine(D, "kind") == "lin") {
+      const auto S = [&](const char* k) { return vers(v, D[k][0].get<double>(), D[k][1].get<double>()); };
+      const XY A = S("a"), B = S("b"), Pl = S("p");
+      if (std::hypot(B.x - A.x, B.y - A.y) < 1e-9) {
+        perdues++;
+        continue;
+      }
+      const std::string o = chaine(D, "orient");
+      J d = J::object();
+      d["id"] = identifiantPlan("d"), d["kind"] = "dist", d["vid"] = id, d["vid2"] = nullptr;
+      d["a"] = {{"x", D["a"][0]}, {"y", D["a"][1]}};
+      d["b"] = {{"x", D["b"][0]}, {"y", D["b"][1]}};
+      d["orient"] = o, d["off"] = decalagePoints(A.x, A.y, B.x, B.y, o, Pl.x, Pl.y), d["ref"] = false, d["tol"] = nullptr;
+      sortie.push_back(std::move(d));
+    } else {
+      int i = -1;
+      const double cx = D["c"][0].get<double>(), cy = D["c"][1].get<double>(), rr = D["r"].get<double>();
+      for (size_t q = 0; q < els.size() && i < 0; q++) {
+        const std::string t = chaine(els[q], "t");
+        if ((t == "C" || t == "A") && std::hypot(num(els[q], "cx") - cx, num(els[q], "cy") - cy) < 1e-3 && std::abs(num(els[q], "r") - rr) < 1e-3) i = static_cast<int>(q);
+      }
+      if (i < 0) {
+        perdues++;
+        continue;
+      }
+      J d = J::object();
+      d["id"] = identifiantPlan("d"), d["kind"] = D["kind"], d["vid"] = id, d["vid2"] = nullptr;
+      d["a"] = {{"x", els[i]["cx"]}, {"y", els[i]["cy"]}, {"hint", {{"t", "ctr"}, {"i", i}}}};
+      d["b"] = {{"x", D["t"][0]}, {"y", D["t"][1]}};
+      d["ref"] = false, d["tol"] = nullptr;
+      sortie.push_back(std::move(d));
+    }
+  }
+  if (!sortie.empty()) {
+    if (!c.sh.contains("dims") || !c.sh["dims"].is_array()) c.sh["dims"] = J::array();
+    for (J& d : sortie) c.sh["dims"].push_back(std::move(d)), cotes++;
+  }
+  return id;
+}
+void remplacerDxf(J& v, const J& r, const std::string& nom) { v["dxf"] = donneesDxf(r, nom, static_cast<int>(num(sous(v, "dxf"), "rev")) + 1); }
 std::string ajouterVueStandard(J& mep, int planche, const Piece& p, Calcul& calc, const std::string& vk) {  // mepAddStandardView
   Ctx c = contexteGeste(mep, planche, p, calc);
   double ix, iy, iw, ih;
@@ -413,6 +521,184 @@ bool vuesAutomatiques(J& mep, int planche, const Piece& p, Calcul& calc) {  // m
   return true;
 }
 
+// ---- Rejeter, orienter ----
+namespace {
+double distanceTrait(const J& p, const Ent& e) {  // mepSegDist
+  const double dx = e.x2 - e.x1, dy = e.y2 - e.y1, L2 = dx * dx + dy * dy;
+  double t = L2 > 0 ? ((num(p, "x") - e.x1) * dx + (num(p, "y") - e.y1) * dy) / L2 : 0;
+  t = t < 0 ? 0 : (t > 1 ? 1 : t);
+  return std::hypot(num(p, "x") - (e.x1 + dx * t), num(p, "y") - (e.y1 + dy * t));
+}
+double ressemblance(const Ent& e, const Ent& o) {  // segMatch
+  return std::min(std::max(std::hypot(e.x1 - o.x1, e.y1 - o.y1), std::hypot(e.x2 - o.x2, e.y2 - o.y2)), std::max(std::hypot(e.x1 - o.x2, e.y1 - o.y2), std::hypot(e.x2 - o.x1, e.y2 - o.y1)));
+}
+void poser(J& v, const Base& b) { v["dir"] = jv(b.dir), v["u"] = jv(b.u), v["v"] = jv(b.v); }
+void reancrer(Ctx& c, J& a, J* vw, const std::optional<Ent>& o) {  // rebind
+  if (!a.is_object() || !a.contains("hint") || !a["hint"].is_object() || !vw) return;
+  J& h = a["hint"];
+  if (h.contains("i") && h["i"].is_string()) return;
+  if (h.contains("s") && !h["s"].is_null()) return;
+  const std::vector<Ent>& els = geoVue(c, *vw).els;
+  const std::string t = chaine(h, "t");
+  const double ax = num(a, "x"), ay = num(a, "y");
+  double bs = 1e300;
+  bool trouve = false;
+  double nx = 0, ny = 0;
+  int ni = 0;
+  for (int i = 0; i < static_cast<int>(els.size()); i++) {
+    const Ent& e = els[i];
+    if (t == "seg" && e.t == 'L') {
+      const double d1 = std::hypot(e.x1 - ax, e.y1 - ay), d2 = std::hypot(e.x2 - ax, e.y2 - ay), dmin = std::min(d1, d2);
+      const double proche = dmin < 0.6 ? dmin : distanceTrait(a, e);
+      if (!(proche < 0.6)) continue;
+      const double s = proche + (o && o->t == 'L' ? ressemblance(e, *o) : 0);
+      if (s < bs) {
+        bs = s, trouve = true, ni = i;
+        if (dmin < 0.6) nx = d1 < d2 ? e.x1 : e.x2, ny = d1 < d2 ? e.y1 : e.y2;
+        else nx = ax, ny = ay;
+      }
+    } else if (t == "ctr" && (e.t == 'C' || e.t == 'A')) {
+      const double dmin = std::hypot(e.cx - ax, e.cy - ay);
+      if (!(dmin < 0.6)) continue;
+      const double s = dmin + (o && (o->t == 'C' || o->t == 'A') ? std::abs(e.r - o->r) : 0);
+      if (s < bs) bs = s, trouve = true, ni = i, nx = e.cx, ny = e.cy;
+    }
+  }
+  if (trouve) a = J{{"x", nx}, {"y", ny}, {"hint", {{"t", t}, {"i", ni}}}};
+}
+std::optional<Ent> entiteAvant(Ctx& c, const J& p, J* vw) {
+  if (!p.is_object() || !p.contains("hint") || !p["hint"].is_object() || !vw) return std::nullopt;
+  if (p["hint"].contains("i") && p["hint"]["i"].is_string()) return std::nullopt;
+  const auto e = entiteParHint(c, *vw, p["hint"]);
+  if (!e) return std::nullopt;
+  if (e->t == 'L' && distanceTrait(p, *e) < 0.6) return e;
+  if ((e->t == 'C' || e->t == 'A') && std::hypot(e->cx - num(p, "x"), e->cy - num(p, "y")) < 0.6) return e;
+  return std::nullopt;
+}
+void rejeter(Ctx& c, const std::string& id) {
+  J& sh = c.sh;
+  std::vector<std::string> liste;
+  if (id.empty()) {
+    for (const J& v : sh["views"]) liste.push_back(chaine(v, "id"));
+  } else if (vueCmd(sh, id)) {
+    liste.push_back(id);
+    std::vector<std::string> pile{id};
+    while (!pile.empty()) {
+      const std::string cur = pile.back();
+      pile.pop_back();
+      for (const J& v : sh["views"])
+        if (chaine(v, "parent") == cur && std::find(liste.begin(), liste.end(), chaine(v, "id")) == liste.end()) liste.push_back(chaine(v, "id")), pile.push_back(chaine(v, "id"));
+    }
+  }
+  struct Avant {
+    std::optional<Ent> a, b;
+  };
+  std::vector<Avant> avant;
+  if (!sh.contains("dims") || !sh["dims"].is_array()) sh["dims"] = J::array();
+  for (const J& d : sh["dims"]) {
+    Avant q;
+    J* v1 = vueCmd(sh, chaine(d, "vid"));
+    if (v1) {
+      q.a = entiteAvant(c, sous(d, "a"), v1);
+      q.b = entiteAvant(c, sous(d, "b"), vrai(d, "vid2") ? vueCmd(sh, chaine(d, "vid2")) : v1);
+    }
+    avant.push_back(q);
+  }
+  for (const std::string& vid : liste) {
+    J* pv = vueCmd(sh, vid);
+    if (!pv) continue;
+    J& v = *pv;
+    const std::string k = chaine(v, "kind");
+    if (k == "base" || k == "aux") {
+      const std::string vk = chaine(v, "vk");
+      if (vk == "front" || vk == "rear" || vk == "left" || vk == "right" || vk == "top" || vk == "bottom" || vk == "iso") poser(v, baseDe(v));
+    } else if (k == "proj") {
+      J* par = vueCmd(sh, chaine(v, "parent"));
+      const std::string w = chaine(v, "proj");
+      if (par && (w == "top" || w == "bottom" || w == "left" || w == "right")) {
+        poser(v, baseProjetee(baseDe(*par), w));
+        v["scale"] = num(*par, "scale");
+      }
+    } else if (k == "section" && vrai(v, "section")) {
+      J& s = v["section"];
+      J* par = vueCmd(sh, !chaine(s, "pid").empty() ? chaine(s, "pid") : chaine(v, "parent"));
+      if (!par) continue;
+      const double Ax = s["a"][0], Ay = s["a"][1], Bx = s["b"][0], By = s["b"][1];
+      const double L0 = std::hypot(Bx - Ax, By - Ay), L = L0 != 0 ? L0 : 1;
+      const XY t{(Bx - Ax) / L, (By - Ay) / L};
+      if (num(s, "s") != 0) {
+        const Base Bs = basePapier(*par, t, XY{-t.y, t.x}, num(s, "s")), pb = baseDe(*par);
+        s["p"] = J::array({pb.u[0] * Ax + pb.v[0] * Ay, pb.u[1] * Ax + pb.v[1] * Ay, pb.u[2] * Ax + pb.v[2] * Ay});
+        s["n"] = jv(Bs.dir);
+        poser(v, Bs);
+        v["scale"] = num(*par, "scale");
+      } else {  // coupe ancienne, sans côté enregistré
+        const V3 pu = v3(sous(*par, "u")), pv2 = v3(sous(*par, "v"));
+        const V3 wA = {pu[0] * Ax + pv2[0] * Ay, pu[1] * Ax + pv2[1] * Ay, pu[2] * Ax + pv2[2] * Ay};
+        const V3 wB = {pu[0] * Bx + pv2[0] * By, pu[1] * Bx + pv2[1] * By, pu[2] * Bx + pv2[2] * By};
+        V3 n = norme(cross(norme(v3(sous(*par, "dir"))), norme({wB[0] - wA[0], wB[1] - wA[1], wB[2] - wA[2]})));
+        if (vrai(v, "flip")) n = {-n[0], -n[1], -n[2]};
+        s["p"] = jv(wA);
+        s["n"] = jv(n);
+        poser(v, baseDeDirection(n));
+      }
+    }
+  }
+  int k = 0;
+  for (J& d : sh["dims"]) {
+    const Avant q = avant[k++];
+    J* v = vueCmd(sh, chaine(d, "vid"));
+    if (!v) continue;
+    J* v2 = vrai(d, "vid2") ? vueCmd(sh, chaine(d, "vid2")) : v;
+    if (chaine(d, "kind") == "ord") {
+      if (d.contains("o")) reancrer(c, d["o"], v, std::nullopt);
+      if (d.contains("o")) d["a"] = d["o"], d["b"] = d["o"];
+      if (d.contains("pts") && d["pts"].is_array())
+        for (J& pt : d["pts"]) reancrer(c, pt, v, std::nullopt);
+      continue;
+    }
+    std::optional<Ent> oa = q.a;
+    if (!oa && chaine(d, "kind") == "len" && vrai(d, "b") && !vrai(d, "vid2")) {
+      Ent o;
+      o.t = 'L', o.x1 = num(d["a"], "x"), o.y1 = num(d["a"], "y"), o.x2 = num(d["b"], "x"), o.y2 = num(d["b"], "y");
+      oa = o;
+    }
+    if (d.contains("a")) reancrer(c, d["a"], v, oa);
+    if (vrai(d, "b")) reancrer(c, d["b"], v2 ? v2 : v, q.b);
+  }
+}
+}  // namespace
+void rejeterVues(J& mep, int planche, const Piece& p, Calcul& calc, const std::string& id) {
+  Ctx c = contexteGeste(mep, planche, p, calc);
+  rejeter(c, id);
+}
+bool orienterVue(J& mep, int planche, const Piece& p, Calcul& calc, const std::string& id, const std::string& vk) {
+  Ctx c = contexteGeste(mep, planche, p, calc);
+  J* pv = vueCmd(c.sh, id);
+  if (!pv || chaine(*pv, "kind") != "base" || chaine(*pv, "vk") == vk) return false;
+  static const std::map<std::string, std::string> LAB = {{"front", "Face"}, {"top", "Dessus"}, {"bottom", "Dessous"}, {"right", "Côté droit"}, {"left", "Côté gauche"}, {"rear", "Arrière"}, {"iso", "ISO"}};
+  J& v = *pv;
+  const auto ancien = LAB.find(chaine(v, "vk"));
+  if (chaine(v, "label").empty() || (ancien != LAB.end() && chaine(v, "label") == ancien->second)) v["label"] = LAB.at(vk);
+  v["vk"] = vk;
+  v.erase("camera");
+  poser(v, baseDe(v));  // mepOrtho
+  rejeter(c, id);
+  for (J& f : c.sh["views"]) {
+    const std::string w = chaine(f, "proj");
+    if (chaine(f, "kind") != "proj" || chaine(f, "parent") != id || (w != "top" && w != "bottom" && w != "left" && w != "right")) continue;
+    const double x0 = num(f, "x"), y0 = num(f, "y");
+    f["scale"] = num(v, "scale");  // mepPlaceProj
+    const double off = etendueVue(c, v) + etendueVue(c, f) + 30;
+    if (w == "top") f["x"] = num(v, "x"), f["y"] = num(v, "y") + off;
+    else if (w == "bottom") f["x"] = num(v, "x"), f["y"] = num(v, "y") - off;
+    else if (w == "left") f["x"] = num(v, "x") + off, f["y"] = num(v, "y");
+    else f["x"] = num(v, "x") - off, f["y"] = num(v, "y");
+    suivreLesFilles(c.sh, chaine(f, "id"), num(f, "x") - x0, num(f, "y") - y0);
+  }
+  return true;
+}
+
 // ---- Les commandes ----
 CommandeVue commencerCommande(const J& sh, const std::string& kind, const std::string& selection) {  // mepVcmdStart
   CommandeVue m;
@@ -420,6 +706,7 @@ CommandeVue commencerCommande(const J& sh, const std::string& kind, const std::s
   J& s = const_cast<J&>(sh);
   if (!selection.empty() && vueParId(s, selection)) m.par = selection;
   if (kind == "proj" && !m.par.empty()) m.stage = 1;
+  if (kind == "local") m.par.clear();  // mepBeginLocal
   return m;
 }
 std::string conseilCommande(const CommandeVue& m) {  // mepVcmdHint
@@ -427,11 +714,17 @@ std::string conseilCommande(const CommandeVue& m) {  // mepVcmdHint
       {"proj", {"Projection : cliquez la vue mère.", "Projection : déplacez la souris autour de la vue (droite/gauche/dessus/dessous, diagonale = ISO) et cliquez. Échap termine."}},
       {"section", {"Coupe : cliquez le 1er point de la ligne de coupe sur une vue.", "Coupe : cliquez le point suivant (Maj = sans alignement H/V) — ✓ / Entrée valide la ligne, ↶ / Retour arrière enlève le dernier point.", "Coupe : placez la vue — le côté de la souris choisit le sens du regard. Échap annule."}},
       {"detail", {"Détail : cliquez le centre de la zone à agrandir.", "Détail : cliquez pour fixer le rayon.", "Détail : placez la vue de détail."}},
-      {"aux", {"Auxiliaire : cliquez une arête inclinée d’une vue.", "Auxiliaire : placez la vue de part ou d’autre de l’arête. Échap annule."}}};
+      {"aux", {"Auxiliaire : cliquez une arête inclinée d’une vue.", "Auxiliaire : placez la vue de part ou d’autre de l’arête. Échap annule."}},
+      {"local", {"Coupe locale : cliquez dans une vue le 1er point de la forme.", "Coupe locale : points suivants de la forme — cliquez le 1er point ou Entrée pour la fermer (3 points au moins), Retour arrière enlève le dernier.", "Coupe locale : cliquez l’arête de la vue qui place le plan de coupe (parallèle à la vue, à la profondeur de l’arête). Échap annule."}}};
   const auto it = T.find(m.kind);
   return it != T.end() && m.stage < static_cast<int>(it->second.size()) ? it->second[m.stage] : std::string();
 }
 std::string annulerPointCoupe(CommandeVue& m) {  // mepSecUndo
+  if (m.kind == "local" && m.stage == 1) {  // mepLocUndo
+    m.pts.pop_back();
+    if (m.pts.empty()) m.stage = 0, m.par.clear();
+    return conseilCommande(m);
+  }
   if (m.kind != "section" || m.stage != 1) return "";
   if (m.pts.size() > 1) {
     m.pts.pop_back();
@@ -441,6 +734,11 @@ std::string annulerPointCoupe(CommandeVue& m) {  // mepSecUndo
   return conseilCommande(m);
 }
 std::string validerCoupe(CommandeVue& m) {  // mepSecValidate
+  if (m.kind == "local" && m.stage == 1) {  // mepLocClose
+    if (m.pts.size() < 3) return "Coupe locale : il faut au moins 3 points.";
+    m.stage = 2;
+    return conseilCommande(m);
+  }
   if (m.kind != "section" || m.stage != 1) return "";
   if (m.pts.size() < 2) return "Coupe : il faut au moins 2 points.";
   if (m.pts.size() % 2) return "Coupe : la ligne doit finir par un tronçon parallèle au 1er — ajoutez un point (ou ↶).";
@@ -458,6 +756,50 @@ SuiteCommande cliqueCommande(J& mep, int planche, const Piece& p, Calcul& calc, 
     r.message = "Commande annulée.";
     return r;
   };
+  if (m.kind == "local") {
+    if (m.stage == 0) {
+      const std::string vid = vueSous(c.sh, c.mep, c.piece, c.calc, x, y);
+      J* v = vid.empty() ? nullptr : vueCmd(c.sh, vid);
+      if (!v) return r.message = "Coupe locale : cliquez dans une vue.", r;
+      const std::string kv = chaine(*v, "kind");
+      if (vrai(*v, "section") || kv == "detail" || kv == "dxf" || (kv == "base" && !vrai(*v, "detail") && (vrai(*v, "obl") || vrai(*v, "persp"))))
+        return r.message = "Coupe locale : choisissez une vue orthogonale complète (pas une coupe, un détail, une vue DXF, oblique ou en perspective).", r;
+      m.par = vid;
+      m.pts = {{(x - num(*v, "x")) / num(*v, "scale"), (y - num(*v, "y")) / num(*v, "scale")}};
+      m.stage = 1, r.select = vid, r.message = conseilCommande(m);
+      return r;
+    }
+    if (!par) return annule();
+    if (m.stage == 1) {
+      const XY f = vers(*par, m.pts[0][0], m.pts[0][1]);
+      if (m.pts.size() >= 3 && std::hypot(x - f.x, y - f.y) < 3 / zoom) {
+        m.stage = 2, r.message = conseilCommande(m);
+        return r;
+      }
+      const XY lp = vers(*par, m.pts.back()[0], m.pts.back()[1]);
+      if (std::hypot(x - lp.x, y - lp.y) < 0.5) return r;  // double clic : même point
+      m.pts.push_back({(x - num(*par, "x")) / num(*par, "scale"), (y - num(*par, "y")) / num(*par, "scale")});
+      return r;
+    }
+    const auto hit = entiteSousCurseur(c, x, y, zoom, false);
+    if (!hit || hit->vid != m.par || !hit->e.aW) return r.message = "Coupe locale : cliquez une arête de la pièce dans cette vue (projetée par le noyau exact).", r;
+    J ref = J::object();
+    ref["x"] = hit->lx, ref["y"] = hit->ly, ref["s"] = formeEntite(hit->e), ref["w"] = hit->e.w;
+    const std::string nouveau = identifiantPlan("loc");
+    if (!m.loc.empty()) {
+      if (J* l = coupeLocale(c.sh, m.par, m.loc)) (*l)["ref"] = ref, (*l)["id"] = nouveau;
+    } else {
+      J pts = J::array();
+      for (const auto& q : m.pts) pts.push_back(J::array({js::arrondi(q[0], 3), js::arrondi(q[1], 3)}));
+      if (!par->contains("locals") || !(*par)["locals"].is_array()) (*par)["locals"] = J::array();
+      J l = J::object();
+      l["id"] = nouveau, l["pts"] = pts, l["ref"] = ref;
+      (*par)["locals"].push_back(std::move(l));
+    }
+    r.fini = true, r.change = true, r.select = m.par, r.selLoc = nouveau;
+    r.message = std::string("Coupe locale ") + (m.loc.empty() ? "créée" : "replacée") + " : plan à la profondeur de l’arête choisie — il la suit quand la pièce change.";
+    return r;
+  }
   if (m.kind == "proj") {
     if (m.stage == 0) {
       const std::string v = vueSous(c.sh, c.mep, c.piece, c.calc, x, y);
@@ -627,6 +969,33 @@ ApercuCommande apercuCommande(J& mep, int planche, const Piece& p, Calcul& calc,
       double bx, by, bw, bh;
       if (boiteDeVue(*par, c.sh, c.mep, c.piece, c.calc, bx, by, bw, bh)) a.cadres.push_back({bx - 4, by - 4, bw + 8, bh + 8, false});
     }
+  if (m.kind == "local") {  // la forme : points, courbe lisse fermée
+    const J* lv = m.par.empty() ? nullptr : vueCmd(c.sh, m.par);
+    if (lv && !m.pts.empty()) {
+      std::vector<std::array<double, 2>> P;
+      for (const auto& q : m.pts) P.push_back(q);
+      if (m.stage == 1) P.push_back({(x - num(*lv, "x")) / num(*lv, "scale"), (y - num(*lv, "y")) / num(*lv, "scale")});
+      const auto C = P.size() >= 3 ? courbeLocale(P) : P;
+      for (size_t i = 0; i + 1 < C.size() + (P.size() >= 3 ? 1 : 0); i++) {
+        const XY A = vers(*lv, C[i][0], C[i][1]), B = vers(*lv, C[(i + 1) % C.size()][0], C[(i + 1) % C.size()][1]);
+        a.traits.push_back({A.x, A.y, B.x, B.y, false, false});
+      }
+      for (size_t i = 0; i < m.pts.size(); i++) {
+        const XY A = vers(*lv, m.pts[i][0], m.pts[i][1]);
+        a.ronds.push_back({A.x, A.y, (i == 0 && m.stage == 1 && m.pts.size() >= 3 ? 2.2 : 1.2) / zoom, false});
+      }
+    }
+    if (m.stage == 2) {
+      const auto hit = entiteSousCurseur(c, x, y, zoom, false);
+      if (hit && hit->vid == m.par && hit->e.aW && hit->e.t == 'L') {
+        if (const J* w = vueCmd(c.sh, hit->vid)) {
+          const XY A = vers(*w, hit->e.x1, hit->e.y1), B = vers(*w, hit->e.x2, hit->e.y2);
+          a.traits.push_back({A.x, A.y, B.x, B.y, false, false});
+        }
+      }
+    }
+    return a;
+  }
   if (m.kind == "section" && m.stage < 2) {
     const Accroche sn = accrocher(c, x, y, zoom);
     if (sn.hit) a.aSnap = true, a.snapX = sn.x, a.snapY = sn.y, a.snapAxe = sn.t.rfind("ax", 0) == 0 || sn.t == "onAx";

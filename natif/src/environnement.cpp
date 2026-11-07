@@ -196,7 +196,10 @@ Ruban::Ruban(wxWindow* parent) : wxWindow(parent, wxID_ANY, wxDefaultPosition, w
       const wxString c = f->couleur;
       b->iconeComplete(f->svg, c.empty() ? C_TEXTE : wxColour(c));
       b->Hide();
-      const wxString nom = f->texte;
+      wxString nom = f->texte;
+      // Deux boutons de même nom dans la mise en plan : ils se distinguent par leur bulle
+      if (x.a == Atelier::PLAN && nom == L"Cercle" && wxString(f->titre).StartsWith(L"Axes")) nom = L"Cercle axes";
+      if (x.a == Atelier::PLAN && nom == L"DXF" && wxString(f->titre).StartsWith(L"Exporter")) nom = L"DXF export";
       const Atelier a = x.a;
       b->surClic = [this, a, nom, b] {
         if (b->estDisponible()) {
@@ -205,6 +208,7 @@ Ruban::Ruban(wxWindow* parent) : wxWindow(parent, wxID_ANY, wxDefaultPosition, w
           surIndisponible(nom);
         }
       };
+      b->SetName(nom);
       g.boutons.push_back(b);
       g.coupes.push_back(f->groupe);
     }
@@ -263,7 +267,7 @@ void Ruban::atelier(Atelier a) {
     for (size_t i = 0; i < g.boutons.size(); i++) {
       const bool ici = g.atelier == a && (!assemblage_ || a != Atelier::CAO || g.boutons[i] == boutonAssembler_);
       g.boutons[i]->Show(ici);
-      if (ici && estRepris) g.boutons[i]->disponible(estRepris(a, g.boutons[i]->GetLabel()));
+      if (ici && estRepris) g.boutons[i]->disponible(estRepris(a, g.boutons[i]->GetName()));
     }
   for (BoutonEsquisse* b : boutonsAsm_) {
     const bool ici = assemblage_ && a == Atelier::CAO;

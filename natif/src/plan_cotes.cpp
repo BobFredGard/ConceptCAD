@@ -1924,8 +1924,21 @@ void dessinerOrdonnees(Ctx& c, J& d, const std::string& LX, const std::string& T
     for (const J& p : d["pts"]) pts.push_back(&p);
   DT prec = dtDe(d);
   prec.kind = "ord";
+  const int choisi = c.calc.selection && c.calc.selection->cote == chaine(d, "id") ? c.calc.selection->pointOrd() : -2;
   for (size_t k = 0; k < pts.size(); k++) {
     const J& p = *pts[k];
+    const size_t debutPoint = c.out.size();
+    struct Rouge {
+      std::vector<Elt>& out;
+      size_t n0;
+      bool on;
+      ~Rouge() {
+        if (!on) return;
+        for (size_t i = n0; i < out.size(); i++)
+          for (auto& a : out[i].at)
+            if (a.first == "class" && (a.second.rfind("mepDimL", 0) == 0 || a.second.rfind("mepDimT", 0) == 0)) a.second += " mepDimSel";
+      }
+    } rouge{c.out, debutPoint, choisi != -2 && static_cast<int>(k) - 1 == choisi};
     const XY P = versFeuille(*v, num(p, "x"), num(p, "y"));
     const double val0 = axeY ? num(o, "y") - num(p, "y") : num(p, "x") - num(o, "x");
     const double a0 = std::abs(val0), val = a0 < 1e-9 ? 0 : a0;
@@ -2873,34 +2886,36 @@ void liensAutoCoupe(Ctx& c, J& v) {  // mepCutAutoRefs
   }
   coupeDepuisModele(c.sh, v, *N);
 }
-Accroche accrocher(Ctx& c, double sx, double sy, double zoom) {  // mepSnapPt
+Accroche accrocher(Ctx& c, double sx, double sy, double zoom, bool sansAxes) {  // mepSnapPt
   Accroche best;
   best.x = sx, best.y = sy;
   double bd = 6 / zoom;
-  const auto consider = [&](double x, double y, const char* t, const std::string& vid) {
+  const auto consider = [&](double x, double y, const char* t, const std::string& vid, int i = -1, const std::string& ak = std::string()) {
     const double d = std::hypot(x - sx, y - sy);
-    if (d < bd) bd = d, best.x = x, best.y = y, best.hit = true, best.t = t, best.vid = vid;
+    if (d < bd) bd = d, best.x = x, best.y = y, best.hit = true, best.t = t, best.vid = vid, best.i = i, best.ak = ak;
   };
   for (J& v : c.sh["views"]) {
     const std::string id = chaine(v, "id");
     const double vx = num(v, "x"), vy = num(v, "y"), s = num(v, "scale");
-    for (const Ent& e : geoDe(c, v).els) {
+    const std::vector<Ent>& els = geoDe(c, v).els;
+    for (int i = 0; i < static_cast<int>(els.size()); i++) {
+      const Ent& e = els[i];
       if (e.t == 'L') {
         const double ax = vx + e.x1 * s, ay = vy + e.y1 * s, bx = vx + e.x2 * s, by = vy + e.y2 * s;
-        consider(ax, ay, "end", id);
-        consider(bx, by, "end", id);
-        consider(vx + (e.x1 + e.x2) / 2 * s, vy + (e.y1 + e.y2) / 2 * s, "mid", id);
+        consider(ax, ay, "end", id, i);
+        consider(bx, by, "end", id, i);
+        consider(vx + (e.x1 + e.x2) / 2 * s, vy + (e.y1 + e.y2) / 2 * s, "mid", id, i);
         const double dx = bx - ax, dy = by - ay, L2 = dx * dx + dy * dy;
         if (L2 > 1e-12) {
           const double t = std::max(0.0, std::min(1.0, ((sx - ax) * dx + (sy - ay) * dy) / L2));
-          consider(ax + dx * t, ay + dy * t, "onSeg", id);
+          consider(ax + dx * t, ay + dy * t, "onSeg", id, i);
         }
       } else if (e.t == 'C' || e.t == 'A') {
         const double cx = vx + e.cx * s, cy = vy + e.cy * s, r = e.r * s;
-        consider(cx, cy, "ctr", id);
+        consider(cx, cy, "ctr", id, i);
         const double a = std::atan2(sy - cy, sx - cx);
         if (e.t == 'C') {
-          consider(cx + r * std::cos(a), cy + r * std::sin(a), "onC", id);
+          consider(cx + r * std::cos(a), cy + r * std::sin(a), "onC", id, i);
         } else {
           double aa = a;
           const double lo = std::min(e.a0, e.a1), hi = std::max(e.a0, e.a1);
@@ -2909,7 +2924,7 @@ Accroche accrocher(Ctx& c, double sx, double sy, double zoom) {  // mepSnapPt
           while (an - 2 * PI >= lo) an -= 2 * PI;
           if (an > hi) aa = std::abs(a - e.a0) < std::abs(a - e.a1) ? e.a0 : e.a1;
           else aa = an;
-          consider(cx + r * std::cos(aa), cy + r * std::sin(aa), "onC", id);
+          consider(cx + r * std::cos(aa), cy + r * std::sin(aa), "onC", id, i);
         }
       }
     }
@@ -2917,24 +2932,25 @@ Accroche accrocher(Ctx& c, double sx, double sy, double zoom) {  // mepSnapPt
   for (J& v : c.sh["views"]) {
     const std::string id = chaine(v, "id");
     const double vx = num(v, "x"), vy = num(v, "y"), s = num(v, "scale");
+    if (sansAxes) continue;
     for (const Axe& p : lignesAxes(c, v)) {
       if (p.t == 'L') {
         const double ax = vx + p.x1 * s, ay = vy + p.y1 * s, bx = vx + p.x2 * s, by = vy + p.y2 * s;
         for (const auto& q : {std::array<double, 2>{ax, ay}, std::array<double, 2>{bx, by}}) {  // extrémités prioritaires
           const double d = std::hypot(q[0] - sx, q[1] - sy) * 0.6;
-          if (d < bd) bd = d, best.x = q[0], best.y = q[1], best.hit = true, best.t = "axEnd", best.vid = id;
+          if (d < bd) bd = d, best.x = q[0], best.y = q[1], best.hit = true, best.t = "axEnd", best.vid = id, best.ak = p.ak, best.i = -1;
         }
-        consider((ax + bx) / 2, (ay + by) / 2, "axMid", id);
+        consider((ax + bx) / 2, (ay + by) / 2, "axMid", id, -1, p.ak);
         const double dx = bx - ax, dy = by - ay, L2 = dx * dx + dy * dy;
         if (L2 > 1e-12) {
           const double t = std::max(0.0, std::min(1.0, ((sx - ax) * dx + (sy - ay) * dy) / L2));
-          consider(ax + dx * t, ay + dy * t, "onAx", id);
+          consider(ax + dx * t, ay + dy * t, "onAx", id, -1, p.ak);
         }
       } else if (p.t == 'C') {
         const double cx = vx + p.cx * s, cy = vy + p.cy * s, r = p.r * s;
-        consider(cx, cy, "ctr", id);
+        consider(cx, cy, "ctr", id, -1, p.ak);
         const double a = std::atan2(sy - cy, sx - cx);
-        consider(cx + r * std::cos(a), cy + r * std::sin(a), "onAx", id);
+        consider(cx + r * std::cos(a), cy + r * std::sin(a), "onAx", id, -1, p.ak);
       }
     }
   }
@@ -2962,7 +2978,7 @@ std::optional<EntTouchee> entiteSousCurseur(Ctx& c, double sx, double sy, double
         if (d < bd) {
           bd = d;
           EntTouchee o;
-          o.vid = chaine(v, "id"), o.i = -1, o.lx = lx, o.ly = ly;
+          o.vid = chaine(v, "id"), o.i = -1, o.ak = p.ak, o.lx = lx, o.ly = ly;
           o.e.t = p.t, o.e.x1 = p.x1, o.e.y1 = p.y1, o.e.x2 = p.x2, o.e.y2 = p.y2, o.e.cx = p.cx, o.e.cy = p.cy, o.e.r = p.r;
           best = o;
         }
@@ -3001,4 +3017,54 @@ std::optional<EntTouchee> entiteSousCurseur(Ctx& c, double sx, double sy, double
   }
   return best;
 }
+std::optional<Ent> entiteParHint(Ctx& c, J& v, const J& hint) { return entiteDeHint(c, v, hint); }
+#include "plan_outils.inc"
+std::string nombreAffiche(double v, int dp) { return fmtNum(v, dp); }
+int pointOrdonnee(J& sh, const J& d, double x, double y) {
+  J* v = vueParId(sh, chaine(d, "vid"));
+  if (!v) return -1;
+  const bool axeY = chaine(d, "axis") == "y";
+  const double sc = num(*v, "scale");
+  int best = -1;
+  double bd = 1e300;
+  const auto voir = [&](const J& q, int k) {
+    const XY S = versFeuille(*v, num(q, "x"), num(q, "y"));
+    const double j = num(q, "jog") * sc, e = axeY ? std::abs(S.y + j - y) : std::abs(S.x + j - x);
+    if (e < bd) bd = e, best = k;
+  };
+  voir(sous(d, "o"), -1);
+  if (sous(d, "pts").is_array())
+    for (size_t k = 0; k < d["pts"].size(); k++) voir(d["pts"][k], static_cast<int>(k));
+  return best;
+}
+
+void alignerCotes(J& mep, int planche, const Piece& p, Calcul& calc, const std::string& idRef, const std::vector<std::string>& ids, int& n, int& ignorees) {
+  n = 0, ignorees = 0;
+  Ctx c = contexteGeste(mep, planche, p, calc);
+  J* ref = coteParId(c.sh, idRef);
+  if (!ref) return;
+  const auto wr = mondeCote(c, *ref);
+  const auto gr = wr ? ligneCote(c, *ref, *wr) : std::nullopt;
+  if (!gr) {
+    ignorees = static_cast<int>(ids.size());
+    return;
+  }
+  for (const std::string& id : ids) {
+    J* d = coteParId(c.sh, id);
+    if (!d || d == ref) continue;
+    const auto w = mondeCote(c, *d);
+    const auto gd = w ? ligneCote(c, *d, *w) : std::nullopt;
+    if (!gd || std::abs(gr->ux * gd->uy - gr->uy * gd->ux) > 0.02) {
+      ignorees++;
+      continue;
+    }
+    (*d)["off"] = decalageDepuisPoints(w->a.x, w->a.y, w->b.x, w->b.y, chaine(*d, "orient", "a"), gr->a1.x, gr->a1.y);
+    n++;
+  }
+}
+
+}  // namespace plan
+
+namespace plan {
+double decalagePoints(double ax, double ay, double bx, double by, const std::string& o, double x, double y) { return decalageDepuisPoints(ax, ay, bx, by, o, x, y); }
 }  // namespace plan

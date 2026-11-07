@@ -36,6 +36,35 @@
 #include "plan_interne.h"
 
 namespace plan {
+std::vector<std::array<double, 2>> courbeLocale(const std::vector<std::array<double, 2>>& pts, int n) {  // mepLocCurve
+  const int N = static_cast<int>(pts.size());
+  if (N < 3) return pts;
+  std::vector<std::array<double, 2>> out;
+  for (int i = 0; i < N; i++) {
+    const auto& p0 = pts[(i - 1 + N) % N];
+    const auto& p1 = pts[i];
+    const auto& p2 = pts[(i + 1) % N];
+    const auto& p3 = pts[(i + 2) % N];
+    for (int k = 0; k < n; k++) {
+      const double t = static_cast<double>(k) / n, t2 = t * t, t3 = t2 * t;
+      std::array<double, 2> q;
+      for (int j = 0; j < 2; j++) q[j] = 0.5 * (2 * p1[j] + (p2[j] - p0[j]) * t + (2 * p0[j] - 5 * p1[j] + 4 * p2[j] - p3[j]) * t2 + (3 * p1[j] - p0[j] - 3 * p2[j] + p3[j]) * t3);
+      out.push_back(q);
+    }
+  }
+  return out;
+}
+J formeEntite(const Ent& e) {  // mepIdxSnap
+  J s = J::object();
+  s["t"] = std::string(1, e.t);
+  if (e.t == 'L') {
+    s["x1"] = e.x1, s["y1"] = e.y1, s["x2"] = e.x2, s["y2"] = e.y2;
+    if (!e.k.empty()) s["k"] = e.k;
+  } else {
+    s["cx"] = e.cx, s["cy"] = e.cy, s["r"] = e.r;
+  }
+  return s;
+}
 namespace {
 // ── format, cadre ──
 struct Cadre {
@@ -984,8 +1013,350 @@ void perspective(Geo& geo, const J& view, const std::vector<TopoDS_Shape>& shape
   geo.src = "OCCT (perspective)";
 }
 
+// Tout ce qu'on voit dans la direction de la vue : les triangles projetés, rangés dans une grille
+class SceneVue {
+ public:
+  struct Touche {
+    bool ok = false;
+    std::string comp, chemin;
+    V3 p{0, 0, 0};
+  };
+  struct Etendue {
+    std::string chemin;
+    double x0 = 1e18, x1 = -1e18, y0 = 1e18, y1 = -1e18;
+    V3 lo{1e18, 1e18, 1e18}, hi{-1e18, -1e18, -1e18};
+  };
+  SceneVue(const Piece& p, const V3& dir, const V3& u, const V3& v) : u_(u), v_(v), d_(norme(dir)) {
+    for (const Corps& c : p.corps) ajouter(c.forme, "", "");
+    for (const CorpsInstance& c : p.instances) ajouter(c.forme, c.comp, c.chemin);
+    finir();
+  }
+  SceneVue(const std::vector<TopoDS_Shape>& F, const V3& dir, const V3& u, const V3& v) : u_(u), v_(v), d_(norme(dir)) {
+    for (const TopoDS_Shape& f : F) ajouter(f, "", "");
+    finir();
+  }
+  void finir() {
+    x0_ = y0_ = 1e18;
+    x1_ = y1_ = -1e18;
+    for (const P2& t : tris_) {
+      x0_ = std::min(x0_, t.xn), x1_ = std::max(x1_, t.xm);
+      y0_ = std::min(y0_, t.yn), y1_ = std::max(y1_, t.ym);
+    }
+    grille_.assign(N * N, {});
+    for (size_t i = 0; i < tris_.size(); i++) {
+      const P2& t = tris_[i];
+      for (int a = cx(t.xn); a <= cx(t.xm); a++)
+        for (int b = cy(t.yn); b <= cy(t.ym); b++) grille_[a + b * N].push_back(static_cast<int>(i));
+    }
+  }
+  Touche sous(double lx, double ly) const {
+    Touche r;
+    if (tris_.empty() || lx < x0_ || lx > x1_ || ly < y0_ || ly > y1_) return r;
+    double mieux = -1e300;
+    for (int i : grille_[cx(lx) + cy(ly) * N]) {
+      const P2& t = tris_[i];
+      const double D = (t.b[0] - t.a[0]) * (t.c[1] - t.a[1]) - (t.c[0] - t.a[0]) * (t.b[1] - t.a[1]);
+      if (std::abs(D) < 1e-14) continue;
+      const double s = ((lx - t.a[0]) * (t.c[1] - t.a[1]) - (t.c[0] - t.a[0]) * (ly - t.a[1])) / D;
+      const double w = ((t.b[0] - t.a[0]) * (ly - t.a[1]) - (lx - t.a[0]) * (t.b[1] - t.a[1])) / D;
+      if (s < -1e-9 || w < -1e-9 || s + w > 1 + 1e-9) continue;
+      const double z = t.a[2] + s * (t.b[2] - t.a[2]) + w * (t.c[2] - t.a[2]);
+      if (z > mieux) mieux = z, r.ok = true, r.comp = origines_[t.o].first, r.chemin = origines_[t.o].second;
+    }
+    if (r.ok)
+      for (int j = 0; j < 3; j++) r.p[j] = u_[j] * lx + v_[j] * ly + d_[j] * mieux;
+    return r;
+  }
+  std::vector<Etendue> etendues(const std::string& comp) const {
+    std::vector<Etendue> o;
+    for (const auto& [k, e] : ordre_)
+      if (origines_[k].first == comp) o.push_back(e);
+    return o;
+  }
+
+ private:
+  static constexpr int N = 96;
+  struct P2 {
+    double a[3], b[3], c[3];
+    double xn, xm, yn, ym;
+    int o;
+  };
+  int cx(double x) const { return std::clamp(static_cast<int>((x - x0_) / std::max(1e-9, x1_ - x0_) * N), 0, N - 1); }
+  int cy(double y) const { return std::clamp(static_cast<int>((y - y0_) / std::max(1e-9, y1_ - y0_) * N), 0, N - 1); }
+  void ajouter(const TopoDS_Shape& f, const std::string& comp, const std::string& chemin) {
+    if (f.IsNull()) return;
+    int o = -1;
+    for (size_t i = 0; i < origines_.size(); i++)
+      if (origines_[i].first == comp && origines_[i].second == chemin) o = static_cast<int>(i);
+    if (o < 0) {
+      origines_.push_back({comp, chemin});
+      o = static_cast<int>(origines_.size()) - 1;
+      Etendue e;
+      e.chemin = chemin;
+      ordre_.push_back({o, e});
+    }
+    Etendue* E = nullptr;
+    for (auto& q : ordre_)
+      if (q.first == o) E = &q.second;
+    for (const Tri& q : trianglesDe(f)) {
+      P2 t;
+      t.o = o;
+      const V3* S[3] = {&q.a, &q.b, &q.c};
+      double* D[3] = {t.a, t.b, t.c};
+      for (int k = 0; k < 3; k++) {
+        D[k][0] = dot(*S[k], u_), D[k][1] = dot(*S[k], v_), D[k][2] = dot(*S[k], d_);
+        E->x0 = std::min(E->x0, D[k][0]), E->x1 = std::max(E->x1, D[k][0]);
+        E->y0 = std::min(E->y0, D[k][1]), E->y1 = std::max(E->y1, D[k][1]);
+        for (int j = 0; j < 3; j++) {
+          E->lo[j] = std::min(E->lo[j], (*S[k])[j]);
+          E->hi[j] = std::max(E->hi[j], (*S[k])[j]);
+        }
+      }
+      t.xn = std::min({t.a[0], t.b[0], t.c[0]}), t.xm = std::max({t.a[0], t.b[0], t.c[0]});
+      t.yn = std::min({t.a[1], t.b[1], t.c[1]}), t.ym = std::max({t.a[1], t.b[1], t.c[1]});
+      tris_.push_back(t);
+    }
+  }
+  V3 u_, v_, d_;
+  double x0_ = 0, x1_ = 0, y0_ = 0, y1_ = 0;
+  std::vector<P2> tris_;
+  std::vector<std::vector<int>> grille_;
+  std::vector<std::pair<std::string, std::string>> origines_;
+  std::vector<std::pair<int, Etendue>> ordre_;
+};
+// ---- Les coupes locales (mepLocalApply) ----
+bool dansPoly(double x, double y, const Boucle& poly) {  // mepPip
+  bool c = false;
+  for (size_t i = 0, j = poly.size() - 1; i < poly.size(); j = i++) {
+    const P2& a = poly[i];
+    const P2& b = poly[j];
+    if ((a[1] > y) != (b[1] > y) && x < (b[0] - a[0]) * (y - a[1]) / (b[1] - a[1]) + a[0]) c = !c;
+  }
+  return c;
+}
+std::vector<std::array<double, 4>> rognerSegment(double x1, double y1, double x2, double y2, const Boucle& poly, bool dedans) {  // mepClipSegPoly
+  const double dx = x2 - x1, dy = y2 - y1;
+  std::vector<double> ts{0, 1};
+  for (size_t i = 0, j = poly.size() - 1; i < poly.size(); j = i++) {
+    const P2& a = poly[j];
+    const double ex = poly[i][0] - a[0], ey = poly[i][1] - a[1], den = dx * ey - dy * ex;
+    if (std::abs(den) < 1e-12) continue;
+    const double t = ((a[0] - x1) * ey - (a[1] - y1) * ex) / den, s = ((a[0] - x1) * dy - (a[1] - y1) * dx) / den;
+    if (t > 0 && t < 1 && s >= 0 && s <= 1) ts.push_back(t);
+  }
+  std::sort(ts.begin(), ts.end());
+  std::vector<std::array<double, 4>> out;
+  double fin = -1;
+  for (size_t k = 0; k + 1 < ts.size(); k++) {
+    const double t0 = ts[k], t1 = ts[k + 1];
+    if (t1 - t0 < 1e-9) continue;
+    const double m = (t0 + t1) / 2;
+    if (dansPoly(x1 + dx * m, y1 + dy * m, poly) != dedans) continue;
+    if (!out.empty() && std::abs(fin - t0) < 1e-9) {
+      out.back()[2] = x1 + dx * t1, out.back()[3] = y1 + dy * t1;
+    } else {
+      out.push_back({x1 + dx * t0, y1 + dy * t0, x1 + dx * t1, y1 + dy * t1});
+    }
+    fin = t1;
+  }
+  return out;
+}
+std::vector<Ent> rognerPoly(const std::vector<Ent>& els, const Boucle& poly, bool dedans) {  // mepClipPoly
+  std::vector<Ent> out;
+  const auto segs = [&](const Ent& e, const std::vector<P2>& pts) {
+    for (size_t i = 0; i + 1 < pts.size(); i++)
+      for (const auto& s : rognerSegment(pts[i][0], pts[i][1], pts[i + 1][0], pts[i + 1][1], poly, dedans)) {
+        Ent q;
+        q.t = 'L', q.x1 = s[0], q.y1 = s[1], q.x2 = s[2], q.y2 = s[3], q.k = e.k, q.aW = e.t != 'P' && e.aW, q.w = e.w;
+        out.push_back(std::move(q));
+      }
+  };
+  for (const Ent& e : els) {
+    if (e.t == 'L') {
+      segs(e, {P2{e.x1, e.y1}, P2{e.x2, e.y2}});
+    } else if (e.t == 'C' || e.t == 'A') {
+      const double a0 = e.t == 'C' ? 0 : e.a0, a1 = e.t == 'C' ? 2 * PI : e.a1;
+      const int N = std::max(24, static_cast<int>(std::ceil(std::abs(a1 - a0) * e.r / 0.4)));
+      std::vector<P2> pts;
+      bool tous = true, un = false;
+      for (int i = 0; i <= N; i++) {
+        const double a = a0 + (a1 - a0) * i / N;
+        pts.push_back(P2{e.cx + e.r * std::cos(a), e.cy + e.r * std::sin(a)});
+        const bool in = dansPoly(pts.back()[0], pts.back()[1], poly) == dedans;
+        tous = tous && in, un = un || in;
+      }
+      bool coin = false;
+      for (const P2& q : poly)
+        if (std::abs(std::hypot(q[0] - e.cx, q[1] - e.cy) - e.r) < 1e-6) coin = true;
+      if (tous && !coin) out.push_back(e);
+      else if (un) segs(e, pts);
+    } else if (e.t == 'P' && !e.pts.empty()) {
+      segs(e, e.pts);
+    } else {
+      out.push_back(e);
+    }
+  }
+  return out;
+}
+const Ent* arePorteuse(const std::vector<Ent>& els, const J& ref) {  // mepLocEnt
+  const J& s = sous(ref, "s");
+  if (!s.is_object()) return nullptr;
+  const std::string st = chaine(s, "t");
+  const double x1 = num(s, "x1"), y1 = num(s, "y1"), x2 = num(s, "x2"), y2 = num(s, "y2"), cx = num(s, "cx"), cy = num(s, "cy"), r = num(s, "r");
+  const Ent* best = nullptr;
+  double bc = 1e300, lim = 3;
+  const bool aRefW = ref.contains("w") && ref["w"].is_number();
+  for (const Ent& e : els) {
+    if (!e.aW) continue;
+    double q;
+    if (st == "L" && e.t == 'L') {
+      const double dx = x2 - x1, dy = y2 - y1, len = std::hypot(dx, dy);
+      if (!(len > 1e-9)) continue;
+      const double ux = dx / len, uy = dy / len, ex = e.x2 - e.x1, ey = e.y2 - e.y1, el = std::hypot(ex, ey);
+      if (!(el > 1e-9)) continue;
+      if (std::abs(ux * ey / el - uy * ex / el) > 0.035) continue;
+      const double ax = (e.x1 + e.x2 - x1 - x2) / 2, ay = (e.y1 + e.y2 - y1 - y2) / 2;
+      q = std::abs(ax * uy - ay * ux) + 0.5 * std::abs(ax * ux + ay * uy) + 0.5 * std::abs(el - len);
+      lim = std::max(3.0, 0.6 * len);
+    } else if ((st == "C" || st == "A") && (e.t == 'C' || e.t == 'A')) {
+      q = std::hypot(e.cx - cx, e.cy - cy) + 2 * std::abs(e.r - r);
+      lim = std::max(3.0, r);
+    } else {
+      continue;
+    }
+    q += 0.01 * std::abs(e.w - (aRefW ? ref["w"].get<double>() : e.w));
+    if (q < bc) bc = q, best = &e;
+  }
+  return bc <= lim + 0.5 ? best : nullptr;
+}
+std::vector<std::vector<P2>> bordLocale(const Base& b, const std::vector<TopoDS_Shape>& formes, const Boucle& poly) {  // mepLocBorder
+  std::vector<P2> closed = poly;
+  closed.push_back(poly[0]);
+  if (formes.empty()) return {closed};
+  const SceneVue sc(formes, b.dir, b.u, b.v);
+  const auto on = [&](const P2& p) { return sc.sous(p[0], p[1]).ok; };
+  const auto bord = [&](P2 p, P2 q, bool ia) {
+    for (int k = 0; k < 8; k++) {
+      const P2 m{(p[0] + q[0]) / 2, (p[1] + q[1]) / 2};
+      if (on(m) == ia) p = m;
+      else q = m;
+    }
+    return p;
+  };
+  std::vector<char> ins;
+  for (const P2& q : closed) ins.push_back(on(q));
+  std::vector<std::vector<P2>> runs;
+  std::vector<P2> run;
+  bool enCours = false, premier = false;
+  for (size_t i = 0; i < closed.size(); i++) {
+    if (ins[i]) {
+      if (!enCours) {
+        enCours = true, run.clear();
+        if (i > 0) run.push_back(bord(closed[i], closed[i - 1], true));
+        else premier = true;
+      }
+      run.push_back(closed[i]);
+    } else if (enCours) {
+      run.push_back(bord(closed[i - 1], closed[i], true));
+      runs.push_back(run);
+      enCours = false;
+    }
+  }
+  if (enCours) {
+    if (!runs.empty() && ins[0] && ins.back() && premier) {
+      std::vector<P2> u = run;
+      u.insert(u.end(), runs[0].begin() + 1, runs[0].end());
+      runs[0] = std::move(u);
+    } else {
+      runs.push_back(run);
+    }
+  }
+  std::vector<std::vector<P2>> o;
+  for (auto& q : runs)
+    if (q.size() > 1) o.push_back(std::move(q));
+  return o;
+}
+void appliquerLocales(Geo& geo, const J& view, const Base& b, const std::vector<TopoDS_Shape>& shapes, const std::vector<TopoDS_Shape>& tous, const J& locals, const Piece& piece) {  // mepLocalApply
+  const V3 dir = norme(b.dir);
+  const std::vector<Ent> full = geo.els;
+  std::vector<Ent> els = full;
+  for (const J& loc : locals) {
+    if (!vrai(loc, "pts") || loc["pts"].size() < 3) continue;
+    std::vector<std::array<double, 2>> P0s;
+    for (const J& q : loc["pts"]) P0s.push_back({nv(q[0]), nv(q[1])});
+    const Boucle poly = courbeLocale(P0s);
+    const J& ref = sous(loc, "ref");
+    Geo::RefLocale R;
+    R.id = chaine(loc, "id");
+    const Ent* e = arePorteuse(full, ref);
+    bool aW = ref.is_object() && ref.contains("w") && ref["w"].is_number();
+    double w = aW ? ref["w"].get<double>() : 0;
+    if (e && ref.is_object()) {
+      R.s = formeEntite(*e), R.w = e->w, R.aW = true, w = e->w, aW = true;
+    } else if (ref.is_object()) {
+      R.lost = true;
+    }
+    geo.locales.push_back(R);
+    if (!aW) continue;
+    const V3 p0{dir[0] * w, dir[1] * w, dir[2] * w};
+    std::vector<TopoDS_Shape> cut;
+    for (const TopoDS_Shape& f : shapes) {
+      TopoDS_Shape c = coupeDemiEspace(f, tous, p0, dir);
+      if (!c.IsNull()) cut.push_back(c);
+    }
+    if (cut.empty()) continue;
+    Geo g2;
+    std::set<std::string> ajout;
+    if (!hlrExact(g2, view, b, cut, ajout)) continue;
+    souder(g2.els);
+    filetages(view, b, {p0}, &dir, piece, g2.els);
+    std::vector<Ent> e1 = rognerPoly(els, poly, false), e2 = rognerPoly(g2.els, poly, true);
+    e1.insert(e1.end(), e2.begin(), e2.end());
+    els = std::move(e1);
+    std::vector<Boucle> loops;
+    try {
+      loops = bouclesHachures(cut, b, {p0}, dir);
+    } catch (const Standard_Failure&) {
+    }
+    if (!loops.empty()) geo.hatchLoc.push_back({std::move(loops), poly});
+    for (auto& run : bordLocale(b, shapes, poly)) {
+      Ent q;
+      q.t = 'P', q.pts = std::move(run), q.k = "brk";
+      els.push_back(std::move(q));
+    }
+  }
+  geo.els = std::move(els);
+}
+const J* vueDxfDe(const J& view, const J& sh) {
+  if (chaine(view, "kind") == "dxf") return &view;
+  if (chaine(view, "kind") == "detail" && vrai(view, "parent"))
+    if (const J* par = vueDe(sh, chaine(view, "parent")))
+      if (chaine(*par, "kind") == "dxf") return par;
+  return nullptr;
+}
 Geo construire(const J& view, const J& sh, const Piece& piece) {  // mepBuildGeo
   Geo geo;
+  if (const J* dv = vueDxfDe(view, sh)) {
+    const J& els = sous(sous(*dv, "dxf"), "els");
+    if (els.is_array())
+      for (const J& e : els) {
+        Ent o;
+        const std::string t = chaine(e, "t");
+        o.t = t.empty() ? 'L' : t[0];
+        o.k = chaine(e, "k");
+        o.x1 = num(e, "x1"), o.y1 = num(e, "y1"), o.x2 = num(e, "x2"), o.y2 = num(e, "y2");
+        o.cx = num(e, "cx"), o.cy = num(e, "cy"), o.r = num(e, "r"), o.a0 = num(e, "a0"), o.a1 = num(e, "a1");
+        if (e.contains("pts") && e["pts"].is_array())
+          for (const J& q : e["pts"]) o.pts.push_back({q[0].get<double>(), q[1].get<double>()});
+        geo.els.push_back(std::move(o));
+      }
+    if (dv != &view && vrai(view, "detail")) {
+      const J& d = view["detail"];
+      geo.els = rognerDetail(geo.els, num(d, "cx"), num(d, "cy"), num(d, "r"));
+    }
+    geo.src = "dxf";
+    return geo;
+  }
   const Base b = baseDe(view);
   const std::string bodyId = chaine(view, "bodyId");
   std::vector<TopoDS_Shape> shapes;
@@ -1063,6 +1434,17 @@ Geo construire(const J& view, const J& sh, const Piece& piece) {  // mepBuildGeo
         geo.hatch = bouclesHachures(cutShapes, b, planes, n);
       }
       if (brisee) retirerMarches(geo.els, b, st);
+    }
+  }
+  // Coupes locales : celles de la vue, ou de sa mère pour un détail — avant le rognage du détail
+  if (!section && !obliqueDe(view) && !cutShapes.empty()) {
+    const J* lv = vrai(view, "detail") && vrai(view, "parent") ? vueDe(sh, chaine(view, "parent")) : &view;
+    if (lv && vrai(*lv, "locals") && !(*lv)["locals"].empty()) {
+      try {
+        appliquerLocales(geo, view, b, cutShapes, tous, (*lv)["locals"], piece);
+      } catch (const Standard_Failure&) {
+      } catch (const std::exception&) {
+      }
     }
   }
   if (vrai(view, "detail") && vrai(view, "parent")) {
@@ -1254,6 +1636,7 @@ std::string valeurCartouche(Ctx& c, const J& e) {  // mepTbValue, mepSkTextValue
   }
   return vrai(e, "nd") && v == "—" ? "" : v;
 }
+std::string texteEsquisseEdition(Ctx& c, const J& e) { return texteEsquisse(c, e, true); }
 void dessinerEsquisse(Ctx& c, const J& sk, double ox, double oy, bool planche) {  // mepDrawSkCtx, hors édition
   const std::string wDef = planche ? "thick" : "thin";
   const J& pts = sous(sk, "pts");
@@ -1303,7 +1686,7 @@ void dessinerEsquisse(Ctx& c, const J& sk, double ox, double oy, bool planche) {
       const J* P0 = pt(chaine(e, "p"));
       if (!P0) continue;
       const double px = pointX(*P0) + ox, py = pointY(*P0) + oy;
-      std::string val = valeurCartouche(c, e);
+      std::string val = (planche ? c.calc.esqPlanche : c.calc.esqCartouche) ? texteEsquisseEdition(c, e) : valeurCartouche(c, e);
       if (val.empty()) continue;
       const double h = num(e, "h") != 0 ? num(e, "h") : 3.5;
       if (num(e, "mw") > 0) {
@@ -1563,8 +1946,9 @@ std::vector<std::array<P2, 2>> lignesHachures(const std::vector<Boucle>& loops, 
   }
   return lines;
 }
-void dessinerHachures(Ctx& c, const std::vector<Boucle>& loops, double vx, double vy, double sc, const CfgHach& H) {  // mepDrawHatch
+void dessinerHachures(Ctx& c, const std::vector<Boucle>& loops, double vx, double vy, double sc, CfgHach H, const std::vector<Boucle>* clips = nullptr) {  // mepDrawHatch
   if (loops.empty()) return;
+  if (clips && H.pat == "plein") H.pat = "iso";  // ici, pas de chemin de découpe : des traits rognés
   const std::string st = H.col.empty() ? "" : (H.pat == "plein" ? "fill:" : "stroke:") + H.col;
   if (H.pat == "plein") {
     std::string d;
@@ -1588,9 +1972,19 @@ void dessinerHachures(Ctx& c, const std::vector<Boucle>& loops, double vx, doubl
   const double sp0 = 2.5 * H.sc / sc;
   for (const Fam& F : P)
     for (const auto& ln : lignesHachures(loops, H.ang + F.ang, sp0 * F.pas, F.ph)) {
-      At a = c.mk("line").n("x1", arr3(vx + ln[0][0] * sc)).n("y1", arr3(vy + ln[0][1] * sc)).n("x2", arr3(vx + ln[1][0] * sc)).n("y2", arr3(vy + ln[1][1] * sc)).s("class", "mepHatch");
-      if (F.tir) a.s("stroke-dasharray", F.tir);
-      if (!st.empty()) a.s("style", st);
+      std::vector<std::array<double, 4>> S{{ln[0][0], ln[0][1], ln[1][0], ln[1][1]}};
+      if (clips)
+        for (const Boucle& Q : *clips) {
+          std::vector<std::array<double, 4>> T;
+          for (const auto& s : S)
+            for (const auto& u : rognerSegment(s[0], s[1], s[2], s[3], Q, true)) T.push_back(u);
+          S = std::move(T);
+        }
+      for (const auto& s : S) {
+        At a = c.mk("line").n("x1", arr3(vx + s[0] * sc)).n("y1", arr3(vy + s[1] * sc)).n("x2", arr3(vx + s[2] * sc)).n("y2", arr3(vy + s[3] * sc)).s("class", "mepHatch");
+        if (F.tir) a.s("stroke-dasharray", F.tir);
+        if (!st.empty()) a.s("style", st);
+      }
     }
 }
 // ── une vue (mepDrawView) ──
@@ -1647,6 +2041,16 @@ void dessinerVue(Ctx& c, J& v) {
     for (size_t k = 0; k < g.hatchG.size(); k++) dessinerHachures(c, g.hatchG[k], vx, vy, sc, varianteHachures(static_cast<int>(k), H));
   } else if (!g.hatch.empty()) {
     dessinerHachures(c, g.hatch, vx, vy, sc, H);
+  }
+  for (const Geo::HachureLocale& L : g.hatchLoc) {  // coupes locales : hachures rognées à la forme (et au cercle d'un détail)
+    std::vector<Boucle> clips{L.poly};
+    if (vrai(v, "detail")) {
+      const J& d = v["detail"];
+      Boucle q;
+      for (int i = 0; i < 64; i++) q.push_back(P2{num(d, "cx") + num(d, "r") * std::cos(i * PI / 32), num(d, "cy") + num(d, "r") * std::sin(i * PI / 32)});
+      clips.push_back(std::move(q));
+    }
+    dessinerHachures(c, L.loops, vx, vy, sc, H, &clips);
   }
   // ligne de coupe sur la vue mère
   const J& sec = sous(v, "section");
@@ -1781,7 +2185,7 @@ Piece pieceDe(const Document& d, const ResultatRejeu& r, const J& doc) {
     Trou t;
     const InfosPercage N = percageInfos(f);
     t.fid = f.id, t.visible = f.visible, t.kind = N.kind, t.end = N.end, t.pilot = N.pilot;
-    t.d = N.d, t.stD = N.stD, t.stH = N.stH, t.cbD = N.cbD, t.cbH = N.cbH, t.csD = N.csD, t.csA = N.csA, t.depth = N.depth;
+    t.d = N.d, t.stD = N.stD, t.stH = N.stH, t.cbD = N.cbD, t.cbH = N.cbH, t.csD = N.csD, t.csA = N.csA, t.depth = N.depth, t.tip = N.tip;
     const ReglageFilet& F = f.percage.filet;
     t.taille = F.size, t.lenMode = F.lenMode, t.modele = F.model, t.lh = F.lh, t.pas = F.p, t.lenFilet = F.len;
     t.aPlan = f.percage.aPlan, t.planP = f.percage.planP, t.planN = f.percage.planN;
@@ -1895,10 +2299,16 @@ const Geo& Calcul::geoDe(const J& vue, const J& planche, const J& mep, const Pie
   for (const char* k : {"kind", "vk", "bodyId", "asm", "dir", "u", "v", "flip", "mode", "tangent", "section", "detail", "obl", "persp", "camera", "parent"})
     if (vue.is_object() && vue.contains(k)) cle[k] = vue[k];
   std::string sig = cle.dump(-1, ' ', false, J::error_handler_t::replace);
+  if (const J* dv = vueDxfDe(vue, planche)) sig += "dxf:" + sous(sous(*dv, "dxf"), "rev").dump();
   // Une vue dépend aussi de sa mère (coupe brisée) : son repère est dans la clé
   const J& sec = sous(vue, "section");
   if (sec.is_object())
     if (const J* par = vueDe(planche, chaine(sec, "pid"))) sig += chaine(*par, "vk") + sous(*par, "u").dump() + sous(*par, "dir").dump();
+  {  // mepLocalSig
+    const J* lv = vrai(vue, "detail") && vrai(vue, "parent") ? vueDe(planche, chaine(vue, "parent")) : &vue;
+    if (lv && vrai(*lv, "locals"))
+      for (const J& l : (*lv)["locals"]) sig += "loc:" + chaine(l, "id") + ":" + sous(l, "pts").dump();
+  }
   auto it = cache_.find(id);
   if (it != cache_.end() && it->second.first == sig) return *it->second.second;
   auto g = std::make_shared<Geo>(construire(vue, planche, p));
@@ -1951,6 +2361,7 @@ void completerAssemblage(Piece& p, const Document& d, const assemblage::Solides&
             }
         CorpsInstance x;
         x.comp = I.comp, x.id = id;
+        for (const std::string& q : I.chemin) x.chemin += "/" + q;
         x.forme = BRepBuilderAPI_Transform(forme, t, true).Shape();
         for (const auto& q : it->second->teintes)
           if (q.first.IsSame(forme)) x.couleur = q.second;
@@ -2124,7 +2535,7 @@ std::vector<Elt> dessiner(J& mep, int planche, const Piece& p, Calcul& calc) {  
       } catch (const std::exception&) {
       }
       const std::string idc = chaine(d, "id");
-      const bool choisie = calc.selection && (calc.selection->cote == idc || calc.selection->lotCotes.count(idc));
+      const bool choisie = calc.selection && ((calc.selection->cote == idc && calc.selection->pointOrd() == -2) || calc.selection->lotCotes.count(idc));
       CoteVue q;
       for (size_t i = n0; i < out.size(); i++) {
         Elt& e = out[i];
@@ -2152,6 +2563,25 @@ std::vector<Elt> dessiner(J& mep, int planche, const Piece& p, Calcul& calc) {  
     }
   try {
     dessinerBulles(c);
+  } catch (const std::exception&) {
+  }
+  try {
+    if (c.sh.contains("views") && c.sh["views"].is_array())
+      for (J& v : c.sh["views"]) {
+        if (!vrai(v, "locals")) continue;
+        const Geo& g = c.calc.geoDe(v, c.sh, c.mep, c.piece);
+        for (const Geo::RefLocale& R : g.locales)
+          for (J& l : v["locals"]) {
+            if (chaine(l, "id") != R.id) continue;
+            if (R.aW) {
+              l["ref"]["s"] = R.s, l["ref"]["w"] = R.w;
+              l.erase("lost");
+            } else if (R.lost) {
+              l["lost"] = true;
+            }
+          }
+      }
+    rafraichirLiensEsquisse(c);  // mepDrawSk
   } catch (const std::exception&) {
   }
   if (vrai(sh, "sk")) dessinerEsquisse(c, sh["sk"], 0, 0, true);
@@ -2281,6 +2711,26 @@ void pointBulle(const J& sh, const J& b, double& ax, double& ay) {
   const V3 q = v3(sous(b, "p"));
   ax = num(*v, "x") + dot(q, B0.u) * num(*v, "scale"), ay = num(*v, "y") + dot(q, B0.v) * num(*v, "scale");
 }
+bool hachureSous(const J& sh, const J& mep, const Piece& p, Calcul& calc, double px, double py) {
+  const J& vs = sous(sh, "views");
+  if (!vs.is_array()) return false;
+  const auto dansBoucles = [](const std::vector<Boucle>& L, double x, double y) {
+    bool c = false;
+    for (const Boucle& l : L)
+      if (dansPoly(x, y, l)) c = !c;
+    return c;
+  };
+  for (size_t k = vs.size(); k-- > 0;) {
+    const J& v = vs[k];
+    const Geo& g = calc.geoDe(v, sh, mep, p);
+    const double x = (px - num(v, "x")) / num(v, "scale"), y = (py - num(v, "y")) / num(v, "scale");
+    if (vrai(v, "section") && !g.hatch.empty() && dansBoucles(g.hatch, x, y)) return true;
+    if (vrai(v, "detail") && std::hypot(x - num(v["detail"], "cx"), y - num(v["detail"], "cy")) > num(v["detail"], "r")) continue;
+    for (const Geo::HachureLocale& H : g.hatchLoc)
+      if (dansPoly(x, y, H.poly) && dansBoucles(H.loops, x, y)) return true;
+  }
+  return false;
+}
 std::string bulleSous(const J& sh, double x, double y) {
   const J& B = sous(sh, "balloons");
   if (!B.is_array()) return "";
@@ -2302,6 +2752,7 @@ void suivreFilles(J& sh, const std::string& id, double dx, double dy) {  // mepP
     }
 }
 }  // namespace
+void suivreLesFilles(J& sh, const std::string& id, double dx, double dy) { suivreFilles(sh, id, dx, dy); }
 void deplacerVue(J& sh, J& v, double nx, double ny) {
   const std::string kind = chaine(v, "kind");
   const double x0 = num(v, "x"), y0 = num(v, "y");
@@ -2355,6 +2806,30 @@ void supprimerVues(J& sh, const std::set<std::string>& ids) {
   sh["dims"] = std::move(ds);
 }
 bool cartoucheDessine(const J& sh) { return cartoucheEsquisse(sh); }
+void ancreCartouche(const J& sh, double& x, double& y) {  // mepTbAnchor
+  const Page d = pageDe(sh);
+  x = d.ix + d.iw, y = d.H - d.fr.b;
+}
+double hauteurCartouche(const J& sh) { return pageDe(sh).th; }
+void limitesCartouche(const J& sh, double& w, double& h) {
+  const Page d = pageDe(sh);
+  w = d.W - d.fr.l - d.fr.r, h = d.H - d.fr.t - d.fr.b;
+}
+std::string texteEsquisse(Ctx& c, const J& e, bool edition) {  // mepSkTextValue
+  if (chaine(e, "f") == "txt") return chaine(e, "s");
+  J sans = e;
+  sans.erase("nd");
+  const std::string v = valeurCartouche(c, sans);
+  if (edition && (v.empty() || v == "—")) {
+    const std::string f = chaine(e, "f");
+    if (f == "perso") return "{" + chaine(e, "lab", "CHAMP") + "}";
+    if (f == "rev") return "{" + chaine(e, "k") + std::to_string(static_cast<int>(num(e, "r")) + 1) + "}";
+    static const std::map<std::string, std::string> L = {{"projet", "PROJET"}, {"nplan", "N° DE PLAN"}, {"societe", "SOCIÉTÉ"}, {"client", "CLIENT"}, {"quantite", "QUANTITÉ"}, {"planche", "PLANCHE"}, {"echelle", "ÉCHELLE"}, {"format", "FORMAT"}, {"date", "DATE"}, {"auteur", "DESSINÉ PAR"}, {"verif", "VÉRIFIÉ PAR"}, {"matiere", "MATIÈRE"}, {"traitement", "TTS"}, {"tth", "TTH"}, {"tolgen", "TOL. GÉNÉRALES"}, {"etat", "ÉTAT DE SURFACE"}, {"masse", "MASSE"}, {"indice", "INDICE"}};
+    const auto it = L.find(f);
+    return "{" + (it == L.end() ? f : it->second) + "}";
+  }
+  return vrai(e, "nd") && v == "—" ? "" : v;
+}
 double largeurCartouche(const J& sh) {
   const Page pd = pageDe(sh);
   if (!cartoucheEsquisse(sh)) return pd.iw;
@@ -2362,6 +2837,182 @@ double largeurCartouche(const J& sh) {
   tbBoite(sh["title"]["tb"]["sk"], pd.W - pd.fr.l - pd.fr.r, pd.H - pd.fr.t - pd.fr.b, mx, my);
   return std::max(0.0, -mx);
 }
+// ---- Les bulles (mepBalloonsAuto, mepBalloonLayout, asmPlanHit, asmBalloonCands) ----
+namespace {
+struct Candidat {
+  V3 p;
+  double d;
+};
+std::vector<Candidat> candidatsBulle(const SceneVue& sc, const std::string& comp, int N) {  // asmBalloonCands, asmBalloonAnchor
+  const auto E = sc.etendues(comp);
+  for (const SceneVue::Etendue& e : E) {
+    if (!(e.x1 >= e.x0)) continue;
+    const double cx = (e.x0 + e.x1) / 2, cy = (e.y0 + e.y1) / 2;
+    std::vector<Candidat> o;
+    for (int i = 0; i < N; i++)
+      for (int j = 0; j < N; j++) {
+        const double lx = e.x0 + (e.x1 - e.x0) * (i + 0.5) / N, ly = e.y0 + (e.y1 - e.y0) * (j + 0.5) / N;
+        const SceneVue::Touche h = sc.sous(lx, ly);
+        if (h.ok && h.comp == comp) o.push_back({h.p, std::hypot(lx - cx, ly - cy)});
+      }
+    if (!o.empty()) {
+      std::stable_sort(o.begin(), o.end(), [](const Candidat& a, const Candidat& b) { return a.d < b.d; });
+      return o;
+    }
+  }
+  for (const SceneVue::Etendue& e : E)
+    if (e.hi[0] >= e.lo[0]) return {{V3{(e.lo[0] + e.hi[0]) / 2, (e.lo[1] + e.hi[1]) / 2, (e.lo[2] + e.hi[2]) / 2}, 0}};
+  return {};
+}
+}  // namespace
+
+int bullesAutomatiques(J& mep, int planche, const Piece& p, Calcul& calc) {
+  J& sh = mep["sheets"][planche];
+  const J* v = nullptr;
+  if (sh.contains("views") && sh["views"].is_array())
+    for (const J& q : sh["views"])
+      if (vrai(q, "asm")) {
+        v = &q;
+        break;
+      }
+  if (!v) return 0;
+  Ctx c = contexteGeste(mep, planche, p, calc);
+  const std::vector<LigneBom> rows = lignesBom(c);
+  sh["balloons"] = J::array();
+  const Base B = baseDe(*v);
+  const SceneVue sc(p, B.dir, B.u, B.v);
+  const double vx = num(*v, "x"), vy = num(*v, "y"), scale = num(*v, "scale");
+  // mepBalloonLayout : un cadre à 9 mm de la boîte de la vue, titre compris
+  double bx, by, bw, bh;
+  if (!boiteDeVue(*v, sh, mep, p, calc, bx, by, bw, bh)) bx = vx - 20, by = vy - 20, bw = 40, bh = 40;
+  bool aTitre = false, dessous = false;
+  double tx0 = 0, tx1 = 0;
+  const std::string txt = texteTitreVue(*v);
+  if (!txt.empty()) {
+    const J& t = sous(*v, "ttl");
+    const double lh = c.st.lblH, gap = t.is_object() && t.contains("gap") && std::isfinite(nv(t["gap"], NAN)) ? nv(t["gap"]) : 5;
+    const double Tx = bx + bw / 2, Ty = chaine(t, "side") == "above" ? by - gap : by + bh + gap + lh;
+    const double Tw = longueurCar(txt) * corpsPolice(lh) * 0.64;
+    aTitre = true, tx0 = Tx - Tw / 2 - 1.5, tx1 = Tx + Tw / 2 + 1.5, dessous = Ty > by + bh / 2;
+    const double a0 = std::min(bx, Tx - Tw / 2), b0 = std::min(by, Ty - lh), a1 = std::max(bx + bw, Tx + Tw / 2), b1 = std::max(by + bh, Ty + 0.8);
+    bx = a0, by = b0, bw = a1 - a0, bh = b1 - b0;
+  }
+  const double G = 9, x0 = bx - G, y0 = by - G, W = bw + 2 * G, H = bh + 2 * G, P = 2 * (W + H);
+  const auto toS = [&](double x, double y) {
+    if (std::abs(y - y0) < 1e-6) return x - x0;
+    if (std::abs(x - (x0 + W)) < 1e-6) return W + (y - y0);
+    if (std::abs(y - (y0 + H)) < 1e-6) return W + H + (x0 + W - x);
+    return 2 * W + H + (y0 + H - y);
+  };
+  struct Q {
+    std::string comp;
+    V3 p{0, 0, 0};
+    double ax = 0, ay = 0, s = 0, bx = 0, by = 0;
+  };
+  std::vector<Q> L;
+  for (const LigneBom& r : rows) {
+    const std::vector<Candidat> C = candidatsBulle(sc, r.id, 7);
+    if (C.empty()) continue;
+    struct Mieux {
+      bool a = false, libre = false;
+      double sc = 0, ax = 0, ay = 0, cx = 0, cy = 0;
+      V3 p{0, 0, 0};
+    } best;
+    for (const Candidat& K : C) {
+      const double ax = vx + dot(K.p, B.u) * scale, ay = vy + dot(K.p, B.v) * scale;
+      const struct {
+        double x, y, l;
+        char c;
+      } cotes[4] = {{ax, y0, ay - y0, 't'}, {x0 + W, ay, x0 + W - ax, 'r'}, {ax, y0 + H, y0 + H - ay, 'b'}, {x0, ay, ax - x0, 'l'}};
+      for (const auto& q : cotes) {
+        if (aTitre && q.c == (dessous ? 'b' : 't') && ax >= tx0 && ax <= tx1) continue;
+        const double s = q.l + 0.25 * K.d * scale;
+        if (best.a && best.libre && s >= best.sc) continue;
+        bool libre = true;
+        for (int k = 1; k <= 8 && libre; k++) {
+          const double f = k / 8.0;
+          const SceneVue::Touche h = sc.sous((ax + (q.x - ax) * f - vx) / scale, (ay + (q.y - ay) * f - vy) / scale);
+          if (h.ok && h.comp != r.id) libre = false;
+        }
+        if (!best.a || (libre && !best.libre) || (libre == best.libre && s < best.sc)) {
+          best.a = true, best.libre = libre, best.sc = s, best.ax = ax, best.ay = ay, best.cx = q.x, best.cy = q.y, best.p = K.p;
+        }
+      }
+    }
+    if (!best.a) continue;
+    Q q;
+    q.comp = r.id, q.p = best.p, q.ax = best.ax, q.ay = best.ay;
+    q.s = toS(std::min(x0 + W, std::max(x0, best.cx)), std::min(y0 + H, std::max(y0, best.cy)));
+    L.push_back(q);
+  }
+  std::stable_sort(L.begin(), L.end(), [](const Q& a, const Q& b) { return a.s < b.s; });
+  const double gap = 11;  // 1,5 diamètre de bulle
+  for (size_t k = 1; k < L.size(); k++)
+    if (L[k].s < L[k - 1].s + gap) L[k].s = L[k - 1].s + gap;
+  if (L.size() * gap <= P && L.size() > 1 && L.back().s > L[0].s + P - gap) {  // le tour se referme : recentre
+    const double over = L.back().s - (L[0].s + P - gap);
+    for (Q& q : L) q.s -= over / 2;
+  }
+  J& out = sh["balloons"];
+  for (Q& q : L) {
+    double s = std::fmod(std::fmod(q.s, P) + P, P), X, Y;
+    if (s < W) X = x0 + s, Y = y0;
+    else if (s < W + H) X = x0 + W, Y = y0 + s - W;
+    else if (s < 2 * W + H) X = x0 + W - (s - W - H), Y = y0 + H;
+    else X = x0, Y = y0 + H - (s - 2 * W - H);
+    J b = J::object();
+    b["id"] = "bl" + std::to_string(out.size() + 1);
+    b["view"] = chaine(*v, "id");
+    b["comp"] = q.comp;
+    b["p"] = J::array({q.p[0], q.p[1], q.p[2]});
+    b["dx"] = js::arrondi(X - q.ax, 2);
+    b["dy"] = js::arrondi(Y - q.ay, 2);
+    out.push_back(std::move(b));
+  }
+  return static_cast<int>(out.size());
+}
+
+bool ajouterBulle(J& mep, int planche, const Piece& p, Calcul& calc, double x, double y, std::string& msg) {
+  J& sh = mep["sheets"][planche];
+  const J* v = vueDe(sh, vueSous(sh, mep, p, calc, x, y));
+  if (!v || !vrai(*v, "asm")) {
+    msg = "＋ Bulle : cliquez une pièce dans une vue « Assemblage ».";
+    return false;
+  }
+  const Base B = baseDe(*v);
+  const double scale = num(*v, "scale");
+  const SceneVue sc(p, B.dir, B.u, B.v);
+  const SceneVue::Touche h = sc.sous((x - num(*v, "x")) / scale, (y - num(*v, "y")) / scale);
+  if (!h.ok || h.comp.empty()) {
+    msg = "＋ Bulle : aucune pièce de l’assemblage sous le clic.";
+    return false;
+  }
+  Ctx c = contexteGeste(mep, planche, p, calc);
+  const std::vector<LigneBom> rows = lignesBom(c);
+  const auto r = std::find_if(rows.begin(), rows.end(), [&](const LigneBom& q) { return q.id == h.comp; });
+  if (r == rows.end()) {
+    msg = "＋ Bulle : cette pièce n’est pas dans la nomenclature (niveau choisi).";
+    return false;
+  }
+  if (!sh.contains("balloons") || !sh["balloons"].is_array()) sh["balloons"] = J::array();
+  size_t n = sh["balloons"].size() + 1;
+  const auto pris = [&](size_t k) {
+    for (const J& b : sh["balloons"])
+      if (chaine(b, "id") == "bl" + std::to_string(k)) return true;
+    return false;
+  };
+  while (pris(n)) n++;
+  J b = J::object();
+  b["id"] = "bl" + std::to_string(n);
+  b["view"] = chaine(*v, "id");
+  b["comp"] = r->id;
+  b["p"] = J::array({h.p[0], h.p[1], h.p[2]});
+  b["dx"] = 12, b["dy"] = -12;
+  sh["balloons"].push_back(std::move(b));
+  msg = "Bulle " + std::to_string(r - rows.begin() + 1) + " (" + r->name + ") ajoutée — glissez-la pour la placer.";
+  return true;
+}
+
 std::vector<RangNomenclature> rangsNomenclature(J& mep, int planche, const Piece& p, Calcul& calc) {
   Ctx c = contexteGeste(mep, planche, p, calc);
   std::vector<RangNomenclature> o;
@@ -2397,6 +3048,7 @@ void inverserAngle(J& mep, int planche, const Piece& p, Calcul& calc, J& d) {
   inverserAngleDans(c, d);
 }
 
+double hauteurCapitale() { return CAP_RATIO; }
 std::string versSvg(const std::vector<Elt>& e, const J& planche, const Style& s) {
   (void)s;
   double W, H;

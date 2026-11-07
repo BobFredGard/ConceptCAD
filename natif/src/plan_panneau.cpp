@@ -44,6 +44,10 @@ double num(const J& o, const char* k, double d = 0) {
   if (!o.is_object() || !o.contains(k) || !o[k].is_number()) return d;
   return o[k].get<double>();
 }
+const J& sous(const J& o, const char* k) {
+  static const J rien;
+  return o.is_object() && o.contains(k) ? o[k] : rien;
+}
 bool vrai(const J& o, const char* k) {
   if (!o.is_object() || !o.contains(k)) return false;
   const J& v = o[k];
@@ -266,7 +270,193 @@ wxString dossierReglages() {
   if (!wxDirExists(d)) wxMkdir(d);
   return d;
 }
+// ---- La bibliothèque de cartouches (mepTbLib, mepTbPack, mepTbUnpack, mepTbApply) ----
+wxString fichierBibliotheque() { return dossierReglages() + L"\\cartouches.json"; }
+J bibliotheque() {
+  J b;
+  std::ifstream e(fichierBibliotheque().ToStdWstring());
+  if (e) {
+    try {
+      b = J::parse(e);
+    } catch (const std::exception&) {
+    }
+  }
+  if (!b.is_object()) b = J::object();
+  if (!b.contains("tbs") || !b["tbs"].is_object()) b["tbs"] = J::object();
+  return b;
+}
+void ecrireBibliotheque(const J& b) { std::ofstream(fichierBibliotheque().ToStdWstring()) << b.dump(1); }
+const char* const CLES_VALEURS[] = {"projet", "client", "societe", "quantite", "nplan", "auteur", "verif", "matiere", "traitement", "tth", "tolgen", "etat", "masse", "revFmt"};
+bool modeleValide(const J& o) {
+  if (!o.is_object()) return false;
+  const std::string k = chaine(o, "kind");
+  return (k == "sk" && vrai(o, "sk") && vrai(o["sk"], "pts")) || k == "std";
+}
+J paquetCartouche(const J& sh, const std::string& nom) {  // mepTbPack
+  const J& tt = sous(sh, "title");
+  J o;
+  if (plan::cartoucheDessine(sh)) {
+    o = tt["tb"];
+  } else {
+    o = J{{"kind", "std"}};
+    if (vrai(tt, "revSt")) o["revSt"] = tt["revSt"];
+  }
+  o["name"] = !nom.empty() ? nom : !chaine(o, "name").empty() ? chaine(o, "name") : chaine(o, "kind") == "std" ? std::string("Standard") : std::string("Cartouche");
+  if (vrai(tt, "logo")) o["logo"] = tt["logo"];
+  else o.erase("logo");
+  J v = J::object();
+  for (const char* k : CLES_VALEURS)
+    if (tt.is_object() && tt.contains(k) && !tt[k].is_null() && tt[k] != "") v[k] = tt[k];
+  o["vals"] = v;
+  if (vrai(tt, "cust") && tt["cust"].is_object() && !tt["cust"].empty()) o["cust"] = tt["cust"];
+  else o.erase("cust");
+  return o;
+}
+void appliquerModele(J& sh, const J& o) {  // mepTbApply, mepTbUnpack
+  if (!modeleValide(o)) return;
+  if (!sh.contains("title") || !sh["title"].is_object()) sh["title"] = J::object();
+  J& tt = sh["title"];
+  J tb = o;
+  tb.erase("logo"), tb.erase("vals"), tb.erase("cust");
+  if (chaine(o, "kind") == "std") {
+    tt["tb"] = nullptr;
+    if (vrai(tb, "revSt")) tt["revSt"] = tb["revSt"];
+  } else {
+    tt["tb"] = tb;
+  }
+  if (vrai(o, "logo")) tt["logo"] = o["logo"];
+  if (o.contains("vals") && o["vals"].is_object())
+    for (const char* k : CLES_VALEURS)
+      if (o["vals"].contains(k) && !o["vals"][k].is_null()) tt[k] = o["vals"][k];
+  if (o.contains("cust") && o["cust"].is_object()) {
+    if (!tt.contains("cust") || !tt["cust"].is_object()) tt["cust"] = J::object();
+    for (auto it = o["cust"].begin(); it != o["cust"].end(); ++it) tt["cust"][it.key()] = it.value();
+  }
+  if (chaine(o, "kind") == "std") tt["tbName"] = chaine(o, "name");
+  else tt.erase("tbName");
+  const std::string fmt = chaine(sous(o, "page"), "format");
+  if (fmt == "A0" || fmt == "A1" || fmt == "A2" || fmt == "A3" || fmt == "A4") {
+    sh["format"] = fmt;
+    sh["orient"] = chaine(o["page"], "orient") == "portrait" ? "portrait" : "landscape";
+  }
+  if (o.contains("frame") && o["frame"].is_object()) sh["frame"] = o["frame"];
+  // Un modèle qui dessine son tableau des révisions : la première révision est créée d'office
+  if (plan::cartoucheDessine(sh) && !(tt.contains("revs") && tt["revs"].is_array() && !tt["revs"].empty())) {
+    bool aRev = false;
+    for (const J& e : tt["tb"]["sk"]["ents"])
+      if (chaine(e, "f") == "rev") aRev = true;
+    if (aRev) {
+      const std::string au = chaine(tt, "auteur");
+      tt["revs"] = J::array({J{{"i", revisionIndice(chaine(tt, "revFmt", "A"), 0)}, {"d", chaine(tt, "date")}, {"n", au != "—" ? au : ""}, {"t", ""}}});
+    }
+  }
+}
 }  // namespace
+
+void plan::lireStyleEsquisse(const J& mep, EtatEsquisse& et) {
+  const J o = luJson(mep, "mep_sk_style");
+  if (o.is_object()) et.style = o;
+}
+void plan::appliquerCartoucheDefaut(const J& mep, J& sh) {
+  const J b = bibliotheque();
+  std::string d = lu(mep, "mep_tb_def");
+  if (d.empty()) d = chaine(b, "def");
+  if (!d.empty() && b["tbs"].contains(d)) appliquerModele(sh, b["tbs"][d]);
+}
+
+void PanneauPlan::modelesCartouche() {
+  J& sh = vue_->planche();
+  const J& tt = sh["title"];
+  const J lib = bibliotheque()["tbs"];
+  Options o = {{"std", L"Standard"}};
+  for (auto it = lib.begin(); it != lib.end(); ++it) o.push_back({"l:" + it.key(), wxString(L"★ ") + tx(it.key())});
+  std::string cur = "std";
+  if (plan::cartoucheDessine(sh)) {
+    const std::string n = chaine(tt["tb"], "name");
+    cur = !n.empty() && lib.contains(n) ? "l:" + n : "cur";
+    if (cur == "cur") o.push_back({"cur", (n.empty() ? wxString(L"Personnalisé") : tx(n)) + L" (cette planche)"});
+  } else {
+    const std::string n = chaine(tt, "tbName");
+    if (!n.empty() && lib.contains(n) && chaine(lib[n], "kind") == "std") cur = "l:" + n;
+  }
+  choix(L"Modèle", o, cur, [this](const std::string& v) {
+    if (v == "cur") return;
+    editer(L"modèle de cartouche", [this, v] {
+      J& s = vue_->planche();
+      if (v == "std") {
+        s["title"]["tb"] = nullptr;
+        s["title"].erase("tbName");
+      } else {
+        const J q = bibliotheque()["tbs"];
+        if (q.contains(v.substr(2))) appliquerModele(s, q[v.substr(2)]);
+      }
+      vue_->redessinerPlan();
+    });
+  });
+  auto* r = rang();
+  bouton(r, L"Charger un cartouche…", [this] {
+    wxFileDialog dlg(this, L"Charger un cartouche", wxEmptyString, wxEmptyString, L"Cartouches (*.mfcartouche;*.json)|*.mfcartouche;*.json", wxFD_OPEN | wxFD_FILE_MUST_EXIST);
+    if (dlg.ShowModal() != wxID_OK) return;
+    J f;
+    std::ifstream e(dlg.GetPath().ToStdWstring());
+    try {
+      f = J::parse(e);
+    } catch (const std::exception&) {
+      return vue_->etat(L"Fichier de cartouches illisible.");
+    }
+    J tbs;
+    if (chaine(f, "format") == "miniFusion-cartouches" && vrai(f, "tbs")) tbs = f["tbs"];
+    else if (modeleValide(f)) tbs = J{{!chaine(f, "name").empty() ? chaine(f, "name") : ut(dlg.GetFilename().BeforeLast('.')), f}};
+    else return vue_->etat(L"Ce fichier ne contient pas de cartouche ConceptCAD.");
+    J b = bibliotheque();
+    std::vector<std::string> pris;
+    for (auto it = tbs.begin(); it != tbs.end(); ++it) {
+      if (!modeleValide(it.value())) continue;
+      J m = it.value();
+      m["name"] = it.key();
+      b["tbs"][it.key()] = m;
+      pris.push_back(it.key());
+    }
+    ecrireBibliotheque(b);
+    if (pris.size() == 1) {
+      const J m = b["tbs"][pris[0]];
+      editer(L"cartouche extérieur", [this, m] {
+        appliquerModele(vue_->planche(), m);
+        vue_->redessinerPlan();
+      });
+      vue_->etat(wxString(L"Cartouche « ") + tx(pris[0]) + L" » chargé et appliqué à la planche (ajouté à la bibliothèque).");
+    } else {
+      vue_->etat(wxString::Format(L"%zu cartouche(s) chargé(s) dans la bibliothèque.", pris.size()));
+      CallAfter([this] { refaire(); });
+    }
+  }, L"Charger un cartouche extérieur (fichier .mfcartouche, ex. un dossier partagé) : ajouté à la bibliothèque et appliqué à cette planche — un modèle du même nom est remplacé");
+  bouton(r, L"Exporter…", [this] {
+    J tbs = bibliotheque()["tbs"];
+    const J& s = vue_->planche();
+    std::string n = plan::cartoucheDessine(s) ? chaine(s["title"]["tb"], "name") : std::string();
+    if (n.empty()) n = "Cartouche de la planche";
+    tbs[n] = paquetCartouche(s, n);
+    std::string fic = tbs.size() == 1 ? n : "cartouches";
+    for (char& c : fic)
+      if (std::strchr("\\/:*?\"<>|", c)) c = '-';
+    wxFileDialog dlg(this, L"Exporter les cartouches", wxEmptyString, tx(fic) + L".mfcartouche", L"Cartouches (*.mfcartouche)|*.mfcartouche", wxFD_SAVE | wxFD_OVERWRITE_PROMPT);
+    if (dlg.ShowModal() != wxID_OK) return;
+    std::ofstream(dlg.GetPath().ToStdWstring()) << J{{"format", "miniFusion-cartouches"}, {"v", 1}, {"tbs", tbs}}.dump(1);
+    vue_->etat(wxString::Format(L"%zu cartouche(s) exporté(s) : ", tbs.size()) + dlg.GetFilename());
+  }, L"Enregistrer les modèles de cartouche (bibliothèque + celui de cette planche) dans un fichier .mfcartouche");
+  const std::vector<std::string> partis = plan::pointsHorsFeuille(sh);
+  if (!partis.empty()) {
+    const wxColour orange(0xff, 0x9f, 0x0a);
+    note(wxString::Format(L"⚠ %zu point(s) du cartouche sont hors de la feuille (solveur parti au loin) : ils sont ignorés pour la hauteur du cartouche.", partis.size()), &orange);
+    r = rang();
+    bouton(r, L"Supprimer les éléments hors feuille", [this] {
+      editer(L"cartouche : éléments hors feuille", [this] {
+        plan::retirerHorsFeuille(vue_->planche());
+        vue_->redessinerPlan();
+      });
+    }, L"Supprime ces points, leurs lignes et leurs contraintes (annulable)");
+  }
+}
 
 PanneauPlan::PanneauPlan(wxWindow* parent, PlanVue* vue) : wxScrolledWindow(parent, wxID_ANY, wxDefaultPosition, wxDefaultSize, wxVSCROLL | wxBORDER_NONE), vue_(vue) {
   SetScrollRate(0, FromDIP(14));
@@ -445,10 +635,16 @@ void PanneauPlan::refaire() {
   boutons_.clear();
   cible_ = nullptr;
   const plan::SelectionPlan& s = vue_->selection();
+  const std::string outil = vue_->outilCourant();
   if (!s.lotVues.empty() || !s.lotCotes.empty()) lot();
+  else if (!s.skSel.empty()) esquisse();
+  else if (vue_->esq().tbEdit && plan::cartoucheDessine(vue_->planche())) cartoucheEdition();
+  else if (plan::estOutilEsquisse(outil) && outil != "trim" && outil != "logo") esquisse();
   else if (!s.vue.empty() && vue_->vueCourante(s.vue)) {
     vueChoisie(s.vue);
     finir("view");
+  } else if (!s.axeVue.empty() && plan::vueParId(vue_->planche(), s.axeVue)) {
+    axeChoisi();
   } else if (!s.cote.empty() && vue_->coteCourante(s.cote)) {
     coteChoisie(s.cote);
     finir("dim");
@@ -676,12 +872,49 @@ void PanneauPlan::accueil() {
       editer(L"logo", [this, url] { vue_->planche()["title"]["logo"] = url; });
     }, L"Image du cartouche (réduite à 240 px)");
     if (aLogo) bouton(r, L"Retirer", [this] { editer(L"logo", [this] { vue_->planche()["title"].erase("logo"); }); }, L"Retirer le logo");
+    modelesCartouche();
     r = rang();
-    boutonPasEncore(r, L"Charger un cartouche…");
-    boutonPasEncore(r, L"Exporter…");
-    r = rang();
-    boutonPasEncore(r, plan::cartoucheDessine(sh) ? L"Éditer le cartouche…" : L"Dessiner le cartouche…");
-    boutonPasEncore(r, L"Enregistrer…");
+    bouton(r, plan::cartoucheDessine(sh) ? L"Éditer le cartouche…" : L"Dessiner le cartouche…", [this] { vue_->basculerCartouche(true); }, L"Lignes, rectangles, textes et champs (matière, TTS, TTH…), contraintes et cotes pilotantes");
+    const std::string nomCourant = plan::cartoucheDessine(sh) ? chaine(tt["tb"], "name") : chaine(tt, "tbName");
+    bouton(r, L"Enregistrer…", [this, nomCourant] {
+      wxTextEntryDialog dlg(this, L"Nom du modèle de cartouche (bibliothèque de ce poste) :", L"Cartouche", nomCourant.empty() ? wxString(L"Mon cartouche") : tx(nomCourant));
+      if (dlg.ShowModal() != wxID_OK) return;
+      const std::string n = ut(dlg.GetValue().Strip(wxString::both));
+      if (n.empty()) return;
+      J b = bibliotheque();
+      b["tbs"][n] = paquetCartouche(vue_->planche(), n);
+      ecrireBibliotheque(b);
+      editer(L"modèle de cartouche", [this, n] {
+        J& t = vue_->planche()["title"];
+        if (plan::cartoucheDessine(vue_->planche())) t["tb"]["name"] = n;
+        else t["tbName"] = n;
+      });
+      vue_->etat(wxString(L"Modèle « ") + tx(n) + L" » enregistré (traits, textes, logo et valeurs des champs).");
+    }, L"Ajouter ce cartouche à la bibliothèque — traits, textes, logo et valeurs des champs : réutilisable dans toutes les pièces");
+    {
+      const J b = bibliotheque();
+      if (!nomCourant.empty() && b["tbs"].contains(nomCourant)) {
+        const bool estDefaut = (lu(vue_->mep(), "mep_tb_def").empty() ? chaine(b, "def") : lu(vue_->mep(), "mep_tb_def")) == nomCourant;
+        r = rang();
+        bouton(r, estDefaut ? L"✓ Par défaut" : L"Par défaut", [this, nomCourant, estDefaut] {
+          J q = bibliotheque();
+          if (estDefaut) q.erase("def");
+          else q["def"] = nomCourant;
+          ecrireBibliotheque(q);
+          if (estDefaut) reglages(vue_->mep()).erase("mep_tb_def");
+          else reglages(vue_->mep())["mep_tb_def"] = nomCourant;
+          CallAfter([this] { refaire(); });
+        }, L"Modèle des nouvelles planches");
+        bouton(r, L"Retirer de la bibliothèque", [this, nomCourant] {
+          if (wxMessageBox(wxString(L"Retirer « ") + tx(nomCourant) + L" » de la bibliothèque ? La planche garde son cartouche.", L"Cartouche", wxYES_NO | wxICON_QUESTION, this) != wxYES) return;
+          J q = bibliotheque();
+          q["tbs"].erase(nomCourant);
+          if (chaine(q, "def") == nomCourant) q.erase("def");
+          ecrireBibliotheque(q);
+          CallAfter([this] { refaire(); });
+        });
+      }
+    }
   }
   // ---- révisions ----
   {
@@ -776,9 +1009,16 @@ void PanneauPlan::accueil() {
       });
       if (!lvl.empty() && lvl != "corps") {
         auto* r = rang();
-        boutonPasEncore(r, L"Bulles automatiques");
+        bouton(r, L"Bulles automatiques", [this] {
+          wxBusyCursor attente;
+          editer(L"bulles", [this] { vue_->bullesAuto(); });
+          CallAfter([this] { refaire(); });
+        }, L"Une bulle par ligne de la nomenclature, sur la première vue « Assemblage » de la planche");
         bouton(r, L"Effacer les bulles", [this] { editer(L"bulles", [this] { vue_->planche()["balloons"] = J::array(); }); }, L"Retire toutes les bulles de la planche");
-        boutonPasEncore(r, L"＋ Bulle");
+        bouton(r, vue_->ajoutBulle() ? L"＋ Bulle (actif)" : L"＋ Bulle", [this] {
+          vue_->basculerAjoutBulle();
+          CallAfter([this] { refaire(); });
+        }, L"Ajoute une bulle sur la pièce cliquée ; une bulle se glisse, Suppr la retire");
       }
     }
     if (on) {
@@ -798,18 +1038,31 @@ void PanneauPlan::accueil() {
   section(L"Dessin 2D");
   {
     auto* r = rang();
-    for (const wchar_t* l : {L"Ligne", L"Rectangle", L"Cercle", L"Arc", L"Point"}) boutonPasEncore(r, l);
+    const auto ruban = [&](const wchar_t* lab, const wchar_t* nom) {
+      const wxString n(nom);
+      bouton(r, lab, [this, n] { vue_->boutonRuban(n); });
+    };
+    for (const wchar_t* l : {L"Ligne", L"Rectangle", L"Cercle", L"Arc", L"Point"}) ruban(l, l);
     r = rang();
-    for (const wchar_t* l : {L"Ajuster", L"Texte", L"Cote", L"Perçage"}) boutonPasEncore(r, l);
+    for (const wchar_t* l : {L"Ajuster", L"Texte"}) ruban(l, l);
+    ruban(L"Cote", L"Cote");
+    ruban(L"Perçage", L"Perçage");
     r = rang();
-    for (const wchar_t* l : {L"Axes", L"Note", L"Ord. X", L"Ord. Y"}) boutonPasEncore(r, l);
+    bouton(r, L"Axes", [this] { vue_->lancerAxes("hole"); });
+    ruban(L"Note", L"Note");
+    ruban(L"Ord. X", L"Ordonnées X");
+    ruban(L"Ord. Y", L"Ordonnées Y");
     r = rang();
-    boutonPasEncore(r, L"Coter les perçages");
+    ruban(L"Coter les perçages", L"Perçages auto");
   }
   section(L"Axes");
   {
     auto* r = rang();
-    for (const wchar_t* l : {L"Trou", L"Alignement", L"Cercle", L"Libre", L"Symétrie"}) boutonPasEncore(r, l);
+    const std::string mode = vue_->modeAxes();
+    for (const auto& q : std::vector<std::pair<const wchar_t*, const char*>>{{L"Trou", "hole"}, {L"Alignement", "align"}, {L"Cercle", "pitch"}, {L"Libre", "free"}, {L"Symétrie", "sym"}}) {
+      const std::string m = q.second;
+      bouton(r, q.first, [this, m] { vue_->lancerAxes(m); }, wxString(), mode == m);
+    }
   }
   // ---- écriture ----
   section(L"Écriture (ISO 3098)");
@@ -933,11 +1186,11 @@ void PanneauPlan::accueil() {
   section(L"Sortie");
   {
     auto* r = rang();
-    boutonPasEncore(r, L"⟳ Rejeter");
-    boutonPasEncore(r, L"SVG");
-    boutonPasEncore(r, L"🖨");
-    boutonPasEncore(r, L"PDF");
-    boutonPasEncore(r, L"DXF");
+    bouton(r, L"⟳ Rejeter", [this] { vue_->rejeter(""); }, L"Rejeter toutes les vues");
+    bouton(r, L"SVG", [this] { vue_->exporter("svg"); }, L"Exporter la planche en SVG");
+    bouton(r, L"🖨", [this] { vue_->imprimer(); }, L"Imprimer la planche");
+    bouton(r, L"PDF", [this] { vue_->exporter("pdf"); }, L"PDF vectoriel au format exact de la planche");
+    bouton(r, L"DXF", [this] { vue_->exporter("dxf"); }, L"Exporter la planche en DXF R12 (calques CONTOUR, CACHE, AXE, COTES, CADRE…)");
     const size_t nv = sh.contains("views") && sh["views"].is_array() ? sh["views"].size() : 0, nd = sh.contains("dims") && sh["dims"].is_array() ? sh["dims"].size() : 0;
     note(wxString::Format(L"%zu vue(s) · %zu cote(s) · outil actif : sélection", nv, nd));
   }
@@ -985,7 +1238,22 @@ void PanneauPlan::vueChoisie(const std::string& id) {
     }
     choix(L"Échelle", o, cur, [mod](const std::string& x) { mod(L"échelle", [x](J& q) { q["scale"] = std::strtod(x.c_str(), nullptr); }); });
   }
-  if (kind == "dxf") return;
+  if (kind == "dxf") {
+    auto* r = rang();
+    bouton(r, L"Remplacer le DXF…", [this, id] { vue_->remplacerDxf(id); }, L"Charger un autre DXF dans cette vue (cotes et position gardées)");
+    bouton(r, L"Cadrer", [this, id] { vue_->cadrerVue(id); });
+    bouton(r, L"Supprimer", [this, id] { editer(L"suppression de vue", [this, id] { vue_->enleverVue(id); }); });
+    const J& D = sous(v, "dxf");
+    wxString n = wxString::Format(L"%d élément(s), ", static_cast<int>(num(D, "n"))) + tx(plan::nombreAffiche(num(sous(D, "bbox"), "w"), 1)) + L" × " + tx(plan::nombreAffiche(num(sous(D, "bbox"), "h"), 1)) + L" mm (vraie grandeur)";
+    const J& sk = sous(D, "skipped");
+    if (sk.is_object()) {
+      wxString t;
+      for (auto it = sk.begin(); it != sk.end(); ++it) t += (t.empty() ? L" — ignorés : " : L", ") + wxString::Format("%d ", it.value().get<int>()) + tx(it.key());
+      n += t;
+    }
+    note(n + L". Cotes, axes, perçages et esquisse de planche (lignes, cercles…) s’y accrochent comme sur une vue projetée ; Détail possible.");
+    return;
+  }
   {
     Options o = {{"", L"Assemblée"}};
     std::string cur = vrai(v, "asm") ? "__asm" : chaine(v, "bodyId");
@@ -1018,12 +1286,24 @@ void PanneauPlan::vueChoisie(const std::string& id) {
     cas(L"Rendu réaliste", "real", L"Image de la vue comme le Rendu direct : ambiance et reflets de la fenêtre RENDU, matériau de rendu de chaque pièce — arêtes par-dessus", "1");
     if (vrai(v, "render3d") || vrai(v, "real")) cas(L"Miroir", "mirror", L"Reflet de la pièce sous elle-même, estompé vers le bas (sans sol ni ombre)");
   }
+  if (v.contains("locals") && v["locals"].is_array() && !v["locals"].empty()) {  // une ligne par coupe locale
+    note(L"Coupes locales");
+    for (size_t k = 0; k < v["locals"].size(); k++) {
+      const J& l = v["locals"][k];
+      const std::string lid = chaine(l, "id"), vid = id;
+      const wxString nom = wxString::Format(L"n° %zu", k + 1) + (vrai(l, "lost") ? L" ⚠" : L"");
+      const wxString tip = vrai(l, "lost") ? wxString(L"L’arête du plan n’est plus retrouvée : le dernier plan connu est gardé — « Arête… » pour en choisir une autre")
+                                           : wxString(L"Plan de coupe parallèle à la vue, à la profondeur de l’arête choisie — clic : sélectionner la forme pour tirer ses points");
+      auto* rl = rang();
+      bouton(rl, nom, [this, vid, lid] { vue_->choisirLocale(vid, lid); }, tip);
+      bouton(rl, L"Arête…", [this, vid, lid] { vue_->changerAreteLocale(vid, lid); }, L"Choisir une autre arête pour placer le plan de coupe");
+      bouton(rl, L"✕", [this, vid, lid] { vue_->supprimerLocale(vid, lid); }, L"Supprimer cette coupe locale");
+    }
+  }
   if (kind == "base") {
     const std::string vk = chaine(v, "vk");
     if (vk == "front" || vk == "rear" || vk == "left" || vk == "right" || vk == "top" || vk == "bottom") {
-      auto* r = rang();
-      libelle(r, L"Orientation");
-      boutonPasEncore(r, wxString(L"Changer (") + tx(vk) + L")");
+      choix(L"Orientation", {{"front", L"Face"}, {"rear", L"Arrière"}, {"left", L"Côté gauche"}, {"right", L"Côté droit"}, {"top", L"Dessus"}, {"bottom", L"Dessous"}}, vk, [this, id](const std::string& x) { vue_->orienter(id, x); });
     }
     choix(L"Projection", {{"", L"Orthogonale"}, {"persp", L"Perspective (comme la 3D)"}, {"obl", L"Oblique (cavalière)"}}, vrai(v, "persp") ? "persp" : vrai(v, "obl") ? "obl" : "", [mod](const std::string& x) {
       mod(L"projection", [x](J& q) {
@@ -1081,7 +1361,7 @@ void PanneauPlan::vueChoisie(const std::string& id) {
   }
   auto* r = rang();
   bouton(r, L"Cadrer", [this, id] { vue_->cadrerVue(id); });
-  boutonPasEncore(r, L"Rejeter");
+  bouton(r, L"Rejeter", [this, id] { vue_->rejeter(id); });
   bouton(r, L"Supprimer", [this, id] { editer(L"suppression de vue", [this, id] { vue_->enleverVue(id); }); });
   wxString n;
   const auto rond = [](const J& a) {
@@ -1104,12 +1384,66 @@ void PanneauPlan::vueChoisie(const std::string& id) {
 }
 
 // ---- La cote choisie ----
-void PanneauPlan::tolerance(const std::string& idc) {
+void PanneauPlan::axeChoisi() {  // mepSideAxis, mepSideAxisAuto
+  const plan::SelectionPlan s = vue_->selection();
+  const std::string vid = s.axeVue, id = s.axeId, ak = s.axeAk;
+  J* v = plan::vueParId(vue_->planche(), vid);
+  if (!v) return;
+  if (id.empty()) {
+    section(L"Axe automatique");
+    note(L"Tirez une extrémité pour l’allonger ou le raccourcir · norme ISO 128-2 (04.1)");
+    auto* q = rang();
+    const bool ext = v->contains("axExt") && (*v)["axExt"].is_object() && (*v)["axExt"].contains(ak);
+    bouton(q, L"Longueur d’origine", [this, vid, ak] {
+      editer(L"longueur axe d’origine", [this, vid, ak] {
+        if (J* w = plan::vueParId(vue_->planche(), vid); w && w->contains("axExt")) (*w)["axExt"].erase(ak);
+      });
+    }, wxString(), false, !ext);
+    return;
+  }
+  const J* a = nullptr;
+  if (v->contains("axes") && (*v)["axes"].is_array())
+    for (const J& x : (*v)["axes"])
+      if (x.value("id", std::string()) == id) a = &x;
+  if (!a) return;
+  const std::string k = a->value("kind", std::string());
+  const J ref = a->contains("ref") ? (*a)["ref"] : J();
+  const bool rAx = ref.is_object() && ref.contains("ax"), rC = ref.is_object() && ref.contains("c");
+  section(k == "hole" ? (rAx ? L"Axe de révolution" : rC ? L"Axe de cercle" : L"Axe de trou") : k == "slot" ? L"Axe d’oblong" : k == "align" ? L"Axe commun" : k == "pitch" ? L"Cercle de perçage" : k == "free" ? (a->value("sym", false) ? L"Axe de symétrie (figé)" : L"Axe libre") : k == "sym" ? L"Axe de symétrie" : L"Axe");
+  const size_t n = k == "hole" ? 1 : (a->contains("refs") ? (*a)["refs"].size() : 0);
+  const wxString debut = k == "free" ? wxString(L"Tracé libre") : k == "slot" ? wxString(L"2 centres de l’oblong — suivent ses modifications") : k == "sym" ? wxString(L"Entre 2 droites — suit leurs déplacements") : (k == "hole" && rAx) ? wxString(L"Forme de révolution du modèle — suit ses modifications") : (k == "hole" && rC) ? wxString(L"Cercle de la vue — suit ses déplacements") : wxString::Format(L"%zu cercle(s)", n);
+  note(debut + L" · norme ISO 128-2 (04.1)");
+  auto* q = rang();
+  bool ext = false;
+  if (k != "free" && v->contains("axExt") && (*v)["axExt"].is_object())
+    for (auto it = (*v)["axExt"].begin(); it != (*v)["axExt"].end(); ++it)
+      if (it.key().rfind("m" + id + ".", 0) == 0) ext = true;
+  if (ext)
+    bouton(q, L"Longueur d’origine", [this, vid, id] {
+      editer(L"longueur axe d’origine", [this, vid, id] {
+        if (J* w = plan::vueParId(vue_->planche(), vid)) plan::retirerAllongements(*w, id);
+      });
+    }, L"Annule l’allongement des traits de cet axe");
+  bouton(q, L"Supprimer", [this, vid, id] {
+    editer(L"suppression axe", [this, vid, id] {
+      if (J* w = plan::vueParId(vue_->planche(), vid)) plan::enleverAxe(*w, id);
+      vue_->effacerAxeChoisi();
+    });
+  });
+  bouton(q, L"Tous les axes manuels", [this, vid] {
+    editer(L"suppression axes manuels", [this, vid] {
+      if (J* w = plan::vueParId(vue_->planche(), vid)) (*w)["axes"] = J::array();
+      vue_->effacerAxeChoisi();
+    });
+  });
+}
+void PanneauPlan::tolerance(const std::string& idc, int point) {
   J* pd = vue_->coteCourante(idc);
+  if (point >= 0) pd = &(*pd)["pts"][point];  // la tolérance de CETTE valeur d'ordonnée
   const J& d = *pd;
-  const auto mod = [this, idc](const wxString& lab, const std::function<void(J&)>& f) {
-    editer(lab, [this, idc, f] {
-      if (J* q = vue_->coteCourante(idc)) f(*q);
+  const auto mod = [this, idc, point](const wxString& lab, const std::function<void(J&)>& f) {
+    editer(lab, [this, idc, point, f] {
+      if (J* q = vue_->coteCourante(idc)) f(point >= 0 ? (*q)["pts"][point] : *q);
     });
   };
   const J& tol = d.contains("tol") ? d["tol"] : J();
@@ -1139,19 +1473,20 @@ void PanneauPlan::tolerance(const std::string& idc) {
     nombre(L"+", num(tol, "hi"), [mod](double x) { mod(L"+", [x](J& q) { q["tol"]["hi"] = std::isfinite(x) ? x : 0.0; }); });
     nombre(L"−", num(tol, "lo"), [mod](double x) { mod(L"−", [x](J& q) { q["tol"]["lo"] = std::isfinite(x) ? x : 0.0; }); });
   }
-  if (m == "cls") classeIso(idc);
+  if (m == "cls") classeIso(idc, point);
 }
-void PanneauPlan::classeIso(const std::string& idc) {
+void PanneauPlan::classeIso(const std::string& idc, int point) {
   J* pd = vue_->coteCourante(idc);
+  if (point >= 0) pd = &(*pd)["pts"][point];
   const J& d = *pd;
   const bool percage = chaine(d, "kind") == "hole";
   const std::string cur = chaine(d["tol"], "cls");
   const bool ajust = cur.find('/') != std::string::npos;
   const auto P0 = ajust ? std::nullopt : lireClasse(cur);
   const std::string fam = percage ? "hole" : ajust ? "fit" : P0 && !P0->hole ? "shaft" : "hole";
-  const auto poser = [this, idc](const std::string& v, const wxString& lab) {
-    editer(lab, [this, idc, v] {
-      if (J* q = vue_->coteCourante(idc)) (*q)["tol"]["cls"] = v;
+  const auto poser = [this, idc, point](const std::string& v, const wxString& lab) {
+    editer(lab, [this, idc, point, v] {
+      if (J* q = vue_->coteCourante(idc)) (point >= 0 ? (*q)["pts"][point] : *q)["tol"]["cls"] = v;
     });
   };
   if (!percage) choix(L"Type", {{"hole", L"Alésage (A … ZC)"}, {"shaft", L"Arbre (a … zc)"}, {"fit", L"Ajustement"}}, fam, [poser](const std::string& v) { poser(v == "fit" ? "H7/g6" : v == "shaft" ? "h7" : "H7", L"type de classe"); });
@@ -1228,12 +1563,28 @@ void PanneauPlan::coteChoisie(const std::string& idc) {
       bouton(r, L"Supprimer", supprimer);
     } else {
       const size_t n = d.contains("pts") && d["pts"].is_array() ? d["pts"].size() : 0;
-      note(wxString::Format(L"%zu point(s) depuis l’origine « 0 ». Glisser une valeur ou un trait : tout le groupe se déplace ; cliquer une valeur la désigne.", n));
+      const int op = vue_->selection().cote == idc ? vue_->selection().pointOrd() : -2;
+      wxString texteOrd = wxString::Format(L"%zu point(s) depuis l’origine « 0 ». Glisser une valeur ou un trait : tout le groupe se déplace ; cliquer une valeur la désigne.", n);
+      if (op >= 0 && op < static_cast<int>(n)) {
+        const J& o = sous(d, "o");
+        const J& q = d["pts"][op];
+        const double val = chaine(d, "axis") == "y" ? num(o, "y") - num(q, "y") : num(q, "x") - num(o, "x");  // mepOrdValue
+        texteOrd += wxString(L"\nPoint désigné : ") + tx(plan::nombreAffiche(std::abs(val), 2)) + L" (Suppr pour le retirer).";
+      } else if (op == -1) {
+        texteOrd += L"\nOrigine « 0 » désignée : supprimez le groupe pour la retirer.";
+      }
+      note(texteOrd);
       precision();
       auto* r = rang();
-      boutonPasEncore(r, L"+ Points");
+      const std::string idOrd = idc, outilOrd = chaine(d, "axis") == "y" ? "ordy" : "ordx";
+      bouton(r, L"+ Points", [this, idOrd, outilOrd] { vue_->ajouterPointsOrdonnees(idOrd, outilOrd); }, L"Ajouter des valeurs à ce groupe : cliquez les points, Entrée termine (aussi : groupe sélectionné + outil Ordonnées)");
       bouton(r, L"− Dernier", [mod] { mod(L"point d’ordonnée retiré", [](J& q) { q["pts"].erase(q["pts"].size() - 1); }); }, L"Retirer le dernier point coté", false, n == 0);
       bouton(r, L"Supprimer", supprimer);
+      if (op >= 0 && op < static_cast<int>(n)) {
+        r = rang();
+        bouton(r, L"Supprimer ce point", [this, idc, op] { vue_->supprimerPointOrdonnee(idc, op); }, L"Retire la valeur désignée du groupe (Suppr)");
+        tolerance(idc, op);
+      }
     }
     return;
   }
@@ -1280,19 +1631,311 @@ void PanneauPlan::coteChoisie(const std::string& idc) {
   bouton(r, L"Supprimer", supprimer);
 }
 
+// ---- L'esquisse ----
+namespace {
+const std::vector<std::pair<std::string, const wchar_t*>> CHAMPS = {{"txt", L"Texte libre"}, {"projet", L"Projet"}, {"nplan", L"N° de plan"}, {"societe", L"Société"}, {"client", L"Client"}, {"quantite", L"Quantité"}, {"planche", L"PLANCHE"}, {"echelle", L"ÉCHELLE"}, {"format", L"FORMAT"}, {"date", L"Date"}, {"auteur", L"Dessiné par"}, {"verif", L"Vérifié par"}, {"matiere", L"Matière"}, {"traitement", L"TTS (surface)"}, {"tth", L"TTH (thermique)"}, {"tolgen", L"Tol. générales"}, {"etat", L"État de surface"}, {"masse", L"Masse"}, {"indice", L"INDICE"}, {"perso", L"CHAMP PERSO"}};
+wxString nomCons(const std::string& t) {
+  static const std::map<std::string, const wchar_t*> M = {{"horizontal", L"Horizontal"}, {"vertical", L"Vertical"}, {"parallel", L"Parallèle"}, {"perp", L"Perpendiculaire"}, {"equal", L"Égal"}, {"eqR", L"Rayons égaux"}, {"midpoint", L"Milieu"}, {"onLine", L"Sur ligne"}, {"onCircle", L"Sur cercle"}, {"tangent", L"Tangent"}, {"fix", L"Fixe"}, {"coincident", L"Coïncident"}, {"dist", L"Distance"}, {"distX", L"Distance horizontale"}, {"distY", L"Distance verticale"}, {"distPL", L"Distance point–ligne"}, {"radius", L"Rayon"}, {"angle", L"Angle"}};
+  const auto it = M.find(t);
+  return it == M.end() ? wxString::FromUTF8(t) : wxString(it->second);
+}
+}  // namespace
+void PanneauPlan::esquisseOutils() {
+  plan::EtatEsquisse& et = vue_->esq();
+  const std::string cur = vue_->outilCourant();
+  struct O {
+    const wchar_t* lab;
+    const char* t;
+    const wchar_t* tip;
+  };
+  std::vector<O> outils = {{L"▲", "", L"Sélection / déplacement (Maj+clic : ajouter)"}, {L"━", "line", L"Ligne (enchaînée, Échap termine)"}, {L"▭", "rect", L"Rectangle"}, {L"○", "circle", L"Cercle"}, {L"◠", "arc", L"Arc : centre, départ, arrivée"}, {L"·", "point", L"Point"}, {L"✂", "trim", L"Ajuster"}, {L"T", "text", L"Texte ou champ"}};
+  if (et.tbEdit) outils.push_back({L"Logo", "logo", L"Zone du logo (2 coins)"});
+  auto* r = rang();
+  for (const O& o : outils) {
+    const std::string t = o.t;
+    bouton(r, o.lab, [this, t] {
+      if (t.empty()) vue_->quitterOutil();
+      else vue_->lancerOutil(t);
+      refaire();
+    }, o.tip, cur == t);
+  }
+  r = rang();
+  libelle(r, L"Afficher");
+  bouton(r, L"Contraintes", [this] { vue_->esq().visCons = !vue_->esq().visCons; vue_->redessinerPlan(); refaire(); }, L"Glyphes H, V, ∥, ⊥, =, M, ⚓… — un élément sélectionné garde les siennes", et.visCons);
+  bouton(r, L"Cotes", [this] { vue_->esq().visDims = !vue_->esq().visDims; vue_->redessinerPlan(); refaire(); }, L"Cotes pilotantes (distances, rayons, angles) — un élément sélectionné garde les siennes", et.visDims);
+  bouton(r, L"Textes", [this] { vue_->esq().visTxt = !vue_->esq().visTxt; vue_->redessinerPlan(); refaire(); }, L"Cotes et contraintes de placement des textes (sinon visibles à la sélection du texte)", et.visTxt);
+  if (cur == "text") {
+    Options oc;
+    for (const auto& q : CHAMPS) oc.push_back({q.first, q.second});
+    choix(L"Champ", oc, et.textF, [this](const std::string& v) {
+      vue_->esq().textF = v;
+      refaire();
+    });
+    if (et.textF == "txt") texte(L"Texte", tx(et.textS), [this](const wxString& v) { vue_->esq().textS = ut(v); });
+    const auto iso = listeIso(et.textH != 0 ? et.textH : 3.5);
+    choix(L"Hauteur h (mm)", iso.first, iso.second, [this](const std::string& v) { vue_->esq().textH = std::strtod(v.c_str(), nullptr); });
+    note(L"Cliquez pour poser le texte ; il s’accroche aux points et lignes, puis se contraint comme un point.");
+  }
+}
+void PanneauPlan::esquisseStyle(const std::vector<std::string>* ids, bool tb) {
+  plan::EtatEsquisse& et = vue_->esq();
+  const bool courant = !ids;
+  std::vector<J*> S;
+  if (courant) S.push_back(&et.style);
+  else
+    for (const std::string& id : *ids)
+      if (J* e = plan::elementEsquisse(vue_->planche(), et, id)) S.push_back(e);
+  if (S.empty()) return;
+  section(courant ? wxString(L"Style des nouveaux éléments") : wxString::Format(L"Style (%zu)", S.size()));
+  const std::string wDef = tb ? "thin" : "thick";
+  std::vector<J*> traits;
+  for (J* x : S)
+    if (courant || chaine(*x, "t") != "text") traits.push_back(x);
+  const std::vector<std::string> idsCopie = ids ? *ids : std::vector<std::string>();
+  const auto modifier = [this, courant, idsCopie](const std::function<void(J&)>& fn) {
+    if (courant) {
+      fn(vue_->esq().style);
+      reglages(vue_->mep())["mep_sk_style"] = vue_->esq().style.dump();
+      CallAfter([this] { refaire(); });
+      return;
+    }
+    editer(L"style du trait", [this, idsCopie, fn] {
+      for (const std::string& id : idsCopie)
+        if (J* e = plan::elementEsquisse(vue_->planche(), vue_->esq(), id)) fn(*e);
+    });
+  };
+  const auto surTrait = [modifier](const std::function<void(J&)>& fn) {
+    modifier([fn](J& x) {
+      if (chaine(x, "t") != "text") fn(x);
+    });
+  };
+  if (!traits.empty()) {
+    auto* r = rang();
+    libelle(r, L"Épaisseur");
+    for (const auto& q : std::vector<std::pair<const char*, const wchar_t*>>{{"thin", L"Fin"}, {"thick", L"Épais"}}) {
+      const std::string v = q.first;
+      const bool actif = std::all_of(traits.begin(), traits.end(), [&](J* x) { return !(num(*x, "lw") > 0) && (chaine(*x, "w").empty() ? wDef : chaine(*x, "w")) == v; });
+      bouton(r, q.second, [surTrait, v] {
+        surTrait([v](J& x) {
+          x["w"] = v;
+          x.erase("lw");
+        });
+      }, wxString(L"Trait ") + (v == "thick" ? L"épais" : L"fin") + L" de la planche (réglages « Traits »)", actif);
+    }
+    double lv = num(*traits[0], "lw");
+    for (J* x : traits)
+      if (num(*x, "lw") != lv) lv = 0;
+    nombre(L"Épaisseur (mm)", lv > 0 ? lv : NAN, [surTrait](double v) {
+      surTrait([v](J& x) {
+        if (v > 0) x["lw"] = std::min(3.0, std::max(0.05, v));
+        else x.erase("lw");
+      });
+    }, L"Épaisseur libre en mm papier — vide : Fin / Épais", true);
+    r = rang();
+    libelle(r, L"Type");
+    for (const auto& q : std::vector<std::pair<const char*, const wchar_t*>>{{"", L"Continu"}, {"hid", L"Interrompu"}, {"axis", L"Mixte"}}) {
+      const std::string v = q.first;
+      const bool actif = std::all_of(traits.begin(), traits.end(), [&](J* x) { return chaine(*x, "lt") == v; });
+      bouton(r, q.second, [surTrait, v] {
+        surTrait([v](J& x) {
+          if (!v.empty()) x["lt"] = v;
+          else x.erase("lt");
+        });
+      }, wxString(), actif);
+    }
+    std::vector<J*> geo;
+    for (J* x : traits) {
+      const std::string t = chaine(*x, "t");
+      if (courant || t == "line" || t == "circle" || t == "arc") geo.push_back(x);
+    }
+    if (!geo.empty()) {
+      r = rang();
+      libelle(r, L"Construction");
+      const bool on = std::all_of(geo.begin(), geo.end(), [](J* x) { return vrai(*x, "cst"); });
+      bouton(r, on ? L"Oui" : L"Non", [modifier, courant, on] {
+        modifier([courant, on](J& x) {
+          const std::string t = chaine(x, "t");
+          if (!courant && !(t == "line" || t == "circle" || t == "arc")) return;
+          if (on) x.erase("cst");
+          else x["cst"] = true;
+        });
+      }, L"Élément de construction : pointillé en édition, invisible sur la planche, à l’impression et à l’export", on);
+    }
+  }
+  std::string cv = chaine(*S[0], "col");
+  for (J* x : S)
+    if (chaine(*x, "col") != cv) cv.clear();
+  couleur(L"Couleur", cv, "#151515", [modifier](const std::string& v) {
+    modifier([v](J& x) {
+      if (v.empty()) x.erase("col");
+      else x["col"] = v;
+    });
+  });
+}
+void PanneauPlan::esquisse() {
+  plan::EtatEsquisse& et = vue_->esq();
+  J& sh = vue_->planche();
+  const plan::SelectionPlan& s = vue_->selection();
+  const plan::InfosEsquisse q = plan::infosEsquisse(sh, et, s);
+  section(q.tb ? L"Cartouche — esquisse" : L"Esquisse de planche");
+  esquisseOutils();
+  if (!q.existe) return esquisseStyle(nullptr, q.tb);
+  const size_t n = s.skSel.size();
+  if (!n) esquisseStyle(nullptr, q.tb);
+  section(wxString::Format(L"Sélection (%zu)", n));
+  const auto valeur = [this, &et, &sh](const wxString& lab, const std::string& id) {
+    J* c = plan::contrainteEsquisse(sh, et, id);
+    if (!c) return;
+    const bool angle = chaine(*c, "type") == "angle";
+    const double v = js::arrondi(angle ? std::abs(num(*c, "val")) * 180 / 3.14159265358979323846 : std::abs(num(*c, "val")), 3);
+    nombre(lab + (angle ? L" (°)" : L" (mm)"), v, [this, id](double x) {
+      if (std::isfinite(x)) CallAfter([this, id, x] { vue_->valeurContrainte(id, x); });
+    });
+  };
+  if (q.contraintes.size() == 1 && n == 1) {
+    J* c = plan::contrainteEsquisse(sh, et, q.contraintes[0]);
+    if (c) {
+      const std::string t = chaine(*c, "type");
+      if (c->contains("val") && !(*c)["val"].is_null() && t != "fix") valeur(nomCons(t), q.contraintes[0]);
+      else note(nomCons(t));
+    }
+  }
+  if (!q.lies.empty()) {
+    section(wxString::Format(L"Lié à la vue (%zu)", q.lies.size()));
+    static const std::map<std::string, const wchar_t*> nm = {{"p1", L"extrémité"}, {"p2", L"extrémité"}, {"mid", L"milieu"}, {"f", L"point du trait"}, {"ctr", L"centre"}, {"ang", L"point du cercle"}};
+    for (size_t i = 0; i < q.lies.size() && i < 6; i++) {
+      const J* p = plan::pointEsquisse(sh, et, q.lies[i]);
+      if (!p) continue;
+      const J& L = (*p)["lk"];
+      const J* v = plan::vueParId(sh, chaine(L, "vid"));
+      const auto it = nm.find(chaine(L, "k"));
+      note((it == nm.end() ? wxString(L"point") : wxString(it->second)) + L" — vue " + (v ? tx(chaine(*v, "label").empty() ? chaine(*v, "id") : chaine(*v, "label")) : wxString(L"supprimée")) + (L.contains("i") && L["i"].is_string() ? L" (trait d’axe)" : L""));
+    }
+    auto* r = rang();
+    const std::vector<std::string> lies = q.lies;
+    bouton(r, L"Détacher de la vue", [this, lies] { editer(L"esquisse : détacher de la vue", [this, lies] { plan::detacherDeLaVue(vue_->planche(), vue_->esq(), lies); }); }, L"Le point garde sa position mais ne suit plus la vue");
+  }
+  if (q.contraintes.empty() && !q.cotes.empty()) {
+    section(wxString::Format(L"Cotes (%zu)", q.cotes.size()));
+    for (size_t i = 0; i < q.cotes.size() && i < 10; i++) {
+      J* c = plan::contrainteEsquisse(sh, et, q.cotes[i]);
+      if (c) valeur(nomCons(chaine(*c, "type")), q.cotes[i]);
+    }
+  }
+  if (q.textes.size() == 1 && n == 1) {
+    const std::string id = q.textes[0];
+    J* e0 = plan::elementEsquisse(sh, et, id);
+    const J e = e0 ? *e0 : J::object();
+    const auto surTexte = [this, id](const std::function<void(J&)>& fn) {
+      editer(L"texte", [this, id, fn] {
+        if (J* x = plan::elementEsquisse(vue_->planche(), vue_->esq(), id)) fn(*x);
+      });
+    };
+    Options oc;
+    for (const auto& c : CHAMPS) oc.push_back({c.first, c.second});
+    const std::string f = chaine(e, "f", "txt");
+    if (f == "rev") oc.push_back({"rev", L"RÉV"});
+    choix(L"Champ", oc, f, [surTexte](const std::string& v) {
+      surTexte([v](J& x) {
+        x["f"] = v;
+        if (v == "txt" && !vrai(x, "s")) x["s"] = "TEXTE";
+        if (v == "perso" && !vrai(x, "k")) x["k"] = plan::identifiantPlan("c"), x["lab"] = "CHAMP";
+      });
+    });
+    if (f == "txt") texte(L"Texte", tx(chaine(e, "s")), [surTexte](const wxString& v) { surTexte([v](J& x) { x["s"] = ut(v); }); });
+    if (f == "perso") texte(L"Nom du champ", tx(chaine(e, "lab")), [surTexte](const wxString& v) { surTexte([v](J& x) { x["lab"] = ut(v); }); });
+    const double h0 = num(e, "h") != 0 ? num(e, "h") : 3.5;
+    const auto iso = listeIso(js::arrondi(h0 * 0.716, 2));
+    choix(L"Hauteur h (mm)", iso.first, iso.second, [surTexte](const std::string& v) {
+      const double h = std::strtod(v.c_str(), nullptr);
+      surTexte([h](J& x) { x["h"] = js::arrondi(h / 0.716, 3); });
+    });
+    nombre(L"Largeur maxi (mm)", num(e, "mw"), [surTexte](double v) {
+      surTexte([v](J& x) {
+        if (v > 0) x["mw"] = v;
+        else x.erase("mw");
+      });
+    }, L"Largeur maximale (mm) — 0 = libre ; au-delà, le texte est tronqué (…)");
+    auto* r = rang();
+    libelle(r, L"Graisse");
+    for (const auto& c : std::vector<std::pair<const char*, const wchar_t*>>{{"lab", L"Libellé"}, {"val", L"Valeur"}}) {
+      const std::string v = c.first;
+      bouton(r, c.second, [surTexte, v] { surTexte([v](J& x) { x["st"] = v; }); }, v == "lab" ? L"Texte maigre" : L"Texte gras", chaine(e, "st", "lab") == v);
+    }
+    r = rang();
+    libelle(r, L"Ancrage");
+    for (const auto& c : std::vector<std::pair<const char*, const wchar_t*>>{{"start", L"⇤"}, {"middle", L"↔"}, {"end", L"⇥"}}) {
+      const std::string v = c.first;
+      bouton(r, c.second, [surTexte, v] { surTexte([v](J& x) { x["al"] = v; }); }, wxString(L"Ancrage : ") + (v == "start" ? L"début" : v == "middle" ? L"centre" : L"fin"), chaine(e, "al", "start") == v);
+    }
+  }
+  if (!q.lignes.empty() || !q.cercles.empty() || !q.textes.empty()) {
+    std::vector<std::string> ids = q.lignes;
+    ids.insert(ids.end(), q.cercles.begin(), q.cercles.end());
+    ids.insert(ids.end(), q.textes.begin(), q.textes.end());
+    esquisseStyle(&ids, q.tb);
+  }
+  const auto lesBoutons = [&](bool dim) {
+    auto* r = rang();
+    int k = 0;
+    for (const plan::ContrainteEsquisse& D : plan::contraintesEsquisse()) {
+      if (D.dim != dim) continue;
+      if (k && k % 3 == 0) r = rang();
+      k++;
+      const std::string id = D.id;
+      bouton(r, tx(D.lab), [this, id] { vue_->appliquerContrainte(id); }, tx(D.tip), false, !plan::contrainteAdmise(sh, et, s, id));
+    }
+  };
+  section(L"Contraintes");
+  lesBoutons(false);
+  section(L"Cotes pilotantes");
+  lesBoutons(true);
+  auto* r = rang();
+  bouton(r, L"Supprimer", [this] { vue_->supprimerSelection(); }, L"Supprimer la sélection (Suppr)");
+  bouton(r, L"Désélectionner", [this] { vue_->choisirSk({}); }, L"Échap");
+  if (q.tb) {
+    r = rang();
+    bouton(r, L"Terminer l’édition du cartouche", [this] { vue_->basculerCartouche(false); }, L"Échap");
+  }
+  note(L"Maj+clic : ajouter à la sélection. Glisser un point ou un trait : l’esquisse suit ses contraintes. Une cote se pose à la valeur actuelle, puis se modifie ici.");
+}
+void PanneauPlan::cartoucheEdition() {
+  plan::EtatEsquisse& et = vue_->esq();
+  J& sh = vue_->planche();
+  const plan::SelectionPlan& s = vue_->selection();
+  section(L"Édition du cartouche");
+  esquisseOutils();
+  esquisseStyle(nullptr, true);
+  const plan::InfosEsquisse q = plan::infosEsquisse(sh, et, s);
+  note(wxString::Format(L"Origine (croix) = coin bas-droit intérieur du cadre : le cartouche garde ses cotes sur tous les formats. Hauteur actuelle : %s mm, largeur : %s mm.", nb(js::arrondi(plan::hauteurCartouche(sh), 1)), nb(js::arrondi(plan::largeurCartouche(sh), 1))));
+  note(wxString::Format(L"%zu contrainte(s), %zu élément(s). Cliquez un élément pour le contraindre ; les champs ({MATIÈRE}, {TTS}, {TTH}…) prennent les valeurs de la planche.", q.nbCons, q.nbEnts));
+  auto* r = rang();
+  bouton(r, L"Terminer", [this] { vue_->basculerCartouche(false); }, L"Quitter l’édition (Échap)", true);
+  bouton(r, L"Repartir du Standard", [this] {
+    if (wxMessageBox(L"Remplacer le cartouche par le modèle Standard (annulable) ?", L"Cartouche", wxYES_NO | wxICON_QUESTION, this) != wxYES) return;
+    editer(L"cartouche standard", [this] {
+      J copie = vue_->planche();
+      copie["title"].erase("tb");
+      vue_->planche()["title"]["tb"] = plan::cartoucheStandard(copie);
+    });
+  }, L"Recrée l’esquisse du cartouche Standard");
+}
+
 void PanneauPlan::lot() {
   const plan::SelectionPlan& s = vue_->selection();
   section(L"Sélection");
   wxString t;
   if (!s.lotVues.empty()) t += wxString::Format(L"%zu vue(s)", s.lotVues.size());
   if (!s.lotCotes.empty()) t += (t.empty() ? wxString() : wxString(L" · ")) + wxString::Format(L"%zu cote(s)", s.lotCotes.size());
+  if (!s.skSel.empty()) t += (t.empty() ? wxString() : wxString(L" · ")) + wxString::Format(L"%zu élément(s) d’esquisse", s.skSel.size());
   note(t.empty() ? wxString(L"—") : t);
   auto* r = rang();
   bouton(r, L"Supprimer", [this] { vue_->supprimerSelection(); }, L"Supprimer toute la sélection (Suppr)");
   bouton(r, L"Désélectionner", [this] { vue_->viderSelection(); }, L"Échap");
   if (!s.lotCotes.empty()) {
     r = rang();
-    boutonPasEncore(r, L"Aligner sur une cote…");
+    const std::vector<std::string> lotIds(s.lotCotes.begin(), s.lotCotes.end());
+    bouton(r, L"Aligner sur une cote…", [this, lotIds] { vue_->commencerAlignement(lotIds); }, L"Pose la ligne de chaque cote sélectionnée (parallèle) sur celle d’une cote de référence : cliquez-la ensuite");
   }
   note(L"Cadre de gauche à droite : éléments entièrement dedans. De droite à gauche : tout ce qui touche le cadre. Maj : ajouter. Maj/Ctrl + clic sur une cote : l’ajoute ou la retire.");
   Layout();
