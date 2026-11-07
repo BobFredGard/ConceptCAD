@@ -1,0 +1,58 @@
+# Ouvre de grosses pièces dans le DMG déjà fabriqué, sur un Mac de GitHub, pour chercher un blocage :
+# capture d'écran, charge du processeur et état du programme après chaque pièce. Rien n'est publié.
+
+name: Essais pièces sur Mac
+
+on:
+  push:
+    branches: ['claude/vigorous-swanson-45df96']
+    paths:
+      - '.github/workflows/application-mac-essais.yml'
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  pieces:
+    runs-on: macos-latest
+    timeout-minutes: 40
+    env:
+      GH_TOKEN: ${{ github.token }}
+      RUN_DMG: '42348536560'
+    steps:
+      - uses: actions/checkout@v4
+      - name: Récupérer les pièces
+        run: git lfs pull --include "Exemples/*.conceptcad"
+      - name: Installer le DMG
+        run: |
+          gh run download "$RUN_DMG" -n ConceptCAD-Mac-dmg -D dmg
+          hdiutil attach dmg/*.dmg -mountpoint /tmp/cc-dmg -nobrowse
+          cp -R /tmp/cc-dmg/ConceptCAD.app /Applications/
+          hdiutil detach /tmp/cc-dmg
+          sw_vers
+      - name: Ouvrir les pièces une par une
+        run: |
+          mkdir -p essais
+          n=0
+          for nom in "Griffe" "Perçages" "Crochet" "Malaxeur Retard" "Cavité Test" "Cavité Usinage"; do
+            n=$((n+1))
+            rm -rf ~/Library/WebKit/fr.conceptcad.logiciel ~/Library/Caches/fr.conceptcad.logiciel "$HOME/Library/Application Support/fr.conceptcad.logiciel"
+            open -a /Applications/ConceptCAD.app "Exemples/$nom.conceptcad"
+            for t in 30 60 120 180; do
+              sleep $([ $t = 30 ] && echo 30 || ([ $t = 60 ] && echo 30 || echo 60))
+              echo "=== $nom, $t s"
+              ps -axo pid,pcpu,rss,comm | grep -E 'ConceptCAD|WebKit.WebContent' | grep -v grep || echo "programme absent"
+              screencapture -x "essais/$n-$nom-$t.png" || true
+            done
+            sample ConceptCAD 3 -file "essais/$n-$nom-programme.txt" >/dev/null 2>&1 || true
+            pkill -x ConceptCAD || true
+            sleep 3
+          done
+          ls ~/Library/Logs/DiagnosticReports/ || true
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: essais-pieces
+          path: essais
+          if-no-files-found: ignore
