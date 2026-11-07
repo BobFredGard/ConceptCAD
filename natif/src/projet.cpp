@@ -596,6 +596,14 @@ Document lireProjet(const std::wstring& chemin) {
   return d;
 }
 
+Document projetVide() {
+  std::string texte = R"({"app":"ConceptCAD","bundle":1,"v":"natif","name":"Sans titre","doc":{"name":"Sans titre","tint":0,"sketches":[],"features":[],"cgeo":[],"bodyVis":{},"bodies":[],"bodySeq":1,"activeBody":null,"mep":null},"nMoves":0,"moves":[],"imports":{}})";
+  json racine = json::parse(texte);
+  Document d = documentDepuis(racine);
+  d.octets = std::move(texte);
+  return d;
+}
+
 Document lireTexteProjet(const Document& modele, const std::string& texte) {
   json racine = json::parse(texte);
   Document d = documentDepuis(racine);

@@ -218,6 +218,10 @@ public:
   void annuler();
   void retablir();
   void surOuvrir(wxCommandEvent&);
+  void nouveau();
+  void menuRecents();
+  void retenirRecent(const std::wstring& chemin);
+  void apresOuverture();
   void surFermer(wxCloseEvent&);
   bool enregistrer();
   bool enregistrerSous();

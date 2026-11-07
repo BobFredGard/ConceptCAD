@@ -1,3 +1,4 @@
+#include <wx/config.h>
 #include "cadre.h"
 #include "construction.h"
 
@@ -290,6 +291,8 @@ void Cadre::creerEnvironnement() {
     wxCommandEvent e;
     surOuvrir(e);
   };
+  barreHaute_->surNouveau = [this] { nouveau(); };
+  barreHaute_->surRecent = [this] { menuRecents(); };
   barreHaute_->surEnregistrer = [this] { enregistrer(); };
   barreHaute_->surEnregistrerSous = [this] { enregistrerSous(); };
   barreHaute_->surRegenerer = [this] {
@@ -824,7 +827,18 @@ void Cadre::menuEsquisse() {
   m.Append(ID_ESQUISSE_XY, L"Plan XY · dessus");
   m.Append(ID_ESQUISSE_XZ, L"Plan XZ · face");
   m.Append(ID_ESQUISSE_YZ, L"Plan YZ · côté");
-  PopupMenu(&m);
+  std::vector<std::string> plans;
+  for (const ElementConstruction& e : doc_.construction)
+    if ((e.kind == "plane" || e.kind == "frame") && e.aRepere) {
+      if (plans.empty()) m.AppendSeparator();
+      m.Append(wxID_HIGHEST + 5000 + static_cast<int>(plans.size()), tx(libelleConstruction(e)));
+      plans.push_back(e.id);
+    }
+  const int choix = choisirMenu(m);
+  if (choix == ID_ESQUISSE_XY) creerEsquisse("XY");
+  else if (choix == ID_ESQUISSE_XZ) creerEsquisse("XZ");
+  else if (choix == ID_ESQUISSE_YZ) creerEsquisse("YZ");
+  else if (choix >= wxID_HIGHEST + 5000 && choix < wxID_HIGHEST + 5000 + static_cast<int>(plans.size())) creerEsquisseConstruction(plans[choix - wxID_HIGHEST - 5000], "");
 }
 
 void Cadre::menuGrille() {
@@ -987,6 +1001,7 @@ void Cadre::majTitre() {
 }
 
 bool Cadre::ecrire(const std::wstring& cible) {
+  retenirRecent(cible);
   faireSuivre();
   try {
     try {
@@ -1008,15 +1023,22 @@ bool Cadre::ecrire(const std::wstring& cible) {
 
 bool Cadre::enregistrer() {
   if (!docOuvert_) return false;
+  if (doc_.chemin.empty()) return enregistrerSous();  // pièce nouvelle
   return ecrire(doc_.chemin);
 }
 
 bool Cadre::enregistrerSous() {
   if (!docOuvert_) return false;
   wxFileName n(doc_.chemin);
-  wxFileDialog d(this, L"Enregistrer la pièce sous", n.GetPath(), n.GetFullName(), L"Projets ConceptCAD (*.conceptcad)|*.conceptcad", wxFD_SAVE | wxFD_OVERWRITE_PROMPT);
+  wxFileDialog d(this, L"Enregistrer la pièce sous", n.GetPath(), doc_.chemin.empty() ? wxString(L"Sans titre.conceptcad") : n.GetFullName(), L"Projets ConceptCAD (*.conceptcad)|*.conceptcad", wxFD_SAVE | wxFD_OVERWRITE_PROMPT);
   if (d.ShowModal() != wxID_OK) return false;
-  return ecrire(d.GetPath().ToStdWstring());
+  const std::wstring cible = d.GetPath().ToStdWstring();
+  // La pièce nouvelle prend le nom de son fichier (doc.name=mffName)
+  if (doc_.chemin.empty()) {
+    const std::string nom = wxFileName(cible).GetName().utf8_string();
+    changerStructure([&](nlohmann::ordered_json& j) { j["name"] = nom; });
+  }
+  return ecrire(cible);
 }
 
 // Des modifications non enregistrées seraient perdues : on demande d'abord.
@@ -1054,6 +1076,64 @@ bool Cadre::ouvrir(const std::wstring& chemin) {
     if (!proto_.actif) wxMessageBox(tx(e.what()), L"Ouverture impossible", wxOK | wxICON_ERROR, this);
     return false;
   }
+  retenirRecent(chemin);
+  apresOuverture();
+  if (solideCalculable_) return true;
+  return false;
+}
+
+void Cadre::nouveau() {
+  if (!peutAbandonner()) return;
+  dessinModifie_ = false;
+  quitterConge();
+  quitterEsquisse();
+  doc_ = projetVide();
+  apresOuverture();
+  etat(L"Nouveau modèle. Créez une esquisse.");
+}
+
+// La liste des fichiers ouverts ou enregistrés (mffRecent) : gardée dans les réglages de Windows, sans les essais automatiques
+static std::vector<std::wstring> lireRecents() {
+  std::vector<std::wstring> l;
+  wxConfig c(L"ConceptCADNatif");
+  for (int i = 0; i < 10; i++) {
+    wxString v;
+    if (c.Read(wxString::Format(L"recents/%d", i), &v) && !v.empty()) l.push_back(v.ToStdWstring());
+  }
+  return l;
+}
+static void ecrireRecents(const std::vector<std::wstring>& l) {
+  wxConfig c(L"ConceptCADNatif");
+  c.DeleteGroup(L"recents");
+  for (size_t i = 0; i < l.size() && i < 10; i++) c.Write(wxString::Format(L"recents/%d", static_cast<int>(i)), wxString(l[i]));
+}
+void Cadre::retenirRecent(const std::wstring& chemin) {
+  if (essaiSansBoite_ || proto_.actif || chemin.empty()) return;
+  std::vector<std::wstring> l = lireRecents();
+  l.erase(std::remove_if(l.begin(), l.end(), [&](const std::wstring& x) { return _wcsicmp(x.c_str(), chemin.c_str()) == 0; }), l.end());
+  l.insert(l.begin(), chemin);
+  ecrireRecents(l);
+}
+void Cadre::menuRecents() {
+  const std::vector<std::wstring> l = lireRecents();
+  wxMenu m;
+  for (size_t i = 0; i < l.size(); i++) {
+    const size_t p = l[i].find_last_of(L"\\/");
+    m.Append(wxID_HIGHEST + 6000 + static_cast<int>(i), wxString(p == std::wstring::npos ? l[i] : l[i].substr(p + 1)), wxString(l[i]));
+  }
+  if (l.empty()) m.Append(wxID_HIGHEST + 5999, L"Aucun fichier récent")->Enable(false);
+  else {
+    m.AppendSeparator();
+    m.Append(wxID_HIGHEST + 5998, L"✕ Vider la liste");
+  }
+  const int choix = choisirMenu(m);
+  if (choix == wxID_HIGHEST + 5998) return ecrireRecents({});
+  if (choix < wxID_HIGHEST + 6000 || choix >= wxID_HIGHEST + 6000 + static_cast<int>(l.size())) return;
+  if (!peutAbandonner()) return;
+  ouvrir(l[choix - wxID_HIGHEST - 6000]);
+}
+
+void Cadre::apresOuverture() {
   forme_.Nullify();
   docOuvert_ = true;
   ajusterVue_ = true;
@@ -1067,13 +1147,12 @@ bool Cadre::ouvrir(const std::wstring& chemin) {
   if (solideCalculable_) {
     montrerRien();
     recalculer();
-    return true;
+    return;
   }
   // Pièce dont le logiciel natif ne sait pas tout rejouer : on montre son contenu, jamais un solide faux.
   vue_->afficher(TopoDS_Shape(), true);
   montrerManques();
   etat(tx(doc_.nom) + L"  |  Solide non calculé : voir le panneau Paramètres.");
-  return false;
 }
 
 void Cadre::remplirArbre() {
@@ -2636,6 +2715,9 @@ bool Cadre::essaiEsquisse(const std::wstring& fichier, int rang, const std::wstr
       for (const char c : e["texte"].get<std::string>()) vueEsquisse_->essaiCaractere(c);
     if (e.contains("poly")) vueEsquisse_->essaiReglagesPolygone(wxString::Format("%d", e["poly"][0].get<int>()), wxString::FromUTF8(e["poly"][1].get<std::string>()));
     if (e.contains("mode")) vueEsquisse_->choisirModeTrace(e["mode"].get<std::string>());
+    if (e.contains("nouveau")) nouveau();
+    if (e.contains("nouvelleEsquisse")) creerEsquisse(e["nouvelleEsquisse"].get<std::string>());
+    if (e.contains("quitterEsquisse")) quitterEsquisse();
     if (e.contains("annuler")) annuler();
     if (e.contains("retablir")) retablir();
     if (e.contains("menuFonction") || e.contains("menuEsquisse") || e.contains("menuCorps")) {

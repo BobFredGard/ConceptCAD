@@ -17,7 +17,7 @@ class BarreHaute : public wxWindow {
  public:
   explicit BarreHaute(wxWindow* parent);
   std::function<void(Atelier)> surAtelier;
-  std::function<void()> surAnnuler, surRetablir, surOuvrir, surEnregistrer, surEnregistrerSous, surRegenerer;
+  std::function<void()> surAnnuler, surRetablir, surNouveau, surRecent, surOuvrir, surEnregistrer, surEnregistrerSous, surRegenerer;
   std::function<void(const wxString&)> surIndisponible;
   void atelier(Atelier a);
   void document(const wxString& nom);

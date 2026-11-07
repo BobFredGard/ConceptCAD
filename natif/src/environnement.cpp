@@ -80,7 +80,7 @@ BarreHaute::BarreHaute(wxWindow* parent) : wxWindow(parent, wxID_ANY, wxDefaultP
     ateliers_.push_back(b);
   }
   // Annuler, Rétablir | Nouveau, Ouvrir, Récent, Enregistrer, Sous, Dossier
-  std::vector<std::function<void()>*> actions = {&surAnnuler, &surRetablir, nullptr, &surOuvrir, nullptr, &surEnregistrer, &surEnregistrerSous, nullptr};
+  std::vector<std::function<void()>*> actions = {&surAnnuler, &surRetablir, &surNouveau, &surOuvrir, &surRecent, &surEnregistrer, &surEnregistrerSous, nullptr};
   for (size_t i = 0; i < actions.size() && BARRE_HAUTE[i].titre; i++) {
     const wxString titre = BARRE_HAUTE[i].titre;
     auto* a = actions[i];

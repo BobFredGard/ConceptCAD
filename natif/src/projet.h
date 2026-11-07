@@ -319,6 +319,8 @@ struct Document {
 
 // Lève std::runtime_error si le fichier est illisible.
 Document lireProjet(const std::wstring& chemin);
+// Bouton Nouveau : une pièce vide, sans fichier (docResetEmpty)
+Document projetVide();
 // Le même document d'après un nouveau texte (chemin et octets du disque gardés)
 Document lireTexteProjet(const Document& modele, const std::string& texte);
 std::string lireOctets(const std::wstring& chemin);
