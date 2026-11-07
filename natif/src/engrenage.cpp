@@ -39,6 +39,8 @@
 #include <optional>
 #include <stdexcept>
 
+#include "nombres_js.h"
+
 namespace {
 const double PI = 3.141592653589793;
 const int FLANK_SEG = 6, ROOT_SEG = 32;
@@ -48,9 +50,7 @@ using P2 = std::array<double, 2>;
 double inv(double a) { return std::tan(a) - a; }
 double roundJs(double v) { return std::floor(v + 0.5); }
 std::string fr(double v) {
-  char b[32];
-  std::snprintf(b, sizeof b, "%g", std::round(v * 100) / 100);
-  std::string s = b;
+  std::string s = js::texte(js::arrondi(v, 2));
   std::replace(s.begin(), s.end(), '.', ',');
   return s;
 }
@@ -543,6 +543,28 @@ GeoEngrenage geoEngrenage(const ReglageEngrenage& o) {
   return g;
 }
 
+void verifierProfil(const GeoEngrenage& g) {
+  if (!g.rack) profilRoue(g);
+}
+double debutFlanc(const GeoEngrenage& g) { return profilRoue(g).flank.knots.front(); }
+double finFlanc(const GeoEngrenage& g) { return profilRoue(g).flank.knots.back(); }
+std::vector<std::array<double, 2>> polylineEngrenage(const GeoEngrenage& g, double pasArc) {
+  std::vector<std::array<double, 2>> out;
+  for (const Seg& s : g.rack ? contourCremaillere(g, 0) : contourRoue(g)) {
+    if (s.k == Seg::BS) {
+      for (size_t i = 0; i + 1 < s.c.poles.size(); i += 3) out.push_back(s.c.poles[i]);
+    } else if (s.k == Seg::LN) out.push_back(s.a);
+    else {
+      const int n = std::max(1, static_cast<int>(std::ceil((s.a1 - s.a0) / pasArc)));
+      for (int i = 0; i < n; i++) {
+        const double t = s.a0 + (s.a1 - s.a0) * i / n;
+        out.push_back({s.r * std::cos(t), s.r * std::sin(t)});
+      }
+    }
+  }
+  return out;
+}
+
 std::vector<std::pair<bool, std::string>> controlesEngrenage(const GeoEngrenage& g) {
   std::vector<std::pair<bool, std::string>> out;
   const std::string recouvrement = "Recouvrement ε_β : " + fr(g.overlap) + " (dents en prise sur la largeur, en plus du rapport de conduite).";
@@ -553,17 +575,17 @@ std::vector<std::pair<bool, std::string>> controlesEngrenage(const GeoEngrenage&
     return out;
   }
   if (g.internal) {
-    if (g.tipCut) out.push_back({false, "Dents raccourcies : la tête descendrait sous le cercle de base, où la développante n'existe pas. Tête ramenée à Ø " + fr(2 * g.ra) + ". Il faudrait plus de dents ou un déport x ≤ " + fr(std::floor(g.xMaxFull * 100) / 100) + "."});
+    if (g.tipCut) out.push_back({false, "Dents raccourcies : la tête descendrait sous le cercle de base, où la développante n’existe pas. Tête ramenée à Ø " + fr(2 * g.ra) + ". Il faudrait plus de dents ou un déport x ≤ " + fr(std::floor(g.xMaxFull * 100) / 100) + "."});
     if (g.tipThick < 0.25 * g.m) out.push_back({false, "Tête de dent très fine (" + fr(g.tipThick) + " mm) : fragile à cet endroit. Augmentez le déport ou ajoutez des dents."});
     else out.push_back({true, "Épaisseur en tête de dent : " + fr(g.tipThick) + " mm."});
     const double rim = g.D / 2 - g.rf;
     if (rim < 2 * g.m) out.push_back({false, "Couronne mince : " + fr(rim) + " mm sous les dents (repère usuel : au moins 2 modules, soit " + fr(2 * g.m) + " mm)."});
     else out.push_back({true, "Couronne sous les dents : " + fr(rim) + " mm."});
-    out.push_back({true, "Pied de dent en arc simple : la forme réelle dépend de l'outil-pignon."});
+    out.push_back({true, "Pied de dent en arc simple : la forme réelle dépend de l’outil-pignon."});
     if (g.betaDeg != 0) out.push_back({true, recouvrement});
     return out;
   }
-  if (g.undercut) out.push_back({false, "Sous-coupe : le pied de dent est creusé par l'outil, la dent est affaiblie. Déport conseillé : x ≥ " + fr(std::ceil(g.xMin * 100) / 100) + "."});
+  if (g.undercut) out.push_back({false, "Sous-coupe : le pied de dent est creusé par l’outil, la dent est affaiblie. Déport conseillé : x ≥ " + fr(std::ceil(g.xMin * 100) / 100) + "."});
   else out.push_back({true, "Pas de sous-coupe."});
   if (g.tipThick < 0.25 * g.m) out.push_back({false, "Tête de dent très fine (" + fr(g.tipThick) + " mm) : fragile à cet endroit. Réduisez le déport ou ajoutez des dents."});
   else out.push_back({true, "Épaisseur en tête de dent : " + fr(g.tipThick) + " mm."});

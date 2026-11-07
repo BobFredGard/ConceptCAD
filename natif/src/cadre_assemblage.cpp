@@ -26,6 +26,7 @@
 #include "fiches.h"
 #include "interface_esquisse.h"
 #include "lien_arbre.h"
+#include "normalises.h"
 #include "rejeu.h"
 
 namespace as = assemblage;
@@ -169,6 +170,20 @@ void Cadre::asmDessiner() {
         v.vives = S.vives;
         v.lisses = S.lisses;
       }
+      // magLinesFor : les lignes de champ, si on les a demandées pour cette occurrence
+      if (!inst.chemin.empty() && !v.fantome) {
+        const J* oc = as::occurrence(a, inst.chemin.back());
+        const J* cc = as::composant(a, inst.comp);
+        J mag;
+        if (oc && oc->value("mag", false) && cc && cc->contains("doc") && normalises::aimantDe((*cc)["doc"], mag)) {
+          static std::map<std::string, std::vector<std::array<float, 9>>> memoire;
+          std::vector<std::array<float, 9>>& T = memoire[mag.value("code", std::string())];
+          if (T.empty())
+            for (const normalises::SegmentChamp& s : normalises::lignesChamp(mag))
+              T.push_back({static_cast<float>(s.a[0]), static_cast<float>(s.a[1]), static_cast<float>(s.a[2]), static_cast<float>(s.b[0]), static_cast<float>(s.b[1]), static_cast<float>(s.b[2]), s.couleur[0], s.couleur[1], s.couleur[2]});
+          v.traits = T;
+        }
+      }
       L.push_back(std::move(v));
     }
   }
@@ -274,6 +289,7 @@ void Cadre::asmAller(const as::Chemin& chemin, const std::string& mode, const st
     asmLot_.clear();
     remplirArbre();
     montrerRien();
+    if (solideCalculable_ && asmSolides_.find(cid) == asmSolides_.end()) recalculer();  // asmEnsure : la pièce devient un composant
     asmDessiner();
     if (premier || bouge) vue_->ajuster();
   }
@@ -370,6 +386,10 @@ void Cadre::asmCliqueOcc(const std::string& id, bool ctrl, bool maj) {
 }
 
 bool Cadre::asmEchap() {
+  if (asmNormPose_) {
+    asmNormPoseAnnuler();
+    return true;
+  }
   if (!doc_.assemblage || asmMode_ != "asm") return false;
   if (asmAlign_) {
     asmAlignAnnuler(true);
@@ -977,7 +997,7 @@ void Cadre::asmMenuOccurrence(const as::Chemin& chemin, const std::string& id, b
   const J* c = as::composant(*doc_.assemblage, texteDe(*o, "comp"));
   if (!c) return;
   const as::Chemin AP = as::cheminActif(*doc_.assemblage);
-  enum { MODELER = wxID_HIGHEST + 7000, PLACER, DEPLACER, OCCURRENCE, FIXER, RENOMMER, SUPPRIMER, MASQUER, REPETER, LIEN_MAJ, LIEN_RELIER, LIEN_ROMPRE, LIEN_EXTRAIRE, LIEN_REMPLACER };
+  enum { MODELER = wxID_HIGHEST + 7000, PLACER, DEPLACER, OCCURRENCE, FIXER, RENOMMER, SUPPRIMER, MASQUER, REPETER, LIEN_MAJ, LIEN_RELIER, LIEN_ROMPRE, LIEN_EXTRAIRE, LIEN_REMPLACER, NORM_MODIFIER, AIM_LIGNES, AIM_INFO };
   if (direct && asmMode_ == "asm") {
     const std::vector<std::string> L = asmLot();
     if (std::find(L.begin(), L.end(), id) == L.end()) {
@@ -992,6 +1012,14 @@ void Cadre::asmMenuOccurrence(const as::Chemin& chemin, const std::string& id, b
   wxMenu m;
   m.Append(MODELER, L"✏️ Modéliser ce composant");
   if (c->contains("occ") && !(*c)["occ"].empty()) m.Append(PLACER, L"🧩 Placer ses composants");
+  const bool normalisee = c->contains("doc") && (*c)["doc"].is_object() && (*c)["doc"].contains("std") && (*c)["doc"]["std"].is_object();
+  J aimant;
+  const bool estAimant = direct && normalisee && normalises::aimantDe((*c)["doc"], aimant);
+  if (normalisee) m.Append(NORM_MODIFIER, L"🔩 Modifier la pièce normalisée…");
+  if (estAimant) {
+    m.Append(AIM_LIGNES, o->value("mag", false) ? L"🧲 Masquer les lignes de champ" : L"🧲 Afficher les lignes de champ");
+    m.Append(AIM_INFO, L"ℹ️ Caractéristiques");
+  }
   if (direct) {
     m.Append(DEPLACER, L"✥ Déplacer");
     m.Append(OCCURRENCE, L"➕ Nouvelle occurrence");
@@ -1013,6 +1041,24 @@ void Cadre::asmMenuOccurrence(const as::Chemin& chemin, const std::string& id, b
     }
   }
   const int choix = choisirMenu(m);
+  if (choix == NORM_MODIFIER) return asmNormModifier(id);
+  if (choix == AIM_LIGNES) {
+    const bool montre = o->value("mag", false);
+    changerAssemblage([&](J& a) {
+      J* q = as::occurrence(a, id);
+      if (montre) q->erase("mag");
+      else (*q)["mag"] = true;
+    });
+    return;
+  }
+  if (choix == AIM_INFO) {
+    wxString t;
+    for (const auto& [k, v] : normalises::caracteristiques(aimant)) t += tx(k) + L" : " + tx(v) + L"\n";
+    t += L"\nChamp calculé pour l’aimant seul dans l’air, à Br moyen. L’acier voisin et la température n’y entrent pas.";
+    if (essaiMenu_) etat(t);
+    else wxMessageBox(t, tx(texteDe(*o, "name")), wxOK | wxICON_INFORMATION, this);
+    return;
+  }
   if (choix == LIEN_MAJ) return asmLiensVerifier(true);
   if (choix == LIEN_RELIER) return asmLienRelier(cidOcc);
   if (choix == LIEN_ROMPRE) return asmLienRompre(cidOcc);
@@ -1169,6 +1215,7 @@ void Cadre::montrerAssemblage() {
     lecture(cat, "Placés ici", std::to_string(c && c->contains("occ") ? (*c)["occ"].size() : 0) + " composant(s), " + std::to_string(a["comps"].size()) + " dans le fichier");
     B.push_back({L"➕ Nouveau composant", [this] { asmNouveauComposant(); }});
     B.push_back({L"📥 Insérer…", [this] { asmInserer(); }});
+    B.push_back({L"🔩 Normalisés…", [this] { asmNormalises(); }});
     B.push_back({L"✏️ Modéliser « " + (c ? tx(texteDe(*c, "name")) : wxString()) + L" »", [this] { asmBasculer(); }});
     if (!P.empty()) B.push_back({L"↑ Remonter", [this] { asmRemonter(); }});
     if (c && c->contains("occ"))
@@ -1277,6 +1324,7 @@ void Cadre::montrerAssemblage() {
     Pi.push_back(id);
     B.push_back({L"✏️ Modéliser", [this, Pi] { asmAller(Pi, "part"); }});
     if (cc && cc->contains("occ") && !(*cc)["occ"].empty()) B.push_back({L"🧩 Placer ses composants", [this, Pi] { asmAller(Pi, "asm"); }});
+    if (cc && cc->contains("doc") && (*cc)["doc"].is_object() && (*cc)["doc"].contains("std") && (*cc)["doc"]["std"].is_object()) B.push_back({L"🔩 Modifier…", [this, id] { asmNormModifier(id); }});
     B.push_back({L"➕ Occurrence", [this] { asmNouvelleOccurrence(); }});
     if (!instance) B.push_back({L"🔁 Répétition", [this] { asmRepetition(); }});
     const bool fx = o->value("fixed", false);
@@ -1909,6 +1957,7 @@ bool Cadre::asmEtapeEssai(const nlohmann::json& e, nlohmann::json& n) {
   };
   bool fait = false;
   essaiMenu_ = true;
+  if (asmNormEtapeEssai(e, n)) fait = true;
   if (e.contains("asm")) {
     const std::string q = e["asm"].get<std::string>();
     if (q == "basculer") asmBasculer();

@@ -23,6 +23,7 @@
 #include <set>
 
 #include "conges.h"
+#include "nombres_js.h"
 
 namespace assemblage {
 namespace {
@@ -77,9 +78,7 @@ Repere repereZX(const V3& o, const V3& z, const V3* x) {
   return r;
 }
 std::string cleSeen(const Repere& fr) {
-  char b[160];
-  snprintf(b, sizeof b, "%.4f,%.4f,%.4f|%.3f,%.3f,%.3f", fr.o[0], fr.o[1], fr.o[2], fr.z[0], fr.z[1], fr.z[2]);
-  return b;
+  return js::fixe(fr.o[0], 4) + "," + js::fixe(fr.o[1], 4) + "," + js::fixe(fr.o[2], 4) + "|" + js::fixe(fr.z[0], 3) + "," + js::fixe(fr.z[1], 3) + "," + js::fixe(fr.z[2], 3);
 }
 AreteAccroche infoArete(const TopoDS_Edge& e, std::vector<V3>& pts) {
   AreteAccroche out;
@@ -279,9 +278,7 @@ std::vector<PointAccroche> pointsDe(const FaceAccroche& F) {
   }
   // un cercle d'esquisse devient souvent DEUX demi-arcs : même centre, même rayon → « cercle »
   const auto ck = [](const AreteAccroche& e) {
-    char b[120];
-    snprintf(b, sizeof b, "%.4f,%.4f,%.4f|%.4f", e.c[0], e.c[1], e.c[2], e.r);
-    return std::string(b);
+    return js::fixe(e.c[0], 4) + "," + js::fixe(e.c[1], 4) + "," + js::fixe(e.c[2], 4) + "|" + js::fixe(e.r, 4);
   };
   std::map<std::string, int> nArc;
   for (const AreteAccroche& e : F.aretes)

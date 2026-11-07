@@ -2,6 +2,7 @@
 #pragma once
 #include <TopoDS_Shape.hxx>
 
+#include <array>
 #include <string>
 #include <utility>
 #include <vector>
@@ -24,3 +25,8 @@ GeoEngrenage geoEngrenage(const ReglageEngrenage& o);
 std::vector<std::pair<bool, std::string>> controlesEngrenage(const GeoEngrenage& g);
 // gearSolid : posé sur XY, de z = 0 à z = b, axe sur Z, une dent sur +X en bas
 TopoDS_Shape formeEngrenage(const ReglageEngrenage& o);
+// Pour la paire et l'aperçu : le profil (lève une exception si la dent ne se raccorde pas), ses bornes, le contour en points
+void verifierProfil(const GeoEngrenage& g);                                     // gearProfile
+double debutFlanc(const GeoEngrenage& g);                                       // flank.knots[0]
+double finFlanc(const GeoEngrenage& g);                                         // flank.knots[dernier]
+std::vector<std::array<double, 2>> polylineEngrenage(const GeoEngrenage& g, double pasArc);  // gearPolyline

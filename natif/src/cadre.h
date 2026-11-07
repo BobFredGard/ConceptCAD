@@ -65,6 +65,8 @@ struct ChoixFaces {
 
 struct ChampFiche;
 struct LienArbre;
+namespace normalises { struct Piece; }
+class FenetreNormalises;
 class Cadre : public wxFrame {
  public:
   Cadre();
@@ -373,6 +375,19 @@ public:
   void asmDepuisCorps(std::vector<std::string> ids);
   void asmDeplacerVers(bool corps, const std::string& id);
   bool asmEtapeEssai(const nlohmann::json& e, nlohmann::json& n);
+  // Les composants normalisés (cadre_normalises.cpp)
+  friend class FenetreNormalises;
+  void asmNormalises(const std::string& cat = "");
+  void asmNormModifier(const std::string& occ);
+  bool asmNormInserer(const normalises::Piece& sp, wxString& msg);
+  wxString asmNormRemplacer(const std::string& occ, const normalises::Piece& sp, bool toutes);
+  void asmNormPoseDebut(const normalises::Piece& sp, const std::string& pinAt, const std::string& keyAt);
+  void asmNormPoseAnnuler();
+  bool asmNormRayon(const gp_Pnt& origine, const gp_Dir& direction);
+  bool asmNormEtapeEssai(const nlohmann::json& e, nlohmann::json& n);
+  FenetreNormalises* asmNormFen_ = nullptr;
+  std::shared_ptr<normalises::Piece> asmNormPose_;
+  std::string asmNormPinAt_, asmNormKeyAt_;
   void asmMesureEssai(nlohmann::json& n);
   assemblage::Solides asmSolides_;
   std::string asmMode_ = "part", asmSel_, asmAncre_;

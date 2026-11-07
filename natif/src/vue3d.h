@@ -79,6 +79,7 @@ class Vue3D : public wxWindow {
     std::vector<std::string> chemin;
     bool aretes = false;
     TopoDS_Shape vives, lisses;
+    std::vector<std::array<float, 9>> traits;  // lignes de champ d'un aimant : a, b, couleur
   };
   void montrerOccurrences(const std::vector<OccVue>& L);
   void modePlacer(bool oui);
@@ -105,6 +106,8 @@ class Vue3D : public wxWindow {
   // L'inspection : les volumes en interférence en rouge, le centre de gravité en jaune
   void montrerInspection(const std::vector<TopoDS_Shape>& rouges, bool aCentre, const gp_Pnt& centre);
   std::function<void(int)> surMarque;
+  // Une commande qui prend le rayon du clic (pose sur des trous) : rend vrai si le clic est consommé
+  std::function<bool(const gp_Pnt& o, const gp_Dir& d)> surRayon;
   std::function<void(const std::vector<std::string>& chemin, const gp_Pnt& p, bool plan, const std::array<double, 3>& normaleLocale)> surFaceOcc;
 
  private:
@@ -126,6 +129,7 @@ class Vue3D : public wxWindow {
   int marqueSous(const wxPoint& p) const;
   struct OccAffichee {
     occ::handle<AIS_Shape> piece, vives, lisses;
+    occ::handle<AIS_InteractiveObject> traits;
     OccVue v;
   };
   std::vector<OccAffichee> occs_;

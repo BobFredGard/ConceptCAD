@@ -103,7 +103,9 @@ std::string libelleFiletage(const json& th) {  // holeThreadLabel
   const std::string size = str(th, "size");
   if (size.empty()) return "";
   const json* t = filetageDe(size);
-  return size + (t && num(th, "p") != (*t)[2].get<double>() ? "×" + nombreJs(num(th, "p")) : std::string()) + (vrai(th, "lh") ? "-LH" : "");
+  std::string pas = nombreJs(num(th, "p"));
+  std::replace(pas.begin(), pas.end(), '.', ',');
+  return size + (t && num(th, "p") != (*t)[2].get<double>() ? "×" + pas : std::string()) + (vrai(th, "lh") ? "-LH" : "");
 }
 std::string nomFiletage(const json& f) {  // threadName
   std::string l = libelleFiletage(f);

@@ -1,5 +1,11 @@
 #include <BRepMesh_IncrementalMesh.hxx>
 #include "vue3d.h"
+#include <AIS_InteractiveObject.hxx>
+#include <Graphic3d_ArrayOfSegments.hxx>
+#include <Graphic3d_AspectLine3d.hxx>
+#include <Graphic3d_Group.hxx>
+#include <Prs3d_Presentation.hxx>
+#include <SelectMgr_Selection.hxx>
 #include <StdSelect_ViewerSelector3d.hxx>
 #include <BRepBuilderAPI_MakeEdge.hxx>
 #include <BRepBuilderAPI_MakeFace.hxx>
@@ -449,6 +455,15 @@ void Vue3D::cliquerEn(const wxPoint& p) {
       return;
     }
   }
+  if (surRayon) {
+    gp_Pnt o;
+    gp_Dir d;
+    rayon(p.x, p.y, o, d);
+    double px, py, pz;
+    vue_->Proj(px, py, pz);  // vers l'œil : le rayon va dans l'autre sens
+    if (d.X() * px + d.Y() * py + d.Z() * pz > 0) d.Reverse();
+    if (surRayon(o, d)) return;
+  }
   if (placer_) {
     std::string cle;
     const OccAffichee* trouvee = nullptr;
@@ -750,11 +765,35 @@ void Vue3D::modePlacer(bool oui) {
   contexte_->ClearSelected(false);
 }
 
+namespace {
+// Des segments de couleur : les lignes de champ d'un aimant
+class TraitsCouleur : public AIS_InteractiveObject {
+ public:
+  explicit TraitsCouleur(const std::vector<std::array<float, 9>>& L) : l_(L) {}
+  void Compute(const occ::handle<PrsMgr_PresentationManager>&, const occ::handle<Prs3d_Presentation>& prs, const int) override {
+    occ::handle<Graphic3d_ArrayOfSegments> A = new Graphic3d_ArrayOfSegments(static_cast<int>(2 * l_.size()), 0, Graphic3d_ArrayFlags_VertexColor);
+    for (const auto& t : l_) {
+      const Quantity_Color c(t[6], t[7], t[8], Quantity_TOC_RGB);
+      A->AddVertex(gp_Pnt(t[0], t[1], t[2]), c);
+      A->AddVertex(gp_Pnt(t[3], t[4], t[5]), c);
+    }
+    occ::handle<Graphic3d_Group> g = prs->CurrentGroup();
+    g->SetGroupPrimitivesAspect(new Graphic3d_AspectLine3d(Quantity_NOC_WHITE, Aspect_TOL_SOLID, 1.0));
+    g->AddPrimitiveArray(A);
+  }
+  void ComputeSelection(const occ::handle<SelectMgr_Selection>&, const int) override {}
+
+ private:
+  std::vector<std::array<float, 9>> l_;
+};
+}  // namespace
+
 void Vue3D::montrerOccurrences(const std::vector<OccVue>& L) {
   for (OccAffichee& o : occs_) {
     contexte_->Remove(o.piece, false);
     if (!o.vives.IsNull()) contexte_->Remove(o.vives, false);
     if (!o.lisses.IsNull()) contexte_->Remove(o.lisses, false);
+    if (!o.traits.IsNull()) contexte_->Remove(o.traits, false);
   }
   occs_.clear();
   for (const OccVue& v : L) {
@@ -786,6 +825,11 @@ void Vue3D::montrerOccurrences(const std::vector<OccVue>& L) {
       };
       if (!v.vives.IsNull()) o.vives = traits(v.vives, couleur(5, 5, 6));
       if (!v.lisses.IsNull()) o.lisses = traits(v.lisses, couleur(0x9a, 0x9f, 0xa6));
+    }
+    if (!v.traits.empty()) {
+      o.traits = new TraitsCouleur(v.traits);
+      o.traits->SetLocalTransformation(v.t);
+      contexte_->Display(o.traits, 0, -1, false);
     }
     occs_.push_back(std::move(o));
   }

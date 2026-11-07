@@ -259,6 +259,7 @@ Cadre::Cadre() : wxFrame(nullptr, wxID_ANY, L"ConceptCAD natif"), asmAnim_(this)
   };
   vue_->surGeste = [this](int phase, const std::string& sorte, int axe, const std::string& degre, double valeur, bool libre) { asmGeste(phase, sorte, axe, degre, valeur, libre); };
   vue_->surMarque = [this](int i) { asmAlignClicMarque(i); };
+  vue_->surRayon = [this](const gp_Pnt& o, const gp_Dir& d) { return asmNormRayon(o, d); };
   vue_->surFaceOcc = [this](const assemblage::Chemin& c, const gp_Pnt& p, bool plan, const assemblage::V3& n) { asmAlignClicFace(c, p, plan, n); };
   Bind(wxEVT_TIMER, [this](wxTimerEvent&) { asmPasAnimation(); }, asmAnim_.GetId());
   vue_->surSelection = [this](const TopoDS_Shape& s) {
@@ -316,7 +317,7 @@ void Cadre::creerEnvironnement() {
     if (esquisseOuverte_ < 0) recalculer();
   };
   barreHaute_->surIndisponible = [this](const wxString& n) { indisponible(n); };
-  ruban_->estRepris = [](Atelier a, const wxString& n) { return a == Atelier::CAO && (n == L"Esquisse" || n == L"Extrusion" || n == L"Congé" || n == L"Chanfrein" || n == L"Paramètres" || n == L"Corps" || n == L"Perçage" || n == L"Filetage" || n == L"Clavette" || n == L"Plan" || n == L"Axe" || n == L"Point" || n == L"Repère" || n == L"Répétition" || n == L"Révolution" || n == L"Balayage" || n == L"Face" || n == L"Dépouille" || n == L"Coque" || n == L"Combiner" || n == L"Déplacer" || n == L"Échelle" || n == L"Scinder" || n == L"Importer" || n == L"STEP" || n == L"STL" || n == L"OBJ" || n == L"Assembler" || n == L"Modéliser" || n == L"Composant" || n == L"Occurrence" || n == L"Insérer" || n == L"Inspecter" || n == L"Depuis corps"); };
+  ruban_->estRepris = [](Atelier a, const wxString& n) { return a == Atelier::CAO && (n == L"Esquisse" || n == L"Extrusion" || n == L"Congé" || n == L"Chanfrein" || n == L"Paramètres" || n == L"Corps" || n == L"Perçage" || n == L"Filetage" || n == L"Clavette" || n == L"Plan" || n == L"Axe" || n == L"Point" || n == L"Repère" || n == L"Répétition" || n == L"Révolution" || n == L"Balayage" || n == L"Face" || n == L"Dépouille" || n == L"Coque" || n == L"Combiner" || n == L"Déplacer" || n == L"Échelle" || n == L"Scinder" || n == L"Importer" || n == L"STEP" || n == L"STL" || n == L"OBJ" || n == L"Assembler" || n == L"Modéliser" || n == L"Composant" || n == L"Occurrence" || n == L"Insérer" || n == L"Inspecter" || n == L"Normalisés" || n == L"Aimants" || n == L"Depuis corps"); };
   ruban_->surBouton = [this](Atelier a, const wxString& n) { boutonRuban(a, n); };
   ruban_->surIndisponible = [this](const wxString& n) { indisponible(n); };
 
@@ -595,6 +596,8 @@ void Cadre::boutonRuban(Atelier a, const wxString& nom) {
   if (nom == L"Répétition" && (ruban_->enAssemblage())) return asmRepetition();
   if (nom == L"Depuis corps") return asmDepuisCorps({});
   if (nom == L"Inspecter") return asmInspecter();
+  if (nom == L"Normalisés") return asmNormalises();
+  if (nom == L"Aimants") return asmNormalises("magnet");
   if (nom == L"Insérer") return asmInserer();
   if (nom == L"Paramètres") return basculerMiniParametres();
   if (nom == L"Congé") return entrerConge(false);

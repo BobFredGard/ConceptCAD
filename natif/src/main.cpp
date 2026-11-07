@@ -21,6 +21,7 @@
 #include "coter.h"
 #include "dessin.h"
 #include "enregistrer.h"
+#include "normalises.h"
 #include "parametres.h"
 
 namespace {
@@ -31,6 +32,68 @@ std::string utf8(const std::wstring& w) {
   std::string s(n > 0 ? n - 1 : 0, '\0');
   if (n > 1) WideCharToMultiByte(CP_UTF8, 0, w.c_str(), -1, s.data(), n, nullptr, nullptr);
   return s;
+}
+
+// --normalises <cas.json> <sortie.json> : les pièces normalisées demandées, pour les comparer au navigateur
+nlohmann::ordered_json decrirePiece(const normalises::Piece& sp) {
+  using J = nlohmann::ordered_json;
+  J r = J::object();
+  r["key"] = sp.key;
+  r["norm"] = sp.norm;
+  r["desig"] = sp.desig;
+  r["name"] = sp.name;
+  r["info"] = sp.info;
+  r["seat"] = sp.seat;
+  r["sink"] = sp.sink;
+  r["reach"] = sp.reach;
+  r["etat"] = sp.st;
+  J c = J::array();
+  for (const normalises::Controle& k : sp.checks) c.push_back(J::array({k.ok, k.txt}));
+  r["checks"] = c;
+  if (sp.paire.empty()) r["doc"] = normalises::documentDe(sp);
+  J p = J::array();
+  for (const normalises::MembrePaire& m : sp.paire) {
+    J q = J::object();
+    q["key"] = m.sp.key;
+    q["fr"] = assemblage::jsonDe(m.fr);
+    q["doc"] = normalises::documentDe(m.sp);
+    p.push_back(q);
+  }
+  r["paire"] = p;
+  return r;
+}
+int modeNormalises(const std::vector<std::wstring>& a) {
+  using J = nlohmann::ordered_json;
+  std::ifstream f(a[1], std::ios::binary);
+  std::stringstream ss;
+  ss << f.rdbuf();
+  const J cas = J::parse(ss.str());
+  std::ofstream s(a[2], std::ios::binary);
+  s << "[\n";
+  bool premier = true;
+  for (const J& c : cas) {
+    J r = J::object();
+    const std::string cat = c["cat"].get<std::string>();
+    const J etat = normalises::etatNormalise(cat, c["st"]);
+    J opts = J::object();
+    for (const normalises::Champ& ch : normalises::categorie(cat).champs) {
+      if (ch.visible && !ch.visible(etat)) continue;
+      J o = J::array();
+      for (const normalises::Option& q : ch.options(etat)) o.push_back(J::array({q.v, q.lib}));
+      opts[ch.k] = o;
+    }
+    r["opts"] = opts;
+    try {
+      r["p"] = decrirePiece(normalises::specification(cat, c["st"]));
+    } catch (const std::exception& e) {
+      r["err"] = e.what();
+      r["etat"] = etat;
+    }
+    s << (premier ? "" : ",\n") << r.dump(-1, ' ', false, J::error_handler_t::replace);
+    premier = false;
+  }
+  s << "\n]\n";
+  return 0;
 }
 
 // --verif <fichier> <sortie.json> [nFonction=valeur ...] : calcule sans fenêtre, écrit les mesures.
@@ -566,6 +629,7 @@ int WINAPI wWinMain(HINSTANCE inst, HINSTANCE, PWSTR, int) {
   }
   LocalFree(argv);
   if (!gArgs.empty() && gArgs[0] == L"--verif") return modeVerif(gArgs);
+  if (gArgs.size() >= 3 && gArgs[0] == L"--normalises") return modeNormalises(gArgs);
   if (!gArgs.empty() && gArgs[0] == L"--etapes") return modeEtapes(gArgs);
   if (gArgs.size() >= 3 && gArgs[0] == L"--reenregistrer") return modeEnregistrer(gArgs);
   if (gArgs.size() >= 2 && gArgs[0] == L"--conflit") return modeEnregistrer(gArgs);
