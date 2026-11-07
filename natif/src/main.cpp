@@ -15,6 +15,7 @@
 #include <nlohmann/json.hpp>
 #include <sstream>
 
+#include "assemblage.h"
 #include "cadre.h"
 #include "conges.h"
 #include "coter.h"
@@ -76,6 +77,7 @@ int modeVerif(const std::vector<std::wstring>& a) {
       }
     fprintf(s, "],\"parallele\":%s,\"cas\":[", parallele() ? "true" : "false");
     bool premier = true;
+    std::function<void()> ecrireAssemblage = [] {};
     auto cas = [&](const std::string& nom) {
       const auto t0 = std::chrono::steady_clock::now();
       ResultatRejeu r = rejouer(d);
@@ -103,13 +105,49 @@ int modeVerif(const std::vector<std::wstring>& a) {
       premier = false;
     };
     cas("tel quel");
+    ecrireAssemblage = [&] {
+      if (!d.assemblage) return;
+      assemblage::Solides S;
+      const ResultatRejeu r = rejouer(d);
+      assemblage::majSolides(S, d, r);
+      assemblage::resoudre(*d.assemblage, S);
+      nlohmann::ordered_json j = nlohmann::ordered_json::object();
+      j["actif"] = assemblage::actif(*d.assemblage);
+      j["instances"] = nlohmann::ordered_json::array();
+      for (const assemblage::Instance& i : assemblage::instances(*d.assemblage, assemblage::racine(*d.assemblage))) {
+        nlohmann::ordered_json l = nlohmann::ordered_json::object();
+        l["path"] = i.chemin;
+        l["comp"] = i.comp;
+        l["F"] = assemblage::jsonDe(i.F);
+        if (!i.chemin.empty())
+          if (const auto* o = assemblage::occurrence(*d.assemblage, i.chemin.back())) {
+            l["st"] = o->value("st", std::string());
+            l["msg"] = o->value("msg", std::string());
+          }
+        j["instances"].push_back(l);
+      }
+      j["comps"] = nlohmann::ordered_json::object();
+      for (const auto& [id, s] : S) {
+        const Mesures m = mesurer(s->forme);
+        nlohmann::ordered_json l = nlohmann::ordered_json::object();
+        l["volume"] = m.volume;
+        l["faces"] = m.faces;
+        l["solides"] = m.solides;
+        l["messages"] = s->messages;
+        l["accroches"] = assemblage::accrochesDe(*s).size();
+        j["comps"][id] = l;
+      }
+      fprintf(s, ",\"assemblage\":%s", j.dump(-1, ' ', false, nlohmann::ordered_json::error_handler_t::replace).c_str());
+    };
     for (size_t i = 3; i < a.size(); i++) {
       const size_t eq = a[i].find(L'=');
       if (eq == std::wstring::npos) continue;
       d.fonctions.at(_wtoi(a[i].substr(0, eq).c_str())).distance = _wtof(a[i].substr(eq + 1).c_str());
       cas(utf8(a[i]));
     }
-    fprintf(s, "]}\n");
+    fprintf(s, "]");
+    ecrireAssemblage();
+    fprintf(s, "}\n");
   } catch (const std::exception& e) {
     fprintf(s, "{\"erreur\":\"%s\"}\n", e.what());
     fclose(s);

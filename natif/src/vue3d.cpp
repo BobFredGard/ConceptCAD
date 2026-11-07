@@ -3,7 +3,11 @@
 #include <BRepBuilderAPI_MakeEdge.hxx>
 #include <BRepBuilderAPI_MakeFace.hxx>
 #include <BRepBuilderAPI_MakePolygon.hxx>
+#include <BRepPrimAPI_MakeCone.hxx>
 #include <BRepPrimAPI_MakeSphere.hxx>
+#include <BRepBuilderAPI_Transform.hxx>
+#include <gp_Circ.hxx>
+#include <gp_Ax3.hxx>
 #include <Prs3d_LineAspect.hxx>
 
 #include <wx/dcclient.h>
@@ -221,6 +225,8 @@ Vue3D::Vue3D(wxWindow* parent) : wxWindow(parent, 2005, wxDefaultPosition, wxDef
   contexte_->SetPixelTolerance(4);
   reglerStyle(contexte_, Prs3d_TypeOfHighlight_LocalDynamic, couleur(0x0a, 0x84, 0xff));
   reglerStyle(contexte_, Prs3d_TypeOfHighlight_LocalSelected, couleur(0x30, 0xd1, 0x58));
+  reglerStyle(contexte_, Prs3d_TypeOfHighlight_Dynamic, couleur(0x4d, 0xa3, 0xff));
+  reglerStyle(contexte_, Prs3d_TypeOfHighlight_Selected, couleur(0x0a, 0x84, 0xff));
 
   Bind(wxEVT_PAINT, &Vue3D::surPeinture, this);
   Bind(wxEVT_ERASE_BACKGROUND, [](wxEraseEvent&) {});
@@ -234,6 +240,7 @@ Vue3D::Vue3D(wxWindow* parent) : wxWindow(parent, 2005, wxDefaultPosition, wxDef
   Bind(wxEVT_MOTION, &Vue3D::surMouvement, this);
   Bind(wxEVT_MOUSEWHEEL, &Vue3D::surMolette, this);
   Bind(wxEVT_MOUSE_CAPTURE_LOST, &Vue3D::surPerteSouris, this);
+  Bind(wxEVT_LEFT_DCLICK, &Vue3D::surDouble, this);
 }
 
 void Vue3D::afficher(const TopoDS_Shape& forme, bool ajusterVue, const std::vector<std::pair<TopoDS_Shape, unsigned>>& teintes, const std::vector<std::pair<TopoDS_Shape, double>>& transparences) {
@@ -250,6 +257,8 @@ void Vue3D::afficher(const TopoDS_Shape& forme, bool ajusterVue, const std::vect
   reflets_.clear();
   refletsVus_ = false;
   selectionPrete_ = false;
+  formePiece_ = forme;
+  teintesPiece_ = teintes;
   if (!forme.IsNull()) {
     const auto debut = std::chrono::steady_clock::now();
     occ::handle<AIS_ColoredShape> piece = new AIS_ColoredShape(forme);
@@ -370,11 +379,22 @@ void Vue3D::surEnfonce(wxMouseEvent& e) {
   if (!HasCapture()) CaptureMouse();
   depart_ = precedent_ = e.GetPosition();
   aBouge_ = false;
+  ignorerRelache_ = false;
+  if (e.LeftDown() && saisirGizmo(e.GetPosition(), e)) return;
   if (!e.RightDown()) vue_->StartRotation(depart_.x, depart_.y);
 }
 
 void Vue3D::surRelache(wxMouseEvent& e) {
   if (HasCapture()) ReleaseMouse();
+  if (gizmoSaisi_ >= 0) {
+    gizmoSaisi_ = -1;
+    if (surGeste) surGeste(2, "", 0, "", 0, false);
+    return;
+  }
+  if (ignorerRelache_) {
+    ignorerRelache_ = false;
+    return;
+  }
   if (aBouge_) return;
   if (e.RightUp()) return droitEn(e.GetPosition());
   if (!e.LeftUp()) return;
@@ -382,6 +402,15 @@ void Vue3D::surRelache(wxMouseEvent& e) {
 }
 
 void Vue3D::droitEn(const wxPoint& p) {
+  if (placer_) {
+    contexte_->MoveTo(p.x, p.y, vue_, false);
+    std::string cle;
+    if (contexte_->HasDetected())
+      for (const OccAffichee& o : occs_)
+        if (o.piece == contexte_->DetectedInteractive()) cle = o.v.cle;
+    if (surOccDroit) surOccDroit(cle);
+    return;
+  }
   if (!surDroit) return;
   TopoDS_Shape sous;
   if (!affichee_.IsNull() && !enChoix_) {
@@ -394,7 +423,14 @@ void Vue3D::droitEn(const wxPoint& p) {
 
 void Vue3D::cliquerEn(const wxPoint& p) {
   dernierClic_ = p;
-  preparerSelection();
+  if (!marques_.empty()) {
+    const int m = marqueSous(p);
+    if (m >= 0) {
+      if (surMarque) surMarque(m);
+      return;
+    }
+  }
+  if (!placer_) preparerSelection();
   contexte_->MoveTo(p.x, p.y, vue_, false);
   if (contexte_->HasDetected() && contexte_->MainSelector()->NbPicked() > 0) {
     const gp_Pnt q = contexte_->MainSelector()->PickedPoint(1);
@@ -411,6 +447,29 @@ void Vue3D::cliquerEn(const wxPoint& p) {
       vue_->Redraw();
       return;
     }
+  }
+  if (placer_) {
+    std::string cle;
+    const OccAffichee* trouvee = nullptr;
+    if (contexte_->HasDetected())
+      for (const OccAffichee& o : occs_)
+        if (o.piece == contexte_->DetectedInteractive()) {
+          cle = o.v.cle;
+          trouvee = &o;
+        }
+    if (!marques_.empty() || aligner_) {
+      // La commande Aligner : une face, et ses points d'accroche
+      if (surFaceOcc && contexte_->HasDetected() && contexte_->MainSelector()->NbPicked() > 0) {
+        const bool surPiece = !affichee_.IsNull() && affichee_ == contexte_->DetectedInteractive();
+        if (trouvee || surPiece) {
+          const gp_Pnt q = contexte_->MainSelector()->PickedPoint(1);
+          surFaceOcc(trouvee ? trouvee->v.chemin : cheminPiece_, q, false, {0, 0, 0});
+        }
+      }
+      return;
+    }
+    if (surOccurrence) surOccurrence(cle, wxGetKeyState(WXK_CONTROL), wxGetKeyState(WXK_SHIFT));
+    return;
   }
   if (affichee_.IsNull()) return;
   contexte_->SelectDetected(!enChoix_ && wxGetKeyState(WXK_CONTROL) ? AIS_SelectionScheme_XOR : AIS_SelectionScheme_Replace);
@@ -648,19 +707,22 @@ void Vue3D::finChoix() {
 
 void Vue3D::surMouvement(wxMouseEvent& e) {
   const wxPoint p = e.GetPosition();
+  if (gizmoSaisi_ >= 0) return bougerGizmo(p, e.ShiftDown());
   if (e.LeftIsDown() || e.MiddleIsDown()) {
     if (!aBouge_ && std::abs(p.x - depart_.x) + std::abs(p.y - depart_.y) <= SEUIL_CLIC) return;
     aBouge_ = true;
     vue_->Rotation(p.x, p.y);
     const bool avant = refletsVus_;
     majReflets();
+    majTailles();
     if (avant != refletsVus_) vue_->Redraw();
   } else if (e.RightIsDown()) {
     aBouge_ = true;
     vue_->Pan(p.x - precedent_.x, precedent_.y - p.y);
     precedent_ = p;
+    majTailles();
   } else {
-    preparerSelection();
+    if (!placer_) preparerSelection();
     contexte_->MoveTo(p.x, p.y, vue_, true);
   }
 }
@@ -670,7 +732,369 @@ void Vue3D::surMolette(wxMouseEvent& e) {
   vue_->StartZoomAtPoint(p.x, p.y);
   const int d = e.GetWheelRotation() / 4;
   vue_->ZoomAtPoint(p.x, p.y, p.x + d, p.y + d);
+  majTailles();
   vue_->Redraw();
 }
 
 void Vue3D::surPerteSouris(wxMouseCaptureLostEvent&) { aBouge_ = true; }
+
+// ---- L'assemblage ----
+void Vue3D::modePlacer(bool oui) {
+  if (oui == placer_) return;
+  placer_ = oui;
+  if (oui && selectionPrete_ && !affichee_.IsNull()) {
+    contexte_->Deactivate(affichee_);
+    selectionPrete_ = false;
+  }
+  contexte_->ClearSelected(false);
+}
+
+void Vue3D::montrerOccurrences(const std::vector<OccVue>& L) {
+  for (OccAffichee& o : occs_) {
+    contexte_->Remove(o.piece, false);
+    if (!o.vives.IsNull()) contexte_->Remove(o.vives, false);
+    if (!o.lisses.IsNull()) contexte_->Remove(o.lisses, false);
+  }
+  occs_.clear();
+  for (const OccVue& v : L) {
+    OccAffichee o;
+    o.v = v;
+    occ::handle<AIS_ColoredShape> piece = new AIS_ColoredShape(v.forme);
+    piece->Attributes()->SetAutoTriangulation(false);
+    piece->SetColor(couleurHex(0x0a84ff));
+    for (const auto& [corps, c] : v.teintes) piece->SetCustomColor(corps, couleurHex(c));
+    piece->SetMaterial(matierePiece());
+    const double tr = v.fantome ? 0.82 : v.transparence;
+    if (tr > 0) {
+      for (const auto& t : v.teintes) piece->SetCustomTransparency(t.first, tr);
+    } else if (tr < 0) {
+      for (const auto& [corps, t] : v.transparences) piece->SetCustomTransparency(corps, t);
+    }
+    piece->SetLocalTransformation(v.t);
+    contexte_->Display(piece, AIS_Shaded, v.cliquable ? 0 : -1, false);
+    o.piece = piece;
+    if (v.aretes) {
+      const auto traits = [&](const TopoDS_Shape& s, const Quantity_Color& c) {
+        occ::handle<AIS_Shape> a = new AIS_Shape(s);
+        a->Attributes()->SetAutoTriangulation(false);
+        a->SetColor(c);
+        a->SetWidth(1.25);
+        a->SetLocalTransformation(v.t);
+        contexte_->Display(a, AIS_WireFrame, -1, false);
+        return a;
+      };
+      if (!v.vives.IsNull()) o.vives = traits(v.vives, couleur(5, 5, 6));
+      if (!v.lisses.IsNull()) o.lisses = traits(v.lisses, couleur(0x9a, 0x9f, 0xa6));
+    }
+    occs_.push_back(std::move(o));
+  }
+  refaireReflets();
+  majReflets();
+  vue_->ZFitAll();
+  vue_->Redraw();
+}
+
+// floorMesh : le sol passe sous tout ce qui est plein, pièce active comprise
+void Vue3D::refaireReflets() {
+  for (occ::handle<AIS_Shape>& r : reflets_) contexte_->Remove(r, false);
+  reflets_.clear();
+  refletsVus_ = false;
+  struct Un {
+    TopoDS_Shape s;
+    unsigned c;
+    gp_Trsf t;
+  };
+  std::vector<Un> tous;
+  if (!formePiece_.IsNull()) {
+    if (teintesPiece_.empty()) tous.push_back({formePiece_, 0x0a84ff, gp_Trsf()});
+    for (const auto& [s, c] : teintesPiece_) tous.push_back({s, c, gp_Trsf()});
+  }
+  Bnd_Box boite;
+  if (!formePiece_.IsNull()) BRepBndLib::Add(formePiece_, boite, true);
+  for (const OccAffichee& o : occs_) {
+    if (o.v.fantome) continue;
+    for (const auto& [s, c] : o.v.teintes) tous.push_back({s, c, o.v.t});
+    Bnd_Box b;
+    BRepBndLib::Add(o.v.forme, b, true);
+    if (!b.IsVoid()) boite.Add(b.Transformed(o.v.t));
+  }
+  if (boite.IsVoid()) return;
+  sol_ = boite.CornerMin().Z();
+  gp_Trsf miroir;
+  miroir.SetMirror(gp_Ax2(gp_Pnt(0, 0, sol_), gp_Dir(0, 0, 1)));
+  const gp_Pnt bas = boite.CornerMin(), haut = boite.CornerMax();
+  const gp_Pnt centre((bas.X() + haut.X()) / 2, (bas.Y() + haut.Y()) / 2, sol_);
+  const double rayon = bas.Distance(haut) / 2;
+  for (const Un& u : tous) {
+    occ::handle<AIS_Shape> r = new AIS_Shape(u.s);
+    r->Attributes()->SetAutoTriangulation(false);
+    r->Attributes()->SetFaceBoundaryDraw(false);
+    r->SetColor(couleurHex(u.c));
+    r->Attributes()->ShadingAspect()->Aspect()->SetFaceCulling(Graphic3d_TypeOfBackfacingModel_DoubleSided);
+    r->Attributes()->ShadingAspect()->Aspect()->SetShaderProgram(programmeReflet(couleurHex(u.c), couleurFond(), centre, rayon));
+    r->SetLocalTransformation(miroir * u.t);
+    reflets_.push_back(r);
+  }
+}
+
+void Vue3D::choisirOccurrences(const std::set<std::string>& cles) {
+  contexte_->ClearSelected(false);
+  for (const OccAffichee& o : occs_)
+    if (o.v.cliquable && cles.count(o.v.cle)) contexte_->AddOrRemoveSelected(o.piece, false);
+  contexte_->UpdateCurrentViewer();
+}
+
+void Vue3D::surDouble(wxMouseEvent& e) {
+  ignorerRelache_ = true;
+  if (!placer_ || !surOccDouble) return;
+  const wxPoint p = e.GetPosition();
+  contexte_->MoveTo(p.x, p.y, vue_, false);
+  if (contexte_->HasDetected())
+    for (const OccAffichee& o : occs_)
+      if (o.piece == contexte_->DetectedInteractive()) {
+        const std::string c = o.v.cle;
+        surOccDouble(c);
+        return;
+      }
+}
+
+// Combien de mm fait un pixel, à la profondeur de ce point
+double Vue3D::echelleEn(const gp_Pnt& p) const {
+  int x0, y0;
+  vue_->Convert(p.X(), p.Y(), p.Z(), x0, y0);
+  const occ::handle<Graphic3d_Camera>& c = vue_->Camera();
+  const gp_Dir haut = c->Up();
+  const double L = std::max(1e-6, c->Eye().Distance(p) * 0.05);
+  int x1, y1;
+  vue_->Convert(p.X() + haut.X() * L, p.Y() + haut.Y() * L, p.Z() + haut.Z() * L, x1, y1);
+  const double px = std::hypot(double(x1 - x0), double(y1 - y0));
+  return px > 1e-6 ? L / px : 1;
+}
+
+void Vue3D::rayon(int x, int y, gp_Pnt& o, gp_Dir& d) const {
+  double X, Y, Z, Vx, Vy, Vz;
+  vue_->ConvertWithProj(x, y, X, Y, Z, Vx, Vy, Vz);
+  o = gp_Pnt(X, Y, Z);
+  d = gp_Dir(Vx, Vy, Vz);
+}
+
+namespace {
+// Une flèche ou un anneau d'une unité de long, autour de l'origine
+TopoDS_Shape formeFleche() {
+  BRep_Builder bb;
+  TopoDS_Compound k;
+  bb.MakeCompound(k);
+  bb.Add(k, BRepBuilderAPI_MakeEdge(gp_Pnt(0, 0, 0), gp_Pnt(0, 0, 0.8)).Edge());
+  bb.Add(k, BRepPrimAPI_MakeCone(gp_Ax2(gp_Pnt(0, 0, 0.8), gp_Dir(0, 0, 1)), 0.07, 0, 0.2).Shape());
+  return k;
+}
+TopoDS_Shape formeAnneau() { return BRepBuilderAPI_MakeEdge(gp_Circ(gp_Ax2(gp_Pnt(0, 0, 0), gp_Dir(0, 0, 1)), 0.62)).Edge(); }
+const int TAILLE_GIZMO = 110, TAILLE_TRIADE = 54, TAILLE_TRIADE_GRANDE = 78;
+gp_Trsf poseAxe(const std::array<double, 3>& z) {
+  gp_Trsf t;
+  t.SetTransformation(gp_Ax3(gp_Pnt(0, 0, 0), gp_Dir(z[0], z[1], z[2])), gp_Ax3());
+  return t;
+}
+}  // namespace
+
+void Vue3D::poserGizmo(const Gizmo& g) {
+  if (gizmoSaisi_ >= 0) return;
+  for (auto& a : gizmoAis_) contexte_->Remove(a, false);
+  gizmoAis_.clear();
+  gizmo_ = g;
+  if (g.actif) {
+    const Quantity_Color C[3] = {couleur(0xff, 0x45, 0x3a), couleur(0x30, 0xd1, 0x58), couleur(0x0a, 0x84, 0xff)};
+    static const TopoDS_Shape fl = formeFleche(), an = formeAnneau();
+    for (int i = 0; i < 3; i++)
+      for (int k = 0; k < 2; k++) {
+        if (!(k ? g.anneau[i] : g.fleche[i])) continue;
+        occ::handle<AIS_Shape> a = new AIS_Shape(k ? an : fl);
+        a->SetColor(C[i]);
+        a->SetWidth(2);
+        a->SetInfiniteState(true);
+        a->SetZLayer(Graphic3d_ZLayerId_Topmost);
+        a->Attributes()->SetFaceBoundaryDraw(false);
+        contexte_->Display(a, AIS_Shaded, -1, false);
+        gizmoAis_.push_back(a);
+      }
+  }
+  majTailles();
+  vue_->Redraw();
+}
+
+void Vue3D::poserMarques(const std::vector<Marque>& L) {
+  for (auto& a : marquesAis_) contexte_->Remove(a, false);
+  marquesAis_.clear();
+  marques_ = L;
+  aligner_ = !L.empty();
+  if (aligner_) {
+    // Les faces se cliquent sur toutes les instances pleines du composant actif, la pièce comprise
+    for (const OccAffichee& o : occs_)
+      if (o.v.cliquable) {
+        contexte_->Deactivate(o.piece);
+        contexte_->Activate(o.piece, AIS_Shape::SelectionMode(TopAbs_FACE));
+      }
+    if (!affichee_.IsNull()) {
+      contexte_->Load(affichee_, -1);
+      contexte_->Activate(affichee_, AIS_Shape::SelectionMode(TopAbs_FACE));
+      selectionPrete_ = false;
+    }
+  } else {
+    if (placer_ && !affichee_.IsNull()) contexte_->Deactivate(affichee_);
+    for (const OccAffichee& o : occs_)
+      if (o.v.cliquable) {
+        contexte_->Deactivate(o.piece);
+        contexte_->Activate(o.piece, 0);
+      }
+  }
+  for (const Marque& m : L) {
+    const auto un = [&](const TopoDS_Shape& s, const Quantity_Color& c) {
+      occ::handle<AIS_Shape> a = new AIS_Shape(s);
+      a->SetColor(c);
+      a->SetWidth(m.grand ? 3 : 2);
+      a->SetInfiniteState(true);
+      a->SetZLayer(Graphic3d_ZLayerId_Topmost);
+      contexte_->Display(a, AIS_Shaded, -1, false);
+      marquesAis_.push_back(a);
+    };
+    if (m.point) {
+      un(BRepPrimAPI_MakeSphere(gp_Pnt(0, 0, 0), 1).Shape(), m.orange ? couleur(0xff, 0xb0, 0x20) : couleur(0x30, 0xd1, 0x58));
+    } else {
+      const auto ligne = [](const std::array<double, 3>& v) { return BRepBuilderAPI_MakeEdge(gp_Pnt(0, 0, 0), gp_Pnt(v[0], v[1], v[2])).Edge(); };
+      un(ligne(m.x), couleur(0xff, 0x45, 0x3a));
+      un(ligne(m.y), couleur(0x30, 0xd1, 0x58));
+      un(ligne(m.z), couleur(0x0a, 0x84, 0xff));
+    }
+  }
+  majTailles();
+  vue_->Redraw();
+}
+
+// Le manipulateur et les marques gardent leur taille à l'écran
+void Vue3D::majTailles() {
+  size_t n = 0;
+  if (gizmo_.actif) {
+    const gp_Pnt O(gizmo_.o[0], gizmo_.o[1], gizmo_.o[2]);
+    const double s = echelleEn(O) * FromDIP(TAILLE_GIZMO);
+    for (int i = 0; i < 3; i++)
+      for (int k = 0; k < 2; k++) {
+        if (!(k ? gizmo_.anneau[i] : gizmo_.fleche[i]) || n >= gizmoAis_.size()) continue;
+        gp_Trsf e, d;
+        e.SetScale(gp_Pnt(0, 0, 0), s);
+        d.SetTranslation(gp_Vec(O.XYZ()));
+        contexte_->SetLocation(gizmoAis_[n++], TopLoc_Location(d * poseAxe(gizmo_.ax[i]).Inverted() * e));
+      }
+  }
+  n = 0;
+  for (const Marque& m : marques_) {
+    const gp_Pnt O(m.o[0], m.o[1], m.o[2]);
+    gp_Trsf e, d;
+    d.SetTranslation(gp_Vec(O.XYZ()));
+    if (m.point) {
+      e.SetScale(gp_Pnt(0, 0, 0), echelleEn(O) * FromDIP(5));
+      if (n < marquesAis_.size()) contexte_->SetLocation(marquesAis_[n++], TopLoc_Location(d * e));
+    } else {
+      e.SetScale(gp_Pnt(0, 0, 0), echelleEn(O) * FromDIP(m.grand ? TAILLE_TRIADE_GRANDE : TAILLE_TRIADE));
+      for (int i = 0; i < 3 && n < marquesAis_.size(); i++) contexte_->SetLocation(marquesAis_[n++], TopLoc_Location(d * e));
+    }
+  }
+}
+
+int Vue3D::marqueSous(const wxPoint& p) const {
+  int best = -1;
+  double bd = FromDIP(12);
+  for (size_t i = 0; i < marques_.size(); i++) {
+    int x, y;
+    vue_->Convert(marques_[i].o[0], marques_[i].o[1], marques_[i].o[2], x, y);
+    const double d = std::hypot(double(x - p.x), double(y - p.y));
+    if (d < bd) {
+      bd = d;
+      best = static_cast<int>(i);
+    }
+  }
+  return best;
+}
+
+bool Vue3D::saisirGizmo(const wxPoint& p, wxMouseEvent& e) {
+  if (!gizmo_.actif) return false;
+  const gp_Pnt O(gizmo_.o[0], gizmo_.o[1], gizmo_.o[2]);
+  const double s = echelleEn(O) * FromDIP(TAILLE_GIZMO);
+  double bd = FromDIP(8);
+  int best = -1;
+  const auto dist = [&](const gp_Pnt& a, const gp_Pnt& b) {
+    int ax, ay, bx, by;
+    vue_->Convert(a.X(), a.Y(), a.Z(), ax, ay);
+    vue_->Convert(b.X(), b.Y(), b.Z(), bx, by);
+    const double dx = bx - ax, dy = by - ay, l = dx * dx + dy * dy;
+    const double t = l > 0 ? std::min(1.0, std::max(0.0, ((p.x - ax) * dx + (p.y - ay) * dy) / l)) : 0;
+    return std::hypot(p.x - (ax + t * dx), p.y - (ay + t * dy));
+  };
+  for (int i = 0; i < 3; i++) {
+    const gp_Dir z(gizmo_.ax[i][0], gizmo_.ax[i][1], gizmo_.ax[i][2]);
+    if (gizmo_.fleche[i]) {
+      const double d = dist(O.Translated(gp_Vec(z) * (0.1 * s)), O.Translated(gp_Vec(z) * s));
+      if (d < bd) {
+        bd = d;
+        best = i;
+      }
+    }
+    if (gizmo_.anneau[i]) {
+      const gp_Ax3 rep(O, z);
+      const gp_Vec u(rep.XDirection()), v(rep.YDirection());
+      gp_Pnt prec = O.Translated(u * (0.62 * s));
+      for (int k = 1; k <= 48; k++) {
+        const double t = 2 * 3.14159265358979 * k / 48;
+        const gp_Pnt q = O.Translated(u * (0.62 * s * std::cos(t)) + v * (0.62 * s * std::sin(t)));
+        const double d = dist(prec, q);
+        if (d < bd) {
+          bd = d;
+          best = 3 + i;
+        }
+        prec = q;
+      }
+    }
+  }
+  if (best < 0) return false;
+  (void)e;
+  gizmoSaisi_ = best;
+  gp_Pnt ro;
+  gp_Dir rd;
+  rayon(p.x, p.y, ro, rd);
+  const int i = best % 3;
+  const gp_Vec a(gizmo_.ax[i][0], gizmo_.ax[i][1], gizmo_.ax[i][2]);
+  if (best < 3) {
+    const gp_Vec w(O, ro);
+    const double b = a.Dot(gp_Vec(rd)), d = a.Dot(w), ee = gp_Vec(rd).Dot(w), den = 1 - b * b;
+    gizmoT0_ = std::abs(den) < 1e-9 ? 0 : (d - b * ee) / den;
+  } else {
+    const double den = a.Dot(gp_Vec(rd));
+    const double t = std::abs(den) < 1e-9 ? 0 : a.Dot(gp_Vec(ro, O)) / den;
+    gizmoP0_ = gp_Vec(O, ro.Translated(gp_Vec(rd) * t));
+  }
+  if (surGeste) surGeste(0, "", 0, "", 0, false);
+  return true;
+}
+
+void Vue3D::bougerGizmo(const wxPoint& p, bool libre) {
+  const gp_Pnt O(gizmo_.o[0], gizmo_.o[1], gizmo_.o[2]);
+  gp_Pnt ro;
+  gp_Dir rd;
+  rayon(p.x, p.y, ro, rd);
+  const int i = gizmoSaisi_ % 3;
+  const gp_Vec a(gizmo_.ax[i][0], gizmo_.ax[i][1], gizmo_.ax[i][2]);
+  double v;
+  if (gizmoSaisi_ < 3) {
+    const gp_Vec w(O, ro);
+    const double b = a.Dot(gp_Vec(rd)), d = a.Dot(w), ee = gp_Vec(rd).Dot(w), den = 1 - b * b;
+    if (std::abs(den) < 1e-9) return;
+    v = (d - b * ee) / den - gizmoT0_;
+    if (surGeste) surGeste(1, "move", i, gizmo_.degreFleche[i], v, libre);
+  } else {
+    const double den = a.Dot(gp_Vec(rd));
+    if (std::abs(den) < 1e-9) return;
+    const double t = a.Dot(gp_Vec(ro, O)) / den;
+    const gp_Vec q(O, ro.Translated(gp_Vec(rd) * t));
+    v = std::atan2(a.Dot(gizmoP0_.Crossed(q)), gizmoP0_.Dot(q)) * 180 / 3.14159265358979;
+    if (surGeste) surGeste(1, "rot", i, gizmo_.degreAnneau[i], v, libre);
+  }
+}

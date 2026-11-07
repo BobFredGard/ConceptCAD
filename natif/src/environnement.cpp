@@ -210,6 +210,34 @@ Ruban::Ruban(wxWindow* parent) : wxWindow(parent, wxID_ANY, wxDefaultPosition, w
     }
     groupes_.push_back(std::move(g));
   }
+  // Le groupe Composants : en modélisation, seul « Assembler »
+  const auto carreIcone = [](const char* d) { return wxString("<svg class=\"mfIcT mfIcH\" viewBox=\"0 0 24 24\" width=\"22\" height=\"22\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.6\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\">") + d + "</svg>"; };
+  const struct { const wchar_t* nom; const wchar_t* titre; const char* d; } asmB[] = {
+      {L"Composant", L"Nouveau composant dans le composant actif (on entre aussitôt dedans)", "<path d=\"M4 8l8-4 8 4v8l-8 4-8-4z\"/><path d=\"M4 8l8 4 8-4M12 12v8\"/>"},
+      {L"Occurrence", L"Nouvelle occurrence du composant sélectionné", "<path d=\"M3 9l6-3 6 3v6l-6 3-6-3z\"/><path d=\"M17 10v8M13 14h8\"/>"},
+      {L"Répétition", L"Répéter l'occurrence sélectionnée (ou le lot) : linéaire, 2 directions, circulaire, symétrie", "<rect x=\"3\" y=\"3\" width=\"6\" height=\"6\" rx=\"1\"/><rect x=\"15\" y=\"3\" width=\"6\" height=\"6\" rx=\"1\"/><rect x=\"3\" y=\"15\" width=\"6\" height=\"6\" rx=\"1\"/><rect x=\"15\" y=\"15\" width=\"6\" height=\"6\" rx=\"1\"/>"},
+      {L"Inspecter", L"Interférences entre corps / composants, masses et centre de gravité", "<circle cx=\"10\" cy=\"10\" r=\"6\"/><path d=\"M14.5 14.5L21 21\"/><path d=\"M7 10h6M10 7v6\"/>"},
+      {L"Depuis corps", L"Créer un composant depuis le corps sélectionné (ou depuis chaque corps)", "<path d=\"M3 14l5-3 5 3v5l-5 3-5-3z\"/><path d=\"M14 6l4-2 4 2v4l-4 2-4-2z\"/><path d=\"M12 12l3-3M15 9h-2.5M15 9v2.5\"/>"},
+      {L"Normalisés", L"Vis, bouchons, goupilles, clavettes, engrenages : insérés comme composants du composant actif", "<path d=\"M7 3h10v4l-2 2H9L7 7z\"/><path d=\"M10.5 3v2.5M13.5 3v2.5\"/><path d=\"M9.5 9v12h5V9\"/><path d=\"M9.5 12l5 1.5M9.5 15l5 1.5M9.5 18l5 1.5\"/>"},
+      {L"Aimants", L"Bibliothèque d'aimants permanents", "<path d=\"M5 4h5v9a2 2 0 0 0 4 0V4h5v9a7 7 0 0 1-14 0z\"/><path d=\"M5 8h5M14 8h5\"/>"},
+      {L"Insérer", L"Insérer un fichier .conceptcad comme composant du composant actif (copié)", "<path d=\"M12 3v11M8 10l4 4 4-4\"/><path d=\"M4 16v4h16v-4\"/>"}};
+  for (const auto& d : asmB) {
+    auto* b = new BoutonEsquisse(this, wxID_ANY, d.nom, d.titre, BoutonEsquisse::RUBAN);
+    b->titre(d.nom);
+    b->iconeComplete(carreIcone(d.d).utf8_string().c_str(), C_TEXTE);
+    b->Hide();
+    const wxString nom = d.nom;
+    b->surClic = [this, nom, b] {
+      if (b->estDisponible()) {
+        if (surBouton) surBouton(Atelier::CAO, nom);
+      } else if (surIndisponible) surIndisponible(nom);
+    };
+    boutonsAsm_.push_back(b);
+  }
+  for (Groupe& g : groupes_)
+    if (g.atelier == Atelier::CAO)
+      for (BoutonEsquisse* b : g.boutons)
+        if (b->GetLabel() == L"Assembler") boutonAssembler_ = b;
   Bind(wxEVT_SIZE, [this](wxSizeEvent& e) {
     placer();
     e.Skip();
@@ -233,11 +261,23 @@ void Ruban::atelier(Atelier a) {
   courant_ = a;
   for (const Groupe& g : groupes_)
     for (size_t i = 0; i < g.boutons.size(); i++) {
-      const bool ici = g.atelier == a;
+      const bool ici = g.atelier == a && (!assemblage_ || a != Atelier::CAO || g.boutons[i] == boutonAssembler_);
       g.boutons[i]->Show(ici);
       if (ici && estRepris) g.boutons[i]->disponible(estRepris(a, g.boutons[i]->GetLabel()));
     }
+  for (BoutonEsquisse* b : boutonsAsm_) {
+    const bool ici = assemblage_ && a == Atelier::CAO;
+    b->Show(ici);
+    if (ici && estRepris) b->disponible(estRepris(a, b->GetLabel()));
+  }
   placer();
+}
+
+void Ruban::modeAssemblage(bool oui) {
+  if (oui == assemblage_) return;
+  assemblage_ = oui;
+  if (boutonAssembler_) boutonAssembler_->titre(oui ? L"Modéliser" : L"Assembler");
+  atelier(courant_);
 }
 
 void Ruban::placer() {
@@ -249,6 +289,7 @@ void Ruban::placer() {
     if (g.atelier != courant_) continue;
     for (size_t i = 0; i < g.boutons.size(); i++) {
       BoutonEsquisse* b = g.boutons[i];
+      if (!b->IsShown()) continue;
       const int L = std::max(38, mesure(this, b->GetLabel(), 10.5).x + 4);
       if (g.coupes[i] && x > gauche) {
         x += 3;
@@ -263,6 +304,16 @@ void Ruban::placer() {
       x += L + 2;
     }
   }
+  if (assemblage_ && courant_ == Atelier::CAO)
+    for (BoutonEsquisse* b : boutonsAsm_) {
+      const int L = std::max(38, mesure(this, b->GetLabel(), 10.5).x + 4);
+      if (x + L > droite) {
+        x = gauche;
+        y += H + 4;
+      }
+      b->SetSize(rectDip(this, x, y, L, H));
+      x += L + 2;
+    }
   const int h = y + H + 12;
   if (h != hauteur_) {
     hauteur_ = h;

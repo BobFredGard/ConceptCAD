@@ -41,6 +41,8 @@
 #include <wx/numdlg.h>
 #include <wx/textdlg.h>
 
+#include "lien_arbre.h"
+
 namespace {
 enum { ID_ANNULER = wxID_HIGHEST + 1, ID_RETABLIR, ID_AJUSTER, ID_QUITTER_ESQUISSE, ID_ESQUISSE_XY, ID_ESQUISSE_XZ, ID_ESQUISSE_YZ, ID_ESQUISSE_FACE, ID_EXTRUDER, ID_CONTRAINTE_1, ID_ACCROCHE_GRILLE = wxID_HIGHEST + 100 };
 // Identifiants fixes : natif/mesures/verifier-fenetre.ps1 retrouve ces fenêtres par eux.
@@ -48,14 +50,6 @@ enum { ID_ARBRE = 2001, ID_PROPS = 2002, ID_ETAT = 2003 };
 const char* const PROP_CONGE_RAYON = "conge_rayon", * const PROP_CONGE_TANGENTES = "conge_tangentes", * const PROP_CONGE_ARETE = "conge_arete_";
 const char* const PROP_PROFONDEUR = "profondeur", * const PROP_OPERATION = "operation", * const PROP_ETENDUE = "etendue", * const PROP_DIRECTION = "direction", * const PROP_INVERSER = "inverser";
 
-struct LienArbre : wxTreeItemData {
-  LienArbre(bool f, int n, const std::string& p = "", const std::string& c = "", const std::string& g = "") : estFonction(f), i(n), plan(p), corps(c), cg(g) {}
-  std::string corps;  // la ligne d'un corps
-  std::string cg;     // la ligne d'un élément de construction
-  bool estFonction;
-  int i;  // -1 : une ligne de l'Origine
-  std::string plan;  // XY, XZ ou YZ : un double-clic y ouvre une esquisse
-};
 const wxColour C_SCENE(0x13, 0x15, 0x19), C_CARTE(0x2a, 0x2c, 0x30), C_CLAIR(0xf5, 0xf5, 0xf7), C_GRIS(0x98, 0x98, 0x9d);
 wxFont policeArial(const wxWindow* w, double px, bool gras = false) {
   wxFontInfo i(wxSize(0, static_cast<int>(std::lround(px * w->GetDPIScaleFactor()))));
@@ -117,7 +111,7 @@ wxPGProperty* lectureSeule(wxPropertyGrid* g, const wxString& nom, const wxStrin
 }
 }  // namespace
 
-Cadre::Cadre() : wxFrame(nullptr, wxID_ANY, L"ConceptCAD natif"), minuterie_(this) {
+Cadre::Cadre() : wxFrame(nullptr, wxID_ANY, L"ConceptCAD natif"), asmAnim_(this), minuterie_(this) {
   SetClientSize(FromDIP(wxSize(1500, 900)));
   SetMinClientSize(FromDIP(wxSize(1000, 600)));
   Move(FromDIP(wxPoint(20, 20)));
@@ -171,6 +165,9 @@ Cadre::Cadre() : wxFrame(nullptr, wxID_ANY, L"ConceptCAD natif"), minuterie_(thi
   }
   carteDroite_->contenu()->Add(rangConge_, 0, wxEXPAND | wxTOP, FromDIP(12));
   carteDroite_->contenu()->Show(rangConge_, false);
+  rangAsm_ = new wxBoxSizer(wxVERTICAL);
+  carteDroite_->contenu()->Add(rangAsm_, 0, wxEXPAND | wxTOP, FromDIP(6));
+  carteDroite_->contenu()->Show(rangAsm_, false);
   auto* colonne = new wxBoxSizer(wxVERTICAL);
   colonne->Add(scene_, 1, wxEXPAND);
   colonne->Add(vueEsquisse_, 1, wxEXPAND);
@@ -247,6 +244,23 @@ Cadre::Cadre() : wxFrame(nullptr, wxID_ANY, L"ConceptCAD natif"), minuterie_(thi
   panneauEsquisse_->surVoir = [this](double x, double y) { vueEsquisse_->centrerSur(x, y); };
   vueEsquisse_->surGeste = [this] { rafraichirEsquisse(false); };
   vue_->surDroit = [this](const TopoDS_Shape& s) { surDroit3D(s); };
+  vue_->surOccurrence = [this](const std::string& cle, bool ctrl, bool maj) { asmCliqueOcc(cle, ctrl, maj); };
+  vue_->surOccDouble = [this](const std::string& cle) {
+    if (cle.empty() || !doc_.assemblage) return;
+    assemblage::Chemin P = assemblage::cheminActif(*doc_.assemblage);
+    P.push_back(cle);
+    CallAfter([this, P] { asmAller(P, "part"); });
+  };
+  vue_->surOccDroit = [this](const std::string& cle) {
+    if (cle.empty() || !doc_.assemblage) return;
+    assemblage::Chemin P = assemblage::cheminActif(*doc_.assemblage);
+    P.push_back(cle);
+    asmMenuOccurrence(P, cle, true);
+  };
+  vue_->surGeste = [this](int phase, const std::string& sorte, int axe, const std::string& degre, double valeur, bool libre) { asmGeste(phase, sorte, axe, degre, valeur, libre); };
+  vue_->surMarque = [this](int i) { asmAlignClicMarque(i); };
+  vue_->surFaceOcc = [this](const assemblage::Chemin& c, const gp_Pnt& p, bool plan, const assemblage::V3& n) { asmAlignClicFace(c, p, plan, n); };
+  Bind(wxEVT_TIMER, [this](wxTimerEvent&) { asmPasAnimation(); }, asmAnim_.GetId());
   vue_->surSelection = [this](const TopoDS_Shape& s) {
     if (pioche_) {
       const auto p = pioche_;
@@ -261,6 +275,8 @@ Cadre::Cadre() : wxFrame(nullptr, wxID_ANY, L"ConceptCAD natif"), minuterie_(thi
       pioche_ = nullptr;
       etat(L"Choix dans la vue annulé.");
     } else if (enChoix() && e.GetKeyCode() == WXK_ESCAPE) quitterConge();
+    else if (e.GetKeyCode() == WXK_ESCAPE && esquisseOuverte_ < 0 && asmEchap()) return;
+    else if (e.GetKeyCode() == WXK_DELETE && asmMode_ == "asm" && !asmSel_.empty() && esquisseOuverte_ < 0 && (FindFocus() == vue_ || FindFocus() == arbre_)) asmSupprimer(asmLot());
     else if (faces_ && (e.GetKeyCode() == WXK_RETURN || e.GetKeyCode() == WXK_NUMPAD_ENTER) && FindFocus() == vue_) appliquerChoixFaces();
     else if (e.GetKeyCode() == WXK_DELETE && FindFocus() == vue_ && supprimerFacesChoisies()) return;
     else e.Skip();
@@ -272,7 +288,7 @@ Cadre::Cadre() : wxFrame(nullptr, wxID_ANY, L"ConceptCAD natif"), minuterie_(thi
   arbre_->Bind(wxEVT_TREE_ITEM_ACTIVATED, &Cadre::surArbreActive, this);
   arbre_->Bind(wxEVT_TREE_ITEM_MENU, &Cadre::surArbreMenu, this);
   props_->Bind(wxEVT_PG_CHANGED, &Cadre::surPropriete, this);
-  Bind(wxEVT_TIMER, &Cadre::pasProtocole, this);
+  Bind(wxEVT_TIMER, &Cadre::pasProtocole, this, minuterie_.GetId());
   Bind(wxEVT_IDLE, [this](wxIdleEvent& e) {
     barreHaute_->etats(!annulations_.empty(), !retablissements_.empty(), docOuvert_ && doc_.modifie(), docOuvert_);
     ajusterDroite();
@@ -300,7 +316,7 @@ void Cadre::creerEnvironnement() {
     if (esquisseOuverte_ < 0) recalculer();
   };
   barreHaute_->surIndisponible = [this](const wxString& n) { indisponible(n); };
-  ruban_->estRepris = [](Atelier a, const wxString& n) { return a == Atelier::CAO && (n == L"Esquisse" || n == L"Extrusion" || n == L"Congé" || n == L"Chanfrein" || n == L"Paramètres" || n == L"Corps" || n == L"Perçage" || n == L"Filetage" || n == L"Clavette" || n == L"Plan" || n == L"Axe" || n == L"Point" || n == L"Repère" || n == L"Répétition" || n == L"Révolution" || n == L"Balayage" || n == L"Face" || n == L"Dépouille" || n == L"Coque" || n == L"Combiner" || n == L"Déplacer" || n == L"Échelle" || n == L"Scinder" || n == L"Importer" || n == L"STEP" || n == L"STL" || n == L"OBJ"); };
+  ruban_->estRepris = [](Atelier a, const wxString& n) { return a == Atelier::CAO && (n == L"Esquisse" || n == L"Extrusion" || n == L"Congé" || n == L"Chanfrein" || n == L"Paramètres" || n == L"Corps" || n == L"Perçage" || n == L"Filetage" || n == L"Clavette" || n == L"Plan" || n == L"Axe" || n == L"Point" || n == L"Repère" || n == L"Répétition" || n == L"Révolution" || n == L"Balayage" || n == L"Face" || n == L"Dépouille" || n == L"Coque" || n == L"Combiner" || n == L"Déplacer" || n == L"Échelle" || n == L"Scinder" || n == L"Importer" || n == L"STEP" || n == L"STL" || n == L"OBJ" || n == L"Assembler" || n == L"Modéliser" || n == L"Composant" || n == L"Occurrence" || n == L"Insérer"); };
   ruban_->surBouton = [this](Atelier a, const wxString& n) { boutonRuban(a, n); };
   ruban_->surIndisponible = [this](const wxString& n) { indisponible(n); };
 
@@ -353,6 +369,10 @@ void Cadre::creerEnvironnement() {
     trait(wxColour(0x5e, 0xdc, 0x7a));  // 9 axe Y
     trait(wxColour(0x4d, 0xa3, 0xff));  // 10 axe Z
     ajouter(iconeRubanCao(8), C_GRIS);  // 11 origine
+    const char* const cube = "<svg viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.8\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M4 8l8-4 8 4v8l-8 4-8-4z\"/><path d=\"M4 8l8 4 8-4M12 12v8\"/></svg>";
+    ajouter(cube, wxColour(0xc8, 0xa8, 0x6a));  // 12 occurrence
+    ajouter(cube, wxColour(0x0a, 0x84, 0xff));  // 13 composant actif
+    ajouter("<svg viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\"><circle cx=\"12\" cy=\"12\" r=\"4\"/><path d=\"M12 3v4M12 17v4M3 12h4M17 12h4\"/></svg>", wxColour(0x98, 0x98, 0x9d));  // 14 liaison
     arbre_->AssignImageList(images);
   }
   arbre_->SetBackgroundColour(C_CARTE);
@@ -545,7 +565,8 @@ void Cadre::ajusterDroite() {
   int rangs = 0;
   if (cao)
     for (wxPropertyGridIterator it = props_->GetGrid()->GetIterator(wxPG_ITERATE_VISIBLE); !it.AtEnd(); it++) rangs++;
-  const bool note = !cao || rangs <= 1 || enChoix();
+  const bool asmPanneau = cao && !boutonsAsm_.empty();
+  const bool note = (!cao || rangs <= 1 || enChoix()) && !asmPanneau;
   if (note != noteMontree_) {
     noteMontree_ = note;
     noteDroite_->Show(note);
@@ -555,6 +576,7 @@ void Cadre::ajusterDroite() {
   if (rangs) h += rangs * ToDIP(props_->GetRowHeight()) + 4;
   if (note) h += ToDIP(noteDroite_->GetBestSize().y) + 6;
   if (rendu || enChoix()) h += 42;
+  if (asmPanneau) h += hauteurBoutonsAsm_ + 6;
   h = std::min(h, ToDIP(centre_->GetClientSize().y) - 90);
   if (h == hauteurDroite_) return;
   hauteurDroite_ = h;
@@ -566,6 +588,10 @@ void Cadre::indisponible(const wxString& nom) { etat(nom + PAS_ENCORE + L"."); }
 
 void Cadre::boutonRuban(Atelier a, const wxString& nom) {
   if (a != Atelier::CAO) return;
+  if (nom == L"Assembler") return asmBasculer();
+  if (nom == L"Composant") return asmNouveauComposant();
+  if (nom == L"Occurrence") return asmNouvelleOccurrence();
+  if (nom == L"Insérer") return asmInserer();
   if (nom == L"Paramètres") return basculerMiniParametres();
   if (nom == L"Congé") return entrerConge(false);
   if (nom == L"Chanfrein") return entrerConge(true);
@@ -672,7 +698,9 @@ void Cadre::poserChamps(const std::vector<ChampFiche>& champs, bool copie) {
       if (!categorie.empty()) props_->Append(new wxPropertyCategory(tx(categorie)));
     }
     const wxString nom = L"fiche:" + wxString::FromUTF8(c.cle);
-    if (c.sorte == ChampFiche::LECTURE || copie) {
+    if (c.libre) {
+      props_->Append(new wxStringProperty(tx(c.titre), nom, tx(c.texte)));
+    } else if (c.sorte == ChampFiche::LECTURE || copie) {
       wxString v = tx(c.texte);
       if (c.sorte == ChampFiche::NOMBRE) v = wxString::Format("%g", c.nombre);
       else if (c.sorte == ChampFiche::BOOLEEN) v = c.oui ? L"Oui" : L"Non";
@@ -700,6 +728,7 @@ void Cadre::poserChamps(const std::vector<ChampFiche>& champs, bool copie) {
 }
 
 void Cadre::appliquerFiche(const std::string& id, const std::string& cle, const std::string& valeur) {
+  if (id == "@asm") return asmFiche(cle, valeur);
   for (const ElementConstruction& c : doc_.construction)
     if (c.id == id) return reglerConstruction(id, cle, valeur);
   pioche_ = nullptr;
@@ -1004,6 +1033,10 @@ bool Cadre::ecrire(const std::wstring& cible) {
   retenirRecent(cible);
   faireSuivre();
   try {
+    if (doc_.assemblage) {
+      const nlohmann::ordered_json resolu = *doc_.assemblage;
+      modifierStructure(doc_, [&](nlohmann::ordered_json& j) { j["asm"] = resolu; });
+    }
     try {
       enregistrerProjet(doc_, cible);
     } catch (const FichierChangeAilleurs&) {
@@ -1134,6 +1167,14 @@ void Cadre::menuRecents() {
 }
 
 void Cadre::apresOuverture() {
+  asmAlign_.reset();
+  asmAnim_.Stop();
+  vue_->poserMarques({});
+  asmSolides_.clear();
+  asmSel_.clear();
+  asmLot_.clear();
+  asmMode_ = "part";
+  ruban_->modeAssemblage(false);
   forme_.Nullify();
   docOuvert_ = true;
   ajusterVue_ = true;
@@ -1161,7 +1202,17 @@ void Cadre::remplirArbre() {
   lignesFonctions_.assign(doc_.fonctions.size(), wxTreeItemId());
   lignesEsquisses_.assign(doc_.esquisses.size(), wxTreeItemId());
   carteArbre_->titre(L"Arborescence — " + tx(doc_.nom));
-  const wxTreeItemId racine = arbre_->AddRoot(tx(doc_.nom));
+  const wxTreeItemId racineArbre = arbre_->AddRoot(tx(doc_.nom));
+  asmSansEvenement_ = true;
+  lignesOcc_.clear();
+  if (asmOn()) remplirComposants(racineArbre);
+  else remplirPiece(racineArbre);
+  asmSansEvenement_ = false;
+  arbre_->Thaw();
+  remplirFil();
+}
+
+void Cadre::remplirPiece(const wxTreeItemId& racine) {
   const wxColour grise(0x78, 0x78, 0x7d);
   const wxTreeItemId origine = arbre_->AppendItem(racine, L"Origine", 11);
   arbre_->SetItemBold(origine);
@@ -1218,11 +1269,11 @@ void Cadre::remplirArbre() {
     arbre_->Expand(corps);
   }
   arbre_->Expand(esquisses);
-  arbre_->Thaw();
-  remplirFil();
 }
 
 void Cadre::montrerRien() {
+  if (asmMode_ == "asm" && doc_.assemblage && esquisseOuverte_ < 0) return montrerAssemblage();
+  if (!boutonsAsm_.empty()) poserBoutonsPanneau({});
   fonctionMontree_ = -1;
   props_->Clear();
   props_->CenterSplitter();
@@ -1817,7 +1868,7 @@ double Cadre::recalculer() {
         montree = comp;
       }
     }
-    vue_->afficher(montree, ajusterVue_, teintes, transparences);
+    vue_->afficher(montree, ajusterVue_ && !doc_.assemblage, teintes, transparences);
     std::vector<std::vector<gp_Pnt>> helices, anneaux;
     for (const SpiraleFilet& s : r.spirales) {
       if (std::find(doc_.corpsMasques.begin(), doc_.corpsMasques.end(), s.corps) != doc_.corpsMasques.end()) continue;
@@ -1826,6 +1877,7 @@ double Cadre::recalculer() {
     }
     vue_->montrerFilets(helices, anneaux);
     dessinerConstruction();
+    asmApresRejeu(r, ajusterVue_);
   }
   ajusterVue_ = false;
   // Le banc compte aussi le prix de la sélection, que le programme paierait dès que la souris passe sur la vue.
@@ -1833,7 +1885,8 @@ double Cadre::recalculer() {
   const double total = msDepuis(t0);
   if (proto_.actif) return total;
   if (r.forme.IsNull() && r.messages.empty()) {
-    etat(tx(doc_.nom) + L"  |  Aucun solide dans ce fichier (esquisses seules).");
+    if (doc_.assemblage) etat(tx(doc_.nom) + L"  |  Assemblage");
+    else etat(tx(doc_.nom) + L"  |  Aucun solide dans ce fichier (esquisses seules).");
     return total;
   }
   const Mesures m = mesurer(r.forme);
@@ -2401,6 +2454,7 @@ void Cadre::surArbreMenu(wxTreeEvent& e) {
   if (enChoix() || esquisseOuverte_ >= 0 || !docOuvert_) return;
   const auto* lien = dynamic_cast<LienArbre*>(arbre_->GetItemData(e.GetItem()));
   if (!lien) return;
+  if (asmSurArbreMenu(lien)) return;
   const std::string corps = lien->corps, cg = lien->cg;
   const bool estFonction = lien->estFonction;
   const int i = lien->i;
@@ -2415,6 +2469,7 @@ void Cadre::surArbreMenu(wxTreeEvent& e) {
 void Cadre::surArbre(wxTreeEvent& e) {
   if (enChoix()) return;  // le panneau reste celui du congé en cours
   const auto* lien = dynamic_cast<LienArbre*>(arbre_->GetItemData(e.GetItem()));
+  if (asmSansEvenement_ || asmSurArbre(lien)) return;
   if (pioche_ && !refAttendue_.empty() && lien && (!lien->plan.empty() || !lien->cg.empty()) && lien->cg != refAttendue_) {  // cgTreePick
     const std::string id = refAttendue_, cle = "r/" + std::to_string(rangAttendu_), val = lien->cg.empty() ? "o:" + lien->plan : "cg:" + lien->cg;
     CallAfter([this, id, cle, val] { reglerConstruction(id, cle, val); });
@@ -2428,6 +2483,7 @@ void Cadre::surArbre(wxTreeEvent& e) {
 
 void Cadre::surArbreActive(wxTreeEvent& e) {
   const auto* lien = dynamic_cast<LienArbre*>(arbre_->GetItemData(e.GetItem()));
+  if (asmSurArbreActive(lien)) return;
   if (lien && !lien->cg.empty()) {
     for (const ElementConstruction& c : doc_.construction)
       if (c.id == lien->cg && (c.kind == "plane" || c.kind == "frame")) return creerEsquisseConstruction(c.id, c.kind == "frame" ? "XY" : "");
@@ -2715,6 +2771,7 @@ bool Cadre::essaiEsquisse(const std::wstring& fichier, int rang, const std::wstr
       for (const char c : e["texte"].get<std::string>()) vueEsquisse_->essaiCaractere(c);
     if (e.contains("poly")) vueEsquisse_->essaiReglagesPolygone(wxString::Format("%d", e["poly"][0].get<int>()), wxString::FromUTF8(e["poly"][1].get<std::string>()));
     if (e.contains("mode")) vueEsquisse_->choisirModeTrace(e["mode"].get<std::string>());
+    asmEtapeEssai(e, n);
     if (e.contains("nouveau")) nouveau();
     if (e.contains("nouvelleEsquisse")) creerEsquisse(e["nouvelleEsquisse"].get<std::string>());
     if (e.contains("quitterEsquisse")) quitterEsquisse();
@@ -2811,6 +2868,7 @@ bool Cadre::essaiEsquisse(const std::wstring& fichier, int rang, const std::wstr
       n["esquisses"] = doc_.esquisses.size();
       n["corps"] = doc_.corps.size();
       n["modifie"] = doc_.modifie();
+      asmMesureEssai(n);
     }
     if (e.contains("orbite")) vueEsquisse_->essaiOrbite(e["orbite"][0], e["orbite"][1]);
     if (e.contains("inclinee")) vueEsquisse_->basculerVueInclinee();

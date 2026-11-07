@@ -604,6 +604,13 @@ Document projetVide() {
   return d;
 }
 
+Document documentDeComposant(const json& doc, const Document& modele) {
+  json copie = doc;
+  Document d = documentDepuis(copie);
+  d.imports = modele.imports;
+  return d;
+}
+
 Document lireTexteProjet(const Document& modele, const std::string& texte) {
   json racine = json::parse(texte);
   Document d = documentDepuis(racine);
@@ -711,7 +718,10 @@ static Document documentDepuisDoc(json& racine) {
         f.nom = texte(c, "name");
         lirePorteursDe(*p, f, -3, d);
       }
-  if (j.contains("asm") && j["asm"].is_object()) refus["assemblage"]++;
+  if (j.contains("asm") && j["asm"].is_object()) {
+    if (j["asm"].contains("comps") && j["asm"]["comps"].is_array() && !j["asm"]["comps"].empty()) d.assemblage = std::make_shared<json>(j["asm"]);
+    else refus["assemblage ancien"]++;
+  }
   if (j.contains("components") && j["components"].is_array() && !j["components"].empty()) refus["assemblage"]++;
   for (auto& [k, n] : refus) d.nonPrisEnCharge.push_back(k + " × " + std::to_string(n));
   d.esquissesFichier = d.esquisses;

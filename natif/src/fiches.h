@@ -17,6 +17,7 @@ struct ChampFiche {
   std::string texte;   // LECTURE : la valeur ; CHOIX : la valeur choisie
   double nombre = 0;
   bool oui = false;
+  bool libre = false;  // LECTURE qu'on peut quand même modifier : du texte libre, vide compris
   std::vector<std::pair<std::string, std::string>> choix;  // valeur, libellé
 };
 

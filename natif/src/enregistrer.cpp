@@ -1121,6 +1121,10 @@ void modifierStructure(Document& d, const std::function<void(nlohmann::ordered_j
 }
 
 void enregistrerProjet(Document& d, const std::wstring& cible, bool forcer) {
+  if (d.assemblage && (d.basculeSeule || d.modifie())) {
+    const nlohmann::ordered_json resolu = *d.assemblage;
+    modifierStructure(d, [&](nlohmann::ordered_json& j) { j["asm"] = resolu; });
+  }
   bool reperes = false;
   for (const ElementConstruction& e : d.construction) reperes = reperes || e.neuf;
   if (reperes && d.modifie()) {

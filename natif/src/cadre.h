@@ -14,6 +14,7 @@
 #include <string>
 #include <vector>
 
+#include "assemblage.h"
 #include "conges.h"
 #include "coter.h"
 #include "dessin.h"
@@ -63,6 +64,7 @@ struct ChoixFaces {
 };
 
 struct ChampFiche;
+struct LienArbre;
 class Cadre : public wxFrame {
  public:
   Cadre();
@@ -232,6 +234,89 @@ public:
   void surArbreActive(wxTreeEvent&);
   void surPropriete(wxPropertyGridEvent&);
   void pasProtocole(wxTimerEvent&);
+
+  // L'assemblage (cadre_assemblage.cpp)
+  struct RepereCandidat {
+    nlohmann::ordered_json rel;
+    std::string nom;
+    assemblage::Repere F;
+  };
+  struct AlignEnCours {
+    std::string occ;
+    std::shared_ptr<nlohmann::ordered_json> avant;
+    int etape = 0;  // 0 : le repère à poser ; 1 : la cible
+    nlohmann::ordered_json src, dst;
+    bool flip = false;
+    double rz = 0, off[3] = {0, 0, 0};
+    std::vector<std::string> cles;  // ce que veut dire chaque marque de la vue
+    bool aFace = false;
+    int coteFace = 0;
+    assemblage::FaceAccroche face;
+    std::vector<assemblage::PointAccroche> points;
+    std::string nomFace;
+    assemblage::Chemin cheminAbs, cheminRel;
+  };
+  bool asmOn() const;
+  void asmApresRejeu(const ResultatRejeu& r, bool ajuster);
+  void asmDessiner();
+  void asmMontrerChoix();
+  std::vector<std::string> asmLot() const;
+  void asmAller(const assemblage::Chemin& chemin, const std::string& mode, const std::string& choisie = "");
+  void asmBasculer();
+  void asmRemonter();
+  void changerAssemblage(const std::function<void(nlohmann::ordered_json&)>& f, const wxString& message = wxString());
+  void asmCliqueOcc(const std::string& id, bool ctrl, bool maj);
+  bool asmEchap();
+  void asmNouveauComposant();
+  void asmNouvelleOccurrence();
+  void asmSupprimer(const std::vector<std::string>& ids);
+  void asmLotChaque(const std::function<void(nlohmann::ordered_json&)>& f);
+  void asmInserer();
+  bool asmInsererFichier(const std::wstring& chemin);
+  void remplirPiece(const wxTreeItemId& parent);
+  void remplirComposants(const wxTreeItemId& parent);
+  std::string nomRel(const std::string& cid, const nlohmann::ordered_json& r, bool normal) const;
+  bool asmSurArbre(const LienArbre* l);
+  bool asmSurArbreActive(const LienArbre* l);
+  bool asmSurArbreMenu(const LienArbre* l);
+  void asmMenuOccurrence(const assemblage::Chemin& chemin, const std::string& id, bool direct);
+  void poserBoutonsPanneau(const std::vector<std::pair<wxString, std::function<void()>>>& L);
+  void montrerAssemblage();
+  void asmFiche(const std::string& cle, const std::string& valeur);
+  void asmMenuTelleQueConstruite(const std::string& id);
+  void asmAnimer(const std::string& id);
+  void asmPasAnimation();
+  void asmGizmo();
+  void asmGeste(int phase, const std::string& sorte, int axe, const std::string& degre, double valeur, bool libre);
+  std::vector<RepereCandidat> asmReperesSous(const std::string& cid, const std::string& saufOcc);
+  void asmAlignDebut(const std::string& id);
+  void asmAlignRafraichir();
+  void asmAlignMarques();
+  void asmPanneauAligner(std::vector<ChampFiche>& ch, std::vector<std::pair<wxString, std::function<void()>>>& B);
+  bool asmAlignFiche(const std::string& cle, const std::string& valeur);
+  void asmAlignPose(int cote, const nlohmann::ordered_json& rel);
+  void asmAlignChoisirPoint(int i);
+  void asmAlignClicMarque(int i);
+  void asmAlignClicFace(const assemblage::Chemin& chemin, const gp_Pnt& pointActif, bool plan, const assemblage::V3& normaleLocale);
+  void asmAlignValider();
+  void asmAlignAnnuler(bool dessiner);
+  bool asmEtapeEssai(const nlohmann::json& e, nlohmann::json& n);
+  void asmMesureEssai(nlohmann::json& n);
+  assemblage::Solides asmSolides_;
+  std::string asmMode_ = "part", asmSel_, asmAncre_;
+  std::vector<std::string> asmLot_;
+  std::map<std::string, wxTreeItemId> lignesOcc_;
+  bool asmSansEvenement_ = false;
+  std::unique_ptr<AlignEnCours> asmAlign_;
+  std::shared_ptr<nlohmann::ordered_json> asmGesteAvant_;
+  bool asmGesteBouge_ = false;
+  wxTimer asmAnim_;
+  std::string asmAnimOcc_, asmAnimK_;
+  double asmAnimDir_ = 1;
+  nlohmann::ordered_json asmImports_;
+  wxBoxSizer* rangAsm_ = nullptr;
+  int hauteurBoutonsAsm_ = 0;
+  std::vector<std::pair<wxString, std::function<void()>>> boutonsAsm_;
 
   wxTreeCtrl* arbre_ = nullptr;
   wxPropertyGrid* props_ = nullptr;

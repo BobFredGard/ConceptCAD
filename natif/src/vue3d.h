@@ -3,7 +3,9 @@
 #pragma once
 #include <wx/wx.h>
 
+#include <array>
 #include <functional>
+#include <set>
 #include <string>
 #include <utility>
 #include <vector>
@@ -18,6 +20,7 @@
 #include <V3d_View.hxx>
 #include <V3d_Viewer.hxx>
 #include <gp_Pnt.hxx>
+#include <gp_Trsf.hxx>
 
 class Vue3D : public wxWindow {
  public:
@@ -64,6 +67,44 @@ class Vue3D : public wxWindow {
   wxPoint pixelDe(double x, double y, double z) const;
   void cliquerEn(const wxPoint& p);
 
+  // L'assemblage : chaque instance placée, autour de la pièce du composant actif
+  struct OccVue {
+    TopoDS_Shape forme;
+    gp_Trsf t;
+    std::vector<std::pair<TopoDS_Shape, unsigned>> teintes;
+    std::vector<std::pair<TopoDS_Shape, double>> transparences;
+    double transparence = -1;  // celle de l'occurrence, sinon celles des corps
+    bool fantome = false, cliquable = false;
+    std::string cle;  // l'enfant direct du composant actif auquel elle appartient
+    std::vector<std::string> chemin;
+    bool aretes = false;
+    TopoDS_Shape vives, lisses;
+  };
+  void montrerOccurrences(const std::vector<OccVue>& L);
+  void modePlacer(bool oui);
+  void cheminPiece(const std::vector<std::string>& c) { cheminPiece_ = c; }
+  void choisirOccurrences(const std::set<std::string>& cles);
+  std::function<void(const std::string& cle, bool ctrl, bool maj)> surOccurrence;  // cle vide : rien sous le clic
+  std::function<void(const std::string& cle)> surOccDouble, surOccDroit;
+  // Le manipulateur : flèches et anneaux de taille constante à l'écran, saisis au plus près du pixel
+  struct Gizmo {
+    bool actif = false;
+    std::array<double, 3> o{0, 0, 0};
+    std::array<std::array<double, 3>, 3> ax{};
+    bool fleche[3] = {false, false, false}, anneau[3] = {false, false, false};
+    std::string degreFleche[3], degreAnneau[3];
+  };
+  void poserGizmo(const Gizmo& g);
+  std::function<void(int phase, const std::string& sorte, int axe, const std::string& degre, double valeur, bool libre)> surGeste;
+  // Les marques de la commande Aligner : triades et points, cliquables
+  struct Marque {
+    std::array<double, 3> o{0, 0, 0}, x{1, 0, 0}, y{0, 1, 0}, z{0, 0, 1};
+    bool point = false, orange = false, grand = false;
+  };
+  void poserMarques(const std::vector<Marque>& L);
+  std::function<void(int)> surMarque;
+  std::function<void(const std::vector<std::string>& chemin, const gp_Pnt& p, bool plan, const std::array<double, 3>& normaleLocale)> surFaceOcc;
+
  private:
   void surPeinture(wxPaintEvent&);
   void surTaille(wxSizeEvent&);
@@ -73,6 +114,31 @@ class Vue3D : public wxWindow {
   void surMolette(wxMouseEvent&);
   void surPerteSouris(wxMouseCaptureLostEvent&);
   void majReflets();
+  void surDouble(wxMouseEvent&);
+  void refaireReflets();
+  void majTailles();
+  double echelleEn(const gp_Pnt& p) const;
+  void rayon(int x, int y, gp_Pnt& o, gp_Dir& d) const;
+  bool saisirGizmo(const wxPoint& p, wxMouseEvent& e);
+  void bougerGizmo(const wxPoint& p, bool libre);
+  int marqueSous(const wxPoint& p) const;
+  struct OccAffichee {
+    occ::handle<AIS_Shape> piece, vives, lisses;
+    OccVue v;
+  };
+  std::vector<OccAffichee> occs_;
+  bool placer_ = false, ignorerRelache_ = false, aligner_ = false;
+  std::vector<std::string> cheminPiece_;
+  std::vector<std::pair<TopoDS_Shape, unsigned>> teintesPiece_;
+  TopoDS_Shape formePiece_;
+  std::vector<occ::handle<AIS_Shape>> gizmoAis_;
+  Gizmo gizmo_;
+  int gizmoSaisi_ = -1;  // 0..2 : flèche ; 3..5 : anneau
+  bool gizmoBouge_ = false;
+  double gizmoT0_ = 0;
+  gp_Vec gizmoP0_;
+  std::vector<occ::handle<AIS_Shape>> marquesAis_;
+  std::vector<Marque> marques_;
 
   occ::handle<Aspect_DisplayConnection> connexion_;
   occ::handle<OpenGl_GraphicDriver> pilote_;

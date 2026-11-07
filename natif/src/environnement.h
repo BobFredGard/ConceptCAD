@@ -41,9 +41,14 @@ class Ruban : public wxWindow {
   std::function<void(Atelier, const wxString&)> surBouton;
   std::function<void(const wxString&)> surIndisponible;
   void atelier(Atelier a);
+  // Vue d'assemblage : seuls les boutons de composants, et « Assembler » devient « Modéliser »
+  void modeAssemblage(bool oui);
 
  private:
   void placer();
+  bool assemblage_ = false;
+  std::vector<BoutonEsquisse*> boutonsAsm_;
+  BoutonEsquisse* boutonAssembler_ = nullptr;
   struct Groupe {
     Atelier atelier;
     std::vector<BoutonEsquisse*> boutons;

@@ -294,8 +294,12 @@ struct Document {
   int nomsProj = 0;   // entNames.proj : de même pour « Projetée n »
   int nomsIsect = 0;  // entNames.isect : de même pour « Intersection n »
   int nomsAreteLu = 0, nomsProjLu = 0, nomsIsectLu = 0;  // tels que lus dans le fichier
+  // Le bloc d'assemblage du fichier, occurrences replacées ; nul pour une pièce seule
+  std::shared_ptr<nlohmann::ordered_json> assemblage;
+  // Le composant actif a seulement changé : pour le navigateur, ce n'est pas une modification
+  bool basculeSeule = false;
   bool modifie() const {
-    if (!texteBase.empty()) return true;
+    if (!texteBase.empty() && !basculeSeule) return true;
     if (esquisses.size() != esquissesFichier.size() || fonctions.size() != fonctionsFichier.size()) return true;
     if (!(params == paramsFichier) || porteursChanges()) return true;
     for (size_t i = 0; i < fonctions.size(); i++)
@@ -321,6 +325,8 @@ struct Document {
 Document lireProjet(const std::wstring& chemin);
 // Bouton Nouveau : une pièce vide, sans fichier (docResetEmpty)
 Document projetVide();
+// La pièce d'un composant, à partir du document rangé dans l'arbre d'assemblage (modele : le fichier, pour ses sources importées)
+Document documentDeComposant(const nlohmann::ordered_json& doc, const Document& modele);
 // Le même document d'après un nouveau texte (chemin et octets du disque gardés)
 Document lireTexteProjet(const Document& modele, const std::string& texte);
 std::string lireOctets(const std::wstring& chemin);
