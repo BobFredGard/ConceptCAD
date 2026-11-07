@@ -556,6 +556,7 @@ void Cadre::creerEnvironnement() {
   carteDroite_->contenu()->Add(panneauRendu_, 1, wxEXPAND);
   atelierRendu_->surPanneau = [this] { CallAfter([this] { if (atelier_ == Atelier::RENDU) panneauRendu_->refaire(); }); };
   atelierRendu_->surDoc = [this](const plan::J& r) { changerRendu(r); };
+  atelierRendu_->surOccurrence = [this](const PieceRendu& p, const plan::J* e, bool tous) { changerRenduOccurrence(p.occ, p.bid, e, tous); };
   atelierRendu_->surFermer = [this] { changerAtelier(avantRendu_); };
   CallAfter([this] { majVueEnv(false); });
   planVue_->surSelection = [this] {
@@ -3414,7 +3415,7 @@ bool Cadre::essaiEsquisse(const std::wstring& fichier, int rang, const std::wstr
       if (q.contains("reglages")) {
         plan::J j = q["reglages"];
         #define C(n) if (j.contains(#n)) j.at(#n).get_to(A.st.n);
-        C(amb) C(fond) C(fc1) C(fc2) C(tons) C(res) C(aretes) C(solCol) C(moteur) C(support) C(envRot) C(envInt) C(lum) C(ombre) C(douceur) C(focale) C(ev) C(ech) C(ouv) C(map) C(pDen) C(pHalo) C(pVig) C(pGrain) C(pCon) C(pSat) C(pTemp) C(solOn) C(miroir) C(ombreOn)
+        C(amb) C(fond) C(fc1) C(fc2) C(tons) C(res) C(aretes) C(solCol) C(moteur) C(support) C(envRot) C(envInt) C(lum) C(ombre) C(douceur) C(focale) C(ev) C(ech) C(ouv) C(map) C(pDen) C(pHalo) C(pVig) C(pGrain) C(pCon) C(pSat) C(pTemp) C(solOn) C(miroir) C(ombreOn) C(calques)
         #undef C
         A.scene();
         A.vue();
@@ -3445,6 +3446,7 @@ bool Cadre::essaiEsquisse(const std::wstring& fichier, int rang, const std::wstr
       }
       if (q.contains("matiere")) A.poserApparence(q.value("piece", 0), q["matiere"].get<std::string>(), q.value("couleur", -1L));
       if (q.value("effacer", false)) A.effacerApparence(q.value("piece", 0));
+      if (q.value("tous", false)) A.toutesOccurrences(q.value("piece", 0));
       if (q.contains("clic")) A.cliquer(q["clic"][0].get<double>(), q["clic"][1].get<double>());
       if (q.value("attendre", false)) {
         wxYield();
@@ -3461,7 +3463,7 @@ bool Cadre::essaiEsquisse(const std::wstring& fichier, int rang, const std::wstr
         s["doc"] = A.docRendu;
         s["modifie"] = doc_.modifie();
         s["pieces"] = plan::J::array();
-        for (const PieceRendu& p : A.pieces()) s["pieces"].push_back({{"id", p.id}, {"nom", p.nom}, {"cle", p.cle}, {"couleur", p.couleur}, {"propre", p.propre}});
+        for (const PieceRendu& p : A.pieces()) s["pieces"].push_back({{"id", p.id}, {"occ", p.occ}, {"bid", p.bid}, {"nom", p.nom}, {"cle", p.cle}, {"couleur", p.couleur}, {"propre", p.propre}});
         std::ofstream(wxString::FromUTF8(q["etat"].get<std::string>()).ToStdWstring()) << s.dump(1);
       }
     }

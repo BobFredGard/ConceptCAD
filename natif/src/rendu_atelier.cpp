@@ -1,4 +1,8 @@
 #include "rendu_atelier.h"
+
+#include <wx/mstream.h>
+#include <wx/wfstream.h>
+#include <wx/zipstrm.h>
 #include "rendu_curseur.h"
 
 #include <wx/checkbox.h>
@@ -72,14 +76,14 @@ wxString cheminMemoire() { return wxStandardPaths::Get().GetUserConfigDir() + wx
 plan::J versJson(const ReglagesRendu& s) {
   plan::J j;
 #define C(n) j[#n] = s.n;
-  C(amb) C(fond) C(fc1) C(fc2) C(tons) C(res) C(aretes) C(solCol) C(moteur) C(support) C(envRot) C(envInt) C(lum) C(ombre) C(douceur) C(focale) C(ev) C(ech) C(ouv) C(pDen) C(pHalo) C(pVig) C(pGrain) C(pCon) C(pSat) C(pTemp) C(solOn) C(miroir) C(ombreOn)
+  C(amb) C(fond) C(fc1) C(fc2) C(tons) C(res) C(aretes) C(solCol) C(moteur) C(support) C(envRot) C(envInt) C(lum) C(ombre) C(douceur) C(focale) C(ev) C(ech) C(ouv) C(pDen) C(pHalo) C(pVig) C(pGrain) C(pCon) C(pSat) C(pTemp) C(solOn) C(miroir) C(ombreOn) C(calques)
 #undef C
   if (s.hdri) j["hdri"] = wxString(s.hdri->chemin).utf8_string();
   return j;
 }
 void depuisJson(ReglagesRendu& s, const plan::J& j) {
 #define C(n) if (j.contains(#n)) { try { j.at(#n).get_to(s.n); } catch (const std::exception&) {} }
-  C(amb) C(fond) C(fc1) C(fc2) C(tons) C(res) C(aretes) C(solCol) C(moteur) C(support) C(envRot) C(envInt) C(lum) C(ombre) C(douceur) C(focale) C(ev) C(ech) C(ouv) C(map) C(pDen) C(pHalo) C(pVig) C(pGrain) C(pCon) C(pSat) C(pTemp) C(solOn) C(miroir) C(ombreOn)
+  C(amb) C(fond) C(fc1) C(fc2) C(tons) C(res) C(aretes) C(solCol) C(moteur) C(support) C(envRot) C(envInt) C(lum) C(ombre) C(douceur) C(focale) C(ev) C(ech) C(ouv) C(map) C(pDen) C(pHalo) C(pVig) C(pGrain) C(pCon) C(pSat) C(pTemp) C(solOn) C(miroir) C(ombreOn) C(calques)
 #undef C
 }
 
@@ -589,10 +593,10 @@ void AtelierRendu::preparerMenu(const std::vector<PieceRendu>& L, const plan::J&
 }
 
 void AtelierRendu::menuPiece(int i, wxWindow* ou) {
-  if (i < 0 || i >= static_cast<int>(pieces_.size()) || pieces_[i].id.empty()) return;
+  if (i < 0 || i >= static_cast<int>(pieces_.size()) || (pieces_[i].id.empty() && pieces_[i].occ.empty())) return;
   const PieceRendu& P = pieces_[i];
   wxMenu m;
-  enum { SANS = wxID_HIGHEST + 1, COULEUR, CAO_, BASE };
+  enum { SANS = wxID_HIGHEST + 1, COULEUR, CAO_, TOUS, BASE };
   std::vector<std::wstring> familles;
   std::map<std::wstring, wxMenu*> sous;
   const auto& B = bibliothequeRendu();
@@ -611,10 +615,12 @@ void AtelierRendu::menuPiece(int i, wxWindow* ou) {
   m.Append(COULEUR, L"Couleur…");
   wxMenuItem* retour = m.Append(CAO_, L"Reprendre l'apparence de la CAO");
   retour->Enable(P.propre);
+  if (!P.occ.empty()) m.Append(TOUS, L"Même apparence pour toutes les occurrences de ce composant");
   const int id = ou->GetPopupMenuSelectionFromUser(m);
   if (id == wxID_NONE) return;
   if (id == SANS) poserApparence(i, "", -1);
   else if (id == CAO_) effacerApparence(i);
+  else if (id == TOUS) toutesOccurrences(i);
   else if (id == COULEUR) {
     const unsigned u = P.couleur;
     const wxColour c = wxGetColourFromUser(ou, wxColour((u >> 16) & 255, (u >> 8) & 255, u & 255), L"Couleur de la pièce");
@@ -628,6 +634,10 @@ void AtelierRendu::poserApparence(int i, const std::string& mat, long couleur) {
   plan::J o;
   o["mat"] = d ? mat : std::string();
   o["col"] = couleur >= 0 ? static_cast<unsigned>(couleur) : d ? d->couleur : P.couleurCao;
+  if (!P.occ.empty()) {
+    if (surOccurrence) surOccurrence(P, &o, false);
+    return;
+  }
   if (docRendu.is_object() && docRendu.contains("corps") && docRendu["corps"].contains(P.id)) {
     const plan::J& av = docRendu["corps"][P.id];
     if (av.contains("rel") && av.value("mat", std::string()) == o["mat"].get<std::string>()) o["rel"] = av["rel"];
@@ -638,7 +648,19 @@ void AtelierRendu::poserApparence(int i, const std::string& mat, long couleur) {
   if (surDoc) surDoc(docRendu);
 }
 
+void AtelierRendu::toutesOccurrences(int i) {
+  const PieceRendu& P = pieces_[i];
+  plan::J o;
+  o["mat"] = P.cle;
+  o["col"] = P.couleur;
+  if (surOccurrence) surOccurrence(P, &o, true);
+}
+
 void AtelierRendu::effacerApparence(int i) {
+  if (!pieces_[i].occ.empty()) {
+    if (surOccurrence) surOccurrence(pieces_[i], nullptr, false);
+    return;
+  }
   if (docRendu.is_object() && docRendu.contains("corps")) {
     docRendu["corps"].erase(pieces_[i].id);
     if (docRendu["corps"].empty()) docRendu.erase("corps");
@@ -647,6 +669,28 @@ void AtelierRendu::effacerApparence(int i) {
 }
 
 // ---- L'image finale ----
+// L'archive pour la retouche : l'image finie et ses calques, sans compression (les PNG le sont déjà)
+wxString AtelierRendu::ecrireCalques(MoteurRendu& m, const wxImage& beaute, int w, int h, const wxString& chemin) {
+  wxBusyCursor attente;
+  std::vector<std::pair<std::string, wxImage>> L;
+  if (!m.calques(w, h, L)) return L"Calques impossibles : rien à dessiner.";
+  L.insert(L.begin(), {"1 - beaute.png", beaute});
+  wxFileOutputStream fichier(chemin);
+  if (!fichier.IsOk()) return L"Écriture du fichier impossible.";
+  wxZipOutputStream zip(fichier, 0);
+  for (const auto& [nom, im] : L) {
+    wxMemoryOutputStream png;
+    if (!im.SaveFile(png, wxBITMAP_TYPE_PNG)) return L"Écriture du fichier impossible.";
+    const size_t n = png.GetSize();
+    std::vector<char> octets(n);
+    png.CopyTo(octets.data(), n);
+    if (!zip.PutNextEntry(wxString::FromUTF8(nom))) return L"Écriture du fichier impossible.";
+    zip.Write(octets.data(), n);
+  }
+  if (!zip.Close() || !fichier.Close()) return L"Écriture du fichier impossible.";
+  return wxString::Format(L"Image et calques enregistrés : %s", wxFileName(chemin).GetFullName());
+}
+
 wxString AtelierRendu::exporter(const wxString& chemin, bool avecDialogue) {
   const bool rayons = st.moteur == "rayons";
   Etat& e = rayons ? rayons_ : rapide_;
@@ -687,7 +731,8 @@ wxString AtelierRendu::exporter(const wxString& chemin, bool avecDialogue) {
       im.GetData()[3 * static_cast<size_t>(n) + 2] = px[4 * static_cast<size_t>(n) + 2];
       if (transparent) im.GetAlpha()[n] = px[4 * static_cast<size_t>(n) + 3];
     }
-    retour = im.SaveFile(chemin, wxBITMAP_TYPE_PNG) ? wxString::Format(L"Image enregistrée : %s", wxFileName(chemin).GetFullName()) : wxString(L"Écriture du fichier impossible.");
+    if (st.calques) retour = ecrireCalques(*e.m, im, W, H, chemin);
+    else retour = im.SaveFile(chemin, wxBITMAP_TYPE_PNG) ? wxString::Format(L"Image enregistrée : %s", wxFileName(chemin).GetFullName()) : wxString(L"Écriture du fichier impossible.");
   }
   exporte_ = false;
   e.m->reprendre();
@@ -1220,7 +1265,11 @@ void PanneauRendu::refaire() {
     });
   }
   note(ray ? L"Échantillons : 128 brouillon · 512 bonne · 2048 haute. Le fond transparent (bloc Fond et sol) donne un PNG détouré." : L"Passes : 16 brouillon · 64 bonne · 256 haute. Le fond transparent (bloc Fond et sol) donne un PNG détouré.");
-  note(L"Calques séparés (.zip) : pas encore dans le logiciel Windows.");
+  {
+    auto* r = rang(wxEmptyString);
+    coche(r, L"Calques séparés (.zip)", &st.calques);
+    if (st.calques) note(L"Archive .zip : beauté, masque, profondeur, normales, identifiants des corps, ombre — même cadrage.");
+  }
   racine_->AddSpacer(FromDIP(8));
 
   ajusterDefile();
@@ -1242,7 +1291,8 @@ void PanneauRendu::pied() {
 }
 
 void PanneauRendu::lancerExport() {
-  wxFileDialog d(this, L"Enregistrer l'image", wxEmptyString, a_->GetName() + L"-rendu.png", L"Image PNG (*.png)|*.png", wxFD_SAVE | wxFD_OVERWRITE_PROMPT);
+  const bool archive = a_->st.calques;
+  wxFileDialog d(this, archive ? L"Enregistrer l'image et ses calques" : L"Enregistrer l'image", wxEmptyString, a_->GetName() + (archive ? L"-rendu - calques.zip" : L"-rendu.png"), archive ? L"Archive ZIP (*.zip)|*.zip" : L"Image PNG (*.png)|*.png", wxFD_SAVE | wxFD_OVERWRITE_PROMPT);
   if (d.ShowModal() != wxID_OK) return;
   message(a_->exporter(d.GetPath(), true));
 }

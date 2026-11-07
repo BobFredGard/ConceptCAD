@@ -45,6 +45,7 @@ struct PieceRendu {
   std::string cle;      // le matériau ; vide : plastique de la CAO
   unsigned couleur = 0x9a9aa0;
   std::string id;       // le corps (clic droit)
+  std::string occ, bid;  // l'occurrence d'un autre composant et son corps : l'apparence va sur l'occurrence
   std::string nom;
   unsigned couleurCao = 0x9a9aa0;  // l'apparence de la CAO
   bool propre = false;             // une apparence propre au rendu
@@ -81,6 +82,8 @@ class MoteurRendu {
   // Une passe de plus : le résultat moyen est dans image()
   bool passe(int w, int h);
   const ImageLineaire& image() const { return image_; }
+  // Pour la retouche, même cadrage que l'image : masque, profondeur, normales, identifiants, ombre (nom de fichier, image)
+  bool calques(int w, int h, std::vector<std::pair<std::string, wxImage>>& L);
   std::string erreur;
   double msPasse = 0;
 

@@ -515,6 +515,7 @@ public:
   plan::J renduDocCourant(plan::J& racine);
   void montrerRendu(bool ouverture);
   void changerRendu(const plan::J& rendu);
+  void changerRenduOccurrence(const std::string occ, const std::string bid, const plan::J* e, bool tous);
   ResultatRejeu dernierRejeu_;  // ce que voit la mise en plan
   void montrerPlan();
   Atelier atelier_ = Atelier::CAO;

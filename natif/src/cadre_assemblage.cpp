@@ -2728,6 +2728,30 @@ void Cadre::asmPanneauInspection(std::vector<ChampFiche>& ch, std::vector<std::p
   B.push_back({L"Fermer", [this] { asmInspectFermer(); montrerRien(); ajusterDroite(); }});
 }
 
+// asmSetOccRendu, asmClearOccRendu : o.rendu = {corps:{[id du corps]:{mat, col}}}
+void Cadre::changerRenduOccurrence(const std::string occ, const std::string bid, const plan::J* e, bool tous) {
+  const plan::J copie = e ? *e : plan::J();
+  const bool efface = !e;
+  changerAssemblage([&](nlohmann::ordered_json& a) {
+    const plan::J* o = as::occurrence(a, occ);
+    if (!o) return;
+    const std::string comp = o->value("comp", std::string());
+    for (plan::J& k : a["comps"]) {
+      if (!k.contains("occ")) continue;
+      for (plan::J& q : k["occ"]) {
+        if (!(tous ? q.value("comp", std::string()) == comp : q.value("id", std::string()) == occ)) continue;
+        if (efface) {
+          if (!q.contains("rendu") || !q["rendu"].contains("corps")) continue;
+          q["rendu"]["corps"].erase(bid);
+          if (q["rendu"]["corps"].empty()) q.erase("rendu");
+        } else q["rendu"]["corps"][bid] = copie;
+      }
+    }
+  });
+  if (atelier_ == Atelier::RENDU) montrerRendu(false);
+  else majVueEnv();
+}
+
 // Ce que l'atelier Rendu photographie : les corps visibles avec leur apparence (renderLookOf), puis les autres composants placés
 std::vector<PieceRendu> Cadre::renduPieces(const plan::J& racine) {
   static const unsigned PALETTE[] = {0x0a84ff, 0x30d158, 0xff9f0a, 0xbf5af2, 0xff453a, 0x64d2ff, 0xffd60a, 0x5e5ce6};
@@ -2776,6 +2800,32 @@ std::vector<PieceRendu> Cadre::renduPieces(const plan::J& racine) {
         for (const auto& t : S.teintes)
           if (t.first.IsSame(c.second)) u = t.second;
         q.couleur = q.couleurCao = u;
+        q.bid = c.first;
+        q.occ = inst.chemin.empty() ? std::string() : inst.chemin.back();
+        const auto lireLook = [&q](const J& r) {
+          if (r.contains("mat") && r["mat"].is_string()) q.cle = r["mat"].get<std::string>();
+          if (r.contains("col") && r["col"].is_number()) q.couleur = r["col"].get<unsigned>();
+        };
+        // La CAO du composant, puis l'apparence de rendu de sa pièce (doc.rendu), puis l'occurrence la plus profonde qui en a une (asmOccRenduOf)
+        if (const J* cc = as::composant(a, inst.comp); cc && cc->contains("doc") && (*cc)["doc"].is_object()) {
+          const J& dd = (*cc)["doc"];
+          if (dd.contains("bodies") && dd["bodies"].is_array())
+            for (const J& b : dd["bodies"])
+              if (b.is_object() && b.value("id", std::string()) == c.first && b.contains("mat") && b["mat"].is_string()) q.cle = b["mat"].get<std::string>();
+          if (dd.contains("rendu") && dd["rendu"].is_object() && dd["rendu"].contains("corps") && dd["rendu"]["corps"].contains(c.first)) lireLook(dd["rendu"]["corps"][c.first]);
+        }
+        const J* fin = nullptr;
+        as::Chemin bout;
+        for (const std::string& oid : inst.chemin) {
+          bout.push_back(oid);
+          const J* oc = as::occurrence(a, oid);
+          if (oc && oc->contains("rendu") && (*oc)["rendu"].is_object() && (*oc)["rendu"].contains("corps") && (*oc)["rendu"]["corps"].contains(c.first)) {
+            fin = &(*oc)["rendu"]["corps"][c.first];
+            q.propre = oid == q.occ;
+          }
+        }
+        if (fin) lireLook(*fin);
+        if (!matiereRendu(q.cle)) q.cle.clear();
         L.push_back(q);
       }
     }

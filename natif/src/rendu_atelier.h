@@ -49,9 +49,11 @@ class AtelierRendu : public wxWindow {
 
   const std::vector<PieceRendu>& pieces() const { return pieces_; }
   void menuPiece(int i, wxWindow* ou);
+  wxString ecrireCalques(MoteurRendu& m, const wxImage& beaute, int w, int h, const wxString& chemin);
   void preparerMenu(const std::vector<PieceRendu>& L, const plan::J& doc);  // le même menu, atelier fermé (clic droit de la vue CAO)
   void poserApparence(int i, const std::string& mat, long couleur);
   void effacerApparence(int i);
+  void toutesOccurrences(int i);
 
   // Rend l'image finale et l'écrit. Rend le message à afficher.
   wxString exporter(const wxString& chemin, bool avecDialogue);
@@ -65,6 +67,8 @@ class AtelierRendu : public wxWindow {
 
   std::function<void()> surPanneau;                  // le panneau doit se redessiner
   std::function<void(const plan::J&)> surDoc;        // doc.rendu a changé
+  // L'apparence d'une occurrence : e nul l'efface ; tous : toutes les occurrences de son composant
+  std::function<void(const PieceRendu&, const plan::J* e, bool tous)> surOccurrence;
   std::function<void()> surFermer;
   bool aPourMoteur(const char* m) const { return st.moteur == m; }
 
