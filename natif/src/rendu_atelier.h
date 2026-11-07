@@ -49,6 +49,7 @@ class AtelierRendu : public wxWindow {
 
   const std::vector<PieceRendu>& pieces() const { return pieces_; }
   void menuPiece(int i, wxWindow* ou);
+  void preparerMenu(const std::vector<PieceRendu>& L, const plan::J& doc);  // le même menu, atelier fermé (clic droit de la vue CAO)
   void poserApparence(int i, const std::string& mat, long couleur);
   void effacerApparence(int i);
 
@@ -57,6 +58,8 @@ class AtelierRendu : public wxWindow {
   bool enregistrerApercu(const wxString& chemin);
   int nombrePasses() const;  // le nombre visé par la qualité
   void attendreFin();        // essai automatique : affine jusqu'au bout
+  void lireEnv(const plan::J& rd);
+  plan::J ecrireEnv() const;
   void cliquer(double u, double v);  // essai automatique : un clic dans le cadre, en proportion
   void essaiGlisser(int bouton, double u0, double v0, double u1, double v1);
 

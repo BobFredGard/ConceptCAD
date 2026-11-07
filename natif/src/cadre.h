@@ -502,6 +502,16 @@ public:
   class PanneauRendu* panneauRendu_ = nullptr;
   Atelier avantRendu_ = Atelier::CAO;
   std::vector<struct PieceRendu> renduPieces(const plan::J& racine);
+  // Le Rendu direct et la fiche ⚙
+  class FicheVue* ficheVue_ = nullptr;
+  OptionsVue optionsVue_;
+  bool envModifie_ = false;
+  void majVueEnv(bool apparences = true);
+  void ambianceVue();
+  void lireEnvVue();
+  void memoriserVue();
+  void ecrireEnvVue();
+  void basculerFicheVue();
   plan::J renduDocCourant(plan::J& racine);
   void montrerRendu(bool ouverture);
   void changerRendu(const plan::J& rendu);

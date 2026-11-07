@@ -98,6 +98,7 @@ class PlanVue : public wxWindow {
   void essaiGeste(const plan::J& e);
   // Le rendu des vues ombrées : c'est la vue 3D qui sait le faire
   std::function<bool(const plan::DemandeImage&, wxImage&)> rendreImage;
+  void sigReel(const std::string& s) { calcul_.sigReel = s; }
 
  private:
   struct Trait {

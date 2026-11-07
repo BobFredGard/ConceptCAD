@@ -1,4 +1,5 @@
 #include "rendu_atelier.h"
+#include "rendu_curseur.h"
 
 #include <wx/checkbox.h>
 #include <wx/choice.h>
@@ -83,57 +84,6 @@ void depuisJson(ReglagesRendu& s, const plan::J& j) {
 }
 
 // Le curseur du panneau : le rail et sa poignée, aux couleurs du panneau
-class Curseur : public wxWindow {
- public:
-  Curseur(wxWindow* parent, double v, double mini, double maxi, double pas) : wxWindow(parent, wxID_ANY), v_(v), a_(mini), b_(maxi), p_(pas) {
-    SetBackgroundStyle(wxBG_STYLE_PAINT);
-    SetMinSize(FromDIP(wxSize(50, 20)));
-    Bind(wxEVT_PAINT, [this](wxPaintEvent&) {
-      wxAutoBufferedPaintDC dc(this);
-      dc.SetBackground(GetParent()->GetBackgroundColour());
-      dc.Clear();
-      const wxSize t = GetClientSize();
-      const int m = FromDIP(6), r = FromDIP(5), y = t.y / 2;
-      dc.SetPen(*wxTRANSPARENT_PEN);
-      dc.SetBrush(wxBrush(TRAIT));
-      dc.DrawRoundedRectangle(m, y - FromDIP(2), t.x - 2 * m, FromDIP(4), FromDIP(2));
-      const int x = m + static_cast<int>((v_ - a_) / (b_ - a_) * (t.x - 2 * m));
-      dc.SetBrush(wxBrush(BLEU));
-      dc.DrawRoundedRectangle(m, y - FromDIP(2), x - m, FromDIP(4), FromDIP(2));
-      dc.SetBrush(*wxWHITE_BRUSH);
-      dc.DrawCircle(x, y, r);
-    });
-    const auto bouge = [this](wxMouseEvent& e) {
-      if (!HasCapture()) return;
-      poser(e.GetX());
-    };
-    Bind(wxEVT_LEFT_DOWN, [this](wxMouseEvent& e) {
-      CaptureMouse();
-      poser(e.GetX());
-    });
-    Bind(wxEVT_MOTION, bouge);
-    Bind(wxEVT_LEFT_UP, [this](wxMouseEvent&) {
-      if (HasCapture()) ReleaseMouse();
-      if (surFin) surFin();
-    });
-    Bind(wxEVT_MOUSE_CAPTURE_LOST, [](wxMouseCaptureLostEvent&) {});
-  }
-  std::function<void(double)> surValeur;
-  std::function<void()> surFin;
-
- private:
-  void poser(int x) {
-    const int m = FromDIP(6), l = std::max(1, GetClientSize().x - 2 * m);
-    double v = a_ + std::clamp((x - m) / static_cast<double>(l), 0.0, 1.0) * (b_ - a_);
-    v = a_ + std::round((v - a_) / p_) * p_;
-    v = std::clamp(v, a_, b_);
-    if (v == v_) return;
-    v_ = v;
-    Refresh(false);
-    if (surValeur) surValeur(v_);
-  }
-  double v_, a_, b_, p_;
-};
 }  // namespace
 
 // ---- L'image ----
@@ -184,6 +134,32 @@ void AtelierRendu::lireMemoire() {
 }
 
 void AtelierRendu::memoriser() { memoireSale_ = true; }
+
+void AtelierRendu::lireEnv(const plan::J& j) {
+  try {
+    depuisJson(st, j);
+  } catch (const std::exception&) {
+  }
+}
+
+plan::J AtelierRendu::ecrireEnv() const {
+  plan::J r = plan::J::object();
+  r["amb"] = st.amb;
+  r["envRot"] = st.envRot;
+  r["envInt"] = st.envInt;
+  r["lum"] = st.lum;
+  r["fond"] = st.fond;
+  r["fc1"] = st.fc1;
+  r["fc2"] = st.fc2;
+  r["ombre"] = st.ombre;
+  r["douceur"] = st.douceur;
+  r["solOn"] = st.solOn;
+  r["solCol"] = st.solCol;
+  r["miroir"] = st.miroir;
+  r["ombreOn"] = st.ombreOn;
+  r["support"] = st.support;
+  return r;
+}
 
 bool AtelierRendu::importerHdri(const std::wstring& chemin, wxString& message) {
   std::string e;
@@ -607,6 +583,11 @@ void AtelierRendu::cliquer(double u, double v) {
 }
 
 // Le matériau d'une pièce : le menu du clic droit et sa ligne dans le panneau
+void AtelierRendu::preparerMenu(const std::vector<PieceRendu>& L, const plan::J& doc) {
+  pieces_ = L;
+  docRendu = doc;
+}
+
 void AtelierRendu::menuPiece(int i, wxWindow* ou) {
   if (i < 0 || i >= static_cast<int>(pieces_.size()) || pieces_[i].id.empty()) return;
   const PieceRendu& P = pieces_[i];

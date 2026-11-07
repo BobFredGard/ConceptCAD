@@ -42,6 +42,14 @@
 #include <Graphic3d_RenderingParams.hxx>
 #include <Graphic3d_ShaderObject.hxx>
 #include <Graphic3d_ShaderProgram.hxx>
+#include <Graphic3d_Texture2D.hxx>
+#include <Graphic3d_TextureParams.hxx>
+#include <Graphic3d_ZLayerSettings.hxx>
+#include <Poly_Triangulation.hxx>
+#include <TopExp_Explorer.hxx>
+#include <BRep_Tool.hxx>
+#include <AIS_ColoredDrawer.hxx>
+#include "rendu_moteur.h"
 #include <Graphic3d_TransformPers.hxx>
 #include <Image_PixMap.hxx>
 #include <NCollection_Array1.hxx>
@@ -95,25 +103,56 @@ Graphic3d_MaterialAspect matierePiece() {
 // perce le sol ; plus ce point du sol est loin du centre de la pièce, plus le fond reprend le dessus. La lumière est celle de la pièce d'origine.
 const char* const REFLET_SOMMET = R"(
 THE_SHADER_OUT vec3 vMonde;
+THE_SHADER_OUT vec2 vEcran;
 THE_SHADER_OUT vec3 vNormale;
 void main() {
   vec4 p = occModelWorldMatrix * occVertex;
   vMonde = p.xyz;
   vNormale = (occModelWorldMatrixInverseTranspose * vec4(occNormal, 0.0)).xyz;
   gl_Position = occProjectionMatrix * occWorldViewMatrix * p;
+  vEcran = gl_Position.yw;
+}
+)";
+// Ce que le sol et le reflet partagent : tout est opaque, le fond est recalculé là où le sol s'efface (OCCT mélange ses objets translucides après tous les autres)
+const char* const SOL_COMMUN = R"(
+uniform vec3 uHaut;
+uniform vec3 uBas;
+uniform vec3 uFond;
+uniform vec3 uCentre;
+uniform float uRayon;
+uniform float uDisque;
+uniform vec4 uSolP;   // tuile ? ; sa taille ; force du reflet sur elle ; force du reflet
+uniform vec4 uOmbre;  // force ; origine x, y ; côté
+uniform sampler2D uTuile;
+uniform sampler2D uOmbreT;
+THE_SHADER_IN vec2 vEcran;
+float gOmbre = 0.0;
+float gSol = 0.0;
+vec3 solEn(vec2 p) {
+  vec3 fond = mix(uBas, uHaut, clamp(0.5 * vEcran.x / vEcran.y + 0.5, 0.0, 1.0));
+  gSol = uDisque > 0.5 ? 1.0 - smoothstep(uRayon * 1.5, uRayon * 5.0, distance(vec3(p, uCentre.z), uCentre)) : 0.0;
+  vec3 base = uSolP.x > 0.5 ? occTexture2D(uTuile, p / uSolP.y).rgb : uFond;
+  vec3 c = mix(fond, base, gSol);
+  if (uOmbre.x > 0.0) {
+    vec2 uv = (p - uOmbre.yz) / uOmbre.w;
+    if (uv.x > 0.0 && uv.y > 0.0 && uv.x < 1.0 && uv.y < 1.0) gOmbre = occTexture2D(uOmbreT, uv).r;
+    c *= 1.0 - uOmbre.x * gOmbre;
+  }
+  return c;
 }
 )";
 const char* const REFLET_PIXEL = R"(
 uniform vec3 uCouleur;
-uniform vec3 uFond;
-uniform vec3 uCentre;
-uniform float uRayon;
+uniform vec4 uCoupe;
+uniform float uAvecCoupe;
 THE_SHADER_IN vec3 vMonde;
 THE_SHADER_IN vec3 vNormale;
 void main() {
+  if (uAvecCoupe > 0.5 && dot(uCoupe.xyz, vec3(vMonde.xy, 2.0 * uCentre.z - vMonde.z)) + uCoupe.w < 0.0) discard;
   vec3 oeil = occWorldViewMatrixInverse[3].xyz;
   float t = (uCentre.z - oeil.z) / (vMonde.z - oeil.z);
-  float d = distance(oeil + (vMonde - oeil) * t, uCentre);
+  vec3 s = oeil + (vMonde - oeil) * t;
+  float d = distance(s, uCentre);
   float f = exp(-pow(d / max(uRayon * 1.15, 0.001), 2.0) * 2.0) * 0.85;
   vec3 n = normalize(vNormale);
   n.z = -n.z;
@@ -121,20 +160,66 @@ void main() {
   float cle = max(dot(n, normalize(vec3(60.0, -40.0, 120.0))), 0.0);
   // Le navigateur mélange le reflet, en lumière brute, avec la couleur du sol telle qu'elle s'affiche : c'est ce qui le rend sombre
   // La part neutre tient lieu des reflets du studio, que le reflet du navigateur contient aussi ; réglée sur ses couleurs mesurées
-  vec3 reflet = min(uCouleur * (ciel + cle), vec3(1.0)) * 0.45 + vec3(0.07);
-  vec3 ecran = mix(pow(uFond, vec3(1.0 / 2.2)), reflet, clamp(f, 0.0, 0.85));
+  vec3 reflet = (min(uCouleur * (ciel + cle), vec3(1.0)) * 0.45 + vec3(0.07)) * uSolP.w;
+  vec3 ecran = mix(pow(solEn(s.xy), vec3(1.0 / 2.2)), reflet, clamp(f * uSolP.z, 0.0, 0.85));
   occSetFragColor(vec4(pow(ecran, vec3(2.2)), 1.0));
 }
 )";
+const char* const DISQUE_PIXEL = R"(
+THE_SHADER_IN vec3 vMonde;
+THE_SHADER_IN vec3 vNormale;
+void main() {
+  vec3 c = solEn(vMonde.xy);
+  if (gSol <= 0.0 && gOmbre <= 0.0) discard;
+  occSetFragColor(vec4(c, 1.0));
+}
+)";
 
-occ::handle<Graphic3d_ShaderProgram> programmeReflet(const Quantity_Color& c, const Quantity_Color& fond, const gp_Pnt& centre, double rayon) {
+// Réglés sur les couleurs mesurées du navigateur (Perçages, Studio et Atelier) ; OCCT n'a pas ses tons ACES
+const double FORCE_CIEL = 0.8, FORCE_CLE = 1.0, FORCE_HEMI = 2.0;
+// Rendu léger : métal et rugosité du matériau, vernis approché par la rugosité (vEnvApply)
+Graphic3d_MaterialAspect matiereVue(const std::string& cle) {
+  Graphic3d_MaterialAspect m(Graphic3d_NameOfMaterial_Plastified);
+  Graphic3d_PBRMaterial p;
+  const MatiereRendu* d = matiereRendu(cle);
+  double metal = 0.15, rug = 0.42;
+  if (d && d->transmission > 0) metal = 0, rug = d->rugosite;
+  else if (d) metal = d->metal, rug = d->vernis > 0 ? d->rugosite + (d->vernisRugosite - d->rugosite) * d->vernis * 0.5 : d->rugosite;
+  p.SetMetallic(static_cast<float>(metal));
+  p.SetRoughness(static_cast<float>(std::max(rug, 0.05)));
+  m.SetPBRMaterial(p);
+  return m;
+}
+
+void pousserSol(const occ::handle<Graphic3d_ShaderProgram>& p, const ParamSol& P) {
+  const auto f = [](double v) { return static_cast<float>(v); };
+  const auto v3 = [&](const Quantity_Color& c) { return NCollection_Vec3<float>(f(c.Red()), f(c.Green()), f(c.Blue())); };
+  p->PushVariableVec3("uHaut", v3(P.haut));
+  p->PushVariableVec3("uBas", v3(P.bas));
+  p->PushVariableVec3("uFond", v3(P.fond));
+  p->PushVariableVec3("uCentre", NCollection_Vec3<float>(f(P.centre.X()), f(P.centre.Y()), f(P.centre.Z())));
+  p->PushVariableFloat("uRayon", f(P.rayon));
+  p->PushVariableFloat("uDisque", P.disque ? 1.0f : 0.0f);
+  p->PushVariableVec4("uSolP", NCollection_Vec4<float>(P.tuile ? 1.0f : 0.0f, f(P.tuileT), f(P.tuileK), f(P.refletK)));
+  p->PushVariableVec4("uOmbre", NCollection_Vec4<float>(f(P.ombreK), f(P.ombreO[0]), f(P.ombreO[1]), f(P.ombreT)));
+  p->PushVariableInt("uTuile", 0);
+  p->PushVariableInt("uOmbreT", 1);
+}
+occ::handle<Graphic3d_ShaderProgram> programmeReflet(const Quantity_Color& c, const ParamSol& P) {
   occ::handle<Graphic3d_ShaderProgram> p = new Graphic3d_ShaderProgram();
   p->AttachShader(Graphic3d_ShaderObject::CreateFromSource(Graphic3d_TOS_VERTEX, REFLET_SOMMET));
-  p->AttachShader(Graphic3d_ShaderObject::CreateFromSource(Graphic3d_TOS_FRAGMENT, REFLET_PIXEL));
+  p->AttachShader(Graphic3d_ShaderObject::CreateFromSource(Graphic3d_TOS_FRAGMENT, TCollection_AsciiString(SOL_COMMUN) + REFLET_PIXEL));
   p->PushVariableVec3("uCouleur", NCollection_Vec3<float>(float(c.Red()), float(c.Green()), float(c.Blue())));
-  p->PushVariableVec3("uFond", NCollection_Vec3<float>(float(fond.Red()), float(fond.Green()), float(fond.Blue())));
-  p->PushVariableVec3("uCentre", NCollection_Vec3<float>(float(centre.X()), float(centre.Y()), float(centre.Z())));
-  p->PushVariableFloat("uRayon", float(rayon));
+  pousserSol(p, P);
+  p->PushVariableVec4("uCoupe", NCollection_Vec4<float>(float(P.cn[0]), float(P.cn[1]), float(P.cn[2]), float(P.cd)));
+  p->PushVariableFloat("uAvecCoupe", P.coupe ? 1.0f : 0.0f);
+  return p;
+}
+occ::handle<Graphic3d_ShaderProgram> programmeDisque(const ParamSol& P) {
+  occ::handle<Graphic3d_ShaderProgram> p = new Graphic3d_ShaderProgram();
+  p->AttachShader(Graphic3d_ShaderObject::CreateFromSource(Graphic3d_TOS_VERTEX, REFLET_SOMMET));
+  p->AttachShader(Graphic3d_ShaderObject::CreateFromSource(Graphic3d_TOS_FRAGMENT, TCollection_AsciiString(SOL_COMMUN) + DISQUE_PIXEL));
+  pousserSol(p, P);
   return p;
 }
 
@@ -198,15 +283,15 @@ Vue3D::Vue3D(wxWindow* parent) : wxWindow(parent, 2005, wxDefaultPosition, wxDef
   visu_ = new V3d_Viewer(pilote_);
   // Les lumières du navigateur (buildScene) : sa lumière principale, et son éclairage du ciel rendu par une ambiance et une lumière d'en haut.
   // OCCT n'a pas les mêmes unités : valeurs réglées sur les couleurs mesurées du Drapeau (dessus #20b0fc ici, #10b0fc dans le navigateur).
-  occ::handle<V3d_AmbientLight> ambiance = new V3d_AmbientLight();
-  ambiance->SetIntensity(2.0f);
-  visu_->AddLight(ambiance);
-  occ::handle<V3d_DirectionalLight> cle = new V3d_DirectionalLight(gp_Dir(-60, 40, -120));
-  cle->SetIntensity(7.5f);
-  visu_->AddLight(cle);
-  occ::handle<V3d_DirectionalLight> ciel = new V3d_DirectionalLight(gp_Dir(0, 0, -1));
-  ciel->SetIntensity(3.0f);
-  visu_->AddLight(ciel);
+  lumAmbiante_ = new V3d_AmbientLight();
+  lumAmbiante_->SetIntensity(2.0f);
+  visu_->AddLight(lumAmbiante_);
+  lumCle_ = new V3d_DirectionalLight(gp_Dir(-60, 40, -120));
+  lumCle_->SetIntensity(7.5f);
+  visu_->AddLight(lumCle_);
+  lumCiel_ = new V3d_DirectionalLight(gp_Dir(0, 0, -1));
+  lumCiel_->SetIntensity(3.0f);
+  visu_->AddLight(lumCiel_);
   visu_->SetLightOn();
   vue_ = visu_->CreateView();
   vue_->SetWindow(new WNT_Window(reinterpret_cast<Aspect_Handle>(GetHWND())));
@@ -215,7 +300,8 @@ Vue3D::Vue3D(wxWindow* parent) : wxWindow(parent, 2005, wxDefaultPosition, wxDef
   rendu.PbrEnvPow2Size = 8;  // des reflets doux n'ont pas besoin de plus
   vue_->SetShadingModel(Graphic3d_TypeOfShadingModel_Pbr);
   // Le studio ne sert qu'aux reflets : le fond reste uni
-  vue_->SetBackgroundCubeMap(environnementStudio(), true);
+  cubeStudio_ = environnementStudio();
+  vue_->SetBackgroundCubeMap(cubeStudio_, true);
   vue_->View()->SetBackgroundType(Graphic3d_TOB_NONE);
   vue_->SetBackgroundColor(couleurFond());
   // Perspective à 50°, le réglage de départ du navigateur
@@ -223,6 +309,15 @@ Vue3D::Vue3D(wxWindow* parent) : wxWindow(parent, 2005, wxDefaultPosition, wxDef
   vue_->Camera()->SetFOVy(50);
   vue_->SetProj(V3d_XposYnegZpos);
   contexte_ = new AIS_InteractiveContext(visu_);
+  {
+    // Le sol se dessine avant tout le reste et n'écrit pas dans la profondeur : le reflet, dessous, reste visible
+    Graphic3d_ZLayerId couche = Graphic3d_ZLayerId_UNKNOWN;
+    Graphic3d_ZLayerSettings r;
+    r.SetEnableDepthWrite(false);
+    r.SetEnableDepthTest(true);
+    if (visu_->InsertLayerBefore(couche, r, Graphic3d_ZLayerId_Default)) coucheSol_ = couche;
+    else coucheSol_ = Graphic3d_ZLayerId_Default;
+  }
   // Le cube de vue, en haut à droite comme dans le navigateur
   cube_ = new AIS_ViewCube();
   cube_->SetSize(FromDIP(38));
@@ -312,40 +407,31 @@ void Vue3D::afficher(const TopoDS_Shape& forme, bool ajusterVue, const std::vect
     aretesVives_ = traits(vives, couleur(5, 5, 6));
     aretesLisses_ = traits(lisses, couleur(0x9a, 0x9f, 0xa6));
 
-    // Le reflet au sol : chaque corps renversé sous la pièce, fondu dans le fond, jamais cliquable
-    Bnd_Box boite;
-    BRepBndLib::Add(forme, boite, true);
-    if (!boite.IsVoid()) {
-      sol_ = boite.CornerMin().Z();
-      gp_Trsf miroir;
-      miroir.SetMirror(gp_Ax2(gp_Pnt(0, 0, sol_), gp_Dir(0, 0, 1)));
-      const gp_Pnt bas = boite.CornerMin(), haut = boite.CornerMax();
-      const gp_Pnt centre((bas.X() + haut.X()) / 2, (bas.Y() + haut.Y()) / 2, sol_);
-      const double rayon = bas.Distance(haut) / 2;
-      std::vector<std::pair<TopoDS_Shape, unsigned>> liste = teintes;
-      if (liste.empty()) liste.push_back({forme, 0x0a84ff});
-      for (const auto& [corps, c] : liste) {
-        occ::handle<AIS_Shape> r = new AIS_Shape(corps);
-        r->Attributes()->SetAutoTriangulation(false);
-        r->Attributes()->SetFaceBoundaryDraw(false);
-        r->SetColor(couleurHex(c));
-        r->Attributes()->ShadingAspect()->Aspect()->SetFaceCulling(Graphic3d_TypeOfBackfacingModel_DoubleSided);
-        r->Attributes()->ShadingAspect()->Aspect()->SetShaderProgram(programmeReflet(couleurHex(c), couleurFond(), centre, rayon));
-        r->SetLocalTransformation(miroir);
-        reflets_.push_back(r);
-      }
-    }
     msAffichage_ = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - debut).count();
   }
+  transparencesPiece_ = transparences;
+  majMatieres();
+  if (!disque_.IsNull()) contexte_->Erase(disque_, false);
   if (ajusterVue) vue_->FitAll(MARGE_VUE, false);
-  else vue_->ZFitAll();
+  refaireReflets();
+  majAretes();
+  majCoupe();
   majReflets();
+  vue_->ZFitAll();
   vue_->Redraw();
 }
 
 // Le reflet n'existe que vu de dessus : comme le navigateur, plus rien quand l'œil passe sous le sol
 void Vue3D::majReflets() {
-  const bool voir = !reflets_.empty() && vue_->Camera()->Eye().Z() > sol_;
+  const bool dessus = vue_->Camera()->Eye().Z() > sol_;
+  if (!disque_.IsNull()) {
+    const bool vu = contexte_->IsDisplayed(disque_);
+    if (dessus != vu) {
+      if (dessus) contexte_->Display(disque_, AIS_Shaded, -1, false);
+      else contexte_->Erase(disque_, false);
+    }
+  }
+  const bool voir = !reflets_.empty() && dessus;
   if (voir == refletsVus_) return;
   refletsVus_ = voir;
   for (occ::handle<AIS_Shape>& r : reflets_) {
@@ -371,19 +457,19 @@ bool Vue3D::directionCamera(std::array<double, 3>& d) const {
   d = {x / L, y / L, z / L};
   return true;
 }
-bool Vue3D::imagePlan(const plan::DemandeImage& d, wxImage& sortie) {
+bool Vue3D::imagePlan(const plan::DemandeImage& d, wxImage& sortie, const OptionsVue* reel, const std::vector<ApparenceVue>* apparences) {
   if (vueImage_.IsNull()) {
     // Un second visualiseur, sans sol, cube ni arêtes : même pilote, mêmes lumières et même matière que la vue 3D
     visuImage_ = new V3d_Viewer(pilote_);
-    occ::handle<V3d_AmbientLight> ambiance = new V3d_AmbientLight();
-    ambiance->SetIntensity(2.0f);
-    visuImage_->AddLight(ambiance);
-    occ::handle<V3d_DirectionalLight> cle = new V3d_DirectionalLight(gp_Dir(-60, 40, -120));
-    cle->SetIntensity(7.5f);
-    visuImage_->AddLight(cle);
-    occ::handle<V3d_DirectionalLight> ciel = new V3d_DirectionalLight(gp_Dir(0, 0, -1));
-    ciel->SetIntensity(3.0f);
-    visuImage_->AddLight(ciel);
+    imageAmbiante_ = new V3d_AmbientLight();
+    imageAmbiante_->SetIntensity(2.0f);
+    visuImage_->AddLight(imageAmbiante_);
+    imageCle_ = new V3d_DirectionalLight(gp_Dir(-60, 40, -120));
+    imageCle_->SetIntensity(7.5f);
+    visuImage_->AddLight(imageCle_);
+    imageCiel_ = new V3d_DirectionalLight(gp_Dir(0, 0, -1));
+    imageCiel_->SetIntensity(3.0f);
+    visuImage_->AddLight(imageCiel_);
     visuImage_->SetLightOn();
     fenetreImage_ = new wxWindow(this, wxID_ANY, wxDefaultPosition, wxSize(64, 64));
     fenetreImage_->Hide();
@@ -398,14 +484,46 @@ bool Vue3D::imagePlan(const plan::DemandeImage& d, wxImage& sortie) {
     vueImage_->SetBackgroundColor(Quantity_NOC_BLACK);
     contexteImage_ = new AIS_InteractiveContext(visuImage_);
   }
+  {
+    // « Rendu réaliste » : le ciel et les lampes du Rendu direct, le temps de cette image
+    const bool rd = d.reel && reel;
+    const std::string sig = rd ? reel->amb + "|" + std::to_string(reel->rot) + "|" + std::to_string(reel->force) + "|" + std::to_string(reinterpret_cast<uintptr_t>(reel->hdri.get())) : std::string("cao");
+    if (sig != imageSigActif_) {
+      imageSigActif_ = sig;
+      if (rd) {
+        std::array<double, 2> k{};
+        vueImage_->SetBackgroundCubeMap(cubeVue(reel->amb, reel->hdri.get(), reel->rot * M_PI / 180, FORCE_HEMI, k), true);
+        imageAmbiante_->SetIntensity(static_cast<float>(ECH_CUBE * reel->force * FORCE_CIEL));
+        imageCle_->SetIntensity(static_cast<float>(FORCE_CLE));
+        imageCiel_->SetIntensity(0.0f);
+      } else {
+        vueImage_->SetBackgroundCubeMap(environnementStudio(), true);
+        imageAmbiante_->SetIntensity(2.0f);
+        imageCle_->SetIntensity(7.5f);
+        imageCiel_->SetIntensity(3.0f);
+      }
+      vueImage_->View()->SetBackgroundType(Graphic3d_TOB_NONE);
+      vueImage_->SetBackgroundColor(Quantity_NOC_BLACK);
+    }
+  }
   std::vector<occ::handle<AIS_InteractiveObject>> poses;
   for (const plan::DemandeImage::Teinte& c : d.corps) {
     // Construit comme la pièce de la vue 3D : la teinte est la même
     occ::handle<AIS_ColoredShape> a = new AIS_ColoredShape(c.forme);
     a->Attributes()->SetAutoTriangulation(false);
     a->SetColor(couleurHex(0x0a84ff));
-    a->SetCustomColor(c.forme, couleurHex(c.couleur));
-    a->SetMaterial(matierePiece());
+    const ApparenceVue* look = nullptr;
+    if (d.reel && reel && apparences)
+      for (const ApparenceVue& q : *apparences)
+        if (q.forme.IsSame(c.forme)) look = &q;
+    const unsigned teinte = look ? look->couleur : c.couleur;
+    a->SetCustomColor(c.forme, couleurHex(teinte));
+    if (d.reel && reel) {
+      const Graphic3d_MaterialAspect mat = matiereVue(look ? look->cle : std::string());
+      a->SetMaterial(mat);
+      a->CustomAspects(c.forme)->ShadingAspect()->SetMaterial(mat);
+      a->CustomAspects(c.forme)->ShadingAspect()->SetColor(couleurHex(teinte));
+    } else a->SetMaterial(matierePiece());
     if (c.opacite < 1) a->SetCustomTransparency(c.forme, 1 - c.opacite);
     contexteImage_->Display(a, AIS_Shaded, -1, false);
     poses.push_back(a);
@@ -493,7 +611,11 @@ bool Vue3D::image(const wxString& chemin) {
 }
 
 void Vue3D::ajuster() {
+  // Le sol ne compte pas dans « tout afficher »
+  if (!disque_.IsNull()) contexte_->Erase(disque_, false);
   vue_->FitAll(MARGE_VUE, false);
+  majReflets();
+  vue_->ZFitAll();
   vue_->Redraw();
 }
 
@@ -528,7 +650,10 @@ void Vue3D::surEnfonce(wxMouseEvent& e) {
   aBouge_ = false;
   ignorerRelache_ = false;
   if (e.LeftDown() && saisirGizmo(e.GetPosition(), e)) return;
-  if (!e.RightDown()) vue_->StartRotation(depart_.x, depart_.y);
+  if (!e.RightDown()) {
+    vue_->StartRotation(depart_.x, depart_.y);
+    pivot_ = vue_->GravityPoint();
+  }
 }
 
 void Vue3D::surRelache(wxMouseEvent& e) {
@@ -629,8 +754,10 @@ void Vue3D::cliquerEn(const wxPoint& p) {
     const occ::handle<AIS_ViewCubeOwner> face = occ::down_cast<AIS_ViewCubeOwner>(contexte_->DetectedOwner());
     if (!face.IsNull()) {
       cube_->HandleClick(face);
+      if (!disque_.IsNull()) contexte_->Erase(disque_, false);
       vue_->FitAll(MARGE_VUE, false);
       majReflets();
+      vue_->ZFitAll();
       vue_->Redraw();
       return;
     }
@@ -1041,8 +1168,7 @@ void Vue3D::finChoix() {
   contexte_->ClearSelected(false);
   if (!affichee_.IsNull()) {
     contexte_->UnsetTransparency(affichee_, false);
-    if (!aretesVives_.IsNull()) contexte_->Display(aretesVives_, AIS_WireFrame, -1, false);
-    if (!aretesLisses_.IsNull()) contexte_->Display(aretesLisses_, AIS_WireFrame, -1, false);
+    majAretes();
   }
   vue_->Redraw();
 }
@@ -1052,8 +1178,11 @@ void Vue3D::surMouvement(wxMouseEvent& e) {
   if (gizmoSaisi_ >= 0) return bougerGizmo(p, e.ShiftDown());
   if (e.LeftIsDown() || e.MiddleIsDown()) {
     if (!aBouge_ && std::abs(p.x - depart_.x) + std::abs(p.y - depart_.y) <= SEUIL_CLIC) return;
+    const bool premier = !aBouge_;
     aBouge_ = true;
-    vue_->Rotation(p.x, p.y);
+    if (opt_.orbiteLibre) vue_->Rotation(p.x, p.y);
+    else tournerZ(premier ? p.x - depart_.x : p.x - precedent_.x, premier ? p.y - depart_.y : p.y - precedent_.y);
+    precedent_ = p;
     const bool avant = refletsVus_;
     majReflets();
     majTailles();
@@ -1074,7 +1203,7 @@ void Vue3D::surMouvement(wxMouseEvent& e) {
 void Vue3D::surMolette(wxMouseEvent& e) {
   const wxPoint p = e.GetPosition();  // wxWidgets la donne déjà dans le repère de cette fenêtre
   vue_->StartZoomAtPoint(p.x, p.y);
-  const int d = e.GetWheelRotation() / 4;
+  const int d = (opt_.zoomInverse ? -1 : 1) * e.GetWheelRotation() / 4;
   vue_->ZoomAtPoint(p.x, p.y, p.x + d, p.y + d);
   majTailles();
   vue_->Redraw();
@@ -1161,7 +1290,10 @@ void Vue3D::montrerOccurrences(const std::vector<OccVue>& L) {
     }
     occs_.push_back(std::move(o));
   }
+  majMatieres();
   refaireReflets();
+  majAretes();
+  majCoupe();
   majReflets();
   vue_->ZFitAll();
   vue_->Redraw();
@@ -1438,20 +1570,45 @@ void Vue3D::refaireReflets() {
     BRepBndLib::Add(o.v.forme, b, true);
     if (!b.IsVoid()) boite.Add(b.Transformed(o.v.t));
   }
-  if (boite.IsVoid()) return;
+  if (boite.IsVoid()) {
+    if (!disque_.IsNull()) contexte_->Remove(disque_, false);
+    disque_.Nullify();
+    return;
+  }
   sol_ = boite.CornerMin().Z();
+  const gp_Pnt bas = boite.CornerMin(), haut = boite.CornerMax();
+  centreSol_[0] = (bas.X() + haut.X()) / 2;
+  centreSol_[1] = (bas.Y() + haut.Y()) / 2;
+  rayonSol_ = std::max(bas.Distance(haut) / 2, 1.0);
+  std::vector<std::pair<TopoDS_Shape, gp_Trsf>> ombrants;
+  for (const Un& u : tous) ombrants.push_back({u.s, u.t});
+  {
+    const auto t0 = std::chrono::steady_clock::now();
+    calculerOmbre(ombrants);
+    msOmbre_ = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - t0).count();
+  }
+  majSol();
+  if (!opt_.miroir) return;
+  // Le reflet au sol : chaque corps renversé sous la pièce, fondu dans le fond, jamais cliquable
   gp_Trsf miroir;
   miroir.SetMirror(gp_Ax2(gp_Pnt(0, 0, sol_), gp_Dir(0, 0, 1)));
-  const gp_Pnt bas = boite.CornerMin(), haut = boite.CornerMax();
-  const gp_Pnt centre((bas.X() + haut.X()) / 2, (bas.Y() + haut.Y()) / 2, sol_);
-  const double rayon = bas.Distance(haut) / 2;
+  const auto solVue = [this]() { return paramSol(); };
   for (const Un& u : tous) {
+    Quantity_Color teinte = couleurHex(u.c);
+    for (const ApparenceVue& a : apparences_)
+      if (opt_.env != "actuel" && a.forme.IsSame(u.s)) teinte = couleurHex(a.couleur);
     occ::handle<AIS_Shape> r = new AIS_Shape(u.s);
     r->Attributes()->SetAutoTriangulation(false);
     r->Attributes()->SetFaceBoundaryDraw(false);
-    r->SetColor(couleurHex(u.c));
-    r->Attributes()->ShadingAspect()->Aspect()->SetFaceCulling(Graphic3d_TypeOfBackfacingModel_DoubleSided);
-    r->Attributes()->ShadingAspect()->Aspect()->SetShaderProgram(programmeReflet(couleurHex(u.c), couleurFond(), centre, rayon));
+    r->SetColor(teinte);
+    occ::handle<Graphic3d_AspectFillArea3d> as = r->Attributes()->ShadingAspect()->Aspect();
+    as->SetFaceCulling(Graphic3d_TypeOfBackfacingModel_DoubleSided);
+    const ParamSol P = solVue();
+    as->SetShaderProgram(programmeReflet(teinte, P));
+    if (!texturesSol_.IsNull()) {
+      as->SetTextureSet(texturesSol_);
+      as->SetTextureMapOn(true);
+    }
     r->SetLocalTransformation(miroir * u.t);
     reflets_.push_back(r);
   }
@@ -1735,4 +1892,410 @@ void Vue3D::bougerGizmo(const wxPoint& p, bool libre) {
     v = std::atan2(a.Dot(gizmoP0_.Crossed(q)), gizmoP0_.Dot(q)) * 180 / 3.14159265358979;
     if (surGeste) surGeste(1, "rot", i, gizmo_.degreAnneau[i], v, libre);
   }
+}
+
+// ---- La fiche ⚙ et le Rendu direct (src/98-rendu-vue.js) ----
+namespace {
+Quantity_Color couleurTexte(const std::string& t) {
+  unsigned v = 0x808080;
+  if (t.size() == 7 && t[0] == '#') v = static_cast<unsigned>(std::strtoul(t.c_str() + 1, nullptr, 16));
+  return couleurHex(v);
+}
+}  // namespace
+
+ParamSol Vue3D::paramSol() const {
+  ParamSol P;
+  const bool actuel = opt_.env == "actuel";
+  P.fond = actuel ? couleurFond() : couleurTexte(opt_.solCouleur);
+  P.centre = gp_Pnt(centreSol_[0], centreSol_[1], sol_);
+  P.rayon = rayonSol_;
+  P.ombreK = imageOmbre_.IsNull() ? 0 : (actuel || opt_.amb == "noir" || opt_.amb == "atelier" ? 0.55 : 0.32);
+  P.ombreO[0] = ombreO_[0];
+  P.ombreO[1] = ombreO_[1];
+  P.ombreT = ombreT_;
+  const SupportRendu* b = opt_.sol ? supportRendu(opt_.support) : nullptr;
+  P.tuile = b != nullptr;
+  if (b) P.tuileT = b->t, P.tuileK = b->k;
+  P.refletK = actuel ? 1 : 0.8 / 0.62;
+  // En CAO, le fond et le sol sont une seule couleur
+  P.disque = opt_.sol && (!actuel || b != nullptr);
+  P.haut = actuel ? couleurFond() : couleurTexte(opt_.fond1);
+  P.bas = actuel ? couleurFond() : couleurTexte(opt_.fond2);
+  if (!opt_.sol && !actuel) P.tuileK = 0.55;
+  if (opt_.coupe) {
+    const double s = opt_.coupeInverse ? -1 : 1;
+    P.coupe = true;
+    P.cn[opt_.coupeAxe] = -s;
+    P.cd = s * opt_.coupePos;
+  }
+  return P;
+}
+
+// L'ombre portée : les triangles projetés sur le sol le long de la lampe, puis adoucis. Rien à recalculer tant que la pièce ne change pas.
+void Vue3D::calculerOmbre(const std::vector<std::pair<TopoDS_Shape, gp_Trsf>>& L) {
+  imageOmbre_.Nullify();
+  if (!opt_.ombre) return;
+  const int N = 1024;
+  const double T = rayonSol_ * 6.4;
+  ombreO_[0] = centreSol_[0] - T / 2;
+  ombreO_[1] = centreSol_[1] - T / 2;
+  ombreT_ = T;
+  const double a = cleAmbiance_[0] * M_PI / 180, e = cleAmbiance_[1] * M_PI / 180;
+  const double lx = std::cos(e) * std::cos(a), ly = std::cos(e) * std::sin(a), lz = std::max(std::sin(e), 0.05);
+  std::vector<unsigned char> im(static_cast<size_t>(N) * N, 0);
+  for (const auto& [forme, t] : L) {
+    for (TopExp_Explorer x(forme, TopAbs_FACE); x.More(); x.Next()) {
+      TopLoc_Location loc;
+      const occ::handle<Poly_Triangulation> tri = BRep_Tool::Triangulation(TopoDS::Face(x.Current()), loc);
+      if (tri.IsNull()) continue;
+      const gp_Trsf m = t * loc.Transformation();
+      const int nb = tri->NbNodes();
+      std::vector<std::array<float, 2>> q(static_cast<size_t>(nb) + 1);
+      for (int i = 1; i <= nb; i++) {
+        const gp_Pnt p = tri->Node(i).Transformed(m);
+        const double h = (p.Z() - sol_) / lz;
+        q[i] = {static_cast<float>((p.X() - h * lx - ombreO_[0]) / T * N), static_cast<float>((p.Y() - h * ly - ombreO_[1]) / T * N)};
+      }
+      for (int i = 1; i <= tri->NbTriangles(); i++) {
+        int i0, i1, i2;
+        tri->Triangle(i).Get(i0, i1, i2);
+        const auto& A = q[i0];
+        const auto& B = q[i1];
+        const auto& C = q[i2];
+        const double aire = (B[0] - A[0]) * (C[1] - A[1]) - (B[1] - A[1]) * (C[0] - A[0]);
+        if (aire == 0) continue;
+        const int x0 = std::max(0, static_cast<int>(std::floor(std::min({A[0], B[0], C[0]})))), x1 = std::min(N - 1, static_cast<int>(std::ceil(std::max({A[0], B[0], C[0]}))));
+        const int y0 = std::max(0, static_cast<int>(std::floor(std::min({A[1], B[1], C[1]})))), y1 = std::min(N - 1, static_cast<int>(std::ceil(std::max({A[1], B[1], C[1]}))));
+        const double sg = aire > 0 ? 1 : -1;
+        for (int y = y0; y <= y1; y++)
+          for (int xx = x0; xx <= x1; xx++) {
+            const double px = xx + 0.5, py = y + 0.5;
+            const double w0 = sg * ((B[0] - A[0]) * (py - A[1]) - (B[1] - A[1]) * (px - A[0]));
+            const double w1 = sg * ((C[0] - B[0]) * (py - B[1]) - (C[1] - B[1]) * (px - B[0]));
+            const double w2 = sg * ((A[0] - C[0]) * (py - C[1]) - (A[1] - C[1]) * (px - C[0]));
+            if (w0 >= 0 && w1 >= 0 && w2 >= 0) im[static_cast<size_t>(y) * N + xx] = 255;
+          }
+      }
+    }
+  }
+  // Deux passes de boîte : les bords s'adoucissent comme l'ombre du navigateur
+  std::vector<unsigned char> tmp(im.size());
+  const int r = 3;
+  for (int passe = 0; passe < 2; passe++) {
+    for (int y = 0; y < N; y++) {
+      int somme = 0;
+      for (int x = -r; x <= r; x++) somme += im[static_cast<size_t>(y) * N + std::clamp(x, 0, N - 1)];
+      for (int x = 0; x < N; x++) {
+        tmp[static_cast<size_t>(y) * N + x] = static_cast<unsigned char>(somme / (2 * r + 1));
+        somme += im[static_cast<size_t>(y) * N + std::min(x + r + 1, N - 1)] - im[static_cast<size_t>(y) * N + std::max(x - r, 0)];
+      }
+    }
+    for (int x = 0; x < N; x++) {
+      int somme = 0;
+      for (int y = -r; y <= r; y++) somme += tmp[static_cast<size_t>(std::clamp(y, 0, N - 1)) * N + x];
+      for (int y = 0; y < N; y++) {
+        im[static_cast<size_t>(y) * N + x] = static_cast<unsigned char>(somme / (2 * r + 1));
+        somme += tmp[static_cast<size_t>(std::min(y + r + 1, N - 1)) * N + x] - tmp[static_cast<size_t>(std::max(y - r, 0)) * N + x];
+      }
+    }
+  }
+  imageOmbre_ = new Image_PixMap();
+  imageOmbre_->SetTopDown(false);
+  imageOmbre_->InitTrash(Image_Format_Gray, N, N);
+  for (int y = 0; y < N; y++)
+    for (int x = 0; x < N; x++) *imageOmbre_->ChangeRawValue(y, x) = im[static_cast<size_t>(y) * N + x];
+}
+
+void Vue3D::majSol() {
+  if (!disque_.IsNull()) contexte_->Remove(disque_, false);
+  disque_.Nullify();
+  texturesSol_.Nullify();
+  const SupportRendu* b = opt_.sol ? supportRendu(opt_.support) : nullptr;
+  std::vector<occ::handle<Graphic3d_Texture2D>> tex;
+  if (b) {
+    const auto tuile = tuileSupport(opt_.support);
+    if (tuile) {
+      occ::handle<Image_PixMap> im = new Image_PixMap();
+      im->SetTopDown(false);
+      im->InitTrash(Image_Format_RGB, tuile->n, tuile->n);
+      for (int y = 0; y < tuile->n; y++)
+        for (int x = 0; x < tuile->n; x++) {
+          unsigned char* o = im->ChangeRawValue(y, x);
+          const unsigned char* i = &tuile->rgb[3 * (static_cast<size_t>(y) * tuile->n + x)];
+          o[0] = i[0], o[1] = i[1], o[2] = i[2];
+        }
+      occ::handle<Graphic3d_Texture2D> t = new Graphic3d_Texture2D(im);
+      t->EnableRepeat();
+      t->GetParams()->SetFilter(Graphic3d_TOTF_TRILINEAR);
+      t->GetParams()->SetTextureUnit(Graphic3d_TextureUnit_0);
+      tex.push_back(t);
+    }
+  }
+  if (!imageOmbre_.IsNull()) {
+    occ::handle<Graphic3d_Texture2D> t = new Graphic3d_Texture2D(imageOmbre_);
+    t->DisableRepeat();
+    t->GetParams()->SetFilter(Graphic3d_TOTF_BILINEAR);
+    t->GetParams()->SetTextureUnit(Graphic3d_TextureUnit_1);
+    tex.push_back(t);
+  }
+  if (!tex.empty()) {
+    texturesSol_ = new Graphic3d_TextureSet(static_cast<int>(tex.size()));
+    for (int i = 0; i < static_cast<int>(tex.size()); i++) texturesSol_->SetValue(i, tex[i]);
+  }
+  // Sans ambiance ni support ni ombre, rien à dessiner : le fond suffit
+  const bool actuel = opt_.env == "actuel";
+  if (imageOmbre_.IsNull() && (actuel ? b == nullptr : !opt_.sol)) return;
+  const double m = rayonSol_ * 6;
+  BRepBuilderAPI_MakeFace fabrique(gp_Pln(gp_Pnt(centreSol_[0], centreSol_[1], sol_), gp_Dir(0, 0, 1)), -m, m, -m, m);
+  const TopoDS_Face f = fabrique.Face();
+  BRepMesh_IncrementalMesh(f, m, false, 1.0, false);
+  disque_ = new AIS_Shape(f);
+  disque_->Attributes()->SetAutoTriangulation(false);
+  disque_->Attributes()->SetFaceBoundaryDraw(false);
+  disque_->SetColor(Quantity_NOC_WHITE);  // crée son aspect propre
+  occ::handle<Graphic3d_AspectFillArea3d> as = disque_->Attributes()->ShadingAspect()->Aspect();
+  as->SetFaceCulling(Graphic3d_TypeOfBackfacingModel_DoubleSided);
+  as->SetShaderProgram(programmeDisque(paramSol()));
+  if (!texturesSol_.IsNull()) {
+    as->SetTextureSet(texturesSol_);
+    as->SetTextureMapOn(true);
+  }
+  disque_->SetZLayer(coucheSol_);
+  contexte_->Display(disque_, AIS_Shaded, -1, false);
+  contexte_->Deactivate(disque_);
+}
+
+// Chaque corps prend son apparence de rendu, ou retrouve celle de la CAO
+void Vue3D::majMatieres() {
+  const bool rendu = opt_.env != "actuel";
+  const auto chercher = [this](const TopoDS_Shape& s) -> const ApparenceVue* {
+    for (const ApparenceVue& a : apparences_)
+      if (a.forme.IsSame(s)) return &a;
+    return nullptr;
+  };
+  const auto poser = [&](const occ::handle<AIS_Shape>& ais, const std::vector<std::pair<TopoDS_Shape, unsigned>>& teintes) {
+    occ::handle<AIS_ColoredShape> piece = occ::down_cast<AIS_ColoredShape>(ais);
+    if (piece.IsNull()) return;
+    const Graphic3d_MaterialAspect defaut = rendu ? matiereVue("") : matierePiece();
+    piece->SetMaterial(defaut);
+    for (const auto& [corps, c] : teintes) {
+      const ApparenceVue* a = rendu ? chercher(corps) : nullptr;
+      piece->SetCustomColor(corps, couleurHex(a ? a->couleur : c));
+      const occ::handle<AIS_ColoredDrawer>& d = piece->CustomAspects(corps);
+      d->ShadingAspect()->SetMaterial(a ? matiereVue(a->cle) : defaut);
+      d->ShadingAspect()->SetColor(couleurHex(a ? a->couleur : c));
+    }
+    contexte_->Redisplay(piece, false);
+  };
+  // Ne rien toucher tant qu'on n'a jamais quitté la CAO : l'affichage habituel reste celui d'avant
+  if (!rendu && !matieresRendues_) return;
+  matieresRendues_ = rendu;
+  if (!affichee_.IsNull()) poser(affichee_, teintesPiece_);
+  for (OccAffichee& o : occs_)
+    if (!o.v.fantome) poser(o.piece, o.v.teintes);
+}
+
+void Vue3D::apparences(const std::vector<ApparenceVue>& L) {
+  apparences_ = L;
+  if (opt_.env == "actuel") return;
+  majMatieres();
+  refaireReflets();
+  majReflets();
+  vue_->Redraw();
+}
+
+void Vue3D::majAretes() {
+  const auto montrer = [this](const occ::handle<AIS_Shape>& a) {
+    if (a.IsNull()) return;
+    if (opt_.aretes) contexte_->Display(a, AIS_WireFrame, -1, false);
+    else contexte_->Erase(a, false);
+  };
+  if (!enChoix_) {
+    montrer(aretesVives_);
+    montrer(aretesLisses_);
+  }
+  for (OccAffichee& o : occs_) {
+    montrer(o.vives);
+    montrer(o.lisses);
+  }
+}
+
+void Vue3D::majAxes() {
+  if (!opt_.axes) {
+    if (!axes_.IsNull()) contexte_->Remove(axes_, false);
+    axes_.Nullify();
+    return;
+  }
+  if (!axes_.IsNull()) return;
+  const float L = static_cast<float>(FromDIP(70));
+  axes_ = new TraitsCouleur({{0, 0, 0, L, 0, 0, 0.9f, 0.16f, 0.13f}, {0, 0, 0, 0, L, 0, 0.19f, 0.82f, 0.35f}, {0, 0, 0, 0, 0, L, 0.04f, 0.52f, 1.0f}});
+  axes_->SetTransformPersistence(new Graphic3d_TransformPers(Graphic3d_TMF_ZoomPers, gp_Pnt(0, 0, 0)));
+  axes_->SetZLayer(Graphic3d_ZLayerId_Topmost);
+  contexte_->Display(axes_, 0, -1, false);
+  contexte_->Deactivate(axes_);
+}
+
+void Vue3D::majCoupe() {
+  if (!planCoupe_.IsNull()) contexte_->Remove(planCoupe_, false);
+  planCoupe_.Nullify();
+  occ::handle<Graphic3d_SequenceOfHClipPlane> plans;
+  if (opt_.coupe) {
+    const double s = opt_.coupeInverse ? -1 : 1;
+    double n[3] = {0, 0, 0};
+    n[opt_.coupeAxe] = -s;
+    coupe_ = new Graphic3d_ClipPlane(gp_Pln(n[0], n[1], n[2], s * opt_.coupePos));
+    coupe_->SetCapping(opt_.coupeRemplie);
+    coupe_->SetUseObjectMaterial(true);
+    coupe_->SetUseObjectShader(false);
+    plans = new Graphic3d_SequenceOfHClipPlane();
+    plans->Append(coupe_);
+  }
+  if (!opt_.coupe && !coupeAppliquee_) return;
+  coupeAppliquee_ = opt_.coupe;
+  const auto poser = [&](const occ::handle<AIS_InteractiveObject>& a) {
+    if (!a.IsNull()) a->SetClipPlanes(plans);
+  };
+  poser(affichee_);
+  poser(aretesVives_);
+  poser(aretesLisses_);
+  poser(filetsHelices_);
+  poser(filetsAnneaux_);
+  for (OccAffichee& o : occs_) {
+    poser(o.piece);
+    poser(o.vives);
+    poser(o.lisses);
+  }
+  if (opt_.coupe && opt_.coupePlan) {
+    double b[6];
+    if (boiteVisible(b)) {
+      const double m = std::max({b[3] - b[0], b[4] - b[1], b[5] - b[2]}) * 0.6;
+      gp_Pnt c((b[0] + b[3]) / 2, (b[1] + b[4]) / 2, (b[2] + b[5]) / 2);
+      double x[3] = {c.X(), c.Y(), c.Z()};
+      x[opt_.coupeAxe] = opt_.coupePos;
+      gp_Dir d(opt_.coupeAxe == 0, opt_.coupeAxe == 1, opt_.coupeAxe == 2);
+      BRepBuilderAPI_MakeFace f(gp_Pln(gp_Pnt(x[0], x[1], x[2]), d), -m, m, -m, m);
+      BRepMesh_IncrementalMesh(f.Face(), m, false, 1.0, false);
+      planCoupe_ = new AIS_Shape(f.Face());
+      planCoupe_->Attributes()->SetAutoTriangulation(false);
+      planCoupe_->SetColor(couleurHex(0x0a84ff));
+      {
+        // Un voile : sans lumière, on voit la pièce à travers
+        occ::handle<Graphic3d_AspectFillArea3d> a = planCoupe_->Attributes()->ShadingAspect()->Aspect();
+        a->SetShadingModel(Graphic3d_TypeOfShadingModel_Unlit);
+        a->SetInteriorColor(Quantity_ColorRGBA(couleurHex(0x0a84ff), 0.18f));
+        a->SetAlphaMode(Graphic3d_AlphaMode_Blend);
+        a->SetFaceCulling(Graphic3d_TypeOfBackfacingModel_DoubleSided);
+      }
+      contexte_->Display(planCoupe_, AIS_Shaded, -1, false);
+      contexte_->Deactivate(planCoupe_);
+    }
+  }
+}
+
+bool Vue3D::boiteVisible(double b[6]) const {
+  Bnd_Box boite;
+  if (!formePiece_.IsNull()) BRepBndLib::Add(formePiece_, boite, true);
+  for (const OccAffichee& o : occs_) {
+    if (o.v.fantome) continue;
+    Bnd_Box u;
+    BRepBndLib::Add(o.v.forme, u, true);
+    if (!u.IsVoid()) boite.Add(u.Transformed(o.v.t));
+  }
+  if (boite.IsVoid()) return false;
+  boite.Get(b[0], b[1], b[2], b[3], b[4], b[5]);
+  return true;
+}
+
+// Le ciel, les lampes, le fond
+void Vue3D::majAmbiance() {
+  const bool actuel = opt_.env == "actuel";
+  std::string sig = actuel ? "actuel" : opt_.amb + "|" + std::to_string(opt_.rot) + "|" + std::to_string(opt_.force) + "|" + (opt_.hdri ? "h" + std::to_string(reinterpret_cast<uintptr_t>(opt_.hdri.get())) : "");
+  if (sig != sigAmbiance_) {
+    sigAmbiance_ = sig;
+    if (actuel) {
+      cleAmbiance_ = {-34, 59};
+      vue_->SetBackgroundCubeMap(cubeStudio_, true);
+      lumAmbiante_->SetIntensity(2.0f);
+      lumCle_->SetIntensity(7.5f);
+      lumCiel_->SetIntensity(3.0f);
+    } else {
+      std::array<double, 2> cle{};
+      vue_->SetBackgroundCubeMap(cubeVue(opt_.amb, opt_.hdri.get(), opt_.rot * M_PI / 180, FORCE_HEMI, cle), true);
+      cleAmbiance_ = {cle[0] + opt_.rot, cle[1]};
+      lumAmbiante_->SetIntensity(static_cast<float>(ECH_CUBE * opt_.force * FORCE_CIEL));
+      lumCle_->SetIntensity(static_cast<float>(FORCE_CLE));
+      lumCiel_->SetIntensity(0.0f);
+    }
+  }
+  if (actuel) {
+    vue_->View()->SetBackgroundType(Graphic3d_TOB_NONE);
+    vue_->SetBackgroundColor(couleurFond());
+  } else {
+    vue_->View()->SetBackgroundType(Graphic3d_TOB_GRADIENT);
+    vue_->SetBgGradientColors(couleurTexte(opt_.fond1), couleurTexte(opt_.fond2), Aspect_GradientFillMethod_Vertical, false);
+    vue_->View()->SetBackgroundType(Graphic3d_TOB_GRADIENT);
+  }
+}
+
+void Vue3D::options(const OptionsVue& o) {
+  const double t0 = std::tan(opt_.fov * M_PI / 360), t1 = std::tan(o.fov * M_PI / 360);
+  const bool fov = o.fov != opt_.fov;
+  opt_ = o;
+  if (fov) {
+    occ::handle<Graphic3d_Camera> c = vue_->Camera();
+    c->SetDistance(c->Distance() * t0 / t1);
+    c->SetFOVy(o.fov);
+  }
+  majAmbiance();
+  majMatieres();
+  refaireReflets();
+  majAretes();
+  majAxes();
+  majCoupe();
+  majReflets();
+  vue_->ZFitAll();
+  vue_->Redraw();
+}
+
+void Vue3D::vueStandard(const std::string& q) {
+  if (q == "iso") return vueInitiale();
+  const gp_Pnt c = vue_->Camera()->Center();
+  const double d = vue_->Camera()->Distance();
+  gp_Dir vers(0, -1, 0), haut(0, 0, 1);
+  if (q == "top") vers = gp_Dir(0, 0, 1), haut = gp_Dir(0, 1, 0);
+  else if (q == "right") vers = gp_Dir(1, 0, 0);
+  occ::handle<Graphic3d_Camera> k = vue_->Camera();
+  k->SetCenter(c);
+  k->SetEye(c.XYZ() + vers.XYZ() * d);
+  k->SetUp(haut);
+  k->OrthogonalizeUp();
+  majReflets();
+  majTailles();
+  vue_->ZFitAll();
+  vue_->Redraw();
+}
+
+// L'orbite contrainte : Z reste en haut, l'élévation s'arrête avant les pôles (orbitRotate, src/10-scene-3d.js)
+void Vue3D::tournerZ(int dx, int dy) {
+  occ::handle<Graphic3d_Camera> k = vue_->Camera();
+  const double v = 2 * M_PI / std::max(GetClientSize().y, 1);
+  const gp_Vec fw(k->Eye(), k->Center());
+  if (fw.Magnitude() < 1e-9) return;
+  const gp_Dir d(fw.Reversed());
+  gp_Vec droite = gp_Vec(k->Direction()).Crossed(gp_Vec(k->Up()));
+  if (droite.Magnitude() < 1e-9) return;
+  const gp_Dir R(droite);
+  const double phi = std::acos(std::clamp(d.Z(), -1.0, 1.0)), lim = 1e-3;
+  const double a = std::clamp(phi - dy * v, lim, M_PI - lim) - phi;
+  gp_Trsf t1, t2;
+  t1.SetRotation(gp_Ax1(pivot_, gp_Dir(0, 0, 1)), -dx * v);
+  t2.SetRotation(gp_Ax1(pivot_, R), a);
+  const gp_Trsf T = t1 * t2;
+  const gp_Pnt oeil = k->Eye().Transformed(T), centre = k->Center().Transformed(T);
+  k->SetCenter(centre);
+  k->SetEye(oeil);
+  k->SetUp(gp_Dir(0, 0, 1));
+  k->OrthogonalizeUp();
+  vue_->ZFitAll();
+  vue_->Redraw();
 }

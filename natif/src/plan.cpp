@@ -2387,7 +2387,7 @@ const CadreImage& Calcul::imageDe(const J& vue, const Piece& p) {
   J cle = J::object();
   for (const char* k : {"kind", "vk", "bodyId", "asm", "dir", "u", "v", "flip", "persp", "camera", "section", "detail", "obl", "render3d", "real", "mirror"})
     if (vue.is_object() && vue.contains(k)) cle[k] = vue[k];
-  const std::string sig = cle.dump(-1, ' ', false, J::error_handler_t::replace);
+  const std::string sig = cle.dump(-1, ' ', false, J::error_handler_t::replace) + (vrai(vue, "real") ? sigReel : std::string());
   auto it = images_.find(id);
   if (it != images_.end() && it->second.first == sig) return it->second.second;
   CadreImage im;
@@ -2396,6 +2396,7 @@ const CadreImage& Calcul::imageDe(const J& vue, const Piece& p) {
     const Base b = baseDe(vue);
     const std::string bodyId = chaine(vue, "bodyId");
     DemandeImage d;
+    d.reel = vrai(vue, "real");
     std::vector<std::vector<Tri>> maillages;
     const bool vueAsm = vrai(vue, "asm") && p.assemblage;
     for (const Corps& c : p.corps) {

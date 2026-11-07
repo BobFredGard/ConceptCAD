@@ -154,6 +154,7 @@ struct DemandeImage {
   };
   std::vector<Teinte> corps;
   std::vector<FiletImage> filets;
+  bool reel = false;  // « Rendu réaliste » : comme le Rendu direct
 };
 struct CadreImage {
   bool ok = false;
@@ -196,6 +197,7 @@ class Calcul {
   // L'image ombrée d'une vue, refaite seulement si la vue change ; sans fonction de rendu, pas d'image
   const CadreImage& imageDe(const J& vue, const Piece& p);
   std::function<void(const DemandeImage&)> rendreImage;
+  std::string sigReel;  // ce qui change l'image réaliste : les réglages de la fenêtre RENDU
   std::map<std::string, std::vector<RevAxe>> cylindres, revolutions;
   const SelectionPlan* selection = nullptr;  // à montrer au prochain dessin
   std::map<std::string, CoteVue> cotesVues;  // remplie par le dessin

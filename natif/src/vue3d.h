@@ -5,6 +5,7 @@
 
 #include <array>
 #include <functional>
+#include <memory>
 #include <set>
 #include <string>
 #include <utility>
@@ -13,6 +14,12 @@
 #include <AIS_InteractiveContext.hxx>
 #include <AIS_Shape.hxx>
 #include <AIS_ViewCube.hxx>
+#include <Graphic3d_ClipPlane.hxx>
+#include <Graphic3d_CubeMap.hxx>
+#include <Graphic3d_TextureSet.hxx>
+#include <Image_PixMap.hxx>
+#include <V3d_AmbientLight.hxx>
+#include <V3d_DirectionalLight.hxx>
 #include <Aspect_DisplayConnection.hxx>
 #include <OpenGl_GraphicDriver.hxx>
 #include <TopoDS_Face.hxx>
@@ -21,10 +28,44 @@
 #include <V3d_Viewer.hxx>
 #include <gp_Pnt.hxx>
 #include <gp_Trsf.hxx>
+#include <Quantity_Color.hxx>
 
 #include "mesure.h"
 #include "plan.h"
 #include "fao_matiere.h"
+#include "rendu_scene.h"
+
+// La fiche ⚙ : ce que la vue de modélisation montre (collectView et vEnvCollect du navigateur)
+struct OptionsVue {
+  std::string env = "actuel";  // actuel, rendu, studio, clair, atelier, exterieur, noir
+  bool sol = true, miroir = true, ombre = true, aretes = true, axes = true, zoomInverse = false, orbiteLibre = false;
+  double fov = 50;
+  bool coupe = false, coupeInverse = false, coupeRemplie = true, coupePlan = false;
+  int coupeAxe = 2;
+  double coupePos = 0;
+  // L'ambiance réglée par vEnvCfg (Cadre::majVueEnv)
+  std::string amb = "studio", fond1 = "#d3d6db", fond2 = "#9a9fa7", solCouleur = "#b4b8bf", support;
+  double rot = 0, force = 1;
+  std::shared_ptr<const ImageHdri> hdri;
+};
+// L'apparence de rendu d'un corps
+struct ApparenceVue {
+  TopoDS_Shape forme;
+  std::string cle;
+  unsigned couleur = 0x9a9aa0;
+};
+
+// Ce qui décrit le sol pour ses deux programmes (le disque et les reflets)
+struct ParamSol {
+  Quantity_Color fond;
+  gp_Pnt centre;
+  double rayon = 1, ombreK = 0, ombreO[2] = {0, 0}, ombreT = 1;
+  bool tuile = false;
+  double tuileT = 100, tuileK = 1, refletK = 1;
+  bool coupe = false, disque = true;
+  Quantity_Color haut, bas;  // le fond derrière le sol
+  double cn[3] = {0, 0, 0}, cd = 0;
+};
 
 class Vue3D : public wxWindow {
  public:
@@ -34,7 +75,7 @@ class Vue3D : public wxWindow {
   // Pour les essais : la vue dans une image, et le temps des arêtes et du reflet au dernier affichage
   bool image(const wxString& chemin);
   // L'image ombrée d'une vue de mise en plan : hors écran, fond transparent, seulement ces corps
-  bool imagePlan(const plan::DemandeImage& d, wxImage& sortie);
+  bool imagePlan(const plan::DemandeImage& d, wxImage& sortie, const OptionsVue* reel = nullptr, const std::vector<ApparenceVue>* apparences = nullptr);
   // mepAddCameraView : de la cible vers l'œil
   bool directionCamera(std::array<double, 3>& d) const;
   void montrerFilets(const std::vector<std::vector<gp_Pnt>>& helices, const std::vector<std::vector<gp_Pnt>>& anneaux);
@@ -54,8 +95,15 @@ class Vue3D : public wxWindow {
   }
   double msAffichage() const { return msAffichage_; }
   double msImage() const { return msImage_; }
+  double msOmbre() const { return msOmbre_; }
   void ajuster();
   void vueInitiale();
+  void vueStandard(const std::string& quelle);  // iso, top, front, right
+  const OptionsVue& options() const { return opt_; }
+  void options(const OptionsVue& o);
+  void apparences(const std::vector<ApparenceVue>& L);
+  void poserApparences(const std::vector<ApparenceVue>& L) { apparences_ = L; }  // sans dessin : options() suit
+  bool boiteVisible(double b[6]) const;
   // Prépare la sélection de la forme affichée (fait tout seul au premier passage de la souris).
   void preparerSelection();
   // Appelé après un clic : la face ou l'arête choisie, ou une forme vide.
@@ -181,9 +229,35 @@ class Vue3D : public wxWindow {
   void surMouvement(wxMouseEvent&);
   void surMolette(wxMouseEvent&);
   void surPerteSouris(wxMouseCaptureLostEvent&);
+  void tournerZ(int dx, int dy);
+  ParamSol paramSol() const;
   void majReflets();
   void surDouble(wxMouseEvent&);
   void refaireReflets();
+  void majMatieres();
+  void majSol();
+  void majCoupe();
+  void majAretes();
+  void majAxes();
+  void majAmbiance();
+  void calculerOmbre(const std::vector<std::pair<TopoDS_Shape, gp_Trsf>>& L);
+  OptionsVue opt_;
+  std::string sigAmbiance_ = "actuel", sigOptions_;
+  bool coupeAppliquee_ = false, matieresRendues_ = false;
+  std::array<double, 2> cleAmbiance_{-34, 59};
+  occ::handle<V3d_AmbientLight> lumAmbiante_;
+  occ::handle<V3d_DirectionalLight> lumCle_, lumCiel_;
+  occ::handle<Graphic3d_CubeMap> cubeStudio_;
+  std::vector<ApparenceVue> apparences_;
+  std::vector<std::pair<TopoDS_Shape, double>> transparencesPiece_;
+  occ::handle<AIS_Shape> disque_, planCoupe_;
+  occ::handle<AIS_InteractiveObject> axes_;
+  occ::handle<Graphic3d_ClipPlane> coupe_;
+  occ::handle<Image_PixMap> imageOmbre_;
+  occ::handle<Graphic3d_TextureSet> texturesSol_;
+  int coucheSol_ = 0;
+  double ombreO_[2] = {0, 0}, ombreT_ = 1, rayonSol_ = 1, centreSol_[2] = {0, 0}, sigOmbre_ = 0;
+  gp_Pnt pivot_;
   void majTailles();
   double echelleEn(const gp_Pnt& p) const;
   void rayon(int x, int y, gp_Pnt& o, gp_Dir& d) const;
@@ -223,6 +297,10 @@ class Vue3D : public wxWindow {
   occ::handle<V3d_Viewer> visu_, visuImage_;
   occ::handle<V3d_View> vueImage_;
   occ::handle<AIS_InteractiveContext> contexteImage_;
+  occ::handle<V3d_AmbientLight> imageAmbiante_;
+  occ::handle<V3d_DirectionalLight> imageCle_, imageCiel_;
+  occ::handle<Graphic3d_CubeMap> imageCube_;
+  std::string imageSigCube_, imageSigActif_ = "cao";
   wxWindow* fenetreImage_ = nullptr;
   occ::handle<V3d_View> vue_;
   occ::handle<AIS_InteractiveContext> contexte_;
@@ -237,7 +315,7 @@ class Vue3D : public wxWindow {
   double dernierPoint_[3] = {0, 0, 0};  // les filets cosmétiques
   occ::handle<AIS_Shape> aretesVives_, aretesLisses_;  // les traits de la pièce, hors du choix d'un congé
   std::vector<occ::handle<AIS_Shape>> reflets_;  // chaque corps renversé sous le sol
-  double sol_ = 0, msAffichage_ = 0, msImage_ = 0;
+  double sol_ = 0, msAffichage_ = 0, msImage_ = 0, msOmbre_ = 0;
   bool refletsVus_ = false;
   bool enChoix_ = false;
   double toleranceAvant_ = 2;

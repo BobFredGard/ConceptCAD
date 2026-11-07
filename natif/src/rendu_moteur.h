@@ -12,6 +12,7 @@
 
 #include <AIS_InteractiveContext.hxx>
 #include <AIS_Shape.hxx>
+#include <Graphic3d_CubeMap.hxx>
 #include <OpenGl_GraphicDriver.hxx>
 #include <TopoDS_Shape.hxx>
 #include <V3d_DirectionalLight.hxx>
@@ -61,6 +62,10 @@ struct ImageLineaire {
 
 // Le fond « Image » : la lumière de l'image HDRI vue dans chaque direction de la caméra (rgb linéaires, du haut vers le bas)
 void fondPanorama(const ReglagesRendu& s, const CameraRendu& c, double focale, int w, int h, std::vector<float>& rgb);
+
+// Le ciel d'une ambiance pour la vue de modélisation, à multiplier par ECH_CUBE (l'intensité de sa lumière ambiante)
+const double ECH_CUBE = 16;
+occ::handle<Graphic3d_CubeMap> cubeVue(const std::string& amb, const ImageHdri* h, double rot, double hemi, std::array<double, 2>& cle);
 
 class MoteurRendu {
  public:

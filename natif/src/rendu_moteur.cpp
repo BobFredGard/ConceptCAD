@@ -234,7 +234,7 @@ occ::handle<Image_PixMap> panorama(const Ambiance& A, double rot, double force) 
 
 // Le même ciel en cube pour le calcul rapide. OCCT lit ses reflets en 8 bits : la lumière est divisée par ECH_RAPIDE, l'image multipliée à la sortie.
 const double ECH_RAPIDE = 16;
-occ::handle<Graphic3d_CubeMap> cubeAmbiance(const Ambiance& A, double rot, double force, const V3* sol) {
+occ::handle<Graphic3d_CubeMap> cubeAmbiance(const Ambiance& A, double rot, double force, const V3* sol, double hemi = 0) {
   const int N = 256;
   NCollection_Array1<occ::handle<Image_PixMap>> F(0, 5);
   // Les six faces d'OCCT (+X -X +Y -Y +Z -Z), rangées comme le cube de GL : le « haut » du cube est Y
@@ -259,6 +259,11 @@ occ::handle<Graphic3d_CubeMap> cubeAmbiance(const Ambiance& A, double rot, doubl
         // OCCT travaille Y en haut dans ses cubes : la direction du monde (Z en haut) s'en déduit
         const V3 d{d0[0] / L, -d0[2] / L, d0[1] / L};
         V3 c = lumiere(A, tourne(d, rot));
+        // HemisphereLight de la vue du navigateur : le ciel blanc, le sol #444444
+        if (hemi > 0) {
+          const double t = 0.5 * (d[2] + 1), v = hemi * (0.058 + (1 - 0.058) * t);
+          for (int k = 0; k < 3; k++) c[k] += v;
+        }
         // Sans lancer de rayons, rien ne se reflète : un sol clair remplace le bas du ciel
         if (sol && d[2] < 0) {
           const double t = smooth(0.0, 0.15, -d[2]);
@@ -302,6 +307,12 @@ Graphic3d_MaterialAspect matiere(const MatiereRendu* d, unsigned hex) {
   return m;
 }
 }  // namespace
+
+occ::handle<Graphic3d_CubeMap> cubeVue(const std::string& amb, const ImageHdri* h, double rot, double hemi, std::array<double, 2>& cle) {
+  const Ambiance A = ambiance(amb, h, 1, true);
+  cle = A.cle;
+  return cubeAmbiance(A, rot, 1, nullptr, hemi);
+}
 
 MoteurRendu::MoteurRendu(wxWindow* parent, const occ::handle<OpenGl_GraphicDriver>& pilote) {
   visu_ = new V3d_Viewer(pilote);

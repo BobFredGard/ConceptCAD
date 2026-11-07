@@ -3,6 +3,8 @@
 #include "rendu_moteur.h"
 #include "rendu_finition.h"
 #include "rendu_atelier.h"
+#include "fiche_vue.h"
+#include <wx/stdpaths.h>
 #include "plan_panneau.h"
 #include "plan_vue.h"
 #include "construction.h"
@@ -57,6 +59,7 @@ enum { ID_ARBRE = 2001, ID_PROPS = 2002, ID_ETAT = 2003 };
 const char* const PROP_CONGE_RAYON = "conge_rayon", * const PROP_CONGE_TANGENTES = "conge_tangentes", * const PROP_CONGE_ARETE = "conge_arete_";
 const char* const PROP_PROFONDEUR = "profondeur", * const PROP_OPERATION = "operation", * const PROP_ETENDUE = "etendue", * const PROP_DIRECTION = "direction", * const PROP_INVERSER = "inverser";
 
+wxString memoireVue() { return wxStandardPaths::Get().GetUserConfigDir() + wxFileName::GetPathSeparator() + L"ConceptCADNatif-vue.json"; }
 const wxColour C_SCENE(0x13, 0x15, 0x19), C_CARTE(0x2a, 0x2c, 0x30), C_CLAIR(0xf5, 0xf5, 0xf7), C_GRIS(0x98, 0x98, 0x9d);
 wxFont policeArial(const wxWindow* w, double px, bool gras = false) {
   wxFontInfo i(wxSize(0, static_cast<int>(std::lround(px * w->GetDPIScaleFactor()))));
@@ -422,7 +425,7 @@ void Cadre::creerEnvironnement() {
     const char* icone;
   } vueIcones[] = {{L"Rendu", nullptr}, {L"Rendu direct", nullptr}, {L"Réglages de la vue", nullptr}, {L"Vue initiale", "cadrer"}, {L"Annuler le mouvement de vue", "orbite"}};
   for (const auto& v : vueIcones) {
-    auto* b = new BoutonEsquisse(scene_, wxID_ANY, v.nom, wxString(v.nom) + (v.icone && wxString(v.icone) == "cadrer" ? L"" : PAS_ENCORE), BoutonEsquisse::ENCADRE);
+    auto* b = new BoutonEsquisse(scene_, wxID_ANY, v.nom, wxString(v.nom) + (wxString(v.nom).StartsWith(L"Annuler") ? PAS_ENCORE : L""), BoutonEsquisse::ENCADRE);
     b->fond(C_SCENE);
     if (v.icone) b->icone(v.icone, C_CLAIR);
     boutonsVue_.push_back(b);
@@ -431,13 +434,53 @@ void Cadre::creerEnvironnement() {
   boutonsVue_[1]->iconeComplete(iconeVue(1), C_CLAIR);
   boutonsVue_[2]->titre(L"⚙");
   for (size_t i = 0; i < boutonsVue_.size(); i++) {
-    if (i == 3 || i == 0) continue;
+    if (i != 4) continue;
     boutonsVue_[i]->disponible(false);
     const wxString nom = boutonsVue_[i]->GetLabel();
     boutonsVue_[i]->surClic = [this, nom] { indisponible(nom); };
   }
   boutonsVue_[3]->surClic = [this] { vue_->vueInitiale(); };
   boutonsVue_[0]->surClic = [this] { changerAtelier(Atelier::RENDU); };
+  boutonsVue_[1]->SetToolTip(L"Rendu direct : la vue rendue comme dans l'atelier RENDU (lumière, reflets, fond, matériaux de chaque pièce). Fond et ambiance se règlent dans la fenêtre RENDU.");
+  boutonsVue_[1]->surClic = [this] {
+    optionsVue_.env = optionsVue_.env == "actuel" ? "rendu" : "actuel";
+    envModifie_ = true;
+    majVueEnv();
+    memoriserVue();
+    if (ficheVue_->IsShown()) ficheVue_->refaire();
+  };
+  boutonsVue_[2]->surClic = [this] { basculerFicheVue(); };
+  ficheVue_ = new FicheVue(scene_, vue_);
+  ficheVue_->Show(false);
+  ficheVue_->o = &optionsVue_;
+  ficheVue_->surChange = [this] {
+    envModifie_ = true;
+    majVueEnv();
+  };
+  ficheVue_->surFin = [this] { memoriserVue(); };
+  {
+    bool essai = false;
+    for (int i = 1; i < wxTheApp->argc; i++) essai = essai || wxString(wxTheApp->argv[i]).StartsWith(L"--");
+    std::ifstream f(memoireVue().ToStdWstring());
+    if (f && !essai) {
+      try {
+        std::stringstream t;
+        t << f.rdbuf();
+        const plan::J j = plan::J::parse(t.str());
+        OptionsVue& o = optionsVue_;
+        o.env = j.value("env", o.env);
+        o.sol = j.value("sol", o.sol);
+        o.miroir = j.value("miroir", o.miroir);
+        o.ombre = j.value("ombre", o.ombre);
+        o.aretes = j.value("aretes", o.aretes);
+        o.axes = j.value("axes", o.axes);
+        o.zoomInverse = j.value("zoomInv", o.zoomInverse);
+        o.orbiteLibre = j.value("libre", o.orbiteLibre);
+        o.fov = j.value("fov", o.fov);
+      } catch (const std::exception&) {
+      }
+    }
+  }
 
   etatVue_ = new EtatVue(scene_, ID_ETAT, C_SCENE);
   fil_ = new FilFonctions(scene_);
@@ -458,7 +501,21 @@ void Cadre::creerEnvironnement() {
   page_ = new PageAtelier(scene_);
   planVue_ = new PlanVue(scene_);
   planVue_->Hide();
-  planVue_->rendreImage = [this](const plan::DemandeImage& d, wxImage& im) { return vue_->imagePlan(d, im); };
+  planVue_->rendreImage = [this](const plan::DemandeImage& d, wxImage& im) {
+    if (!d.reel) return vue_->imagePlan(d, im);
+    OptionsVue o = optionsVue_;
+    const std::string avant = o.env;
+    optionsVue_.env = "rendu";
+    ambianceVue();
+    o = optionsVue_;
+    optionsVue_.env = avant;
+    ambianceVue();
+    plan::J racine;
+    renduDocCourant(racine);
+    std::vector<ApparenceVue> L;
+    for (const PieceRendu& p : renduPieces(racine)) L.push_back({p.forme, p.cle, p.couleur});
+    return vue_->imagePlan(d, im, &o, &L);
+  };
   planVue_->surChangement = [this](const plan::J& mep, const wxString&) { changerPlan(mep); };
   planVue_->surEtat = [this](const wxString& t) { etat(t); };
   planVue_->surVuesAutomatiques = [this](const plan::J& mep) { modifierStructure(doc_, [&](nlohmann::ordered_json& d) { d["mep"] = mep; }); };
@@ -500,6 +557,7 @@ void Cadre::creerEnvironnement() {
   atelierRendu_->surPanneau = [this] { CallAfter([this] { if (atelier_ == Atelier::RENDU) panneauRendu_->refaire(); }); };
   atelierRendu_->surDoc = [this](const plan::J& r) { changerRendu(r); };
   atelierRendu_->surFermer = [this] { changerAtelier(avantRendu_); };
+  CallAfter([this] { majVueEnv(false); });
   planVue_->surSelection = [this] {
     CallAfter([this] {
       if (atelier_ == Atelier::PLAN) panneauPlan_->refaire();
@@ -578,6 +636,14 @@ void Cadre::placerScene() {
   poser(boutonsVue_[3], t.x - 104, 7, 18, 18);
   poser(boutonsVue_[4], t.x - 104, 27, 18, 18);
   for (BoutonEsquisse* b : boutonsVue_) b->Show(volume);
+  if (ficheVue_ && ficheVue_->IsShown()) {
+    if (!volume) ficheVue_->Show(false);
+    else {
+      const int h = std::min(t.y - 50, scene_->ToDIP(wxSize(0, ficheVue_->hauteurVoulue())).y);
+      poser(ficheVue_, t.x - 392, 46, 296, h);
+      ficheVue_->Raise();
+    }
+  }
   poser(fil_, 13, t.y - 60, t.x - 26, 48);
   fil_->Show(cao);
   const int largeurEtat = std::min(t.x - 40, etatVue_->largeurVoulue() + 8);
@@ -601,6 +667,7 @@ void Cadre::changerAtelier(Atelier a) {
   }
   if (a == Atelier::RENDU && atelier_ != Atelier::RENDU) avantRendu_ = atelier_;
   if (atelier_ == Atelier::RENDU && a != Atelier::RENDU) atelierRendu_->fermer();
+  const bool sortRendu = atelier_ == Atelier::RENDU;
   atelier_ = a;
   barreHaute_->atelier(a);
   ruban_->atelier(a);
@@ -608,6 +675,7 @@ void Cadre::changerAtelier(Atelier a) {
   montrerAtelier();
   placerScene();
   centre_->Layout();
+  if (sortRendu || a == Atelier::CAO || a == Atelier::FAO) majVueEnv();
 }
 
 // Molette : zoom. Bouton du milieu : déplacer ; double-clic du milieu : toute la feuille.
@@ -617,6 +685,10 @@ void Cadre::montrerPlan() {
   try {
     if (!base.empty()) texte = texteEnregistre(doc_, base);
   } catch (const std::exception&) {
+  }
+  {
+    const ReglagesRendu& st = atelierRendu_->st;
+    planVue_->sigReel(st.amb + "|" + std::to_string(st.envRot) + "|" + std::to_string(st.envInt) + "|" + std::to_string(reinterpret_cast<uintptr_t>(st.hdri.get())));
   }
   planVue_->charger(texte, doc_, dernierRejeu_, asmSolides_);
   panneauPlan_->refaire();
@@ -666,6 +738,139 @@ void Cadre::changerRendu(const plan::J& rendu) {
   retablissements_.clear();
   majTitre();
   if (atelier_ == Atelier::RENDU) montrerRendu(false);
+  else majVueEnv();
+}
+
+// vEnvCfg : l'ambiance de la vue ; en Rendu direct, celle de la fenêtre RENDU
+void Cadre::majVueEnv(bool apparences) {
+  if (!atelierRendu_ || !ficheVue_) return;  // pendant la construction de la fenêtre
+  ambianceVue();
+  OptionsVue& o = optionsVue_;
+  if (o.env != "actuel" && apparences && docOuvert_) {
+    plan::J racine;
+    renduDocCourant(racine);
+    std::vector<ApparenceVue> L;
+    for (const PieceRendu& p : renduPieces(racine)) L.push_back({p.forme, p.cle, p.couleur});
+    vue_->poserApparences(L);
+  }
+  vue_->options(o);
+  const bool actif = o.env != "actuel";
+  boutonsVue_[1]->fond(actif ? wxColour(0xff, 0x9f, 0x0a) : C_SCENE);
+  boutonsVue_[1]->iconeComplete(iconeVue(1), actif ? wxColour(0x1c, 0x1c, 0x1e) : C_CLAIR);
+  boutonsVue_[1]->Refresh();
+}
+
+void Cadre::ambianceVue() {
+  static const std::map<std::string, std::string> SOL{{"studio", "#b4b8bf"}, {"clair", "#e2e4e8"}, {"atelier", "#272b31"}, {"exterieur", "#7d8894"}, {"noir", "#0b0b0d"}};
+  static const std::map<std::string, std::pair<std::string, std::string>> FOND{{"studio", {"#d3d6db", "#9a9fa7"}}, {"clair", {"#f4f5f7", "#cdd1d7"}}, {"atelier", {"#3a4049", "#121417"}}, {"exterieur", {"#b7c5d4", "#6a7684"}}, {"noir", {"#1b1b1e", "#000000"}}};
+  OptionsVue& o = optionsVue_;
+  const ReglagesRendu& st = atelierRendu_->st;
+  const auto dans = [](const auto& M, const std::string& k) { return M.count(k) ? k : std::string("studio"); };
+  o.hdri = nullptr;
+  o.support = st.support;
+  if (o.env == "rendu") {
+    o.amb = st.amb == "hdri" && st.hdri ? "hdri" : dans(SOL, st.amb);
+    o.hdri = o.amb == "hdri" ? st.hdri : nullptr;
+    o.rot = st.envRot;
+    o.force = st.envInt;
+    const std::string amb = dans(SOL, st.amb);
+    if (st.fond == "degrade") o.fond1 = st.fc1, o.fond2 = st.fc2;
+    else if (st.fond == "uni") o.fond1 = o.fond2 = st.fc1;
+    else o.fond1 = FOND.at(amb).first, o.fond2 = FOND.at(amb).second;
+    o.solCouleur = !st.solCol.empty() ? st.solCol : st.fond == "degrade" || st.fond == "uni" ? o.fond2 : SOL.at(amb);
+  } else if (o.env != "actuel") {
+    o.amb = dans(SOL, o.env);
+    o.rot = 0;
+    o.force = 1;
+    o.fond1 = FOND.at(o.amb).first;
+    o.fond2 = FOND.at(o.amb).second;
+    o.solCouleur = SOL.at(o.amb);
+  }
+}
+
+void Cadre::basculerFicheVue() {
+  if (ficheVue_->IsShown()) {
+    ficheVue_->Show(false);
+    return;
+  }
+  ficheVue_->support = &atelierRendu_->st.support;
+  ficheVue_->refaire();
+  ficheVue_->Show(true);
+  placerScene();
+}
+
+// Les préférences d'affichage suivent l'utilisateur d'une pièce à l'autre ; les essais automatiques partent toujours des réglages de départ
+void Cadre::memoriserVue() {
+  if (essaiMenu_) return;
+  const OptionsVue& o = optionsVue_;
+  plan::J j = {{"env", o.env}, {"sol", o.sol}, {"miroir", o.miroir}, {"ombre", o.ombre}, {"aretes", o.aretes}, {"axes", o.axes}, {"zoomInv", o.zoomInverse}, {"libre", o.orbiteLibre}, {"fov", o.fov}};
+  std::ofstream f(memoireVue().ToStdWstring());
+  f << j.dump();
+}
+
+// À l'ouverture d'une pièce : son environnement (clé env) et son affichage (clé view), s'ils existent
+void Cadre::lireEnvVue() {
+  plan::J racine;
+  renduDocCourant(racine);
+  const plan::J& d = racine.contains("doc") && racine["doc"].is_object() ? racine["doc"] : racine;
+  OptionsVue& o = optionsVue_;
+  envModifie_ = false;
+  if (d.contains("env") && d["env"].is_object()) {
+    const plan::J& e = d["env"];
+    o.env = e.value("v", std::string("actuel"));
+    o.sol = e.value("sol", true);
+    o.miroir = e.value("miroir", true);
+    o.ombre = e.value("ombre", true);
+    if (e.contains("rd") && e["rd"].is_object()) atelierRendu_->lireEnv(e["rd"]);
+  }
+  if (d.contains("view") && d["view"].is_object()) {
+    const plan::J& v = d["view"];
+    if (v.contains("edges") && v["edges"].is_string()) o.aretes = v["edges"].get<std::string>() != "off";
+    if (v.contains("mirror") && v["mirror"].is_boolean() && !(d.contains("env") && d["env"].is_object())) o.miroir = v["mirror"].get<bool>();
+    if (v.contains("axes") && v["axes"].is_boolean()) o.axes = v["axes"].get<bool>();
+    if (v.contains("zoomInv") && v["zoomInv"].is_boolean()) o.zoomInverse = v["zoomInv"].get<bool>();
+    o.coupe = v.contains("clipOn") && v["clipOn"].is_boolean() && v["clipOn"].get<bool>();
+    if (v.contains("clipPos") && v["clipPos"].is_number()) o.coupePos = v["clipPos"].get<double>();
+    if (v.contains("clipFlip") && v["clipFlip"].is_boolean()) o.coupeInverse = v["clipFlip"].get<bool>();
+    if (v.contains("clipCap") && v["clipCap"].is_boolean()) o.coupeRemplie = v["clipCap"].get<bool>();
+    if (v.contains("clipAxis") && v["clipAxis"].is_string()) {
+      const std::string x = v["clipAxis"].get<std::string>();
+      o.coupeAxe = x == "X" ? 0 : x == "Y" ? 1 : 2;
+    }
+  }
+  majVueEnv(false);
+  if (ficheVue_->IsShown()) ficheVue_->refaire();
+}
+
+// Une pièce dont la vue n'a pas été touchée garde son fichier à l'identique
+void Cadre::ecrireEnvVue() {
+  if (!envModifie_) return;
+  envModifie_ = false;
+  const OptionsVue& o = optionsVue_;
+  plan::J rd = atelierRendu_->ecrireEnv();
+  try {
+    modifierStructure(doc_, [&](nlohmann::ordered_json& d) {
+      nlohmann::ordered_json e = nlohmann::ordered_json::object();
+      e["v"] = o.env;
+      e["sol"] = o.sol;
+      e["miroir"] = o.miroir;
+      e["ombre"] = o.ombre;
+      e["rd"] = rd;
+      d["env"] = e;
+      nlohmann::ordered_json v = d.contains("view") && d["view"].is_object() ? d["view"] : nlohmann::ordered_json::object();
+      v["edges"] = o.aretes ? "on" : "off";
+      v["mirror"] = o.miroir;
+      v["axes"] = o.axes;
+      v["zoomInv"] = o.zoomInverse;
+      v["clipOn"] = o.coupe;
+      v["clipPos"] = o.coupePos;
+      v["clipFlip"] = o.coupeInverse;
+      v["clipAxis"] = o.coupeAxe == 0 ? "X" : o.coupeAxe == 1 ? "Y" : "Z";
+      v["clipCap"] = o.coupeRemplie;
+      d["view"] = v;
+    });
+  } catch (const std::exception&) {
+  }
 }
 
 void Cadre::montrerAtelier() {
@@ -1250,6 +1455,7 @@ bool Cadre::ecrire(const std::wstring& cible) {
 bool Cadre::enregistrer() {
   if (!docOuvert_) return false;
   if (doc_.chemin.empty()) return enregistrerSous();  // pièce nouvelle
+  ecrireEnvVue();
   return ecrire(doc_.chemin);
 }
 
@@ -1264,6 +1470,7 @@ bool Cadre::enregistrerSous() {
     const std::string nom = wxFileName(cible).GetName().utf8_string();
     changerStructure([&](nlohmann::ordered_json& j) { j["name"] = nom; });
   }
+  ecrireEnvVue();
   return ecrire(cible);
 }
 
@@ -1382,6 +1589,7 @@ void Cadre::apresOuverture() {
   messagesMontres_.clear();
   majTitre();
   remplirArbre();
+  lireEnvVue();
   if (solideCalculable_) {
     montrerRien();
     recalculer();
@@ -2074,6 +2282,13 @@ double Cadre::recalculer() {
       }
     }
     vue_->afficher(montree, ajusterVue_ && !doc_.assemblage, teintes, transparences);
+    if (optionsVue_.env != "actuel") {
+      plan::J racine;
+      renduDocCourant(racine);
+      std::vector<ApparenceVue> L;
+      for (const PieceRendu& p : renduPieces(racine)) L.push_back({p.forme, p.cle, p.couleur});
+      vue_->apparences(L);
+    }
     std::vector<std::vector<gp_Pnt>> helices, anneaux;
     for (const SpiraleFilet& s : r.spirales) {
       if (std::find(doc_.corpsMasques.begin(), doc_.corpsMasques.end(), s.corps) != doc_.corpsMasques.end()) continue;
@@ -2633,6 +2848,7 @@ void Cadre::menuCorps(const std::string& id, bool vue3d) {
     m.Append(M_ACTIF, L"● Corps actif")->Enable(id != doc_.corpsActif);
   }
   m.AppendSeparator();
+  if (vue3d) m.Append(wxID_HIGHEST + 7390, L"✨ Matériau de rendu…");
   m.Append(M_COULEUR, L"🎨 Couleur…");
   m.Append(M_TRANSPARENCE, L"👻 Transparence…");
   m.AppendSeparator();
@@ -2646,7 +2862,15 @@ void Cadre::menuCorps(const std::string& id, bool vue3d) {
     m.Append(M_VERS_COMPOSANT_CORPS, L"➡ Déplacer vers un composant…");
   }
   const int choix = choisirMenu(m);
-  if (choix == M_STEP) {
+  if (choix == wxID_HIGHEST + 7390) {
+    // Le menu des matériaux de l'atelier Rendu ; la vue en ambiance suit tout de suite
+    plan::J racine;
+    const plan::J r = renduDocCourant(racine);
+    const std::vector<PieceRendu> L = renduPieces(racine);
+    atelierRendu_->preparerMenu(L, r);
+    for (size_t i = 0; i < L.size(); i++)
+      if (L[i].id == id) atelierRendu_->menuPiece(static_cast<int>(i), this);
+  } else if (choix == M_STEP) {
     exporter("step", id);
   } else if (choix == M_DEPLACER) {
     creerFonction([&](nlohmann::ordered_json& d) { return creerDeplacement(d, id, indiceMarque()); }, L"Déplacer : ajoutez une translation ou une rotation dans Paramètres.");
@@ -3159,6 +3383,31 @@ bool Cadre::essaiEsquisse(const std::wstring& fichier, int rang, const std::wstr
       }
     }
     if (e.contains("renduEssai")) renduEssai(e["renduEssai"]);
+    if (e.contains("vue")) {
+      const plan::J& q = e["vue"];
+      OptionsVue& o = optionsVue_;
+      if (q.contains("reglages")) atelierRendu_->lireEnv(q["reglages"]);
+      if (q.contains("env")) o.env = q["env"].get<std::string>();
+      if (q.contains("sol")) o.sol = q["sol"].get<bool>();
+      if (q.contains("miroir")) o.miroir = q["miroir"].get<bool>();
+      if (q.contains("ombre")) o.ombre = q["ombre"].get<bool>();
+      if (q.contains("aretes")) o.aretes = q["aretes"].get<bool>();
+      if (q.contains("axes")) o.axes = q["axes"].get<bool>();
+      if (q.contains("fov")) o.fov = q["fov"].get<double>();
+      if (q.contains("coupe")) o.coupe = q["coupe"].get<bool>();
+      if (q.contains("axe")) o.coupeAxe = q["axe"].get<int>();
+      if (q.contains("pos")) o.coupePos = q["pos"].get<double>();
+      if (q.contains("inverse")) o.coupeInverse = q["inverse"].get<bool>();
+      if (q.contains("remplir")) o.coupeRemplie = q["remplir"].get<bool>();
+      if (q.contains("plan")) o.coupePlan = q["plan"].get<bool>();
+      majVueEnv();
+      if (q.contains("vue")) vue_->vueStandard(q["vue"].get<std::string>());
+      if (q.value("fiche", false) != ficheVue_->IsShown()) basculerFicheVue();
+      if (q.contains("temps")) {
+        std::ofstream f(wxString::FromUTF8(q["temps"].get<std::string>()).ToStdWstring());
+        f << vue_->msOmbre() << " ms\n";
+      }
+    }
     if (e.contains("rendu")) {
       const plan::J& q = e["rendu"];
       AtelierRendu& A = *atelierRendu_;
