@@ -147,6 +147,17 @@ fn ecrire(request: Request) -> Result<(), String> {
     ecrire_sur(Path::new(&chemin), octets).map_err(|e| e.to_string())
 }
 
+/// Journal provisoire de l'essai Mac : une ligne par étape, sur le Bureau (blocage à l'ouverture d'une pièce).
+#[tauri::command(async)]
+fn journal(texte: String) -> Result<(), String> {
+    let chemin = match std::env::var("CC_JOURNAL") {
+        Ok(c) => PathBuf::from(c),
+        Err(_) => PathBuf::from(std::env::var("HOME").map_err(|e| e.to_string())?).join("Desktop").join("ConceptCAD-journal.txt"),
+    };
+    let mut f = fs::OpenOptions::new().create(true).append(true).open(chemin).map_err(|e| e.to_string())?;
+    writeln!(f, "{texte}").map_err(|e| e.to_string())
+}
+
 /// Compresse ou décompresse pour le pont : sur Mac, ne dépend pas de la version de Safari.
 #[tauri::command]
 fn gzip(request: Request) -> Result<Response, String> {
@@ -351,7 +362,7 @@ fn main() {
             }
         })
         .invoke_handler(tauri::generate_handler![
-            dialogue_ouvrir, dialogue_enregistrer, dialogue_dossier, lire, infos, lister, creer_dossier, ecrire, gzip, titre, fichier_demarrage, fermeture_recue, fermer, maj_chercher, maj_telecharger, maj_installer
+            dialogue_ouvrir, dialogue_enregistrer, dialogue_dossier, lire, infos, lister, creer_dossier, ecrire, gzip, journal, titre, fichier_demarrage, fermeture_recue, fermer, maj_chercher, maj_telecharger, maj_installer
         ]);
     #[cfg(target_os = "macos")]
     let constructeur = constructeur.menu(menu_mac).on_menu_event(|app, e| {
