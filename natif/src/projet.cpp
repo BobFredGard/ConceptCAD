@@ -286,6 +286,8 @@ static void lireEsquisse(const json& js, Document& d, std::map<std::string, int>
       s.hote.h = h["h"].get<double>();
       s.hote.aH = true;
     }
+    if (h.contains("mv") && h["mv"].is_array())
+      for (const auto& m : h["mv"]) s.hote.mv.push_back({texte(m, "id"), m.contains("s") && m["s"].is_number() ? m["s"].get<double>() : 1.0});
   }
   d.esquisses.push_back(std::move(s));
 }

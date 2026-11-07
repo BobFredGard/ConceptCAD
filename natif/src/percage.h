@@ -14,5 +14,13 @@
 struct FiletsPercage {
   TopoDS_Shape vides;  // filet modélisé : creusé à la fin du rejeu du corps, le perçage n'est ici qu'un avant-trou lisse
   std::vector<SpiraleFilet> spirales;  // filet cosmétique
+  double longueur = 0;  // f._thLen, filet cosmétique : la mise en plan le dessine
+  bool taraude = false;
 };
+// holeNorm : ce que la mise en plan lit d'un perçage
+struct InfosPercage {
+  double d = 0, r = 0, stD = 0, stH = 0, cbD = 0, cbH = 0, csD = 0, csA = 0, depth = 0, tip = 0, entree = 0;
+  std::string kind, end, pilot;
+};
+InfosPercage percageInfos(const Fonction& f);
 std::vector<TopoDS_Shape> formePercage(const Fonction& f, const Esquisse& s, const TopoDS_Shape& base, std::vector<std::string>& alertes, FiletsPercage* fil = nullptr);

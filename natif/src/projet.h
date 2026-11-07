@@ -63,6 +63,7 @@ struct Hote {
   double x = 0, y = 0, h = 0;
   bool aH = false;
   std::string nom;  // nom de la face, écrit seulement quand l'esquisse est créée ici
+  std::vector<std::pair<std::string, double>> mv;  // host.mv : les déplacements de cette face que l'esquisse suit (id, sens)
 };
 
 struct Esquisse {

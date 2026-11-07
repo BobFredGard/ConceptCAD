@@ -68,6 +68,7 @@ struct ChampFiche;
 struct LienArbre;
 namespace normalises { struct Piece; }
 class FenetreNormalises;
+class PlanVue;
 class Cadre : public wxFrame {
  public:
   Cadre();
@@ -444,6 +445,9 @@ public:
   EtatVue* etatVue_ = nullptr;
   FilFonctions* fil_ = nullptr;
   PageAtelier* page_ = nullptr;
+  PlanVue* planVue_ = nullptr;
+  ResultatRejeu dernierRejeu_;  // ce que voit la mise en plan
+  void montrerPlan();
   Atelier atelier_ = Atelier::CAO;
   bool arbreReplie_ = false;
   Vue3D* vue_ = nullptr;

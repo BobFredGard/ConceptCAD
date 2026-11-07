@@ -1,5 +1,6 @@
 #include <wx/config.h>
 #include "cadre.h"
+#include "plan_vue.h"
 #include "construction.h"
 
 #include <BRepBndLib.hxx>
@@ -437,6 +438,8 @@ void Cadre::creerEnvironnement() {
   };
   fil_->surMarqueur = [this](int b) { bougerMarqueur(b); };
   page_ = new PageAtelier(scene_);
+  planVue_ = new PlanVue(scene_);
+  planVue_->Hide();
   page_->Hide();
 
   // Les fenêtres posées sur la vue 3D : OpenGL n'a pas le droit de les recouvrir
@@ -487,7 +490,9 @@ void Cadre::placerScene() {
   poser(vue_, 0, 0, t.x, t.y);
   vue_->Show(volume);
   poser(page_, 0, 0, t.x, t.y);
-  page_->Show(!volume);
+  page_->Show(rendu);
+  poser(planVue_, 0, 0, t.x, t.y);
+  planVue_->Show(atelier_ == Atelier::PLAN);
   const int xo[] = {8, 72, 140}, lo[] = {63, 67, 48};
   for (int i = 0; i < 3; i++) {
     poser(onglets_[i], xo[i], 14, lo[i], 20);
@@ -526,6 +531,18 @@ void Cadre::changerAtelier(Atelier a) {
   centre_->Layout();
 }
 
+// Molette : zoom. Bouton du milieu : déplacer ; double-clic du milieu : toute la feuille.
+void Cadre::montrerPlan() {
+  const std::string base = !doc_.texteBase.empty() ? doc_.texteBase.str() : texteDuFichier(doc_);
+  std::string texte = base;
+  try {
+    if (!base.empty()) texte = texteEnregistre(doc_, base);
+  } catch (const std::exception&) {
+  }
+  planVue_->charger(texte, doc_, dernierRejeu_);
+  noteDroite_->SetLabel(planVue_->resume() + L"\n\nMolette : zoom. Bouton du milieu : déplacer la feuille ; double-clic du milieu : la voir en entier.\n\nPour l'instant on regarde : modifier les vues et les cotes viendra ensuite.");
+}
+
 void Cadre::montrerAtelier() {
   const bool enEsquisse = esquisseOuverte_ >= 0;
   ruban_->Show(!enEsquisse && atelier_ != Atelier::RENDU);
@@ -544,8 +561,7 @@ void Cadre::montrerAtelier() {
       break;
     case Atelier::PLAN:
       carteDroite_->titre(L"PARAMÈTRES");
-      noteDroite_->SetLabel(L"Les planches, les vues et les cotes de mise en plan ne sont pas encore dans le logiciel Windows.");
-      page_->montrer(L"Mise en plan", L"Pas encore dans le logiciel Windows : elle reste dans le navigateur.", true);
+      montrerPlan();
       break;
     case Atelier::RENDU:
       carteDroite_->titre(L"PARAMÈTRES — RENDU");
@@ -1872,13 +1888,18 @@ double Cadre::recalculer() {
   msMaillage_ = tCalcul - msRejeu_;
   forme_ = r.forme;
   formesCorps_ = r.corps;
+  dernierRejeu_ = r;
+  if (planVue_) {
+    planVue_->oublier();
+    if (atelier_ == Atelier::PLAN) montrerPlan();
+  }
   {
     // bodyColorOf : la fiche du corps, sinon la teinte de la pièce, sinon la palette automatique selon le rang
     static const unsigned PALETTE[] = {0x0a84ff, 0x30d158, 0xff9f0a, 0xbf5af2, 0xff453a, 0x64d2ff, 0xffd60a, 0x5e5ce6};
     std::vector<std::pair<TopoDS_Shape, unsigned>> teintes;
     std::vector<std::pair<TopoDS_Shape, double>> transparences;
     std::vector<TopoDS_Shape> vus;
-    for (const auto& [id, s] : r.corps) {
+    for (const auto& [id, s] : r.corpsVus) {
       if (std::find(doc_.corpsMasques.begin(), doc_.corpsMasques.end(), id) != doc_.corpsMasques.end()) continue;  // l'œil du corps : la vue seule
       vus.push_back(s);
       const size_t i = std::find(doc_.corps.begin(), doc_.corps.end(), id) - doc_.corps.begin();
@@ -2941,6 +2962,11 @@ bool Cadre::essaiEsquisse(const std::wstring& fichier, int rang, const std::wstr
     }
     wxYield();
     d = vueEsquisse_->dessin();
+    if (e.contains("atelier")) {
+      const std::string a = e["atelier"].get<std::string>();
+      changerAtelier(a == "plan" ? Atelier::PLAN : a == "fao" ? Atelier::FAO : a == "rendu" ? Atelier::RENDU : Atelier::CAO);
+      wxYield();
+    }
     if (e.contains("capture")) {
       vueEsquisse_->Update();
       capturerFenetre(dossier + L"\\" + wxString::FromUTF8(e["capture"].get<std::string>()).ToStdWstring() + L".png");

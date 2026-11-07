@@ -169,6 +169,14 @@ std::optional<double> prochaineSortie(const TopoDS_Shape& sh, const gp_Pnt& P, c
 }
 }  // namespace
 
+InfosPercage percageInfos(const Fonction& f) {
+  const Norme N = normer(f.percage);
+  InfosPercage r;
+  r.d = N.d, r.r = N.r, r.stD = N.stD, r.stH = N.stH, r.cbD = N.cbD, r.cbH = N.cbH, r.csD = N.csD, r.csA = N.csA, r.depth = N.depth, r.tip = N.tip, r.entree = entreeTrou(N);
+  r.kind = N.kind, r.end = N.end, r.pilot = N.pilot;
+  return r;
+}
+
 std::vector<TopoDS_Shape> formePercage(const Fonction& f, const Esquisse& s, const TopoDS_Shape& base, std::vector<std::string>& alertes, FiletsPercage* fil) {
   std::vector<gp_Pnt> centres;
   for (const Entite& e : s.entites) {
@@ -321,6 +329,8 @@ std::vector<TopoDS_Shape> formePercage(const Fonction& f, const Esquisse& s, con
   }
   if (fil) {
     fil->vides = composeFilets(vides);
+    fil->longueur = thLen;
+    fil->taraude = taraude;
     // holeThreadPaths : le dessin du filet qui n'est pas dans le solide
     if (const json_t* t = filetageDe(F.size); taraude && !F.model && t) {
       const double pz = F.p != 0 ? F.p : (*t)[2].get<double>(), Rn = (*t)[1].get<double>() / 2;

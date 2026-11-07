@@ -156,6 +156,11 @@ bool replacerHote(Document& d, Esquisse& s) {  // resolveSketchHost
     h = std::max(sp.lo, std::min(sp.hi, h));
   } else {
     h = s.hote.tag == "TOP" ? sp.hi : sp.lo;
+    // Déplacements de cette face : l'esquisse suit leur distance
+    for (const auto& [id, sens] : s.hote.mv) {
+      const Fonction* mf = d.fonction(id);
+      if (mf && mf->type == "xmove" && mf->visible) h += mf->dist * (sens != 0 ? sens : 1);
+    }
   }
   Vec3 o2;
   for (int i = 0; i < 3; i++) o2[i] = hs->o[i] + hs->n[i] * h + hs->u[i] * x + hs->v[i] * y;
@@ -794,6 +799,9 @@ TopoDS_Shape gBaseTraversante;
 bool gFiletsSautes = false;  // occThreadSkip : rejeu partiel, filets modélisés sautés
 bool gCorpsRecousu = false;  // les filets ont été creusés : le corps est déjà recousu
 std::map<std::string, std::vector<SpiraleFilet>> gSpirales;  // par fonction
+std::map<std::string, double> gLongueursFilet;  // f._thLen, par fonction
+std::map<std::string, std::vector<TopoDS_Shape>> gImportsVus;  // corps fait de pièces importées seules : celles qui se voient
+std::set<std::string> gCorpsAvecImportCache;
 
 // occApplyDraft
 TopoDS_Shape appliquerDepouille(const Document& d, const Fonction& f, const TopoDS_Shape& resultat, std::vector<std::string>& msgs) {
@@ -915,6 +923,7 @@ bool rejouerCopies(Document& d, const std::vector<Fonction*>& groupe, TopoDS_Sha
         auto v = formePercage(*g, *s, resultat, alertes, gFiletsSautes ? nullptr : &fil);
         if (!fil.vides.IsNull()) vides.push_back({g->nom, fil.vides});
         if (!fil.spirales.empty()) gSpirales[g->id] = fil.spirales;
+        if (fil.taraude) gLongueursFilet[g->id] = fil.longueur;
         outils.insert(outils.end(), v.begin(), v.end());
         parCopie.push_back(composeOutils(v));
       } else {
@@ -1043,6 +1052,9 @@ TopoDS_Shape rejouerCorps(Document& d, const std::vector<Fonction*>& liste, cons
       const bool seul = std::all_of(liste.begin(), liste.end(), [](const Fonction* g) { return g->type == "import"; });
       if (seul) {
         enCours = nullptr;
+        const std::string corpsImport = corpsDeFonction(d, f);
+        if (std::find(d.corpsMasques.begin(), d.corpsMasques.end(), f.id) != d.corpsMasques.end()) gCorpsAvecImportCache.insert(corpsImport);
+        else gImportsVus[corpsImport].push_back(s);
         if (resultat.IsNull()) {
           resultat = s;
         } else {
@@ -1077,6 +1089,7 @@ TopoDS_Shape rejouerCorps(Document& d, const std::vector<Fonction*>& liste, cons
         const auto outils = formePercage(f, *s, resultat, alertes, gFiletsSautes ? nullptr : &fil);
         if (!fil.vides.IsNull()) vides.push_back({f.nom, fil.vides});
         if (!fil.spirales.empty()) gSpirales[f.id] = fil.spirales;
+        if (fil.taraude) gLongueursFilet[f.id] = fil.longueur;
         for (const std::string& a : alertes) msgs.push_back(f.nom + " : " + a);
         const TopoDS_Shape outilEntier = composeOutils(outils);
         resultat = sansCouturesParasites(coupeListe(resultat, outils, {outilEntier}), resultat, outilEntier);
@@ -1290,6 +1303,9 @@ ResultatRejeu rejouer(Document& d, int n) {
   ResultatRejeu r;
   std::vector<TopoDS_Shape> pieces;
   gSpirales.clear();
+  gLongueursFilet.clear();
+  gImportsVus.clear();
+  gCorpsAvecImportCache.clear();
   gFiletsSautes = false;  // rejeu partiel = la liste s'arrête avant la fin ; le marqueur compte aussi
   if (n >= 0)
     for (size_t i = n; i < d.fonctions.size(); i++)
@@ -1315,6 +1331,24 @@ ResultatRejeu rejouer(Document& d, int n) {
     for (const auto& c : r.corps) ids.push_back(c.first);
     nomsCompose(pieces, comp, ids);
   }
+  for (const auto& [id, s] : r.corps) {
+    if (!gCorpsAvecImportCache.count(id)) {
+      r.corpsVus.push_back({id, s});
+      continue;
+    }
+    const auto& vus = gImportsVus[id];
+    if (vus.size() == 1) {
+      r.corpsVus.push_back({id, vus[0]});
+    } else if (!vus.empty()) {
+      BRep_Builder bd;
+      TopoDS_Compound c;
+      bd.MakeCompound(c);
+      for (const TopoDS_Shape& v : vus) bd.Add(c, v);
+      r.corpsVus.push_back({id, c});
+    }
+  }
+  for (const Fonction& f : d.fonctions)
+    if (const auto it = gLongueursFilet.find(f.id); it != gLongueursFilet.end()) r.filetsCosmetiques.push_back({f.id, corpsDeFonction(d, f), it->second});
   for (const Fonction& f : d.fonctions)
     if (const auto it = gSpirales.find(f.id); it != gSpirales.end())
       for (SpiraleFilet s : it->second) {
@@ -1479,7 +1513,37 @@ struct HoteTrouve {
   const Fonction* f = nullptr;
   std::string tag, edge;
   double x = 0, y = 0, h = 0;
+  std::vector<std::pair<std::string, double>> mv = {};
 };
+// hostMoves : les déplacements du haut ou du bas de l'extrusion f, placés après elle
+double deplacementsHote(const Document& d, const Fonction& f, const Vec3& n, const Vec3& hn, const Vec3& plan, std::vector<std::pair<std::string, double>>& mv) {
+  double off = 0;
+  bool apres = false;
+  for (const Fonction& m : d.fonctions) {
+    if (&m == &f) {
+      apres = true;
+      continue;
+    }
+    if (!apres || m.type != "xmove" || !m.visible) continue;
+    bool vise = false;
+    std::vector<RefFace> refs = m.facesVisees;  // mvRefs
+    if (refs.empty() && m.refFace.lue) refs.push_back(m.refFace);
+    for (const RefFace& r : refs) {
+      if (r.n[0] * n[0] + r.n[1] * n[1] + r.n[2] * n[2] < 0.99) continue;
+      if (!r.nom.empty()) {
+        if (r.nom.rfind(f.id + "/", 0) == 0) vise = true;
+        continue;
+      }
+      const Vec3 p{plan[0] + hn[0] * off, plan[1] + hn[1] * off, plan[2] + hn[2] * off};
+      if (std::abs((r.pos[0] - p[0]) * n[0] + (r.pos[1] - p[1]) * n[1] + (r.pos[2] - p[2]) * n[2]) < 0.01) vise = true;
+    }
+    if (!vise) continue;
+    const double s = produitVec(n, hn) > 0 ? 1 : -1;
+    off += m.dist * s;
+    mv.push_back({m.id, s});
+  }
+  return off;
+}
 HoteTrouve hotePourFace(const Document& d, const Vec3& pt, const Vec3& n) {  // findHostForFace, tol 1 mm
   const double tol = 1.0;
   HoteTrouve best;
@@ -1499,7 +1563,14 @@ HoteTrouve hotePourFace(const Document& d, const Vec3& pt, const Vec3& n) {  // 
       const bool onLo = f.op == "cut" ? dot > 0 : dot < 0;
       const double h = onLo ? sp.lo : sp.hi;
       const Vec3 cand{hs->o[0] + hs->n[0] * h, hs->o[1] + hs->n[1] * h, hs->o[2] + hs->n[2] * h};
-      const double mDist = std::abs(produitVec(n, diff(pt, cand)));
+      double mDist = std::abs(produitVec(n, diff(pt, cand)));
+      // Face déplacée : le plan réel est décalé ; une partie restée en place garde l'ancien
+      std::vector<std::pair<std::string, double>> mvH;
+      const double offH = deplacementsHote(d, f, n, hs->n, cand, mvH);
+      const Vec3 candD{cand[0] + hs->n[0] * offH, cand[1] + hs->n[1] * offH, cand[2] + hs->n[2] * offH};
+      const double mDist2 = mvH.empty() ? 1e300 : std::abs(produitVec(n, diff(pt, candD)));
+      const bool surDeplacee = mDist2 < mDist;
+      if (surDeplacee) mDist = mDist2;
       if (mDist > tol || mDist > bd) continue;
       const Trace tr = tracerContours(*hs);
       if (tr.solides.empty() && tr.cerclesSeuls.empty()) continue;
@@ -1530,6 +1601,7 @@ HoteTrouve hotePourFace(const Document& d, const Vec3& pt, const Vec3& n) {  // 
       }
       if (!touche) continue;
       best = HoteTrouve{&f, onLo ? "BOTTOM" : "TOP", "", fixe3(x), fixe3(y), 0};
+      if (surDeplacee) best.mv = mvH;
       bd = mDist;
     } else {
       const double zl = produitVec(dp, hs->n);
@@ -1791,7 +1863,7 @@ bool nouvelleEsquisseFace(Document& d, const TopoDS_Shape& solide, const TopoDS_
         if (s.id == c.f->esquisse) hs = &s;
       if (hs) {
         const Vec3 dp = diff(origine, hs->o);
-        h = HoteTrouve{c.f, c.tag, "", fixe3(produitVec(dp, hs->u)), fixe3(produitVec(dp, hs->v)), 0};
+        h = HoteTrouve{c.f, c.tag, "", fixe3(produitVec(dp, hs->u)), fixe3(produitVec(dp, hs->v)), 0, c.mv};
       }
     }
   }
@@ -1807,6 +1879,7 @@ bool nouvelleEsquisseFace(Document& d, const TopoDS_Shape& solide, const TopoDS_
     out.hote.tag = h.tag;
     out.hote.x = h.x;
     out.hote.y = h.y;
+    out.hote.mv = h.mv;
     out.hote.nom = "Face " + std::to_string(++d.nomsFace);
     if (h.tag == "SIDE") {
       out.hote.edge = h.edge;

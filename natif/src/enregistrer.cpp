@@ -704,6 +704,11 @@ std::string esquisseCreee(const Esquisse& s) {
     } else {
       o += "{\"feat\":" + texteJson(s.hote.feat) + ",\"tag\":" + texteJson(s.hote.tag) + ",\"x\":" + nombreJson(s.hote.x) + ",\"y\":" + nombreJson(s.hote.y) + ",\"name\":" + texteJson(s.hote.nom);
       if (s.hote.tag == "SIDE") o += ",\"edge\":" + texteJson(s.hote.edge) + ",\"h\":" + nombreJson(s.hote.h);
+      if (!s.hote.mv.empty()) {
+        o += ",\"mv\":[";
+        for (size_t i = 0; i < s.hote.mv.size(); i++) o += std::string(i ? "," : "") + "{\"id\":" + texteJson(s.hote.mv[i].first) + ",\"s\":" + nombreJson(s.hote.mv[i].second) + "}";
+        o += "]";
+      }
       o += "}";
     }
   }

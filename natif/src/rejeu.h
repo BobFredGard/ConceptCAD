@@ -6,11 +6,17 @@
 #include <TopoDS_Shape.hxx>
 #include "projet.h"
 
+struct FiletDuPlan {
+  std::string fonction, corps;
+  double longueur = 0;
+};
 struct ResultatRejeu {
   TopoDS_Shape forme;  // composé si plusieurs corps
   std::vector<std::pair<std::string, TopoDS_Shape>> corps;  // le solide de chaque corps
+  std::vector<std::pair<std::string, TopoDS_Shape>> corpsVus;  // ce qui s'en voit : sans les pièces importées masquées
   std::vector<std::string> messages;
   std::vector<SpiraleFilet> spirales;  // les filets cosmétiques à dessiner
+  std::vector<FiletDuPlan> filetsCosmetiques;  // ce que la mise en plan dessine des perçages taraudés
 };
 
 struct Mesures {

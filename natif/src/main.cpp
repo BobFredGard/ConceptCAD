@@ -24,6 +24,7 @@
 #include "mesure.h"
 #include "normalises.h"
 #include "parametres.h"
+#include "plan.h"
 
 namespace {
 std::vector<std::wstring> gArgs;
@@ -97,6 +98,36 @@ int modeMesures(const std::vector<std::wstring>& a) {
     }
     s["texte"] = texte;
     sortie.push_back(s);
+  }
+  std::ofstream o(a[2], std::ios::binary);
+  o << sortie.dump(0, ' ', false, J::error_handler_t::replace);
+  return 0;
+}
+// --plan <pièce> <sortie.json> : les éléments de chaque planche
+int modePlan(const std::vector<std::wstring>& a) {
+  using J = nlohmann::ordered_json;
+  Document d = lireProjet(a[1]);
+  const ResultatRejeu r = rejouer(d);
+  J racine = J::parse(!d.texteBase.empty() ? d.texteBase.str() : texteDuFichier(d));
+  J& top = racine.contains("doc") && racine["doc"].is_object() ? racine["doc"] : racine;
+  J mep = top.contains("mep") ? top["mep"] : J::object();
+  plan::normaliser(mep);
+  const plan::Piece p = plan::pieceDe(d, r, top);
+  plan::Calcul c;
+  J sortie = J::array();
+  for (int i = 0; i < static_cast<int>(mep["sheets"].size()); i++) {
+    J L = J::array();
+    for (const plan::Elt& e : plan::dessiner(mep, i, p, c)) {
+      J x = J::object();
+      x["tag"] = e.tag;
+      J at = J::object();
+      for (const auto& q : e.at) at[q.first] = q.first == "href" ? std::string("-") : q.second;
+      x["at"] = at;
+      x["txt"] = e.txt;
+      x["niveau"] = e.niveau;
+      L.push_back(x);
+    }
+    sortie.push_back(L);
   }
   std::ofstream o(a[2], std::ios::binary);
   o << sortie.dump(0, ' ', false, J::error_handler_t::replace);
@@ -671,6 +702,7 @@ int WINAPI wWinMain(HINSTANCE inst, HINSTANCE, PWSTR, int) {
   if (!gArgs.empty() && gArgs[0] == L"--verif") return modeVerif(gArgs);
   if (gArgs.size() >= 3 && gArgs[0] == L"--normalises") return modeNormalises(gArgs);
   if (gArgs.size() >= 3 && gArgs[0] == L"--mesures") return modeMesures(gArgs);
+  if (gArgs.size() >= 3 && gArgs[0] == L"--plan") return modePlan(gArgs);
   if (!gArgs.empty() && gArgs[0] == L"--etapes") return modeEtapes(gArgs);
   if (gArgs.size() >= 3 && gArgs[0] == L"--reenregistrer") return modeEnregistrer(gArgs);
   if (gArgs.size() >= 2 && gArgs[0] == L"--conflit") return modeEnregistrer(gArgs);
