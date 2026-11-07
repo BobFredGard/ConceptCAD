@@ -1,4 +1,5 @@
 #include "vue3d.h"
+#include <StdSelect_ViewerSelector3d.hxx>
 #include <BRepBuilderAPI_MakeEdge.hxx>
 #include <BRepBuilderAPI_MakeFace.hxx>
 #include <BRepBuilderAPI_MakePolygon.hxx>
@@ -395,6 +396,12 @@ void Vue3D::cliquerEn(const wxPoint& p) {
   dernierClic_ = p;
   preparerSelection();
   contexte_->MoveTo(p.x, p.y, vue_, false);
+  if (contexte_->HasDetected() && contexte_->MainSelector()->NbPicked() > 0) {
+    const gp_Pnt q = contexte_->MainSelector()->PickedPoint(1);
+    dernierPoint_[0] = q.X();
+    dernierPoint_[1] = q.Y();
+    dernierPoint_[2] = q.Z();
+  }
   if (contexte_->HasDetected()) {
     const occ::handle<AIS_ViewCubeOwner> face = occ::down_cast<AIS_ViewCubeOwner>(contexte_->DetectedOwner());
     if (!face.IsNull()) {

@@ -1651,6 +1651,19 @@ Esquisse nouvelleEsquissePlan(const Document& d, const std::string& plan) {
   return s;
 }
 
+ResultatRejeu rejouerSansConstruction(Document& d, int n) {
+  const bool avant = gDansConstruction;
+  gDansConstruction = true;
+  try {
+    ResultatRejeu r = rejouer(d, n);
+    gDansConstruction = avant;
+    return r;
+  } catch (...) {
+    gDansConstruction = avant;
+    throw;
+  }
+}
+
 bool nouvelleEsquisseConstruction(const Document& d, const std::string& id, const std::string& sous, Esquisse& s) {  // newSketchOnCg
   Vec3 o, u, v, n;
   if (!baseDeConstruction(d, id, sous, o, u, v, n)) return false;

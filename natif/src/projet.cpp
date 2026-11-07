@@ -431,6 +431,8 @@ static void lireFonction(const json& jf, Document& d, std::map<std::string, int>
   }
   f.visible = !(jf.contains("visible") && jf["visible"].is_boolean() && !jf["visible"].get<bool>());
   f.mid = vrai(jf, "mid");
+  f.kw = vrai(jf, "kw");
+  f.kwKey = texte(jf, "kwKey");
   f.flip = vrai(jf, "flip");
   f.through = vrai(jf, "through");
   f.repeatId = texte(jf, "repeatId");
@@ -709,4 +711,40 @@ static Document documentDepuisDoc(json& racine) {
   d.paramsFichier = d.params;
   d.porteursFichier = d.porteurs;
   return d;
+}
+
+void ElementConstruction::lireRepere() {
+  const auto texteDe = [](const nlohmann::ordered_json& q, const char* k) {
+    const auto x = q.find(k);
+    return x != q.end() && x->is_string() ? x->get<std::string>() : std::string();
+  };
+  const auto vecteur = [](const nlohmann::ordered_json& q, const char* k) {
+    Vec3 v{0, 0, 0};
+    const auto x = q.find(k);
+    if (x != q.end() && x->is_array() && x->size() >= 3)
+      for (size_t i = 0; i < 3; i++) v[i] = (*x)[i].is_number() ? (*x)[i].get<double>() : 0.0;
+    return v;
+  };
+  aRepere = false;
+  surPiece = false;
+  surElements.clear();
+  id = texteDe(j, "id");
+  kind = texteDe(j, "kind");
+  nom = texteDe(j, "name");
+  const auto vis = j.find("visible");
+  visible = vis == j.end() || !vis->is_boolean() || vis->get<bool>();
+  if (auto fr = j.find("fr"); fr != j.end() && fr->is_object()) {
+    o = vecteur(*fr, "o");
+    z = vecteur(*fr, "z");
+    x = vecteur(*fr, "x");
+    y = vecteur(*fr, "y");
+    aRepere = fr->contains("o") && fr->contains("z");
+  }
+  if (auto r = j.find("refs"); r != j.end() && r->is_array())
+    for (const auto& q : *r) {
+      if (!q.is_object()) continue;
+      const std::string k = texteDe(q, "k");
+      if (k == "cg") surElements.push_back(texteDe(q, "id"));
+      else if (k != "o") surPiece = true;
+    }
 }

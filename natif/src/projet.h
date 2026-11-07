@@ -158,6 +158,8 @@ struct Fonction {
   std::string repeatId;      // copie faite par cette répétition
   bool repetee = false;      // copie ou source d'une répétition : la changer n'est pas encore repris
   ReglagePercage percage;
+  bool kw = false;   // extrusion : la découpe d'une rainure de clavette
+  std::string kwKey;  // extrusion : le corps de la clavette, l'id du plan de sa rainure
   ReglageEngrenage engrenage;  // gear
   ReglageFilet filetage;      // xthread
   CylindreFiletage cylindre;  // xthread
@@ -231,6 +233,7 @@ struct ElementConstruction {
   bool neuf = false;  // le calcul a changé son repère ou son état depuis la lecture : à reporter dans le fichier
   Vec3 o{0, 0, 0}, x{1, 0, 0}, y{0, 1, 0}, z{0, 0, 1};  // sa dernière position
   nlohmann::ordered_json j;
+  nlohmann::ordered_json kwSortie;  // el._kwOut : les cotes d'une rainure de clavette, recalculées, jamais écrites
   void lireRepere();  // refait les champs ci-dessus depuis j
 };
 // Un grand texte immuable : copier le document ne le recopie pas

@@ -404,6 +404,8 @@ std::string retoucherBrut(const std::string& brut, const Ecarts& e) {
 }
 std::string ecartsEntite(const std::string& brut, const Entite& a, const Entite& b) {
   const bool devenuArc = a.t == "arc" && b.t == "circle";  // cercle ajusté : le reste de son texte est gardé
+  // Le contour d'une rainure de clavette, refait quand sa forme change : même numéro, autre nature
+  if ((a.t == "arc" && b.t == "line") || (a.t == "line" && b.t == "arc")) return nouvelleEntite(a);
   if ((a.t != b.t && !devenuArc) || a.poly != b.poly) throw std::runtime_error("élément d'esquisse changé d'une façon pas encore reprise, rien n'a été écrit");
   Ecarts e;
   if (devenuArc) e.champs.push_back({"t", texteJson(a.t), true});
@@ -925,6 +927,7 @@ Esquisse aligner(const Esquisse& s, const Esquisse& f) {
     if (const Pt* q = f.point(id)) t.points[id] = *q;
   for (Entite& e : t.entites)
     if (const Entite* o = f.entite(e.id)) {
+      if ((e.t == "arc" && o->t == "line") || (e.t == "line" && o->t == "arc")) continue;  // réécrit en entier par la refonte
       e.r = o->r;
       e.srcMid = o->srcMid;
     }

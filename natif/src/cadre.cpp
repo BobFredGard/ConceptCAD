@@ -297,7 +297,7 @@ void Cadre::creerEnvironnement() {
     if (esquisseOuverte_ < 0) recalculer();
   };
   barreHaute_->surIndisponible = [this](const wxString& n) { indisponible(n); };
-  ruban_->estRepris = [](Atelier a, const wxString& n) { return a == Atelier::CAO && (n == L"Esquisse" || n == L"Extrusion" || n == L"Congé" || n == L"Chanfrein" || n == L"Paramètres" || n == L"Corps" || n == L"Perçage" || n == L"Filetage" || n == L"Plan" || n == L"Axe" || n == L"Point" || n == L"Repère" || n == L"Répétition" || n == L"Révolution" || n == L"Balayage" || n == L"Face" || n == L"Dépouille" || n == L"Coque" || n == L"Combiner" || n == L"Déplacer" || n == L"Échelle" || n == L"Scinder" || n == L"Importer" || n == L"STEP" || n == L"STL" || n == L"OBJ"); };
+  ruban_->estRepris = [](Atelier a, const wxString& n) { return a == Atelier::CAO && (n == L"Esquisse" || n == L"Extrusion" || n == L"Congé" || n == L"Chanfrein" || n == L"Paramètres" || n == L"Corps" || n == L"Perçage" || n == L"Filetage" || n == L"Clavette" || n == L"Plan" || n == L"Axe" || n == L"Point" || n == L"Repère" || n == L"Répétition" || n == L"Révolution" || n == L"Balayage" || n == L"Face" || n == L"Dépouille" || n == L"Coque" || n == L"Combiner" || n == L"Déplacer" || n == L"Échelle" || n == L"Scinder" || n == L"Importer" || n == L"STEP" || n == L"STL" || n == L"OBJ"); };
   ruban_->surBouton = [this](Atelier a, const wxString& n) { boutonRuban(a, n); };
   ruban_->surIndisponible = [this](const wxString& n) { indisponible(n); };
 
@@ -573,6 +573,7 @@ void Cadre::boutonRuban(Atelier a, const wxString& nom) {
   quitterConge();
   if (nom == L"Extrusion") extruder();
   else if (nom == L"Esquisse") menuEsquisse();
+  else if (nom == L"Clavette") creerSurCylindre(true);
   else if (nom == L"Plan") creerConstructionRuban("plane");
   else if (nom == L"Axe") creerConstructionRuban("axis");
   else if (nom == L"Point") creerConstructionRuban("point");
@@ -699,6 +700,7 @@ void Cadre::appliquerFiche(const std::string& id, const std::string& cle, const 
   for (const ElementConstruction& c : doc_.construction)
     if (c.id == id) return reglerConstruction(id, cle, valeur);
   pioche_ = nullptr;
+  if ((cle == "z/dir" && valeur == "ref") || (cle == "z/ref" && (valeur == "pick" || valeur == "none"))) return piocherCylindre(id, cle, valeur);
   demanderClicFiche(id, cle, valeur);
   changerStructure([&](nlohmann::ordered_json& d) {
     const std::string refus = ficheAppliquer(d, id, cle, valeur);
@@ -1167,7 +1169,7 @@ void Cadre::montrerFonction(int i) {
   if (!f.visible) lectureSeule(props_, L"État", L"Désactivée");
   fonctionMontree_ = -1;
   ficheId_.clear();
-  if (f.type != "xfillet" && f.type != "extrude") return montrerFiche(i);
+  if ((f.type != "xfillet" && f.type != "extrude") || f.kw || !f.kwKey.empty()) return montrerFiche(i);
   if (f.type == "xfillet") {
     lectureSeule(props_, L"Arêtes tangentes", f.tangent != 0 ? L"Suivies" : L"Non suivies");
     for (const AreteConge& a : f.aretes) lectureSeule(props_, tx(a.nomAffiche), wxString::Format(L"%s %g", f.chamfer ? L"D" : L"R", a.r));
@@ -2766,7 +2768,12 @@ bool Cadre::essaiEsquisse(const std::wstring& fichier, int rang, const std::wstr
   std::ofstream(dossier + L"\\bilan.json") << bilan.dump(1, ' ', false, nlohmann::json::error_handler_t::replace);
   quitterEsquisse();
   wxYield();
-  enregistrerProjet(doc_, sortie);
+  try {
+    enregistrerProjet(doc_, sortie);
+  } catch (const std::exception& e) {
+    std::ofstream(dossier + L"\\erreur.txt") << e.what();
+    throw;
+  }
   return true;
 }
 

@@ -6,6 +6,9 @@
 #include <string>
 #include <vector>
 
+#include <TopoDS_Face.hxx>
+#include <TopoDS_Shape.hxx>
+
 #include "conges.h"
 #include "fiches.h"
 #include "projet.h"
@@ -38,6 +41,26 @@ bool emplacementConstruction(const ElementConstruction& e, int rang, std::string
 int emplacementVide(const ElementConstruction& e);
 // cgSlotHint
 std::string consigneEmplacement(const std::string& type);
+
+// Un clic sur un cylindre (holeCylOfHit) : de quoi poser un perçage ou une rainure
+struct ClicCylindre {
+  nlohmann::ordered_json ref;  // occFaceRefAny
+  Vec3 o{}, d{}, rad{};
+  double r = 0, t = 0;
+  bool inner = false;
+  std::string corps;
+};
+bool lireClicCylindre(const TopoDS_Face& f, const double point[3], bool interieurAdmis, ClicCylindre& out, std::string& erreur);
+std::string creerPercageCylindre(nlohmann::ordered_json& d, const ClicCylindre& c, int marque);  // holeOnCylinder
+std::string creerClavette(nlohmann::ordered_json& d, const ClicCylindre& c, int marque);  // kwOnCylinder
+void clavetteSupprimee(nlohmann::ordered_json& d, const nlohmann::ordered_json& f);  // kwOnDelete, la fonction déjà retirée
+// La partie de la fiche d'un perçage sur cylindre ou d'une rainure : clés z/...
+void ficheCylindre(const Document& d, const ElementConstruction& e, bool sansCote, std::vector<ChampFiche>& c);
+void ficheClavette(const Document& d, const nlohmann::ordered_json& f, std::vector<ChampFiche>& c);
+const ElementConstruction* planDuCylindre(const Document& d, const std::string& esquisse);  // holeCylPlane
+std::string appliquerCylindre(nlohmann::ordered_json& d, const nlohmann::ordered_json& f, const std::string& cle, const std::string& valeur);
+// holeCylPlacement : la cote qui garde le trou où il est, mesurée depuis ref (nul : le milieu du cylindre). Rend le refus, vide si fait.
+std::string placementCylindre(Document& d, const TopoDS_Shape& solide, const std::string& plan, const nlohmann::ordered_json& ref, double& cote, int& cote_sens);
 
 // cgEdgeGeom, sur les points d'une arête listée : droite, cercle (centre, normale, rayon) ou rien
 struct GeoArete {

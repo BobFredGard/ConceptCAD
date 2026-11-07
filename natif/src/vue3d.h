@@ -35,6 +35,12 @@ class Vue3D : public wxWindow {
   };
   void montrerConstruction(const std::vector<DessinConstruction>& L, const double centre[3], double h);
   wxPoint dernierClic() const { return dernierClic_; }
+  // Le point de la pièce sous le dernier clic
+  void dernierPoint(double p[3]) const {
+    p[0] = dernierPoint_[0];
+    p[1] = dernierPoint_[1];
+    p[2] = dernierPoint_[2];
+  }
   double msAffichage() const { return msAffichage_; }
   double msImage() const { return msImage_; }
   void ajuster();
@@ -80,7 +86,8 @@ class Vue3D : public wxWindow {
   bool modeFaces_ = false;
   occ::handle<AIS_Shape> filetsHelices_, filetsAnneaux_;
   std::vector<occ::handle<AIS_Shape>> construction_;
-  wxPoint dernierClic_;  // les filets cosmétiques
+  wxPoint dernierClic_;
+  double dernierPoint_[3] = {0, 0, 0};  // les filets cosmétiques
   occ::handle<AIS_Shape> aretesVives_, aretesLisses_;  // les traits de la pièce, hors du choix d'un congé
   std::vector<occ::handle<AIS_Shape>> reflets_;  // chaque corps renversé sous le sol
   double sol_ = 0, msAffichage_ = 0, msImage_ = 0;

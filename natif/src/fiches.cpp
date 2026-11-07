@@ -7,6 +7,7 @@
 #include <set>
 #include <stdexcept>
 
+#include "construction.h"
 #include "engrenage.h"
 #include "filets.h"
 #include "projet.h"
@@ -678,6 +679,8 @@ std::vector<ChampFiche> ficheFonction(const Document& d, const json& f) {
       c.push_back(lecture("Format", str(f["src"], "fmt") == "stl" ? "STL (maillage)" : "STEP (solide exact)"));
       c.push_back(lecture("Taille", fmt(num(f["src"], "size") / 1024, 1) + " Ko"));
     }
+  } else if (t == "extrude" && (vrai(f, "kw") || !str(f, "kwKey").empty())) {
+    ficheClavette(d, f, c);
   } else if (t == "gear") {
     // renderGearProps : on change la roue depuis l'assemblage, le panneau ne fait que la décrire
     const Fonction* fn = nullptr;
@@ -928,6 +931,10 @@ std::string ficheAppliquer(json& d, const std::string& id, const std::string& cl
   json* pf = parId(liste(d, "features"), id);
   if (!pf) return "Fonction introuvable.";
   json& f = *pf;
+  if (cle.rfind("z/", 0) == 0) {  // le plan tangent d'un perçage sur cylindre ou d'une rainure
+    const json copie = f;
+    return appliquerCylindre(d, copie, cle, valeur);
+  }
   const bool nomEtaitAuto = str(f, "name").empty() || str(f, "name") == nomAuto(d, f);
   const std::string t = str(f, "type");
   const std::string sorte = cle.substr(0, 1), chemin = cle.size() > 2 ? cle.substr(2) : "";

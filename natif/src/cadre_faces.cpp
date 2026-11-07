@@ -240,6 +240,61 @@ void Cadre::creerFiletageVise(const std::string& idExistant) {
 }
 
 // cgPickModelRef : la référence que donne un clic sur la pièce, selon le type attendu ; rien si ce clic ne convient pas
+json Cadre::referenceCliquee(const TopoDS_Shape& s, const std::string& type) {
+  json r = nullptr;
+  if (!s.IsNull() && s.ShapeType() == TopAbs_EDGE) {
+    const auto liste = listerAretes(forme_);
+    std::vector<TopoDS_Shape> rangs;
+    for (TopExp_Explorer ex(forme_, TopAbs_EDGE); ex.More(); ex.Next()) rangs.push_back(ex.Current());
+    for (const AreteListee& E : liste) {
+      if (E.src >= static_cast<int>(rangs.size()) || !rangs[E.src].IsSame(s)) continue;
+      const GeoArete G = geoArete(E.pts);
+      json base = {{"k", "edge"}, {"pos", trois(E.mid, 4)}, {"len", std::round(E.len * 1e4) / 1e4}};
+      AncreArete a;
+      if (ancrePour(doc_, E.mid, a)) base["anchor"] = ancreDe(a);
+      if (type == "point") {
+        const wxPoint c = vue_->dernierClic();
+        const auto ecran = [&](const Vec3& p) {
+          const wxPoint q = vue_->pixelDe(p[0], p[1], p[2]);
+          return std::hypot(static_cast<double>(q.x - c.x), static_cast<double>(q.y - c.y));
+        };
+        const double d0 = ecran(E.pts.front()), d1 = ecran(E.pts.back());
+        if (G.cercle && std::min(d0, d1) > 12) {
+          base["name"] = "Centre · Arête";
+          r = base;
+        } else {
+          base["k"] = "vtx";
+          base["vpos"] = trois(d0 <= d1 ? E.pts.front() : E.pts.back(), 4);
+          base["name"] = "Sommet · Arête";
+          r = base;
+        }
+      } else if (type == "axis" && (G.droite || G.cercle)) {
+        base["name"] = "Arête";
+        r = base;
+      } else if (type == "plane" && G.cercle) {
+        base["name"] = "Plan du cercle · Arête";
+        r = base;
+      } else if (type == "curve") {
+        base["name"] = std::string(G.droite ? "Droite" : G.cercle ? "Arc" : "Courbe") + " · Arête";
+        r = base;
+      }
+      break;
+    }
+  } else if (!s.IsNull() && s.ShapeType() == TopAbs_FACE && (type == "plane" || type == "axis")) {
+    const TopoDS_Face f = TopoDS::Face(s);
+    const std::string st = natureSurface(f);
+    if ((type == "plane" && st == "Plane") || (type == "axis" && (st == "Cylinder" || st == "Cone"))) {
+      json fr = refFaceLibre(f);
+      const std::string nom = nomsFaceDe(forme_, f);
+      if (!nom.empty()) fr["nom"] = nom;
+      AncreArete a;
+      if (fr.contains("pos") && ancrePour(doc_, vec(fr["pos"]), a)) fr["anchor"] = ancreDe(a);
+      r = {{"k", "face"}, {"ref", fr}, {"name", "Face"}};
+    }
+  }
+  return r;
+}
+
 void Cadre::piocherReference(const std::string& id, int rang) {
   const ElementConstruction* e = nullptr;
   for (const ElementConstruction& c : doc_.construction)
@@ -251,57 +306,7 @@ void Cadre::piocherReference(const std::string& id, int rang) {
   const wxString consigne = tx(std::string(nomSorteConstruction(e->kind)) + " — " + titre + " : cliquez " + consigneEmplacement(type) + " (ou une ligne de l'arbre) — Échap pour arrêter.");
   etat(consigne);
   pioche_ = [this, id, rang, type, consigne](const TopoDS_Shape& s) {
-    json r = nullptr;
-    if (!s.IsNull() && s.ShapeType() == TopAbs_EDGE) {
-      const auto liste = listerAretes(forme_);
-      std::vector<TopoDS_Shape> rangs;
-      for (TopExp_Explorer ex(forme_, TopAbs_EDGE); ex.More(); ex.Next()) rangs.push_back(ex.Current());
-      for (const AreteListee& E : liste) {
-        if (E.src >= static_cast<int>(rangs.size()) || !rangs[E.src].IsSame(s)) continue;
-        const GeoArete G = geoArete(E.pts);
-        json base = {{"k", "edge"}, {"pos", trois(E.mid, 4)}, {"len", std::round(E.len * 1e4) / 1e4}};
-        AncreArete a;
-        if (ancrePour(doc_, E.mid, a)) base["anchor"] = ancreDe(a);
-        if (type == "point") {
-          const wxPoint c = vue_->dernierClic();
-          const auto ecran = [&](const Vec3& p) {
-            const wxPoint q = vue_->pixelDe(p[0], p[1], p[2]);
-            return std::hypot(static_cast<double>(q.x - c.x), static_cast<double>(q.y - c.y));
-          };
-          const double d0 = ecran(E.pts.front()), d1 = ecran(E.pts.back());
-          if (G.cercle && std::min(d0, d1) > 12) {
-            base["name"] = "Centre · Arête";
-            r = base;
-          } else {
-            base["k"] = "vtx";
-            base["vpos"] = trois(d0 <= d1 ? E.pts.front() : E.pts.back(), 4);
-            base["name"] = "Sommet · Arête";
-            r = base;
-          }
-        } else if (type == "axis" && (G.droite || G.cercle)) {
-          base["name"] = "Arête";
-          r = base;
-        } else if (type == "plane" && G.cercle) {
-          base["name"] = "Plan du cercle · Arête";
-          r = base;
-        } else if (type == "curve") {
-          base["name"] = std::string(G.droite ? "Droite" : G.cercle ? "Arc" : "Courbe") + " · Arête";
-          r = base;
-        }
-        break;
-      }
-    } else if (!s.IsNull() && s.ShapeType() == TopAbs_FACE && (type == "plane" || type == "axis")) {
-      const TopoDS_Face f = TopoDS::Face(s);
-      const std::string st = natureSurface(f);
-      if ((type == "plane" && st == "Plane") || (type == "axis" && (st == "Cylinder" || st == "Cone"))) {
-        json fr = refFaceLibre(f);
-        const std::string nom = nomsFaceDe(forme_, f);
-        if (!nom.empty()) fr["nom"] = nom;
-        AncreArete a;
-        if (fr.contains("pos") && ancrePour(doc_, vec(fr["pos"]), a)) fr["anchor"] = ancreDe(a);
-        r = {{"k", "face"}, {"ref", fr}, {"name", "Face"}};
-      }
-    }
+    json r = referenceCliquee(s, type);
     if (r.is_null()) {
       etat(L"Rien de reconnu ici. " + consigne);
       return false;
@@ -309,6 +314,103 @@ void Cadre::piocherReference(const std::string& id, int rang) {
     reglerConstruction(id, "r/" + std::to_string(rang), r.dump());
     return true;
   };
+}
+
+// Bouton Clavette, ou Perçage sans centre (kwStart, holeStart) : un clic sur un cylindre
+void Cadre::creerSurCylindre(bool clavette) {
+  if (!docOuvert_) return etat(L"Ouvrez d'abord une pièce (Ctrl+O).");
+  if (esquisseOuverte_ >= 0) quitterEsquisse();
+  const wxString quoi = clavette ? L"Clavette : " : L"Perçage : ";
+  const auto prendre = [this, clavette, quoi](const TopoDS_Face& f) {
+    double p[3];
+    vue_->dernierPoint(p);
+    ClicCylindre C;
+    std::string err;
+    if (!lireClicCylindre(f, p, clavette, C, err)) {
+      etat(quoi + tx(err) + L" (Échap pour annuler).");
+      return false;
+    }
+    C.ref = refFaceLibre(f);
+    const std::string nom = nomsFaceDe(forme_, f);
+    if (!nom.empty()) C.ref["nom"] = nom;
+    AncreArete a;
+    if (C.ref.contains("pos") && ancrePour(doc_, vec(C.ref["pos"]), a)) C.ref["anchor"] = ancreDe(a);
+    C.corps = corpsDeForme(f);
+    const size_t avant = doc_.esquisses.size();
+    creerFonction([&](json& d) { return clavette ? creerClavette(d, C, indiceMarque()) : creerPercageCylindre(d, C, indiceMarque()); }, clavette ? (C.inner ? L"Clavette : alésage reconnu, cotes ISO 773 appliquées. Ctrl+Z pour annuler." : L"Clavette : arbre reconnu, cotes ISO 773 appliquées. Ctrl+Z pour annuler.") : L"Perçage sur cylindre : réglez la direction et la cote dans Paramètres. Ctrl+Z pour annuler.");
+    // Le plan n'a pas de repère, ou la rainure pas de contour : rien n'est gardé
+    if (doc_.esquisses.size() > avant) {
+      const Esquisse& s = doc_.esquisses[avant];
+      const ElementConstruction* el = planDuCylindre(doc_, s.id);
+      std::string pb;
+      if (!el || !el->aRepere) pb = el ? el->j.value("msg", std::string("plan tangent impossible")) : "plan tangent impossible";
+      else if (clavette && s.entites.empty()) pb = el->kwSortie.is_object() ? el->kwSortie.value("warn", std::string("cotes de rainure impossibles")) : "cotes de rainure impossibles";
+      if (!pb.empty()) {
+        annuler();
+        etat(quoi + tx(pb) + L".");
+      }
+    }
+    return true;
+  };
+  const auto choisies = vue_->facesChoisies();
+  if (choisies.size() == 1 && prendre(choisies[0])) return;
+  pioche_ = [this, prendre, quoi](const TopoDS_Shape& s) {
+    if (s.IsNull() || s.ShapeType() != TopAbs_FACE) {
+      etat(quoi + L"cliquez une face CYLINDRIQUE (Échap pour annuler).");
+      return false;
+    }
+    return prendre(TopoDS::Face(s));
+  };
+  etat(clavette ? L"Clavette : cliquez un ARBRE (face extérieure) ou un ALÉSAGE (face intérieure) — Échap pour annuler." : L"Perçage : cliquez un CYLINDRE de la pièce, ou placez d'abord des centres dans une esquisse (outil ⊕) — Échap pour annuler.");
+}
+
+// La direction ou la référence de cote d'un plan tangent (holeCylPickAt)
+void Cadre::piocherCylindre(const std::string& fonction, const std::string& cle, const std::string& valeur) {
+  const Fonction* f = nullptr;
+  for (const Fonction& x : doc_.fonctions)
+    if (x.id == fonction) f = &x;
+  const ElementConstruction* el = f ? planDuCylindre(doc_, f->esquisse) : nullptr;
+  if (!el) return;
+  const std::string plan = el->id;
+  const wxString quoi = f->kw ? L"Clavette : " : L"Perçage : ";
+  const auto poser = [this, fonction, plan, quoi](const json& ref) {
+    double cote = 0;
+    int sens = 1;
+    const std::string pb = placementCylindre(doc_, forme_, plan, ref, cote, sens);
+    if (!pb.empty()) {
+      etat(quoi + tx(pb) + L".");
+      return false;
+    }
+    appliquerFiche(fonction, "z/pose", json{{"ref", ref}, {"d", cote}, {"side", sens}}.dump());
+    etat(quoi + L"référence retenue — tapez la cote voulue.");
+    return true;
+  };
+  if (cle == "z/ref" && valeur == "none") {
+    poser(nullptr);
+    return;
+  }
+  const bool pos = cle == "z/ref";
+  pioche_ = [this, fonction, pos, poser, quoi](const TopoDS_Shape& s) {
+    if (pos) {
+      json r = referenceCliquee(s, "point");
+      if (r.is_null()) r = referenceCliquee(s, "plane");
+      if (r.is_null()) {
+        etat(quoi + L"rien de reconnu ici (Échap pour annuler).");
+        return false;
+      }
+      return poser(r);
+    }
+    json r = referenceCliquee(s, "axis");
+    if (r.is_null()) r = referenceCliquee(s, "plane");
+    if (r.is_null()) {
+      etat(quoi + L"cliquez un axe, une arête droite ou une face plane (Échap pour annuler).");
+      return false;
+    }
+    appliquerFiche(fonction, "z/dir", r.dump());
+    etat(quoi + L"direction retenue.");
+    return true;
+  };
+  etat(quoi + (pos ? L"cliquez une face, une arête ou un sommet (référence de la cote) — Échap pour annuler." : L"cliquez une arête droite ou une face plane (direction du trou) — Échap pour annuler."));
 }
 
 // Bouton Perçage (holeStart, askHole) : l'esquisse choisie si elle a des centres, sinon la dernière dont les centres ne sont pas encore percés
@@ -321,6 +423,8 @@ void Cadre::creerPercageVise() {
   };
   const Esquisse* s = nullptr;
   if (const int i = esquisseDeLArbre(); i >= 0 && aDesCentres(doc_.esquisses[i])) s = &doc_.esquisses[i];
+  // Un cylindre déjà sélectionné, s'il n'y a pas d'esquisse choisie (holeStart)
+  if (!s && vue_->facesChoisies().size() == 1 && natureSurface(vue_->facesChoisies()[0]) == std::string("Cylinder")) return creerSurCylindre(false);
   if (!s)
     for (size_t i = doc_.esquisses.size(); i-- > 0 && !s;) {
       bool percee = false;
@@ -330,7 +434,7 @@ void Cadre::creerPercageVise() {
   if (!s)
     for (size_t i = doc_.esquisses.size(); i-- > 0 && !s;)
       if (aDesCentres(doc_.esquisses[i])) s = &doc_.esquisses[i];
-  if (!s) return etat(L"Perçage : placez d'abord des centres de perçage dans une esquisse (outil ⊕ de la barre d'esquisse), puis sélectionnez-la.");
+  if (!s) return creerSurCylindre(false);
   // Sens : vers la matière (le plan d'une face pointe vers l'extérieur)
   bool inverse = false;
   try {

@@ -3,6 +3,8 @@
 // les entrées du menu contextuel (src/90-20-menus-contextuels.js).
 #include "structure.h"
 
+#include "construction.h"
+
 #include <algorithm>
 #include <set>
 #include <string>
@@ -131,6 +133,7 @@ void stSupprimerFonction(json& d, const std::string& id) {
   if (str(*f, "type") == "repeat") return retirerRepetition(d, id);
   const json copie = *f;
   filtrer(F, [&](const json& x) { return str(x, "id") != id; });
+  if (copie.value("kw", false) || !str(copie, "kwKey").empty()) clavetteSupprimee(d, copie);
   for (json& rp : F)
     if (str(rp, "type") == "repeat") retirerTexte(rp, "base", id);
   // splitOnDelete : le corps neuf d'une scission ou d'une échelle part avec elle s'il ne porte rien d'autre

@@ -25,6 +25,8 @@ std::vector<std::pair<double, double>> plagesExtrusions(const Document& d, const
 // Replace les esquisses posées sur une face (resolveAllSketchHosts) puis rejoue la pièce,
 // ou seulement ses n premières fonctions : ce que voit l'esquisse de la fonction suivante.
 ResultatRejeu rejouer(Document& d, int n = -1);
+// Sans recalculer les éléments de construction : le solide sur lequel on les pose
+ResultatRejeu rejouerSansConstruction(Document& d, int n);
 // newSketch et newSketchOnFace (src/50-esquisse-1) : l'esquisse vide, pas encore ajoutée à la pièce.
 Esquisse nouvelleEsquissePlan(const Document& d, const std::string& plan);
 // solide : la forme affichée. Rend false si la face n'est pas plane. Prend un nom « Face n » si la face a une porteuse.

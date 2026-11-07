@@ -171,6 +171,9 @@ public:
   void creerEsquisseConstruction(const std::string& id, const std::string& sous);
   void reglerConstruction(const std::string& id, const std::string& cle, const std::string& valeur);
   void piocherReference(const std::string& id, int rang);
+  nlohmann::ordered_json referenceCliquee(const TopoDS_Shape& s, const std::string& type);
+  void creerSurCylindre(bool clavette);
+  void piocherCylindre(const std::string& fonction, const std::string& cle, const std::string& valeur);
   void dessinerConstruction();
   void poserChamps(const std::vector<ChampFiche>& champs, bool copie);
   std::string constructionMontree_;

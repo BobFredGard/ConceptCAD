@@ -3,6 +3,8 @@
 
 #include <BRepAdaptor_Curve.hxx>
 #include <BRepAdaptor_Surface.hxx>
+#include <BRepClass3d_SolidClassifier.hxx>
+#include <ElSLib.hxx>
 #include <GeomAbs_SurfaceType.hxx>
 #include <Standard_Failure.hxx>
 #include <TopAbs.hxx>
@@ -213,7 +215,7 @@ const TopoDS_Shape& solideDe(Contexte& c) {  // cgShapeFor
     c.alias.clear();
     c.solide = TopoDS_Shape();
     try {
-      c.solide = rejouer(c.d, p + 1).forme;
+      c.solide = rejouerSansConstruction(c.d, p + 1).forme;
     } catch (const std::exception&) {
     } catch (const Standard_Failure&) {
     }
@@ -807,6 +809,266 @@ Bati batir(ElementConstruction& el, Contexte& ctx) {  // cgBuild
   return {fr, warn};
 }
 
+/* ----- rainure de clavette (src/76-clavette) ----- */
+struct DimsClavette {
+  double b = 0, t = 0, h = 0, kb = 0;
+  const LigneIso773* row = nullptr;
+  bool iso = false;
+  std::string warn;
+};
+double nbJ(const json& j, const char* k) {
+  const auto x = j.find(k);
+  return x != j.end() && x->is_number() ? x->get<double>() : 0.0;
+}
+bool ouiJ(const json& j, const char* k) {
+  const auto x = j.find(k);
+  return x != j.end() && x->is_boolean() && x->get<bool>();
+}
+double dec1(double v) { return std::round(v * 10) / 10; }
+std::string stdF(double v) {  // String(+v.toFixed(3)) à virgule
+  char b[64];
+  snprintf(b, sizeof b, "%.3f", v);
+  std::string s = b;
+  while (!s.empty() && s.back() == '0') s.pop_back();
+  if (!s.empty() && s.back() == '.') s.pop_back();
+  std::replace(s.begin(), s.end(), '.', ',');
+  return s;
+}
+const LigneIso773* ligneIso773(double D) {
+  for (size_t i = 0; i < sizeof ISO773 / sizeof ISO773[0]; i++)
+    if ((i == 0 ? D >= ISO773[i].de : D > ISO773[i].de) && D <= ISO773[i].a) return &ISO773[i];
+  return nullptr;
+}
+DimsClavette dimsClavette(const json& kw, double D) {  // kwDims
+  DimsClavette r;
+  r.row = ligneIso773(D);
+  const auto iso = kw.find("iso");
+  const bool vieux = iso != kw.end() && iso->is_boolean() && !iso->get<bool>();
+  const bool bore = ouiJ(kw, "bore");
+  const auto pick = [&](const char* o, const char* leg, double isoV, double fb) { return nbJ(kw, o) > 0 ? nbJ(kw, o) : vieux && nbJ(kw, leg) > 0 ? nbJ(kw, leg) : r.row ? isoV : fb; };
+  r.b = pick("ob", "b", r.row ? r.row->b : 0, dec1(std::max(1.0, D / 4)));
+  r.t = pick("ot", "t", r.row ? (bore ? r.row->t2 : r.row->t1) : 0, dec1(r.b * (bore ? 0.4 : 0.6)));
+  r.h = pick("oh", "h", r.row ? r.row->h : 0, dec1(r.b * 0.9));
+  r.kb = nbJ(kw, "okb") > 0 ? nbJ(kw, "okb") : r.b;
+  const bool libre = nbJ(kw, "ob") > 0 && nbJ(kw, "ot") > 0 && nbJ(kw, "oh") > 0;
+  r.iso = r.row && !vieux && !(nbJ(kw, "ob") > 0 || nbJ(kw, "ot") > 0 || nbJ(kw, "oh") > 0 || nbJ(kw, "okb") > 0);
+  if (!r.row && !vieux && !libre) r.warn = "Ø " + stdF(D) + " hors d’ISO 773 (6 à 130) : cotes à vérifier";
+  return r;
+}
+const double KW_OVER = 1;
+double autoLongueur(const json& kw, double D, double Lc, const LigneIso773* row) {  // kwAutoLen
+  static const double LV[] = {6, 8, 10, 12, 14, 16, 18, 20, 22, 25, 28, 32, 36, 40, 45, 50, 56, 63, 70, 80, 90, 100, 110, 125, 140, 160, 180, 200, 220, 250, 280, 320, 360};
+  const double room = std::max(0.0, Lc - (str(kw, "form") == "C" ? 0 : 2)), top = std::min(room, 1.5 * D);
+  double L = 0, premier = -1;
+  for (double v : LV) {
+    if (row && (v < row->l0 || v > row->l1)) continue;
+    if (premier < 0) premier = v;
+    if (v <= top + 1e-9) L = v;
+  }
+  return L != 0 ? L : std::min(room, premier >= 0 ? premier : room);
+}
+struct PtBoucle {
+  double x, y;
+  bool arc = false;
+  double cx = 0, cy = 0;
+};
+std::vector<PtBoucle> boucleClavette(const std::string& form, double h, double x0, double x1, double L, int open) {  // kwLoop
+  if (form == "T") return {{x0, -h}, {x1, -h}, {x1, h}, {x0, h}};
+  if (form == "C") {
+    if (open > 0) {
+      const double c = x1 - L + h;
+      return {{x1, -h}, {x1, h}, {c, h}, {c, -h, true, c, 0}};
+    }
+    const double c = x0 + L - h;
+    return {{x0, -h}, {c, -h}, {c, h, true, c, 0}, {x0, h}};
+  }
+  const double a = L / 2;
+  if (form == "B") return {{-a, -h}, {a, -h}, {a, h}, {-a, h}};
+  const double m = a - h;
+  return {{-m, -h}, {m, -h}, {m, h, true, m, 0}, {-m, h}, {-m, -h, true, -m, 0}};
+}
+// stdLoop : le contour réécrit, seulement si ses cotes ont changé : un fichier relu ne devient pas « modifié »
+void poserBoucle(Esquisse& s, const std::vector<PtBoucle>& pts) {
+  Esquisse t = s;
+  t.points.clear();
+  t.ordre.clear();
+  t.entites.clear();
+  t.contraintes.clear();
+  t.cotes.clear();
+  t.seq = 1;
+  const auto point = [&](double x, double y) {
+    const std::string id = "p" + std::to_string(t.seq++);
+    Pt p;
+    p.x = x;
+    p.y = y;
+    t.points[id] = p;
+    t.ordre.push_back(id);
+    return id;
+  };
+  std::vector<std::string> ids;
+  for (const PtBoucle& p : pts) ids.push_back(point(p.x, p.y));
+  for (size_t j = 0; j < pts.size(); j++) {
+    const size_t i = (j + pts.size() - 1) % pts.size();
+    const PtBoucle& q = pts[j];
+    Entite e;
+    if (q.arc) {
+      const std::string pc = point(q.cx, q.cy);
+      e.id = "e" + std::to_string(t.seq++);
+      e.t = "arc";
+      e.pc = pc;
+      e.pa = ids[i];  // ccw : du sommet précédent à celui-ci
+      e.pb = ids[j];
+      e.r = std::hypot(q.x - q.cx, q.y - q.cy);
+    } else {
+      e.id = "e" + std::to_string(t.seq++);
+      e.t = "line";
+      e.p1 = ids[i];
+      e.p2 = ids[j];
+    }
+    t.entites.push_back(std::move(e));
+  }
+  bool pareil = s.ordre == t.ordre && s.entites.size() == t.entites.size();
+  if (pareil)
+    for (const std::string& id : t.ordre) {
+      const Pt* a = s.point(id);
+      const Pt* b = t.point(id);
+      pareil = pareil && a && b && std::abs(a->x - b->x) < 1e-6 && std::abs(a->y - b->y) < 1e-6;
+    }
+  if (pareil)
+    for (size_t i = 0; i < t.entites.size(); i++) pareil = pareil && s.entites[i].id == t.entites[i].id && s.entites[i].t == t.entites[i].t && std::abs(s.entites[i].r - t.entites[i].r) < 1e-6;
+  if (!pareil) s = std::move(t);
+}
+Esquisse* esquisseSur(Document& d, const std::string& cg) {  // kwSketchOf
+  for (Esquisse& s : d.esquisses)
+    if (s.plan == "CG" && s.plan_cg == cg) return &s;
+  return nullptr;
+}
+void poserProfondeurKw(Fonction& f, double v) {
+  if (std::abs(f.distance - v) > 1e-9) f.distance = v;
+}
+void syncClavette(ElementConstruction& el, Contexte& c) {  // kwSync
+  if (!el.j.contains("kw") || !el.j["kw"].is_object() || !el.aRepere) return;
+  Esquisse* sk = esquisseSur(c.d, el.id);
+  if (!sk) return;
+  const json& kw = el.j["kw"];
+  Fonction* f = nullptr;
+  for (Fonction& x : c.d.fonctions)
+    if (x.kw && x.esquisse == sk->id) f = &x;
+  c.self = &el;
+  std::vector<std::string> warn;
+  const auto fin = [&] {
+    c.self = nullptr;
+  };
+  try {
+    auto g0 = el.j["refs"].size() ? evaluerRef(el.j["refs"][0], &c) : std::nullopt;
+    if (!g0 || !g0->axis || !(g0->axis->r > 0) || !(g0->axis->t1 > g0->axis->t0)) return fin();
+    const Axe& A = *g0->axis;
+    const double R = A.r, D = 2 * R;
+    const DimsClavette dm = dimsClavette(kw, D);
+    if (!dm.warn.empty()) warn.push_back(dm.warn);
+    const Vec3 dd = sensCylindre(A.d);
+    const bool rev = dot(dd, unit(A.d)) < 0;
+    const double t0 = rev ? -A.t1 : A.t0, t1 = rev ? -A.t0 : A.t1, Lc = t1 - t0;
+    const Vec3 o = el.o, z = el.z, y = el.y;
+    const double tO = dot(sub(o, A.o), dd), g = dm.b / 2;
+    const bool bore = ouiJ(kw, "bore");
+    if (!(dm.b < D)) {
+      el.kwSortie = {{"D", D}, {"b", dm.b}, {"t", dm.t}, {"h", dm.h}, {"L", 0}, {"iso", dm.iso}, {"warn", "rainure plus large que le cylindre"}};
+      return fin();
+    }
+    if (!bore && !(dm.t < R)) warn.push_back("rainure plus profonde que le rayon");
+    const double eLat = dot(sub(o, A.o), y);
+    const Vec3 pied = add(A.o, mul(y, eLat));
+    const auto at = [&](double t, double rad) { return add(add(pied, mul(dd, t)), mul(z, rad)); };
+    bool wall0 = false, wall1 = false, thin = false;
+    const TopoDS_Shape& shape = solideDe(c);
+    if (!shape.IsNull()) {
+      const double rp = bore ? R + dm.t / 2 : R - dm.t / 2;
+      try {
+        BRepClass3d_SolidClassifier cl(shape);
+        const auto dedans = [&](const Vec3& q) {
+          cl.Perform(gp_Pnt(q[0], q[1], q[2]), 1e-6);
+          return cl.State() == TopAbs_IN;
+        };
+        wall0 = dedans(at(t0 - 0.2, rp));
+        wall1 = dedans(at(t1 + 0.2, rp));
+        thin = bore && !dedans(at((t0 + t1) / 2, R + dm.t + 0.2));
+      } catch (const Standard_Failure&) {
+      }
+    }
+    if (thin) warn.push_back("moyeu trop mince : la rainure le traverse");
+    const double autoL = autoLongueur(kw, D, Lc, dm.row);
+    const double asked = nbJ(kw, "L") > 0 ? nbJ(kw, "L") : autoL;
+    double L = asked, Lout = asked;
+    const double x0 = t0 - tO - (wall0 ? 0 : KW_OVER), x1 = t1 - tO + (wall1 ? 0 : KW_OVER);
+    const int open = nbJ(kw, "end") < 0 ? -1 : 1;
+    const std::string form = str(kw, "form");
+    if (form == "T") Lout = Lc;
+    else if (form == "C") {
+      if (asked > Lc + 1e-6) warn.push_back("clavette plus longue que le cylindre");
+      Lout = std::max(std::min(asked, Lc), g + 0.01);
+      L = Lout + (open > 0 ? (wall1 ? 0 : KW_OVER) : (wall0 ? 0 : KW_OVER));
+    } else {
+      if (form == "A" && L < dm.b + 0.01) Lout = L = dm.b + 0.01;
+      if (L > Lc + 1e-6) warn.push_back("clavette plus longue que le cylindre");
+      else if (tO - L / 2 < t0 - 1e-6 || tO + L / 2 > t1 + 1e-6) warn.push_back("la rainure dépasse du cylindre");
+    }
+    poserBoucle(*sk, boucleClavette(form, g, x0, x1, L, open));
+    double depth = dm.t + KW_OVER;
+    if (bore) {
+      const double e = std::abs(eLat) + g, corde = e < R ? std::sqrt(R * R - e * e) : 0;
+      depth = dm.t + (R - corde) + KW_OVER;
+    }
+    const double gk = dm.kb / 2;
+    double Lk = nbJ(kw, "okL") > 0 ? nbJ(kw, "okL") : (form == "T" ? std::min(asked, Lc) : Lout);
+    if (form == "A" && Lk < dm.kb + 0.01) Lk = dm.kb + 0.01;
+    if (form == "C" && Lk < gk + 0.01) Lk = gk + 0.01;
+    const bool cle = ouiJ(kw, "key");
+    if (cle) {
+      if (dm.kb > dm.b + 1e-6) warn.push_back("clavette plus large que la rainure");
+      if (form != "T" && Lk > Lout + 1e-6) warn.push_back("clavette plus longue que la rainure");
+      else if (Lk > Lc + 1e-6) warn.push_back("clavette plus longue que le cylindre");
+    }
+    std::vector<PtBoucle> ptsK;
+    if (form == "T") {
+      const double cx = (t0 + t1) / 2 - tO;
+      ptsK = boucleClavette("B", gk, 0, 0, Lk, 1);
+      for (PtBoucle& p : ptsK) p.x += cx;
+    } else if (form == "C") ptsK = boucleClavette("C", gk, t0 - tO, t1 - tO, Lk, open);
+    else ptsK = boucleClavette(form, gk, 0, 0, Lk, open);
+    if (cle) {  // kwKeySync
+      Fonction* kf = nullptr;
+      ElementConstruction* e2 = nullptr;
+      for (Fonction& x : c.d.fonctions)
+        if (x.kwKey == el.id) kf = &x;
+      for (ElementConstruction& x : c.d.construction)
+        if (x.j.value("kwKeyOf", std::string()) == el.id) e2 = &x;
+      if (kf && e2) {
+        const double nd = bore ? 0 : -(dm.t + KW_OVER);
+        if (std::abs(numero(e2->j, "d") - nd) > 1e-9) {
+          e2->j["p"]["d"] = nd;
+          e2->neuf = true;
+        }
+        poserProfondeurKw(*kf, bore ? -dm.h : dm.h);
+        if (Esquisse* sk2 = esquisseSur(c.d, e2->id)) poserBoucle(*sk2, ptsK);
+        kf->nom = "Clavette " + stdF(dm.kb) + " × " + stdF(dm.h) + " × " + stdF(Lk);
+      }
+    }
+    std::string w;
+    for (size_t i = 0; i < warn.size(); i++) w += (i ? " ; " : "") + warn[i];
+    el.kwSortie = {{"D", D}, {"b", dm.b}, {"t", dm.t}, {"h", dm.h}, {"L", Lout}, {"kb", dm.kb}, {"Lk", Lk}, {"iso", dm.iso}, {"warn", w}};
+    if (f) {
+      poserProfondeurKw(*f, -(std::round(depth * 1e4) / 1e4));
+      f->nom = "Rainure de clavette " + stdF(dm.b) + " × " + stdF(Lout) + " (" + (bore ? "alésage" : "arbre") + " Ø" + stdF(D) + ")";
+    }
+  } catch (const Standard_Failure& e) {
+    el.kwSortie["warn"] = e.what();
+  } catch (const std::exception& e) {
+    el.kwSortie["warn"] = e.what();
+  }
+  fin();
+}
+
 double arrondi(double x, double q) {
   const double y = std::round(x * q) / q;
   return y == 0 ? 0.0 : y;
@@ -874,31 +1136,6 @@ bool suivreEsquisse(Document& d, Esquisse& s) {  // cgSyncSketch
 }
 }  // namespace
 
-void ElementConstruction::lireRepere() {
-  aRepere = false;
-  surPiece = false;
-  surElements.clear();
-  id = str(j, "id");
-  kind = str(j, "kind");
-  nom = str(j, "name");
-  const auto vis = j.find("visible");
-  visible = vis == j.end() || !vis->is_boolean() || vis->get<bool>();
-  if (auto fr = j.find("fr"); fr != j.end() && fr->is_object()) {
-    o = lireV(*fr, "o");
-    z = lireV(*fr, "z");
-    x = lireV(*fr, "x");
-    y = lireV(*fr, "y");
-    aRepere = fr->contains("o") && fr->contains("z");
-  }
-  if (auto r = j.find("refs"); r != j.end() && r->is_array())
-    for (const auto& q : *r) {
-      if (!q.is_object()) continue;
-      const std::string k = str(q, "k");
-      if (k == "cg") surElements.push_back(str(q, "id"));
-      else if (k != "o") surPiece = true;
-    }
-}
-
 int rangConstruction(const Document& d, const ElementConstruction& e) {  // cgPos
   const auto at = e.j.find("at");
   if (at == e.j.end() || !at->is_string()) return -1;
@@ -940,7 +1177,10 @@ bool resoudreConstruction(Document& d, int n) {
       const bool la = r >= 0 && d.fonctions[r].id == at->get<std::string>();
       if (!la) el.j["at"] = r >= 0 ? json(d.fonctions[r].id) : json(nullptr);
     }
-    if (!(n >= 0 && r >= n) && methodeDe(el.kind, str(el.j, "how"))) resoudreUn(el, ctx);
+    if (!(n >= 0 && r >= n) && methodeDe(el.kind, str(el.j, "how"))) {
+      resoudreUn(el, ctx);
+      syncClavette(el, ctx);
+    }
     for (Esquisse& s : d.esquisses)
       if (s.plan == "CG" && s.plan_cg == el.id && suivreEsquisse(d, s)) bouge = true;
   }
@@ -1307,4 +1547,485 @@ GeoArete geoArete(const std::vector<Vec3>& P) {  // cgEdgeGeom
   g.n = unit(n);
   g.r = r;
   return g;
+}
+
+/* ----- perçage et rainure sur un cylindre (src/76-percage-cylindre, src/76-clavette) ----- */
+bool lireClicCylindre(const TopoDS_Face& f, const double point[3], bool interieurAdmis, ClicCylindre& C, std::string& erreur) {
+  try {
+    BRepAdaptor_Surface ad(f, true);
+    if (ad.GetType() != GeomAbs_Cylinder) {
+      erreur = "cliquez une face CYLINDRIQUE";
+      return false;
+    }
+    Vec3 pos{}, dim{};
+    boiteFace(f, pos, dim);
+    const gp_Cylinder cy = ad.Cylinder();
+    const gp_Ax1 ax = cy.Axis();
+    const Vec3 d0 = unit({ax.Direction().X(), ax.Direction().Y(), ax.Direction().Z()}), lo{ax.Location().X(), ax.Location().Y(), ax.Location().Z()};
+    C.o = add(lo, mul(d0, dot(sub(pos, lo), d0)));
+    C.r = cy.Radius();
+    C.d = sensCylindre(d0);
+    const Vec3 P{point[0], point[1], point[2]}, w = sub(P, C.o);
+    C.t = dot(w, C.d);
+    const Vec3 rad = sub(w, mul(C.d, C.t));
+    if (len(rad) < 1e-6) {
+      erreur = "point cliqué sur l’axe";
+      return false;
+    }
+    C.rad = unit(rad);
+    // Sens de la normale au point cliqué : la matière est-elle dehors (alésage) ?
+    double u = 0, v = 0;
+    ElSLib::Parameters(cy, gp_Pnt(P[0], P[1], P[2]), u, v);
+    gp_Pnt q;
+    gp_Vec du, dv;
+    ad.D1(u, v, q, du, dv);
+    gp_Vec nv = du.Crossed(dv);
+    if (f.Orientation() == TopAbs_REVERSED) nv.Reverse();
+    C.inner = nv.X() * C.rad[0] + nv.Y() * C.rad[1] + nv.Z() * C.rad[2] < 0;
+    if (C.inner && !interieurAdmis) {
+      erreur = "cliquez la face EXTÉRIEURE du cylindre (l’intérieur d’un alésage n’est pas pris en charge)";
+      return false;
+    }
+    return true;
+  } catch (const Standard_Failure& e) {
+    erreur = e.what();
+    return false;
+  }
+}
+
+namespace {
+struct DirCyl {
+  json ref;
+  double a;
+};
+double angleLibre(const Vec3& d, const Vec3& rad) {  // holeCylFreeAngle
+  const Vec3 u = baseN(d, nullptr).u;
+  return std::atan2(dot(cross(u, rad), d), dot(u, rad)) * 180 / PI;
+}
+DirCyl directionCylindre(const Vec3& d, const Vec3& rad) {  // holeCylDirection
+  const struct {
+    const char* id;
+    Vec3 w;
+  } AX[] = {{"X", {1, 0, 0}}, {"Y", {0, 1, 0}}, {"Z", {0, 0, 1}}};
+  for (const auto& a : AX) {
+    const Vec3 pr = sub(a.w, mul(d, dot(a.w, d)));
+    if (len(pr) < 0.5) continue;
+    const double c = dot(unit(pr), rad);
+    if (std::abs(c) >= std::cos(10 * PI / 180)) return {{{"k", "o"}, {"id", a.id}}, c > 0 ? 0.0 : 180.0};
+  }
+  return {nullptr, std::round(angleLibre(d, rad))};
+}
+json& listeJ(json& d, const char* k) {
+  if (!d.contains(k) || !d[k].is_array()) d[k] = json::array();
+  return d[k];
+}
+std::string idEsquisse(json& d) {
+  json& L = listeJ(d, "sketches");
+  const unsigned long long ms = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch()).count();
+  for (size_t k = L.size() + 1;; k++) {
+    const std::string id = "sk_" + std::to_string(k) + "_" + std::to_string(ms % 100000000ULL);
+    bool pris = false;
+    for (const json& s : L) pris = pris || str(s, "id") == id;
+    if (!pris) return id;
+  }
+}
+json* elementJ(json& d, const std::string& id) {
+  for (json& c : listeJ(d, "cgeo"))
+    if (str(c, "id") == id) return &c;
+  return nullptr;
+}
+int compteJ(const json& L, const std::function<bool(const json&)>& f) {
+  int n = 0;
+  for (const json& x : L) n += f(x) ? 1 : 0;
+  return n;
+}
+json esquisseSurPlan(json& d, const std::string& nom, const std::string& cg) {
+  return {{"id", idEsquisse(d)}, {"name", nom}, {"plane", "CG"}, {"cg", {{"id", cg}}}, {"points", json::object()}, {"entities", json::array()}, {"constraints", json::array()}, {"dims", json::array()}, {"seq", 1}, {"visible", false}, {"origin", json::array({0, 0, 0})}};
+}
+void clefAjouter(json& d, const std::string& el, int marque) {  // kwKeyAdd
+  for (const json& f : listeJ(d, "features"))
+    if (str(f, "kwKey") == el) return;
+  const int n = compteJ(listeJ(d, "cgeo"), [](const json& c) { return !str(c, "kwKeyOf").empty(); }) + 1;
+  const std::string idP = creerConstruction(d, "plane", marque, nullptr);
+  json& e2 = *elementJ(d, idP);
+  e2["name"] = "Plan de la clavette " + std::to_string(n);
+  e2["refs"] = json::array({{{"k", "cg"}, {"id", el}}});
+  e2["p"] = {{"d", 0}};
+  e2["visible"] = false;
+  e2["kwKeyOf"] = el;
+  json sk = esquisseSurPlan(d, "Esquisse " + std::to_string(listeJ(d, "sketches").size() + 1) + " (corps de clavette)", idP);
+  const std::string idS = str(sk, "id");
+  listeJ(d, "sketches").push_back(std::move(sk));
+  // extNewBody : le corps actif ne change pas
+  json& B = listeJ(d, "bodies");
+  int nb = d.contains("bodySeq") && d["bodySeq"].is_number() ? d["bodySeq"].get<int>() : 1;
+  const auto pris = [&](int k) { return compteJ(B, [&](const json& b) { return str(b, "id") == "b" + std::to_string(k); }) > 0; };
+  while (pris(nb)) nb++;
+  d["bodySeq"] = nb + 1;
+  B.push_back({{"id", "b" + std::to_string(nb)}, {"name", "Corps " + std::to_string(nb)}, {"c", nullptr}});
+  const std::string fid = ajouterFonction(d, {{"type", "extrude"}, {"name", "Clavette"}, {"sketchId", idS}, {"distance", 1}, {"op", "add"}, {"visible", true}, {"mid", false}, {"upto", nullptr}, {"kwKey", el}, {"newBody", true}, {"body", "b" + std::to_string(nb)}}, "ex", marque);
+  for (json& f : listeJ(d, "features"))
+    if (str(f, "id") == fid) f["name"] = "Clavette";
+  elementJ(d, el)->operator[]("kw")["key"] = true;
+}
+void clefRetirer(json& d, const std::string& el, const json* dejaRetiree = nullptr) {  // kwKeyRemove
+  json* pe = elementJ(d, el);
+  if (pe && pe->contains("kw")) (*pe)["kw"]["key"] = false;
+  std::string bid = dejaRetiree ? str(*dejaRetiree, "body") : std::string();
+  json& F = listeJ(d, "features");
+  json garde = json::array();
+  for (json& f : F) {
+    if (str(f, "kwKey") == el) {
+      bid = str(f, "body");
+      continue;
+    }
+    garde.push_back(std::move(f));
+  }
+  F = std::move(garde);
+  std::string plan;
+  for (const json& c : listeJ(d, "cgeo"))
+    if (str(c, "kwKeyOf") == el) plan = str(c, "id");
+  if (!plan.empty()) {
+    json gs = json::array();
+    for (json& s : listeJ(d, "sketches")) {
+      if (str(s, "plane") == "CG" && s.contains("cg") && s["cg"].is_object() && str(s["cg"], "id") == plan) continue;
+      gs.push_back(std::move(s));
+    }
+    d["sketches"] = std::move(gs);
+    json gc = json::array();
+    for (json& c : listeJ(d, "cgeo"))
+      if (str(c, "id") != plan) gc.push_back(std::move(c));
+    d["cgeo"] = std::move(gc);
+  }
+  if (bid.empty()) return;
+  for (const json& f : listeJ(d, "features")) {
+    if (str(f, "body") == bid || str(f, "newBody") == bid) return;
+    if (str(f, "type") == "combine" && f.contains("tools") && f["tools"].is_array())
+      for (const json& t : f["tools"])
+        if (t.is_string() && t.get<std::string>() == bid) return;
+  }
+  json gb = json::array();
+  for (json& b : listeJ(d, "bodies"))
+    if (str(b, "id") != bid) gb.push_back(std::move(b));
+  d["bodies"] = std::move(gb);
+  if (str(d, "activeBody") == bid) d.erase("activeBody");
+}
+}  // namespace
+
+std::string creerPercageCylindre(json& d, const ClicCylindre& C, int marque) {
+  const DirCyl D = directionCylindre(C.d, C.rad);
+  const double t = std::abs(C.t) < 1 ? 0 : C.t;
+  const int n = compteJ(listeJ(d, "cgeo"), [](const json& c) { return str(c, "how") == "tangent"; }) + 1;
+  const std::string idP = creerConstruction(d, "plane", marque, nullptr);
+  json& el = *elementJ(d, idP);
+  el["how"] = "tangent";
+  el["name"] = "Plan tangent " + std::to_string(n);
+  el["refs"] = json::array({{{"k", "face"}, {"ref", C.ref}, {"name", "Face"}}, D.ref, nullptr});
+  el["p"] = {{"a", D.a}, {"d", std::round(std::abs(t) * 10) / 10}, {"e", 0}, {"side", t < 0 ? -1 : 1}};
+  el["visible"] = false;
+  json sk = esquisseSurPlan(d, "Esquisse " + std::to_string(listeJ(d, "sketches").size() + 1) + " (cylindre)", idP);
+  const std::string idS = str(sk, "id");
+  sk["points"]["p1"] = {{"x", 0}, {"y", 0}};
+  sk["entities"].push_back({{"id", "e2"}, {"t", "cpoint"}, {"p", "p1"}, {"hole", true}});
+  sk["seq"] = 3;
+  listeJ(d, "sketches").push_back(std::move(sk));
+  const std::string id = creerPercage(d, idS, false, marque);
+  for (json& f : listeJ(d, "features"))
+    if (str(f, "id") == id) {
+      f["d"] = std::min(6.6, std::round(C.r * 10) / 10);
+      f["depth"] = std::min(15.0, std::round(C.r * 100) / 100);
+      if (!C.corps.empty()) f["body"] = C.corps;
+      f["name"] = nomAutoFonction(d, f);
+    }
+  return id;
+}
+
+std::string creerClavette(json& d, const ClicCylindre& C, int marque) {
+  const DirCyl D = directionCylindre(C.d, C.rad);
+  const int n = compteJ(listeJ(d, "cgeo"), [](const json& c) { return c.contains("kw"); }) + 1;
+  const std::string idP = creerConstruction(d, "plane", marque, nullptr);
+  json& el = *elementJ(d, idP);
+  el["how"] = "tangent";
+  el["name"] = "Plan de clavette " + std::to_string(n);
+  el["refs"] = json::array({{{"k", "face"}, {"ref", C.ref}, {"name", "Face"}}, D.ref, nullptr});
+  el["p"] = {{"a", D.a}, {"d", 0}, {"e", 0}, {"side", 1}};
+  el["visible"] = false;
+  el["kw"] = {{"bore", C.inner}, {"form", C.inner ? "T" : "A"}, {"iso", true}, {"b", 0}, {"t", 0}, {"h", 0}, {"L", nullptr}, {"end", C.t < 0 ? -1 : 1}, {"key", false}};
+  json sk = esquisseSurPlan(d, "Esquisse " + std::to_string(listeJ(d, "sketches").size() + 1) + " (clavette)", idP);
+  const std::string idS = str(sk, "id");
+  listeJ(d, "sketches").push_back(std::move(sk));
+  json nf = {{"type", "extrude"}, {"name", ""}, {"sketchId", idS}, {"distance", -1}, {"op", "cut"}, {"visible", true}, {"mid", false}, {"upto", nullptr}, {"kw", true}};
+  if (!C.corps.empty()) nf["body"] = C.corps;
+  const std::string id = ajouterFonction(d, nf, "ex", marque);
+  clefAjouter(d, idP, marque < 0 ? marque : marque + 1);
+  return id;
+}
+
+void clavetteSupprimee(json& d, const json& f) {  // kwOnDelete
+  if (f.value("kw", false)) {
+    const std::string sk = str(f, "sketchId");
+    for (const json& s : listeJ(d, "sketches"))
+      if (str(s, "id") == sk && s.contains("cg") && s["cg"].is_object()) {
+        const std::string el = str(s["cg"], "id");
+        clefRetirer(d, el);
+        return;
+      }
+  } else if (!str(f, "kwKey").empty()) {
+    clefRetirer(d, str(f, "kwKey"), &f);
+  }
+}
+
+const ElementConstruction* planDuCylindre(const Document& d, const std::string& esquisse) {
+  const Esquisse* s = esquisseDeId(d, esquisse);
+  if (!s || s->plan != "CG") return nullptr;
+  const ElementConstruction* e = elementDe(d, s->plan_cg);
+  return e && e->kind == "plane" && str(e->j, "how") == "tangent" ? e : nullptr;
+}
+
+void ficheCylindre(const Document& d, const ElementConstruction& e, bool sansCote, std::vector<ChampFiche>& c) {  // renderHoleCylProps
+  const auto ajout = [&](ChampFiche::Sorte so, const std::string& t, const std::string& cle) -> ChampFiche& {
+    ChampFiche f;
+    f.sorte = so;
+    f.categorie = "Position sur le cylindre";
+    f.titre = t;
+    f.cle = cle;
+    c.push_back(std::move(f));
+    return c.back();
+  };
+  if (str(e.j, "st") == "warn" && !str(e.j, "msg").empty()) ajout(ChampFiche::LECTURE, "⚠", "").texte = str(e.j, "msg");
+  const json& refs = e.j["refs"];
+  const json* r1 = refs.size() > 1 && refs[1].is_object() ? &refs[1] : nullptr;
+  const double a = std::fmod(std::fmod(numero(e.j, "a"), 360) + 360, 360);
+  const std::string id1 = r1 && str(*r1, "k") == "o" ? str(*r1, "id") : "";
+  const bool estAxe = id1 == "X" || id1 == "Y" || id1 == "Z";
+  const std::string cur = estAxe && (a == 0 || a == 180) ? std::string(a != 0 ? "-" : "+") + id1 : r1 ? "ref" : "free";
+  ChampFiche& ch = ajout(ChampFiche::CHOIX, "Direction", "z/dir");
+  ch.texte = cur;
+  const Vec3 dAxe = e.aRepere ? e.x : Vec3{0, 0, 1};
+  const struct {
+    const char* id;
+    Vec3 w;
+  } AX[] = {{"X", {1, 0, 0}}, {"Y", {0, 1, 0}}, {"Z", {0, 0, 1}}};
+  for (const auto& x : AX) {
+    if (len(cross(x.w, dAxe)) < 0.5) continue;
+    ch.choix.push_back({std::string("+") + x.id, std::string("Suivant +") + x.id});
+    ch.choix.push_back({std::string("-") + x.id, std::string("Suivant −") + x.id});
+  }
+  ch.choix.push_back({"free", "Angle libre"});
+  ch.choix.push_back({"ref", r1 && cur == "ref" ? libelleRef(d, *r1) : "Face ou arête…"});
+  ajout(ChampFiche::NOMBRE, "Angle (°)", "z/a").nombre = numero(e.j, "a");
+  if (!sansCote) {
+    const json* r2 = refs.size() > 2 && refs[2].is_object() ? &refs[2] : nullptr;
+    ChampFiche& cr = ajout(ChampFiche::CHOIX, "Cote depuis", "z/ref");
+    cr.choix.push_back({"", r2 ? libelleRef(d, *r2) : "Milieu du cylindre"});
+    cr.choix.push_back({"pick", "👆 Face, arête ou sommet…"});
+    if (r2) cr.choix.push_back({"none", "✕ Le milieu du cylindre"});
+    ajout(ChampFiche::NOMBRE, "Cote (mm)", "z/d").nombre = numero(e.j, "d");
+    ajout(ChampFiche::BOOLEEN, "Autre côté de la référence", "z/side").oui = numero(e.j, "side") < 0;
+  }
+  ajout(ChampFiche::NOMBRE, "Décalage latéral (mm)", "z/e").nombre = numero(e.j, "e");
+}
+
+void ficheClavette(const Document& d, const json& f, std::vector<ChampFiche>& c) {  // kwPanel, kwKeyPanel
+  const std::string kk = str(f, "kwKey");
+  const ElementConstruction* el = kk.empty() ? planDuCylindre(d, str(f, "sketchId")) : elementDe(d, kk);
+  const auto lecture = [&](const std::string& t, const std::string& v) {
+    ChampFiche x;
+    x.sorte = ChampFiche::LECTURE;
+    x.titre = t;
+    x.texte = v;
+    c.push_back(std::move(x));
+  };
+  if (!el) return lecture("⚠", kk.empty() ? "Plan de la clavette introuvable." : "Rainure de cette clavette introuvable.");
+  const json& kw = el->j.contains("kw") ? el->j["kw"] : json::object();
+  const json& O = el->kwSortie;
+  const auto sortie = [&](const char* k) { return O.is_object() ? nbJ(O, k) : 0.0; };
+  const auto cote = [&](const std::string& t, const std::string& cle, double v) {
+    ChampFiche x;
+    x.sorte = ChampFiche::NOMBRE;
+    x.titre = t;
+    x.cle = "z/" + cle;
+    x.nombre = v;
+    c.push_back(std::move(x));
+  };
+  const bool bore = ouiJ(kw, "bore");
+  const std::string form = str(kw, "form");
+  if (O.is_object() && !str(O, "warn").empty()) lecture("⚠", str(O, "warn"));
+  if (kk.empty()) {
+    if (sortie("D") > 0) {
+      const LigneIso773* r = ligneIso773(sortie("D"));
+      std::string t = std::string(bore ? "Alésage" : "Arbre") + " Ø" + stdF(sortie("D"));
+      if (r) t += " — ISO 773 : clavette " + stdF(r->b) + " × " + stdF(r->h) + ", rainure " + (bore ? "t2 " : "t1 ") + stdF(bore ? r->t2 : r->t1);
+      if (!ouiJ(O, "iso")) t += " — cotes modifiées";
+      lecture("Rainure", t);
+    }
+    ChampFiche p;
+    p.sorte = ChampFiche::CHOIX;
+    p.titre = "Pièce";
+    p.cle = "z/kw-bore";
+    p.texte = bore ? "bore" : "shaft";
+    p.choix = {{"shaft", "Arbre"}, {"bore", "Alésage"}};
+    c.push_back(std::move(p));
+    ChampFiche fo;
+    fo.sorte = ChampFiche::CHOIX;
+    fo.titre = "Forme";
+    fo.cle = "z/kw-form";
+    fo.texte = form;
+    fo.choix = {{"A", "Fermée, bouts ronds"}, {"B", "Fermée, bouts droits"}, {"C", "Débouchante d’un côté"}, {"T", "Toute la longueur"}};
+    c.push_back(std::move(fo));
+    cote("Largeur (mm)", "kw-ob", sortie("b"));
+    cote("Profondeur (mm)", "kw-ot", sortie("t"));
+    if (form != "T") cote("Longueur (mm)", "kw-L", sortie("L"));
+    if (form == "C") {
+      ChampFiche b;
+      b.sorte = ChampFiche::BOOLEEN;
+      b.titre = "Déboucher de l’autre côté";
+      b.cle = "z/kw-end";
+      b.oui = nbJ(kw, "end") < 0;
+      c.push_back(std::move(b));
+    }
+    ChampFiche b;
+    b.sorte = ChampFiche::BOOLEEN;
+    b.titre = "Clavette (corps séparé)";
+    b.cle = "z/kw-key";
+    b.oui = ouiJ(kw, "key");
+    c.push_back(std::move(b));
+  }
+  if (ouiJ(kw, "key") || !kk.empty()) {
+    cote("Clavette : largeur (mm)", "kw-okb", sortie("kb"));
+    cote("Clavette : hauteur (mm)", "kw-oh", sortie("h"));
+    cote("Clavette : longueur (mm)", "kw-okL", sortie("Lk"));
+  }
+  lecture("Note", "Une cote saisie ne suit plus le Ø ; 0 la rend automatique.");
+  if (kk.empty()) ficheCylindre(d, *el, form == "C" || form == "T", c);
+}
+
+std::string appliquerCylindre(json& d, const json& f, const std::string& cle, const std::string& valeur) {
+  std::string plan;
+  const std::string kk = str(f, "kwKey");
+  if (!kk.empty()) plan = kk;
+  else
+    for (const json& s : listeJ(d, "sketches"))
+      if (str(s, "id") == str(f, "sketchId") && s.contains("cg") && s["cg"].is_object()) plan = str(s["cg"], "id");
+  json* pe = elementJ(d, plan);
+  if (!pe) return "Plan introuvable.";
+  json& e = *pe;
+  if (!e.contains("p") || !e["p"].is_object()) e["p"] = json::object();
+  if (!e.contains("refs") || !e["refs"].is_array()) e["refs"] = json::array();
+  while (e["refs"].size() < 3) e["refs"].push_back(nullptr);
+  const std::string c = cle.substr(2);
+  const auto nombre = [&](double& v) {
+    std::string t = valeur;
+    std::replace(t.begin(), t.end(), ',', '.');
+    try {
+      v = std::stod(t);
+    } catch (const std::exception&) {
+      return false;
+    }
+    return std::isfinite(v);
+  };
+  double v = 0;
+  if (c == "dir") {
+    if (valeur == "ref") return "";
+    if (valeur == "free") {
+      e["refs"][1] = nullptr;
+      if (e.contains("fr") && e["fr"].is_object()) e["p"]["a"] = std::round(angleLibre(lireV(e["fr"], "x"), lireV(e["fr"], "z")));
+    } else if (valeur.size() == 2) {
+      e["refs"][1] = {{"k", "o"}, {"id", valeur.substr(1)}};
+      e["p"]["a"] = valeur[0] == '-' ? 180 : 0;
+    } else if (valeur[0] == '{') {
+      e["refs"][1] = json::parse(valeur);
+      e["p"]["a"] = 0;
+    }
+    return "";
+  }
+  if (c == "pose") {  // z/ref : { ref, d, side }
+    const json q = json::parse(valeur);
+    e["refs"][2] = q["ref"];
+    e["p"]["d"] = q["d"];
+    e["p"]["side"] = q["side"];
+    return "";
+  }
+  if (c == "a" || c == "e") {
+    if (!nombre(v)) return "Saisir un nombre.";
+    e["p"][c] = v;
+    return "";
+  }
+  if (c == "d") {
+    if (!nombre(v) || v < 0) return "Saisir une cote positive.";
+    e["p"]["d"] = v;
+    return "";
+  }
+  if (c == "side") {
+    e["p"]["side"] = valeur == "1" ? -1 : 1;
+    return "";
+  }
+  if (c.rfind("kw-", 0) != 0) return "Réglage inconnu.";
+  json& kw = e["kw"];
+  const std::string k = c.substr(3);
+  if (k == "bore") kw["bore"] = valeur == "bore";
+  else if (k == "form") kw["form"] = valeur;
+  else if (k == "end") kw["end"] = valeur == "1" ? -1 : 1;
+  else if (k == "key") {
+    if (valeur == "1") {
+      int rang = -1;
+      json& F = listeJ(d, "features");
+      for (size_t i = 0; i < F.size(); i++)
+        if (str(F[i], "id") == str(f, "id")) rang = static_cast<int>(i) + 1;
+      clefAjouter(d, plan, rang >= static_cast<int>(F.size()) ? -1 : rang);
+    } else {
+      clefRetirer(d, plan);
+    }
+  } else {  // ob, ot, oh, okb, okL, L : 0 ou vide = automatique
+    double w = 0;
+    if (!valeur.empty() && !nombre(w)) return "Saisir un nombre.";
+    if (w < 0) return "Saisir une cote positive.";
+    if (k == "L") kw["L"] = w > 0 ? json(w) : json(nullptr);
+    else kw[k] = w;
+    if (k == "ob" && w == 0) kw["b"] = 0;
+    if (k == "ot" && w == 0) kw["t"] = 0;
+    if (k == "oh" && w == 0) kw["h"] = 0;
+  }
+  return "";
+}
+
+std::string placementCylindre(Document& d, const TopoDS_Shape& solide, const std::string& plan, const json& ref, double& cote, int& sens) {
+  ElementConstruction* el = nullptr;
+  for (ElementConstruction& e : d.construction)
+    if (e.id == plan) el = &e;
+  if (!el || !el->aRepere) return "cylindre introuvable";
+  try {
+    Contexte ici(d);  // la pièce affichée
+    ici.pos = static_cast<int>(d.fonctions.size()) - 1;
+    ici.solide = solide;
+    auto A0 = el->j["refs"].size() ? evaluerRef(el->j["refs"][0], &ici) : std::nullopt;
+    if (!A0 || !A0->axis) {  // le cylindre s'évalue sur la pièce d'avant, qui le porte à coup sûr
+      Contexte avant(d);
+      avant.self = el;
+      A0 = evaluerRef(el->j["refs"][0], &avant);
+      if (!A0 || !A0->axis) return "cylindre introuvable";
+    }
+    const Vec3 dd = sensCylindre(A0->axis->d), oa = A0->axis->o;
+    const double here = dot(sub(el->o, oa), dd);
+    double tRef = 0;
+    if (!ref.is_null()) {
+      json r = ref;
+      auto g = evaluerRef(r, &ici);
+      if (!g) return "référence illisible";
+      tRef = axialDe(r, *g, oa, dd);
+      Contexte avant(d);
+      avant.self = el;
+      json c = ref;
+      auto gp = evaluerRef(c, &avant);
+      if (!gp || std::abs(axialDe(c, *gp, oa, dd) - tRef) > 0.01) return "cette référence appartient au trou ou à une fonction plus récente : choisissez-en une qui existait avant";
+    }
+    const double v = here - tRef;
+    cote = std::round(std::abs(v) * 100) / 100;
+    sens = v < 0 ? -1 : 1;
+    return "";
+  } catch (const Standard_Failure& e) {
+    return e.what();
+  } catch (const std::exception& e) {
+    return e.what();
+  }
 }
