@@ -467,6 +467,10 @@ public:
   double simVox_ = 0;
   std::string simBarre_;
   void faoTrame(double dt);
+  void faoOuvrirEsquisse(const std::string& id, const plan::J& sk);
+  void faoFermerEsquisse();
+  std::string faoEsqId_, faoEsqTexte_;
+  int faoEsqRang_ = -1;
   void faoAppliquerTrame(const plan::J& r);
   void faoSimFin();
   void faoEssai(const plan::J& e);

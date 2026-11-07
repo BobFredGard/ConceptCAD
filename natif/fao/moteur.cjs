@@ -54,6 +54,7 @@ async function demarrer() {
     clic.call(this);
   };
   sandbox.alert = t => ecrireEvt({ evt: 'alerte', texte: String(t) });
+  sandbox.__natifEvt = t => ecrireEvt(JSON.parse(t));
   sandbox.__realOcct = real;
   sandbox.btoa = globalThis.btoa;
   sandbox.atob = globalThis.atob;
@@ -165,7 +166,21 @@ async function demarrer() {
       (j.ops||[]).forEach(function(op){const h=faoOpMovesHit(op);o.push([op.id,op.on!==false,op.hidden===true,op.stale===true,h?h.key:'',h&&h.mv?h.mv.length:0]);});
       return JSON.stringify([j.id,j.stock,j.origin,j.orient,j.wcs,o,faoPrevOn,faoViewerRap,!!faoVw]);
     }
+    faoSkOpen=function(id){
+      const f=faoSkFind(id);if(!f||faoSkEditId)return false;
+      f.sk.fao=f.setup.id;faoSkEditId=id;
+      __natifEvt(JSON.stringify({evt:'esquisseFao',id:id,sk:f.sk}));
+      return true;
+    };
+    function __natifEsquisseFin(id,sk){
+      const f=faoSkFind(id);faoSkEditId=null;
+      if(!f)return;
+      if(sk){Object.keys(f.sk).forEach(function(k){delete f.sk[k];});Object.assign(f.sk,sk);f.sk.fao=f.setup.id;}
+      faoSkAfterEdit(f.sk);
+    }
     function __natifAction(nom,type){
+      if(nom==='esquisse')return faoSkNew();
+      if(nom==='extrusion')return faoWallNew();
       const clic=function(id){document.getElementById(id).click();};
       if(nom==='posage'){const b=Array.from(document.querySelectorAll('#faoTreeWrap button')).find(function(x){return x.textContent.indexOf('+ Posage')>=0;});if(b)b.click();return;}
       if(nom==='outils')return clic('faoToolsBtn');
@@ -305,6 +320,12 @@ function sceneFichier(a) {
 const b64 = f => Buffer.from(f.buffer, f.byteOffset, f.byteLength).toString('base64');
 const COMMANDES = {
   // Une image de la lecture d'usinage : le temps écoulé, puis ce qui a changé
+  esquisseFin(a) {
+    sandbox.__id = a.id;
+    sandbox.__sk = a.sk ? JSON.stringify(a.sk) : null;
+    vm.runInContext('__natifEsquisseFin(__id,__sk?JSON.parse(__sk):null)', ctx);
+    return vue();
+  },
   simuler(a) {
     sandbox.__dt = +a.dt || 0;
     const r = vm.runInContext('__natifTrame(__dt)', ctx);

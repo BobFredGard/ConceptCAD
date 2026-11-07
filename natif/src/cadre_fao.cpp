@@ -151,6 +151,12 @@ void Cadre::faoEvenement(const plan::J& e) {
   if (k == "message") return faoMessage(tx(e.value("texte", std::string())));
   if (k == "alerte") return faoMessage(tx(e.value("texte", std::string())));
   if (k == "indisponible") return indisponible(tx(e.value("texte", std::string())));
+  if (k == "esquisseFao") {
+    const std::string id = e.value("id", std::string());
+    const plan::J sk = e["sk"];
+    CallAfter([this, id, sk] { faoOuvrirEsquisse(id, sk); });
+    return;
+  }
   if (k == "telecharger") {
     const wxString nom = tx(e.value("nom", std::string()));
     const std::string texte = e.value("texte", std::string());
@@ -309,6 +315,57 @@ void Cadre::faoScene() {
   });
 }
 
+// L'esquisse d'un posage entre dans la pièce le temps de l'édition, comme dans la page (faoSkOpen)
+void Cadre::faoOuvrirEsquisse(const std::string& id, const plan::J& sk) {
+  if (esquisseOuverte_ >= 0 || !faoEsqId_.empty()) {
+    moteurFao_->commande("esquisseFin", {{"id", id}}, [](bool, const plan::J&, const std::string&) {});
+    return;
+  }
+  try {
+    plan::J mini = {{"app", "ConceptCAD"}, {"bundle", 1}, {"v", "natif"}, {"name", "FAO"}, {"doc", {{"name", "FAO"}, {"tint", 0}, {"sketches", plan::J::array({sk})}, {"features", plan::J::array()}}}};
+    faoEsqTexte_ = mini.dump(-1, ' ', false, plan::J::error_handler_t::replace);
+    Document d = lireTexteProjet(doc_, faoEsqTexte_);
+    if (d.esquisses.size() != 1) throw std::runtime_error("esquisse illisible");
+    faoFaireSuivre();
+    faoEsqId_ = id;
+    doc_.esquisses.push_back(d.esquisses[0]);
+    faoEsqRang_ = static_cast<int>(doc_.esquisses.size()) - 1;
+    entrerEsquisse(faoEsqRang_);
+  } catch (const std::exception& ex) {
+    faoEsqId_.clear();
+    moteurFao_->commande("esquisseFin", {{"id", id}}, [](bool, const plan::J&, const std::string&) {});
+    faoMessage(L"Esquisse FAO : " + tx(ex.what()));
+  }
+}
+
+// À la sortie de l'éditeur : l'esquisse retourne au posage, la pièce est telle qu'avant
+void Cadre::faoFermerEsquisse() {
+  const std::string id = faoEsqId_;
+  faoEsqId_.clear();
+  plan::J a = {{"id", id}};
+  try {
+    Document d = lireTexteProjet(doc_, faoEsqTexte_);
+    d.esquisses[0] = doc_.esquisses[faoEsqRang_];
+    const auto j = nlohmann::ordered_json::parse(texteEnregistre(d, faoEsqTexte_));
+    a["sk"] = j["doc"]["sketches"][0];
+  } catch (const std::exception& ex) {
+    faoMessage(L"Esquisse FAO non reprise : " + tx(ex.what()));
+  }
+  doc_.esquisses.erase(doc_.esquisses.begin() + faoEsqRang_);
+  faoEsqRang_ = -1;
+  while (annulations_.size() > annulationsEntree_) annulations_.pop_back();
+  retablissements_.clear();
+  remplirArbre();
+  faoSale_ = true;
+  faoEnCours_++;
+  moteurFao_->commande("esquisseFin", a, [this](bool ok, const plan::J& r, const std::string& err) {
+    faoEnCours_--;
+    if (!ok) return faoMessage(tx(err).BeforeFirst('\n'));
+    if (atelier_ == Atelier::FAO) faoAppliquer(r);
+  });
+  changerAtelier(Atelier::FAO);
+}
+
 namespace {
 std::vector<float> flottants(const std::string& b64) {
   const wxMemoryBuffer m = wxBase64Decode(b64.data(), b64.size());
@@ -456,6 +513,7 @@ void Cadre::faoEssai(const plan::J& e) {
   if (e.contains("champ")) ficheFao_->essaiChamp(e["champ"].get<std::string>(), e["valeur"]);
   if (e.contains("touche")) faoTouche(e["touche"].get<std::string>(), e.value("ctrl", false), e.value("maj", false));
   if (e.contains("action")) faoAction(e["action"].get<std::string>(), e.value("type", std::string()));
+  if (e.contains("clic3d")) vue_->cliquerFao(wxPoint(e["clic3d"][0].get<int>(), e["clic3d"][1].get<int>()), 0, false, false);
   if (e.contains("pause")) {
     const wxLongLong fin = wxGetLocalTimeMillis() + e["pause"].get<long>();
     // Comme la vraie boucle du programme : l'essai tourne avant elle, et les minuteries ne passent pas par wxYield
@@ -471,7 +529,11 @@ void Cadre::faoEssai(const plan::J& e) {
   }
   if (e.contains("code")) {
     faoEnCours_++;
-    moteurFao_->commande("evaluer", {{"code", e["code"]}}, [this](bool, const plan::J&, const std::string&) { faoEnCours_--; });
+    const std::string sortieCode = e.value("sortieCode", std::string());
+    moteurFao_->commande("evaluer", {{"code", e["code"]}}, [this, sortieCode](bool, const plan::J& r, const std::string& err) {
+      faoEnCours_--;
+      if (!sortieCode.empty()) std::ofstream(wxString::FromUTF8(sortieCode).ToStdWstring()) << r.dump(1, ' ', false, plan::J::error_handler_t::replace) << err;
+    });
     faoRafraichir();
     attendre();
   }

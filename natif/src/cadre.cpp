@@ -334,7 +334,7 @@ void Cadre::creerEnvironnement() {
     if (esquisseOuverte_ < 0) recalculer();
   };
   barreHaute_->surIndisponible = [this](const wxString& n) { indisponible(n); };
-  ruban_->estRepris = [this](Atelier a, const wxString& n) { if (a == Atelier::PLAN) return planVue_->estRepris(n); if (a == Atelier::FAO) return n != L"Esquisse" && n != L"Extrusion"; return a == Atelier::CAO && (n == L"Esquisse" || n == L"Extrusion" || n == L"Congé" || n == L"Chanfrein" || n == L"Paramètres" || n == L"Corps" || n == L"Perçage" || n == L"Filetage" || n == L"Clavette" || n == L"Plan" || n == L"Axe" || n == L"Point" || n == L"Repère" || n == L"Répétition" || n == L"Révolution" || n == L"Balayage" || n == L"Face" || n == L"Dépouille" || n == L"Coque" || n == L"Combiner" || n == L"Déplacer" || n == L"Échelle" || n == L"Scinder" || n == L"Importer" || n == L"STEP" || n == L"STL" || n == L"OBJ" || n == L"Assembler" || n == L"Modéliser" || n == L"Composant" || n == L"Occurrence" || n == L"Insérer" || n == L"Inspecter" || n == L"Normalisés" || n == L"Aimants" || n == L"Depuis corps"); };
+  ruban_->estRepris = [this](Atelier a, const wxString& n) { if (a == Atelier::PLAN) return planVue_->estRepris(n); if (a == Atelier::FAO) return true; return a == Atelier::CAO && (n == L"Esquisse" || n == L"Extrusion" || n == L"Congé" || n == L"Chanfrein" || n == L"Paramètres" || n == L"Corps" || n == L"Perçage" || n == L"Filetage" || n == L"Clavette" || n == L"Plan" || n == L"Axe" || n == L"Point" || n == L"Repère" || n == L"Répétition" || n == L"Révolution" || n == L"Balayage" || n == L"Face" || n == L"Dépouille" || n == L"Coque" || n == L"Combiner" || n == L"Déplacer" || n == L"Échelle" || n == L"Scinder" || n == L"Importer" || n == L"STEP" || n == L"STL" || n == L"OBJ" || n == L"Assembler" || n == L"Modéliser" || n == L"Composant" || n == L"Occurrence" || n == L"Insérer" || n == L"Inspecter" || n == L"Normalisés" || n == L"Aimants" || n == L"Depuis corps"); };
   ruban_->surBouton = [this](Atelier a, const wxString& n) { boutonRuban(a, n); };
   ruban_->surIndisponible = [this](const wxString& n) { indisponible(n); };
 
@@ -684,6 +684,8 @@ void Cadre::boutonRuban(Atelier a, const wxString& nom) {
     if (nom == L"Rapides") return faoAction("rapides", "");
     if (nom == L"Régénérer") return faoAction("regenerer", "");
     if (nom == L"Usinage") return faoAction("usinage", "");
+    if (nom == L"Esquisse") return faoAction("esquisse", "");
+    if (nom == L"Extrusion") return faoAction("extrusion", "");
     if (nom == L"G-code") return faoAction("gcode", "");
     if (nom == L"Surfaçage" || nom == L"Chanfrein" || nom == L"Contour" || nom == L"Perçage" || nom == L"Ébauche 3D" || nom == L"Finition" || nom == L"Géodésique") return faoAction("ajout", nom.ToStdString(wxConvUTF8));
     return indisponible(nom);
@@ -1897,6 +1899,7 @@ void Cadre::quitterEsquisse() {
   vue_->Refresh();
   montrerEsquisse(i);
   etat(tx(doc_.nom));
+  if (!faoEsqId_.empty()) return faoFermerEsquisse();
   // skIsGhost : créée puis refermée sans rien dessiner, elle ne reste pas dans la pièce, ni dans les annulations
   const Esquisse& fin = doc_.esquisses[i];
   const bool rienQueOrigine = fin.ordre.empty() || (fin.ordre.size() == 1 && fin.ordre[0] == "O");
