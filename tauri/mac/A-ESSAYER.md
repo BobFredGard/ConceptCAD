@@ -46,6 +46,7 @@ Pour chaque essai qui échoue, notez son numéro et ce que vous voyez. Une photo
 
 - **Noyau multicœur :** coupé sur Mac (`?mt=0`, posé par `tauri/pont.js`), car il figeait l'application dès qu'il reconstruisait une vraie pièce. Les Mac de GitHub ont 3 cœurs et prennent toujours le noyau normal : ils ne peuvent pas révéler ce blocage. L'ouverture a été rétablie sur le Mac de Fred par ce seul changement.
 - **macOS :** réglé pour macOS 12 ou plus récent. Le noyau a besoin d'un Safari à jour (16.4 ou plus).
+- **Mise à jour par Internet :** l'application la propose au démarrage dès que `latest.json` contient le Mac. Pour publier : `node tauri/construire-windows.cjs`, puis `node tauri/mac/publier-maj.cjs`, et joindre tout le dossier `publication`. Le parcours complet sur Mac n'a pas encore été essayé : il faudra le regarder à la première version publiée après V0.69.0.
 - **Pour diffuser à d'autres :** il faudra un compte développeur Apple (environ 99 $ par an) pour supprimer le blocage au premier lancement.
 
 ## Pour une session Claude sur le Mac

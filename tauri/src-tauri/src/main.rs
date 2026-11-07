@@ -221,8 +221,20 @@ fn installer_maj(app: &AppHandle) {
                 .set_title("ConceptCAD")
                 .set_description(format!("La mise à jour n'a pas pu s'installer : {e}\n\nVos pièces ne sont pas touchées. Rouvrez ConceptCAD, ou relancez l'installateur téléchargé sur GitHub."))
                 .show();
+        } else {
+            #[cfg(target_os = "macos")]
+            rouvrir_apres_maj();
         }
     }
+}
+
+/// Sous Windows, l'installateur rouvre l'application ; sur Mac, personne ne le fait.
+/// La petite attente laisse celle-ci se fermer : sinon « open » la réactiverait au lieu de la relancer.
+#[cfg(target_os = "macos")]
+fn rouvrir_apres_maj() {
+    let Ok(exe) = std::env::current_exe() else { return };
+    let Some(paquet) = exe.ancestors().nth(3) else { return }; // ConceptCAD.app/Contents/MacOS/ConceptCAD
+    let _ = std::process::Command::new("/bin/sh").arg("-c").arg("sleep 1; open \"$0\"").arg(paquet).spawn();
 }
 
 /// Croix de la fenêtre (ou Cmd+Q sur Mac) : la question vient de la page. Si un long calcul l'empêche

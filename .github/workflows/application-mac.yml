@@ -50,6 +50,10 @@ jobs:
       - name: Compiler et fabriquer le DMG
         working-directory: tauri/src-tauri
         run: cargo tauri build --config tauri.mac.json --target universal-apple-darwin
+      - name: Emballer l'application pour la mise à jour par Internet
+        run: |
+          COPYFILE_DISABLE=1 tar czf ConceptCAD.app.tar.gz -C tauri/src-tauri/target/universal-apple-darwin/release/bundle/macos ConceptCAD.app
+          tar tzf ConceptCAD.app.tar.gz | grep -x 'ConceptCAD.app/Contents/MacOS/ConceptCAD'
       - name: Installer et lancer
         run: |
           mkdir captures
@@ -79,6 +83,12 @@ jobs:
         with:
           name: ConceptCAD-Mac-dmg
           path: tauri/src-tauri/target/universal-apple-darwin/release/bundle/dmg/*.dmg
+          if-no-files-found: error
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ConceptCAD-Mac-maj
+          path: ConceptCAD.app.tar.gz
+          compression-level: 0
           if-no-files-found: error
       - uses: actions/upload-artifact@v4
         if: always()
