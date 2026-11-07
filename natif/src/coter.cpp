@@ -332,7 +332,6 @@ std::string esquisseFigee(const Document& d, size_t i) {
   // Une esquisse libre, sans fonction ni lien avec le solide, ne dépend pas de ce que le natif ne sait pas calculer
   const Esquisse& e = d.esquisses[i];
   if (!d.nonPrisEnCharge.empty() && (consommatrice(d, e.id) >= 0 || e.hote.existe || avecProjection(e))) return "le solide de cette pièce n'est pas encore calculé par ce programme";
-  if (d.unPlanSuitLaPiece()) return "cette pièce a un plan de construction posé sur le modèle : il ne suit pas encore dans ce programme";
   if (consommatrice(d, e.id) >= 0 || e.hote.existe || avecProjection(e))
     for (const Fonction& f : d.fonctions)
       if (f.upto) return "cette pièce a une extrusion « jusqu'à un objet » qui ne se recalcule pas encore dans ce programme";

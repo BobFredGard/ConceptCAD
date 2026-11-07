@@ -30,6 +30,7 @@ Esquisse nouvelleEsquissePlan(const Document& d, const std::string& plan);
 // solide : la forme affichée. Rend false si la face n'est pas plane. Prend un nom « Face n » si la face a une porteuse.
 bool nouvelleEsquisseFace(Document& d, const TopoDS_Shape& solide, const TopoDS_Face& face, Esquisse& out);
 // Un point à l'intérieur de la face (son centre si possible). Rend false si elle n'en a pas.
+bool nouvelleEsquisseConstruction(const Document& d, const std::string& id, const std::string& sous, Esquisse& out);
 bool pointDansFace(const TopoDS_Face& face, double p[3]);
 // extDynNew (src/70-extrusion-dynamique) : la fonction telle qu'elle naît, 20 mm vers le haut, pas encore ajoutée à la pièce.
 Fonction nouvelleExtrusion(const Document& d, const Esquisse& s);

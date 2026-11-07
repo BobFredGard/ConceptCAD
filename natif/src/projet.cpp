@@ -59,28 +59,13 @@ bool memesValeurs(const Esquisse& a, const Esquisse& b) {
   return true;
 }
 
-bool Document::planSuitLaPiece(const std::string& id, int garde) const {
-  if (garde > 64) return true;
-  for (const ElementConstruction& e : construction)
-    if (e.id == id) {
-      if (e.surPiece) return true;
-      for (const std::string& a : e.surElements)
-        if (planSuitLaPiece(a, garde + 1)) return true;
-    }
-  return false;
-}
-bool Document::unPlanSuitLaPiece() const {
-  for (const Esquisse& s : esquisses)
-    if (!s.plan_cg.empty() && planSuitLaPiece(s.plan_cg)) return true;
-  return false;
-}
 bool Document::profondeurModifiable(size_t i) const {
   const Esquisse* e = nullptr;
   for (const Esquisse& s : esquisses)
     if (s.id == fonctions[i].esquisse) e = &s;
   if (!e) return false;
   // Ce qui ne suit pas encore : les copies d'une répétition, les extrusions jusqu'à un objet
-  if (fonctions[i].repetee || fonctions[i].upto || unPlanSuitLaPiece()) return false;
+  if (fonctions[i].repetee || fonctions[i].upto) return false;
   for (const Fonction& f : fonctions)
     if (f.upto) return false;
   for (const Esquisse& s : esquisses) {
@@ -285,7 +270,10 @@ static void lireEsquisse(const json& js, Document& d, std::map<std::string, int>
       }
       s.cotes.push_back(std::move(c));
     }
-  if (auto c = js.find("cg"); c != js.end() && c->is_object()) s.plan_cg = texte(*c, "id");
+  if (auto c = js.find("cg"); c != js.end() && c->is_object()) {
+    s.plan_cg = texte(*c, "id");
+    s.plan_cg_sous = texte(*c, "sub");
+  }
   if (js.contains("host") && js["host"].is_object()) {
     auto& h = js["host"];
     s.hote.feat = texte(h, "feat");
@@ -671,17 +659,8 @@ static Document documentDepuisDoc(json& racine) {
     for (const auto& c : *x) {
       if (!c.is_object()) continue;
       ElementConstruction e;
-      e.id = texte(c, "id");
-      e.kind = texte(c, "kind");
-      e.nom = texte(c, "name");
-      if (auto fr = c.find("fr"); fr != c.end() && fr->is_object()) e.aRepere = lireVec3(*fr, "o", e.o) && lireVec3(*fr, "z", e.z);
-      if (auto r = c.find("refs"); r != c.end() && r->is_array())
-        for (const auto& q : *r) {
-          if (!q.is_object()) continue;
-          const std::string k = texte(q, "k");
-          if (k == "cg") e.surElements.push_back(texte(q, "id"));
-          else if (k != "o") e.surPiece = true;
-        }
+      e.j = c;
+      e.lireRepere();
       d.construction.push_back(std::move(e));
     }
   for (auto& s : j["sketches"]) lireEsquisse(s, d, refus);

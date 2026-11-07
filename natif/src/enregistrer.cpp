@@ -694,6 +694,7 @@ std::string esquisseCreee(const Esquisse& s) {
   o += ",\"entities\":[],\"points\":{},\"constraints\":[],\"dims\":[],\"seq\":1,\"visible\":true,\"origin\":" + texteVec(s.o);
   o += ",\"at\":" + (s.at.empty() ? std::string("null") : texteJson(s.at));
   o += ",\"axU\":" + texteVec(s.u) + ",\"axV\":" + texteVec(s.v) + ",\"axN\":" + texteVec(s.n);
+  if (s.plan == "CG") o += ",\"cg\":{\"id\":" + texteJson(s.plan_cg) + (s.plan_cg_sous.empty() ? std::string() : ",\"sub\":" + texteJson(s.plan_cg_sous)) + "}";
   if (s.plan == "FACE") {
     o += ",\"host\":";
     if (!s.hote.existe) {
@@ -1106,6 +1107,10 @@ void modifierStructure(Document& d, const std::function<void(nlohmann::ordered_j
   }
   const bool lot = racine.contains("doc") && racine["doc"].is_object();
   nlohmann::ordered_json& j = lot ? racine["doc"] : racine;
+  if (j.contains("cgeo") && j["cgeo"].is_array())  // le repère calculé des éléments de construction part dans le fichier
+    for (auto& c : j["cgeo"])
+      for (const ElementConstruction& e : d.construction)
+        if (e.neuf && c.is_object() && c.value("id", std::string()) == e.id) c = e.j;
   changement(j);
   regenererRepetitions(j, true);
   Document n = lireTexteProjet(d, racine.dump(-1, ' ', false, nlohmann::ordered_json::error_handler_t::replace));
@@ -1113,6 +1118,19 @@ void modifierStructure(Document& d, const std::function<void(nlohmann::ordered_j
 }
 
 void enregistrerProjet(Document& d, const std::wstring& cible, bool forcer) {
+  bool reperes = false;
+  for (const ElementConstruction& e : d.construction) reperes = reperes || e.neuf;
+  if (reperes && d.modifie()) {
+    // Les repères recalculés vont dans le fichier ; les esquisses gardent la position qu'ils viennent de leur donner
+    const std::vector<Esquisse> avant = d.esquisses;
+    modifierStructure(d, [](nlohmann::ordered_json&) {});
+    for (size_t i = 0; i < d.esquisses.size() && i < avant.size(); i++) {
+      d.esquisses[i].o = avant[i].o;
+      d.esquisses[i].u = avant[i].u;
+      d.esquisses[i].v = avant[i].v;
+      d.esquisses[i].n = avant[i].n;
+    }
+  }
   std::string octets = d.octets.str();
   if (d.modifie()) {
     const std::string texte = texteEnregistre(d, !d.texteBase.empty() ? d.texteBase.str() : texteDuFichier(d));

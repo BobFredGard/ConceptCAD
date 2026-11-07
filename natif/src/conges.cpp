@@ -845,6 +845,45 @@ std::optional<Repris> repriseNurbs(const TopoDS_Shape& base, const std::vector<T
 }
 }  // namespace
 
+int chercherAreteParReference(const Document& d, nlohmann::ordered_json& ref, const std::vector<AreteListee>& aretes, const std::map<std::string, std::string>& alias) {
+  AreteConge se;
+  const RefFace lue = lireRefFaceJson(ref);
+  se.pos = lue.pos;
+  se.ancre = lue.ancre;
+  if (auto x = ref.find("len"); x != ref.end() && x->is_number()) se.len = x->get<double>();
+  if (auto x = ref.find("nom"); x != ref.end() && x->is_string()) se.nom = x->get<std::string>();
+  if (!se.nom.empty()) {
+    const int iN = nomsTrouveArete(aretes, alias, se.nom, &se.pos);
+    if (iN >= 0) {
+      if (!aretes[iN].nom.empty()) ref["nom"] = aretes[iN].nom;
+      return iN;
+    }
+  }
+  // cgFindEdge0
+  if (!se.ancre.existe) {
+    AncreArete a0;
+    if (ancrePour(d, se.pos, a0)) se.ancre = a0;
+  }
+  const auto dist = [&](int i) { return ecart(aretes[i].mid, se.pos); };
+  int i = -1;
+  if (se.ancre.existe) {
+    const int a = chercherParAncre(d, se, aretes);
+    if (a >= 0) i = a;
+  }
+  if (i < 0) {
+    double bd = 2.5;
+    for (size_t k = 0; k < aretes.size(); k++) {
+      const double e = dist(static_cast<int>(k));
+      if (e > bd) continue;
+      if (se.len > 0 && std::abs(aretes[k].len - se.len) > std::max(2.0, 0.35 * se.len)) continue;
+      bd = e;
+      i = static_cast<int>(k);
+    }
+  }
+  if (i >= 0 && se.nom.empty() && !aretes[i].nom.empty()) ref["nom"] = aretes[i].nom;
+  return i;
+}
+
 std::vector<AreteListee> listerAretes(const TopoDS_Shape& shape) {
   std::vector<AreteListee> tout;
   int src = 0;

@@ -62,6 +62,7 @@ struct ChoixFaces {
   wxString alerte;
 };
 
+struct ChampFiche;
 class Cadre : public wxFrame {
  public:
   Cadre();
@@ -162,6 +163,20 @@ public:
   bool confirmerSuppression(const wxString& question);
   void menuFonction(int i);
   void menuEsquisseArbre(int i);
+  // Plans, axes, points, repères (79-construction-interface)
+  void menuConstruction(const std::string& id);
+  void montrerConstruction(const std::string& id);
+  void choisirConstruction(const std::string& id);
+  void creerConstructionRuban(const std::string& kind);
+  void creerEsquisseConstruction(const std::string& id, const std::string& sous);
+  void reglerConstruction(const std::string& id, const std::string& cle, const std::string& valeur);
+  void piocherReference(const std::string& id, int rang);
+  void dessinerConstruction();
+  void poserChamps(const std::vector<ChampFiche>& champs, bool copie);
+  std::string constructionMontree_;
+  std::string refAttendue_;  // l'élément dont on attend une référence (clic dans la vue ou l'arbre)
+  int rangAttendu_ = -1;
+  std::map<std::string, wxTreeItemId> lignesConstruction_;
   void menuCorps(const std::string& id, bool vue3d = false);
   void surDroit3D(const TopoDS_Shape& sous);
   void surArbreMenu(wxTreeEvent& e);

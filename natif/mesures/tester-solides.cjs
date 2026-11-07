@@ -74,7 +74,19 @@ fs.mkdirSync(dossier, { recursive: true });
         pareil = m && JSON.stringify(m) === cle ? pareil + 1 : 0;
         m = q;
       }
+      const reperes = await page.evaluate(() => (doc.cgeo || []).map(e => ({ id: e.id, fr: e.fr, st: e.st, msg: e.msg })));
       await page.close();
+      let ecartRep = '';
+      for (const e of reperes) {
+        const a = (c.construction || []).find(x => x.id === e.id);
+        if (!a) { ecartRep = ecartRep || ` ; élément ${e.id} absent du natif`; continue; }
+        if (!!e.fr !== !!a.fr) { ecartRep = ecartRep || ` ; ${e.id} : repère ${a.fr ? 'en trop' : 'manquant'} (nav. : ${e.msg})`; continue; }
+        if (e.fr) for (const k of ['o', 'x', 'y', 'z']) for (let i = 0; i < 3; i++)
+          if (Math.abs(e.fr[k][i] - a.fr[k][i]) > 1e-4) ecartRep = ecartRep || ` ; ${e.id} ${k} : natif ${a.fr[k]} nav. ${e.fr[k]}`;
+        if ((e.st || 'ok') !== (a.st || 'ok')) ecartRep = ecartRep || ` ; ${e.id} état : natif ${a.st} nav. ${e.st} (${e.msg})`;
+      }
+      if (ecartRep) { ecarts++; console.log(`ÉCART   ${nom}${ecartRep}`); continue; }
+      if (reperes.length) console.log(`        ${nom} : ${reperes.length} élément(s) de construction pareils`);
       if (m && m.rien && c.volume === 0) { justes++; console.log(`pareil  ${nom} : aucun solide des deux côtés`); continue; }
       const dv = m && m.volume != null ? Math.abs(m.volume - c.volume) : Infinity;
       const ok = dv <= Math.max(0.01, Math.abs(c.volume) * 1e-7) && m.faces === c.faces && m.solides === c.solides;

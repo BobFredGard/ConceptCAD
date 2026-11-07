@@ -88,6 +88,15 @@ int modeVerif(const std::vector<std::wstring>& a) {
           if (c == '"' || c == '\\' || static_cast<unsigned char>(c) < 32) c = ' ';
         fprintf(s, "%s\"%s\"", k ? "," : "", t.c_str());
       }
+      fprintf(s, "],\"construction\":[");
+      {
+        bool v = false;
+        for (const ElementConstruction& e : d.construction) {
+          nlohmann::json l = {{"id", e.id}, {"fr", e.j.contains("fr") ? nlohmann::json::parse(e.j["fr"].dump()) : nlohmann::json()}, {"st", e.j.value("st", std::string())}};
+          fprintf(s, "%s%s", v ? "," : "", l.dump(-1, ' ', false, nlohmann::json::error_handler_t::replace).c_str());
+          v = true;
+        }
+      }
       fprintf(s, "],\"nom\":\"%s\",\"volume\":%.9f,\"aire\":%.9f,\"faces\":%d,\"aretes\":%d,\"sommets\":%d,\"solides\":%d,\"valide\":%s,\"boite\":[%.6f,%.6f,%.6f,%.6f,%.6f,%.6f],\"ms\":%.3f,\"messages\":%zu}",
               nom.c_str(), m.volume, m.aire, m.faces, m.aretes, m.sommets, m.solides, m.valide ? "true" : "false",
               m.boite[0], m.boite[1], m.boite[2], m.boite[3], m.boite[4], m.boite[5], ms, r.messages.size());

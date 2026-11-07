@@ -1,5 +1,8 @@
 #include "vue3d.h"
+#include <BRepBuilderAPI_MakeEdge.hxx>
+#include <BRepBuilderAPI_MakeFace.hxx>
 #include <BRepBuilderAPI_MakePolygon.hxx>
+#include <BRepPrimAPI_MakeSphere.hxx>
 #include <Prs3d_LineAspect.hxx>
 
 #include <wx/dcclient.h>
@@ -389,6 +392,7 @@ void Vue3D::droitEn(const wxPoint& p) {
 }
 
 void Vue3D::cliquerEn(const wxPoint& p) {
+  dernierClic_ = p;
   preparerSelection();
   contexte_->MoveTo(p.x, p.y, vue_, false);
   if (contexte_->HasDetected()) {
@@ -468,6 +472,64 @@ void Vue3D::montrerFilets(const std::vector<std::vector<gp_Pnt>>& helices, const
     filetsAnneaux_->SetColor(couleur(0xff, 0xb3, 0x40));
     filetsAnneaux_->Attributes()->SetWireAspect(new Prs3d_LineAspect(couleur(0xff, 0xb3, 0x40), Aspect_TOL_DASH, 1.0));
     contexte_->Display(filetsAnneaux_, AIS_WireFrame, -1, false);
+  }
+  vue_->Redraw();
+}
+
+void Vue3D::montrerConstruction(const std::vector<DessinConstruction>& L, const double C[3], double h) {
+  for (auto& a : construction_) contexte_->Remove(a, false);
+  construction_.clear();
+  const auto pt = [](const double o[3], const double u[3], double a, const double v[3], double b) { return gp_Pnt(o[0] + u[0] * a + v[0] * b, o[1] + u[1] * a + v[1] * b, o[2] + u[2] * a + v[2] * b); };
+  const auto ligne = [&](const gp_Pnt& a, const gp_Pnt& b, const Quantity_Color& c, Aspect_TypeOfLine t, double l) {
+    if (a.Distance(b) < 1e-9) return;
+    occ::handle<AIS_Shape> s = new AIS_Shape(BRepBuilderAPI_MakeEdge(a, b).Edge());
+    s->Attributes()->SetAutoTriangulation(false);
+    s->SetColor(c);
+    s->Attributes()->SetWireAspect(new Prs3d_LineAspect(c, t, l));
+    s->SetInfiniteState(true);
+    contexte_->Display(s, AIS_WireFrame, -1, false);
+    construction_.push_back(s);
+  };
+  const double nul[3] = {0, 0, 0};
+  for (const DessinConstruction& e : L) {
+    const Quantity_Color col = e.choisi ? couleur(0xff, 0x9f, 0x0a) : couleur(0xe0, 0xa5, 0x26);
+    if (e.kind == "plane") {
+      // centré sur la projection du centre de la pièce : le plan « couvre » la pièce
+      const double d[3] = {C[0] - e.o[0], C[1] - e.o[1], C[2] - e.o[2]};
+      const double du = d[0] * e.x[0] + d[1] * e.x[1] + d[2] * e.x[2], dv = d[0] * e.y[0] + d[1] * e.y[1] + d[2] * e.y[2];
+      const gp_Pnt c = pt(e.o, e.x, du, e.y, dv);
+      const double cc[3] = {c.X(), c.Y(), c.Z()};
+      const gp_Pnt P[4] = {pt(cc, e.x, -h, e.y, -h), pt(cc, e.x, h, e.y, -h), pt(cc, e.x, h, e.y, h), pt(cc, e.x, -h, e.y, h)};
+      BRepBuilderAPI_MakePolygon poly(P[0], P[1], P[2], P[3], true);
+      try {
+        occ::handle<AIS_Shape> f = new AIS_Shape(BRepBuilderAPI_MakeFace(poly.Wire(), true).Face());
+        f->SetColor(col);
+        f->SetTransparency(e.choisi ? 0.7 : 0.84);
+        f->SetInfiniteState(true);
+        contexte_->Display(f, AIS_Shaded, -1, false);
+        construction_.push_back(f);
+      } catch (const Standard_Failure&) {
+      }
+      for (int i = 0; i < 4; i++) ligne(P[i], P[(i + 1) % 4], col, Aspect_TOL_SOLID, e.choisi ? 2.0 : 1.0);
+      // petite flèche de normale au coin : le sens du plan se lit
+      const gp_Pnt k = pt(cc, e.x, h * 0.88, e.y, h * 0.88);
+      const double kk[3] = {k.X(), k.Y(), k.Z()};
+      ligne(k, pt(kk, e.z, h * 0.18, nul, 0), col, Aspect_TOL_SOLID, 1.0);
+    } else if (e.kind == "axis") {
+      ligne(pt(e.o, e.z, -h * 1.3, nul, 0), pt(e.o, e.z, h * 1.3, nul, 0), col, Aspect_TOL_DASH, e.choisi ? 2.0 : 1.2);
+    } else if (e.kind == "point") {
+      occ::handle<AIS_Shape> s = new AIS_Shape(BRepPrimAPI_MakeSphere(gp_Pnt(e.o[0], e.o[1], e.o[2]), h * 0.025).Shape());
+      s->SetColor(col);
+      s->SetInfiniteState(true);
+      contexte_->Display(s, AIS_Shaded, -1, false);
+      construction_.push_back(s);
+    } else if (e.kind == "frame") {
+      const gp_Pnt O(e.o[0], e.o[1], e.o[2]);
+      const double l = h * 0.4, ep = e.choisi ? 3.0 : 2.0;
+      ligne(O, pt(e.o, e.x, l, nul, 0), couleur(0xff, 0x45, 0x3a), Aspect_TOL_SOLID, ep);
+      ligne(O, pt(e.o, e.y, l, nul, 0), couleur(0x30, 0xd1, 0x58), Aspect_TOL_SOLID, ep);
+      ligne(O, pt(e.o, e.z, l, nul, 0), couleur(0x0a, 0x84, 0xff), Aspect_TOL_SOLID, ep);
+    }
   }
   vue_->Redraw();
 }

@@ -4,6 +4,7 @@
 #include <wx/wx.h>
 
 #include <functional>
+#include <string>
 #include <utility>
 #include <vector>
 
@@ -26,6 +27,14 @@ class Vue3D : public wxWindow {
   // Pour les essais : la vue dans une image, et le temps des arêtes et du reflet au dernier affichage
   bool image(const wxString& chemin);
   void montrerFilets(const std::vector<std::vector<gp_Pnt>>& helices, const std::vector<std::vector<gp_Pnt>>& anneaux);
+  // cgDraw : plans translucides, axes en pointillés, points, repères. Rien de tout cela ne se clique ici : on les choisit dans l'arbre ou les listes.
+  struct DessinConstruction {
+    std::string kind;
+    double o[3], x[3], y[3], z[3];
+    bool choisi = false;
+  };
+  void montrerConstruction(const std::vector<DessinConstruction>& L, const double centre[3], double h);
+  wxPoint dernierClic() const { return dernierClic_; }
   double msAffichage() const { return msAffichage_; }
   double msImage() const { return msImage_; }
   void ajuster();
@@ -69,7 +78,9 @@ class Vue3D : public wxWindow {
   occ::handle<AIS_Shape> traitsVifs_, traitsLisses_, traitsChoisis_, apercu_;
   occ::handle<AIS_Shape> facesRetenues_, faceReference_, planChoix_;
   bool modeFaces_ = false;
-  occ::handle<AIS_Shape> filetsHelices_, filetsAnneaux_;  // les filets cosmétiques
+  occ::handle<AIS_Shape> filetsHelices_, filetsAnneaux_;
+  std::vector<occ::handle<AIS_Shape>> construction_;
+  wxPoint dernierClic_;  // les filets cosmétiques
   occ::handle<AIS_Shape> aretesVives_, aretesLisses_;  // les traits de la pièce, hors du choix d'un congé
   std::vector<occ::handle<AIS_Shape>> reflets_;  // chaque corps renversé sous le sol
   double sol_ = 0, msAffichage_ = 0, msImage_ = 0;

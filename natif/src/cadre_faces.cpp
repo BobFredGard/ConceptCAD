@@ -23,6 +23,7 @@
 #include <cmath>
 
 #include "cadre.h"
+#include "construction.h"
 #include "faces.h"
 #include "fiches.h"
 #include "filets.h"
@@ -236,6 +237,78 @@ void Cadre::creerFiletageVise(const std::string& idExistant) {
     return prendre(TopoDS::Face(s), true);
   };
   etat(L"Filetage : cliquez la face cylindrique de l'axe à fileter (Échap pour annuler).");
+}
+
+// cgPickModelRef : la référence que donne un clic sur la pièce, selon le type attendu ; rien si ce clic ne convient pas
+void Cadre::piocherReference(const std::string& id, int rang) {
+  const ElementConstruction* e = nullptr;
+  for (const ElementConstruction& c : doc_.construction)
+    if (c.id == id) e = &c;
+  std::string type, titre;
+  if (!e || !emplacementConstruction(*e, rang, type, titre)) return;
+  refAttendue_ = id;
+  rangAttendu_ = rang;
+  const wxString consigne = tx(std::string(nomSorteConstruction(e->kind)) + " — " + titre + " : cliquez " + consigneEmplacement(type) + " (ou une ligne de l'arbre) — Échap pour arrêter.");
+  etat(consigne);
+  pioche_ = [this, id, rang, type, consigne](const TopoDS_Shape& s) {
+    json r = nullptr;
+    if (!s.IsNull() && s.ShapeType() == TopAbs_EDGE) {
+      const auto liste = listerAretes(forme_);
+      std::vector<TopoDS_Shape> rangs;
+      for (TopExp_Explorer ex(forme_, TopAbs_EDGE); ex.More(); ex.Next()) rangs.push_back(ex.Current());
+      for (const AreteListee& E : liste) {
+        if (E.src >= static_cast<int>(rangs.size()) || !rangs[E.src].IsSame(s)) continue;
+        const GeoArete G = geoArete(E.pts);
+        json base = {{"k", "edge"}, {"pos", trois(E.mid, 4)}, {"len", std::round(E.len * 1e4) / 1e4}};
+        AncreArete a;
+        if (ancrePour(doc_, E.mid, a)) base["anchor"] = ancreDe(a);
+        if (type == "point") {
+          const wxPoint c = vue_->dernierClic();
+          const auto ecran = [&](const Vec3& p) {
+            const wxPoint q = vue_->pixelDe(p[0], p[1], p[2]);
+            return std::hypot(static_cast<double>(q.x - c.x), static_cast<double>(q.y - c.y));
+          };
+          const double d0 = ecran(E.pts.front()), d1 = ecran(E.pts.back());
+          if (G.cercle && std::min(d0, d1) > 12) {
+            base["name"] = "Centre · Arête";
+            r = base;
+          } else {
+            base["k"] = "vtx";
+            base["vpos"] = trois(d0 <= d1 ? E.pts.front() : E.pts.back(), 4);
+            base["name"] = "Sommet · Arête";
+            r = base;
+          }
+        } else if (type == "axis" && (G.droite || G.cercle)) {
+          base["name"] = "Arête";
+          r = base;
+        } else if (type == "plane" && G.cercle) {
+          base["name"] = "Plan du cercle · Arête";
+          r = base;
+        } else if (type == "curve") {
+          base["name"] = std::string(G.droite ? "Droite" : G.cercle ? "Arc" : "Courbe") + " · Arête";
+          r = base;
+        }
+        break;
+      }
+    } else if (!s.IsNull() && s.ShapeType() == TopAbs_FACE && (type == "plane" || type == "axis")) {
+      const TopoDS_Face f = TopoDS::Face(s);
+      const std::string st = natureSurface(f);
+      if ((type == "plane" && st == "Plane") || (type == "axis" && (st == "Cylinder" || st == "Cone"))) {
+        json fr = refFaceLibre(f);
+        const std::string nom = nomsFaceDe(forme_, f);
+        if (!nom.empty()) fr["nom"] = nom;
+        AncreArete a;
+        if (fr.contains("pos") && ancrePour(doc_, vec(fr["pos"]), a)) fr["anchor"] = ancreDe(a);
+        r = {{"k", "face"}, {"ref", fr}, {"name", "Face"}};
+      }
+    }
+    if (r.is_null()) {
+      etat(L"Rien de reconnu ici. " + consigne);
+      return false;
+    }
+    reglerConstruction(id, "r/" + std::to_string(rang), r.dump());
+    return true;
+  };
 }
 
 // Bouton Perçage (holeStart, askHole) : l'esquisse choisie si elle a des centres, sinon la dernière dont les centres ne sont pas encore percés

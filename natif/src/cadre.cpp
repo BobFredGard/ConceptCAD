@@ -1,4 +1,8 @@
 #include "cadre.h"
+#include "construction.h"
+
+#include <BRepBndLib.hxx>
+#include <Bnd_Box.hxx>
 
 #include "parametres.h"
 
@@ -44,8 +48,9 @@ const char* const PROP_CONGE_RAYON = "conge_rayon", * const PROP_CONGE_TANGENTES
 const char* const PROP_PROFONDEUR = "profondeur", * const PROP_OPERATION = "operation", * const PROP_ETENDUE = "etendue", * const PROP_DIRECTION = "direction", * const PROP_INVERSER = "inverser";
 
 struct LienArbre : wxTreeItemData {
-  LienArbre(bool f, int n, const std::string& p = "", const std::string& c = "") : estFonction(f), i(n), plan(p), corps(c) {}
+  LienArbre(bool f, int n, const std::string& p = "", const std::string& c = "", const std::string& g = "") : estFonction(f), i(n), plan(p), corps(c), cg(g) {}
   std::string corps;  // la ligne d'un corps
+  std::string cg;     // la ligne d'un élément de construction
   bool estFonction;
   int i;  // -1 : une ligne de l'Origine
   std::string plan;  // XY, XZ ou YZ : un double-clic y ouvre une esquisse
@@ -292,7 +297,7 @@ void Cadre::creerEnvironnement() {
     if (esquisseOuverte_ < 0) recalculer();
   };
   barreHaute_->surIndisponible = [this](const wxString& n) { indisponible(n); };
-  ruban_->estRepris = [](Atelier a, const wxString& n) { return a == Atelier::CAO && (n == L"Esquisse" || n == L"Extrusion" || n == L"Congé" || n == L"Chanfrein" || n == L"Paramètres" || n == L"Corps" || n == L"Perçage" || n == L"Filetage" || n == L"Répétition" || n == L"Révolution" || n == L"Balayage" || n == L"Face" || n == L"Dépouille" || n == L"Coque" || n == L"Combiner" || n == L"Déplacer" || n == L"Échelle" || n == L"Scinder" || n == L"Importer" || n == L"STEP" || n == L"STL" || n == L"OBJ"); };
+  ruban_->estRepris = [](Atelier a, const wxString& n) { return a == Atelier::CAO && (n == L"Esquisse" || n == L"Extrusion" || n == L"Congé" || n == L"Chanfrein" || n == L"Paramètres" || n == L"Corps" || n == L"Perçage" || n == L"Filetage" || n == L"Plan" || n == L"Axe" || n == L"Point" || n == L"Repère" || n == L"Répétition" || n == L"Révolution" || n == L"Balayage" || n == L"Face" || n == L"Dépouille" || n == L"Coque" || n == L"Combiner" || n == L"Déplacer" || n == L"Échelle" || n == L"Scinder" || n == L"Importer" || n == L"STEP" || n == L"STL" || n == L"OBJ"); };
   ruban_->surBouton = [this](Atelier a, const wxString& n) { boutonRuban(a, n); };
   ruban_->surIndisponible = [this](const wxString& n) { indisponible(n); };
 
@@ -568,6 +573,10 @@ void Cadre::boutonRuban(Atelier a, const wxString& nom) {
   quitterConge();
   if (nom == L"Extrusion") extruder();
   else if (nom == L"Esquisse") menuEsquisse();
+  else if (nom == L"Plan") creerConstructionRuban("plane");
+  else if (nom == L"Axe") creerConstructionRuban("axis");
+  else if (nom == L"Point") creerConstructionRuban("point");
+  else if (nom == L"Repère") creerConstructionRuban("frame");
   else if (nom == L"Corps") nouveauCorps();
   else if (nom == L"Perçage") creerPercageVise();
   else if (nom == L"Filetage") creerFiletageVise();
@@ -647,8 +656,13 @@ void Cadre::montrerFiche(int i) {
   const auto it = doc_.fonctionsJson->find(f.id);
   if (it == doc_.fonctionsJson->end()) return;
   const bool copie = !f.repeatId.empty();
+  poserChamps(ficheFonction(doc_, nlohmann::ordered_json::parse(it->second)), copie);
+  if (!copie) ficheId_ = f.id;
+}
+
+void Cadre::poserChamps(const std::vector<ChampFiche>& champs, bool copie) {
   std::string categorie;
-  for (const ChampFiche& c : ficheFonction(doc_, nlohmann::ordered_json::parse(it->second))) {
+  for (const ChampFiche& c : champs) {
     if (c.categorie != categorie) {
       categorie = c.categorie;
       if (!categorie.empty()) props_->Append(new wxPropertyCategory(tx(categorie)));
@@ -679,10 +693,11 @@ void Cadre::montrerFiche(int i) {
       ficheChoix_[c.cle] = std::move(valeurs);
     }
   }
-  if (!copie) ficheId_ = f.id;
 }
 
 void Cadre::appliquerFiche(const std::string& id, const std::string& cle, const std::string& valeur) {
+  for (const ElementConstruction& c : doc_.construction)
+    if (c.id == id) return reglerConstruction(id, cle, valeur);
   pioche_ = nullptr;
   demanderClicFiche(id, cle, valeur);
   changerStructure([&](nlohmann::ordered_json& d) {
@@ -1073,10 +1088,27 @@ void Cadre::remplirArbre() {
   arbre_->SetItemTextColour(arbre_->AppendItem(origine, L"Plan XY · dessus", 4, -1, new LienArbre(false, -1, "XY")), grise);
   arbre_->SetItemTextColour(arbre_->AppendItem(origine, L"Plan XZ · face", 5, -1, new LienArbre(false, -1, "XZ")), grise);
   arbre_->SetItemTextColour(arbre_->AppendItem(origine, L"Plan YZ · côté", 6, -1, new LienArbre(false, -1, "YZ")), grise);
-  arbre_->AppendItem(origine, L"Axe X · droite", 8);
-  arbre_->AppendItem(origine, L"Axe Y · arrière", 9);
-  arbre_->AppendItem(origine, L"Axe Z · haut", 10);
+  arbre_->AppendItem(origine, L"Axe X · droite", 8, -1, new LienArbre(false, -1, "X"));
+  arbre_->AppendItem(origine, L"Axe Y · arrière", 9, -1, new LienArbre(false, -1, "Y"));
+  arbre_->AppendItem(origine, L"Axe Z · haut", 10, -1, new LienArbre(false, -1, "Z"));
   arbre_->Expand(origine);
+  lignesConstruction_.clear();
+  {  // cgTreeModel : après l'origine, sans ce qui vient après le marqueur
+    std::vector<const ElementConstruction*> L;
+    for (const ElementConstruction& e : doc_.construction)
+      if (indiceMarque() < 0 || rangConstruction(doc_, e) < indiceMarque()) L.push_back(&e);
+    if (!L.empty()) {
+      const wxTreeItemId sec = arbre_->AppendItem(racine, wxString::Format(L"Construction (%zu)", L.size()), 11);
+      arbre_->SetItemBold(sec);
+      for (const ElementConstruction* e : L) {
+        const std::string alerte = e->j.value("st", std::string()) == "warn" ? " ⚠" : "";
+        const wxTreeItemId n = arbre_->AppendItem(sec, tx(std::string(iconeConstruction(e->kind)) + " " + libelleConstruction(*e) + alerte), e->kind == "plane" ? 4 : e->kind == "axis" ? 10 : 7, -1, new LienArbre(false, -1, "", "", e->id));
+        lignesConstruction_[e->id] = n;
+        if (!e->visible) arbre_->SetItemTextColour(n, grise);
+      }
+      arbre_->Expand(sec);
+    }
+  }
   const wxTreeItemId esquisses = arbre_->AppendItem(racine, wxString::Format(L"Esquisses (%zu)", doc_.esquisses.size()), 0);
   arbre_->SetItemBold(esquisses);
   for (size_t i = 0; i < doc_.esquisses.size(); i++) {
@@ -1712,6 +1744,7 @@ double Cadre::recalculer() {
       anneaux.push_back(s.anneau);
     }
     vue_->montrerFilets(helices, anneaux);
+    dessinerConstruction();
   }
   ajusterVue_ = false;
   // Le banc compte aussi le prix de la sélection, que le programme paierait dès que la souris passe sur la vue.
@@ -2032,6 +2065,166 @@ void Cadre::menuEsquisseArbre(int i) {
   }
 }
 
+void Cadre::montrerConstruction(const std::string& id) {
+  for (const ElementConstruction& e : doc_.construction)
+    if (e.id == id) {
+      fonctionMontree_ = -1;
+      props_->Clear();
+      props_->CenterSplitter();
+      ficheChoix_.clear();
+      props_->Append(new wxPropertyCategory(tx(nomSorteConstruction(e.kind))));
+      poserChamps(ficheConstruction(doc_, e), false);
+      ficheId_ = id;
+      constructionMontree_ = id;
+      dessinerConstruction();
+      const wxString a = tx(e.j.value("msg", std::string()));
+      etat(tx(libelleConstruction(e)) + (a.empty() ? wxString() : L" — ⚠ " + a) + (e.kind == "plane" || e.kind == "frame" ? L"  |  double-clic dans l'arbre : esquisse dessus" : L""));
+      return;
+    }
+}
+
+void Cadre::choisirConstruction(const std::string& id) {
+  const auto it = lignesConstruction_.find(id);
+  if (it != lignesConstruction_.end() && it->second.IsOk() && arbre_->GetSelection() != it->second) arbre_->SelectItem(it->second);
+  montrerConstruction(id);
+}
+
+void Cadre::dessinerConstruction() {
+  std::vector<Vue3D::DessinConstruction> L;
+  for (const ElementConstruction& e : doc_.construction) {
+    if (!e.visible || !e.aRepere) continue;
+    if (indiceMarque() >= 0 && rangConstruction(doc_, e) >= indiceMarque()) continue;
+    Vue3D::DessinConstruction d;
+    d.kind = e.kind;
+    for (int k = 0; k < 3; k++) {
+      d.o[k] = e.o[k];
+      d.x[k] = e.x[k];
+      d.y[k] = e.y[k];
+      d.z[k] = e.z[k];
+    }
+    d.choisi = e.id == constructionMontree_;
+    L.push_back(d);
+  }
+  double c[3] = {0, 0, 0}, h = 25;  // cgModelExtent
+  if (!forme_.IsNull()) {
+    Bnd_Box b;
+    try {
+      BRepBndLib::Add(forme_, b);
+      if (!b.IsVoid()) {
+        double x0, y0, z0, x1, y1, z1;
+        b.Get(x0, y0, z0, x1, y1, z1);
+        c[0] = (x0 + x1) / 2;
+        c[1] = (y0 + y1) / 2;
+        c[2] = (z0 + z1) / 2;
+        h = std::max(25.0, 0.6 * std::max({x1 - x0, y1 - y0, z1 - z0}));
+      }
+    } catch (const Standard_Failure&) {
+    }
+  }
+  vue_->montrerConstruction(L, c, h);
+}
+
+// Le bouton du ruban : l'élément naît tout de suite avec sa méthode par défaut (cgStart), reprend la ligne choisie dans l'arbre, puis on attend les références qui manquent
+void Cadre::creerConstructionRuban(const std::string& kind) {
+  if (!docOuvert_) return etat(L"Ouvrez d'abord une pièce (Ctrl+O).");
+  if (esquisseOuverte_ >= 0) return etat(L"Fermez d'abord l'esquisse.");
+  nlohmann::ordered_json ref0 = nullptr;
+  if (const wxTreeItemId ligne = arbre_->GetSelection(); ligne.IsOk())
+    if (const auto* lien = dynamic_cast<LienArbre*>(arbre_->GetItemData(ligne))) {
+      const bool veutPlan = kind == "plane", veutAxe = kind == "axis";
+      if (lien->plan.size() == 2 && veutPlan) ref0 = {{"k", "o"}, {"id", lien->plan}};
+      else if (lien->plan.size() == 1 && veutAxe) ref0 = {{"k", "o"}, {"id", lien->plan}};
+      else if (!lien->cg.empty()) {
+        for (const ElementConstruction& e : doc_.construction)
+          if (e.id == lien->cg && ((veutPlan && (e.kind == "plane" || e.kind == "frame")) || (veutAxe && (e.kind == "axis" || e.kind == "frame")) || (kind == "frame") || (kind == "point" && e.kind == "frame"))) ref0 = {{"k", "cg"}, {"id", lien->cg}};
+      }
+    }
+  std::string id;
+  changerStructure([&](nlohmann::ordered_json& d) { id = creerConstruction(d, kind, indiceMarque(), ref0); });
+  if (id.empty()) return;
+  choisirConstruction(id);
+  for (const ElementConstruction& e : doc_.construction)
+    if (e.id == id) {
+      const int v = emplacementVide(e);
+      if (v >= 0) piocherReference(id, v);
+    }
+}
+
+void Cadre::creerEsquisseConstruction(const std::string& id, const std::string& sous) {
+  if (!docOuvert_) return;
+  if (esquisseOuverte_ >= 0) quitterEsquisse();
+  Esquisse s;
+  if (!nouvelleEsquisseConstruction(doc_, id, sous, s)) return etat(L"Esquisse : cet élément n'est pas résolu, réglez d'abord ses références.");
+  ModifCote m;
+  m.esquissesAvant = doc_.esquisses;
+  m.creation = true;
+  annulations_.push_back(std::move(m));
+  retablissements_.clear();
+  doc_.esquisses.push_back(std::move(s));
+  remplirArbre();
+  majTitre();
+  entrerEsquisse(static_cast<int>(doc_.esquisses.size()) - 1);
+}
+
+void Cadre::reglerConstruction(const std::string& id, const std::string& cle, const std::string& valeur) {
+  pioche_ = nullptr;
+  refAttendue_.clear();
+  if (cle.rfind("r/", 0) == 0 && valeur == "pick") return piocherReference(id, std::stoi(cle.substr(2)));
+  changerStructure([&](nlohmann::ordered_json& d) {
+    const std::string refus = appliquerConstruction(d, id, cle, valeur);
+    if (!refus.empty()) throw std::runtime_error(refus);
+  });
+  choisirConstruction(id);
+  if (cle.rfind("r/", 0) == 0 || cle == "x/how")  // cgNextSlot : on enchaîne sur la référence suivante
+    for (const ElementConstruction& e : doc_.construction)
+      if (e.id == id) {
+        const int v = emplacementVide(e);
+        if (v >= 0) piocherReference(id, v);
+      }
+}
+
+void Cadre::menuConstruction(const std::string& id) {  // cgCtxAct
+  const ElementConstruction* e = nullptr;
+  for (const ElementConstruction& c : doc_.construction)
+    if (c.id == id) e = &c;
+  if (!e) return;
+  const std::string nomActuel = e->nom, kind = e->kind;
+  enum { C_XY = wxID_HIGHEST + 780, C_XZ, C_YZ };
+  wxMenu m;
+  m.Append(M_EDITER, L"🔧 Modifier");
+  m.Append(M_RENOMMER, L"✏️ Renommer");
+  m.Append(M_VOIR, L"👁 Afficher / masquer");
+  if (kind == "plane") m.Append(C_XY, L"✏️ Esquisse dessus");
+  if (kind == "frame") {
+    m.Append(C_XY, L"✏️ Esquisse sur XY");
+    m.Append(C_XZ, L"✏️ Esquisse sur XZ");
+    m.Append(C_YZ, L"✏️ Esquisse sur YZ");
+  }
+  m.Append(M_SUPPRIMER, L"🗑 Supprimer");
+  const int choix = choisirMenu(m);
+  if (choix == M_RENOMMER) {
+    const wxString n = demanderNom(tx(nomActuel));
+    if (n.empty()) return;
+    const std::string nom = n.utf8_string();
+    changerStructure([&](nlohmann::ordered_json& d) { stRenommer(d, "cgeo", id, nom); });
+    choisirConstruction(id);
+  } else if (choix == M_VOIR) {
+    changerStructure([&](nlohmann::ordered_json& d) { stBasculerVisible(d, "cgeo", id); });
+    choisirConstruction(id);
+  } else if (choix == M_EDITER) {
+    choisirConstruction(id);
+  } else if (choix == C_XY) {
+    creerEsquisseConstruction(id, kind == "frame" ? "XY" : "");
+  } else if (choix == C_XZ) {
+    creerEsquisseConstruction(id, "XZ");
+  } else if (choix == C_YZ) {
+    creerEsquisseConstruction(id, "YZ");
+  } else if (choix == M_SUPPRIMER) {
+    if (!confirmerSuppression(tx(questionSuppressionConstruction(doc_, id)))) return;
+    changerStructure([&](nlohmann::ordered_json& d) { supprimerConstruction(d, id); }, L"Ctrl+Z : annuler.");
+  }
+}
+
 // Clic droit dans la vue 3D : le corps sous la souris (showCtx3D)
 void Cadre::surDroit3D(const TopoDS_Shape& sous) {
   if (enChoix() || esquisseOuverte_ >= 0 || !docOuvert_) return;
@@ -2127,9 +2320,10 @@ void Cadre::surArbreMenu(wxTreeEvent& e) {
   if (enChoix() || esquisseOuverte_ >= 0 || !docOuvert_) return;
   const auto* lien = dynamic_cast<LienArbre*>(arbre_->GetItemData(e.GetItem()));
   if (!lien) return;
-  const std::string corps = lien->corps;
+  const std::string corps = lien->corps, cg = lien->cg;
   const bool estFonction = lien->estFonction;
   const int i = lien->i;
+  if (!cg.empty()) return menuConstruction(cg);
   // Le menu peut refaire l'arbre : rien de la ligne n'est gardé
   if (!corps.empty()) return menuCorps(corps);
   if (i < 0) return;
@@ -2140,6 +2334,12 @@ void Cadre::surArbreMenu(wxTreeEvent& e) {
 void Cadre::surArbre(wxTreeEvent& e) {
   if (enChoix()) return;  // le panneau reste celui du congé en cours
   const auto* lien = dynamic_cast<LienArbre*>(arbre_->GetItemData(e.GetItem()));
+  if (pioche_ && !refAttendue_.empty() && lien && (!lien->plan.empty() || !lien->cg.empty()) && lien->cg != refAttendue_) {  // cgTreePick
+    const std::string id = refAttendue_, cle = "r/" + std::to_string(rangAttendu_), val = lien->cg.empty() ? "o:" + lien->plan : "cg:" + lien->cg;
+    CallAfter([this, id, cle, val] { reglerConstruction(id, cle, val); });
+    return;
+  }
+  if (lien && !lien->cg.empty()) return montrerConstruction(lien->cg);
   if (!lien || lien->i < 0) return montrerRien();
   if (lien->estFonction) montrerFonction(lien->i);
   else montrerEsquisse(lien->i);
@@ -2147,7 +2347,10 @@ void Cadre::surArbre(wxTreeEvent& e) {
 
 void Cadre::surArbreActive(wxTreeEvent& e) {
   const auto* lien = dynamic_cast<LienArbre*>(arbre_->GetItemData(e.GetItem()));
-  if (lien && !lien->plan.empty()) creerEsquisse(lien->plan);
+  if (lien && !lien->cg.empty()) {
+    for (const ElementConstruction& c : doc_.construction)
+      if (c.id == lien->cg && (c.kind == "plane" || c.kind == "frame")) return creerEsquisseConstruction(c.id, c.kind == "frame" ? "XY" : "");
+  } else if (lien && lien->plan.size() == 2) creerEsquisse(lien->plan);
   else if (lien && !lien->estFonction && lien->i >= 0) entrerEsquisse(lien->i);
   else if (lien && lien->estFonction && lien->i >= 0 && fonctionDeFaces(doc_.fonctions[lien->i])) entrerFaces(sorteDeFaces(doc_.fonctions[lien->i]), doc_.fonctions[lien->i].id);
   else e.Skip();  // dépliage habituel des dossiers
@@ -2178,7 +2381,7 @@ void Cadre::surPropriete(wxPropertyGridEvent& e) {
     if (const auto it = ficheChoix_.find(cle); it != ficheChoix_.end()) {
       const long k = e.GetValue().GetLong();
       if (k >= 0 && k < static_cast<long>(it->second.size())) valeur = it->second[k];
-      if (valeur.empty() && cle.rfind("x/", 0) == 0) return;  // « — » : rien à faire
+      if (valeur.empty() && (cle.rfind("x/", 0) == 0 || cle.rfind("r/", 0) == 0)) return;  // « — » : rien à faire
     } else if (e.GetValue().GetType() == L"bool") {
       valeur = e.GetValue().GetBool() ? "1" : "0";
     } else {

@@ -66,7 +66,7 @@ struct Hote {
 };
 
 struct Esquisse {
-  std::string plan_cg;  // id de l'élément de construction qui porte l'esquisse
+  std::string plan_cg, plan_cg_sous;  // l'élément de construction qui porte l'esquisse, et le plan XY, XZ ou YZ d'un repère
   std::string id, nom, plan;
   std::string at;  // esquisse créée ici : la fonction après laquelle elle se place (cgAtNow), vide si aucune
   int seq = 1;  // prochain numéro d'identifiant
@@ -222,13 +222,16 @@ struct PorteurFx {
   double valeur = 0;
 };
 
-// Élément de construction : ce programme ne le recalcule pas encore, il garde sa position
+// Élément de construction (doc.cgeo) : son JSON complet, et ce qu'on en lit souvent. Calcul et fiche : construction.cpp
 struct ElementConstruction {
   std::string id, kind, nom;
   bool surPiece = false;                // une référence vise une face, une arête, un sommet ou une esquisse
   std::vector<std::string> surElements;  // autres éléments de construction visés
-  bool aRepere = false;
-  Vec3 o{0, 0, 0}, z{0, 0, 1};  // sa dernière position
+  bool aRepere = false, visible = true;
+  bool neuf = false;  // le calcul a changé son repère ou son état depuis la lecture : à reporter dans le fichier
+  Vec3 o{0, 0, 0}, x{1, 0, 0}, y{0, 1, 0}, z{0, 0, 1};  // sa dernière position
+  nlohmann::ordered_json j;
+  void lireRepere();  // refait les champs ci-dessus depuis j
 };
 // Un grand texte immuable : copier le document ne le recopie pas
 class TexteCommun {
@@ -259,8 +262,6 @@ class TexteCommun {
 struct Document {
   std::vector<ElementConstruction> construction;
   // Le plan de cette esquisse suit-il la pièce ? (il ne se recalcule pas encore ici)
-  bool planSuitLaPiece(const std::string& id, int garde = 0) const;
-  bool unPlanSuitLaPiece() const;
   std::string nom;
   std::vector<std::string> corps;
   std::vector<std::string> nomsCorps;  // même rang que corps

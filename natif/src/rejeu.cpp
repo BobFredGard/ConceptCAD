@@ -1,4 +1,5 @@
 #include "rejeu.h"
+#include "construction.h"
 #include "echanges.h"
 #include "engrenage.h"
 #include <BRepBuilderAPI_Copy.hxx>
@@ -1248,8 +1249,23 @@ std::optional<gp_Dir> normaleDeFace(const TopoDS_Face& f) { return normaleSortan
 TopoDS_Wire contourEsquisse(const Esquisse& s, const Trace& tr, const Chaine& chaine, std::vector<CoteNom>* cotes) { return contourDe(s, tr, chaine, 0, cotes); }
 gp_Pnt pointMonde(const Esquisse& s, double x, double y) { return mondeDe(s, x, y, 0); }
 
+namespace {
+bool gDansConstruction = false;  // le solide d'un élément de construction est un rejeu partiel, sans nouvelle résolution
+}
 ResultatRejeu rejouer(Document& d, int n) {
   replacerHotes(d);
+  if (!gDansConstruction && !d.construction.empty()) {  // rebuildInner : après les hôtes, qu'on reprend si une esquisse a bougé
+    gDansConstruction = true;
+    bool bouge = false;
+    try {
+      bouge = resoudreConstruction(d, n);
+    } catch (...) {
+      gDansConstruction = false;
+      throw;
+    }
+    gDansConstruction = false;
+    if (bouge) replacerHotes(d);
+  }
   std::vector<std::string> ordre;
   std::map<std::string, std::vector<Fonction*>> parCorps;
   std::set<std::string> consommes;  // corps outils d'une combinaison, corps retirés : plus affichés
@@ -1633,6 +1649,20 @@ Esquisse nouvelleEsquissePlan(const Document& d, const std::string& plan) {
     s.n = {1, 0, 0};
   }
   return s;
+}
+
+bool nouvelleEsquisseConstruction(const Document& d, const std::string& id, const std::string& sous, Esquisse& s) {  // newSketchOnCg
+  Vec3 o, u, v, n;
+  if (!baseDeConstruction(d, id, sous, o, u, v, n)) return false;
+  s = esquisseVide(d, "CG");
+  s.plan_cg = id;
+  s.plan_cg_sous = sous;
+  for (double& x : o) x = std::round(x * 1e6) / 1e6;
+  s.o = o;
+  s.u = u;
+  s.v = v;
+  s.n = n;
+  return true;
 }
 
 bool pointDansFace(const TopoDS_Face& face, double p[3]) {

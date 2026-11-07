@@ -21,6 +21,8 @@ struct AreteListee {  // une ligne d'occListEdges
   std::string nom;  // nomsSurAretes
 };
 std::vector<AreteListee> listerAretes(const TopoDS_Shape& s);
+// cgFindEdge : l'arête visée par une référence de construction { pos, len, nom, anchor }, -1 si elle n'existe plus
+int chercherAreteParReference(const Document& d, nlohmann::ordered_json& ref, const std::vector<AreteListee>& aretes, const std::map<std::string, std::string>& alias);
 // Chaîne tangente d'une arête, elle comprise
 std::vector<int> chaineTangente(const std::vector<AreteListee>& liste, int depart);
 // L'étendue d'une extrusion le long de la normale de son esquisse (extrudeSpan), donnée par rejeu.cpp
