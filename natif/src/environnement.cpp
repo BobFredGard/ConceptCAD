@@ -80,7 +80,7 @@ BarreHaute::BarreHaute(wxWindow* parent) : wxWindow(parent, wxID_ANY, wxDefaultP
     ateliers_.push_back(b);
   }
   // Annuler, Rétablir | Nouveau, Ouvrir, Récent, Enregistrer, Sous, Dossier
-  std::vector<std::function<void()>*> actions = {&surAnnuler, &surRetablir, &surNouveau, &surOuvrir, &surRecent, &surEnregistrer, &surEnregistrerSous, nullptr};
+  std::vector<std::function<void()>*> actions = {&surAnnuler, &surRetablir, &surNouveau, &surOuvrir, &surRecent, &surEnregistrer, &surEnregistrerSous, &surDossier};
   for (size_t i = 0; i < actions.size() && BARRE_HAUTE[i].titre; i++) {
     const wxString titre = BARRE_HAUTE[i].titre;
     auto* a = actions[i];
@@ -393,6 +393,40 @@ namespace {
 const int FIL_X0 = 150, FIL_PAS = 37, FIL_L = 34;
 }
 
+void iconeFonction(const std::string& type, const std::string& op, const std::string& mode, bool chanfrein, bool derive, int& ruban, wxColour& c, bool& moins) {
+  const wxColour ajout(0x30, 0xd1, 0x58), retrait(0xff, 0x45, 0x3a), modif(0x64, 0xd2, 0xff), motif(0xbf, 0x5a, 0xf2);
+  const bool cut = op == "cut";
+  ruban = 1;
+  c = modif;
+  moins = false;
+  const auto parOp = [&](int r) {
+    ruban = r;
+    c = cut ? retrait : ajout;
+    moins = cut;
+  };
+  if (type == "extrude") parOp(1);
+  else if (type == "revolve") parOp(2);
+  else if (type == "sweep") parOp(3);
+  else if (type == "hole") { ruban = 4; c = retrait; }
+  else if (type == "xthread") ruban = 16;
+  else if (type == "gear") { ruban = 1; c = ajout; }
+  else if (type == "xfillet") ruban = chanfrein ? 12 : 11;
+  else if (type == "fillet") ruban = 11;
+  else if (type == "repeat") { ruban = 18; c = motif; }
+  else if (type == "combine") {
+    ruban = 19;
+    if (mode == "cut") { c = retrait; moins = true; }
+  }
+  else if (type == "xmove" || type == "xdelface") ruban = 13;
+  else if (type == "xdraft") ruban = 14;
+  else if (type == "xshell") { ruban = 15; c = retrait; }
+  else if (type == "xsplit") ruban = 17;
+  else if (type == "bmove") ruban = 20;
+  else if (type == "bremove") { ruban = 6; c = retrait; moins = true; }
+  else if (type == "bscale") ruban = 21;
+  else if (type == "import") ruban = derive ? 24 : 23;
+}
+
 FilFonctions::FilFonctions(wxWindow* parent) : wxWindow(parent, 2007, wxDefaultPosition, wxDefaultSize, wxBORDER_NONE | wxFULL_REPAINT_ON_RESIZE) {
   SetBackgroundStyle(wxBG_STYLE_PAINT);
   Bind(wxEVT_PAINT, [this](wxPaintEvent&) {
@@ -411,14 +445,18 @@ FilFonctions::FilFonctions(wxWindow* parent) : wxWindow(parent, 2007, wxDefaultP
       for (size_t i = debut_; i < fin; i++) {
         const Element& e = elements_[i];
         const double x = FIL_X0 + static_cast<double>(i - debut_) * FIL_PAS;
-        wxColour c = C_DISCRET;
-        if (!e.estFonction) c = C_ORANGE;
-        else if (e.type == "extrude") c = e.op == "cut" ? C_ROUGE : C_VERT;
-        if (e.grise) c = wxColour(0x58, 0x5a, 0x60);
+        wxColour c = e.couleur.IsOk() ? e.couleur : C_DISCRET;
+        if (e.apresMarque) c = wxColour(0x58, 0x5a, 0x60);
+        else if (e.grise) c = wxColour(c.Red() * 6 / 10 + 8, c.Green() * 6 / 10 + 8, c.Blue() * 6 / 10 + 8);  // masquée : .hid, atténuée
         g->SetBrush(g->CreateBrush(wxBrush(wxColour(c.Red(), c.Green(), c.Blue(), static_cast<int>(i) == survol_ ? 60 : 26))));
         g->SetPen(g->CreatePen(wxGraphicsPenInfo(wxColour(c.Red(), c.Green(), c.Blue(), 70), 1)));
         g->DrawRoundedRectangle(x + 0.5, yi + 0.5, FIL_L - 1, FIL_L - 1, 7);
         g->DrawBitmap(image(e, c), x + 7, yi + 7, 20, 20);
+        if (e.moins) {
+          g->SetBrush(g->CreateBrush(wxBrush(c)));
+          g->SetPen(wxNullGraphicsPen);
+          g->DrawRectangle(x + FIL_L - 9, yi + FIL_L - 5, 7, 2);
+        }
       }
       // Le marqueur de fin de fil
       size_t posMarque = fin;
@@ -484,7 +522,7 @@ FilFonctions::FilFonctions(wxWindow* parent) : wxWindow(parent, 2007, wxDefaultP
       // Les quatre boutons du marqueur, puis le film
       const int b = x < 15 ? -1 : x < 40 ? 0 : x < 60 ? 1 : x < 82 ? 2 : x < 106 ? 3 : -1;
       if (b >= 0 && surMarqueur) CallAfter([this, b] { surMarqueur(b); });
-      else if (b < 0 && x >= 106 && surIndisponible) surIndisponible(L"Film de construction");
+      else if (b < 0 && x >= 106 && surFilm) CallAfter([this] { surFilm(); });
     }
   });
   Bind(wxEVT_RIGHT_DOWN, [this](wxMouseEvent& e) {
@@ -515,10 +553,10 @@ int FilFonctions::visibles() const { return std::max(1, (ToDIP(GetClientSize()).
 void FilFonctions::bornerDebut() { debut_ = std::max(0, std::min(debut_, static_cast<int>(elements_.size()) - visibles())); }
 
 const wxBitmap& FilFonctions::image(const Element& e, const wxColour& c) {
-  const std::string cle = c.GetAsString(wxC2S_HTML_SYNTAX).ToStdString() + (e.estFonction ? "f" : "e");
+  const std::string cle = c.GetAsString(wxC2S_HTML_SYNTAX).ToStdString() + std::to_string(e.ruban);
   auto it = images_.find(cle);
   if (it == images_.end()) {
-    const char* svg = e.estFonction ? RUBAN_CAO[1].svg : RUBAN_CAO[0].svg;
+    const char* svg = RUBAN_CAO[e.ruban].svg;
     it = images_.emplace(cle, iconeSvgComplete(svg, c, 20).GetBitmap(FromDIP(wxSize(20, 20)))).first;
   }
   return it->second;

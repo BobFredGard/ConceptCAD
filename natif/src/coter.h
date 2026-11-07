@@ -29,6 +29,8 @@ std::vector<AreteProjetable> aretesPourProjeter(const Document& d, size_t i);
 // Rend false si le solveur refuse la valeur : rien n'a changé, raison dit pourquoi.
 // Les esquisses suivantes qui s'appuient sur le solide suivent l'esquisse i
 void suivreEsquisses(Document& d, size_t i);
+// projPreferMid : une projetée sans nom prend celui de l'arête exactement sous son milieu, tant que la pièce n'a pas changé
+void nommerProjections(Document& d);
 bool saisirCote(Document& d, size_t i, Edition& ed, const std::string& idCote, double valeur, std::string& raison);
 // La saisie telle que tapée : « [nom =] valeur|expression » (parDimCommit, parApplyAll, skSolveOrRevert)
 bool saisirCoteTexte(Document& d, size_t i, Edition& ed, const std::string& idCote, const std::string& texte, std::string& raison);

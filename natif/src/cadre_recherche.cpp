@@ -94,9 +94,11 @@ std::vector<Cadre::CommandeCherchee> Cadre::commandesCherchees() {
   ajouter(L"Ouvrir récent", ici(barreHaute_->surRecent));
   ajouter(L"Enregistrer", ici(barreHaute_->surEnregistrer));
   ajouter(L"Enregistrer sous…", ici(barreHaute_->surEnregistrerSous));
+  ajouter(L"Dossier de projets…", ici(barreHaute_->surDossier));
   ajouter(L"Régénérer le modèle", ici(barreHaute_->surRegenerer));
   ajouter(L"Tout afficher (cadrer)", [this] { vue_->vueInitiale(); });
   ajouter(L"Réglages de visualisation", [this] { basculerFicheVue(); });
+  ajouter(L"Film de construction", [this] { filmLancer(); }, L"Rejouer l'historique de la pièce comme un petit film");
   const auto construire = [&](const wxString& libelle, const wchar_t* nom) {
     const wxString n = nom;
     ajouter(libelle, [this, n] {

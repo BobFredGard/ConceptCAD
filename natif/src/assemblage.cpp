@@ -23,7 +23,9 @@
 #include <set>
 
 #include "conges.h"
+#include "enregistrer.h"
 #include "nombres_js.h"
+#include "profil_guide.h"
 
 namespace assemblage {
 namespace {
@@ -638,6 +640,8 @@ void majSolides(Solides& S, Document& haut, const ResultatRejeu& rActif) {
         s->messages = rActif.messages;
         s->construction = haut.construction;
         poserTeintes(haut, *s);
+        if (c.contains("pats") && c["pats"].is_array() && std::any_of(c["pats"].begin(), c["pats"].end(), [](const J& p) { return p.is_object() && p.value("type", std::string()) == "path"; }))
+          s->docGuide = std::make_shared<J>(documentActuelJson(haut));
         S[id] = s;
         continue;
       }
@@ -834,9 +838,34 @@ struct Calcul {
   static double nombreDe(const J& p, const char* k, double d) { return p.contains(k) && p[k].is_number() ? p[k].get<double>() : d; }
   bool casesDe(const J& owner, const J& p, std::vector<Case>& out, std::string& pourquoi) {
     const std::string type = texteDe(p, "type");
-    if (type == "path") {
-      pourquoi = "répétition suivant un profil : calcul pas encore repris ici, instances laissées en place";
-      return false;
+    if (type == "path") {  // asmPatPlan
+      const J* doc = owner.contains("doc") && owner["doc"].is_object() ? &owner["doc"] : nullptr;
+      if (!doc) {
+        const auto it = S.find(texteDe(owner, "id"));
+        if (it != S.end() && it->second->docGuide) doc = it->second->docGuide.get();
+      }
+      const J* sk = nullptr;
+      if (doc && p.contains("path") && p["path"].is_object() && doc->contains("sketches") && (*doc)["sketches"].is_array())
+        for (const J& s : (*doc)["sketches"])
+          if (texteDe(s, "id") == texteDe(p["path"], "sk")) sk = &s;
+      if (!sk) {
+        pourquoi = "esquisse guide introuvable dans « " + texteDe(owner, "name") + " »";
+        return false;
+      }
+      const PlanPg P_ = pgPlan(*sk, p, std::max(1, static_cast<int>(nombreDe(p, "copies", 1))) + 1);
+      if (!P_.err.empty()) {
+        pourquoi = P_.err;
+        return false;
+      }
+      int k = 0;
+      for (const CasePg& q : P_.cases) {
+        const double l = std::sqrt(q.N[0] * q.N[0] + q.N[1] * q.N[1] + q.N[2] * q.N[2]);
+        Repere M = rotationPat(q.P0, l > 0 ? V3{q.N[0] / l, q.N[1] / l, q.N[2] / l} : V3{0, 0, 1}, q.ang * PI / 180);
+        M.o = {M.o[0] + q.Pi[0] - q.P0[0], M.o[1] + q.Pi[1] - q.P0[1], M.o[2] + q.Pi[2] - q.P0[2]};
+        out.push_back({"s" + std::to_string(++k), M});
+      }
+      if (out.size() > 500) out.resize(500);
+      return true;
     }
     Repere F;
     const std::string cg = p.contains("ref") && p["ref"].is_object() ? texteDe(p["ref"], "cg") : std::string();

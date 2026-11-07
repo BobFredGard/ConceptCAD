@@ -25,7 +25,7 @@ struct Retouche {
 struct RetoucheEsquisse {
   size_t esquisse;  // rang dans « sketches »
   struct Point { std::string id; double x, y; };
-  struct Element { size_t rang; bool aR; double r; bool aMid; Vec3 mid; std::string isect; };  // isect vide : inchangée
+  struct Element { size_t rang; bool aR; double r; bool aMid; Vec3 mid; std::string isect; std::string nom; };  // isect vide : inchangée
   struct Mesure { size_t rang; bool aValeur; double valeur; int sgn, ccw; };  // sgn 0 ou ccw -1 : inchangé
   std::vector<Point> points;
   std::vector<Element> elements;
@@ -52,6 +52,10 @@ void modifierStructure(Document& d, const std::function<void(nlohmann::ordered_j
 void modifierStructure(Document& d, const std::function<void(nlohmann::ordered_json&)>& changement, const std::map<std::string, std::string>& nouvellesSources);
 // Écrit un autre fichier de projet (source d'un composant lié) : temporaire relu, ancienne version en « .bak », remplacement d'un seul coup
 // L'usinage et ses parcours, tels que le moteur FAO les tient
+// repSyncStale : les copies des répétitions refaites depuis leurs sources (aucune esquisse ne doit être ouverte)
+void refaireCopies(Document& d);
+// Le document tel qu'il est maintenant, en JSON (sans l'enveloppe du fichier)
+nlohmann::ordered_json documentActuelJson(const Document& d);
 void poserFao(Document& d, const nlohmann::ordered_json& fao, const nlohmann::ordered_json& moves);
 void ecrireProjetSur(const std::wstring& cible, const std::string& texte, bool compresser);
 // Le texte tel qu'il est sur le disque

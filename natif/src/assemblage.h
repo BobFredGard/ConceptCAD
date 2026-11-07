@@ -71,6 +71,7 @@ struct SolideComposant {
   std::vector<SpiraleFilet> spirales;
   std::vector<std::string> messages;
   std::vector<ElementConstruction> construction;
+  std::shared_ptr<nlohmann::ordered_json> docGuide;  // composant actif avec une répétition suivant un profil : son document
   bool accrochesFaites = false;
   std::vector<FaceAccroche> accroches;
   bool aretesFaites = false;

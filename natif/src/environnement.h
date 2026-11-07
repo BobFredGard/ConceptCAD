@@ -18,6 +18,7 @@ class BarreHaute : public wxWindow {
   explicit BarreHaute(wxWindow* parent);
   std::function<void(Atelier)> surAtelier;
   std::function<void()> surAnnuler, surRetablir, surNouveau, surRecent, surOuvrir, surEnregistrer, surEnregistrerSous, surRegenerer;
+  std::function<void()> surDossier;
   std::function<void(const wxString&)> surIndisponible;
   void atelier(Atelier a);
   void document(const wxString& nom);
@@ -86,12 +87,18 @@ class Carte : public wxPanel {
 };
 
 // Le fil des fonctions, sous la vue 3D : esquisses et fonctions dans l'ordre
+// L'icône d'une fonction, dans le fil et dans l'arbre : rang dans le ruban CAO, couleur, petit moins
+void iconeFonction(const std::string& type, const std::string& op, const std::string& mode, bool chanfrein, bool derive, int& ruban, wxColour& c, bool& moins);
 class FilFonctions : public wxWindow {
  public:
   struct Element {
     bool estFonction = false;
     int i = 0;
     std::string type, op;
+    std::string cg;            // un élément de construction
+    int ruban = 1;             // l'icône : son rang dans le ruban CAO
+    wxColour couleur;
+    bool moins = false;        // un enlèvement de matière
     bool grise = false;        // masquée, ou au-delà du marqueur
     bool apresMarque = false;  // au-delà du marqueur de temps
     wxString nom;
@@ -100,6 +107,7 @@ class FilFonctions : public wxWindow {
   void montrer(const std::vector<Element>& e, int nbFonctions);
   std::function<void(const Element&)> surClic, surDouble, surDroit;
   std::function<void(int)> surMarqueur;  // 0 début, 1 précédent, 2 suivant, 3 fin
+  std::function<void()> surFilm;
   std::function<void(const wxString&)> surIndisponible;
 
  private:

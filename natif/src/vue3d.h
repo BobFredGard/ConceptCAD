@@ -99,6 +99,11 @@ class Vue3D : public wxWindow {
   void ajuster();
   void vueInitiale();
   void vueStandard(const std::string& quelle);  // iso, top, front, right
+  // Le film de construction : la caméra gardée, le cube retiré ; l'orbite autour d'un point ; une image de la vue
+  void filmDebut();
+  void filmFin();
+  void filmOrbite(const double centre[3], double distance, double angle, double elevation);
+  bool captureFilm(wxImage& sortie, int largeur, int hauteur);
   const OptionsVue& options() const { return opt_; }
   void options(const OptionsVue& o);
   void apparences(const std::vector<ApparenceVue>& L);
@@ -232,6 +237,7 @@ class Vue3D : public wxWindow {
   void tournerZ(int dx, int dy);
   ParamSol paramSol() const;
   void majReflets();
+  occ::handle<Graphic3d_Camera> cameraFilm_;
   void surDouble(wxMouseEvent&);
   void refaireReflets();
   void majMatieres();

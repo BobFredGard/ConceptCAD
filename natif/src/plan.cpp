@@ -2391,9 +2391,11 @@ const CadreImage& Calcul::imageDe(const J& vue, const Piece& p) {
   auto it = images_.find(id);
   if (it != images_.end() && it->second.first == sig) return it->second.second;
   CadreImage im;
-  // L'image d'une coupe, d'un détail ou d'une vue cavalière n'existe pas encore ici
-  if (rendreImage && !vrai(vue, "section") && !vrai(vue, "detail") && !obliqueDe(vue)) {
+  // Une coupe ou un détail n'a pas d'image, comme dans le navigateur. Une vue cavalière : la forme cisaillée, vue de face.
+  if (rendreImage && !vrai(vue, "section") && !vrai(vue, "detail")) {
     const Base b = baseDe(vue);
+    const bool oblique = obliqueDe(vue);
+    const auto vise = [&](const TopoDS_Shape& s) { return oblique ? cisaillement(s, vue, b) : s; };
     const std::string bodyId = chaine(vue, "bodyId");
     DemandeImage d;
     d.reel = vrai(vue, "real");
@@ -2401,16 +2403,19 @@ const CadreImage& Calcul::imageDe(const J& vue, const Piece& p) {
     const bool vueAsm = vrai(vue, "asm") && p.assemblage;
     for (const Corps& c : p.corps) {
       if (!vueAsm && !bodyId.empty() && c.id != bodyId) continue;
-      d.corps.push_back({c.forme, c.couleur, c.opacite});
-      maillages.push_back(trianglesDe(c.forme));
+      const TopoDS_Shape forme = vise(c.forme);
+      d.corps.push_back({forme, c.couleur, c.opacite});
+      maillages.push_back(trianglesDe(forme));
     }
     if (vueAsm)
       for (const CorpsInstance& c : p.instances) {
-        maillages.push_back(trianglesDe(c.forme));  // maille la forme, s'il le faut, avant son affichage
-        d.corps.push_back({c.forme, c.couleur, c.opacite});
+        const TopoDS_Shape forme = vise(c.forme);
+        maillages.push_back(trianglesDe(forme));  // maille la forme, s'il le faut, avant son affichage
+        d.corps.push_back({forme, c.couleur, c.opacite});
       }
-    for (const FiletImage& f : p.helices)
-      if (bodyId.empty() || f.corps.empty() || f.corps == bodyId) d.filets.push_back(f);
+    if (!oblique)
+      for (const FiletImage& f : p.helices)
+        if (bodyId.empty() || f.corps.empty() || f.corps == bodyId) d.filets.push_back(f);
     CamPersp K;
     const bool persp = perspDe(vue) && camPersp(vue, maillages, K);
     double minu = 1e9, maxu = -1e9, minv = 1e9, maxv = -1e9, mind = 1e9, maxd = -1e9, su0 = 1e9, su1 = -1e9, sv0 = 1e9, sv1 = -1e9;

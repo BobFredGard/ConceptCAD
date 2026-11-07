@@ -226,6 +226,7 @@ void retoucherEsquisse(Parcours& p, const RetoucheEsquisse& r, std::vector<Morce
         if (it->aR) champs.push_back({"r", nombreJson(it->r), false});
         if (it->aMid) champs.push_back({"srcMid", "[" + nombreJson(it->mid[0]) + "," + nombreJson(it->mid[1]) + "," + nombreJson(it->mid[2]) + "]", true});
         if (!it->isect.empty()) champs.push_back({"isect", it->isect, true});
+        if (!it->nom.empty()) champs.push_back({"srcNom", nlohmann::ordered_json(it->nom).dump(), true});
         retoucherObjet(p, champs, morceaux);
       });
     } else if (k == "dims" && p.voir() == '[') {
@@ -937,6 +938,7 @@ Esquisse aligner(const Esquisse& s, const Esquisse& f) {
       if ((e.t == "arc" && o->t == "line") || (e.t == "line" && o->t == "arc")) continue;  // réécrit en entier par la refonte
       e.r = o->r;
       e.srcMid = o->srcMid;
+      e.srcNom = o->srcNom;
     }
   for (Cote& c : t.cotes)
     for (const Cote& o : f.cotes)
@@ -1080,7 +1082,8 @@ std::string texteEnregistre(const Document& d, const std::string& texteOrigine) 
     for (size_t k = 0; k < s.entites.size(); k++) {
       const bool aR = s.entites[k].r != f.entites[k].r, aMid = s.entites[k].srcMid != f.entites[k].srcMid;
       const bool aSource = s.entites[k].isectJson != f.entites[k].isectJson;
-      if (aR || aMid || aSource) r.elements.push_back({k, aR, s.entites[k].r, aMid, s.entites[k].srcMid, aSource ? s.entites[k].isectJson : std::string()});
+      const bool aNom = !s.entites[k].srcNom.empty() && s.entites[k].srcNom != f.entites[k].srcNom;
+      if (aR || aMid || aSource || aNom) r.elements.push_back({k, aR, s.entites[k].r, aMid, s.entites[k].srcMid, aSource ? s.entites[k].isectJson : std::string(), aNom ? s.entites[k].srcNom : std::string()});
     }
     for (size_t k = 0; k < s.cotes.size(); k++) {
       const Cote& a = s.cotes[k];
@@ -1127,6 +1130,21 @@ void modifierStructure(Document& d, const std::function<void(nlohmann::ordered_j
   regenererRepetitions(j, true);
   Document n = lireTexteProjet(d, racine.dump(-1, ' ', false, nlohmann::ordered_json::error_handler_t::replace));
   d = std::move(n);
+}
+
+nlohmann::ordered_json documentActuelJson(const Document& d) {
+  const std::string base = !d.texteBase.empty() ? d.texteBase.str() : texteDuFichier(d);
+  nlohmann::ordered_json r = nlohmann::ordered_json::parse(d.modifie() ? texteEnregistre(d, base) : base);
+  if (r.contains("doc") && r["doc"].is_object()) {
+    nlohmann::ordered_json q = std::move(r["doc"]);
+    return q;
+  }
+  return r;
+}
+
+void refaireCopies(Document& d) {
+  if (d.sourcesRepetees.empty()) return;
+  modifierStructure(d, [](nlohmann::ordered_json&) {});
 }
 
 void poserFao(Document& d, const nlohmann::ordered_json& fao, const nlohmann::ordered_json& moves) {

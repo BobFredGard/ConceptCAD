@@ -10,6 +10,8 @@
 #include "construction.h"
 #include "engrenage.h"
 #include "filets.h"
+#include "enregistrer.h"
+#include "profil_guide.h"
 #include "projet.h"
 
 using json = nlohmann::ordered_json;
@@ -447,7 +449,7 @@ void champsRepetition(const Document& d, const json& f, std::vector<ChampFiche>&
   }
   c.push_back(lecture("Copies", std::to_string(instances) + " instance(s)"));
   std::vector<std::pair<std::string, std::string>> types = {{"lin", "Linéaire"}, {"circ", "Circulaire"}, {"mir", "Symétrie"}};
-  if (mode == "path") types.push_back({"path", "Suivant un profil"});
+  types.push_back({"path", "Suivant un profil"});
   c.push_back(choix("Type", "x/mode", mode, types));
   const bool neuf = str(f, "op") == "new";
   c.push_back(choix("Opération", "x/opr", neuf ? "new" : "join", {{"join", "➕ Unir : au corps de la source"}, {"new", "◧ Nouveau corps par exemplaire"}}));
@@ -457,7 +459,39 @@ void champsRepetition(const Document& d, const json& f, std::vector<ChampFiche>&
   }
   if (mode != "mir") c.push_back(nombre("Quantité, original compris", "n/qty", std::min(200.0, std::max(1.0, std::floor(num(f, "copies", 1)))) + 1));
   if (mode == "path") {
-    c.push_back(lecture("Courbe guide", "Ce réglage n'est pas encore repris ici"));
+    // repPathUI : esquisse guide, point de départ, espacement, orientation, sens
+    const json dj = documentActuelJson(d);
+    const std::vector<const json*> G = pgEsquissesGuides(dj);
+    if (G.empty()) {
+      c.push_back(lecture("Courbe guide", "Aucune esquisse ne contient de ligne, d'arc ou de spline : dessinez d'abord la courbe guide."));
+    } else {
+      const json path = f.contains("path") && f["path"].is_object() ? f["path"] : json::object();
+      const std::string skId = str(path, "sk");
+      const json* sk = nullptr;
+      std::vector<std::pair<std::string, std::string>> L = {{"", "— choisir —"}};
+      for (const json* s : G) {
+        L.push_back({str(*s, "id"), str(*s, "name").empty() ? str(*s, "id") : str(*s, "name")});
+        if (str(*s, "id") == skId) sk = s;
+      }
+      c.push_back(choix("Courbe guide", "x/pgsk", sk ? skId : "", L));
+      if (sk) {
+        const std::vector<ChoixDepart> ch = pgChoixDepart(*sk);
+        std::vector<std::pair<std::string, std::string>> D;
+        std::string cour = "-1";
+        for (size_t i = 0; i < ch.size(); i++) {
+          D.push_back({std::to_string(i), ch[i].label});
+          if (pgMemeDepart(ch[i].v, path)) cour = std::to_string(i);
+        }
+        if (cour == "-1") D.push_back({"-1", "(départ actuel)"});
+        c.push_back(choix("Départ", "x/pgdep", cour, D));
+      }
+      const bool pitch = str(f, "pspace") == "pitch";
+      c.push_back(choix("Espacement", "x/pgsp", pitch ? "pitch" : "fit", {{"fit", "Réparti sur la longueur"}, {"pitch", "Pas imposé"}}));
+      if (pitch) c.push_back(nombre("Pas le long de la courbe (mm)", "n/dist", num(f, "dist")));
+      c.push_back(choix("Orientation", "x/pgor", str(f, "orient") == "tangent" ? "tangent" : "fixed", {{"fixed", "Fixe (translation)"}, {"tangent", "Suit la tangente"}}));
+      c.push_back(booleen("Sens inversé", "x/pgrev", vrai(f, "rev")));
+      if (sk) c.push_back(lecture("Courbe", pgNote(pgPlan(*sk, f, static_cast<int>(std::min(200.0, std::max(1.0, std::floor(num(f, "copies", 1))))) + 1))));
+    }
   } else if (mode == "mir") {
     const std::string pl = str(f, "plane").empty() ? "YZ" : str(f, "plane");
     c.push_back(choix("Plan", "x/rep1", pl, listeAxes(true, pl == "Face" && f.contains("planeN"))));
@@ -882,7 +916,7 @@ json tableauDe(const std::string& v) {  // « Face:x,y,z »
   std::sscanf(v.c_str(), "Face:%lf,%lf,%lf", &a[0], &a[1], &a[2]);
   return {a[0], a[1], a[2]};
 }
-std::string appliquerRepetition(json& f, const std::string& cle, const std::string& v) {
+std::string appliquerRepetition(const json& d, json& f, const std::string& cle, const std::string& v) {
   const bool mir = str(f, "mode") == "mir";
   const auto axeVec = [&](const char* axe, const char* dir) {  // repAxisVec, repAxis2Vec
     json r = json::array({1, 0, 0});
@@ -900,6 +934,38 @@ std::string appliquerRepetition(json& f, const std::string& cle, const std::stri
   };
   if (cle == "x/mode") {
     f["mode"] = v;
+    if (v == "path" && !f.contains("path")) {  // la dernière esquisse guide, son départ proposé
+      const std::vector<const json*> G = pgEsquissesGuides(d);
+      if (!G.empty()) f["path"] = pgDepartDefaut(*G.back());
+    }
+  } else if (cle == "x/pgsk") {
+    const json* k = nullptr;
+    for (const json* s : pgEsquissesGuides(d))
+      if (str(*s, "id") == v) k = s;
+    if (k) f["path"] = pgDepartDefaut(*k);
+    else f["path"] = nullptr;
+  } else if (cle == "x/pgdep") {
+    const json* k = nullptr;
+    for (const json* s : pgEsquissesGuides(d))
+      if (f.contains("path") && f["path"].is_object() && str(*s, "id") == str(f["path"], "sk")) k = s;
+    if (k) {
+      const std::vector<ChoixDepart> ch = pgChoixDepart(*k);
+      const int i = std::atoi(v.c_str());
+      if (i >= 0 && i < static_cast<int>(ch.size())) {
+        json n = json::object();
+        n["sk"] = str(*k, "id");
+        for (auto it = ch[i].v.begin(); it != ch[i].v.end(); ++it) n[it.key()] = *it;
+        f["path"] = std::move(n);
+      }
+    }
+  } else if (cle == "x/pgsp") {
+    f["pspace"] = v;
+    if (v == "pitch" && !(num(f, "dist") > 0)) f["dist"] = 10;
+  } else if (cle == "x/pgor") {
+    f["orient"] = v;
+  } else if (cle == "x/pgrev") {
+    if (v == "1") f["rev"] = true;
+    else f.erase("rev");
   } else if (cle == "x/opr") {
     if (v == "new") f["op"] = "new";
     else f.erase("op");
@@ -1041,7 +1107,7 @@ std::string ficheAppliquer(json& d, const std::string& id, const std::string& cl
     const std::string r = appliquerPercage(f, cle, valeur);
     if (!r.empty()) return r;
   } else if (t == "repeat" && cle.rfind("x/", 0) == 0) {
-    const std::string r = appliquerRepetition(f, cle, valeur);
+    const std::string r = appliquerRepetition(d, f, cle, valeur);
     if (!r.empty()) return r;
   } else if (cle == "x/cible") {
     f["body"] = valeur;

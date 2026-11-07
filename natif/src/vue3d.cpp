@@ -2257,6 +2257,56 @@ void Vue3D::options(const OptionsVue& o) {
   vue_->Redraw();
 }
 
+void Vue3D::filmDebut() {
+  cameraFilm_ = new Graphic3d_Camera();
+  cameraFilm_->Copy(vue_->Camera());
+  if (!cube_.IsNull()) contexte_->Erase(cube_, false);
+}
+
+void Vue3D::filmFin() {
+  if (!cameraFilm_.IsNull()) vue_->Camera()->Copy(cameraFilm_);
+  cameraFilm_.Nullify();
+  if (!cube_.IsNull()) contexte_->Display(cube_, false);
+  majReflets();
+  majTailles();
+  vue_->ZFitAll();
+  vue_->Redraw();
+}
+
+void Vue3D::filmOrbite(const double c[3], double d, double a, double el) {
+  occ::handle<Graphic3d_Camera> k = vue_->Camera();
+  const double ce = std::cos(el);
+  k->SetCenter(gp_Pnt(c[0], c[1], c[2]));
+  k->SetEye(gp_Pnt(c[0] + d * ce * std::cos(a), c[1] + d * ce * std::sin(a), c[2] + d * std::sin(el)));
+  k->SetUp(gp_Dir(0, 0, 1));
+  k->OrthogonalizeUp();
+  majReflets();
+  majTailles();
+  vue_->ZFitAll();
+  vue_->Redraw();
+}
+
+bool Vue3D::captureFilm(wxImage& sortie, int l, int h) {
+  Image_PixMap px;
+  V3d_ImageDumpOptions o;
+  o.Width = l;
+  o.Height = h;
+  o.BufferType = Graphic3d_BT_RGB;
+  o.ToAdjustAspect = true;
+  try {
+    if (!px.InitZero(Image_Format_RGB, l, h) || !vue_->ToPixMap(px, o)) return false;
+  } catch (const Standard_Failure&) {
+    return false;
+  }
+  sortie.Create(l, h, false);
+  unsigned char* d = sortie.GetData();
+  for (int y = 0; y < h; y++) {
+    const unsigned char* r = px.Row(y);
+    memcpy(d + static_cast<size_t>(y) * l * 3, r, static_cast<size_t>(l) * 3);
+  }
+  return true;
+}
+
 void Vue3D::vueStandard(const std::string& q) {
   if (q == "iso") return vueInitiale();
   const gp_Pnt c = vue_->Camera()->Center();

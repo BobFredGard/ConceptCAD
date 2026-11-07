@@ -34,6 +34,7 @@ struct Entite {
   int isplN = 0;                           // courbe libre d'une intersection : ses n points de découpage
   bool aSrcMid = false;  // milieu 3D de l'arête source d'une projection : c'est par lui qu'on la retrouve
   Vec3 srcMid{0, 0, 0};
+  std::string srcNom;  // le nom de l'arête projetée : il prime sur le milieu mémorisé (projPreferMid)
   bool suiviInconnu = false;  // projection qui suit autre chose qu'une arête retrouvée par position (nom, intersection, autre esquisse)
 };
 
@@ -73,6 +74,9 @@ struct Esquisse {
   int seq = 1;  // prochain numéro d'identifiant
   Vec3 o{0, 0, 0}, u{1, 0, 0}, v{0, 1, 0}, n{0, 0, 1};
   bool visible = true;
+  bool fao = false;  // esquisse de l'atelier FAO : jamais montrée en CAO
+  bool aAt = false;  // le fichier donne sa place dans le fil
+  std::string atLu;  // la fonction après laquelle elle se place (vide : en tête)
   std::vector<std::string> ordre;  // ordre d'enregistrement des points : il décide des fusions de noeuds
   std::unordered_map<std::string, Pt> points;
   std::vector<Entite> entites;
@@ -177,6 +181,7 @@ struct Fonction {
   double dist = 0;       // xmove
   bool facesTangentes = false;  // xmove
   std::string chemin;    // sweep : esquisse du chemin
+  bool derive = false;   // corps dérivé d.un autre fichier
   std::vector<std::string> outils;  // combine : corps outils
   std::string modeFonction;  // combine : cut, intersect ; xsplit : body, face
   bool garder = false;       // combine : garde les outils
@@ -190,6 +195,11 @@ struct Fonction {
   double echelle = 1, echelleX = 1, echelleY = 1, echelleZ = 1;
   bool echelleUni = true, copie = false;
   bool upto = false;
+  // f.upto : la face cible telle que retenue au clic (resolveExtrudeUpto)
+  std::string uptoEx, uptoCorps, uptoNom;
+  bool uptoFace = false;
+  Vec3 uptoCentre{0, 0, 0}, uptoNormale{0, 0, 0};
+  double uptoAire = 0;
   double distance = 10;
   bool aDistance = false, visible = true, mid = false, flip = false, through = false;
   // Congé ou chanfrein exact (xfillet)
@@ -307,6 +317,7 @@ struct Document {
   std::shared_ptr<nlohmann::ordered_json> assemblage;
   // Le composant actif a seulement changé : pour le navigateur, ce n'est pas une modification
   bool basculeSeule = false;
+  bool projNommees = false;  // nommerProjections déjà passée sur ce document
   bool modifie() const {
     if (!texteBase.empty() && !basculeSeule) return true;
     if (esquisses.size() != esquissesFichier.size() || fonctions.size() != fonctionsFichier.size()) return true;
@@ -331,6 +342,8 @@ struct Document {
 };
 
 // Lève std::runtime_error si le fichier est illisible.
+// skIsRepCopy : esquisse utilisée seulement par des copies de répétition
+bool esquisseCopieRepetition(const Document& d, const std::string& id);
 Document lireProjet(const std::wstring& chemin);
 // Bouton Nouveau : une pièce vide, sans fichier (docResetEmpty)
 Document projetVide();

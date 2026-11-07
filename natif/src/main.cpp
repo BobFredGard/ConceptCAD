@@ -340,10 +340,16 @@ int modeCoter(const std::vector<std::wstring>& a) {
         fprintf(stderr, "%s\n", raison.c_str());
         return 5;
       }
+      nommerProjections(d);
       Edition ed(d.esquisses[i]);
       if (!saisirCote(d, i, ed, utf8(a[4]), _wtof(a[5].c_str()), raison)) {
         fprintf(stderr, "%s\n", raison.c_str());
         return 4;
+      }
+      refaireCopies(d);
+      if (!d.sourcesRepetees.empty()) {
+        suivreEsquisses(d, i);
+        refaireCopies(d);
       }
       enregistrerProjet(d, a[2]);
       return 0;

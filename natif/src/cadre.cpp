@@ -284,6 +284,11 @@ Cadre::Cadre() : wxFrame(nullptr, wxID_ANY, L"ConceptCAD natif"), asmAnim_(this)
     else montrerForme(s);
   };
   Bind(wxEVT_CHAR_HOOK, [this](wxKeyEvent& e) {
+    if (film_) {  // aucun raccourci de l'application pendant le film
+      if (e.GetKeyCode() == WXK_ESCAPE) filmStop();
+      else if (e.GetKeyCode() == WXK_SPACE) filmPause();
+      return;
+    }
     if (e.ControlDown() && !e.ShiftDown() && e.GetKeyCode() == 'K') {
       barreHaute_->champRecherche()->SetFocus();
       barreHaute_->champRecherche()->SelectAll();
@@ -342,6 +347,7 @@ void Cadre::creerEnvironnement() {
   barreHaute_->surRecent = [this] { menuRecents(); };
   barreHaute_->surEnregistrer = [this] { enregistrer(); };
   barreHaute_->surEnregistrerSous = [this] { enregistrerSous(); };
+  barreHaute_->surDossier = [this] { panneauDossier(); };
   barreHaute_->surRegenerer = [this] {
     quitterConge();
     if (esquisseOuverte_ < 0) recalculer();
@@ -493,17 +499,22 @@ void Cadre::creerEnvironnement() {
   fil_->surIndisponible = [this](const wxString& n) { indisponible(n); };
   fil_->surClic = [this](const FilFonctions::Element& e) {
     if (e.estFonction) choisirFonction(e.i);
-    else if (e.i < static_cast<int>(lignesEsquisses_.size()) && lignesEsquisses_[e.i].IsOk()) arbre_->SelectItem(lignesEsquisses_[e.i]);
+    else if (!e.cg.empty()) {
+      const auto l = lignesConstruction_.find(e.cg);
+      if (l != lignesConstruction_.end() && l->second.IsOk()) arbre_->SelectItem(l->second);
+    } else if (e.i < static_cast<int>(lignesEsquisses_.size()) && lignesEsquisses_[e.i].IsOk()) arbre_->SelectItem(lignesEsquisses_[e.i]);
   };
   fil_->surDouble = [this](const FilFonctions::Element& e) {
-    if (!e.estFonction) entrerEsquisse(e.i);
+    if (!e.estFonction && e.cg.empty()) entrerEsquisse(e.i);
   };
   fil_->surDroit = [this](const FilFonctions::Element& e) {
     if (esquisseOuverte_ >= 0 || enChoix()) return;
     if (e.estFonction) menuFonction(e.i);
+    else if (!e.cg.empty()) menuConstruction(e.cg);
     else menuEsquisseArbre(e.i);
   };
   fil_->surMarqueur = [this](int b) { bougerMarqueur(b); };
+  fil_->surFilm = [this] { filmLancer(); };
   page_ = new PageAtelier(scene_);
   planVue_ = new PlanVue(scene_);
   planVue_->Hide();
@@ -612,6 +623,7 @@ void Cadre::creerEnvironnement() {
 // Les mêmes emplacements que dans le navigateur, à partir des bords de la scène
 void Cadre::placerScene() {
   if (!fil_) return;
+  if (film_) return filmPlacer();
   const wxSize t = scene_->ToDIP(scene_->GetClientSize());
   if (t.x < 50 || t.y < 50) return;
   const auto poser = [&](wxWindow* w, int x, int y, int l, int h) { w->SetSize(wxRect(scene_->FromDIP(wxPoint(x, y)), scene_->FromDIP(wxSize(l, h)))); };
@@ -633,7 +645,7 @@ void Cadre::placerScene() {
   poser(repliArbre_, 5, 41, 22, 88);
   repliArbre_->Show(volume);
   const int basFil = cao ? t.y - 64 : t.y - 34;
-  poser(carteArbre_, 32, 41, 300, std::max(120, std::min(470, basFil - 41)));
+  poser(carteArbre_, 32, 41, 300, std::max(120, basFil - 41));
   carteArbre_->Show(cao && !arbreReplie_);
   poser(carteFao_, 32, 41, 300, std::max(120, std::min(560, t.y - 41 - 34)));
   carteFao_->Show(fao && !arbreReplie_);
@@ -1288,33 +1300,82 @@ void Cadre::menuGrille() {
 
 // L'esquisse d'abord, puis la fonction qui s'en sert, comme le fil du navigateur
 void Cadre::remplirFil() {
-  std::vector<FilFonctions::Element> l;
-  std::vector<char> posee(doc_.esquisses.size(), 0);
-  const auto esquisse = [&](size_t i) {
+  // tlbSteps : 4·i+2 la fonction i, 4·i+1 l'esquisse qu'elle consomme, 4·p+3 ce qui vient après la fonction p, 4·n une esquisse de place inconnue
+  struct Etape {
+    int cle, sous;
     FilFonctions::Element e;
-    e.i = static_cast<int>(i);
-    e.nom = doc_.esquisses[i].nom.empty() ? tx(doc_.esquisses[i].id) : tx(doc_.esquisses[i].nom);
-    l.push_back(e);
-    posee[i] = 1;
   };
-  for (size_t i = 0; i < doc_.fonctions.size(); i++) {
+  std::vector<Etape> S;
+  const int n = static_cast<int>(doc_.fonctions.size()), marque = indiceMarque();
+  const auto rang = [&](const std::string& id) {
+    for (int i = 0; i < n; i++)
+      if (doc_.fonctions[i].id == id) return i;
+    return -1;
+  };
+  int nb = 0;
+  for (int i = 0; i < n; i++) {
     const Fonction& f = doc_.fonctions[i];
-    for (size_t k = 0; k < doc_.esquisses.size(); k++)
-      if (!posee[k] && doc_.esquisses[k].id == f.esquisse) esquisse(k);
+    if (!f.repeatId.empty()) continue;
+    nb++;
     FilFonctions::Element e;
     e.estFonction = true;
-    e.i = static_cast<int>(i);
+    e.i = i;
     e.type = f.type;
     e.op = f.op;
     e.nom = f.nom.empty() ? nomType(f) : tx(f.nom);
-    const int marque = indiceMarque();
-    e.apresMarque = marque >= 0 && static_cast<int>(i) >= marque;
+    if (f.type == "repeat") {
+      int copies = 0;
+      for (const Fonction& c : doc_.fonctions) copies += c.repeatId == f.id;
+      e.nom += wxString::Format(L" · %d instance(s)", copies);
+    }
+    iconeFonction(f.type, f.op, f.modeFonction, f.chamfer, f.derive, e.ruban, e.couleur, e.moins);
+    e.apresMarque = marque >= 0 && i >= marque;
     e.grise = !f.visible || e.apresMarque;
-    l.push_back(e);
+    S.push_back({4 * i + 2, 0, e});
   }
-  for (size_t k = 0; k < doc_.esquisses.size(); k++)
-    if (!posee[k]) esquisse(k);
-  fil_->montrer(l, static_cast<int>(doc_.fonctions.size()));
+  std::map<std::string, int> cleCg;
+  int k = 0;
+  for (const ElementConstruction& c : doc_.construction) {
+    FilFonctions::Element e;
+    e.i = -1;
+    e.cg = c.id;
+    e.ruban = c.kind == "axis" ? 8 : c.kind == "point" ? 9 : c.kind == "frame" ? 10 : 7;
+    e.couleur = wxColour(0xff, 0xd6, 0x0a);
+    e.nom = tx(libelleConstruction(c));
+    const int p = rangConstruction(doc_, c);
+    e.apresMarque = marque >= 0 && 4 * p + 3 > 4 * marque;
+    e.grise = !c.visible || e.apresMarque;
+    cleCg[c.id] = 4 * p + 3;
+    S.push_back({4 * p + 3, k++, e});
+  }
+  for (size_t i = 0; i < doc_.esquisses.size(); i++) {
+    const Esquisse& s = doc_.esquisses[i];
+    if (s.fao || esquisseCopieRepetition(doc_, s.id)) continue;
+    int cle = -1;
+    for (int j = 0; j < n && cle < 0; j++) {  // tlHostFeatureOfSketch
+      const Fonction& f = doc_.fonctions[j];
+      if (((f.type == "extrude" || f.type == "revolve" || f.type == "sweep" || f.type == "hole") && f.esquisse == s.id) || (f.type == "sweep" && f.chemin == s.id)) cle = 4 * j + 1;
+    }
+    if (cle < 0) {
+      const int hote = s.hote.existe ? rang(s.hote.feat) : -1;
+      const auto cg = s.plan == "CG" ? cleCg.find(s.plan_cg) : cleCg.end();
+      const int support = cg != cleCg.end() ? cg->second : hote >= 0 ? 4 * hote + 3 : -1000;
+      if (!s.at.empty() || s.aAt) cle = std::max(support, 4 * rang(s.at.empty() ? s.atLu : s.at) + 3);
+      else cle = support > -1000 ? support : 4 * n;
+    }
+    FilFonctions::Element e;
+    e.i = static_cast<int>(i);
+    e.ruban = 0;
+    e.couleur = wxColour(0xff, 0x9f, 0x0a);
+    e.nom = (s.nom.empty() ? tx(s.id) : tx(s.nom)) + L" · esquisse";
+    e.apresMarque = marque >= 0 && cle > 4 * marque;
+    e.grise = !s.visible || e.apresMarque;
+    S.push_back({cle, 1000000 + static_cast<int>(i), e});
+  }
+  std::stable_sort(S.begin(), S.end(), [](const Etape& a, const Etape& b) { return a.cle != b.cle ? a.cle < b.cle : a.sous < b.sous; });
+  std::vector<FilFonctions::Element> l;
+  for (Etape& e : S) l.push_back(std::move(e.e));
+  fil_->montrer(l, nb);
 }
 
 Cadre::~Cadre() {
@@ -1634,6 +1695,44 @@ void Cadre::remplirArbre() {
   remplirFil();
 }
 
+// Le libellé d'une fonction dans l'arbre : une répétition dit son genre, ses instances et ses sources
+wxString Cadre::libelleArbre(const Fonction& f) const {
+  const wxString nom = f.nom.empty() ? nomType(f) : tx(f.nom);
+  if (f.type != "repeat") return nom;
+  int copies = 0;
+  for (const Fonction& k : doc_.fonctions)
+    if (k.repeatId == f.id && (indiceMarque() < 0 || &k - doc_.fonctions.data() < indiceMarque())) copies++;
+  wxString genre = L"Linéaire";
+  size_t sources = 0;
+  if (doc_.fonctionsJson) {
+    const auto it = doc_.fonctionsJson->find(f.id);
+    if (it != doc_.fonctionsJson->end()) {
+      const nlohmann::ordered_json j = nlohmann::ordered_json::parse(it->second);
+      const std::string m = j.value("mode", std::string());
+      const auto oui = [&](const char* c) { return j.contains(c) && !j[c].is_null() && j[c] != false; };
+      genre = m == "mir" ? (oui("plane2") ? L"Symétrie double" : L"Symétrie") : m == "circ" ? L"Circulaire" : m == "path" ? L"Suivant un profil" : oui("lin2") ? L"Linéaire 2 directions" : L"Linéaire";
+      if (j.contains("base") && j["base"].is_array()) sources = j["base"].size();
+    }
+  }
+  return nom + L" · " + genre + wxString::Format(L" · %d instance(s) ◀ %zu", copies, sources);
+}
+
+int Cadre::imageFonctionArbre(const Fonction& f) {
+  int ruban = 1;
+  wxColour c;
+  bool moins = false;
+  iconeFonction(f.type, f.op, f.modeFonction, f.chamfer, f.derive, ruban, c, moins);
+  const std::string cle = c.GetAsString(wxC2S_HTML_SYNTAX).ToStdString() + std::to_string(ruban);
+  const auto it = imagesArbre_.find(cle);
+  if (it != imagesArbre_.end()) return it->second;
+  wxImageList* images = arbre_->GetImageList();
+  int l = 16, h = 16;
+  images->GetSize(0, l, h);
+  const int n = images->Add(iconeSvgComplete(iconeRubanCao(ruban), c, 16).GetBitmap(wxSize(l, h)));
+  imagesArbre_[cle] = n;
+  return n;
+}
+
 void Cadre::remplirPiece(const wxTreeItemId& racine) {
   const wxColour grise(0x78, 0x78, 0x7d);
   const wxTreeItemId origine = arbre_->AppendItem(racine, L"Origine", 11);
@@ -1663,12 +1762,19 @@ void Cadre::remplirPiece(const wxTreeItemId& racine) {
       arbre_->Expand(sec);
     }
   }
-  const wxTreeItemId esquisses = arbre_->AppendItem(racine, wxString::Format(L"Esquisses (%zu)", doc_.esquisses.size()), 0);
+  size_t nbEsquisses = 0;
+  for (const Esquisse& s : doc_.esquisses) nbEsquisses += !s.fao && !esquisseCopieRepetition(doc_, s.id);
+  const wxTreeItemId esquisses = arbre_->AppendItem(racine, wxString::Format(L"Esquisses (%zu)", nbEsquisses), 0);
   arbre_->SetItemBold(esquisses);
   for (size_t i = 0; i < doc_.esquisses.size(); i++) {
+    if (doc_.esquisses[i].fao || esquisseCopieRepetition(doc_, doc_.esquisses[i].id)) continue;
     const std::string& n = doc_.esquisses[i].nom;
     lignesEsquisses_[i] = arbre_->AppendItem(esquisses, n.empty() ? wxString(tx(doc_.esquisses[i].id)) : tx(n), 0, -1, new LienArbre(false, static_cast<int>(i)));
     if (!doc_.esquisses[i].visible) arbre_->SetItemTextColour(lignesEsquisses_[i], grise);
+  }
+  if (const int m = indiceMarque(); m >= 0) {  // le temps est bloqué : un clic rejoue tout
+    const wxTreeItemId t = arbre_->AppendItem(racine, wxString::Format(L"⏱ Temps bloqué avant « %s » — %d fonction(s) rejouée(s) · clic = rejouer tout", libelleArbre(doc_.fonctions[m]), m), -1, -1, new LienArbre(false, -1, "temps"));
+    arbre_->SetItemTextColour(t, wxColour(0xe8, 0xb3, 0x4a));
   }
   for (size_t c = 0; c < doc_.corps.size(); c++) {
     const bool corpsActif = doc_.corps[c] == doc_.corpsActif;
@@ -1681,11 +1787,18 @@ void Cadre::remplirPiece(const wxTreeItemId& racine) {
     for (size_t i = 0; i < doc_.fonctions.size(); i++) {
       const Fonction& f = doc_.fonctions[i];
       const bool ici = f.corps == doc_.corps[c] || (c == 0 && std::find(doc_.corps.begin(), doc_.corps.end(), f.corps) == doc_.corps.end());
-      if (!ici) continue;
-      const wxTreeItemId n = arbre_->AppendItem(corps, f.nom.empty() ? nomType(f) : tx(f.nom), f.op == "cut" ? 2 : 1, -1, new LienArbre(true, static_cast<int>(i)));
+      if (!ici || !f.repeatId.empty()) continue;  // les copies vont sous leur répétition
+      if (indiceMarque() >= 0 && static_cast<int>(i) >= indiceMarque()) continue;  // tlLocked
+      const wxTreeItemId n = arbre_->AppendItem(corps, libelleArbre(f), imageFonctionArbre(f), -1, new LienArbre(true, static_cast<int>(i)));
       lignesFonctions_[i] = n;
       nbDuCorps++;
-      if (!f.visible || (indiceMarque() >= 0 && static_cast<int>(i) >= indiceMarque())) arbre_->SetItemTextColour(n, grise);
+      if (!f.visible) arbre_->SetItemTextColour(n, grise);
+      if (f.type != "repeat") continue;
+      for (const Fonction& k : doc_.fonctions) {
+        if (k.repeatId != f.id) continue;
+        const wxTreeItemId e = arbre_->AppendItem(n, k.nom.empty() ? nomType(k) : tx(k.nom), imageFonctionArbre(k), -1, new LienArbre(true, static_cast<int>(i)));
+        if (!k.visible) arbre_->SetItemTextColour(e, grise);
+      }
     }
     arbre_->SetItemText(corps, nomCorps + (corpsActif ? L" ●" : L"") + wxString::Format(L" · %d fonction%s", nbDuCorps, nbDuCorps > 1 ? L"s" : L""));
     arbre_->Expand(corps);
@@ -1732,18 +1845,23 @@ void Cadre::montrerFonction(int i) {
   if (f.type != "extrude") return;
   const Esquisse* e = doc_.esquisse(f.esquisse);
   lectureSeule(props_, L"Esquisse", tx(e && !e->nom.empty() ? e->nom : f.esquisse));
-  if (f.visible && solideCalculable_ && doc_.profondeurModifiable(i)) {
+  if (f.visible && solideCalculable_ && (doc_.profondeurModifiable(i) || (f.upto && f.repeatId.empty()))) {
     // Le panneau de l'extrusion du navigateur : le signe de la distance vient de l'opération
     wxPGChoices operations, etendues, directions;
     operations.Add(L"Plot : ajoute de la matière", 0);
     operations.Add(L"Poche : retire de la matière", 1);
     etendues.Add(L"Distance", 0);
     etendues.Add(L"À travers tout", 1);
+    etendues.Add(L"Jusqu'à la face", 2);
     directions.Add(L"Un côté", 0);
     directions.Add(L"Symétrique", 1);
     props_->Append(new wxEnumProperty(L"Opération", PROP_OPERATION, operations, f.op == "cut" ? 1 : 0));
-    props_->Append(new wxEnumProperty(L"Étendue", PROP_ETENDUE, etendues, f.through ? 1 : 0));
-    if (!f.through) props_->Append(new wxStringProperty(f.mid ? L"Profondeur totale (mm)" : L"Profondeur (mm)", PROP_PROFONDEUR, wxString::Format("%.10g", std::abs(f.distance))));
+    props_->Append(new wxEnumProperty(L"Étendue", PROP_ETENDUE, etendues, f.upto ? 2 : f.through ? 1 : 0));
+    if (f.upto) {
+      lectureSeule(props_, L"Face cible", f.uptoFace ? wxString::Format(L"🎯 face choisie — %g mm", std::abs(f.distance)) : wxString(L"🎯 cliquez une face dans la vue"));
+      const std::string idF = f.id;
+      poserBoutonsPanneau({{L"🎯 Choisir une autre face", [this, idF] { uptoChoisir(idF); }}});
+    } else if (!f.through) props_->Append(new wxStringProperty(f.mid ? L"Profondeur totale (mm)" : L"Profondeur (mm)", PROP_PROFONDEUR, wxString::Format("%.10g", std::abs(f.distance))));
     props_->Append(new wxEnumProperty(L"Direction", PROP_DIRECTION, directions, f.mid ? 1 : 0));
     props_->SetPropertyAttribute(props_->Append(new wxBoolProperty(L"Inverser le sens", PROP_INVERSER, f.flip)), wxPG_BOOL_USE_CHECKBOX, true);
     fonctionMontree_ = i;
@@ -1775,6 +1893,10 @@ void Cadre::montrerEsquisse(int i) {
 void Cadre::entrerEsquisse(int i) {
   quitterConge();
   if (atelier_ != Atelier::CAO) changerAtelier(Atelier::CAO);
+  if (solideCalculable_) {
+    wxBusyCursor attente;
+    nommerProjections(doc_);
+  }
   const Esquisse& s = doc_.esquisses[i];
   esquisseOuverte_ = i;
   figee_ = esquisseFigee(doc_, i);
@@ -1898,6 +2020,7 @@ std::string Cadre::changerFormules(const std::function<std::string()>& f) {
   annulations_.push_back(std::move(m));
   retablissements_.clear();
   majTitre();
+  suivreCopies();
   recalculer();
   if (esquisseOuverte_ >= 0) {
     vueEsquisse_->majPiece(formeAnterieure(esquisseOuverte_));
@@ -2208,7 +2331,7 @@ void Cadre::quitterEsquisse() {
     const EtatFormules avant(doc_);
     std::string raison;
     if (!appliquerFormules(doc_, avant, -1, nullptr, raison)) etat(tx(doc_.nom) + L"  |  " + tx(raison));
-    suivreEsquisses(doc_, i);
+    suivreCopies(i);
     recalculer();
   }
 }
@@ -2393,9 +2516,31 @@ void Cadre::extruder() {
 
 void Cadre::choisirFonction(int i) {
   if (i < 0 || i >= static_cast<int>(lignesFonctions_.size())) return;
+  if (!doc_.fonctions[i].repeatId.empty())
+    for (size_t r = 0; r < doc_.fonctions.size(); r++)
+      if (doc_.fonctions[r].id == doc_.fonctions[i].repeatId) i = static_cast<int>(r);
   if (!lignesFonctions_[i].IsOk()) return;
   if (arbre_->GetSelection() == lignesFonctions_[i]) montrerFonction(i);
   else arbre_->SelectItem(lignesFonctions_[i]);
+}
+
+// Après un changement de source : les esquisses qui en dépendent, les copies, puis celles qui dépendent des copies
+void Cadre::suivreCopies(int esquisse) {
+  if (esquisseOuverte_ >= 0 || doc_.sourcesRepetees.empty()) {
+    if (esquisse >= 0) suivreEsquisses(doc_, esquisse);
+    return;
+  }
+  try {
+    if (esquisse >= 0) suivreEsquisses(doc_, esquisse);
+    refaireCopies(doc_);
+    if (esquisse >= 0) {
+      suivreEsquisses(doc_, esquisse);
+      refaireCopies(doc_);
+    }
+    remplirArbre();
+  } catch (const std::exception& e) {
+    etat(tx(e.what()));
+  }
 }
 
 void Cadre::modifierFonction(int i, const std::function<void(Fonction&)>& reglage) {
@@ -2404,6 +2549,7 @@ void Cadre::modifierFonction(int i, const std::function<void(Fonction&)>& reglag
   m.avecFonctions = true;
   m.fonctionsAvant = doc_.fonctions;
   Fonction& f = doc_.fonctions[i];
+  if (solideCalculable_) nommerProjections(doc_);
   const bool nomAuto = f.nom == nomExtrusion(doc_, f);  // un nom donné par l'utilisateur reste
   reglage(f);
   if (nomAuto) f.nom = nomExtrusion(doc_, f);
@@ -2413,9 +2559,16 @@ void Cadre::modifierFonction(int i, const std::function<void(Fonction&)>& reglag
   }
   annulations_.push_back(std::move(m));
   retablissements_.clear();
-  if (lignesFonctions_[i].IsOk()) arbre_->SetItemText(lignesFonctions_[i], tx(f.nom));
+  if (lignesFonctions_[i].IsOk()) arbre_->SetItemText(lignesFonctions_[i], libelleArbre(f));
   remplirFil();
   majTitre();
+  {
+    wxBusyCursor attente;
+    int sk = -1;
+    for (size_t j = 0; j < doc_.esquisses.size(); j++)
+      if (doc_.esquisses[j].id == doc_.fonctions[i].esquisse) sk = static_cast<int>(j);
+    suivreCopies(sk);
+  }
   recalculer();
   montrerFonction(i);
 }
@@ -2460,6 +2613,10 @@ void Cadre::annuler() {
   }
   poserPas(m.esquissesAvant, m.avecFonctions, m.fonctionsAvant);
   if (m.avecFormules && miniParams_->IsShown()) miniParams_->rafraichir();
+  if (esquisseOuverte_ < 0 && !doc_.sourcesRepetees.empty()) {
+    suivreCopies();
+    recalculer();
+  }
 }
 
 void Cadre::annulerDejaEnregistre() {
@@ -2502,6 +2659,10 @@ void Cadre::retablir() {
   }
   poserPas(m.esquissesApres, m.avecFonctions, m.fonctionsApres);
   if (m.avecFormules && miniParams_->IsShown()) miniParams_->rafraichir();
+  if (esquisseOuverte_ < 0 && !doc_.sourcesRepetees.empty()) {
+    suivreCopies();
+    recalculer();
+  }
 }
 
 // ---- Les menus contextuels de l'arbre et du fil ----
@@ -2523,7 +2684,16 @@ void Cadre::bougerMarqueur(int bouton) {
   if (esquisseOuverte_ >= 0 || enChoix() || doc_.fonctions.empty()) return;
   const int n = static_cast<int>(doc_.fonctions.size());
   const int ici = indiceMarque() < 0 ? n : indiceMarque();
-  const int cible = bouton == 0 ? 0 : bouton == 1 ? std::max(0, ici - 1) : bouton == 2 ? std::min(n, ici + 1) : n;
+  int cible = bouton == 0 ? 0 : bouton == 3 ? n : ici;
+  if (bouton == 1) {
+    cible = 0;
+    for (int i = ici - 1; i > 0 && !cible; i--)
+      if (doc_.fonctions[i].repeatId.empty()) cible = i;
+  } else if (bouton == 2) {
+    cible = n;
+    for (int i = n - 1; i > ici; i--)
+      if (doc_.fonctions[i].repeatId.empty()) cible = i;
+  }
   if (cible != ici) marquerTemps(cible < n ? doc_.fonctions[cible].id : std::string());
 }
 
@@ -2985,6 +3155,10 @@ void Cadre::surArbre(wxTreeEvent& e) {
     CallAfter([this, id, cle, val] { reglerConstruction(id, cle, val); });
     return;
   }
+  if (lien && lien->plan == "temps") {
+    CallAfter([this] { marquerTemps(std::string()); });
+    return;
+  }
   if (lien && !lien->cg.empty()) return montrerConstruction(lien->cg);
   if (!lien || lien->i < 0) return montrerRien();
   if (lien->estFonction) montrerFonction(lien->i);
@@ -3056,7 +3230,32 @@ void Cadre::surPropriete(wxPropertyGridEvent& e) {
     const std::string op = e.GetValue().GetLong() == 1 ? "cut" : "add";
     reglage = [op](Fonction& f) { reglerOperation(f, op); };
   } else if (nom == PROP_ETENDUE) {
-    const bool oui = e.GetValue().GetLong() == 1;
+    const long k = e.GetValue().GetLong();
+    const std::string idF = doc_.fonctions[fonction].id;
+    if (k == 2) {
+      CallAfter([this, idF] { uptoChoisir(idF); });
+      return;
+    }
+    const bool oui = k == 1;
+    if (doc_.fonctions[fonction].upto) {
+      // Quitter « Jusqu'à la face » : la fonction change de nature, le document suit
+      CallAfter([this, idF, oui] {
+        changerStructure([&](nlohmann::ordered_json& d) {
+          for (auto& x : d["features"])
+            if (x.value("id", std::string()) == idF) {
+              x["upto"] = nullptr;
+              x["through"] = oui;
+              if (oui) x["distance"] = nullptr;
+            }
+        }, L"Ctrl+Z : annuler.");
+        for (size_t q = 0; q < doc_.fonctions.size(); q++)
+          if (doc_.fonctions[q].id == idF) {
+            doc_.fonctions[q].nom = nomExtrusion(doc_, doc_.fonctions[q]);
+            choisirFonction(static_cast<int>(q));
+          }
+      });
+      return;
+    }
     reglage = [oui](Fonction& f) { reglerATravers(f, oui); };
   } else if (nom == PROP_DIRECTION) {
     const bool oui = e.GetValue().GetLong() == 1;
@@ -3433,6 +3632,45 @@ bool Cadre::essaiEsquisse(const std::wstring& fichier, int rang, const std::wstr
       essaiMenu_ = false;
       n["etat"] = std::string(etatVue_->texte().utf8_str());
     }
+    if (e.contains("dossierProjets")) {
+      nlohmann::ordered_json l = nlohmann::ordered_json::array();
+      for (const ProjetDossier& p : projetsDuDossier(wxString::FromUTF8(e["dossierProjets"].get<std::string>()))) l.push_back(std::string(p.nom.utf8_str()));
+      n["projets"] = l;
+    }
+    if (e.contains("film")) {
+      const plan::J& q = e["film"];
+      const std::string v = q.value("mp4", std::string());
+      filmLancer(q.value("rythme", 1.0), wxString::FromUTF8(v));
+      n["etatLancement"] = std::string(etatVue_->texte().utf8_str());
+      const int arret = q.value("arretApres", 0);
+      int tours = 0;
+      n["pleinEcran"] = IsFullScreen();
+      const std::string avant = doc_.fonctions.empty() ? std::string() : marqueTemps_;
+      while (film_) {
+        filmPas();
+        wxYield();
+        wxMilliSleep(33);
+        if (arret && tours == arret) filmStop();
+        if (++tours > 100000) break;
+      }
+      n["pleinEcranApres"] = IsFullScreen();
+      n["marque"] = marqueTemps_;
+      n["etat"] = std::string(etatVue_->texte().utf8_str());
+      n["modifie"] = doc_.modifie();
+    }
+    if (e.contains("uptoFace")) {
+      const plan::J& q = e["uptoFace"];
+      uptoChoisir(q["id"].get<std::string>());
+      vue_->cliquerEn(vue_->pixelDe(q["p"][0].get<double>(), q["p"][1].get<double>(), q["p"][2].get<double>()));
+      wxYield();
+      n["etat"] = std::string(etatVue_->texte().utf8_str());
+      for (const Fonction& f : doc_.fonctions)
+        if (f.id == q["id"].get<std::string>()) {
+          n["upto"] = f.upto;
+          n["distance"] = f.distance;
+          n["nom"] = f.nom;
+        }
+    }
     if (e.contains("congeEditer")) {
       const plan::J& q = e["congeEditer"];
       for (size_t k = 0; k < doc_.fonctions.size(); k++)
@@ -3469,6 +3707,14 @@ bool Cadre::essaiEsquisse(const std::wstring& fichier, int rang, const std::wstr
       wxYield();
       n["nbFonctions"] = doc_.fonctions.size();
       n["nbEsquisses"] = doc_.esquisses.size();
+    }
+    if (e.contains("figees")) {
+      n["figees"] = plan::J::array();
+      for (size_t k = 0; k < doc_.esquisses.size(); k++) n["figees"].push_back(esquisseFigee(doc_, k));
+      n["profondeurs"] = plan::J::array();
+      for (size_t k = 0; k < doc_.fonctions.size(); k++)
+        if (doc_.fonctions[k].type == "extrude" && doc_.fonctions[k].visible && !doc_.profondeurModifiable(k)) n["profondeurs"].push_back(doc_.fonctions[k].id);
+      n["nb"] = doc_.fonctions.size();
     }
     if (e.contains("arbreCherche")) {
       rechercheArbre_->SetValue(wxString::FromUTF8(e["arbreCherche"].get<std::string>()));

@@ -14,7 +14,16 @@
 #include <set>
 
 #include "dessin.h"
+#include <BRepAdaptor_Surface.hxx>
+#include <BRepGProp.hxx>
+#include <GProp_GProps.hxx>
+#include <TopExp_Explorer.hxx>
+#include <TopoDS.hxx>
+#include <gp_Pln.hxx>
+
+#include "conges.h"
 #include "intersection.h"
+#include "noms.h"
 #include "parametres.h"
 #include "rejeu.h"
 
@@ -27,7 +36,7 @@ struct AreteSource {
 };
 
 // occListEdges (src/20-40) : 11 points par arête, jumeaux au même milieu fusionnés
-std::vector<AreteSource> listerAretes(const TopoDS_Shape& forme) {
+std::vector<AreteSource> aretesDeForme(const TopoDS_Shape& forme) {
   std::vector<AreteSource> out;
   std::set<std::string> vus;
   if (forme.IsNull()) return out;
@@ -175,7 +184,12 @@ bool avecProjection(const Esquisse& s) {
 }
 
 // updateAssociativeProjections0, sans ce que la pièce n'a pas : rend true si l'esquisse a bougé
-bool suivreProjections(Esquisse& s, const std::vector<AreteSource>& aretes) {
+// projPreferMid : le milieu où chercher l'arête source ; son nom fait foi s'il est retrouvé
+struct AretesNommees {
+  std::vector<AreteListee> L;
+  std::map<std::string, std::string> alias;
+};
+bool suivreProjections(Esquisse& s, const std::vector<AreteSource>& aretes, const AretesNommees* noms = nullptr) {
   bool change = false;
   const auto noter = [](Entite& e, const Trouvee& pr) {
     e.aSrcMid = true;
@@ -217,12 +231,23 @@ bool suivreProjections(Esquisse& s, const std::vector<AreteSource>& aretes) {
     }
     if (!e.isectJson.empty() || !e.skSrcSk.empty() || !estSuivie(s, e)) continue;  // celles-là suivent leur source
     const Vec3* pref = e.aSrcMid ? &e.srcMid : nullptr;
+    bool parNom = false;
+    Vec3 milieuNom{0, 0, 0};
+    if (noms && !e.srcNom.empty() && e.aSrcMid) {
+      const int q = nomsTrouveArete(noms->L, noms->alias, e.srcNom, &e.srcMid);
+      if (q >= 0) {
+        milieuNom = noms->L[q].mid;
+        if (!noms->L[q].nom.empty()) e.srcNom = noms->L[q].nom;
+        pref = &milieuNom;
+        parNom = true;
+      }
+    }
     if (e.t == "line") {
       auto ia = s.points.find(e.p1), ib = s.points.find(e.p2);
       if (ia == s.points.end() || ib == s.points.end()) continue;
       Pt& A = ia->second;
       Pt& B = ib->second;
-      const Trouvee pr = areteLaPlusProche(s, aretes, (A.x + B.x) / 2, (A.y + B.y) / 2, pref, LIGNE, std::hypot(B.x - A.x, B.y - A.y) >= 1e-4);
+      const Trouvee pr = areteLaPlusProche(s, aretes, (A.x + B.x) / 2, (A.y + B.y) / 2, pref, LIGNE, !parNom && std::hypot(B.x - A.x, B.y - A.y) >= 1e-4);
       if (pr.type != LIGNE) continue;
       noter(e, pr);
       const double d1 = std::hypot(A.x - pr.x1, A.y - pr.y1) + std::hypot(B.x - pr.x2, B.y - pr.y2);
@@ -332,10 +357,7 @@ std::string esquisseFigee(const Document& d, size_t i) {
   // Une esquisse libre, sans fonction ni lien avec le solide, ne dépend pas de ce que le natif ne sait pas calculer
   const Esquisse& e = d.esquisses[i];
   if (!d.nonPrisEnCharge.empty() && (consommatrice(d, e.id) >= 0 || e.hote.existe || avecProjection(e))) return "le solide de cette pièce n'est pas encore calculé par ce programme";
-  if (consommatrice(d, e.id) >= 0 || e.hote.existe || avecProjection(e))
-    for (const Fonction& f : d.fonctions)
-      if (f.upto) return "cette pièce a une extrusion « jusqu'à un objet » qui ne se recalcule pas encore dans ce programme";
-  if (const int c = consommatrice(d, e.id); c >= 0 && d.fonctions[c].repetee) return "cette esquisse sert à une répétition : les copies ne la suivent pas encore dans ce programme";
+  if (const int c = consommatrice(d, e.id); c >= 0 && !d.fonctions[c].repeatId.empty()) return "c'est la copie d'une répétition : modifiez l'esquisse de la fonction d'origine";
   const Solveur S(d.esquisses[i]);
   if (!S.prisEnCharge()) return S.raisonRefus();
   if (S.coteConvertie()) return "cette esquisse contient une ancienne cote d'entraxe à convertir dans le navigateur";
@@ -353,6 +375,64 @@ std::string coteFigee(const Cote& c) {
   return "";
 }
 
+void nommerProjections(Document& d) {
+  if (d.projNommees) return;
+  d.projNommees = true;
+  // Les extrusions jusqu'à une face sans nom : la face du corps dont le plan tombe sur la distance du fichier
+  for (size_t i = 0; i < d.fonctions.size(); i++) {
+    Fonction& f = d.fonctions[i];
+    if (f.type != "extrude" || !f.upto || !f.repeatId.empty() || !f.uptoNom.empty()) continue;
+    const Esquisse* s = d.esquisse(f.esquisse);
+    if (!s) continue;
+    try {
+      const ResultatRejeu r = rejouer(d, static_cast<int>(i));
+      if (r.forme.IsNull()) continue;
+      double meilleure = 0;
+      for (TopExp_Explorer ex(r.forme, TopAbs_FACE); ex.More(); ex.Next()) {
+        const TopoDS_Face g = TopoDS::Face(ex.Current());
+        BRepAdaptor_Surface su(g);
+        if (su.GetType() != GeomAbs_Plane) continue;
+        const gp_Pln pl = su.Plane();
+        const gp_Dir n = pl.Axis().Direction();
+        const gp_Pnt p = pl.Location();
+        const double dotBn = n.X() * s->n[0] + n.Y() * s->n[1] + n.Z() * s->n[2];
+        if (std::abs(dotBn) < 1e-9) continue;
+        const double t = (n.X() * (p.X() - s->o[0]) + n.Y() * (p.Y() - s->o[1]) + n.Z() * (p.Z() - s->o[2])) / dotBn;
+        if (std::abs(t - f.distance) > 1e-3) continue;
+        GProp_GProps pr;
+        BRepGProp::SurfaceProperties(g, pr);
+        const std::string nom = nomsFaceDe(r.forme, g);
+        if (!nom.empty() && pr.Mass() > meilleure) {
+          meilleure = pr.Mass();
+          f.uptoNom = nom;
+        }
+      }
+    } catch (const std::exception&) {
+    } catch (const Standard_Failure&) {
+    }
+  }
+  for (Esquisse& s : d.esquisses) {
+    const bool utile = std::any_of(s.entites.begin(), s.entites.end(), [&](const Entite& e) { return e.aSrcMid && e.srcNom.empty() && e.isectJson.empty() && e.skSrcSk.empty() && !e.suiviInconnu && estSuivie(s, e); });
+    if (!utile) continue;
+    try {
+      const ResultatRejeu r = rejouer(d, consommatrice(d, s.id));
+      if (r.forme.IsNull()) continue;
+      std::vector<AreteListee> L = ::listerAretes(r.forme);
+      nomsSurAretes(r.forme, L);
+      for (Entite& e : s.entites) {
+        if (!e.aSrcMid || !e.srcNom.empty() || !estSuivie(s, e)) continue;
+        for (const AreteListee& a : L)
+          if (!a.nom.empty() && std::hypot(a.mid[0] - e.srcMid[0], a.mid[1] - e.srcMid[1], a.mid[2] - e.srcMid[2]) < 1e-3) {
+            e.srcNom = a.nom;
+            break;
+          }
+      }
+    } catch (const std::exception&) {
+    } catch (const Standard_Failure&) {
+    }
+  }
+}
+
 void suivreEsquisses(Document& d, size_t i) {
   for (const size_t j : suivantes(d, i)) {
     Esquisse& s = d.esquisses[j];
@@ -363,11 +443,17 @@ void suivreEsquisses(Document& d, size_t i) {
     S.resoudre();
     Esquisse t = s;
     S.recopierDans(t);
-    const std::vector<AreteSource> aretes = listerAretes(r.forme);
+    const std::vector<AreteSource> aretes = aretesDeForme(r.forme);
+    AretesNommees noms;
+    const bool avecNoms = std::any_of(s.entites.begin(), s.entites.end(), [](const Entite& e) { return !e.srcNom.empty(); });
+    if (avecNoms && !r.forme.IsNull()) {
+      noms.L = ::listerAretes(r.forme);
+      noms.alias = nomsSurAretes(r.forme, noms.L);
+    }
     const bool aSections = std::any_of(s.entites.begin(), s.entites.end(), [](const Entite& e) { return !e.isectJson.empty(); });
     std::unique_ptr<SectionsEsquisse> sections = aSections ? std::make_unique<SectionsEsquisse>(d, j) : nullptr;
     const auto suivre = [&](Esquisse& q) {
-      bool bouge = suivreProjections(q, aretes);
+      bool bouge = suivreProjections(q, aretes, avecNoms ? &noms : nullptr);
       for (Entite& e : q.entites) {
         if (!e.isectJson.empty() && suivreIntersection(q, e, *sections)) bouge = true;
         if (!e.skSrcSk.empty() && suivreEsquisseSource(d.esquisses, q, e)) bouge = true;
@@ -496,7 +582,7 @@ std::vector<AreteProjetable> aretesPourProjeter(const Document& d, size_t i) {
   try {
     Document copie = d;  // le rejeu replace les esquisses posées sur une face : pas celle qu'on est en train de modifier
     const ResultatRejeu r = rejouer(copie, consommatrice(d, d.esquisses[i].id));
-    for (AreteSource& a : listerAretes(r.forme)) out.push_back({a.mid, std::move(a.pts)});
+    for (AreteSource& a : aretesDeForme(r.forme)) out.push_back({a.mid, std::move(a.pts)});
   } catch (const std::exception&) {
   }
   return out;

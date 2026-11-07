@@ -563,6 +563,21 @@ TopoDS_Shape depouilleUneFois(const TopoDS_Shape& solide, const gp_Pnt& P, const
   return r;
 }
 
+// resolveExtrudeUpto : la distance jusqu'au plan de la face retenue, suivie par son nom. Sans nom, la distance du fichier reste.
+std::optional<double> distanceJusquA(const Fonction& f, const Esquisse& s, const TopoDS_Shape& cible) {
+  if (cible.IsNull() || f.uptoNom.empty()) return std::nullopt;
+  const auto q = nomsRefFace(cible, f.uptoNom, nullptr);
+  if (!q || q->IsNull() || BRepAdaptor_Surface(*q).GetType() != GeomAbs_Plane) return std::nullopt;
+  const gp_Pln pl = BRepAdaptor_Surface(*q).Plane();
+  const gp_Dir n = pl.Axis().Direction();
+  const gp_Pnt p = pl.Location();
+  const double dotBn = n.X() * s.n[0] + n.Y() * s.n[1] + n.Z() * s.n[2];
+  if (std::abs(dotBn) < 1e-9) return std::nullopt;
+  const double t = (n.X() * (p.X() - s.o[0]) + n.Y() * (p.Y() - s.o[1]) + n.Z() * (p.Z() - s.o[2])) / dotBn;
+  if (std::abs(t) < 1e-6) return std::nullopt;
+  return std::round(t * 10000) / 10000;
+}
+
 TopoDS_Shape formeExtrusion(const Fonction& f, const Esquisse& s, const TopoDS_Shape& base) {  // occShapeOfExtrude
   Trace tr = tracerContours(s);
   if (tr.solides.empty() && tr.cerclesSeuls.empty()) throw std::runtime_error("profil non fermé");
@@ -1198,6 +1213,15 @@ TopoDS_Shape rejouerCorps(Document& d, const std::vector<Fonction*>& liste, cons
     TopoDS_Shape outil;
     try {
       if (!s) throw std::runtime_error("esquisse introuvable");
+      if (f.type == "extrude" && f.upto && f.repeatId.empty()) {  // une copie garde la distance de sa source
+        try {
+          if (const auto t = distanceJusquA(f, *s, resultat)) {
+            f.distance = *t;
+            f.aDistance = true;
+          }
+        } catch (const Standard_Failure&) {
+        }
+      }
       if (f.type == "sweep") {
         std::vector<std::string> alertes;
         outil = formeBalayage(d, f, alertes);
@@ -1671,6 +1695,11 @@ std::string nomExtrusion(const Document& d, const Fonction& f) {
     }
   const std::string base = (f.op == "cut" ? "Découpe " : "Extrusion ") + nom;
   const std::string suite = f.flip ? " ⇄" : "";
+  if (f.upto && !f.uptoEx.empty()) {
+    if (f.uptoFace) return base + " → face" + suite;
+    const Fonction* t = d.fonction(f.uptoEx);
+    return base + " → " + (t ? t->nom : std::string("cible supprimée")) + suite;
+  }
   // À travers tout : le fichier n'a pas de distance, le navigateur écrit alors 0
   const double v = f.through ? 0 : f.distance;
   if (f.mid) return base + " ±" + nombreNom(std::abs(v) / 2) + "mm" + suite;

@@ -19,6 +19,8 @@
 #include <cmath>
 #include <set>
 
+#include "profil_guide.h"
+#include "enregistrer.h"
 #include "assemblage.h"
 #include "cadre.h"
 #include "conges.h"
@@ -34,6 +36,10 @@ namespace as = assemblage;
 using J = nlohmann::ordered_json;
 
 namespace {
+nlohmann::ordered_json docPorteurPat(const Document& d, const nlohmann::ordered_json* owner) {  // le document du composant qui porte la répétition
+  if (owner && owner->contains("doc") && (*owner)["doc"].is_object()) return (*owner)["doc"];
+  return documentActuelJson(d);
+}
 wxString tx(const std::string& s) { return wxString::FromUTF8(s); }
 std::string texteDe(const J& j, const char* k) {
   const auto x = j.find(k);
@@ -2282,7 +2288,7 @@ void Cadre::asmPanneauRepetition(std::vector<ChampFiche>& ch, std::vector<std::p
   nomC.libre = true;
   ch.push_back(std::move(nomC));
   std::vector<std::pair<std::string, std::string>> types{{"lin", "Linéaire"}, {"circ", "Circulaire"}, {"mir", "Symétrie"}};
-  if (type == "path") types.push_back({"path", "Suivant un profil"});
+  types.push_back({"path", "Suivant un profil"});
   liste("pat/type", "Type", type, types);
   const std::vector<std::pair<std::string, std::string>> AX{{"X", "X"}, {"Y", "Y"}, {"Z", "Z"}}, PL{{"X", "YZ (normale X)"}, {"Y", "XZ (normale Y)"}, {"Z", "XY (normale Z)"}};
   const double copies = p.value("copies", 1.0);
@@ -2313,6 +2319,40 @@ void Cadre::asmPanneauRepetition(std::vector<ChampFiche>& ch, std::vector<std::p
     const bool dbl = p.contains("plane2") && p["plane2"].is_string();
     oui("pat/double", "Symétrie double", dbl);
     if (dbl) liste("pat/plane2", "Plan 2", texteDe(p, "plane2"), PL);
+  } else if (type == "path") {
+    nombre("pat/n", "Quantité totale", copies + 1);
+    const J dj = docPorteurPat(doc_, owner);
+    const std::vector<const J*> G = pgEsquissesGuides(dj);
+    if (G.empty()) {
+      lecture("Courbe guide", "Aucune esquisse de ce composant ne contient de ligne, d'arc ou de spline.");
+    } else {
+      const J path = p.contains("path") && p["path"].is_object() ? p["path"] : J::object();
+      const std::string skId = texteDe(path, "sk");
+      const J* sk = nullptr;
+      std::vector<std::pair<std::string, std::string>> L{{"", "— choisir —"}};
+      for (const J* s : G) {
+        L.push_back({texteDe(*s, "id"), texteDe(*s, "name").empty() ? texteDe(*s, "id") : texteDe(*s, "name")});
+        if (texteDe(*s, "id") == skId) sk = s;
+      }
+      liste("pat/pgsk", "Courbe guide", sk ? skId : std::string(), L);
+      if (sk) {
+        const std::vector<ChoixDepart> dep = pgChoixDepart(*sk);
+        std::vector<std::pair<std::string, std::string>> D;
+        std::string cour = "-1";
+        for (size_t i = 0; i < dep.size(); i++) {
+          D.push_back({std::to_string(i), dep[i].label});
+          if (pgMemeDepart(dep[i].v, path)) cour = std::to_string(i);
+        }
+        if (cour == "-1") D.push_back({"-1", "(départ actuel)"});
+        liste("pat/pgdep", "Départ", cour, D);
+      }
+      const bool pitch = texteDe(p, "pspace") == "pitch";
+      liste("pat/pgsp", "Espacement", pitch ? "pitch" : "fit", {{"fit", "Réparti sur la longueur"}, {"pitch", "Pas imposé"}});
+      if (pitch) nombre("pat/dist", "Pas le long de la courbe (mm)", p.value("dist", 0.0));
+      liste("pat/pgor", "Orientation", texteDe(p, "orient") == "tangent" ? "tangent" : "fixed", {{"fixed", "Fixe (translation)"}, {"tangent", "Suit la tangente"}});
+      oui("pat/pgrev", "Sens inversé", p.value("rev", false));
+      if (sk) lecture("Courbe", pgNote(pgPlan(*sk, p, std::max(1, static_cast<int>(copies)) + 1)));
+    }
   }
   if (p.contains("skip") && p["skip"].is_array() && !p["skip"].empty()) {
     const size_t k = p["skip"].size();
@@ -2350,7 +2390,40 @@ bool Cadre::asmPatFiche(const std::string& cle, const std::string& valeur) {
         if (q->value("copies", 1.0) < 2) (*q)["copies"] = 5;
       } else if (valeur == "mir") (*q)["copies"] = 1;
       else if (valeur == "lin" && q->value("copies", 1.0) < 2) (*q)["copies"] = 2;
+      else if (valeur == "path" && !q->contains("path")) {  // asmPatPathInit
+        const J dj = docPorteurPat(doc_, as::composant(*doc_.assemblage, asmPatEd_->owner));
+        const std::vector<const J*> G = pgEsquissesGuides(dj);
+        if (!G.empty()) (*q)["path"] = pgDepartDefaut(*G.back());
+        if (!q->contains("pspace")) (*q)["pspace"] = "fit";
+        if (!q->contains("orient")) (*q)["orient"] = "fixed";
+      }
     }
+  } else if (k == "pgsk" || k == "pgdep") {
+    const J dj = docPorteurPat(doc_, as::composant(*doc_.assemblage, asmPatEd_->owner));
+    const std::string vise = k == "pgsk" ? valeur : (q->contains("path") && q->at("path").is_object() ? texteDe((*q)["path"], "sk") : std::string());
+    for (const J* s : pgEsquissesGuides(dj)) {
+      if (texteDe(*s, "id") != vise) continue;
+      if (k == "pgsk") {
+        (*q)["path"] = pgDepartDefaut(*s);
+      } else {
+        const std::vector<ChoixDepart> dep = pgChoixDepart(*s);
+        const int i = std::atoi(valeur.c_str());
+        if (i >= 0 && i < static_cast<int>(dep.size())) {
+          J n = J::object();
+          n["sk"] = vise;
+          for (auto it = dep[i].v.begin(); it != dep[i].v.end(); ++it) n[it.key()] = *it;
+          (*q)["path"] = std::move(n);
+        }
+      }
+    }
+  } else if (k == "pgsp") {
+    (*q)["pspace"] = valeur;
+    if (valeur == "pitch" && !(q->value("dist", 0.0) > 0)) (*q)["dist"] = 10;
+  } else if (k == "pgor") {
+    (*q)["orient"] = valeur;
+  } else if (k == "pgrev") {
+    if (valeur == "1") (*q)["rev"] = true;
+    else q->erase("rev");
   } else if (k == "ref") {
     J r = J::object();
     r["cg"] = valeur.empty() ? J() : J(valeur);

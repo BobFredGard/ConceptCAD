@@ -2,6 +2,8 @@
 // Traduction de src/85-deplacement-face.js, 85-suppression-face.js, 85-scinder.js, 86-draft-depouillage.js, 87-coque.js.
 #include <BRepAdaptor_Curve.hxx>
 #include <BRepAdaptor_Surface.hxx>
+#include <BRepGProp.hxx>
+#include <GProp_GProps.hxx>
 #include <BRepClass3d_SolidClassifier.hxx>
 #include <BRepBndLib.hxx>
 #include <BRepBuilderAPI_MakeFace.hxx>
@@ -162,6 +164,79 @@ std::string nombres(std::initializer_list<double> v) {
   return r;
 }
 }  // namespace
+
+// Extrusion « Jusqu'à la face » (extPickFaceCommit) : un clic sur une face plane d'un corps
+void Cadre::uptoChoisir(const std::string& id) {
+  pioche_ = [this, id](const TopoDS_Shape& s) { return uptoPoser(id, s); };
+  etat(L"Jusqu'à la face : cliquez une face dans la vue (Échap pour annuler).");
+}
+
+bool Cadre::uptoPoser(const std::string& id, const TopoDS_Shape& s) {
+  int fi = -1;
+  for (size_t k = 0; k < doc_.fonctions.size(); k++)
+    if (doc_.fonctions[k].id == id) fi = static_cast<int>(k);
+  if (fi < 0) return true;
+  const Fonction f = doc_.fonctions[fi];
+  const Esquisse* sk = doc_.esquisse(f.esquisse);
+  if (!sk) return true;
+  if (s.IsNull() || s.ShapeType() != TopAbs_FACE || BRepAdaptor_Surface(TopoDS::Face(s)).GetType() != GeomAbs_Plane) {
+    etat(L"Jusqu'à la face : choisissez une face plane d'un corps.");
+    return false;
+  }
+  const TopoDS_Face face = TopoDS::Face(s);
+  const gp_Pln pl = BRepAdaptor_Surface(face).Plane();
+  gp_Dir n = pl.Axis().Direction();
+  if (face.Orientation() == TopAbs_REVERSED) n.Reverse();
+  GProp_GProps pr;
+  BRepGProp::SurfaceProperties(face, pr);
+  const gp_Pnt c = pr.CentreOfMass();
+  const double dotBn = n.X() * sk->n[0] + n.Y() * sk->n[1] + n.Z() * sk->n[2];
+  const double t = std::abs(dotBn) < 1e-9 ? 0 : (n.X() * (c.X() - sk->o[0]) + n.Y() * (c.Y() - sk->o[1]) + n.Z() * (c.Z() - sk->o[2])) / dotBn;
+  if (std::abs(t) < 1e-6) {
+    etat(L"Jusqu'à la face : face non utilisable (parallèle au sens d'extrusion, ou dans le plan de l'esquisse) — choisissez-en une autre.");
+    return false;
+  }
+  // Le corps cliqué, et la dernière fonction antérieure de ce corps
+  std::string corps = f.corps;
+  for (const auto& [idc, forme] : formesCorps_) {
+    bool dedans = false;
+    for (TopExp_Explorer ex(forme, TopAbs_FACE); ex.More() && !dedans; ex.Next()) dedans = ex.Current().IsSame(face);
+    if (dedans) corps = idc;
+  }
+  std::string cible, derniere;
+  for (int k = 0; k < fi; k++)
+    if (doc_.fonctions[k].visible) {
+      derniere = doc_.fonctions[k].id;
+      if (doc_.fonctions[k].corps == corps) cible = derniere;
+    }
+  if (cible.empty()) cible = derniere;
+  if (cible.empty()) {
+    etat(L"Jusqu'à la face : aucune fonction ANTÉRIEURE — créez d'abord un volume avant cette extrusion.");
+    return true;
+  }
+  const double sens = (c.X() - sk->o[0]) * sk->n[0] + (c.Y() - sk->o[1]) * sk->n[1] + (c.Z() - sk->o[2]) * sk->n[2];
+  nlohmann::ordered_json u = nlohmann::ordered_json::object();
+  u["ex"] = cible;
+  u["side"] = sens >= 0 ? 1 : -1;
+  u["faceId"] = {{"fi", 0}, {"bid", corps}};
+  u["faceProps"] = {{"center", {{"x", c.X()}, {"y", c.Y()}, {"z", c.Z()}}}, {"normal", {{"x", n.X()}, {"y", n.Y()}, {"z", n.Z()}}}, {"area", pr.Mass()}};
+  const std::string nomFace = nomsFaceDe(forme_, face);
+  if (!nomFace.empty()) u["nom"] = nomFace;
+  changerStructure([&](nlohmann::ordered_json& d) {
+    for (auto& x : d["features"])
+      if (x.value("id", std::string()) == id) {
+        x["upto"] = u;
+        x["through"] = false;
+        x["distance"] = std::round(t * 10000) / 10000;
+      }
+  }, L"Ctrl+Z : annuler.");
+  for (size_t q = 0; q < doc_.fonctions.size(); q++)
+    if (doc_.fonctions[q].id == id) {
+      doc_.fonctions[q].nom = nomExtrusion(doc_, doc_.fonctions[q]);
+      if (doc_.fonctions[q].esquisse == f.esquisse) choisirFonction(static_cast<int>(q));
+    }
+  return true;
+}
 
 // Certains réglages demandent un clic dans la vue : la direction d'une répétition, la face où finit un perçage
 void Cadre::demanderClicFiche(const std::string& id, const std::string& cle, const std::string& valeur) {

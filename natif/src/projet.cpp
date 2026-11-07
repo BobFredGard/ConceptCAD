@@ -64,15 +64,14 @@ bool Document::profondeurModifiable(size_t i) const {
   for (const Esquisse& s : esquisses)
     if (s.id == fonctions[i].esquisse) e = &s;
   if (!e) return false;
-  // Ce qui ne suit pas encore : les copies d'une répétition, les extrusions jusqu'à un objet
-  if (fonctions[i].repetee || fonctions[i].upto) return false;
-  for (const Fonction& f : fonctions)
-    if (f.upto) return false;
+  // Une copie suit sa source ; une extrusion jusqu'à un objet n'a pas de profondeur à elle
+  if (!fonctions[i].repeatId.empty() || fonctions[i].upto) return false;
   for (const Esquisse& s : esquisses) {
-    bool lie = s.hote.existe;
-    for (const Entite& x : s.entites) lie = lie || x.proj || x.ref;
+    // Posée de biais, elle suit la profondeur, sauf une projection dont le suivi n'est pas encore repris
+    bool inconnu = false;
+    for (const Entite& x : s.entites) inconnu = inconnu || x.suiviInconnu;
     const double d = s.n[0] * e->n[0] + s.n[1] * e->n[1] + s.n[2] * e->n[2];
-    if (lie && std::abs(d) < 1 - 1e-9) return false;
+    if (inconnu && std::abs(d) < 1 - 1e-9) return false;
   }
   return true;
 }
@@ -134,6 +133,9 @@ static void lireEsquisse(const json& js, Document& d, std::map<std::string, int>
   s.id = texte(js, "id");
   s.nom = texte(js, "name");
   s.plan = texte(js, "plane");
+  s.fao = js.contains("fao") && !js["fao"].is_null() && js["fao"] != false;
+  s.aAt = js.contains("at");
+  if (s.aAt) s.atLu = texte(js, "at");
   s.visible = !(js.contains("visible") && js["visible"].is_boolean() && !js["visible"].get<bool>());
   if (auto x = js.find("seq"); x != js.end() && x->is_number() && x->get<int>() > 0) s.seq = x->get<int>();
   // planeBasis (src/10-scene-3d.js) : axes portés par l'esquisse, sinon les 3 plans d'origine
@@ -197,7 +199,8 @@ static void lireEsquisse(const json& js, Document& d, std::map<std::string, int>
       e.aSrcMid = vec3(je, "srcMid", e.srcMid);
       // Suivis repris : arête retrouvée par position, autre esquisse, intersection. Pas encore : arête nommée, autre composant, traversée.
       e.pierce = vrai(je, "pierce");
-      e.suiviInconnu = vrai(je, "isProj") || vrai(je, "ext") || je.contains("srcNom") || je.contains("seg");
+      e.srcNom = texte(je, "srcNom");
+      e.suiviInconnu = vrai(je, "isProj") || vrai(je, "ext") || je.contains("seg");
       if (auto x = je.find("isect"); x != je.end() && x->is_object()) {
         e.isectJson = x->dump();
         if (x->value("mode", "") == "mesh") e.suiviInconnu = true;
@@ -442,6 +445,7 @@ static void lireFonction(const json& jf, Document& d, std::map<std::string, int>
   f.flip = vrai(jf, "flip");
   f.through = vrai(jf, "through");
   f.repeatId = texte(jf, "repeatId");
+  f.derive = jf.contains("derive") && !jf["derive"].is_null() && jf["derive"] != false;
   if (f.type == "xshell") {
     if (auto a = jf.find("thick"); a != jf.end() && a->is_number()) f.epaisseur = a->get<double>();
     if (auto c = jf.find("faces"); c != jf.end() && c->is_array())
@@ -506,6 +510,22 @@ static void lireFonction(const json& jf, Document& d, std::map<std::string, int>
   if (f.type == "extrude") {
     if (auto a = jf.find("draft"); a != jf.end() && a->is_number()) f.draft = a->get<double>();
     f.upto = vrai(jf, "upto");
+    if (auto u = jf.find("upto"); u != jf.end() && u->is_object()) {
+      f.uptoEx = texte(*u, "ex");
+      f.uptoNom = texte(*u, "nom");
+      if (auto q = u->find("faceId"); q != u->end() && q->is_object()) f.uptoCorps = texte(*q, "bid");
+      if (auto q = u->find("faceProps"); q != u->end() && q->is_object()) {
+        const auto v3 = [](const nlohmann::ordered_json& o, Vec3& v) {
+          if (!o.is_object()) return false;
+          v = {o.value("x", 0.0), o.value("y", 0.0), o.value("z", 0.0)};
+          return true;
+        };
+        const bool a = q->contains("center") && v3((*q)["center"], f.uptoCentre);
+        const bool b = q->contains("normal") && v3((*q)["normal"], f.uptoNormale);
+        if (auto ar = q->find("area"); ar != q->end() && ar->is_number()) f.uptoAire = ar->get<double>();
+        f.uptoFace = a && b;
+      }
+    }
   }
   if (auto c = jf.find("cutBodies"); c != jf.end() && c->is_array())
     for (const auto& x : *c)
@@ -583,6 +603,16 @@ static void lireFonction(const json& jf, Document& d, std::map<std::string, int>
 
 static Document documentDepuis(json& racine);
 
+bool esquisseCopieRepetition(const Document& d, const std::string& id) {
+  bool copie = false;
+  for (const Fonction& f : d.fonctions)
+    if (f.esquisse == id || f.chemin == id) {
+      if (f.repeatId.empty()) return false;
+      copie = true;
+    }
+  return copie;
+}
+
 Document lireProjet(const std::wstring& chemin) {
   std::string octets = lireOctets(chemin);
   const bool compresse = octets.size() >= 2 && static_cast<unsigned char>(octets[0]) == 0x1f && static_cast<unsigned char>(octets[1]) == 0x8b;
@@ -624,6 +654,7 @@ Document lireTexteProjet(const Document& modele, const std::string& texte) {
   d.octets = modele.octets;
   d.compresse = modele.compresse;
   d.texteBase = texte;
+  d.projNommees = modele.projNommees && std::none_of(d.fonctions.begin(), d.fonctions.end(), [](const Fonction& f) { return f.upto && f.repeatId.empty() && f.uptoNom.empty(); });
   return d;
 }
 

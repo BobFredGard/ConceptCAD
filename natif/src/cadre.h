@@ -116,6 +116,31 @@ class Cadre : public wxFrame {
   void editerConge(int i);
   std::string editionConge_, marqueAvantEdition_;
   void annulerDejaEnregistre();
+  void suivreCopies(int esquisse = -1);
+  // Le film de construction
+  struct FilmEtat;
+  std::shared_ptr<FilmEtat> film_;
+  wxString dernierFilm_;
+  void filmLancer(double rythme = 1, const wxString& video = wxString());
+  void filmPas();
+  void filmFin();
+  void filmPause();
+  void filmStop();
+  void filmAller(int k);
+  void filmPlacer();
+  void filmDessin(wxDC& dc, int W, int H);
+  bool filmVideoOuvrir(const wxString& chemin);
+  void filmVideoBascule();
+  void filmImageVideo();
+  // Le dossier de projets
+  struct ProjetDossier {
+    wxString nom, chemin;
+    wxDateTime quand;
+  };
+  static std::vector<ProjetDossier> projetsDuDossier(const wxString& dossier);
+  void panneauDossier();
+  void uptoChoisir(const std::string& id);
+  bool uptoPoser(const std::string& id, const TopoDS_Shape& face);
   // Les deux recherches : cadre_recherche.cpp
   struct CommandeCherchee {
     wxString libelle, aide;
@@ -589,6 +614,9 @@ public:
   MiniParametres* miniParams_ = nullptr;
   wxBoxSizer* colonneFx_ = nullptr;
   wxString saisieDepart_;  // le texte proposé à l'ouverture de la saisie : le laisser tel quel ne change rien
+  wxString libelleArbre(const Fonction& f) const;
+  int imageFonctionArbre(const Fonction& f);
+  std::map<std::string, int> imagesArbre_;
   std::vector<wxTreeItemId> lignesFonctions_, lignesEsquisses_;  // la ligne de l'arbre de chaque fonction, de chaque esquisse
   Protocole proto_;
 };

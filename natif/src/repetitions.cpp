@@ -1,7 +1,6 @@
 // Les copies d'une répétition sont dérivées : elles sont régénérées à l'ouverture depuis leurs sources.
 // Traduction de repGenChildren, repCloneFeature et repCloneSketch (src/40-20-repetitions.js).
 // Le texte du fichier reste celui d'origine : seul le document en mémoire est refait, sur le JSON, avant sa lecture.
-// Pas encore repris : la répétition suivant un profil (ses copies restent celles du fichier).
 #include "repetitions.h"
 
 #include <algorithm>
@@ -16,6 +15,7 @@
 #include <vector>
 
 #include "maths_js.h"
+#include "profil_guide.h"
 
 using json = nlohmann::ordered_json;
 
@@ -84,6 +84,10 @@ struct Transfo {
   bool aDir = false, aPlanN = false, aDecalage = false;
   V3 dir{}, planN{}, decalage{};
   double dist = 0, angle = 0, copies = 0;
+  bool aCase = false;  // _pc : la case du profil
+  CasePg pc;
+  std::string guideSk;           // cfg.path.sk
+  std::set<std::string> guideIds;  // la courbe guide, quand elle est dans l'esquisse copiée : elle ne se recopie pas
 };
 Transfo transfoDe(const json& rp) {
   Transfo c;
@@ -124,12 +128,17 @@ double pasCirculaire(const Transfo& c) {
 V3 transPoint(const V3& v, int i, const Transfo& c) {
   if (c.mode == "lin") return plus(v, c.aDecalage ? c.decalage : fois(axeDe(c), c.dist * i));
   if (c.mode == "circ") return tourne(v, axeDe(c), pasCirculaire(c) * i);
+  if (c.mode == "path") {
+    if (!c.aCase) return v;
+    return plus(tourne(plus(v, fois(c.pc.P0, -1)), c.pc.N, c.pc.ang), c.pc.Pi);
+  }
   const V3 n = normalePlan(c);
   return plus(v, fois(n, -2 * scal(v, n)));
 }
 V3 transVec(const V3& a, int i, const Transfo& c) {
   if (c.mode == "lin") return a;
   if (c.mode == "circ") return tourne(a, axeDe(c), pasCirculaire(c) * i);
+  if (c.mode == "path") return c.aCase ? tourne(a, c.pc.N, c.pc.ang) : a;
   const V3 n = normalePlan(c);
   return plus(a, fois(n, -2 * scal(a, n)));
 }
@@ -329,6 +338,23 @@ struct Regeneration {
       ns.erase("cg");
     }
     ns["visible"] = false;
+    if (c.mode == "path" && !c.guideSk.empty() && c.guideSk == str(sk, "id") && !c.guideIds.empty()) {
+      const auto emploie = [&](const json& o) {
+        for (auto it = o.begin(); it != o.end(); ++it)
+          if (it->is_string() && c.guideIds.count(it->get<std::string>())) return true;
+        return false;
+      };
+      const auto filtrer = [&](const char* cle, bool parId) {
+        if (!tableau(ns, cle)) return;
+        json reste = json::array();
+        for (json& x : ns[cle])
+          if (parId ? !c.guideIds.count(str(x, "id")) : !(x.is_object() && emploie(x))) reste.push_back(std::move(x));
+        ns[cle] = std::move(reste);
+      };
+      filtrer("entities", true);
+      filtrer("constraints", false);
+      filtrer("dims", false);
+    }
     // L'hôte hors de la répétition : la copie reste dans le plan de sa face, décalée d'autant
     const auto garderHote = [&]() {
       json& h = ns["host"];
@@ -588,7 +614,6 @@ struct Regeneration {
     json* prp = fonction(idRep);
     if (!prp) return;
     const std::string mode = str(*prp, "mode");
-    if (mode == "path") return;  // pas encore repris : les copies du fichier restent
     std::vector<json> olds;
     for (const json& f : fonctions)
       if (str(f, "repeatId") == idRep) olds.push_back(f);
@@ -722,12 +747,32 @@ struct Regeneration {
               if (i || j) cases.push_back(plus(fois(d1, i), fois(d2, j)));
         }
       }
-      const int N = mode == "lin" ? static_cast<int>(cases.size()) : n;
+      // Suivant un profil (repPathCells) : une case par copie
+      std::vector<CasePg> casesPg;
+      std::set<std::string> idsGuide;
+      std::string skGuide;
+      if (mode == "path") {
+        const json* sk = rp.contains("path") && rp["path"].is_object() ? esquisse(str(rp["path"], "sk")) : nullptr;
+        if (sk) {
+          PlanPg pl = pgPlan(*sk, rp, maxCopies(num(rp, "copies")) + 1);
+          casesPg = std::move(pl.cases);
+          if (static_cast<int>(casesPg.size()) > REPEAT_MAX) casesPg.resize(REPEAT_MAX);
+          idsGuide = pgIdsCourbe(*sk, rp["path"]);
+          skGuide = str(*sk, "id");
+        }
+      }
+      const int N = mode == "lin" ? static_cast<int>(cases.size()) : mode == "path" ? static_cast<int>(casesPg.size()) : n;
       for (int i = 1; i <= N; i++) {
         Transfo c = cfg;
         if (mode == "lin") {
           c.aDecalage = true;
           c.decalage = cases[i - 1];
+        }
+        if (mode == "path") {
+          c.aCase = true;
+          c.pc = casesPg[i - 1];
+          c.guideSk = skGuide;
+          c.guideIds = idsGuide;
         }
         std::vector<json> L = passe(base, c, i);
         for (json& k : L) {
