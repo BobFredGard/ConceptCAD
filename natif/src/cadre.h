@@ -224,6 +224,10 @@ public:
   wxString demanderNom(const wxString& actuel);
   bool confirmerSuppression(const wxString& question);
   void menuFonction(int i);
+  void oeilArbre(const wxTreeItemId& ligne);
+  const PorteurFx* porteurDuChamp(const std::string& id, const std::string& cle) const;
+  bool ficheFormule(const std::string& id, const std::string& cle, const std::string& valeur);
+  std::string champsDe_;  // la fonction dont poserChamps montre les réglages
   // Déplacer et Échelle : choisir un axe, une direction, un point (cadre_deplacer.cpp)
   struct OptionBm {
     std::string nom;

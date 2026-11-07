@@ -450,6 +450,12 @@ void Cadre::creerEnvironnement() {
     ajouter("<svg viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\"><circle cx=\"12\" cy=\"12\" r=\"4\"/><path d=\"M12 3v4M12 17v4M3 12h4M17 12h4\"/></svg>", th(wxColour(0x98, 0x98, 0x9d)));  // 14 liaison
     ajouter("<svg viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\"><rect x=\"3\" y=\"3\" width=\"6\" height=\"6\" rx=\"1\"/><rect x=\"15\" y=\"3\" width=\"6\" height=\"6\" rx=\"1\"/><rect x=\"3\" y=\"15\" width=\"6\" height=\"6\" rx=\"1\"/><rect x=\"15\" y=\"15\" width=\"6\" height=\"6\" rx=\"1\"/></svg>", th(wxColour(0x98, 0x98, 0x9d)));  // 15 répétition
     arbre_->AssignImageList(images);
+    // L'œil de chaque ligne : ouvert, barré
+    auto* etats = new wxImageList(cote, cote, true);
+    etats->Add(iconeSvgComplete("<svg viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\"><path d=\"M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7-10-7-10-7z\"/><circle cx=\"12\" cy=\"12\" r=\"3\"/></svg>", th(wxColour(0xa0, 0xa0, 0xa8)), 16).GetBitmap(wxSize(cote, cote)));
+    etats->Add(iconeSvgComplete("<svg viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\"><path d=\"M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7-10-7-10-7z\"/><circle cx=\"12\" cy=\"12\" r=\"3\"/><path d=\"M3 3l18 18\"/></svg>", th(wxColour(0x5a, 0x5a, 0x62)), 16).GetBitmap(wxSize(cote, cote)));
+    arbre_->AssignStateImageList(etats);
+    arbre_->Bind(wxEVT_TREE_STATE_IMAGE_CLICK, [this](wxTreeEvent& e) { oeilArbre(e.GetItem()); });
   }
   arbre_->SetBackgroundColour(C_CARTE);
   arbre_->SetForegroundColour(C_CLAIR);
@@ -1142,7 +1148,9 @@ void Cadre::montrerFiche(int i) {
   derFiche(fj, champs, boutons);
   if (f.type == "xfillet" && !copie) boutons.push_back({L"✏️ Modifier la sélection", [this, i] { editerConge(i); }});
   if (!copie) boutonsDeplacer(f, boutons);
+  champsDe_ = f.id;
   poserChamps(champs, copie);
+  champsDe_.clear();
   if (!boutons.empty() || !boutonsAsm_.empty()) poserBoutonsPanneau(boutons);
   if (!copie) ficheId_ = f.id;
 }
@@ -1166,7 +1174,11 @@ void Cadre::poserChamps(const std::vector<ChampFiche>& champs, bool copie) {
           if (val == c.texte) v = tx(lib);
       lectureSeule(props_, tx(c.titre), v);
     } else if (c.sorte == ChampFiche::NOMBRE) {
-      props_->Append(new wxStringProperty(tx(c.titre), nom, wxString::Format("%.6g", c.nombre)));
+      wxString montre = wxString::Format("%.6g", c.nombre);
+      if (const PorteurFx* h = champsDe_.empty() ? nullptr : porteurDuChamp(champsDe_, c.cle); h && (!h->nom.empty() || !h->expr.empty()))
+        montre = tx((h->nom.empty() ? std::string() : h->nom + " = ") + (h->expr.empty() ? nombreJsFixe(h->valeur, 4) : h->expr));
+      wxPGProperty* pr = props_->Append(new wxStringProperty(tx(c.titre), nom, montre));
+      props_->SetPropertyHelpString(pr, L"ƒx : valeur, expression (L/2 + 3) ou « nom = valeur » pour la nommer");
     } else if (c.sorte == ChampFiche::BOOLEEN) {
       props_->SetPropertyAttribute(props_->Append(new wxBoolProperty(tx(c.titre), nom, c.oui)), wxPG_BOOL_USE_CHECKBOX, true);
     } else {
@@ -1184,8 +1196,83 @@ void Cadre::poserChamps(const std::vector<ChampFiche>& champs, bool copie) {
   }
 }
 
+// Le porteur ƒx d'un champ de fiche : « n/dist », « n/thread/len », « n/edges/2/r », « n/d » d'un élément de construction
+static bool champPorteur(const std::string& cle, bool construction, int& arete, std::string& k) {
+  if (cle.rfind("n/", 0) != 0) return false;
+  k = cle.substr(2);
+  arete = construction ? -3 : -1;
+  if (k.rfind("thread/", 0) == 0) arete = -2, k = k.substr(7);
+  else if (k.rfind("edges/", 0) == 0) {
+    const size_t b = k.find('/', 6);
+    if (b == std::string::npos || k.substr(b + 1) != "r") return false;
+    arete = std::atoi(k.c_str() + 6);
+    k = "r";
+  }
+  return k.find('/') == std::string::npos;
+}
+
+const PorteurFx* Cadre::porteurDuChamp(const std::string& id, const std::string& cle) const {
+  bool construction = false;
+  for (const ElementConstruction& c : doc_.construction) construction = construction || c.id == id;
+  int arete;
+  std::string k;
+  if (!champPorteur(cle, construction, arete, k)) return nullptr;
+  for (const PorteurFx& h : doc_.porteurs)
+    if (h.fonction == id && h.arete == arete && h.cle == k) return &h;
+  return nullptr;
+}
+
+// parFx : « [nom =] expression » dans un champ. Un nombre seul, sans formule en place, suit le chemin ordinaire.
+bool Cadre::ficheFormule(const std::string& id, const std::string& cle, const std::string& valeur) {
+  bool construction = false;
+  for (const ElementConstruction& c : doc_.construction) construction = construction || c.id == id;
+  int arete;
+  std::string k;
+  if (!champPorteur(cle, construction, arete, k)) return false;
+  const PorteurFx* deja = porteurDuChamp(id, cle);
+  if (parEstNombre(valeur) && (!deja || (deja->expr.empty() && deja->nom.empty()))) return false;
+  const std::string raison = changerFormules([&]() -> std::string {
+    PorteurFx* h = nullptr;
+    for (PorteurFx& q : doc_.porteurs)
+      if (q.fonction == id && q.arete == arete && q.cle == k) h = &q;
+    if (!h) {
+      PorteurFx n;
+      n.fonction = id;
+      n.arete = arete;
+      n.cle = k;
+      const nlohmann::ordered_json j = documentJson(doc_);
+      const char* liste = construction ? "cgeo" : "features";
+      for (const auto& x : j[liste]) {
+        if (x.value("id", std::string()) != id) continue;
+        n.origine = x.value("name", std::string());
+        const nlohmann::ordered_json& H = arete == -3 ? x["p"] : arete == -2 ? x["thread"] : arete >= 0 ? x["edges"][arete] : x;
+        const std::string lue = k == "qty" ? "copies" : k == "qty2" ? "copies2" : k;
+        if (H.contains(lue) && H[lue].is_number()) n.valeur = H[lue].get<double>();
+        if (k == "qty" || k == "qty2") n.valeur = std::min(200.0, std::max(1.0, std::floor(n.valeur != 0 ? n.valeur : 1))) + 1;
+        if (k == "distance") n.valeur = std::abs(n.valeur);
+      }
+      for (const Fonction& f : doc_.fonctions)
+        if (f.id == id) n.pris = f.type == "extrude" && arete < 0 && k == "distance";
+      doc_.porteurs.push_back(n);
+      h = &doc_.porteurs.back();
+    }
+    try {
+      return parReglerPorteur(doc_, *h, valeur);
+    } catch (const std::exception& e) {
+      return e.what();
+    }
+  });
+  if (!raison.empty()) etat(L"ƒx : " + tx(raison));
+  if (construction) choisirConstruction(id);
+  else
+    for (size_t i = 0; i < doc_.fonctions.size(); i++)
+      if (doc_.fonctions[i].id == id) choisirFonction(static_cast<int>(i)), montrerFonction(static_cast<int>(i));
+  return true;
+}
+
 void Cadre::appliquerFiche(const std::string& id, const std::string& cle, const std::string& valeur) {
   if (id == "@asm") return asmFiche(cle, valeur);
+  if (ficheFormule(id, cle, valeur)) return;
   for (const ElementConstruction& c : doc_.construction)
     if (c.id == id) return reglerConstruction(id, cle, valeur);
   pioche_ = nullptr;
@@ -1850,6 +1937,7 @@ void Cadre::remplirPiece(const wxTreeItemId& racine) {
         const std::string alerte = e->j.value("st", std::string()) == "warn" ? " ⚠" : "";
         const wxTreeItemId n = arbre_->AppendItem(sec, tx(std::string(iconeConstruction(e->kind)) + " " + libelleConstruction(*e) + alerte), e->kind == "plane" ? 4 : e->kind == "axis" ? 10 : 7, -1, new LienArbre(false, -1, "", "", e->id));
         lignesConstruction_[e->id] = n;
+        arbre_->SetItemState(n, e->visible ? 0 : 1);
         if (!e->visible) arbre_->SetItemTextColour(n, grise);
       }
       arbre_->Expand(sec);
@@ -1863,6 +1951,7 @@ void Cadre::remplirPiece(const wxTreeItemId& racine) {
     if (doc_.esquisses[i].fao || esquisseCopieRepetition(doc_, doc_.esquisses[i].id)) continue;
     const std::string& n = doc_.esquisses[i].nom;
     lignesEsquisses_[i] = arbre_->AppendItem(esquisses, n.empty() ? wxString(tx(doc_.esquisses[i].id)) : tx(n), 0, -1, new LienArbre(false, static_cast<int>(i)));
+    arbre_->SetItemState(lignesEsquisses_[i], doc_.esquisses[i].visible ? 0 : 1);
     if (!doc_.esquisses[i].visible) arbre_->SetItemTextColour(lignesEsquisses_[i], grise);
   }
   if (const int m = indiceMarque(); m >= 0) {  // le temps est bloqué : un clic rejoue tout
@@ -1875,7 +1964,9 @@ void Cadre::remplirPiece(const wxTreeItemId& racine) {
     const wxTreeItemId corps = arbre_->AppendItem(racine, nomCorps, 3, -1, new LienArbre(false, -1, "", doc_.corps[c]));
     arbre_->SetItemBold(corps);
     if (corpsActif) arbre_->SetItemTextColour(corps, th(wxColour(0x0a, 0x84, 0xff)));
-    if (std::find(doc_.corpsMasques.begin(), doc_.corpsMasques.end(), doc_.corps[c]) != doc_.corpsMasques.end()) arbre_->SetItemTextColour(corps, grise);
+    const bool corpsMasque = std::find(doc_.corpsMasques.begin(), doc_.corpsMasques.end(), doc_.corps[c]) != doc_.corpsMasques.end();
+    arbre_->SetItemState(corps, corpsMasque ? 1 : 0);
+    if (corpsMasque) arbre_->SetItemTextColour(corps, grise);
     int nbDuCorps = 0;
     for (size_t i = 0; i < doc_.fonctions.size(); i++) {
       const Fonction& f = doc_.fonctions[i];
@@ -1887,6 +1978,7 @@ void Cadre::remplirPiece(const wxTreeItemId& racine) {
       lignesFonctions_[i] = n;
       nbDuCorps++;
       if (alerte) arbre_->SetItemTextColour(n, wxColour(0xff, 0x9f, 0x0a));
+      arbre_->SetItemState(n, f.visible ? 0 : 1);
       if (!f.visible) arbre_->SetItemTextColour(n, grise);
       if (f.type != "repeat") continue;
       for (const Fonction& k : doc_.fonctions) {
@@ -2092,6 +2184,8 @@ std::string Cadre::reglerCoteListe(size_t j, const std::string& id, const std::s
 
 std::string Cadre::changerFormules(const std::function<std::string()>& f) {
   const EtatFormules avant(doc_);
+  const auto docComplet = std::make_shared<Document>(doc_);
+  doc_.structureTouchee = false;
   ModifCote m;
   m.esquissesAvant = doc_.esquisses;
   m.avecFonctions = true;
@@ -2112,6 +2206,11 @@ std::string Cadre::changerFormules(const std::function<std::string()>& f) {
   m.fonctionsApres = doc_.fonctions;
   m.paramsApres = doc_.params;
   m.porteursApres = doc_.porteurs;
+  if (doc_.structureTouchee) {
+    doc_.structureTouchee = false;
+    m = ModifCote();
+    m.docAvant = docComplet;
+  }
   annulations_.push_back(std::move(m));
   retablissements_.clear();
   majTitre();
@@ -2151,6 +2250,8 @@ void Cadre::saisieCote(const std::string& id, const wxString& texte) {
   m.paramsAvant = doc_.params;
   m.porteursAvant = doc_.porteurs;
   std::string raison;
+  const auto docComplet = std::make_shared<Document>(doc_);
+  doc_.structureTouchee = false;
   {
     wxBusyCursor attente;
     if (!saisirCoteTexte(doc_, esquisseOuverte_, *edition_, id, std::string(t.utf8_str()), raison)) {
@@ -2163,7 +2264,13 @@ void Cadre::saisieCote(const std::string& id, const wxString& texte) {
   m.fonctionsApres = doc_.fonctions;
   m.paramsApres = doc_.params;
   m.porteursApres = doc_.porteurs;
-  if (const auto cote = std::find_if(s.cotes.begin(), s.cotes.end(), [&](const Cote& c) { return c.id == id; }); cote != s.cotes.end() && !cote->nom.empty())
+  if (doc_.structureTouchee) {
+    doc_.structureTouchee = false;
+    m = ModifCote();
+    m.docAvant = docComplet;
+  }
+  Esquisse& s2 = doc_.esquisses[esquisseOuverte_];  // le document a pu être relu
+  if (const auto cote = std::find_if(s2.cotes.begin(), s2.cotes.end(), [&](const Cote& c) { return c.id == id; }); cote != s2.cotes.end() && !cote->nom.empty())
     messageBandeau(L"Cote nommée « " + tx(cote->nom) + L" » : utilisable dans les autres cotes (ƒx).");
   if (miniParams_->IsShown()) CallAfter([this] { miniParams_->rafraichir(); });
   annulations_.push_back(std::move(m));
@@ -2994,7 +3101,9 @@ void Cadre::montrerConstruction(const std::string& id) {
       props_->CenterSplitter();
       ficheChoix_.clear();
       props_->Append(new wxPropertyCategory(tx(nomSorteConstruction(e.kind))));
+      champsDe_ = e.id;
       poserChamps(ficheConstruction(doc_, e), false);
+      champsDe_.clear();
       ficheId_ = id;
       constructionMontree_ = id;
       dessinerConstruction();
@@ -3251,6 +3360,28 @@ void Cadre::menuCorps(const std::string& id, bool vue3d) {
     const wxString q = wxString::Format(L"Supprimer « %s »%s ? Les autres corps sont conservés.", nomActuel, nb ? wxString::Format(L" et ses %d fonction(s)", nb) : wxString());
     if (!confirmerSuppression(q)) return;
     changerStructure([&](nlohmann::ordered_json& d) { stSupprimerCorps(d, id); }, L"Ctrl+Z : annuler.");
+  }
+}
+
+// L'œil d'une ligne : la même bascule que « Afficher / masquer » de son menu
+void Cadre::oeilArbre(const wxTreeItemId& ligne) {
+  if (!ligne.IsOk() || enChoix() || esquisseOuverte_ >= 0) return;
+  const auto* lien = dynamic_cast<LienArbre*>(arbre_->GetItemData(ligne));
+  if (!lien) return;
+  const std::string corps = lien->corps, cg = lien->cg;
+  const bool estFonction = lien->estFonction;
+  const int i = lien->i;
+  if (!cg.empty()) {
+    const std::string id = cg;
+    changerStructure([&](nlohmann::ordered_json& d) { stBasculerVisible(d, "cgeo", id); });
+  } else if (!corps.empty()) {
+    changerStructure([&](nlohmann::ordered_json& d) { stBasculerVueCorps(d, corps); });
+  } else if (i >= 0 && estFonction) {
+    const std::string id = doc_.fonctions[i].id;
+    changerStructure([&](nlohmann::ordered_json& d) { stBasculerVisible(d, "features", id); });
+  } else if (i >= 0) {
+    const std::string id = doc_.esquisses[i].id;
+    changerStructure([&](nlohmann::ordered_json& d) { stBasculerVisible(d, "sketches", id); });
   }
 }
 
@@ -3870,6 +4001,28 @@ bool Cadre::essaiEsquisse(const std::wstring& fichier, int rang, const std::wstr
       n["etat"] = std::string(etatVue_->texte().utf8_str());
       for (const Fonction& f : doc_.fonctions)
         if (f.type == "bmove" || f.type == "bscale") n["nom"] = f.nom;
+    }
+    if (e.contains("ficheLire")) {
+      const std::string id = e["ficheLire"].get<std::string>();
+      if (doc_.fonctionsJson)
+        if (const auto it = doc_.fonctionsJson->find(id); it != doc_.fonctionsJson->end())
+          for (const ChampFiche& c : ficheFonction(doc_, nlohmann::ordered_json::parse(it->second))) {
+            nlohmann::json x = {{"titre", c.titre}, {"cle", c.cle}, {"valeur", c.texte}};
+            for (const auto& o : c.choix) x["choix"].push_back({o.first, o.second});
+            n["champs"].push_back(x);
+          }
+    }
+    if (e.contains("oeilArbre")) {
+      const std::string id = e["oeilArbre"].get<std::string>();
+      for (size_t k = 0; k < doc_.fonctions.size(); k++)
+        if (doc_.fonctions[k].id == id && lignesFonctions_[k].IsOk()) {
+          n["etatAvant"] = arbre_->GetItemState(lignesFonctions_[k]);
+          oeilArbre(lignesFonctions_[k]);
+          break;
+        }
+      for (size_t k = 0; k < doc_.fonctions.size(); k++)
+        if (doc_.fonctions[k].id == id && lignesFonctions_[k].IsOk()) n["etatApres"] = arbre_->GetItemState(lignesFonctions_[k]);
+      n["etat"] = std::string(etatVue_->texte().utf8_str());
     }
     if (e.contains("bsCentre")) {
       bsCentreCorps(e["bsCentre"].get<std::string>());

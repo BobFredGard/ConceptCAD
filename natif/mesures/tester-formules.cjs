@@ -9,7 +9,7 @@ const RACINE = path.resolve(__dirname, '..', '..');
 const opt = n => { const a = process.argv.find(x => x.startsWith('--' + n + '=')); return a ? a.slice(n.length + 3) : ''; };
 const RACINE_NAV = opt('racine') || RACINE;
 const SRC_JS = opt('src') || path.join(RACINE_NAV, 'src');
-const EXE = path.join(__dirname, '..', 'sortie', 'ConceptCADNatif.exe');
+const EXE = opt('exe') || path.join(__dirname, '..', 'sortie', 'ConceptCADNatif.exe');  // --exe= : une copie, pour pouvoir recompiler pendant le banc
 const EXEMPLES = path.join(RACINE, 'Exemples');
 const { chromium } = require(path.join(RACINE, 'node_modules', '@playwright', 'test'));
 const dossier = path.resolve(process.argv[2]);
@@ -134,7 +134,7 @@ const pret = page => page.waitForFunction(() => typeof doc !== 'undefined' && do
   const cas = [];
   for (const p of pieces) {
     const src = path.join(EXEMPLES, p + '.conceptcad');
-    suites(lire(src), p).forEach(c => cas.push(Object.assign(c, { src })));
+    suites(lire(src), p).forEach(c => { if (!opt('seul') || new RegExp(opt('seul')).test(c.nom)) cas.push(Object.assign(c, { src })); });  // --seul= : un filtre sur le nom des suites
   }
   const port = await portLibre();
   const serveur = spawn(process.execPath, [path.join(RACINE_NAV, 'tests', 'browser', 'serveur.cjs'), String(port)], { stdio: 'ignore' });
@@ -154,7 +154,7 @@ const pret = page => page.waitForFunction(() => typeof doc !== 'undefined' && do
       // La page peut reprendre seule la dernière pièce : attendre que ce soit bien celle du fichier
       await page.evaluate(() => { window.__docAvant = doc; });
       await page.setInputFiles('#fileProj', fichier);
-      await page.waitForFunction(() => doc && doc !== window.__docAvant && ((doc.features || []).length || (doc.sketches || []).length), null, { timeout: 300000 });
+      await page.waitForFunction(() => doc && doc !== window.__docAvant && ((doc.features || []).length || (doc.sketches || []).length), null, { timeout: 1200000 });
       await attendre(1200);
       await pret(page);
       return { page, erreurs };

@@ -234,7 +234,6 @@ class FenetreParametres : public wxDialog {
       l.unite = h.cle.find("angle") != std::string::npos || h.cle.find("draft") != std::string::npos ? u8(L"°") : "";
       l.err = h.err;
       l.origine = h.origine + u8(L" · ") + u8(libelle(h.cle));
-      l.lectureSeule = !h.pris;
       l.renommer = [this, i](const std::string& nm) -> std::string {
         Document& d = a_.document();
         PorteurFx& h = d.porteurs[i];

@@ -235,7 +235,7 @@ struct ParamDerive {
 struct PorteurFx {
   std::string fonction, origine, cle, nom, expr, err;
   int arete = -1;       // rang de l'arête d'un congé, -1 pour la fonction elle-même
-  bool pris = false;    // ce programme sait changer cette valeur : la profondeur d'une extrusion
+  bool pris = false;    // la profondeur d'une extrusion : changée sur place. Les autres valeurs passent par le fichier.
   bool change = false;  // parResolve vient de la changer
   double valeur = 0;
 };
@@ -299,6 +299,7 @@ struct Document {
   std::vector<ParamDerive> derives;
   std::vector<std::string> derivesJson;  // chaque lien de doc.derive, tel quel
   std::vector<PorteurFx> porteurs, porteursFichier;
+  bool structureTouchee = false;  // une formule a réécrit le fichier : Ctrl+Z reprend tout le document
   std::vector<size_t> parEnAttente;  // parPending : les esquisses dont une cote a changé, à résoudre
   std::string corpsActif;  // où naît une nouvelle fonction
   std::vector<std::string> nonPrisEnCharge;  // vide = la pièce se rejoue entièrement

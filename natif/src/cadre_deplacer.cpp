@@ -214,7 +214,11 @@ void Cadre::bmMenu(const std::vector<OptionBm>& L, bool avecFace) {
     m.Append(FACE, L"🎯 Cliquer une face dans la vue…");
     m.AppendSeparator();
   }
-  for (size_t i = 0; i < L.size(); i++) m.Append(O0 + static_cast<int>(i), tx8(L[i].nom));
+  for (size_t i = 0; i < L.size(); i++) {
+    // Pas de pastilles dans la vue ici : la position départage les arêtes d'une même face
+    const auto& q = bmWant_ == "axis" || bmWant_ == "dir" ? L[i].o : L[i].p;
+    m.Append(O0 + static_cast<int>(i), tx8(L[i].nom + (avecFace ? "" : "  (" + fmt(q[0], 2) + " ; " + fmt(q[1], 2) + " ; " + fmt(q[2], 2) + ")")));
+  }
   const int c = choisirMenu(m);
   if (c >= O0 && c < O0 + static_cast<int>(L.size())) {
     const OptionBm o = L[c - O0];

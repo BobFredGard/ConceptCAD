@@ -407,7 +407,6 @@ static void lireConge(const json& jf, Fonction& f, std::map<std::string, int>& r
   if (auto v = jf.find("cd2"); v != jf.end() && v->is_number()) f.cd2 = v->get<double>();
   if (auto v = jf.find("cang"); v != jf.end() && v->is_number()) f.cang = v->get<double>();
   f.cflip = vrai(jf, "cflip");
-  if (jf.contains("expr") && jf["expr"].is_object() && !jf["expr"].empty() && f.visible) refus["cote par formule"]++;
   if (!jf.contains("edges") || !jf["edges"].is_array()) return;
   for (auto& je : jf["edges"]) {
     if (!je.is_object()) continue;

@@ -22,6 +22,8 @@
 #include <gp_Pln.hxx>
 
 #include "conges.h"
+#include "enregistrer.h"
+#include "fiches.h"
 #include "intersection.h"
 #include "noms.h"
 #include "parametres.h"
@@ -480,6 +482,51 @@ void EtatFormules::poser(Document& d) const {
 }
 
 namespace {
+// parHolderSet et les h.expr, h.pname, pour toute valeur autre que la profondeur d'une extrusion :
+// fonction, taraudage, arête de congé, élément de construction
+void ecrirePorteurs(Document& d, const EtatFormules& avant) {
+  std::vector<PorteurFx> L;
+  for (const PorteurFx& h : d.porteurs) {
+    if (h.pris) continue;
+    const auto a = std::find_if(avant.porteurs.begin(), avant.porteurs.end(), [&](const PorteurFx& q) { return q.fonction == h.fonction && q.arete == h.arete && q.cle == h.cle; });
+    if (a == avant.porteurs.end() || a->expr != h.expr || a->nom != h.nom || std::abs(a->valeur - h.valeur) > 1e-9) L.push_back(h);
+  }
+  if (L.empty()) return;
+  using J = nlohmann::ordered_json;
+  modifierStructure(d, [&](J& j) {
+    for (const PorteurFx& h : L) {
+      J* H = nullptr;
+      J* F = nullptr;
+      const char* liste = h.arete == -3 ? "cgeo" : "features";
+      if (j.contains(liste) && j[liste].is_array())
+        for (J& x : j[liste])
+          if (x.is_object() && x.value("id", std::string()) == h.fonction) F = &x;
+      if (!F) continue;
+      const bool nomAuto = h.arete != -3 && (F->value("name", std::string()).empty() || F->value("name", std::string()) == nomAutoFonction(j, *F));
+      if (h.arete == -1) H = F;
+      else if (h.arete == -3 && F->contains("p")) H = &(*F)["p"];
+      else if (h.arete == -2 && F->contains("thread")) H = &(*F)["thread"];
+      else if (h.arete >= 0 && F->contains("edges") && static_cast<size_t>(h.arete) < (*F)["edges"].size()) H = &(*F)["edges"][h.arete];
+      if (!H || !H->is_object()) continue;
+      const auto poser = [&](const char* quoi, const std::string& v) {
+        if (!v.empty()) {
+          if (!H->contains(quoi) || !(*H)[quoi].is_object()) (*H)[quoi] = J::object();
+          (*H)[quoi][h.cle] = v;
+        } else if (H->contains(quoi) && (*H)[quoi].is_object()) {
+          (*H)[quoi].erase(h.cle);
+        }
+      };
+      poser("expr", h.expr);
+      poser("pname", h.nom);
+      if (h.cle == "qty" || h.cle == "qty2") (*H)[h.cle == "qty" ? "copies" : "copies2"] = static_cast<int>(std::min(200.0, std::max(1.0, std::floor(h.valeur - 1))));
+      else if (h.cle == "distance") (*H)["distance"] = (H->contains("distance") && (*H)["distance"].is_number() && (*H)["distance"].get<double>() < 0 ? -1 : 1) * h.valeur;
+      else (*H)[h.cle] = h.valeur;
+      if (nomAuto) (*F)["name"] = nomAutoFonction(j, *F);
+    }
+  });
+  d.structureTouchee = true;  // après la relecture du fichier, qui le remet à zéro
+}
+
 // parApplyAll puis skSolveOrRevert. La cote saisie (idCote) a déjà sa valeur dans le document.
 bool appliquer(Document& d, const EtatFormules& avant, int ouverte, Edition* ed, const std::string& idCote, double valeur, std::string& raison) {
   const auto refuser = [&](const std::string& m) {
@@ -495,7 +542,7 @@ bool appliquer(Document& d, const EtatFormules& avant, int ouverte, Edition* ed,
   for (PorteurFx& h : d.porteurs) {
     if (!h.change) continue;
     h.change = false;
-    if (!h.pris) return refuser("la valeur « " + (h.nom.empty() ? h.cle : h.nom) + " » de « " + h.origine + " » en dépend, et ce programme ne sait pas encore la changer");
+    if (!h.pris) continue;  // écrite dans le fichier, en fin d'application
     for (size_t k = 0; k < d.fonctions.size(); k++) {
       if (d.fonctions[k].id != h.fonction) continue;
       if (!d.profondeurModifiable(k)) return refuser("la profondeur de « " + h.origine + " » en dépend, et des esquisses liées au solide devraient suivre");
@@ -543,6 +590,7 @@ bool appliquer(Document& d, const EtatFormules& avant, int ouverte, Edition* ed,
   std::sort(changees.begin(), changees.end());
   changees.erase(std::unique(changees.begin(), changees.end()), changees.end());
   for (const size_t j : changees) suivreEsquisses(d, j);
+  ecrirePorteurs(d, avant);
   return true;
 }
 }  // namespace

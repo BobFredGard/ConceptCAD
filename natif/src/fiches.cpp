@@ -636,6 +636,154 @@ std::string appliquerFiletage(json& f, const std::string& cle, const std::string
 }
 }  // namespace
 
+// cutBodiesField et featBodyField (40-30-corps-fonctions.js)
+namespace {
+std::string corpsDeJson(const json& d, const json& f) {  // occBodyOfFeat
+  const json& L = d["bodies"];
+  const std::string b = str(f, "body");
+  for (const json& e : L)
+    if (str(e, "id") == b && !b.empty()) return b;
+  return L.empty() ? std::string() : str(L[0], "id");
+}
+bool estDecoupe(const json& f) {  // occIsCutFeat
+  const std::string t = str(f, "type");
+  return t == "hole" || ((t == "extrude" || t == "revolve" || t == "sweep") && str(f, "op") == "cut");
+}
+std::vector<std::string> corpsEnPlus(const json& d, const json& f) {  // occCutExtraBodies
+  std::vector<std::string> l;
+  if (!estDecoupe(f) || !f.contains("cutBodies") || !f["cutBodies"].is_array()) return l;
+  const std::string own = corpsDeJson(d, f);
+  for (const json& b : f["cutBodies"]) {
+    if (!b.is_string()) continue;
+    const std::string id = b.get<std::string>();
+    bool existe = false;
+    for (const json& e : d["bodies"]) existe = existe || str(e, "id") == id;
+    if (existe && id != own && std::find(l.begin(), l.end(), id) == l.end()) l.push_back(id);
+  }
+  return l;
+}
+bool corpsNeA(const json& d, const std::string& bid, int idx) {  // bodyBornAt
+  const json& L = d["features"];
+  for (size_t k = 0; k < L.size(); k++) {
+    const json& f = L[k];
+    const auto x = corpsEnPlus(d, f);
+    const bool neuf = f.contains("newBody") && f["newBody"].is_string() && f["newBody"].get<std::string>() == bid;
+    if (str(f, "body") == bid || neuf || std::find(x.begin(), x.end(), bid) != x.end()) return idx < 0 || static_cast<int>(k) < idx;
+  }
+  return true;
+}
+bool corpsRetireA(const json& d, const std::string& bid, int idx) {  // bodyRemovedAt
+  const json& L = d["features"];
+  const size_t n = idx < 0 ? L.size() : static_cast<size_t>(idx);
+  for (size_t k = 0; k < n && k < L.size(); k++)
+    if (str(L[k], "type") == "bremove" && str(L[k], "body") == bid && L[k].value("visible", true)) return true;
+  return false;
+}
+int rangFonction(const json& d, const json& f) {
+  const json& L = d["features"];
+  for (size_t k = 0; k < L.size(); k++)
+    if (str(L[k], "id") == str(f, "id")) return static_cast<int>(k);
+  return -1;
+}
+std::vector<std::string> corpsCandidats(const json& d, const json& f) {  // cutBodyCandidates
+  const int i = rangFonction(d, f);
+  std::set<std::string> consommes;
+  const json& L = d["features"];
+  for (size_t k = 0; k < L.size() && (i < 0 || static_cast<int>(k) < i); k++)
+    if (str(L[k], "type") == "combine" && !vrai(L[k], "keep") && L[k].value("visible", true) && L[k].contains("tools") && L[k]["tools"].is_array())
+      for (const json& t : L[k]["tools"])
+        if (t.is_string()) consommes.insert(t.get<std::string>());
+  std::vector<std::string> r;
+  for (const json& e : d["bodies"]) {
+    const std::string id = str(e, "id");
+    if (consommes.count(id)) continue;
+    if (d.contains("bodyVis") && d["bodyVis"].is_object() && d["bodyVis"].contains(id) && d["bodyVis"][id] == false) continue;
+    if (corpsRetireA(d, id, i)) continue;
+    bool enfants = false, allume = false;  // bodyEnabledOf
+    for (const json& x : L)
+      if (str(x, "body") == id) {
+        if (!x.contains("repeatId")) enfants = true;
+        allume = allume || x.value("visible", true);
+      }
+    if (enfants && !allume) continue;
+    if (corpsNeA(d, id, i)) r.push_back(id);
+  }
+  return r;
+}
+std::string nomCorpsJson(const json& d, const std::string& id) {
+  for (const json& e : d["bodies"])
+    if (str(e, "id") == id) return str(e, "name");
+  return id;
+}
+std::vector<std::pair<std::string, std::string>> choixCorpsFonction(const json& d, const json& f) {  // featBodyChoices
+  std::vector<std::pair<std::string, std::string>> l;
+  const std::string t = str(f, "type"), id = str(f, "id");
+  const bool neuf = f.contains("newBody") && !f["newBody"].is_null() && f["newBody"] != false;
+  if (f.contains("repeatId") || neuf || (t != "extrude" && t != "revolve" && t != "sweep" && t != "hole")) return l;
+  const json& L = d["features"];
+  auto proprietaire = [&](const std::string& b) {  // repBodyOwner
+    for (const json& r : L)
+      if (str(r, "type") == "repeat" && r.contains("bodyMap") && r["bodyMap"].is_object())
+        for (const auto& kv : r["bodyMap"].items())
+          if (kv.value() == b) return true;
+    return false;
+  };
+  for (const json& r : L)  // featBodyLock : source d'une répétition « nouveau corps »
+    if (str(r, "type") == "repeat" && str(r, "op") == "new" && r.contains("base") && r["base"].is_array())
+      for (const json& b : r["base"])
+        if (b == id) return l;
+  const int i = rangFonction(d, f);
+  const std::string own = corpsDeJson(d, f);
+  for (const json& e : d["bodies"]) {
+    const std::string b = str(e, "id");
+    bool garder = b == own;
+    if (!garder && !corpsRetireA(d, b, i)) {
+      bool ordinaire = !proprietaire(b);
+      for (const json& x : L) {
+        if (x.contains("newBody") && x["newBody"].is_string() && x["newBody"].get<std::string>() == b) ordinaire = false;
+        if (x.contains("newBody") && x["newBody"].is_boolean() && x["newBody"].get<bool>() && str(x, "body") == b) ordinaire = false;
+      }
+      garder = ordinaire || corpsNeA(d, b, i);
+    }
+    if (garder) l.push_back({b, str(e, "name")});
+  }
+  if (l.size() < 2) l.clear();
+  return l;
+}
+std::vector<ChampFiche> champsCorpsFonction(const Document& doc, const json& f) {
+  std::vector<ChampFiche> c;
+  if (f.contains("repeatId")) return c;
+  const json d = documentJson(doc);
+  if (!d.contains("bodies") || !d.contains("features")) return c;
+  const std::string own = corpsDeJson(d, f);
+  if (estDecoupe(f)) {
+    std::vector<std::string> cand;
+    for (const std::string& b : corpsCandidats(d, f))
+      if (b != own) cand.push_back(b);
+    const std::vector<std::string> extra = corpsEnPlus(d, f);
+    if (!cand.empty() || !extra.empty()) {
+      bool tous = !cand.empty();
+      for (const std::string& b : cand) tous = tous && std::find(extra.begin(), extra.end(), b) != extra.end();
+      const std::string cur = extra.empty() ? "own" : tous ? "all" : "custom";
+      std::vector<std::pair<std::string, std::string>> o;
+      o.push_back({"own", "Son corps seul — « " + nomCorpsJson(d, own) + " »"});
+      o.push_back({"all", "Tous les corps visibles (" + std::to_string(cand.size() + 1) + ")"});
+      if (cur == "custom") {
+        std::string t = "Sélection : " + nomCorpsJson(d, own);
+        for (const std::string& b : extra) t += ", " + nomCorpsJson(d, b);
+        o.push_back({"custom", t});
+      }
+      for (const std::string& b : cand) o.push_back({"b:" + b, "Seulement « " + nomCorpsJson(d, b) + " »"});
+      c.push_back(choix("Corps visés", "x/corpsVises", cur, o));
+      return c;
+    }
+  }
+  const auto l = choixCorpsFonction(d, f);
+  if (!l.empty()) c.push_back(choix("Corps", "x/corpsFonction", own, l));
+  return c;
+}
+}  // namespace
+
 std::vector<ChampFiche> ficheFonction(const Document& d, const json& f) {
   std::vector<ChampFiche> c;
   const std::string t = str(f, "type");
@@ -784,6 +932,9 @@ std::vector<ChampFiche> ficheFonction(const Document& d, const json& f) {
   } else if (t == "repeat") {
     champsRepetition(d, f, c);
   }
+  // « Corps visés » d'une découpe, sinon « Corps » de la fonction, dès qu'il y a le choix
+  std::vector<ChampFiche> corps = champsCorpsFonction(d, f);
+  if (!corps.empty()) c.insert(t == "hole" || t == "revolve" || t == "sweep" ? c.begin() : c.end(), corps.begin(), corps.end());
   return c;
 }
 
@@ -1028,6 +1179,26 @@ std::string ficheAppliquer(json& d, const std::string& id, const std::string& cl
   if (cle.rfind("z/", 0) == 0) {  // le plan tangent d'un perçage sur cylindre ou d'une rainure
     const json copie = f;
     return appliquerCylindre(d, copie, cle, valeur);
+  }
+  if (cle == "x/corpsFonction") {  // comme un glisser-déposer dans l'arbre
+    f["body"] = valeur;
+    return "";
+  }
+  if (cle == "x/corpsVises") {
+    if (valeur == "custom") return "";
+    if (valeur.rfind("b:", 0) == 0) {
+      f.erase("cutBodies");
+      f["body"] = valeur.substr(2);
+    } else if (valeur == "all") {
+      const std::string own = corpsDeJson(d, f);
+      json l = json::array();
+      for (const std::string& b : corpsCandidats(d, f))
+        if (b != own) l.push_back(b);
+      f["cutBodies"] = l;
+    } else {
+      f.erase("cutBodies");
+    }
+    return "";
   }
   const bool nomEtaitAuto = str(f, "name").empty() || str(f, "name") == nomAuto(d, f);
   const std::string t = str(f, "type");
