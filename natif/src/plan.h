@@ -230,6 +230,58 @@ void bougerTroncon(J& mep, int planche, const Piece& p, Calcul& c, GesteCoupe& g
 bool lacherTroncon(J& mep, int planche, const Piece& p, Calcul& c, GesteCoupe& g);
 bool retirerBrisure(J& mep, int planche, const Piece& p, Calcul& c, const GesteCoupe& g);  // mepCutDelBreakAt
 void inverserFleches(J& d);  // mepDimToggleArrows
+// Les planches et les nouvelles vues (plan_commandes.cpp)
+std::string identifiantPlan(const char* prefixe);  // mepUid
+void nouvellePlanche(J& mep);
+void dupliquerPlanche(J& mep, int cur);
+bool vuesAutomatiques(J& mep, int planche, const Piece& p, Calcul& c);
+std::string ajouterVueStandard(J& mep, int planche, const Piece& p, Calcul& c, const std::string& vk);
+std::string ajouterVueCamera(J& mep, int planche, const Piece& p, Calcul& c, const std::array<double, 3>& dir);
+// Une commande à la souris : Projection, Coupe, Détail, Auxiliaire (mepSt.vcmd)
+struct CommandeVue {
+  std::string kind, par;
+  int stage = 0;
+  bool aCur = false, maj = false, aEdge = false;
+  double curX = 0, curY = 0;
+  std::vector<std::array<double, 2>> pts;  // locaux à la vue mère
+  double Ax = 0, Ay = 0, Bx = 0, By = 0, Cx = 0, Cy = 0, R = 0, echelle = 2;
+  double e[4] = {0, 0, 0, 0};
+};
+struct SuiteCommande {
+  bool change = false, fini = false;
+  std::string select, message;
+};
+struct BoutonCoupe {
+  std::string act;
+  double x = 0, y = 0, w = 0, h = 0;
+};
+struct ApercuCommande {
+  struct Trait {
+    double x1, y1, x2, y2;
+    bool mauvais, fleche;
+  };
+  struct Rect {
+    double x, y, w, h;
+    bool fantome;
+  };
+  struct Rond {
+    double x, y, r;
+    bool fantome;
+  };
+  std::vector<Trait> traits;
+  std::vector<Rect> cadres;
+  std::vector<Rond> ronds;
+  std::vector<BoutonCoupe> boutons;
+  std::string texte;
+  double tx = 0, ty = 0, snapX = 0, snapY = 0;
+  bool aSnap = false, snapAxe = false;
+};
+CommandeVue commencerCommande(const J& sh, const std::string& kind, const std::string& selection);
+std::string conseilCommande(const CommandeVue& m);
+std::string annulerPointCoupe(CommandeVue& m);
+std::string validerCoupe(CommandeVue& m);
+SuiteCommande cliqueCommande(J& mep, int planche, const Piece& p, Calcul& c, CommandeVue& m, double x, double y, bool maj, double zoom);
+ApercuCommande apercuCommande(J& mep, int planche, const Piece& p, Calcul& c, const CommandeVue& m, double zoom);
 // Pour le panneau
 bool cartoucheDessine(const J& sh);  // mepTbIsSk
 double largeurCartouche(const J& sh);  // mepTbW

@@ -349,6 +349,14 @@ void Vue3D::majReflets() {
   }
 }
 
+bool Vue3D::directionCamera(std::array<double, 3>& d) const {
+  if (vue_.IsNull()) return false;
+  const gp_Pnt o = vue_->Camera()->Eye(), c = vue_->Camera()->Center();
+  const double x = o.X() - c.X(), y = o.Y() - c.Y(), z = o.Z() - c.Z(), L = std::sqrt(x * x + y * y + z * z);
+  if (L < 1e-9) return false;
+  d = {x / L, y / L, z / L};
+  return true;
+}
 bool Vue3D::imagePlan(const plan::DemandeImage& d, wxImage& sortie) {
   if (vueImage_.IsNull()) {
     // Un second visualiseur, sans sol, cube ni arêtes : même pilote, mêmes lumières et même matière que la vue 3D

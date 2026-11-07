@@ -320,7 +320,7 @@ void Cadre::creerEnvironnement() {
     if (esquisseOuverte_ < 0) recalculer();
   };
   barreHaute_->surIndisponible = [this](const wxString& n) { indisponible(n); };
-  ruban_->estRepris = [](Atelier a, const wxString& n) { return a == Atelier::CAO && (n == L"Esquisse" || n == L"Extrusion" || n == L"Congé" || n == L"Chanfrein" || n == L"Paramètres" || n == L"Corps" || n == L"Perçage" || n == L"Filetage" || n == L"Clavette" || n == L"Plan" || n == L"Axe" || n == L"Point" || n == L"Repère" || n == L"Répétition" || n == L"Révolution" || n == L"Balayage" || n == L"Face" || n == L"Dépouille" || n == L"Coque" || n == L"Combiner" || n == L"Déplacer" || n == L"Échelle" || n == L"Scinder" || n == L"Importer" || n == L"STEP" || n == L"STL" || n == L"OBJ" || n == L"Assembler" || n == L"Modéliser" || n == L"Composant" || n == L"Occurrence" || n == L"Insérer" || n == L"Inspecter" || n == L"Normalisés" || n == L"Aimants" || n == L"Depuis corps"); };
+  ruban_->estRepris = [this](Atelier a, const wxString& n) { if (a == Atelier::PLAN) return planVue_->estRepris(n); return a == Atelier::CAO && (n == L"Esquisse" || n == L"Extrusion" || n == L"Congé" || n == L"Chanfrein" || n == L"Paramètres" || n == L"Corps" || n == L"Perçage" || n == L"Filetage" || n == L"Clavette" || n == L"Plan" || n == L"Axe" || n == L"Point" || n == L"Repère" || n == L"Répétition" || n == L"Révolution" || n == L"Balayage" || n == L"Face" || n == L"Dépouille" || n == L"Coque" || n == L"Combiner" || n == L"Déplacer" || n == L"Échelle" || n == L"Scinder" || n == L"Importer" || n == L"STEP" || n == L"STL" || n == L"OBJ" || n == L"Assembler" || n == L"Modéliser" || n == L"Composant" || n == L"Occurrence" || n == L"Insérer" || n == L"Inspecter" || n == L"Normalisés" || n == L"Aimants" || n == L"Depuis corps"); };
   ruban_->surBouton = [this](Atelier a, const wxString& n) { boutonRuban(a, n); };
   ruban_->surIndisponible = [this](const wxString& n) { indisponible(n); };
 
@@ -444,6 +444,8 @@ void Cadre::creerEnvironnement() {
   planVue_->rendreImage = [this](const plan::DemandeImage& d, wxImage& im) { return vue_->imagePlan(d, im); };
   planVue_->surChangement = [this](const plan::J& mep, const wxString&) { changerPlan(mep); };
   planVue_->surEtat = [this](const wxString& t) { etat(t); };
+  planVue_->surVuesAutomatiques = [this](const plan::J& mep) { modifierStructure(doc_, [&](nlohmann::ordered_json& d) { d["mep"] = mep; }); };
+  planVue_->directionCamera = [this](std::array<double, 3>& d) { return vue_->directionCamera(d); };
   panneauPlan_ = new PanneauPlan(carteDroite_, planVue_);
   panneauPlan_->Hide();
   carteDroite_->contenu()->Add(panneauPlan_, 1, wxEXPAND);
@@ -623,6 +625,10 @@ void Cadre::ajusterDroite() {
 void Cadre::indisponible(const wxString& nom) { etat(nom + PAS_ENCORE + L"."); }
 
 void Cadre::boutonRuban(Atelier a, const wxString& nom) {
+  if (a == Atelier::PLAN) {
+    if (!planVue_->boutonRuban(nom)) indisponible(nom);
+    return;
+  }
   if (a != Atelier::CAO) return;
   if (nom == L"Assembler") return asmBasculer();
   if (nom == L"Composant") return asmNouveauComposant();

@@ -6,6 +6,7 @@
 #include <wx/dcmemory.h>
 #include <wx/image.h>
 #include <wx/log.h>
+#include <wx/msgdlg.h>
 #include <wx/mstream.h>
 #include <wx/textdlg.h>
 #include "nombres_js.h"
@@ -334,6 +335,18 @@ PlanVue::PlanVue(wxWindow* parent) : wxWindow(parent, wxID_ANY, wxDefaultPositio
         onglets_.push_back(r);
         x = r.GetRight() + FromDIP(3);
       }
+      actionsOnglets_.clear();
+      for (const wchar_t* lab : {L"＋", L"⧉", L"🗑"}) {
+        const wxRect r(x + FromDIP(2), FromDIP(5), FromDIP(24), ho - FromDIP(9));
+        dc.SetBrush(wxBrush(wxColour(0x2b, 0x2e, 0x34)));
+        dc.SetPen(wxPen(wxColour(0x3a, 0x3f, 0x47)));
+        dc.DrawRoundedRectangle(r, FromDIP(4));
+        dc.SetTextForeground(wxColour(0xc9, 0xcc, 0xd1));
+        const wxSize tl = dc.GetTextExtent(lab);
+        dc.DrawText(lab, r.x + (r.width - tl.x) / 2, r.y + (r.height - tl.y) / 2);
+        actionsOnglets_.push_back(r);
+        x = r.GetRight() + FromDIP(1);
+      }
     }
   });
   Bind(wxEVT_SIZE, [this](wxSizeEvent& e) {
@@ -383,7 +396,9 @@ PlanVue::PlanVue(wxWindow* parent) : wxWindow(parent, wxID_ANY, wxDefaultPositio
     curseurX_ = (e.GetX() - ox_) / zoom_, curseurY_ = (e.GetY() - oy_) / zoom_;
     curseurDedans_ = e.GetY() >= hauteurOnglets() && curseurX_ >= 0 && curseurY_ >= 0 && curseurX_ <= largeurPage_ && curseurY_ <= hauteurPage_;
     if (!glisse_) {
-      if (geste_.sorte != Geste::RIEN) {
+      if (commandeActive_) {
+        commande_.curX = curseurX_, commande_.curY = curseurY_, commande_.aCur = true, commande_.maj = e.ShiftDown();
+      } else if (geste_.sorte != Geste::RIEN) {
         bouge(curseurX_, curseurY_, e.GetX(), e.GetY());
       } else if (mep_.is_object() && mep_.contains("sheets") && !mep_["sheets"].empty()) {
         // Le survol : un cadre en pointillés autour de la vue
@@ -406,6 +421,20 @@ PlanVue::PlanVue(wxWindow* parent) : wxWindow(parent, wxID_ANY, wxDefaultPositio
     SetFocus();
     const int i = ongletSous(e.GetPosition());
     if (i >= 0) return changerPlanche(i);
+    for (size_t a = 0; a < actionsOnglets_.size(); a++) {
+      if (!actionsOnglets_[a].Contains(e.GetPosition())) continue;
+      if (a == 0) boutonRuban(L"Nouvelle");
+      else if (a == 1) boutonRuban(L"Dupliquer");
+      else if (mep_["sheets"].size() <= 1) {
+        if (surEtat) surEtat(L"Il faut garder au moins une planche.");
+      } else if (wxMessageBox(wxString(L"Supprimer « ") + wxString::FromUTF8(planche().value("name", std::string())) + L" » et toutes ses vues ?", L"Supprimer la planche", wxYES_NO | wxICON_QUESTION, this) == wxYES) {
+        mep_["sheets"].erase(mep_["sheets"].begin() + planche_);
+        mep_["cur"] = std::max(0, planche_ - 1);
+        apresPlanche();
+        valider(L"suppression de planche");
+      }
+      return;
+    }
     if (e.GetY() < hauteurOnglets() || !mep_.is_object() || !mep_.contains("sheets") || mep_["sheets"].empty()) return;
     if (!HasCapture()) CaptureMouse();
     enfonce((e.GetX() - ox_) / zoom_, (e.GetY() - oy_) / zoom_, e.ShiftDown(), e.ControlDown(), e.GetX(), e.GetY());
@@ -414,8 +443,35 @@ PlanVue::PlanVue(wxWindow* parent) : wxWindow(parent, wxID_ANY, wxDefaultPositio
     if (HasCapture()) ReleaseMouse();
     relache();
   });
+  Bind(wxEVT_LEFT_DCLICK, [this](wxMouseEvent& e) {
+    const int i = ongletSous(e.GetPosition());
+    if (i >= 0) {  // mepTabsRender : renommer
+      changerPlanche(i);
+      wxTextEntryDialog dlg(this, L"Nom de la planche :", L"Planche", wxString::FromUTF8(planche().value("name", std::string())));
+      if (dlg.ShowModal() == wxID_OK && !dlg.GetValue().empty()) {
+        planche()["name"] = dlg.GetValue().utf8_string();
+        valider(L"renommer planche");
+        Refresh(false);
+      }
+      return;
+    }
+    e.Skip();
+  });
   Bind(wxEVT_KEY_DOWN, [this](wxKeyEvent& e) {
     const int k = e.GetKeyCode();
+    if (commandeActive_) {
+      if (k == WXK_ESCAPE) return finirCommande(L"Commande annulée.");
+      if (k == WXK_RETURN || k == WXK_NUMPAD_ENTER) {
+        const std::string m = plan::validerCoupe(commande_);
+        if (surEtat && !m.empty()) surEtat(wxString::FromUTF8(m));
+        return Refresh(false);
+      }
+      if (k == WXK_BACK) {
+        const std::string m = plan::annulerPointCoupe(commande_);
+        if (surEtat && !m.empty()) surEtat(wxString::FromUTF8(m));
+        return Refresh(false);
+      }
+    }
     if (k == WXK_DELETE || k == WXK_BACK) return supprimer();
     if (k == WXK_ESCAPE) {
       geste_ = Geste();
@@ -434,6 +490,86 @@ PlanVue::PlanVue(wxWindow* parent) : wxWindow(parent, wxID_ANY, wxDefaultPositio
 }
 
 int PlanVue::hauteurOnglets() const { return FromDIP(30); }
+
+// ---- Le ruban : planches, nouvelles vues ----
+void PlanVue::lancerCommande(const std::string& kind) {
+  geste_ = Geste();
+  // Sur une planche vide, les vues de départ arrivent d'abord (mepSetActive)
+  bool rempli = false;
+  try {
+    rempli = plan::vuesAutomatiques(mep_, planche_, piece_, calcul_);
+  } catch (const std::exception&) {
+  }
+  if (rempli) {
+    redessiner();
+    if (surVuesAutomatiques) surVuesAutomatiques(mep_);
+  }
+  commande_ = plan::commencerCommande(planche(), kind, sel_.vue);
+  commandeActive_ = true;
+  if (surEtat) surEtat(wxString::FromUTF8(plan::conseilCommande(commande_)));
+  Refresh(false);
+}
+void PlanVue::finirCommande(const wxString& message) {
+  commandeActive_ = false;
+  commande_ = plan::CommandeVue();
+  if (surEtat && !message.empty()) surEtat(message);
+  Refresh(false);
+}
+void PlanVue::apresPlanche() {  // mepAfterSheetSwitch
+  planche_ = mep_["cur"].get<int>();
+  sel_ = plan::SelectionPlan();
+  geste_ = Geste();
+  vueSurvol_.clear();
+  commandeActive_ = false;
+  ajuster_ = true;
+  plan::normaliser(mep_);
+  redessiner();
+  if (surSelection) surSelection();
+}
+bool PlanVue::estRepris(const wxString& n) const {
+  for (const wchar_t* q : {L"Nouvelle", L"Dupliquer", L"Face", L"ISO", L"Caméra", L"Projection", L"Coupe", L"Détail", L"Auxiliaire"})
+    if (n == q) return true;
+  return false;
+}
+bool PlanVue::boutonRuban(const wxString& nom) {
+  if (!planPret()) return true;
+  const auto apresVue = [this](const std::string& id) {
+    sel_ = plan::SelectionPlan();
+    sel_.vue = id;
+    redessiner();
+    valider(L"nouvelle vue");
+    if (surSelection) surSelection();
+  };
+  if (nom == L"Nouvelle") {
+    plan::nouvellePlanche(mep_);
+    apresPlanche();
+    valider(L"nouvelle planche");
+    return true;
+  }
+  if (nom == L"Dupliquer") {
+    plan::dupliquerPlanche(mep_, planche_);
+    apresPlanche();
+    valider(L"duplication de planche");
+    return true;
+  }
+  if (nom == L"Face" || nom == L"ISO") {
+    wxBusyCursor attente;
+    apresVue(plan::ajouterVueStandard(mep_, planche_, piece_, calcul_, nom == L"Face" ? "front" : "iso"));
+    return true;
+  }
+  if (nom == L"Caméra") {
+    std::array<double, 3> dir{0, -1, 0};
+    if (directionCamera) directionCamera(dir);
+    wxBusyCursor attente;
+    apresVue(plan::ajouterVueCamera(mep_, planche_, piece_, calcul_, dir));
+    return true;
+  }
+  if (nom == L"Projection") return lancerCommande("proj"), true;
+  if (nom == L"Coupe") return lancerCommande("section"), true;
+  if (nom == L"Détail") return lancerCommande("detail"), true;
+  if (nom == L"Auxiliaire") return lancerCommande("aux"), true;
+  return false;
+}
 
 // ---- Pour le panneau ----
 void PlanVue::editer(const wxString& libelle, const std::function<void()>& f) {
@@ -529,6 +665,27 @@ void PlanVue::enfonce(double x, double y, bool maj, bool ctrl, double px, double
   const bool ajout = maj || ctrl;
   J& sh = planche();
   const double z = zoomRelatif();
+  if (commandeActive_) {
+    wxBusyCursor attente;
+    commande_.curX = x, commande_.curY = y, commande_.aCur = true;
+    const plan::SuiteCommande r = plan::cliqueCommande(mep_, planche_, piece_, calcul_, commande_, x, y, maj, z);
+    const bool choix = !r.select.empty() && r.select != sel_.vue;
+    if (!r.select.empty()) {
+      sel_ = plan::SelectionPlan();
+      sel_.vue = r.select;
+    }
+    if (r.fini) commandeActive_ = false;
+    if (r.change) {
+      redessiner();
+      valider(L"nouvelle vue");
+    } else if (choix) {
+      redessiner();
+    }
+    if (surEtat && !r.message.empty()) surEtat(wxString::FromUTF8(r.message));
+    if ((r.change || choix) && surSelection) surSelection();
+    Refresh(false);
+    return;
+  }
   const auto toutEffacer = [&]() { sel_ = plan::SelectionPlan(); };
   Geste g;
   g.px0 = px, g.py0 = py, g.curX = x, g.curY = y, g.ajout = ajout;
@@ -859,6 +1016,47 @@ void PlanVue::peindreSelection(wxDC& dc) {
   if (!vueSurvol_.empty() && vueSurvol_ != sel_.vue && !sel_.lotVues.count(vueSurvol_)) cadre(vueSurvol_, false);
   if (!sel_.vue.empty()) cadre(sel_.vue, true);
   for (const std::string& id : sel_.lotVues) cadre(id, true);
+  if (commandeActive_) {  // mepVcmdDraw
+    const plan::ApercuCommande a = plan::apercuCommande(mep_, planche_, piece_, calcul_, commande_, zoomRelatif());
+    const auto X = [&](double q) { return static_cast<int>(ox + q * zoom_); };
+    const auto Y = [&](double q) { return static_cast<int>(oy + q * zoom_); };
+    const auto L = [&](double q) { return static_cast<int>(q * zoom_); };
+    for (const auto& r : a.cadres) {
+      dc.SetPen(wxPen(bleu, 1, r.fantome ? wxPENSTYLE_SHORT_DASH : wxPENSTYLE_SOLID));
+      dc.DrawRectangle(X(r.x), Y(r.y), L(r.w), L(r.h));
+    }
+    for (const auto& r : a.ronds) {
+      dc.SetPen(wxPen(bleu, 1, r.fantome ? wxPENSTYLE_SHORT_DASH : wxPENSTYLE_SOLID));
+      dc.DrawCircle(X(r.x), Y(r.y), std::max(1, L(r.r)));
+    }
+    for (const auto& s : a.traits) {
+      const wxColour coul = s.mauvais ? wxColour(0xff, 0x45, 0x3a) : bleu;
+      dc.SetPen(wxPen(coul, FromDIP(2)));
+      dc.DrawLine(X(s.x1), Y(s.y1), X(s.x2), Y(s.y2));
+      if (s.fleche) {
+        const double an = std::atan2(s.y2 - s.y1, s.x2 - s.x1), n = FromDIP(8);
+        for (const double b : {an + 2.7, an - 2.7}) dc.DrawLine(X(s.x2), Y(s.y2), X(s.x2) + static_cast<int>(n * std::cos(b)), Y(s.y2) + static_cast<int>(n * std::sin(b)));
+      }
+    }
+    if (a.aSnap) {
+      const int h = FromDIP(5);
+      dc.SetPen(wxPen(a.snapAxe ? wxColour(0xff, 0x45, 0x3a) : wxColour(0xff, 0xd6, 0x0a), FromDIP(2)));
+      dc.DrawRectangle(X(a.snapX) - h, Y(a.snapY) - h, 2 * h, 2 * h);
+    }
+    dc.SetFont(GetFont());
+    dc.SetTextForeground(bleu);
+    if (!a.texte.empty()) dc.DrawText(wxString::FromUTF8(a.texte), X(a.tx), Y(a.ty));
+    for (const plan::BoutonCoupe& b : a.boutons) {
+      dc.SetBrush(wxBrush(b.act == "ok" ? wxColour(0x30, 0xd1, 0x58) : wxColour(0x2b, 0x2e, 0x34)));
+      dc.SetPen(wxPen(wxColour(0xc9, 0xcc, 0xd1)));
+      dc.DrawRoundedRectangle(X(b.x), Y(b.y), L(b.w), L(b.h), FromDIP(3));
+      dc.SetTextForeground(*wxWHITE);
+      const wxString lab = b.act == "ok" ? wxString(L"✓") : wxString(L"↶");
+      const wxSize tl = dc.GetTextExtent(lab);
+      dc.DrawText(lab, X(b.x) + (L(b.w) - tl.x) / 2, Y(b.y) + (L(b.h) - tl.y) / 2);
+    }
+    dc.SetBrush(*wxTRANSPARENT_BRUSH);
+  }
   if (geste_.sorte == Geste::CADRE && geste_.commence) {
     const bool capture = geste_.curX < geste_.ox;
     dc.SetPen(wxPen(capture ? wxColour(0x30, 0xd1, 0x58) : bleu, 1, capture ? wxPENSTYLE_SHORT_DASH : wxPENSTYLE_SOLID));
@@ -899,10 +1097,13 @@ void PlanVue::essaiGeste(const J& e) {
     bouge(x, y, pixelsX(x), pixelsY(y));
   }
   if (e.contains("lache")) relache();
+  if (e.contains("bouton")) boutonRuban(wxString::FromUTF8(e["bouton"].get<std::string>()));
   if (e.contains("touche")) {
     const std::string t = e["touche"];
     if (t == "Suppr") supprimer();
-    if (t == "Echap") viderSelection();
+    if (t == "Echap") commandeActive_ ? finirCommande(wxString()) : viderSelection();
+    if (t == "Entree") plan::validerCoupe(commande_);
+    if (t == "Retour") plan::annulerPointCoupe(commande_);
   }
 }
 
@@ -998,6 +1199,11 @@ void PlanVue::charger(const std::string& texteDoc, const Document& d, const Resu
   if (planche_ < 0 || planche_ >= static_cast<int>(mep_["sheets"].size())) planche_ = 0;
   aJour_ = true;
   ajuster_ = true;
+  // Une planche vide reçoit ses vues d'elle-même, sans étape d'annulation
+  try {
+    if (plan::vuesAutomatiques(mep_, planche_, piece_, calcul_) && surVuesAutomatiques) surVuesAutomatiques(mep_);
+  } catch (const std::exception&) {
+  }
   construire();
   imageBonne_ = false;
   Refresh();
@@ -1015,9 +1221,11 @@ void PlanVue::changerPlanche(int i) {
   if (i == planche_ || !mep_.contains("sheets") || i >= static_cast<int>(mep_["sheets"].size())) return;
   wxBusyCursor attente;
   planche_ = i;
+  mep_["cur"] = i;
   sel_ = plan::SelectionPlan();
   geste_ = Geste();
   vueSurvol_.clear();
+  commandeActive_ = false;
   ajuster_ = true;
   construire();
   imageBonne_ = false;

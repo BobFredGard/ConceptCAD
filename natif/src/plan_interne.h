@@ -1,6 +1,7 @@
 // Les aides du dessin de planche, partagées entre plan.cpp et plan_cotes.cpp
 #pragma once
 #include <cmath>
+#include <optional>
 #include <set>
 
 #include "nombres_js.h"
@@ -256,4 +257,19 @@ bool deplacerCoteDans(Ctx& c, J& d, double x, double y, const GesteCote& g);
 void inverserAngleDans(Ctx& c, J& d);
 Ctx contexteGeste(J& mep, int planche, const Piece& p, Calcul& calc);
 void suivreLiensCoupes(Ctx& c);  // mepCutFollowAll
+void liensAutoCoupe(Ctx& c, J& v);  // mepCutAutoRefs
+struct Accroche {  // mepSnapPt
+  double x = 0, y = 0;
+  bool hit = false;
+  std::string t, vid;
+};
+Accroche accrocher(Ctx& c, double x, double y, double zoom);
+struct EntTouchee {  // mepHitViewEnt
+  std::string vid;
+  int i = -1;
+  Ent e;
+  double lx = 0, ly = 0;
+};
+std::optional<EntTouchee> entiteSousCurseur(Ctx& c, double x, double y, double zoom, bool avecAxes);
+void surfaceUtile(const J& sh, double& ix, double& iy, double& iw, double& ih);  // mepPageDim
 }  // namespace plan

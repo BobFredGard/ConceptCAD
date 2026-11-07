@@ -2804,32 +2804,7 @@ bool ajouterBrisure(J& mep, int planche, const Piece& p, Calcul& calc, const std
   M->c.push_back(M->c[m] + std::max(2.0, L / 4));
   M->refs.push_back(J());
   coupeDepuisModele(c.sh, *v, *M);
-  J* par = vueParId(c.sh, chaine((*v)["section"], "pid"));
-  auto N = par ? modeleCoupe(*v) : std::nullopt;
-  if (!N) return true;
-  std::vector<CandidatCoupe> cands;
-  bool lus = false;
-  for (size_t k = 0; k < N->c.size(); k++) {
-    if (N->refs[k].is_object()) continue;
-    if (!lus) cands = candidatsCoupe(c, *par, *N), lus = true;
-    const double cv = N->c[k], lo2 = k == 0 ? N->s0 : N->steps[k - 1], hi2 = k == N->c.size() - 1 ? N->sE : N->steps[k];
-    const double a = std::min(lo2, hi2), b = std::max(lo2, hi2);
-    const CandidatCoupe* pick = nullptr;
-    const auto prendre = [&](const std::function<bool(const CandidatCoupe&)>& f) {
-      if (pick) return;
-      for (const CandidatCoupe& q : cands)
-        if (std::abs(q.c - cv) < 0.05 && f(q)) {
-          pick = &q;
-          return;
-        }
-    };
-    prendre([&](const CandidatCoupe& q) { return chaine(q.ref, "t") == "hole" && q.s >= a - 0.05 && q.s <= b + 0.05; });
-    prendre([&](const CandidatCoupe& q) { return chaine(q.ref, "t") == "hole"; });
-    prendre([&](const CandidatCoupe& q) { return chaine(q.ref, "t") == "ax"; });
-    prendre([&](const CandidatCoupe& q) { return chaine(q.ref, "t") == "edge"; });
-    if (pick) N->refs[k] = pick->ref;
-  }
-  coupeDepuisModele(c.sh, *v, *N);
+  liensAutoCoupe(c, *v);
   return true;
 }
 bool enleverBrisure(J& mep, int planche, const Piece& p, Calcul& calc, const std::string& id) {  // mepCutDelBreak
@@ -2869,5 +2844,161 @@ std::string toleranceAuto(J& mep, int planche, const Piece& p, Calcul& calc, con
   Ctx c = contexteGeste(mep, planche, p, calc);
   const Trou* f = trouDe(c, chaine(d, "holeFid"));
   return f && f->kind == "ream" ? f->tolAlesage : std::string();
+}
+void liensAutoCoupe(Ctx& c, J& v) {  // mepCutAutoRefs
+  J* par = vueParId(c.sh, chaine(sous(v, "section"), "pid"));
+  auto N = par ? modeleCoupe(v) : std::nullopt;
+  if (!N) return;
+  std::vector<CandidatCoupe> cands;
+  bool lus = false;
+  for (size_t k = 0; k < N->c.size(); k++) {
+    if (N->refs[k].is_object()) continue;
+    if (!lus) cands = candidatsCoupe(c, *par, *N), lus = true;
+    const double cv = N->c[k], lo2 = k == 0 ? N->s0 : N->steps[k - 1], hi2 = k == N->c.size() - 1 ? N->sE : N->steps[k];
+    const double a = std::min(lo2, hi2), b = std::max(lo2, hi2);
+    const CandidatCoupe* pick = nullptr;
+    const auto prendre = [&](const char* t, bool dansLeMorceau) {
+      if (pick) return;
+      for (const CandidatCoupe& q : cands)
+        if (std::abs(q.c - cv) < 0.05 && chaine(q.ref, "t") == t && (!dansLeMorceau || (q.s >= a - 0.05 && q.s <= b + 0.05))) {
+          pick = &q;
+          return;
+        }
+    };
+    prendre("hole", true);
+    prendre("hole", false);
+    prendre("ax", false);
+    prendre("edge", false);
+    if (pick) N->refs[k] = pick->ref;
+  }
+  coupeDepuisModele(c.sh, v, *N);
+}
+Accroche accrocher(Ctx& c, double sx, double sy, double zoom) {  // mepSnapPt
+  Accroche best;
+  best.x = sx, best.y = sy;
+  double bd = 6 / zoom;
+  const auto consider = [&](double x, double y, const char* t, const std::string& vid) {
+    const double d = std::hypot(x - sx, y - sy);
+    if (d < bd) bd = d, best.x = x, best.y = y, best.hit = true, best.t = t, best.vid = vid;
+  };
+  for (J& v : c.sh["views"]) {
+    const std::string id = chaine(v, "id");
+    const double vx = num(v, "x"), vy = num(v, "y"), s = num(v, "scale");
+    for (const Ent& e : geoDe(c, v).els) {
+      if (e.t == 'L') {
+        const double ax = vx + e.x1 * s, ay = vy + e.y1 * s, bx = vx + e.x2 * s, by = vy + e.y2 * s;
+        consider(ax, ay, "end", id);
+        consider(bx, by, "end", id);
+        consider(vx + (e.x1 + e.x2) / 2 * s, vy + (e.y1 + e.y2) / 2 * s, "mid", id);
+        const double dx = bx - ax, dy = by - ay, L2 = dx * dx + dy * dy;
+        if (L2 > 1e-12) {
+          const double t = std::max(0.0, std::min(1.0, ((sx - ax) * dx + (sy - ay) * dy) / L2));
+          consider(ax + dx * t, ay + dy * t, "onSeg", id);
+        }
+      } else if (e.t == 'C' || e.t == 'A') {
+        const double cx = vx + e.cx * s, cy = vy + e.cy * s, r = e.r * s;
+        consider(cx, cy, "ctr", id);
+        const double a = std::atan2(sy - cy, sx - cx);
+        if (e.t == 'C') {
+          consider(cx + r * std::cos(a), cy + r * std::sin(a), "onC", id);
+        } else {
+          double aa = a;
+          const double lo = std::min(e.a0, e.a1), hi = std::max(e.a0, e.a1);
+          double an = a;
+          while (an < lo) an += 2 * PI;
+          while (an - 2 * PI >= lo) an -= 2 * PI;
+          if (an > hi) aa = std::abs(a - e.a0) < std::abs(a - e.a1) ? e.a0 : e.a1;
+          else aa = an;
+          consider(cx + r * std::cos(aa), cy + r * std::sin(aa), "onC", id);
+        }
+      }
+    }
+  }
+  for (J& v : c.sh["views"]) {
+    const std::string id = chaine(v, "id");
+    const double vx = num(v, "x"), vy = num(v, "y"), s = num(v, "scale");
+    for (const Axe& p : lignesAxes(c, v)) {
+      if (p.t == 'L') {
+        const double ax = vx + p.x1 * s, ay = vy + p.y1 * s, bx = vx + p.x2 * s, by = vy + p.y2 * s;
+        for (const auto& q : {std::array<double, 2>{ax, ay}, std::array<double, 2>{bx, by}}) {  // extrémités prioritaires
+          const double d = std::hypot(q[0] - sx, q[1] - sy) * 0.6;
+          if (d < bd) bd = d, best.x = q[0], best.y = q[1], best.hit = true, best.t = "axEnd", best.vid = id;
+        }
+        consider((ax + bx) / 2, (ay + by) / 2, "axMid", id);
+        const double dx = bx - ax, dy = by - ay, L2 = dx * dx + dy * dy;
+        if (L2 > 1e-12) {
+          const double t = std::max(0.0, std::min(1.0, ((sx - ax) * dx + (sy - ay) * dy) / L2));
+          consider(ax + dx * t, ay + dy * t, "onAx", id);
+        }
+      } else if (p.t == 'C') {
+        const double cx = vx + p.cx * s, cy = vy + p.cy * s, r = p.r * s;
+        consider(cx, cy, "ctr", id);
+        const double a = std::atan2(sy - cy, sx - cx);
+        consider(cx + r * std::cos(a), cy + r * std::sin(a), "onAx", id);
+      }
+    }
+  }
+  if (vrai(c.sh, "sk") && sous(c.sh["sk"], "pts").is_object()) {
+    for (auto it = c.sh["sk"]["pts"].begin(); it != c.sh["sk"]["pts"].end(); ++it) consider(num(it.value(), "x"), num(it.value(), "y"), "skPt", "");
+  }
+  return best;
+}
+std::optional<EntTouchee> entiteSousCurseur(Ctx& c, double sx, double sy, double zoom, bool avecAxes) {  // mepHitViewEnt
+  std::optional<EntTouchee> best;
+  double bd = 4 / zoom;
+  const auto trait = [](double lx, double ly, double x1, double y1, double x2, double y2) {
+    const double dx = x2 - x1, dy = y2 - y1, L2 = dx * dx + dy * dy;
+    const double t = L2 > 1e-12 ? std::max(0.0, std::min(1.0, ((lx - x1) * dx + (ly - y1) * dy) / L2)) : 0;
+    return std::hypot(lx - (x1 + dx * t), ly - (y1 + dy * t));
+  };
+  if (avecAxes) {
+    for (J& v : c.sh["views"]) {
+      const double s = num(v, "scale"), lx = (sx - num(v, "x")) / s, ly = (sy - num(v, "y")) / s;
+      for (const Axe& p : lignesAxes(c, v)) {
+        double d;
+        if (p.t == 'L') d = trait(lx, ly, p.x1, p.y1, p.x2, p.y2) * s;
+        else if (p.t == 'C') d = std::abs(std::hypot(lx - p.cx, ly - p.cy) - p.r) * s;
+        else continue;
+        if (d < bd) {
+          bd = d;
+          EntTouchee o;
+          o.vid = chaine(v, "id"), o.i = -1, o.lx = lx, o.ly = ly;
+          o.e.t = p.t, o.e.x1 = p.x1, o.e.y1 = p.y1, o.e.x2 = p.x2, o.e.y2 = p.y2, o.e.cx = p.cx, o.e.cy = p.cy, o.e.r = p.r;
+          best = o;
+        }
+      }
+    }
+    if (best) bd *= 1.001;  // à égalité, l'arête réelle l'emporte
+  }
+  for (J& v : c.sh["views"]) {
+    const double s = num(v, "scale"), lx = (sx - num(v, "x")) / s, ly = (sy - num(v, "y")) / s;
+    const std::vector<Ent>& els = geoDe(c, v).els;
+    for (int i = 0; i < static_cast<int>(els.size()); i++) {
+      const Ent& e = els[i];
+      double d;
+      if (e.t == 'L') {
+        d = trait(lx, ly, e.x1, e.y1, e.x2, e.y2) * s;
+      } else if (e.t == 'C') {
+        d = std::abs(std::hypot(lx - e.cx, ly - e.cy) - e.r) * s;
+      } else if (e.t == 'A') {
+        const double dx = lx - e.cx, dy = ly - e.cy, dh = std::hypot(dx, dy), a = std::atan2(dy, dx);
+        const double lo = std::min(e.a0, e.a1), hi = std::max(e.a0, e.a1);
+        double an = a;
+        while (an < lo) an += 2 * PI;
+        while (an - 2 * PI >= lo) an -= 2 * PI;
+        if (dh < 1e-9 || an > hi) d = std::min(std::hypot(lx - (e.cx + e.r * std::cos(e.a0)), ly - (e.cy + e.r * std::sin(e.a0))), std::hypot(lx - (e.cx + e.r * std::cos(e.a1)), ly - (e.cy + e.r * std::sin(e.a1)))) * s;
+        else d = std::abs(dh - e.r) * s;
+      } else {
+        continue;
+      }
+      if (d < bd) {
+        bd = d;
+        EntTouchee o;
+        o.vid = chaine(v, "id"), o.i = i, o.e = e, o.lx = lx, o.ly = ly;
+        best = o;
+      }
+    }
+  }
+  return best;
 }
 }  // namespace plan

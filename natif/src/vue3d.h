@@ -34,6 +34,8 @@ class Vue3D : public wxWindow {
   bool image(const wxString& chemin);
   // L'image ombrée d'une vue de mise en plan : hors écran, fond transparent, seulement ces corps
   bool imagePlan(const plan::DemandeImage& d, wxImage& sortie);
+  // mepAddCameraView : de la cible vers l'œil
+  bool directionCamera(std::array<double, 3>& d) const;
   void montrerFilets(const std::vector<std::vector<gp_Pnt>>& helices, const std::vector<std::vector<gp_Pnt>>& anneaux);
   // cgDraw : plans translucides, axes en pointillés, points, repères. Rien de tout cela ne se clique ici : on les choisit dans l'arbre ou les listes.
   struct DessinConstruction {

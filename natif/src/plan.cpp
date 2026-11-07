@@ -2430,4 +2430,8 @@ std::string versSvg(const std::vector<Elt>& e, const J& planche, const Style& s)
   o << "</svg>\n";
   return o.str();
 }
+void surfaceUtile(const J& sh, double& ix, double& iy, double& iw, double& ih) {
+  const Page p = pageDe(sh);
+  ix = p.ix, iy = p.iy, iw = p.iw, ih = p.ih;
+}
 }  // namespace plan

@@ -58,6 +58,11 @@ class PlanVue : public wxWindow {
   std::string toleranceAutoPercage(const plan::J& d) { return plan::toleranceAuto(mep_, planche_, piece_, calcul_, d); }
   void supprimerSelection() { supprimer(); }
   void viderSelection();
+  // Le ruban de la mise en plan. Faux : pas encore repris.
+  bool boutonRuban(const wxString& nom);
+  bool estRepris(const wxString& nom) const;
+  std::function<bool(std::array<double, 3>&)> directionCamera;
+  std::function<void(const plan::J&)> surVuesAutomatiques;
   // Les gestes de l'essai automatique, en mm sur la feuille
   void essaiGeste(const plan::J& e);
   // Le rendu des vues ombrées : c'est la vue 3D qui sait le faire
@@ -100,6 +105,9 @@ class PlanVue : public wxWindow {
   void supprimer();
   void valider(const wxString& libelle);
   void redessiner();
+  void lancerCommande(const std::string& kind);
+  void finirCommande(const wxString& message);
+  void apresPlanche();
   double zoomRelatif() const { return zoomEntier_ > 0 ? zoom_ / zoomEntier_ : 1; }
   int hauteurOnglets() const;
 
@@ -129,6 +137,9 @@ class PlanVue : public wxWindow {
   } geste_;
   double zoomEntier_ = 0;
   bool grille_ = false;
+  bool commandeActive_ = false;
+  plan::CommandeVue commande_;
+  std::vector<wxRect> actionsOnglets_;
   std::string coteAppui_;
   wxLongLong tempsAppui_ = 0;
   double appuiPx_ = 0, appuiPy_ = 0;
