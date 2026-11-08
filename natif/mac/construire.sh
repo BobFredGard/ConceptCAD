@@ -22,7 +22,7 @@ cp -R "$B/ConceptCADNatif.app" "$APP"
 mkdir -p "$APP/Contents/Resources"
 iconutil -c icns "$ICI/ConceptCAD.iconset" -o "$APP/Contents/Resources/ConceptCAD.icns"
 # Les bibliothèques dans l'application, pour qu'elle marche sur un Mac qui n'a rien installé
-dylibbundler -of -b -x "$APP/Contents/MacOS/ConceptCADNatif" -d "$APP/Contents/Frameworks" \
+dylibbundler -of -cd -b -x "$APP/Contents/MacOS/ConceptCADNatif" -d "$APP/Contents/Frameworks" \
   -p @executable_path/../Frameworks/ -s "$P/lib" > "$S/dylibbundler.txt"
 # Signature locale (sans compte développeur Apple) : obligatoire sur les puces Apple
 codesign --force --deep --sign - "$APP"
