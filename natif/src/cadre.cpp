@@ -635,7 +635,7 @@ void Cadre::creerEnvironnement() {
   {
     bool essai = false;
     for (int i = 1; i < wxTheApp->argc; i++) essai = essai || wxString(wxTheApp->argv[i]).StartsWith(L"--");
-    std::ifstream f(memoireVue().ToStdWstring());
+    std::ifstream f(cheminFlux(memoireVue().ToStdWstring()));
     if (f && !essai) {
       try {
         std::stringstream t;
@@ -1014,7 +1014,7 @@ void Cadre::memoriserVue() {
   if (essaiMenu_) return;
   const OptionsVue& o = optionsVue_;
   plan::J j = {{"env", o.env}, {"sol", o.sol}, {"miroir", o.miroir}, {"ombre", o.ombre}, {"aretes", o.aretes}, {"axes", o.axes}, {"zoomInv", o.zoomInverse}, {"libre", o.orbiteLibre}, {"fov", o.fov}};
-  std::ofstream f(memoireVue().ToStdWstring());
+  std::ofstream f(cheminFlux(memoireVue().ToStdWstring()));
   f << j.dump();
 }
 
@@ -1445,7 +1445,7 @@ bool Cadre::importerFichier(const std::wstring& chemin) {
   quitterEsquisse();
   std::string octets;
   {
-    std::ifstream e(chemin, std::ios::binary);
+    std::ifstream e(cheminFlux(chemin), std::ios::binary);
     octets.assign(std::istreambuf_iterator<char>(e), {});
   }
   if (octets.empty()) {
@@ -4421,7 +4421,7 @@ bool Cadre::proprieteConge(const wxString& nom, const wxVariant& valeur) {
 // Scénario : une liste d'étapes {"outil":n} {"clic":[x,y],"ctrl":b} {"bouge":[x,y]} {"droit":[x,y],"choix":"libellé"}
 // {"touche":"Enter"|"Escape"} {"texte":"12"} {"poly":[n,"d"]} {"capture":"nom"} {"annuler":1}. Le bilan note l'état après chaque étape.
 bool Cadre::essaiEsquisse(const std::wstring& fichier, int rang, const std::wstring& sortie, const std::wstring& json, const std::wstring& dossier) {
-  std::ifstream entree(json);
+  std::ifstream entree(cheminFlux(json));
   const nlohmann::json etapes = nlohmann::json::parse(entree);
   essaiSansBoite_ = true;
   if (!ouvrir(fichier)) return false;
@@ -5037,7 +5037,7 @@ bool Cadre::essaiEsquisse(const std::wstring& fichier, int rang, const std::wstr
       try {
         n["trouve"] = panneauPlan_->essai(e["reglagePlan"]);
       } catch (const std::exception& ex) {
-        std::ofstream(dossier + SEPW L"erreur.txt") << ex.what();
+        std::ofstream(cheminFlux(dossier + SEPW L"erreur.txt")) << ex.what();
         throw;
       }
     }
@@ -5063,7 +5063,7 @@ bool Cadre::essaiEsquisse(const std::wstring& fichier, int rang, const std::wstr
       if (q.contains("vue")) vue_->vueStandard(q["vue"].get<std::string>());
       if (q.value("fiche", false) != ficheVue_->IsShown()) basculerFicheVue();
       if (q.contains("temps")) {
-        std::ofstream f(wxString::FromUTF8(q["temps"].get<std::string>()).ToStdWstring());
+        std::ofstream f(cheminFlux(wxString::FromUTF8(q["temps"].get<std::string>()).ToStdWstring()));
         f << vue_->msOmbre() << " ms\n";
       }
     }
@@ -5131,7 +5131,7 @@ bool Cadre::essaiEsquisse(const std::wstring& fichier, int rang, const std::wstr
         s["modifie"] = doc_.modifie();
         s["pieces"] = plan::J::array();
         for (const PieceRendu& p : A.pieces()) s["pieces"].push_back({{"id", p.id}, {"occ", p.occ}, {"bid", p.bid}, {"nom", p.nom}, {"cle", p.cle}, {"couleur", p.couleur}, {"propre", p.propre}});
-        std::ofstream(wxString::FromUTF8(q["etat"].get<std::string>()).ToStdWstring()) << s.dump(1);
+        std::ofstream(cheminFlux(wxString::FromUTF8(q["etat"].get<std::string>()).ToStdWstring())) << s.dump(1);
       }
     }
     if (e.contains("atelier")) {
@@ -5165,14 +5165,14 @@ bool Cadre::essaiEsquisse(const std::wstring& fichier, int rang, const std::wstr
     }
     bilan.push_back(std::move(n));
   }
-  std::ofstream(dossier + SEPW L"bilan.json") << bilan.dump(1, ' ', false, nlohmann::json::error_handler_t::replace);
+  std::ofstream(cheminFlux(dossier + SEPW L"bilan.json")) << bilan.dump(1, ' ', false, nlohmann::json::error_handler_t::replace);
   quitterEsquisse();
   wxYield();
   faoFaireSuivre();
   try {
     enregistrerProjet(doc_, sortie);
   } catch (const std::exception& e) {
-    std::ofstream(dossier + SEPW L"erreur.txt") << e.what();
+    std::ofstream(cheminFlux(dossier + SEPW L"erreur.txt")) << e.what();
     throw;
   }
   return true;
@@ -5181,7 +5181,7 @@ bool Cadre::essaiEsquisse(const std::wstring& fichier, int rang, const std::wstr
 // Essai sans vraie souris : de vrais clics passés à la vue, à l'emplacement de chaque arête à l'écran. Ne prend pas la main.
 // mids.json : {"chanfrein":false,"r":2,"tangent":true,"mids":[[x,y,z],...]}
 bool Cadre::essaiGestesConge(const std::wstring& fichier, const std::wstring& sortie, const std::wstring& json, const std::wstring& dossier) {
-  std::ifstream entree(json);
+  std::ifstream entree(cheminFlux(json));
   const nlohmann::json j = nlohmann::json::parse(entree);
   if (!ouvrir(fichier)) return false;
   wxYield();
@@ -5260,7 +5260,7 @@ bool Cadre::essaiGestesConge(const std::wstring& fichier, const std::wstring& so
   bilan["apresRetablir"] = doc_.fonctions.size();
   bilan["volumeRetabli"] = mesurer(forme_).volume;
   enregistrerProjet(doc_, sortie);
-  std::ofstream(dossier + SEPW L"bilan.json") << bilan.dump(1);
+  std::ofstream(cheminFlux(dossier + SEPW L"bilan.json")) << bilan.dump(1);
   return true;
 }
 
@@ -5382,5 +5382,5 @@ void Cadre::renduEssai(const plan::J& e) {
     for (int i = 0; i < w * h; i++) im.SetRGB(i % w, i / w, px[4 * i], px[4 * i + 1], px[4 * i + 2]);
     im.SaveFile(wxString::FromUTF8(e["image"].get<std::string>()), wxBITMAP_TYPE_PNG);
   }
-  std::ofstream(wxString::FromUTF8(e["image"].get<std::string>() + ".txt").ToStdWstring()) << "ok " << ok << " passes " << m.passes() << " ms/passe " << total / std::max(1, n) << " erreur " << m.erreur << "\n";
+  std::ofstream(cheminFlux(wxString::FromUTF8(e["image"].get<std::string>() + ".txt").ToStdWstring())) << "ok " << ok << " passes " << m.passes() << " ms/passe " << total / std::max(1, n) << " erreur " << m.erreur << "\n";
 }

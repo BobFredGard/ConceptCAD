@@ -124,7 +124,7 @@ TopoDS_Shape lireStep(const std::string& octets) {
 
 TopoDS_Shape lireStl(const std::string& octets) {
   const std::wstring t = cheminTemporaire(L".stl");
-  std::ofstream(t, std::ios::binary) << octets;
+  std::ofstream(cheminFlux(t), std::ios::binary) << octets;
   occ::handle<Poly_Triangulation> tri = RWStl::ReadFile(utf8(t).c_str());
   _wremove(t.c_str());
   if (tri.IsNull() || tri->NbTriangles() < 1) throw std::runtime_error("STL illisible");
@@ -177,7 +177,7 @@ void exporterStep(const std::vector<TopoDS_Shape>& formes, const std::wstring& c
   std::ostringstream flux;
   if (ecrivain.WriteStream(flux) != IFSelect_RetDone) throw std::runtime_error("écriture refusée par le noyau");
   Interface_Static::SetIVal("write.surfacecurve.mode", 1);
-  std::ofstream sortie(chemin, std::ios::binary);
+  std::ofstream sortie(cheminFlux(chemin), std::ios::binary);
   sortie << flux.str();
   if (!sortie) throw std::runtime_error("écriture du fichier impossible");
 }
@@ -206,7 +206,7 @@ void exporterStl(const std::vector<TopoDS_Shape>& formes, const std::wstring& ch
   uint32_t n = 0;
   chaqueTriangle(formes, [&](const gp_Pnt&, const gp_Pnt&, const gp_Pnt&) { n++; });
   if (!n) throw std::runtime_error("rien à exporter");
-  std::ofstream s(chemin, std::ios::binary);
+  std::ofstream s(cheminFlux(chemin), std::ios::binary);
   const char tete[80] = {};
   s.write(tete, 80);
   s.write(reinterpret_cast<const char*>(&n), 4);
@@ -222,7 +222,7 @@ void exporterStl(const std::vector<TopoDS_Shape>& formes, const std::wstring& ch
 }
 
 void exporterObj(const std::vector<TopoDS_Shape>& formes, const std::wstring& chemin) {
-  std::ofstream s(chemin, std::ios::binary);
+  std::ofstream s(cheminFlux(chemin), std::ios::binary);
   s << "# ConceptCAD\n";
   s.precision(9);
   size_t n = 0, parties = 0;

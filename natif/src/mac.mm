@@ -11,8 +11,9 @@
 
 occ::handle<Aspect_Window> fenetreOcct(wxWindow* w) {
   NSView* vue = (NSView*)w->GetHandle();
-  // Écran Retina : OCCT dessine à la vraie résolution, comme sous Windows avec la mise à l'échelle
-  [vue setWantsBestResolutionOpenGLSurface:YES];
+  // Écran Retina : les positions de la souris arrivent en points, pas en pixels. Pour que les clics tombent
+  // juste sans tout reprendre, OCCT dessine pour l'instant en points (image un peu moins fine sur Retina).
+  [vue setWantsBestResolutionOpenGLSurface:NO];
   return new Cocoa_Window(vue);
 }
 

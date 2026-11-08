@@ -72,7 +72,7 @@ nlohmann::ordered_json decrirePiece(const normalises::Piece& sp) {
 // --mesures : les mêmes paires que le navigateur, sans fenêtre
 int modeMesures(const std::vector<std::wstring>& a) {
   using J = nlohmann::ordered_json;
-  std::ifstream f(a[1], std::ios::binary);
+  std::ifstream f(cheminFlux(a[1]), std::ios::binary);
   std::stringstream ss;
   ss << f.rdbuf();
   const J e = J::parse(ss.str());
@@ -104,7 +104,7 @@ int modeMesures(const std::vector<std::wstring>& a) {
     s["texte"] = texte;
     sortie.push_back(s);
   }
-  std::ofstream o(a[2], std::ios::binary);
+  std::ofstream o(cheminFlux(a[2]), std::ios::binary);
   o << sortie.dump(0, ' ', false, J::error_handler_t::replace);
   return 0;
 }
@@ -139,17 +139,17 @@ int modePlan(const std::vector<std::wstring>& a) {
     }
     sortie.push_back(L);
   }
-  std::ofstream o(a[2], std::ios::binary);
+  std::ofstream o(cheminFlux(a[2]), std::ios::binary);
   o << sortie.dump(0, ' ', false, J::error_handler_t::replace);
   return 0;
 }
 int modeNormalises(const std::vector<std::wstring>& a) {
   using J = nlohmann::ordered_json;
-  std::ifstream f(a[1], std::ios::binary);
+  std::ifstream f(cheminFlux(a[1]), std::ios::binary);
   std::stringstream ss;
   ss << f.rdbuf();
   const J cas = J::parse(ss.str());
-  std::ofstream s(a[2], std::ios::binary);
+  std::ofstream s(cheminFlux(a[2]), std::ios::binary);
   s << "[\n";
   bool premier = true;
   for (const J& c : cas) {
@@ -513,7 +513,7 @@ int modeConge(const std::vector<std::wstring>& a) {
   try {
     Document d = lireProjet(a[1]);
     const ResultatRejeu r = rejouer(d);
-    std::ifstream entree(a[3]);
+    std::ifstream entree(cheminFlux(a[3]));
     const nlohmann::json j = nlohmann::json::parse(entree);
     ChoixConge c(d, r.forme, j.value("chanfrein", false), j.value("r", 2.0), j.value("tangent", true));
     nlohmann::json sortie, vives = nlohmann::json::array(), lisses = nlohmann::json::array();
@@ -563,7 +563,7 @@ int modeConge(const std::vector<std::wstring>& a) {
         sortie["ecrit"] = true;
       }
     }
-    std::ofstream(a[4]) << sortie.dump();
+    std::ofstream(cheminFlux(a[4])) << sortie.dump();
     return 0;
   } catch (const std::exception& e) {
     fprintf(stderr, "%s\n", e.what());
@@ -593,7 +593,7 @@ int modeEsquissesFaces(const std::vector<std::wstring>& a) {
       }
       liste.push_back(j);
     }
-    std::ofstream(a[2].c_str(), std::ios::binary) << liste.dump();
+    std::ofstream(cheminFlux(a[2].c_str()), std::ios::binary) << liste.dump();
     return 0;
   } catch (const std::exception& e) {
     fprintf(stderr, "%s\n", e.what());
@@ -606,7 +606,7 @@ int modeDessiner(const std::vector<std::wstring>& a) {
   try {
     Document d = lireProjet(a[1]);
     const std::string id = utf8(a[3]);
-    std::ifstream in(a[4].c_str(), std::ios::binary);
+    std::ifstream in(cheminFlux(a[4].c_str()), std::ios::binary);
     std::stringstream ss;
     ss << in.rdbuf();
     const nlohmann::json script = nlohmann::json::parse(ss.str());
@@ -689,7 +689,7 @@ class Appli : public wxApp {
       cadre->SetClientSize(cadre->FromDIP(wxSize(1500, 900)));
       cadre->Update();
       wxYield();
-      try { if (!cadre->essaiEsquisse(gArgs[1], _wtoi(gArgs[2].c_str()), gArgs[3], gArgs[4], gArgs[5])) exit(3); } catch (const std::exception& ex) { std::ofstream(gArgs[5] + SEPW L"erreur.txt") << ex.what(); exit(4); }
+      try { if (!cadre->essaiEsquisse(gArgs[1], _wtoi(gArgs[2].c_str()), gArgs[3], gArgs[4], gArgs[5])) exit(3); } catch (const std::exception& ex) { std::ofstream(cheminFlux(gArgs[5] + SEPW L"erreur.txt")) << ex.what(); exit(4); }
       cadre->Close(true);
     } else if (gArgs.size() >= 5 && gArgs[0] == L"--essai-conge") {
       // --essai-conge <fichier> <sortie> <gestes.json> <dossier> : de vrais clics dans la vue, des images, puis fermeture

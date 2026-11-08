@@ -598,7 +598,7 @@ const std::vector<Def>& catalogue() {
 }  // namespace
 
 std::shared_ptr<const ImageHdri> lireHdri(const std::wstring& chemin, std::string& erreur) {
-  std::ifstream f(chemin, std::ios::binary);
+  std::ifstream f(cheminFlux(chemin), std::ios::binary);
   if (!f) {
     erreur = "fichier introuvable";
     return nullptr;

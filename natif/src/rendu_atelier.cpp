@@ -123,7 +123,7 @@ AtelierRendu::AtelierRendu(wxWindow* parent) : wxWindow(parent, wxID_ANY), minut
 AtelierRendu::~AtelierRendu() { minuteur_.Stop(); }
 
 void AtelierRendu::lireMemoire() {
-  std::ifstream f(cheminMemoire().ToStdWstring());
+  std::ifstream f(cheminFlux(cheminMemoire().ToStdWstring()));
   if (!f) return;
   try {
     std::stringstream t;
@@ -206,7 +206,7 @@ void AtelierRendu::fermer() {
   minuteur_.Stop();
   if (memoireSale_) {
     memoireSale_ = false;
-    std::ofstream(cheminMemoire().ToStdWstring()) << versJson(st).dump(1);
+    std::ofstream(cheminFlux(cheminMemoire().ToStdWstring())) << versJson(st).dump(1);
   }
   // Ne garde pas la mémoire de la carte graphique pour rien
   rayons_ = Etat();
@@ -378,7 +378,7 @@ void AtelierRendu::pasDeCalcul() {
   if (memoireSale_ && (maintenant() - dernierEcrit_).ToDouble() > 2000) {
     memoireSale_ = false;
     dernierEcrit_ = maintenant();
-    std::ofstream(cheminMemoire().ToStdWstring()) << versJson(st).dump(1);
+    std::ofstream(cheminFlux(cheminMemoire().ToStdWstring())) << versJson(st).dump(1);
   }
   if (!actif_ || exporte_ || pieces_.empty()) return;
   const wxRect c = cadreImage();

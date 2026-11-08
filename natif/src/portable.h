@@ -2,6 +2,25 @@
 // (CMakeLists.txt, -include). Sous Windows, seuls SEPW et IMPRIMER_FENETRE servent, et donnent exactement le code d'avant.
 #pragma once
 
+// Ouvrir un fichier par un chemin en wstring : Visual Studio l'accepte directement, pas le Mac.
+// Sous Windows, cheminFlux rend son argument tel quel (code identique) ; sur Mac, un std::filesystem::path.
+#ifdef __cplusplus
+#ifdef _WIN32
+template <class T>
+inline const T& cheminFlux(const T& t) { return t; }
+#else
+#include <filesystem>
+#include <string>
+inline std::filesystem::path cheminFlux(const std::wstring& w) { return std::filesystem::path(w); }
+inline std::filesystem::path cheminFlux(const wchar_t* w) { return std::filesystem::path(w); }
+inline const std::string& cheminFlux(const std::string& s) { return s; }
+inline const char* cheminFlux(const char* s) { return s; }
+inline const std::filesystem::path& cheminFlux(const std::filesystem::path& p) { return p; }
+template <class T>
+inline auto cheminFlux(const T& t) -> decltype(std::filesystem::path(t.ToStdWstring())) { return std::filesystem::path(t.ToStdWstring()); }
+#endif
+#endif
+
 #ifdef _WIN32
 #define SEPW L"\\"
 // Photo d'une fenêtre avec ce que dessine OpenGL (2 : PW_RENDERFULLCONTENT)
@@ -77,6 +96,7 @@ inline const wchar_t* _wgetenv(const wchar_t* nom) {
   return r.c_str();
 }
 inline int _wtoi(const wchar_t* s) { return static_cast<int>(std::wcstol(s, nullptr, 10)); }
+inline double _wtof(const wchar_t* s) { return std::wcstod(s, nullptr); }
 inline int _wcsicmp(const wchar_t* a, const wchar_t* b) { return wcscasecmp(a, b); }
 inline int _stricmp(const char* a, const char* b) { return strcasecmp(a, b); }
 inline int localtime_s(std::tm* r, const std::time_t* t) { return localtime_r(t, r) ? 0 : 1; }

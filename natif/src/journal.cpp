@@ -74,7 +74,7 @@ std::string nettoyer(const std::string& s, size_t maxi) {
 }
 void ecrire() {
   try {
-    std::ofstream f(fichier(), std::ios::binary | std::ios::trunc);
+    std::ofstream f(cheminFlux(fichier()), std::ios::binary | std::ios::trunc);
     f << J(liste).dump(1, ' ', false, J::error_handler_t::replace);
   } catch (...) {
   }
@@ -104,7 +104,7 @@ LONG WINAPI plantage(EXCEPTION_POINTERS* x) {
 
 void demarrer() {
   try {
-    std::ifstream f(fichier(), std::ios::binary);
+    std::ifstream f(cheminFlux(fichier()), std::ios::binary);
     if (f) {
       const J t = J::parse(f, nullptr, false);
       if (t.is_array()) {

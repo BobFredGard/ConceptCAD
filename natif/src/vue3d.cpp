@@ -677,7 +677,7 @@ bool Vue3D::imagePlan(const plan::DemandeImage& d, wxImage& sortie, const Option
   else cam->SetScale(aspect < 1 ? d.r - d.l : d.b - d.t);
   vueImage_->ZFitAll();
   if (const char* jr = std::getenv("CCN_DIAG_IMAGE")) {  // diagnostic : où OCCT pose deux points connus
-    std::ofstream L(jr, std::ios::app);
+    std::ofstream L(cheminFlux(jr), std::ios::app);
     const double hw = (d.r - d.l) / 2, hh = (d.b - d.t) / 2;
     for (int k = 0; k < 2; k++) {
       const plan::V3 ax = k ? d.v : d.u;

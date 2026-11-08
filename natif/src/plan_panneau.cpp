@@ -274,7 +274,7 @@ wxString dossierReglages() {
 wxString fichierBibliotheque() { return dossierReglages() + SEPW L"cartouches.json"; }
 J bibliotheque() {
   J b;
-  std::ifstream e(fichierBibliotheque().ToStdWstring());
+  std::ifstream e(cheminFlux(fichierBibliotheque().ToStdWstring()));
   if (e) {
     try {
       b = J::parse(e);
@@ -285,7 +285,7 @@ J bibliotheque() {
   if (!b.contains("tbs") || !b["tbs"].is_object()) b["tbs"] = J::object();
   return b;
 }
-void ecrireBibliotheque(const J& b) { std::ofstream(fichierBibliotheque().ToStdWstring()) << b.dump(1); }
+void ecrireBibliotheque(const J& b) { std::ofstream(cheminFlux(fichierBibliotheque().ToStdWstring())) << b.dump(1); }
 const char* const CLES_VALEURS[] = {"projet", "client", "societe", "quantite", "nplan", "auteur", "verif", "matiere", "traitement", "tth", "tolgen", "etat", "masse", "revFmt"};
 bool modeleValide(const J& o) {
   if (!o.is_object()) return false;
@@ -398,7 +398,7 @@ void PanneauPlan::modelesCartouche() {
     wxFileDialog dlg(this, L"Charger un cartouche", wxEmptyString, wxEmptyString, L"Cartouches (*.mfcartouche;*.json)|*.mfcartouche;*.json", wxFD_OPEN | wxFD_FILE_MUST_EXIST);
     if (dlg.ShowModal() != wxID_OK) return;
     J f;
-    std::ifstream e(dlg.GetPath().ToStdWstring());
+    std::ifstream e(cheminFlux(dlg.GetPath().ToStdWstring()));
     try {
       f = J::parse(e);
     } catch (const std::exception&) {
@@ -441,7 +441,7 @@ void PanneauPlan::modelesCartouche() {
       if (std::strchr("\\/:*?\"<>|", c)) c = '-';
     wxFileDialog dlg(this, L"Exporter les cartouches", wxEmptyString, tx(fic) + L".mfcartouche", L"Cartouches (*.mfcartouche)|*.mfcartouche", wxFD_SAVE | wxFD_OVERWRITE_PROMPT);
     if (dlg.ShowModal() != wxID_OK) return;
-    std::ofstream(dlg.GetPath().ToStdWstring()) << J{{"format", "miniFusion-cartouches"}, {"v", 1}, {"tbs", tbs}}.dump(1);
+    std::ofstream(cheminFlux(dlg.GetPath().ToStdWstring())) << J{{"format", "miniFusion-cartouches"}, {"v", 1}, {"tbs", tbs}}.dump(1);
     vue_->etat(wxString::Format(L"%zu cartouche(s) exporté(s) : ", tbs.size()) + dlg.GetFilename());
   }, L"Enregistrer les modèles de cartouche (bibliothèque + celui de cette planche) dans un fichier .mfcartouche");
   const std::vector<std::string> partis = plan::pointsHorsFeuille(sh);
@@ -1126,11 +1126,11 @@ void PanneauPlan::accueil() {
     const wxString fichier = dossierReglages() + SEPW L"plan-defaut.json";
     auto* r = rang();
     bouton(r, L"Sauvegarder par défaut", [this, fichier] {
-      std::ofstream(fichier.ToStdWstring()) << vue_->mep()["prefs"].dump();
+      std::ofstream(cheminFlux(fichier.ToStdWstring())) << vue_->mep()["prefs"].dump();
       vue_->etat(L"Réglages du plan enregistrés par défaut : repris par chaque nouveau plan.");
     }, L"Mémoriser tous les réglages actuels du plan comme réglages par défaut");
     bouton(r, L"Appliquer les défauts", [this, fichier] {
-      std::ifstream e(fichier.ToStdWstring());
+      std::ifstream e(cheminFlux(fichier.ToStdWstring()));
       if (!e) return;
       J p;
       try {
@@ -1147,7 +1147,7 @@ void PanneauPlan::accueil() {
       if (dlg.ShowModal() != wxID_OK) return;
       J o = J::object();
       o["format"] = "miniFusion-plan-params", o["v"] = 1, o["prefs"] = vue_->mep()["prefs"], o["tbLib"] = J::object();
-      std::ofstream(dlg.GetPath().ToStdWstring()) << o.dump(1);
+      std::ofstream(cheminFlux(dlg.GetPath().ToStdWstring())) << o.dump(1);
       vue_->etat(L"Paramètres plan exportés : " + dlg.GetPath());
     }, L"Sauvegarder les paramètres plan dans un fichier .mfplan");
     bouton(r, L"Importer…", [this] {
@@ -1155,7 +1155,7 @@ void PanneauPlan::accueil() {
       if (dlg.ShowModal() != wxID_OK) return;
       J o;
       try {
-        std::ifstream e(dlg.GetPath().ToStdWstring());
+        std::ifstream e(cheminFlux(dlg.GetPath().ToStdWstring()));
         o = J::parse(e);
       } catch (const std::exception&) {
         return vue_->etat(L"Fichier de paramètres illisible.");

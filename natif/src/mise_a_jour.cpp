@@ -67,7 +67,7 @@ std::wstring dossierTemp() {
 }
 
 std::string empreinte(const std::wstring& chemin) {
-  std::ifstream f(chemin, std::ios::binary);
+  std::ifstream f(cheminFlux(chemin), std::ios::binary);
   if (!f) return "";
   BCRYPT_ALG_HANDLE alg = nullptr;
   BCRYPT_HASH_HANDLE h = nullptr;
@@ -100,7 +100,7 @@ nlohmann::json lireFiche(const std::wstring& adresse) {
   if (FAILED(URLDownloadToFileW(nullptr, adresse.c_str(), f.c_str(), 0, &av))) return nullptr;
   nlohmann::json fiche;
   try {
-    std::ifstream in(f);
+    std::ifstream in(cheminFlux(f));
     fiche = nlohmann::json::parse(in);
   } catch (...) {
     fiche = nullptr;

@@ -15,6 +15,11 @@ on:
 permissions:
   contents: read
 
+# Un passage à la fois : le suivant attend et retrouve les bibliothèques en cache au lieu de les recompiler
+concurrency:
+  group: natif-mac
+  cancel-in-progress: false
+
 jobs:
   dependances:
     runs-on: macos-latest

@@ -60,7 +60,7 @@ void Cadre::faoEntrer() {
       return;
     }
     const std::wstring f = tempFao(L".conceptcad");
-    std::ofstream(f, std::ios::binary) << texte;
+    std::ofstream(cheminFlux(f), std::ios::binary) << texte;
     faoMessage(L"FAO : lecture de la pièce…");
     faoTexteOuvert_ = std::move(texte);
     moteurFao_->commande("ouvrir", {{"fichier", utf8(f)}}, [this, f](bool ok2, const plan::J&, const std::string& err2) {
@@ -171,12 +171,12 @@ void Cadre::faoEvenement(const plan::J& e) {
     const wxString nom = tx(e.value("nom", std::string()));
     const std::string texte = e.value("texte", std::string());
     if (!faoSortieEssai_.empty()) {
-      std::ofstream(faoSortieEssai_, std::ios::binary) << texte;
+      std::ofstream(cheminFlux(faoSortieEssai_), std::ios::binary) << texte;
       return;
     }
     wxFileDialog d(this, L"Enregistrer le programme", wxEmptyString, nom, L"Tous les fichiers (*.*)|*.*", wxFD_SAVE | wxFD_OVERWRITE_PROMPT);
     if (d.ShowModal() != wxID_OK) return;
-    std::ofstream(d.GetPath().ToStdWstring(), std::ios::binary) << texte;
+    std::ofstream(cheminFlux(d.GetPath().ToStdWstring()), std::ios::binary) << texte;
     etat(L"Enregistré dans " + d.GetPath() + L".");
   }
 }
@@ -205,7 +205,7 @@ void Cadre::faoTraces(const std::string& rapides) {
     if (!ok) return faoMessage(tx(err).BeforeFirst('\n'));
     std::vector<float> tout;
     {
-      std::ifstream in(f, std::ios::binary | std::ios::ate);
+      std::ifstream in(cheminFlux(f), std::ios::binary | std::ios::ate);
       const std::streamoff n = in.tellg();
       if (n > 0) {
         tout.resize(static_cast<size_t>(n) / sizeof(float));
@@ -309,7 +309,7 @@ void Cadre::faoScene() {
   moteurFao_->commande("sceneFichier", {{"fichier", utf8(f)}}, [this, f](bool ok, const plan::J& r, const std::string& err) {
     faoEnCours_--;
     if (!ok) return faoMessage(tx(err).BeforeFirst('\n'));
-    std::ifstream in(f, std::ios::binary);
+    std::ifstream in(cheminFlux(f), std::ios::binary);
     std::vector<Vue3D::ObjetFao> L;
     for (const auto& o : r["objets"]) {
       Vue3D::ObjetFao x;
@@ -510,7 +510,7 @@ void Cadre::faoFaireSuivre() {
   moteurFao_->commande("etat", {{"fichier", utf8(f)}}, [&fini](bool, const plan::J&, const std::string&) { fini = true; });
   while (!fini && moteurFao_->enMarche()) wxYield();
   try {
-    std::ifstream in(f, std::ios::binary);
+    std::ifstream in(cheminFlux(f), std::ios::binary);
     if (in) {
       const auto e = nlohmann::ordered_json::parse(in);
       poserFao(doc_, e["fao"], e["moves"]);
@@ -559,7 +559,7 @@ void Cadre::faoEssai(const plan::J& e) {
     const std::string sortieCode = e.value("sortieCode", std::string());
     moteurFao_->commande("evaluer", {{"code", e["code"]}}, [this, sortieCode](bool, const plan::J& r, const std::string& err) {
       faoEnCours_--;
-      if (!sortieCode.empty()) std::ofstream(wxString::FromUTF8(sortieCode).ToStdWstring()) << r.dump(1, ' ', false, plan::J::error_handler_t::replace) << err;
+      if (!sortieCode.empty()) std::ofstream(cheminFlux(wxString::FromUTF8(sortieCode).ToStdWstring())) << r.dump(1, ' ', false, plan::J::error_handler_t::replace) << err;
     });
     faoRafraichir();
     attendre();
@@ -575,7 +575,7 @@ void Cadre::faoEssai(const plan::J& e) {
   attendre();
   // Deux tours : les traces partent d'une réponse
   attendre();
-  if (e.contains("relevé")) std::ofstream(wxString::FromUTF8(e["relevé"].get<std::string>()).ToStdWstring()) << plan::J({{"arbre", arbreFao_->racine()}, {"fiche", ficheFao_->racine()}}).dump(1, ' ', false, plan::J::error_handler_t::replace);
+  if (e.contains("relevé")) std::ofstream(cheminFlux(wxString::FromUTF8(e["relevé"].get<std::string>()).ToStdWstring())) << plan::J({{"arbre", arbreFao_->racine()}, {"fiche", ficheFao_->racine()}}).dump(1, ' ', false, plan::J::error_handler_t::replace);
   if (e.contains("imageOutils") && fenetreOutilsFao_) {
     const wxSize t = fenetreOutilsFao_->GetSize();
     wxBitmap image(t.x, t.y, 32);

@@ -93,7 +93,7 @@ class FenetreAide : public wxDialog {
       std::strftime(nom, sizeof nom, "ConceptCAD-journal-%Y-%m-%d-%H-%M.txt", &g);
       wxFileDialog d(this, L"Enregistrer le journal d’erreurs", wxEmptyString, wxString::FromUTF8(nom), L"Texte (*.txt)|*.txt", wxFD_SAVE | wxFD_OVERWRITE_PROMPT);
       if (d.ShowModal() != wxID_OK) return;
-      std::ofstream f(d.GetPath().ToStdWstring(), std::ios::binary);
+      std::ofstream f(cheminFlux(d.GetPath().ToStdWstring()), std::ios::binary);
       f << journal::texte();
       msg_->SetLabel(f ? L"Fichier enregistré." : L"Enregistrement impossible.");
       Layout();
