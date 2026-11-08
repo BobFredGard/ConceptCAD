@@ -96,14 +96,32 @@ const {loadApp}=require('./appvm.cjs');
     // ── 7. noyau exact ──
     const vols=()=>{const FR=occFinalShape(null);const v=FR.perBody.map(x=>occCoqueVolume(x.shape));occCleanup(FR,null);return v;};
     const root=asm.root;
-    MAG_SHAPES.forEach(([k])=>{
-      const r=MAG_CAT.find(x=>x.s===k&&x.mat==='NdFeB');
+    // + un pavé FIN (h/2 = 0,5 < 2×0,6) : la jonction des pôles ne doit pas être prise pour un bord extérieur
+    const recs=MAG_SHAPES.map(([k])=>MAG_CAT.find(x=>x.s===k&&x.mat==='NdFeB')).concat(MAG_CAT.filter(x=>x.code==='Q-05-04-01-N'));
+    A(recs.length===MAG_SHAPES.length+1,'21a : pavé fin Q-05-04-01-N présent au catalogue');
+    recs.forEach(r=>{
+      const k=r.s;
       const S=stdSpec('magnet',{shape:k,grade:'*',art:r.code});
       const o=(stdAddOcc(S,root)||{}).occ;if(!o){A(false,S.name+' : insertion refusée');return;}
       asmActivate(o.comp);
       let v=[];try{v=vols();}catch(e){v=[];}
       const ex=k==='cyl'?Math.PI*r.d*r.d/4*r.h:k==='ring'?Math.PI*(r.d*r.d-r.di*r.di)/4*r.h:r.a*r.b*r.h;
-      A(v.length===1&&Math.abs(v[0]-ex)<=Math.max(0.01*ex,0.05),'21 : '+S.name+' ('+k+') : '+(v[0]||0).toFixed(2)+' mm³, attendu '+ex.toFixed(2));
+      // V0.70.0 : deux moitiés (sud vert, nord rouge), arêtes EXTÉRIEURES arrondies, jonction vive :
+      // chaque moitié = la moitié de l'aimant entier arrondi partout
+      const c=asmComp(o.comp),bs=c.doc.bodies,K=magRound(c.doc.std.mag);
+      // volume exact de l'aimant arrondi : Pappus (coin ôté k²(1-π/4), centre à 0,2234 k du coin) ; pavé = boîte réduite ⊕ boule
+      const Ac=K*K*(1-Math.PI/4),gc=(10-3*Math.PI)/(3*(4-Math.PI))*K;
+      let full;
+      if(k==='cyl'||k==='ring'){
+        const R=r.d/2,r0=k==='ring'?r.di/2:0;
+        full=Math.PI*(R*R-r0*r0)*r.h-2*2*Math.PI*(R-gc)*Ac-(k==='ring'?2*2*Math.PI*(r0+gc)*Ac:0);
+      }else{
+        const a=r.a-2*K,b=r.b-2*K,cc=r.h-2*K;
+        full=a*b*cc+2*K*(a*b+b*cc+a*cc)+Math.PI*K*K*(a+b+cc)+4/3*Math.PI*K*K*K;
+      }
+      const half=full/2;
+      A(v.length===2&&v.every(x=>Math.abs(x-half)<=0.005*half),'21 : '+S.name+' ('+k+') : 2 moitiés '+v.map(x=>x.toFixed(3)).join(' + ')+' mm³, attendu '+half.toFixed(3)+' chacune (R'+K+')');
+      A(bs.length===2&&bs[0].color===MAG_POLE_S&&bs[1].color===MAG_POLE_N,'21b : '+k+' : pôle sud vert, pôle nord rouge');
       asmActivate(root);
     });
     return out;

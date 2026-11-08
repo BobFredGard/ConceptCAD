@@ -8,7 +8,7 @@ sont sorties le 2026-09-30j.
 Code dans `src/` · livrable `fusion_mvp.html` (généré par `build.js`) · architecture et
 garde-fous en tête de `src/00-entete-et-outils.js`.
 
-**610 versions**, de `2026-09-28b` à `V0.69.2` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
+**612 versions**, de `2026-09-28b` à `V0.70.0` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
 comme dans le fichier d'origine.
 
 ---
@@ -7020,5 +7020,22 @@ Barquette ne perd plus son solide à la 107e modification, et sa mémoire ne mon
 - **Correctif** : pendant la simulation, la pièce masquée est visée en premier, même sous la matière ; hors de la pièce, la matière simulée ; dans le vide, le centre du brut. Le zoom à la molette suit le même point.
 - **Parcours FAO et `CACHE_VER`** inchangés.
 - **Test** : `test_vue_centre` (la pièce est visée avant la matière) ; `gpu.spec` sur la vraie carte graphique : point sur une face de la pièce, point sur la matière hors de la pièce, vrai glisser à la souris. Vérifié à la main sur Cavité Test : 45 points sur 45 sur les faces de la pièce.
+
+---
+## V0.69.3 - Bandeau supérieur plus sombre, avec un liseré couleur du thème
+
+- **Demande** : « Le bandeau supérieur devrait être un poil différent en terme de couleur de fond ». Le bandeau du haut et le ruban d'outils avaient le même fond et paraissaient collés. Fred a choisi l'option C parmi quatre maquettes.
+- **Correctif** : le bandeau du haut passe en retrait (plus sombre que le ruban ; gris-bleu pâle en Clair) et reçoit un trait de 2 px à la couleur du thème (bleu, bleu clair, orange…), dans les cinq thèmes.
+- **Parcours FAO et `CACHE_VER`** inchangés.
+- **Test** : vérifié dans le navigateur sur les cinq thèmes (fond et couleur du trait lus à l'écran).
+
+---
+## V0.70.0 - Aimants en deux moitiés : pôle nord rouge, pôle sud vert
+
+- **Demande** : montrer les pôles des aimants de la bibliothèque, comme sur les images Supermagnete, puis « les congés ne sont valables que pour les faces extérieures ».
+- **Nouveauté** : un aimant inséré est fait de deux corps coupés à mi-hauteur, le long du sens d'aimantation (y compris pour les pavés aimantés dans la longueur Q-19-13-06-LN et Q-50-25-10-LN) : « Pôle sud » vert en bas, « Pôle nord » rouge en haut. Arêtes extérieures arrondies à 0,3 mm (moins sur les tout petits aimants), jonction vive : l'aimant paraît d'un seul bloc. Disque, anneau (bord du trou compris), pavé et cube. Les aimants déjà posés dans les fichiers gardent leur aspect gris ; lignes de champ, caractéristiques et masse inchangées.
+- **Correctif** : congé des bords haut/bas d'une extrusion (`rimEdgeJobs`) : chaque arête va au bord le plus proche. Sur une plaque de moins de 1,2 mm, les arêtes d'un bord tombaient aussi dans la tolérance de l'autre et étaient arrondies à tort (repéré par la session native sur Q-05-04-01-N).
+- **Parcours FAO et `CACHE_VER`** inchangés.
+- **Test** : `test_aimants` : deux corps par aimant, volume de chaque moitié = moitié de l'aimant entier arrondi (calcul exact), couleurs sud vert / nord rouge, plus le pavé fin Q-05-04-01-N.
 
 ---
