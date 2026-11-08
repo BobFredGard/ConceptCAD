@@ -209,6 +209,7 @@ const SUITES = [
   "test_conge_dechire",
   "test_corps_cache_aretes",
   "test_conge_arete_seule",
+  "test_conge_tout_droit",
   "test_posage_repere",
   "test_interface_moderne",
   "test_coincident_contrainte",
