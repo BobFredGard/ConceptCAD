@@ -617,7 +617,7 @@ wxString PlanVue::exporterVers(const std::string& format, const std::string& che
   } else {
     pourExport([&] { donnees = format == "svg" ? svgDesPrimitives() : pdfDesPrimitives(); });
   }
-  std::ofstream f(wxString::FromUTF8(chemin).ToStdWstring(), std::ios::binary);
+  std::ofstream f(cheminFlux(wxString::FromUTF8(chemin).ToStdWstring()), std::ios::binary);
   f.write(donnees.data(), static_cast<std::streamsize>(donnees.size()));
   return bilan;
 }
@@ -649,7 +649,7 @@ bool chargerDxf(wxWindow* parent, const std::string& chemin, J& lu, wxString& no
     if (dlg.ShowModal() != wxID_OK) return false;
     fichier = dlg.GetPath();
   }
-  std::ifstream f(fichier.ToStdWstring(), std::ios::binary);
+  std::ifstream f(cheminFlux(fichier.ToStdWstring()), std::ios::binary);
   std::string brut((std::istreambuf_iterator<char>(f)), std::istreambuf_iterator<char>());
   if (wxString::FromUTF8(brut).empty() && !brut.empty()) brut = wxString(brut.data(), wxConvISO8859_1, brut.size()).utf8_string();
   const wxFileName fn(fichier);

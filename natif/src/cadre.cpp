@@ -4920,7 +4920,7 @@ bool Cadre::essaiEsquisse(const std::wstring& fichier, int rang, const std::wstr
         }
         n["etat"] = std::string(etatVue_->texte().utf8_str());
         n["derives"] = plan::J::array();
-        for (const std::string& t : doc_.derivesJson) n["derives"].push_back(plan::J::parse(t));
+        for (const std::string& t : doc_.derivesJson) n["derives"].emplace_back(plan::J::parse(t));
         n["corps"] = doc_.corps;
       } catch (const std::exception& x) {
         n["erreur"] = x.what();
