@@ -114,6 +114,34 @@ function magLinesFor(c,path){
   L.raycast=()=>{};L.renderOrder=6;G.add(L);
   return G;
 }
+/* V0.70.1 : plusieurs aimants à l'écran — dès que deux aimants au moins sont posés et qu'un a ses
+   lignes affichées, les lignes sont celles du champ ADDITIONNÉ de tous les aimants visibles (y
+   compris ceux dont les lignes sont masquées : leur champ compte). Repère de la scène ; recalcul
+   quand un aimant bouge, allégé pendant le déplacement à la souris. */
+function magNote(L,c,inst,ml){
+  const m=magOfComp(c);if(!m)return;
+  const id=inst.path.length?inst.path[inst.path.length-1]:null,o=id?asmOcc(id):null;
+  L.push({m,F:inst.F,on:!!(o&&o.mag),key:c.doc.std.key,ml});
+}
+const magMultiCache=new Map();
+function magMultiKey(M,fast){return (fast?'f':'n')+JSON.stringify(M.map(A=>[A.key,A.on?1:0,A.F.o,A.F.x,A.F.y,A.F.z]));}
+function magMultiGeo(M,fast){
+  const k=magMultiKey(M,fast);let g=magMultiCache.get(k);
+  if(!g){
+    g=magLineGeoMulti(M,{fast});magMultiCache.set(k,g);
+    while(magMultiCache.size>6){const k0=magMultiCache.keys().next().value;magMultiCache.delete(k0);} // pas de dispose : une géométrie peut encore être affichée
+  }
+  return g;
+}
+function magMultiDraw(G,L,V){
+  if(L.length<2||!L.some(A=>A.on))return;
+  L.forEach(A=>{if(A.ml&&A.ml.parent)A.ml.parent.remove(A.ml);}); // les lignes de l'aimant seul ne valent plus
+  const fast=typeof asmDrag!=='undefined'&&!!asmDrag;
+  const M=L.map(A=>({m:A.m,F:A.F,on:A.on,key:A.key}));
+  const grp=new THREE.Group();grp.name='magLinesMulti';grp.matrixAutoUpdate=false;grp.matrix.copy(asmMat4(V));
+  const Ln=new THREE.LineSegments(magMultiGeo(M,fast),new THREE.LineBasicMaterial({vertexColors:true,transparent:true,opacity:0.9}));
+  Ln.raycast=()=>{};Ln.renderOrder=6;grp.add(Ln);G.add(grp);
+}
 function magToggle(id){
   const o=asmOcc(id);if(!o)return false;
   asmPush((o.mag?'masquer':'afficher')+' les lignes de champ de « '+o.name+' »');

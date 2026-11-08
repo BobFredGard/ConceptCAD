@@ -375,7 +375,7 @@ input[type=range]{accent-color:var(--primary);width:100%}
  * peut changer sans rien casser. CACHE_VER (parcours FAO) reste indépendant.
  */
 
-const APP_VER='V0.70.0';
+const APP_VER='V0.70.1';
 try{console.log('[ConceptCAD] version '+APP_VER);}catch(e){}
 try{var mfSv=document.getElementById('mfSplashVer');if(mfSv)mfSv.textContent=APP_VER;}catch(e){} // écran de démarrage
 
@@ -15460,6 +15460,7 @@ function asmFill(G,placer){
   if(!asm)return;
   const P=asm.path,n=P.length;
   const V=asmInverse(asmWorld(P)||asmFr0());
+  const magI=[]; // aimants dessinés (48-aimants-interface)
   const hidden=path=>{let c=asmRoot();for(const id of path){const o=c&&c.occ.find(q=>q.id===id);if(!o||o.visible===false)return true;c=asmComp(o.comp);}return false;};
   asmInstances(asm.root).forEach(inst=>{
     const c=asmComp(inst.comp);if(!c||!c._snap||!c._snap.items.length||hidden(inst.path))return;
@@ -15492,11 +15493,12 @@ function asmFill(G,placer){
       if(kind!=='ghost'){try{glassDepthMask({mesh:m});}catch(e){}} // passes de verre, comme une pièce
     });
     if(kind!=='ghost'){const tl=asmThrLines(c._snap);if(tl)g.add(tl);} // filets cosmétiques (V0.35.0)
-    if(kind!=='ghost'){const ml=magLinesFor(c,inst.path);if(ml)g.add(ml);} // lignes de champ d'un aimant (48-aimants-interface)
+    if(kind!=='ghost'){const ml=magLinesFor(c,inst.path);if(ml)g.add(ml);magNote(magI,c,inst,ml);} // lignes de champ d'un aimant (48-aimants-interface)
     if(kind!=='ghost'&&c._snap.edges&&asmEdgesShown(look))
       g.add(asmEdgeLines(c._snap.edges,c._snap.items.some(it=>(look.gl!=null?look.gl:(it.gl||1))<0.999)));
     G.add(g);
   });
+  magMultiDraw(G,magI,V); // V0.70.1 : plusieurs aimants → champ additionné (48-aimants-interface)
   G.updateMatrixWorld(true);
 }
 function asmDraw(){
@@ -16770,6 +16772,82 @@ function magLineGeo(m){
   g.setAttribute('color',new THREE.Float32BufferAttribute(C,3));
   return g;
 }
+/* ── V0.70.1 : plusieurs aimants à la fois — champ additionné ──
+   Les champs s'ajoutent (superposition) : chaque aimant reste à aimantation uniforme, sans effet
+   des autres sur son aimantation (vrai pour le NdFeB et la ferrite loin de leur coercivité).
+   M = [{m, F:{o,x,y,z} (repère de l'aimant dans la scène, orthonormé), on}] ; les lignes partent
+   de la face nord des aimants « on », et de leur face sud en remontant le champ pour celles
+   qui viennent de l'infini (sinon elles seraient comptées deux fois). */
+function magToLoc(F,p){const d=[p[0]-F.o[0],p[1]-F.o[1],p[2]-F.o[2]];return [d[0]*F.x[0]+d[1]*F.x[1]+d[2]*F.x[2],d[0]*F.y[0]+d[1]*F.y[1]+d[2]*F.y[2],d[0]*F.z[0]+d[1]*F.z[1]+d[2]*F.z[2]];}
+function magToWorld(F,l){return [0,1,2].map(j=>F.o[j]+l[0]*F.x[j]+l[1]*F.y[j]+l[2]*F.z[j]);}
+function magFieldMulti(M,p){
+  const B=[0,0,0];
+  for(const A of M){const l=magToLoc(A.F,p),b=magField(A.m,l[0],l[1],l[2]);for(let j=0;j<3;j++)B[j]+=b[0]*A.F.x[j]+b[1]*A.F.y[j]+b[2]*A.F.z[j];}
+  return B;
+}
+function magInsideMulti(M,p){for(let i=0;i<M.length;i++){const l=magToLoc(M[i].F,p);if(magInside(M[i].m,l[0],l[1],l[2]))return i;}return -1;}
+function magSceneBounds(M){
+  // centre et rayon de l'ensemble des aimants
+  const P=[];M.forEach(A=>{const s=magSize(A.m);[[0,0,0],[0,0,A.m.h]].forEach(l=>P.push({p:magToWorld(A.F,l),s}));});
+  const c=[0,1,2].map(j=>P.reduce((t,q)=>t+q.p[j],0)/P.length);
+  return {c,r:Math.max(...P.map(q=>Math.hypot(q.p[0]-c[0],q.p[1]-c[1],q.p[2]-c[2])+q.s))};
+}
+function magTraceMulti(M,seed,step,sign,bd,maxN){
+  // → {pts, end : indice de l'aimant atteint, -1 = parti au loin}
+  const dir=p=>{const B=magFieldMulti(M,p),n=Math.hypot(B[0],B[1],B[2])||1e-30;return [sign*B[0]/n,sign*B[1]/n,sign*B[2]/n];};
+  let p=seed.slice();const pts=[p],R=bd.r*4;
+  // pas variable : fin près des aimants, jusqu’à 16 fois plus long loin d'eux (le champ y varie lentement)
+  const C=M.map(A=>({c:magToWorld(A.F,[0,0,A.m.h/2]),s:magSize(A.m)}));
+  for(let i=0;i<maxN;i++){
+    let g=16;for(const q of C){const d=Math.hypot(p[0]-q.c[0],p[1]-q.c[1],p[2]-q.c[2])/q.s;if(d<g)g=d;}
+    const h=step*Math.max(1,Math.min(16,g));
+    const k1=dir(p),k2=dir(p.map((v,j)=>v+h/2*k1[j])),k3=dir(p.map((v,j)=>v+h/2*k2[j])),k4=dir(p.map((v,j)=>v+h*k3[j]));
+    p=p.map((v,j)=>v+h/6*(k1[j]+2*k2[j]+2*k3[j]+k4[j]));
+    if(!p.every(isFinite))break;
+    pts.push(p);
+    if(i>1){const k=magInsideMulti(M,p);if(k>=0)return {pts,end:k};}
+    if(Math.hypot(p[0]-bd.c[0],p[1]-bd.c[1],p[2]-bd.c[2])>R)return {pts,end:-1};
+  }
+  return {pts,end:-2};
+}
+function magLinesMulti(M,opt){
+  // opt.fast : environ 40 lignes en tout, pas double (pendant un déplacement à la souris)
+  const fast=opt&&opt.fast,bd=magSceneBounds(M),out=[];
+  M.forEach((A,ia)=>{
+    if(!A.on)return;
+    const S=magSize(A.m),step=S/(fast?12:24),maxN=1500;
+    let seeds=magSeeds(A.m);
+    if(fast){const n=M.filter(B=>B.on).length,k=Math.max(2,Math.ceil(n*seeds.length/40));seeds=seeds.filter((s,i)=>i%k===0);} // ~40 lignes en tout pendant le déplacement
+    seeds.forEach(s=>{
+      const T=magTraceMulti(M,magToWorld(A.F,s),step,1,bd,maxN);out.push({pts:T.pts,closed:T.end>=0,from:ia,to:T.end});
+      // face sud, en remontant : seulement les lignes venues de loin ou d'un aimant dont on ne trace pas les lignes
+      const u=magToWorld(A.F,[s[0],s[1],-magSize(A.m)*1e-3]),Q=magTraceMulti(M,u,step,-1,bd,maxN);
+      if(Q.end<0||!M[Q.end].on)out.push({pts:Q.pts.reverse(),closed:false,from:ia,to:-1,back:true});
+    });
+  });
+  return out;
+}
+function magLineGeoMulti(M,opt){
+  // Lignes de l'ensemble, dans le repère de la scène ; couleur = intensité du champ additionné
+  const P=[],C=[],brMax=Math.max(...M.map(A=>A.m.Br),2e-3),lo=Math.log(1e-3),hi=Math.log(brMax);
+  const col=p=>{const B=magFieldMulti(M,p),n=Math.max(Math.hypot(B[0],B[1],B[2]),1e-6);return magColor(Math.max(0,Math.min(1,(Math.log(n)-lo)/(hi-lo))));};
+  const seg=(a,b,c)=>{P.push(a[0],a[1],a[2],b[0],b[1],b[2]);C.push(c.r,c.g,c.b,c.r,c.g,c.b);};
+  magLinesMulti(M,opt).forEach(L=>{
+    const Q=L.pts,st=Math.max(1,Math.round(Q.length/120)),w=magSize(M[L.from].m)*0.05;
+    let prev=Q[0];
+    for(let i=st;i<Q.length||prev!==Q[Q.length-1];i+=st){const q=Q[Math.min(i,Q.length-1)];seg(prev,q,col(q));prev=q;}
+    if(Q.length<4)return;
+    const i=Math.floor(Q.length/2),a=Q[i],b=Q[Math.min(i+1,Q.length-1)];
+    let d=[b[0]-a[0],b[1]-a[1],b[2]-a[2]],l=Math.hypot(d[0],d[1],d[2])||1;d=d.map(v=>v/l);
+    let u=[-d[2],0,d[0]];if(Math.hypot(u[0],u[1],u[2])<1e-3)u=[1,0,0];
+    const lu=Math.hypot(u[0],u[1],u[2]);u=u.map(v=>v/lu);
+    const k=col(a);seg(a,[0,1,2].map(j=>a[j]-w*d[j]+w*.5*u[j]),k);seg(a,[0,1,2].map(j=>a[j]-w*d[j]-w*.5*u[j]),k);
+  });
+  const g=new THREE.BufferGeometry();
+  g.setAttribute('position',new THREE.Float32BufferAttribute(P,3));
+  g.setAttribute('color',new THREE.Float32BufferAttribute(C,3));
+  return g;
+}
 
 /* ═══════════════ 48-aimants-interface.js — aimants interface ═══════════════ */
 /* ---------- aimants permanents : bibliothèque et lignes de champ à l'écran (V0.57.0) ----------
@@ -16887,6 +16965,34 @@ function magLinesFor(c,path){
   const L=new THREE.LineSegments(magGeoFor(m,c.doc.std.key),new THREE.LineBasicMaterial({vertexColors:true,transparent:true,opacity:0.9}));
   L.raycast=()=>{};L.renderOrder=6;G.add(L);
   return G;
+}
+/* V0.70.1 : plusieurs aimants à l'écran — dès que deux aimants au moins sont posés et qu'un a ses
+   lignes affichées, les lignes sont celles du champ ADDITIONNÉ de tous les aimants visibles (y
+   compris ceux dont les lignes sont masquées : leur champ compte). Repère de la scène ; recalcul
+   quand un aimant bouge, allégé pendant le déplacement à la souris. */
+function magNote(L,c,inst,ml){
+  const m=magOfComp(c);if(!m)return;
+  const id=inst.path.length?inst.path[inst.path.length-1]:null,o=id?asmOcc(id):null;
+  L.push({m,F:inst.F,on:!!(o&&o.mag),key:c.doc.std.key,ml});
+}
+const magMultiCache=new Map();
+function magMultiKey(M,fast){return (fast?'f':'n')+JSON.stringify(M.map(A=>[A.key,A.on?1:0,A.F.o,A.F.x,A.F.y,A.F.z]));}
+function magMultiGeo(M,fast){
+  const k=magMultiKey(M,fast);let g=magMultiCache.get(k);
+  if(!g){
+    g=magLineGeoMulti(M,{fast});magMultiCache.set(k,g);
+    while(magMultiCache.size>6){const k0=magMultiCache.keys().next().value;magMultiCache.delete(k0);} // pas de dispose : une géométrie peut encore être affichée
+  }
+  return g;
+}
+function magMultiDraw(G,L,V){
+  if(L.length<2||!L.some(A=>A.on))return;
+  L.forEach(A=>{if(A.ml&&A.ml.parent)A.ml.parent.remove(A.ml);}); // les lignes de l'aimant seul ne valent plus
+  const fast=typeof asmDrag!=='undefined'&&!!asmDrag;
+  const M=L.map(A=>({m:A.m,F:A.F,on:A.on,key:A.key}));
+  const grp=new THREE.Group();grp.name='magLinesMulti';grp.matrixAutoUpdate=false;grp.matrix.copy(asmMat4(V));
+  const Ln=new THREE.LineSegments(magMultiGeo(M,fast),new THREE.LineBasicMaterial({vertexColors:true,transparent:true,opacity:0.9}));
+  Ln.raycast=()=>{};Ln.renderOrder=6;grp.add(Ln);G.add(grp);
 }
 function magToggle(id){
   const o=asmOcc(id);if(!o)return false;
@@ -17673,6 +17779,7 @@ function asmGizmoUp(){
   const o=asmOcc(D.occ);
   const same=o&&JSON.stringify(o.fr)===JSON.stringify(D.fr0)&&(!D.dof||JSON.stringify((o.align&&o.align.q)||{})===JSON.stringify(D.q0||{}));
   if(!D.moved||same){asmUndoStack.pop();try{asmDraw();}catch(e){}return;}
+  try{asmDraw();}catch(e){} // lignes de champ de plusieurs aimants : pleine finesse une fois posé (48-aimants-interface)
   asmNotify();
 }
 try{document.addEventListener('pointerdown',asmGizmoDown,true);}catch(e){} // tests VM : document simplifié

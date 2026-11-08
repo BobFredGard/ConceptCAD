@@ -124,6 +124,7 @@ function asmFill(G,placer){
   if(!asm)return;
   const P=asm.path,n=P.length;
   const V=asmInverse(asmWorld(P)||asmFr0());
+  const magI=[]; // aimants dessinés (48-aimants-interface)
   const hidden=path=>{let c=asmRoot();for(const id of path){const o=c&&c.occ.find(q=>q.id===id);if(!o||o.visible===false)return true;c=asmComp(o.comp);}return false;};
   asmInstances(asm.root).forEach(inst=>{
     const c=asmComp(inst.comp);if(!c||!c._snap||!c._snap.items.length||hidden(inst.path))return;
@@ -156,11 +157,12 @@ function asmFill(G,placer){
       if(kind!=='ghost'){try{glassDepthMask({mesh:m});}catch(e){}} // passes de verre, comme une pièce
     });
     if(kind!=='ghost'){const tl=asmThrLines(c._snap);if(tl)g.add(tl);} // filets cosmétiques (V0.35.0)
-    if(kind!=='ghost'){const ml=magLinesFor(c,inst.path);if(ml)g.add(ml);} // lignes de champ d'un aimant (48-aimants-interface)
+    if(kind!=='ghost'){const ml=magLinesFor(c,inst.path);if(ml)g.add(ml);magNote(magI,c,inst,ml);} // lignes de champ d'un aimant (48-aimants-interface)
     if(kind!=='ghost'&&c._snap.edges&&asmEdgesShown(look))
       g.add(asmEdgeLines(c._snap.edges,c._snap.items.some(it=>(look.gl!=null?look.gl:(it.gl||1))<0.999)));
     G.add(g);
   });
+  magMultiDraw(G,magI,V); // V0.70.1 : plusieurs aimants → champ additionné (48-aimants-interface)
   G.updateMatrixWorld(true);
 }
 function asmDraw(){
