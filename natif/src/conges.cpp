@@ -49,6 +49,7 @@
 #include <cmath>
 #include <cstdio>
 #include <map>
+#include <memory>
 #include <optional>
 #include <set>
 #include <stdexcept>
@@ -436,8 +437,45 @@ std::vector<std::string> clesFaces(const TopoDS_Shape& s) {
   return cles;
 }
 
-// occSingleEdgeTool : l'outil qui arrondit UNE arête droite et convexe sans suivre sa chaîne tangente
-std::optional<TopoDS_Shape> outilAreteSeule(const TopoDS_Shape& shape, const std::vector<Vec3>& pts, double r, bool chanfrein, bool& borne, const OptChanfrein* cham = nullptr, const Vec3* premiereN = nullptr) {
+// V0.70.3 (occSecteurSonde) : secteur de matière autour d'une arête, sondé sur un cercle. D'abord 36 points (10°) ; si une
+// zone fait moins de 3 points (secteur étroit, ambigu), retour aux 180 points d'avant. Bords ensuite cherchés par dichotomie
+// (2 tours de plus : même précision qu'avec 180 points).
+struct Sonde {
+  int N = 0, it = 14;
+  std::vector<char> S;
+};
+template <class F>
+Sonde secteurSonde(const F& inAt) {
+  Sonde o;
+  for (int N : {36, 180}) {
+    o.N = N;
+    o.S.assign(N, 0);
+    for (int k = 0; k < N; k++) o.S[k] = inAt(TAU * k / N);
+    if (N == 180) {
+      o.it = 14;
+      return o;
+    }
+    int runs = 0, n = 1;
+    bool court = false;
+    for (int k = 1; k <= N; k++) {
+      if (o.S[k % N] == o.S[(k - 1) % N]) n++;
+      else {
+        runs++;
+        if (n < 3) court = true;
+        n = 1;
+      }
+    }
+    if (runs == 0 || (!court && runs == 2)) {
+      o.it = 16;
+      return o;
+    }
+  }
+  return o;
+}
+
+// occSingleEdgeTool : l'outil qui arrondit UNE arête droite et convexe sans suivre sa chaîne tangente.
+// V0.70.3 : clp = détecteur partagé entre les arêtes d'une même pièce ; sOut reçoit le secteur sondé (repris par morceauCoin).
+std::optional<TopoDS_Shape> outilAreteSeule(const TopoDS_Shape& shape, const std::vector<Vec3>& pts, double r, bool chanfrein, bool& borne, const OptChanfrein* cham = nullptr, const Vec3* premiereN = nullptr, BRepClass3d_SolidClassifier* clp = nullptr, Sonde* sOut = nullptr) {
   if (pts.size() < 2 || !(r > 0)) return std::nullopt;
   if (chanfrein && cham && !premiereN) return std::nullopt;  // sans normale utilisable : repli noyau, qui sait faire
   using V = Vec3;
@@ -464,16 +502,24 @@ std::optional<TopoDS_Shape> outilAreteSeule(const TopoDS_Shape& shape, const std
   const V u = nrm(sub(a0, mul(t, dot(a0, t)))), v = cross(t, u);
   const auto dir = [&](double th) { return add(mul(u, std::cos(th)), mul(v, std::sin(th))); };
   try {
-    BRepClass3d_SolidClassifier cl(shape);
+    std::unique_ptr<BRepClass3d_SolidClassifier> propre;
+    if (!clp) {
+      propre = std::make_unique<BRepClass3d_SolidClassifier>(shape);
+      clp = propre.get();
+    }
+    BRepClass3d_SolidClassifier& cl = *clp;
     const auto dedans = [&](const V& q) {
       cl.Perform(gp_Pnt(q[0], q[1], q[2]), 1e-7);
       return cl.State() == TopAbs_IN;
     };
     const double eps = std::max(1e-3, std::min(0.05, r * 0.05));
     const auto inAt = [&](double th) { return dedans(add(M, mul(dir(th), eps))); };
-    const int N = 180;
-    std::vector<char> S(N);
-    for (int k = 0; k < N; k++) S[k] = inAt(TAU * k / N);
+    const Sonde SD = secteurSonde(inAt);
+    if (sOut) *sOut = SD;
+    const int N = SD.N;
+    const std::vector<char>& S = SD.S;
+    // Plus de 56 % du cercle dans la matière : coin intérieur, que cet outil ne traite pas (il exige moins de 180°)
+    if (std::count(S.begin(), S.end(), 1) > 0.56 * N) return std::nullopt;
     std::vector<int> debuts;
     for (int k = 0; k < N; k++)
       if (S[k] && !S[(k + N - 1) % N]) debuts.push_back(k);
@@ -481,7 +527,7 @@ std::optional<TopoDS_Shape> outilAreteSeule(const TopoDS_Shape& shape, const std
     int k1 = debuts[0], k2 = k1;
     while (S[(k2 + 1) % N] && (k2 + 1) % N != k1) k2 = (k2 + 1) % N;
     const auto bis = [&](double lo, double hi, bool veut) {
-      for (int i = 0; i < 14; i++) {
+      for (int i = 0; i < SD.it; i++) {
         const double m = (lo + hi) / 2;
         if (inAt(m) == veut) hi = m;
         else lo = m;
@@ -614,7 +660,8 @@ bool boutsTangents(const BRepAdaptor_Curve& ad, double u0, double u1, std::array
 // droit le long de l'arête et, à ses bouts, continue tout droit jusqu'aux faces voisines. On AJOUTE la matière du coin :
 // section du congé (triangle M,T1,T2 moins le cercle) tirée le long de l'arête et au-delà de ses bouts ; on garde la
 // partie hors de la pièce qui touche l'arête. Rend le nouveau solide, ou rien (le noyau prend le relais).
-std::optional<TopoDS_Shape> coinInterieur(const TopoDS_Shape& shape, const std::vector<Vec3>& pts, double r, bool chanfrein, const OptChanfrein* cham, const Vec3* premiereN) {
+// V0.70.3 : rend seulement le MORCEAU à ajouter (petit solide), contrôlé sur lui-même ; souderMorceaux le soude.
+std::optional<TopoDS_Shape> morceauCoin(const TopoDS_Shape& shape, const std::vector<Vec3>& pts, double r, bool chanfrein, const OptChanfrein* cham, const Vec3* premiereN, BRepClass3d_SolidClassifier* clp = nullptr, const Sonde* s0 = nullptr) {
   if (pts.size() < 2 || !(r > 0)) return std::nullopt;
   if (chanfrein && cham && !premiereN) return std::nullopt;
   using V = Vec3;
@@ -641,16 +688,21 @@ std::optional<TopoDS_Shape> coinInterieur(const TopoDS_Shape& shape, const std::
   const V u = nrm(sub(a0, mul(t, dot(a0, t)))), v = cross(t, u);
   const auto dir = [&](double th) { return add(mul(u, std::cos(th)), mul(v, std::sin(th))); };
   try {
-    BRepClass3d_SolidClassifier cl(shape);
+    std::unique_ptr<BRepClass3d_SolidClassifier> propre;
+    if (!clp) {
+      propre = std::make_unique<BRepClass3d_SolidClassifier>(shape);
+      clp = propre.get();
+    }
+    BRepClass3d_SolidClassifier& cl = *clp;
     const auto dedans = [&](const V& q) {
       cl.Perform(gp_Pnt(q[0], q[1], q[2]), 1e-7);
       return cl.State() == TopAbs_IN;
     };
     const double eps = std::max(1e-3, std::min(0.05, r * 0.05));
     const auto inAt = [&](double th) { return dedans(add(M, mul(dir(th), eps))); };
-    const int N = 180;
-    std::vector<char> S(N);
-    for (int k = 0; k < N; k++) S[k] = inAt(TAU * k / N);
+    const Sonde SD = s0 && s0->N > 0 ? *s0 : secteurSonde(inAt);  // s0 = secteur déjà sondé par outilAreteSeule
+    const int N = SD.N;
+    const std::vector<char>& S = SD.S;
     std::vector<int> debuts;  // début du VIDE
     for (int k = 0; k < N; k++)
       if (!S[k] && S[(k + N - 1) % N]) debuts.push_back(k);
@@ -658,7 +710,7 @@ std::optional<TopoDS_Shape> coinInterieur(const TopoDS_Shape& shape, const std::
     int k1 = debuts[0], k2 = k1;
     while (!S[(k2 + 1) % N] && (k2 + 1) % N != k1) k2 = (k2 + 1) % N;
     const auto bis = [&](double lo, double hi, bool veut) {
-      for (int i = 0; i < 14; i++) {
+      for (int i = 0; i < SD.it; i++) {
         const double m = (lo + hi) / 2;
         if (inAt(m) == veut) hi = m;
         else lo = m;
@@ -705,10 +757,6 @@ std::optional<TopoDS_Shape> coinInterieur(const TopoDS_Shape& shape, const std::
     const auto P = [](const V& p) { return gp_Pnt(p[0], p[1], p[2]); };
     const V Eo = sub(M, mul(b, 0.5 * s + 0.2));  // sommet repoussé DANS la matière (pas de face coplanaire)
     const V ici = add(M, mul(b, chanfrein ? 0.25 * s : std::min(0.25 * s, 0.2 * (h - r) + 1e-3)));  // point du coin, dans le vide
-    const double v0 = volume(shape);
-    const auto cles0 = clesFaces(shape);
-    const std::set<std::string> avant(cles0.begin(), cles0.end());
-    const int n0 = compter(shape, TopAbs_SOLID);
     // L'outil déborde des deux bouts ; la pièce le coupe sur les faces voisines. Débord trop court : il reste une face
     // plane au bout (le congé n'atteint pas les faces voisines) → on rallonge.
     const auto essai = [&](double o) -> std::optional<TopoDS_Shape> {
@@ -737,13 +785,18 @@ std::optional<TopoDS_Shape> coinInterieur(const TopoDS_Shape& shape, const std::
           if (c2.State() == TopAbs_IN) garde = ex.Current();
         }
         if (garde.IsNull()) return std::nullopt;
-        const TopoDS_Shape res = unifierForme(fusion(shape, garde));
-        const double v1 = volume(res);
-        int nees = 0;
-        for (auto& c : clesFaces(res))
-          if (c == "?" || !avant.count(c)) nees++;
-        if (nees == 1 && valide(res) && v1 - v0 > 1e-6 && compter(res, TopAbs_SOLID) <= n0) return res;
-        return std::nullopt;
+        // Bout pas encore arrêté par les faces voisines : le morceau garde une face plane d'équerre à l'arête au bout
+        // de l'outil → rallonger. Contrôle sur le morceau seul (petit), pas sur la pièce.
+        const double bout = L / 2 + o;
+        for (TopExp_Explorer ex(garde, TopAbs_FACE); ex.More(); ex.Next()) {
+          BRepAdaptor_Surface ad(TopoDS::Face(ex.Current()), true);
+          if (ad.GetType() != GeomAbs_Plane) continue;
+          const gp_Ax1 ax = ad.Plane().Axis();
+          const V n{ax.Direction().X(), ax.Direction().Y(), ax.Direction().Z()}, p{ax.Location().X(), ax.Location().Y(), ax.Location().Z()};
+          if (std::abs(std::abs(dot(n, t)) - 1) < 1e-6 && std::abs(std::abs(dot(sub(p, M), t)) - bout) < 1e-4) return std::nullopt;
+        }
+        if (!(volume(garde) > 1e-6)) return std::nullopt;
+        return garde;
       } catch (...) {
         return std::nullopt;
       }
@@ -755,6 +808,25 @@ std::optional<TopoDS_Shape> coinInterieur(const TopoDS_Shape& shape, const std::
   } catch (...) {
     return std::nullopt;
   }
+}
+
+// occSouderMorceaux (V0.70.3) : morceaux de congé soudés à la pièce en UNE fusion, une unification, un contrôle.
+std::optional<TopoDS_Shape> souderMorceaux(const TopoDS_Shape& shape, const std::vector<TopoDS_Shape>& morceaux) {
+  if (morceaux.empty()) return std::nullopt;
+  try {
+    TopoDS_Shape outil = morceaux[0];
+    if (morceaux.size() > 1) {
+      TopoDS_Compound c;
+      BRep_Builder b;
+      b.MakeCompound(c);
+      for (auto& m : morceaux) b.Add(c, m);
+      outil = c;
+    }
+    const TopoDS_Shape res = unifierForme(fusion(shape, outil));
+    if (valide(res) && compter(res, TopAbs_SOLID) <= compter(shape, TopAbs_SOLID)) return res;
+  } catch (...) {
+  }
+  return std::nullopt;
 }
 
 // occFilletRun : rend une forme vide si rien n'a pu être arrondi
@@ -812,17 +884,73 @@ TopoDS_Shape lancer(const TopoDS_Shape& base, const std::vector<Travail>& jobs, 
   };
   const std::string raison = chanfrein ? "distance trop grande ?" : "rayon trop grand ?";
   if (opts.seule) {
+    // V0.70.3 : les morceaux des coins intérieurs s'accumulent et sont soudés EN UNE FOIS (une fusion, une unification,
+    // un contrôle de la pièce) ; tant que la pièce ne change pas, ses arêtes ne sont pas relues et le détecteur est partagé.
     TopoDS_Shape cur = base;
-    for (auto& j : jobs) {
-      std::vector<AreteListee> E;
+    std::vector<AreteListee> E;
+    TopoDS_Shape Ecur;
+    bool Elu = false;
+    const auto lire = [&]() {
+      if (Elu && Ecur.IsSame(cur)) return;
+      E.clear();
       try {
         E = listerAretes(cur);
       } catch (...) {
       }
-      const AreteListee* ed = nullptr;
+      Ecur = cur;
+      Elu = true;
+    };
+    std::unique_ptr<BRepClass3d_SolidClassifier> CL;
+    TopoDS_Shape CLcur;
+    const auto classeur = [&]() {
+      if (!CL || !CLcur.IsSame(cur)) {
+        CL = std::make_unique<BRepClass3d_SolidClassifier>(cur);
+        CLcur = cur;
+      }
+      return CL.get();
+    };
+    struct Attente {
+      TopoDS_Shape m;
+      const Travail* j;
+    };
+    std::vector<Attente> attente;
+    const auto souder = [&]() {
+      if (attente.empty()) return;
+      std::vector<TopoDS_Shape> ms;
+      for (auto& x : attente) ms.push_back(x.m);
+      if (auto nx = souderMorceaux(cur, ms)) cur = *nx;
+      else {
+        // refus en bloc : un par un, et le noyau pour celui qui ne passe pas
+        for (auto& x : attente) {
+          TopoDS_Shape n1;
+          if (auto u = souderMorceaux(cur, {x.m})) n1 = *u;
+          else {
+            std::vector<AreteListee> E2;
+            try {
+              E2 = listerAretes(cur);
+            } catch (...) {
+            }
+            for (auto& e : E2)
+              if (ecart(e.mid, x.j->mid) < 3) {
+                Travail t = *x.j;
+                t.src = e.src;
+                n1 = mk(cur, {t});
+                if (!n1.IsNull()) warns.push_back(quoi + " : arête courbe ou concave — suivi de la chaîne tangente (noyau)");
+                break;
+              }
+          }
+          if (!n1.IsNull()) cur = n1;
+          else warns.push_back(quoi + " isolé impossible (" + raison + ")");
+        }
+      }
+      attente.clear();
+    };
+    for (auto& j : jobs) {
+      lire();
+      std::optional<AreteListee> ed;
       for (auto& e : E) {
         if (cur.IsSame(base) ? e.src == j.src : ecart(e.mid, j.mid) < 3) {
-          ed = &e;
+          ed = e;
           break;
         }
       }
@@ -842,11 +970,36 @@ TopoDS_Shape lancer(const TopoDS_Shape& base, const std::vector<Travail>& jobs, 
         } catch (...) {
         }
       }
-      if (ed) outil = outilAreteSeule(cur, ed->pts, j.r, chanfrein, borne, opts.cham, aNPremiere ? &nPremiere : nullptr);
-      if (outil && borne) {
+      Sonde sd;
+      if (ed) outil = outilAreteSeule(cur, ed->pts, j.r, chanfrein, borne, opts.cham, aNPremiere ? &nPremiere : nullptr, classeur(), &sd);
+      // Arête concave (coin rentrant) : matière ajoutée dans le coin, arrêtée par les faces voisines (V0.70.2, droit seulement)
+      if (!outil && ed && opts.droit) {
+        std::optional<TopoDS_Shape> m;
+        try {
+          m = morceauCoin(cur, ed->pts, j.r, chanfrein, opts.cham, aNPremiere ? &nPremiere : nullptr, classeur(), &sd);
+        } catch (...) {
+          m.reset();
+        }
+        if (m) {
+          attente.push_back({*m, &j});
+          continue;
+        }
+      }
+      souder();  // la suite travaille sur la pièce à jour
+      lire();
+      std::optional<AreteListee> ed1 = ed;
+      if (ed && !cur.IsSame(base)) {
+        ed1.reset();
+        for (auto& e : E)
+          if (ecart(e.mid, j.mid) < 3) {
+            ed1 = e;
+            break;
+          }
+      }
+      if (outil && borne && ed1) {
         // Arête arrêtée par un mur : pris s'il ne crée qu'une face, sinon il a suivi une chaîne que la case écarte
         Travail t = j;
-        t.src = ed->src;
+        t.src = ed1->src;
         TopoDS_Shape kk = mk(cur, {t});
         if (!kk.IsNull()) {
           const auto cles = clesFaces(cur);
@@ -864,29 +1017,32 @@ TopoDS_Shape lancer(const TopoDS_Shape& base, const std::vector<Travail>& jobs, 
           nx = TopoDS_Shape();
         }
       }
+      // Découpe « réussie » qui n'enlève rien (corps abîmé en amont) : repli sur le noyau. V0.70.3 : jugé à l'apparition
+      // d'une face neuve, plus aux volumes de toute la pièce.
       if (!nx.IsNull()) {
         try {
-          if (!(volume(cur) - volume(nx) > 1e-6)) nx = TopoDS_Shape();
+          const auto cles = clesFaces(cur);
+          const std::set<std::string> avant(cles.begin(), cles.end());
+          bool neuve = false;
+          for (auto& c : clesFaces(nx))
+            if (c == "?" || !avant.count(c)) {
+              neuve = true;
+              break;
+            }
+          if (!neuve) nx = TopoDS_Shape();
         } catch (...) {
         }
       }
-      // Arête concave (coin rentrant) : matière ajoutée dans le coin, arrêtée par les faces voisines (V0.70.2)
-      if (nx.IsNull() && !outil && ed && opts.droit) {
-        try {
-          if (auto c = coinInterieur(cur, ed->pts, j.r, chanfrein, opts.cham, aNPremiere ? &nPremiere : nullptr)) nx = *c;
-        } catch (...) {
-          nx = TopoDS_Shape();
-        }
-      }
-      if (nx.IsNull() && ed) {
+      if (nx.IsNull() && ed1) {
         Travail t = j;
-        t.src = ed->src;
+        t.src = ed1->src;
         nx = mk(cur, {t});
         if (!nx.IsNull()) warns.push_back(quoi + " : arête courbe ou concave — suivi de la chaîne tangente (noyau)");
       }
       if (!nx.IsNull()) cur = nx;
       else warns.push_back(quoi + " isolé impossible (" + raison + ")");
     }
+    souder();
     return cur.IsSame(base) ? TopoDS_Shape() : cur;
   }
   TopoDS_Shape s = mk(base, jobs);
