@@ -19,7 +19,8 @@ wxBitmapBundle iconeMenuEsquisse(const std::string& nom);
 
 class BoutonEsquisse : public wxWindow {
  public:
-  enum Style { ICONE, ENCADRE, TEXTE, PRINCIPAL, PASTILLE, RUBAN };
+  // VUE : bouton de la barre de vue du navigateur (#viewbar button, allumé = orange plein) ; CUBE : ⌂ et ⟲ près du cube (16 px)
+  enum Style { ICONE, ENCADRE, TEXTE, PRINCIPAL, PASTILLE, RUBAN, VUE, CUBE };
   BoutonEsquisse(wxWindow* parent, int id, const wxString& nom, const wxString& infobulle, Style style = ICONE);
   void icone(const std::string& corpsSvg, const wxColour& couleur);
   void iconeComplete(const std::string& svg, const wxColour& couleur);  // un <svg> entier, tel que le navigateur le dessine

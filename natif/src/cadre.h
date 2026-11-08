@@ -679,6 +679,7 @@ public:
   wxStaticText* noteDroite_ = nullptr;
   BoutonEsquisse* repliArbre_ = nullptr;
   std::vector<BoutonEsquisse*> onglets_, boutonsVue_;
+  wxWindow* piluleVue_ = nullptr;  // le fond arrondi sous Rendu, Rendu direct et ⚙
   EtatVue* etatVue_ = nullptr;
   FilFonctions* fil_ = nullptr;
   PageAtelier* page_ = nullptr;

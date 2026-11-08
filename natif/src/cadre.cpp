@@ -5,6 +5,8 @@
 #include <wx/config.h>
 #include "cadre.h"
 #include "panneau_props.h"
+#include <wx/dcbuffer.h>
+#include <wx/graphics.h>
 #include "anteriorite.h"
 #include "rendu_moteur.h"
 #include "rendu_finition.h"
@@ -551,16 +553,34 @@ void Cadre::creerEnvironnement() {
   const struct {
     const wchar_t* nom;
     const char* icone;
-  } vueIcones[] = {{L"Rendu", nullptr}, {L"Rendu direct", nullptr}, {L"Réglages de la vue", nullptr}, {L"Vue initiale", "cadrer"}, {L"Mode d'orbite", "orbite"}};
-  for (const auto& v : vueIcones) {
-    auto* b = new BoutonEsquisse(scene_, wxID_ANY, v.nom, wxString(v.nom) + (wxString(v.nom).StartsWith(L"Annuler") ? PAS_ENCORE : L""), BoutonEsquisse::ENCADRE);
-    b->fond(C_SCENE);
-    if (v.icone) b->icone(v.icone, C_CLAIR);
+  } vueIcones[] = {{L"Rendu", nullptr}, {L"Rendu direct", nullptr}, {L"Réglages de la vue", nullptr}, {L"Vue initiale", nullptr}, {L"Mode d'orbite", nullptr}};
+  // La pilule du navigateur (#viewbar) sous les trois premiers : créée avant eux, elle reste dessous
+  piluleVue_ = new wxWindow(scene_, wxID_ANY, wxDefaultPosition, wxDefaultSize, wxBORDER_NONE | wxFULL_REPAINT_ON_RESIZE, L"piluleVue");
+  piluleVue_->SetBackgroundStyle(wxBG_STYLE_PAINT);
+  piluleVue_->Bind(wxEVT_PAINT, [this](wxPaintEvent&) {
+    wxAutoBufferedPaintDC dc(piluleVue_);
+    dc.SetBackground(wxBrush(C_SCENE));
+    dc.Clear();
+    std::unique_ptr<wxGraphicsContext> g(wxGraphicsContext::Create(dc));
+    const double f = piluleVue_->GetDPIScaleFactor();
+    g->Scale(f, f);
+    const wxSize t = piluleVue_->ToDIP(piluleVue_->GetClientSize());
+    g->SetBrush(wxBrush(th(wxColour(0x11, 0x13, 0x17))));  // rgba(16,18,22,.78)
+    g->SetPen(wxPen(th(wxColour(0x30, 0x32, 0x36))));      // bord rgba(255,255,255,.13)
+    g->DrawRoundedRectangle(0.5, 0.5, t.x - 1, t.y - 1, 10);
+  });
+  for (size_t k = 0; k < std::size(vueIcones); k++) {
+    const auto& v = vueIcones[k];
+    auto* b = new BoutonEsquisse(scene_, wxID_ANY, v.nom, v.nom, k < 3 ? BoutonEsquisse::VUE : BoutonEsquisse::CUBE);
+    b->fond(k < 3 ? th(wxColour(0x11, 0x13, 0x17)) : C_SCENE);
     boutonsVue_.push_back(b);
   }
   boutonsVue_[0]->iconeComplete(iconeVue(0), C_CLAIR);
   boutonsVue_[1]->iconeComplete(iconeVue(1), C_CLAIR);
   boutonsVue_[2]->titre(L"⚙");
+  boutonsVue_[3]->titre(L"⌂");  // #mfCubeHome
+  boutonsVue_[3]->SetToolTip(L"Vue iso (tout afficher)");
+  boutonsVue_[4]->titre(L"⟲");  // #mfOrbit
   const auto majOrbite = [this] {
     boutonsVue_[4]->actif(optionsVue_.orbiteLibre);
     boutonsVue_[4]->SetToolTip(optionsVue_.orbiteLibre ? L"Orbite LIBRE : la pièce tourne dans tous les sens — cliquer pour l'orbite contrainte (Z en haut)" : L"Orbite contrainte : Z reste en haut — cliquer pour l'orbite libre (tour complet)");
@@ -779,11 +799,14 @@ void Cadre::placerScene() {
   carteArbre_->Show(cao && !arbreReplie_);
   poser(carteFao_, 32, 41, 300, std::max(120, std::min(560, t.y - 41 - 34)));
   carteFao_->Show(fao && !arbreReplie_);
-  poser(boutonsVue_[0], t.x - 214, 16, 36, 24);
-  poser(boutonsVue_[1], t.x - 173, 16, 36, 24);
-  poser(boutonsVue_[2], t.x - 132, 16, 32, 24);
-  poser(boutonsVue_[3], t.x - 104, 7, 18, 18);
-  poser(boutonsVue_[4], t.x - 104, 27, 18, 18);
+  // Comme le navigateur : #viewbar à 92 px du bord droit, cube de 80 px à 4 px du bord, ⌂ et ⟲ collés à sa gauche
+  poser(piluleVue_, t.x - 220, 10, 128, 34);
+  poser(boutonsVue_[0], t.x - 213, 15, 36, 24);
+  poser(boutonsVue_[1], t.x - 172, 15, 36, 24);
+  poser(boutonsVue_[2], t.x - 131, 15, 32, 24);
+  poser(boutonsVue_[3], t.x - 102, 6, 16, 16);
+  poser(boutonsVue_[4], t.x - 102, 25, 16, 16);
+  piluleVue_->Show(volume);
   for (BoutonEsquisse* b : boutonsVue_) b->Show(volume);
   if (ficheVue_ && ficheVue_->IsShown()) {
     if (!volume) ficheVue_->Show(false);
@@ -905,7 +928,7 @@ void Cadre::majVueEnv(bool apparences) {
   }
   vue_->options(o);
   const bool actif = o.env != "actuel";
-  boutonsVue_[1]->fond(actif ? th(wxColour(0xff, 0x9f, 0x0a)) : C_SCENE);
+  boutonsVue_[1]->actif(actif);  // #btnLive.on : orange plein, icône foncée
   boutonsVue_[1]->iconeComplete(iconeVue(1), actif ? th(wxColour(0x1c, 0x1c, 0x1e)) : C_CLAIR);
   boutonsVue_[1]->Refresh();
 }

@@ -246,16 +246,29 @@ void BoutonEsquisse::peindre(wxPaintEvent&) {
     fond = th(wxColour(0x38, 0x3a, 0x3e));
     bord = th(wxColour(0x4a, 0x4c, 0x50));
   }
-  if (actif_) fond = bord = C_BLEU;
+  double rayon = 8;
+  if (style_ == VUE) {  // rgba(255,255,255,.06) et bord .12 sur la pilule rgba(16,18,22,.78)
+    fond = th(wxColour(0x1f, 0x21, 0x25));
+    bord = th(wxColour(0x2e, 0x30, 0x34));
+    if (actif_) fond = bord = th(wxColour(0xff, 0x9f, 0x0a));
+    else if (survol_) fond = th(wxColour(0x2b, 0x2d, 0x32));
+  } else if (style_ == CUBE) {  // #mfCubeHome, #mfOrbit : rgba(40,44,52,.88), allumé = accent
+    rayon = 4;
+    fond = th(wxColour(0x26, 0x2a, 0x31));
+    bord = th(wxColour(0x3a, 0x3d, 0x43));
+    if (actif_) fond = bord = th(wxColour(0x2f, 0x7d, 0xe1));
+    else if (survol_) fond = th(wxColour(0x33, 0x37, 0x3f));
+  } else if (actif_) fond = bord = C_BLEU;
   else if (disponible_ && survol_) fond = style_ == PRINCIPAL ? assombri(C_BLEU, 0.85, *wxWHITE) : th(wxColour(0x44, 0x46, 0x4b));
   if (fond.Alpha() != 0) {
     g->SetBrush(g->CreateBrush(wxBrush(fond)));
     g->SetPen(bord.Alpha() != 0 ? g->CreatePen(wxGraphicsPenInfo(bord, 1)) : wxNullGraphicsPen);
-    g->DrawRoundedRectangle(0.5, 0.5, t.x - 1, t.y - 1, 8);
+    g->DrawRoundedRectangle(0.5, 0.5, t.x - 1, t.y - 1, rayon);
   }
   if (image_.IsOk()) {
-    const double L = std::min(20, t.y - 2), x = (t.x - L) / 2, y = enColonne ? 5 : (t.y - L) / 2;
-    wxBitmap b = (actif_ ? imageActive_ : image_).GetBitmap(FromDIP(wxSize(20, 20)));
+    const double L = style_ == VUE ? 16 : std::min(20, t.y - 2), x = (t.x - L) / 2, y = enColonne ? 5 : (t.y - L) / 2;
+    // VUE : l'icône garde la couleur donnée (foncée sur l'orange du Rendu direct allumé)
+    wxBitmap b = (actif_ && style_ != VUE ? imageActive_ : image_).GetBitmap(FromDIP(wxSize(20, 20)));
     if (!disponible_) {
       wxImage im = b.ConvertToImage();
       if (im.HasAlpha()) {
@@ -269,11 +282,21 @@ void BoutonEsquisse::peindre(wxPaintEvent&) {
   g.reset();
   if (!titre_.empty()) {
     double L, H;
-    const double taille = enColonne ? 10.5 : 12.5;
+    const double taille = enColonne ? 10.5 : style_ == VUE ? 14.4 : style_ == CUBE ? (titre_ == L"⌂" ? 10 : 11) : 12.5;
     const bool gras = style_ == PRINCIPAL || style_ == PASTILLE;
     mesurer(this, titre_, taille, gras, &L, &H);
     const wxColour c = !disponible_ ? (style_ == PRINCIPAL ? th(wxColour(0xc8, 0xd8, 0xee)) : th(wxColour(0x68, 0x6a, 0x70))) : style_ == PRINCIPAL || actif_ ? *wxWHITE : C_TEXTE;
-    ecrire(dc, this, titre_, (t.x - L) / 2, enColonne ? t.y - H - 3 : (t.y - H) / 2, taille, c, gras);
+    // CUBE : le glyphe tient dans 16 px, centré sur sa ligne de 14 px comme dans le navigateur
+    if (style_ == VUE || style_ == CUBE) {
+      // ⚙ ⌂ ⟲ : glyphes en une couleur (Arial n'a pas ⟲, et la police émoji colorerait ⚙)
+      wxFont fs(wxFontInfo(wxSize(0, static_cast<int>(std::lround(taille * GetDPIScaleFactor())))).FaceName("Segoe UI Symbol"));
+      dc.SetFont(fs);
+      dc.SetTextForeground(c);
+      const wxSize m = dc.GetTextExtent(titre_), p = GetClientSize();
+      dc.DrawText(titre_, (p.x - m.x) / 2, (p.y - m.y) / 2);
+    } else {
+      ecrire(dc, this, titre_, (t.x - L) / 2, enColonne ? t.y - H - 3 : (t.y - H) / 2, taille, c, gras);
+    }
   }
 }
 

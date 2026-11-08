@@ -334,7 +334,6 @@ Vue3D::Vue3D(wxWindow* parent) : wxWindow(parent, 2005, wxDefaultPosition, wxDef
   cube_ = new AIS_ViewCube();
   cube_->SetSize(FromDIP(38));
   cube_->SetFontHeight(FromDIP(8));
-  cube_->SetDrawAxes(false);
   cube_->SetFitSelected(false);  // le recadrage vient après, avec la marge habituelle
   cube_->SetFont("Arial");
   cube_->SetBoxSideLabel(V3d_Xpos, "DROITE");
@@ -343,8 +342,23 @@ Vue3D::Vue3D(wxWindow* parent) : wxWindow(parent, 2005, wxDefaultPosition, wxDef
   cube_->SetBoxSideLabel(V3d_Yneg, "FACE");
   cube_->SetBoxSideLabel(V3d_Zpos, "DESSUS");
   cube_->SetBoxSideLabel(V3d_Zneg, "DESSOUS");
-  cube_->SetBoxColor(couleur(0x3a, 0x3c, 0x42));
-  cube_->SetTextColor(Quantity_NOC_WHITE);
+  // Le cube du navigateur (mfCube) : faces #2c313a sans éclairage, bord clair (blanc à 55 %), texte #e9e9ec en gras,
+  // pas d'arrondi ; les trois axes rouge, vert, bleu partent du coin arrière gauche du bas
+  cube_->SetRoundRadius(0);
+  cube_->SetBoxFacetExtension(FromDIP(1.5));
+  cube_->SetBoxEdgeGap(0);
+  cube_->SetBoxColor(couleur(0x2c, 0x31, 0x3a));
+  cube_->BoxEdgeStyle()->SetColor(couleur(0x9b, 0x9e, 0xa3));
+  cube_->BoxCornerStyle()->SetColor(couleur(0x9b, 0x9e, 0xa3));
+  for (const occ::handle<Prs3d_ShadingAspect>& a : {cube_->BoxSideStyle(), cube_->BoxEdgeStyle(), cube_->BoxCornerStyle()}) a->Aspect()->SetShadingModel(Graphic3d_TypeOfShadingModel_Unlit);
+  cube_->SetTextColor(couleur(0xe9, 0xe9, 0xec));
+  cube_->Attributes()->TextAspect()->Aspect()->SetTextFontAspect(Font_FontAspect_Bold);
+  cube_->SetDrawAxes(true);
+  cube_->SetAxesLabels("", "", "");
+  cube_->SetAxesPadding(0);
+  cube_->SetAxesRadius(FromDIP(1));
+  cube_->SetAxesConeRadius(0);
+  cube_->SetAxesSphereRadius(0);
   // OrthoPers : le cube reste un vrai cube, la perspective de la pièce ne le déforme pas
   cube_->SetTransformPersistence(new Graphic3d_TransformPers(static_cast<Graphic3d_TransModeFlags>(Graphic3d_TMF_TriedronPers | Graphic3d_TMF_OrthoPers), Aspect_TOTP_RIGHT_UPPER, NCollection_Vec2<int>(FromDIP(58), FromDIP(58))));
   cube_->SetZLayer(Graphic3d_ZLayerId_Topmost);
