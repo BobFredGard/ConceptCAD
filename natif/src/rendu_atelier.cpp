@@ -198,7 +198,7 @@ void AtelierRendu::ouvrir(const occ::handle<OpenGl_GraphicDriver>& pilote, const
   cam.haut = {0, 0, 1};
   reprendreCao();
   actif_ = true;
-  minuteur_.Start(15);
+  minuteur_.StartOnce(15);
 }
 
 void AtelierRendu::fermer() {
@@ -365,7 +365,14 @@ void AtelierRendu::montrerImage(const ImageLineaire& im, bool rayons) {
   image_ = wxBitmap(i);
 }
 
-void AtelierRendu::pas(wxTimerEvent&) { pasDeCalcul(); }
+// Le calcul se fait par morceaux sur le fil de la fenêtre : après chaque morceau, au moins autant de temps libre
+// pour l'affichage et la souris (sur un portable, un morceau peut durer bien plus que les 15 ms du minuteur)
+void AtelierRendu::pas(wxTimerEvent&) {
+  const wxLongLong t0 = maintenant();
+  pasDeCalcul();
+  const long duree = static_cast<long>((maintenant() - t0).ToDouble());
+  if (actif_) minuteur_.StartOnce(static_cast<int>(std::clamp(duree, 15L, 250L)));
+}
 
 void AtelierRendu::pasDeCalcul() {
   if (memoireSale_ && (maintenant() - dernierEcrit_).ToDouble() > 2000) {
@@ -392,7 +399,7 @@ void AtelierRendu::pasDeCalcul() {
       Refresh(false);
       return;
     }
-    if ((maintenant() - t0).ToDouble() > 30) break;
+    if ((maintenant() - t0).ToDouble() > 20) break;
   }
   const int n = e.m->passes();
   if (n == 0 || e.m->image().w <= 0) return;
