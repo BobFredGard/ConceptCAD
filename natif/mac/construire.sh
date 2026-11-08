@@ -29,7 +29,7 @@ copier() {
   local cible="$1" d nom
   for d in $(otool -L "$cible" | awk 'NR>1 {print $1}'); do
     case "$d" in
-      "$P"/*|@rpath/*)
+      */.tiers/mac/prefixe/lib/*|@rpath/*)
         nom=$(basename "$d")
         if [ ! -f "$F/$nom" ]; then
           cp -L "$P/lib/$nom" "$F/$nom"
@@ -48,11 +48,13 @@ copier() {
 }
 copier "$APP/Contents/MacOS/ConceptCADNatif"
 # Contrôle : aucune référence ne doit rester vers le Mac qui a fabriqué l'application
-if otool -L "$APP/Contents/MacOS/ConceptCADNatif" "$F"/*.dylib | grep -E "$P|/Users/|/opt/homebrew|/usr/local|@rpath"; then
+otool -L "$APP/Contents/MacOS/ConceptCADNatif" "$F"/*.dylib > "$S/liens.txt"
+if grep -E "\.tiers|/Users/|/opt/homebrew|/usr/local|@rpath" "$S/liens.txt"; then
   echo "Bibliothèques encore liées au dossier de fabrication" >&2
   exit 1
 fi
-ls "$F" | wc -l
+echo "Bibliothèques rangées dans l'application : $(ls "$F" | wc -l)"
+test "$(ls "$F" | wc -l)" -gt 10
 # Signature locale (sans compte développeur Apple) : obligatoire sur les puces Apple
 codesign --force --deep --sign - "$APP"
 codesign --verify --deep "$APP"
