@@ -17,7 +17,9 @@ static class Lanceur {
 
   [STAThread]
   static int Main(string[] args) {
-    if (MessageBox.Show("Installer " + Nom + " ?\n\nLe programme sera copié dans votre dossier utilisateur, avec un raccourci dans le menu Démarrer et sur le bureau.",
+    // « /maj » : lancé par le programme lui-même pour une mise à jour, l'accord a déjà été donné
+    bool maj = Array.IndexOf(args, "/maj") >= 0;
+    if (!maj && MessageBox.Show("Installer " + Nom + " ?\n\nLe programme sera copié dans votre dossier utilisateur, avec un raccourci dans le menu Démarrer et sur le bureau.",
                         Nom, MessageBoxButtons.OKCancel, MessageBoxIcon.Question) != DialogResult.OK) return 1;
     string d = Path.Combine(Path.GetTempPath(), "ConceptCADNatif-installation-" + Guid.NewGuid().ToString("N").Substring(0, 8));
     try {
@@ -25,7 +27,7 @@ static class Lanceur {
       Deposer("installer.ps1", Path.Combine(d, "installer.ps1"));
       Deposer("ConceptCADNatif.zip", Path.Combine(d, "ConceptCADNatif.zip"));
       ProcessStartInfo p = new ProcessStartInfo("powershell.exe",
-          "-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File \"" + Path.Combine(d, "installer.ps1") + "\"");
+          "-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File \"" + Path.Combine(d, "installer.ps1") + "\"" + (maj ? " -Relancer" : ""));
       p.UseShellExecute = false;
       p.CreateNoWindow = true;
       using (Process q = Process.Start(p)) { q.WaitForExit(); return q.ExitCode; }

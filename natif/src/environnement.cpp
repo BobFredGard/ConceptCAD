@@ -1,3 +1,4 @@
+#include "mise_a_jour.h"
 #include "theme.h"
 #include "environnement.h"
 
@@ -188,7 +189,7 @@ BarreHaute::BarreHaute(wxWindow* parent) : wxWindow(parent, wxID_ANY, wxDefaultP
     ecrire(dc, this, L"CAD", 47 + L, 24, 16.5, C_BLEU, true);
     ecrire(dc, this, document_, 883, 25, 12.5, C_DISCRET);
     // Le numéro : ce programme n'a pas encore de version à lui
-    ecrire(dc, this, L"Essai Windows", t.x - 165, 25, 11.5, C_TEXTE, true);
+    ecrire(dc, this, miseAJour::VERSION, t.x - 165, 25, 11.5, C_TEXTE, true);
   });
   placer();
 }

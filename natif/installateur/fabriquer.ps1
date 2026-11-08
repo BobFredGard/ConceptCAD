@@ -37,4 +37,20 @@ if (Test-Path $cible) { Remove-Item -LiteralPath $cible -Force }
   "/resource:$zip,ConceptCADNatif.zip" "/resource:$(Join-Path $travail 'installer.ps1'),installer.ps1" (Join-Path $ici 'lanceur.cs')
 if ($LASTEXITCODE -ne 0 -or -not (Test-Path $cible)) { throw "Le compilateur C# n'a pas produit l'installateur" }
 Remove-Item -LiteralPath $copie -Recurse -Force
+
+# La fiche de version lue par le programme au démarrage (mise_a_jour.cpp), à publier avec l'installateur
+# dans la Release : le numéro de bêta vient de src\mise_a_jour.h, l'empreinte garantit le bon fichier.
+$entete = [IO.File]::ReadAllText((Join-Path $natif 'src\mise_a_jour.h'))
+$build = [int]([regex]::Match($entete, 'BUILD\s*=\s*(\d+)').Groups[1].Value)
+$version = [regex]::Match($entete, 'VERSION\s*=\s*L"([^"]*)"').Groups[1].Value
+$release = if ($env:CONCEPTCAD_RELEASE) { $env:CONCEPTCAD_RELEASE } else { 'V0.70.0' }
+$fiche = [ordered]@{
+  build   = $build
+  version = $version
+  url     = "https://github.com/BobFredGard/ConceptCAD/releases/download/$release/ConceptCAD-Natif-Beta-Windows-setup.exe"
+  sha256  = (Get-FileHash -LiteralPath $cible -Algorithm SHA256).Hash.ToLower()
+  notes   = $(if ($env:CONCEPTCAD_NOTES) { $env:CONCEPTCAD_NOTES } else { '' })
+  date    = (Get-Date -Format 'yyyy-MM-dd')
+}
+[IO.File]::WriteAllText((Join-Path $sortie 'natif-latest.json'), ($fiche | ConvertTo-Json), (New-Object Text.UTF8Encoding $false))
 "{0} : {1:N0} Mo" -f $cible, ((Get-Item $cible).Length / 1MB)

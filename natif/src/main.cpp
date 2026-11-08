@@ -1,4 +1,5 @@
 // ConceptCAD natif : point d'entrée. Lance la fenêtre, ou le calcul sans fenêtre (--verif).
+#include "mise_a_jour.h"
 #include "journal.h"
 #include "theme.h"
 #include <wx/wx.h>
@@ -714,9 +715,11 @@ class Appli : public wxApp {
       // Pour natif/mesures/verifier-dessin.ps1 : un double-clic dans l'arbre ne passe pas par des messages envoyés de l'extérieur
       if (const wchar_t* rang = _wgetenv(L"CONCEPTCAD_OUVRIR_ESQUISSE")) cadre->entrerEsquisse(_wtoi(rang));
       cadre->secoursDemarrer();
+      miseAJour::verifier(cadre);
     } else {
       cadre->demarrerVide();  // comme le navigateur, on démarre sur un modèle vide : on peut dessiner tout de suite
       cadre->secoursDemarrer();
+      miseAJour::verifier(cadre);
     }
     return true;
   }
@@ -750,6 +753,8 @@ int WINAPI wWinMain(HINSTANCE inst, HINSTANCE, PWSTR, int) {
   if (gArgs.size() >= 3 && gArgs[0] == L"--esquisses-faces") return modeEsquissesFaces(gArgs);
   if (gArgs.size() >= 6 && gArgs[0] == L"--extruder") return modeExtruder(gArgs);
   if (gArgs.size() >= 5 && gArgs[0] == L"--conge") return modeConge(gArgs);
+  // --essai-maj [adresse de la fiche] [build supposé] : la mise à jour par Internet, sans fenêtre ni installation
+  if (!gArgs.empty() && gArgs[0] == L"--essai-maj") return miseAJour::essai(gArgs.size() > 1 ? gArgs[1] : L"", gArgs.size() > 2 ? _wtoi(gArgs[2].c_str()) : miseAJour::BUILD);
   // Processeurs à deux sortes de cœurs : un cœur économe calcule la même pièce 1,7 fois moins vite (345 → 585 ms mesurés).
   // On demande à Windows de ne pas traiter ce programme comme une tâche de fond, même quand sa fenêtre n'est pas devant.
   PROCESS_POWER_THROTTLING_STATE qos{PROCESS_POWER_THROTTLING_CURRENT_VERSION, PROCESS_POWER_THROTTLING_EXECUTION_SPEED, 0};

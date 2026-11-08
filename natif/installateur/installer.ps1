@@ -2,10 +2,12 @@
 # Lancé par l'installateur IExpress, depuis le dossier où il a extrait ConceptCADNatif.zip.
 #   -Dossier <chemin>  : installe ailleurs (essais)
 #   -SansRaccourcis    : ni raccourcis ni inscription dans « Applications installées » (essais)
+#   -Relancer          : mise à jour demandée par le programme : attend qu'il se ferme, puis rouvre la nouvelle version
 param(
   [string]$Dossier = (Join-Path $env:LOCALAPPDATA 'Programs\ConceptCAD Natif'),
   [switch]$SansRaccourcis,
-  [switch]$Silencieux
+  [switch]$Silencieux,
+  [switch]$Relancer
 )
 $ErrorActionPreference = 'Stop'
 Add-Type -AssemblyName System.Windows.Forms
@@ -18,8 +20,11 @@ try {
   $ici = Split-Path -Parent $MyInvocation.MyCommand.Path
   $zip = Join-Path $ici 'ConceptCADNatif.zip'
   if (-not (Test-Path $zip)) { throw "Archive absente : $zip" }
+  $ouvert = { Get-Process -Name ConceptCADNatif -ErrorAction SilentlyContinue | Where-Object { $_.Path -and $_.Path.StartsWith($Dossier, 'OrdinalIgnoreCase') } }
+  # Mise à jour : le programme est en train de se fermer (il propose peut-être d'enregistrer la pièce)
+  if ($Relancer) { for ($i = 0; $i -lt 600 -and (& $ouvert); $i++) { Start-Sleep -Milliseconds 500 } }
   # Le programme ouvert verrouille ses fichiers : demander de le fermer
-  while (Get-Process -Name ConceptCADNatif -ErrorAction SilentlyContinue | Where-Object { $_.Path -and $_.Path.StartsWith($Dossier, 'OrdinalIgnoreCase') }) {
+  while (& $ouvert) {
     if ($Silencieux) { throw 'ConceptCAD Natif est ouvert : fermez-le.' }
     $r = [System.Windows.Forms.MessageBox]::Show("ConceptCAD Natif est ouvert.`nFermez-le puis cliquez sur OK.", $Nom, 'OKCancel', 'Warning')
     if ($r -ne 'OK') { exit 1 }
@@ -69,6 +74,7 @@ Start-Process cmd.exe -ArgumentList '/c', "timeout /t 2 >nul & rmdir /s /q `"$d`
     New-ItemProperty -Path $cle -Name NoModify -Value 1 -PropertyType DWord -Force | Out-Null
     New-ItemProperty -Path $cle -Name NoRepair -Value 1 -PropertyType DWord -Force | Out-Null
   }
+  if ($Relancer) { Start-Process -FilePath $exe -WorkingDirectory $Dossier; exit 0 }
   Dire ("$Nom est installé.`n`nDossier : $Dossier" + $(if ($SansRaccourcis) { "" } else { "`nRaccourcis : menu Démarrer et bureau." }))
 } catch {
   Dire ("L'installation a échoué :`n" + $_.Exception.Message) 'Error'
