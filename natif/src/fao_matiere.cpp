@@ -32,6 +32,49 @@ occ::handle<Graphic3d_AspectFillArea3d> aspectEclaire(unsigned couleur, unsigned
   return A;
 }
 
+// faoMatterRayHit (src/88-fao-77-matiere-cartes.js) : dans la boîte du brut, un point est dans la matière
+// s'il est sous le dessus de sa colonne ; on avance d'une demi-maille, puis on resserre par dichotomie
+bool MatiereFao::viser(const gp_Pnt& o, const gp_Dir& d, gp_Pnt& p) const {
+  if (g_.nx <= 0 || g_.ny <= 0) return false;
+  const double lo[3] = {g_.ox, g_.oy, g_.oz}, hi[3] = {g_.sx1, g_.sy1, g_.full};
+  const double O[3] = {o.X(), o.Y(), o.Z()}, D[3] = {d.X(), d.Y(), d.Z()};
+  double t0 = 0, t1 = 1e30;
+  for (int k = 0; k < 3; k++) {
+    if (std::abs(D[k]) < 1e-12) {
+      if (O[k] < lo[k] || O[k] > hi[k]) return false;
+      continue;
+    }
+    double a = (lo[k] - O[k]) / D[k], b = (hi[k] - O[k]) / D[k];
+    if (a > b) std::swap(a, b);
+    t0 = std::max(t0, a);
+    t1 = std::min(t1, b);
+    if (t0 > t1) return false;
+  }
+  const auto dedans = [&](double t) {
+    const double x = O[0] + D[0] * t, y = O[1] + D[1] * t, z = O[2] + D[2] * t;
+    const int ix = std::clamp(static_cast<int>(std::floor((x - g_.ox) / g_.pas)), 0, g_.nx - 1);
+    const int iy = std::clamp(static_cast<int>(std::floor((y - g_.oy) / g_.pas)), 0, g_.ny - 1);
+    return z >= g_.oz - 1e-9 && z <= dessus_[ix + iy * g_.nx];
+  };
+  const double h = std::max(g_.pas * 0.5, 1e-6);
+  double avant = t0;
+  for (double t = t0;; t += h) {
+    const double u = std::min(t, t1);
+    if (dedans(u)) {
+      double a = avant, b = u;
+      if (u > t0)
+        for (int i = 0; i < 24; i++) {
+          const double m = (a + b) / 2;
+          (dedans(m) ? b : a) = m;
+        }
+      p = gp_Pnt(O[0] + D[0] * b, O[1] + D[1] * b, O[2] + D[2] * b);
+      return true;
+    }
+    avant = u;
+    if (u >= t1) return false;
+  }
+}
+
 MatiereFao::MatiereFao(const GrilleFao& g) : g_(g), nc_(g.nx * g.ny) {
   dessus_.assign(nc_, static_cast<float>(g.full));
   normales_.assign(nc_ * 3, 0.f);

@@ -88,6 +88,8 @@ class Vue3D : public wxWindow {
   void montrerZones(const std::vector<ZoneVue>& L);
   std::function<bool(const wxPoint&, bool clic)> surZone;
   void rayonEcran(int x, int y, gp_Pnt& o, gp_Dir& d) const { rayon(x, y, o, d); }
+  // Essai : enfonce en (x,y), glisse de (dx,dy), relâche ; r = pivot (3), son écran avant (2) et après (2)
+  void essaiOrbite3D(int x, int y, int dx, int dy, double r[7]);
   wxPoint ecranDe(const gp_Pnt& p) const;
   void montrerFilets(const std::vector<std::vector<gp_Pnt>>& helices, const std::vector<std::vector<gp_Pnt>>& anneaux);
   // Ceux des autres composants de l'assemblage (asmThrLines), déjà placés
@@ -286,6 +288,10 @@ class Vue3D : public wxWindow {
   int coucheSol_ = 0;
   double ombreO_[2] = {0, 0}, ombreT_ = 1, rayonSol_ = 1, centreSol_[2] = {0, 0}, sigOmbre_ = 0;
   gp_Pnt pivot_;
+  // viewHitAt : le pivot de la rotation est le point visé (matière simulée, pièce), sinon le centre de la scène
+  gp_Pnt pointPivot(const wxPoint& p);
+  occ::handle<AIS_InteractiveObject> marquePivot_;  // orbitMarkShow : point orange pendant la rotation
+  void cacherPivot();
   void majTailles();
   double echelleEn(const gp_Pnt& p) const;
   void rayon(int x, int y, gp_Pnt& o, gp_Dir& d) const;

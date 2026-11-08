@@ -749,12 +749,55 @@ void Vue3D::surEnfonce(wxMouseEvent& e) {
   if (e.LeftDown() && saisirGizmo(e.GetPosition(), e)) return;
   if (!e.RightDown()) {
     vue_->StartRotation(depart_.x, depart_.y);
-    pivot_ = vue_->GravityPoint();
+    pivot_ = pointPivot(depart_);
   }
+}
+
+gp_Pnt Vue3D::pointPivot(const wxPoint& p) {
+  if (!simMatiere_.IsNull() && contexte_->IsDisplayed(simMatiere_)) {
+    gp_Pnt o;
+    gp_Dir d;
+    rayon(p.x, p.y, o, d);
+    double px, py, pz;
+    vue_->Proj(px, py, pz);  // comme cliquerEn : le rayon part vers la scène
+    if (d.X() * px + d.Y() * py + d.Z() * pz > 0) d.Reverse();
+    o.Translate(gp_Vec(d) * -1e5);  // origine loin derrière : rien de la matière n'est manqué
+    const gp_Trsf T = simMatiere_->LocalTransformation(), Ti = T.Inverted();
+    gp_Pnt q;
+    if (simMatiere_->viser(o.Transformed(Ti), d.Transformed(Ti), q)) return q.Transformed(T);
+    return simMatiere_->centre().Transformed(T);
+  }
+  if (!placer_) preparerSelection();
+  contexte_->MoveTo(p.x, p.y, vue_, false);
+  if (contexte_->HasDetected() && occ::down_cast<AIS_ViewCubeOwner>(contexte_->DetectedOwner()).IsNull() && contexte_->MainSelector()->NbPicked() > 0)
+    return contexte_->MainSelector()->PickedPoint(1);
+  return vue_->GravityPoint();
+}
+
+void Vue3D::essaiOrbite3D(int x, int y, int dx, int dy, double r[7]) {
+  depart_ = precedent_ = wxPoint(x, y);
+  aBouge_ = false;
+  vue_->StartRotation(x, y);
+  pivot_ = pointPivot(depart_);
+  const wxPoint a = ecranDe(pivot_);
+  if (opt_.orbiteLibre) vue_->Rotation(x + dx, y + dy);
+  else tournerZ(dx, dy);
+  const wxPoint b = ecranDe(pivot_);
+  cacherPivot();
+  const double v[7] = {pivot_.X(), pivot_.Y(), pivot_.Z(), double(a.x), double(a.y), double(b.x), double(b.y)};
+  for (int i = 0; i < 7; i++) r[i] = v[i];
+}
+
+void Vue3D::cacherPivot() {
+  if (marquePivot_.IsNull()) return;
+  contexte_->Remove(marquePivot_, false);
+  marquePivot_.Nullify();
+  vue_->Redraw();
 }
 
 void Vue3D::surRelache(wxMouseEvent& e) {
   if (HasCapture()) ReleaseMouse();
+  cacherPivot();
   if (gizmoSaisi_ >= 0) {
     gizmoSaisi_ = -1;
     if (surGeste) surGeste(2, "", 0, "", 0, false);
@@ -1405,6 +1448,15 @@ void Vue3D::surMouvement(wxMouseEvent& e) {
     if (!aBouge_ && std::abs(p.x - depart_.x) + std::abs(p.y - depart_.y) <= SEUIL_CLIC) return;
     const bool premier = !aBouge_;
     aBouge_ = true;
+    if (premier && !opt_.orbiteLibre && marquePivot_.IsNull()) {
+      occ::handle<AIS_Point> a = new AIS_Point(new Geom_CartesianPoint(pivot_));
+      a->SetMarker(Aspect_TOM_BALL);
+      a->SetColor(couleur(0xff, 0x9f, 0x0a));
+      a->SetZLayer(Graphic3d_ZLayerId_Topmost);
+      contexte_->Display(a, 0, -1, false);
+      contexte_->Deactivate(a);
+      marquePivot_ = a;
+    }
     if (opt_.orbiteLibre) vue_->Rotation(p.x, p.y);
     else tournerZ(premier ? p.x - depart_.x : p.x - precedent_.x, premier ? p.y - depart_.y : p.y - precedent_.y);
     precedent_ = p;
@@ -1440,7 +1492,10 @@ void Vue3D::surMolette(wxMouseEvent& e) {
   vue_->Redraw();
 }
 
-void Vue3D::surPerteSouris(wxMouseCaptureLostEvent&) { aBouge_ = true; }
+void Vue3D::surPerteSouris(wxMouseCaptureLostEvent&) {
+  aBouge_ = true;
+  cacherPivot();
+}
 
 // ---- L'assemblage ----
 void Vue3D::modePlacer(bool oui) {

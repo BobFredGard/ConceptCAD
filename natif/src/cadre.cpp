@@ -4866,6 +4866,14 @@ bool Cadre::essaiEsquisse(const std::wstring& fichier, int rang, const std::wstr
       n["filets"] = asmNbFilets_;
     }
     if (e.contains("orbite")) vueEsquisse_->essaiOrbite(e["orbite"][0], e["orbite"][1]);
+    // {"orbite3d":[x,y,dx,dy]} : un glissé du bouton gauche dans la vue 3D ; le pivot doit rester sous (x,y)
+    if (e.contains("orbite3d")) {
+      double r[7];
+      vue_->essaiOrbite3D(e["orbite3d"][0], e["orbite3d"][1], e["orbite3d"][2], e["orbite3d"][3], r);
+      n["pivot"] = {r[0], r[1], r[2]};
+      n["pivotEcranAvant"] = {r[3], r[4]};
+      n["pivotEcranApres"] = {r[5], r[6]};
+    }
     if (e.contains("inclinee")) vueEsquisse_->basculerVueInclinee();
     // La saisie d'une cote telle que tapée, la mini-liste, la liste complète en photo
     if (e.contains("coteTexte")) {

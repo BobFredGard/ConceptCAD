@@ -6,6 +6,8 @@
 #include <Graphic3d_AspectFillArea3d.hxx>
 #include <Graphic3d_AttribBuffer.hxx>
 #include <Graphic3d_IndexBuffer.hxx>
+#include <gp_Dir.hxx>
+#include <gp_Pnt.hxx>
 
 #include <cstdint>
 #include <vector>
@@ -28,6 +30,9 @@ class MatiereFao : public AIS_InteractiveObject {
   void colonnes(const float* v, size_t n);
   void Compute(const occ::handle<PrsMgr_PresentationManager>&, const occ::handle<Prs3d_Presentation>& prs, const int) override;
   void ComputeSelection(const occ::handle<SelectMgr_Selection>&, const int) override {}
+  // faoMatterRayHit : le premier point de matière sur le rayon o + t d (repère de la grille)
+  bool viser(const gp_Pnt& o, const gp_Dir& d, gp_Pnt& p) const;
+  gp_Pnt centre() const { return gp_Pnt((g_.ox + g_.sx1) / 2, (g_.oy + g_.sy1) / 2, (g_.oz + g_.full) / 2); }
 
  private:
   float* sommet(int i) { return reinterpret_cast<float*>(sommets_->ChangeData() + static_cast<size_t>(i) * 24); }
