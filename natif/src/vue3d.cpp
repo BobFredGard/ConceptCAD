@@ -342,6 +342,20 @@ Vue3D::Vue3D(wxWindow* parent) : wxWindow(parent, 2005, wxDefaultPosition, wxDef
     if (visu_->InsertLayerBefore(couche, r, Graphic3d_ZLayerId_Default)) coucheSol_ = couche;
     else coucheSol_ = Graphic3d_ZLayerId_Default;
   }
+  {
+    // Le flou sous l'arbre en vitre : après tout ce qui se dessine dans la scène, avant le cube de vue
+    Graphic3d_ZLayerId couche = Graphic3d_ZLayerId_UNKNOWN;
+    Graphic3d_ZLayerSettings r;
+    r.SetEnableDepthTest(false);
+    r.SetEnableDepthWrite(false);
+    if (visu_->InsertLayerAfter(couche, r, Graphic3d_ZLayerId_Topmost)) {
+      flou_ = new FlouVue();
+      flou_->SetZLayer(couche);
+      flou_->SetMutable(true);
+      contexte_->Display(flou_, 0, -1, false);
+      contexte_->Deactivate(flou_);
+    }
+  }
   // Le cube de vue, en haut à droite comme dans le navigateur
   cube_ = new AIS_ViewCube();
   cube_->SetSize(FromDIP(38));
@@ -753,7 +767,12 @@ bool Vue3D::image(const wxString& chemin) {
     vue_->Redraw();
   }
   msImage_ = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - debut).count() / 20;
-  return vue_->Dump(chemin.utf8_str());
+  // La photo de la vue ne garde pas le flou de l'arbre : il n'a de sens qu'à l'écran
+  const bool flou = !flou_.IsNull() && flou_->zone->actif;
+  if (flou) flou_->zone->actif = false;
+  const bool ok = vue_->Dump(chemin.utf8_str());
+  if (flou) flou_->zone->actif = true;
+  return ok;
 }
 
 void Vue3D::ajuster() {
@@ -902,6 +921,16 @@ void Vue3D::surRelache(wxMouseEvent& e) {
   if (e.RightUp()) return droitEn(e.GetPosition());
   if (!e.LeftUp()) return;
   cliquerEn(e.GetPosition());
+}
+
+void Vue3D::flouSous(bool actif, double x, double y, double l, double h, double rayon) {
+  if (flou_.IsNull()) return;
+  ZoneFlou& z = *flou_->zone;
+  const ZoneFlou n{actif, x, y, l, h, rayon};
+  if (z.actif == n.actif && (!actif || (z.x == n.x && z.y == n.y && z.l == n.l && z.h == n.h && z.rayon == n.rayon))) return;
+  z = n;
+  vue_->Invalidate();
+  vue_->Redraw();
 }
 
 void Vue3D::hautVue(const gp_Dir& U) {
@@ -2807,7 +2836,11 @@ bool Vue3D::captureFilm(wxImage& sortie, int l, int h) {
   o.BufferType = Graphic3d_BT_RGB;
   o.ToAdjustAspect = true;
   try {
-    if (!px.InitZero(Image_Format_RGB, l, h) || !vue_->ToPixMap(px, o)) return false;
+    const bool flou = !flou_.IsNull() && flou_->zone->actif;
+    if (flou) flou_->zone->actif = false;  // le film ne garde pas le flou de l'arbre
+    const bool ok = px.InitZero(Image_Format_RGB, l, h) && vue_->ToPixMap(px, o);
+    if (flou) flou_->zone->actif = true;
+    if (!ok) return false;
   } catch (const Standard_Failure&) {
     return false;
   }

@@ -843,6 +843,15 @@ void Cadre::placerScene() {
     barreSim_->Show(fao && simActif_);
     if (fao && simActif_) barreSim_->Raise();
   }
+  {
+    // Le flou sous l'arbre en vitre, comme backdrop-filter dans le navigateur
+    wxWindow* c = cao && !arbreReplie_ ? static_cast<wxWindow*>(carteArbre_) : fao && !arbreReplie_ ? static_cast<wxWindow*>(carteFao_) : nullptr;
+    const wxSize v = vue_->GetClientSize();
+    if (c && v.x > 0 && v.y > 0) {
+      const wxRect r = c->GetRect();
+      vue_->flouSous(true, double(r.x) / v.x, double(r.y) / v.y, double(r.width) / v.x, double(r.height) / v.y, double(scene_->FromDIP(12)) / v.y);
+    } else vue_->flouSous(false);
+  }
   scene_->Refresh();
 }
 

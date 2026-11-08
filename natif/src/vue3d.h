@@ -1,6 +1,7 @@
 // Vue 3D : une fenêtre wxWidgets dans laquelle OCCT dessine ; souris comme la version navigateur
 // (gauche ou milieu : tourner, droit : déplacer, molette : zoomer) ; survol et clic sur les faces et arêtes.
 #pragma once
+#include "flou_vue.h"
 #include <wx/wx.h>
 #include <wx/timer.h>
 
@@ -260,7 +261,9 @@ class Vue3D : public wxWindow {
   void faoModeChoix(const std::string& mode);
   // Le haut de la vue (viewUpSync) : Z monde, ou Z du posage / de l'opération 3+2 en FAO. Le sol miroir lui est
   // perpendiculaire, posé sous le point le plus bas de la pièce le long de cet axe ; l'orbite contrainte tourne autour.
-  void hautVue(const gp_Dir& U);  // "chaine" : le survol allume les arêtes ; "point" : curseur en croix
+  void hautVue(const gp_Dir& U);
+  // Le flou sous un panneau en vitre (backdrop-filter du navigateur) : la zone en fractions de la vue
+  void flouSous(bool actif, double x = 0, double y = 0, double l = 0, double h = 0, double rayon = 0);  // "chaine" : le survol allume les arêtes ; "point" : curseur en croix
   int essaiCtrl = -1, essaiMaj = -1;  // l'essai automatique tient les touches à la place de l'utilisateur
 
  private:
@@ -376,6 +379,7 @@ class Vue3D : public wxWindow {
   occ::handle<AIS_Shape> aretesVives_, aretesLisses_;  // les traits de la pièce, hors du choix d'un congé
   std::vector<occ::handle<AIS_Shape>> reflets_;  // chaque corps renversé sous le sol
   gp_Dir haut_{0, 0, 1}, solX_{1, 0, 0}, solY_{0, 1, 0};
+  occ::handle<FlouVue> flou_;
   std::vector<gp_Pnt> pointsSol_;  // le brut affiché en FAO : le sol se pose aussi sous lui
   double sol_ = 0, msAffichage_ = 0, msImage_ = 0, msOmbre_ = 0;
   bool refletsVus_ = false;
