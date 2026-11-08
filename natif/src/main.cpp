@@ -721,6 +721,16 @@ class Appli : public wxApp {
       cadre->Close(true);
     } else if (!gArgs.empty()) {
       cadre->ouvrir(gArgs[0]);
+#ifdef __APPLE__
+      if (_wgetenv(L"CONCEPTCAD_FENETRES")) {
+        auto* m = new wxTimer();
+        m->Bind(wxEVT_TIMER, [cadre](wxTimerEvent&) {
+          std::fprintf(stderr, "ecran %dx%d\n", wxGetDisplaySize().x, wxGetDisplaySize().y);
+          listerFenetres(cadre, 0);
+        });
+        m->StartOnce(8000);
+      }
+#endif
       // Pour natif/mesures/verifier-dessin.ps1 : un double-clic dans l'arbre ne passe pas par des messages envoyés de l'extérieur
       if (const wchar_t* rang = _wgetenv(L"CONCEPTCAD_OUVRIR_ESQUISSE")) cadre->entrerEsquisse(_wtoi(rang));
       cadre->secoursDemarrer();
@@ -742,6 +752,13 @@ class Appli : public wxApp {
     const int n = backtrace(pile, 48);
     backtrace_symbols_fd(pile, n, 2);
     journal::ajouter("avertissement", std::string(t.utf8_str().data()), "wxWidgets");
+  }
+  // CONCEPTCAD_FENETRES : la liste des fenêtres avec leur place, dans la sortie (mise au point de la disposition sur Mac)
+  static void listerFenetres(wxWindow* w, int niveau) {
+    const wxRect r = w->GetScreenRect();
+    std::fprintf(stderr, "%*s%s id=%d %s visible=%d ecran=(%d,%d %dx%d) client=%dx%d\n", niveau * 2, "", w->GetClassInfo() ? static_cast<const char*>(wxString(w->GetClassInfo()->GetClassName()).utf8_str()) : "?", w->GetId(),
+                 static_cast<const char*>(w->GetLabel().Left(30).utf8_str()), w->IsShown() ? 1 : 0, r.x, r.y, r.width, r.height, w->GetClientSize().x, w->GetClientSize().y);
+    for (wxWindow* e : w->GetChildren()) listerFenetres(e, niveau + 1);
   }
   // Mac : une pièce ouverte depuis le Finder (double-clic, « Ouvrir avec ») arrive ici, pas dans les arguments
   void MacOpenFiles(const wxArrayString& fichiers) override {

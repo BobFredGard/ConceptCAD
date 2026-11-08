@@ -30,7 +30,7 @@ wxString enMajuscules(const wxString& t) {
 wxString enTexte(const std::string& s) { return wxString::FromUTF8(s); }
 wxFont policeFilm(double px, bool gras = false) {
   wxFontInfo f(wxSize(0, std::max(8, static_cast<int>(px))));
-  f.FaceName(L"Segoe UI");
+  f.FaceName(POLICE_SEGOE);
   if (gras) f.Bold();
   return wxFont(f);
 }

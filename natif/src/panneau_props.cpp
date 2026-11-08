@@ -103,7 +103,7 @@ void Tuile::peindre(wxPaintEvent&) {
     dc.DrawText(texte_, (t.x - m.x) / 2, (t.y - m.y) / 2);
     return;
   }
-  wxFont fs(wxFontInfo(wxSize(0, FromDIP(14))).FaceName("Segoe UI Symbol"));
+  wxFont fs(wxFontInfo(wxSize(0, FromDIP(14))).FaceName(POLICE_SYMBOLES));
   dc.SetFont(fs);
   const wxSize ms = dc.GetTextExtent(symbole_);
   dc.DrawText(symbole_, (t.x - ms.x) / 2, FromDIP(5));

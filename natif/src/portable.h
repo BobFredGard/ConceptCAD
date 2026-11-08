@@ -114,6 +114,15 @@ inline std::from_chars_result from_chars(const char* debut, const char* fin, dou
 #endif
 #endif
 
+// Polices propres à Windows et leur équivalent Mac (un nom de police absent laisse sur Mac un texte sans police)
+#ifdef _WIN32
+#define POLICE_SEGOE "Segoe UI"
+#define POLICE_SYMBOLES "Segoe UI Symbol"
+#else
+#define POLICE_SEGOE "Helvetica Neue"
+#define POLICE_SYMBOLES "Apple Symbols"
+#endif
+
 #ifdef _WIN32
 #define SEPW L"\\"
 // Photo d'une fenêtre avec ce que dessine OpenGL (2 : PW_RENDERFULLCONTENT)

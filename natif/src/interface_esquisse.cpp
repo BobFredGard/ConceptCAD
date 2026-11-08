@@ -114,7 +114,7 @@ wxFont policeUI(double taille, bool gras = false) {
 }
 wxFont policeTexte(const wxString& t, double taille, bool gras) {
   wxFont p = policeUI(taille, gras);
-  if (t.Find(L"⇄") != wxNOT_FOUND || t.find_first_of(L"▶⏸⏹✕◼◻◈■") != wxString::npos || t.Find(L"🗑") != wxNOT_FOUND || t.Find(L"📐") != wxNOT_FOUND || t.Find(L"➤") != wxNOT_FOUND || t.Find(L"⟳") != wxNOT_FOUND || t.Find(L"⚙") != wxNOT_FOUND) p.SetFaceName("Segoe UI Symbol");
+  if (t.Find(L"⇄") != wxNOT_FOUND || t.find_first_of(L"▶⏸⏹✕◼◻◈■") != wxString::npos || t.Find(L"🗑") != wxNOT_FOUND || t.Find(L"📐") != wxNOT_FOUND || t.Find(L"➤") != wxNOT_FOUND || t.Find(L"⟳") != wxNOT_FOUND || t.Find(L"⚙") != wxNOT_FOUND) p.SetFaceName(POLICE_SYMBOLES);
   return p;
 }
 // Tailles et positions en pixels logiques
@@ -289,7 +289,7 @@ void BoutonEsquisse::peindre(wxPaintEvent&) {
     // CUBE : le glyphe tient dans 16 px, centré sur sa ligne de 14 px comme dans le navigateur
     if (style_ == VUE || style_ == CUBE) {
       // ⚙ ⌂ ⟲ : glyphes en une couleur (Arial n'a pas ⟲, et la police émoji colorerait ⚙)
-      wxFont fs(wxFontInfo(wxSize(0, static_cast<int>(std::lround(taille * GetDPIScaleFactor())))).FaceName("Segoe UI Symbol"));
+      wxFont fs(wxFontInfo(wxSize(0, static_cast<int>(std::lround(taille * GetDPIScaleFactor())))).FaceName(POLICE_SYMBOLES));
       dc.SetFont(fs);
       dc.SetTextForeground(c);
       const wxSize m = dc.GetTextExtent(titre_), p = GetClientSize();

@@ -1208,7 +1208,7 @@ void Vue3D::montrerMesure(const mesure::Dessin& d) {
     occ::handle<AIS_TextLabel> a = new AIS_TextLabel();
     a->SetText(TCollection_ExtendedString(t.c_str(), true));
     a->SetPosition(q);
-    a->SetFont("Segoe UI");
+    a->SetFont(POLICE_SEGOE);
     a->SetHeight(14);
     a->SetColor(Quantity_NOC_WHITE);
     a->SetHJustification(Graphic3d_HTA_CENTER);

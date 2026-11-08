@@ -1619,7 +1619,7 @@ void VueEsquisse::trace(wxGraphicsContext& g) const {
     if (!G.ext.empty()) t += L"prolongement ";
     if (!G.tan.empty()) t += "T ";
     const auto q = e((b.x1 + b.x2) / 2, (b.y1 + b.y2) / 2);
-    g.SetFont(g.CreateFont(wxFontInfo(wxSize(0, 13)).Bold().FaceName("Segoe UI"), VERT));
+    g.SetFont(g.CreateFont(wxFontInfo(wxSize(0, 13)).Bold().FaceName(POLICE_SEGOE), VERT));
     g.DrawText(t, q.m_x + 8, q.m_y + 6);
   }
 }
@@ -2047,7 +2047,7 @@ void VueEsquisse::sante(wxGraphicsContext& g) const {
     const auto a = e(H.ecartA.x, H.ecartA.y), b = e(H.ecartB.x, H.ecartB.y);
     g.SetPen(stylo(g, ROUGE, 1.5, {4, 3}));
     ligne(g, a, b);
-    g.SetFont(g.CreateFont(wxFontInfo(wxSize(0, 12)).Bold().FaceName("Segoe UI"), ROUGE));
+    g.SetFont(g.CreateFont(wxFontInfo(wxSize(0, 12)).Bold().FaceName(POLICE_SEGOE), ROUGE));
     double L, H2, dsc, ext;
     const wxString t = wxString::Format(L"⚠ %.1f", H.ecart);
     g.GetTextExtent(t, &L, &H2, &dsc, &ext);
@@ -2237,7 +2237,7 @@ void VueEsquisse::coteLineaire(wxGraphicsContext& g, const Cote& d) const {
   g.SetBrush(g.CreateBrush(wxBrush(FOND)));
   g.SetPen(wxNullGraphicsPen);
   g.DrawRoundedRectangle(-wpx / 2, -11, wpx, 21, 2);
-  g.SetFont(g.CreateFont(wxFontInfo(wxSize(0, 13)).Bold().FaceName("Segoe UI"), c));
+  g.SetFont(g.CreateFont(wxFontInfo(wxSize(0, 13)).Bold().FaceName(POLICE_SEGOE), c));
   texteCentre(g, affiche, 0, 0);
   g.PopState();
   g.SetBrush(wxNullGraphicsBrush);
@@ -2287,14 +2287,14 @@ void VueEsquisse::coteRayon(wxGraphicsContext& g, const Cote& d) const {
   g.StrokeLine(k.m_x, k.m_y, k.m_x + cote * (tw + 10), k.m_y);
   // Texte au-dessus du trait, avec son halo sombre
   double L, H, dsc, ext;
-  g.SetFont(g.CreateFont(wxFontInfo(wxSize(0, 13)).Bold().FaceName("Segoe UI"), FOND));
+  g.SetFont(g.CreateFont(wxFontInfo(wxSize(0, 13)).Bold().FaceName(POLICE_SEGOE), FOND));
   g.GetTextExtent(t, &L, &H, &dsc, &ext);
   const double x = cote > 0 ? k.m_x + 5 : k.m_x - 5 - L, y = k.m_y - 4 - H;
   noterZone(d, x + L / 2, y + H / 2, L / 2 + 3, H / 2 + 3, 0);
   for (int dx = -1; dx <= 1; dx++)
     for (int dy = -1; dy <= 1; dy++)
       if (dx || dy) g.DrawText(t, x + dx, y + dy);
-  g.SetFont(g.CreateFont(wxFontInfo(wxSize(0, 13)).Bold().FaceName("Segoe UI"), c));
+  g.SetFont(g.CreateFont(wxFontInfo(wxSize(0, 13)).Bold().FaceName(POLICE_SEGOE), c));
   g.DrawText(t, x, y);
   g.SetBrush(wxNullGraphicsBrush);
 }
@@ -2347,14 +2347,14 @@ void VueEsquisse::coteAngle(wxGraphicsContext& g, const Cote& d) const {
   if (d.ref) t = "(" + t + ")";
   t = habille(d, t);
   double L, H, dsc, ext;
-  g.SetFont(g.CreateFont(wxFontInfo(wxSize(0, 13)).Bold().FaceName("Segoe UI"), FOND));
+  g.SetFont(g.CreateFont(wxFontInfo(wxSize(0, 13)).Bold().FaceName(POLICE_SEGOE), FOND));
   g.GetTextExtent(t, &L, &H, &dsc, &ext);
   const double x = w.m_x, y = w.m_y - 8 - (H - dsc);  // ligne de base à 8 px au-dessus, comme le SVG
   noterZone(d, x + L / 2, y + H / 2, L / 2 + 3, H / 2 + 3, 0);
   for (int dx = -1; dx <= 1; dx++)
     for (int dy = -1; dy <= 1; dy++)
       if (dx || dy) g.DrawText(t, x + dx, y + dy);
-  g.SetFont(g.CreateFont(wxFontInfo(wxSize(0, 13)).Bold().FaceName("Segoe UI"), c));
+  g.SetFont(g.CreateFont(wxFontInfo(wxSize(0, 13)).Bold().FaceName(POLICE_SEGOE), c));
   g.DrawText(t, x, y);
   g.SetBrush(wxNullGraphicsBrush);
   prolonge(g, d.a, V.x + rr * std::cos(sA), V.y + rr * std::sin(sA), c);
