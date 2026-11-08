@@ -119,6 +119,24 @@ async function demarrer() {
       });
       return n;
     }
+    // Le haut de la vue (viewBasis) : Z de l'opération sélectionnée quand elle a son propre repère (3+2), sinon Z du posage
+    function __natifHaut(){
+      try{
+        const r=faoRoot();
+        let sid=r&&r.activeSetupId,opId=null;
+        if(typeof sel!=='undefined'&&sel){
+          if(sel.kind==='faoSetup')sid=sel.id;
+          else if(sel.kind==='faoOp'){sid=sel.setup||sid;opId=sel.id;}
+        }
+        const st=(r.setups||[]).filter(function(s){return s.id===sid;})[0]||(r.setups||[])[0];
+        if(!st)return [0,0,1];
+        const op=opId?(st.ops||[]).filter(function(o){return o.id===opId;})[0]:null;
+        const of=(op&&typeof faoOpFrame==='function')?faoOpFrame(st,op):null;
+        const F=of||faoFrame(st);
+        if(!F||!F.Z)return [0,0,1];
+        return [F.Z[0],F.Z[1],F.Z[2]];
+      }catch(e){return [0,0,1];}
+    }
     function __natifVue(){
       const r=faoRoot();
       try{faoRenderTree();}catch(e){}
@@ -163,7 +181,7 @@ async function demarrer() {
             let tr=null;for(let q=o;q;q=q.parent)if(q.userData&&q.userData.triad){tr=q;break;}
             const ancre=tr?new THREE.Vector3().setFromMatrixPosition(tr.matrixWorld):null,ech=tr?(tr.userData.px||70)/(new THREE.Vector3().setFromMatrixScale(tr.matrixWorld).x||1):1;
             for(let i=0;i<n;i++){const q=idx?idx[i]:i;v.fromBufferAttribute(p,q).applyMatrix4(o.matrixWorld);if(ancre)v.sub(ancre).multiplyScalar(ech);a[3*i]=v.x;a[3*i+1]=v.y;a[3*i+2]=v.z;}
-            const E={k:k,nom:o.name||'',a:a,c:mat.color?mat.color.getHex():0xffffff,al:mat.transparent?mat.opacity:1,pl:mat.size||0,dep:mat.depthTest!==false,ancre:ancre?[ancre.x,ancre.y,ancre.z]:null};
+            const E={k:k,brut:!!(o.userData&&o.userData.faoStock),nom:o.name||'',a:a,c:mat.color?mat.color.getHex():0xffffff,al:mat.transparent?mat.opacity:1,pl:mat.size||0,dep:mat.depthTest!==false,ancre:ancre?[ancre.x,ancre.y,ancre.z]:null};
             // La matière creusée d'un posage 3+2 est éclairée comme dans la page
             if(k==='T'&&mat.isMeshPhongMaterial&&ge.attributes.normal){
               const nr=ge.attributes.normal,N=new Float32Array(n*3),M=new THREE.Matrix3().getNormalMatrix(o.matrixWorld);
@@ -303,7 +321,7 @@ let baseMoves = null;
 function vue() {
   const v = vm.runInContext('__natifVue()', ctx);
   const barre = vm.runInContext('__natifBarre()', ctx);
-  return { choix: v.choix, survol: v.survol, active: v.active, prev: v.prev, perime: v.perime, rap: v.rap, message: v.message, calcul: v.calcul, sig: vm.runInContext('__natifSig()', ctx), arbre: DOM.decrire(v.arbreEl), fiche: DOM.decrire(v.ficheEl), outils: v.outilsEl ? DOM.decrire(v.outilsEl) : null, sim: !!barre, barre: barre ? DOM.decrire(barre) : null };
+  return { choix: v.choix, survol: v.survol, active: v.active, prev: v.prev, perime: v.perime, rap: v.rap, message: v.message, calcul: v.calcul, sig: vm.runInContext('__natifSig()', ctx), haut: vm.runInContext('__natifHaut()', ctx), arbre: DOM.decrire(v.arbreEl), fiche: DOM.decrire(v.ficheEl), outils: v.outilsEl ? DOM.decrire(v.outilsEl) : null, sim: !!barre, barre: barre ? DOM.decrire(barre) : null };
 }
 // Les traces en nombres bruts dans un fichier : Perçages en a déjà plusieurs Mo
 function tracesFichier(a) {
@@ -332,7 +350,7 @@ function sceneFichier(a) {
   const objets = O.map(o => {
     const f = Float32Array.from(o.a);
     B.push(Buffer.from(f.buffer, f.byteOffset, f.byteLength));
-    const x = { k: o.k, nom: o.nom, n: f.length, c: o.c, al: o.al, pl: o.pl, dep: o.dep, ancre: o.ancre ? Array.from(o.ancre) : null };
+    const x = { k: o.k, brut: o.brut, nom: o.nom, n: f.length, c: o.c, al: o.al, pl: o.pl, dep: o.dep, ancre: o.ancre ? Array.from(o.ancre) : null };
     if (o.nrm) { const g = Float32Array.from(o.nrm); B.push(Buffer.from(g.buffer, g.byteOffset, g.byteLength)); x.lit = true; x.sp = o.sp; x.sh = o.sh; }
     return x;
   });

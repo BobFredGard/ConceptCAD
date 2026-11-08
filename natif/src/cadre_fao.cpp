@@ -103,6 +103,11 @@ void Cadre::faoAppliquer(const plan::J& r) {
     faoTraces(r.value("rap", std::string("tous")));
   }
   if (atelier_ == Atelier::FAO) faoScene();
+  if (atelier_ == Atelier::FAO && r.contains("haut") && r["haut"].is_array() && r["haut"].size() == 3) {
+    // viewUpSync : le sol miroir et l'orbite suivent le Z du posage, ou de l'opération 3+2 choisie
+    const double x = r["haut"][0].get<double>(), y = r["haut"][1].get<double>(), z = r["haut"][2].get<double>();
+    if (std::hypot(x, y, z) > 1e-9) vue_->hautVue(gp_Dir(x, y, z));
+  }
   carteDroite_->Layout();
   const bool sim = r.value("sim", false);
   if (sim && atelier_ == Atelier::FAO) {
@@ -311,6 +316,7 @@ void Cadre::faoScene() {
       x.alpha = o.value("al", 1.0);
       x.taille = o.value("pl", 0.0);
       x.profondeur = o.value("dep", true);
+      x.brut = o.value("brut", false);
       if (o.contains("ancre") && o["ancre"].is_array()) {
         x.ancre = true;
         x.ax = o["ancre"][0];

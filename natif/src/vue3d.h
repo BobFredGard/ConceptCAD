@@ -66,6 +66,7 @@ struct ParamSol {
   bool coupe = false, disque = true;
   Quantity_Color haut, bas;  // le fond derrière le sol
   double cn[3] = {0, 0, 0}, cd = 0;
+  gp_Dir ax[3] = {gp_Dir(1, 0, 0), gp_Dir(0, 1, 0), gp_Dir(0, 0, 1)};  // le repère du sol : son Z est le haut de la vue
 };
 
 class Vue3D : public wxWindow {
@@ -231,6 +232,7 @@ class Vue3D : public wxWindow {
     double ax = 0, ay = 0, az = 0;
     unsigned reflet = 0x111111;
     double brillance = 30;
+    bool brut = false;  // le brut du posage : le sol miroir passe sous lui (floorMeshes)
   };
   void montrerSceneFao(const std::vector<ObjetFao>& L);
   // La lecture d'usinage : la matière, l'outil qui suit le parcours, le bout de trace derrière lui
@@ -255,7 +257,10 @@ class Vue3D : public wxWindow {
   std::function<bool(const ClicFao&)> surClicFao;
   bool faoSurvol = false;
   void cliquerFao(const wxPoint& p, int bouton, bool ctrl, bool maj, bool survol = false);
-  void faoModeChoix(const std::string& mode);  // "chaine" : le survol allume les arêtes ; "point" : curseur en croix
+  void faoModeChoix(const std::string& mode);
+  // Le haut de la vue (viewUpSync) : Z monde, ou Z du posage / de l'opération 3+2 en FAO. Le sol miroir lui est
+  // perpendiculaire, posé sous le point le plus bas de la pièce le long de cet axe ; l'orbite contrainte tourne autour.
+  void hautVue(const gp_Dir& U);  // "chaine" : le survol allume les arêtes ; "point" : curseur en croix
   int essaiCtrl = -1, essaiMaj = -1;  // l'essai automatique tient les touches à la place de l'utilisateur
 
  private:
@@ -370,6 +375,8 @@ class Vue3D : public wxWindow {
   occ::handle<AIS_Shape> filetsAutresH_, filetsAutresA_;
   occ::handle<AIS_Shape> aretesVives_, aretesLisses_;  // les traits de la pièce, hors du choix d'un congé
   std::vector<occ::handle<AIS_Shape>> reflets_;  // chaque corps renversé sous le sol
+  gp_Dir haut_{0, 0, 1}, solX_{1, 0, 0}, solY_{0, 1, 0};
+  std::vector<gp_Pnt> pointsSol_;  // le brut affiché en FAO : le sol se pose aussi sous lui
   double sol_ = 0, msAffichage_ = 0, msImage_ = 0, msOmbre_ = 0;
   bool refletsVus_ = false;
   bool enChoix_ = false;

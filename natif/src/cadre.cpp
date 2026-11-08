@@ -850,6 +850,7 @@ void Cadre::changerAtelier(Atelier a) {
   if (atelier_ == Atelier::FAO && a != Atelier::FAO) {
     faoFaireSuivre();
     faoQuitterVue();
+    vue_->hautVue(gp_Dir(0, 0, 1));  // hors FAO : Z monde
   }
   if (a == Atelier::RENDU && atelier_ != Atelier::RENDU) avantRendu_ = atelier_;
   if (atelier_ == Atelier::RENDU && a != Atelier::RENDU) atelierRendu_->fermer();

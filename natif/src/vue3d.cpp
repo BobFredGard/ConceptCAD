@@ -115,10 +115,15 @@ const char* const REFLET_SOMMET = R"(
 THE_SHADER_OUT vec3 vMonde;
 THE_SHADER_OUT vec2 vEcran;
 THE_SHADER_OUT vec3 vNormale;
+uniform vec3 uSolX;
+uniform vec3 uSolY;
+uniform vec3 uSolZ;
 void main() {
   vec4 p = occModelWorldMatrix * occVertex;
-  vMonde = p.xyz;
-  vNormale = (occModelWorldMatrixInverseTranspose * vec4(occNormal, 0.0)).xyz;
+  // Dans le repère du sol : son Z est le haut de la vue (Z du posage en FAO)
+  vMonde = vec3(dot(p.xyz, uSolX), dot(p.xyz, uSolY), dot(p.xyz, uSolZ));
+  vec3 nm = (occModelWorldMatrixInverseTranspose * vec4(occNormal, 0.0)).xyz;
+  vNormale = vec3(dot(nm, uSolX), dot(nm, uSolY), dot(nm, uSolZ));
   gl_Position = occProjectionMatrix * occWorldViewMatrix * p;
   vEcran = gl_Position.yw;
 }
@@ -155,11 +160,15 @@ const char* const REFLET_PIXEL = R"(
 uniform vec3 uCouleur;
 uniform vec4 uCoupe;
 uniform float uAvecCoupe;
+uniform vec3 uSolX;
+uniform vec3 uSolY;
+uniform vec3 uSolZ;
 THE_SHADER_IN vec3 vMonde;
 THE_SHADER_IN vec3 vNormale;
 void main() {
-  if (uAvecCoupe > 0.5 && dot(uCoupe.xyz, vec3(vMonde.xy, 2.0 * uCentre.z - vMonde.z)) + uCoupe.w < 0.0) discard;
-  vec3 oeil = occWorldViewMatrixInverse[3].xyz;
+  if (uAvecCoupe > 0.5 && dot(uCoupe.xyz, uSolX * vMonde.x + uSolY * vMonde.y + uSolZ * (2.0 * uCentre.z - vMonde.z)) + uCoupe.w < 0.0) discard;
+  vec3 o = occWorldViewMatrixInverse[3].xyz;
+  vec3 oeil = vec3(dot(o, uSolX), dot(o, uSolY), dot(o, uSolZ));
   float t = (uCentre.z - oeil.z) / (vMonde.z - oeil.z);
   vec3 s = oeil + (vMonde - oeil) * t;
   float d = distance(s, uCentre);
@@ -214,6 +223,8 @@ void pousserSol(const occ::handle<Graphic3d_ShaderProgram>& p, const ParamSol& P
   p->PushVariableVec4("uOmbre", NCollection_Vec4<float>(f(P.ombreK), f(P.ombreO[0]), f(P.ombreO[1]), f(P.ombreT)));
   p->PushVariableInt("uTuile", 0);
   p->PushVariableInt("uOmbreT", 1);
+  const char* noms[3] = {"uSolX", "uSolY", "uSolZ"};
+  for (int i = 0; i < 3; i++) p->PushVariableVec3(noms[i], NCollection_Vec3<float>(f(P.ax[i].X()), f(P.ax[i].Y()), f(P.ax[i].Z())));
 }
 occ::handle<Graphic3d_ShaderProgram> programmeReflet(const Quantity_Color& c, const ParamSol& P) {
   occ::handle<Graphic3d_ShaderProgram> p = new Graphic3d_ShaderProgram();
@@ -453,7 +464,7 @@ void Vue3D::afficher(const TopoDS_Shape& forme, bool ajusterVue, const std::vect
 
 // Le reflet n'existe que vu de dessus : comme le navigateur, plus rien quand l'œil passe sous le sol
 void Vue3D::majReflets() {
-  const bool dessus = vue_->Camera()->Eye().Z() > sol_;
+  const bool dessus = gp_Vec(vue_->Camera()->Eye().XYZ()).Dot(gp_Vec(haut_)) > sol_;
   if (!disque_.IsNull()) {
     const bool vu = contexte_->IsDisplayed(disque_);
     if (dessus != vu) {
@@ -756,7 +767,16 @@ void Vue3D::ajuster() {
 }
 
 void Vue3D::vueInitiale() {
-  vue_->SetProj(V3d_XposYnegZpos);
+  if (haut_.IsEqual(gp_Dir(0, 0, 1), 1e-9)) vue_->SetProj(V3d_XposYnegZpos);
+  else {
+    // L'iso dans le repère de la vue (Z du posage en FAO), comme viewUpReset
+    occ::handle<Graphic3d_Camera> k = vue_->Camera();
+    const gp_Pnt c = k->Center();
+    const gp_Dir vers(solX_.XYZ() - solY_.XYZ() + haut_.XYZ());
+    k->SetEye(c.XYZ() + vers.XYZ() * k->Distance());
+    k->SetUp(haut_);
+    k->OrthogonalizeUp();
+  }
   ajuster();
 }
 
@@ -882,6 +902,29 @@ void Vue3D::surRelache(wxMouseEvent& e) {
   if (e.RightUp()) return droitEn(e.GetPosition());
   if (!e.LeftUp()) return;
   cliquerEn(e.GetPosition());
+}
+
+void Vue3D::hautVue(const gp_Dir& U) {
+  if (U.IsEqual(haut_, 1e-6)) return;
+  haut_ = U;
+  // Le repère du sol : X et Y du monde tournés au plus court de Z vers U (setFromUnitVectors)
+  const gp_Dir Z(0, 0, 1);
+  gp_Trsf r;
+  if (U.IsOpposite(Z, 1e-9)) r.SetRotation(gp_Ax1(gp_Pnt(0, 0, 0), gp_Dir(1, 0, 0)), M_PI);
+  else if (!U.IsEqual(Z, 1e-9)) r.SetRotation(gp_Ax1(gp_Pnt(0, 0, 0), Z.Crossed(U)), Z.Angle(U));
+  solX_ = gp_Dir(1, 0, 0).Transformed(r);
+  solY_ = gp_Dir(0, 1, 0).Transformed(r);
+  // La caméra garde sa direction ; seul son haut suit (un léger écart si elle regarde pile le long de l'axe)
+  occ::handle<Graphic3d_Camera> k = vue_->Camera();
+  const gp_Vec off(k->Center(), k->Eye());
+  if (off.Magnitude() > 1e-9 && std::abs(gp_Dir(off).Dot(U)) > 0.9999)
+    k->SetEye(k->Eye().Translated(gp_Vec(1, -1, 0).Normalized() * off.Magnitude() * 1e-3));
+  k->SetUp(U);
+  k->OrthogonalizeUp();
+  refaireReflets();
+  majReflets();
+  vue_->ZFitAll();
+  vue_->Redraw();
 }
 
 void Vue3D::faoModeChoix(const std::string& mode) {
@@ -1820,6 +1863,22 @@ void Vue3D::montrerSceneFao(const std::vector<ObjetFao>& L) {
     contexte_->Deactivate(a);
     faoScene_.push_back(a);
   }
+  // Le sol passe sous le brut affiché, pas sous la pièce qu'il enveloppe (floorMeshes)
+  std::vector<gp_Pnt> P;
+  for (const ObjetFao& o : L)
+    if (o.brut && o.sorte == 'T')
+      for (size_t i = 0; i + 2 < o.a.size(); i += 3) P.emplace_back(o.a[i], o.a[i + 1], o.a[i + 2]);
+  const auto pareil = [](const std::vector<gp_Pnt>& A, const std::vector<gp_Pnt>& B) {
+    if (A.size() != B.size()) return false;
+    for (size_t i = 0; i < A.size(); i++)
+      if (A[i].SquareDistance(B[i]) > 1e-12) return false;
+    return true;
+  };
+  if (!pareil(P, pointsSol_)) {
+    pointsSol_ = std::move(P);
+    refaireReflets();
+    majReflets();
+  }
   vue_->ZFitAll();
   vue_->Redraw();
 }
@@ -1966,15 +2025,37 @@ void Vue3D::refaireReflets() {
     BRepBndLib::Add(o.v.forme, b, true);
     if (!b.IsVoid()) boite.Add(b.Transformed(o.v.t));
   }
+  for (const gp_Pnt& p : pointsSol_) boite.Add(p);
   if (boite.IsVoid()) {
     if (!disque_.IsNull()) contexte_->Remove(disque_, false);
     disque_.Nullify();
     return;
   }
-  sol_ = boite.CornerMin().Z();
   const gp_Pnt bas = boite.CornerMin(), haut = boite.CornerMax();
-  centreSol_[0] = (bas.X() + haut.X()) / 2;
-  centreSol_[1] = (bas.Y() + haut.Y()) / 2;
+  const gp_XYZ milieu = (bas.XYZ() + haut.XYZ()) / 2;
+  if (haut_.IsEqual(gp_Dir(0, 0, 1), 1e-9)) sol_ = bas.Z();
+  else {
+    // Repère penché : les sommets exacts du maillage, une boîte penchée laisserait un vide sous la pièce
+    sol_ = 1e300;
+    const gp_XYZ U = haut_.XYZ();
+    for (const Un& u : tous)
+      for (TopExp_Explorer x(u.s, TopAbs_FACE); x.More(); x.Next()) {
+        TopLoc_Location loc;
+        const occ::handle<Poly_Triangulation> tri = BRep_Tool::Triangulation(TopoDS::Face(x.Current()), loc);
+        if (tri.IsNull()) continue;
+        const gp_Trsf m = u.t * loc.Transformation();
+        for (int i = 1; i <= tri->NbNodes(); i++) sol_ = std::min(sol_, tri->Node(i).Transformed(m).XYZ().Dot(U));
+      }
+    for (const gp_Pnt& p : pointsSol_) sol_ = std::min(sol_, p.XYZ().Dot(U));
+    if (sol_ > 1e299) {
+      sol_ = 1e300;
+      for (const double X : {bas.X(), haut.X()})
+        for (const double Y : {bas.Y(), haut.Y()})
+          for (const double Z : {bas.Z(), haut.Z()}) sol_ = std::min(sol_, gp_XYZ(X, Y, Z).Dot(U));
+    }
+  }
+  centreSol_[0] = milieu.Dot(solX_.XYZ());
+  centreSol_[1] = milieu.Dot(solY_.XYZ());
   rayonSol_ = std::max(bas.Distance(haut) / 2, 1.0);
   std::vector<std::pair<TopoDS_Shape, gp_Trsf>> ombrants;
   for (const Un& u : tous) ombrants.push_back({u.s, u.t});
@@ -1987,7 +2068,7 @@ void Vue3D::refaireReflets() {
   if (!opt_.miroir) return;
   // Le reflet au sol : chaque corps renversé sous la pièce, fondu dans le fond, jamais cliquable
   gp_Trsf miroir;
-  miroir.SetMirror(gp_Ax2(gp_Pnt(0, 0, sol_), gp_Dir(0, 0, 1)));
+  miroir.SetMirror(gp_Ax2(gp_Pnt(haut_.XYZ() * sol_), haut_));
   const auto solVue = [this]() { return paramSol(); };
   for (const Un& u : tous) {
     Quantity_Color teinte = couleurHex(u.c);
@@ -2338,6 +2419,7 @@ ParamSol Vue3D::paramSol() const {
   const bool actuel = opt_.env == "actuel";
   P.fond = actuel ? couleurFond() : couleurTexte(opt_.solCouleur);
   P.centre = gp_Pnt(centreSol_[0], centreSol_[1], sol_);
+  P.ax[0] = solX_, P.ax[1] = solY_, P.ax[2] = haut_;
   P.rayon = rayonSol_;
   P.ombreK = imageOmbre_.IsNull() ? 0 : (actuel || opt_.amb == "noir" || opt_.amb == "atelier" ? 0.55 : 0.32);
   P.ombreO[0] = ombreO_[0];
@@ -2382,9 +2464,9 @@ void Vue3D::calculerOmbre(const std::vector<std::pair<TopoDS_Shape, gp_Trsf>>& L
       const int nb = tri->NbNodes();
       std::vector<std::array<float, 2>> q(static_cast<size_t>(nb) + 1);
       for (int i = 1; i <= nb; i++) {
-        const gp_Pnt p = tri->Node(i).Transformed(m);
-        const double h = (p.Z() - sol_) / lz;
-        q[i] = {static_cast<float>((p.X() - h * lx - ombreO_[0]) / T * N), static_cast<float>((p.Y() - h * ly - ombreO_[1]) / T * N)};
+        const gp_XYZ w = tri->Node(i).Transformed(m).XYZ();
+        const double px = w.Dot(solX_.XYZ()), py = w.Dot(solY_.XYZ()), h = (w.Dot(haut_.XYZ()) - sol_) / lz;
+        q[i] = {static_cast<float>((px - h * lx - ombreO_[0]) / T * N), static_cast<float>((py - h * ly - ombreO_[1]) / T * N)};
       }
       for (int i = 1; i <= tri->NbTriangles(); i++) {
         int i0, i1, i2;
@@ -2476,7 +2558,8 @@ void Vue3D::majSol() {
   const bool actuel = opt_.env == "actuel";
   if (imageOmbre_.IsNull() && (actuel ? b == nullptr : !opt_.sol)) return;
   const double m = rayonSol_ * 6;
-  BRepBuilderAPI_MakeFace fabrique(gp_Pln(gp_Pnt(centreSol_[0], centreSol_[1], sol_), gp_Dir(0, 0, 1)), -m, m, -m, m);
+  const gp_Pnt c0(solX_.XYZ() * centreSol_[0] + solY_.XYZ() * centreSol_[1] + haut_.XYZ() * sol_);
+  BRepBuilderAPI_MakeFace fabrique(gp_Pln(gp_Ax3(c0, haut_, solX_)), -m, m, -m, m);
   const TopoDS_Face f = fabrique.Face();
   BRepMesh_IncrementalMesh(f, m, false, 1.0, false);
   disque_ = new AIS_Shape(f);
@@ -2744,6 +2827,9 @@ void Vue3D::vueStandard(const std::string& q) {
   gp_Dir vers(0, -1, 0), haut(0, 0, 1);
   if (q == "top") vers = gp_Dir(0, 0, 1), haut = gp_Dir(0, 1, 0);
   else if (q == "right") vers = gp_Dir(1, 0, 0);
+  // Dans le repère de la vue : Z du posage en FAO
+  const auto rep = [this](const gp_Dir& v) { return gp_Dir(solX_.XYZ() * v.X() + solY_.XYZ() * v.Y() + haut_.XYZ() * v.Z()); };
+  vers = rep(vers), haut = rep(haut);
   occ::handle<Graphic3d_Camera> k = vue_->Camera();
   k->SetCenter(c);
   k->SetEye(c.XYZ() + vers.XYZ() * d);
@@ -2785,16 +2871,16 @@ void Vue3D::tournerZ(double dx, double dy) {
   gp_Vec droite = gp_Vec(k->Direction()).Crossed(gp_Vec(k->Up()));
   if (droite.Magnitude() < 1e-9) return;
   const gp_Dir R(droite);
-  const double phi = std::acos(std::clamp(d.Z(), -1.0, 1.0)), lim = 1e-3;
+  const double phi = std::acos(std::clamp(d.Dot(haut_), -1.0, 1.0)), lim = 1e-3;
   const double a = std::clamp(phi - dy * v, lim, M_PI - lim) - phi;
   gp_Trsf t1, t2;
-  t1.SetRotation(gp_Ax1(pivot_, gp_Dir(0, 0, 1)), -dx * v);
+  t1.SetRotation(gp_Ax1(pivot_, haut_), -dx * v);
   t2.SetRotation(gp_Ax1(pivot_, R), a);
   const gp_Trsf T = t1 * t2;
   const gp_Pnt oeil = k->Eye().Transformed(T), centre = k->Center().Transformed(T);
   k->SetCenter(centre);
   k->SetEye(oeil);
-  k->SetUp(gp_Dir(0, 0, 1));
+  k->SetUp(haut_);
   k->OrthogonalizeUp();
   vue_->ZFitAll();
 }
