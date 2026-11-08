@@ -103,6 +103,12 @@ function mfCss(){
   'body.ui-modern .mfM{display:flex!important}',
   'body.ui-modern .topbar>.tb,body.ui-modern .topbar>.hints{display:none!important}',
   'body.ui-modern .topbar{padding:6px 12px;margin-bottom:6px}',
+  /* V0.69.3 : bandeau supérieur en retrait (plus sombre que le ruban) + liseré couleur du thème */
+  'body.ui-modern .topbar{background:var(--topbar,#18181a);border-bottom:2px solid var(--primary)}',
+  'body[data-theme="graphite"]{--topbar:#1a1b1d}',
+  'body[data-theme="atelier"]{--topbar:#15120f}',
+  'body[data-theme="clair"]{--topbar:#dde2ea}',
+  'body[data-theme="contraste"]{--topbar:#000}',
   /* espaces CAO / FAO */
   '.mfWs{gap:2px;padding:2px;border-radius:9px;background:rgba(127,127,127,.12)}',
   '.mfWs button{padding:4px 14px;font-size:.78rem;border:none;background:none;border-radius:7px}',

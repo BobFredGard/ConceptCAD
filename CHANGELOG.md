@@ -8,7 +8,7 @@ sont sorties le 2026-09-30j.
 Code dans `src/` · livrable `fusion_mvp.html` (généré par `build.js`) · architecture et
 garde-fous en tête de `src/00-entete-et-outils.js`.
 
-**610 versions**, de `2026-09-28b` à `V0.69.2` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
+**611 versions**, de `2026-09-28b` à `V0.69.3` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
 comme dans le fichier d'origine.
 
 ---
@@ -7020,5 +7020,13 @@ Barquette ne perd plus son solide à la 107e modification, et sa mémoire ne mon
 - **Correctif** : pendant la simulation, la pièce masquée est visée en premier, même sous la matière ; hors de la pièce, la matière simulée ; dans le vide, le centre du brut. Le zoom à la molette suit le même point.
 - **Parcours FAO et `CACHE_VER`** inchangés.
 - **Test** : `test_vue_centre` (la pièce est visée avant la matière) ; `gpu.spec` sur la vraie carte graphique : point sur une face de la pièce, point sur la matière hors de la pièce, vrai glisser à la souris. Vérifié à la main sur Cavité Test : 45 points sur 45 sur les faces de la pièce.
+
+---
+## V0.69.3 - Bandeau supérieur plus sombre, avec un liseré couleur du thème
+
+- **Demande** : « Le bandeau supérieur devrait être un poil différent en terme de couleur de fond ». Le bandeau du haut et le ruban d'outils avaient le même fond et paraissaient collés. Fred a choisi l'option C parmi quatre maquettes.
+- **Correctif** : le bandeau du haut passe en retrait (plus sombre que le ruban ; gris-bleu pâle en Clair) et reçoit un trait de 2 px à la couleur du thème (bleu, bleu clair, orange…), dans les cinq thèmes.
+- **Parcours FAO et `CACHE_VER`** inchangés.
+- **Test** : vérifié dans le navigateur sur les cinq thèmes (fond et couleur du trait lus à l'écran).
 
 ---
