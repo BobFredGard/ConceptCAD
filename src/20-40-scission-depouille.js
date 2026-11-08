@@ -129,6 +129,35 @@ function occApplySplit(result,f,side){
   try{result.delete();}catch(e){}
   return{shape:r.shape,warnings};
 }
+// V0.70.2 : direction EXACTE de l'arête à chacun de ses bouts, tournée vers l'intérieur de l'arête
+// ([au départ, à l'arrivée]). La chaîne tangente la lisait sur la polyligne : sur un arc, le premier
+// segment s'écarte de la tangente de plusieurs degrés, d'où un seuil de 10° qui laissait passer
+// des arêtes qui ne sont pas tangentes. Deux arêtes se suivent sans cassure si leurs directions au
+// sommet commun sont opposées.
+function occBoutsTangents(ad,u0,u1,P){
+  const lit=u=>{ad.D0(u,P);return[P.X(),P.Y(),P.Z()];};
+  const d=(u1-u0)*1e-5,dir=(a,b)=>{const v=[b[0]-a[0],b[1]-a[1],b[2]-a[2]],l=Math.hypot(v[0],v[1],v[2]);return l>0?v.map(x=>x/l):null;};
+  try{return[dir(lit(u0),lit(u0+d)),dir(lit(u1),lit(u1-d))];}catch(e){return null;}
+}
+// Faces voisines (rangs dans la carte des faces) de chaque arête d'une liste issue d'occListEdges
+// (repérées par src) : la chaîne tangente ne passe d'une arête à l'autre que si elles bordent une
+// même face. Annote la liste sur place ; sans effet si le noyau ne fournit pas les cartes.
+function occAretesFaces(shape,list){
+  const E=occt.TopAbs_ShapeEnum;let mE=null,mF=null,ex=null;
+  try{
+    mE=nomsCarte(shape,E.TopAbs_EDGE,E.TopAbs_FACE);mF=nomsCarteFaces(shape);if(!mE||!mF)return list;
+    const bySrc=new Map();list.forEach(e=>{if(e&&e.src!=null)bySrc.set(e.src,e);});
+    ex=new occt.TopExp_Explorer_2(shape,E.TopAbs_EDGE,E.TopAbs_SHAPE);
+    let src=0;
+    while(ex.More()){
+      const o=bySrc.get(src);
+      if(o){const j=occAvec(ex.Current(),x=>mE.FindIndex(x));if(j>0)o.fs=[...new Set(nomsChaque(mE.FindFromIndex(j),f=>mF.FindIndex(f)))].filter(k=>k>0);}
+      src++;ex.Next();
+    }
+  }catch(e){}
+  finally{try{ex&&ex.delete();}catch(e){}try{mE&&mE.delete();}catch(e){}try{mF&&mF.delete();}catch(e){}}
+  return list;
+}
 function occListEdges(shape){
   // Données pures par arête (pas de handles conservés) : mid, polyline pts, longueur, src (rang explorateur).
   const out=[],bin=[];
@@ -148,7 +177,7 @@ function occListEdges(shape){
         for(let i=0;i<=NP;i++){ad.D0(u0+(u1-u0)*i/NP,P);pts.push([P.X(),P.Y(),P.Z()]);}
         let len=0;
         for(let i=1;i<pts.length;i++)len+=Math.hypot(pts[i][0]-pts[i-1][0],pts[i][1]-pts[i-1][1],pts[i][2]-pts[i-1][2]);
-        if(len>1e-6)out.push({mid,pts,len,src});
+        if(len>1e-6)out.push({mid,pts,len,src,ta:occBoutsTangents(ad,u0,u1,P)});
       }
     }catch(err){}
     src++;ex.Next();
@@ -477,6 +506,7 @@ function occSharpEdges(shape){
               }
               const cut=!sharp&&onC;
               const E=cut?{mid,pts:occCurvePts(ad,u0,u1),len:s.len,sharp:true,split:true}:{mid,pts:occCurvePts(ad,u0,u1),len:s.len,sharp};
+              {const Pt=new occt.gp_Pnt_1();bin.push(Pt);E.ta=occBoutsTangents(ad,u0,u1,Pt);}
               if(fl.length)E.fs=fl.slice(); // V0.23.8 : faces voisines (ordinaux) → pièce d'un STEP multi-corps
               out.push(E);
             }

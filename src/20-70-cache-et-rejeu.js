@@ -152,7 +152,7 @@ function featSig(f){
     // appliquée : les mettre dans la signature force le cache à rejouer quand on décoche
     // « arêtes tangentes » ou qu'on change de germe — sinon le solide périmé persiste.
     // V0.11.19 : mode du chanfrein (deux distances / angle / inversion) = géométrie aussi.
-    s+='|'+(f.chamfer?1:0)+'|'+(f.chamfer?xChamKey(xChamOpts(f)):'')+'|'+(f.tangent?1:0)+'|'+((f.edges||[]).map(e=>
+    s+='|'+(f.chamfer?1:0)+'|'+(f.chamfer?xChamKey(xChamOpts(f)):'')+'|'+(f.tangent?1:0)+(f.droit?'d':'')+'|'+((f.edges||[]).map(e=>
       // 2026-10-16-008 : position d'ORIGINE figée (pos0) et non le relevé pos/len rafraîchi à
       // chaque appariement — sinon la signature changeait APRÈS chaque rejeu (point de contrôle
       // jamais retrouvé). Un changement en amont change déjà le préfixe : aucune fraîcheur perdue.

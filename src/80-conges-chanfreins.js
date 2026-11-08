@@ -244,7 +244,7 @@ function xPreviewShape(base,jobs,cham,edges){
   const warns=[];
   let sh=null;
   // V0.11.19 : type de chanfrein de la commande (deux distances / angle / inversion) dans l'aperçu
-  const single=!!(filModeX&&filModeX.tangent===false),co=cham?xChamOpts(filModeX):null;
+  const single=filModeX&&filModeX.tangent===false?'droit':false,co=cham?xChamOpts(filModeX):null;
   try{sh=occFilletRun(base,jobs,warns,cham,{single,cham:co});}catch(e){sh=null;}
   // V0.63.6 : MÊME CONTRÔLE qu'« Appliquer » (occApplyXFillets) : un solide déchiré n'est plus montré
   // comme s'il allait passer, et la reprise NURBS qu'Appliquer tenterait est tentée ici aussi.
@@ -294,7 +294,7 @@ function xPreviewUpdate(){
           for(const kk of [0.7,0.5,0.4,0.3,0.2]){
             const r2=Math.max(0.3,+(rMax*kk).toFixed(2));
             const w2=[];let t=null;
-            try{t=occFilletRun(occShapeCopy(occLive.shape),jobs.map(j=>({src:j.src,r:r2,mid:j.mid.slice()})),w2,cham,{single:!!(filModeX&&filModeX.tangent===false)});}catch(ex){t=null;}
+            try{t=occFilletRun(occShapeCopy(occLive.shape),jobs.map(j=>({src:j.src,r:r2,mid:j.mid.slice()})),w2,cham,{single:filModeX&&filModeX.tangent===false?'droit':false});}catch(ex){t=null;}
             const bon=t&&occFacesValides(t,zone); // « vérifié » : un solide valide, comme à l'application
             try{if(t)t.delete();}catch(e2){}
             if(bon){msg+=' — max vérifié : '+dp+r2+' ; réduisez '+(cham?'la distance':'le rayon');break;}
@@ -553,7 +553,9 @@ function exactTangentToggle(startIdx){
   xPreviewUpdate();
   faceEl.textContent=`${xLabel(filModeX.kind)} : arêtes tangentes ${filModeX.tangent?'ajoutées automatiquement':'désactivées'} · ${filModeX.sel.length} arête(s).`;
 }
-function xTangentChainOf(list,startIdx){
+function xTangentChainOf(list,startIdx,ancien){
+  // ancien : règle d'avant V0.70.2 (corde de la polyligne, 10°), gardée au rejeu des congés créés avant
+  // — leur chaîne, donc leur forme, ne change pas.
   // Chaîne tangente sur une LISTE d'arêtes arbitraire. Extrait d'occTangentChain (qui ne
   // marche que sur filModeX.edges, indisponible pendant un rejeu) : src/20 en a besoin
   // pour rejouer une tangence persistée directement sur les arêtes du solide actuel.
@@ -590,6 +592,12 @@ function xTangentChainOf(list,startIdx){
         if(!aKeys||!bKeys) return false;
         const aAtStart = aKeys[0]===sharedKey;
         const bAtStart = bKeys[0]===sharedKey;
+        // V0.70.2 : directions exactes aux bouts (occBoutsTangents) et face commune. Avant : corde
+        // de la polyligne et 10° de marge, sans regarder les faces — la chaîne passait sur une arête
+        // d'une autre face qui partait presque dans le même sens.
+        const A=list[aIdx],B=list[bIdx];
+        const ua=!ancien&&A.ta&&A.ta[aAtStart?0:1],ub=!ancien&&B.ta&&B.ta[bAtStart?0:1];
+        if(ua&&ub) return ua[0]*ub[0]+ua[1]*ub[1]+ua[2]*ub[2] < -0.9994; // directions opposées au sommet : à 2° près
         const ta=getTan(aIdx, !aAtStart);
         const tb=getTan(bIdx, !bAtStart);
         if(!ta||!tb) return false;
@@ -606,12 +614,17 @@ function xTangentChainOf(list,startIdx){
       const keys=edgeKeys[cur]||[];
       for(const k of keys){
         const neigh=vmap.get(k)||[];
-        for(const nb of neigh){
+        // Plusieurs arêtes tangentes au même sommet : seules celles qui bordent une même face que
+        // l'arête courante continuent la chaîne (un bord de face ne saute pas sur une autre face).
+        let tans=neigh.filter(nb=>nb!==cur&&isTangent(cur, nb, k));
+        if(tans.length>1&&!ancien){
+          const fa=list[cur].fs,com=nb=>Array.isArray(fa)&&Array.isArray(list[nb].fs)&&fa.some(f=>list[nb].fs.indexOf(f)>=0);
+          const c=tans.filter(com);if(c.length)tans=c;
+        }
+        for(const nb of tans){
           if(visited.has(nb)) continue;
-          if(isTangent(cur, nb, k)){
-            visited.add(nb);
-            queue.push(nb);
-          }
+          visited.add(nb);
+          queue.push(nb);
         }
       }
     }
@@ -696,7 +709,7 @@ function renderExactPanel(){
   {const nt=document.createElement('div');nt.className='note';nt.style.marginTop='3px';
    nt.textContent=filModeX.tangent!==false
      ?'Clic = une arête (le '+(xIsChamfer(k)?'chanfrein':'congé')+' suit sa chaîne tangente) · clic sur une arête choisie = la retirer.'
-     :'Clic = ajouter / retirer une arête, sans recherche de tangences. Note : le noyau prolonge toujours un '+(xIsChamfer(k)?'chanfrein':'congé')+' le long d’arêtes en continuité tangente (limite OCCT).';
+     :'Clic = ajouter / retirer une arête, sans recherche de tangences : le '+(xIsChamfer(k)?'chanfrein':'congé')+' file tout droit le long de l’arête et continue tout droit à ses bouts, jusqu’aux faces voisines (coin intérieur) ou dans la matière (arête en bosse). Une arête courbe suit encore sa chaîne tangente (limite du noyau).';
    p.appendChild(nt);}
   if(filModeX.sel.length){
     const nb=document.createElement('div');nb.className='note';
@@ -817,13 +830,13 @@ function applyExactFillet(){
   if(filModeX.editing){
     // Édition en place : on met À JOUR la fonction existante (pas de 2ᵉ fonction).
     const f=doc.features.find(x=>x.id===filModeX.editing);
-    if(f){f.edges=mkEdges();f.tangent=filModeX.tangent!==false;chamFields(f);f.name=xFeatName(f);repSyncForFeature(f);sel={kind:'feature',id:f.id};}
+    if(f){f.edges=mkEdges();f.tangent=filModeX.tangent!==false;f.droit=true;chamFields(f);f.name=xFeatName(f);repSyncForFeature(f);sel={kind:'feature',id:f.id};}
     exitExactFilletMode(true); // restaure le rejeu complet avec les arêtes mises à jour
     renderProps();
     faceEl.textContent=label+' : mise à jour enregistrée ('+(f?f.edges.length:0)+' arête(s)).';
     return;
   }
-  const nf={id:uid('xf'),type:'xfillet',name:xLabel(k)+' ('+filModeX.sel.length+' arête(s))',edges:mkEdges(),visible:true,tangent:filModeX.tangent!==false};
+  const nf={id:uid('xf'),type:'xfillet',name:xLabel(k)+' ('+filModeX.sel.length+' arête(s))',edges:mkEdges(),visible:true,tangent:filModeX.tangent!==false,droit:true}; // droit : congé sans tangence prolongé tout droit (V0.70.2)
   if(xIsChamfer(k)){nf.chamfer=true;chamFields(nf);}
   const corps=xCorpsDesAretes(filModeX.sel);if(corps)nf.body=corps;
   const snap0=docSnap(),len0=docUndoStack.length; // V0.8.0 : Annuler retire le congé

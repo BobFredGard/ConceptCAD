@@ -269,6 +269,123 @@ function occSingleEdgeTool(shape,pts,r,chamfer,cham,firstN,info){
   }catch(e){return null;}
   finally{occDispose(bin);}
 }
+// V0.70.2 : congé / chanfrein SANS TANGENCE (case « tangentes » décochée) d'une arête droite dans un coin
+// intérieur : il file tout droit le long de l'arête et, à ses bouts, continue tout droit jusqu'aux faces
+// voisines (sur une arête en bosse, occSingleEdgeTool le fait entrer tout droit dans la matière). Le noyau suit
+// toujours la chaîne tangente : sur Barquette 2, le fond plat d'une rainure (bordé de deux arcs
+// tangents) arrondissait tout le tour du plancher. Ici on AJOUTE la matière du coin : section du congé
+// (triangle M,T1,T2 moins le cercle) tirée le long de l'arête et au-delà de ses bouts, jusqu'à ce que
+// la section soit entièrement rentrée dans la matière (les arcs voisins l'arrêtent : la face du congé
+// s'élargit en suivant leur courbe). On garde seulement la partie qui tombe dans le vide et touche
+// l'arête. Rend le nouveau solide, ou null (le noyau prend le relais).
+function occSingleEdgeConcave(shape,pts,r,chamfer,cham,firstN){
+  if(!pts||pts.length<2||!(r>0))return null;
+  if(chamfer&&cham&&!firstN)return null;
+  const A=pts[0],B=pts[pts.length-1];
+  const sub=(p,q)=>[p[0]-q[0],p[1]-q[1],p[2]-q[2]],add=(p,q)=>[p[0]+q[0],p[1]+q[1],p[2]+q[2]],mul=(p,k)=>[p[0]*k,p[1]*k,p[2]*k];
+  const dot=(p,q)=>p[0]*q[0]+p[1]*q[1]+p[2]*q[2],len=p=>Math.hypot(p[0],p[1],p[2]),nrm=p=>{const l=len(p)||1;return mul(p,1/l);};
+  const cross=(p,q)=>[p[1]*q[2]-p[2]*q[1],p[2]*q[0]-p[0]*q[2],p[0]*q[1]-p[1]*q[0]];
+  const L=len(sub(B,A));if(L<1e-6)return null;
+  const t=nrm(sub(B,A));
+  for(const p of pts){const w=sub(p,A),d=dot(w,t);if(len(sub(w,mul(t,d)))>1e-4*Math.max(1,L))return null;} // arête droite seulement
+  const M=mul(add(A,B),0.5);
+  const a0=Math.abs(t[0])<0.9?[1,0,0]:[0,1,0];
+  const u=nrm(sub(a0,mul(t,dot(a0,t)))),v=cross(t,u);
+  const dir=th=>add(mul(u,Math.cos(th)),mul(v,Math.sin(th)));
+  const bin=[],jeter=[];
+  try{
+    const cl=occClassifier(shape);bin.push(cl);
+    const IN=occt.TopAbs_State.TopAbs_IN;
+    const dedans=q=>{const P=new occt.gp_Pnt_3(q[0],q[1],q[2]);cl.Perform(P,1e-7);const s=cl.State();try{P.delete();}catch(e){}return s===IN;};
+    const eps=Math.max(1e-3,Math.min(0.05,r*0.05));
+    const inAt=th=>dedans(add(M,mul(dir(th),eps)));
+    const N=180,S=[];for(let k=0;k<N;k++)S.push(inAt(2*Math.PI*k/N));
+    const starts=[];for(let k=0;k<N;k++)if(!S[k]&&S[(k+N-1)%N])starts.push(k); // début du VIDE
+    if(starts.length!==1)return null;
+    let k1=starts[0],k2=k1;while(!S[(k2+1)%N]&&((k2+1)%N)!==k1)k2=(k2+1)%N;
+    const bis=(lo,hi,want)=>{for(let i=0;i<14;i++){const m=(lo+hi)/2;if(inAt(m)===want)hi=m;else lo=m;}return(lo+hi)/2;};
+    const st=2*Math.PI/N;
+    const th1=bis(2*Math.PI*k1/N-st,2*Math.PI*k1/N,false); // matière → vide
+    const th2=bis(2*Math.PI*(k2+1)/N,2*Math.PI*k2/N,false); // vide → matière
+    let d1=dir(th1),d2=dir(th2);
+    const snap=d=>{ // direction exacte dans la face plane (voir occSingleEdgeTool)
+      let best=null,bd=0.999;
+      occSubShapes(shape,'TopAbs_FACE').forEach(f=>{
+        const sd=occSurfDesc(f);
+        try{f.delete();}catch(e){}
+        if(sd.k!=='pl'||Math.abs(dot(sub(A,sd.p),sd.n))>1e-5||Math.abs(dot(sub(B,sd.p),sd.n))>1e-5)return;
+        let c=nrm(cross(sd.n,t));if(dot(c,d)<0)c=mul(c,-1);
+        if(dot(c,d)>bd){bd=dot(c,d);best=c;}
+      });
+      return best||d;
+    };
+    d1=snap(d1);d2=snap(d2);
+    const al=Math.acos(Math.max(-1,Math.min(1,dot(d1,d2))));
+    if(!(al>0.05&&al<Math.PI-0.02))return null; // pas un coin rentrant franc
+    const b=nrm(add(d1,d2)); // bissectrice, vers le vide
+    let s1=chamfer?r:r/Math.tan(al/2),s2=s1;
+    if(chamfer&&cham){
+      const inFirst1=Math.abs(dot(d1,firstN))<Math.abs(dot(d2,firstN));
+      const D2=cham.mode==='da'?r*Math.sin(cham.ang*Math.PI/180)/Math.sin(al+cham.ang*Math.PI/180):cham.d2;
+      if(!(D2>0))return null;
+      s1=inFirst1?r:D2;s2=inFirst1?D2:r;
+    }
+    const s=Math.max(s1,s2);
+    const T1=add(M,mul(d1,s1)),T2=add(M,mul(d2,s2));
+    const h=chamfer?0:r/Math.sin(al/2),C=add(M,mul(b,h));
+    const P=p=>{const q=new occt.gp_Pnt_3(p[0],p[1],p[2]);bin.push(q);return q;};
+    const Eo=sub(M,mul(b,0.5*s+0.2)); // sommet repoussé DANS la matière (pas de face coplanaire)
+    const ici=add(M,mul(b,chamfer?0.25*s:Math.min(0.25*s,0.2*(h-r)+1e-3))); // point du coin, dans le vide
+    const v0=occCoqueVolume(shape),avant=new Set(occFaceKeys(shape));
+    const nSol=sh=>{const so=occSubShapes(sh,'TopAbs_SOLID'),n=so.length;occDispose(so);return n;};
+    const n0=nSol(shape);
+    // L'outil déborde des deux bouts ; la pièce le coupe sur les faces voisines. Débord trop court : il
+    // reste une face plane au bout (le congé n'atteint pas les faces voisines) → on rallonge.
+    const essai=o=>{
+      const loc=[],at0=p=>sub(p,mul(t,L/2+o));
+      try{
+        const poly=new occt.BRepBuilderAPI_MakePolygon_3(P(at0(Eo)),P(at0(T1)),P(at0(T2)),true);loc.push(poly);
+        if(!poly.IsDone())return null;
+        const fm=new occt.BRepBuilderAPI_MakeFace_15(poly.Wire(),true);loc.push(fm);if(!fm.IsDone())return null;
+        const lg=L+2*o;
+        const vec=new occt.gp_Vec_4(t[0]*lg,t[1]*lg,t[2]*lg);loc.push(vec);
+        const pr=new occt.BRepPrimAPI_MakePrism_1(fm.Face(),vec,false,true);loc.push(pr);pr.Build();if(!pr.IsDone())return null;
+        let tool=pr.Shape();jeter.push(tool);
+        if(!chamfer){
+          const C0=sub(C,mul(t,L/2+o+1));
+          const dd=new occt.gp_Dir_4(t[0],t[1],t[2]);loc.push(dd);
+          const ax=new occt.gp_Ax2_3(P(C0),dd);loc.push(ax);
+          const cy=new occt.BRepPrimAPI_MakeCylinder_3(ax,r,lg+2);loc.push(cy);
+          tool=occCut(tool,cy.Shape());jeter.push(tool);
+        }
+        // Matière à ajouter = outil hors de la pièce ; seul le morceau qui touche l'arête est gardé
+        const ajout=occCut(tool,shape);jeter.push(ajout);
+        let garde=null;
+        const morceaux=occSubShapes(ajout,'TopAbs_SOLID');
+        morceaux.forEach(m=>{
+          if(!garde){
+            const c2=occClassifier(m);
+            try{const Q=new occt.gp_Pnt_3(ici[0],ici[1],ici[2]);c2.Perform(Q,1e-7);if(c2.State()===IN)garde=m;try{Q.delete();}catch(e){}}
+            finally{try{c2.delete();}catch(e){}}
+          }
+          jeter.push(m);
+        });
+        if(!garde)return null;
+        const res=occUnify(occFuse(shape,garde));
+        const v1=occCoqueVolume(res);
+        const nees=occFaceKeys(res).filter(k=>k==='?'||!avant.has(k)).length;
+        if(nees===1&&occCoqueValide(res)&&v0!=null&&v1!=null&&v1-v0>1e-6&&nSol(res)<=n0)return res;
+        try{res.delete();}catch(e){}
+        return null;
+      }catch(e){return null;}
+      finally{occDispose(loc);}
+    };
+    const o0=Math.max(4*s,3);
+    for(const k of [1,2.5,6]){const res=essai(o0*k);if(res)return res;}
+    return null; // jamais arrêté net par les faces voisines : le noyau décide
+  }catch(e){return null;}
+  finally{occDispose(bin);jeter.forEach(x=>{try{x.delete();}catch(e){}});}
+}
 function occFilletRun(base,jobs,warns,chamfer,opts){
   // Arrondi/chanfrein BRep : 1) le lot en une passe (rapide), 2) si Build échoue → ARÊTE PAR ARÊTE
   // sur la shape courante (chaque succès conservé — une arête capricieuse ne fait plus
@@ -332,6 +449,9 @@ function occFilletRun(base,jobs,warns,chamfer,opts){
       if(tool){try{tool.delete();}catch(e){}}
       // Découpe « réussie » qui n'enlève rien (corps abîmé en amont) : repli sur le noyau
       if(nx){const v0=occCoqueVolume(cur),v1=occCoqueVolume(nx);if(v0!=null&&v1!=null&&!(v0-v1>1e-6)){try{nx.delete();}catch(e){}nx=null;}}
+      // Arête concave (coin rentrant) : matière ajoutée dans le coin, arrêtée par les faces voisines
+      // (single==='droit' : congés créés ou modifiés depuis V0.70.2 ; les anciens gardent le noyau)
+      if(!nx&&!tool&&ed&&opts.single==='droit'){try{nx=occSingleEdgeConcave(cur,ed.pts,j.r,chamfer,cham,firstN);}catch(e){nx=null;}}
       if(!nx&&ed){nx=mk(cur,[{src:ed.src,r:j.r,fn:j.fn||null}]);if(nx)warns.push(kindLabel+' : arête courbe ou concave — suivi de la chaîne tangente (noyau)');}
       if(nx){if(cur!==base){try{cur.delete();}catch(e){}}cur=nx;done++;}
       else warns.push(kindLabel+' isolé impossible ('+(chamfer?'distance trop grande ?':'rayon trop grand ?')+')');

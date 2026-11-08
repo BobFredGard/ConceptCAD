@@ -304,6 +304,7 @@ function occApplyXFillets(base,xfils){
   const lab=xLabelLow(chamfer?'chamfer':'fillet');
   const dp=chamfer?'D':'R';
   const edges=nomsSurAretes(base,occListEdges(base));
+  if((xfils||[]).some(x=>x&&x.tangent&&x.droit))occAretesFaces(base,edges); // chaîne tangente : faces voisines (V0.70.2)
   if(!edges.length){warns.push(lab+' : aucune arête détectée');return{shape:base,warnings:warns};}
   // 2026-10-16-015 : migration — les entrées « tangente » ajoutées par d'anciens rejeux sont
   // retirées (la chaîne se re-déduit au calcul) dès qu'il reste au moins une arête CLIQUÉE.
@@ -450,7 +451,7 @@ function occApplyXFillets(base,xfils){
     if(!roots.length)return;
     const chain=new Set();
     roots.forEach(se=>{const bi=seBi.get(se);if(bi==null)return;
-      xTangentChainOf(edges,bi).forEach(j=>chain.add(j));});
+      xTangentChainOf(edges,bi,!xf.droit).forEach(j=>chain.add(j));});
     if(!chain.size)return;
     const hasJob=j=>jobs.some(job=>job.bi===j);
     // 1) entrées PERDUES se rattachent à la chaîne (ancre pos0, tol 60 mm — comme p0t)
@@ -520,7 +521,10 @@ function occApplyXFillets(base,xfils){
   });
   if(!jobs.length)return{shape:base,warnings:warns};
   const js=jobs.map(j=>({src:edges[j.bi].src,r:j.r,mid:edges[j.bi].mid.slice(),fn:j.fn||null}));
-  const single=(xfils||[]).length>0&&(xfils||[]).every(x=>x&&x.tangent===false); // case décochée : arête seule
+  // case décochée : arête seule ; 'droit' (V0.70.2) : congé sans tangence, prolongé tout droit à ses bouts
+  // jusqu'aux faces voisines, coin intérieur compris — seulement pour les congés créés ou modifiés depuis,
+  // les anciens documents gardent la chaîne que le noyau leur donnait
+  const single=(xfils||[]).length>0&&(xfils||[]).every(x=>x&&x.tangent===false)?((xfils||[]).every(x=>x.droit)?'droit':true):false;
   const cham=chamfer?xChamOpts((xfils||[]).find(x=>x&&x.chamfer)):null; // V0.11.19 : une fonction par appel
   const wA=[];
   // reprise déjà calculée sur ce même solide (rejeu puis affichage) : le calcul exact, qui
@@ -823,7 +827,7 @@ function occFilletNurbs(base,js,chamfer,single,edges,cham){
 }
 const OCC_NURBS_MEMO=[]; // reprises NURBS récentes {key, shape, local} (voir occFilletNurbs)
 function occNurbsMemoKey(js,chamfer,single,edges,cham){
-  return (chamfer?'C':'F')+(single?'1':'t')+(cham?'|'+xChamKey(cham):'')+'|'+(edges||[]).length+'|'+(edges||[]).reduce((a,e)=>a+e.len,0).toFixed(6)
+  return (chamfer?'C':'F')+(single==='droit'?'2':single?'1':'t')+(cham?'|'+xChamKey(cham):'')+'|'+(edges||[]).length+'|'+(edges||[]).reduce((a,e)=>a+e.len,0).toFixed(6)
     +'|'+js.map(j=>j.mid.map(v=>v.toFixed(5)).join(',')+'@'+j.r).join(';');
 }
 function occNurbsMemoGet(key){

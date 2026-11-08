@@ -8,7 +8,7 @@ sont sorties le 2026-09-30j.
 Code dans `src/` · livrable `fusion_mvp.html` (généré par `build.js`) · architecture et
 garde-fous en tête de `src/00-entete-et-outils.js`.
 
-**613 versions**, de `2026-09-28b` à `V0.70.1` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
+**614 versions**, de `2026-09-28b` à `V0.70.2` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
 comme dans le fichier d'origine.
 
 ---
@@ -7045,5 +7045,14 @@ Barquette ne perd plus son solide à la 107e modification, et sa mémoire ne mon
 - **Nouveauté** : dès que deux aimants au moins sont posés et que l'un a ses lignes affichées, les lignes suivent le champ ADDITIONNÉ de tous les aimants visibles (ceux aux lignes masquées comptent aussi), quels que soient leur forme, leur position et leur orientation. Attraction : les lignes passent d'un aimant à l'autre ; répulsion : elles sont chassées sur les côtés. Lignes en repère de la scène, recalculées quand un aimant bouge, allégées pendant le déplacement à la souris (environ 40 lignes) puis complètes au relâché ; pas de tracé variable, fin près des aimants. Limite : aimantation de chaque aimant inchangée par ses voisins, acier voisin non pris en compte.
 - **Parcours FAO et `CACHE_VER`** inchangés.
 - **Test** : `test_aimants` : un aimant seul retrouve le champ d'avant, aimant retourné et déplacé, champs qui s'additionnent, attraction (100 % des lignes passent dans l'autre aimant) contre répulsion (0 %), temps de calcul. Vérifié à l'écran : attraction, répulsion, trois aimants dont un pavé couché.
+
+---
+## V0.70.2 - Congé sans tangence prolongé tout droit ; chaîne tangente exacte
+
+- **Demande** (Barquette 2) : choisir l'arête du fond plat d'une rainure, bordée de deux arcs tangents, et obtenir un congé qui va jusqu'aux faces en arc voisines. Fred : case « Arêtes tangentes » décochée, le congé ne tient pas compte de la tangence ; aux bouts de l'arête (ou des arêtes) il débouche tout droit — jusqu'aux faces voisines dans un coin intérieur, dans la matière sur une arête en bosse. Avant, décochée, le noyau suivait quand même toute la chaîne tangente ou échouait ; cochée, la chaîne passait parfois sur des arêtes non tangentes.
+- **Cause** : le congé tout droit ne savait traiter que les arêtes droites en bosse ; dans un coin intérieur il retombait sur le noyau, qui suit toujours la chaîne. La chaîne tangente lisait la direction des arêtes sur leur polyligne (le premier segment d'un arc s'écarte de plusieurs degrés), d'où une marge de 10° qui laissait entrer une arête partant en biais, et faisait rater de vrais raccords tangents.
+- **Correctif** : coin intérieur (`occSingleEdgeConcave`) — la section du congé (ou du chanfrein, tous types) est tirée tout droit le long de l'arête et au-delà de ses bouts, la pièce la coupe sur les faces voisines, seul le morceau qui touche l'arête est ajouté ; débord rallongé tant qu'il reste une face plane au bout. Rien n'arrête le prolongement (coin qui débouche dans le vide) : le noyau décide, comme avant. Chaîne tangente : directions EXACTES aux bouts de chaque arête (à 2° près, sens opposés au sommet commun) ; plusieurs arêtes tangentes au même sommet : celle qui borde la même face continue. Texte d'aide de la case revu. **Anciens documents inchangés** : ces deux règles ne valent que pour les congés et chanfreins créés ou modifiés depuis V0.70.2 (drapeau `droit` de la fonction, aussi dans la clé du cache) ; ceux d'avant gardent au rejeu la chaîne du noyau et l'ancienne chaîne tangente (Symétrie congés : un R10 décoché dans un coin intérieur aurait perdu 1 200 mm³, et la chaîne R3,3 à longueur 70 changeait).
+- **Parcours FAO et `CACHE_VER`** inchangés.
+- **Test** : `test_conge_tout_droit` (poche oblongue : congé R2 et chanfrein sur l'arête du fond, une seule face neuve, matière du coin seulement, l'arête d'en face reste vive ; chaîne tangente = les 4 arêtes du fond ; rejeu : congé V0.70.2 = arête seule, ancien document = chaîne du noyau comme avant). Vérifié sur Barquette 2 : R1 à R5 et chanfrein valides, une face neuve, congé arrêté sur les deux arcs.
 
 ---
