@@ -136,7 +136,9 @@ wxPGProperty* lectureSeule(wxPropertyGrid* g, const wxString& nom, const wxStrin
 
 Cadre::Cadre() : wxFrame(nullptr, wxID_ANY, L"ConceptCAD natif"), asmAnim_(this), minuterie_(this) {
   // L'icône de la version native (src/conceptcad.ico) : titre, barre des tâches, Alt+Tab, à toutes les tailles
-  SetIcons(wxIconBundle(L"appicon", nullptr));
+#ifdef _WIN32
+  SetIcons(wxIconBundle(L"appicon", nullptr));  // Mac : l'icône vient de l'application (ConceptCAD.icns)
+#endif
   SetClientSize(FromDIP(wxSize(1500, 900)));
   SetMinClientSize(FromDIP(wxSize(1000, 600)));
   Move(FromDIP(wxPoint(20, 20)));
