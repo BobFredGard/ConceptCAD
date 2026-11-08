@@ -18,6 +18,7 @@ function Dire([string]$t, [string]$icone = 'Information') {
 }
 try {
   $ici = Split-Path -Parent $MyInvocation.MyCommand.Path
+  Set-Location -LiteralPath $ici  # jamais dans le dossier à remplacer
   $zip = Join-Path $ici 'ConceptCADNatif.zip'
   if (-not (Test-Path $zip)) { throw "Archive absente : $zip" }
   $ouvert = { Get-Process -Name ConceptCADNatif -ErrorAction SilentlyContinue | Where-Object { $_.Path -and $_.Path.StartsWith($Dossier, 'OrdinalIgnoreCase') } }
@@ -30,8 +31,19 @@ try {
     if ($r -ne 'OK') { exit 1 }
   }
   # Une version précédente est remplacée en entier : aucun ancien fichier ne reste mêlé aux nouveaux
-  if (Test-Path $Dossier) { Remove-Item -LiteralPath $Dossier -Recurse -Force }
+  # On vide le dossier sans le supprimer lui-même : un programme qui l'a pour dossier courant (l'ancienne version
+  # qui lance la mise à jour, une fenêtre de l'Explorateur) empêche seulement de supprimer le dossier.
+  # Un fichier encore tenu un instant (antivirus, fermeture en cours) : on réessaie pendant 20 s.
   New-Item -ItemType Directory -Force -Path $Dossier | Out-Null
+  for ($essai = 1; ; $essai++) {
+    try {
+      Get-ChildItem -LiteralPath $Dossier -Force | Remove-Item -Recurse -Force -ErrorAction Stop
+      break
+    } catch {
+      if ($essai -ge 40) { throw }
+      Start-Sleep -Milliseconds 500
+    }
+  }
   Expand-Archive -LiteralPath $zip -DestinationPath $Dossier -Force
   $exe = Join-Path $Dossier 'ConceptCADNatif.exe'
   if (-not (Test-Path $exe)) { throw 'Le programme manque après la copie.' }

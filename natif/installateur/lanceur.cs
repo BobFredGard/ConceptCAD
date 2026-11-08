@@ -17,6 +17,8 @@ static class Lanceur {
 
   [STAThread]
   static int Main(string[] args) {
+    // Lancé par l'ancienne version, ce programme hérite de son dossier courant : celui qu'il faut remplacer
+    try { Directory.SetCurrentDirectory(Path.GetTempPath()); } catch { }
     // « /maj » : lancé par le programme lui-même pour une mise à jour, l'accord a déjà été donné
     bool maj = Array.IndexOf(args, "/maj") >= 0;
     if (!maj && MessageBox.Show("Installer " + Nom + " ?\n\nLe programme sera copié dans votre dossier utilisateur, avec un raccourci dans le menu Démarrer et sur le bureau.",
@@ -30,6 +32,7 @@ static class Lanceur {
           "-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File \"" + Path.Combine(d, "installer.ps1") + "\"" + (maj ? " -Relancer" : ""));
       p.UseShellExecute = false;
       p.CreateNoWindow = true;
+      p.WorkingDirectory = d;
       using (Process q = Process.Start(p)) { q.WaitForExit(); return q.ExitCode; }
     } catch (Exception e) {
       MessageBox.Show("L'installation a échoué :\n" + e.Message, Nom, MessageBoxButtons.OK, MessageBoxIcon.Error);

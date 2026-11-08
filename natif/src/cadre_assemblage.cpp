@@ -12,6 +12,8 @@
 #include <gp_Quaternion.hxx>
 #include <gp_Trsf.hxx>
 #include <wx/filedlg.h>
+
+#include <list>
 #include <wx/filename.h>
 #include <wx/msgdlg.h>
 #include <wx/textdlg.h>
@@ -307,6 +309,7 @@ void Cadre::asmDessiner() {
     as::monde(a, P, W);
     const as::Repere V = as::inverser(W);
     const bool placer = asmMode_ == "asm";
+    std::vector<std::pair<normalises::AimantPose, size_t>> aimants;  // l'aimant, son rang dans L
     for (const as::Instance& inst : as::instances(a, as::racine(a))) {
       const auto it = asmSolides_.find(inst.comp);
       if (it == asmSolides_.end() || it->second->forme.IsNull() || as::cheminMasque(a, inst.chemin)) continue;
@@ -365,6 +368,8 @@ void Cadre::asmDessiner() {
         const J* oc = as::occurrence(a, inst.chemin.back());
         const J* cc = as::composant(a, inst.comp);
         J mag;
+        // magNote : tous les aimants affichés, lignes demandées ou non (leur champ compte quand il y en a plusieurs)
+        if (cc && cc->contains("doc") && normalises::aimantDe((*cc)["doc"], mag)) aimants.push_back({{mag, inst.F, oc && oc->value("mag", false)}, L.size()});
         if (oc && oc->value("mag", false) && cc && cc->contains("doc") && normalises::aimantDe((*cc)["doc"], mag)) {
           static std::map<std::string, std::vector<std::array<float, 9>>> memoire;
           std::vector<std::array<float, 9>>& T = memoire[mag.value("code", std::string())];
@@ -375,6 +380,38 @@ void Cadre::asmDessiner() {
         }
       }
       L.push_back(std::move(v));
+    }
+    // magMultiDraw (V0.70.1) : deux aimants ou plus, dont un avec ses lignes → les lignes du champ additionné,
+    // calculées dans le repère racine et portées par le premier aimant ; allégées pendant un déplacement à la souris
+    bool unOn = false;
+    for (const auto& A : aimants) unOn = unOn || A.first.on;
+    if (aimants.size() >= 2 && unOn) {
+      const bool rapide = static_cast<bool>(asmGesteAvant_);
+      std::string cle = rapide ? "f" : "n";
+      std::vector<normalises::AimantPose> M;
+      for (const auto& A : aimants) {
+        M.push_back(A.first);
+        cle += A.first.m.value("code", std::string()) + (A.first.on ? "1" : "0") + as::jsonDe(A.first.F).dump();
+        L[A.second].traits.clear();  // les lignes de l'aimant seul ne valent plus
+      }
+      static std::list<std::pair<std::string, std::vector<std::array<double, 9>>>> memoire;  // les 6 derniers calculs
+      auto it = std::find_if(memoire.begin(), memoire.end(), [&](const auto& e) { return e.first == cle; });
+      if (it == memoire.end()) {
+        std::vector<std::array<double, 9>> T;
+        for (const normalises::SegmentChamp& s : normalises::lignesChampMulti(M, rapide))
+          T.push_back({s.a[0], s.a[1], s.a[2], s.b[0], s.b[1], s.b[2], s.couleur[0], s.couleur[1], s.couleur[2]});
+        memoire.push_front({cle, std::move(T)});
+        if (memoire.size() > 6) memoire.pop_back();
+        it = memoire.begin();
+      }
+      // dans le repère local du premier aimant, qui les affiche avec sa propre position
+      const as::Repere Fi = as::inverser(aimants[0].first.F);
+      std::vector<std::array<float, 9>>& T = L[aimants[0].second].traits;
+      for (const auto& s : it->second) {
+        const as::V3 p = as::appliquer(Fi, {s[0], s[1], s[2]}), q = as::appliquer(Fi, {s[3], s[4], s[5]});
+        T.push_back({static_cast<float>(p[0]), static_cast<float>(p[1]), static_cast<float>(p[2]), static_cast<float>(q[0]), static_cast<float>(q[1]), static_cast<float>(q[2]),
+                     static_cast<float>(s[6]), static_cast<float>(s[7]), static_cast<float>(s[8])});
+      }
     }
   }
   vue_->cheminPiece(doc_.assemblage ? as::cheminActif(*doc_.assemblage) : as::Chemin{});

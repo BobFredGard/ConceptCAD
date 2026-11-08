@@ -139,7 +139,7 @@ void installer(wxWindow* fenetre, const nlohmann::json& fiche) {
     return;
   }
   // L'installateur attend que ce programme soit fermé, remplace les fichiers et relance la nouvelle version
-  if (reinterpret_cast<INT_PTR>(ShellExecuteW(nullptr, L"open", cible.c_str(), L"/maj", nullptr, SW_SHOWNORMAL)) <= 32) {
+  if (reinterpret_cast<INT_PTR>(ShellExecuteW(nullptr, L"open", cible.c_str(), L"/maj", dossierTemp().c_str(), SW_SHOWNORMAL)) <= 32) {
     wxMessageBox(L"L'installateur de la nouvelle version n'a pas pu être lancé.", L"ConceptCAD Natif", wxOK | wxICON_WARNING, fenetre);
     return;
   }

@@ -408,6 +408,7 @@ RefFace lireRefFaceJson(const nlohmann::ordered_json& j) { return lireRefFace(j)
 static void lireConge(const json& jf, Fonction& f, std::map<std::string, int>& refus) {
   f.chamfer = vrai(jf, "chamfer");
   if (auto t = jf.find("tangent"); t != jf.end() && t->is_boolean()) f.tangent = t->get<bool>() ? 1 : 0;
+  f.droit = vrai(jf, "droit");
   if (jf.contains("cmode") && jf["cmode"].is_string()) f.cmode = jf["cmode"].get<std::string>();
   if (auto v = jf.find("cd2"); v != jf.end() && v->is_number()) f.cd2 = v->get<double>();
   if (auto v = jf.find("cang"); v != jf.end() && v->is_number()) f.cang = v->get<double>();

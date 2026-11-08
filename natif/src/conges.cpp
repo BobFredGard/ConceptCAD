@@ -52,9 +52,15 @@
 #include <optional>
 #include <set>
 #include <stdexcept>
+#include <TopExp.hxx>
+#include <TopTools_IndexedDataMapOfShapeListOfShape.hxx>
+#include <TopTools_IndexedMapOfShape.hxx>
+
+TopoDS_Shape unifierForme(const TopoDS_Shape& s);  // occUnify, dans rejeu.cpp
 
 namespace {
 const double PI = 3.14159265358979323846, TAU = PI * 2;
+int compter(const TopoDS_Shape& s, TopAbs_ShapeEnum t);
 
 double hyp(double x, double y) { return std::sqrt(x * x + y * y); }
 double hyp(double x, double y, double z) { return std::sqrt(x * x + y * y + z * z); }
@@ -292,6 +298,7 @@ struct Travail {
 };
 struct Options {
   bool seule = false, lot = false;
+  bool droit = false;  // V0.70.2 (seule) : arête de coin intérieur prolongée tout droit jusqu'aux faces voisines
   const OptChanfrein* cham = nullptr;
 };
 // occChamferFirstFace : la face qui porte D1. fn (normale mémorisée par l'arête) : celle qui s'en rapproche le plus ; sinon celle qui regarde le plus vers le haut, à égalité +X puis +Y
@@ -581,6 +588,175 @@ std::optional<TopoDS_Shape> outilAreteSeule(const TopoDS_Shape& shape, const std
   }
 }
 
+// V0.70.2 : direction EXACTE de l'arête à chacun de ses bouts, tournée vers l'intérieur de l'arête (occBoutsTangents).
+// Deux arêtes se suivent sans cassure si leurs directions au sommet commun sont opposées.
+bool boutsTangents(const BRepAdaptor_Curve& ad, double u0, double u1, std::array<Vec3, 2>& ta) {
+  try {
+    const double d = (u1 - u0) * 1e-5;
+    const auto lit = [&](double u) {
+      const gp_Pnt p = ad.Value(u);
+      return Vec3{p.X(), p.Y(), p.Z()};
+    };
+    const auto dir = [](const Vec3& a, const Vec3& b, Vec3& o) {
+      const Vec3 v{b[0] - a[0], b[1] - a[1], b[2] - a[2]};
+      const double l = hyp(v[0], v[1], v[2]);
+      if (!(l > 0)) return false;
+      o = {v[0] / l, v[1] / l, v[2] / l};
+      return true;
+    };
+    return dir(lit(u0), lit(u0 + d), ta[0]) && dir(lit(u1), lit(u1 - d), ta[1]);
+  } catch (const Standard_Failure&) {
+    return false;
+  }
+}
+
+// occSingleEdgeConcave (V0.70.2) : congé ou chanfrein SANS TANGENCE d'une arête droite de coin intérieur. Il file tout
+// droit le long de l'arête et, à ses bouts, continue tout droit jusqu'aux faces voisines. On AJOUTE la matière du coin :
+// section du congé (triangle M,T1,T2 moins le cercle) tirée le long de l'arête et au-delà de ses bouts ; on garde la
+// partie hors de la pièce qui touche l'arête. Rend le nouveau solide, ou rien (le noyau prend le relais).
+std::optional<TopoDS_Shape> coinInterieur(const TopoDS_Shape& shape, const std::vector<Vec3>& pts, double r, bool chanfrein, const OptChanfrein* cham, const Vec3* premiereN) {
+  if (pts.size() < 2 || !(r > 0)) return std::nullopt;
+  if (chanfrein && cham && !premiereN) return std::nullopt;
+  using V = Vec3;
+  const auto sub = [](const V& p, const V& q) { return V{p[0] - q[0], p[1] - q[1], p[2] - q[2]}; };
+  const auto add = [](const V& p, const V& q) { return V{p[0] + q[0], p[1] + q[1], p[2] + q[2]}; };
+  const auto mul = [](const V& p, double k) { return V{p[0] * k, p[1] * k, p[2] * k}; };
+  const auto dot = [](const V& p, const V& q) { return p[0] * q[0] + p[1] * q[1] + p[2] * q[2]; };
+  const auto len = [](const V& p) { return hyp(p[0], p[1], p[2]); };
+  const auto nrm = [&](const V& p) {
+    const double l = len(p);
+    return mul(p, 1 / (l != 0 ? l : 1));
+  };
+  const auto cross = [](const V& p, const V& q) { return V{p[1] * q[2] - p[2] * q[1], p[2] * q[0] - p[0] * q[2], p[0] * q[1] - p[1] * q[0]}; };
+  const V A = pts.front(), B = pts.back();
+  const double L = len(sub(B, A));
+  if (L < 1e-6) return std::nullopt;
+  const V t = nrm(sub(B, A));
+  for (const V& p : pts) {
+    const V w = sub(p, A);
+    if (len(sub(w, mul(t, dot(w, t)))) > 1e-4 * std::max(1.0, L)) return std::nullopt;  // arête droite seulement
+  }
+  const V M = mul(add(A, B), 0.5);
+  const V a0 = std::abs(t[0]) < 0.9 ? V{1, 0, 0} : V{0, 1, 0};
+  const V u = nrm(sub(a0, mul(t, dot(a0, t)))), v = cross(t, u);
+  const auto dir = [&](double th) { return add(mul(u, std::cos(th)), mul(v, std::sin(th))); };
+  try {
+    BRepClass3d_SolidClassifier cl(shape);
+    const auto dedans = [&](const V& q) {
+      cl.Perform(gp_Pnt(q[0], q[1], q[2]), 1e-7);
+      return cl.State() == TopAbs_IN;
+    };
+    const double eps = std::max(1e-3, std::min(0.05, r * 0.05));
+    const auto inAt = [&](double th) { return dedans(add(M, mul(dir(th), eps))); };
+    const int N = 180;
+    std::vector<char> S(N);
+    for (int k = 0; k < N; k++) S[k] = inAt(TAU * k / N);
+    std::vector<int> debuts;  // début du VIDE
+    for (int k = 0; k < N; k++)
+      if (!S[k] && S[(k + N - 1) % N]) debuts.push_back(k);
+    if (debuts.size() != 1) return std::nullopt;
+    int k1 = debuts[0], k2 = k1;
+    while (!S[(k2 + 1) % N] && (k2 + 1) % N != k1) k2 = (k2 + 1) % N;
+    const auto bis = [&](double lo, double hi, bool veut) {
+      for (int i = 0; i < 14; i++) {
+        const double m = (lo + hi) / 2;
+        if (inAt(m) == veut) hi = m;
+        else lo = m;
+      }
+      return (lo + hi) / 2;
+    };
+    const double st = TAU / N;
+    const double th1 = bis(TAU * k1 / N - st, TAU * k1 / N, false);   // matière → vide
+    const double th2 = bis(TAU * (k2 + 1) / N, TAU * k2 / N, false);  // vide → matière
+    const auto caler = [&](const V& d) {  // direction exacte dans la face plane
+      V best = d;
+      double bd = 0.999;
+      for (TopExp_Explorer ex(shape, TopAbs_FACE); ex.More(); ex.Next()) {
+        BRepAdaptor_Surface ad(TopoDS::Face(ex.Current()), true);
+        if (ad.GetType() != GeomAbs_Plane) continue;
+        const gp_Ax1 ax = ad.Plane().Axis();
+        const V n{ax.Direction().X(), ax.Direction().Y(), ax.Direction().Z()}, p{ax.Location().X(), ax.Location().Y(), ax.Location().Z()};
+        if (std::abs(dot(sub(A, p), n)) > 1e-5 || std::abs(dot(sub(B, p), n)) > 1e-5) continue;
+        V c = nrm(cross(n, t));
+        if (dot(c, d) < 0) c = mul(c, -1);
+        if (dot(c, d) > bd) {
+          bd = dot(c, d);
+          best = c;
+        }
+      }
+      return best;
+    };
+    const V d1 = caler(dir(th1)), d2 = caler(dir(th2));
+    const double al = std::acos(std::max(-1.0, std::min(1.0, dot(d1, d2))));
+    if (!(al > 0.05 && al < PI - 0.02)) return std::nullopt;  // pas un coin rentrant franc
+    const V b = nrm(add(d1, d2));  // bissectrice, vers le vide
+    double s1 = chanfrein ? r : r / std::tan(al / 2), s2 = s1;
+    if (chanfrein && cham) {
+      const bool dansPremiere = std::abs(dot(d1, *premiereN)) < std::abs(dot(d2, *premiereN));
+      const double D2 = cham->mode == "da" ? r * std::sin(cham->ang * PI / 180) / std::sin(al + cham->ang * PI / 180) : cham->d2;
+      if (!(D2 > 0)) return std::nullopt;
+      s1 = dansPremiere ? r : D2;
+      s2 = dansPremiere ? D2 : r;
+    }
+    const double s = std::max(s1, s2);
+    const V T1 = add(M, mul(d1, s1)), T2 = add(M, mul(d2, s2));
+    const double h = chanfrein ? 0 : r / std::sin(al / 2);
+    const V C = add(M, mul(b, h));
+    const auto P = [](const V& p) { return gp_Pnt(p[0], p[1], p[2]); };
+    const V Eo = sub(M, mul(b, 0.5 * s + 0.2));  // sommet repoussé DANS la matière (pas de face coplanaire)
+    const V ici = add(M, mul(b, chanfrein ? 0.25 * s : std::min(0.25 * s, 0.2 * (h - r) + 1e-3)));  // point du coin, dans le vide
+    const double v0 = volume(shape);
+    const auto cles0 = clesFaces(shape);
+    const std::set<std::string> avant(cles0.begin(), cles0.end());
+    const int n0 = compter(shape, TopAbs_SOLID);
+    // L'outil déborde des deux bouts ; la pièce le coupe sur les faces voisines. Débord trop court : il reste une face
+    // plane au bout (le congé n'atteint pas les faces voisines) → on rallonge.
+    const auto essai = [&](double o) -> std::optional<TopoDS_Shape> {
+      try {
+        const auto at0 = [&](const V& p) { return sub(p, mul(t, L / 2 + o)); };
+        BRepBuilderAPI_MakePolygon poly(P(at0(Eo)), P(at0(T1)), P(at0(T2)), true);
+        if (!poly.IsDone()) return std::nullopt;
+        BRepBuilderAPI_MakeFace fm(poly.Wire(), true);
+        if (!fm.IsDone()) return std::nullopt;
+        const double lg = L + 2 * o;
+        BRepPrimAPI_MakePrism pr(fm.Face(), gp_Vec(t[0] * lg, t[1] * lg, t[2] * lg), false, true);
+        pr.Build();
+        if (!pr.IsDone()) return std::nullopt;
+        TopoDS_Shape outil = pr.Shape();
+        if (!chanfrein) {
+          const V C0 = sub(C, mul(t, L / 2 + o + 1));
+          BRepPrimAPI_MakeCylinder cy(gp_Ax2(P(C0), gp_Dir(t[0], t[1], t[2])), r, lg + 2);
+          outil = coupe(outil, cy.Shape());
+        }
+        // Matière à ajouter = outil hors de la pièce ; seul le morceau qui touche l'arête est gardé
+        const TopoDS_Shape ajout = coupe(outil, shape);
+        TopoDS_Shape garde;
+        for (TopExp_Explorer ex(ajout, TopAbs_SOLID); ex.More() && garde.IsNull(); ex.Next()) {
+          BRepClass3d_SolidClassifier c2(ex.Current());
+          c2.Perform(P(ici), 1e-7);
+          if (c2.State() == TopAbs_IN) garde = ex.Current();
+        }
+        if (garde.IsNull()) return std::nullopt;
+        const TopoDS_Shape res = unifierForme(fusion(shape, garde));
+        const double v1 = volume(res);
+        int nees = 0;
+        for (auto& c : clesFaces(res))
+          if (c == "?" || !avant.count(c)) nees++;
+        if (nees == 1 && valide(res) && v1 - v0 > 1e-6 && compter(res, TopAbs_SOLID) <= n0) return res;
+        return std::nullopt;
+      } catch (...) {
+        return std::nullopt;
+      }
+    };
+    const double o0 = std::max(4 * s, 3.0);
+    for (double k : {1.0, 2.5, 6.0})
+      if (auto res = essai(o0 * k)) return res;
+    return std::nullopt;  // jamais arrêté net par les faces voisines : le noyau décide
+  } catch (...) {
+    return std::nullopt;
+  }
+}
+
 // occFilletRun : rend une forme vide si rien n'a pu être arrondi
 TopoDS_Shape lancer(const TopoDS_Shape& base, const std::vector<Travail>& jobs, std::vector<std::string>& warns, bool chanfrein, Options opts) {
   const std::string quoi = chanfrein ? "chanfrein" : "arrondi";
@@ -694,6 +870,14 @@ TopoDS_Shape lancer(const TopoDS_Shape& base, const std::vector<Travail>& jobs, 
         } catch (...) {
         }
       }
+      // Arête concave (coin rentrant) : matière ajoutée dans le coin, arrêtée par les faces voisines (V0.70.2)
+      if (nx.IsNull() && !outil && ed && opts.droit) {
+        try {
+          if (auto c = coinInterieur(cur, ed->pts, j.r, chanfrein, opts.cham, aNPremiere ? &nPremiere : nullptr)) nx = *c;
+        } catch (...) {
+          nx = TopoDS_Shape();
+        }
+      }
       if (nx.IsNull() && ed) {
         Travail t = j;
         t.src = ed->src;
@@ -784,7 +968,7 @@ struct Repris {
   TopoDS_Shape forme;
   bool local = false;
 };
-std::optional<Repris> repriseNurbs(const TopoDS_Shape& base, const std::vector<Travail>& js, bool chanfrein, bool seule, const std::vector<AreteListee>& aretes, const OptChanfrein* cham = nullptr) {
+std::optional<Repris> repriseNurbs(const TopoDS_Shape& base, const std::vector<Travail>& js, bool chanfrein, bool seule, const std::vector<AreteListee>& aretes, const OptChanfrein* cham = nullptr, bool droit = false) {
   const auto filletNurbs = [&](const TopoDS_Shape& sh) -> TopoDS_Shape {
     try {
       BRepBuilderAPI_NurbsConvert nc(sh, false);
@@ -810,6 +994,7 @@ std::optional<Repris> repriseNurbs(const TopoDS_Shape& base, const std::vector<T
       std::vector<std::string> w;
       Options o;
       o.seule = seule;
+      o.droit = seule && droit;
       o.lot = true;
       o.cham = cham;
       TopoDS_Shape s = lancer(nb, js2, w, chanfrein, o);
@@ -1007,6 +1192,7 @@ std::vector<AreteListee> listerAretes(const TopoDS_Shape& shape) {
         a.pts.push_back({p.X(), p.Y(), p.Z()});
       }
       for (size_t i = 1; i < a.pts.size(); i++) a.len += ecart(a.pts[i], a.pts[i - 1]);
+      a.aTa = boutsTangents(ad, u0, u1, a.ta);
       a.src = src;
       if (a.len > 1e-6) tout.push_back(std::move(a));
     } catch (const Standard_Failure&) {
@@ -1021,7 +1207,32 @@ std::vector<AreteListee> listerAretes(const TopoDS_Shape& shape) {
   return uniques;
 }
 
-std::vector<int> chaineTangente(const std::vector<AreteListee>& liste, int depart) {
+void facesDesAretes(const TopoDS_Shape& shape, std::vector<AreteListee>& liste) {
+  try {
+    TopTools_IndexedDataMapOfShapeListOfShape mE;
+    TopExp::MapShapesAndAncestors(shape, TopAbs_EDGE, TopAbs_FACE, mE);
+    TopTools_IndexedMapOfShape mF;
+    TopExp::MapShapes(shape, TopAbs_FACE, mF);
+    std::map<int, AreteListee*> parSrc;
+    for (auto& e : liste) parSrc[e.src] = &e;
+    int src = 0;
+    for (TopExp_Explorer ex(shape, TopAbs_EDGE); ex.More(); ex.Next(), src++) {
+      const auto it = parSrc.find(src);
+      if (it == parSrc.end()) continue;
+      const int j = mE.FindIndex(ex.Current());
+      if (j <= 0) continue;
+      std::vector<int> fs;
+      for (const TopoDS_Shape& f : mE.FindFromIndex(j)) {
+        const int k = mF.FindIndex(f);
+        if (k > 0 && std::find(fs.begin(), fs.end(), k) == fs.end()) fs.push_back(k);
+      }
+      it->second->fs = fs;
+    }
+  } catch (const Standard_Failure&) {
+  }
+}
+
+std::vector<int> chaineTangente(const std::vector<AreteListee>& liste, int depart, bool ancien) {
   const int n = static_cast<int>(liste.size());
   if (depart < 0 || depart >= n) return {depart};
   const auto cle = [](const Vec3& p) {
@@ -1045,6 +1256,12 @@ std::vector<int> chaineTangente(const std::vector<AreteListee>& liste, int depar
   };
   const auto estTangente = [&](int a, int b, const std::string& k) {
     if (bouts[a][0].empty() || bouts[b][0].empty()) return false;
+    // V0.70.2 : directions exactes aux bouts ; opposées au sommet à 2° près (avant : corde de la polyligne, 10°)
+    if (!ancien && liste[a].aTa && liste[b].aTa) {
+      const Vec3& ua = liste[a].ta[bouts[a][0] == k ? 0 : 1];
+      const Vec3& ub = liste[b].ta[bouts[b][0] == k ? 0 : 1];
+      return ua[0] * ub[0] + ua[1] * ub[1] + ua[2] * ub[2] < -0.9994;
+    }
     const Vec3 ta = tangente(a, bouts[a][0] != k), tb = tangente(b, bouts[b][0] != k);
     const double la = hyp(ta[0], ta[1], ta[2]), lb = hyp(tb[0], tb[1], tb[2]);
     if (la < 1e-9 || lb < 1e-9) return false;
@@ -1056,14 +1273,28 @@ std::vector<int> chaineTangente(const std::vector<AreteListee>& liste, int depar
   for (size_t tete = 0; tete < vus.size(); tete++) {
     const int cur = vus[tete];
     if (bouts[cur][0].empty()) continue;
-    for (const std::string& k : bouts[cur])
-      for (int nb : sommets[k]) {
-        if (pris[nb]) continue;
-        if (estTangente(cur, nb, k)) {
-          pris[nb] = 1;
-          vus.push_back(nb);
+    for (const std::string& k : bouts[cur]) {
+      // Plusieurs arêtes tangentes au même sommet : seules celles qui bordent une même face que l'arête courante
+      // continuent la chaîne (V0.70.2)
+      std::vector<int> tans;
+      for (int nb : sommets[k])
+        if (nb != cur && estTangente(cur, nb, k)) tans.push_back(nb);
+      if (tans.size() > 1 && !ancien) {
+        const auto& fa = liste[cur].fs;
+        std::vector<int> c;
+        for (int nb : tans) {
+          bool com = false;
+          for (int x : fa) com = com || std::find(liste[nb].fs.begin(), liste[nb].fs.end(), x) != liste[nb].fs.end();
+          if (com) c.push_back(nb);
         }
+        if (!c.empty()) tans = c;
       }
+      for (int nb : tans) {
+        if (pris[nb]) continue;
+        pris[nb] = 1;
+        vus.push_back(nb);
+      }
+    }
   }
   return vus;
 }
@@ -1183,6 +1414,7 @@ TopoDS_Shape appliquerConge(const Document& d, Fonction& f, const TopoDS_Shape& 
   f.congeAjuste.clear();
   std::vector<AreteListee> aretes = listerAretes(base);
   const auto aliasAretes = nomsSurAretes(base, aretes);
+  if (f.tangent == 1 && f.droit) facesDesAretes(base, aretes);  // chaîne tangente : faces voisines (V0.70.2)
   if (aretes.empty()) {
     dire(lab + " : aucune arête détectée");
     return base;
@@ -1345,7 +1577,7 @@ TopoDS_Shape appliquerConge(const Document& d, Fonction& f, const TopoDS_Shape& 
     if (!racines.empty()) {
       std::vector<int> chaine;  // ordre d'insertion d'un Set
       for (int k : racines)
-        for (int j : chaineTangente(aretes, rangTrouve[k]))
+        for (int j : chaineTangente(aretes, rangTrouve[k], !f.droit))
           if (std::find(chaine.begin(), chaine.end(), j) == chaine.end()) chaine.push_back(j);
       const auto aJob = [&](int j) {
         for (auto& x : jobs)
@@ -1447,6 +1679,7 @@ TopoDS_Shape appliquerConge(const Document& d, Fonction& f, const TopoDS_Shape& 
   const bool seule = f.tangent == 0;
   Options opts;
   opts.seule = seule;
+  opts.droit = seule && f.droit;  // congés créés ou modifiés depuis V0.70.2 ; les anciens gardent le noyau
   OptChanfrein optCham;
   if (chanfrein && (f.cmode == "d2" || f.cmode == "da")) {
     optCham.mode = f.cmode;
@@ -1480,7 +1713,7 @@ TopoDS_Shape appliquerConge(const Document& d, Fonction& f, const TopoDS_Shape& 
   TopoDS_Shape s = lancer(base, js, wA, chanfrein, opts);
   if (refuser(s)) s = TopoDS_Shape();
   std::optional<Repris> rN;
-  if (s.IsNull()) rN = repriseNurbs(base, js, chanfrein, seule, aretes, opts.cham);
+  if (s.IsNull()) rN = repriseNurbs(base, js, chanfrein, seule, aretes, opts.cham, f.droit);
   if (rN && refuser(rN->forme)) rN.reset();
   if (rN) {
     s = rN->forme;
@@ -1946,6 +2179,7 @@ const ApercuConge& ChoixConge::apercu() {
   }
   Options o;
   o.seule = !tangent_;
+  o.droit = !tangent_;  // V0.70.2
   if (chanfrein_ && cham_.actif()) o.cham = &cham_;
   std::vector<std::string> warns;
   TopoDS_Shape sh;
@@ -1960,7 +2194,7 @@ const ApercuConge& ChoixConge::apercu() {
       sh.Nullify();
       std::optional<Repris> rN;
       try {
-        rN = repriseNurbs(base_, jobs, chanfrein_, !tangent_, E, o.cham);
+        rN = repriseNurbs(base_, jobs, chanfrein_, !tangent_, E, o.cham, true);
       } catch (const Standard_Failure&) {
       }
       if (rN && facesValides(rN->forme, zone)) sh = rN->forme;
@@ -2011,6 +2245,7 @@ Fonction ChoixConge::creer(Document& d, const std::vector<std::pair<std::string,
   f.nom = libelle() + " (" + std::to_string(sel_.size()) + " arête(s))";
   f.chamfer = chanfrein_;
   f.tangent = tangent_ ? 1 : 0;
+  f.droit = true;  // V0.70.2
   f.congeTotal = static_cast<int>(sel_.size());
   const bool asym = chanfrein_ && cham_.actif();
   if (asym) {
