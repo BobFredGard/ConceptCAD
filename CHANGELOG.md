@@ -8,7 +8,7 @@ sont sorties le 2026-09-30j.
 Code dans `src/` · livrable `fusion_mvp.html` (généré par `build.js`) · architecture et
 garde-fous en tête de `src/00-entete-et-outils.js`.
 
-**614 versions**, de `2026-09-28b` à `V0.70.2` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
+**615 versions**, de `2026-09-28b` à `V0.70.3` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
 comme dans le fichier d'origine.
 
 ---
@@ -7054,5 +7054,15 @@ Barquette ne perd plus son solide à la 107e modification, et sa mémoire ne mon
 - **Correctif** : coin intérieur (`occSingleEdgeConcave`) — la section du congé (ou du chanfrein, tous types) est tirée tout droit le long de l'arête et au-delà de ses bouts, la pièce la coupe sur les faces voisines, seul le morceau qui touche l'arête est ajouté ; débord rallongé tant qu'il reste une face plane au bout. Rien n'arrête le prolongement (coin qui débouche dans le vide) : le noyau décide, comme avant. Chaîne tangente : directions EXACTES aux bouts de chaque arête (à 2° près, sens opposés au sommet commun) ; plusieurs arêtes tangentes au même sommet : celle qui borde la même face continue. Texte d'aide de la case revu. **Anciens documents inchangés** : ces deux règles ne valent que pour les congés et chanfreins créés ou modifiés depuis V0.70.2 (drapeau `droit` de la fonction, aussi dans la clé du cache) ; ceux d'avant gardent au rejeu la chaîne du noyau et l'ancienne chaîne tangente (Symétrie congés : un R10 décoché dans un coin intérieur aurait perdu 1 200 mm³, et la chaîne R3,3 à longueur 70 changeait).
 - **Parcours FAO et `CACHE_VER`** inchangés.
 - **Test** : `test_conge_tout_droit` (poche oblongue : congé R2 et chanfrein sur l'arête du fond, une seule face neuve, matière du coin seulement, l'arête d'en face reste vive ; chaîne tangente = les 4 arêtes du fond ; rejeu : congé V0.70.2 = arête seule, ancien document = chaîne du noyau comme avant). Vérifié sur Barquette 2 : R1 à R5 et chanfrein valides, une face neuve, congé arrêté sur les deux arcs.
+
+---
+## V0.70.3 - Congé sans tangence beaucoup plus rapide, plusieurs arêtes d'un coup
+
+- **Demande** : « ce congé fonctionne mais est super long à être réalisé, surtout si j'en veux plusieurs en même temps ou le dupliquer ».
+- **Mesure** (Barquette 2, 352 faces) : 1,8 s pour une rainure, 30 s pour 10 — et 8 des 10 échouaient (après la première, les arêtes suivantes étaient cherchées sur la pièce modifiée et mal retrouvées). Le temps partait dans le volume de TOUTE la pièce (4 calculs par congé, 0,45 s chacun), le détecteur dedans / dehors préparé deux fois par arête sur toute la pièce, et 180 points sondés autour de chaque arête.
+- **Correctif** : `occSingleEdgeConcavePiece` rend le seul morceau à ajouter, contrôlé sur lui-même (face plane au bout = débord trop court, volume du morceau) ; `occSouderMorceaux` soude tous les morceaux d'un congé en UNE fusion, une unification et un contrôle de validité (un par un, puis le noyau, si le bloc est refusé). Détecteur partagé tant que la pièce ne change pas, arêtes relues seulement quand elle change. Sondage `occSecteurSonde` : 36 points puis dichotomie (2 tours de plus, même précision), 180 points si un secteur est étroit ; un coin intérieur (plus de 56 % du cercle dans la matière) quitte l'outil des arêtes en bosse avant la recherche des bords. Découpe tout droit d'une arête en bosse : « n'enlève rien » jugé à l'apparition d'une face neuve, plus aux volumes de la pièce.
+- **Résultat** : 0,67 s pour une rainure, 3 s pour 10, toutes réussies ; formes identiques (R2, R5, chanfrein sur Barquette 2). Une duplication reste un congé par copie, chacun profite du même gain.
+- **Parcours FAO et `CACHE_VER`** inchangés.
+- **Test** : `test_conge_tout_droit` 12 : deux arêtes d'un coup, deux faces neuves, deux fois la matière d'une seule.
 
 ---

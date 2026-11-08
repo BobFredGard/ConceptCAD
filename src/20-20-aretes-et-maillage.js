@@ -154,6 +154,18 @@ function draftAngleOk(a){return isFinite(a)&&Math.abs(a)>1e-9&&Math.abs(a)<90;}
 // toujours) — arête DROITE et CONVEXE entre deux faces : le secteur de matière est mesuré au
 // classificateur, l'outil (triangle du coin − disque du congé, ou triangle seul pour un
 // chanfrein) est extrudé le long de l'arête en DÉBORDANT devant et derrière, puis soustrait.
+// V0.70.3 (vitesse) : secteur de matière autour d'une arête, sondé sur un cercle. D'abord 36 points (10°) ;
+// si une zone fait moins de 3 points (secteur étroit, ambigu), on revient aux 180 points d'avant. Les
+// bords sont ensuite cherchés par dichotomie (2 tours de plus : même précision qu'avec 180 points).
+function occSecteurSonde(inAt){
+  for(const N of [36,180]){
+    const S=[];for(let k=0;k<N;k++)S.push(inAt(2*Math.PI*k/N));
+    if(N===180)return{N,S,it:14};
+    let runs=0,court=false,n=1;
+    for(let k=1;k<=N;k++){if(S[k%N]===S[(k-1)%N])n++;else{runs++;if(n<3)court=true;n=1;}}
+    if(runs===0||(!court&&runs===2))return{N,S,it:16};
+  }
+}
 function occSingleEdgeTool(shape,pts,r,chamfer,cham,firstN,info){
   // cham/firstN (V0.11.19) : chanfrein asymétrique — options xChamOpts et normale sortante de
   // la PREMIÈRE face (celle qui porte D1) ; sans normale utilisable, l'outil renonce (null →
@@ -173,15 +185,19 @@ function occSingleEdgeTool(shape,pts,r,chamfer,cham,firstN,info){
   const dir=th=>add(mul(u,Math.cos(th)),mul(v,Math.sin(th)));
   const bin=[];
   try{
-    const cl=occClassifier(shape);bin.push(cl);
+    const cl=(info&&info.cl)||occClassifier(shape);if(!(info&&info.cl))bin.push(cl); // V0.70.3 : partagé entre les arêtes d'une même pièce
     const IN=occt.TopAbs_State.TopAbs_IN;
     const eps=Math.max(1e-3,Math.min(0.05,r*0.05));
     const inAt=th=>{const q=add(M,mul(dir(th),eps));const P=new occt.gp_Pnt_3(q[0],q[1],q[2]);cl.Perform(P,1e-7);const s=cl.State();try{P.delete();}catch(e){}return s===IN;};
-    const N=180,S=[];for(let k=0;k<N;k++)S.push(inAt(2*Math.PI*k/N));
+    const SD=occSecteurSonde(inAt),N=SD.N,S=SD.S;
+    if(info)info.S=SD; // V0.70.3 : secteur sondé, repris par occSingleEdgeConcave (pas de second sondage)
+    // Plus de 56 % du cercle dans la matière : coin intérieur, que cet outil ne traite pas (il exige moins
+    // de 180°) — on s'arrête avant de chercher les bords, occSingleEdgeConcavePiece les cherchera.
+    if(S.filter(Boolean).length>0.56*N)return null;
     const starts=[];for(let k=0;k<N;k++)if(S[k]&&!S[(k+N-1)%N])starts.push(k);
     if(starts.length!==1)return null; // pas une arête simple entre 2 faces
     let k1=starts[0],k2=k1;while(S[(k2+1)%N]&&((k2+1)%N)!==k1)k2=(k2+1)%N;
-    const bis=(lo,hi,want)=>{for(let i=0;i<14;i++){const m=(lo+hi)/2;if(inAt(m)===want)hi=m;else lo=m;}return(lo+hi)/2;};
+    const bis=(lo,hi,want)=>{for(let i=0;i<SD.it;i++){const m=(lo+hi)/2;if(inAt(m)===want)hi=m;else lo=m;}return(lo+hi)/2;};
     const st=2*Math.PI/N;
     const th1=bis(2*Math.PI*k1/N-st,2*Math.PI*k1/N,true); // passage dehors → dedans
     const th2=bis(2*Math.PI*(k2+1)/N,2*Math.PI*k2/N,true); // passage dedans → dehors (côté fin)
@@ -278,7 +294,29 @@ function occSingleEdgeTool(shape,pts,r,chamfer,cham,firstN,info){
 // la section soit entièrement rentrée dans la matière (les arcs voisins l'arrêtent : la face du congé
 // s'élargit en suivant leur courbe). On garde seulement la partie qui tombe dans le vide et touche
 // l'arête. Rend le nouveau solide, ou null (le noyau prend le relais).
-function occSingleEdgeConcave(shape,pts,r,chamfer,cham,firstN){
+// V0.70.3 (vitesse) : occSingleEdgeConcavePiece rend seulement le MORCEAU à ajouter (petit solide), contrôlé
+// sur lui-même ; occSingleEdgeConcave le soude. Plusieurs arêtes : morceaux soudés en une fois (occFilletRun).
+// Avant : volume de toute la pièce calculé 2 fois par essai (0,45 s chacun sur Barquette 2) et 2ᵉ sondage.
+function occSingleEdgeConcave(shape,pts,r,chamfer,cham,firstN,S0){
+  const m=occSingleEdgeConcavePiece(shape,pts,r,chamfer,cham,firstN,S0);
+  if(!m)return null;
+  try{return occSouderMorceaux(shape,[m]);}finally{try{m.delete();}catch(e){}}
+}
+// Soude des morceaux de congé à la pièce : une fusion, une unification, un contrôle. null si refusé.
+function occSouderMorceaux(shape,morceaux){
+  if(!morceaux.length)return null;
+  let res=null,outil=null;
+  try{
+    outil=morceaux.length===1?morceaux[0]:occCompoundOf(morceaux);
+    res=occUnify(occFuse(shape,outil));
+    const nSol=sh=>{const so=occSubShapes(sh,'TopAbs_SOLID'),n=so.length;occDispose(so);return n;};
+    if(occCoqueValide(res)&&nSol(res)<=nSol(shape))return res;
+  }catch(e){}
+  finally{if(outil&&morceaux.length>1){try{outil.delete();}catch(e){}}}
+  try{res&&res.delete();}catch(e){}
+  return null;
+}
+function occSingleEdgeConcavePiece(shape,pts,r,chamfer,cham,firstN,S0){
   if(!pts||pts.length<2||!(r>0))return null;
   if(chamfer&&cham&&!firstN)return null;
   const A=pts[0],B=pts[pts.length-1];
@@ -294,16 +332,16 @@ function occSingleEdgeConcave(shape,pts,r,chamfer,cham,firstN){
   const dir=th=>add(mul(u,Math.cos(th)),mul(v,Math.sin(th)));
   const bin=[],jeter=[];
   try{
-    const cl=occClassifier(shape);bin.push(cl);
+    const cl=(S0&&S0.cl)||occClassifier(shape);if(!(S0&&S0.cl))bin.push(cl);
     const IN=occt.TopAbs_State.TopAbs_IN;
     const dedans=q=>{const P=new occt.gp_Pnt_3(q[0],q[1],q[2]);cl.Perform(P,1e-7);const s=cl.State();try{P.delete();}catch(e){}return s===IN;};
     const eps=Math.max(1e-3,Math.min(0.05,r*0.05));
     const inAt=th=>dedans(add(M,mul(dir(th),eps)));
-    const N=180,S=[];for(let k=0;k<N;k++)S.push(inAt(2*Math.PI*k/N));
+    const SD=S0&&S0.S&&Array.isArray(S0.S.S)?S0.S:occSecteurSonde(inAt),N=SD.N,S=SD.S; // S0 = info d'occSingleEdgeTool
     const starts=[];for(let k=0;k<N;k++)if(!S[k]&&S[(k+N-1)%N])starts.push(k); // début du VIDE
     if(starts.length!==1)return null;
     let k1=starts[0],k2=k1;while(!S[(k2+1)%N]&&((k2+1)%N)!==k1)k2=(k2+1)%N;
-    const bis=(lo,hi,want)=>{for(let i=0;i<14;i++){const m=(lo+hi)/2;if(inAt(m)===want)hi=m;else lo=m;}return(lo+hi)/2;};
+    const bis=(lo,hi,want)=>{for(let i=0;i<SD.it;i++){const m=(lo+hi)/2;if(inAt(m)===want)hi=m;else lo=m;}return(lo+hi)/2;};
     const st=2*Math.PI/N;
     const th1=bis(2*Math.PI*k1/N-st,2*Math.PI*k1/N,false); // matière → vide
     const th2=bis(2*Math.PI*(k2+1)/N,2*Math.PI*k2/N,false); // vide → matière
@@ -336,9 +374,6 @@ function occSingleEdgeConcave(shape,pts,r,chamfer,cham,firstN){
     const P=p=>{const q=new occt.gp_Pnt_3(p[0],p[1],p[2]);bin.push(q);return q;};
     const Eo=sub(M,mul(b,0.5*s+0.2)); // sommet repoussé DANS la matière (pas de face coplanaire)
     const ici=add(M,mul(b,chamfer?0.25*s:Math.min(0.25*s,0.2*(h-r)+1e-3))); // point du coin, dans le vide
-    const v0=occCoqueVolume(shape),avant=new Set(occFaceKeys(shape));
-    const nSol=sh=>{const so=occSubShapes(sh,'TopAbs_SOLID'),n=so.length;occDispose(so);return n;};
-    const n0=nSol(shape);
     // L'outil déborde des deux bouts ; la pièce le coupe sur les faces voisines. Débord trop court : il
     // reste une face plane au bout (le congé n'atteint pas les faces voisines) → on rallonge.
     const essai=o=>{
@@ -371,12 +406,17 @@ function occSingleEdgeConcave(shape,pts,r,chamfer,cham,firstN){
           jeter.push(m);
         });
         if(!garde)return null;
-        const res=occUnify(occFuse(shape,garde));
-        const v1=occCoqueVolume(res);
-        const nees=occFaceKeys(res).filter(k=>k==='?'||!avant.has(k)).length;
-        if(nees===1&&occCoqueValide(res)&&v0!=null&&v1!=null&&v1-v0>1e-6&&nSol(res)<=n0)return res;
-        try{res.delete();}catch(e){}
-        return null;
+        // Bout pas encore arrêté par les faces voisines : le morceau garde une face plane d'équerre à
+        // l'arête au bout de l'outil → rallonger. Contrôle sur le morceau seul (petit), pas sur la pièce.
+        const bout=L/2+o;let coupe=false;
+        occSubShapes(garde,'TopAbs_FACE').forEach(f=>{
+          if(!coupe){const sd=occSurfDesc(f);if(sd.k==='pl'&&Math.abs(Math.abs(dot(sd.n,t))-1)<1e-6&&Math.abs(Math.abs(dot(sub(sd.p,M),t))-bout)<1e-4)coupe=true;}
+          try{f.delete();}catch(e){}
+        });
+        const vg=occShapeVolume(garde);
+        if(coupe||!(vg>1e-6))return null;
+        jeter.splice(jeter.indexOf(garde),1); // rendu à l'appelant
+        return garde;
       }catch(e){return null;}
       finally{occDispose(loc);}
     };
@@ -423,9 +463,32 @@ function occFilletRun(base,jobs,warns,chamfer,opts){
   };
   if(opts&&opts.single){
     // case « tangentes » DÉCOCHÉE : chaque arête seule, sans chaîne tangente
-    let cur=base,done=0;
+    // V0.70.3 : les morceaux des coins intérieurs s'accumulent et sont soudés EN UNE FOIS (une fusion, une
+    // unification, un contrôle de la pièce) ; tant que la pièce ne change pas, ses arêtes ne sont pas relues.
+    let cur=base,done=0,E=null,Ecur=null,CL=null,CLcur=null;
+    const classeur=()=>{if(CLcur!==cur){try{CL&&CL.delete();}catch(e){}CL=occClassifier(cur);CLcur=cur;}return CL;};
+    const enAttente=[]; // {m:morceau, j:job, src}
+    const souder=()=>{
+      if(!enAttente.length)return;
+      let nx=occSouderMorceaux(cur,enAttente.map(x=>x.m));
+      if(nx){if(cur!==base){try{cur.delete();}catch(e){}}cur=nx;done+=enAttente.length;}
+      else{
+        // refus en bloc : un par un, et le noyau pour celui qui ne passe pas
+        enAttente.forEach(x=>{
+          let n1=occSouderMorceaux(cur,[x.m]);
+          if(!n1){
+            let E2=null;try{E2=occListEdges(cur);}catch(e){}
+            const ed2=(E2||[]).find(e=>Math.hypot(e.mid[0]-x.j.mid[0],e.mid[1]-x.j.mid[1],e.mid[2]-x.j.mid[2])<3);
+            if(ed2){n1=mk(cur,[{src:ed2.src,r:x.j.r,fn:x.j.fn||null}]);if(n1)warns.push(kindLabel+' : arête courbe ou concave — suivi de la chaîne tangente (noyau)');}
+          }
+          if(n1){if(cur!==base){try{cur.delete();}catch(e){}}cur=n1;done++;}
+          else warns.push(kindLabel+' isolé impossible ('+(chamfer?'distance trop grande ?':'rayon trop grand ?')+')');
+        });
+      }
+      enAttente.forEach(x=>{try{x.m.delete();}catch(e){}});enAttente.length=0;
+    };
     for(const j of jobs){
-      let E=null;try{E=occListEdges(cur);}catch(e){}
+      if(Ecur!==cur){E=null;try{E=occListEdges(cur);}catch(e){}Ecur=cur;}
       const ed=(E||[]).find(e=>cur===base?e.src===j.src:(j.mid&&Math.hypot(e.mid[0]-j.mid[0],e.mid[1]-j.mid[1],e.mid[2]-j.mid[2])<3));
       let nx=null;
       let firstN=null;
@@ -434,12 +497,21 @@ function occFilletRun(base,jobs,warns,chamfer,opts){
         try{eh=occEdgeAt(cur,ed.src);ff=eh?occChamferFirstFace(cur,eh,cham.flip,j.fn):null;firstN=ff?ff.n:null;}catch(e){firstN=null;}
         try{if(ff&&ff.f)ff.f.delete();}catch(e){}try{if(eh)eh.delete();}catch(e){}
       }
-      const info={};
+      const info={cl:ed?classeur():null};
       const tool=ed?occSingleEdgeTool(cur,ed.pts,j.r,chamfer,cham,firstN,info):null;
+      // Arête concave (coin rentrant) : matière ajoutée dans le coin, arrêtée par les faces voisines
+      // (single==='droit' : congés créés ou modifiés depuis V0.70.2 ; les anciens gardent le noyau)
+      if(!tool&&ed&&opts.single==='droit'){
+        let m=null;try{m=occSingleEdgeConcavePiece(cur,ed.pts,j.r,chamfer,cham,firstN,info);}catch(e){m=null;}
+        if(m){enAttente.push({m,j});continue;}
+      }
+      souder(); // la suite travaille sur la pièce à jour
+      if(Ecur!==cur){E=null;try{E=occListEdges(cur);}catch(e){}Ecur=cur;}
+      const ed1=ed&&cur!==base?(E||[]).find(e=>Math.hypot(e.mid[0]-j.mid[0],e.mid[1]-j.mid[1],e.mid[2]-j.mid[2])<3):ed;
       // Arête arrêtée par un mur : l'outil coupe d'équerre, le noyau suit le mur s'il est en biais ou courbe.
       // Pris s'il ne crée qu'une face, sinon il a suivi une chaîne tangente que la case écarte.
-      if(tool&&info.borne){
-        const k=mk(cur,[{src:ed.src,r:j.r,fn:j.fn||null}]);
+      if(tool&&info.borne&&ed1){
+        const k=mk(cur,[{src:ed1.src,r:j.r,fn:j.fn||null}]);
         if(k){
           const avant=new Set(occFaceKeys(cur)),nees=occFaceKeys(k).filter(c=>c==='?'||!avant.has(c)).length;
           if(nees<=1&&occCoqueValide(k))nx=k;else{try{k.delete();}catch(e){}}
@@ -447,15 +519,15 @@ function occFilletRun(base,jobs,warns,chamfer,opts){
       }
       if(tool&&!nx){try{nx=occCut(cur,tool);}catch(e){nx=null;}}
       if(tool){try{tool.delete();}catch(e){}}
-      // Découpe « réussie » qui n'enlève rien (corps abîmé en amont) : repli sur le noyau
-      if(nx){const v0=occCoqueVolume(cur),v1=occCoqueVolume(nx);if(v0!=null&&v1!=null&&!(v0-v1>1e-6)){try{nx.delete();}catch(e){}nx=null;}}
-      // Arête concave (coin rentrant) : matière ajoutée dans le coin, arrêtée par les faces voisines
-      // (single==='droit' : congés créés ou modifiés depuis V0.70.2 ; les anciens gardent le noyau)
-      if(!nx&&!tool&&ed&&opts.single==='droit'){try{nx=occSingleEdgeConcave(cur,ed.pts,j.r,chamfer,cham,firstN);}catch(e){nx=null;}}
-      if(!nx&&ed){nx=mk(cur,[{src:ed.src,r:j.r,fn:j.fn||null}]);if(nx)warns.push(kindLabel+' : arête courbe ou concave — suivi de la chaîne tangente (noyau)');}
+      // Découpe « réussie » qui n'enlève rien (corps abîmé en amont) : repli sur le noyau. V0.70.3 : jugé
+      // à l'apparition d'une face neuve, plus aux volumes de toute la pièce (0,45 s chacun sur Barquette 2).
+      if(nx){const avant=new Set(occFaceKeys(cur));if(!occFaceKeys(nx).some(c=>c==='?'||!avant.has(c))){try{nx.delete();}catch(e){}nx=null;}}
+      if(!nx&&ed1){nx=mk(cur,[{src:ed1.src,r:j.r,fn:j.fn||null}]);if(nx)warns.push(kindLabel+' : arête courbe ou concave — suivi de la chaîne tangente (noyau)');}
       if(nx){if(cur!==base){try{cur.delete();}catch(e){}}cur=nx;done++;}
       else warns.push(kindLabel+' isolé impossible ('+(chamfer?'distance trop grande ?':'rayon trop grand ?')+')');
     }
+    souder();
+    try{CL&&CL.delete();}catch(e){}
     return cur===base?null:cur;
   }
   let s=mk(base,jobs);

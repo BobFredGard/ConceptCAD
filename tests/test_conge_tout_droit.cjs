@@ -39,6 +39,11 @@ const {loadApp}=require('./appvm.cjs');
     "const ch=xTangentChainOf(S,i0);",
     "A(ch.length===4&&ch.every(i=>Math.abs(S[i].mid[2]-5)<1e-6),'8 : chaîne tangente = le fond de la poche (4 arêtes, '+ch.length+')');",
     "A(S.every(x=>Array.isArray(x.ta)&&x.ta.length===2),'9 : directions exactes aux bouts sur chaque arête');",
+    // V0.70.3 : plusieurs arêtes d'un coup — morceaux soudés en une fois, chaque arête retrouvée
+    "const e2=E.find(x=>Math.hypot(x.mid[0],x.mid[1]+6,x.mid[2]-5)<1e-6);",
+    "w=[];const d2=occFilletRun(base,[{src:e.src,r:2,mid:e.mid},{src:e2.src,r:2,mid:e2.mid}],w,false,{single:'droit'});",
+    "const n2=d2?nees(base,d2):[];",
+    "A(d2&&occCoqueValide(d2)&&n2.length===2&&n2.every(k=>/^C/.test(k))&&Math.abs(vol(d2)-vol(base)-2*dv)<1e-3&&!w.length,'12 : deux arêtes d\\u2019un coup : 2 faces neuves, deux fois la matière d\\u2019une ('+JSON.stringify(n2)+', '+w.join('|')+')');",
     // rejeu dans le document : congé créé depuis V0.70.2 (droit) = arête seule ; congé d'un ancien
     // document (sans le drapeau) = chaîne du noyau, comme avant — sa forme ne change pas
     "const v0=vol(base),pose=c=>{doc.features=doc.features.filter(x=>x.type!=='xfillet');doc.features.push(Object.assign({id:'X',type:'xfillet',name:'C',visible:true,tangent:false,edges:[{pos:e.mid.slice(),pos0:e.mid.slice(),r:2,len:e.len,seed:1}]},c?{droit:true}:{}));freshHard=true;occCkClear();markDirty();rebuild();return vol(occLive.shape)-v0;};",
