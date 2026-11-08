@@ -2,6 +2,7 @@
 #include "environnement.h"
 
 #include <wx/dcbuffer.h>
+#include <wx/msw/wrapwin.h>
 #include <wx/graphics.h>
 
 #include <algorithm>
@@ -453,7 +454,8 @@ Carte::Carte(wxWindow* parent, const wxString& titre, const wxColour& fond, bool
   SetSizer(s);
   Bind(wxEVT_PAINT, [this](wxPaintEvent&) {
     wxAutoBufferedPaintDC dc(this);
-    dc.SetBackground(wxBrush(GetParent()->GetBackgroundColour()));
+    // En vitre, les coins hors de l'arrondi prennent la couleur clé : Windows les laisse vides
+    dc.SetBackground(wxBrush(vitre_ ? wxColour(1, 0, 1) : GetParent()->GetBackgroundColour()));
     dc.Clear();
     const wxSize t = ToDIP(GetClientSize());
     {
@@ -477,6 +479,14 @@ Carte::Carte(wxWindow* parent, const wxString& titre, const wxColour& fond, bool
       if (!ligne2.empty()) ecrire(dc, this, ligne2, 12, 25, 12.5, C_TEXTE, true);
     }
   });
+}
+
+void Carte::vitre(int opacite) {
+  // Une fenêtre fille translucide : Windows 8 et suivants, déclaré dans conceptcad.manifest
+  const HWND h = static_cast<HWND>(GetHWND());
+  ::SetWindowLongPtrW(h, GWL_EXSTYLE, ::GetWindowLongPtrW(h, GWL_EXSTYLE) | WS_EX_LAYERED);
+  vitre_ = ::SetLayeredWindowAttributes(h, RGB(1, 0, 1), static_cast<BYTE>(opacite), LWA_ALPHA | LWA_COLORKEY) != 0;
+  Refresh();
 }
 
 void Carte::titre(const wxString& t) {

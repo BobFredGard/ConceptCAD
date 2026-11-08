@@ -485,6 +485,7 @@ void Cadre::creerEnvironnement() {
 
   // L'arbre flottant
   carteArbre_ = new Carte(scene_, L"Arborescence", C_CARTE, true);
+  carteArbre_->vitre(205);  // la pièce se voit au travers, comme dans le navigateur
   rechercheArbre_ = new wxTextCtrl(carteArbre_, wxID_ANY, wxEmptyString, wxDefaultPosition, wxDefaultSize, wxBORDER_NONE);
   rechercheArbre_->SetBackgroundColour(th(wxColour(0x33, 0x35, 0x39)));
   rechercheArbre_->SetForegroundColour(C_CLAIR);
@@ -557,6 +558,7 @@ void Cadre::creerEnvironnement() {
 
   // Les posages de l'atelier FAO
   carteFao_ = new Carte(scene_, L"FAO · POSAGES", C_CARTE, true);
+  carteFao_->vitre(205);
   arbreFao_ = new VueDom(carteFao_, C_CARTE);
   arbreFao_->surToucher = [this](long el, const std::string& s, const plan::J& v, bool c, bool m) { faoToucher(el, s, v, c, m); };
   carteFao_->contenu()->Add(arbreFao_, 1, wxEXPAND);

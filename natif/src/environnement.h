@@ -86,11 +86,13 @@ class Carte : public wxPanel {
   void titre(const wxString& t);
   void themeChange(int de, int vers);
   wxBoxSizer* contenu() { return contenu_; }
+  // En vitre sur la vue 3D, comme les panneaux du navigateur : la pièce se voit au travers (opacité 0..255)
+  void vitre(int opacite);
 
  private:
   wxString titre_;
   wxColour fond_;
-  bool grand_ = false;
+  bool grand_ = false, vitre_ = false;
   wxBoxSizer* contenu_ = nullptr;
 };
 
