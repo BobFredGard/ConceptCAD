@@ -2281,6 +2281,25 @@ Trace tracer(const GeoAimant& m, const std::array<double, 3>& depart) {  // magT
   }
   return T;
 }
+std::vector<std::array<double, 3>> grainesAimant(const GeoAimant& m) {  // magSeeds : sur la face nord
+  std::vector<std::array<double, 3>> graines;
+  const double z = m.h + tailleAimant(m) * 1e-3;
+  if (m.s == "box") {
+    const int nx = std::max(2, static_cast<int>(std::floor(std::sqrt(36 * m.a / m.b) + 0.5))), ny = std::max(2, static_cast<int>(std::floor(36.0 / nx + 0.5)));
+    for (int i = 0; i < nx; i++)
+      for (int j = 0; j < ny; j++) graines.push_back({m.a * ((i + .5) / nx - .5), m.b * ((j + .5) / ny - .5), z});
+  } else {
+    const double r0 = m.s == "ring" ? m.di / 2 : 0, r1 = m.d / 2;
+    for (int i = 0; i < 4; i++) {
+      const double r = r0 + (r1 - r0) * (i + .5) / 4;
+      for (int j = 0; j < 12; j++) {
+        const double t = 2 * PI * (j + (i % 2) * .5) / 12;
+        graines.push_back({r * std::cos(t), r * std::sin(t), z});
+      }
+    }
+  }
+  return graines;
+}
 std::array<float, 3> teinte(double t) {  // magColor : violet (faible) à orange (fort)
   const double H = (270 - 255 * t) / 360, Sa = 0.85, L = 0.58;
   const double q = L < 0.5 ? L * (1 + Sa) : L + Sa - L * Sa, p = 2 * L - q;
@@ -2305,23 +2324,7 @@ std::vector<SegmentChamp> lignesChamp(const J& mj) {
     return teinte(std::max(0.0, std::min(1.0, (std::log(n) - lo) / (hi - lo))));
   };
   const double Sz = tailleAimant(m), w = Sz * 0.05;
-  // magSeeds
-  std::vector<std::array<double, 3>> graines;
-  const double z = m.h + Sz * 1e-3;
-  if (m.s == "box") {
-    const int nx = std::max(2, static_cast<int>(std::floor(std::sqrt(36 * m.a / m.b) + 0.5))), ny = std::max(2, static_cast<int>(std::floor(36.0 / nx + 0.5)));
-    for (int i = 0; i < nx; i++)
-      for (int j = 0; j < ny; j++) graines.push_back({m.a * ((i + .5) / nx - .5), m.b * ((j + .5) / ny - .5), z});
-  } else {
-    const double r0 = m.s == "ring" ? m.di / 2 : 0, r1 = m.d / 2;
-    for (int i = 0; i < 4; i++) {
-      const double r = r0 + (r1 - r0) * (i + .5) / 4;
-      for (int j = 0; j < 12; j++) {
-        const double t = 2 * PI * (j + (i % 2) * .5) / 12;
-        graines.push_back({r * std::cos(t), r * std::sin(t), z});
-      }
-    }
-  }
+  const std::vector<std::array<double, 3>> graines = grainesAimant(m);
   const auto dessiner = [&](const std::vector<std::array<double, 3>>& Q) {
     const int nq = static_cast<int>(Q.size()), st = std::max(1, static_cast<int>(std::floor(nq / 90.0 + 0.5)));
     std::array<double, 3> prev = Q[0];
@@ -2362,6 +2365,183 @@ std::vector<SegmentChamp> lignesChamp(const J& mj) {
       for (auto& p : Q) p[2] = m.h - p[2];
       dessiner(Q);
     }
+  }
+  return out;
+}
+// ---- V0.70.1 : plusieurs aimants à la fois, champ additionné (48-aimants-champ.js) ----
+// Les champs s'ajoutent : chaque aimant garde une aimantation uniforme, sans effet des autres sur elle.
+namespace {
+using P3 = std::array<double, 3>;
+struct AimantGeo {
+  GeoAimant g;
+  assemblage::Repere F;
+  bool on;
+};
+P3 versLocal(const assemblage::Repere& F, const P3& p) {  // magToLoc
+  const P3 d = {p[0] - F.o[0], p[1] - F.o[1], p[2] - F.o[2]};
+  return {d[0] * F.x[0] + d[1] * F.x[1] + d[2] * F.x[2], d[0] * F.y[0] + d[1] * F.y[1] + d[2] * F.y[2], d[0] * F.z[0] + d[1] * F.z[1] + d[2] * F.z[2]};
+}
+P3 versScene(const assemblage::Repere& F, const P3& l) {  // magToWorld
+  P3 r;
+  for (int j = 0; j < 3; j++) r[j] = F.o[j] + l[0] * F.x[j] + l[1] * F.y[j] + l[2] * F.z[j];
+  return r;
+}
+std::vector<AimantGeo> geos(const std::vector<AimantPose>& M) {
+  std::vector<AimantGeo> G;
+  for (const AimantPose& A : M) G.push_back({geoAimant(A.m), A.F, A.on});
+  return G;
+}
+P3 champG(const std::vector<AimantGeo>& M, const P3& p) {  // magFieldMulti
+  P3 B = {0, 0, 0};
+  for (const AimantGeo& A : M) {
+    const P3 l = versLocal(A.F, p), b = champ(A.g, l[0], l[1], l[2]);
+    for (int j = 0; j < 3; j++) B[j] += b[0] * A.F.x[j] + b[1] * A.F.y[j] + b[2] * A.F.z[j];
+  }
+  return B;
+}
+int dedansG(const std::vector<AimantGeo>& M, const P3& p) {  // magInsideMulti
+  for (size_t i = 0; i < M.size(); i++) {
+    const P3 l = versLocal(M[i].F, p);
+    if (dansAimant(M[i].g, l[0], l[1], l[2])) return static_cast<int>(i);
+  }
+  return -1;
+}
+struct Bornes {
+  P3 c;
+  double r;
+};
+Bornes bornesScene(const std::vector<AimantGeo>& M) {  // magSceneBounds
+  std::vector<std::pair<P3, double>> P;
+  for (const AimantGeo& A : M)
+    for (const double z : {0.0, A.g.h}) P.push_back({versScene(A.F, {0, 0, z}), tailleAimant(A.g)});
+  P3 c = {0, 0, 0};
+  for (const auto& q : P)
+    for (int j = 0; j < 3; j++) c[j] += q.first[j] / P.size();
+  double r = 0;
+  for (const auto& q : P) r = std::max(r, std::hypot(q.first[0] - c[0], q.first[1] - c[1], q.first[2] - c[2]) + q.second);
+  return {c, r};
+}
+struct TraceG {
+  std::vector<P3> pts;
+  int fin = -2;  // l'aimant atteint, -1 parti au loin
+};
+TraceG tracerG(const std::vector<AimantGeo>& M, const P3& depart, double pas, double sens, const Bornes& bd, int maxN) {  // magTraceMulti
+  const auto dir = [&](const P3& p) {
+    const P3 B = champG(M, p);
+    double n = std::hypot(B[0], B[1], B[2]);
+    if (n == 0) n = 1e-30;
+    return P3{sens * B[0] / n, sens * B[1] / n, sens * B[2] / n};
+  };
+  TraceG T;
+  P3 p = depart;
+  T.pts.push_back(p);
+  const double R = bd.r * 4;
+  // pas variable : fin près des aimants, jusqu'à 16 fois plus long loin d'eux (le champ y varie lentement)
+  std::vector<std::pair<P3, double>> C;
+  for (const AimantGeo& A : M) C.push_back({versScene(A.F, {0, 0, A.g.h / 2}), tailleAimant(A.g)});
+  for (int i = 0; i < maxN; i++) {
+    double g = 16;
+    for (const auto& q : C) g = std::min(g, std::hypot(p[0] - q.first[0], p[1] - q.first[1], p[2] - q.first[2]) / q.second);
+    const double h = pas * std::max(1.0, std::min(16.0, g));
+    const P3 k1 = dir(p);
+    const P3 k2 = dir({p[0] + h / 2 * k1[0], p[1] + h / 2 * k1[1], p[2] + h / 2 * k1[2]});
+    const P3 k3 = dir({p[0] + h / 2 * k2[0], p[1] + h / 2 * k2[1], p[2] + h / 2 * k2[2]});
+    const P3 k4 = dir({p[0] + h * k3[0], p[1] + h * k3[1], p[2] + h * k3[2]});
+    for (int j = 0; j < 3; j++) p[j] += h / 6 * (k1[j] + 2 * k2[j] + 2 * k3[j] + k4[j]);
+    if (!std::isfinite(p[0]) || !std::isfinite(p[1]) || !std::isfinite(p[2])) break;
+    T.pts.push_back(p);
+    if (i > 1) {
+      const int k = dedansG(M, p);
+      if (k >= 0) {
+        T.fin = k;
+        return T;
+      }
+    }
+    if (std::hypot(p[0] - bd.c[0], p[1] - bd.c[1], p[2] - bd.c[2]) > R) {
+      T.fin = -1;
+      return T;
+    }
+  }
+  return T;
+}
+std::vector<LigneChamp> lignesG(const std::vector<AimantGeo>& M, bool rapide) {
+  const Bornes bd = bornesScene(M);
+  std::vector<LigneChamp> out;
+  int nOn = 0;
+  for (const AimantGeo& A : M) nOn += A.on;
+  for (size_t ia = 0; ia < M.size(); ia++) {
+    const AimantGeo& A = M[ia];
+    if (!A.on) continue;
+    const double S = tailleAimant(A.g), pas = S / (rapide ? 12 : 24);
+    const int maxN = 1500;
+    std::vector<P3> graines = grainesAimant(A.g);
+    if (rapide) {  // ~40 lignes en tout pendant le déplacement
+      const size_t k = std::max<size_t>(2, static_cast<size_t>(std::ceil(nOn * graines.size() / 40.0)));
+      std::vector<P3> g2;
+      for (size_t i = 0; i < graines.size(); i += k) g2.push_back(graines[i]);
+      graines = g2;
+    }
+    for (const P3& s : graines) {
+      const TraceG T = tracerG(M, versScene(A.F, s), pas, 1, bd, maxN);
+      out.push_back({T.pts, static_cast<int>(ia), T.fin >= 0 ? T.fin : -1, false});
+      // face sud, en remontant : seulement les lignes venues de loin ou d'un aimant dont on ne trace pas les lignes
+      TraceG Q = tracerG(M, versScene(A.F, {s[0], s[1], -S * 1e-3}), pas, -1, bd, maxN);
+      if (Q.fin < 0 || !M[Q.fin].on) {
+        std::reverse(Q.pts.begin(), Q.pts.end());
+        out.push_back({Q.pts, static_cast<int>(ia), -1, true});
+      }
+    }
+  }
+  return out;
+}
+}  // namespace
+std::array<double, 3> champSeul(const J& m, const std::array<double, 3>& p) { return champ(geoAimant(m), p[0], p[1], p[2]); }
+std::array<double, 3> champMulti(const std::vector<AimantPose>& M, const std::array<double, 3>& p) { return champG(geos(M), p); }
+std::vector<LigneChamp> lignesMulti(const std::vector<AimantPose>& M, bool rapide) { return lignesG(geos(M), rapide); }
+std::vector<SegmentChamp> lignesChampMulti(const std::vector<AimantPose>& Mp, bool rapide) {  // magLineGeoMulti
+  const std::vector<AimantGeo> M = geos(Mp);
+  double brMax = 2e-3;
+  for (const AimantGeo& A : M) brMax = std::max(brMax, A.g.Br);
+  const double lo = std::log(1e-3), hi = std::log(brMax);
+  const auto col = [&](const P3& p) {
+    const P3 B = champG(M, p);
+    const double n = std::max(std::hypot(B[0], B[1], B[2]), 1e-6);
+    return teinte(std::max(0.0, std::min(1.0, (std::log(n) - lo) / (hi - lo))));
+  };
+  std::vector<SegmentChamp> out;
+  for (const LigneChamp& L : lignesG(M, rapide)) {
+    const std::vector<P3>& Q = L.pts;
+    const int nq = static_cast<int>(Q.size());
+    if (nq < 2) continue;
+    const int st = std::max(1, static_cast<int>(std::floor(nq / 120.0 + 0.5)));
+    const double w = tailleAimant(M[L.de].g) * 0.05;
+    P3 prev = Q[0];
+    for (int i = st;; i += st) {
+      const P3& q = Q[std::min(i, nq - 1)];
+      out.push_back({prev, q, col(q)});
+      prev = q;
+      if (i >= nq - 1) break;
+    }
+    if (nq < 4) continue;
+    const int i = nq / 2;
+    const P3& a = Q[i];
+    const P3& b = Q[std::min(i + 1, nq - 1)];
+    P3 d = {b[0] - a[0], b[1] - a[1], b[2] - a[2]};
+    double l = std::hypot(d[0], d[1], d[2]);
+    if (l == 0) l = 1;
+    for (double& v : d) v /= l;
+    P3 u = {-d[2], 0, d[0]};
+    if (std::hypot(u[0], u[1], u[2]) < 1e-3) u = {1, 0, 0};
+    const double lu = std::hypot(u[0], u[1], u[2]);
+    for (double& v : u) v /= lu;
+    const auto k = col(a);
+    P3 t1, t2;
+    for (int j = 0; j < 3; j++) {
+      t1[j] = a[j] - w * d[j] + w * .5 * u[j];
+      t2[j] = a[j] - w * d[j] - w * .5 * u[j];
+    }
+    out.push_back({a, t1, k});
+    out.push_back({a, t2, k});
   }
   return out;
 }

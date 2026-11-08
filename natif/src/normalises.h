@@ -145,5 +145,21 @@ struct SegmentChamp {
   std::array<float, 3> couleur;
 };
 std::vector<SegmentChamp> lignesChamp(const J& m);  // magLineGeo
+// V0.70.1 du navigateur : plusieurs aimants posés, champ additionné (superposition), dans le repère de la scène.
+// F : le repère de l'aimant dans la scène (orthonormé) ; on : ses lignes sont demandées (sinon seul son champ compte).
+struct AimantPose {
+  J m;
+  assemblage::Repere F;
+  bool on = false;
+};
+struct LigneChamp {  // magLinesMulti : une ligne, l'aimant d'où elle part, celui où elle finit (-1 au loin)
+  std::vector<std::array<double, 3>> pts;
+  int de = -1, vers = -1;
+  bool retour = false;  // tracée à rebours depuis la face sud
+};
+std::array<double, 3> champMulti(const std::vector<AimantPose>& M, const std::array<double, 3>& p);  // magFieldMulti
+std::vector<LigneChamp> lignesMulti(const std::vector<AimantPose>& M, bool rapide);                  // magLinesMulti
+std::vector<SegmentChamp> lignesChampMulti(const std::vector<AimantPose>& M, bool rapide);           // magLineGeoMulti
+std::array<double, 3> champSeul(const J& m, const std::array<double, 3>& p);                         // magField (essais)
 std::vector<std::pair<std::string, std::string>> caracteristiques(const J& m);  // magCtxRows
 }  // namespace normalises

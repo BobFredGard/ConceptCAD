@@ -753,6 +753,51 @@ int WINAPI wWinMain(HINSTANCE inst, HINSTANCE, PWSTR, int) {
   if (gArgs.size() >= 3 && gArgs[0] == L"--esquisses-faces") return modeEsquissesFaces(gArgs);
   if (gArgs.size() >= 6 && gArgs[0] == L"--extruder") return modeExtruder(gArgs);
   if (gArgs.size() >= 5 && gArgs[0] == L"--conge") return modeConge(gArgs);
+  // --essai-aimants : le champ additionné de plusieurs aimants, comme tests/test_aimants.cjs section 5b (13b à 13f)
+  if (!gArgs.empty() && gArgs[0] == L"--essai-aimants") {
+    namespace nm = normalises;
+    using P = std::array<double, 3>;
+    const nm::J disc = {{"s", "cyl"}, {"Br", 1.32}, {"h", 5}, {"d", 10}, {"code", "disque"}};
+    const nm::J box = {{"s", "box"}, {"Br", 1.3}, {"a", 20}, {"b", 10}, {"h", 5}, {"code", "pave"}};
+    const assemblage::Repere Id;
+    const auto ecart = [](const P& a, const P& b) { return std::hypot(a[0] - b[0], a[1] - b[1], a[2] - b[2]); };
+    int rates = 0;
+    const auto A = [&](bool ok, const std::string& t) {
+      std::printf("%s %s\n", ok ? "ok  " : "RATE", t.c_str());
+      rates += !ok;
+    };
+    const P P1 = {3, -4, 12};
+    A(ecart(nm::champMulti({{disc, Id, true}}, P1), nm::champSeul(disc, P1)) < 1e-12, "13b : un aimant seul : meme champ qu'avant");
+    assemblage::Repere Fr;
+    Fr.o = {10, 5, 30}, Fr.x = {1, 0, 0}, Fr.y = {0, -1, 0}, Fr.z = {0, 0, -1};
+    const P P2 = {14, 3, 12}, l = {P2[0] - 10, -(P2[1] - 5), -(P2[2] - 30)}, bl = nm::champSeul(disc, l);
+    A(ecart(nm::champMulti({{disc, Fr, true}}, P2), {bl[0], -bl[1], -bl[2]}) < 1e-12, "13c : aimant retourne et deplace : champ tourne avec lui");
+    const P s2 = nm::champMulti({{disc, Id, true}, {box, Fr, true}}, P1), a2 = nm::champMulti({{disc, Id, true}}, P1), b2 = nm::champMulti({{box, Fr, true}}, P1);
+    A(std::abs(s2[0] - a2[0] - b2[0]) + std::abs(s2[1] - a2[1] - b2[1]) + std::abs(s2[2] - a2[2] - b2[2]) < 1e-12, "13d : deux aimants : les champs s'additionnent");
+    const auto pile = [&](double gap, bool retourne) {
+      assemblage::Repere F2;
+      if (retourne) F2.o = {0, 0, 5 * 2 + gap}, F2.y = {0, -1, 0}, F2.z = {0, 0, -1};
+      else F2.o = {0, 0, 5 + gap};
+      return std::vector<nm::AimantPose>{{disc, Id, true}, {disc, F2, false}};
+    };
+    const auto dans = [&](const std::vector<nm::AimantPose>& M) {
+      int n = 0, vers = 0;
+      for (const nm::LigneChamp& L : nm::lignesMulti(M, false))
+        if (!L.retour) n++, vers += L.vers == 1;
+      return n ? static_cast<double>(vers) / n : 0.0;
+    };
+    const double att = dans(pile(4, false)), rep = dans(pile(4, true));
+    A(att > 0.5 && rep < 0.05, "13e : attraction : " + std::to_string(static_cast<int>(std::round(att * 100))) + " % des lignes passent dans l'autre aimant ; repulsion : " + std::to_string(static_cast<int>(std::round(rep * 100))) + " %");
+    const auto t0 = std::chrono::steady_clock::now();
+    nm::lignesChampMulti(pile(4, true), false);
+    const long long ms = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - t0).count();
+    A(ms < 1500, "13f : deux aimants : " + std::to_string(ms) + " ms");
+    const auto t1 = std::chrono::steady_clock::now();
+    const size_t nRapide = nm::lignesMulti(pile(4, true), true).size();
+    const long long ms2 = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - t1).count();
+    A(nRapide <= 60, "13g : pendant un deplacement : " + std::to_string(nRapide) + " lignes, " + std::to_string(ms2) + " ms");
+    return rates ? 1 : 0;
+  }
   // --essai-maj [adresse de la fiche] [build supposé] : la mise à jour par Internet, sans fenêtre ni installation
   if (!gArgs.empty() && gArgs[0] == L"--essai-maj") return miseAJour::essai(gArgs.size() > 1 ? gArgs[1] : L"", gArgs.size() > 2 ? _wtoi(gArgs[2].c_str()) : miseAJour::BUILD);
   // Processeurs à deux sortes de cœurs : un cœur économe calcule la même pièce 1,7 fois moins vite (345 → 585 ms mesurés).
