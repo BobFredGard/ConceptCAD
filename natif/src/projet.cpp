@@ -586,8 +586,18 @@ static void lireFonction(const json& jf, Document& d, std::map<std::string, int>
     if (auto p = jf.find("uptoPlane"); p != jf.end() && p->is_object()) h.aPlan = lireVec3(*p, "p", h.planP) && lireVec3(*p, "n", h.planN);
     if (auto t = jf.find("thread"); h.kind != "ream" && t != jf.end() && t->is_object()) lireFilet(*t, h.filet);
   }
+  // Congé de périmètre (aimants de la bibliothèque, V0.70.0) : seuls les bords haut et bas sont repris, pas les coins
+  bool congeRepris = false;
+  if (f.type == "fillet") {
+    f.cibleConge = texte(jf, "target");
+    if (auto r = jf.find("radius"); r != jf.end() && r->is_number()) f.rayonConge = r->get<double>();
+    if (auto r = jf.find("rims"); r != jf.end() && r->is_object()) f.congeHaut = vrai(*r, "top"), f.congeBas = vrai(*r, "bottom");
+    else f.congeHaut = vrai(jf, "rimTop"), f.congeBas = vrai(jf, "rimBot");
+    const auto c = jf.find("corners");
+    congeRepris = (c == jf.end() || !c->is_array() || c->empty()) && f.rayonConge > 0;
+  }
   // La répétition se contente de créer des copies, rejouées comme des fonctions : sans effet ici.
-  if (f.visible && f.type != "extrude" && f.type != "repeat" && f.type != "xfillet" && f.type != "hole" && f.type != "xthread" && f.type != "gear" && f.type != "revolve" && f.type != "xdraft" &&
+  if (f.visible && !congeRepris && f.type != "extrude" && f.type != "repeat" && f.type != "xfillet" && f.type != "hole" && f.type != "xthread" && f.type != "gear" && f.type != "revolve" && f.type != "xdraft" &&
       f.type != "xshell" && f.type != "xmove" && f.type != "xdelface" && f.type != "xsplit" && f.type != "bmove" && f.type != "bscale" && f.type != "bremove" && f.type != "sweep" && f.type != "combine" && f.type != "import")
     refus[nomFonction(f.type)]++;
   if (auto x = jf.find("src"); f.type == "import" && x != jf.end() && x->is_object()) {
@@ -733,6 +743,13 @@ static Document documentDepuisDoc(json& racine) {
     }
   for (auto& s : j["sketches"]) lireEsquisse(s, d, refus);
   for (auto& f : j["features"]) lireFonction(f, d, refus);
+  for (const Fonction& c : d.fonctions)  // occShapeOfExtrude : le plus grand rayon de périmètre haut et bas visant l'extrusion
+    if (c.type == "fillet" && c.visible && c.rayonConge > 0)
+      for (Fonction& e : d.fonctions)
+        if (e.id == c.cibleConge && e.type == "extrude") {
+          if (c.congeHaut) e.rimHaut = std::max(e.rimHaut, c.rayonConge);
+          if (c.congeBas) e.rimBas = std::max(e.rimBas, c.rayonConge);
+        }
   for (Fonction& f : d.fonctions) f.repetee = !f.repeatId.empty() || std::find(d.sourcesRepetees.begin(), d.sourcesRepetees.end(), f.id) != d.sourcesRepetees.end();
   if (auto x = j.find("params"); x != j.end() && x->is_array())
     for (auto& jp : *x) {

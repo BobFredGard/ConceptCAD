@@ -16,6 +16,9 @@
 
 #include <BOPAlgo_Options.hxx>
 #include <BRepAdaptor_Curve.hxx>
+#include <BRepFilletAPI_MakeFillet.hxx>
+#include <TopTools_IndexedMapOfShape.hxx>
+#include <TopExp.hxx>
 #include <BRepAdaptor_Surface.hxx>
 #include <BRepAlgoAPI_Cut.hxx>
 #include <BRepAlgoAPI_Fuse.hxx>
@@ -644,6 +647,35 @@ TopoDS_Shape formeExtrusion(const Fonction& f, const Esquisse& s, const TopoDS_S
     ajouter(nomme(prismeRond(s, C->x, C->y, c->r, sp), f.id + "/" + c->id));
   }
   if (forme.IsNull()) throw std::runtime_error("solide vide");
+  // occRimFillets : le congé de périmètre du navigateur arrondit les arêtes du contour, en haut et en bas du prisme.
+  // Échec : l'extrusion reste sans arrondi, avec un avertissement
+  if (f.rimHaut > 0 || f.rimBas > 0) {
+    try {
+      BRepFilletAPI_MakeFillet mf(forme);
+      TopTools_IndexedMapOfShape aretes;
+      TopExp::MapShapes(forme, TopAbs_EDGE, aretes);
+      int n = 0;
+      for (int i = 1; i <= aretes.Extent(); i++) {
+        const TopoDS_Edge& e = TopoDS::Edge(aretes(i));
+        BRepAdaptor_Curve c(e);
+        const gp_Pnt a = c.Value(c.FirstParameter()), b = c.Value(c.LastParameter()), m = c.Value((c.FirstParameter() + c.LastParameter()) / 2);
+        const double ax = b.X() - a.X(), ay = b.Y() - a.Y(), az = b.Z() - a.Z();
+        const double tn = ax * s.n[0] + ay * s.n[1] + az * s.n[2], l2 = ax * ax + ay * ay + az * az;
+        if (l2 > 0 && std::abs(tn) > std::sqrt(l2) * 0.7) continue;  // arête le long de l'extrusion
+        const double t = (m.X() - s.o[0]) * s.n[0] + (m.Y() - s.o[1]) * s.n[1] + (m.Z() - s.o[2]) * s.n[2];
+        if (f.rimHaut > 0 && std::abs(t - sp.hi) < 0.6) mf.Add(f.rimHaut, e), n++;
+        else if (f.rimBas > 0 && std::abs(t - sp.lo) < 0.6) mf.Add(f.rimBas, e), n++;
+      }
+      if (!n) avertExtrusion.push_back("périmètre : arête du contour introuvable");
+      else {
+        mf.Build();
+        if (!mf.IsDone() || mf.Shape().IsNull()) avertExtrusion.push_back("périmètre : arrondi impossible");
+        else forme = mf.Shape();
+      }
+    } catch (const Standard_Failure&) {
+      avertExtrusion.push_back("périmètre : arrondi impossible");
+    }
+  }
   // Des traits qui se croisent peuvent faire s'effondrer la fusion : ne jamais montrer ce qui reste comme un solide
   if (std::abs(volumeDe(forme)) < 1e-6) throw std::runtime_error("solide vide : les traits de l'esquisse se croisent peut-être");
   // occExtrudeDraft : les parois, sauf les deux calottes, pivotent sur le plan d'esquisse. Échec : extrusion droite.

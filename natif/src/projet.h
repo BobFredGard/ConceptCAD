@@ -179,6 +179,11 @@ struct Fonction {
   RefFace refFace;
   std::vector<RefFace> facesVisees;
   double angleDepouille = 0, draft = 0;
+  // fillet (congé de périmètre du navigateur, sans coins) : arrondit les bords haut et bas de l'extrusion visée.
+  // Sur l'extrusion : les rayons venus de ces congés, appliqués par formeExtrusion (occRimFillets)
+  std::string cibleConge;
+  double rayonConge = 0, rimHaut = 0, rimBas = 0;
+  bool congeHaut = false, congeBas = false;
   bool corpsPropre = false;  // extrusion : newBody, « Nouveau corps »
   double epaisseur = 0;  // xshell
   double dist = 0;       // xmove

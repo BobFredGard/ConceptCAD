@@ -1459,6 +1459,65 @@ std::string nomFiletageTige(const Filetage& t) {  // threadName
   std::replace(lon.begin(), lon.end(), '.', ',');
   return "Filetage " + t.size + (T && t.p != (*T)[2].get<double>() ? "×" + pas : std::string()) + (t.lenMode == "len" ? " × " + lon : std::string(" (toute la face)"));
 }
+// magFillDoc (V0.70.0 du navigateur) : l'aimant en deux moitiés coupées à mi-hauteur (h est toujours la cote le long
+// du sens d'aimantation) : pôle sud vert de 0 à h/2, pôle nord rouge de h/2 à h, arêtes arrondies (magRound)
+void aimantEnDeuxMoities(J& d, const J& m) {
+  const std::string forme = m.value("s", std::string());
+  const double h = m.value("h", 0.0), h2 = h / 2;
+  const double lat = forme == "box" ? std::min(m.value("a", 0.0), m.value("b", 0.0)) / 2 : forme == "ring" ? (m.value("d", 0.0) - m.value("di", 0.0)) / 4 : m.value("d", 0.0) / 2;
+  const double k = js::arrondi(std::min({0.3, h2 * 0.4, lat * 0.4}), 4);  // magRound
+  J sud = J::object(), nord = J::object();
+  sud["id"] = "b1", sud["name"] = "Pôle sud", sud["c"] = nullptr, sud["color"] = 0x2f9e4f;
+  nord["id"] = "b2", nord["name"] = "Pôle nord", nord["c"] = nullptr, nord["color"] = 0xe0483c;
+  d["bodies"] = J::array({sud, nord});
+  d["bodySeq"] = 3;
+  d["activeBody"] = "b2";
+  const auto fonction = [&](J f, const char* corps) {
+    const std::string t = f["type"].get<std::string>();
+    f["id"] = as::nouvelIdentifiant(t == "revolve" ? "rv" : t == "fillet" ? "fi" : "ex");
+    f["visible"] = true;
+    f["body"] = corps;
+    const std::string id = f["id"];
+    d["features"].push_back(std::move(f));
+    return id;
+  };
+  for (const auto& [corps, nom, z0] : {std::tuple<const char*, std::string, double>{"b1", "sud", 0}, {"b2", "nord", h2}}) {
+    if (forme == "box") {
+      J s = esquisseVide(d, ("Contour pôle " + nom).c_str(), "XY", z0);
+      const double a = m.value("a", 0.0) / 2, c = m.value("b", 0.0) / 2;
+      boucle(s, {P(-a + k, -c), P(a - k, -c), PA(a, -c + k, a - k, -c + k), P(a, c - k), PA(a - k, c, a - k, c - k), P(-a + k, c), PA(-a, c - k, -a + k, c - k), P(-a, -c + k),
+                 PA(-a + k, -c, -a + k, -c + k)});
+      J e = J::object();
+      e["type"] = "extrude", e["name"] = "Pôle " + nom, e["sketchId"] = s["id"], e["distance"] = h2, e["op"] = "add", e["mid"] = false, e["upto"] = nullptr;
+      d["sketches"].push_back(std::move(s));
+      const std::string ex = fonction(std::move(e), corps);
+      J f = J::object();
+      J rims = J::object();
+      rims["top"] = true, rims["bottom"] = true;
+      f["type"] = "fillet", f["name"] = "Congé R" + js::texte(k) + " (pôle " + nom + ")", f["target"] = ex, f["radius"] = k, f["corners"] = J::array(), f["rims"] = rims;
+      f["rimTop"] = true, f["rimBot"] = true, f["radii"] = J::array();
+      fonction(std::move(f), corps);
+    } else {
+      J s = esquisseVide(d, ("Profil pôle " + nom).c_str(), "XZ", 0);
+      const double R = m.value("d", 0.0) / 2, z1 = z0 + h2;
+      std::vector<Sommet> pr;
+      if (forme == "ring") {  // magHalfProf : coins extérieurs et intérieurs arrondis
+        const double r0 = m.value("di", 0.0) / 2;
+        pr = {P(r0 + k, z0), P(R - k, z0), PA(R, z0 + k, R - k, z0 + k), P(R, z1 - k), PA(R - k, z1, R - k, z1 - k), P(r0 + k, z1), PA(r0, z1 - k, r0 + k, z1 - k), P(r0, z0 + k),
+              PA(r0 + k, z0, r0 + k, z0 + k)};
+      } else {
+        pr = {P(0, z0), P(R - k, z0), PA(R, z0 + k, R - k, z0 + k), P(R, z1 - k), PA(R - k, z1, R - k, z1 - k), P(0, z1)};
+      }
+      boucle(s, pr);
+      J f = J::object();
+      J ax = J::object();
+      ax["k"] = "sys", ax["d"] = "Z";
+      f["type"] = "revolve", f["name"] = "Pôle " + nom, f["sketchId"] = s["id"], f["axis"] = ax, f["angle"] = 360, f["op"] = "add";
+      d["sketches"].push_back(std::move(s));
+      fonction(std::move(f), corps);
+    }
+  }
+}
 }  // namespace
 
 J documentDe(const Piece& sp) {
@@ -1482,6 +1541,10 @@ J documentDe(const Piece& sp) {
   if (!sp.mag.is_null()) st["mag"] = sp.mag;
   d["std"] = st;
   if (!sp.mat.is_null()) d["mat"] = sp.mat;
+  if (sp.mag.is_object() && sp.mag.contains("s")) {
+    aimantEnDeuxMoities(d, sp.mag);
+    return d;
+  }
   const auto fonction = [&](J f) {
     const std::string t = f["type"].get<std::string>();
     f["id"] = as::nouvelIdentifiant(t == "revolve" ? "rv" : t == "xthread" ? "th" : t == "gear" ? "gr" : "ex");
