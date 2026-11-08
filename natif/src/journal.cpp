@@ -1,7 +1,9 @@
 // Journal d'erreurs local (src/01-journal-erreurs.js du navigateur)
 #include "journal.h"
 
+#ifdef _WIN32
 #include <windows.h>
+#endif
 
 #include <nlohmann/json.hpp>
 
@@ -12,6 +14,9 @@
 #include <exception>
 #include <fstream>
 #include <mutex>
+#ifndef _WIN32
+#include <sys/stat.h>
+#endif
 #include <vector>
 
 namespace journal {
@@ -20,7 +25,11 @@ std::function<void()> surErreur;
 namespace {
 using J = nlohmann::json;
 const size_t MAXI = 50, GESTES = 5;
+#ifdef _WIN32
 const char* const VERSION = "Essai Windows";
+#else
+const char* const VERSION = "Essai Mac";
+#endif
 
 std::recursive_mutex verrou;
 std::vector<J> liste;
@@ -30,9 +39,13 @@ std::wstring fichier() {
   if (const wchar_t* e = _wgetenv(L"CC_JOURNAL")) return e;  // les essais écrivent ailleurs
   std::wstring d;
   if (const wchar_t* a = _wgetenv(L"APPDATA")) d = a;
-  d += L"\\ConceptCADNatif";
+  d += SEPW L"ConceptCADNatif";
+#ifdef _WIN32
   CreateDirectoryW(d.c_str(), nullptr);
-  return d + L"\\journal-erreurs.json";
+#else
+  mkdir(portable::u8(d.c_str()).c_str(), 0755);
+#endif
+  return d + SEPW L"journal-erreurs.json";
 }
 std::string maintenant() {
   std::time_t t = std::time(nullptr);
@@ -66,6 +79,7 @@ void ecrire() {
   } catch (...) {
   }
 }
+#ifdef _WIN32
 LONG WINAPI plantage(EXCEPTION_POINTERS* x) {
   // Le logiciel s'arrête : une dernière ligne, sans jamais provoquer une panne à son tour
   try {
@@ -85,6 +99,7 @@ LONG WINAPI plantage(EXCEPTION_POINTERS* x) {
   }
   return EXCEPTION_CONTINUE_SEARCH;
 }
+#endif
 }  // namespace
 
 void demarrer() {
@@ -100,7 +115,9 @@ void demarrer() {
     }
   } catch (...) {
   }
+#ifdef _WIN32
   SetUnhandledExceptionFilter(plantage);
+#endif
   std::set_terminate([] {
     std::string m = "Arrêt sur une erreur non rattrapée";
     try {

@@ -1,6 +1,8 @@
 // La mise en plan : planches, nouvelles vues et leurs commandes à la souris
 // (src/98-mep-20-vues.js, 98-mep-30-planches-cartouche.js, 98-mep-50-vues-interactives.js).
+#ifdef _WIN32
 #include <windows.h>
+#endif
 
 #include <BRepBndLib.hxx>
 #include <Bnd_Box.hxx>

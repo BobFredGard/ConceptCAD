@@ -1,6 +1,8 @@
 // L'esquisse de planche et le cartouche dessiné : solveur, outils, contraintes, aides d'édition
 // (src/98-mep-40-esquisse-planche.js, src/98-mep-75-esquisse-solveur-dessin.js, modèle Standard de 98-mep-50).
+#ifdef _WIN32
 #include <windows.h>
+#endif
 
 #include <algorithm>
 #include <chrono>

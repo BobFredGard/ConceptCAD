@@ -1,6 +1,8 @@
 // La mise à jour par Internet de la version native : voir mise_a_jour.h.
 #include "mise_a_jour.h"
 
+#ifdef _WIN32
+
 #include <wx/app.h>
 #include <wx/msgdlg.h>
 #include <wx/progdlg.h>
@@ -189,3 +191,10 @@ int essai(const std::wstring& adresse, int build) {
   return bon ? 1 : 4;
 }
 }  // namespace miseAJour
+#else
+// Mac : la mise à jour par Internet viendra plus tard (étape suivante) ; rien ne se passe au démarrage
+namespace miseAJour {
+void verifier(wxWindow*) {}
+int essai(const std::wstring&, int) { return 2; }
+}  // namespace miseAJour
+#endif

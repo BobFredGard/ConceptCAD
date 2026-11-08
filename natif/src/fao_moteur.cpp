@@ -4,12 +4,32 @@
 #include <wx/filename.h>
 #include <wx/stdpaths.h>
 #include <wx/utils.h>
+#include <wx/filefn.h>
+#ifndef _WIN32
+#include <fcntl.h>
+#endif
 
+#ifdef _WIN32
 #include <windows.h>
+#else
+#include <signal.h>
+#include <spawn.h>
+#include <sys/wait.h>
+#include <unistd.h>
+extern char** environ;
+#endif
 
 namespace {
 // Le dossier du programme : fao/ s'y trouve, et le Node joint à la distribution s'il y en a un
+#ifdef _WIN32
 std::wstring dossierProgramme() { return wxFileName(wxStandardPaths::Get().GetExecutablePath()).GetPath().ToStdWstring(); }
+#else
+// Mac : fao/ est dans Contents/Resources de l'application
+std::wstring dossierProgramme() { return wxStandardPaths::Get().GetResourcesDir().ToStdWstring(); }
+// Les descripteurs du Mac rangés dans les pointeurs prévus pour Windows (0 reste « rien »)
+void* versPtr(intptr_t n) { return reinterpret_cast<void*>(n + 1); }
+int versFd(void* p) { return static_cast<int>(reinterpret_cast<intptr_t>(p) - 1); }
+#endif
 }  // namespace
 
 MoteurFao::~MoteurFao() {
@@ -18,6 +38,25 @@ MoteurFao::~MoteurFao() {
 }
 
 void MoteurFao::arreter() {
+#ifndef _WIN32
+  if (entree_) close(versFd(entree_));
+  entree_ = nullptr;
+  if (proc_) {
+    const pid_t pid = static_cast<pid_t>(versFd(proc_));
+    int etat = 0;
+    for (int i = 0; i < 30 && waitpid(pid, &etat, WNOHANG) == 0; i++) usleep(50000);
+    if (waitpid(pid, &etat, WNOHANG) == 0) {
+      kill(pid, SIGTERM);
+      waitpid(pid, &etat, 0);
+    }
+  }
+  proc_ = nullptr;
+  if (lecteur_.joinable()) lecteur_.join();
+  if (sortie_) close(versFd(sortie_));
+  sortie_ = nullptr;
+  enMarche_ = pret_ = false;
+  return;
+#endif
   if (entree_) CloseHandle(static_cast<HANDLE>(entree_));
   entree_ = nullptr;
   if (proc_) {
@@ -39,13 +78,59 @@ void MoteurFao::demarrer(const std::function<void(bool, const std::string&)>& pr
   }
   surPret_ = pret;
   const std::wstring d = dossierProgramme();
-  const std::wstring script = d + L"\\fao\\moteur.cjs";
+  const std::wstring script = d + SEPW L"fao\\moteur.cjs";
   if (!wxFileExists(script)) {
     pret(false, "Le moteur d'usinage est absent : " + wxString(script).ToStdString(wxConvUTF8));
     return;
   }
+#ifndef _WIN32
+  // Le Node joint au programme, sinon celui de l'ordinateur (Homebrew, installateur officiel)
+  std::string node = portable::u8((d + SEPW L"fao" SEPW L"node").c_str());
+  for (const char* c : {"/opt/homebrew/bin/node", "/usr/local/bin/node"})
+    if (access(node.c_str(), X_OK) != 0) node = c;
+  if (access(node.c_str(), X_OK) != 0) {
+    pret(false, "Node.js est introuvable : le moteur d'usinage ne peut pas démarrer.");
+    return;
+  }
+  int versEnfant[2], depuisEnfant[2];
+  if (pipe(versEnfant) != 0 || pipe(depuisEnfant) != 0) {
+    pret(false, "Le moteur d'usinage n'a pas pu démarrer.");
+    return;
+  }
+  posix_spawn_file_actions_t act;
+  posix_spawn_file_actions_init(&act);
+  posix_spawn_file_actions_adddup2(&act, versEnfant[0], 0);
+  posix_spawn_file_actions_adddup2(&act, depuisEnfant[1], 1);
+  posix_spawn_file_actions_addopen(&act, 2, "/dev/null", O_WRONLY, 0);
+  posix_spawn_file_actions_addclose(&act, versEnfant[1]);
+  posix_spawn_file_actions_addclose(&act, depuisEnfant[0]);
+  const std::string scriptU8 = portable::u8(script.c_str()), dU8 = portable::u8(d.c_str());
+  std::string o1 = "--max-old-space-size=8192";
+  char* args[] = {node.data(), o1.data(), const_cast<char*>(scriptU8.c_str()), nullptr};
+  pid_t pid = 0;
+  const std::string ancien = wxGetCwd().ToStdString(wxConvUTF8);
+  wxSetWorkingDirectory(wxString::FromUTF8(dU8));
+  const int r = posix_spawn(&pid, node.c_str(), &act, nullptr, args, environ);
+  wxSetWorkingDirectory(wxString::FromUTF8(ancien));
+  posix_spawn_file_actions_destroy(&act);
+  close(versEnfant[0]);
+  close(depuisEnfant[1]);
+  if (r != 0) {
+    close(versEnfant[1]);
+    close(depuisEnfant[0]);
+    pret(false, "Node.js est introuvable : le moteur d'usinage ne peut pas démarrer.");
+    return;
+  }
+  signal(SIGPIPE, SIG_IGN);
+  proc_ = versPtr(pid);
+  entree_ = versPtr(versEnfant[1]);
+  sortie_ = versPtr(depuisEnfant[0]);
+  enMarche_ = true;
+  lecteur_ = std::thread([this] { lire(); });
+  return;
+#else
   // Le Node joint au programme, sinon celui de l'ordinateur
-  std::wstring node = d + L"\\fao\\node.exe";
+  std::wstring node = d + SEPW L"fao\\node.exe";
   if (!wxFileExists(node)) node = L"node";
   SECURITY_ATTRIBUTES sa{sizeof(sa), nullptr, TRUE};
   HANDLE inL = nullptr, inE = nullptr, outL = nullptr, outE = nullptr;
@@ -78,14 +163,20 @@ void MoteurFao::demarrer(const std::function<void(bool, const std::string&)>& pr
   sortie_ = outL;
   enMarche_ = true;
   lecteur_ = std::thread([this] { lire(); });
+#endif
 }
 
 void MoteurFao::lire() {
   std::string buf;
   char t[65536];
-  DWORD n = 0;
   auto vivant = vivant_;
+#ifdef _WIN32
+  DWORD n = 0;
   while (ReadFile(static_cast<HANDLE>(sortie_), t, sizeof(t), &n, nullptr) && n) {
+#else
+  ssize_t n = 0;
+  while ((n = read(versFd(sortie_), t, sizeof(t))) > 0) {
+#endif
     buf.append(t, n);
     size_t i;
     size_t debut = 0;
@@ -157,6 +248,14 @@ void MoteurFao::commande(const std::string& nom, plan::J args, const Reponse& r)
   args["n"] = n;
   args["cmd"] = nom;
   const std::string l = args.dump(-1, ' ', false, plan::J::error_handler_t::replace) + "\n";
+#ifdef _WIN32
   DWORD ecrit = 0;
   WriteFile(static_cast<HANDLE>(entree_), l.data(), static_cast<DWORD>(l.size()), &ecrit, nullptr);
+#else
+  for (size_t fait = 0; fait < l.size();) {
+    const ssize_t k = write(versFd(entree_), l.data() + fait, l.size() - fait);
+    if (k <= 0) break;
+    fait += static_cast<size_t>(k);
+  }
+#endif
 }

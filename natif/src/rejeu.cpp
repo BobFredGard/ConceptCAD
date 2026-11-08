@@ -548,12 +548,21 @@ double volumeDe(const TopoDS_Shape& s) {
 // occDraftOnce : l'angle autour du plan neutre. Lève une exception si le moteur refuse.
 // Certaines formes (plusieurs solides d'un coup) font tomber le moteur de dépouille : dans le navigateur, c'est une erreur rattrapée
 static int appelProtege(void (*f)(void*), void* a) {
+#ifdef _WIN32
   __try {
     f(a);
     return 0;
   } __except (1) {  // EXCEPTION_EXECUTE_HANDLER
     return 1;
   }
+#else
+  try {
+    f(a);
+    return 0;
+  } catch (...) {
+    return 1;
+  }
+#endif
 }
 
 TopoDS_Shape depouilleUneFois(const TopoDS_Shape& solide, const gp_Pnt& P, const gp_Dir& dir, const std::vector<TopoDS_Face>& faces, double angle, int* refusees) {

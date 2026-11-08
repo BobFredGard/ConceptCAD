@@ -450,7 +450,9 @@ void Cadre::filmFin() {
   miniParams_->Show(F.paramsVu);
   colonneDroite_->ShowItems(true);
   ShowFullScreen(false);
+#ifdef _WIN32
   ::SetMenu(GetHWND(), nullptr);  // le plein écran remet la barre de menus, cachée comme à l'ouverture
+#endif
   centre_->Layout();
   Thaw();
   vue_->Enable(true);

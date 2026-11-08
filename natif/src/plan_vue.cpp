@@ -9,7 +9,9 @@
 #include <wx/print.h>
 #include <wx/wfstream.h>
 #include <wx/zstream.h>
+#ifdef _WIN32
 #include <windows.h>
+#endif
 #undef near
 #undef far
 #undef min

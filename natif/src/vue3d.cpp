@@ -76,7 +76,7 @@
 #include <Prs3d_LineAspect.hxx>
 #include <Quantity_Color.hxx>
 #include <TopAbs_ShapeEnum.hxx>
-#include <WNT_Window.hxx>
+#include "fenetre_occt.h"
 #include <Image_AlienPixMap.hxx>
 #include <V3d_ImageDumpOptions.hxx>
 
@@ -318,7 +318,7 @@ Vue3D::Vue3D(wxWindow* parent) : wxWindow(parent, 2005, wxDefaultPosition, wxDef
   visu_->AddLight(lumCiel_);
   visu_->SetLightOn();
   vue_ = visu_->CreateView();
-  vue_->SetWindow(new WNT_Window(reinterpret_cast<Aspect_Handle>(GetHWND())));
+  vue_->SetWindow(fenetreOcct(this));
   Graphic3d_RenderingParams& rendu = vue_->ChangeRenderingParams();
   rendu.NbMsaaSamples = 4;  // bords lissés, comme antialias:true ; 8 coûterait 40 Mo de plus sans gain visible
   rendu.PbrEnvPow2Size = 8;  // des reflets doux n'ont pas besoin de plus
@@ -581,7 +581,7 @@ bool Vue3D::imagePlan(const plan::DemandeImage& d, wxImage& sortie, const Option
     fenetreImage_ = new wxWindow(this, wxID_ANY, wxDefaultPosition, wxSize(64, 64));
     fenetreImage_->Hide();
     vueImage_ = visuImage_->CreateView();
-    vueImage_->SetWindow(new WNT_Window(reinterpret_cast<Aspect_Handle>(fenetreImage_->GetHWND())));
+    vueImage_->SetWindow(fenetreOcct(fenetreImage_));
     Graphic3d_RenderingParams& rendu = vueImage_->ChangeRenderingParams();
     rendu.NbMsaaSamples = 4;
     rendu.PbrEnvPow2Size = 8;

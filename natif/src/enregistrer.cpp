@@ -2,7 +2,9 @@
 #include "repetitions.h"
 
 #include <set>
+#ifdef _WIN32
 #include <windows.h>
+#endif
 #include <io.h>
 #include <zlib.h>
 

@@ -1,5 +1,7 @@
 #include "video_mp4.h"
 
+#ifdef _WIN32
+
 #include <windows.h>
 #include <mfapi.h>
 #include <mfidl.h>
@@ -96,3 +98,12 @@ bool VideoMp4::fermer() {
   p_->ecrivain.Reset();
   return ok;
 }
+#else
+// Mac : le film MP4 viendra plus tard (étape suivante) ; ouvrir répond « refusé »
+struct VideoMp4::Impl {};
+VideoMp4::VideoMp4() : p_(std::make_unique<Impl>()) {}
+VideoMp4::~VideoMp4() = default;
+bool VideoMp4::ouvrir(const wxString&, int, int, int) { return false; }
+bool VideoMp4::ajouter(const wxImage&, double) { return false; }
+bool VideoMp4::fermer() { return false; }
+#endif

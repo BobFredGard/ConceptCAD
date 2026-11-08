@@ -8,7 +8,9 @@
 #include <wx/msgdlg.h>
 #include <wx/stdpaths.h>
 
+#ifdef _WIN32
 #include <windows.h>
+#endif
 
 #include <cstdio>
 #include <fstream>
@@ -22,7 +24,7 @@
 namespace {
 wxString tx(const std::string& s) { return wxString::FromUTF8(s); }
 std::wstring tempFao(const wchar_t* nom) {
-  return (wxStandardPaths::Get().GetTempDir() + L"\\conceptcad-fao-" + wxString::Format("%lu", GetCurrentProcessId()) + nom).ToStdWstring();
+  return (wxStandardPaths::Get().GetTempDir() + SEPW L"conceptcad-fao-" + wxString::Format("%lu", GetCurrentProcessId()) + nom).ToStdWstring();
 }
 std::string utf8(const std::wstring& s) { return wxString(s).ToStdString(wxConvUTF8); }
 }  // namespace
@@ -579,7 +581,7 @@ void Cadre::faoEssai(const plan::J& e) {
     wxBitmap image(t.x, t.y, 32);
     {
       wxMemoryDC dc(image);
-      PrintWindow(fenetreOutilsFao_->GetHWND(), static_cast<HDC>(dc.GetHDC()), 2);
+      IMPRIMER_FENETRE(fenetreOutilsFao_, dc);
     }
     image.ConvertToImage().SaveFile(wxString::FromUTF8(e["imageOutils"].get<std::string>()), wxBITMAP_TYPE_PNG);
   }

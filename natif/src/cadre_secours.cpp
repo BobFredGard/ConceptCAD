@@ -16,7 +16,9 @@
 #include <wx/stattext.h>
 #include <wx/utils.h>
 
+#ifdef _WIN32
 #include <windows.h>
+#endif
 #include <chrono>
 #include <ctime>
 #include <filesystem>
@@ -36,7 +38,7 @@ std::wstring dossierSecours() {
   if (const wchar_t* e = _wgetenv(L"CC_SECOURS")) d = e;  // les essais écrivent ailleurs
   else {
     if (const wchar_t* a = _wgetenv(L"APPDATA")) d = a;
-    d += L"\\ConceptCADNatif\\secours";
+    d += SEPW L"ConceptCADNatif" SEPW L"secours";
   }
   std::error_code ec;
   fs::create_directories(d, ec);
@@ -123,7 +125,7 @@ std::string Cadre::secoursTexte() {
 void Cadre::secoursEffacer() {
   secoursEmpreinte_ = 0;
   if (secoursId_.empty()) return;
-  const std::wstring d = dossierSecours() + L"\\brouillon-" + secoursId_;
+  const std::wstring d = dossierSecours() + SEPW L"brouillon-" + secoursId_;
   _wremove((d + L".conceptcad").c_str());
   _wremove((d + L".json").c_str());
 }
@@ -146,7 +148,7 @@ void Cadre::secoursEcrire(bool force) {
     if (t.empty()) return;
     const size_t h = std::hash<std::string>{}(t);
     if (h == secoursEmpreinte_ && !force) return;
-    const std::wstring d = dossierSecours() + L"\\brouillon-" + secoursId_;
+    const std::wstring d = dossierSecours() + SEPW L"brouillon-" + secoursId_;
     wxString date = wxDateTime::Now().Format(L"%d/%m/%Y à %H:%M");
     const J m = {{"chemin", wxString(doc_.chemin).utf8_string()}, {"nom", doc_.nom}, {"date", date.utf8_string()}};
     if (ecrireEntier(d + L".json", m.dump()) && ecrireEntier(d + L".conceptcad", t)) secoursEmpreinte_ = h;
@@ -160,7 +162,7 @@ void Cadre::secoursEcrire(bool force) {
 void Cadre::secoursDemarrer() {
   if (!secoursId_.empty()) return;
   secoursId_ = std::to_wstring(GetCurrentProcessId()) + L"-" + std::to_wstring(GetTickCount64());
-  const std::wstring verrou = dossierSecours() + L"\\session-" + secoursId_ + L".verrou";
+  const std::wstring verrou = dossierSecours() + SEPW L"session-" + secoursId_ + L".verrou";
   // Gardé ouvert jusqu'à la fin du programme : Windows le ferme et l'efface, même après un plantage
   secoursVerrou_ = CreateFileW(verrou.c_str(), GENERIC_WRITE, 0, nullptr, CREATE_ALWAYS, FILE_ATTRIBUTE_TEMPORARY | FILE_FLAG_DELETE_ON_CLOSE, nullptr);
   secoursMinuteur_.SetOwner(this);
@@ -283,7 +285,7 @@ nlohmann::json Cadre::secoursEssai(const std::string& quoi) {
   n["id"] = wxString(secoursId_).utf8_string();
   if (!secoursId_.empty()) {
     std::error_code ec;
-    n["brouillon"] = fs::exists(fs::path(dossierSecours() + L"\\brouillon-" + secoursId_ + L".conceptcad"), ec);
+    n["brouillon"] = fs::exists(fs::path(dossierSecours() + SEPW L"brouillon-" + secoursId_ + L".conceptcad"), ec);
   }
   nlohmann::json o = nlohmann::json::array();
   for (const Orphelin& x : orphelins()) o.push_back({{"nom", x.nom}, {"chemin", wxString(x.chemin).utf8_string()}, {"date", x.date}});

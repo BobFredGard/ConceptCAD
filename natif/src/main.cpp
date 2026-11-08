@@ -12,7 +12,9 @@
 #include <string>
 #include <vector>
 
+#ifdef _WIN32
 #include <shellapi.h>
+#endif
 
 #include <fstream>
 #include <nlohmann/json.hpp>
@@ -672,6 +674,7 @@ class Appli : public wxApp {
     theme::charger();
     SetAppearance(theme::courant() == theme::CLAIR ? Appearance::Light : Appearance::Dark);  // comme le thème choisi dans la version navigateur
     auto* cadre = new Cadre;
+    cadre_ = cadre;
     // Les captures ne doivent pas prendre la main sur ce que fait la personne devant le PC.
     if ((!gArgs.empty() && (gArgs[0] == L"--captures" || gArgs[0] == L"--essai-conge" || gArgs[0] == L"--essai-esquisse" || gArgs[0] == L"--image3d")) || _wgetenv(L"CONCEPTCAD_SANS_ACTIVER")) cadre->ShowWithoutActivating();
     else cadre->Show();
@@ -686,7 +689,7 @@ class Appli : public wxApp {
       cadre->SetClientSize(cadre->FromDIP(wxSize(1500, 900)));
       cadre->Update();
       wxYield();
-      try { if (!cadre->essaiEsquisse(gArgs[1], _wtoi(gArgs[2].c_str()), gArgs[3], gArgs[4], gArgs[5])) exit(3); } catch (const std::exception& ex) { std::ofstream(gArgs[5] + L"\\erreur.txt") << ex.what(); exit(4); }
+      try { if (!cadre->essaiEsquisse(gArgs[1], _wtoi(gArgs[2].c_str()), gArgs[3], gArgs[4], gArgs[5])) exit(3); } catch (const std::exception& ex) { std::ofstream(gArgs[5] + SEPW L"erreur.txt") << ex.what(); exit(4); }
       cadre->Close(true);
     } else if (gArgs.size() >= 5 && gArgs[0] == L"--essai-conge") {
       // --essai-conge <fichier> <sortie> <gestes.json> <dossier> : de vrais clics dans la vue, des images, puis fermeture
@@ -723,20 +726,41 @@ class Appli : public wxApp {
     }
     return true;
   }
+#ifdef __APPLE__
+  // Mac : une pièce ouverte depuis le Finder (double-clic, « Ouvrir avec ») arrive ici, pas dans les arguments
+  void MacOpenFiles(const wxArrayString& fichiers) override {
+    if (cadre_ && !fichiers.empty()) cadre_->ouvrir(fichiers[0].ToStdWstring());
+  }
+#endif
+
+ private:
+  Cadre* cadre_ = nullptr;
 };
 }  // namespace
 
 wxIMPLEMENT_APP_NO_MAIN(Appli);
 
+#ifdef _WIN32
 int WINAPI wWinMain(HINSTANCE inst, HINSTANCE, PWSTR, int) {
   int argc = 0;
   wchar_t** argv = CommandLineToArgvW(GetCommandLineW(), &argc);
+#else
+int main(int argc, char** argvU8) {
+  std::vector<std::wstring> argvL;
+  for (int i = 0; i < argc; i++) argvL.push_back(portable::large(argvU8[i]));
+  std::vector<const wchar_t*> argvP;
+  for (const std::wstring& a : argvL) argvP.push_back(a.c_str());
+  const wchar_t* const* argv = argvP.data();
+#endif
   reglerParallele(true);
   for (int i = 1; i < argc; i++) {
     if (wcscmp(argv[i], L"--sequentiel") == 0) reglerParallele(false);
+    else if (wcsncmp(argv[i], L"-psn_", 5) == 0) continue;  // ancien macOS : numéro de processus donné par le Finder
     else gArgs.push_back(argv[i]);
   }
+#ifdef _WIN32
   LocalFree(argv);
+#endif
   if (!gArgs.empty() && gArgs[0] == L"--verif") return modeVerif(gArgs);
   if (gArgs.size() >= 3 && gArgs[0] == L"--normalises") return modeNormalises(gArgs);
   if (gArgs.size() >= 3 && gArgs[0] == L"--mesures") return modeMesures(gArgs);
@@ -757,8 +781,12 @@ int WINAPI wWinMain(HINSTANCE inst, HINSTANCE, PWSTR, int) {
   if (!gArgs.empty() && gArgs[0] == L"--essai-maj") return miseAJour::essai(gArgs.size() > 1 ? gArgs[1] : L"", gArgs.size() > 2 ? _wtoi(gArgs[2].c_str()) : miseAJour::BUILD);
   // Processeurs à deux sortes de cœurs : un cœur économe calcule la même pièce 1,7 fois moins vite (345 → 585 ms mesurés).
   // On demande à Windows de ne pas traiter ce programme comme une tâche de fond, même quand sa fenêtre n'est pas devant.
+#ifdef _WIN32
   PROCESS_POWER_THROTTLING_STATE qos{PROCESS_POWER_THROTTLING_CURRENT_VERSION, PROCESS_POWER_THROTTLING_EXECUTION_SPEED, 0};
   SetProcessInformation(GetCurrentProcess(), ProcessPowerThrottling, &qos, sizeof qos);
   SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
   return wxEntry(inst, nullptr, nullptr, SW_SHOWNORMAL);
+#else
+  return wxEntry(argc, argvU8);
+#endif
 }

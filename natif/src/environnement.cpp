@@ -484,9 +484,14 @@ Carte::Carte(wxWindow* parent, const wxString& titre, const wxColour& fond, bool
 
 void Carte::vitre(int opacite) {
   // Une fenêtre fille translucide : Windows 8 et suivants, déclaré dans conceptcad.manifest
+#ifdef _WIN32
   const HWND h = static_cast<HWND>(GetHWND());
   ::SetWindowLongPtrW(h, GWL_EXSTYLE, ::GetWindowLongPtrW(h, GWL_EXSTYLE) | WS_EX_LAYERED);
   vitre_ = ::SetLayeredWindowAttributes(h, RGB(1, 0, 1), static_cast<BYTE>(opacite), LWA_ALPHA | LWA_COLORKEY) != 0;
+#else
+  (void)opacite;  // Mac : pas encore de vitre, la carte reste opaque
+  vitre_ = false;
+#endif
   Refresh();
 }
 

@@ -140,7 +140,9 @@ Cadre::Cadre() : wxFrame(nullptr, wxID_ANY, L"ConceptCAD natif"), asmAnim_(this)
   Move(FromDIP(wxPoint(20, 20)));
   creerMenus();
   // Les menus restent là pour les raccourcis clavier, mais l'écran est celui du navigateur, qui n'en a pas
+#ifdef _WIN32
   ::SetMenu(GetHWND(), nullptr);
+#endif
 
   centre_ = new wxPanel(this);
   // La scène et la vue d'esquisse occupent la même place, l'une à la fois.
@@ -492,7 +494,9 @@ void Cadre::creerEnvironnement() {
   rechercheArbre_->SetFont(policeArial(this, 12.5));
   rechercheArbre_->SetHint(L"Rechercher dans l'arbre (nom, type…)");
   arbre_ = new wxTreeCtrl(carteArbre_, ID_ARBRE, wxDefaultPosition, wxDefaultSize, wxTR_HAS_BUTTONS | wxTR_NO_LINES | wxTR_HIDE_ROOT | wxTR_SINGLE | wxTR_FULL_ROW_HIGHLIGHT | wxBORDER_NONE);
+#ifdef _WIN32
   ::SendMessageW(arbre_->GetHWND(), 0x111B /* TVM_SETITEMHEIGHT */, FromDIP(23), 0);
+#endif
   {
     // Les petites images de l'arbre : celles du ruban, et les couleurs des plans et des axes
     const int cote = FromDIP(16);
@@ -751,9 +755,11 @@ void Cadre::creerEnvironnement() {
 
   // Les fenêtres posées sur la vue 3D : OpenGL n'a pas le droit de les recouvrir
   for (wxWindow* w : scene_->GetChildren()) {
+#ifdef _WIN32
     const HWND h = w->GetHWND();
     ::SetWindowLongPtrW(h, GWL_STYLE, ::GetWindowLongPtrW(h, GWL_STYLE) | WS_CLIPSIBLINGS);
     ::SetWindowPos(h, nullptr, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE | SWP_FRAMECHANGED);
+#endif
     if (w != vue_) w->Raise();
   }
 
@@ -765,7 +771,12 @@ void Cadre::creerEnvironnement() {
     placerScene();
     const wxSize t = scene_->GetClientSize();
     const int r = FromDIP(24);
+#ifdef _WIN32
     ::SetWindowRgn(scene_->GetHWND(), ::CreateRoundRectRgn(0, 0, t.x + 1, t.y + 1, r, r), TRUE);
+#else
+    (void)t;
+    (void)r;
+#endif
     e.Skip();
   });
 }
@@ -4443,7 +4454,7 @@ bool Cadre::essaiEsquisse(const std::wstring& fichier, int rang, const std::wstr
       if (e.contains("captureEnCours")) {
         wxYield();
         vueEsquisse_->Update();
-        capturerFenetre(dossier + L"\\" + wxString::FromUTF8(e["captureEnCours"].get<std::string>()).ToStdWstring() + L".png");
+        capturerFenetre(dossier + SEPW + wxString::FromUTF8(e["captureEnCours"].get<std::string>()).ToStdWstring() + L".png");
       }
       vueEsquisse_->essaiSouris(wxEVT_LEFT_UP, g[2], g[3], ctrl);
       n["selection"] = d->selection().size();
@@ -4603,7 +4614,7 @@ bool Cadre::essaiEsquisse(const std::wstring& fichier, int rang, const std::wstr
         n["cmode"] = choix_->optionsChanfrein().mode;
         n["message"] = std::string(messageConge_.utf8_str());
         if (q.contains("r")) { choix_->rayonDefaut(q["r"].get<double>()); rafraichirConge(); }
-        if (q.value("capture", false)) capturerFenetre(dossier + L"\\t_edition.png");
+        if (q.value("capture", false)) capturerFenetre(dossier + SEPW L"t_edition.png");
         if (q.value("abandon", false)) quitterConge();
         else appliquerChoixConge();
         wxYield();
@@ -4740,9 +4751,9 @@ bool Cadre::essaiEsquisse(const std::wstring& fichier, int rang, const std::wstr
       wxBitmap imageF(tf.x, tf.y, 32);
       {
         wxMemoryDC dc(imageF);
-        PrintWindow(f->GetHWND(), static_cast<HDC>(dc.GetHDC()), 2);
+        IMPRIMER_FENETRE(f, dc);
       }
-      imageF.ConvertToImage().SaveFile(dossier + L"\\" + wxString::FromUTF8(e["aide"].get<std::string>()).ToStdWstring() + L".png", wxBITMAP_TYPE_PNG);
+      imageF.ConvertToImage().SaveFile(dossier + SEPW + wxString::FromUTF8(e["aide"].get<std::string>()).ToStdWstring() + L".png", wxBITMAP_TYPE_PNG);
       f->Destroy();
     }
     if (e.contains("journal")) journal::ajouter("essai", e["journal"].get<std::string>(), "D:\\Dossier\\Secret\\essai.cpp");
@@ -4762,9 +4773,9 @@ bool Cadre::essaiEsquisse(const std::wstring& fichier, int rang, const std::wstr
         wxBitmap image(b->GetSize().x, b->GetSize().y, 32);
         {
           wxMemoryDC dc(image);
-          PrintWindow(b->GetHWND(), static_cast<HDC>(dc.GetHDC()), 2);
+          IMPRIMER_FENETRE(b, dc);
         }
-        image.ConvertToImage().SaveFile(dossier + L"\\" + wxString::FromUTF8(e["secoursBoite"].get<std::string>()).ToStdWstring() + L".png", wxBITMAP_TYPE_PNG);
+        image.ConvertToImage().SaveFile(dossier + SEPW + wxString::FromUTF8(e["secoursBoite"].get<std::string>()).ToStdWstring() + L".png", wxBITMAP_TYPE_PNG);
         b->Destroy();
       }
     }
@@ -4933,7 +4944,7 @@ bool Cadre::essaiEsquisse(const std::wstring& fichier, int rang, const std::wstr
     }
     if (e.contains("vue3d")) {
       wxYield();
-      vue_->image(wxString(dossier) + L"\\" + wxString::FromUTF8(e["vue3d"].get<std::string>()) + L".png");
+      vue_->image(wxString(dossier) + SEPW + wxString::FromUTF8(e["vue3d"].get<std::string>()) + L".png");
     }
     if (e.contains("mesure")) {
       const Mesures me = mesurer(forme_);
@@ -4978,15 +4989,15 @@ bool Cadre::essaiEsquisse(const std::wstring& fichier, int rang, const std::wstr
       f->Show();
       wxYield();
       f->Update();
-      capturerFenetre(dossier + L"\\" + wxString::FromUTF8(e["listeFx"].get<std::string>()).ToStdWstring() + L".png");
+      capturerFenetre(dossier + SEPW + wxString::FromUTF8(e["listeFx"].get<std::string>()).ToStdWstring() + L".png");
       {
         const wxSize tf = f->GetSize();
         wxBitmap imageF(tf.x, tf.y, 32);
         {
           wxMemoryDC dc(imageF);
-          PrintWindow(f->GetHWND(), static_cast<HDC>(dc.GetHDC()), 2);
+          IMPRIMER_FENETRE(f, dc);
         }
-        imageF.ConvertToImage().SaveFile(dossier + L"\\" + wxString::FromUTF8(e["listeFx"].get<std::string>()).ToStdWstring() + L"-f.png", wxBITMAP_TYPE_PNG);
+        imageF.ConvertToImage().SaveFile(dossier + SEPW + wxString::FromUTF8(e["listeFx"].get<std::string>()).ToStdWstring() + L"-f.png", wxBITMAP_TYPE_PNG);
       }
       f->Destroy();
     }
@@ -5026,7 +5037,7 @@ bool Cadre::essaiEsquisse(const std::wstring& fichier, int rang, const std::wstr
       try {
         n["trouve"] = panneauPlan_->essai(e["reglagePlan"]);
       } catch (const std::exception& ex) {
-        std::ofstream(dossier + L"\\erreur.txt") << ex.what();
+        std::ofstream(dossier + SEPW L"erreur.txt") << ex.what();
         throw;
       }
     }
@@ -5129,7 +5140,7 @@ bool Cadre::essaiEsquisse(const std::wstring& fichier, int rang, const std::wstr
       wxYield();
     }
     if (e.contains("fao")) faoEssai(e["fao"]);
-    if (e.contains("imageVue")) vue_->image(wxString(dossier) + L"\\" + wxString::FromUTF8(e["imageVue"].get<std::string>()) + L".png");
+    if (e.contains("imageVue")) vue_->image(wxString(dossier) + SEPW + wxString::FromUTF8(e["imageVue"].get<std::string>()) + L".png");
     if (e.contains("pause")) {  // {"pause":5} : la fenêtre vit 5 s, pour une capture de l écran prise du dehors
       Raise();
       const auto fin = std::chrono::steady_clock::now() + std::chrono::milliseconds(static_cast<int>(e["pause"].get<double>() * 1000));
@@ -5140,7 +5151,7 @@ bool Cadre::essaiEsquisse(const std::wstring& fichier, int rang, const std::wstr
     }
     if (e.contains("capture")) {
       vueEsquisse_->Update();
-      capturerFenetre(dossier + L"\\" + wxString::FromUTF8(e["capture"].get<std::string>()).ToStdWstring() + L".png");
+      capturerFenetre(dossier + SEPW + wxString::FromUTF8(e["capture"].get<std::string>()).ToStdWstring() + L".png");
     }
     if (d) {
       const Esquisse* s = esquisseOuverte_ >= 0 ? &doc_.esquisses[esquisseOuverte_] : nullptr;
@@ -5154,14 +5165,14 @@ bool Cadre::essaiEsquisse(const std::wstring& fichier, int rang, const std::wstr
     }
     bilan.push_back(std::move(n));
   }
-  std::ofstream(dossier + L"\\bilan.json") << bilan.dump(1, ' ', false, nlohmann::json::error_handler_t::replace);
+  std::ofstream(dossier + SEPW L"bilan.json") << bilan.dump(1, ' ', false, nlohmann::json::error_handler_t::replace);
   quitterEsquisse();
   wxYield();
   faoFaireSuivre();
   try {
     enregistrerProjet(doc_, sortie);
   } catch (const std::exception& e) {
-    std::ofstream(dossier + L"\\erreur.txt") << e.what();
+    std::ofstream(dossier + SEPW L"erreur.txt") << e.what();
     throw;
   }
   return true;
@@ -5179,10 +5190,10 @@ bool Cadre::essaiGestesConge(const std::wstring& fichier, const std::wstring& so
   // Quitter : plus rien du mode ne reste à l'écran, ni dans le document
   entrerConge(true);
   wxYield();
-  capturerFenetre(dossier + L"\\0-chanfrein.png");
+  capturerFenetre(dossier + SEPW L"0-chanfrein.png");
   quitterConge();
   wxYield();
-  capturerFenetre(dossier + L"\\0-quitte.png");
+  capturerFenetre(dossier + SEPW L"0-quitte.png");
   bilan["fonctionsApresQuitter"] = doc_.fonctions.size();
   entrerConge(j.value("chanfrein", false));
   if (!choix_) return false;
@@ -5207,7 +5218,7 @@ bool Cadre::essaiGestesConge(const std::wstring& fichier, const std::wstring& so
     wxYield();
     bilan["faceMessage"] = messageConge_.utf8_string();
     bilan["faceGermes"] = choix_->germes().size();
-    capturerFenetre(dossier + L"\\0-face.png");
+    capturerFenetre(dossier + SEPW L"0-face.png");
     vue_->cliquerEn(px);
     wxYield();
     bilan["faceGermesApres"] = choix_->germes().size();
@@ -5231,10 +5242,10 @@ bool Cadre::essaiGestesConge(const std::wstring& fichier, const std::wstring& so
   bilan["selection"] = choix_->selection().size();
   bilan["apercu"] = !choix_->apercu().forme.IsNull();
   bilan["nouvelles"] = choix_->apercu().nouvelles.size();
-  capturerFenetre(dossier + L"\\1-choix.png");
+  capturerFenetre(dossier + SEPW L"1-choix.png");
   appliquerChoixConge();
   wxYield();
-  capturerFenetre(dossier + L"\\2-applique.png");
+  capturerFenetre(dossier + SEPW L"2-applique.png");
   bilan["fonctions"] = doc_.fonctions.size();
   bilan["erreur"] = doc_.fonctions.back().congeErreur;
   bilan["volumeApplique"] = mesurer(forme_).volume;
@@ -5243,13 +5254,13 @@ bool Cadre::essaiGestesConge(const std::wstring& fichier, const std::wstring& so
   bilan["apresAnnuler"] = doc_.fonctions.size();
   bilan["volumeAvant"] = avant.volume;
   bilan["volumeAnnule"] = mesurer(forme_).volume;
-  capturerFenetre(dossier + L"\\3-annule.png");
+  capturerFenetre(dossier + SEPW L"3-annule.png");
   retablir();
   wxYield();
   bilan["apresRetablir"] = doc_.fonctions.size();
   bilan["volumeRetabli"] = mesurer(forme_).volume;
   enregistrerProjet(doc_, sortie);
-  std::ofstream(dossier + L"\\bilan.json") << bilan.dump(1);
+  std::ofstream(dossier + SEPW L"bilan.json") << bilan.dump(1);
   return true;
 }
 
@@ -5258,7 +5269,7 @@ void Cadre::capturerFenetre(const std::wstring& png) {
   wxBitmap image(t.x, t.y, 32);
   {
     wxMemoryDC dc(image);
-    PrintWindow(GetHWND(), static_cast<HDC>(dc.GetHDC()), 2);  // 2 : PW_RENDERFULLCONTENT, avec ce que dessine OpenGL
+    IMPRIMER_FENETRE(this, dc);  // 2 : PW_RENDERFULLCONTENT, avec ce que dessine OpenGL
   }
   image.ConvertToImage().SaveFile(png, wxBITMAP_TYPE_PNG);
 }

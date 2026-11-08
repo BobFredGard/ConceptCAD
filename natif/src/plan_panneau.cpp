@@ -271,7 +271,7 @@ wxString dossierReglages() {
   return d;
 }
 // ---- La bibliothèque de cartouches (mepTbLib, mepTbPack, mepTbUnpack, mepTbApply) ----
-wxString fichierBibliotheque() { return dossierReglages() + L"\\cartouches.json"; }
+wxString fichierBibliotheque() { return dossierReglages() + SEPW L"cartouches.json"; }
 J bibliotheque() {
   J b;
   std::ifstream e(fichierBibliotheque().ToStdWstring());
@@ -1123,7 +1123,7 @@ void PanneauPlan::accueil() {
   section(L"Paramètres");
   {
     note(L"Tous les réglages du plan (écriture, cotes, traits, export, papier, cadre et cartouche par défaut) sont enregistrés avec la pièce (.conceptcad). « Sauvegarder par défaut » : ces réglages sont repris par chaque nouveau plan (une pièce qui a déjà les siens les garde).");
-    const wxString fichier = dossierReglages() + L"\\plan-defaut.json";
+    const wxString fichier = dossierReglages() + SEPW L"plan-defaut.json";
     auto* r = rang();
     bouton(r, L"Sauvegarder par défaut", [this, fichier] {
       std::ofstream(fichier.ToStdWstring()) << vue_->mep()["prefs"].dump();

@@ -39,7 +39,7 @@
 #include <gp_Pnt2d.hxx>
 #include <V3d_AmbientLight.hxx>
 #include <V3d_ImageDumpOptions.hxx>
-#include <WNT_Window.hxx>
+#include "fenetre_occt.h"
 #include <TopoDS.hxx>
 #include <TopoDS_Edge.hxx>
 #include <TopoDS_Face.hxx>
@@ -488,7 +488,7 @@ MoteurRendu::MoteurRendu(wxWindow* parent, const occ::handle<OpenGl_GraphicDrive
   fenetre_ = new wxWindow(parent, wxID_ANY, wxDefaultPosition, wxSize(64, 64));
   fenetre_->Hide();
   vue_ = visu_->CreateView();
-  vue_->SetWindow(new WNT_Window(reinterpret_cast<Aspect_Handle>(fenetre_->GetHWND())));
+  vue_->SetWindow(fenetreOcct(fenetre_));
   Graphic3d_RenderingParams& r = vue_->ChangeRenderingParams();
   r.NbMsaaSamples = 0;  // le bord lisse vient des passes, l'œil bouge sous le pixel
   r.PbrEnvPow2Size = 9;

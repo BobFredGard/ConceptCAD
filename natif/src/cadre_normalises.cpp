@@ -673,8 +673,10 @@ bool Cadre::asmNormEtapeEssai(const nlohmann::json& e, nlohmann::json& n) {
       const wxSize T = asmNormFen_->GetSize();
       wxBitmap b(T);
       wxMemoryDC m(b);
+#ifdef _WIN32
       using ImprimerFenetre = BOOL(WINAPI*)(HWND, HDC, UINT);
       if (const auto imprimer = reinterpret_cast<ImprimerFenetre>(GetProcAddress(GetModuleHandleW(L"user32.dll"), "PrintWindow"))) imprimer(asmNormFen_->GetHWND(), static_cast<HDC>(m.GetHDC()), 2 /* PW_RENDERFULLCONTENT */);
+#endif
       m.SelectObject(wxNullBitmap);
       b.ConvertToImage().SaveFile(wxString(e["normCapture"].get<std::string>()), wxBITMAP_TYPE_PNG);
     }

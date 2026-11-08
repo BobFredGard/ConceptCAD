@@ -1,5 +1,9 @@
 // La mise en plan : traits d'axe et cotes (src/98-mep-70-cotes.js, 98-mep-71-oblong.js, 98-mep-80-souris.js, 98-mep-86-accrochages.js).
+#ifdef _WIN32
 #include <windows.h>
+#else
+double largeurTexteMac(const std::wstring& texte, bool gras, double corps);  // mac.mm
+#endif
 
 #include <BRepAdaptor_Curve.hxx>
 #include <BRepAdaptor_Surface.hxx>
@@ -41,6 +45,7 @@ bool perspOuOblique(const J& v) { return chaine(v, "kind") == "base" && !vrai(v,
 double largeur(const std::string& s, double fs, bool gras = true) {
   if (s.empty()) return 0;
   static const int CORPS = 2048;  // l'unité du dessin de la police : les chasses sont exactes
+#ifdef _WIN32
   static HDC dc = CreateCompatibleDC(nullptr);
   static HFONT policeGrasse = CreateFontW(-CORPS, 0, 0, 0, FW_BOLD, 0, 0, 0, DEFAULT_CHARSET, OUT_TT_PRECIS, CLIP_DEFAULT_PRECIS, ANTIALIASED_QUALITY, DEFAULT_PITCH, L"Arial");
   static HFONT policeMaigre = CreateFontW(-CORPS, 0, 0, 0, FW_NORMAL, 0, 0, 0, DEFAULT_CHARSET, OUT_TT_PRECIS, CLIP_DEFAULT_PRECIS, ANTIALIASED_QUALITY, DEFAULT_PITCH, L"Arial");
@@ -48,6 +53,9 @@ double largeur(const std::string& s, double fs, bool gras = true) {
   const int n = MultiByteToWideChar(CP_UTF8, 0, s.data(), static_cast<int>(s.size()), nullptr, 0);
   std::wstring w(static_cast<size_t>(n), L' ');
   MultiByteToWideChar(CP_UTF8, 0, s.data(), static_cast<int>(s.size()), w.data(), n);
+#else
+  const std::wstring w = portable::large(s.c_str());
+#endif
   // « ↧ » n'existe pas en Arial : Chrome le prend dans une police de secours
   double em = 0;
   std::wstring sans;
@@ -56,6 +64,9 @@ double largeur(const std::string& s, double fs, bool gras = true) {
     else sans += ch;
   }
   if (sans.empty()) return em * fs;
+#ifndef _WIN32
+  return (em + largeurTexteMac(sans, gras, CORPS) / CORPS) * fs;
+#else
   // Avec le crénage, comme Chrome (« Te » est plus serré que T + e)
   GCP_RESULTSW r{};
   r.lStructSize = sizeof(r);
@@ -68,6 +79,7 @@ double largeur(const std::string& s, double fs, bool gras = true) {
     unites = q.cx;
   }
   return (em + unites / CORPS) * fs;
+#endif
 }
 double mesureTexte(const std::string& s, double fs) {  // mepTxtW
   const double w = largeur(s, fs);

@@ -1,7 +1,11 @@
 #define NOMINMAX
+#ifdef _WIN32
 #include <windows.h>
+#endif
 
 #include "echanges.h"
+
+#include <filesystem>
 
 #include <BRepBuilderAPI_MakeFace.hxx>
 #include <BRepBuilderAPI_MakePolygon.hxx>
@@ -87,15 +91,24 @@ std::string base64Decoder(const std::string& t) {
 namespace {
 // Un fichier temporaire : le lecteur STL du noyau ne lit que des fichiers
 std::wstring cheminTemporaire(const wchar_t* extension) {
+#ifdef _WIN32
   wchar_t dossier[MAX_PATH + 1] = {};
   GetTempPathW(MAX_PATH, dossier);
+#else
+  std::wstring dossier = std::filesystem::temp_directory_path().wstring();
+  if (!dossier.empty() && dossier.back() != L'/') dossier += L'/';
+#endif
   return std::wstring(dossier) + L"conceptcad-" + std::to_wstring(GetCurrentProcessId()) + L"-" + std::to_wstring(GetTickCount64()) + extension;
 }
 std::string utf8(const std::wstring& w) {
+#ifndef _WIN32
+  return portable::u8(w.c_str());
+#else
   const int n = WideCharToMultiByte(CP_UTF8, 0, w.c_str(), -1, nullptr, 0, nullptr, nullptr);
   std::string s(n > 0 ? n - 1 : 0, '\0');
   if (n > 1) WideCharToMultiByte(CP_UTF8, 0, w.c_str(), -1, s.data(), n, nullptr, nullptr);
   return s;
+#endif
 }
 
 TopoDS_Shape lireStep(const std::string& octets) {
