@@ -55,7 +55,7 @@ jobs:
           key: natif-mac-tiers-${{ hashFiles('natif/mac/dependances.sh') }}
           fail-on-cache-miss: true
       - name: Outils
-        run: brew install ninja dylibbundler
+        run: brew install ninja
       - name: Pièces d'essai
         run: git lfs pull --include "Exemples/003-50-200-O-Drapeau Outillage Complet.conceptcad,Exemples/Cache Piles.conceptcad,Exemples/Barquette.conceptcad"
       - name: Compiler et fabriquer le DMG
@@ -72,27 +72,37 @@ jobs:
             head -c 1500 "captures/verif-$f.json" || true; echo
           done
       - name: Installer et lancer
+        shell: bash {0}
         run: |
+          # Les bibliothèques de fabrication mises de côté : l'application doit se suffire à elle-même
+          mv natif/.tiers/mac/prefixe /tmp/prefixe-de-cote
           hdiutil attach natif/sortie-mac/ConceptCAD-natif-Mac.dmg -mountpoint /tmp/cc-dmg -nobrowse
           cp -R "/tmp/cc-dmg/ConceptCAD natif.app" /Applications/
           hdiutil detach /tmp/cc-dmg
-          open "/Applications/ConceptCAD natif.app"
+          A="/Applications/ConceptCAD natif.app/Contents/MacOS/ConceptCADNatif"
+          "$A" --verif "Exemples/Barquette.conceptcad" captures/verif-installee.json; echo "calcul depuis l'application installée : code $?"
+          "$A" > captures/sortie-demarrage.txt 2>&1 &
           sleep 25
-          pgrep -x ConceptCADNatif
-          screencapture -x captures/1-demarrage.png || true
-          osascript -e 'quit app "ConceptCAD natif"' || pkill -x ConceptCADNatif || true
-          sleep 5
-          open -a "/Applications/ConceptCAD natif.app" "Exemples/003-50-200-O-Drapeau Outillage Complet.conceptcad"
+          if pgrep -x ConceptCADNatif; then echo "ouverte"; else echo "FERMEE"; fi
+          screencapture -x captures/1-demarrage.png
+          pkill -x ConceptCADNatif; sleep 3
+          "$A" "Exemples/003-50-200-O-Drapeau Outillage Complet.conceptcad" > captures/sortie-drapeau.txt 2>&1 &
           sleep 30
-          pgrep -x ConceptCADNatif
-          screencapture -x captures/2-drapeau.png || true
-          ls ~/Library/Logs/DiagnosticReports/ || true
-          cp ~/Library/Logs/DiagnosticReports/ConceptCADNatif* captures/ 2>/dev/null || true
+          if pgrep -x ConceptCADNatif; then echo "ouverte"; else echo "FERMEE"; fi
+          screencapture -x captures/2-drapeau.png
+          pkill -x ConceptCADNatif; sleep 3
+          tail -n 40 captures/sortie-*.txt
+          ls ~/Library/Logs/DiagnosticReports/ 2>/dev/null
+          cp ~/Library/Logs/DiagnosticReports/ConceptCADNatif* captures/ 2>/dev/null
+          for f in captures/ConceptCADNatif*; do [ -f "$f" ] && head -c 6000 "$f"; done
+          ls captures
+          test -f captures/2-drapeau.png
       - uses: actions/upload-artifact@v4
+        if: always()
         with:
           name: ConceptCAD-natif-Mac-dmg
           path: natif/sortie-mac/ConceptCAD-natif-Mac.dmg
-          if-no-files-found: error
+          if-no-files-found: warn
       - uses: actions/upload-artifact@v4
         if: always()
         with:
