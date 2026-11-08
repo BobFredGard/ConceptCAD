@@ -2,6 +2,7 @@
 // (gauche ou milieu : tourner, droit : déplacer, molette : zoomer) ; survol et clic sur les faces et arêtes.
 #pragma once
 #include <wx/wx.h>
+#include <wx/timer.h>
 
 #include <array>
 #include <functional>
@@ -90,6 +91,12 @@ class Vue3D : public wxWindow {
   void rayonEcran(int x, int y, gp_Pnt& o, gp_Dir& d) const { rayon(x, y, o, d); }
   // Essai : enfonce en (x,y), glisse de (dx,dy), relâche ; r = pivot (3), son écran avant (2) et après (2)
   void essaiOrbite3D(int x, int y, int dx, int dy, double r[7]);
+  // Essai : survoler ou cliquer un point de la vue 3D
+  void essaiSurvol3D(int x, int y) {
+    if (!placer_) preparerSelection();
+    contexte_->MoveTo(x, y, vue_, true);
+  }
+  void essaiClic3D(int x, int y) { cliquerEn(wxPoint(x, y)); }
   wxPoint ecranDe(const gp_Pnt& p) const;
   void montrerFilets(const std::vector<std::vector<gp_Pnt>>& helices, const std::vector<std::vector<gp_Pnt>>& anneaux);
   // Ceux des autres composants de l'assemblage (asmThrLines), déjà placés
@@ -258,7 +265,15 @@ class Vue3D : public wxWindow {
   void surMouvement(wxMouseEvent&);
   void surMolette(wxMouseEvent&);
   void surPerteSouris(wxMouseCaptureLostEvent&);
-  void tournerZ(int dx, int dy);
+  void tournerZ(double dx, double dy);
+  void tournerLibre(double dx, double dy);  // orbitRotate libre : autour des axes de l'écran
+  void tourner(double dx, double dy) { opt_.orbiteLibre ? tournerLibre(dx, dy) : tournerZ(dx, dy); }
+  // orbitTick : le glissé s'accumule, 20 % du reste par image (ORBIT_ROT_DAMP), l'inertie finit le geste
+  wxTimer minuterieOrbite_;
+  double resteX_ = 0, resteY_ = 0;
+  bool orbiteTenue_ = false;
+  void surTicOrbite(wxTimerEvent&);
+  void arreterOrbite();
   ParamSol paramSol() const;
   void majReflets();
   occ::handle<Graphic3d_Camera> cameraFilm_;

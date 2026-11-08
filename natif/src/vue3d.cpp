@@ -83,11 +83,17 @@ const int SEUIL_CLIC = 4;  // pixels : au-delà, le bouton gauche tourne la vue 
 
 Quantity_Color couleur(int r, int v, int b) { return Quantity_Color(r / 255.0, v / 255.0, b / 255.0, Quantity_TOC_sRGB); }
 
-void reglerStyle(const occ::handle<AIS_InteractiveContext>& c, Prs3d_TypeOfHighlight type, const Quantity_Color& teinte) {
+// highlightTris du navigateur : un voile de couleur sans éclairage (MeshBasicMaterial), la pièce reste visible dessous
+void reglerStyle(const occ::handle<AIS_InteractiveContext>& c, Prs3d_TypeOfHighlight type, const Quantity_Color& teinte, float opacite) {
   const occ::handle<Prs3d_Drawer>& s = c->HighlightStyle(type);
   s->SetColor(teinte);
   s->SetDisplayMode(1);
-  s->SetTransparency(0.25f);
+  s->SetTransparency(1.0f - opacite);
+  occ::handle<Prs3d_ShadingAspect> a = new Prs3d_ShadingAspect();
+  a->SetColor(teinte);
+  a->SetTransparency(1.0f - opacite);
+  a->Aspect()->SetShadingModel(Graphic3d_TypeOfShadingModel_Unlit);
+  s->SetShadingAspect(a);
 }
 
 // La matière des pièces du navigateur (MeshStandardMaterial : métal 0,35, rugosité 0,4)
@@ -342,10 +348,11 @@ Vue3D::Vue3D(wxWindow* parent) : wxWindow(parent, 2005, wxDefaultPosition, wxDef
   cube_->SetZLayer(Graphic3d_ZLayerId_Topmost);
   contexte_->Display(cube_, false);
   contexte_->SetPixelTolerance(4);
-  reglerStyle(contexte_, Prs3d_TypeOfHighlight_LocalDynamic, couleur(0x0a, 0x84, 0xff));
-  reglerStyle(contexte_, Prs3d_TypeOfHighlight_LocalSelected, couleur(0x30, 0xd1, 0x58));
-  reglerStyle(contexte_, Prs3d_TypeOfHighlight_Dynamic, couleur(0x4d, 0xa3, 0xff));
-  reglerStyle(contexte_, Prs3d_TypeOfHighlight_Selected, couleur(0x0a, 0x84, 0xff));
+  // hoverMove : face survolée bleue à 35 % ; faceSelect : face choisie orange à 55 %
+  reglerStyle(contexte_, Prs3d_TypeOfHighlight_LocalDynamic, couleur(0x0a, 0x84, 0xff), 0.35f);
+  reglerStyle(contexte_, Prs3d_TypeOfHighlight_LocalSelected, couleur(0xff, 0x9f, 0x0a), 0.55f);
+  reglerStyle(contexte_, Prs3d_TypeOfHighlight_Dynamic, couleur(0x0a, 0x84, 0xff), 0.35f);
+  reglerStyle(contexte_, Prs3d_TypeOfHighlight_Selected, couleur(0x0a, 0x84, 0xff), 0.55f);  // ASM_SEL_COL
 
   Bind(wxEVT_PAINT, &Vue3D::surPeinture, this);
   Bind(wxEVT_ERASE_BACKGROUND, [](wxEraseEvent&) {});
@@ -359,6 +366,8 @@ Vue3D::Vue3D(wxWindow* parent) : wxWindow(parent, 2005, wxDefaultPosition, wxDef
   Bind(wxEVT_MOTION, &Vue3D::surMouvement, this);
   Bind(wxEVT_MOUSEWHEEL, &Vue3D::surMolette, this);
   Bind(wxEVT_MOUSE_CAPTURE_LOST, &Vue3D::surPerteSouris, this);
+  minuterieOrbite_.SetOwner(this);
+  Bind(wxEVT_TIMER, &Vue3D::surTicOrbite, this, minuterieOrbite_.GetId());
   Bind(wxEVT_LEFT_DCLICK, &Vue3D::surDouble, this);
 }
 
@@ -748,8 +757,10 @@ void Vue3D::surEnfonce(wxMouseEvent& e) {
   ignorerRelache_ = false;
   if (e.LeftDown() && saisirGizmo(e.GetPosition(), e)) return;
   if (!e.RightDown()) {
+    arreterOrbite();
     vue_->StartRotation(depart_.x, depart_.y);
     pivot_ = pointPivot(depart_);
+    orbiteTenue_ = true;
   }
 }
 
@@ -780,8 +791,7 @@ void Vue3D::essaiOrbite3D(int x, int y, int dx, int dy, double r[7]) {
   vue_->StartRotation(x, y);
   pivot_ = pointPivot(depart_);
   const wxPoint a = ecranDe(pivot_);
-  if (opt_.orbiteLibre) vue_->Rotation(x + dx, y + dy);
-  else tournerZ(dx, dy);
+  tourner(dx, dy);
   const wxPoint b = ecranDe(pivot_);
   cacherPivot();
   const double v[7] = {pivot_.X(), pivot_.Y(), pivot_.Z(), double(a.x), double(a.y), double(b.x), double(b.y)};
@@ -797,7 +807,8 @@ void Vue3D::cacherPivot() {
 
 void Vue3D::surRelache(wxMouseEvent& e) {
   if (HasCapture()) ReleaseMouse();
-  cacherPivot();
+  orbiteTenue_ = false;
+  if (!minuterieOrbite_.IsRunning()) cacherPivot();
   if (gizmoSaisi_ >= 0) {
     gizmoSaisi_ = -1;
     if (surGeste) surGeste(2, "", 0, "", 0, false);
@@ -1448,7 +1459,7 @@ void Vue3D::surMouvement(wxMouseEvent& e) {
     if (!aBouge_ && std::abs(p.x - depart_.x) + std::abs(p.y - depart_.y) <= SEUIL_CLIC) return;
     const bool premier = !aBouge_;
     aBouge_ = true;
-    if (premier && !opt_.orbiteLibre && marquePivot_.IsNull()) {
+    if (premier && marquePivot_.IsNull()) {
       occ::handle<AIS_Point> a = new AIS_Point(new Geom_CartesianPoint(pivot_));
       a->SetMarker(Aspect_TOM_BALL);
       a->SetColor(couleur(0xff, 0x9f, 0x0a));
@@ -1457,13 +1468,10 @@ void Vue3D::surMouvement(wxMouseEvent& e) {
       contexte_->Deactivate(a);
       marquePivot_ = a;
     }
-    if (opt_.orbiteLibre) vue_->Rotation(p.x, p.y);
-    else tournerZ(premier ? p.x - depart_.x : p.x - precedent_.x, premier ? p.y - depart_.y : p.y - precedent_.y);
+    resteX_ += premier ? p.x - depart_.x : p.x - precedent_.x;
+    resteY_ += premier ? p.y - depart_.y : p.y - precedent_.y;
     precedent_ = p;
-    const bool avant = refletsVus_;
-    majReflets();
-    majTailles();
-    if (avant != refletsVus_) vue_->Redraw();
+    if (!minuterieOrbite_.IsRunning()) minuterieOrbite_.Start(16);
   } else if (e.RightIsDown()) {
     aBouge_ = true;
     vue_->Pan(p.x - precedent_.x, precedent_.y - p.y);
@@ -1494,7 +1502,33 @@ void Vue3D::surMolette(wxMouseEvent& e) {
 
 void Vue3D::surPerteSouris(wxMouseCaptureLostEvent&) {
   aBouge_ = true;
+  arreterOrbite();
+}
+
+void Vue3D::arreterOrbite() {
+  minuterieOrbite_.Stop();
+  resteX_ = resteY_ = 0;
+  orbiteTenue_ = false;
   cacherPivot();
+}
+
+void Vue3D::surTicOrbite(wxTimerEvent&) {
+  const double f = 0.2, dx = resteX_ * f, dy = resteY_ * f;
+  resteX_ -= dx;
+  resteY_ -= dy;
+  if (dx != 0 || dy != 0) {
+    tourner(dx, dy);
+    majReflets();
+    majTailles();
+    vue_->Redraw();
+  }
+  if (std::abs(resteX_) < 0.01 && std::abs(resteY_) < 0.01) {
+    resteX_ = resteY_ = 0;
+    if (!orbiteTenue_) {
+      minuterieOrbite_.Stop();
+      cacherPivot();
+    }
+  }
 }
 
 // ---- L'assemblage ----
@@ -2645,8 +2679,28 @@ void Vue3D::vueStandard(const std::string& q) {
   vue_->Redraw();
 }
 
+// L'orbite libre : glisser à droite tourne la pièce vers la droite, vers le bas passe par-dessus (orbitRotate)
+void Vue3D::tournerLibre(double dx, double dy) {
+  occ::handle<Graphic3d_Camera> k = vue_->Camera();
+  const double v = 2 * M_PI / std::max(GetClientSize().y, 1);
+  const gp_Dir U = k->Up();
+  const gp_Vec droite = gp_Vec(k->Direction()).Crossed(gp_Vec(U));
+  if (droite.Magnitude() < 1e-9) return;
+  gp_Trsf t1, t2;
+  t1.SetRotation(gp_Ax1(pivot_, U), -dx * v);
+  t2.SetRotation(gp_Ax1(pivot_, gp_Dir(droite)), -dy * v);
+  const gp_Trsf T = t1 * t2;
+  const gp_Pnt oeil = k->Eye().Transformed(T), centre = k->Center().Transformed(T);
+  const gp_Dir haut = U.Transformed(T);
+  k->SetCenter(centre);
+  k->SetEye(oeil);
+  k->SetUp(haut);
+  k->OrthogonalizeUp();
+  vue_->ZFitAll();
+}
+
 // L'orbite contrainte : Z reste en haut, l'élévation s'arrête avant les pôles (orbitRotate, src/10-scene-3d.js)
-void Vue3D::tournerZ(int dx, int dy) {
+void Vue3D::tournerZ(double dx, double dy) {
   occ::handle<Graphic3d_Camera> k = vue_->Camera();
   const double v = 2 * M_PI / std::max(GetClientSize().y, 1);
   const gp_Vec fw(k->Eye(), k->Center());
@@ -2667,5 +2721,4 @@ void Vue3D::tournerZ(int dx, int dy) {
   k->SetUp(gp_Dir(0, 0, 1));
   k->OrthogonalizeUp();
   vue_->ZFitAll();
-  vue_->Redraw();
 }

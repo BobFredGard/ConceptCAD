@@ -4867,6 +4867,8 @@ bool Cadre::essaiEsquisse(const std::wstring& fichier, int rang, const std::wstr
     }
     if (e.contains("orbite")) vueEsquisse_->essaiOrbite(e["orbite"][0], e["orbite"][1]);
     // {"orbite3d":[x,y,dx,dy]} : un glissé du bouton gauche dans la vue 3D ; le pivot doit rester sous (x,y)
+    if (e.contains("survol3d")) vue_->essaiSurvol3D(e["survol3d"][0].get<int>(), e["survol3d"][1].get<int>());
+    if (e.contains("clicEcran")) vue_->essaiClic3D(e["clicEcran"][0].get<int>(), e["clicEcran"][1].get<int>());
     if (e.contains("orbite3d")) {
       double r[7];
       vue_->essaiOrbite3D(e["orbite3d"][0], e["orbite3d"][1], e["orbite3d"][2], e["orbite3d"][3], r);
