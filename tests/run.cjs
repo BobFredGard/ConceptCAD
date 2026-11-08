@@ -170,6 +170,7 @@ const SUITES = [
   "test_noms_retour",
   "test_selection_numero",
   "test_noms_repetition",
+  "test_rep_nom_ordre",
   "test_import_vie",
   "test_import_persist",
   "test_ouverture_deterministe",

@@ -375,7 +375,7 @@ input[type=range]{accent-color:var(--primary);width:100%}
  * peut changer sans rien casser. CACHE_VER (parcours FAO) reste indépendant.
  */
 
-const APP_VER='V0.70.3';
+const APP_VER='V0.70.4';
 try{console.log('[ConceptCAD] version '+APP_VER);}catch(e){}
 try{var mfSv=document.getElementById('mfSplashVer');if(mfSv)mfSv.textContent=APP_VER;}catch(e){} // écran de démarrage
 
@@ -10966,10 +10966,24 @@ function repNomVise(nomSrc,featMap){
     return y===x?null:y;
   }).filter(Boolean);
 }
+// V0.70.4 : dans un nom de congé « congé[A|B] », l'ordre des deux faces suit le sens de l'arête, qu'un miroir
+// inverse (Barquette, Symétrie double : « congé[e5|e1] » devient « congé[e1|e5] » dans une copie). Comparé tel
+// quel, le nom de la copie était jugé faux et oublié à chaque ⟳ Régénérer : la copie se recalait sur l'image du
+// clic, plus près d'une arête voisine de 7,7 mm, et le congé R8 du coin −X +Y échouait. Ordre rendu indifférent.
+function repNomOrdre(x){
+  let prof=0,i0=-1;
+  for(let i=0;i<x.length;i++){
+    if(x[i]==='['){if(!prof)i0=i;prof++;}
+    else if(x[i]===']'){prof--;if(!prof&&i0>=0){
+      const int=nomsDecoupe(x.slice(i0+1,i)).map(repNomOrdre).sort().join('|');
+      return x.slice(0,i0+1)+int+']'+repNomOrdre(x.slice(i+1));}}
+  }
+  return x;
+}
 function repNomCopieOk(nomCopie,nomSrc,featMap){
   if(!nomCopie||!nomSrc)return true;
-  const a=new Set(nomsDecoupe(repNomCle(nomCopie)).map(repNomPropre));
-  return repNomVise(nomSrc,featMap).every(x=>a.has(x));
+  const a=new Set(nomsDecoupe(repNomCle(nomCopie)).map(repNomPropre).map(repNomOrdre));
+  return repNomVise(nomSrc,featMap).map(repNomOrdre).every(x=>a.has(x));
 }
 function repNomsListe(src,nouv,old,cle,featMap){
   if(!Array.isArray(src)||!Array.isArray(nouv))return;

@@ -8,7 +8,7 @@ sont sorties le 2026-09-30j.
 Code dans `src/` · livrable `fusion_mvp.html` (généré par `build.js`) · architecture et
 garde-fous en tête de `src/00-entete-et-outils.js`.
 
-**615 versions**, de `2026-09-28b` à `V0.70.3` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
+**616 versions**, de `2026-09-28b` à `V0.70.4` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
 comme dans le fichier d'origine.
 
 ---
@@ -7064,5 +7064,14 @@ Barquette ne perd plus son solide à la 107e modification, et sa mémoire ne mon
 - **Résultat** : 0,67 s pour une rainure, 3 s pour 10, toutes réussies ; formes identiques (R2, R5, chanfrein sur Barquette 2). Une duplication reste un congé par copie, chacun profite du même gain.
 - **Parcours FAO et `CACHE_VER`** inchangés.
 - **Test** : `test_conge_tout_droit` 12 : deux arêtes d'un coup, deux faces neuves, deux fois la matière d'une seule.
+
+---
+## V0.70.4 - Symétrie double : le dernier congé copié ne se perd plus après Régénérer
+
+- **Constat** (Barquette, première « Symétrie double ») : « on perd dans un coin le dernier congé ». Après ⟳ Régénérer, la copie du congé R8 du coin −X +Y échouait (« arête de 7,67 mm, aucun rayon ne passe ») ; un quart de la pièce perdait 49 mm³. Déjà présent en V0.70.1 : pas une suite des congés sans tangence.
+- **Cause** : Régénérer recrée les copies de la répétition. Chaque copie garde le nom de son arête si ce nom désigne bien les fonctions copiées (`repNomCopieOk`). Dans un nom « congé[A|B] », l'ordre des deux faces suit le sens de l'arête, qu'un miroir inverse : le nom de la copie était jugé faux et oublié. La copie se recalait sur l'image du clic d'origine, plus proche (1,8 mm) d'une arête voisine de 7,7 mm que de la bonne (2,5 mm).
+- **Correctif** : `repNomOrdre` range les faces entre crochets, à tous les niveaux, avant la comparaison ; un nom resté sur les fonctions source est toujours refusé.
+- **Parcours FAO et `CACHE_VER`** inchangés.
+- **Test** : `test_rep_nom_ordre` (Barquette en fixture `barquette-symetrie-double.conceptcad`) : quatre coins identiques à l'ouverture et après Régénérer, aucun congé copié en erreur, la copie du coin −X +Y garde son nom.
 
 ---
