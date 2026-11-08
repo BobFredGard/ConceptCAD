@@ -678,6 +678,11 @@ void Cadre::creerEnvironnement() {
     else menuEsquisseArbre(e.i);
   };
   fil_->surMarqueur = [this](int b) { bougerMarqueur(b); };
+  fil_->surPoserMarqueur = [this](const FilFonctions::Element* e) {
+    if (esquisseOuverte_ >= 0 || enChoix()) return remplirArbre();  // le marqueur revient à sa place
+    const bool ok = e && e->i >= 0 && e->i < static_cast<int>(doc_.fonctions.size());
+    marquerTemps(ok ? doc_.fonctions[e->i].id : std::string());
+  };
   fil_->surDepot = [this](const std::vector<FilFonctions::Element>& L, int source, int gap) {
     if (esquisseOuverte_ >= 0 || enChoix()) return;
     deposerDansFil(L, source, gap);
@@ -4958,6 +4963,24 @@ bool Cadre::essaiEsquisse(const std::wstring& fichier, int rang, const std::wstr
     if (e.contains("survol3d")) {
       vue_->essaiSurvol3D(e["survol3d"][0].get<int>(), e["survol3d"][1].get<int>());
       n["arete"] = vue_->areteSurvolee();
+    }
+    // {"filSouris":[[x,y,"bas"|"bouge"|"haut"|"double"], ...]} : la souris dans le fil des fonctions (en DIP), sans le vrai curseur
+    if (e.contains("filSouris")) {
+      for (const auto& g : e["filSouris"]) {
+        const std::string k = g[2].get<std::string>();
+        wxMouseEvent ev(k == "bas" ? wxEVT_LEFT_DOWN : k == "haut" ? wxEVT_LEFT_UP : k == "double" ? wxEVT_LEFT_DCLICK : wxEVT_MOTION);
+        ev.SetPosition(fil_->FromDIP(wxPoint(g[0].get<int>(), g[1].get<int>())));
+        ev.SetLeftDown(k != "haut");
+        ev.SetEventObject(fil_);
+        fil_->GetEventHandler()->ProcessEvent(ev);
+        wxYield();
+      }
+      wxYield();
+      n["marque"] = marqueTemps_;
+      int apres = 0;
+      for (const auto& el : fil_->liste()) apres += el.apresMarque;
+      n["apresMarque"] = apres;
+      n["etat"] = std::string(etatVue_->texte().utf8_str());
     }
     if (e.contains("clicEcran")) vue_->essaiClic3D(e["clicEcran"][0].get<int>(), e["clicEcran"][1].get<int>());
     if (e.contains("orbite3d")) {

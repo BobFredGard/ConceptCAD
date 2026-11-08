@@ -9,6 +9,7 @@
 #include <algorithm>
 #include <cmath>
 #include <memory>
+#include <optional>
 
 namespace {
 struct FicheRuban {
@@ -574,12 +575,8 @@ FilFonctions::FilFonctions(wxWindow* parent) : wxWindow(parent, 2007, wxDefaultP
         }
       }
       // Le marqueur de fin de fil
-      size_t posMarque = fin;
-      for (size_t i = debut_; i < fin; i++)
-        if (elements_[i].apresMarque) {
-          posMarque = i;
-          break;
-        }
+      // (pendant un glisser, là où il serait posé)
+      const size_t posMarque = std::clamp(static_cast<size_t>(marqueBouge_ ? marqueGap_ : gapMarque()), static_cast<size_t>(debut_), fin);
       const double xm = FIL_X0 + static_cast<double>(posMarque - debut_) * FIL_PAS + (posMarque < fin ? -3 : 1);
       g->SetBrush(g->CreateBrush(wxBrush(th(wxColour(0xff, 0xd6, 0x0a)))));
       g->SetPen(wxNullGraphicsPen);
@@ -623,6 +620,20 @@ FilFonctions::FilFonctions(wxWindow* parent) : wxWindow(parent, 2007, wxDefaultP
   });
   Bind(wxEVT_LEFT_UP, [this](wxMouseEvent&) {
     if (HasCapture()) ReleaseMouse();
+    if (marqueTire_) {
+      const bool bouge = marqueBouge_;
+      const int gap = marqueGap_;
+      marqueTire_ = marqueBouge_ = false, marqueGap_ = -1;
+      Refresh();
+      if (!bouge || gap == gapMarque() || !surPoserMarqueur) return;
+      // La fonction qui suit l'interstice (tlbGapFeature) : le marqueur se pose devant elle
+      const Element* f = nullptr;
+      for (size_t i = gap; i < elements_.size() && !f; i++)
+        if (elements_[i].estFonction) f = &elements_[i];
+      const std::optional<Element> e = f ? std::optional<Element>(*f) : std::nullopt;
+      CallAfter([this, e] { surPoserMarqueur(e ? &*e : nullptr); });
+      return;
+    }
     const int source = tire_, gap = depot_;
     tire_ = -1, depot_ = -1;
     if (source < 0 || gap < 0) return;
@@ -632,9 +643,34 @@ FilFonctions::FilFonctions(wxWindow* parent) : wxWindow(parent, 2007, wxDefaultP
   });
   Bind(wxEVT_MOUSE_CAPTURE_LOST, [this](wxMouseCaptureLostEvent&) {
     tire_ = -1, depot_ = -1;
+    marqueTire_ = marqueBouge_ = false, marqueGap_ = -1;
     Refresh();
   });
   Bind(wxEVT_MOTION, [this](wxMouseEvent& e) {
+    if (marqueTire_ && e.LeftIsDown()) {
+      if (!marqueBouge_ && std::abs(e.GetPosition().x - marqueX0_) < FromDIP(5)) return;
+      marqueBouge_ = true;
+      const int g = interstice(e.GetPosition());
+      if (g != marqueGap_) {
+        marqueGap_ = g;
+        Refresh();
+      }
+      return;
+    }
+    {
+      const bool m = tire_ < 0 && surLeMarqueur(e.GetPosition());
+      SetCursor(m ? wxCursor(wxCURSOR_SIZEWE) : wxNullCursor);
+      if (m) {
+        if (survol_ != -2) {
+          survol_ = -2;
+          SetToolTip(gapMarque() < static_cast<int>(elements_.size())
+                         ? L"Marqueur de temps : glisser pour rejouer jusqu'à une autre étape (au-delà : grisé, hors rejeu) ; double-clic : fin du fil"
+                         : L"Marqueur de temps (fin du fil) : glisser vers la gauche pour revenir en arrière dans l'historique");
+          Refresh();
+        }
+        return;
+      }
+    }
     if (tire_ >= 0 && e.LeftIsDown() && (depot_ >= 0 || std::abs(e.GetPosition().x - tireX0_) >= FromDIP(5))) {
       depot_ = interstice(e.GetPosition());
       Refresh();
@@ -652,6 +688,11 @@ FilFonctions::FilFonctions(wxWindow* parent) : wxWindow(parent, 2007, wxDefaultP
     Refresh();
   });
   Bind(wxEVT_LEFT_DOWN, [this](wxMouseEvent& e) {
+    if (surLeMarqueur(e.GetPosition())) {  // le marqueur passe avant la fonction qu'il chevauche
+      marqueTire_ = true, marqueBouge_ = false, marqueX0_ = e.GetPosition().x, marqueGap_ = gapMarque();
+      CaptureMouse();
+      return;
+    }
     const int s = sous(e.GetPosition());
     if (s >= 0) {
       const Element el = elements_[s];
@@ -675,6 +716,10 @@ FilFonctions::FilFonctions(wxWindow* parent) : wxWindow(parent, 2007, wxDefaultP
     }
   });
   Bind(wxEVT_LEFT_DCLICK, [this](wxMouseEvent& e) {
+    if (surLeMarqueur(e.GetPosition())) {  // double-clic sur le marqueur : rejouer tout (fin du fil)
+      if (surPoserMarqueur && gapMarque() < static_cast<int>(elements_.size())) CallAfter([this] { surPoserMarqueur(nullptr); });
+      return;
+    }
     const int s = sous(e.GetPosition());
     if (s >= 0) {
       const Element el = elements_[s];
@@ -686,6 +731,20 @@ FilFonctions::FilFonctions(wxWindow* parent) : wxWindow(parent, 2007, wxDefaultP
 int FilFonctions::interstice(const wxPoint& p) const {
   const int g = (ToDIP(p).x - FIL_X0 + FIL_PAS / 2) / FIL_PAS + debut_;
   return std::max(debut_, std::min(g, static_cast<int>(elements_.size())));
+}
+
+int FilFonctions::gapMarque() const {
+  for (size_t i = 0; i < elements_.size(); i++)
+    if (elements_[i].apresMarque) return static_cast<int>(i);
+  return static_cast<int>(elements_.size());
+}
+
+// Le marqueur jaune et une petite marge autour, sur toute la hauteur du fil
+bool FilFonctions::surLeMarqueur(const wxPoint& p) const {
+  const int g = gapMarque(), fin = std::min(static_cast<int>(elements_.size()), debut_ + visibles());
+  if (g < debut_ || g > fin) return false;
+  const double xm = FIL_X0 + static_cast<double>(g - debut_) * FIL_PAS + (g < fin ? -3 : 1) + 2;
+  return std::abs(ToDIP(p).x - xm) <= 5;
 }
 
 int FilFonctions::sous(const wxPoint& p) const {

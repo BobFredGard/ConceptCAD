@@ -120,6 +120,8 @@ class FilFonctions : public wxWindow {
   // Glisser une fonction : l'interstice où elle est déposée, dans la liste des éléments
   std::function<void(const std::vector<Element>&, int source, int interstice)> surDepot;
   std::function<void(int)> surMarqueur;  // 0 début, 1 précédent, 2 suivant, 3 fin
+  // Le marqueur de temps glissé (ou double-cliqué) : la fonction devant laquelle il est posé, nullptr = fin du fil
+  std::function<void(const Element*)> surPoserMarqueur;
   std::function<void()> surFilm;
   std::function<void(const wxString&)> surIndisponible;
 
@@ -133,6 +135,11 @@ class FilFonctions : public wxWindow {
   int nb_ = 0, survol_ = -1, debut_ = 0;
   int tire_ = -1, tireX0_ = 0, depot_ = -1;  // le glisser d'une fonction
   int interstice(const wxPoint& p) const;
+  // Le glisser du marqueur de temps, comme dans le navigateur (tlbM) : son interstice, et l'aperçu pendant le glisser
+  int gapMarque() const;
+  bool surLeMarqueur(const wxPoint& p) const;
+  bool marqueTire_ = false, marqueBouge_ = false;
+  int marqueX0_ = 0, marqueGap_ = -1;
 };
 
 // Ligne de texte sur la vue : l'état du moment, comme en bas de la vue du navigateur
