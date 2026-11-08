@@ -619,7 +619,8 @@ public:
   std::vector<std::pair<wxString, std::function<void()>>> boutonsAsm_;
 
   wxTreeCtrl* arbre_ = nullptr;
-  wxPropertyGrid* props_ = nullptr;
+  wxPropertyGrid* props_ = nullptr;  // le modèle des réglages ; montré par panneauProps_
+  class PanneauProps* panneauProps_ = nullptr;
   wxPanel* centre_ = nullptr;
   wxPanel* scene_ = nullptr;
   BarreHaute* barreHaute_ = nullptr;

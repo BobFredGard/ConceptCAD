@@ -14,6 +14,7 @@
 #include "enregistrer.h"
 #include "faces.h"
 #include "fiches.h"
+#include "panneau_props.h"
 #include "structure.h"
 #include "theme.h"
 
@@ -144,26 +145,32 @@ void Cadre::dynPanneau(int i) {
   segSignature_ = sig;
   segDyn_->Clear(true);
   hauteurSeg_ = 0;
+  // Les tuiles du navigateur (.seg) : symbole au-dessus du nom, cadre vert sur le choix en cours
   for (const auto& [nom, choix] : rangs) {
     auto* t = new wxStaticText(carteDroite_, wxID_ANY, nom);
-    t->SetForegroundColour(th(wxColour(0xc8, 0xc8, 0xcc)));
-    segDyn_->Add(t, 0, wxLEFT | wxTOP, FromDIP(4));
-    auto* h = new wxBoxSizer(wxHORIZONTAL);
+    t->SetForegroundColour(th(wxColour(0x98, 0x98, 0x9d)));
+    segDyn_->Add(t, 0, wxTOP, FromDIP(12));
+    auto* h = new wxWrapSizer(wxHORIZONTAL);
+    int x = 0, lignes = 1, haut = 0;
+    const int large = FromDIP(264);
     for (const Choix& c : choix) {
-      auto* b = new BoutonEsquisse(carteDroite_, wxID_ANY, c.titre, c.aide.empty() ? c.titre : c.aide, BoutonEsquisse::ENCADRE);
-      b->titre(c.titre);
+      auto* b = new Tuile(carteDroite_, c.titre, c.titre, c.aide);
       b->fond(th(C_CARTE_DYN));
       b->actif(c.actif);
-      b->SetMinSize(FromDIP(wxSize(-1, 26)));
       const auto faire = c.faire;
       b->surClic = [this, faire] { CallAfter([faire] { faire(); }); };
-      h->Add(b, static_cast<int>(c.titre.length()) + 3, wxEXPAND | wxTOP | wxRIGHT, FromDIP(3));
+      h->Add(b, 0, wxTOP | wxRIGHT, FromDIP(5));
+      const wxSize m = b->GetMinSize();
+      if (x > 0 && x + m.x > large) lignes++, x = 0;
+      x += m.x + FromDIP(5);
+      haut = std::max(haut, m.y);
     }
     segDyn_->Add(h, 0, wxEXPAND);
-    hauteurSeg_ += 52;
+    hauteurSeg_ += 12 + ToDIP(t->GetBestSize().y) + lignes * (ToDIP(haut) + 5);
   }
   carteDroite_->contenu()->Show(segDyn_, !rangs.empty());
   carteDroite_->Layout();
+
   carteDroite_->Refresh();
 }
 

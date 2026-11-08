@@ -4,6 +4,7 @@
 #include "theme.h"
 #include <wx/config.h>
 #include "cadre.h"
+#include "panneau_props.h"
 #include "anteriorite.h"
 #include "rendu_moteur.h"
 #include "rendu_finition.h"
@@ -161,8 +162,12 @@ Cadre::Cadre() : wxFrame(nullptr, wxID_ANY, L"ConceptCAD natif"), asmAnim_(this)
   carteDroite_->SetMinSize(FromDIP(wxSize(288, -1)));
   props_ = new wxPropertyGrid(carteDroite_, ID_PROPS, wxDefaultPosition, wxDefaultSize, wxPG_DEFAULT_STYLE | wxPG_HIDE_MARGIN | wxBORDER_NONE);
   props_->SetMinSize(wxSize(-1, 0));
+  props_->Hide();
+  panneauProps_ = new PanneauProps(carteDroite_, props_);
+  panneauProps_->surChampTexte = [this](wxTextCtrl* c) { brancherListeNoms(c, [this]() -> const Document& { return doc_; }); };
+  panneauProps_->surTaille = [this] { hauteurDroite_ = -1; ajusterDroite(); carteDroite_->Layout(); };
   noteDroite_ = new wxStaticText(carteDroite_, wxID_ANY, wxEmptyString);
-  carteDroite_->contenu()->Add(props_, 1, wxEXPAND);
+  carteDroite_->contenu()->Add(panneauProps_, 1, wxEXPAND);
   carteDroite_->contenu()->Add(noteDroite_, 0, wxEXPAND | wxLEFT | wxRIGHT, FromDIP(5));
   // Appliquer et Quitter du mode Congé
   rangConge_ = new wxBoxSizer(wxHORIZONTAL);
@@ -742,6 +747,7 @@ void Cadre::stylerProps() {
   props_->SetSelectionBackgroundColour(th(wxColour(0x0a, 0x84, 0xff)));
   props_->SetSelectionTextColour(*wxWHITE);
   props_->SetFont(policeArial(this, 12.5));
+  panneauProps_->forcer();
 }
 
 // Les mêmes emplacements que dans le navigateur, à partir des bords de la scène
@@ -1022,7 +1028,7 @@ void Cadre::montrerAtelier() {
   if (atelier_ != Atelier::FAO) vue_->faoModeChoix("");
   ruban_->Show(!enEsquisse && atelier_ != Atelier::RENDU);
   const bool cao = atelier_ == Atelier::CAO;
-  props_->Show(cao);
+  panneauProps_->Show(cao);
   panneauPlan_->Show(atelier_ == Atelier::PLAN);
   ficheFao_->Show(atelier_ == Atelier::FAO);
   panneauRendu_->Show(atelier_ == Atelier::RENDU);
@@ -1060,8 +1066,10 @@ void Cadre::ajusterDroite() {
   if (esquisseOuverte_ >= 0) return;
   const bool cao = atelier_ == Atelier::CAO, rendu = atelier_ == Atelier::RENDU;
   int rangs = 0;
-  if (cao)
+  if (cao) {
     for (wxPropertyGridIterator it = props_->GetGrid()->GetIterator(wxPG_ITERATE_VISIBLE); !it.AtEnd(); it++) rangs++;
+    if (panneauProps_->synchroniser()) return;  // refait : il a déjà rappelé ceci
+  }
   const bool asmPanneau = cao && !boutonsAsm_.empty();
   const bool surPlan = atelier_ == Atelier::PLAN || atelier_ == Atelier::FAO || rendu;
   const bool note = (!cao || rangs <= 1 || enChoix()) && !asmPanneau && !surPlan;
@@ -1071,7 +1079,7 @@ void Cadre::ajusterDroite() {
     carteDroite_->Layout();
   }
   int h = 34 + 12;
-  if (rangs) h += rangs * ToDIP(props_->GetRowHeight()) + 4;
+  if (rangs) h += ToDIP(panneauProps_->hauteurVoulue()) + 8;
   if (note) h += ToDIP(noteDroite_->GetBestSize().y) + 6;
   if (rendu || enChoix() || rangDynMontre_) h += 42;
   if (cao) h += hauteurSeg_;
@@ -4461,6 +4469,25 @@ bool Cadre::essaiEsquisse(const std::wstring& fichier, int rang, const std::wstr
       essaiMenu_ = false;
       n["etat"] = std::string(etatVue_->texte().utf8_str());
     }
+    // {"params":["fiche:n/dist","20"]} : comme un réglage fait à la main dans le panneau Paramètres ; {"params":1} : ses lignes
+    if (e.contains("params")) {
+      essaiMenu_ = true;
+      if (e["params"].is_array()) {
+        n["regle"] = panneauProps_->essaiRegler(wxString::FromUTF8(e["params"][0].get<std::string>()), wxString::FromUTF8(e["params"][1].get<std::string>()));
+        for (int k = 0; k < 20; k++) wxYield();
+      }
+      panneauProps_->synchroniser();
+      n["lignes"] = panneauProps_->essaiLignes();
+      n["refaits"] = panneauProps_->nbRefaits;
+      n["rafraichis"] = panneauProps_->nbRafraichis;
+      for (auto [nom, w] : std::initializer_list<std::pair<const char*, wxWindow*>>{{"carte", carteDroite_}, {"scene", scene_}, {"panneau", panneauProps_}}) {
+        const wxRect r = w->GetScreenRect();
+        n["rects"][nom] = {r.x, r.y, r.width, r.height, w->IsShownOnScreen()};
+      }
+      n["hauteurVoulue"] = panneauProps_->hauteurVoulue();
+      essaiMenu_ = false;
+      n["etat"] = std::string(etatVue_->texte().utf8_str());
+    }
     if (e.contains("theme")) { essaiMenu_ = true; appliquerTheme(e["theme"].get<int>()); essaiMenu_ = false; }
     if (e.contains("iconesCouleur")) { essaiMenu_ = true; appliquerIcones(e["iconesCouleur"].get<bool>()); essaiMenu_ = false; }
     if (e.contains("dossierProjets")) {
@@ -5020,6 +5047,14 @@ bool Cadre::essaiEsquisse(const std::wstring& fichier, int rang, const std::wstr
     }
     if (e.contains("fao")) faoEssai(e["fao"]);
     if (e.contains("imageVue")) vue_->image(wxString(dossier) + L"\\" + wxString::FromUTF8(e["imageVue"].get<std::string>()) + L".png");
+    if (e.contains("pause")) {  // {"pause":5} : la fenêtre vit 5 s, pour une capture de l écran prise du dehors
+      Raise();
+      const auto fin = std::chrono::steady_clock::now() + std::chrono::milliseconds(static_cast<int>(e["pause"].get<double>() * 1000));
+      while (std::chrono::steady_clock::now() < fin) {
+        wxYield();
+        wxMilliSleep(20);
+      }
+    }
     if (e.contains("capture")) {
       vueEsquisse_->Update();
       capturerFenetre(dossier + L"\\" + wxString::FromUTF8(e["capture"].get<std::string>()).ToStdWstring() + L".png");

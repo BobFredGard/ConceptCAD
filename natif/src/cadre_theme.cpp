@@ -7,6 +7,7 @@
 #include <functional>
 
 #include "cadre.h"
+#include "panneau_props.h"
 #include "environnement.h"
 #include "interface_esquisse.h"
 
@@ -41,6 +42,7 @@ void Cadre::appliquerTheme(int t) {
     if (w->UseForegroundColour()) w->SetForegroundColour(theme::passer(w->GetForegroundColour(), de, t));
     if (auto* b = dynamic_cast<BoutonEsquisse*>(w)) b->themeChange(de, t);
     if (auto* c = dynamic_cast<Carte*>(w)) c->themeChange(de, t);
+    if (auto* q = dynamic_cast<Tuile*>(w)) q->themeChange(de, t);
     for (wxWindow* k : w->GetChildren()) passer(k);
     w->Refresh();
   };
