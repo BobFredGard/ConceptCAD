@@ -8,8 +8,8 @@
 
 namespace miseAJour {
 // Le numéro de bêta : à augmenter à chaque installateur publié (fabriquer.ps1 le recopie dans natif-latest.json)
-constexpr int BUILD = 3;
-constexpr const wchar_t* VERSION = L"Bêta native 3";
+constexpr int BUILD = 4;
+constexpr const wchar_t* VERSION = L"Bêta native 4";
 // Vérifie en arrière-plan, sans jamais gêner le démarrage ; ne dit rien si tout est à jour ou hors ligne
 void verifier(wxWindow* fenetre);
 // Pour les essais, sans fenêtre : lit la fiche (adresse vide : la vraie), et si elle est plus récente que build,
