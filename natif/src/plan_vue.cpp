@@ -2595,9 +2595,19 @@ void PlanVue::peindre(wxGraphicsContext& g) {
         g.SetTransform(avant);
         break;
       }
-      case Prim::IMAGE:
-        g.DrawBitmap(*p.image, p.x, p.y, p.l, p.h);
+      case Prim::IMAGE: {
+        // Posée à sa taille en pixels puis agrandie par le repère : wxWidgets range le cadre d'une image
+        // agrandie dans un rectangle GDI+ en nombres entiers, ici des millimètres. L'image ombrée glissait
+        // alors jusqu'à 1 mm sous ses traits (trous taraudés et lamages de Perçages)
+        const int w = p.image->GetWidth(), h = p.image->GetHeight();
+        if (w < 1 || h < 1) break;
+        const wxGraphicsMatrix avant = g.GetTransform();
+        g.Translate(p.x, p.y);
+        g.Scale(p.l / w, p.h / h);
+        g.DrawBitmap(*p.image, 0, 0, w, h);
+        g.SetTransform(avant);
         break;
+      }
     }
   }
 }
