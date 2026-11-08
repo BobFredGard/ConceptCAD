@@ -47,7 +47,7 @@ C'est le même logiciel partout, et les projets `.conceptcad` passent de l'un à
 | **Application Mac** | Travailler sur Mac (macOS 12 ou plus récent), avec les mêmes fenêtres et le double-clic | [Télécharger le DMG](https://github.com/BobFredGard/ConceptCAD/releases/latest/download/ConceptCAD-Mac.dmg) (≈ 45 Mo), ouvrir et glisser ConceptCAD dans Applications. L’application n’est pas signée par Apple : au premier lancement, Réglages Système > Confidentialité et sécurité > « Ouvrir quand même ». Essayée sur un Mac M4 de 16 Go, pas encore sur un Mac Intel. |
 | **Depuis les sources** | Développeurs | Voir [Développement](#développement). |
 
-**Version autonome : ce qui n'est pas encore vérifié.** L'enregistrement et la carte graphique réelle ne passent pas par les tests automatiques, et Firefox n'a pas été essayé.
+**Version autonome : Fonctionne sous Brave et Chrome sous Windows 11.
 
 **Application Windows : ce qui n’est pas encore vérifié.** Windows 10 et un PC vraiment débranché n’ont pas été essayés. Elle a besoin de WebView2, déjà présent sur Windows 11 ; s’il manque, l’installateur essaie de le télécharger.
 
