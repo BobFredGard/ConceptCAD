@@ -100,9 +100,10 @@ test('Axe, surfaçage + finition boule : taille GPU (shaders) = taille JavaScrip
   expect(err).toEqual([]);
 });
 
-// Centre de rotation en simulation : la matière est masquée aux lancers de rayon habituels et ses
-// hauteurs vivent sur la carte graphique (faoViewerMatterHit, src/88-fao-77).
-test('simulation : la rotation tourne autour du point de matière sous la souris, comme ailleurs',async({page})=>{
+// Centre de rotation en simulation (V0.69.2, demande de Fred : « mettre le point sur les faces du solide
+// et pas du brut ») : la pièce, masquée par la matière, est visée en premier ; hors de la pièce, la
+// matière simulée, dont les hauteurs vivent sur la carte graphique (faoViewerMatterHit, src/88-fao-77).
+test('simulation : la rotation tourne autour du point visé sur la pièce, sinon sur la matière',async({page})=>{
   const err=await demarrer(page);
   await page.setInputFiles('#fileProj',AXE);
   await page.waitForFunction(()=>doc&&doc.name==='Axe'&&builtEngine==='exact'&&bodies.some(b=>b.shape)&&faoSolidSettled(),null,{timeout:120000});
@@ -112,7 +113,7 @@ test('simulation : la rotation tourne autour du point de matière sous la souris
   await page.evaluate(()=>{const s=faoStock();faoDoc().ops.find(o=>o.type==='facing').z=+(s.z1-1.5).toFixed(3);});
   await ruban(page,'Régénérer').click();
   await page.waitForFunction(()=>!faoPrevStale&&/FAO : \d+ points de parcours/.test(faceEl.textContent),null,{timeout:120000});
-  // Tout le parcours joué, caméra de biais sur le brut : deux points de la pièce à l'écran.
+  // Tout le parcours joué, caméra de biais sur le brut.
   const V=await page.evaluate(()=>{
     faoViewerModeSet('reel');
     if(!faoViewerOpen())return {err:'simulation impossible à ouvrir'};
@@ -122,26 +123,33 @@ test('simulation : la rotation tourne autour du point de matière sous la souris
     const ecran=q=>{const n=q.clone().project(camera);return {x:r.left+(n.x+1)/2*r.width,y:r.top+(1-n.y)/2*r.height};};
     camera.position.copy(C).add(new THREE.Vector3(1,-1,1.5).multiplyScalar(B.getSize(new THREE.Vector3()).length()));
     controls.target.copy(C);camera.up.set(0,0,1);camera.lookAt(C);camera.updateMatrixWorld();controls.update();
-    const P1=new THREE.Vector3(s.x0+(s.x1-s.x0)*0.25,s.y0+(s.y1-s.y0)*0.5,s.z1-1.5).applyMatrix4(vw.matter.matrixWorld);
-    const P2=new THREE.Vector3(s.x0+(s.x1-s.x0)*0.75,s.y0+(s.y1-s.y0)*0.5,s.z1-1.5).applyMatrix4(vw.matter.matrixWorld);
-    const a=ecran(P1),b=ecran(P2);
-    const hA=viewHitAt(a.x,a.y),hB=viewHitAt(b.x,b.y);
-    // Même rayon, tailles JavaScript et carte graphique : même point.
+    const pieces=(vw.hideBodies||[]).map(b=>b.mesh).filter(m=>m&&m.isMesh);
+    const surPiece=(x,y)=>{rayc.setFromCamera(new THREE.Vector2(((x-r.left)/r.width)*2-1,-((y-r.top)/r.height)*2+1),camera);
+      const H=[];pieces.forEach(m=>{m.updateMatrixWorld();THREE.Mesh.prototype.raycast.call(m,rayc,H);});H.sort((a,b)=>a.distance-b.distance);return H[0]?H[0].point:null;};
+    // A : le centre de la pièce, sous la matière ; B : un coin du brut surfacé, hors de la pièce
+    const bb=new THREE.Box3();pieces.forEach(m=>bb.expandByObject(m));
+    const a=ecran(bb.getCenter(new THREE.Vector3()).setZ(bb.max.z));
+    const PB=new THREE.Vector3(s.x0+(s.x1-s.x0)*0.04,s.y0+(s.y1-s.y0)*0.04,s.z1-1.5).applyMatrix4(vw.matter.matrixWorld),b=ecran(PB);
+    const hA=viewHitAt(a.x,a.y),pA=surPiece(a.x,a.y),hB=viewHitAt(b.x,b.y),pB=surPiece(b.x,b.y);
+    // Même rayon, tailles JavaScript et carte graphique : même point de matière.
     const on=faoCarteGOn;faoCarteGOn=()=>false;let hJ;
-    try{faoViewerMatterEnable(vw,false);hJ=viewHitAt(a.x,a.y);}finally{faoCarteGOn=on;}
+    try{faoViewerMatterEnable(vw,false);hJ=viewHitAt(b.x,b.y);}finally{faoCarteGOn=on;}
     faoViewerMatterEnable(vw,false);
-    return {a,b,dA:hA&&hA.distanceTo(P1),dB:hB&&hB.distanceTo(P2),dJ:hA&&hJ&&hA.distanceTo(hJ),vide:viewHitAt(r.left+4,r.top+4)===null,
-      centre:orbitPivot().distanceTo(C),rendu:!!(vw.rm||vw.gpu)};
+    return {a,b,pieces:pieces.length,surA:!!pA,dA:hA&&pA&&hA.distanceTo(pA),horsB:!pB,dB:hB&&hB.distanceTo(PB),dJ:hB&&hJ&&hB.distanceTo(hJ),
+      vide:viewHitAt(r.left+4,r.top+4)===null,centre:orbitPivot().distanceTo(C),rendu:!!(vw.rm||vw.gpu)};
   });
   console.log('  pivot simulation :',JSON.stringify(V));
   expect(V.err,V.err).toBeUndefined();
   expect(V.rendu).toBe(true);
-  expect(V.dA,'point visé sur la matière taillée').toBeLessThan(0.6);
-  expect(V.dB,'second point visé').toBeLessThan(0.6);
+  expect(V.pieces,'la pièce masquée pendant la simulation').toBeGreaterThan(0);
+  expect(V.surA,'le point A est sur la pièce').toBe(true);
+  expect(V.dA,'point visé sur une face de la pièce, pas sur la matière').toBeLessThan(1e-6);
+  expect(V.horsB,'le point B est hors de la pièce').toBe(true);
+  expect(V.dB,'hors de la pièce : point sur la matière taillée').toBeLessThan(0.6);
   expect(V.dJ,'relu sur la carte graphique = calculé en JavaScript').toBeLessThan(0.05);
   expect(V.vide,'dans le vide : pas de point').toBe(true);
   expect(V.centre,'dans le vide : centre du brut simulé').toBeLessThan(1e-6);
-  // Vrai glisser à la souris : le point visé ne bouge pas à l'écran.
+  // Vrai glisser à la souris sur la pièce : le point visé ne bouge pas à l'écran.
   const cam0=await page.evaluate(()=>camera.position.toArray());
   await page.mouse.move(V.a.x,V.a.y);await page.mouse.down();
   await page.mouse.move(V.a.x+60,V.a.y+25,{steps:6});

@@ -79,6 +79,8 @@ const b=[
 "   att(T([20,5,20],[0,0,-1])===null,'s12 rayon hors du brut : rien');",
 "   att(pres(T([12,5,7],[-Math.SQRT1_2,0,-Math.SQRT1_2]),5*Math.SQRT2),'s13 rayon oblique : le fond (x=7, z=2)');",
 "   att(faoViewerMatterOn()===false&&faoViewerMatterBox()===null,'s14 hors simulation : le pivot habituel reste en place');}",
+// V0.69.2 : « mettre le point sur les faces du solide et pas du brut » : en simulation, la pièce masquée est visée avant la matière
+"  att(seg("+str(S.s10)+",'viewHitAt').indexOf('hideBodies')>=0&&seg("+str(S.s10)+",'viewHitAt').indexOf('hideBodies')<seg("+str(S.s10)+",'viewHitAt').lastIndexOf('faoViewerMatterHit'),'src/10 : en simulation, viewHitAt vise la pièce masquée avant la matière');",
 "  fin();",
 "  });",
 ];
