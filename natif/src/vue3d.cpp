@@ -3,6 +3,8 @@
 #include "vue3d.h"
 #include <AIS_InteractiveObject.hxx>
 #include <AIS_Point.hxx>
+#include <IntCurvesFace_ShapeIntersector.hxx>
+#include <gp_Lin.hxx>
 #include <AIS_TextLabel.hxx>
 #include <Geom_CartesianPoint.hxx>
 #include <Prs3d_TextAspect.hxx>
@@ -773,6 +775,31 @@ gp_Pnt Vue3D::pointPivot(const wxPoint& p) {
     vue_->Proj(px, py, pz);  // comme cliquerEn : le rayon part vers la scène
     if (d.X() * px + d.Y() * py + d.Z() * pz > 0) d.Reverse();
     o.Translate(gp_Vec(d) * -1e5);  // origine loin derrière : rien de la matière n'est manqué
+    // viewHitAt (V0.69.2) : d'abord les faces de la pièce, même masquée et sous la matière pas encore enlevée
+    {
+      double meilleur = 1e300;
+      gp_Pnt vise;
+      for (const auto& a : simCaches_) {
+        const occ::handle<AIS_Shape> s = occ::down_cast<AIS_Shape>(a);
+        if (s.IsNull() || s->Shape().IsNull()) continue;
+        const gp_Trsf Ts = s->LocalTransformation(), Tsi = Ts.Inverted();
+        IntCurvesFace_ShapeIntersector X;
+        X.Load(s->Shape(), 1e-6);
+        X.Perform(gp_Lin(o.Transformed(Tsi), d.Transformed(Tsi)), -RealLast(), RealLast());
+        if (!X.IsDone()) continue;
+        for (int i = 1; i <= X.NbPnt(); i++)
+          if (X.WParameter(i) < meilleur) {
+            meilleur = X.WParameter(i);
+            vise = X.Pnt(i).Transformed(Ts);
+          }
+      }
+      if (meilleur < 1e299) return vise;
+    }
+    if (simCaches_.empty()) {  // pièce encore affichée : la détection ordinaire la trouve
+      contexte_->MoveTo(p.x, p.y, vue_, false);
+      if (contexte_->HasDetected() && contexte_->HasDetectedShape() && contexte_->MainSelector()->NbPicked() > 0)
+        return contexte_->MainSelector()->PickedPoint(1);
+    }
     const gp_Trsf T = simMatiere_->LocalTransformation(), Ti = T.Inverted();
     gp_Pnt q;
     if (simMatiere_->viser(o.Transformed(Ti), d.Transformed(Ti), q)) return q.Transformed(T);
