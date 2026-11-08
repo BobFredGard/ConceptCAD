@@ -137,7 +137,7 @@ D'autres sessions tournaient par moments sur le PC : les temps sont moins sûrs 
 | **PC sans Internet** | Fonctionnement sans demande extérieure vérifié ici, **mais pas sur un PC vraiment débranché** | Essai réel à faire sur votre PC hors ligne. S'il n'a pas WebView2 : installateur « hors ligne », environ 127 Mo de plus selon Tauri, ou moteur embarqué, environ 180 Mo de plus |
 | **Signature du programme** | Non signé | Windows peut avertir sur un programme téléchargé (non testé ici). Il faut un certificat payant pour une diffusion large ; pour vos propres PC, ce n'est pas bloquant |
 | **IndexedDB et parcours FAO** | Stockage testé (30 Mo, place disponible 10 Go) ; **vrai calcul FAO réussi**, sur un et plusieurs cœurs, identique à Chrome | L'application a son propre stockage, séparé de Chrome : récents, brouillons et cache des parcours ne suivent pas. Les parcours enregistrés dans un `.conceptcad` restent, eux, dans le fichier |
-| **Carte graphique** | NVIDIA seule testée | Essai sur l'autre PC, surtout s'il a une carte faible ou deux cartes |
+| **Carte graphique** | **Réglé** : NVIDIA et AMD fonctionnent, y compris sur un portable à deux cartes avec l'une ou l'autre (constat de Fred, 07/11/2026) ; puce Apple sur Mac | Rien |
 | **Double-clic quand l'application est déjà ouverte** | **Réglé** : même fenêtre | Rien |
 | **Fermeture avec modifications non enregistrées** | **Réglé** : la question est posée | Rien |
 | **Désinstallation** | **Réglé** : registre propre | Rien |
