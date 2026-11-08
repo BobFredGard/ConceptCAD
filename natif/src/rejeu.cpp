@@ -663,8 +663,11 @@ TopoDS_Shape formeExtrusion(const Fonction& f, const Esquisse& s, const TopoDS_S
         const double tn = ax * s.n[0] + ay * s.n[1] + az * s.n[2], l2 = ax * ax + ay * ay + az * az;
         if (l2 > 0 && std::abs(tn) > std::sqrt(l2) * 0.7) continue;  // arête le long de l'extrusion
         const double t = (m.X() - s.o[0]) * s.n[0] + (m.Y() - s.o[1]) * s.n[1] + (m.Z() - s.o[2]) * s.n[2];
-        if (f.rimHaut > 0 && std::abs(t - sp.hi) < 0.6) mf.Add(f.rimHaut, e), n++;
-        else if (f.rimBas > 0 && std::abs(t - sp.lo) < 0.6) mf.Add(f.rimBas, e), n++;
+        // Le bord le plus proche : sur un prisme de moins de 1,2 mm, les deux bords sont à moins de 0,6 mm
+        const double dh = std::abs(t - sp.hi), db = std::abs(t - sp.lo);
+        if (dh <= db && dh < 0.6) {
+          if (f.rimHaut > 0) mf.Add(f.rimHaut, e), n++;
+        } else if (db < 0.6 && f.rimBas > 0) mf.Add(f.rimBas, e), n++;
       }
       if (!n) avertExtrusion.push_back("périmètre : arête du contour introuvable");
       else {

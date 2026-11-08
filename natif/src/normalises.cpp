@@ -1460,7 +1460,8 @@ std::string nomFiletageTige(const Filetage& t) {  // threadName
   return "Filetage " + t.size + (T && t.p != (*T)[2].get<double>() ? "×" + pas : std::string()) + (t.lenMode == "len" ? " × " + lon : std::string(" (toute la face)"));
 }
 // magFillDoc (V0.70.0 du navigateur) : l'aimant en deux moitiés coupées à mi-hauteur (h est toujours la cote le long
-// du sens d'aimantation) : pôle sud vert de 0 à h/2, pôle nord rouge de h/2 à h, arêtes arrondies (magRound)
+// du sens d'aimantation) : pôle sud vert de 0 à h/2, pôle nord rouge de h/2 à h. Seules les faces extérieures sont
+// arrondies (magRound) : l'aimant entier arrondi comme un seul bloc, puis coupé, sans gorge à la jonction
 void aimantEnDeuxMoities(J& d, const J& m) {
   const std::string forme = m.value("s", std::string());
   const double h = m.value("h", 0.0), h2 = h / 2;
@@ -1493,20 +1494,23 @@ void aimantEnDeuxMoities(J& d, const J& m) {
       const std::string ex = fonction(std::move(e), corps);
       J f = J::object();
       J rims = J::object();
-      rims["top"] = true, rims["bottom"] = true;
+      const bool haut = nom == "nord";  // le bord extérieur : en bas pour le sud, en haut pour le nord
+      rims["top"] = haut, rims["bottom"] = !haut;
       f["type"] = "fillet", f["name"] = "Congé R" + js::texte(k) + " (pôle " + nom + ")", f["target"] = ex, f["radius"] = k, f["corners"] = J::array(), f["rims"] = rims;
-      f["rimTop"] = true, f["rimBot"] = true, f["radii"] = J::array();
+      f["rimTop"] = haut, f["rimBot"] = !haut, f["radii"] = J::array();
       fonction(std::move(f), corps);
     } else {
       J s = esquisseVide(d, ("Profil pôle " + nom).c_str(), "XZ", 0);
       const double R = m.value("d", 0.0) / 2, z1 = z0 + h2;
       std::vector<Sommet> pr;
-      if (forme == "ring") {  // magHalfProf : coins extérieurs et intérieurs arrondis
+      const bool sud = nom == "sud";  // magHalfProf : coins arrondis côté face extérieure seulement (bas du sud, haut du nord)
+      if (forme == "ring") {  // le bord du trou aussi
         const double r0 = m.value("di", 0.0) / 2;
-        pr = {P(r0 + k, z0), P(R - k, z0), PA(R, z0 + k, R - k, z0 + k), P(R, z1 - k), PA(R - k, z1, R - k, z1 - k), P(r0 + k, z1), PA(r0, z1 - k, r0 + k, z1 - k), P(r0, z0 + k),
-              PA(r0 + k, z0, r0 + k, z0 + k)};
+        if (sud) pr = {P(r0 + k, z0), P(R - k, z0), PA(R, z0 + k, R - k, z0 + k), P(R, z1), P(r0, z1), P(r0, z0 + k), PA(r0 + k, z0, r0 + k, z0 + k)};
+        else pr = {P(r0, z0), P(R, z0), P(R, z1 - k), PA(R - k, z1, R - k, z1 - k), P(r0 + k, z1), PA(r0, z1 - k, r0 + k, z1 - k)};
       } else {
-        pr = {P(0, z0), P(R - k, z0), PA(R, z0 + k, R - k, z0 + k), P(R, z1 - k), PA(R - k, z1, R - k, z1 - k), P(0, z1)};
+        if (sud) pr = {P(0, z0), P(R - k, z0), PA(R, z0 + k, R - k, z0 + k), P(R, z1), P(0, z1)};
+        else pr = {P(0, z0), P(R, z0), P(R, z1 - k), PA(R - k, z1, R - k, z1 - k), P(0, z1)};
       }
       boucle(s, pr);
       J f = J::object();
