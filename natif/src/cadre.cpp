@@ -42,6 +42,7 @@
 #include <wx/imaglist.h>
 
 #include <algorithm>
+#include <wx/display.h>
 #include <chrono>
 #include <cmath>
 
@@ -142,6 +143,20 @@ Cadre::Cadre() : wxFrame(nullptr, wxID_ANY, L"ConceptCAD natif"), asmAnim_(this)
   SetClientSize(FromDIP(wxSize(1500, 900)));
   SetMinClientSize(FromDIP(wxSize(1000, 600)));
   Move(FromDIP(wxPoint(20, 20)));
+#ifdef __APPLE__
+  // Mac : une fenêtre plus grande que l'écran est recadrée par le système et tout l'intérieur se décale ;
+  // elle est ramenée à la place libre (sous la barre des menus, au-dessus du Dock)
+  {
+    const wxRect libre = wxDisplay(this).GetClientArea();
+    wxRect r = GetRect();
+    r.width = std::min(r.width, libre.width);
+    r.height = std::min(r.height, libre.height);
+    r.x = std::max(libre.x, std::min(r.x, libre.GetRight() - r.width + 1));
+    r.y = std::max(libre.y, std::min(r.y, libre.GetBottom() - r.height + 1));
+    SetMinClientSize(wxSize(std::min(GetMinClientSize().x, r.width), std::min(GetMinClientSize().y, r.height - (GetSize().y - GetClientSize().y))));
+    SetSize(r);
+  }
+#endif
   creerMenus();
   // Les menus restent là pour les raccourcis clavier, mais l'écran est celui du navigateur, qui n'en a pas
 #ifdef _WIN32
