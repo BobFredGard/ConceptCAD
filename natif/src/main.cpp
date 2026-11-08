@@ -14,6 +14,8 @@
 
 #ifdef _WIN32
 #include <shellapi.h>
+#else
+#include <execinfo.h>
 #endif
 
 #include <fstream>
@@ -731,6 +733,16 @@ class Appli : public wxApp {
     return true;
   }
 #ifdef __APPLE__
+  // Mac : une vérification interne de wxWidgets ne doit pas bloquer la fenêtre sur une boîte de dialogue ;
+  // elle est écrite (avec l'endroit du code) dans la sortie et le journal, et le logiciel continue
+  void OnAssertFailure(const wxChar* fichier, int ligne, const wxChar* fonction, const wxChar* condition, const wxChar* message) override {
+    const wxString t = wxString::Format("%s(%d) %s : %s %s", fichier, ligne, fonction, condition, message ? message : L"");
+    std::fprintf(stderr, "wx : %s\n", t.utf8_str().data());
+    void* pile[48];
+    const int n = backtrace(pile, 48);
+    backtrace_symbols_fd(pile, n, 2);
+    journal::ajouter("avertissement", std::string(t.utf8_str().data()), "wxWidgets");
+  }
   // Mac : une pièce ouverte depuis le Finder (double-clic, « Ouvrir avec ») arrive ici, pas dans les arguments
   void MacOpenFiles(const wxArrayString& fichiers) override {
     if (cadre_ && !fichiers.empty()) cadre_->ouvrir(fichiers[0].ToStdWstring());

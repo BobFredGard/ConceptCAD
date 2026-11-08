@@ -98,7 +98,13 @@ jobs:
           if pgrep -x ConceptCADNatif; then echo "ouverte"; else echo "FERMEE"; fi
           screencapture -x captures/2-drapeau.png
           pkill -x ConceptCADNatif; sleep 3
-          tail -n 40 captures/sortie-*.txt
+          tail -n 80 captures/sortie-*.txt
+          # Une vérification interne de wxWidgets a échoué : où exactement (le débogueur lit les noms des fonctions)
+          if grep -q "^wx : " captures/sortie-*.txt; then
+            lldb --batch -o "breakpoint set -r wxOnAssert" -o run -o "thread backtrace" -o continue -o "thread backtrace" -o continue -o "thread backtrace" \
+              -k "thread backtrace" -k quit -- "$A" "Exemples/003-50-200-O-Drapeau Outillage Complet.conceptcad" > captures/lldb-wx.txt 2>&1 &
+            sleep 60; pkill -f lldb; pkill -x ConceptCADNatif; grep -v "linkd\|Connection\]" captures/lldb-wx.txt | head -c 15000
+          fi
           ls ~/Library/Logs/DiagnosticReports/ 2>/dev/null
           cp ~/Library/Logs/DiagnosticReports/ConceptCADNatif* captures/ 2>/dev/null
           for f in captures/ConceptCADNatif*; do [ -f "$f" ] && head -c 6000 "$f"; done
