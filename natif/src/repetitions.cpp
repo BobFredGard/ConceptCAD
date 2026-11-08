@@ -208,15 +208,39 @@ void nomGarde(json& o, const std::string& nomSrc, const json* vieux, const std::
   else o.erase(de);
   if (vieux && vieux->is_object() && vraiJs(*vieux, cle.c_str()) && !c.empty() && (!vieux->contains(de) || nomPropre(str(*vieux, de.c_str())) == nomPropre(c))) o[cle] = (*vieux)[cle];
 }
+// V0.70.4 (repNomOrdre) : dans un nom de congé « congé[A|B] », l'ordre des deux faces suit le sens de l'arête, qu'un
+// miroir inverse (Symétrie double de Barquette). Comparé tel quel, le nom de la copie était jugé faux et oublié à chaque
+// Régénérer : la copie se recalait sur l'image du clic et pouvait viser une arête voisine. Ordre rendu indifférent.
+std::string nomOrdre(const std::string& x) {
+  int prof = 0;
+  long i0 = -1;
+  for (size_t i = 0; i < x.size(); i++) {
+    if (x[i] == '[') {
+      if (!prof) i0 = static_cast<long>(i);
+      prof++;
+    } else if (x[i] == ']') {
+      prof--;
+      if (!prof && i0 >= 0) {
+        std::vector<std::string> in = nomDecoupe(x.substr(i0 + 1, i - i0 - 1));
+        for (auto& s : in) s = nomOrdre(s);
+        std::sort(in.begin(), in.end());
+        std::string j;
+        for (size_t k = 0; k < in.size(); k++) j += (k ? "|" : "") + in[k];
+        return x.substr(0, i0 + 1) + j + "]" + nomOrdre(x.substr(i + 1));
+      }
+    }
+  }
+  return x;
+}
 bool nomCopieOk(const std::string& nomCopie, const std::string& nomSrc, const TableIds& ids) {
   if (nomCopie.empty() || nomSrc.empty()) return true;
   std::set<std::string> a;
-  for (const std::string& x : nomDecoupe(nomCle(nomCopie))) a.insert(nomPropre(x));
+  for (const std::string& x : nomDecoupe(nomCle(nomCopie))) a.insert(nomOrdre(nomPropre(x)));
   for (const std::string& brut : nomDecoupe(nomCle(nomSrc))) {
     const std::string x = nomPropre(brut);
     std::string y = x;
     for (const auto& q : ids) remplace(y, q.first, q.second);
-    if (y != x && !a.count(y)) return false;
+    if (y != x && !a.count(nomOrdre(y))) return false;
   }
   return true;
 }
