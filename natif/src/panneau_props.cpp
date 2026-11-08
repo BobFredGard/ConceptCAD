@@ -188,6 +188,13 @@ void PanneauProps::reconstruire() {
       auto* t = libelle(this, p->GetLabel().Upper(), 11.5);
       t->SetFont(police(this, 11.5, true));
       s->Add(t, 0, wxEXPAND | wxTOP | wxBOTTOM, FromDIP(premier ? 2 : 14));
+    } else if (lectureSeule(p) && p->GetLabel().empty()) {
+      L.sorte = Ligne::LECTURE;  // le nom de la fonction, sous le titre, comme dans le navigateur
+      L.valeur = new wxStaticText(this, wxID_ANY, p->GetValueAsString());
+      L.valeur->SetFont(police(this, 12, true));
+      L.valeur->SetForegroundColour(cGris());
+      L.valeur->Wrap(FromDIP(260));
+      s->Add(L.valeur, 0, wxEXPAND | wxTOP, FromDIP(2));
     } else if (lectureSeule(p)) {
       L.sorte = Ligne::LECTURE;
       auto* r = new wxBoxSizer(wxHORIZONTAL);
@@ -304,7 +311,7 @@ void PanneauProps::rafraichir() {
     wxPGProperty* p = L.p;
     if (L.valeur) {
       L.valeur->SetLabel(p->GetValueAsString());
-      L.valeur->Wrap(FromDIP(LARGEUR_CASE));
+      L.valeur->Wrap(FromDIP(p->GetLabel().empty() ? 260 : LARGEUR_CASE));
     }
     if (L.texte && wxWindow::FindFocus() != L.texte) L.texte->ChangeValue(p->GetValueAsString());
     if (L.coche) L.coche->SetLabel((p->GetValue().GetBool() ? L"☑  " : L"☐  ") + L.titre);

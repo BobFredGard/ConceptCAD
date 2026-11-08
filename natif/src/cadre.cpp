@@ -1082,6 +1082,13 @@ void Cadre::ajusterDroite() {
   if (rangs) h += ToDIP(panneauProps_->hauteurVoulue()) + 8;
   if (note) h += ToDIP(noteDroite_->GetBestSize().y) + 6;
   if (rendu || enChoix() || rangDynMontre_) h += 42;
+  const bool rangF = cao && !enChoix() && !fonctionDuPanneau().empty();
+  if (rangF != rangFonctionMontre_) {
+    rangFonctionMontre_ = rangF;
+    carteDroite_->contenu()->Show(rangFonction_, rangF);
+    carteDroite_->Layout();
+  }
+  if (rangF) h += 40;
   if (cao) h += hauteurSeg_;
   if (asmPanneau) h += hauteurBoutonsAsm_ + 6;
   if (surPlan) h = 100000;
@@ -2105,9 +2112,10 @@ void Cadre::montrerFonction(int i) {
   const Fonction& f = doc_.fonctions[i];
   props_->Clear();
   props_->CenterSplitter();
-  props_->Append(new wxPropertyCategory(L"Fonction"));
-  lectureSeule(props_, L"Nom", tx(f.nom));
-  lectureSeule(props_, L"Type", nomType(f));
+  props_->Append(new wxPropertyCategory(nomType(f), L"typeFonction"));  // le titre du panneau du navigateur : PERÇAGE, EXTRUSION…
+  wxPGProperty* nomF = props_->Append(new wxStringProperty(wxEmptyString, L"nomFonction", tx(f.nom)));
+  nomF->ChangeFlag(wxPGFlags::ReadOnly, true);
+  nomF->SetAttribute(L"id", wxVariant(tx(f.repeatId.empty() ? f.id : std::string())));  // pour 👁 Visible et 🗑 Supprimer
   if (!f.visible) lectureSeule(props_, L"État", L"Désactivée");
   fonctionMontree_ = -1;
   ficheId_.clear();
@@ -4485,6 +4493,8 @@ bool Cadre::essaiEsquisse(const std::wstring& fichier, int rang, const std::wstr
         n["rects"][nom] = {r.x, r.y, r.width, r.height, w->IsShownOnScreen()};
       }
       n["hauteurVoulue"] = panneauProps_->hauteurVoulue();
+      n["rangFonction"] = rangFonctionMontre_;
+      n["fonctionDuPanneau"] = fonctionDuPanneau();
       essaiMenu_ = false;
       n["etat"] = std::string(etatVue_->texte().utf8_str());
     }

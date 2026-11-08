@@ -54,20 +54,45 @@ void Cadre::dynCreer() {
   auto* non = new BoutonEsquisse(carteDroite_, wxID_ANY, L"Annuler", L"Revenir aux valeurs d'avant (Échap)", BoutonEsquisse::ENCADRE);
   auto* oui = new BoutonEsquisse(carteDroite_, wxID_ANY, L"OK", L"Valider", BoutonEsquisse::PRINCIPAL);
   for (BoutonEsquisse* b : {non, oui}) {
-    b->SetMinSize(FromDIP(wxSize(-1, 30)));
+    b->SetMinSize(FromDIP(wxSize(76, 28)));
     b->fond(th(C_CARTE_DYN));
   }
   non->titre(L"Annuler");
   oui->titre(L"OK");
   non->surClic = [this] { CallAfter([this] { dynAnnuler(); }); };
   oui->surClic = [this] { CallAfter([this] { dynOk(); }); };
-  rangDyn_->Add(non, 1, wxEXPAND | wxRIGHT, FromDIP(6));
-  rangDyn_->Add(oui, 1, wxEXPAND);
+  rangDyn_->AddStretchSpacer(1);  // à droite, comme Annuler / OK du navigateur
+  rangDyn_->Add(non, 0, wxEXPAND | wxRIGHT, FromDIP(6));
+  rangDyn_->Add(oui, 0, wxEXPAND);
   segDyn_ = new wxBoxSizer(wxVERTICAL);
   carteDroite_->contenu()->Add(segDyn_, 0, wxEXPAND);
   carteDroite_->contenu()->Show(segDyn_, false);
   carteDroite_->contenu()->Add(rangDyn_, 0, wxEXPAND | wxTOP, FromDIP(12));
   carteDroite_->contenu()->Show(rangDyn_, false);
+  rangFonction_ = new wxBoxSizer(wxHORIZONTAL);
+  auto* voir = new BoutonEsquisse(carteDroite_, wxID_ANY, L"Visible", L"Afficher / masquer la fonction", BoutonEsquisse::ENCADRE);
+  auto* suppr = new BoutonEsquisse(carteDroite_, wxID_ANY, L"Supprimer", L"Supprimer la fonction (Ctrl+Z : annuler)", BoutonEsquisse::ENCADRE);
+  voir->titre(L"👁 Visible");
+  suppr->titre(L"🗑 Supprimer");
+  suppr->couleurIcone(th(wxColour(0xff, 0x45, 0x3a)));
+  for (BoutonEsquisse* b : {voir, suppr}) {
+    b->SetMinSize(FromDIP(wxSize(96, 28)));
+    b->fond(th(C_CARTE_DYN));
+  }
+  voir->surClic = [this] { CallAfter([this] {
+    const std::string id = fonctionDuPanneau();
+    if (!id.empty()) changerStructure([&](J& d) { stBasculerVisible(d, "features", id); });
+  }); };
+  suppr->surClic = [this] { CallAfter([this] {
+    const std::string id = fonctionDuPanneau();
+    if (id.empty() || !confirmerSuppression(L"Supprimer ?")) return;
+    if (marqueTemps_ == id) marqueTemps_.clear();
+    changerStructure([&](J& d) { stSupprimerFonction(d, id); }, L"Ctrl+Z : annuler.");
+  }); };
+  rangFonction_->Add(voir, 0, wxRIGHT, FromDIP(6));
+  rangFonction_->Add(suppr, 0);
+  carteDroite_->contenu()->Add(rangFonction_, 0, wxTOP, FromDIP(12));
+  carteDroite_->contenu()->Show(rangFonction_, false);
 
   // Le champ flottant, à côté de la pointe de la poignée
   champDyn_ = new wxPanel(vue_, wxID_ANY);
@@ -89,6 +114,12 @@ void Cadre::dynCreer() {
     vue_->SetFocus();
     CallAfter([this, t] { dynSaisie(t); });
   });
+}
+
+// La fonction dont le panneau est ouvert (vide pour une copie de répétition, qui ne se règle pas à part)
+std::string Cadre::fonctionDuPanneau() const {
+  const wxPGProperty* p = props_->GetPropertyByName(L"nomFonction");
+  return p ? p->GetAttribute(L"id").GetString().utf8_string() : std::string();
 }
 
 // extSeg : les rangées de boutons du panneau. Reconstruites seulement quand leur état change (un geste rappelle ceci à chaque pas).

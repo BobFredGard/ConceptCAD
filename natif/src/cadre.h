@@ -451,6 +451,9 @@ public:
   size_t dynBase_ = 0;
   double dynV0_ = 0, dynV_ = 0, dynSens_ = 1;
   wxBoxSizer* rangDyn_ = nullptr;
+  wxBoxSizer* rangFonction_ = nullptr;  // 👁 Visible · 🗑 Supprimer, sous le panneau d'une fonction (comme le navigateur)
+  bool rangFonctionMontre_ = false;
+  std::string fonctionDuPanneau() const;
   wxBoxSizer* segDyn_ = nullptr;  // les rangées de boutons : opération, direction, étendue, angle
   std::string segSignature_;
   int hauteurSeg_ = 0;
