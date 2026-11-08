@@ -94,9 +94,10 @@ class Vue3D : public wxWindow {
   // Essai : survoler ou cliquer un point de la vue 3D
   void essaiSurvol3D(int x, int y) {
     if (!placer_) preparerSelection();
-    contexte_->MoveTo(x, y, vue_, true);
+    survoler(wxPoint(x, y));
   }
   void essaiClic3D(int x, int y) { cliquerEn(wxPoint(x, y)); }
+  bool areteSurvolee() const { return survolArete_; }
   wxPoint ecranDe(const gp_Pnt& p) const;
   void montrerFilets(const std::vector<std::vector<gp_Pnt>>& helices, const std::vector<std::vector<gp_Pnt>>& anneaux);
   // Ceux des autres composants de l'assemblage (asmThrLines), déjà placés
@@ -307,6 +308,9 @@ class Vue3D : public wxWindow {
   gp_Pnt pointPivot(const wxPoint& p);
   occ::handle<AIS_InteractiveObject> marquePivot_;  // orbitMarkShow : point orange pendant la rotation
   void cacherPivot();
+  // hoverMove : une face survolée en voile bleu, une arête en orange-rouge (edgeHoverDraw)
+  void survoler(const wxPoint& p);
+  bool survolArete_ = false;
   void majTailles();
   double echelleEn(const gp_Pnt& p) const;
   void rayon(int x, int y, gp_Pnt& o, gp_Dir& d) const;

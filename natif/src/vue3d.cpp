@@ -1487,8 +1487,29 @@ void Vue3D::surMouvement(wxMouseEvent& e) {
     }
     if (surUneZone) return;
     if (!placer_) preparerSelection();
-    contexte_->MoveTo(p.x, p.y, vue_, true);
+    survoler(p);
   }
+}
+
+void Vue3D::survoler(const wxPoint& p) {
+  contexte_->MoveTo(p.x, p.y, vue_, false);
+  const bool arete = contexte_->HasDetected() && contexte_->HasDetectedShape() && contexte_->DetectedShape().ShapeType() == TopAbs_EDGE;
+  if (arete != survolArete_) {
+    survolArete_ = arete;
+    const occ::handle<Prs3d_Drawer>& s = contexte_->HighlightStyle(Prs3d_TypeOfHighlight_LocalDynamic);
+    const Quantity_Color c = arete ? couleur(0xff, 0x5a, 0x1f) : couleur(0x0a, 0x84, 0xff);
+    const float t = arete ? 0.05f : 0.65f;
+    s->SetColor(c);
+    s->SetTransparency(t);
+    if (!s->ShadingAspect().IsNull()) {
+      s->ShadingAspect()->SetColor(c);
+      s->ShadingAspect()->SetTransparency(t);
+    }
+    // le surlignage déjà posé garde l'ancienne couleur : on le refait avec la nouvelle
+    contexte_->ClearDetected(false);
+    contexte_->MoveTo(p.x, p.y, vue_, false);
+  }
+  vue_->RedrawImmediate();
 }
 
 void Vue3D::surMolette(wxMouseEvent& e) {
