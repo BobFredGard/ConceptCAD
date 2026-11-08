@@ -24,6 +24,17 @@ struct FicheHaut {
 
 #define C_FOND th(wxColour(0x1c, 0x1c, 0x1e))
 #define C_BARRE th(wxColour(0x2a, 0x2c, 0x30))
+namespace {
+// Le bandeau du haut, en retrait sous le ruban (V0.69.3 du navigateur : --topbar), souligné à la couleur du thème
+wxColour fondBandeau() {
+  const std::string c = theme::palette(theme::courant()).cle;
+  if (c == "graphite") return wxColour(0x1a, 0x1b, 0x1d);
+  if (c == "atelier") return wxColour(0x15, 0x12, 0x0f);
+  if (c == "clair") return wxColour(0xdd, 0xe2, 0xea);
+  if (c == "contraste") return wxColour(0, 0, 0);
+  return wxColour(0x18, 0x18, 0x1a);
+}
+}  // namespace
 #define C_BORD th(wxColour(0x3a, 0x3a, 0x3d))
 #define C_TEXTE th(wxColour(0xf5, 0xf5, 0xf7))
 #define C_DISCRET th(wxColour(0x98, 0x98, 0x9d))
@@ -135,6 +146,7 @@ BarreHaute::BarreHaute(wxWindow* parent) : wxWindow(parent, wxID_ANY, wxDefaultP
     e.Skip();
   });
   Bind(wxEVT_PAINT, [this](wxPaintEvent&) {
+    if (themeBandeau_ != theme::courant()) fondsBandeau();
     wxAutoBufferedPaintDC dc(this);
     dc.SetBackground(wxBrush(C_FOND));
     dc.Clear();
@@ -142,9 +154,18 @@ BarreHaute::BarreHaute(wxWindow* parent) : wxWindow(parent, wxID_ANY, wxDefaultP
     {
       auto g = contexte(dc, this);
       if (!g) return;
-      g->SetBrush(g->CreateBrush(wxBrush(C_BARRE)));
+      g->SetBrush(g->CreateBrush(wxBrush(fondBandeau())));
       g->SetPen(g->CreatePen(wxGraphicsPenInfo(C_BORD, 1)));
       g->DrawRoundedRectangle(12.5, 10.5, t.x - 25, 42, 12);
+      {  // le trait de 2 px dessous, qui suit les coins arrondis comme une bordure CSS
+        const double x0 = 13, x1 = t.x - 13, y1 = 52, r = 11.5;
+        wxGraphicsPath p = g->CreatePath();
+        p.AddArc(x0 + r, y1 - r, r, 3.14159265358979 * 0.75, 3.14159265358979 * 0.5, false);
+        p.AddLineToPoint(x1 - r, y1);
+        p.AddArc(x1 - r, y1 - r, r, 3.14159265358979 * 0.5, 3.14159265358979 * 0.25, false);
+        g->SetPen(g->CreatePen(wxGraphicsPenInfo(theme::palette(theme::courant()).primary, 2)));
+        g->StrokePath(p);
+      }
       // Le logo : un carré arrondi coupé en deux
       g->SetPen(g->CreatePen(wxGraphicsPenInfo(C_TEXTE, 1.6)));
       g->SetBrush(wxNullGraphicsBrush);
@@ -169,6 +190,13 @@ BarreHaute::BarreHaute(wxWindow* parent) : wxWindow(parent, wxID_ANY, wxDefaultP
     ecrire(dc, this, L"Essai Windows", t.x - 165, 25, 11.5, C_TEXTE, true);
   });
   placer();
+}
+
+void BarreHaute::fondsBandeau() {
+  themeBandeau_ = theme::courant();
+  for (BoutonEsquisse* b : icones_) b->fond(fondBandeau());
+  for (BoutonEsquisse* b : {regenerer_, aide_, theme_})
+    if (b) b->fond(fondBandeau());
 }
 
 void BarreHaute::placer() {

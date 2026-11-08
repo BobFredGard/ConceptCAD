@@ -30,6 +30,7 @@
 #include <wx/textdlg.h>
 #include "nombres_js.h"
 #include <wx/time.h>
+#include <wx/stopwatch.h>
 
 #include <algorithm>
 #include <cmath>
@@ -305,6 +306,10 @@ PlanVue::PlanVue(wxWindow* parent) : wxWindow(parent, wxID_ANY, wxDefaultPositio
     wxAutoBufferedPaintDC dc(this);
     const wxSize t = GetClientSize();
     if (ajuster_) ajusterFeuille();
+    if (aConstruire_) {
+      redessiner();
+      imageBonne_ = false;
+    }
     if (!imageBonne_ || !image_.IsOk() || image_.GetWidth() != t.x || image_.GetHeight() != t.y) {
       image_ = wxBitmap(std::max(1, t.x), std::max(1, t.y), 24);
       wxMemoryDC m(image_);
@@ -411,6 +416,10 @@ PlanVue::PlanVue(wxWindow* parent) : wxWindow(parent, wxID_ANY, wxDefaultPositio
     e.Skip();
   });
   Bind(wxEVT_MOTION, [this](wxMouseEvent& e) {
+    struct Differer {
+      bool& b;
+      ~Differer() { b = false; }
+    } differer{differer_ = true};
     curseurX_ = (e.GetX() - ox_) / zoom_, curseurY_ = (e.GetY() - oy_) / zoom_;
     curseurDedans_ = e.GetY() >= hauteurOnglets() && curseurX_ >= 0 && curseurY_ >= 0 && curseurX_ <= largeurPage_ && curseurY_ <= hauteurPage_;
     if (!glisse_) {
@@ -490,18 +499,7 @@ PlanVue::PlanVue(wxWindow* parent) : wxWindow(parent, wxID_ANY, wxDefaultPositio
   Bind(wxEVT_KEY_DOWN, [this](wxKeyEvent& e) {
     const int k = e.GetKeyCode();
     if (e.ControlDown() && !e.AltDown() && k == 'P') return imprimer();  // le raccourci de la planche
-    if (k == WXK_ESCAPE && ajoutBulle_) {
-      ajoutBulle_ = false;
-      if (surEtat) surEtat(L"＋ Bulle terminé.");
-      if (surSelection) surSelection();
-      return;
-    }
-    if (k == WXK_ESCAPE && !alignement_.empty()) {
-      alignement_.clear();
-      if (surEtat) surEtat(L"Alignement annulé.");
-      return;
-    }
-    if (k == WXK_ESCAPE && !commandeActive_ && echapEsquisse()) return;
+    if (k == WXK_ESCAPE) return void(echap());
     if (outilActif_) {
       if (outil_.tool == "axis" && (k == WXK_RETURN || k == WXK_NUMPAD_ENTER)) {
         std::string lib;
@@ -513,31 +511,13 @@ PlanVue::PlanVue(wxWindow* parent) : wxWindow(parent, wxID_ANY, wxDefaultPositio
         if (surEtat && !t.empty()) surEtat(wxString::FromUTF8(t));
         return;
       }
-      if (k == WXK_ESCAPE || k == WXK_RETURN || k == WXK_NUMPAD_ENTER) {
-        const bool esc = k == WXK_ESCAPE;
-        if (esc && outil_.aInt) {  // mepIntCancel
-          outil_.aInt = false, outil_.aSnapHov = false;
-          if (surEtat) surEtat(L"Intersection annulée : cliquez une ligne ou un cercle (clic droit pour un autre accrochage).");
-          redessiner();
-          return;
-        }
-        if (!outil_.ord.empty() || outil_.tool == "ordx" || outil_.tool == "ordy") {
-          quitterOutil();
-          if (surEtat) surEtat(L"Cotation d’ordonnées terminée.");
-          return;
-        }
-        if (esc && outil_.enChaine) {  // mepChainEnd : l'outil Cote reste actif
-          const int n = outil_.chaineN;
-          outil_.enChaine = false, outil_.dim = nullptr, outil_.snapMode.clear();
-          if (surEtat) surEtat(n ? wxString::Format(L"Chaîne de cotes terminée : %d cote%s alignée%s.", n, n > 1 ? L"s" : L"", n > 1 ? L"s" : L"") : wxString(L"Chaîne de cotes terminée."));
-          redessiner();
-          return;
-        }
-        if (esc) return quitterOutil();
+      if ((k == WXK_RETURN || k == WXK_NUMPAD_ENTER) && (!outil_.ord.empty() || outil_.tool == "ordx" || outil_.tool == "ordy")) {
+        quitterOutil();
+        if (surEtat) surEtat(L"Cotation d’ordonnées terminée.");
+        return;
       }
     }
     if (commandeActive_) {
-      if (k == WXK_ESCAPE) return finirCommande(L"Commande annulée.");
       if (k == WXK_RETURN || k == WXK_NUMPAD_ENTER) {
         const std::string m = plan::validerCoupe(commande_);
         if (surEtat && !m.empty()) surEtat(wxString::FromUTF8(m));
@@ -550,17 +530,6 @@ PlanVue::PlanVue(wxWindow* parent) : wxWindow(parent, wxID_ANY, wxDefaultPositio
       }
     }
     if (k == WXK_DELETE || k == WXK_BACK) return supprimer();
-    if (k == WXK_ESCAPE && !sel_.locId.empty()) {
-      sel_.locVue.clear(), sel_.locId.clear();
-      return Refresh(false);
-    }
-    if (k == WXK_ESCAPE) {
-      geste_ = Geste();
-      sel_ = plan::SelectionPlan();
-      redessiner();
-      if (surSelection) surSelection();
-      return;
-    }
     if (k == 'F' && e.ShiftDown()) {
       ajuster_ = true;
       imageBonne_ = false;
@@ -762,6 +731,7 @@ void PlanVue::lancerOutil(const std::string& tool) {
   outil_ = plan::commencerOutil(tool, sel_.cote, planche());
   outilActif_ = true;
   if (outil_.ord.empty()) sel_ = plan::SelectionPlan();
+  if (!essaiEnCours_ && IsShownOnScreen()) SetFocus();  // Entrée, Suppr et les lettres vont au dessin, pas au bouton cliqué
   if (surEtat) {
     if (tool == "dim") surEtat(L"Cote : cliquez une arête, un cercle, ou un point (2 entités : distance, angle).");
     else if (tool == "hole") surEtat(L"Perçage : cliquez un trou, vu de bout (cercle, arc) ou de côté (paroi, axe, fond).");
@@ -1213,6 +1183,12 @@ void PlanVue::viderSelection() {
 
 // ---- Les gestes (mepOnDown, mepOnMove, mepOnUp, mepOnKey) ----
 void PlanVue::redessiner() {
+  if (differer_) {  // un mouvement de souris : le calcul attend le prochain dessin, qui regroupe les mouvements rapprochés
+    aConstruire_ = true;
+    Refresh(false);
+    return;
+  }
+  aConstruire_ = false;
   calcul_.selection = &sel_;
   if (esq_.tbEdit && !plan::cartoucheDessine(planche())) esq_.tbEdit = false;  // autre planche : pas de cartouche dessiné
   calcul_.esqCartouche = esq_.tbEdit;
@@ -2031,6 +2007,134 @@ void PlanVue::reprendre(const std::string& texteDoc) {
 }
 
 // {"presse":[x,y]}, {"glisse":[x,y]}, {"lache":1}, {"touche":"Suppr"}, en mm sur la feuille
+// Échap, d'où que vienne le clavier (le cadre le renvoie ici même quand un bouton du panneau a le focus) :
+// abandonne d'abord le geste en cours, puis l'outil, puis la sélection
+bool PlanVue::echap() {
+  if (ajoutBulle_) {
+    ajoutBulle_ = false;
+    if (surEtat) surEtat(L"＋ Bulle terminé.");
+    if (surSelection) surSelection();
+    return true;
+  }
+  if (!alignement_.empty()) {
+    alignement_.clear();
+    if (surEtat) surEtat(L"Alignement annulé.");
+    return true;
+  }
+  if (!commandeActive_ && echapEsquisse()) return true;
+  if (outilActif_) {
+    if (outil_.aInt) {  // mepIntCancel
+      outil_.aInt = false, outil_.aSnapHov = false;
+      if (surEtat) surEtat(L"Intersection annulée : cliquez une ligne ou un cercle (clic droit pour un autre accrochage).");
+      redessiner();
+      return true;
+    }
+    if (!outil_.ord.empty() || outil_.tool == "ordx" || outil_.tool == "ordy") {
+      quitterOutil();
+      if (surEtat) surEtat(L"Cotation d’ordonnées terminée.");
+      return true;
+    }
+    if (outil_.enChaine) {  // mepChainEnd : l'outil Cote reste actif
+      const int n = outil_.chaineN;
+      outil_.enChaine = false, outil_.dim = nullptr, outil_.snapMode.clear();
+      if (surEtat) surEtat(n ? wxString::Format(L"Chaîne de cotes terminée : %d cote%s alignée%s.", n, n > 1 ? L"s" : L"", n > 1 ? L"s" : L"") : wxString(L"Chaîne de cotes terminée."));
+      redessiner();
+      return true;
+    }
+    quitterOutil();
+    return true;
+  }
+  if (commandeActive_) {
+    finirCommande(L"Commande annulée.");
+    return true;
+  }
+  if (!sel_.locId.empty()) {
+    sel_.locVue.clear(), sel_.locId.clear();
+    Refresh(false);
+    return true;
+  }
+  geste_ = Geste();
+  sel_ = plan::SelectionPlan();
+  redessiner();
+  if (surSelection) surSelection();
+  return true;
+}
+
+plan::J PlanVue::essaiPerf(int n) {
+  J r;
+  if (!planPret()) return r;
+  n = std::max(1, n);
+  if (ajuster_) ajusterFeuille();
+  const wxSize t = GetClientSize();
+  wxStopWatch c;
+  for (int i = 0; i < n; i++) construire();
+  r["construire"] = c.Time() / static_cast<double>(n);
+  wxBitmap b(std::max(1, t.x), std::max(1, t.y), 24);
+  c.Start();
+  for (int i = 0; i < n; i++) {
+    wxMemoryDC m(b);
+    m.Clear();
+    std::unique_ptr<wxGraphicsContext> g(wxGraphicsContext::Create(m));
+    if (g) peindre(*g);
+  }
+  r["peindre"] = c.Time() / static_cast<double>(n);
+  {  // ce que coûte chaque sorte de primitive : on la retire et on repeint
+    const std::vector<Prim> tout = prims_;
+    const char* noms[] = {"sansTraits", "sansRemplis", "sansTextes", "sansImages", "sansHalos"};
+    for (int k = 0; k < 5; k++) {
+      prims_.clear();
+      for (const Prim& p : tout) {
+        if (k < 4 && p.genre == static_cast<Prim::Genre>(k)) continue;
+        prims_.push_back(p);
+        if (k == 4) prims_.back().halo = 0;
+      }
+      c.Start();
+      for (int i = 0; i < n; i++) {
+        wxMemoryDC m(b);
+        m.Clear();
+        std::unique_ptr<wxGraphicsContext> g(wxGraphicsContext::Create(m));
+        if (g) peindre(*g);
+      }
+      r[noms[k]] = c.Time() / static_cast<double>(n);
+    }
+    prims_ = tout;
+    int nt = 0, nh = 0, np = 0;
+    for (const Prim& p : tout) {
+      if (p.genre == Prim::TEXTE) nt++, nh += p.halo > 0;
+      if (p.genre == Prim::TRAITS) for (const Trait& t : p.traits) np += static_cast<int>(t.pts.size());
+    }
+    r["textes"] = nt, r["halos"] = nh, r["points"] = np;
+  }
+  r["prims"] = prims_.size();
+  r["taille"] = {t.x, t.y};
+  c.Start();
+  for (int i = 0; i < n; i++) {
+    wxMemoryDC m(b);
+    peindreSelection(m);
+  }
+  r["selection"] = c.Time() / static_cast<double>(n);
+  // Le survol pendant la pose d'une cote, sur une grille de points de la feuille
+  lancerOutil("dim");
+  int touche = 0;
+  c.Start();
+  for (int i = 0; i < n; i++) {
+    const double x = largeurPage_ * (0.2 + 0.6 * (i % 7) / 6.0), y = hauteurPage_ * (0.2 + 0.6 * (i / 7 % 5) / 4.0);
+    curseurX_ = x, curseurY_ = y;
+    if (plan::survolOutil(mep_, planche_, piece_, calcul_, outil_, x, y, zoomRelatif())) touche++, redessiner();
+  }
+  r["survolCote"] = c.Time() / static_cast<double>(n);
+  r["survolRedessine"] = touche;
+  quitterOutil();
+  c.Start();
+  for (int i = 0; i < n; i++) {
+    const double x = largeurPage_ * (0.2 + 0.6 * (i % 7) / 6.0), y = hauteurPage_ * (0.2 + 0.6 * (i / 7 % 5) / 4.0);
+    plan::vueSous(planche(), mep_, piece_, calcul_, x, y);
+  }
+  r["survolVue"] = c.Time() / static_cast<double>(n);
+  imageBonne_ = false;
+  return r;
+}
+
 void PlanVue::essaiGeste(const J& e) {
   const auto pixelsX = [&](double x) { return ox_ + x * zoom_; };
   const auto pixelsY = [&](double y) { return oy_ + y * zoom_; };
@@ -2066,15 +2170,7 @@ void PlanVue::essaiGeste(const J& e) {
       if (!lib.empty()) redessiner(), valider(wxString::FromUTF8(lib));
     }
     if (t == "Entree" && outilActif_ && outil_.tool != "axis") quitterOutil();
-    if (t == "Echap") {
-      if (!commandeActive_ && echapEsquisse()) {
-      } else if (commandeActive_) finirCommande(wxString());
-      else if (outilActif_ && outil_.aInt) outil_.aInt = false, outil_.aSnapHov = false, redessiner();
-      else if (outilActif_ && !outil_.ord.empty()) quitterOutil();
-      else if (outilActif_ && outil_.enChaine) outil_.enChaine = false, outil_.dim = nullptr, outil_.snapMode.clear(), redessiner();
-      else if (outilActif_) quitterOutil();
-      else viderSelection();
-    }
+    if (t == "Echap") echap();
     if (t == "Entree") plan::validerCoupe(commande_);
     if (t == "Retour") plan::annulerPointCoupe(commande_);
   }
@@ -2422,15 +2518,16 @@ void PlanVue::peindre(wxGraphicsContext& g) {
   g.DrawRectangle(ox_ + 2, oy_ + 4, largeurPage_ * zoom_, hauteurPage_ * zoom_);
   g.Translate(ox_, oy_);
   g.Scale(zoom_, zoom_);
-  std::map<std::pair<int, bool>, wxFont> polices;
-  const auto police = [&](double corps, bool gras) -> const wxFont& {
-    const std::pair<int, bool> k{static_cast<int>(std::round(corps * 1000)), gras};
+  // Une police à la taille de l'écran (le contexte n'a plus à agrandir une petite police), faite une fois par
+  // taille et couleur : en refaire une à chaque texte coûtait plus que d'écrire le texte
+  std::map<std::tuple<int, bool, unsigned long>, wxGraphicsFont> polices;
+  const auto police = [&](double corps, bool gras, const wxColour& c) -> const wxGraphicsFont& {
+    const std::tuple<int, bool, unsigned long> k{static_cast<int>(std::round(corps * 1000)), gras, (static_cast<unsigned long>(c.Alpha()) << 24) | c.GetRGB()};
     auto it = polices.find(k);
     if (it == polices.end()) {
-      // Une police à la taille de l'écran : le contexte n'a plus à agrandir une petite police
       wxFont f(wxFontInfo().FaceName("Arial").Bold(gras));
       f.SetFractionalPointSize(std::max(0.5, corps * zoom_ * 72.0 / 96.0));
-      it = polices.emplace(k, f).first;
+      it = polices.emplace(k, g.CreateFont(f, c)).first;
     }
     return it->second;
   };
@@ -2480,11 +2577,11 @@ void PlanVue::peindre(wxGraphicsContext& g) {
         }
         const double haut = sy - 0.905 * p.corps * zoom_;
         if (p.halo > 0) {
-          g.SetFont(police(p.corps, p.gras), p.couleurHalo);
+          g.SetFont(police(p.corps, p.gras, p.couleurHalo));
           const double r = p.halo / 2 * zoom_;
           for (int k = 0; k < 8; k++) g.DrawText(p.texte, sx + r * std::cos(k * PI / 4), haut + r * std::sin(k * PI / 4));
         }
-        g.SetFont(police(p.corps, p.gras), p.couleur);
+        g.SetFont(police(p.corps, p.gras, p.couleur));
         g.DrawText(p.texte, sx, haut);
         g.SetTransform(avant);
         break;

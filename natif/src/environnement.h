@@ -37,6 +37,8 @@ class BarreHaute : public wxWindow {
   BoutonEsquisse* theme_ = nullptr;
   wxString document_;
   int finIcones_ = 0;
+  int themeBandeau_ = -1;  // le thème pour lequel les boutons ont reçu le fond du bandeau
+  void fondsBandeau();
 };
 
 struct CommandeRuban {

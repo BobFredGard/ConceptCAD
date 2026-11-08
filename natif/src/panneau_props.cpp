@@ -290,6 +290,11 @@ void PanneauProps::reconstruire() {
         if (q && champ->GetValue() != q->GetValueAsString()) changer(nom, wxVariant(champ->GetValue()));
       };
       champ->Bind(wxEVT_TEXT_ENTER, [valider](wxCommandEvent&) { valider(); });
+      champ->Bind(wxEVT_CHAR_HOOK, [this, nom, champ](wxKeyEvent& ev) {  // Échap : la saisie est abandonnée, la fenêtre fait le reste
+        if (ev.GetKeyCode() == WXK_ESCAPE)
+          if (const wxPGProperty* q = g_->GetPropertyByName(nom)) champ->ChangeValue(q->GetValueAsString());
+        ev.Skip();
+      });
       champ->Bind(wxEVT_KILL_FOCUS, [valider](wxFocusEvent& ev) {
         ev.Skip();
         valider();

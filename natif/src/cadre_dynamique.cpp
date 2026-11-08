@@ -666,7 +666,10 @@ bool Cadre::dynEchap() {
     dynPCalculee_ = false;
     return true;
   }
-  if (dynamic_cast<wxTextCtrl*>(w) || dynamic_cast<wxChoice*>(w) || dynamic_cast<wxComboBox*>(w)) return false;
+  if (dynamic_cast<wxTextCtrl*>(w) || dynamic_cast<wxChoice*>(w) || dynamic_cast<wxComboBox*>(w)) {
+    vue_->SetFocus();  // premier Échap : on quitte la case (sa valeur d'avant revient), le second abandonne la fonction
+    return true;
+  }
   dynAnnuler();
   return true;
 }

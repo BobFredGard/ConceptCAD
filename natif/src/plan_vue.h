@@ -54,6 +54,7 @@ class PlanVue : public wxWindow {
   void lancerAxes(const std::string& mode);  // mepSetAxisMode
   void lancerOutil(const std::string& tool);
   void quitterOutil();
+  bool echap();  // Échap : geste, puis outil, puis sélection
   plan::EtatEsquisse& esq() { return esq_; }
   void basculerCartouche(bool on);  // mepTbEdit
   void choisirSk(const std::vector<std::string>& cles);
@@ -96,6 +97,7 @@ class PlanVue : public wxWindow {
   std::function<void(const plan::J&)> surVuesAutomatiques;
   // Les gestes de l'essai automatique, en mm sur la feuille
   void essaiGeste(const plan::J& e);
+  plan::J essaiPerf(int n);  // durées moyennes (ms) : construire, peindre, survol d'un outil
   // Le rendu des vues ombrées : c'est la vue 3D qui sait le faire
   std::function<bool(const plan::DemandeImage&, wxImage&)> rendreImage;
   void sigReel(const std::string& s) { calcul_.sigReel = s; }
@@ -151,6 +153,7 @@ class PlanVue : public wxWindow {
   void finirCommande(const wxString& message);
   void apresPlanche();
   bool essaiEnCours_ = false;
+  bool differer_ = false, aConstruire_ = false;  // redessiner pendant un mouvement de souris : au prochain dessin
   double zoomRelatif() const { return zoomEntier_ > 0 ? zoom_ / zoomEntier_ : 1; }
   int hauteurOnglets() const;
 

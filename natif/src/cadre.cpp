@@ -345,6 +345,11 @@ Cadre::Cadre() : wxFrame(nullptr, wxID_ANY, L"ConceptCAD natif"), asmAnim_(this)
       }
       if (raccourciGlobal(e.GetKeyCode(), car, e.ControlDown(), e.AltDown(), e.ShiftDown(), (e.GetRawKeyFlags() & (1u << 30)) != 0)) return;
     }
+    // Échap dans une case du panneau de droite (hors esquisse) : on quitte la case, l'Échap suivant agit sur l'atelier
+    if (e.GetKeyCode() == WXK_ESCAPE && esquisseOuverte_ < 0 && atelier_ != Atelier::PLAN && dynamic_cast<wxTextCtrl*>(FindFocus()) && carteDroite_->IsDescendant(FindFocus()) && !dyn_) {
+      vue_->SetFocus();
+      return;
+    }
     // La FAO garde ses raccourcis, sauf quand on tape dans un champ
     if (atelier_ == Atelier::FAO && !dynamic_cast<wxTextCtrl*>(FindFocus())) {
       const int k = e.GetKeyCode();
@@ -357,6 +362,15 @@ Cadre::Cadre() : wxFrame(nullptr, wxID_ANY, L"ConceptCAD natif"), asmAnim_(this)
       if (!cle.empty()) return faoTouche(cle, c, e.ShiftDown());
     }
     if (atelier_ == Atelier::RENDU && e.GetKeyCode() == WXK_ESCAPE) return changerAtelier(avantRendu_);
+    // Mise en plan : Échap arrive à la planche même quand un bouton du panneau a gardé le clavier
+    if (atelier_ == Atelier::PLAN && e.GetKeyCode() == WXK_ESCAPE && planVue_ && planVue_->IsShownOnScreen()) {
+      wxWindow* f = FindFocus();
+      if (!dynamic_cast<wxTextCtrl*>(f) && !dynamic_cast<wxComboBox*>(f)) {
+        planVue_->echap();
+        planVue_->SetFocus();
+        return;
+      }
+    }
     if (pioche_ && e.GetKeyCode() == WXK_ESCAPE) {
       pioche_ = nullptr;
       if (piocheAnnulee_) {
@@ -4969,6 +4983,30 @@ bool Cadre::essaiEsquisse(const std::wstring& fichier, int rang, const std::wstr
     if (e.contains("plan")) {
       planVue_->essaiGeste(e["plan"]);
       wxYield();
+    }
+    if (e.contains("perfPlan")) n["perf"] = planVue_->essaiPerf(e["perfPlan"].get<int>());
+    if (e.contains("echapFenetre")) {  // Échap comme au clavier : par la fenêtre, le focus sur le panneau de droite
+      if (atelier_ == Atelier::PLAN) n["outilAvant"] = planVue_->outilCourant();
+      if (e["echapFenetre"] == "panneau") {
+        if (wxWindow* w = atelier_ == Atelier::PLAN ? static_cast<wxWindow*>(panneauPlan_) : static_cast<wxWindow*>(carteDroite_)) w->SetFocus();
+      } else if (e["echapFenetre"] == "case") {  // le clavier dans la première case de texte du panneau de droite
+        std::function<wxWindow*(wxWindow*)> chercher = [&](wxWindow* w) -> wxWindow* {
+          if (dynamic_cast<wxTextCtrl*>(w) && w->IsShownOnScreen()) return w;
+          for (wxWindow* c : w->GetChildren())
+            if (wxWindow* t = chercher(c)) return t;
+          return nullptr;
+        };
+        if (wxWindow* t = chercher(carteDroite_)) t->SetFocus(), n["case"] = std::string(t->GetName().utf8_str());
+      }
+      n["focusTexte"] = dynamic_cast<wxTextCtrl*>(FindFocus()) != nullptr;
+      wxKeyEvent k(wxEVT_CHAR_HOOK);
+      k.m_keyCode = WXK_ESCAPE;
+      k.SetEventObject(this);
+      GetEventHandler()->ProcessEvent(k);
+      wxYield();
+      if (atelier_ == Atelier::PLAN) n["outilApres"] = planVue_->outilCourant();
+      n["focusTexteApres"] = dynamic_cast<wxTextCtrl*>(FindFocus()) != nullptr;
+      n["dyn"] = dyn_.has_value();
     }
     if (e.contains("reglagePlan")) {
       wxYield();
