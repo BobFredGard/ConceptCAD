@@ -81,6 +81,7 @@ jobs:
           hdiutil detach /tmp/cc-dmg
           A="/Applications/ConceptCAD natif.app/Contents/MacOS/ConceptCADNatif"
           "$A" --verif "Exemples/Barquette.conceptcad" captures/verif-installee.json; echo "calcul depuis l'application installée : code $?"
+          "$A" --essai-aimants; echo "essai des aimants : code $?"
           # Si l'application se ferme seule : son code de sortie, puis l'endroit exact où elle s'arrête (débogueur)
           "$A" > captures/sortie-demarrage.txt 2>&1 &
           PID=$!
