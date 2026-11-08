@@ -375,7 +375,7 @@ input[type=range]{accent-color:var(--primary);width:100%}
  * peut changer sans rien casser. CACHE_VER (parcours FAO) reste indépendant.
  */
 
-const APP_VER='V0.69.3';
+const APP_VER='V0.70.0';
 try{console.log('[ConceptCAD] version '+APP_VER);}catch(e){}
 try{var mfSv=document.getElementById('mfSplashVer');if(mfSv)mfSv.textContent=APP_VER;}catch(e){} // écran de démarrage
 
@@ -4523,8 +4523,11 @@ function rimEdgeJobs(edges,o,n,d,rsTop,rsBot){
       if(len2>0&&Math.abs(tn)>Math.sqrt(len2)*0.7)continue; // arête le long de n (verticale)
       const m=e.mid;
       const t=(m[0]-o.x)*n.x+(m[1]-o.y)*n.y+(m[2]-o.z)*n.z;
-      if(rsTop>0&&Math.abs(t-tHi)<tol){jobs.push({src:e.src,r:rsTop,mid:m&&m.slice()});continue;}
-      if(rsBot>0&&Math.abs(t-tLo)<tol)jobs.push({src:e.src,r:rsBot,mid:m&&m.slice()});
+      // V0.70.0 : chaque arête va au bord le PLUS PROCHE — sur une plaque de moins de 2×tol, une arête
+      // du bas tombait aussi dans la tolérance du haut (aimant fin : la jonction des pôles était arrondie)
+      const dHi=Math.abs(t-tHi),dLo=Math.abs(t-tLo);
+      if(rsTop>0&&dHi<tol&&dHi<=dLo){jobs.push({src:e.src,r:rsTop,mid:m&&m.slice()});continue;}
+      if(rsBot>0&&dLo<tol&&dLo<dHi)jobs.push({src:e.src,r:rsBot,mid:m&&m.slice()});
     }catch(err){}
   }
   return jobs;
@@ -16811,6 +16814,44 @@ function magSpec(st){
   else{const r0=g.s==='ring'?g.di/2:0,r1=g.d/2;sp.prof=[[r0,0],[r1,0],[r1,g.h],[r0,g.h]];}
   return sp;
 }
+/* V0.70.0 : l'aimant en DEUX MOITIÉS, coupées à mi-hauteur (h est toujours la cote le long du sens
+   d'aimantation, même pour les pavés aimantés dans la longueur) : pôle sud vert (z de 0 à h/2),
+   pôle nord rouge (z de h/2 à h). Arêtes EXTÉRIEURES arrondies R0,3 (réduit sur les tout petits
+   aimants), aucune à la jonction des pôles (demande de Fred) : l'aimant entier arrondi, coupé en deux. */
+const MAG_POLE_N=0xe0483c,MAG_POLE_S=0x2f9e4f,MAG_RND=0.3;
+function magRound(m){
+  const half=m.h/2,lat=m.s==='box'?Math.min(m.a,m.b)/2:m.s==='ring'?(m.d-m.di)/4:m.d/2;
+  return +Math.min(MAG_RND,half*0.4,lat*0.4).toFixed(4);
+}
+function magHalfProf(m,z0,z1,k,sud){
+  // profil de révolution d'une moitié (XZ) : seuls les coins de la face EXTÉRIEURE (bas du sud,
+  // haut du nord) sont arrondis, au bord du disque et, pour l'anneau, au bord du trou ; jonction vive
+  const R=m.d/2;
+  if(m.s==='ring'){
+    const r0=m.di/2;
+    return sud?[[r0+k,z0,{c:[r0+k,z0+k]}],[R-k,z0],[R,z0+k,{c:[R-k,z0+k]}],[R,z1],[r0,z1],[r0,z0+k]]
+      :[[r0,z0],[R,z0],[R,z1-k],[R-k,z1,{c:[R-k,z1-k]}],[r0+k,z1],[r0,z1-k,{c:[r0+k,z1-k]}]];
+  }
+  return sud?[[0,z0],[R-k,z0],[R,z0+k,{c:[R-k,z0+k]}],[R,z1],[0,z1]]
+    :[[0,z0],[R,z0],[R,z1-k],[R-k,z1,{c:[R-k,z1-k]}],[0,z1]];
+}
+function magFillDoc(d,m){
+  const k=magRound(m),h2=m.h/2;
+  d.bodies=[{id:'b1',name:'Pôle sud',c:null,color:MAG_POLE_S},{id:'b2',name:'Pôle nord',c:null,color:MAG_POLE_N}];
+  d.bodySeq=3;d.activeBody='b2';
+  const F=(f,b)=>{f.id=uid(f.type==='revolve'?'rv':f.type==='fillet'?'fi':'ex');f.visible=true;f.body=b;d.features.push(f);return f;};
+  [['b1','sud',0],['b2','nord',h2]].forEach(([b,nom,z0])=>{
+    if(m.s==='box'){
+      const s=stdSketch(d,'Contour pôle '+nom,'XY',z0),a=m.a/2,c=m.b/2;
+      stdLoop(s,[[-a+k,-c],[a-k,-c],[a,-c+k,{c:[a-k,-c+k]}],[a,c-k],[a-k,c,{c:[a-k,c-k]}],[-a+k,c],[-a,c-k,{c:[-a+k,c-k]}],[-a,-c+k],[-a+k,-c,{c:[-a+k,-c+k]}]]);
+      const e=F({type:'extrude',name:'Pôle '+nom,sketchId:s.id,distance:h2,op:'add',mid:false,upto:null},b);
+      F({type:'fillet',name:'Congé R'+k+' (pôle '+nom+')',target:e.id,radius:k,corners:[],rims:{top:nom==='nord',bottom:nom==='sud'},rimTop:nom==='nord',rimBot:nom==='sud',radii:[]},b); // face extérieure seule
+    }else{
+      const s=stdSketch(d,'Profil pôle '+nom,'XZ',0);stdLoop(s,magHalfProf(m,z0,z0+h2,k,nom==='sud'));
+      F({type:'revolve',name:'Pôle '+nom,sketchId:s.id,axis:{k:'sys',d:'Z'},angle:360,op:'add'},b);
+    }
+  });
+}
 function magInfo(r,g){
   const F=(v,n)=>stdF(+(+v).toFixed(n));
   return r.mat+' '+r.grade+' · Br '+F(r.br[0],3)+' à '+F(r.br[1],3)+' T · '+r.dirTxt+
@@ -19247,6 +19288,7 @@ function stdDoc(sp){
   if(sp.mat)d.mat=sp.mat;
   if(sp.color!=null)d.bodies[0].color=sp.color;
   const F=(f)=>{f.id=uid(f.type==='revolve'?'rv':f.type==='xthread'?'th':f.type==='gear'?'gr':'ex');f.visible=true;f.body='b1';d.features.push(f);return f;};
+  if(sp.mag&&sp.mag.s){magFillDoc(d,sp.mag);return d;} // aimant : deux moitiés, pôle sud vert, pôle nord rouge (48-aimants-interface)
   if(sp.prof){
     const s=stdSketch(d,'Profil','XZ',0);stdLoop(s,sp.prof);
     F({type:'revolve',name:'Révolution',sketchId:s.id,axis:{k:'sys',d:'Z'},angle:360,op:'add'});

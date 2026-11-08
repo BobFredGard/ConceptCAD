@@ -451,6 +451,7 @@ function stdDoc(sp){
   if(sp.mat)d.mat=sp.mat;
   if(sp.color!=null)d.bodies[0].color=sp.color;
   const F=(f)=>{f.id=uid(f.type==='revolve'?'rv':f.type==='xthread'?'th':f.type==='gear'?'gr':'ex');f.visible=true;f.body='b1';d.features.push(f);return f;};
+  if(sp.mag&&sp.mag.s){magFillDoc(d,sp.mag);return d;} // aimant : deux moitiés, pôle sud vert, pôle nord rouge (48-aimants-interface)
   if(sp.prof){
     const s=stdSketch(d,'Profil','XZ',0);stdLoop(s,sp.prof);
     F({type:'revolve',name:'Révolution',sketchId:s.id,axis:{k:'sys',d:'Z'},angle:360,op:'add'});

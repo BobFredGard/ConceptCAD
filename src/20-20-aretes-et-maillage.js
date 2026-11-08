@@ -50,8 +50,11 @@ function rimEdgeJobs(edges,o,n,d,rsTop,rsBot){
       if(len2>0&&Math.abs(tn)>Math.sqrt(len2)*0.7)continue; // arête le long de n (verticale)
       const m=e.mid;
       const t=(m[0]-o.x)*n.x+(m[1]-o.y)*n.y+(m[2]-o.z)*n.z;
-      if(rsTop>0&&Math.abs(t-tHi)<tol){jobs.push({src:e.src,r:rsTop,mid:m&&m.slice()});continue;}
-      if(rsBot>0&&Math.abs(t-tLo)<tol)jobs.push({src:e.src,r:rsBot,mid:m&&m.slice()});
+      // V0.70.0 : chaque arête va au bord le PLUS PROCHE — sur une plaque de moins de 2×tol, une arête
+      // du bas tombait aussi dans la tolérance du haut (aimant fin : la jonction des pôles était arrondie)
+      const dHi=Math.abs(t-tHi),dLo=Math.abs(t-tLo);
+      if(rsTop>0&&dHi<tol&&dHi<=dLo){jobs.push({src:e.src,r:rsTop,mid:m&&m.slice()});continue;}
+      if(rsBot>0&&dLo<tol&&dLo<dHi)jobs.push({src:e.src,r:rsBot,mid:m&&m.slice()});
     }catch(err){}
   }
   return jobs;
