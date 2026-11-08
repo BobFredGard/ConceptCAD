@@ -70,6 +70,15 @@ const b=[
 "  att("+hasSrc('#faoWrap{position:absolute;top:10px;right:10px;')+",\"coque : #faoWrap overlay à droite du canvas (classique)\");",
 "  att(/document\\.body\\.classList\\.contains\\('ui-modern'\\)/.test("+str(S.s10)+"),'src/10 : le mode moderne (ui-modern) est détecté');",
 "  att(/data-ws/.test("+str(S.s10)+"),'src/10 : la détection lit data-ws (espace CAO/FAO)');",
+// --- E) simulation FAO : le rayon de la souris trouve la matière taillée (marche : 10 mm pour x<5, 2 mm au-delà) ---
+"  {const B={x0:0,x1:10,y0:0,y1:10,z0:0,z1:10},M=[{ox:0,oy:0,pas:0.5,nx:20,ny:20,U:[1,0,0],V:[0,1,0],A:[0,0,1],at:function(ix){return ix<10?10:2;}}];",
+"   const T=function(ro,rd){return faoMatterRayHit(M,B,ro,rd);},pres=function(a,b){return a!=null&&Math.abs(a-b)<0.01;};",
+"   att(pres(T([2,5,20],[0,0,-1]),10),'s9 dessus intact : point sur la face du brut');",
+"   att(pres(T([7,5,20],[0,0,-1]),18),'s10 zone creusée : le fond (z=2), pas le dessus du brut');",
+"   att(pres(T([15,5,5],[-1,0,0]),10),'s11 de côté : la paroi de la marche (x=5)');",
+"   att(T([20,5,20],[0,0,-1])===null,'s12 rayon hors du brut : rien');",
+"   att(pres(T([12,5,7],[-Math.SQRT1_2,0,-Math.SQRT1_2]),5*Math.SQRT2),'s13 rayon oblique : le fond (x=7, z=2)');",
+"   att(faoViewerMatterOn()===false&&faoViewerMatterBox()===null,'s14 hors simulation : le pivot habituel reste en place');}",
 "  fin();",
 "  });",
 ];

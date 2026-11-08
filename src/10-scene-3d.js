@@ -348,6 +348,10 @@ function viewHitAt(cx,cy){
   if(!r.width||!r.height)return null;
   const ndc=new THREE.Vector2(((cx-r.left)/r.width)*2-1,-((cy-r.top)/r.height)*2+1);
   rayc.setFromCamera(ndc,camera);
+  // simulation FAO : la matière taillée REMPLACE la pièce, masquée ; son rendu ne se lance pas à la
+  // manière d'un maillage (hauteurs relues : faoViewerMatterHit, src/88-fao-77). Sans elle, la rotation
+  // retombait sur un centre fixe. Le brut du posage n'est pas visé : la matière creusée passe devant.
+  try{if(!(typeof asmMode!=='undefined'&&asmMode==='asm')&&typeof faoViewerMatterOn==='function'&&faoViewerMatterOn())return faoViewerMatterHit(rayc.ray);}catch(e){}
   const objs=[],prev=[];
   try{
     if(typeof asmMode!=='undefined'&&asmMode==='asm'&&typeof asmSceneGet==='function'){
@@ -399,6 +403,7 @@ function orbitPivot(){
   const box=new THREE.Box3();
   try{bodies.forEach(b=>{if(b.visible&&b.mesh&&b.mesh.visible!==false)box.expandByObject(b.mesh);});}catch(e){}
   try{asmCtxSub().forEach(m=>box.expandByObject(m));}catch(e){}
+  try{const B=(typeof faoViewerMatterBox==='function')?faoViewerMatterBox():null;if(B)box.union(B);}catch(e){} // simulation : pièces masquées, le brut simulé les remplace
   try{
     if(typeof faoPoseGrp!=='undefined'&&faoPoseGrp&&faoPoseGrp.parent&&faoPoseGrp.parent.visible!==false)
       faoPoseGrp.traverse(o=>{if(o.isMesh&&o.visible&&o.userData&&o.userData.faoStock)box.expandByObject(o);});

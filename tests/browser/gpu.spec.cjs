@@ -100,6 +100,65 @@ test('Axe, surfaçage + finition boule : taille GPU (shaders) = taille JavaScrip
   expect(err).toEqual([]);
 });
 
+// Centre de rotation en simulation : la matière est masquée aux lancers de rayon habituels et ses
+// hauteurs vivent sur la carte graphique (faoViewerMatterHit, src/88-fao-77).
+test('simulation : la rotation tourne autour du point de matière sous la souris, comme ailleurs',async({page})=>{
+  const err=await demarrer(page);
+  await page.setInputFiles('#fileProj',AXE);
+  await page.waitForFunction(()=>doc&&doc.name==='Axe'&&builtEngine==='exact'&&bodies.some(b=>b.shape)&&faoSolidSettled(),null,{timeout:120000});
+  await page.locator('[data-mfws="fao"]').first().click();
+  await ruban(page,'Surfaçage').click();
+  await page.waitForFunction(()=>faoDoc().ops.some(o=>o.type==='facing'));
+  await page.evaluate(()=>{const s=faoStock();faoDoc().ops.find(o=>o.type==='facing').z=+(s.z1-1.5).toFixed(3);});
+  await ruban(page,'Régénérer').click();
+  await page.waitForFunction(()=>!faoPrevStale&&/FAO : \d+ points de parcours/.test(faceEl.textContent),null,{timeout:120000});
+  // Tout le parcours joué, caméra de biais sur le brut : deux points de la pièce à l'écran.
+  const V=await page.evaluate(()=>{
+    faoViewerModeSet('reel');
+    if(!faoViewerOpen())return {err:'simulation impossible à ouvrir'};
+    const vw=faoVw;vw.t=vw.T;faoViewerMatterEnable(vw,false);
+    if(!vw.cg)return {err:'taille GPU non branchée'};
+    const s=faoStock(),B=faoViewerMatterBox(),C=B.getCenter(new THREE.Vector3()),r=renderer.domElement.getBoundingClientRect();
+    const ecran=q=>{const n=q.clone().project(camera);return {x:r.left+(n.x+1)/2*r.width,y:r.top+(1-n.y)/2*r.height};};
+    camera.position.copy(C).add(new THREE.Vector3(1,-1,1.5).multiplyScalar(B.getSize(new THREE.Vector3()).length()));
+    controls.target.copy(C);camera.up.set(0,0,1);camera.lookAt(C);camera.updateMatrixWorld();controls.update();
+    const P1=new THREE.Vector3(s.x0+(s.x1-s.x0)*0.25,s.y0+(s.y1-s.y0)*0.5,s.z1-1.5).applyMatrix4(vw.matter.matrixWorld);
+    const P2=new THREE.Vector3(s.x0+(s.x1-s.x0)*0.75,s.y0+(s.y1-s.y0)*0.5,s.z1-1.5).applyMatrix4(vw.matter.matrixWorld);
+    const a=ecran(P1),b=ecran(P2);
+    const hA=viewHitAt(a.x,a.y),hB=viewHitAt(b.x,b.y);
+    // Même rayon, tailles JavaScript et carte graphique : même point.
+    const on=faoCarteGOn;faoCarteGOn=()=>false;let hJ;
+    try{faoViewerMatterEnable(vw,false);hJ=viewHitAt(a.x,a.y);}finally{faoCarteGOn=on;}
+    faoViewerMatterEnable(vw,false);
+    return {a,b,dA:hA&&hA.distanceTo(P1),dB:hB&&hB.distanceTo(P2),dJ:hA&&hJ&&hA.distanceTo(hJ),vide:viewHitAt(r.left+4,r.top+4)===null,
+      centre:orbitPivot().distanceTo(C),rendu:!!(vw.rm||vw.gpu)};
+  });
+  console.log('  pivot simulation :',JSON.stringify(V));
+  expect(V.err,V.err).toBeUndefined();
+  expect(V.rendu).toBe(true);
+  expect(V.dA,'point visé sur la matière taillée').toBeLessThan(0.6);
+  expect(V.dB,'second point visé').toBeLessThan(0.6);
+  expect(V.dJ,'relu sur la carte graphique = calculé en JavaScript').toBeLessThan(0.05);
+  expect(V.vide,'dans le vide : pas de point').toBe(true);
+  expect(V.centre,'dans le vide : centre du brut simulé').toBeLessThan(1e-6);
+  // Vrai glisser à la souris : le point visé ne bouge pas à l'écran.
+  const cam0=await page.evaluate(()=>camera.position.toArray());
+  await page.mouse.move(V.a.x,V.a.y);await page.mouse.down();
+  await page.mouse.move(V.a.x+60,V.a.y+25,{steps:6});
+  const piv=await page.evaluate(()=>_fo&&_fo.P&&_fo.P.toArray());
+  await page.waitForTimeout(200);
+  await page.screenshot({path:test.info().outputPath('pivot-simulation.png')});
+  await page.mouse.up();
+  await page.waitForFunction(()=>!_fo);
+  const G=await page.evaluate(p=>{const r=renderer.domElement.getBoundingClientRect(),n=new THREE.Vector3(p[0],p[1],p[2]).project(camera);
+    return {x:r.left+(n.x+1)/2*r.width,y:r.top+(1-n.y)/2*r.height,cam:camera.position.toArray()};},piv);
+  expect(piv,'pivot du glisser').toBeTruthy();
+  expect(Math.hypot(G.cam[0]-cam0[0],G.cam[1]-cam0[1],G.cam[2]-cam0[2]),'la vue a tourné').toBeGreaterThan(1);
+  expect(Math.hypot(G.x-V.a.x,G.y-V.a.y),'le point visé reste sous la souris de départ').toBeLessThan(3);
+  await page.evaluate(()=>faoViewerClose());
+  expect(err).toEqual([]);
+});
+
 // Atelier RENDU, second moteur (src/98-rendu-rayons.js) : three-gpu-pathtracer sur un three récent,
 // empaqueté à part (threejs/rendu-rayons.js) et chargé seulement quand on choisit le moteur.
 test('atelier RENDU, « Lancer de rayons » : chargé à la demande, affinage sur le GPU, PNG 1920×1080',async({page})=>{
