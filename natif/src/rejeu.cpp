@@ -169,7 +169,10 @@ bool replacerHote(Document& d, Esquisse& s) {  // resolveSketchHost
   return true;
 }
 
+bool migrerSansHote(Document& d);
 void replacerHotes(Document& d) {  // resolveAllSketchHosts
+  // La migration du navigateur pose l'hôte ; le rejeu suivant le résout : ici les deux d'affilée
+  migrerSansHote(d);
   for (int pass = 0; pass < 3; pass++) {
     bool bouge = false;
     for (auto& s : d.esquisses)
@@ -1619,11 +1622,14 @@ double deplacementsHote(const Document& d, const Fonction& f, const Vec3& n, con
   }
   return off;
 }
-HoteTrouve hotePourFace(const Document& d, const Vec3& pt, const Vec3& n) {  // findHostForFace, tol 1 mm
+// findHostForFace, tol 1 mm ; lim : seules les fonctions de rang inférieur portent (skHostLimit)
+HoteTrouve hotePourFace(const Document& d, const Vec3& pt, const Vec3& n, int lim = -1) {
   const double tol = 1.0;
   HoteTrouve best;
   double bd = 1e9;
-  for (const Fonction& f : d.fonctions) {
+  for (size_t fi = 0; fi < d.fonctions.size(); fi++) {
+    if (lim >= 0 && static_cast<int>(fi) >= lim) break;
+    const Fonction& f = d.fonctions[fi];
     if (f.type != "extrude" || !f.visible) continue;
     const Esquisse* hs = nullptr;
     for (const Esquisse& s : d.esquisses)
@@ -1708,6 +1714,62 @@ HoteTrouve hotePourFace(const Document& d, const Vec3& pt, const Vec3& n) {  // 
     }
   }
   return best;
+}
+
+// resolveAllSketchHosts, fin : une esquisse sur face restée sans hôte (copie de répétition dont l'hôte
+// était une face latérale, ancien document) prend la face trouvée sous son origine, sinon sous ses points
+bool migrerSansHote(Document& d) {
+  bool ch = false;
+  for (Esquisse& s : d.esquisses) {
+    if (s.plan != "FACE" || s.hote.existe) continue;
+    if (!std::isfinite(s.o[0])) continue;
+    const double ln = std::sqrt(produitVec(s.n, s.n));
+    if (ln < 1e-12) continue;
+    const Vec3 n{s.n[0] / ln, s.n[1] / ln, s.n[2] / ln};
+    int lim = -1;  // skHostLimit : sa première utilisatrice, sinon sa place dans le fil
+    for (size_t i = 0; i < d.fonctions.size() && lim < 0; i++)
+      if (d.fonctions[i].esquisse == s.id || d.fonctions[i].chemin == s.id) lim = static_cast<int>(i);
+    if (lim < 0 && !s.at.empty())
+      for (size_t i = 0; i < d.fonctions.size(); i++)
+        if (d.fonctions[i].id == s.at) lim = static_cast<int>(i) + 1;
+    HoteTrouve h = hotePourFace(d, s.o, n, lim);
+    if (!h.f) {  // hostViaPoints : les points dessinés, jamais une face latérale
+      std::set<std::string> vus;
+      for (const Entite& e : s.entites) {
+        if (e.construction || e.proj || h.f) continue;
+        for (const std::string* id : {&e.p1, &e.p2, &e.pc, &e.p}) {
+          if (h.f || id->empty() || !vus.insert(*id).second) continue;
+          const Pt* q = s.point(*id);
+          if (!q) continue;
+          const Vec3 p{s.o[0] + s.u[0] * q->x + s.v[0] * q->y, s.o[1] + s.u[1] * q->x + s.v[1] * q->y, s.o[2] + s.u[2] * q->x + s.v[2] * q->y};
+          const HoteTrouve c = hotePourFace(d, p, n, lim);
+          if (!c.f || c.tag == "SIDE") continue;
+          const Esquisse* hs = nullptr;
+          for (const Esquisse& x : d.esquisses)
+            if (x.id == c.f->esquisse) hs = &x;
+          if (!hs) continue;
+          const Vec3 dp = diff(s.o, hs->o);
+          h = HoteTrouve{c.f, c.tag, "", fixe3(produitVec(dp, hs->u)), fixe3(produitVec(dp, hs->v)), 0, c.mv};
+        }
+      }
+    }
+    if (!h.f) continue;
+    s.hote = Hote{};
+    s.hote.existe = true;
+    s.hote.feat = h.f->id;
+    s.hote.tag = h.tag;
+    s.hote.x = h.x;
+    s.hote.y = h.y;
+    s.hote.mv = h.mv;
+    s.hote.nom = "Face " + std::to_string(++d.nomsFace);
+    if (h.tag == "SIDE") {
+      s.hote.edge = h.edge;
+      s.hote.h = h.h;
+      s.hote.aH = true;
+    }
+    ch = true;
+  }
+  return ch;
 }
 }  // namespace
 
