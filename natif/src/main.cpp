@@ -35,10 +35,14 @@ namespace {
 std::vector<std::wstring> gArgs;
 
 std::string utf8(const std::wstring& w) {
+#ifndef _WIN32
+  return portable::u8(w.c_str());
+#else
   int n = WideCharToMultiByte(CP_UTF8, 0, w.c_str(), -1, nullptr, 0, nullptr, nullptr);
   std::string s(n > 0 ? n - 1 : 0, '\0');
   if (n > 1) WideCharToMultiByte(CP_UTF8, 0, w.c_str(), -1, s.data(), n, nullptr, nullptr);
   return s;
+#endif
 }
 
 // --normalises <cas.json> <sortie.json> : les pièces normalisées demandées, pour les comparer au navigateur

@@ -16,9 +16,20 @@ namespace {
 // Sans accents ni casse, comme treeNorm
 std::wstring sansAccents(const wxString& s) {
   const std::wstring w = s.ToStdWstring();
+#ifdef _WIN32
   std::wstring d(w.size() * 3 + 8, L'\0');
   const int n = FoldStringW(MAP_COMPOSITE, w.c_str(), static_cast<int>(w.size()), d.data(), static_cast<int>(d.size()));
   d.resize(n > 0 ? n : 0);
+#else
+  // Mac : la lettre sans son accent, pour les lettres accentuées du français et voisines
+  static const std::wstring AVEC = L"àáâãäåçèéêëìíîïñòóôõöùúûüýÿœæÀÁÂÃÄÅÇÈÉÊËÌÍÎÏÑÒÓÔÕÖÙÚÛÜÝŸŒÆ";
+  static const std::wstring SANS = L"aaaaaaceeeeiiiinooooouuuuyyoaAAAAAACEEEEIIIINOOOOOUUUUYYOA";
+  std::wstring d;
+  for (const wchar_t c : w) {
+    const size_t k = AVEC.find(c);
+    d.push_back(k == std::wstring::npos ? c : SANS[k]);
+  }
+#endif
   std::wstring out;
   for (const wchar_t c : d)
     if (c < 0x300 || c > 0x36f) out.push_back(c);

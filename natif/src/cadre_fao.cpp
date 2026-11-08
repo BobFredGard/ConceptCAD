@@ -545,11 +545,15 @@ void Cadre::faoEssai(const plan::J& e) {
     const wxLongLong fin = wxGetLocalTimeMillis() + e["pause"].get<long>();
     // Comme la vraie boucle du programme : l'essai tourne avant elle, et les minuteries ne passent pas par wxYield
     while (wxGetLocalTimeMillis() < fin) {
+#ifdef _WIN32
       MSG msg;
       while (PeekMessage(&msg, nullptr, 0, 0, PM_REMOVE)) {
         TranslateMessage(&msg);
         DispatchMessage(&msg);
       }
+#else
+      wxYield();
+#endif
       wxTheApp->ProcessPendingEvents();
       Sleep(2);
     }

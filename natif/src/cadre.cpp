@@ -345,9 +345,13 @@ Cadre::Cadre() : wxFrame(nullptr, wxID_ANY, L"ConceptCAD natif"), asmAnim_(this)
       // Le caractère tapé, selon le clavier : « ? » est Maj + virgule sur un clavier français
       wchar_t car = 0;
       if (e.ShiftDown() && !e.ControlDown() && !e.AltDown()) {
+#ifndef _WIN32
+        car = e.GetUnicodeKey() != WXK_NONE ? static_cast<wchar_t>(e.GetUnicodeKey()) : 0;
+#else
         BYTE touches[256] = {};
         wchar_t b[4] = {};
         if (GetKeyboardState(touches) && ToUnicode(e.GetRawKeyCode(), MapVirtualKeyW(e.GetRawKeyCode(), MAPVK_VK_TO_VSC), touches, b, 4, 4) == 1) car = b[0];
+#endif
       }
       if (raccourciGlobal(e.GetKeyCode(), car, e.ControlDown(), e.AltDown(), e.ShiftDown(), (e.GetRawKeyFlags() & (1u << 30)) != 0)) return;
     }

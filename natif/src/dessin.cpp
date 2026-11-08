@@ -12,6 +12,8 @@
 #include "dessin_commun.h"
 #include "maths_js.h"
 
+Dessin::ReglagesPolygone Dessin::poly_;
+
 namespace {
 constexpr double SK_OK = 0.05;
 
@@ -3659,7 +3661,7 @@ void Dessin::validerSaisie() {
   double val = 0;
   const char* debut = dyn_.texte.data();
   const char* fin = debut + dyn_.texte.size();
-  const auto lu = std::from_chars(debut, fin, val);
+  const auto lu = cc::from_chars(debut, fin, val);
   if (lu.ec != std::errc() || !(val > 0)) {
     message("Valeur invalide.");
     dyn_ = Saisie{};
@@ -5028,7 +5030,7 @@ void Dessin::appliquerDecalage(const std::vector<std::string>& ids, double D, do
 
 bool Dessin::distanceTapee(double& D) {
   const char* debut = dyn_.texte.data();
-  const auto lu = std::from_chars(debut, debut + dyn_.texte.size(), D);
+  const auto lu = cc::from_chars(debut, debut + dyn_.texte.size(), D);
   if (lu.ec == std::errc() && D >= 0.001) return true;
   message("Décalage : distance invalide, retapez-la ou cliquez le côté.");
   dyn_ = Saisie{};

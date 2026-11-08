@@ -463,7 +463,7 @@ class Dessin {
   std::string coinA_, passeCoin_;  // skCornA ; skFilletSess : le premier coin de la passe
   bool passeConge_ = false, coinOutilConge_ = false;
   static constexpr double filletR_ = 5, chamferD_ = 5;  // skFilletR, skChamferD
-  static inline ReglagesPolygone poly_;
+  static ReglagesPolygone poly_;  // défini dans dessin.cpp
   static inline double offsetD_ = 5;  // skOffsetD : la distance « auto » du menu
   void reinitTexteCote(const std::string& id);  // skDimResetText
   void basculerAxe(const std::string& ligne);   // skToggleAxis

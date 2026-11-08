@@ -1571,7 +1571,7 @@ Esquisse esquisseVide(const Document& d, const std::string& plan) {
 std::string nombreNom(double v) {  // comme un nombre JavaScript écrit dans un nom
   if (v == 0) return "0";
   char b[64];
-  const auto r = std::to_chars(b, b + sizeof b, v, std::chars_format::fixed);
+  const auto r = cc::to_chars(b, b + sizeof b, v, std::chars_format::fixed);
   return std::string(b, r.ptr);
 }
 

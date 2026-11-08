@@ -55,8 +55,7 @@ void MoteurFao::arreter() {
   if (sortie_) close(versFd(sortie_));
   sortie_ = nullptr;
   enMarche_ = pret_ = false;
-  return;
-#endif
+#else
   if (entree_) CloseHandle(static_cast<HANDLE>(entree_));
   entree_ = nullptr;
   if (proc_) {
@@ -68,6 +67,7 @@ void MoteurFao::arreter() {
   if (sortie_) CloseHandle(static_cast<HANDLE>(sortie_));
   sortie_ = nullptr;
   enMarche_ = pret_ = false;
+#endif
 }
 
 void MoteurFao::demarrer(const std::function<void(bool, const std::string&)>& pret) {

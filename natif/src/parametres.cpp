@@ -430,7 +430,7 @@ std::string nombreJs(double v) {
   if (v == 0) return "0";
   char b[400];
   const double a = std::abs(v);
-  const auto r = a >= 1e21 || a < 1e-6 ? std::to_chars(b, b + sizeof b, v, std::chars_format::scientific) : std::to_chars(b, b + sizeof b, v, std::chars_format::fixed);
+  const auto r = a >= 1e21 || a < 1e-6 ? cc::to_chars(b, b + sizeof b, v, std::chars_format::scientific) : cc::to_chars(b, b + sizeof b, v, std::chars_format::fixed);
   std::string t(b, r.ptr);
   // 1e+21 et 1e-7 comme JavaScript : pas de zéro devant l'exposant
   const size_t e = t.find('e');

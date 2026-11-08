@@ -10,7 +10,9 @@
 #include <wx/dcmemory.h>
 #include <wx/graphics.h>
 #include <wx/statline.h>
+#ifdef _WIN32
 #include <wx/msw/wrapwin.h>
+#endif
 
 #include <algorithm>
 #include <cmath>

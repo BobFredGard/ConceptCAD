@@ -14,7 +14,7 @@ inline std::string texte(double v) {
   if (std::isinf(v)) return v > 0 ? "Infinity" : "-Infinity";
   if (v == 0) return "0";
   char b[64];
-  const auto r = std::to_chars(b, b + sizeof b, v);
+  const auto r = cc::to_chars(b, b + sizeof b, v);
   return std::string(b, r.ptr);
 }
 // v.toFixed(n) : à égalité exacte, on s'éloigne de zéro (printf choisirait le chiffre pair)

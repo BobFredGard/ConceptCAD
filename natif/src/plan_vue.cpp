@@ -38,6 +38,12 @@
 #include <cmath>
 #include <set>
 #include <sstream>
+#include <array>
+#include <vector>
+#ifndef _WIN32
+// Le contour d'un symbole pour le PDF, lu dans la police de symboles du Mac (mac.mm)
+void contourGlypheMac(wchar_t ch, std::vector<std::vector<std::array<double, 2>>>& boucles, double& avance);
+#endif
 
 namespace {
 const double PI = 3.14159265358979323846;

@@ -32,7 +32,7 @@ inline double fixe(double v, int chiffres) {
     }
   }
   double r = 0;
-  std::from_chars(t.data(), t.data() + t.size(), r);  // sans dépendre des réglages régionaux
+  cc::from_chars(t.data(), t.data() + t.size(), r);  // sans dépendre des réglages régionaux
   return r;
 }
 

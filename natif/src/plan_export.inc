@@ -248,6 +248,9 @@ ContourGlyphe contourDe(wchar_t ch) {
   const auto it = cache.find(ch);
   if (it != cache.end()) return it->second;
   ContourGlyphe G;
+#ifndef _WIN32
+  contourGlypheMac(ch, G.boucles, G.avance);  // mac.mm : même contour, lu dans la police de symboles du Mac
+#else
   const double E = 2048;
   HDC dc = CreateCompatibleDC(nullptr);
   HFONT f = CreateFontW(-static_cast<int>(E), 0, 0, 0, FW_NORMAL, 0, 0, 0, DEFAULT_CHARSET, OUT_TT_ONLY_PRECIS, CLIP_DEFAULT_PRECIS, DEFAULT_QUALITY, DEFAULT_PITCH, L"Segoe UI Symbol");
@@ -290,6 +293,7 @@ ContourGlyphe contourDe(wchar_t ch) {
   SelectObject(dc, avant);
   DeleteObject(f);
   DeleteDC(dc);
+#endif
   cache[ch] = G;
   return G;
 }

@@ -19,6 +19,11 @@
 #ifdef _WIN32
 #include <windows.h>
 #endif
+#ifndef _WIN32
+#include <fcntl.h>
+#include <sys/file.h>
+#include <unistd.h>
+#endif
 #include <chrono>
 #include <ctime>
 #include <filesystem>
@@ -88,7 +93,21 @@ std::vector<Orphelin> orphelins() {
     if (base.rfind(L"brouillon-", 0) != 0) continue;
     const std::wstring verrou = (p.parent_path() / (L"session-" + base.substr(10) + L".verrou")).wstring();
     // Un verrou tenu ne se laisse pas supprimer ; après une coupure de courant il reste là, mais plus personne ne le tient
+#ifdef _WIN32
     if (!DeleteFileW(verrou.c_str()) && GetLastError() == ERROR_SHARING_VIOLATION) continue;
+#else
+    // Mac : le verrou d'une session vivante est tenu (flock) ; sinon on le retire
+    {
+      const std::string v8 = portable::u8(verrou.c_str());
+      const int fd = ::open(v8.c_str(), O_RDWR);
+      if (fd >= 0) {
+        const bool tenu = ::flock(fd, LOCK_EX | LOCK_NB) != 0;
+        ::close(fd);
+        if (tenu) continue;
+        ::unlink(v8.c_str());
+      }
+    }
+#endif
     Orphelin o;
     o.texte = p.wstring();
     o.meta = (p.parent_path() / (base + L".json")).wstring();
@@ -164,7 +183,16 @@ void Cadre::secoursDemarrer() {
   secoursId_ = std::to_wstring(GetCurrentProcessId()) + L"-" + std::to_wstring(GetTickCount64());
   const std::wstring verrou = dossierSecours() + SEPW L"session-" + secoursId_ + L".verrou";
   // Gardé ouvert jusqu'à la fin du programme : Windows le ferme et l'efface, même après un plantage
+#ifdef _WIN32
   secoursVerrou_ = CreateFileW(verrou.c_str(), GENERIC_WRITE, 0, nullptr, CREATE_ALWAYS, FILE_ATTRIBUTE_TEMPORARY | FILE_FLAG_DELETE_ON_CLOSE, nullptr);
+#else
+  // Mac : verrou tenu tant que le programme vit ; le système le relâche même après un plantage
+  {
+    const int fd = ::open(portable::u8(verrou.c_str()).c_str(), O_RDWR | O_CREAT, 0644);
+    if (fd >= 0) ::flock(fd, LOCK_EX | LOCK_NB);
+    secoursVerrou_ = reinterpret_cast<void*>(static_cast<intptr_t>(fd + 1));
+  }
+#endif
   secoursMinuteur_.SetOwner(this);
   Bind(wxEVT_TIMER, [this](wxTimerEvent&) { secoursEcrire(false); }, secoursMinuteur_.GetId());
   secoursMinuteur_.Start(4000);

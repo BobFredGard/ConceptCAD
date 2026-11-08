@@ -3,7 +3,9 @@
 #include "environnement.h"
 
 #include <wx/dcbuffer.h>
+#ifdef _WIN32
 #include <wx/msw/wrapwin.h>
+#endif
 #include <wx/graphics.h>
 
 #include <algorithm>

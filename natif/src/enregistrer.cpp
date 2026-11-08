@@ -5,7 +5,9 @@
 #ifdef _WIN32
 #include <windows.h>
 #endif
+#ifdef _WIN32
 #include <io.h>
+#endif
 #include <zlib.h>
 
 #include <algorithm>
@@ -96,7 +98,7 @@ std::string nombreJson(double v) {
   if (!std::isfinite(v)) throw std::runtime_error("valeur de cote incorrecte, rien n'a été écrit");
   if (v == 0) return "0";  // -0 s'écrit 0, comme JSON.stringify
   char b[64];
-  const auto r = std::to_chars(b, b + sizeof b, v);  // le plus court qui redonne exactement le même nombre
+  const auto r = cc::to_chars(b, b + sizeof b, v);  // le plus court qui redonne exactement le même nombre
   return std::string(b, r.ptr);
 }
 

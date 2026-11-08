@@ -31,7 +31,7 @@ set_target_properties(ConceptCADNatif PROPERTIES RUNTIME_OUTPUT_DIRECTORY_RELEAS
 foreach(BANC BancDessin BancDessinCommunes)
   add_executable(${BANC} src/banc_dessin.cpp src/dessin.cpp src/traces.cpp src/solveur.cpp src/spline.cpp src/projet.cpp src/configurations_lire.cpp src/repetitions.cpp src/profil_guide.cpp src/enregistrer.cpp src/infos_esquisse.cpp src/contours.cpp)
   target_compile_definitions(${BANC} PRIVATE UNICODE _UNICODE _CRT_SECURE_NO_WARNINGS NOMINMAX SANS_NOYAU)
-  target_compile_options(${BANC} PRIVATE /utf-8 /MP /EHa /W3)
+  target_compile_options(${BANC} PRIVATE /utf-8 /MP /EHa /W3 "/FI${CMAKE_CURRENT_SOURCE_DIR}/src/portable.h")
   target_include_directories(${BANC} PRIVATE "${TIERS}" "${TROIS}/zlib-1.2.8-vc14-64/include")
   target_link_directories(${BANC} PRIVATE "${TROIS}/zlib-1.2.8-vc14-64/lib")
   target_link_libraries(${BANC} PRIVATE zlib)
@@ -42,7 +42,7 @@ target_compile_definitions(BancDessinCommunes PRIVATE SOLVEUR_MATHS_COMMUNES)
 # Banc du solveur d'esquisse : sans fenêtre ni noyau, comparé aux résultats du navigateur
 add_executable(BancSolveur src/banc_solveur.cpp src/solveur.cpp src/spline.cpp src/projet.cpp src/configurations_lire.cpp src/repetitions.cpp src/profil_guide.cpp)
 target_compile_definitions(BancSolveur PRIVATE UNICODE _UNICODE _CRT_SECURE_NO_WARNINGS NOMINMAX)
-target_compile_options(BancSolveur PRIVATE /utf-8 /MP /EHa /W3)
+target_compile_options(BancSolveur PRIVATE /utf-8 /MP /EHa /W3 "/FI${CMAKE_CURRENT_SOURCE_DIR}/src/portable.h")
 target_include_directories(BancSolveur PRIVATE "${TIERS}" "${TROIS}/zlib-1.2.8-vc14-64/include")
 target_link_directories(BancSolveur PRIVATE "${TROIS}/zlib-1.2.8-vc14-64/lib")
 target_link_libraries(BancSolveur PRIVATE zlib)
@@ -51,7 +51,7 @@ set_target_properties(BancSolveur PROPERTIES RUNTIME_OUTPUT_DIRECTORY_RELEASE "$
 # Le même banc avec les mêmes sinus, cosinus et arc tangente que la référence (--communes) : il doit tomber juste au dernier chiffre près
 add_executable(BancSolveurCommunes src/banc_solveur.cpp src/solveur.cpp src/spline.cpp src/projet.cpp src/configurations_lire.cpp src/repetitions.cpp src/profil_guide.cpp)
 target_compile_definitions(BancSolveurCommunes PRIVATE UNICODE _UNICODE _CRT_SECURE_NO_WARNINGS NOMINMAX SOLVEUR_MATHS_COMMUNES)
-target_compile_options(BancSolveurCommunes PRIVATE /utf-8 /MP /EHa /W3)
+target_compile_options(BancSolveurCommunes PRIVATE /utf-8 /MP /EHa /W3 "/FI${CMAKE_CURRENT_SOURCE_DIR}/src/portable.h")
 target_include_directories(BancSolveurCommunes PRIVATE "${TIERS}" "${TROIS}/zlib-1.2.8-vc14-64/include")
 target_link_directories(BancSolveurCommunes PRIVATE "${TROIS}/zlib-1.2.8-vc14-64/lib")
 target_link_libraries(BancSolveurCommunes PRIVATE zlib)
@@ -80,7 +80,7 @@ set_target_properties(ConceptCADNatif PROPERTIES
   MACOSX_BUNDLE_ICON_FILE "ConceptCAD.icns"
   MACOSX_BUNDLE_INFO_PLIST "${CMAKE_CURRENT_SOURCE_DIR}/mac/Info.plist.in")
 target_compile_definitions(ConceptCADNatif PRIVATE UNICODE _UNICODE GL_SILENCE_DEPRECATION)
-target_compile_options(ConceptCADNatif PRIVATE -include "${CMAKE_CURRENT_SOURCE_DIR}/src/portable.h" -Wno-deprecated-declarations -Wno-unused-parameter)
+target_compile_options(ConceptCADNatif PRIVATE -include "${CMAKE_CURRENT_SOURCE_DIR}/src/portable.h" -Wno-deprecated-declarations -Wno-unused-parameter -ferror-limit=0)
 target_include_directories(ConceptCADNatif PRIVATE "${TIERS_MAC}/include/opencascade" "${TIERS_MAC}/include" "${CMAKE_CURRENT_SOURCE_DIR}/src")
 target_link_libraries(ConceptCADNatif PRIVATE ${wxWidgets_LIBRARIES}
   TKernel TKMath TKG2d TKG3d TKGeomBase TKBRep TKGeomAlgo TKTopAlgo TKPrim TKBO TKShHealing TKMesh
