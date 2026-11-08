@@ -8,7 +8,7 @@ sont sorties le 2026-09-30j.
 Code dans `src/` · livrable `fusion_mvp.html` (généré par `build.js`) · architecture et
 garde-fous en tête de `src/00-entete-et-outils.js`.
 
-**612 versions**, de `2026-09-28b` à `V0.70.0` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
+**613 versions**, de `2026-09-28b` à `V0.70.1` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
 comme dans le fichier d'origine.
 
 ---
@@ -7037,5 +7037,13 @@ Barquette ne perd plus son solide à la 107e modification, et sa mémoire ne mon
 - **Correctif** : congé des bords haut/bas d'une extrusion (`rimEdgeJobs`) : chaque arête va au bord le plus proche. Sur une plaque de moins de 1,2 mm, les arêtes d'un bord tombaient aussi dans la tolérance de l'autre et étaient arrondies à tort (repéré par la session native sur Q-05-04-01-N).
 - **Parcours FAO et `CACHE_VER`** inchangés.
 - **Test** : `test_aimants` : deux corps par aimant, volume de chaque moitié = moitié de l'aimant entier arrondi (calcul exact), couleurs sud vert / nord rouge, plus le pavé fin Q-05-04-01-N.
+
+---
+## V0.70.1 - Plusieurs aimants : lignes du champ additionné
+
+- **Demande** : « Peux-tu montrer le champ de 2 aimants qui se rapprochent, ou plusieurs à la fois ? ». Jusqu'ici chaque aimant montrait son propre champ, comme s'il était seul.
+- **Nouveauté** : dès que deux aimants au moins sont posés et que l'un a ses lignes affichées, les lignes suivent le champ ADDITIONNÉ de tous les aimants visibles (ceux aux lignes masquées comptent aussi), quels que soient leur forme, leur position et leur orientation. Attraction : les lignes passent d'un aimant à l'autre ; répulsion : elles sont chassées sur les côtés. Lignes en repère de la scène, recalculées quand un aimant bouge, allégées pendant le déplacement à la souris (environ 40 lignes) puis complètes au relâché ; pas de tracé variable, fin près des aimants. Limite : aimantation de chaque aimant inchangée par ses voisins, acier voisin non pris en compte.
+- **Parcours FAO et `CACHE_VER`** inchangés.
+- **Test** : `test_aimants` : un aimant seul retrouve le champ d'avant, aimant retourné et déplacé, champs qui s'additionnent, attraction (100 % des lignes passent dans l'autre aimant) contre répulsion (0 %), temps de calcul. Vérifié à l'écran : attraction, répulsion, trois aimants dont un pavé couché.
 
 ---

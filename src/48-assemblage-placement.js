@@ -153,6 +153,7 @@ function asmGizmoUp(){
   const o=asmOcc(D.occ);
   const same=o&&JSON.stringify(o.fr)===JSON.stringify(D.fr0)&&(!D.dof||JSON.stringify((o.align&&o.align.q)||{})===JSON.stringify(D.q0||{}));
   if(!D.moved||same){asmUndoStack.pop();try{asmDraw();}catch(e){}return;}
+  try{asmDraw();}catch(e){} // lignes de champ de plusieurs aimants : pleine finesse une fois posé (48-aimants-interface)
   asmNotify();
 }
 try{document.addEventListener('pointerdown',asmGizmoDown,true);}catch(e){} // tests VM : document simplifié

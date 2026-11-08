@@ -136,3 +136,79 @@ function magLineGeo(m){
   g.setAttribute('color',new THREE.Float32BufferAttribute(C,3));
   return g;
 }
+/* ── V0.70.1 : plusieurs aimants à la fois — champ additionné ──
+   Les champs s'ajoutent (superposition) : chaque aimant reste à aimantation uniforme, sans effet
+   des autres sur son aimantation (vrai pour le NdFeB et la ferrite loin de leur coercivité).
+   M = [{m, F:{o,x,y,z} (repère de l'aimant dans la scène, orthonormé), on}] ; les lignes partent
+   de la face nord des aimants « on », et de leur face sud en remontant le champ pour celles
+   qui viennent de l'infini (sinon elles seraient comptées deux fois). */
+function magToLoc(F,p){const d=[p[0]-F.o[0],p[1]-F.o[1],p[2]-F.o[2]];return [d[0]*F.x[0]+d[1]*F.x[1]+d[2]*F.x[2],d[0]*F.y[0]+d[1]*F.y[1]+d[2]*F.y[2],d[0]*F.z[0]+d[1]*F.z[1]+d[2]*F.z[2]];}
+function magToWorld(F,l){return [0,1,2].map(j=>F.o[j]+l[0]*F.x[j]+l[1]*F.y[j]+l[2]*F.z[j]);}
+function magFieldMulti(M,p){
+  const B=[0,0,0];
+  for(const A of M){const l=magToLoc(A.F,p),b=magField(A.m,l[0],l[1],l[2]);for(let j=0;j<3;j++)B[j]+=b[0]*A.F.x[j]+b[1]*A.F.y[j]+b[2]*A.F.z[j];}
+  return B;
+}
+function magInsideMulti(M,p){for(let i=0;i<M.length;i++){const l=magToLoc(M[i].F,p);if(magInside(M[i].m,l[0],l[1],l[2]))return i;}return -1;}
+function magSceneBounds(M){
+  // centre et rayon de l'ensemble des aimants
+  const P=[];M.forEach(A=>{const s=magSize(A.m);[[0,0,0],[0,0,A.m.h]].forEach(l=>P.push({p:magToWorld(A.F,l),s}));});
+  const c=[0,1,2].map(j=>P.reduce((t,q)=>t+q.p[j],0)/P.length);
+  return {c,r:Math.max(...P.map(q=>Math.hypot(q.p[0]-c[0],q.p[1]-c[1],q.p[2]-c[2])+q.s))};
+}
+function magTraceMulti(M,seed,step,sign,bd,maxN){
+  // → {pts, end : indice de l'aimant atteint, -1 = parti au loin}
+  const dir=p=>{const B=magFieldMulti(M,p),n=Math.hypot(B[0],B[1],B[2])||1e-30;return [sign*B[0]/n,sign*B[1]/n,sign*B[2]/n];};
+  let p=seed.slice();const pts=[p],R=bd.r*4;
+  // pas variable : fin près des aimants, jusqu’à 16 fois plus long loin d'eux (le champ y varie lentement)
+  const C=M.map(A=>({c:magToWorld(A.F,[0,0,A.m.h/2]),s:magSize(A.m)}));
+  for(let i=0;i<maxN;i++){
+    let g=16;for(const q of C){const d=Math.hypot(p[0]-q.c[0],p[1]-q.c[1],p[2]-q.c[2])/q.s;if(d<g)g=d;}
+    const h=step*Math.max(1,Math.min(16,g));
+    const k1=dir(p),k2=dir(p.map((v,j)=>v+h/2*k1[j])),k3=dir(p.map((v,j)=>v+h/2*k2[j])),k4=dir(p.map((v,j)=>v+h*k3[j]));
+    p=p.map((v,j)=>v+h/6*(k1[j]+2*k2[j]+2*k3[j]+k4[j]));
+    if(!p.every(isFinite))break;
+    pts.push(p);
+    if(i>1){const k=magInsideMulti(M,p);if(k>=0)return {pts,end:k};}
+    if(Math.hypot(p[0]-bd.c[0],p[1]-bd.c[1],p[2]-bd.c[2])>R)return {pts,end:-1};
+  }
+  return {pts,end:-2};
+}
+function magLinesMulti(M,opt){
+  // opt.fast : environ 40 lignes en tout, pas double (pendant un déplacement à la souris)
+  const fast=opt&&opt.fast,bd=magSceneBounds(M),out=[];
+  M.forEach((A,ia)=>{
+    if(!A.on)return;
+    const S=magSize(A.m),step=S/(fast?12:24),maxN=1500;
+    let seeds=magSeeds(A.m);
+    if(fast){const n=M.filter(B=>B.on).length,k=Math.max(2,Math.ceil(n*seeds.length/40));seeds=seeds.filter((s,i)=>i%k===0);} // ~40 lignes en tout pendant le déplacement
+    seeds.forEach(s=>{
+      const T=magTraceMulti(M,magToWorld(A.F,s),step,1,bd,maxN);out.push({pts:T.pts,closed:T.end>=0,from:ia,to:T.end});
+      // face sud, en remontant : seulement les lignes venues de loin ou d'un aimant dont on ne trace pas les lignes
+      const u=magToWorld(A.F,[s[0],s[1],-magSize(A.m)*1e-3]),Q=magTraceMulti(M,u,step,-1,bd,maxN);
+      if(Q.end<0||!M[Q.end].on)out.push({pts:Q.pts.reverse(),closed:false,from:ia,to:-1,back:true});
+    });
+  });
+  return out;
+}
+function magLineGeoMulti(M,opt){
+  // Lignes de l'ensemble, dans le repère de la scène ; couleur = intensité du champ additionné
+  const P=[],C=[],brMax=Math.max(...M.map(A=>A.m.Br),2e-3),lo=Math.log(1e-3),hi=Math.log(brMax);
+  const col=p=>{const B=magFieldMulti(M,p),n=Math.max(Math.hypot(B[0],B[1],B[2]),1e-6);return magColor(Math.max(0,Math.min(1,(Math.log(n)-lo)/(hi-lo))));};
+  const seg=(a,b,c)=>{P.push(a[0],a[1],a[2],b[0],b[1],b[2]);C.push(c.r,c.g,c.b,c.r,c.g,c.b);};
+  magLinesMulti(M,opt).forEach(L=>{
+    const Q=L.pts,st=Math.max(1,Math.round(Q.length/120)),w=magSize(M[L.from].m)*0.05;
+    let prev=Q[0];
+    for(let i=st;i<Q.length||prev!==Q[Q.length-1];i+=st){const q=Q[Math.min(i,Q.length-1)];seg(prev,q,col(q));prev=q;}
+    if(Q.length<4)return;
+    const i=Math.floor(Q.length/2),a=Q[i],b=Q[Math.min(i+1,Q.length-1)];
+    let d=[b[0]-a[0],b[1]-a[1],b[2]-a[2]],l=Math.hypot(d[0],d[1],d[2])||1;d=d.map(v=>v/l);
+    let u=[-d[2],0,d[0]];if(Math.hypot(u[0],u[1],u[2])<1e-3)u=[1,0,0];
+    const lu=Math.hypot(u[0],u[1],u[2]);u=u.map(v=>v/lu);
+    const k=col(a);seg(a,[0,1,2].map(j=>a[j]-w*d[j]+w*.5*u[j]),k);seg(a,[0,1,2].map(j=>a[j]-w*d[j]-w*.5*u[j]),k);
+  });
+  const g=new THREE.BufferGeometry();
+  g.setAttribute('position',new THREE.Float32BufferAttribute(P,3));
+  g.setAttribute('color',new THREE.Float32BufferAttribute(C,3));
+  return g;
+}

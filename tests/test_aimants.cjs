@@ -77,6 +77,23 @@ const {loadApp}=require('./appvm.cjs');
     A(hole,'12 : anneau : des lignes passent par le trou');
     const t0=Date.now();magLines(disc);magLines(ring);magLines(box);
     A(Date.now()-t0<2000,'13 : lignes des trois aimants : '+(Date.now()-t0)+' ms');
+    // ── 5b. V0.70.1 : plusieurs aimants, champ additionné ──
+    const Id={o:[0,0,0],x:[1,0,0],y:[0,1,0],z:[0,0,1]};
+    const P1=[3,-4,12],one=magFieldMulti([{m:disc,F:Id}],P1),ref1=magField(disc,...P1);
+    A(Math.hypot(one[0]-ref1[0],one[1]-ref1[1],one[2]-ref1[2])<1e-12,'13b : un aimant seul : même champ qu’avant');
+    // aimant retourné et déplacé : son champ en un point = celui de l'aimant de base au point ramené dans son repère
+    const Fr={o:[10,5,30],x:[1,0,0],y:[0,-1,0],z:[0,0,-1]},P2=[14,3,12],l=magToLoc(Fr,P2),bl=magField(disc,...l);
+    const bw=magFieldMulti([{m:disc,F:Fr}],P2),ex2=[bl[0],-bl[1],-bl[2]];
+    A(Math.hypot(bw[0]-ex2[0],bw[1]-ex2[1],bw[2]-ex2[2])<1e-12,'13c : aimant retourné et déplacé : champ tourné avec lui');
+    const two=[{m:disc,F:Id},{m:box,F:Fr}],s2=magFieldMulti(two,P1),a2=magFieldMulti([two[0]],P1),b2=magFieldMulti([two[1]],P1);
+    A([0,1,2].every(j=>Math.abs(s2[j]-a2[j]-b2[j])<1e-12),'13d : deux aimants : les champs s’additionnent');
+    // nord face au sud (attraction) : les lignes du premier entrent dans le second ; nord face au nord : non
+    const pile=(gap,flip)=>[{m:disc,F:Id,on:true},{m:disc,on:false,F:flip?{o:[0,0,disc.h*2+gap],x:[1,0,0],y:[0,-1,0],z:[0,0,-1]}:{o:[0,0,disc.h+gap],x:[1,0,0],y:[0,1,0],z:[0,0,1]}}];
+    const into=M=>{const L=magLinesMulti(M,{}).filter(T=>!T.back);return L.filter(T=>T.to===1).length/L.length;};
+    const att=into(pile(4,false)),rep=into(pile(4,true));
+    A(att>0.5&&rep<0.05,'13e : attraction : '+Math.round(att*100)+' % des lignes passent dans l’autre aimant ; répulsion : '+Math.round(rep*100)+' %');
+    const t1=Date.now();magLinesMulti(pile(4,true),{});
+    A(Date.now()-t1<1500,'13f : deux aimants : '+(Date.now()-t1)+' ms');
     // ── 6. pièce ──
     docResetEmpty();doc.name='Banc';
     const cyl=MAG_CAT.find(r=>r.s==='cyl'&&r.mat==='NdFeB');
