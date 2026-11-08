@@ -47,6 +47,21 @@ Différences avec l'esquisse du navigateur : tout est en blanc, car le bleu « e
 pas de bouton pour la grille, masquée comme par défaut dans le navigateur. La pièce derrière l'esquisse n'est qu'un tracé de ses arêtes, et n'apparaît que si le solide est calculé.
 Les pointes des cotes d'angle suivent l'arc, alors que celles du navigateur en dévient légèrement.
 
+## Version Mac (étape 1, 08/11/2026)
+
+Le même code, compilé pour Mac (puces Apple et Intel dans le même fichier), sur un Mac de GitHub : [natif-mac.yml](../.github/workflows/natif-mac.yml).
+OCCT 8.0.1, wxWidgets 3.3.4 et FreeType y sont compilés depuis leurs sources officielles ([mac/dependances.sh](mac/dependances.sh)), une fois, puis gardés en cache.
+[mac/construire.sh](mac/construire.sh) fabrique l'application et le DMG ; l'icône est celle de la version native Windows ([mac/icone.cjs](mac/icone.cjs)).
+
+Le DMG : en bas du dernier passage réussi de « Natif Mac », sur la page Actions du dépôt (`ConceptCAD-natif-Mac-dmg`). Au premier lancement, le Mac le bloque
+(application sans compte développeur Apple) : Réglages Système > Confidentialité et sécurité > « Ouvrir quand même », ou `xattr -cr "/Applications/ConceptCAD natif.app"`.
+
+Ce qui change dans le code : [src/portable.h](src/portable.h) remplace sur Mac les quelques fonctions de Windows (fichiers, dossiers, chronomètre) et n'ajoute rien sous Windows ;
+[src/mac.mm](src/mac.mm) donne à OCCT sa vue Cocoa et mesure les textes de la mise en plan. Sous Windows, le programme compile et calcule comme avant (`--verif` du Drapeau identique).
+
+Pas encore sur Mac : la vitre floutée sous les arbres (cartes opaques), le film MP4, les photos de fenêtres des essais automatiques, la mise à jour par Internet,
+le moteur FAO joint à l'application (il cherche Node.js installé sur le Mac), et la 3D à pleine finesse sur écran Retina (dessinée en points pour que les clics tombent juste).
+
 ## Lancer et reconstruire
 
 ```bash
