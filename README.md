@@ -11,7 +11,7 @@
 
 ![Support de pédale déportée R1200RT en alu anodisé rouge sur béton, lancer de rayons de l'atelier RENDU (2048 échantillons)](docs/captures/rendu-pedale.jpg)
 
-Le noyau géométrique exact est **OpenCascade 8 compilé en WebAssembly** par nos soins (recette reproductible dans `occt-build/`), en deux versions : **multicœur**, choisie toute seule quand le navigateur et le PC le permettent et écrite dans la barre d'état, et normale, sur un seul cœur, qui reste celle du fichier autonome. S'il n'est pas disponible, l'application bascule seule sur un moteur maillage (CSG). Version actuelle : **V0.69.1** (voir le [journal des modifications](CHANGELOG.md)).
+Le noyau géométrique exact est **OpenCascade 8 compilé en WebAssembly** par nos soins (recette reproductible dans `occt-build/`), en deux versions : **multicœur**, choisie toute seule quand le navigateur et le PC le permettent et écrite dans la barre d'état, et normale, sur un seul cœur, qui reste celle du fichier autonome. S'il n'est pas disponible, l'application bascule seule sur un moteur maillage (CSG). Version actuelle : **V0.69.2** (voir le [journal des modifications](CHANGELOG.md)).
 
 **Pas d'Internet sur le poste ?** La [version autonome](https://www.dropbox.com/scl/fi/sne7f5a9y8dr659b2xrow/ConceptCAD-autonome.html?rlkey=fgd0w1r5816ake50vxtd4fnuj&dl=0) tient en un seul fichier à télécharger, qui s'ouvre par double-clic (voir [Démarrage](#démarrage)).
 
@@ -47,7 +47,7 @@ C'est le même logiciel partout, et les projets `.conceptcad` passent de l'un à
 | **Application Mac** | Travailler sur Mac (macOS 12 ou plus récent), avec les mêmes fenêtres et le double-clic | [Télécharger le DMG](https://github.com/BobFredGard/ConceptCAD/releases/latest/download/ConceptCAD-Mac.dmg) (≈ 45 Mo), ouvrir et glisser ConceptCAD dans Applications. L’application n’est pas signée par Apple : au premier lancement, Réglages Système > Confidentialité et sécurité > « Ouvrir quand même ». Essayée sur un Mac M4 de 16 Go, pas encore sur un Mac Intel. |
 | **Depuis les sources** | Développeurs | Voir [Développement](#développement). |
 
-**Version autonome : ce qui n'est pas encore vérifié.** L'enregistrement et la carte graphique réelle ne passent pas par les tests automatiques, et Firefox n'a pas été essayé.
+**Version autonome : Fonctionne sous Brave et Chrome sous Windows 11.
 
 **Application Windows : ce qui n’est pas encore vérifié.** Windows 10 et un PC vraiment débranché n’ont pas été essayés. Elle a besoin de WebView2, déjà présent sur Windows 11 ; s’il manque, l’installateur essaie de le télécharger.
 
@@ -221,7 +221,7 @@ Comme dans Fusion 360, **tout est composant** : le fichier est le composant raci
 ### Simulation, 3+2 et G-code
 
 - **Parcours à l'écran** : rapides et remontées bien visibles, et distincts des passes d'usinage.
-- **Simulation** sur la **carte graphique** : outil réel, matière enlevée à partir du vrai brut, rendu réel ou lisse (sol miroir et plan d'ombre placés sous le brut) ; moteur **cartes de hauteurs** (une par orientation en 3+2, lancer de rayons) ou **champ de distance** ; la vue tourne autour du point de matière visé et zoome vers lui, comme ailleurs.
+- **Simulation** sur la **carte graphique** : outil réel, matière enlevée à partir du vrai brut, rendu réel ou lisse (sol miroir et plan d'ombre placés sous le brut) ; moteur **cartes de hauteurs** (une par orientation en 3+2, lancer de rayons) ou **champ de distance** ; la vue tourne autour du point visé sur les faces de la pièce, même sous la matière pas encore enlevée (hors de la pièce : sur la matière), et zoome vers lui.
 - **3+2** : chaque opération peut avoir son propre Z et X ; sur Siemens, le plan de travail pivote par **`CYCLE800`** et les arcs G2/G3 et cycles de perçage sont écrits dans le plan incliné ; dégagement avant pivotement en coordonnées machine (`SUPA Z600`, `SUPA X`), sens de pivotement réglable par machine (`swivelDir`, plateau tourné vers les outils).
 - **G-code** multi-outils, cycles du dialecte (CYCLE81 à 84 ; Fagor G81 avec temporisation K, G83 compté depuis le plan d’approche, G84), avance F modale. *Validez toujours un premier programme à vide sur la machine.*
 - **Cache des parcours** : rien n'est recalculé tant que la géométrie ne change pas.

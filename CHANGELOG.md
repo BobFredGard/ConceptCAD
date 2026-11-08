@@ -8,7 +8,7 @@ sont sorties le 2026-09-30j.
 Code dans `src/` · livrable `fusion_mvp.html` (généré par `build.js`) · architecture et
 garde-fous en tête de `src/00-entete-et-outils.js`.
 
-**609 versions**, de `2026-09-28b` à `V0.69.1` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
+**610 versions**, de `2026-09-28b` à `V0.69.2` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
 comme dans le fichier d'origine.
 
 ---
@@ -7012,5 +7012,13 @@ Barquette ne perd plus son solide à la 107e modification, et sa mémoire ne mon
 - **Correctif** : le rayon de la souris est suivi dans les cartes de hauteurs (même règle que le dessin : sous le dessus de chaque carte, dans le brut), avec lecture de la seule zone traversée quand la taille se fait sur la carte graphique. Point orange sur la matière visée, y compris au fond d'une poche ; dans le vide, rotation autour du centre du brut ; la molette zoome aussi vers le point visé. Moteur « champ de distance » : point pris sur le brut d'origine.
 - **Parcours FAO et `CACHE_VER`** inchangés.
 - **Test** : `test_vue_centre` (marche taillée : dessus, fond, paroi, rayon oblique, vide) ; `gpu.spec` sur la vraie carte graphique : même point par lecture graphique et par calcul, vrai glisser à la souris, le point reste sous le curseur.
+
+---
+## V0.69.2 - Simulation FAO : le centre de rotation sur les faces de la pièce
+
+- **Demande** : « mettre le point sur les faces du solide et pas du brut ». Avec la V0.69.1, le point suivait la matière simulée : là où elle n'était pas encore enlevée, il restait sur le dessus du brut (constaté par Fred dans l'application Windows, sur Cavité Test).
+- **Correctif** : pendant la simulation, la pièce masquée est visée en premier, même sous la matière ; hors de la pièce, la matière simulée ; dans le vide, le centre du brut. Le zoom à la molette suit le même point.
+- **Parcours FAO et `CACHE_VER`** inchangés.
+- **Test** : `test_vue_centre` (la pièce est visée avant la matière) ; `gpu.spec` sur la vraie carte graphique : point sur une face de la pièce, point sur la matière hors de la pièce, vrai glisser à la souris. Vérifié à la main sur Cavité Test : 45 points sur 45 sur les faces de la pièce.
 
 ---
