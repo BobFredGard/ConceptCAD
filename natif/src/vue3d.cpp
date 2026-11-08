@@ -1,3 +1,4 @@
+#include <fstream>
 #include "theme.h"
 #include <BRepMesh_IncrementalMesh.hxx>
 #include "vue3d.h"
@@ -645,9 +646,22 @@ bool Vue3D::imagePlan(const plan::DemandeImage& d, wxImage& sortie, const Option
   cam->SetCenter(gp_Pnt(d.vise[0], d.vise[1], d.vise[2]));
   cam->SetUp(gp_Dir(-d.v[0], -d.v[1], -d.v[2]));
   cam->SetAspect(aspect);
-  if (d.persp) cam->SetFOVy(d.fov);
-  else cam->SetScale(d.b - d.t);
+  // OCCT applique l'angle (et l'échelle) à la largeur quand l'image est plus haute que large : sans cette
+  // correction, l'image ombrée d'une vue en hauteur sortait plus petite que ses traits (1,6 % sur Perçages)
+  if (d.persp) cam->SetFOVy(aspect < 1 ? 2 * std::atan(std::tan(d.fov * M_PI / 360) * aspect) * 180 / M_PI : d.fov);
+  else cam->SetScale(aspect < 1 ? d.r - d.l : d.b - d.t);
   vueImage_->ZFitAll();
+  if (const char* jr = std::getenv("CCN_DIAG_IMAGE")) {  // diagnostic : où OCCT pose deux points connus
+    std::ofstream L(jr, std::ios::app);
+    const double hw = (d.r - d.l) / 2, hh = (d.b - d.t) / 2;
+    for (int k = 0; k < 2; k++) {
+      const plan::V3 ax = k ? d.v : d.u;
+      const gp_Pnt P(d.vise[0] + ax[0] * 10, d.vise[1] + ax[1] * 10, d.vise[2] + ax[2] * 10);
+      const gp_Pnt n = cam->Project(P);
+      L << (d.persp ? "persp " : "ortho ") << (k ? "v " : "u ") << n.X() << " " << n.Y() << " attendu " << (k ? 0.0 : 10 / hw) << " " << (k ? -10 / hh : 0.0)
+        << " aspect " << cam->Aspect() << " fov " << cam->FOVy() << " W " << d.W << " H " << d.H << std::endl;
+    }
+  }
   V3d_ImageDumpOptions o;
   o.Width = d.W, o.Height = d.H;
   o.BufferType = Graphic3d_BT_RGBA;

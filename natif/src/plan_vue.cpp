@@ -2156,6 +2156,15 @@ void PlanVue::essaiGeste(const J& e) {
     else if (outilActif_ && plan::survolOutil(mep_, planche_, piece_, calcul_, outil_, curseurX_, curseurY_, zoomRelatif())) redessiner();
   }
   if (e.contains("lache")) relache();
+  if (e.contains("zoom")) {  // [facteur, x, y] : x, y (mm de la feuille) au centre de la vue
+    ajuster_ = false;
+    zoom_ *= e["zoom"][0].get<double>();
+    const wxSize t = GetClientSize();
+    ox_ = t.x / 2.0 - e["zoom"][1].get<double>() * zoom_, oy_ = t.y / 2.0 - e["zoom"][2].get<double>() * zoom_;
+    imageBonne_ = false;
+    Refresh();
+    Update();
+  }
   if (e.contains("importerDxf")) importerDxf(e["importerDxf"].get<std::string>());
   if (e.contains("remplacerDxf") && !sel_.vue.empty()) remplacerDxf(sel_.vue, e["remplacerDxf"].get<std::string>());
   if (e.contains("exporter")) exporterVers(e["exporter"].get<std::string>(), e.value("fichier", std::string()));
