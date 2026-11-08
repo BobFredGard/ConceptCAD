@@ -19,6 +19,33 @@ occ::handle<Aspect_Window> fenetreOcct(wxWindow* w) {
   return new Cocoa_Window(vue);
 }
 
+void reglerPiloteOcct(const occ::handle<OpenGl_GraphicDriver>& pilote) {
+  @autoreleasepool {
+    // Mêmes demandes qu'OCCT (OpenGl_Window_1.mm) : si aucun format accéléré n'existe, OCCT échouerait
+    const NSOpenGLPixelFormatAttribute profil[] = {NSOpenGLPFADepthSize, 24, NSOpenGLPFAStencilSize, 8, NSOpenGLPFADoubleBuffer, NSOpenGLPFAAccelerated, NSOpenGLPFAOpenGLProfile, NSOpenGLProfileVersion3_2Core, 0};
+    const NSOpenGLPixelFormatAttribute ancien[] = {NSOpenGLPFADepthSize, 24, NSOpenGLPFAStencilSize, 8, NSOpenGLPFADoubleBuffer, NSOpenGLPFAAccelerated, 0};
+    bool accelere = false;
+    const NSOpenGLPixelFormatAttribute* essais[] = {profil, ancien};
+    for (const NSOpenGLPixelFormatAttribute* a : essais) {
+      @try {
+        NSOpenGLPixelFormat* f = [[NSOpenGLPixelFormat alloc] initWithAttributes:a];
+        if (f) {
+          accelere = true;
+#if !__has_feature(objc_arc)
+          [f release];
+#endif
+          break;
+        }
+      } @catch (NSException*) {
+      }
+    }
+    if (!accelere) {
+      NSLog(@"ConceptCAD : pas de carte graphique accélérée, dessin 3D par le processeur");
+      pilote->ChangeOptions().contextNoAccel = true;
+    }
+  }
+}
+
 // Le contour d'un symbole absent des polices du PDF, pour un corps de 1, y vers le haut (plan_export.inc ;
 // Windows le lit dans « Segoe UI Symbol », le Mac dans « Apple Symbols » ou la police qui a le caractère)
 void contourGlypheMac(wchar_t ch, std::vector<std::vector<std::array<double, 2>>>& boucles, double& avance) {

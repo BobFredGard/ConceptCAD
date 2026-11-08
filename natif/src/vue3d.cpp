@@ -304,6 +304,7 @@ Vue3D::Vue3D(wxWindow* parent) : wxWindow(parent, 2005, wxDefaultPosition, wxDef
   SetBackgroundStyle(wxBG_STYLE_PAINT);  // tout le dessin vient d'OCCT
   connexion_ = new Aspect_DisplayConnection();
   pilote_ = new OpenGl_GraphicDriver(connexion_);
+  reglerPiloteOcct(pilote_);
   visu_ = new V3d_Viewer(pilote_);
   // Les lumières du navigateur (buildScene) : sa lumière principale, et son éclairage du ciel rendu par une ambiance et une lumière d'en haut.
   // OCCT n'a pas les mêmes unités : valeurs réglées sur les couleurs mesurées du Drapeau (dessus #20b0fc ici, #10b0fc dans le navigateur).
