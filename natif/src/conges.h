@@ -3,6 +3,7 @@
 // Pas encore repris : le texte « paroi mince » d'occWallAt.
 #pragma once
 #include <TopoDS_Edge.hxx>
+#include <array>
 #include <TopoDS_Face.hxx>
 #include <TopoDS_Shape.hxx>
 
@@ -19,12 +20,18 @@ struct AreteListee {  // une ligne d'occListEdges
   double len = 0;
   int src = 0;  // rang dans l'explorateur des arêtes
   std::string nom;  // nomsSurAretes
+  // V0.70.2 : direction exacte de l'arête à chaque bout, tournée vers l'intérieur (occBoutsTangents)
+  std::array<Vec3, 2> ta{};
+  bool aTa = false;
+  std::vector<int> fs;  // faces voisines (occAretesFaces), rempli seulement pour la chaîne tangente
 };
 std::vector<AreteListee> listerAretes(const TopoDS_Shape& s);
 // cgFindEdge : l'arête visée par une référence de construction { pos, len, nom, anchor }, -1 si elle n'existe plus
 int chercherAreteParReference(const Document& d, nlohmann::ordered_json& ref, const std::vector<AreteListee>& aretes, const std::map<std::string, std::string>& alias);
-// Chaîne tangente d'une arête, elle comprise
-std::vector<int> chaineTangente(const std::vector<AreteListee>& liste, int depart);
+// Chaîne tangente d'une arête, elle comprise. ancien : règle d'avant V0.70.2 (corde de la polyligne, 10°, sans les faces)
+std::vector<int> chaineTangente(const std::vector<AreteListee>& liste, int depart, bool ancien = false);
+// occAretesFaces : les faces voisines de chaque arête (rangs dans la carte des faces)
+void facesDesAretes(const TopoDS_Shape& s, std::vector<AreteListee>& liste);
 // L'étendue d'une extrusion le long de la normale de son esquisse (extrudeSpan), donnée par rejeu.cpp
 struct Etendue {
   double lo = 0, hi = 0;

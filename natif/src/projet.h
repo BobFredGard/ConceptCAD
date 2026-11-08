@@ -217,6 +217,7 @@ struct Fonction {
   double cd2 = 0, cang = 0;
   bool cflip = false;
   int tangent = -1;  // -1 : absent du fichier, 0 : case décochée, 1 : chaîne tangente suivie
+  bool droit = false;  // V0.70.2 : créé ou modifié depuis, congé sans tangence prolongé tout droit, chaîne tangente exacte
   // État du dernier calcul, jamais écrit dans le fichier
   std::string congeErreur, congeAjuste;
   int congeTrouvees = 0, congeTotal = 0;

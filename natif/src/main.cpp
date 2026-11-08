@@ -555,6 +555,7 @@ int modeConge(const std::vector<std::wstring>& a) {
       }
       if (!c.selection().empty()) {
         Fonction f = c.creer(d, r.corps);
+        if (f.chamfer && f.cmode.empty()) f.cmode = "eq";  // comme relu du fichier (dans le logiciel, la fonction passe par son texte)
         d.fonctions.push_back(std::move(f));
         rejouer(d);
         enregistrerProjet(d, a[2]);

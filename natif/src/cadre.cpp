@@ -4284,7 +4284,7 @@ void Cadre::rafraichirConge() {
   props_->Thaw();
 
   wxString note = c.tangent() ? wxString(L"Clic = une arête (le ") + (ch ? L"chanfrein" : L"congé") + L" suit sa chaîne tangente) · clic sur une arête choisie = la retirer."
-                              : wxString(L"Clic = ajouter / retirer une arête, sans recherche de tangences.");
+                              : wxString(L"Clic = ajouter / retirer une arête, sans recherche de tangences : le ") + (ch ? L"chanfrein" : L"congé") + L" file tout droit le long de l’arête et continue tout droit à ses bouts, jusqu’aux faces voisines (coin intérieur) ou dans la matière (arête en bosse). Une arête courbe suit encore sa chaîne tangente (limite du noyau).";
   if (ch && c.optionsChanfrein().actif())
     note += (c.optionsChanfrein().mode == "da" ? wxString(L"\nD1 (distance par arête) sur la première face, angle mesuré entre le chanfrein et cette face.") : wxString(L"\nD1 (distance par arête) sur la première face, D2 sur l'autre.")) + L" Première face : celle qui regarde le plus vers le haut, sinon vers +X puis +Y.";
   if (!c.selection().empty()) {
@@ -4329,6 +4329,7 @@ void Cadre::appliquerChoixConge() {
         if (x.value("id", std::string()) == id) {
           x["edges"] = neuf["edges"];
           x["tangent"] = neuf["tangent"];
+          x["droit"] = true;  // V0.70.2 : modifié depuis, nouvelle règle
           x["name"] = neuf["name"];
           for (const char* k : {"cmode", "cd2", "cang", "cflip"}) {
             if (neuf.contains(k)) x[k] = neuf[k];

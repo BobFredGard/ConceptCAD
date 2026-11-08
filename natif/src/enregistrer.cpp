@@ -134,7 +134,7 @@ void controler(const std::wstring& temp, const std::string& octets, const Docume
   std::string ou = pareil ? "" : " (nombre de fonctions ou d'esquisses)";
   // Les copies de répétition sont refaites à la lecture depuis leurs sources : elles suivent, on ne les compare pas
   for (size_t i = 0; pareil && i < r.fonctions.size(); i++)
-    pareil = r.fonctions[i].id == d.fonctions[i].id && (!r.fonctions[i].repeatId.empty() || memesReglages(r.fonctions[i], d.fonctions[i])) && r.fonctions[i].aretes.size() == d.fonctions[i].aretes.size() && r.fonctions[i].tangent == d.fonctions[i].tangent && r.fonctions[i].chamfer == d.fonctions[i].chamfer,
+    pareil = r.fonctions[i].id == d.fonctions[i].id && (!r.fonctions[i].repeatId.empty() || memesReglages(r.fonctions[i], d.fonctions[i])) && r.fonctions[i].aretes.size() == d.fonctions[i].aretes.size() && r.fonctions[i].tangent == d.fonctions[i].tangent && r.fonctions[i].droit == d.fonctions[i].droit && r.fonctions[i].chamfer == d.fonctions[i].chamfer,
     ou = pareil ? "" : " (fonction " + r.fonctions[i].id + ")";
   for (size_t i = 0; pareil && i < r.esquisses.size(); i++)
     pareil = r.esquisses[i].id == d.esquisses[i].id && (esquisseCopieRepetition(r, r.esquisses[i].id) || memesValeurs(r.esquisses[i], d.esquisses[i])),
@@ -780,6 +780,7 @@ std::string congeCree(const Fonction& f) {
     o += "}";
   }
   o += std::string("],\"visible\":true,\"tangent\":") + (f.tangent != 0 ? "true" : "false");
+  if (f.droit) o += ",\"droit\":true";
   if (f.chamfer && (f.cmode == "d2" || f.cmode == "da")) o += ",\"chamfer\":true,\"cmode\":\"" + f.cmode + "\",\"cd2\":" + nombreJson(f.cd2) + ",\"cang\":" + nombreJson(f.cang) + ",\"cflip\":" + (f.cflip ? "true" : "false");
   else if (f.chamfer) o += ",\"chamfer\":true,\"cmode\":\"eq\"";
   return o + ",\"body\":" + texteJson(f.corps) + "}";
