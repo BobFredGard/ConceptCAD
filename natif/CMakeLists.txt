@@ -4,6 +4,10 @@ project(ConceptCADNatif LANGUAGES CXX)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
+set(SOURCES_COMMUNES src/assemblage_refs.cpp src/cadre_deplacer.cpp src/anteriorite.cpp src/theme.cpp src/cadre_theme.cpp src/cadre_dossier.cpp src/cadre_film.cpp src/cadre_recherche.cpp src/cadre_derive.cpp src/rendu_calques.cpp src/fiche_vue.cpp src/panneau_props.cpp src/rendu_scene.cpp src/rendu_atelier.cpp src/rendu_moteur.cpp src/rendu_finition.cpp src/fao_moteur.cpp src/fao_vue.cpp src/fao_matiere.cpp src/cadre_fao.cpp src/plan_dxf.cpp src/plan_esquisse.cpp src/plan_commandes.cpp src/plan_panneau.cpp src/construction.cpp src/engrenage.cpp src/normalises.cpp src/cadre_normalises.cpp src/plan.cpp src/plan_vue.cpp src/plan_cotes.cpp src/iso286.cpp src/mesure.cpp src/cadre_mesure.cpp src/filets.cpp src/cadre_faces.cpp src/fiches.cpp src/echanges.cpp src/structure.cpp src/parametres.cpp src/fenetre_parametres.cpp src/mise_a_jour.cpp src/video_mp4.cpp
+  src/cadre_dynamique.cpp src/cadre_scripts.cpp src/cadre_secours.cpp src/rendu_relief.cpp src/aide.cpp src/journal.cpp src/configurations.cpp src/configurations_lire.cpp src/intersection.cpp src/main.cpp src/cadre.cpp src/assemblage.cpp src/cadre_assemblage.cpp src/cadre_liens.cpp src/vue3d.cpp src/esquisse2d.cpp src/traces.cpp src/projet.cpp src/repetitions.cpp src/profil_guide.cpp src/enregistrer.cpp src/contours.cpp src/rejeu.cpp src/noms.cpp src/faces.cpp src/percage.cpp src/conges.cpp src/solveur.cpp src/spline.cpp src/coter.cpp src/dessin.cpp src/infos_esquisse.cpp src/interface_esquisse.cpp src/environnement.cpp src/flou_vue.cpp)
+
+if(WIN32)
 set(TIERS "${CMAKE_CURRENT_SOURCE_DIR}/.tiers")
 set(OCCT "${TIERS}/occt-bin/opencascade-8.0.1-vc14-64")
 set(TROIS "${TIERS}/occt-bin/3rdparty-vc14-64")
@@ -52,3 +56,34 @@ target_include_directories(BancSolveurCommunes PRIVATE "${TIERS}" "${TROIS}/zlib
 target_link_directories(BancSolveurCommunes PRIVATE "${TROIS}/zlib-1.2.8-vc14-64/lib")
 target_link_libraries(BancSolveurCommunes PRIVATE zlib)
 set_target_properties(BancSolveurCommunes PROPERTIES RUNTIME_OUTPUT_DIRECTORY_RELEASE "${CMAKE_CURRENT_SOURCE_DIR}/sortie")
+
+else()
+# Mac : les bibliothèques viennent de natif/mac/dependances.sh (compilées depuis les sources officielles)
+if(NOT APPLE)
+  message(FATAL_ERROR "Seuls Windows et Mac sont prévus")
+endif()
+enable_language(OBJCXX)
+set(TIERS_MAC "${CMAKE_CURRENT_SOURCE_DIR}/.tiers/mac/prefixe" CACHE PATH "Bibliothèques Mac")
+list(PREPEND CMAKE_PREFIX_PATH "${TIERS_MAC}")
+find_package(OpenCASCADE REQUIRED CONFIG PATHS "${TIERS_MAC}/lib/cmake/opencascade" NO_DEFAULT_PATH)
+find_package(wxWidgets REQUIRED COMPONENTS propgrid aui core base)
+include(${wxWidgets_USE_FILE})
+find_package(ZLIB REQUIRED)
+# Même liste de sources que Windows, sans ce qui n'existe que sous Windows ; mac.mm : le peu de Cocoa nécessaire
+set(SOURCES_MAC ${SOURCES_COMMUNES})
+list(APPEND SOURCES_MAC src/mac.mm)
+add_executable(ConceptCADNatif MACOSX_BUNDLE ${SOURCES_MAC})
+set_target_properties(ConceptCADNatif PROPERTIES
+  OUTPUT_NAME ConceptCADNatif
+  MACOSX_BUNDLE_BUNDLE_NAME "ConceptCAD natif"
+  MACOSX_BUNDLE_GUI_IDENTIFIER "io.github.bobfredgard.conceptcad.natif"
+  MACOSX_BUNDLE_ICON_FILE "ConceptCAD.icns"
+  MACOSX_BUNDLE_INFO_PLIST "${CMAKE_CURRENT_SOURCE_DIR}/mac/Info.plist.in")
+target_compile_definitions(ConceptCADNatif PRIVATE UNICODE _UNICODE GL_SILENCE_DEPRECATION)
+target_compile_options(ConceptCADNatif PRIVATE -include "${CMAKE_CURRENT_SOURCE_DIR}/src/portable.h" -Wno-deprecated-declarations -Wno-unused-parameter)
+target_include_directories(ConceptCADNatif PRIVATE "${TIERS_MAC}/include/opencascade" "${TIERS_MAC}/include" "${CMAKE_CURRENT_SOURCE_DIR}/src")
+target_link_libraries(ConceptCADNatif PRIVATE ${wxWidgets_LIBRARIES}
+  TKernel TKMath TKG2d TKG3d TKGeomBase TKBRep TKGeomAlgo TKTopAlgo TKPrim TKBO TKShHealing TKMesh
+  TKFillet TKOffset TKBool TKHLR TKService TKV3d TKOpenGl TKDESTEP TKDESTL TKDE TKXSBase ZLIB::ZLIB
+  "-framework Cocoa" "-framework OpenGL")
+endif()

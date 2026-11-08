@@ -1,0 +1,98 @@
+# Fabrique la version native pour Mac (puces Apple et Intel) sur un Mac de GitHub, la lance sur une pièce
+# d'exemple et prend des captures. Le DMG et les captures sont à télécharger en bas de la page du passage ;
+# rien n'est publié. Les bibliothèques (OCCT, wxWidgets, FreeType) sont compilées une fois puis gardées en cache.
+
+name: Natif Mac
+
+on:
+  push:
+    branches: ['claude/natif-mac']
+    paths:
+      - 'natif/**'
+      - '.github/workflows/natif-mac.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  dependances:
+    runs-on: macos-14
+    timeout-minutes: 300
+    steps:
+      - uses: actions/checkout@v4
+      - id: cache
+        uses: actions/cache/restore@v4
+        with:
+          path: natif/.tiers/mac/prefixe
+          key: natif-mac-tiers-${{ hashFiles('natif/mac/dependances.sh') }}
+      - name: Outils
+        if: steps.cache.outputs.cache-hit != 'true'
+        run: brew install ninja
+      - name: Compiler OCCT, wxWidgets et FreeType
+        if: steps.cache.outputs.cache-hit != 'true'
+        run: bash natif/mac/dependances.sh
+      - if: steps.cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: natif/.tiers/mac/prefixe
+          key: natif-mac-tiers-${{ hashFiles('natif/mac/dependances.sh') }}
+
+  application:
+    needs: dependances
+    runs-on: macos-14
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/cache/restore@v4
+        with:
+          path: natif/.tiers/mac/prefixe
+          key: natif-mac-tiers-${{ hashFiles('natif/mac/dependances.sh') }}
+          fail-on-cache-miss: true
+      - name: Outils
+        run: brew install ninja dylibbundler
+      - name: Pièces d'essai
+        run: git lfs pull --include "Exemples/003-50-200-O-Drapeau Outillage Complet.conceptcad,Exemples/Cache Piles.conceptcad,Exemples/Barquette.conceptcad"
+      - name: Compiler et fabriquer le DMG
+        run: bash natif/mac/construire.sh 2>&1 | tee construire.txt; exit ${PIPESTATUS[0]}
+      - name: Erreurs de compilation
+        if: failure()
+        run: grep -E "error:|fatal error" construire.txt | sort | uniq | head -400 || true
+      - name: Calcul sans fenêtre (comparé à Windows)
+        run: |
+          mkdir -p captures
+          EXE="natif/sortie-mac/ConceptCAD natif.app/Contents/MacOS/ConceptCADNatif"
+          for f in "003-50-200-O-Drapeau Outillage Complet" "Cache Piles" "Barquette"; do
+            "$EXE" --verif "Exemples/$f.conceptcad" "captures/verif-$f.json" || echo "code $? pour $f"
+            head -c 1500 "captures/verif-$f.json" || true; echo
+          done
+      - name: Installer et lancer
+        run: |
+          hdiutil attach natif/sortie-mac/ConceptCAD-natif-Mac.dmg -mountpoint /tmp/cc-dmg -nobrowse
+          cp -R "/tmp/cc-dmg/ConceptCAD natif.app" /Applications/
+          hdiutil detach /tmp/cc-dmg
+          open "/Applications/ConceptCAD natif.app"
+          sleep 25
+          pgrep -x ConceptCADNatif
+          screencapture -x captures/1-demarrage.png || true
+          osascript -e 'quit app "ConceptCAD natif"' || pkill -x ConceptCADNatif || true
+          sleep 5
+          open -a "/Applications/ConceptCAD natif.app" "Exemples/003-50-200-O-Drapeau Outillage Complet.conceptcad"
+          sleep 30
+          pgrep -x ConceptCADNatif
+          screencapture -x captures/2-drapeau.png || true
+          ls ~/Library/Logs/DiagnosticReports/ || true
+          cp ~/Library/Logs/DiagnosticReports/ConceptCADNatif* captures/ 2>/dev/null || true
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ConceptCAD-natif-Mac-dmg
+          path: natif/sortie-mac/ConceptCAD-natif-Mac.dmg
+          if-no-files-found: error
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: captures-natif-mac
+          path: |
+            captures
+            construire.txt
+          if-no-files-found: ignore
