@@ -375,7 +375,7 @@ input[type=range]{accent-color:var(--primary);width:100%}
  * peut changer sans rien casser. CACHE_VER (parcours FAO) reste indépendant.
  */
 
-const APP_VER='V0.69.0';
+const APP_VER='V0.69.1';
 try{console.log('[ConceptCAD] version '+APP_VER);}catch(e){}
 try{var mfSv=document.getElementById('mfSplashVer');if(mfSv)mfSv.textContent=APP_VER;}catch(e){} // écran de démarrage
 
@@ -1318,6 +1318,10 @@ function viewHitAt(cx,cy){
   if(!r.width||!r.height)return null;
   const ndc=new THREE.Vector2(((cx-r.left)/r.width)*2-1,-((cy-r.top)/r.height)*2+1);
   rayc.setFromCamera(ndc,camera);
+  // simulation FAO : la matière taillée REMPLACE la pièce, masquée ; son rendu ne se lance pas à la
+  // manière d'un maillage (hauteurs relues : faoViewerMatterHit, src/88-fao-77). Sans elle, la rotation
+  // retombait sur un centre fixe. Le brut du posage n'est pas visé : la matière creusée passe devant.
+  try{if(!(typeof asmMode!=='undefined'&&asmMode==='asm')&&typeof faoViewerMatterOn==='function'&&faoViewerMatterOn())return faoViewerMatterHit(rayc.ray);}catch(e){}
   const objs=[],prev=[];
   try{
     if(typeof asmMode!=='undefined'&&asmMode==='asm'&&typeof asmSceneGet==='function'){
@@ -1369,6 +1373,7 @@ function orbitPivot(){
   const box=new THREE.Box3();
   try{bodies.forEach(b=>{if(b.visible&&b.mesh&&b.mesh.visible!==false)box.expandByObject(b.mesh);});}catch(e){}
   try{asmCtxSub().forEach(m=>box.expandByObject(m));}catch(e){}
+  try{const B=(typeof faoViewerMatterBox==='function')?faoViewerMatterBox():null;if(B)box.union(B);}catch(e){} // simulation : pièces masquées, le brut simulé les remplace
   try{
     if(typeof faoPoseGrp!=='undefined'&&faoPoseGrp&&faoPoseGrp.parent&&faoPoseGrp.parent.visible!==false)
       faoPoseGrp.traverse(o=>{if(o.isMesh&&o.visible&&o.userData&&o.userData.faoStock)box.expandByObject(o);});
@@ -46999,6 +47004,85 @@ function faoMatterRmDispose(vw){
   try{ R.texs.forEach(function(T){T.h.dispose();T.n.dispose();T.w.dispose();}); }catch(e){}
   try{ R.geo.dispose(); }catch(e){}
   vw.rm=null;
+}
+/* ---------- point de la matière sous la souris : pivot de la rotation, centre du zoom ----------
+   En simulation la pièce est masquée et la matière est dessinée par des shaders : pas de maillage à
+   viser. Le rayon de la souris parcourt ici les mêmes cartes de hauteurs que FAO_RM_FS (même règle :
+   dans la matière si sous la hauteur de CHAQUE carte et dans la boîte du brut). Quand la taille se fait
+   sur la carte graphique (src/88-fao-79), seul le rectangle de carte survolé par le rayon est relu. */
+function faoMatterBoxRay(box,ro,rd){
+  // entrée et sortie du rayon dans la boîte {x0,x1,y0,y1,z0,z1} ; null s'il la manque
+  let a=0,b=1/0;
+  const L=[[box.x0,box.x1],[box.y0,box.y1],[box.z0,box.z1]];
+  for(let i=0;i<3;i++){
+    if(Math.abs(rd[i])<1e-12){if(ro[i]<L[i][0]||ro[i]>L[i][1])return null;continue;}
+    const t0=(L[i][0]-ro[i])/rd[i],t1=(L[i][1]-ro[i])/rd[i];
+    a=Math.max(a,Math.min(t0,t1));b=Math.min(b,Math.max(t0,t1));
+  }
+  return b>a?[a,b]:null;
+}
+function faoMatterRayHit(maps,box,ro,rd){
+  // cartes [{ox,oy,pas,nx,ny,U,V,A,at(ix,iy)}] → distance du premier point de matière, ou null
+  const tb=faoMatterBoxRay(box,ro,rd);if(!tb||!maps.length)return null;
+  const dot=(p,v)=>p[0]*v[0]+p[1]*v[1]+p[2]*v[2];
+  const marge=t=>{ // > 0 : hors matière
+    const p=[ro[0]+rd[0]*t,ro[1]+rd[1]*t,ro[2]+rd[2]*t];let best=-1/0;
+    for(let i=0;i<maps.length;i++){const m=maps[i];
+      const ix=Math.max(0,Math.min(m.nx-1,Math.floor((dot(p,m.U)-m.ox)/m.pas))),iy=Math.max(0,Math.min(m.ny-1,Math.floor((dot(p,m.V)-m.oy)/m.pas)));
+      const d=dot(p,m.A)-m.at(ix,iy);if(d>best)best=d;}
+    return best;
+  };
+  const pas=maps[0].pas;let t=tb[0]+1e-4,prev=t,first=true;
+  for(let k=0;k<20000;k++){
+    if(t>tb[1])return null;
+    const d=marge(t);
+    if(d<=0)break;
+    if(k===19999)return null;
+    first=false;prev=t;t+=Math.max(pas*0.6,Math.min(d*0.5,3));
+  }
+  if(first)return tb[0]; // entré par une face du brut
+  let lo=prev,hi=t;
+  for(let k=0;k<12;k++){const m=0.5*(lo+hi);if(marge(m)<=0)hi=m;else lo=m;}
+  return hi;
+}
+function faoMatterRayMaps(vw,box,ro,rd){
+  // cartes de la simulation, lisibles par faoMatterRayHit
+  const g=vw.matterGrid,list=[g].concat((g.maps&&g.maps.list)||[]).slice(0,FAO_RM_MAX);
+  const tb=faoMatterBoxRay(box,ro,rd);
+  return list.map(function(m,i){
+    const R={ox:m.ox,oy:m.oy,pas:m.pas,nx:m.nx,ny:m.ny,U:m.U||[1,0,0],V:m.V||[0,1,0],A:m.A||[0,0,1],at:function(ix,iy){return m.h[iy*m.nx+ix];}};
+    if(!vw.cg||!tb)return R;
+    // taille sur la carte graphique : les tableaux du processeur ne sont plus à jour
+    const uv=t=>{const p=[ro[0]+rd[0]*t,ro[1]+rd[1]*t,ro[2]+rd[2]*t];return [(p[0]*R.U[0]+p[1]*R.U[1]+p[2]*R.U[2]-R.ox)/R.pas,(p[0]*R.V[0]+p[1]*R.V[1]+p[2]*R.V[2]-R.oy)/R.pas];};
+    const a=uv(tb[0]),b=uv(tb[1]);
+    const x0=Math.max(0,Math.min(m.nx-1,Math.floor(Math.min(a[0],b[0]))-1)),x1=Math.max(x0,Math.min(m.nx-1,Math.floor(Math.max(a[0],b[0]))+1));
+    const y0=Math.max(0,Math.min(m.ny-1,Math.floor(Math.min(a[1],b[1]))-1)),y1=Math.max(y0,Math.min(m.ny-1,Math.floor(Math.max(a[1],b[1]))+1));
+    const w=x1-x0+1,h=y1-y0+1,px=new Float32Array(w*h*4),gl=renderer.getContext(),prev=renderer.getRenderTarget();
+    try{renderer.setRenderTarget(vw.cg.maps[i].rt);gl.readBuffer(gl.COLOR_ATTACHMENT0);gl.readPixels(x0,y0,w,h,gl.RGBA,gl.FLOAT,px);}finally{renderer.setRenderTarget(prev);}
+    R.at=function(ix,iy){const X=Math.max(x0,Math.min(x1,ix)),Y=Math.max(y0,Math.min(y1,iy));return px[((Y-y0)*w+X-x0)*4];};
+    return R;
+  });
+}
+function faoViewerMatterOn(){return !!(faoVw&&faoVw.matterOn!==false&&faoVw.matter);}
+function faoViewerMatterBox(){
+  // boîte du brut simulé dans la scène ; null hors simulation
+  if(!faoViewerMatterOn())return null;
+  const s=faoStock();if(!faoStockValid(s))return null;
+  faoVw.matter.updateMatrixWorld();
+  return new THREE.Box3(new THREE.Vector3(+s.x0,+s.y0,+s.z0),new THREE.Vector3(+s.x1,+s.y1,+s.z1)).applyMatrix4(faoVw.matter.matrixWorld);
+}
+function faoViewerMatterHit(ray){
+  // rayon de la scène → point de la matière simulée (scène), ou null. Moteur « distance » (champ 3D sur
+  // la carte graphique, sans carte de hauteurs) : surface du brut d'origine.
+  const vw=faoVw,s=faoStock();if(!faoStockValid(s))return null;
+  vw.matter.updateMatrixWorld();
+  const W=vw.matter.matrixWorld,inv=W.clone().invert();
+  const o=ray.origin.clone().applyMatrix4(inv),d=ray.direction.clone().transformDirection(inv);
+  const ro=[o.x,o.y,o.z],rd=[d.x,d.y,d.z],box={x0:+s.x0,x1:+s.x1,y0:+s.y0,y1:+s.y1,z0:+s.z0,z1:+s.z1};
+  let t=null;
+  if(vw.matterGrid&&!vw.eng)t=faoMatterRayHit(faoMatterRayMaps(vw,box,ro,rd),box,ro,rd);
+  else{const tb=faoMatterBoxRay(box,ro,rd);t=tb?tb[0]:null;}
+  return t==null?null:o.addScaledVector(d,t).applyMatrix4(W);
 }
 
 /* ═══════════════ 88-fao-78-moteurs-volume.js — fao 78 moteurs volume ═══════════════ */

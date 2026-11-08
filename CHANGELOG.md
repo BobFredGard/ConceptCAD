@@ -8,7 +8,7 @@ sont sorties le 2026-09-30j.
 Code dans `src/` · livrable `fusion_mvp.html` (généré par `build.js`) · architecture et
 garde-fous en tête de `src/00-entete-et-outils.js`.
 
-**608 versions**, de `2026-09-28b` à `V0.69.0` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
+**609 versions**, de `2026-09-28b` à `V0.69.1` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
 comme dans le fichier d'origine.
 
 ---
@@ -7003,5 +7003,14 @@ Barquette ne perd plus son solide à la 107e modification, et sa mémoire ne mon
 - **Cause du disque fantôme** : quand un contour parcourait un arc à rebours (arc creux), l'anneau calculé prenait le reste du cercle : disque teinté sans bord dans l'esquisse, aire fausse et mauvais choix de zone possible. Après correction, le volume extrudé d'une telle forme correspond au volume exact (vérifié au noyau).
 - **Forme du fichier** : ajout seulement. Parcours FAO et `CACHE_VER` inchangés.
 - **Test** : `test_esquisse_traces` ; vérifié dans le vrai logiciel à la souris, grille active ou non.
+
+---
+## V0.69.1 - Simulation FAO : la vue tourne autour du point de matière visé
+
+- **Demande** : en simulation FAO, choisir le centre de rotation comme partout ailleurs.
+- **Cause** : pendant la lecture, les corps sont masqués et la matière est dessinée par la carte graphique (lancer de rayons dans les cartes de hauteurs, ou taille sur la carte graphique) ; aucun objet ne pouvait être visé, la rotation tournait toujours autour du même point.
+- **Correctif** : le rayon de la souris est suivi dans les cartes de hauteurs (même règle que le dessin : sous le dessus de chaque carte, dans le brut), avec lecture de la seule zone traversée quand la taille se fait sur la carte graphique. Point orange sur la matière visée, y compris au fond d'une poche ; dans le vide, rotation autour du centre du brut ; la molette zoome aussi vers le point visé. Moteur « champ de distance » : point pris sur le brut d'origine.
+- **Parcours FAO et `CACHE_VER`** inchangés.
+- **Test** : `test_vue_centre` (marche taillée : dessus, fond, paroi, rayon oblique, vide) ; `gpu.spec` sur la vraie carte graphique : même point par lecture graphique et par calcul, vrai glisser à la souris, le point reste sous le curseur.
 
 ---
