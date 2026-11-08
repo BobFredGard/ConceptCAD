@@ -49,7 +49,8 @@ copier() {
 copier "$APP/Contents/MacOS/ConceptCADNatif"
 # Contrôle : aucune référence ne doit rester vers le Mac qui a fabriqué l'application
 otool -L "$APP/Contents/MacOS/ConceptCADNatif" "$F"/*.dylib > "$S/liens.txt"
-if grep -E "\.tiers|/Users/|/opt/homebrew|/usr/local|@rpath" "$S/liens.txt"; then
+# (seules les lignes en retrait sont des dépendances ; les autres sont les noms des fichiers examinés)
+if grep $'^	' "$S/liens.txt" | grep -E "\.tiers|/Users/|/opt/homebrew|/usr/local|@rpath"; then
   echo "Bibliothèques encore liées au dossier de fabrication" >&2
   exit 1
 fi
