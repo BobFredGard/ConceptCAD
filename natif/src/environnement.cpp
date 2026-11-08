@@ -169,11 +169,19 @@ BarreHaute::BarreHaute(wxWindow* parent) : wxWindow(parent, wxID_ANY, wxDefaultP
         g->StrokePath(p);
       }
       // Le logo : un carré arrondi coupé en deux
+      // comme l'icône de la version native : bleu à gauche, orange à droite
+      g->SetPen(wxNullGraphicsPen);
+      g->SetBrush(g->CreateBrush(wxBrush(wxColour(0xff, 0x8a, 0x00))));
+      g->DrawRoundedRectangle(26, 25, 12, 14, 3);
+      g->Clip(26, 25, 6, 14);
+      g->SetBrush(g->CreateLinearGradientBrush(29.6, 25, 34.4, 39, wxColour(0x3a, 0xa0, 0xff), wxColour(0x5e, 0x5c, 0xe6)));
+      g->DrawRoundedRectangle(26, 25, 12, 14, 3);
+      g->ResetClip();
+      g->SetBrush(g->CreateBrush(wxBrush(C_TEXTE)));
+      g->DrawRectangle(31.2, 25, 1.6, 14);
       g->SetPen(g->CreatePen(wxGraphicsPenInfo(C_TEXTE, 1.6)));
       g->SetBrush(wxNullGraphicsBrush);
       g->DrawRoundedRectangle(26, 25, 12, 14, 3);
-      g->SetBrush(g->CreateBrush(wxBrush(C_TEXTE)));
-      g->DrawRectangle(28, 26, 3.5, 12);
       // Le cadre des ateliers
       g->SetPen(wxNullGraphicsPen);
       g->SetBrush(g->CreateBrush(wxBrush(C_CHAMP)));

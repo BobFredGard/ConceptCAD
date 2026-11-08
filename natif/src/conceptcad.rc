@@ -1,0 +1,2 @@
+// L'icone du programme : l'Explorateur, les raccourcis et l'installateur prennent la premiere icone des ressources
+appicon ICON "conceptcad.ico"
