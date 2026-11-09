@@ -10,6 +10,7 @@ const SUITES = [
   "test_highlight_order",
   "test_draft_sel",
   "test_xmove",
+  "test_conge_corps_cache",
   "test_face_appuyer",
   "test_face_depouille_tangente",
   "test_face_tangentes",
