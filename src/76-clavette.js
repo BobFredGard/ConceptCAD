@@ -98,7 +98,7 @@ function kwKeyRemove(el){
     doc.cgeo=doc.cgeo.filter(c=>c!==e2);
   }
   const bid=kf&&kf.body;
-  if(bid&&!doc.features.some(f=>f.body===bid||f.newBody===bid||(f.type==='combine'&&(f.tools||[]).indexOf(bid)>=0))){
+  if(bid&&!doc.features.some(f=>f.body===bid||f.newBody===bid||(Array.isArray(f.newBodies)&&f.newBodies.indexOf(bid)>=0)||(f.type==='combine'&&(f.tools||[]).indexOf(bid)>=0))){
     doc.bodies=doc.bodies.filter(b=>b.id!==bid);
     if(doc.activeBody===bid)delete doc.activeBody;
   }

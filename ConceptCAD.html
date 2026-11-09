@@ -379,7 +379,7 @@ input[type=range]{accent-color:var(--primary);width:100%}
  * peut changer sans rien casser. CACHE_VER (parcours FAO) reste indépendant.
  */
 
-const APP_VER='V0.77.2';
+const APP_VER='V0.78.0';
 try{console.log('[ConceptCAD] version '+APP_VER);}catch(e){}
 try{var mfSv=document.getElementById('mfSplashVer');if(mfSv)mfSv.textContent=APP_VER;}catch(e){} // écran de démarrage
 
@@ -4016,7 +4016,7 @@ function occCutExtraBodies(f){
 // peut donc pas y créer de fonction. Un corps sans aucune fonction (créé vide) existe toujours.
 function bodyBornAt(bid,idx){
   const L=doc.features||[];
-  const owns=f=>f&&(f.body===bid||occSplitNewBody(f)===bid||occCutExtraBodies(f).indexOf(bid)>=0);
+  const owns=f=>f&&(f.body===bid||occNewBodies(f).indexOf(bid)>=0||occCutExtraBodies(f).indexOf(bid)>=0);
   const first=L.findIndex(owns);
   if(first<0)return true;
   return idx==null||idx<0||first<idx;
@@ -4047,11 +4047,19 @@ function occSplitNewBody(f){
   if(!f||!f.newBody||!((f.type==='xsplit'&&f.mode==='body')||(f.type==='bscale'&&f.copy)||f.type==='bcopy'))return null; // bcopy : 85-copier-corps
   return (f.newBody!==occBodyOfFeat(f)&&doc.bodies.some(e=>e.id===f.newBody))?f.newBody:null;
 }
+function occNewBodies(f){
+  // TOUS les corps neufs nés d'une fonction : le corps de occSplitNewBody, plus — copie en
+  // symétrie par 2 plans sans union (85-copier-corps) — les corps des deux autres copies.
+  const nb=occSplitNewBody(f);if(!nb)return [];
+  const L=[nb];
+  if(f.type==='bcopy'&&Array.isArray(f.newBodies))f.newBodies.forEach(b=>{if(b&&L.indexOf(b)<0&&b!==occBodyOfFeat(f)&&doc.bodies.some(e=>e.id===b))L.push(b);});
+  return L;
+}
 function occCombinePrefix(f,tb){
   // fonctions du corps outil tb AVANT la combinaison f (timeline visible)
   const vis=doc.features.filter(x=>x.visible!==false&&!(occSkipFeat&&x.id===occSkipFeat));
   const i=vis.indexOf(f);
-  return vis.slice(0,i<0?vis.length:i).filter(x=>x.type!=='repeat'&&(occBodyOfFeat(x)===tb||occSplitNewBody(x)===tb||occCutExtraBodies(x).indexOf(tb)>=0));
+  return vis.slice(0,i<0?vis.length:i).filter(x=>x.type!=='repeat'&&(occBodyOfFeat(x)===tb||occNewBodies(x).indexOf(tb)>=0||occCutExtraBodies(x).indexOf(tb)>=0));
 }
 function occCombineTool(f,tb,bin){
   const list=occCombinePrefix(f,tb);if(!list.length)return null;
@@ -8484,6 +8492,7 @@ function featSig(f){
   }else if(f.type==='bscale'||f.type==='bcopy'){ // bcopy = copie sans échelle (85-copier-corps)
     // Échelle : centre, facteur(s) et, en copie, l'historique du corps source (comme xsplit)
     s+='|'+JSON.stringify([f.o||[0,0,0],bsFactors(f),f.copy?1:0]);
+    if(f.type==='bcopy')s+=bcSig(f); // symétrie 1 ou 2 plans, union (85-copier-corps) ; vide en copie simple
     if(occSplitNewBody(f))s+='|src:'+occCombinePrefix(f,occBodyOfFeat(f)).map(featSig).join(',');
   }else if(f.type==='bmirror'){
     s+='|'+bmirPlane(f);
@@ -8642,9 +8651,9 @@ function* occReplayBodyGen(bid,list){
     if(f.type==='bscale'||f.type==='bcopy'){ // bcopy : copie de corps (85-copier-corps), facteur 1
       // Échelle (85-echelle-corps) : corps modifié sur place, ou — « Nouveau corps » — copie
       // du corps source mise à l'échelle dans le corps neuf (le source n'est pas touché).
-      const nb=occSplitNewBody(f);
-      if(nb&&bid!==nb)return;
-      const neuf=nb===bid;
+      const nbs=occNewBodies(f),nb=nbs[0]||null;
+      if(nb&&nbs.indexOf(bid)<0)return;
+      const neuf=nbs.indexOf(bid)>=0;
       const ckS=occCkGet(ckKey);
       const cpS=ckS?occShapeCopy(ckS):null;
       if(cpS){
@@ -8658,7 +8667,7 @@ function* occReplayBodyGen(bid,list){
         try{src=occCombineTool(f,occBodyOfFeat(f),bin);}catch(err){src=null;msgs.push(f.name+' : corps source illisible ('+err.message+')');}
       }
       if(!src){msgs.push(f.name+' : aucun volume à '+(f.type==='bcopy'?'copier':'mettre à l’échelle')+' — ignoré');return;}
-      const r=occApplyBodyScale(src,f);
+      const r=f.type==='bcopy'?occApplyBodyCopy(src,f,nbs.indexOf(bid)):occApplyBodyScale(src,f);
       result=r.shape;msgs.push(...r.warnings.map(w=>f.name+' : '+w));
       if(r.warnings.length)occCkWarn[ckKey]=r.warnings.slice();else delete occCkWarn[ckKey];
       if(result)occCkPut(ckKey,()=>occShapeCopy(result));
@@ -9047,8 +9056,8 @@ function* occFinalShapeGen(upto,warm){
     const b=(f.body&&doc.bodies.some(e=>e.id===f.body))?f.body:doc.bodies[0].id;
     if(!byBody[b]){byBody[b]=[];order.push(b);}
     byBody[b].push(f);
-    const nb=occSplitNewBody(f); // scission de corps : l'autre côté naît dans le corps neuf
-    if(nb){if(!byBody[nb]){byBody[nb]=[];order.push(nb);}byBody[nb].push(f);}
+    // scission de corps : l'autre côté naît dans le corps neuf ; copie en symétrie : 1 à 3 corps neufs
+    occNewBodies(f).forEach(nb=>{if(!byBody[nb]){byBody[nb]=[];order.push(nb);}byBody[nb].push(f);});
     occCutExtraBodies(f).forEach(xb=>{if(!byBody[xb]){byBody[xb]=[];order.push(xb);}byBody[xb].push(f);}); // découpe multi-corps
   });
   const perBody=[],bin=[],itemShapes=[],ghostShapes=[],msgs=[],items=[],imports=[];
@@ -11443,7 +11452,7 @@ function repBodyOwner(bid){
 function repDropBody(bid){
   // Retire un corps créé par une répétition, s'il ne porte plus rien (fonction, outil de
   // combinaison, corps neuf d'une autre fonction) — sinon il reste, comme tout corps.
-  if(!bid||(doc.features||[]).some(x=>x.body===bid||x.newBody===bid||(x.type==='combine'&&(x.tools||[]).indexOf(bid)>=0)))return false;
+  if(!bid||(doc.features||[]).some(x=>x.body===bid||x.newBody===bid||(Array.isArray(x.newBodies)&&x.newBodies.indexOf(bid)>=0)||(x.type==='combine'&&(x.tools||[]).indexOf(bid)>=0)))return false;
   const n0=(doc.bodies||[]).length;
   doc.bodies=(doc.bodies||[]).filter(b=>b.id!==bid);
   if(doc.bodies.length&&doc.activeBody===bid)doc.activeBody=doc.bodies[0].id;
@@ -11811,7 +11820,7 @@ function featBodyChoices(f){
   const i=doc.features.indexOf(f),own=occBodyOfFeat(f);
   // corps ordinaire (◧ Corps, migration) : il existe dès le départ ; un corps né d'une
   // fonction (répétition, extrusion « nouveau corps », scission) seulement après elle
-  const plain=bid=>!repBodyOwner(bid)&&!doc.features.some(x=>(x.newBody===true&&x.body===bid)||x.newBody===bid);
+  const plain=bid=>!repBodyOwner(bid)&&!doc.features.some(x=>(x.newBody===true&&x.body===bid)||x.newBody===bid||(Array.isArray(x.newBodies)&&x.newBodies.indexOf(bid)>=0));
   const L=(doc.bodies||[]).filter(e=>{
     if(e.id===own)return true;
     if(bodyRemovedAt(e.id,i))return false;
@@ -13133,8 +13142,8 @@ function tlbSvgKey(s){
     case 'bmove':return ['move','mod'];
     case 'bremove':return ['body','cut',true];
     case 'bscale':return ['scale','mod'];
-    case 'bcopy':return ['copy','add'];
-    case 'bmirror':return ['pattern','mod'];
+    case 'bcopy':return [s.o&&(s.o.mode==='mirror1'||s.o.mode==='mirror2')?'mirror':'copy','add'];
+    case 'bmirror':return ['mirror','mod'];
     case 'import':return ['import','mod'];
   }
   return null;
@@ -29844,7 +29853,7 @@ function derBodies(t){
     F.forEach(f=>{
       if(f.type==='combine'&&!f.keep)(f.tools||[]).forEach(x=>gone.add(x));
       if(f.type==='bremove'&&f.body)gone.add(f.body);
-      has.add(f.body||b0);if(f.newBody)has.add(f.newBody);
+      has.add(f.body||b0);if(f.newBody)has.add(f.newBody);if(Array.isArray(f.newBodies))f.newBodies.forEach(x=>has.add(x));
     });
     (d.bodies||[]).forEach(e=>{
       if(!has.has(e.id)||gone.has(e.id))return;
@@ -34611,7 +34620,7 @@ function kwKeyRemove(el){
     doc.cgeo=doc.cgeo.filter(c=>c!==e2);
   }
   const bid=kf&&kf.body;
-  if(bid&&!doc.features.some(f=>f.body===bid||f.newBody===bid||(f.type==='combine'&&(f.tools||[]).indexOf(bid)>=0))){
+  if(bid&&!doc.features.some(f=>f.body===bid||f.newBody===bid||(Array.isArray(f.newBodies)&&f.newBodies.indexOf(bid)>=0)||(f.type==='combine'&&(f.tools||[]).indexOf(bid)>=0))){
     doc.bodies=doc.bodies.filter(b=>b.id!==bid);
     if(doc.activeBody===bid)delete doc.activeBody;
   }
@@ -39019,33 +39028,151 @@ function renderFilletPanel(){
    change AVANT (une cote, un congé) s'y retrouve. La copie naît dans un corps neuf, où l'on
    peut ensuite la déplacer, l'usiner, la combiner… comme n'importe quel corps.
    Même mécanique que l'Échelle « Nouveau corps » (85-echelle-corps) : occSplitNewBody (20),
-   rejeu de l'historique du source jusqu'à l'étape (occCombineTool), facteur 1 (identité). */
-function bcName(f){return 'Copie de « '+bmBodyName(f.body)+' »';}
+   rejeu de l'historique du source jusqu'à l'étape (occCombineTool), facteur 1 (identité).
+   V0.78.0 — OPTIONS : f.mode 'place' (copie en place, défaut des anciens fichiers) | 'mirror1'
+   (symétrie par f.plane) | 'mirror2' (symétrie par f.plane ET f.plane2 : 3 copies, la 3e par les
+   deux plans). Plans : 'YZ' | 'XZ' | 'XY' (origine) ou 'cg:<id>' (plan de construction).
+   f.union (symétrie seulement) : les copies sont réunies au corps source lui-même — AUCUN corps
+   neuf, un seul corps issu de la symétrie. Sans union : un corps neuf par copie (f.newBody, puis
+   f.newBodies pour les copies 2 et 3 en symétrie double ; occNewBodies, 20). */
+const BC_PLN={YZ:[1,0,0],XZ:[0,1,0],XY:[0,0,1]};
+function bcMode(f){return f&&(f.mode==='mirror1'||f.mode==='mirror2')?f.mode:'place';}
+function bcUnion(f){return bcMode(f)!=='place'&&!!f.union;}
+function bcPlaneVal(v){return (BC_PLN[v]||/^cg:/.test(v||''))?v:'YZ';}
+function bcPlanes(f){
+  // plans de la symétrie (valeurs) : 0, 1 ou 2
+  const m=bcMode(f);if(m==='place')return [];
+  const a=bcPlaneVal(f.plane);if(m==='mirror1')return [a];
+  let b=bcPlaneVal(f.plane2);if(b===a)b=a==='XZ'?'YZ':'XZ';
+  return [a,b];
+}
+function bcPlaneOf(v){
+  // {o,n} monde, ou null (plan de construction supprimé)
+  if(BC_PLN[v])return {o:[0,0,0],n:BC_PLN[v].slice()};
+  if(/^cg:/.test(v||'')){
+    const c=(doc.cgeo||[]).find(x=>x&&x.id===v.slice(3));
+    if(c&&c.fr&&c.fr.o&&c.fr.z){const n=c.fr.z,l=Math.hypot(n[0],n[1],n[2])||1;return {o:c.fr.o.slice(),n:n.map(x=>x/l)};}
+  }
+  return null;
+}
+function bcPlaneLabel(v){
+  if(BC_PLN[v])return v;
+  const c=/^cg:/.test(v||'')&&(doc.cgeo||[]).find(x=>x&&x.id===v.slice(3));
+  return c?c.name:'plan supprimé';
+}
+function bcPlaneOptions(){
+  const o=[['YZ','Plan YZ (X → −X)'],['XZ','Plan XZ (Y → −Y)'],['XY','Plan XY (Z → −Z)']];
+  (doc.cgeo||[]).forEach(c=>{if(c&&c.kind==='plane'&&c.fr)o.push(['cg:'+c.id,'▱ '+c.name]);});
+  return o;
+}
+function bcSig(f){
+  // partie de la signature (cache, 20) propre aux options ; vide en copie simple (cache des anciens fichiers gardé)
+  if(bcMode(f)==='place')return '';
+  const r=v=>Math.round(v*1e6)/1e6;
+  return '|'+bcMode(f)+'|u'+(bcUnion(f)?1:0)+'|'+bcPlanes(f).map(v=>{const P=bcPlaneOf(v);return v+':'+(P?P.o.concat(P.n).map(r).join(','):'?');}).join('/');
+}
+function bcName(f){
+  const src='« '+bmBodyName(f.body)+' »',m=bcMode(f);
+  if(m==='place')return 'Copie de '+src;
+  const pl=bcPlanes(f).map(bcPlaneLabel).join(' + ');
+  return bcUnion(f)?'Symétrie '+pl+' de '+src+' (unie)':'Copie en symétrie '+pl+' de '+src;
+}
+function bcCopyCount(f){return bcUnion(f)?0:(bcMode(f)==='mirror2'?3:1);}
+function bcBodyLabel(f,k){
+  // nom d'un corps neuf : « Pièce (copie) », « Pièce (symétrie YZ) », « Pièce (symétrie YZ + XZ) »
+  const P=bcPlanes(f).map(bcPlaneLabel),m=bcMode(f);
+  const t=m==='place'?'copie':'symétrie '+(m==='mirror1'?P[0]:(k===2?P[0]+' + '+P[1]:P[k]));
+  return bmBodyName(f.body)+' ('+t+')';
+}
+function bcMirror(shape,P){
+  // copie en miroir (le solide d'entrée est gardé)
+  let p=null,d=null,a=null,t=null,b=null;
+  try{
+    p=new occt.gp_Pnt_3(P.o[0],P.o[1],P.o[2]);d=new occt.gp_Dir_4(P.n[0],P.n[1],P.n[2]);a=new occt.gp_Ax2_3(p,d);
+    t=new occt.gp_Trsf_1();t.SetMirror_3(a);
+    b=new occt.BRepBuilderAPI_Transform_2(shape,t,true);
+    const m=b.Shape();if(!m||m.IsNull())throw new Error('copie en miroir vide');
+    try{nomsMemeRangs(shape,m);}catch(e){}
+    return m;
+  }finally{[b,t,a,d,p].forEach(o=>{try{if(o)o.delete();}catch(e){}});}
+}
+function occApplyBodyCopy(src,f,k){
+  // Rejeu (20) : {shape, warnings}. k = rang du corps neuf rejoué (0, 1, 2), -1 = union dans le
+  // corps source. Le solide d'entrée est libéré si l'opération réussit.
+  const m=bcMode(f);
+  if(m==='place')return {shape:src,warnings:[]};
+  const P=bcPlanes(f).map(bcPlaneOf);
+  if(P.some(x=>!x))return {shape:src,warnings:['plan de symétrie introuvable (plan de construction supprimé ?) — rien n’est fait'],fatal:true};
+  const tmp=[];
+  try{
+    if(k>=0&&!bcUnion(f)){
+      let s;
+      if(m==='mirror1'||k===0)s=bcMirror(src,P[0]);
+      else if(k===1)s=bcMirror(src,P[1]);
+      else{const h=bcMirror(src,P[1]);tmp.push(h);s=bcMirror(h,P[0]);}
+      try{src.delete();}catch(e){}
+      return {shape:s,warnings:[]};
+    }
+    // union : le corps et ses copies en miroir, réunis en un seul corps
+    const L=[bcMirror(src,P[0])];
+    if(m==='mirror2'){L.push(bcMirror(src,P[1]));L.push(bcMirror(L[1],P[0]));}
+    tmp.push(...L);
+    let cur=src;
+    for(const x of L){const nx=occFuse(cur,x);if(cur!==src)tmp.push(cur);cur=nx;}
+    const u=occUnify(cur);if(!u||u.IsNull())throw new Error('réunion vide');
+    try{src.delete();}catch(e){}
+    return {shape:u,warnings:[]};
+  }catch(e){
+    return {shape:src,warnings:['symétrie impossible ('+((e&&e.message)||e)+')'],fatal:true};
+  }finally{tmp.forEach(o=>{try{o.delete();}catch(e){}});}
+}
 function bodyHasMatter(id){
   // un corps porte de la matière s'il a une fonction à lui ou s'il est né d'une copie / scission
-  return (doc.features||[]).some(f=>f&&f.visible!==false&&(f.body===id||occSplitNewBody(f)===id));
+  return (doc.features||[]).some(f=>f&&f.visible!==false&&(f.body===id||occNewBodies(f).indexOf(id)>=0));
 }
-function bcNewBodyFor(src){
+function bcNewBodyFor(src,label){
   try{ensureBodies();}catch(e){}
   const n=doc.bodySeq++;
-  const e={id:'b'+n,name:bmBodyName(src)+' (copie)',c:null};
+  const e={id:'b'+n,name:label||(bmBodyName(src)+' (copie)'),c:null};
   doc.bodies.push(e);return e.id;
+}
+function bcBodyFree(f,nb){
+  // un corps neuf qui ne sert plus à f est retiré s'il ne porte rien d'autre
+  if(!nb||doc.features.some(x=>x!==f&&(x.body===nb||(x.type==='combine'&&(x.tools||[]).indexOf(nb)>=0)||x.newBody===nb||(Array.isArray(x.newBodies)&&x.newBodies.indexOf(nb)>=0))))return;
+  doc.bodies=(doc.bodies||[]).filter(b=>b.id!==nb);
+  if(doc.activeBody===nb&&doc.bodies.length)doc.activeBody=doc.bodies[0].id;
+}
+const BC_AUTO_RE=/ \((copie|symétrie [^)]*)\)$/;
+function bcSyncBodies(f){
+  // autant de corps neufs que de copies (0 en union) ; noms automatiques tenus à jour
+  const want=bcCopyCount(f);
+  const cur=[f.newBody].concat(Array.isArray(f.newBodies)?f.newBodies:[]).filter(b=>b&&(doc.bodies||[]).some(e=>e.id===b));
+  while(cur.length>want)bcBodyFree(f,cur.pop());
+  while(cur.length<want)cur.push(bcNewBodyFor(f.body,bcBodyLabel(f,cur.length)));
+  cur.forEach((b,k)=>{
+    const e=doc.bodies.find(x=>x.id===b);
+    if(e&&BC_AUTO_RE.test(e.name))e.name=bcBodyLabel(f,k); // nom donné par l'utilisateur : gardé
+  });
+  if(cur.length)f.newBody=cur[0];else delete f.newBody;
+  if(cur.length>1)f.newBodies=cur.slice(1);else delete f.newBodies;
 }
 function bcSourceChoices(f){
   // corps copiables à l'instant de la timeline où se trouve f (ou au marqueur, f absent)
   const i=f?doc.features.indexOf(f):tlIdx();
+  const mine=f?occNewBodies(f):[];
   const L=(doc.bodies||[]).filter(e=>{
-    if(f&&e.id===f.newBody)return false;
+    if(mine.indexOf(e.id)>=0)return false;
     try{if(!bodyBornAt(e.id,i))return false;}catch(err){}
     try{if(bodyConsumedBy(e.id,i))return false;}catch(err){}
     const pre=i<0?doc.features:doc.features.slice(0,i);
-    return pre.some(x=>x&&x.visible!==false&&(x.body===e.id||occSplitNewBody(x)===e.id));
+    return pre.some(x=>x&&x.visible!==false&&(x.body===e.id||occNewBodies(x).indexOf(e.id)>=0));
   });
   if(f&&!L.some(e=>e.id===f.body)){const e=(doc.bodies||[]).find(x=>x.id===f.body);if(e)L.unshift(e);}
   return L;
 }
 /* ── commande ── */
-function openBodyCopy(bid){
+function openBodyCopy(bid,opt){
+  // opt (facultatif) : {mode, plane, plane2, union} — sinon copie en place, réglable au panneau
   try{ensureBodies();}catch(e){}
   const id=bid&&(doc.bodies||[]).some(b=>b.id===bid)?bid:(doc.activeBody&&(doc.bodies||[]).some(b=>b.id===doc.activeBody)?doc.activeBody:((doc.bodies||[])[0]||{}).id);
   if(!id){try{faceEl.textContent='Copier : aucun corps.';}catch(e){}return null;}
@@ -39054,40 +39181,59 @@ function openBodyCopy(bid){
     return null;
   }
   try{bmPickExit(true);}catch(e){}
-  const f={id:uid('bc'),type:'bcopy',name:'',body:id,visible:true};
+  const o=opt||{};
+  const f={id:uid('bc'),type:'bcopy',name:'',body:id,mode:o.mode||'place',plane:o.plane||'YZ',plane2:o.plane2||'XZ',union:!!o.union,visible:true};
   f.name=bcName(f);
   addFeature(f); // au marqueur de la timeline : c'est l'instant copié (annulation incluse)
-  f.newBody=bcNewBodyFor(id);
+  bcSyncBodies(f);
   sel={kind:'feature',id:f.id};treeSel=[f.id];
   markDirty();rebuild();renderTree();renderProps();refreshParts();
-  try{faceEl.textContent='« '+bmBodyName(f.newBody)+' » : copie de « '+bmBodyName(id)+' » telle qu’elle est à cette étape de la timeline.';}catch(e){}
+  try{faceEl.textContent=f.newBody?'« '+bmBodyName(f.newBody)+' » : copie de « '+bmBodyName(id)+' » telle qu’elle est à cette étape de la timeline. Symétrie et union : dans le panneau.':f.name+'.';}catch(e){}
   return f;
 }
 /* ── panneau ── */
 function bcopyProps(p,f){
   const mk=(tag,cls,txt)=>{const d=document.createElement(tag);if(cls)d.className=cls;if(txt!=null)d.textContent=txt;return d;};
-  p.appendChild(mk('div','pnl-h','⧉ Copier un corps'));
-  const r=mk('div','pnl-row');r.appendChild(mk('label',null,'Corps copié'));
-  const sb=document.createElement('select');
-  bcSourceChoices(f).forEach(b=>{const o=document.createElement('option');o.value=b.id;o.textContent=b.name;if(b.id===f.body)o.selected=true;sb.appendChild(o);});
-  sb.onchange=()=>{
-    docPushUndo('corps copié (« '+f.name+' »)');
-    f.body=sb.value;f.name=bcName(f);
+  const Row=(lab,ctl)=>{const r=mk('div','pnl-row');r.appendChild(mk('label',null,lab));r.appendChild(ctl);p.appendChild(r);return r;};
+  const Sel=(opts,val,fn)=>{const s=document.createElement('select');opts.forEach(([v,t])=>{const o=document.createElement('option');o.value=v;o.textContent=t;if(v===val)o.selected=true;s.appendChild(o);});s.onchange=()=>fn(s.value);return s;};
+  const set=(label,fn)=>{
+    docPushUndo(label+' (« '+f.name+' »)');
+    fn();bcSyncBodies(f);f.name=bcName(f);
     markDirty();rebuild();renderTree();renderProps();refreshParts();
   };
-  r.appendChild(sb);p.appendChild(r);
-  if(f.newBody)p.appendChild(mk('div','pnl-note','La copie est dans « '+bmBodyName(f.newBody)+' ». Elle reprend « '+bmBodyName(f.body)+' » tel qu’il est à CETTE étape : ce qui lui est ajouté plus loin dans la timeline n’entre pas dans la copie.'));
+  const m=bcMode(f);
+  p.appendChild(mk('div','pnl-h','⧉ Copier un corps'));
+  Row('Corps copié',Sel(bcSourceChoices(f).map(b=>[b.id,b.name]),f.body,v=>set('corps copié',()=>{f.body=v;})));
+  Row('Copie',Sel([['place','En place (corps neuf)'],['mirror1','Symétrie par 1 plan'],['mirror2','Symétrie par 2 plans']],m,
+    v=>set('type de copie',()=>{f.mode=v;if(v==='mirror2'&&bcPlaneVal(f.plane2)===bcPlaneVal(f.plane))f.plane2=bcPlaneVal(f.plane)==='XZ'?'YZ':'XZ';})));
+  if(m!=='place'){
+    const pv=bcPlanes(f),opts=bcPlaneOptions();
+    Row(m==='mirror2'?'Plan 1':'Plan',Sel(opts,pv[0],v=>set('plan de la symétrie',()=>{f.plane=v;if(m==='mirror2'&&bcPlaneVal(f.plane2)===v)f.plane2=pv[0];})));
+    if(m==='mirror2')Row('Plan 2',Sel(opts.filter(o=>o[0]!==pv[0]),pv[1],v=>set('2e plan de la symétrie',()=>{f.plane2=v;})));
+    const cb=document.createElement('input');cb.type='checkbox';cb.checked=bcUnion(f);
+    cb.onchange=()=>set(cb.checked?'union de la symétrie':'symétrie en corps séparés',()=>{f.union=cb.checked;});
+    const r=Row('Unir au corps',cb);r.title='Coché : les copies en miroir sont réunies au corps copié — aucun corps neuf, un seul corps. Décoché : chaque copie est un corps neuf.';
+  }
+  const nbs=occNewBodies(f);
+  let note='';
+  if(bcUnion(f))note='« '+bmBodyName(f.body)+' » et '+(m==='mirror2'?'ses 3 copies en miroir':'sa copie en miroir')+' sont réunis en un seul corps : aucun corps neuf. Tout ce qui précède dans le corps est pris, combinaisons et congés compris.';
+  else if(nbs.length)note=(nbs.length>1?'Les copies sont dans ':'La copie est dans ')+nbs.map(b=>'« '+bmBodyName(b)+' »').join(', ')+'. '+(nbs.length>1?'Elles reprennent':'Elle reprend')+' « '+bmBodyName(f.body)+' » tel qu’il est à CETTE étape : ce qui lui est ajouté plus loin dans la timeline n’y entre pas.';
+  if(note)p.appendChild(mk('div','pnl-note',note));
   if(f._err)p.appendChild(mk('div','pnl-note','⚠ '+f._err));
+  if(!nbs.length)return;
   const b=mk('div','pnl-btns');
-  const bt=mk('button','mini','✥ Déplacer la copie…');bt.title='Ajoute une étape « Déplacer » sur le corps copié';
-  bt.onclick=()=>{
-    if(!f.newBody)return;
-    // le déplacement doit venir APRÈS la copie : marqueur avancé juste derrière elle si besoin
-    const i=doc.features.indexOf(f),m=tlIdx();
-    if(m>=0&&m<=i){const nx=doc.features[i+1];tlMark=nx?nx.id:null;}
-    openBodyMove(f.newBody);
-  };
-  b.appendChild(bt);p.appendChild(b);
+  nbs.forEach((nb,k)=>{
+    const bt=mk('button','mini',nbs.length>1?'✥ Déplacer '+(k+1):'✥ Déplacer la copie…');
+    bt.title='Ajoute une étape « Déplacer » sur « '+bmBodyName(nb)+' »';
+    bt.onclick=()=>{
+      // le déplacement doit venir APRÈS la copie : marqueur avancé juste derrière elle si besoin
+      const i=doc.features.indexOf(f),m0=tlIdx();
+      if(m0>=0&&m0<=i){const nx=doc.features[i+1];tlMark=nx?nx.id:null;}
+      openBodyMove(nb);
+    };
+    b.appendChild(bt);
+  });
+  p.appendChild(b);
 }
 /* ── menus contextuels (arbre et vue) : « ⧉ Copier (timeline) » sur un corps ── */
 const bcCtxBtns={};
@@ -40294,10 +40440,12 @@ function splitNewBodyFor(src){
 }
 function splitOnDelete(f){
   // Suppression de la fonction : le corps neuf part avec elle s'il ne porte rien d'autre.
-  const nb=f&&(f.type==='xsplit'||f.type==='bscale'||f.type==='bcopy')&&f.newBody;
-  if(!nb||doc.features.some(x=>x.body===nb||(x.type==='combine'&&(x.tools||[]).indexOf(nb)>=0)||(x!==f&&x.newBody===nb)))return;
-  doc.bodies=(doc.bodies||[]).filter(b=>b.id!==nb);
-  if(doc.activeBody===nb&&doc.bodies.length)doc.activeBody=doc.bodies[0].id;
+  if(!f||!(f.type==='xsplit'||f.type==='bscale'||f.type==='bcopy'))return;
+  [f.newBody].concat(f.type==='bcopy'&&Array.isArray(f.newBodies)?f.newBodies:[]).forEach(nb=>{
+    if(!nb||nb===true||doc.features.some(x=>x!==f&&(x.body===nb||(x.type==='combine'&&(x.tools||[]).indexOf(nb)>=0)||x.newBody===nb||(Array.isArray(x.newBodies)&&x.newBodies.indexOf(nb)>=0))))return;
+    doc.bodies=(doc.bodies||[]).filter(b=>b.id!==nb);
+    if(doc.activeBody===nb&&doc.bodies.length)doc.activeBody=doc.bodies[0].id;
+  });
 }
 /* ---------- propriétés d'une scission ---------- */
 function splitProps(p,f){
@@ -69463,8 +69611,17 @@ function mfFiTable(){
   F('Créer/Perçage','Perçage','Fait des trous propres sur les centres de perçage de l’esquisse : simple, lamé, fraisé ou taraudé.',['Placez des centres dans une esquisse et sélectionnez-la, ou cliquez un cylindre de la pièce','Cliquez Perçage','Choisissez le type de trou ; sur un cylindre, réglez sa direction et sa cote'],BK()+CROSS(-7,-7,7)+CROSS(7,7,7),BK()+ficHole(-7,-7,7,4)+ficHole(7,7,7,4),'H');
   const KW0=ficL(14,26,86,26,'#7f9bb9',1.6)+ficL(14,56,86,56,'#7f9bb9',1.6)+'<ellipse cx="14" cy="41" rx="6" ry="15" fill="#e3ecf5" stroke="#7f9bb9" stroke-width="1.4"/>';
   F('Créer/Clavette','Rainure de clavette','Creuse la rainure d’une clavette dans un arbre ou un alésage, aux cotes ISO 773 de son diamètre, et y pose la clavette comme un corps séparé. Si le diamètre change, tout suit.',['Cliquez Clavette','Cliquez le cylindre : face extérieure pour un arbre, intérieure pour un alésage','Réglez la forme, la longueur et la position, puis OK'],KW0,KW0+ficD('M38 33H62A7 7 0 0 1 62 47H38A7 7 0 0 1 38 33Z',OR,1.6,null,'#ffd27a'));
-  F('Créer/Corps','Corps vide','Démarre une nouvelle pièce séparée, vide, dans le même fichier. Ce que vous créez ensuite ira dedans.',[],ficBox(-20,-6,-8,-2,12,6,'b'),ficBox(-20,-6,-8,-2,12,6,'b')+ficBox(2,-14,-8,18,2,6,'o')+ficDot(82,12,3,GR)+ficT(82,23,'actif',6,GR));
-  F('Créer/Copier','Copier un corps','Ajoute une copie de la pièce dans la timeline, à l’endroit du marqueur : la copie est la pièce telle qu’elle est à ce moment-là. Ce que vous ajoutez plus loin à l’original n’y entre pas.',['Sélectionnez le corps (ou il prend le corps actif)','Placez le marqueur de la timeline au bon moment','Cliquez Copier : un corps « (copie) » apparaît'],ficBox(-20,-6,-8,-2,12,6,'b'),ficBox(-20,-6,-8,-2,12,6,'b')+ficBox(2,-14,-8,20,4,6,'o'));
+  // Corps vide : AUCUNE matière — une boîte en pointillés, prête à recevoir (V0.78.0 : distinct de Copier)
+  const WIRE=(x0,y0,z0,x1,y1,z1,c)=>[[[x0,y0,z0],[x1,y0,z0],[x1,y1,z0],[x0,y1,z0]],[[x0,y0,z1],[x1,y0,z1],[x1,y1,z1],[x0,y1,z1]]].map(q=>ficL3(q,c,1.3,'3 2',true)).join('')+[[x0,y0],[x1,y0],[x1,y1],[x0,y1]].map(([x,y])=>ficL3([[x,y,z0],[x,y,z1]],c,1.3,'3 2')).join('');
+  F('Créer/Corps','Corps vide','Démarre une nouvelle pièce séparée, VIDE, dans le même fichier : rien n’est copié. Ce que vous créez ensuite ira dedans.',['Cliquez Corps : un corps vide apparaît dans l’arbre, actif ●','Dessinez et extrudez : la matière naît dans ce corps'],
+    ficBox(-6,-6,-8,10,10,4,'b'),
+    ficBox(-22,-4,-8,-8,10,4,'b')+WIRE(4,-16,-8,20,0,4,GR)+ficT(72,73,'vide',7,GR)+ficDot(84,12,3,GR)+ficT(84,23,'actif',6,GR));
+  // Copier : la MÊME pièce (avec sa pastille) reproduite — en place, ou en miroir d'un plan (orange)
+  const PIECE=(s,k)=>ficBox(Math.min(s*7,s*21),-6,-8,Math.max(s*7,s*21),6,1,k)+ficCyl(s*14,0,1,3.5,6,k==='o'?'mfFcHo':'mfFcHb',k);
+  const MPL=ficPoly([[0,-11,-10],[0,11,-10],[0,11,9],[0,-11,9]],'#ffb84d','#c2410c',' fill-opacity=".45" stroke-dasharray="3 2"');
+  F('Créer/Copier','Copier un corps','Reproduit la pièce telle qu’elle est à l’endroit du marqueur de la timeline : en place, ou en miroir d’un ou de deux plans. Les copies sont des corps neufs, ou — « Unir au corps » — sont réunies à la pièce pour n’en faire qu’une.',['Sélectionnez le corps (ou il prend le corps actif)','Placez le marqueur de la timeline au bon moment','Cliquez Copier, puis choisissez dans le panneau : en place, symétrie 1 ou 2 plans, unir ou non'],
+    MPL+PIECE(1,'b'),
+    PIECE(-1,'o')+MPL+PIECE(1,'b')+ficT(22,12,'copie',7,OR)+ficT(84,74,'original',7,'#3b87d8'),null,'Une pièce','Copiée en miroir');
   F('Construire/Plan','Plan de construction','Ajoute un plan « invisible » pour dessiner là où il n’y a pas de face : décalé, en biais, par 3 points…',[],BK(),BK()+OPL(22,18),null);
   F('Construire/Axe','Axe de construction','Ajoute une droite de repère : pour tourner ou répéter autour d’elle.',[],ficCyl(0,0,-12,10,24),ficL(50,2,50,14,OR,1.6,'4 2')+ficCyl(0,0,-12,10,24)+ficL(50,14,50,74,OR,1.6,'4 2'));
   F('Construire/Point','Point de construction','Ajoute un point de repère : un sommet, un centre, ou des coordonnées précises.',[],BK(),BK()+ficDot(ficXY(15,15,7)[0],ficXY(15,15,7)[1],3.6,OR)+ficC(ficXY(15,15,7)[0],ficXY(15,15,7)[1],6.5,OR,1));
@@ -69498,7 +69655,7 @@ function mfFiTable(){
   const CB=(k1,k2)=>ficBox(-20,-11,-9,6,11,6,k1)+ficCyl(6,0,-9,10,23,k2==='o'?'mfFcHo':'mfFcHb',k2);
   F('Ensembles/Combiner','Combiner','Réunit deux pièces en une, retire l’une de l’autre, ou garde seulement leur partie commune.',['Choisissez la pièce à garder','Choisissez l’outil','Union, soustraction ou intersection'],CB('b','o'),CB('b','b'),null,'Deux pièces','Une seule (union)');
   F('Ensembles/Déplacer','Déplacer','Change la place de la pièce : translation, rotation ou point à point. Pratique pour poser un STEP importé.',[],ficBox(-22,-6,-6,-6,10,6,'b'),ficL3([[-22,10,-6],[-6,10,-6],[-6,10,6],[-22,10,6]],GY,.8,'2 1.6',1)+ficBox(4,-14,-6,20,2,6,'b')+ficAr(30,36,60,42));
-  F('Ensembles/Symétrie','Symétrie','Copie le corps en miroir et le réunit à lui-même, avec tout ce qu’il contient déjà.',['Partez de la moitié ou du quart','Choisissez le plan'],ficBox(0,-8,-8,16,8,2,'b'),ficBox(-16,-8,-8,16,8,2,'b')+ficT(50,8,'miroir',8,OR));
+  F('Ensembles/Symétrie','Symétrie','Complète la pièce par son reflet dans un plan : la moitié devient la pièce entière, en un seul corps, avec tout ce qu’elle contient déjà.',['Partez de la moitié ou du quart','Choisissez le plan'],ficBox(0,-8,-8,16,8,2,'b')+ficPoly([[0,-12,-10],[0,12,-10],[0,12,6],[0,-12,6]],'#ffb84d','#c2410c',' fill-opacity=".45" stroke-dasharray="3 2"'),ficBox(-16,-8,-8,16,8,2,'b')+ficT(50,8,'une seule pièce',7,OR),null,'La moitié','Pièce entière');
   F('Ensembles/Échelle','Échelle','Agrandit ou réduit la pièce, de façon égale ou différente selon X, Y et Z.',['Choisissez le facteur','Choisissez le centre'],ficBox(-8,-8,-9,8,8,1,'b'),ficBox(-17,-17,-14,17,17,8,'b')+ficT(50,8,'× 2',8,OR));
   const BARP=(w,v)=>ficBox(-w,-8,-9,w,8,3,'b')+ficT(50,12,'Longueur = '+v,7.4,OR);
   F('Ensembles/Paramètres','Paramètres','Donne un nom à une dimension. Changez sa valeur à un seul endroit : toute la pièce suit.',['Clic : liste courte','Clic droit : liste complète'],BARP(11,40),BARP(21,70));
@@ -69929,7 +70086,8 @@ const MF_ICF={
     '<ellipse cx="18.5" cy="7" rx="1.5" ry="2.7" fill="url(#mfFzHo)" stroke="#8a5200" stroke-width=".7"/><ellipse cx="4" cy="18" rx="1.5" ry="2.7" fill="none" stroke="#1e88e5" stroke-width=".9" stroke-dasharray="1.4 1"/>',
   hole:fzBox(-5,-5,-5,5,5,0,'b')+'<ellipse cx="12" cy="12" rx="3.4" ry="1.95" fill="#243a52" stroke="#38506a" stroke-width=".6"/><path d="M8.6 12A3.4 1.95 0 0 0 15.4 12A3.4 1.4 0 0 1 8.6 12Z" fill="#5d7896"/>'+fzArrow(12,1.5,12,10.2,'#1e88e5',2),
   keyway:'<rect x="2.5" y="8" width="19" height="9" rx="4.5" fill="url(#mfFzHb)" stroke="#38506a" stroke-width=".8"/><rect x="7" y="9.7" width="10" height="3.2" rx="1.6" fill="#f6a623" stroke="#8a5200" stroke-width=".7"/>',
-  body:fzBox(-5,-5,-3.5,5,5,3,'b'),
+  body:[[[-5,-5,-3.5],[5,-5,-3.5],[5,5,-3.5],[-5,5,-3.5]],[[-5,-5,3],[5,-5,3],[5,5,3],[-5,5,3]],[[-5,5,-3.5],[5,5,-3.5],[5,5,3],[-5,5,3]],[[5,-5,-3.5],[5,5,-3.5],[5,5,3],[5,-5,3]]].map(q=>fzPoly(q,'none','#3b87d8',' stroke-width="1" stroke-dasharray="1.6 1.1"')).join('')+'<circle cx="19.5" cy="5" r="2.6" fill="#38d66b" stroke="#0b4d23" stroke-width=".6"/>', // corps VIDE
+  mirror:fzBox(-6,-5,-3,-1,5,2,'b')+fzPoly([[0,-7,-5],[0,7,-5],[0,7,4.5],[0,-7,4.5]],'#ffb84d','#c2410c',' fill-opacity=".55"')+fzBox(1,-5,-3,6,5,2,'b'),
   copy:fzBox(-7,-7,-6,1,1,0,'b')+fzBox(-1,-1,-1,7,7,5,'b','o'),
   fillet:fzPoly([[-5,5,-5],[5,5,-5],[5,5,0.3],[-5,5,0.3]],FZ.b[1],FZ.b[3])+
     fzPath([['M',5,-5,-5],['L',5,5,-5],['L',5,5,0.3],['Q',5,5,2,5,3.2,2],['L',5,-5,2],['Z']],'fill="'+FZ.b[2]+'" '+FZ_E)+
@@ -70415,7 +70573,8 @@ const MF_IC={
   sweep:'<path d="M3 18c4 0 5-12 10-12h4"/><ellipse cx="18.5" cy="6" rx="1.8" ry="3.2"/><ellipse cx="4.5" cy="18" rx="1.8" ry="3.2" stroke-dasharray="2 2"/>',
   thread:'<path d="M8 3h8M8 21h8M8 3v18M16 3v18"/><path d="M8 6l8 2M8 10l8 2M8 14l8 2M8 18l8 2"/>',
   hole:'<circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="3.5"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/>',
-  body:'<path d="M12 3l8 4v10l-8 4-8-4V7z"/><path d="M4 7l8 4 8-4M12 11v10"/>',
+  body:'<path d="M12 3l8 4v10l-8 4-8-4V7z" stroke-dasharray="2.2 1.8"/><path d="M12 9v6M9 12h6"/>', // corps VIDE : pointillés + « nouveau »
+  mirror:'<path d="M12 2v20" stroke-dasharray="2 2"/><path d="M9.5 6L3 9v8l6.5 2z"/><path d="M14.5 6L21 9v8l-6.5 2z"/>',
   fillet:'<path d="M4 20V12a8 8 0 0 1 8-8h8"/><path d="M4 20h16V4" stroke-dasharray="2 2"/>',
   chamfer:'<path d="M4 20V10l6-6h10"/><path d="M4 20h16V4" stroke-dasharray="2 2"/>',
   face:'<path d="M3 8l6-3v12l-6 3z"/><path d="M12 11h9M18 8l3 3-3 3"/>',
@@ -70525,7 +70684,7 @@ const MF_CAO=[
     ['cgPoint','Point',()=>cgStart('point'),'Point de construction : sommet, centre, coordonnées, intersection axe / plan'],
     ['cgFrame','Repère',()=>cgStart('frame'),'Repère de construction : origine + Z + X, sur un plan ou une face, par 3 points']]],
   ['Modifier',[['fillet','Congé','btnFillet'],['chamfer','Chanfrein','btnChamfer'],['face','Face','btnMoveFace'],['draft','Dépouille','btnDraft'],['shell','Coque','btnCoque'],['thread','Filetage','btnThread'],['split','Scinder','btnSplit']]],
-  ['Ensembles',[['pattern','Répétition','btnRepeat'],['combine','Combiner','btnCombine'],['move','Déplacer','btnBodyMove'],['scale','Échelle','btnBodyScale'],['pattern','Symétrie','btnBodyMirror'],['params','Paramètres','btnParams']]],
+  ['Ensembles',[['pattern','Répétition','btnRepeat'],['combine','Combiner','btnCombine'],['move','Déplacer','btnBodyMove'],['scale','Échelle','btnBodyScale'],['mirror','Symétrie','btnBodyMirror'],['params','Paramètres','btnParams']]],
   ['Fichier',[['import','Importer','btnImport'],['import','Dériver','btnDerive'],['export','STEP','btnExportStep'],['export','STL','btnExportStl'],['export','OBJ','btnExportObj'],['export','FreeCAD','btnExportFcstd']]]
 ];
 const MF_FAO_ICON={facing:'facing',pocket:'pocket',chamfer:'chamfer',contour:'contour',drill:'drill',rough3d:'rough3d',geofinish:'finish',geodesic:'geodesic',pocket2:'pocket'};

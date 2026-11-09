@@ -92,7 +92,8 @@ const MF_ICF={
     '<ellipse cx="18.5" cy="7" rx="1.5" ry="2.7" fill="url(#mfFzHo)" stroke="#8a5200" stroke-width=".7"/><ellipse cx="4" cy="18" rx="1.5" ry="2.7" fill="none" stroke="#1e88e5" stroke-width=".9" stroke-dasharray="1.4 1"/>',
   hole:fzBox(-5,-5,-5,5,5,0,'b')+'<ellipse cx="12" cy="12" rx="3.4" ry="1.95" fill="#243a52" stroke="#38506a" stroke-width=".6"/><path d="M8.6 12A3.4 1.95 0 0 0 15.4 12A3.4 1.4 0 0 1 8.6 12Z" fill="#5d7896"/>'+fzArrow(12,1.5,12,10.2,'#1e88e5',2),
   keyway:'<rect x="2.5" y="8" width="19" height="9" rx="4.5" fill="url(#mfFzHb)" stroke="#38506a" stroke-width=".8"/><rect x="7" y="9.7" width="10" height="3.2" rx="1.6" fill="#f6a623" stroke="#8a5200" stroke-width=".7"/>',
-  body:fzBox(-5,-5,-3.5,5,5,3,'b'),
+  body:[[[-5,-5,-3.5],[5,-5,-3.5],[5,5,-3.5],[-5,5,-3.5]],[[-5,-5,3],[5,-5,3],[5,5,3],[-5,5,3]],[[-5,5,-3.5],[5,5,-3.5],[5,5,3],[-5,5,3]],[[5,-5,-3.5],[5,5,-3.5],[5,5,3],[5,-5,3]]].map(q=>fzPoly(q,'none','#3b87d8',' stroke-width="1" stroke-dasharray="1.6 1.1"')).join('')+'<circle cx="19.5" cy="5" r="2.6" fill="#38d66b" stroke="#0b4d23" stroke-width=".6"/>', // corps VIDE
+  mirror:fzBox(-6,-5,-3,-1,5,2,'b')+fzPoly([[0,-7,-5],[0,7,-5],[0,7,4.5],[0,-7,4.5]],'#ffb84d','#c2410c',' fill-opacity=".55"')+fzBox(1,-5,-3,6,5,2,'b'),
   copy:fzBox(-7,-7,-6,1,1,0,'b')+fzBox(-1,-1,-1,7,7,5,'b','o'),
   fillet:fzPoly([[-5,5,-5],[5,5,-5],[5,5,0.3],[-5,5,0.3]],FZ.b[1],FZ.b[3])+
     fzPath([['M',5,-5,-5],['L',5,5,-5],['L',5,5,0.3],['Q',5,5,2,5,3.2,2],['L',5,-5,2],['Z']],'fill="'+FZ.b[2]+'" '+FZ_E)+

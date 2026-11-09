@@ -8,7 +8,7 @@ sont sorties le 2026-09-30j.
 Code dans `src/` · livrable `fusion_mvp.html` (généré par `build.js`) · architecture et
 garde-fous en tête de `src/00-entete-et-outils.js`.
 
-**628 versions**, de `2026-09-28b` à `V0.77.2` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
+**629 versions**, de `2026-09-28b` à `V0.78.0` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
 comme dans le fichier d'origine.
 
 ---
@@ -7189,3 +7189,10 @@ Barquette ne perd plus son solide à la 107e modification, et sa mémoire ne mon
 - **Cause** : l'aperçu du congé et du chanfrein (`xPreviewUpdate`, `src/80-conges-chanfreins.js`) recalculait le COMPOSÉ de tous les corps (`occLive.shape`) et l'affichait à la place de tous, sans regarder l'œil des corps : un corps caché revenait, dans la couleur de l'autre et sans arêtes.
 - **Correctif** : `xPreviewBody` trouve le corps qui porte toutes les arêtes choisies (le corps actif d'abord) ; l'aperçu ne calcule que lui et ne remplace que lui. Les autres corps gardent leur affichage, caché ou visible. Arêtes réparties sur plusieurs corps, ou un seul corps : comportement d'avant.
 - **Test** : `test_conge_corps_cache` (7 contrôles : aperçu au 1er clic, corps caché qui le reste pendant l'aperçu et après, aperçu calculé sur le seul corps modifié — 6 faces de départ et non 12, corps visible inchangé). Sur V0.77.1 il échoue à 2 contrôles. Vérifié aussi au navigateur sur la pièce de Fred (copie cachée). Parcours FAO et CACHE_VER inchangés.
+
+## V0.78.0 - Copier un corps : en place, en symétrie par 1 ou 2 plans, unie ou non
+
+- **Demande** : Fred, 09/11 : « Copier un corps -> la fonction existe déjà et j'aimerais ajouter plusieurs options : copie seule en place dans nouveau corps, copie en symétrie suivant un plan, copie en symétrie suivant 2 plans, tout ceci avec option d'union, auquel cas pas de corps supplémentaire créés dans l'arborescence mais un seul corps lié » ; les fiches animées de Corps et de Copier montraient la même chose ; « faire attention à ce que les faces planes n'aient pas de droites de symétrie en plein milieu ».
+- **Correctif** (`src/85-copier-corps.js`) : l'étape `bcopy` gagne `mode` (`place` par défaut — anciens fichiers inchangés —, `mirror1`, `mirror2`), `plane`/`plane2` (YZ, XZ, XY ou `cg:<id>`, plan de construction) et `union`. Sans union, un corps neuf par copie (`newBody`, plus `newBodies` pour les copies 2 et 3 de la symétrie double) ; `occNewBodies` (`src/20-10`) les fait connaître au rejeu, à l'antériorité des corps, aux combinaisons et à la suppression. Avec union, les copies en miroir sont fusionnées au corps source puis recollées (`occUnify`) : aucun corps neuf. Les corps neufs sont créés, renommés ou retirés quand on change les options. Signature de cache : options et plan résolu (suit le plan de construction).
+- **Icônes** : Corps = boîte vide en pointillés (fiche : corps « vide », « actif ») ; Copier = la pièce et sa copie de part et d'autre d'un plan ; Symétrie a sa propre icône (elle partageait celle de Répétition), aussi dans la timeline pour une copie en symétrie.
+- **Test** : `test_copier_corps_symetrie` (11 contrôles : copie en place, symétrie YZ dans un corps neuf, 3 corps neufs aux 3 autres quarts, union 2 plans = 1 corps, 1 solide, 32000 mm³ et 6 faces — pas de trait au milieu des faces planes —, union 1 plan, retour des corps neufs, plan de construction décalé, cache, fichier, suppression). `test_copier_corps` et `test_symetrie_corps` inchangés et verts. Vérifié au navigateur : bloc percé de 4 trous en symétrie double unie, 1 solide de 10 faces. Parcours FAO et CACHE_VER inchangés.

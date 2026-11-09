@@ -655,7 +655,7 @@ function repBodyOwner(bid){
 function repDropBody(bid){
   // Retire un corps créé par une répétition, s'il ne porte plus rien (fonction, outil de
   // combinaison, corps neuf d'une autre fonction) — sinon il reste, comme tout corps.
-  if(!bid||(doc.features||[]).some(x=>x.body===bid||x.newBody===bid||(x.type==='combine'&&(x.tools||[]).indexOf(bid)>=0)))return false;
+  if(!bid||(doc.features||[]).some(x=>x.body===bid||x.newBody===bid||(Array.isArray(x.newBodies)&&x.newBodies.indexOf(bid)>=0)||(x.type==='combine'&&(x.tools||[]).indexOf(bid)>=0)))return false;
   const n0=(doc.bodies||[]).length;
   doc.bodies=(doc.bodies||[]).filter(b=>b.id!==bid);
   if(doc.bodies.length&&doc.activeBody===bid)doc.activeBody=doc.bodies[0].id;

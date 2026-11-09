@@ -170,8 +170,8 @@ function tlbSvgKey(s){
     case 'bmove':return ['move','mod'];
     case 'bremove':return ['body','cut',true];
     case 'bscale':return ['scale','mod'];
-    case 'bcopy':return ['copy','add'];
-    case 'bmirror':return ['pattern','mod'];
+    case 'bcopy':return [s.o&&(s.o.mode==='mirror1'||s.o.mode==='mirror2')?'mirror':'copy','add'];
+    case 'bmirror':return ['mirror','mod'];
     case 'import':return ['import','mod'];
   }
   return null;

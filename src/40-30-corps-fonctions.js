@@ -139,7 +139,7 @@ function featBodyChoices(f){
   const i=doc.features.indexOf(f),own=occBodyOfFeat(f);
   // corps ordinaire (◧ Corps, migration) : il existe dès le départ ; un corps né d'une
   // fonction (répétition, extrusion « nouveau corps », scission) seulement après elle
-  const plain=bid=>!repBodyOwner(bid)&&!doc.features.some(x=>(x.newBody===true&&x.body===bid)||x.newBody===bid);
+  const plain=bid=>!repBodyOwner(bid)&&!doc.features.some(x=>(x.newBody===true&&x.body===bid)||x.newBody===bid||(Array.isArray(x.newBodies)&&x.newBodies.indexOf(bid)>=0));
   const L=(doc.bodies||[]).filter(e=>{
     if(e.id===own)return true;
     if(bodyRemovedAt(e.id,i))return false;
