@@ -4,7 +4,7 @@
    garde sa géométrie et ses caractéristiques : le fichier reste juste si le catalogue change.
    Clic droit sur un aimant posé (90-10) : afficher / masquer ses lignes de champ, lire ses
    caractéristiques. L'affichage est propre à l'occurrence (occ.mag, enregistré). */
-const MAG_SHAPES=[['cyl','Disque / cylindre'],['cube','Cube'],['box','Pavé'],['ring','Anneau']];
+const MAG_SHAPES=[['cyl','Disque / cylindre'],['cube','Cube'],['box','Pavé'],['ring','Anneau'],['cone','Cône tronqué'],['cs','Disque à visser (fraisé)'],['csq','Pavé à visser (fraisé)']];
 const MAG_MATS={NdFeB:{nom:'NdFeB (néodyme)',rho:7.5},Ferrite:{nom:'Ferrite',rho:4.9}};
 function magRow(code){return MAG_CAT.find(r=>r.code===code)||null;}
 function magRows(st){return MAG_CAT.filter(r=>r.s===st.shape&&(!st.grade||st.grade==='*'||r.grade===st.grade));}
@@ -13,8 +13,9 @@ function magGradeOpts(st){
   return [['*','Toutes']].concat(g.map(x=>[x,x]));
 }
 function magDims(r){
-  return r.s==='cyl'?'Ø'+stdF(r.d)+' × '+stdF(r.h):
+  return r.s==='cyl'||r.s==='cs'?'Ø'+stdF(r.d)+' × '+stdF(r.h):
     r.s==='ring'?'Ø'+stdF(r.d)+'/'+stdF(r.di)+' × '+stdF(r.h):
+    r.s==='cone'?'Ø'+stdF(r.d)+'/'+stdF(r.dt)+' × '+stdF(r.h):
     stdF(r.a)+' × '+stdF(r.b)+' × '+stdF(r.h);
 }
 function magArtDef(st){
@@ -22,11 +23,21 @@ function magArtDef(st){
   const R=magRows(st),big=R.find(r=>(r.d||r.a)>=10);
   return big?big.code:(R[0]?R[0].code:'');
 }
-function magArtOpts(st){return magRows(st).map(r=>[r.code,magDims(r)+' mm · '+r.grade+' — '+r.code]);}
+function magArtOpts(st){return magRows(st).map(r=>[r.code,magDims(r)+' mm'+(r.dia?' diamétral':'')+magCsTxt(r)+' · '+r.grade+' — '+r.code]);}
+function magCsTxt(r){
+  // aimant à visser : trou(s) et pôle du côté fraisé
+  if(!r.cs)return '';
+  return ' · '+(r.cs.n===2?'2 trous fraisés':'trou fraisé')+(r.s==='cs'?', '+(r.cs.face==='S'?'sud':'nord')+' côté fraisé':'');
+}
 function magBr(r){return (r.br[0]+r.br[1])/2;}
 function magGeom(r){
-  const m={s:r.s==='cube'?'box':r.s,Br:magBr(r),h:r.h};
-  if(m.s==='box'){m.a=r.a;m.b=r.b;}else{m.d=r.d;if(m.s==='ring')m.di=r.di;}
+  const m={s:r.s==='cube'||r.s==='csq'?'box':r.s==='cs'?'cyl':r.s,Br:magBr(r),h:r.h};
+  if(m.s==='box'){m.a=r.a;m.b=r.b;}else{m.d=r.d;if(m.s==='ring')m.di=r.di;if(m.s==='cone')m.dt=r.dt;}
+  if(r.dia&&m.s==='cyl')m.dia=true; // V0.71.0 : aimanté en travers (selon +Y), h reste la hauteur du disque
+  if(r.cs){ // V0.71.0 : aimant à visser — fraisage côté nord (top) ou côté sud, un trou au centre ou deux le long de a
+    const c=r.cs,xs=c.n===2?[-c.e/2,c.e/2]:[0];
+    m.holes=xs.map(x=>({x,y:0,d1:c.d1,d2:c.d2,t:c.t,top:c.face!=='S'}));
+  }
   return m;
 }
 function magSpec(st){
@@ -37,6 +48,8 @@ function magSpec(st){
     info:magInfo(r,g),mag:Object.assign({},g,{code:r.code,src:r.src,grade:r.grade,mat:r.mat,br:r.br,hcb:r.hcb,hcj:r.hcj,bh:r.bh,tmax:r.tmax,force:r.force,dirTxt:r.dirTxt}),
     mat:{name:M.nom,rho:M.rho},color:r.mat==='Ferrite'?0x3c3d40:0xc3c6ca};
   if(g.s==='box')sp.ops=[{k:'mbox',a:g.a,b:g.b,h:g.h}];
+  else if(g.holes){const H=g.holes[0],R=g.d/2,zb=H.top?g.h-H.t:H.t,ri=z=>magHoleR(H,g.h,z);sp.prof=[[ri(0),0],[R,0],[R,g.h],[ri(g.h),g.h],[ri(zb),zb]];}
+  else if(g.s==='cone')sp.prof=[[0,0],[g.d/2,0],[g.dt/2,g.h],[0,g.h]];
   else{const r0=g.s==='ring'?g.di/2:0,r1=g.d/2;sp.prof=[[r0,0],[r1,0],[r1,g.h],[r0,g.h]];}
   return sp;
 }
@@ -46,13 +59,27 @@ function magSpec(st){
    aimants), aucune à la jonction des pôles (demande de Fred) : l'aimant entier arrondi, coupé en deux. */
 const MAG_POLE_N=0xe0483c,MAG_POLE_S=0x2f9e4f,MAG_RND=0.3;
 function magRound(m){
-  const half=m.h/2,lat=m.s==='box'?Math.min(m.a,m.b)/2:m.s==='ring'?(m.d-m.di)/4:m.d/2;
+  if(m.dia)return +Math.min(MAG_RND,m.h*0.2,m.d*0.2).toFixed(4); // moitiés coupées dans la longueur
+  const half=m.h/2,lat=m.s==='box'?Math.min(m.a,m.b)/2:m.s==='ring'?(m.d-m.di)/4:m.s==='cone'?m.dt/2:m.d/2;
   return +Math.min(MAG_RND,half*0.4,lat*0.4).toFixed(4);
 }
 function magHalfProf(m,z0,z1,k,sud){
   // profil de révolution d'une moitié (XZ) : seuls les coins de la face EXTÉRIEURE (bas du sud,
   // haut du nord) sont arrondis, au bord du disque et, pour l'anneau, au bord du trou ; jonction vive
   const R=m.d/2;
+  if(m.holes){
+    // disque à visser : bord extérieur arrondi comme un anneau, trou fraisé vif (le fraisage peut passer la mi-hauteur)
+    const H=m.holes[0],ri=z=>magHoleR(H,m.h,z),zb=H.top?m.h-H.t:H.t;
+    const P=[[ri(z0),z0]].concat(sud?[[R-k,z0],[R,z0+k,{c:[R-k,z0+k]}],[R,z1]]:[[R,z0],[R,z1-k],[R-k,z1,{c:[R-k,z1-k]}]],[[ri(z1),z1]]);
+    if(zb>z0+1e-9&&zb<z1-1e-9)P.push([ri(zb),zb]);
+    return P;
+  }
+  if(m.s==='cone'){
+    // paroi inclinée : le coin extérieur (base du sud, petite face du nord) n'est pas droit
+    const rz=z=>(m.d+(m.dt-m.d)*z/m.h)/2;
+    return sud?[[0,z0]].concat(magCorner([0,z0],[rz(z0),z0],[rz(z1),z1],k),[[rz(z1),z1],[0,z1]])
+      :[[0,z0],[rz(z0),z0]].concat(magCorner([rz(z0),z0],[rz(z1),z1],[0,z1],k),[[0,z1]]);
+  }
   if(m.s==='ring'){
     const r0=m.di/2;
     return sud?[[r0+k,z0,{c:[r0+k,z0+k]}],[R-k,z0],[R,z0+k,{c:[R-k,z0+k]}],[R,z1],[r0,z1],[r0,z0+k]]
@@ -61,17 +88,45 @@ function magHalfProf(m,z0,z1,k,sud){
   return sud?[[0,z0],[R-k,z0],[R,z0+k,{c:[R-k,z0+k]}],[R,z1],[0,z1]]
     :[[0,z0],[R,z0],[R,z1-k],[R-k,z1,{c:[R-k,z1-k]}],[0,z1]];
 }
+function magCorner(A,P,B,k){
+  // coin P (entre A et B) arrondi de rayon k : [point de tangence côté A, point côté B avec son centre]
+  if(!(k>0))return [P];
+  const n=v=>{const l=Math.hypot(v[0],v[1]);return [v[0]/l,v[1]/l];},u1=n([A[0]-P[0],A[1]-P[1]]),u2=n([B[0]-P[0],B[1]-P[1]]);
+  const th=Math.acos(Math.max(-1,Math.min(1,u1[0]*u2[0]+u1[1]*u2[1]))),t=k/Math.tan(th/2),bi=n([u1[0]+u2[0],u1[1]+u2[1]]),c=k/Math.sin(th/2);
+  // pas d'arrondi des cotes : un écart de 1e-7 entre l'arc et ses voisins casse le contour dans le noyau
+  return [[P[0]+u1[0]*t,P[1]+u1[1]*t],[P[0]+u2[0]*t,P[1]+u2[1]*t,{c:[P[0]+bi[0]*c,P[1]+bi[1]*c]}]];
+}
 function magFillDoc(d,m){
   const k=magRound(m),h2=m.h/2;
   d.bodies=[{id:'b1',name:'Pôle sud',c:null,color:MAG_POLE_S},{id:'b2',name:'Pôle nord',c:null,color:MAG_POLE_N}];
   d.bodySeq=3;d.activeBody='b2';
   const F=(f,b)=>{f.id=uid(f.type==='revolve'?'rv':f.type==='fillet'?'fi':'ex');f.visible=true;f.body=b;d.features.push(f);return f;};
+  if(m.dia){
+    // V0.71.0 : disque diamétral — deux demi-disques coupés par le plan XZ : nord côté +Y (profil en
+    // X > 0 tourné de 180°), sud côté −Y (profil en X < 0) ; seuls les bords des faces rondes sont arrondis
+    const R=m.d/2,H=m.h;
+    [['b1','sud',-1],['b2','nord',1]].forEach(([b,nom,sg])=>{
+      const s=stdSketch(d,'Profil pôle '+nom,'XZ',0),X=v=>sg*v;
+      stdLoop(s,[[0,0],[X(R-k),0],[X(R),k,{c:[X(R-k),k]}],[X(R),H-k],[X(R-k),H,{c:[X(R-k),H-k]}],[0,H]]);
+      F({type:'revolve',name:'Pôle '+nom,sketchId:s.id,axis:{k:'sys',d:'Z'},angle:180,op:'add'},b);
+    });
+    return;
+  }
   [['b1','sud',0],['b2','nord',h2]].forEach(([b,nom,z0])=>{
     if(m.s==='box'){
       const s=stdSketch(d,'Contour pôle '+nom,'XY',z0),a=m.a/2,c=m.b/2;
       stdLoop(s,[[-a+k,-c],[a-k,-c],[a,-c+k,{c:[a-k,-c+k]}],[a,c-k],[a-k,c,{c:[a-k,c-k]}],[-a+k,c],[-a,c-k,{c:[-a+k,c-k]}],[-a,-c+k],[-a+k,-c,{c:[-a+k,-c+k]}]]);
       const e=F({type:'extrude',name:'Pôle '+nom,sketchId:s.id,distance:h2,op:'add',mid:false,upto:null},b);
       F({type:'fillet',name:'Congé R'+k+' (pôle '+nom+')',target:e.id,radius:k,corners:[],rims:{top:nom==='nord',bottom:nom==='sud'},rimTop:nom==='nord',rimBot:nom==='sud',radii:[]},b); // face extérieure seule
+      (m.holes||[]).forEach((H,i)=>{
+        // V0.71.0 : pavé à visser — chaque trou fraisé enlevé de la moitié par une révolution autour de son axe
+        const z1=z0+h2,za=z0-0.1,zb=z1+0.1,zk=H.top?m.h-H.t:H.t,ri=z=>magHoleR(H,m.h,z);
+        const s2=stdSketch(d,'Trou fraisé '+(i+1)+' (pôle '+nom+')','XZ',0);
+        const P=[[H.x,za],[H.x+ri(za),za]];if(zk>za&&zk<zb)P.push([H.x+ri(zk),zk]);P.push([H.x+ri(zb),zb],[H.x,zb]);
+        stdLoop(s2,P);
+        const ax={id:skNewEid(s2),t:'line',p1:addPoint(s2,H.x,za-1),p2:addPoint(s2,H.x,zb+1),construction:true};s2.entities.push(ax);
+        F({type:'revolve',name:'Trou fraisé '+(i+1)+' (pôle '+nom+')',sketchId:s2.id,axis:{k:'line',id:ax.id},angle:360,op:'cut'},b);
+      });
     }else{
       const s=stdSketch(d,'Profil pôle '+nom,'XZ',0);stdLoop(s,magHalfProf(m,z0,z0+h2,k,nom==='sud'));
       F({type:'revolve',name:'Pôle '+nom,sketchId:s.id,axis:{k:'sys',d:'Z'},angle:360,op:'add'},b);
@@ -82,18 +137,25 @@ function magInfo(r,g){
   const F=(v,n)=>stdF(+(+v).toFixed(n));
   return r.mat+' '+r.grade+' · Br '+F(r.br[0],3)+' à '+F(r.br[1],3)+' T · '+r.dirTxt+
     ' · force '+(r.force||'non indiquée')+' · '+(r.tmax!=null?r.tmax+' °C maxi':'température non indiquée')+
-    ' · champ calculé '+(g.s==='ring'?'sur la face nord, à mi-largeur : ':'au centre de la face nord : ')+Math.round(Math.abs(magPoleField(g))*1000)+' mT';
+    ' · champ calculé '+(g.dia?'au milieu du flanc nord : ':g.s==='ring'?'sur la face nord, à mi-largeur : ':'au centre de la face nord : ')+Math.round(Math.abs(magPoleField(g))*1000)+' mT';
 }
 function magNorm(v){
   // Relecture du fichier : fiche d'aimant complète et saine, sinon rien (le fichier peut être ancien ou altéré)
-  if(!v||typeof v!=='object'||!['cyl','ring','box'].includes(v.s))return null;
+  if(!v||typeof v!=='object'||!['cyl','ring','box','cone'].includes(v.s))return null;
   const pos=x=>typeof x==='number'&&isFinite(x)&&x>0;
   if(!pos(v.Br)||!pos(v.h))return null;
   if(v.s==='box'?!(pos(v.a)&&pos(v.b)):!pos(v.d))return null;
   if(v.s==='ring'&&!(pos(v.di)&&v.di<v.d))return null;
+  if(v.s==='cone'&&!pos(v.dt))return null;
   const pair=x=>Array.isArray(x)&&x.length===2&&x.every(pos)?[x[0],x[1]]:null,txt=x=>typeof x==='string'?x:'';
   const m={s:v.s,Br:v.Br,h:v.h,code:txt(v.code),src:txt(v.src),grade:txt(v.grade),mat:txt(v.mat),br:pair(v.br),hcb:pair(v.hcb),hcj:pos(v.hcj)?v.hcj:null,bh:pair(v.bh),tmax:typeof v.tmax==='number'&&isFinite(v.tmax)?v.tmax:null,force:typeof v.force==='string'?v.force:null,dirTxt:txt(v.dirTxt)};
-  if(v.s==='box'){m.a=v.a;m.b=v.b;}else{m.d=v.d;if(v.s==='ring')m.di=v.di;}
+  if(v.s==='box'){m.a=v.a;m.b=v.b;}else{m.d=v.d;if(v.s==='ring')m.di=v.di;if(v.s==='cone')m.dt=v.dt;}
+  if(v.dia===true&&v.s==='cyl')m.dia=true;
+  if(Array.isArray(v.holes)&&v.holes.length&&v.holes.length<=4&&(v.s==='cyl'||v.s==='box')){
+    const fin=x=>typeof x==='number'&&isFinite(x);
+    const H=v.holes.map(q=>q&&fin(q.x)&&fin(q.y)&&pos(q.d1)&&pos(q.d2)&&q.d2>q.d1&&pos(q.t)&&q.t<v.h?{x:q.x,y:q.y,d1:q.d1,d2:q.d2,t:q.t,top:q.top!==false}:null);
+    if(H.every(Boolean))m.holes=H;
+  }
   return m;
 }
 function magDlg(){stdDlg(null,'magnet');}
