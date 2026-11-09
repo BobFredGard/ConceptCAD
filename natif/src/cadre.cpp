@@ -133,6 +133,16 @@ wxPGProperty* lectureSeule(wxPropertyGrid* g, const wxString& nom, const wxStrin
   p->ChangeFlag(wxPGFlags::ReadOnly, true);
   return p;
 }
+// Messages du rejeu sans doublons, dans l'ordre, avec le nombre de répétitions (les copies d'une symétrie répètent le même)
+std::vector<std::pair<std::string, int>> messagesUniques(const std::vector<std::string>& l) {
+  std::vector<std::pair<std::string, int>> u;
+  for (const std::string& x : l) {
+    auto it = std::find_if(u.begin(), u.end(), [&](const auto& p) { return p.first == x; });
+    if (it != u.end()) it->second++;
+    else u.push_back({x, 1});
+  }
+  return u;
+}
 }  // namespace
 
 Cadre::Cadre() : wxFrame(nullptr, wxID_ANY, L"ConceptCAD natif"), asmAnim_(this), minuterie_(this) {
@@ -680,6 +690,13 @@ void Cadre::creerEnvironnement() {
   }
 
   etatVue_ = new EtatVue(scene_, ID_ETAT, C_SCENE);
+  // Messages du rejeu : écrits sur la ligne d'état comme dans le navigateur ; un clic les montre tous
+  etatVue_->Bind(wxEVT_LEFT_UP, [this](wxMouseEvent&) {
+    if (messagesMontres_.empty()) return;
+    wxString t;
+    for (const auto& [x, n] : messagesUniques(messagesMontres_)) t += tx(x) + (n > 1 ? wxString::Format(L"  (×%d)", n) : wxString()) + L"\n";
+    wxMessageBox(t, L"Messages du rejeu", wxOK | wxICON_INFORMATION, this);
+  });
   fil_ = new FilFonctions(scene_);
   fil_->surIndisponible = [this](const wxString& n) { indisponible(n); };
   fil_->surClic = [this](const FilFonctions::Element& e) {
@@ -3056,19 +3073,20 @@ double Cadre::recalculer() {
     return total;
   }
   const Mesures m = mesurer(r.forme);
-  etat(wxString::Format(L"%s  |  Volume %.3f mm³  |  %d faces  |  calcul %.0f ms, total %.0f ms%s", tx(doc_.nom), m.volume, m.faces, tCalcul, total, r.messages.empty() ? L"" : L"  |  ⚠ voir message"));
+  // Messages du rejeu (V0.70.5 natif) : comme le navigateur, ils sont écrits discrètement (ligne d'état), sans fenêtre ;
+  // un message répété par les copies d'une répétition n'apparaît qu'une fois. Clic sur la ligne : la liste complète.
+  wxString suite;
+  if (!r.messages.empty()) {
+    const auto u = messagesUniques(r.messages);
+    suite = L"  |  ⚠ " + tx(u[0].first) + (u.size() > 1 ? wxString::Format(L"  (+%d autre%s, cliquer)", static_cast<int>(u.size()) - 1, u.size() > 2 ? L"s" : L"") : wxString());
+  }
+  etat(wxString::Format(L"%s  |  Volume %.3f mm³  |  %d faces  |  calcul %.0f ms, total %.0f ms", tx(doc_.nom), m.volume, m.faces, tCalcul, total) + suite);
   // Pendant le dessin, une esquisse encore ouverte n'est pas une erreur : le message attend la fin de l'esquisse
   if (!journalOuverture_.empty() && esquisseOuverte_ < 0) {
     etat(etatVue_->texte() + L"  |  " + tx(journalOuverture_));
     journalOuverture_.clear();
   }
-  const bool dejaMontres = r.messages == messagesMontres_;
   if (esquisseOuverte_ < 0) messagesMontres_ = r.messages;
-  if (!r.messages.empty() && esquisseOuverte_ < 0 && !dejaMontres && !essaiSansBoite_) {
-    wxString t;
-    for (const std::string& x : r.messages) t += tx(x) + L"\n";
-    wxMessageBox(t, L"Messages du rejeu", wxOK | wxICON_WARNING, this);
-  }
   return total;
 }
 
@@ -4980,6 +4998,7 @@ bool Cadre::essaiEsquisse(const std::wstring& fichier, int rang, const std::wstr
       n["volume"] = me.volume;
       n["faces"] = me.faces;
       n["messages"] = messagesMontres_;
+      n["etat"] = std::string(etatVue_->texte().utf8_str());
       n["fonctions"] = doc_.fonctions.size();
       n["esquisses"] = doc_.esquisses.size();
       n["corps"] = doc_.corps.size();
