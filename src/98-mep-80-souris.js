@@ -62,6 +62,7 @@
       cut2:'Coupe : 2 clics sur la ligne de coupe.',
       det2:'Détail : centre + rayon.',
       gdt:'Tolérance : cliquez une arête (pointe de la flèche) puis placez le cadre — ou cliquez une cote pour mettre le cadre sous sa valeur.',
+      rough:'Rugosité : cliquez l’arête de la surface, puis le côté hors matière où poser le symbole (loin de l’arête : ligne de repère).',
       datum:'Référence '+mepGdtNextLetter()+' : cliquez une arête puis placez la lettre — ou cliquez une cote (axe ou plan médian de l’élément coté).'
     }[t]||'';
     if(msg)mepStatus(msg);
@@ -360,7 +361,7 @@
          // (les textes couvrent presque tout le cartouche) ; texte déjà sélectionné : glisser = déplacer
          if(hk.key[0]==='e'&&!(mepSt.skSel&&mepSt.skSel.has(hk.key))){
            const c0=mepSkCtx(sh,false),e0=c0.sk&&c0.sk.ents.find(x=>x.id===hk.key.slice(2));
-           if(e0&&e0.t==='text'){mepSt.pick={kind:'box',sx:P.x,sy:P.y,cur:{x:P.x,y:P.y},px0:P.px,py0:P.py,add,clickKey:hk.key};return;}
+           if(e0&&e0.t==='text'&&!e0.wm){mepSt.pick={kind:'box',sx:P.x,sy:P.y,cur:{x:P.x,y:P.y},px0:P.px,py0:P.py,add,clickKey:hk.key};return;}
          }
          mepSkSelect(hk.key,add);
          if(!add&&hk.key[0]!=='c'){const ctx=mepSkCtx(sh,false);
@@ -531,7 +532,7 @@
       return;
     }
     if(tool==='axis'){mepAxisClick(sh,P);return;}
-    if(tool==='gdt'||tool==='datum'){mepGdtClick(sh,P,tool);return;}
+    if(tool==='gdt'||tool==='datum'||tool==='rough'){mepGdtClick(sh,P,tool);return;}
     if(tool==='ordx'||tool==='ordy'){mepOrdClick(sh,P,tool==='ordy'?'y':'x');return;}
     if(tool==='note'){
       if(mepSt.dim&&mepSt.dim.kind==='note'){ // 2ᵉ clic : place le texte, puis le saisit
@@ -794,7 +795,7 @@
         return;
       }
     }
-    if((mepSt.tool==='note'||mepSt.tool==='gdt'||mepSt.tool==='datum')&&mepSt.dim){if(mepDimMoveTo(sh,mepSt.dim,P))mepRender();return;}
+    if((mepSt.tool==='note'||mepSt.tool==='gdt'||mepSt.tool==='datum'||mepSt.tool==='rough')&&mepSt.dim){if(mepDimMoveTo(sh,mepSt.dim,P))mepRender();return;}
     if(mepSt.tool==='dim'||mepSt.tool==='hole'){
       // survol des arêtes/cercis : feedback avant les 2 clics de sélection
       let need=false;
@@ -964,7 +965,7 @@
     if(!d)return false;
     if(d.kind==='ang'&&!alt){mepDimToggleBig(d);return true;}
     if(d.kind==='note'){mepNoteEdit(sh,d);return true;}
-    if((d.kind==='gdt'||d.kind==='datum'))return true; // réglée dans le panneau
+    if(mepIsTol(d.kind))return true; // réglée dans le panneau
     if(d.kind==='ord')return true;
     if((d.kind==='len'||d.kind==='dist')&&!alt){mepDimToggleArrows(d);return true;}
     const t=prompt('Texte de cote (vide = calculé) :',d.txt||'');
@@ -1309,7 +1310,7 @@
   function mepDimTextPos(sh,d){
     const w=mepDimWorld(sh,d);if(!w)return null;
     if(d.kind==='dia'||d.kind==='rad'||d.kind==='hole'||d.kind==='note')return{x:w.b.x,y:w.b.y};
-    if((d.kind==='gdt'||d.kind==='datum')){const bx=mepGdtBoxes.get(d);return bx?{x:(bx.x0+bx.x1)/2,y:(bx.y0+bx.y1)/2}:{x:w.b.x,y:w.b.y};}
+    if(mepIsTol(d.kind)){const bx=mepGdtBoxes.get(d);return bx?{x:(bx.x0+bx.x1)/2,y:(bx.y0+bx.y1)/2}:{x:w.b.x,y:w.b.y};}
     if(d.kind==='ord'){ // valeur de l'origine, sur la ligne commune
       const v=mepView(sh,d.vid),oS=v?mepToSheet(v,d.o.x,d.o.y):w.a;
       return d.axis==='y'?{x:oS.x+(+d.off||0),y:oS.y}:{x:oS.x,y:oS.y+(+d.off||0)};

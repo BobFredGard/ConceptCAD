@@ -240,6 +240,12 @@ function mfFiTable(){
   F('Tolérances/Tolérance','Tolérance géométrique','Pose un cadre de tolérance ISO 1101 (planéité, perpendicularité, localisation…) avec sa flèche sur une arête, ou sous la valeur d’une cote.',['Cliquez l’arête (ou une cote)','Placez le cadre'],BLOC()+NUM(58,52,'1'),BLOC()+ficAr(64,30,58,40,GR,.9)+CADRE(46,20));
   const TRI=(x,y)=>ficD('M'+(x-4)+' '+y+'L'+(x+4)+' '+y+'L'+x+' '+(y-6)+'Z','#111827',1,null,'#111827')+ficL(x,y-6,x,y-16,'#111827',1)+ficR(x-6,y-28,12,12,'#111827',1)+ficT(x,y-19.6,'A',8,'#111827');
   F('Tolérances/Référence','Référence','Pose une lettre de référence ISO 5459 (A, B, C…) : triangle sur une arête, ou au bout d’une cote pour un axe ou un plan médian.',['Cliquez l’arête (ou une cote)','Placez la lettre'],BLOC()+NUM(36,40,'1'),BLOC()+TRI(36,40));
+  // V0.76.0 : rugosité (98-mep-73) et filigranes (98-mep-40)
+  const RGH=(x,y)=>ficD('M'+(x-3)+' '+(y-5.2)+'L'+x+' '+y+'L'+(x+6.5)+' '+(y-11.3)+'L'+(x+28)+' '+(y-11.3),'#111827',1)+ficL(x-3,y-5.2,x+3,y-5.2,'#111827',1)+ficT(x+8,y-4.2,'Ra 1,6',6,'#111827','start');
+  F('Tolérances/Rugosité','Rugosité','Pose le symbole d’état de surface sur une arête, du côté hors matière, avec sa valeur (Ra 1,6…) lisible du bas ou de la droite du plan. Un côté qui se lirait à l’envers passe par une ligne de repère.',['Cliquez l’arête de la surface','Cliquez du côté hors matière'],BLOC()+NUM(36,40,'1'),BLOC()+RGH(32,40));
+  const WM=(txt,c)=>'<text x="50" y="44" transform="rotate(-35 50 40)" font-family="system-ui,sans-serif" font-size="'+(txt.length>8?8:12)+'" font-weight="800" text-anchor="middle" fill="'+c+'" opacity=".45">'+txt+'</text>';
+  [['Bon pour fab.','BON POUR FAB.','#1f9d55','« BON POUR FABRICATION »'],['Annulé','ANNULÉ','#e03131','« ANNULÉ »'],['Plan interne','PLAN INTERNE','#2d6cdf','« PLAN INTERNE »'],['Autre…','CONFIDENTIEL','#7a7f87','le texte de votre choix (« / » passe à la ligne)']].forEach(([k,t,c,d])=>
+    F('Filigrane/'+k,'Filigrane','Écrit '+d+' en grandes lettres transparentes sur la planche, en travers. Glissez-le ; angle, taille, 1 ou 2 lignes, couleur et opacité dans le panneau.',['Cliquez le bouton','Glissez-le où vous voulez'],SHEET(),SHEET()+WM(t,c)));
   const OUT=(ext,txt,lb)=>F('Sortie/'+ext,'Exporter en '+ext,txt,[],SHEET()+VF(34,24),DOC(34,14,ext,OR),null,'La planche',lb||'Le fichier');
   OUT('SVG','Crée une image vectorielle de la planche, nette à toutes les tailles.');
   OUT('DXF','Crée un fichier DXF pour les logiciels de dessin, avec des calques (contours, cotes, axes…).');

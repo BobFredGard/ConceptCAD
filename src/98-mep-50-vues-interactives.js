@@ -758,16 +758,41 @@
       const sel=document.createElement('select');
       Object.keys(MEP_TB_FIELDS).forEach(k=>{if(MEP_TB_FIELDS[k].hide&&e.f!==k)return;const o=document.createElement('option');o.value=k;o.textContent=k==='txt'?'Texte libre':(MEP_TB_FIELDS[k].ed||MEP_TB_FIELDS[k].lab);sel.appendChild(o);});
       sel.value=e.f||'txt';sel.onchange=()=>{mepEdit('texte',()=>{e.f=sel.value;if(e.f==='txt'&&!e.s)e.s='TEXTE';if(e.f==='perso'&&!e.k){e.k='c'+Date.now().toString(36);e.lab='CHAMP';}});mepSideShow();};r.appendChild(sel);
-      if(e.f==='txt'){r=K.rowEl();K.lab(r,'Texte');const i=document.createElement('input');i.value=e.s||'';i.onchange=()=>mepEdit('texte',()=>{e.s=i.value;});r.appendChild(i);}
+      if(e.f==='txt'&&!e.wm){r=K.rowEl();K.lab(r,'Texte');const i=document.createElement('input');i.value=e.s||'';i.onchange=()=>mepEdit('texte',()=>{e.s=i.value;});r.appendChild(i);}
+      if(e.f==='txt'&&e.wm){r=K.rowEl();K.lab(r,'Texte');const i=document.createElement('input');i.value=String(e.s||'').split('\n').join(' / ');
+        i.title='Écrivez ce que vous voulez ; « / » passe à la ligne suivante (ex. BON POUR / FABRICATION)';
+        i.onchange=()=>{mepEdit('filigrane',()=>{e.s=i.value.split('/').map(x=>x.trim()).filter(Boolean).join('\n')||'FILIGRANE';e.h=+mepWmSize(sh,e.s,e.rot).toFixed(1);});mepSideShow();};r.appendChild(i);
+        r=K.rowEl();K.lab(r,'Lignes');const two=String(e.s||'').indexOf('\n')>=0;
+        K.btn(r,'1 ligne',()=>{if(two){mepEdit('filigrane',()=>{e.s=mepWmSplit(e.s);e.h=+mepWmSize(sh,e.s,e.rot).toFixed(1);});mepSideShow();}},'Tout le texte sur une seule ligne',two?'':'active');
+        K.btn(r,'2 lignes',()=>{if(!two){mepEdit('filigrane',()=>{e.s=mepWmSplit(e.s);e.h=+mepWmSize(sh,e.s,e.rot).toFixed(1);});mepSideShow();}},'Texte trop long : coupé en deux lignes à l’espace le plus proche du milieu, lettres agrandies',two?'active':'');}
       if(e.f==='perso'){r=K.rowEl();K.lab(r,'Nom du champ');const i=document.createElement('input');i.value=e.lab||'';i.onchange=()=>{mepEdit('texte',()=>{e.lab=i.value;});mepSideShow();};r.appendChild(i);}
-      r=K.rowEl();K.lab(r,'Hauteur h (mm)');
-      r.appendChild(mepIsoSelect(mepCapH(+e.h||3.5),h=>{mepEdit('texte',()=>{e.h=mepFs(h);});mepSideShow();}));
+      if(!e.wm){r=K.rowEl();K.lab(r,'Hauteur h (mm)');} // filigrane : taille libre plus bas
+      if(!e.wm)r.appendChild(mepIsoSelect(mepCapH(+e.h||3.5),h=>{mepEdit('texte',()=>{e.h=mepFs(h);});mepSideShow();}));
       r=K.rowEl();K.lab(r,'Largeur maxi (mm)');const mw=document.createElement('input');mw.type='number';mw.step='1';mw.min='0';mw.value=+e.mw||0;mw.title='Largeur maximale (mm) — 0 = libre ; au-delà, le texte est tronqué (…)';
       mw.onchange=()=>mepEdit('texte',()=>{e.mw=Math.max(0,+mw.value||0)||undefined;});r.appendChild(mw);
       r=K.rowEl();K.lab(r,'Graisse');
       [['lab','Libellé'],['val','Valeur']].forEach(([v,l])=>K.btn(r,l,()=>{mepEdit('texte',()=>{e.st=v;});mepSideShow();},v==='lab'?'Texte maigre':'Texte gras',(e.st||'lab')===v?'active':''));
       r=K.rowEl();K.lab(r,'Ancrage');
       [['start','⇤'],['middle','↔'],['end','⇥']].forEach(([v,l])=>K.btn(r,l,()=>{mepEdit('texte',()=>{e.al=v;});mepSideShow();},'Ancrage : '+({start:'début',middle:'centre',end:'fin'})[v],(e.al||'start')===v?'active':''));
+      // V0.76.0 : angle libre (tout texte) ; filigrane : taille libre, couleur, transparence
+      r=K.rowEl();K.lab(r,'Angle (°)');const an=document.createElement('input');an.type='number';an.step='1';an.min='-180';an.max='180';an.value=+e.rot||0;
+      an.title='Inclinaison du texte en degrés, sens inverse des aiguilles d’une montre (0 = horizontal)';
+      an.onchange=()=>{let v=(+an.value||0)%360;if(v>180)v-=360;if(v<-180)v+=360;mepEdit('texte',()=>{if(v)e.rot=v;else delete e.rot;});mepSideShow();};r.appendChild(an);
+      r=K.rowEl();K.lab(r,'');const {W:PW,H:PH}=mepPageWH(sh),dg=Math.round(Math.atan2(PH,PW)*180/Math.PI);
+      [[0,'Horizontal'],[dg,'Diagonale ↗'],[-dg,'Diagonale ↘'],[90,'Vertical']].forEach(([v,l])=>K.btn(r,l,()=>{mepEdit('texte',()=>{if(v)e.rot=v;else delete e.rot;});mepSideShow();},'Angle '+v+'°',(+e.rot||0)===v?'active':''));
+      if(e.wm){
+        K.h('Filigrane');
+        r=K.rowEl();K.lab(r,'Taille h (mm)');const hz=document.createElement('input');hz.type='number';hz.step='1';hz.min='2';hz.value=+(+e.h||10).toFixed(1);
+        hz.title='Hauteur des lettres sur la planche (mm), libre';hz.onchange=()=>{const v=Math.max(2,Math.min(500,+hz.value||10));mepEdit('filigrane',()=>{e.h=v;});mepSideShow();};r.appendChild(hz);
+        K.btn(r,'Ajuster',()=>{mepEdit('filigrane',()=>{e.h=+mepWmSize(sh,mepSkTextValue(sh,e,true),e.rot).toFixed(1);});mepSideShow();},'Taille qui couvre les deux tiers de la planche dans cette direction');
+        r=K.rowEl();K.lab(r,'Couleur');
+        [['#e03131','Rouge'],['#1f9d55','Vert'],['#2d6cdf','Bleu'],['#7a7f87','Gris'],['#1a1a1a','Noir']].forEach(([c,l])=>{const b=K.btn(r,'●',()=>{mepEdit('filigrane',()=>{e.col=c;});mepSideShow();},l,e.col===c?'active':'');b.style.color=c;});
+        r=K.rowEl();K.lab(r,'Opacité');const op=document.createElement('input');op.type='range';op.min='5';op.max='100';op.step='1';op.value=Math.round((+e.op||0.22)*100);op.style.flex='1';
+        const ov=document.createElement('span');ov.textContent=op.value+' %';ov.style.minWidth='38px';
+        op.oninput=()=>{ov.textContent=op.value+' %';e.op=+op.value/100;mepRender();};
+        op.onchange=()=>{const v=+op.value/100;e.op=v;mepEdit('filigrane',()=>{e.op=v;});};r.appendChild(op);r.appendChild(ov);
+        K.note('Glissez le texte pour le placer. Suppr le retire. Il sort tel quel en SVG, PDF et impression ; en DXF, au trait.');
+      }
     }
     if(s.L.length||s.C.length||s.T.length)mepSideSkStyle(K,[...s.L,...s.C,...s.T],ctx.tb);
     // contraintes applicables
