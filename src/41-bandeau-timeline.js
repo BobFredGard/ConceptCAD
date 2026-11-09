@@ -171,6 +171,7 @@ function tlbSvgKey(s){
     case 'bremove':return ['body','cut',true];
     case 'bscale':return ['scale','mod'];
     case 'bcopy':return ['copy','add'];
+    case 'bmirror':return ['pattern','mod'];
     case 'import':return ['import','mod'];
   }
   return null;

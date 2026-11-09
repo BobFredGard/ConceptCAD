@@ -101,6 +101,7 @@
     ['btnCombine','⊕','Combiner des corps (union, soustraction, intersection)'],
     ['btnBodyMove','✥','Déplacer un corps (translation, rotation, point à point)'],
     ['btnBodyScale','⤡','Échelle / homothétie d’un corps (centre : origine, point, centre du corps)'],
+    ['btnBodyMirror','◫','Symétrie d’un corps entier : copie en miroir réunie au corps'],
     '#',
     [null,'Paramètres'],
     ['btnParams','ƒx','Paramètres (cotes et valeurs nommées)']

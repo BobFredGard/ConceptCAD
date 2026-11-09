@@ -136,6 +136,7 @@ function mfFiTable(){
   const CB=(k1,k2)=>ficBox(-20,-11,-9,6,11,6,k1)+ficCyl(6,0,-9,10,23,k2==='o'?'mfFcHo':'mfFcHb',k2);
   F('Ensembles/Combiner','Combiner','Réunit deux pièces en une, retire l’une de l’autre, ou garde seulement leur partie commune.',['Choisissez la pièce à garder','Choisissez l’outil','Union, soustraction ou intersection'],CB('b','o'),CB('b','b'),null,'Deux pièces','Une seule (union)');
   F('Ensembles/Déplacer','Déplacer','Change la place de la pièce : translation, rotation ou point à point. Pratique pour poser un STEP importé.',[],ficBox(-22,-6,-6,-6,10,6,'b'),ficL3([[-22,10,-6],[-6,10,-6],[-6,10,6],[-22,10,6]],GY,.8,'2 1.6',1)+ficBox(4,-14,-6,20,2,6,'b')+ficAr(30,36,60,42));
+  F('Ensembles/Symétrie','Symétrie','Copie le corps en miroir et le réunit à lui-même, avec tout ce qu’il contient déjà.',['Partez de la moitié ou du quart','Choisissez le plan'],ficBox(0,-8,-8,16,8,2,'b'),ficBox(-16,-8,-8,16,8,2,'b')+ficT(50,8,'miroir',8,OR));
   F('Ensembles/Échelle','Échelle','Agrandit ou réduit la pièce, de façon égale ou différente selon X, Y et Z.',['Choisissez le facteur','Choisissez le centre'],ficBox(-8,-8,-9,8,8,1,'b'),ficBox(-17,-17,-14,17,17,8,'b')+ficT(50,8,'× 2',8,OR));
   const BARP=(w,v)=>ficBox(-w,-8,-9,w,8,3,'b')+ficT(50,12,'Longueur = '+v,7.4,OR);
   F('Ensembles/Paramètres','Paramètres','Donne un nom à une dimension. Changez sa valeur à un seul endroit : toute la pièce suit.',['Clic : liste courte','Clic droit : liste complète'],BARP(11,40),BARP(21,70));

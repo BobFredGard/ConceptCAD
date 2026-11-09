@@ -236,6 +236,10 @@ function occSingleEdgeTool(shape,pts,r,chamfer,cham,firstN,info){
       s1=inFirst1?r:D2;s2=inFirst1?D2:r;s=Math.max(s1,s2);
     }
     const T1=add(M,mul(d1,s1)),T2=add(M,mul(d2,s2));
+    // Le congé doit tenir sur ses deux faces : point de tangence hors du solide = rayon trop grand.
+    // L'outil coupait quand même et rendait un bord tronqué, annoncé réussi (R60 sur un bloc de 20).
+    const OUT=occt.TopAbs_State.TopAbs_OUT;
+    if([T1,T2].some(q=>{const G=new occt.gp_Pnt_3(q[0],q[1],q[2]);cl.Perform(G,1e-4);const e=cl.State();try{G.delete();}catch(x){}return e===OUT;}))return null;
     const Eo=sub(M,mul(b,0.5*s+0.5)); // sommet du triangle repoussé HORS matière (pas de face coplanaire)
     const o=Math.max(2*s,2),half=L/2+o;
     // Le débordement ne doit traverser que du vide : l'outil dépasse la section du chanfrein (côté Eo),
@@ -426,6 +430,44 @@ function occSingleEdgeConcavePiece(shape,pts,r,chamfer,cham,firstN,S0){
   }catch(e){return null;}
   finally{occDispose(bin);jeter.forEach(x=>{try{x.delete();}catch(e){}});}
 }
+function occAreteSuivie(E,j,memeSolide){
+  // Arête d'un travail d'arrondi, retrouvée sur un solide qui a déjà reçu d'autres congés. Son nouveau
+  // morceau est posé SUR l'ancienne arête (raccourcie par la voisine, son milieu a bougé) : tous ses
+  // points doivent tomber sur l'ancienne. La simple proximité du milieu (3 mm) prenait le bord d'un
+  // congé voisin, et l'arrondi partait sur la mauvaise arête. → arête, ou null si elle a disparu.
+  if(memeSolide&&j.src!=null){const e=E.find(x=>x.src===j.src);if(e)return e;}
+  if(!j.pts||j.pts.length<2)return E.find(e=>j.mid&&Math.hypot(e.mid[0]-j.mid[0],e.mid[1]-j.mid[1],e.mid[2]-j.mid[2])<3.0)||null;
+  const lo=[1e9,1e9,1e9],hi=[-1e9,-1e9,-1e9];
+  j.pts.forEach(q=>{for(let k=0;k<3;k++){lo[k]=Math.min(lo[k],q[k]-0.6);hi[k]=Math.max(hi[k],q[k]+0.6);}});
+  // L'arête est une ligne brisée : sur un arc, sa corde s'écarte de la courbe (flèche ≈ L·angle/8)
+  let tol=0.03;
+  for(let i=1;i+1<j.pts.length;i++){
+    const a=j.pts[i-1],b=j.pts[i],c=j.pts[i+1],u=[b[0]-a[0],b[1]-a[1],b[2]-a[2]],v=[c[0]-b[0],c[1]-b[1],c[2]-b[2]];
+    const lu=Math.hypot(u[0],u[1],u[2]),lv=Math.hypot(v[0],v[1],v[2]);if(!(lu>0&&lv>0))continue;
+    const cs=Math.max(-1,Math.min(1,(u[0]*v[0]+u[1]*v[1]+u[2]*v[2])/(lu*lv)));
+    tol=Math.max(tol,0.03+Math.max(lu,lv)*Math.acos(cs)/3);
+  }
+  tol=Math.min(tol,0.5);
+  let best=null;
+  for(const e of E){
+    // Raccourcie ou rallongée par la voisine : la plus grande partie de ses points reste sur l'ancienne.
+    if(!e.pts||!e.pts.length||!(e.len>1e-3))continue;
+    const dans=e.pts.filter(q=>q[0]>=lo[0]&&q[0]<=hi[0]&&q[1]>=lo[1]&&q[1]<=hi[1]&&q[2]>=lo[2]&&q[2]<=hi[2]&&occDistPolyligne(q,j.pts)<tol).length;
+    if(dans<0.6*e.pts.length)continue;
+    if(!best||e.len>best.len)best=e;
+  }
+  return best;
+}
+function occDistPolyligne(q,pts){
+  let d2=Infinity;
+  for(let i=0;i+1<pts.length;i++){
+    const a=pts[i],b=pts[i+1],u=[b[0]-a[0],b[1]-a[1],b[2]-a[2]],l=u[0]*u[0]+u[1]*u[1]+u[2]*u[2];
+    const t=l>0?Math.max(0,Math.min(1,((q[0]-a[0])*u[0]+(q[1]-a[1])*u[1]+(q[2]-a[2])*u[2])/l)):0;
+    const x=a[0]+u[0]*t-q[0],y=a[1]+u[1]*t-q[1],z=a[2]+u[2]*t-q[2],v=x*x+y*y+z*z;
+    if(v<d2)d2=v;
+  }
+  return Math.sqrt(d2);
+}
 function occFilletRun(base,jobs,warns,chamfer,opts){
   // Arrondi/chanfrein BRep : 1) le lot en une passe (rapide), 2) si Build échoue → ARÊTE PAR ARÊTE
   // sur la shape courante (chaque succès conservé — une arête capricieuse ne fait plus
@@ -461,53 +503,63 @@ function occFilletRun(base,jobs,warns,chamfer,opts){
       const s=mf.Shape();nomsApresConge(mf,cur,s,chamfer);occDispose(bin);return s;
     }catch(e){occDispose(bin);return null;}
   };
+  const bilan=opts&&opts.bilan;
   if(opts&&opts.single){
     // case « tangentes » DÉCOCHÉE : chaque arête seule, sans chaîne tangente
     // V0.70.3 : les morceaux des coins intérieurs s'accumulent et sont soudés EN UNE FOIS (une fusion, une
     // unification, un contrôle de la pièce) ; tant que la pièce ne change pas, ses arêtes ne sont pas relues.
-    let cur=base,done=0,E=null,Ecur=null,CL=null,CLcur=null;
+    let cur=base,E=null,Ecur=null,CL=null,CLcur=null;
+    const aretes=()=>{if(Ecur!==cur){E=null;try{E=occListEdges(cur);}catch(e){}Ecur=cur;}return E;};
     const classeur=()=>{if(CLcur!==cur){try{CL&&CL.delete();}catch(e){}CL=occClassifier(cur);CLcur=cur;}return CL;};
-    const enAttente=[]; // {m:morceau, j:job, src}
+    const enAttente=[]; // {m:morceau, j:job}
+    let soudKo=[],soudFaits=0;
     const souder=()=>{
       if(!enAttente.length)return;
       let nx=occSouderMorceaux(cur,enAttente.map(x=>x.m));
-      if(nx){if(cur!==base){try{cur.delete();}catch(e){}}cur=nx;done+=enAttente.length;}
+      if(nx){if(cur!==base){try{cur.delete();}catch(e){}}cur=nx;soudFaits+=enAttente.length;}
       else{
         // refus en bloc : un par un, et le noyau pour celui qui ne passe pas
         enAttente.forEach(x=>{
           let n1=occSouderMorceaux(cur,[x.m]);
           if(!n1){
-            let E2=null;try{E2=occListEdges(cur);}catch(e){}
-            const ed2=(E2||[]).find(e=>Math.hypot(e.mid[0]-x.j.mid[0],e.mid[1]-x.j.mid[1],e.mid[2]-x.j.mid[2])<3);
+            const ed2=occAreteSuivie(aretes()||[],x.j,cur===base);
             if(ed2){n1=mk(cur,[{src:ed2.src,r:x.j.r,fn:x.j.fn||null}]);if(n1)warns.push(kindLabel+' : arête courbe ou concave — suivi de la chaîne tangente (noyau)');}
           }
-          if(n1){if(cur!==base){try{cur.delete();}catch(e){}}cur=n1;done++;}
-          else warns.push(kindLabel+' isolé impossible ('+(chamfer?'distance trop grande ?':'rayon trop grand ?')+')');
+          if(n1){if(cur!==base){try{cur.delete();}catch(e){}}cur=n1;soudFaits++;}
+          else soudKo.push(x.j);
         });
       }
       enAttente.forEach(x=>{try{x.m.delete();}catch(e){}});enAttente.length=0;
     };
-    for(const j of jobs){
-      if(Ecur!==cur){E=null;try{E=occListEdges(cur);}catch(e){}Ecur=cur;}
-      const ed=(E||[]).find(e=>cur===base?e.src===j.src:(j.mid&&Math.hypot(e.mid[0]-j.mid[0],e.mid[1]-j.mid[1],e.mid[2]-j.mid[2])<3));
+    // → 'fait' | 'attente' (morceau de coin à souder) | 'absorbee' (l'arête a disparu : un congé précédent
+    //   l'a prise le long de sa chaîne) | 'perdue' (disparue après une DÉCOUPE d'équerre : elle l'a mordue
+    //   sans l'arrondir) | 'ko'
+    let decoupe=false;
+    const tente=j=>{
+      const E=aretes();
+      const ed=occAreteSuivie(E||[],j,cur===base);
+      if(!ed)return E&&j.pts?(decoupe?'perdue':'absorbee'):'ko';
       let nx=null;
       let firstN=null;
-      if(ed&&cham){ // normale de la première face pour l'outil asymétrique
+      if(cham){ // normale de la première face pour l'outil asymétrique
         let eh=null,ff=null;
         try{eh=occEdgeAt(cur,ed.src);ff=eh?occChamferFirstFace(cur,eh,cham.flip,j.fn):null;firstN=ff?ff.n:null;}catch(e){firstN=null;}
         try{if(ff&&ff.f)ff.f.delete();}catch(e){}try{if(eh)eh.delete();}catch(e){}
       }
-      const info={cl:ed?classeur():null};
-      const tool=ed?occSingleEdgeTool(cur,ed.pts,j.r,chamfer,cham,firstN,info):null;
+      const info={cl:classeur()};
+      const tool=occSingleEdgeTool(cur,ed.pts,j.r,chamfer,cham,firstN,info);
       // Arête concave (coin rentrant) : matière ajoutée dans le coin, arrêtée par les faces voisines
       // (single==='droit' : congés créés ou modifiés depuis V0.70.2 ; les anciens gardent le noyau)
-      if(!tool&&ed&&opts.single==='droit'){
+      if(!tool&&opts.single==='droit'){
         let m=null;try{m=occSingleEdgeConcavePiece(cur,ed.pts,j.r,chamfer,cham,firstN,info);}catch(e){m=null;}
-        if(m){enAttente.push({m,j});continue;}
+        if(m){enAttente.push({m,j});return 'attente';}
       }
-      souder(); // la suite travaille sur la pièce à jour
-      if(Ecur!==cur){E=null;try{E=occListEdges(cur);}catch(e){}Ecur=cur;}
-      const ed1=ed&&cur!==base?(E||[]).find(e=>Math.hypot(e.mid[0]-j.mid[0],e.mid[1]-j.mid[1],e.mid[2]-j.mid[2])<3):ed;
+      let ed1=ed;
+      if(enAttente.length){ // la suite travaille sur la pièce à jour
+        souder();
+        ed1=occAreteSuivie(aretes()||[],j,false);
+        if(!ed1){if(tool){try{tool.delete();}catch(e){}}return decoupe?'perdue':'absorbee';}
+      }
       // Arête arrêtée par un mur : l'outil coupe d'équerre, le noyau suit le mur s'il est en biais ou courbe.
       // Pris s'il ne crée qu'une face, sinon il a suivi une chaîne tangente que la case écarte.
       if(tool&&info.borne&&ed1){
@@ -517,17 +569,56 @@ function occFilletRun(base,jobs,warns,chamfer,opts){
           if(nees<=1&&occCoqueValide(k))nx=k;else{try{k.delete();}catch(e){}}
         }
       }
-      if(tool&&!nx){try{nx=occCut(cur,tool);}catch(e){nx=null;}}
+      let parOutil=false;
+      if(tool&&!nx){try{nx=occCut(cur,tool);parOutil=!!nx;}catch(e){nx=null;}}
       if(tool){try{tool.delete();}catch(e){}}
       // Découpe « réussie » qui n'enlève rien (corps abîmé en amont) : repli sur le noyau. V0.70.3 : jugé
       // à l'apparition d'une face neuve, plus aux volumes de toute la pièce (0,45 s chacun sur Barquette 2).
-      if(nx){const avant=new Set(occFaceKeys(cur));if(!occFaceKeys(nx).some(c=>c==='?'||!avant.has(c))){try{nx.delete();}catch(e){}nx=null;}}
-      if(!nx&&ed1){nx=mk(cur,[{src:ed1.src,r:j.r,fn:j.fn||null}]);if(nx)warns.push(kindLabel+' : arête courbe ou concave — suivi de la chaîne tangente (noyau)');}
-      if(nx){if(cur!==base){try{cur.delete();}catch(e){}}cur=nx;done++;}
-      else warns.push(kindLabel+' isolé impossible ('+(chamfer?'distance trop grande ?':'rayon trop grand ?')+')');
+      if(nx){const avant=new Set(occFaceKeys(cur));if(!occFaceKeys(nx).some(c=>c==='?'||!avant.has(c))){try{nx.delete();}catch(e){}nx=null;parOutil=false;}}
+      if(parOutil)decoupe=true;
+      if(!nx){nx=mk(cur,[{src:ed1.src,r:j.r,fn:j.fn||null}]);if(nx)warns.push(kindLabel+' : arête courbe ou concave — suivi de la chaîne tangente (noyau)');}
+      if(!nx)return 'ko';
+      if(cur!==base){try{cur.delete();}catch(e){}}
+      cur=nx;return 'fait';
+    };
+    // L'ordre compte (une arête refusée passe souvent quand sa voisine est faite) : on repasse sur
+    // les refusées tant qu'il y a du progrès, puis on les tente ENSEMBLE, comme un seul arrondi.
+    let file=jobs.slice(),absorbees=0;const perdues=[];
+    // Toutes les arêtes tangentes aux choisies sont choisies aussi : le noyau ne peut rien déborder.
+    // Faites EN UNE FOIS, elles se raccordent entre elles (comme Fusion) ; une à une, chacune
+    // bute sur le congé de la précédente et les courtes sont refusées.
+    if(jobs.length>1){
+      let k=null;
+      try{
+        const E0=occListEdges(base),idx=new Map(E0.map((e,i)=>[e.src,i])),choix=new Set(jobs.map(j=>idx.get(j.src)));
+        const ferme=jobs.every(j=>xTangentChainOf(E0,idx.get(j.src)).every(i=>choix.has(i)));
+        if(ferme)k=mk(base,jobs);
+        if(k&&!occCoqueValide(k)){try{k.delete();}catch(e){}k=null;}
+      }catch(e){k=null;}
+      if(k){if(bilan){bilan.rates=[];bilan.absorbees=0;}return k;}
     }
-    souder();
+    for(;;){
+      const ko=[];let progres=false;soudKo=[];soudFaits=0;
+      for(const j of file){const r=tente(j);if(r==='ko')ko.push(j);else if(r==='perdue')perdues.push(j);else if(r!=='attente'){progres=true;if(r==='absorbee')absorbees++;}}
+      souder();
+      if(soudFaits)progres=true;
+      ko.push(...soudKo);
+      file=ko;
+      if(!file.length||!progres)break;
+    }
     try{CL&&CL.delete();}catch(e){}
+    if(file.length>1){
+      const E=aretes();
+      const lot=[];file.forEach(j=>{const ed=occAreteSuivie(E||[],j,cur===base);if(ed&&!lot.some(l=>l.src===ed.src))lot.push({src:ed.src,r:j.r,fn:j.fn||null,j});});
+      const k=lot.length?mk(cur,lot):null;
+      if(k){
+        if(occCoqueValide(k)){if(cur!==base){try{cur.delete();}catch(e){}}cur=k;file=file.filter(j=>!lot.some(l=>l.j===j));warns.push(kindLabel+' : '+lot.length+' arête(s) refusées une à une, passées ensemble');}
+        else{try{k.delete();}catch(e){}}
+      }
+    }
+    const nonFaites=file.concat(perdues);
+    if(bilan){bilan.rates=nonFaites.map(j=>j.mid?j.mid.slice():null).filter(Boolean);bilan.absorbees=absorbees;}
+    if(nonFaites.length)warns.push(kindLabel+(nonFaites.length===jobs.length?' isolé impossible ('+(chamfer?'distance trop grande ?':'rayon trop grand ?')+')':' impossible sur '+nonFaites.length+'/'+jobs.length+' arête(s)'));
     return cur===base?null:cur;
   }
   let s=mk(base,jobs);
@@ -538,10 +629,10 @@ function occFilletRun(base,jobs,warns,chamfer,opts){
     if(!j.mid||j.mid.length!==3){warns.push('arête sans repère — '+kindLabel+' abandonné');return cur===base?null:cur;}
     let edges=null;try{edges=occListEdges(cur);}catch(e){}
     const ed=(edges||[]).find(e=>Math.hypot(e.mid[0]-j.mid[0],e.mid[1]-j.mid[1],e.mid[2]-j.mid[2])<3.0);
-    if(!ed){warns.push('arête introuvable ('+kindLabel+' isolé)');continue;}
+    if(!ed){warns.push('arête introuvable ('+kindLabel+' isolé)');if(bilan)(bilan.rates=bilan.rates||[]).push(j.mid.slice());continue;}
     const one=mk(cur,[{src:ed.src,r:j.r,fn:j.fn||null}]);
     if(one){if(cur!==base){try{cur.delete();}catch(e){}}cur=one;done++;}
-    else warns.push(kindLabel+' isolé impossible ('+(chamfer?'distance trop grande ?':'rayon trop grand ?')+')');
+    else{warns.push(kindLabel+' isolé impossible ('+(chamfer?'distance trop grande ?':'rayon trop grand ?')+')');if(bilan)(bilan.rates=bilan.rates||[]).push(j.mid.slice());}
   }
   if(cur===base)return null;
   if(done<jobs.length)warns.push(kindLabel+' partiel : '+done+'/'+jobs.length);
