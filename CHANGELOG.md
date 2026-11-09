@@ -8,7 +8,7 @@ sont sorties le 2026-09-30j.
 Code dans `src/` · livrable `fusion_mvp.html` (généré par `build.js`) · architecture et
 garde-fous en tête de `src/00-entete-et-outils.js`.
 
-**616 versions**, de `2026-09-28b` à `V0.70.4` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
+**617 versions**, de `2026-09-28b` à `V0.70.5` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
 comme dans le fichier d'origine.
 
 ---
@@ -7073,5 +7073,21 @@ Barquette ne perd plus son solide à la 107e modification, et sa mémoire ne mon
 - **Correctif** : `repNomOrdre` range les faces entre crochets, à tous les niveaux, avant la comparaison ; un nom resté sur les fonctions source est toujours refusé.
 - **Parcours FAO et `CACHE_VER`** inchangés.
 - **Test** : `test_rep_nom_ordre` (Barquette en fixture `barquette-symetrie-double.conceptcad`) : quatre coins identiques à l'ouverture et après Régénérer, aucun congé copié en erreur, la copie du coin −X +Y garde son nom.
+
+---
+## V0.70.5 - Tests plus rapides : `npm run ci` de 33 min à moins de 2 min
+
+- **Constat** : les tests devenaient de plus en plus lents. Mesuré sur le PC 24 cœurs : `npm run ci` 1 985 s (127/127), `npm run ci:full` 687 s (288/288).
+- **Causes** :
+  - le voile de démarrage (`src/98-demarrage-fondu.js`) attend le noyau jusqu'à 60 s ; dans le harnais, sa minuterie gardait le processus ouvert 60 s après la dernière ligne de 42 suites (toutes à « 61,0 s ») ;
+  - `tests/run-fast.cjs` lançait ses 127 suites l'une après l'autre ;
+  - `test_engrenages` (≈ 210 s) et `test_noms_barquette` (≈ 450 s) bornaient la durée totale.
+- **Correctifs** (tests seulement, aucune assertion touchée, application inchangée) :
+  - `tests/appvm.cjs` : une minuterie répétée créée pendant le chargement du script ne retient plus le processus (`unref`) ; elle tourne comme avant tant qu'il vit ;
+  - `tests/pool.cjs` : le pool parallèle de `run.cjs` (cœurs P / E, plus longues d'abord) sert aussi à `run-fast.cjs` ; `tests/.durees.json` est complété au lieu d'être réécrit ; délai par suite rapide 5 → 10 min ;
+  - suites en morceaux (`PARTIES` de `pool.cjs`) : `test_engrenages` en 2 (un cas sur deux des boucles du noyau 5, 6, 6b, 6c), `test_noms_barquette` en 5 (cas répartis selon leur durée) ; chaque suite reste comptée UNE fois, verte si tous ses morceaux le sont (totaux 289 et 127 inchangés).
+- **Vérifié** : morceaux réunis = mêmes contrôles que la suite entière, valeurs mesurées comprises (engrenages 665/665, barquette 26/26). Après : `npm run ci` 108 s (127/127), `npm run ci:full` 631 s (288/288). Le plancher de la suite complète est `test_barquette_120` (≈ 630 s : 120 modifications à la suite, indivisible, ≈ 5,5 s de régénération réelle chacune).
+- **Non retenu** : partager le noyau OCCT entre suites. Son démarrage coûte 0,5 s (compilation paresseuse du WebAssembly : 44 ms), soit ≈ 80 s cumulées sur ≈ 4 800 s, jamais sur le chemin critique ; pas de quoi risquer des suites qui se contaminent.
+- **Parcours FAO et `CACHE_VER`** inchangés.
 
 ---

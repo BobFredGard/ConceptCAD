@@ -8,14 +8,18 @@
 // Paire : entraxe, jeu, coupes sur tout un pas. Solides réels et fichier d'exemple : test_engrenages_paire.cjs (suite complète).
 const fs=require('fs'),vm=require('vm'),path=require('path');
 const ROOT=path.join(__dirname,'..');
+// PARTIES (tests/run.cjs) : `a` ou `b` ne fait qu'un cas sur deux des boucles du noyau (5, 6, 6b, 6c) ;
+// le reste tourne dans les deux. Sans argument : tout.
+const PART=process.argv[2]||'';
+if(PART&&PART!=='a'&&PART!=='b'){console.log('partie inconnue : '+PART);process.exit(1);}
 const {loadApp}=require('./appvm.cjs');
 (async()=>{
   const real=await require('./noyau.cjs').charger();
   const {ctx,sandbox}=loadApp();
-  sandbox.__realOcct=real;
+  sandbox.__realOcct=real;sandbox.__part=PART;
   vm.runInContext('occt=__realOcct;occtReady=true;window.alert=function(){};confirm=function(){return true;};',ctx);
   const R=String.raw`
-    const out={fails:[],log:[]};const A=(c,m)=>{if(!c)out.fails.push(m);else out.log.push(m);};
+    const out={fails:[],log:[]};const MIEN=i=>!__part||i%2===(__part==='a'?0:1);const A=(c,m)=>{if(!c)out.fails.push(m);else out.log.push(m);};
     const area=P=>{let s=0;for(let i=0;i<P.length;i++){const a=P[i],b=P[(i+1)%P.length];s+=a[0]*b[1]-b[0]*a[1];}return s/2;};
     const near=(a,b,e)=>Math.abs(a-b)<=e;
     // m, Z, α, x : sans et avec sous-coupe, déports, tête d'outil toute ronde (25°), effleurement (x ≈ xMin)
@@ -193,7 +197,7 @@ const {loadApp}=require('./appvm.cjs');
     }
     // ── 5. noyau exact ──
     const root=asm.root;
-    CASES.forEach(c=>{
+    CASES.forEach((c,i_)=>{if(!MIEN(i_))return;
       const [m,z,a,x]=c,lab=labOf(c),bw=m*10,sp=stdSpec('gear',{m:String(m),z:String(z),alpha:String(a),b:String(bw),x:String(x)});
       const o=(stdAddOcc(sp,root)||{}).occ;
       if(!o){A(false,lab+' : insertion refusée');return;}
@@ -211,7 +215,7 @@ const {loadApp}=require('./appvm.cjs');
     });
     // ── 6. alésage et rainure dans le noyau : volume, forme, faces ──
     const BORES=[[2,20,20,0,20,'iso'],[2,20,20,0,20,'none'],[3,42,20,0,50,'iso'],[2,60,25,0,30,'iso'],[1,12,20,0,6,'iso'],[2,12,20,0.3,8,'iso'],[10,200,20,0,120,'iso'],[2,30,20,-0.3,16,'none']];
-    BORES.forEach(([m,z,a,x,d,kw])=>{
+    BORES.forEach(([m,z,a,x,d,kw],i_)=>{if(!MIEN(i_))return;
       const lab='m'+m+' Z'+z+' Ø'+d+(kw==='iso'?' rainure':''),bw=m*10,sp=stdSpec('gear',{m:String(m),z:String(z),alpha:String(a),b:String(bw),x:String(x),d:String(d),kw});
       const o=(stdAddOcc(sp,root)||{}).occ;
       if(!o){A(false,lab+' : insertion refusée');return;}
@@ -250,7 +254,7 @@ const {loadApp}=require('./appvm.cjs');
       return (lo+hi)/2;
     };
     const HSOL=[[2,20,20,0,15,'R',20,''],[2,20,20,0,15,'L',20,''],[2,60,20,0,15,'R',20,''],[2,20,20,0,30,'R',40,''],[1,12,20,0,20,'R',20,''],[1,8,20,0,45,'R',40,''],[2,20,20,0.4,15,'L',20,''],[2,30,20,-0.3,25,'R',30,''],[10,200,20,0,15,'R',100,''],[2,20,20,0,15,'R',20,'20'],[2,60,25,0,15,'L',20,'30']];
-    HSOL.forEach(([m,z,a,x,beta,hand,bw,dd])=>{
+    HSOL.forEach(([m,z,a,x,beta,hand,bw,dd],i_)=>{if(!MIEN(i_))return;
       const lab='m'+m+' Z'+z+' α'+a+' x'+x+' β'+beta+hand+' b'+bw+(dd?' Ø'+dd:'');
       const sp=stdSpec('gear',{m:String(m),z:String(z),alpha:String(a),b:String(bw),x:String(x),beta:String(beta),hand,d:dd||'0',kw:dd?'iso':'none'});
       const o=(stdAddOcc(sp,root)||{}).occ;
@@ -351,7 +355,7 @@ const {loadApp}=require('./appvm.cjs');
       r({z:'16',alpha:'25',x:'-0.5'},/creux en pointe/,'I17 : Z16 α25 x−0,5 : le creux finit en pointe avant le pied : refusé avec son motif');
     }
     const ISOL=[[1,16,20,0,0,'R',10,0],[1,20,25,0.3,20,'L',10,0],[2,60,20,0,0,'R',20,0],[2,60,20,0.3,0,'R',20,150],[1,40,20,0,0,'R',10,0],[2,24,20,0,0,'R',20,0],[3,100,25,0,0,'R',30,0],[10,200,20,0,0,'R',100,0],[2,60,20,0,15,'R',20,0],[2,60,20,0,15,'L',20,0],[1,48,20,0.2,25,'R',20,0],[10,200,20,0,15,'R',100,0]];
-    ISOL.forEach(([m,z,a,x,beta,hand,bw,D])=>{
+    ISOL.forEach(([m,z,a,x,beta,hand,bw,D],i_)=>{if(!MIEN(i_))return;
       const lab='couronne m'+m+' Z'+z+' α'+a+' x'+x+' β'+beta+hand+' b'+bw;
       const sp=stdSpec('gear',{kind:'int',m:String(m),z:String(z),alpha:String(a),b:String(bw),x:String(x),beta:String(beta),hand,D:String(D)});
       const o=(stdAddOcc(sp,asmRoot().id)||{}).occ;
