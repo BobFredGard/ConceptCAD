@@ -169,7 +169,7 @@ function featSig(f){
   }else if(f.type==='bmove'){
     // Déplacer un corps : ses étapes (translations, rotations, point à point) font la géométrie
     s+='|'+JSON.stringify(f.steps||[]);
-  }else if(f.type==='bscale'){
+  }else if(f.type==='bscale'||f.type==='bcopy'){ // bcopy = copie sans échelle (85-copier-corps)
     // Échelle : centre, facteur(s) et, en copie, l'historique du corps source (comme xsplit)
     s+='|'+JSON.stringify([f.o||[0,0,0],bsFactors(f),f.copy?1:0]);
     if(occSplitNewBody(f))s+='|src:'+occCombinePrefix(f,occBodyOfFeat(f)).map(featSig).join(',');
@@ -322,7 +322,7 @@ function* occReplayBodyGen(bid,list){
       occCkPut(ckKey,()=>occShapeCopy(result));
       return;
     }
-    if(f.type==='bscale'){
+    if(f.type==='bscale'||f.type==='bcopy'){ // bcopy : copie de corps (85-copier-corps), facteur 1
       // Échelle (85-echelle-corps) : corps modifié sur place, ou — « Nouveau corps » — copie
       // du corps source mise à l'échelle dans le corps neuf (le source n'est pas touché).
       const nb=occSplitNewBody(f);
@@ -337,10 +337,10 @@ function* occReplayBodyGen(bid,list){
       }
       let src=result;
       if(neuf){
-        if(result){msgs.push(f.name+' : fonctions du corps neuf placées avant l’échelle — ignorées');try{result.delete();}catch(e){}result=null;}
+        if(result){msgs.push(f.name+' : fonctions du corps neuf placées avant '+(f.type==='bcopy'?'la copie':'l’échelle')+' — ignorées');try{result.delete();}catch(e){}result=null;}
         try{src=occCombineTool(f,occBodyOfFeat(f),bin);}catch(err){src=null;msgs.push(f.name+' : corps source illisible ('+err.message+')');}
       }
-      if(!src){msgs.push(f.name+' : aucun volume à mettre à l’échelle — ignoré');return;}
+      if(!src){msgs.push(f.name+' : aucun volume à '+(f.type==='bcopy'?'copier':'mettre à l’échelle')+' — ignoré');return;}
       const r=occApplyBodyScale(src,f);
       result=r.shape;msgs.push(...r.warnings.map(w=>f.name+' : '+w));
       if(r.warnings.length)occCkWarn[ckKey]=r.warnings.slice();else delete occCkWarn[ckKey];

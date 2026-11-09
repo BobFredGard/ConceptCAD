@@ -41,6 +41,7 @@ function repCanFeatureHint(f){
   if(f.type==='bmove')return 'Déplacer un corps · '+(f.steps||[]).length+' étape(s)';
   if(f.type==='bremove')return 'Corps retiré à partir de cette étape';
   if(f.type==='bscale')return bsName(f);
+  if(f.type==='bcopy')return 'Copie du corps « '+bmBodyName(f.body)+' » tel qu’il est à cette étape';
   if(f.type==='xdelface')return 'Suppression · '+(f.faces||[]).length+' face(s)';
   if(f.type==='xdraft')return 'Dépouillage · '+draftAngleEff(f).toFixed(1).replace('.',',').replace('-','−')+'° · '+(f.faces||[]).length+' face(s)';
   if(f.type==='xshell')return 'Coque · '+String(Math.round((+f.thick||0)*100)/100).replace('.',',')+' mm · '+(f.faces||[]).length+' face(s) retirée(s)';

@@ -81,7 +81,8 @@
     ['btnHole','⊚','Perçage (H)'],
     ['btnKeyway','\u{1F511}','Rainure de clavette automatique (arbre ou alésage)'],
     '#',
-    ['btnBody','◧','Nouveau corps de pièce']
+    ['btnBody','◧','Nouveau corps vide'],
+    ['btnBodyCopy','⧉','Copier un corps à l’instant du marqueur (étape « Copie » de la timeline)']
   ],'\u{1F9F1}');
   const gMod=groupe('Modifier le solide','Fonctions qui modifient le solide existant',[
     [null,'Arêtes'],

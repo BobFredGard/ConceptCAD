@@ -290,6 +290,7 @@ const MF_IC={
   fillet:'<path d="M4 20V12a8 8 0 0 1 8-8h8"/><path d="M4 20h16V4" stroke-dasharray="2 2"/>',
   chamfer:'<path d="M4 20V10l6-6h10"/><path d="M4 20h16V4" stroke-dasharray="2 2"/>',
   face:'<path d="M3 8l6-3v12l-6 3z"/><path d="M12 11h9M18 8l3 3-3 3"/>',
+  copy:'<path d="M9 3l6 3v7l-6 3-6-3V6z"/><path d="M15 8l6 3v7l-6 3-6-3"/>',
   scale:'<rect x="3" y="11" width="10" height="10" rx="1"/><path d="M3 7V3h4M17 3h4v4M21 17v4h-4"/><path d="M10 14l9-9M14 5h5v5"/>',
   move:'<path d="M12 3v18M3 12h18"/><path d="M9.5 5.5L12 3l2.5 2.5M9.5 18.5L12 21l2.5-2.5M5.5 9.5L3 12l2.5 2.5M18.5 9.5L21 12l-2.5 2.5"/>',
   draft:'<path d="M8 4h8l4 16H4z"/><path d="M12 4v16" stroke-dasharray="2 2"/>',
@@ -388,7 +389,7 @@ let mfBuilt=false;
 function mfClick(id){mfCloseMenus();const b=document.getElementById(id);if(b){b.click();return true;}try{faceEl.textContent='Commande indisponible ici ('+id+').';}catch(e){}return false;}
 const MF_CAO=[
   ['Esquisse',[['sketch','Esquisse','btnSketch']]],
-  ['Créer',[['extrude','Extrusion','btnExtrude'],['revolve','Révolution','btnRevolve'],['sweep','Balayage','btnSweep'],['hole','Perçage','btnHole'],['keyway','Clavette','btnKeyway'],['body','Corps','btnBody']]],
+  ['Créer',[['extrude','Extrusion','btnExtrude'],['revolve','Révolution','btnRevolve'],['sweep','Balayage','btnSweep'],['hole','Perçage','btnHole'],['keyway','Clavette','btnKeyway'],['body','Corps','btnBody'],['copy','Copier','btnBodyCopy']]],
   // V0.5.0 : géométrie de construction (78/79)
   ['Construire',[['cgPlane','Plan',()=>cgStart('plane'),'Plan de construction : décalé, à un angle, par 3 points, médian, normal à un axe'],
     ['cgAxis','Axe',()=>cgStart('axis'),'Axe de construction : arête, cylindre, 2 points, intersection de plans, normal à un plan'],
@@ -488,7 +489,7 @@ function mfRibbon(){
    de chaque ligne choisit si l'icône reste aussi dans le bandeau. Par défaut les fonctions
    courantes sont dans le bandeau, les autres seulement dans la liste (place gagnée). Le choix
    est gardé par navigateur (minifusion_rbpins : { "Groupe/Libellé": 1 affichée | 0 dans la liste }). */
-const MF_RB_HIDE=new Set(['Créer/Balayage','Créer/Clavette','Créer/Corps',
+const MF_RB_HIDE=new Set(['Créer/Balayage','Créer/Clavette',
   'Construire/Axe','Construire/Point','Construire/Repère',
   'Modifier/Face','Modifier/Dépouille','Modifier/Filetage','Modifier/Scinder',
   'Ensembles/Déplacer','Ensembles/Échelle',

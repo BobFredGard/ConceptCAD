@@ -50,7 +50,7 @@ function delFeature(f){
   doc.features.forEach(rp=>{if(rp.type==='repeat')rp.base=rp.base.filter(id=>id!==f.id);});
   if(tlMark===f.id)tlMark=null;
   if(f.kw||f.kwKey)kwOnDelete(f); // rainure de clavette et son corps (76-clavette)
-  if(f.type==='xsplit'||f.type==='bscale')splitOnDelete(f); // corps neuf vide d'une scission (85-scinder) ou d'une échelle en copie
+  if(f.type==='xsplit'||f.type==='bscale'||f.type==='bcopy')splitOnDelete(f); // corps neuf vide d'une scission (85-scinder) ou d'une échelle en copie
 }
 // Le bouton vit ici (sources, jamais la coque HTML — même règle que Révolution) :
 // après Révolution si présente, sinon après Extrusion. Le regroupement du bandeau
@@ -61,7 +61,7 @@ function delFeature(f){
   if(!after||!after.parentNode)return;
   const b=document.createElement('button');
   b.id='btnBody';b.textContent='◧ Corps';
-  b.title='Nouveau corps : les fonctions suivantes naîtront dedans (il devient actif ●)';
+  b.title='Nouveau corps VIDE : les fonctions suivantes naîtront dedans (il devient actif ●)';
   b.onclick=()=>newBody();
   after.parentNode.insertBefore(b,after.nextSibling);
 })();
