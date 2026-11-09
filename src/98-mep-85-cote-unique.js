@@ -4,6 +4,7 @@
   function mepEntSig(e){
     if(!e)return '';
     if(e.ak)return 'X'+e.ak; // trait d'axe : sa clé (il s'allonge sans changer d'identité)
+    if(e.skId!=null)return 'S'+e.skId; // tracé de l'esquisse de planche : son identifiant
     if(e.t==='L')return 'L'+[e.x1,e.y1,e.x2,e.y2].map(x=>(+x).toFixed(3)).join(',');
     if(e.t==='C')return 'C'+[e.cx,e.cy,e.r].map(x=>(+x).toFixed(3)).join(',');
     if(e.t==='A')return 'A'+[e.cx,e.cy,e.r,e.a0,e.a1].map(x=>(+x).toFixed(4)).join(',');

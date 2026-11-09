@@ -11,7 +11,7 @@
 
 ![Support de pédale déportée R1200RT en alu anodisé rouge sur béton, lancer de rayons de l'atelier RENDU (2048 échantillons)](docs/captures/rendu-pedale.jpg)
 
-Le noyau géométrique exact est **OpenCascade 8 compilé en WebAssembly** par nos soins (recette reproductible dans `occt-build/`), en deux versions : **multicœur**, choisie toute seule quand le navigateur et le PC le permettent et écrite dans la barre d'état, et normale, sur un seul cœur, qui reste celle du fichier autonome. S'il n'est pas disponible, l'application bascule seule sur un moteur maillage (CSG). Version actuelle : **V0.73.0** (voir le [journal des modifications](CHANGELOG.md)).
+Le noyau géométrique exact est **OpenCascade 8 compilé en WebAssembly** par nos soins (recette reproductible dans `occt-build/`), en deux versions : **multicœur**, choisie toute seule quand le navigateur et le PC le permettent et écrite dans la barre d'état, et normale, sur un seul cœur, qui reste celle du fichier autonome. S'il n'est pas disponible, l'application bascule seule sur un moteur maillage (CSG). Version actuelle : **V0.74.0** (voir le [journal des modifications](CHANGELOG.md)).
 
 **Pas d'Internet sur le poste ?** La [version autonome](https://www.dropbox.com/scl/fi/sne7f5a9y8dr659b2xrow/ConceptCAD-autonome.html?rlkey=fgd0w1r5816ake50vxtd4fnuj&dl=0) tient en un seul fichier à télécharger, qui s'ouvre par double-clic (voir [Démarrage](#démarrage)).
 
@@ -250,7 +250,8 @@ Le retour dans le Plan est immédiat tant que la géométrie de la pièce n’a 
 ### Cotation et sorties
 
 - **Cote** unique (longueur, distance, Ø, rayon, angle) avec **accrochages** imposés (extrémité, milieu, extrême X / Y, intersection), **cotation en chaîne** depuis une ligne de rappel, cotes d'angle sur les quatre secteurs, texte collé à l'arc et déplaçable.
-- **Oblongs** repérés par leurs 2 centres : un clic de l’outil Axes pose les centres et l’axe ; entraxe et position cotés depuis les centres, et suivis quand la pièce change. **Rainures circulaires** (oblong en arc vu de face) : un clic pose l’arc d’axe, les traits vers les centres des bouts et la croix du centre ; cotes accrochées aux centres des bouts.
+- **Oblongs** repérés par leurs 2 centres : un clic de l’outil Axes pose les centres et l’axe ; entraxe et position cotés depuis les centres, et suivis quand la pièce change. **Rainures circulaires** (oblong en arc vu de face) : un clic pose l’arc d’axe, les traits vers les centres des bouts et la croix du centre ; cotes accrochées aux centres des bouts. L’**arc d’axe se cote en rayon ou en diamètre** et ses **2 traits en angle** ; l’outil Cote vise aussi les lignes, cercles et arcs de l’**esquisse de planche** (en trait d’axe ou non), cote qui suit le tracé.
+- **Supprimer un axe automatique** (croix du centre d’un cercle, axe de trou) : Suppr ; sur un axe posé à la main, Suppr sur sa croix de centre ne retire que la croix. « Réafficher » dans le panneau de la vue les rend.
 - **Tolérances géométriques ISO 1101** (les 14 caractéristiques, Ø, modificateurs Ⓜ Ⓛ Ⓔ Ⓟ Ⓕ CZ, jusqu’à 3 références) et **références ISO 5459** (A, B, C…, sans I, O, Q) : cadre à flèche sur une arête ou sous la valeur d’une cote, triangle sur une arête ou au bout d’une cote (axe, plan médian) ; ils suivent la pièce et partent avec leur cote.
 - **Tolérances ISO 286** (toutes les classes, alésages A … ZC et arbres a … zc, IT01 … IT18, ajustements) ; les cotes sont associatives et **suivent une modification du 3D**.
 - **Perçages** cotés depuis la fonction Perçage (« Perçages auto » cote toute la planche ; la tolérance d'un alésé s'y écrit d'office ; un trou coupé par une autre fonction reste reconnu ; l’outil Perçage cote le trou dans toutes les vues, vu de bout, de côté ou en biais, en coupe comme avec les traits cachés), **ordonnées X / Y** (avec cassure), notes à flèche.
@@ -337,7 +338,7 @@ npx serve . -l 3000
 | `src/*.js` | **Les sources** : 169 fichiers concaténés dans l'ordre alphabétique (noyau, esquisse, fonctions 3D, assemblage, FAO découpée par domaine, mise en plan, rendu, interface téléphone `99-mobile*.js`). C'est ici qu'on travaille. |
 | `ConceptCAD.html` | **Livrable généré** par `node build.js`. On n'édite jamais son script à la main. |
 | `PostPro/` | Une fiche par machine (`siemens-630.js`, `siemens-1520.js`, `fagor-8065.js`). Nouvelle machine = copier une fiche, la modifier, `npm run build`. |
-| `tests/` | 293 suites Node lancées en parallèle (`npm run ci:full`), 131 rapides (`npm run ci`), non-régression des parcours FAO (`npm run parcours`), tests de référence (`tests/oracle/`, [docs/oracle.md](docs/oracle.md)). |
+| `tests/` | 294 suites Node lancées en parallèle (`npm run ci:full`), 132 rapides (`npm run ci`), non-régression des parcours FAO (`npm run parcours`), tests de référence (`tests/oracle/`, [docs/oracle.md](docs/oracle.md)). |
 | `tests/browser/` | Playwright dans un vrai Chromium : parcours critiques et Rendu (`npm run test:browser`, seul projet lancé par la CI GitHub, déclenchée à la main) et carte graphique réelle (`npm run test:gpu`, en local). |
 | `tools/` | Lint du script concaténé (`npm run lint`), serveur MCP, **captures du README** (`npm run captures`), **fichier autonome** (`npm run autonome`). |
 | `occt/`, `threejs/` | Noyau OpenCascade WebAssembly (`occt/v3` : OCCT 8), rendu three.js. |

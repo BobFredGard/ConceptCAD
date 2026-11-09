@@ -4,6 +4,8 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>ConceptCAD — CAO · FAO · Mise en plan</title>
+<!-- Icône officielle (celle de la version native, bleu à gauche, orange à droite), même dessin que le logo de la barre -->
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%2015%2015%22%3E%3Cdefs%3E%3ClinearGradient%20id%3D%22g%22%20x1%3D%220.33%22%20y1%3D%220%22%20x2%3D%220.67%22%20y2%3D%221%22%3E%3Cstop%20offset%3D%220%22%20stop-color%3D%22%233aa0ff%22%2F%3E%3Cstop%20offset%3D%220.45%22%20stop-color%3D%22%230a84ff%22%2F%3E%3Cstop%20offset%3D%221%22%20stop-color%3D%22%235e5ce6%22%2F%3E%3C%2FlinearGradient%3E%3CclipPath%20id%3D%22c%22%3E%3Crect%20x%3D%222%22%20y%3D%222%22%20width%3D%2211%22%20height%3D%2211%22%20rx%3D%222%22%2F%3E%3C%2FclipPath%3E%3C%2Fdefs%3E%3Crect%20width%3D%2215%22%20height%3D%2215%22%20rx%3D%224%22%20fill%3D%22%23f5f5f7%22%2F%3E%3Cg%20clip-path%3D%22url(%23c)%22%3E%3Crect%20width%3D%2215%22%20height%3D%2215%22%20fill%3D%22%23ff8a00%22%2F%3E%3Crect%20width%3D%227.5%22%20height%3D%2215%22%20fill%3D%22url(%23g)%22%2F%3E%3C%2Fg%3E%3Crect%20x%3D%226.5%22%20width%3D%222%22%20height%3D%2215%22%20fill%3D%22%23f5f5f7%22%2F%3E%3C%2Fsvg%3E">
 <script src="threejs/three.min.js"></script>
 <script src="threejs/OrbitControls.js"></script>
 <script src="threejs/CSG.js"></script>
@@ -12,7 +14,7 @@
 :root{--bg:#1c1c1e;--surface:rgba(44,44,46,.88);--primary:#0a84ff;--glow:rgba(10,132,255,.35);--accent:#30d158;--warn:#ffd60a;--text:#f5f5f7;--muted:#98989d;--border:rgba(255,255,255,.09);--radius:12px}
 *{box-sizing:border-box}body{font-family:-apple-system,'SF Pro Display',Inter,sans-serif;background:radial-gradient(1200px 500px at 50% -10%,rgba(10,132,255,.12),transparent),var(--bg);color:var(--text);margin:0;padding:10px 12px;height:100vh;overflow:hidden;display:flex;flex-direction:column}
 .topbar{display:flex;align-items:center;gap:12px;flex-wrap:wrap;padding:10px 14px;margin-bottom:10px;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius)}
-.brand{font-weight:700;font-size:1.05rem}.brand .mk{position:relative;display:inline-block;box-sizing:border-box;width:15px;height:15px;margin-right:7px;vertical-align:-2px;border:2px solid currentColor;border-radius:4px;overflow:hidden}.brand .mk::before{content:"";position:absolute;left:0;top:0;bottom:0;width:50%;background:linear-gradient(160deg,#3aa0ff,#0a84ff 45%,#5e5ce6)}.brand .mk::after{content:"";position:absolute;left:50%;top:0;bottom:0;width:2px;margin-left:-1px;background:currentColor}.brand .cad{font-weight:900;background:linear-gradient(135deg,#6cb6ff,#0a84ff 50%,#8a88ff);-webkit-background-clip:text;background-clip:text;color:transparent}.brand .tag{font-size:.65rem;background:linear-gradient(135deg,#0a84ff,#5e5ce6);padding:3px 9px;border-radius:20px;margin-left:8px;vertical-align:middle}
+.brand{font-weight:700;font-size:1.05rem}.brand .mk{position:relative;display:inline-block;box-sizing:border-box;width:15px;height:15px;margin-right:7px;vertical-align:-2px;border:2px solid currentColor;border-radius:4px;overflow:hidden}.brand .mk::before{content:"";position:absolute;left:0;top:0;bottom:0;width:50%;background:linear-gradient(160deg,#3aa0ff,#0a84ff 45%,#5e5ce6)}.brand .mk::after{content:"";position:absolute;left:50%;right:0;top:0;bottom:0;margin-left:-1px;box-sizing:border-box;border-left:2px solid currentColor;background:#ff8a00}.brand .cad{font-weight:900;background:linear-gradient(135deg,#6cb6ff,#0a84ff 50%,#8a88ff);-webkit-background-clip:text;background-clip:text;color:transparent}.brand .tag{font-size:.65rem;background:linear-gradient(135deg,#0a84ff,#5e5ce6);padding:3px 9px;border-radius:20px;margin-left:8px;vertical-align:middle}
 .tb{display:flex;gap:8px;flex-wrap:wrap;align-items:center}.sep{width:1px;height:26px;background:var(--border)}
 button,select{font-family:inherit;font-size:.83rem;font-weight:500;padding:8px 13px;border-radius:8px;cursor:pointer;border:1px solid rgba(255,255,255,.12);background:rgba(255,255,255,.06);color:var(--text)}
 button:hover,select:hover{border-color:var(--primary);box-shadow:0 0 12px var(--glow)}
@@ -376,7 +378,7 @@ input[type=range]{accent-color:var(--primary);width:100%}
  * peut changer sans rien casser. CACHE_VER (parcours FAO) reste indépendant.
  */
 
-const APP_VER='V0.73.0';
+const APP_VER='V0.74.0';
 try{console.log('[ConceptCAD] version '+APP_VER);}catch(e){}
 try{var mfSv=document.getElementById('mfSplashVer');if(mfSv)mfSv.textContent=APP_VER;}catch(e){} // écran de démarrage
 
@@ -74289,7 +74291,10 @@ function filmFrame(){
     const lineCls=e=>{const w=e.w||wDef;
       if(e.cst)return'mepSkCst'+(sel.has('e:'+e.id)?' mepSkSelE':(hov==='e:'+e.id?' mepSkHovE':''));
       return (mode==='sheet'?'mepEnt mepSkFull'+(w==='thick'?' mepSkThick':' mepSkThin'):('mepTbLine'+(w==='thick'?' mepTbThick':'')))+
-        (e.lt==='hid'?' mepLtHid':(e.lt==='axis'?' mepLtAxis':''))+(e.col?' mepUc':'')+(sel.has('e:'+e.id)&&editing?' mepSkSelE':(hov==='e:'+e.id&&editing?' mepSkHovE':''));};
+        (e.lt==='hid'?' mepLtHid':(e.lt==='axis'?' mepLtAxis':''))+(e.col?' mepUc':'')+(sel.has('e:'+e.id)&&editing?' mepSkSelE':(hov==='e:'+e.id&&editing?' mepSkHovE':''))+dimCls(e);};
+    // outil Cote : tracé choisi ou survolé (indice « sk:<id> », cf. mepSkViewEnt)
+    const dimCls=e=>{if(mode!=='sheet')return'';const k='sk:'+e.id;
+      return (mepSt.entSel||[]).some(s=>s.i===k)?' mepSelEnt':(mepSt.hovEnt&&mepSt.hovEnt.i===k?' mepHovEnt':'');};
     const lineAt=(e,o)=>{o.class=lineCls(e);if(e.cst)return o;const st=[];if(+e.lw>0)st.push('stroke-width:'+(+e.lw));if(e.col)st.push('stroke:'+e.col);if(st.length)o.style=st.join(';');return o;};
     sk.ents.forEach(e=>{
       const cst=!!e.cst&&(e.t==='line'||e.t==='circle'||e.t==='arc');
@@ -76319,6 +76324,17 @@ function filmFrame(){
     }
     if(h&&h.t==='slot'&&h.s)return mepSlotPtRefresh(v,q); // centre d'un oblong
     if(h&&h.t==='aslot'&&h.s)return mepASlotPtRefresh(v,q); // centre d'un oblong en arc (bout ou arc)
+    if(h&&typeof h.i==='string'&&h.i.indexOf('sk:')===0){ // tracé de l'esquisse de planche : suit le tracé
+      const e=mepSkViewEnt(v,h.i.slice(3));if(!e)return q;
+      if(h.t==='ctr'&&e.cx!=null){q.x=e.cx;q.y=e.cy;}
+      else if(h.t==='seg'&&e.t==='L'&&Math.hypot(q.x-e.x1,q.y-e.y1)>1e-9){
+        // le point garde sa place relative le long du trait
+        const dx=e.x2-e.x1,dy=e.y2-e.y1,L2=dx*dx+dy*dy;
+        const f=L2>1e-12?Math.max(0,Math.min(1,((q.x-e.x1)*dx+(q.y-e.y1)*dy)/L2)):0;
+        q.x=e.x1+dx*f;q.y=e.y1+dy*f;
+      }
+      return q;
+    }
     if(h&&(h.t==='axp'||h.t==='axc')){
       const e=mepAxisLineByKey(sh,v,h.ak);if(!e)return q; // axe disparu : dernière position connue
       if(h.t==='axc'){if(e.cx!=null){q.x=e.cx;q.y=e.cy;}return q;}
@@ -76503,8 +76519,30 @@ function filmFrame(){
       default:return Math.hypot(w.b.x-w.a.x,w.b.y-w.a.y);
     }
   }
+  /* 2026-11-09 : « coter le rayon ou diamètre d'un arc en trait d'axe … et ses 2 droites pour
+     coter l'angle » (axe d'une rainure courbe tracé dans l'esquisse de planche) — un tracé de
+     l'esquisse de planche (ligne, cercle, arc) est vu comme une entité de la vue, dans son repère :
+     indice « sk:<id> ». La cote relit le tracé à chaque dessin : elle suit ses modifications. */
+  function mepSkViewEnt(view,id){
+    const sh=mepSheetOfView(view),sk=sh&&sh.sk;if(!sk||!sk.ents)return null;
+    const e=sk.ents.find(x=>x&&String(x.id)===String(id));if(!e)return null;
+    const P=pid=>{const p=sk.pts[pid];return p?mepFromSheet(view,p.x,p.y):null;};
+    if(e.t==='line'){const a=P(e.p1),b=P(e.p2);if(!a||!b)return null;
+      return{t:'L',x1:a.x,y1:a.y,x2:b.x,y2:b.y,skId:e.id};}
+    if(e.t==='circle'||e.t==='arc'){
+      const c=P(e.pc);if(!c||!(e.r>0))return null;
+      const r=e.r/view.scale;
+      if(e.t==='circle')return{t:'C',cx:c.x,cy:c.y,r,skId:e.id};
+      const p1=P(e.p1),p2=P(e.p2);if(!p1||!p2)return null;
+      const a0=Math.atan2(p1.y-c.y,p1.x-c.x);let a1=Math.atan2(p2.y-c.y,p2.x-c.x);
+      while(a1<=a0)a1+=2*Math.PI; // même sens que le tracé de l'esquisse
+      return{t:'A',cx:c.x,cy:c.y,r,a0,a1,skId:e.id};
+    }
+    return null;
+  }
   function mepEntByHint(view,hint){
     if(!view||!hint)return null;
+    if(typeof hint.i==='string'&&hint.i.indexOf('sk:')===0)return mepSkViewEnt(view,hint.i.slice(3));
     if(typeof hint.i==='string'&&hint.i.indexOf('ax:')===0){ // trait d'axe (2026-10-22-013)
       const sh=mepSheetOfView(view);
       return sh?mepAxisLineByKey(sh,view,hint.i.slice(3)):null;
@@ -77390,15 +77428,20 @@ function filmFrame(){
     let auto=[];
     try{auto=autoTest||mepAxisAutoGeom(sh,v);}catch(e){}
     const seen=new Map();
+    // 2026-11-09 : « pouvoir supprimer un trait d'axe de centre de cercle » — un axe
+    // automatique supprimé est mémorisé par sa clé dans v.axHide (Réafficher : panneau de la vue)
+    const hid=Array.isArray(v.axHide)&&v.axHide.length?new Set(v.axHide):null;
     auto.forEach(p=>{
       let k='a'+(p.t==='L'?[p.x1,p.y1,p.x2,p.y2]:[p.cx,p.cy,p.r]).map(r2).join(',');
       const n=seen.get(k)||0;seen.set(k,n+1);if(n)k+='#'+n;
+      if(hid&&hid.has(k))return;
       add(p,k,null);
     });
     (v.axes||[]).forEach(ann=>{
       let ps=[];
       try{ps=mepAxisManualGeom(sh,v,ann);}catch(e){}
-      ps.forEach((p,i)=>add(p,'m'+ann.id+'.'+i,ann));
+      if(hid)ps=ps.map((p,i)=>hid.has('m'+ann.id+'.'+i)?null:p); // croix retirée d'un axe posé à la main
+      ps.forEach((p,i)=>{if(p)add(p,'m'+ann.id+'.'+i,ann);});
     });
     if(!autoTest)mepAxLinesCache.set(v,{gen:mepAxGen,geo,list:out});
     return out;
@@ -78982,9 +79025,34 @@ function filmFrame(){
           const t=L2>1e-12?Math.max(0,Math.min(1,((lx-p.x1)*dx+(ly-p.y1)*dy)/L2)):0;
           d=Math.hypot(lx-(p.x1+dx*t),ly-(p.y1+dy*t))*v.scale;
         }else if(p.t==='C')d=Math.abs(Math.hypot(lx-p.cx,ly-p.cy)-p.r)*v.scale;
-        else return;
+        else if(p.t==='A'){ // 2026-11-09 : arc d'axe d'une rainure circulaire — se cote en R / Ø
+          if(!mepAxisArcIn(p,Math.atan2(ly-p.cy,lx-p.cx)))return;
+          d=Math.abs(Math.hypot(lx-p.cx,ly-p.cy)-p.r)*v.scale;
+        }else return;
         if(d<bd){bd=d;best={vid:v.id,i:'ax:'+p.ak,e:p,lx,ly};}
       });
+    });
+    // 2026-11-09 : tracés de l'esquisse de planche (axe de rainure courbe, droites d'angle…) —
+    // i='sk:<id>', rapportés à la vue sous le curseur (pas de vue : ignorés)
+    const skp=opt&&opt.axes&&sh.sk&&sh.sk.ents&&!mepSt.tbEdit?sh.sk:null;
+    const vSk=skp?mepViewAt(sh,sx,sy):null;
+    if(vSk)skp.ents.forEach(se=>{
+      if(!se||se.cst||(se.t!=='line'&&se.t!=='circle'&&se.t!=='arc'))return;
+      const e=mepSkViewEnt(vSk,se.id);if(!e)return;
+      const lx=(sx-vSk.x)/vSk.scale,ly=(sy-vSk.y)/vSk.scale;
+      let d;
+      if(e.t==='L'){
+        const dx=e.x2-e.x1,dy=e.y2-e.y1,L2=dx*dx+dy*dy;
+        const t=L2>1e-12?Math.max(0,Math.min(1,((lx-e.x1)*dx+(ly-e.y1)*dy)/L2)):0;
+        d=Math.hypot(lx-(e.x1+dx*t),ly-(e.y1+dy*t));
+      }else if(e.t==='C')d=Math.abs(Math.hypot(lx-e.cx,ly-e.cy)-e.r);
+      else{
+        let an=Math.atan2(ly-e.cy,lx-e.cx);while(an<e.a0)an+=2*Math.PI;while(an-2*Math.PI>=e.a0)an-=2*Math.PI;
+        d=an<=e.a1?Math.abs(Math.hypot(lx-e.cx,ly-e.cy)-e.r)
+          :Math.min(Math.hypot(lx-e.cx-e.r*Math.cos(e.a0),ly-e.cy-e.r*Math.sin(e.a0)),Math.hypot(lx-e.cx-e.r*Math.cos(e.a1),ly-e.cy-e.r*Math.sin(e.a1)));
+      }
+      d*=vSk.scale;
+      if(d<bd){bd=d;best={vid:vSk.id,i:'sk:'+se.id,e,lx,ly};}
     });
     if(best)bd*=1.001; // à égalité, l’arête réelle l’emporte
     sh.views.forEach(v=>{
@@ -80206,10 +80274,12 @@ function filmFrame(){
       }
       if(mepSt.selAxis){
         const sel=mepSt.selAxis,v=mepView(sh,sel.vid);
-        if(!sel.id){ // axe automatique : Suppr lui rend sa longueur d'origine
-          if(v&&v.axExt&&v.axExt[sel.ak])mepEdit('longueur axe d’origine',()=>{delete v.axExt[sel.ak];});
-          mepSideShow();ev.preventDefault();ev.stopPropagation();return;
+        if(!sel.id){ // axe automatique : Suppr le supprime (une croix de centre part en entier)
+          if(v)mepAxisAutoHide(sh,v,sel.ak);
+          mepSideShow();mepRender();ev.preventDefault();ev.stopPropagation();return;
         }
+        // axe posé à la main : Suppr sur sa croix de centre ne retire que la croix
+        if(v&&sel.ak&&mepAxisAutoHide(sh,v,sel.ak)){mepSideShow();mepRender();ev.preventDefault();ev.stopPropagation();return;}
         mepEdit('suppression axe',()=>{
           if(v){v.axes=(v.axes||[]).filter(a=>a.id!==sel.id);mepAxisExtDrop(v,sel.id);}
           mepSt.selAxis=null;
@@ -80660,6 +80730,7 @@ function filmFrame(){
   function mepEntSig(e){
     if(!e)return '';
     if(e.ak)return 'X'+e.ak; // trait d'axe : sa clé (il s'allonge sans changer d'identité)
+    if(e.skId!=null)return 'S'+e.skId; // tracé de l'esquisse de planche : son identifiant
     if(e.t==='L')return 'L'+[e.x1,e.y1,e.x2,e.y2].map(x=>(+x).toFixed(3)).join(',');
     if(e.t==='C')return 'C'+[e.cx,e.cy,e.r].map(x=>(+x).toFixed(3)).join(',');
     if(e.t==='A')return 'A'+[e.cx,e.cy,e.r,e.a0,e.a1].map(x=>(+x).toFixed(4)).join(',');
@@ -82182,6 +82253,13 @@ function filmFrame(){
       b.onclick=()=>{mepEdit('suppression axes manuels',()=>{v.axes=[];mepSt.selAxis=null;});mepSideShow();};
       row('Axes manuels',b);
     }
+    if(Array.isArray(v.axHide)&&v.axHide.length){
+      const b=document.createElement('button');
+      b.textContent='Réafficher ('+v.axHide.length+')';
+      b.title='Remet les axes automatiques supprimés (croix de centre, axes de trou…)';
+      b.onclick=()=>{mepEdit('axes réaffichés',()=>{delete v.axHide;});mepAxGen++;mepSideShow();mepRender();};
+      row('Axes supprimés',b);
+    }
     // vue alignée sur sa mère (coupe, auxiliaire) : glissement contraint, déliable
     if(v.align||v._alignOff){
       const cb=document.createElement('input');cb.type='checkbox';cb.checked=!!v.align;
@@ -82212,17 +82290,56 @@ function filmFrame(){
   }
   function mepAxisExtDrop(v,id){
     if(v&&v.axExt)Object.keys(v.axExt).forEach(k=>{if(k.indexOf('m'+id+'.')===0)delete v.axExt[k];});
+    if(v&&Array.isArray(v.axHide)){v.axHide=v.axHide.filter(k=>k.indexOf('m'+id+'.')!==0);if(!v.axHide.length)delete v.axHide;}
+  }
+  /* 2026-11-09 : supprimer un axe automatique (croix de centre d'un cercle, axe de trou…) —
+     sa clé rejoint v.axHide ; une croix part en entier (ses 2 traits : même centre, perpendiculaires).
+     Axe posé à la main (rainure circulaire, cercle de perçage) : seule sa croix de centre peut partir ainsi. */
+  function mepAxisAutoHideKeys(sh,v,ak){
+    const all=mepAxisLines(sh,v),p=all.find(q=>q.ak===ak);
+    if(!p)return[];
+    const own=q=>(q.ann&&q.ann.id)===(p.ann&&p.ann.id);
+    const keys=[ak];
+    if(p.t==='L'){
+      const mid=q=>({x:(q.bx1+q.bx2)/2,y:(q.by1+q.by2)/2}),m=mid(p);
+      const ux=p.bx2-p.bx1,uy=p.by2-p.by1;
+      all.forEach(q=>{
+        if(q===p||!own(q)||q.t!=='L')return;
+        const n=mid(q),vx=q.bx2-q.bx1,vy=q.by2-q.by1;
+        const L=Math.hypot(ux,uy)*Math.hypot(vx,vy);
+        if(L>1e-12&&Math.hypot(n.x-m.x,n.y-m.y)<1e-6&&Math.abs(ux*vx+uy*vy)/L<1e-6)keys.push(q.ak);
+      });
+    }
+    if(p.ann){ // à la main : seulement une croix (2 traits) dans un axe qui a d'autres traits
+      const n=all.filter(own).length;
+      if(keys.length!==2||n<=2)return[];
+    }
+    return keys;
+  }
+  function mepAxisAutoHide(sh,v,ak){
+    const keys=mepAxisAutoHideKeys(sh,v,ak);
+    if(!keys.length)return false;
+    mepEdit('suppression axe',()=>{
+      if(!Array.isArray(v.axHide))v.axHide=[];
+      keys.forEach(k=>{if(v.axHide.indexOf(k)<0)v.axHide.push(k);if(v.axExt)delete v.axExt[k];});
+      mepSt.selAxis=null;
+    });
+    mepAxGen++;
+    return true;
   }
   function mepSideAxisAuto(root,v,ak,sh){
     const h=document.createElement('h4');h.textContent='Axe automatique';root.appendChild(h);
     const note=document.createElement('div');note.className='note';
-    note.textContent='Tirez une extrémité pour l’allonger ou le raccourcir · norme ISO 128-2 (04.1)';
+    note.textContent='Tirez une extrémité pour l’allonger ou le raccourcir · Suppr le supprime · norme ISO 128-2 (04.1)';
     root.appendChild(note);
     const act=document.createElement('div');act.className='row';
     const b=document.createElement('button');b.textContent='Longueur d’origine';
     b.disabled=!(v.axExt&&v.axExt[ak]);
     b.onclick=()=>{mepEdit('longueur axe d’origine',()=>{if(v.axExt)delete v.axExt[ak];});mepSideShow();};
-    act.appendChild(b);root.appendChild(act);
+    act.appendChild(b);
+    const bDel=document.createElement('button');bDel.textContent='Supprimer';bDel.className='danger';
+    bDel.onclick=()=>{mepAxisAutoHide(sh,v,ak);mepSideShow();mepRender();};
+    act.appendChild(bDel);root.appendChild(act);
   }
   function mepSideAxis(root,v,a,sh){
     const h=document.createElement('h4');
@@ -82917,7 +83034,7 @@ function filmFrame(){
       sk:{fromStd:sh=>mepTbFromStd(sh),solve:(sk,a)=>mepSkSolve(sk,80,a),residual:(sk,c)=>mepSkResidual(sk,c),
         apply:(sh,id,keys)=>{mepSt.skSel=new Set(keys);mepSkApply(sh,id);},setVal:(sh,c,v)=>mepSkSetVal(sh,c,v),
         tbH:sh=>mepTbH(sh),tbEdit:on=>mepTbEdit(on),ctx:sh=>mepSkCtx(sh,true),addLine:(sh,a,b)=>mepSkAddLine(sh,a,b),trim:(sh,x,y)=>mepSkTrim(sh,x,y),clipDetail:(els,det)=>mepClipDetail(els,det),revIdx:(f,k)=>mepRevIdx(f,k),tbApply:(sh,o)=>mepTbApply(sh,o),drawSk:(mk,sh,c,m)=>mepDrawSkCtx(mk,sh,c,m),tbValue:(sh,c)=>mepTbValue(sh,c),revRows:sh=>mepTbRevRows(sh),revNext:(f,r)=>mepRevNext(f,r),hit:(sh,x,y)=>{const h=mepSkHit(sh,{x,y});return h?h.key:null;},
-        addRect:(sh,a,b)=>mepSkAddRect(sh,a,b),addText:(sh,p)=>mepSkAddText(sh,p),textValue:(sh,e)=>mepSkTextValue(sh,e,false),
+        addRect:(sh,a,b)=>mepSkAddRect(sh,a,b),addArc:(sh,c,a,b)=>mepSkAddArc(sh,c,a,b),addText:(sh,p)=>mepSkAddText(sh,p),textValue:(sh,e)=>mepSkTextValue(sh,e,false),
         merge:(sk,a,b)=>mepSkMerge(sk,a,b),
         box:(sh,x0,y0,x1,y1,add)=>mepBoxSelect(sh,{sx:x0,sy:y0,cur:{x:x1,y:y1}},add),sel:()=>[...mepSt.skSel],
         lot:()=>mepSt.lot?{views:[...mepSt.lot.views],dims:[...mepSt.lot.dims]}:null,
@@ -82935,7 +83052,7 @@ function filmFrame(){
       shapeRevs:bd=>mepShapeRevs(bd),axisGeoAt:(x,y)=>{mepSt.zoom=1;return mepAxisGeoAt(mepSheet(),x,y);},axisRefGeom:(view,ref)=>mepAxisRefGeom(mepSheet(),view,ref),
       axisManual:(view,ann)=>mepAxisManualGeom(mepSheet(),view,ann),
       slotsOf:view=>mepSlotsOf(view),aslotsOf:view=>mepASlotsOf(view),gdtClick:(P,t)=>mepGdtClick(mepSheet(),P,t),gdtWorld:d=>mepGdtWorld(mepSheet(),d),gdtNext:()=>mepGdtNextLetter(),gdtBox:d=>mepGdtBoxes.get(d),sideDim:(root,d)=>mepSideDim(root,d,mepSheet()),drawAxisPrim:(mk,p,view)=>mepDrawAxisPrim(mk,p,view),axisClick:P=>mepAxisClick(mepSheet(),P),hitEnt:(x,y)=>mepHitViewEnt(mepSheet(),x,y,{axes:true}),dimSelect:hit=>mepDimSelectEnt(hit,false),dimAdd:hit=>mepDimAddEnt(hit),dimCommit:P=>mepDimCommitDraft(mepSheet(),P,false),
-      axisAt:(x,y)=>mepAxisAt(mepSheet(),x,y),
+      axisAt:(x,y)=>mepAxisAt(mepSheet(),x,y),axisHide:(view,ak)=>mepAxisAutoHide(mepSheet(),view,ak),
       axisLines:(view,auto)=>{if(auto){mepAxGen++;const l=mepAxisLines(mepSheet(),view,auto);mepAxLinesCache.set(view,{gen:mepAxGen,geo:mepGeoOf(view),list:l});return l;}return mepAxisLines(mepSheet(),view);},
       snapPt:(x,y,o)=>mepSnapPt(x,y,mepSheet(),o),
       snapModePt:(x,y,m)=>mepSnapModePt(mepSheet(),x,y,m),setSnapMode:m=>mepSetSnapMode(m),intCancel:()=>mepIntCancel(),chainStart:(d,e)=>mepChainStart(mepSheet(),d,e),chainRappelAt:(d,P)=>mepChainRappelAt(mepSheet(),d,P),chainEnd:()=>mepChainEnd(),chainClick:P=>mepChainClick(mepSheet(),P),chainHover:P=>mepChainHover(mepSheet(),P),dimLineOf:d=>mepDimLine(mepSheet(),d),angTextPos:d=>mepAngTextPos(mepSheet(),d),angGeom:d=>mepAngGeom(mepSheet(),d),dimMoveTo:(d,P,pk)=>mepDimMoveTo(mepSheet(),d,P,pk),snapMode:()=>mepSt.snapMode||null,dimClick:(P,c,s,a)=>mepDimClick(mepSheet(),P,!!c,!!s,!!a),snapInter:(a,b)=>mepSnapInter(a,b),snapExt:(v,q,e)=>mepSnapExtPrims(v,q,e),

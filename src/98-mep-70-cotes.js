@@ -26,6 +26,17 @@
     }
     if(h&&h.t==='slot'&&h.s)return mepSlotPtRefresh(v,q); // centre d'un oblong
     if(h&&h.t==='aslot'&&h.s)return mepASlotPtRefresh(v,q); // centre d'un oblong en arc (bout ou arc)
+    if(h&&typeof h.i==='string'&&h.i.indexOf('sk:')===0){ // tracé de l'esquisse de planche : suit le tracé
+      const e=mepSkViewEnt(v,h.i.slice(3));if(!e)return q;
+      if(h.t==='ctr'&&e.cx!=null){q.x=e.cx;q.y=e.cy;}
+      else if(h.t==='seg'&&e.t==='L'&&Math.hypot(q.x-e.x1,q.y-e.y1)>1e-9){
+        // le point garde sa place relative le long du trait
+        const dx=e.x2-e.x1,dy=e.y2-e.y1,L2=dx*dx+dy*dy;
+        const f=L2>1e-12?Math.max(0,Math.min(1,((q.x-e.x1)*dx+(q.y-e.y1)*dy)/L2)):0;
+        q.x=e.x1+dx*f;q.y=e.y1+dy*f;
+      }
+      return q;
+    }
     if(h&&(h.t==='axp'||h.t==='axc')){
       const e=mepAxisLineByKey(sh,v,h.ak);if(!e)return q; // axe disparu : dernière position connue
       if(h.t==='axc'){if(e.cx!=null){q.x=e.cx;q.y=e.cy;}return q;}
@@ -210,8 +221,30 @@
       default:return Math.hypot(w.b.x-w.a.x,w.b.y-w.a.y);
     }
   }
+  /* 2026-11-09 : « coter le rayon ou diamètre d'un arc en trait d'axe … et ses 2 droites pour
+     coter l'angle » (axe d'une rainure courbe tracé dans l'esquisse de planche) — un tracé de
+     l'esquisse de planche (ligne, cercle, arc) est vu comme une entité de la vue, dans son repère :
+     indice « sk:<id> ». La cote relit le tracé à chaque dessin : elle suit ses modifications. */
+  function mepSkViewEnt(view,id){
+    const sh=mepSheetOfView(view),sk=sh&&sh.sk;if(!sk||!sk.ents)return null;
+    const e=sk.ents.find(x=>x&&String(x.id)===String(id));if(!e)return null;
+    const P=pid=>{const p=sk.pts[pid];return p?mepFromSheet(view,p.x,p.y):null;};
+    if(e.t==='line'){const a=P(e.p1),b=P(e.p2);if(!a||!b)return null;
+      return{t:'L',x1:a.x,y1:a.y,x2:b.x,y2:b.y,skId:e.id};}
+    if(e.t==='circle'||e.t==='arc'){
+      const c=P(e.pc);if(!c||!(e.r>0))return null;
+      const r=e.r/view.scale;
+      if(e.t==='circle')return{t:'C',cx:c.x,cy:c.y,r,skId:e.id};
+      const p1=P(e.p1),p2=P(e.p2);if(!p1||!p2)return null;
+      const a0=Math.atan2(p1.y-c.y,p1.x-c.x);let a1=Math.atan2(p2.y-c.y,p2.x-c.x);
+      while(a1<=a0)a1+=2*Math.PI; // même sens que le tracé de l'esquisse
+      return{t:'A',cx:c.x,cy:c.y,r,a0,a1,skId:e.id};
+    }
+    return null;
+  }
   function mepEntByHint(view,hint){
     if(!view||!hint)return null;
+    if(typeof hint.i==='string'&&hint.i.indexOf('sk:')===0)return mepSkViewEnt(view,hint.i.slice(3));
     if(typeof hint.i==='string'&&hint.i.indexOf('ax:')===0){ // trait d'axe (2026-10-22-013)
       const sh=mepSheetOfView(view);
       return sh?mepAxisLineByKey(sh,view,hint.i.slice(3)):null;
@@ -1097,15 +1130,20 @@
     let auto=[];
     try{auto=autoTest||mepAxisAutoGeom(sh,v);}catch(e){}
     const seen=new Map();
+    // 2026-11-09 : « pouvoir supprimer un trait d'axe de centre de cercle » — un axe
+    // automatique supprimé est mémorisé par sa clé dans v.axHide (Réafficher : panneau de la vue)
+    const hid=Array.isArray(v.axHide)&&v.axHide.length?new Set(v.axHide):null;
     auto.forEach(p=>{
       let k='a'+(p.t==='L'?[p.x1,p.y1,p.x2,p.y2]:[p.cx,p.cy,p.r]).map(r2).join(',');
       const n=seen.get(k)||0;seen.set(k,n+1);if(n)k+='#'+n;
+      if(hid&&hid.has(k))return;
       add(p,k,null);
     });
     (v.axes||[]).forEach(ann=>{
       let ps=[];
       try{ps=mepAxisManualGeom(sh,v,ann);}catch(e){}
-      ps.forEach((p,i)=>add(p,'m'+ann.id+'.'+i,ann));
+      if(hid)ps=ps.map((p,i)=>hid.has('m'+ann.id+'.'+i)?null:p); // croix retirée d'un axe posé à la main
+      ps.forEach((p,i)=>{if(p)add(p,'m'+ann.id+'.'+i,ann);});
     });
     if(!autoTest)mepAxLinesCache.set(v,{gen:mepAxGen,geo,list:out});
     return out;

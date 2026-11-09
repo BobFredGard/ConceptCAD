@@ -8,7 +8,7 @@ sont sorties le 2026-09-30j.
 Code dans `src/` · livrable `fusion_mvp.html` (généré par `build.js`) · architecture et
 garde-fous en tête de `src/00-entete-et-outils.js`.
 
-**620 versions**, de `2026-09-28b` à `V0.73.0` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
+**621 versions**, de `2026-09-28b` à `V0.74.0` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
 comme dans le fichier d'origine.
 
 ---
@@ -7127,3 +7127,12 @@ Barquette ne perd plus son solide à la 107e modification, et sa mémoire ne mon
 - **Axes de rainure circulaire** (`src/98-mep-71-oblong.js`) : la rainure vue de face est reconnue à sa forme (deux demi-cercles et deux arcs concentriques écartés de la largeur, même coupés en morceaux, plus d'un demi-tour compris). Un clic de l'outil Axes pose l'arc d'axe prolongé, les traits du centre à travers les bouts et la croix du centre ; tout suit le modèle ; les cotes s'accrochent aux centres des bouts ; aussi en axes automatiques. Nouvelle primitive d'axe en arc (chemin SVG, accrochage).
 - **Tolérances géométriques** (`src/98-mep-72-tolerances-geometriques.js`, groupe « Tolérances » du ruban PLAN) : cadre ISO 1101 (14 symboles dessinés en vecteurs, Ø, valeur, modificateur, jusqu'à 3 références avec Ⓜ / Ⓛ) à flèche sur une arête ou sous la valeur d'une cote ; référence ISO 5459 (lettre suivante proposée sur toutes les planches, sans I, O, Q) en triangle noirci sur une arête ou au bout d'une ligne de cote. Réglage dans le panneau, avertissement quand une référence manque. Ce qui est accroché à une cote la suit, se copie avec la planche et part avec elle.
 - **Test** : `test_esquisse_oblong_arc` (17 contrôles : formes, tangences, degrés de liberté, cotes), `test_mep_oblong_arc` (20 : reconnaissance, clic Axes, suivi, cotes, axes automatiques), `test_mep_tolerances` (26 : pose, suivi, 14 symboles, panneau, suppression, lettres). Vérifié aussi à la souris dans le navigateur : rainure découpée dans une plaque, axe posé, références A et B, deux cadres. Parcours FAO et CACHE_VER inchangés.
+
+## V0.74.0 - Coter l’arc d’axe d’une rainure circulaire et son angle, supprimer une croix de centre, icône officielle bleu et orange
+
+- **Demande** : « il faut pouvoir coter le rayon ou diamètre d’un arc de cercle en traits d’axes dans la mise en plan … et ses 2 droites pour coter l’angle ; il faut aussi pouvoir supprimer un trait d’axe de centre de cercle » ; « l’icône officielle de l’application va devenir celui de la version native, bleu et orange ».
+- **Cause** : l’outil Cote ne visait que les traits d’axe droits et les cercles complets ; l’arc d’axe d’une rainure circulaire (V0.73.0) était ignoré (`mepHitViewEnt`). Les tracés de l’esquisse de planche n’étaient pas visés du tout. Sur un axe automatique, Suppr rendait seulement la longueur d’origine.
+- **Cotes** (`98-mep-75`, `98-mep-70`, `98-mep-85`, `98-mep-40`) : arc d’axe visé dans sa plage angulaire → cote R (Ø au clic droit), les 2 traits vers les bouts → angle. Lignes, cercles et arcs de l’esquisse de planche vus comme entités de la vue sous le curseur (indice `sk:<id>`, `mepSkViewEnt`, valeur divisée par l’échelle de la vue) ; la cote relit le tracé à chaque dessin. Surbrillance au survol et à la sélection.
+- **Suppression** (`98-mep-90`, `98-mep-80`) : Suppr ou bouton Supprimer sur un axe automatique → sa clé dans `v.axHide` ; une croix part en entier (2 traits de même milieu, perpendiculaires). Axe posé à la main : Suppr sur sa croix de centre ne retire que la croix, ailleurs l’axe entier. Panneau de la vue : « Réafficher (n) ». Annulable.
+- **Icône** (`ConceptCAD.html`, en-tête) : logo de la barre bleu à gauche, orange à droite (`.brand .mk::after`), icône d’onglet SVG au même dessin. L’application Tauri relit ce logo (`tauri/icone.cjs`). Versions natives Windows et Mac abandonnées le 09/11.
+- **Test** : `test_mep_axes_planche` (28 contrôles : arc et droites de planche cotés R10, Ø20, 120°, suivi du tracé ; rainure circulaire automatique R12 et 120°, hors de l’arc rien de visé ; croix automatique et croix d’un axe à la main supprimées, le reste demeure ; Réafficher) ; `test_autonome` accepte l’icône incluse (`href="data:…"`). Parcours FAO et CACHE_VER inchangés.
