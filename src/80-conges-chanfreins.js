@@ -260,6 +260,20 @@ function xPreviewShape(base,jobs,cham,edges){
   }
   return sh?{shape:sh}:{shape:null,warns};
 }
+function xPreviewBody(sel){
+  // Corps (kind 'body', avec forme) qui porte TOUTES les arêtes choisies → {b, E: ses arêtes}, ou
+  // null : un seul corps (le composé suffit) ou arêtes réparties sur plusieurs corps.
+  const cands=bodies.filter(b=>b&&b.kind==='body'&&!b.ghost&&!b.preview&&b.shape);
+  if(cands.length<2)return null;
+  const pres=(E,p)=>E.some(e=>Math.hypot(e.mid[0]-p[0],e.mid[1]-p[1],e.mid[2]-p[2])<1.5);
+  // le corps actif d'abord : c'est lui qui recevra le congé
+  cands.sort((a,b)=>(b.id===doc.activeBody)-(a.id===doc.activeBody));
+  for(const b of cands){
+    let E=null;try{E=occListEdges(b.shape);}catch(e){E=null;}
+    if(E&&sel.every(s=>pres(E,s.pos)))return {b,E};
+  }
+  return null;
+}
 function xPreviewUpdate(){
   try{
     if(!filModeX){xPrevRemove();return;}
@@ -269,7 +283,13 @@ function xPreviewUpdate(){
     const sig=sel.map(s=>s.pos.map(v=>v.toFixed(2)).join(',')+'/'+s.r).join('|')+(xIsChamfer(filModeX.kind)?'#c'+xChamKey(xChamOpts(filModeX)):'#f')+(filModeX.tangent===false?'#1':'#t');
     if(filModeX._prevSig===sig)return;
     const cham=xIsChamfer(filModeX.kind);
-    const E=occListEdges(occLive.shape);
+    // V0.77.2 : plusieurs corps → l'aperçu ne porte que sur LE corps des arêtes choisies. Avant, il
+    // recalculait le composé de tous les corps et l'affichait à la place de tous : un corps caché
+    // réapparaissait au 1er clic, sans arêtes et dans la couleur de l'autre, devant celui qu'on
+    // modifiait (retour de Fred du 09/11). Les autres corps restent tels quels, cachés ou non.
+    const tb=xPreviewBody(sel);
+    const base=tb?tb.b.shape:occLive.shape;
+    const E=tb?tb.E:occListEdges(base);
     const jobs=[];
     sel.forEach(s=>{
       let bi=-1,bd=1e9;
@@ -277,7 +297,7 @@ function xPreviewUpdate(){
       if(bi>=0&&bd<1.5)jobs.push({src:E[bi].src,r:s.r,mid:E[bi].mid,pts:E[bi].pts,fn:Array.isArray(s.fn)?s.fn:null});
     });
     if(!jobs.length){xPrevRemove();return;}
-    const pv=xPreviewShape(occLive.shape,jobs,cham,E);
+    const pv=xPreviewShape(base,jobs,cham,E);
     if(!pv||!pv.shape){
       // 2026-10-18 V0.2.4 : échec d'aperçu = message PRÉCIS + rayon maximal vérifié par
       // sonde descendante (0,7 → 0,2 × le rayon demandé, même mécanique qu'au rejeu).
@@ -294,7 +314,7 @@ function xPreviewUpdate(){
           for(const kk of [0.7,0.5,0.4,0.3,0.2]){
             const r2=Math.max(0.3,+(rMax*kk).toFixed(2));
             const w2=[];let t=null;
-            try{t=occFilletRun(occShapeCopy(occLive.shape),jobs.map(j=>({src:j.src,r:r2,mid:j.mid.slice()})),w2,cham,{single:filModeX&&filModeX.tangent===false?'droit':false});}catch(ex){t=null;}
+            try{t=occFilletRun(occShapeCopy(base),jobs.map(j=>({src:j.src,r:r2,mid:j.mid.slice()})),w2,cham,{single:filModeX&&filModeX.tangent===false?'droit':false});}catch(ex){t=null;}
             const bon=t&&occFacesValides(t,zone); // « vérifié » : un solide valide, comme à l'application
             try{if(t)t.delete();}catch(e2){}
             if(bon){msg+=' — max vérifié : '+dp+r2+' ; réduisez '+(cham?'la distance':'le rayon');break;}
@@ -312,7 +332,7 @@ function xPreviewUpdate(){
     const sh=pv.shape;
     let g=null,isNew=null;
     try{g=occTessellate(sh,0.5);}catch(e){g=null;}
-    try{isNew=xNewFaces(occLive.shape,sh);}catch(e){isNew=null;}
+    try{isNew=xNewFaces(base,sh);}catch(e){isNew=null;}
     try{sh.delete();}catch(e){}
     if(!g){xPrevRemove();return;}
     xPrevRemove();
@@ -322,6 +342,7 @@ function xPreviewUpdate(){
     let col=0x0a84ff;
     bodies.forEach(b=>{
       if(b.ghost||!b.mesh||!b.mesh.material||b.preview)return;
+      if(tb&&b!==tb.b)return; // les autres corps gardent leur affichage (un corps caché le reste)
       try{if(b.mesh.material.color)col=b.mesh.material.color.getHex();}catch(e){}
       b._xSaved=1;b._xVis=b.mesh.visible;b.mesh.visible=false;
     });

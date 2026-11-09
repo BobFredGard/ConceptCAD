@@ -8,7 +8,7 @@ sont sorties le 2026-09-30j.
 Code dans `src/` · livrable `fusion_mvp.html` (généré par `build.js`) · architecture et
 garde-fous en tête de `src/00-entete-et-outils.js`.
 
-**627 versions**, de `2026-09-28b` à `V0.77.1` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
+**628 versions**, de `2026-09-28b` à `V0.77.2` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
 comme dans le fichier d'origine.
 
 ---
@@ -7182,3 +7182,10 @@ Barquette ne perd plus son solide à la 107e modification, et sa mémoire ne mon
 - **Cause** : une face décalée est une surface « offset » de la face d'origine. Le bout d'un congé laissé par le noyau était une petite face libre au bord ondulé (rayons de courbure de quelques centièmes de mm) ; décalée de plusieurs mm, elle se retournait et se repliait en une voile hors de la pièce. Le solide restait valide et le contrôle du volume passait : rien ne le signalait. La coque (paroi mince) de la même pièce avait le même pli.
 - **Correctif** (`src/20-30-faces.js`, `src/20-10`) : `occPlisFace` repère une face décalée dont la normale s'oppose, quelque part, à celle de la face d'origine (différences finies, points pris dans la face). `occPlisRebouche` la remplace par une surface de remplissage tendue sur ses bords (courbes refaites à neuf) et tangente (G1) à chaque face voisine ; `occPlisReparer` recoud la pièce (tolérance 1e-4 à 1e-2) et ne garde que un solide valide unique. Appelé après le décalage du noyau (déplacement de face, faces tangentes) et après l'évidage de la coque. Message : « n face(s) trop courbe(s) pour cette distance se repliaient — remplacée(s) par une surface lisse ».
 - **Test** : vérifié sur la pièce de Fred, qui reste privée (hors dépôt) : plus de pli, rien hors de la pièce d'origine, solide valide, matière retirée cohérente avec 4,5 mm, autant d'arêtes vives que l'original (raccords tangents gardés), même réparation sur la coque. Un bloc d'essai (congé ou flanc ondulé) ne reproduit pas le défaut. `test_fuite_noyau` vert (aucun objet du noyau oublié par la recherche des plis). Parcours FAO et CACHE_VER inchangés.
+
+## V0.77.2 - Congé : un corps caché ne réapparaît plus pendant l'aperçu
+
+- **Demande** : retour de Fred du 09/11 : « quand on a plusieurs corps de pièce, que l'un est caché et que l'on veut faire un congé sur celui actif, à la 1ère arête sélectionnée, le corps caché apparaît sans arêtes et masque le corps à modifier ».
+- **Cause** : l'aperçu du congé et du chanfrein (`xPreviewUpdate`, `src/80-conges-chanfreins.js`) recalculait le COMPOSÉ de tous les corps (`occLive.shape`) et l'affichait à la place de tous, sans regarder l'œil des corps : un corps caché revenait, dans la couleur de l'autre et sans arêtes.
+- **Correctif** : `xPreviewBody` trouve le corps qui porte toutes les arêtes choisies (le corps actif d'abord) ; l'aperçu ne calcule que lui et ne remplace que lui. Les autres corps gardent leur affichage, caché ou visible. Arêtes réparties sur plusieurs corps, ou un seul corps : comportement d'avant.
+- **Test** : `test_conge_corps_cache` (7 contrôles : aperçu au 1er clic, corps caché qui le reste pendant l'aperçu et après, aperçu calculé sur le seul corps modifié — 6 faces de départ et non 12, corps visible inchangé). Sur V0.77.1 il échoue à 2 contrôles. Vérifié aussi au navigateur sur la pièce de Fred (copie cachée). Parcours FAO et CACHE_VER inchangés.
