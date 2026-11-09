@@ -72,7 +72,7 @@ function derBodies(t){
     F.forEach(f=>{
       if(f.type==='combine'&&!f.keep)(f.tools||[]).forEach(x=>gone.add(x));
       if(f.type==='bremove'&&f.body)gone.add(f.body);
-      has.add(f.body||b0);if(f.newBody)has.add(f.newBody);
+      has.add(f.body||b0);if(f.newBody)has.add(f.newBody);if(Array.isArray(f.newBodies))f.newBodies.forEach(x=>has.add(x));
     });
     (d.bodies||[]).forEach(e=>{
       if(!has.has(e.id)||gone.has(e.id))return;

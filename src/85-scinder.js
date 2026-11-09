@@ -329,10 +329,12 @@ function splitNewBodyFor(src){
 }
 function splitOnDelete(f){
   // Suppression de la fonction : le corps neuf part avec elle s'il ne porte rien d'autre.
-  const nb=f&&(f.type==='xsplit'||f.type==='bscale'||f.type==='bcopy')&&f.newBody;
-  if(!nb||doc.features.some(x=>x.body===nb||(x.type==='combine'&&(x.tools||[]).indexOf(nb)>=0)||(x!==f&&x.newBody===nb)))return;
-  doc.bodies=(doc.bodies||[]).filter(b=>b.id!==nb);
-  if(doc.activeBody===nb&&doc.bodies.length)doc.activeBody=doc.bodies[0].id;
+  if(!f||!(f.type==='xsplit'||f.type==='bscale'||f.type==='bcopy'))return;
+  [f.newBody].concat(f.type==='bcopy'&&Array.isArray(f.newBodies)?f.newBodies:[]).forEach(nb=>{
+    if(!nb||nb===true||doc.features.some(x=>x!==f&&(x.body===nb||(x.type==='combine'&&(x.tools||[]).indexOf(nb)>=0)||x.newBody===nb||(Array.isArray(x.newBodies)&&x.newBodies.indexOf(nb)>=0))))return;
+    doc.bodies=(doc.bodies||[]).filter(b=>b.id!==nb);
+    if(doc.activeBody===nb&&doc.bodies.length)doc.activeBody=doc.bodies[0].id;
+  });
 }
 /* ---------- propriétés d'une scission ---------- */
 function splitProps(p,f){

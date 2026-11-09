@@ -466,7 +466,7 @@ function occCutExtraBodies(f){
 // peut donc pas y créer de fonction. Un corps sans aucune fonction (créé vide) existe toujours.
 function bodyBornAt(bid,idx){
   const L=doc.features||[];
-  const owns=f=>f&&(f.body===bid||occSplitNewBody(f)===bid||occCutExtraBodies(f).indexOf(bid)>=0);
+  const owns=f=>f&&(f.body===bid||occNewBodies(f).indexOf(bid)>=0||occCutExtraBodies(f).indexOf(bid)>=0);
   const first=L.findIndex(owns);
   if(first<0)return true;
   return idx==null||idx<0||first<idx;
@@ -497,11 +497,19 @@ function occSplitNewBody(f){
   if(!f||!f.newBody||!((f.type==='xsplit'&&f.mode==='body')||(f.type==='bscale'&&f.copy)||f.type==='bcopy'))return null; // bcopy : 85-copier-corps
   return (f.newBody!==occBodyOfFeat(f)&&doc.bodies.some(e=>e.id===f.newBody))?f.newBody:null;
 }
+function occNewBodies(f){
+  // TOUS les corps neufs nés d'une fonction : le corps de occSplitNewBody, plus — copie en
+  // symétrie par 2 plans sans union (85-copier-corps) — les corps des deux autres copies.
+  const nb=occSplitNewBody(f);if(!nb)return [];
+  const L=[nb];
+  if(f.type==='bcopy'&&Array.isArray(f.newBodies))f.newBodies.forEach(b=>{if(b&&L.indexOf(b)<0&&b!==occBodyOfFeat(f)&&doc.bodies.some(e=>e.id===b))L.push(b);});
+  return L;
+}
 function occCombinePrefix(f,tb){
   // fonctions du corps outil tb AVANT la combinaison f (timeline visible)
   const vis=doc.features.filter(x=>x.visible!==false&&!(occSkipFeat&&x.id===occSkipFeat));
   const i=vis.indexOf(f);
-  return vis.slice(0,i<0?vis.length:i).filter(x=>x.type!=='repeat'&&(occBodyOfFeat(x)===tb||occSplitNewBody(x)===tb||occCutExtraBodies(x).indexOf(tb)>=0));
+  return vis.slice(0,i<0?vis.length:i).filter(x=>x.type!=='repeat'&&(occBodyOfFeat(x)===tb||occNewBodies(x).indexOf(tb)>=0||occCutExtraBodies(x).indexOf(tb)>=0));
 }
 function occCombineTool(f,tb,bin){
   const list=occCombinePrefix(f,tb);if(!list.length)return null;

@@ -172,6 +172,7 @@ function featSig(f){
   }else if(f.type==='bscale'||f.type==='bcopy'){ // bcopy = copie sans échelle (85-copier-corps)
     // Échelle : centre, facteur(s) et, en copie, l'historique du corps source (comme xsplit)
     s+='|'+JSON.stringify([f.o||[0,0,0],bsFactors(f),f.copy?1:0]);
+    if(f.type==='bcopy')s+=bcSig(f); // symétrie 1 ou 2 plans, union (85-copier-corps) ; vide en copie simple
     if(occSplitNewBody(f))s+='|src:'+occCombinePrefix(f,occBodyOfFeat(f)).map(featSig).join(',');
   }else if(f.type==='bmirror'){
     s+='|'+bmirPlane(f);
@@ -330,9 +331,9 @@ function* occReplayBodyGen(bid,list){
     if(f.type==='bscale'||f.type==='bcopy'){ // bcopy : copie de corps (85-copier-corps), facteur 1
       // Échelle (85-echelle-corps) : corps modifié sur place, ou — « Nouveau corps » — copie
       // du corps source mise à l'échelle dans le corps neuf (le source n'est pas touché).
-      const nb=occSplitNewBody(f);
-      if(nb&&bid!==nb)return;
-      const neuf=nb===bid;
+      const nbs=occNewBodies(f),nb=nbs[0]||null;
+      if(nb&&nbs.indexOf(bid)<0)return;
+      const neuf=nbs.indexOf(bid)>=0;
       const ckS=occCkGet(ckKey);
       const cpS=ckS?occShapeCopy(ckS):null;
       if(cpS){
@@ -346,7 +347,7 @@ function* occReplayBodyGen(bid,list){
         try{src=occCombineTool(f,occBodyOfFeat(f),bin);}catch(err){src=null;msgs.push(f.name+' : corps source illisible ('+err.message+')');}
       }
       if(!src){msgs.push(f.name+' : aucun volume à '+(f.type==='bcopy'?'copier':'mettre à l’échelle')+' — ignoré');return;}
-      const r=occApplyBodyScale(src,f);
+      const r=f.type==='bcopy'?occApplyBodyCopy(src,f,nbs.indexOf(bid)):occApplyBodyScale(src,f);
       result=r.shape;msgs.push(...r.warnings.map(w=>f.name+' : '+w));
       if(r.warnings.length)occCkWarn[ckKey]=r.warnings.slice();else delete occCkWarn[ckKey];
       if(result)occCkPut(ckKey,()=>occShapeCopy(result));
@@ -735,8 +736,8 @@ function* occFinalShapeGen(upto,warm){
     const b=(f.body&&doc.bodies.some(e=>e.id===f.body))?f.body:doc.bodies[0].id;
     if(!byBody[b]){byBody[b]=[];order.push(b);}
     byBody[b].push(f);
-    const nb=occSplitNewBody(f); // scission de corps : l'autre côté naît dans le corps neuf
-    if(nb){if(!byBody[nb]){byBody[nb]=[];order.push(nb);}byBody[nb].push(f);}
+    // scission de corps : l'autre côté naît dans le corps neuf ; copie en symétrie : 1 à 3 corps neufs
+    occNewBodies(f).forEach(nb=>{if(!byBody[nb]){byBody[nb]=[];order.push(nb);}byBody[nb].push(f);});
     occCutExtraBodies(f).forEach(xb=>{if(!byBody[xb]){byBody[xb]=[];order.push(xb);}byBody[xb].push(f);}); // découpe multi-corps
   });
   const perBody=[],bin=[],itemShapes=[],ghostShapes=[],msgs=[],items=[],imports=[];
