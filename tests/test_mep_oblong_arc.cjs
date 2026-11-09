@@ -82,6 +82,35 @@ const out=vm.runInContext(`(function(){
   let dd=null;
   T.drawAxisPrim((tag,at)=>{if(tag==='path')dd=at.d;return{};},T.axisManual(v,{id:'axB',kind:'aslot',s:{cx:0,cy:0,R:30,w:4,a0:0,sw:Math.PI/2}})[0],v);
   A(!!dd&&/ A 30 30 0 0 1 /.test(dd),'arc d’axe dessiné en chemin SVG ('+dd+')');
+  // 7. (V0.73.1) Ø sur un bout de rainure : demi-cercle → une seule flèche, trait droit qui dépasse le centre
+  sh.dims.length=0;v.axes.length=0;
+  geo(rainure(0,0,30,4,0,Math.PI/2).concat([bord]));
+  mepSetTool('dim');
+  T.dimSelect(T.hitEnt(130,95.7));
+  T.dimCommit({x:115,y:85});
+  const dD=sh.dims[sh.dims.length-1];
+  A(dD&&(dD.kind==='rad'||dD.kind==='dia'),'cote posée sur le bout ('+(dD&&dD.kind)+')');
+  dD.kind='dia';dD.b={x:15,y:-20};         // texte en haut à gauche, du côté du demi-cercle (centre papier 130,100)
+  const traits=()=>{const o=[];T.drawDim((tag,a)=>{if(tag==='line')o.push(a);return{appendChild(){},setAttribute(){},textContent:''};},dD);return o;};
+  let Ls=traits();
+  const fl=Ls.filter(l=>l['marker-end']||l['marker-start']);
+  A(fl.length===1,'demi-cercle : une seule flèche ('+fl.length+')');
+  const lead=fl[0],dia=Ls.find(l=>l!==lead&&!near(+l.y1,+l.y2,1e-9)&&Math.hypot(l.x2-130,l.y2-100)<4);
+  A(!!dia,'trait de diamètre qui s’arrête juste après le centre');
+  if(dia){const cr=(dia.x1-130)*(lead.y2-100)-(dia.y1-100)*(lead.x2-130),
+    cr2=(dia.x2-130)*(lead.y2-100)-(dia.y2-100)*(lead.x2-130);
+    A(Math.abs(cr)<1e-6&&Math.abs(cr2)<1e-6,'trait de diamètre aligné sur le point fléché et le centre (pas de travers)');
+    A((dia.x2-130)*(lead.x2-130)+(dia.y2-100)*(lead.y2-100)<0,'il dépasse le centre');}
+  // texte hors du demi-cercle : la flèche va au bout de l'arc, le trait reste aligné sur elle
+  dD.b={x:10,y:15};Ls=traits();
+  {// le leader (1er trait) finit sur l'arc ; le trait de diamètre (2e) passe par ce point et le centre
+   const ld=Ls[0],dg=Ls[1],cr=(x,y)=>(x-130)*(ld.y2-100)-(y-100)*(ld.x2-130);
+   A(!!dg&&Math.abs(cr(dg.x1,dg.y1))<1e-6&&Math.abs(cr(dg.x2,dg.y2))<1e-6,'texte hors de l’arc : trait de diamètre toujours aligné sur la flèche');}
+  // cercle complet : toujours deux flèches
+  geo([{t:'C',cx:30,cy:0,r:4},bord]);
+  dD.a.hint={t:'ent',i:0};
+  Ls=traits();
+  A(Ls.filter(l=>l['marker-end']||l['marker-start']).length===2,'cercle complet : deux flèches');
   return r;
 })();`,ctx);
 out.log.forEach(m=>console.log('  ok  '+m));

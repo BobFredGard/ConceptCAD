@@ -210,6 +210,7 @@
   }
   function mepRender(){
     if(!mepWrapEl||!mepSt.open)return;
+    try{if(typeof mfRibMepSync==='function')mfRibMepSync(mepSt);}catch(e){} // bouton du ruban de l'outil actif
     mepEnsure();
     mepPrefsSync(); // hors docSansEtape : un réglage changé (cotes, hachures…) est un vrai geste, annulable
     docSansEtape(mepRenderCorps); // cotes et coupes qui suivent la pièce : pas d'étape d'annulation

@@ -1709,9 +1709,21 @@
       if(d.kind==='dia'){
         // trait de diamètre : part du bord (côté texte) après un vide, traverse
         // le centre et flèche le bord opposé - il ne part plus du centre.
+        // V0.73.1 : le trait suit la direction du point fléché (ang), pas celle du texte — sur un arc, ang
+        // est ramené au bout de l'arc et le trait partait de travers. Arc incomplet dont le bord opposé
+        // n'existe pas (bout d'oblong…) : une seule flèche, le trait dépasse le centre (ISO 129-1).
+        const dx=Math.cos(ang),dy=Math.sin(ang);
         const lg=Math.min(MEP_DIM_STYLE.leaderGap,rr*0.45);
-        draw('line',Object.assign({x1:ex-ux*lg,y1:ey-uy*lg,
-          x2:cx-rr*Math.cos(ang),y2:cy-rr*Math.sin(ang),'marker-end':ARS},L));
+        let face=true;
+        if(e&&e.t==='A'){
+          const T2=2*Math.PI,md=a=>((a%T2)+T2)%T2;
+          const span=md(e.a1-e.a0)||T2;
+          face=md(ang+Math.PI-e.a0)<=span+1e-6;
+        }
+        if(face)draw('line',Object.assign({x1:ex-dx*lg,y1:ey-dy*lg,
+          x2:cx-rr*dx,y2:cy-rr*dy,'marker-end':ARS},L));
+        else{const ov=Math.min(rr*0.5,Math.max(2*MEP_DIM_STYLE.arrowLen,rr*0.3));
+          draw('line',Object.assign({x1:ex-dx*lg,y1:ey-dy*lg,x2:cx-ov*dx,y2:cy-ov*dy},L));}
       }
       // trait sous la valeur R/Ø : longueur du texte réel (symbole et tolérances compris)
       const tEl=mepDimDrawText(draw,T,str,pp.up,pp.lo,tx,ty,ux<0?'end':'start',null,pp.sym,pp.par,pp.post);
