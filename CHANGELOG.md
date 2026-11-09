@@ -8,7 +8,7 @@ sont sorties le 2026-09-30j.
 Code dans `src/` · livrable `fusion_mvp.html` (généré par `build.js`) · architecture et
 garde-fous en tête de `src/00-entete-et-outils.js`.
 
-**623 versions**, de `2026-09-28b` à `V0.76.0` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
+**624 versions**, de `2026-09-28b` à `V0.76.1` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
 comme dans le fichier d'origine.
 
 ---
@@ -7153,3 +7153,10 @@ Barquette ne perd plus son solide à la 107e modification, et sa mémoire ne mon
 - **Filigranes** (`src/98-mep-40`, `98-mep-50`, `98-mep-80`, groupe « Filigrane » du ruban PLAN) : texte de l'esquisse de planche marqué `wm` (couleur du type, opacité, gras espacé), posé au centre le long de la diagonale à la taille qui couvre les 2/3 de la planche ; « / » ou « 2 lignes » coupe en deux lignes (bloc centré, lettres agrandies). Tout texte de planche a maintenant un angle réglable ; la sélection et le cadre suivent l'inclinaison ; un filigrane se saisit sans clic préalable.
 - **Rugosité** (`src/98-mep-73-rugosite.js`, groupe « Tolérances ») : sorte de tolérance `rough` (pied sur l'arête, côté choisi, `r = {par, val, proc, txt}`). Symbole ISO (branches à 60°, H1 = 1,4 h, H2 = 3 h), perpendiculaire à l'arête (droite, ou tangente d'un cercle) ; valeur lue du bas ou de la droite ; côté illisible ou symbole éloigné → ligne de repère à flèche et trait horizontal. Les trois sortes de tolérance passent par `mepIsTol`.
 - **Test** : `test_mep_filigrane` (16 contrôles : type, angle de la diagonale, taille, centrage, sélection inclinée, 2 lignes, texte libre, épingles et raccourcis du ruban), `test_mep_rugosite` (21 : 4 côtés d'un carré, cercle, ligne de repère, symboles, Rz et procédé, retournement) ; fiches illustrées des nouveaux boutons.
+
+## V0.76.1 - Corps vide et copie d'un corps à son instant de la timeline
+
+- **Demande** : « CAO : Corps — je veux pouvoir créer un corps vide mais aussi copier un corps existant et au moment de la time line pas après ni avant. Il faut donc une info dans la time line pour la copie de ce corps ».
+- **Copie** (`src/85-copier-corps.js`) : fonction de la timeline `{type:'bcopy', body, newBody}` posée au marqueur. La copie naît dans un corps neuf « … (copie) » et reprend le corps source tel qu'il est à cette étape : ce qui est ajouté plus loin au source n'y entre pas, ce qui change avant s'y retrouve. Même mécanique que l'Échelle en copie (`occSplitNewBody`, rejeu de l'historique du source, facteur 1). Étape visible dans l'arbre et la timeline (⧉), panneau (corps copié, « Déplacer la copie… »), clic droit d'un corps « ⧉ Copier (timeline) », bouton « Copier » à côté de « Corps » dans le groupe Créer. Supprimer l'étape retire le corps copié.
+- **Corps vide** : le bouton « Corps » reste visible dans le ruban (il était rangé dans la liste du groupe) ; Déplacer et Échelle acceptent un corps né d'une copie (`bodyHasMatter`).
+- **Test** : `test_copier_corps` (12 contrôles au noyau réel : étape au marqueur, copie sans ce qui vient après, cote changée avant suivie, antériorité, refus sur corps vide, déplacement de la copie, fichier, signature du cache, suppression) ; parcours FAO et CACHE_VER inchangés.

@@ -494,7 +494,7 @@ function occSplitNewBody(f){
   // rejouée dans son corps (côté gardé) ET en tête du corps neuf (l'autre côté).
   // Échelle « Nouveau corps » (bscale copy, 85-echelle-corps) : même mécanique, le corps
   // source reste tel quel et la copie mise à l'échelle naît dans le corps neuf.
-  if(!f||!f.newBody||!((f.type==='xsplit'&&f.mode==='body')||(f.type==='bscale'&&f.copy)))return null;
+  if(!f||!f.newBody||!((f.type==='xsplit'&&f.mode==='body')||(f.type==='bscale'&&f.copy)||f.type==='bcopy'))return null; // bcopy : 85-copier-corps
   return (f.newBody!==occBodyOfFeat(f)&&doc.bodies.some(e=>e.id===f.newBody))?f.newBody:null;
 }
 function occCombinePrefix(f,tb){

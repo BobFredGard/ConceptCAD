@@ -379,7 +379,7 @@ input[type=range]{accent-color:var(--primary);width:100%}
  * peut changer sans rien casser. CACHE_VER (parcours FAO) reste indépendant.
  */
 
-const APP_VER='V0.76.0';
+const APP_VER='V0.76.1';
 try{console.log('[ConceptCAD] version '+APP_VER);}catch(e){}
 try{var mfSv=document.getElementById('mfSplashVer');if(mfSv)mfSv.textContent=APP_VER;}catch(e){} // écran de démarrage
 
@@ -4044,7 +4044,7 @@ function occSplitNewBody(f){
   // rejouée dans son corps (côté gardé) ET en tête du corps neuf (l'autre côté).
   // Échelle « Nouveau corps » (bscale copy, 85-echelle-corps) : même mécanique, le corps
   // source reste tel quel et la copie mise à l'échelle naît dans le corps neuf.
-  if(!f||!f.newBody||!((f.type==='xsplit'&&f.mode==='body')||(f.type==='bscale'&&f.copy)))return null;
+  if(!f||!f.newBody||!((f.type==='xsplit'&&f.mode==='body')||(f.type==='bscale'&&f.copy)||f.type==='bcopy'))return null; // bcopy : 85-copier-corps
   return (f.newBody!==occBodyOfFeat(f)&&doc.bodies.some(e=>e.id===f.newBody))?f.newBody:null;
 }
 function occCombinePrefix(f,tb){
@@ -8251,7 +8251,7 @@ function featSig(f){
   }else if(f.type==='bmove'){
     // Déplacer un corps : ses étapes (translations, rotations, point à point) font la géométrie
     s+='|'+JSON.stringify(f.steps||[]);
-  }else if(f.type==='bscale'){
+  }else if(f.type==='bscale'||f.type==='bcopy'){ // bcopy = copie sans échelle (85-copier-corps)
     // Échelle : centre, facteur(s) et, en copie, l'historique du corps source (comme xsplit)
     s+='|'+JSON.stringify([f.o||[0,0,0],bsFactors(f),f.copy?1:0]);
     if(occSplitNewBody(f))s+='|src:'+occCombinePrefix(f,occBodyOfFeat(f)).map(featSig).join(',');
@@ -8404,7 +8404,7 @@ function* occReplayBodyGen(bid,list){
       occCkPut(ckKey,()=>occShapeCopy(result));
       return;
     }
-    if(f.type==='bscale'){
+    if(f.type==='bscale'||f.type==='bcopy'){ // bcopy : copie de corps (85-copier-corps), facteur 1
       // Échelle (85-echelle-corps) : corps modifié sur place, ou — « Nouveau corps » — copie
       // du corps source mise à l'échelle dans le corps neuf (le source n'est pas touché).
       const nb=occSplitNewBody(f);
@@ -8419,10 +8419,10 @@ function* occReplayBodyGen(bid,list){
       }
       let src=result;
       if(neuf){
-        if(result){msgs.push(f.name+' : fonctions du corps neuf placées avant l’échelle — ignorées');try{result.delete();}catch(e){}result=null;}
+        if(result){msgs.push(f.name+' : fonctions du corps neuf placées avant '+(f.type==='bcopy'?'la copie':'l’échelle')+' — ignorées');try{result.delete();}catch(e){}result=null;}
         try{src=occCombineTool(f,occBodyOfFeat(f),bin);}catch(err){src=null;msgs.push(f.name+' : corps source illisible ('+err.message+')');}
       }
-      if(!src){msgs.push(f.name+' : aucun volume à mettre à l’échelle — ignoré');return;}
+      if(!src){msgs.push(f.name+' : aucun volume à '+(f.type==='bcopy'?'copier':'mettre à l’échelle')+' — ignoré');return;}
       const r=occApplyBodyScale(src,f);
       result=r.shape;msgs.push(...r.warnings.map(w=>f.name+' : '+w));
       if(r.warnings.length)occCkWarn[ckKey]=r.warnings.slice();else delete occCkWarn[ckKey];
@@ -10520,6 +10520,7 @@ function featIconOf(f){
   if(f.type==='bmove')return '✥';
   if(f.type==='bremove')return '⊘';
   if(f.type==='bscale')return f._err?'⚠':'⤡';
+  if(f.type==='bcopy')return f._err?'⚠':'⧉';
   if(f.type==='xdelface')return f._calc?'⏳':((f._m&&f._m.m<f._m.t)||f._err)?'⚠':'⌫'; // ⏳ : calcul au worker (21)
   if(f.type==='xdraft')return ((f._m&&f._m.m<f._m.t)||f._err||f._thin)?'⚠':'📐';
   if(f.type==='xshell')return ((f._m&&f._m.m<f._m.t)||f._err)?'⚠':'🥚';
@@ -10576,6 +10577,7 @@ function repCanFeatureHint(f){
   if(f.type==='bmove')return 'Déplacer un corps · '+(f.steps||[]).length+' étape(s)';
   if(f.type==='bremove')return 'Corps retiré à partir de cette étape';
   if(f.type==='bscale')return bsName(f);
+  if(f.type==='bcopy')return 'Copie du corps « '+bmBodyName(f.body)+' » tel qu’il est à cette étape';
   if(f.type==='xdelface')return 'Suppression · '+(f.faces||[]).length+' face(s)';
   if(f.type==='xdraft')return 'Dépouillage · '+draftAngleEff(f).toFixed(1).replace('.',',').replace('-','−')+'° · '+(f.faces||[]).length+' face(s)';
   if(f.type==='xshell')return 'Coque · '+String(Math.round((+f.thick||0)*100)/100).replace('.',',')+' mm · '+(f.faces||[]).length+' face(s) retirée(s)';
@@ -11467,7 +11469,7 @@ function delFeature(f){
   doc.features.forEach(rp=>{if(rp.type==='repeat')rp.base=rp.base.filter(id=>id!==f.id);});
   if(tlMark===f.id)tlMark=null;
   if(f.kw||f.kwKey)kwOnDelete(f); // rainure de clavette et son corps (76-clavette)
-  if(f.type==='xsplit'||f.type==='bscale')splitOnDelete(f); // corps neuf vide d'une scission (85-scinder) ou d'une échelle en copie
+  if(f.type==='xsplit'||f.type==='bscale'||f.type==='bcopy')splitOnDelete(f); // corps neuf vide d'une scission (85-scinder) ou d'une échelle en copie
 }
 // Le bouton vit ici (sources, jamais la coque HTML — même règle que Révolution) :
 // après Révolution si présente, sinon après Extrusion. Le regroupement du bandeau
@@ -11478,7 +11480,7 @@ function delFeature(f){
   if(!after||!after.parentNode)return;
   const b=document.createElement('button');
   b.id='btnBody';b.textContent='◧ Corps';
-  b.title='Nouveau corps : les fonctions suivantes naîtront dedans (il devient actif ●)';
+  b.title='Nouveau corps VIDE : les fonctions suivantes naîtront dedans (il devient actif ●)';
   b.onclick=()=>newBody();
   after.parentNode.insertBefore(b,after.nextSibling);
 })();
@@ -12269,6 +12271,7 @@ function renderProps(){
       pInfo('⊘ <b>'+(be?be.name:f.body)+'</b> est retiré à partir de cette étape de la timeline. Rien n’est effacé : supprimez cette étape (ou reculez le marqueur avant elle) pour le faire revenir.');
       visDel(f);return;
     }
+    if(f.type==='bcopy'){bcopyProps(p,f);visDel(f);return;} // copier un corps (85-copier-corps)
     if(f.type==='bscale'){bscaleProps(p,f);visDel(f);return;} // échelle (85-echelle-corps)
     if(f.type==='xsplit'){splitProps(p,f);visDel(f);return;} // scinder (85-scinder)
     /* — déplacement de face — */
@@ -12872,6 +12875,7 @@ function tlbSvgKey(s){
     case 'bmove':return ['move','mod'];
     case 'bremove':return ['body','cut',true];
     case 'bscale':return ['scale','mod'];
+    case 'bcopy':return ['copy','add'];
     case 'import':return ['import','mod'];
   }
   return null;
@@ -38727,6 +38731,115 @@ function renderFilletPanel(){
    exitFilletMode(true);markDirty();rebuild();renderProps();
  }
 
+/* ═══════════════ 85-copier-corps.js — copier corps ═══════════════ */
+/* ---------- copier un corps (V0.76.1) ----------
+   Fonction de la timeline {type:'bcopy', body, newBody}, comme « Copier / Coller » d'un corps
+   dans Fusion 360 mais PARAMÉTRIQUE : la copie est le corps source TEL QU'IL EST à cet instant
+   de la timeline. Ce qui est ajouté au source APRÈS l'étape n'entre pas dans la copie ; ce qui
+   change AVANT (une cote, un congé) s'y retrouve. La copie naît dans un corps neuf, où l'on
+   peut ensuite la déplacer, l'usiner, la combiner… comme n'importe quel corps.
+   Même mécanique que l'Échelle « Nouveau corps » (85-echelle-corps) : occSplitNewBody (20),
+   rejeu de l'historique du source jusqu'à l'étape (occCombineTool), facteur 1 (identité). */
+function bcName(f){return 'Copie de « '+bmBodyName(f.body)+' »';}
+function bodyHasMatter(id){
+  // un corps porte de la matière s'il a une fonction à lui ou s'il est né d'une copie / scission
+  return (doc.features||[]).some(f=>f&&f.visible!==false&&(f.body===id||occSplitNewBody(f)===id));
+}
+function bcNewBodyFor(src){
+  try{ensureBodies();}catch(e){}
+  const n=doc.bodySeq++;
+  const e={id:'b'+n,name:bmBodyName(src)+' (copie)',c:null};
+  doc.bodies.push(e);return e.id;
+}
+function bcSourceChoices(f){
+  // corps copiables à l'instant de la timeline où se trouve f (ou au marqueur, f absent)
+  const i=f?doc.features.indexOf(f):tlIdx();
+  const L=(doc.bodies||[]).filter(e=>{
+    if(f&&e.id===f.newBody)return false;
+    try{if(!bodyBornAt(e.id,i))return false;}catch(err){}
+    try{if(bodyConsumedBy(e.id,i))return false;}catch(err){}
+    const pre=i<0?doc.features:doc.features.slice(0,i);
+    return pre.some(x=>x&&x.visible!==false&&(x.body===e.id||occSplitNewBody(x)===e.id));
+  });
+  if(f&&!L.some(e=>e.id===f.body)){const e=(doc.bodies||[]).find(x=>x.id===f.body);if(e)L.unshift(e);}
+  return L;
+}
+/* ── commande ── */
+function openBodyCopy(bid){
+  try{ensureBodies();}catch(e){}
+  const id=bid&&(doc.bodies||[]).some(b=>b.id===bid)?bid:(doc.activeBody&&(doc.bodies||[]).some(b=>b.id===doc.activeBody)?doc.activeBody:((doc.bodies||[])[0]||{}).id);
+  if(!id){try{faceEl.textContent='Copier : aucun corps.';}catch(e){}return null;}
+  if(!bcSourceChoices(null).some(e=>e.id===id)){
+    try{faceEl.textContent='Copier : « '+bmBodyName(id)+' » est vide (ou pas encore créé, ou retiré) à cet instant de la timeline.';}catch(e){}
+    return null;
+  }
+  try{bmPickExit(true);}catch(e){}
+  const f={id:uid('bc'),type:'bcopy',name:'',body:id,visible:true};
+  f.name=bcName(f);
+  addFeature(f); // au marqueur de la timeline : c'est l'instant copié (annulation incluse)
+  f.newBody=bcNewBodyFor(id);
+  sel={kind:'feature',id:f.id};treeSel=[f.id];
+  markDirty();rebuild();renderTree();renderProps();refreshParts();
+  try{faceEl.textContent='« '+bmBodyName(f.newBody)+' » : copie de « '+bmBodyName(id)+' » telle qu’elle est à cette étape de la timeline.';}catch(e){}
+  return f;
+}
+/* ── panneau ── */
+function bcopyProps(p,f){
+  const mk=(tag,cls,txt)=>{const d=document.createElement(tag);if(cls)d.className=cls;if(txt!=null)d.textContent=txt;return d;};
+  p.appendChild(mk('div','pnl-h','⧉ Copier un corps'));
+  const r=mk('div','pnl-row');r.appendChild(mk('label',null,'Corps copié'));
+  const sb=document.createElement('select');
+  bcSourceChoices(f).forEach(b=>{const o=document.createElement('option');o.value=b.id;o.textContent=b.name;if(b.id===f.body)o.selected=true;sb.appendChild(o);});
+  sb.onchange=()=>{
+    docPushUndo('corps copié (« '+f.name+' »)');
+    f.body=sb.value;f.name=bcName(f);
+    markDirty();rebuild();renderTree();renderProps();refreshParts();
+  };
+  r.appendChild(sb);p.appendChild(r);
+  if(f.newBody)p.appendChild(mk('div','pnl-note','La copie est dans « '+bmBodyName(f.newBody)+' ». Elle reprend « '+bmBodyName(f.body)+' » tel qu’il est à CETTE étape : ce qui lui est ajouté plus loin dans la timeline n’entre pas dans la copie.'));
+  if(f._err)p.appendChild(mk('div','pnl-note','⚠ '+f._err));
+  const b=mk('div','pnl-btns');
+  const bt=mk('button','mini','✥ Déplacer la copie…');bt.title='Ajoute une étape « Déplacer » sur le corps copié';
+  bt.onclick=()=>{
+    if(!f.newBody)return;
+    // le déplacement doit venir APRÈS la copie : marqueur avancé juste derrière elle si besoin
+    const i=doc.features.indexOf(f),m=tlIdx();
+    if(m>=0&&m<=i){const nx=doc.features[i+1];tlMark=nx?nx.id:null;}
+    openBodyMove(f.newBody);
+  };
+  b.appendChild(bt);p.appendChild(b);
+}
+/* ── menus contextuels (arbre et vue) : « ⧉ Copier (timeline) » sur un corps ── */
+const bcCtxBtns={};
+function bcCtxSync(menuId,t){
+  const m=document.getElementById(menuId);if(!m)return;
+  let b=bcCtxBtns[menuId];
+  if(!b){
+    b=document.createElement('button');b.textContent='⧉ Copier (timeline)';
+    b.title='Ajoute une étape « Copie » dans la timeline : un corps neuf, copie du corps tel qu’il est à cet instant';
+    const mv=bmCtxBtns[menuId];
+    // jamais en dernier : l'export STEP reste la dernière entrée (test_ctx_menu_viewport)
+    let step=null;try{step=menuId==='ctxMenu3D'?ctxStepBtn3d:ctxStepBtn;}catch(e){}
+    if(mv&&mv.parentNode===m)m.insertBefore(b,mv);else m.insertBefore(b,step&&step.parentNode===m?step:null);
+    b.onclick=()=>{const T=b._t;try{hideCtx();hideCtx3D();}catch(e){}if(T)openBodyCopy(ctxBodyId(T)||T.id);};
+    bcCtxBtns[menuId]=b;
+  }
+  b._t=t;
+  b.style.display=(t&&t.kind==='body'&&t.id&&(menuId==='ctxMenu'||asmMode!=='asm'))?'':'none';
+}
+// bouton (rangé dans « Ensembles » par 96-bandeau-groupes ; ruban moderne : 97)
+(function(){
+  try{
+    if(document.getElementById('btnBodyCopy'))return;
+    const ref=document.getElementById('btnBody')||document.getElementById('btnExtrude');
+    if(!ref||!ref.parentNode)return;
+    const b=document.createElement('button');b.id='btnBodyCopy';b.textContent='⧉ Copier un corps';
+    b.title='Copie du corps actif à l’instant du marqueur de la timeline (étape « Copie », corps neuf)';
+    b.onclick=()=>{const t=(typeof sel!=='undefined'&&sel&&sel.kind==='body')?sel.id:null;openBodyCopy(t);};
+    ref.parentNode.insertBefore(b,ref.nextSibling);
+  }catch(e){}
+})();
+
 /* ═══════════════ 85-deplacement-face.js — deplacement face ═══════════════ */
 /* ---------- déplacement d'une face (push/pull) ----------
    Le calcul est dans 20-noyau (occMoveFaceOnce). Ici : le mode de sélection au clic, la
@@ -39140,7 +39253,7 @@ function openBodyMove(bid){
   try{ensureBodies();}catch(e){}
   const id=bid&&(doc.bodies||[]).some(b=>b.id===bid)?bid:(doc.activeBody&&(doc.bodies||[]).some(b=>b.id===doc.activeBody)?doc.activeBody:((doc.bodies||[])[0]||{}).id);
   if(!id){try{faceEl.textContent='Déplacer : aucun corps.';}catch(e){}return null;}
-  if(!(doc.features||[]).some(f=>f.body===id&&f.visible!==false)){try{faceEl.textContent='Déplacer : « '+bmBodyName(id)+' » est vide.';}catch(e){}return null;}
+  if(!bodyHasMatter(id)){try{faceEl.textContent='Déplacer : « '+bmBodyName(id)+' » est vide.';}catch(e){}return null;}
   bmPickExit(true);
   const f={id:uid('bm'),type:'bmove',name:'',body:id,steps:[],visible:true};
   f.name=bmName(f);
@@ -39434,7 +39547,7 @@ function openBodyScale(bid){
   try{ensureBodies();}catch(e){}
   const id=bid&&(doc.bodies||[]).some(b=>b.id===bid)?bid:(doc.activeBody&&(doc.bodies||[]).some(b=>b.id===doc.activeBody)?doc.activeBody:((doc.bodies||[])[0]||{}).id);
   if(!id){try{faceEl.textContent='Échelle : aucun corps.';}catch(e){}return null;}
-  if(!(doc.features||[]).some(f=>f.body===id&&f.visible!==false)){try{faceEl.textContent='Échelle : « '+bmBodyName(id)+' » est vide.';}catch(e){}return null;}
+  if(!bodyHasMatter(id)){try{faceEl.textContent='Échelle : « '+bmBodyName(id)+' » est vide.';}catch(e){}return null;}
   bmPickExit(true);
   const f={id:uid('bs'),type:'bscale',name:'',body:id,o:[0,0,0],oname:'Origine',s:2,uni:true,sx:1,sy:1,sz:1,copy:false,visible:true};
   f.name=bsName(f);
@@ -39901,7 +40014,7 @@ function splitNewBodyFor(src){
 }
 function splitOnDelete(f){
   // Suppression de la fonction : le corps neuf part avec elle s'il ne porte rien d'autre.
-  const nb=f&&(f.type==='xsplit'||f.type==='bscale')&&f.newBody;
+  const nb=f&&(f.type==='xsplit'||f.type==='bscale'||f.type==='bcopy')&&f.newBody;
   if(!nb||doc.features.some(x=>x.body===nb||(x.type==='combine'&&(x.tools||[]).indexOf(nb)>=0)||(x!==f&&x.newBody===nb)))return;
   doc.bodies=(doc.bodies||[]).filter(b=>b.id!==nb);
   if(doc.activeBody===nb&&doc.bodies.length)doc.activeBody=doc.bodies[0].id;
@@ -65248,7 +65361,7 @@ function showCtx(x,y,t){ctxTarget=t;$('ctxMenu').style.display='block';ctxPlace(
   // source que le panneau et que la vue 3D) — masqué ailleurs, comme l'export STEP.
   try{ ctxStyleShow('ctxMenu',!!(t&&t.kind==='body')); ctxStyleSync(); }catch(e){}
   try{ asmCtxSync(t,x,y); }catch(e){} // composant depuis ce corps, déplacer vers un composant (48)
-  try{ bmCtxSync('ctxMenu',t); }catch(e){}try{ bsCtxSync('ctxMenu',t); }catch(e){} // déplacer le corps (85)
+  try{ bmCtxSync('ctxMenu',t); }catch(e){}try{ bsCtxSync('ctxMenu',t); }catch(e){}try{ bcCtxSync('ctxMenu',t); }catch(e){} // déplacer le corps (85)
   try{ bremCtxSync(t); }catch(e){}} // retirer le corps dans la timeline (40)
 function hideCtx(){$('ctxMenu').style.display='none';}
 function ctxBodyId(t){
@@ -65287,7 +65400,7 @@ function showCtx3D(x,y,bid){ctxTarget={kind:'body',id:bid};const _bd=bodies.find
     ctxStyleShow('ctxMenu3D',!!(bid&&!_bd.ghost));
     ctxStyleSync();
   }catch(e){}
-  try{ bmCtxSync('ctxMenu3D',bid?ctxTarget:null); }catch(e){}try{ bsCtxSync('ctxMenu3D',bid?ctxTarget:null); }catch(e){} // déplacer le corps (85)
+  try{ bmCtxSync('ctxMenu3D',bid?ctxTarget:null); }catch(e){}try{ bsCtxSync('ctxMenu3D',bid?ctxTarget:null); }catch(e){}try{ bcCtxSync('ctxMenu3D',bid?ctxTarget:null); }catch(e){} // déplacer le corps (85)
   try{ bremCtxSync(bid&&!_bd.ghost?ctxTarget:null,'ctxMenu3D'); }catch(e){} // retirer le corps dans la timeline (40)
   try{ rdLookCtxSync(bid&&!_bd.ghost?bid:null); }catch(e){} // matériau de rendu (98-rendu-apparence)
   $('ctxMenu3D').style.display='block';ctxPlace($('ctxMenu3D'),x,y);}
@@ -68008,7 +68121,8 @@ function openAide(){
     ['btnHole','⊚','Perçage (H)'],
     ['btnKeyway','\u{1F511}','Rainure de clavette automatique (arbre ou alésage)'],
     '#',
-    ['btnBody','◧','Nouveau corps de pièce']
+    ['btnBody','◧','Nouveau corps vide'],
+    ['btnBodyCopy','⧉','Copier un corps à l’instant du marqueur (étape « Copie » de la timeline)']
   ],'\u{1F9F1}');
   const gMod=groupe('Modifier le solide','Fonctions qui modifient le solide existant',[
     [null,'Arêtes'],
@@ -68981,7 +69095,8 @@ function mfFiTable(){
   F('Créer/Perçage','Perçage','Fait des trous propres sur les centres de perçage de l’esquisse : simple, lamé, fraisé ou taraudé.',['Placez des centres dans une esquisse et sélectionnez-la, ou cliquez un cylindre de la pièce','Cliquez Perçage','Choisissez le type de trou ; sur un cylindre, réglez sa direction et sa cote'],BK()+CROSS(-7,-7,7)+CROSS(7,7,7),BK()+ficHole(-7,-7,7,4)+ficHole(7,7,7,4),'H');
   const KW0=ficL(14,26,86,26,'#7f9bb9',1.6)+ficL(14,56,86,56,'#7f9bb9',1.6)+'<ellipse cx="14" cy="41" rx="6" ry="15" fill="#e3ecf5" stroke="#7f9bb9" stroke-width="1.4"/>';
   F('Créer/Clavette','Rainure de clavette','Creuse la rainure d’une clavette dans un arbre ou un alésage, aux cotes ISO 773 de son diamètre, et y pose la clavette comme un corps séparé. Si le diamètre change, tout suit.',['Cliquez Clavette','Cliquez le cylindre : face extérieure pour un arbre, intérieure pour un alésage','Réglez la forme, la longueur et la position, puis OK'],KW0,KW0+ficD('M38 33H62A7 7 0 0 1 62 47H38A7 7 0 0 1 38 33Z',OR,1.6,null,'#ffd27a'));
-  F('Créer/Corps','Corps','Démarre une nouvelle pièce séparée dans le même fichier. Ce que vous créez ensuite ira dedans.',[],ficBox(-20,-6,-8,-2,12,6,'b'),ficBox(-20,-6,-8,-2,12,6,'b')+ficBox(2,-14,-8,18,2,6,'o')+ficDot(82,12,3,GR)+ficT(82,23,'actif',6,GR));
+  F('Créer/Corps','Corps vide','Démarre une nouvelle pièce séparée, vide, dans le même fichier. Ce que vous créez ensuite ira dedans.',[],ficBox(-20,-6,-8,-2,12,6,'b'),ficBox(-20,-6,-8,-2,12,6,'b')+ficBox(2,-14,-8,18,2,6,'o')+ficDot(82,12,3,GR)+ficT(82,23,'actif',6,GR));
+  F('Créer/Copier','Copier un corps','Ajoute une copie de la pièce dans la timeline, à l’endroit du marqueur : la copie est la pièce telle qu’elle est à ce moment-là. Ce que vous ajoutez plus loin à l’original n’y entre pas.',['Sélectionnez le corps (ou il prend le corps actif)','Placez le marqueur de la timeline au bon moment','Cliquez Copier : un corps « (copie) » apparaît'],ficBox(-20,-6,-8,-2,12,6,'b'),ficBox(-20,-6,-8,-2,12,6,'b')+ficBox(2,-14,-8,20,4,6,'o'));
   F('Construire/Plan','Plan de construction','Ajoute un plan « invisible » pour dessiner là où il n’y a pas de face : décalé, en biais, par 3 points…',[],BK(),BK()+OPL(22,18),null);
   F('Construire/Axe','Axe de construction','Ajoute une droite de repère : pour tourner ou répéter autour d’elle.',[],ficCyl(0,0,-12,10,24),ficL(50,2,50,14,OR,1.6,'4 2')+ficCyl(0,0,-12,10,24)+ficL(50,14,50,74,OR,1.6,'4 2'));
   F('Construire/Point','Point de construction','Ajoute un point de repère : un sommet, un centre, ou des coordonnées précises.',[],BK(),BK()+ficDot(ficXY(15,15,7)[0],ficXY(15,15,7)[1],3.6,OR)+ficC(ficXY(15,15,7)[0],ficXY(15,15,7)[1],6.5,OR,1));
@@ -69446,6 +69561,7 @@ const MF_ICF={
   hole:fzBox(-5,-5,-5,5,5,0,'b')+'<ellipse cx="12" cy="12" rx="3.4" ry="1.95" fill="#243a52" stroke="#38506a" stroke-width=".6"/><path d="M8.6 12A3.4 1.95 0 0 0 15.4 12A3.4 1.4 0 0 1 8.6 12Z" fill="#5d7896"/>'+fzArrow(12,1.5,12,10.2,'#1e88e5',2),
   keyway:'<rect x="2.5" y="8" width="19" height="9" rx="4.5" fill="url(#mfFzHb)" stroke="#38506a" stroke-width=".8"/><rect x="7" y="9.7" width="10" height="3.2" rx="1.6" fill="#f6a623" stroke="#8a5200" stroke-width=".7"/>',
   body:fzBox(-5,-5,-3.5,5,5,3,'b'),
+  copy:fzBox(-7,-7,-6,1,1,0,'b')+fzBox(-1,-1,-1,7,7,5,'b','o'),
   fillet:fzPoly([[-5,5,-5],[5,5,-5],[5,5,0.3],[-5,5,0.3]],FZ.b[1],FZ.b[3])+
     fzPath([['M',5,-5,-5],['L',5,5,-5],['L',5,5,0.3],['Q',5,5,2,5,3.2,2],['L',5,-5,2],['Z']],'fill="'+FZ.b[2]+'" '+FZ_E)+
     fzPoly([[-5,-5,2],[5,-5,2],[5,3.2,2],[-5,3.2,2]],FZ.b[0],FZ.b[3])+
@@ -69931,6 +70047,7 @@ const MF_IC={
   fillet:'<path d="M4 20V12a8 8 0 0 1 8-8h8"/><path d="M4 20h16V4" stroke-dasharray="2 2"/>',
   chamfer:'<path d="M4 20V10l6-6h10"/><path d="M4 20h16V4" stroke-dasharray="2 2"/>',
   face:'<path d="M3 8l6-3v12l-6 3z"/><path d="M12 11h9M18 8l3 3-3 3"/>',
+  copy:'<path d="M9 3l6 3v7l-6 3-6-3V6z"/><path d="M15 8l6 3v7l-6 3-6-3"/>',
   scale:'<rect x="3" y="11" width="10" height="10" rx="1"/><path d="M3 7V3h4M17 3h4v4M21 17v4h-4"/><path d="M10 14l9-9M14 5h5v5"/>',
   move:'<path d="M12 3v18M3 12h18"/><path d="M9.5 5.5L12 3l2.5 2.5M9.5 18.5L12 21l2.5-2.5M5.5 9.5L3 12l2.5 2.5M18.5 9.5L21 12l-2.5 2.5"/>',
   draft:'<path d="M8 4h8l4 16H4z"/><path d="M12 4v16" stroke-dasharray="2 2"/>',
@@ -70029,7 +70146,7 @@ let mfBuilt=false;
 function mfClick(id){mfCloseMenus();const b=document.getElementById(id);if(b){b.click();return true;}try{faceEl.textContent='Commande indisponible ici ('+id+').';}catch(e){}return false;}
 const MF_CAO=[
   ['Esquisse',[['sketch','Esquisse','btnSketch']]],
-  ['Créer',[['extrude','Extrusion','btnExtrude'],['revolve','Révolution','btnRevolve'],['sweep','Balayage','btnSweep'],['hole','Perçage','btnHole'],['keyway','Clavette','btnKeyway'],['body','Corps','btnBody']]],
+  ['Créer',[['extrude','Extrusion','btnExtrude'],['revolve','Révolution','btnRevolve'],['sweep','Balayage','btnSweep'],['hole','Perçage','btnHole'],['keyway','Clavette','btnKeyway'],['body','Corps','btnBody'],['copy','Copier','btnBodyCopy']]],
   // V0.5.0 : géométrie de construction (78/79)
   ['Construire',[['cgPlane','Plan',()=>cgStart('plane'),'Plan de construction : décalé, à un angle, par 3 points, médian, normal à un axe'],
     ['cgAxis','Axe',()=>cgStart('axis'),'Axe de construction : arête, cylindre, 2 points, intersection de plans, normal à un plan'],
@@ -70129,7 +70246,7 @@ function mfRibbon(){
    de chaque ligne choisit si l'icône reste aussi dans le bandeau. Par défaut les fonctions
    courantes sont dans le bandeau, les autres seulement dans la liste (place gagnée). Le choix
    est gardé par navigateur (minifusion_rbpins : { "Groupe/Libellé": 1 affichée | 0 dans la liste }). */
-const MF_RB_HIDE=new Set(['Créer/Balayage','Créer/Clavette','Créer/Corps',
+const MF_RB_HIDE=new Set(['Créer/Balayage','Créer/Clavette',
   'Construire/Axe','Construire/Point','Construire/Repère',
   'Modifier/Face','Modifier/Dépouille','Modifier/Filetage','Modifier/Scinder',
   'Ensembles/Déplacer','Ensembles/Échelle',
@@ -70800,7 +70917,7 @@ function viewFadeIn(){
      le solide reconstruit : on ne la promène pas dans des états intermédiaires). */
 let film=null; // état du film en cours (null = aucun)
 const FILM_KIND={extrude:'Extrusion',revolve:'Révolution',sweep:'Balayage',hole:'Perçage',fillet:'Congé',repeat:'Répétition',
-  combine:'Combiner',xmove:'Déplacer une face',xdelface:'Supprimer une face',xdraft:'Dépouille',xshell:'Coque',xthread:'Filetage',gear:'Engrenage',xsplit:'Scinder',bmove:'Déplacer le corps',bremove:'Retirer le corps',bscale:'Échelle',import:'Import'};
+  combine:'Combiner',xmove:'Déplacer une face',xdelface:'Supprimer une face',xdraft:'Dépouille',xshell:'Coque',xthread:'Filetage',gear:'Engrenage',xsplit:'Scinder',bmove:'Déplacer le corps',bremove:'Retirer le corps',bscale:'Échelle',bcopy:'Copier le corps',import:'Import'};
 function filmKind(f){
   // [libellé, couleur] de la nature d'une fonction — mêmes couleurs que le bandeau (TLB_COL)
   let k=null;try{k=tlbSvgKey({kind:'feature',o:f});}catch(e){}

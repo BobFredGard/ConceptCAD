@@ -12,7 +12,7 @@
      le solide reconstruit : on ne la promène pas dans des états intermédiaires). */
 let film=null; // état du film en cours (null = aucun)
 const FILM_KIND={extrude:'Extrusion',revolve:'Révolution',sweep:'Balayage',hole:'Perçage',fillet:'Congé',repeat:'Répétition',
-  combine:'Combiner',xmove:'Déplacer une face',xdelface:'Supprimer une face',xdraft:'Dépouille',xshell:'Coque',xthread:'Filetage',gear:'Engrenage',xsplit:'Scinder',bmove:'Déplacer le corps',bremove:'Retirer le corps',bscale:'Échelle',import:'Import'};
+  combine:'Combiner',xmove:'Déplacer une face',xdelface:'Supprimer une face',xdraft:'Dépouille',xshell:'Coque',xthread:'Filetage',gear:'Engrenage',xsplit:'Scinder',bmove:'Déplacer le corps',bremove:'Retirer le corps',bscale:'Échelle',bcopy:'Copier le corps',import:'Import'};
 function filmKind(f){
   // [libellé, couleur] de la nature d'une fonction — mêmes couleurs que le bandeau (TLB_COL)
   let k=null;try{k=tlbSvgKey({kind:'feature',o:f});}catch(e){}

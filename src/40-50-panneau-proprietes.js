@@ -69,6 +69,7 @@ function renderProps(){
       pInfo('⊘ <b>'+(be?be.name:f.body)+'</b> est retiré à partir de cette étape de la timeline. Rien n’est effacé : supprimez cette étape (ou reculez le marqueur avant elle) pour le faire revenir.');
       visDel(f);return;
     }
+    if(f.type==='bcopy'){bcopyProps(p,f);visDel(f);return;} // copier un corps (85-copier-corps)
     if(f.type==='bscale'){bscaleProps(p,f);visDel(f);return;} // échelle (85-echelle-corps)
     if(f.type==='xsplit'){splitProps(p,f);visDel(f);return;} // scinder (85-scinder)
     /* — déplacement de face — */

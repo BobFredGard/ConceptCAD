@@ -52,7 +52,7 @@ function openBodyScale(bid){
   try{ensureBodies();}catch(e){}
   const id=bid&&(doc.bodies||[]).some(b=>b.id===bid)?bid:(doc.activeBody&&(doc.bodies||[]).some(b=>b.id===doc.activeBody)?doc.activeBody:((doc.bodies||[])[0]||{}).id);
   if(!id){try{faceEl.textContent='Échelle : aucun corps.';}catch(e){}return null;}
-  if(!(doc.features||[]).some(f=>f.body===id&&f.visible!==false)){try{faceEl.textContent='Échelle : « '+bmBodyName(id)+' » est vide.';}catch(e){}return null;}
+  if(!bodyHasMatter(id)){try{faceEl.textContent='Échelle : « '+bmBodyName(id)+' » est vide.';}catch(e){}return null;}
   bmPickExit(true);
   const f={id:uid('bs'),type:'bscale',name:'',body:id,o:[0,0,0],oname:'Origine',s:2,uni:true,sx:1,sy:1,sz:1,copy:false,visible:true};
   f.name=bsName(f);

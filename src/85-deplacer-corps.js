@@ -106,7 +106,7 @@ function openBodyMove(bid){
   try{ensureBodies();}catch(e){}
   const id=bid&&(doc.bodies||[]).some(b=>b.id===bid)?bid:(doc.activeBody&&(doc.bodies||[]).some(b=>b.id===doc.activeBody)?doc.activeBody:((doc.bodies||[])[0]||{}).id);
   if(!id){try{faceEl.textContent='Déplacer : aucun corps.';}catch(e){}return null;}
-  if(!(doc.features||[]).some(f=>f.body===id&&f.visible!==false)){try{faceEl.textContent='Déplacer : « '+bmBodyName(id)+' » est vide.';}catch(e){}return null;}
+  if(!bodyHasMatter(id)){try{faceEl.textContent='Déplacer : « '+bmBodyName(id)+' » est vide.';}catch(e){}return null;}
   bmPickExit(true);
   const f={id:uid('bm'),type:'bmove',name:'',body:id,steps:[],visible:true};
   f.name=bmName(f);

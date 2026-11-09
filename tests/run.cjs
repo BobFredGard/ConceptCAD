@@ -16,6 +16,7 @@ const SUITES = [
   "test_face_conge_taille",
   "test_deplacer_corps",
   "test_echelle_corps",
+  "test_copier_corps",
   "test_coque_sel",
   "test_suppression_face",
   "test_suppression_face_step",

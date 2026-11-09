@@ -170,6 +170,7 @@ function tlbSvgKey(s){
     case 'bmove':return ['move','mod'];
     case 'bremove':return ['body','cut',true];
     case 'bscale':return ['scale','mod'];
+    case 'bcopy':return ['copy','add'];
     case 'import':return ['import','mod'];
   }
   return null;
