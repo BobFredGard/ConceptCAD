@@ -317,9 +317,34 @@
           const t=L2>1e-12?Math.max(0,Math.min(1,((lx-p.x1)*dx+(ly-p.y1)*dy)/L2)):0;
           d=Math.hypot(lx-(p.x1+dx*t),ly-(p.y1+dy*t))*v.scale;
         }else if(p.t==='C')d=Math.abs(Math.hypot(lx-p.cx,ly-p.cy)-p.r)*v.scale;
-        else return;
+        else if(p.t==='A'){ // 2026-11-09 : arc d'axe d'une rainure circulaire — se cote en R / Ø
+          if(!mepAxisArcIn(p,Math.atan2(ly-p.cy,lx-p.cx)))return;
+          d=Math.abs(Math.hypot(lx-p.cx,ly-p.cy)-p.r)*v.scale;
+        }else return;
         if(d<bd){bd=d;best={vid:v.id,i:'ax:'+p.ak,e:p,lx,ly};}
       });
+    });
+    // 2026-11-09 : tracés de l'esquisse de planche (axe de rainure courbe, droites d'angle…) —
+    // i='sk:<id>', rapportés à la vue sous le curseur (pas de vue : ignorés)
+    const skp=opt&&opt.axes&&sh.sk&&sh.sk.ents&&!mepSt.tbEdit?sh.sk:null;
+    const vSk=skp?mepViewAt(sh,sx,sy):null;
+    if(vSk)skp.ents.forEach(se=>{
+      if(!se||se.cst||(se.t!=='line'&&se.t!=='circle'&&se.t!=='arc'))return;
+      const e=mepSkViewEnt(vSk,se.id);if(!e)return;
+      const lx=(sx-vSk.x)/vSk.scale,ly=(sy-vSk.y)/vSk.scale;
+      let d;
+      if(e.t==='L'){
+        const dx=e.x2-e.x1,dy=e.y2-e.y1,L2=dx*dx+dy*dy;
+        const t=L2>1e-12?Math.max(0,Math.min(1,((lx-e.x1)*dx+(ly-e.y1)*dy)/L2)):0;
+        d=Math.hypot(lx-(e.x1+dx*t),ly-(e.y1+dy*t));
+      }else if(e.t==='C')d=Math.abs(Math.hypot(lx-e.cx,ly-e.cy)-e.r);
+      else{
+        let an=Math.atan2(ly-e.cy,lx-e.cx);while(an<e.a0)an+=2*Math.PI;while(an-2*Math.PI>=e.a0)an-=2*Math.PI;
+        d=an<=e.a1?Math.abs(Math.hypot(lx-e.cx,ly-e.cy)-e.r)
+          :Math.min(Math.hypot(lx-e.cx-e.r*Math.cos(e.a0),ly-e.cy-e.r*Math.sin(e.a0)),Math.hypot(lx-e.cx-e.r*Math.cos(e.a1),ly-e.cy-e.r*Math.sin(e.a1)));
+      }
+      d*=vSk.scale;
+      if(d<bd){bd=d;best={vid:vSk.id,i:'sk:'+se.id,e,lx,ly};}
     });
     if(best)bd*=1.001; // à égalité, l’arête réelle l’emporte
     sh.views.forEach(v=>{

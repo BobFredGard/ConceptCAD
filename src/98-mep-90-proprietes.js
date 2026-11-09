@@ -659,6 +659,13 @@
       b.onclick=()=>{mepEdit('suppression axes manuels',()=>{v.axes=[];mepSt.selAxis=null;});mepSideShow();};
       row('Axes manuels',b);
     }
+    if(Array.isArray(v.axHide)&&v.axHide.length){
+      const b=document.createElement('button');
+      b.textContent='Réafficher ('+v.axHide.length+')';
+      b.title='Remet les axes automatiques supprimés (croix de centre, axes de trou…)';
+      b.onclick=()=>{mepEdit('axes réaffichés',()=>{delete v.axHide;});mepAxGen++;mepSideShow();mepRender();};
+      row('Axes supprimés',b);
+    }
     // vue alignée sur sa mère (coupe, auxiliaire) : glissement contraint, déliable
     if(v.align||v._alignOff){
       const cb=document.createElement('input');cb.type='checkbox';cb.checked=!!v.align;
@@ -689,17 +696,56 @@
   }
   function mepAxisExtDrop(v,id){
     if(v&&v.axExt)Object.keys(v.axExt).forEach(k=>{if(k.indexOf('m'+id+'.')===0)delete v.axExt[k];});
+    if(v&&Array.isArray(v.axHide)){v.axHide=v.axHide.filter(k=>k.indexOf('m'+id+'.')!==0);if(!v.axHide.length)delete v.axHide;}
+  }
+  /* 2026-11-09 : supprimer un axe automatique (croix de centre d'un cercle, axe de trou…) —
+     sa clé rejoint v.axHide ; une croix part en entier (ses 2 traits : même centre, perpendiculaires).
+     Axe posé à la main (rainure circulaire, cercle de perçage) : seule sa croix de centre peut partir ainsi. */
+  function mepAxisAutoHideKeys(sh,v,ak){
+    const all=mepAxisLines(sh,v),p=all.find(q=>q.ak===ak);
+    if(!p)return[];
+    const own=q=>(q.ann&&q.ann.id)===(p.ann&&p.ann.id);
+    const keys=[ak];
+    if(p.t==='L'){
+      const mid=q=>({x:(q.bx1+q.bx2)/2,y:(q.by1+q.by2)/2}),m=mid(p);
+      const ux=p.bx2-p.bx1,uy=p.by2-p.by1;
+      all.forEach(q=>{
+        if(q===p||!own(q)||q.t!=='L')return;
+        const n=mid(q),vx=q.bx2-q.bx1,vy=q.by2-q.by1;
+        const L=Math.hypot(ux,uy)*Math.hypot(vx,vy);
+        if(L>1e-12&&Math.hypot(n.x-m.x,n.y-m.y)<1e-6&&Math.abs(ux*vx+uy*vy)/L<1e-6)keys.push(q.ak);
+      });
+    }
+    if(p.ann){ // à la main : seulement une croix (2 traits) dans un axe qui a d'autres traits
+      const n=all.filter(own).length;
+      if(keys.length!==2||n<=2)return[];
+    }
+    return keys;
+  }
+  function mepAxisAutoHide(sh,v,ak){
+    const keys=mepAxisAutoHideKeys(sh,v,ak);
+    if(!keys.length)return false;
+    mepEdit('suppression axe',()=>{
+      if(!Array.isArray(v.axHide))v.axHide=[];
+      keys.forEach(k=>{if(v.axHide.indexOf(k)<0)v.axHide.push(k);if(v.axExt)delete v.axExt[k];});
+      mepSt.selAxis=null;
+    });
+    mepAxGen++;
+    return true;
   }
   function mepSideAxisAuto(root,v,ak,sh){
     const h=document.createElement('h4');h.textContent='Axe automatique';root.appendChild(h);
     const note=document.createElement('div');note.className='note';
-    note.textContent='Tirez une extrémité pour l’allonger ou le raccourcir · norme ISO 128-2 (04.1)';
+    note.textContent='Tirez une extrémité pour l’allonger ou le raccourcir · Suppr le supprime · norme ISO 128-2 (04.1)';
     root.appendChild(note);
     const act=document.createElement('div');act.className='row';
     const b=document.createElement('button');b.textContent='Longueur d’origine';
     b.disabled=!(v.axExt&&v.axExt[ak]);
     b.onclick=()=>{mepEdit('longueur axe d’origine',()=>{if(v.axExt)delete v.axExt[ak];});mepSideShow();};
-    act.appendChild(b);root.appendChild(act);
+    act.appendChild(b);
+    const bDel=document.createElement('button');bDel.textContent='Supprimer';bDel.className='danger';
+    bDel.onclick=()=>{mepAxisAutoHide(sh,v,ak);mepSideShow();mepRender();};
+    act.appendChild(bDel);root.appendChild(act);
   }
   function mepSideAxis(root,v,a,sh){
     const h=document.createElement('h4');

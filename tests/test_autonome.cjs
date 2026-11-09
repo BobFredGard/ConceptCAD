@@ -9,7 +9,8 @@ try{
   const f=path.join(dir,'a.html'),taille=fabriquer(f),h=fs.readFileSync(f,'utf8');
   A(taille>15e6&&taille<40e6,'taille raisonnable ('+(taille/1048576).toFixed(1)+' Mo)');
   A(!/<script[^>]*\bsrc=/.test(h),'plus aucun script chargé depuis un fichier');
-  A(!/<link[^>]*\bhref=/.test(h),'aucune feuille de style externe');
+  // l'icône d'onglet (V0.74.0) est incluse (href="data:…") : seul un fichier externe est refusé
+  A(!/<link[^>]*\bhref=(?!["']?data:)/.test(h),'aucune feuille de style externe');
   A(h.indexOf('window.__EMB=')<h.indexOf('const APP_VER='),'le noyau est posé avant le code de l’application');
   A(h.includes('window.__EMB.pret(OCCT_FILES)')&&h.includes('if(m.emb)')&&h.includes('window.__EMB.rt'),'le code reconnaît le mode embarqué (noyau, worker, rendu)');
 }finally{fs.rmSync(dir,{recursive:true,force:true});}

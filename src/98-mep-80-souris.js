@@ -1070,10 +1070,12 @@
       }
       if(mepSt.selAxis){
         const sel=mepSt.selAxis,v=mepView(sh,sel.vid);
-        if(!sel.id){ // axe automatique : Suppr lui rend sa longueur d'origine
-          if(v&&v.axExt&&v.axExt[sel.ak])mepEdit('longueur axe d’origine',()=>{delete v.axExt[sel.ak];});
-          mepSideShow();ev.preventDefault();ev.stopPropagation();return;
+        if(!sel.id){ // axe automatique : Suppr le supprime (une croix de centre part en entier)
+          if(v)mepAxisAutoHide(sh,v,sel.ak);
+          mepSideShow();mepRender();ev.preventDefault();ev.stopPropagation();return;
         }
+        // axe posé à la main : Suppr sur sa croix de centre ne retire que la croix
+        if(v&&sel.ak&&mepAxisAutoHide(sh,v,sel.ak)){mepSideShow();mepRender();ev.preventDefault();ev.stopPropagation();return;}
         mepEdit('suppression axe',()=>{
           if(v){v.axes=(v.axes||[]).filter(a=>a.id!==sel.id);mepAxisExtDrop(v,sel.id);}
           mepSt.selAxis=null;

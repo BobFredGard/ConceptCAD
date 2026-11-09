@@ -456,7 +456,10 @@
     const lineCls=e=>{const w=e.w||wDef;
       if(e.cst)return'mepSkCst'+(sel.has('e:'+e.id)?' mepSkSelE':(hov==='e:'+e.id?' mepSkHovE':''));
       return (mode==='sheet'?'mepEnt mepSkFull'+(w==='thick'?' mepSkThick':' mepSkThin'):('mepTbLine'+(w==='thick'?' mepTbThick':'')))+
-        (e.lt==='hid'?' mepLtHid':(e.lt==='axis'?' mepLtAxis':''))+(e.col?' mepUc':'')+(sel.has('e:'+e.id)&&editing?' mepSkSelE':(hov==='e:'+e.id&&editing?' mepSkHovE':''));};
+        (e.lt==='hid'?' mepLtHid':(e.lt==='axis'?' mepLtAxis':''))+(e.col?' mepUc':'')+(sel.has('e:'+e.id)&&editing?' mepSkSelE':(hov==='e:'+e.id&&editing?' mepSkHovE':''))+dimCls(e);};
+    // outil Cote : tracé choisi ou survolé (indice « sk:<id> », cf. mepSkViewEnt)
+    const dimCls=e=>{if(mode!=='sheet')return'';const k='sk:'+e.id;
+      return (mepSt.entSel||[]).some(s=>s.i===k)?' mepSelEnt':(mepSt.hovEnt&&mepSt.hovEnt.i===k?' mepHovEnt':'');};
     const lineAt=(e,o)=>{o.class=lineCls(e);if(e.cst)return o;const st=[];if(+e.lw>0)st.push('stroke-width:'+(+e.lw));if(e.col)st.push('stroke:'+e.col);if(st.length)o.style=st.join(';');return o;};
     sk.ents.forEach(e=>{
       const cst=!!e.cst&&(e.t==='line'||e.t==='circle'||e.t==='arc');
