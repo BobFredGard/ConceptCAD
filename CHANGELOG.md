@@ -8,7 +8,7 @@ sont sorties le 2026-09-30j.
 Code dans `src/` · livrable `fusion_mvp.html` (généré par `build.js`) · architecture et
 garde-fous en tête de `src/00-entete-et-outils.js`.
 
-**621 versions**, de `2026-09-28b` à `V0.74.0` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
+**622 versions**, de `2026-09-28b` à `V0.75.0` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
 comme dans le fichier d'origine.
 
 ---
@@ -7136,3 +7136,11 @@ Barquette ne perd plus son solide à la 107e modification, et sa mémoire ne mon
 - **Suppression** (`98-mep-90`, `98-mep-80`) : Suppr ou bouton Supprimer sur un axe automatique → sa clé dans `v.axHide` ; une croix part en entier (2 traits de même milieu, perpendiculaires). Axe posé à la main : Suppr sur sa croix de centre ne retire que la croix, ailleurs l’axe entier. Panneau de la vue : « Réafficher (n) ». Annulable.
 - **Icône** (`ConceptCAD.html`, en-tête) : logo de la barre bleu à gauche, orange à droite (`.brand .mk::after`), icône d’onglet SVG au même dessin. L’application Tauri relit ce logo (`tauri/icone.cjs`). Versions natives Windows et Mac abandonnées le 09/11.
 - **Test** : `test_mep_axes_planche` (28 contrôles : arc et droites de planche cotés R10, Ø20, 120°, suivi du tracé ; rainure circulaire automatique R12 et 120°, hors de l’arc rien de visé ; croix automatique et croix d’un axe à la main supprimées, le reste demeure ; Réafficher) ; `test_autonome` accepte l’icône incluse (`href="data:…"`). Parcours FAO et CACHE_VER inchangés.
+
+## V0.75.0 - Rondelles ISO, ANSI et Grower, posées sur un trou rond ou un oblong (au centre, ou en face du trou de la pièce suivante)
+
+- **Demande** : « Composants Normalisés : il manque un set de rondelle ISO et ANSI, du groover aussi... Il faut pouvoir les positionner au centre d'un trou oblong ou sur la face d'un trou oblong en regard du trou après l'oblong si existant » ; « le trou appartient, en général, à une autre pièce ».
+- **Rondelles** (`src/48-composants-normalises.js`, onglet « Rondelles ») : plates ISO 7089, 7090 (chanfreinée, M5 et plus), 7092 (étroite), 7093-1 (large) ; Grower DIN 127 B ; ANSI B18.22.1 Type A séries N et W ; lock washer B18.21.1. Révolution du profil, origine au centre de la face d'appui, épaisseur vers +Z, assise « sous tête » (entrée du trou ou fond du lamage). Les rondelles élastiques sont un anneau fendu modélisé à plat (sans vrillage).
+- **Oblongs** : `stdSlots` reconnaît l'entrée d'un oblong (deux demi-cercles de même rayon reliés par une droite parallèle à l'entraxe, bord intérieur d'une face plane). Un clic dans l'ouverture, sur la paroi ou au bord (`stdSlotPickRay` : entrée traversée par le rayon avant tout obstacle) équipe tous les oblongs identiques de la pièce, en une étape d'annulation. Réglage « Sur un oblong » : **en face du trou suivant** (par défaut) — trou rond complet de n'importe quelle pièce du composant actif dont l'axe traverse l'oblong, sous sa face, le plus proche ; liaison rigide sur l'entrée de CE trou + hauteur jusqu'à la face de l'oblong (la rondelle suit la vis) — sinon au centre ; **au centre** — centre de l'arc d'un bout + décalage le long de l'oblong.
+- **Repli** : pour une rondelle, les bouts d'un oblong ne comptent plus comme des trous (`stdHoles` marque les cercles entiers, `E.full`) — un clic à côté d'un oblong posait des rondelles sur les 8 bouts arrondis ; il dit maintenant « Pas de trou ici ». Vis et goupilles inchangées.
+- **Test** : `test_composants_normalises` (5 rondelles rejouées au noyau, volume au calcul ; contrôles 43 à 51 : dimensions, valeurs par défaut, 4 oblongs reconnus, bouts d'oblong exclus des trous, rondelles au centre des oblongs débouchants, en face du trou à 3 mm du centre, mode « au centre », un seul Ctrl+Z, rondelle sur un trou rond). Vérifié aussi par de vrais clics dans le navigateur : plaque à oblongs sur un socle percé, rondelle liée au trou du socle (décalage Z 20), l'autre au centre. Parcours FAO et CACHE_VER inchangés.

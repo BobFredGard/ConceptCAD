@@ -95,7 +95,9 @@ const {loadApp}=require('./appvm.cjs');
       ['plug',{type:'din906',size:'R 1/2'}],['plug',{type:'din908',size:'G 1/2'}],['plug',{type:'nptf',size:'1/4'}],
       ['pin',{type:'iso2338',size:'6',len:'30'}],['pin',{type:'iso8734',size:'6',len:'30'}],['pin',{type:'iso2339',size:'6',len:'40'}],
       ['pin',{type:'iso8752',size:'6',len:'30'}],['pin',{type:'dowel',size:'1/4',len:'1'}],['pin',{type:'spring',size:'1/8',len:'1'}],
-      ['key',{type:'A',size:'8x7',len:'40'}],['key',{type:'B',size:'8x7',len:'40'}],['key',{type:'C',size:'8x7',len:'40'}]];
+      ['key',{type:'A',size:'8x7',len:'40'}],['key',{type:'B',size:'8x7',len:'40'}],['key',{type:'C',size:'8x7',len:'40'}],
+      ['washer',{type:'iso7089',size:'M8'}],['washer',{type:'iso7090',size:'M8'}],['washer',{type:'din127',size:'M8'}],
+      ['washer',{type:'ansiW',size:'1/4'}],['washer',{type:'ansiLock',size:'1/4'}]];
     const vols=()=>{const FR=occFinalShape(null);const v=FR.perBody.map(b=>occCoqueVolume(b.shape));occCleanup(FR,null);return v;};
     const root=asm.root;
     cases.forEach(([cat,s])=>{
@@ -219,6 +221,45 @@ const {loadApp}=require('./appvm.cjs');
     R=stdKeyPick(null,Ga,[40,22,16],[0,0,1]);
     ok2=stdAddInKeyways(stdSpec('key',{type:'A',size:'8x7',len:'18'}),Ra.id,[],R.items,R.mode);
     A(R.K.form==='open'&&ok2.length===1&&r3(ok2[0].fr.o)==='39,22,16','42 : rainure débouchante : calée contre son bout rond ('+(ok2[0]?r3(ok2[0].fr.o):'?')+')');
+    // ── 8. rondelles sur des oblongs (V0.75.0) : plaque 100 × 60 × 20, deux oblongs débouchants
+    //    8,6 × 30 selon X, deux oblongs borgnes 8,6 × 24 profonds de 5, le premier percé Ø6,6 à 3 mm
+    //    de son centre — la rondelle va en face de ce trou, l'autre au centre ──
+    const w8=stdSpec('washer',{type:'iso7089',size:'M8'});
+    A(w8.name==='Rondelle ISO 7089 M8'&&w8.seat==='under'&&w8.washer&&Math.abs(stdPolyPts(w8.prof)[0][0]-4.2)<1e-9,'43 : rondelle ISO 7089 M8 : Ø 8,4 / 16 × 1,6, assise sous la vis');
+    A(stdNormState('washer',{}).type==='iso7089'&&stdNormState('washer',{type:'ansiN'}).size==='1/4'&&stdSpec('washer',{type:'din127',size:'M10'}).name==='Rondelle Grower M10','44 : par défaut M8 (ISO) et 1/4 (ANSI), Grower M10 nommée');
+    docResetEmpty();asm=null;doc.name='Plaque oblongs';
+    const sb3=SK('skP',0);stdLoop(sb3,[[-50,-30],[50,-30],[50,30],[-50,30]]);
+    doc.features.push({id:'exP',type:'extrude',name:'Plaque',sketchId:'skP',distance:20,op:'add',visible:true,mid:false,upto:null,body:'b1'});
+    const SL=(id,L,cx,cy,dp)=>{const s=SK('sk'+id,20);stdLoop(s,sh(stdKeyOutline({form:'A',L,b:8.6}),(x,y)=>[x+cx,y+cy]));
+      doc.features.push({id,type:'extrude',name:id,sketchId:s.id,distance:-dp,op:'cut',visible:true,mid:false,upto:null,body:'b1'});};
+    SL('sl1',30,-25,-15,25);SL('sl2',30,-25,15,25);SL('sl3',24,25,-15,5);SL('sl4',24,25,15,5);
+    {const s=SK('skH',15),pid=addPoint(s,28,-15);s.entities.push({id:skNewEid(s),t:'cpoint',p:pid,hole:true});
+      doc.features.push({id:'hoF',type:'hole',name:'',sketchId:s.id,kind:'simple',d:6.6,thread:null,cbD:11,cbH:6.4,csD:13,csA:90,end:'through',depth:15,tip:118,flip:false,op:'cut',visible:true,body:'b1'});}
+    doc.bodies=[{id:'b1',name:'Plaque',c:null}];doc.bodySeq=2;doc.activeBody='b1';
+    asmEnsure();asm._force=true;markDirty();rebuild();asm._force=false;
+    const Ro=asmRoot(),Go=asmSnapGeomOf(Ro),SS=Go?stdSlots(Go):[];
+    const up=SS.filter(s=>s.n[2]>0.5);
+    A(up.length===4&&up.filter(s=>s.sig==='8.60|30.00').length===2&&up.filter(s=>s.sig==='8.60|24.00').length===2,'45 : 4 oblongs vus du dessus : 2 × 8,6 × 30, 2 × 8,6 × 24 ('+SS.map(s=>s.sig+(s.n[2]>0?'↑':'↓')).join(' ')+')');
+    const Ho=stdHoles(Go);
+    A(Ho.some(h=>h.E.full&&Math.abs(h.E.c[0]-28)<1e-6)&&!Ho.some(h=>h.E.full&&Math.abs(h.E.r-4.3)<1e-6),'46 : le trou Ø6,6 est un cercle entier, les bouts d oblong n en sont pas');
+    const parts=[{rel:[],G:Go,c:Ro}];
+    const sA=up.find(s=>s.sig==='8.60|30.00'),itC=stdSameSlots(SS,sA).map(s=>stdSlotItem(s,[],parts,'hole'));
+    let wo=stdAddOnSlots(w8,Ro.id,itC);
+    const pw=wo.map(o=>r3(o.fr.o)).sort();
+    A(wo.length===2&&JSON.stringify(pw)===JSON.stringify(['-25,-15,20','-25,15,20'])&&wo.every(o=>o.fr.z[2]>0.999&&o.st==='ok')&&itC.every(x=>x.at==='center'),'47 : oblongs débouchants sans trou dessous : rondelles au centre, sur la face ('+pw.join(' | ')+')');
+    A(asmUndo()&&!Ro.occ.length,'48 : Ctrl+Z : les deux rondelles d un coup');
+    const sB=up.find(s=>s.sig==='8.60|24.00'),itH=stdSameSlots(SS,sB).map(s=>stdSlotItem(s,[],parts,'hole'));
+    wo=stdAddOnSlots(w8,Ro.id,itH);
+    const ph=wo.map(o=>r3(o.fr.o)).sort();
+    A(wo.length===2&&JSON.stringify(ph)===JSON.stringify(['25,15,20','28,-15,20'])&&itH.filter(x=>x.at==='hole').length===1&&wo.every(o=>o.fr.z[2]>0.999&&o.st==='ok'),'49 : en face du trou suivant : sur la face de l oblong, dans l axe du trou (28, −15) ; l autre au centre ('+ph.join(' | ')+')');
+    asmUndo();
+    const itM=stdSameSlots(SS,sB).map(s=>stdSlotItem(s,[],parts,'center'));
+    wo=stdAddOnSlots(w8,Ro.id,itM);
+    A(JSON.stringify(wo.map(o=>r3(o.fr.o)).sort())===JSON.stringify(['25,-15,20','25,15,20']),'50 : au centre de l oblong, même s il y a un trou dessous');
+    asmUndo();
+    const hF=Ho.find(h=>h.E.full&&h.n[2]>0.5);
+    wo=stdAddOnHoles(w8,Ro.id,[],[hF]);
+    A(wo.length===1&&r3(wo[0].fr.o)==='28,-15,15'&&wo[0].fr.z[2]>0.999,'51 : sur un trou rond : rondelle posée sur son entrée ('+(wo[0]?r3(wo[0].fr.o):'?')+')');
     return out;
   `;
   const o=await vm.runInContext('(async()=>{'+R+'})()',ctx);

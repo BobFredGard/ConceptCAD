@@ -11,7 +11,7 @@
 
 ![Support de pédale déportée R1200RT en alu anodisé rouge sur béton, lancer de rayons de l'atelier RENDU (2048 échantillons)](docs/captures/rendu-pedale.jpg)
 
-Le noyau géométrique exact est **OpenCascade 8 compilé en WebAssembly** par nos soins (recette reproductible dans `occt-build/`), en deux versions : **multicœur**, choisie toute seule quand le navigateur et le PC le permettent et écrite dans la barre d'état, et normale, sur un seul cœur, qui reste celle du fichier autonome. S'il n'est pas disponible, l'application bascule seule sur un moteur maillage (CSG). Version actuelle : **V0.74.0** (voir le [journal des modifications](CHANGELOG.md)).
+Le noyau géométrique exact est **OpenCascade 8 compilé en WebAssembly** par nos soins (recette reproductible dans `occt-build/`), en deux versions : **multicœur**, choisie toute seule quand le navigateur et le PC le permettent et écrite dans la barre d'état, et normale, sur un seul cœur, qui reste celle du fichier autonome. S'il n'est pas disponible, l'application bascule seule sur un moteur maillage (CSG). Version actuelle : **V0.75.0** (voir le [journal des modifications](CHANGELOG.md)).
 
 **Pas d'Internet sur le poste ?** La [version autonome](https://www.dropbox.com/scl/fi/sne7f5a9y8dr659b2xrow/ConceptCAD-autonome.html?rlkey=fgd0w1r5816ake50vxtd4fnuj&dl=0) tient en un seul fichier à télécharger, qui s'ouvre par double-clic (voir [Démarrage](#démarrage)).
 
@@ -171,9 +171,11 @@ Comme dans Fusion 360, **tout est composant** : le fichier est le composant raci
   - **Bouchons** six pans creux DIN 906, DIN 908 et NPTF.
   - **Goupilles** ISO 2338, 8734, 2339, 8752 et ANSI (dowel, spring).
   - **Clavettes** ISO 773 formes A, B, C.
+  - **Rondelles** plates ISO 7089, 7090 (chanfreinée), 7092 (étroite), 7093-1 (large), Grower DIN 127 B, ANSI B18.22.1 Type A (séries N et W) et lock washers B18.21.1.
   - **Engrenages** à vraie développante (ISO 53, ISO 21771) : roue, couronne ou crémaillère, denture droite ou hélicoïdale, déport, alésage et rainure de clavette. Sous-coupe, dent en pointe et autres défauts sont signalés.
   - **Paire d'engrenages** : pignon avec roue, couronne ou crémaillère, posés dents logées au bon entraxe, avec le jeu choisi. Entraxe, rapport de conduite et interférences affichés. Les pièces restent libres (pas de lien de mouvement) ; la résistance des dents n'est pas calculée. L'export STEP se fait pièce par pièce. Exemple : `Exemples/Engrenages.conceptcad`.
   - **Sur des trous** : un clic sur un trou pose la pièce dans tous les trous identiques (simples, lamés, fraisés), en liaison rigide qui suit les trous (vis FHC 0,2 mm sous la surface, goupilles par leur centre : milieu du trou, arête haute ou basse, au plus court du clic).
+  - **Sur des oblongs** (rondelles) : un clic dans un trou oblong pose une rondelle sur sa face, sur tous les oblongs identiques : dans l'axe du trou rond de la pièce du dessous (elle suit ce trou), ou au centre de l'oblong s'il n'y en a pas ou si on le choisit.
   - **Dans une rainure** : une clavette se pose au fond d'une rainure (fermée ou débouchante), par le centre de face ou contre un bout rond, et toutes les rainures identiques sont équipées.
   - **Modifier…** (propriétés ou clic droit) rouvre la fenêtre sur la pièce : toutes ses occurrences, ou celle-ci seulement.
 - **Aimants** : bibliothèque d’aimants réels (disques, cylindres, cubes, pavés, anneaux, cônes tronqués, disques aimantés en travers, disques et pavés à visser à trous fraisés) avec leurs caractéristiques, montrés en deux moitiés : pôle nord rouge, pôle sud vert. Clic droit sur un aimant posé : afficher ou masquer ses lignes de champ 3D, calculées dans l’air ; avec plusieurs aimants posés, les lignes suivent leur champ additionné (attraction, répulsion).
