@@ -8,7 +8,7 @@ sont sorties le 2026-09-30j.
 Code dans `src/` · livrable `fusion_mvp.html` (généré par `build.js`) · architecture et
 garde-fous en tête de `src/00-entete-et-outils.js`.
 
-**618 versions**, de `2026-09-28b` à `V0.71.0` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
+**619 versions**, de `2026-09-28b` à `V0.72.0` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
 comme dans le fichier d'origine.
 
 ---
@@ -7107,3 +7107,15 @@ Barquette ne perd plus son solide à la 107e modification, et sa mémoire ne mon
 - **Pièce** (`src/48-aimants-interface.js`) : toujours deux moitiés, sud vert et nord rouge. Cône : coins arrondis sur une paroi inclinée. Diamétral : deux demi-disques (révolution de 180°). Disque à visser : profil de révolution avec le trou fraisé. Pavé à visser : chaque trou enlevé par une révolution autour de son axe. Fenêtre : formes « Cône tronqué », « Disque à visser (fraisé) », « Pavé à visser (fraisé) » ; « diamétral », « trou fraisé » et le pôle côté fraisé dans la liste des articles.
 - **Piège évité** : arrondir à 6 décimales les points d'un congé incliné laissait un écart de 2,5·10⁻⁷ mm entre l'arc et ses voisins ; le noyau cassait alors le contour (volume négatif). Les points ne sont plus arrondis.
 - **Test** : `test_aimants` compare le cône, le disque diamétral, les disques à visser (fraisage en haut et en bas) et le pavé à deux trous à une intégration numérique indépendante des charges de surface (écart maxi 0,005 %). Il vérifie aussi un cône aux bases égales = cylindre, une longue tige diamétrale B = Br/2, le dipôle couché à grande distance, les lignes qui reviennent par le pôle sud, et les volumes exacts des deux moitiés dans le noyau. Vu dans l'application : cône, disque diamétral (moitié rouge côté +Y), pavé à deux trous fraisés. Parcours FAO et `CACHE_VER` inchangés.
+
+## V0.72.0 - Export FreeCAD natif (.FCStd), aimants avec lignes de champ
+
+- **Demande** : un export vers le format natif de FreeCAD et, pour les aimants, avec les champs de force.
+- **Export** (`src/90-41-export-freecad.js`, bouton Fichier → Exporter → FreeCAD) : un `.FCStd` est un zip ; chaque corps visible y devient un objet `Part::Feature` à sa couleur, avec sa forme en BRep, le format natif du noyau OCCT que FreeCAD partage : géométrie exacte, sans conversion. Assemblage (composant actif qui contient des occurrences) : un groupe par occurrence, ses corps placés dedans.
+- **Aimants** : le groupe de chaque aimant porte ses caractéristiques (onglet « Aimant » des propriétés de FreeCAD : article, matière, Br, HcB, HcJ, (BH)max, force, température, champ calculé, sens d'aimantation ; +Y pour un disque diamétral). Un groupe « Lignes de champ » reprend les lignes du champ additionné de tous les aimants, flèches comprises, rangées en 6 tranches d'intensité (moins de 5 mT … plus de 300 mT), chacune à la couleur de l'écran et masquable à part.
+- **Pièges trouvés en ouvrant le fichier dans la FENÊTRE de FreeCAD 1.1** (la console l'ouvrait sans erreur) :
+  - FreeCAD lit les entrées du zip dans l'ordre où il les demande (Document.xml, formes dans l'ordre des objets, GuiDocument.xml, apparences) ; une entrée en avance fait sauter les suivantes : formes vides à l'écran. Le zip suit cet ordre.
+  - GuiDocument.xml doit finir par `<Camera settings=""/>`, sinon sa lecture échoue.
+  - Couleurs : `ShapeAppearance` (format binaire version 3) pour FreeCAD 1.x, `ShapeColor` en plus pour 0.21 ; octet bas 0 dans les `PropertyColor` (FreeCAD 1.x le lit comme une transparence nulle). Les sommets des lignes prennent leur couleur, sinon elles paraissent en pointillé.
+  - Le noyau fait précéder le BRep d'une ligne `DBRep_DrawableShape`, retirée.
+- **Test** : `test_export_freecad` (suite rapide) : deux aimants côte à côte, zip sain (CRC, ordre des entrées), caractéristiques, disque diamétral et cône ; si FreeCAD est installé, il ouvre le fichier et retrouve 4 moitiés valides au bon volume, les deux groupes d'aimant et 6 tranches de lignes. Vu aussi dans la fenêtre de FreeCAD 1.1 (couleurs, lignes continues) et par le bouton dans l'application. Parcours FAO et `CACHE_VER` inchangés.

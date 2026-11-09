@@ -272,6 +272,7 @@ const SUITES = [
   "test_composants_inspection",
   "test_composants_normalises",
   "test_aimants",
+  "test_export_freecad",
   "test_journal_erreurs",
   "test_autonome",
   "test_fil_esquisses",

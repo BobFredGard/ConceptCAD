@@ -145,6 +145,7 @@ function mfFiTable(){
   EXP('STEP','Crée un fichier STEP précis, que les autres logiciels de CAO savent ouvrir.');
   EXP('STL','Crée un fichier STL fait de petits triangles, pour l’impression 3D par exemple.');
   EXP('OBJ','Crée un fichier OBJ fait de petits triangles, pour la 3D et l’animation.');
+  F('Fichier/FreeCAD','Exporter en FreeCAD','Crée un fichier FreeCAD précis, corps et couleurs compris. Les aimants y gardent leurs caractéristiques et leurs lignes de champ.',[],LPART(),DOC(34,14,'FCStd',OR),null,'La pièce','Le fichier');
   /* ========== composants ========== */
   const PA=(dx,dy,dz,k)=>ficBox(-14+dx,-9+dy,-5+dz,4+dx,9+dy,4+dz,k);
   const PB=(dx,dz,k)=>ficCyl(dx,0,dz,5,16,k==='o'?'mfFcHo':'mfFcHb',k);
