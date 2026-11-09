@@ -4,6 +4,12 @@
 // (Symétrie, Linéaire, congés copiés). Lancé seul : node tests/test_noms_barquette.cjs
 const fs=require('fs'),vm=require('vm'),path=require('path');
 const ROOT=path.join(__dirname,'..');
+// PARTIES (tests/run.cjs) : `a` à `e` ne font que certains cas (pièce/cas), répartis selon leur durée.
+// Sans argument : tout.
+const PART=process.argv[2]||'';
+const QUI={a:['0/2'],b:['1/2'],c:['0/1','1/1'],d:['0/3','1/3','1/L0'],e:['0/0','1/0']};
+if(PART&&!QUI[PART]){console.log('partie inconnue : '+PART);process.exit(1);}
+const MIEN=k=>!PART||QUI[PART].includes(k);
 const {loadApp}=require('./appvm.cjs'),lire=require('./lire-projet.cjs');
 (async()=>{
   const real=await require('./noyau.cjs').charger();
@@ -50,11 +56,12 @@ const {loadApp}=require('./appvm.cjs'),lire=require('./lire-projet.cjs');
       // flanc. Le renfort ne peut réellement plus exister ; on exige qu'on le dise et que le retour soit exact.
       limite:[['largeur_barquette',165,200]]},
   ];
-  for(const P of PIECES){
+  for(const [pi,P] of PIECES.entries()){
     console.log('=== Barquette '+P.nom+' : grands changements (noyau réel) ===');
     const txt=lire(path.join(ROOT,'tests','fixtures',P.fichier));
     const t=' ['+P.nom+'] ';
-    for(const [n,de,a] of P.cas){
+    for(const [ci,[n,de,a]] of P.cas.entries()){
+      if(!MIEN(pi+'/'+ci))continue;
       const pas=[];const N=Math.max(1,Math.round(Math.abs(a-de)/5));for(let i=1;i<=N;i++)pas.push([n,de+(a-de)*i/N]);
       const J=await scenario(txt,[[[n,a]],[[n,de]]]);
       const S=await scenario(txt,[pas]);
@@ -62,7 +69,8 @@ const {loadApp}=require('./appvm.cjs'),lire=require('./lire-projet.cjs');
       const d2=ecarts(J[0],J[2]);A(!d2.length,t+n+' '+a+' → '+de+' : retour exact au départ'+(d2.length?' — '+d2.slice(0,4).join(' ; '):''));
       const al=perdues(J[1]);A(!al.length,t+n+' → '+a+' : aucune référence perdue'+(al.length?' — '+al.slice(0,2).join(' ; '):''));
     }
-    for(const [n,de,a] of P.limite||[]){
+    for(const [ci,[n,de,a]] of (P.limite||[]).entries()){
+      if(!MIEN(pi+'/L'+ci))continue;
       const J=await scenario(txt,[[[n,a]],[[n,de]]]);
       A(perdues(J[1]).length>0,t+n+' → '+a+' : le renfort impossible est signalé');
       const d2=ecarts(J[0],J[2]);A(!d2.length,t+n+' '+a+' → '+de+' : retour exact au départ'+(d2.length?' — '+d2.slice(0,4).join(' ; '):''));

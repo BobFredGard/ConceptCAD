@@ -1,6 +1,6 @@
 // Sous-ensemble rapide pour la CI : contrôles de structure, solveur, UI et
 // quelques parcours FAO. La suite complète reste `node tests/run.cjs`.
-const { execFileSync } = require('child_process'), path = require('path');
+// Lancées en parallèle par le même pool que la suite complète (tests/pool.cjs : -j N, --verbose).
 const SUITES = [
   'test_fil_esquisses',
   'test_highlight_order',
@@ -130,13 +130,4 @@ const SUITES = [
   'test_engrenages',
   'test_export_step_assemblage'
 ];
-let ok = 0; const ko = [];
-for (const s of SUITES) {
-  try {
-    execFileSync(process.execPath, [path.join(__dirname, s + '.cjs')], { stdio: 'inherit', timeout: 5 * 60 * 1000 });
-    ok++;
-  } catch (e) { ko.push(s); }
-}
-console.log('');
-console.log('SUITE RAPIDE: ' + ok + '/' + SUITES.length + ' OK' + (ko.length ? ' — KO: ' + ko.join(', ') : ''));
-process.exit(ko.length ? 1 : 0);
+require('./pool.cjs').pool(SUITES, { titre: 'SUITE RAPIDE', timeout: 10 * 60 * 1000 });

@@ -173,10 +173,18 @@ function loadApp(){
   class KeyboardEvent{constructor(type,init={}){this.type=type;this.key=init.key||'';this.code=init.code||'';this.shiftKey=!!init.shiftKey;this.ctrlKey=!!init.ctrlKey;this.altKey=!!init.altKey;}preventDefault(){}stopPropagation(){}}
   const dragEv=(x,y,extra={})=>({clientX:x,clientY:y,button:0,buttons:1,preventDefault(){},stopPropagation(){},shiftKey:false,ctrlKey:false,altKey:false,...extra});
   sandbox.PointerEvent=PointerEvent;sandbox.MouseEvent=MouseEvent;sandbox.KeyboardEvent=KeyboardEvent;sandbox.dragEv=dragEv;
+  // Minuteries répétées lancées PENDANT le chargement du script (aujourd'hui une seule : le voile de
+  // démarrage de src/98-demarrage-fondu.js, qui attend le noyau jusqu'à 60 s) : elles tournent comme
+  // avant, mais ne retiennent plus le processus. Sans cela, une suite qui ne régénère pas en exact
+  // restait ouverte 60 s après sa dernière ligne (42 suites sur 288). Celles créées ensuite par le
+  // test ou l'application ne changent pas.
+  let enChargement=true;
+  sandbox.setInterval=function(){const t=setInterval.apply(null,arguments);if(enChargement&&t&&t.unref)t.unref();return t;};
   const ctx=vm.createContext(sandbox);
   let loadErr=null;
   try{ vm.runInContext(m[1],ctx,{filename:'ConceptCAD.html'}); }
   catch(e){ loadErr=e; }
+  enChargement=false;
   return { ctx, sandbox, loadErr };
 }
 async function runTest(body){
