@@ -378,7 +378,7 @@ input[type=range]{accent-color:var(--primary);width:100%}
  * peut changer sans rien casser. CACHE_VER (parcours FAO) reste indépendant.
  */
 
-const APP_VER='V0.74.0';
+const APP_VER='V0.75.0';
 try{console.log('[ConceptCAD] version '+APP_VER);}catch(e){}
 try{var mfSv=document.getElementById('mfSplashVer');if(mfSv)mfSv.textContent=APP_VER;}catch(e){} // écran de démarrage
 
@@ -19486,6 +19486,36 @@ const STD_ISO773=[[6,8,2,2,1.2,1,6,20],[8,10,3,3,1.8,1.4,6,36],[10,12,4,4,2.5,1.
   [44,50,14,9,5.5,3.8,36,160],[50,58,16,10,6,4.3,45,180],[58,65,18,11,7,4.4,50,200],[65,75,20,12,7.5,4.9,56,220],
   [75,85,22,14,9,5.4,63,250],[85,95,25,14,9,5.4,70,280],[95,110,28,16,10,6.4,80,320],[110,130,32,18,11,7.4,90,360]];
 const STD_KEY_LV=[6,8,10,12,14,16,18,20,22,25,28,32,36,40,45,50,56,63,70,80,90,100,110,125,140,160,180,200,220,250,280,320,360];
+// Rondelles plates ISO (V0.75.0) : [taille, d1 (Ø intérieur), d2 (Ø extérieur), h (épaisseur)]
+const STD_ISO7089=[['M1.6',1.7,4,0.3],['M2',2.2,5,0.3],['M2.5',2.7,6,0.5],['M3',3.2,7,0.5],['M4',4.3,9,0.8],['M5',5.3,10,1],
+  ['M6',6.4,12,1.6],['M8',8.4,16,1.6],['M10',10.5,20,2],['M12',13,24,2.5],['M14',15,28,2.5],['M16',17,30,3],['M20',21,37,3],
+  ['M24',25,44,4],['M30',31,56,4],['M36',37,66,5]];
+const STD_ISO7092=[['M1.6',1.7,3.5,0.3],['M2',2.2,4.5,0.3],['M2.5',2.7,5,0.5],['M3',3.2,6,0.5],['M4',4.3,8,0.5],['M5',5.3,9,1],
+  ['M6',6.4,11,1.6],['M8',8.4,15,1.6],['M10',10.5,18,1.6],['M12',13,20,2],['M14',15,24,2.5],['M16',17,28,2.5],['M20',21,34,3],
+  ['M24',25,39,4],['M30',31,50,4],['M36',37,60,5]];
+const STD_ISO7093=[['M3',3.2,9,0.8],['M4',4.3,12,1],['M5',5.3,15,1.2],['M6',6.4,18,1.6],['M8',8.4,24,2],['M10',10.5,30,2.5],
+  ['M12',13,37,3],['M14',15,44,3],['M16',17,50,3],['M20',22,60,4],['M24',26,72,5],['M30',33,92,6],['M36',39,110,8]];
+// Rondelle élastique Grower DIN 127 B : [taille, d1, s (épaisseur), b (largeur de section)]
+const STD_DIN127=[['M2',2.1,0.5,0.9],['M2.5',2.6,0.6,1],['M3',3.1,0.8,1.3],['M4',4.1,0.9,1.5],['M5',5.1,1.2,1.8],['M6',6.1,1.6,2.5],
+  ['M8',8.2,2,3],['M10',10.2,2.2,3.5],['M12',12.2,2.5,4],['M14',14.2,3,4.5],['M16',16.2,3.5,5],['M20',20.2,4,6],['M24',24.5,5,7],
+  ['M30',30.5,6,8],['M36',36.5,6,10]];
+// ASME B18.22.1 Type A (pouces) : [taille, Ø vis, série N (étroite) : ID, OD, ép. ; série W (large) : ID, OD, ép.]
+const STD_ANSI_FLAT=[['#6',.138,.156,.375,.049,.188,.438,.049],['#8',.164,.188,.438,.049,.219,.5,.049],['#10',.19,.219,.5,.049,.25,.562,.049],
+  ['#12',.216,.25,.562,.065,.281,.625,.065],['1/4',.25,.281,.625,.065,.312,.734,.065],['5/16',.3125,.344,.688,.065,.375,.875,.083],
+  ['3/8',.375,.406,.812,.065,.438,1,.083],['7/16',.4375,.469,.922,.065,.5,1.25,.083],['1/2',.5,.531,1.062,.095,.562,1.375,.109],
+  ['9/16',.5625,.594,1.156,.095,.625,1.469,.109],['5/8',.625,.656,1.312,.095,.688,1.75,.134],['3/4',.75,.812,1.469,.134,.812,2,.148],
+  ['7/8',.875,.938,1.75,.134,.938,2.25,.165],['1',1,1.062,2,.134,1.062,2.5,.165]];
+// ASME B18.21.1 rondelle élastique hélicoïdale, série normale : [taille, ID, largeur W, épaisseur T] (pouces)
+const STD_ANSI_LOCK=[['#4',.115,.04,.025],['#6',.141,.04,.031],['#8',.168,.047,.04],['#10',.194,.047,.047],['1/4',.255,.109,.062],
+  ['5/16',.319,.125,.078],['3/8',.382,.141,.094],['7/16',.446,.156,.109],['1/2',.509,.171,.125],['5/8',.636,.203,.156],
+  ['3/4',.763,.234,.188],['7/8',.89,.266,.219],['1',1.017,.297,.25]];
+const STD_WASHER_TYPES=[['iso7089','ISO 7089 — plate, série normale'],['iso7090','ISO 7090 — plate chanfreinée, série normale'],
+  ['iso7092','ISO 7092 — plate, série étroite'],['iso7093','ISO 7093-1 — plate, série large'],['din127','DIN 127 B — Grower (élastique fendue)'],
+  ['ansiN','ANSI B18.22.1 Type A — série N (étroite)'],['ansiW','ANSI B18.22.1 Type A — série W (large)'],['ansiLock','ANSI B18.21.1 — Lock washer (élastique fendue)']];
+function stdWasherRows(t){
+  return t==='iso7090'?STD_ISO7089.filter(r=>stdFrac(r[0].slice(1))>=5):t==='iso7092'?STD_ISO7092:t==='iso7093'?STD_ISO7093:
+    t==='din127'?STD_DIN127:t==='ansiN'||t==='ansiW'?STD_ANSI_FLAT:t==='ansiLock'?STD_ANSI_LOCK:STD_ISO7089;
+}
 /* ── outils ── */
 function stdFrac(s){
   // '1-1/4' → 1.25 ; '3/8' → 0.375 ; '2' → 2
@@ -19617,6 +19647,30 @@ function stdKey(st){
       ' · rainure arbre t1 '+stdF(r[4])+' · moyeu t2 '+stdF(r[5]),
     ops:[{k:'key',form:f,b,h,L}]};
 }
+function stdWasher(st){
+  // Rondelle : origine au centre de sa face d'appui (dessous), épaisseur vers +Z — posée « Sur des
+  // trous », elle s'assoit sur l'entrée (ou le fond du lamage) ; sur un oblong, voir stdSlots
+  const ty=st.type,T=stdWasherRows(ty),r=T.find(x=>x[0]===st.size)||T[0],I=STD_IN;
+  const ansi=/^ansi/.test(ty),lock=ty==='din127'||ty==='ansiLock';
+  let d1,d2,h,norm,lab;
+  if(ty==='din127'){d1=r[1];h=r[2];d2=d1+2*r[3];norm='DIN 127 B';}
+  else if(ty==='ansiLock'){d1=r[1]*I;h=r[3]*I;d2=(r[1]+2*r[2])*I;norm='ASME B18.21.1';}
+  else if(ansi){const w=ty==='ansiW';d1=r[w?5:2]*I;d2=r[w?6:3]*I;h=r[w?7:4]*I;norm='ASME B18.22.1 Type A '+(w?'W':'N');}
+  else{d1=r[1];d2=r[2];h=r[3];norm={iso7090:'ISO 7090',iso7092:'ISO 7092',iso7093:'ISO 7093-1'}[ty]||'ISO 7089';}
+  lab=ansi?r[0]+(r[0][0]==='#'?'':'"'):r[0];
+  const r1=d1/2,r2=d2/2,dims=' · Ø int. '+stdF(d1)+' · Ø ext. '+stdF(d2)+' · épaisseur '+stdF(h)+(ansi?' mm':'');
+  const sp={seat:'under',sink:0,washer:true,key:'WASHER|'+norm+'|'+r[0],norm,desig:lab};
+  if(lock){
+    const g=Math.max(0.2,h*0.5);
+    return Object.assign(sp,{name:(ansi?'Lock washer ':'Rondelle Grower ')+lab,
+      info:'Rondelle élastique fendue, section rectangulaire (modélisée à plat, coupe '+stdF(g)+')'+dims,
+      prof:[[r1,0],[r2,0],[r2,h],[r1,h]],ops:[{k:'slot',x0:r1-0.3,x1:r2+1,w:g,L:h}]});
+  }
+  const c=ty==='iso7090'?h*0.25:0;
+  return Object.assign(sp,{name:(ansi?'Flat washer ':'Rondelle ')+norm.replace(/^ASME B18\.22\.1 /,'')+' '+lab,
+    info:(c?'Rondelle plate chanfreinée':'Rondelle plate')+dims,
+    prof:c?[[r1,0],[r2,0],[r2,h-c],[r2-c,h],[r1,h]]:[[r1,0],[r2,0],[r2,h],[r1,h]],ops:[]});
+}
 function stdKeyOutline(o){
   // contour vu de dessus, centré : forme A (deux bouts ronds), B (droits), C (rond à gauche)
   const hl=o.L/2,r=o.b/2,x0=-hl+r,x1=hl-r;
@@ -19734,6 +19788,11 @@ const STD_CATS=[
       return r?stdLens(STD_KEY_LV,r[6],r[7],true).map(v=>[String(v),stdF(v)]):[];},
       def:st=>{const r=STD_ISO773.find(x=>x[2]+'x'+x[3]===st.size);return r?String(stdLens(STD_KEY_LV,Math.max(r[6],4*r[2]),r[7],true)[0]||r[6]):'';}}],
     gen:stdKey},
+  {k:'washer',lab:'Rondelles',fields:[
+    {k:'type',lab:'Norme',opts:()=>STD_WASHER_TYPES},
+    {k:'size',lab:'Taille (vis)',opts:st=>stdWasherRows(st.type).map(r=>[r[0],/^ansi/.test(st.type)?r[0]+(r[0][0]==='#'?'':'"'):r[0]]),
+      def:st=>/^ansi/.test(st.type)?'1/4':'M8'}],
+    gen:stdWasher},
   // num : valeur libre tapée dans la fenêtre (bornée) ; opts = quelques cas de contrôle (tests), sug = valeurs proposées
   // show : champ masqué sans objet pour ces réglages (il reprend alors sa valeur par défaut)
   {k:'gear',lab:'Engrenages',fields:[
@@ -19955,8 +20014,9 @@ function stdHoles(G){
       if(e.k!=='circ'||Math.abs(V.dot(e.n,F.n))<0.999)return;
       const q=V.sub(e.c,F.c),u=V.dot(q,F.x),v=V.dot(q,F.y);
       if(Math.min(u1-u,u-u0,v1-v,v-v0)<e.r+0.01)return; // pas un bord intérieur
-      if(circ.some(c=>c.F===F&&V.len(V.sub(c.c,e.c))<1e-3&&Math.abs(c.r-e.r)<1e-3))return; // demi-cercles
-      circ.push({F,e,c:e.c,r:e.r,n:F.n});
+      const twin=circ.find(c=>c.F===F&&V.len(V.sub(c.c,e.c))<1e-3&&Math.abs(c.r-e.r)<1e-3);
+      if(twin){twin.full=true;return;} // demi-cercles : un cercle entier
+      circ.push({F,e,c:e.c,r:e.r,n:F.n,full:!!e.full}); // full : cercle entier (pas le bout d'un oblong)
     });
   });
   // profondeur (le long de −n) sous le plan d'entrée, et distance à l'axe
@@ -20003,6 +20063,138 @@ function stdHoleAt(H,p,look){
   return best&&best.h;
 }
 function stdSameHoles(H,h){return H.filter(q=>q.sig===h.sig&&asmV.dot(q.n,h.n)>0.999);}
+/* ── oblongs (V0.75.0) : une rondelle se pose au CENTRE d'un trou oblong, ou sur sa face d'entrée
+   EN FACE du trou rond qui le suit (pièce dessous, vis de réglage) — sinon au centre.
+   Entrée d'oblong = bord intérieur d'une face plane : deux demi-cercles de même rayon, reliés par
+   une droite parallèle à leur entraxe. Centre : point d'accroche « centre de l'arc » du premier
+   bout + décalage le long de l'oblong (liaison rigide). En face d'un trou : point d'accroche de
+   l'entrée de ce trou (la rondelle suit la vis) + hauteur jusqu'à la face de l'oblong. */
+const STD_WASHER_AT=[['hole','En face du trou suivant (sinon au centre)'],['center','Au centre de l’oblong']];
+function stdSlots(G){
+  // → [{F, a:[arc, arc], c (centre), ax (axe unitaire), r, len (longueur hors tout), n, sig}]
+  const V=asmV,out=[];
+  (G&&G.faces||[]).forEach(F=>{
+    if(F.k!=='plane'||!F.rect)return;
+    const [u0,u1,v0,v1]=F.rect,arcs=[];
+    F.edges.forEach(e=>{
+      if(e.k!=='circ'||e.full||Math.abs(V.dot(e.n,F.n))<0.999)return;
+      const q=V.sub(e.c,F.c),u=V.dot(q,F.x),v=V.dot(q,F.y);
+      if(Math.min(u1-u,u-u0,v1-v,v-v0)<e.r+0.01)return; // pas un bord intérieur
+      if(!arcs.some(a=>V.len(V.sub(a.c,e.c))<1e-3&&Math.abs(a.r-e.r)<1e-3))arcs.push(e);
+    });
+    const lines=F.edges.filter(e=>e.k==='line'&&e.p0&&e.p1),used=new Set();
+    arcs.forEach((a,i)=>{
+      if(used.has(i))return;
+      for(let j=i+1;j<arcs.length;j++){
+        const b=arcs[j];if(used.has(j)||Math.abs(a.r-b.r)>1e-3)continue;
+        const w=V.sub(b.c,a.c),dd=V.len(w);if(dd<1e-3)continue;
+        const ax=V.mul(w,1/dd),m=V.mul(V.add(a.c,b.c),0.5);
+        const side=lines.some(l=>{const d=V.sub(l.p1,l.p0),L=V.len(d);
+          if(Math.abs(L-dd)>0.01||Math.abs(V.dot(d,ax))<L*0.999)return false;
+          return Math.abs(V.len(V.sub(V.mul(V.add(l.p0,l.p1),0.5),m))-a.r)<0.01;});
+        if(!side)continue;
+        used.add(i);used.add(j);
+        out.push({F,a:[a,b],c:m,ax,r:a.r,len:dd+2*a.r,n:F.n,sig:(2*a.r).toFixed(2)+'|'+(dd+2*a.r).toFixed(2)});
+        break;
+      }
+    });
+  });
+  return out;
+}
+function stdSlotLat(s,p){
+  // Distance, dans le plan de l'oblong, du point p à son axe (segment entre les centres des bouts)
+  const V=asmV,w=V.sub(p,s.c),pl=V.sub(w,V.mul(s.n,V.dot(w,s.n))),hl=(s.len-2*s.r)/2;
+  const t=Math.max(-hl,Math.min(hl,V.dot(pl,s.ax)));
+  return V.len(V.sub(pl,V.mul(s.ax,t)));
+}
+function stdSameSlots(S,s){return S.filter(q=>q.sig===s.sig&&asmV.dot(q.n,s.n)>0.999);}
+function stdFrPt(F,p){return asmV.add(F.o,asmV.add(asmV.mul(F.x,p[0]),asmV.add(asmV.mul(F.y,p[1]),asmV.mul(F.z,p[2]))));}
+function stdFrVec(F,v){return asmV.add(asmV.mul(F.x,v[0]),asmV.add(asmV.mul(F.y,v[1]),asmV.mul(F.z,v[2])));}
+function stdSlotCenter(s,rel){
+  // Liaison au centre de l'oblong : centre de l'arc du premier bout, décalé le long de l'oblong
+  const V=asmV,a=s.a[0],it=asmSnapItems(s.F).find(q=>q.w==='ec'&&V.len(V.sub(q.fr.o,a.c))<1e-3&&V.dot(q.fr.z,s.n)>0.999);
+  if(!it)return null;
+  const v=V.sub(s.c,a.c);
+  return {rel:(rel||[]).slice(),sn:asmSnapRef(s.F,it),off:[+V.dot(v,it.fr.x).toFixed(9),+V.dot(v,it.fr.y).toFixed(9),0],at:'center'};
+}
+function stdSlotFacing(s,relS,parts){
+  // Trou rond (cercle entier) dont l'axe traverse l'oblong, du côté de la matière (sous sa face
+  // d'entrée), même sens : le plus proche → {pt, h, t (hauteur de la face de l'oblong au-dessus de
+  // l'entrée du trou)} | null. parts : [{rel, G}] du composant actif (pièce de l'oblong comprise).
+  const V=asmV,FS=asmPathFrame(asm.active,relS);if(!FS)return null;
+  const sc=stdFrPt(FS.F,s.c),sn=stdFrVec(FS.F,s.n),sax=stdFrVec(FS.F,s.ax),hl=(s.len-2*s.r)/2;
+  let best=null;
+  parts.forEach(pt=>{
+    const R=asmPathFrame(asm.active,pt.rel);if(!R||!pt.G)return;
+    stdHoles(pt.G).forEach(h=>{
+      if(!h.E.full)return;
+      const hn=stdFrVec(R.F,h.n);if(V.dot(hn,sn)<0.999)return;
+      const q=V.sub(stdFrPt(R.F,h.E.c),sc),t=-V.dot(q,sn);if(t<-0.01)return;
+      const pl=V.sub(q,V.mul(sn,V.dot(q,sn))),u=Math.max(-hl,Math.min(hl,V.dot(pl,sax)));
+      const lat=V.len(V.sub(pl,V.mul(sax,u)));if(lat>s.r+0.01)return;
+      const sc2=t+lat*1e-3;
+      if(!best||sc2<best.sc)best={pt,h,t:Math.max(0,t),sc:sc2};
+    });
+  });
+  return best;
+}
+function stdSlotItem(s,relS,parts,mode){
+  // Liaison d'une rondelle sur un oblong : en face du trou suivant (mode 'hole', s'il existe), sinon au centre
+  if(mode==='hole'){
+    const f=stdSlotFacing(s,relS,parts),sn=f&&stdHoleSn(f.h,'flush');
+    if(sn)return {rel:f.pt.rel.slice(),sn,off:[0,0,+f.t.toFixed(9)],at:'hole'};
+  }
+  return stdSlotCenter(s,relS);
+}
+function stdAddOnSlots(sp,ownerId,items){
+  // items : [{rel, sn, off}] — une occurrence par oblong, liaison rigide ; une seule étape d'annulation
+  asmEnsure();
+  const owner=asmComp(ownerId||asm.active);items=(items||[]).filter(Boolean);
+  if(!owner||!items.length)return [];
+  asmPush('normalisé « '+sp.name+' » sur '+items.length+' oblong(s)');
+  const c=stdCompFor(sp,owner);
+  const occs=items.map(x=>{
+    const o=asmNewOccObj(c.id,asmOccName(c.id),asmFr0());
+    o.align={src:{path:[],cg:null},dst:{path:x.rel.slice(),cg:null,sn:x.sn},flip:false,rz:0,off:x.off.slice()};
+    owner.occ.push(o);return o;
+  });
+  asmResolve();
+  return occs;
+}
+function stdPartsIn(ms,P){
+  // Pièces du composant actif vues dans la scène (hors pièces normalisées), une par chemin :
+  // [{path, rel, c, m (un maillage : son repère monde), G (faces exactes)}]
+  const n=P.length,seen=new Map();
+  ms.forEach(m=>{
+    const path=m.parent.userData.path,k=path.join('/');
+    if(seen.has(k)||path.length<n||!P.every((q,i)=>path[i]===q))return;
+    const c=asmComp(asmPathComp(path));if(!c||(c.doc&&c.doc.std))return;
+    seen.set(k,{path,rel:path.slice(n),c,m});
+  });
+  const out=[...seen.values()];
+  out.forEach(pt=>{pt.G=asmSnapGeomOf(pt.c);});
+  return out;
+}
+function stdSlotPickRay(parts,ray,maxD){
+  // Oblong dont l'entrée (tournée vers l'œil) est traversée par le rayon avant tout autre obstacle :
+  // un clic dans l'ouverture, sur sa paroi ou juste au bord → {s, S, pt} | null
+  let best=null;
+  parts.forEach(pt=>{
+    const S=pt.G?stdSlots(pt.G):[];if(!S.length)return;
+    const M=pt.m.matrixWorld,inv=new THREE.Matrix4().copy(M).invert();
+    const o=ray.origin.clone().applyMatrix4(inv),d=ray.direction.clone().transformDirection(inv);
+    const O=[o.x,o.y,o.z],D=[d.x,d.y,d.z];
+    S.forEach(s=>{
+      const dn=asmV.dot(D,s.n);if(dn>-1e-6)return;
+      const t=asmV.dot(asmV.sub(s.c,O),s.n)/dn;if(t<0)return;
+      const q=asmV.add(O,asmV.mul(D,t));if(stdSlotLat(s,q)>s.r+0.3)return;
+      const tw=new THREE.Vector3(q[0],q[1],q[2]).applyMatrix4(M).distanceTo(ray.origin);
+      if(tw>maxD+0.6)return;
+      if(!best||tw<best.tw)best={tw,s,S,pt};
+    });
+  });
+  return best;
+}
 const STD_PIN_AT=[['auto','Au plus court (selon le clic)'],['mid','Milieu du cylindre'],['top','Arête haute (entrée)'],['bot','Arête basse (fond)']];
 function stdPinAt(h,p){
   // « Au plus court » : du point cliqué sur la paroi (coordonnées du composant), le plus proche
@@ -20202,11 +20394,31 @@ function stdHoleStart(sp){
   stdHolePick={sp};
   try{renderer.domElement.style.cursor='crosshair';}catch(e){}
   try{faceEl.textContent=stdIsKey(sp)?'« '+sp.name+' » : cliquez le FOND d’une rainure — les rainures identiques de la pièce la recevront aussi. Échap = annuler.'
+    :sp.washer?'« '+sp.name+' » : cliquez un trou (sa paroi) ou un oblong — tous les trous ou oblongs identiques de la pièce la recevront. Échap = annuler.'
     :'« '+sp.name+' » : cliquez un trou (sa paroi) — tous les trous identiques de la pièce le recevront. Échap = annuler.';}catch(e){}
 }
 function stdHoleCancel(){
   stdHolePick=null;try{renderer.domElement.style.cursor='';}catch(e){}
   try{faceEl.textContent='Pose sur des trous annulée.';}catch(e){}
+}
+function stdWasherSlotPick(sp,ms,hits,P){
+  // Rondelle : clic sur un oblong (ouverture, paroi, bord) → posée sur tous les oblongs identiques
+  // de la pièce, chacun en face de son trou suivant ou au centre (stdUi.washerAt) ; true si posé
+  const n=P.length,parts=stdPartsIn(ms,P);
+  const first=hits.find(h=>{const p=h.object.parent.userData.path;if(p.length<n||!P.every((q,i)=>p[i]===q))return false;
+    const c=asmComp(asmPathComp(p));return c&&!(c.doc&&c.doc.std);});
+  const B=stdSlotPickRay(parts,rayc.ray,first?first.distance:Infinity);if(!B)return false;
+  const mode=stdUi.washerAt==='center'?'center':'hole';
+  const items=stdSameSlots(B.S,B.s).map(s=>stdSlotItem(s,B.pt.rel,parts,mode)).filter(Boolean);
+  const occs=stdAddOnSlots(sp,asm.active,items),nH=items.filter(x=>x.at==='hole').length;
+  stdHolePick=null;try{renderer.domElement.style.cursor='';}catch(err){}
+  try{asmBuildSnapshots();}catch(err){}
+  if(occs.length)asmSelId=occs[0].id;
+  asmNotify();
+  const where=mode==='center'?'au centre':nH===items.length?'en face du trou suivant':nH?nH+' en face du trou suivant, '+(items.length-nH)+' au centre (pas de trou dessous)':'au centre (pas de trou dessous)';
+  try{faceEl.textContent=occs.length?'« '+sp.name+' » posée sur '+occs.length+' oblong(s) '+stdF(2*B.s.r)+' × '+stdF(B.s.len)+' de « '+B.pt.c.name+' », '+where+', liaison rigide.':'Pose impossible sur cet oblong.';}catch(err){}
+  const m=document.querySelector('#stdDlg .stdFoot span');if(m)m.textContent=occs.length?'✓ '+occs.length+' × '+sp.name:'';
+  return true;
 }
 function stdHolePickAt(e){
   // asmClick (47) : true si le clic est consommé
@@ -20217,6 +20429,7 @@ function stdHolePickAt(e){
   rayc.ray.copy(asmRay(e));
   const hits=[];ms.forEach(m=>{try{THREE.Mesh.prototype.raycast.call(m,rayc,hits);}catch(err){}});
   hits.sort((a,b)=>a.distance-b.distance);
+  if(sp.washer&&stdWasherSlotPick(sp,ms,hits,P))return true; // rondelle : un oblong passe avant les trous
   for(const hit of hits){
     const path=hit.object.parent.userData.path;
     if(path.length<n||!P.every((q,i)=>path[i]===q))continue; // hors du composant actif
@@ -20240,7 +20453,8 @@ function stdHolePickAt(e){
       const m=document.querySelector('#stdDlg .stdFoot span');if(m)m.textContent=occs.length?'✓ '+occs.length+' × '+sp.name:'';
       return true;
     }
-    const H=stdHoles(Gs),h=stdHoleAt(H,[pl.x,pl.y,pl.z],[ld.x,ld.y,ld.z]);
+    // rondelle : cercles entiers seulement (les bouts d'un oblong raté de peu ne sont pas des trous)
+    const H=stdHoles(Gs).filter(q=>!sp.washer||q.E.full),h=stdHoleAt(H,[pl.x,pl.y,pl.z],[ld.x,ld.y,ld.z]);
     if(!h)continue;
     let at=null;
     if(sp.seat==='mid'){at=stdUi.pinAt||'auto';if(at==='auto')at=stdPinAt(h,[pl.x,pl.y,pl.z]);}
@@ -20255,7 +20469,7 @@ function stdHolePickAt(e){
     const m=document.querySelector('#stdDlg .stdFoot span');if(m)m.textContent=occs.length?'✓ '+occs.length+' × '+sp.name:'';
     return true;
   }
-  try{faceEl.textContent=stdIsKey(sp)?'Pas de rainure ici : cliquez le fond plat d’une rainure (bouts ronds ou droits). Échap = annuler.':'Pas de trou ici : cliquez la paroi d’un trou (simple, lamé ou fraisé). Échap = annuler.';}catch(err){}
+  try{faceEl.textContent=stdIsKey(sp)?'Pas de rainure ici : cliquez le fond plat d’une rainure (bouts ronds ou droits). Échap = annuler.':'Pas de trou ici : cliquez la paroi d’un trou (simple, lamé ou fraisé)'+(sp.washer?' ou un oblong':'')+'. Échap = annuler.';}catch(err){}
   return true;
 }
 /* ── aperçu : silhouette de côté (révolution) ou vue de dessus + côté (clavette) ── */
@@ -20438,6 +20652,14 @@ function stdDlg(edit,cat){
       s.onchange=()=>{stdUi.pinAt=s.value;save();};
       l.appendChild(s);form.appendChild(l);
     }
+    if(sp&&sp.washer&&!edit){
+      // rondelle : où elle va sur un trou oblong
+      const l=document.createElement('label');l.textContent='Sur un oblong (Sur des trous / oblongs)';
+      const s=document.createElement('select');s.dataset.k='washerAt';
+      STD_WASHER_AT.forEach(([v,t])=>{const o=document.createElement('option');o.value=v;o.textContent=t;if(v===(stdUi.washerAt||'hole'))o.selected=true;s.appendChild(o);});
+      s.onchange=()=>{stdUi.washerAt=s.value;save();};
+      l.appendChild(s);form.appendChild(l);
+    }
     const inf=document.createElement('div');inf.className='stdInfo';inf.textContent=sp?(sp.norm+' · '+sp.info):'';form.appendChild(inf);
     // engrenages : contrôles de la pièce (alertes sans blocage), ou motif du refus
     const chk=(cls,txt)=>{const d=document.createElement('div');d.className='stdChk'+(cls?' '+cls:'');d.textContent=txt;form.appendChild(d);};
@@ -20448,9 +20670,9 @@ function stdDlg(edit,cat){
     prev.innerHTML=sp?stdSvg(sp):'';
     if(edit){bHole.disabled=bIns.disabled=!sp;bHole.onclick=()=>apply(sp,true);bIns.onclick=()=>apply(sp,false);return;}
     bIns.disabled=!sp;bHole.disabled=!sp||(!sp.seat&&!stdIsKey(sp));
-    bHole.textContent=stdIsKey(sp)?'🎯 Dans une rainure…':'🎯 Sur des trous…';
+    bHole.textContent=stdIsKey(sp)?'🎯 Dans une rainure…':sp&&sp.washer?'🎯 Sur des trous / oblongs…':'🎯 Sur des trous…';
     bHole.title=stdIsKey(sp)?'Cliquez le fond d’une rainure : la clavette s’y pose (centre de face ou centre du cercle), les rainures identiques aussi, en liaison rigide':'Cliquez un trou dans la vue : tous les trous identiques (simple, lamé, fraisé) reçoivent la pièce, en liaison rigide';
-    bHole.onclick=()=>{if(sp){msg.textContent=stdIsKey(sp)?'Cliquez le fond d’une rainure…':'Cliquez un trou dans la vue…';stdHoleStart(sp);}};
+    bHole.onclick=()=>{if(sp){msg.textContent=stdIsKey(sp)?'Cliquez le fond d’une rainure…':sp.washer?'Cliquez un trou ou un oblong dans la vue…':'Cliquez un trou dans la vue…';stdHoleStart(sp);}};
     bIns.onclick=()=>{
       if(!sp)return;
       const o=stdInsert(sp);
