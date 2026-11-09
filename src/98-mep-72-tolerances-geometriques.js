@@ -42,7 +42,7 @@
   function mepGdtHost(sh,d){
     if(!d.on)return null;
     const t=sh.dims.find(x=>x.id===d.on);
-    return t&&t!==d&&t.kind!=='gdt'&&t.kind!=='datum'?t:null;
+    return t&&t!==d&&!mepIsTol(t.kind)?t:null;
   }
   /* ancrages en mm papier : {a (pointe / pied), b (cadre / carré), v1, u (direction imposée)} */
   function mepGdtWorld(sh,d){
@@ -148,6 +148,7 @@
   }
   const mepGdtBoxes=new WeakMap(); // cote → cadre dessiné (mm papier) : clic dedans = la saisir
   function mepDrawGdt(draw,d,sh,L,T,AR){
+    if(d.kind==='rough'){mepDrawRough(draw,d,sh,L,T,AR);return;} // 98-mep-73
     const w=mepGdtWorld(sh,d);if(!w)return;
     const H=mepGdtH(),F=Object.assign({},L,{class:L.class+' mepGdtFill'});
     if(d.kind==='gdt'){
@@ -192,7 +193,7 @@
   // une cote sous le clic (pas une tolérance), pour s'y accrocher
   function mepGdtDimAt(sh,P,kinds){
     const d=mepDimAt(sh,P.x,P.y);
-    return d&&d.kind!=='gdt'&&d.kind!=='datum'&&(!kinds||kinds.indexOf(d.kind)>=0)?d:null;
+    return d&&!mepIsTol(d.kind)&&(!kinds||kinds.indexOf(d.kind)>=0)?d:null;
   }
   function mepGdtNew(){
     const l=mepGdtLast;
@@ -204,13 +205,14 @@
       mepDimMoveTo(sh,D,P);
       const d=Object.assign({},D,{id:mepUid('d')});delete d.__ghost;
       mepDimClearSelection();mepSt.selDim=d.id;mepSt.sel=null;
-      mepEdit(tool==='gdt'?'tolérance géométrique':'référence '+d.l,()=>{sh.dims.push(d);});
+      mepEdit(tool==='gdt'?'tolérance géométrique':tool==='rough'?'rugosité':'référence '+d.l,()=>{sh.dims.push(d);});
       mepSideShow();
+      if(tool==='rough'){mepStatus('Rugosité posée — paramètre, valeur et symbole dans le panneau. Cliquez une autre arête pour la suivante.');return;}
       mepStatus(tool==='gdt'?'Cadre posé — réglez le symbole, la valeur et les références dans le panneau.':'Référence '+d.l+' posée — la suivante sera '+mepGdtNextLetter()+'.');
       return;
     }
     // accroché à une cote : posé tout de suite
-    const host=tool==='gdt'?mepGdtDimAt(sh,P,['len','dist','dia','rad','hole','ang']):mepGdtDimAt(sh,P,['len','dist']);
+    const host=tool==='rough'?null:tool==='gdt'?mepGdtDimAt(sh,P,['len','dist','dia','rad','hole','ang']):mepGdtDimAt(sh,P,['len','dist']);
     if(host){
       if(sh.dims.some(x=>x.kind===tool&&x.on===host.id)){mepStatus(tool==='gdt'?'Cette cote a déjà un cadre de tolérance.':'Cette cote porte déjà une référence.');return;}
       const d={id:mepUid('d'),kind:tool,vid:host.vid,vid2:null,on:host.id};
@@ -227,9 +229,15 @@
       return;
     }
     const S=mepSnapLocal(sh,P);
+    if(!S&&tool==='rough'){mepStatus('Rugosité : cliquez l’arête de la surface, puis le côté où poser le symbole (hors matière).');return;}
     if(!S){mepStatus(tool==='gdt'?'Tolérance : cliquez une arête (pointe de la flèche) ou une cote.':'Référence : cliquez une arête ou une cote.');return;}
     const off=12/S.v.scale;
     mepSt.selDim=null;
+    if(tool==='rough'){
+      mepSt.dim={kind:'rough',vid:S.v.id,vid2:null,a:S.q,b:{x:S.q.x,y:S.q.y-2/S.v.scale},r:mepRghNew(),__ghost:true};
+      mepStatus('Rugosité : déplacez la souris du côté hors matière de l’arête et cliquez (loin de l’arête : ligne de repère) — Échap annule.');
+      mepRender();return;
+    }
     mepSt.dim=tool==='gdt'
       ?{kind:'gdt',vid:S.v.id,vid2:null,a:S.q,b:{x:S.q.x+off,y:S.q.y-off},g:mepGdtNew(),__ghost:true}
       :{kind:'datum',vid:S.v.id,vid2:null,a:S.q,b:{x:S.q.x,y:S.q.y-off},l:mepGdtNextLetter(),__ghost:true};
@@ -238,6 +246,7 @@
   }
   /* ----- panneau ----- */
   function mepSideGdt(root,d,sh){
+    if(d.kind==='rough'){mepSideRough(root,d,sh);return;} // 98-mep-73
     const h=document.createElement('h4');
     h.textContent=d.kind==='gdt'?'Tolérance géométrique (ISO 1101)':'Référence (ISO 5459)';
     root.appendChild(h);

@@ -158,7 +158,7 @@
       mepPtRefresh(sh,v1,d.o,pr);d.a=d.b=d.o;(d.pts||[]).forEach(q=>mepPtRefresh(sh,v1,q,pr));
       return;
     }
-    if(d.kind!=='dist'&&d.kind!=='note'&&!((d.kind==='gdt'||d.kind==='datum')&&d.a))return;
+    if(d.kind!=='dist'&&d.kind!=='note'&&!(mepIsTol(d.kind)&&d.a))return;
     const pr=d.kind==='dist'?(d.orient==='h'?'v':(d.orient==='v'?'h':null)):null;
     // distance oblique : pas de migration ambiguë, mais les références posées restent suivies
     const ok=q=>!!(q&&(pr||d.kind!=='dist'||q.hint));
@@ -167,7 +167,7 @@
   }
   function mepDimWorld(sh,d){
     // ancrages → mm papier
-    if((d.kind==='gdt'||d.kind==='datum'))return mepGdtWorld(sh,d); // tolérance géométrique, référence (98-mep-72)
+    if(mepIsTol(d.kind))return mepGdtWorld(sh,d); // tolérance géométrique, référence (98-mep-72)
     const v1=mepView(sh,d.vid);
     if(!v1)return null;
     try{mepDimPtsRefresh(sh,d);}catch(e){} // points accrochés aux traits d'axe : suivent l'axe
@@ -1587,7 +1587,7 @@
   function mepDrawDim(mk,d,sh){
     const w=mepDimWorld(sh,d);
     if(!w)return;
-    const gdt=(d.kind==='gdt'||d.kind==='datum');
+    const gdt=mepIsTol(d.kind);
     const val=gdt?0:(d.value!=null?d.value:mepDimMeasure(sh,d));
     let txt=gdt?'':mepDimText(d,val);
     const sel=mepSt.selDim===d.id||!!(mepSt.lot&&mepSt.lot.dims.has(d.id));

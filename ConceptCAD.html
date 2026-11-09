@@ -122,7 +122,7 @@ input[type=range]{accent-color:var(--primary);width:100%}
 /* Écran de démarrage (V0.23.15) — affiché AVANT l'analyse du gros script, pour masquer
    l'ancienne interface brute. Animations en transform/opacity seulement : elles tournent
    sur le compositeur même quand le fil principal est bloqué par le chargement. */
-#mfSplash{position:fixed;inset:0;z-index:2147483000;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:26px;overflow:hidden;cursor:pointer;color:#f5f5f7;font-family:-apple-system,'SF Pro Display',Inter,'Segoe UI',sans-serif;background:radial-gradient(900px 520px at 50% 42%,#14213a 0%,#0d0f14 62%,#08090c 100%);animation:mfsOut .7s cubic-bezier(.4,0,.2,1) 9.3s forwards}
+#mfSplash{position:fixed;inset:0;z-index:2147483000;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:26px;overflow:hidden;cursor:pointer;color:#f5f5f7;font-family:-apple-system,'SF Pro Display',Inter,'Segoe UI',sans-serif;background:radial-gradient(900px 520px at 50% 42%,#14213a 0%,#0d0f14 62%,#08090c 100%);animation:mfsOut .7s cubic-bezier(.4,0,.2,1) 5.3s forwards}
 #mfSplash.out{animation:mfsOut .45s cubic-bezier(.4,0,.2,1) forwards}
 #mfSplash .grid{position:absolute;inset:-60px;background-image:linear-gradient(rgba(120,160,255,.07) 1px,transparent 1px),linear-gradient(90deg,rgba(120,160,255,.07) 1px,transparent 1px);background-size:44px 44px;-webkit-mask-image:radial-gradient(closest-side at 50% 45%,#000 0%,transparent 100%);mask-image:radial-gradient(closest-side at 50% 45%,#000 0%,transparent 100%);animation:mfsGrid 15s linear infinite,mfsFade 1.6s ease-out both}
 #mfSplash .mark{position:relative;width:118px;height:118px;animation:mfsMark 1.1s cubic-bezier(.2,.9,.25,1.15) both}
@@ -130,6 +130,7 @@ input[type=range]{accent-color:var(--primary);width:100%}
 #mfSplash .glow{position:absolute;inset:-40px;border-radius:50%;background:radial-gradient(closest-side,rgba(10,132,255,.38),transparent 70%);animation:mfsPulse 3s ease-in-out 1s infinite,mfsFade 1s .6s ease-out both}
 #mfSplash .sq{position:absolute;inset:0;border-radius:26px;border:3px solid rgba(245,245,247,.92);overflow:hidden;box-shadow:0 0 0 1px rgba(255,255,255,.04),0 18px 60px rgba(10,132,255,.25)}
 #mfSplash .half{position:absolute;left:0;top:0;bottom:0;width:50%;background:linear-gradient(160deg,#3aa0ff,#0a84ff 45%,#5e5ce6);transform-origin:left center;animation:mfsHalf .9s cubic-bezier(.7,0,.2,1) .55s both}
+#mfSplash .half2{position:absolute;right:0;top:0;bottom:0;width:50%;background:linear-gradient(160deg,#ffa53a,#ff8a00 55%,#f06a00);transform-origin:right center;animation:mfsHalf .9s cubic-bezier(.7,0,.2,1) .55s both}
 #mfSplash .cut{position:absolute;left:50%;top:-10%;bottom:-10%;width:3px;margin-left:-1.5px;background:rgba(245,245,247,.92);transform-origin:top;animation:mfsCut .5s cubic-bezier(.6,0,.2,1) .4s both}
 #mfSplash .shine{position:absolute;inset:-20%;background:linear-gradient(105deg,transparent 40%,rgba(255,255,255,.35) 50%,transparent 60%);transform:translateX(-120%);animation:mfsShine 3.2s ease-in-out 1.8s infinite}
 #mfSplash .word{display:flex;font-size:3.1rem;font-weight:700;letter-spacing:-.02em;line-height:1}
@@ -141,7 +142,7 @@ input[type=range]{accent-color:var(--primary);width:100%}
 #mfSplash .by::before,#mfSplash .by::after{content:'';width:34px;height:1px;background:linear-gradient(90deg,transparent,rgba(138,136,255,.7));transform-origin:right;animation:mfsCutX .7s cubic-bezier(.6,0,.2,1) 2.9s both}
 #mfSplash .by::after{background:linear-gradient(90deg,rgba(138,136,255,.7),transparent);transform-origin:left}
 #mfSplash .bar{position:absolute;bottom:64px;width:220px;height:3px;border-radius:3px;background:rgba(255,255,255,.08);overflow:hidden;animation:mfsFade .6s 1.4s both}
-#mfSplash .bar i{position:absolute;inset:0;background:linear-gradient(90deg,#0a84ff,#8a88ff);transform-origin:left;animation:mfsProg 9.3s linear both}
+#mfSplash .bar i{position:absolute;inset:0;background:linear-gradient(90deg,#0a84ff,#8a88ff);transform-origin:left;animation:mfsProg 5.3s linear both}
 #mfSplash .foot{position:absolute;bottom:30px;display:flex;gap:14px;font-size:.72rem;color:#6e6e73;letter-spacing:.06em;animation:mfsFade .6s 2.4s both}
 @keyframes mfsOut{to{opacity:0;transform:scale(1.04);visibility:hidden}}
 @keyframes mfsFade{from{opacity:0}}
@@ -166,7 +167,7 @@ input[type=range]{accent-color:var(--primary);width:100%}
 <body>
 <div id="mfSplash" role="presentation" title="Cliquer pour passer">
   <div class="grid"></div>
-  <div class="mark"><div class="glow"></div><div class="halo"></div><div class="sq"><div class="half"></div><div class="cut"></div><div class="shine"></div></div></div>
+  <div class="mark"><div class="glow"></div><div class="halo"></div><div class="sq"><div class="half"></div><div class="half2"></div><div class="cut"></div><div class="shine"></div></div></div>
   <div class="word" aria-label="ConceptCAD"></div>
   <div class="tag">CAO · FAO · Mise en plan</div>
   <div class="by" aria-label="Fred Creation"><b>Fred Creation</b></div>
@@ -378,7 +379,7 @@ input[type=range]{accent-color:var(--primary);width:100%}
  * peut changer sans rien casser. CACHE_VER (parcours FAO) reste indépendant.
  */
 
-const APP_VER='V0.75.0';
+const APP_VER='V0.76.0';
 try{console.log('[ConceptCAD] version '+APP_VER);}catch(e){}
 try{var mfSv=document.getElementById('mfSplashVer');if(mfSv)mfSv.textContent=APP_VER;}catch(e){} // écran de démarrage
 
@@ -69119,6 +69120,12 @@ function mfFiTable(){
   F('Tolérances/Tolérance','Tolérance géométrique','Pose un cadre de tolérance ISO 1101 (planéité, perpendicularité, localisation…) avec sa flèche sur une arête, ou sous la valeur d’une cote.',['Cliquez l’arête (ou une cote)','Placez le cadre'],BLOC()+NUM(58,52,'1'),BLOC()+ficAr(64,30,58,40,GR,.9)+CADRE(46,20));
   const TRI=(x,y)=>ficD('M'+(x-4)+' '+y+'L'+(x+4)+' '+y+'L'+x+' '+(y-6)+'Z','#111827',1,null,'#111827')+ficL(x,y-6,x,y-16,'#111827',1)+ficR(x-6,y-28,12,12,'#111827',1)+ficT(x,y-19.6,'A',8,'#111827');
   F('Tolérances/Référence','Référence','Pose une lettre de référence ISO 5459 (A, B, C…) : triangle sur une arête, ou au bout d’une cote pour un axe ou un plan médian.',['Cliquez l’arête (ou une cote)','Placez la lettre'],BLOC()+NUM(36,40,'1'),BLOC()+TRI(36,40));
+  // V0.76.0 : rugosité (98-mep-73) et filigranes (98-mep-40)
+  const RGH=(x,y)=>ficD('M'+(x-3)+' '+(y-5.2)+'L'+x+' '+y+'L'+(x+6.5)+' '+(y-11.3)+'L'+(x+28)+' '+(y-11.3),'#111827',1)+ficL(x-3,y-5.2,x+3,y-5.2,'#111827',1)+ficT(x+8,y-4.2,'Ra 1,6',6,'#111827','start');
+  F('Tolérances/Rugosité','Rugosité','Pose le symbole d’état de surface sur une arête, du côté hors matière, avec sa valeur (Ra 1,6…) lisible du bas ou de la droite du plan. Un côté qui se lirait à l’envers passe par une ligne de repère.',['Cliquez l’arête de la surface','Cliquez du côté hors matière'],BLOC()+NUM(36,40,'1'),BLOC()+RGH(32,40));
+  const WM=(txt,c)=>'<text x="50" y="44" transform="rotate(-35 50 40)" font-family="system-ui,sans-serif" font-size="'+(txt.length>8?8:12)+'" font-weight="800" text-anchor="middle" fill="'+c+'" opacity=".45">'+txt+'</text>';
+  [['Bon pour fab.','BON POUR FAB.','#1f9d55','« BON POUR FABRICATION »'],['Annulé','ANNULÉ','#e03131','« ANNULÉ »'],['Plan interne','PLAN INTERNE','#2d6cdf','« PLAN INTERNE »'],['Autre…','CONFIDENTIEL','#7a7f87','le texte de votre choix (« / » passe à la ligne)']].forEach(([k,t,c,d])=>
+    F('Filigrane/'+k,'Filigrane','Écrit '+d+' en grandes lettres transparentes sur la planche, en travers. Glissez-le ; angle, taille, 1 ou 2 lignes, couleur et opacité dans le panneau.',['Cliquez le bouton','Glissez-le où vous voulez'],SHEET(),SHEET()+WM(t,c)));
   const OUT=(ext,txt,lb)=>F('Sortie/'+ext,'Exporter en '+ext,txt,[],SHEET()+VF(34,24),DOC(34,14,ext,OR),null,'La planche',lb||'Le fichier');
   OUT('SVG','Crée une image vectorielle de la planche, nette à toutes les tailles.');
   OUT('DXF','Crée un fichier DXF pour les logiciels de dessin, avec des calques (contours, cotes, axes…).');
@@ -69757,7 +69764,20 @@ function mfCss(){
   '.mfGrp{display:flex;flex-direction:column;align-items:stretch;padding:0 4px;flex:none;border-right:1px solid var(--border)}',
   '.mfGrp:last-child{border-right:none}',
   '.mfGrpB{display:flex;gap:2px;flex:1}',
-  '.mfGrpT{font-size:.6rem;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);text-align:center;margin-top:2px}',
+  '.mfGrpT{font-size:.6rem;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);text-align:center;margin-top:2px;background:none;border:1px solid transparent;border-radius:5px;padding:0 4px;cursor:pointer;font-family:inherit;line-height:1.5}',
+  '.mfGrpT::after{content:" ▾";font-size:.85em;opacity:.7}',
+  '.mfGrpT:hover{background:rgba(127,127,127,.16);color:var(--text)}',
+  '.mfRb.mfOff{display:none!important}',
+  '.mfGrpPop{min-width:240px}',
+  '.mfGrpRow{display:flex;align-items:center;gap:2px}',
+  '.mfPop .mfGrpRow .mfGrpGo{flex:1}',
+  '.mfGrpGo i{font-style:normal;display:flex;width:22px;justify-content:center}',
+  '.mfGrpGo span{flex:1}',
+  '.mfGrpGo kbd{font:600 .7rem ui-monospace,monospace;padding:1px 6px;border:1px solid var(--border);border-radius:4px;opacity:.85}',
+  '.mfPop .mfGrpRow .mfGrpPin{width:30px;flex:none;justify-content:center;padding:6px 0;filter:grayscale(1);opacity:.35}',
+  '.mfPop .mfGrpRow .mfGrpPin.on{filter:none;opacity:1;background:none;color:inherit}',
+  '.mfPop .mfGrpRow .mfGrpPin:hover{background:rgba(127,127,127,.2);color:inherit}',
+  '.mfGrpNote{font-size:.68rem;color:var(--muted);padding:6px 10px 3px;border-top:1px solid var(--border);margin-top:4px}',
   '.mfRb{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px;min-width:46px;padding:3px 4px;white-space:nowrap;border:1px solid transparent;background:none;border-radius:8px;font-size:.66rem;line-height:1.1}',
   '.mfRb i{font-style:normal;font-size:1.25rem;line-height:1;display:flex;height:24px;align-items:center;opacity:.92}',
   '.mfRb:hover i{color:var(--primary);opacity:1}',
@@ -69850,7 +69870,7 @@ function mfCss(){
   '#skSetMenu #skSet3D{align-self:stretch;margin-top:4px;background:none;border-color:var(--border)}',
   /* --- bandeaux ADAPTATIFS à la largeur d'écran --- */
   '@media (max-width:1700px){.mfRb{min-width:42px;font-size:.62rem}.mfRb i svg{width:20px;height:20px}body.ui-modern.mf-sk #skToolbar .tool,body.ui-modern.mf-sk #skToolbar .con{min-width:33px!important}body.ui-modern.mf-sk .mfSkLab{font-size:.54rem}}',
-  '@media (max-width:1500px){.mfGrpT{display:none}.mfRb{min-width:38px;padding:3px 2px}body.ui-modern.mf-sk .mfSkLab{display:none!important}body.ui-modern.mf-sk #skToolbar .tool,body.ui-modern.mf-sk #skToolbar .con,body.ui-modern.mf-sk #skToolbar #skZoomIn,body.ui-modern.mf-sk #skToolbar #skZoomOut,body.ui-modern.mf-sk #skToolbar #skFit,body.ui-modern.mf-sk #skToolbar #skRefs,body.ui-modern.mf-sk #skToolbar #skParams,body.ui-modern.mf-sk #skToolbar #skUndo,body.ui-modern.mf-sk #skToolbar #skRedo{min-width:32px!important;padding:5px 3px!important}}',
+  '@media (max-width:1500px){.mfRb{min-width:38px;padding:3px 2px}body.ui-modern.mf-sk .mfSkLab{display:none!important}body.ui-modern.mf-sk #skToolbar .tool,body.ui-modern.mf-sk #skToolbar .con,body.ui-modern.mf-sk #skToolbar #skZoomIn,body.ui-modern.mf-sk #skToolbar #skZoomOut,body.ui-modern.mf-sk #skToolbar #skFit,body.ui-modern.mf-sk #skToolbar #skRefs,body.ui-modern.mf-sk #skToolbar #skParams,body.ui-modern.mf-sk #skToolbar #skUndo,body.ui-modern.mf-sk #skToolbar #skRedo{min-width:32px!important;padding:5px 3px!important}}',
   '@media (max-width:1200px){.mfRb{font-size:0;min-width:34px;gap:0}.mfRb i{height:22px}.mfSearch{max-width:200px}.mfQuick button{padding:4px 6px}}',
   '@media (max-width:900px){.mfSearch{display:none!important}.mfWs button{padding:4px 9px}}',
   /* cube de vue */
@@ -69982,6 +70002,7 @@ const MF_IC={
   pAxHole:'<circle cx="12" cy="12" r="6"/><path d="M12 2.5v4M12 9.5v5M12 17.5v4M2.5 12h4M9.5 12h5M17.5 12h4"/>',
   pAxPitch:'<circle cx="12" cy="12" r="8" stroke-dasharray="4 1.6 1 1.6"/><circle cx="12" cy="4" r="1.8"/><circle cx="18.9" cy="16" r="1.8"/><circle cx="5.1" cy="16" r="1.8"/>',
   pGdt:'<path d="M2 7.5h20v9H2z"/><path d="M9 7.5v9M15.5 7.5v9"/><circle cx="5.5" cy="12" r="1.7"/><path d="M5.5 9.3v5.4M2.8 12h5.4"/><path d="M11 14l2.6-4"/>',
+  pRough:'<path d="M3 13l4 7 7-16h7"/><path d="M5.3 16.9h4.1"/><path d="M14 9.5h7" stroke-width="1.1"/>',
   pDatum:'<path d="M7 2.5h10v9H7z"/><path d="M12 11.5v5"/><path d="M7 21h10l-5-4.5z" fill="currentColor"/><text x="12" y="9.6" font-size="6.4" font-family="sans-serif" font-weight="700" text-anchor="middle" fill="currentColor" stroke="none">A</text>',
   pAxSym:'<path d="M12 2v3.5M12 8v3M12 13.5v3M12 19v3"/><path d="M9 6L4 12l5 6zM15 6l5 6-5 6z"/>',
   pSvg:'<path d="M6 3h9l3 3v15H6z"/><text x="12" y="17.6" font-size="6.2" font-family="sans-serif" font-weight="700" text-anchor="middle" fill="currentColor" stroke="none">SVG</text>',
@@ -70034,7 +70055,9 @@ function mfRibbon(){
       b.onclick=()=>{mfCloseMenus();typeof act==='function'?act():mfClick(act);};
       if(src&&src._ctx)b.addEventListener('contextmenu',e=>{e.preventDefault();e.stopPropagation();mfCloseMenus();src._ctx();}); // clic droit du bouton d'origine (ƒx : liste complète)
       bb.appendChild(b);});
-    g.appendChild(bb);const t=document.createElement('div');t.className='mfGrpT';t.textContent=title;g.appendChild(t);rb.appendChild(g);};
+    g.appendChild(bb);const t=document.createElement('button');t.type='button';t.className='mfGrpT';t.textContent=title;
+    t.title='Toutes les fonctions « '+title+' » : les lancer, voir leur raccourci, choisir celles affichées dans le bandeau (📌)';
+    t.onclick=e=>{e.stopPropagation();mfGrpMenu(g,t);};g.appendChild(t);rb.appendChild(g);};
   MF_CAO.forEach(([t,bs])=>grp(t,bs,'mfCao'));
   // V0.6.0 / V0.6.1 : composants (46/47) — seul groupe CAO visible en mode Placer (mfAsmG) ;
   // en modélisation, seul le bouton « Assembler » (qui s'appelle « Modéliser » en assemblage)
@@ -70082,8 +70105,14 @@ function mfRibbon(){
     ['pNote','Note',()=>mepTool('note'),'Note à flèche : cliquez la pointe, placez le texte, saisissez-le (texte libre, plusieurs lignes)'],
     ['pOrdX','Ordonnées X',()=>mepTool('ordx'),'Cotation d’ordonnées suivant X : origine « 0 », puis les points — valeurs alignées qui se déplacent ensemble (Entrée termine)'],
     ['pOrdY','Ordonnées Y',()=>mepTool('ordy'),'Cotation d’ordonnées suivant Y : origine « 0 », puis les points — valeurs alignées qui se déplacent ensemble (Entrée termine)']],'mfPlan');
+  // V0.76.0 : filigranes (98-mep-40) — un bouton par texte type
+  grp('Filigrane',[['pText','Bon pour fab.',()=>{try{mepSetActive(true);mepWmPlace('bpf');}catch(e){}},'Filigrane « BON POUR FABRICATION » au centre de la planche, en diagonale : glissez-le, réglez angle, taille, couleur et opacité dans le panneau'],
+    ['pText','Annulé',()=>{try{mepSetActive(true);mepWmPlace('annule');}catch(e){}},'Filigrane « ANNULÉ » au centre de la planche, en diagonale'],
+    ['pText','Plan interne',()=>{try{mepSetActive(true);mepWmPlace('interne');}catch(e){}},'Filigrane « PLAN INTERNE » au centre de la planche, en diagonale'],
+    ['pText','Autre…',()=>{try{mepSetActive(true);mepWmPlace('autre');}catch(e){}},'Filigrane avec le texte de votre choix']],'mfPlan');
   grp('Tolérances',[['pGdt','Tolérance',()=>mepTool('gdt'),'Tolérance géométrique ISO 1101 : cliquez une arête (pointe de la flèche) puis placez le cadre — ou cliquez une cote pour mettre le cadre sous sa valeur'],
-    ['pDatum','Référence',()=>mepTool('datum'),'Référence ISO 5459 (A, B, C…) : cliquez une arête puis placez la lettre — ou cliquez une cote pour un axe ou un plan médian']],'mfPlan');
+    ['pDatum','Référence',()=>mepTool('datum'),'Référence ISO 5459 (A, B, C…) : cliquez une arête puis placez la lettre — ou cliquez une cote pour un axe ou un plan médian'],
+    ['pRough','Rugosité',()=>mepTool('rough'),'État de surface (rugosité) : cliquez l’arête de la surface, puis le côté hors matière — symbole perpendiculaire à l’arête, valeur « Ra 1,6 » lisible du bas ou de la droite']],'mfPlan');
   const mepAx=m=>{try{mepSetActive(true);mepSetAxisMode(m);}catch(e){}};
   grp('Axes',[['pAxHole','Trou',()=>mepAx('hole'),'Axes (trou) : croix d’axes des trous cliqués'],
     ['pAxPitch','Cercle',()=>mepAx('pitch'),'Axes (cercle) : cercle primitif des trous répartis'],
@@ -70092,7 +70121,55 @@ function mfRibbon(){
     ['pDxf','DXF',()=>{try{mepExportDxf();}catch(e){}},'Exporter la planche en DXF R12 (calques CONTOUR, CACHE, AXE, COTES, CADRE…)'],
     ['pPdf','PDF',()=>{try{mepPrint(true);}catch(e){}},'PDF vectoriel au format exact de la planche (« Enregistrer au format PDF »)'],
     ['print','Imprimer',()=>{try{mepPrint();}catch(e){}},'Imprimer la planche']],'mfPlan');
+  mfRbPinApply(rb);
   return rb;
+}
+/* V0.76.0 : groupes du ruban comme Fusion 360 — le nom du groupe est un bouton (▾) qui liste
+   toutes ses fonctions avec leur raccourci clavier (lecture seule pour l'instant) ; l'épingle 📌
+   de chaque ligne choisit si l'icône reste aussi dans le bandeau. Par défaut les fonctions
+   courantes sont dans le bandeau, les autres seulement dans la liste (place gagnée). Le choix
+   est gardé par navigateur (minifusion_rbpins : { "Groupe/Libellé": 1 affichée | 0 dans la liste }). */
+const MF_RB_HIDE=new Set(['Créer/Balayage','Créer/Clavette','Créer/Corps',
+  'Construire/Axe','Construire/Point','Construire/Repère',
+  'Modifier/Face','Modifier/Dépouille','Modifier/Filetage','Modifier/Scinder',
+  'Ensembles/Déplacer','Ensembles/Échelle',
+  'Fichier/Dériver','Fichier/STL','Fichier/OBJ','Fichier/FreeCAD',
+  'Vues/ISO','Vues/Caméra','Vues/Auxiliaire','Vues/Coupe locale','Vues/DXF',
+  'Dessin/Point','Dessin/Ajuster','Dessin/Texte',
+  'Cotes/Perçages auto','Cotes/Ordonnées X','Cotes/Ordonnées Y','Filigrane/Plan interne','Filigrane/Autre…']);
+// raccourcis existants (90-10-selection-mesure : E R H F C M ; 98-mep-95 : Ctrl+P)
+const MF_RB_KEYS={'Créer/Extrusion':'E','Créer/Révolution':'R','Créer/Perçage':'H','Modifier/Congé':'F','Modifier/Chanfrein':'C',
+  'Ensembles/Répétition':'M','Sortie/Imprimer':'Ctrl+P','Sortie/PDF':'Ctrl+P'};
+function mfRbPins(){try{return JSON.parse(mfLS('minifusion_rbpins')||'{}')||{};}catch(e){return {};}}
+function mfRbShown(fi,pins){pins=pins||mfRbPins();return fi in pins?!!pins[fi]:!MF_RB_HIDE.has(fi);}
+function mfRbPinApply(root){const pins=mfRbPins();
+  (root||document).querySelectorAll('#mfRibbon .mfRb,.mfRb').forEach(b=>{if(b.dataset.fi)b.classList.toggle('mfOff',!mfRbShown(b.dataset.fi,pins));});}
+function mfRbPinSet(fi,on){const pins=mfRbPins();
+  if(on===!MF_RB_HIDE.has(fi))delete pins[fi];else pins[fi]=on?1:0;
+  mfLS('minifusion_rbpins',JSON.stringify(pins));mfRbPinApply();}
+function mfGrpMenu(g,anchor){
+  mfCloseMenus();
+  const p=document.createElement('div');p.className='mfPop mfTmp mfGrpPop';
+  const h=document.createElement('div');h.className='mfPopT';h.textContent=anchor.textContent;p.appendChild(h);
+  g.querySelectorAll('.mfGrpB .mfRb').forEach(b=>{
+    if(getComputedStyle(b).display==='none'&&!b.classList.contains('mfOff'))return; // masquée par le mode (assemblage…)
+    const fi=b.dataset.fi||'',lab=fi.slice(fi.indexOf('/')+1),k=MF_RB_KEYS[fi];
+    const row=document.createElement('div');row.className='mfGrpRow';row.dataset.fi=fi;
+    const go=document.createElement('button');go.type='button';go.className='mfGrpGo';go.title=b.title;go.dataset.fi=fi; // même fiche illustrée au survol que l'icône du ruban
+    
+    go.innerHTML='<i>'+((b.querySelector('i')||{}).innerHTML||'')+'</i><span>'+lab.replace(/[<&]/g,c=>c==='<'?'&lt;':'&amp;')+'</span>'+(k?'<kbd>'+k+'</kbd>':'');
+    go.onclick=e=>{e.stopPropagation();p.remove();b.click();};
+    const pin=document.createElement('button');pin.type='button';pin.className='mfGrpPin';
+    const sync=()=>{const on=mfRbShown(fi);pin.classList.toggle('on',on);pin.textContent='📌';
+      pin.title=on?'Affichée dans le bandeau — cliquer pour la ranger seulement dans cette liste':'Seulement dans cette liste — cliquer pour l’afficher aussi dans le bandeau';};
+    pin.onclick=e=>{e.stopPropagation();mfRbPinSet(fi,!mfRbShown(fi));sync();};sync();
+    row.appendChild(go);row.appendChild(pin);p.appendChild(row);});
+  const n=document.createElement('div');n.className='mfGrpNote';n.textContent='📌 = icône affichée dans le bandeau · raccourcis non modifiables pour l’instant';p.appendChild(n);
+  document.body.appendChild(p);
+  const r=anchor.getBoundingClientRect();p.style.top=(r.bottom+4+window.scrollY)+'px';
+  p.style.left=Math.max(6,Math.min(window.innerWidth-p.offsetWidth-8,r.left))+'px';
+  setTimeout(()=>{const off=ev=>{if(!p.contains(ev.target)){p.remove();document.removeEventListener('pointerdown',off,true);}};document.addEventListener('pointerdown',off,true);},0);
+  return p;
 }
 let mfWsCur=null;
 const mfWsSel={cao:null,fao:null};
@@ -74308,6 +74385,44 @@ function filmFrame(){
     if(f==='perso'){e.k='c'+Date.now().toString(36);e.lab='CHAMP';}
     return mepSkEnt(sk,mepSkStyled(e));
   }
+  /* V0.76.0 : FILIGRANES — « Bon pour fabrication », « Annulé », « Plan interne » ou texte libre, en grandes
+     lettres transparentes. C'est un texte de l'esquisse de planche (wm:1) : on le glisse où l'on veut, on règle
+     son angle (horizontal, en travers…), sa taille, sa couleur et sa transparence dans le panneau. Posé au
+     centre de la planche, le long de sa diagonale, à la taille qui la couvre aux deux tiers. */
+  const MEP_WM_CW=0.8; // largeur d'une lettre / corps (capitales grasses espacées)
+  const MEP_WM_TYPES={bpf:['BON POUR FABRICATION','#1f9d55'],annule:['ANNULÉ','#e03131'],interne:['PLAN INTERNE','#2d6cdf']};
+  // rangées d'un filigrane (« \n » dans le texte) ; interligne 1,15 corps, bloc centré sur l'ancre
+  const MEP_WM_LH=1.15;
+  function mepWmLines(v){return String(v==null?'':v).split('\n');}
+  function mepWmLongest(v){return Math.max(1,...mepWmLines(v).map(l=>l.length));}
+  // coupe en 2 rangées à l'espace le plus proche du milieu (ou recolle en une)
+  function mepWmSplit(s){s=String(s||'');if(s.indexOf('\n')>=0)return s.replace(/\s*\n\s*/g,' ');
+    const m=s.length/2;let best=-1;for(let i=0;i<s.length;i++)if(s[i]===' '&&(best<0||Math.abs(i-m)<Math.abs(best-m)))best=i;
+    return best<0?s:s.slice(0,best)+'\n'+s.slice(best+1);}
+  function mepWmSize(sh,txt,rot){
+    const {W,H}=mepPageWH(sh),a=Math.abs(+rot||0)*Math.PI/180,n=mepWmLines(txt).length;
+    // longueur disponible le long de l'angle choisi (dans la planche, marges comprises), 2/3 occupés
+    const L=Math.min(Math.abs(Math.cos(a))>1e-6?W/Math.abs(Math.cos(a)):Infinity,Math.abs(Math.sin(a))>1e-6?H/Math.abs(Math.sin(a)):Infinity);
+    return Math.max(5,Math.min(Math.min(W,H)*0.3/(1+(n-1)*MEP_WM_LH*0.8),L*0.62/(mepWmLongest(txt)*MEP_WM_CW)));
+  }
+  function mepSkAddWatermark(sh,kind,txt){
+    const T=MEP_WM_TYPES[kind]||[txt||'FILIGRANE','#7a7f87'],s=String(txt||T[0]); // texte libre : tel qu'écrit
+    const ctx=mepSkCtx(sh,true),sk=ctx.sk,{W,H}=mepPageWH(sh);
+    const rot=Math.round(Math.atan2(H,W)*180/Math.PI),h=+mepWmSize(sh,s,rot).toFixed(1),r=rot*Math.PI/180;
+    // ancre = ligne de base : descendue d'une demi-capitale (perpendiculairement au texte) pour que le mot soit centré
+    const p=mepSkPtFrom(ctx,{x:W/2+0.37*h*Math.sin(r),y:H/2+0.37*h*Math.cos(r)});
+    return mepSkEnt(sk,{t:'text',p,f:'txt',s,h,st:'val',al:'middle',rot,col:T[1],wm:1,op:0.22});
+  }
+  function mepWmPlace(kind){
+    const sh=mepSheet();if(!sh)return null;
+    let txt=null;if(kind==='autre'){txt=prompt('Texte du filigrane (« / » pour passer à la ligne) :','CONFIDENTIEL');if(!txt||!txt.trim())return null;txt=txt.split('/').map(x=>x.trim()).filter(Boolean).join('\n');}
+    let e=null;mepEdit('filigrane',()=>{e=mepSkAddWatermark(sh,kind,txt);});
+    if(e){try{mepSetTool('select');}catch(er){}mepSt.skSel=new Set(['e:'+e.id]);mepSideShow();mepRender();}
+    return e;
+  }
+  // point P (planche) ramené dans le repère du texte (rotation inverse autour de son ancre)
+  function mepTxtLocal(e,p,P){const a=(+e.rot||0)*Math.PI/180;if(!a)return P;const dx=P.x-p.x,dy=P.y-p.y,c=Math.cos(a),s=Math.sin(a);
+    return {x:p.x+dx*c-dy*s,y:p.y+dx*s+dy*c};}
   function mepSkAddLogo(sh,A,B){
     const ctx=mepSkCtx(sh,true),sk=ctx.sk;
     const p1=mepSkPtFrom(ctx,{x:Math.min(A.x,B.x),y:Math.min(A.y,B.y)}),p2=mepSkPtFrom(ctx,{x:Math.max(A.x,B.x),y:Math.max(A.y,B.y)});
@@ -74359,9 +74474,10 @@ function filmFrame(){
         const dx=b.x-a.x,dy=b.y-a.y,L2=dx*dx+dy*dy;const t=L2>1e-12?Math.max(0,Math.min(1,((P.x-a.x)*dx+(P.y-a.y)*dy)/L2)):0;
         d=Math.hypot(P.x-(a.x+dx*t),P.y-(a.y+dy*t));}
       else if(e.t==='circle'||e.t==='arc'){const C=sk.pts[e.pc];if(!C)return;const c=mepSkS(ctx,C);d=Math.abs(Math.hypot(P.x-c.x,P.y-c.y)-e.r);}
-      else if(e.t==='text'){const p0=sk.pts[e.p];if(!p0)return;const p=mepSkS(ctx,p0),h=+e.h||3.5,w=Math.max(h,String(mepSkTextValue(sh,e,true)).length*h*0.56);
-        const x0=e.al==='middle'?p.x-w/2:(e.al==='end'?p.x-w:p.x);
-        if(P.x>=x0-0.5&&P.x<=x0+w+0.5&&P.y>=p.y-h-0.5&&P.y<=p.y+0.5&&!bestT)bestT='e:'+e.id;return;}
+      else if(e.t==='text'){const p0=sk.pts[e.p];if(!p0)return;const p=mepSkS(ctx,p0),h=+e.h||3.5,tv=mepSkTextValue(sh,e,true),w=Math.max(h,(e.wm?mepWmLongest(tv)*MEP_WM_CW:String(tv).length*0.56)*h);
+        const x0=e.al==='middle'?p.x-w/2:(e.al==='end'?p.x-w:p.x),Q=mepTxtLocal(e,p,P); // texte incliné (filigrane)
+        const dn=e.wm?(mepWmLines(tv).length-1)/2*h*MEP_WM_LH:0; // filigrane sur plusieurs rangées
+        if(Q.x>=x0-0.5&&Q.x<=x0+w+0.5&&Q.y>=p.y-dn-h-0.5&&Q.y<=p.y+dn+0.5&&!bestT)bestT='e:'+e.id;return;}
       else if(e.t==='logo'){const A=sk.pts[e.p1],B=sk.pts[e.p2];if(!A||!B)return;const a=mepSkS(ctx,A),b=mepSkS(ctx,B);
         if(P.x>=Math.min(a.x,b.x)&&P.x<=Math.max(a.x,b.x)&&P.y>=Math.min(a.y,b.y)&&P.y<=Math.max(a.y,b.y)&&!bestT)bestT='e:'+e.id;return;}
       if(d<bd){bd=d;best='e:'+e.id;}
@@ -74533,9 +74649,14 @@ function filmFrame(){
         let val=String(mepSkTextValue(sh,e,editing)||'');if(!val)return;
         if(+e.mw>0){const nmax=Math.max(2,Math.floor(+e.mw/((+e.h||3.5)*0.56)));if(val.length>nmax)val=val.slice(0,nmax-1)+'…';}
         const t=mk('text',{x:p.x,y:p.y,class:(e.st==='val'?'mepTitleVal':'mepTitleText')+(e.col?' mepUc':'')+(sel.has('e:'+e.id)&&editing?' mepSkSelT':''),
-          style:'font-size:'+(+e.h||3.5)+'px'+(e.b?';font-weight:700':'')+(e.al&&e.al!=='start'?';text-anchor:'+e.al:'')+(e.col?';fill:'+e.col:'')});
+          style:'font-size:'+(+e.h||3.5)+'px'+(e.b?';font-weight:700':'')+(e.al&&e.al!=='start'?';text-anchor:'+e.al:'')+(e.col?';fill:'+e.col:'')+
+            (e.wm?';opacity:'+Math.max(0.03,Math.min(1,+e.op||0.22))+';letter-spacing:.06em;font-weight:800':'')});
+        if(e.wm)t.classList.add('mepWm');
         if(+e.rot)t.setAttribute('transform','rotate('+(-e.rot)+' '+p.x+' '+p.y+')'); // degrés, sens trigo (Y papier vers le bas)
-        t.textContent=val;
+        const rows=e.wm?mepWmLines(val):null; // filigrane sur plusieurs rangées : une ligne par rangée, bloc centré
+        if(rows&&rows.length>1){const lh=(+e.h||3.5)*MEP_WM_LH;
+          rows.forEach((ln,i)=>{const ts=document.createElementNS('http://www.w3.org/2000/svg','tspan');ts.setAttribute('x',p.x);ts.setAttribute('y',p.y+(i-(rows.length-1)/2)*lh);ts.textContent=ln;t.appendChild(ts);});}
+        else t.textContent=val;
         // fit : largeur disponible (mm) — un texte plus long est resserré pour tenir dans sa case (cartouche
         // repris d'un DXF dont la police est plus étroite) ; mesure du navigateur, sinon estimation
         if(+e.fit>0){let L=0;try{L=t.getComputedTextLength();}catch(er){}if(!(L>0))L=val.length*(+e.h||3.5)*0.55;
@@ -74646,9 +74767,11 @@ function filmFrame(){
     }
     if(e.t==='text'){
       const P0=sk.pts[e.p];if(!P0)return null;const p=S(P0),h=+e.h||3.5;
-      let w=Math.max(h,String(mepSkTextValue(sh,e,true)).length*h*0.56);if(+e.mw>0)w=Math.min(w,+e.mw);
-      const x0=e.al==='middle'?p.x-w/2:(e.al==='end'?p.x-w:p.x);
-      return{pts:[{x:x0,y:p.y-h*0.75},{x:x0+w,y:p.y-h*0.75},{x:x0+w,y:p.y},{x:x0,y:p.y}],closed:true};
+      const tv=mepSkTextValue(sh,e,true),dn=e.wm?(mepWmLines(tv).length-1)/2*h*MEP_WM_LH:0;
+      let w=Math.max(h,(e.wm?mepWmLongest(tv)*MEP_WM_CW:String(tv).length*0.56)*h);if(+e.mw>0)w=Math.min(w,+e.mw);
+      const x0=e.al==='middle'?p.x-w/2:(e.al==='end'?p.x-w:p.x),a=-(+e.rot||0)*Math.PI/180,c=Math.cos(a),sn=Math.sin(a);
+      const R=q=>a?{x:p.x+(q.x-p.x)*c-(q.y-p.y)*sn,y:p.y+(q.x-p.x)*sn+(q.y-p.y)*c}:q; // même rotation que l'affichage
+      return{pts:[{x:x0,y:p.y-dn-h*0.75},{x:x0+w,y:p.y-dn-h*0.75},{x:x0+w,y:p.y+dn},{x:x0,y:p.y+dn}].map(R),closed:true};
     }
     if(e.t==='logo'){const A=sk.pts[e.p1],B=sk.pts[e.p2];if(!A||!B)return null;const a=S(A),b=S(B);
       return{pts:[a,{x:b.x,y:a.y},b,{x:a.x,y:b.y}],closed:true};}
@@ -75524,16 +75647,41 @@ function filmFrame(){
       const sel=document.createElement('select');
       Object.keys(MEP_TB_FIELDS).forEach(k=>{if(MEP_TB_FIELDS[k].hide&&e.f!==k)return;const o=document.createElement('option');o.value=k;o.textContent=k==='txt'?'Texte libre':(MEP_TB_FIELDS[k].ed||MEP_TB_FIELDS[k].lab);sel.appendChild(o);});
       sel.value=e.f||'txt';sel.onchange=()=>{mepEdit('texte',()=>{e.f=sel.value;if(e.f==='txt'&&!e.s)e.s='TEXTE';if(e.f==='perso'&&!e.k){e.k='c'+Date.now().toString(36);e.lab='CHAMP';}});mepSideShow();};r.appendChild(sel);
-      if(e.f==='txt'){r=K.rowEl();K.lab(r,'Texte');const i=document.createElement('input');i.value=e.s||'';i.onchange=()=>mepEdit('texte',()=>{e.s=i.value;});r.appendChild(i);}
+      if(e.f==='txt'&&!e.wm){r=K.rowEl();K.lab(r,'Texte');const i=document.createElement('input');i.value=e.s||'';i.onchange=()=>mepEdit('texte',()=>{e.s=i.value;});r.appendChild(i);}
+      if(e.f==='txt'&&e.wm){r=K.rowEl();K.lab(r,'Texte');const i=document.createElement('input');i.value=String(e.s||'').split('\n').join(' / ');
+        i.title='Écrivez ce que vous voulez ; « / » passe à la ligne suivante (ex. BON POUR / FABRICATION)';
+        i.onchange=()=>{mepEdit('filigrane',()=>{e.s=i.value.split('/').map(x=>x.trim()).filter(Boolean).join('\n')||'FILIGRANE';e.h=+mepWmSize(sh,e.s,e.rot).toFixed(1);});mepSideShow();};r.appendChild(i);
+        r=K.rowEl();K.lab(r,'Lignes');const two=String(e.s||'').indexOf('\n')>=0;
+        K.btn(r,'1 ligne',()=>{if(two){mepEdit('filigrane',()=>{e.s=mepWmSplit(e.s);e.h=+mepWmSize(sh,e.s,e.rot).toFixed(1);});mepSideShow();}},'Tout le texte sur une seule ligne',two?'':'active');
+        K.btn(r,'2 lignes',()=>{if(!two){mepEdit('filigrane',()=>{e.s=mepWmSplit(e.s);e.h=+mepWmSize(sh,e.s,e.rot).toFixed(1);});mepSideShow();}},'Texte trop long : coupé en deux lignes à l’espace le plus proche du milieu, lettres agrandies',two?'active':'');}
       if(e.f==='perso'){r=K.rowEl();K.lab(r,'Nom du champ');const i=document.createElement('input');i.value=e.lab||'';i.onchange=()=>{mepEdit('texte',()=>{e.lab=i.value;});mepSideShow();};r.appendChild(i);}
-      r=K.rowEl();K.lab(r,'Hauteur h (mm)');
-      r.appendChild(mepIsoSelect(mepCapH(+e.h||3.5),h=>{mepEdit('texte',()=>{e.h=mepFs(h);});mepSideShow();}));
+      if(!e.wm){r=K.rowEl();K.lab(r,'Hauteur h (mm)');} // filigrane : taille libre plus bas
+      if(!e.wm)r.appendChild(mepIsoSelect(mepCapH(+e.h||3.5),h=>{mepEdit('texte',()=>{e.h=mepFs(h);});mepSideShow();}));
       r=K.rowEl();K.lab(r,'Largeur maxi (mm)');const mw=document.createElement('input');mw.type='number';mw.step='1';mw.min='0';mw.value=+e.mw||0;mw.title='Largeur maximale (mm) — 0 = libre ; au-delà, le texte est tronqué (…)';
       mw.onchange=()=>mepEdit('texte',()=>{e.mw=Math.max(0,+mw.value||0)||undefined;});r.appendChild(mw);
       r=K.rowEl();K.lab(r,'Graisse');
       [['lab','Libellé'],['val','Valeur']].forEach(([v,l])=>K.btn(r,l,()=>{mepEdit('texte',()=>{e.st=v;});mepSideShow();},v==='lab'?'Texte maigre':'Texte gras',(e.st||'lab')===v?'active':''));
       r=K.rowEl();K.lab(r,'Ancrage');
       [['start','⇤'],['middle','↔'],['end','⇥']].forEach(([v,l])=>K.btn(r,l,()=>{mepEdit('texte',()=>{e.al=v;});mepSideShow();},'Ancrage : '+({start:'début',middle:'centre',end:'fin'})[v],(e.al||'start')===v?'active':''));
+      // V0.76.0 : angle libre (tout texte) ; filigrane : taille libre, couleur, transparence
+      r=K.rowEl();K.lab(r,'Angle (°)');const an=document.createElement('input');an.type='number';an.step='1';an.min='-180';an.max='180';an.value=+e.rot||0;
+      an.title='Inclinaison du texte en degrés, sens inverse des aiguilles d’une montre (0 = horizontal)';
+      an.onchange=()=>{let v=(+an.value||0)%360;if(v>180)v-=360;if(v<-180)v+=360;mepEdit('texte',()=>{if(v)e.rot=v;else delete e.rot;});mepSideShow();};r.appendChild(an);
+      r=K.rowEl();K.lab(r,'');const {W:PW,H:PH}=mepPageWH(sh),dg=Math.round(Math.atan2(PH,PW)*180/Math.PI);
+      [[0,'Horizontal'],[dg,'Diagonale ↗'],[-dg,'Diagonale ↘'],[90,'Vertical']].forEach(([v,l])=>K.btn(r,l,()=>{mepEdit('texte',()=>{if(v)e.rot=v;else delete e.rot;});mepSideShow();},'Angle '+v+'°',(+e.rot||0)===v?'active':''));
+      if(e.wm){
+        K.h('Filigrane');
+        r=K.rowEl();K.lab(r,'Taille h (mm)');const hz=document.createElement('input');hz.type='number';hz.step='1';hz.min='2';hz.value=+(+e.h||10).toFixed(1);
+        hz.title='Hauteur des lettres sur la planche (mm), libre';hz.onchange=()=>{const v=Math.max(2,Math.min(500,+hz.value||10));mepEdit('filigrane',()=>{e.h=v;});mepSideShow();};r.appendChild(hz);
+        K.btn(r,'Ajuster',()=>{mepEdit('filigrane',()=>{e.h=+mepWmSize(sh,mepSkTextValue(sh,e,true),e.rot).toFixed(1);});mepSideShow();},'Taille qui couvre les deux tiers de la planche dans cette direction');
+        r=K.rowEl();K.lab(r,'Couleur');
+        [['#e03131','Rouge'],['#1f9d55','Vert'],['#2d6cdf','Bleu'],['#7a7f87','Gris'],['#1a1a1a','Noir']].forEach(([c,l])=>{const b=K.btn(r,'●',()=>{mepEdit('filigrane',()=>{e.col=c;});mepSideShow();},l,e.col===c?'active':'');b.style.color=c;});
+        r=K.rowEl();K.lab(r,'Opacité');const op=document.createElement('input');op.type='range';op.min='5';op.max='100';op.step='1';op.value=Math.round((+e.op||0.22)*100);op.style.flex='1';
+        const ov=document.createElement('span');ov.textContent=op.value+' %';ov.style.minWidth='38px';
+        op.oninput=()=>{ov.textContent=op.value+' %';e.op=+op.value/100;mepRender();};
+        op.onchange=()=>{const v=+op.value/100;e.op=v;mepEdit('filigrane',()=>{e.op=v;});};r.appendChild(op);r.appendChild(ov);
+        K.note('Glissez le texte pour le placer. Suppr le retire. Il sort tel quel en SVG, PDF et impression ; en DXF, au trait.');
+      }
     }
     if(s.L.length||s.C.length||s.T.length)mepSideSkStyle(K,[...s.L,...s.C,...s.T],ctx.tb);
     // contraintes applicables
@@ -76678,7 +76826,7 @@ function filmFrame(){
       mepPtRefresh(sh,v1,d.o,pr);d.a=d.b=d.o;(d.pts||[]).forEach(q=>mepPtRefresh(sh,v1,q,pr));
       return;
     }
-    if(d.kind!=='dist'&&d.kind!=='note'&&!((d.kind==='gdt'||d.kind==='datum')&&d.a))return;
+    if(d.kind!=='dist'&&d.kind!=='note'&&!(mepIsTol(d.kind)&&d.a))return;
     const pr=d.kind==='dist'?(d.orient==='h'?'v':(d.orient==='v'?'h':null)):null;
     // distance oblique : pas de migration ambiguë, mais les références posées restent suivies
     const ok=q=>!!(q&&(pr||d.kind!=='dist'||q.hint));
@@ -76687,7 +76835,7 @@ function filmFrame(){
   }
   function mepDimWorld(sh,d){
     // ancrages → mm papier
-    if((d.kind==='gdt'||d.kind==='datum'))return mepGdtWorld(sh,d); // tolérance géométrique, référence (98-mep-72)
+    if(mepIsTol(d.kind))return mepGdtWorld(sh,d); // tolérance géométrique, référence (98-mep-72)
     const v1=mepView(sh,d.vid);
     if(!v1)return null;
     try{mepDimPtsRefresh(sh,d);}catch(e){} // points accrochés aux traits d'axe : suivent l'axe
@@ -78107,7 +78255,7 @@ function filmFrame(){
   function mepDrawDim(mk,d,sh){
     const w=mepDimWorld(sh,d);
     if(!w)return;
-    const gdt=(d.kind==='gdt'||d.kind==='datum');
+    const gdt=mepIsTol(d.kind);
     const val=gdt?0:(d.value!=null?d.value:mepDimMeasure(sh,d));
     let txt=gdt?'':mepDimText(d,val);
     const sel=mepSt.selDim===d.id||!!(mepSt.lot&&mepSt.lot.dims.has(d.id));
@@ -78662,7 +78810,7 @@ function filmFrame(){
   function mepGdtHost(sh,d){
     if(!d.on)return null;
     const t=sh.dims.find(x=>x.id===d.on);
-    return t&&t!==d&&t.kind!=='gdt'&&t.kind!=='datum'?t:null;
+    return t&&t!==d&&!mepIsTol(t.kind)?t:null;
   }
   /* ancrages en mm papier : {a (pointe / pied), b (cadre / carré), v1, u (direction imposée)} */
   function mepGdtWorld(sh,d){
@@ -78768,6 +78916,7 @@ function filmFrame(){
   }
   const mepGdtBoxes=new WeakMap(); // cote → cadre dessiné (mm papier) : clic dedans = la saisir
   function mepDrawGdt(draw,d,sh,L,T,AR){
+    if(d.kind==='rough'){mepDrawRough(draw,d,sh,L,T,AR);return;} // 98-mep-73
     const w=mepGdtWorld(sh,d);if(!w)return;
     const H=mepGdtH(),F=Object.assign({},L,{class:L.class+' mepGdtFill'});
     if(d.kind==='gdt'){
@@ -78812,7 +78961,7 @@ function filmFrame(){
   // une cote sous le clic (pas une tolérance), pour s'y accrocher
   function mepGdtDimAt(sh,P,kinds){
     const d=mepDimAt(sh,P.x,P.y);
-    return d&&d.kind!=='gdt'&&d.kind!=='datum'&&(!kinds||kinds.indexOf(d.kind)>=0)?d:null;
+    return d&&!mepIsTol(d.kind)&&(!kinds||kinds.indexOf(d.kind)>=0)?d:null;
   }
   function mepGdtNew(){
     const l=mepGdtLast;
@@ -78824,13 +78973,14 @@ function filmFrame(){
       mepDimMoveTo(sh,D,P);
       const d=Object.assign({},D,{id:mepUid('d')});delete d.__ghost;
       mepDimClearSelection();mepSt.selDim=d.id;mepSt.sel=null;
-      mepEdit(tool==='gdt'?'tolérance géométrique':'référence '+d.l,()=>{sh.dims.push(d);});
+      mepEdit(tool==='gdt'?'tolérance géométrique':tool==='rough'?'rugosité':'référence '+d.l,()=>{sh.dims.push(d);});
       mepSideShow();
+      if(tool==='rough'){mepStatus('Rugosité posée — paramètre, valeur et symbole dans le panneau. Cliquez une autre arête pour la suivante.');return;}
       mepStatus(tool==='gdt'?'Cadre posé — réglez le symbole, la valeur et les références dans le panneau.':'Référence '+d.l+' posée — la suivante sera '+mepGdtNextLetter()+'.');
       return;
     }
     // accroché à une cote : posé tout de suite
-    const host=tool==='gdt'?mepGdtDimAt(sh,P,['len','dist','dia','rad','hole','ang']):mepGdtDimAt(sh,P,['len','dist']);
+    const host=tool==='rough'?null:tool==='gdt'?mepGdtDimAt(sh,P,['len','dist','dia','rad','hole','ang']):mepGdtDimAt(sh,P,['len','dist']);
     if(host){
       if(sh.dims.some(x=>x.kind===tool&&x.on===host.id)){mepStatus(tool==='gdt'?'Cette cote a déjà un cadre de tolérance.':'Cette cote porte déjà une référence.');return;}
       const d={id:mepUid('d'),kind:tool,vid:host.vid,vid2:null,on:host.id};
@@ -78847,9 +78997,15 @@ function filmFrame(){
       return;
     }
     const S=mepSnapLocal(sh,P);
+    if(!S&&tool==='rough'){mepStatus('Rugosité : cliquez l’arête de la surface, puis le côté où poser le symbole (hors matière).');return;}
     if(!S){mepStatus(tool==='gdt'?'Tolérance : cliquez une arête (pointe de la flèche) ou une cote.':'Référence : cliquez une arête ou une cote.');return;}
     const off=12/S.v.scale;
     mepSt.selDim=null;
+    if(tool==='rough'){
+      mepSt.dim={kind:'rough',vid:S.v.id,vid2:null,a:S.q,b:{x:S.q.x,y:S.q.y-2/S.v.scale},r:mepRghNew(),__ghost:true};
+      mepStatus('Rugosité : déplacez la souris du côté hors matière de l’arête et cliquez (loin de l’arête : ligne de repère) — Échap annule.');
+      mepRender();return;
+    }
     mepSt.dim=tool==='gdt'
       ?{kind:'gdt',vid:S.v.id,vid2:null,a:S.q,b:{x:S.q.x+off,y:S.q.y-off},g:mepGdtNew(),__ghost:true}
       :{kind:'datum',vid:S.v.id,vid2:null,a:S.q,b:{x:S.q.x,y:S.q.y-off},l:mepGdtNextLetter(),__ghost:true};
@@ -78858,6 +79014,7 @@ function filmFrame(){
   }
   /* ----- panneau ----- */
   function mepSideGdt(root,d,sh){
+    if(d.kind==='rough'){mepSideRough(root,d,sh);return;} // 98-mep-73
     const h=document.createElement('h4');
     h.textContent=d.kind==='gdt'?'Tolérance géométrique (ISO 1101)':'Référence (ISO 5459)';
     root.appendChild(h);
@@ -78924,6 +79081,135 @@ function filmFrame(){
     const act=document.createElement('div');act.className='row';
     const bDel=document.createElement('button');bDel.textContent='Supprimer';bDel.className='danger';
     bDel.onclick=()=>{mepEdit('suppression tolérance',()=>{sh.dims=sh.dims.filter(x=>x.id!==d.id);mepSt.selDim=null;});mepSideShow();};
+    act.appendChild(bDel);root.appendChild(act);
+  }
+
+/* ═══════════════ 98-mep-73-rugosite.js — mep 73 rugosite ═══════════════ */
+// Espace PLAN — suite de la fonction englobante ouverte dans 98-mep-00-modele.js (état privé partagé, fermée dans 98-mep-95-export-init.js) : état de surface (rugosité, ISO 21920-1 / ex-ISO 1302).
+  /* ═══════════════ O5. rugosité (état de surface) ═══════════════ */
+  /* 2026-11-09 : « Mise en plan, ajouter l'outil pour la rugosité, bien faire attention au sens des arêtes
+     choisies / à la vue et de mettre la valeur comme il le faut ». Troisième sorte de tolérance (même
+     sélection, glisser, Suppr, annulation et export que les cadres ISO 1101) :
+     - d.kind 'rough' : d.a = pied du symbole sur l'arête (mm locaux de la vue, suit la pièce comme une note),
+       d.b = point qui donne le CÔTÉ de l'arête où se tient le symbole (hors de la matière : là où l'on clique),
+       d.r = {par:'Ra'|'Rz'|…, val:'1.6', proc:'remove'|'any'|'forbid', txt:'' (procédé : rectifié…)}.
+     Règles de la norme appliquées au dessin :
+     - le symbole (deux branches inégales à 60° de la surface) touche l'arête par sa pointe, perpendiculaire
+       à elle, du côté choisi ; la valeur se lit du bas ou de la droite du plan (comme une cote) : elle est
+       écrite le long de l'arête, sous le trait horizontal de la branche longue (position a), précédée du
+       paramètre (« Ra 1,6 ») ; le procédé éventuel au-dessus du trait (position c) ;
+     - si, de ce côté, le symbole se lirait à l'envers (dessous d'une arête, droite d'une arête verticale…)
+       ou si on l'éloigne de l'arête, il est porté par une ligne de repère terminée par une flèche sur la
+       surface, symbole posé sur un trait horizontal (lecture normale) ;
+     - enlèvement de matière exigé : branche courte fermée (triangle) ; interdit : petit cercle dans le V. */
+  const MEP_RGH_PARS=['Ra','Rz','Rt','Rmax','Rq','Rp','Rv'];
+  const MEP_RGH_VALS=['0.1','0.2','0.4','0.8','1.6','3.2','6.3','12.5','25','50'];
+  const MEP_RGH_PROC=[['remove','Enlèvement de matière exigé (usinage)'],['any','Tout procédé'],['forbid','Enlèvement de matière interdit']];
+  let mepRghLast=null; // dernière rugosité réglée : la suivante la reprend
+  function mepIsTol(k){return k==='gdt'||k==='datum'||k==='rough';}
+  function mepRghNew(){const l=mepRghLast;return{par:l?l.par:'Ra',val:l?l.val:'3.2',proc:l?l.proc:'remove',txt:''};}
+  function mepRghCap(){return mepGdtTh()*0.7;} // hauteur des majuscules h (ISO 1302 : H1 = 1,4 h, H2 = 3 h)
+  function mepRghLabel(r){r=r||{};const v=mepGdtValText(r.val);return v?(r.par||'Ra')+' '+v:'';}
+  // direction (mm papier) de l'arête sous le pied : droite, ou tangente d'un cercle / arc
+  function mepRghEdgeDir(v,q){
+    const S=(x,y)=>mepToSheet(v,x,y),toS=e=>{if(!e)return null;const A=S(q.x,q.y),B=S(q.x+e.x,q.y+e.y);let x=B.x-A.x,y=B.y-A.y;const l=Math.hypot(x,y);return l>1e-12?{x:x/l,y:y/l}:null;};
+    const e=mepGdtEdgeDir(v,q);if(e)return toS(e);
+    const g=mepGeoOf(v);if(!g||!g.els)return null;
+    let best=null,bd=0.6/Math.max(v.scale,1e-9)+0.05;
+    g.els.forEach(c=>{if(c.t!=='C'&&c.t!=='A')return;const dd=Math.abs(Math.hypot(q.x-c.cx,q.y-c.cy)-c.r);if(dd<bd){bd=dd;best=c;}});
+    if(!best)return null;
+    const rx=q.x-best.cx,ry=q.y-best.cy,rl=Math.hypot(rx,ry)||1;
+    return toS({x:-ry/rl,y:rx/rl});
+  }
+  /* géométrie du symbole posé : pied F, sens de lecture u, « haut » m (vers le haut des lettres) */
+  function mepRghShape(d,F,u,m,textW){
+    const r=d.r||{},h=mepRghCap(),H1=1.4*h,H2=3*h,c60=0.5,s60=Math.sqrt(3)/2,ct=c60/s60;
+    const P=(a,b)=>({x:F.x+u.x*a+m.x*b,y:F.y+u.y*a+m.y*b});
+    const lab=mepRghLabel(r),gap=0.35*h;
+    const short=P(-H1*ct,H1),top=P(H2*ct,H2);
+    const tx0=(H2-gap)*ct+gap*1.2; // départ du texte sous le trait : à droite de la branche longue
+    const barEnd=lab||r.txt?Math.max(tx0+(textW||0)+gap,H2*ct+2*h):H2*ct;
+    return{h,H1,H2,P,short,top,bar:lab||r.txt?P(barEnd,H2):null,tx0,base:H2-gap-h,lab,ct};
+  }
+  function mepDrawRough(draw,d,sh,L,T,AR){
+    const w=mepGdtWorld(sh,d);if(!w)return;
+    const r=d.r||(d.r=mepRghNew()),h=mepRghCap(),th=mepGdtTh();
+    // arête et côté choisi
+    let e=d.a?mepRghEdgeDir(w.v1,d.a):null;if(!e)e={x:1,y:0};
+    let bx=w.b.x-w.a.x,by=w.b.y-w.a.y;const bl=Math.hypot(bx,by);
+    let n={x:-e.y,y:e.x};if(bl>1e-9&&n.x*bx+n.y*by<0)n={x:-n.x,y:-n.y};else if(bl<=1e-9&&n.y>0)n={x:-n.x,y:-n.y};
+    // sens de lecture : de gauche à droite, ou de bas en haut pour une arête verticale (lu de la droite)
+    let u={x:e.x,y:e.y};if(u.x<-1e-6||(Math.abs(u.x)<=1e-6&&u.y>0))u={x:-u.x,y:-u.y};
+    const m={x:u.y,y:-u.x};
+    const lead=!!d.lead||n.x*m.x+n.y*m.y<0.2||bl>mepRghCap()*9;
+    const lab=mepRghLabel(r);
+    const tw=s=>s?s.length*th*0.6:0;
+    const pts=[];
+    const ln=(A,B,extra)=>{pts.push(A,B);return draw('line',Object.assign({x1:A.x,y1:A.y,x2:B.x,y2:B.y},L,extra||{}));};
+    const txt=(s,Q,uu,anchor)=>{if(!s)return 0;const ang=Math.atan2(uu.y,uu.x)*180/Math.PI;
+      const t=draw('text',Object.assign({x:Q.x,y:Q.y,'text-anchor':anchor||'start',style:'font-size:'+th.toFixed(3)+'px'},T,Math.abs(ang)>0.01?{transform:'rotate('+ang.toFixed(3)+' '+Q.x.toFixed(3)+' '+Q.y.toFixed(3)+')'}:{}));
+      t.textContent=s;return mepTxtW(t,s,th);};
+    const symbol=(F,uu,mm)=>{
+      const tW=Math.max(tw(lab),tw(r.txt));
+      const S=mepRghShape(d,F,uu,mm,tW);
+      ln(F,S.short);ln(F,S.top);
+      if(r.proc==='remove')ln(S.short,S.P(S.H1*S.ct,S.H1));
+      if(r.proc==='forbid'){const c=S.H1/1.5,C=S.P(0,c);pts.push({x:C.x-c/2,y:C.y-c/2},{x:C.x+c/2,y:C.y+c/2});draw('circle',Object.assign({cx:C.x,cy:C.y,r:c/2},L));}
+      if(S.bar)ln(S.top,S.bar);
+      const w1=txt(lab,S.P(S.tx0,S.base),uu),w2=txt(r.txt,S.P(S.tx0,S.H2+0.35*h),uu);
+      [w1,w2].forEach((ww,i)=>{if(ww){pts.push(S.P(S.tx0+ww,i?S.H2+1.4*h:S.base));}});
+      return S;
+    };
+    if(!lead){symbol(w.a,u,m);}
+    else{
+      // ligne de repère : flèche sur la surface, symbole sur un trait horizontal au point d'attache
+      const U={x:1,y:0},M={x:0,y:-1},tW=Math.max(tw(lab),tw(r.txt));
+      const S0=mepRghShape(d,{x:0,y:0},U,M,tW),W=(S0.bar?S0.bar.x:S0.top.x)-S0.short.x+0.8*h;
+      const B=bl>mepRghCap()*2?w.b:{x:w.a.x+n.x*mepRghCap()*8,y:w.a.y+n.y*mepRghCap()*8};
+      const left=w.a.x>B.x; // trait de référence tourné vers la flèche
+      const x0=left?B.x-W:B.x,x1=left?B.x:B.x+W;
+      ln({x:x0,y:B.y},{x:x1,y:B.y});
+      ln(B,w.a,{'marker-end':AR});
+      symbol({x:x0-S0.short.x+h*0.4,y:B.y},U,M);
+    }
+    if(pts.length){const xs=pts.map(p=>p.x),ys=pts.map(p=>p.y);
+      mepGdtBoxes.set(d,{x0:Math.min(...xs),x1:Math.max(...xs),y0:Math.min(...ys),y1:Math.max(...ys),lead});}
+  }
+  /* ----- panneau ----- */
+  function mepSideRough(root,d,sh){
+    const h=document.createElement('h4');h.textContent='État de surface (rugosité)';root.appendChild(h);
+    const row=(lab,el)=>{const r=document.createElement('div');r.className='row';const L=document.createElement('label');L.textContent=lab;r.appendChild(L);if(el)r.appendChild(el);root.appendChild(r);return r;};
+    const note=t=>{const n=document.createElement('div');n.className='note';n.style.whiteSpace='pre-line';n.textContent=t;root.appendChild(n);return n;};
+    const r=d.r||(d.r=mepRghNew());
+    const set=(lab,fn)=>{mepEdit(lab,()=>{fn(r);});mepRghLast={par:r.par,val:r.val,proc:r.proc};mepSideShow();mepRender();};
+    const ps=document.createElement('select');
+    MEP_RGH_PARS.forEach(k=>{const o=document.createElement('option');o.value=k;o.textContent=k;if(k===(r.par||'Ra'))o.selected=true;ps.appendChild(o);});
+    ps.onchange=()=>set('paramètre de rugosité',x=>{x.par=ps.value;});
+    row('Paramètre',ps);
+    const vi=document.createElement('input');vi.type='text';vi.value=mepGdtValText(r.val);vi.style.width='6em';vi.setAttribute('list','mepRghVals');vi.placeholder='3,2';
+    const dl=document.createElement('datalist');dl.id='mepRghVals';MEP_RGH_VALS.forEach(v=>{const o=document.createElement('option');o.value=mepGdtValText(v);dl.appendChild(o);});root.appendChild(dl);
+    vi.onchange=()=>set('valeur de rugosité',x=>{x.val=vi.value.trim().replace(',','.');});
+    const rv=row('Valeur (µm)',vi);
+    const vr=document.createElement('div');vr.className='row';
+    ['0.4','0.8','1.6','3.2','6.3','12.5'].forEach(v=>{const b=document.createElement('button');b.textContent=mepGdtValText(v);b.title=(r.par||'Ra')+' '+mepGdtValText(v)+' µm';
+      if(String(r.val)===v)b.className='active';b.onclick=()=>set('valeur de rugosité',x=>{x.val=v;});vr.appendChild(b);});
+    root.appendChild(vr);
+    const pr=document.createElement('select');
+    MEP_RGH_PROC.forEach(([k,lab])=>{const o=document.createElement('option');o.value=k;o.textContent=lab;if(k===(r.proc||'remove'))o.selected=true;pr.appendChild(o);});
+    pr.onchange=()=>set('procédé',x=>{x.proc=pr.value;});
+    row('Symbole',pr);
+    const ti=document.createElement('input');ti.type='text';ti.value=r.txt||'';ti.placeholder='ex. rectifié';ti.style.width='9em';
+    ti.onchange=()=>set('procédé de fabrication',x=>{x.txt=ti.value.trim();});
+    row('Procédé (facultatif)',ti);
+    const lb=document.createElement('input');lb.type='checkbox';lb.checked=!!d.lead;
+    lb.onchange=()=>{mepEdit('ligne de repère',()=>{if(lb.checked)d.lead=1;else delete d.lead;});mepSideShow();mepRender();};
+    row('Ligne de repère',lb);
+    const bx=mepGdtBoxes.get(d);
+    note((bx&&bx.lead&&!d.lead?'Symbole porté par une ligne de repère : de ce côté de l’arête il se lirait à l’envers (ou il a été éloigné de l’arête).\n':'')+
+      'Le symbole se tient du côté de l’arête où vous l’avez posé (hors matière) ; glissez-le de l’autre côté pour le retourner, ou loin de l’arête pour une ligne de repère. La valeur se lit du bas ou de la droite du plan.');
+    const act=document.createElement('div');act.className='row';
+    const bDel=document.createElement('button');bDel.textContent='Supprimer';bDel.className='danger';
+    bDel.onclick=()=>{mepEdit('suppression rugosité',()=>{sh.dims=sh.dims.filter(x=>x.id!==d.id);mepSt.selDim=null;});mepSideShow();};
     act.appendChild(bDel);root.appendChild(act);
   }
 
@@ -79488,6 +79774,7 @@ function filmFrame(){
       cut2:'Coupe : 2 clics sur la ligne de coupe.',
       det2:'Détail : centre + rayon.',
       gdt:'Tolérance : cliquez une arête (pointe de la flèche) puis placez le cadre — ou cliquez une cote pour mettre le cadre sous sa valeur.',
+      rough:'Rugosité : cliquez l’arête de la surface, puis le côté hors matière où poser le symbole (loin de l’arête : ligne de repère).',
       datum:'Référence '+mepGdtNextLetter()+' : cliquez une arête puis placez la lettre — ou cliquez une cote (axe ou plan médian de l’élément coté).'
     }[t]||'';
     if(msg)mepStatus(msg);
@@ -79786,7 +80073,7 @@ function filmFrame(){
          // (les textes couvrent presque tout le cartouche) ; texte déjà sélectionné : glisser = déplacer
          if(hk.key[0]==='e'&&!(mepSt.skSel&&mepSt.skSel.has(hk.key))){
            const c0=mepSkCtx(sh,false),e0=c0.sk&&c0.sk.ents.find(x=>x.id===hk.key.slice(2));
-           if(e0&&e0.t==='text'){mepSt.pick={kind:'box',sx:P.x,sy:P.y,cur:{x:P.x,y:P.y},px0:P.px,py0:P.py,add,clickKey:hk.key};return;}
+           if(e0&&e0.t==='text'&&!e0.wm){mepSt.pick={kind:'box',sx:P.x,sy:P.y,cur:{x:P.x,y:P.y},px0:P.px,py0:P.py,add,clickKey:hk.key};return;}
          }
          mepSkSelect(hk.key,add);
          if(!add&&hk.key[0]!=='c'){const ctx=mepSkCtx(sh,false);
@@ -79957,7 +80244,7 @@ function filmFrame(){
       return;
     }
     if(tool==='axis'){mepAxisClick(sh,P);return;}
-    if(tool==='gdt'||tool==='datum'){mepGdtClick(sh,P,tool);return;}
+    if(tool==='gdt'||tool==='datum'||tool==='rough'){mepGdtClick(sh,P,tool);return;}
     if(tool==='ordx'||tool==='ordy'){mepOrdClick(sh,P,tool==='ordy'?'y':'x');return;}
     if(tool==='note'){
       if(mepSt.dim&&mepSt.dim.kind==='note'){ // 2ᵉ clic : place le texte, puis le saisit
@@ -80220,7 +80507,7 @@ function filmFrame(){
         return;
       }
     }
-    if((mepSt.tool==='note'||mepSt.tool==='gdt'||mepSt.tool==='datum')&&mepSt.dim){if(mepDimMoveTo(sh,mepSt.dim,P))mepRender();return;}
+    if((mepSt.tool==='note'||mepSt.tool==='gdt'||mepSt.tool==='datum'||mepSt.tool==='rough')&&mepSt.dim){if(mepDimMoveTo(sh,mepSt.dim,P))mepRender();return;}
     if(mepSt.tool==='dim'||mepSt.tool==='hole'){
       // survol des arêtes/cercis : feedback avant les 2 clics de sélection
       let need=false;
@@ -80390,7 +80677,7 @@ function filmFrame(){
     if(!d)return false;
     if(d.kind==='ang'&&!alt){mepDimToggleBig(d);return true;}
     if(d.kind==='note'){mepNoteEdit(sh,d);return true;}
-    if((d.kind==='gdt'||d.kind==='datum'))return true; // réglée dans le panneau
+    if(mepIsTol(d.kind))return true; // réglée dans le panneau
     if(d.kind==='ord')return true;
     if((d.kind==='len'||d.kind==='dist')&&!alt){mepDimToggleArrows(d);return true;}
     const t=prompt('Texte de cote (vide = calculé) :',d.txt||'');
@@ -80735,7 +81022,7 @@ function filmFrame(){
   function mepDimTextPos(sh,d){
     const w=mepDimWorld(sh,d);if(!w)return null;
     if(d.kind==='dia'||d.kind==='rad'||d.kind==='hole'||d.kind==='note')return{x:w.b.x,y:w.b.y};
-    if((d.kind==='gdt'||d.kind==='datum')){const bx=mepGdtBoxes.get(d);return bx?{x:(bx.x0+bx.x1)/2,y:(bx.y0+bx.y1)/2}:{x:w.b.x,y:w.b.y};}
+    if(mepIsTol(d.kind)){const bx=mepGdtBoxes.get(d);return bx?{x:(bx.x0+bx.x1)/2,y:(bx.y0+bx.y1)/2}:{x:w.b.x,y:w.b.y};}
     if(d.kind==='ord'){ // valeur de l'origine, sur la ligne commune
       const v=mepView(sh,d.vid),oS=v?mepToSheet(v,d.o.x,d.o.y):w.a;
       return d.axis==='y'?{x:oS.x+(+d.off||0),y:oS.y}:{x:oS.x,y:oS.y+(+d.off||0)};
@@ -81200,8 +81487,8 @@ function filmFrame(){
     if(!v)return false;
     let sx=P.x,sy=P.y;
     if(pk&&pk.cx!=null){sx=pk.cx+(P.x-pk.sx);sy=pk.cy+(P.y-pk.sy);}
-    if((d.kind==='gdt'||d.kind==='datum')&&d.on)return false; // accroché à une cote : la suit
-    if(d.kind==='dia'||d.kind==='rad'||d.kind==='hole'||d.kind==='note'||(d.kind==='gdt'||d.kind==='datum')){
+    if(mepIsTol(d.kind)&&d.on)return false; // accroché à une cote : la suit
+    if(d.kind==='dia'||d.kind==='rad'||d.kind==='hole'||d.kind==='note'||mepIsTol(d.kind)){
       d.b={x:(sx-v.x)/v.scale,y:(sy-v.y)/v.scale};
       return true;
     }
@@ -82173,7 +82460,8 @@ function filmFrame(){
     });
     r=rowEl();
     [['⌖ Tolérance','gdt','Tolérance géométrique ISO 1101 : flèche sur une arête puis cadre, ou cadre sous une cote'],
-     ['Ⓐ Référence','datum','Référence ISO 5459 (A, B, C…) : triangle sur une arête, ou sur une cote pour un axe / plan médian']].forEach(([lab,t,tip])=>{
+     ['Ⓐ Référence','datum','Référence ISO 5459 (A, B, C…) : triangle sur une arête, ou sur une cote pour un axe / plan médian'],
+     ['√ Rugosité','rough','État de surface : symbole sur l’arête, du côté hors matière, avec Ra / Rz et la valeur']].forEach(([lab,t,tip])=>{
       const b=mkBtn(lab,()=>mepSetTool(t),tip);
       b.className=mepSt.tool===t?'active':'';
       b.style.flex='1';
@@ -82672,7 +82960,7 @@ function filmFrame(){
     row('Saisie',inp);
   }
   function mepSideDim(root,d,sh){
-    if((d.kind==='gdt'||d.kind==='datum')){mepSideGdt(root,d,sh);return;} // 98-mep-72
+    if(mepIsTol(d.kind)){mepSideGdt(root,d,sh);return;} // 98-mep-72
     const h=document.createElement('h4');
     h.textContent={len:'Longueur',dist:'Distance',rad:'Rayon',dia:'Diamètre',ang:'Angle',hole:'Cotation perçage',note:'Note',ord:'Cotation d’ordonnées '+String(d.axis||'x').toUpperCase()}[d.kind]||'Cote';
     root.appendChild(h);
@@ -83222,6 +83510,8 @@ function filmFrame(){
   window.mepExport=mepExportSvg;
   window.mepPrint=mepPrint;
   window.mepExportDxf=mepExportDxf;
+  window.mepWmPlace=mepWmPlace; // V0.76.0 : filigranes (ruban PLAN)
+  window.mepWmSplitT=mepWmSplit;window.mepWmSizeT=mepWmSize; // tests
   window.mepAutoHoles=mepAutoHoles;
   window.mepTbEdit=on=>{try{mepTbEdit(on===undefined?!mepSt.tbEdit:!!on);}catch(e){}};
   window.mepDxfBuild=()=>mepDxfBuild(); // texte DXF + entités (sans téléchargement)
@@ -83256,7 +83546,7 @@ function filmFrame(){
       sk:{fromStd:sh=>mepTbFromStd(sh),solve:(sk,a)=>mepSkSolve(sk,80,a),residual:(sk,c)=>mepSkResidual(sk,c),
         apply:(sh,id,keys)=>{mepSt.skSel=new Set(keys);mepSkApply(sh,id);},setVal:(sh,c,v)=>mepSkSetVal(sh,c,v),
         tbH:sh=>mepTbH(sh),tbEdit:on=>mepTbEdit(on),ctx:sh=>mepSkCtx(sh,true),addLine:(sh,a,b)=>mepSkAddLine(sh,a,b),trim:(sh,x,y)=>mepSkTrim(sh,x,y),clipDetail:(els,det)=>mepClipDetail(els,det),revIdx:(f,k)=>mepRevIdx(f,k),tbApply:(sh,o)=>mepTbApply(sh,o),drawSk:(mk,sh,c,m)=>mepDrawSkCtx(mk,sh,c,m),tbValue:(sh,c)=>mepTbValue(sh,c),revRows:sh=>mepTbRevRows(sh),revNext:(f,r)=>mepRevNext(f,r),hit:(sh,x,y)=>{const h=mepSkHit(sh,{x,y});return h?h.key:null;},
-        addRect:(sh,a,b)=>mepSkAddRect(sh,a,b),addArc:(sh,c,a,b)=>mepSkAddArc(sh,c,a,b),addText:(sh,p)=>mepSkAddText(sh,p),textValue:(sh,e)=>mepSkTextValue(sh,e,false),
+        addRect:(sh,a,b)=>mepSkAddRect(sh,a,b),addArc:(sh,c,a,b)=>mepSkAddArc(sh,c,a,b),addText:(sh,p)=>mepSkAddText(sh,p),addWm:(sh,k,t)=>mepSkAddWatermark(sh,k,t),entPoly:(sh,e)=>mepSkEntPoly(sh,mepSkCtx(sh,false),e),textValue:(sh,e)=>mepSkTextValue(sh,e,false),
         merge:(sk,a,b)=>mepSkMerge(sk,a,b),
         box:(sh,x0,y0,x1,y1,add)=>mepBoxSelect(sh,{sx:x0,sy:y0,cur:{x:x1,y:y1}},add),sel:()=>[...mepSt.skSel],
         lot:()=>mepSt.lot?{views:[...mepSt.lot.views],dims:[...mepSt.lot.dims]}:null,

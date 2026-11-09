@@ -434,6 +434,8 @@
   window.mepExport=mepExportSvg;
   window.mepPrint=mepPrint;
   window.mepExportDxf=mepExportDxf;
+  window.mepWmPlace=mepWmPlace; // V0.76.0 : filigranes (ruban PLAN)
+  window.mepWmSplitT=mepWmSplit;window.mepWmSizeT=mepWmSize; // tests
   window.mepAutoHoles=mepAutoHoles;
   window.mepTbEdit=on=>{try{mepTbEdit(on===undefined?!mepSt.tbEdit:!!on);}catch(e){}};
   window.mepDxfBuild=()=>mepDxfBuild(); // texte DXF + entités (sans téléchargement)
@@ -468,7 +470,7 @@
       sk:{fromStd:sh=>mepTbFromStd(sh),solve:(sk,a)=>mepSkSolve(sk,80,a),residual:(sk,c)=>mepSkResidual(sk,c),
         apply:(sh,id,keys)=>{mepSt.skSel=new Set(keys);mepSkApply(sh,id);},setVal:(sh,c,v)=>mepSkSetVal(sh,c,v),
         tbH:sh=>mepTbH(sh),tbEdit:on=>mepTbEdit(on),ctx:sh=>mepSkCtx(sh,true),addLine:(sh,a,b)=>mepSkAddLine(sh,a,b),trim:(sh,x,y)=>mepSkTrim(sh,x,y),clipDetail:(els,det)=>mepClipDetail(els,det),revIdx:(f,k)=>mepRevIdx(f,k),tbApply:(sh,o)=>mepTbApply(sh,o),drawSk:(mk,sh,c,m)=>mepDrawSkCtx(mk,sh,c,m),tbValue:(sh,c)=>mepTbValue(sh,c),revRows:sh=>mepTbRevRows(sh),revNext:(f,r)=>mepRevNext(f,r),hit:(sh,x,y)=>{const h=mepSkHit(sh,{x,y});return h?h.key:null;},
-        addRect:(sh,a,b)=>mepSkAddRect(sh,a,b),addArc:(sh,c,a,b)=>mepSkAddArc(sh,c,a,b),addText:(sh,p)=>mepSkAddText(sh,p),textValue:(sh,e)=>mepSkTextValue(sh,e,false),
+        addRect:(sh,a,b)=>mepSkAddRect(sh,a,b),addArc:(sh,c,a,b)=>mepSkAddArc(sh,c,a,b),addText:(sh,p)=>mepSkAddText(sh,p),addWm:(sh,k,t)=>mepSkAddWatermark(sh,k,t),entPoly:(sh,e)=>mepSkEntPoly(sh,mepSkCtx(sh,false),e),textValue:(sh,e)=>mepSkTextValue(sh,e,false),
         merge:(sk,a,b)=>mepSkMerge(sk,a,b),
         box:(sh,x0,y0,x1,y1,add)=>mepBoxSelect(sh,{sx:x0,sy:y0,cur:{x:x1,y:y1}},add),sel:()=>[...mepSt.skSel],
         lot:()=>mepSt.lot?{views:[...mepSt.lot.views],dims:[...mepSt.lot.dims]}:null,

@@ -357,7 +357,8 @@
     });
     r=rowEl();
     [['⌖ Tolérance','gdt','Tolérance géométrique ISO 1101 : flèche sur une arête puis cadre, ou cadre sous une cote'],
-     ['Ⓐ Référence','datum','Référence ISO 5459 (A, B, C…) : triangle sur une arête, ou sur une cote pour un axe / plan médian']].forEach(([lab,t,tip])=>{
+     ['Ⓐ Référence','datum','Référence ISO 5459 (A, B, C…) : triangle sur une arête, ou sur une cote pour un axe / plan médian'],
+     ['√ Rugosité','rough','État de surface : symbole sur l’arête, du côté hors matière, avec Ra / Rz et la valeur']].forEach(([lab,t,tip])=>{
       const b=mkBtn(lab,()=>mepSetTool(t),tip);
       b.className=mepSt.tool===t?'active':'';
       b.style.flex='1';
@@ -856,7 +857,7 @@
     row('Saisie',inp);
   }
   function mepSideDim(root,d,sh){
-    if((d.kind==='gdt'||d.kind==='datum')){mepSideGdt(root,d,sh);return;} // 98-mep-72
+    if(mepIsTol(d.kind)){mepSideGdt(root,d,sh);return;} // 98-mep-72
     const h=document.createElement('h4');
     h.textContent={len:'Longueur',dist:'Distance',rad:'Rayon',dia:'Diamètre',ang:'Angle',hole:'Cotation perçage',note:'Note',ord:'Cotation d’ordonnées '+String(d.axis||'x').toUpperCase()}[d.kind]||'Cote';
     root.appendChild(h);

@@ -251,6 +251,44 @@
     if(f==='perso'){e.k='c'+Date.now().toString(36);e.lab='CHAMP';}
     return mepSkEnt(sk,mepSkStyled(e));
   }
+  /* V0.76.0 : FILIGRANES — « Bon pour fabrication », « Annulé », « Plan interne » ou texte libre, en grandes
+     lettres transparentes. C'est un texte de l'esquisse de planche (wm:1) : on le glisse où l'on veut, on règle
+     son angle (horizontal, en travers…), sa taille, sa couleur et sa transparence dans le panneau. Posé au
+     centre de la planche, le long de sa diagonale, à la taille qui la couvre aux deux tiers. */
+  const MEP_WM_CW=0.8; // largeur d'une lettre / corps (capitales grasses espacées)
+  const MEP_WM_TYPES={bpf:['BON POUR FABRICATION','#1f9d55'],annule:['ANNULÉ','#e03131'],interne:['PLAN INTERNE','#2d6cdf']};
+  // rangées d'un filigrane (« \n » dans le texte) ; interligne 1,15 corps, bloc centré sur l'ancre
+  const MEP_WM_LH=1.15;
+  function mepWmLines(v){return String(v==null?'':v).split('\n');}
+  function mepWmLongest(v){return Math.max(1,...mepWmLines(v).map(l=>l.length));}
+  // coupe en 2 rangées à l'espace le plus proche du milieu (ou recolle en une)
+  function mepWmSplit(s){s=String(s||'');if(s.indexOf('\n')>=0)return s.replace(/\s*\n\s*/g,' ');
+    const m=s.length/2;let best=-1;for(let i=0;i<s.length;i++)if(s[i]===' '&&(best<0||Math.abs(i-m)<Math.abs(best-m)))best=i;
+    return best<0?s:s.slice(0,best)+'\n'+s.slice(best+1);}
+  function mepWmSize(sh,txt,rot){
+    const {W,H}=mepPageWH(sh),a=Math.abs(+rot||0)*Math.PI/180,n=mepWmLines(txt).length;
+    // longueur disponible le long de l'angle choisi (dans la planche, marges comprises), 2/3 occupés
+    const L=Math.min(Math.abs(Math.cos(a))>1e-6?W/Math.abs(Math.cos(a)):Infinity,Math.abs(Math.sin(a))>1e-6?H/Math.abs(Math.sin(a)):Infinity);
+    return Math.max(5,Math.min(Math.min(W,H)*0.3/(1+(n-1)*MEP_WM_LH*0.8),L*0.62/(mepWmLongest(txt)*MEP_WM_CW)));
+  }
+  function mepSkAddWatermark(sh,kind,txt){
+    const T=MEP_WM_TYPES[kind]||[txt||'FILIGRANE','#7a7f87'],s=String(txt||T[0]); // texte libre : tel qu'écrit
+    const ctx=mepSkCtx(sh,true),sk=ctx.sk,{W,H}=mepPageWH(sh);
+    const rot=Math.round(Math.atan2(H,W)*180/Math.PI),h=+mepWmSize(sh,s,rot).toFixed(1),r=rot*Math.PI/180;
+    // ancre = ligne de base : descendue d'une demi-capitale (perpendiculairement au texte) pour que le mot soit centré
+    const p=mepSkPtFrom(ctx,{x:W/2+0.37*h*Math.sin(r),y:H/2+0.37*h*Math.cos(r)});
+    return mepSkEnt(sk,{t:'text',p,f:'txt',s,h,st:'val',al:'middle',rot,col:T[1],wm:1,op:0.22});
+  }
+  function mepWmPlace(kind){
+    const sh=mepSheet();if(!sh)return null;
+    let txt=null;if(kind==='autre'){txt=prompt('Texte du filigrane (« / » pour passer à la ligne) :','CONFIDENTIEL');if(!txt||!txt.trim())return null;txt=txt.split('/').map(x=>x.trim()).filter(Boolean).join('\n');}
+    let e=null;mepEdit('filigrane',()=>{e=mepSkAddWatermark(sh,kind,txt);});
+    if(e){try{mepSetTool('select');}catch(er){}mepSt.skSel=new Set(['e:'+e.id]);mepSideShow();mepRender();}
+    return e;
+  }
+  // point P (planche) ramené dans le repère du texte (rotation inverse autour de son ancre)
+  function mepTxtLocal(e,p,P){const a=(+e.rot||0)*Math.PI/180;if(!a)return P;const dx=P.x-p.x,dy=P.y-p.y,c=Math.cos(a),s=Math.sin(a);
+    return {x:p.x+dx*c-dy*s,y:p.y+dx*s+dy*c};}
   function mepSkAddLogo(sh,A,B){
     const ctx=mepSkCtx(sh,true),sk=ctx.sk;
     const p1=mepSkPtFrom(ctx,{x:Math.min(A.x,B.x),y:Math.min(A.y,B.y)}),p2=mepSkPtFrom(ctx,{x:Math.max(A.x,B.x),y:Math.max(A.y,B.y)});
@@ -302,9 +340,10 @@
         const dx=b.x-a.x,dy=b.y-a.y,L2=dx*dx+dy*dy;const t=L2>1e-12?Math.max(0,Math.min(1,((P.x-a.x)*dx+(P.y-a.y)*dy)/L2)):0;
         d=Math.hypot(P.x-(a.x+dx*t),P.y-(a.y+dy*t));}
       else if(e.t==='circle'||e.t==='arc'){const C=sk.pts[e.pc];if(!C)return;const c=mepSkS(ctx,C);d=Math.abs(Math.hypot(P.x-c.x,P.y-c.y)-e.r);}
-      else if(e.t==='text'){const p0=sk.pts[e.p];if(!p0)return;const p=mepSkS(ctx,p0),h=+e.h||3.5,w=Math.max(h,String(mepSkTextValue(sh,e,true)).length*h*0.56);
-        const x0=e.al==='middle'?p.x-w/2:(e.al==='end'?p.x-w:p.x);
-        if(P.x>=x0-0.5&&P.x<=x0+w+0.5&&P.y>=p.y-h-0.5&&P.y<=p.y+0.5&&!bestT)bestT='e:'+e.id;return;}
+      else if(e.t==='text'){const p0=sk.pts[e.p];if(!p0)return;const p=mepSkS(ctx,p0),h=+e.h||3.5,tv=mepSkTextValue(sh,e,true),w=Math.max(h,(e.wm?mepWmLongest(tv)*MEP_WM_CW:String(tv).length*0.56)*h);
+        const x0=e.al==='middle'?p.x-w/2:(e.al==='end'?p.x-w:p.x),Q=mepTxtLocal(e,p,P); // texte incliné (filigrane)
+        const dn=e.wm?(mepWmLines(tv).length-1)/2*h*MEP_WM_LH:0; // filigrane sur plusieurs rangées
+        if(Q.x>=x0-0.5&&Q.x<=x0+w+0.5&&Q.y>=p.y-dn-h-0.5&&Q.y<=p.y+dn+0.5&&!bestT)bestT='e:'+e.id;return;}
       else if(e.t==='logo'){const A=sk.pts[e.p1],B=sk.pts[e.p2];if(!A||!B)return;const a=mepSkS(ctx,A),b=mepSkS(ctx,B);
         if(P.x>=Math.min(a.x,b.x)&&P.x<=Math.max(a.x,b.x)&&P.y>=Math.min(a.y,b.y)&&P.y<=Math.max(a.y,b.y)&&!bestT)bestT='e:'+e.id;return;}
       if(d<bd){bd=d;best='e:'+e.id;}
@@ -476,9 +515,14 @@
         let val=String(mepSkTextValue(sh,e,editing)||'');if(!val)return;
         if(+e.mw>0){const nmax=Math.max(2,Math.floor(+e.mw/((+e.h||3.5)*0.56)));if(val.length>nmax)val=val.slice(0,nmax-1)+'…';}
         const t=mk('text',{x:p.x,y:p.y,class:(e.st==='val'?'mepTitleVal':'mepTitleText')+(e.col?' mepUc':'')+(sel.has('e:'+e.id)&&editing?' mepSkSelT':''),
-          style:'font-size:'+(+e.h||3.5)+'px'+(e.b?';font-weight:700':'')+(e.al&&e.al!=='start'?';text-anchor:'+e.al:'')+(e.col?';fill:'+e.col:'')});
+          style:'font-size:'+(+e.h||3.5)+'px'+(e.b?';font-weight:700':'')+(e.al&&e.al!=='start'?';text-anchor:'+e.al:'')+(e.col?';fill:'+e.col:'')+
+            (e.wm?';opacity:'+Math.max(0.03,Math.min(1,+e.op||0.22))+';letter-spacing:.06em;font-weight:800':'')});
+        if(e.wm)t.classList.add('mepWm');
         if(+e.rot)t.setAttribute('transform','rotate('+(-e.rot)+' '+p.x+' '+p.y+')'); // degrés, sens trigo (Y papier vers le bas)
-        t.textContent=val;
+        const rows=e.wm?mepWmLines(val):null; // filigrane sur plusieurs rangées : une ligne par rangée, bloc centré
+        if(rows&&rows.length>1){const lh=(+e.h||3.5)*MEP_WM_LH;
+          rows.forEach((ln,i)=>{const ts=document.createElementNS('http://www.w3.org/2000/svg','tspan');ts.setAttribute('x',p.x);ts.setAttribute('y',p.y+(i-(rows.length-1)/2)*lh);ts.textContent=ln;t.appendChild(ts);});}
+        else t.textContent=val;
         // fit : largeur disponible (mm) — un texte plus long est resserré pour tenir dans sa case (cartouche
         // repris d'un DXF dont la police est plus étroite) ; mesure du navigateur, sinon estimation
         if(+e.fit>0){let L=0;try{L=t.getComputedTextLength();}catch(er){}if(!(L>0))L=val.length*(+e.h||3.5)*0.55;
@@ -589,9 +633,11 @@
     }
     if(e.t==='text'){
       const P0=sk.pts[e.p];if(!P0)return null;const p=S(P0),h=+e.h||3.5;
-      let w=Math.max(h,String(mepSkTextValue(sh,e,true)).length*h*0.56);if(+e.mw>0)w=Math.min(w,+e.mw);
-      const x0=e.al==='middle'?p.x-w/2:(e.al==='end'?p.x-w:p.x);
-      return{pts:[{x:x0,y:p.y-h*0.75},{x:x0+w,y:p.y-h*0.75},{x:x0+w,y:p.y},{x:x0,y:p.y}],closed:true};
+      const tv=mepSkTextValue(sh,e,true),dn=e.wm?(mepWmLines(tv).length-1)/2*h*MEP_WM_LH:0;
+      let w=Math.max(h,(e.wm?mepWmLongest(tv)*MEP_WM_CW:String(tv).length*0.56)*h);if(+e.mw>0)w=Math.min(w,+e.mw);
+      const x0=e.al==='middle'?p.x-w/2:(e.al==='end'?p.x-w:p.x),a=-(+e.rot||0)*Math.PI/180,c=Math.cos(a),sn=Math.sin(a);
+      const R=q=>a?{x:p.x+(q.x-p.x)*c-(q.y-p.y)*sn,y:p.y+(q.x-p.x)*sn+(q.y-p.y)*c}:q; // même rotation que l'affichage
+      return{pts:[{x:x0,y:p.y-dn-h*0.75},{x:x0+w,y:p.y-dn-h*0.75},{x:x0+w,y:p.y+dn},{x:x0,y:p.y+dn}].map(R),closed:true};
     }
     if(e.t==='logo'){const A=sk.pts[e.p1],B=sk.pts[e.p2];if(!A||!B)return null;const a=S(A),b=S(B);
       return{pts:[a,{x:b.x,y:a.y},b,{x:a.x,y:b.y}],closed:true};}

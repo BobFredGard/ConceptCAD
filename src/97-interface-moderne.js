@@ -123,7 +123,20 @@ function mfCss(){
   '.mfGrp{display:flex;flex-direction:column;align-items:stretch;padding:0 4px;flex:none;border-right:1px solid var(--border)}',
   '.mfGrp:last-child{border-right:none}',
   '.mfGrpB{display:flex;gap:2px;flex:1}',
-  '.mfGrpT{font-size:.6rem;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);text-align:center;margin-top:2px}',
+  '.mfGrpT{font-size:.6rem;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);text-align:center;margin-top:2px;background:none;border:1px solid transparent;border-radius:5px;padding:0 4px;cursor:pointer;font-family:inherit;line-height:1.5}',
+  '.mfGrpT::after{content:" ▾";font-size:.85em;opacity:.7}',
+  '.mfGrpT:hover{background:rgba(127,127,127,.16);color:var(--text)}',
+  '.mfRb.mfOff{display:none!important}',
+  '.mfGrpPop{min-width:240px}',
+  '.mfGrpRow{display:flex;align-items:center;gap:2px}',
+  '.mfPop .mfGrpRow .mfGrpGo{flex:1}',
+  '.mfGrpGo i{font-style:normal;display:flex;width:22px;justify-content:center}',
+  '.mfGrpGo span{flex:1}',
+  '.mfGrpGo kbd{font:600 .7rem ui-monospace,monospace;padding:1px 6px;border:1px solid var(--border);border-radius:4px;opacity:.85}',
+  '.mfPop .mfGrpRow .mfGrpPin{width:30px;flex:none;justify-content:center;padding:6px 0;filter:grayscale(1);opacity:.35}',
+  '.mfPop .mfGrpRow .mfGrpPin.on{filter:none;opacity:1;background:none;color:inherit}',
+  '.mfPop .mfGrpRow .mfGrpPin:hover{background:rgba(127,127,127,.2);color:inherit}',
+  '.mfGrpNote{font-size:.68rem;color:var(--muted);padding:6px 10px 3px;border-top:1px solid var(--border);margin-top:4px}',
   '.mfRb{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px;min-width:46px;padding:3px 4px;white-space:nowrap;border:1px solid transparent;background:none;border-radius:8px;font-size:.66rem;line-height:1.1}',
   '.mfRb i{font-style:normal;font-size:1.25rem;line-height:1;display:flex;height:24px;align-items:center;opacity:.92}',
   '.mfRb:hover i{color:var(--primary);opacity:1}',
@@ -216,7 +229,7 @@ function mfCss(){
   '#skSetMenu #skSet3D{align-self:stretch;margin-top:4px;background:none;border-color:var(--border)}',
   /* --- bandeaux ADAPTATIFS à la largeur d'écran --- */
   '@media (max-width:1700px){.mfRb{min-width:42px;font-size:.62rem}.mfRb i svg{width:20px;height:20px}body.ui-modern.mf-sk #skToolbar .tool,body.ui-modern.mf-sk #skToolbar .con{min-width:33px!important}body.ui-modern.mf-sk .mfSkLab{font-size:.54rem}}',
-  '@media (max-width:1500px){.mfGrpT{display:none}.mfRb{min-width:38px;padding:3px 2px}body.ui-modern.mf-sk .mfSkLab{display:none!important}body.ui-modern.mf-sk #skToolbar .tool,body.ui-modern.mf-sk #skToolbar .con,body.ui-modern.mf-sk #skToolbar #skZoomIn,body.ui-modern.mf-sk #skToolbar #skZoomOut,body.ui-modern.mf-sk #skToolbar #skFit,body.ui-modern.mf-sk #skToolbar #skRefs,body.ui-modern.mf-sk #skToolbar #skParams,body.ui-modern.mf-sk #skToolbar #skUndo,body.ui-modern.mf-sk #skToolbar #skRedo{min-width:32px!important;padding:5px 3px!important}}',
+  '@media (max-width:1500px){.mfRb{min-width:38px;padding:3px 2px}body.ui-modern.mf-sk .mfSkLab{display:none!important}body.ui-modern.mf-sk #skToolbar .tool,body.ui-modern.mf-sk #skToolbar .con,body.ui-modern.mf-sk #skToolbar #skZoomIn,body.ui-modern.mf-sk #skToolbar #skZoomOut,body.ui-modern.mf-sk #skToolbar #skFit,body.ui-modern.mf-sk #skToolbar #skRefs,body.ui-modern.mf-sk #skToolbar #skParams,body.ui-modern.mf-sk #skToolbar #skUndo,body.ui-modern.mf-sk #skToolbar #skRedo{min-width:32px!important;padding:5px 3px!important}}',
   '@media (max-width:1200px){.mfRb{font-size:0;min-width:34px;gap:0}.mfRb i{height:22px}.mfSearch{max-width:200px}.mfQuick button{padding:4px 6px}}',
   '@media (max-width:900px){.mfSearch{display:none!important}.mfWs button{padding:4px 9px}}',
   /* cube de vue */
@@ -348,6 +361,7 @@ const MF_IC={
   pAxHole:'<circle cx="12" cy="12" r="6"/><path d="M12 2.5v4M12 9.5v5M12 17.5v4M2.5 12h4M9.5 12h5M17.5 12h4"/>',
   pAxPitch:'<circle cx="12" cy="12" r="8" stroke-dasharray="4 1.6 1 1.6"/><circle cx="12" cy="4" r="1.8"/><circle cx="18.9" cy="16" r="1.8"/><circle cx="5.1" cy="16" r="1.8"/>',
   pGdt:'<path d="M2 7.5h20v9H2z"/><path d="M9 7.5v9M15.5 7.5v9"/><circle cx="5.5" cy="12" r="1.7"/><path d="M5.5 9.3v5.4M2.8 12h5.4"/><path d="M11 14l2.6-4"/>',
+  pRough:'<path d="M3 13l4 7 7-16h7"/><path d="M5.3 16.9h4.1"/><path d="M14 9.5h7" stroke-width="1.1"/>',
   pDatum:'<path d="M7 2.5h10v9H7z"/><path d="M12 11.5v5"/><path d="M7 21h10l-5-4.5z" fill="currentColor"/><text x="12" y="9.6" font-size="6.4" font-family="sans-serif" font-weight="700" text-anchor="middle" fill="currentColor" stroke="none">A</text>',
   pAxSym:'<path d="M12 2v3.5M12 8v3M12 13.5v3M12 19v3"/><path d="M9 6L4 12l5 6zM15 6l5 6-5 6z"/>',
   pSvg:'<path d="M6 3h9l3 3v15H6z"/><text x="12" y="17.6" font-size="6.2" font-family="sans-serif" font-weight="700" text-anchor="middle" fill="currentColor" stroke="none">SVG</text>',
@@ -400,7 +414,9 @@ function mfRibbon(){
       b.onclick=()=>{mfCloseMenus();typeof act==='function'?act():mfClick(act);};
       if(src&&src._ctx)b.addEventListener('contextmenu',e=>{e.preventDefault();e.stopPropagation();mfCloseMenus();src._ctx();}); // clic droit du bouton d'origine (ƒx : liste complète)
       bb.appendChild(b);});
-    g.appendChild(bb);const t=document.createElement('div');t.className='mfGrpT';t.textContent=title;g.appendChild(t);rb.appendChild(g);};
+    g.appendChild(bb);const t=document.createElement('button');t.type='button';t.className='mfGrpT';t.textContent=title;
+    t.title='Toutes les fonctions « '+title+' » : les lancer, voir leur raccourci, choisir celles affichées dans le bandeau (📌)';
+    t.onclick=e=>{e.stopPropagation();mfGrpMenu(g,t);};g.appendChild(t);rb.appendChild(g);};
   MF_CAO.forEach(([t,bs])=>grp(t,bs,'mfCao'));
   // V0.6.0 / V0.6.1 : composants (46/47) — seul groupe CAO visible en mode Placer (mfAsmG) ;
   // en modélisation, seul le bouton « Assembler » (qui s'appelle « Modéliser » en assemblage)
@@ -448,8 +464,14 @@ function mfRibbon(){
     ['pNote','Note',()=>mepTool('note'),'Note à flèche : cliquez la pointe, placez le texte, saisissez-le (texte libre, plusieurs lignes)'],
     ['pOrdX','Ordonnées X',()=>mepTool('ordx'),'Cotation d’ordonnées suivant X : origine « 0 », puis les points — valeurs alignées qui se déplacent ensemble (Entrée termine)'],
     ['pOrdY','Ordonnées Y',()=>mepTool('ordy'),'Cotation d’ordonnées suivant Y : origine « 0 », puis les points — valeurs alignées qui se déplacent ensemble (Entrée termine)']],'mfPlan');
+  // V0.76.0 : filigranes (98-mep-40) — un bouton par texte type
+  grp('Filigrane',[['pText','Bon pour fab.',()=>{try{mepSetActive(true);mepWmPlace('bpf');}catch(e){}},'Filigrane « BON POUR FABRICATION » au centre de la planche, en diagonale : glissez-le, réglez angle, taille, couleur et opacité dans le panneau'],
+    ['pText','Annulé',()=>{try{mepSetActive(true);mepWmPlace('annule');}catch(e){}},'Filigrane « ANNULÉ » au centre de la planche, en diagonale'],
+    ['pText','Plan interne',()=>{try{mepSetActive(true);mepWmPlace('interne');}catch(e){}},'Filigrane « PLAN INTERNE » au centre de la planche, en diagonale'],
+    ['pText','Autre…',()=>{try{mepSetActive(true);mepWmPlace('autre');}catch(e){}},'Filigrane avec le texte de votre choix']],'mfPlan');
   grp('Tolérances',[['pGdt','Tolérance',()=>mepTool('gdt'),'Tolérance géométrique ISO 1101 : cliquez une arête (pointe de la flèche) puis placez le cadre — ou cliquez une cote pour mettre le cadre sous sa valeur'],
-    ['pDatum','Référence',()=>mepTool('datum'),'Référence ISO 5459 (A, B, C…) : cliquez une arête puis placez la lettre — ou cliquez une cote pour un axe ou un plan médian']],'mfPlan');
+    ['pDatum','Référence',()=>mepTool('datum'),'Référence ISO 5459 (A, B, C…) : cliquez une arête puis placez la lettre — ou cliquez une cote pour un axe ou un plan médian'],
+    ['pRough','Rugosité',()=>mepTool('rough'),'État de surface (rugosité) : cliquez l’arête de la surface, puis le côté hors matière — symbole perpendiculaire à l’arête, valeur « Ra 1,6 » lisible du bas ou de la droite']],'mfPlan');
   const mepAx=m=>{try{mepSetActive(true);mepSetAxisMode(m);}catch(e){}};
   grp('Axes',[['pAxHole','Trou',()=>mepAx('hole'),'Axes (trou) : croix d’axes des trous cliqués'],
     ['pAxPitch','Cercle',()=>mepAx('pitch'),'Axes (cercle) : cercle primitif des trous répartis'],
@@ -458,7 +480,55 @@ function mfRibbon(){
     ['pDxf','DXF',()=>{try{mepExportDxf();}catch(e){}},'Exporter la planche en DXF R12 (calques CONTOUR, CACHE, AXE, COTES, CADRE…)'],
     ['pPdf','PDF',()=>{try{mepPrint(true);}catch(e){}},'PDF vectoriel au format exact de la planche (« Enregistrer au format PDF »)'],
     ['print','Imprimer',()=>{try{mepPrint();}catch(e){}},'Imprimer la planche']],'mfPlan');
+  mfRbPinApply(rb);
   return rb;
+}
+/* V0.76.0 : groupes du ruban comme Fusion 360 — le nom du groupe est un bouton (▾) qui liste
+   toutes ses fonctions avec leur raccourci clavier (lecture seule pour l'instant) ; l'épingle 📌
+   de chaque ligne choisit si l'icône reste aussi dans le bandeau. Par défaut les fonctions
+   courantes sont dans le bandeau, les autres seulement dans la liste (place gagnée). Le choix
+   est gardé par navigateur (minifusion_rbpins : { "Groupe/Libellé": 1 affichée | 0 dans la liste }). */
+const MF_RB_HIDE=new Set(['Créer/Balayage','Créer/Clavette','Créer/Corps',
+  'Construire/Axe','Construire/Point','Construire/Repère',
+  'Modifier/Face','Modifier/Dépouille','Modifier/Filetage','Modifier/Scinder',
+  'Ensembles/Déplacer','Ensembles/Échelle',
+  'Fichier/Dériver','Fichier/STL','Fichier/OBJ','Fichier/FreeCAD',
+  'Vues/ISO','Vues/Caméra','Vues/Auxiliaire','Vues/Coupe locale','Vues/DXF',
+  'Dessin/Point','Dessin/Ajuster','Dessin/Texte',
+  'Cotes/Perçages auto','Cotes/Ordonnées X','Cotes/Ordonnées Y','Filigrane/Plan interne','Filigrane/Autre…']);
+// raccourcis existants (90-10-selection-mesure : E R H F C M ; 98-mep-95 : Ctrl+P)
+const MF_RB_KEYS={'Créer/Extrusion':'E','Créer/Révolution':'R','Créer/Perçage':'H','Modifier/Congé':'F','Modifier/Chanfrein':'C',
+  'Ensembles/Répétition':'M','Sortie/Imprimer':'Ctrl+P','Sortie/PDF':'Ctrl+P'};
+function mfRbPins(){try{return JSON.parse(mfLS('minifusion_rbpins')||'{}')||{};}catch(e){return {};}}
+function mfRbShown(fi,pins){pins=pins||mfRbPins();return fi in pins?!!pins[fi]:!MF_RB_HIDE.has(fi);}
+function mfRbPinApply(root){const pins=mfRbPins();
+  (root||document).querySelectorAll('#mfRibbon .mfRb,.mfRb').forEach(b=>{if(b.dataset.fi)b.classList.toggle('mfOff',!mfRbShown(b.dataset.fi,pins));});}
+function mfRbPinSet(fi,on){const pins=mfRbPins();
+  if(on===!MF_RB_HIDE.has(fi))delete pins[fi];else pins[fi]=on?1:0;
+  mfLS('minifusion_rbpins',JSON.stringify(pins));mfRbPinApply();}
+function mfGrpMenu(g,anchor){
+  mfCloseMenus();
+  const p=document.createElement('div');p.className='mfPop mfTmp mfGrpPop';
+  const h=document.createElement('div');h.className='mfPopT';h.textContent=anchor.textContent;p.appendChild(h);
+  g.querySelectorAll('.mfGrpB .mfRb').forEach(b=>{
+    if(getComputedStyle(b).display==='none'&&!b.classList.contains('mfOff'))return; // masquée par le mode (assemblage…)
+    const fi=b.dataset.fi||'',lab=fi.slice(fi.indexOf('/')+1),k=MF_RB_KEYS[fi];
+    const row=document.createElement('div');row.className='mfGrpRow';row.dataset.fi=fi;
+    const go=document.createElement('button');go.type='button';go.className='mfGrpGo';go.title=b.title;go.dataset.fi=fi; // même fiche illustrée au survol que l'icône du ruban
+    
+    go.innerHTML='<i>'+((b.querySelector('i')||{}).innerHTML||'')+'</i><span>'+lab.replace(/[<&]/g,c=>c==='<'?'&lt;':'&amp;')+'</span>'+(k?'<kbd>'+k+'</kbd>':'');
+    go.onclick=e=>{e.stopPropagation();p.remove();b.click();};
+    const pin=document.createElement('button');pin.type='button';pin.className='mfGrpPin';
+    const sync=()=>{const on=mfRbShown(fi);pin.classList.toggle('on',on);pin.textContent='📌';
+      pin.title=on?'Affichée dans le bandeau — cliquer pour la ranger seulement dans cette liste':'Seulement dans cette liste — cliquer pour l’afficher aussi dans le bandeau';};
+    pin.onclick=e=>{e.stopPropagation();mfRbPinSet(fi,!mfRbShown(fi));sync();};sync();
+    row.appendChild(go);row.appendChild(pin);p.appendChild(row);});
+  const n=document.createElement('div');n.className='mfGrpNote';n.textContent='📌 = icône affichée dans le bandeau · raccourcis non modifiables pour l’instant';p.appendChild(n);
+  document.body.appendChild(p);
+  const r=anchor.getBoundingClientRect();p.style.top=(r.bottom+4+window.scrollY)+'px';
+  p.style.left=Math.max(6,Math.min(window.innerWidth-p.offsetWidth-8,r.left))+'px';
+  setTimeout(()=>{const off=ev=>{if(!p.contains(ev.target)){p.remove();document.removeEventListener('pointerdown',off,true);}};document.addEventListener('pointerdown',off,true);},0);
+  return p;
 }
 let mfWsCur=null;
 const mfWsSel={cao:null,fao:null};
