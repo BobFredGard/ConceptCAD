@@ -8,7 +8,7 @@ sont sorties le 2026-09-30j.
 Code dans `src/` · livrable `fusion_mvp.html` (généré par `build.js`) · architecture et
 garde-fous en tête de `src/00-entete-et-outils.js`.
 
-**619 versions**, de `2026-09-28b` à `V0.72.0` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
+**620 versions**, de `2026-09-28b` à `V0.73.0` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
 comme dans le fichier d'origine.
 
 ---
@@ -7119,3 +7119,11 @@ Barquette ne perd plus son solide à la 107e modification, et sa mémoire ne mon
   - Couleurs : `ShapeAppearance` (format binaire version 3) pour FreeCAD 1.x, `ShapeColor` en plus pour 0.21 ; octet bas 0 dans les `PropertyColor` (FreeCAD 1.x le lit comme une transparence nulle). Les sommets des lignes prennent leur couleur, sinon elles paraissent en pointillé.
   - Le noyau fait précéder le BRep d'une ligne `DBRep_DrawableShape`, retirée.
 - **Test** : `test_export_freecad` (suite rapide) : deux aimants côte à côte, zip sain (CRC, ordre des entrées), caractéristiques, disque diamétral et cône ; si FreeCAD est installé, il ouvre le fichier et retrouve 4 moitiés valides au bon volume, les deux groupes d'aimant et 6 tranches de lignes. Vu aussi dans la fenêtre de FreeCAD 1.1 (couleurs, lignes continues) et par le bouton dans l'application. Parcours FAO et `CACHE_VER` inchangés.
+
+## V0.73.0 - Oblong en arc et secteur, axes de rainure circulaire, tolérances géométriques ISO
+
+- **Demande** : « Esquisse : création d'un trou oblong circulaire et en secteur / Mise en plan : 1 - ajouter un outil de tolérances géométriques ISO / 2 - il faut pouvoir créer des axes sur une rainure circulaire ».
+- **Esquisse** (`src/50-esquisse-92-oblong-arc.js`) : l'outil Oblong propose dans son bandeau « Arc 3 points », « Arc par centre » et « Secteur ». Oblong en arc : arc d'axe et rayons de construction, arcs extérieur et intérieur, bouts en demi-cercles tangents ; cotes rayon d'axe, rayon des bouts et angle posées à la création. Secteur : deux arcs concentriques et deux traits dirigés vers le centre ; cotes R1, R2 et angle. Le balayage suit la souris, valeurs arrondies à 0,01 mm et 0,01°.
+- **Axes de rainure circulaire** (`src/98-mep-71-oblong.js`) : la rainure vue de face est reconnue à sa forme (deux demi-cercles et deux arcs concentriques écartés de la largeur, même coupés en morceaux, plus d'un demi-tour compris). Un clic de l'outil Axes pose l'arc d'axe prolongé, les traits du centre à travers les bouts et la croix du centre ; tout suit le modèle ; les cotes s'accrochent aux centres des bouts ; aussi en axes automatiques. Nouvelle primitive d'axe en arc (chemin SVG, accrochage).
+- **Tolérances géométriques** (`src/98-mep-72-tolerances-geometriques.js`, groupe « Tolérances » du ruban PLAN) : cadre ISO 1101 (14 symboles dessinés en vecteurs, Ø, valeur, modificateur, jusqu'à 3 références avec Ⓜ / Ⓛ) à flèche sur une arête ou sous la valeur d'une cote ; référence ISO 5459 (lettre suivante proposée sur toutes les planches, sans I, O, Q) en triangle noirci sur une arête ou au bout d'une ligne de cote. Réglage dans le panneau, avertissement quand une référence manque. Ce qui est accroché à une cote la suit, se copie avec la planche et part avec elle.
+- **Test** : `test_esquisse_oblong_arc` (17 contrôles : formes, tangences, degrés de liberté, cotes), `test_mep_oblong_arc` (20 : reconnaissance, clic Axes, suivi, cotes, axes automatiques), `test_mep_tolerances` (26 : pose, suivi, 14 symboles, panneau, suppression, lettres). Vérifié aussi à la souris dans le navigateur : rainure découpée dans une plaque, axe posé, références A et B, deux cadres. Parcours FAO et CACHE_VER inchangés.

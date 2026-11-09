@@ -25,6 +25,7 @@
       return q;
     }
     if(h&&h.t==='slot'&&h.s)return mepSlotPtRefresh(v,q); // centre d'un oblong
+    if(h&&h.t==='aslot'&&h.s)return mepASlotPtRefresh(v,q); // centre d'un oblong en arc (bout ou arc)
     if(h&&(h.t==='axp'||h.t==='axc')){
       const e=mepAxisLineByKey(sh,v,h.ak);if(!e)return q; // axe disparu : dernière position connue
       if(h.t==='axc'){if(e.cx!=null){q.x=e.cx;q.y=e.cy;}return q;}
@@ -146,7 +147,7 @@
       mepPtRefresh(sh,v1,d.o,pr);d.a=d.b=d.o;(d.pts||[]).forEach(q=>mepPtRefresh(sh,v1,q,pr));
       return;
     }
-    if(d.kind!=='dist'&&d.kind!=='note')return;
+    if(d.kind!=='dist'&&d.kind!=='note'&&!((d.kind==='gdt'||d.kind==='datum')&&d.a))return;
     const pr=d.kind==='dist'?(d.orient==='h'?'v':(d.orient==='v'?'h':null)):null;
     // distance oblique : pas de migration ambiguë, mais les références posées restent suivies
     const ok=q=>!!(q&&(pr||d.kind!=='dist'||q.hint));
@@ -155,6 +156,7 @@
   }
   function mepDimWorld(sh,d){
     // ancrages → mm papier
+    if((d.kind==='gdt'||d.kind==='datum'))return mepGdtWorld(sh,d); // tolérance géométrique, référence (98-mep-72)
     const v1=mepView(sh,d.vid);
     if(!v1)return null;
     try{mepDimPtsRefresh(sh,d);}catch(e){} // points accrochés aux traits d'axe : suivent l'axe
@@ -664,6 +666,7 @@
       return G?[{t:'L',x1:G.a.x,y1:G.a.y,x2:G.b.x,y2:G.b.y,cls:'mepAxis'}]:[];
     }
     if(ann.kind==='slot')return ann.s?mepSlotPrims(mepSlotFollow(v,ann.s),v):[];
+    if(ann.kind==='aslot')return ann.s?mepASlotPrims(mepASlotFollow(v,ann.s),v):[];
     if(ann.kind==='hole'){
       const h=mepAxisRefGeom(sh,v,ann.ref);if(!h)return[];
       if(h.rev)return mepRevPrims(h.rev,v,mepBasisOf(v),MEP_AXIS.overrun/mepAxisScale(v));
@@ -1059,6 +1062,7 @@
       });
       try{out.push(...mepAxisCylPrims(sh,v));}catch(e){} // 2026-10-22-012 : cylindres d'un STEP
       mepSlotsAuto(v).forEach(s=>out.push(...mepSlotPrims(s,v))); // 2026-11-06 : oblongs, sur leurs 2 centres
+      mepASlotsAuto(v).forEach(s=>out.push(...mepASlotPrims(s,v))); // 2026-11-09 : oblongs en arc
     }
     return out;
   }
@@ -1112,6 +1116,8 @@
   function mepSheetOfView(v){
     try{return (doc.mep.sheets||[]).find(s=>s.views.indexOf(v)>=0)||mepSheet();}catch(e){return null;}
   }
+  // angle a dans l'arc d'axe p (a0 → a1 croissant)
+  function mepAxisArcIn(p,a){let an=a;while(an<p.a0)an+=2*Math.PI;while(an-2*Math.PI>=p.a0)an-=2*Math.PI;return an<=p.a1+1e-9;}
   function mepAxisAt(sh,sx,sy){
     const tol=5/mepSt.zoom;
     let best=null,bd=tol;
@@ -1127,6 +1133,9 @@
           const d1=Math.hypot(sx-ax,sy-ay),d2=Math.hypot(sx-bx,sy-by);
           if(Math.min(d1,d2)<=6/(mepSt.zoom||1))end=d1<=d2?1:2;
         }else if(p.t==='C'){
+          const cx=v.x+p.cx*v.scale,cy=v.y+p.cy*v.scale;
+          d=Math.abs(Math.hypot(sx-cx,sy-cy)-p.r*v.scale);
+        }else if(p.t==='A'&&mepAxisArcIn(p,Math.atan2((sy-v.y)/v.scale-p.cy,(sx-v.x)/v.scale-p.cx))){
           const cx=v.x+p.cx*v.scale,cy=v.y+p.cy*v.scale;
           d=Math.abs(Math.hypot(sx-cx,sy-cy)-p.r*v.scale);
         }
@@ -1540,8 +1549,9 @@
   function mepDrawDim(mk,d,sh){
     const w=mepDimWorld(sh,d);
     if(!w)return;
-    const val=d.value!=null?d.value:mepDimMeasure(sh,d);
-    let txt=mepDimText(d,val);
+    const gdt=(d.kind==='gdt'||d.kind==='datum');
+    const val=gdt?0:(d.value!=null?d.value:mepDimMeasure(sh,d));
+    let txt=gdt?'':mepDimText(d,val);
     const sel=mepSt.selDim===d.id||!!(mepSt.lot&&mepSt.lot.dims.has(d.id));
     const ghost=!!d.__ghost;
     const col=sel?COL.sel:(d.ref?null:'#0a84ff');
@@ -1560,6 +1570,7 @@
       return mk(tag,attrs);
     };
     if(d.kind==='ord'){mepDrawOrd(draw,d,sh,LX,T);return;}
+    if(gdt){mepDrawGdt(draw,d,sh,L,T,AR);return;}
     if(d.kind==='note')txt=d.txt||'Texte';
     if(d.kind==='hole'||d.kind==='note'){
       if(d.kind==='hole'&&d.holeFid&&typeof doc!=='undefined'){

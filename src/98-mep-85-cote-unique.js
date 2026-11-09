@@ -251,7 +251,8 @@
     if(!v)return false;
     let sx=P.x,sy=P.y;
     if(pk&&pk.cx!=null){sx=pk.cx+(P.x-pk.sx);sy=pk.cy+(P.y-pk.sy);}
-    if(d.kind==='dia'||d.kind==='rad'||d.kind==='hole'||d.kind==='note'){
+    if((d.kind==='gdt'||d.kind==='datum')&&d.on)return false; // accroché à une cote : la suit
+    if(d.kind==='dia'||d.kind==='rad'||d.kind==='hole'||d.kind==='note'||(d.kind==='gdt'||d.kind==='datum')){
       d.b={x:(sx-v.x)/v.scale,y:(sy-v.y)/v.scale};
       return true;
     }

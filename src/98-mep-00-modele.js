@@ -76,6 +76,8 @@
     .mepDimRef{fill:var(--mepHid,#7a7f86)}
     .mepDimL.mepDimSel{stroke:#ff3b30!important}
     .mepDimT.mepDimSel{fill:#ff3b30!important}
+    .mepDimL.mepGdtFill{fill:var(--mepDimCol,#111)}
+    .mepDimL.mepGdtFill.mepDimSel{fill:#ff3b30!important}
     .mepLbl{font-family:sans-serif;font-size:var(--mepLblH,7px);fill:var(--mepText,#111);font-weight:700;paint-order:stroke;stroke:var(--mepPaper,#fff);stroke-width:1.6;stroke-linejoin:round}
     #mepSvg,#mepSvg *{-webkit-user-select:none;-moz-user-select:none;user-select:none}
     .mepLbl,.mepDimT{pointer-events:none}

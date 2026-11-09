@@ -356,6 +356,13 @@
       b.style.flex='1';
     });
     r=rowEl();
+    [['⌖ Tolérance','gdt','Tolérance géométrique ISO 1101 : flèche sur une arête puis cadre, ou cadre sous une cote'],
+     ['Ⓐ Référence','datum','Référence ISO 5459 (A, B, C…) : triangle sur une arête, ou sur une cote pour un axe / plan médian']].forEach(([lab,t,tip])=>{
+      const b=mkBtn(lab,()=>mepSetTool(t),tip);
+      b.className=mepSt.tool===t?'active':'';
+      b.style.flex='1';
+    });
+    r=rowEl();
     {const b=mkBtn('Coter les perçages',()=>{mepAutoHoles();mepSideShow();},'Étiquette automatique de chaque fonction Perçage (n× si plusieurs trous) — vue sélectionnée, sinon toute la planche');b.style.flex='1';r.appendChild(b);}
     h('Axes');
     r=rowEl();
@@ -803,6 +810,7 @@
     row('Saisie',inp);
   }
   function mepSideDim(root,d,sh){
+    if((d.kind==='gdt'||d.kind==='datum')){mepSideGdt(root,d,sh);return;} // 98-mep-72
     const h=document.createElement('h4');
     h.textContent={len:'Longueur',dist:'Distance',rad:'Rayon',dia:'Diamètre',ang:'Angle',hole:'Cotation perçage',note:'Note',ord:'Cotation d’ordonnées '+String(d.axis||'x').toUpperCase()}[d.kind]||'Cote';
     root.appendChild(h);
@@ -835,7 +843,7 @@
         rp.appendChild(mepPrecSelect(mepDimPrec(d),v=>{mepEdit('précision de la cote',()=>{d.prec=v;});mepSideShow();mepRender();}));
         root.appendChild(rp);
       }
-      mk('Supprimer',()=>{mepEdit('suppression cote',()=>{sh.dims=sh.dims.filter(x=>x.id!==d.id);mepSt.selDim=null;});mepSideShow();},'','danger');
+      mk('Supprimer',()=>{mepEdit('suppression cote',()=>{sh.dims=sh.dims.filter(x=>x.id!==d.id&&x.on!==d.id);mepSt.selDim=null;});mepSideShow();},'','danger');
       root.appendChild(r);
       return;
     }
@@ -908,7 +916,7 @@
     const act=document.createElement('div');act.className='row';
     const bDel=document.createElement('button');bDel.textContent='Supprimer';bDel.className='danger';
     bDel.onclick=()=>{
-      mepEdit('suppression cote',()=>{sh.dims=sh.dims.filter(x=>x.id!==d.id);mepSt.selDim=null;});
+      mepEdit('suppression cote',()=>{sh.dims=sh.dims.filter(x=>x.id!==d.id&&x.on!==d.id);mepSt.selDim=null;});
       mepSideShow();
     };
     act.appendChild(bDel);
