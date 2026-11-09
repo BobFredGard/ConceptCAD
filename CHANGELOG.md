@@ -8,7 +8,7 @@ sont sorties le 2026-09-30j.
 Code dans `src/` · livrable `fusion_mvp.html` (généré par `build.js`) · architecture et
 garde-fous en tête de `src/00-entete-et-outils.js`.
 
-**624 versions**, de `2026-09-28b` à `V0.76.1` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
+**625 versions**, de `2026-09-28b` à `V0.76.2` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
 comme dans le fichier d'origine.
 
 ---
@@ -7160,3 +7160,11 @@ Barquette ne perd plus son solide à la 107e modification, et sa mémoire ne mon
 - **Copie** (`src/85-copier-corps.js`) : fonction de la timeline `{type:'bcopy', body, newBody}` posée au marqueur. La copie naît dans un corps neuf « … (copie) » et reprend le corps source tel qu'il est à cette étape : ce qui est ajouté plus loin au source n'y entre pas, ce qui change avant s'y retrouve. Même mécanique que l'Échelle en copie (`occSplitNewBody`, rejeu de l'historique du source, facteur 1). Étape visible dans l'arbre et la timeline (⧉), panneau (corps copié, « Déplacer la copie… »), clic droit d'un corps « ⧉ Copier (timeline) », bouton « Copier » à côté de « Corps » dans le groupe Créer. Supprimer l'étape retire le corps copié.
 - **Corps vide** : le bouton « Corps » reste visible dans le ruban (il était rangé dans la liste du groupe) ; Déplacer et Échelle acceptent un corps né d'une copie (`bodyHasMatter`).
 - **Test** : `test_copier_corps` (12 contrôles au noyau réel : étape au marqueur, copie sans ce qui vient après, cote changée avant suivie, antériorité, refus sur corps vide, déplacement de la copie, fichier, signature du cache, suppression) ; parcours FAO et CACHE_VER inchangés.
+
+## V0.76.2 - Mise en plan : Ø d'un demi-cercle à une flèche, ruban sur une ligne, bouton de l'outil actif
+
+- **Demandes** : « Sur une seule ligne, possible ? » (ruban PLAN passé sur 2 lignes avec le groupe Tolérances) ; « La flèche qui simule le cercle est de travers et en plus, elle ne sert à rien dans ce cas » (Ø sur le bout d'une rainure) ; « Il faudrait garder l'icône de la fonction active le temps que la fonction l'est ».
+- **Ø sur un arc** (`src/98-mep-70-cotes.js`) : le trait de diamètre suit la direction du point fléché, plus celle du texte ; quand le texte sort de l'arc, la flèche est ramenée au bout de l'arc et le trait partait de travers. Si le bord opposé n'existe pas (arc incomplet : bout d'oblong, rainure), une seule flèche et un trait qui dépasse le centre (ISO 129-1) ; cercle complet inchangé (deux flèches).
+- **Ruban sur une ligne** (`src/97-interface-moderne.js`, `mfRibFit`) : si les groupes visibles passent à la ligne (au-dessus de 1500 px de large), les boutons se resserrent (marges réduites, mêmes icônes et libellés : 164 px gagnés sur le ruban PLAN). Recalculé au redimensionnement, au changement d'espace et dès que le ruban change de taille ; minuterie plutôt qu'image d'animation, suspendue dans une fenêtre cachée.
+- **Bouton de l'outil actif** (`mfRibMepSync`, appelé par `mepSetTool` et `mepRender`) : en PLAN, le bouton de l'outil en cours reste encadré en bleu tant qu'il est actif (outils de dessin et de cotes, Tolérance, Référence, Rugosité, modes d'axes, Projection, Auxiliaire, Coupe, Détail, Coupe locale) ; il s'éteint à Échap, au changement d'outil ou à la fin de la commande de vue.
+- **Test** : `test_mep_oblong_arc` (+7 : une seule flèche sur le demi-cercle, trait aligné sur la flèche et le centre, même texte hors de l'arc, dépassement du centre, cercle complet à deux flèches ; l'ancien code échoue à 3 d'entre eux). Ruban et bouton allumé vérifiés au navigateur à 1880 px (PLAN sur une ligne, CAO inchangé ; Cote, Tolérance, Trou, Symétrie, Coupe allumés puis éteints à Échap). Parcours FAO et CACHE_VER inchangés.

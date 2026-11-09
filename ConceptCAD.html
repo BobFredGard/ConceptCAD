@@ -379,7 +379,7 @@ input[type=range]{accent-color:var(--primary);width:100%}
  * peut changer sans rien casser. CACHE_VER (parcours FAO) reste indépendant.
  */
 
-const APP_VER='V0.76.1';
+const APP_VER='V0.76.2';
 try{console.log('[ConceptCAD] version '+APP_VER);}catch(e){}
 try{var mfSv=document.getElementById('mfSplashVer');if(mfSv)mfSv.textContent=APP_VER;}catch(e){} // écran de démarrage
 
@@ -69899,6 +69899,7 @@ function mfCss(){
   '.mfRb:hover i{color:var(--primary);opacity:1}',
   '.mfQuick button,#mfThemeBtn{display:inline-flex;align-items:center;justify-content:center}',
   '.mfRb:hover{background:rgba(127,127,127,.14)}',
+  '.mfRb.mfOn{background:rgba(59,130,246,.2);border-color:var(--primary)}.mfRb.mfOn i{color:var(--primary);opacity:1}',
   // V0.23.27 : icônes FAO repérées par couleur ; doublons du panneau FAO masqués
   '.mfRb.mfIcR i{color:#e5484d}.mfRb.mfIcB i{color:#3b82f6}.mfRb.mfIcG i{color:#22c55e}',
   'body.ui-modern #faoTreeWrap .fao-dup{display:none!important}',
@@ -69985,6 +69986,8 @@ function mfCss(){
   '#skSetMenu button{align-self:flex-start;padding:5px 10px;font-size:.76rem}',
   '#skSetMenu #skSet3D{align-self:stretch;margin-top:4px;background:none;border-color:var(--border)}',
   /* --- bandeaux ADAPTATIFS à la largeur d'écran --- */
+  /* V0.73.1 : ruban qui passerait à la ligne (PLAN sur 1920 px depuis le groupe Tolérances) : boutons resserrés, posé par mfRibFit */
+  '#mfRibbon.mfFit1 .mfRb{min-width:42px;padding:3px 2px}#mfRibbon.mfFit1 .mfGrp{padding:0 2px}',
   '@media (max-width:1700px){.mfRb{min-width:42px;font-size:.62rem}.mfRb i svg{width:20px;height:20px}body.ui-modern.mf-sk #skToolbar .tool,body.ui-modern.mf-sk #skToolbar .con{min-width:33px!important}body.ui-modern.mf-sk .mfSkLab{font-size:.54rem}}',
   '@media (max-width:1500px){.mfRb{min-width:38px;padding:3px 2px}body.ui-modern.mf-sk .mfSkLab{display:none!important}body.ui-modern.mf-sk #skToolbar .tool,body.ui-modern.mf-sk #skToolbar .con,body.ui-modern.mf-sk #skToolbar #skZoomIn,body.ui-modern.mf-sk #skToolbar #skZoomOut,body.ui-modern.mf-sk #skToolbar #skFit,body.ui-modern.mf-sk #skToolbar #skRefs,body.ui-modern.mf-sk #skToolbar #skParams,body.ui-modern.mf-sk #skToolbar #skUndo,body.ui-modern.mf-sk #skToolbar #skRedo{min-width:32px!important;padding:5px 3px!important}}',
   '@media (max-width:1200px){.mfRb{font-size:0;min-width:34px;gap:0}.mfRb i{height:22px}.mfSearch{max-width:200px}.mfQuick button{padding:4px 6px}}',
@@ -70169,6 +70172,7 @@ function mfRibbon(){
     btns.forEach(([ic,lab,act,tip,cls])=>{const b=document.createElement('button');b.className='mfRb'+(cls?' '+cls:'');b.innerHTML='<i>'+(mfI(ic,22)||ic)+'</i>'+lab;
       b.dataset.fi=title+'/'+lab.replace(/<span class="mfLabA">.*?<\/span>/,'').replace(/<[^>]+>/g,''); // fiche illustrée au survol (97-interface-fiches)
       const src=typeof act==='string'?document.getElementById(act):null;b.title=tip||(src&&src.title)||lab;
+      if(act&&act.mepKey)b.dataset.mep=act.mepKey; // outil PLAN : bouton allumé tant qu'il est actif (mfRibMepSync)
       b.onclick=()=>{mfCloseMenus();typeof act==='function'?act():mfClick(act);};
       if(src&&src._ctx)b.addEventListener('contextmenu',e=>{e.preventDefault();e.stopPropagation();mfCloseMenus();src._ctx();}); // clic droit du bouton d'origine (ƒx : liste complète)
       bb.appendChild(b);});
@@ -70201,39 +70205,42 @@ function mfRibbon(){
   grp('Export',[['gcode','G-code','faoExportBtn',null,'mfIcB']],'mfFao');
   // PLAN : ruban dédié (icônes PLAN + actions mepSetTool/mep*)
   const mepTool=t=>{try{mepSetActive(true);mepSetTool(t);}catch(e){}};
+  const mepK=(k,f)=>{f.mepKey=k;return f;}; // V0.73.1 : clé d'état de l'outil (t: outil, ax: axes, v: commande de vue)
+  const mepT=t=>mepK('t:'+t,()=>mepTool(t));
   grp('Planches',[['pSheetNew','Nouvelle',()=>{try{mepAddSheet();}catch(e){}},'Ajouter une planche'],
     ['pSheetDup','Dupliquer',()=>{try{const bs=document.querySelectorAll('#mepTabs .mepAdd');if(bs[1])bs[1].click();}catch(e){}},'Dupliquer la planche'],
     ['pTitle','Cartouche',()=>{try{mepSetActive(true);mepTbEdit();}catch(e){}},'Dessiner / éditer le cartouche (esquisse contrainte, champs matière, TTS, TTH…)']],'mfPlan');
   grp('Vues',[['pViewBase','Face',()=>{try{mepSetActive(true);mepAddViewStd('front');}catch(e){}},'Vue de base (face)'],
-    ['pViewProj','Projection',()=>{try{mepBeginProjCmd();}catch(e){}},'Projections de la vue sélectionnée : déplacez la souris (droite, gauche, dessus, dessous ; diagonale = ISO) et cliquez — enchaînable, Échap termine'],
+    ['pViewProj','Projection',mepK('v:proj',()=>{try{mepBeginProjCmd();}catch(e){}}),'Projections de la vue sélectionnée : déplacez la souris (droite, gauche, dessus, dessous ; diagonale = ISO) et cliquez — enchaînable, Échap termine'],
     ['pViewIso','ISO',()=>{try{mepSetActive(true);mepAddViewStd('iso');}catch(e){}},'Axonométrie isométrique'],
     ['camera','Caméra',()=>{try{mepAddCameraViewCmd();}catch(e){}},'Vue depuis la caméra 3D actuelle'],
-    ['pViewAux','Auxiliaire',()=>{try{mepBeginAuxCmd();}catch(e){}},'Vue auxiliaire : cliquez une arête inclinée, puis placez la vue perpendiculairement'],
-    ['pViewSection','Coupe',()=>{try{mepSetActive(true);mepBeginSectionCmd();}catch(e){}},'Vue en coupe : points de la ligne sur une vue (2, ou plus pour une coupe brisée à l’équerre), ✓ / Entrée pour valider, ↶ / Retour arrière pour reculer, puis placez la vue (le côté donne le sens du regard)'],
-    ['pViewDetail','Détail',()=>{try{mepSetActive(true);mepBeginDetailCmd();}catch(e){}},'Vue de détail : centre, rayon, puis placement'],
-    ['pViewLocal','Coupe locale',()=>{try{mepSetActive(true);mepBeginLocalCmd();}catch(e){}},'Coupe locale (arrachement) : points d’une forme libre fermée sur une vue (1er point ou Entrée pour fermer), puis l’arête qui place le plan de coupe — le plan suit l’arête quand la pièce change'],
+    ['pViewAux','Auxiliaire',mepK('v:aux',()=>{try{mepBeginAuxCmd();}catch(e){}}),'Vue auxiliaire : cliquez une arête inclinée, puis placez la vue perpendiculairement'],
+    ['pViewSection','Coupe',mepK('v:section',()=>{try{mepSetActive(true);mepBeginSectionCmd();}catch(e){}}),'Vue en coupe : points de la ligne sur une vue (2, ou plus pour une coupe brisée à l’équerre), ✓ / Entrée pour valider, ↶ / Retour arrière pour reculer, puis placez la vue (le côté donne le sens du regard)'],
+    ['pViewDetail','Détail',mepK('v:detail',()=>{try{mepSetActive(true);mepBeginDetailCmd();}catch(e){}}),'Vue de détail : centre, rayon, puis placement'],
+    ['pViewLocal','Coupe locale',mepK('v:local',()=>{try{mepSetActive(true);mepBeginLocalCmd();}catch(e){}}),'Coupe locale (arrachement) : points d’une forme libre fermée sur une vue (1er point ou Entrée pour fermer), puis l’arête qui place le plan de coupe — le plan suit l’arête quand la pièce change'],
     ['pDxfIn','DXF',()=>{try{mepSetActive(true);mepImportDxf();}catch(e){}},'Importer un DXF comme vue : on peut la coter, y accrocher lignes, cercles, axes…']],'mfPlan');
-  grp('Dessin',[['pLine','Ligne',()=>mepTool('line'),'Ligne enchaînée (Échap termine)'],['pRect','Rectangle',()=>mepTool('rect')],
-    ['pCircle','Cercle',()=>mepTool('circle')],['pArc','Arc',()=>mepTool('arc'),'Arc : centre, départ, arrivée'],
-    ['pPoint','Point',()=>mepTool('point')],['pTrim','Ajuster',()=>mepTool('trim')],['pText','Texte',()=>mepTool('text'),'Texte libre ou champ (matière, TTS, TTH…)']],'mfPlan');
-  grp('Cotes',[['pDim','Cote',()=>mepTool('dim'),'Outil cote unique : Ø, longueur, distance, angle'],
-    ['pHole','Perçage',()=>mepTool('hole'),'Cotation perçage : Ø, lamage, fraisure, taraudage'],
+  grp('Dessin',[['pLine','Ligne',mepT('line'),'Ligne enchaînée (Échap termine)'],['pRect','Rectangle',mepT('rect')],
+    ['pCircle','Cercle',mepT('circle')],['pArc','Arc',mepT('arc'),'Arc : centre, départ, arrivée'],
+    ['pPoint','Point',mepT('point')],['pTrim','Ajuster',mepT('trim')],['pText','Texte',mepT('text'),'Texte libre ou champ (matière, TTS, TTH…)']],'mfPlan');
+  grp('Cotes',[['pDim','Cote',mepT('dim'),'Outil cote unique : Ø, longueur, distance, angle'],
+    ['pHole','Perçage',mepT('hole'),'Cotation perçage : Ø, lamage, fraisure, taraudage'],
     ['pHoles','Perçages auto',()=>{try{mepSetActive(true);mepAutoHoles();}catch(e){}},'Coter toutes les fonctions Perçage (n× si plusieurs trous) — vue sélectionnée, sinon toute la planche'],
-    ['pNote','Note',()=>mepTool('note'),'Note à flèche : cliquez la pointe, placez le texte, saisissez-le (texte libre, plusieurs lignes)'],
-    ['pOrdX','Ordonnées X',()=>mepTool('ordx'),'Cotation d’ordonnées suivant X : origine « 0 », puis les points — valeurs alignées qui se déplacent ensemble (Entrée termine)'],
-    ['pOrdY','Ordonnées Y',()=>mepTool('ordy'),'Cotation d’ordonnées suivant Y : origine « 0 », puis les points — valeurs alignées qui se déplacent ensemble (Entrée termine)']],'mfPlan');
+    ['pNote','Note',mepT('note'),'Note à flèche : cliquez la pointe, placez le texte, saisissez-le (texte libre, plusieurs lignes)'],
+    ['pOrdX','Ordonnées X',mepT('ordx'),'Cotation d’ordonnées suivant X : origine « 0 », puis les points — valeurs alignées qui se déplacent ensemble (Entrée termine)'],
+    ['pOrdY','Ordonnées Y',mepT('ordy'),'Cotation d’ordonnées suivant Y : origine « 0 », puis les points — valeurs alignées qui se déplacent ensemble (Entrée termine)']],'mfPlan');
   // V0.76.0 : filigranes (98-mep-40) — un bouton par texte type
   grp('Filigrane',[['pText','Bon pour fab.',()=>{try{mepSetActive(true);mepWmPlace('bpf');}catch(e){}},'Filigrane « BON POUR FABRICATION » au centre de la planche, en diagonale : glissez-le, réglez angle, taille, couleur et opacité dans le panneau'],
     ['pText','Annulé',()=>{try{mepSetActive(true);mepWmPlace('annule');}catch(e){}},'Filigrane « ANNULÉ » au centre de la planche, en diagonale'],
     ['pText','Plan interne',()=>{try{mepSetActive(true);mepWmPlace('interne');}catch(e){}},'Filigrane « PLAN INTERNE » au centre de la planche, en diagonale'],
     ['pText','Autre…',()=>{try{mepSetActive(true);mepWmPlace('autre');}catch(e){}},'Filigrane avec le texte de votre choix']],'mfPlan');
-  grp('Tolérances',[['pGdt','Tolérance',()=>mepTool('gdt'),'Tolérance géométrique ISO 1101 : cliquez une arête (pointe de la flèche) puis placez le cadre — ou cliquez une cote pour mettre le cadre sous sa valeur'],
-    ['pDatum','Référence',()=>mepTool('datum'),'Référence ISO 5459 (A, B, C…) : cliquez une arête puis placez la lettre — ou cliquez une cote pour un axe ou un plan médian'],
-    ['pRough','Rugosité',()=>mepTool('rough'),'État de surface (rugosité) : cliquez l’arête de la surface, puis le côté hors matière — symbole perpendiculaire à l’arête, valeur « Ra 1,6 » lisible du bas ou de la droite']],'mfPlan');
+  grp('Tolérances',[['pGdt','Tolérance',mepT('gdt'),'Tolérance géométrique ISO 1101 : cliquez une arête (pointe de la flèche) puis placez le cadre — ou cliquez une cote pour mettre le cadre sous sa valeur'],
+    ['pDatum','Référence',mepT('datum'),'Référence ISO 5459 (A, B, C…) : cliquez une arête puis placez la lettre — ou cliquez une cote pour un axe ou un plan médian'],
+    ['pRough','Rugosité',mepT('rough'),'État de surface (rugosité) : cliquez l’arête de la surface, puis le côté hors matière — symbole perpendiculaire à l’arête, valeur « Ra 1,6 » lisible du bas ou de la droite']],'mfPlan');
   const mepAx=m=>{try{mepSetActive(true);mepSetAxisMode(m);}catch(e){}};
-  grp('Axes',[['pAxHole','Trou',()=>mepAx('hole'),'Axes (trou) : croix d’axes des trous cliqués'],
-    ['pAxPitch','Cercle',()=>mepAx('pitch'),'Axes (cercle) : cercle primitif des trous répartis'],
-    ['pAxSym','Symétrie',()=>mepAx('sym'),'Axes (symétrie) : axe de symétrie entre deux éléments']],'mfPlan');
+  const mepA=m=>mepK('ax:'+m,()=>mepAx(m));
+  grp('Axes',[['pAxHole','Trou',mepA('hole'),'Axes (trou) : croix d’axes des trous cliqués'],
+    ['pAxPitch','Cercle',mepA('pitch'),'Axes (cercle) : cercle primitif des trous répartis'],
+    ['pAxSym','Symétrie',mepA('sym'),'Axes (symétrie) : axe de symétrie entre deux éléments']],'mfPlan');
   grp('Sortie',[['pSvg','SVG',()=>{try{mepExport();}catch(e){}},'Exporter la planche en SVG'],
     ['pDxf','DXF',()=>{try{mepExportDxf();}catch(e){}},'Exporter la planche en DXF R12 (calques CONTOUR, CACHE, AXE, COTES, CADRE…)'],
     ['pPdf','PDF',()=>{try{mepPrint(true);}catch(e){}},'PDF vectoriel au format exact de la planche (« Enregistrer au format PDF »)'],
@@ -70287,6 +70294,31 @@ function mfGrpMenu(g,anchor){
   p.style.left=Math.max(6,Math.min(window.innerWidth-p.offsetWidth-8,r.left))+'px';
   setTimeout(()=>{const off=ev=>{if(!p.contains(ev.target)){p.remove();document.removeEventListener('pointerdown',off,true);}};document.addEventListener('pointerdown',off,true);},0);
   return p;
+}
+// V0.73.1 : si les groupes visibles du ruban tiennent sur plus d'une ligne, on les resserre (au-dessus de
+// 1500 px seulement : en dessous, les règles @media réduisent déjà les boutons)
+function mfRibFit(){
+  const rb=document.getElementById('mfRibbon');if(!rb)return;
+  rb.classList.remove('mfFit1');
+  if(window.innerWidth<=1500)return;
+  const lignes=()=>{const t=new Set();rb.querySelectorAll(':scope>.mfGrp').forEach(g=>{if(g.offsetParent!==null)t.add(g.offsetTop);});return t.size;};
+  if(lignes()>1)rb.classList.add('mfFit1');
+}
+let mfRibFitRaf=0;
+function mfRibFitSoon(){if(mfRibFitRaf)return;mfRibFitRaf=setTimeout(()=>{mfRibFitRaf=0;try{mfRibFit();}catch(e){}},30);} // pas de rAF : suspendu quand la fenêtre est cachée
+// V0.73.1 : « garder l'icône de la fonction active le temps que la fonction l'est » — le bouton PLAN de l'outil
+// en cours (outil, mode d'axes, commande de vue) reste allumé ; appelé par mepRender et mepSetTool (98-mep)
+function mfRibMepSync(st){
+  const rb=document.getElementById('mfRibbon');if(!rb)return;
+  let k='';
+  if(st){
+    if(st.vcmd&&st.vcmd.kind)k='v:'+st.vcmd.kind;
+    else if(st.tool==='axis')k='ax:'+(st.axisMode||'hole');
+    else if(st.tool&&st.tool!=='select')k='t:'+st.tool;
+  }
+  if(rb.dataset.mepOn===k)return;
+  rb.dataset.mepOn=k;
+  rb.querySelectorAll('.mfRb[data-mep]').forEach(b=>b.classList.toggle('mfOn',b.dataset.mep===k));
 }
 let mfWsCur=null;
 const mfWsSel={cao:null,fao:null};
@@ -70598,6 +70630,9 @@ function mfBuildModern(){
    if(st&&nm)top.insertBefore(nm,st);if(st&&rg)top.insertBefore(rg,st.nextSibling);}
   // ruban sous le bandeau
   top.parentNode.insertBefore(mfRibbon(),top.nextSibling);
+  // ruban sur une ligne : recalculé au redimensionnement et au changement d'espace (CAO / FAO / PLAN, assemblage)
+  // (ResizeObserver : le ruban change de taille dès qu'un groupe paraît ou disparaît, même après l'animation de PLAN)
+  try{window.addEventListener('resize',mfRibFitSoon);if(typeof ResizeObserver==='function')new ResizeObserver(mfRibFitSoon).observe(document.getElementById('mfRibbon'));new MutationObserver(mfRibFitSoon).observe(document.body,{attributes:true,attributeFilter:['data-ws','data-asm']});mfRibFitSoon();}catch(e){}
   // onglets du navigateur sur la vue
   const vp=document.getElementById('vpwrap');
   if(vp){const bt=document.createElement('div');bt.id='mfBrTabs';bt.className='mfM';
@@ -76145,6 +76180,7 @@ function filmFrame(){
   }
   function mepRender(){
     if(!mepWrapEl||!mepSt.open)return;
+    try{if(typeof mfRibMepSync==='function')mfRibMepSync(mepSt);}catch(e){} // bouton du ruban de l'outil actif
     mepEnsure();
     mepPrefsSync(); // hors docSansEtape : un réglage changé (cotes, hachures…) est un vrai geste, annulable
     docSansEtape(mepRenderCorps); // cotes et coupes qui suivent la pièce : pas d'étape d'annulation
@@ -78494,9 +78530,21 @@ function filmFrame(){
       if(d.kind==='dia'){
         // trait de diamètre : part du bord (côté texte) après un vide, traverse
         // le centre et flèche le bord opposé - il ne part plus du centre.
+        // V0.73.1 : le trait suit la direction du point fléché (ang), pas celle du texte — sur un arc, ang
+        // est ramené au bout de l'arc et le trait partait de travers. Arc incomplet dont le bord opposé
+        // n'existe pas (bout d'oblong…) : une seule flèche, le trait dépasse le centre (ISO 129-1).
+        const dx=Math.cos(ang),dy=Math.sin(ang);
         const lg=Math.min(MEP_DIM_STYLE.leaderGap,rr*0.45);
-        draw('line',Object.assign({x1:ex-ux*lg,y1:ey-uy*lg,
-          x2:cx-rr*Math.cos(ang),y2:cy-rr*Math.sin(ang),'marker-end':ARS},L));
+        let face=true;
+        if(e&&e.t==='A'){
+          const T2=2*Math.PI,md=a=>((a%T2)+T2)%T2;
+          const span=md(e.a1-e.a0)||T2;
+          face=md(ang+Math.PI-e.a0)<=span+1e-6;
+        }
+        if(face)draw('line',Object.assign({x1:ex-dx*lg,y1:ey-dy*lg,
+          x2:cx-rr*dx,y2:cy-rr*dy,'marker-end':ARS},L));
+        else{const ov=Math.min(rr*0.5,Math.max(2*MEP_DIM_STYLE.arrowLen,rr*0.3));
+          draw('line',Object.assign({x1:ex-dx*lg,y1:ey-dy*lg,x2:cx-ov*dx,y2:cy-ov*dy},L));}
       }
       // trait sous la valeur R/Ø : longueur du texte réel (symbole et tolérances compris)
       const tEl=mepDimDrawText(draw,T,str,pp.up,pp.lo,tx,ty,ux<0?'end':'start',null,pp.sym,pp.par,pp.post);
@@ -80120,7 +80168,7 @@ function filmFrame(){
     mepStatus(mepAxisModeStatus());
     mepRender();
   }
-  function mepToolSync(){/* plus de barre d'outils interne — le panneau latéral gère l'outil actif */}
+  function mepToolSync(){try{if(typeof mfRibMepSync==='function')mfRibMepSync(mepSt);}catch(e){}} // bouton du ruban allumé (97-interface-moderne)
   function mepDimDragStart(sh,P,dim,ev){
     mepSt.selDim=dim.id;mepSt.sel=null;mepSt.entSel=[];
     mepSt.ordPt=dim.kind==='ord'?{id:dim.id,i:mepOrdPtAt(sh,dim,P)}:null;

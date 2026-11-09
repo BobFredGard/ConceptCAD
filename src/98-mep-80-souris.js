@@ -291,7 +291,7 @@
     mepStatus(mepAxisModeStatus());
     mepRender();
   }
-  function mepToolSync(){/* plus de barre d'outils interne — le panneau latéral gère l'outil actif */}
+  function mepToolSync(){try{if(typeof mfRibMepSync==='function')mfRibMepSync(mepSt);}catch(e){}} // bouton du ruban allumé (97-interface-moderne)
   function mepDimDragStart(sh,P,dim,ev){
     mepSt.selDim=dim.id;mepSt.sel=null;mepSt.entSel=[];
     mepSt.ordPt=dim.kind==='ord'?{id:dim.id,i:mepOrdPtAt(sh,dim,P)}:null;
