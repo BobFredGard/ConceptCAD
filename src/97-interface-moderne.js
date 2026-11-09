@@ -411,7 +411,7 @@ function mfRibbon(){
     ['asmInspect','Inspecter',()=>asmCmdInspect(),'Interférences entre corps / composants, masses (matière par composant) et centre de gravité',asmO],
     ['asmFromBodies','Depuis corps',()=>asmCmdFromBodies(),'Créer un composant depuis le corps sélectionné (ou depuis chaque corps) : la pièce multicorps devient un assemblage, sans rien remodéliser',asmO],
     ['asmStd','Normalisés',()=>stdDlg(),'Vis ISO / ANSI (CHC, FHC, pas au choix), bouchons gaz six pans creux, goupilles, clavettes ISO, engrenages et paires d’engrenages : insérés comme composants du composant actif',asmO],
-    ['asmMag','Aimants',()=>magDlg(),'Bibliothèque d’aimants permanents (disques, cylindres, cubes, pavés, anneaux), articles réels avec leurs caractéristiques. Clic droit sur un aimant posé : afficher ou masquer ses lignes de champ',asmO],
+    ['asmMag','Aimants',()=>magDlg(),'Bibliothèque d’aimants permanents (disques, cylindres, cubes, pavés, anneaux, cônes ; aimantation axiale ou diamétrale), articles réels avec leurs caractéristiques. Clic droit sur un aimant posé : afficher ou masquer ses lignes de champ',asmO],
     ['import','Insérer',()=>asmCmdInsert(),'Insérer un fichier .conceptcad (ou .miniFusion) comme composant du composant actif : lié (modifiable ici, la source suit) ou copié',asmO]],'mfCao mfAsmG');
   // FAO : posage, opérations (mêmes fiches que la barre « + Usinage »), simulation, calcul, export
   grp('Posage',[['setup','Posage',()=>{const b=Array.from(document.querySelectorAll('#faoTreeWrap button')).find(x=>/\+ Posage/.test(x.textContent));if(b)b.click();},'Ajouter un posage'],['tools','Outils','faoToolsBtn',null,'mfIcR']],'mfFao');

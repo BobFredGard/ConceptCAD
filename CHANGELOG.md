@@ -8,7 +8,7 @@ sont sorties le 2026-09-30j.
 Code dans `src/` · livrable `fusion_mvp.html` (généré par `build.js`) · architecture et
 garde-fous en tête de `src/00-entete-et-outils.js`.
 
-**617 versions**, de `2026-09-28b` à `V0.70.5` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
+**618 versions**, de `2026-09-28b` à `V0.71.0` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
 comme dans le fichier d'origine.
 
 ---
@@ -7091,3 +7091,19 @@ Barquette ne perd plus son solide à la 107e modification, et sa mémoire ne mon
 - **Parcours FAO et `CACHE_VER`** inchangés.
 
 ---
+
+## V0.71.0 - Aimants : cônes, disques diamétraux, aimants à visser
+
+- **Demande** : ajouter les gammes Supermagnete « cônes » et « disques » (en particulier S-10-05-DN), puis « aimants à visser », avec les mêmes propriétés que les articles déjà entrés.
+- **Catalogue** (`src/48-aimants-catalogue.js`, relevé le 09/11/2026 sur la fiche de chaque article) : 31 articles de plus (254 → 285).
+  - 4 cônes tronqués CN-…, aimantés dans la hauteur ; grande base = pôle sud, petite face = pôle nord (le site ne le précise pas).
+  - 2 disques aimantés diamétralement : S-10-05-DN (N45) et S-12-06-DN (N42). Les autres disques de la page y étaient déjà.
+  - 16 disques à visser CS-S-…-N / -NR (pôle nord ou sud du côté fraisé, d'après la fiche) et 9 pavés à visser CS-Q-… (1 ou 2 trous ; pôle nord côté fraisé supposé, la fiche ne le dit pas). Trou Ø4,5, fraisage Ø9,46 sur 2,48 mm.
+  - Pas repris : les disques caoutchoutés (…-R : seules les cotes du caoutchouc sont données), autocollants (STIC, FOAM).
+- **Champ** (`src/48-aimants-champ.js`) :
+  - cône : courants équivalents, une spire par tranche de hauteur (intégrales elliptiques), Gauss-Legendre par morceaux plus courts près de la paroi ;
+  - diamétral : charges σ = M·sin φ sur la paroi, intégrale exacte en hauteur, somme régulière autour (plus serrée près de la paroi) ; pôle nord côté +Y ;
+  - à visser : aimant plein moins le trou (cylindre + tronc de cône du fraisage), superposition exacte.
+- **Pièce** (`src/48-aimants-interface.js`) : toujours deux moitiés, sud vert et nord rouge. Cône : coins arrondis sur une paroi inclinée. Diamétral : deux demi-disques (révolution de 180°). Disque à visser : profil de révolution avec le trou fraisé. Pavé à visser : chaque trou enlevé par une révolution autour de son axe. Fenêtre : formes « Cône tronqué », « Disque à visser (fraisé) », « Pavé à visser (fraisé) » ; « diamétral », « trou fraisé » et le pôle côté fraisé dans la liste des articles.
+- **Piège évité** : arrondir à 6 décimales les points d'un congé incliné laissait un écart de 2,5·10⁻⁷ mm entre l'arc et ses voisins ; le noyau cassait alors le contour (volume négatif). Les points ne sont plus arrondis.
+- **Test** : `test_aimants` compare le cône, le disque diamétral, les disques à visser (fraisage en haut et en bas) et le pavé à deux trous à une intégration numérique indépendante des charges de surface (écart maxi 0,005 %). Il vérifie aussi un cône aux bases égales = cylindre, une longue tige diamétrale B = Br/2, le dipôle couché à grande distance, les lignes qui reviennent par le pôle sud, et les volumes exacts des deux moitiés dans le noyau. Vu dans l'application : cône, disque diamétral (moitié rouge côté +Y), pavé à deux trous fraisés. Parcours FAO et `CACHE_VER` inchangés.
