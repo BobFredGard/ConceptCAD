@@ -122,7 +122,7 @@ function featIconOf(f){
   if(!f)return '◧';
   if(f.type==='import'&&f.derive){const L=derLinkOf(f);return '🔗'+(!L||L.st==='warn'?'⚠':'');} // corps dérivé (52)
   if(f.type==='extrude')return (f.op||'add')==='cut'?'▾':'▤';
-  if(f.type==='xfillet')return xIcon(xKindOf(f))+((f._m&&f._m.m<f._m.t)||f._err||f._adj?'⚠':'');
+  if(f.type==='xfillet')return xIcon(xKindOf(f))+((f._m&&f._m.m<f._m.t)||f._err||f._adj||f._rate?'⚠':'');
   if(f.type==='fillet')return xIcon(xKindOf(f));
   if(f.type==='repeat')return '🔁';
   if(f.type==='combine')return f.mode==='cut'?'⊖':(f.mode==='intersect'?'⊗':'⊕');
@@ -138,6 +138,7 @@ function featIconOf(f){
   if(f.type==='bremove')return '⊘';
   if(f.type==='bscale')return f._err?'⚠':'⤡';
   if(f.type==='bcopy')return f._err?'⚠':'⧉';
+  if(f.type==='bmirror')return f._err?'⚠':'◫';
   if(f.type==='xdelface')return f._calc?'⏳':((f._m&&f._m.m<f._m.t)||f._err)?'⚠':'⌫'; // ⏳ : calcul au worker (21)
   if(f.type==='xdraft')return ((f._m&&f._m.m<f._m.t)||f._err||f._thin)?'⚠':'📐';
   if(f.type==='xshell')return ((f._m&&f._m.m<f._m.t)||f._err)?'⚠':'🥚';

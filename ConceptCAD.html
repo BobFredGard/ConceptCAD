@@ -379,7 +379,7 @@ input[type=range]{accent-color:var(--primary);width:100%}
  * peut changer sans rien casser. CACHE_VER (parcours FAO) reste indépendant.
  */
 
-const APP_VER='V0.76.2';
+const APP_VER='V0.77.0';
 try{console.log('[ConceptCAD] version '+APP_VER);}catch(e){}
 try{var mfSv=document.getElementById('mfSplashVer');if(mfSv)mfSv.textContent=APP_VER;}catch(e){} // écran de démarrage
 
@@ -4713,6 +4713,10 @@ function occSingleEdgeTool(shape,pts,r,chamfer,cham,firstN,info){
       s1=inFirst1?r:D2;s2=inFirst1?D2:r;s=Math.max(s1,s2);
     }
     const T1=add(M,mul(d1,s1)),T2=add(M,mul(d2,s2));
+    // Le congé doit tenir sur ses deux faces : point de tangence hors du solide = rayon trop grand.
+    // L'outil coupait quand même et rendait un bord tronqué, annoncé réussi (R60 sur un bloc de 20).
+    const OUT=occt.TopAbs_State.TopAbs_OUT;
+    if([T1,T2].some(q=>{const G=new occt.gp_Pnt_3(q[0],q[1],q[2]);cl.Perform(G,1e-4);const e=cl.State();try{G.delete();}catch(x){}return e===OUT;}))return null;
     const Eo=sub(M,mul(b,0.5*s+0.5)); // sommet du triangle repoussé HORS matière (pas de face coplanaire)
     const o=Math.max(2*s,2),half=L/2+o;
     // Le débordement ne doit traverser que du vide : l'outil dépasse la section du chanfrein (côté Eo),
@@ -4903,6 +4907,44 @@ function occSingleEdgeConcavePiece(shape,pts,r,chamfer,cham,firstN,S0){
   }catch(e){return null;}
   finally{occDispose(bin);jeter.forEach(x=>{try{x.delete();}catch(e){}});}
 }
+function occAreteSuivie(E,j,memeSolide){
+  // Arête d'un travail d'arrondi, retrouvée sur un solide qui a déjà reçu d'autres congés. Son nouveau
+  // morceau est posé SUR l'ancienne arête (raccourcie par la voisine, son milieu a bougé) : tous ses
+  // points doivent tomber sur l'ancienne. La simple proximité du milieu (3 mm) prenait le bord d'un
+  // congé voisin, et l'arrondi partait sur la mauvaise arête. → arête, ou null si elle a disparu.
+  if(memeSolide&&j.src!=null){const e=E.find(x=>x.src===j.src);if(e)return e;}
+  if(!j.pts||j.pts.length<2)return E.find(e=>j.mid&&Math.hypot(e.mid[0]-j.mid[0],e.mid[1]-j.mid[1],e.mid[2]-j.mid[2])<3.0)||null;
+  const lo=[1e9,1e9,1e9],hi=[-1e9,-1e9,-1e9];
+  j.pts.forEach(q=>{for(let k=0;k<3;k++){lo[k]=Math.min(lo[k],q[k]-0.6);hi[k]=Math.max(hi[k],q[k]+0.6);}});
+  // L'arête est une ligne brisée : sur un arc, sa corde s'écarte de la courbe (flèche ≈ L·angle/8)
+  let tol=0.03;
+  for(let i=1;i+1<j.pts.length;i++){
+    const a=j.pts[i-1],b=j.pts[i],c=j.pts[i+1],u=[b[0]-a[0],b[1]-a[1],b[2]-a[2]],v=[c[0]-b[0],c[1]-b[1],c[2]-b[2]];
+    const lu=Math.hypot(u[0],u[1],u[2]),lv=Math.hypot(v[0],v[1],v[2]);if(!(lu>0&&lv>0))continue;
+    const cs=Math.max(-1,Math.min(1,(u[0]*v[0]+u[1]*v[1]+u[2]*v[2])/(lu*lv)));
+    tol=Math.max(tol,0.03+Math.max(lu,lv)*Math.acos(cs)/3);
+  }
+  tol=Math.min(tol,0.5);
+  let best=null;
+  for(const e of E){
+    // Raccourcie ou rallongée par la voisine : la plus grande partie de ses points reste sur l'ancienne.
+    if(!e.pts||!e.pts.length||!(e.len>1e-3))continue;
+    const dans=e.pts.filter(q=>q[0]>=lo[0]&&q[0]<=hi[0]&&q[1]>=lo[1]&&q[1]<=hi[1]&&q[2]>=lo[2]&&q[2]<=hi[2]&&occDistPolyligne(q,j.pts)<tol).length;
+    if(dans<0.6*e.pts.length)continue;
+    if(!best||e.len>best.len)best=e;
+  }
+  return best;
+}
+function occDistPolyligne(q,pts){
+  let d2=Infinity;
+  for(let i=0;i+1<pts.length;i++){
+    const a=pts[i],b=pts[i+1],u=[b[0]-a[0],b[1]-a[1],b[2]-a[2]],l=u[0]*u[0]+u[1]*u[1]+u[2]*u[2];
+    const t=l>0?Math.max(0,Math.min(1,((q[0]-a[0])*u[0]+(q[1]-a[1])*u[1]+(q[2]-a[2])*u[2])/l)):0;
+    const x=a[0]+u[0]*t-q[0],y=a[1]+u[1]*t-q[1],z=a[2]+u[2]*t-q[2],v=x*x+y*y+z*z;
+    if(v<d2)d2=v;
+  }
+  return Math.sqrt(d2);
+}
 function occFilletRun(base,jobs,warns,chamfer,opts){
   // Arrondi/chanfrein BRep : 1) le lot en une passe (rapide), 2) si Build échoue → ARÊTE PAR ARÊTE
   // sur la shape courante (chaque succès conservé — une arête capricieuse ne fait plus
@@ -4938,53 +4980,63 @@ function occFilletRun(base,jobs,warns,chamfer,opts){
       const s=mf.Shape();nomsApresConge(mf,cur,s,chamfer);occDispose(bin);return s;
     }catch(e){occDispose(bin);return null;}
   };
+  const bilan=opts&&opts.bilan;
   if(opts&&opts.single){
     // case « tangentes » DÉCOCHÉE : chaque arête seule, sans chaîne tangente
     // V0.70.3 : les morceaux des coins intérieurs s'accumulent et sont soudés EN UNE FOIS (une fusion, une
     // unification, un contrôle de la pièce) ; tant que la pièce ne change pas, ses arêtes ne sont pas relues.
-    let cur=base,done=0,E=null,Ecur=null,CL=null,CLcur=null;
+    let cur=base,E=null,Ecur=null,CL=null,CLcur=null;
+    const aretes=()=>{if(Ecur!==cur){E=null;try{E=occListEdges(cur);}catch(e){}Ecur=cur;}return E;};
     const classeur=()=>{if(CLcur!==cur){try{CL&&CL.delete();}catch(e){}CL=occClassifier(cur);CLcur=cur;}return CL;};
-    const enAttente=[]; // {m:morceau, j:job, src}
+    const enAttente=[]; // {m:morceau, j:job}
+    let soudKo=[],soudFaits=0;
     const souder=()=>{
       if(!enAttente.length)return;
       let nx=occSouderMorceaux(cur,enAttente.map(x=>x.m));
-      if(nx){if(cur!==base){try{cur.delete();}catch(e){}}cur=nx;done+=enAttente.length;}
+      if(nx){if(cur!==base){try{cur.delete();}catch(e){}}cur=nx;soudFaits+=enAttente.length;}
       else{
         // refus en bloc : un par un, et le noyau pour celui qui ne passe pas
         enAttente.forEach(x=>{
           let n1=occSouderMorceaux(cur,[x.m]);
           if(!n1){
-            let E2=null;try{E2=occListEdges(cur);}catch(e){}
-            const ed2=(E2||[]).find(e=>Math.hypot(e.mid[0]-x.j.mid[0],e.mid[1]-x.j.mid[1],e.mid[2]-x.j.mid[2])<3);
+            const ed2=occAreteSuivie(aretes()||[],x.j,cur===base);
             if(ed2){n1=mk(cur,[{src:ed2.src,r:x.j.r,fn:x.j.fn||null}]);if(n1)warns.push(kindLabel+' : arête courbe ou concave — suivi de la chaîne tangente (noyau)');}
           }
-          if(n1){if(cur!==base){try{cur.delete();}catch(e){}}cur=n1;done++;}
-          else warns.push(kindLabel+' isolé impossible ('+(chamfer?'distance trop grande ?':'rayon trop grand ?')+')');
+          if(n1){if(cur!==base){try{cur.delete();}catch(e){}}cur=n1;soudFaits++;}
+          else soudKo.push(x.j);
         });
       }
       enAttente.forEach(x=>{try{x.m.delete();}catch(e){}});enAttente.length=0;
     };
-    for(const j of jobs){
-      if(Ecur!==cur){E=null;try{E=occListEdges(cur);}catch(e){}Ecur=cur;}
-      const ed=(E||[]).find(e=>cur===base?e.src===j.src:(j.mid&&Math.hypot(e.mid[0]-j.mid[0],e.mid[1]-j.mid[1],e.mid[2]-j.mid[2])<3));
+    // → 'fait' | 'attente' (morceau de coin à souder) | 'absorbee' (l'arête a disparu : un congé précédent
+    //   l'a prise le long de sa chaîne) | 'perdue' (disparue après une DÉCOUPE d'équerre : elle l'a mordue
+    //   sans l'arrondir) | 'ko'
+    let decoupe=false;
+    const tente=j=>{
+      const E=aretes();
+      const ed=occAreteSuivie(E||[],j,cur===base);
+      if(!ed)return E&&j.pts?(decoupe?'perdue':'absorbee'):'ko';
       let nx=null;
       let firstN=null;
-      if(ed&&cham){ // normale de la première face pour l'outil asymétrique
+      if(cham){ // normale de la première face pour l'outil asymétrique
         let eh=null,ff=null;
         try{eh=occEdgeAt(cur,ed.src);ff=eh?occChamferFirstFace(cur,eh,cham.flip,j.fn):null;firstN=ff?ff.n:null;}catch(e){firstN=null;}
         try{if(ff&&ff.f)ff.f.delete();}catch(e){}try{if(eh)eh.delete();}catch(e){}
       }
-      const info={cl:ed?classeur():null};
-      const tool=ed?occSingleEdgeTool(cur,ed.pts,j.r,chamfer,cham,firstN,info):null;
+      const info={cl:classeur()};
+      const tool=occSingleEdgeTool(cur,ed.pts,j.r,chamfer,cham,firstN,info);
       // Arête concave (coin rentrant) : matière ajoutée dans le coin, arrêtée par les faces voisines
       // (single==='droit' : congés créés ou modifiés depuis V0.70.2 ; les anciens gardent le noyau)
-      if(!tool&&ed&&opts.single==='droit'){
+      if(!tool&&opts.single==='droit'){
         let m=null;try{m=occSingleEdgeConcavePiece(cur,ed.pts,j.r,chamfer,cham,firstN,info);}catch(e){m=null;}
-        if(m){enAttente.push({m,j});continue;}
+        if(m){enAttente.push({m,j});return 'attente';}
       }
-      souder(); // la suite travaille sur la pièce à jour
-      if(Ecur!==cur){E=null;try{E=occListEdges(cur);}catch(e){}Ecur=cur;}
-      const ed1=ed&&cur!==base?(E||[]).find(e=>Math.hypot(e.mid[0]-j.mid[0],e.mid[1]-j.mid[1],e.mid[2]-j.mid[2])<3):ed;
+      let ed1=ed;
+      if(enAttente.length){ // la suite travaille sur la pièce à jour
+        souder();
+        ed1=occAreteSuivie(aretes()||[],j,false);
+        if(!ed1){if(tool){try{tool.delete();}catch(e){}}return decoupe?'perdue':'absorbee';}
+      }
       // Arête arrêtée par un mur : l'outil coupe d'équerre, le noyau suit le mur s'il est en biais ou courbe.
       // Pris s'il ne crée qu'une face, sinon il a suivi une chaîne tangente que la case écarte.
       if(tool&&info.borne&&ed1){
@@ -4994,17 +5046,56 @@ function occFilletRun(base,jobs,warns,chamfer,opts){
           if(nees<=1&&occCoqueValide(k))nx=k;else{try{k.delete();}catch(e){}}
         }
       }
-      if(tool&&!nx){try{nx=occCut(cur,tool);}catch(e){nx=null;}}
+      let parOutil=false;
+      if(tool&&!nx){try{nx=occCut(cur,tool);parOutil=!!nx;}catch(e){nx=null;}}
       if(tool){try{tool.delete();}catch(e){}}
       // Découpe « réussie » qui n'enlève rien (corps abîmé en amont) : repli sur le noyau. V0.70.3 : jugé
       // à l'apparition d'une face neuve, plus aux volumes de toute la pièce (0,45 s chacun sur Barquette 2).
-      if(nx){const avant=new Set(occFaceKeys(cur));if(!occFaceKeys(nx).some(c=>c==='?'||!avant.has(c))){try{nx.delete();}catch(e){}nx=null;}}
-      if(!nx&&ed1){nx=mk(cur,[{src:ed1.src,r:j.r,fn:j.fn||null}]);if(nx)warns.push(kindLabel+' : arête courbe ou concave — suivi de la chaîne tangente (noyau)');}
-      if(nx){if(cur!==base){try{cur.delete();}catch(e){}}cur=nx;done++;}
-      else warns.push(kindLabel+' isolé impossible ('+(chamfer?'distance trop grande ?':'rayon trop grand ?')+')');
+      if(nx){const avant=new Set(occFaceKeys(cur));if(!occFaceKeys(nx).some(c=>c==='?'||!avant.has(c))){try{nx.delete();}catch(e){}nx=null;parOutil=false;}}
+      if(parOutil)decoupe=true;
+      if(!nx){nx=mk(cur,[{src:ed1.src,r:j.r,fn:j.fn||null}]);if(nx)warns.push(kindLabel+' : arête courbe ou concave — suivi de la chaîne tangente (noyau)');}
+      if(!nx)return 'ko';
+      if(cur!==base){try{cur.delete();}catch(e){}}
+      cur=nx;return 'fait';
+    };
+    // L'ordre compte (une arête refusée passe souvent quand sa voisine est faite) : on repasse sur
+    // les refusées tant qu'il y a du progrès, puis on les tente ENSEMBLE, comme un seul arrondi.
+    let file=jobs.slice(),absorbees=0;const perdues=[];
+    // Toutes les arêtes tangentes aux choisies sont choisies aussi : le noyau ne peut rien déborder.
+    // Faites EN UNE FOIS, elles se raccordent entre elles (comme Fusion) ; une à une, chacune
+    // bute sur le congé de la précédente et les courtes sont refusées.
+    if(jobs.length>1){
+      let k=null;
+      try{
+        const E0=occListEdges(base),idx=new Map(E0.map((e,i)=>[e.src,i])),choix=new Set(jobs.map(j=>idx.get(j.src)));
+        const ferme=jobs.every(j=>xTangentChainOf(E0,idx.get(j.src)).every(i=>choix.has(i)));
+        if(ferme)k=mk(base,jobs);
+        if(k&&!occCoqueValide(k)){try{k.delete();}catch(e){}k=null;}
+      }catch(e){k=null;}
+      if(k){if(bilan){bilan.rates=[];bilan.absorbees=0;}return k;}
     }
-    souder();
+    for(;;){
+      const ko=[];let progres=false;soudKo=[];soudFaits=0;
+      for(const j of file){const r=tente(j);if(r==='ko')ko.push(j);else if(r==='perdue')perdues.push(j);else if(r!=='attente'){progres=true;if(r==='absorbee')absorbees++;}}
+      souder();
+      if(soudFaits)progres=true;
+      ko.push(...soudKo);
+      file=ko;
+      if(!file.length||!progres)break;
+    }
     try{CL&&CL.delete();}catch(e){}
+    if(file.length>1){
+      const E=aretes();
+      const lot=[];file.forEach(j=>{const ed=occAreteSuivie(E||[],j,cur===base);if(ed&&!lot.some(l=>l.src===ed.src))lot.push({src:ed.src,r:j.r,fn:j.fn||null,j});});
+      const k=lot.length?mk(cur,lot):null;
+      if(k){
+        if(occCoqueValide(k)){if(cur!==base){try{cur.delete();}catch(e){}}cur=k;file=file.filter(j=>!lot.some(l=>l.j===j));warns.push(kindLabel+' : '+lot.length+' arête(s) refusées une à une, passées ensemble');}
+        else{try{k.delete();}catch(e){}}
+      }
+    }
+    const nonFaites=file.concat(perdues);
+    if(bilan){bilan.rates=nonFaites.map(j=>j.mid?j.mid.slice():null).filter(Boolean);bilan.absorbees=absorbees;}
+    if(nonFaites.length)warns.push(kindLabel+(nonFaites.length===jobs.length?' isolé impossible ('+(chamfer?'distance trop grande ?':'rayon trop grand ?')+')':' impossible sur '+nonFaites.length+'/'+jobs.length+' arête(s)'));
     return cur===base?null:cur;
   }
   let s=mk(base,jobs);
@@ -5015,10 +5106,10 @@ function occFilletRun(base,jobs,warns,chamfer,opts){
     if(!j.mid||j.mid.length!==3){warns.push('arête sans repère — '+kindLabel+' abandonné');return cur===base?null:cur;}
     let edges=null;try{edges=occListEdges(cur);}catch(e){}
     const ed=(edges||[]).find(e=>Math.hypot(e.mid[0]-j.mid[0],e.mid[1]-j.mid[1],e.mid[2]-j.mid[2])<3.0);
-    if(!ed){warns.push('arête introuvable ('+kindLabel+' isolé)');continue;}
+    if(!ed){warns.push('arête introuvable ('+kindLabel+' isolé)');if(bilan)(bilan.rates=bilan.rates||[]).push(j.mid.slice());continue;}
     const one=mk(cur,[{src:ed.src,r:j.r,fn:j.fn||null}]);
     if(one){if(cur!==base){try{cur.delete();}catch(e){}}cur=one;done++;}
-    else warns.push(kindLabel+' isolé impossible ('+(chamfer?'distance trop grande ?':'rayon trop grand ?')+')');
+    else{warns.push(kindLabel+' isolé impossible ('+(chamfer?'distance trop grande ?':'rayon trop grand ?')+')');if(bilan)(bilan.rates=bilan.rates||[]).push(j.mid.slice());}
   }
   if(cur===base)return null;
   if(done<jobs.length)warns.push(kindLabel+' partiel : '+done+'/'+jobs.length);
@@ -7718,7 +7809,7 @@ function occApplyXFillets(base,xfils){
     else delete xf._miss;
   });
   if(!jobs.length)return{shape:base,warnings:warns};
-  const js=jobs.map(j=>({src:edges[j.bi].src,r:j.r,mid:edges[j.bi].mid.slice(),fn:j.fn||null}));
+  const js=jobs.map(j=>({src:edges[j.bi].src,r:j.r,mid:edges[j.bi].mid.slice(),pts:edges[j.bi].pts,fn:j.fn||null}));
   // case décochée : arête seule ; 'droit' (V0.70.2) : congé sans tangence, prolongé tout droit à ses bouts
   // jusqu'aux faces voisines, coin intérieur compris — seulement pour les congés créés ou modifiés depuis,
   // les anciens documents gardent la chaîne que le noyau leur donnait
@@ -7742,7 +7833,8 @@ function occApplyXFillets(base,xfils){
     if(!baseSaine)return false;
     invalide=true;try{sh.delete();}catch(e){}return true;
   };
-  let s=rN?null:occFilletRun(base,js,wA,chamfer,{single,cham});
+  const bilan={};
+  let s=rN?null:occFilletRun(base,js,wA,chamfer,{single,cham,bilan});
   if(refuse(s))s=null;
   if(!s&&!rN)rN=occFilletNurbs(base,js,chamfer,single,edges,cham);
   if(rN&&refuse(rN.shape))rN=null;
@@ -7773,7 +7865,7 @@ function occApplyXFillets(base,xfils){
       const r2=Math.max(0.5,+(rMax*k).toFixed(2));
       const w2=[];
       const cham2=cham?Object.assign({},cham,{d2:+(cham.d2*k).toFixed(2)}):null; // D2 réduit dans le même rapport
-      const t=occFilletRun(occShapeCopy(base),js.map(j=>({src:j.src,r:r2,mid:j.mid.slice(),fn:j.fn||null})),w2,chamfer,{single,cham:cham2});
+      const t=occFilletRun(occShapeCopy(base),js.map(j=>({src:j.src,r:r2,mid:j.mid.slice(),pts:j.pts,fn:j.fn||null})),w2,chamfer,{single,cham:cham2});
       let bon=t&&(occFacesValides(t,zone)||baseSaine===false); // un rayon « vérifié » doit aussi donner un solide valide
       // VOLUME PLAUSIBLE (V0.44.1) : un congé « valide » peut être faux (slot de 12 mm, R6 :
       // +1 866 mm³ au lieu d'en retirer). La matière ôtée ou ajoutée croît comme r² : même sens
@@ -7817,6 +7909,19 @@ function occApplyXFillets(base,xfils){
     return{shape:base,warnings:warns};
   }
   xfils.forEach(xf=>{delete xf._err;delete xf._adj;}); // plus d'erreur : le rayon courant passe
+  // BILAN VÉRIFIÉ : refusées pendant le calcul, ou ignorées sans rien dire par le noyau (« réussi »
+  // mais l'arête est toujours là). La fonction n'est plus montrée comme réussie.
+  const manque=(bilan.rates||[]).slice();
+  try{
+    const apres=occListEdges(s);
+    js.forEach(j=>{
+      if(manque.some(m=>Math.hypot(m[0]-j.mid[0],m[1]-j.mid[1],m[2]-j.mid[2])<1e-6))return;
+      const e=occAreteSuivie(apres,{pts:j.pts,mid:j.mid},false),l=(edges.find(x=>x.src===j.src)||{}).len||0;
+      if(e&&e.len>Math.max(0.05,0.5*l))manque.push(j.mid.slice());
+    });
+  }catch(e){}
+  xfils.forEach(xf=>{if(manque.length)xf._rate={n:manque.length,t:js.length,pos:manque.map(q=>q.map(v=>+v.toFixed(1)))};else delete xf._rate;});
+  if(manque.length)warns.push(`${lab} NON FAIT sur ${manque.length}/${js.length} arête(s), près de `+manque.slice(0,4).map(nomsPos).join(' ; '));
   try{base.delete();}catch(e){}
   return{shape:s,warnings:warns};
 }
@@ -8255,6 +8360,8 @@ function featSig(f){
     // Échelle : centre, facteur(s) et, en copie, l'historique du corps source (comme xsplit)
     s+='|'+JSON.stringify([f.o||[0,0,0],bsFactors(f),f.copy?1:0]);
     if(occSplitNewBody(f))s+='|src:'+occCombinePrefix(f,occBodyOfFeat(f)).map(featSig).join(',');
+  }else if(f.type==='bmirror'){
+    s+='|'+bmirPlane(f);
   }else if(f.type==='xdelface'){
     s+='|'+((f.faces||[]).map(r=>JSON.stringify([r.pos,r.n||r.st,r.dim])).join(';'));
   }else if(f.type==='xsplit'){
@@ -8285,11 +8392,12 @@ function featSig(f){
   // _mesh/_m (état dérivé vivant, non géométrique — _mesh est une référence THREE
   // non sérialisable), name/open (affichage pur : replier un nœud ou renommer ne
   // change pas le solide et invaliderait tout). _calc : suppression au worker (21), état
-  // dérivé lui aussi — dans la clé, la réponse du worker ne serait jamais retrouvée.
+  // dérivé lui aussi — dans la clé, la réponse du worker ne serait jamais retrouvée. _rate (V0.77.0) :
+  // bilan des arêtes non faites d'un congé, résultat du calcul : mémorisé avec le point de contrôle.
   // V0.16.0 : congé exact — le relevé pos/len, rafraîchi à chaque appariement (bruit ~1e-9),
   // est exclu du filet quand pos0 le fige : il y rentrait par la fonction entière et changeait la
   // clé après chaque rejeu (point de contrôle raté, tout l'aval rejoué sans changement).
-  const jf={};for(const k in f){if(k==='name'||k==='open'||k==='_m'||k==='_mesh'||k==='_calc')continue;jf[k]=f[k];}
+  const jf={};for(const k in f){if(k==='name'||k==='open'||k==='_m'||k==='_mesh'||k==='_calc'||k==='_rate')continue;jf[k]=f[k];}
   if(f.type==='xfillet'&&Array.isArray(f.edges))jf.edges=f.edges.map(e=>{if(!e||typeof e!=='object')return e;const q=Object.assign({},e);if(q.pos0)delete q.pos;delete q.len;return q;});
   s+='|j'+JSON.stringify(jf,nomsSansCles);
   return s;
@@ -8373,6 +8481,7 @@ function* occReplayBodyGen(bid,list){
         const w=occCkWarn[ckKey];if(w&&w.length)msgs.push(...w.map(x=>`${f.name} : ${x}`));
         const sv=occCkEdges[ckKey];
         if(sv&&Array.isArray(f.edges)&&sv.length===f.edges.length)f.edges.forEach((e,i)=>{if(e&&sv[i]){if(sv[i].pos)e.pos=sv[i].pos.slice();if(sv[i].len!=null)e.len=sv[i].len;}});
+        if(sv&&sv.rate)f._rate=JSON.parse(JSON.stringify(sv.rate));else delete f._rate;
         return;
       }
       const snapX=nomsInstantane(result); // reprise NURBS : pas d'historique du noyau
@@ -8381,6 +8490,7 @@ function* occReplayBodyGen(bid,list){
       result=r.shape;msgs.push(...r.warnings.map(w=>`${f.name} : ${w}`));
       if(r.warnings.length)occCkWarn[ckKey]=r.warnings.slice();else delete occCkWarn[ckKey];
       occCkEdges[ckKey]=(f.edges||[]).map(e=>e?{pos:Array.isArray(e.pos)?e.pos.slice():null,len:e.len!=null?e.len:null}:null);
+      if(f._rate)occCkEdges[ckKey].rate=JSON.parse(JSON.stringify(f._rate));
       occCkPut(ckKey,()=>occShapeCopy(result));
       return;
     }
@@ -8424,6 +8534,22 @@ function* occReplayBodyGen(bid,list){
       }
       if(!src){msgs.push(f.name+' : aucun volume à '+(f.type==='bcopy'?'copier':'mettre à l’échelle')+' — ignoré');return;}
       const r=occApplyBodyScale(src,f);
+      result=r.shape;msgs.push(...r.warnings.map(w=>f.name+' : '+w));
+      if(r.warnings.length)occCkWarn[ckKey]=r.warnings.slice();else delete occCkWarn[ckKey];
+      if(result)occCkPut(ckKey,()=>occShapeCopy(result));
+      return;
+    }
+    if(f.type==='bmirror'){
+      // Symétrie du corps (85-symetrie-corps) : le corps tel qu'il est ici, réuni à son miroir
+      const ckM=occCkGet(ckKey);
+      const cpM=ckM?occShapeCopy(ckM):null;
+      if(cpM){
+        if(result)try{result.delete();}catch(e){}result=cpM;
+        const w=occCkWarn[ckKey];if(w&&w.length)msgs.push(...w.map(x=>f.name+' : '+x));
+        return;
+      }
+      if(!result){msgs.push(f.name+' : aucun volume à copier — ignoré');return;}
+      const r=occApplyBodyMirror(result,f);
       result=r.shape;msgs.push(...r.warnings.map(w=>f.name+' : '+w));
       if(r.warnings.length)occCkWarn[ckKey]=r.warnings.slice();else delete occCkWarn[ckKey];
       if(result)occCkPut(ckKey,()=>occShapeCopy(result));
@@ -10505,7 +10631,7 @@ function featIconOf(f){
   if(!f)return '◧';
   if(f.type==='import'&&f.derive){const L=derLinkOf(f);return '🔗'+(!L||L.st==='warn'?'⚠':'');} // corps dérivé (52)
   if(f.type==='extrude')return (f.op||'add')==='cut'?'▾':'▤';
-  if(f.type==='xfillet')return xIcon(xKindOf(f))+((f._m&&f._m.m<f._m.t)||f._err||f._adj?'⚠':'');
+  if(f.type==='xfillet')return xIcon(xKindOf(f))+((f._m&&f._m.m<f._m.t)||f._err||f._adj||f._rate?'⚠':'');
   if(f.type==='fillet')return xIcon(xKindOf(f));
   if(f.type==='repeat')return '🔁';
   if(f.type==='combine')return f.mode==='cut'?'⊖':(f.mode==='intersect'?'⊗':'⊕');
@@ -10521,6 +10647,7 @@ function featIconOf(f){
   if(f.type==='bremove')return '⊘';
   if(f.type==='bscale')return f._err?'⚠':'⤡';
   if(f.type==='bcopy')return f._err?'⚠':'⧉';
+  if(f.type==='bmirror')return f._err?'⚠':'◫';
   if(f.type==='xdelface')return f._calc?'⏳':((f._m&&f._m.m<f._m.t)||f._err)?'⚠':'⌫'; // ⏳ : calcul au worker (21)
   if(f.type==='xdraft')return ((f._m&&f._m.m<f._m.t)||f._err||f._thin)?'⚠':'📐';
   if(f.type==='xshell')return ((f._m&&f._m.m<f._m.t)||f._err)?'⚠':'🥚';
@@ -10578,6 +10705,7 @@ function repCanFeatureHint(f){
   if(f.type==='bremove')return 'Corps retiré à partir de cette étape';
   if(f.type==='bscale')return bsName(f);
   if(f.type==='bcopy')return 'Copie du corps « '+bmBodyName(f.body)+' » tel qu’il est à cette étape';
+  if(f.type==='bmirror')return bmirName(f);
   if(f.type==='xdelface')return 'Suppression · '+(f.faces||[]).length+' face(s)';
   if(f.type==='xdraft')return 'Dépouillage · '+draftAngleEff(f).toFixed(1).replace('.',',').replace('-','−')+'° · '+(f.faces||[]).length+' face(s)';
   if(f.type==='xshell')return 'Coque · '+String(Math.round((+f.thick||0)*100)/100).replace('.',',')+' mm · '+(f.faces||[]).length+' face(s) retirée(s)';
@@ -12272,6 +12400,7 @@ function renderProps(){
       visDel(f);return;
     }
     if(f.type==='bcopy'){bcopyProps(p,f);visDel(f);return;} // copier un corps (85-copier-corps)
+    if(f.type==='bmirror'){bmirrorProps(p,f);visDel(f);return;} // symétrie du corps (85-symetrie-corps)
     if(f.type==='bscale'){bscaleProps(p,f);visDel(f);return;} // échelle (85-echelle-corps)
     if(f.type==='xsplit'){splitProps(p,f);visDel(f);return;} // scinder (85-scinder)
     /* — déplacement de face — */
@@ -12387,6 +12516,10 @@ function renderProps(){
       if(f._miss&&f._miss.length)pNote('Introuvables, près de : '+f._miss.map(q=>'('+q.join(', ')+')').join('  '));
       if(f._err)pNote(f._err);
       else pNote('La pièce a bougé depuis la sélection. Re-sélectionnez l\'arête.');
+    }
+    if(f.type==='xfillet'&&f._rate){
+      pInfo(`<span style="color:var(--warn)">⚠ <b>Non fait sur ${f._rate.n}/${f._rate.t}</b> arête(s) : le noyau les refuse ou les ignore.</span>`);
+      pNote('Près de : '+f._rate.pos.slice(0,6).map(q=>'('+q.join(', ')+')').join('  '));
     }
     /* — répétition — */
     if(f.type==='repeat'){
@@ -12876,6 +13009,7 @@ function tlbSvgKey(s){
     case 'bremove':return ['body','cut',true];
     case 'bscale':return ['scale','mod'];
     case 'bcopy':return ['copy','add'];
+    case 'bmirror':return ['pattern','mod'];
     case 'import':return ['import','mod'];
   }
   return null;
@@ -40122,6 +40256,93 @@ function deleteSelectedFaces(){
   if(made.length===1)try{sel={kind:'feature',id:made[0].id};renderProps();}catch(e){}
 }
 
+/* ═══════════════ 85-symetrie-corps.js — symetrie corps ═══════════════ */
+/* ---------- symétrie d'un corps entier ----------
+   Fonction de la timeline {type:'bmirror', body, plane:'YZ'|'XZ'|'XY'}, comme « Symétrie » de
+   Fusion 360 appliquée à un corps : le corps tel qu'il est à cet endroit, toute son histoire
+   comprise (combinaisons, congés…), est copié en miroir et réuni à lui-même. La Répétition
+   « Symétrie » rejoue des fonctions une à une et refuse les opérations de corps entier :
+   celle-ci les prend toutes. Plans de l'origine ; un corps qui ne touche pas le plan donne
+   deux solides dans le même corps. */
+const BMIR_N={YZ:[1,0,0],XZ:[0,1,0],XY:[0,0,1]};
+function bmirPlane(f){return BMIR_N[f&&f.plane]?f.plane:'YZ';}
+function bmirName(f){return 'Symétrie '+bmirPlane(f)+' « '+bmBodyName(f.body)+' »';}
+function occApplyBodyMirror(result,f){
+  // Rejeu (20) : {shape, warnings} ; le solide d'entrée est libéré si la symétrie réussit
+  const n=BMIR_N[bmirPlane(f)];
+  let P=null,D=null,A=null,t=null,b=null,fu=null;
+  try{
+    P=new occt.gp_Pnt_3(0,0,0);D=new occt.gp_Dir_4(n[0],n[1],n[2]);A=new occt.gp_Ax2_3(P,D);
+    t=new occt.gp_Trsf_1();t.SetMirror_3(A);
+    b=new occt.BRepBuilderAPI_Transform_2(result,t,true);
+    const m=b.Shape();if(!m||m.IsNull())throw new Error('copie en miroir vide');
+    fu=occFuse(result,m);
+    const s=occUnify(fu);if(!s||s.IsNull())throw new Error('réunion vide');
+    try{result.delete();}catch(e){}
+    return {shape:s,warnings:[]};
+  }catch(e){
+    return {shape:result,warnings:['symétrie impossible ('+((e&&e.message)||e)+')'],fatal:true};
+  }finally{[fu,b,t,A,D,P].forEach(o=>{try{if(o)o.delete();}catch(e){}});}
+}
+function openBodyMirror(bid){
+  try{ensureBodies();}catch(e){}
+  const has=id=>id&&(doc.bodies||[]).some(b=>b.id===id);
+  const id=has(bid)?bid:(has(doc.activeBody)?doc.activeBody:((doc.bodies||[])[0]||{}).id);
+  if(!id){try{faceEl.textContent='Symétrie : aucun corps.';}catch(e){}return null;}
+  if(!(doc.features||[]).some(f=>f.body===id&&f.visible!==false)){try{faceEl.textContent='Symétrie : « '+bmBodyName(id)+' » est vide.';}catch(e){}return null;}
+  const f={id:uid('bm'),type:'bmirror',name:'',body:id,plane:'YZ',visible:true};
+  f.name=bmirName(f);
+  addFeature(f);
+  sel={kind:'feature',id:f.id};treeSel=[f.id];
+  markDirty();rebuild();renderTree();renderProps();
+  try{faceEl.textContent='Symétrie « '+bmBodyName(id)+' » : choisissez le plan dans le panneau.';}catch(e){}
+  return f;
+}
+function bmirrorProps(p,f){
+  const mk=(tag,cls,txt)=>{const d=document.createElement(tag);if(cls)d.className=cls;if(txt!=null)d.textContent=txt;return d;};
+  const Row=(lab,ctl)=>{const r=mk('div','pnl-row');r.appendChild(mk('label',null,lab));r.appendChild(ctl);p.appendChild(r);};
+  const set=(label,fn)=>{docPushUndo(label+' (« '+f.name+' »)');fn();f.name=bmirName(f);markDirty();rebuild();renderTree();renderProps();};
+  p.appendChild(mk('div','pnl-h','◫ Symétrie du corps'));
+  const sb=document.createElement('select');
+  (doc.bodies||[]).forEach(b=>{const o=document.createElement('option');o.value=b.id;o.textContent=b.name;if(b.id===f.body)o.selected=true;sb.appendChild(o);});
+  sb.onchange=()=>set('corps de la symétrie',()=>{f.body=sb.value;});
+  Row('Corps',sb);
+  const ps=document.createElement('select');
+  [['YZ','Plan YZ (X → −X)'],['XZ','Plan XZ (Y → −Y)'],['XY','Plan XY (Z → −Z)']].forEach(([v,t])=>{const o=document.createElement('option');o.value=v;o.textContent=t;if(bmirPlane(f)===v)o.selected=true;ps.appendChild(o);});
+  ps.onchange=()=>set('plan de la symétrie',()=>{f.plane=ps.value;});
+  Row('Plan',ps);
+  p.appendChild(mk('div','pnl-note','Le corps et sa copie en miroir sont réunis. Tout ce qui précède dans le corps est pris, combinaisons et congés compris.'));
+}
+/* ── menus contextuels (arbre et vue) : « ◫ Symétrie… » sur un corps, après « Échelle… » ── */
+const bmirCtxBtns={};
+function bmirCtxSync(menuId,t){
+  const m=document.getElementById(menuId);if(!m)return;
+  let b=bmirCtxBtns[menuId];
+  if(!b){
+    b=document.createElement('button');b.textContent='◫ Symétrie…';
+    b.title='Copie le corps en miroir et le réunit à lui-même (fonction de la timeline)';
+    const av=bsCtxBtns[menuId];
+    let step=null;try{step=menuId==='ctxMenu3D'?ctxStepBtn3d:ctxStepBtn;}catch(e){}
+    if(av&&av.parentNode===m)m.insertBefore(b,av.nextSibling);else m.insertBefore(b,step&&step.parentNode===m?step:null);
+    b.onclick=()=>{const T=b._t;try{hideCtx();hideCtx3D();}catch(e){}if(T)openBodyMirror(ctxBodyId(T)||T.id);};
+    bmirCtxBtns[menuId]=b;
+  }
+  b._t=t;
+  b.style.display=(t&&t.kind==='body'&&t.id&&asmMode!=='asm')?'':'none';
+}
+// bouton (rangé dans « Ensembles » par 96-bandeau-groupes ; ruban moderne : 97)
+(function(){
+  try{
+    if(document.getElementById('btnBodyMirror'))return;
+    const ref=document.getElementById('btnBodyScale')||document.getElementById('btnExtrude');
+    if(!ref||!ref.parentNode)return;
+    const b=document.createElement('button');b.id='btnBodyMirror';b.textContent='◫ Symétrie';
+    b.title='Symétrie du corps actif : copie en miroir réunie au corps, toute son histoire comprise';
+    b.onclick=()=>{const t=(typeof sel!=='undefined'&&sel&&sel.kind==='body')?sel.id:null;openBodyMirror(t);};
+    ref.parentNode.insertBefore(b,ref.nextSibling);
+  }catch(e){}
+})();
+
 /* ═══════════════ 86-draft-depouillage.js — draft depouillage ═══════════════ */
 ﻿/* ---------- dépouillage / draft (angle de démoulage) ----------
    But : rendre une pièce « démontable » d'un moule. On choisit une FACE DE RÉFÉRENCE
@@ -65361,7 +65582,7 @@ function showCtx(x,y,t){ctxTarget=t;$('ctxMenu').style.display='block';ctxPlace(
   // source que le panneau et que la vue 3D) — masqué ailleurs, comme l'export STEP.
   try{ ctxStyleShow('ctxMenu',!!(t&&t.kind==='body')); ctxStyleSync(); }catch(e){}
   try{ asmCtxSync(t,x,y); }catch(e){} // composant depuis ce corps, déplacer vers un composant (48)
-  try{ bmCtxSync('ctxMenu',t); }catch(e){}try{ bsCtxSync('ctxMenu',t); }catch(e){}try{ bcCtxSync('ctxMenu',t); }catch(e){} // déplacer le corps (85)
+  try{ bmCtxSync('ctxMenu',t); }catch(e){}try{ bsCtxSync('ctxMenu',t); }catch(e){}try{ bcCtxSync('ctxMenu',t); }catch(e){}try{ bmirCtxSync('ctxMenu',t); }catch(e){} // déplacer le corps (85)
   try{ bremCtxSync(t); }catch(e){}} // retirer le corps dans la timeline (40)
 function hideCtx(){$('ctxMenu').style.display='none';}
 function ctxBodyId(t){
@@ -65400,7 +65621,7 @@ function showCtx3D(x,y,bid){ctxTarget={kind:'body',id:bid};const _bd=bodies.find
     ctxStyleShow('ctxMenu3D',!!(bid&&!_bd.ghost));
     ctxStyleSync();
   }catch(e){}
-  try{ bmCtxSync('ctxMenu3D',bid?ctxTarget:null); }catch(e){}try{ bsCtxSync('ctxMenu3D',bid?ctxTarget:null); }catch(e){}try{ bcCtxSync('ctxMenu3D',bid?ctxTarget:null); }catch(e){} // déplacer le corps (85)
+  try{ bmCtxSync('ctxMenu3D',bid?ctxTarget:null); }catch(e){}try{ bsCtxSync('ctxMenu3D',bid?ctxTarget:null); }catch(e){}try{ bcCtxSync('ctxMenu3D',bid?ctxTarget:null); }catch(e){}try{ bmirCtxSync('ctxMenu3D',bid?ctxTarget:null); }catch(e){} // déplacer le corps (85)
   try{ bremCtxSync(bid&&!_bd.ghost?ctxTarget:null,'ctxMenu3D'); }catch(e){} // retirer le corps dans la timeline (40)
   try{ rdLookCtxSync(bid&&!_bd.ghost?bid:null); }catch(e){} // matériau de rendu (98-rendu-apparence)
   $('ctxMenu3D').style.display='block';ctxPlace($('ctxMenu3D'),x,y);}
@@ -68141,6 +68362,7 @@ function openAide(){
     ['btnCombine','⊕','Combiner des corps (union, soustraction, intersection)'],
     ['btnBodyMove','✥','Déplacer un corps (translation, rotation, point à point)'],
     ['btnBodyScale','⤡','Échelle / homothétie d’un corps (centre : origine, point, centre du corps)'],
+    ['btnBodyMirror','◫','Symétrie d’un corps entier : copie en miroir réunie au corps'],
     '#',
     [null,'Paramètres'],
     ['btnParams','ƒx','Paramètres (cotes et valeurs nommées)']
@@ -69130,6 +69352,7 @@ function mfFiTable(){
   const CB=(k1,k2)=>ficBox(-20,-11,-9,6,11,6,k1)+ficCyl(6,0,-9,10,23,k2==='o'?'mfFcHo':'mfFcHb',k2);
   F('Ensembles/Combiner','Combiner','Réunit deux pièces en une, retire l’une de l’autre, ou garde seulement leur partie commune.',['Choisissez la pièce à garder','Choisissez l’outil','Union, soustraction ou intersection'],CB('b','o'),CB('b','b'),null,'Deux pièces','Une seule (union)');
   F('Ensembles/Déplacer','Déplacer','Change la place de la pièce : translation, rotation ou point à point. Pratique pour poser un STEP importé.',[],ficBox(-22,-6,-6,-6,10,6,'b'),ficL3([[-22,10,-6],[-6,10,-6],[-6,10,6],[-22,10,6]],GY,.8,'2 1.6',1)+ficBox(4,-14,-6,20,2,6,'b')+ficAr(30,36,60,42));
+  F('Ensembles/Symétrie','Symétrie','Copie le corps en miroir et le réunit à lui-même, avec tout ce qu’il contient déjà.',['Partez de la moitié ou du quart','Choisissez le plan'],ficBox(0,-8,-8,16,8,2,'b'),ficBox(-16,-8,-8,16,8,2,'b')+ficT(50,8,'miroir',8,OR));
   F('Ensembles/Échelle','Échelle','Agrandit ou réduit la pièce, de façon égale ou différente selon X, Y et Z.',['Choisissez le facteur','Choisissez le centre'],ficBox(-8,-8,-9,8,8,1,'b'),ficBox(-17,-17,-14,17,17,8,'b')+ficT(50,8,'× 2',8,OR));
   const BARP=(w,v)=>ficBox(-w,-8,-9,w,8,3,'b')+ficT(50,12,'Longueur = '+v,7.4,OR);
   F('Ensembles/Paramètres','Paramètres','Donne un nom à une dimension. Changez sa valeur à un seul endroit : toute la pièce suit.',['Clic : liste courte','Clic droit : liste complète'],BARP(11,40),BARP(21,70));
@@ -70156,7 +70379,7 @@ const MF_CAO=[
     ['cgPoint','Point',()=>cgStart('point'),'Point de construction : sommet, centre, coordonnées, intersection axe / plan'],
     ['cgFrame','Repère',()=>cgStart('frame'),'Repère de construction : origine + Z + X, sur un plan ou une face, par 3 points']]],
   ['Modifier',[['fillet','Congé','btnFillet'],['chamfer','Chanfrein','btnChamfer'],['face','Face','btnMoveFace'],['draft','Dépouille','btnDraft'],['shell','Coque','btnCoque'],['thread','Filetage','btnThread'],['split','Scinder','btnSplit']]],
-  ['Ensembles',[['pattern','Répétition','btnRepeat'],['combine','Combiner','btnCombine'],['move','Déplacer','btnBodyMove'],['scale','Échelle','btnBodyScale'],['params','Paramètres','btnParams']]],
+  ['Ensembles',[['pattern','Répétition','btnRepeat'],['combine','Combiner','btnCombine'],['move','Déplacer','btnBodyMove'],['scale','Échelle','btnBodyScale'],['pattern','Symétrie','btnBodyMirror'],['params','Paramètres','btnParams']]],
   ['Fichier',[['import','Importer','btnImport'],['import','Dériver','btnDerive'],['export','STEP','btnExportStep'],['export','STL','btnExportStl'],['export','OBJ','btnExportObj'],['export','FreeCAD','btnExportFcstd']]]
 ];
 const MF_FAO_ICON={facing:'facing',pocket:'pocket',chamfer:'chamfer',contour:'contour',drill:'drill',rough3d:'rough3d',geofinish:'finish',geodesic:'geodesic',pocket2:'pocket'};
@@ -70952,7 +71175,7 @@ function viewFadeIn(){
      le solide reconstruit : on ne la promène pas dans des états intermédiaires). */
 let film=null; // état du film en cours (null = aucun)
 const FILM_KIND={extrude:'Extrusion',revolve:'Révolution',sweep:'Balayage',hole:'Perçage',fillet:'Congé',repeat:'Répétition',
-  combine:'Combiner',xmove:'Déplacer une face',xdelface:'Supprimer une face',xdraft:'Dépouille',xshell:'Coque',xthread:'Filetage',gear:'Engrenage',xsplit:'Scinder',bmove:'Déplacer le corps',bremove:'Retirer le corps',bscale:'Échelle',bcopy:'Copier le corps',import:'Import'};
+  combine:'Combiner',xmove:'Déplacer une face',xdelface:'Supprimer une face',xdraft:'Dépouille',xshell:'Coque',xthread:'Filetage',gear:'Engrenage',xsplit:'Scinder',bmove:'Déplacer le corps',bremove:'Retirer le corps',bscale:'Échelle',bcopy:'Copier le corps',bmirror:'Symétrie',import:'Import'};
 function filmKind(f){
   // [libellé, couleur] de la nature d'une fonction — mêmes couleurs que le bandeau (TLB_COL)
   let k=null;try{k=tlbSvgKey({kind:'feature',o:f});}catch(e){}

@@ -520,7 +520,7 @@ function occApplyXFillets(base,xfils){
     else delete xf._miss;
   });
   if(!jobs.length)return{shape:base,warnings:warns};
-  const js=jobs.map(j=>({src:edges[j.bi].src,r:j.r,mid:edges[j.bi].mid.slice(),fn:j.fn||null}));
+  const js=jobs.map(j=>({src:edges[j.bi].src,r:j.r,mid:edges[j.bi].mid.slice(),pts:edges[j.bi].pts,fn:j.fn||null}));
   // case décochée : arête seule ; 'droit' (V0.70.2) : congé sans tangence, prolongé tout droit à ses bouts
   // jusqu'aux faces voisines, coin intérieur compris — seulement pour les congés créés ou modifiés depuis,
   // les anciens documents gardent la chaîne que le noyau leur donnait
@@ -544,7 +544,8 @@ function occApplyXFillets(base,xfils){
     if(!baseSaine)return false;
     invalide=true;try{sh.delete();}catch(e){}return true;
   };
-  let s=rN?null:occFilletRun(base,js,wA,chamfer,{single,cham});
+  const bilan={};
+  let s=rN?null:occFilletRun(base,js,wA,chamfer,{single,cham,bilan});
   if(refuse(s))s=null;
   if(!s&&!rN)rN=occFilletNurbs(base,js,chamfer,single,edges,cham);
   if(rN&&refuse(rN.shape))rN=null;
@@ -575,7 +576,7 @@ function occApplyXFillets(base,xfils){
       const r2=Math.max(0.5,+(rMax*k).toFixed(2));
       const w2=[];
       const cham2=cham?Object.assign({},cham,{d2:+(cham.d2*k).toFixed(2)}):null; // D2 réduit dans le même rapport
-      const t=occFilletRun(occShapeCopy(base),js.map(j=>({src:j.src,r:r2,mid:j.mid.slice(),fn:j.fn||null})),w2,chamfer,{single,cham:cham2});
+      const t=occFilletRun(occShapeCopy(base),js.map(j=>({src:j.src,r:r2,mid:j.mid.slice(),pts:j.pts,fn:j.fn||null})),w2,chamfer,{single,cham:cham2});
       let bon=t&&(occFacesValides(t,zone)||baseSaine===false); // un rayon « vérifié » doit aussi donner un solide valide
       // VOLUME PLAUSIBLE (V0.44.1) : un congé « valide » peut être faux (slot de 12 mm, R6 :
       // +1 866 mm³ au lieu d'en retirer). La matière ôtée ou ajoutée croît comme r² : même sens
@@ -619,6 +620,19 @@ function occApplyXFillets(base,xfils){
     return{shape:base,warnings:warns};
   }
   xfils.forEach(xf=>{delete xf._err;delete xf._adj;}); // plus d'erreur : le rayon courant passe
+  // BILAN VÉRIFIÉ : refusées pendant le calcul, ou ignorées sans rien dire par le noyau (« réussi »
+  // mais l'arête est toujours là). La fonction n'est plus montrée comme réussie.
+  const manque=(bilan.rates||[]).slice();
+  try{
+    const apres=occListEdges(s);
+    js.forEach(j=>{
+      if(manque.some(m=>Math.hypot(m[0]-j.mid[0],m[1]-j.mid[1],m[2]-j.mid[2])<1e-6))return;
+      const e=occAreteSuivie(apres,{pts:j.pts,mid:j.mid},false),l=(edges.find(x=>x.src===j.src)||{}).len||0;
+      if(e&&e.len>Math.max(0.05,0.5*l))manque.push(j.mid.slice());
+    });
+  }catch(e){}
+  xfils.forEach(xf=>{if(manque.length)xf._rate={n:manque.length,t:js.length,pos:manque.map(q=>q.map(v=>+v.toFixed(1)))};else delete xf._rate;});
+  if(manque.length)warns.push(`${lab} NON FAIT sur ${manque.length}/${js.length} arête(s), près de `+manque.slice(0,4).map(nomsPos).join(' ; '));
   try{base.delete();}catch(e){}
   return{shape:s,warnings:warns};
 }

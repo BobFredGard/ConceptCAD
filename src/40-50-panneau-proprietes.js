@@ -70,6 +70,7 @@ function renderProps(){
       visDel(f);return;
     }
     if(f.type==='bcopy'){bcopyProps(p,f);visDel(f);return;} // copier un corps (85-copier-corps)
+    if(f.type==='bmirror'){bmirrorProps(p,f);visDel(f);return;} // symétrie du corps (85-symetrie-corps)
     if(f.type==='bscale'){bscaleProps(p,f);visDel(f);return;} // échelle (85-echelle-corps)
     if(f.type==='xsplit'){splitProps(p,f);visDel(f);return;} // scinder (85-scinder)
     /* — déplacement de face — */
@@ -185,6 +186,10 @@ function renderProps(){
       if(f._miss&&f._miss.length)pNote('Introuvables, près de : '+f._miss.map(q=>'('+q.join(', ')+')').join('  '));
       if(f._err)pNote(f._err);
       else pNote('La pièce a bougé depuis la sélection. Re-sélectionnez l\'arête.');
+    }
+    if(f.type==='xfillet'&&f._rate){
+      pInfo(`<span style="color:var(--warn)">⚠ <b>Non fait sur ${f._rate.n}/${f._rate.t}</b> arête(s) : le noyau les refuse ou les ignore.</span>`);
+      pNote('Près de : '+f._rate.pos.slice(0,6).map(q=>'('+q.join(', ')+')').join('  '));
     }
     /* — répétition — */
     if(f.type==='repeat'){

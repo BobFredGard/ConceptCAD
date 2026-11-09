@@ -8,7 +8,7 @@ sont sorties le 2026-09-30j.
 Code dans `src/` · livrable `fusion_mvp.html` (généré par `build.js`) · architecture et
 garde-fous en tête de `src/00-entete-et-outils.js`.
 
-**625 versions**, de `2026-09-28b` à `V0.76.2` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
+**626 versions**, de `2026-09-28b` à `V0.77.0` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
 comme dans le fichier d'origine.
 
 ---
@@ -7168,3 +7168,10 @@ Barquette ne perd plus son solide à la 107e modification, et sa mémoire ne mon
 - **Ruban sur une ligne** (`src/97-interface-moderne.js`, `mfRibFit`) : si les groupes visibles passent à la ligne (au-dessus de 1500 px de large), les boutons se resserrent (marges réduites, mêmes icônes et libellés : 164 px gagnés sur le ruban PLAN). Recalculé au redimensionnement, au changement d'espace et dès que le ruban change de taille ; minuterie plutôt qu'image d'animation, suspendue dans une fenêtre cachée.
 - **Bouton de l'outil actif** (`mfRibMepSync`, appelé par `mepSetTool` et `mepRender`) : en PLAN, le bouton de l'outil en cours reste encadré en bleu tant qu'il est actif (outils de dessin et de cotes, Tolérance, Référence, Rugosité, modes d'axes, Projection, Auxiliaire, Coupe, Détail, Coupe locale) ; il s'éteint à Échap, au changement d'outil ou à la fin de la commande de vue.
 - **Test** : `test_mep_oblong_arc` (+7 : une seule flèche sur le demi-cercle, trait aligné sur la flèche et le centre, même texte hors de l'arc, dépassement du centre, cercle complet à deux flèches ; l'ancien code échoue à 3 d'entre eux). Ruban et bouton allumé vérifiés au navigateur à 1880 px (PLAN sur une ligne, CAO inchangé ; Cote, Tolérance, Trou, Symétrie, Coupe allumés puis éteints à Échap). Parcours FAO et CACHE_VER inchangés.
+## V0.77.0 - Symétrie d'un corps entier ; congés : arêtes non faites signalées
+
+- **Demande** : reproduire « Barquette 169 » et « Cavité 169 » dessinées par Fred dans Fusion ; « Oui, les congés » ; « il y a un ordre particulier pour passer les congés ».
+- **Symétrie de corps** (`src/85-symetrie-corps.js`) : fonction de la timeline `{type:'bmirror', body, plane}`. Le corps tel qu'il est à cette étape, histoire comprise (combinaisons, congés), est copié en miroir par rapport à un plan de l'origine et réuni à lui-même. La Répétition « Symétrie » refuse les opérations de corps entier ; celle-ci les prend. Bouton « Symétrie » du groupe Ensembles, clic droit d'un corps, arbre (◫), timeline, panneau.
+- **Congés, cause** : le noyau OCCT ignore certaines arêtes sans message, et la découpe d'équerre d'une arête seule acceptait un rayon plus grand que la paroi (R60 sur un bloc de 20 mm). La relocalisation d'une arête par son milieu (3 mm) prenait parfois le bord d'un congé voisin.
+- **Congés, correctif** (`src/20-20`, `src/20-60`) : arête retrouvée par ses points (`occAreteSuivie` : 60 % de ses points sur l'ancienne, tolérance selon la flèche des cordes) ; arêtes tangentes toutes choisies faites en une passe ; refusées repassées tant qu'il y a du progrès, puis ensemble ; outil d'équerre refusé si un point de tangence sort de la matière ; bilan vérifié après coup : `_rate` → ⚠ « NON FAIT sur n/t arête(s), près de … » dans l'arbre et le panneau. Les morceaux de coin intérieur (V0.70.3) restent soudés en une fois.
+- **Test** : `test_symetrie_corps` (6 contrôles), `test_conges_bilan` (10 : arête ignorée signalée, rayon trop grand refusé, ⚠ affiché puis retiré une fois corrigé) ; parcours FAO et CACHE_VER inchangés.

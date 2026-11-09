@@ -173,6 +173,8 @@ function featSig(f){
     // Échelle : centre, facteur(s) et, en copie, l'historique du corps source (comme xsplit)
     s+='|'+JSON.stringify([f.o||[0,0,0],bsFactors(f),f.copy?1:0]);
     if(occSplitNewBody(f))s+='|src:'+occCombinePrefix(f,occBodyOfFeat(f)).map(featSig).join(',');
+  }else if(f.type==='bmirror'){
+    s+='|'+bmirPlane(f);
   }else if(f.type==='xdelface'){
     s+='|'+((f.faces||[]).map(r=>JSON.stringify([r.pos,r.n||r.st,r.dim])).join(';'));
   }else if(f.type==='xsplit'){
@@ -203,11 +205,12 @@ function featSig(f){
   // _mesh/_m (état dérivé vivant, non géométrique — _mesh est une référence THREE
   // non sérialisable), name/open (affichage pur : replier un nœud ou renommer ne
   // change pas le solide et invaliderait tout). _calc : suppression au worker (21), état
-  // dérivé lui aussi — dans la clé, la réponse du worker ne serait jamais retrouvée.
+  // dérivé lui aussi — dans la clé, la réponse du worker ne serait jamais retrouvée. _rate (V0.77.0) :
+  // bilan des arêtes non faites d'un congé, résultat du calcul : mémorisé avec le point de contrôle.
   // V0.16.0 : congé exact — le relevé pos/len, rafraîchi à chaque appariement (bruit ~1e-9),
   // est exclu du filet quand pos0 le fige : il y rentrait par la fonction entière et changeait la
   // clé après chaque rejeu (point de contrôle raté, tout l'aval rejoué sans changement).
-  const jf={};for(const k in f){if(k==='name'||k==='open'||k==='_m'||k==='_mesh'||k==='_calc')continue;jf[k]=f[k];}
+  const jf={};for(const k in f){if(k==='name'||k==='open'||k==='_m'||k==='_mesh'||k==='_calc'||k==='_rate')continue;jf[k]=f[k];}
   if(f.type==='xfillet'&&Array.isArray(f.edges))jf.edges=f.edges.map(e=>{if(!e||typeof e!=='object')return e;const q=Object.assign({},e);if(q.pos0)delete q.pos;delete q.len;return q;});
   s+='|j'+JSON.stringify(jf,nomsSansCles);
   return s;
@@ -291,6 +294,7 @@ function* occReplayBodyGen(bid,list){
         const w=occCkWarn[ckKey];if(w&&w.length)msgs.push(...w.map(x=>`${f.name} : ${x}`));
         const sv=occCkEdges[ckKey];
         if(sv&&Array.isArray(f.edges)&&sv.length===f.edges.length)f.edges.forEach((e,i)=>{if(e&&sv[i]){if(sv[i].pos)e.pos=sv[i].pos.slice();if(sv[i].len!=null)e.len=sv[i].len;}});
+        if(sv&&sv.rate)f._rate=JSON.parse(JSON.stringify(sv.rate));else delete f._rate;
         return;
       }
       const snapX=nomsInstantane(result); // reprise NURBS : pas d'historique du noyau
@@ -299,6 +303,7 @@ function* occReplayBodyGen(bid,list){
       result=r.shape;msgs.push(...r.warnings.map(w=>`${f.name} : ${w}`));
       if(r.warnings.length)occCkWarn[ckKey]=r.warnings.slice();else delete occCkWarn[ckKey];
       occCkEdges[ckKey]=(f.edges||[]).map(e=>e?{pos:Array.isArray(e.pos)?e.pos.slice():null,len:e.len!=null?e.len:null}:null);
+      if(f._rate)occCkEdges[ckKey].rate=JSON.parse(JSON.stringify(f._rate));
       occCkPut(ckKey,()=>occShapeCopy(result));
       return;
     }
@@ -342,6 +347,22 @@ function* occReplayBodyGen(bid,list){
       }
       if(!src){msgs.push(f.name+' : aucun volume à '+(f.type==='bcopy'?'copier':'mettre à l’échelle')+' — ignoré');return;}
       const r=occApplyBodyScale(src,f);
+      result=r.shape;msgs.push(...r.warnings.map(w=>f.name+' : '+w));
+      if(r.warnings.length)occCkWarn[ckKey]=r.warnings.slice();else delete occCkWarn[ckKey];
+      if(result)occCkPut(ckKey,()=>occShapeCopy(result));
+      return;
+    }
+    if(f.type==='bmirror'){
+      // Symétrie du corps (85-symetrie-corps) : le corps tel qu'il est ici, réuni à son miroir
+      const ckM=occCkGet(ckKey);
+      const cpM=ckM?occShapeCopy(ckM):null;
+      if(cpM){
+        if(result)try{result.delete();}catch(e){}result=cpM;
+        const w=occCkWarn[ckKey];if(w&&w.length)msgs.push(...w.map(x=>f.name+' : '+x));
+        return;
+      }
+      if(!result){msgs.push(f.name+' : aucun volume à copier — ignoré');return;}
+      const r=occApplyBodyMirror(result,f);
       result=r.shape;msgs.push(...r.warnings.map(w=>f.name+' : '+w));
       if(r.warnings.length)occCkWarn[ckKey]=r.warnings.slice();else delete occCkWarn[ckKey];
       if(result)occCkPut(ckKey,()=>occShapeCopy(result));
