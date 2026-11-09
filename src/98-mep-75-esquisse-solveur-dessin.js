@@ -284,11 +284,11 @@
             const t=Math.max(0,Math.min(1,((sx-ax)*dx+(sy-ay)*dy)/L2));
             consider(ax+dx*t,ay+dy*t,{t:'onAx',vid:v.id,ak:p.ak});
           }
-        }else if(p.t==='C'){
+        }else if(p.t==='C'||p.t==='A'){
           const cx=v.x+p.cx*v.scale,cy=v.y+p.cy*v.scale,r=p.r*v.scale;
           consider(cx,cy,{t:'ctr',vid:v.id,ak:p.ak});
           const a=Math.atan2(sy-cy,sx-cx);
-          consider(cx+r*Math.cos(a),cy+r*Math.sin(a),{t:'onAx',vid:v.id,ak:p.ak});
+          if(p.t==='C'||mepAxisArcIn(p,a))consider(cx+r*Math.cos(a),cy+r*Math.sin(a),{t:'onAx',vid:v.id,ak:p.ak});
         }
       });
     });

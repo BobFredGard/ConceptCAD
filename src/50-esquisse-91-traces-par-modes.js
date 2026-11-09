@@ -48,9 +48,10 @@ function skModeBarBuild(){
 }
 function skModeSet(tool,k){
   if(tool==='slot'){
+    const avant=skSlot.mode;
     skSlot.mode=k;skModeBarSync();
-    if(skEdit&&skDown&&skDown.slot&&skDraft&&skDraft.t==='slot'){skDraft.mode=k;drawSketch2D();}
-    else skStatus(SK_SLOT_MSG[k][0]);
+    if(skEdit&&skDown&&skDown.slot&&skDraft&&skDraft.t==='slot'&&!SK_ASLOT_MODES.has(k)){skDraft.mode=k;drawSketch2D();}
+    else{if(skEdit&&skDown&&skDown.slot&&avant!==k)skCancelDraft();skStatus(SK_SLOT_MSG[k][0]);} // oblong en arc : autre suite de clics
     return;
   }
   skTraceMode[tool]=k;

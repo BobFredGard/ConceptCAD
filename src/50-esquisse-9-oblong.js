@@ -106,12 +106,14 @@ function skSlotRayon(A,B,x,y){
   return Math.abs((x-A.x)*(A.y-B.y)+(y-A.y)*(B.x-A.x))/L;
 }
 function skSlotStart(sk,wx,wy){
+  if(SK_ASLOT_MODES.has(skSlot.mode))return skASlotStart(sk,wx,wy); // oblong en arc, secteur (50-esquisse-92)
   const fa=!!findSnap(sk,wx,wy);
   const pid=snapNewPoint(sk,wx,wy),S=sk.points[pid];
   skDown={pid,x:S.x,y:S.y,slot:{p2:null,fa}};
   skStatus(SK_SLOT_MSG[skSlot.mode][1]);
 }
 function skSlotMove(sk,wx,wy){
+  if(skDown.slot.arc)return skASlotMove(sk,wx,wy);
   const st=skDown.slot,A={x:skDown.x,y:skDown.y};
   const m=skSlotAim(sk,wx,wy,st.p2?null:A);
   skSnapMk=m.s?{x:m.s.x,y:m.s.y}:null;
@@ -121,6 +123,7 @@ function skSlotMove(sk,wx,wy){
   drawSketch2D();
 }
 function skSlotUp(sk,wx,wy){
+  if(skDown.slot.arc)return skASlotUp(sk,wx,wy);
   const st=skDown.slot,A={x:skDown.x,y:skDown.y};
   const m=skSlotAim(sk,wx,wy,st.p2?null:A);
   if(!st.p2){ // 1er clic relâché sur place : le 1er point reste armé ; sinon c'est le 2e point

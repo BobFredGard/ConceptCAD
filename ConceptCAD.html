@@ -376,7 +376,7 @@ input[type=range]{accent-color:var(--primary);width:100%}
  * peut changer sans rien casser. CACHE_VER (parcours FAO) reste indépendant.
  */
 
-const APP_VER='V0.72.0';
+const APP_VER='V0.73.0';
 try{console.log('[ConceptCAD] version '+APP_VER);}catch(e){}
 try{var mfSv=document.getElementById('mfSplashVer');if(mfSv)mfSv.textContent=APP_VER;}catch(e){} // écran de démarrage
 
@@ -24455,6 +24455,7 @@ function drawSketch2D(){
         if(skInfer&&skInfer.ext){const g=skEl('text',{x:mx+18,y:my+4,fill:'#bf5af2','font-size':13,'font-weight':'bold'});g.textContent='⟶ sur la droite';}
       }}
     if(d.t==='slot')skSlotDrawDraft(d);
+    else if(d.t==='aslot')skASlotDrawDraft(d);
     else if(d.t==='trace')skTrDrawDraft(d);
     else if(d.t==='rect'){const[a,b]=w2s(Math.min(d.x1,d.x2),Math.max(d.y1,d.y2));
       skEl('rect',{x:a,y:b,width:Math.abs(d.x2-d.x1)*skView.s,height:Math.abs(d.y2-d.y1)*skView.s,fill:'rgba(255,255,255,.06)',stroke:'#fff','stroke-dasharray':'5 3'});
@@ -27506,12 +27507,14 @@ function skSlotRayon(A,B,x,y){
   return Math.abs((x-A.x)*(A.y-B.y)+(y-A.y)*(B.x-A.x))/L;
 }
 function skSlotStart(sk,wx,wy){
+  if(SK_ASLOT_MODES.has(skSlot.mode))return skASlotStart(sk,wx,wy); // oblong en arc, secteur (50-esquisse-92)
   const fa=!!findSnap(sk,wx,wy);
   const pid=snapNewPoint(sk,wx,wy),S=sk.points[pid];
   skDown={pid,x:S.x,y:S.y,slot:{p2:null,fa}};
   skStatus(SK_SLOT_MSG[skSlot.mode][1]);
 }
 function skSlotMove(sk,wx,wy){
+  if(skDown.slot.arc)return skASlotMove(sk,wx,wy);
   const st=skDown.slot,A={x:skDown.x,y:skDown.y};
   const m=skSlotAim(sk,wx,wy,st.p2?null:A);
   skSnapMk=m.s?{x:m.s.x,y:m.s.y}:null;
@@ -27521,6 +27524,7 @@ function skSlotMove(sk,wx,wy){
   drawSketch2D();
 }
 function skSlotUp(sk,wx,wy){
+  if(skDown.slot.arc)return skASlotUp(sk,wx,wy);
   const st=skDown.slot,A={x:skDown.x,y:skDown.y};
   const m=skSlotAim(sk,wx,wy,st.p2?null:A);
   if(!st.p2){ // 1er clic relâché sur place : le 1er point reste armé ; sinon c'est le 2e point
@@ -27618,9 +27622,10 @@ function skModeBarBuild(){
 }
 function skModeSet(tool,k){
   if(tool==='slot'){
+    const avant=skSlot.mode;
     skSlot.mode=k;skModeBarSync();
-    if(skEdit&&skDown&&skDown.slot&&skDraft&&skDraft.t==='slot'){skDraft.mode=k;drawSketch2D();}
-    else skStatus(SK_SLOT_MSG[k][0]);
+    if(skEdit&&skDown&&skDown.slot&&skDraft&&skDraft.t==='slot'&&!SK_ASLOT_MODES.has(k)){skDraft.mode=k;drawSketch2D();}
+    else{if(skEdit&&skDown&&skDown.slot&&avant!==k)skCancelDraft();skStatus(SK_SLOT_MSG[k][0]);} // oblong en arc : autre suite de clics
     return;
   }
   skTraceMode[tool]=k;
@@ -28172,6 +28177,255 @@ function skTrDrawDraft(d){
     const t=skEl('text',{x:(g+dr)/2,y:h-8,fill:'#ffd60a','font-size':13,'font-weight':'bold','text-anchor':'middle'});
     t.textContent=d.label;
   }
+}
+
+/* ═══════════════ 50-esquisse-92-oblong-arc.js — esquisse 92 oblong arc ═══════════════ */
+/* ---------- Esquisse : oblong en arc et secteur de couronne (comme Fusion 360) ----------
+   2026-11-09 : « Esquisse : création d'un trou oblong circulaire et en secteur ». Fred a choisi les
+   2 formes : l'oblong courbé à bouts ronds et le secteur de couronne à bouts droits tournés vers le
+   centre. Trois nouveaux choix dans le bandeau de l'Oblong :
+   - arc3    : départ, arrivée, un point de passage de l'arc d'axe, puis la largeur ;
+   - arcC    : centre, départ, arrivée (l'arc suit la souris, dans un sens ou dans l'autre), largeur ;
+   - secteur : centre, 1er coin, arrivée, puis le 2e rayon.
+   Mêmes principes que l'oblong droit : aucun « Fixe », un point cliqué sur une géométrie s'y accroche,
+   un point dans le vide reste libre, toutes les cotes posées à la création.
+   Modèle de l'oblong en arc : arc d'axe (construction) du centre pc, de S à E (sens direct) ;
+   2 rayons de construction pc→Po1, pc→Po2 qui portent S, Pi1 et E, Pi2 ; arcs extérieur (Po1→Po2) et
+   intérieur (Pi1→Pi2) au centre pc ; 2 bouts ronds de centre S et E. Les points alignés sur les rayons
+   donnent la tangence et l'égalité des bouts sans autre contrainte. Cotes : R de l'axe, R du bout,
+   angle entre les 2 rayons (s'il est sous 180°).
+   Secteur : arcs extérieur et intérieur au centre pc, 2 côtés droits Pi→Po dont le prolongement
+   passe par pc. Cotes : les 2 rayons et l'angle entre les côtés. */
+const SK_ASLOT_MODES=new Set(['arc3','arcC','secteur']);
+SK_SLOT_MODES.push(
+  ['arc3','Arc 3 points','Cliquez le départ, l’arrivée, un point de passage, puis la largeur'],
+  ['arcC','Arc par centre','Cliquez le centre de l’arc, le départ, l’arrivée, puis la largeur'],
+  ['secteur','Secteur','Cliquez le centre, un 1er coin, l’arrivée, puis le 2e rayon']);
+Object.assign(SK_SLOT_MSG,{
+  arc3:['Oblong en arc : cliquez le départ (centre du 1er bout).','Oblong en arc : cliquez l’arrivée (centre du 2e bout).','Oblong en arc : cliquez un point de passage de l’arc.','Oblong en arc : cliquez pour la largeur.'],
+  arcC:['Oblong en arc : cliquez le centre de l’arc.','Oblong en arc : cliquez le départ (centre du 1er bout).','Oblong en arc : tournez jusqu’à l’arrivée et cliquez.','Oblong en arc : cliquez pour la largeur.'],
+  secteur:['Secteur : cliquez le centre.','Secteur : cliquez un 1er coin.','Secteur : tournez jusqu’à l’arrivée et cliquez.','Secteur : cliquez pour le 2e rayon.']});
+const SK_TAU=Math.PI*2;
+function skAngWrap(a){while(a>Math.PI)a-=SK_TAU;while(a<=-Math.PI)a+=SK_TAU;return a;}
+/* Crée la forme. kind 'arc' : g={cx,cy,R,w,a1,sw} (R : rayon de l'axe, w : demi-largeur) ;
+   kind 'secteur' : g={cx,cy,r1,r2,a1,sw} (r1 < r2). a1 = angle de départ, sw = ouverture (> 0, sens direct).
+   roles : pid des points cliqués à garder — c (centre), et S/E (arc) ou i1/o1/i2/o2 (secteur).
+   snaps : rôles accrochés à une géométrie (s'attachent avec la tolérance normale). Rend {ents,dims} ou null. */
+function skASlotCreate(sk,kind,g,roles,snaps){
+  roles=roles||{};snaps=snaps||{};
+  const sw=g.sw,a1=g.a1,a2=a1+sw;
+  if(!(sw>1e-6)||sw>=SK_TAU-1e-6)return null;
+  if(kind==='arc'&&!(g.w>1e-6&&g.R-g.w>1e-6))return null;
+  if(kind==='secteur'&&!(g.r1>1e-6&&g.r2-g.r1>1e-6))return null;
+  const id=()=>skNewEid(sk);
+  const pt=(role,ang,rho)=>{
+    const x=g.cx+rho*Math.cos(ang),y=g.cy+rho*Math.sin(ang);
+    const p=roles[role];
+    if(p&&sk.points[p]){sk.points[p].x=x;sk.points[p].y=y;return p;}
+    return pidAt(sk,x,y);
+  };
+  const pc=roles.c&&sk.points[roles.c]?roles.c:addPoint(sk,g.cx,g.cy);
+  if(roles.c&&sk.points[pc]){sk.points[pc].x=g.cx;sk.points[pc].y=g.cy;}
+  const ents=[],dims=[],cons=[];
+  const cote=q=>{const o=Object.assign({id:id()},q);sk.dims.push(o);dims.push(o);};
+  let mine; // points de la forme, pour les accroches
+  if(kind==='arc'){
+    const R=g.R,w=g.w;
+    const S=pt('S',a1,R),E=pt('E',a2,R);
+    const Po1=pt('o1',a1,R+w),Pi1=pt('i1',a1,R-w),Po2=pt('o2',a2,R+w),Pi2=pt('i2',a2,R-w);
+    const axe={id:id(),t:'arc',pc,pa:S,pb:E,r:R,construction:true};
+    const L1={id:id(),t:'line',p1:pc,p2:Po1,construction:true},L2={id:id(),t:'line',p1:pc,p2:Po2,construction:true};
+    const ext={id:id(),t:'arc',pc,pa:Po1,pb:Po2,r:R+w},int={id:id(),t:'arc',pc,pa:Pi1,pb:Pi2,r:R-w};
+    const b1={id:id(),t:'arc',pc:S,pa:Pi1,pb:Po1,r:w},b2={id:id(),t:'arc',pc:E,pa:Po2,pb:Pi2,r:w};
+    ents.push(ext,int,b1,b2,axe,L1,L2);
+    sk.entities.push(...ents);
+    [[S,L1],[Pi1,L1],[E,L2],[Pi2,L2]].forEach(([p,l])=>cons.push({id:id(),type:'online',p,line:l.id}));
+    sk.constraints.push(...cons);
+    cote({type:'radius',ent:axe.id,value:+R.toFixed(6)});
+    cote({type:'radius',ent:b1.id,value:+w.toFixed(6)});
+    if(sw<Math.PI-0.03)cote({type:'angle',a:L1.id,b:L2.id,value:+sw.toFixed(6),ccw:1,ox:0,oy:0});
+    mine={S,E,o1:Po1,i1:Pi1,o2:Po2,i2:Pi2};
+  }else{
+    const r1=g.r1,r2=g.r2;
+    const Pi1=pt('i1',a1,r1),Po1=pt('o1',a1,r2),Pi2=pt('i2',a2,r1),Po2=pt('o2',a2,r2);
+    const ext={id:id(),t:'arc',pc,pa:Po1,pb:Po2,r:r2},int={id:id(),t:'arc',pc,pa:Pi1,pb:Pi2,r:r1};
+    const c1={id:id(),t:'line',p1:Pi1,p2:Po1},c2={id:id(),t:'line',p1:Pi2,p2:Po2};
+    ents.push(ext,int,c1,c2);
+    sk.entities.push(...ents);
+    [c1,c2].forEach(l=>cons.push({id:id(),type:'online',p:pc,line:l.id}));
+    sk.constraints.push(...cons);
+    cote({type:'radius',ent:int.id,value:+r1.toFixed(6)});
+    cote({type:'radius',ent:ext.id,value:+r2.toFixed(6)});
+    if(sw<Math.PI-0.03)cote({type:'angle',a:c1.id,b:c2.id,value:+sw.toFixed(6),ccw:1,ox:0,oy:0});
+    mine={o1:Po1,i1:Pi1,o2:Po2,i2:Pi2};
+  }
+  // seuls les points cliqués accrochés s'attachent largement ; les autres seulement à ce qui les touche exactement
+  Object.keys(mine).forEach(k=>{const p=mine[k],q=sk.points[p];if(q)skAutoAttach(sk,p,q.x,q.y,snaps[k]?undefined:1e-3);});
+  {const q=sk.points[pc];if(q)skAutoAttach(sk,pc,q.x,q.y,snaps.c?undefined:1e-3);}
+  return{ents,dims,pc};
+}
+/* ----- saisie à la souris (4 clics) ----- */
+function skASlotAim(sk,wx,wy){
+  const s=findSnap(sk,wx,wy,skDown&&skDown.pid);
+  if(s)return{x:s.x,y:s.y,s};
+  let x=wx,y=wy;
+  if($('skSnap').checked){x=skSnapVal(x);y=skSnapVal(y);}
+  return{x,y,s:null};
+}
+function skASlotStart(sk,wx,wy){
+  const fa=!!findSnap(sk,wx,wy);
+  const pid=snapNewPoint(sk,wx,wy),P0=sk.points[pid];
+  skDown={pid,x:P0.x,y:P0.y,slot:{arc:true,mode:skSlot.mode,fa,pts:[{x:P0.x,y:P0.y}]}};
+  skStatus(SK_SLOT_MSG[skSlot.mode][1]);
+}
+// géométrie en cours d'après les points posés et le curseur m → draft
+function skASlotGeom(st,m){
+  const P=st.pts,mode=st.mode,n=P.length;
+  if(mode==='arc3'){
+    if(n===1)return{stage:1,A:P[0],B:m};
+    const c=skCirc3(P[0],P[1],n>=3?P[2]:m);
+    if(!c)return{stage:n,A:P[0],B:P[1],bad:true};
+    const a1=Math.atan2(P[0].y-c.y,P[0].x-c.x),a2=Math.atan2(P[1].y-c.y,P[1].x-c.x);
+    const T=n>=3?P[2]:m,aT=Math.atan2(T.y-c.y,T.x-c.x);
+    let d=a2-a1;while(d<=0)d+=SK_TAU;
+    let sw=d;{let r=aT-a1;while(r<0)r+=SK_TAU;if(r>d)sw=d-SK_TAU;}
+    const g={stage:n,cx:c.x,cy:c.y,R:c.r,a1,sw};
+    if(n>=3)g.w=Math.abs(Math.hypot(m.x-c.x,m.y-c.y)-c.r);
+    return g;
+  }
+  const C=P[0];
+  if(n===1)return{stage:1,cx:C.x,cy:C.y,B:m};
+  const R=Math.hypot(P[1].x-C.x,P[1].y-C.y),a1=Math.atan2(P[1].y-C.y,P[1].x-C.x);
+  const g={stage:n,cx:C.x,cy:C.y,R,a1,sw:st.sweep||0};
+  if(n>=3){const rr=Math.hypot(m.x-C.x,m.y-C.y);if(mode==='secteur')g.r2=rr;else g.w=Math.abs(rr-R);}
+  return g;
+}
+function skASlotOk(mode,g){
+  const mn=skMinLen();
+  if(!g||g.bad||!(g.R>mn)||!(Math.abs(g.sw||0)>1e-3)||Math.abs(g.sw)>=SK_TAU-1e-3)return false;
+  if(g.stage<3)return true;
+  if(mode==='secteur')return g.r2>mn&&Math.abs(g.r2-g.R)>mn;
+  return g.w>mn&&g.R-g.w>mn;
+}
+function skASlotMove(sk,wx,wy){
+  const st=skDown.slot,m=skASlotAim(sk,wx,wy);
+  skSnapMk=m.s?{x:m.s.x,y:m.s.y}:null;
+  if(st.mode!=='arc3'&&st.pts.length===2){ // l'arc suit la souris, tour après tour, dans les 2 sens
+    const C=st.pts[0],a=Math.atan2(m.y-C.y,m.x-C.x);
+    if(Math.hypot(m.x-C.x,m.y-C.y)>1e-9){
+      st.sweep=(st.sweep||0)+skAngWrap(a-(st.prevA!=null?st.prevA:a));st.prevA=a;
+      st.sweep=Math.max(-SK_TAU+1e-3,Math.min(SK_TAU-1e-3,st.sweep));
+    }
+  }
+  const g=skASlotGeom(st,m);
+  skDraft=Object.assign({t:'aslot',mode:st.mode,ok:skASlotOk(st.mode,g),pts:st.pts.slice(),cur:{x:m.x,y:m.y}},g);
+  drawSketch2D();
+}
+function skASlotUp(sk,wx,wy){
+  const st=skDown.slot,m=skASlotAim(sk,wx,wy),last=st.pts[st.pts.length-1];
+  const msg=SK_SLOT_MSG[st.mode];
+  if(st.pts.length<3&&Math.hypot(m.x-last.x,m.y-last.y)<=skMinLen()){skStatus(msg[st.pts.length]);return;} // relâché sur place
+  if(st.pts.length<3){
+    if(st.mode!=='arc3'&&st.pts.length===1){st.prevA=Math.atan2(m.y-last.y,m.x-last.x);st.sweep=0;}
+    if(st.mode!=='arc3'&&st.pts.length===2&&!(Math.abs(st.sweep||0)>1e-3)){skStatus(msg[2]);return;}
+    if(st.mode==='arc3'&&st.pts.length===2&&!skCirc3(st.pts[0],st.pts[1],m)){skStatus('Oblong en arc : ces 3 points sont alignés — visez ailleurs.');return;}
+    st.pts.push({x:m.x,y:m.y,raw:{x:wx,y:wy},snap:!!m.s});
+    skStatus(msg[st.pts.length]);
+    skASlotMove(sk,wx,wy);
+    return;
+  }
+  const g=skASlotGeom(st,m);
+  if(!skASlotOk(st.mode,g)){
+    skStatus(st.mode==='secteur'?'Secteur : éloignez le curseur du 1er rayon.':'Oblong en arc : largeur nulle ou plus grande que le rayon — visez ailleurs.');
+    return;
+  }
+  skPushUndo();
+  const R=skASlotCommit(sk,st,g);
+  skDown=null;skDraft=null;skSnapMk=null;afterEdit();
+  skStatus(R?(st.mode==='secteur'?'Secteur créé':'Oblong en arc créé')+', cotes posées — '+msg[0].replace(/^[^:]+: c/,'c').replace(/\.$/,'')+' du suivant (Échap = fin).'
+    :'Oblong en arc : forme impossible avec ces points.');
+}
+/* passe des clics à la forme : valeurs arrondies là où un point est libre, sens direct, rôles des points cliqués */
+function skASlotCommit(sk,st,g){
+  const P=st.pts,first=skDown.pid,r2=v=>+v.toFixed(2);
+  const ptOf=k=>{const q=P[k];return q.snap?snapNewPoint(sk,q.raw.x,q.raw.y):addPoint(sk,q.x,q.y);};
+  let cx=g.cx,cy=g.cy,a1=g.a1,sw=g.sw,roles={},snaps={};
+  if(st.mode==='arc3'){
+    // départ et arrivée cliqués : le rayon s'arrondit en déplaçant le centre (libre) sur la médiatrice
+    const A=P[0],B=P[1],c=Math.hypot(B.x-A.x,B.y-A.y),Rn=r2(g.R);
+    let R=g.R;
+    if(Rn>c/2+1e-6&&Math.abs(Rn-g.R)>1e-9){
+      const mx=(A.x+B.x)/2,my=(A.y+B.y)/2,ux=(B.x-A.x)/c,uy=(B.y-A.y)/c;
+      const side=Math.sign((cx-mx)*(-uy)+(cy-my)*ux)||1,h=Math.sqrt(Rn*Rn-c*c/4);
+      cx=mx-uy*h*side;cy=my+ux*h*side;R=Rn;
+      const b1=Math.atan2(A.y-cy,A.x-cx),b2=Math.atan2(B.y-cy,B.x-cx);
+      let d=b2-b1;while(d<=0)d+=SK_TAU;
+      a1=b1;sw=sw>0?d:d-SK_TAU;
+    }
+    const w=r2(g.w);if(!(w>0&&R-w>1e-6))return null;
+    const S=first,E=ptOf(1);
+    if(sw>0){roles={S,E};snaps={S:st.fa,E:P[1].snap};}
+    else{roles={S:E,E:S};snaps={S:P[1].snap,E:st.fa};a1+=sw;sw=-sw;}
+    return skASlotCreate(sk,'arc',{cx,cy,R,w,a1,sw},roles,snaps);
+  }
+  // centre cliqué en premier ; départ cliqué : le rayon s'arrondit en glissant le départ (s'il est libre)
+  const c=first,S0=ptOf(1),fs=P[1].snap;
+  const R=fs?g.R:r2(g.R);
+  sw=+(Math.round(sw*180/Math.PI*100)/100*Math.PI/180).toFixed(9); // ouverture au 1/100 de degré
+  if(st.mode==='secteur'){
+    const R2=r2(g.r2),inner=R2>R;
+    const r1=Math.min(R,R2),rB=Math.max(R,R2);if(!(rB-r1>1e-6&&r1>1e-6))return null;
+    const startRole=inner?'i':'o';
+    if(sw>0){roles={c,[startRole+'1']:S0};snaps={c:st.fa,[startRole+'1']:fs};}
+    else{roles={c,[startRole+'2']:S0};snaps={c:st.fa,[startRole+'2']:fs};a1+=sw;sw=-sw;}
+    return skASlotCreate(sk,'secteur',{cx,cy,r1,r2:rB,a1,sw},roles,snaps);
+  }
+  const w=r2(g.w);if(!(w>0&&R-w>1e-6))return null;
+  if(sw>0){roles={c,S:S0};snaps={c:st.fa,S:fs};}
+  else{roles={c,E:S0};snaps={c:st.fa,E:fs};a1+=sw;sw=-sw;}
+  return skASlotCreate(sk,'arc',{cx,cy,R,w,a1,sw},roles,snaps);
+}
+function skASlotDrawDraft(d){
+  const jaune='#ffd60a';
+  const dot=P=>{const[a,b]=w2s(P.x,P.y);skEl('circle',{cx:a,cy:b,r:3,fill:jaune});};
+  const label=(x,y,txt)=>{const[a,b]=w2s(x,y);const t=skEl('text',{x:a,y:b-10,fill:jaune,'font-size':13,'font-weight':'bold','text-anchor':'middle'});t.textContent=txt;};
+  const axe={fill:'none',stroke:jaune,'stroke-width':1,'stroke-dasharray':'6 3 1 3'};
+  const arcPts=(cx,cy,r,a,sw,n)=>{const o=[];for(let k=0;k<=n;k++){const t=a+sw*k/n;o.push(w2s(cx+r*Math.cos(t),cy+r*Math.sin(t)));}return o;};
+  const path=(pts,close,o)=>skEl('path',Object.assign({d:'M '+pts.map(s=>s[0].toFixed(1)+' '+s[1].toFixed(1)).join(' L ')+(close?' Z':'')},o));
+  (d.pts||[]).forEach(dot);
+  if(d.stage===1){ // 1er segment : départ→arrivée (arc3) ou centre→départ
+    const A=d.A||{x:d.cx,y:d.cy},B=d.B;
+    path([w2s(A.x,A.y),w2s(B.x,B.y)],false,axe);
+    label((A.x+B.x)/2,(A.y+B.y)/2,(d.mode==='arc3'?'':'R ')+Math.hypot(B.x-A.x,B.y-A.y).toFixed(2));
+    return;
+  }
+  if(d.bad||!(d.R>0))return;
+  const n=Math.max(8,Math.ceil(Math.abs(d.sw)/(Math.PI/48)));
+  const[cxs,cys]=w2s(d.cx,d.cy);skEl('circle',{cx:cxs,cy:cys,r:3,fill:'none',stroke:jaune});
+  path(arcPts(d.cx,d.cy,d.R,d.a1,d.sw,n),false,axe);
+  if(d.mode!=='secteur'||d.stage<3){ // rayons de construction aux 2 bouts
+    [d.a1,d.a1+d.sw].forEach(a=>path([[cxs,cys],w2s(d.cx+d.R*Math.cos(a),d.cy+d.R*Math.sin(a))],false,axe));
+  }
+  const deg=(Math.abs(d.sw)*180/Math.PI).toFixed(1)+'°';
+  const am=d.a1+d.sw/2;
+  if(d.stage<3||!d.ok){label(d.cx+d.R*Math.cos(am),d.cy+d.R*Math.sin(am),'R '+d.R.toFixed(2)+' · '+deg);return;}
+  const trait={fill:'rgba(255,255,255,.06)',stroke:'#fff','stroke-width':2,'stroke-dasharray':'5 3'};
+  const a1=d.sw>0?d.a1:d.a1+d.sw,sw=Math.abs(d.sw);
+  if(d.mode==='secteur'){
+    const r1=Math.min(d.R,d.r2),r2=Math.max(d.R,d.r2);
+    const pts=arcPts(d.cx,d.cy,r2,a1,sw,n).concat(arcPts(d.cx,d.cy,r1,a1+sw,-sw,n));
+    path(pts,true,trait);
+    label(d.cx+r2*Math.cos(am),d.cy+r2*Math.sin(am),'R '+r1.toFixed(2)+' / R '+r2.toFixed(2)+' · '+deg);
+    return;
+  }
+  const w=d.w,R=d.R,pts=arcPts(d.cx,d.cy,R+w,a1,sw,n);
+  const e2=a1+sw,Ex=d.cx+R*Math.cos(e2),Ey=d.cy+R*Math.sin(e2);
+  pts.push(...arcPts(Ex,Ey,w,e2,Math.PI,16));
+  pts.push(...arcPts(d.cx,d.cy,R-w,e2,-sw,n));
+  const Sx=d.cx+R*Math.cos(a1),Sy=d.cy+R*Math.sin(a1);
+  pts.push(...arcPts(Sx,Sy,w,a1+Math.PI,Math.PI,16));
+  path(pts,true,trait);
+  label(d.cx+(R+w)*Math.cos(am),d.cy+(R+w)*Math.sin(am),'R '+R.toFixed(2)+' · '+deg+' · largeur '+(2*w).toFixed(2));
 }
 
 /* ═══════════════ 51-parametres.js — parametres ═══════════════ */
@@ -68636,6 +68890,11 @@ function mfFiTable(){
   F('Axes/Cercle','Cercle d’axes','Dessine le cercle qui passe par le centre de trous répartis en rond.',['Cliquez les trous'],PITCH(),PITCH()+'<circle cx="50" cy="38" r="22" fill="none" stroke="'+RE+'" stroke-width="1.3" stroke-dasharray="6 2 1.4 2"/>');
   const SYM=()=>ficD('M38 14L14 38L38 62Z','#111827',1.7)+ficD('M62 14L86 38L62 62Z','#111827',1.7);
   F('Axes/Symétrie','Axe de symétrie','Dessine l’axe au milieu de deux éléments identiques.',['Cliquez les deux éléments'],SYM(),SYM()+AX(50,6,50,70));
+  const BLOC=()=>ficR(14,40,44,24,'#111827',1.7);
+  const CADRE=(x,y)=>ficR(x,y,46,10,'#111827',1)+ficL(x+11,y,x+11,y+10,'#111827',1)+ficL(x+31,y,x+31,y+10,'#111827',1)+ficL(x+3,y+7.5,x+8,y+2.5,'#111827',1)+ficL(x+3,y+5.5,x+8,y+5.5,'#111827',.6)+ficT(x+21,y+7.6,'0,02',6.5,'#111827')+ficT(x+38.5,y+7.6,'A',6.5,'#111827');
+  F('Tolérances/Tolérance','Tolérance géométrique','Pose un cadre de tolérance ISO 1101 (planéité, perpendicularité, localisation…) avec sa flèche sur une arête, ou sous la valeur d’une cote.',['Cliquez l’arête (ou une cote)','Placez le cadre'],BLOC()+NUM(58,52,'1'),BLOC()+ficAr(64,30,58,40,GR,.9)+CADRE(46,20));
+  const TRI=(x,y)=>ficD('M'+(x-4)+' '+y+'L'+(x+4)+' '+y+'L'+x+' '+(y-6)+'Z','#111827',1,null,'#111827')+ficL(x,y-6,x,y-16,'#111827',1)+ficR(x-6,y-28,12,12,'#111827',1)+ficT(x,y-19.6,'A',8,'#111827');
+  F('Tolérances/Référence','Référence','Pose une lettre de référence ISO 5459 (A, B, C…) : triangle sur une arête, ou au bout d’une cote pour un axe ou un plan médian.',['Cliquez l’arête (ou une cote)','Placez la lettre'],BLOC()+NUM(36,40,'1'),BLOC()+TRI(36,40));
   const OUT=(ext,txt,lb)=>F('Sortie/'+ext,'Exporter en '+ext,txt,[],SHEET()+VF(34,24),DOC(34,14,ext,OR),null,'La planche',lb||'Le fichier');
   OUT('SVG','Crée une image vectorielle de la planche, nette à toutes les tailles.');
   OUT('DXF','Crée un fichier DXF pour les logiciels de dessin, avec des calques (contours, cotes, axes…).');
@@ -69498,6 +69757,8 @@ const MF_IC={
   pHoles:'<circle cx="6" cy="17" r="3"/><circle cx="14" cy="17" r="3"/><path d="M16.2 14.8L20 11h2"/><path d="M3 5h8M3 8.5h6"/><path d="M14 5h3"/>',
   pAxHole:'<circle cx="12" cy="12" r="6"/><path d="M12 2.5v4M12 9.5v5M12 17.5v4M2.5 12h4M9.5 12h5M17.5 12h4"/>',
   pAxPitch:'<circle cx="12" cy="12" r="8" stroke-dasharray="4 1.6 1 1.6"/><circle cx="12" cy="4" r="1.8"/><circle cx="18.9" cy="16" r="1.8"/><circle cx="5.1" cy="16" r="1.8"/>',
+  pGdt:'<path d="M2 7.5h20v9H2z"/><path d="M9 7.5v9M15.5 7.5v9"/><circle cx="5.5" cy="12" r="1.7"/><path d="M5.5 9.3v5.4M2.8 12h5.4"/><path d="M11 14l2.6-4"/>',
+  pDatum:'<path d="M7 2.5h10v9H7z"/><path d="M12 11.5v5"/><path d="M7 21h10l-5-4.5z" fill="currentColor"/><text x="12" y="9.6" font-size="6.4" font-family="sans-serif" font-weight="700" text-anchor="middle" fill="currentColor" stroke="none">A</text>',
   pAxSym:'<path d="M12 2v3.5M12 8v3M12 13.5v3M12 19v3"/><path d="M9 6L4 12l5 6zM15 6l5 6-5 6z"/>',
   pSvg:'<path d="M6 3h9l3 3v15H6z"/><text x="12" y="17.6" font-size="6.2" font-family="sans-serif" font-weight="700" text-anchor="middle" fill="currentColor" stroke="none">SVG</text>',
   pDxfIn:'<path d="M6 3h9l3 3v15H6z"/><path d="M12 6.5v6.5M9.5 10.5L12 13l2.5-2.5"/><text x="12" y="19.6" font-size="4.6" font-family="sans-serif" font-weight="700" text-anchor="middle" fill="currentColor" stroke="none">DXF</text>',
@@ -69597,6 +69858,8 @@ function mfRibbon(){
     ['pNote','Note',()=>mepTool('note'),'Note à flèche : cliquez la pointe, placez le texte, saisissez-le (texte libre, plusieurs lignes)'],
     ['pOrdX','Ordonnées X',()=>mepTool('ordx'),'Cotation d’ordonnées suivant X : origine « 0 », puis les points — valeurs alignées qui se déplacent ensemble (Entrée termine)'],
     ['pOrdY','Ordonnées Y',()=>mepTool('ordy'),'Cotation d’ordonnées suivant Y : origine « 0 », puis les points — valeurs alignées qui se déplacent ensemble (Entrée termine)']],'mfPlan');
+  grp('Tolérances',[['pGdt','Tolérance',()=>mepTool('gdt'),'Tolérance géométrique ISO 1101 : cliquez une arête (pointe de la flèche) puis placez le cadre — ou cliquez une cote pour mettre le cadre sous sa valeur'],
+    ['pDatum','Référence',()=>mepTool('datum'),'Référence ISO 5459 (A, B, C…) : cliquez une arête puis placez la lettre — ou cliquez une cote pour un axe ou un plan médian']],'mfPlan');
   const mepAx=m=>{try{mepSetActive(true);mepSetAxisMode(m);}catch(e){}};
   grp('Axes',[['pAxHole','Trou',()=>mepAx('hole'),'Axes (trou) : croix d’axes des trous cliqués'],
     ['pAxPitch','Cercle',()=>mepAx('pitch'),'Axes (cercle) : cercle primitif des trous répartis'],
@@ -70623,6 +70886,8 @@ function filmFrame(){
     .mepDimRef{fill:var(--mepHid,#7a7f86)}
     .mepDimL.mepDimSel{stroke:#ff3b30!important}
     .mepDimT.mepDimSel{fill:#ff3b30!important}
+    .mepDimL.mepGdtFill{fill:var(--mepDimCol,#111)}
+    .mepDimL.mepGdtFill.mepDimSel{fill:#ff3b30!important}
     .mepLbl{font-family:sans-serif;font-size:var(--mepLblH,7px);fill:var(--mepText,#111);font-weight:700;paint-order:stroke;stroke:var(--mepPaper,#fff);stroke-width:1.6;stroke-linejoin:round}
     #mepSvg,#mepSvg *{-webkit-user-select:none;-moz-user-select:none;user-select:none}
     .mepLbl,.mepDimT{pointer-events:none}
@@ -73150,7 +73415,9 @@ function filmFrame(){
       const idMap={};
       c.views.forEach(v=>{const nid=mepUid('v');idMap[v.id]=nid;v.id=nid;v.parent=v.parent?idMap[v.parent]||null:null;
         if(v.section)v.section.pid=idMap[v.section.pid]||null;});
-      c.dims.forEach(d=>{d.id=mepUid('d');d.vid=idMap[d.vid]||d.vid;if(d.vid2)d.vid2=idMap[d.vid2]||d.vid2;});
+      const dMap={};
+      c.dims.forEach(d=>{const nid=mepUid('d');dMap[d.id]=nid;d.id=nid;d.vid=idMap[d.vid]||d.vid;if(d.vid2)d.vid2=idMap[d.vid2]||d.vid2;});
+      c.dims.forEach(d=>{if(d.on)d.on=dMap[d.on]||d.on;}); // tolérances accrochées à une cote
       ns.views=c.views;ns.dims=c.dims;ns.sk=c.sk;
       doc.mep.sheets.splice(doc.mep.cur+1,0,ns);
       doc.mep.cur++;
@@ -75505,6 +75772,10 @@ function filmFrame(){
     const cls=(p.cls||'mepAxis')+(extra?' '+extra:'');
     if(p.t==='L')mk('line',{x1:X(p.x1),y1:Y(p.y1),x2:X(p.x2),y2:Y(p.y2),class:cls});
     else if(p.t==='C')mk('circle',{cx:X(p.cx),cy:Y(p.cy),r:+(p.r*v.scale).toFixed(3),class:cls});
+    else if(p.t==='A'){ // 2026-11-09 : axe courbe d'un oblong en arc (angles croissants = sens de l'écran)
+      const r=+(p.r*v.scale).toFixed(3),big=p.a1-p.a0>Math.PI?1:0;
+      mk('path',{d:'M '+X(p.cx+p.r*Math.cos(p.a0))+' '+Y(p.cy+p.r*Math.sin(p.a0))+' A '+r+' '+r+' 0 '+big+' 1 '+X(p.cx+p.r*Math.cos(p.a1))+' '+Y(p.cy+p.r*Math.sin(p.a1)),fill:'none',class:cls});
+    }
   }
   function mepDrawAxes(mk,v,sh){
     const sa=mepSt.selAxis&&mepSt.selAxis.vid===v.id?mepSt.selAxis:null;
@@ -76047,6 +76318,7 @@ function filmFrame(){
       return q;
     }
     if(h&&h.t==='slot'&&h.s)return mepSlotPtRefresh(v,q); // centre d'un oblong
+    if(h&&h.t==='aslot'&&h.s)return mepASlotPtRefresh(v,q); // centre d'un oblong en arc (bout ou arc)
     if(h&&(h.t==='axp'||h.t==='axc')){
       const e=mepAxisLineByKey(sh,v,h.ak);if(!e)return q; // axe disparu : dernière position connue
       if(h.t==='axc'){if(e.cx!=null){q.x=e.cx;q.y=e.cy;}return q;}
@@ -76168,7 +76440,7 @@ function filmFrame(){
       mepPtRefresh(sh,v1,d.o,pr);d.a=d.b=d.o;(d.pts||[]).forEach(q=>mepPtRefresh(sh,v1,q,pr));
       return;
     }
-    if(d.kind!=='dist'&&d.kind!=='note')return;
+    if(d.kind!=='dist'&&d.kind!=='note'&&!((d.kind==='gdt'||d.kind==='datum')&&d.a))return;
     const pr=d.kind==='dist'?(d.orient==='h'?'v':(d.orient==='v'?'h':null)):null;
     // distance oblique : pas de migration ambiguë, mais les références posées restent suivies
     const ok=q=>!!(q&&(pr||d.kind!=='dist'||q.hint));
@@ -76177,6 +76449,7 @@ function filmFrame(){
   }
   function mepDimWorld(sh,d){
     // ancrages → mm papier
+    if((d.kind==='gdt'||d.kind==='datum'))return mepGdtWorld(sh,d); // tolérance géométrique, référence (98-mep-72)
     const v1=mepView(sh,d.vid);
     if(!v1)return null;
     try{mepDimPtsRefresh(sh,d);}catch(e){} // points accrochés aux traits d'axe : suivent l'axe
@@ -76686,6 +76959,7 @@ function filmFrame(){
       return G?[{t:'L',x1:G.a.x,y1:G.a.y,x2:G.b.x,y2:G.b.y,cls:'mepAxis'}]:[];
     }
     if(ann.kind==='slot')return ann.s?mepSlotPrims(mepSlotFollow(v,ann.s),v):[];
+    if(ann.kind==='aslot')return ann.s?mepASlotPrims(mepASlotFollow(v,ann.s),v):[];
     if(ann.kind==='hole'){
       const h=mepAxisRefGeom(sh,v,ann.ref);if(!h)return[];
       if(h.rev)return mepRevPrims(h.rev,v,mepBasisOf(v),MEP_AXIS.overrun/mepAxisScale(v));
@@ -77081,6 +77355,7 @@ function filmFrame(){
       });
       try{out.push(...mepAxisCylPrims(sh,v));}catch(e){} // 2026-10-22-012 : cylindres d'un STEP
       mepSlotsAuto(v).forEach(s=>out.push(...mepSlotPrims(s,v))); // 2026-11-06 : oblongs, sur leurs 2 centres
+      mepASlotsAuto(v).forEach(s=>out.push(...mepASlotPrims(s,v))); // 2026-11-09 : oblongs en arc
     }
     return out;
   }
@@ -77134,6 +77409,8 @@ function filmFrame(){
   function mepSheetOfView(v){
     try{return (doc.mep.sheets||[]).find(s=>s.views.indexOf(v)>=0)||mepSheet();}catch(e){return null;}
   }
+  // angle a dans l'arc d'axe p (a0 → a1 croissant)
+  function mepAxisArcIn(p,a){let an=a;while(an<p.a0)an+=2*Math.PI;while(an-2*Math.PI>=p.a0)an-=2*Math.PI;return an<=p.a1+1e-9;}
   function mepAxisAt(sh,sx,sy){
     const tol=5/mepSt.zoom;
     let best=null,bd=tol;
@@ -77149,6 +77426,9 @@ function filmFrame(){
           const d1=Math.hypot(sx-ax,sy-ay),d2=Math.hypot(sx-bx,sy-by);
           if(Math.min(d1,d2)<=6/(mepSt.zoom||1))end=d1<=d2?1:2;
         }else if(p.t==='C'){
+          const cx=v.x+p.cx*v.scale,cy=v.y+p.cy*v.scale;
+          d=Math.abs(Math.hypot(sx-cx,sy-cy)-p.r*v.scale);
+        }else if(p.t==='A'&&mepAxisArcIn(p,Math.atan2((sy-v.y)/v.scale-p.cy,(sx-v.x)/v.scale-p.cx))){
           const cx=v.x+p.cx*v.scale,cy=v.y+p.cy*v.scale;
           d=Math.abs(Math.hypot(sx-cx,sy-cy)-p.r*v.scale);
         }
@@ -77562,8 +77842,9 @@ function filmFrame(){
   function mepDrawDim(mk,d,sh){
     const w=mepDimWorld(sh,d);
     if(!w)return;
-    const val=d.value!=null?d.value:mepDimMeasure(sh,d);
-    let txt=mepDimText(d,val);
+    const gdt=(d.kind==='gdt'||d.kind==='datum');
+    const val=gdt?0:(d.value!=null?d.value:mepDimMeasure(sh,d));
+    let txt=gdt?'':mepDimText(d,val);
     const sel=mepSt.selDim===d.id||!!(mepSt.lot&&mepSt.lot.dims.has(d.id));
     const ghost=!!d.__ghost;
     const col=sel?COL.sel:(d.ref?null:'#0a84ff');
@@ -77582,6 +77863,7 @@ function filmFrame(){
       return mk(tag,attrs);
     };
     if(d.kind==='ord'){mepDrawOrd(draw,d,sh,LX,T);return;}
+    if(gdt){mepDrawGdt(draw,d,sh,L,T,AR);return;}
     if(d.kind==='note')txt=d.txt||'Texte';
     if(d.kind==='hole'||d.kind==='note'){
       if(d.kind==='hole'&&d.holeFid&&typeof doc!=='undefined'){
@@ -77858,7 +78140,10 @@ function filmFrame(){
   /* référence du centre de l'arc i : celle de l'oblong s'il en fait partie, sinon celle du cercle */
   function mepSlotCtrHint(v,i){
     const s=mepSlotOfEnt(v,i);
-    if(!s)return{t:'ctr',i};
+    if(!s){ // bout d'un oblong en arc : son centre suit la rainure
+      const q=mepASlotOfEnt(v,i),n=q?(q.ib.indexOf(i)>=0?1:q.ia.indexOf(i)>=0?0:-1):-1;
+      return n<0?{t:'ctr',i}:{t:'aslot',n,s:mepASlotMemo(q)};
+    }
     const n=s.ib.indexOf(i)>=0?1:s.ia.indexOf(i)>=0?0:-1;
     return n<0?{t:'ctr',i}:{t:'slot',n,s:mepSlotMemo(s)};
   }
@@ -77930,6 +78215,451 @@ function filmFrame(){
     mepEdit('axe d’oblong',()=>{v.axes.push({id:mepUid('ax'),kind:'slot',s:mepSlotMemo(s)});});
     mepStatus('Oblong : 2 centres et axe créés (ils suivent le modèle) — cotez depuis ces centres.');
     return true;
+  }
+  /* ═══════════════ O3. oblongs en arc : axe courbe et centres des bouts ═══════════════ */
+  /* 2026-11-09 : « il faut pouvoir créer des axes sur une rainure circulaire » — l'oblong en arc vu de
+     face : 2 bouts en demi-cercle de même rayon w, dont les centres sont sur le cercle moyen de 2 arcs
+     concentriques (rayons R+w et R−w). Mémo durable s={cx,cy,R,w,a0,sw} (centre, rayon de l'axe,
+     demi-largeur, angle du 1er bout, ouverture dans le sens des angles croissants de la vue), repris
+     par l'axe {kind:'aslot',s} et par les points de cote {hint:{t:'aslot',n:0|1|2,s}} (2 : centre de l'arc).
+     Axe : l'arc mixte au rayon R, prolongé au-delà des bouts, 2 traits du centre de l'arc à travers
+     chaque centre de bout, et une petite croix au centre. */
+  const mepASlotCache=new WeakMap();
+  // tous les arcs regroupés par cercle (centre, rayon), avec leur couverture par pas de 5°
+  function mepArcCircleGroups(els){
+    const groups=new Map(),n=MEP_SLOT_BINS,st=2*Math.PI/n;
+    els.forEach((e,i)=>{
+      if(e.t!=='A'||e.k==='thread'||e.k==='threadH'||!(e.r>1e-6))return;
+      const key=[e.cx,e.cy,e.r].map(x=>(+x).toFixed(3)).join(',');
+      let g=groups.get(key);
+      if(!g){g={cx:e.cx,cy:e.cy,r:e.r,idx:[],bins:new Set()};groups.set(key,g);}
+      g.idx.push(i);
+      const lo=Math.min(e.a0,e.a1),hi=Math.max(e.a0,e.a1);
+      for(let a=lo+st/2;a<hi;a+=st)g.bins.add(((Math.floor(a/st)%n)+n)%n);
+    });
+    return [...groups.values()];
+  }
+  function mepAngBin(a){const n=MEP_SLOT_BINS,st=2*Math.PI/n;return ((Math.floor(a/st)%n)+n)%n;}
+  function mepASlotFind(els){
+    const caps=mepSlotArcGroups(els),all=mepArcCircleGroups(els),cand=[],T=2*Math.PI;
+    for(let i=0;i<caps.length;i++)for(let j=i+1;j<caps.length;j++){
+      const A=caps[i],B=caps[j],w=(A.r+B.r)/2,tol=Math.max(0.01,w*0.002);
+      if(Math.abs(A.r-B.r)>tol)continue;
+      for(const G1 of all)for(const G2 of all){
+        if(G1===G2||G1.r<=G2.r)continue;
+        if(Math.hypot(G1.cx-G2.cx,G1.cy-G2.cy)>tol||Math.abs(G1.r-G2.r-2*w)>2*tol)continue;
+        const cx=G1.cx,cy=G1.cy,R=(G1.r+G2.r)/2;
+        const dA=Math.hypot(A.cx-cx,A.cy-cy),dB=Math.hypot(B.cx-cx,B.cy-cy);
+        if(Math.abs(dA-R)>2*tol||Math.abs(dB-R)>2*tol||Math.hypot(A.cx-B.cx,A.cy-B.cy)<=tol)continue;
+        const aA=Math.atan2(A.cy-cy,A.cx-cx),aB=Math.atan2(B.cy-cy,B.cx-cx);
+        let d=(aB-aA)%T;if(d<0)d+=T;
+        // l'arc extérieur dit de quel côté va la rainure
+        let a0=aA,sw=d,c0=A,c1=B;
+        if(!G1.bins.has(mepAngBin(aA+d/2))){a0=aB;sw=T-d;c0=B;c1=A;}
+        // l'extérieur couvre la rainure (coupures du noyau comprises)
+        let need=0,got=0;const st=T/MEP_SLOT_BINS;
+        for(let a=a0+st;a<a0+sw-st;a+=st){need++;if(G1.bins.has(mepAngBin(a)))got++;}
+        if(need&&got<0.8*need)continue;
+        // les bouts sont tournés vers l'extérieur de la rainure
+        const a1=a0+sw;
+        if(!mepSlotArcOutward(c0,-Math.sin(a0),Math.cos(a0))||!mepSlotArcOutward(c1,Math.sin(a1),-Math.cos(a1)))continue;
+        cand.push({cx,cy,R,w,a0,sw,ia:c0.idx,ib:c1.idx,io:G1.idx,ii:G2.idx});
+      }
+    }
+    cand.sort((a,b)=>a.sw*a.R-b.sw*b.R);
+    const used=new Set();
+    return cand.filter(c=>{
+      if(c.ia.concat(c.ib).some(i=>used.has(i)))return false;
+      c.ia.concat(c.ib).forEach(i=>used.add(i));
+      return true;
+    });
+  }
+  function mepASlotsOf(v){
+    if(!v||mepOblOf(v)||mepPerspOf(v))return[];
+    const g=mepGeoOf(v);if(!g||!g.els)return[];
+    let L=mepASlotCache.get(g);
+    if(!L){L=mepASlotFind(g.els);mepASlotCache.set(g,L);}
+    return L;
+  }
+  function mepASlotMemo(s){return{cx:s.cx,cy:s.cy,R:s.R,w:s.w,a0:s.a0,sw:s.sw};}
+  function mepASlotOfEnt(v,i){
+    if(typeof i!=='number')return null;
+    return mepASlotsOf(v).find(s=>s.ia.indexOf(i)>=0||s.ib.indexOf(i)>=0||s.io.indexOf(i)>=0||s.ii.indexOf(i)>=0)||null;
+  }
+  function mepASlotSame(a,b,tol){
+    const t=tol||1e-3;
+    const ends=s=>[[s.cx+s.R*Math.cos(s.a0),s.cy+s.R*Math.sin(s.a0)],[s.cx+s.R*Math.cos(s.a0+s.sw),s.cy+s.R*Math.sin(s.a0+s.sw)]];
+    const A=ends(a),B=ends(b),n=(p,q)=>Math.hypot(p[0]-q[0],p[1]-q[1])<=t;
+    return Math.hypot(a.cx-b.cx,a.cy-b.cy)<=t&&((n(A[0],B[0])&&n(A[1],B[1]))||(n(A[0],B[1])&&n(A[1],B[0])));
+  }
+  // l'oblong en arc de la vue qui correspond au mémo m (null : disparu)
+  function mepASlotTrack(v,m){
+    let best=null,bc=Infinity;
+    const wrap=a=>{a%=2*Math.PI;if(a>Math.PI)a-=2*Math.PI;if(a<-Math.PI)a+=2*Math.PI;return a;};
+    mepASlotsOf(v).forEach(s=>{
+      const k=Math.hypot(s.cx-m.cx,s.cy-m.cy)+Math.abs(s.R-m.R)+Math.abs(s.w-m.w)
+        +m.R*Math.abs(wrap(s.a0-m.a0))+0.5*m.R*Math.abs(s.sw-m.sw);
+      if(k<bc){bc=k;best=s;}
+    });
+    if(!best||bc>Math.max(3,2*m.w,0.5*m.R*m.sw))return null;
+    return mepASlotMemo(best);
+  }
+  function mepASlotFollow(v,m){
+    if(!m||!mepGeoExact(mepGeoOf(v)))return m;
+    const e=mepASlotTrack(v,m);
+    if(!e||['cx','cy','R','w','a0','sw'].every(k=>Math.abs(e[k]-m[k])<=1e-9))return m;
+    Object.assign(m,e);
+    return m;
+  }
+  function mepASlotPt(m,n){
+    if(n===2)return{x:m.cx,y:m.cy};
+    const a=m.a0+(n?m.sw:0);
+    return{x:m.cx+m.R*Math.cos(a),y:m.cy+m.R*Math.sin(a)};
+  }
+  function mepASlotPtRefresh(v,q){
+    const m=mepASlotFollow(v,q.hint.s),p=mepASlotPt(m,q.hint.n);
+    q.x=p.x;q.y=p.y;
+    return q;
+  }
+  function mepASlotPrims(m,v){
+    if(!m||!(m.R>1e-9)||!(m.sw>1e-9))return[];
+    const E=MEP_AXIS.overrun/mepAxisScale(v),ext=Math.min(0.45*Math.PI,(m.w+E)/m.R);
+    const out=[{t:'A',cx:m.cx,cy:m.cy,r:m.R,a0:m.a0-ext,a1:m.a0+m.sw+ext,cls:'mepAxis'}];
+    [m.a0,m.a0+m.sw].forEach(a=>{
+      const Lr=m.R+m.w+E;
+      out.push({t:'L',x1:m.cx,y1:m.cy,x2:m.cx+Lr*Math.cos(a),y2:m.cy+Lr*Math.sin(a),cls:'mepAxis'});
+    });
+    out.push(...mepAxisCenterCross(m.cx,m.cy,Math.max(1.5/mepAxisScale(v),E),'mepAxisCross'));
+    return out;
+  }
+  function mepASlotsAuto(v){
+    return mepASlotsOf(v).filter(s=>!(v.axes||[]).some(a=>a&&a.kind==='aslot'&&a.s&&mepASlotSame(a.s,s,0.01)));
+  }
+  /* outil Axes : un clic sur un oblong en arc (bout, arc extérieur ou intérieur) */
+  function mepASlotAxisClick(sh,P){
+    const hit=mepHitViewEnt(sh,P.x,P.y);
+    if(!hit||typeof hit.i!=='number'||!hit.e)return false;
+    const v=mepView(sh,hit.vid);if(!v)return false;
+    if(mepHoleAt(sh,hit.vid,hit.e,hit.i))return false;
+    const s=mepASlotOfEnt(v,hit.i);if(!s)return false;
+    if(!Array.isArray(v.axes))v.axes=[];
+    if(v.axes.some(a=>a&&a.kind==='aslot'&&a.s&&mepASlotSame(a.s,s,0.01))){
+      mepStatus('Cet oblong en arc a déjà son axe et ses centres.');
+      return true;
+    }
+    mepEdit('axe d’oblong en arc',()=>{v.axes.push({id:mepUid('ax'),kind:'aslot',s:mepASlotMemo(s)});});
+    mepStatus('Oblong en arc : axe courbe, centre de l’arc et centres des bouts créés (ils suivent le modèle).');
+    return true;
+  }
+
+/* ═══════════════ 98-mep-72-tolerances-geometriques.js — mep 72 tolerances geometriques ═══════════════ */
+// Espace PLAN — suite de la fonction englobante ouverte dans 98-mep-00-modele.js (état privé partagé, fermée dans 98-mep-95-export-init.js) : tolérances géométriques ISO 1101 et références ISO 5459.
+  /* ═══════════════ O4. tolérances géométriques (ISO 1101) et références (ISO 5459) ═══════════════ */
+  /* 2026-11-09 : « Mise en plan : ajouter un outil de tolérances géométriques ISO ». Fred a choisi : l'outil
+     qui crée les références A, B, C…, le cadre de tolérance, le symbole de référence, la flèche sur une
+     arête et l'accrochage à une cote. Deux nouvelles sortes de cote (même sélection, glisser, Suppr,
+     annulation et export que les autres) :
+     - d.kind 'gdt'   : cadre de tolérance. d.g = {sym, dia, val, mod, refs:[{l,m}]} ; soit d.a (pointe de
+       la flèche, accrochée à la pièce comme une note) et d.b (point d'attache du cadre, mm locaux de la
+       vue), soit d.on = id d'une cote : le cadre se place sous sa valeur et la suit.
+     - d.kind 'datum' : symbole de référence (lettre encadrée, triangle noirci). d.l = lettre ; soit d.a
+       (pied du triangle sur l'arête) et d.b (centre du carré), soit d.on = id d'une cote de longueur ou
+       de distance et d.end (0 | 1) : le triangle prolonge la ligne de cote (référence = axe ou plan médian).
+     Les symboles sont dessinés en traits (pas de police spéciale) : l'export SVG, DXF et PDF les garde. */
+  const MEP_GDT_SYMS=[
+    ['straight','Rectitude','Forme'],['flat','Planéité','Forme'],['circ','Circularité','Forme'],['cyl','Cylindricité','Forme'],
+    ['pline','Forme d’une ligne','Profil'],['psurf','Forme d’une surface','Profil'],
+    ['par','Parallélisme','Orientation'],['perp','Perpendicularité','Orientation'],['ang','Inclinaison','Orientation'],
+    ['pos','Localisation','Position'],['conc','Coaxialité, concentricité','Position'],['sym','Symétrie','Position'],
+    ['runc','Battement circulaire','Battement'],['runt','Battement total','Battement']];
+  const MEP_GDT_FORME=new Set(['straight','flat','circ','cyl']); // jamais de référence
+  const MEP_GDT_REF=new Set(['par','perp','ang','conc','sym','runc','runt']); // référence obligatoire
+  const MEP_GDT_MODS=[['','aucun'],['M','Ⓜ maximum de matière'],['L','Ⓛ minimum de matière'],['E','Ⓔ exigence de l’enveloppe'],
+    ['P','Ⓟ zone de tolérance projetée'],['F','Ⓕ état libre'],['CZ','CZ zone commune']];
+  const MEP_GDT_LETTERS='ABCDEFGHJKLMNPRSTUVWXYZ'; // ISO 5459 : ni I, ni O, ni Q
+  let mepGdtLast=null; // dernier cadre réglé : le suivant reprend son symbole et sa valeur
+  function mepGdtName(k){const s=MEP_GDT_SYMS.find(x=>x[0]===k);return s?s[1]:k;}
+  // lettres de référence déjà posées sur tout le plan
+  function mepGdtLetters(){
+    const out=new Set();
+    try{(doc.mep.sheets||[]).forEach(s=>(s.dims||[]).forEach(d=>{if(d&&d.kind==='datum'&&d.l)out.add(String(d.l).toUpperCase());}));}catch(e){}
+    return out;
+  }
+  function mepGdtNextLetter(){
+    const used=mepGdtLetters();
+    for(const c of MEP_GDT_LETTERS)if(!used.has(c))return c;
+    for(const c of MEP_GDT_LETTERS)if(!used.has('A'+c))return 'A'+c;
+    return '?';
+  }
+  function mepGdtTh(){return MEP_DIM_STYLE.textHeight||7;}
+  function mepGdtH(){return mepGdtTh()*1.25;} // hauteur d'une case du cadre (≈ 2 × hauteur des majuscules)
+  // la cote qui porte un cadre ou une référence (pas une autre tolérance)
+  function mepGdtHost(sh,d){
+    if(!d.on)return null;
+    const t=sh.dims.find(x=>x.id===d.on);
+    return t&&t!==d&&t.kind!=='gdt'&&t.kind!=='datum'?t:null;
+  }
+  /* ancrages en mm papier : {a (pointe / pied), b (cadre / carré), v1, u (direction imposée)} */
+  function mepGdtWorld(sh,d){
+    const v1=mepView(sh,d.vid);if(!v1)return null;
+    if(d.on){
+      const t=mepGdtHost(sh,d);if(!t)return null;
+      if(d.kind==='gdt'){
+        const tp=mepDimTextPos(sh,t);if(!tp)return null;
+        const p={x:tp.x,y:tp.y+mepGdtTh()*0.55};
+        return{a:p,b:p,v1,host:t};
+      }
+      const g=mepDimLine(sh,t);if(!g)return null;
+      const E=d.end?g.b1:g.a1,O=d.end?g.a1:g.b1;
+      let ux=E.x-O.x,uy=E.y-O.y;const L=Math.hypot(ux,uy)||1;ux/=L;uy/=L;
+      const H=mepGdtH(),k=H*0.75+H*0.9+H/2; // triangle, attache, demi-carré
+      return{a:{x:E.x,y:E.y},b:{x:E.x+ux*k,y:E.y+uy*k},v1,u:{x:ux,y:uy},host:t};
+    }
+    if(!d.a||!d.b)return null;
+    try{mepDimPtsRefresh(sh,d);}catch(e){}
+    return{a:mepToSheet(v1,d.a.x,d.a.y),b:mepToSheet(v1,d.b.x,d.b.y),v1};
+  }
+  // direction de l'arête sous le pied d'une référence (mm papier), null sur un cercle ou dans le vide
+  function mepGdtEdgeDir(v,q){
+    const g=mepGeoOf(v);if(!g||!g.els)return null;
+    let best=null,bd=0.05/Math.max(v.scale,1e-9)+0.05;
+    g.els.forEach(e=>{if(e.t!=='L')return;const dd=mepSegDist(q,e);if(dd<bd){bd=dd;best=e;}});
+    if(!best)return null;
+    const dx=best.x2-best.x1,dy=best.y2-best.y1,L=Math.hypot(dx,dy);
+    return L>1e-9?{x:dx/L,y:dy/L}:null;
+  }
+  /* ----- symboles dessinés en traits ----- */
+  function mepGdtSymbol(draw,k,cx,cy,H,L,F){
+    const u=H*0.3,ln=(x1,y1,x2,y2)=>draw('line',Object.assign({x1:cx+x1*u,y1:cy+y1*u,x2:cx+x2*u,y2:cy+y2*u},L));
+    const ci=(r,x,y)=>draw('circle',Object.assign({cx:cx+(x||0)*u,cy:cy+(y||0)*u,r:r*u},L));
+    const pa=(dd,o)=>draw('path',Object.assign({d:dd},o||L));
+    const P=(x,y)=>(cx+x*u).toFixed(3)+' '+(cy+y*u).toFixed(3);
+    const fleche=(x1,y1,x2,y2)=>{ // trait + pointe noircie
+      ln(x1,y1,x2,y2);
+      const dx=x2-x1,dy=y2-y1,l=Math.hypot(dx,dy)||1,ex=dx/l,ey=dy/l,h=0.6;
+      pa('M '+P(x2,y2)+' L '+P(x2-ex*h-ey*h*0.35,y2-ey*h+ex*h*0.35)+' L '+P(x2-ex*h+ey*h*0.35,y2-ey*h-ex*h*0.35)+' Z',F);
+    };
+    switch(k){
+      case 'straight':ln(-1,0,1,0);break;
+      case 'flat':pa('M '+P(-1,0.45)+' L '+P(0.55,0.45)+' L '+P(1,-0.45)+' L '+P(-0.55,-0.45)+' Z');break;
+      case 'circ':ci(0.8);break;
+      case 'cyl':{ci(0.55);const s=Math.sin(Math.PI/3),c=Math.cos(Math.PI/3);
+        [1,-1].forEach(g=>ln(g*0.55*s-c*1.05,g*0.55*c+s*1.05,g*0.55*s+c*1.05,g*0.55*c-s*1.05));break;}
+      case 'pline':pa('M '+P(-1,0.45)+' A '+u+' '+u+' 0 0 1 '+P(1,0.45));break;
+      case 'psurf':pa('M '+P(-1,0.45)+' A '+u+' '+u+' 0 0 1 '+P(1,0.45)+' Z');break;
+      case 'par':ln(-0.95,0.8,-0.15,-0.8);ln(0.15,0.8,0.95,-0.8);break;
+      case 'perp':ln(-1,0.8,1,0.8);ln(0,0.8,0,-0.9);break;
+      case 'ang':ln(-1,0.8,1,0.8);ln(-1,0.8,0.75,-0.8);break;
+      case 'pos':ci(0.55);ln(-1,0,1,0);ln(0,-1,0,1);break;
+      case 'conc':ci(0.4);ci(0.85);break;
+      case 'sym':ln(-0.6,-0.5,0.6,-0.5);ln(-1,0,1,0);ln(-0.6,0.5,0.6,0.5);break;
+      case 'runc':fleche(-0.7,0.85,0.6,-0.85);break;
+      case 'runt':ln(-0.9,0.85,0.2,0.85);fleche(-0.9,0.85,-0.15,-0.85);fleche(0.2,0.85,0.95,-0.85);break;
+    }
+  }
+  // lettre entourée (Ⓜ Ⓛ…) : texte + cercle → largeur
+  function mepGdtCircled(draw,T,L,x,cy,ch){
+    const th=mepGdtTh(),r=th*0.42;
+    const t=draw('text',Object.assign({x:x+r,y:cy+th*0.3,'text-anchor':'middle',style:'font-size:'+(th*0.62).toFixed(3)+'px'},T));t.textContent=ch;
+    draw('circle',Object.assign({cx:x+r,cy,r},L));
+    return 2*r;
+  }
+  function mepGdtValText(v){
+    const s=String(v==null?'':v).trim();
+    if(/^-?\d+(\.\d+)?$/.test(s)){const n=(s.split('.')[1]||'').length;try{return mepFmtNum(+s,n);}catch(e){}}
+    return s;
+  }
+  /* cadre de tolérance : x0 = bord gauche, cy = milieu → {x0,x1,y0,y1} */
+  function mepGdtFrame(draw,d,x0,cy,T,L,F,dryRun){
+    const g=d.g||{},H=mepGdtH(),th=mepGdtTh(),pad=th*0.35,gap=th*0.15,y0=cy-H/2,y1=cy+H/2;
+    const tw=s=>String(s||'').length*th*0.6; // largeur avant mesure (le texte se recale ensuite)
+    const cells=[];
+    cells.push({w:H,draw:x=>mepGdtSymbol(draw,g.sym,x+H/2,cy,H,L,F)});
+    const main=(g.dia?'Ø':'')+mepGdtValText(g.val||'0');
+    const modW=g.mod?(g.mod==='CZ'?tw(' CZ'):th*0.84+gap):0;
+    cells.push({w:pad*2+tw(main)+modW,draw:x=>{
+      const t=draw('text',Object.assign({x:x+pad,y:cy+th*0.35,'text-anchor':'start'},T));t.textContent=main;
+      let xx=x+pad+mepTxtW(t,main,th);
+      if(g.mod==='CZ'){const c=draw('text',Object.assign({x:xx+gap,y:cy+th*0.35,'text-anchor':'start'},T));c.textContent='CZ';}
+      else if(g.mod)mepGdtCircled(draw,T,L,xx+gap,cy,g.mod);
+    }});
+    (g.refs||[]).filter(r=>r&&r.l).forEach(r=>{
+      const w=Math.max(H,pad*2+tw(r.l)+(r.m?th*0.84+gap:0));
+      cells.push({w,draw:x=>{
+        const t=draw('text',Object.assign({x:x+pad,y:cy+th*0.35,'text-anchor':'start'},T));t.textContent=r.l;
+        const lw=mepTxtW(t,r.l,th),tot=lw+(r.m?gap+th*0.84:0),xs=x+(w-tot)/2;
+        t.setAttribute('x',String(xs));
+        if(r.m)mepGdtCircled(draw,T,L,xs+lw+gap,cy,r.m);
+      }});
+    });
+    const W=cells.reduce((s,c)=>s+c.w,0);
+    if(dryRun)return{x0,x1:x0+W,y0,y1};
+    draw('line',Object.assign({x1:x0,y1:y0,x2:x0+W,y2:y0},L));
+    draw('line',Object.assign({x1:x0,y1:y1,x2:x0+W,y2:y1},L));
+    let x=x0;
+    cells.forEach(c=>{draw('line',Object.assign({x1:x,y1:y0,x2:x,y2:y1},L));c.draw(x);x+=c.w;});
+    draw('line',Object.assign({x1:x,y1:y0,x2:x,y2:y1},L));
+    return{x0,x1:x0+W,y0,y1};
+  }
+  const mepGdtBoxes=new WeakMap(); // cote → cadre dessiné (mm papier) : clic dedans = la saisir
+  function mepDrawGdt(draw,d,sh,L,T,AR){
+    const w=mepGdtWorld(sh,d);if(!w)return;
+    const H=mepGdtH(),F=Object.assign({},L,{class:L.class+' mepGdtFill'});
+    if(d.kind==='gdt'){
+      if(d.on){ // sous la valeur de la cote, centré
+        const s=mepGdtFrame(draw,d,0,0,T,L,F,true),W=s.x1-s.x0;
+        mepGdtBoxes.set(d,mepGdtFrame(draw,d,w.b.x-W/2,w.b.y+H/2,T,L,F));
+        return;
+      }
+      const s=mepGdtFrame(draw,d,0,0,T,L,F,true),W=s.x1-s.x0;
+      const left=w.a.x<=w.b.x; // la flèche part du côté du cadre tourné vers la pièce
+      const x0=left?w.b.x:w.b.x-W;
+      const box=mepGdtFrame(draw,d,x0,w.b.y,T,L,F);mepGdtBoxes.set(d,box);
+      const ax=left?box.x0:box.x1;
+      // attache : petit trait horizontal hors du cadre, puis la ligne de repère vers la pointe
+      const kx=ax+(left?-H*0.5:H*0.5);
+      draw('line',Object.assign({x1:ax,y1:w.b.y,x2:kx,y2:w.b.y},L));
+      draw('line',Object.assign({x1:kx,y1:w.b.y,x2:w.a.x,y2:w.a.y,'marker-end':AR},L));
+      return;
+    }
+    // référence : triangle noirci, attache, lettre encadrée
+    const hb=H/2,side=H*0.75,ht=side*0.87;
+    let n=w.u||null;
+    if(!n){
+      const e=d.a?mepGdtEdgeDir(w.v1,d.a):null;
+      let bx=w.b.x-w.a.x,by=w.b.y-w.a.y;const bl=Math.hypot(bx,by)||1;bx/=bl;by/=bl;
+      if(e){let nx=-e.y,ny=e.x;if(nx*bx+ny*by<0){nx=-nx;ny=-ny;}n={x:nx,y:ny};} // perpendiculaire à l'arête, côté carré
+      else n={x:bx,y:by};
+    }
+    const tx=-n.y,ty=n.x,A={x:w.a.x+n.x*ht,y:w.a.y+n.y*ht};
+    draw('path',Object.assign({d:'M '+(w.a.x+tx*side/2).toFixed(3)+' '+(w.a.y+ty*side/2).toFixed(3)+' L '+(w.a.x-tx*side/2).toFixed(3)+' '+(w.a.y-ty*side/2).toFixed(3)
+      +' L '+A.x.toFixed(3)+' '+A.y.toFixed(3)+' Z'},F));
+    // attache vers le carré (s'arrête sur son bord)
+    let dx=w.b.x-A.x,dy=w.b.y-A.y;const dl=Math.hypot(dx,dy);
+    if(dl>1e-6){dx/=dl;dy/=dl;const k=hb/Math.max(Math.abs(dx),Math.abs(dy));
+      if(dl>k+1e-3)draw('line',Object.assign({x1:A.x,y1:A.y,x2:w.b.x-dx*k,y2:w.b.y-dy*k},L));}
+    const x0=w.b.x-hb,y0=w.b.y-hb;
+    [[x0,y0,x0+H,y0],[x0+H,y0,x0+H,y0+H],[x0+H,y0+H,x0,y0+H],[x0,y0+H,x0,y0]].forEach(s=>draw('line',Object.assign({x1:s[0],y1:s[1],x2:s[2],y2:s[3]},L)));
+    const t=draw('text',Object.assign({x:w.b.x,y:w.b.y+mepGdtTh()*0.35,'text-anchor':'middle'},T));t.textContent=d.l||'?';
+    mepGdtBoxes.set(d,{x0,x1:x0+H,y0,y1:y0+H});
+  }
+  /* ----- outils Tolérance et Référence ----- */
+  // une cote sous le clic (pas une tolérance), pour s'y accrocher
+  function mepGdtDimAt(sh,P,kinds){
+    const d=mepDimAt(sh,P.x,P.y);
+    return d&&d.kind!=='gdt'&&d.kind!=='datum'&&(!kinds||kinds.indexOf(d.kind)>=0)?d:null;
+  }
+  function mepGdtNew(){
+    const l=mepGdtLast;
+    return{sym:l?l.sym:'flat',dia:l?!!l.dia:false,val:l?l.val:'0.05',mod:'',refs:[]};
+  }
+  function mepGdtClick(sh,P,tool){
+    const D=mepSt.dim;
+    if(D&&D.kind===tool&&D.__ghost){ // 2ᵉ clic : le cadre (ou la lettre) se pose ici
+      mepDimMoveTo(sh,D,P);
+      const d=Object.assign({},D,{id:mepUid('d')});delete d.__ghost;
+      mepDimClearSelection();mepSt.selDim=d.id;mepSt.sel=null;
+      mepEdit(tool==='gdt'?'tolérance géométrique':'référence '+d.l,()=>{sh.dims.push(d);});
+      mepSideShow();
+      mepStatus(tool==='gdt'?'Cadre posé — réglez le symbole, la valeur et les références dans le panneau.':'Référence '+d.l+' posée — la suivante sera '+mepGdtNextLetter()+'.');
+      return;
+    }
+    // accroché à une cote : posé tout de suite
+    const host=tool==='gdt'?mepGdtDimAt(sh,P,['len','dist','dia','rad','hole','ang']):mepGdtDimAt(sh,P,['len','dist']);
+    if(host){
+      if(sh.dims.some(x=>x.kind===tool&&x.on===host.id)){mepStatus(tool==='gdt'?'Cette cote a déjà un cadre de tolérance.':'Cette cote porte déjà une référence.');return;}
+      const d={id:mepUid('d'),kind:tool,vid:host.vid,vid2:null,on:host.id};
+      if(tool==='gdt')d.g=mepGdtNew();
+      else{
+        d.l=mepGdtNextLetter();
+        const g=mepDimLine(sh,host);
+        d.end=g&&Math.hypot(P.x-g.b1.x,P.y-g.b1.y)<Math.hypot(P.x-g.a1.x,P.y-g.a1.y)?1:0;
+      }
+      mepSt.selDim=d.id;mepSt.sel=null;
+      mepEdit(tool==='gdt'?'tolérance sur une cote':'référence '+d.l+' sur une cote',()=>{sh.dims.push(d);});
+      mepSideShow();
+      mepStatus(tool==='gdt'?'Cadre placé sous la cote (il la suit) — réglez-le dans le panneau.':'Référence '+d.l+' sur la cote : l’axe ou le plan médian de l’élément coté.');
+      return;
+    }
+    const S=mepSnapLocal(sh,P);
+    if(!S){mepStatus(tool==='gdt'?'Tolérance : cliquez une arête (pointe de la flèche) ou une cote.':'Référence : cliquez une arête ou une cote.');return;}
+    const off=12/S.v.scale;
+    mepSt.selDim=null;
+    mepSt.dim=tool==='gdt'
+      ?{kind:'gdt',vid:S.v.id,vid2:null,a:S.q,b:{x:S.q.x+off,y:S.q.y-off},g:mepGdtNew(),__ghost:true}
+      :{kind:'datum',vid:S.v.id,vid2:null,a:S.q,b:{x:S.q.x,y:S.q.y-off},l:mepGdtNextLetter(),__ghost:true};
+    mepStatus(tool==='gdt'?'Tolérance : cliquez pour placer le cadre (Échap annule).':'Référence '+mepSt.dim.l+' : cliquez pour placer la lettre (Échap annule).');
+    mepRender();
+  }
+  /* ----- panneau ----- */
+  function mepSideGdt(root,d,sh){
+    const h=document.createElement('h4');
+    h.textContent=d.kind==='gdt'?'Tolérance géométrique (ISO 1101)':'Référence (ISO 5459)';
+    root.appendChild(h);
+    const row=(lab,el)=>{const r=document.createElement('div');r.className='row';const L=document.createElement('label');L.textContent=lab;r.appendChild(L);if(el)r.appendChild(el);root.appendChild(r);return r;};
+    const note=t=>{const n=document.createElement('div');n.className='note';n.style.whiteSpace='pre-line';n.textContent=t;root.appendChild(n);return n;};
+    const redo=()=>{mepSideShow();mepRender();};
+    if(d.on){const t=mepGdtHost(sh,d);note(t?'Accroché à une cote : '+(d.kind==='gdt'?'le cadre reste sous sa valeur.':'le triangle prolonge sa ligne de cote.'):'La cote porteuse a été supprimée.');}
+    if(d.kind==='datum'){
+      const i=document.createElement('input');i.type='text';i.value=d.l||'';i.maxLength=3;i.style.width='4em';i.style.textTransform='uppercase';
+      i.onchange=()=>{
+        const v=i.value.trim().toUpperCase().replace(/[^A-Z]/g,'');if(!v){i.value=d.l;return;}
+        mepEdit('lettre de référence',()=>{d.l=v;});redo();
+      };
+      row('Lettre',i);
+      const dup=(sh.dims||[]).filter(x=>x.kind==='datum'&&x!==d&&String(x.l).toUpperCase()===String(d.l).toUpperCase()).length
+        +[...(doc.mep.sheets||[])].filter(s=>s!==sh).reduce((n,s)=>n+(s.dims||[]).filter(x=>x.kind==='datum'&&String(x.l).toUpperCase()===String(d.l).toUpperCase()).length,0);
+      if(dup)note('⚠ La lettre '+d.l+' sert déjà à une autre référence.');
+      if(/[IOQ]/.test(d.l||''))note('⚠ ISO 5459 déconseille I, O et Q (confondus avec 1 et 0).');
+    }else{
+      const g=d.g||(d.g=mepGdtNew());
+      const set=(lab,fn)=>{mepEdit(lab,()=>{fn(g);});mepGdtLast={sym:g.sym,dia:g.dia,val:g.val};redo();};
+      const sel=document.createElement('select');
+      let grp=null,fam='';
+      MEP_GDT_SYMS.forEach(([k,lab,f])=>{
+        if(f!==fam){grp=document.createElement('optgroup');grp.label=f;sel.appendChild(grp);fam=f;}
+        const o=document.createElement('option');o.value=k;o.textContent=lab;if(k===g.sym)o.selected=true;grp.appendChild(o);
+      });
+      sel.onchange=()=>set('symbole de tolérance',x=>{x.sym=sel.value;if(MEP_GDT_FORME.has(x.sym))x.refs=[];});
+      row('Caractéristique',sel);
+      const di=document.createElement('input');di.type='checkbox';di.checked=!!g.dia;
+      di.onchange=()=>set('zone cylindrique Ø',x=>{x.dia=di.checked;});
+      row('Zone Ø',di);
+      const va=document.createElement('input');va.type='text';va.value=g.val||'';va.placeholder='0.05';va.style.width='6em';
+      va.onchange=()=>set('valeur de tolérance',x=>{x.val=va.value.trim().replace(',','.');});
+      row('Tolérance (mm)',va);
+      const mo=document.createElement('select');
+      MEP_GDT_MODS.forEach(([k,lab])=>{const o=document.createElement('option');o.value=k;o.textContent=lab;if(k===(g.mod||''))o.selected=true;mo.appendChild(o);});
+      mo.onchange=()=>set('modificateur',x=>{x.mod=mo.value;});
+      row('Modificateur',mo);
+      if(!MEP_GDT_FORME.has(g.sym)){
+        const known=[...mepGdtLetters()].sort();
+        const dl=document.createElement('datalist');dl.id='mepGdtLetters';
+        known.forEach(c=>{const o=document.createElement('option');o.value=c;dl.appendChild(o);});root.appendChild(dl);
+        for(let k=0;k<3;k++){
+          const r0=(g.refs||[])[k]||{l:'',m:''};
+          const li=document.createElement('input');li.type='text';li.value=r0.l||'';li.setAttribute('list','mepGdtLetters');li.style.width='4em';li.style.textTransform='uppercase';
+          li.placeholder=k===0?(known[0]||'A'):'';
+          const lm=document.createElement('select');
+          [['',''],['M','Ⓜ'],['L','Ⓛ']].forEach(([v,lab])=>{const o=document.createElement('option');o.value=v;o.textContent=lab||'—';if(v===(r0.m||''))o.selected=true;lm.appendChild(o);});
+          const put=()=>set('référence du cadre',x=>{
+            const refs=(x.refs||[]).slice();while(refs.length<3)refs.push({l:'',m:''});
+            refs[k]={l:li.value.trim().toUpperCase().replace(/[^A-Z-]/g,''),m:lm.value};
+            x.refs=refs.filter(r=>r.l);
+          });
+          li.onchange=put;lm.onchange=put;
+          const rr=row(['1re','2e','3e'][k]+' référence',li);rr.appendChild(lm);
+        }
+        const nr=(g.refs||[]).filter(r=>r.l);
+        if(MEP_GDT_REF.has(g.sym)&&!nr.length)note('⚠ '+mepGdtName(g.sym)+' : une référence est obligatoire (ISO 1101).');
+        const miss=nr.filter(r=>r.l.split('-').some(c=>!mepGdtLetters().has(c)));
+        if(miss.length)note('Référence '+miss.map(r=>r.l).join(', ')+' absente du plan : posez-la avec l’outil Référence.');
+      }else note('Tolérance de forme : pas de référence.');
+    }
+    const act=document.createElement('div');act.className='row';
+    const bDel=document.createElement('button');bDel.textContent='Supprimer';bDel.className='danger';
+    bDel.onclick=()=>{mepEdit('suppression tolérance',()=>{sh.dims=sh.dims.filter(x=>x.id!==d.id);mepSt.selDim=null;});mepSideShow();};
+    act.appendChild(bDel);root.appendChild(act);
   }
 
 /* ═══════════════ 98-mep-75-esquisse-solveur-dessin.js — mep 75 esquisse solveur dessin ═══════════════ */
@@ -78219,11 +78949,11 @@ function filmFrame(){
             const t=Math.max(0,Math.min(1,((sx-ax)*dx+(sy-ay)*dy)/L2));
             consider(ax+dx*t,ay+dy*t,{t:'onAx',vid:v.id,ak:p.ak});
           }
-        }else if(p.t==='C'){
+        }else if(p.t==='C'||p.t==='A'){
           const cx=v.x+p.cx*v.scale,cy=v.y+p.cy*v.scale,r=p.r*v.scale;
           consider(cx,cy,{t:'ctr',vid:v.id,ak:p.ak});
           const a=Math.atan2(sy-cy,sx-cx);
-          consider(cx+r*Math.cos(a),cy+r*Math.sin(a),{t:'onAx',vid:v.id,ak:p.ak});
+          if(p.t==='C'||mepAxisArcIn(p,a))consider(cx+r*Math.cos(a),cy+r*Math.sin(a),{t:'onAx',vid:v.id,ak:p.ak});
         }
       });
     });
@@ -78466,7 +79196,9 @@ function filmFrame(){
       hole:'Perçage : cliquez le trou, de bout (cercle) ou de côté (paroi, axe, fond), puis posez l’étiquette.',
       axis:'Axes : cliquez un trou, un cercle, un arc, un oblong ou le contour d’une forme de révolution (ou Alignement / Cercle / Libre dans le panneau).',
       cut2:'Coupe : 2 clics sur la ligne de coupe.',
-      det2:'Détail : centre + rayon.'
+      det2:'Détail : centre + rayon.',
+      gdt:'Tolérance : cliquez une arête (pointe de la flèche) puis placez le cadre — ou cliquez une cote pour mettre le cadre sous sa valeur.',
+      datum:'Référence '+mepGdtNextLetter()+' : cliquez une arête puis placez la lettre — ou cliquez une cote (axe ou plan médian de l’élément coté).'
     }[t]||'';
     if(msg)mepStatus(msg);
     mepRender();
@@ -78675,6 +79407,7 @@ function filmFrame(){
       return;
     }
     if(mode==='hole'&&mepSlotAxisClick(sh,P))return; // oblong : ses 2 centres d'un seul clic
+    if(mode==='hole'&&mepASlotAxisClick(sh,P))return; // oblong en arc : axe courbe et centres
     const ref=mepAxisHoleAt(sh,P.x,P.y);
     if(!ref){mepStatus('Axe : cliquez un cercle, un arc, un oblong ou le contour d’une forme de révolution.');return;}
     const v=mepView(sh,ref.vid);if(!v)return;
@@ -78934,6 +79667,7 @@ function filmFrame(){
       return;
     }
     if(tool==='axis'){mepAxisClick(sh,P);return;}
+    if(tool==='gdt'||tool==='datum'){mepGdtClick(sh,P,tool);return;}
     if(tool==='ordx'||tool==='ordy'){mepOrdClick(sh,P,tool==='ordy'?'y':'x');return;}
     if(tool==='note'){
       if(mepSt.dim&&mepSt.dim.kind==='note'){ // 2ᵉ clic : place le texte, puis le saisit
@@ -79196,7 +79930,7 @@ function filmFrame(){
         return;
       }
     }
-    if(mepSt.tool==='note'&&mepSt.dim){if(mepDimMoveTo(sh,mepSt.dim,P))mepRender();return;}
+    if((mepSt.tool==='note'||mepSt.tool==='gdt'||mepSt.tool==='datum')&&mepSt.dim){if(mepDimMoveTo(sh,mepSt.dim,P))mepRender();return;}
     if(mepSt.tool==='dim'||mepSt.tool==='hole'){
       // survol des arêtes/cercis : feedback avant les 2 clics de sélection
       let need=false;
@@ -79366,6 +80100,7 @@ function filmFrame(){
     if(!d)return false;
     if(d.kind==='ang'&&!alt){mepDimToggleBig(d);return true;}
     if(d.kind==='note'){mepNoteEdit(sh,d);return true;}
+    if((d.kind==='gdt'||d.kind==='datum'))return true; // réglée dans le panneau
     if(d.kind==='ord')return true;
     if((d.kind==='len'||d.kind==='dist')&&!alt){mepDimToggleArrows(d);return true;}
     const t=prompt('Texte de cote (vide = calculé) :',d.txt||'');
@@ -79464,7 +80199,7 @@ function filmFrame(){
         mepSideShow();mepRender();ev.preventDefault();ev.stopPropagation();return;
       }
       if(mepSt.selDim){
-        mepEdit('suppression cote',()=>{sh.dims=sh.dims.filter(d=>d.id!==mepSt.selDim);mepSt.selDim=null;});
+        mepEdit('suppression cote',()=>{const id=mepSt.selDim;sh.dims=sh.dims.filter(d=>d.id!==id&&d.on!==id);mepSt.selDim=null;}); // avec ses tolérances accrochées
         mepSideShow();
         ev.preventDefault();ev.stopPropagation();
         return;
@@ -79708,6 +80443,7 @@ function filmFrame(){
   function mepDimTextPos(sh,d){
     const w=mepDimWorld(sh,d);if(!w)return null;
     if(d.kind==='dia'||d.kind==='rad'||d.kind==='hole'||d.kind==='note')return{x:w.b.x,y:w.b.y};
+    if((d.kind==='gdt'||d.kind==='datum')){const bx=mepGdtBoxes.get(d);return bx?{x:(bx.x0+bx.x1)/2,y:(bx.y0+bx.y1)/2}:{x:w.b.x,y:w.b.y};}
     if(d.kind==='ord'){ // valeur de l'origine, sur la ligne commune
       const v=mepView(sh,d.vid),oS=v?mepToSheet(v,d.o.x,d.o.y):w.a;
       return d.axis==='y'?{x:oS.x+(+d.off||0),y:oS.y}:{x:oS.x,y:oS.y+(+d.off||0)};
@@ -80171,7 +80907,8 @@ function filmFrame(){
     if(!v)return false;
     let sx=P.x,sy=P.y;
     if(pk&&pk.cx!=null){sx=pk.cx+(P.x-pk.sx);sy=pk.cy+(P.y-pk.sy);}
-    if(d.kind==='dia'||d.kind==='rad'||d.kind==='hole'||d.kind==='note'){
+    if((d.kind==='gdt'||d.kind==='datum')&&d.on)return false; // accroché à une cote : la suit
+    if(d.kind==='dia'||d.kind==='rad'||d.kind==='hole'||d.kind==='note'||(d.kind==='gdt'||d.kind==='datum')){
       d.b={x:(sx-v.x)/v.scale,y:(sy-v.y)/v.scale};
       return true;
     }
@@ -81142,6 +81879,13 @@ function filmFrame(){
       b.style.flex='1';
     });
     r=rowEl();
+    [['⌖ Tolérance','gdt','Tolérance géométrique ISO 1101 : flèche sur une arête puis cadre, ou cadre sous une cote'],
+     ['Ⓐ Référence','datum','Référence ISO 5459 (A, B, C…) : triangle sur une arête, ou sur une cote pour un axe / plan médian']].forEach(([lab,t,tip])=>{
+      const b=mkBtn(lab,()=>mepSetTool(t),tip);
+      b.className=mepSt.tool===t?'active':'';
+      b.style.flex='1';
+    });
+    r=rowEl();
     {const b=mkBtn('Coter les perçages',()=>{mepAutoHoles();mepSideShow();},'Étiquette automatique de chaque fonction Perçage (n× si plusieurs trous) — vue sélectionnée, sinon toute la planche');b.style.flex='1';r.appendChild(b);}
     h('Axes');
     r=rowEl();
@@ -81589,6 +82333,7 @@ function filmFrame(){
     row('Saisie',inp);
   }
   function mepSideDim(root,d,sh){
+    if((d.kind==='gdt'||d.kind==='datum')){mepSideGdt(root,d,sh);return;} // 98-mep-72
     const h=document.createElement('h4');
     h.textContent={len:'Longueur',dist:'Distance',rad:'Rayon',dia:'Diamètre',ang:'Angle',hole:'Cotation perçage',note:'Note',ord:'Cotation d’ordonnées '+String(d.axis||'x').toUpperCase()}[d.kind]||'Cote';
     root.appendChild(h);
@@ -81621,7 +82366,7 @@ function filmFrame(){
         rp.appendChild(mepPrecSelect(mepDimPrec(d),v=>{mepEdit('précision de la cote',()=>{d.prec=v;});mepSideShow();mepRender();}));
         root.appendChild(rp);
       }
-      mk('Supprimer',()=>{mepEdit('suppression cote',()=>{sh.dims=sh.dims.filter(x=>x.id!==d.id);mepSt.selDim=null;});mepSideShow();},'','danger');
+      mk('Supprimer',()=>{mepEdit('suppression cote',()=>{sh.dims=sh.dims.filter(x=>x.id!==d.id&&x.on!==d.id);mepSt.selDim=null;});mepSideShow();},'','danger');
       root.appendChild(r);
       return;
     }
@@ -81694,7 +82439,7 @@ function filmFrame(){
     const act=document.createElement('div');act.className='row';
     const bDel=document.createElement('button');bDel.textContent='Supprimer';bDel.className='danger';
     bDel.onclick=()=>{
-      mepEdit('suppression cote',()=>{sh.dims=sh.dims.filter(x=>x.id!==d.id);mepSt.selDim=null;});
+      mepEdit('suppression cote',()=>{sh.dims=sh.dims.filter(x=>x.id!==d.id&&x.on!==d.id);mepSt.selDim=null;});
       mepSideShow();
     };
     act.appendChild(bDel);
@@ -82189,7 +82934,7 @@ function filmFrame(){
       shapeCyls:bd=>mepShapeCyls(bd),
       shapeRevs:bd=>mepShapeRevs(bd),axisGeoAt:(x,y)=>{mepSt.zoom=1;return mepAxisGeoAt(mepSheet(),x,y);},axisRefGeom:(view,ref)=>mepAxisRefGeom(mepSheet(),view,ref),
       axisManual:(view,ann)=>mepAxisManualGeom(mepSheet(),view,ann),
-      slotsOf:view=>mepSlotsOf(view),axisClick:P=>mepAxisClick(mepSheet(),P),hitEnt:(x,y)=>mepHitViewEnt(mepSheet(),x,y,{axes:true}),dimSelect:hit=>mepDimSelectEnt(hit,false),dimAdd:hit=>mepDimAddEnt(hit),dimCommit:P=>mepDimCommitDraft(mepSheet(),P,false),
+      slotsOf:view=>mepSlotsOf(view),aslotsOf:view=>mepASlotsOf(view),gdtClick:(P,t)=>mepGdtClick(mepSheet(),P,t),gdtWorld:d=>mepGdtWorld(mepSheet(),d),gdtNext:()=>mepGdtNextLetter(),gdtBox:d=>mepGdtBoxes.get(d),sideDim:(root,d)=>mepSideDim(root,d,mepSheet()),drawAxisPrim:(mk,p,view)=>mepDrawAxisPrim(mk,p,view),axisClick:P=>mepAxisClick(mepSheet(),P),hitEnt:(x,y)=>mepHitViewEnt(mepSheet(),x,y,{axes:true}),dimSelect:hit=>mepDimSelectEnt(hit,false),dimAdd:hit=>mepDimAddEnt(hit),dimCommit:P=>mepDimCommitDraft(mepSheet(),P,false),
       axisAt:(x,y)=>mepAxisAt(mepSheet(),x,y),
       axisLines:(view,auto)=>{if(auto){mepAxGen++;const l=mepAxisLines(mepSheet(),view,auto);mepAxLinesCache.set(view,{gen:mepAxGen,geo:mepGeoOf(view),list:l});return l;}return mepAxisLines(mepSheet(),view);},
       snapPt:(x,y,o)=>mepSnapPt(x,y,mepSheet(),o),

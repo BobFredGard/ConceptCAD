@@ -323,6 +323,7 @@ function drawSketch2D(){
         if(skInfer&&skInfer.ext){const g=skEl('text',{x:mx+18,y:my+4,fill:'#bf5af2','font-size':13,'font-weight':'bold'});g.textContent='⟶ sur la droite';}
       }}
     if(d.t==='slot')skSlotDrawDraft(d);
+    else if(d.t==='aslot')skASlotDrawDraft(d);
     else if(d.t==='trace')skTrDrawDraft(d);
     else if(d.t==='rect'){const[a,b]=w2s(Math.min(d.x1,d.x2),Math.max(d.y1,d.y2));
       skEl('rect',{x:a,y:b,width:Math.abs(d.x2-d.x1)*skView.s,height:Math.abs(d.y2-d.y1)*skView.s,fill:'rgba(255,255,255,.06)',stroke:'#fff','stroke-dasharray':'5 3'});

@@ -347,6 +347,8 @@ const MF_IC={
   pHoles:'<circle cx="6" cy="17" r="3"/><circle cx="14" cy="17" r="3"/><path d="M16.2 14.8L20 11h2"/><path d="M3 5h8M3 8.5h6"/><path d="M14 5h3"/>',
   pAxHole:'<circle cx="12" cy="12" r="6"/><path d="M12 2.5v4M12 9.5v5M12 17.5v4M2.5 12h4M9.5 12h5M17.5 12h4"/>',
   pAxPitch:'<circle cx="12" cy="12" r="8" stroke-dasharray="4 1.6 1 1.6"/><circle cx="12" cy="4" r="1.8"/><circle cx="18.9" cy="16" r="1.8"/><circle cx="5.1" cy="16" r="1.8"/>',
+  pGdt:'<path d="M2 7.5h20v9H2z"/><path d="M9 7.5v9M15.5 7.5v9"/><circle cx="5.5" cy="12" r="1.7"/><path d="M5.5 9.3v5.4M2.8 12h5.4"/><path d="M11 14l2.6-4"/>',
+  pDatum:'<path d="M7 2.5h10v9H7z"/><path d="M12 11.5v5"/><path d="M7 21h10l-5-4.5z" fill="currentColor"/><text x="12" y="9.6" font-size="6.4" font-family="sans-serif" font-weight="700" text-anchor="middle" fill="currentColor" stroke="none">A</text>',
   pAxSym:'<path d="M12 2v3.5M12 8v3M12 13.5v3M12 19v3"/><path d="M9 6L4 12l5 6zM15 6l5 6-5 6z"/>',
   pSvg:'<path d="M6 3h9l3 3v15H6z"/><text x="12" y="17.6" font-size="6.2" font-family="sans-serif" font-weight="700" text-anchor="middle" fill="currentColor" stroke="none">SVG</text>',
   pDxfIn:'<path d="M6 3h9l3 3v15H6z"/><path d="M12 6.5v6.5M9.5 10.5L12 13l2.5-2.5"/><text x="12" y="19.6" font-size="4.6" font-family="sans-serif" font-weight="700" text-anchor="middle" fill="currentColor" stroke="none">DXF</text>',
@@ -446,6 +448,8 @@ function mfRibbon(){
     ['pNote','Note',()=>mepTool('note'),'Note à flèche : cliquez la pointe, placez le texte, saisissez-le (texte libre, plusieurs lignes)'],
     ['pOrdX','Ordonnées X',()=>mepTool('ordx'),'Cotation d’ordonnées suivant X : origine « 0 », puis les points — valeurs alignées qui se déplacent ensemble (Entrée termine)'],
     ['pOrdY','Ordonnées Y',()=>mepTool('ordy'),'Cotation d’ordonnées suivant Y : origine « 0 », puis les points — valeurs alignées qui se déplacent ensemble (Entrée termine)']],'mfPlan');
+  grp('Tolérances',[['pGdt','Tolérance',()=>mepTool('gdt'),'Tolérance géométrique ISO 1101 : cliquez une arête (pointe de la flèche) puis placez le cadre — ou cliquez une cote pour mettre le cadre sous sa valeur'],
+    ['pDatum','Référence',()=>mepTool('datum'),'Référence ISO 5459 (A, B, C…) : cliquez une arête puis placez la lettre — ou cliquez une cote pour un axe ou un plan médian']],'mfPlan');
   const mepAx=m=>{try{mepSetActive(true);mepSetAxisMode(m);}catch(e){}};
   grp('Axes',[['pAxHole','Trou',()=>mepAx('hole'),'Axes (trou) : croix d’axes des trous cliqués'],
     ['pAxPitch','Cercle',()=>mepAx('pitch'),'Axes (cercle) : cercle primitif des trous répartis'],

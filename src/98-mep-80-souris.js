@@ -60,7 +60,9 @@
       hole:'Perçage : cliquez le trou, de bout (cercle) ou de côté (paroi, axe, fond), puis posez l’étiquette.',
       axis:'Axes : cliquez un trou, un cercle, un arc, un oblong ou le contour d’une forme de révolution (ou Alignement / Cercle / Libre dans le panneau).',
       cut2:'Coupe : 2 clics sur la ligne de coupe.',
-      det2:'Détail : centre + rayon.'
+      det2:'Détail : centre + rayon.',
+      gdt:'Tolérance : cliquez une arête (pointe de la flèche) puis placez le cadre — ou cliquez une cote pour mettre le cadre sous sa valeur.',
+      datum:'Référence '+mepGdtNextLetter()+' : cliquez une arête puis placez la lettre — ou cliquez une cote (axe ou plan médian de l’élément coté).'
     }[t]||'';
     if(msg)mepStatus(msg);
     mepRender();
@@ -269,6 +271,7 @@
       return;
     }
     if(mode==='hole'&&mepSlotAxisClick(sh,P))return; // oblong : ses 2 centres d'un seul clic
+    if(mode==='hole'&&mepASlotAxisClick(sh,P))return; // oblong en arc : axe courbe et centres
     const ref=mepAxisHoleAt(sh,P.x,P.y);
     if(!ref){mepStatus('Axe : cliquez un cercle, un arc, un oblong ou le contour d’une forme de révolution.');return;}
     const v=mepView(sh,ref.vid);if(!v)return;
@@ -528,6 +531,7 @@
       return;
     }
     if(tool==='axis'){mepAxisClick(sh,P);return;}
+    if(tool==='gdt'||tool==='datum'){mepGdtClick(sh,P,tool);return;}
     if(tool==='ordx'||tool==='ordy'){mepOrdClick(sh,P,tool==='ordy'?'y':'x');return;}
     if(tool==='note'){
       if(mepSt.dim&&mepSt.dim.kind==='note'){ // 2ᵉ clic : place le texte, puis le saisit
@@ -790,7 +794,7 @@
         return;
       }
     }
-    if(mepSt.tool==='note'&&mepSt.dim){if(mepDimMoveTo(sh,mepSt.dim,P))mepRender();return;}
+    if((mepSt.tool==='note'||mepSt.tool==='gdt'||mepSt.tool==='datum')&&mepSt.dim){if(mepDimMoveTo(sh,mepSt.dim,P))mepRender();return;}
     if(mepSt.tool==='dim'||mepSt.tool==='hole'){
       // survol des arêtes/cercis : feedback avant les 2 clics de sélection
       let need=false;
@@ -960,6 +964,7 @@
     if(!d)return false;
     if(d.kind==='ang'&&!alt){mepDimToggleBig(d);return true;}
     if(d.kind==='note'){mepNoteEdit(sh,d);return true;}
+    if((d.kind==='gdt'||d.kind==='datum'))return true; // réglée dans le panneau
     if(d.kind==='ord')return true;
     if((d.kind==='len'||d.kind==='dist')&&!alt){mepDimToggleArrows(d);return true;}
     const t=prompt('Texte de cote (vide = calculé) :',d.txt||'');
@@ -1058,7 +1063,7 @@
         mepSideShow();mepRender();ev.preventDefault();ev.stopPropagation();return;
       }
       if(mepSt.selDim){
-        mepEdit('suppression cote',()=>{sh.dims=sh.dims.filter(d=>d.id!==mepSt.selDim);mepSt.selDim=null;});
+        mepEdit('suppression cote',()=>{const id=mepSt.selDim;sh.dims=sh.dims.filter(d=>d.id!==id&&d.on!==id);mepSt.selDim=null;}); // avec ses tolérances accrochées
         mepSideShow();
         ev.preventDefault();ev.stopPropagation();
         return;
@@ -1302,6 +1307,7 @@
   function mepDimTextPos(sh,d){
     const w=mepDimWorld(sh,d);if(!w)return null;
     if(d.kind==='dia'||d.kind==='rad'||d.kind==='hole'||d.kind==='note')return{x:w.b.x,y:w.b.y};
+    if((d.kind==='gdt'||d.kind==='datum')){const bx=mepGdtBoxes.get(d);return bx?{x:(bx.x0+bx.x1)/2,y:(bx.y0+bx.y1)/2}:{x:w.b.x,y:w.b.y};}
     if(d.kind==='ord'){ // valeur de l'origine, sur la ligne commune
       const v=mepView(sh,d.vid),oS=v?mepToSheet(v,d.o.x,d.o.y):w.a;
       return d.axis==='y'?{x:oS.x+(+d.off||0),y:oS.y}:{x:oS.x,y:oS.y+(+d.off||0)};

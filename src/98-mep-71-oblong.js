@@ -80,7 +80,10 @@
   /* référence du centre de l'arc i : celle de l'oblong s'il en fait partie, sinon celle du cercle */
   function mepSlotCtrHint(v,i){
     const s=mepSlotOfEnt(v,i);
-    if(!s)return{t:'ctr',i};
+    if(!s){ // bout d'un oblong en arc : son centre suit la rainure
+      const q=mepASlotOfEnt(v,i),n=q?(q.ib.indexOf(i)>=0?1:q.ia.indexOf(i)>=0?0:-1):-1;
+      return n<0?{t:'ctr',i}:{t:'aslot',n,s:mepASlotMemo(q)};
+    }
     const n=s.ib.indexOf(i)>=0?1:s.ia.indexOf(i)>=0?0:-1;
     return n<0?{t:'ctr',i}:{t:'slot',n,s:mepSlotMemo(s)};
   }
@@ -151,5 +154,140 @@
     }
     mepEdit('axe d’oblong',()=>{v.axes.push({id:mepUid('ax'),kind:'slot',s:mepSlotMemo(s)});});
     mepStatus('Oblong : 2 centres et axe créés (ils suivent le modèle) — cotez depuis ces centres.');
+    return true;
+  }
+  /* ═══════════════ O3. oblongs en arc : axe courbe et centres des bouts ═══════════════ */
+  /* 2026-11-09 : « il faut pouvoir créer des axes sur une rainure circulaire » — l'oblong en arc vu de
+     face : 2 bouts en demi-cercle de même rayon w, dont les centres sont sur le cercle moyen de 2 arcs
+     concentriques (rayons R+w et R−w). Mémo durable s={cx,cy,R,w,a0,sw} (centre, rayon de l'axe,
+     demi-largeur, angle du 1er bout, ouverture dans le sens des angles croissants de la vue), repris
+     par l'axe {kind:'aslot',s} et par les points de cote {hint:{t:'aslot',n:0|1|2,s}} (2 : centre de l'arc).
+     Axe : l'arc mixte au rayon R, prolongé au-delà des bouts, 2 traits du centre de l'arc à travers
+     chaque centre de bout, et une petite croix au centre. */
+  const mepASlotCache=new WeakMap();
+  // tous les arcs regroupés par cercle (centre, rayon), avec leur couverture par pas de 5°
+  function mepArcCircleGroups(els){
+    const groups=new Map(),n=MEP_SLOT_BINS,st=2*Math.PI/n;
+    els.forEach((e,i)=>{
+      if(e.t!=='A'||e.k==='thread'||e.k==='threadH'||!(e.r>1e-6))return;
+      const key=[e.cx,e.cy,e.r].map(x=>(+x).toFixed(3)).join(',');
+      let g=groups.get(key);
+      if(!g){g={cx:e.cx,cy:e.cy,r:e.r,idx:[],bins:new Set()};groups.set(key,g);}
+      g.idx.push(i);
+      const lo=Math.min(e.a0,e.a1),hi=Math.max(e.a0,e.a1);
+      for(let a=lo+st/2;a<hi;a+=st)g.bins.add(((Math.floor(a/st)%n)+n)%n);
+    });
+    return [...groups.values()];
+  }
+  function mepAngBin(a){const n=MEP_SLOT_BINS,st=2*Math.PI/n;return ((Math.floor(a/st)%n)+n)%n;}
+  function mepASlotFind(els){
+    const caps=mepSlotArcGroups(els),all=mepArcCircleGroups(els),cand=[],T=2*Math.PI;
+    for(let i=0;i<caps.length;i++)for(let j=i+1;j<caps.length;j++){
+      const A=caps[i],B=caps[j],w=(A.r+B.r)/2,tol=Math.max(0.01,w*0.002);
+      if(Math.abs(A.r-B.r)>tol)continue;
+      for(const G1 of all)for(const G2 of all){
+        if(G1===G2||G1.r<=G2.r)continue;
+        if(Math.hypot(G1.cx-G2.cx,G1.cy-G2.cy)>tol||Math.abs(G1.r-G2.r-2*w)>2*tol)continue;
+        const cx=G1.cx,cy=G1.cy,R=(G1.r+G2.r)/2;
+        const dA=Math.hypot(A.cx-cx,A.cy-cy),dB=Math.hypot(B.cx-cx,B.cy-cy);
+        if(Math.abs(dA-R)>2*tol||Math.abs(dB-R)>2*tol||Math.hypot(A.cx-B.cx,A.cy-B.cy)<=tol)continue;
+        const aA=Math.atan2(A.cy-cy,A.cx-cx),aB=Math.atan2(B.cy-cy,B.cx-cx);
+        let d=(aB-aA)%T;if(d<0)d+=T;
+        // l'arc extérieur dit de quel côté va la rainure
+        let a0=aA,sw=d,c0=A,c1=B;
+        if(!G1.bins.has(mepAngBin(aA+d/2))){a0=aB;sw=T-d;c0=B;c1=A;}
+        // l'extérieur couvre la rainure (coupures du noyau comprises)
+        let need=0,got=0;const st=T/MEP_SLOT_BINS;
+        for(let a=a0+st;a<a0+sw-st;a+=st){need++;if(G1.bins.has(mepAngBin(a)))got++;}
+        if(need&&got<0.8*need)continue;
+        // les bouts sont tournés vers l'extérieur de la rainure
+        const a1=a0+sw;
+        if(!mepSlotArcOutward(c0,-Math.sin(a0),Math.cos(a0))||!mepSlotArcOutward(c1,Math.sin(a1),-Math.cos(a1)))continue;
+        cand.push({cx,cy,R,w,a0,sw,ia:c0.idx,ib:c1.idx,io:G1.idx,ii:G2.idx});
+      }
+    }
+    cand.sort((a,b)=>a.sw*a.R-b.sw*b.R);
+    const used=new Set();
+    return cand.filter(c=>{
+      if(c.ia.concat(c.ib).some(i=>used.has(i)))return false;
+      c.ia.concat(c.ib).forEach(i=>used.add(i));
+      return true;
+    });
+  }
+  function mepASlotsOf(v){
+    if(!v||mepOblOf(v)||mepPerspOf(v))return[];
+    const g=mepGeoOf(v);if(!g||!g.els)return[];
+    let L=mepASlotCache.get(g);
+    if(!L){L=mepASlotFind(g.els);mepASlotCache.set(g,L);}
+    return L;
+  }
+  function mepASlotMemo(s){return{cx:s.cx,cy:s.cy,R:s.R,w:s.w,a0:s.a0,sw:s.sw};}
+  function mepASlotOfEnt(v,i){
+    if(typeof i!=='number')return null;
+    return mepASlotsOf(v).find(s=>s.ia.indexOf(i)>=0||s.ib.indexOf(i)>=0||s.io.indexOf(i)>=0||s.ii.indexOf(i)>=0)||null;
+  }
+  function mepASlotSame(a,b,tol){
+    const t=tol||1e-3;
+    const ends=s=>[[s.cx+s.R*Math.cos(s.a0),s.cy+s.R*Math.sin(s.a0)],[s.cx+s.R*Math.cos(s.a0+s.sw),s.cy+s.R*Math.sin(s.a0+s.sw)]];
+    const A=ends(a),B=ends(b),n=(p,q)=>Math.hypot(p[0]-q[0],p[1]-q[1])<=t;
+    return Math.hypot(a.cx-b.cx,a.cy-b.cy)<=t&&((n(A[0],B[0])&&n(A[1],B[1]))||(n(A[0],B[1])&&n(A[1],B[0])));
+  }
+  // l'oblong en arc de la vue qui correspond au mémo m (null : disparu)
+  function mepASlotTrack(v,m){
+    let best=null,bc=Infinity;
+    const wrap=a=>{a%=2*Math.PI;if(a>Math.PI)a-=2*Math.PI;if(a<-Math.PI)a+=2*Math.PI;return a;};
+    mepASlotsOf(v).forEach(s=>{
+      const k=Math.hypot(s.cx-m.cx,s.cy-m.cy)+Math.abs(s.R-m.R)+Math.abs(s.w-m.w)
+        +m.R*Math.abs(wrap(s.a0-m.a0))+0.5*m.R*Math.abs(s.sw-m.sw);
+      if(k<bc){bc=k;best=s;}
+    });
+    if(!best||bc>Math.max(3,2*m.w,0.5*m.R*m.sw))return null;
+    return mepASlotMemo(best);
+  }
+  function mepASlotFollow(v,m){
+    if(!m||!mepGeoExact(mepGeoOf(v)))return m;
+    const e=mepASlotTrack(v,m);
+    if(!e||['cx','cy','R','w','a0','sw'].every(k=>Math.abs(e[k]-m[k])<=1e-9))return m;
+    Object.assign(m,e);
+    return m;
+  }
+  function mepASlotPt(m,n){
+    if(n===2)return{x:m.cx,y:m.cy};
+    const a=m.a0+(n?m.sw:0);
+    return{x:m.cx+m.R*Math.cos(a),y:m.cy+m.R*Math.sin(a)};
+  }
+  function mepASlotPtRefresh(v,q){
+    const m=mepASlotFollow(v,q.hint.s),p=mepASlotPt(m,q.hint.n);
+    q.x=p.x;q.y=p.y;
+    return q;
+  }
+  function mepASlotPrims(m,v){
+    if(!m||!(m.R>1e-9)||!(m.sw>1e-9))return[];
+    const E=MEP_AXIS.overrun/mepAxisScale(v),ext=Math.min(0.45*Math.PI,(m.w+E)/m.R);
+    const out=[{t:'A',cx:m.cx,cy:m.cy,r:m.R,a0:m.a0-ext,a1:m.a0+m.sw+ext,cls:'mepAxis'}];
+    [m.a0,m.a0+m.sw].forEach(a=>{
+      const Lr=m.R+m.w+E;
+      out.push({t:'L',x1:m.cx,y1:m.cy,x2:m.cx+Lr*Math.cos(a),y2:m.cy+Lr*Math.sin(a),cls:'mepAxis'});
+    });
+    out.push(...mepAxisCenterCross(m.cx,m.cy,Math.max(1.5/mepAxisScale(v),E),'mepAxisCross'));
+    return out;
+  }
+  function mepASlotsAuto(v){
+    return mepASlotsOf(v).filter(s=>!(v.axes||[]).some(a=>a&&a.kind==='aslot'&&a.s&&mepASlotSame(a.s,s,0.01)));
+  }
+  /* outil Axes : un clic sur un oblong en arc (bout, arc extérieur ou intérieur) */
+  function mepASlotAxisClick(sh,P){
+    const hit=mepHitViewEnt(sh,P.x,P.y);
+    if(!hit||typeof hit.i!=='number'||!hit.e)return false;
+    const v=mepView(sh,hit.vid);if(!v)return false;
+    if(mepHoleAt(sh,hit.vid,hit.e,hit.i))return false;
+    const s=mepASlotOfEnt(v,hit.i);if(!s)return false;
+    if(!Array.isArray(v.axes))v.axes=[];
+    if(v.axes.some(a=>a&&a.kind==='aslot'&&a.s&&mepASlotSame(a.s,s,0.01))){
+      mepStatus('Cet oblong en arc a déjà son axe et ses centres.');
+      return true;
+    }
+    mepEdit('axe d’oblong en arc',()=>{v.axes.push({id:mepUid('ax'),kind:'aslot',s:mepASlotMemo(s)});});
+    mepStatus('Oblong en arc : axe courbe, centre de l’arc et centres des bouts créés (ils suivent le modèle).');
     return true;
   }

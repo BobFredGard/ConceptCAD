@@ -329,6 +329,10 @@
     const cls=(p.cls||'mepAxis')+(extra?' '+extra:'');
     if(p.t==='L')mk('line',{x1:X(p.x1),y1:Y(p.y1),x2:X(p.x2),y2:Y(p.y2),class:cls});
     else if(p.t==='C')mk('circle',{cx:X(p.cx),cy:Y(p.cy),r:+(p.r*v.scale).toFixed(3),class:cls});
+    else if(p.t==='A'){ // 2026-11-09 : axe courbe d'un oblong en arc (angles croissants = sens de l'écran)
+      const r=+(p.r*v.scale).toFixed(3),big=p.a1-p.a0>Math.PI?1:0;
+      mk('path',{d:'M '+X(p.cx+p.r*Math.cos(p.a0))+' '+Y(p.cy+p.r*Math.sin(p.a0))+' A '+r+' '+r+' 0 '+big+' 1 '+X(p.cx+p.r*Math.cos(p.a1))+' '+Y(p.cy+p.r*Math.sin(p.a1)),fill:'none',class:cls});
+    }
   }
   function mepDrawAxes(mk,v,sh){
     const sa=mepSt.selAxis&&mepSt.selAxis.vid===v.id?mepSt.selAxis:null;
