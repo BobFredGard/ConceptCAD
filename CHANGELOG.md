@@ -8,7 +8,7 @@ sont sorties le 2026-09-30j.
 Code dans `src/` · livrable `fusion_mvp.html` (généré par `build.js`) · architecture et
 garde-fous en tête de `src/00-entete-et-outils.js`.
 
-**626 versions**, de `2026-09-28b` à `V0.77.0` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
+**627 versions**, de `2026-09-28b` à `V0.77.1` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
 comme dans le fichier d'origine.
 
 ---
@@ -7175,3 +7175,10 @@ Barquette ne perd plus son solide à la 107e modification, et sa mémoire ne mon
 - **Congés, cause** : le noyau OCCT ignore certaines arêtes sans message, et la découpe d'équerre d'une arête seule acceptait un rayon plus grand que la paroi (R60 sur un bloc de 20 mm). La relocalisation d'une arête par son milieu (3 mm) prenait parfois le bord d'un congé voisin.
 - **Congés, correctif** (`src/20-20`, `src/20-60`) : arête retrouvée par ses points (`occAreteSuivie` : 60 % de ses points sur l'ancienne, tolérance selon la flèche des cordes) ; arêtes tangentes toutes choisies faites en une passe ; refusées repassées tant qu'il y a du progrès, puis ensemble ; outil d'équerre refusé si un point de tangence sort de la matière ; bilan vérifié après coup : `_rate` → ⚠ « NON FAIT sur n/t arête(s), près de … » dans l'arbre et le panneau. Les morceaux de coin intérieur (V0.70.3) restent soudés en une fois.
 - **Test** : `test_symetrie_corps` (6 contrôles), `test_conges_bilan` (10 : arête ignorée signalée, rayon trop grand refusé, ⚠ affiché puis retiré une fois corrigé) ; parcours FAO et CACHE_VER inchangés.
+
+## V0.77.1 - Déplacement de face et coque : face décalée qui se replie (« vrille ») réparée
+
+- **Demande** : retour de Fred du 09/11 sur une pièce de son assemblage (copie d'un corps, puis déplacement de face −4,5 mm, faces tangentes comprises) : « ce truc de surface qui vrille ! », puis « ce n'est pas joli » et « on perd des arêtes de tangences » sur la première réparation.
+- **Cause** : une face décalée est une surface « offset » de la face d'origine. Le bout d'un congé laissé par le noyau était une petite face libre au bord ondulé (rayons de courbure de quelques centièmes de mm) ; décalée de plusieurs mm, elle se retournait et se repliait en une voile hors de la pièce. Le solide restait valide et le contrôle du volume passait : rien ne le signalait. La coque (paroi mince) de la même pièce avait le même pli.
+- **Correctif** (`src/20-30-faces.js`, `src/20-10`) : `occPlisFace` repère une face décalée dont la normale s'oppose, quelque part, à celle de la face d'origine (différences finies, points pris dans la face). `occPlisRebouche` la remplace par une surface de remplissage tendue sur ses bords (courbes refaites à neuf) et tangente (G1) à chaque face voisine ; `occPlisReparer` recoud la pièce (tolérance 1e-4 à 1e-2) et ne garde que un solide valide unique. Appelé après le décalage du noyau (déplacement de face, faces tangentes) et après l'évidage de la coque. Message : « n face(s) trop courbe(s) pour cette distance se repliaient — remplacée(s) par une surface lisse ».
+- **Test** : vérifié sur la pièce de Fred, qui reste privée (hors dépôt) : plus de pli, rien hors de la pièce d'origine, solide valide, matière retirée cohérente avec 4,5 mm, autant d'arêtes vives que l'original (raccords tangents gardés), même réparation sur la coque. Un bloc d'essai (congé ou flanc ondulé) ne reproduit pas le défaut. `test_fuite_noyau` vert (aucun objet du noyau oublié par la recherche des plis). Parcours FAO et CACHE_VER inchangés.
