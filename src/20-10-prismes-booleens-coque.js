@@ -911,7 +911,7 @@ function occApplyCoque(result,f){
       `${total-garde.length} écartée(s) par le moteur`);
   }
   try{
-    const s=r.shape;
+    const s=occPlisReparer(r.shape,warnings,'coque'); // V0.76.2 : paroi intérieure repliée (vrille)
     let out=s;
     try{out=occUnify(s);}catch(e){}
     if(out!==s){try{s.delete();}catch(e){}}

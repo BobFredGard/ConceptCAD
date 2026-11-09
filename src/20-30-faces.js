@@ -166,6 +166,7 @@ function occFindFace0(shape,ref){
    pointe 118° et fraisure 90° agrandis et réduits, dessus en L, bossage à dessus incliné. */
 function occDot3(u,v){return u[0]*v[0]+u[1]*v[1]+u[2]*v[2];}
 function occSub3(u,v){return [u[0]-v[0],u[1]-v[1],u[2]-v[2]];}
+function occCross3(u,v){return [u[1]*v[2]-u[2]*v[1],u[2]*v[0]-u[0]*v[2],u[0]*v[1]-u[1]*v[0]];}
 function occSurfDesc(f){
   // Surface porteuse d'une face, pour dire si deux faces sont « sur la même surface » :
   // plan {k:'pl',n,p} ; cylindre {k:'cy',a,p,r,X,Y,direct,u0..v1} ; cône {k:'co',a,apex,semi}.
@@ -667,6 +668,129 @@ function occShellToSolid(r){
     return out;
   }finally{occDispose(sh);}
 }
+// ---------- Plis des faces décalées (V0.76.2) ----------
+// Une face décalée de d est une surface « offset » de la face d'origine. Là où celle-ci est plus
+// courbée que 1/d (rayon de courbure < d du côté du décalage), la surface décalée se retourne et
+// se replie : une voile qui « vrille » hors de la pièce, alors que le solide reste valide et que
+// le contrôle du volume passe. Cas typique : le bout d'un congé laissé par le noyau, petite face
+// libre au bord ondulé (rayons de quelques centièmes de mm), décalée de quelques mm.
+// Repérage : la normale de la surface décalée, mesurée par différences, s'oppose à celle de la
+// surface d'origine au même (u,v). Réparation : la face repliée est rebouchée par une surface lisse
+// tendue sur ses bords (justes, eux), tangente aux faces voisines, puis la pièce est recousue.
+function occPlisFace(f){
+  // → true si la face est une face décalée qui se replie quelque part.
+  const bin=[];
+  try{
+    const hs=occBinPush(bin,occt.BRep_Tool.Surface_2(f)),S=hs.get();
+    if(!S||occAvec(S.DynamicType(),t=>t.Name())!=='Geom_OffsetSurface')return false;
+    const hb=occBinPush(bin,S.BasisSurface()),B=hb.get();
+    const ad=occBinPush(bin,new occt.BRepAdaptor_Surface_2(f,true));
+    const u0=ad.FirstUParameter(),u1=ad.LastUParameter(),v0=ad.FirstVParameter(),v1=ad.LastVParameter();
+    if(!(u1>u0&&v1>v0))return false;
+    let cls=null;
+    try{cls=occBinPush(bin,new occt.IntTools_FClass2d(f,1e-7));}catch(e){cls=null;}
+    const IN=occt.TopAbs_State.TopAbs_IN;
+    const P=(G,u,v)=>occXyz(G.Value(u,v));
+    const N=24,hu=(u1-u0)*1e-4,hv=(v1-v0)*1e-4;
+    let bad=0;
+    for(let a=0;a<=N;a++){
+      for(let c=0;c<=N;c++){
+        const u=u0+(u1-u0)*(1e-4+(1-2e-4)*a/N),v=v0+(v1-v0)*(1e-4+(1-2e-4)*c/N);
+        if(cls){
+          const q=new occt.gp_Pnt2d_3(u,v);
+          let st;try{st=cls.Perform(q,false);}finally{try{q.delete();}catch(e){}}
+          if(st!==IN)continue;
+        }
+        const no=occCross3(occSub3(P(S,u+hu,v),P(S,u-hu,v)),occSub3(P(S,u,v+hv),P(S,u,v-hv)));
+        const nb=occCross3(occSub3(P(B,u+hu,v),P(B,u-hu,v)),occSub3(P(B,u,v+hv),P(B,u,v-hv)));
+        if(occDot3(no,nb)<=0)bad++;
+      }
+    }
+    return bad>0;
+  }catch(e){return false;}
+  finally{occDispose(bin);}
+}
+function occPlisRebouche(f,faces){
+  // Surface lisse sur les bords de `f` (courbes refaites à neuf : celles de la face décalée ne se
+  // laissent pas reprendre par le remplissage), TANGENTE à chaque face voisine (`faces` : toutes les
+  // faces de la pièce) : points du bord pris sur la voisine, ordre G1. Sans tangence, le raccord
+  // devenait une arête vive et la surface, tirée par des points proches du pli, bosselée (retour du
+  // 09/11). Repli : bords seuls (C0). → face neuve (à libérer) ou null.
+  const bin=[];
+  const voisine=e=>{
+    for(const h of faces){
+      if(h.IsSame(f))continue;
+      const es=occSubShapes(h,'TopAbs_EDGE');
+      const ok=es.some(x=>x.IsSame(e));occDispose(es);
+      if(ok)return h;
+    }
+    return null;
+  };
+  const essai=tangent=>{
+    const mk=occBinPush(bin,new occt.BRepOffsetAPI_MakeFilling(3,15,2,false,1e-5,1e-4,1e-2,0.1,8,9));
+    const es=occSubShapes(f,'TopAbs_EDGE');bin.push(...es);
+    for(const e0 of es){
+      const e=occBinPush(bin,occt.TopoDS.Edge_1(e0));
+      if(occt.BRep_Tool.Degenerated(e))continue;
+      const ad=occBinPush(bin,new occt.BRepAdaptor_Curve_2(e));
+      const a=ad.FirstParameter(),c=ad.LastParameter(),n=24;
+      const arr=occBinPush(bin,new occt.TColgp_Array1OfPnt_2(1,n+1));
+      for(let k=0;k<=n;k++)occAvec(ad.Value(a+(c-a)*k/n),p=>arr.SetValue(k+1,p));
+      const api=occBinPush(bin,new occt.GeomAPI_PointsToBSpline_2(arr,3,8,occt.GeomAbs_Shape.GeomAbs_C2,1e-6));
+      const me=occBinPush(bin,new occt.BRepBuilderAPI_MakeEdge_24(occBinPush(bin,api.Curve())));
+      mk.Add(occBinPush(bin,me.Edge()),occt.GeomAbs_Shape.GeomAbs_C0,true);
+      if(!tangent)continue;
+      const vh=voisine(e);if(!vh)continue;
+      const V=occBinPush(bin,occt.TopoDS.Face_1(vh));
+      const g=occBinPush(bin,new occt.BRepAdaptor_Curve2d_2(e,V));
+      const a2=g.FirstParameter(),c2=g.LastParameter();
+      for(let k=1;k<6;k++){const q=occBinPush(bin,g.Value(a2+(c2-a2)*k/6));mk.Add(q.X(),q.Y(),V,occt.GeomAbs_Shape.GeomAbs_G1);}
+    }
+    mk.Build();
+    if(!mk.IsDone())return null;
+    const nf=occShapeCopy(occBinPush(bin,mk.Shape()));
+    if(!nf||nf.IsNull())return null;
+    return nf;
+  };
+  try{
+    try{const r=essai(true);if(r)return r;}catch(e){}
+    try{return essai(false);}catch(e){return null;}
+  }finally{occDispose(bin);}
+}
+function occPlisReparer(r,warnings,mot){
+  mot=mot||'décalage';
+  // Repère les faces décalées repliées de `r` et les rebouche. Rend `r` (inchangé) ou la pièce
+  // réparée (`r` libéré). Une réparation qui ne donne pas un solide valide est abandonnée.
+  const faces=occSubShapes(r,'TopAbs_FACE'),bin=[];
+  try{
+    const plis=new Set();
+    faces.forEach((h,i)=>{if(occAvec(occt.TopoDS.Face_1(h),f=>occPlisFace(f)))plis.add(i);});
+    if(!plis.size)return r;
+    const neuves=new Map();
+    for(const i of plis){
+      const nf=occAvec(occt.TopoDS.Face_1(faces[i]),f=>occPlisRebouche(f,faces));
+      if(!nf){warnings.push(mot+' : une face trop courbe pour cette distance se replie (vrille), réparation impossible');return r;}
+      neuves.set(i,occBinPush(bin,nf));
+    }
+    for(const tol of [1e-4,1e-3,1e-2]){
+      const sew=occBinPush(bin,new occt.BRepBuilderAPI_Sewing(tol,true,true,true,false));
+      faces.forEach((h,i)=>sew.Add(neuves.get(i)||h));
+      sew.Perform(occBinPush(bin,new occt.Message_ProgressRange_1()));
+      if(sew.NbFreeEdges())continue;
+      let s=occShapeCopy(occBinPush(bin,sew.SewedShape()));
+      if(!s||s.IsNull())continue;
+      s=occShellToSolid(s);
+      const sol=occSubShapes(s,'TopAbs_SOLID'),nSol=sol.length;occDispose(sol);
+      if(nSol!==1||!occCoqueValide(s)){occFree(s);continue;}
+      occFree(r);
+      warnings.push(`${mot} : ${plis.size} face(s) trop courbe(s) pour cette distance se repliaient — remplacée(s) par une surface lisse`);
+      return s;
+    }
+    warnings.push(mot+' : une face trop courbe pour cette distance se replie (vrille), réparation impossible');
+    return r;
+  }catch(e){return r;}
+  finally{occDispose(faces);occDispose(bin);}
+}
 function occOffsetFaces(shape,faces,dist,warnings){
   // Décale `faces` (handles sur `shape`) de `dist` mm le long de la normale sortante, par le
   // noyau. Retourne la nouvelle forme, ou null (raison dans `warnings`). Contrôle du volume :
@@ -693,6 +817,7 @@ function occOffsetFaces(shape,faces,dist,warnings){
       if(!r||!occCoqueValide(r)){warnings.push('décalage : solide invalide, même réparé');if(r)try{r.delete();}catch(e){}return null;}
     }
     r=occShellToSolid(r);
+    r=occPlisReparer(r,warnings);
     const dv=occShapeVolume(r)-occShapeVolume(shape),ev=area*dist,q=ev?dv/ev:0;
     if(!(q>0.25&&q<4)){
       warnings.push(`décalage incohérent (volume ${dv>=0?'+':''}${dv.toFixed(0)} mm³ pour ${ev>=0?'+':''}${ev.toFixed(0)} attendus)`);
