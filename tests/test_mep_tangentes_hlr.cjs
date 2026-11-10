@@ -33,6 +33,20 @@ const json=require('./lire-projet.cjs')(path.join(ROOT,'Exemples','Support Péda
       const b=cnt(v);
       out.views.push({vk,a,b});
     });
+    // V0.86.0 : « les arêtes tangentes […] pas dans les coupes tous types » (Fred, 10/11) — une coupe
+    // A-A par le milieu de la vue de dessus : ses tangentes sont grises, plus en trait de coupe épais
+    {
+      sh.views.length=0;sh.dims.length=0;
+      const par=mepAddViewStd('top');par.tangent=true;par.mode='hide';
+      const bb=cnt(par).all,cx=(bb[0]+bb[2])/2;
+      // plan contenant le regard de la vue de dessus et son axe v, passant par x = cx ; on regarde selon u
+      const P0=[par.u[0]*cx,par.u[1]*cx,par.u[2]*cx];
+      const sv=window.__mepTest.addView({kind:'section',vk:'',dir:par.u.slice(),u:par.v.slice(),v:par.dir.map(x=>-x),parent:par.id,label:'A',
+        bodyId:par.bodyId,mode:'hide',tangent:true,hlrExact:true,scale:par.scale,
+        section:{p:P0,n:par.u.slice(),a:[cx,bb[1]-5],b:[cx,bb[3]+5],pid:par.id}});
+      sv.tangent=true;const a=cnt(sv);sv.tangent=false;const b=cnt(sv);
+      out.sec={a,b};
+    }
     // référence : même vues sans le classement de la 3D (drapeau OCCT seul)
     const ref=window.occSharpEdges;
     window.occSharpEdges=s=>(ref(s)||[]).map(e=>{const c=Object.assign({},e);delete c.rg;return c;});
@@ -56,6 +70,11 @@ const json=require('./lire-projet.cjs')(path.join(ROOT,'Exemples','Support Péda
     A(near(w.a.sharp,B.sharp),'vue '+w.vk+' : le contour noir est le même qu’avant');
     A(!w.b.c.tangent&&Math.abs(n(w.b.len,'sharp')-n(w.a.len,'sharp'))<1e-3,'vue '+w.vk+' : sans « Arêtes tangentielles », plus aucun gris, les noirs restent ('+n(w.b.len,'sharp').toFixed(1)+' mm)');
   });
+  {const S=o.sec,n=(c,k)=>c[k]||0;
+    A(S&&S.a.src==='OCCT HLR','coupe A-A : HLR exact');
+    A(S&&n(S.a.c,'tangent')>0,'coupe A-A : '+n(S.a.c,'tangent')+' arête(s) tangente(s) grise(s), '+n(S.a.c,'sect')+' trait(s) de coupe');
+    A(S&&!S.b.c.tangent&&n(S.b.c,'sect')<n(S.a.c,'sect')+n(S.a.c,'tangent'),'coupe A-A : sans « Arêtes tangentielles », plus aucun gris');
+  }
   A(mieux>=2,'au moins 2 vues sur 3 gagnent des gris ('+mieux+')');
   console.log(ko?'\n*** '+ko+' PROBLEME(S) ***':'\n*** TOUT PASSE ***');
   process.exit(ko?1:0);

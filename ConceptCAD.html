@@ -379,7 +379,7 @@ input[type=range]{accent-color:var(--primary);width:100%}
  * peut changer sans rien casser. CACHE_VER (parcours FAO) reste indépendant.
  */
 
-const APP_VER='V0.85.1';
+const APP_VER='V0.86.0';
 try{console.log('[ConceptCAD] version '+APP_VER);}catch(e){}
 try{var mfSv=document.getElementById('mfSplashVer');if(mfSv)mfSv.textContent=APP_VER;}catch(e){} // écran de démarrage
 
@@ -74927,11 +74927,11 @@ function filmFrame(){
       const kindV=view.section?'sect':'sharp';
       let n=0;
       const tanTest=mepHlrTanIdx(view,shapes);
-      const tanV=tanTest?{test:tanTest,kind:view.tangent?(view.section?'sect':'tangent'):null}:null;
+      const tanV=tanTest?{test:tanTest,kind:view.tangent?'tangent':null}:null; // V0.86.0 : grise aussi en coupe
       const tanH=tanTest?{test:tanTest,kind:view.tangent?'hidden':null}:null;
       n+=mepHlrAddEdge(geo,added,view,hlr.GetCompoundOf3dEdges(T.HLRBRep_Sharp,true,true),kindV,tanV);
       n+=mepHlrAddEdge(geo,added,view,hlr.GetCompoundOf3dEdges(T.HLRBRep_OutLine,true,true),kindV);
-      if(view.tangent)n+=mepHlrAddEdge(geo,added,view,hlr.GetCompoundOf3dEdges(T.HLRBRep_Rg1Line,true,true),view.section?'sect':'tangent');
+      if(view.tangent)n+=mepHlrAddEdge(geo,added,view,hlr.GetCompoundOf3dEdges(T.HLRBRep_Rg1Line,true,true),'tangent'); // V0.86.0 : tangentes grises dans les coupes aussi
       if(mode==='dash'){
         n+=mepHlrAddEdge(geo,added,view,hlr.GetCompoundOf3dEdges(T.HLRBRep_Sharp,false,true),'hidden',tanH);
         n+=mepHlrAddEdge(geo,added,view,hlr.GetCompoundOf3dEdges(T.HLRBRep_OutLine,false,true),'hidden');
@@ -75245,11 +75245,11 @@ function filmFrame(){
               const kc='C'+Math.round(cir.cx*100)+','+Math.round(cir.cy*100)+','+Math.round(cir.r*100);
               const ka='A'+kc+','+Math.round(cir.a0*400)+','+Math.round(cir.a1*400);
               const kk=cir.full?kc:ka;
-              if(!added.has(kk)){added.add(kk);geo.els.push(cir.full?{t:'C',cx:cir.cx,cy:cir.cy,r:cir.r,k:view.section?'sect':kind}:{t:'A',cx:cir.cx,cy:cir.cy,r:cir.r,a0:cir.a0,a1:cir.a1,k:view.section?'sect':kind});}
+              if(!added.has(kk)){added.add(kk);geo.els.push(cir.full?{t:'C',cx:cir.cx,cy:cir.cy,r:cir.r,k:view.section&&kind!=='tangent'?'sect':kind}:{t:'A',cx:cir.cx,cy:cir.cy,r:cir.r,a0:cir.a0,a1:cir.a1,k:view.section&&kind!=='tangent'?'sect':kind});}
               return;
             }
           }
-          for(let i=0;i<wpts.length-1;i++)mepEmitSeg(geo.els,added,wpts[i],wpts[i+1],visE,view.section?'sect':(kind==='tangent'?'tangent':'sharp'),view,hidKind);
+          for(let i=0;i<wpts.length-1;i++)mepEmitSeg(geo.els,added,wpts[i],wpts[i+1],visE,kind==='tangent'?'tangent':(view.section?'sect':'sharp'),view,hidKind);
         });
       });
     }
