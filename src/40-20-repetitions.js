@@ -12,6 +12,7 @@ function repCanFeature(id){
   const f=doc.features.find(x=>x.id===id);
   if(!f)return false;
   if(f.repeatId)return false;
+  if(f.type==='hole'&&f.place)return false; // perçage normal : il cherche déjà tous ses trous
   if(f.type==='repeat')return true; // V0.11.30 : une répétition se répète (voir repExpandSources)
   // 2026-10-16-005 : perçages répétables ; 2026-10-27 : dépouilles, révolutions, déplacement et
   // suppression de face ; puis balayages. Restent exclues les opérations de CORPS ENTIER (coque, scission,

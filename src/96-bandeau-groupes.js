@@ -79,6 +79,7 @@
     ['btnRevolve','\u{1F504}','Révolution (R)'],
     ['btnSweep','〰','Balayage (profil le long d’un chemin)'],
     ['btnHole','⊚','Perçage (H)'],
+    ['btnHoleNorm','⟂','Perçage normal à une face (vise le fond des trous borgnes)'],
     ['btnKeyway','\u{1F511}','Rainure de clavette automatique (arbre ou alésage)'],
     '#',
     ['btnBody','◧','Nouveau corps vide'],

@@ -24,6 +24,7 @@ function wirePick(){
     if(Math.hypot(e.clientX-dx,e.clientY-dy)>6)return;
     if(filMode){if(e.button===0&&!e.ctrlKey)filletToggle(e);return;}
     if(filModeX){if(e.button===0)exactToggle(e);return;} // clic = ajouter / retirer une arête (V0.11.6)
+    if(typeof hnPick!=='undefined'&&hnPick){if(e.button===0)hnPickAt(e);return;} // perçage normal : faces
     if(typeof holeFacePick!=='undefined'&&holeFacePick){if(e.button===0&&!e.ctrlKey)holeFacePickAt(e);return;} // fonction Perçage : face de fin
     if(typeof threadPick!=='undefined'&&threadPick){if(e.button===0&&!e.ctrlKey)threadPickAt(e);return;} // Filetage : face de l'axe (76-filetage)
     if(typeof faoHolePick!=='undefined'&&faoHolePick){if(e.button===0&&!e.ctrlKey)faoHolePickAt(e);return;} // perçage : clic sur un trou
@@ -170,6 +171,7 @@ function filletTangentChain(sk, startCorner){
     if(filMode||filModeX){exitFilletMode();return;}
     if(faoChainMode){faoChainExit(true);return;}
     if(typeof faoHolePick!=='undefined'&&faoHolePick){faoHolePickExit();return;}
+    if(typeof hnPick!=='undefined'&&hnPick){const nw=!hnPick.fid;hnPickCancel();faceEl.textContent=nw?'Perçage normal : annulé.':'Perçage normal : choix des faces terminé.';try{renderProps();}catch(e2){}return;}
     if(typeof holeFacePick!=='undefined'&&holeFacePick){const kwP=holeFacePick.which==='cylKw';holeFacePickCancel();faceEl.textContent=kwP?'Clavette : annulée.':'Perçage : sélection de face annulée.';return;}
     if(typeof threadPick!=='undefined'&&threadPick){threadPickCancel();faceEl.textContent='Filetage : sélection de face annulée.';return;}
     if(typeof bmPick!=='undefined'&&bmPick){bmPickExit(false);return;}

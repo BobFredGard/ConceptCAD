@@ -393,7 +393,7 @@ let mfBuilt=false;
 function mfClick(id){mfCloseMenus();const b=document.getElementById(id);if(b){b.click();return true;}try{faceEl.textContent='Commande indisponible ici ('+id+').';}catch(e){}return false;}
 const MF_CAO=[
   ['Esquisse',[['sketch','Esquisse','btnSketch']]],
-  ['Créer',[['extrude','Extrusion','btnExtrude'],['revolve','Révolution','btnRevolve'],['sweep','Balayage','btnSweep'],['hole','Perçage','btnHole'],['keyway','Clavette','btnKeyway'],['body','Corps','btnBody'],['copy','Copier','btnBodyCopy']]],
+  ['Créer',[['extrude','Extrusion','btnExtrude'],['revolve','Révolution','btnRevolve'],['sweep','Balayage','btnSweep'],['hole','Perçage','btnHole'],['hole','Normal','btnHoleNorm'],['keyway','Clavette','btnKeyway'],['body','Corps','btnBody'],['copy','Copier','btnBodyCopy']]],
   // V0.5.0 : géométrie de construction (78/79)
   ['Construire',[['cgPlane','Plan',()=>cgStart('plane'),'Plan de construction : décalé, à un angle, par 3 points, médian, normal à un axe'],
     ['cgAxis','Axe',()=>cgStart('axis'),'Axe de construction : arête, cylindre, 2 points, intersection de plans, normal à un plan'],
@@ -578,6 +578,7 @@ function mfRibCaoActive(){
   if(g(()=>extDyn)||g(()=>extNew))on.add('Créer/Extrusion');
   if(g(()=>revNew))on.add('Créer/Révolution');
   if(g(()=>swNew))on.add('Créer/Balayage');
+  if(g(()=>hnPick))on.add('Créer/Normal');
   const hp=g(()=>holeFacePick);if(hp)on.add(hp.which==='cylKw'?'Créer/Clavette':'Créer/Perçage');
   const cg=g(()=>cgMode),cgK={plane:'Plan',axis:'Axe',point:'Point',frame:'Repère'};
   if(cg&&cg.draft&&cgK[cg.draft.kind])on.add('Construire/'+cgK[cg.draft.kind]);
@@ -597,6 +598,7 @@ function mfRibCaoActive(){
     const f=D.features.find(x=>x&&x.id===S.id);
     if(f){
       if(f.kw)on.add('Créer/Clavette');
+      else if(f.type==='hole'&&f.place)on.add('Créer/Normal'); // perçage normal à une face (76-percage-normal)
       else if(f.type==='xfillet'||f.type==='fillet')on.add(f.chamfer?'Modifier/Chanfrein':'Modifier/Congé');
       else if(MF_RIB_FEAT[f.type])on.add(MF_RIB_FEAT[f.type]);
     }

@@ -63,13 +63,13 @@ function occToolCkGet(key){
   const t=occToolCk.get(key);if(!t)return null;
   occToolCk.delete(key);occToolCk.set(key,t); // fraîcheur
   const sh=occShapeCopy(t.shape);if(!sh)return null;
-  return {shape:sh,bins:[],warnings:t.warnings.slice(),thr:t.thr?occShapeCopy(t.thr):null};
+  return {shape:sh,bins:[],warnings:t.warnings.slice(),thr:t.thr?occShapeCopy(t.thr):null,hn:t.hn||null};
 }
 function occToolCkPut(key,r){
   if(freshHard&&!(occProjPass>=1))return;
   if(!r||!r.shape||occToolCk.has(key))return;
   const cp=occShapeCopy(r.shape);if(!cp)return;
-  occToolCk.set(key,{shape:cp,warnings:(r.warnings||[]).slice(),thr:r.thr?occShapeCopy(r.thr):null});
+  occToolCk.set(key,{shape:cp,warnings:(r.warnings||[]).slice(),thr:r.thr?occShapeCopy(r.thr):null,hn:r.hn||null}); // hn : trous d'un perçage normal (76-percage-normal)
   while(occToolCk.size>occCkMax()){const k=occToolCk.keys().next().value;const o=occToolCk.get(k);occToolCk.delete(k);try{o.shape.delete();}catch(e){}try{if(o.thr)o.thr.delete();}catch(e){}}
 }
 function occCkClear(){
@@ -121,6 +121,7 @@ function featSig(f){
     // Perçage : esquisse (centres) + tous les paramètres qui façonnent l'outil de découpe.
     const skH=doc.sketches.find(x=>x.id===f.sketchId);
     s+='|'+f.sketchId+'|'+(skH?skSig(skH):'?')+'|'+JSON.stringify([f.kind,f.d,f.thread||null,f.cbD,f.cbH,f.csD,f.csA,f.end,f.depth,f.tip,!!f.flip,f.uptoPlane||null].concat(f.kind==='ream'?[f.reamD,f.reamH,f.pilot,f.reamOff]:(f.kind==='step'?[f.stD,f.stH,f.stTip]:[])));
+    if(f.place)s+='|pl'+JSON.stringify([f.place,f.d]); // perçage normal à une face (76-percage-normal)
     if(skH)(skH.entities||[]).forEach(e=>{if(e&&e.t==='cpoint'&&e.hole){const Q=skH.points[e.p];if(Q)s+=';h'+Q.x.toFixed(4)+','+Q.y.toFixed(4);}});
   }
   if(f.type==='xthread'){
@@ -523,6 +524,7 @@ function* occReplayBodyGen(bid,list){
     try{
       let r=occToolCkGet(ckKey);
       if(!r){r=(f.type==='revolve')?occShapeOfRevolve(f):(f.type==='sweep'?occShapeOfSweep(f):(f.type==='hole'?occShapeOfHole(f):occShapeOfExtrude(f)));occToolCkPut(ckKey,r);}
+      if(r.hn&&typeof hnRun!=='undefined')hnRun.set(f.id,r.hn); // perçage normal : trous trouvés, même repris du cache
       bin.push(...r.bins);itemShapes.push(r.shape);
       if(r.thr)threads.push({f,thr:r.thr});
       if(r.warnings.length)msgs.push(...r.warnings.map(w=>`${f.name} : ${w}`));
