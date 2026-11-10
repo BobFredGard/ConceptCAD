@@ -310,6 +310,7 @@ const SUITES = [
   "test_oracle",
   "test_construction_esquisse",
   "test_esquisse_reperes",
-  "test_sk_decalage_outil"
+  "test_sk_decalage_outil",
+  "test_projection_import_ouverture"
 ];
 require('./pool.cjs').pool(SUITES, { titre: 'SUITE', timeout: 20 * 60 * 1000 });
