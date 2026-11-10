@@ -129,6 +129,7 @@ function renderProps(){
       return;
     }
     /* — coque — */
+    if(f.type==='xshell'&&f.kind==='souffle'){soufProps(p,f);visDel(f);return;} // coque soufflée (87-coque-souffle)
     if(f.type==='xshell'){
       pH('Coque (évidage)');
       pInfo(`<b>${f.name}</b> · ${(f.faces||[]).length} face(s) retirée(s)`);

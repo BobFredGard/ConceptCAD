@@ -29,6 +29,7 @@ const SUITES = [
   "test_suppression_face_worker",
   "test_decoupe_coplanaire",
   "test_coque_depouille",
+  "test_coque_souffle",
   "test_repeat_mir2",
   "test_symetrie_conges",
   "test_repeat_fonctions",

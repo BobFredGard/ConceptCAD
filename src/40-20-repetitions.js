@@ -45,6 +45,7 @@ function repCanFeatureHint(f){
   if(f.type==='bmirror')return bmirName(f);
   if(f.type==='xdelface')return 'Suppression · '+(f.faces||[]).length+' face(s)';
   if(f.type==='xdraft')return 'Dépouillage · '+draftAngleEff(f).toFixed(1).replace('.',',').replace('-','−')+'° · '+(f.faces||[]).length+' face(s)';
+  if(f.type==='xshell'&&f.kind==='souffle')return soufName(f);
   if(f.type==='xshell')return 'Coque · '+String(Math.round((+f.thick||0)*100)/100).replace('.',',')+' mm · '+(f.faces||[]).length+' face(s) retirée(s)';
   if(f.type==='xsplit')return splitName(f);
   if(f.type==='repeat')return repTypeName(f.mode,f)+' · '+doc.features.filter(k=>k.repeatId===f.id).length+' instance(s) — le motif entier (sources + instances) est recopié';

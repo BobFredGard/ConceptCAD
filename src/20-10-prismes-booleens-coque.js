@@ -704,6 +704,7 @@ function occUnifyCutSeams(res,prev,tool){
 // à partir de FACES, pas la conversion solide→évidé : son ctor exigeait 2 params
 // (« invalid number of parameters (1) ») et l'opération n'avait aucun sens ici.
 function shellName(f){
+  if(f&&f.kind==='souffle')return soufName(f); // coque soufflée (87-coque-souffle)
   const t=String(Math.round((+f.thick||0)*100)/100).replace('.',',');
   return `Coque ${t} mm · ${(f.faces||[]).length} face(s) retirée(s)`;
 }
@@ -881,6 +882,7 @@ function occApplyCoque(result,f){
   // Rejoue l'évidage. Retourne {shape,warnings} comme occApplyDraft/occApplyMoveFace.
   // Les refs durables `f.faces` ne sont JAMAIS écrasées (même règle que le
   // dépouillage : des handles dans le document casseraient les rejeux suivants).
+  if(f.kind==='souffle')return occApplySouffle(result,f); // coque soufflée (87-coque-souffle)
   const warnings=[];
   const t=+f.thick||0;
   if(!(t>1e-9))return{shape:result,warnings:['épaisseur nulle — aucune coque']};
