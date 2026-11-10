@@ -139,6 +139,56 @@ class Geo{constructor(){this.attributes={};this.userData={};this.index=null;}
   A(d.modifPareil,'après modification : mêmes trous qu’une détection sans mémoire');
   A(d.retour,'retour au Ø d’origine : trous d’origine');
   A(d.recousu,'recousage repris = recousage refait (volume/faces '+d.v+')');
+
+  console.log('=== E. étapes empruntées, projections au repos, fantômes gardés (V0.89.5) ===');
+  sandbox.__json=lireProjet(path.join(ROOT,'tests','fixtures','barquette-exemple.conceptcad'));
+  const e=await vm.runInContext(`(async()=>{
+    const out={};
+    await bundleRestore(__json,{name:'banc'});markDirty();rebuild();markDirty();rebuild();
+    const desc=()=>{const F=occFinalShape(null);const v=(F.perBody||[]).map(p=>occCoqueVolume(p.shape).toFixed(3)+'/'+occSubShapes(p.shape,'TopAbs_FACE').length+'/'+occSubShapes(p.shape,'TopAbs_EDGE').length).join(' ');occCleanup(F,null);return v;};
+    // 1. un rejeu sans changement ne copie plus chaque étape
+    let nC=0;const c0=occShapeCopy;occShapeCopy=function(){nC++;return c0.apply(this,arguments);};
+    const d0=desc();nC=0;const d1=desc();out.copies=nC;out.etapes=doc.features.filter(f=>f.visible!==false).length;out.memeRepos=d0===d1;
+    occShapeCopy=c0;
+    // 2. les points de contrôle empruntés restent intacts : cote modifiée = rejeu sans aucun point de contrôle
+    const P=doc.params.find(x=>x.name==='largeur_barquette');
+    parSetParam(P,'165.5');markDirty();rebuild();const a1=desc();out.a1=a1;
+    parSetParam(P,'165');markDirty();rebuild();const b1=desc();out.retour=b1===d0;
+    parSetParam(P,'165.5');markDirty();rebuild();const a3=desc();out.revenu=a3===a1&&a1!==d0;
+    parSetParam(P,'165');markDirty();rebuild();markDirty();rebuild();
+    // 3. projections : au repos, plus de recherche d'arête ; après une cote, même résultat que sans mémoire
+    let nP=0;const p0=findClosestProjectedEdge;findClosestProjectedEdge=function(){nP++;return p0.apply(this,arguments);};
+    const esq=()=>JSON.stringify(doc.sketches.map(s=>[s.id,s.origin,s.points]));
+    doc.sketches.forEach(s=>_projRepos.delete(s));nP=0;markDirty();rebuild();out.projNeuf=nP;
+    nP=0;markDirty();rebuild();out.projRepos=nP;
+    parSetParam(P,'166');markDirty();rebuild();const s1=esq();
+    doc.sketches.forEach(s=>_projRepos.delete(s));markDirty();rebuild();out.projSuit=esq()===s1;
+    parSetParam(P,'165');markDirty();rebuild();
+    findClosestProjectedEdge=p0;
+    return out;})()`,ctx);
+  A(e.memeRepos,'rejeu sans changement : même solide');
+  A(e.copies<e.etapes/2,'rejeu sans changement : '+e.copies+' copie(s) de solide pour '+e.etapes+' fonctions (une par étape avant)');
+  A(e.retour,'retour à la cote d’origine : solide d’origine');
+  A(e.revenu,'cote remise à 165,5 : solide repris des étapes gardées, identique au premier calcul');
+  A(e.projNeuf>0&&e.projRepos<e.projNeuf,'projections : '+e.projNeuf+' recherches d’arête sans mémoire, '+e.projRepos+' au repos (restent les esquisses à sources particulières)');
+  A(e.projSuit,'projections après une cote : mêmes esquisses qu’une recherche sans mémoire');
+  sandbox.__json=lireProjet(path.join(ROOT,'tests','fixtures','percages-fao.conceptcad'));
+  const g=await vm.runInContext(`(async()=>{
+    const out={};
+    await bundleRestore(__json,{name:'banc'});markDirty();rebuild();markDirty();rebuild();
+    let nT=0;const t0=occTessellate;occTessellate=function(){nT++;return t0.apply(this,arguments);};
+    const fant=()=>bodies.filter(b=>b.kind==='ghost').length;
+    out.f0=fant();nT=0;markDirty();rebuild();out.repos=nT;out.f1=fant();
+    // partiels (projections, plans) : aucun fantôme maillé
+    nT=0;const F=occFinalShape(null);out.partiel=nT;out.partielFant=(F.ghostShapes||[]).length;occCleanup(F,null);
+    // rafraîchissement dur : tout est refait
+    nT=0;hardRefresh();out.dur=nT;out.f2=fant();
+    occTessellate=t0;
+    return out;})()`,ctx);
+  A(g.f0>0&&g.f1===g.f0,'outils de découpe toujours montrés ('+g.f1+' fantômes)');
+  A(g.repos===0,'rejeu sans changement : aucun maillage refait, ni corps ni fantômes ('+g.repos+')');
+  A(g.partiel===0&&g.partielFant===0,'rejeu hors affichage : aucun fantôme maillé ('+g.partiel+')');
+  A(g.dur>0&&g.f2===g.f0,'rafraîchissement dur : fantômes refaits ('+g.dur+' maillages)');
   console.log(ko?'ÉCHEC : '+ko:'*** TOUT PASSE ***');
   process.exit(ko?1:0);
 })().catch(e=>{console.error(e);process.exit(1);});

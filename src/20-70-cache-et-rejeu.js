@@ -76,6 +76,7 @@ function occCkClear(){
   for(const c of occCk){try{c.shape.delete();}catch(e){}}
   occCk=[];occCkWarn={};occCkEdges={};
   occToolCk.forEach(o=>{try{o.shape.delete();}catch(e){}try{if(o.thr)o.thr.delete();}catch(e){}});occToolCk=new Map();
+  try{occFantomeMemo.forEach(o=>{try{o.dispose&&o.dispose();}catch(e){}});occFantomeMemo=new Map();}catch(e){}
 }
 function skSig(sk){
   // Signature numerique d'une esquisse : base (position + axes), points, entites,
@@ -266,6 +267,39 @@ function* occNestGen(g){
   }
 }
 function occReplayBodyIn(bid,list){return occDrain(occReplayBodyGen(bid,list));}
+// V0.89.5 : les fantômes (maillage des outils de découpe, montrés à la sélection) ne servent qu'au rejeu
+// d'AFFICHAGE (occRebuild). Les rejeux partiels des plans de construction, des projections et des références
+// d'esquisse les maillaient aussi, à chaque fois, pour les jeter (barquette d'exemple : 17 ms par rejeu).
+let occFantomesVoulus=false;
+// Maillage d'un fantôme gardé par la clé de son outil (la même que occToolCk : mêmes entrées, même outil) :
+// il était refait à chaque reconstruction, même sans changement (Perçages : ~35 ms). Une copie est rendue,
+// l'original reste ici. Jeté avec les points de contrôle.
+let occFantomeMemo=new Map();
+function occFantomeGeo(key,mk){
+  if(freshHard&&!(occProjPass>=1))return mk();
+  const m=occFantomeMemo.get(key);
+  if(m){try{const c=m.clone();if(c&&c.attributes&&c.attributes.position){occFantomeMemo.delete(key);occFantomeMemo.set(key,m);return c;}}catch(e){}}
+  const g=mk();
+  try{const c=g&&g.clone();if(c&&c.attributes&&c.attributes.position&&c.attributes.position.count>0){occFantomeMemo.set(key,c);
+    while(occFantomeMemo.size>Math.max(60,2*occCkMax())){const k=occFantomeMemo.keys().next().value;const o=occFantomeMemo.get(k);occFantomeMemo.delete(k);try{o.dispose&&o.dispose();}catch(e){}}}}catch(e){}
+  return g;
+}
+// V0.89.5 : étape gardée EMPRUNTÉE — nouvelle poignée sur le même solide que le point de contrôle (aucune
+// géométrie copiée, quelques microsecondes), avec ses noms. La libérer ne touche pas au point de contrôle ;
+// s'il est évincé entre-temps, la poignée garde le solide en vie. Marquée : occReplayBodyGen en fait une vraie
+// copie avant de s'en servir.
+const occEmprunts=new WeakSet();
+// types de fonction qui ont une branche dans le rejeu d'un corps (les autres ne lisent pas le solide)
+const OCC_TYPES_REJEU={xfillet:1,xmove:1,xdelface:1,bmove:1,bscale:1,bcopy:1,bmirror:1,xsplit:1,xdraft:1,xshell:1,xthread:1,gear:1,import:1,combine:1,extrude:1,revolve:1,sweep:1,hole:1};
+function occCkPrise(ck){
+  if(!ck)return null;
+  try{
+    const h=ck.Oriented(ck.Orientation_1?ck.Orientation_1():ck.Orientation());
+    if(h&&!h.IsNull()){occEmprunts.add(h);return nomsPartage(ck,h);}
+    try{if(h)h.delete();}catch(e){}
+  }catch(e){}
+  return occShapeCopy(ck);
+}
 function* occReplayBodyGen(bid,list){
   // Rejeu ISOLÉ d'un corps : mêmes règles que l'ancien rejeu global (ordre timeline,
   // Fuse/Cut, congés/déplacements/dépouilles/coques entrelacés, cache par points de
@@ -283,15 +317,32 @@ function* occReplayBodyGen(bid,list){
   // chaîne exacte et devient le volume à unir / soustraire.
   // Outil de face ouvert sur un STEP seul (occStepForce) : il entre aussi dans la chaîne.
   const importSeul=!occStepForce&&!list.some(f=>f&&f.type!=='import');
+  // V0.89.5 : ÉTAPES GARDÉES EMPRUNTÉES. Chaque étape reprise d'un point de contrôle en faisait une copie
+  // entière, jetée dès l'étape suivante si elle était reprise aussi : n copies du solide pour un rejeu sans
+  // changement, et autant avant la fonction modifiée (barquette d'exemple : 41 ms sur 97). L'étape reprise est
+  // maintenant une simple poignée sur le solide gardé (occCkPrise) ; la vraie copie n'est faite (aMoi) qu'au
+  // moment où une étape S'EN SERT : étape à calculer, outil à construire, filetage, observateur, fin du corps.
+  // Le solide gardé n'est donc jamais passé à une opération du noyau, exactement comme avant.
+  const aMoi=()=>{
+    if(!result||!occEmprunts.has(result))return;
+    const c=occShapeCopy(result);
+    if(c){try{result.delete();}catch(e){}result=c;}
+    else occEmprunts.delete(result); // copie impossible : gardé tel quel (comme une étape sans point de contrôle)
+  };
   const step=f=>{
     const ckPre=ckKey; // clé du solide d'entrée de cette fonction (worker de suppression, 21)
     ckKey+=featSig(f)+';';
+    // fonctions sans branche ci-dessous (répétition, retrait de corps…) : le solide n'est pas lu, pas de copie
+    // idem pour une échelle / copie « nouveau corps » rejouée dans le corps SOURCE (elle n'y fait rien)
+    const ailleurs=(f.type==='bscale'||f.type==='bcopy')&&(()=>{const nbs=occNewBodies(f);return !!nbs[0]&&nbs.indexOf(bid)<0;})();
+    if(result&&occEmprunts.has(result)&&OCC_TYPES_REJEU[f.type]&&!ailleurs){const outil=f.type==='extrude'||f.type==='revolve'||f.type==='sweep'||f.type==='hole';
+      if(!occCkGet(ckKey)||(outil&&!occToolCk.has(ckKey)))aMoi();}
     if(f.type==='xfillet'){
       if(!result){msgs.push(`${f.name} : aucun volume à congédier — ignoré`);return;}
       // Préfixe inchangé : ce congé exact est déjà appliqué dans la copie mémorisée —
       // solide ET avertissements réutilisés sans rejouer l'opération (6 congés ≈ 30 ms/pièce).
       const ckX=occCkGet(ckKey);
-      const cpX=ckX?occShapeCopy(ckX):null;
+      const cpX=occCkPrise(ckX);
       if(cpX){
         try{result.delete();}catch(e){}result=cpX;
         const w=occCkWarn[ckKey];if(w&&w.length)msgs.push(...w.map(x=>`${f.name} : ${x}`));
@@ -319,7 +370,7 @@ function* occReplayBodyGen(bid,list){
     if(f.type==='xmove'||f.type==='xdelface'||f.type==='bmove'){
       if(!result){msgs.push(`${f.name} : aucun volume à `+(f.type==='bmove'?'déplacer':'déformer')+` — ignoré`);return;}
       const ckM=occCkGet(ckKey);
-      const cpM=ckM?occShapeCopy(ckM):null;
+      const cpM=occCkPrise(ckM);
       if(cpM){
         try{result.delete();}catch(e){}result=cpM;
         const w=occCkWarn[ckKey];if(w&&w.length)msgs.push(...w.map(x=>`${f.name} : ${x}`));
@@ -343,7 +394,7 @@ function* occReplayBodyGen(bid,list){
       if(nb&&nbs.indexOf(bid)<0)return;
       const neuf=nbs.indexOf(bid)>=0;
       const ckS=occCkGet(ckKey);
-      const cpS=ckS?occShapeCopy(ckS):null;
+      const cpS=occCkPrise(ckS);
       if(cpS){
         if(result)try{result.delete();}catch(e){}result=cpS;
         const w=occCkWarn[ckKey];if(w&&w.length)msgs.push(...w.map(x=>f.name+' : '+x));
@@ -364,7 +415,7 @@ function* occReplayBodyGen(bid,list){
     if(f.type==='bmirror'){
       // Symétrie du corps (85-symetrie-corps) : le corps tel qu'il est ici, réuni à son miroir
       const ckM=occCkGet(ckKey);
-      const cpM=ckM?occShapeCopy(ckM):null;
+      const cpM=occCkPrise(ckM);
       if(cpM){
         if(result)try{result.delete();}catch(e){}result=cpM;
         const w=occCkWarn[ckKey];if(w&&w.length)msgs.push(...w.map(x=>f.name+' : '+x));
@@ -382,7 +433,7 @@ function* occReplayBodyGen(bid,list){
       // corps), l'autre côté du corps source tel qu'il est à cet endroit de la timeline.
       const neuf=occSplitNewBody(f)===bid;
       const ckP=occCkGet(ckKey);
-      const cpP=ckP?occShapeCopy(ckP):null;
+      const cpP=occCkPrise(ckP);
       if(cpP){
         if(result)try{result.delete();}catch(e){}result=cpP;
         const w=occCkWarn[ckKey];if(w&&w.length)msgs.push(...w.map(x=>`${f.name} : ${x}`));
@@ -409,7 +460,7 @@ function* occReplayBodyGen(bid,list){
       // inchangé (Pièce 7). Même pattern que xmove : cache + warnings.
       if(!result){msgs.push(`${f.name} : aucun volume à dépouiller — ignoré`);return;}
       const ckD=occCkGet(ckKey);
-      const cpD=ckD?occShapeCopy(ckD):null;
+      const cpD=occCkPrise(ckD);
       // alerte « paroi amincie » portée par la fonction (⚠ dans l'arbre, note du panneau),
       // relue aussi depuis le cache : le point de contrôle ne rejoue pas la dépouille
       const minceDe=w=>{const m=(w||[]).find(x=>/amincie|rétréci|se rejoignent/.test(x));if(m)f._thin=m;else delete f._thin;};
@@ -434,7 +485,7 @@ function* occReplayBodyGen(bid,list){
       // serait silencieusement sautée par le `return` générique ci-dessous.
       if(!result){msgs.push(`${f.name} : aucun volume à évider — ignoré`);return;}
       const ckS=occCkGet(ckKey);
-      const cpS=ckS?occShapeCopy(ckS):null;
+      const cpS=occCkPrise(ckS);
       if(cpS){
         try{result.delete();}catch(e){}result=cpS;
         const w=occCkWarn[ckKey];if(w&&w.length)msgs.push(...w.map(x=>`${f.name} : ${x}`));
@@ -457,7 +508,7 @@ function* occReplayBodyGen(bid,list){
     if(f.type==='gear'){
       // Engrenage (76-engrenage) : solide construit d'après ses réglages, point de contrôle comme les autres
       const ckG=occCkGet(ckKey);
-      const cpG=ckG?occShapeCopy(ckG):null;
+      const cpG=occCkPrise(ckG);
       if(cpG){if(result)try{result.delete();}catch(e){}result=cpG;delete f._err;return;}
       let gs=null;
       try{gs=gearSolid(f,bin);}catch(err){f._err=String(err.message||err);msgs.push(`${f.name} : ${f._err}`);return;}
@@ -493,7 +544,7 @@ function* occReplayBodyGen(bid,list){
       // Mêmes règles qu'une fonction additive (ci-dessous) : point de contrôle
       // avant de refaire la fusion la plus coûteuse.
       const ckI=occCkGet(ckKey);
-      const cpI=ckI?occShapeCopy(ckI):null;
+      const cpI=occCkPrise(ckI);
       if(cpI){try{result.delete();}catch(e2){}try{shape.delete();}catch(e2){}result=cpI;return;}
       const uI=occUnify(occFuse(result,shape));
       try{result.delete();}catch(e2){}try{shape.delete();}catch(e2){}
@@ -503,7 +554,7 @@ function* occReplayBodyGen(bid,list){
     }
     if(f.type==='combine'){
       if(!result){msgs.push(`${f.name} : corps cible vide — ignoré`);return;}
-      const ckB=occCkGet(ckKey);const cpB=ckB?occShapeCopy(ckB):null;
+      const ckB=occCkGet(ckKey);const cpB=occCkPrise(ckB);
       if(cpB){try{result.delete();}catch(e){}result=cpB;return;}
       let r2=result;
       (f.tools||[]).forEach(tb=>{
@@ -549,13 +600,13 @@ function* occReplayBodyGen(bid,list){
       // Fantôme tessellé AVANT delete (use-after-delete = crash + repli fantôme).
       // Filet hélicoïdal : le fantôme est un simple aperçu → maillage plus grossier
       // (2× plus rapide), la géométrie exacte et le solide final ne changent pas.
-      const ghostGeo=xtra?null:(()=>{try{return f.type==='hole'?occTessellate(shape,1,0.8):occTessellate(shape,0.5);}catch(e){msgs.push(`${f.name} : outil illisible`);return null;}})();
+      const ghostGeo=xtra||!occFantomesVoulus?null:(()=>{try{return occFantomeGeo(ckKey,()=>f.type==='hole'?occTessellate(shape,1,0.8):occTessellate(shape,0.5));}catch(e){msgs.push(`${f.name} : outil illisible`);return null;}})();
       if(!result){if(!xtra){msgs.push(`${f.name} : découpe dans le vide — ignorée`);if(ghostGeo)ghostShapes.push({geo:ghostGeo,orphan:true,fid:f.id});}return;}
       if(ghostGeo&&!xtra)ghostShapes.push({geo:ghostGeo,orphan:false,fid:f.id});
       // Préfixe inchangé : le solide accumulé contient DÉJÀ cette découpe → on saute le
       // booléen (le plus coûteux) et on adopte la copie mémorisée.
       const ckC=occCkGet(ckKey);
-      const cpC=ckC?occShapeCopy(ckC):null;
+      const cpC=occCkPrise(ckC);
       if(cpC){try{result.delete();}catch(e){}result=cpC;return;}
       let c=occUnifyCutSeams((f.type==='hole'?occCutEach:occCut)(result,shape),result,shape); // fond pile sur une face : pas de mini surface
       if(f.type==='extrude'){const c2=occCutSansFaceFine(f,result,c);if(c2){try{c.delete();}catch(e){}c=c2;}} // V0.63.6 : pas de face de quelques microns
@@ -565,7 +616,7 @@ function* occReplayBodyGen(bid,list){
       if(!result){result=shape;occCkPut(ckKey,()=>occShapeCopy(result));return;}
       // Préfixe inchangé : la fusion est déjà faite dans la copie mémorisée.
       const ckA=occCkGet(ckKey);
-      const cpA=ckA?occShapeCopy(ckA):null;
+      const cpA=occCkPrise(ckA);
       if(cpA){try{result.delete();}catch(e){}result=cpA;return;}
       // Union additive "Uni" : unification des faces coplanaires (pas de couture au
       // passage d'une fonction à l'autre — face verticale = UNE face, pas 2).
@@ -601,6 +652,7 @@ function* occReplayBodyGen(bid,list){
   const batch=run=>{try{return batchIn(run);}finally{occDispose(kidBin);kidBin.length=0;}};
   const batchIn=run=>{
     const keys=[];let key=ckKey;run.forEach(g=>{key+=featSig(g)+';';keys.push(key);});
+    if(!occCkGet(key)||keys.some(k=>!occToolCk.has(k)))aMoi(); // V0.89.5 : le lot se sert du solide
     const cut=run[0].type==='hole'||(run[0].op||'add')==='cut';
     const rs=[],tools=[];
     const drop=()=>rs.forEach(r=>{try{r.shape.delete();}catch(e){}occDispose(r.bins);try{if(r.thr)r.thr.delete();}catch(e){}});
@@ -616,7 +668,7 @@ function* occReplayBodyGen(bid,list){
       }
     }catch(err){drop();return false;}
     let next=null;const ck=occCkGet(key);
-    if(ck)next=occShapeCopy(ck);
+    if(ck)next=occCkPrise(ck);
     if(!next){
       const la=new occt.TopTools_ListOfShape_1(),lt=new occt.TopTools_ListOfShape_1();
       const c=cut?new occt.BRepAlgoAPI_Cut_1():new occt.BRepAlgoAPI_Fuse_1();
@@ -647,13 +699,13 @@ function* occReplayBodyGen(bid,list){
       bin.push(...r.bins);itemShapes.push(r.shape);items.push({f:g,shape:r.shape});
       if(r.thr)threads.push({f:g,thr:r.thr});
       if(r.warnings.length)msgs.push(...r.warnings.map(w=>`${g.name} : ${w}`));
-      if(!cut)return;
+      if(!cut||!occFantomesVoulus)return;
       try{
         const M=g.type==='extrude'&&!g.through&&!g.upto&&g._src?basisM(g):null;
         let gg=null;
         if(M&&g0&&g0.src===g._src){gg=g0.geo.clone();gg.applyMatrix4(new THREE.Matrix4().multiplyMatrices(M,g0.inv));}
         else{
-          gg=g.type==='hole'?occTessellate(r.shape,1,0.8):occTessellate(r.shape,0.5);
+          gg=occFantomeGeo(keys[k],()=>g.type==='hole'?occTessellate(r.shape,1,0.8):occTessellate(r.shape,0.5));
           if(M&&gg)g0={geo:gg,inv:M.clone().invert(),src:g._src};
         }
         if(gg)ghostShapes.push({geo:gg,orphan:false,fid:g.id});
@@ -678,7 +730,7 @@ function* occReplayBodyGen(bid,list){
       msgs.push(...w.map(x=>`${f.name} : ${x}`));
       occCkWarn[ckKey]=[...new Set((occCkWarn[ckKey]||[]).concat(w))];
     }
-    if(tap)try{tap(bid,f,result);}catch(e){}
+    if(tap){aMoi();try{tap(bid,f,result);}catch(e){}} // l'observateur reçoit un solide à nous
   }
   // V0.21.19 : filets modélisés creusés EN DERNIER, en une seule découpe (src/76,
   // occShapeOfHole) : dans l'arbre, chaque perçage n'a laissé qu'un avant-trou lisse,
@@ -687,6 +739,7 @@ function* occReplayBodyGen(bid,list){
   // V0.21.19 : en navigateur, le calcul part dans le worker de calcul (src/21, thrWkAsk) :
   // le corps est affiché tout de suite SANS les filets (= filet cosmétique), puis repris
   // quand le worker répond. preThr : corps sans filets, gardé pour la FAO.
+  aMoi(); // V0.89.5 : fin du corps — ce qui est rendu (maillé, recousu, fileté) est toujours une copie à nous
   let preThr=null;
   const thrOn=!!(threads.length&&result&&!occThreadSkip);
   // Recousage des coutures de congé (occFinalShape) fait AVANT les filets : après, il
@@ -1054,7 +1107,8 @@ function occRebuild(){
   let FR=null;
   try{
     const _tr=performance.now();
-    FR=occFinalShape(tlReplayCount());
+    occFantomesVoulus=true; // seul ce rejeu affiche les outils de découpe
+    try{FR=occFinalShape(tlReplayCount());}finally{occFantomesVoulus=false;}
     phAdd('replay',performance.now()-_tr);
     const _ts=performance.now();
     // UN mesh PAR CORPS, rejoué isolément : l'id affiché EST l'id du corps (stable,
