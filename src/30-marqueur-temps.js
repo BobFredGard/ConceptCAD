@@ -126,6 +126,8 @@ function buildDone(){
   try{if(typeof faoDrillReplay==='function')faoDrillReplay();}catch(e){}
   // Fonction Perçage : image du taraudage (hélice + Ø nominal) sur les trous taraudés.
   try{if(typeof holeThreadOverlay==='function')holeThreadOverlay();}catch(e){}
+  // Paramètres mesurés entre 2 faces : relus sur le solide neuf (51-parametres-mesure)
+  try{if(typeof parMesUpdate==='function')parMesUpdate();}catch(e){}
   // FAO : le solide vient d'être (re)construit — l'Ébauche 3D embarque son empreinte
   // dans sa clé de cache. Au F5 la 1re lecture a lieu sur le REPLI MAILLAGE, avant le
   // boot du noyau exact : clé fausse, entrée rejetée, triangle rouge qui ne retombait

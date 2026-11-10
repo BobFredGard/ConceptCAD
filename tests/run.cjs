@@ -177,6 +177,7 @@ const SUITES = [
   "test_percage_alese",
   "test_percage_cylindre",
   "test_percage_normal",
+  "test_parametre_mesure",
   "test_clavette",
   "test_fao_taraudage",
   "test_fao_percage_selection",

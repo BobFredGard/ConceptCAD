@@ -11,7 +11,7 @@
 
 ![Support de pédale déportée R1200RT en alu anodisé rouge sur béton, lancer de rayons de l'atelier RENDU (2048 échantillons)](docs/captures/rendu-pedale.jpg)
 
-Le noyau géométrique exact est **OpenCascade 8 compilé en WebAssembly** par nos soins (recette reproductible dans `occt-build/`), en deux versions : **multicœur**, choisie toute seule quand le navigateur et le PC le permettent et écrite dans la barre d'état, et normale, sur un seul cœur, qui reste celle du fichier autonome. S'il n'est pas disponible, l'application bascule seule sur un moteur maillage (CSG). Version actuelle : **V0.87.0** (voir le [journal des modifications](CHANGELOG.md)).
+Le noyau géométrique exact est **OpenCascade 8 compilé en WebAssembly** par nos soins (recette reproductible dans `occt-build/`), en deux versions : **multicœur**, choisie toute seule quand le navigateur et le PC le permettent et écrite dans la barre d'état, et normale, sur un seul cœur, qui reste celle du fichier autonome. S'il n'est pas disponible, l'application bascule seule sur un moteur maillage (CSG). Version actuelle : **V0.88.0** (voir le [journal des modifications](CHANGELOG.md)).
 
 **Pas d'Internet sur le poste ?** La [version autonome](https://www.dropbox.com/scl/fi/sne7f5a9y8dr659b2xrow/ConceptCAD-autonome.html?rlkey=fgd0w1r5816ake50vxtd4fnuj&dl=0) tient en un seul fichier à télécharger, qui s'ouvre par double-clic (voir [Démarrage](#démarrage)).
 
@@ -116,6 +116,7 @@ Les gestes sont détaillés dans [Souris, clavier et doigts](#souris-clavier-et-
 - **Solveur** qui bouge l'esquisse le moins possible : une cote impossible est refusée et la barre d'état dit pourquoi ; une cote d'angle reste tenue quand une ligne change de sens en repassant par son sommet ; degrés de liberté réels, esquisse bleue (sous-contrainte) ou blanche (totalement contrainte).
 - **Vue d'esquisse** à plat ou dans la vue 3D courante, pièce en transparence, orbite au clic-molette comme en 3D, touche `N` pour revenir à plat ; la roue ⚙ porte les réglages de l'esquisse (Grille 1 mm, À plat, Effacer tout).
 - **Paramètres nommés**, **expressions ƒx** (aussi dans les commandes, avec `pi`) et **configurations** (tables de variantes). Dès la 1re lettre, une **liste propose les paramètres** (Entrée insère le nom sans valider le champ) ; **conditions** `if(L > 100 ; 5 ; 3)` et **arrondis au pas** `roundmoins(x ; 0,5)`, `roundplus(x ; 5)`. **Clic sur ƒx** : mini-liste des paramètres dans le bandeau de droite, où chaque valeur se **modifie sur place** (nombre ou formule ; Entrée valide, Échap annule) ; **clic droit** : liste complète. Une valeur tapée reste acquise, quelle que soit la façon de quitter le champ : Tab va au champ suivant, et le clic qui suit (Valider, une case, l’arbre) agit du premier coup.
+- **Paramètre mesuré entre 2 faces** : bouton **« + Mesure »** de la fenêtre ƒx Paramètres (puis un clic sur chaque face), ou bouton **« Créer un paramètre »** après une mesure Ctrl+clic sur 2 faces. Le paramètre **vaut la mesure et suit la pièce** (écart de plans parallèles, entraxe, axe ↔ face, sinon distance mini) ; il ne se règle pas à la main mais sert dans les autres valeurs (`Ecart1/2`), qui suivent. 👁 montre les 2 faces et la cote ; ⚠ si une face disparaît.
 
 ### Géométrie de construction
 
@@ -344,10 +345,10 @@ npx serve . -l 3000
 
 | Chemin | Rôle |
 |---|---|
-| `src/*.js` | **Les sources** : 177 fichiers concaténés dans l'ordre alphabétique (noyau, esquisse, fonctions 3D, assemblage, FAO découpée par domaine, mise en plan, rendu, interface téléphone `99-mobile*.js`). C'est ici qu'on travaille. |
+| `src/*.js` | **Les sources** : 178 fichiers concaténés dans l'ordre alphabétique (noyau, esquisse, fonctions 3D, assemblage, FAO découpée par domaine, mise en plan, rendu, interface téléphone `99-mobile*.js`). C'est ici qu'on travaille. |
 | `ConceptCAD.html` | **Livrable généré** par `node build.js`. On n'édite jamais son script à la main. |
 | `PostPro/` | Une fiche par machine (`siemens-630.js`, `siemens-1520.js`, `fagor-8065.js`). Nouvelle machine = copier une fiche, la modifier, `npm run build`. |
-| `tests/` | 311 suites Node lancées en parallèle (`npm run ci:full`), 143 rapides (`npm run ci`), non-régression des parcours FAO (`npm run parcours`), tests de référence (`tests/oracle/`, [docs/oracle.md](docs/oracle.md)). |
+| `tests/` | 312 suites Node lancées en parallèle (`npm run ci:full`), 144 rapides (`npm run ci`), non-régression des parcours FAO (`npm run parcours`), tests de référence (`tests/oracle/`, [docs/oracle.md](docs/oracle.md)). |
 | `tests/browser/` | Playwright dans un vrai Chromium : parcours critiques et Rendu (`npm run test:browser`, seul projet lancé par la CI GitHub, déclenchée à la main) et carte graphique réelle (`npm run test:gpu`, en local). |
 | `tools/` | Lint du script concaténé (`npm run lint`), serveur MCP, **captures du README** (`npm run captures`), **fichier autonome** (`npm run autonome`). |
 | `occt/`, `threejs/` | Noyau OpenCascade WebAssembly (`occt/v3` : OCCT 8), rendu three.js. |
