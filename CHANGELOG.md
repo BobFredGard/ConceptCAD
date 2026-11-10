@@ -8,7 +8,7 @@ sont sorties le 2026-09-30j.
 Code dans `src/` · livrable `fusion_mvp.html` (généré par `build.js`) · architecture et
 garde-fous en tête de `src/00-entete-et-outils.js`.
 
-**632 versions**, de `2026-09-28b` à `V0.80.0` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
+**633 versions**, de `2026-09-28b` à `V0.80.1` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
 comme dans le fichier d'origine.
 
 ---
@@ -7217,3 +7217,12 @@ Barquette ne perd plus son solide à la 107e modification, et sa mémoire ne mon
 - **Construction** (`skOffsetApply`, `src/50-esquisse-3`) : les copies ne reprennent plus le drapeau construction de la source — décaler une arête projetée donne un vrai trait. Nouveau paramètre `opt.flip` (côté opposé à celui proposé, sans point de côté). Menu ⇄ Décaler du clic droit : distance par défaut 3 mm.
 - **Boutons allumés** : barre d'esquisse, bouton de l'outil actif resynchronisé à chaque dessin (quel que soit le chemin qui a changé d'outil) ; ruban CAO (`mfRibCaoSync`, `src/97-interface-moderne.js`) : le bouton de la fonction en cours reste allumé tant que sa fenêtre ou sa saisie est ouverte (Extrusion, Révolution, Balayage, Perçage, Clavette, Copier, plans / axes / points / repères de construction, Congé, Chanfrein, Face, Dépouille, Coque, Filetage, Scinder, Répétition, Combiner, Déplacer, Échelle, Symétrie) ; allumage plus visible (fond bleu plein, aussi pour le ruban PLAN).
 - **Test** : `test_sk_decalage_outil` (17 contrôles : chaîne tangente de l'oblong et coins vifs du rectangle, Ctrl+clic, double-clic, aperçu sans écriture, côté proposé R8 / inversé R2, clic de côté, deux côtés R3 + R7 et deux cotes, outil resté actif, cercle de construction décalé en vrai cercle, Échap). `test_sk_offset_contraintes`, `test_sk_offset_joints` et `test_sk_offset_projetee` inchangés et verts. Vérifié au navigateur (oblong + rectangle + cercle de construction, puis Extrusion et Congé allumés dans le ruban). Parcours FAO et CACHE_VER inchangés.
+
+**632 versions**, de `2026-09-28b` à `V0.79.1` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
+
+## V0.80.1 - Esquisse : les arêtes projetées sur un corps importé ou dérivé ne changent plus à la réouverture
+
+- **Demande** : Fred, 10/11 : « dernière esquisse, Esquisse 6, j'avais choisi des arêtes et à la réouverture du fichier, les 4 arêtes choisies ont changé ! Cela ne devait plus arriver ! » (pièce de son PLM dont la cavité vient d'un corps dérivé d'un autre fichier).
+- **Cause** : à l'ouverture, le premier rejeu tourne AVANT la restauration du STEP de l'import (`importRestorePending`, lancé après) : le solide affiché n'a pas le corps dérivé (« STEP en cours de restauration », soustraction « corps outil vide »). Les projetées posées sur ses arêtes ne les trouvaient pas et se raccrochaient à l'arête la plus proche du reste de la pièce (bord du bloc, poches) ; leur milieu mémorisé était remplacé, la source était perdue pour de bon. Le rejeu suivant, STEP revenu, partait aussi de ce solide incomplet (mise à jour des projections AVANT le rejeu, sur le solide affiché). Des projetées enregistrées juste après leur création n'ont que le milieu de leur arête, pas encore son nom : rien ne les ramenait.
+- **Correctif** (`src/50-esquisse-1`, `src/20-70`) : `projImportsEnAttente` — tant qu'un import (STEP, STL, corps dérivé) attend sa géométrie, les projections ne sont pas suivies ; le solide affiché calculé pendant cette attente est marqué `incomplet` et ses arêtes ne servent pas à raccrocher les projetées ; aucune liste d'arêtes n'est mémorisée sans l'import. Le rejeu lancé par la restauration du STEP les met à jour, sur les bonnes arêtes. Un import dont la source manque fige ses projetées (rien n'est raccroché ailleurs).
+- **Test** : `test_projection_import_ouverture` (bloc STEP + bloc dessiné dans le même corps, projetée sur l'arête du STEP enregistrée sans nom, réouverture complète comme l'appli : même arête, nommée sur l'import, rien ne bouge au rejeu suivant). Sur V0.80.0 : 4 contrôles en échec, la projetée saute sur le bloc dessiné. Vérifié sur la pièce de Fred (copie hors dépôt) : les 4 arêtes de l'esquisse restent celles choisies. Parcours FAO et CACHE_VER inchangés.

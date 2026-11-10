@@ -1046,6 +1046,9 @@ function occRebuild(){
       });
       if(!bodies.some(b=>b.kind==='body'))faceEl.textContent+=(faceEl.textContent?'\n':'')+'Solide exact vide (tout a été découpé).';
       if(FR.shape){occLive={shape:FR.shape,shapeFao:FR.shapeFao||null,preThr:FR.preThr||[]};FR.shape=null;FR.shapeFao=null;FR.preThr=null;} // conservé pour le picking d'arêtes
+      // V0.79.1 : solide calculé SANS un import encore en restauration (ouverture) : ses arêtes ne
+      // servent pas à raccrocher les projetées (50-esquisse-1, projEdgesFor)
+      if(occLive)try{occLive.incomplet=typeof projImportsEnAttente==='function'&&projImportsEnAttente();}catch(err){}
       try{faoFacesSuivre();}catch(err){}
     }
     FR.ghostShapes.forEach((gh,i)=>{

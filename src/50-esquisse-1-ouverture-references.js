@@ -276,6 +276,7 @@ let _projEdgeCache=null;
 // l'esquisse — un préfixe inchangé redonne les mêmes arêtes sans rejouer le solide.
 const _projEdgePersist=new Map();
 function projPrefixSig(idx){
+  if(projImportsEnAttente())return null; // solide sans l'import : jamais mémorisé
   try{const F=(doc.features||[]).filter(f=>f.visible!==false).slice(0,idx);let s=(typeof occSkipFeat!=='undefined'&&occSkipFeat)||'';for(const f of F)s+=featSig(f)+';';return s;}catch(e){return null;}
 }
 function projEdgesFor(sk){
@@ -287,6 +288,7 @@ function projEdgesFor(sk){
   const pk=key==='live'?null:projPrefixSig(idx);
   if(pk!=null&&_projEdgePersist.has(pk)){const ed=_projEdgePersist.get(pk);if(_projEdgeCache)_projEdgeCache.set(key,ed);return ed;}
   let edges=null;
+  if(key==='live'&&occLive.incomplet)return null; // solide affiché calculé sans un import (ouverture)
   if(key==='live'){try{edges=nomsSurAretes(occLive.shape,occListEdges(occLive.shape));}catch(e){edges=null;}}
   else{
     let FR=null;
@@ -386,6 +388,7 @@ function projPreferMid(sk,e,EO){
 }
 function updateAssociativeProjections(sk){
   if(!sk||!sk.entities) return false;
+  if(projImportsEnAttente())return false; // géométrie d'un import pas encore rejouée (ci-dessous)
   const own=!_projEdgeCache;if(own)_projEdgeCache=new Map(); // cache local si appel isolé
   try{return updateAssociativeProjections0(sk);}finally{if(own)_projEdgeCache=null;}
 }
@@ -465,9 +468,20 @@ function updateAssociativeProjections0(sk){
   if(changed) try{solveSketch(sk);}catch(e){}
   return changed;
 }
+// Imports (STEP, STL, corps dérivés) dont la géométrie n'est pas encore là : à l'ouverture, le
+// premier rejeu (deserialise) tourne AVANT importRestorePending. Les arêtes vues par les esquisses
+// sont alors celles du solide SANS l'import : les projetées posées sur l'import se raccrochaient à
+// l'arête la plus proche du reste de la pièce et oubliaient leur source — rouvrir un fichier à
+// corps dérivé changeait les arêtes choisies (retour du 10/11/2026, Esquisse 6 sur face). On attend
+// la géométrie : le rejeu lancé par importRestorePending met les projections à jour.
+function projImportsEnAttente(){
+  if(typeof importGeom==='undefined')return false;
+  return (doc.features||[]).some(f=>f&&f.type==='import'&&f.visible!==false&&!f._mesh&&!importGeom.has(f.id)&&f.src&&f.src.key);
+}
 function updateAllProjections(){
   // true = au moins une esquisse a bougé → le solide doit être rejoué (projRefreshRerun).
   let changed=false;
+  if(projImportsEnAttente())return false;
   const own=!_projEdgeCache;if(own)_projEdgeCache=new Map(); // une lecture par fonction consommatrice pour TOUTE la passe
   try{
     // 2026-10-16-003 : ordre de la TIMELINE (fonction consommatrice croissante). Quand une
