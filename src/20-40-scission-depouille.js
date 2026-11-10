@@ -473,10 +473,11 @@ function occSharpEdges(shape){
               // pcurve de l'arête dans chaque face → UV → normale (SLProps) à 3 stations
               // (25/50/75 %) ; dès QU'UN échantillon dépasse le seuil, on garde « vive »
               // (test MAX : un congé avec raccord non tangent quelque part reste noir).
+              let rg=null; // normales mesurées d'une arête « vive » pour OCCT mais tangente (V0.83.0 : mise en plan)
               if(sharp&&fl.length>=2){
                 // le drapeau OCCT dit « vive » : on le MET À L'ÉPREUVE du point de
                 // vue géométrique avant de l'accepter (toutes les paires de faces).
-                let mesure=false,maxA=0;
+                let mesure=false,maxA=0;const nrm=[];
                 test_paires:
                 for(let i=0;i<fl.length;i++){
                   for(let j=i+1;j<fl.length;j++){
@@ -493,7 +494,7 @@ function occSharpEdges(shape){
                         bin.push(q1);bin.push(q2);
                         const n1=occSurfNormalAt(s1,q1.X(),q1.Y()),n2=occSurfNormalAt(s2,q2.X(),q2.Y());
                         if(!n1||!n2){mesure=false;break test_paires;} // mesure indisponible : verdict OCCT conservé
-                        mesure=true;
+                        mesure=true;if(i===0&&j===1)nrm.push(n1);
                         const d=(n1[0]*n2[0]+n1[1]*n2[1]+n1[2]*n2[2])/(Math.hypot(n1[0],n1[1],n1[2])||1)/(Math.hypot(n2[0],n2[1],n2[2])||1);
                         const th=Math.acos(Math.max(-1,Math.min(1,d)))*180/Math.PI;
                         const dev=Math.min(th,180-th);
@@ -502,11 +503,12 @@ function occSharpEdges(shape){
                     }catch(err){mesure=false;break test_paires;}
                   }
                 }
-                if(mesure&&maxA<3)sharp=false; // G1 confirmé sur toute l'arête : TANGENTE (grise)
+                if(mesure&&maxA<3){sharp=false;rg=nrm;} // G1 confirmé sur toute l'arête : TANGENTE (grise)
               }
               const cut=!sharp&&onC;
               const E=cut?{mid,pts:occCurvePts(ad,u0,u1),len:s.len,sharp:true,split:true}:{mid,pts:occCurvePts(ad,u0,u1),len:s.len,sharp};
               {const Pt=new occt.gp_Pnt_1();bin.push(Pt);E.ta=occBoutsTangents(ad,u0,u1,Pt);}
+              if(rg&&!cut)E.rg=rg; // le HLR d'OCCT la croit vive : la mise en plan la reclasse (mepHlrTanIdx)
               if(fl.length)E.fs=fl.slice(); // V0.23.8 : faces voisines (ordinaux) → pièce d'un STEP multi-corps
               out.push(E);
             }

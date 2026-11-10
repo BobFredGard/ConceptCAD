@@ -8,7 +8,7 @@ sont sorties le 2026-09-30j.
 Code dans `src/` · livrable `fusion_mvp.html` (généré par `build.js`) · architecture et
 garde-fous en tête de `src/00-entete-et-outils.js`.
 
-**636 versions**, de `2026-09-28b` à `V0.82.0` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
+**637 versions**, de `2026-09-28b` à `V0.83.0` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
 comme dans le fichier d'origine.
 
 ---
@@ -7246,3 +7246,10 @@ Barquette ne perd plus son solide à la 107e modification, et sa mémoire ne mon
 - **Demande** : Fred, 10/11 : « Mise en plan : pouvoir tourner une vue de 90° dans un sens ou dans l'autre ».
 - **Ajout** (`src/98-mep-00-modele`, `98-mep-20-vues`, `98-mep-90-proprietes`) : ligne **Rotation** du panneau d'une vue, boutons **↺ 90°** et **↻ 90°** (toutes les vues sauf détail, qui suit sa mère, et DXF). Le papier tourne autour du centre de la vue : vue standard, caméra, projetée ou coupe → quarts de tour `v.rq` appliqués après sa base (`mepRotQ`, gardés au rejeu) ; auxiliaire → base enregistrée tournée. Tournent avec la vue : cotes (points, formes suivies, horizontale ↔ verticale du même côté, ordonnées X ↔ Y), axes manuels, coupes locales, lignes de coupe et arêtes d'auxiliaire des vues filles, cercles de détail et vues de détail. Les projections filles sont recalculées et reprennent leur place 1er angle. Ctrl+Z annule.
 - **Test** : `test_mep_rotation_vue` (↺ : base u' = v, v' = −u, centre fixe, 40 × 20 → 20 × 40, cotes et Ø suivent, valeurs inchangées, vue de dessus dessous et alignée ; ↻ et 4 × ↺ : retour exact ; projetée tournée gardée au rejeu) ; `tests/browser/mep-rotation.spec.cjs` (vrai noyau, vrais clics sur les deux boutons). Parcours FAO et CACHE_VER inchangés.
+
+## V0.83.0 - Mise en plan : arêtes tangentes grises comme dans la 3D
+
+- **Demande** : Fred, 10/11, barquette SIRAP-14-001 : « Pourquoi, alors que le 3D n'a que des arêtes de tangente grises, dans la mise en plan elles sont noires ? »
+- **Cause** : en « HLR exact OCCT » (réglage par défaut), le tri vives / tangentes vient du HLR du noyau, qui lit seulement le drapeau de continuité des arêtes. Un raccord tangent sans drapeau G1 (congé sur congé, surfaces B-spline cousues, coques) sort en arête vive, noire. La 3D (`occSharpEdges`) ne croit pas ce drapeau sur parole : elle mesure les normales des deux faces à 25, 50 et 75 % de l'arête et l'affiche grise sous 3°.
+- **Correctif** (`src/20-40-scission-depouille`, `98-mep-10-projection-hlr`) : `occSharpEdges` garde les normales mesurées des arêtes ainsi repêchées (`e.rg`). `mepHlrTanIdx` les indexe (une classification par forme, mémorisée) et chaque morceau d'arête vive du HLR posé dessus (0,05 mm) devient tangent : gris, ou caché pointillé, ou retiré si « Arêtes tangentielles » est décochée. Une arête de profil pour la vue (normale à moins de 7° du plan du papier) est le contour de la pièce : elle reste noire.
+- **Test** : `test_mep_tangentes_hlr` (pédale des Exemples, vrai noyau, vues face / dessus / droite comparées au drapeau OCCT seul : moins de noirs, autant de traits, même contour noir, plus aucun gris sans « Arêtes tangentielles »). Sur SIRAP-14-001 (copie hors dépôt) : vue de dessous 706 traits noirs → 166, coupe A 174 → 149, coupe B 208 → 158, contour et vraies arêtes vives toujours noirs. Parcours FAO et CACHE_VER inchangés.
