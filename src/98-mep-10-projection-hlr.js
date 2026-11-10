@@ -868,7 +868,54 @@
      visibles/cachées et projetées depuis la géométrie exacte. On ne refait
      donc ni test de profondeur ni découpe de segment : contrairement au HLR
      maillage, les contours de révolution et les occultations sont exacts. */
-  function mepHlrAddEdge(geo,added,view,shape,kind){
+  /* V0.83.0 : arêtes TANGENTES que le noyau croit vives. Le HLR d'OCCT lit seulement le drapeau
+     de continuité des arêtes : un raccord sans drapeau G1 (congé sur congé, surfaces B-spline
+     cousues, coques) sort en arête vive, noire, alors que la 3D (occSharpEdges) mesure les normales
+     des deux faces et l'affiche grise. Index des arêtes ainsi repêchées (e.rg = normales mesurées),
+     sauf celles qui sont de profil pour cette vue (normale ⟂ regard) : là, c'est le contour de la
+     pièce, il reste noir. */
+  const mepTanEdgeMemo=new WeakMap(); // forme → arêtes classées (une classification par forme)
+  function mepHlrTanIdx(view,shapes){
+    const C=2,grid=new Map();let n=0;
+    const d=mepNorm(view.dir);
+    (shapes||[]).forEach(sh=>{
+      if(!sh||typeof occSharpEdges!=='function')return;
+      let E=mepTanEdgeMemo.get(sh);
+      if(!E){try{E=occSharpEdges(sh)||[];}catch(e){E=[];}mepTanEdgeMemo.set(sh,E);}
+      E.forEach(e=>{
+        if(!e||e.sharp||!e.rg||!e.rg.length||!e.pts||e.pts.length<2)return;
+        if(e.rg.some(q=>Math.abs(mepDot(q,d))/(Math.hypot(q[0],q[1],q[2])||1)<0.12))return; // de profil : contour
+        const P=e.pts.map(p=>(p&&typeof p.x==='number')?[p.x,p.y,p.z]:p).filter(Boolean);
+        for(let i=0;i+1<P.length;i++){
+          const A=P[i],B=P[i+1],seg=[A,B];n++;
+          const lo=[0,1,2].map(k=>Math.floor((Math.min(A[k],B[k])-0.1)/C)),hi=[0,1,2].map(k=>Math.floor((Math.max(A[k],B[k])+0.1)/C));
+          for(let x=lo[0];x<=hi[0];x++)for(let y=lo[1];y<=hi[1];y++)for(let z=lo[2];z<=hi[2];z++){
+            const k=x+','+y+','+z;let a=grid.get(k);if(!a)grid.set(k,a=[]);a.push(seg);
+          }
+        }
+      });
+    });
+    if(!n)return null;
+    const near=p=>{
+      const a=grid.get(Math.floor(p[0]/C)+','+Math.floor(p[1]/C)+','+Math.floor(p[2]/C));if(!a)return false;
+      for(let m=0;m<a.length;m++){
+        const A=a[m][0],B=a[m][1],ux=B[0]-A[0],uy=B[1]-A[1],uz=B[2]-A[2],L2=ux*ux+uy*uy+uz*uz;
+        let t=L2>1e-12?((p[0]-A[0])*ux+(p[1]-A[1])*uy+(p[2]-A[2])*uz)/L2:0;t=t<0?0:t>1?1:t;
+        const dx=p[0]-A[0]-ux*t,dy=p[1]-A[1]-uy*t,dz=p[2]-A[2]-uz*t;
+        if(dx*dx+dy*dy+dz*dz<0.0025)return true; // 0,05 mm
+      }
+      return false;
+    };
+    // un morceau d'arête du HLR est tangent si ses points (bouts exclus) sont tous sur une arête repêchée
+    return pts=>{
+      const k=pts.length;if(k<2)return false;
+      const probe=k===2?[[(pts[0][0]+pts[1][0])/2,(pts[0][1]+pts[1][1])/2,(pts[0][2]+pts[1][2])/2]]:pts.slice(1,-1);
+      const step=Math.max(1,Math.floor(probe.length/5));
+      for(let i=0;i<probe.length;i+=step)if(!near(probe[i]))return false;
+      return true;
+    };
+  }
+  function mepHlrAddEdge(geo,added,view,shape,kind,tan){
     if(!shape)return 0;
     let n=0;
     const bin=[];
@@ -882,7 +929,10 @@
           const u0=ad.FirstParameter(),u1=ad.LastParameter();
           if(u1>u0){
             const pts=occCurvePts(ad,u0,u1,0.02,400);
-            if(pts&&pts.length>1){
+            let kd=kind;
+            if(tan&&pts&&pts.length>1&&tan.test(pts))kd=tan.kind; // tangente que le noyau croit vive
+            if(kd&&pts&&pts.length>1){
+              const kind=kd;
               const lp=pts.map(p=>[mepDot(p,view.u),mepDot(p,view.v)]);
               const wp=pts.map(p=>mepDot(p,view.dir)); // profondeur (vers l'observateur) : plan d'une coupe locale (V0.23.7)
               const cir=mepFitCircle(lp);
@@ -934,11 +984,14 @@
       const mode=view.mode||'hide';
       const kindV=view.section?'sect':'sharp';
       let n=0;
-      n+=mepHlrAddEdge(geo,added,view,hlr.GetCompoundOf3dEdges(T.HLRBRep_Sharp,true,true),kindV);
+      const tanTest=mepHlrTanIdx(view,shapes);
+      const tanV=tanTest?{test:tanTest,kind:view.tangent?(view.section?'sect':'tangent'):null}:null;
+      const tanH=tanTest?{test:tanTest,kind:view.tangent?'hidden':null}:null;
+      n+=mepHlrAddEdge(geo,added,view,hlr.GetCompoundOf3dEdges(T.HLRBRep_Sharp,true,true),kindV,tanV);
       n+=mepHlrAddEdge(geo,added,view,hlr.GetCompoundOf3dEdges(T.HLRBRep_OutLine,true,true),kindV);
       if(view.tangent)n+=mepHlrAddEdge(geo,added,view,hlr.GetCompoundOf3dEdges(T.HLRBRep_Rg1Line,true,true),view.section?'sect':'tangent');
       if(mode==='dash'){
-        n+=mepHlrAddEdge(geo,added,view,hlr.GetCompoundOf3dEdges(T.HLRBRep_Sharp,false,true),'hidden');
+        n+=mepHlrAddEdge(geo,added,view,hlr.GetCompoundOf3dEdges(T.HLRBRep_Sharp,false,true),'hidden',tanH);
         n+=mepHlrAddEdge(geo,added,view,hlr.GetCompoundOf3dEdges(T.HLRBRep_OutLine,false,true),'hidden');
         if(view.tangent)n+=mepHlrAddEdge(geo,added,view,hlr.GetCompoundOf3dEdges(T.HLRBRep_Rg1Line,false,true),'hidden');
       }

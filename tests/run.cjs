@@ -44,6 +44,7 @@ const SUITES = [
   "test_apercu_edition",
   "test_conge_reel",
   "test_conge_sur_conge",
+  "test_mep_tangentes_hlr",
   "test_hote_oriphelin",
   "test_hote_face_deplacee",
   "test_fusion_miettes",
