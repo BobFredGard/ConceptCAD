@@ -204,6 +204,11 @@ function renderProps(){
         repGenChildren(f);markDirty();rebuild();renderTree();refreshParts();
       },function(){majEntete();},f));
       const applyCfg=()=>{repGenChildren(f);markDirty();rebuild();renderTree();renderProps();refreshParts();};
+      // ✂ exemplaires à enlever (repSkipFill) : la case reste en place, le panneau se refait après le clic
+      const skipUI=()=>p.appendChild(repSkipFill(document.createElement('div'),f,v=>{
+        docPushUndo('exemplaires enlevés de « '+f.name+' »');if(v)f.skip=v;else delete f.skip;
+        repHoverRemove();setTimeout(applyCfg,0);
+      },()=>(f.base||[]).slice()));
       // 🎯 / ⇄ sur la LIGNE de l'axe qu'ils règlent (et non en bas du panneau)
       const icoBtns=(row,list)=>{list.forEach(([ic,tip,fn])=>{const b=document.createElement('button');b.className='mini repDirBtn';b.textContent=ic;b.title=tip;b.style.cssText='padding:1px 6px;margin-left:4px;flex:none';b.onclick=fn;row.appendChild(b);});return row;};
       const pickTip='Prendre la direction de la sélection dans la vue : arête droite (sa direction), cercle ou arc (son axe), sinon face (sa normale)';
@@ -235,7 +240,7 @@ function renderProps(){
       if(f.mode!=='mir')pRow('Quantité',cnt);
       if(f.mode==='path'){
         repPathUI(f,f.id,(lab,ctl)=>pRow(lab,ctl),t=>pNote(t),fn=>{docPushUndo('profil de « '+f.name+' »');fn(f);applyCfg();});
-        visDel(f);
+        skipUI();visDel(f);
         return;
       }
       const axOpts=['X','Y','Z','Face'].map(v=>[v,f.mode==='mir'?(v==='X'?'YZ':v==='Y'?'XZ':v==='Z'?'XY':v):(v==='Face'?'Face / arête':v)]);
@@ -289,6 +294,7 @@ function renderProps(){
         inp.addEventListener('change',()=>{f.angle=parseFloat(String(inp.value).replace(',','.'))||360;applyCfg();});
         pRow('Angle total (°)',inp);
       }
+      if(f.mode!=='mir')skipUI();
       visDel(f);
       return;
     }

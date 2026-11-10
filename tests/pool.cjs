@@ -31,6 +31,9 @@ const PARTIES = {
   test_noms_barquette: ['a', 'b', 'c', 'd', 'e'],
   test_engrenages: ['a', 'b'],
 };
+// Suites très longues qui ne tournent QUE sur un cœur P, avec un délai à elles (ms) : sur un cœur E,
+// test_barquette_120 (~950 s sur P) dépassait les 20 min et bloquait chaque cpt depuis le 09/11.
+const SUR_P = { test_barquette_120: 40 * 60 * 1000 };
 const DUREES = path.join(__dirname, '.durees.json');
 const sec = ms => (ms / 1000).toFixed(1).replace('.', ',') + ' s';
 
@@ -76,13 +79,16 @@ async function pool(SUITES, { titre, timeout }) {
   // tard, mais plus rapide) ne finirait avant celui-ci ; à défaut, la plus courte.
   function choisir(w) {
     const now = Date.now();
+    const interdit = e => !w.P && pcores && SUR_P[e.split(':')[0]] && ouvriers.some(o => o.P);
     for (let i = 0; i < file.length; i++) {
+      if (interdit(file[i])) continue;
       const d = est(file[i]);
       if (!isFinite(d)) return file.splice(i, 1)[0];
       const f = now + d * w.vit;
       if (ouvriers.every(o => o === w || Math.max(o.libre, now) + d * o.vit >= f - 1)) return file.splice(i, 1)[0];
     }
-    return file.pop();
+    for (let i = file.length - 1; i >= 0; i--) if (!interdit(file[i])) return file.splice(i, 1)[0];
+    return null; // ne restent que des suites réservées aux cœurs P : cet ouvrier E s'arrête
   }
   function lancer(e, w) {
     return new Promise(resolve => {
@@ -92,11 +98,13 @@ async function pool(SUITES, { titre, timeout }) {
       const p = lancerProc(path.join(__dirname, s + '.cjs'), partie ? [partie] : [], w.aff);
       p.stdout.on('data', d => sortie.push(d));
       p.stderr.on('data', d => sortie.push(d));
-      const minuterie = setTimeout(() => { sortie.push(Buffer.from('\n✗ délai dépassé (' + sec(timeout) + ')\n')); tuer(p, w.aff); }, timeout);
+      const delai = SUR_P[s] || timeout;
+      let coupe = false;
+      const minuterie = setTimeout(() => { coupe = true; sortie.push(Buffer.from('\n✗ délai dépassé (' + sec(delai) + ')\n')); tuer(p, w.aff); }, delai);
       p.on('close', code => {
         clearTimeout(minuterie);
         const ms = Date.now() - debut, vert = code === 0;
-        res[e] = { vert, ms, eq: ms / w.vit, P: w.P };
+        res[e] = { vert, ms, eq: ms / w.vit, P: w.P, coupe };
         w.libre = Date.now();
         fini++;
         if (!vert || VERBOSE) {
@@ -120,7 +128,9 @@ async function pool(SUITES, { titre, timeout }) {
   const cumul = TACHES.reduce((n, e) => n + res[e].ms, 0);
   // durées fusionnées avec celles déjà connues : la suite rapide n'efface pas celles de la complète
   const durees = Object.assign({}, anciennes);
-  TACHES.forEach(e => { durees[e] = Math.round(res[e].eq); });
+  // une suite coupée par le délai a duré PLUS que mesuré : ne jamais faire baisser son estimation
+  // (sinon elle passait pour plus courte, partait sur un cœur E et se faisait couper de nouveau)
+  TACHES.forEach(e => { durees[e] = res[e].coupe ? Math.max(Math.round(res[e].eq), anciennes[e] || 0) : Math.round(res[e].eq); });
   try { fs.writeFileSync(DUREES, JSON.stringify(durees, null, 1)); } catch (e) { console.log('(durées non enregistrées : ' + e.message + ')'); }
   if (pcores && C) { // écart P / E appris : dernière durée de chaque suite sur P et sur E
     const mP = C.mesP || {}, mE = C.mesE || {};

@@ -659,6 +659,7 @@ function animate(){
   try{triadUpdateAll();}catch(e){}
   try{cgPaintIfNeeded();}catch(e){} // construction : la surbrillance suit la sélection
   try{if(typeof extDynTick==='function')extDynTick();}catch(e){} // extrusion dynamique : flèche et cote (70)
+  try{if(typeof rs3Tick==='function')rs3Tick();}catch(e){} // ✂ cases « enlever » sous chaque copie d'une répétition (40-45)
   try{if(typeof faoPoseSync==='function')faoPoseSync();}catch(e){}
   try{floorFollowTick();}catch(e){} // le sol suit le brut / les corps affichés (V0.23.12)
   try{if(typeof faoFaceHlSync==='function')faoFaceHlSync();}catch(e){} // faces bleues / rouges de l'op sélectionnée

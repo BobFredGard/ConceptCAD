@@ -47,6 +47,7 @@ function applyRepPattern(){
     dir2:repMode.type==='lin'&&repMode.lin2?repMode.dir2:undefined,copies2:repMode.type==='lin'&&repMode.lin2?repMaxCopies(repMode.copies2):undefined,
     dist2:repMode.type==='lin'&&repMode.lin2?(+repMode.dist2||0):undefined,
     op:repMode.op==='new'?'new':undefined,
+    skip:repMode.type!=='mir'&&Array.isArray(repMode.skip)&&repMode.skip.length?repMode.skip.slice():undefined,
     base:base.map(f=>f.id),children:[],visible:true};
   if(repMode.type==='path'){
     if(!repMode.path||!repMode.path.sk){faceEl.textContent='Répétition suivant un profil : choisissez l’esquisse guide.';return;}
@@ -129,6 +130,53 @@ function repPathUI(c,infoId,row,note,changed){
   const t=repPathNote({id:infoId});if(t)note(t);
   note('Courbe fermée : le départ est aussi l’arrivée — la dernière copie s’arrête un pas avant. Courbe ouverte : de l’extrémité de départ à l’autre. Quantité = original compris.');
 }
+// ✂ EXEMPLAIRES À ENLEVER (V0.81.0) : une case par copie (l'original, n° 1, n'en a pas) ; cochée =
+// copie enlevée (cfg.skip, voir repCellKeys). Survol = l'exemplaire en bleu dans la vue.
+// Partagé par la création (repMode) et l'édition. RÈGLE de repSourceList : le clic d'une case ne
+// reconstruit jamais la liste qui la porte (compteur mis à jour sur place).
+function repSkipFill(box,cfg,onToggle,ids){
+  repHoverRemove();
+  box.innerHTML='';box.className='repSkipBox';
+  const L=(cfg.mode||cfg.type)==='mir'?[]:repCellKeys(cfg);
+  box._sig=(cfg.mode||cfg.type)+'#'+L.map(x=>x.k).join('|');
+  if(!L.length){box.style.display='none';return box;}
+  box.style.display='';box.style.marginTop='6px';
+  const sk=repSkipSet(cfg);
+  const h=document.createElement('div');h.className='row';
+  const t=document.createElement('span');t.innerHTML='<b>✂ Exemplaires à enlever</b>';h.appendChild(t);
+  const cpt=document.createElement('span');cpt.className='note repSkipCpt';cpt.style.marginLeft='6px';h.appendChild(cpt);
+  box.appendChild(h);
+  const maj=()=>{const n=repSkipSet(cfg).size;cpt.textContent=n?n+' enlevé(s) sur '+L.length:'aucun';};maj();
+  const lst=document.createElement('div');lst.className='repSkipList';
+  lst.style.cssText='display:flex;flex-wrap:wrap;gap:2px 8px;max-height:130px;overflow:auto;margin-top:2px';
+  L.forEach(x=>{
+    const l=document.createElement('label');l.title=x.tip+' — cochez pour l’enlever ; survolez pour le voir en bleu dans la vue';
+    l.style.cssText='display:inline-flex;align-items:center;gap:2px;cursor:pointer;white-space:nowrap';
+    const c=document.createElement('input');c.type='checkbox';c.checked=sk.has(x.k);c.dataset.k=x.k;
+    c.onchange=()=>{
+      const S=repSkipSet(cfg);if(c.checked)S.add(x.k);else S.delete(x.k);
+      onToggle(S.size?[...S]:null);maj();
+    };
+    const n=document.createElement('span');n.textContent=x.label;
+    l.appendChild(c);l.appendChild(n);
+    l.onmouseenter=()=>repHoverShow(cfg,x.k,ids());l.onmouseleave=()=>repHoverRemove();
+    lst.appendChild(l);
+  });
+  box.appendChild(lst);
+  const no=document.createElement('span');no.className='note';
+  no.textContent=((cfg.mode||cfg.type)==='lin'&&cfg.lin2?'Colonne·rangée ; ':'')+'n° 1 = l’original (toujours gardé). Les autres exemplaires ne bougent pas.';
+  box.appendChild(no);
+  return box;
+}
+// Création : la liste suit la quantité, le pas, la courbe… (appelé par repPreviewUpdate) — refaite
+// seulement si la liste des exemplaires a changé, jamais pour un simple clic de case.
+function repSkipBoxSync(){
+  const b=document.querySelector('#props .repSkipBox');
+  if(!b||!repMode)return;
+  const L=repMode.type==='mir'?[]:repCellKeys(repMode);
+  if(b._sig===repMode.type+'#'+L.map(x=>x.k).join('|'))return;
+  repSkipFill(b,repMode,b._onT,b._ids);
+}
 function renderRepPanel(){
   const p=$('props');p.innerHTML='';if(!repMode)return;
   const h=document.createElement('div');h.innerHTML='<b>🔁 Répétition</b><br><span class="note">Choisissez les fonctions à répéter ci-dessous (cases à cocher). Dans l\'arbre, un <b>Ctrl+clic</b> sert désormais à la multi-suppression.<br>🔴 <b>Aperçu rouge</b> : les fonctions cochées, recopiées comme elles le seront (volume ajouté ou enlevé, faces des congés et dépouilles) — pour contrôler le plan, l\'axe ou le pas avant de valider. Une répétition cochée recopie son motif entier.</span>';p.appendChild(h);
@@ -209,6 +257,9 @@ function renderRepPanel(){
   // repSourceList). Aucun re-rendu ici : la case garde son état, seul l'arbre se
   // rafraîchit (le compteur se met à jour sur place, dans la liste).
   p.appendChild(repSourceList(repMode.feats,function(b){repMode.feats=b;},function(){renderTree();repPreviewUpdate();}));
+  {const sb=document.createElement('div');sb._onT=v=>{if(v)repMode.skip=v;else delete repMode.skip;repPreviewUpdate();};
+    sb._ids=()=>((repMode&&repMode.feats)||[]).filter(id=>repCanFeature(id)&&repAmont(id,null));
+    p.appendChild(repSkipFill(sb,repMode,sb._onT,sb._ids));}
   const r=document.createElement('div');r.className='row';r.style.marginTop='8px';const ok=document.createElement('button');ok.className='primary';ok.textContent='✔ Appliquer';ok.onclick=applyRepPattern;r.appendChild(ok);const q=document.createElement('button');q.textContent='Quitter';q.onclick=exitRepMode;r.appendChild(q);p.appendChild(r);
   repPreviewUpdate(); // V0.11.20 : les copies en rouge dès l'entrée et à chaque changement de type / plan / axe
 }

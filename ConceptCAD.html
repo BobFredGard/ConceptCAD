@@ -379,7 +379,7 @@ input[type=range]{accent-color:var(--primary);width:100%}
  * peut changer sans rien casser. CACHE_VER (parcours FAO) reste indépendant.
  */
 
-const APP_VER='V0.80.2';
+const APP_VER='V0.81.0';
 try{console.log('[ConceptCAD] version '+APP_VER);}catch(e){}
 try{var mfSv=document.getElementById('mfSplashVer');if(mfSv)mfSv.textContent=APP_VER;}catch(e){} // écran de démarrage
 
@@ -1633,6 +1633,7 @@ function animate(){
   try{triadUpdateAll();}catch(e){}
   try{cgPaintIfNeeded();}catch(e){} // construction : la surbrillance suit la sélection
   try{if(typeof extDynTick==='function')extDynTick();}catch(e){} // extrusion dynamique : flèche et cote (70)
+  try{if(typeof rs3Tick==='function')rs3Tick();}catch(e){} // ✂ cases « enlever » sous chaque copie d'une répétition (40-45)
   try{if(typeof faoPoseSync==='function')faoPoseSync();}catch(e){}
   try{floorFollowTick();}catch(e){} // le sol suit le brut / les corps affichés (V0.23.12)
   try{if(typeof faoFaceHlSync==='function')faoFaceHlSync();}catch(e){} // faces bleues / rouges de l'op sélectionnée
@@ -10945,38 +10946,56 @@ function exitRepMode(){try{pgPickStop();}catch(e){}repPreviewRemove();repPreview
    noyau : le maillage affiché est partagé, seule une matrice change par copie. */
 const REP_PREVIEW_MAX=60; // copies affichées au plus (une grille 20 × 20 n'a pas besoin de 400 fantômes)
 let repPrevGroup=null;
-function repPreviewXforms(cfg){
-  // Matrices 4×4 (ordre colonne, THREE.Matrix4.fromArray) des instances, même machinerie que
-  // repTransformPoint / repGenChildren : linéaire (grille comprise), circulaire, symétrie
-  // (double : image 1, image 2, image de l'image 1 ; plans identiques : image 1 seule).
-  // Fonction pure, testable sans THREE (test_repeat_apercu).
+function repXformsK(cfg,max,noSkip){
+  // Matrices 4×4 (ordre colonne, THREE.Matrix4.fromArray) des instances, avec la CLÉ de chaque
+  // exemplaire (repCellKeys) — même machinerie que repTransformPoint / repGenChildren : linéaire
+  // (grille comprise), circulaire, symétrie (double : image 1, image 2, image de l'image 1 ;
+  // plans identiques : image 1 seule). Exemplaires enlevés (rp.skip) omis, sauf noSkip.
   const c=cfg||repMode;if(!c)return [];
-  const t=c.mode||c.type,out=[];
+  const t=c.mode||c.type,out=[],sk=noSkip?new Set():repSkipSet(c);
+  const push=(k,M)=>{if(out.length<max&&!sk.has(k))out.push({k,M});};
   const trans=o=>[1,0,0,0, 0,1,0,0, 0,0,1,0, o[0],o[1],o[2],1];
   const lin3=(e0,e1,e2)=>[e0[0],e0[1],e0[2],0, e1[0],e1[1],e1[2],0, e2[0],e2[1],e2[2],0, 0,0,0,1];
   const mirM=n=>{const u=repNorm(n);const col=k=>{const e=[0,0,0];e[k]=1;return repAdd(e,repScale(u,-2*u[k]));};return lin3(col(0),col(1),col(2));};
   const mul=(A,B)=>{const R=new Array(16).fill(0);for(let i=0;i<4;i++)for(let j=0;j<4;j++){let s=0;for(let k=0;k<4;k++)s+=A[i+4*k]*B[k+4*j];R[i+4*j]=s;}return R;}; // A·B
-  if(t==='lin'){repLinCells(c).forEach(cell=>{if(out.length<REP_PREVIEW_MAX)out.push(trans(cell.off));});return out;}
+  if(t==='lin'){repLinCells(c).forEach(cell=>push(cell.i+','+cell.j,trans(cell.off)));return out;}
   if(t==='circ'){
     const n=repMaxCopies(c.copies),ax=repAxisVec(c),st=repCircStep(c);
-    for(let i=1;i<=n&&out.length<REP_PREVIEW_MAX;i++){const e=[[1,0,0],[0,1,0],[0,0,1]].map(v=>repRot(v,ax,st*i));out.push(lin3(e[0],e[1],e[2]));}
+    for(let i=1;i<=n&&out.length<max;i++){const e=[[1,0,0],[0,1,0],[0,0,1]].map(v=>repRot(v,ax,st*i));push(String(i),lin3(e[0],e[1],e[2]));}
     return out;
   }
   if(t==='path'){
-    repPathCells(Object.assign({},c,{id:c.id||'_rpEdit',copies:c.copies})).forEach(q=>{
-      if(out.length>=REP_PREVIEW_MAX)return;
+    repPathCells(Object.assign({},c,{id:c.id||'_rpEdit',copies:c.copies})).forEach((q,ix)=>{
       const e=[[1,0,0],[0,1,0],[0,0,1]].map(v=>repRot(v,q.N,q.ang)),r0=repRot(q.P0,q.N,q.ang);
-      const M=lin3(e[0],e[1],e[2]);M[12]=q.Pi[0]-r0[0];M[13]=q.Pi[1]-r0[1];M[14]=q.Pi[2]-r0[2];out.push(M);
+      const M=lin3(e[0],e[1],e[2]);M[12]=q.Pi[0]-r0[0];M[13]=q.Pi[1]-r0[1];M[14]=q.Pi[2]-r0[2];push(String(ix+1),M);
     });
     return out;
   }
-  const n1=repPlaneN(c),M1=mirM(n1);out.push(M1);
+  const n1=repPlaneN(c),M1=mirM(n1);out.push({k:'1',M:M1});
   if(c.plane2){
     const n2=c.planeN2?repNorm(c.planeN2):repPlaneN({plane:c.plane2});
-    if(Math.abs(repDot(n1,n2))<0.999){const M2=mirM(n2);out.push(M2);out.push(mul(M2,M1));}
+    if(Math.abs(repDot(n1,n2))<0.999){const M2=mirM(n2);out.push({k:'2',M:M2});out.push({k:'21',M:mul(M2,M1)});}
   }
   return out;
 }
+// Fonction pure, testable sans THREE (test_repeat_apercu) : matrices des copies affichées.
+function repPreviewXforms(cfg){return repXformsK(cfg,REP_PREVIEW_MAX).map(x=>x.M);}
+// EXEMPLAIRES ENLEVÉS (V0.81.0) : rp.skip = clés des exemplaires dont on ne veut pas (une copie qui
+// tombe mal) — « i,j » en linéaire (case de grille, j = 0 sur une ligne), « i » en circulaire et
+// suivant un profil. Les autres gardent leur numéro : rien ne se décale, les ids des copies restent
+// stables. Symétrie : pas de choix (une seule image, ou trois en double).
+function repCellKeys(c){
+  // [{k, label, n}] des copies, original exclu, dans l'ordre (n° 1 = l'original)
+  const t=c&&(c.mode||c.type);
+  if(t==='lin')return repLinCells(c).map(q=>({k:q.i+','+q.j,label:c.lin2?((q.i+1)+'·'+(q.j+1)):String(q.i+1),
+    tip:c.lin2?'Colonne '+(q.i+1)+' (1ʳᵉ direction), rangée '+(q.j+1)+' (2ᵉ direction)':'Exemplaire n° '+(q.i+1)+' (l’original est le n° 1)'}));
+  let n=0;
+  if(t==='circ')n=repMaxCopies(c.copies);
+  else if(t==='path'){try{n=repPathCells(Object.assign({},c,{id:c.id||'_rpEdit'})).length;}catch(e){n=0;}}
+  const out=[];for(let i=1;i<=n;i++)out.push({k:String(i),label:String(i+1),tip:'Exemplaire n° '+(i+1)+' (l’original est le n° 1)'});
+  return out;
+}
+function repSkipSet(c){return new Set(c&&(c.mode||c.type)!=='mir'&&Array.isArray(c.skip)?c.skip.map(String):[]);}
 function repPreviewRemove(){
   if(!repPrevGroup)return;
   try{
@@ -11109,8 +11128,8 @@ function repFeatPreviewGeos(f){
   });
   return out;
 }
-function repPreviewSources(){
-  const ids=((repMode&&repMode.feats)||[]).filter(id=>repCanFeature(id)&&repAmont(id,null));
+function repPreviewSources(only){
+  const ids=only?only.filter(id=>repCanFeature(id)):((repMode&&repMode.feats)||[]).filter(id=>repCanFeature(id)&&repAmont(id,null));
   const list=repExpandSources(ids.map(id=>doc.features.find(f=>f.id===id)).filter(Boolean)).filter(f=>f.visible!==false);
   let key='';
   try{key=list.map(f=>f.id+':'+featSig(f)).join('|')+'@'+bodyVisSig();}catch(e){key=list.map(f=>f.id).join('|');}
@@ -11123,6 +11142,7 @@ function repPreviewSources(){
 }
 function repPreviewUpdate(){
   repPreviewRemove();
+  try{if(typeof repSkipBoxSync==='function')repSkipBoxSync();}catch(e){}
   if(!repMode){repPreviewSrcFree();return;}
   if(typeof scene==='undefined'||!scene)return;
   let ms=[];
@@ -11145,6 +11165,29 @@ function repPreviewUpdate(){
     });
     scene.add(g);repPrevGroup=g;
   }catch(e){repPrevGroup=null;}
+}
+// Survol d'une case « exemplaire à enlever » : cet exemplaire seul, en BLEU, dans la vue — pour
+// savoir lequel on enlève (à la création comme à l'édition, même machinerie que l'aperçu rouge).
+let repHovGroup=null;
+function repHoverRemove(){
+  if(!repHovGroup)return;
+  try{repHovGroup.traverse(o=>{if(o.isMesh&&o.material)try{o.material.dispose();}catch(e){}});scene.remove(repHovGroup);}catch(e){}
+  repHovGroup=null;
+}
+function repHoverShow(cfg,key,ids){
+  repHoverRemove();
+  if(typeof scene==='undefined'||!scene||typeof THREE==='undefined')return;
+  let X=null;try{X=repXformsK(cfg,REPEAT_MAX,true).find(x=>x.k===key);}catch(e){}
+  if(!X)return;
+  let srcs=[];try{srcs=repPreviewSources(ids);}catch(e){}
+  if(!srcs.length)return;
+  try{
+    const g=new THREE.Group();g.name='repHover';
+    const mat=new THREE.MeshStandardMaterial({color:0x2f9bff,transparent:true,opacity:0.75,depthTest:false,depthWrite:false,side:THREE.DoubleSide,roughness:0.5});
+    srcs.forEach(it=>{const m=new THREE.Mesh(it.geo,mat);m.matrixAutoUpdate=false;m.matrix.fromArray(X.M);if(it.mw)m.matrix.multiply(it.mw);
+      m.raycast=()=>{};m.renderOrder=1000;m.userData.bid='rep_preview';g.add(m);});
+    scene.add(g);repHovGroup=g;
+  }catch(e){repHovGroup=null;}
 }
 function repTypeName(m,f){if(m==='mir'&&f&&f.plane2)return 'Symétrie double';if(m==='lin'&&f&&f.lin2)return 'Linéaire 2 directions';return m==='mir'?'Symétrie':m==='circ'?'Circulaire':m==='path'?'Suivant un profil':'Linéaire';}
 function repAxisVec(cfg){const c=cfg||repMode;const a=c&&c.axis;if(c&&c.dir)return repNorm(c.dir);if(a==='Y')return[0,1,0];if(a==='Z')return[0,0,1];return[1,0,0];}
@@ -11585,7 +11628,12 @@ function repGenChildren(rp){
     const cells=rp.mode==='lin'?repLinCells(rp):null;
     const pcs=rp.mode==='path'?repPathCells(rp):null;
     const N=cells?cells.length:pcs?pcs.length:n;
+    const skip=repSkipSet(rp);
+    if(N>0&&Array.isArray(rp.skip)){ // clés devenues sans objet (quantité réduite…) : oubliées
+      const ok=new Set(repCellKeys(rp).map(x=>x.k));rp.skip=rp.skip.map(String).filter(k=>ok.has(k));if(!rp.skip.length)delete rp.skip;
+    }
     for(let i=1;i<=N;i++){
+      if(skip.has(cells?cells[i-1].i+','+cells[i-1].j:String(i)))continue; // exemplaire enlevé (rp.skip)
       const skMap={},featMap={};
       const cfg=cells?Object.assign({},rp,{_off:cells[i-1].off}):pcs?Object.assign({},rp,{_pc:pcs[i-1]}):rp;
       base.forEach(f=>{
@@ -11645,7 +11693,7 @@ function repSyncForFeature(f,seen){
 }
 const repGenSigs=new Map(); // id de répétition -> signature des sources au dernier régénéré
 function repSourceSig(rp){
-  let s=JSON.stringify([rp.op||'join',rp.mode,rp.copies,rp.dist,rp.angle,rp.axis,rp.plane,rp.planeN,rp.plane2,rp.planeN2,rp.base,rp.dir,rp.lin2,rp.axis2,rp.dir2,rp.copies2,rp.dist2,rp.path,rp.pspace,rp.orient,rp.rev]);
+  let s=JSON.stringify([rp.op||'join',rp.mode,rp.copies,rp.dist,rp.angle,rp.axis,rp.plane,rp.planeN,rp.plane2,rp.planeN2,rp.base,rp.dir,rp.lin2,rp.axis2,rp.dir2,rp.copies2,rp.dist2,rp.path,rp.pspace,rp.orient,rp.rev,rp.skip]);
   if(rp.mode==='path')s+='#g'+pgSketchSig(rp.path&&doc.sketches.find(x=>x.id===rp.path.sk)); // géométrie de la courbe guide
   // motif développé : une répétition source change dès que ses instances changent
   const B=(rp.base||[]).map(id=>doc.features.find(x=>x.id===id));
@@ -12302,6 +12350,7 @@ function applyRepPattern(){
     dir2:repMode.type==='lin'&&repMode.lin2?repMode.dir2:undefined,copies2:repMode.type==='lin'&&repMode.lin2?repMaxCopies(repMode.copies2):undefined,
     dist2:repMode.type==='lin'&&repMode.lin2?(+repMode.dist2||0):undefined,
     op:repMode.op==='new'?'new':undefined,
+    skip:repMode.type!=='mir'&&Array.isArray(repMode.skip)&&repMode.skip.length?repMode.skip.slice():undefined,
     base:base.map(f=>f.id),children:[],visible:true};
   if(repMode.type==='path'){
     if(!repMode.path||!repMode.path.sk){faceEl.textContent='Répétition suivant un profil : choisissez l’esquisse guide.';return;}
@@ -12384,6 +12433,53 @@ function repPathUI(c,infoId,row,note,changed){
   const t=repPathNote({id:infoId});if(t)note(t);
   note('Courbe fermée : le départ est aussi l’arrivée — la dernière copie s’arrête un pas avant. Courbe ouverte : de l’extrémité de départ à l’autre. Quantité = original compris.');
 }
+// ✂ EXEMPLAIRES À ENLEVER (V0.81.0) : une case par copie (l'original, n° 1, n'en a pas) ; cochée =
+// copie enlevée (cfg.skip, voir repCellKeys). Survol = l'exemplaire en bleu dans la vue.
+// Partagé par la création (repMode) et l'édition. RÈGLE de repSourceList : le clic d'une case ne
+// reconstruit jamais la liste qui la porte (compteur mis à jour sur place).
+function repSkipFill(box,cfg,onToggle,ids){
+  repHoverRemove();
+  box.innerHTML='';box.className='repSkipBox';
+  const L=(cfg.mode||cfg.type)==='mir'?[]:repCellKeys(cfg);
+  box._sig=(cfg.mode||cfg.type)+'#'+L.map(x=>x.k).join('|');
+  if(!L.length){box.style.display='none';return box;}
+  box.style.display='';box.style.marginTop='6px';
+  const sk=repSkipSet(cfg);
+  const h=document.createElement('div');h.className='row';
+  const t=document.createElement('span');t.innerHTML='<b>✂ Exemplaires à enlever</b>';h.appendChild(t);
+  const cpt=document.createElement('span');cpt.className='note repSkipCpt';cpt.style.marginLeft='6px';h.appendChild(cpt);
+  box.appendChild(h);
+  const maj=()=>{const n=repSkipSet(cfg).size;cpt.textContent=n?n+' enlevé(s) sur '+L.length:'aucun';};maj();
+  const lst=document.createElement('div');lst.className='repSkipList';
+  lst.style.cssText='display:flex;flex-wrap:wrap;gap:2px 8px;max-height:130px;overflow:auto;margin-top:2px';
+  L.forEach(x=>{
+    const l=document.createElement('label');l.title=x.tip+' — cochez pour l’enlever ; survolez pour le voir en bleu dans la vue';
+    l.style.cssText='display:inline-flex;align-items:center;gap:2px;cursor:pointer;white-space:nowrap';
+    const c=document.createElement('input');c.type='checkbox';c.checked=sk.has(x.k);c.dataset.k=x.k;
+    c.onchange=()=>{
+      const S=repSkipSet(cfg);if(c.checked)S.add(x.k);else S.delete(x.k);
+      onToggle(S.size?[...S]:null);maj();
+    };
+    const n=document.createElement('span');n.textContent=x.label;
+    l.appendChild(c);l.appendChild(n);
+    l.onmouseenter=()=>repHoverShow(cfg,x.k,ids());l.onmouseleave=()=>repHoverRemove();
+    lst.appendChild(l);
+  });
+  box.appendChild(lst);
+  const no=document.createElement('span');no.className='note';
+  no.textContent=((cfg.mode||cfg.type)==='lin'&&cfg.lin2?'Colonne·rangée ; ':'')+'n° 1 = l’original (toujours gardé). Les autres exemplaires ne bougent pas.';
+  box.appendChild(no);
+  return box;
+}
+// Création : la liste suit la quantité, le pas, la courbe… (appelé par repPreviewUpdate) — refaite
+// seulement si la liste des exemplaires a changé, jamais pour un simple clic de case.
+function repSkipBoxSync(){
+  const b=document.querySelector('#props .repSkipBox');
+  if(!b||!repMode)return;
+  const L=repMode.type==='mir'?[]:repCellKeys(repMode);
+  if(b._sig===repMode.type+'#'+L.map(x=>x.k).join('|'))return;
+  repSkipFill(b,repMode,b._onT,b._ids);
+}
 function renderRepPanel(){
   const p=$('props');p.innerHTML='';if(!repMode)return;
   const h=document.createElement('div');h.innerHTML='<b>🔁 Répétition</b><br><span class="note">Choisissez les fonctions à répéter ci-dessous (cases à cocher). Dans l\'arbre, un <b>Ctrl+clic</b> sert désormais à la multi-suppression.<br>🔴 <b>Aperçu rouge</b> : les fonctions cochées, recopiées comme elles le seront (volume ajouté ou enlevé, faces des congés et dépouilles) — pour contrôler le plan, l\'axe ou le pas avant de valider. Une répétition cochée recopie son motif entier.</span>';p.appendChild(h);
@@ -12464,8 +12560,114 @@ function renderRepPanel(){
   // repSourceList). Aucun re-rendu ici : la case garde son état, seul l'arbre se
   // rafraîchit (le compteur se met à jour sur place, dans la liste).
   p.appendChild(repSourceList(repMode.feats,function(b){repMode.feats=b;},function(){renderTree();repPreviewUpdate();}));
+  {const sb=document.createElement('div');sb._onT=v=>{if(v)repMode.skip=v;else delete repMode.skip;repPreviewUpdate();};
+    sb._ids=()=>((repMode&&repMode.feats)||[]).filter(id=>repCanFeature(id)&&repAmont(id,null));
+    p.appendChild(repSkipFill(sb,repMode,sb._onT,sb._ids));}
   const r=document.createElement('div');r.className='row';r.style.marginTop='8px';const ok=document.createElement('button');ok.className='primary';ok.textContent='✔ Appliquer';ok.onclick=applyRepPattern;r.appendChild(ok);const q=document.createElement('button');q.textContent='Quitter';q.onclick=exitRepMode;r.appendChild(q);p.appendChild(r);
   repPreviewUpdate(); // V0.11.20 : les copies en rouge dès l'entrée et à chaque changement de type / plan / axe
+}
+
+/* ═══════════════ 40-45-repetition-cases-3d.js — 45 repetition cases 3d ═══════════════ */
+/* ✂ CASES DANS LA VUE 3D (V0.81.0) : sous chaque copie d'une répétition, une case à cocher pour
+   l'enlever — la même chose que la liste « Exemplaires à enlever » du panneau (repSkipFill), mais
+   posée sur la pièce : on voit tout de suite quelle copie tombe mal. Montrées quand une répétition
+   est sélectionnée (édition) ou en cours de création (repMode) ; cochée = copie enlevée (rp.skip),
+   elle reste à sa place pour pouvoir la remettre. Survol = la copie en bleu (repHoverShow).
+   Positions : boîte des sources (géométries de l'aperçu, repPreviewSources) transformée par la
+   matrice de chaque exemplaire (repXformsK, enlevés compris), projetée à l'écran à chaque image ;
+   la case se pose sous le point le plus bas de la boîte à l'écran. */
+let rs3={el:null,sig:'',boxes:null,t:0,items:new Map()};
+function rs3Ctx(){
+  // → {cfg, ids, edit} | null
+  const busy=(typeof skEdit!=='undefined'&&skEdit)||(typeof asmMode!=='undefined'&&asmMode==='asm');
+  if(busy)return null;
+  if(typeof repMode!=='undefined'&&repMode){
+    if(repMode.type==='mir')return null;
+    return {cfg:repMode,ids:()=>((repMode.feats)||[]).filter(id=>repCanFeature(id)&&repAmont(id,null)),edit:false};
+  }
+  if(typeof sel==='undefined'||!sel||sel.kind!=='feature')return null;
+  const f=(doc.features||[]).find(x=>x&&x.id===sel.id);
+  if(!f||f.type!=='repeat'||f.mode==='mir'||f.visible===false)return null;
+  return {cfg:f,ids:()=>(f.base||[]).slice(),edit:true};
+}
+function rs3Hide(){if(rs3.el)rs3.el.style.display='none';}
+function rs3Box(){
+  if(rs3.el)return rs3.el;
+  const d=document.createElement('div');d.className='repSkip3d';
+  d.style.cssText='position:fixed;left:0;top:0;width:0;height:0;z-index:35;display:none';
+  document.body.appendChild(d);rs3.el=d;return d;
+}
+function rs3Toggle(ctx,k,on){
+  const S=repSkipSet(ctx.cfg);if(on)S.add(k);else S.delete(k);
+  const v=S.size?[...S]:null;
+  repHoverRemove();
+  if(ctx.edit){
+    const f=ctx.cfg;docPushUndo('exemplaires enlevés de « '+f.name+' »');
+    if(v)f.skip=v;else delete f.skip;
+    repGenChildren(f);markDirty();rebuild();renderTree();renderProps();refreshParts();
+  }else{
+    if(v)repMode.skip=v;else delete repMode.skip;
+    // la liste du panneau suit (sans être refaite : ses cases changent sur place)
+    try{document.querySelectorAll('#props .repSkipList input').forEach(c=>{c.checked=!!v&&v.indexOf(c.dataset.k)>=0;});
+      const cp=document.querySelector('#props .repSkipCpt'),n=v?v.length:0,L=repCellKeys(repMode).length;
+      if(cp)cp.textContent=n?n+' enlevé(s) sur '+L:'aucun';}catch(e){}
+    repPreviewUpdate();
+  }
+  try{faceEl.textContent=on?'✂ Exemplaire enlevé — décochez sa case pour le remettre.':'Exemplaire remis.';}catch(e){}
+}
+function rs3Boxes(ctx){
+  // Boîtes monde de chaque exemplaire : [{k, label, tip, pts:[8 coins]}] (sources sans géométrie → [])
+  let srcs=[];try{srcs=repPreviewSources(ctx.ids());}catch(e){srcs=[];}
+  if(!srcs.length)return [];
+  const bb=new THREE.Box3(),tmp=new THREE.Box3();
+  srcs.forEach(it=>{try{if(!it.geo.boundingBox)it.geo.computeBoundingBox();tmp.copy(it.geo.boundingBox);if(it.mw)tmp.applyMatrix4(it.mw);bb.union(tmp);}catch(e){}});
+  if(bb.isEmpty())return [];
+  const C=[];for(let i=0;i<8;i++)C.push(new THREE.Vector3(i&1?bb.max.x:bb.min.x,i&2?bb.max.y:bb.min.y,i&4?bb.max.z:bb.min.z));
+  const lab=new Map(repCellKeys(ctx.cfg).map(x=>[x.k,x]));
+  const M=new THREE.Matrix4();
+  return repXformsK(ctx.cfg,REPEAT_MAX,true).map(X=>{M.fromArray(X.M);const L=lab.get(X.k)||{label:X.k,tip:''};
+    return {k:X.k,label:L.label,tip:L.tip,pts:C.map(p=>p.clone().applyMatrix4(M))};});
+}
+function rs3Tick(){
+  const ctx=rs3Ctx();
+  if(!ctx||typeof camera==='undefined'||!camera||typeof renderer==='undefined'){rs3Hide();return;}
+  // positions recalculées quand les réglages changent (et au plus toutes les 0,5 s : pièce rejouée)
+  const c=ctx.cfg,now=performance.now();
+  const sig=[ctx.edit?c.id:'new',c.mode||c.type,c.copies,c.dist,c.angle,c.axis,JSON.stringify(c.dir||0),c.lin2,c.axis2,JSON.stringify(c.dir2||0),c.copies2,c.dist2,JSON.stringify(c.path||0),c.pspace,c.orient,c.rev,ctx.ids().join(',')].join('|');
+  if(sig!==rs3.sig||now-rs3.t>500||!rs3.boxes){
+    const keysChanged=sig!==rs3.sig;
+    rs3.sig=sig;rs3.t=now;
+    try{rs3.boxes=rs3Boxes(ctx);}catch(e){rs3.boxes=[];}
+    if(keysChanged){rs3Box().innerHTML='';rs3.items.clear();}
+  }
+  const B=rs3.boxes;if(!B||!B.length){rs3Hide();return;}
+  const box=rs3Box();box.style.display='';
+  const r=renderer.domElement.getBoundingClientRect(),sk=repSkipSet(c),v=new THREE.Vector3(),seen=new Set();
+  B.forEach(b=>{
+    let it=rs3.items.get(b.k);
+    if(!it){
+      const w=document.createElement('label');w.className='repSkip3dCase';w.title=(b.tip||'')+' — cochez pour l’enlever, décochez pour le remettre';
+      w.style.cssText='position:fixed;transform:translate(-50%,0);display:flex;align-items:center;gap:3px;padding:1px 5px 1px 3px;border-radius:6px;font-size:11px;cursor:pointer;white-space:nowrap;background:var(--panel, #1e1e22);border:1px solid var(--line, #3a3a40);box-shadow:0 1px 6px rgba(0,0,0,.35);color:var(--fg, #ddd);user-select:none';
+      const i=document.createElement('input');i.type='checkbox';i.dataset.k=b.k;i.style.margin='0';
+      const n=document.createElement('span');n.textContent=b.label;
+      w.appendChild(i);w.appendChild(n);
+      i.onchange=()=>{const x=rs3Ctx();if(x)rs3Toggle(x,b.k,i.checked);};
+      ['pointerdown','mousedown','click','dblclick','wheel'].forEach(t=>w.addEventListener(t,e=>e.stopPropagation()));
+      w.onmouseenter=()=>{const x=rs3Ctx();if(x)try{repHoverShow(x.cfg,b.k,x.ids());}catch(e){}};
+      w.onmouseleave=()=>repHoverRemove();
+      box.appendChild(w);it={w,i,n};rs3.items.set(b.k,it);
+    }
+    seen.add(b.k);
+    // point le plus bas de la boîte à l'écran, centré en largeur
+    let xmin=1e9,xmax=-1e9,ymax=-1e9,ok=true;
+    b.pts.forEach(p=>{v.copy(p).project(camera);if(v.z>1||v.z<-1)ok=false;const x=(v.x+1)/2*r.width,y=(1-v.y)/2*r.height;if(x<xmin)xmin=x;if(x>xmax)xmax=x;if(y>ymax)ymax=y;});
+    const X=r.left+(xmin+xmax)/2,Y=r.top+ymax+4;
+    if(!ok||X<r.left||X>r.right||Y<r.top||Y>r.bottom-14){it.w.style.display='none';return;}
+    it.w.style.display='flex';it.w.style.left=Math.round(X)+'px';it.w.style.top=Math.round(Y)+'px';
+    const on=sk.has(b.k);if(it.i.checked!==on)it.i.checked=on;
+    it.w.style.borderColor=on?'#ff5a4e':'';it.n.style.textDecoration=on?'line-through':'';
+  });
+  rs3.items.forEach((it,k)=>{if(!seen.has(k)){it.w.remove();rs3.items.delete(k);}});
 }
 
 /* ═══════════════ 40-50-panneau-proprietes.js — 50 panneau proprietes ═══════════════ */
@@ -12675,6 +12877,11 @@ function renderProps(){
         repGenChildren(f);markDirty();rebuild();renderTree();refreshParts();
       },function(){majEntete();},f));
       const applyCfg=()=>{repGenChildren(f);markDirty();rebuild();renderTree();renderProps();refreshParts();};
+      // ✂ exemplaires à enlever (repSkipFill) : la case reste en place, le panneau se refait après le clic
+      const skipUI=()=>p.appendChild(repSkipFill(document.createElement('div'),f,v=>{
+        docPushUndo('exemplaires enlevés de « '+f.name+' »');if(v)f.skip=v;else delete f.skip;
+        repHoverRemove();setTimeout(applyCfg,0);
+      },()=>(f.base||[]).slice()));
       // 🎯 / ⇄ sur la LIGNE de l'axe qu'ils règlent (et non en bas du panneau)
       const icoBtns=(row,list)=>{list.forEach(([ic,tip,fn])=>{const b=document.createElement('button');b.className='mini repDirBtn';b.textContent=ic;b.title=tip;b.style.cssText='padding:1px 6px;margin-left:4px;flex:none';b.onclick=fn;row.appendChild(b);});return row;};
       const pickTip='Prendre la direction de la sélection dans la vue : arête droite (sa direction), cercle ou arc (son axe), sinon face (sa normale)';
@@ -12706,7 +12913,7 @@ function renderProps(){
       if(f.mode!=='mir')pRow('Quantité',cnt);
       if(f.mode==='path'){
         repPathUI(f,f.id,(lab,ctl)=>pRow(lab,ctl),t=>pNote(t),fn=>{docPushUndo('profil de « '+f.name+' »');fn(f);applyCfg();});
-        visDel(f);
+        skipUI();visDel(f);
         return;
       }
       const axOpts=['X','Y','Z','Face'].map(v=>[v,f.mode==='mir'?(v==='X'?'YZ':v==='Y'?'XZ':v==='Z'?'XY':v):(v==='Face'?'Face / arête':v)]);
@@ -12760,6 +12967,7 @@ function renderProps(){
         inp.addEventListener('change',()=>{f.angle=parseFloat(String(inp.value).replace(',','.'))||360;applyCfg();});
         pRow('Angle total (°)',inp);
       }
+      if(f.mode!=='mir')skipUI();
       visDel(f);
       return;
     }
