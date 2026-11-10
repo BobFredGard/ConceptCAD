@@ -496,15 +496,34 @@ function skDragComp(sk,seed){
   }
   return {pids:[...pids],ents:[...ents]};
 }
+// V0.83.0 : double-clic sur une cote — texte, ligne de cote, flèches, lignes de rappel ou d'attache.
+// Sur la géométrie elle-même, seuls le texte et la ligne de cote l'emportent (double-clic d'une ligne = sa cote).
+function skDimHitDbl(sk,px,py,wx,wy){
+  const d=hitDimLabel(sk,px,py)||hitDimLine(sk,px,py);if(d)return d;
+  if(nearestPoint(sk,wx,wy,SK_PT)||nearestEntity(sk,wx,wy,SK_PICK))return null;
+  return hitDimWitness(sk,px,py);
+}
+// Double-clic détecté à l'APPUI : le 1er clic sélectionne la cote et redessine l'esquisse, l'élément
+// sous la souris est remplacé et le navigateur perd souvent le dblclick (« les cotes s'éditent très mal »).
+let skDimPress=null;
+function skDimPressDbl(sk,e,px,py,wx,wy){
+  const id=skMulti(e)?null:skDimHitDbl(sk,px,py,wx,wy),now=Date.now(),lp=skDimPress;
+  if(id&&lp&&lp.id===id&&now-lp.t<500&&Math.hypot(px-lp.px,py-lp.py)<8){
+    skDimPress=null;try{e.preventDefault();}catch(_){}
+    skDimDrag=null;skSel={kind:'dim',id};skSelX=[];drawSketch2D();renderSkPanel();editDim(id);return true;
+  }
+  skDimPress=id?{id,t:now,px,py}:null;
+  return false;
+}
 svg.addEventListener('dblclick',e=>{
   if(!skEdit||skTool!=='select')return;e=skEv(e);
   const sk=skEdit;
   const r0=svg.getBoundingClientRect();
   const px=e.clientX-r0.left,py=e.clientY-r0.top;
   // 2026-10-16-001 : double-clic sur le texte, la ligne de cote ou ses flèches → édition
-  const dl=hitDimLabel(sk,px,py)||hitDimLine(sk,px,py);
-  if(dl){editDim(dl);return;}
   const[wx,wy]=evXY(e);
+  const dl=skDimHitDbl(sk,px,py,wx,wy);
+  if(dl){editDim(dl);return;}
   const ent=nearestEntity(sk,wx,wy,SK_PT);if(!ent)return;
   if(ent.t!=='line'&&ent.t!=='circle'&&ent.t!=='arc')return;
   const ex=sk.dims.find(d=>(d.type==='length'&&d.line===ent.id)||(d.ent===ent.id&&(d.type==='diameter'||d.type==='radius')));
@@ -533,6 +552,7 @@ svg.addEventListener('pointerdown',e=>{
   if(skDimEditInp){const r0=svg.getBoundingClientRect();if(skDimEditPick(sk,e.clientX-r0.left,e.clientY-r0.top)){e.preventDefault();return;}}
   if(skTool==='select'){
     const r0=svg.getBoundingClientRect(); // une étiquette de cote se déplace au glisser, s'édite au double-clic
+    if(skDimPressDbl(sk,e,e.clientX-r0.left,e.clientY-r0.top,wx,wy))return;
     const dl=hitDimLabel(sk,e.clientX-r0.left,e.clientY-r0.top);
     if(dl){const dd=dimById(sk,dl);skSel={kind:'dim',id:dl};skSelX=[];
       const tp=dimLabelPos(sk,dd)||{x:wx,y:wy}; // V0.11.23 : décalage de prise, le texte ne saute pas sous le curseur
@@ -659,7 +679,7 @@ svg.addEventListener('pointerdown',e=>{
     if(!skPendPt&&!skDimLine&&skDimRef===null){
       const r0=svg.getBoundingClientRect(),px=e.clientX-r0.left,py=e.clientY-r0.top;
       const onGeom=!!(nearestPoint(sk,wx,wy,SK_PT)||nearestEntity(sk,wx,wy,SK_PICK));
-      const dl=hitDimLabel(sk,px,py)||(onGeom?null:hitDimLine(sk,px,py));
+      const dl=hitDimLabel(sk,px,py)||(onGeom?null:(hitDimLine(sk,px,py)||hitDimWitness(sk,px,py)));
       if(dl){skSel={kind:'dim',id:dl};skSelX=[];renderSkPanel();editDim(dl);return;}
     }
     dimClick(wx,wy,skMulti(e));return;

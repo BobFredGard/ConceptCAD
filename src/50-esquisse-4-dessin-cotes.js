@@ -398,10 +398,23 @@ function rdText(d){
   return parDecor(d.id,d.ref?'('+t+')':t);
 }
 function rdTextW(str){return String(str).length*7.6+2;}
+// V0.83.0 : trait d'épaulement et texte d'une cote R/Ø calés sur l'écran AFFICHÉ. Le texte est remis
+// à l'endroit autour de son ancrage (skOrbUpright) mais le trait ne l'était pas : esquisse vue de dos,
+// texte d'un côté du coude et trait de l'autre (« les rayons sont toujours positionnés ainsi »).
+// Côté pris sur la direction AFFICHÉE de la ligne d'attache ; décalages en pixels affichés (I = J⁻¹).
+function rdScreen(L,tw){
+  const[kx,ky]=w2s(L.K.x,L.K.y);
+  let J=[1,0,0,1];try{if(typeof skOrbJ==='function'&&skOrbOn())J=skOrbJ(kx,ky);}catch(e){}
+  const det=J[0]*J[3]-J[1]*J[2];if(!isFinite(det)||Math.abs(det)<1e-9)J=[1,0,0,1];
+  const dt=J[0]*J[3]-J[1]*J[2],I=[J[3]/dt,-J[1]/dt,-J[2]/dt,J[0]/dt];
+  const ux=L.u.x,uy=-L.u.y,side=(J[0]*ux+J[1]*uy)>=0?1:-1; // côté vers lequel la ligne d'attache file À L'ÉCRAN
+  const at=(dx,dy)=>[kx+I[0]*dx+I[1]*dy,ky+I[2]*dx+I[3]*dy]; // décalage écran affiché → SVG normal
+  return{kx,ky,side,E:at(side*(tw+10),0),T:at(side*5,-4),C:at(side*(5+tw/2),-8)};
+}
 function rdDraw(sk,d,st){
   const L=rdLayout(sk,d);if(!L)return;
   const str=rdText(d),tw=rdTextW(str);
-  const[px,py]=w2s(L.P.x,L.P.y),[kx,ky]=w2s(L.K.x,L.K.y);
+  const[px,py]=w2s(L.P.x,L.P.y),R=rdScreen(L,tw),kx=R.kx,ky=R.ky;
   const ux=L.u.x,uy=-L.u.y; // repère écran (y vers le bas)
   if(d.type==='diameter'){
     const[qx,qy]=w2s(L.P2.x,L.P2.y);
@@ -411,9 +424,8 @@ function rdDraw(sk,d,st){
     skEl('line',{x1:px,y1:py,x2:kx,y2:ky,stroke:st,'stroke-width':1.2,'pointer-events':'none'});
     dimArrow(px,py,-ux,-uy,st); // flèche posée sur l'arc depuis l'extérieur
   }
-  const ex=kx+L.side*(tw+10);
-  skEl('line',{x1:kx,y1:ky,x2:ex,y2:ky,stroke:st,'stroke-width':1.2,'pointer-events':'none'}); // trait SOUS le texte
-  const t=skEl('text',{x:(kx+L.side*5).toFixed(1),y:(ky-4).toFixed(1),fill:st,'font-size':13,'font-weight':'bold',stroke:'#101012','stroke-width':3,'paint-order':'stroke','text-anchor':L.side>0?'start':'end',style:'cursor:move;pointer-events:all'});
+  skEl('line',{x1:kx,y1:ky,x2:R.E[0],y2:R.E[1],stroke:st,'stroke-width':1.2,'pointer-events':'none'}); // trait SOUS le texte
+  const t=skEl('text',{x:R.T[0].toFixed(1),y:R.T[1].toFixed(1),fill:st,'font-size':13,'font-weight':'bold',stroke:'#101012','stroke-width':3,'paint-order':'stroke','text-anchor':R.side>0?'start':'end',style:'cursor:move;pointer-events:all'});
   t.textContent=str;t.dataset.dim=d.id;
   t.addEventListener('dblclick',ev=>{ev.stopPropagation();editDim(d.id);});
 }
@@ -442,8 +454,9 @@ function dimLabelPos(sk,d){ // position monde de l'étiquette, décalage utilisa
   const P=sk.points,ox=d.ox||0,oy=d.oy||0;
   if(d.type==='length'||d.type==='distance'||d.type==='gap'||d.type==='distline'){const S=dimSeg(sk,d);if(!S)return null;
     return dimTextAt(S,d);}
-  if(d.type==='diameter'||d.type==='radius'){const L=rdLayout(sk,d);if(!L)return null;const s=skView.s||1,tw=rdTextW(rdText(d));
-    return{x:L.K.x+L.side*(5+tw/2)/s,y:L.K.y+8/s};} // centre du texte, posé sur le trait d'épaulement
+  if(d.type==='diameter'||d.type==='radius'){const L=rdLayout(sk,d);if(!L)return null;
+    const R=rdScreen(L,rdTextW(rdText(d))),c=s2w(R.C[0],R.C[1]);
+    return{x:c[0],y:c[1]};} // centre du texte, posé sur le trait d'épaulement (côté affiché)
   if(d.type==='angle'){const I=angleArcInfo(sk,d);if(!I)return null; // au milieu de l'arc, comme Fusion
     const am=I.a1+I.dd/2;return{x:I.V.x+I.rr*Math.cos(am)+ox,y:I.V.y+I.rr*Math.sin(am)+oy};}
   return null;
@@ -645,16 +658,75 @@ function dimArrow(x,y,ux,uy,st,size){ // pointe (x,y) écran, axe (ux,uy) écran
   skEl('path',{d:`M ${x.toFixed(1)} ${y.toFixed(1)} L ${(x-ux*size+bx).toFixed(1)} ${(y-uy*size+by).toFixed(1)} L ${(x-ux*size-bx).toFixed(1)} ${(y-uy*size-by).toFixed(1)} Z`,fill:st,stroke:'none','pointer-events':'none'});
 }
 let skDimTxtCol='#30d158';
+function skDimWitLin(S,off,over){ // bouts des 2 lignes de rappel d'une cote length/distance (monde)
+  const{A,B,nx,ny}=S,sg=off>=0?1:-1;
+  if(S.hv==='h'){ // cote horizontale : rappels verticaux
+    const sA2=S.cy>=A.y?1:-1,sB2=S.cy>=B.y?1:-1;
+    return{Aex:{x:A.x,y:S.cy+over*sA2},Bex:{x:B.x,y:S.cy+over*sB2}};
+  }
+  if(S.hv==='v'){ // cote verticale : rappels horizontaux
+    const sA2=S.cx>=A.x?1:-1,sB2=S.cx>=B.x?1:-1;
+    return{Aex:{x:S.cx+over*sA2,y:A.y},Bex:{x:S.cx+over*sB2,y:B.y}};
+  }
+  return{Aex:{x:A.x+nx*(off+over*sg),y:A.y+ny*(off+over*sg)},Bex:{x:B.x+nx*(off+over*sg),y:B.y+ny*(off+over*sg)}};
+}
+function skDimExtSeg(sk,L,T){ // prolongement d'une ligne cotée jusqu'au bout T de la cote : [E,F] monde, ou null
+  if(!L||L.t!=='line'||!T)return null;
+  const P=sk.points,A=P[L.p1],B=P[L.p2];if(!A||!B)return null;
+  const dx=B.x-A.x,dy=B.y-A.y,L2=dx*dx+dy*dy;if(L2<1e-12)return null;
+  const t=((T.x-A.x)*dx+(T.y-A.y)*dy)/L2;
+  if(t>=-1e-6&&t<=1+1e-6)return null;
+  const E=t<0?A:B,len=Math.sqrt(L2),ux=dx/len,uy=dy/len,sg=t<0?-1:1,ov=8/skView.s;
+  return[E,{x:A.x+dx*t+ux*sg*ov,y:A.y+dy*t+uy*sg*ov}];
+}
+// V0.83.0 : toutes les lignes d'une cote hors texte et ligne de cote — lignes de rappel, prolongements,
+// attache R/Ø — en segments ÉCRAN [x1,y1,x2,y2,geo] (geo = le 1er bout est sur la géométrie cotée).
+function skDimOtherSegs(sk,d){
+  const out=[],over=10/(skView.s||1);
+  const ws=(p,q,geo)=>{const[a,b]=w2s(p.x,p.y),[c,e]=w2s(q.x,q.y);out.push([a,b,c,e,!!geo]);};
+  const ext=(L,T)=>{const s=skDimExtSeg(sk,L,T);if(s)ws(s[0],s[1],true);};
+  try{
+    if(d.type==='length'||d.type==='distance'){const S=dimSeg(sk,d);if(!S)return out;
+      const off=(d.w!=null&&isFinite(d.w))?d.w:(d.type==='length'?5:0);
+      const W=skDimWitLin(S,off,over);ws(S.A,W.Aex,true);ws(S.B,W.Bex,true);}
+    else if(d.type==='distline'){const S=dimSeg(sk,d);if(!S)return out;
+      const dxs=S.b.x-S.a.x,dys=S.b.y-S.a.y,dl=Math.hypot(dxs,dys);if(dl<1e-9)return out;
+      const ux=dxs/dl,uy=dys/dl,off=(d.w!=null&&isFinite(d.w))?d.w:0;
+      if(Math.abs(off)>0.5){const sg=off>=0?1:-1;
+        ws(S.A,{x:S.A.x+S.nx*(off+over*sg),y:S.A.y+S.ny*(off+over*sg)},true);
+        ws(S.B,{x:S.B.x+S.nx*(off+over*sg),y:S.B.y+S.ny*(off+over*sg)},true);}
+      ws({x:S.a.x-ux*over,y:S.a.y-uy*over},S.a,false);ws(S.b,{x:S.b.x+ux*over,y:S.b.y+uy*over},false);
+      ext(entById(sk,d.line),S.b);}
+    else if(d.type==='gap'){const S=dimSeg(sk,d);if(!S)return out;
+      const dxs=S.b.x-S.a.x,dys=S.b.y-S.a.y,dl=Math.hypot(dxs,dys)||1,ux=dxs/dl,uy=dys/dl;
+      ws({x:S.a.x-ux*over,y:S.a.y-uy*over},S.a,false);ws(S.b,{x:S.b.x+ux*over,y:S.b.y+uy*over},false);
+      ext(entById(sk,d.a),S.a);ext(entById(sk,d.b),S.b);}
+    else if(d.type==='diameter'||d.type==='radius'){const L=rdLayout(sk,d);if(!L)return out;
+      const R=rdScreen(L,rdTextW(rdText(d)));
+      ws(d.type==='diameter'?L.P2:L.P,L.K,false);out.push([R.kx,R.ky,R.E[0],R.E[1],false]);}
+    else if(d.type==='angle'){const I=angleArcInfo(sk,d);if(!I)return out;
+      const p1={x:I.V.x+I.rr*Math.cos(I.a1),y:I.V.y+I.rr*Math.sin(I.a1)},p2={x:I.V.x+I.rr*Math.cos(I.a1+I.dd),y:I.V.y+I.rr*Math.sin(I.a1+I.dd)};
+      ext(entById(sk,d.a),p1);ext(entById(sk,d.b),p2);}
+  }catch(e){}
+  return out;
+}
+function hitDimWitness(sk,px,py){ // px,py pixels écran SVG → id de cote si le clic est sur une ligne de rappel / d'attache
+  let best=null,bd=6;
+  for(const d of (sk.dims||[])){
+    for(const s of skDimOtherSegs(sk,d)){
+      if(s[4]&&Math.hypot(px-s[0],py-s[1])<6)continue; // au pied, sur la géométrie : c'est la géométrie qu'on vise
+      const dd=distSeg(px,py,{x:s[0],y:s[1]},{x:s[2],y:s[3]});
+      if(dd<bd){bd=dd;best=d.id;}
+    }
+  }
+  return best;
+}
+function hitDimAny(sk,px,py){return hitDimLabel(sk,px,py)||hitDimLine(sk,px,py)||hitDimWitness(sk,px,py);}
 function skDimExt(sk,L,T,st){
   // Ligne d'attache : si le point T (bout de la cote) tombe HORS du segment L, la ligne
   // est prolongée depuis son extrémité la plus proche jusqu'au-delà de T.
-  if(!L||L.t!=='line'||!T)return;
-  const P=sk.points,A=P[L.p1],B=P[L.p2];if(!A||!B)return;
-  const dx=B.x-A.x,dy=B.y-A.y,L2=dx*dx+dy*dy;if(L2<1e-12)return;
-  const t=((T.x-A.x)*dx+(T.y-A.y)*dy)/L2;
-  if(t>=-1e-6&&t<=1+1e-6)return;
-  const E=t<0?A:B,len=Math.sqrt(L2),ux=dx/len,uy=dy/len,sg=t<0?-1:1,ov=8/skView.s;
-  const F={x:A.x+dx*t+ux*sg*ov,y:A.y+dy*t+uy*sg*ov};
+  const s=skDimExtSeg(sk,L,T);if(!s)return;
+  const E=s[0],F=s[1];
   const[a,b]=w2s(E.x,E.y),[c,e]=w2s(F.x,F.y);
   skEl('line',{x1:a,y1:b,x2:c,y2:e,stroke:st,'stroke-width':1,opacity:.85,'pointer-events':'none'});
 }
@@ -674,16 +746,7 @@ function drawSkDims(sk){
       const{A,B,nx,ny}=S,off=(d.w!=null&&isFinite(d.w))?d.w:(d.type==='length'?5:0);
       const sg=off>=0?1:-1;
       // 2 lignes de rappel (witness) : géométrie → au-delà de la ligne de cote
-      let Aex,Bex;
-      if(S.hv==='h'){ // cote horizontale : rappels verticaux
-        const sA2=S.cy>=A.y?1:-1,sB2=S.cy>=B.y?1:-1;
-        Aex={x:A.x,y:S.cy+over*sA2};Bex={x:B.x,y:S.cy+over*sB2};
-      }else if(S.hv==='v'){ // cote verticale : rappels horizontaux
-        const sA2=S.cx>=A.x?1:-1,sB2=S.cx>=B.x?1:-1;
-        Aex={x:S.cx+over*sA2,y:A.y};Bex={x:S.cx+over*sB2,y:B.y};
-      }else{
-        Aex={x:A.x+nx*(off+over*sg),y:A.y+ny*(off+over*sg)},Bex={x:B.x+nx*(off+over*sg),y:B.y+ny*(off+over*sg)};
-      }
+      const{Aex,Bex}=skDimWitLin(S,off,over);
       const[ax,ay]=w2s(A.x,A.y),[aex,aey]=w2s(Aex.x,Aex.y);
       const[bx2,by2]=w2s(B.x,B.y),[bex,bey]=w2s(Bex.x,Bex.y);
       skEl('line',{x1:ax,y1:ay,x2:aex,y2:aey,stroke:st,'stroke-width':1,opacity:.85,'pointer-events':'none'});
@@ -808,6 +871,8 @@ function skDimPlaceType(key){ // V0.11.23 : taper la valeur (ou Entrée) pendant
 }
 function editDim(id,init){
   const sk=skEdit;if(!sk)return;const d=(sk.dims||[]).find(x=>x.id===id);if(!d)return;
+  // V0.83.0 : double-clic déjà ouvert à l'appui — le dblclick natif qui suit ne rouvre pas la saisie
+  if(skDimEditInp&&skDimEditInp._dimId===id&&init==null&&Date.now()-(skDimEditInp._t0||0)<800){try{skDimEditInp.focus();}catch(e){}return skDimEditInp;}
   if(skDimEditInp){try{skDimEditInp._cancel();}catch(e){}} // une seule saisie à la fois
   if(d.ref){
     // cote de référence : redevient PILOTANTE si elle n'est plus en trop, sinon on explique
@@ -838,7 +903,7 @@ function editDim(id,init){
   inp._parFx=1;
   // 2026-10-16-001 : focus DIFFÉRÉ + blur ignoré 300 ms — le clic qui pose la cote
   // retirait le focus et validait aussitôt la saisie (« pas éditable de suite »).
-  const t0=Date.now();
+  const t0=Date.now();inp._t0=t0;
   // V0.11.23 : valeur tapée pendant la pose → elle remplace le texte, curseur à la fin
   const sel=()=>{if(init!=null){try{inp.setSelectionRange(inp.value.length,inp.value.length);}catch(e){}}else inp.select();};
   if(init!=null)inp.value=String(init);
