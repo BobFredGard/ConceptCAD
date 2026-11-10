@@ -11,7 +11,7 @@
 
 ![Support de pédale déportée R1200RT en alu anodisé rouge sur béton, lancer de rayons de l'atelier RENDU (2048 échantillons)](docs/captures/rendu-pedale.jpg)
 
-Le noyau géométrique exact est **OpenCascade 8 compilé en WebAssembly** par nos soins (recette reproductible dans `occt-build/`), en deux versions : **multicœur**, choisie toute seule quand le navigateur et le PC le permettent et écrite dans la barre d'état, et normale, sur un seul cœur, qui reste celle du fichier autonome. S'il n'est pas disponible, l'application bascule seule sur un moteur maillage (CSG). Version actuelle : **V0.86.0** (voir le [journal des modifications](CHANGELOG.md)).
+Le noyau géométrique exact est **OpenCascade 8 compilé en WebAssembly** par nos soins (recette reproductible dans `occt-build/`), en deux versions : **multicœur**, choisie toute seule quand le navigateur et le PC le permettent et écrite dans la barre d'état, et normale, sur un seul cœur, qui reste celle du fichier autonome. S'il n'est pas disponible, l'application bascule seule sur un moteur maillage (CSG). Version actuelle : **V0.87.0** (voir le [journal des modifications](CHANGELOG.md)).
 
 **Pas d'Internet sur le poste ?** La [version autonome](https://www.dropbox.com/scl/fi/sne7f5a9y8dr659b2xrow/ConceptCAD-autonome.html?rlkey=fgd0w1r5816ake50vxtd4fnuj&dl=0) tient en un seul fichier à télécharger, qui s'ouvre par double-clic (voir [Démarrage](#démarrage)).
 
@@ -183,6 +183,8 @@ Comme dans Fusion 360, **tout est composant** : le fichier est le composant raci
 - **Aimants** : bibliothèque d’aimants réels (disques, cylindres, cubes, pavés, anneaux, cônes tronqués, disques aimantés en travers, disques et pavés à visser à trous fraisés) avec leurs caractéristiques, montrés en deux moitiés : pôle nord rouge, pôle sud vert. Clic droit sur un aimant posé : afficher ou masquer ses lignes de champ 3D, calculées dans l’air ; avec plusieurs aimants posés, les lignes suivent leur champ additionné (attraction, répulsion).
 - **Composants liés** à un fichier du dossier de projets : édition sur place, mise à jour, conflits gérés.
 - **Dérivée** (bouton **🔗 Dériver**) : paramètres et corps d'un autre fichier du dossier de projets, qui suivent leur source quand elle change (lien à sens unique : la source n'est jamais réécrite). Un paramètre dérivé se modifie dans sa source ; un corps dérivé reste modifiable dans le fichier qui le reçoit, ses fonctions ajoutées survivent aux mises à jour, et il peut servir d'outil à soustraire avec **Combiner**.
+- **Paramètres dans les champs de l'assemblage** : Aligner, Placement et Répétition acceptent un paramètre ou une expression (`pas_SM`, `-L/2`) et **gardent le lien** : le paramètre change, la pièce se replace et la répétition se refait. Le lien est gardé dans le fichier.
+- **Ouverture rapide** : l'image mesurable de chaque pièce est gardée d'une ouverture à l'autre, aussi pour une pièce qui contient une forme importée ou dérivée ; une soustraction de corps dérivé est là dès le premier affichage.
 - **Aligner** un repère ou un **point d'accroche** (centre et points cardinaux d'une face, axe d'un cylindre, centre d'un cercle) sur un autre composant, de façon associative.
 - **Liaisons** : rigide, pivot, glissière, pivot glissant, plan, rotule, avec limites, curseurs et animation.
 - **Références entre composants** : faces, arêtes, sommets, plans et axes d'un autre composant servent de références, et suivent ses changements.
@@ -342,10 +344,10 @@ npx serve . -l 3000
 
 | Chemin | Rôle |
 |---|---|
-| `src/*.js` | **Les sources** : 176 fichiers concaténés dans l'ordre alphabétique (noyau, esquisse, fonctions 3D, assemblage, FAO découpée par domaine, mise en plan, rendu, interface téléphone `99-mobile*.js`). C'est ici qu'on travaille. |
+| `src/*.js` | **Les sources** : 177 fichiers concaténés dans l'ordre alphabétique (noyau, esquisse, fonctions 3D, assemblage, FAO découpée par domaine, mise en plan, rendu, interface téléphone `99-mobile*.js`). C'est ici qu'on travaille. |
 | `ConceptCAD.html` | **Livrable généré** par `node build.js`. On n'édite jamais son script à la main. |
 | `PostPro/` | Une fiche par machine (`siemens-630.js`, `siemens-1520.js`, `fagor-8065.js`). Nouvelle machine = copier une fiche, la modifier, `npm run build`. |
-| `tests/` | 310 suites Node lancées en parallèle (`npm run ci:full`), 142 rapides (`npm run ci`), non-régression des parcours FAO (`npm run parcours`), tests de référence (`tests/oracle/`, [docs/oracle.md](docs/oracle.md)). |
+| `tests/` | 311 suites Node lancées en parallèle (`npm run ci:full`), 143 rapides (`npm run ci`), non-régression des parcours FAO (`npm run parcours`), tests de référence (`tests/oracle/`, [docs/oracle.md](docs/oracle.md)). |
 | `tests/browser/` | Playwright dans un vrai Chromium : parcours critiques et Rendu (`npm run test:browser`, seul projet lancé par la CI GitHub, déclenchée à la main) et carte graphique réelle (`npm run test:gpu`, en local). |
 | `tools/` | Lint du script concaténé (`npm run lint`), serveur MCP, **captures du README** (`npm run captures`), **fichier autonome** (`npm run autonome`). |
 | `occt/`, `threejs/` | Noyau OpenCascade WebAssembly (`occt/v3` : OCCT 8), rendu three.js. |

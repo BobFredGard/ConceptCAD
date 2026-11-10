@@ -365,6 +365,8 @@ function parAfterChange(barre){
   // coûterait ici 5 fois le temps (Barquette : 24 s au lieu de 5 s, mesuré). Le solide n'est alors à
   // jour qu'à la fin de la promesse rendue ; les dérivées, qui le lisent au retour, n'indiquent pas barre.
   parApplyAll();
+  // V0.87.0 : champs de l'assemblage liés à un paramètre (48-assemblage-fx) — pièces replacées, répétitions refaites
+  try{if(typeof asm!=='undefined'&&asm&&typeof asmFxSync==='function'&&asmFxSync()){asmResolve();asmNotify();}}catch(e){}
   try{parMiniSoon();}catch(e){}
   try{if(typeof skEdit!=='undefined'&&skEdit){drawSketch2D();renderSkPanel();}}catch(e){}
   try{markDirty();}catch(e){}

@@ -8,7 +8,7 @@ sont sorties le 2026-09-30j.
 Code dans `src/` · livrable `fusion_mvp.html` (généré par `build.js`) · architecture et
 garde-fous en tête de `src/00-entete-et-outils.js`.
 
-**641 versions**, de `2026-09-28b` à `V0.86.0` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
+**642 versions**, de `2026-09-28b` à `V0.87.0` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
 comme dans le fichier d'origine.
 
 ---
@@ -7280,3 +7280,12 @@ Barquette ne perd plus son solide à la 107e modification, et sa mémoire ne mon
 - **Cause** : dans une vue en coupe, toutes les arêtes visibles prenaient le genre `sect` (trait de coupe, noir et épais), tangentes comprises : celles du HLR exact (`HLRBRep_Rg1Line`), celles repêchées en V0.83.0 (`mepHlrTanIdx`) et celles du HLR maillage. Les coupes locales passaient déjà par une vue sans `section` et n'étaient pas touchées.
 - **Correctif** (`src/98-mep-10-projection-hlr`, `98-mep-20-vues`) : une arête tangente garde le genre `tangent` (gris, fin) dans toutes les vues ; seules les arêtes vives et le contour d'une coupe restent en trait de coupe. « Arêtes tangentielles » décochée, il n'y a toujours aucun gris.
 - **Test** : `test_mep_tangentes_hlr` complété d'une coupe A-A de la pédale par le milieu de la vue de dessus : 0 arête grise avant, 2 après, plus aucune sans « Arêtes tangentielles ». `test_mep_coupe_brisee`, `test_mep_coupe_locale`, `test_mep_percage_coupe`, `test_mep_hachures_cotes`, `test_mep_filetage_coupe_locale`, `test_mep_rotation_vue` toujours verts. Parcours FAO et CACHE_VER inchangés.
+
+## V0.87.0 - Assemblage : paramètres gardés dans les champs, ouverture rapide d'une pièce à corps dérivé
+
+- **Demande** : Fred, 10/11, assemblage dont une pièce soustrait un corps dérivé d'une autre : « Il manque la soustraction », puis « elle est apparue, mais ce n'est pas concevable » (≈ 1 min), « Ne peut-on pas avoir une image mesurable de la cavité pour gagner en temps de démarrage ? » ; et « les paramètres disparaissent ou ne restent pas dans tous les champs des fonctions de l'assemblage » (Aligner, Répétition).
+- **Cause 1** : à l'ouverture, `importRestorePending` ne rejouait que les imports du composant actif ; la pièce insérée était calculée sans sa forme dérivée (soustraction absente), puis la vérification des dérivées, voyant la forme manquante, rejouait toute la source pour la retrouver. Et l'image d'un composant n'était jamais gardée en cache dès qu'il contenait un import.
+- **Correctif 1** (`src/90-30-import`, `47-assemblage-interface`, `47-assemblage-cache`) : les imports de tous les composants sont restaurés, et `asmAfterLoad` les attend avant les rejeux. Un import qui cite sa source par l'empreinte de son contenu (`f.src.key`, corps dérivés compris) entre dans la clé du cache, et une image n'est écrite que si chaque import visible a sa forme exacte. Mesuré sur la pièce de Fred : ≈ 10 s la première fois, ≈ 3 s ensuite, cavité présente dès le premier affichage (avant : ≈ 3 s sans la cavité, puis ≈ 1 min de recalcul).
+- **Cause 2** : les champs de l'assemblage passaient par le filet ƒx global, qui remplace l'expression par sa valeur (lien perdu) ; rouvrir Aligner remettait aussi retourner, rotation et décalages à zéro.
+- **Correctif 2** (nouveau `src/48-assemblage-fx`, `48-assemblage-placement`, `48-assemblage-repetitions`, `46-assemblage-modele`, `51-parametres`) : `porteur.fx = {clé: expression}` sur l'alignement (`rz`, `off0..2`) et la répétition (`dist`, `dist2`, `angle`, `qty`, `qty2`), évalué avec les paramètres du composant porteur, réévalué à chaque `asmResolve` et après un changement de paramètre, lu et écrit avec le fichier. Un nombre tapé efface l'expression ; une expression en échec garde la dernière valeur (bord orange). L'étape d'annulation est prise avant le changement d'expression. Aligner reprend les réglages de l'alignement existant.
+- **Test** : nouveau `test_asm_fx` (13 contrôles : évaluation, placement, paramètre changé, répétition refaite, relecture, échec) ; `test_composants_cache` complété (import avec empreinte : en cache, clé qui suit la source). Essai dans le navigateur sur une copie de l'assemblage de Fred : réglages tapés par leurs noms, paramètre changé, enregistrement et réouverture, Ctrl+Z. Parcours FAO et CACHE_VER inchangés.

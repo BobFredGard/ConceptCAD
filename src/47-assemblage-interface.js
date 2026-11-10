@@ -548,6 +548,7 @@ function asmRenderProps(p){
   Btns(l);
   {const lm=asmLinkMenu(cc);if(lm.length)Btns(lm.map(x=>[x.html,x.fn]));}
 }
+let asmRestoreHold=false; // asmAfterLoad attend les imports : leur restauration ne relance pas les rejeux
 function asmAfterLoad(){
   // Fin d'ouverture (deserialise) : instantanés des composants, puis mode Placer si le
   // fichier a été enregistré dedans ; sinon le reste de l'arbre autour du composant actif
@@ -556,7 +557,11 @@ function asmAfterLoad(){
   if(!asmOn()){try{asmCtxDraw();}catch(e){}return;}
   const want=!!asm._wantAsm;asm._wantAsm=false;
   const A=asm;
+  asmRestoreHold=true; // dès maintenant : la restauration lancée par deserialise est déjà partie
   setTimeout(async()=>{
+    // V0.87.0 : formes importées des composants (corps dérivés) posées AVANT leurs rejeux
+    try{await importRestorePending();}catch(e){}finally{asmRestoreHold=false;}
+    if(asm!==A)return;
     // instantanés gardés d'une ouverture précédente : seuls les composants changés sont rejoués
     let n=0;try{n=await asmCacheFill();}catch(e){}
     if(asm!==A)return; // autre fichier ouvert pendant la lecture du cache

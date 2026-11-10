@@ -37,6 +37,12 @@ const vm=require('vm');
     d=D('A',10);d.tint=3;att(asmCacheKey(d)!==k0,'7 : teinte → autre clé');
     d=D('A',10);d.fao={setups:[]};att(asmCacheKey(d)===k0,'8 : FAO seule : même clé (ne change pas l image)');
     d=D('A',10);d.features.push({id:'i1',type:'import',name:'STEP'});att(asmCacheKey(d)===null,'9 : import (contenu hors empreinte) : jamais en cache');
+    // V0.87.0 : import qui cite sa source par l'empreinte de son contenu (corps dérivé) : en cache, la clé suit la source
+    {const I=k=>{const x=D('A',10);x.features.push({id:'i2',type:'import',name:'STEP',src:{fmt:'step',key:k}});return x;};
+     const kI=asmCacheKey(I('impsrc:aa_10'));
+     att(kI&&kI!==k0,'9b : import avec empreinte de source : en cache, clé à part');
+     att(asmCacheKey(I('impsrc:aa_10'))===kI&&asmCacheKey(I('impsrc:bb_10'))!==kI,'9c : autre source → autre clé');
+     const x=I('impsrc:aa_10');x.features[x.features.length-1].visible=false;att(asmCacheKey(x)!==kI,'9d : import masqué → autre clé');}
     // ── un assemblage : racine + 3 composants ──
     asmEnsure();
     const a=asmNewComp('A').comp,b=asmNewComp('B').comp,c=asmNewComp('C').comp;
