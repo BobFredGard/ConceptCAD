@@ -103,6 +103,42 @@ class Geo{constructor(){this.attributes={};this.userData={};this.index=null;}
   A(b.retour.nT===1&&b.pareilRetour,'retour à 5 mm : corps 2 remaillé, facettes à jour ('+b.retour.nT+')');
   A(b.restants==='b1','corps supprimé : ses facettes gardées sont rendues ('+b.restants+')');
   A(b.dur>=1,'rafraîchissement dur : maillage refait ('+b.dur+')');
+
+  console.log('=== D. suivi FAO et recousage repris quand la pièce ne change pas (V0.89.3) ===');
+  sandbox.__json=lireProjet(path.join(ROOT,'tests','fixtures','percages-fao.conceptcad'));
+  const d=await vm.runInContext(`(async()=>{
+    const out={};
+    showAll=function(){};applyView=function(){};
+    await bundleRestore(__json,{name:'banc'});markDirty();rebuild();
+    const ops=[];(faoRoot().setups||[]).forEach(s=>(s.ops||[]).forEach(o=>{if(o.type==='drill'&&o.src==='model'&&(o.holes||[]).length)ops.push(o);}));
+    out.nOps=ops.length;out.nTrous=ops.reduce((a,o)=>a+o.holes.length,0);
+    let nH=0,nE=0,nU=0;const h0=faoHolesDetect,e0=occSharpEdges,u0=occUnify;
+    faoHolesDetect=function(){nH++;return h0.apply(this,arguments);};
+    occSharpEdges=function(){nE++;return e0.apply(this,arguments);};
+    occUnify=function(){nU++;return u0.apply(this,arguments);};
+    const etat=()=>JSON.stringify(ops.map(o=>o.holes));
+    const frais=()=>{faoHoleMemo.clear();edgeAllMemo=null;faoDrillReplay();return etat();};
+    const tour=()=>{nH=0;nE=0;nU=0;markDirty();rebuild();return {nH,nE,nU};};
+    tour();const s0=etat();
+    out.repos=tour();out.reposPareil=etat()===s0&&frais()===s0;
+    // un perçage change de diamètre : les trous suivent, comme sans mémoire
+    const f=doc.features.find(x=>x.type==='hole'&&+x.d>0);const d0=+f.d;
+    f.d=d0+0.4;out.modif=tour();const s1=etat();out.modifSuivi=s1!==s0;out.modifPareil=frais()===s1;
+    f.d=d0;tour();out.retour=etat()===s0;
+    // recousage : le solide repris est celui d'un rejeu sans aucun point de contrôle
+    const vol=()=>{const F=occFinalShape(null);const v=(F.perBody||[]).map(p=>occCoqueVolume(p.shape).toFixed(3)+'/'+occSubShapes(p.shape,'TopAbs_FACE').length).join(' ');occCleanup(F,null);return v;};
+    const v1=vol();occCkClear();const v2=vol();out.recousu=v1===v2&&v1.length>0;out.v=v1;
+    faoHolesDetect=h0;occSharpEdges=e0;occUnify=u0;
+    return out;})()`,ctx);
+  A(d.nOps>0&&d.nTrous>0,'pièce à perçages FAO « trous du modèle » ('+d.nOps+' opération(s), '+d.nTrous+' trous)');
+  A(d.repos.nH===0,'rejeu sans changement : trous non redétectés ('+d.repos.nH+')');
+  A(d.repos.nE===0,'rejeu sans changement : arêtes non reclassées, ni pour l’affichage ni pour la FAO ('+d.repos.nE+')');
+  A(d.repos.nU===0,'rejeu sans changement : aucun recousage refait ('+d.repos.nU+')');
+  A(d.reposPareil,'trous repris identiques à une détection neuve');
+  A(d.modif.nH>=1&&d.modifSuivi,'Ø d’un perçage modifié : trous redétectés, les opérations suivent');
+  A(d.modifPareil,'après modification : mêmes trous qu’une détection sans mémoire');
+  A(d.retour,'retour au Ø d’origine : trous d’origine');
+  A(d.recousu,'recousage repris = recousage refait (volume/faces '+d.v+')');
   console.log(ko?'ÉCHEC : '+ko:'*** TOUT PASSE ***');
   process.exit(ko?1:0);
 })().catch(e=>{console.error(e);process.exit(1);});

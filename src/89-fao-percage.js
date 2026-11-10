@@ -299,12 +299,36 @@ function faoWithOpFrame(op,fn){
 // V0.33.3 : clé d'un filet (taille, pas, sens) — un M8 et un M8-LH de même Ø et même départ
 // sont dans le même groupe de sélection, mais jamais dans le même taraudage (op.thKey).
 function faoThreadKey(th){ return th.size+'|'+(+th.p)+(th.lh?'|lh':''); }
+const faoHoleMemo=new Map(); // clé (pièce + imports + repère) → trous reconnus
+const faoHoleBrepNo=new WeakMap();let faoHoleBrepSeq=0; // numéro de chaque forme importée vue
+function faoHoleMemoKey(Fr){
+  // null : pas de mémoire (pièce sans empreinte, repli maillage). Le repère est celui que faoHoleShapes lit.
+  try{
+    if(!(typeof occLive!=='undefined'&&occLive&&occLive.shape&&occLive.sig))return null;
+    let F=null;try{F=faoFrameCur||faoFrame(faoSetup());}catch(e){F=null;}
+    const kF=!F?'-':F.id?'id':F.X.join(',')+'|'+F.Y.join(',')+'|'+F.Z.join(',')+'|'+(F.O||[]).join(',');
+    let kI='';
+    (typeof bodies!=='undefined'&&bodies?bodies:[]).forEach(function(b){
+      if(!b||b.kind!=='import'||b.visible===false||b.ghost)return;
+      const e=(typeof importGeom!=='undefined')?importGeom.get(b.ref||b.id):null;
+      if(e&&e.brep){let n=faoHoleBrepNo.get(e.brep);if(!n){n=++faoHoleBrepSeq;faoHoleBrepNo.set(e.brep,n);}kI+=(b.ref||b.id)+'#'+n+';';} // forme elle-même : un corps dérivé change de forme sans changer de nom
+    });
+    return occLive.sig+(occLive.shapeFao?'sansfilets':'')+''+kI+''+kF;
+  }catch(e){return null;}
+}
 function faoDrillResolve(op){
   // Re-résout les trous sélectionnés sur le modèle COURANT (suit les modifications).
   // Retourne true si op.holes a changé. Sans modèle exact : instantané conservé.
   if(!op||op.type!=='drill'||op.src!=='model')return false;
   // trous vus dans le repère de l'opération : ceux qu'on y a choisis s'y retrouvent
-  const all=faoWithOpFrame(op,function(){const shapes=faoHoleShapes();return shapes.length?faoHolesDetect(shapes):null;});
+  // V0.89.3 : même pièce (empreinte du composé), mêmes imports, même repère → trous déjà reconnus : ni copie
+  // tournée de la pièce ni relecture de ses faces (Perçages : 28 ms à chaque reconstruction sans changement).
+  const all=faoWithOpFrame(op,function(Fr){
+    const k=faoHoleMemoKey(Fr);
+    if(k&&faoHoleMemo.has(k))return faoHoleMemo.get(k);
+    const shapes=faoHoleShapes();const l=shapes.length?faoHolesDetect(shapes):null;
+    if(k&&l){if(faoHoleMemo.size>8)faoHoleMemo.clear();faoHoleMemo.set(k,l);}
+    return l;});
   if(!all)return false;
   const setup=faoSetupOfOp(op);
   const nh=all.filter(function(h){return faoHoleInSel(op,h);}).map(function(h){

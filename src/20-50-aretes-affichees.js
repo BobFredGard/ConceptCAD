@@ -8,19 +8,22 @@ function bodyShown(b){return !!(b&&b.visible!==false&&!b.ghost&&b.mesh&&b.mesh.v
 // cacher / montrer ne relance pas la classification.
 const bodyEdgeMemo=new Map(); // id du corps → {shape, edges}
 let edgeAllMemo=null; // {k, edges} : classement du composé entier, tant qu'aucun corps ne change
+function occLiveSharpEdges(){
+  // Arêtes classées du composé occLive ENTIER. V0.89.2 : même liste tant qu'aucun corps ni plan de scission ne
+  // change (barquette d'exemple : 0,13 s par rejeu). V0.89.3 : servie aussi à la FAO (zones par chaîne), qui
+  // refaisait le même classement juste après l'affichage, à chaque reconstruction.
+  if(!(occLive&&occLive.shape))return [];
+  let k=null;
+  try{if(occLive.sig)k=occLive.sig+''+JSON.stringify(splitCutPlanes());}catch(e){k=null;}
+  if(k&&edgeAllMemo&&edgeAllMemo.k===k)return edgeAllMemo.edges;
+  const l=occSharpEdges(occLive.shape);
+  edgeAllMemo=k&&l&&l.length?{k,edges:l}:null;
+  return l;
+}
 function occVisibleSharpEdges(){
   if(!(occLive&&occLive.shape))return [];
   const ex=bodies.filter(b=>b&&b.kind==='body'&&!b.ghost);
-  if(ex.every(bodyShown)||ex.some(b=>!b.shape)){
-    // V0.89.2 : tous les corps inchangés depuis le dernier classement (mêmes empreintes, mêmes plans de
-    // scission) → même liste, sans reparcourir le solide (barquette d'exemple : 0,13 s par rejeu).
-    let k=null;
-    try{if(!freshHard&&ex.length&&ex.every(b=>b.sig&&b.shape))k=ex.map(b=>b.id+''+b.sig).join('')+''+JSON.stringify(splitCutPlanes());}catch(e){k=null;}
-    if(k&&edgeAllMemo&&edgeAllMemo.k===k)return edgeAllMemo.edges;
-    const l=occSharpEdges(occLive.shape);
-    edgeAllMemo=k&&l&&l.length?{k,edges:l}:null;
-    return l;
-  }
+  if(ex.every(bodyShown)||ex.some(b=>!b.shape))return occLiveSharpEdges();
   const out=[];
   ex.forEach(b=>{
     if(!bodyShown(b))return;

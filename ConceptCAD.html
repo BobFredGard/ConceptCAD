@@ -379,7 +379,7 @@ input[type=range]{accent-color:var(--primary);width:100%}
  * peut changer sans rien casser. CACHE_VER (parcours FAO) reste indépendant.
  */
 
-const APP_VER='V0.89.2';
+const APP_VER='V0.89.3';
 try{console.log('[ConceptCAD] version '+APP_VER);}catch(e){}
 try{var mfSv=document.getElementById('mfSplashVer');if(mfSv)mfSv.textContent=APP_VER;}catch(e){} // écran de démarrage
 
@@ -7269,19 +7269,22 @@ function bodyShown(b){return !!(b&&b.visible!==false&&!b.ghost&&b.mesh&&b.mesh.v
 // cacher / montrer ne relance pas la classification.
 const bodyEdgeMemo=new Map(); // id du corps → {shape, edges}
 let edgeAllMemo=null; // {k, edges} : classement du composé entier, tant qu'aucun corps ne change
+function occLiveSharpEdges(){
+  // Arêtes classées du composé occLive ENTIER. V0.89.2 : même liste tant qu'aucun corps ni plan de scission ne
+  // change (barquette d'exemple : 0,13 s par rejeu). V0.89.3 : servie aussi à la FAO (zones par chaîne), qui
+  // refaisait le même classement juste après l'affichage, à chaque reconstruction.
+  if(!(occLive&&occLive.shape))return [];
+  let k=null;
+  try{if(occLive.sig)k=occLive.sig+''+JSON.stringify(splitCutPlanes());}catch(e){k=null;}
+  if(k&&edgeAllMemo&&edgeAllMemo.k===k)return edgeAllMemo.edges;
+  const l=occSharpEdges(occLive.shape);
+  edgeAllMemo=k&&l&&l.length?{k,edges:l}:null;
+  return l;
+}
 function occVisibleSharpEdges(){
   if(!(occLive&&occLive.shape))return [];
   const ex=bodies.filter(b=>b&&b.kind==='body'&&!b.ghost);
-  if(ex.every(bodyShown)||ex.some(b=>!b.shape)){
-    // V0.89.2 : tous les corps inchangés depuis le dernier classement (mêmes empreintes, mêmes plans de
-    // scission) → même liste, sans reparcourir le solide (barquette d'exemple : 0,13 s par rejeu).
-    let k=null;
-    try{if(!freshHard&&ex.length&&ex.every(b=>b.sig&&b.shape))k=ex.map(b=>b.id+''+b.sig).join('')+''+JSON.stringify(splitCutPlanes());}catch(e){k=null;}
-    if(k&&edgeAllMemo&&edgeAllMemo.k===k)return edgeAllMemo.edges;
-    const l=occSharpEdges(occLive.shape);
-    edgeAllMemo=k&&l&&l.length?{k,edges:l}:null;
-    return l;
-  }
+  if(ex.every(bodyShown)||ex.some(b=>!b.shape))return occLiveSharpEdges();
   const out=[];
   ex.forEach(b=>{
     if(!bodyShown(b))return;
@@ -9152,7 +9155,15 @@ function* occFinalShapeGen(upto,warm){
       // notamment comme ancre d'un congé (cf. test_conge_fond_poche).
       // Une face SCINDÉE (xsplit 'face') serait recousue : pas d'unify dans ce corps.
       if(!r.unified&&occUnifyAfterFillets(byBody[bid])){
-        try{const u=occUnify(occShapeCopy(sh));if(u&&u!==sh){try{sh.delete();}catch(e){}sh=u;}}catch(e){}
+        // V0.89.3 : recousage gardé comme un point de contrôle (clé = empreinte du corps) : il était refait
+        // à chaque rejeu, même sans changement (barquette d'exemple : 32 ms sur 129).
+        const kU=r.sig?r.sig+'|recousu;':null;
+        const ckU=kU?occCkGet(kU):null,cpU=ckU?occShapeCopy(ckU):null;
+        if(cpU){try{sh.delete();}catch(e){}sh=cpU;}
+        else{
+          try{const u=occUnify(occShapeCopy(sh));if(u&&u!==sh){try{sh.delete();}catch(e){}sh=u;}}catch(e){}
+          if(kU)occCkPut(kU,()=>occShapeCopy(sh));
+        }
       }
       perBody.push({bodyId:bid,shape:sh,sig:r.sig||null});
       if(r.preThr)preThr.push({bodyId:bid,shape:r.preThr});
@@ -9464,7 +9475,9 @@ function occRebuild(){
         bodies.push({id:e.id,name:e.name+' · '+(lit?tris.toLocaleString('fr'):'?')+' tris',mesh,color:col,visible:vis,kind:'body',ref:null,bodyId:e.id,shape:p.shape,sig:p.sig||null,shapeFao:pre?pre.shape:null});
       });
       if(!bodies.some(b=>b.kind==='body'))faceEl.textContent+=(faceEl.textContent?'\n':'')+'Solide exact vide (tout a été découpé).';
-      if(FR.shape){occLive={shape:FR.shape,shapeFao:FR.shapeFao||null,preThr:FR.preThr||[]};FR.shape=null;FR.shapeFao=null;FR.preThr=null;} // conservé pour le picking d'arêtes
+      if(FR.shape){occLive={shape:FR.shape,shapeFao:FR.shapeFao||null,preThr:FR.preThr||[]};FR.shape=null;FR.shapeFao=null;FR.preThr=null;
+        // V0.89.3 : empreinte du composé (tous les corps qui le forment) — null si l'un d'eux n'en a pas
+        occLive.sig=!freshHard&&parts.every(p=>p.sig)?parts.map(p=>p.bodyId+''+p.sig).join(''):null;} // conservé pour le picking d'arêtes
       // V0.79.1 : solide calculé SANS un import encore en restauration (ouverture) : ses arêtes ne
       // servent pas à raccrocher les projetées (50-esquisse-1, projEdgesFor)
       if(occLive)try{occLive.incomplet=typeof projImportsEnAttente==='function'&&projImportsEnAttente();}catch(err){}
@@ -60438,7 +60451,7 @@ function faoChainEdgesWorld(opt){
     }catch(err){}
   };
   if(typeof occLive!=='undefined'&&occLive&&occLive.shape){
-    try{occSharpEdges(occLive.shape).forEach(function(e){add(e,null);});}catch(e){}
+    try{occLiveSharpEdges().forEach(function(e){add(e,null);});}catch(e){} // V0.89.3 : classement partagé avec l'affichage
   }
   // 2026-10-21-006 : opt.all (rejeu des zones) — imports masqués compris, sauf
   // les corps choisis comme BRUT d'un posage (leurs arêtes ne bornent jamais une zone)
@@ -65158,12 +65171,36 @@ function faoWithOpFrame(op,fn){
 // V0.33.3 : clé d'un filet (taille, pas, sens) — un M8 et un M8-LH de même Ø et même départ
 // sont dans le même groupe de sélection, mais jamais dans le même taraudage (op.thKey).
 function faoThreadKey(th){ return th.size+'|'+(+th.p)+(th.lh?'|lh':''); }
+const faoHoleMemo=new Map(); // clé (pièce + imports + repère) → trous reconnus
+const faoHoleBrepNo=new WeakMap();let faoHoleBrepSeq=0; // numéro de chaque forme importée vue
+function faoHoleMemoKey(Fr){
+  // null : pas de mémoire (pièce sans empreinte, repli maillage). Le repère est celui que faoHoleShapes lit.
+  try{
+    if(!(typeof occLive!=='undefined'&&occLive&&occLive.shape&&occLive.sig))return null;
+    let F=null;try{F=faoFrameCur||faoFrame(faoSetup());}catch(e){F=null;}
+    const kF=!F?'-':F.id?'id':F.X.join(',')+'|'+F.Y.join(',')+'|'+F.Z.join(',')+'|'+(F.O||[]).join(',');
+    let kI='';
+    (typeof bodies!=='undefined'&&bodies?bodies:[]).forEach(function(b){
+      if(!b||b.kind!=='import'||b.visible===false||b.ghost)return;
+      const e=(typeof importGeom!=='undefined')?importGeom.get(b.ref||b.id):null;
+      if(e&&e.brep){let n=faoHoleBrepNo.get(e.brep);if(!n){n=++faoHoleBrepSeq;faoHoleBrepNo.set(e.brep,n);}kI+=(b.ref||b.id)+'#'+n+';';} // forme elle-même : un corps dérivé change de forme sans changer de nom
+    });
+    return occLive.sig+(occLive.shapeFao?'sansfilets':'')+''+kI+''+kF;
+  }catch(e){return null;}
+}
 function faoDrillResolve(op){
   // Re-résout les trous sélectionnés sur le modèle COURANT (suit les modifications).
   // Retourne true si op.holes a changé. Sans modèle exact : instantané conservé.
   if(!op||op.type!=='drill'||op.src!=='model')return false;
   // trous vus dans le repère de l'opération : ceux qu'on y a choisis s'y retrouvent
-  const all=faoWithOpFrame(op,function(){const shapes=faoHoleShapes();return shapes.length?faoHolesDetect(shapes):null;});
+  // V0.89.3 : même pièce (empreinte du composé), mêmes imports, même repère → trous déjà reconnus : ni copie
+  // tournée de la pièce ni relecture de ses faces (Perçages : 28 ms à chaque reconstruction sans changement).
+  const all=faoWithOpFrame(op,function(Fr){
+    const k=faoHoleMemoKey(Fr);
+    if(k&&faoHoleMemo.has(k))return faoHoleMemo.get(k);
+    const shapes=faoHoleShapes();const l=shapes.length?faoHolesDetect(shapes):null;
+    if(k&&l){if(faoHoleMemo.size>8)faoHoleMemo.clear();faoHoleMemo.set(k,l);}
+    return l;});
   if(!all)return false;
   const setup=faoSetupOfOp(op);
   const nh=all.filter(function(h){return faoHoleInSel(op,h);}).map(function(h){
@@ -70585,7 +70622,7 @@ function hardRefresh(opt){
   builtHash=null;builtEngine=null;builtVersion=-1;
   try{for(const b of bodies){try{scene.remove(b.mesh);}catch(e){}try{if(b.mesh&&b.mesh.geometry)b.mesh.geometry.dispose();}catch(e){}}}catch(e){}
   bodies=[];occLive=null;selFaces=[];
-  try{occMeshMemoClear();edgeAllMemo=null;}catch(e){} // V0.89.2 : facettes et arêtes gardées, jetées aussi
+  try{occMeshMemoClear();edgeAllMemo=null;if(typeof faoHoleMemo!=='undefined')faoHoleMemo.clear();}catch(e){} // V0.89.2 : facettes et arêtes gardées, jetées aussi
   try{clearMeasure();}catch(e){}
   try{sk3dPurge();}catch(e){}
   let tris=0;try{scene.traverse(o=>{if(o.isMesh&&o.geometry&&o.geometry.attributes&&o.geometry.attributes.position)tris+=(o.geometry.index?o.geometry.index.count:o.geometry.attributes.position.count)/3;});}catch(e){}

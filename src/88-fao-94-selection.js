@@ -1325,7 +1325,7 @@ function faoChainEdgesWorld(opt){
     }catch(err){}
   };
   if(typeof occLive!=='undefined'&&occLive&&occLive.shape){
-    try{occSharpEdges(occLive.shape).forEach(function(e){add(e,null);});}catch(e){}
+    try{occLiveSharpEdges().forEach(function(e){add(e,null);});}catch(e){} // V0.89.3 : classement partagé avec l'affichage
   }
   // 2026-10-21-006 : opt.all (rejeu des zones) — imports masqués compris, sauf
   // les corps choisis comme BRUT d'un posage (leurs arêtes ne bornent jamais une zone)
