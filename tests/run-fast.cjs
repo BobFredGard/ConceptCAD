@@ -55,6 +55,8 @@ const SUITES = [
   'test_percage_cylindre',
   'test_percage_normal',
   'test_parametre_mesure',
+  'test_rejeu_repris',
+  'test_conge_debord',
   'test_clavette',
   'test_fao_murs',
   'test_fao_32_fiches',

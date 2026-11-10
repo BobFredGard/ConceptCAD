@@ -1,0 +1,108 @@
+// V0.89.2 : ce qui n'a pas changé n'est pas recalculé.
+//  A. Congé copié par une répétition : son arête reçoit son ancre PENDANT le premier calcul, l'empreinte
+//     du congé change. Le point de contrôle doit être retrouvé au rejeu suivant (barquette d'exemple :
+//     6 points de contrôle ratés, dont la soustraction entre corps — 1,9 s au lieu de 0,07 s).
+//  B. Facettes d'affichage gardées par corps : un rejeu sans changement ne remaille rien ; une cote
+//     modifiée ne remaille que le corps touché ; les facettes reprises sont celles d'un maillage neuf ;
+//     le rafraîchissement dur jette tout.
+//  C. Arêtes affichées : même liste reprise tant qu'aucun corps ne change, refaite sinon.
+const vm=require('vm'),path=require('path');
+const ROOT=path.join(__dirname,'..');
+const {loadApp}=require('./appvm.cjs');
+const lireProjet=require('./lire-projet.cjs');
+let ko=0;const A=(c,m)=>{if(!c){ko++;console.log('  ✗ '+m);}else console.log('  ✓ '+m);};
+// Géométrie minimale mais réelle : le THREE simulé du harnais n'a ni compteur ni copie.
+class Attr{constructor(a,n){this.array=a instanceof Float32Array?a:new Float32Array(a);this.itemSize=n;this.count=this.array.length/n;}
+  clone(){return new Attr(this.array.slice(),this.itemSize);}}
+class Geo{constructor(){this.attributes={};this.userData={};this.index=null;}
+  setAttribute(k,a){this.attributes[k]=a;return this;}
+  computeVertexNormals(){}
+  dispose(){this.jete=true;}
+  clone(){const g=new Geo();for(const k in this.attributes)g.attributes[k]=this.attributes[k].clone();g.userData=this.userData;return g;}}
+(async()=>{
+  const real=await require('./noyau.cjs').charger();
+  const {ctx,sandbox}=loadApp();
+  sandbox.__realOcct=real;
+  const T0=sandbox.THREE;
+  sandbox.THREE=new Proxy({},{get(t,k){return k==='BufferGeometry'?Geo:k==='Float32BufferAttribute'?Attr:T0[k];}});
+  vm.runInContext('occt=__realOcct;occtReady=true;window.alert=function(){};confirm=function(){return true;};',ctx);
+
+  console.log('=== A. congé répété : point de contrôle retrouvé au rejeu suivant ===');
+  sandbox.__json=lireProjet(path.join(ROOT,'tests','fixtures','barquette-exemple.conceptcad'));
+  const a=await vm.runInContext(`(async()=>{
+    const raw=JSON.parse(__json);
+    if(raw.doc)await bundleRestore(__json,{rebuild:false});else await deserialise(__json,{rebuild:false});
+    const g0=occCkGet;let rate=0;occCkGet=function(k){const r=g0(k);if(!r)rate++;return r;};
+    const vol=F=>(F.perBody||[]).map(p=>+occCoqueVolume(p.shape).toFixed(3)).join(' / ');
+    occCkClear();
+    const s0=doc.features.map(f=>featSig(f));
+    let F=occFinalShape(null);const v1=vol(F);occCleanup(F,null);
+    const change=doc.features.filter((f,i)=>featSig(f)!==s0[i]).length;
+    rate=0;const t=performance.now();F=occFinalShape(null);const ms=performance.now()-t;const v2=vol(F);occCleanup(F,null);
+    occCkGet=g0;
+    return {change,rate,ms,v1,v2};})()`,ctx);
+  A(a.change>0,'la pièce contient bien le cas : '+a.change+' congé(s) dont l’empreinte change au premier calcul');
+  A(a.rate===0,'rejeu suivant : aucun point de contrôle raté ('+a.rate+' ; 6 avant) — '+a.ms.toFixed(0)+' ms');
+  A(a.v1===a.v2&&a.v1.length>0,'même solide aux deux rejeux (volumes '+a.v1+')');
+
+  console.log('=== B. facettes d’affichage gardées par corps ===');
+  const b=await vm.runInContext(`(async()=>{
+    const out={};
+    const rect=(id,x0,y0,x1,y1)=>({id:id,name:id,plane:'XY',origin:[0,0,0],axU:[1,0,0],axV:[0,1,0],axN:[0,0,1],
+      points:{a:{x:x0,y:y0},b:{x:x1,y:y0},c:{x:x1,y:y1},d:{x:x0,y:y1}},
+      entities:[{id:'l1',t:'line',p1:'a',p2:'b'},{id:'l2',t:'line',p1:'b',p2:'c'},{id:'l3',t:'line',p1:'c',p2:'d'},{id:'l4',t:'line',p1:'d',p2:'a'}],
+      constraints:[],dims:[],seq:10,visible:false});
+    docResetEmpty();doc.name='Repris';
+    doc.sketches=[rect('s1',0,0,40,20),rect('s2',60,0,80,20)];
+    doc.bodies=[{id:'b1',name:'Un',c:null},{id:'b2',name:'Deux',c:null}];doc.bodySeq=3;doc.activeBody='b1';
+    doc.features=[{id:'F1',type:'extrude',name:'Bloc',sketchId:'s1',distance:10,op:'add',visible:true,body:'b1'},
+      {id:'F2',type:'extrude',name:'Plot',sketchId:'s2',distance:5,op:'add',visible:true,body:'b2'}];
+    edgeMode='on';
+    let nT=0,nE=0;const t0=occTessellate,e0=occSharpEdges;
+    occTessellate=function(){nT++;return t0.apply(this,arguments);};
+    occSharpEdges=function(){nE++;return e0.apply(this,arguments);};
+    const tour=()=>{nT=0;nE=0;markDirty();rebuild();occVisibleSharpEdges();return {nT,nE};};
+    out.premier=tour();
+    out.exact=builtEngine==='exact';out.corps=bodies.filter(x=>x.kind==='body').length;
+    out.repos=tour();
+    // facettes reprises = facettes d'un maillage neuf, corps par corps
+    const pareil=()=>bodies.filter(x=>x.kind==='body').every(x=>{
+      const m=occMeshMemo.get(x.id);if(!m)return false;
+      const D=occDisplayDefl(occLive.shape);const g=t0(x.shape,D.lin,D.ang);
+      const p=g.attributes.position.array,q=m.geo.attributes.position.array;
+      if(p.length!==q.length||!p.length)return false;
+      for(let i=0;i<p.length;i++)if(p[i]!==q[i])return false;
+      return true;});
+    out.pareilRepos=pareil();
+    // arêtes reprises = arêtes d'un classement neuf
+    const lst=l=>JSON.stringify(l.map(e=>[e.sharp,e.pts]));
+    out.aretesPareil=lst(occVisibleSharpEdges())===lst(e0(occLive.shape));
+    // une cote du corps 2 : seul le corps 2 est remaillé, les arêtes sont refaites
+    doc.features[1].distance=7;out.modif=tour();
+    out.pareilModif=pareil();
+    out.aretesModif=lst(occVisibleSharpEdges())===lst(e0(occLive.shape));
+    out.haut=2*occSolidBox(bodies.find(x=>x.id==='b2').shape).c[2];
+    // retour à la valeur d'avant : le corps 2 a changé d'empreinte entre-temps, il est remaillé
+    doc.features[1].distance=5;out.retour=tour();out.pareilRetour=pareil();
+    // corps supprimé : sa mémoire est rendue
+    doc.features.pop();doc.bodies.pop();tour();out.restants=[...occMeshMemo.keys()].join(',');
+    // rafraîchissement dur : tout est jeté puis refait
+    nT=0;hardRefresh();out.dur=nT;
+    occTessellate=t0;occSharpEdges=e0;
+    return out;})()`,ctx);
+  A(b.exact&&b.corps===2,'pièce exacte à 2 corps');
+  A(b.premier.nT===2,'premier affichage : 2 corps maillés ('+b.premier.nT+')');
+  A(b.repos.nT===0,'rejeu sans changement : aucun maillage refait ('+b.repos.nT+')');
+  A(b.repos.nE===0,'rejeu sans changement : arêtes reprises, pas reclassées ('+b.repos.nE+')');
+  A(b.pareilRepos,'facettes gardées identiques à un maillage neuf');
+  A(b.aretesPareil,'arêtes reprises identiques à un classement neuf');
+  A(b.modif.nT===1,'cote du corps 2 modifiée : un seul corps remaillé ('+b.modif.nT+')');
+  A(b.modif.nE>=1,'cote modifiée : arêtes reclassées ('+b.modif.nE+')');
+  A(b.pareilModif&&b.aretesModif,'après modification : facettes et arêtes à jour');
+  A(Math.abs(b.haut-7)<1e-6,'le corps 2 affiché fait bien 7 mm de haut ('+b.haut+')');
+  A(b.retour.nT===1&&b.pareilRetour,'retour à 5 mm : corps 2 remaillé, facettes à jour ('+b.retour.nT+')');
+  A(b.restants==='b1','corps supprimé : ses facettes gardées sont rendues ('+b.restants+')');
+  A(b.dur>=1,'rafraîchissement dur : maillage refait ('+b.dur+')');
+  console.log(ko?'ÉCHEC : '+ko:'*** TOUT PASSE ***');
+  process.exit(ko?1:0);
+})().catch(e=>{console.error(e);process.exit(1);});

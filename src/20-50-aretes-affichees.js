@@ -7,10 +7,20 @@ function bodyShown(b){return !!(b&&b.visible!==false&&!b.ghost&&b.mesh&&b.mesh.v
 // sinon, corps par corps (sous-solide b.shape), mémorisé tant que ce sous-solide est le même :
 // cacher / montrer ne relance pas la classification.
 const bodyEdgeMemo=new Map(); // id du corps → {shape, edges}
+let edgeAllMemo=null; // {k, edges} : classement du composé entier, tant qu'aucun corps ne change
 function occVisibleSharpEdges(){
   if(!(occLive&&occLive.shape))return [];
   const ex=bodies.filter(b=>b&&b.kind==='body'&&!b.ghost);
-  if(ex.every(bodyShown)||ex.some(b=>!b.shape))return occSharpEdges(occLive.shape);
+  if(ex.every(bodyShown)||ex.some(b=>!b.shape)){
+    // V0.89.2 : tous les corps inchangés depuis le dernier classement (mêmes empreintes, mêmes plans de
+    // scission) → même liste, sans reparcourir le solide (barquette d'exemple : 0,13 s par rejeu).
+    let k=null;
+    try{if(!freshHard&&ex.length&&ex.every(b=>b.sig&&b.shape))k=ex.map(b=>b.id+''+b.sig).join('')+''+JSON.stringify(splitCutPlanes());}catch(e){k=null;}
+    if(k&&edgeAllMemo&&edgeAllMemo.k===k)return edgeAllMemo.edges;
+    const l=occSharpEdges(occLive.shape);
+    edgeAllMemo=k&&l&&l.length?{k,edges:l}:null;
+    return l;
+  }
   const out=[];
   ex.forEach(b=>{
     if(!bodyShown(b))return;
