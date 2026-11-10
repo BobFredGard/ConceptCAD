@@ -898,7 +898,7 @@ skUpdateTols();
 let skTool='select',skDraft=null,skMsg='',skOffArm=null;
 let skDown=null,skChain=null,skInfer=null,skSnapMk=null,skSel=null,skSelX=[],skDrag=null,skDragMoved=false,skDragPushed=false,skDimDrag=null,skPan=null,skDragSnap=null,skDragFrom=null; // skDragSnap : accroche du point glissé (V0.11.24) ; skDragFrom : départ du glisser (V0.11.27)
 let skBox=null,skDragEnt=null,skDyn=null; // sélection rect · déplacement d'entité · saisie dynamique (longueur/angle)
-let skOffsetD=5; // distance « auto » du menu ⇄ Décaler (contexte) : déclarée ici car le menu la lit AVANT tout usage de l'outil — sinon ReferenceError et menu jamais affiché
+let skOffsetD=3; // distance « auto » du menu ⇄ Décaler (contexte) : déclarée ici car le menu la lit AVANT tout usage de l'outil — sinon ReferenceError et menu jamais affiché
 let skDimPlace=null; // placement de cote : {id} → la cote suit le curseur jusqu'au clic
 let skPendPt=null,skCoinA=null,skCornA=null,skArcC=null,skArcA1=null,skArcPa=null;
 let skSpl=null; // spline en cours de tracé : {pts:[{x,y,snap}]} (50-esquisse-6)

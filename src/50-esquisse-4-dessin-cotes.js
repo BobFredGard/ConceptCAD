@@ -298,6 +298,8 @@ function drawSketch2D(){
   }
   // ⨯ Intersection : courbes de section candidates / retenues / survolées
   if(skTool==='isect'&&typeof skIsectDraw==='function'){try{skIsectDraw(sk);}catch(e){}}
+  // ⇄ Décalage : aperçu orange de la copie, survol de la chaîne (50-esquisse-93-decalage)
+  if(skTool==='offset'){try{skOffDraw(sk);}catch(e){}}
   // brouillon + cote live (longueur/angle comme Fusion)
   if(skDraft){
     const d=skDraft;
@@ -351,7 +353,7 @@ function drawSketch2D(){
     h.textContent='Tab angle/longueur · Entrée OK · Échap annule';
   }
   if(skRoot)skOrbUpright(skRoot); // orbite : textes et étiquettes restent lisibles
-  skPolySync();skModeBarSync();
+  skPolySync();skModeBarSync();skOffBarSync();skToolBtnSync();
 }
 function dimById(sk,id){return (sk.dims||[]).find(d=>d.id===id);}
 function angleArcInfo(sk,d){ // {V,rr,a1,dd} — secteur STOCKE (a1=rayon A, dd=±value), arc et texte toujours cohérents

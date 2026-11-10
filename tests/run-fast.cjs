@@ -136,6 +136,7 @@ const SUITES = [
   'test_journal_erreurs',
   'test_engrenages',
   'test_export_step_assemblage',
-  "test_esquisse_reperes"
+  "test_esquisse_reperes",
+  "test_sk_decalage_outil"
 ];
 require('./pool.cjs').pool(SUITES, { titre: 'SUITE RAPIDE', timeout: 10 * 60 * 1000 });

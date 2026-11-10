@@ -724,28 +724,7 @@ svg.addEventListener('pointerdown',e=>{
     if(!ent){skStatus('Ajuster : cliquez un tronçon de ligne, d’arc, de cercle ou de spline près d’une intersection.');return;}
     skPushUndo();skStatus(trimEntity(sk,ent,wx,wy));afterEdit();return;
   }
-  if(skTool==='offset'){
-    // Décalage : sélection (Ctrl/Cmd = lot) PUIS clic du côté — la distance suit le curseur.
-    const sel=skSelectedEnts().filter(e=>(e.t==='line'&&!e.handle||e.t==='circle'||e.t==='arc')&&!e.ref);
-    const spl=skSelectedEnts().filter(e=>e.t==='spline'); // lot 3 : splines décalées à part (copie approchée, non associative)
-    if(!sel.length&&!spl.length){skStatus('Décalage ⇄ : sélectionnez d’abord 1+ lignes/cercles/arcs/splines (Ctrl/Cmd = lot).');return;}
-    if(!skOffArm){skOffArm=true;skStatus('Décalage ⇄ : cliquez le CÔTÉ (distance = curseur, une cote par chaîne pour ajuster). Échap annule.');drawSketch2D();return;}
-    const D=sel.length?skOffsetDistToSel(sk,sel,{x:wx,y:wy}):Math.min(...spl.map(e=>(skSplineClosest(sk,e,wx,wy)||{d:Infinity}).d));
-    skOffArm=false;
-    if(!(D>=4/skView.s)){skStatus('Décalage : cliquez plus loin du profil.');drawSketch2D();return;}
-    skPushUndo();
-    let msg='';
-    if(sel.length){
-      const r=skOffsetApply(sk,sel.map(e=>e.id),D,{x:wx,y:wy});
-      if(!r.ok){skUndoStack.pop();skUndoBtn();skStatus(r.msg);drawSketch2D();return;}
-      msg=r.msg+' — cote modifiable (double-clic).';
-    }
-    let nS=0,cusp=false;
-    spl.forEach(e=>{const h=skSplineClosest(sk,e,wx,wy);if(!h)return;const r=skSplineOffset(sk,e,D,h.s>=0?1:-1);if(typeof r==='object'){nS++;cusp=cusp||r.cusp;}});
-    if(nS)msg+=(msg?' ':'')+nS+' spline(s) décalée(s) de '+D.toFixed(2)+' mm (copie approchée à 0,005 mm, non associative)'+(cusp?' ⚠ distance > rayon de courbure : la copie se recoupe':'')+'.';
-    skOffsetD=D;afterEdit();skStatus(msg);
-    return;
-  }
+  if(skTool==='offset'){skOffClick(sk,wx,wy,e);return;} // Décalage comme Fusion (50-esquisse-93-decalage)
 });
 svg.addEventListener('pointermove',e=>{
   if(!skEdit)return;
@@ -766,14 +745,7 @@ svg.addEventListener('pointermove',e=>{
     return;
   }
   if(skTool==='isect'){skIsectHoverAt(sk,wx,wy,!!e.shiftKey);return;}
-  if(skTool==='offset'&&skOffArm){
-    // Distance vivante pendant le placement (sans aperçu géométrique : le clic fige).
-    const sel=skSelectedEnts().filter(e=>(e.t==='line'&&!e.handle||e.t==='circle'||e.t==='arc')&&!e.ref);
-    const spl=skSelectedEnts().filter(e=>e.t==='spline');
-    const dd=sel.length?skOffsetDistToSel(sk,sel,{x:wx,y:wy}):(spl.length?Math.min(...spl.map(e=>(skSplineClosest(sk,e,wx,wy)||{d:Infinity}).d)):null);
-    if(dd!=null)skStatus('Décalage ⇄ : '+dd.toFixed(2)+' mm — clic pour appliquer, Échap annule.');
-    return;
-  }
+  if(skTool==='offset'){skOffHover(sk,wx,wy);return;} // survol : trait ou chaîne tangente que le clic prendrait
   if(skDrag){
     // V0.11.27 : SEUIL ANTI-CLIC (comme pour une entité) — un simple clic de sélection sur un point
     // le faisait glisser d'un pixel, et le lâcher posait une contrainte d'accroche (milieu, sur la
@@ -1360,6 +1332,7 @@ window.addEventListener('keydown',e=>{
   }
   // spline : Entrée = fin du tracé (l'outil reste) · Échap = fin puis Sélection
   if(skEdit&&(skTool==='spline'||skTool==='cspline')&&skSpl&&(e.key==='Enter'||e.key==='Escape')){e.preventDefault();skSplFinish(false);if(e.key==='Escape')skEscapeToSelect();return;}
+  if(skEdit&&skTool==='offset'&&skOffKey(e))return; // Décalage : Échap vide d'abord la sélection, Entrée valide, chiffres = distance
   if(e.key==='Escape'){e.preventDefault();skEscapeToSelect();return;}
   if(e.key==='Enter'&&skEdit&&skTool==='isect'){e.preventDefault();skIsectValidate();return;}
   if(skEdit&&skTool==='polygon'&&!e.ctrlKey&&!e.altKey&&!e.metaKey){
@@ -1400,14 +1373,14 @@ window.addEventListener('keydown',e=>{
   };
   mk('fillet','⦾','Congé (F) : cliquez 2 lignes en coin → arc tangent + cote R (double-clic pour modifier)');
   mk('chamfer','◣','Chanfrein (H) : cliquez 2 lignes en coin → coupe + cote (double-clic pour modifier)');
-  mk('offset','⇄','Décalage (O) : sélectionnez lignes/cercles/arcs/splines, cliquez le CÔTÉ → copies // et cotes (spline : copie approchée, sans cote)');
+  mk('offset','⇄','Décalage (O) : cliquez un trait (ou sa chaîne tangente), aperçu à 3 mm du côté proposé — tapez la distance, ⇄ Inverser, Des deux côtés, puis Entrée · la copie n’est jamais en construction');
   // 2026-10-29 : Spline (S), rangée avec les outils de dessin, juste après l'arc
   mk('spline','∿','Spline (S) : cliquez les points de passage — double-clic / Entrée / clic droit = fin, clic sur le 1er point = fermée · clic droit sur un point : poignée de tangence');
   mk('cspline','∿','Spline par points de contrôle (Maj+S) : cliquez les pôles — la courbe part du 1er, finit au dernier et suit le polygone · double-clic / Entrée / clic droit = fin, clic sur le 1er pôle = fermée');
   mk('polygon','⬡','Polygone régulier (G) : réglez le nombre de côtés et le Ø intérieur (tangent aux côtés), cliquez le centre, puis cliquez pour orienter — Ø vide : à la souris');
   const pg=bar.querySelector('[data-tool="polygon"]'),ci=bar.querySelector('[data-tool="circle"]');
   if(pg&&ci&&ci.parentNode)ci.parentNode.insertBefore(pg,ci.nextSibling);
-  bar.addEventListener('click',()=>{skPolySync();skModeBarSync();if(skEdit&&SK_TRACE_MODES[skTool])skStatus(skTraceMsg(skTool));}); // tout changement d'outil : réglages du polygone montrés ou masqués
+  bar.addEventListener('click',()=>{skPolySync();skModeBarSync();skOffBarSync();if(skEdit&&skTool==='offset'){skOffPv=null;skOffHov=null;drawSketch2D();skStatus(skOffMsg());}if(skEdit&&SK_TRACE_MODES[skTool])skStatus(skTraceMsg(skTool));}); // tout changement d'outil : réglages du polygone montrés ou masqués
   const sp=bar.querySelector('[data-tool="spline"]'),cs=bar.querySelector('[data-tool="cspline"]'),arc=bar.querySelector('[data-tool="arc"]');
   if(sp&&arc&&arc.parentNode)arc.parentNode.insertBefore(sp,arc.nextSibling);
   if(cs&&sp&&sp.parentNode)sp.parentNode.insertBefore(cs,sp.nextSibling);
