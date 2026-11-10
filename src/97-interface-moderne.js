@@ -749,6 +749,7 @@ function mfStatusBar(){
       se.title=o; // texte complet en bulle
       const f=((typeof faceEl!=='undefined'&&faceEl&&faceEl.textContent)||'').split('\n')[0];
       const ms=document.getElementById('mfStMeas');ms.textContent=f;ms.title=(typeof faceEl!=='undefined'&&faceEl&&faceEl.textContent)||'';
+      try{if(typeof parMesOfferWatch==='function')parMesOfferWatch();}catch(e){} // bouton « Créer un paramètre » (51-parametres-mesure)
       const st=(document.getElementById('stats')||{}).textContent||'';
       document.getElementById('mfStSave').textContent=/non sauvé/.test(st)?'● non enregistré':(/sauvé/.test(st)?'✓ enregistré':'');
       document.getElementById('mfStVer').textContent=(typeof APP_VER!=='undefined'?APP_VER:'');

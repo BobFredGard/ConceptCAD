@@ -537,6 +537,7 @@ function parMiniBuild(){
   const h=document.createElement('div');h.className='parMiniH';
   const t=document.createElement('p');t.className='panel-title';t.textContent='ƒx Paramètres';h.appendChild(t);
   const up=document.createElement('button');up.className='parMiniUp';up.textContent='🔄';up.title='Vérifier les fichiers sources (Dérivée)';up.style.display='none';up.onclick=()=>derCheck(true);h.appendChild(up);
+  const mes=document.createElement('button');mes.textContent='+ Mesure';mes.title='Nouveau paramètre = distance entre 2 faces cliquées ; il suit la pièce';mes.onclick=()=>{try{parMesPickStart();}catch(e){}};h.appendChild(mes); // V0.88.1 (51-parametres-mesure)
   const full=document.createElement('button');full.textContent='⤢';full.title='Liste complète (clic droit sur ƒx)';full.onclick=()=>openParamsDlg();h.appendChild(full);
   const x=document.createElement('button');x.textContent='✕';x.title='Masquer';x.onclick=()=>parMiniToggle(false);h.appendChild(x);
   el.appendChild(h);

@@ -226,14 +226,14 @@ function fdynTick(){
   let P,dir;
   if(H.kind==='lin'){
     P=H.C.clone().addScaledVector(H.n,H.val);dir=H.n.clone();
-    const L=Math.max(1e-3,camera.position.distanceTo(P)*0.11);
+    const L=Math.max(1e-3,camera.position.distanceTo(P)*DYN_ARROW_K);
     fdynArrow.position.copy(P);fdynArrow.scale.setScalar(L);
     fdynArrow.quaternion.setFromUnitVectors(new THREE.Vector3(0,1,0),dir);
     fdynArrow.visible=true;fdynKnob.visible=false;fdynArc.visible=false;
     P=P.clone().addScaledVector(dir,L*0.9);
   }else{
     P=fdynRotPt(H,H.val);
-    const L=Math.max(1e-3,camera.position.distanceTo(P)*0.11);
+    const L=Math.max(1e-3,camera.position.distanceTo(P)*DYN_ARROW_K);
     fdynKnob.position.copy(P);fdynKnob.scale.setScalar(L);fdynKnob.visible=true;fdynArrow.visible=false;
     const pts=[];const n=Math.max(8,Math.ceil(H.val/4));for(let i=0;i<=n;i++)pts.push(fdynRotPt(H,H.val*i/n));
     fdynArc.geometry.dispose();fdynArc.geometry=new THREE.BufferGeometry().setFromPoints(pts);fdynArc.visible=true;

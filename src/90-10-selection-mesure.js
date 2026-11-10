@@ -670,8 +670,12 @@ function faceSelectFeature(mesh,fi,point){
   // défilent pour la montrer) ; la face reste en surbrillance, la vue ne bouge pas.
   let id=null;try{id=occFaceCreator(mesh,fi,point);}catch(e){id=null;}
   if(!id||!(doc.features||[]).some(f=>f.id===id))return false;
-  if(sel.kind==='feature'&&sel.id===id&&treeSel.length===1&&treeSel[0]===id)return true;
-  treeSel=[id];sel={kind:'feature',id};
+  // V0.88.1 (Fred) : clic dans la vue 3D = SURBRILLANCE seule dans l'arbre et la timeline (treeSel) —
+  // la fonction ne s'ouvre pas (ni panneau, ni aperçu, ni flèche). Un clic sur la ligne surlignée,
+  // dans l'arbre ou la timeline, l'ouvre comme avant.
+  if(sel.kind!=='feature'&&treeSel.length===1&&treeSel[0]===id)return true;
+  treeSel=[id];
+  if(sel.kind==='feature'||sel.kind==='sketch'||sel.kind==='cg')sel={kind:null,id:null}; // la fonction ouverte se referme
   renderTree();renderProps();refreshParts();
   return true;
 }
