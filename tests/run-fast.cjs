@@ -135,6 +135,7 @@ const SUITES = [
   'test_export_freecad',
   'test_journal_erreurs',
   'test_engrenages',
-  'test_export_step_assemblage'
+  'test_export_step_assemblage',
+  "test_esquisse_reperes"
 ];
 require('./pool.cjs').pool(SUITES, { titre: 'SUITE RAPIDE', timeout: 10 * 60 * 1000 });

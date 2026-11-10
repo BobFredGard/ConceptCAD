@@ -54,7 +54,11 @@ function newSketchOnFace(){
   const n=nrm.clone().normalize();
   // origine = repère global projeté sur le plan (raycast validé) → projections symétriques
   // (jamais le point de clic : voir faceSketchOrigin — centroïde de face en repli déterministe)
-  const origin=faceSketchOrigin(s.mesh,n,pt,s.faceIndex);
+  // V0.78.1 : l'origine de la PIÈCE projetée sur le plan, même hors de la face cliquée (comme
+  // Fusion) — avant, une face qui ne la contenait pas prenait son propre centre et les axes de
+  // l'esquisse ne tombaient plus sur ceux de la pièce (retour du 10/11/2026). Repli sur l'ancienne
+  // règle seulement si la face porteuse ne se retrouve pas depuis cette origine (flanc latéral).
+  let origin=n.clone().multiplyScalar(n.dot(pt));
   // axes alignés sur l'esquisse parallèle parente (sinon X global projeté)
   const{u,v}=basisOnFace(n,faceRefU(n));
   // face verticale / inclinée : v vers le HAUT (Z du monde) — sinon l'esquisse s'ouvrait à l'envers
@@ -64,7 +68,9 @@ function newSketchOnFace(){
   // x/y stockés depuis l'origine (pas le point de clic) pour ne pas dériver
   // origine hors de la face cliquée (fond de rainure sous un îlot) : la face sous le CLIC
   const limH=tlIdx(); // marqueur temps actif : seules les fonctions rejouées peuvent porter
-  const host=findHostForFace(origin,n,undefined,limH)||hostViaPoints([origin.x,origin.y,origin.z],n,[pt],limH);
+  let host=findHostForFace(origin,n,undefined,limH)||hostViaPoints([origin.x,origin.y,origin.z],n,[pt],limH);
+  if(!host){let hp=null;try{hp=findHostForFace(pt,n,undefined,limH);}catch(e){}
+    if(hp){origin=faceSketchOrigin(s.mesh,n,pt,s.faceIndex);host=findHostForFace(origin,n,undefined,limH)||hostViaPoints([origin.x,origin.y,origin.z],n,[pt],limH);}}
   const sk={id:uid('sk'),name:'Esquisse '+(doc.sketches.length+1)+' (face)',plane:'FACE',
     entities:[],points:{},constraints:[],dims:[],seq:1,visible:true,at:cgAtNow(),
     origin:[+origin.x.toFixed(3),+origin.y.toFixed(3),+origin.z.toFixed(3)],
@@ -383,6 +389,20 @@ function updateAssociativeProjections(sk){
   const own=!_projEdgeCache;if(own)_projEdgeCache=new Map(); // cache local si appel isolé
   try{return updateAssociativeProjections0(sk);}finally{if(own)_projEdgeCache=null;}
 }
+// Repli « ancienne projetée » (ligne de construction aux 2 bouts fixes, sans drapeau proj) : une
+// ligne TRACÉE par l'utilisateur dont un bout est un point d'une vraie projetée (centre d'arc, bout
+// d'arête) a aussi ses 2 bouts fixes — ces fixations sont celles de la projetée. La prendre pour une
+// projection la raccrochait à une arête de la pièce et elle traînait les centres des arcs avec elle
+// (ligne entre les centres de 2 congés projetés pour centrer des perçages : Esquisse 5 sur face,
+// retour du 10/11/2026). Les projetées récentes portent toutes le drapeau proj.
+function skLigneSurProjetees(sk,e){
+  for(const o of sk.entities||[]){
+    if(o===e||!(o.proj||o.isProj||o.skSrc||o.isect||o.pierce||o.orig))continue;
+    for(const k of ['p','p1','p2','pc','pa','pb'])if(o[k]&&(o[k]===e.p1||o[k]===e.p2))return true;
+    if(Array.isArray(o.pts)&&o.pts.some(p=>p===e.p1||p===e.p2))return true;
+  }
+  return false;
+}
 function updateAssociativeProjections0(sk){
   let changed=false;
   for(const e of sk.entities){
@@ -396,8 +416,9 @@ function updateAssociativeProjections0(sk){
     // Intersection ⨯ (62-esquisse-intersection.js) : section de sa source, recalculée
     if(e.isect){if(typeof skIsectTrack==='function'&&skIsectTrack(sk,e))changed=true;continue;}
     if(e.skSrc){if(skpTrack(sk,e))changed=true;continue;} // projection d'une autre esquisse (50-esquisse-8)
+    if(e.orig&&e.t==='cpoint'){if(skOrigTrack(sk,e))changed=true;continue;} // centre de repère (50-esquisse-7)
     if(e.pierce&&e.t==='cpoint'){if(skPlTrackPierce(sk,e))changed=true;continue;} // V0.20.1 : traversée du plan
-    const isProj=e.proj||e.isProj||(e.construction&&e.t==='line'&&sk.constraints.some(c=>c.type==='fix'&&c.p===e.p1)&&sk.constraints.some(c=>c.type==='fix'&&c.p===e.p2));
+    const isProj=e.proj||e.isProj||(e.construction&&e.t==='line'&&sk.constraints.some(c=>c.type==='fix'&&c.p===e.p1)&&sk.constraints.some(c=>c.type==='fix'&&c.p===e.p2)&&!skLigneSurProjetees(sk,e));
     if(!isProj) continue;
     // V0.8.1 : arête d'un autre composant — ses arêtes, vues depuis ce composant
     let EO;
