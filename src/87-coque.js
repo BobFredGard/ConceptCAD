@@ -194,6 +194,7 @@ function coquePreviewRemove(){
 function coquePreviewUpdate(){
   try{
     if(!coqueMode||coqueMode.del){coquePreviewRemove();return;}
+    if(coqueMode.kind==='souffle'){coqueSoufPreview();return;}
     const faces=coqueMode.faces||[];
     const t=+coqueMode.thick||0;
     if(!faces.length||!(t>0)||!occLive||!occLive.shape){coquePreviewRemove();return;}
@@ -210,7 +211,32 @@ function coquePreviewUpdate(){
     try{r=occCoqueRecettes(occLive.shape,got,t);}
     finally{got.forEach(g=>{try{g.h.delete();}catch(e){}});}
     if(!r||!r.shape){coquePreviewRemove();return;}
-    const sh=r.shape;
+    coquePreviewShow(r.shape);
+  }catch(e){coquePreviewRemove();}
+}
+function coqueSoufPreview(){
+  // Aperçu de la coque soufflée : grille de 2 mm (rapide), message pendant le calcul.
+  const faces=coqueMode.faces||[];
+  const d=+coqueMode.dist||0;
+  if(!faces.length||!(d>0)||!occLive||!occLive.shape){coquePreviewRemove();return;}
+  const sig=faces.map(coqueKey).join(';')+'|s'+soufSig(coqueMode);
+  if(coqueMode._prevSig===sig)return;
+  coqueMode._prevSig=sig;
+  let h=null,sh=null;
+  try{
+    h=occFindFace(occLive.shape,faces[0]);
+    if(!h){coquePreviewRemove();return;}
+    sh=occSoufEnveloppe(occLive.shape,h,Object.assign({},coqueMode,{pas:Math.max(2,soufPas(coqueMode))}),null);
+  }catch(e){
+    coquePreviewRemove();
+    faceEl.textContent='Coque soufflée : '+((e&&e.message)||e);
+    return;
+  }finally{try{if(h)h.delete();}catch(e){}}
+  coquePreviewShow(sh);
+}
+function coquePreviewShow(sh){
+  // affiche `sh` (libéré ici) en vert translucide, la pièce estompée
+  try{
     let g=null;
     try{g=occTessellate(sh,0.5);}catch(e){g=null;}
     try{sh.delete();}catch(e){}
@@ -246,8 +272,15 @@ function enterCoqueMode(editF){
   if(filModeX)exitExactFilletMode(true);
   if(mvMode)exitMoveFaceMode(true);
   if(draftMode)exitDraftMode(true);
-  coqueMode={faces:[],thick:2,editing:editing?editing.id:null};
+  coqueMode={faces:[],thick:2,editing:editing?editing.id:null,kind:'evid',dist:SOUF_DEF.dist,pont:SOUF_DEF.pont,lis:SOUF_DEF.lis,flip:false,plein:false};
   if(del)coqueMode.del=true;
+  if(editing&&editing.kind==='souffle'){
+    // coque soufflée (87-coque-souffle) : mêmes réglages que la fonction
+    coqueMode.kind='souffle';
+    ['dist','pont'].forEach(k=>{if(+editing[k]>=0)coqueMode[k]=+editing[k];});coqueMode.lis=soufLis(editing);
+    coqueMode.flip=!!editing.flip;coqueMode.plein=!!editing.plein;coqueMode.vers=soufVers(editing);
+    if(+editing.pas>0)coqueMode.pas=+editing.pas;
+  }
   if(editing){
     // Édition : rejeu SANS la fonction (occSkipFeat) → les faces d'origine
     // redeviennent cliquables. Même stratégie que congé/dépouillage.
@@ -256,7 +289,7 @@ function enterCoqueMode(editF){
     const avant=(editing.faces||[]).length;
     coqueMode.faces=(editing.faces||[]).map(coqueCleanRef).filter(Boolean);
     coqueMode._ecartees=avant-coqueMode.faces.length;
-    if(!del){coqueMode.thick=(+editing.thick>0)?+editing.thick:2;parFxFrom(editing,coqueMode,['thick']);}
+    if(!del){coqueMode.thick=(+editing.thick>0)?+editing.thick:2;parFxFrom(editing,coqueMode,['thick','dist','pont','lis']);}
     occSkipFeat=editing.id;
     tlEditLock(editing); // arbre bloqué sur la coque : seules les opérations précédentes rejouées
     if(!occExactForTool(true)){occSkipFeat=null;coqueMode=null;tlEditUnlock();faceEl.textContent=(del?'Suppression de face':'Coque')+' : recalcul impossible.';return;} // rejeu sans la fonction (un STEP resté seul compris)
@@ -291,12 +324,14 @@ function coqueToggle(e){
   const k=coqueKey(hit.ref);
   const i=coqueMode.faces.findIndex(r=>coqueKey(r)===k);
   if(i>=0){coqueMode.faces.splice(i,1);}
+  else if(coqueMode.kind==='souffle')coqueMode.faces=[hit.ref]; // soufflée : UNE face poussée, le clic la remplace
   else coqueMode.faces.push(hit.ref);
   // _ord des nouvelles venues : position connue (clic), pas besoin de re-match global.
   // L'aperçu se recalcule (signature : sélection + épaisseur).
   coquePaint();coquePreviewUpdate();renderCoquePanel();
   const nf=coqueMode.faces.length;
   if(coqueMode.del){faceEl.textContent=nf?`${nf} face(s) à supprimer — Enregistrer (Entrée) ou Échap.`:'Aucune face retenue : cliquez les faces à supprimer, ou Échap pour annuler.';return;}
+  if(coqueMode.kind==='souffle'){faceEl.textContent=nf?'Face poussée choisie — réglez distance et creux enjambés, puis Appliquer.':'Cliquez la face plane d’où part le souffle.';return;}
   faceEl.textContent=nf?`${nf} face(s) à retirer retenue(s) — saisissez l'épaisseur puis Appliquer.`
     :'Aucune face retenue : cliquez les faces à retirer (les ouvertures), ou Échap pour annuler.';
 }
@@ -311,8 +346,32 @@ function renderCoquePanel(){
   const ed=coqueMode.editing;
   const h=document.createElement('div');h.className='pnl-h';
   const del=!!coqueMode.del;
-  h.innerHTML=del?'⌫ Édition de la suppression de face':ed?'⚙ Édition de la coque':'⚙ Coque (évidage paroi mince)';
+  h.innerHTML=del?'⌫ Édition de la suppression de face':ed?'⚙ Édition de la coque':'⚙ Coque';
   p.appendChild(h);
+  if(!del&&!ed){
+    // type de coque : évidage (paroi intérieure) ou soufflée (peau extérieure lisse, 87-coque-souffle)
+    const row=document.createElement('div');row.className='pnl-btns';
+    [['evid','🥚 Évidage'],['souffle','🎈 Soufflée']].forEach(([k,t])=>{
+      const b=document.createElement('button');b.textContent=t;
+      if(coqueMode.kind===k)b.className='primary';
+      b.title=k==='evid'?'Creuser la pièce : paroi d’épaisseur constante à l’intérieur.':'Peau lisse autour de la pièce, comme une feuille soufflée sur elle depuis une face.';
+      b.onclick=()=>{
+        if(coqueMode.kind===k)return;
+        coqueMode.kind=k;coqueMode._prevSig=null;
+        if(k==='souffle'&&coqueMode.faces.length>1)coqueMode.faces=coqueMode.faces.slice(-1);
+        faceEl.innerHTML=k==='souffle'
+          ?'<b>🎈 Coque soufflée</b><br><span class="note">Cliquez la <b>face plane</b> d’où part le souffle, réglez la '+
+           '<b>distance</b> et les <b>creux enjambés</b>, puis <b>Appliquer</b>. <b>Échap</b> annule.</span>'
+          :'<b>⚙ Coque (évidage)</b><br><span class="note">Cliquez les <b>faces à retirer</b> '+
+           '(les ouvertures — re-clic = retirer), saisissez l\'<b>épaisseur</b> de paroi puis <b>Appliquer</b> '+
+           '(<b>Entrée</b>). <b>Échap</b> annule.</span>';
+        coquePaint();coquePreviewUpdate();renderCoquePanel();
+      };
+      row.appendChild(b);
+    });
+    p.appendChild(row);
+  }
+  if(!del&&coqueMode.kind==='souffle'){renderCoqueSoufPanel(p,ed);return;}
   const nf=(coqueMode.faces||[]).length;
   if(nf){
     const st=coqueMode._stats;
@@ -383,6 +442,7 @@ function renderCoquePanel(){
 function coqueApply(){
   if(!coqueMode)return;
   if(coqueMode.del){delFaceApply();return;}
+  if(coqueMode.kind==='souffle'){coqueSoufApply();return;}
   if(!(coqueMode.faces||[]).length){faceEl.textContent='Coque : retenez au moins une face à retirer (l\'ouverture).';return;}
   const t=+coqueMode.thick||0;
   if(!(t>0)){faceEl.textContent='Coque : épaisseur hors bornes (> 0).';return;}

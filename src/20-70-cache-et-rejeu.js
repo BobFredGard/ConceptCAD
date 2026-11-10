@@ -196,6 +196,7 @@ function featSig(f){
     // sans elles le cache réappliquerait l'ancien évidage après un changement.
     const q=r=>r?((r.pos||[]).map(v=>(+v).toFixed(2)).join(',')+'/'+(r.n||[]).map(v=>(+v).toFixed(3)).join(',')+'/'+(r.dim||[]).map(v=>(+v).toFixed(2)).join(',')):'?';
     s+='|t'+(+f.thick||0)+'|'+((f.faces||[]).map(q).join(';'));
+    if(f.kind==='souffle')s+='|souffle'+soufSig(f); // distance, creux enjambés, sens, bloc plein, pas
   }else if(f.type==='repeat'){
     s+='|'+(f.base||[]).join(',')+'|'+(+f.copies||1)+'|'+(+f.dist||0)+'|'+(+f.angle||0)+'|'+(f.axis||f.plane||'')+'|'+JSON.stringify(f.planeN||null)+'|'+(f.plane2||'')+'|'+JSON.stringify(f.planeN2||null)
       +'|'+JSON.stringify(f.dir||null)+'|'+(f.lin2?[f.axis2,JSON.stringify(f.dir2||null),+f.copies2||1,+f.dist2||0].join(','):''); // 2ᵉ direction (grille)
