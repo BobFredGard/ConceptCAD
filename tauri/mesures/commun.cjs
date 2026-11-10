@@ -13,7 +13,7 @@ const PROFIL_APP=path.join(os.tmpdir(),'cc-essai-application');
 const PROFIL_REEL=path.join(process.env.LOCALAPPDATA,'fr.conceptcad.logiciel');
 // Empreinte du vrai profil : les essais passant par Windows doivent le laisser intact.
 const empreinteProfil=()=>{let n=0,t=0;const voir=d=>{for(const e of fs.readdirSync(d,{withFileTypes:true})){const p=path.join(d,e.name);if(e.isDirectory())voir(p);else{n++;t=Math.max(t,fs.statSync(p).mtimeMs);}}};try{voir(PROFIL_REEL);}catch(e){}return n+'/'+t;};
-const PORT_CDP=9333,PORT_WEB=3000;
+const PORT_CDP=9333,PORT_WEB=+process.env.CC_PORT_WEB||3000; // CC_PORT_WEB : autre port quand 3000 sert déjà aux essais d'une autre session
 // Mêmes réglages des deux côtés : un onglet ou une fenêtre masquée ne doit pas fausser le temps.
 const DRAPEAUX=['--remote-debugging-port='+PORT_CDP,'--disable-backgrounding-occluded-windows','--disable-renderer-backgrounding','--disable-background-timer-throttling'];
 const attendre=ms=>new Promise(k=>setTimeout(k,ms));
