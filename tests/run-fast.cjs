@@ -45,6 +45,7 @@ const SUITES = [
   'test_draft_sens',
   'test_repeat_chanfrein_depouille',
   'test_repeat_apercu',
+  'test_repeat_exclure',
   'test_corps_cache_aretes',
   'test_normales_exactes',
   'test_fao_outils',

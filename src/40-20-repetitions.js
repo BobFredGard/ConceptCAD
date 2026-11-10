@@ -142,38 +142,56 @@ function exitRepMode(){try{pgPickStop();}catch(e){}repPreviewRemove();repPreview
    noyau : le maillage affiché est partagé, seule une matrice change par copie. */
 const REP_PREVIEW_MAX=60; // copies affichées au plus (une grille 20 × 20 n'a pas besoin de 400 fantômes)
 let repPrevGroup=null;
-function repPreviewXforms(cfg){
-  // Matrices 4×4 (ordre colonne, THREE.Matrix4.fromArray) des instances, même machinerie que
-  // repTransformPoint / repGenChildren : linéaire (grille comprise), circulaire, symétrie
-  // (double : image 1, image 2, image de l'image 1 ; plans identiques : image 1 seule).
-  // Fonction pure, testable sans THREE (test_repeat_apercu).
+function repXformsK(cfg,max,noSkip){
+  // Matrices 4×4 (ordre colonne, THREE.Matrix4.fromArray) des instances, avec la CLÉ de chaque
+  // exemplaire (repCellKeys) — même machinerie que repTransformPoint / repGenChildren : linéaire
+  // (grille comprise), circulaire, symétrie (double : image 1, image 2, image de l'image 1 ;
+  // plans identiques : image 1 seule). Exemplaires enlevés (rp.skip) omis, sauf noSkip.
   const c=cfg||repMode;if(!c)return [];
-  const t=c.mode||c.type,out=[];
+  const t=c.mode||c.type,out=[],sk=noSkip?new Set():repSkipSet(c);
+  const push=(k,M)=>{if(out.length<max&&!sk.has(k))out.push({k,M});};
   const trans=o=>[1,0,0,0, 0,1,0,0, 0,0,1,0, o[0],o[1],o[2],1];
   const lin3=(e0,e1,e2)=>[e0[0],e0[1],e0[2],0, e1[0],e1[1],e1[2],0, e2[0],e2[1],e2[2],0, 0,0,0,1];
   const mirM=n=>{const u=repNorm(n);const col=k=>{const e=[0,0,0];e[k]=1;return repAdd(e,repScale(u,-2*u[k]));};return lin3(col(0),col(1),col(2));};
   const mul=(A,B)=>{const R=new Array(16).fill(0);for(let i=0;i<4;i++)for(let j=0;j<4;j++){let s=0;for(let k=0;k<4;k++)s+=A[i+4*k]*B[k+4*j];R[i+4*j]=s;}return R;}; // A·B
-  if(t==='lin'){repLinCells(c).forEach(cell=>{if(out.length<REP_PREVIEW_MAX)out.push(trans(cell.off));});return out;}
+  if(t==='lin'){repLinCells(c).forEach(cell=>push(cell.i+','+cell.j,trans(cell.off)));return out;}
   if(t==='circ'){
     const n=repMaxCopies(c.copies),ax=repAxisVec(c),st=repCircStep(c);
-    for(let i=1;i<=n&&out.length<REP_PREVIEW_MAX;i++){const e=[[1,0,0],[0,1,0],[0,0,1]].map(v=>repRot(v,ax,st*i));out.push(lin3(e[0],e[1],e[2]));}
+    for(let i=1;i<=n&&out.length<max;i++){const e=[[1,0,0],[0,1,0],[0,0,1]].map(v=>repRot(v,ax,st*i));push(String(i),lin3(e[0],e[1],e[2]));}
     return out;
   }
   if(t==='path'){
-    repPathCells(Object.assign({},c,{id:c.id||'_rpEdit',copies:c.copies})).forEach(q=>{
-      if(out.length>=REP_PREVIEW_MAX)return;
+    repPathCells(Object.assign({},c,{id:c.id||'_rpEdit',copies:c.copies})).forEach((q,ix)=>{
       const e=[[1,0,0],[0,1,0],[0,0,1]].map(v=>repRot(v,q.N,q.ang)),r0=repRot(q.P0,q.N,q.ang);
-      const M=lin3(e[0],e[1],e[2]);M[12]=q.Pi[0]-r0[0];M[13]=q.Pi[1]-r0[1];M[14]=q.Pi[2]-r0[2];out.push(M);
+      const M=lin3(e[0],e[1],e[2]);M[12]=q.Pi[0]-r0[0];M[13]=q.Pi[1]-r0[1];M[14]=q.Pi[2]-r0[2];push(String(ix+1),M);
     });
     return out;
   }
-  const n1=repPlaneN(c),M1=mirM(n1);out.push(M1);
+  const n1=repPlaneN(c),M1=mirM(n1);out.push({k:'1',M:M1});
   if(c.plane2){
     const n2=c.planeN2?repNorm(c.planeN2):repPlaneN({plane:c.plane2});
-    if(Math.abs(repDot(n1,n2))<0.999){const M2=mirM(n2);out.push(M2);out.push(mul(M2,M1));}
+    if(Math.abs(repDot(n1,n2))<0.999){const M2=mirM(n2);out.push({k:'2',M:M2});out.push({k:'21',M:mul(M2,M1)});}
   }
   return out;
 }
+// Fonction pure, testable sans THREE (test_repeat_apercu) : matrices des copies affichées.
+function repPreviewXforms(cfg){return repXformsK(cfg,REP_PREVIEW_MAX).map(x=>x.M);}
+// EXEMPLAIRES ENLEVÉS (V0.81.0) : rp.skip = clés des exemplaires dont on ne veut pas (une copie qui
+// tombe mal) — « i,j » en linéaire (case de grille, j = 0 sur une ligne), « i » en circulaire et
+// suivant un profil. Les autres gardent leur numéro : rien ne se décale, les ids des copies restent
+// stables. Symétrie : pas de choix (une seule image, ou trois en double).
+function repCellKeys(c){
+  // [{k, label, n}] des copies, original exclu, dans l'ordre (n° 1 = l'original)
+  const t=c&&(c.mode||c.type);
+  if(t==='lin')return repLinCells(c).map(q=>({k:q.i+','+q.j,label:c.lin2?((q.i+1)+'·'+(q.j+1)):String(q.i+1),
+    tip:c.lin2?'Colonne '+(q.i+1)+' (1ʳᵉ direction), rangée '+(q.j+1)+' (2ᵉ direction)':'Exemplaire n° '+(q.i+1)+' (l’original est le n° 1)'}));
+  let n=0;
+  if(t==='circ')n=repMaxCopies(c.copies);
+  else if(t==='path'){try{n=repPathCells(Object.assign({},c,{id:c.id||'_rpEdit'})).length;}catch(e){n=0;}}
+  const out=[];for(let i=1;i<=n;i++)out.push({k:String(i),label:String(i+1),tip:'Exemplaire n° '+(i+1)+' (l’original est le n° 1)'});
+  return out;
+}
+function repSkipSet(c){return new Set(c&&(c.mode||c.type)!=='mir'&&Array.isArray(c.skip)?c.skip.map(String):[]);}
 function repPreviewRemove(){
   if(!repPrevGroup)return;
   try{
@@ -306,8 +324,8 @@ function repFeatPreviewGeos(f){
   });
   return out;
 }
-function repPreviewSources(){
-  const ids=((repMode&&repMode.feats)||[]).filter(id=>repCanFeature(id)&&repAmont(id,null));
+function repPreviewSources(only){
+  const ids=only?only.filter(id=>repCanFeature(id)):((repMode&&repMode.feats)||[]).filter(id=>repCanFeature(id)&&repAmont(id,null));
   const list=repExpandSources(ids.map(id=>doc.features.find(f=>f.id===id)).filter(Boolean)).filter(f=>f.visible!==false);
   let key='';
   try{key=list.map(f=>f.id+':'+featSig(f)).join('|')+'@'+bodyVisSig();}catch(e){key=list.map(f=>f.id).join('|');}
@@ -320,6 +338,7 @@ function repPreviewSources(){
 }
 function repPreviewUpdate(){
   repPreviewRemove();
+  try{if(typeof repSkipBoxSync==='function')repSkipBoxSync();}catch(e){}
   if(!repMode){repPreviewSrcFree();return;}
   if(typeof scene==='undefined'||!scene)return;
   let ms=[];
@@ -342,6 +361,29 @@ function repPreviewUpdate(){
     });
     scene.add(g);repPrevGroup=g;
   }catch(e){repPrevGroup=null;}
+}
+// Survol d'une case « exemplaire à enlever » : cet exemplaire seul, en BLEU, dans la vue — pour
+// savoir lequel on enlève (à la création comme à l'édition, même machinerie que l'aperçu rouge).
+let repHovGroup=null;
+function repHoverRemove(){
+  if(!repHovGroup)return;
+  try{repHovGroup.traverse(o=>{if(o.isMesh&&o.material)try{o.material.dispose();}catch(e){}});scene.remove(repHovGroup);}catch(e){}
+  repHovGroup=null;
+}
+function repHoverShow(cfg,key,ids){
+  repHoverRemove();
+  if(typeof scene==='undefined'||!scene||typeof THREE==='undefined')return;
+  let X=null;try{X=repXformsK(cfg,REPEAT_MAX,true).find(x=>x.k===key);}catch(e){}
+  if(!X)return;
+  let srcs=[];try{srcs=repPreviewSources(ids);}catch(e){}
+  if(!srcs.length)return;
+  try{
+    const g=new THREE.Group();g.name='repHover';
+    const mat=new THREE.MeshStandardMaterial({color:0x2f9bff,transparent:true,opacity:0.75,depthTest:false,depthWrite:false,side:THREE.DoubleSide,roughness:0.5});
+    srcs.forEach(it=>{const m=new THREE.Mesh(it.geo,mat);m.matrixAutoUpdate=false;m.matrix.fromArray(X.M);if(it.mw)m.matrix.multiply(it.mw);
+      m.raycast=()=>{};m.renderOrder=1000;m.userData.bid='rep_preview';g.add(m);});
+    scene.add(g);repHovGroup=g;
+  }catch(e){repHovGroup=null;}
 }
 function repTypeName(m,f){if(m==='mir'&&f&&f.plane2)return 'Symétrie double';if(m==='lin'&&f&&f.lin2)return 'Linéaire 2 directions';return m==='mir'?'Symétrie':m==='circ'?'Circulaire':m==='path'?'Suivant un profil':'Linéaire';}
 function repAxisVec(cfg){const c=cfg||repMode;const a=c&&c.axis;if(c&&c.dir)return repNorm(c.dir);if(a==='Y')return[0,1,0];if(a==='Z')return[0,0,1];return[1,0,0];}
@@ -782,7 +824,12 @@ function repGenChildren(rp){
     const cells=rp.mode==='lin'?repLinCells(rp):null;
     const pcs=rp.mode==='path'?repPathCells(rp):null;
     const N=cells?cells.length:pcs?pcs.length:n;
+    const skip=repSkipSet(rp);
+    if(N>0&&Array.isArray(rp.skip)){ // clés devenues sans objet (quantité réduite…) : oubliées
+      const ok=new Set(repCellKeys(rp).map(x=>x.k));rp.skip=rp.skip.map(String).filter(k=>ok.has(k));if(!rp.skip.length)delete rp.skip;
+    }
     for(let i=1;i<=N;i++){
+      if(skip.has(cells?cells[i-1].i+','+cells[i-1].j:String(i)))continue; // exemplaire enlevé (rp.skip)
       const skMap={},featMap={};
       const cfg=cells?Object.assign({},rp,{_off:cells[i-1].off}):pcs?Object.assign({},rp,{_pc:pcs[i-1]}):rp;
       base.forEach(f=>{
@@ -842,7 +889,7 @@ function repSyncForFeature(f,seen){
 }
 const repGenSigs=new Map(); // id de répétition -> signature des sources au dernier régénéré
 function repSourceSig(rp){
-  let s=JSON.stringify([rp.op||'join',rp.mode,rp.copies,rp.dist,rp.angle,rp.axis,rp.plane,rp.planeN,rp.plane2,rp.planeN2,rp.base,rp.dir,rp.lin2,rp.axis2,rp.dir2,rp.copies2,rp.dist2,rp.path,rp.pspace,rp.orient,rp.rev]);
+  let s=JSON.stringify([rp.op||'join',rp.mode,rp.copies,rp.dist,rp.angle,rp.axis,rp.plane,rp.planeN,rp.plane2,rp.planeN2,rp.base,rp.dir,rp.lin2,rp.axis2,rp.dir2,rp.copies2,rp.dist2,rp.path,rp.pspace,rp.orient,rp.rev,rp.skip]);
   if(rp.mode==='path')s+='#g'+pgSketchSig(rp.path&&doc.sketches.find(x=>x.id===rp.path.sk)); // géométrie de la courbe guide
   // motif développé : une répétition source change dès que ses instances changent
   const B=(rp.base||[]).map(id=>doc.features.find(x=>x.id===id));
