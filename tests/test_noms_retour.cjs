@@ -10,7 +10,8 @@ const {loadApp}=require('./appvm.cjs'),lire=require('./lire-projet.cjs');
   const fails=[],ok=[];
   const A=(c,m)=>{(c?ok:fails).push(m);};
   const cas=[
-    {f:'Cache Piles.conceptcad',sk:'Esquisse 1',id:'e23'},
+    // V0.89.2 : l'exemple Cache Piles a été refait ; la pièce du défaut d'origine est gardée dans tests/fixtures
+    {f:'../tests/fixtures/cache-piles-v1.conceptcad',sk:'Esquisse 1',id:'e23'},
     {f:'Support Pédale Déportée R1200RT 2011.conceptcad',sk:'Esquisse 6 (face)',id:'e48'},
   ];
   console.log('=== Retour exact après une valeur impossible (noyau réel) ===');

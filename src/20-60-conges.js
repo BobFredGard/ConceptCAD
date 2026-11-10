@@ -632,7 +632,23 @@ function occApplyXFillets(base,xfils){
     });
   }catch(e){}
   xfils.forEach(xf=>{if(manque.length)xf._rate={n:manque.length,t:js.length,pos:manque.map(q=>q.map(v=>+v.toFixed(1)))};else delete xf._rate;});
-  if(manque.length)warns.push(`${lab} NON FAIT sur ${manque.length}/${js.length} arête(s), près de `+manque.slice(0,4).map(nomsPos).join(' ; '));
+  // V0.89.2 : la raison, quand elle se mesure — une arête seule recevait « paroi de 6 mm seulement », la
+  // même arête dans un groupe n'avait que « non fait ». Paroi plus mince que 2 × R près d'une arête refusée :
+  // c'est dit (2 arêtes au plus : la mesure coûte, et ce chemin est celui de l'échec).
+  let pourquoi='';
+  if(manque.length&&!chamfer){
+    try{
+      const vus=[];
+      manque.slice(0,2).forEach(m=>{
+        const j=jobs.find(q=>{const c=edges[q.bi].mid;return Math.hypot(c[0]-m[0],c[1]-m[1],c[2]-m[2])<1e-6;});
+        if(!j)return;
+        const w=occWallAt(base,[edges[j.bi]]);
+        if(w&&w.t<2*j.r)vus.push(`paroi de ${xNum(+w.t.toFixed(2))} mm seulement près de ${nomsPos(m)} pour un rayon de ${xNum(j.r)}`);
+      });
+      if(vus.length)pourquoi=' — '+vus.join(' ; ')+' : rayon trop grand pour cette épaisseur';
+    }catch(e){pourquoi='';}
+  }
+  if(manque.length)warns.push(`${lab} NON FAIT sur ${manque.length}/${js.length} arête(s), près de `+manque.slice(0,4).map(nomsPos).join(' ; ')+pourquoi);
   try{base.delete();}catch(e){}
   return{shape:s,warnings:warns};
 }

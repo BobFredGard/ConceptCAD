@@ -302,6 +302,12 @@ function* occReplayBodyGen(bid,list){
       }
       const snapX=nomsInstantane(result); // reprise NURBS : pas d'historique du noyau
       const r=occApplyXFillets(result,[f]);
+      // V0.89.2 : une arête sans ancre (copie de répétition dont la source est ancrée hors de la
+      // répétition) reçoit la sienne PENDANT ce calcul : l'empreinte du congé change. Le point de
+      // contrôle est rangé sous l'empreinte d'après, celle que le rejeu suivant recalculera — sinon
+      // il ne le retrouvait pas et refaisait ce congé et tout l'aval pour le même résultat
+      // (barquette d'exemple : 1,9 s au lieu de 0,07 s au rejeu qui suit une ouverture).
+      {const sigX=ckPre+featSig(f)+';';if(sigX!==ckKey)ckKey=sigX;}
       nomsCompleter(r.shape,null,snapX);
       result=r.shape;msgs.push(...r.warnings.map(w=>`${f.name} : ${w}`));
       if(r.warnings.length)occCkWarn[ckKey]=r.warnings.slice();else delete occCkWarn[ckKey];
@@ -711,7 +717,9 @@ function* occReplayBodyGen(bid,list){
       }catch(err){msgs.push(`${names} : filet modélisé impossible (${err.message})`);}
     }
   }
-  return{shape:result,preThr,unified:thrOn,ghostShapes,msgs,bin,itemShapes,items,imports};
+  // V0.89.2 : empreinte du corps rendu — mêmes entrées, même solide (c'est le contrat des points de
+  // contrôle). Les filets modélisés se creusent après la dernière clé : dits à part.
+  return{shape:result,preThr,unified:thrOn,ghostShapes,msgs,bin,itemShapes,items,imports,sig:ckKey+(preThr?'|filets':'')};
 }
 // congé exact dans le corps, sans scission de face : coutures à recoudre (occFinalShape)
 function occUnifyAfterFillets(list){
@@ -770,7 +778,7 @@ function* occFinalShapeGen(upto,warm){
       if(!r.unified&&occUnifyAfterFillets(byBody[bid])){
         try{const u=occUnify(occShapeCopy(sh));if(u&&u!==sh){try{sh.delete();}catch(e){}sh=u;}}catch(e){}
       }
-      perBody.push({bodyId:bid,shape:sh});
+      perBody.push({bodyId:bid,shape:sh,sig:r.sig||null});
       if(r.preThr)preThr.push({bodyId:bid,shape:r.preThr});
     }else if(r.preThr){try{r.preThr.delete();}catch(e){}}
     bin.push(...r.bin);itemShapes.push(...r.itemShapes);
@@ -1003,6 +1011,35 @@ function occCompoundOf(shapes){
     return acc;
   }catch(e){return list[0];}
 }
+// V0.89.2 : FACETTES D'AFFICHAGE GARDÉES PAR CORPS. Chaque reconstruction refaisait le maillage de
+// tous les corps, même intacts (barquette d'exemple : 0,28 s sur 0,54 s d'un rejeu sans changement).
+// Le rejeu rend l'empreinte de chaque corps (sig) : même empreinte et même finesse demandée → copie
+// des facettes gardées, sans repasser par le noyau. Empreinte différente, finesse différente ou
+// budget de triangles plus serré : maillage refait comme avant. Jeté par le rafraîchissement dur.
+let occMeshMemo=new Map(); // id du corps → {sig,lin,ang,lin1,ang1,maxT,tris,geo}
+function occMeshMemoClear(){occMeshMemo.forEach(m=>{try{m.geo.dispose&&m.geo.dispose();}catch(e){}});occMeshMemo=new Map();}
+function occMeshMemoGet(p,D,maxT){
+  if(freshHard||!p||!p.sig)return null;
+  const m=occMeshMemo.get(p.bodyId);
+  if(!m||m.sig!==p.sig||m.lin!==D.lin||m.ang!==D.ang)return null;
+  // finesse dégradée par le budget de triangles : seulement si le budget est le même
+  const degrade=m.lin1!==m.lin||m.ang1!==m.ang;
+  if(degrade?m.maxT!==maxT:(m.tris>maxT))return null;
+  let g=null;
+  try{g=m.geo.clone();}catch(e){return null;}
+  if(!g||!g.attributes||!g.attributes.position)return null;
+  D.lin=m.lin1;D.ang=m.ang1;
+  return g;
+}
+function occMeshMemoPut(p,g,lin0,ang0,D,maxT){
+  if(freshHard||!p||!p.sig||!g)return;
+  const old=occMeshMemo.get(p.bodyId);
+  if(old){try{old.geo.dispose&&old.geo.dispose();}catch(e){}occMeshMemo.delete(p.bodyId);}
+  let c=null,tris=0;
+  try{c=g.clone();tris=(g.attributes.position.count/3)|0;}catch(e){return;}
+  if(!c||!c.attributes||!c.attributes.position||!(tris>0))return;
+  occMeshMemo.set(p.bodyId,{sig:p.sig,lin:lin0,ang:ang0,lin1:D.lin,ang1:D.ang,maxT,tris,geo:c});
+}
 function occRebuild(){
   // Retourne true si la voie exacte a abouti (même partiellement), false pour repli maillage.
   occDropLive();
@@ -1020,14 +1057,18 @@ function occRebuild(){
     // en triangles : occXDefl() — la référence FAO — n'intervient PAS ici, intentionnellement.
     const D=occDisplayDefl(FR.shape||(parts[0]&&parts[0].shape)||null);
     let trisTot=0;
+    for(const id of [...occMeshMemo.keys()])if(!parts.some(p=>p.bodyId===id)){try{occMeshMemo.get(id).geo.dispose();}catch(e){}occMeshMemo.delete(id);}
     if(parts.length){
       parts.forEach(p=>{
         const e=bodyEntry(p.bodyId);
         let g=null;
+        const maxT=Math.max(1,OCC_DISPLAY_TRIS-trisTot),lin0=D.lin,ang0=D.ang;
+        const repris=occMeshMemoGet(p,D,maxT); // V0.89.2 : corps inchangé → facettes du rejeu précédent
         try{
-          g=occTessellateBudget(p.shape,D,Math.max(1,OCC_DISPLAY_TRIS-trisTot));
+          g=repris||occTessellateBudget(p.shape,D,maxT);
           if(!g)g=occTessellate(p.shape,D.lin,D.ang);
         }catch(err){FR.msgs.push(e.name+' : maillage impossible, ignoré');return;}
+        if(!repris)occMeshMemoPut(p,g,lin0,ang0,D,maxT);
         // Compteur d'attributs parfois illisible (harnais Node, geometry exotique) :
         // ce n'est PAS une géométrie vide — on affiche quand même, plutôt que de
         // faire échouer tout le rebuild exact et de basculer sur le moteur maillage.
@@ -1044,7 +1085,7 @@ function occRebuild(){
         const vis=!doc.bodyVis||!Object.prototype.hasOwnProperty.call(doc.bodyVis,e.id)?true:!!doc.bodyVis[e.id];
         mesh.visible=vis;
         const pre=(FR.preThr||[]).find(x=>x.bodyId===p.bodyId); // corps sans filets modélisés (FAO)
-        bodies.push({id:e.id,name:e.name+' · '+(lit?tris.toLocaleString('fr'):'?')+' tris',mesh,color:col,visible:vis,kind:'body',ref:null,bodyId:e.id,shape:p.shape,shapeFao:pre?pre.shape:null});
+        bodies.push({id:e.id,name:e.name+' · '+(lit?tris.toLocaleString('fr'):'?')+' tris',mesh,color:col,visible:vis,kind:'body',ref:null,bodyId:e.id,shape:p.shape,sig:p.sig||null,shapeFao:pre?pre.shape:null});
       });
       if(!bodies.some(b=>b.kind==='body'))faceEl.textContent+=(faceEl.textContent?'\n':'')+'Solide exact vide (tout a été découpé).';
       if(FR.shape){occLive={shape:FR.shape,shapeFao:FR.shapeFao||null,preThr:FR.preThr||[]};FR.shape=null;FR.shapeFao=null;FR.preThr=null;} // conservé pour le picking d'arêtes

@@ -468,6 +468,22 @@ function occDistPolyligne(q,pts){
   }
   return Math.sqrt(d2);
 }
+function occCongeDeborde(avant,apres,jobs,r){
+  // Un arrondi d'UNE arête a-t-il emporté une arête hors sélection ? avant : arêtes du solide avant lui ;
+  // apres : solide rendu ; jobs : toute la sélection (tracés d'origine). Une arête voisine est seulement
+  // raccourcie par un arrondi : il en reste un morceau. Emportée EN ENTIER alors qu'elle est plus longue que
+  // deux rayons et sur le tracé d'aucune arête choisie : le noyau a suivi une chaîne tangente au-delà.
+  const traces=(jobs||[]).map(j=>j.pts).filter(p=>p&&p.length>1);
+  if(!traces.length)return false; // sélection sans tracé (congé de périmètre) : pas de contrôle
+  let E2=null;try{E2=occListEdges(apres);}catch(e){return false;}
+  const sur=(q,l,tol)=>l.some(p=>occDistPolyligne(q,p)<tol);
+  const reste=E2.map(e=>e.pts).filter(p=>p&&p.length>1);
+  return avant.some(e=>{
+    if(!e.pts||e.pts.length<2||!(e.len>2*r))return false;
+    if(e.pts.filter(q=>sur(q,traces,0.5)).length>=0.6*e.pts.length)return false; // arête choisie
+    return !e.pts.some(q=>sur(q,reste,0.05));
+  });
+}
 function occFilletRun(base,jobs,warns,chamfer,opts){
   // Arrondi/chanfrein BRep : 1) le lot en une passe (rapide), 2) si Build échoue → ARÊTE PAR ARÊTE
   // sur la shape courante (chaque succès conservé — une arête capricieuse ne fait plus
@@ -630,7 +646,15 @@ function occFilletRun(base,jobs,warns,chamfer,opts){
     let edges=null;try{edges=occListEdges(cur);}catch(e){}
     const ed=(edges||[]).find(e=>Math.hypot(e.mid[0]-j.mid[0],e.mid[1]-j.mid[1],e.mid[2]-j.mid[2])<3.0);
     if(!ed){warns.push('arête introuvable ('+kindLabel+' isolé)');if(bilan)(bilan.rates=bilan.rates||[]).push(j.mid.slice());continue;}
-    const one=mk(cur,[{src:ed.src,r:j.r,fn:j.fn||null}]);
+    let one=mk(cur,[{src:ed.src,r:j.r,fn:j.fn||null}]);
+    // V0.89.2 : le noyau prolonge de lui-même un arrondi le long des arêtes tangentes. Ici, les congés déjà
+    // posés par CETTE fonction ont créé des tangences qui n'existaient pas quand les arêtes ont été choisies :
+    // l'arrondi d'un bout d'arête partait faire le tour de la pièce. Refusé s'il emporte en entier une arête
+    // qui n'est pas dans la sélection — dit comme une arête non faite, jamais fait en silence.
+    if(one&&occCongeDeborde(edges||[],one,jobs,j.r)){
+      try{one.delete();}catch(e){}one=null;
+      warns.push(kindLabel+' : le noyau le prolongeait sur des arêtes non choisies (tangentes aux congés voisins) — arête laissée vive');
+    }
     if(one){if(cur!==base){try{cur.delete();}catch(e){}}cur=one;done++;}
     else{warns.push(kindLabel+' isolé impossible ('+(chamfer?'distance trop grande ?':'rayon trop grand ?')+')');if(bilan)(bilan.rates=bilan.rates||[]).push(j.mid.slice());}
   }
