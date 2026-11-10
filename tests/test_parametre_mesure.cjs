@@ -41,8 +41,12 @@ const {loadApp}=require('./appvm.cjs');
     doc.params.push({name:'Double',expr:'Ecart1*2',value:0});
     const f2=doc.features.find(f=>f.id==='F2');
     A(parSetFeat(f2,'distance',f2,'Ecart1/2')===true,'2a : une fonction peut utiliser le paramètre mesuré');
-    const f1=doc.features.find(f=>f.id==='F1');f1.distance=16;markDirty();rebuild();
+    const f1=doc.features.find(f=>f.id==='F1');
+    let nReb=0;const rb0=rebuild;rebuild=function(ps){if(!ps)nReb++;return rb0.apply(this,arguments);};
+    f1.distance=16;markDirty();rebuild();
     for(let i=0;i<3;i++){await new Promise(r=>setTimeout(r,30));}
+    rebuild=rb0;
+    A(nReb===2,'2e : un seul rejeu en plus pour suivre la mesure (rejeux : '+nReb+')');
     A(Math.abs(p.value-16)<1e-9,'2b : épaisseur 16 → Ecart1 = 16 (vu '+p.value+')');
     A(Math.abs(doc.params.find(q=>q.name==='Double').value-32)<1e-9,'2c : Double = Ecart1*2 suit (32)');
     A(Math.abs(f2.distance-8)<1e-9&&builtEngine==='exact','2d : le plot suit : hauteur 8 = Ecart1/2 (vu '+f2.distance+')');
@@ -71,6 +75,7 @@ const {loadApp}=require('./appvm.cjs');
     A(sp&&sp.mes&&sp.mes.a&&sp.mes.b&&sp.mes.k==='plans','5 : enregistré avec ses 2 faces');
     // ── 6. face disparue : ⚠, dernière valeur gardée ; revenue : plus de ⚠ ──
     f1.distance=12;doc.features.find(f=>f.id==='F2').visible=false;markDirty();rebuild();
+    for(let i=0;i<3;i++){await new Promise(r=>setTimeout(r,30));}
     const q4=doc.params[doc.params.length-1];
     out.log.push('6 : '+q4.name+' '+q4.value+(q4.mesErr?' ⚠ '+q4.mesErr:''));
     A(Math.abs(p.value-12)<1e-9&&!p.mesErr,'6a : Ecart1 = 12, sans ⚠');

@@ -649,6 +649,16 @@ function occFaceCreator(mesh,fi,point){
   if(occCreatorMemo.live!==occLive)occCreatorMemo={live:occLive,m:new Map()};
   const bid=hit.bd.bodyId||hit.bd.id,key=bid+'|'+hit.ord;
   if(occCreatorMemo.m.has(key)){try{hit.face.delete();}catch(e){}return occCreatorMemo.m.get(key);}
+  // V0.89.1 : le NOM unique de la face (20-05) commence par l'id de la fonction qui l'a fait naître
+  // (« ex_18_…/e123/flanc#1 », « ho_95_…/c0/s0/f1 », « im_3_…/~411 ») : lu en une fraction de
+  // milliseconde. Le rejeu observé ci-dessous ne sert plus que de repli (face sans nom) : il figeait
+  // la vue 1 à 10 s par clic sur une pièce de 110 fonctions et ~850 faces, et n'y trouvait presque rien.
+  try{
+    const nm=nomsFaceDe(hit.bd.shape,hit.face);
+    const m=nm&&nm.match(/^[a-z]+_\d+_[a-z0-9]+/i);
+    let fid=m&&m[0];const f0=fid&&(doc.features||[]).find(x=>x.id===fid);
+    if(f0){if(f0.repeatId)fid=f0.repeatId;try{hit.face.delete();}catch(e){}occCreatorMemo.m.set(key,fid);return fid;}
+  }catch(e){}
   const ref=occFaceSurf(hit.face);try{hit.face.delete();}catch(e){}
   const p=[point.x,point.y,point.z];
   const seq=[];

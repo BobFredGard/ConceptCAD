@@ -230,8 +230,19 @@ function parMesOrd(shape,face){
   return -1;
 }
 /* ----- mise à jour après chaque rejeu ----- */
-let parMesLoop=0;
+let parMesLoop=0,parMesT=null;
+/* V0.89.1 : buildDone tombe aussi dans les passes imbriquées (projections) sur un solide encore
+   provisoire — relue là, la mesure changeait d'une passe à l'autre et relançait jusqu'à 3 rejeux
+   complets en plus (×4 sur une pièce de 110 fonctions). On attend la fin du rejeu le plus
+   extérieur, une seule lecture par rafale. */
 function parMesUpdate(){
+  if(!(doc.params||[]).some(p=>p&&p.mes))return;
+  if(parMesT)clearTimeout(parMesT);
+  parMesT=setTimeout(()=>{parMesT=null;
+    if(typeof rebuildDepth!=='undefined'&&rebuildDepth>0){parMesUpdate();return;}
+    parMesUpdateNow();},0);
+}
+function parMesUpdateNow(){
   const L=(doc.params||[]).filter(p=>p&&p.mes);
   if(!L.length||!occHas()||!parMesShapes().length){parMesLoop=0;return;}
   let chg=false;
@@ -255,5 +266,5 @@ function parMesUpdate(){
     try{faceEl.textContent+=(faceEl.textContent?'\n':'')+'⚠ Paramètre mesuré : la pièce change ce qu’il mesure (la valeur ne se stabilise pas) — arrêt après 3 rejeux.';}catch(e){}
     return;
   }
-  setTimeout(()=>{try{markDirty();rebuild();}catch(e){}},0);
+  try{markDirty();rebuild();}catch(e){}
 }

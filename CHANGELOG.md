@@ -8,7 +8,7 @@ sont sorties le 2026-09-30j.
 Code dans `src/` · livrable `fusion_mvp.html` (généré par `build.js`) · architecture et
 garde-fous en tête de `src/00-entete-et-outils.js`.
 
-**645 versions**, de `2026-09-28b` à `V0.89.0` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
+**646 versions**, de `2026-09-28b` à `V0.89.1` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
 comme dans le fichier d'origine.
 
 ---
@@ -7311,3 +7311,10 @@ Barquette ne perd plus son solide à la 107e modification, et sa mémoire ne mon
 - **Cause** : la « box » (`WORKPIECE`) des posts Fusion `630-5axes.cps` / `1520-5axes.cps` n'avait jamais été reprise (aucune version ni branche ne la contenait) ; V0.45.2 n'avait traité que les perçages Fagor 8065, le dégagement `SUPA X` et `_DIR`. Le post ne commandait `CYCLE800` qu'après une opération inclinée : pas de remise à plat en début de programme, ni de plan redonné après un changement d'outil à plat, contrairement au post Fusion (`poulie.mpf`).
 - **Correctif** (`src/88-fao-60-postprocesseurs`) : `faoWorkpieceBox` écrit `WORKPIECE(,"C",,"BOX",112,Zhaut,Zbas,80,Xmax,Ymax,Xmin,Ymin)` en tête (brut dans le repère du programme), réglage machine `workpiece:false` pour l'enlever ; en début de programme, dégagement de la fiche machine puis `CYCLE800` à plat avec `_DIR 0` (comme `onSection` du post Fusion) ; plan de l'opération recommandé après CHAQUE changement d'outil, à plat compris ; table remise à plat en fin de programme si besoin. Fagor 8065 inchangé (ni CYCLE800 ni WORKPIECE).
 - **Test** : `test_post_cycle800` complété (8b box avant G71, 8c remise à plat _DIR 0 avant le 1er outil, 18 à plat : CYCLE800 0,0,0 seulement, 18b après le 2e outil, 18c Fagor sans CYCLE800 ni WORKPIECE) : 25/25 ; `test_fao_securite` : le 1er G0 peut être le dégagement machine `G0 SUPA Z…` ; G-code de `Exemples/Perçages.conceptcad` relu (box `0,-35,…,55,37.5,-55,-37.5`, pivotements des perçages de côté inchangés). Parcours FAO et CACHE_VER inchangés.
+
+## V0.89.1 - Sélection de face et mises à jour de nouveau rapides avec un paramètre mesuré
+
+- **Demande** : Fred, 10/11 : « depuis ces dernières modifs, la sélection des face bloque la vu assez longtemps, les mise à jour des fonctions est plus longue ».
+- **Cause** : (1) au clic sur une face, la recherche de la fonction qui l'a créée (surlignage dans l'arbre, V0.88.1) rejouait le modèle en observant chaque étape : 1,3 s à 10 s par clic sur une pièce de 110 fonctions ; (2) le paramètre mesuré (V0.88.0) était relu à chaque fin de rejeu, y compris dans les passes imbriquées des projections sur un solide encore provisoire : la mesure changeait d'une passe à l'autre et relançait jusqu'à 3 rejeux complets de plus (60 s pour une cote modifiée au lieu de 13 s).
+- **Correctif** : (1) `occFaceCreator` (`src/90-10-selection-mesure`) lit d'abord la fonction dans le nom unique de la face (préfixe = identifiant de la fonction, répétition ramenée à sa fonction d'origine), le rejeu observé ne sert plus qu'aux faces sans nom : 0,1 à 0,5 ms par clic ; (2) `parMesUpdate` (`src/51-parametres-mesure`) attend la fin du rejeu le plus extérieur et ne lit la mesure qu'une fois par rafale ; un seul rejeu en plus quand ce qui l'utilise change. Même pièce : cote modifiée en 20 s (dont le rejeu des fonctions qui suivent la mesure), ouverture 20 s.
+- **Test** : `test_parametre_mesure` complété (2e : un seul rejeu en plus pour suivre la mesure). Parcours FAO et CACHE_VER inchangés.
