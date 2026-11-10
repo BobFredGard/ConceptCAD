@@ -82,6 +82,9 @@ function skPlBuild(sk){
     s.type+[k(s.x1)+','+k(s.y1),k(s.x2)+','+k(s.y2)].sort().join(';')+(s.type==='arc'?k(s.cx)+k(s.cy):'');
   const addE=s=>{if(!s)return;const key=keyOf(s);if(seen.has(key))return;seen.add(key);E.push(s);};
   const pierce=[],far=[];
+  // centres de repères (origine de la pièce, repères, points et axes de construction) en premier :
+  // un point du plan confondu ne les masque pas (retour du 10/11/2026 : centrer sur l'origine)
+  skOrigCibles(sk).forEach(c=>P.push({kind:'origin',x:c.x,y:c.y,e:[],orig:c.orig,lab:c.lab}));
   if(edges&&edges.length){
     for(const e of edges){
       if(!e||!e.pts||e.pts.length<2)continue;
@@ -145,7 +148,7 @@ function skPlFoot(s,x,y){
     return{d:Math.abs(dc-s.r),x:s.cx+(x-s.cx)/dc*s.r,y:s.cy+(y-s.cy)/dc*s.r};}
   return null; // courbe : seuls ses bouts sont des cibles
 }
-const SK_PL_SELKINDS=new Set(['end','mid','center','pierce']); // outil Sélection : bouts, milieux, centres
+const SK_PL_SELKINDS=new Set(['end','mid','center','pierce','origin']); // outil Sélection : bouts, milieux, centres
 function skPlHit(sk,x,y,sel){
   // cible du plan sous (x,y) : point remarquable d'abord, puis arête (pied) ; à distance
   // comparable, ce qui est DANS le plan l'emporte sur ce qui n'y est vu qu'en projection.
@@ -237,6 +240,7 @@ function skPlMaterialize(sk,h){
     return addPoint(sk,p.x,p.y);
   }
   if(p.kind==='center'){const en=skPlEnsureEdge(sk,p.e[0]);return en&&en.pc?en.pc:addPoint(sk,p.x,p.y);}
+  if(p.kind==='origin')return skOrigMaterialize(sk,p);
   const pid=addPoint(sk,p.x,p.y);
   if(p.kind==='mid'){const en=skPlEnsureEdge(sk,p.e[0]);if(en&&en.t==='line')sk.constraints.push({id:skNewEid(sk),type:'midpoint',p:pid,line:en.id});}
   else if(p.kind==='isect')p.e.forEach(i=>{const en=skPlEnsureEdge(sk,i);if(en)skPlPin(sk,pid,en);});
@@ -294,7 +298,7 @@ function skPlSelect(sk,x,y,multi){
 }
 function skPlDrawHover(sk){
   // surbrillance orange de la cible du plan survolée (arête(s) + point)
-  const h=skPlHover;if(!h||!(SK_PL_TOOLS.has(skTool)||skTool==='select'))return;
+  const h=skPlHover;if(!h||!(SK_PL_TOOLS.has(skTool)||skTool==='select'||skTool==='project'&&h.p&&h.p.kind==='origin'))return;
   const T=skPlTargets(sk);if(!T)return;
   const C='#ff9f0a',skElBase=skEl,sel=skTool==='select';
   const drawE=s=>{
@@ -313,7 +317,50 @@ function skPlDrawHover(sk){
   // bouts des arêtes allumées : carrés creux, comme les extrémités d'une droite d'esquisse
   lit.forEach(s=>ends(s).forEach(q=>{const[x,y]=w2s(q[0],q[1]);skEl('rect',{x:x-4,y:y-4,width:8,height:8,fill:'#101012',stroke:C,'stroke-width':1.5});}));
   const[a,b]=w2s(h.x,h.y);
-  if(h.kind==='pt'&&h.p.kind==='pierce')skEl('path',{d:`M ${a} ${b-6} L ${a+6} ${b} L ${a} ${b+6} L ${a-6} ${b} Z`,fill:C,stroke:'#101012','stroke-width':1});
+  if(h.kind==='pt'&&h.p.kind==='origin'){skEl('circle',{cx:a,cy:b,r:6,fill:'none',stroke:C,'stroke-width':2});
+    skEl('path',{d:`M ${a-9} ${b} L ${a+9} ${b} M ${a} ${b-9} L ${a} ${b+9}`,stroke:C,'stroke-width':1.5});
+    skEl('circle',{cx:a,cy:b,r:2.5,fill:C});}
+  else if(h.kind==='pt'&&h.p.kind==='pierce')skEl('path',{d:`M ${a} ${b-6} L ${a+6} ${b} L ${a} ${b+6} L ${a-6} ${b} Z`,fill:C,stroke:'#101012','stroke-width':1});
   else if(h.kind==='pt')skEl('rect',{x:a-4.5,y:b-4.5,width:9,height:9,fill:C,stroke:'#101012','stroke-width':1}); // carré, comme les points d'esquisse
   else if(!sel)skEl('circle',{cx:a,cy:b,r:3.5,fill:C,stroke:'#101012','stroke-width':1}); // pied sur l'arête (Sélection : l'arête seule)
+}
+
+// ---- Centres de repères projetables (V0.78.1) ----
+// Origine de la pièce, repères, points et axes de construction : leur point central, projeté sur le
+// plan d'esquisse, s'allume au survol (⊕ orange) dans les outils de dessin, Cote, Sélection et ⧉.
+// Au clic : point de construction fixe, suivi au rejeu (e.orig = {o:1} origine, {cg:id} construction).
+function skOrigPos3(orig){
+  if(!orig)return null;
+  if(orig.o)return[0,0,0];
+  if(orig.cg){const el=typeof cgGet==='function'?cgGet(orig.cg):null;const o=el&&el.fr&&el.fr.o;return o&&o.length===3&&o.every(isFinite)?o:null;}
+  return null;
+}
+function skOrigTo2(sk,p){const{u,v,o}=sketchBasis(sk);const w=[p[0]-o.x,p[1]-o.y,p[2]-o.z];return[w[0]*u.x+w[1]*u.y+w[2]*u.z,w[0]*v.x+w[1]*v.y+w[2]*v.z];}
+function skOrigCibles(sk){
+  const out=[];
+  const add=(orig,lab)=>{const p=skOrigPos3(orig);if(!p)return;const q=skOrigTo2(sk,p);out.push({x:q[0],y:q[1],orig,lab});};
+  if(!sk.fao)add({o:1},'Origine de la pièce');
+  (doc.cgeo||[]).forEach(el=>{if(!el||!el.fr||el.kind==='plane')return;if(typeof cgLocked==='function'&&cgLocked(el))return;add({cg:el.id},el.name||'repère');});
+  return out;
+}
+function skOrigSame(a,b){return!!(a&&b&&(a.o&&b.o||a.cg&&a.cg===b.cg));}
+function skOrigMaterialize(sk,p){
+  const ex=(sk.entities||[]).find(e=>e.t==='cpoint'&&skOrigSame(e.orig,p.orig));
+  if(ex&&sk.points[ex.p])return ex.p;
+  const pid=addPoint(sk,p.x,p.y);
+  sk.constraints.push({id:skNewEid(sk),type:'fix',p:pid});
+  sk.entities.push(Object.assign({id:skNewEid(sk),t:'cpoint',p:pid,construction:true,proj:true,orig:Object.assign({},p.orig)},projNames({}),{srcName:p.lab||null}));
+  return pid;
+}
+function skOrigTrack(sk,e){
+  // rejeu : le centre projeté suit son repère (repère de construction déplacé, esquisse déplacée)
+  const Q=sk.points[e.p],p=skOrigPos3(e.orig);if(!Q||!p)return false;
+  const q=skOrigTo2(sk,p);if(Math.hypot(q[0]-Q.x,q[1]-Q.y)<=1e-6)return false;
+  Q.x=q[0];Q.y=q[1];return true;
+}
+function skOrigHit(sk,x,y){
+  // ⧉ Projeter : centre de repère sous le curseur ?
+  let best=null,bd=SK_SNAP;
+  skOrigCibles(sk).forEach(c=>{const d=Math.hypot(c.x-x,c.y-y);if(d<bd){bd=d;best=c;}});
+  return best;
 }

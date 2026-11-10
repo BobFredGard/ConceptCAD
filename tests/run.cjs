@@ -307,6 +307,7 @@ const SUITES = [
   "test_simulation_cartes",
   "test_fao_chanfrein",
   "test_oracle",
-  "test_construction_esquisse"
+  "test_construction_esquisse",
+  "test_esquisse_reperes"
 ];
 require('./pool.cjs').pool(SUITES, { titre: 'SUITE', timeout: 20 * 60 * 1000 });

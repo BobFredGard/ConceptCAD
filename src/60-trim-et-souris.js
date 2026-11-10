@@ -701,6 +701,8 @@ svg.addEventListener('pointerdown',e=>{
   }
   if(skTool==='project'){
     if(skpClic(sk,wx,wy))return; // point, ligne ou courbe d'une autre esquisse (50-esquisse-8)
+    {const oh=skOrigHit(sk,wx,wy);if(oh){skPushUndo();skOrigMaterialize(sk,{x:oh.x,y:oh.y,orig:oh.orig,lab:oh.lab});skProjectHover=null;
+      skStatus('Centre « '+oh.lab+' » projeté : point de construction fixe, qui suit le repère.');afterEdit();return;}}
     // OCCT donne les arêtes BRep exactes (vives ET de tangence) ; sans noyau on garde le
     // repli sur les références projetées (corps visibles) — dégradé, mais utilisable.
     if(!(occHas()&&occLive&&occLive.shape)&&!((sk._refs||[]).length)&&!(typeof asmSkExtLists==='function'&&asmSkExtLists().length)){
@@ -752,6 +754,9 @@ svg.addEventListener('pointermove',e=>{
   if(skPan&&!skPan.moved){if(Math.hypot(e.clientX-skPan.px,e.clientY-skPan.py)<4)return;skPan.moved=true;} // seuil : un clic droit court reste un clic
   if(skPan){skView.cx=skPan.cx-(e.clientX-skPan.px)/skView.s;skView.cy=skPan.cy+(e.clientY-skPan.py)/skView.s;drawSketch2D();return;}
   if(skTool==='project'){
+    const oh=skOrigHit(sk,wx,wy),ho=oh?{kind:'pt',p:{kind:'origin',e:[],x:oh.x,y:oh.y},x:oh.x,y:oh.y}:null;
+    if(JSON.stringify(ho)!==JSON.stringify(skPlHover)){skPlHover=ho;if(oh)skProjectHover=null;drawSketch2D();}
+    if(oh){skStatus('⧉ Centre « '+oh.lab+' » — clic pour le projeter (point fixe qui suit le repère).');return;}
     const pr=skpHit(sk,wx,wy)||projectEdgeAt(sk,wx,wy);
     const k=pr?JSON.stringify(pr):'null', ko=skProjectHover?JSON.stringify(skProjectHover):'null';
     if(k!==ko){ skProjectHover=pr; drawSketch2D(); }
