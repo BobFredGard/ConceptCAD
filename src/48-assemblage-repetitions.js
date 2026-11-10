@@ -37,6 +37,7 @@ function asmPatNorm(list){
       skip:Array.isArray(p.skip)?p.skip.filter(x=>typeof x==='string'):[]};
     if(p.lin2){o.lin2=true;o.axis2=ax(p.axis2);o.copies2=cnt(p.copies2);o.dist2=num(p.dist2,10);}
     if(p.plane2)o.plane2=ax(p.plane2);
+    {const fx=asmFxNorm(p.fx);if(fx)o.fx=fx;} // V0.87.0 : expressions des champs (48-assemblage-fx)
     if(p.type==='path'){
       const q=p.path&&typeof p.path==='object'?p.path:{};
       o.path={sk:typeof q.sk==='string'?q.sk:null};
@@ -302,8 +303,9 @@ function asmPatProps(p){
   const mk=(tag,cls,txt)=>{const d=document.createElement(tag);if(cls)d.className=cls;if(txt!=null)d.textContent=txt;return d;};
   const Row=(lab,ctl)=>{const r=mk('div','pnl-row');r.appendChild(mk('label',null,lab));if(ctl)r.appendChild(ctl);p.appendChild(r);return r;};
   const sel=(opts,v,fn)=>{const s=document.createElement('select');opts.forEach(([k,t])=>{const o=document.createElement('option');o.value=k;o.textContent=t;if(k===v)o.selected=true;s.appendChild(o);});s.onchange=()=>fn(s.value);return s;};
-  const num=(v,fn,int)=>{const i=document.createElement('input');i.type='text';i.inputMode='decimal';i.style.width='64px';i.value=String(+(+v).toFixed(3)).replace('.',',');
-    const go=()=>{const x=parseFloat(String(i.value).replace(',','.'));if(isFinite(x))fn(int?Math.round(x):x);};i.addEventListener('change',go);i.addEventListener('keydown',e=>{if(e.key==='Enter')go();});return i;};
+  // V0.87.0 : num(clé, fn, entier) — le champ garde son expression (48-assemblage-fx), évaluée avec
+  // les paramètres du porteur
+  const num=(k,fn,int)=>asmFxInput(pat,k,int?(v=>fn(v)):fn,{int:!!int,d:owner.doc});
   const chk=(v,fn)=>{const c=document.createElement('input');c.type='checkbox';c.checked=!!v;c.onchange=()=>fn(c.checked);return c;};
   const cnt=v=>Math.max(1,Math.min(ASM_PAT_MAX,Math.floor(v)-1)); // quantité saisie (original compris) → copies
   const AX=[['X','X'],['Y','Y'],['Z','Z']],PL=[['X','YZ (normale X)'],['Y','XZ (normale Y)'],['Z','XY (normale Z)']];
@@ -332,11 +334,11 @@ function asmPatProps(p){
         Row('',repPathPickBtn(owner.doc,fn=>asmPatSet(fn),sk.id));
       }else Row('Départ',repPathPickBtn(owner.doc,fn=>asmPatSet(fn),null));
     }
-    Row('Quantité',num(pat.copies+1,v=>asmPatSet(q=>{q.copies=cnt(v);}),true));
+    Row('Quantité',num('qty',v=>asmPatSet(q=>{q.copies=cnt(v);}),true));
     const P=asmPatPlan(owner,pat);
     Row('Espacement',sel([['fit','Réparti sur la longueur'],['pitch','Pas imposé']],pat.pspace==='pitch'?'pitch':'fit',v=>asmPatSet(q=>{
       q.pspace=v;if(v==='pitch')q.dist=P.step>0?+P.step.toFixed(3):(q.dist||10);})));
-    if(pat.pspace==='pitch')Row('Pas le long de la courbe (mm)',num(pat.dist,v=>asmPatSet(q=>{if(v>0)q.dist=v;})));
+    if(pat.pspace==='pitch')Row('Pas le long de la courbe (mm)',num('dist',v=>asmPatSet(q=>{if(v>0)q.dist=v;})));
     Row('Orientation',sel([['fixed','Fixe (translation)'],['tangent','Suit la tangente']],pat.orient==='tangent'?'tangent':'fixed',v=>asmPatSet(q=>{q.orient=v;})));
     const bi=mk('button','mini','⇄ Inverser le sens');bi.onclick=()=>asmPatSet(q=>{if(q.rev)delete q.rev;else q.rev=true;});Row('Sens',bi);
     const f=v=>String(+(+v).toFixed(3)).replace('.',',');
@@ -344,19 +346,19 @@ function asmPatProps(p){
     p.appendChild(mk('div','pnl-note','La pièce suit la courbe depuis le départ (tracez la courbe par son centre). Courbe fermée : la dernière instance s’arrête un pas avant le départ. Quantité = original compris.'));
   }else if(pat.type==='lin'){
     Row('Direction',sel(AX,pat.axis,v=>asmPatSet(q=>{q.axis=v;})));
-    Row('Quantité',num(pat.copies+1,v=>asmPatSet(q=>{q.copies=cnt(v);}),true));
-    Row('Pas (mm)',num(pat.dist,v=>asmPatSet(q=>{q.dist=v;})));
+    Row('Quantité',num('qty',v=>asmPatSet(q=>{q.copies=cnt(v);}),true));
+    Row('Pas (mm)',num('dist',v=>asmPatSet(q=>{q.dist=v;})));
     Row('2ᵉ direction',chk(pat.lin2,v=>asmPatSet(q=>{if(v){q.lin2=true;q.axis2=q.axis2||(q.axis==='X'?'Y':'X');q.copies2=q.copies2||1;if(q.dist2==null)q.dist2=q.dist;}else{delete q.lin2;}})));
     if(pat.lin2){
       Row('Direction 2',sel(AX,pat.axis2,v=>asmPatSet(q=>{q.axis2=v;})));
-      Row('Quantité 2',num((pat.copies2||1)+1,v=>asmPatSet(q=>{q.copies2=cnt(v);}),true));
-      Row('Pas 2 (mm)',num(pat.dist2||0,v=>asmPatSet(q=>{q.dist2=v;})));
+      Row('Quantité 2',num('qty2',v=>asmPatSet(q=>{q.copies2=cnt(v);}),true));
+      Row('Pas 2 (mm)',num('dist2',v=>asmPatSet(q=>{q.dist2=v;})));
     }
     p.appendChild(mk('div','pnl-note','Pas négatif = sens inverse. Quantité = original compris.'));
   }else if(pat.type==='circ'){
     Row('Axe',sel(AX,pat.axis,v=>asmPatSet(q=>{q.axis=v;})));
-    Row('Quantité',num(pat.copies+1,v=>asmPatSet(q=>{q.copies=cnt(v);}),true));
-    Row('Angle total (°)',num(pat.angle,v=>asmPatSet(q=>{q.angle=v||360;})));
+    Row('Quantité',num('qty',v=>asmPatSet(q=>{q.copies=cnt(v);}),true));
+    Row('Angle total (°)',num('angle',v=>asmPatSet(q=>{q.angle=v||360;})));
     p.appendChild(mk('div','pnl-note','Autour de l’axe passant par l’origine de la référence · 360° = tour complet réparti.'));
   }else{
     Row('Plan',sel(PL,pat.axis,v=>asmPatSet(q=>{q.axis=v;})));

@@ -379,7 +379,7 @@ input[type=range]{accent-color:var(--primary);width:100%}
  * peut changer sans rien casser. CACHE_VER (parcours FAO) reste indépendant.
  */
 
-const APP_VER='V0.86.0';
+const APP_VER='V0.87.0';
 try{console.log('[ConceptCAD] version '+APP_VER);}catch(e){}
 try{var mfSv=document.getElementById('mfSplashVer');if(mfSv)mfSv.textContent=APP_VER;}catch(e){} // écran de démarrage
 
@@ -15208,6 +15208,7 @@ function asmAlignNorm(a){
   if(a.q)out.q=num(a.q);if(a.q0)out.q0=num(a.q0);
   if(a.lim&&typeof a.lim==='object'){out.lim={};Object.keys(a.lim).forEach(k=>{const l=a.lim[k];if(ASM_DOF_KEYS.includes(k)&&Array.isArray(l)&&l.length===2&&l.every(v=>isFinite(+v)))out.lim[k]=[+l[0],+l[1]];});}
   if(okFr(a.rel))out.rel=a.rel;if(okFr(a.sfr))out.sfr=a.sfr;
+  try{const fx=asmFxNorm(a.fx);if(fx)out.fx=fx;}catch(e){} // V0.87.0 : expressions des champs
   return out;
 }
 /* ── liaisons mécaniques (V0.6.5) ──
@@ -15302,6 +15303,7 @@ function asmResolve(){
   // → true si une occurrence a bougé
   if(!asm)return false;
   let ch=false;const seen=new Set();
+  try{if(typeof asmFxSync==='function'&&asmFxSync())ch=true;}catch(e){} // paramètres dans les champs (48-assemblage-fx)
   const visit=c=>{
     if(!c||seen.has(c.id))return;seen.add(c.id);
     c.occ.forEach(o=>visit(asmComp(o.comp)));
@@ -15838,7 +15840,8 @@ function asmExtSyncSoon(){if(!asmExtBusy&&asm){try{setTimeout(()=>{try{if(asmExt
        servait plus dès la livraison suivante). Une correction du rejeu d'une fonction DOIT donc
        changer CACHE_VER, sinon l'ancienne image reste affichée jusqu'au prochain rejeu ;
      · deux empreintes indépendantes + la longueur du texte (pas de collision réaliste).
-   Jamais mis en cache : un composant avec un import (contenu hors empreinte), une capture en
+   Jamais mis en cache : un import sans empreinte de sa source (V0.87.0 : avec, elle entre dans la
+   clé — corps dérivés compris), une forme importée pas encore chargée, une capture en
    repli maillage, ou prise avec le marqueur temps reculé, une fonction suspendue, une esquisse
    ouverte (l'image ne correspond pas au document complet).
    Clés asnap:<…> du magasin « kv » ; index asnap:index {clé → dernier usage} : au-delà de
@@ -15855,12 +15858,25 @@ const ASM_CACHE_VERTS=1500000; // composant plus gros : pas de cache (comme save
 const asmCachePend=new Map(); // composant → {snap, key} à écrire
 let asmCacheT=null;
 function asmCacheIdbOK(){return typeof indexedDB!=='undefined'&&!!indexedDB&&typeof idbOpen==='function';}
-function asmCacheable(d){return !!d&&Array.isArray(d.sketches)&&!(d.features||[]).some(f=>f&&f.type==='import');}
+function asmCacheImports(d){return (d.features||[]).filter(f=>f&&f.type==='import');}
+function asmCacheable(d){
+  // V0.87.0 : un import ne bloque plus le cache s'il cite sa source par l'EMPREINTE de son contenu
+  // (f.src.key, 90-30) : la clé change avec le fichier importé. Corps dérivés compris (52) : une
+  // pièce qui enlève une forme dérivée était rejouée à chaque ouverture (≈ 1 min sur une vraie pièce).
+  return !!d&&Array.isArray(d.sketches)&&asmCacheImports(d).every(f=>f.src&&typeof f.src.key==='string'&&f.src.key);
+}
+function asmCacheImpReady(d){
+  // Image capturée seulement quand chaque import visible a sa forme exacte chargée (sinon corps absent)
+  return asmCacheImports(d).every(f=>f.visible===false||(()=>{const e=importGeom.get(f.id);return !!(e&&e.brep);})());
+}
 function asmCacheKey(d){
   // Clé du composant (document d) ; null : pas de cache
   if(!asmCacheable(d))return null;
   let s;
-  try{s=docHashSrc(d)+'|'+JSON.stringify({b:d.bodies||[],v:d.bodyVis||{},t:d.tint||0,r:d.rendu||null})+'|'+CACHE_VER+'|'+ASM_CACHE_V;}
+  try{
+    // imports : hors de docHashSrc (sauf dérivés) → fonctions entières, avec l'empreinte de leur source
+    const im=asmCacheImports(d).map(({_mesh,_m,...r})=>r);
+    s=docHashSrc(d)+'|'+JSON.stringify({b:d.bodies||[],v:d.bodyVis||{},t:d.tint||0,r:d.rendu||null})+(im.length?'|'+JSON.stringify(im):'')+'|'+CACHE_VER+'|'+ASM_CACHE_V;}
   catch(e){return null;}
   let a=2166136261,b=5381;
   for(let i=0;i<s.length;i++){const c=s.charCodeAt(i);a^=c;a=Math.imul(a,16777619);b=(Math.imul(b,33)^c)|0;}
@@ -15938,6 +15954,7 @@ function asmCacheSoon(c){
   try{if(typeof skEdit!=='undefined'&&skEdit)return;}catch(e){}
   if(!c._snap.exact||c._snap.cached)return;
   const key=asmCacheKey(c.doc);if(!key)return;
+  try{if(!asmCacheImpReady(c.doc))return;}catch(e){return;}
   // capture du rejeu de première activation (asmActivate : document réparé, puis rejoué, sans
   // rien entre les deux) : la clé du document tel qu'il est dans le fichier mène aussi à cet
   // instantané (simple renvoi vers la clé finale)
@@ -16633,6 +16650,7 @@ function asmRenderProps(p){
   Btns(l);
   {const lm=asmLinkMenu(cc);if(lm.length)Btns(lm.map(x=>[x.html,x.fn]));}
 }
+let asmRestoreHold=false; // asmAfterLoad attend les imports : leur restauration ne relance pas les rejeux
 function asmAfterLoad(){
   // Fin d'ouverture (deserialise) : instantanés des composants, puis mode Placer si le
   // fichier a été enregistré dedans ; sinon le reste de l'arbre autour du composant actif
@@ -16641,7 +16659,11 @@ function asmAfterLoad(){
   if(!asmOn()){try{asmCtxDraw();}catch(e){}return;}
   const want=!!asm._wantAsm;asm._wantAsm=false;
   const A=asm;
+  asmRestoreHold=true; // dès maintenant : la restauration lancée par deserialise est déjà partie
   setTimeout(async()=>{
+    // V0.87.0 : formes importées des composants (corps dérivés) posées AVANT leurs rejeux
+    try{await importRestorePending();}catch(e){}finally{asmRestoreHold=false;}
+    if(asm!==A)return;
     // instantanés gardés d'une ouverture précédente : seuls les composants changés sont rejoués
     let n=0;try{n=await asmCacheFill();}catch(e){}
     if(asm!==A)return; // autre fichier ouvert pendant la lecture du cache
@@ -18458,6 +18480,102 @@ function asmClearOccRendu(o,bid,all){
   asmNotify();
 }
 
+/* ═══════════════ 48-assemblage-fx.js — assemblage fx ═══════════════ */
+/* ---------- paramètres dans les champs de l'assemblage (V0.87.0) ----------
+   Demandé : « les paramètres ne restent pas dans les champs des fonctions de l'assemblage ».
+   Le filet ƒx global (51) remplaçait « long_plaquette/2 » par sa valeur : le lien était perdu.
+   Désormais un champ numérique d'Aligner, du Placement et des Répétitions GARDE son expression :
+     · porteur.fx = {clé: expression} — sur l'alignement (o.align : rz, off0..off2) et sur la
+       répétition (pat : dist, dist2, angle, qty, qty2 = quantité original compris) ;
+     · évaluée avec les paramètres du composant PORTEUR (celui qui contient l'occurrence ou la
+       répétition : ses paramètres, cotes nommées, paramètres dérivés) ;
+     · réévaluée à chaque résolution de l'assemblage (asmResolve) : un paramètre change → la
+       pièce se replace, la répétition se refait. Une expression qui échoue garde la dernière
+       valeur, ⚠ dans le champ (bord orange, message au survol).
+   Un nombre tapé efface l'expression (valeur figée), comme dans les fonctions de la pièce. */
+const ASM_FX_QTY={qty:'copies',qty2:'copies2'}; // quantité affichée = copies + 1
+function asmFxGet(h,k){
+  if(ASM_FX_QTY[k])return (+h[ASM_FX_QTY[k]]||1)+1;
+  const m=/^off(\d)$/.exec(k);if(m)return +((h.off||[])[+m[1]])||0;
+  return +h[k]||0;
+}
+function asmFxPut(h,k,v){
+  // → true si la valeur change
+  if(ASM_FX_QTY[k]){const c=Math.max(1,Math.min(typeof ASM_PAT_MAX!=='undefined'?ASM_PAT_MAX:500,Math.floor(v)-1)),rk=ASM_FX_QTY[k];
+    if((+h[rk]||1)===c)return false;h[rk]=c;return true;}
+  const m=/^off(\d)$/.exec(k);
+  if(m){const i=+m[1],o=Array.isArray(h.off)?h.off.slice():[0,0,0];if(Math.abs((+o[i]||0)-v)<1e-9)return false;o[i]=v;h.off=o;return true;}
+  if(Math.abs((+h[k]||0)-v)<1e-9)return false;h[k]=v;return true;
+}
+function asmFxEval(expr,d){
+  // Valeur d'une expression avec les noms du document d (composant porteur)
+  const bd=doc;if(d)doc=d;
+  try{const v=parEval(String(expr),parValueNow);if(!isFinite(v))throw new Error('valeur non finie');return v;}
+  finally{doc=bd;}
+}
+function asmFxNorm(fx){
+  // Lecture d'un fichier : seulement des textes non vides
+  if(!fx||typeof fx!=='object')return undefined;
+  const o={};Object.keys(fx).forEach(k=>{if(typeof fx[k]==='string'&&fx[k].trim())o[k]=fx[k];});
+  return Object.keys(o).length?o:undefined;
+}
+function asmFxHolder(h,d){
+  // Réévalue les expressions d'un porteur → true si une valeur a changé
+  if(!h||!h.fx)return false;let ch=false;
+  Object.keys(h.fx).forEach(k=>{
+    let v;try{v=asmFxEval(h.fx[k],d);}catch(e){h._fxErr=h._fxErr||{};h._fxErr[k]=e.message;return;}
+    if(h._fxErr)delete h._fxErr[k];
+    if(asmFxPut(h,k,v))ch=true;
+  });
+  return ch;
+}
+function asmFxSync(){
+  // Toutes les expressions de l'assemblage (début de asmResolve) → true si une valeur a changé
+  if(!asm||!Array.isArray(asm.comps))return false;let ch=false;
+  asm.comps.forEach(c=>{if(!c||!c.doc)return;
+    (c.occ||[]).forEach(o=>{if(o&&o.align&&o.align.fx&&asmFxHolder(o.align,c.doc))ch=true;});
+    (c.pats||[]).forEach(p=>{if(p&&p.fx&&asmFxHolder(p,c.doc))ch=true;});
+  });
+  return ch;
+}
+function asmFxInput(h,k,apply,o){
+  // Champ numérique qui garde son expression. h : porteur (lu à l'affichage, fx écrit à la
+  // validation) ; apply(v) applique la valeur et résout. o : {w, int, d, push} (largeur, entier,
+  // document porteur — par défaut le composant actif —, étape d'annulation prise AVANT que
+  // l'expression ne change : sinon Ctrl+Z gardait la nouvelle expression, qui reprenait la main).
+  o=o||{};
+  const i=document.createElement('input');i.type='text';i.inputMode='decimal';
+  i._parFx=1; // le filet global ƒx (51) laisse ce champ à son gestionnaire
+  const ex=h&&h.fx&&h.fx[k];
+  i.value=ex||String(+(+asmFxGet(h,k)).toFixed(3)).replace('.',',');
+  i.style.width=Math.max(o.w||64,ex?Math.min(220,8*i.value.length+20):0)+'px';
+  i.title='Valeur, expression (L/2 + 3) ou paramètre — le lien est gardé';
+  const err=h&&h._fxErr&&h._fxErr[k];if(err){i.style.borderColor='#ff9f0a';i.title='⚠ '+err+' — dernière valeur gardée';}
+  let done=i.value;
+  const go=()=>{
+    const s=String(i.value).trim().replace(/\s*(mm|°|deg)\s*$/i,'');
+    if(s===done)return;done=s;
+    if(!s)return;
+    if(parIsNumber(s)){
+      let v=parseFloat(s.replace(',','.'));if(o.int)v=Math.round(v);
+      if(o.push)o.push();
+      if(h&&h.fx){delete h.fx[k];if(!Object.keys(h.fx).length)delete h.fx;}
+      apply(v);return;
+    }
+    let v;try{v=asmFxEval(s,o.d||null);}
+    catch(e){try{faceEl.textContent='ƒx : '+e.message+' — valeur inchangée.';}catch(x){}
+      i.value=(h&&h.fx&&h.fx[k])||String(+(+asmFxGet(h,k)).toFixed(3)).replace('.',',');done=i.value;return;}
+    if(o.int)v=Math.round(v);
+    if(o.push)o.push();
+    if(h){h.fx=h.fx||{};h.fx[k]=s;if(h._fxErr)delete h._fxErr[k];}
+    try{faceEl.textContent='ƒx : '+s+' → '+(+v.toFixed(4))+' (lien gardé)';}catch(x){}
+    apply(v);
+  };
+  i.addEventListener('change',go);i.addEventListener('keydown',e=>{if(e.key==='Enter')go();});
+  try{if(typeof parNumKeys==='function')parNumKeys(i);}catch(e){}
+  return i;
+}
+
 /* ═══════════════ 48-assemblage-mesure.js — assemblage mesure ═══════════════ */
 /* ---------- mesures entre pièces d'un assemblage (V0.29.0) ----------
    Le geste et les calculs sont ceux de la pièce (Ctrl+clic, faceSelect et measurePair, 90), en
@@ -18766,8 +18884,10 @@ function asmPlacementCore(p,o){
     if(!a.rel){
       const c=document.createElement('input');c.type='checkbox';c.checked=!!a.flip;
       c.onchange=()=>{asmPush('alignement');a.flip=c.checked;asmResolve();asmNotify();};Row('Retourner',c);
-      Row('Rotation (°)',num(a.rz||0,v=>{asmPush('alignement');a.rz=v;asmResolve();asmNotify();}));
-      ['X','Y','Z'].forEach((k,i)=>Row('Décalage '+k+' (mm)',num((a.off||[0,0,0])[i]||0,v=>{asmPush('alignement');a.off=(a.off||[0,0,0]).slice();a.off[i]=v;asmResolve();asmNotify();})));
+      // V0.87.0 : les champs gardent leur expression (48-assemblage-fx), avec les paramètres du porteur
+      const od=owner&&owner.doc,push=()=>asmPush('alignement');
+      Row('Rotation (°)',asmFxInput(a,'rz',v=>{a.rz=v;asmResolve();asmNotify();},{d:od,push}));
+      ['X','Y','Z'].forEach((k,i)=>Row('Décalage '+k+' (mm)',asmFxInput(a,'off'+i,v=>{a.off=(a.off||[0,0,0]).slice();a.off[i]=v;asmResolve();asmNotify();},{d:od,push})));
     }
     // degrés de liberté : curseur, valeur, limites
     J.dof.forEach(k=>asmDofRow(p,o,k));
@@ -18833,12 +18953,21 @@ function asmAlignStart(id){
   if(o.fixed){try{faceEl.textContent='Occurrence fixée : libérez-la pour l’aligner.';}catch(e){}return;}
   if(o.pat){try{faceEl.textContent='Instance de répétition : sa position suit la source — alignez plutôt la source.';}catch(e){}return;}
   asmAlign={occ:o.id,step:'src',src:undefined,dst:undefined,flip:false,rz:0,off:[0,0,0],face:null,saved:JSON.parse(JSON.stringify({fr:o.fr,align:o.align}))};
+  // V0.87.0 : occurrence déjà alignée → la commande repart de SES réglages (repères, retourner,
+  // rotation, décalages) ; avant, tout revenait à zéro et Valider perdait le placement
+  const a=o.align;
+  if(a&&a.src&&a.dst){const A=asmAlign,cp=x=>JSON.parse(JSON.stringify(x));
+    A.src=cp(a.src);A.dst=cp(a.dst);A.step='dst';A.flip=!!a.flip;A.rz=+a.rz||0;
+    A.off=[0,1,2].map(i=>+((a.off||[])[i])||0);
+    if(a.fx)A.fx=Object.assign({},a.fx);}
   asmAlignRefresh();
   try{faceEl.textContent='Aligner « '+o.name+' » : choisissez le repère du composant à poser — clic sur une triade, ou sur une face pour ses points d’accroche.';}catch(e){}
 }
 function asmAlignPreview(){
   const A=asmAlign,o=A&&asmOcc(A.occ);if(!o)return;
-  if(A.src!==undefined&&A.dst!==undefined){o.align={src:A.src,dst:A.dst,flip:A.flip,rz:A.rz,off:A.off.slice()};asmResolve();}
+  if(A.src!==undefined&&A.dst!==undefined){o.align={src:A.src,dst:A.dst,flip:A.flip,rz:A.rz,off:A.off.slice()};
+    if(A.fx&&Object.keys(A.fx).length)o.align.fx=Object.assign({},A.fx); // expressions des champs (48-assemblage-fx)
+    asmResolve();if(o.align.fx){A.rz=o.align.rz;A.off=o.align.off.slice();}}
   else{o.fr=A.saved.fr;o.align=A.saved.align;asmResolve();}
 }
 function asmAlignRefresh(){
@@ -18925,8 +19054,9 @@ function asmAlignProps(p){
   }
   if(A.dst!==undefined){
     const c=document.createElement('input');c.type='checkbox';c.checked=A.flip;c.onchange=()=>{A.flip=c.checked;asmAlignRefresh();};Row('Retourner (Z opposés)',c);
-    Row('Rotation autour de Z (°)',num(A.rz,v=>{A.rz=v;}));
-    ['X','Y','Z'].forEach((k,i)=>Row('Décalage '+k+' (mm)',num(A.off[i],v=>{A.off[i]=v;})));
+    // V0.87.0 : expressions gardées (48-assemblage-fx) — paramètres du composant actif, porteur de l'occurrence
+    Row('Rotation autour de Z (°)',asmFxInput(A,'rz',v=>{A.rz=v;asmAlignRefresh();}));
+    ['X','Y','Z'].forEach((k,i)=>Row('Décalage '+k+' (mm)',asmFxInput(A,'off'+i,v=>{A.off[i]=v;asmAlignRefresh();})));
     if(o.st==='warn')p.appendChild(mk('div','pnl-note','⚠ '+o.msg));
   }
   const b=mk('div','pnl-btns');
@@ -19069,6 +19199,7 @@ function asmPatNorm(list){
       skip:Array.isArray(p.skip)?p.skip.filter(x=>typeof x==='string'):[]};
     if(p.lin2){o.lin2=true;o.axis2=ax(p.axis2);o.copies2=cnt(p.copies2);o.dist2=num(p.dist2,10);}
     if(p.plane2)o.plane2=ax(p.plane2);
+    {const fx=asmFxNorm(p.fx);if(fx)o.fx=fx;} // V0.87.0 : expressions des champs (48-assemblage-fx)
     if(p.type==='path'){
       const q=p.path&&typeof p.path==='object'?p.path:{};
       o.path={sk:typeof q.sk==='string'?q.sk:null};
@@ -19334,8 +19465,9 @@ function asmPatProps(p){
   const mk=(tag,cls,txt)=>{const d=document.createElement(tag);if(cls)d.className=cls;if(txt!=null)d.textContent=txt;return d;};
   const Row=(lab,ctl)=>{const r=mk('div','pnl-row');r.appendChild(mk('label',null,lab));if(ctl)r.appendChild(ctl);p.appendChild(r);return r;};
   const sel=(opts,v,fn)=>{const s=document.createElement('select');opts.forEach(([k,t])=>{const o=document.createElement('option');o.value=k;o.textContent=t;if(k===v)o.selected=true;s.appendChild(o);});s.onchange=()=>fn(s.value);return s;};
-  const num=(v,fn,int)=>{const i=document.createElement('input');i.type='text';i.inputMode='decimal';i.style.width='64px';i.value=String(+(+v).toFixed(3)).replace('.',',');
-    const go=()=>{const x=parseFloat(String(i.value).replace(',','.'));if(isFinite(x))fn(int?Math.round(x):x);};i.addEventListener('change',go);i.addEventListener('keydown',e=>{if(e.key==='Enter')go();});return i;};
+  // V0.87.0 : num(clé, fn, entier) — le champ garde son expression (48-assemblage-fx), évaluée avec
+  // les paramètres du porteur
+  const num=(k,fn,int)=>asmFxInput(pat,k,int?(v=>fn(v)):fn,{int:!!int,d:owner.doc});
   const chk=(v,fn)=>{const c=document.createElement('input');c.type='checkbox';c.checked=!!v;c.onchange=()=>fn(c.checked);return c;};
   const cnt=v=>Math.max(1,Math.min(ASM_PAT_MAX,Math.floor(v)-1)); // quantité saisie (original compris) → copies
   const AX=[['X','X'],['Y','Y'],['Z','Z']],PL=[['X','YZ (normale X)'],['Y','XZ (normale Y)'],['Z','XY (normale Z)']];
@@ -19364,11 +19496,11 @@ function asmPatProps(p){
         Row('',repPathPickBtn(owner.doc,fn=>asmPatSet(fn),sk.id));
       }else Row('Départ',repPathPickBtn(owner.doc,fn=>asmPatSet(fn),null));
     }
-    Row('Quantité',num(pat.copies+1,v=>asmPatSet(q=>{q.copies=cnt(v);}),true));
+    Row('Quantité',num('qty',v=>asmPatSet(q=>{q.copies=cnt(v);}),true));
     const P=asmPatPlan(owner,pat);
     Row('Espacement',sel([['fit','Réparti sur la longueur'],['pitch','Pas imposé']],pat.pspace==='pitch'?'pitch':'fit',v=>asmPatSet(q=>{
       q.pspace=v;if(v==='pitch')q.dist=P.step>0?+P.step.toFixed(3):(q.dist||10);})));
-    if(pat.pspace==='pitch')Row('Pas le long de la courbe (mm)',num(pat.dist,v=>asmPatSet(q=>{if(v>0)q.dist=v;})));
+    if(pat.pspace==='pitch')Row('Pas le long de la courbe (mm)',num('dist',v=>asmPatSet(q=>{if(v>0)q.dist=v;})));
     Row('Orientation',sel([['fixed','Fixe (translation)'],['tangent','Suit la tangente']],pat.orient==='tangent'?'tangent':'fixed',v=>asmPatSet(q=>{q.orient=v;})));
     const bi=mk('button','mini','⇄ Inverser le sens');bi.onclick=()=>asmPatSet(q=>{if(q.rev)delete q.rev;else q.rev=true;});Row('Sens',bi);
     const f=v=>String(+(+v).toFixed(3)).replace('.',',');
@@ -19376,19 +19508,19 @@ function asmPatProps(p){
     p.appendChild(mk('div','pnl-note','La pièce suit la courbe depuis le départ (tracez la courbe par son centre). Courbe fermée : la dernière instance s’arrête un pas avant le départ. Quantité = original compris.'));
   }else if(pat.type==='lin'){
     Row('Direction',sel(AX,pat.axis,v=>asmPatSet(q=>{q.axis=v;})));
-    Row('Quantité',num(pat.copies+1,v=>asmPatSet(q=>{q.copies=cnt(v);}),true));
-    Row('Pas (mm)',num(pat.dist,v=>asmPatSet(q=>{q.dist=v;})));
+    Row('Quantité',num('qty',v=>asmPatSet(q=>{q.copies=cnt(v);}),true));
+    Row('Pas (mm)',num('dist',v=>asmPatSet(q=>{q.dist=v;})));
     Row('2ᵉ direction',chk(pat.lin2,v=>asmPatSet(q=>{if(v){q.lin2=true;q.axis2=q.axis2||(q.axis==='X'?'Y':'X');q.copies2=q.copies2||1;if(q.dist2==null)q.dist2=q.dist;}else{delete q.lin2;}})));
     if(pat.lin2){
       Row('Direction 2',sel(AX,pat.axis2,v=>asmPatSet(q=>{q.axis2=v;})));
-      Row('Quantité 2',num((pat.copies2||1)+1,v=>asmPatSet(q=>{q.copies2=cnt(v);}),true));
-      Row('Pas 2 (mm)',num(pat.dist2||0,v=>asmPatSet(q=>{q.dist2=v;})));
+      Row('Quantité 2',num('qty2',v=>asmPatSet(q=>{q.copies2=cnt(v);}),true));
+      Row('Pas 2 (mm)',num('dist2',v=>asmPatSet(q=>{q.dist2=v;})));
     }
     p.appendChild(mk('div','pnl-note','Pas négatif = sens inverse. Quantité = original compris.'));
   }else if(pat.type==='circ'){
     Row('Axe',sel(AX,pat.axis,v=>asmPatSet(q=>{q.axis=v;})));
-    Row('Quantité',num(pat.copies+1,v=>asmPatSet(q=>{q.copies=cnt(v);}),true));
-    Row('Angle total (°)',num(pat.angle,v=>asmPatSet(q=>{q.angle=v||360;})));
+    Row('Quantité',num('qty',v=>asmPatSet(q=>{q.copies=cnt(v);}),true));
+    Row('Angle total (°)',num('angle',v=>asmPatSet(q=>{q.angle=v||360;})));
     p.appendChild(mk('div','pnl-note','Autour de l’axe passant par l’origine de la référence · 360° = tour complet réparti.'));
   }else{
     Row('Plan',sel(PL,pat.axis,v=>asmPatSet(q=>{q.axis=v;})));
@@ -29968,6 +30100,8 @@ function parAfterChange(barre){
   // coûterait ici 5 fois le temps (Barquette : 24 s au lieu de 5 s, mesuré). Le solide n'est alors à
   // jour qu'à la fin de la promesse rendue ; les dérivées, qui le lisent au retour, n'indiquent pas barre.
   parApplyAll();
+  // V0.87.0 : champs de l'assemblage liés à un paramètre (48-assemblage-fx) — pièces replacées, répétitions refaites
+  try{if(typeof asm!=='undefined'&&asm&&typeof asmFxSync==='function'&&asmFxSync()){asmResolve();asmNotify();}}catch(e){}
   try{parMiniSoon();}catch(e){}
   try{if(typeof skEdit!=='undefined'&&skEdit){drawSketch2D();renderSkPanel();}}catch(e){}
   try{markDirty();}catch(e){}
@@ -68090,22 +68224,35 @@ async function importRestorePending(){
   // Restauration déjà en cours (noyau prêt pendant une ouverture) : on l'attend puis on
   // relance — elle visait peut-être l'ANCIEN document, dont elle saute les fonctions
   // (« document remplacé ») ; avant, l'appel rendait 0 et le nouveau document restait sans STEP.
+  // V0.87.0 : aussi les imports des AUTRES composants d'un assemblage (corps dérivé d'une pièce
+  // insérée : sans lui, sa soustraction manquait à l'ouverture, puis la vérification des dérivées
+  // rejouait toute la source, ≈ 1 min, pour la retrouver). Leur image est refaite ensuite.
   while(_importRestoring){try{await _importRestoring;}catch(e){}}
-  const todo=(doc.features||[]).filter(f=>f&&f.type==='import'&&!f._mesh&&!importGeom.has(f.id)&&f.src&&f.src.key);
+  const want=f=>f&&f.type==='import'&&!f._mesh&&!importGeom.has(f.id)&&f.src&&f.src.key;
+  const todo=(doc.features||[]).filter(want).map(f=>({f,d:doc,c:null}));
+  try{if(typeof asm!=='undefined'&&asm)asm.comps.forEach(c=>{if(c&&c.doc&&c.doc!==doc)(c.doc.features||[]).filter(want).forEach(f=>todo.push({f,d:c.doc,c}));});}catch(e){}
   if(!todo.length)return 0;
-  if(todo.some(f=>f.src.fmt!=='stl')&&!occHas())return 0; // occtFinishBoot relancera
-  let fin;_importRestoring=new Promise(r=>{fin=r;});let n=0;const miss=[];
+  if(todo.some(t=>t.f.src.fmt!=='stl')&&!occHas())return 0; // occtFinishBoot relancera
+  let fin;_importRestoring=new Promise(r=>{fin=r;});let n=0;const miss=[],others=new Set();
   try{
-    for(const f of todo){
+    for(const {f,d,c} of todo){
       const u8=await importSrcGet(f.src.key);
       if(!u8){miss.push(f.name);continue;}
-      if(!(doc.features||[]).includes(f))continue; // document remplacé entre-temps
+      if(!(d.features||[]).includes(f))continue; // document remplacé entre-temps
+      if(c&&!(asm&&asm.comps.includes(c)))continue;
+      if(importGeom.has(f.id))continue; // même identifiant dans un autre composant : déjà posé
       try{
         const e=(f.src.fmt==='stl')?importStlBuild(u8):importStepBuild(u8);
-        importGeom.set(f.id,e);f._mesh=e.mesh;n++;
+        importGeom.set(f.id,e);f._mesh=e.mesh;
+        if(c)others.add(c);else n++;
       }catch(err){miss.push(f.name);}
     }
   }finally{_importRestoring=null;fin();}
+  if(others.size){
+    // image prise sans la forme importée : à refaire (asmAfterLoad attend cette restauration)
+    others.forEach(c=>{if(c._snap&&!c._snap.cached)c._stale=true;});
+    try{if(!asmRestoreHold)asmBuildSnapshots();}catch(e){}
+  }
   if(n){
     builtVersion=-1;builtHash=null;builtEngine=null;rebuild();if(!viewUserMoved)showAll();
     try{const t=faceEl.textContent.replace(/\n?[^\n]*STEP en cours de restauration/g,'');faceEl.textContent=(t?t+'\n':'')+n+' import(s) restauré(s).';}catch(e){}

@@ -268,6 +268,7 @@ const SUITES = [
   "test_soustraction_faces_tangentes",
   "test_docs_version",
   "test_composants_cache",
+  "test_asm_fx",
   "test_composants_repetitions",
   "test_alerte_paroi",
   "test_composants_repetition_profil",

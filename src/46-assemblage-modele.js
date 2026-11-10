@@ -186,6 +186,7 @@ function asmAlignNorm(a){
   if(a.q)out.q=num(a.q);if(a.q0)out.q0=num(a.q0);
   if(a.lim&&typeof a.lim==='object'){out.lim={};Object.keys(a.lim).forEach(k=>{const l=a.lim[k];if(ASM_DOF_KEYS.includes(k)&&Array.isArray(l)&&l.length===2&&l.every(v=>isFinite(+v)))out.lim[k]=[+l[0],+l[1]];});}
   if(okFr(a.rel))out.rel=a.rel;if(okFr(a.sfr))out.sfr=a.sfr;
+  try{const fx=asmFxNorm(a.fx);if(fx)out.fx=fx;}catch(e){} // V0.87.0 : expressions des champs
   return out;
 }
 /* ── liaisons mécaniques (V0.6.5) ──
@@ -280,6 +281,7 @@ function asmResolve(){
   // → true si une occurrence a bougé
   if(!asm)return false;
   let ch=false;const seen=new Set();
+  try{if(typeof asmFxSync==='function'&&asmFxSync())ch=true;}catch(e){} // paramètres dans les champs (48-assemblage-fx)
   const visit=c=>{
     if(!c||seen.has(c.id))return;seen.add(c.id);
     c.occ.forEach(o=>visit(asmComp(o.comp)));

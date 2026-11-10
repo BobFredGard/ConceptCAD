@@ -182,8 +182,10 @@ function asmPlacementCore(p,o){
     if(!a.rel){
       const c=document.createElement('input');c.type='checkbox';c.checked=!!a.flip;
       c.onchange=()=>{asmPush('alignement');a.flip=c.checked;asmResolve();asmNotify();};Row('Retourner',c);
-      Row('Rotation (°)',num(a.rz||0,v=>{asmPush('alignement');a.rz=v;asmResolve();asmNotify();}));
-      ['X','Y','Z'].forEach((k,i)=>Row('Décalage '+k+' (mm)',num((a.off||[0,0,0])[i]||0,v=>{asmPush('alignement');a.off=(a.off||[0,0,0]).slice();a.off[i]=v;asmResolve();asmNotify();})));
+      // V0.87.0 : les champs gardent leur expression (48-assemblage-fx), avec les paramètres du porteur
+      const od=owner&&owner.doc,push=()=>asmPush('alignement');
+      Row('Rotation (°)',asmFxInput(a,'rz',v=>{a.rz=v;asmResolve();asmNotify();},{d:od,push}));
+      ['X','Y','Z'].forEach((k,i)=>Row('Décalage '+k+' (mm)',asmFxInput(a,'off'+i,v=>{a.off=(a.off||[0,0,0]).slice();a.off[i]=v;asmResolve();asmNotify();},{d:od,push})));
     }
     // degrés de liberté : curseur, valeur, limites
     J.dof.forEach(k=>asmDofRow(p,o,k));
@@ -249,12 +251,21 @@ function asmAlignStart(id){
   if(o.fixed){try{faceEl.textContent='Occurrence fixée : libérez-la pour l’aligner.';}catch(e){}return;}
   if(o.pat){try{faceEl.textContent='Instance de répétition : sa position suit la source — alignez plutôt la source.';}catch(e){}return;}
   asmAlign={occ:o.id,step:'src',src:undefined,dst:undefined,flip:false,rz:0,off:[0,0,0],face:null,saved:JSON.parse(JSON.stringify({fr:o.fr,align:o.align}))};
+  // V0.87.0 : occurrence déjà alignée → la commande repart de SES réglages (repères, retourner,
+  // rotation, décalages) ; avant, tout revenait à zéro et Valider perdait le placement
+  const a=o.align;
+  if(a&&a.src&&a.dst){const A=asmAlign,cp=x=>JSON.parse(JSON.stringify(x));
+    A.src=cp(a.src);A.dst=cp(a.dst);A.step='dst';A.flip=!!a.flip;A.rz=+a.rz||0;
+    A.off=[0,1,2].map(i=>+((a.off||[])[i])||0);
+    if(a.fx)A.fx=Object.assign({},a.fx);}
   asmAlignRefresh();
   try{faceEl.textContent='Aligner « '+o.name+' » : choisissez le repère du composant à poser — clic sur une triade, ou sur une face pour ses points d’accroche.';}catch(e){}
 }
 function asmAlignPreview(){
   const A=asmAlign,o=A&&asmOcc(A.occ);if(!o)return;
-  if(A.src!==undefined&&A.dst!==undefined){o.align={src:A.src,dst:A.dst,flip:A.flip,rz:A.rz,off:A.off.slice()};asmResolve();}
+  if(A.src!==undefined&&A.dst!==undefined){o.align={src:A.src,dst:A.dst,flip:A.flip,rz:A.rz,off:A.off.slice()};
+    if(A.fx&&Object.keys(A.fx).length)o.align.fx=Object.assign({},A.fx); // expressions des champs (48-assemblage-fx)
+    asmResolve();if(o.align.fx){A.rz=o.align.rz;A.off=o.align.off.slice();}}
   else{o.fr=A.saved.fr;o.align=A.saved.align;asmResolve();}
 }
 function asmAlignRefresh(){
@@ -341,8 +352,9 @@ function asmAlignProps(p){
   }
   if(A.dst!==undefined){
     const c=document.createElement('input');c.type='checkbox';c.checked=A.flip;c.onchange=()=>{A.flip=c.checked;asmAlignRefresh();};Row('Retourner (Z opposés)',c);
-    Row('Rotation autour de Z (°)',num(A.rz,v=>{A.rz=v;}));
-    ['X','Y','Z'].forEach((k,i)=>Row('Décalage '+k+' (mm)',num(A.off[i],v=>{A.off[i]=v;})));
+    // V0.87.0 : expressions gardées (48-assemblage-fx) — paramètres du composant actif, porteur de l'occurrence
+    Row('Rotation autour de Z (°)',asmFxInput(A,'rz',v=>{A.rz=v;asmAlignRefresh();}));
+    ['X','Y','Z'].forEach((k,i)=>Row('Décalage '+k+' (mm)',asmFxInput(A,'off'+i,v=>{A.off[i]=v;asmAlignRefresh();})));
     if(o.st==='warn')p.appendChild(mk('div','pnl-note','⚠ '+o.msg));
   }
   const b=mk('div','pnl-btns');

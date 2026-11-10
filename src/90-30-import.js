@@ -170,22 +170,35 @@ async function importRestorePending(){
   // Restauration déjà en cours (noyau prêt pendant une ouverture) : on l'attend puis on
   // relance — elle visait peut-être l'ANCIEN document, dont elle saute les fonctions
   // (« document remplacé ») ; avant, l'appel rendait 0 et le nouveau document restait sans STEP.
+  // V0.87.0 : aussi les imports des AUTRES composants d'un assemblage (corps dérivé d'une pièce
+  // insérée : sans lui, sa soustraction manquait à l'ouverture, puis la vérification des dérivées
+  // rejouait toute la source, ≈ 1 min, pour la retrouver). Leur image est refaite ensuite.
   while(_importRestoring){try{await _importRestoring;}catch(e){}}
-  const todo=(doc.features||[]).filter(f=>f&&f.type==='import'&&!f._mesh&&!importGeom.has(f.id)&&f.src&&f.src.key);
+  const want=f=>f&&f.type==='import'&&!f._mesh&&!importGeom.has(f.id)&&f.src&&f.src.key;
+  const todo=(doc.features||[]).filter(want).map(f=>({f,d:doc,c:null}));
+  try{if(typeof asm!=='undefined'&&asm)asm.comps.forEach(c=>{if(c&&c.doc&&c.doc!==doc)(c.doc.features||[]).filter(want).forEach(f=>todo.push({f,d:c.doc,c}));});}catch(e){}
   if(!todo.length)return 0;
-  if(todo.some(f=>f.src.fmt!=='stl')&&!occHas())return 0; // occtFinishBoot relancera
-  let fin;_importRestoring=new Promise(r=>{fin=r;});let n=0;const miss=[];
+  if(todo.some(t=>t.f.src.fmt!=='stl')&&!occHas())return 0; // occtFinishBoot relancera
+  let fin;_importRestoring=new Promise(r=>{fin=r;});let n=0;const miss=[],others=new Set();
   try{
-    for(const f of todo){
+    for(const {f,d,c} of todo){
       const u8=await importSrcGet(f.src.key);
       if(!u8){miss.push(f.name);continue;}
-      if(!(doc.features||[]).includes(f))continue; // document remplacé entre-temps
+      if(!(d.features||[]).includes(f))continue; // document remplacé entre-temps
+      if(c&&!(asm&&asm.comps.includes(c)))continue;
+      if(importGeom.has(f.id))continue; // même identifiant dans un autre composant : déjà posé
       try{
         const e=(f.src.fmt==='stl')?importStlBuild(u8):importStepBuild(u8);
-        importGeom.set(f.id,e);f._mesh=e.mesh;n++;
+        importGeom.set(f.id,e);f._mesh=e.mesh;
+        if(c)others.add(c);else n++;
       }catch(err){miss.push(f.name);}
     }
   }finally{_importRestoring=null;fin();}
+  if(others.size){
+    // image prise sans la forme importée : à refaire (asmAfterLoad attend cette restauration)
+    others.forEach(c=>{if(c._snap&&!c._snap.cached)c._stale=true;});
+    try{if(!asmRestoreHold)asmBuildSnapshots();}catch(e){}
+  }
   if(n){
     builtVersion=-1;builtHash=null;builtEngine=null;rebuild();if(!viewUserMoved)showAll();
     try{const t=faceEl.textContent.replace(/\n?[^\n]*STEP en cours de restauration/g,'');faceEl.textContent=(t?t+'\n':'')+n+' import(s) restauré(s).';}catch(e){}

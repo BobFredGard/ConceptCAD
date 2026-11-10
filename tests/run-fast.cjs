@@ -112,6 +112,7 @@ const SUITES = [
   'test_soustraction_faces_tangentes',
   'test_docs_version',
   'test_composants_cache',
+  'test_asm_fx',
   'test_composants_repetitions',
   'test_composants_repetition_profil',
   'test_composants_references',

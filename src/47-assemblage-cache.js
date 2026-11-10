@@ -13,7 +13,8 @@
        servait plus dès la livraison suivante). Une correction du rejeu d'une fonction DOIT donc
        changer CACHE_VER, sinon l'ancienne image reste affichée jusqu'au prochain rejeu ;
      · deux empreintes indépendantes + la longueur du texte (pas de collision réaliste).
-   Jamais mis en cache : un composant avec un import (contenu hors empreinte), une capture en
+   Jamais mis en cache : un import sans empreinte de sa source (V0.87.0 : avec, elle entre dans la
+   clé — corps dérivés compris), une forme importée pas encore chargée, une capture en
    repli maillage, ou prise avec le marqueur temps reculé, une fonction suspendue, une esquisse
    ouverte (l'image ne correspond pas au document complet).
    Clés asnap:<…> du magasin « kv » ; index asnap:index {clé → dernier usage} : au-delà de
@@ -30,12 +31,25 @@ const ASM_CACHE_VERTS=1500000; // composant plus gros : pas de cache (comme save
 const asmCachePend=new Map(); // composant → {snap, key} à écrire
 let asmCacheT=null;
 function asmCacheIdbOK(){return typeof indexedDB!=='undefined'&&!!indexedDB&&typeof idbOpen==='function';}
-function asmCacheable(d){return !!d&&Array.isArray(d.sketches)&&!(d.features||[]).some(f=>f&&f.type==='import');}
+function asmCacheImports(d){return (d.features||[]).filter(f=>f&&f.type==='import');}
+function asmCacheable(d){
+  // V0.87.0 : un import ne bloque plus le cache s'il cite sa source par l'EMPREINTE de son contenu
+  // (f.src.key, 90-30) : la clé change avec le fichier importé. Corps dérivés compris (52) : une
+  // pièce qui enlève une forme dérivée était rejouée à chaque ouverture (≈ 1 min sur une vraie pièce).
+  return !!d&&Array.isArray(d.sketches)&&asmCacheImports(d).every(f=>f.src&&typeof f.src.key==='string'&&f.src.key);
+}
+function asmCacheImpReady(d){
+  // Image capturée seulement quand chaque import visible a sa forme exacte chargée (sinon corps absent)
+  return asmCacheImports(d).every(f=>f.visible===false||(()=>{const e=importGeom.get(f.id);return !!(e&&e.brep);})());
+}
 function asmCacheKey(d){
   // Clé du composant (document d) ; null : pas de cache
   if(!asmCacheable(d))return null;
   let s;
-  try{s=docHashSrc(d)+'|'+JSON.stringify({b:d.bodies||[],v:d.bodyVis||{},t:d.tint||0,r:d.rendu||null})+'|'+CACHE_VER+'|'+ASM_CACHE_V;}
+  try{
+    // imports : hors de docHashSrc (sauf dérivés) → fonctions entières, avec l'empreinte de leur source
+    const im=asmCacheImports(d).map(({_mesh,_m,...r})=>r);
+    s=docHashSrc(d)+'|'+JSON.stringify({b:d.bodies||[],v:d.bodyVis||{},t:d.tint||0,r:d.rendu||null})+(im.length?'|'+JSON.stringify(im):'')+'|'+CACHE_VER+'|'+ASM_CACHE_V;}
   catch(e){return null;}
   let a=2166136261,b=5381;
   for(let i=0;i<s.length;i++){const c=s.charCodeAt(i);a^=c;a=Math.imul(a,16777619);b=(Math.imul(b,33)^c)|0;}
@@ -113,6 +127,7 @@ function asmCacheSoon(c){
   try{if(typeof skEdit!=='undefined'&&skEdit)return;}catch(e){}
   if(!c._snap.exact||c._snap.cached)return;
   const key=asmCacheKey(c.doc);if(!key)return;
+  try{if(!asmCacheImpReady(c.doc))return;}catch(e){return;}
   // capture du rejeu de première activation (asmActivate : document réparé, puis rejoué, sans
   // rien entre les deux) : la clé du document tel qu'il est dans le fichier mène aussi à cet
   // instantané (simple renvoi vers la clé finale)
