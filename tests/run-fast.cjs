@@ -90,6 +90,7 @@ const SUITES = [
   'test_mep_percage_cote_cote',
   'test_mep_filetage_coupe_locale',
   'test_esquisse_cotes_pose',
+  'test_esquisse_cotes_double_clic',
   'test_esquisse_cotes_souples',
   'test_esquisse_inference_glisser',
   'test_esquisse_arc_fixe_ddl',
