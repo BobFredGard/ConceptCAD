@@ -985,11 +985,11 @@
       const kindV=view.section?'sect':'sharp';
       let n=0;
       const tanTest=mepHlrTanIdx(view,shapes);
-      const tanV=tanTest?{test:tanTest,kind:view.tangent?(view.section?'sect':'tangent'):null}:null;
+      const tanV=tanTest?{test:tanTest,kind:view.tangent?'tangent':null}:null; // V0.86.0 : grise aussi en coupe
       const tanH=tanTest?{test:tanTest,kind:view.tangent?'hidden':null}:null;
       n+=mepHlrAddEdge(geo,added,view,hlr.GetCompoundOf3dEdges(T.HLRBRep_Sharp,true,true),kindV,tanV);
       n+=mepHlrAddEdge(geo,added,view,hlr.GetCompoundOf3dEdges(T.HLRBRep_OutLine,true,true),kindV);
-      if(view.tangent)n+=mepHlrAddEdge(geo,added,view,hlr.GetCompoundOf3dEdges(T.HLRBRep_Rg1Line,true,true),view.section?'sect':'tangent');
+      if(view.tangent)n+=mepHlrAddEdge(geo,added,view,hlr.GetCompoundOf3dEdges(T.HLRBRep_Rg1Line,true,true),'tangent'); // V0.86.0 : tangentes grises dans les coupes aussi
       if(mode==='dash'){
         n+=mepHlrAddEdge(geo,added,view,hlr.GetCompoundOf3dEdges(T.HLRBRep_Sharp,false,true),'hidden',tanH);
         n+=mepHlrAddEdge(geo,added,view,hlr.GetCompoundOf3dEdges(T.HLRBRep_OutLine,false,true),'hidden');

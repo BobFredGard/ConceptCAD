@@ -8,7 +8,7 @@ sont sorties le 2026-09-30j.
 Code dans `src/` · livrable `fusion_mvp.html` (généré par `build.js`) · architecture et
 garde-fous en tête de `src/00-entete-et-outils.js`.
 
-**640 versions**, de `2026-09-28b` à `V0.85.1` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
+**641 versions**, de `2026-09-28b` à `V0.86.0` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
 comme dans le fichier d'origine.
 
 ---
@@ -7273,3 +7273,10 @@ Barquette ne perd plus son solide à la 107e modification, et sa mémoire ne mon
 - **Demande** : Fred, 10/11 : « Pas la peine de faire voir les cases à cocher à chaque fois ; mets-moi une option dans le menu pour les faire apparaître si besoin ».
 - **Correctif** (`src/40-45-repetition-cases-3d.js`, `40-40`) : option « Cases dans la vue 3D » à droite du titre « ✂ Exemplaires à enlever » du panneau de la répétition (création et édition), décochée par défaut, retenue d'une séance à l'autre (`localStorage` `minifusion_repCases3d`). Décochée, les cases et la copie bleue du survol disparaissent aussitôt ; la liste du panneau reste.
 - **Test** : vérifié dans l'appli (désactivée par défaut, cochée → cases dans la vue, décochée → plus rien, réglage retenu) ; `test_repeat_exclure` inchangé.
+
+## V0.86.0 - Mise en plan : arêtes tangentes grises aussi dans les coupes
+
+- **Demande** : Fred, 10/11, coupe A-A de la barquette SIRAP-14-001 : « Tout à l'heure, tu as bien fait en sorte que les arêtes tangentes soient bien grise dans une vue normale, mais pas dans les coupes tous types ».
+- **Cause** : dans une vue en coupe, toutes les arêtes visibles prenaient le genre `sect` (trait de coupe, noir et épais), tangentes comprises : celles du HLR exact (`HLRBRep_Rg1Line`), celles repêchées en V0.83.0 (`mepHlrTanIdx`) et celles du HLR maillage. Les coupes locales passaient déjà par une vue sans `section` et n'étaient pas touchées.
+- **Correctif** (`src/98-mep-10-projection-hlr`, `98-mep-20-vues`) : une arête tangente garde le genre `tangent` (gris, fin) dans toutes les vues ; seules les arêtes vives et le contour d'une coupe restent en trait de coupe. « Arêtes tangentielles » décochée, il n'y a toujours aucun gris.
+- **Test** : `test_mep_tangentes_hlr` complété d'une coupe A-A de la pédale par le milieu de la vue de dessus : 0 arête grise avant, 2 après, plus aucune sans « Arêtes tangentielles ». `test_mep_coupe_brisee`, `test_mep_coupe_locale`, `test_mep_percage_coupe`, `test_mep_hachures_cotes`, `test_mep_filetage_coupe_locale`, `test_mep_rotation_vue` toujours verts. Parcours FAO et CACHE_VER inchangés.
