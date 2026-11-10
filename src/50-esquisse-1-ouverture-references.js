@@ -285,7 +285,8 @@ function projEdgesFor(sk){
   const key=(idx>=0&&occHas())?'f'+idx:((occHas()&&occLive&&occLive.shape)?'live':null);
   if(!key)return null;
   if(_projEdgeCache&&_projEdgeCache.has(key))return _projEdgeCache.get(key);
-  const pk=key==='live'?null:projPrefixSig(idx);
+  // V0.89.5 : esquisse pas encore consommée — arêtes du solide affiché, gardées par son empreinte
+  const pk=key==='live'?(occLive.sig&&!occLive.incomplet&&!projImportsEnAttente()?'live|'+occLive.sig:null):projPrefixSig(idx);
   if(pk!=null&&_projEdgePersist.has(pk)){const ed=_projEdgePersist.get(pk);if(_projEdgeCache)_projEdgeCache.set(key,ed);return ed;}
   let edges=null;
   if(key==='live'&&occLive.incomplet)return null; // solide affiché calculé sans un import (ouverture)
@@ -406,7 +407,37 @@ function skLigneSurProjetees(sk,e){
   }
   return false;
 }
+// V0.89.5 : PROJECTIONS AU REPOS. Chaque reconstruction recherchait deux fois (avant et après le rejeu) l'arête
+// source de chaque projetée, même quand rien n'avait bougé (barquette d'exemple : 26 ms sur 70). Une esquisse
+// dont les arêtes vues sont LA MÊME liste (même préfixe de timeline) et dont l'état est celui laissé par la
+// dernière recherche — qui n'avait rien déplacé — n'est pas reparcourue. Seulement les projections d'arêtes du
+// solide : intersections, projections d'une autre esquisse ou d'un autre composant, centres de repère et
+// traversées de plan dépendent d'autres sources et sont toujours recalculés.
+const _projRepos=new WeakMap(); // esquisse → {edges, etat}
+function projEtat(sk){
+  try{return JSON.stringify([sk.origin,sk.axU,sk.axV,sk.axN,sk.points,sk.entities,sk.constraints||[]]);}catch(e){return null;}
+}
+function projEstProjetee(sk,e){
+  // même règle que la boucle de mise à jour : projetée déclarée, ou ligne de construction aux deux bouts fixes
+  return !!(e&&(e.proj||e.isProj||(e.construction&&e.t==='line'&&sk.constraints.some(c=>c.type==='fix'&&c.p===e.p1)&&sk.constraints.some(c=>c.type==='fix'&&c.p===e.p2)&&!skLigneSurProjetees(sk,e))));
+}
+function projSimple(sk){
+  return !sk.entities.some(e=>e&&(e.isect||e.skSrc||e.ext||((e.orig||e.pierce)&&e.t==='cpoint')));
+}
 function updateAssociativeProjections0(sk){
+  let ed=null;
+  // seulement une esquisse qui PORTE des projetées : pour les autres, lire les arêtes vues rejouerait le solide pour rien
+  if(!freshHard&&projSimple(sk)&&sk.entities.some(e=>projEstProjetee(sk,e))){
+    try{ed=projEdgesFor(sk);}catch(e){ed=null;}
+    const m=ed?_projRepos.get(sk):null;
+    if(m&&m.edges===ed){const et=projEtat(sk);if(et&&et===m.etat)return false;}
+  }
+  const ch=updateAssociativeProjections1(sk);
+  if(ed&&!ch){const et=projEtat(sk);if(et)_projRepos.set(sk,{edges:ed,etat:et});else _projRepos.delete(sk);}
+  else _projRepos.delete(sk);
+  return ch;
+}
+function updateAssociativeProjections1(sk){
   let changed=false;
   for(const e of sk.entities){
     // 2026-10-15-009 : une arête PROJETÉE reste associative même passée en PROFIL
