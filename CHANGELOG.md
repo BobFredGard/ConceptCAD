@@ -8,7 +8,7 @@ sont sorties le 2026-09-30j.
 Code dans `src/` · livrable `fusion_mvp.html` (généré par `build.js`) · architecture et
 garde-fous en tête de `src/00-entete-et-outils.js`.
 
-**648 versions**, de `2026-09-28b` à `V0.89.3` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
+**649 versions**, de `2026-09-28b` à `V0.89.4` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
 comme dans le fichier d'origine.
 
 ---
@@ -7335,3 +7335,10 @@ Barquette ne perd plus son solide à la 107e modification, et sa mémoire ne mon
 - **Correctif** : (1) `occFinalShapeGen` range le corps recousu comme un point de contrôle, sous l'empreinte du corps + `|recousu;` ; (2) `occLive.sig` : empreinte du composé affiché ; `occLiveSharpEdges` (`src/20-50-aretes-affichees`) sert le classement des arêtes du composé à l'affichage ET à `faoChainEdgesWorld`, une seule fois par état de la pièce ; `faoHoleMemo` (`src/89-fao-percage`) : trous reconnus gardés par pièce (empreinte, avec ou sans filets), formes importées visibles (numérotées une à une : un corps dérivé change de forme sans changer de nom) et repère ; jeté par le rafraîchissement dur. Le calcul des parcours n'est pas touché.
 - **Mesure** (banc, rejeu sans changement) : Perçages 109 → 43 ms, barquette d'exemple 129 → 97 ms.
 - **Test** : `test_rejeu_repris` complété (D : pièce figée `tests/fixtures/percages-fao.conceptcad`, 9 perçages FAO et 36 trous — rien de redétecté, reclassé ni recousu sans changement ; trous repris identiques à une détection neuve ; Ø modifié : les trous suivent, comme sans mémoire ; recousage repris = recousage refait). Parcours FAO et CACHE_VER inchangés.
+
+## V0.89.4 - README refait en vitrine, détail rangé dans un manuel
+
+- **Demande** : Fred, 10/11 : « il est temps de refaire le Readme complètement … Comment le rendre plus lisible, plus moderne, plus efficace ? », puis « Oui, vitrine + manuel », « Livre ».
+- **Cause** : le README servait à la fois de vitrine, de manuel et de journal : 53 Ko, environ 8 000 mots, des puces de plus de 1 000 caractères, chaque version ayant ajouté une phrase sans rien retirer. Doublons (écran de démarrage décrit deux fois, 6 s et 10 s ; cercle et arc cités deux fois dans les outils d'esquisse ; « Références qui tiennent » et « Grands changements de cote »), un gras jamais refermé (« Version autonome »).
+- **Correctif** : `README.md` devient une vitrine (114 lignes, 6,5 Ko) : accroche, boutons (application Mac ajoutée), cinq volets en trois lignes, tableau des versions, premiers pas avec l'exemple Perçages, sommaire du manuel, licences ; « Anciennement MiniFusion » en bas de page. Tout le détail passe dans `docs/manuel/` : 13 pages (Démarrage, Interface, Téléphone et tablette, Esquisse, Fonctions 3D, Fichiers, Assemblage, FAO, PLAN, RENDU, Souris clavier et doigts, Scripts et MCP, Développement) et un sommaire, avec fil de navigation ; une trentaine de puces découpées en sous-points, doublons fusionnés, écran de démarrage à 6 s (V0.76.0). `tools/docs-version.cjs` recopie désormais le nombre de fichiers sources et de suites dans `docs/manuel/developpement.md`. À chaque version, la nouveauté va dans la page du manuel concernée.
+- **Test** : `node build.js --check` et `test_docs_version` (version du README, chiffres du manuel) ; 118 liens relatifs et images du README et du manuel contrôlés un par un. Aucun changement de code de l'application ; parcours FAO et CACHE_VER inchangés.
