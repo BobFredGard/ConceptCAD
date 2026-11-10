@@ -51,6 +51,17 @@
   n.title='Rainure de clavette automatique : cliquez un arbre ou un alésage, le Ø donne les cotes ISO 773, et la clavette se pose comme un corps séparé. Le tout suit le Ø si la pièce change.';
   a.parentNode.insertBefore(n,a.nextSibling);
 })();
+// V0.83.0 : bouton « Perçage normal » (src/76-percage-normal.js), après le Perçage.
+(function(){
+  if(document.getElementById('btnHoleNorm'))return;
+  const a=document.getElementById('btnHole');
+  if(!a||!a.parentNode)return;
+  const n=document.createElement('button');
+  n.id='btnHoleNorm';
+  n.textContent='⟂ Perçage normal';
+  n.title='Perçage normal à une face : cliquez une face (un congé…) ; chaque trou borgne dont le fond est dessous reçoit un trou perpendiculaire à la face, qui vise le centre de son fond. Tous les trous identiques sont trouvés d’office.';
+  a.parentNode.insertBefore(n,a.nextSibling);
+})();
 // V0.35.0 : bouton « Filetage » (fonction 3D, src/76-filetage.js), après la Coque.
 (function(){
   if(document.getElementById('btnThread'))return;
@@ -64,6 +75,7 @@
 })();
 if($('btnThread'))$('btnThread').onclick=()=>askThread();
 if($('btnHole'))$('btnHole').onclick=()=>holeStart();
+if($('btnHoleNorm'))$('btnHoleNorm').onclick=()=>hnStart();
 if($('btnKeyway'))$('btnKeyway').onclick=()=>kwStart();
 const btnRevolve=$('btnRevolve');
 if(btnRevolve)btnRevolve.onclick=()=>askRevolve(sel.kind==='sketch'?sel.id:null);

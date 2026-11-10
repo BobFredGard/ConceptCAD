@@ -121,6 +121,7 @@ function holePoints(sk){
     .map(function(e){const Q=sk.points[e.p];return {id:e.id,x:Q.x,y:Q.y};});
 }
 function holeName(f){
+  if(typeof hnIs==='function'&&hnIs(f))return hnName(f);
   const sk=doc.sketches.find(function(s){return s.id===f.sketchId;});
   const n=holePoints(sk).length;
   const fr=function(v){return String(+(+v).toFixed(2)).replace('.',',');};
@@ -290,6 +291,7 @@ function occHoleThreadVoid(P,D,zStart,nT,th,rb,zEnd,tip,bins){
   return sol;
 }
 function occShapeOfHole(f){
+  if(typeof hnIs==='function'&&hnIs(f))return occShapeOfHoleNormal(f); // perçage normal à une face (76-percage-normal)
   const sk=doc.sketches.find(function(s){return s.id===f.sketchId;});
   if(!sk)throw new Error('esquisse introuvable');
   const A=holeAxis(f,sk);
@@ -421,6 +423,7 @@ function occShapeOfHole(f){
 }
 function legacyHoleGeos(f,msgs){
   // Repli maillage (sans noyau exact) : cylindres approchés.
+  if(typeof hnIs==='function'&&hnIs(f)){if(msgs)msgs.push('perçage normal : noyau exact requis');return [];}
   const sk=doc.sketches.find(function(s){return s.id===f.sketchId;});
   if(!sk)throw new Error('esquisse introuvable');
   const A=holeAxis(f,sk),N=holeNorm(f),geos=[];
@@ -586,6 +589,7 @@ function askHole(presetSketchId,pre){
 }
 /* ----- panneau de la fonction ----- */
 function renderHoleProps(p,f){
+  if(typeof hnIs==='function'&&hnIs(f))return renderHoleNormProps(p,f);
   const sk=doc.sketches.find(function(s){return s.id===f.sketchId;});
   const go=function(){f.name=holeName(f);markDirty();rebuild();renderTree();renderProps();};
   /* helpers layout PLAN (mêmes classes que renderProps) */

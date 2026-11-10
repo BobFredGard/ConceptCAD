@@ -11,7 +11,7 @@
 
 ![Support de pédale déportée R1200RT en alu anodisé rouge sur béton, lancer de rayons de l'atelier RENDU (2048 échantillons)](docs/captures/rendu-pedale.jpg)
 
-Le noyau géométrique exact est **OpenCascade 8 compilé en WebAssembly** par nos soins (recette reproductible dans `occt-build/`), en deux versions : **multicœur**, choisie toute seule quand le navigateur et le PC le permettent et écrite dans la barre d'état, et normale, sur un seul cœur, qui reste celle du fichier autonome. S'il n'est pas disponible, l'application bascule seule sur un moteur maillage (CSG). Version actuelle : **V0.84.0** (voir le [journal des modifications](CHANGELOG.md)).
+Le noyau géométrique exact est **OpenCascade 8 compilé en WebAssembly** par nos soins (recette reproductible dans `occt-build/`), en deux versions : **multicœur**, choisie toute seule quand le navigateur et le PC le permettent et écrite dans la barre d'état, et normale, sur un seul cœur, qui reste celle du fichier autonome. S'il n'est pas disponible, l'application bascule seule sur un moteur maillage (CSG). Version actuelle : **V0.85.0** (voir le [journal des modifications](CHANGELOG.md)).
 
 **Pas d'Internet sur le poste ?** La [version autonome](https://www.dropbox.com/scl/fi/sne7f5a9y8dr659b2xrow/ConceptCAD-autonome.html?rlkey=fgd0w1r5816ake50vxtd4fnuj&dl=0) tient en un seul fichier à télécharger, qui s'ouvre par double-clic (voir [Démarrage](#démarrage)).
 
@@ -131,6 +131,7 @@ Historique rejouable, timeline à icônes (vert = ajout, rouge = enlèvement), m
   - Filetages : **métrique ISO**, **ANSI UNC / UNF**, **gaz G, Rc et NPT**.
   - Lamages et fraisures d'après la vis : **CHC** et **FHC** ISO, ou ASME en pouces (FHC à 82°).
   - Le filet ISO ou UN est **réellement creusé dans le corps**, après l'avant-trou, en tâche de fond ; le gaz reste en filet cosmétique.
+- **Perçage normal à une face** (bouton **Normal**) : un clic sur une face (un congé…) et chaque trou borgne dont le fond est dessous reçoit un trou perpendiculaire à la face, qui vise le centre du cercle de son fond (avant le cône). Tous les trous identiques sont trouvés d'un coup, plusieurs faces peuvent être choisies (chaque trou va à la face au-dessus de lui), les trous déjà percés au fond sont ignorés, et une case sous chaque trou dans la vue 3D permet de l'enlever. Une seule fonction, qui suit la pièce.
 - **Perçage sur un cylindre** : un clic sur la face extérieure pose le trou ; direction, angle, cote depuis une face, une arête ou un sommet et décalage latéral se règlent dans le panneau, et le trou suit la pièce.
 - **Rainure de clavette automatique** : un clic sur un arbre ou un alésage, et le diamètre donne les cotes ISO 773. La clavette naît comme un corps séparé, posée au fond. Quatre formes, position réglable, et chaque cote modifiable une par une pour les cas non standard ; les cotes non saisies suivent le diamètre si la pièce change.
 - **Congés et chanfreins exacts** sur la chaîne tangente ou l'arête seule (un clic ajoute ou retire une arête ; case « tangentes » décochée, le congé ignore la tangence : il file tout droit le long de l'arête et continue tout droit à ses bouts, jusqu'aux faces voisines dans un coin intérieur, dans la matière sur une arête en bosse), avec reprise NURBS quand le noyau refuse la chaîne ; un rayon impossible est ramené au plus grand qui passe (⚠ dans l’arbre), le rayon demandé restant enregistré. Les arêtes que le noyau refuse ou ignore sans le dire sont comptées : **⚠ « non fait sur n/t arête(s) »** dans l’arbre et le panneau, avec l’endroit. Plusieurs arêtes tangentes entre elles passent en une fois et se raccordent, comme dans Fusion. Avec plusieurs corps, l’aperçu ne remplace que le corps modifié : un corps caché le reste. Chanfrein à **distance égale, deux distances ou distance + angle**, première face inversable. L'arête choisie suit les paramètres amont, y compris sur une extrusion à **dépouille** (hauteur et angle modifiés).
@@ -341,10 +342,10 @@ npx serve . -l 3000
 
 | Chemin | Rôle |
 |---|---|
-| `src/*.js` | **Les sources** : 175 fichiers concaténés dans l'ordre alphabétique (noyau, esquisse, fonctions 3D, assemblage, FAO découpée par domaine, mise en plan, rendu, interface téléphone `99-mobile*.js`). C'est ici qu'on travaille. |
+| `src/*.js` | **Les sources** : 176 fichiers concaténés dans l'ordre alphabétique (noyau, esquisse, fonctions 3D, assemblage, FAO découpée par domaine, mise en plan, rendu, interface téléphone `99-mobile*.js`). C'est ici qu'on travaille. |
 | `ConceptCAD.html` | **Livrable généré** par `node build.js`. On n'édite jamais son script à la main. |
 | `PostPro/` | Une fiche par machine (`siemens-630.js`, `siemens-1520.js`, `fagor-8065.js`). Nouvelle machine = copier une fiche, la modifier, `npm run build`. |
-| `tests/` | 309 suites Node lancées en parallèle (`npm run ci:full`), 141 rapides (`npm run ci`), non-régression des parcours FAO (`npm run parcours`), tests de référence (`tests/oracle/`, [docs/oracle.md](docs/oracle.md)). |
+| `tests/` | 310 suites Node lancées en parallèle (`npm run ci:full`), 142 rapides (`npm run ci`), non-régression des parcours FAO (`npm run parcours`), tests de référence (`tests/oracle/`, [docs/oracle.md](docs/oracle.md)). |
 | `tests/browser/` | Playwright dans un vrai Chromium : parcours critiques et Rendu (`npm run test:browser`, seul projet lancé par la CI GitHub, déclenchée à la main) et carte graphique réelle (`npm run test:gpu`, en local). |
 | `tools/` | Lint du script concaténé (`npm run lint`), serveur MCP, **captures du README** (`npm run captures`), **fichier autonome** (`npm run autonome`). |
 | `occt/`, `threejs/` | Noyau OpenCascade WebAssembly (`occt/v3` : OCCT 8), rendu three.js. |
