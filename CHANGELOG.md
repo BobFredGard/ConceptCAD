@@ -8,7 +8,7 @@ sont sorties le 2026-09-30j.
 Code dans `src/` · livrable `fusion_mvp.html` (généré par `build.js`) · architecture et
 garde-fous en tête de `src/00-entete-et-outils.js`.
 
-**644 versions**, de `2026-09-28b` à `V0.88.1` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
+**645 versions**, de `2026-09-28b` à `V0.89.0` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
 comme dans le fichier d'origine.
 
 ---
@@ -7304,3 +7304,10 @@ Barquette ne perd plus son solide à la 107e modification, et sa mémoire ne mon
 - **Flèche** (`70-extrusion-dynamique`, `71-fenetre-dynamique`) : `DYN_ARROW_K` = 0,055 au lieu de 0,11 de la distance de la caméra (flèches d'extrusion, perçage, congé, poignée de révolution) ; cylindre de prise invisible élargi (0,16 → 0,3, longueur 1,2) pour qu'elle reste facile à attraper.
 - **Sélection** (`90-10-selection-mesure`, `faceSelectFeature`) : un clic sur une face met sa fonction dans `treeSel` (surbrillance arbre et timeline) sans `sel` de fonction ; une fonction ouverte se referme. Le clic dans l'arbre ou la timeline ouvre la fonction comme avant.
 - **Test** : vérifié dans l'appli sur la Goupille (ƒx sur l'entraxe puis sur l'écart de 20, paramètre créé ; clic sur une face : surlignée, sans flèche ; clic sur la ligne : flèche à 0,055) ; `test_extrusion_dynamique`, `test_fenetre_dynamique`, `test_timeline_bandeau`, `test_parametre_mesure` inchangés. Parcours FAO et CACHE_VER inchangés.
+
+## V0.89.0 - G-code Spinner (Siemens 840D) : box du brut et CYCLE800 comme le post Fusion
+
+- **Demande** : Fred, 10/11 : « FAO : on avait travaillé sur les cycles 800 de spinner et je ne les retrouve pas dans mes G-Codes », « On avait réécrit pour prendre en compte le cycle800 et la box comme elle existe dans mes postpro de fusion360 et le programme fourni ».
+- **Cause** : la « box » (`WORKPIECE`) des posts Fusion `630-5axes.cps` / `1520-5axes.cps` n'avait jamais été reprise (aucune version ni branche ne la contenait) ; V0.45.2 n'avait traité que les perçages Fagor 8065, le dégagement `SUPA X` et `_DIR`. Le post ne commandait `CYCLE800` qu'après une opération inclinée : pas de remise à plat en début de programme, ni de plan redonné après un changement d'outil à plat, contrairement au post Fusion (`poulie.mpf`).
+- **Correctif** (`src/88-fao-60-postprocesseurs`) : `faoWorkpieceBox` écrit `WORKPIECE(,"C",,"BOX",112,Zhaut,Zbas,80,Xmax,Ymax,Xmin,Ymin)` en tête (brut dans le repère du programme), réglage machine `workpiece:false` pour l'enlever ; en début de programme, dégagement de la fiche machine puis `CYCLE800` à plat avec `_DIR 0` (comme `onSection` du post Fusion) ; plan de l'opération recommandé après CHAQUE changement d'outil, à plat compris ; table remise à plat en fin de programme si besoin. Fagor 8065 inchangé (ni CYCLE800 ni WORKPIECE).
+- **Test** : `test_post_cycle800` complété (8b box avant G71, 8c remise à plat _DIR 0 avant le 1er outil, 18 à plat : CYCLE800 0,0,0 seulement, 18b après le 2e outil, 18c Fagor sans CYCLE800 ni WORKPIECE) : 25/25 ; `test_fao_securite` : le 1er G0 peut être le dégagement machine `G0 SUPA Z…` ; G-code de `Exemples/Perçages.conceptcad` relu (box `0,-35,…,55,37.5,-55,-37.5`, pivotements des perçages de côté inchangés). Parcours FAO et CACHE_VER inchangés.

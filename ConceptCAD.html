@@ -379,7 +379,7 @@ input[type=range]{accent-color:var(--primary);width:100%}
  * peut changer sans rien casser. CACHE_VER (parcours FAO) reste indépendant.
  */
 
-const APP_VER='V0.88.1';
+const APP_VER='V0.89.0';
 try{console.log('[ConceptCAD] version '+APP_VER);}catch(e){}
 try{var mfSv=document.getElementById('mfSplashVer');if(mfSv)mfSv.textContent=APP_VER;}catch(e){} // écran de démarrage
 
@@ -48080,6 +48080,16 @@ function faoCycle800(post,S,dir){
   return 'CYCLE800(1,"'+(post.swivelData||'TABLE')+'",0,27,0,0,0,'+faoFmtXYZ(S.c)+','+faoFmtXYZ(S.b)+','+
     faoFmtXYZ(S.a)+',0,0,0,'+dir+',,1)';
 }
+// V0.89.0 : brut décrit à la CN (« box » de la simulation Siemens), comme les posts Fusion 630/1520 :
+// WORKPIECE(,"C",,"BOX",112,Zhaut,Zbas,80,Xmax,Ymax,Xmin,Ymin), cotes dans le repère du programme (G54).
+function faoWorkpieceBox(job,ox,oy,oz){
+  const s=job&&job.stock;
+  if(!s)return null;
+  const v=[s.x0,s.y0,s.z0,s.x1,s.y1,s.z1].map(Number);
+  if(!v.every(isFinite)||v[3]-v[0]<=0||v[4]-v[1]<=0||v[5]-v[2]<=0)return null;
+  return 'WORKPIECE(,"C",,"BOX",112,'+faoFmtXYZ(v[5]-oz)+','+faoFmtXYZ(v[2]-oz)+',80,'+
+    faoFmtXYZ(v[3]-ox)+','+faoFmtXYZ(v[4]-oy)+','+faoFmtXYZ(v[0]-ox)+','+faoFmtXYZ(v[1]-oy)+')';
+}
 function faoToday(){ try{ return new Date().toISOString().slice(0,10); }catch(e){ return ''; } }
 
 function faoArcWords(m,ox,oy,oz){
@@ -48186,6 +48196,7 @@ function faoPost(job,postId){
     L.push('; Origine '+wcs+' : '+faoOriginLabel(job)+
       ' ('+faoFmtXYZ(ox)+','+faoFmtXYZ(oy)+','+faoFmtXYZ(oz)+')');
     if(warns.length)cmt('ATTENTION : '+warns.join(' ; '));
+    if(post.workpiece!==false){ const wp=faoWorkpieceBox(job,ox,oy,oz); if(wp)nc(wp); }
     nc('G71');
     nc('G40 G80 G17 G90 G94 '+wcs);
   }
@@ -48202,16 +48213,19 @@ function faoPost(job,postId){
       nc('G0 B'+faoFmtXYZ(ORI.b)+' C'+faoFmtXYZ(ORI.c));
     }
   }
+  // V0.89.0 : comme le post Fusion (onSection, 1re opération) : plan de travail remis à plat en début de
+  // programme (_DIR 0), la table ne reste jamais inclinée d'un programme précédent
+  if(c800){ faoPostLines(post.swivelRetract,{}).forEach(nc); nc(faoCycle800(post,{a:0,b:0,c:0},0)); }
   nc('G0 Z'+faoFmtXYZ(safe-oz)); // plan de sécurité : Z seul avant tout déplacement XY
   let qi=0, prev=null;
   // 2026-10-16-020 : orientation 3+2 PAR OPÉRATION (repère propre de l'opération) ;
   // l'ancien 3+2 du posage reste l'orientation par défaut.
   let oriCur={b:ORI.b,c:ORI.c}, traOn=ori32&&!ax3&&!c800, fagWarn=false;
   // CYCLE800 : plan courant ('0,0,0' = à plat) ; null = à recommander (après un changement d'outil)
-  let swCur='0,0,0', swUsed=false;
+  let swCur=c800?null:'0,0,0', swUsed=false; // V0.89.0 : null = plan de la 1re opération toujours commandé
   // _DIR de CYCLE800 : solution choisie par la CN parmi les deux possibles (fiche machine swivelDir, +1 par défaut comme le post Fusion)
   const swDir=post.swivelDir===-1?-1:1;
-  const swOut=function(S){ faoPostLines(post.swivelRetract,{}).forEach(nc); nc(faoCycle800(post,S,swDir)); };
+  const swOut=function(S,dir){ faoPostLines(post.swivelRetract,{}).forEach(nc); nc(faoCycle800(post,S,dir===undefined?swDir:dir)); };
   groups.forEach(function(g,gi){
     const t=g.tool;
     const S=faoFmtS(t.s), F=faoFmtF(t.f), FP=faoFmtF(t.plunge);
@@ -48225,7 +48239,7 @@ function faoPost(job,postId){
     if(gi>0){ nc(CO.off);
       if(c800&&swUsed&&swCur!=='0,0,0')faoPostLines(post.swivelRetract,{}).forEach(nc); // plan incliné : retrait machine
       else nc('G0 Z'+faoFmtXYZ(retrPrev-oz)); }
-    if(c800&&swUsed)swCur=null; // le plan est recommandé après le changement d'outil (post Fusion)
+    if(c800)swCur=null; // V0.89.0 : plan recommandé après CHAQUE changement d'outil, à plat compris (post Fusion)
     fCur=null;
     retrPrev=retrCur;
     const toolF=faoToolById(job,t.id)||{};
@@ -48424,7 +48438,7 @@ function faoPost(job,postId){
   // 3+2 : annuler la transformation AVANT les coordonnées machine de fin (SUPA/park).
   if(traOn)nc('TRAFOOF');
   nc(CO.off);
-  if(c800&&swUsed&&swCur!=='0,0,0')swOut({a:0,b:0,c:0}); // table remise à plat (post Fusion : onClose)
+  if(c800&&swCur!=='0,0,0')swOut({a:0,b:0,c:0}); // table remise à plat (post Fusion : onClose)
   // fin de la fiche machine (Fagor : retrait + #MSG[""] qui efface le message op — cav.txt N243150 ;
   // Siemens : SUPA Z600 + parc machine)
   faoPostLines(post.end,{ZRETR:faoFmtXYZ(retrPrev-oz),NAME:name}).forEach(nc);

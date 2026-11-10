@@ -25,7 +25,10 @@ const R=[
   "const g=faoPost(s,'siemens1520').code;",
   "A(/CYCLE800\\(1,\"TABLE\",0,27,0,0,0,90\\.000,0\\.000,90\\.000,0,0,0,1,,1\\)/.test(g),'6 : CYCLE800 du plan de l’opération (C 90, B 0, A 90), jeu TABLE, mode 27');",
   "A(!/TRAORI|TRAFOOF|G0 B/.test(g),'7 : plus de TRAORI ni de B/C machine');",
-  "const iT=g.indexOf('T1 D1'),iC=g.indexOf('CYCLE800');A(iT>0&&iC>iT,'8 : pivotement après le changement d’outil (comme le post Fusion)');",
+  "const iT=g.indexOf('T1 D1'),iC=g.indexOf('CYCLE800(1,\"TABLE\",0,27,0,0,0,90');A(iT>0&&iC>iT,'8 : pivotement après le changement d’outil (comme le post Fusion)');",
+  // V0.89.0 : box du brut + plan remis à plat en début de programme (_DIR 0), comme le post Fusion
+  "A(/\\nWORKPIECE\\(,\"C\",,\"BOX\",112,/.test(g)&&g.indexOf('WORKPIECE')<g.indexOf('G71'),'8b : WORKPIECE « BOX » du brut en tête, avant G71');",
+  "{const i0=g.indexOf('CYCLE800(1,\"TABLE\",0,27,0,0,0,0.000,0.000,0.000,0,0,0,0,,1)');A(i0>0&&i0<iT&&g.slice(0,i0).indexOf('G0 SUPA Z600 D0')>0,'8c : plan remis à plat avant le 1er outil, _DIR 0, après le dégagement');}",
   "const pre=g.slice(0,iC).split('\\n').slice(-4,-1).join('|');A(pre==='G0 SUPA Z600 D0|G0 SUPA X-430|D1','9 : dégagement de la 1520 avant le pivotement ('+pre+')');",
   "const iR=g.lastIndexOf('CYCLE800(1,\"TABLE\",0,27,0,0,0,0.000,0.000,0.000,0,0,0,1,,1)');A(iR>iC&&iR<g.indexOf('M30'),'10 : table remise à plat avant M30');",
   // coordonnées dans le plan incliné : le dessus de l'opération (face X1 = 40 du centre commun) en Z
@@ -47,7 +50,11 @@ const R=[
   "faoMachine({id:'tstTraori',kind:'siemens',label:'Essai TRAORI',swivel:'traori'});",
   "{const gt=faoPost(s,'tstTraori').code;A(/TRAORI\\(1\\)/.test(gt)&&/G0 B-90\\.000 C0\\.000/.test(gt)&&!/CYCLE800/.test(gt),'17 : réglage machine swivel:\\'traori\\' : ancienne sortie TRAORI + B/C');}",
   // 3 axes : aucune trace
-  "delete op.frame;op.z=15;{const g3=faoPost(s,'siemens1520').code;A(!/CYCLE800|TRAORI/.test(g3),'18 : sans repère incliné : aucun CYCLE800');}",
+  "delete op.frame;op.z=15;{const g3=faoPost(s,'siemens1520').code;const c=(g3.match(/CYCLE800\\([^)]*\\)/g)||[]);",
+  " A(!/TRAORI/.test(g3)&&c.length>=2&&c.every(l=>/,0,27,0,0,0,0\\.000,0\\.000,0\\.000,/.test(l)),'18 : sans repère incliné : CYCLE800 à plat seulement (début + après chaque outil, comme le post Fusion) ('+c.length+')');",
+  " const s2=JSON.parse(JSON.stringify(s));s2.tools.push({id:'T2',num:2,name:'F2',kind:'flat',d:6,cornerR:0,flutes:2,vc:200,fz:0.05});const o2=faoOpDefaults('facing');o2.toolId='T2';o2.z=15;s2.ops.push(o2);",
+  " const g4=faoPost(s2,'siemens630').code,i2=g4.indexOf('T2 D1');A(i2>0&&/CYCLE800/.test(g4.slice(i2)),'18b : plan recommandé après le 2e changement d’outil');",
+  " const g5=faoPost(s,'fagor8065').code;A(!/CYCLE800|WORKPIECE/.test(g5),'18c : Fagor : ni CYCLE800 ni WORKPIECE');}",
   // ancien 3+2 du posage : pivotement du plan B/C inverse
   "s.orient={b:-30,c:10};{const gl=faoPost(s,'siemens1520').code;A(/CYCLE800\\(1,\"TABLE\",0,27,0,0,0,-10\\.000,30\\.000,0\\.000,/.test(gl),'19 : ancien 3+2 du posage (B−30 C10) : plan pivoté C−10 B30');}",
   "delete s.orient;",

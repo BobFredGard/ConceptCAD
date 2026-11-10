@@ -161,7 +161,8 @@ const A=(c,m)=>{if(!c){ko++;console.log('  ✗ '+m);}else console.log('  ✓ '+m
 
     // ---- 4. le retrait initial et le retrait inter-outils sont en Z seul ----
     const firstG0=code.trim().split(NL).filter(function(l){return l.indexOf('G0 ')===0;})[0]||'';
-    A(firstG0.indexOf('G0 Z')===0,'post : le 1er G0 est un retrait Z seul ('+firstG0+')');
+    // V0.89.0 : sur Siemens 5 axes, 1er G0 = dégagement machine avant la remise à plat CYCLE800 (G0 SUPA Z600)
+    A(firstG0.indexOf('G0 Z')===0||firstG0.indexOf('G0 SUPA Z')===0,'post : le 1er G0 est un retrait Z seul ('+firstG0+')');
 
     // ---- 5. champ UI ----
     const pc=document.createElement('div');
