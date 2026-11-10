@@ -374,9 +374,7 @@ function solveSketchRelax(sk,iters,anchor){
         const TAU=Math.PI*2;
         const fr=angleFrame(sk,d);if(!fr)return;
         if(d.ccw!==0&&d.ccw!==1)d.ccw=(fr.delta>=0)?1:0; // migration : signe courant, valeur inchangée (pas de saut)
-        const want=angleWant(d,fr.delta);
-        let e=want-fr.delta;
-        if(e>Math.PI)e-=TAU;else if(e<-Math.PI)e+=TAU;
+        const e=skAngErr(d,fr);
         if(Math.abs(e)<1e-9)return;
         const shared=[A.p1,A.p2].find(p=>p===B.p1||p===B.p2);
         const aFL=fix.has(A.p1)&&fix.has(A.p2),bFL=fix.has(B.p1)&&fix.has(B.p2);
@@ -739,8 +737,7 @@ function sklsCollect(sk,out,B){
     if(d.type==='diameter'||d.type==='radius'){const e=entById(sk,d.ent);if(e&&(e.t==='circle'||e.t==='arc'))push(e.r-(d.type==='diameter'?d.value/2:d.value));}
     if(d.type==='angle'){
       const fr=angleFrame(sk,d);if(fr){
-        const TAU=Math.PI*2,want=angleWant(d,fr.delta);
-        let e=want-fr.delta;if(e>Math.PI)e-=TAU;else if(e<-Math.PI)e+=TAU;
+        const e=skAngErr(d,fr);
         // V0.7.1 : résidu en mm (arc au plus long rayon, skAngScale) — en radians il ne pesait rien face aux mm
         push(e*skAngScale(fr));
       }
@@ -1189,6 +1186,36 @@ function skPasFixes(sk,anchor){
   }
   return L.length?{L,mx}:null;
 }
+// V0.80.2 : REPRISE « DROITES ». Esquisse non résolue avec une cote d'angle en défaut : nouvel essai où
+// l'angle est tenu entre les DROITES (au demi-tour près). Un segment peut ainsi repasser par son sommet
+// sans que le secteur coté se retourne (Butoir ZE4 : centre de l'arc 50 → 75, la ligne de base O→p36
+// change de sens, la cote de 3° visait l'autre côté et la cote de 75 n'était plus tenue). Gardé seulement
+// si TOUT est résolu ; les cotes d'angle reprennent alors le secteur réel de la nouvelle forme.
+function skAngReprise(sk,iters,anchor){
+  const ang=(sk.dims||[]).filter(d=>d&&!d.ref&&d.type==='angle');if(!ang.length)return;
+  const r0=skResid(sk);if(!(r0>SK_OK_RES))return;
+  let au=[];try{au=skAudit(sk).all||[];}catch(e){return;}
+  const bad=ang.filter(d=>au.some(o=>o.viol>SK_OK_RES&&o.id===d.id));if(!bad.length)return;
+  // une ligne d’un angle déjà réduite à un point : le calcul normal l'a écrasée en passant par son
+  // sommet — la faire renaître de l'autre côté serait un retournement (Barquette, Guide Renfort 1)
+  const len=id=>{const e=entById(sk,id),A=e&&sk.points[e.p1],B=e&&sk.points[e.p2];return A&&B?Math.hypot(B.x-A.x,B.y-A.y):0;};
+  if(ang.some(d=>len(d.a)<1e-3||len(d.b)<1e-3))return; // tous les angles : une cote sur ligne écrasée n'est plus « en défaut »
+  const snap=skSnapCoords(sk),keep=ang.map(d=>[d,d.comp,d.ccw]);
+  // un essai refusé ne laisse aucune trace : côtés des entraxes (d.sgn) et des tangences relevés pendant l'essai
+  const sgn=(sk.dims||[]).map(d=>[d,d.sgn]);
+  const tan=(sk.constraints||[]).filter(c=>c.type==='tangent').map(c=>[c,SK_TAN_SIDE.has(c),SK_TAN_SIDE.get(c)]);
+  SK_ANG_DROITES=true;
+  try{solveSketch1(sk,iters,anchor);}catch(e){}finally{SK_ANG_DROITES=false;}
+  ang.forEach(d=>{try{skAngReencode(sk,d);}catch(e){}});
+  // et la nouvelle forme ne doit pas non plus écraser une ligne d'un angle qui change de secteur
+  const ecrase=keep.some(([d,c,w])=>(!d.comp!==!c||d.ccw!==w)&&(len(d.a)<1e-3||len(d.b)<1e-3));
+  const r1=skResid(sk);
+  if(!ecrase&&r1<=SK_OK_RES&&r1<r0){skTanSideRec(sk);return;}
+  skRestoreCoords(sk,snap);
+  keep.forEach(([d,c,w])=>{if(c===undefined)delete d.comp;else d.comp=c;d.ccw=w;});
+  sgn.forEach(([d,s])=>{if(s===undefined)delete d.sgn;else d.sgn=s;});
+  tan.forEach(([c,h,v])=>{if(h)SK_TAN_SIDE.set(c,v);else SK_TAN_SIDE.delete(c);});
+}
 function solveSketch(sk,iters,anchor){
   if(!sk||!sk.points)return;
   if((iters||120)>=100)skBonReprise(sk,anchor);
@@ -1219,6 +1246,7 @@ function solveSketch(sk,iters,anchor){
       if(skResid(sk)>=rp)skRestoreCoords(sk,parPas);
     }
   }else solveSketch1(sk,iters,anchor);
+  if((iters||120)>=100)skAngReprise(sk,iters,anchor);
   (sk.dims||[]).forEach(d=>{if(d&&isFinite(+d.value))SK_VALS.set(d,+d.value);});
   skPtsNote(sk);
   skBonNote(sk,iters);

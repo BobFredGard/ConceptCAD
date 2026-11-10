@@ -65,6 +65,7 @@ const SUITES = [
   'test_filet_visibilite',
   'test_corps_temps',
   'test_esquisse_angle',
+  'test_esquisse_angle_droites',
   'test_esquisse_transparence',
   'test_esquisse_face_conges',
   'test_esquisse_intersection',

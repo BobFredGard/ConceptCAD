@@ -36,6 +36,7 @@ const SUITES = [
   "test_repeat_session",
   "test_repeat_circ_tour",
   "test_esquisse_angle",
+  "test_esquisse_angle_droites",
   "test_mirror_arc",
   "test_extrude_flip_draft",
   "test_apercu_diff",

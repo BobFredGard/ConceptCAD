@@ -529,6 +529,24 @@ function skDimAngleAt(sk,dd,wx,wy){ // pose d'angle : naturel / complémentaire 
   else if(inS(fr.sA,fr.delta>0?-comp:comp)){dd.a=dd.oa;dd.b=dd.ob;dd.comp=1;dd.ccw=fr.delta>0?0:1;dd.value=comp;}
   else if(inS(sB,fr.delta>0?comp:-comp)){dd.a=dd.ob;dd.b=dd.oa;dd.comp=1;dd.ccw=fr.delta>0?1:0;dd.value=comp;}
 }
+// V0.80.2 : écart d'une cote d'angle. Normalement signé sur (-π,π] (le secteur ne se retourne jamais).
+// Pendant la reprise « droites » (SK_ANG_DROITES, voir skAngReprise) l'écart est pris au demi-tour près :
+// l'angle des DROITES est tenu, un segment peut repasser par son sommet (Butoir ZE4 : la ligne de base
+// O→p36 change de sens quand le centre de l'arc passe de 50 à 75, le secteur de 3° se retournait).
+let SK_ANG_DROITES=false;
+function skAngErr(d,fr){
+  const TAU=Math.PI*2;let e=angleWant(d,fr.delta)-fr.delta;
+  if(e>Math.PI)e-=TAU;else if(e<-Math.PI)e+=TAU;
+  if(SK_ANG_DROITES){if(e>Math.PI/2)e-=Math.PI;else if(e<=-Math.PI/2)e+=Math.PI;}
+  return e;
+}
+// la cote reprend le secteur réel (naturel ou complémentaire) de la nouvelle forme, même valeur
+function skAngReencode(sk,d){
+  const fr=angleFrame(sk,d);if(!fr)return;
+  const ad=Math.abs(fr.delta),v=d.value;
+  if(Math.abs(ad-v)<=Math.abs(ad-(Math.PI-v))){delete d.comp;d.ccw=fr.delta>0?1:0;}
+  else{d.comp=1;d.ccw=fr.delta>0?0:1;}
+}
 function angleWant(d,delta){ // consigne signée d'une cote d'angle (naturelle, ou complémentaire π−v via d.comp)
   const v=Math.max(0.02,Math.min(Math.PI-0.02,d.value||0));
   if(d.comp)return (delta>=0?1:-1)*(Math.PI-v);
