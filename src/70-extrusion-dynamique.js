@@ -163,6 +163,9 @@ function extDynPanel(p,f){
   p.appendChild(b);
 }
 /* ── flèche et champ de cote dans la vue ── */
+// V0.88.1 (Fred : « la flèche bleue pour tirer les valeurs est beaucoup trop grande ») : taille à l'écran ÷2 (0,11 → 0,055 × distance de la caméra) ;
+// la zone de prise reste large (cylindre invisible plus gros) pour ne pas devenir difficile à attraper
+const DYN_ARROW_K=0.055;
 let extArrow=null,extDrag=null,extLabel=null,extWired=false,extSwallow=0,extRebuildPending=false;
 function extArrowGeom(f){
   // Centre du profil (boîte des entités de l'esquisse), normale, bout de l'extrusion (le long de n)
@@ -184,7 +187,7 @@ function extArrowBuild(){
   const mat=new THREE.MeshBasicMaterial({color:0x0a84ff,depthTest:false,transparent:true,opacity:0.95});
   const shaft=new THREE.Mesh(new THREE.CylinderGeometry(0.035,0.035,0.75,10),mat);shaft.position.y=0.375;
   const tip=new THREE.Mesh(new THREE.ConeGeometry(0.11,0.28,16),mat);tip.position.y=0.86;
-  const hit=new THREE.Mesh(new THREE.CylinderGeometry(0.16,0.16,1.05,8),new THREE.MeshBasicMaterial({visible:false}));hit.position.y=0.52;
+  const hit=new THREE.Mesh(new THREE.CylinderGeometry(0.3,0.3,1.2,8),new THREE.MeshBasicMaterial({visible:false}));hit.position.y=0.52;
   [shaft,tip,hit].forEach(m=>{m.renderOrder=999;m.userData.extArrow=true;m.userData.noMirror=true;g.add(m);});
   const dot=new THREE.Mesh(new THREE.SphereGeometry(0.07,12,8),new THREE.MeshBasicMaterial({color:0xffffff,depthTest:false}));dot.renderOrder=999;dot.userData.noMirror=true;g.add(dot);
   scene.add(g);return g;
@@ -220,7 +223,7 @@ function extDynTick(){
   if(!extArrow)extArrow=extArrowBuild();
   const dir=G.end<0?G.n.clone().negate():G.n.clone();
   const P=G.C.clone().addScaledVector(G.n,G.end);
-  const L=Math.max(1e-3,camera.position.distanceTo(P)*0.11);
+  const L=Math.max(1e-3,camera.position.distanceTo(P)*DYN_ARROW_K);
   extArrow.position.copy(P);extArrow.scale.setScalar(L);
   extArrow.quaternion.setFromUnitVectors(new THREE.Vector3(0,1,0),dir);
   extArrow.visible=true;

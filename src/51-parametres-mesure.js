@@ -153,14 +153,57 @@ function parMesOffer(A,B){
   b.className='parMesBtn';b.textContent='ƒx Créer un paramètre ('+parMesFmt(r.v)+')';
   b.title='Paramètre qui VAUT cette mesure ('+PAR_MES_K[r.k]+') et suit la pièce quand elle change';
   b.style.cssText='display:block;margin-top:6px;padding:3px 8px;cursor:pointer;pointer-events:auto';
-  b.addEventListener('pointerdown',e=>e.stopPropagation());
-  b.addEventListener('click',e=>{
-    e.stopPropagation();
+  let fait=false;
+  const go=e=>{
+    if(e)e.stopPropagation();
+    parMesOfferClear();
+    if(fait)return;fait=true;
     const p=parMesCreate(RA.ref,RB.ref,r);
     try{faceEl.textContent='Paramètre « '+p.name+' » = '+parMesFmt(r.v)+' mm ('+PAR_MES_K[r.k]+') — il suit la pièce (fenêtre ƒx Paramètres pour le renommer).';}catch(e2){}
-  });
+  };
+  b.addEventListener('pointerdown',e=>e.stopPropagation());
+  b.addEventListener('click',go);
+  faceEl.appendChild(document.createTextNode('\n')); // la 1re ligne recopiée sur la vue (moderne) reste la mesure seule
   faceEl.appendChild(b);
   try{faceEl.scrollTop=faceEl.scrollHeight;}catch(e){} // la zone Mesure est basse : le bouton reste en vue
+  // V0.88.1 : petit « ƒx » collé à la cote verte de la vue 3D (demande de Fred) — un clic crée le paramètre
+  try{
+    document.querySelectorAll('.parMesFx').forEach(x=>x.remove()); // mesure précédente : son ƒx s'en va
+    let L=(selLabels||[]).filter(o=>o&&o.el&&!/^Ø/.test(o.el.textContent)).pop(); // la cote de CETTE mesure (la dernière)
+    if(!L&&r.p1&&r.p2){dimPair(r.p1,r.p2,parMesFmt(r.v));L=selLabels[selLabels.length-1];}
+    if(L&&L.el){
+      const fx=document.createElement('span');
+      fx.className='parMesFx';fx.textContent='ƒx';fx.title=b.title+' — clic : créer le paramètre';
+      fx.style.cssText='pointer-events:auto;cursor:pointer;margin-left:7px;padding:0 5px;border-radius:5px;background:rgba(255,255,255,.28);font-style:italic';
+      fx.addEventListener('pointerdown',e=>{e.stopPropagation();e.preventDefault();});
+      fx.addEventListener('click',go);
+      L.el.appendChild(fx);
+    }
+  }catch(e){}
+  // V0.88.1 : interface moderne — la zone Mesure est cachée, seule sa 1re ligne est recopiée sur la vue
+  // (#mfStMeas, 97-interface-moderne) : le bouton y est aussi, juste après la mesure
+  try{
+    parMesOfferClear(true);
+    const ms=document.getElementById('mfStMeas');
+    if(ms&&ms.parentNode&&document.body.classList.contains('ui-modern')){
+      const m=document.createElement('button');
+      m.id='parMesBtnM';m.textContent=b.textContent;m.title=b.title;
+      m.style.cssText='flex:none;padding:2px 9px;font-size:.72rem;cursor:pointer;pointer-events:auto;border-radius:6px';
+      m.addEventListener('pointerdown',e=>e.stopPropagation());
+      m.addEventListener('click',go);
+      ms.parentNode.insertBefore(m,ms.nextSibling);
+    }
+  }catch(e){}
+}
+function parMesOfferClear(seulVue){
+  // Retire le bouton de la vue (et celui de la zone Mesure, sauf seulVue)
+  try{const m=document.getElementById('parMesBtnM');if(m)m.remove();}catch(e){}
+  if(!seulVue)try{document.querySelectorAll('.parMesFx').forEach(x=>x.remove());}catch(e){}
+  if(!seulVue)try{faceEl.querySelectorAll('.parMesBtn').forEach(x=>x.remove());}catch(e){}
+}
+function parMesOfferWatch(){
+  // Appelé par la barre d'état moderne (toutes les 500 ms) : un autre message a remplacé la mesure → bouton retiré
+  try{if(document.getElementById('parMesBtnM')&&!(faceEl&&faceEl.querySelector('.parMesBtn')))parMesOfferClear(true);}catch(e){}
 }
 /* ----- montrer la mesure d'un paramètre ----- */
 function parMesShow(p){
