@@ -379,7 +379,7 @@ input[type=range]{accent-color:var(--primary);width:100%}
  * peut changer sans rien casser. CACHE_VER (parcours FAO) reste indépendant.
  */
 
-const APP_VER='V0.79.0';
+const APP_VER='V0.80.0';
 try{console.log('[ConceptCAD] version '+APP_VER);}catch(e){}
 try{var mfSv=document.getElementById('mfSplashVer');if(mfSv)mfSv.textContent=APP_VER;}catch(e){} // écran de démarrage
 
@@ -22582,7 +22582,7 @@ skUpdateTols();
 let skTool='select',skDraft=null,skMsg='',skOffArm=null;
 let skDown=null,skChain=null,skInfer=null,skSnapMk=null,skSel=null,skSelX=[],skDrag=null,skDragMoved=false,skDragPushed=false,skDimDrag=null,skPan=null,skDragSnap=null,skDragFrom=null; // skDragSnap : accroche du point glissé (V0.11.24) ; skDragFrom : départ du glisser (V0.11.27)
 let skBox=null,skDragEnt=null,skDyn=null; // sélection rect · déplacement d'entité · saisie dynamique (longueur/angle)
-let skOffsetD=5; // distance « auto » du menu ⇄ Décaler (contexte) : déclarée ici car le menu la lit AVANT tout usage de l'outil — sinon ReferenceError et menu jamais affiché
+let skOffsetD=3; // distance « auto » du menu ⇄ Décaler (contexte) : déclarée ici car le menu la lit AVANT tout usage de l'outil — sinon ReferenceError et menu jamais affiché
 let skDimPlace=null; // placement de cote : {id} → la cote suit le curseur jusqu'au clic
 let skPendPt=null,skCoinA=null,skCornA=null,skArcC=null,skArcA1=null,skArcPa=null;
 let skSpl=null; // spline en cours de tracé : {pts:[{x,y,snap}]} (50-esquisse-6)
@@ -24386,7 +24386,11 @@ function skOffsetDistToSel(sk,ents,S){
   });
   return best;
 }
-function skOffsetApply(sk,ids,D,S){
+function skOffsetApply(sk,ids,D,S,opt){
+  // V0.79.x : opt.flip (sans point de côté S) = l'autre côté que celui proposé (extérieur des contours fermés,
+  // gauche des chaînes ouvertes, rayon + pour les cercles). Les copies ne sont JAMAIS en construction (Fred) :
+  // décaler une arête projetée (construction) donne un vrai trait.
+  const flip=!S&&!!(opt&&opt.flip);
   ids=[...new Set(ids||[])];
   if(!(D>=0.001))return{ok:false,msg:'Décalage : distance ≥ 0,001 mm requise.'};
   const P=sk.points;
@@ -24408,6 +24412,7 @@ function skOffsetApply(sk,ids,D,S){
       const inside=S?pip([S.x,S.y],ring):false;
       const ext=S?!inside:true;
       s=((area>0)===(ext?false:true))?1:-1;
+      if(flip)s=-s;
     }else if(S){
       const e1=order[0].e,[pA,pB]=skEdgeEnds(e1,order[0].fwd);
       const U=P[pA],W=P[pB];
@@ -24416,7 +24421,7 @@ function skOffsetApply(sk,ids,D,S){
         if(cr<0)order=[...order].reverse().map(o=>({e:o.e,fwd:!o.fwd}));
       }
       s=1;
-    }
+    }else if(flip)s=-1;
     const jInfo=order.map((o,i)=>{ // joint : pid fusionné (forced=false) OU contrainte coincident (forced=true)
       if(i===n-1&&!ch.closed)return null;
       const nx=order[(i+1)%n];
@@ -24502,7 +24507,7 @@ function skOffsetApply(sk,ids,D,S){
       if(o.e.t==='line'){
         const p1=endFor('prev',off.A),p2=endFor('next',off.B);
         const nid=skNewEid(sk);
-        const cp={id:nid,t:'line',p1,p2};if(o.e.construction)cp.construction=true;
+        const cp={id:nid,t:'line',p1,p2};
         sk.entities.push(cp);
         if(!skHasParallel(sk,o.e.id,nid))sk.constraints.push({id:skNewEid(sk),type:'parallel',a:o.e.id,b:nid});
         pairs.push({a:o.e.id,b:nid,line:true});
@@ -24528,7 +24533,7 @@ function skOffsetApply(sk,ids,D,S){
         // toujours de pa à pb dans le sens trigonométrique. Chaîne parcourue à l'envers
         // (fwd=false, cas normal d'une chaîne fermée) → sans échange, la copie faisait
         // le TOUR COMPLÉMENTAIRE (270° au lieu de 90° : quasi-cercles aux coins arrondis).
-        const cp={id:nid,t:'arc',pc:o.e.pc,pa:o.fwd?pA:pB,pb:o.fwd?pB:pA,r:off.r};if(o.e.construction)cp.construction=true;
+        const cp={id:nid,t:'arc',pc:o.e.pc,pa:o.fwd?pA:pB,pb:o.fwd?pB:pA,r:off.r};
         sk.entities.push(cp);
         pairs.push({a:o.e.id,b:nid,line:false});
         copies.push(nid);
@@ -24577,10 +24582,11 @@ function skOffsetApply(sk,ids,D,S){
     const C=P[e.pc];if(!C)continue;
     let s=1;
     if(S)s=(Math.hypot(S.x-C.x,S.y-C.y)>=e.r)?1:-1;
+    else if(flip)s=-1;
     const rr=e.r+s*D;
     if(!(rr>0.5)){jointsBad++;continue;}
     const nid=skNewEid(sk);
-    const cp={id:nid,t:'circle',pc:e.pc,r:rr};if(e.construction)cp.construction=true;
+    const cp={id:nid,t:'circle',pc:e.pc,r:rr};
     sk.entities.push(cp);
     sk.dims.push({id:skNewEid(sk),type:'radius',ent:nid,value:+rr.toFixed(3),ox:0,oy:0});
     copies.push(nid);
@@ -24953,6 +24959,8 @@ function drawSketch2D(){
   }
   // ⨯ Intersection : courbes de section candidates / retenues / survolées
   if(skTool==='isect'&&typeof skIsectDraw==='function'){try{skIsectDraw(sk);}catch(e){}}
+  // ⇄ Décalage : aperçu orange de la copie, survol de la chaîne (50-esquisse-93-decalage)
+  if(skTool==='offset'){try{skOffDraw(sk);}catch(e){}}
   // brouillon + cote live (longueur/angle comme Fusion)
   if(skDraft){
     const d=skDraft;
@@ -25006,7 +25014,7 @@ function drawSketch2D(){
     h.textContent='Tab angle/longueur · Entrée OK · Échap annule';
   }
   if(skRoot)skOrbUpright(skRoot); // orbite : textes et étiquettes restent lisibles
-  skPolySync();skModeBarSync();
+  skPolySync();skModeBarSync();skOffBarSync();skToolBtnSync();
 }
 function dimById(sk,id){return (sk.dims||[]).find(d=>d.id===id);}
 function angleArcInfo(sk,d){ // {V,rr,a1,dd} — secteur STOCKE (a1=rayon A, dd=±value), arc et texte toujours cohérents
@@ -28998,6 +29006,251 @@ function skASlotDrawDraft(d){
   label(d.cx+(R+w)*Math.cos(am),d.cy+(R+w)*Math.sin(am),'R '+R.toFixed(2)+' · '+deg+' · largeur '+(2*w).toFixed(2));
 }
 
+/* ═══════════════ 50-esquisse-93-decalage.js — esquisse 93 decalage ═══════════════ */
+/* ---------- Esquisse : outil Décalage (O) comme Fusion ----------
+   2026-11-10 : demande de Fred — le Décalage n'était pas optimum (sélection, puis clic du côté, distance
+   au curseur). Maintenant :
+   1. le bouton reste allumé tant que l'outil est actif ; on enchaîne les décalages sans le relancer ;
+   2. un clic choisit une ligne, un arc, un cercle ou une spline ; Ctrl/Cmd (ou Maj) ajoute / retire ;
+      « Chaîne tangente » (bandeau, ou double-clic) prend d'un coup tous les traits qui se suivent en
+      tangence (oblong, contour à coins arrondis…) ;
+   3. un APERÇU orange apparaît tout de suite à 3 mm (puis la dernière distance utilisée), du côté
+      proposé (extérieur d'un contour fermé) ; « ⇄ Inverser » (ou un clic dans le vide du côté voulu)
+      le passe de l'autre côté ; la distance se tape au clavier ;
+   4. « Des deux côtés » : une copie de chaque côté de la référence (miroir) ;
+   5. la copie n'est JAMAIS en construction, même quand la référence l'est (arête projetée…).
+   Entrée / ✓ = valider (l'outil reste actif) · Échap = vider la sélection, 2ᵉ Échap = outil Sélection.
+   Le calcul reste skOffsetApply (50-esquisse-3) : cotes, parallèles et décalages égaux associatifs. */
+let skOffOpt={D:3,flip:false,both:false,chain:true}; // gardé d'un décalage au suivant (sauf l'inversion)
+let skOffPv=null;   // aperçu calculé {key, ents:[entités copiées], P:points, label}
+let skOffHov=null;  // ids survolés (ce qu'un clic prendrait)
+function skOffElig(e){return !!e&&!e.ref&&!e.handle&&(e.t==='line'||e.t==='circle'||e.t==='arc'||e.t==='spline');}
+function skOffSelIds(){return skSelectedEnts().filter(skOffElig).map(e=>e.id);}
+function skOffSetSel(ids){
+  ids=[...new Set(ids)];
+  skSel=ids.length?{kind:'ent',id:ids[0]}:null;
+  skSelX=ids.slice(1).map(id=>({kind:'ent',id}));
+}
+// tangente unitaire d'une ligne / d'un arc au point pid (sens sans importance)
+function skOffTanAt(sk,e,pid){
+  const P=sk.points,Q=P[pid];if(!Q)return null;
+  if(e.t==='line'){const A=P[e.p1],B=P[e.p2];if(!A||!B)return null;const L=Math.hypot(B.x-A.x,B.y-A.y);return L>1e-12?{x:(B.x-A.x)/L,y:(B.y-A.y)/L}:null;}
+  if(e.t==='arc'){const C=P[e.pc];if(!C)return null;const vx=Q.x-C.x,vy=Q.y-C.y,L=Math.hypot(vx,vy);return L>1e-12?{x:-vy/L,y:vx/L}:null;}
+  return null;
+}
+// traits qui se suivent EN TANGENCE à partir de « start » (bouts joints + même direction au joint, à 1° près)
+function skOffTangentChain(sk,start){
+  if(!start||(start.t!=='line'&&start.t!=='arc'))return start?[start.id]:[];
+  const ends=e=>e.t==='line'?[e.p1,e.p2]:[e.pa,e.pb];
+  const cand=(sk.entities||[]).filter(e=>skOffElig(e)&&(e.t==='line'||e.t==='arc'));
+  const seen=new Set([start.id]),todo=[start],SIN=Math.sin(Math.PI/180);
+  while(todo.length){
+    const e=todo.pop();
+    for(const p of ends(e)){
+      const t1=skOffTanAt(sk,e,p);if(!t1)continue;
+      for(const o of cand){
+        if(seen.has(o.id))continue;
+        const q=ends(o).find(x=>skJointSame(sk,x,p));if(!q)continue;
+        const t2=skOffTanAt(sk,o,q);if(!t2)continue;
+        if(Math.abs(t1.x*t2.y-t1.y*t2.x)<=SIN){seen.add(o.id);todo.push(o);}
+      }
+    }
+  }
+  return[...seen];
+}
+// ce qu'un clic en (wx,wy) prendrait : l'entité, ou sa chaîne tangente
+function skOffPickAt(sk,wx,wy,chain){
+  const ent=nearestEntity(sk,wx,wy,SK_PICK);
+  if(!skOffElig(ent))return null;
+  return(chain?skOffTangentChain(sk,ent):[ent.id]);
+}
+// le décalage sur une COPIE de l'esquisse (rien ne change dans le document) → les entités créées
+function skOffSimulate(sk,ids,D,flip){
+  const c=Object.assign({},sk,{points:JSON.parse(JSON.stringify(sk.points||{})),entities:JSON.parse(JSON.stringify(sk.entities||[])),
+    constraints:(sk.constraints||[]).slice(),dims:(sk.dims||[]).slice()});
+  const n0=c.entities.length;
+  skOffDo(c,ids,D,flip);
+  return{ents:c.entities.slice(n0),P:c.points,sk:c};
+}
+// décalage d'un côté : lignes / arcs / cercles (associatif) + splines (copie approchée)
+function skOffDo(sk,ids,D,flip){
+  const ents=ids.map(id=>entById(sk,id)).filter(Boolean);
+  const geo=ents.filter(e=>e.t!=='spline').map(e=>e.id),spl=ents.filter(e=>e.t==='spline');
+  const out={ok:false,msg:'',n:0,cusp:false,nS:0};
+  if(geo.length){const r=skOffsetApply(sk,geo,D,null,{flip});out.msg=r.msg;if(r.ok){out.ok=true;out.n+=r.copies.length;}}
+  spl.forEach(e=>{const r=skSplineOffset(sk,e,D,flip?-1:1);if(r&&typeof r==='object'){delete r.e.construction;out.ok=true;out.nS++;out.cusp=out.cusp||r.cusp;}});
+  return out;
+}
+function skOffSigKey(sk,ids){
+  let s=0;const P=sk.points;
+  ids.forEach(id=>{const e=entById(sk,id);if(!e)return;skEntPids(e).forEach(p=>{const q=P[p];if(q)s+=q.x*1.31+q.y*0.77;});if(e.r)s+=e.r;});
+  return ids.join(',')+'|'+s.toFixed(9);
+}
+function skOffPreview(sk){
+  const ids=skOffSelIds();
+  if(!ids.length||!(skOffOpt.D>=0.001)){skOffPv=null;return null;}
+  const key=skOffSigKey(sk,ids)+'|'+skOffOpt.D+'|'+skOffOpt.flip+'|'+skOffOpt.both;
+  if(skOffPv&&skOffPv.key===key&&skOffPv.sk===sk)return skOffPv;
+  const sides=skOffOpt.both?[false,true]:[skOffOpt.flip];
+  const pv={key,sk,parts:[]};
+  try{sides.forEach(f=>pv.parts.push(skOffSimulate(sk,ids,skOffOpt.D,f)));}catch(e){pv.err=String(e&&e.message||e);}
+  skOffPv=pv;return pv;
+}
+// tracé d'une entité d'une copie (lignes, arcs, cercles, splines)
+function skOffDrawEnt(c,e,attrs){
+  const P=c.P;
+  if(e.t==='line'){const A=P[e.p1],B=P[e.p2];if(!A||!B)return null;const[a,b]=w2s(A.x,A.y),[x2,y2]=w2s(B.x,B.y);
+    skEl('line',Object.assign({x1:a,y1:b,x2,y2},attrs));return{x:(A.x+B.x)/2,y:(A.y+B.y)/2};}
+  if(e.t==='circle'){const C=P[e.pc];if(!C)return null;const[a,b]=w2s(C.x,C.y);
+    skEl('circle',Object.assign({cx:a,cy:b,r:e.r*skView.s,fill:'none'},attrs));return{x:C.x,y:C.y+e.r};}
+  if(e.t==='arc'){const C=P[e.pc],A=P[e.pa],B=P[e.pb];if(!C||!A||!B)return null;
+    let a1=Math.atan2(A.y-C.y,A.x-C.x),a2=Math.atan2(B.y-C.y,B.x-C.x),dd=a2-a1;while(dd<=0)dd+=Math.PI*2;
+    const[x1,y1]=w2s(A.x,A.y),[x2,y2]=w2s(B.x,B.y),R=e.r*skView.s;
+    skEl('path',Object.assign({d:`M ${x1} ${y1} A ${R} ${R} 0 ${dd>Math.PI?1:0} 0 ${x2} ${y2}`,fill:'none'},attrs));
+    const am=a1+dd/2;return{x:C.x+e.r*Math.cos(am),y:C.y+e.r*Math.sin(am)};}
+  if(e.t==='spline'){let pl=null;try{pl=skSplinePoly(c.sk||{points:P,entities:[e]},e);}catch(_){}
+    if(!pl||pl.length<2)return null;
+    skEl('path',Object.assign({d:'M '+pl.map(q=>{const s=w2s(q[0],q[1]);return s[0].toFixed(1)+' '+s[1].toFixed(1);}).join(' L '),fill:'none'},attrs));
+    const m=pl[Math.floor(pl.length/2)];return{x:m[0],y:m[1]};}
+  return null;
+}
+// appelé par drawSketch2D quand l'outil Décalage est actif
+function skOffDraw(sk){
+  const P=sk.points;
+  if(skOffHov&&skOffHov.length){ // survol : ce que le clic prendrait (chaîne tangente comprise)
+    const sel=new Set(skOffSelIds());
+    skOffHov.forEach(id=>{const e=entById(sk,id);if(e&&!sel.has(id))skOffDrawEnt({P,sk},e,{stroke:'#64d2ff','stroke-width':3,opacity:0.55});});
+  }
+  const pv=skOffPreview(sk);
+  if(!pv)return;
+  pv.parts.forEach(c=>{
+    let lab=null;
+    c.ents.forEach(e=>{const m=skOffDrawEnt(c,e,{stroke:'#ff9f0a','stroke-width':2,'stroke-dasharray':'6 3'});if(!lab&&m)lab=m;});
+    if(lab){const[a,b]=w2s(lab.x,lab.y);
+      const t=skEl('text',{x:a+8,y:b-8,fill:'#ff9f0a','font-size':13,'font-weight':'bold'});
+      t.textContent=String(+skOffOpt.D.toFixed(3)).replace('.',',')+' mm';}
+  });
+}
+/* ----- bandeau (en haut à gauche, comme les choix de l'oblong / du rectangle) ----- */
+function skOffBarBuild(){
+  const host=document.getElementById('skMain');if(!host)return null;
+  const b=document.createElement('div');b.id='skOffBar';
+  b.style.cssText='position:absolute;left:10px;top:10px;z-index:20;display:flex;gap:6px;align-items:center;flex-wrap:wrap;max-width:calc(100% - 20px);padding:6px 10px;border:1px solid var(--border);border-radius:8px;background:var(--panel,#1e1e1e);font-size:.8rem';
+  const btn=(k,lab,tip,fn)=>{const c=document.createElement('button');c.type='button';c.dataset.k=k;c.textContent=lab;c.title=tip;
+    c.addEventListener('click',ev=>{ev.stopPropagation();fn();});b.appendChild(c);return c;};
+  const t=document.createElement('b');t.textContent='Décalage';b.appendChild(t);
+  btn('chain','Chaîne tangente','Un clic prend tous les traits qui se suivent en tangence (double-clic : toujours la chaîne)',()=>{skOffOpt.chain=!skOffOpt.chain;skOffBarSync();});
+  const lab=document.createElement('label');lab.style.cssText='display:flex;align-items:center;gap:4px';lab.textContent='Distance';
+  const inp=document.createElement('input');inp.id='skOffD';inp.type='text';inp.inputMode='decimal';inp.style.cssText='width:64px';
+  inp.title='Distance du décalage (mm) — Entrée valide';
+  inp.addEventListener('input',()=>{const v=parseFloat(String(inp.value).replace(',','.'));if(isFinite(v)&&v>0){skOffOpt.D=Math.abs(v);skOffPv=null;if(skEdit)drawSketch2D();}});
+  inp.addEventListener('keydown',ev=>{ev.stopPropagation();
+    if(ev.key==='Enter'){ev.preventDefault();skOffApplyNow();}
+    else if(ev.key==='Escape'){ev.preventDefault();inp.blur();skOffEscape();}});
+  inp.addEventListener('pointerdown',ev=>ev.stopPropagation());
+  lab.appendChild(inp);lab.appendChild(document.createTextNode('mm'));b.appendChild(lab);
+  btn('flip','⇄ Inverser','Passer la copie de l’autre côté (ou cliquez dans le vide du côté voulu)',()=>{skOffOpt.flip=!skOffOpt.flip;skOffPv=null;if(skEdit)drawSketch2D();});
+  btn('both','⇋ Des deux côtés','Une copie de chaque côté de la référence (miroir)',()=>{skOffOpt.both=!skOffOpt.both;skOffPv=null;if(skEdit)drawSketch2D();});
+  btn('ok','✓ OK','Valider le décalage (Entrée) — l’outil reste actif',()=>skOffApplyNow());
+  btn('no','✕','Vider la sélection (Échap)',()=>skOffEscape());
+  host.appendChild(b);
+  return b;
+}
+function skOffBarSync(){
+  let b=document.getElementById('skOffBar');
+  const on=!!skEdit&&skTool==='offset';
+  if(!on){if(b)b.style.display='none';return;}
+  if(!b)b=skOffBarBuild();if(!b)return;
+  b.style.display='flex';
+  const has=skOffSelIds().length>0;
+  const inp=document.getElementById('skOffD');
+  if(inp&&document.activeElement!==inp)inp.value=String(+skOffOpt.D.toFixed(3)).replace('.',',');
+  const lit=(k,act)=>{const c=b.querySelector('[data-k="'+k+'"]');if(!c)return;c.style.background=act?'var(--accent,#2f7ff0)':'';c.style.color=act?'#fff':'';c.setAttribute('aria-pressed',act?'true':'false');};
+  lit('chain',skOffOpt.chain);lit('flip',skOffOpt.flip&&!skOffOpt.both);lit('both',skOffOpt.both);
+  ['flip','ok','no'].forEach(k=>{const c=b.querySelector('[data-k="'+k+'"]');if(c)c.disabled=!has;});
+  const fl=b.querySelector('[data-k="flip"]');if(fl)fl.disabled=!has||skOffOpt.both;
+}
+function skOffMsg(){
+  const n=skOffSelIds().length;
+  if(!n)return'Décalage : cliquez une ligne, un arc, un cercle ou une spline'+(skOffOpt.chain?' (la chaîne tangente est prise d’un coup)':'')+' — Ctrl = ajouter / retirer, double-clic = chaîne tangente.';
+  return'Décalage : '+n+' trait(s) — tapez la distance, ⇄ Inverser ou cliquez du côté voulu, puis Entrée / ✓ (Ctrl+clic = ajouter / retirer, Échap = vider).';
+}
+/* ----- souris et clavier ----- */
+function skOffClick(sk,wx,wy,e){
+  const chain=skOffOpt.chain||(e&&e.detail===2);
+  const ids=skOffPickAt(sk,wx,wy,chain);
+  if(ids){
+    const cur=skOffSelIds();
+    if(skMulti(e)||(e&&e.shiftKey)){
+      const all=ids.every(id=>cur.includes(id));
+      skOffSetSel(all?cur.filter(id=>!ids.includes(id)):cur.concat(ids));
+    }else if(e&&e.detail===2)skOffSetSel(ids);
+    else skOffSetSel(ids);
+    const had=cur.length>0;
+    skOffPv=null;renderSkPanel();drawSketch2D();skStatus(skOffMsg());
+    if(!had)skOffFocus();
+    return;
+  }
+  // clic dans le vide : la copie passe du côté cliqué (la plus proche des deux)
+  const cur=skOffSelIds();
+  if(!cur.length){skStatus(skOffMsg());return;}
+  if(skOffOpt.both)return;
+  const d=f=>{const c=skOffSimulate(sk,cur,skOffOpt.D,f);let b=Infinity;
+    c.ents.forEach(en=>{const P=c.P;
+      if(en.t==='line'){const A=P[en.p1],B=P[en.p2];if(A&&B)b=Math.min(b,distSeg(wx,wy,A,B));}
+      else if(en.t==='circle'||en.t==='arc'){const C=P[en.pc];if(C)b=Math.min(b,Math.abs(Math.hypot(wx-C.x,wy-C.y)-en.r));}
+      else if(en.t==='spline'){try{const pl=skSplinePoly(c.sk,en);if(pl)b=Math.min(b,skPolyDist(wx,wy,pl));}catch(_){}}});
+    return b;};
+  const want=d(true)<d(false);
+  if(want!==skOffOpt.flip){skOffOpt.flip=want;skOffPv=null;drawSketch2D();}
+  skStatus(skOffMsg());
+}
+function skOffHover(sk,wx,wy){
+  const ids=skOffPickAt(sk,wx,wy,skOffOpt.chain);
+  const k=ids?ids.join(','):'',k0=skOffHov?skOffHov.join(','):'';
+  if(k!==k0){skOffHov=ids;drawSketch2D();}
+}
+function skOffFocus(){
+  setTimeout(()=>{const i=document.getElementById('skOffD');if(i&&skEdit&&skTool==='offset'){try{i.focus();i.select();}catch(e){}}},0);
+}
+function skOffEscape(){
+  if(skOffSelIds().length){skOffSetSel([]);skOffPv=null;renderSkPanel();drawSketch2D();skStatus(skOffMsg());return true;}
+  return false;
+}
+function skOffApplyNow(){
+  const sk=skEdit;if(!sk)return;
+  const ids=skOffSelIds();
+  if(!ids.length){skStatus(skOffMsg());return;}
+  const D=skOffOpt.D;
+  if(!(D>=0.001)){skStatus('Décalage : distance ≥ 0,001 mm requise.');return;}
+  skPushUndo();
+  const sides=skOffOpt.both?[false,true]:[skOffOpt.flip];
+  let n=0,nS=0,cusp=false,msg='';
+  sides.forEach(f=>{const r=skOffDo(sk,ids,D,f);if(r.ok){n+=r.n;nS+=r.nS;cusp=cusp||r.cusp;}else msg=r.msg;});
+  if(!n&&!nS){skUndoStack.pop();skUndoBtn();skStatus(msg||'Décalage impossible.');drawSketch2D();return;}
+  skOffsetD=D;
+  skOffSetSel([]);skOffPv=null;skOffHov=null;
+  afterEdit();
+  skStatus('Décalage de '+String(+D.toFixed(3)).replace('.',',')+' mm'+(skOffOpt.both?' des deux côtés':'')+' : '+(n+nS)+' copie(s)'+
+    (nS?' (spline : copie approchée à 0,005 mm, non associative'+(cusp?' ⚠ elle se recoupe':'')+')':'')+
+    ' — cote modifiable (double-clic). Cliquez le trait suivant.');
+}
+// clavier quand l'outil est actif (hors champ de saisie) : true = touche prise
+function skOffKey(e){
+  if(e.ctrlKey||e.altKey||e.metaKey)return false;
+  if(e.key==='Escape'){if(skOffEscape()){e.preventDefault();return true;}return false;}
+  if(e.key==='Enter'){e.preventDefault();skOffApplyNow();return true;}
+  if(/^[0-9.,]$/.test(e.key)&&skOffSelIds().length){ // taper un chiffre : la distance se remplace
+    const i=document.getElementById('skOffD');if(!i)return false;
+    e.preventDefault();i.focus();i.value=e.key===','?'0,':(e.key==='.'?'0.':e.key);i.dispatchEvent(new Event('input'));return true;
+  }
+  return false;
+}
+// boutons de la barre d'esquisse : allumé = outil actif (quel que soit le chemin qui l'a changé)
+function skToolBtnSync(){
+  try{document.querySelectorAll('#skToolbar .tool').forEach(x=>{const on=x.dataset.tool===skTool;if(x.classList.contains('on')!==on)x.classList.toggle('on',on);});}catch(e){}
+}
+
 /* ═══════════════ 51-parametres.js — parametres ═══════════════ */
 /* ---------- paramètres utilisateur & cotes nommées (2026-10-16-002) ----------
    Comme Fusion 360 :
@@ -31346,28 +31599,7 @@ svg.addEventListener('pointerdown',e=>{
     if(!ent){skStatus('Ajuster : cliquez un tronçon de ligne, d’arc, de cercle ou de spline près d’une intersection.');return;}
     skPushUndo();skStatus(trimEntity(sk,ent,wx,wy));afterEdit();return;
   }
-  if(skTool==='offset'){
-    // Décalage : sélection (Ctrl/Cmd = lot) PUIS clic du côté — la distance suit le curseur.
-    const sel=skSelectedEnts().filter(e=>(e.t==='line'&&!e.handle||e.t==='circle'||e.t==='arc')&&!e.ref);
-    const spl=skSelectedEnts().filter(e=>e.t==='spline'); // lot 3 : splines décalées à part (copie approchée, non associative)
-    if(!sel.length&&!spl.length){skStatus('Décalage ⇄ : sélectionnez d’abord 1+ lignes/cercles/arcs/splines (Ctrl/Cmd = lot).');return;}
-    if(!skOffArm){skOffArm=true;skStatus('Décalage ⇄ : cliquez le CÔTÉ (distance = curseur, une cote par chaîne pour ajuster). Échap annule.');drawSketch2D();return;}
-    const D=sel.length?skOffsetDistToSel(sk,sel,{x:wx,y:wy}):Math.min(...spl.map(e=>(skSplineClosest(sk,e,wx,wy)||{d:Infinity}).d));
-    skOffArm=false;
-    if(!(D>=4/skView.s)){skStatus('Décalage : cliquez plus loin du profil.');drawSketch2D();return;}
-    skPushUndo();
-    let msg='';
-    if(sel.length){
-      const r=skOffsetApply(sk,sel.map(e=>e.id),D,{x:wx,y:wy});
-      if(!r.ok){skUndoStack.pop();skUndoBtn();skStatus(r.msg);drawSketch2D();return;}
-      msg=r.msg+' — cote modifiable (double-clic).';
-    }
-    let nS=0,cusp=false;
-    spl.forEach(e=>{const h=skSplineClosest(sk,e,wx,wy);if(!h)return;const r=skSplineOffset(sk,e,D,h.s>=0?1:-1);if(typeof r==='object'){nS++;cusp=cusp||r.cusp;}});
-    if(nS)msg+=(msg?' ':'')+nS+' spline(s) décalée(s) de '+D.toFixed(2)+' mm (copie approchée à 0,005 mm, non associative)'+(cusp?' ⚠ distance > rayon de courbure : la copie se recoupe':'')+'.';
-    skOffsetD=D;afterEdit();skStatus(msg);
-    return;
-  }
+  if(skTool==='offset'){skOffClick(sk,wx,wy,e);return;} // Décalage comme Fusion (50-esquisse-93-decalage)
 });
 svg.addEventListener('pointermove',e=>{
   if(!skEdit)return;
@@ -31388,14 +31620,7 @@ svg.addEventListener('pointermove',e=>{
     return;
   }
   if(skTool==='isect'){skIsectHoverAt(sk,wx,wy,!!e.shiftKey);return;}
-  if(skTool==='offset'&&skOffArm){
-    // Distance vivante pendant le placement (sans aperçu géométrique : le clic fige).
-    const sel=skSelectedEnts().filter(e=>(e.t==='line'&&!e.handle||e.t==='circle'||e.t==='arc')&&!e.ref);
-    const spl=skSelectedEnts().filter(e=>e.t==='spline');
-    const dd=sel.length?skOffsetDistToSel(sk,sel,{x:wx,y:wy}):(spl.length?Math.min(...spl.map(e=>(skSplineClosest(sk,e,wx,wy)||{d:Infinity}).d)):null);
-    if(dd!=null)skStatus('Décalage ⇄ : '+dd.toFixed(2)+' mm — clic pour appliquer, Échap annule.');
-    return;
-  }
+  if(skTool==='offset'){skOffHover(sk,wx,wy);return;} // survol : trait ou chaîne tangente que le clic prendrait
   if(skDrag){
     // V0.11.27 : SEUIL ANTI-CLIC (comme pour une entité) — un simple clic de sélection sur un point
     // le faisait glisser d'un pixel, et le lâcher posait une contrainte d'accroche (milieu, sur la
@@ -31982,6 +32207,7 @@ window.addEventListener('keydown',e=>{
   }
   // spline : Entrée = fin du tracé (l'outil reste) · Échap = fin puis Sélection
   if(skEdit&&(skTool==='spline'||skTool==='cspline')&&skSpl&&(e.key==='Enter'||e.key==='Escape')){e.preventDefault();skSplFinish(false);if(e.key==='Escape')skEscapeToSelect();return;}
+  if(skEdit&&skTool==='offset'&&skOffKey(e))return; // Décalage : Échap vide d'abord la sélection, Entrée valide, chiffres = distance
   if(e.key==='Escape'){e.preventDefault();skEscapeToSelect();return;}
   if(e.key==='Enter'&&skEdit&&skTool==='isect'){e.preventDefault();skIsectValidate();return;}
   if(skEdit&&skTool==='polygon'&&!e.ctrlKey&&!e.altKey&&!e.metaKey){
@@ -32022,14 +32248,14 @@ window.addEventListener('keydown',e=>{
   };
   mk('fillet','⦾','Congé (F) : cliquez 2 lignes en coin → arc tangent + cote R (double-clic pour modifier)');
   mk('chamfer','◣','Chanfrein (H) : cliquez 2 lignes en coin → coupe + cote (double-clic pour modifier)');
-  mk('offset','⇄','Décalage (O) : sélectionnez lignes/cercles/arcs/splines, cliquez le CÔTÉ → copies // et cotes (spline : copie approchée, sans cote)');
+  mk('offset','⇄','Décalage (O) : cliquez un trait (ou sa chaîne tangente), aperçu à 3 mm du côté proposé — tapez la distance, ⇄ Inverser, Des deux côtés, puis Entrée · la copie n’est jamais en construction');
   // 2026-10-29 : Spline (S), rangée avec les outils de dessin, juste après l'arc
   mk('spline','∿','Spline (S) : cliquez les points de passage — double-clic / Entrée / clic droit = fin, clic sur le 1er point = fermée · clic droit sur un point : poignée de tangence');
   mk('cspline','∿','Spline par points de contrôle (Maj+S) : cliquez les pôles — la courbe part du 1er, finit au dernier et suit le polygone · double-clic / Entrée / clic droit = fin, clic sur le 1er pôle = fermée');
   mk('polygon','⬡','Polygone régulier (G) : réglez le nombre de côtés et le Ø intérieur (tangent aux côtés), cliquez le centre, puis cliquez pour orienter — Ø vide : à la souris');
   const pg=bar.querySelector('[data-tool="polygon"]'),ci=bar.querySelector('[data-tool="circle"]');
   if(pg&&ci&&ci.parentNode)ci.parentNode.insertBefore(pg,ci.nextSibling);
-  bar.addEventListener('click',()=>{skPolySync();skModeBarSync();if(skEdit&&SK_TRACE_MODES[skTool])skStatus(skTraceMsg(skTool));}); // tout changement d'outil : réglages du polygone montrés ou masqués
+  bar.addEventListener('click',()=>{skPolySync();skModeBarSync();skOffBarSync();if(skEdit&&skTool==='offset'){skOffPv=null;skOffHov=null;drawSketch2D();skStatus(skOffMsg());}if(skEdit&&SK_TRACE_MODES[skTool])skStatus(skTraceMsg(skTool));}); // tout changement d'outil : réglages du polygone montrés ou masqués
   const sp=bar.querySelector('[data-tool="spline"]'),cs=bar.querySelector('[data-tool="cspline"]'),arc=bar.querySelector('[data-tool="arc"]');
   if(sp&&arc&&arc.parentNode)arc.parentNode.insertBefore(sp,arc.nextSibling);
   if(cs&&sp&&sp.parentNode)sp.parentNode.insertBefore(cs,sp.nextSibling);
@@ -71162,7 +71388,7 @@ function mfCss(){
   '.mfRb:hover i{color:var(--primary);opacity:1}',
   '.mfQuick button,#mfThemeBtn{display:inline-flex;align-items:center;justify-content:center}',
   '.mfRb:hover{background:rgba(127,127,127,.14)}',
-  '.mfRb.mfOn{background:rgba(59,130,246,.2);border-color:var(--primary)}.mfRb.mfOn i{color:var(--primary);opacity:1}',
+  '.mfRb.mfOn{background:var(--primary);border-color:var(--primary);color:#fff}.mfRb.mfOn i{color:#fff;opacity:1}',
   // V0.23.27 : icônes FAO repérées par couleur ; doublons du panneau FAO masqués
   '.mfRb.mfIcR i{color:#e5484d}.mfRb.mfIcB i{color:#3b82f6}.mfRb.mfIcG i{color:#22c55e}',
   'body.ui-modern #faoTreeWrap .fao-dup{display:none!important}',
@@ -71584,6 +71810,54 @@ function mfRibMepSync(st){
   rb.dataset.mepOn=k;
   rb.querySelectorAll('.mfRb[data-mep]').forEach(b=>b.classList.toggle('mfOn',b.dataset.mep===k));
 }
+// 2026-11-10 (Fred) : même règle pour les fonctions CAO — « je clique le bouton, il reste actif le temps
+// que la fonction est active ». Chaque fonction a son propre état (fenêtre, saisie de faces, fonction en
+// cours de réglage) : on lit ces états et on allume le bouton correspondant. Lecture seule, toutes les
+// 250 ms (aucun branchement dans les fonctions elles-mêmes).
+const MF_RIB_FEAT={extrude:'Créer/Extrusion',revolve:'Créer/Révolution',sweep:'Créer/Balayage',hole:'Créer/Perçage',
+  xdraft:'Modifier/Dépouille',xshell:'Modifier/Coque',xthread:'Modifier/Filetage',xsplit:'Modifier/Scinder',xmove:'Modifier/Face',
+  combine:'Ensembles/Combiner',bmove:'Ensembles/Déplacer',bscale:'Ensembles/Échelle',bmirror:'Ensembles/Symétrie',bcopy:'Créer/Copier'};
+function mfRibCaoActive(){
+  const on=new Set(),g=f=>{try{return f();}catch(e){return undefined;}}; // états déclarés dans d'autres fichiers (absents : undefined)
+  const ws=document.body.getAttribute('data-ws')||'cao';if(ws!=='cao')return on;
+  if(g(()=>skEdit))on.add('Esquisse/Esquisse');
+  if(g(()=>extDyn)||g(()=>extNew))on.add('Créer/Extrusion');
+  if(g(()=>revNew))on.add('Créer/Révolution');
+  if(g(()=>swNew))on.add('Créer/Balayage');
+  const hp=g(()=>holeFacePick);if(hp)on.add(hp.which==='cylKw'?'Créer/Clavette':'Créer/Perçage');
+  const cg=g(()=>cgMode),cgK={plane:'Plan',axis:'Axe',point:'Point',frame:'Repère'};
+  if(cg&&cg.draft&&cgK[cg.draft.kind])on.add('Construire/'+cgK[cg.draft.kind]);
+  const fm=g(()=>filMode),fx=g(()=>filModeX);
+  if(fm||fx)on.add(fx&&fx.kind==='chamfer'?'Modifier/Chanfrein':'Modifier/Congé');
+  if(g(()=>mvMode))on.add('Modifier/Face');
+  if(g(()=>draftMode))on.add('Modifier/Dépouille');
+  if(g(()=>coqueMode))on.add('Modifier/Coque');
+  if(g(()=>threadPick))on.add('Modifier/Filetage');
+  if(g(()=>splitMode))on.add('Modifier/Scinder');
+  if(g(()=>repMode))on.add('Ensembles/Répétition');
+  if(g(()=>combineNew))on.add('Ensembles/Combiner');
+  const bm=g(()=>bmPick);if(bm)on.add(typeof bmVerb==='function'&&bmVerb()==='Échelle'?'Ensembles/Échelle':'Ensembles/Déplacer');
+  // fonction en cours de réglage (sa fenêtre OK / Annuler est ouverte)
+  const S=g(()=>sel),D=g(()=>doc);
+  if(S&&S.kind==='feature'&&D&&D.features&&!g(()=>skEdit)){
+    const f=D.features.find(x=>x&&x.id===S.id);
+    if(f){
+      if(f.kw)on.add('Créer/Clavette');
+      else if(f.type==='xfillet'||f.type==='fillet')on.add(f.chamfer?'Modifier/Chanfrein':'Modifier/Congé');
+      else if(MF_RIB_FEAT[f.type])on.add(MF_RIB_FEAT[f.type]);
+    }
+  }
+  return on;
+}
+function mfRibCaoSync(){
+  const rb=document.getElementById('mfRibbon');if(!rb)return;
+  let on;try{on=mfRibCaoActive();}catch(e){return;}
+  const k=[...on].sort().join('|');
+  if(rb.dataset.caoOn===k)return;
+  rb.dataset.caoOn=k;
+  rb.querySelectorAll('.mfGrp.mfCao .mfRb').forEach(b=>{if(!b.dataset.mep)b.classList.toggle('mfOn',on.has(b.dataset.fi));});
+}
+setInterval(()=>{try{mfRibCaoSync();}catch(e){}},250);
 let mfWsCur=null;
 const mfWsSel={cao:null,fao:null};
 function mfSpaceSelSnap(){

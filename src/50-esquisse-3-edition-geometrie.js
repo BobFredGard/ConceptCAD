@@ -450,7 +450,11 @@ function skOffsetDistToSel(sk,ents,S){
   });
   return best;
 }
-function skOffsetApply(sk,ids,D,S){
+function skOffsetApply(sk,ids,D,S,opt){
+  // V0.79.x : opt.flip (sans point de côté S) = l'autre côté que celui proposé (extérieur des contours fermés,
+  // gauche des chaînes ouvertes, rayon + pour les cercles). Les copies ne sont JAMAIS en construction (Fred) :
+  // décaler une arête projetée (construction) donne un vrai trait.
+  const flip=!S&&!!(opt&&opt.flip);
   ids=[...new Set(ids||[])];
   if(!(D>=0.001))return{ok:false,msg:'Décalage : distance ≥ 0,001 mm requise.'};
   const P=sk.points;
@@ -472,6 +476,7 @@ function skOffsetApply(sk,ids,D,S){
       const inside=S?pip([S.x,S.y],ring):false;
       const ext=S?!inside:true;
       s=((area>0)===(ext?false:true))?1:-1;
+      if(flip)s=-s;
     }else if(S){
       const e1=order[0].e,[pA,pB]=skEdgeEnds(e1,order[0].fwd);
       const U=P[pA],W=P[pB];
@@ -480,7 +485,7 @@ function skOffsetApply(sk,ids,D,S){
         if(cr<0)order=[...order].reverse().map(o=>({e:o.e,fwd:!o.fwd}));
       }
       s=1;
-    }
+    }else if(flip)s=-1;
     const jInfo=order.map((o,i)=>{ // joint : pid fusionné (forced=false) OU contrainte coincident (forced=true)
       if(i===n-1&&!ch.closed)return null;
       const nx=order[(i+1)%n];
@@ -566,7 +571,7 @@ function skOffsetApply(sk,ids,D,S){
       if(o.e.t==='line'){
         const p1=endFor('prev',off.A),p2=endFor('next',off.B);
         const nid=skNewEid(sk);
-        const cp={id:nid,t:'line',p1,p2};if(o.e.construction)cp.construction=true;
+        const cp={id:nid,t:'line',p1,p2};
         sk.entities.push(cp);
         if(!skHasParallel(sk,o.e.id,nid))sk.constraints.push({id:skNewEid(sk),type:'parallel',a:o.e.id,b:nid});
         pairs.push({a:o.e.id,b:nid,line:true});
@@ -592,7 +597,7 @@ function skOffsetApply(sk,ids,D,S){
         // toujours de pa à pb dans le sens trigonométrique. Chaîne parcourue à l'envers
         // (fwd=false, cas normal d'une chaîne fermée) → sans échange, la copie faisait
         // le TOUR COMPLÉMENTAIRE (270° au lieu de 90° : quasi-cercles aux coins arrondis).
-        const cp={id:nid,t:'arc',pc:o.e.pc,pa:o.fwd?pA:pB,pb:o.fwd?pB:pA,r:off.r};if(o.e.construction)cp.construction=true;
+        const cp={id:nid,t:'arc',pc:o.e.pc,pa:o.fwd?pA:pB,pb:o.fwd?pB:pA,r:off.r};
         sk.entities.push(cp);
         pairs.push({a:o.e.id,b:nid,line:false});
         copies.push(nid);
@@ -641,10 +646,11 @@ function skOffsetApply(sk,ids,D,S){
     const C=P[e.pc];if(!C)continue;
     let s=1;
     if(S)s=(Math.hypot(S.x-C.x,S.y-C.y)>=e.r)?1:-1;
+    else if(flip)s=-1;
     const rr=e.r+s*D;
     if(!(rr>0.5)){jointsBad++;continue;}
     const nid=skNewEid(sk);
-    const cp={id:nid,t:'circle',pc:e.pc,r:rr};if(e.construction)cp.construction=true;
+    const cp={id:nid,t:'circle',pc:e.pc,r:rr};
     sk.entities.push(cp);
     sk.dims.push({id:skNewEid(sk),type:'radius',ent:nid,value:+rr.toFixed(3),ox:0,oy:0});
     copies.push(nid);

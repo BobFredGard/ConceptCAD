@@ -142,7 +142,7 @@ function mfCss(){
   '.mfRb:hover i{color:var(--primary);opacity:1}',
   '.mfQuick button,#mfThemeBtn{display:inline-flex;align-items:center;justify-content:center}',
   '.mfRb:hover{background:rgba(127,127,127,.14)}',
-  '.mfRb.mfOn{background:rgba(59,130,246,.2);border-color:var(--primary)}.mfRb.mfOn i{color:var(--primary);opacity:1}',
+  '.mfRb.mfOn{background:var(--primary);border-color:var(--primary);color:#fff}.mfRb.mfOn i{color:#fff;opacity:1}',
   // V0.23.27 : icônes FAO repérées par couleur ; doublons du panneau FAO masqués
   '.mfRb.mfIcR i{color:#e5484d}.mfRb.mfIcB i{color:#3b82f6}.mfRb.mfIcG i{color:#22c55e}',
   'body.ui-modern #faoTreeWrap .fao-dup{display:none!important}',
@@ -564,6 +564,54 @@ function mfRibMepSync(st){
   rb.dataset.mepOn=k;
   rb.querySelectorAll('.mfRb[data-mep]').forEach(b=>b.classList.toggle('mfOn',b.dataset.mep===k));
 }
+// 2026-11-10 (Fred) : même règle pour les fonctions CAO — « je clique le bouton, il reste actif le temps
+// que la fonction est active ». Chaque fonction a son propre état (fenêtre, saisie de faces, fonction en
+// cours de réglage) : on lit ces états et on allume le bouton correspondant. Lecture seule, toutes les
+// 250 ms (aucun branchement dans les fonctions elles-mêmes).
+const MF_RIB_FEAT={extrude:'Créer/Extrusion',revolve:'Créer/Révolution',sweep:'Créer/Balayage',hole:'Créer/Perçage',
+  xdraft:'Modifier/Dépouille',xshell:'Modifier/Coque',xthread:'Modifier/Filetage',xsplit:'Modifier/Scinder',xmove:'Modifier/Face',
+  combine:'Ensembles/Combiner',bmove:'Ensembles/Déplacer',bscale:'Ensembles/Échelle',bmirror:'Ensembles/Symétrie',bcopy:'Créer/Copier'};
+function mfRibCaoActive(){
+  const on=new Set(),g=f=>{try{return f();}catch(e){return undefined;}}; // états déclarés dans d'autres fichiers (absents : undefined)
+  const ws=document.body.getAttribute('data-ws')||'cao';if(ws!=='cao')return on;
+  if(g(()=>skEdit))on.add('Esquisse/Esquisse');
+  if(g(()=>extDyn)||g(()=>extNew))on.add('Créer/Extrusion');
+  if(g(()=>revNew))on.add('Créer/Révolution');
+  if(g(()=>swNew))on.add('Créer/Balayage');
+  const hp=g(()=>holeFacePick);if(hp)on.add(hp.which==='cylKw'?'Créer/Clavette':'Créer/Perçage');
+  const cg=g(()=>cgMode),cgK={plane:'Plan',axis:'Axe',point:'Point',frame:'Repère'};
+  if(cg&&cg.draft&&cgK[cg.draft.kind])on.add('Construire/'+cgK[cg.draft.kind]);
+  const fm=g(()=>filMode),fx=g(()=>filModeX);
+  if(fm||fx)on.add(fx&&fx.kind==='chamfer'?'Modifier/Chanfrein':'Modifier/Congé');
+  if(g(()=>mvMode))on.add('Modifier/Face');
+  if(g(()=>draftMode))on.add('Modifier/Dépouille');
+  if(g(()=>coqueMode))on.add('Modifier/Coque');
+  if(g(()=>threadPick))on.add('Modifier/Filetage');
+  if(g(()=>splitMode))on.add('Modifier/Scinder');
+  if(g(()=>repMode))on.add('Ensembles/Répétition');
+  if(g(()=>combineNew))on.add('Ensembles/Combiner');
+  const bm=g(()=>bmPick);if(bm)on.add(typeof bmVerb==='function'&&bmVerb()==='Échelle'?'Ensembles/Échelle':'Ensembles/Déplacer');
+  // fonction en cours de réglage (sa fenêtre OK / Annuler est ouverte)
+  const S=g(()=>sel),D=g(()=>doc);
+  if(S&&S.kind==='feature'&&D&&D.features&&!g(()=>skEdit)){
+    const f=D.features.find(x=>x&&x.id===S.id);
+    if(f){
+      if(f.kw)on.add('Créer/Clavette');
+      else if(f.type==='xfillet'||f.type==='fillet')on.add(f.chamfer?'Modifier/Chanfrein':'Modifier/Congé');
+      else if(MF_RIB_FEAT[f.type])on.add(MF_RIB_FEAT[f.type]);
+    }
+  }
+  return on;
+}
+function mfRibCaoSync(){
+  const rb=document.getElementById('mfRibbon');if(!rb)return;
+  let on;try{on=mfRibCaoActive();}catch(e){return;}
+  const k=[...on].sort().join('|');
+  if(rb.dataset.caoOn===k)return;
+  rb.dataset.caoOn=k;
+  rb.querySelectorAll('.mfGrp.mfCao .mfRb').forEach(b=>{if(!b.dataset.mep)b.classList.toggle('mfOn',on.has(b.dataset.fi));});
+}
+setInterval(()=>{try{mfRibCaoSync();}catch(e){}},250);
 let mfWsCur=null;
 const mfWsSel={cao:null,fao:null};
 function mfSpaceSelSnap(){
