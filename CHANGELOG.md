@@ -8,7 +8,7 @@ sont sorties le 2026-09-30j.
 Code dans `src/` · livrable `fusion_mvp.html` (généré par `build.js`) · architecture et
 garde-fous en tête de `src/00-entete-et-outils.js`.
 
-**639 versions**, de `2026-09-28b` à `V0.85.0` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
+**640 versions**, de `2026-09-28b` à `V0.85.1` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
 comme dans le fichier d'origine.
 
 ---
@@ -7267,3 +7267,9 @@ Barquette ne perd plus son solide à la 107e modification, et sa mémoire ne mon
 - **Ajout** (`src/76-percage-normal.js` nouveau, `76-percage`, `20-70`, `40-20`, `90-10`, `10-scene-3d`, `95-toolbar`, `96`, `97-interface-moderne`, `97-interface-fiches-dessins`) : bouton **Normal** du ruban Créer. Fonction Perçage sans esquisse, `f.place = {k:'normal', faces, grp, maxD, off}`. `hnBlindHoles` trouve les trous borgnes du solide qui précède (fût cylindrique, fond = cône coaxial à la bonne pente ou fond plat ; déjà percé au fond = vide au-delà de la pointe). `hnFoot` : pied de la perpendiculaire du centre du fond sur chaque face choisie (BRepExtrema, pied à l'INTÉRIEUR de la face seulement — sur un bord la droite ne serait pas normale), la plus proche gagne : plusieurs congés = une seule fonction, chaque trou sur sa face. Chemin face → fond vérifié dans la matière. Trou Ø d (1,5 par défaut) de r + 0,1 au-dessus du pied (jamais de lèvre sur une face courbe) à 0,3 au-delà du centre du fond. Groupe proposé : le Ø × longueur × sens le plus nombreux sous la face ; liste « Trous visés » pour en changer. Cases à cocher sur chaque trou dans la vue 3D (`hn3Tick`), trous enlevés mémorisés par la position de leur fond. Re-cherche à chaque rejeu : le perçage suit la pièce. Trous trouvés gardés avec l'outil dans le cache (`occToolCk`) : Ctrl+Z les retrouve. Non répétable (il trouve déjà tous ses trous).
 - **Limites** : pas encore de cote de perçage automatique en mise en plan ; en FAO chaque trou incliné demande son orientation.
 - **Test** : `test_percage_normal` (vrai noyau : congé creux R8 extrudé, 5 Ø8 borgnes à pointe 118° dont un double perçage déjà percé et un hors congé, un Ø6 : 3 trous percés normaux au congé (écart 6e-16), matière enlevée jusqu'au fond, déjà percé et hors congé écartés, case décochée puis Ctrl+Z, groupe Ø6 à part, Ø8 déplacé suivi, congé + sol = 4 trous dans une fonction, enregistrement sans esquisse). Vérifié dans l'appli : bouton, vrai clic sur le congé, 3 cases, une décochée = trou retiré, OK. Parcours FAO et CACHE_VER inchangés.
+
+## V0.85.1 - Répétition : cases sous chaque copie de la vue 3D seulement sur demande
+
+- **Demande** : Fred, 10/11 : « Pas la peine de faire voir les cases à cocher à chaque fois ; mets-moi une option dans le menu pour les faire apparaître si besoin ».
+- **Correctif** (`src/40-45-repetition-cases-3d.js`, `40-40`) : option « Cases dans la vue 3D » à droite du titre « ✂ Exemplaires à enlever » du panneau de la répétition (création et édition), décochée par défaut, retenue d'une séance à l'autre (`localStorage` `minifusion_repCases3d`). Décochée, les cases et la copie bleue du survol disparaissent aussitôt ; la liste du panneau reste.
+- **Test** : vérifié dans l'appli (désactivée par défaut, cochée → cases dans la vue, décochée → plus rien, réglage retenu) ; `test_repeat_exclure` inchangé.

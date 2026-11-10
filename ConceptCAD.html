@@ -379,7 +379,7 @@ input[type=range]{accent-color:var(--primary);width:100%}
  * peut changer sans rien casser. CACHE_VER (parcours FAO) reste indépendant.
  */
 
-const APP_VER='V0.85.0';
+const APP_VER='V0.85.1';
 try{console.log('[ConceptCAD] version '+APP_VER);}catch(e){}
 try{var mfSv=document.getElementById('mfSplashVer');if(mfSv)mfSv.textContent=APP_VER;}catch(e){} // écran de démarrage
 
@@ -12454,6 +12454,11 @@ function repSkipFill(box,cfg,onToggle,ids){
   const h=document.createElement('div');h.className='row';
   const t=document.createElement('span');t.innerHTML='<b>✂ Exemplaires à enlever</b>';h.appendChild(t);
   const cpt=document.createElement('span');cpt.className='note repSkipCpt';cpt.style.marginLeft='6px';h.appendChild(cpt);
+  // option : les mêmes cases sous chaque copie, dans la vue 3D (40-45) — cachées par défaut
+  const o3=document.createElement('label');o3.className='repSkip3dOpt';o3.style.cssText='margin-left:auto;display:inline-flex;align-items:center;gap:3px;cursor:pointer;font-size:.78rem';
+  o3.title='Afficher une case à cocher sous chaque copie, dans la vue 3D (réglage retenu)';
+  const c3=document.createElement('input');c3.type='checkbox';c3.checked=typeof rs3On!=='undefined'&&rs3On;c3.onchange=()=>rs3Set(c3.checked);
+  o3.appendChild(c3);o3.appendChild(document.createTextNode('Cases dans la vue 3D'));h.appendChild(o3);
   box.appendChild(h);
   const maj=()=>{const n=repSkipSet(cfg).size;cpt.textContent=n?n+' enlevé(s) sur '+L.length:'aucun';};maj();
   const lst=document.createElement('div');lst.className='repSkipList';
@@ -12583,8 +12588,14 @@ function renderRepPanel(){
    matrice de chaque exemplaire (repXformsK, enlevés compris), projetée à l'écran à chaque image ;
    la case se pose sous le point le plus bas de la boîte à l'écran. */
 let rs3={el:null,sig:'',boxes:null,t:0,items:new Map()};
+// V0.85.1 : cases montrées SEULEMENT si on les demande (option « Cases dans la vue 3D » du panneau,
+// retenue d'une séance à l'autre) — Fred : « pas la peine de faire voir les cases à cocher à chaque fois ».
+let rs3On=false;
+try{rs3On=localStorage.getItem('minifusion_repCases3d')==='on';}catch(e){}
+function rs3Set(on){rs3On=!!on;try{localStorage.setItem('minifusion_repCases3d',rs3On?'on':'off');}catch(e){}if(!rs3On){rs3Hide();repHoverRemove();}}
 function rs3Ctx(){
   // → {cfg, ids, edit} | null
+  if(!rs3On)return null;
   const busy=(typeof skEdit!=='undefined'&&skEdit)||(typeof asmMode!=='undefined'&&asmMode==='asm');
   if(busy)return null;
   if(typeof repMode!=='undefined'&&repMode){
