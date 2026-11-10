@@ -7,8 +7,14 @@
    matrice de chaque exemplaire (repXformsK, enlevés compris), projetée à l'écran à chaque image ;
    la case se pose sous le point le plus bas de la boîte à l'écran. */
 let rs3={el:null,sig:'',boxes:null,t:0,items:new Map()};
+// V0.85.1 : cases montrées SEULEMENT si on les demande (option « Cases dans la vue 3D » du panneau,
+// retenue d'une séance à l'autre) — Fred : « pas la peine de faire voir les cases à cocher à chaque fois ».
+let rs3On=false;
+try{rs3On=localStorage.getItem('minifusion_repCases3d')==='on';}catch(e){}
+function rs3Set(on){rs3On=!!on;try{localStorage.setItem('minifusion_repCases3d',rs3On?'on':'off');}catch(e){}if(!rs3On){rs3Hide();repHoverRemove();}}
 function rs3Ctx(){
   // → {cfg, ids, edit} | null
+  if(!rs3On)return null;
   const busy=(typeof skEdit!=='undefined'&&skEdit)||(typeof asmMode!=='undefined'&&asmMode==='asm');
   if(busy)return null;
   if(typeof repMode!=='undefined'&&repMode){

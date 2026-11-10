@@ -145,6 +145,11 @@ function repSkipFill(box,cfg,onToggle,ids){
   const h=document.createElement('div');h.className='row';
   const t=document.createElement('span');t.innerHTML='<b>✂ Exemplaires à enlever</b>';h.appendChild(t);
   const cpt=document.createElement('span');cpt.className='note repSkipCpt';cpt.style.marginLeft='6px';h.appendChild(cpt);
+  // option : les mêmes cases sous chaque copie, dans la vue 3D (40-45) — cachées par défaut
+  const o3=document.createElement('label');o3.className='repSkip3dOpt';o3.style.cssText='margin-left:auto;display:inline-flex;align-items:center;gap:3px;cursor:pointer;font-size:.78rem';
+  o3.title='Afficher une case à cocher sous chaque copie, dans la vue 3D (réglage retenu)';
+  const c3=document.createElement('input');c3.type='checkbox';c3.checked=typeof rs3On!=='undefined'&&rs3On;c3.onchange=()=>rs3Set(c3.checked);
+  o3.appendChild(c3);o3.appendChild(document.createTextNode('Cases dans la vue 3D'));h.appendChild(o3);
   box.appendChild(h);
   const maj=()=>{const n=repSkipSet(cfg).size;cpt.textContent=n?n+' enlevé(s) sur '+L.length:'aucun';};maj();
   const lst=document.createElement('div');lst.className='repSkipList';
