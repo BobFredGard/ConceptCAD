@@ -132,7 +132,7 @@ function hardRefresh(opt){
   builtHash=null;builtEngine=null;builtVersion=-1;
   try{for(const b of bodies){try{scene.remove(b.mesh);}catch(e){}try{if(b.mesh&&b.mesh.geometry)b.mesh.geometry.dispose();}catch(e){}}}catch(e){}
   bodies=[];occLive=null;selFaces=[];
-  try{occMeshMemoClear();edgeAllMemo=null;}catch(e){} // V0.89.2 : facettes et arêtes gardées, jetées aussi
+  try{occMeshMemoClear();edgeAllMemo=null;if(typeof faoHoleMemo!=='undefined')faoHoleMemo.clear();}catch(e){} // V0.89.2 : facettes et arêtes gardées, jetées aussi
   try{clearMeasure();}catch(e){}
   try{sk3dPurge();}catch(e){}
   let tris=0;try{scene.traverse(o=>{if(o.isMesh&&o.geometry&&o.geometry.attributes&&o.geometry.attributes.position)tris+=(o.geometry.index?o.geometry.index.count:o.geometry.attributes.position.count)/3;});}catch(e){}

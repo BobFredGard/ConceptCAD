@@ -776,7 +776,15 @@ function* occFinalShapeGen(upto,warm){
       // notamment comme ancre d'un congé (cf. test_conge_fond_poche).
       // Une face SCINDÉE (xsplit 'face') serait recousue : pas d'unify dans ce corps.
       if(!r.unified&&occUnifyAfterFillets(byBody[bid])){
-        try{const u=occUnify(occShapeCopy(sh));if(u&&u!==sh){try{sh.delete();}catch(e){}sh=u;}}catch(e){}
+        // V0.89.3 : recousage gardé comme un point de contrôle (clé = empreinte du corps) : il était refait
+        // à chaque rejeu, même sans changement (barquette d'exemple : 32 ms sur 129).
+        const kU=r.sig?r.sig+'|recousu;':null;
+        const ckU=kU?occCkGet(kU):null,cpU=ckU?occShapeCopy(ckU):null;
+        if(cpU){try{sh.delete();}catch(e){}sh=cpU;}
+        else{
+          try{const u=occUnify(occShapeCopy(sh));if(u&&u!==sh){try{sh.delete();}catch(e){}sh=u;}}catch(e){}
+          if(kU)occCkPut(kU,()=>occShapeCopy(sh));
+        }
       }
       perBody.push({bodyId:bid,shape:sh,sig:r.sig||null});
       if(r.preThr)preThr.push({bodyId:bid,shape:r.preThr});
@@ -1088,7 +1096,9 @@ function occRebuild(){
         bodies.push({id:e.id,name:e.name+' · '+(lit?tris.toLocaleString('fr'):'?')+' tris',mesh,color:col,visible:vis,kind:'body',ref:null,bodyId:e.id,shape:p.shape,sig:p.sig||null,shapeFao:pre?pre.shape:null});
       });
       if(!bodies.some(b=>b.kind==='body'))faceEl.textContent+=(faceEl.textContent?'\n':'')+'Solide exact vide (tout a été découpé).';
-      if(FR.shape){occLive={shape:FR.shape,shapeFao:FR.shapeFao||null,preThr:FR.preThr||[]};FR.shape=null;FR.shapeFao=null;FR.preThr=null;} // conservé pour le picking d'arêtes
+      if(FR.shape){occLive={shape:FR.shape,shapeFao:FR.shapeFao||null,preThr:FR.preThr||[]};FR.shape=null;FR.shapeFao=null;FR.preThr=null;
+        // V0.89.3 : empreinte du composé (tous les corps qui le forment) — null si l'un d'eux n'en a pas
+        occLive.sig=!freshHard&&parts.every(p=>p.sig)?parts.map(p=>p.bodyId+''+p.sig).join(''):null;} // conservé pour le picking d'arêtes
       // V0.79.1 : solide calculé SANS un import encore en restauration (ouverture) : ses arêtes ne
       // servent pas à raccrocher les projetées (50-esquisse-1, projEdgesFor)
       if(occLive)try{occLive.incomplet=typeof projImportsEnAttente==='function'&&projImportsEnAttente();}catch(err){}
