@@ -8,7 +8,7 @@ sont sorties le 2026-09-30j.
 Code dans `src/` · livrable `fusion_mvp.html` (généré par `build.js`) · architecture et
 garde-fous en tête de `src/00-entete-et-outils.js`.
 
-**635 versions**, de `2026-09-28b` à `V0.81.0` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
+**636 versions**, de `2026-09-28b` à `V0.82.0` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
 comme dans le fichier d'origine.
 
 ---
@@ -7240,3 +7240,9 @@ Barquette ne perd plus son solide à la 107e modification, et sa mémoire ne mon
 - **Correctif** (`src/40-20-repetitions.js`, `40-40`, `40-45-repetition-cases-3d.js` nouveau, `40-50`, `10-scene-3d`) : `rp.skip` = clés des copies enlevées (« i,j » en linéaire / grille, « i » en circulaire et suivant un profil). `repGenChildren` saute ces copies sans renuméroter : les autres gardent leur place et leur id ; les clés devenues sans objet (quantité réduite) sont oubliées. `repXformsK` donne les matrices avec leur clé (l'aperçu rouge omet les copies enlevées). Panneau, à la création comme à l'édition : liste « ✂ Exemplaires à enlever » (`repSkipFill`), compteur mis à jour sur place ; survol = la copie en bleu (`repHoverShow`). Vue 3D (`rs3Tick`, à chaque image) : une case sous chaque copie, placée sous la boîte des sources transformée, qui reste cochée à sa place pour remettre la copie ; panneau et vue restent d'accord. Annulable (Ctrl+Z), enregistré dans le fichier. Symétrie : pas de cases.
 - **Tests (blocage du cpt)** : depuis le 09/11 `test_barquette_120` (~950 s sur un cœur P) partait sur un cœur E et dépassait les 20 min à chaque `ci:full`, dans toutes les sessions. Cause : une suite coupée par le délai enregistrait sa durée coupée, plus courte que la vraie — elle passait ensuite pour plus courte et repartait sur un cœur E. `tests/pool.cjs` : `SUR_P` réserve cette suite aux cœurs P avec un délai de 40 min, et une suite coupée ne fait plus jamais baisser son estimation.
 - **Test** : `test_repeat_exclure` (noyau réel : linéaire 4 → n° 3 enlevé, 3 perçages et volume exact, ids conservés, aperçu sans la copie, quantité réduite puis remontée, grille 4 × 2 avec deux cases enlevées, relecture du fichier, circulaire 6 sans le n° 4, symétrie sans cases). Vérifié dans l'appli : case cochée dans la vue 3D puis décochée, panneau synchronisé, création d'une répétition.
+
+## V0.82.0 - Mise en plan : tourner une vue de 90° dans un sens ou dans l'autre
+
+- **Demande** : Fred, 10/11 : « Mise en plan : pouvoir tourner une vue de 90° dans un sens ou dans l'autre ».
+- **Ajout** (`src/98-mep-00-modele`, `98-mep-20-vues`, `98-mep-90-proprietes`) : ligne **Rotation** du panneau d'une vue, boutons **↺ 90°** et **↻ 90°** (toutes les vues sauf détail, qui suit sa mère, et DXF). Le papier tourne autour du centre de la vue : vue standard, caméra, projetée ou coupe → quarts de tour `v.rq` appliqués après sa base (`mepRotQ`, gardés au rejeu) ; auxiliaire → base enregistrée tournée. Tournent avec la vue : cotes (points, formes suivies, horizontale ↔ verticale du même côté, ordonnées X ↔ Y), axes manuels, coupes locales, lignes de coupe et arêtes d'auxiliaire des vues filles, cercles de détail et vues de détail. Les projections filles sont recalculées et reprennent leur place 1er angle. Ctrl+Z annule.
+- **Test** : `test_mep_rotation_vue` (↺ : base u' = v, v' = −u, centre fixe, 40 × 20 → 20 × 40, cotes et Ø suivent, valeurs inchangées, vue de dessus dessous et alignée ; ↻ et 4 × ↺ : retour exact ; projetée tournée gardée au rejeu) ; `tests/browser/mep-rotation.spec.cjs` (vrai noyau, vrais clics sur les deux boutons). Parcours FAO et CACHE_VER inchangés.

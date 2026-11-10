@@ -824,6 +824,83 @@
     },true);
     mepStatus('Vue « '+(v.label||MEP_VIEWS[vk].lab)+' » : orientation '+MEP_VIEWS[vk].lab+' — projections mises à jour.');
   }
+  /* rotation d'une vue d'un quart de tour (2026-11-10) — q=+1 : sens trigo (↺), −1 : horaire (↻).
+     Le papier tourne autour du centre de la vue. Vue calculée (standard, caméra, projetée, coupe) :
+     v.rq = quarts de tour ↺ appliqués après sa base (mepRotQ) ; autres vues (auxiliaire, sans
+     orientation connue) : leur base enregistrée tourne. Ce qui est posé en coordonnées locales
+     tourne avec la vue : cotes, axes manuels, coupes locales, lignes de coupe et d'auxiliaire des
+     vues filles, cercles de détail — les détails pris dessus tournent aussi. Les projections
+     filles sont recalculées et reprennent leur place 1er angle. */
+  function mepRotLocal(o,q,seen){
+    if(!o||typeof o!=='object'||seen.has(o))return;
+    seen.add(o);
+    const T=(x,y)=>q>0?[y,-x]:[-y,x];
+    if(Array.isArray(o)){
+      if(o.length===2&&typeof o[0]==='number'&&typeof o[1]==='number'){const p=T(o[0],o[1]);o[0]=p[0];o[1]=p[1];return;}
+      o.forEach(x=>mepRotLocal(x,q,seen));return;
+    }
+    [['x','y'],['x1','y1'],['x2','y2'],['cx','cy']].forEach(([kx,ky])=>{
+      if(typeof o[kx]==='number'&&typeof o[ky]==='number'){const p=T(o[kx],o[ky]);o[kx]=p[0];o[ky]=p[1];}
+    });
+    const da=q>0?-Math.PI/2:Math.PI/2; // angle d'un arc (repère local, y vers le bas du papier)
+    ['a0','a1'].forEach(k=>{if(typeof o[k]==='number')o[k]+=da;});
+    Object.keys(o).forEach(k=>{if(k!=='id'&&o[k]&&typeof o[k]==='object')mepRotLocal(o[k],q,seen);});
+  }
+  function mepViewRotatable(v){return !!v&&v.kind!=='dxf'&&v.kind!=='detail';}
+  function mepRotateView(v,q){
+    if(!mepViewRotatable(v))return;
+    q=q>0?1:-1;
+    const sh=mepSheet();
+    const grp=[v]; // la vue et ses détails (même base), en cascade
+    for(let i=0;i<grp.length;i++)sh.views.forEach(c=>{if(c&&c.kind==='detail'&&c.parent===grp[i].id&&grp.indexOf(c)<0)grp.push(c);});
+    const ids=new Set(grp.map(w=>w.id));
+    const ctr=new Map(); // centre visible (mm locaux) : il reste en place
+    grp.forEach(w=>{let bb=null;try{bb=mepViewSheetBBox(w);}catch(e){}if(bb)ctr.set(w,mepFromSheet(w,bb.x+bb.w/2,bb.y+bb.h/2));});
+    const calc=w=>(w.kind==='base'&&(MEP_VIEWS[w.vk]||w.camera))||(w.kind==='proj'&&MEP_PROJ[w.proj||''])||(w.kind==='section'&&w.section);
+    const T=(x,y)=>q>0?[y,-x]:[-y,x];
+    const seen=new Set();
+    mepEdit(q>0?'rotation de vue ↺ 90°':'rotation de vue ↻ 90°',()=>{
+      grp.forEach(w=>{
+        if(calc(w)){const r=((((+w.rq||0)+q)%4)+4)%4;if(r)w.rq=r;else delete w.rq;if(w.kind==='base')mepOrtho(w);}
+        else{const r=mepRotQ({dir:w.dir,u:w.u,v:w.v},q);w.u=r.u;w.v=r.v;}
+        if(w.detail)mepRotLocal(w.detail,q,seen);
+        (w.axes||[]).forEach(a=>mepRotLocal(a,q,seen));
+        (w.locals||[]).forEach(l=>mepRotLocal(l,q,seen));
+        const c=ctr.get(w);
+        if(c){const t=T(c.x,c.y);w.x+=(c.x-t[0])*w.scale;w.y+=(c.y-t[1])*w.scale;}
+      });
+      // lignes de coupe et arêtes d'auxiliaire tracées sur une vue tournée
+      sh.views.forEach(c=>{
+        if(!c||ids.has(c.id))return;
+        if(c.section&&ids.has(c.section.pid||c.parent))['a','b','pts'].forEach(k=>{if(c.section[k])mepRotLocal(c.section[k],q,seen);});
+        if(c.auxEdge&&ids.has(c.auxEdge.pid||c.parent))['a','b'].forEach(k=>{if(c.auxEdge[k])mepRotLocal(c.auxEdge[k],q,seen);});
+      });
+      sh.dims.forEach(d=>{
+        const A=ids.has(d.vid),B=d.vid2?ids.has(d.vid2):A;
+        if(!A&&!B)return;
+        if(A){['a','o'].forEach(k=>{if(d[k])mepRotLocal(d[k],q,seen);});(d.pts||[]).forEach(p=>mepRotLocal(p,q,seen));}
+        if(B&&d.b)mepRotLocal(d.b,q,seen);
+        if(!(A&&B))return;
+        // cote horizontale ↔ verticale : la position (mm papier) suit le quart de tour
+        const ord=d.kind==='ord';
+        const offY=ord?d.axis==='x':d.orient==='h',offX=ord?d.axis==='y':d.orient==='v';
+        if(!offY&&!offX)return;
+        if(ord)d.axis=offY?'y':'x';else d.orient=offY?'v':'h';
+        if((offY&&q<0)||(offX&&q>0))d.off=-(+d.off||0);
+      });
+    });
+    mepReproject(v.id,true);
+    mepEdit('placement des projections',()=>{
+      sh.views.forEach(c=>{
+        if(c.kind!=='proj'||c.parent!==v.id||!MEP_PROJ[c.proj||''])return;
+        const x0=c.x,y0=c.y;
+        mepPlaceProj(v,c,c.proj);
+        mepProjFollow(sh,c,c.x-x0,c.y-y0);
+      });
+    },true);
+    const n=((+v.rq||0)%4);
+    mepStatus('Vue « '+(v.label||'')+' » tournée de 90° '+(q>0?'à gauche (↺)':'à droite (↻)')+(calc(v)?' — '+(n?(n===2?'180°':n===1?'90° ↺':'90° ↻')+' au total':'orientation d’origine'):'')+'.');
+  }
   function mepBeginAux(){
     const s=(typeof selFaces!=='undefined'&&selFaces||[])[0];
     if(!s||!s.mesh){mepStatus('Sélectionnez une FACE inclinée dans la 3D, puis retentez « Auxiliaire ».');return;}
@@ -997,6 +1074,7 @@
           if(par&&def){
             const b=mepBasisOf(par);
             v.dir=mepNorm(def.dir(b));v.u=mepNorm(def.u(b));v.v=mepNorm(mepCross(v.u,v.dir));
+            if(v.rq){const r=mepRotQ(v,v.rq);v.u=r.u;v.v=r.v;}
             v.scale=par.scale;
           }
         }else if(v.kind==='section'&&v.section&&v.section.s){
@@ -1007,6 +1085,7 @@
             const pb=mepBasisOf(par);
             v.section.p=[pb.u[0]*A.x+pb.v[0]*A.y,pb.u[1]*A.x+pb.v[1]*A.y,pb.u[2]*A.x+pb.v[2]*A.y];
             v.section.n=Bs.dir.slice();v.dir=Bs.dir;v.u=Bs.u;v.v=Bs.v;v.scale=par.scale;
+            if(v.rq){const r=mepRotQ(v,v.rq);v.u=r.u;v.v=r.v;}
           }
         }else if(v.kind==='aux'&&v.auxEdge){
           const par=mepView(sh,v.auxEdge.pid||v.parent);
@@ -1027,7 +1106,7 @@
             n=[n[0]/Ln,n[1]/Ln,n[2]/Ln];
             if(v.flip)n=[-n[0],-n[1],-n[2]];
             v.section.p=wA;v.section.n=n;
-            const b=mepBasisFromDir(n);
+            const b=mepRotQ(mepBasisFromDir(n),v.rq);
             v.dir=b.dir;v.u=b.u;v.v=b.v;
           }
         }
