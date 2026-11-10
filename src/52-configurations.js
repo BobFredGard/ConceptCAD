@@ -34,7 +34,7 @@ function cfgCurrent(nm){
   return (e.h.expr&&e.h.expr[e.k])?String(e.h.expr[e.k]):String(+parHolderVal(e.h,e.k).toFixed(6));
 }
 function cfgSetExpr(nm,ex){
-  const e=parAll().get(nm);if(!e||e.kind==='dparam')return false; // dérivé : la source décide
+  const e=parAll().get(nm);if(!e||e.kind==='dparam'||(e.kind==='param'&&e.p.mes))return false; // dérivé : la source décide ; mesure : la pièce décide
   ex=String(ex).trim();
   if(e.kind==='param')e.p.expr=ex;
   else if(e.kind==='dim'){e.d.expr=ex;parPending.add(e.sk);}
@@ -125,7 +125,7 @@ function cfgSection(box,rerender){
   const add=document.createElement('button');add.id='cfgAdd';add.textContent='+ Configuration';add.title='Nouvelle variante = l’état actuel du modèle';
   add.onclick=()=>{docPushUndo('configurations');const r=cfgAddRow();if(cfgOf().rows.length===1){cfgOf().active=r.id;}try{renderTree();}catch(e){}redo();};
   bar.appendChild(add);
-  const names=[...parAll().entries()].filter(([n,e])=>e.kind!=='dparam'&&!(c&&c.cols.includes(n))).map(([n])=>n);
+  const names=[...parAll().entries()].filter(([n,e])=>e.kind!=='dparam'&&!(e.kind==='param'&&e.p.mes)&&!(c&&c.cols.includes(n))).map(([n])=>n);
   if(names.length){
     const s=document.createElement('select');s.id='cfgColSel';
     const o0=document.createElement('option');o0.value='';o0.textContent='+ Colonne…';s.appendChild(o0);

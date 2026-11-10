@@ -327,6 +327,7 @@ function parDecor(id,str){
 /* ---------- réglage d'une valeur, commun à la liste complète et à la mini-liste (V0.47.1) ----------
    Retour : true, ou le message qui explique le refus (la valeur reste alors inchangée). */
 function parSetParam(p,ex){
+  if(p&&p.mes)return'« '+p.name+' » est une mesure entre 2 faces : sa valeur suit la pièce.';
   if(!ex)return'Expression vide.';
   const o=p.expr;p.expr=ex;parResolve();
   if(p.err){const m=p.err;p.expr=o;parResolve();return'Expression : '+m;}
@@ -397,7 +398,7 @@ function openParamsDlg(){
   ov.appendChild(box);
   const render=()=>{
     box.innerHTML='';
-    const h=document.createElement('div');h.innerHTML='<b style="font-size:15px">ƒx Paramètres</b><div style="opacity:.7;margin:4px 0 10px">Nommez une cote en tapant « nom = valeur » dans sa saisie ; utilisez le nom dans d’autres cotes (« nom*2 », « (L-2*nom)/3 »). Angles en degrés. Un paramètre n’a pas d’unité : c’est le champ qui la donne (mm, °, ou nombre pour une quantité, arrondie à l’entier).</div>';
+    const h=document.createElement('div');h.innerHTML='<b style="font-size:15px">ƒx Paramètres</b><div style="opacity:.7;margin:4px 0 10px">Nommez une cote en tapant « nom = valeur » dans sa saisie ; utilisez le nom dans d’autres cotes (« nom*2 », « (L-2*nom)/3 »). Angles en degrés. Un paramètre n’a pas d’unité : c’est le champ qui la donne (mm, °, ou nombre pour une quantité, arrondie à l’entier). « + Mesure » : un paramètre qui vaut la distance entre 2 faces cliquées et suit la pièce.</div>';
     box.appendChild(h);
     const tbl=document.createElement('table');tbl.style.cssText='border-collapse:collapse;width:100%';
     tbl.innerHTML='<tr style="text-align:left;opacity:.7"><th style="padding:3px 6px">Nom</th><th style="padding:3px 6px">Expression</th><th style="padding:3px 6px">Valeur</th><th style="padding:3px 6px">Origine</th><th></th></tr>';
@@ -408,9 +409,11 @@ function openParamsDlg(){
       const n=document.createElement('input');n.value=o.name||'';n.style.cssText=inpCss;n.placeholder='nom';td().appendChild(n);
       const x=document.createElement('input');x.value=o.expr;x.style.cssText=inpCss;x.dataset.fxac='';td().appendChild(x);
       if(o.ro){n.disabled=true;x.disabled=true;n.style.opacity=x.style.opacity='.6';} // V0.47.0 : paramètre dérivé, modifiable seulement dans sa source
+      if(o.roExpr){x.disabled=true;x.style.opacity='.75';x.title=o.roExpr;} // V0.87.0 : mesure entre 2 faces — la pièce donne la valeur
       const v=td();v.textContent=o.err?('⚠ '+o.err):(isFinite(o.val)?String(+o.val.toFixed(12)).replace('.',',')+(o.unit||''):'');if(o.err)v.style.color='#ff9f0a';
       td().textContent=o.origin;
       const del=td();
+      if(o.show){const b=document.createElement('button');b.textContent='👁';b.title='Montrer les 2 faces et la mesure dans la vue 3D';b.onclick=()=>{ov.remove();o.show();};del.appendChild(b);}
       if(o.del){const b=document.createElement('button');b.textContent='🗑';b.title='Supprimer';b.onclick=()=>{o.del();parAfterChange(true);render();};del.appendChild(b);}
       if(o.ro){tbl.appendChild(tr);return;}
       n.onchange=()=>{const r=o.rename(n.value.trim());if(r!==true){alert(r);n.value=o.name||'';return;}parAfterChange(true);render();};
@@ -419,7 +422,11 @@ function openParamsDlg(){
     };
     (doc.derive||[]).forEach(L=>(L.params||[]).forEach(p=>row({name:p.name,expr:String(+(+p.value).toFixed(12)).replace('.',','),val:+p.value,err:p.miss?'disparu de la source':null,origin:'🔗 '+L.name,ro:true,
       del:()=>{L.params=L.params.filter(q=>q!==p);L.auto=false;}})));
-    (doc.params||[]).forEach(p=>row({name:p.name,expr:String(p.expr==null?'':p.expr),val:p.value,err:p.err,origin:'Paramètre',
+    (doc.params||[]).forEach(p=>row(p.mes?{name:p.name,expr:'📏 '+parMesLibelle(p),val:+p.value,unit:' mm',err:p.mesErr||null,origin:'Mesure',
+      roExpr:'Mesure entre 2 faces : la valeur suit la pièce (non modifiable). 👁 pour la voir.',show:()=>parMesShow(p),
+      rename:nm=>{if(!nm)return'Nom requis.';const ok=parNameCheck(nm,null,p);if(ok!==true)return ok;parRename(p.name,nm);p.name=nm;return true;},
+      setExpr:()=>true,
+      del:()=>{doc.params=doc.params.filter(q=>q!==p);}}:{name:p.name,expr:String(p.expr==null?'':p.expr),val:p.value,err:p.err,origin:'Paramètre',
       rename:nm=>{if(!nm)return'Nom requis.';const ok=parNameCheck(nm,null,p);if(ok!==true)return ok;parRename(p.name,nm);p.name=nm;return true;},
       setExpr:ex=>parSetParam(p,ex),
       del:()=>{doc.params=doc.params.filter(q=>q!==p);}}));
@@ -451,10 +458,14 @@ function openParamsDlg(){
     const bar=document.createElement('div');bar.style.cssText='display:flex;gap:8px;justify-content:flex-end;margin-top:12px';
     const add=document.createElement('button');add.textContent='+ Paramètre';
     add.onclick=()=>{let k=1;while(parAll().has('P'+k))k++;doc.params.push({name:'P'+k,expr:'10',value:10});parAfterChange();render();};
+    const mes=document.createElement('button');mes.textContent='+ Mesure';
+    mes.title='Paramètre qui vaut la distance entre 2 faces de la pièce (cliquées dans la vue 3D) et la suit quand elle change';
+    mes.onclick=()=>parMesPickStart();
     const close=document.createElement('button');close.textContent='Fermer';close.onclick=()=>ov.remove();
-    bar.appendChild(add);bar.appendChild(close);box.appendChild(bar);
+    bar.appendChild(mes);bar.appendChild(add);bar.appendChild(close);box.appendChild(bar);
   };
   render();
+  ov._render=render; // une mesure recalculée après un rejeu rafraîchit la fenêtre ouverte (51-parametres-mesure)
   ov.addEventListener('mousedown',e=>{if(e.target===ov)ov.remove();});
   ov.addEventListener('keydown',e=>{if(e.key==='Escape'){ov.remove();}e.stopPropagation();});
   document.body.appendChild(ov);

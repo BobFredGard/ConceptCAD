@@ -439,7 +439,9 @@ function parMiniRows(){
   const brut=v=>String(+(+v).toFixed(12)).replace('.',','); // texte à éditer : toute la précision
   const rows=[];
   (doc.derive||[]).forEach(L=>(L.params||[]).forEach(p=>rows.push({name:p.name,val:fmt(p.value),title:'Dérivé de '+L.name+(p.miss?' — disparu de la source':' — à modifier dans ce fichier'),link:true,warn:!!p.miss})));
-  (doc.params||[]).forEach(p=>{if(p&&p.name)rows.push({name:p.name,val:p.err?'':fmt(p.value),title:p.err||String(p.expr==null?'':p.expr),warn:!!p.err,
+  (doc.params||[]).forEach(p=>{if(!p||!p.name)return;
+    if(p.mes){rows.push({name:p.name,val:p.mesErr?'':fmt(p.value),title:p.mesErr||('Mesure : '+parMesLibelle(p)+' — suit la pièce, non modifiable'),warn:!!p.mesErr,edit:'',set:null});return;} // V0.87.0 : mesure entre 2 faces
+    rows.push({name:p.name,val:p.err?'':fmt(p.value),title:p.err||String(p.expr==null?'':p.expr),warn:!!p.err,
     edit:String(p.expr==null?'':p.expr),set:ex=>parSetParam(p,ex)});});
   (doc.sketches||[]).forEach(sk=>(sk.dims||[]).forEach(d=>{if(!d||!d.name)return;
     rows.push({name:d.name,val:fmt(parDimUser(d))+(d.type==='angle'?'°':''),title:(sk.name||sk.id)+' · cote'+(d.ref?' de référence (mesurée, non modifiable)':'')+(d.expr?' : '+d.expr:''),warn:!!d.exprErr,
