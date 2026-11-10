@@ -613,6 +613,17 @@
       oSel.onchange=()=>{mepSetBaseOrient(v,oSel.value);mepSideShow();};
       row('Orientation',oSel);
     }
+    if(mepViewRotatable(v)){
+      // quart de tour du papier (2026-11-10) : cotes, axes, coupes et détails tournent avec la vue
+      const r=document.createElement('div');r.style.cssText='display:flex;gap:4px;flex:1';
+      [[1,'↺ 90°','mepRotL','Tourner la vue de 90° dans le sens inverse des aiguilles d’une montre'],
+       [-1,'↻ 90°','mepRotR','Tourner la vue de 90° dans le sens des aiguilles d’une montre']].forEach(([q,t,id,tt])=>{
+        const b=document.createElement('button');b.id=id;b.textContent=t;b.title=tt+' — cotes, axes, lignes de coupe et détails suivent ; les projections sont recalculées';
+        b.onclick=e=>{e.stopPropagation();mepRotateView(v,q);mepSideShow();};
+        r.appendChild(b);
+      });
+      row('Rotation',r);
+    }
     if(v.kind==='base'){
       // projection oblique (cavalière) : angle et coefficient des fuyantes
       const pSel=document.createElement('select');pSel.id='mepOblSel';

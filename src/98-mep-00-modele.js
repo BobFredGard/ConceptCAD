@@ -387,12 +387,18 @@
     const v=mepNorm(mepCross(u,d));            // bas papier (opposé à la verticale monde)
     return{dir:d,u,v};
   }
+  /* quart(s) de tour du papier, sens trigo (↺) : u'=v, v'=−u — le point local (x,y) devient (y,−x) */
+  function mepRotQ(b,q){
+    q=(((+q||0)%4)+4)%4;let u=b.u,v=b.v;
+    for(let i=0;i<q;i++){const nu=v;v=[-u[0],-u[1],-u[2]];u=nu;}
+    return{dir:b.dir,u,v};
+  }
   function mepBasisOf(view){
     if(view.kind==='base'&&MEP_VIEWS[view.vk]){
       const b=MEP_VIEWS[view.vk];
       const r=b.u?{dir:b.dir.slice(),u:b.u.slice(),v:b.v.slice()}:mepBasisFromDir(b.dir);
       if(view.flip)r.v=[-r.v[0],-r.v[1],-r.v[2]];
-      return r;
+      return mepRotQ(r,view.rq);
     }
     // caméra : la base est TOUJOURS recalculée depuis la direction (Z monde vers
     // le haut papier), y compris pour les vues déjà enregistrées avec l'ancienne
@@ -400,7 +406,7 @@
     if(view.kind==='base'&&view.camera&&view.dir){
       const r=mepBasisFromDir(view.dir);
       if(view.flip)r.v=[-r.v[0],-r.v[1],-r.v[2]];
-      return r;
+      return mepRotQ(r,view.rq);
     }
     const u=mepNorm(view.u||[1,0,0]);
     const d=mepNorm(view.dir||[0,-1,0]);
