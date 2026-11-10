@@ -370,11 +370,7 @@ function skAudit(sk){
     if(d.type==='distance'){const A=P[d.a],B=P[d.b];if(A&&B)push(d.id,'distance',Math.abs(dimMeasureOf(A,B,d.orient)-d.value));}
     if(d.type==='diameter'||d.type==='radius'){const e=entById(sk,d.ent);if(e&&(e.t==='circle'||e.t==='arc'))push(d.id,d.type,Math.abs((d.type==='diameter'?e.r*2:e.r)-d.value));}
     if(d.type==='angle'){const fr=angleFrame(sk,d);
-      if(fr){const TAU=Math.PI*2;
-        const want=angleWant(d,fr.delta);
-        let e=want-fr.delta;
-        if(e>Math.PI)e-=TAU;else if(e<-Math.PI)e+=TAU;
-        push(d.id,'angle',Math.abs(e)*skAngScale(fr));}}
+      if(fr)push(d.id,'angle',Math.abs(skAngErr(d,fr))*skAngScale(fr));}
     if(d.type==='gap'){const A=entById(sk,d.a),B=entById(sk,d.b);
       if(A&&B&&A.t==='line'&&B.t==='line'){const P0=sk.points;
         const A1=P0[A.p1],A2=P0[A.p2],B1=P0[B.p1],B2=P0[B.p2];
