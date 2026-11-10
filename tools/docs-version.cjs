@@ -1,11 +1,12 @@
 // tools/docs-version.cjs — garde les documents alignés sur la version (V0.47.2).
 // Une seule source : APP_VER (src/00-entete-et-outils.js). Appelé par build.js :
-//   node build.js          réécrit package.json, README.md et l'en-tête du CHANGELOG
+//   node build.js          réécrit package.json, README.md, docs/manuel/developpement.md et l'en-tête du CHANGELOG
 //   node build.js --check  échoue si l'un d'eux est en retard → npm run ci et ci:full bloquent
 // Un passage introuvable (phrase du README reformulée…) est une ERREUR, jamais un oubli silencieux.
 // Les versions citées comme historique (« renommé en V0.33.0 ») ne sont pas touchées.
 const fs=require('fs'),path=require('path');
 const ROOT=path.join(__dirname,'..');
+const MANUEL_DEV='docs/manuel/developpement.md'; // les chiffres du dépôt ont quitté le README pour le manuel
 const lire=f=>fs.readFileSync(path.join(ROOT,f),'utf8');
 
 function nbSuites(f){
@@ -28,9 +29,9 @@ function regles(){
   return [
     ['package.json',/("version":\s*")[^"]*(")/,'$1'+v.slice(1)+'$2','version de package.json'],
     ['README.md',/(Version actuelle : \*\*)V[\d.]+(\*\*)/,'$1'+v+'$2','« Version actuelle » du README'],
-    ['README.md',/(\*\*Les sources\*\* : )\d+( fichiers)/,'$1'+nSrc+'$2','nombre de fichiers sources du README'],
-    ['README.md',/\d+( suites Node lancées en parallèle)/,nbSuites('tests/run.cjs')+'$1','nombre de suites du README'],
-    ['README.md',/\d+( rapides \(`npm run ci`\))/,nbSuites('tests/run-fast.cjs')+'$1','nombre de suites rapides du README'],
+    [MANUEL_DEV,/(\*\*Les sources\*\* : )\d+( fichiers)/,'$1'+nSrc+'$2','nombre de fichiers sources du manuel'],
+    [MANUEL_DEV,/\d+( suites Node lancées en parallèle)/,nbSuites('tests/run.cjs')+'$1','nombre de suites du manuel'],
+    [MANUEL_DEV,/\d+( rapides \(`npm run ci`\))/,nbSuites('tests/run-fast.cjs')+'$1','nombre de suites rapides du manuel'],
     ['CHANGELOG.md',/\*\*\d+ versions\*\*/,'**'+nVers+' versions**','nombre de versions du CHANGELOG'],
     ['CHANGELOG.md',/(, de `[^`]+` à `)V[\d.]+(`)/,'$1'+v+'$2','dernière version du CHANGELOG'],
   ];
