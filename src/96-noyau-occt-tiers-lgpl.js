@@ -31,8 +31,10 @@ function occtMtDemande(){
 function occtIsolerPage(){
   // Le site (GitHub Pages) n'envoie pas les en-têtes d'isolation : le service worker les ajoute, à partir de
   // la prochaine ouverture. Pas de rechargement à la volée, qui couperait le démarrage de l'application.
+  // V0.93.0 : enregistré même sur une page déjà isolée, car il garde aussi la copie hors ligne de
+  // l'application installable (99-application-installable.js).
   try{
-    if(window.__EMB||self.crossOriginIsolated||!('serviceWorker' in navigator))return;
+    if(window.__EMB||!('serviceWorker' in navigator))return;
     if(location.protocol==='https:'||/[?&]sw(?:&|$)/.test(String(location.search||'')))navigator.serviceWorker.register('isolation-sw.js').catch(()=>{});
   }catch(e){}
 }

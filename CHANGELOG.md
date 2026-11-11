@@ -8,7 +8,7 @@ sont sorties le 2026-09-30j.
 Code dans `src/` · livrable `fusion_mvp.html` (généré par `build.js`) · architecture et
 garde-fous en tête de `src/00-entete-et-outils.js`.
 
-**655 versions**, de `2026-09-28b` à `V0.92.0` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
+**656 versions**, de `2026-09-28b` à `V0.93.0` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
 comme dans le fichier d'origine.
 
 ---
@@ -7398,3 +7398,13 @@ Barquette ne perd plus son solide à la 107e modification, et sa mémoire ne mon
 - **Fiche outil en onglets** : Identification, Géométrie, Coupe, Porte-outil, un onglet par rubrique au lieu d'une longue fiche à faire défiler ; l'onglet ouvert est gardé d'un outil à l'autre.
 - **Reste à faire** : les autres familles de fraises Vargus (aluminium, matériaux durs, inox et titane, ébauche), puis Jongen et Dixi à partir de leurs PDF.
 - **Test** : `test_fao_catalogue` (lecture et refus, valeur au diamètre, fiche par matière pour fraise, foret et taraud, insertion, mémoire des catalogues, page et changement de matière, nom fabricant + référence) ; `test_fao_outils_fichier` section 11 (onglets de la fiche). Essai dans le navigateur. Parcours et CACHE_VER inchangés.
+
+## V0.93.0 - Application installable (PWA) : ConceptCAD s'installe depuis le site et marche sans Internet
+
+- **Cause** : en dehors des applis Windows et Mac, le site demandait une connexion à chaque ouverture, et la version autonome se télécharge à part. Fred veut une application installable, première étape avant de remettre à niveau le pilotage par l'IA (serveur MCP).
+- **Installer** : menu Projet → « ⬇ Installer ConceptCAD », quand le navigateur le permet (Chrome, Edge). ConceptCAD prend sa propre fenêtre et l'icône bleu/orange officielle (`manifest.webmanifest`, `icones/` : SVG, 192, 512, version masquable, 180 pour Apple).
+- **Sans Internet** : le service worker `isolation-sw.js` (même nom, déjà enregistré chez les visiteurs) garde maintenant chaque fichier du site lu avec succès. Le réseau passe toujours en premier, donc en ligne on a toujours la dernière version, comme avant. Sans réseau, c'est la copie gardée qui répond. La page attend au plus 6 s le réseau avant de prendre sa copie. Un fichier n'est réécrit que s'il a changé (ETag) : les 43 Mo du noyau ne sont pas recopiés à chaque ouverture. Une fois le noyau démarré, la page demande au service worker de garder tout ce qu'il faut pour démarrer (noyau multicœur compris quand il sert).
+- **Double-clic sur un `.conceptcad`** : l'application installée s'inscrit pour ce type de fichier. Elle ouvre la pièce une fois le noyau prêt, et Ctrl+S réécrit ce même fichier.
+- **Publication** : `pages.yml` copie la fiche et les icônes, et écrit le tag dans le service worker pour que les navigateurs voient la nouvelle version. Le service worker est enregistré aussi quand la page est déjà isolée. Le fichier autonome retire la fiche d'installation, inutile en double-clic.
+- **Test** : `tests/browser/hors-ligne.spec.cjs` (fiche et icônes lisibles, service worker en place, réserve remplie, réseau coupé : la page se rouvre, le noyau exact démarre, un fichier déjà lu reste disponible). Parcours FAO et CACHE_VER inchangés.
+- **Test réparé** : `test_fao` (section 014) échouait déjà en V0.92.0. Il cliquait le dernier bouton « + Nouveau » de la fenêtre, qui est depuis celui de l'onglet Porte-outil. Il vise maintenant le bouton qui ajoute un outil. Rien ne change dans l'application.

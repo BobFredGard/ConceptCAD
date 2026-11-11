@@ -913,7 +913,7 @@ const vm=require('vm');
     "att(!!faoToolsWinT&&faoToolsWinT.textContent.indexOf('Bibliothèque d’outils · ')===0,'014 : titre = posage actif ('+faoToolsWinT.textContent+')');",
     "att(ceHasTxt(faoToolsWinBody,'Conditions de coupe'),'014 : contenu = biblio outils');",
     "const nb014=(faoSetup().tools||[]).length;",
-    "let bA14=null;(function w14(n){if(n.textContent==='+ Nouveau')bA14=n;if(n.children)n.children.forEach(w14);})(faoToolsWinBody);",
+    "let bA14=null;(function w14(n){if(n.textContent==='+ Nouveau'&&/^Ajouter un outil/.test(n.title||''))bA14=n;if(n.children)n.children.forEach(w14);})(faoToolsWinBody);",
     "att(!!bA14,'014 : bouton + Nouveau dans la fenetre');",
     "bA14.onclick();",
     "att(faoSetup().tools.length===nb014+1,'014 : + Outil ajoute ('+faoSetup().tools.length+'/'+nb014+')');",
