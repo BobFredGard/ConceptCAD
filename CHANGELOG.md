@@ -8,7 +8,7 @@ sont sorties le 2026-09-30j.
 Code dans `src/` · livrable `fusion_mvp.html` (généré par `build.js`) · architecture et
 garde-fous en tête de `src/00-entete-et-outils.js`.
 
-**657 versions**, de `2026-09-28b` à `V0.94.0` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
+**658 versions**, de `2026-09-28b` à `V0.94.1` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
 comme dans le fichier d'origine.
 
 ---
@@ -7434,3 +7434,10 @@ Barquette ne perd plus son solide à la 107e modification, et sa mémoire ne mon
   - essai réel : serveur MCP lancé, page reliée par le bouton 🔌, bride complète faite par l'outil `conceptcad_run_script`.
 
   Parcours FAO et CACHE_VER inchangés.
+
+## V0.94.1 - CAO : flèches bleues de taille fixe à l'écran
+
+- **Demande** : Fred, 11/11 : « les flèches bleues sont toujours trop grande pour la plupart des fonctions, trous compris », puis « 35 c'est bien aussi ».
+- **Cause** : depuis V0.88.1, la taille des flèches suivait la distance de la caméra (0,055 × distance). Avec un petit angle de champ (réglage de la vue), la caméra recule pour garder le cadrage : à 15°, les flèches devenaient 3 fois plus grandes à l'écran (jusqu'à 110 pixels).
+- **Correctif** (`src/70-extrusion-dynamique`, `71-fenetre-dynamique`) : `dynArrowL` fixe la longueur en pixels (`DYN_ARROW_PX` = 40, à partir des mm par pixel de `triadWpp`, perspective ou orthographique), pour les flèches d'extrusion, de perçage, de congé et la poignée de révolution ; tige et pointe un peu plus épaisses, zone de prise invisible élargie pour rester facile à attraper.
+- **Test** : mesuré dans le navigateur sur `Exemples/Perçages.conceptcad` : 39 pixels pour l'extrusion à 50° comme à 15° (perçage taraudé : même taille, vue en raccourci) ; `test_extrusion_dynamique`, `test_fenetre_dynamique` inchangés. Parcours FAO et CACHE_VER inchangés.

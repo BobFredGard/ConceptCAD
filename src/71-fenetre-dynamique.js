@@ -185,8 +185,8 @@ function fdynMeshes(){
   fdynArrow.traverse(m=>{if(m.userData&&m.userData.extArrow){m.userData.extArrow=false;m.userData.fdyn=true;}});
   // poignée de rotation : boule + arc
   const g=new THREE.Group();g.name='fdynKnob';g.userData.noMirror=true;
-  const k=new THREE.Mesh(new THREE.SphereGeometry(0.12,16,12),new THREE.MeshBasicMaterial({color:0x0a84ff,depthTest:false}));k.renderOrder=999;k.userData.fdyn=true;k.userData.noMirror=true;g.add(k);
-  const hit=new THREE.Mesh(new THREE.SphereGeometry(0.25,8,6),new THREE.MeshBasicMaterial({visible:false}));hit.userData.fdyn=true;g.add(hit);
+  const k=new THREE.Mesh(new THREE.SphereGeometry(0.18,16,12),new THREE.MeshBasicMaterial({color:0x0a84ff,depthTest:false}));k.renderOrder=999;k.userData.fdyn=true;k.userData.noMirror=true;g.add(k);
+  const hit=new THREE.Mesh(new THREE.SphereGeometry(0.4,8,6),new THREE.MeshBasicMaterial({visible:false}));hit.userData.fdyn=true;g.add(hit);
   scene.add(g);fdynKnob=g;
   const arc=new THREE.Line(new THREE.BufferGeometry(),new THREE.LineBasicMaterial({color:0x0a84ff,depthTest:false,transparent:true,opacity:0.85}));
   arc.renderOrder=998;arc.userData.noMirror=true;arc.name='fdynArc';scene.add(arc);fdynArc=arc;
@@ -226,14 +226,14 @@ function fdynTick(){
   let P,dir;
   if(H.kind==='lin'){
     P=H.C.clone().addScaledVector(H.n,H.val);dir=H.n.clone();
-    const L=Math.max(1e-3,camera.position.distanceTo(P)*DYN_ARROW_K);
+    const L=dynArrowL(P);
     fdynArrow.position.copy(P);fdynArrow.scale.setScalar(L);
     fdynArrow.quaternion.setFromUnitVectors(new THREE.Vector3(0,1,0),dir);
     fdynArrow.visible=true;fdynKnob.visible=false;fdynArc.visible=false;
     P=P.clone().addScaledVector(dir,L*0.9);
   }else{
     P=fdynRotPt(H,H.val);
-    const L=Math.max(1e-3,camera.position.distanceTo(P)*DYN_ARROW_K);
+    const L=dynArrowL(P);
     fdynKnob.position.copy(P);fdynKnob.scale.setScalar(L);fdynKnob.visible=true;fdynArrow.visible=false;
     const pts=[];const n=Math.max(8,Math.ceil(H.val/4));for(let i=0;i<=n;i++)pts.push(fdynRotPt(H,H.val*i/n));
     fdynArc.geometry.dispose();fdynArc.geometry=new THREE.BufferGeometry().setFromPoints(pts);fdynArc.visible=true;
