@@ -72,6 +72,12 @@ function mvPaint(){
 }
 function mvHelp(){
   const nf=mvMode?mvMode.faces.length:0;
+  if(mvMode&&mvMode.remp!=null&&mvMode.faces[mvMode.remp]){
+    const r=mvMode.faces[mvMode.remp];
+    faceEl.innerHTML='<b>🎯 Face perdue</b> près de ('+r.pos.map(v=>(+v).toFixed(1)).join(' ; ')+') mm<br><span class="note">'+
+      'Cliquez la face qui la remplace dans la vue 3D. ✕ dans la liste la retire. <b>Échap</b> annule.</span>';
+    return;
+  }
   faceEl.innerHTML='<b>📐 '+(mvMode&&mvMode.editing?'Édition du déplacement de face':'Déplacement de face')+'</b><br><span class="note">'+
     (nf?nf+' face(s) retenue(s). ':'')+'Cliquez les faces à déplacer (re-clic = retirer), réglez la distance puis '+
     '<b>Appliquer</b> (<b>Entrée</b>). <b>Échap</b> annule.</span>';
@@ -97,6 +103,9 @@ function enterMoveFaceMode(editF){
     if(!occExactForTool(true)){occSkipFeat=null;mvMode=null;tlEditUnlock();faceEl.textContent='Déplacement de face : recalcul impossible.';return;}
     coqueOrdIdx=new Map(); // un parcours des faces par solide pour toute la sélection (87)
     try{mvMode.faces.forEach(r=>{try{r._ord=coqueOrdOf(r);}catch(e){r._ord=-1;}});}finally{coqueOrdIdx=null;}
+    // faces perdues : la première attend déjà sa remplaçante (resélection, comme Fusion)
+    mvMode.faces.forEach((r,i)=>{r._perdue=refPerdue(editing,i,r);});
+    const ip=mvMode.faces.findIndex(r=>r._perdue);mvMode.remp=ip>=0?ip:null;
   }
   try{buildEdgeOverlay();}catch(e){}
   try{applyClip();}catch(e){}
@@ -149,7 +158,16 @@ function mvFaceCommit(e){
   const k=hit.ref?coqueKey(hit.ref):null;
   let i=k?mvMode.faces.findIndex(r=>coqueKey(r)===k):-1;
   if(i<0&&hit.ref&&mvMode.tangent)i=mvMode.faces.findIndex(r=>r._bid===hit.ref._bid&&mvChainOf(r).includes(hit.ord));
-  if(i>=0&&!mvMode.blend){mvMode.faces.splice(i,1);mvPaint();renderMvPanel();mvHelp();return;}
+  // resélection d'une face perdue : la face cliquée prend sa place dans la liste
+  if(mvMode.remp!=null&&mvMode.faces[mvMode.remp]&&hit.ref&&!hit.blend){
+    const j=mvMode.remp;
+    if(i>=0&&i!==j)mvMode.faces.splice(i,1);
+    const jj=(i>=0&&i<j)?j-1:j;
+    mvMode.faces[jj]=hit.ref;
+    const ip=mvMode.faces.findIndex(r=>r._perdue);mvMode.remp=ip>=0?ip:null;
+    mvPaint();renderMvPanel();mvHelp();return;
+  }
+  if(i>=0&&!mvMode.blend){mvMode.faces.splice(i,1);if(mvMode.remp!=null)mvMode.remp=mvMode.faces.findIndex(r=>r._perdue)>=0?mvMode.faces.findIndex(r=>r._perdue):null;mvPaint();renderMvPanel();mvHelp();return;}
   if(hit.blend){
     const f=doc.features.find(x=>x.id===hit.blend.feat);
     if(f){
@@ -210,10 +228,12 @@ function renderMvPanel(){
       const r2=document.createElement('div');r2.className='item';
       const s=document.createElement('span');
       const nt=mvMode.tangent?mvChainOf(fr).length:0;
-      s.textContent=(fr._ord>=0?'✅ ':'⚠ ')+'▸ centre ('+fr.pos.map(v=>(+v).toFixed(1)).join(' ; ')+') mm'+(nt?' + '+nt+' tangente'+(nt>1?'s':''):'');
+      const pd=fr._perdue!=null?fr._perdue:fr._ord<0;
+      s.textContent=(pd?'⚠ perdue ':'✅ ')+'▸ centre ('+fr.pos.map(v=>(+v).toFixed(1)).join(' ; ')+') mm'+(nt?' + '+nt+' tangente'+(nt>1?'s':''):'');
       r2.appendChild(s);
+      if(fr._perdue)r2.appendChild(remplacerBtn(mvMode.remp===i,()=>{mvMode.remp=mvMode.remp===i?null:i;renderMvPanel();mvHelp();}));
       const x=document.createElement('button');x.textContent='✕';x.title='Retirer cette face';
-      x.onclick=()=>{mvMode.faces.splice(i,1);mvPaint();renderMvPanel();mvHelp();};
+      x.onclick=()=>{mvMode.faces.splice(i,1);const ip=mvMode.faces.findIndex(r=>r._perdue);mvMode.remp=mvMode.remp!=null&&ip>=0?ip:null;mvPaint();renderMvPanel();mvHelp();};
       r2.appendChild(x);lst.appendChild(r2);
     });
     p.appendChild(lst);

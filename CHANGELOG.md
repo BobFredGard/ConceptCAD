@@ -8,7 +8,7 @@ sont sorties le 2026-09-30j.
 Code dans `src/` · livrable `fusion_mvp.html` (généré par `build.js`) · architecture et
 garde-fous en tête de `src/00-entete-et-outils.js`.
 
-**661 versions**, de `2026-09-28b` à `V0.94.4` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
+**662 versions**, de `2026-09-28b` à `V0.94.5` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
 comme dans le fichier d'origine.
 
 ---
@@ -7464,3 +7464,10 @@ Barquette ne perd plus son solide à la 107e modification, et sa mémoire ne mon
 - **Cause 2** : `occLoneStep` regardait toutes les fonctions du corps, pas celles d'avant le marqueur. Marqueur après l'import : le corps n'avait que l'import à rejouer, mais l'échelle placée plus loin le faisait croire « non seul », le STEP n'entrait pas dans la chaîne exacte et chaque outil de face répondait « solide exact indisponible ».
 - **Correctif 2** (`src/20-70-cache-et-rejeu`) : `occLoneStep` ne compte que les fonctions rejouées (`tlActiveList`).
 - **Test** : vérifié dans le navigateur sur la pièce de Fred : l'esquisse retrouve sa face ; échelle de la barquette agrandie → son origine suit exactement le fond de la cavité, et revient à l'identique ; marqueur après l'import puis aux 4 positions suivantes : « Déplacer une face » s'ouvre, aucune esquisse ne bouge. Suite rapide 150/150. Parcours FAO et CACHE_VER inchangés.
+
+## V0.94.5 - CAO : resélectionner une face ou une arête perdue, comme Fusion
+
+- **Demande** : Fred, 11/11 : « Il me faudrait la possibilité de resélectionner les faces perdues, comme Fusion360 le fait », pour les esquisses et les fonctions.
+- **Esquisse** (`src/50-esquisse-94-changer-face`, nouveau) : bouton « 🎯 Changer de face » dans les propriétés. La timeline est arrêtée avant la fonction qui consomme l'esquisse (seules les faces d'avant elle sont cliquables), le clic pose l'esquisse sur la face cliquée avec la même règle qu'à la création (`skFacePlacement`, sorti de `newSketchOnFace`), puis le marqueur est rendu ; Échap annule. `skFacePerdue` dit pourquoi une face est perdue (nom introuvable, hôte disparu, aucune face retenue, plan de construction supprimé) : ⚠ dans l'arbre, la timeline et le panneau, double-clic = resélection.
+- **Fonctions** : le rejeu note les faces non retrouvées (`occNotePerdues` → `f._perdues`, hors empreinte et hors fichier) pour déplacer une face, suppression de face et coque. En édition (`85-deplacement-face`, `87-coque`), la 1re face perdue attend sa remplaçante, le clic la remplace à sa place, bouton « 🎯 Remplacer » sur chaque perdue (`remplacerBtn`). Congés et chanfreins (`80-conges-chanfreins`) : les arêtes perdues (`f._miss`) restent dans la liste au lieu d'être effacées au premier clic ; l'arête cliquée la remplace et reprend sa taille (et son ƒx). « Déplacer une face » a son ⚠ et s'ouvre aussi par double-clic dans l'arbre et la timeline.
+- **Test** : `tests/browser/faces-perdues.spec.cjs` : Barquette, déplacement de 7 faces dont 5 perdues (⚠, empreinte et fichier inchangés, remplacement en place, consigne) ; esquisse reposée sur une face (normale, plan, marqueur rendu, Échap) ; chanfrein à arête perdue gardée puis remplacée avec sa distance. `test_rejeu_repris` (empreinte sans la note). Vérifié aussi sur la pièce de Fred (face d'esquisse perdue puis resélectionnée). Parcours FAO et CACHE_VER inchangés.

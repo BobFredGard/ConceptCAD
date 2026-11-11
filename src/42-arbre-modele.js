@@ -221,7 +221,7 @@ function treePart(L){
   cgTreeModel(L); // 📐 Construction (79) : section + éléments en enfants
   const skVis=doc.sketches.filter(s=>!skIsRepCopy(s)&&!s.fao); // V0.23.20 : esquisses FAO jamais en CAO
   if(gfold('sk','✏️','Esquisses ('+skVis.length+')','Esquisses de la pièce',false)){
-    skVis.forEach(s=>node('✏️',s.name,'sketch',s.id,s.visible,()=>openSketch(s.id),sketchFaceLabel(s)+' · '+s.entities.length+' traits'));
+    skVis.forEach(s=>{const pd=skFacePerdue(s);node(pd?'⚠':'✏️',s.name,'sketch',s.id,s.visible,()=>pd?skRedefStart(s.id):openSketch(s.id),sketchFaceLabel(s)+' · '+s.entities.length+' traits'+(pd?' — ⚠ '+pd+' : « 🎯 Changer de face » dans ses propriétés':''));});
   }
   if(tlMark!=null){
     const mi=tlIdx();
@@ -284,7 +284,7 @@ function treePart(L){
     const repF=sel.kind==='feature'?doc.features.find(x=>x.id===sel.id&&x.type==='repeat'):null;
     const estSrc=!!(repF&&(repF.base||[]).indexOf(f.id)>=0);
     const ri=repMode&&repMode.feats&&repMode.feats.includes(f.id)?'✓ ':'';
-    node(ri+(estSrc?'<span class="srcmark" title="Source de la répétition sélectionnée">◀</span>':'')+featIconOf(f),f.name,'feature',f.id,f.visible,(f.type==='xfillet'||f.type==='xdraft'||f.type==='xshell'||f.type==='xdelface'||f.type==='xsplit')?()=>{sel={kind:'feature',id:f.id};treeSel=[];if(f.type==='xfillet')enterExactFilletMode(f);else if(f.type==='xdraft')enterDraftMode(f);else if(f.type==='xsplit')enterSplitMode(f);else enterCoqueMode(f);}:null);
+    node(ri+(estSrc?'<span class="srcmark" title="Source de la répétition sélectionnée">◀</span>':'')+featIconOf(f),f.name,'feature',f.id,f.visible,(f.type==='xfillet'||f.type==='xdraft'||f.type==='xshell'||f.type==='xdelface'||f.type==='xsplit'||f.type==='xmove')?()=>{sel={kind:'feature',id:f.id};treeSel=[];if(f.type==='xfillet')enterExactFilletMode(f);else if(f.type==='xdraft')enterDraftMode(f);else if(f.type==='xsplit')enterSplitMode(f);else if(f.type==='xmove')enterMoveFaceMode(f);else enterCoqueMode(f);}:null);
     // V0.22.5 : STEP multi-corps — arborescence d'assemblage repliable sous la fonction (90)
     const IT=f.type==='import'&&typeof importTreeOf==='function'?importTreeOf(f):null;
     if(IT){

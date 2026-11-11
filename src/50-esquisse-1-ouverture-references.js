@@ -36,20 +36,11 @@ function newSketchOnCg(id,sub){
   doc.sketches.push(sk);markDirty();rebuild();openSketch(sk.id);
   try{faceEl.textContent='Esquisse '+sk.name+' posée sur '+sketchFaceLabel(sk)+' — elle suivra le plan s’il bouge.';}catch(e){}
 }
-function newSketchOnFace(){
-  if(skEdit)return;
-  // Priorité : face mesurée / sélectionnée, sinon pick au centre de l'écran
-  let s=selFaces&&selFaces.length?selFaces[0]:null;
-  if(!s){
-    // tente un pick au centre du viewport
-    const el=renderer.domElement,r=el.getBoundingClientRect();
-    const fake={clientX:r.left+r.width/2,clientY:r.top+r.height/2};
-    const h=pick(fake);
-    if(h)s={mesh:h.object,point:h.point.clone(),faceIndex:h.faceIndex};
-  }
-  if(!s||!s.mesh){faceEl.textContent='Esquisse sur face : cliquez d\u2019abord une face (clic simple), puis re-cliquez « Esquisse ».';return;}
+function skFacePlacement(s,lim){
+  // Plan d'une esquisse posée sur la face cliquée s={mesh,point,faceIndex} : {pt,n,u,v,origin,host}
+  // (création, et « Changer de face » d'une esquisse existante). lim : rang limite des hôtes.
   const nrm=faceNormalWorld(s.mesh,s.faceIndex);
-  if(!nrm){faceEl.textContent='Esquisse sur face : normale illisible.';return;}
+  if(!nrm)return{err:'normale illisible.'};
   const pt=(s.point||new THREE.Vector3()).clone();
   const n=nrm.clone().normalize();
   // origine = repère global projeté sur le plan (raycast validé) → projections symétriques
@@ -67,10 +58,27 @@ function newSketchOnFace(){
   // host : face porteuse nommée (antériorité) — fait suivre l'esquisse quand la porteuse bouge
   // x/y stockés depuis l'origine (pas le point de clic) pour ne pas dériver
   // origine hors de la face cliquée (fond de rainure sous un îlot) : la face sous le CLIC
-  const limH=tlIdx(); // marqueur temps actif : seules les fonctions rejouées peuvent porter
+  const limH=(lim!=null)?lim:tlIdx(); // marqueur temps actif : seules les fonctions rejouées peuvent porter
   let host=findHostForFace(origin,n,undefined,limH)||hostViaPoints([origin.x,origin.y,origin.z],n,[pt],limH);
   if(!host){let hp=null;try{hp=findHostForFace(pt,n,undefined,limH);}catch(e){}
     if(hp){origin=faceSketchOrigin(s.mesh,n,pt,s.faceIndex);host=findHostForFace(origin,n,undefined,limH)||hostViaPoints([origin.x,origin.y,origin.z],n,[pt],limH);}}
+  return{pt,n,u,v,origin,host};
+}
+function newSketchOnFace(){
+  if(skEdit)return;
+  // Priorité : face mesurée / sélectionnée, sinon pick au centre de l'écran
+  let s=selFaces&&selFaces.length?selFaces[0]:null;
+  if(!s){
+    // tente un pick au centre du viewport
+    const el=renderer.domElement,r=el.getBoundingClientRect();
+    const fake={clientX:r.left+r.width/2,clientY:r.top+r.height/2};
+    const h=pick(fake);
+    if(h)s={mesh:h.object,point:h.point.clone(),faceIndex:h.faceIndex};
+  }
+  if(!s||!s.mesh){faceEl.textContent='Esquisse sur face : cliquez d\u2019abord une face (clic simple), puis re-cliquez « Esquisse ».';return;}
+  const P=skFacePlacement(s);
+  if(P.err){faceEl.textContent='Esquisse sur face : '+P.err;return;}
+  const{pt,n,u,v,origin,host}=P;
   const sk={id:uid('sk'),name:'Esquisse '+(doc.sketches.length+1)+' (face)',plane:'FACE',
     entities:[],points:{},constraints:[],dims:[],seq:1,visible:true,at:cgAtNow(),
     origin:[+origin.x.toFixed(3),+origin.y.toFixed(3),+origin.z.toFixed(3)],

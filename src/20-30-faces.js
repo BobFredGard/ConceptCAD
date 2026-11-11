@@ -844,6 +844,7 @@ function occApplyMoveFace(result,f){
   const trk=found.map(h=>h?occFaceTrack(h):null);
   const drop=()=>found.forEach(h=>{if(h)try{h.delete();}catch(e){}});
   found.forEach((h,i)=>{if(!h)warnings.push(`face introuvable près de ${lab(refs[i])} — la pièce a changé`);});
+  occNotePerdues(f,found); // ⚠ de l'arbre, « 🎯 Remplacer » de l'édition
   if(!found.some(Boolean)){drop();return {shape:result,warnings};}
   if(!dist){drop();return {shape:result,warnings:['distance nulle — aucun déplacement']};}
   let repli=null; // alerte du repli (faces tangentes laissées), dite seulement si la face a bougé
@@ -1016,6 +1017,29 @@ function occFaceRefAny(f){
   const b=occFaceBox(f);if(!b)return null;
   return {pos:b.pos.map(v=>+v.toFixed(3)),dim:b.dim.map(v=>+v.toFixed(3)),st:occSurfKind(f)};
 }
+function occNotePerdues(f,found){
+  // Rangs des faces non retrouvées au dernier rejeu (f._perdues, non enregistré) : l'arbre met ⚠
+  // et l'édition propose « 🎯 Remplacer » sur ces faces-là seulement. Rend found tel quel.
+  const L=[];(found||[]).forEach((h,i)=>{if(!h)L.push(i);});
+  if(L.length)f._perdues=L;else delete f._perdues;
+  return found;
+}
+function refPerdue(f,i,r){
+  // Face i de la fonction f perdue ? Le dernier rejeu le dit (f._perdues) ; sinon (fonction lue
+  // dans le cache à l'ouverture) : la face n'est pas sur le solide affiché.
+  if(f&&Array.isArray(f._perdues))return f._perdues.indexOf(i)>=0;
+  return !!(r&&r._ord<0);
+}
+function remplacerBtn(arme,onclick){
+  // Bouton « 🎯 Remplacer » d'un élément perdu, dans les listes des éditions (faces, arêtes)
+  const b=document.createElement('button');
+  b.textContent=arme?'🎯 Cliquez…':'🎯 Remplacer';
+  b.title=arme?'Le prochain clic dans la vue 3D remplace cet élément perdu (re-clic ici = annuler)'
+    :'Remplacer cet élément perdu par celui que vous cliquerez dans la vue 3D, à la même place';
+  if(arme)b.style.outline='2px solid var(--warn)';
+  b.onclick=e=>{e.stopPropagation();onclick();};
+  return b;
+}
 function occFindFaceAny(shape,ref){
   if(!shape||!ref)return null;
   const parNom=nomsRefFace(shape,ref);if(parNom)return parNom;
@@ -1139,7 +1163,7 @@ function occApplyDeleteFaces(result,f,ckKey,ckPre){
   const warnings=[];
   const total=(f.faces||[]).length;
   if(!total)return{shape:result,warnings:['aucune face à supprimer']};
-  const hs=(f.faces||[]).map(fr=>{try{return occFindFaceAny(result,fr);}catch(e){return null;}}).filter(Boolean);
+  const hs=occNotePerdues(f,(f.faces||[]).map(fr=>{try{return occFindFaceAny(result,fr);}catch(e){return null;}})).filter(Boolean);
   const free=()=>hs.forEach(h=>{try{h.delete();}catch(e){}});
   f._m={m:hs.length,t:total};
   if(!hs.length)return{shape:result,warnings:[`aucune des ${total} face(s) n'est retrouvée — la pièce a changé`]};

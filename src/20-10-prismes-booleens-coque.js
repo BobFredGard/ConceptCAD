@@ -888,7 +888,7 @@ function occApplyCoque(result,f){
   if(!(t>1e-9))return{shape:result,warnings:['épaisseur nulle — aucune coque']};
   if(!(f.faces||[]).length)return{shape:result,warnings:['aucune face à retirer (ouverture) — la coque resterait fermée et invisible']};
   const total=(f.faces||[]).length;
-  const entries=(f.faces||[]).map(fr=>{try{const h=occFindFace(result,fr);return h?{fr:fr,h:h}:null;}catch(e){return null;}}).filter(Boolean);
+  const entries=occNotePerdues(f,(f.faces||[]).map(fr=>{try{const h=occFindFace(result,fr);return h?{fr:fr,h:h}:null;}catch(e){return null;}})).filter(Boolean);
   const miss=total-entries.length;
   if(!entries.length){
     f._m={m:0,t:total};

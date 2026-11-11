@@ -12,7 +12,7 @@ function serialise(pretty){
 function serialiseObj(d,ui){
   // Objet d'une pièce. ui : état d'interface (repère, vue, sélection) — pièce active seulement
   // (undefined → clé absente du JSON : l'ordre et le contenu restent ceux d'avant).
-  return {app:'ConceptCAD',v:1,name:d.name,tint:d.tint||0,entNames:d.entNames||null,originVis:ui?originVis:undefined,view:ui?collectView():undefined,bodyVis:d.bodyVis||{},bodies:(d.bodies||[]).map(e=>({id:e.id,name:e.name,c:e.c,color:e.color,mat:e.mat||undefined,op:e.op,gl:e.gl,open:e.open!==false})),bodySeq:d.bodySeq||0,activeBody:d.activeBody||null,fold:{sk:!!(d.fold&&d.fold.sk),origin:!!(d.fold&&d.fold.origin)},fao:d.fao||null,mep:d.mep||null,rendu:(typeof renduNorm==='function'?renduNorm(d.rendu):null)||undefined,params:(d.params||[]).map(p=>({name:p.name,expr:p.expr,value:p.value,mes:p.mes||undefined})),derive:derClean(d.derive),configs:(typeof cfgNorm==='function'?cfgNorm(d.configs):null)||undefined,sel:ui?{kind:sel.kind,id:sel.id}:undefined,sketches:(d.sketches||[]).map(s=>{const c=Object.assign({},s);delete c._refs;return c;}),features:(d.features||[]).map(({_mesh,_m,...r})=>r),cgeo:(d.cgeo||[]).map(cgClean),std:d.std||undefined,mat:d.mat||undefined,env:serialEnv(d)}; // std : pièce normalisée (48-composants-normalises) ; env : environnement de la pièce (98-rendu-vue)
+  return {app:'ConceptCAD',v:1,name:d.name,tint:d.tint||0,entNames:d.entNames||null,originVis:ui?originVis:undefined,view:ui?collectView():undefined,bodyVis:d.bodyVis||{},bodies:(d.bodies||[]).map(e=>({id:e.id,name:e.name,c:e.c,color:e.color,mat:e.mat||undefined,op:e.op,gl:e.gl,open:e.open!==false})),bodySeq:d.bodySeq||0,activeBody:d.activeBody||null,fold:{sk:!!(d.fold&&d.fold.sk),origin:!!(d.fold&&d.fold.origin)},fao:d.fao||null,mep:d.mep||null,rendu:(typeof renduNorm==='function'?renduNorm(d.rendu):null)||undefined,params:(d.params||[]).map(p=>({name:p.name,expr:p.expr,value:p.value,mes:p.mes||undefined})),derive:derClean(d.derive),configs:(typeof cfgNorm==='function'?cfgNorm(d.configs):null)||undefined,sel:ui?{kind:sel.kind,id:sel.id}:undefined,sketches:(d.sketches||[]).map(s=>{const c=Object.assign({},s);delete c._refs;return c;}),features:(d.features||[]).map(({_mesh,_m,_perdues,...r})=>r),cgeo:(d.cgeo||[]).map(cgClean),std:d.std||undefined,mat:d.mat||undefined,env:serialEnv(d)}; // std : pièce normalisée (48-composants-normalises) ; env : environnement de la pièce (98-rendu-vue)
 }
 function serialEnv(d){ // pièce active : ce qui est à l'écran ; les autres : ce qu'elles ont gardé
   try{return d===doc?vEnvCollect():(d._env||undefined);}catch(e){return d._env||undefined;}
@@ -43,7 +43,7 @@ function docHashSrc(d){
   // Texte normalisé dont docHash prend l'empreinte — pour n'importe quel document (composants
   // d'un assemblage : cache des instantanés, 47-assemblage-cache)
   const stripSketch=sk=>{const c=Object.assign({},sk);delete c._refs;delete c._health;delete c._audit;return c;};
-  const stripFeat=({_mesh,_m,...r})=>r;
+  const stripFeat=({_mesh,_m,_perdues,...r})=>r;
   const stripCg=c=>{const o=cgClean(c);delete o.st;delete o.msg;delete o.ai;return o;};
   return JSON.stringify({s:d.sketches.map(stripSketch),f:(d.features||[]).filter(f=>f.type!=='import'||f.derive).map(stripFeat),t:d.tint||0,...((d.cgeo&&d.cgeo.length)?{c:d.cgeo.map(stripCg)}:{})},nomsSansCles); // construction : seulement si présente (empreinte des anciens documents inchangée)
 }

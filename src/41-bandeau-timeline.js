@@ -56,7 +56,7 @@ function tlbSteps(){
   // fonction m = clé 4·m : tout ce qui est au-delà est hors rejeu (off).
   const F=doc.features||[],S=[],m=tlIdx();
   const at=id=>F.findIndex(f=>f.id===id);
-  const warnF=f=>!!((f._m&&f._m.m<f._m.t)||f._err||f._thin||f._adj);
+  const warnF=f=>!!((f._m&&f._m.m<f._m.t)||f._err||f._thin||f._adj||(f._perdues&&f._perdues.length));
   F.forEach((f,i)=>{if(!f.repeatId)S.push({kind:'feature',id:f.id,o:f,key:4*i+2,sub:0,warn:warnF(f)});});
   const cgKey={};
   (doc.cgeo||[]).filter(cgValid).forEach((c,k)=>{
@@ -73,7 +73,7 @@ function tlbSteps(){
       if(sk.at!==undefined)key=Math.max(support==null?-1:support,4*cgPos(sk)+3);
       else key=support==null?4*F.length:support;                                 // fichier ancien : place inconnue
     }
-    S.push({kind:'sketch',id:sk.id,o:sk,key,sub:1e6+k,warn:false});
+    S.push({kind:'sketch',id:sk.id,o:sk,key,sub:1e6+k,warn:!!skFacePerdue(sk)}); // face perdue : double-clic = la resélectionner
   });
   S.sort((a,b)=>(a.key-b.key)||(a.sub-b.sub));
   S.forEach(s=>{s.off=m>=0&&s.key>4*m;});
@@ -212,13 +212,14 @@ function tlbClick(s,ev){
 }
 function tlbDbl(s){
   // Double-clic = édition : esquisse, congé/chanfrein exact, dépouille, coque, construction
-  if(s.kind==='sketch'){openSketch(s.id);return;}
+  if(s.kind==='sketch'){if(skFacePerdue(s.o))skRedefStart(s.id);else openSketch(s.id);return;} // face perdue : la resélectionner
   if(s.kind==='cg'){if(!cgMode)cgEdit(s.id);return;}
   const f=s.o;
   sel={kind:'feature',id:f.id};treeSel=[];
   if(f.type==='xfillet')enterExactFilletMode(f);
   else if(f.type==='xdraft')enterDraftMode(f);
   else if(f.type==='xshell'||f.type==='xdelface')enterCoqueMode(f);
+  else if(f.type==='xmove')enterMoveFaceMode(f); // faces perdues : « 🎯 Remplacer » prêt (85)
   else if(f.type==='xsplit')enterSplitMode(f);
   else{renderTree();renderProps();}
 }
@@ -337,7 +338,9 @@ function renderTimeline(){
     const vis=s.o.visible!==false;
     d.className='tlbS '+(s.kind==='feature'?'ft':(s.kind==='sketch'?'sk':'cg'))+(tlbIsSel(s)?' sel':'')+(vis?'':' hid')+(s.off?' off':'')+(s.warn?' warn':'');
     d.innerHTML='<span>'+tlbIcon(s)+'</span>'+(s.warn?'<span class="w">⚠</span>':'');
-    const why=s.warn&&s.kind==='cg'&&s.o.msg?' — ⚠ '+s.o.msg:(s.warn&&s.o&&s.o._adj&&!s.o._err?' — ⚠ '+s.o._adj:(s.warn?' — ⚠ à vérifier (résultat incomplet)':''));
+    const perdu=s.warn&&(s.kind==='sketch'||(s.o&&((s.o._perdues&&s.o._perdues.length)||(s.o._m&&s.o._m.m<s.o._m.t))));
+    const why=s.warn&&s.kind==='cg'&&s.o.msg?' — ⚠ '+s.o.msg:(s.warn&&s.o&&s.o._adj&&!s.o._err?' — ⚠ '+s.o._adj:
+      (perdu?' — ⚠ '+(s.kind==='sketch'?skFacePerdue(s.o):'face ou arête perdue')+' : double-clic pour la resélectionner':(s.warn?' — ⚠ à vérifier (résultat incomplet)':'')));
     d.title=tlbName(s)+why+(s.off?' — hors rejeu (au-delà du marqueur)':'')+(vis?'':' — masqué')+
       '\nClic = sélectionner · double-clic = '+(s.kind==='sketch'?'modifier l’esquisse':(s.kind==='cg'?'modifier':'éditer'))+(s.kind==='feature'?' · glisser = réordonner dans le corps':'');
     d.onclick=ev=>tlbClick(s,ev);

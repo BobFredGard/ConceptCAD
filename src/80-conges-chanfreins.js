@@ -100,12 +100,21 @@ function enterExactFilletMode(editF,kind){
       if(i>=0&&(!anySeed||s.seed))xSeedAdd(i);
     });
     filModeX.tangent=prevT;
+    // arêtes PERDUES (resélection, comme Fusion) : celles que le dernier rejeu n'a pas retrouvées
+    // (f._miss) et qui ne sont pas sous une arête du solide. Gardées dans la liste avec leur
+    // rayon (avant : effacées sans rien dire au premier clic) ; la première attend sa remplaçante.
+    const miss=editing._m?(editing._miss||[]):null;
+    const proche=s=>filModeX.edges.some(e=>Math.hypot(e.mid[0]-s.pos[0],e.mid[1]-s.pos[1],e.mid[2]-s.pos[2])<0.75);
+    filModeX.perdues=filModeX.sel.filter(s=>!proche(s)&&(!miss||miss.some(q=>Math.hypot(q[0]-s.pos[0],q[1]-s.pos[1],q[2]-s.pos[2])<0.02)));
+    filModeX.perdues.forEach(s=>{s._perdue=true;});
+    filModeX.remp=filModeX.perdues.length?0:null;
   }
   buildExactOverlay();renderExactPanel();paintExact();
   xPreviewUpdate(); // création comme édition : l'aperçu part dès l'entrée, sur la sélection chargée
   faceEl.textContent=editing
     ?`Édition « ${editing.name} » : ✕ ou clic sur une ligne de la liste = retirer · arête/face 3D = ajouter · ${filModeX.edges.length} arêtes · « Enregistrer » valide, Échap/Annuler restitue.`
     :`${label} : cliquez des arêtes vives (${filModeX.edges.length}, affichées noires — les grises sont des raccords lisses, non arrondissables) ou une face (toute sa boucle) · ${xIsChamfer(k)?'distance':'rayon'} par arête · aperçu avant de valider · Échap = quitter.`;
+  xRempHelp();
 }
 function exitExactFilletMode(silent){
   if(!filModeX)return;
@@ -173,8 +182,16 @@ function xSelSync(){
     const k=kept.findIndex(u=>Math.hypot(u.pos[0]-s.pos[0],u.pos[1]-s.pos[1],u.pos[2]-s.pos[2])<0.75);
     if(k>=0){kept[k].r=s.r;if(s.expr||s.pname){parFxCopy(s,kept[k],['r']);if(s._fxOf)kept[k]._fxOf=s._fxOf;}}
   });
+  (filModeX.perdues||[]).forEach(q=>{if(kept.indexOf(q)<0)kept.push(q);}); // arêtes perdues : gardées jusqu'à remplacement ou ✕
   filModeX.sel=kept;
   xPreviewUpdate();
+}
+function xRempHelp(){
+  if(!filModeX||filModeX.remp==null||!(filModeX.perdues||[])[filModeX.remp])return false;
+  const q=filModeX.perdues[filModeX.remp];
+  faceEl.innerHTML='<b>🎯 Arête perdue</b> près de ('+q.pos.map(v=>(+v).toFixed(1)).join(' ; ')+') mm, '+xDimPrefix(filModeX.kind)+' '+q.r+
+    '<br><span class="note">Cliquez l’arête qui la remplace dans la vue 3D : elle reprend sa taille. ✕ dans la liste la retire. <b>Échap</b> annule.</span>';
+  return true;
 }
 /* ----- Aperçu rouge translucide du résultat AVANT validation (congé ET chanfrein) -----
    On montre le SOLIDE COMPLET avec congé/chanfrein, comme les aperçus dépouille (bleu)
@@ -556,6 +573,18 @@ function exactToggle(e){
     // 2026-10-26 : clic SEUL = ajouter / retirer cette arête (avant : le clic remplaçait la
     // sélection et il fallait Ctrl/Cmd+clic pour en ajouter). Avec « arêtes tangentes »,
     // chaque arête choisie entraîne sa chaîne tangente.
+    if(filModeX.remp!=null&&(filModeX.perdues||[])[filModeX.remp]&&!xIsSeed(i)){
+      // resélection : l'arête cliquée remplace l'arête perdue et reprend sa taille
+      const q=filModeX.perdues.splice(filModeX.remp,1)[0];
+      filModeX.sel=filModeX.sel.filter(s=>s!==q);
+      xSeedAdd(i);xSelSync();
+      const m=filModeX.edges[i].mid,nv=filModeX.sel.find(s=>Math.hypot(s.pos[0]-m[0],s.pos[1]-m[1],s.pos[2]-m[2])<0.75);
+      if(nv){nv.r=q.r;if(q.expr||q.pname)parFxCopy(q,nv,['r']);if(q.name)nv.name=q.name;}
+      filModeX.remp=filModeX.perdues.length?0:null;
+      xPreviewUpdate();paintExact();renderExactPanel();
+      if(!xRempHelp())faceEl.textContent=xLabel(filModeX.kind)+' : arête remplacée — '+filModeX.sel.length+' arête(s) retenue(s).';
+      return;
+    }
     if(xIsSeed(i))xSeedDel(i);else xSeedAdd(i);
     xSelSync();
     paintExact();renderExactPanel();
@@ -751,7 +780,7 @@ function renderExactPanel(){
   filModeX.sel.forEach((s,i)=>{
     const r=document.createElement('div');r.className='tnode';
     const eLen=(filModeX.edges.find(e=>Math.hypot(e.mid[0]-s.pos[0],e.mid[1]-s.pos[1],e.mid[2]-s.pos[2])<0.75)||{len:0}).len;
-    r.innerHTML=`<span>${xIcon(k)}</span><span class="nm">${s.name?`<b>${s.name}</b> · `:''}${dp} <b>${s.r}</b> · L${eLen.toFixed(1)}${s.anchor?' · ⌖':''} · (${s.pos.map(v=>v.toFixed(1)).join(', ')})</span><span title="Retirer">✕</span>`;
+    r.innerHTML=`<span>${s._perdue?'⚠':xIcon(k)}</span><span class="nm">${s._perdue?'<b>perdue</b> · ':''}${s.name?`<b>${s.name}</b> · `:''}${dp} <b>${s.r}</b> · L${eLen.toFixed(1)}${s.anchor?' · ⌖':''} · (${s.pos.map(v=>v.toFixed(1)).join(', ')})</span><span title="Retirer">✕</span>`;
     const num=document.createElement('input');num.type='text';num.inputMode='decimal';num.value=s.r;
     num.onclick=ev=>ev.stopPropagation();parFx(num,s,'r');
     const ce=()=>{
@@ -762,8 +791,13 @@ function renderExactPanel(){
     num.addEventListener('blur',ce);
     num.addEventListener('keydown',e=>{if(e.key==='Enter'){ce();num.blur();} e.stopPropagation();});
     r.appendChild(num);
+    if(s._perdue){
+      const pi=(filModeX.perdues||[]).indexOf(s);
+      r.appendChild(remplacerBtn(filModeX.remp===pi,()=>{filModeX.remp=filModeX.remp===pi?null:pi;renderExactPanel();xRempHelp();}));
+    }
     r.onclick=()=>{
       // retirer une arête = retirer son germe (et ce que sa chaîne avait apporté)
+      if(s._perdue){const pi=filModeX.perdues.indexOf(s);if(pi>=0)filModeX.perdues.splice(pi,1);filModeX.remp=filModeX.perdues.length&&filModeX.remp!=null?0:null;}
       const ei=filModeX.edges.findIndex(e=>Math.hypot(e.mid[0]-s.pos[0],e.mid[1]-s.pos[1],e.mid[2]-s.pos[2])<0.75);
       if(ei>=0)xSeedDel(ei);else filModeX.sel.splice(i,1);
       xSelSync();paintExact();renderExactPanel();

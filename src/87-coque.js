@@ -287,19 +287,22 @@ function enterCoqueMode(editF){
     // Chargement VALIDÉ (coqueCleanRef) : une référence malformée est écartée et
     // comptée au lieu de faire avorter toute l'entrée en mode.
     const avant=(editing.faces||[]).length;
-    coqueMode.faces=(editing.faces||[]).map(coqueCleanRef).filter(Boolean);
+    coqueMode.faces=(editing.faces||[]).map((r,i)=>{const c=coqueCleanRef(r);if(c)c._rang=i;return c;}).filter(Boolean);
     coqueMode._ecartees=avant-coqueMode.faces.length;
     if(!del){coqueMode.thick=(+editing.thick>0)?+editing.thick:2;parFxFrom(editing,coqueMode,['thick','dist','pont','lis']);}
     occSkipFeat=editing.id;
     tlEditLock(editing); // arbre bloqué sur la coque : seules les opérations précédentes rejouées
     if(!occExactForTool(true)){occSkipFeat=null;coqueMode=null;tlEditUnlock();faceEl.textContent=(del?'Suppression de face':'Coque')+' : recalcul impossible.';return;} // rejeu sans la fonction (un STEP resté seul compris)
     coqueMode._stats=coqueMarkByPosition();
+    // faces perdues au dernier rejeu : la première attend déjà sa remplaçante (resélection)
+    coqueMode.faces.forEach(r=>{r._perdue=refPerdue(editing,r._rang,r);delete r._rang;});
+    const ip=coqueMode.faces.findIndex(r=>r._perdue);coqueMode.remp=ip>=0?ip:null;
   }
   coquePaint();coquePreviewUpdate();renderCoquePanel();
   if(del){
     faceEl.innerHTML='<b>⌫ Édition « '+editing.name+' »</b><br><span class="note">Cliquez d\'autres faces à '+
       'supprimer (re-clic = retirer), puis <b>Enregistrer</b> (<b>Entrée</b>). <b>Échap</b> annule.</span>';
-    return;
+    coqueRempHelp();return;
   }
   faceEl.innerHTML=editing
     ?'<b>⚙ Édition « '+shellName(editing)+' »</b><br><span class="note">Re-cliquez les faces à '+
@@ -307,6 +310,7 @@ function enterCoqueMode(editF){
     :'<b>⚙ Coque (évidage)</b><br><span class="note">Cliquez les <b>faces à retirer</b> '+
      '(les ouvertures — re-clic = retirer), saisissez l\'<b>épaisseur</b> de paroi puis <b>Appliquer</b> '+
      '(<b>Entrée</b>). <b>Échap</b> annule.</span>';
+  coqueRempHelp();
 }
 function exitCoqueMode(silent){
   if(!coqueMode)return;
@@ -316,6 +320,14 @@ function exitCoqueMode(silent){
   occStepForceEnd();
   if(!silent)renderProps();
 }
+function coqueRempHelp(){
+  // consigne de la resélection en cours (face perdue qui attend sa remplaçante)
+  if(!coqueMode||coqueMode.remp==null||!coqueMode.faces[coqueMode.remp])return false;
+  const r=coqueMode.faces[coqueMode.remp];
+  faceEl.innerHTML='<b>🎯 Face perdue</b> près de ('+r.pos.map(v=>(+v).toFixed(1)).join(' ; ')+') mm<br><span class="note">'+
+    'Cliquez la face qui la remplace dans la vue 3D. ✕ dans la liste la retire. <b>Échap</b> annule.</span>';
+  return true;
+}
 function coqueToggle(e){
   if(!coqueMode)return;
   const hit=coqueFaceUnder(e);
@@ -323,6 +335,16 @@ function coqueToggle(e){
   hit.ref._ord=hit.ord;
   const k=coqueKey(hit.ref);
   const i=coqueMode.faces.findIndex(r=>coqueKey(r)===k);
+  const prochaine=()=>{const ip=coqueMode.faces.findIndex(r=>r._perdue);return ip>=0?ip:null;};
+  if(coqueMode.remp!=null&&coqueMode.faces[coqueMode.remp]){
+    // resélection d'une face perdue : la face cliquée prend sa place dans la liste
+    const j=coqueMode.remp;
+    if(i>=0&&i!==j)coqueMode.faces.splice(i,1);
+    coqueMode.faces[(i>=0&&i<j)?j-1:j]=hit.ref;
+    coqueMode.remp=prochaine();
+    coquePaint();coquePreviewUpdate();renderCoquePanel();coqueRempHelp();
+    return;
+  }
   if(i>=0){coqueMode.faces.splice(i,1);}
   else if(coqueMode.kind==='souffle')coqueMode.faces=[hit.ref]; // soufflée : UNE face poussée, le clic la remplace
   else coqueMode.faces.push(hit.ref);
@@ -384,10 +406,12 @@ function renderCoquePanel(){
     coqueMode.faces.forEach((fr,i)=>{
       const r2=document.createElement('div');r2.className='item';
       const s=document.createElement('span');
-      s.textContent=(fr._ord>=0?'✅ ':'⚠ ')+'▸ centre ('+fr.pos.map(v=>(+v).toFixed(1)).join(' ; ')+') mm — '+(del?'sera supprimée':'sera retirée (ouverture)');
+      const pd=fr._perdue!=null?fr._perdue:fr._ord<0;
+      s.textContent=(pd?'⚠ perdue ':'✅ ')+'▸ centre ('+fr.pos.map(v=>(+v).toFixed(1)).join(' ; ')+') mm — '+(del?'sera supprimée':'sera retirée (ouverture)');
       r2.appendChild(s);
+      if(fr._perdue)r2.appendChild(remplacerBtn(coqueMode.remp===i,()=>{coqueMode.remp=coqueMode.remp===i?null:i;renderCoquePanel();coqueRempHelp();}));
       const x=document.createElement('button');x.textContent='✕';x.title='Retirer cette face';
-      x.onclick=()=>{coqueMode.faces.splice(i,1);coquePaint();coquePreviewUpdate();renderCoquePanel();};
+      x.onclick=()=>{coqueMode.faces.splice(i,1);if(coqueMode.remp!=null){const ip=coqueMode.faces.findIndex(r=>r._perdue);coqueMode.remp=ip>=0?ip:null;}coquePaint();coquePreviewUpdate();renderCoquePanel();coqueRempHelp();};
       r2.appendChild(x);lst.appendChild(r2);
     });
     p.appendChild(lst);
@@ -475,7 +499,7 @@ function delFaceApply(){
   // Édition EN PLACE d'une « Suppression de face » : nouvelles faces, même fonction.
   if(!(coqueMode.faces||[]).length){faceEl.textContent='Suppression de face : retenez au moins une face (ou supprimez la fonction dans l\'arbre).';return;}
   const f=doc.features.find(x=>x.id===coqueMode.editing&&x.type==='xdelface');
-  const faces=coqueMode.faces.map(r=>{const o=JSON.parse(JSON.stringify(r));delete o._ord;delete o._bid;return o;});
+  const faces=coqueMode.faces.map(r=>{const o=JSON.parse(JSON.stringify(r));delete o._ord;delete o._bid;delete o._perdue;delete o._rang;return o;});
   if(f){
     docPushUndo('édition de « '+f.name+' »');
     f.faces=faces;f.name=delFaceName(faces.length);delete f._m;delete f._err;

@@ -37,6 +37,7 @@ function wirePick(){
     if(typeof faoFacePick!=='undefined'&&faoFacePick){if(e.button===0&&!e.ctrlKey)faoFacePickCommit(e);return;} // faces usinables / intouchables
     if(faoZPlanePick){if(e.button===0&&!e.ctrlKey)faoZPlaneCommit(e);return;}
     if(typeof bmPick!=='undefined'&&bmPick){if(e.button===0&&!e.ctrlKey)bmPickAt(e);return;} // Déplacer un corps : point / axe (85)
+    if(typeof skRedef!=='undefined'&&skRedef){if(e.button===0&&!e.ctrlKey)skRedefPickAt(e);return;} // esquisse : changer de face (50-esquisse-94)
     if(mvMode){if(e.button===0&&!e.ctrlKey)mvFaceCommit(e);return;}
     if(draftMode){if(e.button===0&&!e.ctrlKey)draftToggle(e);return;}
     if(coqueMode){if(e.button===0&&!e.ctrlKey)coqueToggle(e);return;}

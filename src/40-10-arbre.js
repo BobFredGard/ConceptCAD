@@ -133,7 +133,7 @@ function featIconOf(f){
   if(f.kw)return '⊟'; // rainure de clavette
   if(f.type==='xthread')return f._err?'⚠':'🔩'; // filetage d'un axe (76-filetage)
   if(f.type==='gear')return f._err?'⚠':'⚙️'; // engrenage (76-engrenage)
-  if(f.type==='xmove')return '📐';
+  if(f.type==='xmove')return (f._perdues&&f._perdues.length)?'⚠':'📐'; // face perdue : resélection (85)
   if(f.type==='bmove')return '✥';
   if(f.type==='bremove')return '⊘';
   if(f.type==='bscale')return f._err?'⚠':'⤡';
