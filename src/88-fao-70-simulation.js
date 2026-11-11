@@ -131,7 +131,7 @@ function faoViewerBuild(setup){
     });
     // 2026-10-16-021 : axe outil de l'opération (repère propre 3+2), en repère posage — null = vertical
     const axO=(function(){ try{ const fr=faoOpFrame(setup,op); return fr?fr.rel.Z.slice():null; }catch(e){ return null; } })();
-    if(ext.length)chunks.push({op:op,ext:ext,f:f,d:d,kind:kind,cr:cr,tp:tp,ax:axO});
+    if(ext.length)chunks.push({op:op,ext:ext,f:f,d:d,kind:kind,cr:cr,tp:tp,ax:axO,tool:tool||null});
   });
   // Encadrement (V0.61.0 : plan de dégagement) : en tête, l'outil vient
   // du dégagement ; en queue, il y retourne — dans les DEUX cas un
@@ -145,6 +145,7 @@ function faoViewerBuild(setup){
     const eN=chunks[chunks.length-1].ext, lN=eN[eN.length-1];
     if(isFinite(rN)&&rN>lN.z+1e-9)eN.push({x:lN.x,y:lN.y,z:rN,r:1});
   }
+  const tl=[], po=[]; // V0.91.0 : fiche outil et opération de chaque point (porte-outil réel, collisions)
   const pts=[], dd=[], kt=[], cr=[], tps=[], times=[], lens=[]; // times[i] = temps cumulé EN ARRIVANT au point i
   let total=0, cum=0; // cum = longueur cumulée (fenêtre de trace qui suit la fraise)
   chunks.forEach(function(C){
@@ -155,6 +156,7 @@ function faoViewerBuild(setup){
       kt.push(C.kind||'flat');
       cr.push(C.cr||0);
       tps.push(C.tp||null);
+      tl.push(C.tool); po.push(C.op);
       if(prev){
         const len=faoSegLen(prev,m);
         const v=m.r?faoRapide(setup):C.f;
@@ -166,7 +168,7 @@ function faoViewerBuild(setup){
       prev=m;
     });
   });
-  return {pts:pts, dd:dd, kt:kt, cr:cr, tp:tps, times:times, lens:lens, T:total};
+  return {pts:pts, dd:dd, kt:kt, cr:cr, tp:tps, times:times, lens:lens, T:total, tl:tl, po:po};
 }
 function faoViewerSeek(vw,t){
   // Position à l'instant t (linéaire entre les points, idx incrémental + retour arrière).
@@ -211,7 +213,9 @@ function faoViewerApply(){
       else vw.tool.quaternion.set(0,0,0,1); }catch(e){}
     const d=(isFinite(p.d)&&p.d>0)?p.d:10;
     if(vw.toolBody){ vw.toolBody.scale.x=d; vw.toolBody.scale.z=d; }   // Ø réel
-    if(vw.toolHold){ vw.toolHold.scale.x=d*1.6; vw.toolHold.scale.z=d*1.6; }
+    // V0.91.0 : longueurs réelles + queue et porte-outil de la fiche (src/88-fao-71-collision.js)
+    let up=null; try{ up=faoViewerUpperSync(vw,Math.min(p.i+1,vw.pts.length-1)); }catch(e){}
+    if(vw.toolHold&&!up){ vw.toolHold.scale.x=d*1.6; vw.toolHold.scale.z=d*1.6; }
     if(vw.exact&&vw.kt){
       // Outil change en cours de parcours (changement T1→T6) : le profil réel
       // (kind + rayon d'arête / Ø) est reconstruit — seul le corps change.
@@ -219,7 +223,7 @@ function faoViewerApply(){
       const kind=vw.kt[i2]||'flat';
       const cr=(vw.cr&&isFinite(+vw.cr[i2]))?+vw.cr[i2]:0;
       const tp=(vw.tp&&vw.tp[i2])||null;
-      const sig=kind+'@'+(cr/d).toFixed(4)+'#'+faoViewerDetail+faoTipSig(tp); // #détail : rebuild au changement de finesse
+      const sig=kind+'@'+(cr/d).toFixed(4)+'#'+faoViewerDetail+faoTipSig(tp)+(up?('~'+up.bodyH):''); // #détail : rebuild au changement de finesse
       if(sig!==vw.toolSig){ vw.toolSig=sig; faoViewerToolBodySwap(vw,kind,cr,d,tp); }
     }
   }
@@ -1190,7 +1194,7 @@ function faoViewerOpen(){
       faoViewerMsg('FAO : aucune trajectoire à jouer — vérifiez le brut et activez au moins une opération.');
       return false; // aucune opération jouable (jamais silencieux)
     }
-    const vw={pts:b.pts, dd:b.dd, kt:b.kt, cr:b.cr, tp:b.tp, times:b.times, lens:b.lens, T:b.T, t:0, idx:0, drawn:0,
+    const vw={tl:b.tl, po:b.po, upSig:null, coll:null, collMarks:null, collNext:0, pts:b.pts, dd:b.dd, kt:b.kt, cr:b.cr, tp:b.tp, times:b.times, lens:b.lens, T:b.T, t:0, idx:0, drawn:0,
       playing:false, speed:1, prevVis:true, body:null, tool:null, toolBody:null,
       toolHold:null, toolSpin:null, toolSig:null, line:null, stock:null, toolH:30, _last:0, _looping:false,
       exact:faoViewerExact,
@@ -1222,6 +1226,7 @@ function faoViewerOpen(){
     try{ faoViewerMatterEnable(vw); }catch(e){}
     // 5) barre transporteur ▶ ⏸ ⏹ ✕ + matière
     try{ faoViewerBarShow(); }catch(e){}
+    try{ faoViewerCollBtnUpdate(); }catch(e){}
     try{ faoViewerApply(); }catch(e){}
     try{ faoViewerBarUpdate(); }catch(e){}
     faoViewerBtnUpdate();
@@ -1243,6 +1248,7 @@ function faoViewerClose(){
   faoVw=null;
   if(vw){
     try{ if(faoPrevGroup)faoPrevGroup.visible=(faoPrevOn!==false); }catch(e){}
+    try{ faoViewerCollClear(vw); }catch(e){}
     try{ faoViewerMatterShowBodies(vw); }catch(e){}
     try{ faoViewerMatterDispose(vw); }catch(e){}
     try{ // le corps-brut masqué redevient invisible (on ne défait que ce qu'on a fait)
@@ -1337,11 +1343,15 @@ function faoViewerBarShow(){
     const bar=document.createElement('div'); bar.id='faoViewerBar';
     bar.style.cssText='position:absolute;bottom:14px;left:50%;transform:translateX(-50%);display:flex;gap:6px;align-items:center;'
       +'background:rgba(18,20,24,.94);border:1px solid rgba(255,255,255,.16);border-radius:10px;padding:6px 10px;'
-      +'z-index:30;font-size:.78rem;color:#fff;box-shadow:0 4px 18px rgba(0,0,0,.45);';
+      +'z-index:30;font-size:.78rem;color:#fff;box-shadow:0 4px 18px rgba(0,0,0,.45);'
+      +'max-width:calc(100% - 24px);flex-wrap:wrap;justify-content:center;'; // V0.91.0 : la barre passe à la ligne au lieu de déborder
     bar.appendChild(mk('▶','Lecture — en fin de parcours : pause automatique',function(){ faoViewerPlay(); }));
     bar.appendChild(mk('⏸','Pause',function(){ faoViewerPause(); }));
     bar.appendChild(mk('⏹','Stop : revient au début du parcours',function(){ faoViewerStop(); }));
     bar.appendChild(mk('✕','Quitter le mode lecture : ré-affiche les traces, retire l\'outil, le brut et la matière (Échap aussi)',function(){ faoViewerClose(); faoViewerMsg('FAO : mode lecture usinage quitté.'); }));
+    const cb=mk('⚠ Collisions','Contrôle des collisions : rejoue tout le posage et cherche où le porte-outil (ou une queue plus grosse que l’outil) entre dans la matière. Un repère rouge marque chaque contact ; recliquer amène la simulation au contact suivant.',function(){ faoViewerCollRun(); });
+    cb.style.whiteSpace='nowrap';
+    bar.appendChild(cb); faoVwCollBtn=cb;
     const mb=mk('◼ matière','Matière usinée ON : la matière disparaît sous l\'outil (toggle)',function(){ faoViewerMatterToggle(); });
     bar.appendChild(mb); faoVwMatterBtn=mb;
     const eb=mk('◈ réel','',function(){ faoViewerExactToggle(); });

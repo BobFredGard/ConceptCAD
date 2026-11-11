@@ -379,7 +379,7 @@ input[type=range]{accent-color:var(--primary);width:100%}
  * peut changer sans rien casser. CACHE_VER (parcours FAO) reste indépendant.
  */
 
-const APP_VER='V0.89.7';
+const APP_VER='V0.92.0';
 try{console.log('[ConceptCAD] version '+APP_VER);}catch(e){}
 try{var mfSv=document.getElementById('mfSplashVer');if(mfSv)mfSv.textContent=APP_VER;}catch(e){} // écran de démarrage
 
@@ -44203,6 +44203,33 @@ const faoRapideMin=30;
       +'.fao-tl-f.wide input,.fao-tl-f.wide select{flex:1 1 140px}'
       +'.fao-tl-f em{font-style:normal;font-size:.64rem;color:rgba(255,255,255,.5);flex:none}'
       +'.fao-tl-f.def input{color:rgba(255,255,255,.5)}'
+      /* --- porte-outils + import d'outils (V0.90.0) --- */
+      +'.fao-ho-list{display:flex;flex-direction:column;gap:4px;margin:6px 0}'
+      +'.fao-ho-row{display:flex;align-items:center;gap:6px;padding:4px 6px;border-radius:8px;border:1px solid rgba(255,255,255,.08);background:rgba(255,255,255,.03)}'
+      +'.fao-ho-row b{width:14px;text-align:center;font-size:.7rem;color:rgba(255,255,255,.5)}'
+      +'.fao-ho-row{flex-wrap:wrap}'
+      +'.fao-ho-row>select.fao-sel{flex:1 1 120px;min-width:0}'
+      +'.fao-ho-f{order:9;flex:1 1 100%;display:flex;gap:4px 14px;flex-wrap:wrap;min-width:0;padding-left:20px}'
+      +'.fao-ho-f .fao-tl-f span{flex:none}'
+      +'.fao-ho-f .fao-tl-f input{width:62px;flex:none}'
+      +'.fao-tl-btns>select.fao-sel{flex:1 1 150px;min-width:0}'
+      +'.fao-imp-t{font-weight:700;font-size:1rem;margin-bottom:4px}'
+      +'.fao-imp-s{font-size:.8rem;opacity:.75;line-height:1.4}'
+      +'.fao-imp-list{display:flex;flex-direction:column;gap:4px;margin:12px 0 16px;max-height:50vh;overflow-y:auto}'
+      +'.fao-imp-it{display:flex;align-items:center;gap:10px;padding:7px 10px;border-radius:8px;border:1px solid var(--border);cursor:pointer}'
+      +'.fao-imp-it:hover{border-color:#0a84ff}'
+      +'.fao-imp-x{flex:1;min-width:0}'
+      +'.fao-imp-n{font-weight:700;font-size:.85rem}'
+      +'.fao-imp-d{font-size:.74rem;opacity:.7;margin-top:1px}'
+      +'.fao-imp-has{font-size:.68rem;padding:2px 7px;border-radius:999px;border:1px solid var(--border);opacity:.75;white-space:nowrap}'
+      +'.fao-imp-sp{flex:1}'
+      /* --- catalogue d'outils (V0.92.0) --- */
+      +'.mffDlg.fao-cat{max-width:min(860px,94vw);width:min(860px,94vw)}'
+      +'.fao-cat-top{display:flex;gap:10px 16px;flex-wrap:wrap;margin:8px 0}'
+      +'.fao-cat-f{display:flex;flex-direction:column;gap:3px;font-size:.72rem;opacity:.9;flex:1 1 200px;min-width:0}'
+      +'.fao-cat-f select.fao-sel{width:100%;max-width:none}'
+      +'.fao-cat-c{font-size:.74rem;white-space:nowrap;font-variant-numeric:tabular-nums;opacity:.9}'
+      +'.fao-cat .mffBtns{flex-wrap:wrap}'
       /* --- arbre FAO --- */
       +'.fao-setup{font-weight:700;font-size:.76rem;margin:7px 0 3px;cursor:pointer;'
       +'padding:4px 7px;border-radius:7px;display:flex;gap:6px;align-items:center}'
@@ -49393,7 +49420,7 @@ function faoViewerBuild(setup){
     });
     // 2026-10-16-021 : axe outil de l'opération (repère propre 3+2), en repère posage — null = vertical
     const axO=(function(){ try{ const fr=faoOpFrame(setup,op); return fr?fr.rel.Z.slice():null; }catch(e){ return null; } })();
-    if(ext.length)chunks.push({op:op,ext:ext,f:f,d:d,kind:kind,cr:cr,tp:tp,ax:axO});
+    if(ext.length)chunks.push({op:op,ext:ext,f:f,d:d,kind:kind,cr:cr,tp:tp,ax:axO,tool:tool||null});
   });
   // Encadrement (V0.61.0 : plan de dégagement) : en tête, l'outil vient
   // du dégagement ; en queue, il y retourne — dans les DEUX cas un
@@ -49407,6 +49434,7 @@ function faoViewerBuild(setup){
     const eN=chunks[chunks.length-1].ext, lN=eN[eN.length-1];
     if(isFinite(rN)&&rN>lN.z+1e-9)eN.push({x:lN.x,y:lN.y,z:rN,r:1});
   }
+  const tl=[], po=[]; // V0.91.0 : fiche outil et opération de chaque point (porte-outil réel, collisions)
   const pts=[], dd=[], kt=[], cr=[], tps=[], times=[], lens=[]; // times[i] = temps cumulé EN ARRIVANT au point i
   let total=0, cum=0; // cum = longueur cumulée (fenêtre de trace qui suit la fraise)
   chunks.forEach(function(C){
@@ -49417,6 +49445,7 @@ function faoViewerBuild(setup){
       kt.push(C.kind||'flat');
       cr.push(C.cr||0);
       tps.push(C.tp||null);
+      tl.push(C.tool); po.push(C.op);
       if(prev){
         const len=faoSegLen(prev,m);
         const v=m.r?faoRapide(setup):C.f;
@@ -49428,7 +49457,7 @@ function faoViewerBuild(setup){
       prev=m;
     });
   });
-  return {pts:pts, dd:dd, kt:kt, cr:cr, tp:tps, times:times, lens:lens, T:total};
+  return {pts:pts, dd:dd, kt:kt, cr:cr, tp:tps, times:times, lens:lens, T:total, tl:tl, po:po};
 }
 function faoViewerSeek(vw,t){
   // Position à l'instant t (linéaire entre les points, idx incrémental + retour arrière).
@@ -49473,7 +49502,9 @@ function faoViewerApply(){
       else vw.tool.quaternion.set(0,0,0,1); }catch(e){}
     const d=(isFinite(p.d)&&p.d>0)?p.d:10;
     if(vw.toolBody){ vw.toolBody.scale.x=d; vw.toolBody.scale.z=d; }   // Ø réel
-    if(vw.toolHold){ vw.toolHold.scale.x=d*1.6; vw.toolHold.scale.z=d*1.6; }
+    // V0.91.0 : longueurs réelles + queue et porte-outil de la fiche (src/88-fao-71-collision.js)
+    let up=null; try{ up=faoViewerUpperSync(vw,Math.min(p.i+1,vw.pts.length-1)); }catch(e){}
+    if(vw.toolHold&&!up){ vw.toolHold.scale.x=d*1.6; vw.toolHold.scale.z=d*1.6; }
     if(vw.exact&&vw.kt){
       // Outil change en cours de parcours (changement T1→T6) : le profil réel
       // (kind + rayon d'arête / Ø) est reconstruit — seul le corps change.
@@ -49481,7 +49512,7 @@ function faoViewerApply(){
       const kind=vw.kt[i2]||'flat';
       const cr=(vw.cr&&isFinite(+vw.cr[i2]))?+vw.cr[i2]:0;
       const tp=(vw.tp&&vw.tp[i2])||null;
-      const sig=kind+'@'+(cr/d).toFixed(4)+'#'+faoViewerDetail+faoTipSig(tp); // #détail : rebuild au changement de finesse
+      const sig=kind+'@'+(cr/d).toFixed(4)+'#'+faoViewerDetail+faoTipSig(tp)+(up?('~'+up.bodyH):''); // #détail : rebuild au changement de finesse
       if(sig!==vw.toolSig){ vw.toolSig=sig; faoViewerToolBodySwap(vw,kind,cr,d,tp); }
     }
   }
@@ -50452,7 +50483,7 @@ function faoViewerOpen(){
       faoViewerMsg('FAO : aucune trajectoire à jouer — vérifiez le brut et activez au moins une opération.');
       return false; // aucune opération jouable (jamais silencieux)
     }
-    const vw={pts:b.pts, dd:b.dd, kt:b.kt, cr:b.cr, tp:b.tp, times:b.times, lens:b.lens, T:b.T, t:0, idx:0, drawn:0,
+    const vw={tl:b.tl, po:b.po, upSig:null, coll:null, collMarks:null, collNext:0, pts:b.pts, dd:b.dd, kt:b.kt, cr:b.cr, tp:b.tp, times:b.times, lens:b.lens, T:b.T, t:0, idx:0, drawn:0,
       playing:false, speed:1, prevVis:true, body:null, tool:null, toolBody:null,
       toolHold:null, toolSpin:null, toolSig:null, line:null, stock:null, toolH:30, _last:0, _looping:false,
       exact:faoViewerExact,
@@ -50484,6 +50515,7 @@ function faoViewerOpen(){
     try{ faoViewerMatterEnable(vw); }catch(e){}
     // 5) barre transporteur ▶ ⏸ ⏹ ✕ + matière
     try{ faoViewerBarShow(); }catch(e){}
+    try{ faoViewerCollBtnUpdate(); }catch(e){}
     try{ faoViewerApply(); }catch(e){}
     try{ faoViewerBarUpdate(); }catch(e){}
     faoViewerBtnUpdate();
@@ -50505,6 +50537,7 @@ function faoViewerClose(){
   faoVw=null;
   if(vw){
     try{ if(faoPrevGroup)faoPrevGroup.visible=(faoPrevOn!==false); }catch(e){}
+    try{ faoViewerCollClear(vw); }catch(e){}
     try{ faoViewerMatterShowBodies(vw); }catch(e){}
     try{ faoViewerMatterDispose(vw); }catch(e){}
     try{ // le corps-brut masqué redevient invisible (on ne défait que ce qu'on a fait)
@@ -50599,11 +50632,15 @@ function faoViewerBarShow(){
     const bar=document.createElement('div'); bar.id='faoViewerBar';
     bar.style.cssText='position:absolute;bottom:14px;left:50%;transform:translateX(-50%);display:flex;gap:6px;align-items:center;'
       +'background:rgba(18,20,24,.94);border:1px solid rgba(255,255,255,.16);border-radius:10px;padding:6px 10px;'
-      +'z-index:30;font-size:.78rem;color:#fff;box-shadow:0 4px 18px rgba(0,0,0,.45);';
+      +'z-index:30;font-size:.78rem;color:#fff;box-shadow:0 4px 18px rgba(0,0,0,.45);'
+      +'max-width:calc(100% - 24px);flex-wrap:wrap;justify-content:center;'; // V0.91.0 : la barre passe à la ligne au lieu de déborder
     bar.appendChild(mk('▶','Lecture — en fin de parcours : pause automatique',function(){ faoViewerPlay(); }));
     bar.appendChild(mk('⏸','Pause',function(){ faoViewerPause(); }));
     bar.appendChild(mk('⏹','Stop : revient au début du parcours',function(){ faoViewerStop(); }));
     bar.appendChild(mk('✕','Quitter le mode lecture : ré-affiche les traces, retire l\'outil, le brut et la matière (Échap aussi)',function(){ faoViewerClose(); faoViewerMsg('FAO : mode lecture usinage quitté.'); }));
+    const cb=mk('⚠ Collisions','Contrôle des collisions : rejoue tout le posage et cherche où le porte-outil (ou une queue plus grosse que l’outil) entre dans la matière. Un repère rouge marque chaque contact ; recliquer amène la simulation au contact suivant.',function(){ faoViewerCollRun(); });
+    cb.style.whiteSpace='nowrap';
+    bar.appendChild(cb); faoVwCollBtn=cb;
     const mb=mk('◼ matière','Matière usinée ON : la matière disparaît sous l\'outil (toggle)',function(){ faoViewerMatterToggle(); });
     bar.appendChild(mb); faoVwMatterBtn=mb;
     const eb=mk('◈ réel','',function(){ faoViewerExactToggle(); });
@@ -50688,6 +50725,250 @@ function faoViewerBarUpdate(){
       const pct=faoVw.T>0?Math.round(100*faoVw.t/faoVw.T):100;
       faoVwBarT.textContent=faoViewerFmt(faoVw.t)+' / '+faoViewerFmt(faoVw.T)+' · '+pct+'%';
     }
+  }catch(e){}
+}
+
+/* ═══════════════ 88-fao-71-collision.js — fao 71 collision ═══════════════ */
+/* ============ FAO : collision du porte-outil dans la simulation (V0.91.0) ============
+   Demande : « ajouter une fonction collision avec le porte-outil dans la simulation ».
+
+   PRINCIPE — le parcours du posage est rejoué sur une carte de hauteurs de la matière
+   (la même taille que la simulation : faoMatterCarveSeg, même arrondi, même pointe).
+   À chaque pas (≈ 1 mm de trajet) tout ce qui, au-dessus de la partie coupante, est plus
+   GROS que l'outil est comparé à la matière qui reste à cet instant :
+     · la queue quand elle est plus grosse que l'outil (avec son cône de raccord) ;
+     · le porte-outil de la fiche (chanfrein / cônes / cylindres), sinon le porte-outil
+       générique (cylindre au Ø mandrin) ; au-dessus de son sommet, la broche est comptée
+       au moins aussi large.
+   La partie coupante elle-même n'est pas contrôlée ici (ce n'est pas la demande).
+   Rapides compris : un porte-outil qui traverse la matière en rapide est une collision.
+   OPÉRATIONS INCLINÉES (3+2) — elles ne taillent pas cette carte (elle ne décrit que le
+   dessus, vu selon le Z du posage) : leur contrôle se fait par points sur le contour du
+   porte-outil et reste indicatif (« à confirmer »).
+   Lecture seule : aucun parcours, aucune clé de cache, aucun G-code n'est touché. */
+const FAO_COLL_TOL=0.05; // mm — interférence en dessous de laquelle on ne signale rien
+function faoToolUpper(t,holder){
+  // Silhouette [rayon, z depuis la pointe] de tout ce qui surmonte la partie coupante :
+  // col dégagé, cône de raccord, queue, puis porte-outil (réel ou générique).
+  const g=faoToolDims(t);
+  const lc=Math.min(g.lc.v,g.lsm.v), lDeg=Math.min(Math.max(g.lDeg.v,lc),g.lsm.v), lsm=g.lsm.v;
+  const pts=[];
+  const push=function(r,z){ const l=pts[pts.length-1]; if(!l||Math.abs(l[0]-r)>1e-9||Math.abs(l[1]-z)>1e-9)pts.push([r,z]); };
+  push(g.dDeg.v/2,lc); push(g.dDeg.v/2,lDeg);
+  push(g.dq.v/2,Math.min(lsm,lDeg+g.lCq)); push(g.dq.v/2,lsm);
+  const hp=holder?faoHolderProfile(holder):null;
+  let top=lsm;
+  if(hp){ hp.pts.forEach(function(p){ push(p[0],lsm+p[1]); }); top=lsm+hp.h; }
+  else{ const r=g.dPo.v/2, h=Math.max(g.dPo.v*0.9,18); push(r,lsm); push(r,lsm+h); top=lsm+h; }
+  return {pts:pts,bodyH:lc,zHold:lsm,top:top,rCut:g.D/2,
+    rMax:pts.reduce(function(m,p){return Math.max(m,p[0]);},0),
+    sig:JSON.stringify(pts)};
+}
+function faoUpperZAt(up,rho){
+  // Cote (depuis la pointe) la plus basse où la silhouette atteint le rayon rho ; Infinity si jamais.
+  const P=up.pts;
+  for(let i=0;i<P.length;i++){
+    if(P[i][0]>=rho)return P[i][1];
+    if(i+1<P.length&&P[i+1][0]>=rho){ const a=P[i],b=P[i+1]; return a[1]+(rho-a[0])/(b[0]-a[0])*(b[1]-a[1]); }
+  }
+  return Infinity;
+}
+function faoCollGrid(s,setup){
+  // Carte de hauteurs du brut pour le contrôle (une seule couche, ~60 000 colonnes) —
+  // compatible faoMatterCarveSeg. Brut cylindrique et brut = corps : même départ que la simulation.
+  if(!faoStockValid(s))return null;
+  const X=s.x1-s.x0,Y=s.y1-s.y0,H=s.z1-s.z0;
+  const p=Math.max(0.5,Math.sqrt(X*Y/60000));
+  const nx=Math.max(1,Math.ceil(X/p)),ny=Math.max(1,Math.ceil(Y/p)),nc=nx*ny;
+  const h=new Float32Array(nc);for(let i=0;i<nc;i++)h[i]=+s.z1;
+  const each=function(fn){ for(let iy=0;iy<ny;iy++)for(let ix=0;ix<nx;ix++){
+    const top=fn(+s.x0+(ix+0.5)*p,+s.y0+(iy+0.5)*p); if(top<+s.z1)h[iy*nx+ix]=top; } };
+  try{
+    const C=s.cyl;
+    if(C&&C.r>0&&Array.isArray(C.c))each(function(x,y){
+      if(C.axis==='z')return Math.hypot(x-C.c[0],y-C.c[1])>C.r?+s.z0:+s.z1;
+      const d=C.axis==='x'?(y-C.c[1]):(x-C.c[0]);
+      return Math.abs(d)>C.r?+s.z0:C.c[2]+Math.sqrt(C.r*C.r-d*d); });
+  }catch(e){}
+  try{
+    const T=(s.solid!=null&&typeof faoStockTop==='function')?faoStockTop(setup,Math.max(0.5,p*0.5)):null;
+    if(T)each(function(x,y){ const top=T.at(x,y); return top>-1/0?Math.min(top,+s.z1):+s.z0; });
+  }catch(e){}
+  return {pas:p,pz:H,nx:nx,ny:ny,nz:1,n:nc,ox:+s.x0,oy:+s.y0,oz:+s.z0,alive:new Uint8Array(nc),h:h,nrm:null,wn:null,
+          sx1:+s.x1,sy1:+s.y1,sz1:+s.z1,full:+s.z1};
+}
+function faoCollAt(g,up,x,y,z){
+  // Outil VERTICAL, pointe en (x,y,z) : interférence maximale (mm) entre la silhouette et la matière.
+  // Renvoie null (rien) ou {d, part:'holder'|'shank'}.
+  if(z+up.pts[0][1]>=g.full)return null; // tout est au-dessus du brut
+  const R=up.rMax,p=g.pas;
+  const i0=Math.max(0,Math.floor((x-R-g.ox)/p)),i1=Math.min(g.nx-1,Math.floor((x+R-g.ox)/p));
+  const j0=Math.max(0,Math.floor((y-R-g.oy)/p)),j1=Math.min(g.ny-1,Math.floor((y+R-g.oy)/p));
+  const rIn=up.rCut+1e-6; // sous la fraise : c'est la coupe, pas une collision
+  let best=null;
+  for(let j=j0;j<=j1;j++){
+    const dy=g.oy+(j+0.5)*p-y;
+    for(let i=i0;i<=i1;i++){
+      const dx=g.ox+(i+0.5)*p-x, rho=Math.sqrt(dx*dx+dy*dy);
+      if(rho>R||rho<=rIn)continue;
+      const top=g.h[j*g.nx+i];
+      if(top<=g.oz)continue; // colonne vide
+      const zr=faoUpperZAt(up,rho); // cote de la silhouette au droit du centre de la maille
+      const d=top-(z+zr);
+      if(d>FAO_COLL_TOL&&(!best||d>best.d))best={d:d,part:zr>=up.zHold-1e-6?'holder':'shank'};
+    }
+  }
+  return best;
+}
+function faoCollAtAx(g,up,P,A){
+  // Outil INCLINÉ (axe A, repère posage) : points sur le contour de la silhouette, tous les ~2 mm
+  // de hauteur et 30° ; en collision si un point est sous la carte de hauteurs. Indicatif.
+  const F=faoMapFrame(A);
+  let best=null;
+  const P0=up.pts;
+  for(let k=0;k+1<P0.length;k++){
+    const a=P0[k],b=P0[k+1],n=Math.max(1,Math.ceil(Math.hypot(b[0]-a[0],b[1]-a[1])/2));
+    for(let s=0;s<=n;s++){
+      const r=a[0]+(b[0]-a[0])*s/n, zr=a[1]+(b[1]-a[1])*s/n;
+      if(r<=up.rCut+g.pas*0.75)continue;
+      for(let q=0;q<12;q++){
+        const c=Math.cos(q*Math.PI/6),sn=Math.sin(q*Math.PI/6);
+        const x=P.x+F.A[0]*zr+r*(F.U[0]*c+F.V[0]*sn),y=P.y+F.A[1]*zr+r*(F.U[1]*c+F.V[1]*sn),z=P.z+F.A[2]*zr+r*(F.U[2]*c+F.V[2]*sn);
+        const i=Math.floor((x-g.ox)/g.pas),j=Math.floor((y-g.oy)/g.pas);
+        if(i<0||j<0||i>=g.nx||j>=g.ny||z<g.oz)continue;
+        const d=g.h[j*g.nx+i]-z;
+        if(d>Math.max(FAO_COLL_TOL,g.pas)&&(!best||d>best.d))best={d:d,part:zr>=up.zHold-1e-6?'holder':'shank'};
+      }
+    }
+  }
+  return best;
+}
+function faoCollisionCheck(setup,seq){
+  // Rejoue tout le posage ; renvoie {hits:[…par opération…], n, ms, approx}.
+  // hits[k] = {op, idx (rang dans le posage), part, d (interférence maxi, mm), n (pas en collision),
+  //            x,y,z,t (premier contact : pointe outil et instant de la simulation), rapid, approx}
+  const t0=Date.now();
+  const b=seq||faoViewerBuild(setup);
+  const res={hits:[],n:0,ms:0,approx:false,pts:b.pts.length};
+  const g=faoCollGrid(faoStock(),setup);
+  if(!g||b.pts.length<2)return res;
+  const ups=new Map();
+  const upOf=function(T){ if(!T)return null; let u=ups.get(T); if(!u){ u=faoToolUpper(T,faoHolderById(setup,T.holderId)); ups.set(T,u); } return u; };
+  const ops=(setup.ops||[]);
+  const byOp=new Map();
+  const note=function(i,f,P,hit,approx){
+    const op=b.po[i+1];
+    let h=byOp.get(op);
+    if(!h){ h={op:op,idx:ops.indexOf(op),part:hit.part,d:0,n:0,x:P.x,y:P.y,z:P.z,
+      t:b.times[i]+(b.times[i+1]-b.times[i])*f,rapid:!!b.pts[i+1].r,approx:!!approx,tool:b.tl[i+1]}; byOp.set(op,h); res.hits.push(h); }
+    h.n++; res.n++;
+    if(hit.d>h.d){ h.d=hit.d; h.part=hit.part; }
+    if(approx)res.approx=true;
+  };
+  const step=Math.max(1,g.pas);
+  for(let i=0;i+1<b.pts.length;i++){
+    const a=b.pts[i],c=b.pts[i+1];
+    const up=upOf(b.tl[i+1]);
+    const ax=c.ax||null;
+    const L=Math.hypot(c.x-a.x,c.y-a.y,c.z-a.z);
+    const n=Math.max(1,Math.ceil(L/step));
+    const r=((isFinite(b.dd[i+1])&&b.dd[i+1]>0)?b.dd[i+1]:10)/2;
+    // tout le segment au-dessus du brut : rien à contrôler (la taille se fait d'un seul coup)
+    const far=!up||(!ax&&Math.min(a.z,c.z)+up.pts[0][1]>=g.full);
+    if(far||ax){
+      if(!c.r&&!ax)faoMatterCarveSeg(g,a.x,a.y,a.z,c.x,c.y,c.z,r,null,b.cr[i+1]||0,b.tp[i+1]);
+      if(!ax||!up)continue;
+    }
+    for(let s=0;s<n;s++){
+      const f0=s/n,f1=(s+1)/n;
+      const P={x:a.x+(c.x-a.x)*f0,y:a.y+(c.y-a.y)*f0,z:a.z+(c.z-a.z)*f0};
+      const Q={x:a.x+(c.x-a.x)*f1,y:a.y+(c.y-a.y)*f1,z:a.z+(c.z-a.z)*f1};
+      if(ax){ const hx=faoCollAtAx(g,up,Q,ax); if(hx)note(i,f1,Q,hx,true); continue; }
+      // le porte-outil arrive AVANT la fraise sur la matière qui est devant : contrôle, puis taille
+      const h0=(s===0)?faoCollAt(g,up,P.x,P.y,P.z):null; if(h0)note(i,f0,P,h0,false);
+      if(!c.r)faoMatterCarveSeg(g,P.x,P.y,P.z,Q.x,Q.y,Q.z,r,null,b.cr[i+1]||0,b.tp[i+1]);
+      const h1=faoCollAt(g,up,Q.x,Q.y,Q.z); if(h1)note(i,f1,Q,h1,false);
+    }
+  }
+  res.ms=Date.now()-t0;
+  return res;
+}
+function faoCollText(res,setup){
+  // Résumé en une phrase pour la barre d'état.
+  if(!res.hits.length)return 'Collisions : aucune — le porte-outil et la queue ne touchent jamais la matière.';
+  const fr=function(v){ return String(Math.round(v*10)/10).replace('.',','); };
+  const L=res.hits.map(function(h){
+    return 'n° '+(h.idx+1)+' « '+faoOpShortLabel(h.op)+' » T'+((h.tool&&h.tool.num)||'?')+' : '
+      +(h.part==='holder'?'porte-outil':'queue')+' dans la matière de '+fr(h.d)+' mm'+(h.rapid?' (en rapide)':'')+(h.approx?' (inclinée, à confirmer)':''); });
+  return '⚠ Collision sur '+res.hits.length+' opération(s) — '+L.join(' ; ');
+}
+/* ----- simulation : outil aux vraies longueurs, porte-outil réel, bouton « Collisions » ----- */
+let faoVwCollBtn=null;
+function faoViewerUpperSync(vw,i2){
+  // L'outil affiché prend la longueur de coupe réelle et, au-dessus, la silhouette de la fiche
+  // (queue + porte-outil) à la place du cylindre gris de taille fixe. Renvoie la silhouette.
+  const T=vw.tl&&vw.tl[i2]; if(!T)return null;
+  let up=null;try{ up=faoToolUpper(T,faoHolderById(faoSetup(),T.holderId)); }catch(e){ return null; }
+  vw.toolH=up.bodyH;
+  if(up.sig===vw.upSig)return up;
+  vw.upSig=up.sig;
+  try{
+    const pts=[new THREE.Vector2(0,up.pts[0][1])].concat(up.pts.map(function(p){return new THREE.Vector2(p[0],p[1]);}),[new THREE.Vector2(0,up.top)]);
+    const m=new THREE.Mesh(new THREE.LatheGeometry(pts,32),new THREE.MeshPhongMaterial({color:0x676c75,flatShading:true}));
+    m.raycast=function(){}; m.rotation.x=Math.PI/2;
+    m.userData.reel=true;
+    if(vw.toolHold){ try{ vw.tool.remove(vw.toolHold); }catch(e){} faoViewerToolDispose(vw.toolHold); }
+    vw.tool.add(m); vw.toolHold=m; m.visible=!faoVwHideHold;
+  }catch(e){}
+  return up;
+}
+function faoViewerCollClear(vw){
+  try{ if(vw&&vw.collMarks){ faoDel3D(vw.collMarks); faoViewerToolDispose(vw.collMarks); } }catch(e){}
+  if(vw){ vw.collMarks=null; vw.coll=null; vw.collNext=0; }
+}
+function faoViewerCollGo(vw,k){
+  // Amène la simulation à l'instant du contact n° k (pause) — la matière est rejouée jusque-là.
+  const h=vw.coll.hits[k]; if(!h)return;
+  faoViewerPause();
+  if(h.t<vw.t)faoViewerStop();
+  vw.t=Math.min(vw.T,h.t);
+  faoViewerApply(); faoViewerBarUpdate();
+}
+function faoViewerCollRun(){
+  // Bouton « Collisions » : 1er clic = contrôle complet + repères rouges ; clics suivants = contact suivant.
+  const vw=faoVw; if(!vw)return null;
+  try{
+    if(!vw.coll){
+      faoViewerMsg('Collisions : contrôle du porte-outil en cours…');
+      const setup=faoSetup();
+      vw.coll=faoCollisionCheck(setup);
+      vw.collNext=0;
+      try{
+        const G=new THREE.Group(); G.name='faoCollMarks';
+        vw.coll.hits.forEach(function(h){
+          const m=new THREE.Mesh(new THREE.SphereGeometry(Math.max(1.5,((h.tool&&+h.tool.d)||6)*0.3),16,12),
+            new THREE.MeshBasicMaterial({color:0xff3b30,transparent:true,opacity:.85,depthTest:false}));
+          m.raycast=function(){}; m.renderOrder=999; m.position.set(h.x,h.y,h.z); G.add(m); });
+        vw.collMarks=G; faoAdd3D(G);
+      }catch(e){}
+      faoViewerMsg(faoCollText(vw.coll,setup)+(vw.coll.hits.length?' — recliquez pour aller au contact.':''));
+    }else if(vw.coll.hits.length){
+      const k=vw.collNext%vw.coll.hits.length; vw.collNext=k+1;
+      faoViewerCollGo(vw,k);
+      const h=vw.coll.hits[k];
+      faoViewerMsg('Collision '+(k+1)+'/'+vw.coll.hits.length+' — opération n° '+(h.idx+1)+' « '+faoOpShortLabel(h.op)+' » : '
+        +(h.part==='holder'?'le porte-outil':'la queue')+' entre dans la matière ('+String(Math.round(h.d*10)/10).replace('.',',')+' mm au pire).');
+    }else faoViewerMsg(faoCollText(vw.coll,faoSetup()));
+    faoViewerCollBtnUpdate();
+    return vw.coll;
+  }catch(e){ faoViewerMsg('Collisions : contrôle impossible ('+((e&&e.message)||e)+')'); return null; }
+}
+function faoViewerCollBtnUpdate(){
+  try{
+    const b=faoVwCollBtn; if(!b)return;
+    const c=faoVw&&faoVw.coll;
+    b.textContent=!c?'⚠ Collisions':(c.hits.length?('⚠ '+c.hits.length+' collision'+(c.hits.length>1?'s':'')):'✓ 0 collision');
+    b.style.color=!c?'':(c.hits.length?'#ff453a':'#30d158');
   }catch(e){}
 }
 
@@ -64822,6 +65103,483 @@ function faoWalls3D(force){
   }catch(e){}
 }
 
+/* ═══════════════ 89-fao-outils-catalogue.js — fao outils catalogue ═══════════════ */
+/* ============ FAO : catalogues d'outils des fabricants (V0.92.0) ============
+   Demande : « une page spéciale avec les fraises, forets et tarauds des catalogues
+   (Vargus, Jongen, Dixi…) et leurs caractéristiques de coupe en fonction des matériaux,
+   en vue d'insérer un nouvel outil de catalogue ».
+
+   DONNÉES — elles ne sont PAS dans l'application (ConceptCAD est publié : les tableaux des
+   fabricants restent chez l'utilisateur). Un catalogue est un fichier « .cccatalogue » :
+     {format:'conceptcad-catalogue', v:1, fabricant, source,
+      series:[{ref, nom, kind, flutes, mat, cornerR, ang,
+        outils:[{ref, d, lc, lDeg, dq, lt, lCq, cornerR, flutes, size, p}],
+        coupe:[{matiere, vc, fz, fr}]}]}
+   vc (m/min), fz (mm/dent) et fr (mm/tour, forets) valent :
+     · un NOMBRE, ou une fourchette {min, max} ;
+     · un tableau [[Ø, valeur], …] interpolé au Ø de l'outil (borné aux extrémités) ;
+     · des plages de diamètres {plages:[[Ømin, Ømax, bas, haut], …]}, comme dans les catalogues
+       (« Ø6 à 10 : 0,05 à 0,10 ») : hors de toute plage, PAS de valeur (rien n'est inventé).
+   Une fourchette se lit en bas, au milieu ou en haut (choix de la page, milieu par défaut).
+   Les catalogues chargés sont gardés dans ce navigateur (localStorage), pas dans la pièce.
+   INSERTION — la fiche créée prend la géométrie de la référence et les conditions de coupe
+   de la matière choisie ; c'est ensuite un outil ordinaire de la bibliothèque. */
+const FAO_CAT_FMT='conceptcad-catalogue';
+const FAO_CAT_KEY='minifusion_faoCatalogues';
+let faoCatSel={c:0,s:0,m:0,p:0.5};
+let faoCatMem=null; // liste de la séance (lue une fois dans localStorage, réécrite à chaque changement)
+function faoCatNum(v){ v=+v; return (isFinite(v)&&v>0)?v:0; }
+function faoCatTable(v){
+  // nombre > 0, fourchette {min,max}, plages {plages:[[Ø0,Ø1,bas,haut]]}, ou tableau [[Ø, valeur], …] trié ; sinon null
+  if(v&&typeof v==='object'&&!Array.isArray(v)){
+    if(Array.isArray(v.plages)){
+      const p=v.plages.filter(function(q){return Array.isArray(q)&&faoCatNum(q[0])&&faoCatNum(q[1])>=faoCatNum(q[0])&&faoCatNum(q[2]);})
+        .map(function(q){return [+q[0],+q[1],+q[2],Math.max(+q[2],faoCatNum(q[3])||+q[2])];}).sort(function(a,b){return a[0]-b[0];});
+      return p.length?{plages:p}:null;
+    }
+    if(faoCatNum(v.min))return {min:+v.min,max:Math.max(+v.min,faoCatNum(v.max)||+v.min)};
+    return null;
+  }
+  if(Array.isArray(v)){
+    const t=v.filter(function(p){return Array.isArray(p)&&faoCatNum(p[0])&&faoCatNum(p[1]);})
+      .map(function(p){return [+p[0],+p[1]];}).sort(function(a,b){return a[0]-b[0];});
+    return t.length?t:null;
+  }
+  return faoCatNum(v)||null;
+}
+function faoCatRange(v,d){
+  // [bas, haut] au Ø d, ou null (pas de valeur dans le catalogue pour ce Ø)
+  if(v&&typeof v==='object'&&!Array.isArray(v)){
+    if(v.plages){
+      const P=v.plages;
+      for(let i=0;i<P.length;i++)if(d>=P[i][0]-1e-9&&d<=P[i][1]+1e-9)return [P[i][2],P[i][3]];
+      // entre deux plages (le catalogue saute de « 6-10 » à « 12-20 ») : la plage la plus proche
+      for(let i=0;i+1<P.length;i++)if(d>P[i][1]&&d<P[i+1][0]){ const q=(d-P[i][1]<=P[i+1][0]-d)?P[i]:P[i+1]; return [q[2],q[3]]; }
+      return null;
+    }
+    return faoCatNum(v.min)?[v.min,v.max]:null;
+  }
+  const x=faoCatAt(v,d);
+  return x?[x,x]:null;
+}
+function faoCatAt(v,d,pos){
+  // valeur au Ø d : nombre tel quel, tableau interpolé (borné aux extrémités), fourchette ou plage
+  // lue à la position pos (0 = bas, 0,5 = milieu par défaut, 1 = haut) ; 0 si absent
+  if(v&&typeof v==='object'&&!Array.isArray(v)){
+    const r=faoCatRange(v,d); if(!r)return 0;
+    const k=(isFinite(+pos)&&pos!==null&&pos!==undefined)?Math.min(1,Math.max(0,+pos)):0.5;
+    return r[0]+(r[1]-r[0])*k;
+  }
+  if(!Array.isArray(v))return faoCatNum(v);
+  if(!v.length)return 0;
+  if(d<=v[0][0])return v[0][1];
+  for(let i=1;i<v.length;i++)if(d<=v[i][0]){ const a=v[i-1],b=v[i]; return a[1]+(d-a[0])/(b[0]-a[0])*(b[1]-a[1]); }
+  return v[v.length-1][1];
+}
+function faoCatClean(o){
+  // Catalogue assaini, ou {err}.
+  if(!o||typeof o!=='object'||o.format!==FAO_CAT_FMT||!Array.isArray(o.series))return {err:'ce fichier n’est pas un catalogue d’outils ConceptCAD.'};
+  const str=function(v,n){ return String(v==null?'':v).slice(0,n||64); };
+  const series=[];
+  o.series.forEach(function(s){
+    if(!s||typeof s!=='object'||!Array.isArray(s.outils))return;
+    const kind=FAO_TOOL_KINDS.indexOf(s.kind)>=0?s.kind:'flat';
+    const outils=s.outils.map(function(t){
+      if(!t||!faoCatNum(t.d))return null;
+      const r={ref:str(t.ref,32),d:+t.d};
+      ['lc','lDeg','dq','lt','lCq','cornerR','flutes','p','ang'].forEach(function(k){ if(faoCatNum(t[k]))r[k]=+t[k]; });
+      if(t.size)r.size=str(t.size,16);
+      return r;
+    }).filter(function(t){return !!t;});
+    if(!outils.length)return;
+    const coupe=(Array.isArray(s.coupe)?s.coupe:[]).map(function(c){
+      if(!c||!c.matiere)return null;
+      const r={matiere:str(c.matiere,96)};
+      ['vc','fz','fr'].forEach(function(k){ const v=faoCatTable(c[k]); if(v)r[k]=v; });
+      return r.vc?r:null;
+    }).filter(function(c){return !!c;});
+    const S={ref:str(s.ref,32),nom:str(s.nom,64),kind:kind,outils:outils,coupe:coupe};
+    ['flutes','cornerR','ang'].forEach(function(k){ if(faoCatNum(s[k]))S[k]=+s[k]; });
+    if(s.mat)S.mat=str(s.mat,32);
+    series.push(S);
+  });
+  if(!series.length)return {err:'aucune série d’outils utilisable dans ce catalogue.'};
+  return {format:FAO_CAT_FMT,v:1,fabricant:str(o.fabricant||'Fabricant',40),source:str(o.source,120),series:series};
+}
+function faoCatParse(text){
+  let o=null;
+  try{ o=JSON.parse(String(text||'')); }catch(e){ return {err:'fichier illisible.'}; }
+  return faoCatClean(o);
+}
+function faoCatList(){
+  if(faoCatMem)return faoCatMem;
+  let L=[];
+  try{ const a=JSON.parse(localStorage.getItem(FAO_CAT_KEY)||'[]'); if(Array.isArray(a))L=a.map(faoCatClean).filter(function(c){return !c.err;}); }catch(e){}
+  faoCatMem=L;
+  return L;
+}
+function faoCatSave(list){
+  // true = gardé dans le navigateur ; false = seulement pour cette séance (stockage plein)
+  faoCatMem=list;
+  try{ localStorage.setItem(FAO_CAT_KEY,JSON.stringify(list)); return true; }catch(e){ return false; }
+}
+function faoCatAdd(cat){
+  // Ajoute (ou remplace, même fabricant) un catalogue ; renvoie son rang.
+  const L=faoCatList();
+  const i=L.findIndex(function(c){return c.fabricant===cat.fabricant;});
+  if(i>=0)L[i]=cat; else L.push(cat);
+  faoCatSave(L);
+  return i>=0?i:L.length-1;
+}
+function faoCatName(fab,ref){
+  // « Fabricant référence » en 32 caractères : la référence est gardée entière ; le fabricant
+  // seulement s'il tient en entier (ou abrégé à 4 lettres au moins), jamais réduit à « Va » ou « V »
+  ref=String(ref||'').slice(0,32); fab=String(fab||'').trim();
+  const room=31-ref.length;
+  fab=(fab.length<=room)?fab:(room>=4?fab.slice(0,room).trim():'');
+  return ((fab?fab+' ':'')+ref).trim()||'Outil';
+}
+function faoCatTool(cat,serie,outil,coupe,pos){
+  // Fiche outil ConceptCAD d'une référence de catalogue, pour une matière (coupe peut être absent).
+  const kind=serie.kind||'flat';
+  const t={kind:kind,d:+outil.d,name:faoCatName(cat.fabricant,outil.ref||serie.ref),
+    flutes:Math.round(outil.flutes||serie.flutes||2),cornerR:0,cat:((cat.fabricant||'')+' '+(serie.ref||'')+' '+(outil.ref||'')).trim().slice(0,64)};
+  if(kind==='ball')t.cornerR=t.d/2;
+  else if(kind==='bull')t.cornerR=Math.min(outil.cornerR||serie.cornerR||0,t.d/2);
+  ['lc','lDeg','dq','lt','lCq','p'].forEach(function(k){ if(outil[k])t[k]=outil[k]; });
+  if(outil.size)t.size=outil.size;
+  const ang=outil.ang||serie.ang; if(ang)t.ang=ang;
+  if(serie.mat)t.mat=serie.mat;
+  t.vc=250; t.fz=0.05;
+  if(coupe){
+    const vc=faoCatAt(coupe.vc,t.d,pos),fz=faoCatAt(coupe.fz,t.d,pos),fr=faoCatAt(coupe.fr,t.d,pos);
+    if(vc)t.vc=Math.round(vc*10)/10;
+    if(fz)t.fz=Math.round(fz*10000)/10000;
+    if(fr)t.fr=Math.round(fr*10000)/10000;
+    // Ø hors du tableau du fabricant : aucune valeur n'est inventée — avance volontairement
+    // minuscule (1 ‰ du Ø) et fiche marquée, à corriger d'après le catalogue
+    const need=(kind==='tap')?null:(faoToolIsDrill(t)?'fr':'fz');
+    if(!vc||(need&&coupe[need]&&!(need==='fz'?fz:fr))){ t.horsTableau=true; if(need)t[need]=Math.round(t.d)/1000||0.001; }
+    t.matiere=coupe.matiere; // matière pour laquelle ces conditions ont été prises (mémoire)
+  }
+  return t;
+}
+function faoCatInsert(setup,cat,serie,outils,coupe,pos){
+  // Ajoute les références choisies à la bibliothèque du posage ; renvoie les fiches créées.
+  const fiches=outils.map(function(o,k){ const t=faoCatTool(cat,serie,o,coupe,pos); t.id='C'+k; t.num=0; return t; });
+  const nums=(setup.tools||[]).map(function(a){return +a.num||0;});
+  let n=Math.max.apply(null,[0].concat(nums));
+  fiches.forEach(function(t){ t.num=++n; });
+  return faoToolsImport(setup,{tools:fiches,holders:[]},fiches);
+}
+function faoCatLoadFile(done){
+  try{
+    const inp=document.createElement('input');inp.type='file';inp.accept='.cccatalogue,.json,application/json';
+    inp.onchange=function(){
+      const f=inp.files&&inp.files[0];if(!f)return;
+      const rd=new FileReader();
+      rd.onload=function(){
+        const c=faoCatParse(rd.result);
+        if(c.err){ faoClipMsg('catalogue — '+c.err); return; }
+        faoCatSel={c:faoCatAdd(c),s:0,m:0};
+        faoClipMsg('catalogue « '+c.fabricant+' » chargé : '+c.series.length+' série(s), '+c.series.reduce(function(n,s){return n+s.outils.length;},0)+' outil(s).');
+        if(done)done();
+      };
+      rd.readAsText(f);
+    };
+    inp.click();
+  }catch(e){ faoClipMsg('catalogue : chargement impossible ('+((e&&e.message)||e)+')'); }
+}
+/* ----- la page : fabricant → série → matière → références, puis « Insérer » ----- */
+function faoCatOpen(setup){
+  const mk=function(tag,cls,txt){const e=document.createElement(tag);if(cls)e.className=cls;if(txt!==undefined)e.textContent=txt;return e;};
+  const bg=mk('div','mffDlgBg'),d=mk('div','mffDlg fao-cat');
+  bg.appendChild(d);
+  const close=function(){ try{document.removeEventListener('keydown',key,true);}catch(e){} try{bg.remove();}catch(e){} };
+  const key=function(e){ if(e.key==='Escape'){ e.preventDefault();e.stopPropagation();close(); } };
+  const fr=function(v,n){ return String(+(+v).toFixed(n==null?2:n)).replace('.',','); };
+  const sel=function(parent,lab,opts,val,fn){
+    const p=mk('label','fao-cat-f');p.appendChild(mk('span','',lab));
+    const s=mk('select','fao-sel');
+    opts.forEach(function(o,i){const e=mk('option','',o);e.value=String(i);s.appendChild(e);});
+    s.value=String(val);s.onchange=function(){fn(+s.value);};
+    p.appendChild(s);parent.appendChild(p);return s;
+  };
+  const render=function(){
+    try{ d.innerHTML=''; }catch(e){}
+    if(Array.isArray(d.children))d.children.length=0; // DOM bouchonné des tests
+    const L=faoCatList();
+    d.appendChild(mk('div','fao-imp-t','Catalogue d’outils'));
+    const top=mk('div','fao-cat-top');d.appendChild(top);
+    const bL=mk('button','','Charger un catalogue…');bL.title='Ajouter le fichier .cccatalogue d’un fabricant (gardé dans ce navigateur, pas dans la pièce)';
+    bL.onclick=function(){ faoCatLoadFile(render); };
+    if(!L.length){
+      d.appendChild(mk('div','fao-imp-s','Aucun catalogue chargé. Un catalogue est un fichier « .cccatalogue » par fabricant : ses séries de fraises, forets et tarauds, avec les conditions de coupe par matière. Chargez-en un pour choisir un outil et l’insérer dans la bibliothèque.'));
+      const row0=mk('div','mffBtns');const b0=mk('button','','Fermer');b0.onclick=close;bL.className='primary';
+      row0.appendChild(b0);row0.appendChild(bL);d.appendChild(row0);
+      return;
+    }
+    const S=faoCatSel;
+    S.c=Math.min(Math.max(0,S.c|0),L.length-1);
+    const cat=L[S.c];
+    S.s=Math.min(Math.max(0,S.s|0),cat.series.length-1);
+    const serie=cat.series[S.s];
+    S.m=Math.min(Math.max(0,S.m|0),Math.max(0,serie.coupe.length-1));
+    const coupe=serie.coupe[S.m]||null;
+    sel(top,'Fabricant',L.map(function(c){return c.fabricant;}),S.c,function(v){ faoCatSel={c:v,s:0,m:0,p:S.p}; render(); });
+    sel(top,'Série',cat.series.map(function(s){return (s.ref+' — '+s.nom).replace(/^ — | — $/g,'');}),S.s,function(v){ S.s=v; S.m=0; render(); });
+    if(serie.coupe.length)sel(top,'Matière usinée',serie.coupe.map(function(c){return c.matiere;}),S.m,function(v){ S.m=v; render(); });
+    const obj=function(v){ return !!v&&typeof v==='object'&&!Array.isArray(v); };
+    const aPlage=!!coupe&&(obj(coupe.vc)||obj(coupe.fz)||obj(coupe.fr));
+    const POS=[0,0.5,1];
+    if(aPlage)sel(top,'Dans la fourchette du fabricant',['Bas (prudent)','Milieu','Haut'],Math.max(0,POS.indexOf(S.p===undefined?0.5:S.p)),function(v){ S.p=POS[v]; render(); });
+    const pos=aPlage?(S.p===undefined?0.5:S.p):0.5;
+    d.appendChild(mk('div','fao-imp-s',faoKindLabel(serie.kind)+(serie.mat?(' · '+serie.mat):'')+' · '+serie.outils.length+' référence(s)'
+      +(coupe?'':' · aucune condition de coupe dans le catalogue : valeurs par défaut à corriger')+(cat.source?(' · source : '+cat.source):'')));
+    const list=mk('div','fao-imp-list');d.appendChild(list);
+    const boxes=[];
+    const bOk=mk('button','primary');
+    const count=function(){ const n=boxes.filter(function(b){return b.checked;}).length; bOk.textContent='Insérer ('+n+')'; bOk.disabled=!n; };
+    serie.outils.forEach(function(o){
+      const t=faoCatTool(cat,serie,o,coupe,pos),sf=faoToolSF(t,setup),g=faoToolDims(t);
+      const it=mk('label','fao-imp-it');
+      const cb=mk('input');cb.type='checkbox';cb.checked=false;cb.onchange=count;it.appendChild(cb);
+      const tx=mk('div','fao-imp-x');
+      tx.appendChild(mk('div','fao-imp-n',(o.ref||serie.ref)+'  ·  Ø'+fr(o.d)+(t.kind==='bull'?(' R'+fr(t.cornerR)):'')+(t.size?('  '+t.size):'')));
+      tx.appendChild(mk('div','fao-imp-d','Coupe '+fr(g.lc.v,1)+' · queue Ø'+fr(g.dq.v,1)+' · longueur '+fr(g.lt.v,1)+(t.kind==='tap'?'':(' · '+t.flutes+' dents'))));
+      it.appendChild(tx);
+      if(t.horsTableau)it.appendChild(mk('span','fao-imp-has','Ø hors tableau : avance à saisir'));
+      it.appendChild(mk('span','fao-cat-c',coupe?('Vc '+fr(t.vc,0)+' · '+(faoToolIsDrill(t)?('f '+fr(faoToolFr(t),3)+' mm/tr'):(t.kind==='tap'?('pas '+fr(t.p||0)):('fz '+fr(t.fz,3))))+' · S'+sf.s+' F'+sf.f):'—'));
+      list.appendChild(it);boxes.push(cb);
+    });
+    const row=mk('div','mffBtns');
+    const all=function(v){ return function(){ boxes.forEach(function(b){b.checked=v;}); count(); }; };
+    const bA=mk('button','','Tout cocher');bA.onclick=all(true);
+    const bN=mk('button','','Tout décocher');bN.onclick=all(false);
+    const bR=mk('button','','Retirer ce catalogue');bR.title='Oublier le catalogue de ce fabricant dans ce navigateur (les outils déjà insérés restent)';
+    bR.onclick=function(){ const K=faoCatList();K.splice(S.c,1);faoCatSave(K);faoCatSel={c:0,s:0,m:0};render(); };
+    const bC=mk('button','','Fermer');bC.onclick=close;
+    bOk.onclick=function(){
+      const picked=serie.outils.filter(function(o,i){return boxes[i].checked;});
+      if(!picked.length)return;
+      faoSnapshot('insérer '+picked.length+' outil(s) du catalogue');
+      const added=faoCatInsert(setup,cat,serie,picked,coupe,pos);
+      if(added.length)faoToolSelId=added[0].id;
+      faoChanged();
+      try{ faoToolsWindowRefresh(); }catch(e){}
+      faoClipMsg(added.length+' outil(s) du catalogue '+cat.fabricant+' inséré(s)'+(coupe?(' — conditions pour « '+coupe.matiere+' »'):'')+' : '+added.map(function(t){return 'T'+t.num+' '+t.name;}).join(', ').slice(0,140));
+      close();
+    };
+    [bA,bN,bL,bR,mk('span','fao-imp-sp'),bC,bOk].forEach(function(b){row.appendChild(b);});
+    d.appendChild(row);
+    count();
+  };
+  render();
+  document.body.appendChild(bg);
+  try{document.addEventListener('keydown',key,true);}catch(e){}
+  return bg;
+}
+
+/* ═══════════════ 89-fao-outils-fichier.js — fao outils fichier ═══════════════ */
+/* ============ FAO : export / import des outils (V0.90.0) ============
+   Demande : « pouvoir exporter / importer un outil, ou tous les outils d'un coup ;
+   à l'import de plusieurs outils, les choisir tous ou seulement ceux souhaités ».
+
+   FICHIER — JSON {format:'conceptcad-outils', v:1, app, tools:[…], holders:[…]} en
+   « .ccoutils » : les fiches telles quelles, avec les porte-outils qu'elles portent.
+   IMPORT — un fichier d'UN outil s'ajoute directement ; à partir de deux, une fenêtre
+   liste les outils avec une case chacun (« Tout cocher » / « Tout décocher ») ; ceux
+   déjà présents à l'identique dans la bibliothèque sont décochés d'office.
+   Un outil importé garde son numéro T s'il est libre, sinon prend le suivant ; il
+   reçoit toujours un nouvel identifiant (aucune opération existante n'est touchée,
+   aucun parcours périmé). Un porte-outil identique à un porte-outil du posage est
+   réutilisé au lieu d'être ajouté en double. */
+const FAO_TOOLS_FMT='conceptcad-outils';
+const FAO_TOOL_KINDS=['flat','bull','ball','chamfer','drill','spot','center','tap'];
+function faoToolClean(t){
+  // Fiche assainie : champs simples uniquement (nombre, texte, oui/non), Ø valide.
+  if(!t||typeof t!=='object'||Array.isArray(t))return null;
+  const o={};
+  Object.keys(t).forEach(function(k){
+    const v=t[k],ty=typeof v;
+    if(ty==='string')o[k]=v.slice(0,64);
+    else if(ty==='boolean')o[k]=v;
+    else if(ty==='number'&&isFinite(v))o[k]=v;
+  });
+  if(!(+o.d>0))return null;
+  o.d=+o.d;
+  if(FAO_TOOL_KINDS.indexOf(o.kind)<0)o.kind='flat';
+  o.name=String(o.name||'Outil').slice(0,32);
+  o.num=(isFinite(+o.num)&&+o.num>0)?Math.round(+o.num):1;
+  o.id=String(o.id||('T'+o.num));
+  return o;
+}
+function faoToolsPack(setup,tools){
+  // Contenu du fichier : les fiches + les porte-outils qu'elles portent.
+  const ts=(tools||[]).map(faoToolClean).filter(function(t){return !!t;});
+  const hs=[];
+  ts.forEach(function(t){
+    const h=faoHolderById(setup,t.holderId);
+    const c=h?faoHolderClean(h):null;
+    if(!c){ delete t.holderId; return; }
+    if(!hs.some(function(x){return x.id===c.id;}))hs.push(c);
+  });
+  return {format:FAO_TOOLS_FMT,v:1,app:(typeof APP_VER!=='undefined'?APP_VER:''),tools:ts,holders:hs};
+}
+function faoToolsParse(text){
+  // {tools,holders} ou {err}. Accepte aussi une simple liste de fiches, ou une fiche seule.
+  let o=null;
+  try{ o=JSON.parse(String(text||'')); }catch(e){ return {err:'fichier illisible (ce n’est pas un fichier d’outils ConceptCAD).'}; }
+  let list=null,hold=[];
+  if(o&&o.format===FAO_TOOLS_FMT&&Array.isArray(o.tools)){ list=o.tools; hold=Array.isArray(o.holders)?o.holders:[]; }
+  else if(Array.isArray(o))list=o;
+  else if(o&&typeof o==='object'&&+o.d>0&&!o.format)list=[o];
+  if(!list)return {err:'ce fichier ne contient pas d’outils ConceptCAD.'};
+  const tools=list.map(faoToolClean).filter(function(t){return !!t;});
+  if(!tools.length)return {err:'aucun outil utilisable dans ce fichier.'};
+  return {tools:tools,holders:hold.map(faoHolderClean).filter(function(h){return !!h;})};
+}
+function faoToolSameKey(t){
+  // Tout ce qui définit la fiche, sauf son identifiant, son numéro T et son porte-outil.
+  const o={};
+  Object.keys(t||{}).sort().forEach(function(k){ if(k!=='id'&&k!=='num'&&k!=='holderId')o[k]=t[k]; });
+  return JSON.stringify(o);
+}
+function faoToolsHas(setup,t,pack){
+  // L'outil du fichier existe-t-il déjà à l'identique (fiche + porte-outil) dans le posage ?
+  const k=faoToolSameKey(t);
+  const hp=((pack&&pack.holders)||[]).filter(function(h){return h.id===t.holderId;})[0]||null;
+  return ((setup&&setup.tools)||[]).some(function(x){
+    if(faoToolSameKey(x)!==k)return false;
+    const hx=faoHolderById(setup,x.holderId);
+    return (!hp&&!hx)||(!!hp&&!!hx&&faoHolderSame(hp,hx));
+  });
+}
+function faoToolsImport(setup,pack,picked){
+  // Ajoute au posage les outils choisis (tous si `picked` est absent) ; renvoie les ajoutés.
+  const tools=setup.tools||(setup.tools=[]);
+  const src=(picked||pack.tools||[]).map(faoToolClean).filter(function(t){return !!t;});
+  const map={},out=[];
+  const stamp=Date.now().toString(36);
+  src.forEach(function(t,k){
+    const hp=(pack.holders||[]).filter(function(h){return h.id===t.holderId;})[0]||null;
+    delete t.holderId;
+    if(hp){
+      if(!map[hp.id]){
+        const twin=faoHolders(setup).filter(function(h){return faoHolderSame(h,hp);})[0];
+        if(twin)map[hp.id]=twin.id;
+        else{ const n=faoHolderNew(setup,hp); n.name=hp.name; map[hp.id]=n.id; }
+      }
+      t.holderId=map[hp.id];
+    }
+    // numéro T : gardé s'il est libre ; sinon le premier au-delà de tous les numéros
+    // du posage ET du fichier (un outil suivant du fichier garde ainsi le sien)
+    const nums=tools.map(function(a){return +a.num||0;});
+    if(nums.indexOf(t.num)>=0)t.num=Math.max.apply(null,[0].concat(nums,src.slice(k+1).map(function(a){return a.num;})))+1;
+    let id='T'+t.num+'_'+stamp+'i'+k,q=0;
+    while(tools.some(function(a){return a.id===id;}))id='T'+t.num+'_'+stamp+'i'+k+'_'+(++q);
+    t.id=id;
+    tools.push(t);out.push(t);
+  });
+  return out;
+}
+function faoToolsFileName(s){ return String(s||'outils').replace(/[\\/:*?"<>|]+/g,'-').trim()||'outils'; }
+function faoToolsExportFile(setup,tool){
+  // tool = l'outil seul ; absent = toute la bibliothèque du posage.
+  try{
+    const list=tool?[tool]:(setup.tools||[]);
+    if(!list.length){ faoClipMsg('aucun outil à exporter.'); return null; }
+    const pack=faoToolsPack(setup,list);
+    const name=faoToolsFileName(tool?('T'+tool.num+' '+(tool.name||'outil')):('Outils '+(setup.name||'posage')))+'.ccoutils';
+    const a=document.createElement('a');
+    a.href=URL.createObjectURL(new Blob([JSON.stringify(pack,null,1)],{type:'application/json'}));
+    a.download=name;
+    document.body.appendChild(a);a.click();
+    setTimeout(function(){ try{ URL.revokeObjectURL(a.href); a.remove(); }catch(e){} },2000);
+    faoClipMsg(pack.tools.length+' outil(s) exporté(s) : '+name+(pack.holders.length?(' (avec '+pack.holders.length+' porte-outil(s))'):''));
+    return name;
+  }catch(e){ faoClipMsg('export des outils impossible : '+((e&&e.message)||e)); return null; }
+}
+function faoToolsImportApply(setup,pack,picked){
+  if(!picked.length){ faoClipMsg('aucun outil importé.'); return []; }
+  faoSnapshot('importer '+picked.length+' outil(s)');
+  const added=faoToolsImport(setup,pack,picked);
+  if(added.length)faoToolSelId=added[0].id;
+  faoChanged();
+  try{ faoToolsWindowRefresh(); }catch(e){}
+  faoClipMsg(added.length+' outil(s) importé(s) : '+added.map(function(t){return 'T'+t.num+' '+t.name;}).join(', ').slice(0,160));
+  return added;
+}
+function faoToolsImportText(setup,text,fname){
+  // Cœur de l'import (sans le choix du fichier) : 1 outil = direct, plusieurs = fenêtre de choix.
+  const pack=faoToolsParse(text);
+  if(pack.err){ faoClipMsg('import des outils — '+pack.err); return null; }
+  if(pack.tools.length===1){ faoToolsImportApply(setup,pack,pack.tools); return null; }
+  return faoToolsImportDialog(setup,pack,fname);
+}
+function faoToolsImportFile(setup){
+  try{
+    const inp=document.createElement('input');inp.type='file';inp.accept='.ccoutils,.json,application/json';
+    inp.onchange=function(){
+      const f=inp.files&&inp.files[0];if(!f)return;
+      const rd=new FileReader();
+      rd.onload=function(){ faoToolsImportText(setup,rd.result,f.name); };
+      rd.onerror=function(){ faoClipMsg('import des outils — fichier illisible.'); };
+      rd.readAsText(f);
+    };
+    inp.click();
+  }catch(e){ faoClipMsg('import des outils impossible : '+((e&&e.message)||e)); }
+}
+/* ----- fenêtre de choix : quels outils du fichier importer ----- */
+function faoToolsImportDialog(setup,pack,fname){
+  const mk=function(tag,cls,txt){const e=document.createElement(tag);if(cls)e.className=cls;if(txt!==undefined)e.textContent=txt;return e;};
+  const bg=mk('div','mffDlgBg'),d=mk('div','mffDlg fao-imp');
+  d.appendChild(mk('div','fao-imp-t','Importer des outils'));
+  d.appendChild(mk('div','fao-imp-s',(fname?(fname+' — '):'')+pack.tools.length+' outils dans le fichier. Cochez ceux à ajouter à « '+(setup.name||'posage')+' ».'));
+  const list=mk('div','fao-imp-list');d.appendChild(list);
+  const boxes=[];
+  const bOk=mk('button','primary');
+  const count=function(){
+    const n=boxes.filter(function(b){return b.checked;}).length;
+    bOk.textContent=n===boxes.length?('Importer les '+n):('Importer ('+n+')');
+    bOk.disabled=!n;
+  };
+  pack.tools.forEach(function(t){
+    const has=faoToolsHas(setup,t,pack);
+    const it=mk('label','fao-imp-it');
+    const cb=mk('input');cb.type='checkbox';cb.checked=!has;cb.onchange=count;
+    it.appendChild(cb);
+    const tx=mk('div','fao-imp-x');
+    tx.appendChild(mk('div','fao-imp-n','T'+t.num+'  '+t.name));
+    const hp=pack.holders.filter(function(h){return h.id===t.holderId;})[0];
+    tx.appendChild(mk('div','fao-imp-d',faoKindLabel(t.kind)+' Ø'+t.d+(t.kind==='bull'?(' R'+(t.cornerR||0)):'')
+      +(t.kind==='tap'?'':(' · '+(t.flutes||2)+' dents'))+(hp?(' · '+hp.name):'')));
+    it.appendChild(tx);
+    if(has)it.appendChild(mk('span','fao-imp-has','déjà présent'));
+    list.appendChild(it);boxes.push(cb);
+  });
+  const row=mk('div','mffBtns');
+  const all=function(v){ return function(){ boxes.forEach(function(b){b.checked=v;}); count(); }; };
+  const bA=mk('button','','Tout cocher');bA.onclick=all(true);
+  const bN=mk('button','','Tout décocher');bN.onclick=all(false);
+  const sp=mk('span','fao-imp-sp');
+  const bC=mk('button','','Annuler');
+  const close=function(){ try{document.removeEventListener('keydown',key,true);}catch(e){} try{bg.remove();}catch(e){} };
+  const key=function(e){ if(e.key==='Escape'){ e.preventDefault();e.stopPropagation();close(); } };
+  bC.onclick=close;
+  bOk.onclick=function(){
+    const picked=pack.tools.filter(function(t,i){return boxes[i].checked;});
+    if(!picked.length)return;
+    close();faoToolsImportApply(setup,pack,picked);
+  };
+  [bA,bN,sp,bC,bOk].forEach(function(b){row.appendChild(b);});
+  d.appendChild(row);bg.appendChild(d);
+  count();
+  document.body.appendChild(bg);
+  try{document.addEventListener('keydown',key,true);}catch(e){}
+  return bg;
+}
+
 /* ═══════════════ 89-fao-outils.js — fao outils ═══════════════ */
 /* ============ FAO : fiches outils + conditions de coupe par opération ============
    2026-10-15-010 — demande : « piloter la vitesse de rotation et l'avance, par outil
@@ -64873,7 +65631,11 @@ function faoToolDims(t){
   const lsm=num('lsm',faoR1(Math.max(lDeg.v+Math.max(8,D),D*3.5)));
   const lt=num('lt',faoR1(Math.max(lsm.v+Math.max(25,dq.v*2.5),50)));
   const dPo=num('dPo',faoR1(dq.v+Math.max(12,dq.v)));
-  return {D:D,lc:lc,dDeg:dDeg,lDeg:lDeg,dq:dq,lsm:lsm,lt:lt,dPo:dPo};
+  // V0.90.0 : queue plus grosse que l'outil — cône de raccord (longueur le long de l'axe ;
+  // 0 / absent = épaulement droit, comme avant), borné à ce qui dépasse du porte-outil
+  const cq=t&&+t.lCq;
+  const lCq=(isFinite(cq)&&cq>0&&dq.v>dDeg.v+1e-6)?Math.min(cq,Math.max(0,lsm.v-lDeg.v)):0;
+  return {D:D,lc:lc,dDeg:dDeg,lDeg:lDeg,dq:dq,lsm:lsm,lt:lt,dPo:dPo,lCq:lCq};
 }
 function faoToolCut(t,setup){
   // Conditions de coupe de la FICHE (valeurs par défaut de toute opération).
@@ -64916,14 +65678,16 @@ function faoToolNewFrom(t,n){
   return c;
 }
 /* ----- schéma coté de l'outil (vue de profil) ----- */
-function faoToolSvg(t){
+function faoToolSvg(t,holder){
   const g=faoToolDims(t),D=g.D;
+  const hp=holder?faoHolderProfile(holder):null; // V0.90.0 : porte-outil dessiné à l'échelle
   const cr=faoToolEffCr(t);
   const W=300,H=360,pad=44;
   // échelle : longueur totale + porte-outil sur la hauteur, Ø porte-outil sur la largeur
-  const holderH=Math.max(g.dPo.v*0.9,18);
+  const holderH=hp?hp.h:Math.max(g.dPo.v*0.9,18);
+  const dHold=hp?hp.dmax:g.dPo.v;
   const totH=g.lsm.v+holderH;
-  const sc=Math.min((H-2*pad)/totH,(W-150)/Math.max(g.dPo.v,D));
+  const sc=Math.min((H-2*pad)/totH,(W-150)/Math.max(dHold,D));
   const cx=110,yTip=H-pad;
   const Y=function(z){ return yTip-z*sc; };
   const X=function(r){ return cx+r*sc; };
@@ -64932,9 +65696,17 @@ function faoToolSvg(t){
     parts.push('<rect x="'+X(-r).toFixed(1)+'" y="'+Y(z1).toFixed(1)+'" width="'+(2*r*sc).toFixed(1)+'" height="'+((z1-z0)*sc).toFixed(1)+'" fill="'+fill+'" stroke="'+stroke+'" stroke-width="1.2"'+(dash?' stroke-dasharray="3 2"':'')+'/>');
   };
   // porte-outil (mandrin) au-dessus de la longueur sous mandrin
-  rect(g.dPo.v/2,g.lsm.v,g.lsm.v+holderH,'rgba(142,142,147,.25)','#8e8e93',true);
+  if(hp){
+    const up=hp.pts.map(function(p){ return X(p[0]).toFixed(1)+' '+Y(g.lsm.v+p[1]).toFixed(1); });
+    const dn=hp.pts.slice().reverse().map(function(p){ return X(-p[0]).toFixed(1)+' '+Y(g.lsm.v+p[1]).toFixed(1); });
+    parts.push('<path d="M'+up.concat(dn).join(' L')+'Z" fill="rgba(142,142,147,.25)" stroke="#8e8e93" stroke-width="1.2"/>');
+  }else rect(g.dPo.v/2,g.lsm.v,g.lsm.v+holderH,'rgba(142,142,147,.25)','#8e8e93',true);
   // queue
-  rect(g.dq.v/2,g.lDeg.v,g.lsm.v,'rgba(100,210,255,.12)','#64d2ff');
+  if(g.lCq>0){ // cône de raccord entre l'outil et une queue plus grosse
+    const z0=g.lDeg.v,z1=g.lDeg.v+g.lCq,ra=g.dDeg.v/2,rb=g.dq.v/2;
+    parts.push('<path d="M'+X(-ra).toFixed(1)+' '+Y(z0).toFixed(1)+' L'+X(ra).toFixed(1)+' '+Y(z0).toFixed(1)+' L'+X(rb).toFixed(1)+' '+Y(z1).toFixed(1)+' L'+X(-rb).toFixed(1)+' '+Y(z1).toFixed(1)+'Z" fill="rgba(100,210,255,.12)" stroke="#64d2ff" stroke-width="1.2"/>');
+    if(g.lsm.v>z1+1e-6)rect(rb,z1,g.lsm.v,'rgba(100,210,255,.12)','#64d2ff');
+  }else rect(g.dq.v/2,g.lDeg.v,g.lsm.v,'rgba(100,210,255,.12)','#64d2ff');
   // dégagement (col)
   if(g.lDeg.v>g.lc.v+1e-6)rect(g.dDeg.v/2,g.lc.v,g.lDeg.v,'rgba(100,210,255,.08)','#64d2ff');
   // partie coupante (avec bout plat / torique / boule)
@@ -64976,7 +65748,7 @@ function faoToolSvg(t){
     parts.push('<path d="M'+(x-3)+' '+(a-5).toFixed(1)+' L'+x+' '+a.toFixed(1)+' L'+(x+3)+' '+(a-5).toFixed(1)+' M'+(x-3)+' '+(b+5).toFixed(1)+' L'+x+' '+b.toFixed(1)+' L'+(x+3)+' '+(b+5).toFixed(1)+'" fill="none" stroke="'+col+'" stroke-width="1"/>');
     parts.push('<text x="'+(x+5)+'" y="'+((a+b)/2+4).toFixed(1)+'" fill="'+col+'" font-size="11">'+txt+'</text>');
   };
-  const xr=X(Math.max(g.dPo.v,D)/2)+14;
+  const xr=X(Math.max(dHold,D)/2)+14;
   dimV(0,g.lc.v,xr,'Lc '+g.lc.v,'#ff9f0a');
   if(g.lDeg.v>g.lc.v+1e-6)dimV(0,g.lDeg.v,xr+52,'Ldég '+g.lDeg.v,'#64d2ff');
   dimV(0,g.lsm.v,xr+(g.lDeg.v>g.lc.v+1e-6?104:52),'Lsm '+g.lsm.v,'#e9e9ec');
@@ -64984,11 +65756,12 @@ function faoToolSvg(t){
   const yb=Y(0)+16;
   parts.push('<line x1="'+X(-r).toFixed(1)+'" y1="'+yb+'" x2="'+X(r).toFixed(1)+'" y2="'+yb+'" stroke="#ff9f0a" stroke-width="1"/>');
   parts.push('<text x="'+cx+'" y="'+(yb+13)+'" fill="#ff9f0a" font-size="11" text-anchor="middle">Ø'+D+(c2>0&&c2<r?(' R'+faoR1(c2)):'')+'</text>');
-  parts.push('<text x="'+cx+'" y="'+(Y(g.lsm.v+holderH)-6).toFixed(1)+'" fill="#8e8e93" font-size="10" text-anchor="middle">mandrin Ø'+g.dPo.v+'</text>');
+  parts.push('<text x="'+cx+'" y="'+(Y(g.lsm.v+holderH)-6).toFixed(1)+'" fill="#8e8e93" font-size="10" text-anchor="middle">'+(hp?(String(holder.name||'Porte-outil').replace(/[<>&]/g,'')+' · nez Ø'+faoR1(hp.dNose)):('mandrin Ø'+g.dPo.v))+'</text>');
   return '<svg viewBox="0 0 '+W+' '+H+'" width="'+W+'" height="'+H+'" style="display:block">'+parts.join('')+'</svg>';
 }
 /* ----- bibliothèque : liste à gauche, fiche à droite ----- */
 let faoToolSelId=null;
+let faoToolTab='Identification'; // V0.92.0 : onglet ouvert de la fiche (un par rubrique)
 function faoToolsElement(setup){
   const wrap=document.createElement('div');wrap.className='fao-tl';
   const tools=setup.tools||(setup.tools=[]);
@@ -65021,13 +65794,35 @@ function faoToolsElement(setup){
     const used=(setup.ops||[]).filter(function(o){return o&&o.toolId===tools[i].id;}).length;
     if(used){try{faceEl.textContent='Outil T'+tools[i].num+' utilisé par '+used+' opération(s) : changez-leur d’outil avant de le supprimer.';}catch(e){}return;}
     faoSnapshot('supprimer l’outil');tools.splice(i,1);faoToolSelId=tools[0]?tools[0].id:null;faoChanged();rerender();});
+  // V0.90.0 : export / import des fiches (src/89-fao-outils-fichier.js)
+  const lf=document.createElement('div');lf.className='fao-tl-btns';
+  const mkF=function(txt,title,fn){const x=document.createElement('button');x.className='fao-mini';x.textContent=txt;x.title=title;x.onclick=fn;lf.appendChild(x);return x;};
+  mkF('⬇ Exporter l’outil','Enregistrer la fiche de l’outil sélectionné (avec son porte-outil) dans un fichier .ccoutils',function(){
+    const s=tools.find(function(t){return t.id===faoToolSelId;});if(s)faoToolsExportFile(setup,s);});
+  mkF('⬇ Tout exporter','Enregistrer tous les outils de ce posage dans un seul fichier .ccoutils',function(){ faoToolsExportFile(setup,null); });
+  mkF('📖 Catalogue…','Catalogues des fabricants : choisir une fraise, un foret ou un taraud, la matière usinée, et l’insérer avec ses conditions de coupe',function(){ faoCatOpen(setup); });
+  mkF('⬆ Importer…','Ajouter des outils depuis un fichier .ccoutils : s’il en contient plusieurs, vous choisissez lesquels',function(){ faoToolsImportFile(setup); });
   const left=document.createElement('div');left.className='fao-tl-left';
-  left.appendChild(L);left.appendChild(lb);
+  left.appendChild(L);left.appendChild(lb);left.appendChild(lf);
   wrap.appendChild(left);
   // ── colonne droite : fiche ──
   const t=tools.find(function(x){return x.id===faoToolSelId;});
-  const R=document.createElement('div');R.className='fao-tl-detail';
-  if(!t){R.textContent='Aucun outil.';wrap.appendChild(R);return wrap;}
+  const RR=document.createElement('div');RR.className='fao-tl-detail';
+  if(!t){RR.textContent='Aucun outil.';wrap.appendChild(RR);return wrap;}
+  // V0.92.0 : un onglet par rubrique (Identification, Géométrie, Coupe, Porte-outil) au lieu
+  // d'une longue fiche à faire défiler ; l'onglet ouvert est gardé d'un outil à l'autre.
+  const TABS=['Identification','Géométrie','Coupe','Porte-outil'];
+  if(TABS.indexOf(faoToolTab)<0)faoToolTab=TABS[0];
+  const tabBar=document.createElement('div');tabBar.className='fao-tabs';RR.appendChild(tabBar);
+  const panes={},tabBtn={};
+  const showTab=function(n){ faoToolTab=n; TABS.forEach(function(k){ if(panes[k])panes[k].style.display=(k===n)?'':'none'; if(tabBtn[k])tabBtn[k].className='fao-tab'+(k===n?' on':''); }); };
+  TABS.forEach(function(n){
+    const b=document.createElement('button');b.className='fao-tab'+(n===faoToolTab?' on':'');b.textContent=n;
+    b.title={'Identification':'Numéro, nom, type et matière de l’outil','Géométrie':'Diamètres et longueurs de l’outil','Coupe':'Vitesse de coupe, avances : valeurs par défaut des opérations','Porte-outil':'Porte-outil monté sur cet outil, catalogue standard'}[n];
+    b.onclick=function(){ showTab(n); };tabBar.appendChild(b);tabBtn[n]=b;
+    const p=document.createElement('div');p.className='fao-tl-pane';p.style.display=(n===faoToolTab)?'':'none';RR.appendChild(p);panes[n]=p;
+  });
+  let R=panes.Identification;
   const g=faoToolDims(t),cut=faoToolCut(t,setup),sf=faoToolSF(t,setup);
   const set=function(k,v,title){ faoSnapshot(title||k); if(v===null||v===''||!(isFinite(+v)))delete t[k]; else t[k]=+v; };
   const field=function(parent,lab,val,isDef,fn,title,step,unit){
@@ -65065,6 +65860,7 @@ function faoToolsElement(setup){
   sM.value=t.mat||'Carbure';sM.onchange=function(){faoSnapshot('matière d’outil');t.mat=sM.value;faoChanged();};
   pM.appendChild(sM);s1.appendChild(pM);
   // géométrie
+  R=panes['Géométrie'];
   const s2=sec('Géométrie (mm) — valeurs grisées = défaut calculé, à préciser');
   field(s2,t.kind==='center'?'Ø pilote d1':'Ø coupe',t.d,false,function(v){set('d',Math.max(0.1,v),'Ø outil');if(t.kind==='ball')t.cornerR=t.d/2;},'Diamètre de coupe',0.1);
   if(t.kind==='bull')field(s2,'Rayon de coin',t.cornerR||0,false,function(v){set('cornerR',Math.min(v,t.d/2),'rayon de coin');},'Rayon du coin torique',0.1);
@@ -65099,10 +65895,16 @@ function faoToolsElement(setup){
   field(s2,'Ø dégagement',g.dDeg.v,g.dDeg.def,function(v){set('dDeg',Math.min(v,t.d),'Ø de dégagement');},'Diamètre du col au-dessus de la coupe (≤ Ø coupe) : permet de plonger plus profond que Lc sans frotter',0.1);
   field(s2,'Long. dégagée',g.lDeg.v,g.lDeg.def,function(v){set('lDeg',Math.max(v,g.lc.v),'longueur dégagée');},'Longueur depuis le bout jusqu’au début de la queue (profondeur atteignable sans que la queue frotte)',0.5);
   field(s2,'Ø queue',g.dq.v,g.dq.def,function(v){set('dq',v,'Ø de queue');},'Diamètre de la queue (serrage)',0.5);
+  if(g.dq.v>g.dDeg.v+1e-6){ // V0.90.0 : queue plus grosse que l'outil → cône de raccord possible
+    const iC=field(s2,'Cône vers la queue',+t.lCq>0?+t.lCq:0,!(+t.lCq>0),function(){},'Longueur du cône qui raccorde l’outil à sa queue plus grosse (mm le long de l’axe). 0 = épaulement droit',0.5);
+    iC.onchange=function(){const v=parseFloat(String(iC.value).replace(',','.'));if(!isFinite(v)||v<0)return;
+      faoSnapshot('cône vers la queue');if(v>0)t.lCq=v;else delete t.lCq;faoChanged();rerender();};
+  }
   field(s2,'Long. sous mandrin',g.lsm.v,g.lsm.def,function(v){set('lsm',v,'longueur sous mandrin');},'Longueur qui dépasse du porte-outil (sortie d’outil) : profondeur maximale avant collision du mandrin',0.5);
   field(s2,'Long. totale',g.lt.v,g.lt.def,function(v){set('lt',v,'longueur totale');},'Longueur totale de l’outil',0.5);
-  field(s2,'Ø mandrin',g.dPo.v,g.dPo.def,function(v){set('dPo',v,'Ø du porte-outil');},'Diamètre du porte-outil / mandrin au nez',0.5);
+  if(!faoHolderById(setup,t.holderId))field(s2,'Ø mandrin',g.dPo.v,g.dPo.def,function(v){set('dPo',v,'Ø du porte-outil');},'Diamètre du porte-outil / mandrin au nez',0.5);
   // coupe
+  R=panes.Coupe;
   const s3=sec('Conditions de coupe — valeurs par défaut des opérations');
   const D=+t.d>0?+t.d:10,z=+t.flutes>0?Math.round(+t.flutes):2;
   field(s3,'Vc',t.vc||250,false,function(v){set('vc',v,'Vc');},'Vitesse de coupe (m/min) — S = Vc × 1000 / (π × Ø)',1,'m/min');
@@ -65125,9 +65927,11 @@ function faoToolsElement(setup){
   bz.title='Remet F plongée / entrée / remontée / rapide sur leurs valeurs calculées';
   bz.onclick=function(){faoSnapshot('avances par défaut');['fPl','fEnt','fRet','rapide'].forEach(function(k){delete t[k];});faoChanged();rerender();};
   rz.appendChild(bz);R.appendChild(rz);
+  R=panes['Porte-outil'];
+  faoHolderSection(R,setup,t,rerender); // V0.90.0 : porte-outil, en fin de fiche (src/89-fao-porte-outils.js)
   const body=document.createElement('div');body.className='fao-tl-body';
-  body.appendChild(R);
-  const pic=document.createElement('div');pic.className='fao-tl-pic';pic.innerHTML=faoToolSvg(t);
+  body.appendChild(RR);
+  const pic=document.createElement('div');pic.className='fao-tl-pic';pic.innerHTML=faoToolSvg(t,faoHolderById(setup,t.holderId));
   body.appendChild(pic);
   wrap.appendChild(body);
   return wrap;
@@ -66127,6 +66931,263 @@ function faoHelixTool(setup,op,d){
   }
   op.toolId=t.id;delete op.cut;
   return {tool:t,made:made};
+}
+
+/* ═══════════════ 89-fao-porte-outils.js — fao porte outils ═══════════════ */
+/* ============ FAO : porte-outils (V0.90.0) ============
+   Demande : « pouvoir modifier / créer ses porte-outils, avec chanfreins d'entrée,
+   cône et/ou cylindres ».
+
+   MODÈLE — setup.holders[] : bibliothèque de porte-outils du posage.
+     {id:'PO1', name:'Porte-pince', segs:[…]}  — segs décrits DU NEZ VERS LA BROCHE :
+       {t:'chf', c, a}        chanfrein d'entrée : longueur c (mm) le long de l'axe,
+                              angle a (°, 45 par défaut) ; il entame le tronçon qui SUIT
+       {t:'cone', d1, d2, h}  cône : Ø côté nez, Ø côté broche, hauteur
+       {t:'cyl', d, h}        cylindre : Ø, hauteur
+   Un outil choisit son porte-outil par t.holderId (absent = porte-outil générique,
+   simple cylindre au Ø « mandrin » de la fiche, comme avant).
+   CACHE — holderId et setup.holders ne sont PAS dans la clé de cache des parcours
+   (faoToolKeyObj ne voit que les champs historiques) : aucune trajectoire périmée. */
+const FAO_HOLDER_TYPES=[['chf','Chanfrein d’entrée'],['cone','Cône'],['cyl','Cylindre']];
+function faoHolders(setup){ return (setup&&Array.isArray(setup.holders))?setup.holders:[]; }
+function faoHolderById(setup,id){
+  if(!id)return null;
+  return faoHolders(setup).filter(function(h){return h&&h.id===id;})[0]||null;
+}
+function faoHolderSegClean(s){
+  // Tronçon valide et normalisé (nombres > 0), ou null.
+  if(!s||typeof s!=='object')return null;
+  const n=function(v){ v=+v; return (isFinite(v)&&v>0)?Math.round(v*1000)/1000:0; };
+  if(s.t==='cyl'){ const d=n(s.d),h=n(s.h); return (d&&h)?{t:'cyl',d:d,h:h}:null; }
+  if(s.t==='cone'){ const d1=n(s.d1),d2=n(s.d2),h=n(s.h); return (d1&&d2&&h)?{t:'cone',d1:d1,d2:d2,h:h}:null; }
+  if(s.t==='chf'){ const c=n(s.c); let a=n(s.a)||45; a=Math.min(85,Math.max(5,a)); return c?{t:'chf',c:c,a:a}:null; }
+  return null;
+}
+function faoHolderClean(h){
+  // Copie assainie d'un porte-outil (fichier importé, presse-papiers) ou null.
+  if(!h||typeof h!=='object'||!Array.isArray(h.segs))return null;
+  const segs=h.segs.map(faoHolderSegClean).filter(function(s){return !!s;});
+  if(!segs.some(function(s){return s.t!=='chf';}))return null;
+  return {id:String(h.id||'PO'),name:String(h.name||'Porte-outil').slice(0,32),segs:segs};
+}
+function faoHolderSame(a,b){
+  // Même porte-outil (nom + tronçons), quel que soit son identifiant.
+  const k=function(h){ const c=faoHolderClean(h); return c?JSON.stringify([c.name,c.segs]):''; };
+  return k(a)!==''&&k(a)===k(b);
+}
+function faoHolderProfile(h){
+  // Contour extérieur [rayon, z] du nez (z = 0) vers la broche ; null si vide.
+  // Un chanfrein d'entrée entame le premier tronçon cône/cylindre qui le suit.
+  const c=faoHolderClean(h);
+  if(!c)return null;
+  const S=c.segs,pts=[];let z=0,dmax=0;
+  const push=function(r,zz){
+    const l=pts[pts.length-1];
+    if(!l||Math.abs(l[0]-r)>1e-9||Math.abs(l[1]-zz)>1e-9)pts.push([r,zz]);
+    if(2*r>dmax)dmax=2*r;
+  };
+  for(let i=0;i<S.length;i++){
+    const s=S[i];
+    if(s.t==='cyl'){ push(s.d/2,z); z+=s.h; push(s.d/2,z); }
+    else if(s.t==='cone'){ push(s.d1/2,z); z+=s.h; push(s.d2/2,z); }
+    else{
+      let nx=null;for(let j=i+1;j<S.length&&!nx;j++)if(S[j].t!=='chf')nx=S[j];
+      if(!nx)continue;
+      const r=(nx.t==='cyl'?nx.d:nx.d1)/2;
+      const dr=Math.min(s.c*Math.tan(s.a*Math.PI/180),r*0.9);
+      push(r-dr,z); z+=s.c; push(r,z);
+    }
+  }
+  if(pts.length<2)return null;
+  return {pts:pts,h:z,dmax:dmax,dNose:2*pts[0][0]};
+}
+function faoHolderNew(setup,from,d0){
+  // Nouveau porte-outil (copie de `from`, sinon un porte-pince type au Ø de nez d0).
+  const hs=setup.holders||(setup.holders=[]);
+  let n=hs.length+1;
+  while(hs.some(function(h){return h.id==='PO'+n;}))n++;
+  const D=Math.max(6,Math.round(+d0||28));
+  const h=from?JSON.parse(JSON.stringify(from)):
+    {name:'Porte-outil '+n,segs:[{t:'chf',c:1,a:45},{t:'cyl',d:D,h:25},{t:'cone',d1:D,d2:D+16,h:12},{t:'cyl',d:D+16,h:20}]};
+  if(from)h.name=((from.name||'Porte-outil')+' (copie)').slice(0,32);
+  h.id='PO'+n;
+  hs.push(h);
+  return h;
+}
+function faoHolderUsers(setup,id){
+  return ((setup&&setup.tools)||[]).filter(function(t){return t&&t.holderId===id;});
+}
+function faoHolderLabel(h){
+  const p=faoHolderProfile(h);
+  return (h.name||'Porte-outil')+(p?(' — nez Ø'+faoR1(p.dNose)+', haut. '+faoR1(p.h)):'');
+}
+/* ----- catalogue de porte-outils standard (V0.91.0) -----
+   Demande : « trouver des porte-outils du marché européen pour les intégrer avec le choix de
+   l'outil ». Trois familles courantes, pour trois cônes de broche. COTES INDICATIVES : nez et
+   longueurs des séries courantes des catalogues (porte-pinces ER : Ø de l'écrou DIN 6499 ;
+   frettage : nez/corps à 4,5° façon DIN 69882-8 ; Weldon : DIN 6359). Chaque fabricant a ses
+   variantes : le porte-outil inséré est un porte-outil ordinaire, à corriger d'après son catalogue.
+   Le porte-outil va du nez jusqu'à la collerette comprise ; au-dessus, c'est la broche. */
+const FAO_SPINDLES={ // collerette : Ø et épaisseur comptée depuis le plan de jauge / la face d'appui
+  SK40:{n:'SK40',d:63.55,h:19.1},BT40:{n:'BT40',d:63,h:27},HSKA63:{n:'HSK-A63',d:63,h:26}};
+const FAO_HOLDER_STD={
+  er:{n:'Porte-pince ER',L:[70,100,160], // [taille, Ø écrou, Ø de queue maxi]
+    T:[['ER16',28,10],['ER20',34,13],['ER25',42,16],['ER32',50,20],['ER40',63,26]]},
+  fr:{n:'Frettage', // [Ø de queue, Ø nez, Ø corps, longueur A]
+    T:[[6,21,27,80],[8,21,27,80],[10,24,32,85],[12,24,32,90],[16,27,34,95],[20,33,42,100],[25,44,53,115]]},
+  we:{n:'Weldon', // [Ø de queue, Ø extérieur, longueur A]
+    T:[[6,25,50],[8,28,50],[10,35,50],[12,42,50],[16,48,63],[20,52,63],[25,65,100]]}};
+function faoSpindleCur(){
+  let k='SK40';try{ k=localStorage.getItem('minifusion_faoCone')||k; }catch(e){}
+  return FAO_SPINDLES[k]?k:'SK40';
+}
+function faoHolderStdList(cone){
+  // Toutes les références du catalogue pour ce cône : [{key,label,fam,dq0,dq1}] (dq0..dq1 = queues acceptées)
+  const C=FAO_SPINDLES[cone]||FAO_SPINDLES.SK40,out=[];
+  FAO_HOLDER_STD.er.T.forEach(function(t){ FAO_HOLDER_STD.er.L.forEach(function(L){
+    out.push({key:'er|'+t[0]+'|'+L,fam:'er',dq0:1,dq1:t[2],label:t[0]+' × '+L+' '+C.n+' (écrou Ø'+t[1]+')'}); }); });
+  FAO_HOLDER_STD.fr.T.forEach(function(t){
+    out.push({key:'fr|'+t[0],fam:'fr',dq0:t[0],dq1:t[0],label:'Frettage Ø'+t[0]+' × '+t[3]+' '+C.n+' (nez Ø'+t[1]+')'}); });
+  FAO_HOLDER_STD.we.T.forEach(function(t){
+    out.push({key:'we|'+t[0],fam:'we',dq0:t[0],dq1:t[0],label:'Weldon Ø'+t[0]+' × '+t[2]+' '+C.n+' (Ø'+t[1]+')'}); });
+  return out;
+}
+function faoHolderStdMake(key,cone){
+  // Porte-outil {name,segs} d'une référence du catalogue, ou null.
+  const C=FAO_SPINDLES[cone]||FAO_SPINDLES.SK40,q=String(key||'').split('|');
+  const body=function(L){ return Math.max(0,Math.round((L-C.h)*100)/100); };
+  const fl={t:'cyl',d:C.d,h:C.h};
+  if(q[0]==='er'){
+    const t=FAO_HOLDER_STD.er.T.filter(function(x){return x[0]===q[1];})[0],L=+q[2];
+    if(!t||!(L>C.h))return null;
+    return {name:(t[0]+' × '+L+' '+C.n).slice(0,32),segs:[{t:'chf',c:1,a:45},{t:'cyl',d:t[1],h:body(L-1)},fl]};
+  }
+  if(q[0]==='fr'){
+    const t=FAO_HOLDER_STD.fr.T.filter(function(x){return x[0]===+q[1];})[0];
+    if(!t)return null;
+    const hc=Math.min(body(t[3]),Math.round((t[2]-t[1])/2/Math.tan(4.5*Math.PI/180)*100)/100);
+    const segs=[{t:'cone',d1:t[1],d2:t[2],h:hc}];
+    if(body(t[3])-hc>0.01)segs.push({t:'cyl',d:t[2],h:Math.round((body(t[3])-hc)*100)/100});
+    segs.push(fl);
+    return {name:('Frettage Ø'+t[0]+' × '+t[3]+' '+C.n).slice(0,32),segs:segs};
+  }
+  if(q[0]==='we'){
+    const t=FAO_HOLDER_STD.we.T.filter(function(x){return x[0]===+q[1];})[0];
+    if(!t)return null;
+    return {name:('Weldon Ø'+t[0]+' × '+t[2]+' '+C.n).slice(0,32),segs:[{t:'chf',c:1,a:45},{t:'cyl',d:t[1],h:body(t[2]-1)},fl]};
+  }
+  return null;
+}
+function faoHolderStdMount(setup,t,key,cone){
+  // Monte la référence sur l'outil : porte-outil identique du posage réutilisé, sinon ajouté.
+  const m=faoHolderStdMake(key,cone); if(!m)return null;
+  let h=faoHolders(setup).filter(function(x){return faoHolderSame(x,m);})[0];
+  if(!h){ h=faoHolderNew(setup,m); h.name=m.name; }
+  t.holderId=h.id;
+  return h;
+}
+/* ----- fiche outil : rubrique « Porte-outil » ----- */
+function faoHolderSection(R,setup,t,rerender){
+  const mk=function(tag,cls,txt){const e=document.createElement(tag);if(cls)e.className=cls;if(txt!==undefined)e.textContent=txt;return e;};
+  const done=function(){ faoChanged(); rerender(); };
+  R.appendChild(mk('div','fao-tl-h','Porte-outil — du nez vers la broche'));
+  const top=mk('div','fao-tl-btns');R.appendChild(top);
+  const hs=faoHolders(setup);
+  const cur=faoHolderById(setup,t.holderId);
+  const sel=mk('select','fao-sel');
+  sel.title='Porte-outil monté sur cet outil. « Générique » = simple cylindre au Ø mandrin de la fiche.';
+  [['','Générique (Ø mandrin)']].concat(hs.map(function(h){return [h.id,faoHolderLabel(h)];})).forEach(function(o){
+    const e=mk('option','',o[1]);e.value=o[0];sel.appendChild(e);});
+  sel.value=cur?cur.id:'';
+  sel.onchange=function(){ faoSnapshot('porte-outil de l’outil'); if(sel.value)t.holderId=sel.value; else delete t.holderId; done(); };
+  top.appendChild(sel);
+  const btn=function(parent,txt,title,fn){const b=mk('button','fao-mini',txt);b.title=title;b.onclick=fn;parent.appendChild(b);return b;};
+  btn(top,'+ Nouveau','Créer un porte-outil et le monter sur cet outil',function(){
+    faoSnapshot('nouveau porte-outil');const h=faoHolderNew(setup,null,faoToolDims(t).dPo.v);t.holderId=h.id;done();});
+  if(cur){
+    btn(top,'⧉ Dupliquer','Copier ce porte-outil pour en faire une variante',function(){
+      faoSnapshot('dupliquer le porte-outil');const h=faoHolderNew(setup,cur);t.holderId=h.id;done();});
+    btn(top,'✕ Supprimer','Supprimer ce porte-outil : les outils qui le portent reviennent au porte-outil générique',function(){
+      faoSnapshot('supprimer le porte-outil');
+      faoHolderUsers(setup,cur.id).forEach(function(x){delete x.holderId;});
+      setup.holders=hs.filter(function(h){return h!==cur;});done();});
+  }
+  // V0.91.0 : catalogue standard — d'abord les références qui acceptent la queue de CET outil
+  const cat=mk('div','fao-tl-btns');R.appendChild(cat);
+  const sC=mk('select','fao-sel');sC.title='Cône de broche de la machine : donne la collerette des porte-outils du catalogue';
+  Object.keys(FAO_SPINDLES).forEach(function(k){const e=mk('option','',FAO_SPINDLES[k].n);e.value=k;sC.appendChild(e);});
+  sC.value=faoSpindleCur();
+  sC.onchange=function(){ try{localStorage.setItem('minifusion_faoCone',sC.value);}catch(e){} rerender(); };
+  cat.appendChild(sC);
+  const sK=mk('select','fao-sel');
+  sK.title='Catalogue de porte-outils standard (porte-pinces ER, frettage, Weldon). Cotes indicatives des séries courantes : une fois inséré, le porte-outil se corrige comme les autres d’après le catalogue de votre fabricant.';
+  const dq=faoToolDims(t).dq.v;
+  const o0=mk('option','','+ Du catalogue standard…');o0.value='';sK.appendChild(o0);
+  const L=faoHolderStdList(sC.value);
+  const grp=function(lab,list){ if(!list.length)return; const g=mk('optgroup');g.label=lab;
+    list.forEach(function(x){const e=mk('option','',x.label);e.value=x.key;g.appendChild(e);});sK.appendChild(g); };
+  const fits=function(x){ return dq>=x.dq0-1e-6&&dq<=x.dq1+1e-6; };
+  grp('Pour une queue Ø'+faoR1(dq),L.filter(fits));
+  grp('Autres références',L.filter(function(x){return !fits(x);}));
+  sK.value='';
+  sK.onchange=function(){ if(!sK.value)return; faoSnapshot('porte-outil du catalogue'); faoHolderStdMount(setup,t,sK.value,sC.value); done(); };
+  cat.appendChild(sK);
+  if(!cur)return;
+  const nU=faoHolderUsers(setup,cur.id).length;
+  const rn=mk('div','fao-tl-grid');R.appendChild(rn);
+  const pN=mk('label','fao-tl-f wide');pN.appendChild(mk('span','','Nom'));
+  const iN=mk('input','fao-in');iN.type='text';iN.value=cur.name||'';
+  iN.onchange=function(){faoSnapshot('nom du porte-outil');cur.name=String(iN.value||cur.name||'Porte-outil').slice(0,32);done();};
+  pN.appendChild(iN);rn.appendChild(pN);
+  if(nU>1)R.appendChild(mk('div','fao-meta','Monté sur '+nU+' outils : le modifier les change tous (« Dupliquer » pour une variante).'));
+  const segs=cur.segs||(cur.segs=[]);
+  const num=function(parent,lab,val,title,unit,fn){
+    const p=mk('label','fao-tl-f');p.title=title;p.appendChild(mk('span','',lab));
+    const i=mk('input','fao-in fao-num');i.type='text';i.inputMode='decimal';i.value=String(+(+val).toFixed(3));
+    i.onchange=function(){const v=parseFloat(String(i.value).replace(',','.'));if(isFinite(v)&&v>0){faoSnapshot(title);fn(v);done();}};
+    try{ if(typeof parNumKeys==='function')parNumKeys(i); }catch(e){}
+    p.appendChild(i);if(unit)p.appendChild(mk('em','',unit));parent.appendChild(p);return i;
+  };
+  const list=mk('div','fao-ho-list');R.appendChild(list);
+  segs.forEach(function(s,k){
+    const row=mk('div','fao-ho-row');list.appendChild(row);
+    row.appendChild(mk('b','',String(k+1)));
+    const sT=mk('select','fao-sel');sT.title='Forme de ce tronçon';
+    FAO_HOLDER_TYPES.forEach(function(o){const e=mk('option','',o[1]);e.value=o[0];sT.appendChild(e);});
+    sT.value=s.t;
+    sT.onchange=function(){
+      faoSnapshot('forme du tronçon');
+      const d=+(s.d||s.d1)||28,h=+s.h||10;
+      segs[k]=sT.value==='chf'?{t:'chf',c:1,a:45}:(sT.value==='cone'?{t:'cone',d1:d,d2:+s.d2||d+10,h:h}:{t:'cyl',d:d,h:h});
+      done();};
+    row.appendChild(sT);
+    const f=mk('div','fao-ho-f');row.appendChild(f);
+    if(s.t==='cyl'){
+      num(f,'Ø',s.d,'Diamètre du cylindre','mm',function(v){s.d=v;});
+      num(f,'Hauteur',s.h,'Hauteur du cylindre','mm',function(v){s.h=v;});
+    }else if(s.t==='cone'){
+      num(f,'Ø nez',s.d1,'Diamètre du cône côté outil','mm',function(v){s.d1=v;});
+      num(f,'Ø broche',s.d2,'Diamètre du cône côté broche','mm',function(v){s.d2=v;});
+      num(f,'Hauteur',s.h,'Hauteur du cône','mm',function(v){s.h=v;});
+    }else{
+      num(f,'Longueur',s.c,'Longueur du chanfreiné le long de l’axe — il entame le tronçon suivant','mm',function(v){s.c=v;});
+      num(f,'Angle',s.a||45,'Angle du chanfrein par rapport à l’axe (45° par défaut)','°',function(v){s.a=Math.min(85,Math.max(5,v));});
+    }
+    const mv=function(d){ return function(){ const j=k+d; if(j<0||j>=segs.length)return;
+      faoSnapshot('ordre des tronçons');const x=segs[k];segs[k]=segs[j];segs[j]=x;done(); }; };
+    btn(row,'↑','Rapprocher ce tronçon du nez',mv(-1));
+    btn(row,'↓','Rapprocher ce tronçon de la broche',mv(1));
+    btn(row,'✕','Retirer ce tronçon',function(){ faoSnapshot('retirer le tronçon');segs.splice(k,1);done(); });
+  });
+  const add=mk('div','fao-tl-btns');R.appendChild(add);
+  const last=function(){ for(let i=segs.length-1;i>=0;i--){ const s=segs[i]; if(s.t==='cyl')return s.d; if(s.t==='cone')return s.d2; } return faoToolDims(t).dPo.v; };
+  btn(add,'+ Chanfrein d’entrée','Ajouter un chanfrein au nez (il entame le tronçon qui le suit)',function(){
+    faoSnapshot('ajouter un chanfrein d’entrée');segs.unshift({t:'chf',c:1,a:45});done();});
+  btn(add,'+ Cône','Ajouter un cône côté broche',function(){
+    faoSnapshot('ajouter un cône');const d=last();segs.push({t:'cone',d1:d,d2:d+10,h:10});done();});
+  btn(add,'+ Cylindre','Ajouter un cylindre côté broche',function(){
+    faoSnapshot('ajouter un cylindre');segs.push({t:'cyl',d:last(),h:20});done();});
+  if(!faoHolderProfile(cur))R.appendChild(mk('div','fao-note','Ce porte-outil n’a encore ni cône ni cylindre : ajoutez-en un pour le voir sur le schéma.'));
 }
 
 /* ═══════════════ 89-fao-posage-repere.js — fao posage repere ═══════════════ */

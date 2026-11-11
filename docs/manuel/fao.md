@@ -12,6 +12,12 @@
 - **Dégagement** : approche de chaque opération, changement d'outil, rotation du plateau.
 - **Retrait** : rapides entre les passes, au plan de retrait ou en **retrait minimum** réglable, sans jamais traverser la matière restante.
 - **Outils** : fraises cylindriques, boules, toriques, à chanfreiner, forets, forets à pointer et à centrer (DIN 333 A), tarauds.
+  - **Fiche en onglets** : Identification, Géométrie, Coupe, Porte-outil.
+  - **Exporter / importer** (fenêtre Outils) : **⬇ Exporter l’outil** enregistre la fiche sélectionnée, **⬇ Tout exporter** toute la bibliothèque du posage, dans un fichier `.ccoutils`. **⬆ Importer…** ajoute les outils d'un fichier : s'il en contient plusieurs, une fenêtre les liste avec une case chacun (**Tout cocher** / **Tout décocher**) ; ceux déjà présents à l'identique sont décochés d'office. Un outil importé garde son numéro T s'il est libre.
+  - **Catalogues des fabricants** : le bouton **📖 Catalogue…** ouvre une page où l'on choisit le fabricant, la série (fraises, forets, tarauds) et la **matière usinée** ; chaque référence affiche sa géométrie et ses conditions de coupe (Vc, avance, S et F), et **Insérer** crée les outils cochés dans la bibliothèque. Un catalogue est un fichier `.cccatalogue` par fabricant, chargé par **Charger un catalogue…** et gardé dans le navigateur (les données des fabricants ne sont pas livrées avec ConceptCAD). Quand le fabricant donne une fourchette, la liste **Dans la fourchette du fabricant** choisit le bas, le milieu ou le haut ; une référence dont le diamètre sort du tableau du fabricant est signalée et son avance reste à saisir. [Fichier de démonstration](catalogue-exemple.cccatalogue), aux valeurs fictives.
+  - **Queue plus grosse que l'outil** : le champ **Cône vers la queue** donne la longueur du cône de raccord (0 : épaulement droit).
+  - **Porte-outils** : chaque fiche choisit son porte-outil (**Générique** ou un porte-outil du posage). **+ Nouveau**, **Dupliquer**, **Supprimer** ; un porte-outil se décrit du nez vers la broche par des tronçons **Chanfrein d'entrée**, **Cône** et **Cylindre**, dessinés à l'échelle sur le schéma de l'outil. Il suit son outil dans les fichiers `.ccoutils`.
+  - **Catalogue standard** : sous le choix du porte-outil, la liste **+ Du catalogue standard…** propose porte-pinces ER (ER16 à ER40), frettage et Weldon, pour une broche SK40, BT40 ou HSK-A63 ; les références qui acceptent la queue de l'outil sont en tête. Cotes indicatives des séries courantes : le porte-outil inséré se corrige d'après le catalogue du fabricant.
 
 ## Opérations
 
@@ -42,6 +48,7 @@
 ## Simulation, 3+2 et G-code
 
 - **Parcours à l'écran** : rapides et remontées bien visibles, et distincts des passes d'usinage.
+- **Collisions du porte-outil** : dans la simulation, le bouton **⚠ Collisions** rejoue tout le posage et signale chaque opération où le porte-outil (ou une queue plus grosse que l'outil) entre dans la matière restante, rapides compris ; un repère rouge marque le contact, un second clic y amène la simulation. L'outil simulé a sa vraie longueur et son vrai porte-outil. Opérations inclinées (3+2) : contrôle indicatif.
 - **Simulation** sur la **carte graphique** : outil réel, matière enlevée à partir du vrai brut.
   - Rendu réel ou lisse ; sol miroir et plan d'ombre placés sous le brut.
   - Deux moteurs : **cartes de hauteurs** (une par orientation en 3+2, lancer de rayons) ou **champ de distance**.

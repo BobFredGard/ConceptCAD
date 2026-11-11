@@ -1,0 +1,187 @@
+{
+ "format": "conceptcad-catalogue",
+ "v": 1,
+ "fabricant": "Exemple (valeurs fictives)",
+ "source": "fichier de démonstration — ne pas usiner avec ces valeurs",
+ "series": [
+  {
+   "ref": "EX-F2",
+   "nom": "Fraise 2 dents carbure",
+   "kind": "flat",
+   "flutes": 2,
+   "mat": "Carbure",
+   "outils": [
+    {
+     "ref": "EX-F2-03",
+     "d": 3,
+     "lc": 8,
+     "dq": 6,
+     "lCq": 4,
+     "lt": 50
+    },
+    {
+     "ref": "EX-F2-06",
+     "d": 6,
+     "lc": 13,
+     "dq": 6,
+     "lt": 57
+    },
+    {
+     "ref": "EX-F2-10",
+     "d": 10,
+     "lc": 22,
+     "dq": 10,
+     "lt": 72
+    },
+    {
+     "ref": "EX-F2-16",
+     "d": 16,
+     "lc": 32,
+     "dq": 16,
+     "lt": 92
+    }
+   ],
+   "coupe": [
+    {
+     "matiere": "Aluminium",
+     "vc": 300,
+     "fz": [
+      [
+       3,
+       0.02
+      ],
+      [
+       6,
+       0.04
+      ],
+      [
+       10,
+       0.06
+      ],
+      [
+       16,
+       0.1
+      ]
+     ]
+    },
+    {
+     "matiere": "Acier < 850 N/mm²",
+     "vc": 120,
+     "fz": [
+      [
+       3,
+       0.01
+      ],
+      [
+       6,
+       0.025
+      ],
+      [
+       10,
+       0.04
+      ],
+      [
+       16,
+       0.06
+      ]
+     ]
+    }
+   ]
+  },
+  {
+   "ref": "EX-D",
+   "nom": "Foret carbure 5×D",
+   "kind": "drill",
+   "flutes": 2,
+   "mat": "Carbure",
+   "ang": 140,
+   "outils": [
+    {
+     "ref": "EX-D-05",
+     "d": 5,
+     "lc": 28,
+     "dq": 6,
+     "lt": 66
+    },
+    {
+     "ref": "EX-D-068",
+     "d": 6.8,
+     "lc": 34,
+     "dq": 8,
+     "lt": 79
+    },
+    {
+     "ref": "EX-D-085",
+     "d": 8.5,
+     "lc": 47,
+     "dq": 10,
+     "lt": 89
+    }
+   ],
+   "coupe": [
+    {
+     "matiere": "Aluminium",
+     "vc": 180,
+     "fr": [
+      [
+       5,
+       0.15
+      ],
+      [
+       8.5,
+       0.25
+      ]
+     ]
+    },
+    {
+     "matiere": "Acier < 850 N/mm²",
+     "vc": 90,
+     "fr": [
+      [
+       5,
+       0.1
+      ],
+      [
+       8.5,
+       0.16
+      ]
+     ]
+    }
+   ]
+  },
+  {
+   "ref": "EX-T",
+   "nom": "Taraud machine",
+   "kind": "tap",
+   "mat": "ARS / HSS",
+   "outils": [
+    {
+     "ref": "EX-T-M6",
+     "d": 6,
+     "size": "M6",
+     "p": 1,
+     "dq": 6,
+     "lt": 80
+    },
+    {
+     "ref": "EX-T-M8",
+     "d": 8,
+     "size": "M8",
+     "p": 1.25,
+     "dq": 8,
+     "lt": 90
+    }
+   ],
+   "coupe": [
+    {
+     "matiere": "Aluminium",
+     "vc": 25
+    },
+    {
+     "matiere": "Acier < 850 N/mm²",
+     "vc": 12
+    }
+   ]
+  }
+ ]
+}
