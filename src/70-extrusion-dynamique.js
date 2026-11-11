@@ -165,7 +165,15 @@ function extDynPanel(p,f){
 /* ── flèche et champ de cote dans la vue ── */
 // V0.88.1 (Fred : « la flèche bleue pour tirer les valeurs est beaucoup trop grande ») : taille à l'écran ÷2 (0,11 → 0,055 × distance de la caméra) ;
 // la zone de prise reste large (cylindre invisible plus gros) pour ne pas devenir difficile à attraper
-const DYN_ARROW_K=0.055;
+const DYN_ARROW_K=0.055; // gardé pour compatibilité (tests, anciens appels)
+// V0.94.1 (Fred, 11/11 : « les flèches bleues sont toujours trop grandes pour la plupart des fonctions, trous compris ») :
+// la taille suivait la distance de la caméra, donc grossissait avec un petit angle de champ (caméra reculée) ;
+// elle est maintenant fixée en PIXELS (≈ 35 à 40 px de long, choix de Fred) quel que soit l'angle de champ ou la vue orthographique.
+const DYN_ARROW_PX=40;
+function dynArrowL(P){
+  try{const w=triadWpp(P);if(isFinite(w)&&w>0)return Math.max(1e-4,w*DYN_ARROW_PX);}catch(e){}
+  return Math.max(1e-3,camera.position.distanceTo(P)*DYN_ARROW_K);
+}
 let extArrow=null,extDrag=null,extLabel=null,extWired=false,extSwallow=0,extRebuildPending=false;
 function extArrowGeom(f){
   // Centre du profil (boîte des entités de l'esquisse), normale, bout de l'extrusion (le long de n)
@@ -185,11 +193,11 @@ function extArrowGeom(f){
 function extArrowBuild(){
   const g=new THREE.Group();g.name='extArrow';g.userData.noMirror=true;
   const mat=new THREE.MeshBasicMaterial({color:0x0a84ff,depthTest:false,transparent:true,opacity:0.95});
-  const shaft=new THREE.Mesh(new THREE.CylinderGeometry(0.035,0.035,0.75,10),mat);shaft.position.y=0.375;
-  const tip=new THREE.Mesh(new THREE.ConeGeometry(0.11,0.28,16),mat);tip.position.y=0.86;
-  const hit=new THREE.Mesh(new THREE.CylinderGeometry(0.3,0.3,1.2,8),new THREE.MeshBasicMaterial({visible:false}));hit.position.y=0.52;
+  const shaft=new THREE.Mesh(new THREE.CylinderGeometry(0.05,0.05,0.75,10),mat);shaft.position.y=0.375;
+  const tip=new THREE.Mesh(new THREE.ConeGeometry(0.15,0.3,16),mat);tip.position.y=0.86;
+  const hit=new THREE.Mesh(new THREE.CylinderGeometry(0.45,0.45,1.3,8),new THREE.MeshBasicMaterial({visible:false}));hit.position.y=0.52;
   [shaft,tip,hit].forEach(m=>{m.renderOrder=999;m.userData.extArrow=true;m.userData.noMirror=true;g.add(m);});
-  const dot=new THREE.Mesh(new THREE.SphereGeometry(0.07,12,8),new THREE.MeshBasicMaterial({color:0xffffff,depthTest:false}));dot.renderOrder=999;dot.userData.noMirror=true;g.add(dot);
+  const dot=new THREE.Mesh(new THREE.SphereGeometry(0.09,12,8),new THREE.MeshBasicMaterial({color:0xffffff,depthTest:false}));dot.renderOrder=999;dot.userData.noMirror=true;g.add(dot);
   scene.add(g);return g;
 }
 function extDynHide(){
@@ -223,7 +231,7 @@ function extDynTick(){
   if(!extArrow)extArrow=extArrowBuild();
   const dir=G.end<0?G.n.clone().negate():G.n.clone();
   const P=G.C.clone().addScaledVector(G.n,G.end);
-  const L=Math.max(1e-3,camera.position.distanceTo(P)*DYN_ARROW_K);
+  const L=dynArrowL(P);
   extArrow.position.copy(P);extArrow.scale.setScalar(L);
   extArrow.quaternion.setFromUnitVectors(new THREE.Vector3(0,1,0),dir);
   extArrow.visible=true;
