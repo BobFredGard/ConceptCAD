@@ -60,6 +60,7 @@ const SUITES = [
   'test_clavette',
   'test_fao_murs',
   'test_fao_32_fiches',
+  'test_fao_surfacage_finition',
   'test_simulation_rendu',
   'test_simulation_cartes',
   'test_fao_chanfrein',

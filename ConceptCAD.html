@@ -379,7 +379,7 @@ input[type=range]{accent-color:var(--primary);width:100%}
  * peut changer sans rien casser. CACHE_VER (parcours FAO) reste indépendant.
  */
 
-const APP_VER='V0.89.5';
+const APP_VER='V0.89.7';
 try{console.log('[ConceptCAD] version '+APP_VER);}catch(e){}
 try{var mfSv=document.getElementById('mfSplashVer');if(mfSv)mfSv.textContent=APP_VER;}catch(e){} // écran de démarrage
 
@@ -38279,8 +38279,8 @@ const CG_HOW={
     ext:{lab:'Depuis un autre composant',slots:[],ext:true}
   },
   frame:{
-    zx:{lab:'Origine, Z et X',slots:[['point','Origine'],['axis','Direction Z'],['axis','Direction X',1]],par:CG_FR_PAR,flip:true},
-    face:{lab:'Sur un plan ou une face',slots:[['plane','Plan ou face'],['axis','Direction X',1]],par:CG_FR_PAR,flip:true},
+    zx:{lab:'Origine, Z et X',slots:[['point','Origine'],['axis','Direction Z'],['dir','Direction X',1]],par:CG_FR_PAR,flip:true},
+    face:{lab:'Sur un plan ou une face',slots:[['plane','Plan ou face'],['dir','Direction X',1]],par:CG_FR_PAR,flip:true},
     '3pts':{lab:'Par 3 points',slots:[['point','Origine'],['point','Point sur X'],['point','Point dans XY']],par:CG_FR_PAR,flip:true},
     ext:{lab:'Depuis un autre composant',slots:[],ext:true,par:CG_FR_PAR,flip:true}
   }
@@ -38288,7 +38288,37 @@ const CG_HOW={
 // ext (V0.6.4) : référence à un élément (ou à l'origine) d'une AUTRE instance de l'assemblage,
 // el.ext = {ctx (instance où l'on travaille), path (instance visée), cg | o, frozen, last} —
 // résolue par asmExtFrame (46) ; figée, elle garde sa position.
-const CG_DEF_HOW={plane:'offset',axis:'ref',point:'xyz',frame:'zx'};
+const CG_DEF_HOW={plane:'offset',axis:'ref',point:'xyz',frame:'face'};
+/* Points cardinaux d'une face plane (repère « Sur un plan ou une face », el.p.w) : centre, milieux
+   des côtés et coins du rectangle qui englobe la face, aligné sur X et Y du repère (avant
+   « Rotation autour de Z » et « Inverser »). Sans w (anciens fichiers) : centre de la boîte 3D. */
+const CG_CARD=[['c','Centre',0,0],['n','Milieu nord',0,1],['s','Milieu sud',0,-1],['e','Milieu est',1,0],['o','Milieu ouest',-1,0],
+  ['ne','Coin nord-est',1,1],['no','Coin nord-ouest',-1,1],['se','Coin sud-est',1,-1],['so','Coin sud-ouest',-1,-1]];
+function cgCardPts(edges,x,y){
+  // Rectangle englobant EXACT des arêtes d'une face plane dans la base (x,y) → les 9 points, ou null.
+  // Droite : ses bouts ; cercle ou arc : ses bouts et ses points extrêmes le long de x et de y
+  // (calculés, pas échantillonnés) ; autre courbe : polyligne fine.
+  const P=[];
+  (edges||[]).forEach(E=>{
+    if(E.k==='circ'){
+      const at=u=>cgAdd(E.c,cgAdd(cgMul(E.x,E.r*Math.cos(u)),cgMul(E.y,E.r*Math.sin(u))));
+      P.push(at(E.u0),at(E.u1));
+      [x,y].forEach(d=>{
+        const a=Math.atan2(cgDot(d,E.y),cgDot(d,E.x));
+        [a,a+Math.PI].forEach(u=>{
+          // u ramené dans [u0 ; u0 + 2π[ : gardé s'il tombe sur l'arc
+          let t=(u-E.u0)%(2*Math.PI);if(t<0)t+=2*Math.PI;
+          if(t<=E.u1-E.u0+1e-12)P.push(at(E.u0+t));
+        });
+      });
+    }else (E.pts||[]).forEach(q=>P.push(q));
+  });
+  if(!P.length)return null;
+  const b=P[0];let u0=0,u1=0,v0=0,v1=0;
+  P.forEach(q=>{const w=cgSub(q,b),u=cgDot(w,x),v=cgDot(w,y);u0=Math.min(u0,u);u1=Math.max(u1,u);v0=Math.min(v0,v);v1=Math.max(v1,v);});
+  const at=(su,sv)=>cgAdd(b,cgAdd(cgMul(x,(u0+u1)/2+su*(u1-u0)/2),cgMul(y,(v0+v1)/2+sv*(v1-v0)/2)));
+  return CG_CARD.map(([w,lab,su,sv])=>({w,lab,o:at(su,sv)}));
+}
 /* ── vecteurs (tableaux [x,y,z]) : le modèle ne dépend pas de three.js ── */
 const cgAdd=(a,b)=>[a[0]+b[0],a[1]+b[1],a[2]+b[2]];
 const cgSub=(a,b)=>[a[0]-b[0],a[1]-b[1],a[2]-b[2]];
@@ -38353,6 +38383,7 @@ function cgAtNow(){
 function cgDefaults(kind,how){
   const H=CG_HOW[kind][how],p={};
   Object.keys((H&&H.par)||{}).forEach(k=>{p[k]=H.par[k].def;});
+  if(kind==='frame'&&how==='face')p.w='c'; // origine : centre de la face, puis le point cardinal cliqué
   return p;
 }
 function cgNew(kind,how,refs,p,name){
@@ -38472,6 +38503,14 @@ function cgEvalRef(ref,ctx){
   return cgEvalModelRef(ref,ctx);
 }
 /* ── construction ── */
+const CG_TYPE_LAB={plane:'un plan',axis:'un axe',point:'un point',frame:'un repère',curve:'une courbe',dir:'une direction (arête, axe, face ou plan)'};
+function cgAs(g,type){
+  // Forme attendue par un emplacement. « dir » (direction X d'un repère) : un axe ou une arête droite donne
+  // sa direction ; une face plane, un plan ou le plan d'un autre repère donne sa NORMALE.
+  if(!g)return null;
+  if(type==='dir')return g.axis||(g.plane?{o:g.plane.o,d:g.plane.n}:null);
+  return g[type]||null;
+}
 function cgSlot(el,ctx,i,type,opt){
   const r=el.refs[i];
   if(!r){if(opt)return null;throw new Error('référence '+(i+1)+' manquante');}
@@ -38483,8 +38522,9 @@ function cgSlot(el,ctx,i,type,opt){
     if((r.k==='face'||r.k==='edge'||r.k==='vtx')&&!(typeof occHas==='function'&&occHas()))throw new Error('noyau exact indisponible : position mémorisée');
     throw new Error('référence '+(i+1)+' introuvable — la pièce a changé');
   }
-  if(!g[type])throw new Error('référence '+(i+1)+' : ce n’est pas '+({plane:'un plan',axis:'un axe',point:'un point',frame:'un repère',curve:'une courbe'})[type]);
-  return g[type];
+  const v=cgAs(g,type);
+  if(!v)throw new Error('référence '+(i+1)+' : ce n’est pas '+CG_TYPE_LAB[type]);
+  return v;
 }
 function cgNum(el,k){const v=+(el.p&&el.p[k]);return isFinite(v)?v:0;}
 function cgFrPlane(o,u,v,n){return {o:cgArr(o),x:cgUnit(u),y:cgUnit(v),z:cgUnit(n)};}
@@ -38615,12 +38655,17 @@ function cgBuild(el,ctx){
     fr={o:cgArr(o),x:[1,0,0],y:[0,1,0],z:[0,0,1]};
   }else if(el.kind==='frame'){
     let O,R;
+    el._card=null;
     if(el.how==='zx'){
-      O=S(0,'point').o;const Z=S(1,'axis'),X=S(2,'axis',true);
+      O=S(0,'point').o;const Z=S(1,'axis'),X=S(2,'dir',true);
       R=cgOrtho(Z.d,X?X.d:null);
     }else if(el.how==='face'){
-      const P=S(0,'plane'),X=S(1,'axis',true);
+      const P=S(0,'plane'),X=S(1,'dir',true);
       O=P.o;R=cgOrtho(P.n,X?X.d:P.u);
+      // points cardinaux de la face (une vraie face plane seulement : un plan n'a pas de bords)
+      el._card=cgCardPts(P.edges,R.x,R.y);
+      const w=el.p&&el.p.w;
+      if(w&&el._card){const k=el._card.find(q=>q.w===w);if(k)O=k.o;}
     }else if(el.how==='3pts'){
       const a=S(0,'point').o,b=S(1,'point').o,c=S(2,'point').o;
       const X=cgSub(b,a),Z=cgCross(X,cgSub(c,a));
@@ -38631,6 +38676,7 @@ function cgBuild(el,ctx){
     warn=R.warn||'';
     let x=R.x,y=R.y,z=R.z;
     if(flip){z=cgMul(z,-1);y=cgMul(y,-1);}
+    if(el.p&&el.p.flipx){x=cgMul(x,-1);y=cgMul(y,-1);} // sens de X retourné, Z gardé (repère toujours direct)
     const rz=cgNum(el,'rz')*Math.PI/180;
     if(rz){const c=Math.cos(rz),s=Math.sin(rz);const xn=cgAdd(cgMul(x,c),cgMul(y,s));y=cgAdd(cgMul(y,c),cgMul(x,-s));x=xn;}
     O=cgAdd(cgAdd(cgAdd(cgArr(O),cgMul(x,cgNum(el,'dx'))),cgMul(y,cgNum(el,'dy'))),cgMul(z,cgNum(el,'dz')));
@@ -38831,7 +38877,11 @@ function cgEvalModelRef(ref,ctx){
       if(gt===T.GeomAbs_Plane){
         const n=occFaceOutNormal(f);if(!n)return null;
         const B=cgBasisN(n,null);
-        return {plane:{o:b.pos,u:B.u,v:B.v,n:B.n},point:{o:b.pos}};
+        const pl={o:b.pos,u:B.u,v:B.v,n:B.n};
+        // bords de la face : seulement pour le repère posé dessus (points cardinaux)
+        const me=ctx&&ctx.self;
+        if(me&&me.kind==='frame'&&me.how==='face'&&me.refs&&me.refs[0]===ref)pl.edges=cgFaceEdges(f);
+        return {plane:pl,point:{o:b.pos}};
       }
       if(gt===T.GeomAbs_Cylinder||gt===T.GeomAbs_Cone){
         const ax=(gt===T.GeomAbs_Cylinder?ad.Cylinder():ad.Cone()).Axis();
@@ -38869,6 +38919,37 @@ function cgEvalModelRef(ref,ctx){
     return g;
   }
   return null;
+}
+function cgFaceEdges(f){
+  // Bords d'une face plane, en données pures pour cgCardPts : [{k:'circ',c,x,y,r,u0,u1} | {k:'pts',pts}]
+  const out=[];let ex=null;
+  try{
+    ex=new occt.TopExp_Explorer_2(f,occt.TopAbs_ShapeEnum.TopAbs_EDGE,occt.TopAbs_ShapeEnum.TopAbs_SHAPE);
+    const T=occt.GeomAbs_CurveType;
+    while(ex.More()){
+      let e=null,ad=null;
+      try{
+        e=occEdgeCur(ex);ad=new occt.BRepAdaptor_Curve_2(e);
+        const u0=ad.FirstParameter(),u1=ad.LastParameter(),gt=ad.GetType();
+        const at=u=>occXyz(ad.Value(u));
+        if(gt===T.GeomAbs_Line)out.push({k:'pts',pts:[at(u0),at(u1)]});
+        else if(gt===T.GeomAbs_Circle){
+          const C=ad.Circle();
+          try{
+            const A=C.Position();
+            try{
+              const c=occXyz(A.Location()),n=occXyz(A.Direction()),x=occXyz(A.XDirection());
+              out.push({k:'circ',c,x,y:cgCross(n,x),r:C.Radius(),u0,u1});
+            }finally{occFree(A);}
+          }finally{occFree(C);}
+        }else{const pts=[];for(let i=0;i<=200;i++)pts.push(at(u0+(u1-u0)*i/200));out.push({k:'pts',pts});}
+      }catch(err){}
+      finally{try{if(ad)ad.delete();}catch(x){}try{if(e)e.delete();}catch(x){}}
+      ex.Next();
+    }
+  }catch(err){}
+  finally{try{if(ex)ex.delete();}catch(x){}}
+  return out;
 }
 function cgEdgeCurve(shape,E){
   // Polyligne fine (paramètre uniforme, 400 pas) de l'arête exacte de rang E.src → {pts} ;
@@ -38969,11 +39050,25 @@ function cgDrawOne(el,G,E,mode){
     s.position.copy(o);s.renderOrder=970;s.userData.cg={id:el.id};grp.add(s);
   }else if(el.kind==='frame'){
     if(mode==='p'){
-      // aperçu : trois traits (la triade réelle n'existe qu'une fois validée)
-      [[F.x,0xff453a],[F.y,0x30d158],[F.z,0x0a84ff]].forEach(([d,c])=>{
-        const ln=new THREE.Line(new THREE.BufferGeometry().setFromPoints([o,o.clone().addScaledVector(cgV3(d),h*0.5)]),new THREE.LineBasicMaterial({color:c,depthTest:false}));
-        ln.raycast=()=>{};grp.add(ln);});
-    }else{
+      // points cardinaux de la face : 9 pastilles cliquables (cgCardPickAt) et le rectangle qui les porte
+      if(el._card){
+        const P=w=>cgV3(el._card.find(q=>q.w===w).o),cur=(el.p&&el.p.w)||'c';
+        const rc=new THREE.LineLoop(new THREE.BufferGeometry().setFromPoints([P('so'),P('se'),P('ne'),P('no')]),
+          new THREE.LineDashedMaterial({color:CG_COL_PRE,dashSize:h/40,gapSize:h/60,transparent:true,opacity:0.8,depthTest:false}));
+        rc.computeLineDistances();rc.renderOrder=971;rc.raycast=()=>{};grp.add(rc);
+        // taille constante à l'écran : rayon en mm pour ~5 px (7 px pour le point choisi)
+        const px=q=>{try{const d=camera.isOrthographicCamera?(camera.top-camera.bottom)/camera.zoom:2*camera.position.distanceTo(q)*Math.tan((camera.fov||45)*Math.PI/360);
+          return d/Math.max(1,renderer.domElement.clientHeight);}catch(err){return h/400;}};
+        el._card.forEach(q=>{
+          const on=q.w===cur,c=cgV3(q.o);
+          const s=new THREE.Mesh(new THREE.SphereGeometry((on?7:4.5)*px(c),14,10),new THREE.MeshBasicMaterial({color:on?CG_COL_SEL:0xffffff,depthTest:false,transparent:true,opacity:on?1:0.9}));
+          s.position.copy(c);s.renderOrder=on?973:972;s.raycast=()=>{};grp.add(s);
+        });
+      }
+    }
+    {
+      // le vrai repère (flèches X, Y, Z et ses trois plans), aussi pendant la création et la modification :
+      // on voit où il se pose et comment il est tourné avant de valider (cgPickAt ignore celui du brouillon)
       const g=cgTriadFor(el.id),pg=g.userData.planeGroup;
       g.position.copy(o);
       g.quaternion.setFromRotationMatrix(new THREE.Matrix4().makeBasis(cgV3(F.x),cgV3(F.y),cgV3(F.z)));
@@ -38992,7 +39087,7 @@ function cgDraw(){
   for(const o of [...G.children]){G.remove(o);cgDispose(o);}
   const vivants=new Set((doc.cgeo||[]).map(c=>c.id));
   for(const [id,g] of cgTriads){
-    if(vivants.has(id))continue;
+    if(vivants.has(id)||(cgMode&&cgMode.draft&&cgMode.draft.id===id))continue; // le brouillon garde le sien
     [g,g.userData.planeGroup].forEach(x=>{const i=TRIADS.indexOf(x);if(i>=0)TRIADS.splice(i,1);});
     cgTriads.delete(id);
   }
@@ -39029,6 +39124,25 @@ function cgPickAt(e){
     const h=hits[0],c=h.object.userData.cg;
     return {id:c.id,sub:c.sub||null,dist:h.distance,plane:!!h.object.userData.cgPlane};
   }catch(err){return null;}
+}
+function cgCardPickAt(e){
+  // Repère sur une face : point cardinal du brouillon à ≤ 9 px du curseur → devient l'origine. → true si pris
+  const d=cgMode&&cgMode.draft;
+  if(!d||d.kind!=='frame'||d.how!=='face'||!d._card)return false;
+  try{
+    const r=renderer.domElement.getBoundingClientRect(),v=new THREE.Vector3();
+    let best=null,bd=9;
+    d._card.forEach(q=>{
+      v.set(q.o[0],q.o[1],q.o[2]).project(camera);if(Math.abs(v.z)>=1)return;
+      const dd=Math.hypot(r.left+(v.x+1)/2*r.width-e.clientX,r.top+(1-v.y)/2*r.height-e.clientY);
+      if(dd<bd){bd=dd;best=q;}
+    });
+    if(!best)return false;
+    d.p.w=best.w;
+    cgRefresh();
+    try{faceEl.textContent='Repère — origine : '+best.lab.toLowerCase()+' de la face. '+(d.refs[1]?'':'Cliquez une arête, une face ou un plan pour la direction X (facultatif), ou ')+'✓ Valider.';}catch(err){}
+    return true;
+  }catch(err){return false;}
 }
 function cgSelectAt(e){
   // Clic simple hors saisie : sélectionne l'élément visé. Un grand plan ne masque pas la pièce.
@@ -39076,7 +39190,7 @@ function cgStart(kind){
   const d=cgDraftOf(kind,CG_DEF_HOW[kind]);
   const r=cgSelRef();
   const S=CG_HOW[kind][d.how].slots;
-  if(r&&S[0]&&(cgEvalRef(r,null)||{})[S[0][0]])d.refs[0]=r;
+  if(r&&S[0]&&cgAs(cgEvalRef(r,null),S[0][0]))d.refs[0]=r;
   cgMode={draft:d,editId:null,slot:null};
   cgNextSlot();
   sel={kind:null,id:null};
@@ -39110,7 +39224,9 @@ function cgRefresh(){
   try{renderTree();renderProps();}catch(e){}
   if(cgMode&&cgMode.slot!=null){
     const s=CG_HOW[cgMode.draft.kind][cgMode.draft.how].slots[cgMode.slot];
-    try{faceEl.textContent=CG_KINDS[cgMode.draft.kind].lab+' — '+s[1]+' : cliquez '+cgSlotHint(s[0])+' — Échap annule.';}catch(e){}
+    const card=cgMode.draft.kind==='frame'&&cgMode.draft.how==='face'&&cgMode.slot!==0&&cgMode.draft._card;
+    try{faceEl.textContent=card?'Repère — cliquez un des 9 points de la face pour l’origine, puis une arête, une face ou un plan pour la direction X (facultatif) — ✓ Valider, Échap annule.'
+      :CG_KINDS[cgMode.draft.kind].lab+' — '+s[1]+' : cliquez '+cgSlotHint(s[0])+' — Échap annule.';}catch(e){}
   }else if(cgMode){
     const d=cgMode.draft;
     try{faceEl.textContent=CG_KINDS[d.kind].lab+' — '+(d.fr&&d.st!=='warn'?'réglez les valeurs puis ✓ Valider (Échap annule).':'⚠ '+(d.msg||'références incomplètes'));}catch(e){}
@@ -39121,6 +39237,7 @@ function cgSlotHint(t){
     axis:'un axe (origine, construction), une arête droite ou une face cylindrique',
     point:'l’origine, un point, un sommet, le centre d’une arête circulaire',
     frame:'un repère (ou l’origine)',
+    dir:'une arête droite ou un axe (X le suit), une face plane, un plan ou le plan d’un autre repère (X lui est perpendiculaire)',
     curve:'une arête (droite, arc, spline) ou une courbe d’une esquisse affichée'})[t]||'une référence';
 }
 function cgCancel(){
@@ -39159,8 +39276,8 @@ function cgSetHow(how){
   const d=cgMode.draft,old=d.how;if(old===how)return;
   const So=CG_HOW[d.kind][old].slots,Sn=CG_HOW[d.kind][how].slots;
   // on garde les références compatibles, emplacement par emplacement
-  const refs=[];Sn.forEach((s,i)=>{const r=d.refs[i];if(r&&So[i]&&(cgEvalRef(r,null)||{})[s[0]])refs[i]=r;});
-  d.how=how;d.refs=refs;d.p=Object.assign(cgDefaults(d.kind,how),Object.fromEntries(Object.entries(d.p||{}).filter(([k])=>k==='flip'||k==='expr'||k==='pname'||k==='_fxOf'||k==='_fxKeys'||(CG_HOW[d.kind][how].par||{})[k])));
+  const refs=[];Sn.forEach((s,i)=>{const r=d.refs[i];if(r&&So[i]&&cgAs(cgEvalRef(r,null),s[0]))refs[i]=r;});
+  d.how=how;d.refs=refs;d.p=Object.assign(cgDefaults(d.kind,how),Object.fromEntries(Object.entries(d.p||{}).filter(([k])=>k==='flip'||k==='flipx'||k==='expr'||k==='pname'||(k==='w'&&d.kind==='frame'&&how==='face')||k==='_fxOf'||k==='_fxKeys'||(CG_HOW[d.kind][how].par||{})[k])));
   cgNextSlot();cgRefresh();
 }
 function cgRefAccept(ref){
@@ -39176,7 +39293,7 @@ function cgRefAccept(ref){
     }
   }
   const g=cgEvalRef(ref,{});
-  if(!g||!g[s[0]]){try{faceEl.textContent=s[1]+' : ce n’est pas '+({plane:'un plan',axis:'un axe',point:'un point',frame:'un repère',curve:'une courbe'})[s[0]]+'. Cliquez '+cgSlotHint(s[0])+'.';}catch(e){}return false;}
+  if(!cgAs(g,s[0])){try{faceEl.textContent=s[1]+' : ce n’est pas '+CG_TYPE_LAB[s[0]]+'. Cliquez '+cgSlotHint(s[0])+'.';}catch(e){}return false;}
   const k=cgMode.slot;
   d.refs[k]=ref;
   cgNextSlot(k);cgRefresh();
@@ -39185,6 +39302,7 @@ function cgRefAccept(ref){
 function cgPickCommit(e){
   // Clic dans la vue pendant la saisie d'une référence
   if(!cgMode||cgMode.slot==null)return;
+  if(cgCardPickAt(e))return; // point cardinal de la face : passe avant l'arête qu'il touche
   const body=pick(e);
   if(CG_HOW[cgMode.draft.kind][cgMode.draft.how].slots[cgMode.slot][0]==='curve'){
     // courbe : une courbe d'esquisse affichée, sinon une arête de la pièce (les plans ne gênent pas)
@@ -39224,18 +39342,19 @@ function cgPickModelRef(e,draft,slot){
         if(G&&G.circ&&ends[0].d>12)return Object.assign({k:'edge',name:'Centre · '+entName('edge')},base);
         return Object.assign({k:'vtx',vpos:ends[0].p.map(v=>+v.toFixed(4)),name:'Sommet · '+entName('edge')},base);
       }
-      if(type==='axis'&&G)return Object.assign({k:'edge',name:entName('edge')},base);
+      if((type==='axis'||type==='dir')&&G)return Object.assign({k:'edge',name:entName('edge')},base);
       if(type==='plane'&&G&&G.circ)return Object.assign({k:'edge',name:'Plan du cercle · '+entName('edge')},base);
       if(type==='curve')return Object.assign({k:'edge',name:(G?(G.line?'Droite':'Arc'):'Courbe')+' · '+entName('edge')},base);
     }
   }
-  if(h&&(type==='plane'||type==='axis')){
+  if(h&&(type==='plane'||type==='axis'||type==='dir')){
     let hit=null;
     try{
       hit=occFaceOfHit(h.object,h.faceIndex);if(!hit||!hit.face)return null;
       const st=occSurfKind(hit.face);
       if(type==='plane'&&st!=='Plane')return null;
       if(type==='axis'&&st!=='Cylinder'&&st!=='Cone')return null;
+      if(type==='dir'&&st!=='Plane'&&st!=='Cylinder'&&st!=='Cone')return null;
       const fr=occFaceRefAny(hit.face);if(!fr)return null;
       return {k:'face',ref:fr,name:entName('face')};
     }catch(err){return null;}
@@ -39248,8 +39367,9 @@ function cgPickOtherComp(e,draft,slot,bodyHit){
   // plan = face plane, axe = face cylindrique ou conique. Ces maillages ne sont pas cliquables
   // en temps normal (asmFill) : on les vise ici, pendant la saisie seulement. → ref 'xf' ou null
   if(typeof asm==='undefined'||!asm||!asmOn()||asmMode==='asm')return null;
-  const type=(CG_HOW[draft.kind][draft.how].slots[slot]||[])[0];
-  if(type!=='plane'&&type!=='axis'&&type!=='point')return null;
+  const type0=(CG_HOW[draft.kind][draft.how].slots[slot]||[])[0];
+  if(type0!=='plane'&&type0!=='axis'&&type0!=='point'&&type0!=='dir')return null;
+  const wP=type0==='plane'||type0==='dir',wA=type0==='axis'||type0==='dir',type=type0==='dir'?'axis':type0; // dir : arête, face plane ou cylindre
   const G=scene.getObjectByName('asmCtx');if(!G)return null;
   try{
     const r=renderer.domElement.getBoundingClientRect();
@@ -39274,10 +39394,10 @@ function cgPickOtherComp(e,draft,slot,bodyHit){
     const q=asmApply(Fi,[nw.x,nw.y,nw.z]),n=cgUnit([q[0]-Fi.o[0],q[1]-Fi.o[1],q[2]-Fi.o[2]]);
     let best=null,bd=Infinity;
     Fs.forEach(f=>{
-      if(type==='plane'&&f.plane&&Math.abs(cgDot(n,f.plane.n))>0.995){
+      if(wP&&f.plane&&Math.abs(cgDot(n,f.plane.n))>0.995){
         const d=Math.abs(cgDot(cgSub(p,f.plane.o),f.plane.n));if(d<bd){bd=d;best=f;}
       }
-      if(type==='axis'&&f.axis&&Math.abs(cgDot(n,f.axis.d))<0.2){
+      if(wA&&f.axis&&Math.abs(cgDot(n,f.axis.d))<0.2){
         const w=cgSub(p,f.axis.o),t=cgDot(w,f.axis.d),dd=cgLen(cgSub(w,cgMul(f.axis.d,t)));
         const d=f.axis.rad!=null?Math.abs(dd-f.axis.rad):dd;if(d<bd){bd=d;best=f;}
       }
@@ -39429,6 +39549,7 @@ function cgRenderProps(p){
     H(CG_KINDS[el.kind].ic+' '+el.name);
     Note(cgKindLabel(el)+' · '+cgHowLabel(el)+(sel.sub?' · plan '+sel.sub+' du repère':''));
     if(el.st==='warn')Note('⚠ '+el.msg);
+    if(el.kind==='frame'&&el.how==='face'&&el.p&&el.p.w){const k=CG_CARD.find(q=>q[0]===el.p.w);if(k)Note('Origine sur la face : '+k[1]);}
     (el.refs||[]).forEach((r,i)=>{if(r){const s=(CG_HOW[el.kind][el.how].slots[i]||[0,'Référence'])[1];Note(s+' : '+cgRefLabel(r));}});
     if(el.how==='ext'&&el.ext){
       const g=cgExtCandidates(el.kind).find(x=>cgExtKey(x)===cgExtKey(el.ext));
@@ -39469,6 +39590,14 @@ function cgRenderProps(p){
     if(d.refs[i]){const x=mk('button','mini','✕');x.title='Retirer';x.onclick=()=>{d.refs[i]=null;cgMode.slot=i;cgRefresh();};w.appendChild(x);}
     Row(sl[1],w);
   });
+  // repère sur une face : lequel de ses 9 points cardinaux porte l'origine (aussi par clic dans la vue)
+  if(d.kind==='frame'&&d.how==='face'&&d._card){
+    const sc=document.createElement('select');
+    CG_CARD.forEach(([w,lab])=>{const o=document.createElement('option');o.value=w;o.textContent=lab;if(w===((d.p&&d.p.w)||'c'))o.selected=true;sc.appendChild(o);});
+    sc.onchange=()=>{d.p.w=sc.value;cgRefresh();};
+    sc.title='Centre, milieux des côtés et coins du rectangle qui englobe la face, aligné sur X et Y du repère. Cliquez aussi un des 9 points dans la vue.';
+    Row('Origine sur la face',sc);
+  }
   // référence externe : l'élément visé, dans une autre instance de l'assemblage
   if(HW.ext){
     const L=cgExtCandidates(d.kind),cur=d.ext?cgExtKey(d.ext):'';
@@ -39489,7 +39618,9 @@ function cgRenderProps(p){
     const w=mk('span');w.style.cssText='display:flex;gap:4px;align-items:center';w.appendChild(inp);w.appendChild(mk('span','pnl-note',P.unit));
     Row(P.lab,w);
   });
-  if(HW.flip){const c=document.createElement('input');c.type='checkbox';c.checked=!!d.p.flip;c.onchange=()=>{d.p.flip=c.checked;cgRefresh();};Row(d.kind==='axis'?'Inverser le sens':'Inverser la normale',c);}
+  if(HW.flip){const c=document.createElement('input');c.type='checkbox';c.checked=!!d.p.flip;c.onchange=()=>{d.p.flip=c.checked;cgRefresh();};Row(d.kind==='axis'?'Inverser le sens':(d.kind==='frame'?'Inverser Z':'Inverser la normale'),c);}
+  // repère : le sens de X se retourne à part (Z gardé) — l'origine ne bouge pas
+  if(d.kind==='frame'){const c=document.createElement('input');c.type='checkbox';c.checked=!!d.p.flipx;c.onchange=()=>{d.p.flipx=c.checked;cgRefresh();};Row('Inverser X',c);}
   if(d.fr&&d.st!=='warn')Note('✓ '+(d.kind==='point'?'Point : ':'Origine : ')+d.fr.o.map(v=>(+v).toFixed(2).replace('.',',')).join(' ; '));
   else if(d.msg)Note('⚠ '+d.msg);
   Btns([['✓ Valider',cgCommit,'primary'],['Annuler',cgCancel]]);
@@ -44804,7 +44935,38 @@ function faoLevels(zTop,zBot,ap){
 }
 
 /* ----- générateurs : surfaçage (zigzag, passe d'ébauche ou finition) ----- */
+function faoFacingDir(o){
+  // Sens d'usinage des lignes, dans le plan XY du repère de l'opération → [ux,uy] unitaire, ou
+  // null pour X croissant (historique : parcours inchangé). o.dir : absent ou 'x', 'y', ou
+  // [dx,dy] (face ou arête cliquée) ; o.dirInv : sens inverse.
+  const d=o&&o.dir; let u=null;
+  if(d==='y')u=[0,1];
+  else if(Array.isArray(d)&&isFinite(+d[0])&&isFinite(+d[1])){ const L=Math.hypot(+d[0],+d[1]); if(L>1e-9)u=[+d[0]/L,+d[1]/L]; }
+  if(o&&o.dirInv)u=u?[-u[0],-u[1]]:[-1,0];
+  if(u&&Math.abs(u[0]-1)<1e-12&&Math.abs(u[1])<1e-12)return null;
+  return u;
+}
+function faoFacingStockDir(stock,u){
+  // Boîte du brut vue dans la base (u, v = u tourné de +90°) : le zigzag y est calculé comme
+  // en X/Y puis ramené. Direction oblique : la boîte déborde le brut (un peu de coupe dans le vide).
+  if(!u)return stock;
+  let U0=1/0,U1=-1/0,V0=1/0,V1=-1/0;
+  [[+stock.x0,+stock.y0],[+stock.x1,+stock.y0],[+stock.x1,+stock.y1],[+stock.x0,+stock.y1]].forEach(function(c){
+    const a=c[0]*u[0]+c[1]*u[1], b=-c[0]*u[1]+c[1]*u[0];
+    if(a<U0)U0=a; if(a>U1)U1=a; if(b<V0)V0=b; if(b>V1)V1=b;
+  });
+  return Object.assign({},stock,{x0:U0,x1:U1,y0:V0,y1:V1});
+}
 function faoGenFacing(stock,o){
+  o=o||{};
+  const u=faoFacingDir(o);
+  if(!u)return faoGenFacing0(stock,o);
+  const R=function(q){ return (Math.round(q*1e6)/1e6)||0; };
+  return faoGenFacing0(faoFacingStockDir(stock,u),o).map(function(m){
+    return Object.assign({},m,{x:R(m.x*u[0]-m.y*u[1]),y:R(m.x*u[1]+m.y*u[0])});
+  });
+}
+function faoGenFacing0(stock,o){
   o=o||{};
   const D=isFinite(+o.toolD)&&+o.toolD>0?+o.toolD:10;
   const r=D/2;
@@ -44827,13 +44989,47 @@ function faoGenFacing(stock,o){
   const npz=(isFinite(+o.npz)&&+o.npz>=2)?Math.floor(+o.npz):1;
   const zTop=isFinite(+stock.z1)?+stock.z1:z;
   const zs=[];
-  if(npz>=2&&zTop>z+1e-9){
-    const ap=(zTop-z)/npz;
-    for(let k=1;k<=npz;k++)zs.push(k<npz?Math.round((zTop-k*ap)*1000)/1000:z);
+  // Passe de finition (o.fin) : l'ébauche s'arrête `finEp` mm au-dessus de la cote, puis
+  // `finN` passes égales enlèvent cette épaisseur, la dernière à la cote. Épaisseur plafonnée
+  // à la matière présente ; rien à enlever (z ≥ z1) : la passe unique EST la finition.
+  // o.finUni : chaque ligne de finition est usinée dans le même sens (X croissant), retour
+  // en rapide au-dessus de la pièce — sinon va-et-vient comme l'ébauche. Sans o.fin : rien ne change.
+  const fin=!!o.fin;
+  const finN=fin&&isFinite(+o.finN)&&+o.finN>=1?Math.min(20,Math.floor(+o.finN)):1;
+  let finEp=fin&&isFinite(+o.finEp)&&+o.finEp>0?+o.finEp:0;
+  if(fin&&isFinite(+stock.z1))finEp=Math.max(0,Math.min(finEp,zTop-z));
+  const zR=z+finEp;            // cote de fin d'ébauche
+  let nR=0;                    // nombre de niveaux d'ébauche (les suivants sont la finition)
+  if(!fin||finEp>1e-9){
+    if(!fin||zTop>zR+1e-9||!isFinite(+stock.z1)){
+      if(npz>=2&&zTop>zR+1e-9){
+        const ap=(zTop-zR)/npz;
+        for(let k=1;k<=npz;k++)zs.push(k<npz?Math.round((zTop-k*ap)*1000)/1000:zR);
+      }else zs.push(zR);
+      nR=zs.length;
+    }
+    if(fin)for(let k=1;k<=finN;k++)zs.push(k<finN?Math.round((z+finEp*(finN-k)/finN)*1000)/1000:z);
   }else zs.push(z);
+  const uni=fin&&!!o.finUni;
   const moves=[{r:1,x:stock.x0-dep,y:yA,z:secu}];
   let sens=1, garde=0;
   zs.forEach(function(lv,i){
+    if(uni&&i>=nR){
+      // finition dans un seul sens : descente hors matière, ligne, remontée, retour en rapide
+      const last=moves[moves.length-1];
+      const down=Math.abs(last.y-yB)<Math.abs(last.y-yA); // on part de la lisière où l'on se trouve
+      let yy=down?yB:yA;
+      if(last.z<secu-1e-9)moves.push({r:1,x:last.x,y:last.y,z:secu});
+      while(garde++<100000){
+        moves.push({r:1,x:stock.x0-dep,y:yy,z:secu});
+        moves.push({r:1,x:stock.x0-dep,y:yy,z:lv});
+        moves.push({r:0,x:stock.x1+dep,y:yy,z:lv});
+        moves.push({r:1,x:stock.x1+dep,y:yy,z:secu});
+        if(down?yy<=yA+1e-9:yy>=yB-1e-9)break;
+        yy=down?Math.max(yy-ae,yA):Math.min(yy+ae,yB);
+      }
+      return;
+    }
     // niveaux pairs montent en Y (yA→yB), impairs descendent (yB→yA) : le
     // boustrophédon se poursuit d'un niveau au suivant, plongée hors matière.
     const yDown=(i%2===1);
@@ -44857,7 +45053,7 @@ function faoGenFacing(stock,o){
       moves.push({r:0,x:xT,y:y,z:lv});            // transposition verticale (hors matière)
     }
   });
-  moves.push({r:1,x:moves[moves.length-1].x,y:moves[moves.length-1].y,z:secu});
+  if(!uni||moves[moves.length-1].z<secu-1e-9)moves.push({r:1,x:moves[moves.length-1].x,y:moves[moves.length-1].y,z:secu});
   return moves;
 }
 
@@ -47033,6 +47229,8 @@ function* faoOpMovesIt0(op,job){
   if(op.type==='facing')mv=faoGenFacing(job.stock||faoStockDefault(),
     {toolD:D, ae:isFinite(+op.ae)?+op.ae:D*0.6, np:isFinite(+op.np)?+op.np:0,
      npz:isFinite(+op.npz)?+op.npz:0, sortie:sortie,
+     dir:op.dir, dirInv:!!op.dirInv,
+     fin:!!op.finPasse, finEp:isFinite(+op.finEp)?+op.finEp:0.3, finN:isFinite(+op.finN)?+op.finN:1, finUni:!!op.finUni,
      z:(isFinite(+op.z)?+op.z:(job.stock||{}).z1)+RA.axial, secu:secu});
   else if(op.type==='pocket'&&!faoPocketAdapt(op))mv=faoGenPocket({x0:+op.x0,y0:+op.y0,x1:+op.x1,y1:+op.y1},
     +op.ztop,+op.zbot,Object.assign({},base,{ap:+op.ap,ae:isFinite(+op.ae)?+op.ae:D*0.5,
@@ -53372,7 +53570,7 @@ function faoOpCardElement(setup,op,i){
     // affiché en lecture seule à droite. Un ancien document piloté par « Passes »
     // (np≥2) est lu tel quel (écart affiché = H/(np−1)) ; saisir l'écart bascule
     // définitivement en pilotage par écart (op.np=null).
-    const stF=faoOpView(setup,op).stock||faoStock();
+    const stF=faoFacingStockDir(faoOpView(setup,op).stock||faoStock(),faoFacingDir(op)); // largeur à couvrir, vue dans le sens d'usinage
     const tF=faoToolById(setup,op.toolId);
     const dF=(tF&&isFinite(+tF.d)&&+tF.d>0)?+tF.d:10;
     const npOn=isFinite(+op.np)&&+op.np>=2;
@@ -53387,7 +53585,8 @@ function faoOpCardElement(setup,op,i){
     // Passes en Z (par brut) : ébauche du dessus du brut (Z1) à la cote Z en N
     // passes égales — l'ap est CALCULÉ (Z1−Z)/N et affiché en lecture seule.
     const npzShow=(isFinite(+op.npz)&&+op.npz>=2)?Math.round(+op.npz):1;
-    const apZShow=faoFacingAp(stF,(isFinite(+op.z)?+op.z:stF.z1)+faoRA(op).axial,npzShow);
+    const finEpNow=op.finPasse?(isFinite(+op.finEp)&&+op.finEp>0?+op.finEp:0.3):0; // l'ébauche s'arrête au-dessus de la finition
+    const apZShow=faoFacingAp(stF,(isFinite(+op.z)?+op.z:stF.z1)+faoRA(op).axial+finEpNow,npzShow);
     rp.appendChild(faoLab('pz'));
     rp.appendChild(faoNum(npzShow,function(v){
       const n=Math.round(v);
@@ -53402,6 +53601,62 @@ function faoOpCardElement(setup,op,i){
     rp.appendChild(faoLab('Sortie'));
     rp.appendChild(faoNum(isFinite(+setup.secu)?+setup.secu:5,function(v){ setup.secu=Math.max(0,v); },44,0.5,
       'Sortie de pièce (mm hors matière — réglage du POSAGE, commun à toutes les opérations) : (1) dépassement XY en bout de ligne — l’outil sort de la pièce avant son demi-tour, (2) hauteur de calcul des parcours et des cycles de perçage en mode « Retrait minimum ». Généralement 5 à 10.'));
+    // Passe de finition : l'ébauche laisse une épaisseur, enlevée ensuite en N passes fines
+    // (dernière à la cote Z), au choix toujours dans le même sens. Décochée : parcours inchangé.
+    geoNote=(function(){
+      const box=document.createElement('div');
+      // Sens d'usinage des lignes : X, Y, ou la direction d'une face / arête cliquée ; « Inverser » le retourne.
+      const rD=faoRow();
+      rD.appendChild(faoLab('Sens d’usinage'));
+      const isPk=Array.isArray(op.dir);
+      const optsD=[['x','X'],['y','Y']];
+      if(isPk)optsD.push(['pk',(op.dirSrc||'Face / arête')+' · '+(+(Math.atan2(+op.dir[1],+op.dir[0])*180/Math.PI).toFixed(1))+'°']);
+      rD.appendChild(faoSel(optsD,isPk?'pk':(op.dir==='y'?'y':'x'),function(v){
+        if(v==='pk')return;
+        if(v==='y')op.dir='y'; else delete op.dir;
+        delete op.dirSrc;
+      },'Direction des lignes d’usinage : le long de X, le long de Y, ou la direction donnée par une face ou une arête (bouton « Face / arête »).'));
+      rD.appendChild(faoMini('Face / arête',function(){ faoFacingDirPickStart(setup.id,op.id); },
+        'Cliquez dans la vue : arête droite = sa direction ; face plane = sa normale sortante (l’outil avance perpendiculairement à cette face) ; face cylindrique = son axe.'));
+      const cbI=document.createElement('input'); cbI.type='checkbox'; cbI.checked=!!op.dirInv;
+      cbI.onchange=function(){ faoSnapshot('inverser le sens d’usinage');
+        if(cbI.checked)op.dirInv=true; else delete op.dirInv;
+        faoChanged(); };
+      const lbI=document.createElement('label'); lbI.className='fao-check'; lbI.appendChild(cbI); lbI.appendChild(document.createTextNode('Inverser'));
+      lbI.title='Inverser le sens : les lignes sont parcourues dans l’autre sens (en finition « toujours dans le même sens », l’outil coupe dans le sens opposé).';
+      rD.appendChild(lbI);
+      box.appendChild(rD);
+      if(faoFacingDirPick&&faoFacingDirPick.opId===op.id){
+        const w=document.createElement('div'); w.className='fao-alert';
+        w.textContent='Cliquez une arête droite ou une face dans la vue pour le sens d’usinage (Échap annule).';
+        box.appendChild(w);
+      }
+      const rF=faoRow();
+      const cbF=document.createElement('input'); cbF.type='checkbox'; cbF.checked=!!op.finPasse;
+      cbF.title='Passe de finition : l’ébauche s’arrête au-dessus de la cote Z en laissant une épaisseur, puis une ou plusieurs passes fines l’enlèvent, la dernière exactement à la cote Z.';
+      cbF.onchange=function(){ faoSnapshot('passe de finition');
+        if(cbF.checked){ op.finPasse=true; if(!(+op.finEp>0))op.finEp=0.3; if(!(+op.finN>=1))op.finN=1; } else delete op.finPasse;
+        faoChanged(); };
+      rF.appendChild(cbF);
+      rF.appendChild(faoLab('Passe de finition'));
+      if(op.finPasse){
+        rF.appendChild(faoLab('Épaisseur'));
+        rF.appendChild(faoNum(isFinite(+op.finEp)&&+op.finEp>0?+op.finEp:0.3,function(v){op.finEp=Math.max(0.01,v);},48,0.1,
+          'Épaisseur laissée par l’ébauche pour la finition (mm). Elle est partagée en parts égales entre les passes de finition.'));
+        rF.appendChild(faoLab('Passes'));
+        rF.appendChild(faoNum(isFinite(+op.finN)&&+op.finN>=1?Math.round(+op.finN):1,function(v){op.finN=Math.max(1,Math.min(20,Math.round(v)));},36,1,
+          'Nombre de passes de finition : l’épaisseur est enlevée en autant de passes égales, la dernière à la cote Z.'));
+        const cbU=document.createElement('input'); cbU.type='checkbox'; cbU.checked=!!op.finUni;
+        cbU.title='Toujours dans le même sens : chaque ligne de finition est usinée dans la même direction (X croissant) ; l’outil remonte et revient en rapide au lieu de repartir en va-et-vient. Plus long, mais un état de surface régulier.';
+        cbU.onchange=function(){ faoSnapshot('finition dans le même sens');
+          if(cbU.checked)op.finUni=true; else delete op.finUni;
+          faoChanged(); };
+        rF.appendChild(cbU);
+        rF.appendChild(faoLab('Toujours dans le même sens'));
+      }
+      box.appendChild(rF);
+      return box;
+    })();
   }else if(op.type==='chamfer'){
     faoChamferRows(d,setup,op); // src/89-fao-chanfrein.js
   }else if(faoContourProfil(op)){
@@ -66372,6 +66627,61 @@ function faoFramePickCommit(e){
   try{faceEl.textContent='Axe '+t.which.toUpperCase()+(op?' de l’opération':' du posage')+' = '+what+' '+faoFrameLabel(v)+(faoFrame(own).warn?' — '+faoFrame(own).warn:'')+'. Parcours à régénérer.';}catch(e){}
   try{renderProps();}catch(e){}
 }
+/* ----- surfaçage : sens d'usinage pris sur une face ou une arête cliquée ----- */
+let faoFacingDirPick=null; // {setupId, opId}
+function faoFacingDirPickStart(setupId,opId){
+  faoFacingDirPick={setupId,opId};
+  try{renderer.domElement.style.cursor='crosshair';}catch(e){}
+  try{faceEl.textContent='Sens d’usinage : cliquez une ARÊTE droite (sa direction), une FACE plane (sa normale sortante) ou une face cylindrique (son axe) — Échap annule.';}catch(e){}
+  try{renderProps();}catch(e){}
+}
+function faoFacingDirPickCancel(){faoFacingDirPick=null;try{renderer.domElement.style.cursor='default';}catch(e){}try{renderProps();}catch(e){}}
+function faoFacingDirOf(F,dir){
+  // direction (repère pièce) → [dx,dy] unitaire dans le plan XY du repère F de l'opération, ou null si elle est le long de l'outil
+  const q=(F&&!F.id)?faoRotF(F,dir):dir,L=Math.hypot(q[0],q[1]);
+  if(!(L>0.02))return null;
+  return [q[0]/L,q[1]/L].map(function(v){return Math.abs(v)<1e-9?0:Math.round(v*1e9)/1e9;});
+}
+function faoFacingDirSet(op,u,what){
+  // range la direction dans l'opération ; alignée sur X ou Y : on garde le nom de l'axe (plus lisible)
+  delete op.dirInv;delete op.dirSrc;
+  if(Math.abs(u[1])<1e-7){delete op.dir;if(u[0]<0)op.dirInv=true;}
+  else if(Math.abs(u[0])<1e-7){op.dir='y';if(u[1]<0)op.dirInv=true;}
+  else{op.dir=u;op.dirSrc=what;}
+}
+function faoFacingDirPickCommit(e){
+  const t=faoFacingDirPick;if(!t)return;
+  const setup=faoSetup(t.setupId),op=setup?(setup.ops||[]).filter(o=>o.id===t.opId)[0]:null;
+  if(!op){faoFacingDirPickCancel();return;}
+  let dir=null,what='';
+  try{
+    const h=pick(e);
+    const eh=(typeof edgeHoverPick==='function')?edgeHoverPick(e,h):null;
+    if(eh){ // arête droite : direction premier → dernier point
+      const P=edgeHoverSegs()[eh.pi];
+      if(P&&P.length>=2){
+        const a=P[0],b=P[P.length-1],d=[b[0]-a[0],b[1]-a[1],b[2]-a[2]],L=Math.hypot(...d);
+        let straight=L>1e-6;
+        if(straight)for(const q of P){const w=[q[0]-a[0],q[1]-a[1],q[2]-a[2]];const c=[w[1]*d[2]-w[2]*d[1],w[2]*d[0]-w[0]*d[2],w[0]*d[1]-w[1]*d[0]];if(Math.hypot(...c)/L>0.01){straight=false;break;}}
+        if(straight){dir=d.map(q=>q/L);what='Arête';}
+      }
+    }
+    if(!dir&&h){
+      let G=null;try{G=occFaceGeom(h.object,h.faceIndex);}catch(err){}
+      if(G&&G.kind==='cyl'&&G.axis){dir=[G.axis.x,G.axis.y,G.axis.z];what='Axe de cylindre';}
+      else if(h.face&&h.face.normal){const v=h.face.normal.clone().transformDirection(h.object.matrixWorld);dir=[v.x,v.y,v.z];what='Face';}
+    }
+  }catch(err){}
+  if(!dir){try{faceEl.textContent='Sens d’usinage : rien de reconnu ici — cliquez une arête droite ou une face.';}catch(e2){}return;}
+  const u=faoFacingDirOf(faoOpFrameOf(setup.id,op.id),dir);
+  if(!u){try{faceEl.textContent='Sens d’usinage : cette direction est le long de l’outil — choisissez une arête ou une face de côté, pas le dessus.';}catch(e2){}return;}
+  faoSnapshot('sens d’usinage du surfaçage');
+  faoFacingDirSet(op,u,what);
+  faoFacingDirPick=null;try{renderer.domElement.style.cursor='default';}catch(e2){}
+  faoChanged();
+  try{faceEl.textContent='Sens d’usinage = '+what.toLowerCase()+' ('+(+(Math.atan2(u[1],u[0])*180/Math.PI).toFixed(1))+'° par rapport à X). Parcours à régénérer.';}catch(e2){}
+  try{renderProps();}catch(e2){}
+}
 function faoFrameRows(p,setup){
   // Fiche posage : orientation du repère (absolu pour toutes ses opérations)
   p.appendChild(faoH('Repère du posage'));
@@ -67199,6 +67509,7 @@ function wirePick(){
     if(extPickFace||(typeof extUptoAuto==='function'&&extUptoAuto())){ // « jusqu'à la face » : clic COURT seulement (glisser = tourner la vue)
       if(e.button===0&&Math.hypot(e.clientX-dx,e.clientY-dy)<=6)extPickFaceCommit(e);return;}
     if(cgMode&&cgMode.slot!=null){if(Math.hypot(e.clientX-dx,e.clientY-dy)<=6&&e.button===0)cgPickCommit(e);return;} // construction : référence de l'emplacement actif
+    if(cgMode&&e.button===0&&Math.hypot(e.clientX-dx,e.clientY-dy)<=6&&cgCardPickAt(e))return; // repère sur une face : point cardinal, même sans emplacement actif
     if(Math.hypot(e.clientX-dx,e.clientY-dy)>6)return;
     if(filMode){if(e.button===0&&!e.ctrlKey)filletToggle(e);return;}
     if(filModeX){if(e.button===0)exactToggle(e);return;} // clic = ajouter / retirer une arête (V0.11.6)
@@ -67210,6 +67521,7 @@ function wirePick(){
     if(faoChainMode){if(e.button===0&&!e.ctrlKey)faoChainToggle(e);return;}
     if(faoPlanePick){if(e.button===0&&!e.ctrlKey)faoPlaneCommit(e);return;}
     if(typeof faoFramePick!=='undefined'&&faoFramePick){if(e.button===0&&!e.ctrlKey)faoFramePickCommit(e);return;} // axe Z / X du posage
+    if(typeof faoFacingDirPick!=='undefined'&&faoFacingDirPick){if(e.button===0&&!e.ctrlKey)faoFacingDirPickCommit(e);return;} // surfaçage : sens d'usinage
     if(typeof faoFacePick!=='undefined'&&faoFacePick){if(e.button===0&&!e.ctrlKey)faoFacePickCommit(e);return;} // faces usinables / intouchables
     if(faoZPlanePick){if(e.button===0&&!e.ctrlKey)faoZPlaneCommit(e);return;}
     if(typeof bmPick!=='undefined'&&bmPick){if(e.button===0&&!e.ctrlKey)bmPickAt(e);return;} // Déplacer un corps : point / axe (85)
@@ -67345,6 +67657,7 @@ function filletTangentChain(sk, startCorner){
     if(extPickFace){extPickFace=null;try{renderer.domElement.style.cursor='default';}catch(e2){}faceEl.textContent='Vers un objet : annulé.';return;}
     if(faoPlanePick){faoPlaneCancel();faceEl.textContent='Plan : annulé.';return;}
     if(typeof faoFramePick!=='undefined'&&faoFramePick){faoFramePickCancel();faceEl.textContent='Axe du posage : annulé.';return;}
+    if(typeof faoFacingDirPick!=='undefined'&&faoFacingDirPick){faoFacingDirPickCancel();faceEl.textContent='Sens d’usinage : annulé.';return;}
     if(typeof faoFacePick!=='undefined'&&faoFacePick){faoFacePickCancel();faceEl.textContent='Saisie des faces terminée.';return;}
     if(faoZPlanePick){faoZPlaneCancel();faceEl.textContent='Plan : annulé.';return;}
     if(filMode||filModeX){exitFilletMode();return;}

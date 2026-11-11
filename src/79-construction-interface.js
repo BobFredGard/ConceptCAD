@@ -76,11 +76,25 @@ function cgDrawOne(el,G,E,mode){
     s.position.copy(o);s.renderOrder=970;s.userData.cg={id:el.id};grp.add(s);
   }else if(el.kind==='frame'){
     if(mode==='p'){
-      // aperçu : trois traits (la triade réelle n'existe qu'une fois validée)
-      [[F.x,0xff453a],[F.y,0x30d158],[F.z,0x0a84ff]].forEach(([d,c])=>{
-        const ln=new THREE.Line(new THREE.BufferGeometry().setFromPoints([o,o.clone().addScaledVector(cgV3(d),h*0.5)]),new THREE.LineBasicMaterial({color:c,depthTest:false}));
-        ln.raycast=()=>{};grp.add(ln);});
-    }else{
+      // points cardinaux de la face : 9 pastilles cliquables (cgCardPickAt) et le rectangle qui les porte
+      if(el._card){
+        const P=w=>cgV3(el._card.find(q=>q.w===w).o),cur=(el.p&&el.p.w)||'c';
+        const rc=new THREE.LineLoop(new THREE.BufferGeometry().setFromPoints([P('so'),P('se'),P('ne'),P('no')]),
+          new THREE.LineDashedMaterial({color:CG_COL_PRE,dashSize:h/40,gapSize:h/60,transparent:true,opacity:0.8,depthTest:false}));
+        rc.computeLineDistances();rc.renderOrder=971;rc.raycast=()=>{};grp.add(rc);
+        // taille constante à l'écran : rayon en mm pour ~5 px (7 px pour le point choisi)
+        const px=q=>{try{const d=camera.isOrthographicCamera?(camera.top-camera.bottom)/camera.zoom:2*camera.position.distanceTo(q)*Math.tan((camera.fov||45)*Math.PI/360);
+          return d/Math.max(1,renderer.domElement.clientHeight);}catch(err){return h/400;}};
+        el._card.forEach(q=>{
+          const on=q.w===cur,c=cgV3(q.o);
+          const s=new THREE.Mesh(new THREE.SphereGeometry((on?7:4.5)*px(c),14,10),new THREE.MeshBasicMaterial({color:on?CG_COL_SEL:0xffffff,depthTest:false,transparent:true,opacity:on?1:0.9}));
+          s.position.copy(c);s.renderOrder=on?973:972;s.raycast=()=>{};grp.add(s);
+        });
+      }
+    }
+    {
+      // le vrai repère (flèches X, Y, Z et ses trois plans), aussi pendant la création et la modification :
+      // on voit où il se pose et comment il est tourné avant de valider (cgPickAt ignore celui du brouillon)
       const g=cgTriadFor(el.id),pg=g.userData.planeGroup;
       g.position.copy(o);
       g.quaternion.setFromRotationMatrix(new THREE.Matrix4().makeBasis(cgV3(F.x),cgV3(F.y),cgV3(F.z)));
@@ -99,7 +113,7 @@ function cgDraw(){
   for(const o of [...G.children]){G.remove(o);cgDispose(o);}
   const vivants=new Set((doc.cgeo||[]).map(c=>c.id));
   for(const [id,g] of cgTriads){
-    if(vivants.has(id))continue;
+    if(vivants.has(id)||(cgMode&&cgMode.draft&&cgMode.draft.id===id))continue; // le brouillon garde le sien
     [g,g.userData.planeGroup].forEach(x=>{const i=TRIADS.indexOf(x);if(i>=0)TRIADS.splice(i,1);});
     cgTriads.delete(id);
   }
@@ -136,6 +150,25 @@ function cgPickAt(e){
     const h=hits[0],c=h.object.userData.cg;
     return {id:c.id,sub:c.sub||null,dist:h.distance,plane:!!h.object.userData.cgPlane};
   }catch(err){return null;}
+}
+function cgCardPickAt(e){
+  // Repère sur une face : point cardinal du brouillon à ≤ 9 px du curseur → devient l'origine. → true si pris
+  const d=cgMode&&cgMode.draft;
+  if(!d||d.kind!=='frame'||d.how!=='face'||!d._card)return false;
+  try{
+    const r=renderer.domElement.getBoundingClientRect(),v=new THREE.Vector3();
+    let best=null,bd=9;
+    d._card.forEach(q=>{
+      v.set(q.o[0],q.o[1],q.o[2]).project(camera);if(Math.abs(v.z)>=1)return;
+      const dd=Math.hypot(r.left+(v.x+1)/2*r.width-e.clientX,r.top+(1-v.y)/2*r.height-e.clientY);
+      if(dd<bd){bd=dd;best=q;}
+    });
+    if(!best)return false;
+    d.p.w=best.w;
+    cgRefresh();
+    try{faceEl.textContent='Repère — origine : '+best.lab.toLowerCase()+' de la face. '+(d.refs[1]?'':'Cliquez une arête, une face ou un plan pour la direction X (facultatif), ou ')+'✓ Valider.';}catch(err){}
+    return true;
+  }catch(err){return false;}
 }
 function cgSelectAt(e){
   // Clic simple hors saisie : sélectionne l'élément visé. Un grand plan ne masque pas la pièce.
@@ -183,7 +216,7 @@ function cgStart(kind){
   const d=cgDraftOf(kind,CG_DEF_HOW[kind]);
   const r=cgSelRef();
   const S=CG_HOW[kind][d.how].slots;
-  if(r&&S[0]&&(cgEvalRef(r,null)||{})[S[0][0]])d.refs[0]=r;
+  if(r&&S[0]&&cgAs(cgEvalRef(r,null),S[0][0]))d.refs[0]=r;
   cgMode={draft:d,editId:null,slot:null};
   cgNextSlot();
   sel={kind:null,id:null};
@@ -217,7 +250,9 @@ function cgRefresh(){
   try{renderTree();renderProps();}catch(e){}
   if(cgMode&&cgMode.slot!=null){
     const s=CG_HOW[cgMode.draft.kind][cgMode.draft.how].slots[cgMode.slot];
-    try{faceEl.textContent=CG_KINDS[cgMode.draft.kind].lab+' — '+s[1]+' : cliquez '+cgSlotHint(s[0])+' — Échap annule.';}catch(e){}
+    const card=cgMode.draft.kind==='frame'&&cgMode.draft.how==='face'&&cgMode.slot!==0&&cgMode.draft._card;
+    try{faceEl.textContent=card?'Repère — cliquez un des 9 points de la face pour l’origine, puis une arête, une face ou un plan pour la direction X (facultatif) — ✓ Valider, Échap annule.'
+      :CG_KINDS[cgMode.draft.kind].lab+' — '+s[1]+' : cliquez '+cgSlotHint(s[0])+' — Échap annule.';}catch(e){}
   }else if(cgMode){
     const d=cgMode.draft;
     try{faceEl.textContent=CG_KINDS[d.kind].lab+' — '+(d.fr&&d.st!=='warn'?'réglez les valeurs puis ✓ Valider (Échap annule).':'⚠ '+(d.msg||'références incomplètes'));}catch(e){}
@@ -228,6 +263,7 @@ function cgSlotHint(t){
     axis:'un axe (origine, construction), une arête droite ou une face cylindrique',
     point:'l’origine, un point, un sommet, le centre d’une arête circulaire',
     frame:'un repère (ou l’origine)',
+    dir:'une arête droite ou un axe (X le suit), une face plane, un plan ou le plan d’un autre repère (X lui est perpendiculaire)',
     curve:'une arête (droite, arc, spline) ou une courbe d’une esquisse affichée'})[t]||'une référence';
 }
 function cgCancel(){
@@ -266,8 +302,8 @@ function cgSetHow(how){
   const d=cgMode.draft,old=d.how;if(old===how)return;
   const So=CG_HOW[d.kind][old].slots,Sn=CG_HOW[d.kind][how].slots;
   // on garde les références compatibles, emplacement par emplacement
-  const refs=[];Sn.forEach((s,i)=>{const r=d.refs[i];if(r&&So[i]&&(cgEvalRef(r,null)||{})[s[0]])refs[i]=r;});
-  d.how=how;d.refs=refs;d.p=Object.assign(cgDefaults(d.kind,how),Object.fromEntries(Object.entries(d.p||{}).filter(([k])=>k==='flip'||k==='expr'||k==='pname'||k==='_fxOf'||k==='_fxKeys'||(CG_HOW[d.kind][how].par||{})[k])));
+  const refs=[];Sn.forEach((s,i)=>{const r=d.refs[i];if(r&&So[i]&&cgAs(cgEvalRef(r,null),s[0]))refs[i]=r;});
+  d.how=how;d.refs=refs;d.p=Object.assign(cgDefaults(d.kind,how),Object.fromEntries(Object.entries(d.p||{}).filter(([k])=>k==='flip'||k==='flipx'||k==='expr'||k==='pname'||(k==='w'&&d.kind==='frame'&&how==='face')||k==='_fxOf'||k==='_fxKeys'||(CG_HOW[d.kind][how].par||{})[k])));
   cgNextSlot();cgRefresh();
 }
 function cgRefAccept(ref){
@@ -283,7 +319,7 @@ function cgRefAccept(ref){
     }
   }
   const g=cgEvalRef(ref,{});
-  if(!g||!g[s[0]]){try{faceEl.textContent=s[1]+' : ce n’est pas '+({plane:'un plan',axis:'un axe',point:'un point',frame:'un repère',curve:'une courbe'})[s[0]]+'. Cliquez '+cgSlotHint(s[0])+'.';}catch(e){}return false;}
+  if(!cgAs(g,s[0])){try{faceEl.textContent=s[1]+' : ce n’est pas '+CG_TYPE_LAB[s[0]]+'. Cliquez '+cgSlotHint(s[0])+'.';}catch(e){}return false;}
   const k=cgMode.slot;
   d.refs[k]=ref;
   cgNextSlot(k);cgRefresh();
@@ -292,6 +328,7 @@ function cgRefAccept(ref){
 function cgPickCommit(e){
   // Clic dans la vue pendant la saisie d'une référence
   if(!cgMode||cgMode.slot==null)return;
+  if(cgCardPickAt(e))return; // point cardinal de la face : passe avant l'arête qu'il touche
   const body=pick(e);
   if(CG_HOW[cgMode.draft.kind][cgMode.draft.how].slots[cgMode.slot][0]==='curve'){
     // courbe : une courbe d'esquisse affichée, sinon une arête de la pièce (les plans ne gênent pas)
@@ -331,18 +368,19 @@ function cgPickModelRef(e,draft,slot){
         if(G&&G.circ&&ends[0].d>12)return Object.assign({k:'edge',name:'Centre · '+entName('edge')},base);
         return Object.assign({k:'vtx',vpos:ends[0].p.map(v=>+v.toFixed(4)),name:'Sommet · '+entName('edge')},base);
       }
-      if(type==='axis'&&G)return Object.assign({k:'edge',name:entName('edge')},base);
+      if((type==='axis'||type==='dir')&&G)return Object.assign({k:'edge',name:entName('edge')},base);
       if(type==='plane'&&G&&G.circ)return Object.assign({k:'edge',name:'Plan du cercle · '+entName('edge')},base);
       if(type==='curve')return Object.assign({k:'edge',name:(G?(G.line?'Droite':'Arc'):'Courbe')+' · '+entName('edge')},base);
     }
   }
-  if(h&&(type==='plane'||type==='axis')){
+  if(h&&(type==='plane'||type==='axis'||type==='dir')){
     let hit=null;
     try{
       hit=occFaceOfHit(h.object,h.faceIndex);if(!hit||!hit.face)return null;
       const st=occSurfKind(hit.face);
       if(type==='plane'&&st!=='Plane')return null;
       if(type==='axis'&&st!=='Cylinder'&&st!=='Cone')return null;
+      if(type==='dir'&&st!=='Plane'&&st!=='Cylinder'&&st!=='Cone')return null;
       const fr=occFaceRefAny(hit.face);if(!fr)return null;
       return {k:'face',ref:fr,name:entName('face')};
     }catch(err){return null;}
@@ -355,8 +393,9 @@ function cgPickOtherComp(e,draft,slot,bodyHit){
   // plan = face plane, axe = face cylindrique ou conique. Ces maillages ne sont pas cliquables
   // en temps normal (asmFill) : on les vise ici, pendant la saisie seulement. → ref 'xf' ou null
   if(typeof asm==='undefined'||!asm||!asmOn()||asmMode==='asm')return null;
-  const type=(CG_HOW[draft.kind][draft.how].slots[slot]||[])[0];
-  if(type!=='plane'&&type!=='axis'&&type!=='point')return null;
+  const type0=(CG_HOW[draft.kind][draft.how].slots[slot]||[])[0];
+  if(type0!=='plane'&&type0!=='axis'&&type0!=='point'&&type0!=='dir')return null;
+  const wP=type0==='plane'||type0==='dir',wA=type0==='axis'||type0==='dir',type=type0==='dir'?'axis':type0; // dir : arête, face plane ou cylindre
   const G=scene.getObjectByName('asmCtx');if(!G)return null;
   try{
     const r=renderer.domElement.getBoundingClientRect();
@@ -381,10 +420,10 @@ function cgPickOtherComp(e,draft,slot,bodyHit){
     const q=asmApply(Fi,[nw.x,nw.y,nw.z]),n=cgUnit([q[0]-Fi.o[0],q[1]-Fi.o[1],q[2]-Fi.o[2]]);
     let best=null,bd=Infinity;
     Fs.forEach(f=>{
-      if(type==='plane'&&f.plane&&Math.abs(cgDot(n,f.plane.n))>0.995){
+      if(wP&&f.plane&&Math.abs(cgDot(n,f.plane.n))>0.995){
         const d=Math.abs(cgDot(cgSub(p,f.plane.o),f.plane.n));if(d<bd){bd=d;best=f;}
       }
-      if(type==='axis'&&f.axis&&Math.abs(cgDot(n,f.axis.d))<0.2){
+      if(wA&&f.axis&&Math.abs(cgDot(n,f.axis.d))<0.2){
         const w=cgSub(p,f.axis.o),t=cgDot(w,f.axis.d),dd=cgLen(cgSub(w,cgMul(f.axis.d,t)));
         const d=f.axis.rad!=null?Math.abs(dd-f.axis.rad):dd;if(d<bd){bd=d;best=f;}
       }
@@ -536,6 +575,7 @@ function cgRenderProps(p){
     H(CG_KINDS[el.kind].ic+' '+el.name);
     Note(cgKindLabel(el)+' · '+cgHowLabel(el)+(sel.sub?' · plan '+sel.sub+' du repère':''));
     if(el.st==='warn')Note('⚠ '+el.msg);
+    if(el.kind==='frame'&&el.how==='face'&&el.p&&el.p.w){const k=CG_CARD.find(q=>q[0]===el.p.w);if(k)Note('Origine sur la face : '+k[1]);}
     (el.refs||[]).forEach((r,i)=>{if(r){const s=(CG_HOW[el.kind][el.how].slots[i]||[0,'Référence'])[1];Note(s+' : '+cgRefLabel(r));}});
     if(el.how==='ext'&&el.ext){
       const g=cgExtCandidates(el.kind).find(x=>cgExtKey(x)===cgExtKey(el.ext));
@@ -576,6 +616,14 @@ function cgRenderProps(p){
     if(d.refs[i]){const x=mk('button','mini','✕');x.title='Retirer';x.onclick=()=>{d.refs[i]=null;cgMode.slot=i;cgRefresh();};w.appendChild(x);}
     Row(sl[1],w);
   });
+  // repère sur une face : lequel de ses 9 points cardinaux porte l'origine (aussi par clic dans la vue)
+  if(d.kind==='frame'&&d.how==='face'&&d._card){
+    const sc=document.createElement('select');
+    CG_CARD.forEach(([w,lab])=>{const o=document.createElement('option');o.value=w;o.textContent=lab;if(w===((d.p&&d.p.w)||'c'))o.selected=true;sc.appendChild(o);});
+    sc.onchange=()=>{d.p.w=sc.value;cgRefresh();};
+    sc.title='Centre, milieux des côtés et coins du rectangle qui englobe la face, aligné sur X et Y du repère. Cliquez aussi un des 9 points dans la vue.';
+    Row('Origine sur la face',sc);
+  }
   // référence externe : l'élément visé, dans une autre instance de l'assemblage
   if(HW.ext){
     const L=cgExtCandidates(d.kind),cur=d.ext?cgExtKey(d.ext):'';
@@ -596,7 +644,9 @@ function cgRenderProps(p){
     const w=mk('span');w.style.cssText='display:flex;gap:4px;align-items:center';w.appendChild(inp);w.appendChild(mk('span','pnl-note',P.unit));
     Row(P.lab,w);
   });
-  if(HW.flip){const c=document.createElement('input');c.type='checkbox';c.checked=!!d.p.flip;c.onchange=()=>{d.p.flip=c.checked;cgRefresh();};Row(d.kind==='axis'?'Inverser le sens':'Inverser la normale',c);}
+  if(HW.flip){const c=document.createElement('input');c.type='checkbox';c.checked=!!d.p.flip;c.onchange=()=>{d.p.flip=c.checked;cgRefresh();};Row(d.kind==='axis'?'Inverser le sens':(d.kind==='frame'?'Inverser Z':'Inverser la normale'),c);}
+  // repère : le sens de X se retourne à part (Z gardé) — l'origine ne bouge pas
+  if(d.kind==='frame'){const c=document.createElement('input');c.type='checkbox';c.checked=!!d.p.flipx;c.onchange=()=>{d.p.flipx=c.checked;cgRefresh();};Row('Inverser X',c);}
   if(d.fr&&d.st!=='warn')Note('✓ '+(d.kind==='point'?'Point : ':'Origine : ')+d.fr.o.map(v=>(+v).toFixed(2).replace('.',',')).join(' ; '));
   else if(d.msg)Note('⚠ '+d.msg);
   Btns([['✓ Valider',cgCommit,'primary'],['Annuler',cgCancel]]);

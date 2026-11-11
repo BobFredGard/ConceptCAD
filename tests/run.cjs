@@ -313,11 +313,13 @@ const SUITES = [
   "test_corps_temps",
   "test_fao_percage_tranche",
   "test_fao_32_fiches",
+  "test_fao_surfacage_finition",
   "test_simulation_rendu",
   "test_simulation_cartes",
   "test_fao_chanfrein",
   "test_oracle",
   "test_construction_esquisse",
+  "test_repere_face_cardinaux",
   "test_esquisse_reperes",
   "test_sk_decalage_outil",
   "test_projection_import_ouverture"
