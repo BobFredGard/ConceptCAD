@@ -329,6 +329,8 @@ const MF_IC={
   gcode:'<path d="M6 3h9l3 3v15H6z"/><path d="M9 10h6M9 13h6M9 16h4"/>',
   recent:'<circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3 2"/>',
   folder:'<path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><path d="M3 10h18"/>',
+  plug:'<path d="M9 3v5M15 3v5"/><path d="M6 8h12v3a6 6 0 0 1-12 0z"/><path d="M12 17v4"/>', // V0.94.0 : pilotage par l'IA (MCP)
+  install:'<rect x="3" y="4" width="18" height="13" rx="2"/><path d="M12 7v6M9 10.5l3 3 3-3"/><path d="M8 21h8"/>', // V0.94.0 : installer l'application
   theme:'<path d="M12 3a9 9 0 1 0 0 18c1.2 0 2-.8 2-2 0-1.3-1-1.6-1-2.6 0-1 .8-1.4 1.8-1.4H17a4 4 0 0 0 4-4c0-4.4-4-8-9-8z"/><circle cx="7.5" cy="11" r="1"/><circle cx="10" cy="7" r="1"/><circle cx="15" cy="7.5" r="1"/>',
   /* PLAN (98) */
   plan:'<rect x="3" y="4" width="18" height="14" rx="1"/><path d="M3 15h18M7 18v2M17 18v2M6 8h6M6 11h9"/>',
@@ -914,6 +916,12 @@ function mfBuildModern(){
   [['new','Nouveau projet',()=>mffNew()],['open','Ouvrir… (Ctrl+O)',()=>mffOpen()],['recent','Ouvrir récent',e=>mffRecentMenu(e.currentTarget)],
    ['save','Enregistrer (Ctrl+S)',()=>mffSave()],['saveas','Enregistrer sous… (Ctrl+Maj+S)',()=>mffSaveAs()],['folder','Dossier de projets',()=>mffFolderPanel()]].forEach(([ic,t,fn])=>{
     const b=document.createElement('button');b.innerHTML=mfI(ic,18);b.title=t;b.dataset.fi='q/'+ic;b.onclick=e=>{e.stopPropagation();fn(e);};q.appendChild(b);});
+  // V0.94.0 : pilotage par l'IA et installation, visibles ici (le menu Projet n'est pas affiché dans cette interface)
+  {const sp2=document.createElement('span');sp2.className='mfQsep';q.appendChild(sp2);
+   const pl=document.createElement('button');pl.id='mfQPlug';pl.innerHTML=mfI('plug',18);pl.title='Pilotage par l’IA (MCP)';
+   pl.onclick=e=>{e.stopPropagation();try{if(mfBridgeState()==='off'){mfBridgeDemande=true;mfBridgeConnect();}else mfBridgeClose();}catch(err){alert(err.message);}};q.appendChild(pl);
+   const ins=document.createElement('button');ins.id='mfQInstall';ins.innerHTML=mfI('install',18);ins.title='Installer ConceptCAD';ins.style.display='none';
+   ins.onclick=e=>{e.stopPropagation();try{pwaInstaller();}catch(err){}};q.appendChild(ins);}
   const sx=mfSearchBox();
   const after=brand?brand.nextSibling:top.firstChild;
   // V0.7.6 : la barre d'état (noyau, message, Régénérer, unité) vit DANS le bandeau supérieur,

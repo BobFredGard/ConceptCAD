@@ -287,6 +287,7 @@ const SUITES = [
   "test_configurations",
   "test_scripts",
   "test_mcp_serveur",
+  "test_scripts_pieces",
   "test_cartouche_modele",
   "test_cartouche_exterieur",
   "test_simulation_moteurs",

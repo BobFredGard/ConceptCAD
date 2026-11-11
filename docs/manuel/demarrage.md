@@ -15,7 +15,7 @@ Pour essayer, ou pour travailler avec une connexion, sur PC ou sur téléphone.
 
 Pour avoir ConceptCAD comme un logiciel, sans installateur, et qui marche aussi sans Internet.
 
-- Ouvrir le site dans Chrome ou Edge, puis menu Projet → **⬇ Installer ConceptCAD** (ou l'icône d'installation de la barre d'adresse).
+- Ouvrir le site dans Chrome ou Edge, puis l'icône **Installer ConceptCAD** de la barre du haut, à droite du dossier (ou celle de la barre d'adresse du navigateur). Elle n'apparaît que quand le navigateur permet l'installation.
 - ConceptCAD s'ouvre dans sa propre fenêtre, avec son icône sur le bureau et dans le menu Démarrer.
 - **Sans Internet** : tout ce qu'il faut pour démarrer est gardé sur l'ordinateur après la première ouverture. Les pièces d'exemple déjà ouvertes depuis le site restent disponibles elles aussi.
 - **Mises à jour** : avec Internet, chaque ouverture prend la dernière version publiée.

@@ -13,9 +13,10 @@
    Une commande peut viser une esquisse par l'id donné dans le script, son id réel ou son nom.
    Le script est ATOMIQUE : une erreur remet le document tel qu'avant le script (et la dit, avec
    le numéro de la commande). Une seule étape d'annulation pour tout le script.
-   Pilotage : le pont (🔌, menu Projet) relie la page à un serveur local (tools/mcp-minifusion.cjs,
+   Pilotage : le pont (🔌, menu Projet) relie la page à un serveur local (tools/mcp-conceptcad.cjs,
    serveur MCP) par WebSocket sur 127.0.0.1 — seulement quand l'utilisateur le demande. */
-const MF_SCRIPT_OPS=['new','param','sketch','extrude','revolve','config','info','undo'];
+// V0.94.0 : + les gestes de pièce complète de 53-scripts-pieces.js (congé, chanfrein, perçage, coque…)
+const MF_SCRIPT_OPS=['new','param','sketch','extrude','revolve','config','info','undo'].concat(Object.keys(MF_OPS_PIECES).filter(k=>k[0]!=='_'));
 function mfNum(v,what){const n=+v;if(!isFinite(n))throw new Error(what+' : nombre attendu ('+JSON.stringify(v)+')');return n;}
 function mfSketchFind(ref,ids){
   if(ref==null)return null;const r=String(ref);
@@ -38,12 +39,15 @@ function mfSketchShapes(sk,shapes){
     else if(Array.isArray(s.poly)){if(s.poly.length<3)throw new Error('forme '+(k+1)+' : au moins 3 sommets');
       const ids=s.poly.map(q=>P(q[0],q[1]));ids.forEach((p1,i)=>E(Object.assign({t:'line',p1,p2:ids[(i+1)%ids.length]},cons)));}
     else if(Array.isArray(s.line)){const [x1,y1,x2,y2]=s.line;E(Object.assign({t:'line',p1:P(x1,y1),p2:P(x2,y2)},cons));}
-    else throw new Error('forme '+(k+1)+' : rect, circle, poly ou line attendu');
+    else if(Array.isArray(s.hole)){const [x,y]=s.hole;E({t:'cpoint',p:P(x,y),hole:true});} // V0.94.0 : centre de perçage
+    else throw new Error('forme '+(k+1)+' : rect, circle, poly, line ou hole attendu');
   });
 }
 function mfInfo(){
   try{if(typeof builtVersion!=='undefined'){markDirty();rebuild();}}catch(e){}
-  const out={name:doc.name,sketches:(doc.sketches||[]).map(s=>({id:s.id,name:s.name,plane:s.plane})),
+  // V0.94.0 : cotes de chaque esquisse, numérotées pour {op:'set', sketch, dim, value}
+  const cotes=s=>(s.dims||[]).map((d,i)=>{const o={dim:i,type:d.type,value:+d.value};if(d.expr)o.expr=d.expr;if(d.pname)o.param=d.pname;return o;});
+  const out={name:doc.name,sketches:(doc.sketches||[]).map(s=>{const o={id:s.id,name:s.name,plane:s.plane};const c=cotes(s);if(c.length)o.dims=c;if(holePoints(s).length)o.holeCenters=holePoints(s).length;return o;}),
     features:(doc.features||[]).filter(f=>f&&!f.repeatId).map(f=>{const o={id:f.id,name:f.name,type:f.type};if(f.visible===false)o.suppressed=true;if(f.err||f.msg)o.message=f.err||f.msg;return o;}),
     params:(doc.params||[]).map(p=>({name:p.name,expr:p.expr,value:p.value,error:p.err||undefined})),
     configs:(typeof cfgOf==='function'&&cfgOf())?{active:cfgOf().active,rows:cfgOf().rows.map(r=>r.name)}:null,
@@ -110,6 +114,12 @@ function mfScriptRun(script){
       }
       if(c.op==='undo'){results.push({op:'undo',ok:!!docUndo()});changed=true;return;}
       if(c.op==='info'){if(changed){markDirty();rebuild();changed=false;}results.push(Object.assign({op:'info'},mfInfo()));return;}
+      if(MF_OPS_PIECES[c.op]){
+        // les sélecteurs d'arêtes et de faces lisent la pièce telle que le script l'a faite jusqu'ici
+        const r=MF_OPS_PIECES[c.op](c,ids);
+        if(c.op!=='edges'&&c.op!=='faces')changed=true;
+        results.push(r);return;
+      }
     });
   }catch(e){
     // atomique : tout le script est défait
@@ -120,6 +130,8 @@ function mfScriptRun(script){
   if(docUndoStack.length>u0){docUndoStack.length=u0;}
   if(changed||docSnap()!==snap){docUndoStack.push({snap,label:'script ('+cmds.length+' commande(s))',t:++undoTick});docRedoStack.length=0;try{docUndoUI();}catch(e){}}
   if(changed){try{markDirty();rebuild();}catch(e){}}
+  // V0.94.0 : une pièce neuve faite par script est cadrée en vue iso, comme une pièce ouverte
+  if(cmds.some(c=>c&&c.op==='new')){try{viewFit([0.6,-0.6,0.6]);}catch(e){}}
   try{renderTree();renderProps();}catch(e){}
   try{faceEl.textContent='Script : '+cmds.length+' commande(s) exécutée(s).';}catch(e){}
   return {ok:true,results};
@@ -150,6 +162,7 @@ function mfScriptDlg(){
 }
 /* ── pont de pilotage (serveur MCP local) ── */
 let mfBridge=null; // {ws, url, n}
+let mfBridgeDemande=false; // V0.94.0 : connexion demandée par un clic → un échec s'affiche en fenêtre
 const MF_BRIDGE_URL='ws://127.0.0.1:47811';
 function mfBridgeState(){return mfBridge&&mfBridge.ws&&mfBridge.ws.readyState===1?'on':(mfBridge?'wait':'off');}
 function mfBridgeConnect(url){
@@ -158,7 +171,7 @@ function mfBridgeConnect(url){
   url=url||MF_BRIDGE_URL;
   if(!/^ws:\/\/(127\.0\.0\.1|localhost)(:\d+)?(\/|$)/.test(url))throw new Error('pont : adresse locale seulement (ws://127.0.0.1)');
   const ws=new WebSocket(url);mfBridge={ws,url,n:0};
-  ws.onopen=()=>{try{ws.send(JSON.stringify({type:'hello',app:'MiniFusion',ver:APP_VER,doc:doc.name}));}catch(e){}mfBridgeUI();
+  ws.onopen=()=>{mfBridgeDemande=false;try{ws.send(JSON.stringify({type:'hello',app:'ConceptCAD',ver:APP_VER,doc:doc.name}));}catch(e){}mfBridgeUI();
     try{faceEl.textContent='🔌 Piloté par le serveur local ('+url+').';}catch(e){}};
   ws.onmessage=ev=>{
     let m;try{m=JSON.parse(ev.data);}catch(e){return;}
@@ -169,12 +182,22 @@ function mfBridgeConnect(url){
     mfBridgeUI();
   };
   ws.onclose=()=>{if(mfBridge&&mfBridge.ws===ws){mfBridge=null;mfBridgeUI();try{faceEl.textContent='🔌 Pilotage terminé.';}catch(e){}}};
-  ws.onerror=()=>{try{faceEl.textContent='🔌 Serveur local introuvable ('+url+') — lancez « node tools/mcp-minifusion.cjs ».';}catch(e){}};
+  // V0.94.0 : échec dit en clair (une fenêtre, l'icône en rouge) : un clic sans effet visible laissait croire à une panne
+  ws.onerror=()=>{
+    const m='La télécommande de l’IA ne répond pas. Elle se lance avec une conversation Claude où ConceptCAD est branché (manuel : Scripts et pilotage par Claude). Ouvrez une conversation, demandez quelque chose sur ConceptCAD, puis recliquez la prise.';
+    try{faceEl.textContent='🔌 Télécommande de l’IA introuvable ('+url+').';}catch(e){}
+    try{const q=document.getElementById('mfQPlug');if(q){q.style.color='var(--danger,#ff453a)';q.title=m;setTimeout(()=>{try{mfBridgeUI();}catch(e){}},6000);}}catch(e){}
+    try{if(mfBridgeDemande){mfBridgeDemande=false;setTimeout(()=>alert(m),0);}}catch(e){}
+  };
   mfBridgeUI();
   return mfBridge;
 }
 function mfBridgeClose(){if(mfBridge){try{mfBridge.ws.close();}catch(e){}mfBridge=null;mfBridgeUI();}}
 function mfBridgeUI(){
+  // V0.94.0 : icône de la barre rapide (interface moderne) : couleur et bulle selon l'état
+  try{const q=document.getElementById('mfQPlug');if(q){const s=mfBridgeState();
+    q.style.color=s==='on'?'var(--accent,#30d158)':s==='wait'?'var(--warn,#ffd60a)':'';
+    q.title=s==='on'?'Pilotage par l’IA : connecté ('+((mfBridge&&mfBridge.n)||0)+' demande(s)) — cliquer pour couper':s==='wait'?'Pilotage par l’IA : connexion…':'Pilotage par l’IA (MCP) : relier ConceptCAD au serveur local';}}catch(e){}
   try{const b=document.getElementById('btnBridge');if(!b)return;const s=mfBridgeState();
     b.innerHTML='<i>🔌</i>'+(s==='on'?'Pilotage : connecté ('+((mfBridge&&mfBridge.n)||0)+')':s==='wait'?'Pilotage : connexion…':'Pilotage (MCP)…');}catch(e){}
 }
@@ -184,7 +207,7 @@ function mfScriptMenu(){
     const nb=document.getElementById('btnNew'),menu=nb&&nb.parentNode;
     if(menu&&menu.classList&&menu.classList.contains('ddMenu')&&!document.getElementById('btnScript')){
       const s=document.createElement('button');s.id='btnScript';s.innerHTML='<i>📜</i>Script JSON…';s.title='Exécuter une liste de commandes JSON sur le document';s.onclick=()=>mfScriptDlg();
-      const b=document.createElement('button');b.id='btnBridge';b.title='Relier la page au serveur local de pilotage (tools/mcp-minifusion.cjs, serveur MCP) — 127.0.0.1 seulement';
+      const b=document.createElement('button');b.id='btnBridge';b.title='Relier la page au serveur local de pilotage (tools/mcp-conceptcad.cjs, serveur MCP) — 127.0.0.1 seulement';
       b.onclick=()=>{if(mfBridgeState()==='off'){try{mfBridgeConnect();}catch(e){alert(e.message);}}else mfBridgeClose();};
       menu.appendChild(s);menu.appendChild(b);mfBridgeUI();
     }

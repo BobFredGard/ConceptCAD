@@ -13,6 +13,8 @@ function pwaInstallee(){
   try{return !!(matchMedia('(display-mode: standalone)').matches||navigator.standalone);}catch(e){return false;}
 }
 function pwaUI(){
+  // V0.94.0 : aussi l'icône de la barre rapide de l'interface moderne (#mfQInstall)
+  try{const q=document.getElementById('mfQInstall');if(q)q.style.display=(pwaInvite&&!pwaInstallee())?'':'none';}catch(e){}
   try{
     const b=document.getElementById('btnInstaller');if(!b)return;
     const pret=pwaHorsLigne&&!pwaHorsLigne.manquants.length;

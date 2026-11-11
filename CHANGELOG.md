@@ -8,7 +8,7 @@ sont sorties le 2026-09-30j.
 Code dans `src/` · livrable `fusion_mvp.html` (généré par `build.js`) · architecture et
 garde-fous en tête de `src/00-entete-et-outils.js`.
 
-**656 versions**, de `2026-09-28b` à `V0.93.0` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
+**657 versions**, de `2026-09-28b` à `V0.94.0` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
 comme dans le fichier d'origine.
 
 ---
@@ -7408,3 +7408,29 @@ Barquette ne perd plus son solide à la 107e modification, et sa mémoire ne mon
 - **Publication** : `pages.yml` copie la fiche et les icônes, et écrit le tag dans le service worker pour que les navigateurs voient la nouvelle version. Le service worker est enregistré aussi quand la page est déjà isolée. Le fichier autonome retire la fiche d'installation, inutile en double-clic.
 - **Test** : `tests/browser/hors-ligne.spec.cjs` (fiche et icônes lisibles, service worker en place, réserve remplie, réseau coupé : la page se rouvre, le noyau exact démarre, un fichier déjà lu reste disponible). Parcours FAO et CACHE_VER inchangés.
 - **Test réparé** : `test_fao` (section 014) échouait déjà en V0.92.0. Il cliquait le dernier bouton « + Nouveau » de la fenêtre, qui est depuis celui de l'onglet Porte-outil. Il vise maintenant le bouton qui ajoute un outil. Rien ne change dans l'application.
+
+## V0.94.0 - Pilotage par l'IA : pièces complètes (congés, chanfreins, perçages, coque, répétitions, symétrie, modifications)
+
+- **Cause** : la télécommande de l'IA (serveur MCP, V0.8.5) ne savait faire que des esquisses simples, des extrusions et des révolutions. Fred veut qu'une IA puisse faire une pièce complète dans ConceptCAD. C'est l'étape 2 du chantier « PWA + MCP ».
+- **Voir la pièce sans clic** : `{"op":"edges"}` et `{"op":"faces"}` numérotent les arêtes et les faces de la pièce. Arêtes : droite ou courbe, axe, milieu, longueur. Faces : plane, cylindre…, centre, normale, rayon. Le nouvel outil MCP `conceptcad_geometry` les rend d'un coup.
+- **Choisir sans clic** : un sélecteur remplace le clic. On peut donner des numéros, `"top"`, `"bottom"`… (face extrême), `{"normal":"+Z","at":"max"}`, `{"kind":"cylinder","radius":3}` pour les faces, et `{"dir":"Z"}`, `{"face":"top"}`, `{"near":[x,y,z]}` pour les arêtes. Les filtres se cumulent. Un sélecteur vide est refusé avec le sélecteur cité.
+- **Nouveaux gestes** :
+  - `fillet` et `chamfer` (congé et chanfrein exacts) ;
+  - `shell` (coque, faces retirées) ;
+  - `hole` sur les centres `{"hole":[x,y]}` d'une esquisse : lisse, débouchant ou non, fond plat ou en pointe, taraudé (`"thread":"M8"`, Ø de perçage du taraud mis tout seul), lamé ou fraisé, sens vers la matière comme à la souris ;
+  - `pattern` (linéaire, circulaire, symétrie ; `count` = nombre total, source comprise) ;
+  - `mirror` (symétrie d'un corps entier).
+
+  Ce sont les mêmes fonctions qu'à la souris : elles se modifient ensuite à la main dans l'arbre.
+- **Modifier l'existant** : `{"op":"set","feature":…}` change la distance d'une extrusion, l'angle d'une révolution, le rayon d'un congé, l'épaisseur d'une coque, le Ø et la profondeur d'un perçage, le nombre, le pas et l'angle d'une répétition. `{"op":"set","sketch":…,"dim":n,"value":…}` change une cote d'esquisse et résout l'esquisse. `info` liste désormais les cotes de chaque esquisse.
+- **Refus plutôt qu'à peu près** : un congé, un chanfrein, une coque ou un perçage qui ne change pas la pièce est refusé. Il en va de même pour un congé que l'arbre marquerait ⚠ : rayon réduit tout seul, arêtes non faites ou perdues. Comme tout script, le document revient alors tel qu'avant. Les résultats donnent le volume obtenu.
+- **Nom ConceptCAD** : le serveur devient `tools/mcp-conceptcad.cjs`, avec les outils `conceptcad_run_script`, `conceptcad_info`, `conceptcad_geometry` et `conceptcad_commands`. Les anciens noms (`minifusion_*`, `tools/mcp-minifusion.cjs`, `MINIFUSION_PORT`) restent acceptés. Le serveur accepte aussi le site officiel, et donc l'application installée depuis lui, ainsi que les applis Windows et Mac. Un autre site, même au nom ressemblant, reste refusé.
+- **Plusieurs conversations à la fois** : chaque conversation Claude (onglet Chat, onglet Code…) lance sa propre télécommande, et une seule peut tenir la prise de ConceptCAD. Avant, les autres répondaient « ConceptCAD n’est pas relié », même avec la prise verte. Maintenant, elles passent leurs demandes par celle qui tient la prise, et la reprennent si elle se ferme. Seul un programme de ce PC peut faire ce relais, jamais un site.
+- **Vue** : une pièce neuve faite par script est cadrée en vue iso.
+- **Boutons visibles** : dans l'interface moderne, le menu Projet n'est pas affiché. Le pilotage et l'installation de la V0.93.0 n'étaient donc accessibles que par la recherche. Ils ont maintenant leurs icônes dans la barre du haut, à droite du dossier : une prise, verte quand l'IA est reliée, et un écran « Installer », visible seulement quand le navigateur permet l'installation.
+- **Test** :
+  - `test_scripts_pieces` (27 contrôles : volumes calculés à la main pour le congé, le chanfrein, la coque, les perçages lisse, lamé et taraudé, la répétition ; symétrie ; modifications ; refus ; une seule étape d'annulation) ;
+  - `test_mcp_serveur` complété (outils, anciens noms, site officiel, faux site, ancien chemin, relais entre deux conversations, reprise de la prise) ;
+  - essai réel : serveur MCP lancé, page reliée par le bouton 🔌, bride complète faite par l'outil `conceptcad_run_script`.
+
+  Parcours FAO et CACHE_VER inchangés.
