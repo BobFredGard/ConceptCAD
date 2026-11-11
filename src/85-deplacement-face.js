@@ -280,8 +280,9 @@ function mvApply(){
       sel={kind:'feature',id:f.id};
     }
     exitMoveFaceMode(true);
-    markDirty();rebuild();renderTree();renderProps();
+    // message AVANT le rejeu : celui-ci y ajoute ses alertes (face refusée…), qui restaient cachées
     faceEl.textContent=f?'Déplacement de face mis à jour : '+f.name+'.':'Déplacement de face : fonction introuvable.';
+    markDirty();rebuild();renderTree();renderProps();
     return;
   }
   // On attaque le solide SANS cette nouvelle fonction, pour la viser sur la forme courante.
@@ -297,6 +298,6 @@ function mvApply(){
   addFeature(f); // instantané d'annulation + insertion au marqueur temps (comme extrusion/révolution/congé)
   exitMoveFaceMode(true);
   sel={kind:'feature',id:f.id};
-  markDirty();rebuild();renderTree();renderProps();
   faceEl.textContent='Déplacement de face créé : '+f.name+'. Distance modifiable dans ses propriétés.';
+  markDirty();rebuild();renderTree();renderProps();
 }

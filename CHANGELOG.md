@@ -8,7 +8,7 @@ sont sorties le 2026-09-30j.
 Code dans `src/` · livrable `fusion_mvp.html` (généré par `build.js`) · architecture et
 garde-fous en tête de `src/00-entete-et-outils.js`.
 
-**659 versions**, de `2026-09-28b` à `V0.94.2` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
+**660 versions**, de `2026-09-28b` à `V0.94.3` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
 comme dans le fichier d'origine.
 
 ---
@@ -7448,3 +7448,10 @@ Barquette ne perd plus son solide à la 107e modification, et sa mémoire ne mon
 - **Cause** : le groupe de trous visés est enregistré par son Ø, la longueur du fût et le sens. Modifier le trou (profondeur) ou le déplacer là où la face d'entrée change la longueur du fût donne un autre groupe ; l'ancien n'existait plus, ou ne restait que pour un trou déjà percé au fond (0 trou à percer). Le perçage tombait en erreur et la liste montrait ce groupe vide, alors que le bon était juste dessous.
 - **Correctif** (`src/76-percage-normal`) : `hnScan` garde le groupe enregistré tant qu'il a des trous à percer ; sinon il prend le groupe le plus proche qui en a (même sens d'abord, puis Ø, puis longueur). Le réglage enregistré n'est pas réécrit : si le trou revient à ses cotes, tout revient comme avant. La liste « Trous visés » et le nom de la fonction montrent le groupe réellement suivi.
 - **Test** : `test_percage_normal` 5b-5c : profondeur des Ø8 de 14 à 12, toujours 3 trous percés (0 avant), liste « Ø8 × 12 — 3 trous ». Parcours FAO et CACHE_VER inchangés.
+
+## V0.94.3 - CAO : « Déplacer une face » bouge la face même quand le noyau refuse les faces tangentes
+
+- **Demande** : Fred, 11/11 : « J'aimerais que cette fonction puisse vraiment déplacer des faces plus facilement. Bien souvent la fonction ne fait rien. Elle existe dans la timeline mais rien de visible. »
+- **Cause** : avec la case « Faces tangentes » (cochée par défaut), une face touchée par un congé passe par le décalage du noyau (`occOffsetFaces`, BRepOffset_MakeOffset). Celui-ci porte sur tout le solide : un endroit délicat ailleurs suffit à le faire échouer (« résultat vide », « no parameter on edge », volume incohérent). La fonction rendait alors la pièce intacte. Le message d'alerte était aussitôt remplacé à l'écran par « Déplacement de face créé ». Banc sur les exemples (chaque face échantillonnée, ±1 mm) : Support Pédale 4 réussis sur 28, Cache Piles 14 sur 24.
+- **Correctif** (`src/20-30-faces`, `85-deplacement-face`) : si le noyau refuse et que les faces cliquées sont planes ou cylindriques, `occApplyMoveFace` les pousse par le calcul historique (`occMoveFaceOnce`, bords prolongés le long des voisines). Une alerte dit que les faces tangentes n'ont pas suivi, seulement si la face a bougé. Le message de création ou de mise à jour est écrit avant le rejeu, qui y ajoute ses alertes au lieu d'être effacé. `occOffsetFaces` accepte des options de jointure (essayées : aucune ne sauvait ces cas).
+- **Test** : `test_face_repli` (Cache Piles, Support Pédale : faces où le noyau rendait « résultat vide », ±1 mm, volume du bon signe ; arrondi de 0,5 mm réduit de 1 mm : refus dit). Banc après correctif : Support Pédale 25 sur 28, Cache Piles 21 sur 24 (les restes : rayon qui deviendrait nul, face courbe non cylindrique). Vérifié dans le navigateur : face de Support Pédale +2 mm, volume 30 729 → 31 630 mm³, alerte affichée. `test_xmove`, `test_face_tangentes`, `test_face_appuyer` inchangés. Parcours FAO et CACHE_VER inchangés.
