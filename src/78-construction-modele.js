@@ -57,8 +57,8 @@ const CG_HOW={
     ext:{lab:'Depuis un autre composant',slots:[],ext:true}
   },
   frame:{
-    zx:{lab:'Origine, Z et X',slots:[['point','Origine'],['axis','Direction Z'],['axis','Direction X',1]],par:CG_FR_PAR,flip:true},
-    face:{lab:'Sur un plan ou une face',slots:[['plane','Plan ou face'],['axis','Direction X',1]],par:CG_FR_PAR,flip:true},
+    zx:{lab:'Origine, Z et X',slots:[['point','Origine'],['axis','Direction Z'],['dir','Direction X',1]],par:CG_FR_PAR,flip:true},
+    face:{lab:'Sur un plan ou une face',slots:[['plane','Plan ou face'],['dir','Direction X',1]],par:CG_FR_PAR,flip:true},
     '3pts':{lab:'Par 3 points',slots:[['point','Origine'],['point','Point sur X'],['point','Point dans XY']],par:CG_FR_PAR,flip:true},
     ext:{lab:'Depuis un autre composant',slots:[],ext:true,par:CG_FR_PAR,flip:true}
   }
@@ -66,7 +66,37 @@ const CG_HOW={
 // ext (V0.6.4) : référence à un élément (ou à l'origine) d'une AUTRE instance de l'assemblage,
 // el.ext = {ctx (instance où l'on travaille), path (instance visée), cg | o, frozen, last} —
 // résolue par asmExtFrame (46) ; figée, elle garde sa position.
-const CG_DEF_HOW={plane:'offset',axis:'ref',point:'xyz',frame:'zx'};
+const CG_DEF_HOW={plane:'offset',axis:'ref',point:'xyz',frame:'face'};
+/* Points cardinaux d'une face plane (repère « Sur un plan ou une face », el.p.w) : centre, milieux
+   des côtés et coins du rectangle qui englobe la face, aligné sur X et Y du repère (avant
+   « Rotation autour de Z » et « Inverser »). Sans w (anciens fichiers) : centre de la boîte 3D. */
+const CG_CARD=[['c','Centre',0,0],['n','Milieu nord',0,1],['s','Milieu sud',0,-1],['e','Milieu est',1,0],['o','Milieu ouest',-1,0],
+  ['ne','Coin nord-est',1,1],['no','Coin nord-ouest',-1,1],['se','Coin sud-est',1,-1],['so','Coin sud-ouest',-1,-1]];
+function cgCardPts(edges,x,y){
+  // Rectangle englobant EXACT des arêtes d'une face plane dans la base (x,y) → les 9 points, ou null.
+  // Droite : ses bouts ; cercle ou arc : ses bouts et ses points extrêmes le long de x et de y
+  // (calculés, pas échantillonnés) ; autre courbe : polyligne fine.
+  const P=[];
+  (edges||[]).forEach(E=>{
+    if(E.k==='circ'){
+      const at=u=>cgAdd(E.c,cgAdd(cgMul(E.x,E.r*Math.cos(u)),cgMul(E.y,E.r*Math.sin(u))));
+      P.push(at(E.u0),at(E.u1));
+      [x,y].forEach(d=>{
+        const a=Math.atan2(cgDot(d,E.y),cgDot(d,E.x));
+        [a,a+Math.PI].forEach(u=>{
+          // u ramené dans [u0 ; u0 + 2π[ : gardé s'il tombe sur l'arc
+          let t=(u-E.u0)%(2*Math.PI);if(t<0)t+=2*Math.PI;
+          if(t<=E.u1-E.u0+1e-12)P.push(at(E.u0+t));
+        });
+      });
+    }else (E.pts||[]).forEach(q=>P.push(q));
+  });
+  if(!P.length)return null;
+  const b=P[0];let u0=0,u1=0,v0=0,v1=0;
+  P.forEach(q=>{const w=cgSub(q,b),u=cgDot(w,x),v=cgDot(w,y);u0=Math.min(u0,u);u1=Math.max(u1,u);v0=Math.min(v0,v);v1=Math.max(v1,v);});
+  const at=(su,sv)=>cgAdd(b,cgAdd(cgMul(x,(u0+u1)/2+su*(u1-u0)/2),cgMul(y,(v0+v1)/2+sv*(v1-v0)/2)));
+  return CG_CARD.map(([w,lab,su,sv])=>({w,lab,o:at(su,sv)}));
+}
 /* ── vecteurs (tableaux [x,y,z]) : le modèle ne dépend pas de three.js ── */
 const cgAdd=(a,b)=>[a[0]+b[0],a[1]+b[1],a[2]+b[2]];
 const cgSub=(a,b)=>[a[0]-b[0],a[1]-b[1],a[2]-b[2]];
@@ -131,6 +161,7 @@ function cgAtNow(){
 function cgDefaults(kind,how){
   const H=CG_HOW[kind][how],p={};
   Object.keys((H&&H.par)||{}).forEach(k=>{p[k]=H.par[k].def;});
+  if(kind==='frame'&&how==='face')p.w='c'; // origine : centre de la face, puis le point cardinal cliqué
   return p;
 }
 function cgNew(kind,how,refs,p,name){
@@ -250,6 +281,14 @@ function cgEvalRef(ref,ctx){
   return cgEvalModelRef(ref,ctx);
 }
 /* ── construction ── */
+const CG_TYPE_LAB={plane:'un plan',axis:'un axe',point:'un point',frame:'un repère',curve:'une courbe',dir:'une direction (arête, axe, face ou plan)'};
+function cgAs(g,type){
+  // Forme attendue par un emplacement. « dir » (direction X d'un repère) : un axe ou une arête droite donne
+  // sa direction ; une face plane, un plan ou le plan d'un autre repère donne sa NORMALE.
+  if(!g)return null;
+  if(type==='dir')return g.axis||(g.plane?{o:g.plane.o,d:g.plane.n}:null);
+  return g[type]||null;
+}
 function cgSlot(el,ctx,i,type,opt){
   const r=el.refs[i];
   if(!r){if(opt)return null;throw new Error('référence '+(i+1)+' manquante');}
@@ -261,8 +300,9 @@ function cgSlot(el,ctx,i,type,opt){
     if((r.k==='face'||r.k==='edge'||r.k==='vtx')&&!(typeof occHas==='function'&&occHas()))throw new Error('noyau exact indisponible : position mémorisée');
     throw new Error('référence '+(i+1)+' introuvable — la pièce a changé');
   }
-  if(!g[type])throw new Error('référence '+(i+1)+' : ce n’est pas '+({plane:'un plan',axis:'un axe',point:'un point',frame:'un repère',curve:'une courbe'})[type]);
-  return g[type];
+  const v=cgAs(g,type);
+  if(!v)throw new Error('référence '+(i+1)+' : ce n’est pas '+CG_TYPE_LAB[type]);
+  return v;
 }
 function cgNum(el,k){const v=+(el.p&&el.p[k]);return isFinite(v)?v:0;}
 function cgFrPlane(o,u,v,n){return {o:cgArr(o),x:cgUnit(u),y:cgUnit(v),z:cgUnit(n)};}
@@ -393,12 +433,17 @@ function cgBuild(el,ctx){
     fr={o:cgArr(o),x:[1,0,0],y:[0,1,0],z:[0,0,1]};
   }else if(el.kind==='frame'){
     let O,R;
+    el._card=null;
     if(el.how==='zx'){
-      O=S(0,'point').o;const Z=S(1,'axis'),X=S(2,'axis',true);
+      O=S(0,'point').o;const Z=S(1,'axis'),X=S(2,'dir',true);
       R=cgOrtho(Z.d,X?X.d:null);
     }else if(el.how==='face'){
-      const P=S(0,'plane'),X=S(1,'axis',true);
+      const P=S(0,'plane'),X=S(1,'dir',true);
       O=P.o;R=cgOrtho(P.n,X?X.d:P.u);
+      // points cardinaux de la face (une vraie face plane seulement : un plan n'a pas de bords)
+      el._card=cgCardPts(P.edges,R.x,R.y);
+      const w=el.p&&el.p.w;
+      if(w&&el._card){const k=el._card.find(q=>q.w===w);if(k)O=k.o;}
     }else if(el.how==='3pts'){
       const a=S(0,'point').o,b=S(1,'point').o,c=S(2,'point').o;
       const X=cgSub(b,a),Z=cgCross(X,cgSub(c,a));
@@ -409,6 +454,7 @@ function cgBuild(el,ctx){
     warn=R.warn||'';
     let x=R.x,y=R.y,z=R.z;
     if(flip){z=cgMul(z,-1);y=cgMul(y,-1);}
+    if(el.p&&el.p.flipx){x=cgMul(x,-1);y=cgMul(y,-1);} // sens de X retourné, Z gardé (repère toujours direct)
     const rz=cgNum(el,'rz')*Math.PI/180;
     if(rz){const c=Math.cos(rz),s=Math.sin(rz);const xn=cgAdd(cgMul(x,c),cgMul(y,s));y=cgAdd(cgMul(y,c),cgMul(x,-s));x=xn;}
     O=cgAdd(cgAdd(cgAdd(cgArr(O),cgMul(x,cgNum(el,'dx'))),cgMul(y,cgNum(el,'dy'))),cgMul(z,cgNum(el,'dz')));
@@ -609,7 +655,11 @@ function cgEvalModelRef(ref,ctx){
       if(gt===T.GeomAbs_Plane){
         const n=occFaceOutNormal(f);if(!n)return null;
         const B=cgBasisN(n,null);
-        return {plane:{o:b.pos,u:B.u,v:B.v,n:B.n},point:{o:b.pos}};
+        const pl={o:b.pos,u:B.u,v:B.v,n:B.n};
+        // bords de la face : seulement pour le repère posé dessus (points cardinaux)
+        const me=ctx&&ctx.self;
+        if(me&&me.kind==='frame'&&me.how==='face'&&me.refs&&me.refs[0]===ref)pl.edges=cgFaceEdges(f);
+        return {plane:pl,point:{o:b.pos}};
       }
       if(gt===T.GeomAbs_Cylinder||gt===T.GeomAbs_Cone){
         const ax=(gt===T.GeomAbs_Cylinder?ad.Cylinder():ad.Cone()).Axis();
@@ -647,6 +697,37 @@ function cgEvalModelRef(ref,ctx){
     return g;
   }
   return null;
+}
+function cgFaceEdges(f){
+  // Bords d'une face plane, en données pures pour cgCardPts : [{k:'circ',c,x,y,r,u0,u1} | {k:'pts',pts}]
+  const out=[];let ex=null;
+  try{
+    ex=new occt.TopExp_Explorer_2(f,occt.TopAbs_ShapeEnum.TopAbs_EDGE,occt.TopAbs_ShapeEnum.TopAbs_SHAPE);
+    const T=occt.GeomAbs_CurveType;
+    while(ex.More()){
+      let e=null,ad=null;
+      try{
+        e=occEdgeCur(ex);ad=new occt.BRepAdaptor_Curve_2(e);
+        const u0=ad.FirstParameter(),u1=ad.LastParameter(),gt=ad.GetType();
+        const at=u=>occXyz(ad.Value(u));
+        if(gt===T.GeomAbs_Line)out.push({k:'pts',pts:[at(u0),at(u1)]});
+        else if(gt===T.GeomAbs_Circle){
+          const C=ad.Circle();
+          try{
+            const A=C.Position();
+            try{
+              const c=occXyz(A.Location()),n=occXyz(A.Direction()),x=occXyz(A.XDirection());
+              out.push({k:'circ',c,x,y:cgCross(n,x),r:C.Radius(),u0,u1});
+            }finally{occFree(A);}
+          }finally{occFree(C);}
+        }else{const pts=[];for(let i=0;i<=200;i++)pts.push(at(u0+(u1-u0)*i/200));out.push({k:'pts',pts});}
+      }catch(err){}
+      finally{try{if(ad)ad.delete();}catch(x){}try{if(e)e.delete();}catch(x){}}
+      ex.Next();
+    }
+  }catch(err){}
+  finally{try{if(ex)ex.delete();}catch(x){}}
+  return out;
 }
 function cgEdgeCurve(shape,E){
   // Polyligne fine (paramètre uniforme, 400 pas) de l'arête exacte de rang E.src → {pts} ;

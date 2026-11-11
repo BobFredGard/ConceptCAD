@@ -21,6 +21,7 @@ function wirePick(){
     if(extPickFace||(typeof extUptoAuto==='function'&&extUptoAuto())){ // « jusqu'à la face » : clic COURT seulement (glisser = tourner la vue)
       if(e.button===0&&Math.hypot(e.clientX-dx,e.clientY-dy)<=6)extPickFaceCommit(e);return;}
     if(cgMode&&cgMode.slot!=null){if(Math.hypot(e.clientX-dx,e.clientY-dy)<=6&&e.button===0)cgPickCommit(e);return;} // construction : référence de l'emplacement actif
+    if(cgMode&&e.button===0&&Math.hypot(e.clientX-dx,e.clientY-dy)<=6&&cgCardPickAt(e))return; // repère sur une face : point cardinal, même sans emplacement actif
     if(Math.hypot(e.clientX-dx,e.clientY-dy)>6)return;
     if(filMode){if(e.button===0&&!e.ctrlKey)filletToggle(e);return;}
     if(filModeX){if(e.button===0)exactToggle(e);return;} // clic = ajouter / retirer une arête (V0.11.6)

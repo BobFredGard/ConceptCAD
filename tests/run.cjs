@@ -318,6 +318,7 @@ const SUITES = [
   "test_fao_chanfrein",
   "test_oracle",
   "test_construction_esquisse",
+  "test_repere_face_cardinaux",
   "test_esquisse_reperes",
   "test_sk_decalage_outil",
   "test_projection_import_ouverture"

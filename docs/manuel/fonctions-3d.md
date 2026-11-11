@@ -5,6 +5,7 @@
 ## Géométrie de construction
 
 Plans (décalé, à un angle, 3 points, médian, normal à un axe, **perpendiculaire à une courbe** à une position donnée de sa longueur), axes, points et **repères**, désignés dans la vue ou dans l'arbre. Ils sont **associatifs** : un plan posé sur une face suit la pièce quand une cote change.
+- **Repère sur une face** : cliquer une face plane affiche ses **9 points cardinaux** (centre, milieux des côtés, coins du rectangle qui l'entoure) ; un clic sur l'un d'eux y pose l'origine. Z sort de la face, perpendiculaire ; X se règle (facultatif) en cliquant une arête ou un axe, qu'il suit, ou bien une face plane, un plan ou le plan d'un autre repère, auxquels il est perpendiculaire ; le rectangle des points s'aligne dessus. Deux cases retournent le sens de Z et celui de X sans déplacer l'origine. Le repère est affiché en vrai pendant la création et la modification. Le repère suit la pièce quand elle change.
 
 ## Fonctions
 
