@@ -68,6 +68,16 @@ const {loadApp}=require('./appvm.cjs');
     const s8=doc.sketches.find(s=>s.id==='s8');s8.points.h0.x=20;markDirty();rebuild();
     const on5=hnRun.get(f.id).all.filter(t=>t.on).map(t=>t.C[0]).sort((a,b)=>a-b).join(',');
     A(on5==='20,35,55','5a : un Ø8 déplacé est suivi (vu '+on5+')');
+    // ── 5b. le trou visé est modifié (profondeur 14 → 12) : le groupe enregistré n'existe plus,
+    //        le perçage suit le groupe le plus proche au lieu de tomber à 0 trou ──
+    {const h8=doc.features.find(x=>x.id==='H8');h8.depth=12;markDirty();rebuild();
+     const S5=hnRun.get(f.id),n5=S5.all.filter(t=>t.on).length;
+     A(n5===3&&!f4._err&&S5.grp&&Math.abs(S5.grp.len-12)<1e-6&&Math.abs(f4.place.grp.len-14)<1e-6,'5b : profondeur du Ø8 changée : toujours 3 trous percés (vu '+n5+(f4._err?', erreur '+f4._err:'')+')');
+     const p=document.createElement('div');renderHoleNormProps(p,f4);const fnd=(n)=>{if(n.tagName==='SELECT')return n;for(const c of n.children||[]){const r=fnd(c);if(r)return r;}return null;};
+     const sl=fnd(p),op=sl&&(sl.children||[]).find(o=>o.value===sl.value);
+     const lab=op?op.textContent:'?';
+     A(/× 12 .*3 trous/.test(lab),'5c : la liste montre le groupe suivi « '+lab+' », pas un groupe à 0 trou');
+     h8.depth=14;markDirty();rebuild();}
     // ── 6. enregistrement : pas d'esquisse, réglages gardés ──
     const js=JSON.parse(JSON.stringify(f4));
     A(js.place&&js.place.k==='normal'&&js.place.faces.length===1&&!js.sketchId,'6a : enregistré avec la face et le groupe, sans esquisse');
