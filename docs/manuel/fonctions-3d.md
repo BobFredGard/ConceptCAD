@@ -22,7 +22,7 @@ Historique rejouable, timeline à icônes (vert = ajout, rouge = enlèvement), m
   - Plusieurs faces peuvent être choisies : chaque trou va à la face au-dessus de lui.
   - Les trous déjà percés au fond sont ignorés.
   - Une case sous chaque trou, dans la vue 3D, permet de l'enlever.
-  - Une seule fonction, qui suit la pièce.
+  - Une seule fonction, qui suit la pièce : si le trou visé change (profondeur, Ø, déplacement), elle suit les trous les plus proches au lieu de tomber à 0 trou.
 - **Perçage sur un cylindre** : un clic sur la face extérieure pose le trou ; direction, angle, cote depuis une face, une arête ou un sommet et décalage latéral se règlent dans le panneau, et le trou suit la pièce.
 - **Rainure de clavette automatique** : un clic sur un arbre ou un alésage, et le diamètre donne les cotes ISO 773. La clavette naît comme un corps séparé, posée au fond. Quatre formes, position réglable, et chaque cote modifiable une par une pour les cas non standard ; les cotes non saisies suivent le diamètre si la pièce change.
 - **Congés et chanfreins exacts**, sur la chaîne tangente ou l'arête seule ; un clic ajoute ou retire une arête.

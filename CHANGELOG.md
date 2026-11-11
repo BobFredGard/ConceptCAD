@@ -8,7 +8,7 @@ sont sorties le 2026-09-30j.
 Code dans `src/` · livrable `fusion_mvp.html` (généré par `build.js`) · architecture et
 garde-fous en tête de `src/00-entete-et-outils.js`.
 
-**658 versions**, de `2026-09-28b` à `V0.94.1` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
+**659 versions**, de `2026-09-28b` à `V0.94.2` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
 comme dans le fichier d'origine.
 
 ---
@@ -7441,3 +7441,10 @@ Barquette ne perd plus son solide à la 107e modification, et sa mémoire ne mon
 - **Cause** : depuis V0.88.1, la taille des flèches suivait la distance de la caméra (0,055 × distance). Avec un petit angle de champ (réglage de la vue), la caméra recule pour garder le cadrage : à 15°, les flèches devenaient 3 fois plus grandes à l'écran (jusqu'à 110 pixels).
 - **Correctif** (`src/70-extrusion-dynamique`, `71-fenetre-dynamique`) : `dynArrowL` fixe la longueur en pixels (`DYN_ARROW_PX` = 40, à partir des mm par pixel de `triadWpp`, perspective ou orthographique), pour les flèches d'extrusion, de perçage, de congé et la poignée de révolution ; tige et pointe un peu plus épaisses, zone de prise invisible élargie pour rester facile à attraper.
 - **Test** : mesuré dans le navigateur sur `Exemples/Perçages.conceptcad` : 39 pixels pour l'extrusion à 50° comme à 15° (perçage taraudé : même taille, vue en raccourci) ; `test_extrusion_dynamique`, `test_fenetre_dynamique` inchangés. Parcours FAO et CACHE_VER inchangés.
+
+## V0.94.2 - CAO : le perçage normal suit le trou visé quand il change
+
+- **Demande** : Fred, 11/11 : « La fonction perçage Normal perd sa ref dès que l'on bouge ou touche au trou choisi, pourtant il existe bien dans la liste mais c'est la version avec 0 trou qui est retenue. »
+- **Cause** : le groupe de trous visés est enregistré par son Ø, la longueur du fût et le sens. Modifier le trou (profondeur) ou le déplacer là où la face d'entrée change la longueur du fût donne un autre groupe ; l'ancien n'existait plus, ou ne restait que pour un trou déjà percé au fond (0 trou à percer). Le perçage tombait en erreur et la liste montrait ce groupe vide, alors que le bon était juste dessous.
+- **Correctif** (`src/76-percage-normal`) : `hnScan` garde le groupe enregistré tant qu'il a des trous à percer ; sinon il prend le groupe le plus proche qui en a (même sens d'abord, puis Ø, puis longueur). Le réglage enregistré n'est pas réécrit : si le trou revient à ses cotes, tout revient comme avant. La liste « Trous visés » et le nom de la fonction montrent le groupe réellement suivi.
+- **Test** : `test_percage_normal` 5b-5c : profondeur des Ø8 de 14 à 12, toujours 3 trous percés (0 avant), liste « Ø8 × 12 — 3 trous ». Parcours FAO et CACHE_VER inchangés.

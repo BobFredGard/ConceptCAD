@@ -383,7 +383,7 @@ input[type=range]{accent-color:var(--primary);width:100%}
  * peut changer sans rien casser. CACHE_VER (parcours FAO) reste indépendant.
  */
 
-const APP_VER='V0.94.1';
+const APP_VER='V0.94.2';
 try{console.log('[ConceptCAD] version '+APP_VER);}catch(e){}
 try{var mfSv=document.getElementById('mfSplashVer');if(mfSv)mfSv.textContent=APP_VER;}catch(e){} // écran de démarrage
 
@@ -37438,7 +37438,7 @@ function hnFoot(C,faces,maxD){
 /* ----- recherche complète (création et rejeu) ----- */
 // → {all:[{C,P,d,D,on,off,why}], groups:[{g,n}], faces:n} ; grp null = tous les groupes
 function hnScan(base,pl,dHole){
-  const res={all:[],groups:[],faces:0};
+  const res={all:[],groups:[],faces:0,grp:null};
   if(!base)return res;
   const faces=(pl.faces||[]).map(function(r){try{return occFindFaceAny(base,Object.assign({},r));}catch(e){return null;}}).filter(Boolean);
   res.faces=faces.length;
@@ -37446,7 +37446,7 @@ function hnScan(base,pl,dHole){
   const cl=occClassifier(base),IN=occt.TopAbs_State.TopAbs_IN;
   const inside=function(q){const p=new occt.gp_Pnt_3(q[0],q[1],q[2]);try{cl.Perform(p,1e-6);return cl.State()===IN;}finally{try{p.delete();}catch(e){}}};
   try{
-    const maxD=+pl.maxD>0?+pl.maxD:HN_MAXD,gk=hnGrpKey(pl.grp),G=new Map();
+    const maxD=+pl.maxD>0?+pl.maxD:HN_MAXD,G=new Map(),cand=[];
     const off=(pl.off||[]);
     hnBlindHoles(base).forEach(function(h){
       const ft=hnFoot(h.C,faces,maxD);if(!ft)return;
@@ -37458,9 +37458,27 @@ function hnScan(base,pl,dHole){
       const g={r:+h.r.toFixed(4),len:+h.len.toFixed(3),u:h.u.map(function(x){return +x.toFixed(4);})},k=hnGrpKey(g);
       if(!G.has(k))G.set(k,{g:g,n:0});
       if(!h.pierced&&ok)G.get(k).n++;
-      if(gk!=='*'&&k!==gk)return;
+      cand.push({h:h,ft:ft,D:D,ok:ok,k:k});
+    });
+    // groupe visé : celui enregistré ; s'il n'a plus de trou à percer (trou visé modifié ou déplacé : profondeur,
+    // Ø, longueur du fût changée par la face d'entrée…), le groupe le plus proche qui a des trous —
+    // même sens d'abord, puis Ø, puis longueur. Rien n'est réécrit dans la fonction : la réf. d'origine
+    // reste la cible, le perçage suit la pièce à chaque rejeu.
+    let gk=hnGrpKey(pl.grp);res.grp=pl.grp||null;
+    if(pl.grp&&!(G.has(gk)&&G.get(gk).n>0)){ // disparu, ou ne reste que des trous déjà percés
+      const g0=pl.grp;let best=null,bs=Infinity;
+      G.forEach(function(v,k){
+        if(!(v.n>0))return;
+        const g=v.g,sc=(hnDot(g.u,g0.u)>0.999?0:1000)+Math.abs(g.r-g0.r)*10+Math.abs(g.len-g0.len);
+        if(sc<bs){bs=sc;best=k;}
+      });
+      if(best){gk=best;res.grp=G.get(best).g;res.moved=true;}
+    }
+    cand.forEach(function(c){
+      if(gk!=='*'&&c.k!==gk)return;
+      const h=c.h,ok=c.ok;
       const isOff=off.some(function(o){return hnLen(hnV(o,h.C))<0.5;});
-      res.all.push({C:h.C,P:ft.P,d:ft.d,D:D,on:!h.pierced&&ok&&!isOff,off:isOff,why:h.pierced?'déjà percé au fond':(!ok?'chemin hors matière':'')});
+      res.all.push({C:h.C,P:c.ft.P,d:c.ft.d,D:c.D,on:!h.pierced&&ok&&!isOff,off:isOff,why:h.pierced?'déjà percé au fond':(!ok?'chemin hors matière':'')});
     });
     res.groups=[...G.values()].sort(function(a,b){return b.n-a.n;});
   }finally{try{cl.delete();}catch(e){}occDispose(faces);}
@@ -37494,7 +37512,7 @@ function occShapeOfHoleNormal(f){
 }
 function hnName(f){
   const S=hnRun.get(f.id),n=S?S.all.filter(function(t){return t.on;}).length:null;
-  return 'Perçage normal Ø'+hnFmt(+f.d||1.5)+(f.place&&f.place.grp?' → '+'Ø'+hnFmt(2*f.place.grp.r):'')+(n!=null?' ×'+n:'');
+  return 'Perçage normal Ø'+hnFmt(+f.d||1.5)+((S&&S.grp)||(f.place&&f.place.grp)?' → '+'Ø'+hnFmt(2*((S&&S.grp)||f.place.grp).r):'')+(n!=null?' ×'+n:'');
 }
 /* ----- création : clic sur la face ----- */
 let hnPick=null; // {fid|null}
@@ -37581,10 +37599,11 @@ function renderHoleNormProps(p,f){
   // groupe de trous visés
   const s=document.createElement('select');
   const gs=S.groups.slice();
-  if(pl.grp&&!gs.some(function(g){return hnGrpKey(g.g)===hnGrpKey(pl.grp);}))gs.unshift({g:pl.grp,n:0});
+  const gCur=S.grp||pl.grp; // groupe réellement suivi (le plus proche si le trou visé a changé)
+  if(gCur&&!gs.some(function(g){return hnGrpKey(g.g)===hnGrpKey(gCur);}))gs.unshift({g:gCur,n:0});
   gs.forEach(function(g){const o=document.createElement('option');o.value=hnGrpKey(g.g);o.textContent=hnGrpLabel(g.g,g.n);s.appendChild(o);});
   const oa=document.createElement('option');oa.value='*';oa.textContent='Tous les trous borgnes';s.appendChild(oa);
-  s.value=hnGrpKey(pl.grp);
+  s.value=hnGrpKey(gCur);
   s.onchange=function(){docPushUndo('perçage normal : trous visés');const g=gs.find(function(x){return hnGrpKey(x.g)===s.value;});pl.grp=g?g.g:null;go();};
   row('Trous visés',s);
   row('Distance maxi',num(+pl.maxD||HN_MAXD,function(v){pl.maxD=v;},0.5));
