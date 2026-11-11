@@ -18,7 +18,7 @@ Le noyau géométrique exact est **OpenCascade (OCCT) compilé en WebAssembly**.
 | `build.js` | Concaténation + bandeaux de section ; `--check` échoue si le livrable est périmé. |
 | `tests/` | **169 suites** Node (171 entrées dans `tests/run.cjs`, certaines suites longues coupées en parties) + **54** rapides (`tests/run-fast.cjs`) ; non-régression des parcours FAO (`tests/parcours/`, `npm run parcours`) ; Playwright dans `tests/browser/` (`parcours.spec.cjs`, 20 parcours ; `gpu.spec.cjs`, 4 tests sur la vraie carte graphique). |
 | `tools/lint.cjs` | Lint ESLint du script concaténé, dans l'ordre exact du build. |
-| `tools/mcp-minifusion.cjs` | Serveur MCP (stdio, sans dépendance) : relaie les scripts JSON vers la page par un WebSocket local (127.0.0.1). |
+| `tools/mcp-conceptcad.cjs` | Serveur MCP (stdio, sans dépendance) : relaie les scripts JSON vers la page par un WebSocket local (127.0.0.1). |
 | `threejs/` | three.js, OrbitControls et CSG (MIT). |
 | `occt/` | Noyau OCCT WebAssembly (LGPL), `.wasm` suivis par Git LFS. |
 | `Exemples/` | Projets `.conceptcad` et STEP de référence (Git LFS), commités à chaque livraison. |
