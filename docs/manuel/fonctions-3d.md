@@ -42,6 +42,7 @@ Historique rejouable, timeline à icônes (vert = ajout, rouge = enlèvement), m
   - **déplacer une face** façon Appuyer/Tirer : ses bords suivent les parois voisines, dépouilles et coins arrondis compris ;
     - cliquer la face d'un **congé ou d'un chanfrein** règle directement sa taille ;
     - la case **Faces tangentes** retient d'un clic toutes les faces qui se prolongent sans arête vive (l'intérieur d'une poche, congés compris), décalées d'un bloc quel que soit leur type ;
+      si le noyau refuse de les décaler, la face cliquée (plane ou cylindrique) bouge quand même et un message dit que les faces tangentes n'ont pas suivi ;
     - une face trop courbe pour la distance demandée, qui se replierait (« vrille »), est remplacée par une surface lisse tangente à ses voisines, et un message le dit (la coque aussi) ;
   - **supprimer des faces**, plusieurs à la fois, avec calcul en tâche de fond ;
   - **dépouille** : angle signé, sens inversable ;

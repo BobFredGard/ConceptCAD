@@ -791,7 +791,8 @@ function occPlisReparer(r,warnings,mot){
   }catch(e){return r;}
   finally{occDispose(faces);occDispose(bin);}
 }
-function occOffsetFaces(shape,faces,dist,warnings){
+function occOffsetFaces(shape,faces,dist,warnings,opt){
+  opt=opt||{};
   // Décale `faces` (handles sur `shape`) de `dist` mm le long de la normale sortante, par le
   // noyau. Retourne la nouvelle forme, ou null (raison dans `warnings`). Contrôle du volume :
   // le noyau entraîne de lui-même les faces tangentes aux faces décalées ; la matière gagnée
@@ -804,7 +805,7 @@ function occOffsetFaces(shape,faces,dist,warnings){
     const area=occTangentChainIdx(all,idx).reduce((s,i)=>s+occFaceArea(all[i]),0);
     const o=new occt.CCFaceOffset();
     try{
-      o.Init(shape,0,1e-6,true,false,2,false);
+      o.Init(shape,0,1e-6,opt.inter!==false,false,opt.join==null?2:opt.join,false);
       faces.forEach(f=>o.SetFace(f,dist));
       if(!o.MakeOffset()){warnings.push('décalage refusé par le noyau ('+(o.Message()||'erreur '+o.Error())+')');return null;}
       r=o.Shape();
@@ -845,6 +846,7 @@ function occApplyMoveFace(result,f){
   found.forEach((h,i)=>{if(!h)warnings.push(`face introuvable près de ${lab(refs[i])} — la pièce a changé`);});
   if(!found.some(Boolean)){drop();return {shape:result,warnings};}
   if(!dist){drop();return {shape:result,warnings:['distance nulle — aucun déplacement']};}
+  let repli=null; // alerte du repli (faces tangentes laissées), dite seulement si la face a bougé
   {
     // Chaîne tangente : les faces ajoutées qui ne sont que l'autre moitié d'un même cylindre
     // (ou d'un même plan) ne comptent pas — ce cas reste au calcul historique.
@@ -860,11 +862,22 @@ function occApplyMoveFace(result,f){
           if(!sd.every(d=>d.k==='pl'||d.k==='cy')){drop();return {shape:result,warnings:warnings.concat(['face ni plane ni cylindrique : décalage indisponible avec ce noyau (noyau OCCT 8 requis)']),fatal:true};}
           warnings.push('faces tangentes : décalage indisponible avec ce noyau — seules les faces cliquées bougent');
         }else{
-          const r=occOffsetFaces(result,chain,dist,warnings);
-          if(!r){drop();return {shape:result,warnings,fatal:true};}
-          drop();
-          try{result.delete();}catch(e){}
-          return {shape:r,warnings};
+          const wk=[];
+          const r=occOffsetFaces(result,chain,dist,wk);
+          if(r){
+            drop();
+            try{result.delete();}catch(e){}
+            return {shape:r,warnings:warnings.concat(wk)};
+          }
+          // V0.94.3 — repli : le décalage du noyau porte sur TOUT le solide, et un seul endroit
+          // délicat ailleurs dans la pièce suffit à le faire échouer (Support Pédale : 24 essais
+          // sur 28 refusés, « résultat vide », « no parameter on edge »). La pièce restait alors
+          // intacte : la fonction existait dans la timeline sans rien changer. Faces cliquées
+          // planes ou cylindriques : on les pousse par le calcul historique (bords prolongés le
+          // long des voisines), qui réussit dans ces cas ; seules les faces tangentes restent.
+          if(!sd.every(d=>d.k==='pl'||d.k==='cy')){drop();return {shape:result,warnings:warnings.concat(wk),fatal:true};}
+          if(chain.length>found.filter(Boolean).length)
+            repli=('faces tangentes (congés, arrondis) non entraînées — le noyau a refusé de les décaler ('+(wk[0]||'raison inconnue')+') : seule'+(refs.length>1?'s les faces cliquées ont':' la face cliquée a')+' bougé');
         }
       }
     }finally{occDispose(all);}
@@ -894,7 +907,7 @@ function occApplyMoveFace(result,f){
     return {shape:result,warnings:warnings.concat([`déplacement impossible (${(e&&e.message)||e})`]),fatal:true};
   }
   drop();
-  if(cur!==result)try{result.delete();}catch(e){}
+  if(cur!==result){try{result.delete();}catch(e){}if(repli)warnings.unshift(repli);}
   return {shape:cur,warnings};
 }
 function occBlendOfFace(face,shape,bodyId){
