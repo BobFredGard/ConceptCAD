@@ -17,7 +17,7 @@ function sketchFaceLabel(sk){
   if(!sk)return '?';
   if(sk.fao)return 'XY du posage'; // V0.23.20 : esquisse FAO
   if(sk.plane==='CG'){const el=sk.cg&&cgGet(sk.cg.id);return (el?el.name:'construction ?')+(sk.cg&&sk.cg.sub?' · '+sk.cg.sub:'');}
-  if(sk.plane==='FACE'&&sk.origin)return 'FACE @('+sk.origin.map(v=>(+v).toFixed(1)).join(', ')+')'+(sk.host&&sk.host.name?' · '+sk.host.name:'');
+  if(sk.plane==='FACE'&&sk.origin)return 'FACE @('+sk.origin.map(v=>(+v).toFixed(1)).join(', ')+')'+(sk.host&&sk.host.name?' · '+sk.host.name:(!(sk.host&&sk.host.feat)&&sk.hostFace&&sk.hostFace.nom?' · '+(sk.hostFace.name||'face nommée'):''));
   return sk.plane;
 }
 function newSketchOnCg(id,sub){
@@ -76,6 +76,7 @@ function newSketchOnFace(){
     origin:[+origin.x.toFixed(3),+origin.y.toFixed(3),+origin.z.toFixed(3)],
     axU:[u.x,u.y,u.z],axV:[v.x,v.y,v.z],axN:[n.x,n.y,n.z],
     host:host?hostFields(host,entName('face')):null};
+  if(!host)sk.hostFace={pos:[+pt.x.toFixed(3),+pt.y.toFixed(3),+pt.z.toFixed(3)]}; // nommée au 1er rejeu (skFaceNommeeSuit)
   doc.sketches.push(sk);markDirty();rebuild();openSketch(sk.id);
   faceEl.textContent='Esquisse '+sk.name+' posée sur '+(sk.host&&sk.host.name||'face')+' (normale '+n.x.toFixed(2)+','+n.y.toFixed(2)+','+n.z.toFixed(2)+') · origine '+sk.origin.join(', ')+' (repère projeté). Dessinez puis extrudez le long de la normale.';
 }
@@ -301,6 +302,94 @@ function projEdgesFor(sk){
   if(pk!=null&&edges){_projEdgePersist.set(pk,edges);while(_projEdgePersist.size>24)_projEdgePersist.delete(_projEdgePersist.keys().next().value);}
   return edges;
 }
+// FACE PORTEUSE NOMMÉE (V0.94.4) : une esquisse posée sur une face qui ne vient pas d'une extrusion
+// (barquette importée puis soustraite, corps dérivé, combinaison…) n'avait aucun hôte : son plan
+// restait figé et l'arbre n'en disait rien (« l'esquisse a perdu sa face »). Elle retient
+// maintenant le NOM de sa face (sk.hostFace, 20-05) et suit son plan, comme une arête projetée.
+const _skFacePersist=new Map();
+function skFacesPlanesOf(shape){
+  // faces planes du solide : {nom,n,p,c} (repère monde)
+  const T=NOMS_TABLES.get(shape),out=[];
+  let m=null;
+  try{
+    m=nomsCarteFaces(shape);if(!m)return null;
+    const N=m.Size(),sameT=T&&T.f.length===N;
+    for(let i=1;i<=N;i++){
+      const x=nomsFaceCle(m,i);
+      try{const d=occSurfDesc(x);if(d.k==='pl')out.push({nom:sameT?(T.f[i-1]||null):null,n:d.n,p:d.p,c:nomsCentre(x)});}
+      catch(e){}
+      finally{try{x.delete();}catch(e){}}
+    }
+  }catch(e){return null;}
+  finally{try{if(m)m.delete();}catch(e){}}
+  out.a=(T&&T.a)||{};
+  return out;
+}
+function skFacesPlanes(sk){
+  // faces planes du solide vu par l'esquisse (même règle d'antériorité que les projections)
+  let idx=-1;try{idx=skConsumerIdx(sk);}catch(e){idx=-1;}
+  const key=(idx>=0&&occHas())?'f'+idx:((occHas()&&occLive&&occLive.shape)?'live':null);
+  if(!key||(key==='live'&&occLive.incomplet))return null;
+  const pk=key==='live'?(occLive.sig&&!projImportsEnAttente()?'live|'+occLive.sig:null):projPrefixSig(idx);
+  if(pk!=null&&_skFacePersist.has(pk))return _skFacePersist.get(pk);
+  let FR=null,L=null;
+  try{
+    const shape=key==='live'?occLive.shape:((FR=occFinalShape(idx))&&FR.shape);
+    if(shape)L=skFacesPlanesOf(shape);
+  }catch(e){L=null;}
+  finally{if(FR){try{occCleanup(FR,null);}catch(e){}}}
+  if(pk!=null&&L){_skFacePersist.set(pk,L);while(_skFacePersist.size>24)_skFacePersist.delete(_skFacePersist.keys().next().value);}
+  return L;
+}
+function skFaceParNom(L,ref){
+  // face de L désignée par ref.nom (anciens noms suivis, morceaux #1 #2 : le plus proche de ref.pos)
+  let nom=ref.nom,g=0;
+  while(!L.some(f=>f.nom===nom)&&L.a[nom]&&g++<8)nom=L.a[nom];
+  let C=L.filter(f=>f.nom===nom);
+  if(!C.length){const base=nom.replace(/(#\d+)+$/,'');C=L.filter(f=>f.nom&&(f.nom===base||f.nom.indexOf(nom+'#')===0||f.nom.indexOf(base+'#')===0));}
+  if(!C.length)return null;
+  if(C.length===1||!Array.isArray(ref.pos))return C[0];
+  let b=C[0],bd=1e18;
+  C.forEach(f=>{const d=Math.hypot(f.c[0]-ref.pos[0],f.c[1]-ref.pos[1],f.c[2]-ref.pos[2]);if(d<bd){bd=d;b=f;}});
+  return b;
+}
+function skFaceNommeeSuit(sk){
+  // → true si le plan de l'esquisse a bougé
+  if(!sk||sk.plane!=='FACE'||(sk.host&&sk.host.feat)||!sk.axN||!sk.origin)return false;
+  if(projImportsEnAttente())return false;
+  const L=skFacesPlanes(sk);if(!L||!L.length)return false;
+  const N=new THREE.Vector3(+sk.axN[0]||0,+sk.axN[1]||0,+sk.axN[2]||0);
+  if(!(N.lengthSq()>1e-9))return false;
+  N.normalize();
+  const O=sk.origin,dot=a=>N.x*a[0]+N.y*a[1]+N.z*a[2];
+  const par=f=>Math.abs(Math.abs(dot(f.n))-1)<1e-6;
+  const ecart=f=>N.x*(f.p[0]-O[0])+N.y*(f.p[1]-O[1])+N.z*(f.p[2]-O[2]);
+  const cle=sk.id+'/face',ref=sk.hostFace;
+  let F=null;
+  if(ref&&ref.nom){
+    F=skFaceParNom(L,ref);
+    if(!F){nomsPerteNote(cle,(sk.name||'Esquisse')+' : sa face porteuse n’existe plus'+(ref.pos?' près de '+nomsPos(ref.pos):'')+' — plan gardé');return false;}
+  }else{
+    // première fois : face coplanaire la plus proche du point cliqué (sinon du dessin)
+    let P=ref&&Array.isArray(ref.pos)?ref.pos:null;
+    if(!P){try{const Q=sketchPts3(sk);if(Q.length){P=[0,0,0];Q.forEach(q=>{P[0]+=q.x/Q.length;P[1]+=q.y/Q.length;P[2]+=q.z/Q.length;});}}catch(e){}}
+    if(!P)P=O;
+    let bd=1e18;
+    for(const f of L){
+      if(!f.nom||!par(f)||Math.abs(ecart(f))>1e-3)continue;
+      const d=Math.hypot(f.c[0]-P[0],f.c[1]-P[1],f.c[2]-P[2]);if(d<bd){bd=d;F=f;}
+    }
+    if(!F)return false;
+    sk.hostFace={nom:F.nom,pos:F.c.map(v=>+(+v).toFixed(3)),name:(ref&&ref.name)||entName('face')};
+  }
+  if(!par(F)){nomsPerteNote(cle,(sk.name||'Esquisse')+' : sa face porteuse a tourné — plan gardé');return false;}
+  nomsPerteOubli(cle);
+  const off=ecart(F);
+  if(Math.abs(off)<1e-3)return false; // origine arrondie au millième : rien à faire en deçà
+  sk.hostFace.nom=F.nom;sk.hostFace.pos=F.c.map(v=>+(+v).toFixed(3));
+  for(let k=0;k<3;k++)sk.origin[k]=+(sk.origin[k]+[N.x,N.y,N.z][k]*off).toFixed(3);
+  return true;
+}
 function findClosestProjectedEdge(sk,x,y,preferMid,wantType,edgesOver,noPoint){
   // sans tolérance, cherche l'arête projetée la plus proche (antériorité).
   // preferMid : milieu 3D mémorisé à la projection — l'arête source d'origine prime
@@ -523,7 +612,8 @@ function updateAllProjections(){
     (doc.sketches||[]).forEach(sk=>{ if(sk.id===skEdit?.id)return; if(repCloneSkName(sk))return; let k=-1;try{k=skConsumerIdx(sk);}catch(e){} L.push({sk,k:k>=0?k:1e9}); });
     L.sort((a,b)=>a.k-b.k);
     skpNotesPurge();
-    skpOrdre(L).forEach(({sk,k})=>{ try{ if(updateAssociativeProjections(sk)){changed=true;
+    skpOrdre(L).forEach(({sk,k})=>{ try{ let pl=false;try{pl=skFaceNommeeSuit(sk);}catch(e){}
+      if(updateAssociativeProjections(sk)||pl){changed=true;
       if(_projEdgeCache)[..._projEdgeCache.keys()].forEach(key=>{const n=key[0]==='f'?+key.slice(1):1e9;if(n>k)_projEdgeCache.delete(key);});
       // la chaîne aval suit AUSSITÔT : esquisses posées sur faces + instances de répétition
       try{resolveAllSketchHosts();}catch(e){}
@@ -539,7 +629,7 @@ function projPreUpdate(){
   skpNotesPurge(); // même s'il ne reste aucune projection à suivre
   const ext=(doc.sketches||[]).some(sk=>(sk.entities||[]).some(e=>e&&e.proj&&(e.ext||e.skSrc))); // V0.8.1 : sans noyau, des instantanés ; une autre esquisse se suit aussi sans noyau
   if(!(typeof occHas==='function'&&occHas())&&!ext)return false;
-  const any=ext||(doc.sketches||[]).some(sk=>(sk.entities||[]).some(e=>e&&(e.proj||e.isProj)));
+  const any=ext||(doc.sketches||[]).some(sk=>(sk.plane==='FACE'&&!(sk.host&&sk.host.feat))||(sk.entities||[]).some(e=>e&&(e.proj||e.isProj)));
   if(!any)return false;
   return updateAllProjections();
 }
