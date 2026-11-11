@@ -957,8 +957,10 @@ function occFaceOfHit(mesh,fi){
 let occStepForce=false;
 function occLoneStep(){
   // Un corps dont toutes les fonctions visibles sont des imports, dont un avec son BRep.
+  // Au marqueur de la timeline : seules les fonctions rejouées comptent (marqueur posé juste
+  // après l'import d'une barquette suivie d'une échelle : aucun outil de face ne s'ouvrait).
   const by={},b0=(doc.bodies&&doc.bodies[0]&&doc.bodies[0].id)||'';
-  (doc.features||[]).forEach(f=>{if(!f||f.visible===false||(occSkipFeat&&f.id===occSkipFeat))return;const b=f.body||b0;(by[b]=by[b]||[]).push(f);});
+  (typeof tlActiveList==='function'?tlActiveList():(doc.features||[])).forEach(f=>{if(!f||f.visible===false||(occSkipFeat&&f.id===occSkipFeat))return;const b=f.body||b0;(by[b]=by[b]||[]).push(f);});
   return Object.keys(by).some(b=>by[b].every(f=>f.type==='import')&&by[b].some(f=>{
     const e=(typeof importGeom!=='undefined')?importGeom.get(f.id):null;return !!(e&&e.brep);}));
 }

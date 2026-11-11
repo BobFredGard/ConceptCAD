@@ -8,7 +8,7 @@ sont sorties le 2026-09-30j.
 Code dans `src/` · livrable `fusion_mvp.html` (généré par `build.js`) · architecture et
 garde-fous en tête de `src/00-entete-et-outils.js`.
 
-**660 versions**, de `2026-09-28b` à `V0.94.3` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
+**661 versions**, de `2026-09-28b` à `V0.94.4` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
 comme dans le fichier d'origine.
 
 ---
@@ -7455,3 +7455,12 @@ Barquette ne perd plus son solide à la 107e modification, et sa mémoire ne mon
 - **Cause** : avec la case « Faces tangentes » (cochée par défaut), une face touchée par un congé passe par le décalage du noyau (`occOffsetFaces`, BRepOffset_MakeOffset). Celui-ci porte sur tout le solide : un endroit délicat ailleurs suffit à le faire échouer (« résultat vide », « no parameter on edge », volume incohérent). La fonction rendait alors la pièce intacte. Le message d'alerte était aussitôt remplacé à l'écran par « Déplacement de face créé ». Banc sur les exemples (chaque face échantillonnée, ±1 mm) : Support Pédale 4 réussis sur 28, Cache Piles 14 sur 24.
 - **Correctif** (`src/20-30-faces`, `85-deplacement-face`) : si le noyau refuse et que les faces cliquées sont planes ou cylindriques, `occApplyMoveFace` les pousse par le calcul historique (`occMoveFaceOnce`, bords prolongés le long des voisines). Une alerte dit que les faces tangentes n'ont pas suivi, seulement si la face a bougé. Le message de création ou de mise à jour est écrit avant le rejeu, qui y ajoute ses alertes au lieu d'être effacé. `occOffsetFaces` accepte des options de jointure (essayées : aucune ne sauvait ces cas).
 - **Test** : `test_face_repli` (Cache Piles, Support Pédale : faces où le noyau rendait « résultat vide », ±1 mm, volume du bon signe ; arrondi de 0,5 mm réduit de 1 mm : refus dit). Banc après correctif : Support Pédale 25 sur 28, Cache Piles 21 sur 24 (les restes : rayon qui deviendrait nul, face courbe non cylindrique). Vérifié dans le navigateur : face de Support Pédale +2 mm, volume 30 729 → 31 630 mm³, alerte affichée. `test_xmove`, `test_face_tangentes`, `test_face_appuyer` inchangés. Parcours FAO et CACHE_VER inchangés.
+
+## V0.94.4 - CAO : esquisse sur une face d'un corps importé ou dérivé, et outils de face au marqueur après un import
+
+- **Demande** : Fred, 11/11, sur une cavité faite en soustrayant une barquette dérivée : « 1- esquisse a perdu sa face de référence ; 2 - quand bloque la time line à l'insertion de la barquette 001, impossible d'ajouter des fonctions, comme Face ».
+- **Cause 1** : une esquisse sur face ne se rattachait qu'à une face d'extrusion (`findHostForFace`). Posée sur le fond venu de la barquette soustraite, elle n'avait aucun hôte (`host:null`, depuis sa création) : son plan restait figé si la barquette changeait, sans rien dire.
+- **Correctif 1** (`src/50-esquisse-1-ouverture-references`) : `skFaceNommeeSuit` donne à une esquisse sur face sans hôte d'extrusion le NOM de sa face (`sk.hostFace`, face plane coplanaire la plus proche du point cliqué ou du dessin, dans le solide vu par l'esquisse), puis suit son plan à chaque rejeu, avec les projections (même antériorité, même cache par préfixe de timeline). Face disparue ou tournée : plan gardé et alerte. Le libellé de l'esquisse affiche le nom de la face.
+- **Cause 2** : `occLoneStep` regardait toutes les fonctions du corps, pas celles d'avant le marqueur. Marqueur après l'import : le corps n'avait que l'import à rejouer, mais l'échelle placée plus loin le faisait croire « non seul », le STEP n'entrait pas dans la chaîne exacte et chaque outil de face répondait « solide exact indisponible ».
+- **Correctif 2** (`src/20-70-cache-et-rejeu`) : `occLoneStep` ne compte que les fonctions rejouées (`tlActiveList`).
+- **Test** : vérifié dans le navigateur sur la pièce de Fred : l'esquisse retrouve sa face ; échelle de la barquette agrandie → son origine suit exactement le fond de la cavité, et revient à l'identique ; marqueur après l'import puis aux 4 positions suivantes : « Déplacer une face » s'ouvre, aucune esquisse ne bouge. Suite rapide 150/150. Parcours FAO et CACHE_VER inchangés.

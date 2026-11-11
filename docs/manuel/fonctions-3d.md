@@ -10,6 +10,7 @@ Plans (décalé, à un angle, 3 points, médian, normal à un axe, **perpendicul
 ## Fonctions
 
 Historique rejouable, timeline à icônes (vert = ajout, rouge = enlèvement), marqueur de temps glissable, réordonnancement par glisser-déposer. Une fonction ne s'appuie que sur ce qui la précède (**règle d'antériorité**).
+- Marqueur posé juste après l'import d'un STEP ou d'un corps dérivé (suivi d'une échelle, d'autres fonctions…) : les outils de face (déplacer une face, congé, chanfrein, dépouille, coque) s'ouvrent sur ce corps comme sur une pièce native.
 - **Extrusion** et **révolution** dynamiques : distance, jusqu'à une face, à travers tout, symétrique, dépouille, nouveau corps ; flèche à glisser dans la vue, de taille fixe à l'écran (environ 40 pixels, quel que soit le zoom ou l'angle de vue), comme celles des perçages, congés et révolutions.
 - **Zones fermées** (comme Fusion 360) : en esquisse, chaque zone fermée est teintée (un contour ouvert ne l'est pas) ; dans l'extrusion, un clic sur une zone l'ajoute ou la retire — plusieurs zones pour une même extrusion, ↺ Auto pour toute la matière.
 - **Balayage** d'un profil le long d'une ligne, d'un arc ou d'une **spline**.
@@ -55,6 +56,7 @@ Historique rejouable, timeline à icônes (vert = ajout, rouge = enlèvement), m
   Ces outils marchent aussi sur un **STEP importé** seul.
 - **Références qui tiennent** : chaque face et chaque arête porte un nom unique, transmis d'une fonction à l'autre.
   - Congés, plans, perçages, esquisses sur face, projections, liaisons d'assemblage et faces choisies pour l'usinage retrouvent leur élément par ce nom, y compris dans les copies d'une répétition.
+  - Une esquisse posée sur une face qui ne vient pas d'une extrusion (STEP importé, corps dérivé soustrait, combinaison) retient aussi sa face et suit son plan ; le nom de la face s'affiche dans l'esquisse.
   - Un grand changement de cote se calcule par petits pas en interne ; si un élément a vraiment disparu, une alerte le dit.
   - Après une valeur impossible, ou un grand changement de longueur ou de largeur, revenir à la valeur d'origine redonne exactement la pièce d'origine, même avec des congés recopiés par une répétition (Barquette et ses renforts) ; les plans suivent aussitôt.
   - Un clic sur une face ou une arête affiche son numéro et la fonction qui l'a créée.
