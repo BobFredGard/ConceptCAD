@@ -495,6 +495,61 @@ function faoFramePickCommit(e){
   try{faceEl.textContent='Axe '+t.which.toUpperCase()+(op?' de l’opération':' du posage')+' = '+what+' '+faoFrameLabel(v)+(faoFrame(own).warn?' — '+faoFrame(own).warn:'')+'. Parcours à régénérer.';}catch(e){}
   try{renderProps();}catch(e){}
 }
+/* ----- surfaçage : sens d'usinage pris sur une face ou une arête cliquée ----- */
+let faoFacingDirPick=null; // {setupId, opId}
+function faoFacingDirPickStart(setupId,opId){
+  faoFacingDirPick={setupId,opId};
+  try{renderer.domElement.style.cursor='crosshair';}catch(e){}
+  try{faceEl.textContent='Sens d’usinage : cliquez une ARÊTE droite (sa direction), une FACE plane (sa normale sortante) ou une face cylindrique (son axe) — Échap annule.';}catch(e){}
+  try{renderProps();}catch(e){}
+}
+function faoFacingDirPickCancel(){faoFacingDirPick=null;try{renderer.domElement.style.cursor='default';}catch(e){}try{renderProps();}catch(e){}}
+function faoFacingDirOf(F,dir){
+  // direction (repère pièce) → [dx,dy] unitaire dans le plan XY du repère F de l'opération, ou null si elle est le long de l'outil
+  const q=(F&&!F.id)?faoRotF(F,dir):dir,L=Math.hypot(q[0],q[1]);
+  if(!(L>0.02))return null;
+  return [q[0]/L,q[1]/L].map(function(v){return Math.abs(v)<1e-9?0:Math.round(v*1e9)/1e9;});
+}
+function faoFacingDirSet(op,u,what){
+  // range la direction dans l'opération ; alignée sur X ou Y : on garde le nom de l'axe (plus lisible)
+  delete op.dirInv;delete op.dirSrc;
+  if(Math.abs(u[1])<1e-7){delete op.dir;if(u[0]<0)op.dirInv=true;}
+  else if(Math.abs(u[0])<1e-7){op.dir='y';if(u[1]<0)op.dirInv=true;}
+  else{op.dir=u;op.dirSrc=what;}
+}
+function faoFacingDirPickCommit(e){
+  const t=faoFacingDirPick;if(!t)return;
+  const setup=faoSetup(t.setupId),op=setup?(setup.ops||[]).filter(o=>o.id===t.opId)[0]:null;
+  if(!op){faoFacingDirPickCancel();return;}
+  let dir=null,what='';
+  try{
+    const h=pick(e);
+    const eh=(typeof edgeHoverPick==='function')?edgeHoverPick(e,h):null;
+    if(eh){ // arête droite : direction premier → dernier point
+      const P=edgeHoverSegs()[eh.pi];
+      if(P&&P.length>=2){
+        const a=P[0],b=P[P.length-1],d=[b[0]-a[0],b[1]-a[1],b[2]-a[2]],L=Math.hypot(...d);
+        let straight=L>1e-6;
+        if(straight)for(const q of P){const w=[q[0]-a[0],q[1]-a[1],q[2]-a[2]];const c=[w[1]*d[2]-w[2]*d[1],w[2]*d[0]-w[0]*d[2],w[0]*d[1]-w[1]*d[0]];if(Math.hypot(...c)/L>0.01){straight=false;break;}}
+        if(straight){dir=d.map(q=>q/L);what='Arête';}
+      }
+    }
+    if(!dir&&h){
+      let G=null;try{G=occFaceGeom(h.object,h.faceIndex);}catch(err){}
+      if(G&&G.kind==='cyl'&&G.axis){dir=[G.axis.x,G.axis.y,G.axis.z];what='Axe de cylindre';}
+      else if(h.face&&h.face.normal){const v=h.face.normal.clone().transformDirection(h.object.matrixWorld);dir=[v.x,v.y,v.z];what='Face';}
+    }
+  }catch(err){}
+  if(!dir){try{faceEl.textContent='Sens d’usinage : rien de reconnu ici — cliquez une arête droite ou une face.';}catch(e2){}return;}
+  const u=faoFacingDirOf(faoOpFrameOf(setup.id,op.id),dir);
+  if(!u){try{faceEl.textContent='Sens d’usinage : cette direction est le long de l’outil — choisissez une arête ou une face de côté, pas le dessus.';}catch(e2){}return;}
+  faoSnapshot('sens d’usinage du surfaçage');
+  faoFacingDirSet(op,u,what);
+  faoFacingDirPick=null;try{renderer.domElement.style.cursor='default';}catch(e2){}
+  faoChanged();
+  try{faceEl.textContent='Sens d’usinage = '+what.toLowerCase()+' ('+(+(Math.atan2(u[1],u[0])*180/Math.PI).toFixed(1))+'° par rapport à X). Parcours à régénérer.';}catch(e2){}
+  try{renderProps();}catch(e2){}
+}
 function faoFrameRows(p,setup){
   // Fiche posage : orientation du repère (absolu pour toutes ses opérations)
   p.appendChild(faoH('Repère du posage'));

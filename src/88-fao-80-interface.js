@@ -1241,7 +1241,7 @@ function faoOpCardElement(setup,op,i){
     // affiché en lecture seule à droite. Un ancien document piloté par « Passes »
     // (np≥2) est lu tel quel (écart affiché = H/(np−1)) ; saisir l'écart bascule
     // définitivement en pilotage par écart (op.np=null).
-    const stF=faoOpView(setup,op).stock||faoStock();
+    const stF=faoFacingStockDir(faoOpView(setup,op).stock||faoStock(),faoFacingDir(op)); // largeur à couvrir, vue dans le sens d'usinage
     const tF=faoToolById(setup,op.toolId);
     const dF=(tF&&isFinite(+tF.d)&&+tF.d>0)?+tF.d:10;
     const npOn=isFinite(+op.np)&&+op.np>=2;
@@ -1256,7 +1256,8 @@ function faoOpCardElement(setup,op,i){
     // Passes en Z (par brut) : ébauche du dessus du brut (Z1) à la cote Z en N
     // passes égales — l'ap est CALCULÉ (Z1−Z)/N et affiché en lecture seule.
     const npzShow=(isFinite(+op.npz)&&+op.npz>=2)?Math.round(+op.npz):1;
-    const apZShow=faoFacingAp(stF,(isFinite(+op.z)?+op.z:stF.z1)+faoRA(op).axial,npzShow);
+    const finEpNow=op.finPasse?(isFinite(+op.finEp)&&+op.finEp>0?+op.finEp:0.3):0; // l'ébauche s'arrête au-dessus de la finition
+    const apZShow=faoFacingAp(stF,(isFinite(+op.z)?+op.z:stF.z1)+faoRA(op).axial+finEpNow,npzShow);
     rp.appendChild(faoLab('pz'));
     rp.appendChild(faoNum(npzShow,function(v){
       const n=Math.round(v);
@@ -1271,6 +1272,62 @@ function faoOpCardElement(setup,op,i){
     rp.appendChild(faoLab('Sortie'));
     rp.appendChild(faoNum(isFinite(+setup.secu)?+setup.secu:5,function(v){ setup.secu=Math.max(0,v); },44,0.5,
       'Sortie de pièce (mm hors matière — réglage du POSAGE, commun à toutes les opérations) : (1) dépassement XY en bout de ligne — l’outil sort de la pièce avant son demi-tour, (2) hauteur de calcul des parcours et des cycles de perçage en mode « Retrait minimum ». Généralement 5 à 10.'));
+    // Passe de finition : l'ébauche laisse une épaisseur, enlevée ensuite en N passes fines
+    // (dernière à la cote Z), au choix toujours dans le même sens. Décochée : parcours inchangé.
+    geoNote=(function(){
+      const box=document.createElement('div');
+      // Sens d'usinage des lignes : X, Y, ou la direction d'une face / arête cliquée ; « Inverser » le retourne.
+      const rD=faoRow();
+      rD.appendChild(faoLab('Sens d’usinage'));
+      const isPk=Array.isArray(op.dir);
+      const optsD=[['x','X'],['y','Y']];
+      if(isPk)optsD.push(['pk',(op.dirSrc||'Face / arête')+' · '+(+(Math.atan2(+op.dir[1],+op.dir[0])*180/Math.PI).toFixed(1))+'°']);
+      rD.appendChild(faoSel(optsD,isPk?'pk':(op.dir==='y'?'y':'x'),function(v){
+        if(v==='pk')return;
+        if(v==='y')op.dir='y'; else delete op.dir;
+        delete op.dirSrc;
+      },'Direction des lignes d’usinage : le long de X, le long de Y, ou la direction donnée par une face ou une arête (bouton « Face / arête »).'));
+      rD.appendChild(faoMini('Face / arête',function(){ faoFacingDirPickStart(setup.id,op.id); },
+        'Cliquez dans la vue : arête droite = sa direction ; face plane = sa normale sortante (l’outil avance perpendiculairement à cette face) ; face cylindrique = son axe.'));
+      const cbI=document.createElement('input'); cbI.type='checkbox'; cbI.checked=!!op.dirInv;
+      cbI.onchange=function(){ faoSnapshot('inverser le sens d’usinage');
+        if(cbI.checked)op.dirInv=true; else delete op.dirInv;
+        faoChanged(); };
+      const lbI=document.createElement('label'); lbI.className='fao-check'; lbI.appendChild(cbI); lbI.appendChild(document.createTextNode('Inverser'));
+      lbI.title='Inverser le sens : les lignes sont parcourues dans l’autre sens (en finition « toujours dans le même sens », l’outil coupe dans le sens opposé).';
+      rD.appendChild(lbI);
+      box.appendChild(rD);
+      if(faoFacingDirPick&&faoFacingDirPick.opId===op.id){
+        const w=document.createElement('div'); w.className='fao-alert';
+        w.textContent='Cliquez une arête droite ou une face dans la vue pour le sens d’usinage (Échap annule).';
+        box.appendChild(w);
+      }
+      const rF=faoRow();
+      const cbF=document.createElement('input'); cbF.type='checkbox'; cbF.checked=!!op.finPasse;
+      cbF.title='Passe de finition : l’ébauche s’arrête au-dessus de la cote Z en laissant une épaisseur, puis une ou plusieurs passes fines l’enlèvent, la dernière exactement à la cote Z.';
+      cbF.onchange=function(){ faoSnapshot('passe de finition');
+        if(cbF.checked){ op.finPasse=true; if(!(+op.finEp>0))op.finEp=0.3; if(!(+op.finN>=1))op.finN=1; } else delete op.finPasse;
+        faoChanged(); };
+      rF.appendChild(cbF);
+      rF.appendChild(faoLab('Passe de finition'));
+      if(op.finPasse){
+        rF.appendChild(faoLab('Épaisseur'));
+        rF.appendChild(faoNum(isFinite(+op.finEp)&&+op.finEp>0?+op.finEp:0.3,function(v){op.finEp=Math.max(0.01,v);},48,0.1,
+          'Épaisseur laissée par l’ébauche pour la finition (mm). Elle est partagée en parts égales entre les passes de finition.'));
+        rF.appendChild(faoLab('Passes'));
+        rF.appendChild(faoNum(isFinite(+op.finN)&&+op.finN>=1?Math.round(+op.finN):1,function(v){op.finN=Math.max(1,Math.min(20,Math.round(v)));},36,1,
+          'Nombre de passes de finition : l’épaisseur est enlevée en autant de passes égales, la dernière à la cote Z.'));
+        const cbU=document.createElement('input'); cbU.type='checkbox'; cbU.checked=!!op.finUni;
+        cbU.title='Toujours dans le même sens : chaque ligne de finition est usinée dans la même direction (X croissant) ; l’outil remonte et revient en rapide au lieu de repartir en va-et-vient. Plus long, mais un état de surface régulier.';
+        cbU.onchange=function(){ faoSnapshot('finition dans le même sens');
+          if(cbU.checked)op.finUni=true; else delete op.finUni;
+          faoChanged(); };
+        rF.appendChild(cbU);
+        rF.appendChild(faoLab('Toujours dans le même sens'));
+      }
+      box.appendChild(rF);
+      return box;
+    })();
   }else if(op.type==='chamfer'){
     faoChamferRows(d,setup,op); // src/89-fao-chanfrein.js
   }else if(faoContourProfil(op)){

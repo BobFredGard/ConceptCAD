@@ -632,6 +632,8 @@ function* faoOpMovesIt0(op,job){
   if(op.type==='facing')mv=faoGenFacing(job.stock||faoStockDefault(),
     {toolD:D, ae:isFinite(+op.ae)?+op.ae:D*0.6, np:isFinite(+op.np)?+op.np:0,
      npz:isFinite(+op.npz)?+op.npz:0, sortie:sortie,
+     dir:op.dir, dirInv:!!op.dirInv,
+     fin:!!op.finPasse, finEp:isFinite(+op.finEp)?+op.finEp:0.3, finN:isFinite(+op.finN)?+op.finN:1, finUni:!!op.finUni,
      z:(isFinite(+op.z)?+op.z:(job.stock||{}).z1)+RA.axial, secu:secu});
   else if(op.type==='pocket'&&!faoPocketAdapt(op))mv=faoGenPocket({x0:+op.x0,y0:+op.y0,x1:+op.x1,y1:+op.y1},
     +op.ztop,+op.zbot,Object.assign({},base,{ap:+op.ap,ae:isFinite(+op.ae)?+op.ae:D*0.5,

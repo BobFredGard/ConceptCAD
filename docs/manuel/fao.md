@@ -16,6 +16,8 @@
 ## Opérations
 
 - **Surfaçage**, **Poche**, **Contour** (côté auto, passes radiales, attaches ; descente en **paliers** ou en **pente** réglable).
+  - **Surfaçage, passe de finition** (case à cocher de la fiche) : l'ébauche laisse une **épaisseur** au-dessus de la cote, enlevée ensuite en une ou plusieurs **passes de finition** égales, la dernière à la cote Z ; **Toujours dans le même sens** usine chaque ligne de finition dans la même direction (retour en rapide au-dessus de la pièce) au lieu du va-et-vient.
+  - **Surfaçage, sens d’usinage** : lignes le long de **X**, de **Y**, ou dans la direction d’une **arête** droite ou d’une **face** cliquée (face plane : sa normale ; cylindre : son axe) ; **Inverser** retourne le sens.
 - **Chanfrein** sur arêtes cliquées, **en plan** (Z fixe) ou **en 3D** : la pointe suit le Z de l'arête, l'axe de l'outil reste vertical (3 axes).
 - **Perçage** : les trous sont **reconnus sur le modèle** (Ø, profondeur, débouchant ou borgne, lamage, filet) et choisis par groupe.
   - Cycles : pointage, perçage, débourrage, taraudage, **lamage fraisé en hélice**.

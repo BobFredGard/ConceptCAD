@@ -44,7 +44,38 @@ function faoLevels(zTop,zBot,ap){
 }
 
 /* ----- générateurs : surfaçage (zigzag, passe d'ébauche ou finition) ----- */
+function faoFacingDir(o){
+  // Sens d'usinage des lignes, dans le plan XY du repère de l'opération → [ux,uy] unitaire, ou
+  // null pour X croissant (historique : parcours inchangé). o.dir : absent ou 'x', 'y', ou
+  // [dx,dy] (face ou arête cliquée) ; o.dirInv : sens inverse.
+  const d=o&&o.dir; let u=null;
+  if(d==='y')u=[0,1];
+  else if(Array.isArray(d)&&isFinite(+d[0])&&isFinite(+d[1])){ const L=Math.hypot(+d[0],+d[1]); if(L>1e-9)u=[+d[0]/L,+d[1]/L]; }
+  if(o&&o.dirInv)u=u?[-u[0],-u[1]]:[-1,0];
+  if(u&&Math.abs(u[0]-1)<1e-12&&Math.abs(u[1])<1e-12)return null;
+  return u;
+}
+function faoFacingStockDir(stock,u){
+  // Boîte du brut vue dans la base (u, v = u tourné de +90°) : le zigzag y est calculé comme
+  // en X/Y puis ramené. Direction oblique : la boîte déborde le brut (un peu de coupe dans le vide).
+  if(!u)return stock;
+  let U0=1/0,U1=-1/0,V0=1/0,V1=-1/0;
+  [[+stock.x0,+stock.y0],[+stock.x1,+stock.y0],[+stock.x1,+stock.y1],[+stock.x0,+stock.y1]].forEach(function(c){
+    const a=c[0]*u[0]+c[1]*u[1], b=-c[0]*u[1]+c[1]*u[0];
+    if(a<U0)U0=a; if(a>U1)U1=a; if(b<V0)V0=b; if(b>V1)V1=b;
+  });
+  return Object.assign({},stock,{x0:U0,x1:U1,y0:V0,y1:V1});
+}
 function faoGenFacing(stock,o){
+  o=o||{};
+  const u=faoFacingDir(o);
+  if(!u)return faoGenFacing0(stock,o);
+  const R=function(q){ return (Math.round(q*1e6)/1e6)||0; };
+  return faoGenFacing0(faoFacingStockDir(stock,u),o).map(function(m){
+    return Object.assign({},m,{x:R(m.x*u[0]-m.y*u[1]),y:R(m.x*u[1]+m.y*u[0])});
+  });
+}
+function faoGenFacing0(stock,o){
   o=o||{};
   const D=isFinite(+o.toolD)&&+o.toolD>0?+o.toolD:10;
   const r=D/2;
@@ -67,13 +98,47 @@ function faoGenFacing(stock,o){
   const npz=(isFinite(+o.npz)&&+o.npz>=2)?Math.floor(+o.npz):1;
   const zTop=isFinite(+stock.z1)?+stock.z1:z;
   const zs=[];
-  if(npz>=2&&zTop>z+1e-9){
-    const ap=(zTop-z)/npz;
-    for(let k=1;k<=npz;k++)zs.push(k<npz?Math.round((zTop-k*ap)*1000)/1000:z);
+  // Passe de finition (o.fin) : l'ébauche s'arrête `finEp` mm au-dessus de la cote, puis
+  // `finN` passes égales enlèvent cette épaisseur, la dernière à la cote. Épaisseur plafonnée
+  // à la matière présente ; rien à enlever (z ≥ z1) : la passe unique EST la finition.
+  // o.finUni : chaque ligne de finition est usinée dans le même sens (X croissant), retour
+  // en rapide au-dessus de la pièce — sinon va-et-vient comme l'ébauche. Sans o.fin : rien ne change.
+  const fin=!!o.fin;
+  const finN=fin&&isFinite(+o.finN)&&+o.finN>=1?Math.min(20,Math.floor(+o.finN)):1;
+  let finEp=fin&&isFinite(+o.finEp)&&+o.finEp>0?+o.finEp:0;
+  if(fin&&isFinite(+stock.z1))finEp=Math.max(0,Math.min(finEp,zTop-z));
+  const zR=z+finEp;            // cote de fin d'ébauche
+  let nR=0;                    // nombre de niveaux d'ébauche (les suivants sont la finition)
+  if(!fin||finEp>1e-9){
+    if(!fin||zTop>zR+1e-9||!isFinite(+stock.z1)){
+      if(npz>=2&&zTop>zR+1e-9){
+        const ap=(zTop-zR)/npz;
+        for(let k=1;k<=npz;k++)zs.push(k<npz?Math.round((zTop-k*ap)*1000)/1000:zR);
+      }else zs.push(zR);
+      nR=zs.length;
+    }
+    if(fin)for(let k=1;k<=finN;k++)zs.push(k<finN?Math.round((z+finEp*(finN-k)/finN)*1000)/1000:z);
   }else zs.push(z);
+  const uni=fin&&!!o.finUni;
   const moves=[{r:1,x:stock.x0-dep,y:yA,z:secu}];
   let sens=1, garde=0;
   zs.forEach(function(lv,i){
+    if(uni&&i>=nR){
+      // finition dans un seul sens : descente hors matière, ligne, remontée, retour en rapide
+      const last=moves[moves.length-1];
+      const down=Math.abs(last.y-yB)<Math.abs(last.y-yA); // on part de la lisière où l'on se trouve
+      let yy=down?yB:yA;
+      if(last.z<secu-1e-9)moves.push({r:1,x:last.x,y:last.y,z:secu});
+      while(garde++<100000){
+        moves.push({r:1,x:stock.x0-dep,y:yy,z:secu});
+        moves.push({r:1,x:stock.x0-dep,y:yy,z:lv});
+        moves.push({r:0,x:stock.x1+dep,y:yy,z:lv});
+        moves.push({r:1,x:stock.x1+dep,y:yy,z:secu});
+        if(down?yy<=yA+1e-9:yy>=yB-1e-9)break;
+        yy=down?Math.max(yy-ae,yA):Math.min(yy+ae,yB);
+      }
+      return;
+    }
     // niveaux pairs montent en Y (yA→yB), impairs descendent (yB→yA) : le
     // boustrophédon se poursuit d'un niveau au suivant, plongée hors matière.
     const yDown=(i%2===1);
@@ -97,7 +162,7 @@ function faoGenFacing(stock,o){
       moves.push({r:0,x:xT,y:y,z:lv});            // transposition verticale (hors matière)
     }
   });
-  moves.push({r:1,x:moves[moves.length-1].x,y:moves[moves.length-1].y,z:secu});
+  if(!uni||moves[moves.length-1].z<secu-1e-9)moves.push({r:1,x:moves[moves.length-1].x,y:moves[moves.length-1].y,z:secu});
   return moves;
 }
 
