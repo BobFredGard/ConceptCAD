@@ -48,6 +48,12 @@ jobs:
           cp -r occt/v3 occt/mt _site/occt/
           # le site n'envoie pas les en-têtes d'isolation : ce service worker les ajoute pour le noyau multicœur
           cp isolation-sw.js _site/
+          # application installable (V0.93.0) : fiche d'installation, icônes, et version écrite dans le service worker
+          # (les navigateurs des visiteurs voient qu'il a changé et remettent leur réserve hors ligne à jour)
+          cp manifest.webmanifest _site/
+          cp -r icones _site/
+          sed -i "s/__VERSION__/${GITHUB_REF_NAME}/" _site/isolation-sw.js
+          grep -q "VERSION='${GITHUB_REF_NAME}'" _site/isolation-sw.js
           # un pointeur LFS (≈ 130 octets) à la place du .wasm ferait retomber l'app en mode maillage
           test "$(head -c 4 _site/occt/v3/conceptcad_v3.wasm | od -An -c | tr -d ' ')" = '\0asm'
           test "$(head -c 4 _site/occt/mt/conceptcad_v3.wasm | od -An -c | tr -d ' ')" = '\0asm'

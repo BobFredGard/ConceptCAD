@@ -8,9 +8,11 @@
 [![⬇ Application Windows](https://img.shields.io/badge/%E2%AC%87%20Application-Windows-1f6feb?style=for-the-badge)](https://github.com/BobFredGard/ConceptCAD/releases/latest/download/ConceptCAD-Windows-setup.exe)
 [![⬇ Application Mac](https://img.shields.io/badge/%E2%AC%87%20Application-Mac-1f6feb?style=for-the-badge)](https://github.com/BobFredGard/ConceptCAD/releases/latest/download/ConceptCAD-Mac.dmg)
 
+Ou installez-le depuis le site, dans Chrome ou Edge : menu Projet → **⬇ Installer ConceptCAD**. Il a sa fenêtre et son icône, et il marche sans Internet ([Démarrage](docs/manuel/demarrage.md#installer-depuis-le-site)).
+
 ![Support de pédale déportée R1200RT en alu anodisé rouge sur béton, lancer de rayons de l'atelier RENDU (2048 échantillons)](docs/captures/rendu-pedale.jpg)
 
-Version actuelle : **V0.92.0** · [Nouveautés](CHANGELOG.md) · [Manuel](docs/manuel/README.md) · [Exemples](Exemples)
+Version actuelle : **V0.93.0** · [Nouveautés](CHANGELOG.md) · [Manuel](docs/manuel/README.md) · [Exemples](Exemples)
 
 ## De l'idée à la pièce usinée
 

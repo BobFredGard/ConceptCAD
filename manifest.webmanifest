@@ -1,0 +1,27 @@
+{
+  "id": "./",
+  "name": "ConceptCAD",
+  "short_name": "ConceptCAD",
+  "description": "CAO paramétrique, FAO et mise en plan",
+  "lang": "fr",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#1c1c1e",
+  "theme_color": "#1c1c1e",
+  "icons": [
+    { "src": "icones/conceptcad.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" },
+    { "src": "icones/conceptcad-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "icones/conceptcad-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "icones/conceptcad-masque-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ],
+  "file_handlers": [
+    {
+      "action": "./",
+      "accept": { "application/x-conceptcad": [".conceptcad"] },
+      "icons": [{ "src": "icones/conceptcad-192.png", "sizes": "192x192", "type": "image/png" }],
+      "launch_type": "multiple-clients"
+    }
+  ],
+  "launch_handler": { "client_mode": "auto" }
+}

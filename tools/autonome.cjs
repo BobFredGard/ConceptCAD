@@ -17,6 +17,9 @@ function fabriquer(sortie){
   const rep=(a,b)=>{if(!h.includes(a))throw new Error('introuvable dans ConceptCAD.html : '+a);h=h.replace(a,()=>b);};
   for(const f of ['three.min.js','OrbitControls.js','CSG.js'])
     rep('<script src="threejs/'+f+'"></script>','<script>'+lire('threejs/'+f).toString('utf8').replace(/<\/script/gi,'<\\/script')+'</script>');
+  // la fiche d'installation (application installable) n'a pas de sens en double-clic : file:// la refuserait
+  rep('<link rel="manifest" href="manifest.webmanifest">\r\n','');
+  rep('<link rel="apple-touch-icon" href="icones/conceptcad-180.png">\r\n','');
   const b64=p=>lire(p).toString('base64');
   const emb='<script>window.__EMB={'+
     'js:"'+b64('occt/v3/conceptcad_v3.js')+'",compat:"'+b64('occt/v3/compat-v3.cjs')+'",table:"'+b64('occt/v3/compat-v3.json')+'",'+

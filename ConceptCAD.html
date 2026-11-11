@@ -6,6 +6,10 @@
 <title>ConceptCAD — CAO · FAO · Mise en plan</title>
 <!-- Icône officielle (celle de la version native, bleu à gauche, orange à droite), même dessin que le logo de la barre -->
 <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%2015%2015%22%3E%3Cdefs%3E%3ClinearGradient%20id%3D%22g%22%20x1%3D%220.33%22%20y1%3D%220%22%20x2%3D%220.67%22%20y2%3D%221%22%3E%3Cstop%20offset%3D%220%22%20stop-color%3D%22%233aa0ff%22%2F%3E%3Cstop%20offset%3D%220.45%22%20stop-color%3D%22%230a84ff%22%2F%3E%3Cstop%20offset%3D%221%22%20stop-color%3D%22%235e5ce6%22%2F%3E%3C%2FlinearGradient%3E%3CclipPath%20id%3D%22c%22%3E%3Crect%20x%3D%222%22%20y%3D%222%22%20width%3D%2211%22%20height%3D%2211%22%20rx%3D%222%22%2F%3E%3C%2FclipPath%3E%3C%2Fdefs%3E%3Crect%20width%3D%2215%22%20height%3D%2215%22%20rx%3D%224%22%20fill%3D%22%23f5f5f7%22%2F%3E%3Cg%20clip-path%3D%22url(%23c)%22%3E%3Crect%20width%3D%2215%22%20height%3D%2215%22%20fill%3D%22%23ff8a00%22%2F%3E%3Crect%20width%3D%227.5%22%20height%3D%2215%22%20fill%3D%22url(%23g)%22%2F%3E%3C%2Fg%3E%3Crect%20x%3D%226.5%22%20width%3D%222%22%20height%3D%2215%22%20fill%3D%22%23f5f5f7%22%2F%3E%3C%2Fsvg%3E">
+<!-- Application installable : fiche d'installation, icône des raccourcis, couleur de la barre de fenêtre -->
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="icones/conceptcad-180.png">
+<meta name="theme-color" content="#1c1c1e">
 <script src="threejs/three.min.js"></script>
 <script src="threejs/OrbitControls.js"></script>
 <script src="threejs/CSG.js"></script>
@@ -379,7 +383,7 @@ input[type=range]{accent-color:var(--primary);width:100%}
  * peut changer sans rien casser. CACHE_VER (parcours FAO) reste indépendant.
  */
 
-const APP_VER='V0.92.0';
+const APP_VER='V0.93.0';
 try{console.log('[ConceptCAD] version '+APP_VER);}catch(e){}
 try{var mfSv=document.getElementById('mfSplashVer');if(mfSv)mfSv.textContent=APP_VER;}catch(e){} // écran de démarrage
 
@@ -72484,8 +72488,10 @@ function occtMtDemande(){
 function occtIsolerPage(){
   // Le site (GitHub Pages) n'envoie pas les en-têtes d'isolation : le service worker les ajoute, à partir de
   // la prochaine ouverture. Pas de rechargement à la volée, qui couperait le démarrage de l'application.
+  // V0.93.0 : enregistré même sur une page déjà isolée, car il garde aussi la copie hors ligne de
+  // l'application installable (99-application-installable.js).
   try{
-    if(window.__EMB||self.crossOriginIsolated||!('serviceWorker' in navigator))return;
+    if(window.__EMB||!('serviceWorker' in navigator))return;
     if(location.protocol==='https:'||/[?&]sw(?:&|$)/.test(String(location.search||'')))navigator.serviceWorker.register('isolation-sw.js').catch(()=>{});
   }catch(e){}
 }
@@ -90960,6 +90966,102 @@ function rdClose(){
       b.onclick=()=>rdOpen();
       vb.insertBefore(b,document.getElementById('btnLive')||st||null); // appareil photo, Rendu direct (98-rendu-vue), ⚙
     }
+  }catch(e){}
+})();
+
+/* ═══════════════ 99-application-installable.js — application installable ═══════════════ */
+/* ---------- Application installable (PWA, V0.93.0) ----------
+   Le site s'installe comme un logiciel (manifest.webmanifest, icônes de icones/) : sa fenêtre, son icône,
+   et il démarre sans Internet grâce à la réserve du service worker isolation-sw.js.
+   - menu Projet → « Installer ConceptCAD » quand le navigateur le permet (Chrome, Edge) ;
+   - une fois le noyau prêt, la page demande au service worker de garder tout ce qu'il faut pour démarrer
+     sans réseau (noyau multicœur compris s'il sert ici) ;
+   - application installée : un double-clic sur un .conceptcad dans l'Explorateur l'ouvre ici, et
+     Ctrl+S réécrit ce même fichier (file_handlers du manifeste, launchQueue).
+   Rien de tout cela dans le fichier autonome (window.__EMB) ni en double-clic (file://). */
+let pwaInvite=null;      // évènement beforeinstallprompt gardé pour le bouton
+let pwaHorsLigne=null;   // réponse du service worker : {n, octets, manquants, version}
+function pwaInstallee(){
+  try{return !!(matchMedia('(display-mode: standalone)').matches||navigator.standalone);}catch(e){return false;}
+}
+function pwaUI(){
+  try{
+    const b=document.getElementById('btnInstaller');if(!b)return;
+    const pret=pwaHorsLigne&&!pwaHorsLigne.manquants.length;
+    b.style.display=(pwaInvite&&!pwaInstallee())?'':'none';
+    b.innerHTML='<i>⬇</i>Installer ConceptCAD';
+    b.title='Installer ConceptCAD comme un logiciel : sa fenêtre, son icône, et il marche sans Internet'+(pret?' (copie hors ligne prête)':'');
+  }catch(e){}
+}
+async function pwaInstaller(){
+  if(!pwaInvite)return false;
+  const ev=pwaInvite;pwaInvite=null;
+  try{ev.prompt();const r=await ev.userChoice;pwaUI();return !!(r&&r.outcome==='accepted');}
+  catch(e){pwaUI();return false;}
+}
+function pwaMenu(){
+  // entrée du menu Projet (construit après ce fichier : appel différé, comme 53-scripts)
+  try{
+    const nb=document.getElementById('btnNew'),menu=nb&&nb.parentNode;
+    if(menu&&menu.classList&&menu.classList.contains('ddMenu')&&!document.getElementById('btnInstaller')){
+      const b=document.createElement('button');b.id='btnInstaller';b.onclick=()=>pwaInstaller();
+      menu.appendChild(b);pwaUI();
+    }
+  }catch(e){}
+}
+// Demande au service worker de remplir la réserve hors ligne, une fois le noyau démarré
+async function pwaPrecharger(){
+  try{
+    if(!('serviceWorker' in navigator))return;
+    const reg=await navigator.serviceWorker.getRegistration();
+    const sw=reg&&(reg.active||reg.waiting||reg.installing);
+    if(!sw)return;
+    sw.postMessage({type:'precharger',mt:typeof occtMtFils!=='undefined'&&occtMtFils>0});
+  }catch(e){}
+}
+function pwaEcoute(){
+  try{
+    navigator.serviceWorker.addEventListener('message',e=>{
+      const m=e.data||{};
+      if(m.source!=='conceptcad-sw'||m.type!=='pret')return;
+      pwaHorsLigne={n:m.n|0,octets:+m.octets||0,manquants:m.manquants||[],version:m.version};
+      try{console.log('[hors ligne] '+(pwaHorsLigne.manquants.length?'incomplet, manque : '+pwaHorsLigne.manquants.join(', '):'prêt ('+pwaHorsLigne.n+' fichiers)'));}catch(e2){}
+      pwaUI();
+    });
+  }catch(e){}
+}
+function pwaAttendreNoyau(){
+  // le noyau est prêt (ou a échoué) : ses fichiers sont lus, on complète la réserve sans gêner le démarrage
+  let n=0;
+  const t=setInterval(()=>{
+    n++;
+    const fini=(typeof occtReady!=='undefined'&&occtReady===true)||(typeof occBaseMsg==='string'&&/échec|indisponible/.test(occBaseMsg));
+    if(fini||n>600){clearInterval(t);if(fini)setTimeout(pwaPrecharger,2000);}
+  },1000);
+}
+// Application installée : fichiers ouverts depuis l'Explorateur (double-clic sur un .conceptcad)
+async function pwaOuvrirFichiers(p){
+  try{
+    const h=p&&p.files&&p.files[0];if(!h||typeof h.getFile!=='function')return;
+    // attendre le noyau : la pièce se reconstruit avec lui, comme une ouverture par le menu
+    for(let i=0;i<240&&!((typeof occtReady!=='undefined'&&occtReady===true)||(typeof occBaseMsg==='string'&&/échec|indisponible/.test(occBaseMsg)));i++)
+      await new Promise(r=>setTimeout(r,500));
+    if(typeof mffConfirmDiscard==='function'&&!(await mffConfirmDiscard()))return;
+    const f=await h.getFile();
+    await mffLoadText(await mffFileText(f),f.name,h);
+  }catch(err){try{alert('Projet illisible : '+((err&&err.message)||err));}catch(e){}}
+}
+(function(){
+  try{
+    if(window.__EMB||location.protocol==='file:'||location.protocol==='about:')return;
+    window.addEventListener('beforeinstallprompt',e=>{e.preventDefault();pwaInvite=e;pwaUI();});
+    window.addEventListener('appinstalled',()=>{pwaInvite=null;pwaUI();
+      try{faceEl.textContent='ConceptCAD est installé : il s’ouvre depuis son icône, même sans Internet.';}catch(e){}});
+    if('serviceWorker' in navigator){pwaEcoute();pwaAttendreNoyau();}
+    if('launchQueue' in window&&window.launchQueue&&typeof window.launchQueue.setConsumer==='function')
+      window.launchQueue.setConsumer(p=>{setTimeout(()=>pwaOuvrirFichiers(p),0);});
+    if(navigator.onLine===false)setTimeout(()=>{try{faceEl.textContent='Sans Internet : ConceptCAD tourne sur la copie gardée sur cet ordinateur.';}catch(e){}},3000);
+    setTimeout(pwaMenu,0);setTimeout(pwaMenu,1500);
   }catch(e){}
 })();
 

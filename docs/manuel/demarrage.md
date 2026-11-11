@@ -11,6 +11,17 @@ Pour essayer, ou pour travailler avec une connexion, sur PC ou sur téléphone.
 - Ouvrir [bobfredgard.github.io/ConceptCAD](https://bobfredgard.github.io/ConceptCAD/).
 - Le noyau se télécharge au premier lancement (≈ 43 Mo, de préférence en Wi-Fi), puis reste en cache.
 
+## Installer depuis le site
+
+Pour avoir ConceptCAD comme un logiciel, sans installateur, et qui marche aussi sans Internet.
+
+- Ouvrir le site dans Chrome ou Edge, puis menu Projet → **⬇ Installer ConceptCAD** (ou l'icône d'installation de la barre d'adresse).
+- ConceptCAD s'ouvre dans sa propre fenêtre, avec son icône sur le bureau et dans le menu Démarrer.
+- **Sans Internet** : tout ce qu'il faut pour démarrer est gardé sur l'ordinateur après la première ouverture. Les pièces d'exemple déjà ouvertes depuis le site restent disponibles elles aussi.
+- **Mises à jour** : avec Internet, chaque ouverture prend la dernière version publiée.
+- **Double-clic sur un `.conceptcad`** dans l'Explorateur : la pièce s'ouvre dans l'application installée, et Ctrl+S réécrit ce même fichier.
+- Pour désinstaller : dans la fenêtre de ConceptCAD, menu ⋮ → Désinstaller.
+
 ## Version autonome
 
 Pour un PC sans Internet, ou pour garder le logiciel avec soi.
