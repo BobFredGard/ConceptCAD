@@ -11,7 +11,9 @@ fs.mkdirSync(path.join(DIST,'occt'),{recursive:true});
 for(const n of ['v3','mt'])fs.cpSync(path.join(ROOT,'occt',n),path.join(DIST,'occt',n),{recursive:true});
 fs.cpSync(path.join(ROOT,'threejs'),path.join(DIST,'threejs'),{recursive:true});
 fs.copyFileSync(path.join(ICI,'pont.js'),path.join(DIST,'pont.js'));
-const page=fs.readFileSync(source,'utf8');
+// V0.93.0 : la fiche et les icônes de l'application installable (PWA) ne sont pas dans dist —
+// leurs liens sont retirés de la copie pour ne pas chercher deux fichiers absents.
+const page=fs.readFileSync(source,'utf8').replace(/<link rel="(?:manifest|apple-touch-icon)" href="[^"]*">\r?\n/g,'');
 if(!page.includes('<head>'))throw new Error('<head> introuvable dans '+source);
 fs.writeFileSync(path.join(DIST,'index.html'),page.replace('<head>',()=>'<head><script src="pont.js"></script>'));
 const version=/APP_VER='([^']+)'/.exec(page);
