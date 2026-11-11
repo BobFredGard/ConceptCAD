@@ -214,7 +214,7 @@ function featSig(f){
   // V0.16.0 : congé exact — le relevé pos/len, rafraîchi à chaque appariement (bruit ~1e-9),
   // est exclu du filet quand pos0 le fige : il y rentrait par la fonction entière et changeait la
   // clé après chaque rejeu (point de contrôle raté, tout l'aval rejoué sans changement).
-  const jf={};for(const k in f){if(k==='name'||k==='open'||k==='_m'||k==='_mesh'||k==='_calc'||k==='_rate')continue;jf[k]=f[k];}
+  const jf={};for(const k in f){if(k==='name'||k==='open'||k==='_m'||k==='_mesh'||k==='_calc'||k==='_rate'||k==='_perdues')continue;jf[k]=f[k];} // _perdues : faces non retrouvées (bilan du calcul, comme _m)
   if(f.type==='xfillet'&&Array.isArray(f.edges))jf.edges=f.edges.map(e=>{if(!e||typeof e!=='object')return e;const q=Object.assign({},e);if(q.pos0)delete q.pos;delete q.len;return q;});
   s+='|j'+JSON.stringify(jf,nomsSansCles);
   return s;

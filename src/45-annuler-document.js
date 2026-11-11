@@ -106,7 +106,7 @@ function docUndoBusy(){
       (typeof combineNew!=='undefined'&&combineNew)||(typeof filMode!=='undefined'&&filMode)||
       (typeof filModeX!=='undefined'&&filModeX)||(typeof draftMode!=='undefined'&&draftMode)||
       (typeof coqueMode!=='undefined'&&coqueMode)||(typeof splitMode!=='undefined'&&splitMode)||
-      (typeof repMode!=='undefined'&&repMode)||(typeof mvMode!=='undefined'&&mvMode)||
+      (typeof repMode!=='undefined'&&repMode)||(typeof mvMode!=='undefined'&&mvMode)||(typeof skRedef!=='undefined'&&skRedef)||
       (typeof cgMode!=='undefined'&&cgMode)||(typeof faoChainMode!=='undefined'&&faoChainMode)||
       (typeof treeDrag!=='undefined'&&treeDrag)||
       (typeof film!=='undefined'&&film))return true; // film de construction (98-film) : états intermédiaires, document rendu tel quel

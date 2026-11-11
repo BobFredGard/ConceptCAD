@@ -43,8 +43,11 @@ function renderProps(){
     const sk=doc.sketches.find(s=>s.id===sel.id);if(!sk){pNote('Esquisse supprimée.');return;}
     pH('Esquisse');
     pInfo(`<b>${sk.name}</b> · plan ${sketchFaceLabel(sk)} · ${sk.entities.length} entités`);
+    const perdue=skFacePerdue(sk);
+    if(perdue)pNote('⚠ '+perdue+' — « 🎯 Changer de face » pour la resélectionner.');
     pBtns([
       ['🔧 Éditer',()=>openSketch(sk.id)],
+      ['🎯 Changer de face',()=>skRedefStart(sk.id)],
       ['🧱 Extruder',()=>askExtrude(sk.id)],
       ['👁 Visible',()=>{sk.visible=sk.visible===false;rebuild();renderTree();renderProps();}]]);
     return;
@@ -80,6 +83,7 @@ function renderProps(){
       const mvR=mvRefs(f);
       if(mvR.length===1)pNote('Face visée : centre ('+mvR[0].pos.map(v=>(+v).toFixed(1)).join(' ; ')+') mm, normale ('+mvR[0].n.map(v=>(+v).toFixed(2)).join(' ; ')+').');
       else if(mvR.length>1)pNote(mvR.length+' faces visées : '+mvR.map(r=>'('+r.pos.map(v=>(+v).toFixed(1)).join(' ; ')+')').join(', ')+' mm.');
+      if(f._perdues&&f._perdues.length)pInfo(`<span style="color:var(--warn)">⚠ <b>${f._perdues.length}/${mvR.length}</b> face(s) perdue(s) — « 📐 Re-sélectionner » puis cliquez la face qui la remplace.</span>`);
       const d=document.createElement('input');d.type='text';d.inputMode='decimal';
       d.value=String(+f.dist||0).replace('.',',');parFx(d,f,'dist');
       d.addEventListener('change',()=>{
@@ -102,7 +106,7 @@ function renderProps(){
       pH('Dépouillage');
       pInfo(`<b>${f.name}</b> · ${(f.faces||[]).length} face(s)`);
       if(f._m&&f._m.t&&f._m.m<f._m.t){
-        pInfo(`<span style="color:var(--warn)">⚠ <b>${f._m.m}/${f._m.t}</b> face(s) retrouvée(s) — ${f._m.t-f._m.m} perdue(s).</span>`);
+        pInfo(`<span style="color:var(--warn)">⚠ <b>${f._m.m}/${f._m.t}</b> face(s) retrouvée(s) — ${f._m.t-f._m.m} perdue(s) : re-sélectionnez les faces, puis cliquez celle qui remplace la face perdue.</span>`);
         pNote('Les faces sont retrouvées à chaque rejeu par leur position et leur normale.');
       }
       if(f._thin)pInfo(`<span style="color:var(--warn)">⚠ ${f._thin}</span>`);
@@ -134,7 +138,7 @@ function renderProps(){
       pH('Coque (évidage)');
       pInfo(`<b>${f.name}</b> · ${(f.faces||[]).length} face(s) retirée(s)`);
       if(f._m&&f._m.t&&f._m.m<f._m.t){
-        pInfo(`<span style="color:var(--warn)">⚠ <b>${f._m.m}/${f._m.t}</b> face(s) retrouvée(s) — ${f._m.t-f._m.m} perdue(s).</span>`);
+        pInfo(`<span style="color:var(--warn)">⚠ <b>${f._m.m}/${f._m.t}</b> face(s) retrouvée(s) — ${f._m.t-f._m.m} perdue(s) : re-sélectionnez les faces, puis cliquez celle qui remplace la face perdue.</span>`);
       }
       if((f.faces||[]).length)pNote('Ouverture(s) : '+f.faces.map(r=>'('+r.pos.map(v=>(+v).toFixed(1)).join(' ; ')+')').join(' · '));
       const d=document.createElement('input');d.type='text';d.inputMode='decimal';
@@ -159,7 +163,7 @@ function renderProps(){
       pH('Suppression de face');
       pInfo(`<b>${f.name}</b>`);
       if(f._m&&f._m.t&&f._m.m<f._m.t){
-        pInfo(`<span style="color:var(--warn)">⚠ <b>${f._m.m}/${f._m.t}</b> face(s) supprimée(s) — ${f._m.t-f._m.m} perdue(s) ou refusée(s).</span>`);
+        pInfo(`<span style="color:var(--warn)">⚠ <b>${f._m.m}/${f._m.t}</b> face(s) supprimée(s) — ${f._m.t-f._m.m} perdue(s) ou refusée(s) : « ⌫ Modifier les faces », puis cliquez celle qui remplace la face perdue.</span>`);
       }
       if((f.faces||[]).length)pNote('Face(s) retirée(s) : '+f.faces.map(r=>'('+r.pos.map(v=>(+v).toFixed(1)).join(' ; ')+')').join(' · '));
       pNote('Les faces voisines sont prolongées jusqu\'à se rejoindre (congé → arête vive, trou → rebouché). Pour revenir en arrière : Ctrl+Z ou supprimer cette fonction.');
@@ -186,7 +190,7 @@ function renderProps(){
       pInfo(`<span style="color:var(--warn)">⚠ <b>${f._m.m}/${f._m.t}</b> arêtes retrouvées — ${manquant} perdue(s).</span>`);
       if(f._miss&&f._miss.length)pNote('Introuvables, près de : '+f._miss.map(q=>'('+q.join(', ')+')').join('  '));
       if(f._err)pNote(f._err);
-      else pNote('La pièce a bougé depuis la sélection. Re-sélectionnez l\'arête.');
+      else pNote('La pièce a bougé depuis la sélection. Modifiez le congé (double-clic) : l\'arête perdue attend celle qui la remplace, et en reprend la taille.');
     }
     if(f.type==='xfillet'&&f._rate){
       pInfo(`<span style="color:var(--warn)">⚠ <b>Non fait sur ${f._rate.n}/${f._rate.t}</b> arête(s) : le noyau les refuse ou les ignore.</span>`);
