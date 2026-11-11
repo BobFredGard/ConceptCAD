@@ -52,7 +52,7 @@ async function lancer(cible,{neuf=true,fichier=null,profil=null,sansPilote=false
   let enfant,dossier;
   if(cible==='app'){
     dossier=PROFIL_APP;
-    if(neuf)fs.rmSync(dossier,{recursive:true,force:true});
+    if(neuf)fs.rmSync(dossier,{recursive:true,force:true,maxRetries:20,retryDelay:500});
     // Une application déjà ouverte recevrait le fichier d'essai dans sa fenêtre : on refuse.
     if(execFileSync('powershell.exe',['-NoProfile','-Command','@(Get-Process ConceptCAD -ErrorAction SilentlyContinue).Count'],{encoding:'utf8'}).trim()!=='0')throw new Error('ConceptCAD est déjà ouvert : essai annulé');
     const env={...process.env,WEBVIEW2_USER_DATA_FOLDER:dossier,WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS:DRAPEAUX.join(' ')};
@@ -60,7 +60,7 @@ async function lancer(cible,{neuf=true,fichier=null,profil=null,sansPilote=false
     enfant=spawn(EXE,fichier?[fichier]:[],{env,stdio:'ignore',detached:false});
   }else if(cible==='chrome'){
     dossier=profil||path.join(os.tmpdir(),'cc-mesure-chrome');
-    if(neuf)fs.rmSync(dossier,{recursive:true,force:true});
+    if(neuf)fs.rmSync(dossier,{recursive:true,force:true,maxRetries:20,retryDelay:500});
     var t0=Date.now();
     enfant=spawn(CHROME,[...DRAPEAUX,'--user-data-dir='+dossier,'--no-first-run','--no-default-browser-check','--window-size=1416,939','--new-window','http://localhost:'+PORT_WEB+'/ConceptCAD.html'],{stdio:'ignore'});
   }else throw new Error('cible inconnue : '+cible);
@@ -103,7 +103,24 @@ async function arreter(s){
   try{if(s.navigateur)await s.navigateur.close();}catch(e){}
   try{execFileSync('taskkill',['/PID',String(s.enfant.pid),'/T','/F'],{stdio:'ignore'});}catch(e){}
   for(let i=0;i<100&&await cdpPret();i++)await attendre(100);
+  // WebView2 157.0.4341.46 (11/11) : des processus msedgewebview2 survivent quelques secondes à
+  // l'arrêt et verrouillent le profil d'essai (EBUSY au nettoyage suivant). On attend leur sortie,
+  // puis on arrête ceux qui restent — seulement ceux du profil d'essai, jamais le ConceptCAD de Fred.
+  if(s.dossier===PROFIL_APP)for(let i=0;i<30;i++){
+    const ids=restesProfil();
+    if(!ids.length)break;
+    if(i>=10)for(const id of ids)try{execFileSync('taskkill',['/PID',id,'/F'],{stdio:'ignore'});}catch(e){}
+    await attendre(500);
+  }
   await attendre(1000);
+}
+function restesProfil(){ // numéros des msedgewebview2 lancés sur le profil d'essai
+  try{
+    const filtre=PROFIL_APP.replace(/'/g,"''");
+    return execFileSync('powershell.exe',['-NoProfile','-Command',
+      "@(Get-CimInstance Win32_Process -Filter \"Name='msedgewebview2.exe'\" | Where-Object { $_.CommandLine -like '*"+filtre+"*' } | ForEach-Object { $_.ProcessId }) -join ' '"],
+      {encoding:'utf8'}).trim().split(/\s+/).filter(Boolean);
+  }catch(e){return [];}
 }
 
 // Noyau prêt : le logiciel est utilisable. Renvoie le temps depuis le lancement.
