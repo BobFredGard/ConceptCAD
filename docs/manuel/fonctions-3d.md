@@ -15,6 +15,7 @@ Historique rejouable, timeline à icônes (vert = ajout, rouge = enlèvement), m
 - **Zones fermées** (comme Fusion 360) : en esquisse, chaque zone fermée est teintée (un contour ouvert ne l'est pas) ; dans l'extrusion, un clic sur une zone l'ajoute ou la retire — plusieurs zones pour une même extrusion, ↺ Auto pour toute la matière.
 - **Balayage** d'un profil le long d'une ligne, d'un arc ou d'une **spline**.
 - **Perçage** simple, lamé, fraisé, **alésé** (fond plat avec ou sans perçage, ou débouchant ; classe ISO 286 : H7… ; jeu de l'avant-trou en jeu ou en Ø) ou **taraudé**, débouchant ou borgne.
+  - Taraudages des corps de douilles Ensat 302 aussi proposés : M4,5×0,5, M5×0,5, M6,5×0,75, M9×1, M26×1,5.
   - Filetages : **métrique ISO**, **ANSI UNC / UNF**, **gaz G, Rc et NPT**.
   - Lamages et fraisures d'après la vis : **CHC** et **FHC** ISO, ou ASME en pouces (FHC à 82°).
   - Le filet ISO ou UN est **réellement creusé dans le corps**, après l'avant-trou, en tâche de fond ; le gaz reste en filet cosmétique.

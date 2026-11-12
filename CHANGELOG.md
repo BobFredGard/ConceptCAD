@@ -8,7 +8,7 @@ sont sorties le 2026-09-30j.
 Code dans `src/` · livrable `fusion_mvp.html` (généré par `build.js`) · architecture et
 garde-fous en tête de `src/00-entete-et-outils.js`.
 
-**673 versions**, de `2026-09-28b` à `V0.95.7` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
+**674 versions**, de `2026-09-28b` à `V0.95.8` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
 comme dans le fichier d'origine.
 
 ---
@@ -7556,3 +7556,11 @@ Barquette ne perd plus son solide à la 107e modification, et sa mémoire ne mon
 - **Cause** : le cartouche écrivait toute échelle réductrice en « 1:x » arrondi (0,75 → « 1:1.33 ») ; le titre des détails aussi.
 - **Correctif** (`src/98-mep-00-modele`, `src/98-mep-60-interface-parametres`, `src/98-mep-90-proprietes`) : `mepScaleText` écrit l'échelle en fraction simple (3:4, 2:3, 3:2), utilisé par le cartouche et le titre des détails ; 1:6 et 1:8 ajoutés à `MEP_SCALES` (en fin de liste : le choix automatique des échelles n'en est pas changé) ; dans le panneau de la vue, **Autre…** ouvre une case où taper « 3:4 », « 1/7 » ou « 0,75 » (`mepScaleParse`, refus d'un texte illisible) ; une échelle libre reste affichée dans la liste à la réouverture.
 - **Test** : `tests/browser/mep-echelles.spec.cjs` (vrai navigateur : 3:4, 1:6, 1:8 au cartouche, échelle libre 2:3 et 0,75, texte illisible refusé). Parcours FAO et CACHE_VER inchangés.
+
+
+## V0.95.8 - ASSEMBLAGE : douilles autotaraudeuses Ensat 302 (ISO et ANSI) dans Normalisés
+
+- **Demande** : « Normalisés → ajout des DOUILLE AUTOTARAUDEUSE, ISO et ANSI » ; puis « il va me manquer des types de trous taraudés, comme 6.5x75 ».
+- **Recherche** : aucune norme ISO, DIN ni ANSI ne fixe ces douilles ; le marché reprend la norme d'usine Ensat 302 (Kerb-Konus), taraudage ISO 6H ou UNC/UNF, corps fileté en mm (MS51830 est une douille à clavettes, autre pièce).
+- **Correctif** (`src/48-composants-normalises`) : onglet « Douilles autotaraudeuses » (`STD_ENSAT302` M2 à M20 et M6 courte, `STD_ENSAT302_IN` #4 à 5/8" UNC/UNF, `stdInsert302`) : révolution chanfreinée, filetage cosmétique du corps, taraudage débouchant fraisé (nouvelle op `hole` de `stdDoc`), fente de coupe ouverte au bas (`slot` `open`) ; fiche avec perçage conseillé et trou borgne mini ; assise affleurante 0,1 mm sous l'entrée. `src/76-percage` : M4,5×0,5, M5×0,5, M6,5×0,75, M9×1, M26×1,5 ajoutés à `ISO_THREADS` (listes du perçage taraudé et du filetage).
+- **Test** : `tests/test_composants_normalises.cjs` (toutes les tailles saines, paroi et fraisure dans la matière, volumes exacts au noyau de 5 douilles métriques et pouces). Parcours FAO et CACHE_VER inchangés.
