@@ -12,7 +12,10 @@ const MFF_TYPES=[{description:'Projet ConceptCAD',accept:{'application/json':['.
 let mffHandle=null,mffName='',mffSavedSig=null,mffFolder=null;
 function mffSig(){
   // empreinte du DOCUMENT (sans la vue, la sélection ni les replis) : « modifié depuis l'enregistrement »
-  try{const o=JSON.parse(serialise(false));delete o.view;delete o.sel;delete o.fold;delete o.originVis;const s=JSON.stringify(o);
+  try{const o=JSON.parse(serialise(false));delete o.view;delete o.sel;delete o.fold;delete o.originVis;
+    // V0.95.1 : nombres arrondis au millionième — le recalcul de fond réécrit des positions d'arêtes
+    // au milliardième près (-20.795 → -20.79499999975) : ce n'est pas une modification
+    const s=JSON.stringify(o,(k,v)=>typeof v==='number'&&isFinite(v)&&v!==Math.round(v)?Math.round(v*1e6)/1e6:v);
     let h=2166136261;for(let i=0;i<s.length;i++){h^=s.charCodeAt(i);h=Math.imul(h,16777619);}return (h>>>0).toString(36)+'_'+s.length;}catch(e){return '';}
 }
 function mffModified(){
