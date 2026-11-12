@@ -8,7 +8,7 @@ sont sorties le 2026-09-30j.
 Code dans `src/` · livrable `fusion_mvp.html` (généré par `build.js`) · architecture et
 garde-fous en tête de `src/00-entete-et-outils.js`.
 
-**672 versions**, de `2026-09-28b` à `V0.95.6` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
+**673 versions**, de `2026-09-28b` à `V0.95.7` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
 comme dans le fichier d'origine.
 
 ---
@@ -7548,3 +7548,11 @@ Barquette ne perd plus son solide à la 107e modification, et sa mémoire ne mon
 - **Cause** : le survol (`hoverMove`, `src/90-10-selection-mesure`) plafonnait le dessin à 4000 triangles ; la face de la plaque en compte bien plus.
 - **Correctif** : le survol prend les mêmes triangles que la sélection (`faceTrisFor`), sans plafond ; le dessin n'est refait que quand la face survolée change.
 - **Test** : `tests/test_survol_grande_face.cjs` (face de 12 000 triangles allumée en entier, mêmes triangles que la sélection, petite face, repli sans face BRep ; échoue sur V0.95.5). Parcours FAO et CACHE_VER inchangés.
+
+
+## V0.95.7 - PLAN : échelles 3:4 écrite juste, 1:6, 1:8 et échelle libre
+
+- **Demande** : « 3:4 doit être écrit 3:4 dans le cartouche ; j'aimerais 1:6 | 1:8 en plus ; l'échelle de mon choix ».
+- **Cause** : le cartouche écrivait toute échelle réductrice en « 1:x » arrondi (0,75 → « 1:1.33 ») ; le titre des détails aussi.
+- **Correctif** (`src/98-mep-00-modele`, `src/98-mep-60-interface-parametres`, `src/98-mep-90-proprietes`) : `mepScaleText` écrit l'échelle en fraction simple (3:4, 2:3, 3:2), utilisé par le cartouche et le titre des détails ; 1:6 et 1:8 ajoutés à `MEP_SCALES` (en fin de liste : le choix automatique des échelles n'en est pas changé) ; dans le panneau de la vue, **Autre…** ouvre une case où taper « 3:4 », « 1/7 » ou « 0,75 » (`mepScaleParse`, refus d'un texte illisible) ; une échelle libre reste affichée dans la liste à la réouverture.
+- **Test** : `tests/browser/mep-echelles.spec.cjs` (vrai navigateur : 3:4, 1:6, 1:8 au cartouche, échelle libre 2:3 et 0,75, texte illisible refusé). Parcours FAO et CACHE_VER inchangés.

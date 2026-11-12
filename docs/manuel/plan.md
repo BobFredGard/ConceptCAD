@@ -18,6 +18,7 @@ Le retour dans le Plan est immédiat tant que la géométrie de la pièce n’a 
 - **Face, projection, ISO, caméra, auxiliaire, coupe et détail**, par corps ou en assemblage (une hachure par pièce, bulles automatiques).
   - **Assemblage** : à l'ouverture d'une planche vide, une seule vue de face de tout l'assemblage, avec tous ses composants (V0.94.8). Une pièce seule reçoit toujours face, dessus et côté.
 - **Orientation de la vue principale** : Face, Arrière, Côté gauche, Côté droit, Dessus, Dessous ; les projections suivent.
+- **Échelle d'une vue** : de 5:1 à 1:10, dont 3:4, 1:6 et 1:8 ; **Autre…** pour taper l'échelle de son choix (2:3, 1/7, 0,75). Le cartouche l'écrit en fraction (3:4, et non 1:1.33) (V0.95.7).
 - **Rotation d'une vue de 90°**, à gauche (↺) ou à droite (↻) : elle tourne sur place avec ses cotes, axes, lignes de coupe et détails ; les projections sont recalculées et réalignées.
 - **Arêtes exactes** du noyau (HLR OCCT), y compris pour un STEP importé.
   - **Tangentes grises comme dans la 3D**, dans les vues comme dans les coupes (même les raccords que le noyau croit vifs).

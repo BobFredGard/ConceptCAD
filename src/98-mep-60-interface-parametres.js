@@ -295,9 +295,7 @@
   function mepSheetScaleLabel(sh){
     const vals=sh.views.filter(v=>v.scale!==1&&v.kind!=='detail').map(v=>v.scale); // un détail porte sa propre échelle
     if(!vals.length)return '1:1';
-    const s=vals[0];
-    if(s>=1)return mepFmtNum(s,2).replace(',0','')+':1';
-    return '1:'+mepFmtNum(1/s,2);
+    return mepScaleText(vals[0]);
   }
   function mepViewSheetBBox(v){
     const b=mepAABBOf(mepGeoOf(v));
@@ -664,7 +662,7 @@
     if(!v.label)return '';
     if(v.kind==='section')return 'COUPE '+v.label+'-'+v.label;
     if(v.kind==='detail'){
-      const s=v.scale>=1?(mepFmtNum(v.scale,2)+':1'):('1:'+mepFmtNum(1/v.scale,2));
+      const s=mepScaleText(v.scale);
       return 'DÉTAIL '+v.label+' ('+s+')';
     }
     if(v.kind==='aux')return v.label;

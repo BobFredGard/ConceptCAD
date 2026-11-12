@@ -150,7 +150,23 @@
   function mepFmtCode(sh){return sh.format===FORMAT_MANUEL?FORMAT_MANUEL:sh.format+(sh.orient==='landscape'?'H':'V');}
   function mepFmtLabel(sh){return sh.format===FORMAT_MANUEL?mepFmtNum(sh.fw,1)+' × '+mepFmtNum(sh.fh,1):mepFmtCode(sh);}
   const MARGIN=12,TITLE_H=26;
-  const MEP_SCALES=[[1,'1:1'],[2,'2:1'],[5,'5:1'],[0.5,'1:2'],[0.2,'1:5'],[2.5,'5:2'],[0.25,'1:4'],[0.1,'1:10'],[1.25,'5:4'],[0.4,'2:5'],[0.75,'3:4']];
+  const MEP_SCALES=[[1,'1:1'],[2,'2:1'],[5,'5:1'],[0.5,'1:2'],[0.2,'1:5'],[2.5,'5:2'],[0.25,'1:4'],[0.1,'1:10'],[1.25,'5:4'],[0.4,'2:5'],[0.75,'3:4'],[1/6,'1:6'],[1/8,'1:8']];
+  /* texte d'une échelle : 0,75 → « 3:4 » (et non 1:1.33) ; fraction simple cherchée
+     (dénominateur ≤ 100), sinon nombre arrondi */
+  function mepScaleText(s){
+    s=+s;if(!(s>0))return '1:1';
+    const k=MEP_SCALES.find(x=>Math.abs(x[0]-s)<1e-9);if(k)return k[1];
+    const gcd=(a,b)=>b?gcd(b,a%b):a;
+    for(let q=1;q<=100;q++){const p=Math.round(s*q);if(p>=1&&Math.abs(p/q-s)<1e-9*Math.max(1,s)){const g=gcd(p,q);return (p/g)+':'+(q/g);}}
+    return s>=1?(mepFmtNum(s,2)+':1'):('1:'+mepFmtNum(1/s,2));
+  }
+  /* lecture d'une échelle tapée : « 3:4 », « 1/6 », « 0,75 » ; null si illisible */
+  function mepScaleParse(t){
+    t=String(t||'').trim().replace(/,/g,'.');
+    let m=t.match(/^(\d*\.?\d+)\s*[:\/]\s*(\d*\.?\d+)$/),s;
+    if(m)s=(+m[1])/(+m[2]);else if(/^\d*\.?\d+$/.test(t))s=+t;else return null;
+    return (isFinite(s)&&s>=0.001&&s<=1000)?s:null;
+  }
   const COL={sharp:'#1a1a1a',tangent:'#6a6f76',hidden:'#8a9098',sect:'#1a1a1a',
     skFree:'#64d2ff',skFull:'#e8e8ea',sel:'#ff9f0a',ok:'#30d158',err:'#ff453a',snap:'#ffd60a',ref:'#bf5af2'};
   /* vues standard : dir = DE la pièce VERS l'observateur ; u = droite papier ; v = bas papier */

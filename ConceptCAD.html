@@ -383,7 +383,7 @@ input[type=range]{accent-color:var(--primary);width:100%}
  * peut changer sans rien casser. CACHE_VER (parcours FAO) reste indépendant.
  */
 
-const APP_VER='V0.95.6';
+const APP_VER='V0.95.7';
 try{console.log('[ConceptCAD] version '+APP_VER);}catch(e){}
 try{var mfSv=document.getElementById('mfSplashVer');if(mfSv)mfSv.textContent=APP_VER;}catch(e){} // écran de démarrage
 
@@ -77360,7 +77360,23 @@ function filmFrame(){
   function mepFmtCode(sh){return sh.format===FORMAT_MANUEL?FORMAT_MANUEL:sh.format+(sh.orient==='landscape'?'H':'V');}
   function mepFmtLabel(sh){return sh.format===FORMAT_MANUEL?mepFmtNum(sh.fw,1)+' × '+mepFmtNum(sh.fh,1):mepFmtCode(sh);}
   const MARGIN=12,TITLE_H=26;
-  const MEP_SCALES=[[1,'1:1'],[2,'2:1'],[5,'5:1'],[0.5,'1:2'],[0.2,'1:5'],[2.5,'5:2'],[0.25,'1:4'],[0.1,'1:10'],[1.25,'5:4'],[0.4,'2:5'],[0.75,'3:4']];
+  const MEP_SCALES=[[1,'1:1'],[2,'2:1'],[5,'5:1'],[0.5,'1:2'],[0.2,'1:5'],[2.5,'5:2'],[0.25,'1:4'],[0.1,'1:10'],[1.25,'5:4'],[0.4,'2:5'],[0.75,'3:4'],[1/6,'1:6'],[1/8,'1:8']];
+  /* texte d'une échelle : 0,75 → « 3:4 » (et non 1:1.33) ; fraction simple cherchée
+     (dénominateur ≤ 100), sinon nombre arrondi */
+  function mepScaleText(s){
+    s=+s;if(!(s>0))return '1:1';
+    const k=MEP_SCALES.find(x=>Math.abs(x[0]-s)<1e-9);if(k)return k[1];
+    const gcd=(a,b)=>b?gcd(b,a%b):a;
+    for(let q=1;q<=100;q++){const p=Math.round(s*q);if(p>=1&&Math.abs(p/q-s)<1e-9*Math.max(1,s)){const g=gcd(p,q);return (p/g)+':'+(q/g);}}
+    return s>=1?(mepFmtNum(s,2)+':1'):('1:'+mepFmtNum(1/s,2));
+  }
+  /* lecture d'une échelle tapée : « 3:4 », « 1/6 », « 0,75 » ; null si illisible */
+  function mepScaleParse(t){
+    t=String(t||'').trim().replace(/,/g,'.');
+    let m=t.match(/^(\d*\.?\d+)\s*[:\/]\s*(\d*\.?\d+)$/),s;
+    if(m)s=(+m[1])/(+m[2]);else if(/^\d*\.?\d+$/.test(t))s=+t;else return null;
+    return (isFinite(s)&&s>=0.001&&s<=1000)?s:null;
+  }
   const COL={sharp:'#1a1a1a',tangent:'#6a6f76',hidden:'#8a9098',sect:'#1a1a1a',
     skFree:'#64d2ff',skFull:'#e8e8ea',sel:'#ff9f0a',ok:'#30d158',err:'#ff453a',snap:'#ffd60a',ref:'#bf5af2'};
   /* vues standard : dir = DE la pièce VERS l'observateur ; u = droite papier ; v = bas papier */
@@ -82350,9 +82366,7 @@ function filmFrame(){
   function mepSheetScaleLabel(sh){
     const vals=sh.views.filter(v=>v.scale!==1&&v.kind!=='detail').map(v=>v.scale); // un détail porte sa propre échelle
     if(!vals.length)return '1:1';
-    const s=vals[0];
-    if(s>=1)return mepFmtNum(s,2).replace(',0','')+':1';
-    return '1:'+mepFmtNum(1/s,2);
+    return mepScaleText(vals[0]);
   }
   function mepViewSheetBBox(v){
     const b=mepAABBOf(mepGeoOf(v));
@@ -82719,7 +82733,7 @@ function filmFrame(){
     if(!v.label)return '';
     if(v.kind==='section')return 'COUPE '+v.label+'-'+v.label;
     if(v.kind==='detail'){
-      const s=v.scale>=1?(mepFmtNum(v.scale,2)+':1'):('1:'+mepFmtNum(1/v.scale,2));
+      const s=mepScaleText(v.scale);
       return 'DÉTAIL '+v.label+' ('+s+')';
     }
     if(v.kind==='aux')return v.label;
@@ -88878,14 +88892,30 @@ function filmFrame(){
     }
     // échelle
     const sel=document.createElement('select');
+    const inList=MEP_SCALES.some(x=>Math.abs(x[0]-v.scale)<1e-6);
     MEP_SCALES.slice().sort((a,b)=>b[0]-a[0]).forEach(([s,lab])=>{ // de 5:1 à 1:10
       const o=document.createElement('option');
       o.value=s;o.textContent=lab;
       if(Math.abs(s-v.scale)<1e-6)o.selected=true;
       sel.appendChild(o);
     });
-    sel.onchange=()=>{mepEdit('échelle',()=>{v.scale=+sel.value;});};
-    row('Échelle',sel);
+    if(!inList){const o=document.createElement('option');o.value=v.scale;o.textContent=mepScaleText(v.scale);o.selected=true;sel.appendChild(o);}
+    {const o=document.createElement('option');o.value='autre';o.textContent='Autre…';sel.appendChild(o);}
+    const libre=document.createElement('input');
+    libre.className='mepScaleLibre';libre.style.width='5em';libre.value=mepScaleText(v.scale);
+    libre.title='Échelle de votre choix : 3:4, 1:6, 2:3, 1/7 ou 0,75';
+    libre.style.display=inList?'none':'';
+    const pose=s=>{mepEdit('échelle',()=>{v.scale=s;});mepSideShow();};
+    sel.onchange=()=>{
+      if(sel.value==='autre'){libre.style.display='';libre.focus();libre.select();return;}
+      pose(+sel.value);
+    };
+    libre.onchange=()=>{
+      const s=mepScaleParse(libre.value);
+      if(s==null){mepStatus('Échelle illisible : tapez par exemple 3:4, 1:6 ou 0,75.');libre.value=mepScaleText(v.scale);return;}
+      pose(s);
+    };
+    row('Échelle',sel).appendChild(libre);
     if(v.kind==='dxf'){
       const D=v.dxf||{},act=document.createElement('div');act.className='row';
       const bR=document.createElement('button');bR.textContent='Remplacer le DXF…';bR.title='Charger un autre DXF dans cette vue (cotes et position gardées)';bR.onclick=()=>mepDxfReplace(v);
@@ -89812,7 +89842,7 @@ function filmFrame(){
   // points d'entrée réservés aux tests automatisés (jamais activés dans l'app)
   if(window.__MEP_TEST_HOOKS__){
     window.__mepTest={
-      bomRows:sh=>mepBomRows(sh),autoDia:(sh,d)=>mepDimAutoDia(sh,d),balloonsAuto:sh=>mepBalloonsAuto(sh),tbPack:(sh,n)=>mepTbPack(sh,n),tbUnpack:(tt,o)=>mepTbUnpack(tt,o),tbLib:()=>mepTbLib(),newSheet:n=>mepNewSheet(n),balloonAt:(x,y)=>mepBalloonAt(mepSheet(),x,y),viewBBox:v=>mepViewSheetBBox(v),balloonAdd:(x,y)=>mepBalloonAddAt(mepSheet(),x,y),hatchVar:(k,c)=>mepHatchVar(k,c),st:()=>mepSt,drawBalloons:(mk,sh)=>mepDrawBalloons(mk,sh),meshesOf:v=>mepMeshesOf(v),addView:o=>mepAddView(o),sheet:()=>mepSheet(),viewSig:v=>mepViewSig(v),autoViews:()=>mepAutoViews(), // V0.6.7
+      scaleLabel:sh=>mepSheetScaleLabel(sh),scaleText:s=>mepScaleText(s),scaleParse:t=>mepScaleParse(t),bomRows:sh=>mepBomRows(sh),autoDia:(sh,d)=>mepDimAutoDia(sh,d),balloonsAuto:sh=>mepBalloonsAuto(sh),tbPack:(sh,n)=>mepTbPack(sh,n),tbUnpack:(tt,o)=>mepTbUnpack(tt,o),tbLib:()=>mepTbLib(),newSheet:n=>mepNewSheet(n),balloonAt:(x,y)=>mepBalloonAt(mepSheet(),x,y),viewBBox:v=>mepViewSheetBBox(v),balloonAdd:(x,y)=>mepBalloonAddAt(mepSheet(),x,y),hatchVar:(k,c)=>mepHatchVar(k,c),st:()=>mepSt,drawBalloons:(mk,sh)=>mepDrawBalloons(mk,sh),meshesOf:v=>mepMeshesOf(v),addView:o=>mepAddView(o),sheet:()=>mepSheet(),viewSig:v=>mepViewSig(v),autoViews:()=>mepAutoViews(), // V0.6.7
       drawRevs:(mk,sh,pd,ty)=>mepDrawRevs(mk,sh,pd,ty),holeFam:f=>mepHoleFam(f),cutAddBreak:(sh,v)=>mepCutAddBreak(sh,v),cutBreakAt:(sh,v,m,sG,c,r)=>mepCutBreakAt(sh,v,m,sG,c,r),cutFollow:sh=>mepCutFollowAll(sh),cutAutoRefs:(sh,v)=>mepCutAutoRefs(sh,v),cutDelBreak:(sh,v)=>mepCutDelBreak(sh,v),cutDelBreakAt:(sh,v,j,sG)=>mepCutDelBreakAt(sh,v,j,sG),cutBreakClick:(sh,v,m,sG)=>mepCutBreakClick(sh,v,m,sG),cutModel:v=>mepCutModel(v),prefsCollect:()=>mepPrefsCollect(),prefsApply:p=>mepPrefsApply(p),pageDim:sh=>mepPageDim(sh),
       titleTexts:sh=>{const t=[];const mk=(tag)=>{const o={textContent:''};if(tag==='text')t.push(o);return o;};mepDrawTitle(mk,sh,mepPage().pd,100);mepDrawRevs(mk,sh,mepPage().pd,100);mepDrawBom(mk,sh,mepPage().pd,100);return t.map(o=>o.textContent);},
       sk:{fromStd:sh=>mepTbFromStd(sh),solve:(sk,a)=>mepSkSolve(sk,80,a),residual:(sk,c)=>mepSkResidual(sk,c),
