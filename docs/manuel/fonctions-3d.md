@@ -58,7 +58,7 @@ Historique rejouable, timeline à icônes (vert = ajout, rouge = enlèvement), m
   - Congés, plans, perçages, esquisses sur face, projections, liaisons d'assemblage et faces choisies pour l'usinage retrouvent leur élément par ce nom, y compris dans les copies d'une répétition.
   - Une esquisse posée sur une face qui ne vient pas d'une extrusion (STEP importé, corps dérivé soustrait, combinaison) retient aussi sa face et suit son plan ; le nom de la face s'affiche dans l'esquisse.
   - **Face ou arête perdue : resélection, comme Fusion.** Un ⚠ la signale dans l'arbre et la timeline ; un double-clic ouvre la resélection.
-    - Esquisse : bouton **« 🎯 Changer de face »** dans ses propriétés. La timeline s'arrête avant la fonction qui l'utilise, un clic sur la nouvelle face y repose l'esquisse (son dessin garde ses cotes), Échap annule.
+    - Esquisse : bouton **« 🎯 Changer de face »** dans ses propriétés. La timeline s'arrête avant la fonction qui l'utilise, un clic sur la nouvelle face y repose l'esquisse (son dessin garde ses cotes), Échap annule. Sur une face parallèle à l'ancien plan (réparer une face perdue), le dessin reste à sa place : il se recale seulement sur la face (V0.94.7).
     - Déplacer une face, coque, suppression de face : à l'ouverture de l'édition, la première face perdue attend sa remplaçante ; le clic suivant la remplace à sa place dans la liste. Bouton **« 🎯 Remplacer »** sur chaque face perdue, ✕ pour la retirer.
     - Congés et chanfreins : une arête perdue reste dans la liste (avant, elle disparaissait au premier clic) ; l'arête cliquée la remplace et reprend sa taille.
   - Un grand changement de cote se calcule par petits pas en interne ; si un élément a vraiment disparu, une alerte le dit.

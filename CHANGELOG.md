@@ -8,7 +8,7 @@ sont sorties le 2026-09-30j.
 Code dans `src/` · livrable `fusion_mvp.html` (généré par `build.js`) · architecture et
 garde-fous en tête de `src/00-entete-et-outils.js`.
 
-**663 versions**, de `2026-09-28b` à `V0.94.6` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
+**664 versions**, de `2026-09-28b` à `V0.94.7` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
 comme dans le fichier d'origine.
 
 ---
@@ -7480,3 +7480,10 @@ Barquette ne perd plus son solide à la 107e modification, et sa mémoire ne mon
 - **Correctif 2** (`src/31-regen-progression`, `src/21-suppression-face-calcul`) : la préchauffe attend la réponse d'une suppression de face partie au calcul de fond puis reprend (tout ce qui la précède est gardé), au lieu de calculer la suite sans elle ; la réponse ne relance plus de rejeu pendant la préchauffe. Première ouverture de la cavité : 22 → 16 s.
 - **Correctif 3** (`src/20-75-piece-gardee`, nouveau ; branché dans `occRebuild` et `rebuildInner`) : la pièce finie est gardée dans IndexedDB après une ouverture ou un enregistrement, une fois stable : BRep natif de chaque corps avec les noms de ses faces, maillage d'affichage, outils de découpe, messages, états de calcul des fonctions et des esquisses (`_m`, `_miss`, `_perdues`…), résultats du calcul de fond. Rouverte avec la même clé (`asmCacheKey` + `APP_VER`), elle est servie telle quelle : ni rejeu, ni projections, ni maillage ; puis les points de contrôle se remplissent en fond par tranches (`pcChauffer`). L'ouverture retouche parfois le document sans changer la forme (origines des copies de répétition arrondies, face d'appui nommée) : l'entrée est aussi rangée sous la clé du document tel qu'ouvert tant que rien n'a été modifié (rien à annuler). Jamais gardé : assemblage, marqueur reculé, calcul de fond en cours, forme importée absente, plus de 3 millions de sommets. 6 pièces gardées au plus. Cavité rouverte : 22 → 3 s (5 s avec la lecture de la barquette après un rechargement), solide identique (volume, faces et leurs noms, empreinte, maillage, outils, alertes).
 - **Test** : `tests/browser/piece-gardee.spec.cjs` (barquette d'exemple : relue sans rejeu ni projection, identique au calcul ; modification ensuite = même solide qu'un recalcul complet ; fichier modifié → recalculée). Essais sur la pièce de Fred hors dépôt. Parcours FAO et CACHE_VER inchangés.
+
+## V0.94.7 - CAO : « Changer de face » garde le dessin en place sur une face parallèle
+
+- **Demande** : Fred, 12/11, sur SIRAP-14-001 : « quand je répare le problème de la face manquante de l'esquisse 3, c'est le congé encadré qui ne répond plus ! »
+- **Cause** : l'esquisse 3 (chemin du balayage en découpe) était figée 1,65 mm à côté de sa face. « 🎯 Changer de face » reprenait le placement d'une esquisse neuve : origine = repère de la pièce projeté sur la face. L'origine passait de (−69,6 ; −94,2 ; −11,6) à (0 ; −74,3 ; −42,9) et tout le dessin glissait d'environ 70 mm dans le plan. Le balayage changeait de place et le congé suivant (« Congé exact (1 arête) » après le balayage de l'esquisse 18) perdait son arête (⚠).
+- **Correctif** (`src/50-esquisse-94-changer-face`, `skRedefApply`) : si la face cliquée est parallèle à l'ancien plan et de même sens, le repère de l'esquisse est gardé (ancienne origine projetée sur la face, mêmes axes, même normale exacte) ; la face porteuse est cherchée depuis cette origine. Sur SIRAP-14-001 : l'esquisse avance de 1,65 mm seulement, plus aucun ⚠.
+- **Test** : `tests/browser/faces-perdues.spec.cjs` vérifie que l'esquisse reposée sur une face parallèle ne glisse pas dans son plan. Parcours FAO et CACHE_VER inchangés.
