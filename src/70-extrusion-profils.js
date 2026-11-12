@@ -14,19 +14,29 @@ function skRegCircleRing(sk,c,n){
   for(let i=0;i<N;i++){const a=i/N*Math.PI*2;R.push([C.x+c.r*Math.cos(a),C.y+c.r*Math.sin(a)]);}
   return R;
 }
-function skRingDist(pt,rg){
-  let m=1e18;
+function skRingDist(pt,rg,stop){
+  // V0.96.0 : segments dont la boîte est déjà plus loin que le minimum : sautés (même résultat) ;
+  // stop : arrêt dès qu'un segment est plus près (test « strictement dedans »)
+  let m=1e18;const px=pt[0],py=pt[1];
   for(let i=0;i<rg.length;i++){
-    const a=rg[i],b=rg[(i+1)%rg.length],dx=b[0]-a[0],dy=b[1]-a[1],L2=dx*dx+dy*dy||1e-18;
+    const a=rg[i],b=rg[(i+1)%rg.length];
+    const gx=px<a[0]&&px<b[0]?Math.min(a[0],b[0])-px:(px>a[0]&&px>b[0]?px-Math.max(a[0],b[0]):0);if(gx>=m)continue;
+    const gy=py<a[1]&&py<b[1]?Math.min(a[1],b[1])-py:(py>a[1]&&py>b[1]?py-Math.max(a[1],b[1]):0);if(gy>=m)continue;
+    const dx=b[0]-a[0],dy=b[1]-a[1],L2=dx*dx+dy*dy||1e-18;
     let t=((pt[0]-a[0])*dx+(pt[1]-a[1])*dy)/L2;t=Math.max(0,Math.min(1,t));
-    const d=Math.hypot(pt[0]-(a[0]+t*dx),pt[1]-(a[1]+t*dy));if(d<m)m=d;
+    const d=Math.hypot(pt[0]-(a[0]+t*dx),pt[1]-(a[1]+t*dy));if(d<m){m=d;if(stop!=null&&m<=stop)return m;}
   }
   return m;
 }
 function skRegBoundIn(b,pt){ // pt strictement dans l'anneau (frontière exclue)
   if(b.k==='circle')return Math.hypot(pt[0]-b.C.x,pt[1]-b.C.y)<b.r-1e-6;
-  return pip(pt,b.ring)&&skRingDist(pt,b.ring)>1e-6;
+  return skRingStrictIn(pt,b.ring); // V0.96.0 : même réponse que pip + distance au bord, en bandes (10-scene-3d)
 }
+function skRegBb(b){
+  if(!b.bb){let x0=1e18,y0=1e18,x1=-1e18,y1=-1e18;b.ring.forEach(p=>{if(p[0]<x0)x0=p[0];if(p[0]>x1)x1=p[0];if(p[1]<y0)y0=p[1];if(p[1]>y1)y1=p[1];});b.bb=[x0,y0,x1,y1];}
+  return b.bb;
+}
+function skRegBbIn(b,K){const a=skRegBb(b),c=skRegBb(K);return a[0]>=c[0]-1e-6&&a[1]>=c[1]-1e-6&&a[2]<=c[2]+1e-6&&a[3]<=c[3]+1e-6;}
 function skRegHas(R,pt){return skRegBoundIn(R.K,pt)&&!R.hb.some(b=>skRegBoundIn(b,pt));}
 function skRegions(sk,tr){
   // Toutes les zones fermées : [{K (anneau extérieur), hb (anneaux des trous), ring, area}]
@@ -50,6 +60,7 @@ function skRegions(sk,tr){
       const K=R.K;
       if(K===b||!(K.area>b.area*(1+1e-9)+1e-12))return;
       if(best&&K.area>=best.K.area)return;
+      if(!skRegBbIn(b,K))return; // V0.96.0 : boîtes d'abord (texte : des centaines d'anneaux)
       if(b.ring.every(p=>skRegBoundIn(K,p)))best=R;
     });
     if(best){best.hb.push(b);best.area-=b.area;}
@@ -61,9 +72,12 @@ function skRegInner(R){
   let x0=1e18,y0=1e18,x1=-1e18,y1=-1e18;
   R.ring.forEach(p=>{x0=Math.min(x0,p[0]);y0=Math.min(y0,p[1]);x1=Math.max(x1,p[0]);y1=Math.max(y1,p[1]);});
   if(!(x1>x0&&y1>y0))return null;
-  const clear=pt=>{if(!skRegHas(R,pt))return -1;let d=R.K.k==='circle'?R.K.r-Math.hypot(pt[0]-R.K.C.x,pt[1]-R.K.C.y):skRingDist(pt,R.K.ring);
-    R.hb.forEach(b=>{d=Math.min(d,b.k==='circle'?Math.hypot(pt[0]-b.C.x,pt[1]-b.C.y)-b.r:skRingDist(pt,b.ring));});return d;};
-  let best=null,bd=0,N=32,sx=(x1-x0)/N,sy=(y1-y0)/N;
+  const rd=(pt,rg)=>rg.length>=48?skRingDistIx(pt,rg):skRingDist(pt,rg); // V0.96.0 : grands anneaux en bandes (même valeur)
+  const clear=pt=>{if(!skRegHas(R,pt))return -1;let d=R.K.k==='circle'?R.K.r-Math.hypot(pt[0]-R.K.C.x,pt[1]-R.K.C.y):rd(pt,R.K.ring);
+    R.hb.forEach(b=>{d=Math.min(d,b.k==='circle'?Math.hypot(pt[0]-b.C.x,pt[1]-b.C.y)-b.r:rd(pt,b.ring));});return d;};
+  // V0.96.0 : anneaux très détaillés (lettres d'un texte) : grille plus lâche, l'affinage suit
+  const nv=R.ring.length+R.hb.reduce((s,b)=>s+b.ring.length,0);
+  let best=null,bd=0,N=nv>240?12:32,sx=(x1-x0)/N,sy=(y1-y0)/N;
   for(let i=0;i<N;i++)for(let j=0;j<N;j++){const pt=[x0+(i+0.5)*sx,y0+(j+0.5)*sy],d=clear(pt);if(d>bd){bd=d;best=pt;}}
   if(!best){ // zone très fine : centre d'un triangle de l'anneau
     const r=R.ring;for(let i=1;i+1<r.length;i++){const pt=[(r[0][0]+r[i][0]+r[i+1][0])/3,(r[0][1]+r[i][1]+r[i+1][1])/3];if(clear(pt)>0)return pt;}

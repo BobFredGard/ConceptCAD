@@ -20,6 +20,7 @@ const SK_ICONS={
   polygon:'<path d="M12 2.5l8.2 4.75v9.5L12 21.5l-8.2-4.75v-9.5z"/><circle cx="12" cy="12" r="5.2" stroke-width="1.2" stroke-dasharray="1.6 1.8"/>',
   arc:'<path d="M20 18A12 12 0 0 0 8 6"/><path d="M8 18h12M8 18V6" stroke-dasharray="1.6 2.4" stroke-width="1.3"/><circle cx="8" cy="18" r="1.6" fill="currentColor" stroke="none"/>',
   spline:'<path d="M3.5 18C6 6 10 5 12 12s6 6 8.5-6"/><circle cx="3.5" cy="18" r="1.7" fill="currentColor" stroke="none"/><circle cx="12" cy="12" r="1.7" fill="currentColor" stroke="none"/><circle cx="20.5" cy="6" r="1.7" fill="currentColor" stroke="none"/>',
+  text:'<path d="M4.5 19L12 3.5 19.5 19M7.4 13h9.2"/><path d="M2.5 21.5h19" stroke-width="1.1" stroke-dasharray="1.6 1.8"/>', // V0.96.0 : texte (50-esquisse-96)
   cpoint:'<circle cx="12" cy="12" r="2.4" fill="currentColor" stroke="none"/><path d="M12 3.5v4.5M12 16v4.5M3.5 12H8M16 12h4.5"/>',
   // centre de perçage : CIBLE + FORET dont la pointe vise le centre (orange dans la barre)
   hpoint:'<circle cx="12" cy="17" r="5.2" stroke-width="1.6"/><path d="M12 10.5v13M5.5 17h13" stroke-width="1"/><path d="M10.2 1.5h3.6v3.2h-3.6z" fill="currentColor" stroke="none"/><path d="M10 4.7h4v7l-2 4.3-2-4.3z" stroke-width="1.4"/><path d="M10 6.6l4 1.4M10 8.9l4 1.4" stroke-width="1.1"/>',

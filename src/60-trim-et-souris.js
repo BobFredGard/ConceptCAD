@@ -62,7 +62,7 @@ function entHits(sk,ent){ // intersections (monde) avec les autres entités
   const u=[];out.forEach(h=>{if(!u.some(k=>Math.hypot(k.x-h.x,k.y-h.y)<1e-6))u.push(h);});
   return u;
 }
-function pidAtTol(sk,x,y,tol){let best=null,bd=tol;Object.keys(skPts(sk)).forEach(pid=>{const p=sk.points[pid];const d=Math.hypot(p.x-x,p.y-y);if(d<bd){bd=d;best=pid;}});return best||addPoint(sk,x,y);}
+function pidAtTol(sk,x,y,tol){let best=null,bd=tol;Object.keys(skPts(sk)).forEach(pid=>{const p=sk.points[pid];if(p.txt)return;const d=Math.hypot(p.x-x,p.y-y);if(d<bd){bd=d;best=pid;}});return best||addPoint(sk,x,y);}
 function splitOtherAt(sk,selfId,x,y){ // matérialise le point de coupe dans les lignes traversées (jonction en T)
   const tol=Math.min(0.5,SK_SNAP*0.5); // jonction en T : ≤ 5 px écran (0,5 mm fixe fusionnait les petites pièces)
   const pid=pidAtTol(sk,x,y,tol);
@@ -525,6 +525,7 @@ svg.addEventListener('dblclick',e=>{
   const dl=skDimHitDbl(sk,px,py,wx,wy);
   if(dl){editDim(dl);return;}
   const ent=nearestEntity(sk,wx,wy,SK_PT);if(!ent)return;
+  if(ent.txt){skTxtEdit(sk,ent.txt);return;} // V0.96.0 : double-clic sur un texte = le modifier (50-esquisse-96)
   if(ent.t!=='line'&&ent.t!=='circle'&&ent.t!=='arc')return;
   const ex=sk.dims.find(d=>(d.type==='length'&&d.line===ent.id)||(d.ent===ent.id&&(d.type==='diameter'||d.type==='radius')));
   if(ex){editDim(ex.id);return;}
@@ -590,6 +591,10 @@ svg.addEventListener('pointerdown',e=>{
       // coïncidences, tangences, symétries, parallélismes) suit le membre saisi
       // 2026-10-16-003 : forme DÉFORMABLE ou ANCRÉE (point fixe / origine dans la composante) →
       // seule l'entité saisie bouge, le solveur ajuste le reste (côté d'un rectangle par le centre).
+      if(ent.txt){const R=skTxtRec(sk,ent.txt); // V0.96.0 : un texte glisse par son point d'ancrage, il suit (skTxtFollow)
+        if(R&&sk.points[R.pa]){const pa=R.pa,fx=skFixed(sk).has(pa);
+          skDragWalk=null;skDragEnt={x0:wx,y0:wy,pids:[pa],orig:{[pa]:{x:sk.points[pa].x,y:sk.points[pa].y}},anchor:fx?[]:[pa],pushed:false,rigid:true};
+          renderSkPanel();drawSketch2D();return;}}
       const comp0=skDragComp(sk,skEntPids(ent));
       const rigid=skDragRigid(sk,comp0);
       const comp=rigid?comp0:{pids:(ent.t==='spline'?skSplineAllPids(sk,ent):skEntPids(ent)).filter(p=>p&&sk.points[p]),ents:[ent.id]}; // spline : ses poignées suivent
@@ -632,6 +637,7 @@ svg.addEventListener('pointerdown',e=>{
     if(skTool==='polygon'){skPoly.last=null;skPoly.ang=Math.PI/2;}
     return;
   }
+  if(skTool==='text'){skTxtDown(sk,wx,wy);return;} // V0.96.0 : texte (50-esquisse-96)
   if(skTool==='spline'||skTool==='cspline'){skSplClick(sk,wx,wy,e);return;} // 2026-10-29 : spline par points de passage (50-esquisse-6)
   if(skTool==='cpoint'){skPushUndo();const pid=snapNewPoint(sk,wx,wy);sk.entities.push({id:skNewEid(sk),t:'cpoint',p:pid});skAutoAttach(sk,pid,wx,wy);afterEdit();return;}
   // 2026-10-15-012 : CENTRE DE PERÇAGE — point dédié aux trous (fonction 3D « Perçage »),
@@ -765,6 +771,7 @@ svg.addEventListener('pointermove',e=>{
     return;
   }
   if(skTool==='isect'){skIsectHoverAt(sk,wx,wy,!!e.shiftKey);return;}
+  if(skTool==='text'){skTxtMove(sk,wx,wy);return;} // V0.96.0 : aperçu du texte sous la souris
   if(skTool==='offset'){skOffHover(sk,wx,wy);return;} // survol : trait ou chaîne tangente que le clic prendrait
   if(skDrag){
     // V0.11.27 : SEUIL ANTI-CLIC (comme pour une entité) — un simple clic de sélection sur un point
@@ -1397,12 +1404,14 @@ window.addEventListener('keydown',e=>{
   // 2026-10-29 : Spline (S), rangée avec les outils de dessin, juste après l'arc
   mk('spline','∿','Spline (S) : cliquez les points de passage — double-clic / Entrée / clic droit = fin, clic sur le 1er point = fermée · clic droit sur un point : poignée de tangence');
   mk('cspline','∿','Spline par points de contrôle (Maj+S) : cliquez les pôles — la courbe part du 1er, finit au dernier et suit le polygone · double-clic / Entrée / clic droit = fin, clic sur le 1er pôle = fermée');
+  mk('text','A','Texte : cliquez où commence la ligne, réglez texte, police (toutes celles de l’ordinateur), hauteur, angle dans le bandeau · double-clic sur un texte pour le modifier · extrudez-le comme tout profil');
   mk('polygon','⬡','Polygone régulier (G) : réglez le nombre de côtés et le Ø intérieur (tangent aux côtés), cliquez le centre, puis cliquez pour orienter — Ø vide : à la souris');
   const pg=bar.querySelector('[data-tool="polygon"]'),ci=bar.querySelector('[data-tool="circle"]');
   if(pg&&ci&&ci.parentNode)ci.parentNode.insertBefore(pg,ci.nextSibling);
-  bar.addEventListener('click',()=>{skPolySync();skModeBarSync();skOffBarSync();if(skEdit&&skTool==='offset'){skOffPv=null;skOffHov=null;drawSketch2D();skStatus(skOffMsg());}if(skEdit&&SK_TRACE_MODES[skTool])skStatus(skTraceMsg(skTool));}); // tout changement d'outil : réglages du polygone montrés ou masqués
+  bar.addEventListener('click',ev=>{const tb=ev&&ev.target&&ev.target.closest?ev.target.closest('[data-tool]'):null;if(skEdit&&skTool==='text'&&tb&&tb.dataset.tool==='text')skTxtStart();skTxtSync();skPolySync();skModeBarSync();skOffBarSync();if(skEdit&&skTool==='offset'){skOffPv=null;skOffHov=null;drawSketch2D();skStatus(skOffMsg());}if(skEdit&&SK_TRACE_MODES[skTool])skStatus(skTraceMsg(skTool));}); // tout changement d'outil : réglages du polygone montrés ou masqués
   const sp=bar.querySelector('[data-tool="spline"]'),cs=bar.querySelector('[data-tool="cspline"]'),arc=bar.querySelector('[data-tool="arc"]');
   if(sp&&arc&&arc.parentNode)arc.parentNode.insertBefore(sp,arc.nextSibling);
   if(cs&&sp&&sp.parentNode)sp.parentNode.insertBefore(cs,sp.nextSibling);
+  const tx=bar.querySelector('[data-tool="text"]');if(tx&&pg&&pg.parentNode)pg.parentNode.insertBefore(tx,pg.nextSibling); // V0.96.0 : Texte après le polygone
 })();
 

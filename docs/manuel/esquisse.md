@@ -17,6 +17,7 @@
   - **oblong en 3 clics** : 2 centres, 2 extrémités ou centre et écartement, puis le rayon ; cotes posées au 3e clic (touche `B`) ;
   - **oblong en arc** (rainure circulaire à bouts arrondis : 3 points ou centre) et **secteur** (portion d'anneau à bouts droits), cotés à la création ;
   - **polygone régulier** : nombre de côtés et Ø intérieur tangent aux côtés (touche `G`) ;
+  - **texte**, avec **toutes les polices de l'ordinateur** (ou un fichier `.ttf`, `.otf`, `.ttc` choisi, gardé pour les fois suivantes) : style, hauteur des majuscules, angle, espacement, interligne, alignement, **miroir** (moules, tampons) ; les lettres sont de vraies courbes, prêtes à **extruder en relief ou en creux** comme tout profil, les contre-formes (intérieur du O, du A…) se choisissent à part ; **double-clic** sur le texte pour le modifier ; son point de départ se glisse, se cote et se contraint, le texte suit ; le fichier garde les lettres, il se rouvre même sans la police ;
   - **spline** ;
   - **points** de construction et de perçage (perçage = rond orange, point ordinaire = carré) ;
   - **projection associative** d'arêtes, **intersection** du plan avec des faces ou un corps ;

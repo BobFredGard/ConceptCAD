@@ -106,6 +106,7 @@ function drawSketch2D(){
   const fix=skFixed(sk);
   const showDof=skDofInfo(sk).dof>0; // flèches DOF tant que sous-contrainte (rang réel)
   const selIds=new Set();if(skSel&&skSel.kind==='ent')selIds.add(skSel.id);skSelX.forEach(s=>{if(s.kind==='ent')selIds.add(s.id);});
+  {const sT=skTxtSelSet();if(sT.size)(sk.entities||[]).forEach(e=>{if(e&&e.txt&&sT.has(e.txt))selIds.add(e.id);});} // texte : tout le texte surligné
   // 2026-10-16-001 : bleu = entité encore libre (au moins un degré de liberté),
   // blanc = entité entièrement déterminée (contraintes + cotes + points fixes) —
   // par ANALYSE DE RANG (avant : seules les entités aux points « fixes » blanchissaient).
@@ -155,7 +156,7 @@ function drawSketch2D(){
     }
     if(e.t==='spline'){const pl=skSplinePoly(sk,e);if(!pl)return;
       const toD=a=>'M '+a.map(q=>{const s=w2s(q[0],q[1]);return s[0].toFixed(1)+' '+s[1].toFixed(1);}).join(' L ');
-      if(e.mode==='ctrl'){ // polygone de contrôle : pôles reliés en pointillé
+      if(e.mode==='ctrl'&&!e.txt){ // polygone de contrôle : pôles reliés en pointillé (jamais pour les lettres d'un texte)
         const Q=e.pts.map(p=>P[p]).filter(Boolean).map(q=>[q.x,q.y]);if(e.closed&&Q.length)Q.push(Q[0]);
         if(Q.length>1)skEl('path',{d:toD(Q),fill:'none',stroke:selIds.has(e.id)?'#ff9f0a':'#bf5af2','stroke-width':1.1,'stroke-dasharray':'3 3',opacity:.75});
         (sk.constraints||[]).forEach(k=>{if(k.type==='stangent'&&(k.s===e.id||k.ent===e.id)&&P[k.p])drawT(P[k.p]);});
@@ -230,7 +231,7 @@ function drawSketch2D(){
   const holeP=skHolePids(sk);
   const hEnds=new Set();(sk.entities||[]).forEach(e=>{if(e.t==='line'&&e.handle)hEnds.add(e.p2);});
   Object.keys(skPts(sk)).forEach(pid=>{
-    const p=sk.points[pid];if(!p)return;const[a,b]=w2s(p.x,p.y);
+    const p=sk.points[pid];if(!p||p.txt)return;const[a,b]=w2s(p.x,p.y); // points des lettres d'un texte : jamais dessinés
     const isSel=(skSel&&skSel.kind==='point'&&skSel.pid===pid)||skSelX.some(s=>s.kind==='point'&&s.pid===pid);
     const isMark=(skCoinA===pid)||(skPendPt===pid);
     if(pid===SK_ORIGIN){
@@ -335,6 +336,7 @@ function drawSketch2D(){
       const t=skEl('text',{x:a,y:b-d.r*skView.s-8,fill:'#ffd60a','font-size':13,'font-weight':'bold','text-anchor':'middle'});
       t.textContent='⌀'+(d.r*2).toFixed(2);}
     if(d.t==='polygon')skPolyDrawDraft(d);
+    if(d.t==='text')skTxtDrawDraft(d);
     if(d.t==='arc'){const C=sk.points[d.pc];if(C){const p1={x:C.x+d.r*Math.cos(d.a1),y:C.y+d.r*Math.sin(d.a1)},p2={x:C.x+d.r*Math.cos(d.a2),y:C.y+d.r*Math.sin(d.a2)};
       const[a,b]=w2s(p1.x,p1.y),[c2,d2]=w2s(p2.x,p2.y);
       let dd=(d.a2-d.a1)%(Math.PI*2);if(dd<0)dd+=Math.PI*2;
@@ -353,7 +355,7 @@ function drawSketch2D(){
     h.textContent='Tab angle/longueur · Entrée OK · Échap annule';
   }
   if(skRoot)skOrbUpright(skRoot); // orbite : textes et étiquettes restent lisibles
-  skPolySync();skModeBarSync();skOffBarSync();skToolBtnSync();
+  skPolySync();skTxtSync();skModeBarSync();skOffBarSync();skToolBtnSync();
 }
 function dimById(sk,id){return (sk.dims||[]).find(d=>d.id===id);}
 function angleArcInfo(sk,d){ // {V,rr,a1,dd} — secteur STOCKE (a1=rayon A, dd=±value), arc et texte toujours cohérents

@@ -845,12 +845,58 @@ function smoothNormals(pos,creaseDeg){
   }
   return out;
 }
+function smoothNormalsAt(pos,creaseDeg,nrm,verts){
+  // smoothNormals restreint aux sommets `verts` (les autres prennent nrm) : résultat identique au bit près
+  // à smoothNormals + recopie des normales exactes. Les triangles voisins d'un sommet sont pris dans le même
+  // ordre (sommets croissants) ; seules les clés des positions candidates sont fabriquées.
+  const out=Float32Array.from(nrm);
+  const key=v=>pos[v*3]+','+pos[v*3+1]+','+pos[v*3+2];
+  const xs=new Set(),want=new Map();
+  for(const v of verts){xs.add(pos[v*3]);want.set(key(v),[]);}
+  for(let v=0;v<pos.length/3;v++){
+    if(!xs.has(pos[v*3]))continue;
+    const a=want.get(key(v));if(a)a.push((v/3)|0);
+  }
+  const fn=new Map();
+  const tn=t=>{
+    let r=fn.get(t);if(r)return r;
+    const o=t*9;
+    const e1x=pos[o+3]-pos[o],e1y=pos[o+4]-pos[o+1],e1z=pos[o+5]-pos[o+2];
+    const e2x=pos[o+6]-pos[o],e2y=pos[o+7]-pos[o+1],e2z=pos[o+8]-pos[o+2];
+    const nx=e1y*e2z-e1z*e2y,ny=e1z*e2x-e1x*e2z,nz=e1x*e2y-e1y*e2x;
+    const l=Math.hypot(nx,ny,nz);
+    r=l>1e-18?[nx/l,ny/l,nz/l,1]:[0,0,0,0];fn.set(t,r);return r;
+  };
+  const lim=Math.cos((creaseDeg||35)*Math.PI/180);
+  for(const v of verts){
+    const t=(v/3)|0,f=tn(t);
+    let ax=0,ay=0,az=0;
+    for(const t2 of want.get(key(v))||[t]){
+      const g=tn(t2);if(!g[3])continue;
+      if(!f[3]||g[0]*f[0]+g[1]*f[1]+g[2]*f[2]>=lim){ax+=g[0];ay+=g[1];az+=g[2];}
+    }
+    let l=Math.hypot(ax,ay,az);
+    if(!(l>1e-12)){if(f[3]){ax=f[0];ay=f[1];az=f[2];}else{ax=0;ay=0;az=1;}l=1;}
+    out[v*3]=ax/l;out[v*3+1]=ay/l;out[v*3+2]=az/l;
+  }
+  return out;
+}
 function occTriNormals(T){
   // V0.11.34 : normales EXACTES de la surface BRep (T.nrm, occTriPos avec wantN) ; à défaut
   // (pas d'UV, point singulier : pôle, sommet de cône), normale lissée de smoothNormals.
   // Le lissage seul mélangeait les triangles des faces VOISINES tangentes : un fond plat
   // prenait l'inclinaison de ses congés au bord, étalée par ses longs triangles = faces « marbrées ».
-  const out=smoothNormals(T.pos,35),n=T.nrm;
+  // V0.95.10 : normales exactes partout (cas courant) → le lissage, entièrement recouvert, n'est pas calculé
+  // (plaque SIRAP-14-003, 90 000 triangles : 190 ms à chaque modification ; résultat identique au bit près)
+  const n=T.nrm;
+  if(n&&n.length===T.pos.length){
+    const manque=[];for(let i=0;i<n.length;i+=3)if(n[i]!==n[i])manque.push(i/3);
+    if(!manque.length)return Float32Array.from(n);
+    // quelques nœuds sans normale exacte (pointe de perçage, sommet de cône) : lissés EUX SEULS, mêmes
+    // calculs et même ordre que smoothNormals (plaque SIRAP-14-003 : 1 224 nœuds sur 270 000)
+    if(manque.length*20<n.length/3)return smoothNormalsAt(T.pos,35,n,manque);
+  }
+  const out=smoothNormals(T.pos,35);
   if(n)for(let i=0;i<out.length;i+=3)if(n[i]===n[i]){out[i]=n[i];out[i+1]=n[i+1];out[i+2]=n[i+2];}
   return out;
 }
@@ -864,6 +910,10 @@ function occTessellate(shape,defl,ang){
   g.userData.occGroups=T.groups; // triangle -> face BRep (clic-face en mode exact)
   return g;
 }
+// V0.95.10 : noyau multicœur → faces maillées en parallèle (plaque SIRAP-14-003 : 0,93 → 0,37 s à 8 fils).
+// Triangles identiques au bit près au maillage d'un seul fil (vérifié sur 4 pièces, 3 finesses :
+// tests/test_maillage_parallele.cjs) : la FAO, qui lit ce maillage, ne voit aucune différence.
+function occMeshParallele(){return typeof occtMtFils!=='undefined'&&occtMtFils>1;}
 const OCC_MESH_SPLIT_FACES=20000; // au-delà : maillage pièce par pièce (gros assemblages STEP)
 function occMeshShape(shape,defl,ang){
   // Maillage du noyau, mailleur libéré (il gardait tout son modèle de travail en mémoire).
@@ -896,12 +946,17 @@ function occMeshShape(shape,defl,ang){
       if(nf>OCC_MESH_SPLIT_FACES){visit(shape,false);split=parts.length>=2;}
     }
     if(split){
-      for(const p of parts){const m=new occt.BRepMesh_IncrementalMesh_2(p,defl,false,ang,false);try{m.delete();}catch(e){}}
+      for(const p of parts){const m=new occt.BRepMesh_IncrementalMesh_2(p,defl,false,ang,occMeshParallele());try{m.delete();}catch(e){}}
       return;
     }
   }finally{parts.forEach(p=>{try{p.delete();}catch(e){}});}
-  const m=new occt.BRepMesh_IncrementalMesh_2(shape,defl,false,ang,false);
+  const m=new occt.BRepMesh_IncrementalMesh_2(shape,defl,false,ang,occMeshParallele());
   try{m.delete();}catch(e){}
+}
+function occFacePlane(f){
+  let ad=null;
+  try{ad=new occt.BRepAdaptor_Surface_2(f,true);return ad.GetType()===occt.GeomAbs_SurfaceType.GeomAbs_Plane;}
+  catch(e){return false;}finally{try{ad&&ad.delete();}catch(e){}}
 }
 function occTriPos(shape,defl,ang,wantN){
   // BRep -> triangles bruts {pos:[x,y,z × 3 par triangle], groups:[{f,start,count}]} (V0.8.2 :
@@ -937,7 +992,11 @@ function occTriPos(shape,defl,ang,wantN){
           try{
             if(t.HasUVNodes()){
               const bf=new occt.BRepGProp_Face_2(f,false),nb=t.NbNodes();nn=new Float64Array(nb*3+3);
+              // V0.95.10 : face plane → normale constante, lue au premier nœud et recopiée (mêmes bits :
+              // la dérivée d'un plan ne dépend pas du point) ; 684 faces de la plaque SIRAP-14-003
+              const plan=occFacePlane(f);
               for(let k=1;k<=nb;k++){
+                if(plan&&k>1){nn[k*3]=nn[3];nn[k*3+1]=nn[4];nn[k*3+2]=nn[5];continue;}
                 const uv=t.UVNode(k);bf.Normal(uv.X(),uv.Y(),gP,gV);try{uv.delete();}catch(e){}
                 const x=gV.X(),y=gV.Y(),z=gV.Z(),l=Math.hypot(x,y,z);
                 if(l>1e-12){nn[k*3]=x/l;nn[k*3+1]=y/l;nn[k*3+2]=z/l;}else nn[k*3]=NaN;

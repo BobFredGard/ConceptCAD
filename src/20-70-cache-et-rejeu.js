@@ -220,7 +220,16 @@ function featSig(f){
   return s;
 }
 function occCkGet(key){
-  for(let i=occCk.length-1;i>=0;i--)if(occCk[i].key===key)return occCk[i].shape;
+  // V0.95.10 : un point de contrôle RELU remonte en fin de file (le plus frais). Avant, seule l'écriture le
+  // rafraîchissait : les étapes du début de la timeline, relues à chaque rejeu mais jamais réécrites, étaient
+  // les plus anciennes de la file et partaient les premières dès que quelques modifications avaient ajouté
+  // leurs variantes. Plaque SIRAP-14-003 (109 fonctions) : après 3 modifications, toute la pièce était
+  // recalculée depuis le début (14,6 s au lieu de 6,3 s pour la même modification).
+  for(let i=occCk.length-1;i>=0;i--)if(occCk[i].key===key){
+    const c=occCk[i];
+    if(i<occCk.length-1){occCk.splice(i,1);occCk.push(c);}
+    return c.shape;
+  }
   return null;
 }
 function occCkPut(key,mkShape){

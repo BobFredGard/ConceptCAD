@@ -1629,6 +1629,61 @@ function pickPlane(e){
   const hits=rayc.intersectObjects(keys.map(k=>originMeshes[k]),false);
   return hits.length?hits[0].object.userData.plane:null;
 }
+/* V0.96.0 : « pt strictement dans l'anneau » (dedans au pair/impair, à plus de 1 µm du bord) — même
+   réponse que pip + distance au bord, mais les bords d'un grand anneau sont rangés par bandes
+   horizontales : seuls ceux de la bande du point comptent (lettres d'un texte : anneaux de centaines
+   de points, imbrication en O(n²) qui prenait des secondes). */
+const SK_RING_IX=new WeakMap();
+function skRingIx(rg){
+  let ix=SK_RING_IX.get(rg);if(ix)return ix;
+  let y0=1e18,y1=-1e18;for(const q of rg){if(q[1]<y0)y0=q[1];if(q[1]>y1)y1=q[1];}
+  const n=rg.length,N=Math.max(1,Math.min(256,n>>2)),h=(y1-y0)/N||1,E=1e-6,B=[];for(let k=0;k<N;k++)B.push([]);
+  for(let i=0,j=n-1;i<n;j=i++){const a=Math.min(rg[i][1],rg[j][1])-E,b=Math.max(rg[i][1],rg[j][1])+E;
+    const k0=Math.max(0,Math.floor((a-y0)/h)),k1=Math.min(N-1,Math.floor((b-y0)/h));for(let k=k0;k<=k1;k++)B[k].push(i);}
+  ix={y0,y1,h,N,B};SK_RING_IX.set(rg,ix);return ix;
+}
+function skRingStrictIn(pt,rg){
+  const n=rg.length,px=pt[0],py=pt[1],E=1e-6;
+  const seg=(i,j)=>{const a=rg[j],b=rg[i];
+    if((px<a[0]-E&&px<b[0]-E)||(px>a[0]+E&&px>b[0]+E)||(py<a[1]-E&&py<b[1]-E)||(py>a[1]+E&&py>b[1]+E))return 1; // boîte du segment loin : pas sur le bord
+    const dx=b[0]-a[0],dy=b[1]-a[1],L2=dx*dx+dy*dy||1e-18;
+    let t=((px-a[0])*dx+(py-a[1])*dy)/L2;t=Math.max(0,Math.min(1,t));return Math.hypot(px-(a[0]+t*dx),py-(a[1]+t*dy));};
+  let ins=false;
+  if(n<48){
+    for(let i=0,j=n-1;i<n;j=i++){const xi=rg[i][0],yi=rg[i][1],xj=rg[j][0],yj=rg[j][1];
+      if(((yi>py)!==(yj>py))&&(px<(xj-xi)*(py-yi)/(yj-yi)+xi))ins=!ins;}
+    if(!ins)return false;
+    for(let i=0,j=n-1;i<n;j=i++)if(seg(i,j)<=E)return false;
+    return true;
+  }
+  const ix=skRingIx(rg);if(py<ix.y0-E||py>ix.y1+E)return false;
+  const L=ix.B[Math.max(0,Math.min(ix.N-1,Math.floor((py-ix.y0)/ix.h)))];
+  for(const i of L){const j=(i+n-1)%n,xi=rg[i][0],yi=rg[i][1],xj=rg[j][0],yj=rg[j][1];
+    if(((yi>py)!==(yj>py))&&(px<(xj-xi)*(py-yi)/(yj-yi)+xi))ins=!ins;}
+  if(!ins)return false;
+  for(const i of L)if(seg(i,(i+n-1)%n)<=E)return false;
+  return true;
+}
+function skRingDistIx(pt,rg){
+  // distance exacte de pt au bord d'un grand anneau : bandes voisines d'abord, arrêt dès que les suivantes
+  // sont forcément plus loin que le minimum trouvé (même valeur que le parcours complet)
+  const n=rg.length,px=pt[0],py=pt[1],ix=skRingIx(rg);
+  const k=Math.max(0,Math.min(ix.N-1,Math.floor((py-ix.y0)/ix.h)));
+  let m=1e18;
+  const seg=i=>{const a=rg[(i+n-1)%n],b=rg[i];
+    const gx=px<a[0]&&px<b[0]?Math.min(a[0],b[0])-px:(px>a[0]&&px>b[0]?px-Math.max(a[0],b[0]):0);if(gx>=m)return;
+    const gy=py<a[1]&&py<b[1]?Math.min(a[1],b[1])-py:(py>a[1]&&py>b[1]?py-Math.max(a[1],b[1]):0);if(gy>=m)return;
+    const dx=b[0]-a[0],dy=b[1]-a[1],L2=dx*dx+dy*dy||1e-18;
+    let t=((px-a[0])*dx+(py-a[1])*dy)/L2;t=Math.max(0,Math.min(1,t));const d=Math.hypot(px-(a[0]+t*dx),py-(a[1]+t*dy));if(d<m)m=d;};
+  const out=py<ix.y0?ix.y0-py:(py>ix.y1?py-ix.y1:0);
+  for(let r=0;r<ix.N;r++){
+    if(Math.max(0,(r-1)*ix.h)+out>m)break;
+    if(k-r>=0)ix.B[k-r].forEach(seg);
+    if(r&&k+r<ix.N)ix.B[k+r].forEach(seg);
+    if(k-r<0&&k+r>=ix.N)break;
+  }
+  return m;
+}
 function skLoopTrace(sk){ // traçage de faces déterministe (demi-arêtes, mur à gauche) + trous
   const P=sk.points||{};
   const TAU=Math.PI*2;
@@ -1755,20 +1810,25 @@ function skLoopTrace(sk){ // traçage de faces déterministe (demi-arêtes, mur 
     let t=((px-ax)*dx+(py-ay)*dy)/L2;t=Math.max(0,Math.min(1,t));
     return Math.hypot(px-(ax+t*dx),py-(ay+t*dy));
   }
-  function ringDist(pt,rg){
-    let m=1e18;
+  function ringDist(pt,rg,stop){
+    // V0.96.0 : segment dont la boîte est déjà plus loin que le minimum trouvé : sauté (même résultat) ;
+    // stop : on s'arrête dès qu'un segment est plus près (test « strictement dedans »)
+    let m=1e18;const px=pt[0],py=pt[1];
     for(let i=0;i<rg.length;i++){const a=rg[i],b=rg[(i+1)%rg.length];
-      const d=segDist(pt[0],pt[1],a[0],a[1],b[0],b[1]);if(d<m)m=d;}
+      const gx=px<a[0]&&px<b[0]?Math.min(a[0],b[0])-px:(px>a[0]&&px>b[0]?px-Math.max(a[0],b[0]):0);if(gx>=m)continue;
+      const gy=py<a[1]&&py<b[1]?Math.min(a[1],b[1])-py:(py>a[1]&&py>b[1]?py-Math.max(a[1],b[1]):0);if(gy>=m)continue;
+      const d=segDist(px,py,a[0],a[1],b[0],b[1]);if(d<m){m=d;if(stop!=null&&m<=stop)return m;}}
     return m;
   }
-  const strictInRing=(pt,rg)=>pipPt(pt,rg)&&ringDist(pt,rg)>1e-6;
+  const strictInRing=skRingStrictIn;
   const faces=[];
   rawFaces.forEach(steps=>{
     const ring=ringOf(steps);
     if(ring.length<3)return;
     const area=polyArea(ring);
     if(Math.abs(area)<1e-6)return; // éperon / dégénéré
-    faces.push({steps,ring,area,sample:faceSample(steps),parent:-1,depth:0,children:[]});
+    let bx0=1e18,by0=1e18,bx1=-1e18,by1=-1e18;for(const q of ring){if(q[0]<bx0)bx0=q[0];if(q[0]>bx1)bx1=q[0];if(q[1]<by0)by0=q[1];if(q[1]>by1)by1=q[1];}
+    faces.push({steps,ring,area,sample:faceSample(steps),parent:-1,depth:0,children:[],bb:[bx0,by0,bx1,by1]});
   });
   // imbrication STRICTE : un jumeau (même anneau) ne peut jamais être parent ; la frontière ne compte pas.
   faces.forEach((f,i)=>{
@@ -1776,9 +1836,14 @@ function skLoopTrace(sk){ // traçage de faces déterministe (demi-arêtes, mur 
     faces.forEach((g,j)=>{
       if(i===j)return;
       if(!(Math.abs(g.area)>Math.abs(f.area)*1.000000001+1e-12))return;
+      // V0.96.0 : boîte de f hors de celle de g → pas dedans (texte : des centaines d'anneaux)
+      if(f.bb[0]<g.bb[0]-1e-6||f.bb[1]<g.bb[1]-1e-6||f.bb[2]>g.bb[2]+1e-6||f.bb[3]>g.bb[3]+1e-6)return;
       let ok=f.ring.length>0;
       for(const v of f.ring){if(!strictInRing(v,g.ring)){ok=false;break;}}
-      if(ok&&Math.abs(g.area)<bestA){bestA=Math.abs(g.area);best=j;}
+      // V0.96.0 : à aire égale (un contour et sa jumelle, vue de dehors), la face de MATIÈRE (aire > 0) l'emporte
+      // — avant, l'ordre du traçage décidait : trou rattaché à la face infinie, perdu (« A », « B », « 8 » pleins)
+      if(ok){const ag=Math.abs(g.area),tie=Math.abs(ag-bestA)<=bestA*1e-7+1e-9; // jumelles : échantillonnées dans les deux sens, aires à 1e-9 près
+        if((ag<bestA&&!tie)||(tie&&g.area>0&&best>=0&&faces[best].area<0)){bestA=ag;best=j;}}
     });
     f.parent=best;
   });
@@ -1791,6 +1856,9 @@ function skLoopTrace(sk){ // traçage de faces déterministe (demi-arêtes, mur 
   const isHoleFace=f=>f.depth%2===1&&f.area<0;
   faces.forEach((f,i)=>{
     if(f.parent<0&&f.area<0)return; // face infinie
+    // V0.96.0 : face « vue de dehors » (aire < 0) d'un îlot à profondeur paire : jamais de la matière
+    // (lettres « contour » : le petit trou au centre d'un A en contour devenait plein)
+    if(f.depth%2===0&&f.area<0)return;
     if(f.depth%2===0){
       const holeIdx=f.children.filter(c=>faces[c].depth%2===1&&faces[c].area<0);
       const seen=new Set(),dedup=[];
