@@ -525,14 +525,30 @@
     }
     // échelle
     const sel=document.createElement('select');
+    const inList=MEP_SCALES.some(x=>Math.abs(x[0]-v.scale)<1e-6);
     MEP_SCALES.slice().sort((a,b)=>b[0]-a[0]).forEach(([s,lab])=>{ // de 5:1 à 1:10
       const o=document.createElement('option');
       o.value=s;o.textContent=lab;
       if(Math.abs(s-v.scale)<1e-6)o.selected=true;
       sel.appendChild(o);
     });
-    sel.onchange=()=>{mepEdit('échelle',()=>{v.scale=+sel.value;});};
-    row('Échelle',sel);
+    if(!inList){const o=document.createElement('option');o.value=v.scale;o.textContent=mepScaleText(v.scale);o.selected=true;sel.appendChild(o);}
+    {const o=document.createElement('option');o.value='autre';o.textContent='Autre…';sel.appendChild(o);}
+    const libre=document.createElement('input');
+    libre.className='mepScaleLibre';libre.style.width='5em';libre.value=mepScaleText(v.scale);
+    libre.title='Échelle de votre choix : 3:4, 1:6, 2:3, 1/7 ou 0,75';
+    libre.style.display=inList?'none':'';
+    const pose=s=>{mepEdit('échelle',()=>{v.scale=s;});mepSideShow();};
+    sel.onchange=()=>{
+      if(sel.value==='autre'){libre.style.display='';libre.focus();libre.select();return;}
+      pose(+sel.value);
+    };
+    libre.onchange=()=>{
+      const s=mepScaleParse(libre.value);
+      if(s==null){mepStatus('Échelle illisible : tapez par exemple 3:4, 1:6 ou 0,75.');libre.value=mepScaleText(v.scale);return;}
+      pose(s);
+    };
+    row('Échelle',sel).appendChild(libre);
     if(v.kind==='dxf'){
       const D=v.dxf||{},act=document.createElement('div');act.className='row';
       const bR=document.createElement('button');bR.textContent='Remplacer le DXF…';bR.title='Charger un autre DXF dans cette vue (cotes et position gardées)';bR.onclick=()=>mepDxfReplace(v);
