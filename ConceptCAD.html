@@ -383,7 +383,7 @@ input[type=range]{accent-color:var(--primary);width:100%}
  * peut changer sans rien casser. CACHE_VER (parcours FAO) reste indépendant.
  */
 
-const APP_VER='V0.95.1';
+const APP_VER='V0.95.2';
 try{console.log('[ConceptCAD] version '+APP_VER);}catch(e){}
 try{var mfSv=document.getElementById('mfSplashVer');if(mfSv)mfSv.textContent=APP_VER;}catch(e){} // écran de démarrage
 
@@ -48890,7 +48890,21 @@ function faoSeqSafe(job,seule){
     ctx=faoLinkCtx(job,opsOn);
     if(ctx)ctx.lift=faoLiftMin(job);
   }
+  let keyPrev=null;
   opsOn.forEach(function(op){
+    // V0.94.9 : CHANGEMENT D'OUTIL (même clé que faoJobMoves) — la machine part au point de
+    // changement puis revient : l'approche va droit au-dessus de l'entrée, jamais d'abord à
+    // l'XY où l'outil précédent a fini (G0 inutile après le M6). L'outil précédent remonte
+    // sur place à son dégagement : `tail`, dessiné par l'aperçu et le visionneuse (le post
+    // écrit déjà son G0 Z avant le changement).
+    const tk=(function(){const t=faoToolById(job,op&&op.toolId);return t?t.id+'|'+t.d:'';})();
+    if(keyPrev!==null&&tk!==keyPrev&&prev){
+      const last=res.length?res[res.length-1]:null;
+      const zc=last&&last.op?faoClearAbs(last.op,job):NaN;
+      if(last&&!last.absent&&isFinite(zc)&&zc>+prev.z+1e-9)last.tail=[{r:1,x:+prev.x,y:+prev.y,z:zc}];
+      prev=null;
+    }
+    keyPrev=tk;
     let mv=null;
     if(seule){
       mv=faoOpMovesTry(op,job);
@@ -50154,7 +50168,7 @@ function faoRefreshPreview(mode){
       const op=b.op;
       if(op&&op.hidden===true)return; // traces masquées dans la vue (op.hidden) — le G-code, lui, les garde
       if(b.absent){ faoPrevMissing++; return; } // pas de parcours en memoire : on n'invente rien
-      const mv=b.moves; total+=mv.length;
+      const mv=b.tail?b.moves.concat(b.tail):b.moves; total+=b.moves.length; // tail : remontée avant un changement d'outil
       mk(mv,faoSegClipper(op,job));
     });
     faoAdd3D(faoPrevGroup);
@@ -50471,7 +50485,7 @@ function faoViewerBuild(setup){
     const tp=faoToolTipProfile(tool); // pointe de foret (mm) — null = fraise
     const sf=tool?faoOpCutting(op,setup):null; // avance de CETTE opération
     const f=(sf&&isFinite(+sf.f)&&+sf.f>0)?+sf.f:1000;
-    const mv=S.moves;
+    const mv=S.tail?S.moves.concat(S.tail):S.moves; // tail : remontée avant un changement d'outil
     const ext=[]; let pv=null; // arcs développés (tracé lisse)
     mv.forEach(function(m){
       let dev=false;

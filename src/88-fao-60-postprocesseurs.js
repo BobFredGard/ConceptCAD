@@ -617,7 +617,7 @@ function faoRefreshPreview(mode){
       const op=b.op;
       if(op&&op.hidden===true)return; // traces masquées dans la vue (op.hidden) — le G-code, lui, les garde
       if(b.absent){ faoPrevMissing++; return; } // pas de parcours en memoire : on n'invente rien
-      const mv=b.moves; total+=mv.length;
+      const mv=b.tail?b.moves.concat(b.tail):b.moves; total+=b.moves.length; // tail : remontée avant un changement d'outil
       mk(mv,faoSegClipper(op,job));
     });
     faoAdd3D(faoPrevGroup);

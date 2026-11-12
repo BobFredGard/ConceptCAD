@@ -34,9 +34,18 @@ const A=(c,m)=>{if(!c){ko++;console.log('  ✗ '+m);}else console.log('  ✓ '+m
     const zs=function(J){ const S=faoSeqSafe(J), appr=[], inner=[]; let last=null;
       S.forEach(function(b){ const T=trans(b.moves,last);
         T.forEach(function(t,i){ (i===0&&last?appr:inner).push(t.z); });
-        if(b.moves.length)last=b.moves[b.moves.length-1]; });
+        if(b.moves.length)last=b.moves[b.moves.length-1];
+        if(b.tail&&b.tail.length)last=b.tail[b.tail.length-1]; });
       return {appr:appr,inner:inner}; };
     let Z=zs(mk(100,5,'plan'));
+    // V0.94.9 : changement d'outil (b → c, T1 → T2) : l'approche part droit au-dessus de
+    // l'entrée de c, jamais d'abord à l'XY où b a fini ; b remonte sur place (tail)
+    { const J=mk(100,5,'plan'), S=faoSeqSafe(J), b=S[1], c=S[2], fb=b.moves[b.moves.length-1], c0=c.moves[0], c1=c.moves[1];
+      A(b.tail&&b.tail.length===1&&Math.abs(b.tail[0].x-fb.x)<1e-9&&Math.abs(b.tail[0].y-fb.y)<1e-9&&b.tail[0].z>=105-1e-6,
+        'changement d’outil : l’outil précédent remonte sur place au dégagement');
+      A(c0&&c0.r&&c0.z>=105-1e-6&&Math.hypot(c0.x-fb.x,c0.y-fb.y)>1e-6&&Math.abs(c0.x-c1.x)<1e-9&&Math.abs(c0.y-c1.y)<1e-9,
+        'changement d’outil : 1er rapide directement au-dessus de l’entrée (pas de passage à l’XY de fin de l’outil précédent)');
+      A(!S[0].tail,'même outil (a → b) : pas de remontée ajoutée'); }
     A(Z.appr.every(function(z){return z>=105-1e-6;}),'Dégagement 100, Retrait 5 : approche de chaque opération à 105');
     A(Z.inner.length>0&&Z.inner.every(function(z){return Math.abs(z-10)<1e-6;}),'Dégagement 100, Retrait 5 : entre passes à 10, jamais à 105 ('+Z.inner.length+' liaisons, maxi '+Math.max.apply(null,Z.inner)+')');
     Z=zs(mk(10,100,'plan'));

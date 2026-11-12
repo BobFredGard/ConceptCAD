@@ -111,7 +111,7 @@ function faoViewerBuild(setup){
     const tp=faoToolTipProfile(tool); // pointe de foret (mm) — null = fraise
     const sf=tool?faoOpCutting(op,setup):null; // avance de CETTE opération
     const f=(sf&&isFinite(+sf.f)&&+sf.f>0)?+sf.f:1000;
-    const mv=S.moves;
+    const mv=S.tail?S.moves.concat(S.tail):S.moves; // tail : remontée avant un changement d'outil
     const ext=[]; let pv=null; // arcs développés (tracé lisse)
     mv.forEach(function(m){
       let dev=false;
