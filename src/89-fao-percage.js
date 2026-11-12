@@ -590,23 +590,23 @@ function faoDrillSections(setup,op,d){
     'Pointage : G81/CYCLE81 à faible profondeur · Simple : G81 (G82 si temporisation) · Débourrage : G83/CYCLE83 remontée complète · Brise-copeaux : petit recul à chaque passe'));
   if(op.cycle==='peck'||op.cycle==='chip'){
     rc.appendChild(faoLab('Q'));
-    rc.appendChild(faoNum((+op.peck)||Math.max(1,+(((+t.d)||6)*1).toFixed(1)),function(v){op.peck=Math.max(0.1,v);},48,0.5,'Profondeur de chaque passe (mm)'));
+    rc.appendChild(faoNumFx(op,'peck',(+op.peck)||Math.max(1,+(((+t.d)||6)*1).toFixed(1)),function(v){op.peck=Math.max(0.1,v);},48,0.5,'Profondeur de chaque passe (mm)'));
   }
   rc.appendChild(faoLab('Tempo'));
-  rc.appendChild(faoNum((+op.dwell)||0,function(v){op.dwell=Math.max(0,v);},44,0.1,'Temporisation au fond (s) — 0 = aucune'));
+  rc.appendChild(faoNumFx(op,'dwell',(+op.dwell)||0,function(v){op.dwell=Math.max(0,v);},44,0.1,'Temporisation au fond (s) — 0 = aucune'));
   d.appendChild(rc);
   const rd=faoRow();
   if(op.cycle==='helix'){
     const tH=faoToolById(setup,op.toolId),dT=(+tH.d>0)?+tH.d:6;
     rd.appendChild(faoLab('Pas d’hélice'));
-    rd.appendChild(faoNum((+op.helixP)||0,function(v){op.helixP=Math.max(0,v);},48,0.1,'Descente par tour (mm) — 0 = automatique (rampe ≈ 2,5°, ≤ 25 % du Ø fraise)'));
+    rd.appendChild(faoNumFx(op,'helixP',(+op.helixP)||0,function(v){op.helixP=Math.max(0,v);},48,0.1,'Descente par tour (mm) — 0 = automatique (rampe ≈ 2,5°, ≤ 25 % du Ø fraise)'));
     const h0=(op.holes||[])[0];
     const nt=document.createElement('span');nt.className='fao-meta';
     if(h0){const Rr=(h0.d-dT)/2;nt.textContent=Rr>0.02?('fraise Ø'+dT+' dans Ø'+(+h0.d.toFixed(2))+' · rayon de trajectoire '+Rr.toFixed(2)+(Rr>dT/2*0.9?' · plusieurs anneaux':'')+' · pas '+faoHelixPitch(op,Rr,dT).toFixed(2)):('⚠ fraise Ø'+dT+' trop grosse pour Ø'+(+h0.d.toFixed(2)));}
     rd.appendChild(nt);
   }else if(op.cycle==='tap'){
     rd.appendChild(faoLab('Longueur filetée'));
-    rd.appendChild(faoNum((+op.tapLen)||0,function(v){op.tapLen=Math.max(0,v);},52,0.5,'Longueur taraudée depuis le dessus (mm) — 0 = longueur de la fonction Perçage, sinon profondeur du trou − 2 pas'));
+    rd.appendChild(faoNumFx(op,'tapLen',(+op.tapLen)||0,function(v){op.tapLen=Math.max(0,v);},52,0.5,'Longueur taraudée depuis le dessus (mm) — 0 = longueur de la fonction Perçage, sinon profondeur du trou − 2 pas'));
     const th0=(op.holes||[]).find(function(h){return h.thread;});
     const tt=faoToolById(setup,op.toolId);
     const nt=document.createElement('span');nt.className='fao-meta';
@@ -616,14 +616,14 @@ function faoDrillSections(setup,op,d){
       const w=document.createElement('div');w.className='fao-note';w.textContent='⚠ Le taraud T'+tt.num+' ('+holeThreadLabel({size:tt.size,p:tt.p,lh:tt.lh})+') ne correspond pas au filet '+holeThreadLabel(th0.thread)+'.';d.appendChild(w);}
   }else if(op.cycle==='spot'){
     rd.appendChild(faoLab('Ø pointage'));
-    rd.appendChild(faoNum((+op.chD)||0,function(v){op.chD=Math.max(0,v);},52,0.1,'Ø du chanfrein laissé par le foret à pointer / à centrer (0 = chanfrein du modèle, sinon Ø du trou + 0,4)'));
+    rd.appendChild(faoNumFx(op,'chD',(+op.chD)||0,function(v){op.chD=Math.max(0,v);},52,0.1,'Ø du chanfrein laissé par le foret à pointer / à centrer (0 = chanfrein du modèle, sinon Ø du trou + 0,4)'));
   }else{
     rd.appendChild(faoLab('Profondeur'));
     rd.appendChild(faoSel([['full','Plein Ø au fond du trou'],['tip','Pointe au fond'],['manual','Cote manuelle']],op.depthMode||'full',function(v){op.depthMode=v;},
       'Plein Ø : la pointe descend en plus de sa longueur (angle du foret) · Pointe au fond : la pointe s’arrête au fond · Cote manuelle : Z de pointe saisi'));
     if((op.depthMode||'full')==='manual'){rd.appendChild(faoLab('Z')); rd.appendChild(faoNum(faoDsp(op,op.zbot,2),function(v){op.zbot=faoInp(op,v,2);},52,null,'Z de la pointe (mm)'));}
     rd.appendChild(faoLab('Débouchage'));
-    rd.appendChild(faoNum(isFinite(+op.brk)?+op.brk:1,function(v){op.brk=Math.max(0,v);},44,0.5,'Trous débouchants : dépassement sous la pièce (mm)'));
+    rd.appendChild(faoNumFx(op,'brk',isFinite(+op.brk)?+op.brk:1,function(v){op.brk=Math.max(0,v);},44,0.5,'Trous débouchants : dépassement sous la pièce (mm)'));
   }
   rd.appendChild(faoLab('Ordre'));
   rd.appendChild(faoSel([['auto','Plus court'],['zigzag','Zigzag']],op.order||'auto',function(v){op.order=v;},'Ordre de passage des trous'));

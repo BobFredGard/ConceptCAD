@@ -247,6 +247,8 @@ function faoToolsElement(setup){
     const s=document.createElement('span');s.textContent=lab;p.appendChild(s);
     const i=document.createElement('input');i.type='text';i.inputMode='decimal';i.className='fao-in fao-num';i.value=String(+(+val).toFixed(4));
     if(step)i.step=step;
+    // V0.95.0 : valeur de l'outil (set('clé', v) sur t[clé], affichée telle quelle) → formule gardée (ƒx)
+    try{const m=/set\('(\w+)',/.exec(String(fn));if(m&&typeof parFx==='function'&&(t[m[1]]==null||Math.abs(+t[m[1]]-(+val))<1e-9))parFx(i,t,m[1],{keep:1});}catch(e){}
     i.onchange=function(){const v=parseFloat(String(i.value).replace(',','.'));if(isFinite(v)&&v>0){fn(v);faoChanged();rerender();}};
     parNumKeys(i);
     p.appendChild(i);
@@ -388,7 +390,9 @@ function faoOpToolSection(setup,op){
     const r=faoRow();
     r.appendChild(faoLab(F[2]));
     const isOp=C.src[F[1]]==='op';
-    const inp=faoNum(C[F[1]],function(v){
+    // V0.95.0 : formule gardée sur op.cut (hors clé de cache : les vitesses ne changent aucun tracé)
+    if(!op.cut||typeof op.cut!=='object')op.cut={};
+    const inp=faoNumFx(op.cut,F[0],C[F[1]],function(v){
       if(!(v>0))return;
       if(!op.cut||typeof op.cut!=='object')op.cut={};
       op.cut[F[0]]=Math.round(v);

@@ -261,12 +261,12 @@ function renderHoleNormProps(p,f){
   const note=function(t){const n=document.createElement('div');n.className='pnl-note';n.textContent=t;p.appendChild(n);return n;};
   const h=document.createElement('div');h.className='pnl-h';h.textContent='Perçage normal à une face';p.appendChild(h);
   note('Chaque trou part perpendiculairement à la face et vise le centre du fond (cercle avant le cône) d’un trou borgne.');
-  const num=function(val,fn,min){const i=document.createElement('input');i.type='text';i.inputMode='decimal';i.style.width='80px';
-    i.value=String(+(+val).toFixed(3)).replace('.',',');
+  const num=function(val,fn,min,h,k){const i=document.createElement('input');i.type='text';i.inputMode='decimal';i.style.width='80px';
+    i.value=String(+(+val).toFixed(3)).replace('.',',');if(h&&k&&typeof parFx==='function')parFx(i,h,k,{keep:1});
     const c=function(){const v=parseFloat(String(i.value).replace(',','.'));if(isFinite(v)&&v>=min&&Math.abs(v-(+val))>1e-9){docPushUndo('perçage normal');fn(v);go();}};
     i.addEventListener('change',c);i.addEventListener('keydown',function(e){if(e.key==='Enter'){c();i.blur();}e.stopPropagation();});
     i.addEventListener('click',function(e){e.stopPropagation();});return i;};
-  row('Ø du perçage',num(+f.d||1.5,function(v){f.d=v;},0.2));
+  row('Ø du perçage',num(+f.d||1.5,function(v){f.d=v;},0.2,f,'d'));
   // faces
   const fb=document.createElement('button');fb.textContent=hnPick&&hnPick.fid===f.id?'✓ Terminer le choix':'Choisir les faces…';
   fb.title='Cliquez des faces dans la vue : un clic ajoute la face, un autre clic la retire';
@@ -285,7 +285,7 @@ function renderHoleNormProps(p,f){
   s.value=hnGrpKey(gCur);
   s.onchange=function(){docPushUndo('perçage normal : trous visés');const g=gs.find(function(x){return hnGrpKey(x.g)===s.value;});pl.grp=g?g.g:null;go();};
   row('Trous visés',s);
-  row('Distance maxi',num(+pl.maxD||HN_MAXD,function(v){pl.maxD=v;},0.5));
+  row('Distance maxi',num(+pl.maxD||HN_MAXD,function(v){pl.maxD=v;},0.5,pl,'maxD'));
   // bilan
   const nOn=S.all.filter(function(t){return t.on;}).length,nOff=S.all.filter(function(t){return t.off;}).length;
   const nSk=S.all.filter(function(t){return !t.on&&!t.off;}).length;

@@ -97,7 +97,7 @@ function bsSetCopy(f,on){
 function bscaleProps(p,f){
   const mk=(tag,cls,txt)=>{const d=document.createElement(tag);if(cls)d.className=cls;if(txt!=null)d.textContent=txt;return d;};
   const Row=(lab,ctl)=>{const r=mk('div','pnl-row');r.appendChild(mk('label',null,lab));if(ctl)r.appendChild(ctl);p.appendChild(r);return r;};
-  const num=(v,fn,w)=>{const i=document.createElement('input');i.type='text';i.inputMode='decimal';i.style.width=(w||70)+'px';i.value=bmFmt(v,6);
+  const num=(v,fn,w,h,k)=>{const i=document.createElement('input');i.type='text';i.inputMode='decimal';i.style.width=(w||70)+'px';i.value=bmFmt(v,6);if(h&&k&&typeof parFx==='function')parFx(i,h,k,{keep:1});
     const go=()=>{const x=parseFloat(String(i.value).replace(',','.'));if(!(x>0)||!isFinite(x)){i.value=bmFmt(v,6);try{faceEl.textContent='Échelle : le facteur doit être strictement positif.';}catch(e){}return;}if(x!==+v)fn(x);};
     i.addEventListener('change',go);i.addEventListener('keydown',e=>{if(e.key==='Enter')go();});return i;};
   const btn=(txt,title,fn,cls)=>{const b=mk('button',cls||'mini',txt);if(title)b.title=title;b.onclick=fn;return b;};
@@ -122,12 +122,12 @@ function bscaleProps(p,f){
   });
   Row('Type',ts);
   if(f.uni!==false){
-    Row('Facteur',num(f.s,x=>set('facteur d’échelle',()=>{f.s=x;})));
+    Row('Facteur',num(f.s,x=>set('facteur d’échelle',()=>{f.s=x;}),0,f,'s'));
     const b=mk('div','pnl-btns');
     BS_UNITS.forEach(([t,k])=>b.appendChild(btn(t,null,()=>set('facteur d’échelle',()=>{f.s=+(k===2||k===0.5?(+f.s||1)*k:k).toPrecision(12);}))));
     p.appendChild(b);
   }else{
-    [['X','sx'],['Y','sy'],['Z','sz']].forEach(([lab,key])=>Row('Facteur '+lab,num(f[key],x=>set('facteur '+lab,()=>{f[key]=x;}))));
+    [['X','sx'],['Y','sy'],['Z','sz']].forEach(([lab,key])=>Row('Facteur '+lab,num(f[key],x=>set('facteur '+lab,()=>{f[key]=x;}),0,f,key)));
     p.appendChild(mk('div','pnl-note','Non uniforme : les cylindres deviennent elliptiques (surfaces B-spline).'));
   }
   // centre

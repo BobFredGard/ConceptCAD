@@ -8,7 +8,7 @@ sont sorties le 2026-09-30j.
 Code dans `src/` · livrable `fusion_mvp.html` (généré par `build.js`) · architecture et
 garde-fous en tête de `src/00-entete-et-outils.js`.
 
-**665 versions**, de `2026-09-28b` à `V0.94.8` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
+**666 versions**, de `2026-09-28b` à `V0.95.0` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
 comme dans le fichier d'origine.
 
 ---
@@ -7494,3 +7494,13 @@ Barquette ne perd plus son solide à la 107e modification, et sa mémoire ne mon
 - **Cause** : à l'ouverture du PLAN, les vues automatiques (`mepAutoViews`) ne se posaient que si le composant actif avait des corps à lui. Un assemblage dont toutes les pièces sont dans ses composants restait sur une planche vide.
 - **Correctif** (`src/98-mep-95-export-init`) : planche vide d'un composant qui a des instances (`asmPlanOn`) → une seule vue de face « 🧩 Assemblage » (tous les composants), plus de dessus ni de côté. Une pièce seule garde ses trois vues ; une planche déjà remplie n'est pas touchée. L'animation de mise à jour du plan en tient compte.
 - **Test** : `tests/test_composants_plan.cjs` (6b) : un assemblage sans corps propres reçoit une seule vue de face « Assemblage » qui voit ses trois corps. Parcours FAO et CACHE_VER inchangés.
+
+## V0.95.0 - Paramètres et formules gardés dans tous les champs : CAO, FAO et plan
+
+- **Demande** : Fred, 12/11 : « CAO : repère → il faut pouvoir garder les paramètres et leurs opérations », puis « tous les champs peuvent recevoir des paramètres et des formules qui sont gardés tels quels dans les champs ».
+- **Cause** : seules les fonctions 3D et quelques commandes liaient leurs champs aux paramètres. Ailleurs (Déplacer un corps, Échelle, Scinder, Filetage, Perçage normal, Clavette, FAO, mise en plan), le filet global calculait la formule puis l'oubliait : la valeur ne suivait plus les paramètres. Dans les panneaux de création (répétition, repère), le résultat (« 4,51 ») remplaçait la formule à l'écran ; la fiche d'un repère validé ne montrait pas ses décalages.
+- **Correctif 1** (`src/51-parametres`) : la formule reprend sa place dans le champ une fois la valeur appliquée (`parFx`, partout) ; les gestionnaires du champ reçoivent toujours la valeur, jamais le texte. Nouveau branchement universel `parFxBind(champ, porteur, clé)`, traité par le filet global avant les gestionnaires du champ. `parHolders` trouve aussi les formules rangées plus bas dans une fonction (étapes, placement), dans la FAO (posages, opérations, zones, hauteurs, bridage, brut manuel, outils, porte-outils, vitesses) et dans la mise en plan ; un changement de paramètre y recalcule la valeur, périme les parcours concernés et redessine la feuille.
+- **Correctif 2** : FAO (`faoNumFx`, `src/88-fao-80-interface`, `src/89-fao-*`) : 60 champs liés ; les champs affichés dans un autre repère que celui où ils sont rangés (coins X/Y des zones, Z des perçages) gardent un résultat figé. CAO : Déplacer un corps (distance, angle), Échelle, Scinder (création et édition), Perçage normal, Filetage, Clavette (↺ retire la formule). Plan : format de feuille, cadre, tableau des révisions, tolérances, décalage du texte des cotes, perspective, textes (largeur, angle, taille du filigrane).
+- **Correctif 3** (`src/79-construction-interface`) : la fiche d'un repère, plan, axe ou point validé affiche chaque valeur avec sa formule (« Décalage X : pas_SM_chaud*2 → 451 mm »).
+- **Clés de cache FAO** (`src/88-fao-50-caches-dispatch`) : formules et noms ƒx exclus (`parSansFx`) ; une formule qui donne la même valeur ne périme aucun parcours. Parcours FAO et CACHE_VER inchangés.
+- **Test** : `tests/browser/formules-champs.spec.cjs` (répétition et repère avec un paramètre local et un paramètre dérivé ; FAO : formule dans le champ, la valeur, le fichier, recalculée ; branchement universel).

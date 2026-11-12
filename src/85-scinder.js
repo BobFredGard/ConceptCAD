@@ -148,6 +148,7 @@ function enterSplitMode(editF){
     splitMode.body=editing.body;
     splitMode.pl=JSON.parse(JSON.stringify(editing.pl||{src:'XY'}));
     splitMode.off=+editing.off||0;splitMode.flip=!!editing.flip;
+    try{parFxFrom(editing,splitMode,['off']);}catch(e){} // formule du décalage reprise (ƒx)
     splitMode.faces=(editing.faces||[]).map(r=>JSON.parse(JSON.stringify(r)));
     splitMode.faces.forEach(r=>{if(!r._bid)r._bid=editing.body;});
     occSkipFeat=editing.id;
@@ -215,9 +216,10 @@ function splitPlaneFrom(v,cur){
   if(/^cg:/.test(v)){const id=v.slice(3),c=(doc.cgeo||[]).find(x=>x&&x.id===id);return{src:'cg',cg:id,o:c&&c.fr?c.fr.o.slice():null,n:c&&c.fr?c.fr.z.slice():null};}
   return{src:v};
 }
-function splitNumIn(val,fn){
+function splitNumIn(val,fn,h,k){
   const i=document.createElement('input');i.type='text';i.inputMode='decimal';
   i.value=String(val).replace('.',',');
+  if(h&&k&&typeof parFx==='function')parFx(i,h,k,{keep:1});
   i.onchange=()=>{const v=parseFloat(String(i.value).replace(',','.').replace(/\s/g,''));if(!isFinite(v)){i.value=String(val).replace('.',',');return;}fn(v);};
   return i;
 }
@@ -274,7 +276,7 @@ function renderSplitPanel(){
   if(S.pick==='plane')bp.className='primary';
   bp.onclick=()=>{S.pick=S.pick==='plane'?null:'plane';renderSplitPanel();splitHelp();};
   pk.appendChild(bp);p.appendChild(pk);
-  row('Décalage (mm)',splitNumIn(S.off,v=>{S.off=v;splitPaint();}));
+  row('Décalage (mm)',splitNumIn(S.off,v=>{S.off=v;splitPaint();},S,'off'));
   const fl=document.createElement('input');fl.type='checkbox';fl.checked=!!S.flip;fl.onchange=()=>{S.flip=fl.checked;splitPaint();};
   row('Inverser',fl);
   if(S.mode==='body')note('Le côté vers lequel pointe la flèche bleue part dans un corps neuf ; l\'autre reste dans '+splitBodyName(S.body)+'.');
@@ -296,7 +298,7 @@ function splitApply(){
     if(f){
       docPushUndo('édition de « '+f.name+' »');
       const wasBody=f.mode==='body';
-      f.mode=S.mode;f.pl=pl;f.off=+S.off||0;f.flip=!!S.flip;
+      f.mode=S.mode;f.pl=pl;f.off=+S.off||0;f.flip=!!S.flip;try{parFxCopy(S,f,['off']);}catch(e){}
       if(S.mode==='face'){f.faces=S.faces.map(clean);f.body=S.body||f.body;}
       else{delete f.faces;f.body=S.body;}
       if(S.mode==='body'&&!wasBody&&!f.newBody)f.newBody=splitNewBodyFor(f.body);
@@ -308,7 +310,7 @@ function splitApply(){
     if(f)faceEl.textContent='Scission mise à jour : '+f.name+'.';
     return;
   }
-  const nf={id:uid('sp'),type:'xsplit',name:'',mode:S.mode,body:S.body,pl,off:+S.off||0,flip:!!S.flip,visible:true};
+  const nf={id:uid('sp'),type:'xsplit',name:'',mode:S.mode,body:S.body,pl,off:+S.off||0,flip:!!S.flip,visible:true};try{parFxCopy(S,nf,['off']);}catch(e){}
   if(S.mode==='face')nf.faces=S.faces.map(clean);
   else nf.newBody=splitNewBodyFor(S.body);
   nf.name=splitName(nf);
@@ -352,7 +354,7 @@ function splitProps(p,f){
   sp.value=splitPlaneValue(f.pl);
   sp.onchange=()=>{const pl=splitPlaneFrom(sp.value,f.pl);if(pl)set('plan de « '+f.name+' »',()=>{f.pl=pl;});};
   pRow('Plan',sp);
-  pRow('Décalage (mm)',splitNumIn(+f.off||0,v=>{if(v!==(+f.off||0))set('décalage de « '+f.name+' »',()=>{f.off=v;});}));
+  pRow('Décalage (mm)',splitNumIn(+f.off||0,v=>{if(v!==(+f.off||0))set('décalage de « '+f.name+' »',()=>{f.off=v;});},f,'off'));
   const fl=document.createElement('input');fl.type='checkbox';fl.checked=!!f.flip;
   fl.onchange=()=>set('inversion de « '+f.name+' »',()=>{f.flip=fl.checked;});
   pRow('Inverser',fl);

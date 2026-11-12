@@ -412,7 +412,7 @@ function faoFaceListsFiche(d,setup,op){
   r.appendChild(lb);
   if(faoFaceList(op,'protect').length){
     r.appendChild(faoLab('Marge'));
-    r.appendChild(faoNum(faoProtectM(op),function(v){op.protectM=Math.max(0,v);},44,0.1,'Distance minimale entre l’outil et les faces intouchables (mm).'));
+    r.appendChild(faoNumFx(op,'protectM',faoProtectM(op),function(v){op.protectM=Math.max(0,v);},44,0.1,'Distance minimale entre l’outil et les faces intouchables (mm).'));
     const cf=document.createElement('input');cf.type='checkbox';cf.checked=!!op.protectFront;
     cf.onchange=function(){faoSnapshot('interdire devant la face');if(cf.checked)op.protectFront=true;else delete op.protectFront;faoChanged();};
     const lf=document.createElement('label');lf.className='fao-check';

@@ -355,8 +355,8 @@ function renderThreadProps(p,f){
     opts.forEach(function(o){if(o.g){grp=document.createElement('optgroup');grp.label=o.g;s.appendChild(grp);return;}
       const op=document.createElement('option');op.value=o[0];op.textContent=o[1];grp.appendChild(op);});
     s.value=String(val);s.onchange=function(){docPushUndo('filetage');fn(s.value);go();};return s;};
-  const num=function(val,fn,min){const i=document.createElement('input');i.type='text';i.inputMode='decimal';
-    i.value=String(+(+val).toFixed(3)).replace('.',',');
+  const num=function(val,fn,min,h,k){const i=document.createElement('input');i.type='text';i.inputMode='decimal';
+    i.value=String(+(+val).toFixed(3)).replace('.',',');if(h&&k&&typeof parFx==='function')parFx(i,h,k,{keep:1});
     const c=function(){const v=parseFloat(String(i.value).replace(',','.'));if(isFinite(v)&&v>=min){docPushUndo('filetage');fn(v);go();}};
     i.addEventListener('change',c);i.addEventListener('keydown',function(e){if(e.key==='Enter'){c();i.blur();}e.stopPropagation();});
     i.addEventListener('click',function(e){e.stopPropagation();});return i;};
@@ -376,13 +376,13 @@ function renderThreadProps(p,f){
   pRow('Taille',sel(opts,cur,function(v){const q=v.split('|');f.size=q[0];f.p=+q[1];if(!threadModelable(f))f.model=false;}));
   pRow('Sens du filet',sel([['rh','À droite'],['lh','À gauche (LH)']],f.lh?'lh':'rh',function(v){f.lh=(v==='lh');}));
   pRow('Longueur filetée',sel([['full','Toute la face'],['len','Longueur']],f.lenMode==='len'?'len':'full',function(v){f.lenMode=v;}));
-  if(f.lenMode==='len')pRow('Longueur (mm)',num(f.len||10,function(v){f.len=v;},0.1));
+  if(f.lenMode==='len')pRow('Longueur (mm)',num(f.len||10,function(v){f.len=v;},0.1,f,'len'));
   if(f._thLen)pNote('Longueur filetée effective : '+fx(f._thLen)+' mm');
   pRow('Départ',sel([['0','Bout libre (auto)'],['1','Autre bout']],f.flip?'1':'0',function(v){f.flip=(v==='1');}));
   if(threadModelable(f)){
     pRow('Filet',sel([['cosmetic','Cosmétique (spirale dessinée, axe lisse)'],['model','Modélisé — profil ISO dans le corps']],f.model?'model':'cosmetic',function(v){f.model=(v==='model');}));
     if(f.model){
-      pRow('Jeu (Ø mm, impression 3D)',num(f.clear||0,function(v){f.clear=v;},0));
+      pRow('Jeu (Ø mm, impression 3D)',num(f.clear||0,function(v){f.clear=v;},0,f,'clear'));
       const th=threadDims(f.size,f.p,f.clear,f.cyl&&f.cyl.r);
       if(th)pNote((threadInfo(f.size).fam==='M'?'ISO 68-1 / ISO 965-1':'ASME B1.1 (profil 60°)')+' : Ø majeur '+fx(2*th.rC+0.02)+' (crête) / Ø mineur '+fx(2*th.rR)+' (racine), pas '+fx(th.P)+' mm. Noyau exact requis.');
     }

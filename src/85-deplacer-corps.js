@@ -249,7 +249,7 @@ function bmMarks(){
 function bmoveProps(p,f){
   const mk=(tag,cls,txt)=>{const d=document.createElement(tag);if(cls)d.className=cls;if(txt!=null)d.textContent=txt;return d;};
   const Row=(lab,ctl)=>{const r=mk('div','pnl-row');r.appendChild(mk('label',null,lab));if(ctl)r.appendChild(ctl);p.appendChild(r);return r;};
-  const num=(v,fn,w)=>{const i=document.createElement('input');i.type='text';i.inputMode='decimal';i.style.width=(w||58)+'px';i.value=bmFmt(v);
+  const num=(v,fn,w,h,k)=>{const i=document.createElement('input');i.type='text';i.inputMode='decimal';i.style.width=(w||58)+'px';i.value=bmFmt(v);if(h&&k&&typeof parFx==='function')parFx(i,h,k,{keep:1});
     const go=()=>{const x=parseFloat(String(i.value).replace(',','.'));if(isFinite(x)&&x!==+v)fn(x);};i.addEventListener('change',go);i.addEventListener('keydown',e=>{if(e.key==='Enter')go();});return i;};
   const btn=(txt,title,fn,cls)=>{const b=mk('button',cls||'mini',txt);if(title)b.title=title;b.onclick=fn;return b;};
   const set=(label,fn)=>bmChange(f,label,fn);
@@ -272,12 +272,12 @@ function bmoveProps(p,f){
     if(s.k==='t')['X','Y','Z'].forEach((k,j)=>Row(k+' (mm)',num(s.v[j],x=>set('translation',()=>{s.v=s.v.slice();s.v[j]=x;}))));
     else if(s.k==='d'){
       const w=mk('span');w.style.cssText='display:flex;gap:4px;align-items:center';
-      w.appendChild(num(s.dist,x=>set('distance',()=>{s.dist=x;})));
+      w.appendChild(num(s.dist,x=>set('distance',()=>{s.dist=x;}),0,s,'dist'));
       w.appendChild(btn('⇄','Inverser le sens',()=>set('sens',()=>{s.dist=-(+s.dist||0);})));
       Row('Distance (mm)',w);
     }else if(s.k==='r'){
       const w=mk('span');w.style.cssText='display:flex;gap:4px;align-items:center';
-      w.appendChild(num(s.deg,x=>set('angle',()=>{s.deg=x;}),50));
+      w.appendChild(num(s.deg,x=>set('angle',()=>{s.deg=x;}),50,s,'deg'));
       // ajouter ±90° / 180°, ramené dans ]−180 ; 180]
       const turn=a=>{let v=(((+s.deg||0)+a)%360+540)%360-180;if(v===-180)v=180;return +v.toFixed(6);};
       [-90,90,180].forEach(a=>w.appendChild(btn((a>0?'+':'−')+Math.abs(a)+'°',null,()=>set('angle',()=>{s.deg=turn(a);}))));

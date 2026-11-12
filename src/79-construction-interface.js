@@ -584,6 +584,14 @@ function cgRenderProps(p){
       fz.onchange=()=>{docPushUndo(fz.checked?'figer « '+el.name+' »':'libérer « '+el.name+' »');el.ext.frozen=fz.checked;markDirty();rebuild();cgRefresh();};
       Row('Figer (ne suit plus)',fz);
     }
+    // valeurs : chiffre, formule ou nom ƒx (« Décalage X : pas_SM_chaud → 225,5 mm ») — elles se modifient par « Modifier »
+    Object.keys(CG_HOW[el.kind][el.how].par||{}).forEach(k=>{
+      const P=CG_HOW[el.kind][el.how].par[k],v=+(el.p&&el.p[k])||0;
+      const ex=el.p&&el.p.expr&&el.p.expr[k],nm=el.p&&el.p.pname&&el.p.pname[k],er=el.p&&el.p.exprErr&&el.p.exprErr[k];
+      const val=String(+v.toFixed(4)).replace('.',',')+(P.unit==='ratio'?'':' '+P.unit);
+      const n=Note((er?'⚠ ':'')+P.lab+' : '+(nm?nm+' = ':'')+(ex?ex+' → ':'')+val+(er?' ('+er+')':''));
+      n.className+=' cgParVal';if(ex||nm)n.title='Valeur liée aux paramètres ƒx : elle suit leurs changements.';
+    });
     if(el.fr){const f=v=>v.map(x=>(+x).toFixed(3).replace('.',',')).join(' ; ');
       Note('Origine : '+f(el.fr.o)+(el.kind==='point'?'':' · '+(el.kind==='axis'?'direction':'normale Z')+' : '+f(el.fr.z)));}
     const can=el.kind==='plane'||(el.kind==='frame'&&sel.sub&&CG_O_PLANES[sel.sub]);
@@ -638,7 +646,7 @@ function cgRenderProps(p){
   Object.keys(HW.par||{}).forEach(k=>{
     const P=HW.par[k],inp=document.createElement('input');inp.type='text';inp.inputMode='decimal';inp.style.width='80px';
     inp.value=String(+(+d.p[k]||0).toFixed(4)).replace('.',',');
-    if(typeof parFx==='function')parFx(inp,d.p,k);
+    if(typeof parFx==='function')parFx(inp,d.p,k,{keep:1});
     const apply=()=>{const v=parseFloat(String(inp.value).replace(',','.'));if(isFinite(v)&&v!==d.p[k]){d.p[k]=v;cgRefresh();}};
     inp.addEventListener('change',apply);inp.addEventListener('keydown',e=>{if(e.key==='Enter')apply();});
     const w=mk('span');w.style.cssText='display:flex;gap:4px;align-items:center';w.appendChild(inp);w.appendChild(mk('span','pnl-note',P.unit));

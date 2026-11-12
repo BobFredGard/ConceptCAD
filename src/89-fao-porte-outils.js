@@ -205,9 +205,11 @@ function faoHolderSection(R,setup,t,rerender){
   pN.appendChild(iN);rn.appendChild(pN);
   if(nU>1)R.appendChild(mk('div','fao-meta','Monté sur '+nU+' outils : le modifier les change tous (« Dupliquer » pour une variante).'));
   const segs=cur.segs||(cur.segs=[]);
-  const num=function(parent,lab,val,title,unit,fn){
+  const num=function(parent,lab,val,title,unit,fn,h){
     const p=mk('label','fao-tl-f');p.title=title;p.appendChild(mk('span','',lab));
     const i=mk('input','fao-in fao-num');i.type='text';i.inputMode='decimal';i.value=String(+(+val).toFixed(3));
+    // V0.95.0 : tronçon h, clé lue dans fn (« s.d=v ») → formule gardée (ƒx)
+    try{const m=/\{\s*\w+\.(\w+)\s*=/.exec(String(fn));if(h&&m&&typeof parFx==='function')parFx(i,h,m[1],{keep:1});}catch(e){}
     i.onchange=function(){const v=parseFloat(String(i.value).replace(',','.'));if(isFinite(v)&&v>0){faoSnapshot(title);fn(v);done();}};
     try{ if(typeof parNumKeys==='function')parNumKeys(i); }catch(e){}
     p.appendChild(i);if(unit)p.appendChild(mk('em','',unit));parent.appendChild(p);return i;
@@ -227,15 +229,15 @@ function faoHolderSection(R,setup,t,rerender){
     row.appendChild(sT);
     const f=mk('div','fao-ho-f');row.appendChild(f);
     if(s.t==='cyl'){
-      num(f,'Ø',s.d,'Diamètre du cylindre','mm',function(v){s.d=v;});
-      num(f,'Hauteur',s.h,'Hauteur du cylindre','mm',function(v){s.h=v;});
+      num(f,'Ø',s.d,'Diamètre du cylindre','mm',function(v){s.d=v;},s);
+      num(f,'Hauteur',s.h,'Hauteur du cylindre','mm',function(v){s.h=v;},s);
     }else if(s.t==='cone'){
-      num(f,'Ø nez',s.d1,'Diamètre du cône côté outil','mm',function(v){s.d1=v;});
-      num(f,'Ø broche',s.d2,'Diamètre du cône côté broche','mm',function(v){s.d2=v;});
-      num(f,'Hauteur',s.h,'Hauteur du cône','mm',function(v){s.h=v;});
+      num(f,'Ø nez',s.d1,'Diamètre du cône côté outil','mm',function(v){s.d1=v;},s);
+      num(f,'Ø broche',s.d2,'Diamètre du cône côté broche','mm',function(v){s.d2=v;},s);
+      num(f,'Hauteur',s.h,'Hauteur du cône','mm',function(v){s.h=v;},s);
     }else{
-      num(f,'Longueur',s.c,'Longueur du chanfreiné le long de l’axe — il entame le tronçon suivant','mm',function(v){s.c=v;});
-      num(f,'Angle',s.a||45,'Angle du chanfrein par rapport à l’axe (45° par défaut)','°',function(v){s.a=Math.min(85,Math.max(5,v));});
+      num(f,'Longueur',s.c,'Longueur du chanfreiné le long de l’axe — il entame le tronçon suivant','mm',function(v){s.c=v;},s);
+      num(f,'Angle',s.a||45,'Angle du chanfrein par rapport à l’axe (45° par défaut)','°',function(v){s.a=Math.min(85,Math.max(5,v));},s);
     }
     const mv=function(d){ return function(){ const j=k+d; if(j<0||j>=segs.length)return;
       faoSnapshot('ordre des tronçons');const x=segs[k];segs[k]=segs[j];segs[j]=x;done(); }; };
