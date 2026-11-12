@@ -24,7 +24,7 @@ function ensureOrigin(sk){
 function skNewPid(sk){sk.seq=sk.seq||1;return 'p'+(sk.seq++);}
 function skNewEid(sk){sk.seq=sk.seq||1;return 'e'+(sk.seq++);}
 function addPoint(sk,x,y){const id=skNewPid(sk);skPts(sk)[id]={x,y};return id;}
-function pidAt(sk,x,y){let best=null,bd=0.01;Object.keys(skPts(sk)).forEach(pid=>{const p=sk.points[pid];const d=Math.hypot(p.x-x,p.y-y);if(d<bd){bd=d;best=pid;}});return best||addPoint(sk,x,y);}
+function pidAt(sk,x,y){let best=null,bd=0.01;Object.keys(skPts(sk)).forEach(pid=>{const p=sk.points[pid];if(p.txt)return;const d=Math.hypot(p.x-x,p.y-y);if(d<bd){bd=d;best=pid;}});return best||addPoint(sk,x,y);}
 // V0.7.1 : pendant une résolution (sklsSolveLM), les entités ne changent pas — index par id et
 // points fixés calculés une fois (le résidu est évalué des milliers de fois). Hors résolution : recherche.
 let skLmCtx=null; // {sk, ents:Map id→entité, fix:Set}
@@ -248,6 +248,7 @@ function skFixed(sk){
   // avec les rectangles accrochés à ses bouts, et toutes les esquisses aval décrochaient).
   (sk.entities||[]).forEach(e=>{if(e&&e.proj)skProjPids(sk,e).forEach(p=>f.add(p));});
   if((sk.points||{})[SK_ORIGIN])f.add(SK_ORIGIN);
+  skTxtFixedInto(sk,f); // V0.96.0 : points des lettres d'un texte (50-esquisse-96) — le texte suit son ancre
   return f;
 }
 function skProjPids(sk,e){
@@ -1250,6 +1251,7 @@ function solveSketch(sk,iters,anchor){
   (sk.dims||[]).forEach(d=>{if(d&&isFinite(+d.value))SK_VALS.set(d,+d.value);});
   skPtsNote(sk);
   skBonNote(sk,iters);
+  skTxtFollow(sk); // V0.96.0 : les textes suivent leur point d'ancrage (50-esquisse-96)
 }
 function solveSketch1(sk,iters,anchor){
   if(!sk||!sk.points)return;iters=iters||120;

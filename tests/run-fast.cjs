@@ -125,6 +125,7 @@ const SUITES = [
   'test_composants_repetitions',
   'test_composants_repetition_ajout',
   'test_symetrie_lineaire',
+  'test_esquisse_texte',
   'test_survol_grande_face',
   'test_maillage_parallele',
   'test_composants_repetition_profil',

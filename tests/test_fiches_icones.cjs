@@ -31,7 +31,7 @@ A(keys.length>=75,'ruban : '+keys.length+' icônes recensées');
 for(const q of ['undo','redo','new','open','recent','save','saveas','folder'])keys.push('q/'+q);
 // bandeau d'esquisse : boutons du livrable + outils ajoutés par le code
 for(const m of html.matchAll(/<button class="(?:tool|con)[^"]*" data-(?:tool|con)="(\w+)"/g))keys.push('sk/'+m[1]);
-for(const k of ['polygon','spline','cspline','isect','offset','chamfer','fillet','skFit','skOrbit','skGrid','skRefs','skParams'])keys.push('sk/'+k);
+for(const k of ['polygon','text','spline','cspline','isect','offset','chamfer','fillet','skFit','skOrbit','skGrid','skRefs','skParams'])keys.push('sk/'+k);
 const manque=[...new Set(keys)].filter(k=>!T[k]);
 A(!manque.length,'toutes les icônes ont une fiche'+(manque.length?' — manquent : '+manque.join(', '):''));
 const vides=Object.keys(T).filter(k=>{const f=T[k];return !f.t||!f.d||!f.a||!f.b||!f.la||!f.lb;});

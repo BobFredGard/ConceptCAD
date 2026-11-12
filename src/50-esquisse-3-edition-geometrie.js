@@ -2,7 +2,7 @@
 /* ----- snaps / proximités ----- */
 function nearestPoint(sk,x,y,maxD,exclude){
   let best=null,bd=maxD;
-  Object.keys(skPts(sk)).forEach(pid=>{if(pid===exclude)return;const p=sk.points[pid];const d=Math.hypot(p.x-x,p.y-y);if(d<bd){bd=d;best=pid;}});
+  Object.keys(skPts(sk)).forEach(pid=>{if(pid===exclude)return;const p=sk.points[pid];if(p.txt)return;const d=Math.hypot(p.x-x,p.y-y);if(d<bd){bd=d;best=pid;}});
   return best;
 }
 function findSnap(sk,x,y,exclude){
@@ -25,7 +25,7 @@ function skDragSnapFind(sk,x,y,pid){
   // sa ligne, son propre milieu). Le lâcher pose la contrainte correspondante (skDragRelease).
   const own=new Set();(sk.entities||[]).forEach(e=>{if(skEntPids(e).indexOf(pid)>=0){own.add(e.id);skEntPids(e).forEach(p=>{if(p)own.add(p);});}});
   let best=null,bd=SK_SNAP;
-  Object.keys(skPts(sk)).forEach(q=>{if(q===pid||own.has(q))return;const p=sk.points[q];const d=Math.hypot(p.x-x,p.y-y);if(d<bd){bd=d;best={kind:'point',pid:q,x:p.x,y:p.y};}});
+  Object.keys(skPts(sk)).forEach(q=>{if(q===pid||own.has(q))return;const p=sk.points[q];if(p.txt)return;const d=Math.hypot(p.x-x,p.y-y);if(d<bd){bd=d;best={kind:'point',pid:q,x:p.x,y:p.y};}});
   if(best)return best;
   bd=SK_SNAP;
   (sk.entities||[]).forEach(e=>{if(e.t!=='line'||own.has(e.id))return;const A=sk.points[e.p1],B=sk.points[e.p2];if(!A||!B)return;
@@ -685,7 +685,7 @@ function skBoxHits(box){
     }}
     if(sel)hits.push({kind:'ent',id:e.id});
   });
-  Object.keys(skPts(sk)).forEach(pid=>{const p=P[pid];if(p&&inPt(p.x,p.y))hits.push({kind:'point',pid});});
+  Object.keys(skPts(sk)).forEach(pid=>{const p=P[pid];if(p&&!p.txt&&inPt(p.x,p.y))hits.push({kind:'point',pid});}); // points des lettres d'un texte : jamais seuls
   return hits;
 }
 function distSeg(px,py,A,B){const dx=B.x-A.x,dy=B.y-A.y,L2=dx*dx+dy*dy||1e-9;let t=((px-A.x)*dx+(py-A.y)*dy)/L2;t=Math.max(0,Math.min(1,t));return Math.hypot(px-(A.x+t*dx),py-(A.y+t*dy));}

@@ -328,7 +328,11 @@ function skSplineCutsFor(sk,e,cands){
   // points (pids candidats) posés sur la spline hors de ses bouts → coupes de profil (jonction en T)
   const f=skSplineFit(sk,e);if(!f)return[];
   const own=new Set([e.pts[0],e.pts[e.pts.length-1]]),out=[];
-  cands.forEach(pid=>{if(own.has(pid))return;const Q=sk.points[pid];if(!Q)return;
+  // V0.96.0 : boîte des pôles (la courbe y est toute entière) — un point hors de la boîte n'est pas dessus :
+  // le texte (des centaines de splines) traçait ses profils en 5 s, faute de ce tri
+  let x0=Infinity,y0=Infinity,x1=-Infinity,y1=-Infinity;f.P.forEach(q=>{if(q[0]<x0)x0=q[0];if(q[0]>x1)x1=q[0];if(q[1]<y0)y0=q[1];if(q[1]>y1)y1=q[1];});
+  x0-=1e-3;y0-=1e-3;x1+=1e-3;y1+=1e-3;
+  cands.forEach(pid=>{if(own.has(pid))return;const Q=sk.points[pid];if(!Q||Q.x<x0||Q.x>x1||Q.y<y0||Q.y>y1)return;
     const h=skSplineClosest(sk,e,Q.x,Q.y);if(h&&h.d<1e-3&&h.u>f.a+1e-9&&h.u<f.b-1e-9)out.push({u:h.u,pid});});
   return out;
 }

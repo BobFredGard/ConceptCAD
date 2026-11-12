@@ -327,6 +327,7 @@ function deleteSkSel(){
     else if(s.kind==='dim')killDims.add(s.id);
   };
   take(skSel);(skSelX||[]).forEach(take);
+  skTxtKillWith(sk,killEnts); // V0.96.0 : un trait d'un texte emporte tout le texte (50-esquisse-96)
   const projFix=[...killCons].filter(id=>skIsProjFix(sk,(sk.constraints||[]).find(c=>c.id===id)));
   projFix.forEach(id=>killCons.delete(id)); // les fix d'une projection restent (elle suit son arête source)
   if(projFix.length&&!killEnts.size&&!killPts.size&&!killCons.size&&!killDims.size){skStatus('Fixe d’une projection : elle suit son arête source — supprimez la projection pour la libérer.');return;}
@@ -643,7 +644,7 @@ function skDof(sk){
   eq+=(sk.dims||[]).length;
   return 2*Object.keys(P).length+nR-eq-nO;
 }
-function pidNear(sk,x,y,maxD){let best=null,bd=maxD;Object.keys(skPts(sk)).forEach(pid=>{const p=sk.points[pid];const d=Math.hypot(p.x-x,p.y-y);if(d<bd){bd=d;best=pid;}});return best;}
+function pidNear(sk,x,y,maxD){let best=null,bd=maxD;Object.keys(skPts(sk)).forEach(pid=>{const p=sk.points[pid];if(p.txt)return;const d=Math.hypot(p.x-x,p.y-y);if(d<bd){bd=d;best=pid;}});return best;}
 function skHealth(sk){
   const tr=skLoopTrace(sk),P=sk.points||{};
   const ends=tr.opens;
