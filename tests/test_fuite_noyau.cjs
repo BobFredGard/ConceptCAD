@@ -21,7 +21,10 @@ let ko=0;
 const A=(c,m)=>{if(!c){ko++;console.log('  ✗ '+m);}else console.log('  ✓ '+m);};
 // Ce que les caches gardent exprès (points de contrôle, outils) passe par occShapeCopy ; les poignées
 // nées dans le noyau lui-même n'ont pas de ligne de l'application : le ramasse-miettes s'en charge.
-const garde=st=>/occShapeCopy/.test(st)||!/ConceptCAD\.html/.test(st);
+// V0.96.1 : les facettes gardées face par face (20-25) gardent aussi, exprès, la triangulation et les polygones
+// d'arêtes de chaque face (occFacePrise) ; occFaceMemoLibere les rend — contrôlé plus bas, cache vidé.
+const garde=st=>/occShapeCopy|occFacePrise/.test(st)||!/ConceptCAD\.html/.test(st);
+const prises=()=>{let n=0;for(const st of vivants.values())if(/occFacePrise/.test(st))n++;return n;};
 const lieux=()=>{const t={};for(const st of vivants.values()){if(garde(st))continue;
   const m=/at (?:new )?(\S*) ?\(?[^\n]*ConceptCAD\.html:(\d+)/.exec(st);const k=m?(m[1]||'?')+':'+m[2]:'?';t[k]=(t[k]||0)+1;}
   return Object.entries(t).sort((a,b)=>b[1]-a[1]).slice(0,8).map(x=>x[1]+' × '+x[0]).join(', ');};
@@ -63,6 +66,8 @@ const oublis=()=>{let n=0;for(const st of vivants.values())if(!garde(st))n++;ret
     markDirty();rebuild();})()`,ctx);
   await tours("const P=doc.params.find(x=>x.name==='largeur_barquette');for(let i=1;i<=2;i++){parSetParam(P,String(165+0.01*i));markDirty();rebuild();}");
   const barq=oublis();
+  {const avant=prises();vm.runInContext('occFaceMemoClear()',ctx);
+    A(avant>0&&prises()===0,'facettes gardées : '+avant+' poignées tenues par le cache, '+prises()+' après l’avoir vidé');}
   A(barq<=20,'Barquette, cote modifiée : '+barq+' objet(s) oublié(s) en 2 tours — '+lieux());
   // Append rend une copie, oubliée partout jusqu'en V0.65 : passer par occAjoute (mémoire mesurée dans test_barquette_120)
   const nus=fs.readdirSync(path.join(ROOT,'src')).filter(f=>/\.js$/.test(f)).flatMap(f=>fs.readFileSync(path.join(ROOT,'src',f),'utf8').split('\n').filter(l=>/\.Append(_\d)?\(/.test(l)&&!/function occAjoute/.test(l)).map(l=>f+' : '+l.trim().slice(0,80)));

@@ -380,7 +380,71 @@ function occSurfNormalAt(surf,u,v){
     return r;
   }catch(err){return null;}
 }
-function occSharpEdges(shape){
+function occSharpEdges(shape,memo){
+  // memo (V0.96.1) : corps natifs affichés — classement gardé arête par arête (occSharpEdgesMemo) ;
+  // tout autre appel, ou hors cadre : classement complet, inchangé.
+  if(memo){let r=null;try{r=occSharpEdgesMemo(shape);}catch(e){r=null;}if(r)return r;}
+  return occSharpEdgesPlein(shape);
+}
+function occAreteClasse(e,ad,u0,u1,mid,s,kk,fl,X,bin){
+  // Classement d'UNE arête (cœur commun à occSharpEdgesPlein et occSharpEdgesMemo) : null = couture
+  // (pas une arête de la pièce), sinon sa fiche {mid,pts,len,sharp,…}.
+  const faces=X.faces,cuts=X.cuts,onCut=X.onCut,seam=X.seam,sameCyl=X.sameCyl;
+  let sharp=true;
+  const onC=cuts.length>0&&onCut(s.pts); // arête de coupe d'une scission : toujours tracée
+  if(!onC&&((seam.has(kk)&&fl.length<=1)||sameCyl(fl)))return null; // couture : pas une arête
+  if(fl.length>=2){
+    try{sharp=(occt.BRep_Tool.Continuity_1(e,faces[fl[0]],faces[fl[1]])===occt.GeomAbs_Shape.GeomAbs_C0);}
+    catch(err){sharp=true;}
+  }else sharp=false;
+  // 2026-10-18 V0.2.5 : congé SUR congé — le noyau ne pose PAS le drapeau G1
+  // sur la jonction des deux congés : BRep_Tool répond C0 alors que les
+  // surfaces sont TANGENTES (mesuré sur la pédale : 4 fragments noirs de 2 à
+  // 7 mm, dihédrale mesurée 0.0°, pendant que toutes les vraies arêtes vives
+  // font ≥ 24°). Si le drapeau dit « vive », on INTERROGE la géométrie :
+  // pcurve de l'arête dans chaque face → UV → normale (SLProps) à 3 stations
+  // (25/50/75 %) ; dès QU'UN échantillon dépasse le seuil, on garde « vive »
+  // (test MAX : un congé avec raccord non tangent quelque part reste noir).
+  let rg=null; // normales mesurées d'une arête « vive » pour OCCT mais tangente (V0.83.0 : mise en plan)
+  if(sharp&&fl.length>=2){
+    // le drapeau OCCT dit « vive » : on le MET À L'ÉPREUVE du point de
+    // vue géométrique avant de l'accepter (toutes les paires de faces).
+    let mesure=false,maxA=0;const nrm=[];
+    test_paires:
+    for(let i=0;i<fl.length;i++){
+      for(let j=i+1;j<fl.length;j++){
+        const E1=faces[fl[i]],E2=faces[fl[j]];
+        try{
+          const g1=new occt.BRepAdaptor_Curve2d_2(e,E1);bin.push(g1);
+          const g2=new occt.BRepAdaptor_Curve2d_2(e,E2);bin.push(g2);
+          const w0=g1.FirstParameter(),w1=g1.LastParameter();
+          if(!(w1>w0))continue; // arête vue comme point dans ce couple : rien à mesurer ici
+          const s1=occt.BRep_Tool.Surface_1(E1,occBinPush(bin,new occt.TopLoc_Location_1()));bin.push(s1);
+          const s2=occt.BRep_Tool.Surface_1(E2,occBinPush(bin,new occt.TopLoc_Location_1()));bin.push(s2);
+          for(const p of [0.25,0.5,0.75]){
+            const q1=g1.Value(w0+(w1-w0)*p),q2=g2.Value(w0+(w1-w0)*p);
+            bin.push(q1);bin.push(q2);
+            const n1=occSurfNormalAt(s1,q1.X(),q1.Y()),n2=occSurfNormalAt(s2,q2.X(),q2.Y());
+            if(!n1||!n2){mesure=false;break test_paires;} // mesure indisponible : verdict OCCT conservé
+            mesure=true;if(i===0&&j===1)nrm.push(n1);
+            const d=(n1[0]*n2[0]+n1[1]*n2[1]+n1[2]*n2[2])/(Math.hypot(n1[0],n1[1],n1[2])||1)/(Math.hypot(n2[0],n2[1],n2[2])||1);
+            const th=Math.acos(Math.max(-1,Math.min(1,d)))*180/Math.PI;
+            const dev=Math.min(th,180-th);
+            if(dev>maxA)maxA=dev;
+          }
+        }catch(err){mesure=false;break test_paires;}
+      }
+    }
+    if(mesure&&maxA<3){sharp=false;rg=nrm;} // G1 confirmé sur toute l'arête : TANGENTE (grise)
+  }
+  const cut=!sharp&&onC;
+  const E=cut?{mid,pts:occCurvePts(ad,u0,u1),len:s.len,sharp:true,split:true}:{mid,pts:occCurvePts(ad,u0,u1),len:s.len,sharp};
+  {const Pt=new occt.gp_Pnt_1();bin.push(Pt);E.ta=occBoutsTangents(ad,u0,u1,Pt);}
+  if(rg&&!cut)E.rg=rg; // le HLR d'OCCT la croit vive : la mise en plan la reclasse (mepHlrTanIdx)
+  if(fl.length)E.fs=fl.slice(); // V0.23.8 : faces voisines (ordinaux) → pièce d'un STEP multi-corps
+  return E;
+}
+function occSharpEdgesPlein(shape){
   // Arêtes uniques classées : sharp (noire, C0) vs tangente (grise, G1+). Validé par exécution.
   const out=[],bin=[];
   // V0.11.5 : arêtes de COUPE d'une scission de faces (xsplit) — entre les deux moitiés d'un
@@ -442,6 +506,7 @@ function occSharpEdges(shape){
         ee.Next();
       }
     });
+    const X={faces,cuts,onCut,seam,sameCyl};
     const ex=new occt.TopExp_Explorer_2(shape,occt.TopAbs_ShapeEnum.TopAbs_EDGE,SH);bin.push(ex);
     const seen=new Set();
     while(ex.More()){
@@ -457,60 +522,8 @@ function occSharpEdges(shape){
             const kk=ekey(mid,s.len);
             if(!seen.has(kk)){
               seen.add(kk);
-              let sharp=true;
               const fl=fmap.get(kk)||[];
-              const onC=cuts.length>0&&onCut(s.pts); // arête de coupe d'une scission : toujours tracée
-              if(!onC&&((seam.has(kk)&&fl.length<=1)||sameCyl(fl))){ex.Next();continue;} // couture : pas une arête
-              if(fl.length>=2){
-                try{sharp=(occt.BRep_Tool.Continuity_1(e,faces[fl[0]],faces[fl[1]])===occt.GeomAbs_Shape.GeomAbs_C0);}
-                catch(err){sharp=true;}
-              }else sharp=false;
-              // 2026-10-18 V0.2.5 : congé SUR congé — le noyau ne pose PAS le drapeau G1
-              // sur la jonction des deux congés : BRep_Tool répond C0 alors que les
-              // surfaces sont TANGENTES (mesuré sur la pédale : 4 fragments noirs de 2 à
-              // 7 mm, dihédrale mesurée 0.0°, pendant que toutes les vraies arêtes vives
-              // font ≥ 24°). Si le drapeau dit « vive », on INTERROGE la géométrie :
-              // pcurve de l'arête dans chaque face → UV → normale (SLProps) à 3 stations
-              // (25/50/75 %) ; dès QU'UN échantillon dépasse le seuil, on garde « vive »
-              // (test MAX : un congé avec raccord non tangent quelque part reste noir).
-              let rg=null; // normales mesurées d'une arête « vive » pour OCCT mais tangente (V0.83.0 : mise en plan)
-              if(sharp&&fl.length>=2){
-                // le drapeau OCCT dit « vive » : on le MET À L'ÉPREUVE du point de
-                // vue géométrique avant de l'accepter (toutes les paires de faces).
-                let mesure=false,maxA=0;const nrm=[];
-                test_paires:
-                for(let i=0;i<fl.length;i++){
-                  for(let j=i+1;j<fl.length;j++){
-                    const E1=faces[fl[i]],E2=faces[fl[j]];
-                    try{
-                      const g1=new occt.BRepAdaptor_Curve2d_2(e,E1);bin.push(g1);
-                      const g2=new occt.BRepAdaptor_Curve2d_2(e,E2);bin.push(g2);
-                      const w0=g1.FirstParameter(),w1=g1.LastParameter();
-                      if(!(w1>w0))continue; // arête vue comme point dans ce couple : rien à mesurer ici
-                      const s1=occt.BRep_Tool.Surface_1(E1,occBinPush(bin,new occt.TopLoc_Location_1()));bin.push(s1);
-                      const s2=occt.BRep_Tool.Surface_1(E2,occBinPush(bin,new occt.TopLoc_Location_1()));bin.push(s2);
-                      for(const p of [0.25,0.5,0.75]){
-                        const q1=g1.Value(w0+(w1-w0)*p),q2=g2.Value(w0+(w1-w0)*p);
-                        bin.push(q1);bin.push(q2);
-                        const n1=occSurfNormalAt(s1,q1.X(),q1.Y()),n2=occSurfNormalAt(s2,q2.X(),q2.Y());
-                        if(!n1||!n2){mesure=false;break test_paires;} // mesure indisponible : verdict OCCT conservé
-                        mesure=true;if(i===0&&j===1)nrm.push(n1);
-                        const d=(n1[0]*n2[0]+n1[1]*n2[1]+n1[2]*n2[2])/(Math.hypot(n1[0],n1[1],n1[2])||1)/(Math.hypot(n2[0],n2[1],n2[2])||1);
-                        const th=Math.acos(Math.max(-1,Math.min(1,d)))*180/Math.PI;
-                        const dev=Math.min(th,180-th);
-                        if(dev>maxA)maxA=dev;
-                      }
-                    }catch(err){mesure=false;break test_paires;}
-                  }
-                }
-                if(mesure&&maxA<3){sharp=false;rg=nrm;} // G1 confirmé sur toute l'arête : TANGENTE (grise)
-              }
-              const cut=!sharp&&onC;
-              const E=cut?{mid,pts:occCurvePts(ad,u0,u1),len:s.len,sharp:true,split:true}:{mid,pts:occCurvePts(ad,u0,u1),len:s.len,sharp};
-              {const Pt=new occt.gp_Pnt_1();bin.push(Pt);E.ta=occBoutsTangents(ad,u0,u1,Pt);}
-              if(rg&&!cut)E.rg=rg; // le HLR d'OCCT la croit vive : la mise en plan la reclasse (mepHlrTanIdx)
-              if(fl.length)E.fs=fl.slice(); // V0.23.8 : faces voisines (ordinaux) → pièce d'un STEP multi-corps
-              out.push(E);
+              const E=occAreteClasse(e,ad,u0,u1,mid,s,kk,fl,X,bin);if(E)out.push(E);
             }
           }
         }

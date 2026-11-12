@@ -24,7 +24,8 @@ const A=(c,m)=>{if(!c){ko++;console.log('  ✗ '+m);}else console.log('  ✓ '+m
   sandbox.THREE=new Proxy({},{get(t,k){if(k==='Mesh')return function(g,m){const o=T0.Mesh();if(g&&g.userData&&Array.isArray(g.userData.occGroups))o.geometry=g;if(m)o.material=m;return o;};return T0[k];}});
   vm.runInContext('occTessellate=function(sh){let n=0;const x=new occt.TopExp_Explorer_2(sh,occt.TopAbs_ShapeEnum.TopAbs_FACE,occt.TopAbs_ShapeEnum.TopAbs_SHAPE);while(x.More()){n++;x.Next();}x.delete();'+
     'const pos={count:n*30,array:new Float32Array(n*90)};return{userData:{occGroups:Array.from({length:n},(_,k)=>({start:k*10,count:10,f:k}))},attributes:{position:pos},getAttribute(){return pos;},dispose(){}};};'+
-    'occTessellateBudget=function(sh){return occTessellate(sh);};',ctx);
+    'occTessellateBudget=function(sh){return occTessellate(sh);};'+
+    'occTessellateFaces=function(){return null;};',ctx); // V0.96.1 : facettes gardées (20-25) hors jeu ici, le faux maillage ci-dessus sert seul
   sandbox.__step=vm.runInContext(`(function(){
     const cyl=x=>new occt.BRepPrimAPI_MakeCylinder_3(new occt.gp_Ax2_3(new occt.gp_Pnt_3(x,30,-1),occt.gp.DZ()),5,42).Shape();
     const b=new occt.BRepPrimAPI_MakeBox_2(new occt.gp_Pnt_3(0,0,0),100,60,40).Shape();

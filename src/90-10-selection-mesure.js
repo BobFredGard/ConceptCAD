@@ -867,33 +867,53 @@ function edgeHoverPick(e,faceHit){return edgePickScreen(e,edgeHoverSegs(),faceHi
 // segs = polylignes monde ; la plus proche du curseur à l'écran (≤ tolPx) gagne, à égalité
 // (≤ 1 px) la plus proche de la caméra ; masquée si derrière la face sous le curseur, avec une
 // marge de 2 px ramenée en mm (avant : +0,3 mm fixe, trop large sur une très petite pièce).
+// V0.96.1 : points des arêtes projetés à l'écran UNE fois par position de caméra (mêmes calculs,
+// mêmes valeurs) : souris qui bouge sans tourner la vue = plus que la distance en pixels à faire.
+// Gardé seulement pour une liste stable (edgeHoverSegs) ; une liste refaite à chaque appel est
+// projetée comme avant.
+let edgeScrMemo={segs:null,sig:'',S:null,off:null};
+function edgeScrPts(segs,r){
+  let sig='';
+  try{sig=camera.matrixWorldInverse.elements.join()+'|'+camera.projectionMatrix.elements.join()+'|'+r.width+'|'+r.height;}catch(e){}
+  if(sig&&edgeScrMemo.segs===segs&&edgeScrMemo.sig===sig)return edgeScrMemo;
+  let n=0;const off=new Int32Array(segs.length);
+  segs.forEach((P,pi)=>{off[pi]=n;if(P&&P.length>=2)n+=P.length;});
+  const S=new Float64Array(4*n),v=new THREE.Vector3(),vz=new THREE.Vector3();
+  segs.forEach((P,pi)=>{
+    if(!P||P.length<2)return;
+    for(let k=0,o=4*off[pi];k<P.length;k++,o+=4){const p=P[k];
+      vz.set(p[0],p[1],p[2]).applyMatrix4(camera.matrixWorldInverse);v.set(p[0],p[1],p[2]).project(camera);
+      S[o]=(v.x+1)/2*r.width;S[o+1]=(1-v.y)/2*r.height;S[o+2]=v.z;S[o+3]=-vz.z;}
+  });
+  const m={segs,sig,S,off};
+  if(sig&&segs===edgeHoverCache.segs)edgeScrMemo=m;
+  return m;
+}
 function edgePickScreen(e,segs,faceHit,tolPx){
   if(!segs||!segs.length)return null;
   const r=renderer.domElement.getBoundingClientRect(),mx=e.clientX-r.left,my=e.clientY-r.top;
-  const v=new THREE.Vector3(),vz=new THREE.Vector3(),toS=p=>{vz.set(p[0],p[1],p[2]).applyMatrix4(camera.matrixWorldInverse);v.set(p[0],p[1],p[2]).project(camera);return[(v.x+1)/2*r.width,(1-v.y)/2*r.height,v.z,-vz.z];};
+  const scr=edgeScrPts(segs,r),S=scr.S,off=scr.off;
   let slack=0.3;
   if(faceHit){const wpp=camera.isOrthographicCamera?(camera.top-camera.bottom)/(camera.zoom||1)/r.height:2*faceHit.distance*Math.tan(camera.fov*Math.PI/360)/r.height;slack=Math.min(0.3,2*wpp);}
   let best=null,bd=(tolPx||6)*(window.mfmEdgeK||1); // interface téléphone : tolérance élargie au doigt (99-mobile-creer-esquisse)
+  const ortho=camera.isOrthographicCamera,wv=new THREE.Vector3();
   segs.forEach((P,pi)=>{
     if(!P||P.length<2)return;
-    let a=toS(P[0]);
-    for(let k=1;k<P.length;k++){
-      const b=toS(P[k]);
-      if(a[2]<1&&b[2]<1&&a[2]>-1&&b[2]>-1){
-        const dx=b[0]-a[0],dy=b[1]-a[1],L2=dx*dx+dy*dy||1e-9;
-        let t=((mx-a[0])*dx+(my-a[1])*dy)/L2;t=Math.max(0,Math.min(1,t));
-        const d=Math.hypot(mx-(a[0]+t*dx),my-(a[1]+t*dy));
+    for(let k=1,a=4*off[pi],b=a+4;k<P.length;k++,a=b,b+=4){
+      if(S[a+2]<1&&S[b+2]<1&&S[a+2]>-1&&S[b+2]>-1){
+        const ax=S[a],ay=S[a+1],dx=S[b]-ax,dy=S[b+1]-ay,L2=dx*dx+dy*dy||1e-9;
+        let t=((mx-ax)*dx+(my-ay)*dy)/L2;t=Math.max(0,Math.min(1,t));
+        const d=Math.hypot(mx-(ax+t*dx),my-(ay+t*dy));
         if(d<bd+(best?1:0)){
           // paramètre 3D corrigé de la perspective (t écran ≠ t espace)
-          if(!camera.isOrthographicCamera){const za=a[3],zb=b[3];const den=(1-t)*zb+t*za;if(Math.abs(den)>1e-12)t=t*za/den;}
+          if(!ortho){const za=S[a+3],zb=S[b+3];const den=(1-t)*zb+t*za;if(Math.abs(den)>1e-12)t=t*za/den;}
           const w=[P[k-1][0]+(P[k][0]-P[k-1][0])*t,P[k-1][1]+(P[k][1]-P[k-1][1])*t,P[k-1][2]+(P[k][2]-P[k-1][2])*t];
           // masquée par la face survolée ? (l'arête doit être au moins aussi proche que la face)
-          const dc=camera.position.distanceTo(new THREE.Vector3(w[0],w[1],w[2]));
+          const dc=camera.position.distanceTo(wv.set(w[0],w[1],w[2]));
           const better=!best||d<bd-1||(d<bd+1?dc<best.dc:false);
           if(better&&(!faceHit||dc<=faceHit.distance*1.004+slack)){bd=Math.min(d,bd);best={pi,dc,d};}
         }
       }
-      a=b;
     }
   });
   return best;

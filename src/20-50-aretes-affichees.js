@@ -16,7 +16,7 @@ function occLiveSharpEdges(){
   let k=null;
   try{if(occLive.sig)k=occLive.sig+''+JSON.stringify(splitCutPlanes());}catch(e){k=null;}
   if(k&&edgeAllMemo&&edgeAllMemo.k===k)return edgeAllMemo.edges;
-  const l=occSharpEdges(occLive.shape);
+  const l=occSharpEdges(occLive.shape,true);
   edgeAllMemo=k&&l&&l.length?{k,edges:l}:null;
   return l;
 }
@@ -28,7 +28,7 @@ function occVisibleSharpEdges(){
   ex.forEach(b=>{
     if(!bodyShown(b))return;
     let m=bodyEdgeMemo.get(b.id);
-    if(!m||m.shape!==b.shape){m={shape:b.shape,edges:occSharpEdges(b.shape)||[]};bodyEdgeMemo.set(b.id,m);}
+    if(!m||m.shape!==b.shape){m={shape:b.shape,edges:occSharpEdges(b.shape,true)||[]};bodyEdgeMemo.set(b.id,m);}
     out.push.apply(out,m.edges);
   });
   for(const [id,m] of bodyEdgeMemo)if(!ex.some(b=>b.id===id&&b.shape===m.shape))bodyEdgeMemo.delete(id); // sous-solides libérés
