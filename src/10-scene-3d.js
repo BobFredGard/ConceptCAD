@@ -627,10 +627,43 @@ function mirrorViewMoved(){
   return moved;
 }
 
+/* V0.95.9 — VEILLE DU DESSIN : à l'arrêt, la vue 3D n'est plus redessinée 60 (ou 144) fois par
+   seconde. Pleine cadence dès qu'il se passe quelque chose (souris, molette, clavier, caméra qui
+   bouge encore, n'importe quelle animation : tout appel à requestAnimationFrame hors de cette
+   boucle réveille), puis après VW_IDLE_MS sans rien, une image tous les VW_IDLE_PERIOD seulement
+   (filet : ce qui change l'image sans geste — fin de régénération, calcul en tâche de fond —
+   apparaît au plus tard ainsi). ?sansveille dans l'adresse : ancienne cadence continue. */
+const VW_IDLE_MS=1500,VW_IDLE_PERIOD=400;
+let _vwWake=0,_vwLast=0;
+const viewVeilleOff=(()=>{try{return /[?&]sansveille\b/.test(location.search);}catch(e){return false;}})();
+function viewWake(){try{_vwWake=performance.now();}catch(e){}}
+const viewRaf=(()=>{
+  if(typeof window==='undefined'||typeof window.requestAnimationFrame!=='function')return f=>setTimeout(f,16);
+  const nat=window.requestAnimationFrame.bind(window);
+  try{window.requestAnimationFrame=function(cb){viewWake();return nat(cb);};}catch(e){}
+  try{['pointermove','pointerdown','pointerup','wheel','keydown','keyup','touchmove','resize','focus'].forEach(t=>window.addEventListener(t,viewWake,{capture:true,passive:true}));
+    document.addEventListener('visibilitychange',viewWake);}catch(e){}
+  return nat;
+})();
+const _vwSig=[];
+function viewCamMoved(){
+  const q=camera.quaternion,p=camera.position,s=[p.x,p.y,p.z,q.x,q.y,q.z,q.w,camera.fov,camera.aspect,camera.zoom];
+  // tolérance : controls.update() fait trembler la caméra d'un bruit d'arrondi (1e-12) à chaque image
+  let m=s.length!==_vwSig.length;for(let i=0;!m&&i<s.length;i++)m=Math.abs(s[i]-_vwSig[i])>1e-7*(1+Math.abs(s[i]));
+  if(m){_vwSig.length=0;_vwSig.push(...s);}
+  return m;
+}
 function animate(){
-  requestAnimationFrame(animate);
+  viewRaf(animate);
   try{viewUpSync();}catch(e){} // 2026-10-21-005 : haut de vue = Z du posage / de l'opération en FAO
-  orbitTick();controls.update();updateLabels();
+  orbitTick();controls.update();
+  if(viewCamMoved())viewWake();
+  if(!viewVeilleOff){
+    const now=performance.now();
+    if(now-_vwWake>VW_IDLE_MS&&now-_vwLast<VW_IDLE_PERIOD)return; // en veille : image sautée
+    _vwLast=now;
+  }
+  updateLabels();
   const RS=asmRenderScene(); // vue d'assemblage : sa propre scène (47)
   viewDecorTo(RS);
   try{if(typeof vEnvTick==='function')vEnvTick();}catch(e){} // V0.10.0 : environnement de rendu (98-rendu-vue)
