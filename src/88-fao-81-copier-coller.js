@@ -116,7 +116,10 @@ function faoPaste(){
     if(c.kind==='setup'&&c.setup){
       const s=faoClone(c.setup);
       s.id=faoNewId('setup');
-      s.ops=(s.ops||[]).map(faoFreshOp);
+      const mem=s.struckOn||{};
+      const idm={};
+      s.ops=(s.ops||[]).map(function(o){ const n=faoFreshOp(o); if(o)idm[o.id]=n.id; if(o&&o.id in mem){ mem[n.id]=mem[o.id]; delete mem[o.id]; } return n; });
+      faoPatternRemap(s.ops,idm); // V0.95.3 : sources des répétitions
       const names=r.setups.map(function(x){return x.name;});
       let nm=faoProgName(s.name+'_COPIE'), k=2;
       while(names.indexOf(nm)>=0)nm=faoProgName(s.name+'_COPIE'+(k++));
@@ -134,8 +137,9 @@ function faoPaste(){
       const dst=faoSetup();
       const tools=c.tools||[];
       faoSnapshot('coller '+c.ops.length+' opération(s)');
+      const idm={};
       const ops=c.ops.map(function(o){
-        const n=faoFreshOp(o);
+        const n=faoFreshOp(o); idm[o.id]=n.id;
         n.toolId=faoPasteTool(dst,tools.filter(function(t){return t.id===o.toolId;})[0]);
         delete n.cut; // vitesses reprises de la fiche de l'outil cible
         const src=tools.filter(function(t){return t.id===o.toolId;})[0];
@@ -147,6 +151,7 @@ function faoPaste(){
         const ids=faoMulti.concat([sel.id]);
         dst.ops.forEach(function(o,i){ if(ids.indexOf(o.id)>=0)at=i+1; });
       }
+      faoPatternRemap(ops,idm); // V0.95.3 : sources collées avec leur répétition
       Array.prototype.splice.apply(dst.ops,[at,0].concat(ops));
       faoChanged();
       faoSelectOp(dst.id,ops[0].id);

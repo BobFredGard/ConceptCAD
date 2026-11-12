@@ -8,7 +8,8 @@ sont sorties le 2026-09-30j.
 Code dans `src/` · livrable `fusion_mvp.html` (généré par `build.js`) · architecture et
 garde-fous en tête de `src/00-entete-et-outils.js`.
 
-**668 versions**, de `2026-09-28b` à `V0.95.2` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
+**669 versions**, de `2026-09-28b` à `V0.95.3` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
+**666 versions**, de `2026-09-28b` à `V0.95.1` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
 comme dans le fichier d'origine.
 
 ---
@@ -7518,3 +7519,10 @@ Barquette ne perd plus son solide à la 107e modification, et sa mémoire ne mon
 - **Cause** : `faoSeqSafe` enchaînait l'approche d'une opération depuis la dernière position de l'opération précédente, même quand l'outil changeait : `faoSafeAhead` ajoutait la remontée sur place à l'ancien XY, émise après le changement d'outil.
 - **Correctif** (`src/88-fao-50-caches-dispatch`) : changement d'outil (même clé que `faoJobMoves`) → l'approche part de rien : premier rapide au dégagement directement au-dessus de l'entrée. L'outil précédent remonte sur place à son dégagement (`tail`, dessiné par l'aperçu et le visionneuse ; le post écrit déjà son `G0 Z` avant le changement). Même outil : inchangé.
 - **Test** : `tests/test_fao_liaisons.cjs` (remontée sur place de l'outil précédent, premier rapide au-dessus de l'entrée, rien d'ajouté sans changement d'outil). Parcours FAO et CACHE_VER inchangés.
+## V0.95.3 - FAO : menu du posage, posage gelé, G-code de tous les posages, répétition d'opérations
+
+- **Demande** : Fred, 12/11 : « chaque posage doit avoir son menu contextuel pour générer son G-Code, le bouton G-Code prend en charge tous les posages actifs. Il faut aussi pouvoir "rayer" un posage pour le désactiver […] se rappeler de leur état pour le dégel » ; « copier un posage entier avec ses opérations » ; « ajouter la répétition des opérations comme le fait Fusion360 » (choix : rectangulaire, circulaire, symétrie, autres origines ; ordre par opération) ; puis « Geler/Dégeler c'est mieux que Rayer/Dégeler ».
+- **Menu du posage** (`src/88-fao-82-posage-menu.js`) : clic droit sur la ligne du posage dans l'arbre ou sur son onglet → « 💾 G-code de ce posage », « ❄ Geler / ↺ Dégeler le posage », « 📋 Copier », « ⧉ Dupliquer ». Un posage gelé est barré avec ses opérations ; toutes passent à ○ et l'état de chacune est retenu (`s.struck`, `s.struckOn`, invariant relu par `faoRoot`) puis rendu au dégel. Une opération ajoutée ou collée pendant le gel est retenue active.
+- **Bouton G-code** (`faoExport`) : un programme par posage non gelé qui a au moins une opération active (`faoExportSetups`, téléchargements décalés).
+- **Répétition** (`src/89-fao-repetition.js`, bouton « Répétition » des Opérations) : opération `type:'pattern'` qui reprend les opérations sélectionnées (Ctrl+clic). Rectangulaire (nombre et pas en X/Y, zigzag), circulaire (nombre, angle, centre), symétrie (X= ou Y=, sens d'arc inversé) ou autres origines (G55…G59 : `G0 Z` de sécurité puis le code d'origine, retour à l'origine du posage ensuite). Usinage par opération : chaque source sur toutes ses copies avant la suivante. Source unique `faoOpsSeq`, lue par `faoJobMoves` et `faoSeqSafe` : aperçu, simulation, collisions et G-code voient les copies ; les trous des perçages sont déplacés dans les cycles. Les parcours des copies ne sont jamais recalculés (moves de la source transformés) ; une répétition désactivée laisse ses sources usinées une fois ; une opération n'appartient qu'à une répétition ; une opération à repère propre (3+2) n'a que son original. Copier / coller et duplication de posage relient la répétition à ses sources collées.
+- **Tests** : `tests/test_fao_posage_menu.cjs`, `tests/test_fao_repetition.cjs` ; fiche illustrée « Opérations/Répétition ». Parcours FAO et CACHE_VER inchangés.

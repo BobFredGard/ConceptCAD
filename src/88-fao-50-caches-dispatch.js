@@ -148,7 +148,8 @@ function faoOpMovesKey(op,job){
       let idx=-1;
       for(let i=0;i<ops.length;i++){ const q=ops[i];
         if(q===op||(op.id&&q&&q.id===op.id)){ idx=i; break; } }
-      dep=idx<0?['absent']:ops.slice(0,idx+1).map(function(q){
+      // V0.95.3 : une répétition ne touche aucun parcours (clés des documents sans répétition inchangées)
+      dep=idx<0?['absent']:ops.slice(0,idx+1).filter(function(q){ return !faoIsPattern(q); }).map(function(q){
         return [q&&q.id,q&&q.type,q&&q.on!==false?1:0];
       });
     }
@@ -471,7 +472,7 @@ function faoMovesPending(){
 function faoActiveOps(job){
   // Operations qui comptent : desactivees (on=false) exclues, partout
   // (apercu, stats, validation) — un lanceur desactive n'a pas de parcours a servir.
-  return ((job&&job.ops)||[]).filter(function(o){return o&&o.on!==false;});
+  return ((job&&job.ops)||[]).filter(function(o){return o&&o.on!==false&&!faoIsPattern(o);}); // répétition : aucun parcours propre
 }
 function faoMovesAllReady(job){
   // Vrai seulement si CHAQUE operation active a sa trace EN MEMOIRE avec sa cle
@@ -907,8 +908,9 @@ function faoJobMoves(job){
   // Regroupe par outil (changement d'outil si l'id change). Les ops
   // désactivées (on=false) sont ignorées partout (aperçu, temps, G-code).
   const out=[]; let cur=null;
-  ((job&&job.ops)||[]).forEach(function(op){
-    if(op&&op.on===false)return;
+  // V0.95.3 : répétitions développées (faoOpsSeq, src/89-fao-repetition.js)
+  faoOpsSeq(job).forEach(function(E){
+    const op=E.op;
     const tool=faoToolById(job,op&&op.toolId);
     const sf=faoOpCutting(op,job); // conditions de CETTE opération (fiche ou surcharge)
     const key=tool.id+'|'+tool.d;
@@ -917,7 +919,7 @@ function faoJobMoves(job){
         s:sf.s, f:sf.f, plunge:sf.plunge}, blocks:[]};
       out.push(cur);
     }
-    cur.blocks.push({op:op,moves:faoOpMoves(op,job),cut:sf});
+    cur.blocks.push({op:op,moves:faoXfMoves(faoOpMoves(op,job),E.xf),cut:sf,xf:E.xf,k:E.k,n:E.n});
   });
   return out;
 }
@@ -1189,7 +1191,7 @@ function faoSeqSafe(job,seule){
   // seule=true : LECTURE SEULE — un parcours absent de la memoire est IGNORE
   // (absent:true), jamais calcule : afficher/masquer une trace ne regenerate rien.
   const res=[]; let prev=null;
-  const opsOn=((job&&job.ops)||[]).filter(function(op){return op&&op.on!==false;});
+  const opsOn=((job&&job.ops)||[]).filter(function(op){return op&&op.on!==false&&!faoIsPattern(op);});
   // V0.61.0 : retrait minimum = carte de la matière restante (src/88-fao-55-liaisons.js)
   let ctx=null;
   if(!(job&&job.planes&&job.planes.mode==='plan')&&opsOn.length){
@@ -1197,7 +1199,9 @@ function faoSeqSafe(job,seule){
     if(ctx)ctx.lift=faoLiftMin(job);
   }
   let keyPrev=null;
-  opsOn.forEach(function(op){
+  // V0.95.3 : séquence développée — copies des répétitions (moves transformés)
+  faoOpsSeq(job).forEach(function(E){
+    const op=E.op;
     // V0.94.9 : CHANGEMENT D'OUTIL (même clé que faoJobMoves) — la machine part au point de
     // changement puis revient : l'approche va droit au-dessus de l'entrée, jamais d'abord à
     // l'XY où l'outil précédent a fini (G0 inutile après le M6). L'outil précédent remonte
@@ -1214,11 +1218,12 @@ function faoSeqSafe(job,seule){
     let mv=null;
     if(seule){
       mv=faoOpMovesTry(op,job);
-      if(mv===null){ res.push({op:op,moves:[],absent:true}); return; }
+      if(mv===null){ res.push({op:op,moves:[],absent:true,xf:E.xf}); return; }
     }else mv=faoOpMoves(op,job)||[];
+    mv=faoXfMoves(mv,E.xf);
     // repère propre (3+2) : dégagements le long du Z de L'OPÉRATION (src/89-fao-posage-repere.js)
     const fr=(function(){try{return faoOpFrame(job,op);}catch(e){return null;}})();
-    if(fr&&mv.length){const q=faoSeqSafeOp(job,op,fr,mv,prev);prev=q.prev;res.push({op:op,moves:q.out});return;}
+    if(fr&&mv.length){const q=faoSeqSafeOp(job,op,fr,mv,prev);prev=q.prev;res.push({op:op,moves:q.out,xf:E.xf});return;}
     const out=faoOpLinks(job,op,mv,prev,ctx);
     if(out.length)prev=out[out.length-1];
     // Perçage émis en cycle dialecte : la machine repose au plan du cycle
@@ -1226,7 +1231,7 @@ function faoSeqSafe(job,seule){
     if(op.type==='drill'&&mv.length){
       prev={x:mv[mv.length-1].x,y:mv[mv.length-1].y,z:faoZoneSecu(op,job)};
     }
-    res.push({op:op,moves:out});
+    res.push({op:op,moves:out,xf:E.xf});
   });
   return res;
 }

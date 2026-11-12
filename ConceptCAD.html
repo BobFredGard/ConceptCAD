@@ -383,7 +383,7 @@ input[type=range]{accent-color:var(--primary);width:100%}
  * peut changer sans rien casser. CACHE_VER (parcours FAO) reste indépendant.
  */
 
-const APP_VER='V0.95.2';
+const APP_VER='V0.95.3';
 try{console.log('[ConceptCAD] version '+APP_VER);}catch(e){}
 try{var mfSv=document.getElementById('mfSplashVer');if(mfSv)mfSv.textContent=APP_VER;}catch(e){} // écran de démarrage
 
@@ -45637,6 +45637,9 @@ function faoSanitiseOps(s){
       delete op.geoBlocked;
     }
   });
+  // V0.95.3 : posage gelé = toutes ses opérations OFF, état d'avant mémorisé (88-fao-82)
+  if(typeof faoPatternSanitise==='function')faoPatternSanitise(s); // V0.95.3 : répétitions (89-fao-repetition)
+  if(typeof faoStruckSanitise==='function')faoStruckSanitise(s);
 }
 // radial/axial effectifs d'une op (compat 31v : `laisse` vaut les deux).
 function faoRA(o){
@@ -47842,7 +47845,8 @@ function faoOpMovesKey(op,job){
       let idx=-1;
       for(let i=0;i<ops.length;i++){ const q=ops[i];
         if(q===op||(op.id&&q&&q.id===op.id)){ idx=i; break; } }
-      dep=idx<0?['absent']:ops.slice(0,idx+1).map(function(q){
+      // V0.95.3 : une répétition ne touche aucun parcours (clés des documents sans répétition inchangées)
+      dep=idx<0?['absent']:ops.slice(0,idx+1).filter(function(q){ return !faoIsPattern(q); }).map(function(q){
         return [q&&q.id,q&&q.type,q&&q.on!==false?1:0];
       });
     }
@@ -48165,7 +48169,7 @@ function faoMovesPending(){
 function faoActiveOps(job){
   // Operations qui comptent : desactivees (on=false) exclues, partout
   // (apercu, stats, validation) — un lanceur desactive n'a pas de parcours a servir.
-  return ((job&&job.ops)||[]).filter(function(o){return o&&o.on!==false;});
+  return ((job&&job.ops)||[]).filter(function(o){return o&&o.on!==false&&!faoIsPattern(o);}); // répétition : aucun parcours propre
 }
 function faoMovesAllReady(job){
   // Vrai seulement si CHAQUE operation active a sa trace EN MEMOIRE avec sa cle
@@ -48601,8 +48605,9 @@ function faoJobMoves(job){
   // Regroupe par outil (changement d'outil si l'id change). Les ops
   // désactivées (on=false) sont ignorées partout (aperçu, temps, G-code).
   const out=[]; let cur=null;
-  ((job&&job.ops)||[]).forEach(function(op){
-    if(op&&op.on===false)return;
+  // V0.95.3 : répétitions développées (faoOpsSeq, src/89-fao-repetition.js)
+  faoOpsSeq(job).forEach(function(E){
+    const op=E.op;
     const tool=faoToolById(job,op&&op.toolId);
     const sf=faoOpCutting(op,job); // conditions de CETTE opération (fiche ou surcharge)
     const key=tool.id+'|'+tool.d;
@@ -48611,7 +48616,7 @@ function faoJobMoves(job){
         s:sf.s, f:sf.f, plunge:sf.plunge}, blocks:[]};
       out.push(cur);
     }
-    cur.blocks.push({op:op,moves:faoOpMoves(op,job),cut:sf});
+    cur.blocks.push({op:op,moves:faoXfMoves(faoOpMoves(op,job),E.xf),cut:sf,xf:E.xf,k:E.k,n:E.n});
   });
   return out;
 }
@@ -48883,7 +48888,7 @@ function faoSeqSafe(job,seule){
   // seule=true : LECTURE SEULE — un parcours absent de la memoire est IGNORE
   // (absent:true), jamais calcule : afficher/masquer une trace ne regenerate rien.
   const res=[]; let prev=null;
-  const opsOn=((job&&job.ops)||[]).filter(function(op){return op&&op.on!==false;});
+  const opsOn=((job&&job.ops)||[]).filter(function(op){return op&&op.on!==false&&!faoIsPattern(op);});
   // V0.61.0 : retrait minimum = carte de la matière restante (src/88-fao-55-liaisons.js)
   let ctx=null;
   if(!(job&&job.planes&&job.planes.mode==='plan')&&opsOn.length){
@@ -48891,7 +48896,9 @@ function faoSeqSafe(job,seule){
     if(ctx)ctx.lift=faoLiftMin(job);
   }
   let keyPrev=null;
-  opsOn.forEach(function(op){
+  // V0.95.3 : séquence développée — copies des répétitions (moves transformés)
+  faoOpsSeq(job).forEach(function(E){
+    const op=E.op;
     // V0.94.9 : CHANGEMENT D'OUTIL (même clé que faoJobMoves) — la machine part au point de
     // changement puis revient : l'approche va droit au-dessus de l'entrée, jamais d'abord à
     // l'XY où l'outil précédent a fini (G0 inutile après le M6). L'outil précédent remonte
@@ -48908,11 +48915,12 @@ function faoSeqSafe(job,seule){
     let mv=null;
     if(seule){
       mv=faoOpMovesTry(op,job);
-      if(mv===null){ res.push({op:op,moves:[],absent:true}); return; }
+      if(mv===null){ res.push({op:op,moves:[],absent:true,xf:E.xf}); return; }
     }else mv=faoOpMoves(op,job)||[];
+    mv=faoXfMoves(mv,E.xf);
     // repère propre (3+2) : dégagements le long du Z de L'OPÉRATION (src/89-fao-posage-repere.js)
     const fr=(function(){try{return faoOpFrame(job,op);}catch(e){return null;}})();
-    if(fr&&mv.length){const q=faoSeqSafeOp(job,op,fr,mv,prev);prev=q.prev;res.push({op:op,moves:q.out});return;}
+    if(fr&&mv.length){const q=faoSeqSafeOp(job,op,fr,mv,prev);prev=q.prev;res.push({op:op,moves:q.out,xf:E.xf});return;}
     const out=faoOpLinks(job,op,mv,prev,ctx);
     if(out.length)prev=out[out.length-1];
     // Perçage émis en cycle dialecte : la machine repose au plan du cycle
@@ -48920,7 +48928,7 @@ function faoSeqSafe(job,seule){
     if(op.type==='drill'&&mv.length){
       prev={x:mv[mv.length-1].x,y:mv[mv.length-1].y,z:faoZoneSecu(op,job)};
     }
-    res.push({op:op,moves:out});
+    res.push({op:op,moves:out,xf:E.xf});
   });
   return res;
 }
@@ -49727,7 +49735,7 @@ function faoPost(job,postId){
   // programme (_DIR 0), la table ne reste jamais inclinée d'un programme précédent
   if(c800){ faoPostLines(post.swivelRetract,{}).forEach(nc); nc(faoCycle800(post,{a:0,b:0,c:0},0)); }
   nc('G0 Z'+faoFmtXYZ(safe-oz)); // plan de sécurité : Z seul avant tout déplacement XY
-  let qi=0, prev=null;
+  let qi=0, prev=null, wcsCur=wcs;
   // 2026-10-16-020 : orientation 3+2 PAR OPÉRATION (repère propre de l'opération) ;
   // l'ancien 3+2 du posage reste l'orientation par défaut.
   let oriCur={b:ORI.b,c:ORI.c}, traOn=ori32&&!ax3&&!c800, fagWarn=false;
@@ -49765,7 +49773,10 @@ function faoPost(job,postId){
       const CB=b.cut||faoOpCutting(b.op,job);
       const SB=faoFmtS(CB.s), F=faoFmtF(CB.f), FP=faoFmtF(CB.plunge), FE=faoFmtF(CB.entry), FR=faoFmtF(CB.retract);
       if(SB!==sCur){ nc('S'+SB); sCur=SB; }
-      cmt(faoOpLabel(b.op,job));
+      // V0.95.3 : copie d'une répétition — origine propre (G55…) et libellé
+      if(b.xf&&b.xf.wcs&&b.xf.wcs!==wcsCur){ nc('G0 Z'+faoFmtXYZ(safe-OZ)); nc(b.xf.wcs); wcsCur=b.xf.wcs; if(prev)prev={x:prev.x,y:prev.y,z:safe}; }
+      else if(!(b.xf&&b.xf.wcs)&&wcsCur!==wcs){ nc('G0 Z'+faoFmtXYZ(safe-OZ)); nc(wcs); wcsCur=wcs; if(prev)prev={x:prev.x,y:prev.y,z:safe}; }
+      cmt(faoOpLabel(b.op,job)+(b.n>1?(' - copie '+(b.k+1)+'/'+b.n+(b.xf?' ('+b.xf.lab+')':'')):''));
       // 2026-10-13-007 : #MSG par opération sur Fagor (rétro-ingénierie
       // cav.txt : N60 #MSG["OPT1: Paroies"]) — l'opérateur voit l'opération
       // en cours sur la CN. Sanitisé ASCII, sans G1 ni F (parité post intacte).
@@ -49808,7 +49819,13 @@ function faoPost(job,postId){
       const sq=SEQ[qi++]||{moves:b.moves};
       // P1-a : perçage émis en cycle dialecte — le déroulé G0/G1 reste la
       // source prévisualisation/estimation/garde-fou mais n'est pas écrit ici.
-      const DC=faoDrillCycle(b.op,joB,oz,!!toB);
+      let DC=faoDrillCycle(b.op,joB,oz,!!toB);
+      if(DC&&b.xf&&!b.xf.wcs){ // copie déplacée d'un perçage : trous transformés
+        const X=b.xf;
+        DC=Object.assign({},DC,{
+          holes:(DC.holes||[]).map(function(H){ const p=faoXfPt(X,+H.x,+H.y); return Object.assign({},H,{x:p[0],y:p[1]}); }),
+          pts:(DC.pts||[]).map(function(q){ const p=faoXfPt(X,+q[0],+q[1]); return [p[0],p[1]].concat(q.slice(2)); })});
+      }
       if(DC){
         // 2026-10-15-011 : départ (RFP) et fond (DP) PAR TROU ; temporisation (G82 /
         // CYCLE82, CYCLE83 DTB) ; brise-copeaux : CYCLE83 VARI=0 (Siemens), passes
@@ -50169,7 +50186,7 @@ function faoRefreshPreview(mode){
       if(op&&op.hidden===true)return; // traces masquées dans la vue (op.hidden) — le G-code, lui, les garde
       if(b.absent){ faoPrevMissing++; return; } // pas de parcours en memoire : on n'invente rien
       const mv=b.tail?b.moves.concat(b.tail):b.moves; total+=b.moves.length; // tail : remontée avant un changement d'outil
-      mk(mv,faoSegClipper(op,job));
+      mk(mv,b.xf?null:faoSegClipper(op,job)); // copie d'une répétition : la zone de la source ne la borne pas
     });
     faoAdd3D(faoPrevGroup);
     if(typeof faoVw!=='undefined'&&faoVw)faoPrevGroup.visible=false; // viewer : traces restent cachées
@@ -50217,7 +50234,7 @@ async function faoRefreshPreviewStream(){
   faoPrevGroup=new THREE.Group(); faoPrevGroup.name='faoPreview';
   faoAdd3D(faoPrevGroup);
   if(typeof faoVw!=='undefined'&&faoVw)faoPrevGroup.visible=false; // viewer : traces restent cachées
-  const ops=((job&&job.ops)||[]).filter(function(op){ return op&&op.on!==false; });
+  const ops=((job&&job.ops)||[]).filter(function(op){ return op&&op.on!==false&&!faoIsPattern(op); });
   // Opérations longues : calculées sur plusieurs cœurs (src/88-fao-58-multicoeur.js) et rangées
   // au cache ; la boucle ci-dessous les relit et calcule normalement tout ce qui manque.
   const fluxOp=new Map();
@@ -53843,7 +53860,8 @@ function faoAddOpsSpec(){
   // V0.7.9 : la Poche (redondante avec l'Ébauche 3D) cède sa place au Chanfrein ; les poches des
   // fichiers existants restent lisibles et calculées
   return [['facing','+ Surfaçage'],['chamfer','+ Chanfrein'],['contour','+ Contour'],
-    ['drill','+ Perçage'],['rough3d','+ Ébauche 3D'],['geofinish','+ Finition'],['geodesic','+ Géodésique']];
+    ['drill','+ Perçage'],['rough3d','+ Ébauche 3D'],['geofinish','+ Finition'],['geodesic','+ Géodésique'],
+    ['pattern','+ Répétition']]; // V0.95.3 : src/89-fao-repetition.js
 }
 /* ================= interface FAO : arbre + fiches panneau droit ================= */
 // Arbre FAO dédié (overlay dans la vue 3D) : posages > opérations, état on/off,
@@ -53939,6 +53957,7 @@ function faoStaleScan(){
     (r.setups||[]).forEach(function(s){
       ((s&&s.ops)||[]).forEach(function(o){
         if(!o)return;
+        if(faoIsPattern(o)){ o.stale=false; return; } // V0.95.3 : répétition = copies des sources, rien à générer
         // Prima le maillage AVANT la cle (comme faoOpMoves) : la 1re lecture
         // d'une ebauche 3D incremente faoBodyGen.
         if(faoMeshOp(o)){ try{ faoActiveMesh(s); }catch(e){} }
@@ -54028,7 +54047,7 @@ function faoStaleUI(){
       be.disabled=!!faoPrevStale;
       be.title=faoPrevStale
         ?'Export bloqué : aperçu périmé. Cliquez d’abord sur « Tout régénérer ».'
-        :'Exporte le programme du posage courant : G-code Siemens 840D ou Fagor 8065 (.mpf / .nc).';
+        :'Exporte un programme par posage actif (non gelé) : G-code Siemens 840D ou Fagor 8065 (.mpf / .nc). Clic droit sur un posage = son G-code seul.';
     }
   }catch(e){}
 }
@@ -54255,6 +54274,7 @@ function faoInitUI(){
           b.textContent=nm;
           b.title='Ajouter une opération « '+nm+' » au posage courant (puis sa fiche s’ouvre à droite)';
           b.onclick=function(){
+            if(a[0]==='pattern'){ faoPatternNew(); return; } // reprend les opérations sélectionnées
             try{
               const op=faoOpDefaults(a[0]);
               if(!op)return;
@@ -54373,7 +54393,7 @@ function faoInitUI(){
       cnt.appendChild(dup(grp('Export')));
       const r4=dup(row());
       const be=document.createElement('button'); be.id='faoExportBtn'; faoExportBtnEl=be; be.className='primary'; be.textContent='Exporter G-code';
-      be.title='Exporte le programme du posage courant : G-code Siemens 840D ou Fagor 8065 (.mpf / .nc).';
+      be.title='Exporte un programme par posage actif (non gelé) : G-code Siemens 840D ou Fagor 8065 (.mpf / .nc). Clic droit sur un posage = son G-code seul.';
       be.onclick=function(){ faoExport(); };
       r4.appendChild(be);
       cnt.appendChild(r4);
@@ -54406,7 +54426,8 @@ function faoRenderTree(){
     }catch(e){ return false; } };
     r.setups.forEach(function(s,si){
       const h=document.createElement('div');
-      h.className='fao-setup'+(isSel('faoSetup',s.id)?' sel':'');
+      const struck=typeof faoSetupStruck==='function'&&faoSetupStruck(s);
+      h.className='fao-setup'+(isSel('faoSetup',s.id)?' sel':'')+(struck?' struck':'');
       // ▼/▶ : replie les opérations de CE posage — l'état (s.open) est dans le
       // document, donc enregistré/chargé avec la sauvegarde. Déplié par défaut.
       const open=s.open!==false;
@@ -54426,7 +54447,11 @@ function faoRenderTree(){
       h.appendChild(sl);
       h.title='Clic = fiche du posage dans le panneau droit'
         +(open?'':' · opérations repliées (clic sur la flèche pour les rouvrir)');
+      if(struck)h.title='Posage GELÉ : ses opérations sont désactivées (clic droit → « Dégeler » rend à chacune son état d’avant) · '+h.title;
+      h.title+=' · Clic droit = menu du posage (G-code de ce posage, geler, copier)';
       h.onclick=function(){ faoSelectSetup(s.id); };
+      h.oncontextmenu=function(ev){ try{ ev.preventDefault(); ev.stopPropagation(); }catch(e){}
+        faoSelectSetup(s.id); if(typeof faoSetupCtx==='function')faoSetupCtx(ev.clientX,ev.clientY,s.id); };
       tree.appendChild(h);
       if(open)faoWallsTree(tree,s,isSel); // V0.23.20 : esquisses et corps FAO du posage
       if(open)(s.ops||[]).forEach(function(op,i){
@@ -54437,22 +54462,26 @@ function faoRenderTree(){
         const off=op.on===false;
         const d=document.createElement('div');
         d.className='fao-op'+(isSel('faoOp',op.id)||faoMultiHas(s.id,op.id)?' sel':'')
-          +(off?' isoff':'')+(hid?' ishid':'');
+          +(off?' isoff':'')+(hid?' ishid':'')+(struck?' struck':'');
         d.title='Clic = fiche dans le panneau droit · Ctrl+clic / Maj+clic = plusieurs opérations (Ctrl+C / Ctrl+V, Suppr = supprimer, Ctrl+Z = rétablir)'
           +(hid?' — traces masquées dans la 3D (opération toujours active)':'');
         const eye=document.createElement('span');
         eye.textContent=off?'○':'●';
         eye.className='eye '+(off?'off':'on');
         eye.title='Activer / désactiver (entre dans le G-code)';
+        if(struck)eye.title='Posage gelé : dégelez-le (clic droit sur le posage) pour activer ou désactiver cette opération';
         eye.onclick=function(ev){ try{ if(ev&&ev.stopPropagation)ev.stopPropagation(); }catch(e){}
+          if(struck){ faoClipMsg('posage « '+s.name+' » gelé — clic droit sur le posage → « Dégeler » d’abord.'); return; }
           faoSnapshot('activer/désactiver « '+faoOpShortLabel(op)+' »');
           op.on=!(op.on!==false); faoChanged(); };
         const lb=document.createElement('span'); lb.className='lb';
-        lb.textContent=(i+1)+'. '+faoOpShortLabel(op);
+        const own=faoIsPattern(op)?null:faoPatternOwner(s,op);
+        lb.textContent=(i+1)+'. '+faoOpShortLabel(op)+(own?(' ↻'+(s.ops.indexOf(own)+1)):'');
+        if(own)lb.title='Répétée par la répétition n° '+(s.ops.indexOf(own)+1)+' : usinée à la place de la répétition, sur toutes ses copies';
         const tool=faoToolById(s,op.toolId);
         const badge=document.createElement('span');
         badge.className='badge';
-        badge.textContent='[T'+(tool.num||'?')+']';
+        badge.textContent=faoIsPattern(op)?('['+(op.srcs||[]).length+' op.]'):('[T'+(tool.num||'?')+']');
         // Masquer / Afficher : traces d'UNE opération, à l'extrême droite (l'œil
         // d'activation reste le premier enfant : ordre contractuel des tests).
         const mb=document.createElement('span');
@@ -54488,6 +54517,7 @@ function faoRenderTree(){
   try{ faoWalls3D(); }catch(e){} // V0.23.20 : corps et esquisses FAO dans la vue
 }
 function faoOpShortLabel(op){
+  if(faoIsPattern(op)){ try{ return faoPatternLabel(faoSetupOfOp(op),op); }catch(e){ return 'Répétition'; } }
   const n={facing:'Surfaçage',pocket:'Poche',chamfer:'Chanfrein',contour:'Contour',drill:'Perçage',
     rough3d:'Ébauche 3D',geofinish:'Finition',geodesic:'Géodésique'}[op.type]||op.type;
   if(op.type==='drill'){
@@ -55856,6 +55886,7 @@ function faoRenderProps(p,s){
     }
     const wall=(!op&&s.wall)?faoWallList(setup).filter(function(w){return w.id===s.wall;})[0]:null;
     if(wall){ faoWallFiche(p,setup,wall); faoTidyRows(p); return; } // V0.23.20 : corps FAO
+    if(op&&faoIsPattern(op)){ faoPatternFiche(p,setup,op,idx); faoTidyRows(p); return; } // V0.95.1
     if(op){
       p.appendChild(faoH('Opération · '+setup.name));
       p.appendChild(faoOpCardElement(setup,op,idx));
@@ -55932,18 +55963,11 @@ function faoExport(){
       faoStaleUI();
       return;
     }
-    const job=faoDoc();
-    const actives=(job.ops||[]).filter(function(o){return !o||o.on!==false;});
-    if(!actives.length){ try{ faceEl.textContent='FAO : aucune opération active à exporter.'; }catch(e){} return; }
-    const r=faoPost(job);
-    const name=faoProgName(job.name)+'.'+r.ext;
-    const blob=new Blob([r.code],{type:'text/plain'});
-    const a=document.createElement('a');
-    a.href=URL.createObjectURL(blob); a.download=name;
-    document.body.appendChild(a); a.click();
-    setTimeout(function(){ try{ URL.revokeObjectURL(a.href); a.remove(); }catch(e){} },500);
-    try{ faceEl.textContent='FAO : '+name+' exporté ('+r.code.split('\n').length+' blocs).'
-      +(r.warns&&r.warns.length?(' ⚠ '+r.warns.join(' ; ')):''); }catch(e){}
+    // V0.95.3 : TOUS les posages non gelés qui ont au moins une opération active
+    // (un fichier par posage) ; le menu du posage exporte le sien seul (88-fao-82).
+    const list=faoRoot().setups.filter(function(s){ return faoSetupActiveOps(s).length>0; });
+    if(!list.length){ try{ faceEl.textContent='FAO : aucune opération active à exporter (posages gelés ou opérations désactivées).'; }catch(e){} return; }
+    faoExportSetups(list);
   }catch(e){}
 }
 
@@ -56066,7 +56090,10 @@ function faoPaste(){
     if(c.kind==='setup'&&c.setup){
       const s=faoClone(c.setup);
       s.id=faoNewId('setup');
-      s.ops=(s.ops||[]).map(faoFreshOp);
+      const mem=s.struckOn||{};
+      const idm={};
+      s.ops=(s.ops||[]).map(function(o){ const n=faoFreshOp(o); if(o)idm[o.id]=n.id; if(o&&o.id in mem){ mem[n.id]=mem[o.id]; delete mem[o.id]; } return n; });
+      faoPatternRemap(s.ops,idm); // V0.95.3 : sources des répétitions
       const names=r.setups.map(function(x){return x.name;});
       let nm=faoProgName(s.name+'_COPIE'), k=2;
       while(names.indexOf(nm)>=0)nm=faoProgName(s.name+'_COPIE'+(k++));
@@ -56084,8 +56111,9 @@ function faoPaste(){
       const dst=faoSetup();
       const tools=c.tools||[];
       faoSnapshot('coller '+c.ops.length+' opération(s)');
+      const idm={};
       const ops=c.ops.map(function(o){
-        const n=faoFreshOp(o);
+        const n=faoFreshOp(o); idm[o.id]=n.id;
         n.toolId=faoPasteTool(dst,tools.filter(function(t){return t.id===o.toolId;})[0]);
         delete n.cut; // vitesses reprises de la fiche de l'outil cible
         const src=tools.filter(function(t){return t.id===o.toolId;})[0];
@@ -56097,6 +56125,7 @@ function faoPaste(){
         const ids=faoMulti.concat([sel.id]);
         dst.ops.forEach(function(o,i){ if(ids.indexOf(o.id)>=0)at=i+1; });
       }
+      faoPatternRemap(ops,idm); // V0.95.3 : sources collées avec leur répétition
       Array.prototype.splice.apply(dst.ops,[at,0].concat(ops));
       faoChanged();
       faoSelectOp(dst.id,ops[0].id);
@@ -56168,6 +56197,159 @@ function faoClipKeyTarget(t){
     if(n){ e.preventDefault(); if(e.stopImmediatePropagation)e.stopImmediatePropagation(); }
   },true);
 })();
+
+/* ═══════════════ 88-fao-82-posage-menu.js — fao 82 posage menu ═══════════════ */
+// V0.95.3 — FAO : menu contextuel du POSAGE (clic droit sur sa ligne de l'arbre).
+//  · « G-code de ce posage » : programme du seul posage cliqué ;
+//  · « Geler le posage » : le posage et TOUTES ses opérations sont désactivés
+//    (aperçu, temps, G-code) ; l'état de chaque opération (●/○) est mémorisé
+//    dans s.struckOn et rendu tel quel au « Dégeler » ;
+//  · Copier / Dupliquer le posage entier avec ses opérations.
+// Le bouton « Exporter G-code » prend en charge TOUS les posages non gelés
+// (un fichier par posage) — faoExport, src/88-fao-80-interface.js.
+let faoCtxEl=null, faoCtxSetupId=null;
+function faoSetupStruck(s){ return !!(s&&s.struck===true); }
+function faoSetupStrike(id,on){
+  // Geler (on=true) / dégeler (on=false) un posage. Renvoie true si l'état change.
+  try{
+    const s=faoSetup(id);
+    if(!s||s.id!==id||faoSetupStruck(s)===!!on)return false;
+    faoSnapshot((on?'geler':'dégeler')+' le posage « '+s.name+' »');
+    if(on){
+      const mem={};
+      (s.ops||[]).forEach(function(op){ if(op&&op.id){ mem[op.id]=op.on!==false; op.on=false; } });
+      s.struck=true; s.struckOn=mem;
+    }else{
+      const mem=s.struckOn||{};
+      (s.ops||[]).forEach(function(op){ if(op&&op.id)op.on=(op.id in mem)?mem[op.id]!==false:true; });
+      delete s.struck; delete s.struckOn;
+    }
+    faoChanged();
+    faoClipMsg(on
+      ?('posage « '+s.name+' » gelé : ses '+(s.ops||[]).length+' opération(s) sont désactivées (état de chacune mémorisé).')
+      :('posage « '+s.name+' » dégelé : chaque opération retrouve son état d’avant.'));
+    return true;
+  }catch(e){ return false; }
+}
+function faoStruckSanitise(s){
+  // Invariant (relu à chaque faoRoot) : posage gelé = toutes ses opérations OFF ;
+  // une opération ajoutée ou collée pendant qu'il est gelé est mémorisée ACTIVE.
+  if(!s)return;
+  if(s.struck!==true){ delete s.struck; delete s.struckOn; return; }
+  if(!s.struckOn||typeof s.struckOn!=='object')s.struckOn={};
+  const mem=s.struckOn, ids={};
+  (s.ops||[]).forEach(function(op){
+    if(!op||!op.id)return;
+    ids[op.id]=1;
+    if(!(op.id in mem))mem[op.id]=op.on!==false;
+    else mem[op.id]=mem[op.id]!==false;
+    op.on=false;
+  });
+  Object.keys(mem).forEach(function(k){ if(!ids[k])delete mem[k]; });
+}
+function faoSetupActiveOps(s){
+  if(!s||faoSetupStruck(s))return [];
+  return (s.ops||[]).filter(function(o){ return o&&o.on!==false; });
+}
+function faoExportSetups(list){
+  // Un fichier par posage (posage de travail = posage exporté pendant le calcul :
+  // brut, repère et plans lus comme à l'écran). Renvoie le nombre de fichiers.
+  const r=faoRoot(), keep=r.activeSetupId, names=[], warns=[];
+  const files=[];
+  try{
+    list.forEach(function(s){
+      r.activeSetupId=s.id;
+      const p=faoPost(s);
+      let nm=faoProgName(s.name)+'.'+p.ext, k=2;
+      while(names.indexOf(nm)>=0)nm=faoProgName(s.name)+'_'+(k++)+'.'+p.ext;
+      names.push(nm);
+      files.push({name:nm,code:p.code});
+      if(p.warns&&p.warns.length)warns.push(s.name+' : '+p.warns.join(' ; '));
+    });
+  }finally{ r.activeSetupId=keep; }
+  files.forEach(function(f,i){
+    // le 1er tout de suite, les suivants décalés : un navigateur refuse plusieurs
+    // téléchargements dans le même instant
+    const go=function(){
+      try{
+        const a=document.createElement('a');
+        a.href=URL.createObjectURL(new Blob([f.code],{type:'text/plain'})); a.download=f.name;
+        document.body.appendChild(a); a.click();
+        setTimeout(function(){ try{ URL.revokeObjectURL(a.href); a.remove(); }catch(e){} },500);
+      }catch(e){}
+    };
+    if(i===0)go(); else setTimeout(go,i*350);
+  });
+  try{
+    faceEl.textContent='FAO : '+(files.length>1?(files.length+' programmes exportés : '):'')
+      +files.map(function(f){ return f.name+(files.length>1?'':(' exporté ('+f.code.split('\n').length+' blocs)')); }).join(', ')
+      +(warns.length?(' ⚠ '+warns.join(' — ')):'');
+  }catch(e){}
+  try{ if(typeof window!=='undefined')window.faoLastExport=files; }catch(e){}
+  return files.length;
+}
+function faoExportSetup(id){
+  try{
+    if(faoPrevStale){ faoExport(); return 0; } // même blocage (message) que le bouton
+    const s=faoSetup(id);
+    if(!s||s.id!==id)return 0;
+    if(faoSetupStruck(s)){ faoClipMsg('posage « '+s.name+' » gelé — dégelez-le pour exporter son G-code.'); return 0; }
+    if(!faoSetupActiveOps(s).length){ faoClipMsg('posage « '+s.name+' » : aucune opération active à exporter.'); return 0; }
+    return faoExportSetups([s]);
+  }catch(e){ return 0; }
+}
+function faoCtxHide(){ try{ if(faoCtxEl)faoCtxEl.style.display='none'; }catch(e){} faoCtxSetupId=null; }
+function faoCtxBuild(){
+  if(faoCtxEl)return faoCtxEl;
+  const m=document.createElement('div'); m.id='faoCtxMenu';
+  const st=document.createElement('style');
+  st.textContent='#faoCtxMenu{display:none;position:fixed;z-index:5000;min-width:220px;background:rgba(28,28,32,.96);'
+    +'border:1px solid var(--border);border-radius:9px;padding:5px;box-shadow:0 12px 32px rgba(0,0,0,.6)}'
+    +'#faoCtxMenu .t{font-size:.72rem;color:var(--muted);padding:5px 10px}'
+    +'#faoCtxMenu button{display:block;width:100%;text-align:left;background:none;border:none;padding:7px 10px;font-size:.82rem;border-radius:6px;color:inherit;cursor:pointer}'
+    +'#faoCtxMenu button:hover:not(:disabled){background:var(--primary)}'
+    +'#faoCtxMenu button:disabled{opacity:.4;cursor:default}'
+    +'#faoCtxMenu hr{border:none;border-top:1px solid var(--border);margin:4px 0}'
+    +'.fao-setup.struck>span:not(.fao-tri){text-decoration:line-through;opacity:.55}'
+    +'.fao-op.struck .lb{text-decoration:line-through}';
+  (document.head||document.documentElement).appendChild(st);
+  document.body.appendChild(m);
+  m.addEventListener('contextmenu',function(e){ e.preventDefault(); });
+  document.addEventListener('pointerdown',function(e){ if(faoCtxEl&&faoCtxEl.style.display!=='none'&&!faoCtxEl.contains(e.target))faoCtxHide(); },true);
+  document.addEventListener('keydown',function(e){ if(e.key==='Escape'&&faoCtxEl&&faoCtxEl.style.display!=='none')faoCtxHide(); },true);
+  faoCtxEl=m;
+  return m;
+}
+function faoSetupCtx(x,y,id){
+  // Ouvre le menu du posage `id` au point (x,y) — clic droit sur sa ligne.
+  try{
+    if(typeof mfCloseMenus==='function')mfCloseMenus();
+    const s=faoSetup(id); if(!s||s.id!==id)return;
+    const m=faoCtxBuild(); m.innerHTML=''; faoCtxSetupId=id;
+    const title=document.createElement('div'); title.className='t'; title.textContent='▤ '+s.name; m.appendChild(title);
+    const item=function(act,label,tip,dis,fn){
+      const b=document.createElement('button'); b.dataset.act=act; b.textContent=label; b.title=tip; b.disabled=!!dis;
+      b.onclick=function(){ faoCtxHide(); if(!b.disabled)fn(); };
+      m.appendChild(b); return b;
+    };
+    const struck=faoSetupStruck(s), nOn=faoSetupActiveOps(s).length;
+    item('gcode','💾 G-code de ce posage',
+      struck?'Posage gelé : dégelez-le d’abord.':(faoPrevStale?'Aperçu périmé : « Tout régénérer » d’abord.':'Exporte le programme de CE posage seulement.'),
+      struck||!nOn,function(){ faoExportSetup(id); });
+    m.appendChild(document.createElement('hr'));
+    item('strike',struck?'↺ Dégeler le posage':'❄ Geler le posage',
+      struck?'Réactive le posage : chaque opération retrouve son état d’avant (● ou ○).'
+        :'Désactive le posage et toutes ses opérations (aperçu, temps, G-code) ; l’état de chacune est retenu pour le dégel.',
+      false,function(){ faoSetupStrike(id,!struck); });
+    m.appendChild(document.createElement('hr'));
+    item('copy','📋 Copier le posage','Copie le posage entier avec ses opérations et ses outils — Ctrl+V pour le coller.',false,
+      function(){ faoSelectSetup(id); faoCopy(); });
+    item('dup','⧉ Dupliquer le posage','Copie et colle tout de suite le posage entier, juste après lui.',false,
+      function(){ faoSelectSetup(id); if(faoCopy())faoPaste(); });
+    m.style.display='block';
+    if(typeof ctxPlace==='function')ctxPlace(m,x,y); else { m.style.left=x+'px'; m.style.top=y+'px'; }
+  }catch(e){}
+}
 
 /* ═══════════════ 88-fao-90-ebauche3d.js — fao 90 ebauche3d ═══════════════ */
 /* ================= 3D : ébauche par tranches + finition iso-géodésique ================= */
@@ -69246,6 +69428,251 @@ function faoMatterCarveTilt(g,a,b,r,ax,outCols,tp){
   return out;
 }
 
+/* ═══════════════ 89-fao-repetition.js — fao repetition ═══════════════ */
+// V0.95.3 — FAO : RÉPÉTITION d'opérations (comme le « Motif » de Fusion 360).
+// Une opération { type:'pattern' } du posage reprend des opérations SOURCES
+// (op.srcs = ids) et rejoue leurs parcours :
+//   · kind 'rect'   : nx × ny copies décalées de dx / dy (mm) ;
+//   · kind 'circ'   : n copies tournées autour de (cx,cy), angle total ang (°) ;
+//   · kind 'mirror' : original + copie miroir par rapport à X=at ou Y=at ;
+//   · kind 'wcs'    : mêmes parcours rejoués dans d'autres origines (G55, G56…).
+// Ordre d'usinage PAR OPÉRATION : chaque source est faite sur toutes ses copies
+// (original compris) avant la suivante — moins de changements d'outil.
+// Les sources ne sont plus usinées à leur place : la répétition les émet à SA
+// place dans la liste. Répétition désactivée (○) = sources usinées une fois.
+// Les parcours des copies ne sont JAMAIS recalculés : transformation des moves
+// de la source (cache inchangé, CACHE_VER inchangé). Source unique : faoOpsSeq,
+// lue par faoJobMoves et faoSeqSafe (aperçu, simulation, collisions, G-code).
+const FAO_PAT_KINDS=[['rect','Rectangulaire'],['circ','Circulaire'],['mirror','Symétrie'],['wcs','Autres origines']];
+const FAO_WCS_ALL=['G54','G55','G56','G57','G58','G59'];
+function faoIsPattern(op){ return !!(op&&op.type==='pattern'); }
+function faoPatternDefaults(setup){
+  const s=(setup&&setup.stock)||faoStock();
+  const cx=(+s.x0+ +s.x1)/2, cy=(+s.y0+ +s.y1)/2;
+  const tool=(setup&&setup.tools&&setup.tools[0])||{id:'T1'};
+  return {id:faoNewId('op'),on:true,type:'pattern',toolId:tool.id,kind:'rect',srcs:[],
+    nx:2,dx:+(Math.abs(+s.x1- +s.x0)||100).toFixed(2),ny:1,dy:+(Math.abs(+s.y1- +s.y0)||80).toFixed(2),
+    n:4,ang:360,cx:+cx.toFixed(3),cy:+cy.toFixed(3),axis:'x',at:+cx.toFixed(3),
+    wcs:[(setup&&setup.wcs)==='G55'?'G56':'G55']};
+}
+function faoPatternGeo(op){ return !!op&&op.kind!=='wcs'; }
+function faoPatternSanitise(s){
+  // Relu à chaque faoRoot : sources = opérations ordinaires du MÊME posage, une
+  // opération n'appartient qu'à UNE répétition (la première), nombres bornés.
+  if(!s||!Array.isArray(s.ops))return;
+  const ids={}, taken={};
+  s.ops.forEach(function(o){ if(o&&o.id&&!faoIsPattern(o))ids[o.id]=o; });
+  s.ops.forEach(function(op){
+    if(!faoIsPattern(op))return;
+    if(['rect','circ','mirror','wcs'].indexOf(op.kind)<0)op.kind='rect';
+    const src=Array.isArray(op.srcs)?op.srcs:[];
+    op.srcs=src.filter(function(id,i){ return typeof id==='string'&&ids[id]&&src.indexOf(id)===i&&!taken[id]; });
+    op.srcs.forEach(function(id){ taken[id]=1; });
+    const int=function(v,a,b,d){ v=Math.round(+v); return isFinite(v)?Math.max(a,Math.min(b,v)):d; };
+    const num=function(v,d){ v=+v; return isFinite(v)?v:d; };
+    op.nx=int(op.nx,1,100,2); op.ny=int(op.ny,1,100,1); op.n=int(op.n,1,360,4);
+    op.dx=num(op.dx,100); op.dy=num(op.dy,80); op.ang=num(op.ang,360);
+    op.cx=num(op.cx,0); op.cy=num(op.cy,0); op.at=num(op.at,0);
+    if(op.axis!=='y')op.axis='x';
+    const w=Array.isArray(op.wcs)?op.wcs:[];
+    op.wcs=w.filter(function(c,i){ return FAO_WCS_ALL.indexOf(c)>=0&&c!==(s.wcs||'G54')&&w.indexOf(c)===i; });
+    // champs d'opération d'usinage sans objet ici
+    ['radial','axial','limit','limit2','zlim','planes','entry','sens'].forEach(function(k){ delete op[k]; });
+  });
+}
+function faoPatternXfs(job,op){
+  // Transformations de la répétition, ORIGINAL en tête (null = identité).
+  // Affine plane : x' = a·x + b·y + tx ; y' = c·x + d·y + ty (mir : miroir).
+  const out=[null];
+  if(!op)return out;
+  if(op.kind==='rect'){
+    // lignes en zigzag : la copie suivante est toujours la plus proche
+    for(let j=0;j<op.ny;j++)for(let k=0;k<op.nx;k++){
+      const i=(j%2)?(op.nx-1-k):k;
+      if(i===0&&j===0)continue;
+      out.push({a:1,b:0,c:0,d:1,tx:i*op.dx,ty:j*op.dy,mir:false,lab:'X'+(i+1)+' Y'+(j+1)});
+    }
+  }else if(op.kind==='circ'){
+    const full=Math.abs(Math.abs(op.ang)-360)<1e-9;
+    const st=op.n>1?(full?op.ang/op.n:op.ang/(op.n-1)):0;
+    for(let i=1;i<op.n;i++){
+      const t=st*i*Math.PI/180, co=Math.cos(t), si=Math.sin(t);
+      out.push({a:co,b:-si,c:si,d:co,tx:op.cx-co*op.cx+si*op.cy,ty:op.cy-si*op.cx-co*op.cy,mir:false,
+        lab:(Math.round(st*i*1000)/1000)+'°'});
+    }
+  }else if(op.kind==='mirror'){
+    if(op.axis==='y')out.push({a:1,b:0,c:0,d:-1,tx:0,ty:2*op.at,mir:true,lab:'miroir Y='+op.at});
+    else out.push({a:-1,b:0,c:0,d:1,tx:2*op.at,ty:0,mir:true,lab:'miroir X='+op.at});
+  }else if(op.kind==='wcs'){
+    (op.wcs||[]).forEach(function(c){ out.push({wcs:c,lab:c}); });
+  }
+  return out;
+}
+function faoXfPt(xf,x,y){ return [xf.a*x+xf.b*y+xf.tx, xf.c*x+xf.d*y+xf.ty]; }
+function faoXfMoves(mv,xf){
+  // Moves de la source → moves de la copie (arcs : centre relatif tourné, sens
+  // inversé par un miroir). Origine (wcs) : moves inchangés.
+  if(!xf||xf.wcs||!Array.isArray(mv))return mv;
+  return mv.map(function(m){
+    const q=Object.assign({},m);
+    if(isFinite(+m.x)&&isFinite(+m.y)){ const p=faoXfPt(xf,+m.x,+m.y); q.x=p[0]; q.y=p[1]; }
+    if(m.arc){
+      const i=+m.arc.i||0, j=+m.arc.j||0;
+      q.arc=Object.assign({},m.arc,{i:xf.a*i+xf.b*j, j:xf.c*i+xf.d*j});
+      if(xf.mir)q.arc.cw=!m.arc.cw;
+    }
+    return q;
+  });
+}
+function faoPatternOwner(job,op){
+  // Répétition ACTIVE qui contient `op` (ou null).
+  const ops=(job&&job.ops)||[];
+  for(let i=0;i<ops.length;i++){ const p=ops[i];
+    if(faoIsPattern(p)&&p.on!==false&&(p.srcs||[]).indexOf(op&&op.id)>=0)return p; }
+  return null;
+}
+function faoOpsSeq(job){
+  // Séquence d'usinage du posage : [{op, xf, pat, k, n}] — opérations actives,
+  // répétitions développées (par opération), sources retirées de leur place.
+  const ops=((job&&job.ops)||[]);
+  const out=[];
+  ops.forEach(function(op){
+    if(!op||op.on===false)return;
+    if(faoIsPattern(op)){
+      const xfs=faoPatternXfs(job,op);
+      ops.forEach(function(src){
+        if(!src||src.on===false||faoIsPattern(src)||(op.srcs||[]).indexOf(src.id)<0)return;
+        // repère propre (3+2) : copies géométriques impossibles → original seul
+        const own=!!src.frame&&faoPatternGeo(op);
+        const L=own?[null]:xfs;
+        L.forEach(function(xf,k){ out.push({op:src,xf:xf,pat:op,k:k,n:L.length}); });
+      });
+      return;
+    }
+    if(faoPatternOwner(job,op))return;
+    out.push({op:op,xf:null});
+  });
+  return out;
+}
+function faoPatternCount(job,op){
+  // nombre de copies (original compris)
+  return faoPatternXfs(job,op).length;
+}
+function faoPatternLabel(job,op){
+  const k=FAO_PAT_KINDS.filter(function(x){return x[0]===op.kind;})[0];
+  return 'Répétition '+(k?k[1].toLowerCase():'')+' ×'+faoPatternCount(job,op);
+}
+function faoPatternNew(){
+  // Bouton « Répétition » : reprend les opérations sélectionnées (Ctrl+clic) du posage.
+  try{
+    const s=faoSetup();
+    const op=faoPatternDefaults(s);
+    let at=s.ops.length;
+    try{
+      const so=faoSelectedOps();
+      if(so&&so.setup===s){
+        op.srcs=so.ops.filter(function(o){ return !faoIsPattern(o); }).map(function(o){ return o.id; });
+        at=Math.max.apply(null,so.ops.map(function(o){ return s.ops.indexOf(o)+1; })); // juste après la dernière source
+      }
+    }catch(e){}
+    faoSnapshot('nouvelle répétition');
+    s.ops.splice(Math.min(at,s.ops.length),0,op);
+    faoChanged();
+    faoSelectOp(s.id,op.id);
+    return op;
+  }catch(e){ return null; }
+}
+function faoPatternFiche(p,setup,op,idx){
+  // Fiche de la répétition dans le panneau droit.
+  p.appendChild(faoH('Répétition · '+setup.name));
+  const d=faoCard();
+  if(op.on===false)d.style.opacity='0.55';
+  const r=faoRow();
+  const cb=document.createElement('input'); cb.type='checkbox'; cb.checked=op.on!==false;
+  cb.title='Décocher = répétition ignorée : les opérations sources sont usinées une seule fois, à leur place';
+  cb.onchange=function(){ faoSnapshot('activer/désactiver la répétition'); op.on=cb.checked; faoChanged(); };
+  r.appendChild(cb);
+  const tt=document.createElement('span'); tt.className='fao-opnum';
+  tt.textContent=(idx+1)+'. '+faoPatternLabel(setup,op); r.appendChild(tt);
+  r.appendChild(faoMini('↑',function(){ const i=setup.ops.indexOf(op); if(i>0){ setup.ops.splice(i,1); setup.ops.splice(i-1,0,op); } },'Remonter la répétition (usinée plus tôt)'));
+  r.appendChild(faoMini('↓',function(){ const i=setup.ops.indexOf(op); if(i>=0&&i<setup.ops.length-1){ setup.ops.splice(i,1); setup.ops.splice(i+1,0,op); } },'Descendre la répétition (usinée plus tard)'));
+  r.appendChild(faoMini('✕',function(){ const i=setup.ops.indexOf(op); if(i>=0)setup.ops.splice(i,1); },'Supprimer la répétition (les sources sont de nouveau usinées une fois, à leur place)'));
+  d.appendChild(r);
+  const rk=faoRow(); rk.appendChild(faoLab('Type'));
+  rk.appendChild(faoSel(FAO_PAT_KINDS,op.kind,function(v){ op.kind=v; },'Rectangulaire : copies en lignes et colonnes · Circulaire : autour d’un centre · Symétrie : copie miroir · Autres origines : mêmes parcours dans G55, G56…'));
+  d.appendChild(rk);
+  const rp=faoRow();
+  if(op.kind==='rect'){
+    rp.appendChild(faoLab('X'));  rp.appendChild(faoNum(op.nx,function(v){ op.nx=v; },40,1,'Nombre de copies en X (original compris)'));
+    rp.appendChild(faoLab('pas')); rp.appendChild(faoNum(op.dx,function(v){ op.dx=v; },56,1,'Pas en X (mm, négatif = vers −X)'));
+    d.appendChild(rp);
+    const r2=faoRow();
+    r2.appendChild(faoLab('Y'));  r2.appendChild(faoNum(op.ny,function(v){ op.ny=v; },40,1,'Nombre de copies en Y (original compris)'));
+    r2.appendChild(faoLab('pas')); r2.appendChild(faoNum(op.dy,function(v){ op.dy=v; },56,1,'Pas en Y (mm, négatif = vers −Y)'));
+    d.appendChild(r2);
+  }else if(op.kind==='circ'){
+    rp.appendChild(faoLab('Nombre')); rp.appendChild(faoNum(op.n,function(v){ op.n=v; },40,1,'Nombre de copies (original compris)'));
+    rp.appendChild(faoLab('Angle')); rp.appendChild(faoNum(op.ang,function(v){ op.ang=v; },56,1,'Angle total (°) : 360 = tour complet réparti, sinon de la 1re à la dernière copie'));
+    d.appendChild(rp);
+    const r2=faoRow();
+    r2.appendChild(faoLab('Centre X')); r2.appendChild(faoNum(op.cx,function(v){ op.cx=v; },56,1,'Centre de rotation X (repère du posage)'));
+    r2.appendChild(faoLab('Y')); r2.appendChild(faoNum(op.cy,function(v){ op.cy=v; },56,1,'Centre de rotation Y (repère du posage)'));
+    d.appendChild(r2);
+  }else if(op.kind==='mirror'){
+    rp.appendChild(faoLab('Plan'));
+    rp.appendChild(faoSel([['x','X = constante'],['y','Y = constante']],op.axis,function(v){ op.axis=v; },'Plan de symétrie, perpendiculaire à X ou à Y'));
+    rp.appendChild(faoLab('à')); rp.appendChild(faoNum(op.at,function(v){ op.at=v; },56,1,'Position du plan de symétrie (mm, repère du posage)'));
+    d.appendChild(rp);
+    d.appendChild(faoHelp('La copie miroir inverse le sens de coupe (avalant ↔ opposition), comme dans Fusion 360.'));
+  }else{
+    rp.appendChild(faoLab('Origines'));
+    FAO_WCS_ALL.forEach(function(c){
+      if(c===(setup.wcs||'G54'))return;
+      const lab=document.createElement('label'); lab.style.marginRight='6px';
+      const k=document.createElement('input'); k.type='checkbox'; k.checked=(op.wcs||[]).indexOf(c)>=0;
+      k.onchange=function(){ faoSnapshot('origines de la répétition');
+        const w=(op.wcs||[]).filter(function(x){return x!==c;}); if(k.checked)w.push(c);
+        op.wcs=FAO_WCS_ALL.filter(function(x){return w.indexOf(x)>=0;}); faoChanged(); };
+      lab.appendChild(k); lab.appendChild(document.createTextNode(' '+c)); rp.appendChild(lab);
+    });
+    d.appendChild(rp);
+    d.appendChild(faoHelp('Le programme usine d’abord dans '+(setup.wcs||'G54')+' (origine du posage), puis refait les mêmes parcours dans chaque origine cochée — à régler sur la CN.'));
+  }
+  // sources
+  d.appendChild(faoH('Opérations répétées'));
+  const ops=(setup.ops||[]).filter(function(o){ return o&&!faoIsPattern(o); });
+  if(!ops.length)d.appendChild(faoHelp('Aucune opération dans ce posage.'));
+  ops.forEach(function(o){
+    const owner=(setup.ops||[]).filter(function(q){ return faoIsPattern(q)&&q!==op&&(q.srcs||[]).indexOf(o.id)>=0; })[0];
+    const rr=faoRow();
+    const k=document.createElement('input'); k.type='checkbox'; k.checked=(op.srcs||[]).indexOf(o.id)>=0;
+    const fr=!!o.frame&&faoPatternGeo(op);
+    k.disabled=!!owner;
+    k.title=owner?'Déjà dans une autre répétition':(fr?'Repère propre (3+2) : seul l’original est usiné, pas de copie déplacée':'Répéter cette opération');
+    k.onchange=function(){ faoSnapshot('opérations de la répétition');
+      const s2=(op.srcs||[]).filter(function(x){return x!==o.id;}); if(k.checked)s2.push(o.id);
+      op.srcs=(setup.ops||[]).filter(function(q){return s2.indexOf(q.id)>=0;}).map(function(q){return q.id;}); faoChanged(); };
+    rr.appendChild(k);
+    const lb=document.createElement('span');
+    lb.textContent=((setup.ops||[]).indexOf(o)+1)+'. '+faoOpShortLabel(o)+(o.on===false?' (désactivée)':'')+(owner?' — dans une autre répétition':'')+(fr?' — repère propre : original seul':'');
+    rr.appendChild(lb);
+    d.appendChild(rr);
+  });
+  const nS=(op.srcs||[]).length, nC=faoPatternCount(setup,op);
+  d.appendChild(faoHelp(nS
+    ?(nS+' opération(s) × '+nC+' copies (original compris) — usinées opération par opération : chacune sur toutes les copies avant la suivante.')
+    :'Cochez les opérations à répéter (ou sélectionnez-les par Ctrl+clic dans l’arbre avant de créer la répétition).'));
+  p.appendChild(d);
+  const back=faoRow();
+  const bb=document.createElement('button'); bb.textContent='← Posage '+setup.name; bb.style.fontSize='.72rem';
+  bb.onclick=function(){ faoSelectSetup(setup.id); };
+  back.appendChild(bb); p.appendChild(back);
+}
+function faoPatternRemap(ops,map){
+  // Copier / coller : les sources d'une répétition suivent les ids neufs.
+  (ops||[]).forEach(function(o){ if(faoIsPattern(o))o.srcs=(o.srcs||[]).map(function(id){ return map[id]||id; }); });
+}
+
 /* ═══════════════ 89-fao-torique.js — fao torique ═══════════════ */
 /* ================================================================
    ÉBAUCHE 3D — PASSE TORIQUE (2026-10-14-007)
@@ -74550,6 +74977,8 @@ function mfFiTable(){
   F('Opérations/Finition','Finition','Passe finement sur toute la forme pour une surface lisse et précise.',[],STAIRS(),DOME(true),null,'Après ébauche','Surface finie');
   const GEO=(p)=>'<path d="M50 8c3 0 5 1.4 6.6 4L85 54c3 5-.7 11-6.3 11H21.3c-5.6 0-9.3-6-6.3-11L43.4 12c1.6-2.6 3.6-4 6.6-4z" fill="url(#mfFcHw)" stroke="#7a5528" stroke-width="1.3"/>'+(p?ficD('M50 19L76 58H24Z',BL,1.2)+ficD('M50 31L65 53H35Z',BL,1.2)+ficD('M50 42L55 49H45Z',BL,1.2):'');
   F('Opérations/Géodésique','Géodésique','Finition dont les passes suivent la surface à partir de ses bords, à écart régulier, même sur une forme gauche.',['Choisissez les faces'],GEO(false),GEO(true));
+  // V0.95.3 : répétition d'opérations (src/89-fao-repetition.js)
+  F('Opérations/Répétition','Répétition','Refait les opérations choisies sur plusieurs copies : en lignes et colonnes, en cercle, en miroir ou dans d’autres origines (G55…).',['Sélectionnez les opérations (Ctrl+clic)'],BKW()+CROSS(-7,-7,7),BKW()+CROSS(-7,-7,7)+CROSS(7,-7,7)+CROSS(-7,7,7)+CROSS(7,7,7),null,'Une opération','Ses copies');
   F('Simulation/Usinage','Simulation d’usinage','Montre en film l’outil qui creuse la matière, pour vérifier avant de lancer la machine.',['▶ lecture, ⏸ pause, ⏹ arrêt','Échap pour sortir'],WD(-18,-18,-12,18,18,7)+ficDot(82,14,9,GR)+'<path d="M79 9l8 5-8 5z" fill="#fff"/>',STAIRS()+TOOL(8,8,8,16),null,'Vous lancez','L’usinage défile');
   const PATH=()=>ficD('M14 58H44V44H74V30',BL,1.8);
   const RAP=()=>ficD('M74 30L84 12H26L14 58',RE,1.2,'3 2');
@@ -75304,6 +75733,7 @@ function mfCss(){
   '#mfPosTabs{display:flex;gap:3px;flex-wrap:wrap;margin:0 0 6px}',
   '#mfPosTabs button{padding:3px 10px;font-size:.72rem;border-radius:7px}',
   '#mfPosTabs button.on{background:var(--primary);border-color:var(--primary);color:#fff}',
+  '#mfPosTabs button.struck{text-decoration:line-through;opacity:.55}',
   'body:not(.ui-modern) #mfPosTabs{display:none}',
   /* barre d'état */
   '#mfStatus{gap:16px;align-items:center;padding:5px 12px;margin-top:6px;font-size:.72rem;color:var(--muted);background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);white-space:nowrap;overflow:hidden}',
@@ -75376,7 +75806,7 @@ function mfCss(){
 function mfCloseMenus(){
   document.querySelectorAll('.mfPop.mfTmp').forEach(p=>p.remove());
   document.querySelectorAll('.dd.open').forEach(d=>d.classList.remove('open'));
-  ['ctxMenu','ctxMenu3D','skCtxMenu','mepCtx'].forEach(id=>{const m=document.getElementById(id);if(m)m.style.display='none';});
+  ['ctxMenu','ctxMenu3D','skCtxMenu','mepCtx','faoCtxMenu'].forEach(id=>{const m=document.getElementById(id);if(m)m.style.display='none';});
   ['setMenu','skSetMenu'].forEach(id=>{const m=document.getElementById(id);if(m)m.classList.remove('open');});
 }
 function mfSyncPropsHost(){
@@ -75533,8 +75963,9 @@ const MF_CAO=[
   ['Ensembles',[['pattern','Répétition','btnRepeat'],['combine','Combiner','btnCombine'],['move','Déplacer','btnBodyMove'],['scale','Échelle','btnBodyScale'],['mirror','Symétrie','btnBodyMirror'],['params','Paramètres','btnParams']]],
   ['Fichier',[['import','Importer','btnImport'],['import','Dériver','btnDerive'],['export','STEP','btnExportStep'],['export','STL','btnExportStl'],['export','OBJ','btnExportObj'],['export','FreeCAD','btnExportFcstd']]]
 ];
-const MF_FAO_ICON={facing:'facing',pocket:'pocket',chamfer:'chamfer',contour:'contour',drill:'drill',rough3d:'rough3d',geofinish:'finish',geodesic:'geodesic',pocket2:'pocket'};
+const MF_FAO_ICON={facing:'facing',pocket:'pocket',chamfer:'chamfer',contour:'contour',drill:'drill',rough3d:'rough3d',geofinish:'finish',geodesic:'geodesic',pocket2:'pocket',pattern:'pattern'};
 function mfFaoAdd(type,nm){
+  if(type==='pattern'){ try{faoPatternNew();}catch(e){} return; } // V0.95.3 : reprend les opérations sélectionnées
   try{const op=faoOpDefaults(type);if(!op)return;const s=faoSetup();faoSnapshot('nouvelle opération « '+nm+' »');s.ops.push(op);
     // V0.33.2 : Perçage sur des trous sélectionnés → gamme posée d'office (src/89-fao-percage.js)
     const g=op.type==='drill'&&typeof faoDrillFromSel==='function'?faoDrillFromSel(s,op):null;
@@ -75860,9 +76291,9 @@ function mfPosTabs(){
   let bar=document.getElementById('mfPosTabs');
   if(!bar){bar=document.createElement('div');bar.id='mfPosTabs';const tr=document.getElementById('faoTree');if(tr&&tr.parentNode)tr.parentNode.insertBefore(bar,tr);else tw.appendChild(bar);}
   let r=null;try{r=faoRoot();}catch(e){}if(!r)return;
-  const sig=r.setups.map(s=>s.id+':'+s.name).join('|')+'#'+r.activeSetupId;
+  const sig=r.setups.map(s=>s.id+':'+s.name+(s.struck?':x':'')).join('|')+'#'+r.activeSetupId;
   if(bar.dataset.sig===sig)return;bar.dataset.sig=sig;bar.innerHTML='';
-  r.setups.forEach(s=>{const b=document.createElement('button');b.textContent=s.name;b.title='Posage '+s.name+' — '+(s.machine||'');if(s.id===r.activeSetupId)b.className='on';b.onclick=()=>{try{faoSelectSetup(s.id);}catch(e){}mfPosTabs();};bar.appendChild(b);});
+  r.setups.forEach(s=>{const b=document.createElement('button');b.textContent=s.name;b.title='Posage '+s.name+' — '+(s.machine||'');b.className=(s.id===r.activeSetupId?'on':'')+(s.struck?' struck':'');if(s.struck)b.title+=' — gelé';b.title+=' · clic droit = menu du posage';b.onclick=()=>{try{faoSelectSetup(s.id);}catch(e){}mfPosTabs();};b.oncontextmenu=e=>{e.preventDefault();e.stopPropagation();try{faoSelectSetup(s.id);mfPosTabs();faoSetupCtx(e.clientX,e.clientY,s.id);}catch(_){}};bar.appendChild(b);});
   const p=document.createElement('button');p.textContent='＋';p.title='Ajouter un posage';p.onclick=()=>{const b=Array.from(document.querySelectorAll('#faoTreeWrap button')).find(x=>/\+ Posage/.test(x.textContent));if(b)b.click();bar.dataset.sig='';mfPosTabs();};bar.appendChild(p);
 }
 function mfStatusBar(){

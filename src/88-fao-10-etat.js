@@ -248,6 +248,9 @@ function faoSanitiseOps(s){
       delete op.geoBlocked;
     }
   });
+  // V0.95.3 : posage gelé = toutes ses opérations OFF, état d'avant mémorisé (88-fao-82)
+  if(typeof faoPatternSanitise==='function')faoPatternSanitise(s); // V0.95.3 : répétitions (89-fao-repetition)
+  if(typeof faoStruckSanitise==='function')faoStruckSanitise(s);
 }
 // radial/axial effectifs d'une op (compat 31v : `laisse` vaut les deux).
 function faoRA(o){

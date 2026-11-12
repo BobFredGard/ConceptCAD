@@ -141,6 +141,8 @@ const SUITES = [
   "test_fao_solide_cache",
   "test_fao_arbre_ouverture",
   "test_fao_copier_coller",
+  "test_fao_posage_menu",
+  "test_fao_repetition",
   "test_fao_suppression_multiple",
   "test_fao_bundle",
   "test_fao_stale_why",
