@@ -254,7 +254,24 @@ function renderProps(){
         f.mode==='mir'?[['🎯','Prendre le plan de la face sélectionnée dans la vue (sa normale)',()=>repUseFaceFor(f)]]
           :[['🎯',pickTip,()=>repUseFaceFor(f)],['⇄','Inverser la direction',()=>repFlipDir(f,1)]]);
       if(f.mode==='mir'){
-        pChk('2ᵉ plan (double)',!!f.plane2,v=>{
+        // + LINÉAIRE (V0.95.5) : l'opération et son image répétées en ligne, avant la 2ᵉ symétrie
+        pChk('+ Linéaire',!!f.mlin,v=>{
+          docPushUndo('étape Linéaire de « '+f.name+' »');
+          if(v){f.mlin=true;if(!f.axis)f.axis='X';if(!(+f.copies>=1))f.copies=1;if(!(+f.dist))f.dist=20;}
+          else delete f.mlin;
+          f.name=repTypeName(f.mode,f);applyCfg();
+        });
+        if(f.mlin){
+          icoBtns(pRow('Direction',pSel(['X','Y','Z','Face'].map(v=>[v,v==='Face'?'Face / arête':v]),f.axis||'X',v=>{docPushUndo('direction linéaire');f.axis=v;delete f.dir;applyCfg();})),
+            [['🎯',pickTip,()=>repUseFaceFor(f,3)],['⇄','Inverser la direction',()=>repFlipDir(f,1)]]);
+          const cl=repQtyInput((+f.copies||1)+1,'Quantité en ligne, original compris (3 = l’original + 2 copies)');parFx(cl,f,'qty');
+          cl.onchange=()=>{docPushUndo('quantité linéaire');f.copies=repMaxCopies(repQtyRead(cl)-1);applyCfg();};
+          pRow('Quantité',cl);
+          const dl=document.createElement('input');dl.type='text';dl.inputMode='decimal';dl.value=f.dist;parFx(dl,f,'dist');
+          dl.addEventListener('change',()=>{docPushUndo('distance linéaire');f.dist=parseFloat(String(dl.value).replace(',','.'))||0;applyCfg();});
+          pRow('Distance (mm)',dl);
+        }
+        pChk(f.mlin?'+ Symétrie (2ᵉ plan)':'2ᵉ plan (double)',!!f.plane2,v=>{
           docPushUndo('2ᵉ plan de « '+f.name+' »');
           if(v){if(!f.plane2)f.plane2=(f.plane||'YZ')==='XZ'?'YZ':'XZ';}
           else{delete f.plane2;delete f.planeN2;}

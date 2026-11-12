@@ -35,6 +35,7 @@ Historique rejouable, timeline à icônes (vert = ajout, rouge = enlèvement), m
   - L'arête choisie suit les paramètres amont, y compris sur une extrusion à **dépouille** (hauteur et angle modifiés).
   - Avec plusieurs corps, l'aperçu ne remplace que le corps modifié : un corps caché le reste.
 - **Répétition** linéaire, en grille, circulaire, symétrie ou suivant un profil, avec aperçu rouge des copies.
+  - **Symétrie + Linéaire + Symétrie** : dans une symétrie, cochez **+ Linéaire** (direction, quantité, distance) pour répéter la pièce et son image en ligne, puis **+ Symétrie (2ᵉ plan)** pour reprendre le tout en miroir — une seule fonction dans l’arbre.
   - Une **case à cocher par copie** enlève celle qui tombe mal : dans le panneau, et sous chaque copie dans la vue avec l'option « Cases dans la vue 3D ». Au survol, la copie passe en bleu.
   - Balayages compris, sans esquisses copiées visibles dans l'arbre.
   - Les copies **s'unissent** à leur corps ou deviennent chacune un **nouveau corps**.

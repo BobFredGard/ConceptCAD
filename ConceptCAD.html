@@ -383,7 +383,7 @@ input[type=range]{accent-color:var(--primary);width:100%}
  * peut changer sans rien casser. CACHE_VER (parcours FAO) reste indépendant.
  */
 
-const APP_VER='V0.95.4';
+const APP_VER='V0.95.5';
 try{console.log('[ConceptCAD] version '+APP_VER);}catch(e){}
 try{var mfSv=document.getElementById('mfSplashVer');if(mfSv)mfSv.textContent=APP_VER;}catch(e){} // écran de démarrage
 
@@ -8628,7 +8628,7 @@ function featSig(f){
     if(f.kind==='souffle')s+='|souffle'+soufSig(f); // distance, creux enjambés, sens, bloc plein, pas
   }else if(f.type==='repeat'){
     s+='|'+(f.base||[]).join(',')+'|'+(+f.copies||1)+'|'+(+f.dist||0)+'|'+(+f.angle||0)+'|'+(f.axis||f.plane||'')+'|'+JSON.stringify(f.planeN||null)+'|'+(f.plane2||'')+'|'+JSON.stringify(f.planeN2||null)
-      +'|'+JSON.stringify(f.dir||null)+'|'+(f.lin2?[f.axis2,JSON.stringify(f.dir2||null),+f.copies2||1,+f.dist2||0].join(','):''); // 2ᵉ direction (grille)
+      +'|'+JSON.stringify(f.dir||null)+'|'+(f.lin2?[f.axis2,JSON.stringify(f.dir2||null),+f.copies2||1,+f.dist2||0].join(','):'')+(f.mlin?'|ml'+(f.plane||''):''); // 2ᵉ direction (grille) ; symétrie + linéaire
   }
   // Filet (2026-10-02-011) : la fonction ENTIÈRE entre dans la signature — toute
   // propriété, connue ou future, invalide le suffixe dès qu'elle bouge, donc jamais
@@ -11474,9 +11474,15 @@ function repXformsK(cfg,max,noSkip){
     return out;
   }
   const n1=repPlaneN(c),M1=mirM(n1);out.push({k:'1',M:M1});
+  // + Linéaire (V0.95.5) : l'original et son image décalés de i pas ; puis la 2ᵉ symétrie de tout
+  const L=[{k:'',M:null},{k:'1',M:M1}];
+  if(c.mlin){const d=repMirLinStep(c),n=repMaxCopies(c.copies);
+    for(let i=1;i<=n;i++){const T=trans(repScale(d,i));L.push({k:'L'+i,M:T},{k:'L'+i+'.1',M:mul(T,M1)});out.push({k:'L'+i,M:T},{k:'L'+i+'.1',M:mul(T,M1)});}}
   if(c.plane2){
     const n2=c.planeN2?repNorm(c.planeN2):repPlaneN({plane:c.plane2});
-    if(Math.abs(repDot(n1,n2))<0.999){const M2=mirM(n2);out.push({k:'2',M:M2});out.push({k:'21',M:mul(M2,M1)});}
+    if(Math.abs(repDot(n1,n2))<0.999){const M2=mirM(n2);
+      L.forEach(x=>out.push({k:x.k==='1'?'21':x.k?'2.'+x.k:'2',M:x.M?mul(M2,x.M):M2}));
+    }
   }
   return out;
 }
@@ -11691,7 +11697,7 @@ function repHoverShow(cfg,key,ids){
     scene.add(g);repHovGroup=g;
   }catch(e){repHovGroup=null;}
 }
-function repTypeName(m,f){if(m==='mir'&&f&&f.plane2)return 'Symétrie double';if(m==='lin'&&f&&f.lin2)return 'Linéaire 2 directions';return m==='mir'?'Symétrie':m==='circ'?'Circulaire':m==='path'?'Suivant un profil':'Linéaire';}
+function repTypeName(m,f){if(m==='mir'&&f&&f.mlin)return f.plane2?'Symétrie + Linéaire + Symétrie':'Symétrie + Linéaire';if(m==='mir'&&f&&f.plane2)return 'Symétrie double';if(m==='lin'&&f&&f.lin2)return 'Linéaire 2 directions';return m==='mir'?'Symétrie':m==='circ'?'Circulaire':m==='path'?'Suivant un profil':'Linéaire';}
 function repAxisVec(cfg){const c=cfg||repMode;const a=c&&c.axis;if(c&&c.dir)return repNorm(c.dir);if(a==='Y')return[0,1,0];if(a==='Z')return[0,0,1];return[1,0,0];}
 function repPlaneN(cfg){const c=cfg||repMode;if(c&&c.planeN)return repNorm(c.planeN);const p=c&&c.plane;if(p==='XY')return[0,0,1];if(p==='XZ')return[0,1,0];return[1,0,0];}
 function repNorm(a){const l=Math.hypot(a[0],a[1],a[2])||1;return[a[0]/l,a[1]/l,a[2]/l];}
@@ -11733,6 +11739,9 @@ function repPathNote(rp){
 }
 // Répétition linéaire à DEUX directions (grille) : 2ᵉ axe (rp.axis2 X/Y/Z/Face + rp.dir2), quantité
 // rp.copies2 (stockée − 1, comme copies), pas rp.dist2. Une instance par case (i, j) hors (0, 0).
+// SYMÉTRIE + LINÉAIRE (V0.95.5) : dans une symétrie, rp.mlin ajoute une étape linéaire entre le 1er plan et le
+// 2ᵉ : axe rp.axis / rp.dir, quantité rp.copies (stockée − 1), pas rp.dist — champs inutilisés sinon par la symétrie.
+function repMirLinStep(c){return repScale(repAxisVec({axis:c&&c.axis,dir:c&&c.dir}),+(c&&c.dist)||0);}
 function repAxis2Vec(c){return repAxisVec({axis:c&&c.axis2,dir:c&&c.dir2});}
 function repLinCells(rp){
   // Cases de la grille, original exclu : [{i, j, off}] — 200 instances au plus (REPEAT_MAX)
@@ -12117,14 +12126,18 @@ function repGenChildren(rp){
     return kids;
   };
   const kids1=(rp.mode==='mir')?buildPass(base,rp,1):[];
-  let kids2=[];
-  if(mir2&&!rp._samePlane){
-    const sources2=[];
-    base.forEach(f=>{sources2.push(f);const k1=kids1.find(k=>k._src===f.id);if(k1)sources2.push(k1);});
-    kids2=buildPass(sources2,cfg2,2);
+  let kids2=[],kidsL=[];
+  // Motif après la 1ʳᵉ symétrie : chaque source suivie de son image
+  const sources1=[];
+  if(rp.mode==='mir')base.forEach(f=>{sources1.push(f);const k1=kids1.find(k=>k._src===f.id);if(k1)sources1.push(k1);});
+  // + LINÉAIRE (V0.95.5) : ce motif est décalé de i pas (index 1000 + i), puis la 2ᵉ symétrie reprend le tout
+  if(rp.mode==='mir'&&rp.mlin){
+    const d=repMirLinStep(rp),nL=repMaxCopies(rp.copies);
+    for(let i=1;i<=nL;i++)kidsL=kidsL.concat(buildPass(sources1,Object.assign({},rp,{mode:'lin',_off:repScale(d,i)}),1000+i));
   }
+  if(mir2&&!rp._samePlane)kids2=buildPass(sources1.concat(kidsL),cfg2,2);
   rp.children=[];
-  const kids=(rp.mode==='mir')?kids1.concat(kids2):[];
+  const kids=(rp.mode==='mir')?kids1.concat(kidsL,kids2):[];
   if(rp.mode!=='mir'){
     // linéaire : une instance par case de grille (une seule direction = une ligne), décalage explicite
     const cells=rp.mode==='lin'?repLinCells(rp):null;
@@ -12195,7 +12208,7 @@ function repSyncForFeature(f,seen){
 }
 const repGenSigs=new Map(); // id de répétition -> signature des sources au dernier régénéré
 function repSourceSig(rp){
-  let s=JSON.stringify([rp.op||'join',rp.mode,rp.copies,rp.dist,rp.angle,rp.axis,rp.plane,rp.planeN,rp.plane2,rp.planeN2,rp.base,rp.dir,rp.lin2,rp.axis2,rp.dir2,rp.copies2,rp.dist2,rp.path,rp.pspace,rp.orient,rp.rev,rp.skip]);
+  let s=JSON.stringify([rp.op||'join',rp.mode,rp.copies,rp.dist,rp.angle,rp.axis,rp.plane,rp.planeN,rp.plane2,rp.planeN2,rp.mlin,rp.base,rp.dir,rp.lin2,rp.axis2,rp.dir2,rp.copies2,rp.dist2,rp.path,rp.pspace,rp.orient,rp.rev,rp.skip]);
   if(rp.mode==='path')s+='#g'+pgSketchSig(rp.path&&doc.sketches.find(x=>x.id===rp.path.sk)); // géométrie de la courbe guide
   // motif développé : une répétition source change dès que ses instances changent
   const B=(rp.base||[]).map(id=>doc.features.find(x=>x.id===id));
@@ -12827,11 +12840,13 @@ function repFlipDir(rp,which){
   repGenChildren(rp);markDirty();rebuild();renderTree();renderProps();refreshParts();
 }
 function repUseFaceFor(rp,which){
-  const P=repPickedDir(rp.mode==='mir');if(!P)return;
+  // which 3 : direction de l'étape Linéaire d'une symétrie (arête ou face, comme une linéaire)
+  const P=repPickedDir(rp.mode==='mir'&&which!==3);if(!P)return;
   const a=P.a;
   docPushUndo('direction de « '+rp.name+' »');
-  try{faceEl.textContent=(which===2?'2ᵉ direction':(rp.mode==='mir'?'Plan':'Direction'))+' : '+P.what+' sélectionnée.';}catch(e){}
-  if(rp.mode==='mir'){
+  try{faceEl.textContent=(which===2?'2ᵉ direction':(rp.mode==='mir'&&which!==3?'Plan':'Direction'))+' : '+P.what+' sélectionnée.';}catch(e){}
+  if(which===3){rp.axis='Face';rp.dir=a;}
+  else if(rp.mode==='mir'){
     if(which===2){rp.plane2='Face';rp.planeN2=a;}
     else{rp.plane='Face';rp.planeN=a;}
   }else if(which===2){rp.axis2='Face';rp.dir2=a;}else{rp.axis='Face';rp.dir=a;}
@@ -12848,6 +12863,7 @@ function applyRepPattern(){
     copies:repMaxCopies(repMode.copies),q:1,dist:repMode.dist,angle:repMode.angle,
     axis:repMode.axis,plane:repMode.plane,dir:repMode.dir,planeN:repMode.planeN,
     plane2:repMode.plane2||undefined,planeN2:repMode.planeN2||undefined,
+    mlin:repMode.type==='mir'&&repMode.mlin?true:undefined,
     lin2:repMode.type==='lin'&&repMode.lin2?true:undefined,axis2:repMode.type==='lin'&&repMode.lin2?repMode.axis2:undefined,
     dir2:repMode.type==='lin'&&repMode.lin2?repMode.dir2:undefined,copies2:repMode.type==='lin'&&repMode.lin2?repMaxCopies(repMode.copies2):undefined,
     dist2:repMode.type==='lin'&&repMode.lin2?(+repMode.dist2||0):undefined,
@@ -12859,7 +12875,7 @@ function applyRepPattern(){
     rp.path=Object.assign({},repMode.path);rp.pspace=repMode.pspace==='pitch'?'pitch':'fit';rp.orient=repMode.orient==='tangent'?'tangent':'fixed';
     if(repMode.rev)rp.rev=true;delete rp.axis;delete rp.angle;
   }
-  parFxCopy(repMode,rp,(repMode.type==='mir'?[]:['qty']).concat(repMode.type==='circ'?['angle']:(repMode.type==='lin'?(repMode.lin2?['dist','dist2','qty2']:['dist']):(repMode.type==='path'&&repMode.pspace==='pitch'?['dist']:[]))));
+  parFxCopy(repMode,rp,(repMode.type==='mir'?(repMode.mlin?['qty','dist']:[]):['qty']).concat(repMode.type==='circ'?['angle']:(repMode.type==='lin'?(repMode.lin2?['dist','dist2','qty2']:['dist']):(repMode.type==='path'&&repMode.pspace==='pitch'?['dist']:[]))));
   addFeature(rp);
   const nb=repGenChildren(rp);
   exitRepMode();
@@ -12873,6 +12889,11 @@ function repUseSelectedFace(){
   const a=P.a;
   if(repMode.type==='mir'){repMode.plane='Face';repMode.planeN=a;}else{repMode.axis='Face';repMode.dir=a;}
   renderRepPanel();
+}
+function repUseSelectedLin(){
+  // étape Linéaire d'une symétrie : direction de l'arête (ou normale de la face) sélectionnée
+  if(!repMode)return;const P=repPickedDir(false);if(!P)return;
+  repMode.axis='Face';repMode.dir=P.a;renderRepPanel();
 }
 function repUseSelectedFace2(){
   if(!repMode||(repMode.type!=='mir'&&repMode.type!=='lin'))return;
@@ -13012,12 +13033,33 @@ function renderRepPanel(){
   bf.onclick=repUseSelectedFace;p.appendChild(bf);
   }
   if(repMode.type==='mir'){
+    // + LINÉAIRE (V0.95.5) : la pièce et son image sont répétées en ligne, avant la 2ᵉ symétrie.
+    const rl=document.createElement('div');rl.className='row';
+    const tl=document.createElement('input');tl.type='checkbox';tl.checked=!!repMode.mlin;tl.className='repMlinChk';
+    tl.title='Ajouter une étape Linéaire : l’opération et son image sont répétées en ligne (puis reprises par la 2ᵉ symétrie si elle est cochée)';
+    const ll=document.createElement('span');ll.textContent=' + Linéaire';rl.appendChild(tl);rl.appendChild(ll);p.appendChild(rl);
+    tl.onchange=()=>{repMode.mlin=tl.checked||undefined;
+      if(tl.checked){if(!repMode.axis||repMode.axis==='Face'&&!repMode.dir)repMode.axis='X';if(!(+repMode.copies>=1))repMode.copies=1;if(!(+repMode.dist))repMode.dist=20;}
+      renderRepPanel();};
+    if(repMode.mlin){
+      const axl=document.createElement('select');['X','Y','Z','Face'].forEach(v=>{const op=document.createElement('option');op.value=v;op.textContent=v==='Face'?'Face / arête':v;axl.appendChild(op);});
+      axl.value=repMode.axis||'X';axl.title='Direction de l’étape Linéaire';axl.className='repMlinAxe';
+      axl.onchange=()=>{repMode.axis=axl.value;delete repMode.dir;renderRepPanel();};p.appendChild(axl);
+      const bl=document.createElement('button');bl.textContent='🎯 Arête / face → direction';bl.title='Direction de l’arête sélectionnée, sinon normale de la face sélectionnée';
+      bl.onclick=repUseSelectedLin;p.appendChild(bl);
+      const rq=document.createElement('div');rq.className='row';const lq=document.createElement('label');lq.textContent='Quantité';rq.appendChild(lq);
+      const cl=repQtyInput((+repMode.copies||1)+1,'Quantité en ligne, original compris (3 = l’original + 2 copies)');cl.className='repMlinQte';
+      parFx(cl,repMode,'qty',{keep:1});cl.onchange=()=>{repMode.copies=repMaxCopies(repQtyRead(cl)-1);repPreviewUpdate();};
+      rq.appendChild(cl);p.appendChild(rq);
+      const ld=document.createElement('label');ld.textContent=' Distance (mm)';const dl=document.createElement('input');dl.type='text';dl.inputMode='decimal';dl.value=repMode.dist;dl.className='repMlinDist';
+      parFx(dl,repMode,'dist',{keep:1});dl.onchange=()=>{repMode.dist=parseFloat(String(dl.value).replace(',','.'))||0;repPreviewUpdate();};ld.appendChild(dl);p.appendChild(ld);
+    }
     // Symétrie DOUBLE : un 2ᵉ plan dont la passe englobe la base ET la 1ʳᵉ symétrie.
     // Absent par défaut (compatibilité : une symétrie existante reste simple).
     const r2=document.createElement('div');r2.className='row';
     const t2=document.createElement('input');t2.type='checkbox';t2.checked=!!repMode.plane2;
     t2.title='Ajouter un 2ᵉ plan : la 1ʳᵉ symétrie est comprise dans la 2ᵉ, ainsi que l\u2019opération initiale';
-    const l2=document.createElement('span');l2.textContent=' 2ᵉ plan (symétrie double)';
+    const l2=document.createElement('span');l2.textContent=repMode.mlin?' + Symétrie (2ᵉ plan)':' 2ᵉ plan (symétrie double)';
     r2.appendChild(t2);r2.appendChild(l2);p.appendChild(r2);
     t2.onchange=()=>{
       if(t2.checked){if(!repMode.plane2)repMode.plane2=(repMode.plane||'YZ')==='XZ'?'YZ':'XZ';}
@@ -13440,7 +13482,24 @@ function renderProps(){
         f.mode==='mir'?[['🎯','Prendre le plan de la face sélectionnée dans la vue (sa normale)',()=>repUseFaceFor(f)]]
           :[['🎯',pickTip,()=>repUseFaceFor(f)],['⇄','Inverser la direction',()=>repFlipDir(f,1)]]);
       if(f.mode==='mir'){
-        pChk('2ᵉ plan (double)',!!f.plane2,v=>{
+        // + LINÉAIRE (V0.95.5) : l'opération et son image répétées en ligne, avant la 2ᵉ symétrie
+        pChk('+ Linéaire',!!f.mlin,v=>{
+          docPushUndo('étape Linéaire de « '+f.name+' »');
+          if(v){f.mlin=true;if(!f.axis)f.axis='X';if(!(+f.copies>=1))f.copies=1;if(!(+f.dist))f.dist=20;}
+          else delete f.mlin;
+          f.name=repTypeName(f.mode,f);applyCfg();
+        });
+        if(f.mlin){
+          icoBtns(pRow('Direction',pSel(['X','Y','Z','Face'].map(v=>[v,v==='Face'?'Face / arête':v]),f.axis||'X',v=>{docPushUndo('direction linéaire');f.axis=v;delete f.dir;applyCfg();})),
+            [['🎯',pickTip,()=>repUseFaceFor(f,3)],['⇄','Inverser la direction',()=>repFlipDir(f,1)]]);
+          const cl=repQtyInput((+f.copies||1)+1,'Quantité en ligne, original compris (3 = l’original + 2 copies)');parFx(cl,f,'qty');
+          cl.onchange=()=>{docPushUndo('quantité linéaire');f.copies=repMaxCopies(repQtyRead(cl)-1);applyCfg();};
+          pRow('Quantité',cl);
+          const dl=document.createElement('input');dl.type='text';dl.inputMode='decimal';dl.value=f.dist;parFx(dl,f,'dist');
+          dl.addEventListener('change',()=>{docPushUndo('distance linéaire');f.dist=parseFloat(String(dl.value).replace(',','.'))||0;applyCfg();});
+          pRow('Distance (mm)',dl);
+        }
+        pChk(f.mlin?'+ Symétrie (2ᵉ plan)':'2ᵉ plan (double)',!!f.plane2,v=>{
           docPushUndo('2ᵉ plan de « '+f.name+' »');
           if(v){if(!f.plane2)f.plane2=(f.plane||'YZ')==='XZ'?'YZ':'XZ';}
           else{delete f.plane2;delete f.planeN2;}
