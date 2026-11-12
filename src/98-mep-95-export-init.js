@@ -299,9 +299,19 @@
     // à l'ouverture : planche vide + corps → Face + Dessus/Côté droit en PROJECTIONS 1er angle
     const sh=mepSheet();
     if(sh.views.length)return; // planche déjà peuplée : ne rien toucher
+    // V0.94.8 : assemblage (composant actif avec des instances) → une seule vue de face « Assemblage »,
+    // même si le composant n'a aucun corps à lui (avant : planche vide)
+    const asmOn=typeof asmPlanOn==='function'&&asmPlanOn();
     const has=typeof bodies!=='undefined'&&bodies.some(b=>b&&!b.ghost&&b.kind!=='ghost'&&b.mesh&&b.mesh.visible!==false);
-    if(!has)return;
+    if(!has&&!asmOn)return;
     try{
+      if(asmOn){
+        const def=MEP_VIEWS.front;
+        mepAddView({kind:'base',vk:'front',bodyId:null,asm:true,label:def&&def.lab||''});
+        mepGeoCache.clear();
+        mepRender();
+        return;
+      }
       const front=mepAddStandardView('front');
       mepAddProjected(front,'top');   // dessous de la mère, alignée en x
       mepAddProjected(front,'right'); // à gauche de la mère, alignée en hauteur
@@ -315,7 +325,7 @@
      en cache (pièce modifiée, document ouvert…) ou une planche vide qui recevra ses vues. */
   function mepSheetStale(){
     const sh=mepSheet(),ver=mepGeomKey();
-    if(!sh.views.length)return typeof bodies!=='undefined'&&bodies.some(b=>b&&!b.ghost&&b.kind!=='ghost'&&b.mesh&&b.mesh.visible!==false);
+    if(!sh.views.length)return (typeof asmPlanOn==='function'&&asmPlanOn())||(typeof bodies!=='undefined'&&bodies.some(b=>b&&!b.ghost&&b.kind!=='ghost'&&b.mesh&&b.mesh.visible!==false));
     return sh.views.some(v=>{const c=mepGeoCache.get(v.id);try{return !c||c.ver!==ver||c.sig!==mepViewSig(v);}catch(e){return true;}});
   }
   let mepBusyEl=null,mepBusyTok=0;
@@ -464,7 +474,7 @@
   // points d'entrée réservés aux tests automatisés (jamais activés dans l'app)
   if(window.__MEP_TEST_HOOKS__){
     window.__mepTest={
-      bomRows:sh=>mepBomRows(sh),autoDia:(sh,d)=>mepDimAutoDia(sh,d),balloonsAuto:sh=>mepBalloonsAuto(sh),tbPack:(sh,n)=>mepTbPack(sh,n),tbUnpack:(tt,o)=>mepTbUnpack(tt,o),tbLib:()=>mepTbLib(),newSheet:n=>mepNewSheet(n),balloonAt:(x,y)=>mepBalloonAt(mepSheet(),x,y),viewBBox:v=>mepViewSheetBBox(v),balloonAdd:(x,y)=>mepBalloonAddAt(mepSheet(),x,y),hatchVar:(k,c)=>mepHatchVar(k,c),st:()=>mepSt,drawBalloons:(mk,sh)=>mepDrawBalloons(mk,sh),meshesOf:v=>mepMeshesOf(v),addView:o=>mepAddView(o),sheet:()=>mepSheet(),viewSig:v=>mepViewSig(v), // V0.6.7
+      bomRows:sh=>mepBomRows(sh),autoDia:(sh,d)=>mepDimAutoDia(sh,d),balloonsAuto:sh=>mepBalloonsAuto(sh),tbPack:(sh,n)=>mepTbPack(sh,n),tbUnpack:(tt,o)=>mepTbUnpack(tt,o),tbLib:()=>mepTbLib(),newSheet:n=>mepNewSheet(n),balloonAt:(x,y)=>mepBalloonAt(mepSheet(),x,y),viewBBox:v=>mepViewSheetBBox(v),balloonAdd:(x,y)=>mepBalloonAddAt(mepSheet(),x,y),hatchVar:(k,c)=>mepHatchVar(k,c),st:()=>mepSt,drawBalloons:(mk,sh)=>mepDrawBalloons(mk,sh),meshesOf:v=>mepMeshesOf(v),addView:o=>mepAddView(o),sheet:()=>mepSheet(),viewSig:v=>mepViewSig(v),autoViews:()=>mepAutoViews(), // V0.6.7
       drawRevs:(mk,sh,pd,ty)=>mepDrawRevs(mk,sh,pd,ty),holeFam:f=>mepHoleFam(f),cutAddBreak:(sh,v)=>mepCutAddBreak(sh,v),cutBreakAt:(sh,v,m,sG,c,r)=>mepCutBreakAt(sh,v,m,sG,c,r),cutFollow:sh=>mepCutFollowAll(sh),cutAutoRefs:(sh,v)=>mepCutAutoRefs(sh,v),cutDelBreak:(sh,v)=>mepCutDelBreak(sh,v),cutDelBreakAt:(sh,v,j,sG)=>mepCutDelBreakAt(sh,v,j,sG),cutBreakClick:(sh,v,m,sG)=>mepCutBreakClick(sh,v,m,sG),cutModel:v=>mepCutModel(v),prefsCollect:()=>mepPrefsCollect(),prefsApply:p=>mepPrefsApply(p),pageDim:sh=>mepPageDim(sh),
       titleTexts:sh=>{const t=[];const mk=(tag)=>{const o={textContent:''};if(tag==='text')t.push(o);return o;};mepDrawTitle(mk,sh,mepPage().pd,100);mepDrawRevs(mk,sh,mepPage().pd,100);mepDrawBom(mk,sh,mepPage().pd,100);return t.map(o=>o.textContent);},
       sk:{fromStd:sh=>mepTbFromStd(sh),solve:(sk,a)=>mepSkSolve(sk,80,a),residual:(sk,c)=>mepSkResidual(sk,c),
