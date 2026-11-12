@@ -8,7 +8,7 @@ sont sorties le 2026-09-30j.
 Code dans `src/` · livrable `fusion_mvp.html` (généré par `build.js`) · architecture et
 garde-fous en tête de `src/00-entete-et-outils.js`.
 
-**674 versions**, de `2026-09-28b` à `V0.95.8` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
+**675 versions**, de `2026-09-28b` à `V0.95.9` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
 comme dans le fichier d'origine.
 
 ---
@@ -7564,3 +7564,12 @@ Barquette ne perd plus son solide à la 107e modification, et sa mémoire ne mon
 - **Recherche** : aucune norme ISO, DIN ni ANSI ne fixe ces douilles ; le marché reprend la norme d'usine Ensat 302 (Kerb-Konus), taraudage ISO 6H ou UNC/UNF, corps fileté en mm (MS51830 est une douille à clavettes, autre pièce).
 - **Correctif** (`src/48-composants-normalises`) : onglet « Douilles autotaraudeuses » (`STD_ENSAT302` M2 à M20 et M6 courte, `STD_ENSAT302_IN` #4 à 5/8" UNC/UNF, `stdInsert302`) : révolution chanfreinée, filetage cosmétique du corps, taraudage débouchant fraisé (nouvelle op `hole` de `stdDoc`), fente de coupe ouverte au bas (`slot` `open`) ; fiche avec perçage conseillé et trou borgne mini ; assise affleurante 0,1 mm sous l'entrée. `src/76-percage` : M4,5×0,5, M5×0,5, M6,5×0,75, M9×1, M26×1,5 ajoutés à `ISO_THREADS` (listes du perçage taraudé et du filetage).
 - **Test** : `tests/test_composants_normalises.cjs` (toutes les tailles saines, paroi et fraisure dans la matière, volumes exacts au noyau de 5 douilles métriques et pouces). Parcours FAO et CACHE_VER inchangés.
+
+
+## V0.95.9 - Vue 3D en veille à l'arrêt : la carte graphique souffle quand rien ne bouge
+
+- **Demande** : « 000 Moule 5V-30 chargé, sur mon PC portable, mon processeur NVIDIA est à fond, sans toucher à la souris […] Il y a un moyen que la carte soit moins utilisée, surtout quand l'espace 3D n'est pas sollicité ? »
+- **Cause** : la boucle `animate` redessinait toute la scène (et le reflet du sol, un second dessin) à chaque image de l'écran, 60 à 165 fois par seconde, même immobile ; le petit cube de vue aussi. Sur une pièce lourde, le portable restait à pleine charge.
+- **Correctif** (`src/10-scene-3d`, `src/97-interface-moderne`) : veille du dessin. Pleine cadence dès qu'il se passe quelque chose : souris, molette, clavier, caméra qui bouge encore (amorti, zoom doux), n'importe quelle animation (tout appel à `requestAnimationFrame` hors de la boucle réveille : film, simulation FAO, placement d'assemblage, régénération). Après 1,5 s sans rien, une image toutes les 0,4 s seulement, en filet pour ce qui change sans geste (fin de calcul en tâche de fond). La caméra « tremblait » d'un bruit d'arrondi à chaque image (`controls.update`) : comparée avec une tolérance. Le cube de vue n'est redessiné que si l'orientation ou le survol change. `?sansveille` dans l'adresse : ancienne cadence continue.
+- **Mesure** (Chromium, 3 s à l'arrêt) : 180 dessins avant, 7 après ; une molette rend 60 images par seconde aussitôt.
+- **Test** : `tests/browser/veille-vue.spec.cjs` (dessins à l'arrêt, pleine cadence après la molette, `?sansveille`). Parcours FAO et CACHE_VER inchangés.

@@ -808,11 +808,14 @@ function mfCube(){
   cv.addEventListener('pointermove',e=>{hov=pickF(e);cv.title=hov>=0?'Vue '+FACES[hov][0].toLowerCase():'';});
   cv.addEventListener('pointerleave',()=>{hov=-1;});
   cv.addEventListener('click',e=>{const k=pickF(e);if(k>=0)mfViewDir(FACES[k][1]);});
+  let sig=''; // V0.95.9 : redessiné seulement si l'orientation ou le survol change (et sans réveiller la vue : viewRaf)
   const loop=()=>{
-    requestAnimationFrame(loop);
+    (typeof viewRaf==='function'?viewRaf:requestAnimationFrame)(loop);
     if(!document.body.classList.contains('ui-modern'))return;
     try{
       const d=camera.position.clone().sub(controls.target).normalize().multiplyScalar(7.5);
+      const s=[d.x,d.y,d.z,camera.up.x,camera.up.y,camera.up.z,hov].map(v=>Math.round(v*1e4)).join(',');
+      if(s===sig)return;sig=s;
       cam.position.copy(d);cam.up.copy(camera.up);cam.lookAt(0,0,0);
       mats.forEach((m,i)=>m.color.set(i===hov?0x5aa9ff:0xffffff));
       rd.render(sc,cam);
