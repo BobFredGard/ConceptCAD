@@ -164,7 +164,8 @@ async function importSTL(file){
   sel={kind:'feature',id};markDirty();rebuild();showAll();
 }
 let _importRestoring=null; // restauration en cours (promesse), sinon null
-async function importRestorePending(){
+async function importRestorePending(opts){
+  // opts.sansRejeu (V0.94.6) : l'appelant (ouverture) calcule la pièce lui-même juste après
   // Rejoue les imports du document à partir de leur source persistée. Appelée à
   // l'ouverture (deserialise, qui l'ATTEND) et quand le noyau OCCT devient prêt (F5).
   // Restauration déjà en cours (noyau prêt pendant une ouverture) : on l'attend puis on
@@ -199,7 +200,8 @@ async function importRestorePending(){
     others.forEach(c=>{if(c._snap&&!c._snap.cached)c._stale=true;});
     try{if(!asmRestoreHold)asmBuildSnapshots();}catch(e){}
   }
-  if(n){
+  if(n&&opts&&opts.sansRejeu){builtVersion=-1;builtHash=null;builtEngine=null;}
+  else if(n){
     builtVersion=-1;builtHash=null;builtEngine=null;rebuild();if(!viewUserMoved)showAll();
     try{const t=faceEl.textContent.replace(/\n?[^\n]*STEP en cours de restauration/g,'');faceEl.textContent=(t?t+'\n':'')+n+' import(s) restauré(s).';}catch(e){}
   }

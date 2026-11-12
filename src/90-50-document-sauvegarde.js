@@ -259,9 +259,16 @@ async function deserialise(json,opts){
   }catch(e){}
   sel={kind:null,id:null};uidN=doc.sketches.length+doc.features.length+1;
   if(!opts||opts.rebuild!==false){
+    // V0.94.6 : formes importées (corps dérivés compris) posées AVANT le premier calcul. Elles
+    // arrivaient après : la pièce était calculée une première fois sans elles, pour rien (vraie pièce :
+    // 7 s perdus, et deux suppressions de face envoyées au calcul de fond sur la mauvaise pièce).
+    if(occHas()){try{await importRestorePending({sansRejeu:true});}catch(e){}}
+    // Pièce finie gardée sur ce poste (20-75) : relue au lieu d'être recalculée si rien n'a changé
+    const pcOk=typeof pcPreparer==='function'&&await pcPreparer();
     // V0.42.0 : gros document → barre de progression (31) ; sans noyau exact, rien ne change
-    if(regenWarmUseful()){await regenWarm('Ouverture — '+(doc.name||'document'));builtVersion=-1;}
+    if(!pcOk&&regenWarmUseful()){await regenWarm('Ouverture — '+(doc.name||'document'));builtVersion=-1;}
     try{rebuild();}finally{regenUiHide();}
+    if(pcOk)try{pcApresServi();}catch(e){}
     renderProps();showAll();}
   else renderProps();
   if(sansSrc.length)alert(sansSrc.length+' import(s) enregistré(s) sans leur fichier (ancien format) : '+sansSrc.join(', ')+'.\nRéimportez le STEP/STL (même nom, ou confirmez le rebranchement) : il reprend la fonction existante, usinages conservés. Puis ré-enregistrez.');
@@ -280,6 +287,7 @@ async function deserialise(json,opts){
   try{asmAfterLoad();}catch(e){} // assemblage : instantanés, vue rétablie (47)
   try{await pImp;}catch(e){}
   try{parMiniSoon();derCheck(false);}catch(e){} // V0.47.0 : dérivées vérifiées sans rien demander (52)
+  try{pcEcrireSoon();}catch(e){} // V0.94.6 : pièce ouverte, une fois stable, gardée sur ce poste (20-75)
 }
 /* ---------- conteneur .miniFusion : document + cache de trajectoires ----------
    Demandé : « un fichier dédié qui encapsule le json ET son cache ». Le document

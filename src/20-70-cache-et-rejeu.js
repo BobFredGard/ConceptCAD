@@ -1109,8 +1109,11 @@ function occRebuild(){
   let FR=null;
   try{
     const _tr=performance.now();
+    // V0.94.6 : pièce finie gardée sur ce poste (20-75), servie une fois à l'ouverture
+    try{if(pcServi)FR=pcFR();}catch(e){FR=null;}
     occFantomesVoulus=true; // seul ce rejeu affiche les outils de découpe
-    try{FR=occFinalShape(tlReplayCount());}finally{occFantomesVoulus=false;}
+    if(!FR)try{FR=occFinalShape(tlReplayCount());}finally{occFantomesVoulus=false;}
+    occFantomesVoulus=false;
     phAdd('replay',performance.now()-_tr);
     const _ts=performance.now();
     // UN mesh PAR CORPS, rejoué isolément : l'id affiché EST l'id du corps (stable,
@@ -1119,7 +1122,11 @@ function occRebuild(){
     const parts=(FR.perBody||[]).filter(p=>p&&p.shape);
     // Déflection d'AFFICHAGE commune au natif et aux imports (même ombrage) et bornée
     // en triangles : occXDefl() — la référence FAO — n'intervient PAS ici, intentionnellement.
-    const D=occDisplayDefl(FR.shape||(parts[0]&&parts[0].shape)||null);
+    // Pièce servie : celle de son maillage gardé (la boîte d'un solide relu peut différer d'un poil).
+    const D=FR.D?{lin:FR.D.lin,ang:FR.D.ang}:occDisplayDefl(FR.shape||(parts[0]&&parts[0].shape)||null);
+    // ce que la pièce gardée doit reprendre hors des corps (20-75, pcCapture)
+    pcDernier={ver:_docVersion,D:{lin:D.lin,ang:D.ang},msgs:(FR.msgs||[]).slice(),imports:(FR.imports||[]).slice(),
+      ghosts:(FR.ghostShapes||[]).map(g=>({geo:g.geo,orphan:!!g.orphan,fid:g.fid||null,inexact:g.inexact||null}))};
     let trisTot=0;
     for(const id of [...occMeshMemo.keys()])if(!parts.some(p=>p.bodyId===id)){try{occMeshMemo.get(id).geo.dispose();}catch(e){}occMeshMemo.delete(id);}
     if(parts.length){

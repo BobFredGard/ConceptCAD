@@ -197,7 +197,11 @@ function rebuildInner(projPass){
   // déjà cohérent, au lieu de « rejeu → projections bougent → second rejeu ».
   // Une esquisse a bougé : les plans résolus plus haut l'ont vue à son ancienne place (Barquette :
   // Plan 3 avait un rejeu de retard sur son esquisse, Plan 1 lisait une pièce pas encore à jour).
-  if(!projPass){const _tq=performance.now();try{if(typeof projPreUpdate==='function'&&projPreUpdate()&&typeof cgResolveAll==='function'&&cgResolveAll())resolveAllSketchHosts();}catch(e){}phAdd('proj',performance.now()-_tq);}
+  // V0.94.6 : pièce finie gardée servie (20-75) : le document est celui qu'elle a vu, projections
+  // comprises — rien à rejouer pour elles. Sinon l'entrée est abandonnée (rejeu normal).
+  const pcOn=!projPass&&typeof pcServi!=='undefined'&&!!pcServi&&occHas()&&pcValide();
+  if(!projPass&&!pcOn){const _tq=performance.now();try{if(typeof projPreUpdate==='function'&&projPreUpdate()&&typeof cgResolveAll==='function'&&cgResolveAll())resolveAllSketchHosts();}catch(e){}phAdd('proj',performance.now()-_tq);}
+  if(!pcOn&&typeof pcServi!=='undefined')pcServi=null;
   // Snapshot du dernier état valide : commit si le rebuild aboutit, rollback sinon.
   const prevBodies=bodies,prevLive=occLive;
   const prevSet=new Set(scene.children);
@@ -244,7 +248,9 @@ function rebuildInner(projPass){
   (doc.features||[]).forEach(f=>{if(f.type==='extrude'&&!f.op)f.op='add';});
   // Voie exacte OCCT (prioritaire) : prismes BRep + Fuse/Cut + tessellation.
   if(occHas()){
-    if(occRebuild()){occEngineMsg='exact OCCT';occStatus();refreshParts();renderTree();autosave();applyClip();if(filMode)buildFilletOverlay();else if(filModeX){if(occLive&&occLive.shape){try{filEdgesReload();}catch(e){}}buildExactOverlay();}buildEdgeOverlay();refreshMirror();commitPrev();builtEngine='exact';buildDone();projRefreshRerun(projPass);return;}
+    if(occRebuild()){occEngineMsg='exact OCCT';occStatus();refreshParts();renderTree();autosave();applyClip();if(filMode)buildFilletOverlay();else if(filModeX){if(occLive&&occLive.shape){try{filEdgesReload();}catch(e){}}buildExactOverlay();}buildEdgeOverlay();refreshMirror();commitPrev();builtEngine='exact';buildDone();
+      // V0.94.6 : pièce servie telle qu'elle était (20-75) : ses projections sont déjà à jour
+      if(!(pcOn&&pcFait))projRefreshRerun(projPass);pcFait=false;return;}
     occEngineMsg='maillage (repli exact impossible — voir Mesure)';
     faceEl.textContent+=(faceEl.textContent?'\n':'')+'OCCT : repli sur le moteur maillage pour ce rebuild.';
     if(bodies.length)clearBodies(); // sécurité : un repli partiel ne doit jamais doubler l'affichage

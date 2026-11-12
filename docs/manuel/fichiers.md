@@ -5,6 +5,7 @@
 - **Import** : STEP et STL.
 - **Export** : STL, OBJ, STEP (détail plus bas) et **FreeCAD natif (`.FCStd`)** exact : corps à leur couleur, aimants avec leurs caractéristiques et leurs **lignes de champ** rangées par intensité.
 - **Projet `.conceptcad`** compressé, 3 à 5 fois plus petit : pièce, FAO, planches, rendu. Les fichiers en clair, les `.conceptcad.gz` et les anciens `.miniFusion` s'ouvrent toujours.
+- **Réouverture rapide** : une pièce ouverte ou enregistrée est gardée finie sur ce poste. Rouverte sans changement, elle s'affiche **sans être recalculée** (pièce d’une centaine de fonctions : quelques secondes au lieu d’une vingtaine), puis se prépare en fond pour que la première modification reste rapide. Le moindre changement (fichier, pièce importée ou dérivée, nouvelle version de ConceptCAD) la fait recalculer.
 - **Récents**, **dossier de projets** et sauvegarde locale automatique. Un fichier vide ou abîmé ne remplace jamais le modèle ouvert, et sa copie de secours est proposée.
 - **Export STEP** : **AP214** (par défaut) ou **AP203**, option « **sans courbes 2D** » pour les vieux logiciels.
   - Aussi pour un corps seul, ou pour **une seule pièce / un sous-ensemble d'un STEP multi-corps** (clic droit sur sa ligne de l'arborescence ou sur la pièce dans la vue 3D, placement d'assemblage gardé).
