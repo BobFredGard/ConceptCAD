@@ -38,8 +38,13 @@ const {loadApp}=require('./appvm.cjs');
     const xs=L.filter(b=>b.asmComp===C.id).map(b=>{let m=-1e9;occListEdges(b.shape).forEach(e=>e.pts.forEach(q=>{m=Math.max(m,q[0]);}));return m;}).sort((a,b)=>a-b);
     A(near(xs[0],-25,1e-6)&&near(xs[1],35,1e-6),'5 : colonnes placées par leur occurrence (X max -25 et 35)');
     A(asmPlanBodies()[0]===L[0],'6 : même assemblage : corps repris du cache');
-    // la vue
+    // V0.94.8 : planche vide d'un assemblage sans corps propres → UNE vue de face « Assemblage »
     const sh=T.sheet();
+    T.autoViews();
+    A(sh.views.length===1&&sh.views[0].asm&&sh.views[0].vk==='front'&&T.meshesOf(sh.views[0]).length===3,
+      '6b : ouverture du plan d’un assemblage : une seule vue de face « Assemblage » ('+sh.views.length+' vue(s))');
+    sh.views.length=0;
+    // la vue
     const v=T.addView({kind:'base',vk:'front',asm:true});
     A(T.meshesOf(v).length===3,'7 : vue « Assemblage » : trois corps');
     const g=window.__mepTest.geo(v);

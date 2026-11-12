@@ -8,7 +8,7 @@ sont sorties le 2026-09-30j.
 Code dans `src/` · livrable `fusion_mvp.html` (généré par `build.js`) · architecture et
 garde-fous en tête de `src/00-entete-et-outils.js`.
 
-**664 versions**, de `2026-09-28b` à `V0.94.7` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
+**665 versions**, de `2026-09-28b` à `V0.94.8` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
 comme dans le fichier d'origine.
 
 ---
@@ -7487,3 +7487,10 @@ Barquette ne perd plus son solide à la 107e modification, et sa mémoire ne mon
 - **Cause** : l'esquisse 3 (chemin du balayage en découpe) était figée 1,65 mm à côté de sa face. « 🎯 Changer de face » reprenait le placement d'une esquisse neuve : origine = repère de la pièce projeté sur la face. L'origine passait de (−69,6 ; −94,2 ; −11,6) à (0 ; −74,3 ; −42,9) et tout le dessin glissait d'environ 70 mm dans le plan. Le balayage changeait de place et le congé suivant (« Congé exact (1 arête) » après le balayage de l'esquisse 18) perdait son arête (⚠).
 - **Correctif** (`src/50-esquisse-94-changer-face`, `skRedefApply`) : si la face cliquée est parallèle à l'ancien plan et de même sens, le repère de l'esquisse est gardé (ancienne origine projetée sur la face, mêmes axes, même normale exacte) ; la face porteuse est cherchée depuis cette origine. Sur SIRAP-14-001 : l'esquisse avance de 1,65 mm seulement, plus aucun ⚠.
 - **Test** : `tests/browser/faces-perdues.spec.cjs` vérifie que l'esquisse reposée sur une face parallèle ne glisse pas dans son plan. Parcours FAO et CACHE_VER inchangés.
+
+## V0.94.8 - PLAN : l'assemblage a sa mise en plan, vue de face seule
+
+- **Demande** : Fred, 12/11 : « je ne vois pas de mise en plan de mon assemblage 000 Moule 5V-30 » ; « pour l'assemblage, je ne veux que la vue de face, pas les 3 ».
+- **Cause** : à l'ouverture du PLAN, les vues automatiques (`mepAutoViews`) ne se posaient que si le composant actif avait des corps à lui. Un assemblage dont toutes les pièces sont dans ses composants restait sur une planche vide.
+- **Correctif** (`src/98-mep-95-export-init`) : planche vide d'un composant qui a des instances (`asmPlanOn`) → une seule vue de face « 🧩 Assemblage » (tous les composants), plus de dessus ni de côté. Une pièce seule garde ses trois vues ; une planche déjà remplie n'est pas touchée. L'animation de mise à jour du plan en tient compte.
+- **Test** : `tests/test_composants_plan.cjs` (6b) : un assemblage sans corps propres reçoit une seule vue de face « Assemblage » qui voit ses trois corps. Parcours FAO et CACHE_VER inchangés.
