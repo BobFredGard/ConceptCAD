@@ -176,6 +176,7 @@ function mfCss(){
   '#mfPosTabs{display:flex;gap:3px;flex-wrap:wrap;margin:0 0 6px}',
   '#mfPosTabs button{padding:3px 10px;font-size:.72rem;border-radius:7px}',
   '#mfPosTabs button.on{background:var(--primary);border-color:var(--primary);color:#fff}',
+  '#mfPosTabs button.struck{text-decoration:line-through;opacity:.55}',
   'body:not(.ui-modern) #mfPosTabs{display:none}',
   /* barre d'état */
   '#mfStatus{gap:16px;align-items:center;padding:5px 12px;margin-top:6px;font-size:.72rem;color:var(--muted);background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);white-space:nowrap;overflow:hidden}',
@@ -248,7 +249,7 @@ function mfCss(){
 function mfCloseMenus(){
   document.querySelectorAll('.mfPop.mfTmp').forEach(p=>p.remove());
   document.querySelectorAll('.dd.open').forEach(d=>d.classList.remove('open'));
-  ['ctxMenu','ctxMenu3D','skCtxMenu','mepCtx'].forEach(id=>{const m=document.getElementById(id);if(m)m.style.display='none';});
+  ['ctxMenu','ctxMenu3D','skCtxMenu','mepCtx','faoCtxMenu'].forEach(id=>{const m=document.getElementById(id);if(m)m.style.display='none';});
   ['setMenu','skSetMenu'].forEach(id=>{const m=document.getElementById(id);if(m)m.classList.remove('open');});
 }
 function mfSyncPropsHost(){
@@ -405,8 +406,9 @@ const MF_CAO=[
   ['Ensembles',[['pattern','Répétition','btnRepeat'],['combine','Combiner','btnCombine'],['move','Déplacer','btnBodyMove'],['scale','Échelle','btnBodyScale'],['mirror','Symétrie','btnBodyMirror'],['params','Paramètres','btnParams']]],
   ['Fichier',[['import','Importer','btnImport'],['import','Dériver','btnDerive'],['export','STEP','btnExportStep'],['export','STL','btnExportStl'],['export','OBJ','btnExportObj'],['export','FreeCAD','btnExportFcstd']]]
 ];
-const MF_FAO_ICON={facing:'facing',pocket:'pocket',chamfer:'chamfer',contour:'contour',drill:'drill',rough3d:'rough3d',geofinish:'finish',geodesic:'geodesic',pocket2:'pocket'};
+const MF_FAO_ICON={facing:'facing',pocket:'pocket',chamfer:'chamfer',contour:'contour',drill:'drill',rough3d:'rough3d',geofinish:'finish',geodesic:'geodesic',pocket2:'pocket',pattern:'pattern'};
 function mfFaoAdd(type,nm){
+  if(type==='pattern'){ try{faoPatternNew();}catch(e){} return; } // V0.95.3 : reprend les opérations sélectionnées
   try{const op=faoOpDefaults(type);if(!op)return;const s=faoSetup();faoSnapshot('nouvelle opération « '+nm+' »');s.ops.push(op);
     // V0.33.2 : Perçage sur des trous sélectionnés → gamme posée d'office (src/89-fao-percage.js)
     const g=op.type==='drill'&&typeof faoDrillFromSel==='function'?faoDrillFromSel(s,op):null;
@@ -732,9 +734,9 @@ function mfPosTabs(){
   let bar=document.getElementById('mfPosTabs');
   if(!bar){bar=document.createElement('div');bar.id='mfPosTabs';const tr=document.getElementById('faoTree');if(tr&&tr.parentNode)tr.parentNode.insertBefore(bar,tr);else tw.appendChild(bar);}
   let r=null;try{r=faoRoot();}catch(e){}if(!r)return;
-  const sig=r.setups.map(s=>s.id+':'+s.name).join('|')+'#'+r.activeSetupId;
+  const sig=r.setups.map(s=>s.id+':'+s.name+(s.struck?':x':'')).join('|')+'#'+r.activeSetupId;
   if(bar.dataset.sig===sig)return;bar.dataset.sig=sig;bar.innerHTML='';
-  r.setups.forEach(s=>{const b=document.createElement('button');b.textContent=s.name;b.title='Posage '+s.name+' — '+(s.machine||'');if(s.id===r.activeSetupId)b.className='on';b.onclick=()=>{try{faoSelectSetup(s.id);}catch(e){}mfPosTabs();};bar.appendChild(b);});
+  r.setups.forEach(s=>{const b=document.createElement('button');b.textContent=s.name;b.title='Posage '+s.name+' — '+(s.machine||'');b.className=(s.id===r.activeSetupId?'on':'')+(s.struck?' struck':'');if(s.struck)b.title+=' — gelé';b.title+=' · clic droit = menu du posage';b.onclick=()=>{try{faoSelectSetup(s.id);}catch(e){}mfPosTabs();};b.oncontextmenu=e=>{e.preventDefault();e.stopPropagation();try{faoSelectSetup(s.id);mfPosTabs();faoSetupCtx(e.clientX,e.clientY,s.id);}catch(_){}};bar.appendChild(b);});
   const p=document.createElement('button');p.textContent='＋';p.title='Ajouter un posage';p.onclick=()=>{const b=Array.from(document.querySelectorAll('#faoTreeWrap button')).find(x=>/\+ Posage/.test(x.textContent));if(b)b.click();bar.dataset.sig='';mfPosTabs();};bar.appendChild(p);
 }
 function mfStatusBar(){

@@ -200,6 +200,8 @@ function mfFiTable(){
   F('Opérations/Finition','Finition','Passe finement sur toute la forme pour une surface lisse et précise.',[],STAIRS(),DOME(true),null,'Après ébauche','Surface finie');
   const GEO=(p)=>'<path d="M50 8c3 0 5 1.4 6.6 4L85 54c3 5-.7 11-6.3 11H21.3c-5.6 0-9.3-6-6.3-11L43.4 12c1.6-2.6 3.6-4 6.6-4z" fill="url(#mfFcHw)" stroke="#7a5528" stroke-width="1.3"/>'+(p?ficD('M50 19L76 58H24Z',BL,1.2)+ficD('M50 31L65 53H35Z',BL,1.2)+ficD('M50 42L55 49H45Z',BL,1.2):'');
   F('Opérations/Géodésique','Géodésique','Finition dont les passes suivent la surface à partir de ses bords, à écart régulier, même sur une forme gauche.',['Choisissez les faces'],GEO(false),GEO(true));
+  // V0.95.3 : répétition d'opérations (src/89-fao-repetition.js)
+  F('Opérations/Répétition','Répétition','Refait les opérations choisies sur plusieurs copies : en lignes et colonnes, en cercle, en miroir ou dans d’autres origines (G55…).',['Sélectionnez les opérations (Ctrl+clic)'],BKW()+CROSS(-7,-7,7),BKW()+CROSS(-7,-7,7)+CROSS(7,-7,7)+CROSS(-7,7,7)+CROSS(7,7,7),null,'Une opération','Ses copies');
   F('Simulation/Usinage','Simulation d’usinage','Montre en film l’outil qui creuse la matière, pour vérifier avant de lancer la machine.',['▶ lecture, ⏸ pause, ⏹ arrêt','Échap pour sortir'],WD(-18,-18,-12,18,18,7)+ficDot(82,14,9,GR)+'<path d="M79 9l8 5-8 5z" fill="#fff"/>',STAIRS()+TOOL(8,8,8,16),null,'Vous lancez','L’usinage défile');
   const PATH=()=>ficD('M14 58H44V44H74V30',BL,1.8);
   const RAP=()=>ficD('M74 30L84 12H26L14 58',RE,1.2,'3 2');

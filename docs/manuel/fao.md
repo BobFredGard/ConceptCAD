@@ -12,6 +12,7 @@
 - **Dégagement** : approche de chaque opération, changement d'outil, rotation du plateau. Après un changement d'outil, l'outil précédent remonte sur place, puis le nouvel outil va directement au-dessus de son entrée.
 - **Retrait** : rapides entre les passes, au plan de retrait ou en **retrait minimum** réglable, sans jamais traverser la matière restante.
 - **Paramètres et formules** dans les champs du posage, des opérations, des outils et des porte-outils (`ep/2`, `pas_SM_chaud-0,5`) : la formule reste affichée, la valeur suit les paramètres et seules les opérations touchées sont à régénérer. Les coins X/Y des zones et les Z de perçage affichés dans le repère de l'opération gardent un résultat figé.
+- **Menu du posage** (clic droit sur le posage dans l'arbre ou sur son onglet) : **G-code de ce posage**, **Geler / Dégeler le posage**, **Copier**, **Dupliquer**. Un posage gelé est barré avec toutes ses opérations : plus d'aperçu, de simulation ni de G-code ; au dégel, chaque opération retrouve son état d'avant (active ou non).
 - **Outils** : fraises cylindriques, boules, toriques, à chanfreiner, forets, forets à pointer et à centrer (DIN 333 A), tarauds.
   - **Fiche en onglets** : Identification, Géométrie, Coupe, Porte-outil.
   - **Exporter / importer** (fenêtre Outils) : **⬇ Exporter l’outil** enregistre la fiche sélectionnée, **⬇ Tout exporter** toute la bibliothèque du posage, dans un fichier `.ccoutils`. **⬆ Importer…** ajoute les outils d'un fichier : s'il en contient plusieurs, une fenêtre les liste avec une case chacun (**Tout cocher** / **Tout décocher**) ; ceux déjà présents à l'identique sont décochés d'office. Un outil importé garde son numéro T s'il est libre.
@@ -42,6 +43,7 @@
 - **Faces usinables / intouchables** par opération.
 - **Limites propres à la FAO** (ruban FAO → Limites) : esquisses et extrusions, en **solide** ou en **surface**, qui servent de murs ou de surfaces infranchissables sans toucher au modèle.
 - **Calcul sur plusieurs cœurs** : « Tout régénérer » répartit les opérations longues sur les cœurs du processeur ; l'écran reste fluide et les parcours sont strictement les mêmes.
+- **Répétition** (comme le Motif de Fusion 360) : choisir les opérations par `Ctrl+clic`, puis **Répétition**. **Rectangulaire** (nombre et pas en X et Y), **Circulaire** (nombre, angle total, centre), **Symétrie** (plan X = … ou Y = … ; le sens de coupe s'inverse) ou **Autres origines** (mêmes parcours refaits en G55, G56…). Usinage **par opération** : chaque opération sur toutes les copies avant la suivante. Les opérations répétées portent « ↻ » et le numéro de leur répétition ; une répétition désactivée les laisse usinées une seule fois.
 - **Copier / coller** (`Ctrl+C` / `Ctrl+V`) une ou plusieurs opérations, ou un posage complet.
 - **Supprimer plusieurs opérations** : `Ctrl+clic` / `Maj+clic` pour les choisir, `Suppr` pour les retirer ensemble ; un seul `Ctrl+Z` les rétablit.
 - **Dans la vue** : un clic sur une face l'allume et la mesure sans éditer de fonction ; un clic dans la vue désélectionne le posage ou l'opération.
@@ -58,6 +60,7 @@
   - Sur Siemens, le plan de travail pivote par **`CYCLE800`** ; les arcs G2/G3 et les cycles de perçage sont écrits dans le plan incliné.
   - Dégagement avant pivotement en coordonnées machine (`SUPA Z600`, `SUPA X`) ; sens de pivotement réglable par machine (`swivelDir`, plateau tourné vers les outils).
   - Comme le post Fusion des Spinner : table remise à plat par `CYCLE800` en début de programme, plan redonné après chaque changement d'outil, brut décrit à la CN par `WORKPIECE` (« box » de la simulation Siemens).
+- **Exporter G-code** : un programme par posage non gelé ; le menu du posage exporte le sien seul.
 - **G-code** multi-outils, cycles du dialecte (CYCLE81 à 84 ; Fagor G81 avec temporisation K, G83 compté depuis le plan d’approche, G84), avance F modale. *Validez toujours un premier programme à vide sur la machine.*
 - **Cache des parcours** : rien n'est recalculé tant que la géométrie ne change pas.
 

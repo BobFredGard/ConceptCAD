@@ -148,7 +148,8 @@ function faoAddOpsSpec(){
   // V0.7.9 : la Poche (redondante avec l'Ébauche 3D) cède sa place au Chanfrein ; les poches des
   // fichiers existants restent lisibles et calculées
   return [['facing','+ Surfaçage'],['chamfer','+ Chanfrein'],['contour','+ Contour'],
-    ['drill','+ Perçage'],['rough3d','+ Ébauche 3D'],['geofinish','+ Finition'],['geodesic','+ Géodésique']];
+    ['drill','+ Perçage'],['rough3d','+ Ébauche 3D'],['geofinish','+ Finition'],['geodesic','+ Géodésique'],
+    ['pattern','+ Répétition']]; // V0.95.3 : src/89-fao-repetition.js
 }
 /* ================= interface FAO : arbre + fiches panneau droit ================= */
 // Arbre FAO dédié (overlay dans la vue 3D) : posages > opérations, état on/off,
@@ -244,6 +245,7 @@ function faoStaleScan(){
     (r.setups||[]).forEach(function(s){
       ((s&&s.ops)||[]).forEach(function(o){
         if(!o)return;
+        if(faoIsPattern(o)){ o.stale=false; return; } // V0.95.3 : répétition = copies des sources, rien à générer
         // Prima le maillage AVANT la cle (comme faoOpMoves) : la 1re lecture
         // d'une ebauche 3D incremente faoBodyGen.
         if(faoMeshOp(o)){ try{ faoActiveMesh(s); }catch(e){} }
@@ -333,7 +335,7 @@ function faoStaleUI(){
       be.disabled=!!faoPrevStale;
       be.title=faoPrevStale
         ?'Export bloqué : aperçu périmé. Cliquez d’abord sur « Tout régénérer ».'
-        :'Exporte le programme du posage courant : G-code Siemens 840D ou Fagor 8065 (.mpf / .nc).';
+        :'Exporte un programme par posage actif (non gelé) : G-code Siemens 840D ou Fagor 8065 (.mpf / .nc). Clic droit sur un posage = son G-code seul.';
     }
   }catch(e){}
 }
@@ -560,6 +562,7 @@ function faoInitUI(){
           b.textContent=nm;
           b.title='Ajouter une opération « '+nm+' » au posage courant (puis sa fiche s’ouvre à droite)';
           b.onclick=function(){
+            if(a[0]==='pattern'){ faoPatternNew(); return; } // reprend les opérations sélectionnées
             try{
               const op=faoOpDefaults(a[0]);
               if(!op)return;
@@ -678,7 +681,7 @@ function faoInitUI(){
       cnt.appendChild(dup(grp('Export')));
       const r4=dup(row());
       const be=document.createElement('button'); be.id='faoExportBtn'; faoExportBtnEl=be; be.className='primary'; be.textContent='Exporter G-code';
-      be.title='Exporte le programme du posage courant : G-code Siemens 840D ou Fagor 8065 (.mpf / .nc).';
+      be.title='Exporte un programme par posage actif (non gelé) : G-code Siemens 840D ou Fagor 8065 (.mpf / .nc). Clic droit sur un posage = son G-code seul.';
       be.onclick=function(){ faoExport(); };
       r4.appendChild(be);
       cnt.appendChild(r4);
@@ -711,7 +714,8 @@ function faoRenderTree(){
     }catch(e){ return false; } };
     r.setups.forEach(function(s,si){
       const h=document.createElement('div');
-      h.className='fao-setup'+(isSel('faoSetup',s.id)?' sel':'');
+      const struck=typeof faoSetupStruck==='function'&&faoSetupStruck(s);
+      h.className='fao-setup'+(isSel('faoSetup',s.id)?' sel':'')+(struck?' struck':'');
       // ▼/▶ : replie les opérations de CE posage — l'état (s.open) est dans le
       // document, donc enregistré/chargé avec la sauvegarde. Déplié par défaut.
       const open=s.open!==false;
@@ -731,7 +735,11 @@ function faoRenderTree(){
       h.appendChild(sl);
       h.title='Clic = fiche du posage dans le panneau droit'
         +(open?'':' · opérations repliées (clic sur la flèche pour les rouvrir)');
+      if(struck)h.title='Posage GELÉ : ses opérations sont désactivées (clic droit → « Dégeler » rend à chacune son état d’avant) · '+h.title;
+      h.title+=' · Clic droit = menu du posage (G-code de ce posage, geler, copier)';
       h.onclick=function(){ faoSelectSetup(s.id); };
+      h.oncontextmenu=function(ev){ try{ ev.preventDefault(); ev.stopPropagation(); }catch(e){}
+        faoSelectSetup(s.id); if(typeof faoSetupCtx==='function')faoSetupCtx(ev.clientX,ev.clientY,s.id); };
       tree.appendChild(h);
       if(open)faoWallsTree(tree,s,isSel); // V0.23.20 : esquisses et corps FAO du posage
       if(open)(s.ops||[]).forEach(function(op,i){
@@ -742,22 +750,26 @@ function faoRenderTree(){
         const off=op.on===false;
         const d=document.createElement('div');
         d.className='fao-op'+(isSel('faoOp',op.id)||faoMultiHas(s.id,op.id)?' sel':'')
-          +(off?' isoff':'')+(hid?' ishid':'');
+          +(off?' isoff':'')+(hid?' ishid':'')+(struck?' struck':'');
         d.title='Clic = fiche dans le panneau droit · Ctrl+clic / Maj+clic = plusieurs opérations (Ctrl+C / Ctrl+V, Suppr = supprimer, Ctrl+Z = rétablir)'
           +(hid?' — traces masquées dans la 3D (opération toujours active)':'');
         const eye=document.createElement('span');
         eye.textContent=off?'○':'●';
         eye.className='eye '+(off?'off':'on');
         eye.title='Activer / désactiver (entre dans le G-code)';
+        if(struck)eye.title='Posage gelé : dégelez-le (clic droit sur le posage) pour activer ou désactiver cette opération';
         eye.onclick=function(ev){ try{ if(ev&&ev.stopPropagation)ev.stopPropagation(); }catch(e){}
+          if(struck){ faoClipMsg('posage « '+s.name+' » gelé — clic droit sur le posage → « Dégeler » d’abord.'); return; }
           faoSnapshot('activer/désactiver « '+faoOpShortLabel(op)+' »');
           op.on=!(op.on!==false); faoChanged(); };
         const lb=document.createElement('span'); lb.className='lb';
-        lb.textContent=(i+1)+'. '+faoOpShortLabel(op);
+        const own=faoIsPattern(op)?null:faoPatternOwner(s,op);
+        lb.textContent=(i+1)+'. '+faoOpShortLabel(op)+(own?(' ↻'+(s.ops.indexOf(own)+1)):'');
+        if(own)lb.title='Répétée par la répétition n° '+(s.ops.indexOf(own)+1)+' : usinée à la place de la répétition, sur toutes ses copies';
         const tool=faoToolById(s,op.toolId);
         const badge=document.createElement('span');
         badge.className='badge';
-        badge.textContent='[T'+(tool.num||'?')+']';
+        badge.textContent=faoIsPattern(op)?('['+(op.srcs||[]).length+' op.]'):('[T'+(tool.num||'?')+']');
         // Masquer / Afficher : traces d'UNE opération, à l'extrême droite (l'œil
         // d'activation reste le premier enfant : ordre contractuel des tests).
         const mb=document.createElement('span');
@@ -793,6 +805,7 @@ function faoRenderTree(){
   try{ faoWalls3D(); }catch(e){} // V0.23.20 : corps et esquisses FAO dans la vue
 }
 function faoOpShortLabel(op){
+  if(faoIsPattern(op)){ try{ return faoPatternLabel(faoSetupOfOp(op),op); }catch(e){ return 'Répétition'; } }
   const n={facing:'Surfaçage',pocket:'Poche',chamfer:'Chanfrein',contour:'Contour',drill:'Perçage',
     rough3d:'Ébauche 3D',geofinish:'Finition',geodesic:'Géodésique'}[op.type]||op.type;
   if(op.type==='drill'){
@@ -2161,6 +2174,7 @@ function faoRenderProps(p,s){
     }
     const wall=(!op&&s.wall)?faoWallList(setup).filter(function(w){return w.id===s.wall;})[0]:null;
     if(wall){ faoWallFiche(p,setup,wall); faoTidyRows(p); return; } // V0.23.20 : corps FAO
+    if(op&&faoIsPattern(op)){ faoPatternFiche(p,setup,op,idx); faoTidyRows(p); return; } // V0.95.1
     if(op){
       p.appendChild(faoH('Opération · '+setup.name));
       p.appendChild(faoOpCardElement(setup,op,idx));
@@ -2237,17 +2251,10 @@ function faoExport(){
       faoStaleUI();
       return;
     }
-    const job=faoDoc();
-    const actives=(job.ops||[]).filter(function(o){return !o||o.on!==false;});
-    if(!actives.length){ try{ faceEl.textContent='FAO : aucune opération active à exporter.'; }catch(e){} return; }
-    const r=faoPost(job);
-    const name=faoProgName(job.name)+'.'+r.ext;
-    const blob=new Blob([r.code],{type:'text/plain'});
-    const a=document.createElement('a');
-    a.href=URL.createObjectURL(blob); a.download=name;
-    document.body.appendChild(a); a.click();
-    setTimeout(function(){ try{ URL.revokeObjectURL(a.href); a.remove(); }catch(e){} },500);
-    try{ faceEl.textContent='FAO : '+name+' exporté ('+r.code.split('\n').length+' blocs).'
-      +(r.warns&&r.warns.length?(' ⚠ '+r.warns.join(' ; ')):''); }catch(e){}
+    // V0.95.3 : TOUS les posages non gelés qui ont au moins une opération active
+    // (un fichier par posage) ; le menu du posage exporte le sien seul (88-fao-82).
+    const list=faoRoot().setups.filter(function(s){ return faoSetupActiveOps(s).length>0; });
+    if(!list.length){ try{ faceEl.textContent='FAO : aucune opération active à exporter (posages gelés ou opérations désactivées).'; }catch(e){} return; }
+    faoExportSetups(list);
   }catch(e){}
 }

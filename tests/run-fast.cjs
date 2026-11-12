@@ -53,6 +53,8 @@ const SUITES = [
   'test_fao_collision',
   'test_fao_catalogue',
   'test_fao_copier_coller',
+  'test_fao_posage_menu',
+  'test_fao_repetition',
   'test_fao_suppression_multiple',
   'test_fao_percage',
   'test_percage_cylindre',

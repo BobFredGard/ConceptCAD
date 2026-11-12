@@ -176,7 +176,7 @@ function faoPost(job,postId){
   // programme (_DIR 0), la table ne reste jamais inclinée d'un programme précédent
   if(c800){ faoPostLines(post.swivelRetract,{}).forEach(nc); nc(faoCycle800(post,{a:0,b:0,c:0},0)); }
   nc('G0 Z'+faoFmtXYZ(safe-oz)); // plan de sécurité : Z seul avant tout déplacement XY
-  let qi=0, prev=null;
+  let qi=0, prev=null, wcsCur=wcs;
   // 2026-10-16-020 : orientation 3+2 PAR OPÉRATION (repère propre de l'opération) ;
   // l'ancien 3+2 du posage reste l'orientation par défaut.
   let oriCur={b:ORI.b,c:ORI.c}, traOn=ori32&&!ax3&&!c800, fagWarn=false;
@@ -214,7 +214,10 @@ function faoPost(job,postId){
       const CB=b.cut||faoOpCutting(b.op,job);
       const SB=faoFmtS(CB.s), F=faoFmtF(CB.f), FP=faoFmtF(CB.plunge), FE=faoFmtF(CB.entry), FR=faoFmtF(CB.retract);
       if(SB!==sCur){ nc('S'+SB); sCur=SB; }
-      cmt(faoOpLabel(b.op,job));
+      // V0.95.3 : copie d'une répétition — origine propre (G55…) et libellé
+      if(b.xf&&b.xf.wcs&&b.xf.wcs!==wcsCur){ nc('G0 Z'+faoFmtXYZ(safe-OZ)); nc(b.xf.wcs); wcsCur=b.xf.wcs; if(prev)prev={x:prev.x,y:prev.y,z:safe}; }
+      else if(!(b.xf&&b.xf.wcs)&&wcsCur!==wcs){ nc('G0 Z'+faoFmtXYZ(safe-OZ)); nc(wcs); wcsCur=wcs; if(prev)prev={x:prev.x,y:prev.y,z:safe}; }
+      cmt(faoOpLabel(b.op,job)+(b.n>1?(' - copie '+(b.k+1)+'/'+b.n+(b.xf?' ('+b.xf.lab+')':'')):''));
       // 2026-10-13-007 : #MSG par opération sur Fagor (rétro-ingénierie
       // cav.txt : N60 #MSG["OPT1: Paroies"]) — l'opérateur voit l'opération
       // en cours sur la CN. Sanitisé ASCII, sans G1 ni F (parité post intacte).
@@ -257,7 +260,13 @@ function faoPost(job,postId){
       const sq=SEQ[qi++]||{moves:b.moves};
       // P1-a : perçage émis en cycle dialecte — le déroulé G0/G1 reste la
       // source prévisualisation/estimation/garde-fou mais n'est pas écrit ici.
-      const DC=faoDrillCycle(b.op,joB,oz,!!toB);
+      let DC=faoDrillCycle(b.op,joB,oz,!!toB);
+      if(DC&&b.xf&&!b.xf.wcs){ // copie déplacée d'un perçage : trous transformés
+        const X=b.xf;
+        DC=Object.assign({},DC,{
+          holes:(DC.holes||[]).map(function(H){ const p=faoXfPt(X,+H.x,+H.y); return Object.assign({},H,{x:p[0],y:p[1]}); }),
+          pts:(DC.pts||[]).map(function(q){ const p=faoXfPt(X,+q[0],+q[1]); return [p[0],p[1]].concat(q.slice(2)); })});
+      }
       if(DC){
         // 2026-10-15-011 : départ (RFP) et fond (DP) PAR TROU ; temporisation (G82 /
         // CYCLE82, CYCLE83 DTB) ; brise-copeaux : CYCLE83 VARI=0 (Siemens), passes
@@ -618,7 +627,7 @@ function faoRefreshPreview(mode){
       if(op&&op.hidden===true)return; // traces masquées dans la vue (op.hidden) — le G-code, lui, les garde
       if(b.absent){ faoPrevMissing++; return; } // pas de parcours en memoire : on n'invente rien
       const mv=b.tail?b.moves.concat(b.tail):b.moves; total+=b.moves.length; // tail : remontée avant un changement d'outil
-      mk(mv,faoSegClipper(op,job));
+      mk(mv,b.xf?null:faoSegClipper(op,job)); // copie d'une répétition : la zone de la source ne la borne pas
     });
     faoAdd3D(faoPrevGroup);
     if(typeof faoVw!=='undefined'&&faoVw)faoPrevGroup.visible=false; // viewer : traces restent cachées
@@ -666,7 +675,7 @@ async function faoRefreshPreviewStream(){
   faoPrevGroup=new THREE.Group(); faoPrevGroup.name='faoPreview';
   faoAdd3D(faoPrevGroup);
   if(typeof faoVw!=='undefined'&&faoVw)faoPrevGroup.visible=false; // viewer : traces restent cachées
-  const ops=((job&&job.ops)||[]).filter(function(op){ return op&&op.on!==false; });
+  const ops=((job&&job.ops)||[]).filter(function(op){ return op&&op.on!==false&&!faoIsPattern(op); });
   // Opérations longues : calculées sur plusieurs cœurs (src/88-fao-58-multicoeur.js) et rangées
   // au cache ; la boucle ci-dessous les relit et calcule normalement tout ce qui manque.
   const fluxOp=new Map();

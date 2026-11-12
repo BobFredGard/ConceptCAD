@@ -11,7 +11,7 @@ const R=String.raw`
   faoRoot().setups=[s];faoRoot().activeSetupId=s.id;s.ops=[];
   // 1. ruban : la Poche cède sa place au Chanfrein ; les poches restent créables par script
   const spec=faoAddOpsSpec();
-  A(spec.length===7&&spec[1][0]==='chamfer'&&!spec.some(a=>a[0]==='pocket'),'1 : barre « + » : Chanfrein à la place de Poche (7 usinages)');
+  A(spec.length===8&&spec[7][0]==='pattern'&&spec[1][0]==='chamfer'&&!spec.some(a=>a[0]==='pocket'),'1 : barre « + » : Chanfrein à la place de Poche (7 usinages + Répétition)');
   A(faoOpDefaults('pocket')&&faoOpDefaults('pocket').type==='pocket','2 : une Poche reste lisible et créable (anciens fichiers)');
   // 2. outil : fraise à chanfreiner
   const op=faoOpDefaults('chamfer');
