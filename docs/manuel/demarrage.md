@@ -60,7 +60,7 @@ Pour les développeurs : voir [Développement](developpement.md).
 
 Le noyau géométrique exact est **OpenCascade 8 compilé en WebAssembly** par nos soins (recette reproductible dans `occt-build/`), en deux versions :
 
-- **multicœur**, choisie toute seule quand le navigateur et le PC le permettent, et écrite dans la barre d'état ;
+- **multicœur**, choisie toute seule quand le navigateur et le PC le permettent, et écrite dans la barre d'état : elle calcule les découpes et dessine la pièce sur plusieurs cœurs (une grosse plaque percée se redessine environ deux fois plus vite après chaque modification) ;
 - **normale**, sur un seul cœur, qui reste celle du fichier autonome.
 
 S'il n'est pas disponible, l'application bascule seule sur un moteur maillage (CSG).

@@ -8,7 +8,7 @@ sont sorties le 2026-09-30j.
 Code dans `src/` · livrable `fusion_mvp.html` (généré par `build.js`) · architecture et
 garde-fous en tête de `src/00-entete-et-outils.js`.
 
-**675 versions**, de `2026-09-28b` à `V0.95.9` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
+**676 versions**, de `2026-09-28b` à `V0.95.10` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
 comme dans le fichier d'origine.
 
 ---
@@ -7573,3 +7573,11 @@ Barquette ne perd plus son solide à la 107e modification, et sa mémoire ne mon
 - **Correctif** (`src/10-scene-3d`, `src/97-interface-moderne`) : veille du dessin. Pleine cadence dès qu'il se passe quelque chose : souris, molette, clavier, caméra qui bouge encore (amorti, zoom doux), n'importe quelle animation (tout appel à `requestAnimationFrame` hors de la boucle réveille : film, simulation FAO, placement d'assemblage, régénération). Après 1,5 s sans rien, une image toutes les 0,4 s seulement, en filet pour ce qui change sans geste (fin de calcul en tâche de fond). La caméra « tremblait » d'un bruit d'arrondi à chaque image (`controls.update`) : comparée avec une tolérance. Le cube de vue n'est redessiné que si l'orientation ou le survol change. `?sansveille` dans l'adresse : ancienne cadence continue.
 - **Mesure** (Chromium, 3 s à l'arrêt) : 180 dessins avant, 7 après ; une molette rend 60 images par seconde aussitôt.
 - **Test** : `tests/browser/veille-vue.spec.cjs` (dessins à l'arrêt, pleine cadence après la molette, `?sansveille`). Parcours FAO et CACHE_VER inchangés.
+
+## V0.95.10 - Grosses pièces plus fluides : maillage multicœur, normales allégées, points de contrôle gardés
+
+- **Demande** : « 003 PPL 5V-30 → plus le modèle se charge et plus les fonctions ajoutées sont fastidieuses à obtenir » ; « ou que l'on modifie une fonction aussi » (plaque SIRAP-14-003 : 109 fonctions, 72 perçages, 684 faces).
+- **Mesure** (copie dans D:\Copies-PLM, noyau exact, 4 fils) : à chaque ajout ou modification, la plaque entière était remaillée (1,65 s : maillage 0,93 s, lecture des triangles 0,5 s, lissage 0,19 s) ; après quelques modifications, la file des points de contrôle (120) évinçait les étapes du DÉBUT de la timeline, relues à chaque rejeu mais jamais réécrites, et toute la pièce était recalculée.
+- **Correctif** : `occMeshShape` maille les faces en parallèle avec le noyau multicœur (`occMeshParallele`, 0,93 → 0,37 s, triangles identiques au bit près) ; `occTriPos` lit la normale d'une face plane une seule fois ; `occTriNormals` ne lisse plus toute la pièce quand quelques nœuds n'ont pas de normale exacte (pointes de perçage : `smoothNormalsAt`, mêmes calculs, 190 → 24 ms) ; `occCkGet` remonte en fin de file le point de contrôle relu.
+- **Gain** (plaque, avant → après) : ajout d'un perçage 3,2 → 2,5 s ; modification du dernier perçage 2,0 → 1,1 s ; modification d'un perçage source de symétrie après d'autres modifications 13,3 → 7,8 s. Volumes identiques dans tous les cas.
+- **Test** : `tests/test_maillage_parallele.cjs` (maillage parallèle = un seul fil au bit près, normales = calcul nœud par nœud d'avant, lissage partiel = lissage complet, point relu jamais évincé). Parcours FAO et CACHE_VER inchangés.

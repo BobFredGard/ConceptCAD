@@ -9,7 +9,8 @@ const OCCT_FILES={js:'occt/v3/conceptcad_v3.js',wasm:'occt/v3/conceptcad_v3.wasm
 // Noyau multicœur (occt/mt) : choisi tout seul quand la page est isolée (en-têtes de Server.bat, ou
 // service worker isolation-sw.js sur le site) et le PC assez fourni ; sinon, ou s'il ne charge pas, noyau normal.
 // Le fichier autonome n'en a pas : file:// ne permet pas les fils. Adresse ?mt=0 : noyau normal ; ?mt=8 : 8 fils.
-// Seuls les booléens utilisent les fils : le maillage, dont dépend la FAO, reste comme avant.
+// Booléens et, depuis V0.95.10, maillage des faces en parallèle (triangles identiques au bit près à un seul fil :
+// la FAO, qui en dépend, ne voit aucune différence ; tests/test_maillage_parallele.cjs).
 // Les workers (suppression de face, FAO) gardent le noyau normal : ils lisent OCCT_FILES.
 const OCCT_MT={js:'occt/mt/conceptcad_v3.js',wasm:'occt/mt/conceptcad_v3.wasm'};
 const OCCT_MT_FILS_DEFAUT=4; // mémoire du noyau : 165 Mo de plus à 4 fils, 305 Mo à 8
