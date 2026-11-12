@@ -124,6 +124,7 @@ const SUITES = [
   'test_asm_fx',
   'test_composants_repetitions',
   'test_composants_repetition_ajout',
+  'test_symetrie_lineaire',
   'test_composants_repetition_profil',
   'test_composants_references',
   'test_composants_aretes_esquisse',

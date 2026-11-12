@@ -8,7 +8,7 @@ sont sorties le 2026-09-30j.
 Code dans `src/` · livrable `fusion_mvp.html` (généré par `build.js`) · architecture et
 garde-fous en tête de `src/00-entete-et-outils.js`.
 
-**670 versions**, de `2026-09-28b` à `V0.95.4` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
+**671 versions**, de `2026-09-28b` à `V0.95.5` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
 comme dans le fichier d'origine.
 
 ---
@@ -7533,3 +7533,10 @@ Barquette ne perd plus son solide à la 107e modification, et sa mémoire ne mon
 - **Constat** : une répétition acceptait déjà plusieurs sources, mais seulement choisies d'avance (lot Ctrl+clic puis « Répéter le lot… ») ; une fois le panneau ouvert, un clic changeait la sélection sans rien faire à la répétition, et aucune source ne pouvait être ajoutée ou retirée ensuite.
 - **Correctif** (`src/48-assemblage-repetitions`, `src/47-assemblage-interface`) : comme dans Fusion, panneau de répétition ouvert (nouvelle ou rouverte), un clic sur un composant dans la vue ou dans l'arbre l'**ajoute** à la répétition ou l'en **retire** (`asmPatToggleSrc`, branché en tête de `asmSelClick`) ; le panneau liste les « Composants (n) » avec un **✕** chacun ; les sources sont en surbrillance. La dernière source reste (🗑 Supprimer pour enlever la répétition) ; une instance ne devient pas source. Toute l'édition reste une seule étape d'annulation, Annuler / Échap revient aux sources d'avant.
 - **Test** : `tests/test_composants_repetition_ajout.cjs` (ajout par clic, 3 sources → 6 instances bien placées, instance refusée, retrait, dernière source gardée, une étape d'annulation, réouverture et Annuler). Parcours FAO et CACHE_VER inchangés.
+
+
+## V0.95.5 - CAO : Symétrie + Linéaire + Symétrie dans une seule fonction
+
+- **Demande** : « Symétrie -> ajout 1 Linéaire + 1 symétrie » ; précisé : enchaîner dans une seule fonction Symétrie une étape Linéaire puis une 2ᵉ symétrie.
+- **Correctif** (`src/40-20-repetitions`, `src/40-40-panneau-repetition`, `src/40-50-panneau-proprietes`) : case **+ Linéaire** dans la symétrie (`rp.mlin`, direction `axis`/`dir` avec 🎯 arête ou face et ⇄, quantité `copies` original compris, pas `dist`, formules ƒx) : la pièce et son image sont décalées de i pas (passe d'index 1000 + i, `repMirLinStep`), puis la case **+ Symétrie (2ᵉ plan)** (`plane2`, ex-symétrie double) reprend le tout. Une seule ligne dans l'arbre, nommée « Symétrie + Linéaire (+ Symétrie) » ; aperçu rouge de toutes les copies (`repXformsK`) ; signature du cache et de régénération complétées. Symétries simples et doubles existantes inchangées.
+- **Test** : `tests/test_symetrie_lineaire.cjs` (vrai noyau : 7 instances, 8 solides à leur place, boîte ±30 × ±55, ids stables, sans 2ᵉ symétrie, 3 en ligne, compatibilité, signature, rechargement). Parcours FAO et CACHE_VER inchangés.

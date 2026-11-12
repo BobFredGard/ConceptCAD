@@ -201,7 +201,7 @@ function featSig(f){
     if(f.kind==='souffle')s+='|souffle'+soufSig(f); // distance, creux enjambés, sens, bloc plein, pas
   }else if(f.type==='repeat'){
     s+='|'+(f.base||[]).join(',')+'|'+(+f.copies||1)+'|'+(+f.dist||0)+'|'+(+f.angle||0)+'|'+(f.axis||f.plane||'')+'|'+JSON.stringify(f.planeN||null)+'|'+(f.plane2||'')+'|'+JSON.stringify(f.planeN2||null)
-      +'|'+JSON.stringify(f.dir||null)+'|'+(f.lin2?[f.axis2,JSON.stringify(f.dir2||null),+f.copies2||1,+f.dist2||0].join(','):''); // 2ᵉ direction (grille)
+      +'|'+JSON.stringify(f.dir||null)+'|'+(f.lin2?[f.axis2,JSON.stringify(f.dir2||null),+f.copies2||1,+f.dist2||0].join(','):'')+(f.mlin?'|ml'+(f.plane||''):''); // 2ᵉ direction (grille) ; symétrie + linéaire
   }
   // Filet (2026-10-02-011) : la fonction ENTIÈRE entre dans la signature — toute
   // propriété, connue ou future, invalide le suffixe dès qu'elle bouge, donc jamais

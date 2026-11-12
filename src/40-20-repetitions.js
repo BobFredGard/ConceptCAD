@@ -169,9 +169,15 @@ function repXformsK(cfg,max,noSkip){
     return out;
   }
   const n1=repPlaneN(c),M1=mirM(n1);out.push({k:'1',M:M1});
+  // + Linéaire (V0.95.5) : l'original et son image décalés de i pas ; puis la 2ᵉ symétrie de tout
+  const L=[{k:'',M:null},{k:'1',M:M1}];
+  if(c.mlin){const d=repMirLinStep(c),n=repMaxCopies(c.copies);
+    for(let i=1;i<=n;i++){const T=trans(repScale(d,i));L.push({k:'L'+i,M:T},{k:'L'+i+'.1',M:mul(T,M1)});out.push({k:'L'+i,M:T},{k:'L'+i+'.1',M:mul(T,M1)});}}
   if(c.plane2){
     const n2=c.planeN2?repNorm(c.planeN2):repPlaneN({plane:c.plane2});
-    if(Math.abs(repDot(n1,n2))<0.999){const M2=mirM(n2);out.push({k:'2',M:M2});out.push({k:'21',M:mul(M2,M1)});}
+    if(Math.abs(repDot(n1,n2))<0.999){const M2=mirM(n2);
+      L.forEach(x=>out.push({k:x.k==='1'?'21':x.k?'2.'+x.k:'2',M:x.M?mul(M2,x.M):M2}));
+    }
   }
   return out;
 }
@@ -386,7 +392,7 @@ function repHoverShow(cfg,key,ids){
     scene.add(g);repHovGroup=g;
   }catch(e){repHovGroup=null;}
 }
-function repTypeName(m,f){if(m==='mir'&&f&&f.plane2)return 'Symétrie double';if(m==='lin'&&f&&f.lin2)return 'Linéaire 2 directions';return m==='mir'?'Symétrie':m==='circ'?'Circulaire':m==='path'?'Suivant un profil':'Linéaire';}
+function repTypeName(m,f){if(m==='mir'&&f&&f.mlin)return f.plane2?'Symétrie + Linéaire + Symétrie':'Symétrie + Linéaire';if(m==='mir'&&f&&f.plane2)return 'Symétrie double';if(m==='lin'&&f&&f.lin2)return 'Linéaire 2 directions';return m==='mir'?'Symétrie':m==='circ'?'Circulaire':m==='path'?'Suivant un profil':'Linéaire';}
 function repAxisVec(cfg){const c=cfg||repMode;const a=c&&c.axis;if(c&&c.dir)return repNorm(c.dir);if(a==='Y')return[0,1,0];if(a==='Z')return[0,0,1];return[1,0,0];}
 function repPlaneN(cfg){const c=cfg||repMode;if(c&&c.planeN)return repNorm(c.planeN);const p=c&&c.plane;if(p==='XY')return[0,0,1];if(p==='XZ')return[0,1,0];return[1,0,0];}
 function repNorm(a){const l=Math.hypot(a[0],a[1],a[2])||1;return[a[0]/l,a[1]/l,a[2]/l];}
@@ -428,6 +434,9 @@ function repPathNote(rp){
 }
 // Répétition linéaire à DEUX directions (grille) : 2ᵉ axe (rp.axis2 X/Y/Z/Face + rp.dir2), quantité
 // rp.copies2 (stockée − 1, comme copies), pas rp.dist2. Une instance par case (i, j) hors (0, 0).
+// SYMÉTRIE + LINÉAIRE (V0.95.5) : dans une symétrie, rp.mlin ajoute une étape linéaire entre le 1er plan et le
+// 2ᵉ : axe rp.axis / rp.dir, quantité rp.copies (stockée − 1), pas rp.dist — champs inutilisés sinon par la symétrie.
+function repMirLinStep(c){return repScale(repAxisVec({axis:c&&c.axis,dir:c&&c.dir}),+(c&&c.dist)||0);}
 function repAxis2Vec(c){return repAxisVec({axis:c&&c.axis2,dir:c&&c.dir2});}
 function repLinCells(rp){
   // Cases de la grille, original exclu : [{i, j, off}] — 200 instances au plus (REPEAT_MAX)
@@ -812,14 +821,18 @@ function repGenChildren(rp){
     return kids;
   };
   const kids1=(rp.mode==='mir')?buildPass(base,rp,1):[];
-  let kids2=[];
-  if(mir2&&!rp._samePlane){
-    const sources2=[];
-    base.forEach(f=>{sources2.push(f);const k1=kids1.find(k=>k._src===f.id);if(k1)sources2.push(k1);});
-    kids2=buildPass(sources2,cfg2,2);
+  let kids2=[],kidsL=[];
+  // Motif après la 1ʳᵉ symétrie : chaque source suivie de son image
+  const sources1=[];
+  if(rp.mode==='mir')base.forEach(f=>{sources1.push(f);const k1=kids1.find(k=>k._src===f.id);if(k1)sources1.push(k1);});
+  // + LINÉAIRE (V0.95.5) : ce motif est décalé de i pas (index 1000 + i), puis la 2ᵉ symétrie reprend le tout
+  if(rp.mode==='mir'&&rp.mlin){
+    const d=repMirLinStep(rp),nL=repMaxCopies(rp.copies);
+    for(let i=1;i<=nL;i++)kidsL=kidsL.concat(buildPass(sources1,Object.assign({},rp,{mode:'lin',_off:repScale(d,i)}),1000+i));
   }
+  if(mir2&&!rp._samePlane)kids2=buildPass(sources1.concat(kidsL),cfg2,2);
   rp.children=[];
-  const kids=(rp.mode==='mir')?kids1.concat(kids2):[];
+  const kids=(rp.mode==='mir')?kids1.concat(kidsL,kids2):[];
   if(rp.mode!=='mir'){
     // linéaire : une instance par case de grille (une seule direction = une ligne), décalage explicite
     const cells=rp.mode==='lin'?repLinCells(rp):null;
@@ -890,7 +903,7 @@ function repSyncForFeature(f,seen){
 }
 const repGenSigs=new Map(); // id de répétition -> signature des sources au dernier régénéré
 function repSourceSig(rp){
-  let s=JSON.stringify([rp.op||'join',rp.mode,rp.copies,rp.dist,rp.angle,rp.axis,rp.plane,rp.planeN,rp.plane2,rp.planeN2,rp.base,rp.dir,rp.lin2,rp.axis2,rp.dir2,rp.copies2,rp.dist2,rp.path,rp.pspace,rp.orient,rp.rev,rp.skip]);
+  let s=JSON.stringify([rp.op||'join',rp.mode,rp.copies,rp.dist,rp.angle,rp.axis,rp.plane,rp.planeN,rp.plane2,rp.planeN2,rp.mlin,rp.base,rp.dir,rp.lin2,rp.axis2,rp.dir2,rp.copies2,rp.dist2,rp.path,rp.pspace,rp.orient,rp.rev,rp.skip]);
   if(rp.mode==='path')s+='#g'+pgSketchSig(rp.path&&doc.sketches.find(x=>x.id===rp.path.sk)); // géométrie de la courbe guide
   // motif développé : une répétition source change dès que ses instances changent
   const B=(rp.base||[]).map(id=>doc.features.find(x=>x.id===id));
