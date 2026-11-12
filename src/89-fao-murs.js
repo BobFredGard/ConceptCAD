@@ -466,13 +466,13 @@ function faoWallFiche(p,setup,w){
   c.appendChild(rk);
   const r2=faoRow();
   r2.appendChild(faoLab('Départ Z'));
-  r2.appendChild(faoNum(+w.a||0,function(v){w.a=v;},54,1,'Cote de départ le long de la normale de l’esquisse (Z du posage), mm.'));
+  r2.appendChild(faoNumFx(w,'a',+w.a||0,function(v){w.a=v;},54,1,'Cote de départ le long de la normale de l’esquisse (Z du posage), mm.'));
   r2.appendChild(faoLab('Hauteur'));
-  r2.appendChild(faoNum(+w.h||0,function(v){if(Math.abs(v)>1e-6||w.kind==='surface')w.h=v;},54,1,'Hauteur de l’extrusion (mm) — négative : vers le bas ; 0 (surface) : surface plane à la cote de départ.'));
+  r2.appendChild(faoNumFx(w,'h',+w.h||0,function(v){if(Math.abs(v)>1e-6||w.kind==='surface')w.h=v;},54,1,'Hauteur de l’extrusion (mm) — négative : vers le bas ; 0 (surface) : surface plane à la cote de départ.'));
   c.appendChild(r2);
   const r3=faoRow();
   r3.appendChild(faoLab('Marge'));
-  r3.appendChild(faoNum(faoWallM(w),function(v){w.m=Math.max(0,v);},54,0.1,'Distance minimale entre l’outil (flanc et pointe) et le corps, mm.'));
+  r3.appendChild(faoNumFx(w,'m',faoWallM(w),function(v){w.m=Math.max(0,v);},54,0.1,'Distance minimale entre l’outil (flanc et pointe) et le corps, mm.'));
   const cb=document.createElement('input');cb.type='checkbox';cb.checked=w.on!==false;
   cb.onchange=function(){faoSnapshot('activer/désactiver « '+w.name+' »');if(cb.checked)delete w.on;else w.on=false;faoChanged();};
   const lb=document.createElement('label');lb.className='fao-check';lb.appendChild(cb);lb.appendChild(document.createTextNode('Actif'));

@@ -162,9 +162,9 @@ function faoChamferRows(d,setup,op){
   d.appendChild(faoH('Chanfrein'));
   const r1=faoRow();
   r1.appendChild(faoLab('Largeur'));
-  r1.appendChild(faoNum(isFinite(+op.w)?+op.w:0.5,function(v){op.w=Math.max(0.01,v);},48,0.1,'Largeur du chanfrein sur la face du dessus (mm). La hauteur sur la paroi suit l’angle de l’outil (90° : égale à la largeur).'));
+  r1.appendChild(faoNumFx(op,'w',isFinite(+op.w)?+op.w:0.5,function(v){op.w=Math.max(0.01,v);},48,0.1,'Largeur du chanfrein sur la face du dessus (mm). La hauteur sur la paroi suit l’angle de l’outil (90° : égale à la largeur).'));
   r1.appendChild(faoLab('Décalage de pointe'));
-  r1.appendChild(faoNum(isFinite(+op.tipOff)?+op.tipOff:0.3,function(v){op.tipOff=Math.max(0,v);},48,0.1,'La pointe descend de cette valeur sous le chanfrein : le flanc coupe, pas la pointe (fragile). 0,2 à 0,5 mm.'));
+  r1.appendChild(faoNumFx(op,'tipOff',isFinite(+op.tipOff)?+op.tipOff:0.3,function(v){op.tipOff=Math.max(0,v);},48,0.1,'La pointe descend de cette valeur sous le chanfrein : le flanc coupe, pas la pointe (fragile). 0,2 à 0,5 mm.'));
   d.appendChild(r1);
   const r2=faoRow();
   r2.appendChild(faoLab('Côté'));

@@ -95,7 +95,28 @@ function parHolders(){
     (Array.isArray(f.edges)?f.edges:[]).forEach(s=>{if(s&&typeof s==='object')out.push({h:s,f});});});
   // géométrie de construction : distances, angles, décalages (cg.p) — 78-construction-modele.js
   (doc.cgeo||[]).forEach(c=>{if(c&&c.p&&typeof c.p==='object')out.push({h:c.p,f:c});});
+  // V0.95.0 : FAO (posages, opérations, zones, bridage) et mise en plan — tout objet qui PORTE une
+  // formule ou un nom ƒx (h.expr / h.pname) est un porteur ; f = posage (FAO) ou l'objet lui-même.
+  const fx=(o,f,kind,d)=>{
+    if(!o||typeof o!=='object'||d>7)return;
+    if(Array.isArray(o)){if(!o.length||o.length>2000||typeof o[0]!=='object')return;o.forEach(x=>fx(x,f,kind,d+1));return;}
+    if((o.expr&&typeof o.expr==='object')||(o.pname&&typeof o.pname==='object'))out.push({h:o,f:f||o,kind});
+    for(const k in o){if(k[0]==='_'||k==='expr'||k==='pname'||k==='exprErr')continue;const v=o[k];if(v&&typeof v==='object')fx(v,f,kind,d+1);}
+  };
+  // valeurs rangées plus bas dans une fonction (étapes de « Déplacer un corps », placement d'un perçage…) :
+  // kind vide = valeur de fonction (nom et répétitions à jour, rejeu)
+  (doc.features||[]).forEach(f=>{if(!f||f.repeatId)return;
+    for(const k in f){if(k[0]==='_'||k==='edges'||k==='thread'||k==='expr'||k==='pname'||k==='exprErr'||k==='brep'||k==='children')continue;const v=f[k];if(v&&typeof v==='object')fx(v,f,null,1);}});
+  try{if(doc.fao&&Array.isArray(doc.fao.setups))doc.fao.setups.forEach(s=>fx(s,s,'fao',0));}catch(e){}
+  try{if(doc.fao&&typeof doc.fao==='object')for(const k in doc.fao)if(k!=='setups'&&k[0]!=='_')fx(doc.fao[k],null,'fao',1);}catch(e){} // corps et esquisses FAO (murs)…
+  try{if(doc.mep&&typeof doc.mep==='object')fx(doc.mep,null,'mep',0);}catch(e){}
   return out;
+}
+// Copie d'un objet sans ses formules (expr / pname / exprErr) : les clés de cache FAO n'en dépendent pas
+// (une formule qui donne la même valeur ne périme aucun parcours). Rendu tel quel s'il n'en porte pas.
+function parSansFx(v){
+  if(!v||typeof v!=='object'||Array.isArray(v)||!(v.expr||v.pname||v.exprErr))return v;
+  const o={};for(const k in v)if(k!=='expr'&&k!=='pname'&&k!=='exprErr')o[k]=v[k];return o;
 }
 // V0.31.1 : QUANTITÉS (nombres sans unité). Un paramètre n'a pas d'unité : c'est la fonction
 // qui la donne. Clé virtuelle « qty » = quantité affichée, original compris, rangée dans
@@ -147,8 +168,8 @@ function parResolve(){
       delete d.exprErr;
     }catch(e){d.exprErr=e.message;}
   }));
-  let featChanged=false;
-  parHolders().forEach(({h,f})=>{
+  let featChanged=false;const kinds=new Set();
+  parHolders().forEach(({h,f,kind})=>{
     if(!h.expr)return;
     Object.keys(h.expr).forEach(k=>{
       const ex=h.expr[k];if(ex==null||String(ex).trim()===''){delete h.expr[k];return;}
@@ -156,12 +177,12 @@ function parResolve(){
         const nm=h.pname&&h.pname[k];
         const v=nm?get(nm):parEval(ex,get);
         if(!isFinite(v))throw new Error('valeur non finie');
-        if(parHolderSet(h,k,v)){featChanged=true;f._fxDirty=1;}
+        if(parHolderSet(h,k,v)){if(kind)kinds.add(kind);else{featChanged=true;f._fxDirty=1;}}
         if(h.exprErr)delete h.exprErr[k];
       }catch(err){h.exprErr=h.exprErr||{};h.exprErr[k]=err.message;}
     });
   });
-  return{changed:[...changed],get,featChanged};
+  return{changed:[...changed],get,featChanged,kinds};
 }
 function parApplyAll(){
   // Réévalue tout et résout les esquisses dont une cote a changé (y compris l'esquisse ouverte).
@@ -172,6 +193,9 @@ function parApplyAll(){
   (doc.features||[]).forEach(f=>{if(!f||!f._fxDirty)return;delete f._fxDirty;
     try{const nm=({extrude:typeof extName==='function'?extName:null,revolve:typeof revolveName==='function'?revolveName:null,xmove:typeof mvName==='function'?mvName:null,xdraft:typeof draftName==='function'?draftName:null})[f.type];if(nm)f.name=nm(f);}catch(e){}
     try{if(typeof repSyncForFeature==='function'&&!f.repeatId)repSyncForFeature(f);}catch(e){}});
+  // V0.95.0 : une valeur FAO ou de mise en plan liée à un paramètre a changé : brut, parcours périmés, feuille
+  if(r.kinds&&r.kinds.has('fao')){try{if(typeof faoStock==='function')faoStock();}catch(e){}try{if(typeof faoChanged==='function')faoChanged();}catch(e){}}
+  if(r.kinds&&r.kinds.has('mep')){try{if(typeof window!=='undefined'&&typeof window.mepFxRedraw==='function')window.mepFxRedraw();}catch(e){}}
   return r;
 }
 function parNameCheck(nm,selfDim,selfParam,selfH,selfK){
@@ -259,11 +283,13 @@ function parFxNum(txt,h,k){
   if(/^\s*[A-Za-z_][A-Za-z0-9_]*\s*=(?!=)/.test(s))return{ok:false,msg:'« nom = valeur » : nommer n’est possible que sur une valeur de fonction.'};
   try{return{ok:true,v:parEval(s,parValueNow)};}catch(e){return{ok:false,msg:e.message};}
 }
-function parFx(inp,h,k){
+function parFx(inp,h,k,opt){
   // Branche un champ numérique de fonction 3D sur ƒx : appelé JUSTE APRÈS la création du champ
   // (avant ses propres gestionnaires) — une expression / « nom = » est mémorisée puis remplacée
   // par sa valeur numérique, que le gestionnaire existant applique comme d'habitude.
   if(!inp||!h)return inp;
+  // V0.95.0 : partout, la formule reste affichée dans le champ après sa validation (opt.keep===false : non)
+  if(!(opt&&opt.keep===false))inp._fxKeep=1;
   inp._parFx=1; // le filet global (parFxGlobal) laisse ce champ à son gestionnaire ƒx
   const ex=h.expr&&h.expr[k],nm=h.pname&&h.pname[k];
   if(ex||nm){inp.value=(nm?nm+' = ':'')+(ex||String(+parHolderVal(h,k).toFixed(4)).replace('.',','));
@@ -272,11 +298,24 @@ function parFx(inp,h,k){
   if(h.exprErr&&h.exprErr[k])inp.style.borderColor='#ff9f0a';
   const go=()=>{
     const s=String(inp.value).trim();
-    if(inp._fxDone===s)return;
+    if(inp._fxDone===s){
+      // formule déjà appliquée et réaffichée (Entrée, sortie du champ) : les gestionnaires du champ qui
+      // suivent lisent la VALEUR, jamais le texte (parseFloat(« 2*L ») donnerait 2), puis la formule revient
+      if(inp._fxKeep&&inp._fxNumTxt!=null&&!parIsNumber(s)){const t=inp._fxNumTxt;inp.value=t;
+        setTimeout(()=>{if(inp.isConnected&&inp.value===t){inp.value=s;}},0);}
+      return;
+    }
     if(parIsNumber(s)){if(h.expr&&h.expr[k]){delete h.expr[k];}inp._fxDone=s;return;}
     const r=parFxSet(h,k,s);
     if(!r.ok){try{faceEl.textContent='ƒx : '+r.msg;}catch(e){}inp.value=String(+parHolderVal(h,k).toFixed(4)).replace('.',',');inp._fxDone=inp.value;return;}
-    inp.value=String(+r.v.toFixed(12)).replace('.',',');inp._fxDone=inp.value;
+    inp.value=String(+r.v.toFixed(12)).replace('.',',');inp._fxDone=inp.value;inp._fxNumTxt=inp.value;
+    // inp._fxKeep (les panneaux relisent leurs valeurs dans leur état, pas dans le champ) : une fois la valeur appliquée par le gestionnaire du champ, la formule reprend sa
+    // place à l'écran (avant : le résultat « 4,51 » restait affiché, la formule semblait perdue).
+    if(inp._fxKeep&&((h.expr&&h.expr[k])||(h.pname&&h.pname[k]))){
+      const show=(h.pname&&h.pname[k]?h.pname[k]+' = ':'')+((h.expr&&h.expr[k])||inp.value),num=inp.value;
+      setTimeout(()=>{if(!inp.isConnected||inp.value!==num)return;inp.value=show;inp._fxDone=show;
+        inp.style.width=Math.max(parseInt(inp.style.width)||70,Math.min(240,8*show.length+20))+'px';},0);
+    }
     try{faceEl.textContent='ƒx : '+(h.pname&&h.pname[k]?h.pname[k]+' = ':'')+(h.expr&&h.expr[k]?h.expr[k]+' → ':'')+(+r.v.toFixed(4));}catch(e){}
   };
   inp.addEventListener('change',go);
@@ -499,9 +538,44 @@ function parNumKeys(i){
   return i;
 }
 function parFxNumeric(t){return t.inputMode==='decimal'||t.inputMode==='numeric'||parIsNumber(t._fxPrev);}
+/* V0.95.0 : parFxBind(champ, porteur, clé) — branchement universel, à poser n'importe quand (même après
+   les gestionnaires du champ) : le filet global, qui passe AVANT eux (phase de capture), mémorise la
+   formule ou « nom = » sur h[k] (h.expr / h.pname, recalculés quand un paramètre change), donne la VALEUR
+   aux gestionnaires du champ, puis réaffiche la formule. Une valeur chiffrée retire la formule. */
+function parFxBind(i,h,k){
+  if(!i||!h||k==null||typeof h!=='object'||Array.isArray(h))return i;
+  try{parFxNumField(i);}catch(e){} // un type=number refuse le texte d'une formule
+  i._fxH=h;i._fxK=k;
+  const ex=h.expr&&h.expr[k],nm=h.pname&&h.pname[k];
+  if(ex||nm){i.value=(nm?nm+' = ':'')+(ex||String(+parHolderVal(h,k).toFixed(4)).replace('.',','));i._fxShow=i.value;
+    i.style.width=Math.max(parseInt(i.style.width)||60,Math.min(240,8*i.value.length+20))+'px';}
+  if(h.exprErr&&h.exprErr[k])i.style.borderColor='#ff9f0a';
+  i.title=(i.title?i.title+' — ':'')+'ƒx : valeur, formule (L/2 + 3) ou « nom = valeur » ; la formule reste dans le champ';
+  return i;
+}
+function parFxBound(e,t){
+  // champ lié par parFxBind : true si traité (le reste du filet global ne s'applique pas)
+  const h=t._fxH,k=t._fxK,s=String(t.value).trim();
+  if(!s)return true;
+  const later=(num,show)=>{t.value=num;t._fxLast=num;
+    setTimeout(()=>{if(t.isConnected&&t.value===num){t.value=show;t._fxShow=show;
+      t.style.width=Math.max(parseInt(t.style.width)||60,Math.min(240,8*show.length+20))+'px';}},0);};
+  if(s===t._fxShow&&t._fxLast!=null){later(t._fxLast,s);return true;} // formule déjà appliquée (Entrée puis sortie du champ)
+  if(parIsNumber(s)){if(s!==t._fxLast){if(h.expr)delete h.expr[k];if(h.exprErr)delete h.exprErr[k];t._fxShow=null;}return true;}
+  if(s===t._fxLast)return true;
+  const r=parFxSet(h,k,s);
+  if(!r.ok){t.value=t._fxPrev!=null?t._fxPrev:String(+parHolderVal(h,k).toFixed(4));try{faceEl.textContent='ƒx : '+r.msg+' — valeur inchangée.';}catch(e2){}return true;}
+  const num=String(+r.v.toFixed(12));
+  const show=(h.pname&&h.pname[k]?h.pname[k]+' = ':'')+((h.expr&&h.expr[k])||num.replace('.',','));
+  later(num,show);
+  try{faceEl.textContent='ƒx : '+(h.pname&&h.pname[k]?h.pname[k]+' = ':'')+(h.expr&&h.expr[k]?h.expr[k]+' → ':'')+(+r.v.toFixed(4));}catch(e2){}
+  try{t.dispatchEvent(new Event('input',{bubbles:true}));}catch(e2){}
+  return true;
+}
 function parFxGlobal(e){
   const t=e.target;
   if(e.type==='keydown'&&e.key!=='Enter')return;
+  if(t&&t._fxH&&t.tagName==='INPUT'&&!t._parFx){parFxBound(e,t);return;}
   if(!parFxEligible(t)||!parFxNumeric(t))return;
   const s=String(t.value).trim();
   if(!s||parIsNumber(s)||s===t._fxLast||/^\s*[A-Za-z_][A-Za-z0-9_]*\s*=(?!=)/.test(s))return; // « nom = … » : réservé aux champs parFx / cotes

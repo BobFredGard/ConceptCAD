@@ -398,16 +398,20 @@ function faoReset(){
     if(!faoActiveOps(faoDoc()).length){ faoPrevStale=false; faoStaleUI(); }
   }catch(e){}
 }
-function faoNum(val,fn,w,step,title){
+function faoNum(val,fn,w,step,title,h,k){
   // V0.11.15 : champ TEXTE décimal (un type=number refuse « L/2 ») — ƒx global, ↑/↓ = pas
   const i=document.createElement('input'); i.type='text'; i.inputMode='decimal'; i.className='fao-in fao-num';
   // valeur affichée arrondie (1,000000001 → 1) : jamais de chiffres parasites
   i.value=(typeof val==='number'&&isFinite(val))?String(+val.toFixed(4)):val;
   if(step)i.step=step;
   if(title)i.title=title;
+  // V0.95.0 : champ lié à une valeur (h[k]) — formule ou paramètre gardés dans le champ et dans le
+  // fichier, recalculés quand un paramètre change (51-parametres) ; branché AVANT le gestionnaire
+  if(h&&k&&typeof parFx==='function')parFx(i,h,k,{keep:1});
   i.onchange=function(){ const v=parseFloat(String(i.value).replace(',','.')); if(isFinite(v)){ faoSnapshot(title); fn(v); faoChanged(); } };
   parNumKeys(i);
   return i; }
+function faoNumFx(h,k,val,fn,w,step,title){ return faoNum(val,fn,w,step,title,h,k); }
 function faoTxt(val,fn,w,title){
   const i=document.createElement('input'); i.type='text'; i.className='fao-in';
   i.value=val;
@@ -925,7 +929,7 @@ function faoPlaneRow(which,label,pl,job,op,tgt){
     }
   },tip));
   if(!isMM){
-    row.appendChild(faoNum(isFinite(+pl.dz)?+pl.dz:0,function(v){
+    row.appendChild(faoNumFx(pl,'dz',isFinite(+pl.dz)?+pl.dz:0,function(v){
       set(Object.assign({},pl,{dz:v}));
     },48,0.5,'Décalage « '+label+' » (mm, ±) ajouté à la référence.'));
     if(pl.ref==='face')row.appendChild(faoMini('Sélect.',function(){
@@ -950,7 +954,7 @@ function faoPlaneRow(which,label,pl,job,op,tgt){
         np[slot===1?'s1':'s2']=ns;
         set(np);
       },'Sous-référence '+(slot===1?'1re':'2e')+' « '+label+' » (base du plus/bas des deux).'));
-      r2.appendChild(faoNum(isFinite(+s.dz)?+s.dz:0,function(v){
+      r2.appendChild(faoNumFx(s,'dz',isFinite(+s.dz)?+s.dz:0,function(v){
         const np=Object.assign({},pl);
         np[slot===1?'s1':'s2']=Object.assign({},s,{dz:v});
         set(np);
@@ -996,7 +1000,7 @@ function faoHtRow(which,label,setup,op){
       label+' (mm, repère de l’opération). Édité à la main : casse le lien avec les arêtes.'));
   }else{
     row.appendChild(faoLab('Décalage'));
-    row.appendChild(faoNum(isFinite(+pl.dz)?+pl.dz:0,function(v){
+    row.appendChild(faoNumFx(pl,'dz',isFinite(+pl.dz)?+pl.dz:0,function(v){
       op.hts=Object.assign({},op.hts); op.hts[which]=Object.assign({},pl,{dz:v});
       faoHtsSync(op,faoOpView(setup,op));
     },48,0.5,'Décalage (mm, ±) ajouté à la référence — négatif : plus bas.'));
@@ -1248,7 +1252,7 @@ function faoOpCardElement(setup,op,i){
     const aeShow=npOn?(faoFacingAe(stF,dF,+op.np)||op.ae):op.ae;
     const nbShow=npOn?Math.round(+op.np):faoFacingCount(stF,dF,op.ae);
     rp.appendChild(faoLab('Écart'));
-    rp.appendChild(faoNum(isFinite(+aeShow)?Math.round(+aeShow*1000)/1000:aeShow,function(v){
+    rp.appendChild(faoNumFx(op,'ae',isFinite(+aeShow)?Math.round(+aeShow*1000)/1000:aeShow,function(v){
       op.ae=Math.max(0.5,v);
       op.np=null; // ancien doc « Passes » → bascule en pilotage par écart
     },48,0.5,'Recouvrement du fraiseur : distance entre deux passes — SEUL paramètre de recouvrement XY (le nombre de lignes résultant est affiché en lecture seule à droite). Sur un ancien document piloté par « Passes », saisir l\'écart bascule définitivement en pilotage par écart.'));
@@ -1264,13 +1268,13 @@ function faoOpCardElement(setup,op,i){
       op.npz=(n>=2)?n:null; // 1 passe = mode historique (coupe unique à la cote Z)
     },40,1,'Passes en Z du surfaçage : l\'ébauche descend du dessus du brut (Z1) jusqu\'à la cote Z en N passes égales, le pas ap = (Z1−Z)/N est calculé automatiquement. 1 = passe unique (mode historique).'));
     rp.appendChild(faoLab(apZShow!=null?('ap '+apZShow):'ap —'));
-    rp.appendChild(faoLab('laisse Z')); rp.appendChild(faoNum(faoRA(op).axial,function(v){op.axial=Math.max(0,v);},48,0.1));
-    rp.appendChild(faoLab('Arrondi')); rp.appendChild(faoNum(isFinite(+op.arrondi)?+op.arrondi:0,function(v){op.arrondi=Math.max(0,v);},48,0.5));
+    rp.appendChild(faoLab('laisse Z')); rp.appendChild(faoNumFx(op,'axial',faoRA(op).axial,function(v){op.axial=Math.max(0,v);},48,0.1));
+    rp.appendChild(faoLab('Arrondi')); rp.appendChild(faoNumFx(op,'arrondi',isFinite(+op.arrondi)?+op.arrondi:0,function(v){op.arrondi=Math.max(0,v);},48,0.5));
     // Rappel du réglage de POSAGE « Sortie » (même champ que la fiche du posage) :
     // on le voit et le règle là où l'on paramètre la passe — dépassement XY du
     // demi-tour + retrait Z (voir infobulle).
     rp.appendChild(faoLab('Sortie'));
-    rp.appendChild(faoNum(isFinite(+setup.secu)?+setup.secu:5,function(v){ setup.secu=Math.max(0,v); },44,0.5,
+    rp.appendChild(faoNumFx(setup,'secu',isFinite(+setup.secu)?+setup.secu:5,function(v){ setup.secu=Math.max(0,v); },44,0.5,
       'Sortie de pièce (mm hors matière — réglage du POSAGE, commun à toutes les opérations) : (1) dépassement XY en bout de ligne — l’outil sort de la pièce avant son demi-tour, (2) hauteur de calcul des parcours et des cycles de perçage en mode « Retrait minimum ». Généralement 5 à 10.'));
     // Passe de finition : l'ébauche laisse une épaisseur, enlevée ensuite en N passes fines
     // (dernière à la cote Z), au choix toujours dans le même sens. Décochée : parcours inchangé.
@@ -1312,10 +1316,10 @@ function faoOpCardElement(setup,op,i){
       rF.appendChild(faoLab('Passe de finition'));
       if(op.finPasse){
         rF.appendChild(faoLab('Épaisseur'));
-        rF.appendChild(faoNum(isFinite(+op.finEp)&&+op.finEp>0?+op.finEp:0.3,function(v){op.finEp=Math.max(0.01,v);},48,0.1,
+        rF.appendChild(faoNumFx(op,'finEp',isFinite(+op.finEp)&&+op.finEp>0?+op.finEp:0.3,function(v){op.finEp=Math.max(0.01,v);},48,0.1,
           'Épaisseur laissée par l’ébauche pour la finition (mm). Elle est partagée en parts égales entre les passes de finition.'));
         rF.appendChild(faoLab('Passes'));
-        rF.appendChild(faoNum(isFinite(+op.finN)&&+op.finN>=1?Math.round(+op.finN):1,function(v){op.finN=Math.max(1,Math.min(20,Math.round(v)));},36,1,
+        rF.appendChild(faoNumFx(op,'finN',isFinite(+op.finN)&&+op.finN>=1?Math.round(+op.finN):1,function(v){op.finN=Math.max(1,Math.min(20,Math.round(v)));},36,1,
           'Nombre de passes de finition : l’épaisseur est enlevée en autant de passes égales, la dernière à la cote Z.'));
         const cbU=document.createElement('input'); cbU.type='checkbox'; cbU.checked=!!op.finUni;
         cbU.title='Toujours dans le même sens : chaque ligne de finition est usinée dans la même direction (X croissant) ; l’outil remonte et revient en rapide au lieu de repartir en va-et-vient. Plus long, mais un état de surface régulier.';
@@ -1334,11 +1338,11 @@ function faoOpCardElement(setup,op,i){
     faoContourRows(d,setup,op);
   }else if((op.type==='pocket'&&!faoPocketAdapt(op))||op.type==='contour'){
     rect4(); // Haut / Bas : onglet Hauteurs (faoPlanesCard)
-    rp.appendChild(faoLab('Descente ap')); rp.appendChild(faoNum(op.ap,function(v){op.ap=Math.max(0.5,v);},48));
-    if(op.type==='pocket'){ rp.appendChild(faoLab('Pas latéral')); rp.appendChild(faoNum(op.ae,function(v){op.ae=Math.max(0.5,v);},48)); }
-    rp.appendChild(faoLab('Parois')); rp.appendChild(faoNum(faoRA(op).radial,function(v){op.radial=Math.max(0,v);},44,0.1));
-    rp.appendChild(faoLab('Fond')); rp.appendChild(faoNum(faoRA(op).axial,function(v){op.axial=Math.max(0,v);},44,0.1));
-    rp.appendChild(faoLab('Arrondi')); rp.appendChild(faoNum(isFinite(+op.arrondi)?+op.arrondi:0,function(v){op.arrondi=Math.max(0,v);},48,0.5));
+    rp.appendChild(faoLab('Descente ap')); rp.appendChild(faoNumFx(op,'ap',op.ap,function(v){op.ap=Math.max(0.5,v);},48));
+    if(op.type==='pocket'){ rp.appendChild(faoLab('Pas latéral')); rp.appendChild(faoNumFx(op,'ae',op.ae,function(v){op.ae=Math.max(0.5,v);},48)); }
+    rp.appendChild(faoLab('Parois')); rp.appendChild(faoNumFx(op,'radial',faoRA(op).radial,function(v){op.radial=Math.max(0,v);},44,0.1));
+    rp.appendChild(faoLab('Fond')); rp.appendChild(faoNumFx(op,'axial',faoRA(op).axial,function(v){op.axial=Math.max(0,v);},44,0.1));
+    rp.appendChild(faoLab('Arrondi')); rp.appendChild(faoNumFx(op,'arrondi',isFinite(+op.arrondi)?+op.arrondi:0,function(v){op.arrondi=Math.max(0,v);},48,0.5));
     faoEntryRows(rp,op,(function(){const t=faoToolById(setup,op.toolId);
       return t&&+t.d>0?+t.d:10;})());
   }else if(op.type==='rough3d'||faoPocketAdapt(op)){
@@ -1386,11 +1390,11 @@ function faoOpCardElement(setup,op,i){
     d.appendChild(rS);
     d.appendChild(faoH('Passes (mm)'));
     const rP=faoRow();
-    rP.appendChild(faoLab('Descente ap')); rP.appendChild(faoNum(op.ap,function(v){op.ap=Math.max(0.5,v);},48,0.5,
+    rP.appendChild(faoLab('Descente ap')); rP.appendChild(faoNumFx(op,'ap',op.ap,function(v){op.ap=Math.max(0.5,v);},48,0.5,
       'Descente : hauteur usinée par niveau (Maximum Stepdown).'));
-    rP.appendChild(faoLab('Pas latéral ae')); rP.appendChild(faoNum(op.ae,function(v){op.ae=Math.max(0.5,v);},48,
+    rP.appendChild(faoLab('Pas latéral ae')); rP.appendChild(faoNumFx(op,'ae',op.ae,function(v){op.ae=Math.max(0.5,v);},48,
       'Pas latéral : distance entre deux passes voisines (Stepover).'));
-    rP.appendChild(faoLab('Mini-passes')); rP.appendChild(faoNum(op.minipasses||0,function(v){op.minipasses=Math.max(0,Math.min(50,Math.round(v)));},40,1,
+    rP.appendChild(faoLab('Mini-passes')); rP.appendChild(faoNumFx(op,'minipasses',op.minipasses||0,function(v){op.minipasses=Math.max(0,Math.min(50,Math.round(v)));},40,1,
       'Mini-passes Z par niveau : contour des parois entre deux plans (0 = off, 1 à 50). Profondeur k·ap/(nb+1) sous le plan du dessus, décalage radial décroissant.'));
     d.appendChild(rP);
     // V0.38.0 : mini-passes « seulement sur les pentes » (absent = partout)
@@ -1415,9 +1419,9 @@ function faoOpCardElement(setup,op,i){
       'ae = '+(aeNow/toolD).toFixed(2)+'×Ø, ap = '+(apNow/toolD).toFixed(2)+'×Ø (outil Ø '+toolD+').'));
     d.appendChild(faoH('Matière à laisser (mm)'));
     const rR=faoRow();
-    rR.appendChild(faoLab('Parois')); rR.appendChild(faoNum(faoRA(op).radial,function(v){op.radial=Math.max(0,v);},44,0.1,
+    rR.appendChild(faoLab('Parois')); rR.appendChild(faoNumFx(op,'radial',faoRA(op).radial,function(v){op.radial=Math.max(0,v);},44,0.1,
       'Surépaisseur sur les côtés : l’ébauche s’arrête à cette distance des parois (la finition l’enlèvera).'));
-    rR.appendChild(faoLab('Fond')); rR.appendChild(faoNum(faoRA(op).axial,function(v){op.axial=Math.max(0,v);},44,0.1,
+    rR.appendChild(faoLab('Fond')); rR.appendChild(faoNumFx(op,'axial',faoRA(op).axial,function(v){op.axial=Math.max(0,v);},44,0.1,
       'Surépaisseur sur le fond : l’ébauche s’arrête à cette hauteur au-dessus du fond.'));
     d.appendChild(rR);
     // 2026-10-07-001 : FINITION DES PAROIS — N contours « Parois » → 0 par
@@ -1433,7 +1437,7 @@ function faoOpCardElement(setup,op,i){
       faoChanged(); };
     rFi.appendChild(cbFi);
     rFi.appendChild(faoLab('Finir parois'));
-    const numFi=faoNum(isFinite(+op.finitN)?Math.round(+op.finitN):1,function(v){
+    const numFi=faoNumFx(op,'finitN',isFinite(+op.finitN)?Math.round(+op.finitN):1,function(v){
       op.finitN=Math.max(1,Math.min(9,Math.round(v)));},36,1,
       'Passes de finition des parois : de « Parois » à 0, réparties régulièrement (1 = directement à 0).');
     numFi.disabled=!op.finitParois;
@@ -1459,7 +1463,7 @@ function faoOpCardElement(setup,op,i){
     // existants inchangés). Grise tant que Finir parois est décochée.
     const rZp=faoRow();
     rZp.appendChild(faoLab('Profondeurs'));
-    const numZp=faoNum(isFinite(+op.finitProf)?Math.round(+op.finitProf):1,function(v){
+    const numZp=faoNumFx(op,'finitProf',isFinite(+op.finitProf)?Math.round(+op.finitProf):1,function(v){
       op.finitProf=Math.max(1,Math.min(9,Math.round(v)));},36,1,
       'Profondeurs de finition : 1 = dernière passe seule (fraise à dent haute), N = la séquence se répète vers le haut, écartés de hauteur du mur / N (dent ≥ écart).');
     numZp.disabled=!op.finitParois;
@@ -1485,7 +1489,7 @@ function faoOpCardElement(setup,op,i){
     rRg.appendChild(faoLab('Finir une région avant l’autre'));
     d.appendChild(rRg);
     const rT2=faoRow();
-    rT2.appendChild(faoLab('Arrondi')); rT2.appendChild(faoNum(isFinite(+op.arrondi)?+op.arrondi:0,function(v){op.arrondi=Math.max(0,v);},48,0.5,
+    rT2.appendChild(faoLab('Arrondi')); rT2.appendChild(faoNumFx(op,'arrondi',isFinite(+op.arrondi)?+op.arrondi:0,function(v){op.arrondi=Math.max(0,v);},48,0.5,
       'Rayon d’arrondi des angles vifs (sort en G2/G3, trajectoire fluide). 0 = angles vifs.'));
     faoEntryRows(rT2,op,toolD);
     d.appendChild(rT2);
@@ -1493,7 +1497,7 @@ function faoOpCardElement(setup,op,i){
     // 2026-10-14-011 : fiche en sections (onglets) — Hauteurs, Passes, Entrées, Matière
     d.appendChild(faoH('Passes'));
     const gP=faoRow();
-    gP.appendChild(faoLab('Pas')); gP.appendChild(faoNum(op.step,function(v){op.step=Math.max(0.2,v);},52,0.5,'Écart entre deux passes voisines, mesuré sur la surface (mm). Plus il est petit, plus les crêtes sont basses.'));
+    gP.appendChild(faoLab('Pas')); gP.appendChild(faoNumFx(op,'step',op.step,function(v){op.step=Math.max(0.2,v);},52,0.5,'Écart entre deux passes voisines, mesuré sur la surface (mm). Plus il est petit, plus les crêtes sont basses.'));
     d.appendChild(gP);
     const gE=faoRow();
     // 2026-10-04-009 : entrée identique à l'ébauche 3D — hélice réservée si un
@@ -1541,7 +1545,7 @@ function faoOpCardElement(setup,op,i){
       'Direction des passes — actif en trajectoire Parallèle.');
     pdEls.push(gP.appendChild(pdSel));
     pdEls.push(gP.appendChild(faoLab('Angle°')));
-    pdEls.push(gP.appendChild(faoNum(isFinite(+op.pdirAng)?+op.pdirAng:0,function(v){op.pdirAng=v;if(op.pdir!=='ang'){op.pdir='ang';pdSel.value='ang';}},52,1,
+    pdEls.push(gP.appendChild(faoNumFx(op,'pdirAng',isFinite(+op.pdirAng)?+op.pdirAng:0,function(v){op.pdirAng=v;if(op.pdir!=='ang'){op.pdir='ang';pdSel.value='ang';}},52,1,
       'Angle des passes en degrés depuis X (0 = X, 90 = Y). Saisir bascule en mode Angle.')));
     pdShow();
     // 2026-10-04-004 : limites Z (au-delà, relief non fini) + garde-fou fraise droite.
@@ -1549,7 +1553,7 @@ function faoOpCardElement(setup,op,i){
     d.appendChild(gE);
     d.appendChild(faoH('Matière à laisser (mm)'));
     const gM=faoRow();
-    gM.appendChild(faoLab('Surépaisseur')); gM.appendChild(faoNum(op.laisse,function(v){op.laisse=Math.max(0,v);},48,0.1,'Matière laissée sur toute la surface (mm). 0 = à la cote.'));
+    gM.appendChild(faoLab('Surépaisseur')); gM.appendChild(faoNumFx(op,'laisse',op.laisse,function(v){op.laisse=Math.max(0,v);},48,0.1,'Matière laissée sur toute la surface (mm). 0 = à la cote.'));
     d.appendChild(gM);
     const tG=faoToolById(setup,op.toolId);
     if(tG&&tG.kind==='flat'){
@@ -1682,7 +1686,7 @@ function faoOpCardElement(setup,op,i){
       op.limit.side||'center',function(v){op.limit.side=v;},
       'Position de l’outil par rapport au bord de la zone.'));
     rs.appendChild(faoLab('Marge'));
-    rs.appendChild(faoNum(op.limit.extra||0,function(v){op.limit.extra=v;},44,0.5,
+    rs.appendChild(faoNumFx(op.limit,'extra',op.limit.extra||0,function(v){op.limit.extra=v;},44,0.5,
       'Élargit (+) ou rétrécit (−) la zone en mm.'));
     d.appendChild(rs);
   }
@@ -1787,7 +1791,7 @@ function faoOpCardElement(setup,op,i){
   if(op.limit2&&lim2Mode!=='none'){
     const rs2=faoRow();
     rs2.appendChild(faoLab('Marge'));
-    rs2.appendChild(faoNum(op.limit2.extra||0,function(v){op.limit2.extra=v;},44,0.5,
+    rs2.appendChild(faoNumFx(op.limit2,'extra',op.limit2.extra||0,function(v){op.limit2.extra=v;},44,0.5,
       'Distance supplémentaire (+) entre l\'outil et l\'îlot, en mm.'));
     d.appendChild(rs2);
   }
@@ -1941,11 +1945,11 @@ function faoSetupFiche(p,setup){
     rCy.appendChild(faoSel([['z','Z'],['x','X'],['y','Y']],setup.cylAxis||'z',function(v){ setup.cylAxis=v; faoStock(); },
       'Axe du cylindre (repère pièce).'));
     rCy.appendChild(faoLab('Ø'));
-    rCy.appendChild(faoNum(isFinite(+setup.cylD)&&+setup.cylD>0?+setup.cylD:(scy?+(2*scy.r).toFixed(3):0),function(v){ setup.cylD=v>0?v:0; faoStock(); },48,1,
+    rCy.appendChild(faoNumFx(setup,'cylD',isFinite(+setup.cylD)&&+setup.cylD>0?+setup.cylD:(scy?+(2*scy.r).toFixed(3):0),function(v){ setup.cylD=v>0?v:0; faoStock(); },48,1,
       'Diamètre du brut (mm). 0 = automatique : cercle circonscrit au modèle + marge XY.'));
     rCy.appendChild(faoLab('L'));
     const Lc=scy?(scy.axis==='x'?setup.stock.x1-setup.stock.x0:scy.axis==='y'?setup.stock.y1-setup.stock.y0:setup.stock.z1-setup.stock.z0):0;
-    rCy.appendChild(faoNum(isFinite(+setup.cylL)&&+setup.cylL>0?+setup.cylL:+Lc.toFixed(3),function(v){ setup.cylL=v>0?v:0; faoStock(); },48,1,
+    rCy.appendChild(faoNumFx(setup,'cylL',isFinite(+setup.cylL)&&+setup.cylL>0?+setup.cylL:+Lc.toFixed(3),function(v){ setup.cylL=v>0?v:0; faoStock(); },48,1,
       'Longueur du brut (mm). 0 = automatique : modèle + surépaisseurs (Z+/Z− pour un axe Z, marge XY aux deux bouts sinon). Saisie : axe Z = dessus conservé, axe X/Y = milieu conservé.'));
     rCy.appendChild(faoMini('Auto',function(){ setup.cylD=0; setup.cylL=0; faoStock(); },'Ø et longueur recalculés depuis le modèle et les marges.'));
     p.appendChild(rCy);
@@ -2010,7 +2014,7 @@ function faoSetupFiche(p,setup){
     const rM1=faoRow(), rM2=faoRow();
     const mkM=function(k,lab,rr){
       rr.appendChild(faoLab(lab));
-      rr.appendChild(faoNum(isFinite(+sM[k])?+sM[k]:0,function(v){
+      rr.appendChild(faoNumFx(sM===setup.stock?setup.stock:null,k,isFinite(+sM[k])?+sM[k]:0,function(v){
         setup.stock=setup.stock||{}; setup.stock[k]=v;
       },44));
     };
@@ -2032,15 +2036,15 @@ function faoSetupFiche(p,setup){
   if(modeS!=='manual'&&shpS!=='solid'){
     const rMg=faoRow();
     rMg.appendChild(faoLab('Marge XY'));
-    rMg.appendChild(faoNum(setup.marge,function(v){ setup.marge=Math.max(0,v); faoStock(); },40,1,
+    rMg.appendChild(faoNumFx(setup,'marge',setup.marge,function(v){ setup.marge=Math.max(0,v); faoStock(); },40,1,
       'Surépaisseur du brut autour du modèle, en X et en Y (mm).'));
     p.appendChild(rMg);
     const rMz=faoRow(); // 2e ligne : la fiche est étroite, Z− passait seul à la ligne
     rMz.appendChild(faoLab('Surép. Z+'));
-    rMz.appendChild(faoNum(isFinite(+setup.margeZp)?+setup.margeZp:0,function(v){ setup.margeZp=Math.max(0,v); faoStock(); },40,0.5,
+    rMz.appendChild(faoNumFx(setup,'margeZp',isFinite(+setup.margeZp)?+setup.margeZp:0,function(v){ setup.margeZp=Math.max(0,v); faoStock(); },40,0.5,
       'Surépaisseur du brut AU-DESSUS du modèle (mm) — matière à surfacer.'));
     rMz.appendChild(faoLab('Z−'));
-    rMz.appendChild(faoNum(isFinite(+setup.margeZm)?+setup.margeZm:0,function(v){ setup.margeZm=Math.max(0,v); faoStock(); },40,0.5,
+    rMz.appendChild(faoNumFx(setup,'margeZm',isFinite(+setup.margeZm)?+setup.margeZm:0,function(v){ setup.margeZm=Math.max(0,v); faoStock(); },40,0.5,
       'Surépaisseur du brut AU-DESSOUS du modèle (mm) — talon / prise d’étau.'));
     p.appendChild(rMz);
   }
@@ -2049,21 +2053,21 @@ function faoSetupFiche(p,setup){
   rF.appendChild(faoTxt((setup.fixture&&setup.fixture.note)||'',function(v){
     setup.fixture=setup.fixture||{}; setup.fixture.note=String(v).slice(0,80); },110));
   rF.appendChild(faoLab('Dégagement radial'));
-  rF.appendChild(faoNum(setup.fixture?setup.fixture.radial:5,function(v){
+  rF.appendChild(faoNumFx(setup.fixture||null,'radial',setup.fixture?setup.fixture.radial:5,function(v){
     setup.fixture=setup.fixture||{}; setup.fixture.radial=Math.max(0,v); },44));
   rF.appendChild(faoLab('Dégagement axial'));
-  rF.appendChild(faoNum(setup.fixture?setup.fixture.axial:5,function(v){
+  rF.appendChild(faoNumFx(setup.fixture||null,'axial',setup.fixture?setup.fixture.axial:5,function(v){
     setup.fixture=setup.fixture||{}; setup.fixture.axial=Math.max(0,v); },44));
   p.appendChild(rF);
   // Bornes Z du bridage : références « Haut/Bas du bridage » des plans
   // (2026-10-08-002). Défaut = fond/dessus du brut (non stocké tant qu'édité).
   const rFZ=faoRow();
   rFZ.appendChild(faoLab('Bridage Z bas'));
-  rFZ.appendChild(faoNum(isFinite(+setup.fixture.z0)?+setup.fixture.z0:stock.z0,function(v){
+  rFZ.appendChild(faoNumFx(setup.fixture||null,'z0',isFinite(+setup.fixture.z0)?+setup.fixture.z0:stock.z0,function(v){
     setup.fixture=setup.fixture||{}; setup.fixture.z0=v; },44,1,
     'Bas du bridage (mm, repère monde) — référence « Bas du bridage » des plans. Défaut = fond du brut.'));
   rFZ.appendChild(faoLab('Bridage Z haut'));
-  rFZ.appendChild(faoNum(isFinite(+setup.fixture.z1)?+setup.fixture.z1:stock.z1,function(v){
+  rFZ.appendChild(faoNumFx(setup.fixture||null,'z1',isFinite(+setup.fixture.z1)?+setup.fixture.z1:stock.z1,function(v){
     setup.fixture=setup.fixture||{}; setup.fixture.z1=v; },44,1,
     'Haut du bridage (mm, repère monde) — référence « Haut du bridage » des plans. Défaut = dessus du brut.'));
   p.appendChild(rFZ);
@@ -2074,7 +2078,7 @@ function faoSetupFiche(p,setup){
   p.appendChild(faoH('Plans · sortie')); // 2026-10-22-008 : onglet « Plans »
   const rC=faoRow();
   rC.appendChild(faoLab('Sortie'));
-  rC.appendChild(faoNum(setup.secu,function(v){ setup.secu=Math.max(0,v); },48,0.5,
+  rC.appendChild(faoNumFx(setup,'secu',setup.secu,function(v){ setup.secu=Math.max(0,v); },48,0.5,
     "Sortie de pièce (mm hors matière) : (1) dépassement XY en bout de ligne — l'outil sort de la pièce de cette valeur avant son demi-tour, (2) hauteur de calcul des parcours et des cycles de perçage en mode « Retrait minimum ». Généralement 5 à 10."));
   rC.appendChild(faoLab('Arrosage'));
   rC.appendChild(faoSel([['flood','M7/M08'],['through','M8'],['off','arrêt']],setup.coolant||'flood',
@@ -2094,7 +2098,7 @@ function faoSetupFiche(p,setup){
     effP.mode,function(v){ setup.planes=setup.planes||{}; setup.planes.mode=v; },
     'Remontées entre deux passes : retrait minimum (valeur au choix) OU toujours le plan de retrait.'));
   if(effP.mode!=='plan'){
-    rMd.appendChild(faoNum(faoLiftMin(setup),function(v){ if(v>0)setup.liftMin=v; },48,0.5,
+    rMd.appendChild(faoNumFx(setup,'liftMin',faoLiftMin(setup),function(v){ if(v>0)setup.liftMin=v; },48,0.5,
       'Retrait minimum (mm) : hauteur de la remontée entre deux passes, au-dessus de la matière survolée. Le plan de retrait reste le plafond.'));
     rMd.appendChild(faoLab('mm'));
   }
@@ -2106,19 +2110,19 @@ function faoSetupFiche(p,setup){
   p.appendChild(faoH('Machine · temps')); // 2026-10-22-008 : onglet « Temps »
   const rV=faoRow();
   rV.appendChild(faoLab('Rapide G0'));
-  rV.appendChild(faoNum(faoRapide(setup),function(v){ setup.rapide=Math.max(1,Math.round(v)); },
+  rV.appendChild(faoNumFx(setup,'rapide',faoRapide(setup),function(v){ setup.rapide=Math.max(1,Math.round(v)); },
     56,100,'Vitesse des déplacements en mode rapide (mm/min) — employée pour l\'estimation des temps.'));
   rV.appendChild(faoLab('Plongée'));
-  rV.appendChild(faoNum(faoPlungePct(setup),function(v){ setup.plungePct=Math.min(100,Math.max(1,v)); },
+  rV.appendChild(faoNumFx(setup,'plungePct',faoPlungePct(setup),function(v){ setup.plungePct=Math.min(100,Math.max(1,v)); },
     36,100,"Pourcentage de l'avance de coupe appliqué à la plongée (F de plongée des G1 Z)."));
   rV.appendChild(faoLab('% de F'));
   const rA=faoRow();
   rA.appendChild(faoLab('Accélération'));
-  rA.appendChild(faoNum(faoAccel(setup),function(v){ setup.accel=Math.max(100,Math.round(v)); },
+  rA.appendChild(faoNumFx(setup,'accel',faoAccel(setup),function(v){ setup.accel=Math.max(100,Math.round(v)); },
     44,100,"Accélération de la machine (mm/s²) — le temps des rapides vaut d/v + v/A, un rapide court coûte plus que sa longueur."));
   rA.appendChild(faoLab('mm/s²'));
   rA.appendChild(faoLab('Changement d’outil'));
-  rA.appendChild(faoNum(faoToolChg(setup),function(v){ setup.toolChg=Math.max(0,Math.round(v)); },
+  rA.appendChild(faoNumFx(setup,'toolChg',faoToolChg(setup),function(v){ setup.toolChg=Math.max(0,Math.round(v)); },
     40,5,"Durée d'un changement d'outil (secondes) ajoutée à l'estimation pour chaque changement de groupe outil."));
   rA.appendChild(faoLab('s'));
   p.appendChild(rV);

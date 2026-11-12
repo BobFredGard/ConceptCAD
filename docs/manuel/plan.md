@@ -11,6 +11,7 @@ Le retour dans le Plan est immédiat tant que la géométrie de la pièce n’a 
 - **Formats** A4 à A0, paysage ou portrait, ou format manuel ; plusieurs planches en onglets.
 - **Cadre** réglable (préréglages Justet, ISO 5457, Classique), **cartouche** dessiné en esquisse contrainte et éditable avec logo, **nomenclature** et tableau des révisions ; le **cartouche d'entreprise** peut venir d'un modèle externe, gardé hors du dépôt.
 - **Écriture ISO 3098** et paramètres du plan enregistrés par projet (`.mfplan`).
+- **Paramètres et formules** dans les champs de la planche (format, cadre, révisions, tolérances, textes) : la formule reste affichée et la valeur suit les paramètres.
 
 ## Vues
 

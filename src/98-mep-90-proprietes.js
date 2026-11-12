@@ -112,7 +112,7 @@
       [['Largeur (mm)','fw'],['Hauteur (mm)','fh']].forEach(([lab,k])=>{
         r=rowEl();const L=document.createElement('label');L.textContent=lab;r.appendChild(L);
         const i=document.createElement('input');i.type='number';i.step='1';i.min='50';i.max='5000';i.value=sh[k];
-        i.onchange=()=>{mepSetFormatWH(k==='fw'?+i.value:sh.fw,k==='fh'?+i.value:sh.fh);mepSideShow();};
+        i.onchange=()=>{mepSetFormatWH(k==='fw'?+i.value:sh.fw,k==='fh'?+i.value:sh.fh);mepSideShow();};if(typeof parFxBind==='function')parFxBind(i,sh,k);
         r.appendChild(i);});
     }
     {const f=mepFrameOf(sh),setF=(o,lab)=>{mepEdit(lab||'cadre',()=>{sh.frame=Object.assign(mepFrameOf(sh),o);});mepSideShow();};
@@ -125,7 +125,7 @@
      [['Marge gauche (mm)','l'],['Marge droite (mm)','r'],['Marge haute (mm)','t'],['Marge basse (mm)','b'],['Trait du cadre (mm)','lw']].forEach(([lab,k])=>{
        r=rowEl();const L=document.createElement('label');L.textContent=lab;r.appendChild(L);
        const i=document.createElement('input');i.type='number';i.step=k==='lw'?'0.05':'1';i.min=k==='lw'?'0.1':'0';i.max=k==='lw'?'2':'40';i.value=f[k];
-       i.onchange=()=>setF({[k]:+i.value});r.appendChild(i);});
+       i.onchange=()=>setF({[k]:+i.value});if(typeof parFxBind==='function')parFxBind(i,f,k);r.appendChild(i);});
      [['Liseré intérieur','inner'],['Repères de centrage','centre'],['Zones de repérage','zones'],['Coins de coupe','trim']].forEach(([lab,k])=>{
        r=rowEl();const L=document.createElement('label');L.textContent=lab;r.appendChild(L);
        const cb=document.createElement('input');cb.type='checkbox';cb.checked=!!f[k];cb.onchange=()=>setF({[k]:cb.checked});r.appendChild(cb);});
@@ -304,13 +304,13 @@
     {const st=mepRevSt(sh),setR=(o,lab)=>{mepEdit(lab||'tableau des révisions',()=>{const ow=mepRevStOwner(sh);ow.revSt=Object.assign({},ow.revSt||{},o);});mepSideShow();};
      r=rowEl();{const L=document.createElement('label');L.textContent='Largeur totale (mm)';r.appendChild(L);
       const i=document.createElement('input');i.type='number';i.step='0.5';i.min='0';i.max='800';i.value=st.w||'';i.placeholder='auto';
-      i.title='Largeur totale du tableau des révisions — vide : automatique';i.onchange=()=>setR({w:Math.max(0,+i.value||0)});r.appendChild(i);
+      i.title='Largeur totale du tableau des révisions — vide : automatique';i.onchange=()=>setR({w:Math.max(0,+i.value||0)});if(typeof parFxBind==='function')parFxBind(i,st,'w');r.appendChild(i);
       rb('= cartouche',()=>setR({w:+mepTbW(sh,mepPageDim(sh)).toFixed(2)},'révisions alignées sur le cartouche'),'Même largeur que le cartouche (aligné à droite sur le cadre)');}
      r=rowEl();{const L=document.createElement('label');L.textContent='Hauteur h (mm)';r.appendChild(L);
       r.appendChild(mepIsoSelect(st.h,v=>setR({h:v})));}
      r=rowEl();{const L=document.createElement('label');L.textContent='Trait (mm)';r.appendChild(L);
       const i=document.createElement('input');i.type='number';i.step='0.05';i.min='0.1';i.max='2';i.value=st.lw;
-      i.title='Épaisseur des traits du tableau des révisions';i.onchange=()=>setR({lw:Math.min(2,Math.max(0.1,+i.value||MEP_REV_DEF.lw))});r.appendChild(i);}}
+      i.title='Épaisseur des traits du tableau des révisions';i.onchange=()=>setR({lw:Math.min(2,Math.max(0.1,+i.value||MEP_REV_DEF.lw))});if(typeof parFxBind==='function')parFxBind(i,st,'lw');r.appendChild(i);}}
     /* — nomenclature (corps visibles ; matière par corps, sinon celle du cartouche) — */
     r=rowEl();
     {const L=document.createElement('label');L.textContent='Nomenclature';r.appendChild(L);
@@ -638,7 +638,7 @@
       if(v.persp){
         const P=mepPerspOf(v),i=document.createElement('input');i.type='number';i.id='mepPerspFov';i.step='5';i.min='5';i.max='120';i.value=String(P.fov);
         i.title='Angle de champ de la perspective (°) : plus il est grand, plus les fuyantes convergent (la vue 3D : '+(()=>{try{return Math.round(camera.fov)+'°';}catch(e){return '?';}})()+')';
-        i.onchange=()=>{const x=parseFloat(i.value);if(isFinite(x))mepEdit('fuyante',()=>{v.persp.fov=Math.max(5,Math.min(120,x));});};
+        i.onchange=()=>{const x=parseFloat(i.value);if(isFinite(x))mepEdit('fuyante',()=>{v.persp.fov=Math.max(5,Math.min(120,x));});};if(v.persp&&typeof v.persp==='object'&&typeof parFxBind==='function')parFxBind(i,v.persp,'fov');
         row('Fuyante (angle °)',i);
         const n=document.createElement('div');n.className='note';
         n.textContent='Perspective comme la vue 3D : le plan passant par le centre de la pièce reste en vraie grandeur. Arêtes exactes, parties cachées calculées sur le maillage ; les axes automatiques et les filetages conventionnels ne s’appliquent pas.';
@@ -648,7 +648,7 @@
         const O=mepOblOf(v);
         const num=(id,val,step,title,fn)=>{const i=document.createElement('input');i.type='number';i.id=id;i.step=String(step);i.value=String(val);i.title=title;
           i.onchange=()=>{const x=parseFloat(i.value);if(isFinite(x))mepEdit('fuyante',()=>fn(x));};return i;};
-        row('Angle fuyante (°)',num('mepOblA',O.a,15,'Angle des fuyantes depuis l’horizontale (cavalière : 45° ; 30° ou 60° possibles)',x=>{v.obl.a=x;}));
+        row('Angle fuyante (°)',((i)=>{if(v.obl&&typeof v.obl==='object'&&typeof parFxBind==='function')parFxBind(i,v.obl,'a');return i;})(num('mepOblA',O.a,15,'Angle des fuyantes depuis l’horizontale (cavalière : 45° ; 30° ou 60° possibles)',x=>{v.obl.a=x;})));
         row('Coef. fuyante',num('mepOblK',O.k,0.05,'Coefficient de réduction des fuyantes (0,5 usuel ; 1 = cavalière vraie grandeur)',x=>{if(x>0)v.obl.k=Math.min(2,x);}));
         const n=document.createElement('div');n.className='note';
         n.textContent='Plan de face en vraie grandeur, profondeur le long des fuyantes. HLR exact OCCT requis ; ombrage et rendu 3D suivent la projection ; les axes automatiques ne s’appliquent pas.';
@@ -816,14 +816,14 @@
     row('Tolérance',sel);
     if(d.tol&&d.tol.m==='pm'){
       const s=document.createElement('input');s.type='number';s.step='0.01';s.value=d.tol.s;
-      s.onchange=()=>{mepEdit('±',()=>{d.tol.s=+s.value||0;});};
+      s.onchange=()=>{mepEdit('±',()=>{d.tol.s=+s.value||0;});};if(typeof parFxBind==='function')parFxBind(s,d.tol,'s');
       row('± mm',s);
     }
     if(d.tol&&d.tol.m==='dbl'){
       const hi=document.createElement('input');hi.type='number';hi.step='0.01';hi.value=d.tol.hi;
-      hi.onchange=()=>{mepEdit('+',()=>{d.tol.hi=+hi.value||0;});};
+      hi.onchange=()=>{mepEdit('+',()=>{d.tol.hi=+hi.value||0;});};if(typeof parFxBind==='function')parFxBind(hi,d.tol,'hi');
       const lo=document.createElement('input');lo.type='number';lo.step='0.01';lo.value=d.tol.lo;
-      lo.onchange=()=>{mepEdit('−',()=>{d.tol.lo=+lo.value||0;});};
+      lo.onchange=()=>{mepEdit('−',()=>{d.tol.lo=+lo.value||0;});};if(typeof parFxBind==='function')parFxBind(lo,d.tol,'lo');
       row('+',hi);row('−',lo);
     }
     if(d.tol&&d.tol.m==='cls')mepTolClsEditor(row,d);
@@ -936,7 +936,7 @@
     }
     if(d.kind==='ang'){ // texte collé à l'arc : décalage le long de l'arc depuis le milieu
       const to=document.createElement('input');
-      to.type='number';to.step='1';to.value=Math.round((+d.txtOff||0)*100)/100;
+      to.type='number';to.step='1';to.value=Math.round((+d.txtOff||0)*100)/100;if(typeof parFxBind==='function')parFxBind(to,d,'txtOff');
       to.onchange=()=>{
         let v=+to.value;if(!Number.isFinite(v))v=0;
         v=mepAngTxtOffSnap(v);
@@ -956,7 +956,7 @@
       };
       row('Flèches',ba);
       const to=document.createElement('input');
-      to.type='number';to.step='1';to.value=Math.round((+d.txtOff||0)*100)/100;
+      to.type='number';to.step='1';to.value=Math.round((+d.txtOff||0)*100)/100;if(typeof parFxBind==='function')parFxBind(to,d,'txtOff');
       to.onchange=()=>{
         let v=+to.value;
         if(!Number.isFinite(v))v=0;

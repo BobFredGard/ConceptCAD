@@ -14,25 +14,25 @@ function faoOpMovesStore(op,key,mv){
 }
 function faoOpSig(op){
   const o={};
-  const skip={hidden:1,on:1,geoBlocked:1,geoDiag:1,stale:1,cut:1,tangent:1}; // cut : vitesses/avances (2026-10-15-010) — aucun effet sur le tracé ; tangent : aide à la saisie des faces (2026-10-21-003)
+  const skip={hidden:1,on:1,geoBlocked:1,geoDiag:1,stale:1,cut:1,tangent:1,expr:1,pname:1,exprErr:1}; // expr / pname : formules ƒx (V0.95.0) — seule la valeur compte // cut : vitesses/avances (2026-10-15-010) — aucun effet sur le tracé ; tangent : aide à la saisie des faces (2026-10-21-003)
   try{
     for(const k in op){
       if(!Object.prototype.hasOwnProperty.call(op,k)||skip[k])continue;
       const v=op[k];
       if(k==='limit'&&v&&typeof v==='object'){
         const L={};
-        for(const kk in v) if(Object.prototype.hasOwnProperty.call(v,kk)&&kk!=='stale'&&kk!=='missing')L[kk]=v[kk];
+        for(const kk in v) if(Object.prototype.hasOwnProperty.call(v,kk)&&kk!=='stale'&&kk!=='missing'&&kk!=='expr'&&kk!=='pname'&&kk!=='exprErr')L[kk]=v[kk];
         o.limit=L;
       }else if(k==='limit2'&&v&&typeof v==='object'){
         // 2026-10-08-003 : zone interieure — mêmes règles que la zone
         // extérieure : les drapeaux transitaires ne changent jamais la clé.
         const L2={};
-        for(const kk in v) if(Object.prototype.hasOwnProperty.call(v,kk)&&kk!=='stale'&&kk!=='missing')L2[kk]=v[kk];
+        for(const kk in v) if(Object.prototype.hasOwnProperty.call(v,kk)&&kk!=='stale'&&kk!=='missing'&&kk!=='expr'&&kk!=='pname'&&kk!=='exprErr')L2[kk]=v[kk];
         o.limit2=L2;
       }else if((k==='faces'||k==='protect')&&Array.isArray(v)){
         // le nom d'une face choisie (89) ne change pas le parcours : hors de la clé
         o[k]=v.map(function(q){if(!q||!q.nom)return q;const c=Object.assign({},q);delete c.nom;return c;});
-      }else o[k]=v;
+      }else o[k]=typeof parSansFx==='function'?parSansFx(v):v;
     }
   }catch(e){ return op; }
   // 2026-10-21-007 : version du traitement des faces rouges — seules les
@@ -124,7 +124,8 @@ function faoOpMovesKey(op,job){
       if(k==='liftMin')continue; // V0.61.0 : appliqué après le calcul (faoOpLinks), aucun parcours à refaire
       if(k==='holeInfo')continue; // nature des trous d'un STEP (taraudé…) : aucun effet sur les tracés
       if(k==='sketches'||k==='walls')continue; // V0.23.20 : esquisses/corps FAO -> géométrie seule (ci-dessous)
-      js[k]=job[k]; // posage vu par l'opération : son brut (repère de l'opération)
+      if(k==='expr'||k==='pname'||k==='exprErr')continue; // formules ƒx (V0.95.0) : seule la valeur compte
+      js[k]=typeof parSansFx==='function'?parSansFx(job[k]):job[k]; // posage vu par l'opération : son brut (repère de l'opération)
     }
     if(inh){ js.stock=job.stock; js.opFrame=job.frame; js.originZero=true; }
     // V0.23.20 : corps FAO actifs (murs) — empreinte de leur prisme ; absent sans corps

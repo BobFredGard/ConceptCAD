@@ -117,7 +117,7 @@ function repPathUI(c,infoId,row,note,changed){
   }));
   sp.className='repPathSpace';row('Espacement',sp);
   if(c.pspace==='pitch'){
-    const inp=document.createElement('input');inp.type='text';inp.inputMode='decimal';inp.value=c.dist;parFx(inp,c,'dist');
+    const inp=document.createElement('input');inp.type='text';inp.inputMode='decimal';inp.value=c.dist;parFx(inp,c,'dist',{keep:1});
     inp.addEventListener('change',()=>{const v=parseFloat(String(inp.value).replace(',','.'));if(isFinite(v)&&v>0)changed(q=>{q.dist=v;});});
     row('Pas le long de la courbe (mm)',inp);
   }
@@ -192,7 +192,7 @@ function renderRepPanel(){
   // V0.31.1 : champ texte branché sur ƒx (« N », « N*2 », « N = 6 ») — la quantité est un nombre sans unité
   const cnt=repQtyInput((+repMode.copies||1)+1,'Quantité, original compris (6 = l’original + 5 copies)');
   if(repMode.type==='mir'){cnt.disabled=true;cnt.value=2;}
-  else{parFx(cnt,repMode,'qty');cnt.onchange=()=>{repMode.copies=repMaxCopies(repQtyRead(cnt)-1);repPreviewUpdate();};}
+  else{parFx(cnt,repMode,'qty',{keep:1});cnt.onchange=()=>{repMode.copies=repMaxCopies(repQtyRead(cnt)-1);repPreviewUpdate();};}
   row.appendChild(cnt);p.appendChild(row);
   if(repMode.type==='path')repPathUI(repMode,'_rpEdit',
     (lab,ctl)=>{const r=document.createElement('div');r.className='row';const l=document.createElement('label');l.textContent=lab;r.appendChild(l);if(ctl)r.appendChild(ctl);p.appendChild(r);},
@@ -230,7 +230,7 @@ function renderRepPanel(){
       bf2.onclick=()=>{repUseSelectedFace2();};p.appendChild(bf2);
     }
   }
-  if(repMode.type==='lin'){const l=document.createElement('label');l.textContent=' Distance (mm)';const inp=document.createElement('input');inp.type='text';inp.inputMode='decimal';inp.value=repMode.dist;parFx(inp,repMode,'dist');inp.onchange=()=>{repMode.dist=parseFloat(String(inp.value).replace(',','.'))||0;repPreviewUpdate();};l.appendChild(inp);p.appendChild(l);
+  if(repMode.type==='lin'){const l=document.createElement('label');l.textContent=' Distance (mm)';const inp=document.createElement('input');inp.type='text';inp.inputMode='decimal';inp.value=repMode.dist;parFx(inp,repMode,'dist',{keep:1});inp.onchange=()=>{repMode.dist=parseFloat(String(inp.value).replace(',','.'))||0;repPreviewUpdate();};l.appendChild(inp);p.appendChild(l);
     // 2ᵉ DIRECTION (grille) : axe, quantité (original compris), pas
     const r2=document.createElement('div');r2.className='row';
     const t2=document.createElement('input');t2.type='checkbox';t2.checked=!!repMode.lin2;t2.className='rep2Chk';
@@ -242,9 +242,9 @@ function renderRepPanel(){
     if(repMode.lin2){
       const ax2=document.createElement('select');['X','Y','Z','Face'].forEach(v=>{const op=document.createElement('option');op.value=v;op.textContent=v==='Face'?'Face / arête':v;ax2.appendChild(op);});
       ax2.value=repMode.axis2||'Y';ax2.title='Axe de la 2ᵉ direction';ax2.onchange=()=>{repMode.axis2=ax2.value;delete repMode.dir2;renderRepPanel();};p.appendChild(ax2);
-      const c2=repQtyInput((+repMode.copies2||1)+1,'Quantité dans la 2ᵉ direction, original compris');parFx(c2,repMode,'qty2');
+      const c2=repQtyInput((+repMode.copies2||1)+1,'Quantité dans la 2ᵉ direction, original compris');parFx(c2,repMode,'qty2',{keep:1});
       c2.onchange=()=>{repMode.copies2=repMaxCopies(repQtyRead(c2)-1);repPreviewUpdate();};p.appendChild(c2);
-      const ld=document.createElement('label');ld.textContent=' Distance 2 (mm)';const i2=document.createElement('input');i2.type='text';i2.inputMode='decimal';i2.value=repMode.dist2;parFx(i2,repMode,'dist2');
+      const ld=document.createElement('label');ld.textContent=' Distance 2 (mm)';const i2=document.createElement('input');i2.type='text';i2.inputMode='decimal';i2.value=repMode.dist2;parFx(i2,repMode,'dist2',{keep:1});
       i2.onchange=()=>{repMode.dist2=parseFloat(String(i2.value).replace(',','.'))||0;repPreviewUpdate();};ld.appendChild(i2);p.appendChild(ld);
       const bf2=document.createElement('button');bf2.textContent='🎯 Face / arête → 2ᵉ direction';bf2.title='Prend la direction de l’arête sélectionnée (axe d’un cercle) ou la normale de la face sélectionnée';bf2.onclick=()=>repUseSelectedFace2();p.appendChild(bf2);
     }
@@ -257,7 +257,7 @@ function renderRepPanel(){
     so.value=repMode.op==='new'?'new':'join';so.title=REP_OPS.find(o=>o[0]===so.value)[2];
     so.onchange=()=>{repMode.op=so.value;so.title=REP_OPS.find(o=>o[0]===so.value)[2];};
     ro.appendChild(so);p.appendChild(ro);}
-  if(repMode.type==='circ'){const l=document.createElement('label');l.textContent=' Angle total (°)';const inp=document.createElement('input');inp.type='text';inp.inputMode='decimal';inp.value=repMode.angle;parFx(inp,repMode,'angle');inp.onchange=()=>{repMode.angle=parseFloat(String(inp.value).replace(',','.'))||360;repPreviewUpdate();};l.appendChild(inp);p.appendChild(l);}
+  if(repMode.type==='circ'){const l=document.createElement('label');l.textContent=' Angle total (°)';const inp=document.createElement('input');inp.type='text';inp.inputMode='decimal';inp.value=repMode.angle;parFx(inp,repMode,'angle',{keep:1});inp.onchange=()=>{repMode.angle=parseFloat(String(inp.value).replace(',','.'))||360;repPreviewUpdate();};l.appendChild(inp);p.appendChild(l);}
   // ── FONCTIONS RÉPÉTABLES : la MÊME liste à cocher qu'à l'édition (voir
   // repSourceList). Aucun re-rendu ici : la case garde son état, seul l'arbre se
   // rafraîchit (le compteur se met à jour sur place, dans la liste).

@@ -769,7 +769,7 @@
       if(!e.wm){r=K.rowEl();K.lab(r,'Hauteur h (mm)');} // filigrane : taille libre plus bas
       if(!e.wm)r.appendChild(mepIsoSelect(mepCapH(+e.h||3.5),h=>{mepEdit('texte',()=>{e.h=mepFs(h);});mepSideShow();}));
       r=K.rowEl();K.lab(r,'Largeur maxi (mm)');const mw=document.createElement('input');mw.type='number';mw.step='1';mw.min='0';mw.value=+e.mw||0;mw.title='Largeur maximale (mm) — 0 = libre ; au-delà, le texte est tronqué (…)';
-      mw.onchange=()=>mepEdit('texte',()=>{e.mw=Math.max(0,+mw.value||0)||undefined;});r.appendChild(mw);
+      mw.onchange=()=>mepEdit('texte',()=>{e.mw=Math.max(0,+mw.value||0)||undefined;});if(typeof parFxBind==='function')parFxBind(mw,e,'mw');r.appendChild(mw);
       r=K.rowEl();K.lab(r,'Graisse');
       [['lab','Libellé'],['val','Valeur']].forEach(([v,l])=>K.btn(r,l,()=>{mepEdit('texte',()=>{e.st=v;});mepSideShow();},v==='lab'?'Texte maigre':'Texte gras',(e.st||'lab')===v?'active':''));
       r=K.rowEl();K.lab(r,'Ancrage');
@@ -777,13 +777,13 @@
       // V0.76.0 : angle libre (tout texte) ; filigrane : taille libre, couleur, transparence
       r=K.rowEl();K.lab(r,'Angle (°)');const an=document.createElement('input');an.type='number';an.step='1';an.min='-180';an.max='180';an.value=+e.rot||0;
       an.title='Inclinaison du texte en degrés, sens inverse des aiguilles d’une montre (0 = horizontal)';
-      an.onchange=()=>{let v=(+an.value||0)%360;if(v>180)v-=360;if(v<-180)v+=360;mepEdit('texte',()=>{if(v)e.rot=v;else delete e.rot;});mepSideShow();};r.appendChild(an);
+      an.onchange=()=>{let v=(+an.value||0)%360;if(v>180)v-=360;if(v<-180)v+=360;mepEdit('texte',()=>{if(v)e.rot=v;else delete e.rot;});mepSideShow();};if(typeof parFxBind==='function')parFxBind(an,e,'rot');r.appendChild(an);
       r=K.rowEl();K.lab(r,'');const {W:PW,H:PH}=mepPageWH(sh),dg=Math.round(Math.atan2(PH,PW)*180/Math.PI);
       [[0,'Horizontal'],[dg,'Diagonale ↗'],[-dg,'Diagonale ↘'],[90,'Vertical']].forEach(([v,l])=>K.btn(r,l,()=>{mepEdit('texte',()=>{if(v)e.rot=v;else delete e.rot;});mepSideShow();},'Angle '+v+'°',(+e.rot||0)===v?'active':''));
       if(e.wm){
         K.h('Filigrane');
         r=K.rowEl();K.lab(r,'Taille h (mm)');const hz=document.createElement('input');hz.type='number';hz.step='1';hz.min='2';hz.value=+(+e.h||10).toFixed(1);
-        hz.title='Hauteur des lettres sur la planche (mm), libre';hz.onchange=()=>{const v=Math.max(2,Math.min(500,+hz.value||10));mepEdit('filigrane',()=>{e.h=v;});mepSideShow();};r.appendChild(hz);
+        hz.title='Hauteur des lettres sur la planche (mm), libre';hz.onchange=()=>{const v=Math.max(2,Math.min(500,+hz.value||10));mepEdit('filigrane',()=>{e.h=v;});mepSideShow();};if(typeof parFxBind==='function')parFxBind(hz,e,'h');r.appendChild(hz);
         K.btn(r,'Ajuster',()=>{mepEdit('filigrane',()=>{e.h=+mepWmSize(sh,mepSkTextValue(sh,e,true),e.rot).toFixed(1);});mepSideShow();},'Taille qui couvre les deux tiers de la planche dans cette direction');
         r=K.rowEl();K.lab(r,'Couleur');
         [['#e03131','Rouge'],['#1f9d55','Vert'],['#2d6cdf','Bleu'],['#7a7f87','Gris'],['#1a1a1a','Noir']].forEach(([c,l])=>{const b=K.btn(r,'●',()=>{mepEdit('filigrane',()=>{e.col=c;});mepSideShow();},l,e.col===c?'active':'');b.style.color=c;});

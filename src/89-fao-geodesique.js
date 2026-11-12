@@ -648,7 +648,7 @@ function faoGeoFiche(d,setup,op){
   d.appendChild(faoH('Passes'));
   const gP=faoRow();
   gP.appendChild(faoLab('Pas'));
-  gP.appendChild(faoNum(op.step,function(v){op.step=Math.max(0.05,v);},52,0.1,'Écart entre deux passes voisines, mesuré sur la surface (mm). Hauteur de crête ≈ pas²/(8·R).'));
+  gP.appendChild(faoNumFx(op,'step',op.step,function(v){op.step=Math.max(0.05,v);},52,0.1,'Écart entre deux passes voisines, mesuré sur la surface (mm). Hauteur de crête ≈ pas²/(8·R).'));
   gP.appendChild(faoLab('Sens'));
   gP.appendChild(faoSel([
     ['avalant','Sens unique · avalant','Toutes les boucles dans le même sens (côté déjà usiné à droite).'],
@@ -659,7 +659,7 @@ function faoGeoFiche(d,setup,op){
   d.appendChild(faoH('Matière à laisser (mm)'));
   const gM=faoRow();
   gM.appendChild(faoLab('Surépaisseur'));
-  gM.appendChild(faoNum(op.laisse,function(v){op.laisse=Math.max(0,v);},48,0.1,'Matière laissée sur les faces choisies (mm). 0 = à la cote.'));
+  gM.appendChild(faoNumFx(op,'laisse',op.laisse,function(v){op.laisse=Math.max(0,v);},48,0.1,'Matière laissée sur les faces choisies (mm). 0 = à la cote.'));
   d.appendChild(gM);
   const tG=faoToolById(setup,op.toolId);
   if(tG&&tG.kind==='flat'){

@@ -440,6 +440,7 @@
   window.mepInit=mepInit;
   window.mepReset=mepReset;
   window.mepIsOpen=()=>mepSt.open;
+  window.mepFxRedraw=()=>{try{if(mepSt.open){mepRender();mepSideShow();}}catch(e){}}; // V0.95.0 : valeur liée à un paramètre changée (51-parametres)
   window.mepAddSheet=mepAddSheetCmd;
   window.mepExport=mepExportSvg;
   window.mepPrint=mepPrint;
