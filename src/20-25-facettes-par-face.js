@@ -36,9 +36,12 @@ function occFaceMemoClear(){
   try{occAreteMemoClear();}catch(e){}
 }
 function occFaceMemoPurge(){
-  // garde ce qui a servi aux 3 derniers affichages (annuler / rétablir, aller-retour d'une valeur)
+  // Appelée après le maillage d'affichage de chaque reconstruction. Ne reste que ce qui a servi depuis la
+  // purge précédente : l'affichage de cette reconstruction et le maillage d'outillage FAO de la précédente
+  // (lu après la purge). Garder plus coûte cher au tas du noyau (triangulations tenues : barquette, +70 Mo
+  // avec trois reconstructions gardées, test_barquette_120).
   occFaceMemoGen++;
-  for(const [k,e] of occFaceMemo)if(e.g<occFaceMemoGen-3){occFaceMemoLibere(e);occFaceMemo.delete(k);}
+  for(const [k,e] of occFaceMemo)if(e.g<occFaceMemoGen-1){occFaceMemoLibere(e);occFaceMemo.delete(k);}
   try{occAreteMemoPurge();}catch(e){}
 }
 function occFaceEmpreinte(f){

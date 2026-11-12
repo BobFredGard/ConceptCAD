@@ -383,7 +383,7 @@ input[type=range]{accent-color:var(--primary);width:100%}
  * peut changer sans rien casser. CACHE_VER (parcours FAO) reste indépendant.
  */
 
-const APP_VER='V0.96.1';
+const APP_VER='V0.96.2';
 try{console.log('[ConceptCAD] version '+APP_VER);}catch(e){}
 try{var mfSv=document.getElementById('mfSplashVer');if(mfSv)mfSv.textContent=APP_VER;}catch(e){} // écran de démarrage
 
@@ -5842,9 +5842,12 @@ function occFaceMemoClear(){
   try{occAreteMemoClear();}catch(e){}
 }
 function occFaceMemoPurge(){
-  // garde ce qui a servi aux 3 derniers affichages (annuler / rétablir, aller-retour d'une valeur)
+  // Appelée après le maillage d'affichage de chaque reconstruction. Ne reste que ce qui a servi depuis la
+  // purge précédente : l'affichage de cette reconstruction et le maillage d'outillage FAO de la précédente
+  // (lu après la purge). Garder plus coûte cher au tas du noyau (triangulations tenues : barquette, +70 Mo
+  // avec trois reconstructions gardées, test_barquette_120).
   occFaceMemoGen++;
-  for(const [k,e] of occFaceMemo)if(e.g<occFaceMemoGen-3){occFaceMemoLibere(e);occFaceMemo.delete(k);}
+  for(const [k,e] of occFaceMemo)if(e.g<occFaceMemoGen-1){occFaceMemoLibere(e);occFaceMemo.delete(k);}
   try{occAreteMemoPurge();}catch(e){}
 }
 function occFaceEmpreinte(f){
@@ -70644,7 +70647,16 @@ function faoShapeToF(sh,F){
     t.SetValues(F.X[0],F.X[1],F.X[2],-tO[0], F.Y[0],F.Y[1],F.Y[2],-tO[1], F.Z[0],F.Z[1],F.Z[2],-tO[2]);
     const b=new occt.BRepBuilderAPI_Transform_2(sh,t,true);
     const s=b.Shape();occFree(b);occFree(t);
-    if(faoShapeFCache.size>6)faoShapeFCache.clear();
+    // V0.96.2 : les copies tournées n'étaient jamais rendues au noyau (cache vidé ou entrée remplacée sans
+    // libérer : une copie de la pièce perdue à chaque reconstruction, en FAO). Rendue ici : celle du même
+    // solide dans un autre repère, et celles des solides qui n'existent plus (rejeu). Jamais celle d'un
+    // solide vivant : l'appelant peut encore la tenir (faoHoleShapes en rend plusieurs d'un coup).
+    if(c)occFree(c.s);
+    for(const [q,v] of faoShapeFCache){
+      if(q===sh)continue;
+      let mort=false;try{mort=typeof q.isDeleted==='function'&&q.isDeleted();}catch(e){mort=true;}
+      if(mort){occFree(v.s);faoShapeFCache.delete(q);}
+    }
     faoShapeFCache.set(sh,{k,s});
     return s;
   }catch(e){return sh;}
@@ -73895,7 +73907,10 @@ function faoLegacyGeo(b){
     const S=b.shapeFao||b.shape;
     try{occt.BRepTools.Clean(S);}catch(e){}
     const D=occXDefl();
-    g=occTessellate(S,D.lin,D.ang);
+    // V0.96.2 : facettes gardées face par face (20-25) — ce maillage d'outillage était refait en entier à
+    // chaque reconstruction dès qu'une opération FAO lit le solide ; le solide vient d'être nettoyé, chaque
+    // face est donc maillée à neuf à cette finesse : mêmes triangles, seules les faces modifiées sont refaites
+    g=occTessellateFaces(S,D,0)||occTessellate(S,D.lin,D.ang);
   }catch(e){g=null;}
   if(!g)return null;
   b._faoGeo=g;

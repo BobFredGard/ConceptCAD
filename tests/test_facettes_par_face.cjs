@@ -56,7 +56,11 @@ const CAS=[
           const boite=JSON.stringify(occSolidBox(ref))===JSON.stringify(occSolidBox(s));
           const etat=mailles(s)===mailles(ref)&&mailles(s)>0;
           const A1=occTriPos(ref,0.1,0.3,true),A2=occTriPos(s,0.1,0.3,true); // relecture à une autre finesse, comme la FAO
-          e.corps.push({id:b.id,rendu:!!T1,pareil:!!T1&&memeT(T0,T1),normales:!!T1&&memeN(T0,T1),centre:boite,sansTriangles:etat,fao:memeT(A1,A2),tris:T0.pos.length/9});
+          // maillage d'outillage de la FAO (faoLegacyGeo) : solide nettoyé, puis finesse occXDefl
+          const X=occXDefl(),o1=propre(b.shape),o2=propre(b.shape),O1=occTriPos(o1,X.lin,X.ang,true),O2=occTriPosFaces(o2,X.lin,X.ang);
+          const outil=!!O2&&memeT(O1,O2)&&memeN(O1,O2)&&mailles(o1)===mailles(o2)&&JSON.stringify(occSolidBox(o1))===JSON.stringify(occSolidBox(o2));
+          o1.delete();o2.delete();
+          e.corps.push({id:b.id,rendu:!!T1,pareil:!!T1&&memeT(T0,T1),normales:!!T1&&memeN(T0,T1),centre:boite,sansTriangles:etat,fao:memeT(A1,A2)&&outil,tris:T0.pos.length/9});
           ref.delete();s.delete();
         }
         {const a0=avant||Object.assign({},occAreteMemoStat);const P=occSharpEdgesPlein(occLive.shape),M=occSharpEdgesMemo(occLive.shape);
@@ -69,7 +73,7 @@ const CAS=[
       };
       occFaceMemoClear();
       etape('premier passage');etape('second passage');
-      for(const [i,champ,v] of __modifs){const f=doc.features[i];f[champ]=v;if(f.expr)delete f.expr[champ];const av=Object.assign({},occAreteMemoStat);markDirty();rebuild();try{occVisibleSharpEdges();}catch(e){}occFaceMemoPurge();etape(f.type+' '+i+' '+champ+'='+v,av);}
+      for(const [i,champ,v] of __modifs){const f=doc.features[i];f[champ]=v;if(f.expr)delete f.expr[champ];const av=Object.assign({},occAreteMemoStat);markDirty();rebuild();try{occVisibleSharpEdges();}catch(e){}etape(f.type+' '+i+' '+champ+'='+v,av);}
       // affichage réel : le solide des corps affichés est sans triangles
       o.affiches=corps().map(b=>mailles(b.shape)-faces(b.shape).map(f=>f.delete()).length);
       o.stat=Object.assign({},occFaceMemoStat);o.coupe=occFaceMemoOff;
@@ -80,7 +84,7 @@ const CAS=[
     A(r.seules.diff===0,r.seules.n+' faces maillées une par une : mêmes triangles et normales que maillées ensemble');
     r.etapes.forEach((e,k)=>{
       const tous=e.corps.length>0&&e.corps.every(c=>c.rendu&&c.pareil&&c.normales&&c.centre&&c.sansTriangles&&c.fao);
-      A(tous,e.nom+' : identique au maillage complet, même boîte, solide entièrement maillé, même relecture à 0,1 mm ('+e.corps.map(c=>c.tris).join('+')+' triangles ; '+e.reprises+' faces reprises, '+e.maillees+' maillées)');
+      A(tous,e.nom+' : identique au maillage complet, même boîte, solide entièrement maillé, même relecture à 0,1 mm, même maillage d’outillage FAO ('+e.corps.map(c=>c.tris).join('+')+' triangles ; '+e.reprises+' faces reprises, '+e.maillees+' maillées)');
       if(!tous)console.log('    '+JSON.stringify(e.corps));
       A(e.aretes.rendu&&e.aretes.pareil&&e.aretes.parCorps&&e.aretes.n>0,e.nom+' : arêtes identiques au classement complet ('+e.aretes.n+' arêtes dont '+e.aretes.vives+' vives ; '+e.aretes.reprises+' reprises, '+e.aretes.classees+' classées)');
       if(k===0)A(e.aretes.reprises===0,'premier passage : toutes les arêtes sont classées');

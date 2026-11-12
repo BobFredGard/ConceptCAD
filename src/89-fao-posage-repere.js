@@ -435,7 +435,16 @@ function faoShapeToF(sh,F){
     t.SetValues(F.X[0],F.X[1],F.X[2],-tO[0], F.Y[0],F.Y[1],F.Y[2],-tO[1], F.Z[0],F.Z[1],F.Z[2],-tO[2]);
     const b=new occt.BRepBuilderAPI_Transform_2(sh,t,true);
     const s=b.Shape();occFree(b);occFree(t);
-    if(faoShapeFCache.size>6)faoShapeFCache.clear();
+    // V0.96.2 : les copies tournées n'étaient jamais rendues au noyau (cache vidé ou entrée remplacée sans
+    // libérer : une copie de la pièce perdue à chaque reconstruction, en FAO). Rendue ici : celle du même
+    // solide dans un autre repère, et celles des solides qui n'existent plus (rejeu). Jamais celle d'un
+    // solide vivant : l'appelant peut encore la tenir (faoHoleShapes en rend plusieurs d'un coup).
+    if(c)occFree(c.s);
+    for(const [q,v] of faoShapeFCache){
+      if(q===sh)continue;
+      let mort=false;try{mort=typeof q.isDeleted==='function'&&q.isDeleted();}catch(e){mort=true;}
+      if(mort){occFree(v.s);faoShapeFCache.delete(q);}
+    }
     faoShapeFCache.set(sh,{k,s});
     return s;
   }catch(e){return sh;}
