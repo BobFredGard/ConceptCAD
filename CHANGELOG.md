@@ -8,8 +8,7 @@ sont sorties le 2026-09-30j.
 Code dans `src/` · livrable `fusion_mvp.html` (généré par `build.js`) · architecture et
 garde-fous en tête de `src/00-entete-et-outils.js`.
 
-**669 versions**, de `2026-09-28b` à `V0.95.3` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
-**666 versions**, de `2026-09-28b` à `V0.95.1` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
+**670 versions**, de `2026-09-28b` à `V0.95.4` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
 comme dans le fichier d'origine.
 
 ---
@@ -7526,3 +7525,11 @@ Barquette ne perd plus son solide à la 107e modification, et sa mémoire ne mon
 - **Bouton G-code** (`faoExport`) : un programme par posage non gelé qui a au moins une opération active (`faoExportSetups`, téléchargements décalés).
 - **Répétition** (`src/89-fao-repetition.js`, bouton « Répétition » des Opérations) : opération `type:'pattern'` qui reprend les opérations sélectionnées (Ctrl+clic). Rectangulaire (nombre et pas en X/Y, zigzag), circulaire (nombre, angle, centre), symétrie (X= ou Y=, sens d'arc inversé) ou autres origines (G55…G59 : `G0 Z` de sécurité puis le code d'origine, retour à l'origine du posage ensuite). Usinage par opération : chaque source sur toutes ses copies avant la suivante. Source unique `faoOpsSeq`, lue par `faoJobMoves` et `faoSeqSafe` : aperçu, simulation, collisions et G-code voient les copies ; les trous des perçages sont déplacés dans les cycles. Les parcours des copies ne sont jamais recalculés (moves de la source transformés) ; une répétition désactivée laisse ses sources usinées une fois ; une opération n'appartient qu'à une répétition ; une opération à repère propre (3+2) n'a que son original. Copier / coller et duplication de posage relient la répétition à ses sources collées.
 - **Tests** : `tests/test_fao_posage_menu.cjs`, `tests/test_fao_repetition.cjs` ; fiche illustrée « Opérations/Répétition ». Parcours FAO et CACHE_VER inchangés.
+
+
+## V0.95.4 - Assemblage : plusieurs composants dans une même répétition, ajoutés ou retirés en cours de route
+
+- **Demande** : « il faudrait pouvoir mettre plusieurs composants dans une même répétition ».
+- **Constat** : une répétition acceptait déjà plusieurs sources, mais seulement choisies d'avance (lot Ctrl+clic puis « Répéter le lot… ») ; une fois le panneau ouvert, un clic changeait la sélection sans rien faire à la répétition, et aucune source ne pouvait être ajoutée ou retirée ensuite.
+- **Correctif** (`src/48-assemblage-repetitions`, `src/47-assemblage-interface`) : comme dans Fusion, panneau de répétition ouvert (nouvelle ou rouverte), un clic sur un composant dans la vue ou dans l'arbre l'**ajoute** à la répétition ou l'en **retire** (`asmPatToggleSrc`, branché en tête de `asmSelClick`) ; le panneau liste les « Composants (n) » avec un **✕** chacun ; les sources sont en surbrillance. La dernière source reste (🗑 Supprimer pour enlever la répétition) ; une instance ne devient pas source. Toute l'édition reste une seule étape d'annulation, Annuler / Échap revient aux sources d'avant.
+- **Test** : `tests/test_composants_repetition_ajout.cjs` (ajout par clic, 3 sources → 6 instances bien placées, instance refusée, retrait, dernière source gardée, une étape d'annulation, réouverture et Annuler). Parcours FAO et CACHE_VER inchangés.
