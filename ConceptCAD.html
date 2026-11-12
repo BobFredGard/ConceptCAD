@@ -383,7 +383,7 @@ input[type=range]{accent-color:var(--primary);width:100%}
  * peut changer sans rien casser. CACHE_VER (parcours FAO) reste indépendant.
  */
 
-const APP_VER='V0.95.7';
+const APP_VER='V0.95.8';
 try{console.log('[ConceptCAD] version '+APP_VER);}catch(e){}
 try{var mfSv=document.getElementById('mfSplashVer');if(mfSv)mfSv.textContent=APP_VER;}catch(e){} // écran de démarrage
 
@@ -20738,6 +20738,45 @@ const STD_ANSI_LOCK=[['#4',.115,.04,.025],['#6',.141,.04,.031],['#8',.168,.047,.
 const STD_WASHER_TYPES=[['iso7089','ISO 7089 — plate, série normale'],['iso7090','ISO 7090 — plate chanfreinée, série normale'],
   ['iso7092','ISO 7092 — plate, série étroite'],['iso7093','ISO 7093-1 — plate, série large'],['din127','DIN 127 B — Grower (élastique fendue)'],
   ['ansiN','ANSI B18.22.1 Type A — série N (étroite)'],['ansiW','ANSI B18.22.1 Type A — série W (large)'],['ansiLock','ANSI B18.21.1 — Lock washer (élastique fendue)']];
+/* Douilles autotaraudeuses (V0.95.8) : aucune norme ISO ni ANSI n'en fixe les cotes ; tout le
+   marché reprend la norme d'usine Ensat 302 (Kerb-Konus), douille à FENTE de coupe au bas du
+   corps. Taraudage intérieur ISO 6H (pas gros) ou UNC / UNF ; corps fileté en mm, mêmes cotes en
+   métrique et en pouces. Repère : origine sur le dessus (affleurant), corps vers −Z ; posée
+   « Sur des trous », 0,1 mm sous l'entrée (pose conseillée : 0,1 à 0,2 mm sous la surface).
+   Métrique : [taille, filet intérieur, Ø ext. E, pas ext. P, L, perçage mini, maxi, trou borgne mini] */
+const STD_ENSAT302=[['M2','M2',4.5,0.5,6,4.2,4.3,8],['M2.5','M2.5',4.5,0.5,6,4.2,4.3,8],['M3','M3',5,0.5,6,4.7,4.8,8],
+  ['M4','M4',6.5,0.75,8,6.1,6.2,10],['M5','M5',8,1,10,7.5,7.6,13],['M6c','M6',9,1,12,8.5,8.6,15],['M6','M6',10,1.5,14,9.2,9.4,17],
+  ['M8','M8',12,1.5,15,11.2,11.4,18],['M10','M10',14,1.5,18,13.2,13.4,22],['M12','M12',16,1.5,22,15.2,15.4,26],
+  ['M14','M14',18,1.5,24,17.2,17.4,28],['M16','M16',20,1.5,22,19.2,19.4,26],['M18','M18',22,1.5,24,21.2,21.4,29],
+  ['M20','M20',26,1.5,27,25.2,25.4,32]];
+// Pouces : [taille, filets/pouce UNC, UNF, E, P, L, trou borgne mini] — perçage : ligne métrique de même Ø E
+const STD_ENSAT302_IN=[['#4',40,48,5,0.5,6,8],['#6',32,40,6,0.75,8,10],['#8',32,36,6.5,0.75,8,10],['#10',24,32,8,1,10,13],
+  ['1/4',20,28,10,1.5,14,17],['5/16',18,24,12,1.5,15,18],['3/8',16,24,14,1.5,18,22],['7/16',14,20,16,1.5,22,26],
+  ['1/2',13,20,18,1.5,22,28],['5/8',11,18,20,1.5,22,27]];
+const STD_ENSAT_HOLE={5:[4.7,4.8],6:[5.6,5.7],6.5:[6.1,6.2],8:[7.5,7.6],10:[9.2,9.4],12:[11.2,11.4],14:[13.2,13.4],
+  16:[15.2,15.4],18:[17.2,17.4],20:[19.2,19.4]};
+function stdInsert302(st){
+  const ins=st.type==='ansi';
+  let thr,E,P,L,h0,h1,T,lab;
+  if(ins){
+    const r=STD_ENSAT302_IN.find(x=>x[0]===st.size)||STD_ENSAT302_IN[0],unf=st.thr==='UNF';
+    thr=r[0]+'-'+(unf?r[2]:r[1])+' '+(unf?'UNF':'UNC');[,,,E,P,L,T]=r;[h0,h1]=STD_ENSAT_HOLE[E];lab=thr;
+  }else{
+    const r=STD_ENSAT302.find(x=>x[0]===st.size)||STD_ENSAT302[0];
+    thr=r[1];[,,E,P,L,h0,h1,T]=r;lab=r[1]+(r[0]==='M6c'?' court':'');
+  }
+  const t=isoThread(thr),pi=t[2],di=t[1],dr=tapDrill(thr,pi),ri=dr/2,R=E/2;
+  const cb=Math.min(P,L*0.15),c1=Math.min(0.3,(R-ri)*0.3),csD=+Math.min(di+0.4,2*R-2*c1-0.4).toFixed(2);
+  const w=+Math.max(0.5,E*0.1).toFixed(2),hs=+(L*0.4).toFixed(2);
+  const body='M'+stdF(E).replace(',','.'),ext='Ø'+stdF(E)+' × '+stdF(P);
+  const norm='Ensat 302',name='Douille Ensat 302 '+lab;
+  return {seat:'flush',sink:0.1,key:'ENSAT 302|'+(ins?thr:st.size),norm,desig:lab+' ('+ext+' × '+stdF(L)+')',name,bore:ri,
+    info:'Douille autotaraudeuse à fente de coupe (norme d’usine Ensat 302 : pas de norme ISO ni ANSI) · taraudage '+thr+(ins?'':' (6H)')+
+      ' · corps fileté '+ext+' · L '+stdF(L)+' · perçage conseillé Ø'+stdF(h0)+' à '+stdF(h1)+' · trou borgne ≥ '+stdF(T),
+    prof:[[0,-L],[R-cb,-L],[R,-L+cb],[R,-c1],[R-c1,0],[0,0]],
+    thr:stdThr(body,P,E,L,L,0,false),
+    ops:[{k:'hole',size:thr,p:pi,d:dr,csD,len:L},{k:'slot',open:true,x0:ri-0.3,x1:R+1,w,z0:-L,L:hs}]};
+}
 function stdWasherRows(t){
   return t==='iso7090'?STD_ISO7089.filter(r=>stdFrac(r[0].slice(1))>=5):t==='iso7092'?STD_ISO7092:t==='iso7093'?STD_ISO7093:
     t==='din127'?STD_DIN127:t==='ansiN'||t==='ansiW'?STD_ANSI_FLAT:t==='ansiLock'?STD_ANSI_LOCK:STD_ISO7089;
@@ -21019,6 +21058,13 @@ const STD_CATS=[
     {k:'size',lab:'Taille (vis)',opts:st=>stdWasherRows(st.type).map(r=>[r[0],/^ansi/.test(st.type)?r[0]+(r[0][0]==='#'?'':'"'):r[0]]),
       def:st=>/^ansi/.test(st.type)?'1/4':'M8'}],
     gen:stdWasher},
+  {k:'insert',lab:'Douilles autotaraudeuses',fields:[
+    {k:'type',lab:'Série',opts:()=>[['iso','Ensat 302 — métrique (taraudage M, 6H)'],['ansi','Ensat 302 — pouces (taraudage UNC / UNF)']]},
+    {k:'size',lab:'Taraudage',opts:st=>st.type==='ansi'?STD_ENSAT302_IN.map(r=>[r[0],r[0]+(r[0][0]==='#'?'':'"')+' — corps Ø'+stdF(r[3])+' × '+stdF(r[4])]):
+      STD_ENSAT302.map(r=>[r[0],r[1]+(r[0]==='M6c'?' court':'')+' — corps Ø'+stdF(r[2])+' × '+stdF(r[3])+', L '+stdF(r[4])]),def:st=>st.type==='ansi'?'1/4':'M6'},
+    {k:'thr',lab:'Filetage intérieur',show:st=>st.type==='ansi',opts:st=>{const r=STD_ENSAT302_IN.find(x=>x[0]===st.size);
+      return r?[['UNC','UNC — '+r[1]+' filets/pouce'],['UNF','UNF — '+r[2]+' filets/pouce']]:[['UNC','UNC']];}}],
+    gen:stdInsert302},
   // num : valeur libre tapée dans la fenêtre (bornée) ; opts = quelques cas de contrôle (tests), sug = valeurs proposées
   // show : champ masqué sans objet pour ces réglages (il reprend alors sa valeur par défaut)
   {k:'gear',lab:'Engrenages',fields:[
@@ -21131,7 +21177,7 @@ function stdDoc(sp){
   if(sp.mag)d.std.mag=sp.mag; // aimant : géométrie et caractéristiques (48-aimants-interface)
   if(sp.mat)d.mat=sp.mat;
   if(sp.color!=null)d.bodies[0].color=sp.color;
-  const F=(f)=>{f.id=uid(f.type==='revolve'?'rv':f.type==='xthread'?'th':f.type==='gear'?'gr':'ex');f.visible=true;f.body='b1';d.features.push(f);return f;};
+  const F=(f)=>{f.id=uid(f.type==='revolve'?'rv':f.type==='xthread'?'th':f.type==='gear'?'gr':f.type==='hole'?'ho':'ex');f.visible=true;f.body='b1';d.features.push(f);return f;};
   if(sp.mag&&sp.mag.s){magFillDoc(d,sp.mag);return d;} // aimant : deux moitiés, pôle sud vert, pôle nord rouge (48-aimants-interface)
   if(sp.prof){
     const s=stdSketch(d,'Profil','XZ',0);stdLoop(s,sp.prof);
@@ -21150,8 +21196,15 @@ function stdDoc(sp){
       const s=stdSketch(d,'Six pans creux','XY',o.z+0.5);stdLoop(s,stdHex(o.s));
       F({type:'extrude',name:'Six pans creux '+stdF(o.s),sketchId:s.id,distance:-(o.t+0.5),op:'cut',mid:false,upto:null});
     }else if(o.k==='slot'){
+      // open : fente ouverte au bas (z0) seulement, arrêtée net à z0 + L (douille Ensat)
       const s=stdSketch(d,'Fente','XY',(o.z0||0)-1),g=o.w/2;stdLoop(s,[[o.x0,-g],[o.x1,-g],[o.x1,g],[o.x0,g]]);
-      F({type:'extrude',name:'Fente',sketchId:s.id,distance:o.L+2,op:'cut',mid:false,upto:null});
+      F({type:'extrude',name:o.open?'Fente de coupe':'Fente',sketchId:s.id,distance:o.L+(o.open?1:2),op:'cut',mid:false,upto:null});
+    }else if(o.k==='hole'){
+      // taraudage débouchant depuis le dessus (z = 0), fraisure d'entrée, filet cosmétique (76-percage)
+      const s=stdSketch(d,'Taraudage','XY',0),pid=addPoint(s,0,0);s.entities.push({id:skNewEid(s),t:'cpoint',p:pid,hole:true});
+      F({type:'hole',name:'',sketchId:s.id,kind:o.csD?'csink':'simple',d:o.d,thread:{size:o.size,p:o.p,len:o.len,model:false,clear:0,lh:false},
+        cbD:o.d+2,cbH:1,csD:o.csD||o.d+1,csA:90,end:'through',depth:o.len,tip:0,flip:false,op:'cut'});
+      d.features[d.features.length-1].name='Taraudage '+o.size+' débouchant, fraisé Ø'+stdF(o.csD||o.d+1);
     }else if(o.k==='key'){
       const s=stdSketch(d,'Contour','XY',0);stdLoop(s,stdKeyOutline(o));
       F({type:'extrude',name:'Clavette',sketchId:s.id,distance:o.h,op:'add',mid:false,upto:null});
@@ -21728,7 +21781,9 @@ function stdSvg(sp){
     shapes.push(P.map(p=>[p[0],p[1]]),P.map(p=>[-p[0],p[1]]));
     (sp.ops||[]).forEach(o=>{
       if(o.k==='hex'){const e=o.s/Math.sqrt(3);hid.push([[-e,o.z],[-e,o.z-o.t],[e,o.z-o.t],[e,o.z]]);}
-      if(o.k==='slot'){const z0=o.z0||0;hid.push([[-o.w/2,z0],[-o.w/2,z0+o.L]],[[o.w/2,z0],[o.w/2,z0+o.L]]);}
+      if(o.k==='slot'&&o.open){hid.push([[o.x0,o.z0+o.L],[o.x1-1,o.z0+o.L]]);}
+      else if(o.k==='slot'){const z0=o.z0||0;hid.push([[-o.w/2,z0],[-o.w/2,z0+o.L]],[[o.w/2,z0],[o.w/2,z0+o.L]]);}
+      if(o.k==='hole'){const r=o.d/2;hid.push([[-r,0],[-r,-o.len]],[[r,0],[r,-o.len]]);}
     });
   }
   (sp.ops||[]).forEach(o=>{ // vue de dessus
@@ -38378,9 +38433,10 @@ function hn3Tick(){
      pointe) le long de −n (ou +n si inversé), unis puis découpés du corps.
    ═══════════════════════════════════════════════════════════════════════════ */
 // Métrique ISO : [taille, Ø nominal, pas gros, pas fins…]
-const ISO_THREADS=[['M1.6',1.6,0.35,0.2],['M2',2,0.4],['M2.5',2.5,0.45],['M3',3,0.5],['M4',4,0.7],['M5',5,0.8],['M6',6,1,0.75],
-  ['M8',8,1.25,1],['M10',10,1.5,1.25,1],['M12',12,1.75,1.5,1.25],['M14',14,2,1.5],['M16',16,2,1.5],
-  ['M18',18,2.5,2,1.5],['M20',20,2.5,2,1.5],['M22',22,2.5,2,1.5],['M24',24,3,2],['M30',30,3.5,2],['M36',36,4,3]]; // M1.6, M30, M36 : V0.35.0 (vis normalisées)
+const ISO_THREADS=[['M1.6',1.6,0.35,0.2],['M2',2,0.4],['M2.5',2.5,0.45],['M3',3,0.5],['M4',4,0.7],['M4.5',4.5,0.75,0.5],['M5',5,0.8,0.5],['M6',6,1,0.75],
+  ['M6.5',6.5,0.75],['M8',8,1.25,1],['M9',9,1.25,1],['M10',10,1.5,1.25,1],['M12',12,1.75,1.5,1.25],['M14',14,2,1.5],['M16',16,2,1.5],
+  ['M18',18,2.5,2,1.5],['M20',20,2.5,2,1.5],['M22',22,2.5,2,1.5],['M24',24,3,2],['M26',26,1.5],['M30',30,3.5,2],['M36',36,4,3]]; // M1.6, M30, M36 : V0.35.0 (vis normalisées)
+// V0.95.8 : M4,5×0,5, M5×0,5, M6,5×0,75, M9×1, M26×1,5 — filets extérieurs des douilles Ensat 302, pour tarauder la pièce qui les reçoit
 // Vis CHC (ISO 4762) : passage moyen, lamage Ø, profondeur de lamage
 const ISO_CHC=[['M3',3.4,6.5,3.4],['M4',4.5,8,4.4],['M5',5.5,10,5.4],['M6',6.6,11,6.4],['M8',9,15,8.6],
   ['M10',11,18,10.8],['M12',13.5,20,13],['M14',15.5,24,15],['M16',17.5,26,17.5],['M20',22,33,21.5],['M24',26,40,25.5]];

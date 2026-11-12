@@ -21,6 +21,7 @@ const {loadApp}=require('./appvm.cjs');
       (sp.ops||[]).forEach(o=>{
         if(o.k==='hex')v-=Math.sqrt(3)/2*o.s*o.s*o.t;
         if(o.k==='key')v+=area(stdPolyPts(stdKeyOutline(o)))*o.h;
+        if(o.k==='hole'){const r=o.d/2,rc=(o.csD||o.d)/2,h=rc-r;v-=Math.PI*r*r*o.len+Math.PI*h/3*(rc*rc+rc*r+r*r)-Math.PI*r*r*h;} // taraudage + fraisure 90°
       });
       return v;
     };
@@ -47,7 +48,9 @@ const {loadApp}=require('./appvm.cjs');
                   for(let j=0;j<P.length;j++){const a=P[j],b=P[(j+1)%P.length];if((a[1]-z)*(b[1]-z)<=0&&a[1]!==b[1]){rm=Math.max(rm,a[0]+(b[0]-a[0])*(z-a[1])/(b[1]-a[1]));}}
                   if(rm<e*1.02){why.push('six pans hors matière à z='+z.toFixed(2)+' (r '+rm.toFixed(2)+' < e/2 '+e.toFixed(2)+')');break;}}
               }
-              if(o.k==='slot'&&!(o.x0<sp.prof[0][0]&&o.w>0))why.push('fente hors paroi');
+              if(o.k==='slot'&&!(o.x0<(sp.bore!=null?sp.bore:sp.prof[0][0])&&o.w>0))why.push('fente hors paroi');
+              if(o.k==='hole'&&!(o.d>0&&o.csD>o.d&&o.csD/2<Math.max(...P.map(p=>p[0]))-0.1))why.push('taraudage hors matière');
+              if(o.k==='hole'&&sp.thr&&!(sp.thr.r-o.d/2>0.4))why.push('paroi trop mince');
             });
           }
           if(why.length)bad.push(sp.name+' : '+why.join(', '));
@@ -97,7 +100,8 @@ const {loadApp}=require('./appvm.cjs');
       ['pin',{type:'iso8752',size:'6',len:'30'}],['pin',{type:'dowel',size:'1/4',len:'1'}],['pin',{type:'spring',size:'1/8',len:'1'}],
       ['key',{type:'A',size:'8x7',len:'40'}],['key',{type:'B',size:'8x7',len:'40'}],['key',{type:'C',size:'8x7',len:'40'}],
       ['washer',{type:'iso7089',size:'M8'}],['washer',{type:'iso7090',size:'M8'}],['washer',{type:'din127',size:'M8'}],
-      ['washer',{type:'ansiW',size:'1/4'}],['washer',{type:'ansiLock',size:'1/4'}]];
+      ['washer',{type:'ansiW',size:'1/4'}],['washer',{type:'ansiLock',size:'1/4'}],
+      ['insert',{type:'iso',size:'M6'}],['insert',{type:'iso',size:'M3'}],['insert',{type:'iso',size:'M20'}],['insert',{type:'ansi',size:'#8',thr:'UNC'}],['insert',{type:'ansi',size:'1/2',thr:'UNF'}]];
     const vols=()=>{const FR=occFinalShape(null);const v=FR.perBody.map(b=>occCoqueVolume(b.shape));occCleanup(FR,null);return v;};
     const root=asm.root;
     cases.forEach(([cat,s])=>{
@@ -106,7 +110,7 @@ const {loadApp}=require('./appvm.cjs');
       asmActivate(o.comp);
       let v=[];try{v=vols();}catch(e){v=[];}
       let ex=expVol(sp);
-      (sp.ops||[]).forEach(q=>{if(q.k==='slot'){const P=stdPolyPts(sp.prof),ri=P[0][0],ro=Math.max(...P.map(p=>p[0]));v.slotW=q.w;ex-=q.w*(ro-ri)*q.L*0.98;}});
+      (sp.ops||[]).forEach(q=>{if(q.k==='slot'){const P=stdPolyPts(sp.prof),ri=sp.bore!=null?sp.bore:P[0][0],ro=Math.max(...P.map(p=>p[0]));v.slotW=q.w;ex-=q.w*(ro-ri)*q.L*0.98;}});
       const ok=v.length===1&&Math.abs(v[0]-ex)<=Math.max(0.02*ex,0.5);
       A(ok,'14 : '+sp.name+' : un corps exact, '+(v[0]||0).toFixed(1)+' mm³ (attendu ≈ '+ex.toFixed(1)+')'+(builtEngine?' ['+builtEngine+']':''));
       asmActivate(root);
