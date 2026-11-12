@@ -66,9 +66,13 @@ test('faces perdues : déplacer une face, esquisse',async({page})=>{
     out.touche=!!h;
     if(h){
       const n=faceNormalWorld(h.object,h.faceIndex).normalize();
+      // face parallèle : le dessin ne glisse pas dans le plan (seul un recalage selon la normale)
+      const N0=new THREE.Vector3(...sk.axN).normalize(),O0=new THREE.Vector3(...sk.origin),U0=sk.axU.slice();
       const ok=skRedefApply(sk,{mesh:h.object,point:h.point.clone(),faceIndex:h.faceIndex});
       skRedef=null;tlEditUnlock();markDirty();rebuild();await idle();
       const N=new THREE.Vector3(...sk.axN),O=new THREE.Vector3(...sk.origin);
+      out.parallele=N0.dot(n)>1-1e-6;
+      if(out.parallele){const d=O.clone().sub(O0);out.garde=d.clone().sub(N0.clone().multiplyScalar(d.dot(N0))).length()<2e-3&&U0.every((x,i)=>Math.abs(x-sk.axU[i])<1e-9);}
       out.repose={ok,normale:N.dot(n)>0.999,plan:Math.abs(n.dot(O.clone().sub(h.point)))<1e-2,marqueur:tlMark,perdue:skFacePerdue(sk)};
     }
     return out;
@@ -88,6 +92,7 @@ test('faces perdues : déplacer une face, esquisse',async({page})=>{
   expect(r.bloque).toBe(true);
   expect(r.echap).toEqual({redef:false,marqueur:null});
   expect(r.touche).toBe(true);
+  if(r.parallele)expect(r.garde).toBe(true);
   expect(r.repose).toEqual({ok:true,normale:true,plan:true,marqueur:null,perdue:null});
   expect(err).toEqual([]);
 });

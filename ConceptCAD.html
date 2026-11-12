@@ -383,7 +383,7 @@ input[type=range]{accent-color:var(--primary);width:100%}
  * peut changer sans rien casser. CACHE_VER (parcours FAO) reste indépendant.
  */
 
-const APP_VER='V0.94.6';
+const APP_VER='V0.94.7';
 try{console.log('[ConceptCAD] version '+APP_VER);}catch(e){}
 try{var mfSv=document.getElementById('mfSplashVer');if(mfSv)mfSv.textContent=APP_VER;}catch(e){} // écran de démarrage
 
@@ -30400,7 +30400,19 @@ function skRedefApply(sk,s){
   // s = {mesh,point,faceIndex} : face cliquée. Rend false (message affiché) si la face ne convient pas.
   const P=skFacePlacement(s);
   if(P.err){faceEl.textContent='Changer de face : '+P.err;return false;}
-  const{pt,n,u,v,origin,host}=P;
+  let{pt,n,u,v,origin,host}=P;
+  // Face parallèle à l'ancien plan (cas courant : réparer une face perdue en recliquant la même) :
+  // le repère de l'esquisse est GARDÉ — ancienne origine projetée sur la face, mêmes axes, même
+  // normale exacte. Sinon l'origine devenait le repère de la pièce projeté et tout le dessin
+  // glissait (SIRAP-14-001 : Esquisse 3 réparée → le balayage bougeait, le congé suivant perdait son arête).
+  const N0=sk.axN&&new THREE.Vector3(+sk.axN[0]||0,+sk.axN[1]||0,+sk.axN[2]||0);
+  if(N0&&N0.lengthSq()>1e-9&&sk.origin&&sk.axU&&sk.axV&&N0.normalize().dot(n)>1-1e-6){
+    const O0=new THREE.Vector3(+sk.origin[0]||0,+sk.origin[1]||0,+sk.origin[2]||0);
+    origin=O0.clone().addScaledVector(N0,N0.dot(pt.clone().sub(O0)));
+    n=N0;u=new THREE.Vector3(...sk.axU);v=new THREE.Vector3(...sk.axV);
+    const limH=tlIdx();
+    try{host=findHostForFace(origin,n,undefined,limH)||hostViaPoints([origin.x,origin.y,origin.z],n,[pt],limH);}catch(e){host=null;}
+  }
   sk.plane='FACE';delete sk.cg;
   sk.origin=[+origin.x.toFixed(3),+origin.y.toFixed(3),+origin.z.toFixed(3)];
   sk.axU=[u.x,u.y,u.z];sk.axV=[v.x,v.y,v.z];sk.axN=[n.x,n.y,n.z];
