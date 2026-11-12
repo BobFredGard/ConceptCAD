@@ -37,7 +37,7 @@ const A=(c,m)=>{if(!c){ko++;console.log('  ✗ '+m);}else console.log('  ✓ '+m
   A(Math.abs(vol1-vol0)<=1e-6*vol0,'retour à '+v0+' : même volume ('+vol1.toFixed(1)+' mm³)');
   // Fuite : place vraiment occupée dans le tas, caches vidés (une seule sonde : elle dérange le tas).
   // On remplit le libre par blocs jusqu'à ce que le tas doive grandir ; 118 Mo avant, 32 Mo à l'ouverture.
-  vm.runInContext('occCkClear();',ctx);
+  vm.runInContext('occCkClear();occFaceMemoClear();',ctx); // V0.96.1 : + les triangulations tenues par les facettes gardées (20-25)
   const len=real.HEAP8.length,l=[];
   for(;;){const p=real.___libc_malloc(24);if(!p)break;l.push(p);if(real.HEAP8.length!==len)break;}
   const n=l.length-1,bloc=l[n-1]-l[n-2],occupe=(len-n*bloc)/1048576;

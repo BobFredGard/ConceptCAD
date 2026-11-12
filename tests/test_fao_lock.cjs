@@ -86,9 +86,11 @@ const A=(c,m)=>{if(!c){ko++;console.log('  ✗ '+m);}else console.log('  ✓ '+m
              mesh:{matrixWorld:null,geometry:{}}};
     bodies.push(b);
     const x0=occXDefl();
-    const rec=[];const _o=occTessellate;
+    const rec=[];const _o=occTessellate,_f=occTessellateFaces;
     occTessellate=function(s,lin,ang){rec.push([lin,ang]);return _o(s,lin,ang);};
-    let mm=null;try{mm=faoMeshFromBody(b);}finally{occTessellate=_o;}
+    // V0.96.2 : le maillage d'outillage passe par les facettes gardées (20-25), à la même finesse
+    occTessellateFaces=function(s,D,m){const r=_f(s,D,m);if(r)rec.push([D.lin,D.ang]);return r;};
+    let mm=null;try{mm=faoMeshFromBody(b);}finally{occTessellate=_o;occTessellateFaces=_f;}
     out.params=rec[0]||null;
     out.nbAppels=rec.length;
     out.apresFao=nbTris(cy);                   // ← LE VERROU
@@ -96,7 +98,8 @@ const A=(c,m)=>{if(!c){ko++;console.log('  ✗ '+m);}else console.log('  ✓ '+m
     out.xDefl=x0;
 
     const rec2=[];occTessellate=function(s,lin,ang){rec2.push(1);return _o(s,lin,ang);};
-    try{faoMeshFromBody(b);}finally{occTessellate=_o;}
+    occTessellateFaces=function(s,D,m){const r=_f(s,D,m);if(r)rec2.push(1);return r;};
+    try{faoMeshFromBody(b);}finally{occTessellate=_o;occTessellateFaces=_f;}
     out.appelsCache=rec2.length;
 
     // ── 3. avec un congé : occXDefl() change, la FAO doit suivre (référence vivante) ──
@@ -108,7 +111,8 @@ const A=(c,m)=>{if(!c){ko++;console.log('  ✗ '+m);}else console.log('  ✓ '+m
     bodies.push(b2);
     out.xDeflAvecConge=occXDefl();
     const rec3=[];occTessellate=function(s,lin,ang){rec3.push([lin,ang]);return _o(s,lin,ang);};
-    try{faoMeshFromBody(b2);}finally{occTessellate=_o;}
+    occTessellateFaces=function(s,D,m){const r=_f(s,D,m);if(r)rec3.push([D.lin,D.ang]);return r;};
+    try{faoMeshFromBody(b2);}finally{occTessellate=_o;occTessellateFaces=_f;}
     out.paramsAvecConge=rec3[0]||null;
     doc.features.pop();
 

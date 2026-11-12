@@ -650,7 +650,10 @@ function faoLegacyGeo(b){
     const S=b.shapeFao||b.shape;
     try{occt.BRepTools.Clean(S);}catch(e){}
     const D=occXDefl();
-    g=occTessellate(S,D.lin,D.ang);
+    // V0.96.2 : facettes gardées face par face (20-25) — ce maillage d'outillage était refait en entier à
+    // chaque reconstruction dès qu'une opération FAO lit le solide ; le solide vient d'être nettoyé, chaque
+    // face est donc maillée à neuf à cette finesse : mêmes triangles, seules les faces modifiées sont refaites
+    g=occTessellateFaces(S,D,0)||occTessellate(S,D.lin,D.ang);
   }catch(e){g=null;}
   if(!g)return null;
   b._faoGeo=g;
