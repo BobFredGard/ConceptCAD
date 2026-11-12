@@ -265,7 +265,23 @@ function asmPatEdit(ownerId,pid){
   try{asmMeasStop(true);}catch(e){}
   asmPush('modifier « '+(p.name||'répétition')+' »');
   asmPatEd={owner:o.id,pat:p.id,before:JSON.stringify(o.pats)};
-  try{renderTree();renderProps();}catch(e){}
+  if(p.src.length){asmLot=p.src.slice();asmSelId=p.src[p.src.length-1];} // sources en surbrillance (V0.95.4)
+  try{asmDraw();renderTree();renderProps();}catch(e){}
+  return true;
+}
+function asmPatToggleSrc(id){
+  // V0.95.4 — répétition ouverte : un clic sur une occurrence du porteur l'ajoute aux sources ou
+  // l'en retire (comme Fusion) ; une répétition garde au moins une source
+  const P=asmPatCur();if(!P)return false;
+  const {owner,pat}=P,o=owner.occ.find(q=>q.id===id);if(!o)return false;
+  const say=t=>{try{faceEl.textContent=t;}catch(e){}};
+  if(o.pat){say(o.pat.id===pat.id?'« '+o.name+' » est une instance de cette répétition : cliquez une source pour la retirer.':'« '+o.name+' » est une instance d’une autre répétition : elle ne se répète pas.');return false;}
+  const i=pat.src.indexOf(id);
+  if(i>=0&&pat.src.length<2){say('« '+o.name+' » est la seule source : une répétition garde au moins un composant (🗑 Supprimer pour l’enlever).');return false;}
+  asmPatSet(q=>{if(i>=0)q.src.splice(i,1);else q.src.push(id);});
+  asmLot=pat.src.slice();asmSelId=pat.src[pat.src.length-1];asmPivot=null; // les sources en surbrillance
+  try{asmDraw();renderTree();renderProps();}catch(e){}
+  say((i>=0?'« '+o.name+' » retiré':'« '+o.name+' » ajouté')+' · '+pat.src.length+' composant(s) répété(s) · cliquez un autre composant pour l’ajouter ou le retirer.');
   return true;
 }
 function asmPatSet(fn){
@@ -311,7 +327,16 @@ function asmPatProps(p){
   const AX=[['X','X'],['Y','Y'],['Z','Z']],PL=[['X','YZ (normale X)'],['Y','XZ (normale Y)'],['Z','XY (normale Z)']];
   p.appendChild(mk('div','pnl-h','🔁 '+(pat.name||'Répétition')+' · '+asmPatName(pat)));
   const n=owner.occ.filter(o=>o.pat&&o.pat.id===pat.id).length;
-  p.appendChild(mk('div','pnl-note','Sources : '+pat.src.map(id=>(asmOcc(id)||{}).name||'?').join(', ')+' · '+n+' instance(s)'+(pat.type==='mir'?' (en miroir)':'')));
+  // V0.95.4 : composants répétés — liste avec ✕, clic sur un composant = ajouter / retirer
+  {p.appendChild(mk('div','pnl-note','Composants répétés ('+pat.src.length+')'));
+    const box=mk('div',null);box.style.cssText='display:flex;flex-wrap:wrap;gap:4px;margin:2px 0 6px';
+    pat.src.forEach(id=>{const s=asmOcc(id),t=mk('span',null);
+      t.style.cssText='display:inline-flex;align-items:center;gap:4px;max-width:100%;padding:1px 4px 1px 8px;border:1px solid var(--line,#888);border-radius:10px;font-size:11px';
+      const nm=mk('span',null,(s&&s.name)||'?');nm.style.cssText='overflow:hidden;text-overflow:ellipsis;white-space:nowrap';nm.title=nm.textContent;t.appendChild(nm);
+      if(pat.src.length>1){const x=mk('button',null,'✕');x.title='Retirer de la répétition';x.style.cssText='border:0;background:none;color:inherit;cursor:pointer;padding:0 2px;font-size:11px;line-height:1';x.onclick=()=>asmPatToggleSrc(id);t.appendChild(x);}
+      box.appendChild(t);});
+    p.appendChild(box);}
+  p.appendChild(mk('div','pnl-note','Cliquez un composant (vue ou arbre) pour l’ajouter ou le retirer · '+n+' instance(s)'+(pat.type==='mir'?' (en miroir)':'')));
   if(pat.st==='warn')p.appendChild(mk('div','pnl-note','⚠ '+pat.msg));
   const nm=document.createElement('input');nm.type='text';nm.value=pat.name||'';nm.onchange=()=>asmPatSet(q=>{q.name=nm.value.trim()||q.name;});Row('Nom',nm);
   Row('Type',sel([['lin','Linéaire'],['circ','Circulaire'],['mir','Symétrie'],['path','Suivant un profil']],pat.type,v=>asmPatSet(q=>{

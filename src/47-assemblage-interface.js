@@ -324,6 +324,7 @@ function asmLotSet(L,last){
 function asmSelClick(id,ev){
   if(!ev||asmMode!=='asm')return false;
   const c=asmActiveComp();if(!c||!c.occ.some(o=>o.id===id))return false;
+  if(asmPatEd&&typeof asmPatToggleSrc==='function'){asmPatToggleSrc(id);return true;} // répétition ouverte : clic = ajouter / retirer une source (48)
   const ctrl=!!(ev.ctrlKey||ev.metaKey);
   if(ev.shiftKey){
     const ord=c.occ.map(o=>o.id);
