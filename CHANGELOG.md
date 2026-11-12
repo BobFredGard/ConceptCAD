@@ -8,7 +8,7 @@ sont sorties le 2026-09-30j.
 Code dans `src/` · livrable `fusion_mvp.html` (généré par `build.js`) · architecture et
 garde-fous en tête de `src/00-entete-et-outils.js`.
 
-**671 versions**, de `2026-09-28b` à `V0.95.5` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
+**672 versions**, de `2026-09-28b` à `V0.95.6` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
 comme dans le fichier d'origine.
 
 ---
@@ -7540,3 +7540,11 @@ Barquette ne perd plus son solide à la 107e modification, et sa mémoire ne mon
 - **Demande** : « Symétrie -> ajout 1 Linéaire + 1 symétrie » ; précisé : enchaîner dans une seule fonction Symétrie une étape Linéaire puis une 2ᵉ symétrie.
 - **Correctif** (`src/40-20-repetitions`, `src/40-40-panneau-repetition`, `src/40-50-panneau-proprietes`) : case **+ Linéaire** dans la symétrie (`rp.mlin`, direction `axis`/`dir` avec 🎯 arête ou face et ⇄, quantité `copies` original compris, pas `dist`, formules ƒx) : la pièce et son image sont décalées de i pas (passe d'index 1000 + i, `repMirLinStep`), puis la case **+ Symétrie (2ᵉ plan)** (`plane2`, ex-symétrie double) reprend le tout. Une seule ligne dans l'arbre, nommée « Symétrie + Linéaire (+ Symétrie) » ; aperçu rouge de toutes les copies (`repXformsK`) ; signature du cache et de régénération complétées. Symétries simples et doubles existantes inchangées.
 - **Test** : `tests/test_symetrie_lineaire.cjs` (vrai noyau : 7 instances, 8 solides à leur place, boîte ±30 × ±55, ids stables, sans 2ᵉ symétrie, 3 en ligne, compatibilité, signature, rechargement). Parcours FAO et CACHE_VER inchangés.
+
+
+## V0.95.6 - Pré-sélection bleue d'une grande face allumée en entier
+
+- **Constat** (Fred, capture d'une plaque très percée) : au survol, la grande face ne s'allumait en bleu que sur un morceau en triangle ; la sélection orange prenait bien toute la face.
+- **Cause** : le survol (`hoverMove`, `src/90-10-selection-mesure`) plafonnait le dessin à 4000 triangles ; la face de la plaque en compte bien plus.
+- **Correctif** : le survol prend les mêmes triangles que la sélection (`faceTrisFor`), sans plafond ; le dessin n'est refait que quand la face survolée change.
+- **Test** : `tests/test_survol_grande_face.cjs` (face de 12 000 triangles allumée en entier, mêmes triangles que la sélection, petite face, repli sans face BRep ; échoue sur V0.95.5). Parcours FAO et CACHE_VER inchangés.
