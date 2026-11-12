@@ -8,7 +8,7 @@ sont sorties le 2026-09-30j.
 Code dans `src/` · livrable `fusion_mvp.html` (généré par `build.js`) · architecture et
 garde-fous en tête de `src/00-entete-et-outils.js`.
 
-**666 versions**, de `2026-09-28b` à `V0.95.0` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
+**667 versions**, de `2026-09-28b` à `V0.95.1` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
 comme dans le fichier d'origine.
 
 ---
@@ -7504,3 +7504,10 @@ Barquette ne perd plus son solide à la 107e modification, et sa mémoire ne mon
 - **Correctif 3** (`src/79-construction-interface`) : la fiche d'un repère, plan, axe ou point validé affiche chaque valeur avec sa formule (« Décalage X : pas_SM_chaud*2 → 451 mm »).
 - **Clés de cache FAO** (`src/88-fao-50-caches-dispatch`) : formules et noms ƒx exclus (`parSansFx`) ; une formule qui donne la même valeur ne périme aucun parcours. Parcours FAO et CACHE_VER inchangés.
 - **Test** : `tests/browser/formules-champs.spec.cjs` (répétition et repère avec un paramètre local et un paramètre dérivé ; FAO : formule dans le champ, la valeur, le fichier, recalculée ; branchement universel).
+
+## V0.95.1 - Une pièce rouverte sans changement n'est plus marquée « modifiée »
+
+- **Constat** : essai de l'application Windows (`tauri/mesures/application.cjs`) : pièce modifiée, croix → « Ne pas enregistrer », redémarrage : le fichier revient avec la bonne cote mais la pièce est marquée modifiée et la croix redemande d'enregistrer. Le défaut existait déjà en V0.94.8 (même écart reproduit), l'essai passait par chance de minutage.
+- **Cause** : après l'ouverture, le recalcul de fond réécrit les positions des arêtes de congé au milliardième près (-20.795 → -20.79499999975), après la prise d'empreinte « enregistré » (1,5 s) : l'empreinte change sans vraie modification.
+- **Correctif** : l'empreinte « modifié depuis l'enregistrement » (`mffSig`, 97) arrondit les nombres au millionième.
+- **Test** : `tests/browser/modifie-arrondi.spec.cjs` : Cache Piles ouverte, cote changée, rouverte : non marquée modifiée. Parcours FAO et CACHE_VER inchangés.
