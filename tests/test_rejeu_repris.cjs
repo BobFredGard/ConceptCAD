@@ -58,8 +58,9 @@ class Geo{constructor(){this.attributes={};this.userData={};this.index=null;}
     doc.features=[{id:'F1',type:'extrude',name:'Bloc',sketchId:'s1',distance:10,op:'add',visible:true,body:'b1'},
       {id:'F2',type:'extrude',name:'Plot',sketchId:'s2',distance:5,op:'add',visible:true,body:'b2'}];
     edgeMode='on';
-    let nT=0,nE=0;const t0=occTessellate,e0=occSharpEdges;
+    let nT=0,nE=0;const t0=occTessellate,e0=occSharpEdges,f0=occTessellateFaces;
     occTessellate=function(){nT++;return t0.apply(this,arguments);};
+    occTessellateFaces=function(){const r=f0.apply(this,arguments);if(r)nT++;return r;}; // V0.96.1 : facettes gardées face par face (20-25) : un corps qui y passe est un corps remaillé
     occSharpEdges=function(){nE++;return e0.apply(this,arguments);};
     const tour=()=>{nT=0;nE=0;markDirty();rebuild();occVisibleSharpEdges();return {nT,nE};};
     out.premier=tour();
@@ -88,7 +89,7 @@ class Geo{constructor(){this.attributes={};this.userData={};this.index=null;}
     doc.features.pop();doc.bodies.pop();tour();out.restants=[...occMeshMemo.keys()].join(',');
     // rafraîchissement dur : tout est jeté puis refait
     nT=0;hardRefresh();out.dur=nT;
-    occTessellate=t0;occSharpEdges=e0;
+    occTessellate=t0;occSharpEdges=e0;occTessellateFaces=f0;
     return out;})()`,ctx);
   A(b.exact&&b.corps===2,'pièce exacte à 2 corps');
   A(b.premier.nT===2,'premier affichage : 2 corps maillés ('+b.premier.nT+')');

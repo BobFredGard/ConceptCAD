@@ -383,7 +383,7 @@ input[type=range]{accent-color:var(--primary);width:100%}
  * peut changer sans rien casser. CACHE_VER (parcours FAO) reste indépendant.
  */
 
-const APP_VER='V0.96.0';
+const APP_VER='V0.96.1';
 try{console.log('[ConceptCAD] version '+APP_VER);}catch(e){}
 try{var mfSv=document.getElementById('mfSplashVer');if(mfSv)mfSv.textContent=APP_VER;}catch(e){} // écran de démarrage
 
@@ -838,6 +838,168 @@ function journalAideBranche(){
   const v=$j('journalClear');
   if(v)v.onclick=()=>{journalVider();etat();msg('Journal vidé.');};
 }
+
+/* ═══════════════ 02-index-rayons.js — index rayons ═══════════════ */
+/* ---------- Index spatial des triangles pour la souris (V0.96.1) ----------
+   Survol, sélection, mesure, centre de rotation : tout passe par Raycaster → Mesh.raycast, qui
+   essayait CHAQUE triangle du maillage à chaque mouvement de souris (coût proportionnel à la
+   taille de la pièce). Ici, un arbre de boîtes englobantes par géométrie (construit une fois, au
+   premier rayon, gardé tant que la géométrie ne change pas) désigne les seuls triangles que le
+   rayon peut toucher ; ce sont ENSUITE les fonctions d'origine de three qui les testent, plage
+   par plage (drawRange restreint le temps de l'appel) : mêmes impacts, mêmes distances, mêmes
+   faceIndex, même ordre qu'avant, au bit près.
+   Un seul point d'accroche (Mesh.prototype._computeIntersections) : aucun appelant n'est modifié.
+   Repli sur l'ancien parcours complet dès qu'un cas sort du cadre (petit maillage, morphing,
+   attribut entrelacé, groupes de matières désordonnés, drawRange non multiple de 3).
+   ?sansindex dans l'adresse : ancien parcours partout (pour comparer). */
+const RAY_IDX_MIN=1500;   // en dessous, le parcours complet coûte moins que l'arbre
+const RAY_IDX_FEUILLE=8;  // triangles par feuille au plus
+let rayIdxOff=(()=>{try{return /[?&]sansindex\b/.test(location.search);}catch(e){return false;}})();
+const rayIdxMemo=new WeakMap(); // géométrie → index (libéré avec elle)
+const rayIdxStat={construits:0,msConstruction:0,rayons:0,replis:0};
+let rayIdxCand=new Uint32Array(1024);
+const rayIdxPile=new Int32Array(128);
+
+// Empreinte bon marché du contenu : un tableau de positions réécrit sur place sans needsUpdate
+// (version inchangée) ne doit pas laisser un arbre périmé.
+function rayIdxEmpreinte(a){
+  const n=a.length,pas=Math.max(1,(n/61)|0);let s=0;
+  for(let i=0;i<n;i+=pas)s=s*1.0000001+a[i];
+  return s+a[n-1];
+}
+function rayIdxConstruire(pa,ia,nt){
+  // boîte de chaque triangle
+  const tb=new Float32Array(6*nt);
+  for(let t=0;t<nt;t++){
+    const a=3*(ia?ia[3*t]:3*t),b=3*(ia?ia[3*t+1]:3*t+1),c=3*(ia?ia[3*t+2]:3*t+2),o=6*t;
+    for(let k=0;k<3;k++){
+      const x=pa[a+k],y=pa[b+k],z=pa[c+k];
+      tb[o+k]=x<y?(x<z?x:z):(y<z?y:z);
+      tb[o+3+k]=x>y?(x>z?x:z):(y>z?y:z);
+    }
+  }
+  const ordre=new Uint32Array(nt);for(let t=0;t<nt;t++)ordre[t]=t;
+  const maxN=nt+8;
+  const bo=new Float32Array(6*maxN),lien=new Uint32Array(maxN),nb=new Uint16Array(maxN);
+  let n=0;
+  const choisir=(lo,hi,k,ax)=>{ // k-ième par centre de boîte sur l'axe ax (tri partiel)
+    let l=lo,r=hi-1;
+    while(l<r){
+      const m=ordre[(l+r)>>1],p=tb[6*m+ax]+tb[6*m+3+ax];
+      let i=l,j=r;
+      while(i<=j){
+        while(tb[6*ordre[i]+ax]+tb[6*ordre[i]+3+ax]<p)i++;
+        while(tb[6*ordre[j]+ax]+tb[6*ordre[j]+3+ax]>p)j--;
+        if(i<=j){const q=ordre[i];ordre[i]=ordre[j];ordre[j]=q;i++;j--;}
+      }
+      if(k<=j)r=j;else if(k>=i)l=i;else return;
+    }
+  };
+  const noeud=(lo,hi)=>{
+    const i=n++,o=6*i;
+    let x0=Infinity,y0=Infinity,z0=Infinity,x1=-Infinity,y1=-Infinity,z1=-Infinity;
+    let cx0=Infinity,cy0=Infinity,cz0=Infinity,cx1=-Infinity,cy1=-Infinity,cz1=-Infinity;
+    for(let q=lo;q<hi;q++){
+      const t=6*ordre[q],a=tb[t],b=tb[t+1],c=tb[t+2],d=tb[t+3],e=tb[t+4],f=tb[t+5];
+      if(a<x0)x0=a;if(b<y0)y0=b;if(c<z0)z0=c;if(d>x1)x1=d;if(e>y1)y1=e;if(f>z1)z1=f;
+      const cx=a+d,cy=b+e,cz=c+f;
+      if(cx<cx0)cx0=cx;if(cx>cx1)cx1=cx;if(cy<cy0)cy0=cy;if(cy>cy1)cy1=cy;if(cz<cz0)cz0=cz;if(cz>cz1)cz1=cz;
+    }
+    bo[o]=x0;bo[o+1]=y0;bo[o+2]=z0;bo[o+3]=x1;bo[o+4]=y1;bo[o+5]=z1;
+    if(hi-lo<=RAY_IDX_FEUILLE){nb[i]=hi-lo;lien[i]=lo;return;}
+    const dx=cx1-cx0,dy=cy1-cy0,dz=cz1-cz0,ax=dx>=dy?(dx>=dz?0:2):(dy>=dz?1:2),mid=(lo+hi)>>1;
+    if(dx>0||dy>0||dz>0)choisir(lo,hi,mid,ax); // centres tous confondus : coupe au milieu telle quelle
+    noeud(lo,mid);lien[i]=n;noeud(mid,hi);
+  };
+  noeud(0,nt);
+  let d2=0;for(let k=0;k<3;k++){const d=bo[3+k]-bo[k];d2+=d*d;}
+  // marge des boîtes : les arrondis du test de boîte ne doivent jamais écarter un triangle que le
+  // test exact de three aurait retenu (un candidat en trop ne change rien au résultat).
+  return {bo:bo.slice(0,6*n),lien:lien.slice(0,n),nb:nb.slice(0,n),ordre,marge:1e-4*Math.sqrt(d2)+1e-7};
+}
+function rayIdxDe(geo,pos,idx,nt){
+  const pa=pos.array,ia=idx?idx.array:null;
+  const emp=rayIdxEmpreinte(pa);
+  let x=rayIdxMemo.get(geo);
+  if(x&&x.pa===pa&&x.pv===pos.version&&x.ia===ia&&x.iv===(idx?idx.version:-1)&&x.nt===nt&&x.emp===emp)return x.arbre;
+  const t0=(typeof performance!=='undefined'?performance.now():0);
+  const arbre=rayIdxConstruire(pa,ia,nt);
+  rayIdxStat.construits++;rayIdxStat.msConstruction+=(typeof performance!=='undefined'?performance.now():0)-t0;
+  rayIdxMemo.set(geo,{pa,pv:pos.version,ia,iv:idx?idx.version:-1,nt,emp,arbre});
+  return arbre;
+}
+// Triangles des feuilles traversées par la demi-droite (repère local) → rayIdxCand[0..n), triés.
+function rayIdxCandidats(A,ray){
+  const bo=A.bo,lien=A.lien,nb=A.nb,ordre=A.ordre,m=A.marge;
+  const ox=ray.origin.x,oy=ray.origin.y,oz=ray.origin.z,dx=ray.direction.x,dy=ray.direction.y,dz=ray.direction.z;
+  const ix=1/dx,iy=1/dy,iz=1/dz;
+  let n=0,sp=0;rayIdxPile[sp++]=0;
+  while(sp>0){
+    const i=rayIdxPile[--sp],o=6*i;
+    let t0=-Infinity,t1=Infinity,a,b;
+    if(dx===0){if(ox<bo[o]-m||ox>bo[o+3]+m)continue;}
+    else{a=(bo[o]-m-ox)*ix;b=(bo[o+3]+m-ox)*ix;if(a>b){const q=a;a=b;b=q;}if(a>t0)t0=a;if(b<t1)t1=b;}
+    if(dy===0){if(oy<bo[o+1]-m||oy>bo[o+4]+m)continue;}
+    else{a=(bo[o+1]-m-oy)*iy;b=(bo[o+4]+m-oy)*iy;if(a>b){const q=a;a=b;b=q;}if(a>t0)t0=a;if(b<t1)t1=b;}
+    if(dz===0){if(oz<bo[o+2]-m||oz>bo[o+5]+m)continue;}
+    else{a=(bo[o+2]-m-oz)*iz;b=(bo[o+5]+m-oz)*iz;if(a>b){const q=a;a=b;b=q;}if(a>t0)t0=a;if(b<t1)t1=b;}
+    if(!(t0<=t1)||t1<-m)continue; // manquée, ou toute entière derrière l'origine
+    const c=nb[i];
+    if(c){
+      if(n+c>rayIdxCand.length){const g=new Uint32Array(2*(n+c));g.set(rayIdxCand.subarray(0,n));rayIdxCand=g;}
+      for(let q=lien[i],e=q+c;q<e;q++)rayIdxCand[n++]=ordre[q];
+    }else{
+      if(sp+2>rayIdxPile.length)return -1; // jamais atteint (arbre équilibré) : repli par sûreté
+      rayIdxPile[sp++]=lien[i];rayIdxPile[sp++]=i+1;
+    }
+  }
+  if(n>1)rayIdxCand.subarray(0,n).sort();
+  return n;
+}
+function rayIdxInstaller(T){
+  if(!T||!T.Mesh||!T.Mesh.prototype||typeof T.Mesh.prototype._computeIntersections!=='function')return false;
+  if(T.Mesh.prototype._computeIntersections.rayIdxOrigine)return true;
+  const origine=T.Mesh.prototype._computeIntersections;
+  const accelere=function(raycaster,intersects,rayLocal){
+    if(rayIdxOff)return origine.call(this,raycaster,intersects,rayLocal);
+    const geo=this.geometry,pos=geo&&geo.attributes&&geo.attributes.position,idx=geo&&geo.index;
+    const dr=geo&&geo.drawRange;
+    if(!pos||!pos.isBufferAttribute||pos.isInterleavedBufferAttribute||pos.itemSize!==3||pos.normalized||!(pos.array instanceof Float32Array)
+      ||(idx&&(!idx.isBufferAttribute||idx.isInterleavedBufferAttribute||idx.itemSize!==1))
+      ||(geo.morphAttributes&&geo.morphAttributes.position)||this.isSkinnedMesh
+      ||!dr||dr.start%3!==0||dr.start<0)return origine.call(this,raycaster,intersects,rayLocal);
+    const total=idx?idx.count:pos.count,nt=Math.floor(total/3);
+    if(nt<RAY_IDX_MIN)return origine.call(this,raycaster,intersects,rayLocal);
+    if(Array.isArray(this.material)){ // groupes croissants et disjoints : sinon l'ordre des impacts différerait
+      const gs=geo.groups||[];let fin=0;
+      for(let g=0;g<gs.length;g++){if(gs[g].start<fin||gs[g].start%3!==0){rayIdxStat.replis++;return origine.call(this,raycaster,intersects,rayLocal);}fin=gs[g].start+gs[g].count;}
+    }
+    let A=null,n=-1;
+    try{A=rayIdxDe(geo,pos,idx,nt);n=rayIdxCandidats(A,rayLocal);}catch(e){n=-1;}
+    if(n<0||n>(nt>>2)){rayIdxStat.replis++;return origine.call(this,raycaster,intersects,rayLocal);}
+    rayIdxStat.rayons++;
+    if(!n)return;
+    // plage d'origine, en triangles : [d0, d1)
+    const s0=dr.start,c0=dr.count,finO=Math.min(total,s0+c0);
+    const d0=s0/3,d1=Math.ceil(finO/3);
+    const C=rayIdxCand.slice(0,n); // copie : three peut relancer un rayon pendant l'appel (objets imbriqués)
+    try{
+      let q=0;
+      while(q<n){
+        let a=C[q],b=a+1;q++;
+        while(q<n&&C[q]<=b){if(C[q]===b)b++;q++;} // plage de triangles consécutifs
+        if(a<d0)a=d0;if(b>d1)b=d1;
+        if(a>=b)continue;
+        dr.start=3*a;dr.count=Math.min(3*(b-a),finO-3*a);
+        origine.call(this,raycaster,intersects,rayLocal);
+      }
+    }finally{dr.start=s0;dr.count=c0;}
+  };
+  accelere.rayIdxOrigine=origine;
+  T.Mesh.prototype._computeIntersections=accelere;
+  return true;
+}
+try{if(typeof THREE!=='undefined')rayIdxInstaller(THREE);}catch(e){}
 
 /* ═══════════════ 05-iso286.js — iso286 ═══════════════ */
 /* ═══════════════════════════════════════════════════════════════════════════
@@ -5641,6 +5803,394 @@ function occTriPos(shape,defl,ang,wantN){
   return nrm?{pos,groups,nrm}:{pos,groups};
 }
 
+/* ═══════════════ 20-25-facettes-par-face.js — 25 facettes par face ═══════════════ */
+/* ---------- Facettes d'affichage gardées FACE PAR FACE (V0.96.1) ----------
+   Après chaque modification, toute la pièce était remaillée puis relue triangle par triangle,
+   même quand seules quelques faces avaient changé (plaque SIRAP-14-003, modification de la
+   profondeur d'un perçage : calcul du solide 0,03 s, maillage et lecture 1,1 s).
+   Ici, chaque face a une EMPREINTE tirée de sa géométrie exacte (surface, bornes, tolérance, et
+   pour chaque arête du contour : sens, paramètres et 4 points). Même empreinte et même finesse :
+   • ses triangles et normales, déjà lus, sont repris tels quels pour l'affichage ;
+   • sa triangulation du noyau (et les polygones de ses arêtes) est GREFFÉE sur la face du solide
+     neuf : le mailleur du noyau, lancé ensuite comme avant sur le solide entier, la trouve à jour
+     et ne maille que les faces neuves ou modifiées.
+   Le solide ressort donc ENTIÈREMENT maillé, avec les mêmes triangulations qu'un maillage complet :
+   tout ce qui les relit ensuite (FAO, boîte du solide, pièce gardée sur le poste) voit la même
+   chose qu'avant. Vérifié au bit près par tests/test_facettes_par_face.cjs : triangles, normales,
+   groupes, boîte, relecture à une autre finesse ; et chaque face maillée seule = la même face
+   maillée avec toute la pièce (1 036 faces de 3 pièces), ce qui fonde la reprise.
+   Jamais gardée ni greffée : une face déjà maillée à l'arrivée (triangulation venue d'ailleurs, le
+   mailleur décide seul comme avant), une face déplacée par une position (Location), une face
+   illisible. Hors cadre → ancien chemin inchangé : rafraîchissement dur, budget de triangles
+   dépassé, noyau sans les fonctions voulues, ?sansfacettes dans l'adresse. */
+let occFaceMemo=new Map(); // finesse|empreinte → {p,n (Float64Array, 9 nombres par triangle), tri, polys, g}
+let occFaceMemoGen=0;
+let occFaceMemoOff=(()=>{try{return /[?&]sansfacettes\b/.test(location.search);}catch(e){return false;}})();
+const occFaceMemoStat={appels:0,faces:0,reprises:0,maillees:0,replis:0};
+// empreintes des faces du dernier solide lu par occTriPosFaces (objet du solide → liste, dans l'ordre des
+// faces) : le classement des arêtes, qui suit aussitôt sur le même solide, ne les recalcule pas
+const occEmpDeSolide=new WeakMap();
+function occFaceMemoLibere(e){
+  // les poignées du noyau gardées par une entrée (triangulation, polygones d'arêtes)
+  try{if(e.tri)e.tri.delete();}catch(er){}
+  if(e.polys)for(const q of e.polys){if(!q)continue;try{q.a&&q.a.delete();}catch(er){}try{q.b&&q.b.delete();}catch(er){}}
+  e.tri=null;e.polys=null;
+}
+function occFaceMemoClear(){
+  for(const e of occFaceMemo.values())occFaceMemoLibere(e);
+  occFaceMemo=new Map();
+  try{occAreteMemoClear();}catch(e){}
+}
+function occFaceMemoPurge(){
+  // garde ce qui a servi aux 3 derniers affichages (annuler / rétablir, aller-retour d'une valeur)
+  occFaceMemoGen++;
+  for(const [k,e] of occFaceMemo)if(e.g<occFaceMemoGen-3){occFaceMemoLibere(e);occFaceMemo.delete(k);}
+  try{occAreteMemoPurge();}catch(e){}
+}
+function occFaceEmpreinte(f){
+  // null : face illisible → jamais gardée (remaillée à chaque fois)
+  const E=occt.TopAbs_ShapeEnum,parts=[];
+  let ad=null,ee=null;
+  try{
+    parts.push(f.Orientation_1().value);
+    ad=new occt.BRepAdaptor_Surface_2(f,true);
+    const u0=ad.FirstUParameter(),u1=ad.LastUParameter(),v0=ad.FirstVParameter(),v1=ad.LastVParameter();
+    parts.push(ad.GetType().value,u0,u1,v0,v1,occt.BRep_Tool.Tolerance_1(f));
+    for(let q=0;q<2;q++){
+      const p=ad.Value(u0+(u1-u0)*(q?0.23:0.5),v0+(v1-v0)*(q?0.71:0.5));
+      try{parts.push(p.X(),p.Y(),p.Z());}finally{p.delete();}
+    }
+    ee=new occt.TopExp_Explorer_2(f,E.TopAbs_EDGE,E.TopAbs_SHAPE);
+    while(ee.More()){
+      const e=occEdgeCur(ee);let c=null;
+      try{
+        parts.push(e.Orientation_1().value);
+        let ok=false;
+        try{
+          c=new occt.BRepAdaptor_Curve_2(e);
+          const a=c.FirstParameter(),b=c.LastParameter();parts.push(a,b);
+          for(let q=0;q<4;q++){
+            const p=c.Value(a+(b-a)*(q===0?0:q===1?0.31:q===2?0.5:1));
+            try{parts.push(p.X(),p.Y(),p.Z());}finally{p.delete();}
+          }
+          ok=true;
+        }catch(er){}
+        if(!ok)parts.push('d'); // arête dégénérée (pointe de cône) : pas de courbe
+      }finally{try{c&&c.delete();}catch(er){}try{e.delete();}catch(er){}}
+      ee.Next();
+    }
+    for(let i=0;i<parts.length;i++)if(typeof parts[i]==='number'&&parts[i]!==parts[i])return null; // NaN : illisible
+    return parts.join(';');
+  }catch(e){return null;}
+  finally{try{ad&&ad.delete();}catch(e){}try{ee&&ee.delete();}catch(e){}}
+}
+function occFaceMemoDispo(){
+  if(occFaceMemoOff)return false;
+  if(occFaceMemoDispo.ok===undefined){
+    let b=null;
+    try{b=new occt.BRep_Builder();
+      occFaceMemoDispo.ok=typeof b.UpdateFace==='function'&&typeof b.UpdateEdge==='function'
+        &&typeof occt.BRep_Tool.PolygonOnTriangulation==='function'&&typeof occt.BRep_Tool.IsClosed==='function'
+        &&typeof occt.BRep_Tool.Triangulation==='function'&&typeof occt.TopoDS_Compound==='function'&&typeof occt.BRepTools.Clean==='function';}
+    catch(e){occFaceMemoDispo.ok=false;}
+    finally{try{b&&b.delete();}catch(e){}}
+  }
+  return occFaceMemoDispo.ok;
+}
+function occFaceAretes(f){
+  // arêtes du contour, dans l'ordre du noyau (à libérer par l'appelant)
+  const E=occt.TopAbs_ShapeEnum,L=[],ee=new occt.TopExp_Explorer_2(f,E.TopAbs_EDGE,E.TopAbs_SHAPE);
+  try{while(ee.More()){L.push(occEdgeCur(ee));ee.Next();}}finally{try{ee.delete();}catch(e){}}
+  return L;
+}
+function occFaceMaillee(f){
+  let loc=null,h=null;
+  try{loc=new occt.TopLoc_Location_1();h=occt.BRep_Tool.Triangulation(f,loc);return !!(h&&!h.IsNull());}
+  catch(e){return true;} // dans le doute : comme déjà maillée (ni gardée ni greffée)
+  finally{try{h&&h.delete();}catch(e){}try{loc&&loc.delete();}catch(e){}}
+}
+function occFacePrise(f){
+  // Poignées du noyau d'une face que le mailleur vient de mailler : {tri, polys} ou null (face à position,
+  // sans triangulation, lecture impossible : pas de greffe pour elle).
+  let loc=null,hT=null,polys=null,AR=null,ok=false;
+  try{
+    loc=new occt.TopLoc_Location_1();hT=occt.BRep_Tool.Triangulation(f,loc);
+    if(!hT||hT.IsNull()||!loc.IsIdentity())return null;
+    AR=occFaceAretes(f);polys=[];
+    for(const e of AR){
+      let q=null;
+      const h=occt.BRep_Tool.PolygonOnTriangulation(e,hT,loc);
+      if(h&&!h.IsNull()){
+        q={a:h,b:null};
+        if(occt.BRep_Tool.IsClosed(e,f)){ // couture : deux polygones, un par sens
+          const r=e.Reversed();let er=null,h2=null;
+          try{er=occt.TopoDS.Edge_1(r);h2=occt.BRep_Tool.PolygonOnTriangulation(er,hT,loc);}
+          finally{try{er&&er.delete();}catch(x){}try{r.delete();}catch(x){}}
+          if(!h2||h2.IsNull()){try{h2&&h2.delete();}catch(x){}polys.push(q);throw new Error('couture sans second polygone');}
+          if(e.Orientation_1()===occt.TopAbs_Orientation.TopAbs_FORWARD)q.b=h2;else{q.b=q.a;q.a=h2;}
+        }
+      }else{try{h&&h.delete();}catch(x){}}
+      polys.push(q);
+    }
+    ok=true;
+    return {tri:hT,polys};
+  }catch(e){return null;}
+  finally{
+    if(!ok){try{hT&&hT.delete();}catch(e){}if(polys)for(const q of polys){if(!q)continue;try{q.a&&q.a.delete();}catch(e){}try{q.b&&q.b.delete();}catch(e){}}}
+    if(AR)AR.forEach(e=>{try{e.delete();}catch(x){}});
+    try{loc&&loc.delete();}catch(e){}
+  }
+}
+function occFaceGreffe(f,ent,bld,locId){
+  // Pose sur la face f (sans triangulation) celle gardée dans ent. false : rien n'a été touché.
+  // Une exception après le premier appel au noyau remonte : l'appelant abandonne la voie.
+  if(!ent.tri||!ent.polys)return false;
+  const AR=occFaceAretes(f);
+  try{
+    if(AR.length!==ent.polys.length)return false;
+    bld.UpdateFace(f,ent.tri);
+    for(let j=0;j<AR.length;j++){
+      const q=ent.polys[j];if(!q)continue;
+      if(q.b)bld.UpdateEdge(AR[j],q.a,q.b,ent.tri,locId);
+      else bld.UpdateEdge(AR[j],q.a,ent.tri,locId);
+    }
+    return true;
+  }finally{AR.forEach(e=>{try{e.delete();}catch(x){}});}
+}
+function occFaceMemoNettoie(sh){try{occt.BRepTools.Clean(sh,true);}catch(e){try{occt.BRepTools.Clean(sh);}catch(e2){}}}
+function occTriPosFaces(shape,defl,ang){
+  // Même rendu que occTriPos(shape,defl,ang,true) — {pos,nrm,groups} — et même état du solide à la
+  // sortie : entièrement maillé. Rend null si la voie ne s'applique pas (l'appelant prend l'ancien chemin).
+  if(!occFaceMemoDispo())return null;
+  const E=occt.TopAbs_ShapeEnum,F=[];
+  let C=null,bld=null,locId=null,touche=false;
+  try{
+    const ex=new occt.TopExp_Explorer_2(shape,E.TopAbs_FACE,E.TopAbs_SHAPE);
+    try{while(ex.More()){F.push(occFaceCur(ex));ex.Next();}}finally{try{ex.delete();}catch(e){}}
+    const nf=F.length;if(!nf)return null;
+    const pre=defl+'|'+ang+'|',K=new Array(nf),ent=new Array(nf),manque=[],neuve=new Array(nf),brutes=new Array(nf);
+    try{occEmpDeSolide.set(shape,brutes);}catch(e){}
+    bld=new occt.BRep_Builder();locId=new occt.TopLoc_Location_1();
+    for(let i=0;i<nf;i++){
+      const k=occFaceEmpreinte(F[i]);brutes[i]=k;K[i]=k===null?null:pre+k;
+      neuve[i]=!occFaceMaillee(F[i]); // déjà maillée à l'arrivée : le mailleur décide, rien n'est gardé
+      const e=(K[i]!==null&&neuve[i])?occFaceMemo.get(K[i]):null;
+      if(e&&(e.tri?(touche=true,occFaceGreffe(F[i],e,bld,locId)):e.p.length===0)){e.g=occFaceMemoGen;ent[i]=e;}
+      else manque.push(i);
+    }
+    occFaceMemoStat.appels++;occFaceMemoStat.faces+=nf;occFaceMemoStat.reprises+=nf-manque.length;occFaceMemoStat.maillees+=manque.length;
+    if(manque.length){
+      const tout=manque.length===nf;
+      let cible=shape;
+      if(!tout){C=new occt.TopoDS_Compound();bld.MakeCompound(C);manque.forEach(i=>bld.Add(C,F[i]));cible=C;}
+      touche=true;
+      const T=occTriPos(cible,defl,ang,true); // maille (les seules faces manquantes) et lit
+      const parOrd=new Map();T.groups.forEach(g=>parOrd.set(g.f,g));
+      manque.forEach((i,o)=>{
+        const g=parOrd.get(tout?i:o);
+        const e={p:g?Float64Array.from(T.pos.slice(g.start*9,(g.start+g.count)*9)):new Float64Array(0),
+                 n:g?Float64Array.from(T.nrm.slice(g.start*9,(g.start+g.count)*9)):new Float64Array(0),
+                 tri:null,polys:null,g:occFaceMemoGen};
+        ent[i]=e;
+        if(K[i]===null||!neuve[i])return;
+        const h=occFacePrise(F[i]);
+        if(h){e.tri=h.tri;e.polys=h.polys;}
+        else if(e.p.length)return; // maillée mais non greffable : pas gardée
+        const vieux=occFaceMemo.get(K[i]);if(vieux)occFaceMemoLibere(vieux);
+        occFaceMemo.set(K[i],e);
+      });
+    }
+    // assemblage dans l'ordre des faces
+    let nt=0;for(let i=0;i<nf;i++)nt+=ent[i].p.length;
+    const pos=new Float64Array(nt),nrm=new Float64Array(nt),groups=[];
+    let o=0;
+    for(let i=0;i<nf;i++){
+      const e=ent[i],l=e.p.length;if(!l)continue;
+      pos.set(e.p,o);nrm.set(e.n,o);groups.push({f:i,start:o/9,count:l/9});o+=l;
+    }
+    return {pos,nrm,groups};
+  }catch(e){
+    // greffe ou lecture interrompue : on retire tout ce qui a pu être posé, l'ancien chemin remaille
+    occFaceMemoStat.replis++;
+    if(touche)occFaceMemoNettoie(shape);
+    return null;
+  }finally{
+    F.forEach(f=>{try{f.delete();}catch(e){}});
+    try{C&&C.delete();}catch(e){}try{bld&&bld.delete();}catch(e){}try{locId&&locId.delete();}catch(e){}
+  }
+}
+function occTessellateFaces(shape,D,maxTris){
+  // Géométrie d'affichage d'un corps par les facettes gardées. null → ancien chemin
+  // (occTessellateBudget), notamment si le budget de triangles est dépassé : il décide seul
+  // de la finesse dégradée, comme avant.
+  if(freshHard)return null;
+  const T=occTriPosFaces(shape,D.lin,D.ang);
+  if(!T)return null;
+  if(maxTris&&T.pos.length/9>maxTris)return null;
+  const g=new THREE.BufferGeometry();
+  g.setAttribute('position',new THREE.Float32BufferAttribute(T.pos,3));
+  try{g.setAttribute('normal',new THREE.Float32BufferAttribute(occTriNormals(T),3));}
+  catch(e){g.computeVertexNormals();}
+  g.userData.occGroups=T.groups;
+  return g;
+}
+
+/* ---------- Arêtes classées gardées ARÊTE PAR ARÊTE (V0.96.1) ----------
+   Même principe pour le tracé des arêtes (vives noires, tangentes grises) : occSharpEdges
+   rééchantillonnait et reclassait toutes les arêtes de la pièce à chaque modification (plaque
+   SIRAP-14-003 : 0,24 s). Ici :
+   • par face (même empreinte) : la liste de ses arêtes, déjà échantillonnées, est reprise ;
+   • par arête : sa fiche est reprise quand rien de ce qui la décide n'a changé — l'arête
+     elle-même, toutes ses faces voisines (empreintes), les plans de scission, ET le drapeau de
+     continuité du noyau, relu à chaque fois sur le solide courant (il tient à l'histoire du
+     solide, pas seulement à sa géométrie).
+   Les arêtes neuves ou touchées passent par occAreteClasse, le même code que le classement complet.
+   Même liste, même ordre, mêmes fiches que occSharpEdgesPlein (tests/test_facettes_par_face.cjs).
+   null → l'appelant fait le classement complet (face illisible, noyau sans les fonctions voulues). */
+let occAreteMemo=new Map();    // clé d'arête → {E: fiche sans fs | null (couture), ct, g}
+let occFaceUsesMemo=new Map(); // empreinte de face → {u:[clé d'arête ou null, par arête du contour], cyl, g}
+let occEmpIds=new Map(),occEmpIdN=0; // empreinte → {id, g} : numéro court, jamais réattribué
+const occAreteMemoStat={appels:0,aretes:0,reprises:0,classees:0};
+function occAreteMemoClear(){occAreteMemo=new Map();occFaceUsesMemo=new Map();occEmpIds=new Map();}
+function occAreteMemoPurge(){
+  const lim=occFaceMemoGen-3;
+  for(const [k,e] of occAreteMemo)if(e.g<lim)occAreteMemo.delete(k);
+  for(const [k,e] of occFaceUsesMemo)if(e.g<lim)occFaceUsesMemo.delete(k);
+  for(const [k,e] of occEmpIds)if(e.g<lim)occEmpIds.delete(k);
+}
+function occSharpEdgesMemo(shape){
+  if(freshHard||!occFaceMemoDispo())return null;
+  const out=[],bin=[];
+  const cuts=splitCutPlanes(),cutsSig=cuts.length?JSON.stringify(cuts):'';
+  const onCut=pts=>cuts.some(P=>pts.every(q=>Math.abs((q[0]-P.o[0])*P.n[0]+(q[1]-P.o[1])*P.n[1]+(q[2]-P.o[2])*P.n[2])<1e-3));
+  try{
+    const SH=occt.TopAbs_ShapeEnum.TopAbs_SHAPE,ED=occt.TopAbs_ShapeEnum.TopAbs_EDGE,NP=12,G=occFaceMemoGen;
+    const ekey=(m,l)=>m.map(v=>v.toFixed(2)).join(',')+'|'+l.toFixed(2);
+    const sample=ad=>{
+      const u0=ad.FirstParameter(),u1=ad.LastParameter(),pts=[];
+      let len=0,px=null;
+      for(let i=0;i<=NP;i++){
+        const p=ad.Value(u0+(u1-u0)*i/NP);bin.push(p);
+        const q=[p.X(),p.Y(),p.Z()];pts.push(q);
+        if(px)len+=Math.hypot(q[0]-px[0],q[1]-px[1],q[2]-px[2]);
+        px=q;
+      }
+      return{pts,len,u0,u1};
+    };
+    const faces=[];
+    const fx=new occt.TopExp_Explorer_2(shape,occt.TopAbs_ShapeEnum.TopAbs_FACE,SH);bin.push(fx);
+    while(fx.More()){const f=occFaceCur(fx);bin.push(f);faces.push(f);fx.Next();}
+    const nf=faces.length,ID=new Array(nf),U=new Array(nf),cyl=new Array(nf),AR=new Array(nf);
+    // empreintes déjà calculées par le maillage de ce même solide (ou des corps qui composent occLive) ;
+    // contrôlées sur la première et la dernière face de chaque corps, recalculées au moindre doute
+    let dej=null;
+    try{
+      const debuts=[0];
+      dej=occEmpDeSolide.get(shape)||null;
+      if(!dej&&occLive&&shape===occLive.shape){
+        const L=[];let ok=true;
+        for(const b of bodies){if(!b||b.kind!=='body'||b.ghost||!b.shape)continue;const q=occEmpDeSolide.get(b.shape);if(!q){ok=false;break;}L.push(q);}
+        if(ok&&L.length){dej=[];L.forEach(q=>{debuts.push(dej.length+q.length);for(let i=0;i<q.length;i++)dej.push(q[i]);});}
+      }
+      if(dej&&dej.length!==nf)dej=null;
+      if(dej){
+        const voir=new Set([nf-1]);debuts.forEach(d=>{if(d<nf)voir.add(d);if(d>0)voir.add(d-1);});
+        for(const i of voir)if(dej[i]!==occFaceEmpreinte(faces[i])){dej=null;break;}
+      }
+    }catch(err){dej=null;}
+    const aretes=fi=>{ // arêtes du contour de la face, dans l'ordre du noyau (une fois par face)
+      if(AR[fi])return AR[fi];
+      const L=[],ee=new occt.TopExp_Explorer_2(faces[fi],ED,SH);bin.push(ee);
+      while(ee.More()){const e=occEdgeCur(ee);bin.push(e);L.push(e);ee.Next();}
+      return AR[fi]=L;
+    };
+    for(let fi=0;fi<nf;fi++){
+      const k=dej?dej[fi]:occFaceEmpreinte(faces[fi]);
+      if(k===null||k===undefined){occDispose(bin);return null;}
+      let d=occEmpIds.get(k);if(!d){d={id:++occEmpIdN,g:G};occEmpIds.set(k,d);}else d.g=G;
+      ID[fi]=d.id;
+      let m=occFaceUsesMemo.get(k);
+      if(m){m.g=G;}
+      else{
+        // comme la 1re passe du classement complet : clé de chaque arête du contour, cylindre de la face
+        const u=[];
+        aretes(fi).forEach(e=>{
+          let kk=null;
+          try{
+            const ad=new occt.BRepAdaptor_Curve_2(e);bin.push(ad);
+            if(ad.LastParameter()>ad.FirstParameter()){
+              const mp=ad.Value((ad.FirstParameter()+ad.LastParameter())/2);bin.push(mp);
+              const s=sample(ad);
+              if(s.len>1e-6)kk=ekey([mp.X(),mp.Y(),mp.Z()],s.len);
+            }
+          }catch(err){kk=null;}
+          u.push(kk);
+        });
+        let c=null;
+        try{const ad=new occt.BRepAdaptor_Surface_2(faces[fi],true);bin.push(ad);
+          if(ad.GetType()===occt.GeomAbs_SurfaceType.GeomAbs_Cylinder){
+            const C=ad.Cylinder(),A=C.Axis();
+            try{c={r:C.Radius(),d:occXyz(A.Direction()),o:occXyz(A.Location())};}finally{occFree(A);occFree(C);}
+          }
+        }catch(err){c=null;}
+        m={u,cyl:c,g:G};occFaceUsesMemo.set(k,m);
+      }
+      U[fi]=m.u;cyl[fi]=m.cyl;
+    }
+    const fmap=new Map(),seam=new Set();
+    for(let fi=0;fi<nf;fi++){const u=U[fi];
+      for(let j=0;j<u.length;j++){const k=u[j];if(k===null)continue;
+        let l=fmap.get(k);if(!l){l=[];fmap.set(k,l);}
+        if(!l.includes(fi))l.push(fi);else seam.add(k); // 2e passage dans la même face
+      }
+    }
+    const sameCyl=fl=>{
+      if(fl.length!==2)return false;const a=cyl[fl[0]],b=cyl[fl[1]];if(!a||!b)return false;
+      if(Math.abs(a.r-b.r)>1e-6)return false;
+      const c=a.d[0]*b.d[0]+a.d[1]*b.d[1]+a.d[2]*b.d[2];if(Math.abs(Math.abs(c)-1)>1e-9)return false;
+      const w=[b.o[0]-a.o[0],b.o[1]-a.o[1],b.o[2]-a.o[2]],t=w[0]*a.d[0]+w[1]*a.d[1]+w[2]*a.d[2];
+      return Math.hypot(w[0]-t*a.d[0],w[1]-t*a.d[1],w[2]-t*a.d[2])<1e-6; // même axe
+    };
+    const X={faces,cuts,onCut,seam,sameCyl},seen=new Set();
+    occAreteMemoStat.appels++;
+    for(let fi=0;fi<nf;fi++){const u=U[fi];
+      for(let j=0;j<u.length;j++){
+        const kk=u[j];if(kk===null||seen.has(kk))continue;
+        seen.add(kk);
+        const fl=fmap.get(kk)||[];
+        const e=aretes(fi)[j];
+        if(!e){occDispose(bin);return null;} // contour différent de celui gardé : ne devrait pas arriver
+        // drapeau de continuité du noyau, relu sur le solide courant
+        let ct=null;
+        if(fl.length>=2){try{ct=occt.BRep_Tool.Continuity_1(e,faces[fl[0]],faces[fl[1]]).value;}catch(err){ct='x';}}
+        const cle=ID[fi]+'#'+j+'|'+fl.map(i=>ID[i]).join(',')+'|'+cutsSig;
+        occAreteMemoStat.aretes++;
+        let m=occAreteMemo.get(cle);
+        if(m&&m.ct===ct){m.g=G;occAreteMemoStat.reprises++;}
+        else{
+          occAreteMemoStat.classees++;
+          let E=null;
+          try{
+            const ad=new occt.BRepAdaptor_Curve_2(e);bin.push(ad);
+            const u0=ad.FirstParameter(),u1=ad.LastParameter();
+            if(u1>u0){
+              const mp=ad.Value((u0+u1)/2);bin.push(mp);
+              const mid=[mp.X(),mp.Y(),mp.Z()];
+              const s=sample(ad);
+              if(s.len>1e-6)E=occAreteClasse(e,ad,u0,u1,mid,s,kk,fl,X,bin);
+            }
+          }catch(err){E=null;}
+          if(E)delete E.fs;
+          m={E,ct,g:G};occAreteMemo.set(cle,m);
+        }
+        if(m.E){const E=Object.assign({},m.E);if(fl.length)E.fs=fl.slice();out.push(E);}
+      }
+    }
+  }catch(e){occDispose(bin);return null;}
+  occDispose(bin);
+  return out;
+}
+
 /* ═══════════════ 20-30-faces.js — 30 faces ═══════════════ */
 let occLive=null; // solide BRep affiché conservé pour le picking d'arêtes exact
 function occDropLive(){if(occLive){try{occLive.shape.delete();}catch(e){}
@@ -7250,7 +7800,71 @@ function occSurfNormalAt(surf,u,v){
     return r;
   }catch(err){return null;}
 }
-function occSharpEdges(shape){
+function occSharpEdges(shape,memo){
+  // memo (V0.96.1) : corps natifs affichés — classement gardé arête par arête (occSharpEdgesMemo) ;
+  // tout autre appel, ou hors cadre : classement complet, inchangé.
+  if(memo){let r=null;try{r=occSharpEdgesMemo(shape);}catch(e){r=null;}if(r)return r;}
+  return occSharpEdgesPlein(shape);
+}
+function occAreteClasse(e,ad,u0,u1,mid,s,kk,fl,X,bin){
+  // Classement d'UNE arête (cœur commun à occSharpEdgesPlein et occSharpEdgesMemo) : null = couture
+  // (pas une arête de la pièce), sinon sa fiche {mid,pts,len,sharp,…}.
+  const faces=X.faces,cuts=X.cuts,onCut=X.onCut,seam=X.seam,sameCyl=X.sameCyl;
+  let sharp=true;
+  const onC=cuts.length>0&&onCut(s.pts); // arête de coupe d'une scission : toujours tracée
+  if(!onC&&((seam.has(kk)&&fl.length<=1)||sameCyl(fl)))return null; // couture : pas une arête
+  if(fl.length>=2){
+    try{sharp=(occt.BRep_Tool.Continuity_1(e,faces[fl[0]],faces[fl[1]])===occt.GeomAbs_Shape.GeomAbs_C0);}
+    catch(err){sharp=true;}
+  }else sharp=false;
+  // 2026-10-18 V0.2.5 : congé SUR congé — le noyau ne pose PAS le drapeau G1
+  // sur la jonction des deux congés : BRep_Tool répond C0 alors que les
+  // surfaces sont TANGENTES (mesuré sur la pédale : 4 fragments noirs de 2 à
+  // 7 mm, dihédrale mesurée 0.0°, pendant que toutes les vraies arêtes vives
+  // font ≥ 24°). Si le drapeau dit « vive », on INTERROGE la géométrie :
+  // pcurve de l'arête dans chaque face → UV → normale (SLProps) à 3 stations
+  // (25/50/75 %) ; dès QU'UN échantillon dépasse le seuil, on garde « vive »
+  // (test MAX : un congé avec raccord non tangent quelque part reste noir).
+  let rg=null; // normales mesurées d'une arête « vive » pour OCCT mais tangente (V0.83.0 : mise en plan)
+  if(sharp&&fl.length>=2){
+    // le drapeau OCCT dit « vive » : on le MET À L'ÉPREUVE du point de
+    // vue géométrique avant de l'accepter (toutes les paires de faces).
+    let mesure=false,maxA=0;const nrm=[];
+    test_paires:
+    for(let i=0;i<fl.length;i++){
+      for(let j=i+1;j<fl.length;j++){
+        const E1=faces[fl[i]],E2=faces[fl[j]];
+        try{
+          const g1=new occt.BRepAdaptor_Curve2d_2(e,E1);bin.push(g1);
+          const g2=new occt.BRepAdaptor_Curve2d_2(e,E2);bin.push(g2);
+          const w0=g1.FirstParameter(),w1=g1.LastParameter();
+          if(!(w1>w0))continue; // arête vue comme point dans ce couple : rien à mesurer ici
+          const s1=occt.BRep_Tool.Surface_1(E1,occBinPush(bin,new occt.TopLoc_Location_1()));bin.push(s1);
+          const s2=occt.BRep_Tool.Surface_1(E2,occBinPush(bin,new occt.TopLoc_Location_1()));bin.push(s2);
+          for(const p of [0.25,0.5,0.75]){
+            const q1=g1.Value(w0+(w1-w0)*p),q2=g2.Value(w0+(w1-w0)*p);
+            bin.push(q1);bin.push(q2);
+            const n1=occSurfNormalAt(s1,q1.X(),q1.Y()),n2=occSurfNormalAt(s2,q2.X(),q2.Y());
+            if(!n1||!n2){mesure=false;break test_paires;} // mesure indisponible : verdict OCCT conservé
+            mesure=true;if(i===0&&j===1)nrm.push(n1);
+            const d=(n1[0]*n2[0]+n1[1]*n2[1]+n1[2]*n2[2])/(Math.hypot(n1[0],n1[1],n1[2])||1)/(Math.hypot(n2[0],n2[1],n2[2])||1);
+            const th=Math.acos(Math.max(-1,Math.min(1,d)))*180/Math.PI;
+            const dev=Math.min(th,180-th);
+            if(dev>maxA)maxA=dev;
+          }
+        }catch(err){mesure=false;break test_paires;}
+      }
+    }
+    if(mesure&&maxA<3){sharp=false;rg=nrm;} // G1 confirmé sur toute l'arête : TANGENTE (grise)
+  }
+  const cut=!sharp&&onC;
+  const E=cut?{mid,pts:occCurvePts(ad,u0,u1),len:s.len,sharp:true,split:true}:{mid,pts:occCurvePts(ad,u0,u1),len:s.len,sharp};
+  {const Pt=new occt.gp_Pnt_1();bin.push(Pt);E.ta=occBoutsTangents(ad,u0,u1,Pt);}
+  if(rg&&!cut)E.rg=rg; // le HLR d'OCCT la croit vive : la mise en plan la reclasse (mepHlrTanIdx)
+  if(fl.length)E.fs=fl.slice(); // V0.23.8 : faces voisines (ordinaux) → pièce d'un STEP multi-corps
+  return E;
+}
+function occSharpEdgesPlein(shape){
   // Arêtes uniques classées : sharp (noire, C0) vs tangente (grise, G1+). Validé par exécution.
   const out=[],bin=[];
   // V0.11.5 : arêtes de COUPE d'une scission de faces (xsplit) — entre les deux moitiés d'un
@@ -7312,6 +7926,7 @@ function occSharpEdges(shape){
         ee.Next();
       }
     });
+    const X={faces,cuts,onCut,seam,sameCyl};
     const ex=new occt.TopExp_Explorer_2(shape,occt.TopAbs_ShapeEnum.TopAbs_EDGE,SH);bin.push(ex);
     const seen=new Set();
     while(ex.More()){
@@ -7327,60 +7942,8 @@ function occSharpEdges(shape){
             const kk=ekey(mid,s.len);
             if(!seen.has(kk)){
               seen.add(kk);
-              let sharp=true;
               const fl=fmap.get(kk)||[];
-              const onC=cuts.length>0&&onCut(s.pts); // arête de coupe d'une scission : toujours tracée
-              if(!onC&&((seam.has(kk)&&fl.length<=1)||sameCyl(fl))){ex.Next();continue;} // couture : pas une arête
-              if(fl.length>=2){
-                try{sharp=(occt.BRep_Tool.Continuity_1(e,faces[fl[0]],faces[fl[1]])===occt.GeomAbs_Shape.GeomAbs_C0);}
-                catch(err){sharp=true;}
-              }else sharp=false;
-              // 2026-10-18 V0.2.5 : congé SUR congé — le noyau ne pose PAS le drapeau G1
-              // sur la jonction des deux congés : BRep_Tool répond C0 alors que les
-              // surfaces sont TANGENTES (mesuré sur la pédale : 4 fragments noirs de 2 à
-              // 7 mm, dihédrale mesurée 0.0°, pendant que toutes les vraies arêtes vives
-              // font ≥ 24°). Si le drapeau dit « vive », on INTERROGE la géométrie :
-              // pcurve de l'arête dans chaque face → UV → normale (SLProps) à 3 stations
-              // (25/50/75 %) ; dès QU'UN échantillon dépasse le seuil, on garde « vive »
-              // (test MAX : un congé avec raccord non tangent quelque part reste noir).
-              let rg=null; // normales mesurées d'une arête « vive » pour OCCT mais tangente (V0.83.0 : mise en plan)
-              if(sharp&&fl.length>=2){
-                // le drapeau OCCT dit « vive » : on le MET À L'ÉPREUVE du point de
-                // vue géométrique avant de l'accepter (toutes les paires de faces).
-                let mesure=false,maxA=0;const nrm=[];
-                test_paires:
-                for(let i=0;i<fl.length;i++){
-                  for(let j=i+1;j<fl.length;j++){
-                    const E1=faces[fl[i]],E2=faces[fl[j]];
-                    try{
-                      const g1=new occt.BRepAdaptor_Curve2d_2(e,E1);bin.push(g1);
-                      const g2=new occt.BRepAdaptor_Curve2d_2(e,E2);bin.push(g2);
-                      const w0=g1.FirstParameter(),w1=g1.LastParameter();
-                      if(!(w1>w0))continue; // arête vue comme point dans ce couple : rien à mesurer ici
-                      const s1=occt.BRep_Tool.Surface_1(E1,occBinPush(bin,new occt.TopLoc_Location_1()));bin.push(s1);
-                      const s2=occt.BRep_Tool.Surface_1(E2,occBinPush(bin,new occt.TopLoc_Location_1()));bin.push(s2);
-                      for(const p of [0.25,0.5,0.75]){
-                        const q1=g1.Value(w0+(w1-w0)*p),q2=g2.Value(w0+(w1-w0)*p);
-                        bin.push(q1);bin.push(q2);
-                        const n1=occSurfNormalAt(s1,q1.X(),q1.Y()),n2=occSurfNormalAt(s2,q2.X(),q2.Y());
-                        if(!n1||!n2){mesure=false;break test_paires;} // mesure indisponible : verdict OCCT conservé
-                        mesure=true;if(i===0&&j===1)nrm.push(n1);
-                        const d=(n1[0]*n2[0]+n1[1]*n2[1]+n1[2]*n2[2])/(Math.hypot(n1[0],n1[1],n1[2])||1)/(Math.hypot(n2[0],n2[1],n2[2])||1);
-                        const th=Math.acos(Math.max(-1,Math.min(1,d)))*180/Math.PI;
-                        const dev=Math.min(th,180-th);
-                        if(dev>maxA)maxA=dev;
-                      }
-                    }catch(err){mesure=false;break test_paires;}
-                  }
-                }
-                if(mesure&&maxA<3){sharp=false;rg=nrm;} // G1 confirmé sur toute l'arête : TANGENTE (grise)
-              }
-              const cut=!sharp&&onC;
-              const E=cut?{mid,pts:occCurvePts(ad,u0,u1),len:s.len,sharp:true,split:true}:{mid,pts:occCurvePts(ad,u0,u1),len:s.len,sharp};
-              {const Pt=new occt.gp_Pnt_1();bin.push(Pt);E.ta=occBoutsTangents(ad,u0,u1,Pt);}
-              if(rg&&!cut)E.rg=rg; // le HLR d'OCCT la croit vive : la mise en plan la reclasse (mepHlrTanIdx)
-              if(fl.length)E.fs=fl.slice(); // V0.23.8 : faces voisines (ordinaux) → pièce d'un STEP multi-corps
-              out.push(E);
+              const E=occAreteClasse(e,ad,u0,u1,mid,s,kk,fl,X,bin);if(E)out.push(E);
             }
           }
         }
@@ -7485,7 +8048,7 @@ function occLiveSharpEdges(){
   let k=null;
   try{if(occLive.sig)k=occLive.sig+''+JSON.stringify(splitCutPlanes());}catch(e){k=null;}
   if(k&&edgeAllMemo&&edgeAllMemo.k===k)return edgeAllMemo.edges;
-  const l=occSharpEdges(occLive.shape);
+  const l=occSharpEdges(occLive.shape,true);
   edgeAllMemo=k&&l&&l.length?{k,edges:l}:null;
   return l;
 }
@@ -7497,7 +8060,7 @@ function occVisibleSharpEdges(){
   ex.forEach(b=>{
     if(!bodyShown(b))return;
     let m=bodyEdgeMemo.get(b.id);
-    if(!m||m.shape!==b.shape){m={shape:b.shape,edges:occSharpEdges(b.shape)||[]};bodyEdgeMemo.set(b.id,m);}
+    if(!m||m.shape!==b.shape){m={shape:b.shape,edges:occSharpEdges(b.shape,true)||[]};bodyEdgeMemo.set(b.id,m);}
     out.push.apply(out,m.edges);
   });
   for(const [id,m] of bodyEdgeMemo)if(!ex.some(b=>b.id===id&&b.shape===m.shape))bodyEdgeMemo.delete(id); // sous-solides libérés
@@ -9676,7 +10239,7 @@ function occCompoundOf(shapes){
 // des facettes gardées, sans repasser par le noyau. Empreinte différente, finesse différente ou
 // budget de triangles plus serré : maillage refait comme avant. Jeté par le rafraîchissement dur.
 let occMeshMemo=new Map(); // id du corps → {sig,lin,ang,lin1,ang1,maxT,tris,geo}
-function occMeshMemoClear(){occMeshMemo.forEach(m=>{try{m.geo.dispose&&m.geo.dispose();}catch(e){}});occMeshMemo=new Map();}
+function occMeshMemoClear(){try{occFaceMemoClear();}catch(e){}occMeshMemo.forEach(m=>{try{m.geo.dispose&&m.geo.dispose();}catch(e){}});occMeshMemo=new Map();}
 function occMeshMemoGet(p,D,maxT){
   if(freshHard||!p||!p.sig)return null;
   const m=occMeshMemo.get(p.bodyId);
@@ -9732,7 +10295,11 @@ function occRebuild(){
         const maxT=Math.max(1,OCC_DISPLAY_TRIS-trisTot),lin0=D.lin,ang0=D.ang;
         const repris=occMeshMemoGet(p,D,maxT); // V0.89.2 : corps inchangé → facettes du rejeu précédent
         try{
-          g=repris||occTessellateBudget(p.shape,D,maxT);
+          g=repris;
+          // V0.96.1 : facettes gardées face par face (20-25) — seules les faces neuves ou modifiées sont maillées ;
+          // le solide ressort entièrement maillé, comme par l'ancien chemin
+          if(!g)g=occTessellateFaces(p.shape,D,maxT);
+          if(!g)g=occTessellateBudget(p.shape,D,maxT);
           if(!g)g=occTessellate(p.shape,D.lin,D.ang);
         }catch(err){FR.msgs.push(e.name+' : maillage impossible, ignoré');return;}
         if(!repris)occMeshMemoPut(p,g,lin0,ang0,D,maxT);
@@ -9754,6 +10321,7 @@ function occRebuild(){
         const pre=(FR.preThr||[]).find(x=>x.bodyId===p.bodyId); // corps sans filets modélisés (FAO)
         bodies.push({id:e.id,name:e.name+' · '+(lit?tris.toLocaleString('fr'):'?')+' tris',mesh,color:col,visible:vis,kind:'body',ref:null,bodyId:e.id,shape:p.shape,sig:p.sig||null,shapeFao:pre?pre.shape:null});
       });
+      try{occFaceMemoPurge();}catch(err){}
       if(!bodies.some(b=>b.kind==='body'))faceEl.textContent+=(faceEl.textContent?'\n':'')+'Solide exact vide (tout a été découpé).';
       if(FR.shape){occLive={shape:FR.shape,shapeFao:FR.shapeFao||null,preThr:FR.preThr||[]};FR.shape=null;FR.shapeFao=null;FR.preThr=null;
         // V0.89.3 : empreinte du composé (tous les corps qui le forment) — null si l'un d'eux n'en a pas
@@ -72109,33 +72677,53 @@ function edgeHoverPick(e,faceHit){return edgePickScreen(e,edgeHoverSegs(),faceHi
 // segs = polylignes monde ; la plus proche du curseur à l'écran (≤ tolPx) gagne, à égalité
 // (≤ 1 px) la plus proche de la caméra ; masquée si derrière la face sous le curseur, avec une
 // marge de 2 px ramenée en mm (avant : +0,3 mm fixe, trop large sur une très petite pièce).
+// V0.96.1 : points des arêtes projetés à l'écran UNE fois par position de caméra (mêmes calculs,
+// mêmes valeurs) : souris qui bouge sans tourner la vue = plus que la distance en pixels à faire.
+// Gardé seulement pour une liste stable (edgeHoverSegs) ; une liste refaite à chaque appel est
+// projetée comme avant.
+let edgeScrMemo={segs:null,sig:'',S:null,off:null};
+function edgeScrPts(segs,r){
+  let sig='';
+  try{sig=camera.matrixWorldInverse.elements.join()+'|'+camera.projectionMatrix.elements.join()+'|'+r.width+'|'+r.height;}catch(e){}
+  if(sig&&edgeScrMemo.segs===segs&&edgeScrMemo.sig===sig)return edgeScrMemo;
+  let n=0;const off=new Int32Array(segs.length);
+  segs.forEach((P,pi)=>{off[pi]=n;if(P&&P.length>=2)n+=P.length;});
+  const S=new Float64Array(4*n),v=new THREE.Vector3(),vz=new THREE.Vector3();
+  segs.forEach((P,pi)=>{
+    if(!P||P.length<2)return;
+    for(let k=0,o=4*off[pi];k<P.length;k++,o+=4){const p=P[k];
+      vz.set(p[0],p[1],p[2]).applyMatrix4(camera.matrixWorldInverse);v.set(p[0],p[1],p[2]).project(camera);
+      S[o]=(v.x+1)/2*r.width;S[o+1]=(1-v.y)/2*r.height;S[o+2]=v.z;S[o+3]=-vz.z;}
+  });
+  const m={segs,sig,S,off};
+  if(sig&&segs===edgeHoverCache.segs)edgeScrMemo=m;
+  return m;
+}
 function edgePickScreen(e,segs,faceHit,tolPx){
   if(!segs||!segs.length)return null;
   const r=renderer.domElement.getBoundingClientRect(),mx=e.clientX-r.left,my=e.clientY-r.top;
-  const v=new THREE.Vector3(),vz=new THREE.Vector3(),toS=p=>{vz.set(p[0],p[1],p[2]).applyMatrix4(camera.matrixWorldInverse);v.set(p[0],p[1],p[2]).project(camera);return[(v.x+1)/2*r.width,(1-v.y)/2*r.height,v.z,-vz.z];};
+  const scr=edgeScrPts(segs,r),S=scr.S,off=scr.off;
   let slack=0.3;
   if(faceHit){const wpp=camera.isOrthographicCamera?(camera.top-camera.bottom)/(camera.zoom||1)/r.height:2*faceHit.distance*Math.tan(camera.fov*Math.PI/360)/r.height;slack=Math.min(0.3,2*wpp);}
   let best=null,bd=(tolPx||6)*(window.mfmEdgeK||1); // interface téléphone : tolérance élargie au doigt (99-mobile-creer-esquisse)
+  const ortho=camera.isOrthographicCamera,wv=new THREE.Vector3();
   segs.forEach((P,pi)=>{
     if(!P||P.length<2)return;
-    let a=toS(P[0]);
-    for(let k=1;k<P.length;k++){
-      const b=toS(P[k]);
-      if(a[2]<1&&b[2]<1&&a[2]>-1&&b[2]>-1){
-        const dx=b[0]-a[0],dy=b[1]-a[1],L2=dx*dx+dy*dy||1e-9;
-        let t=((mx-a[0])*dx+(my-a[1])*dy)/L2;t=Math.max(0,Math.min(1,t));
-        const d=Math.hypot(mx-(a[0]+t*dx),my-(a[1]+t*dy));
+    for(let k=1,a=4*off[pi],b=a+4;k<P.length;k++,a=b,b+=4){
+      if(S[a+2]<1&&S[b+2]<1&&S[a+2]>-1&&S[b+2]>-1){
+        const ax=S[a],ay=S[a+1],dx=S[b]-ax,dy=S[b+1]-ay,L2=dx*dx+dy*dy||1e-9;
+        let t=((mx-ax)*dx+(my-ay)*dy)/L2;t=Math.max(0,Math.min(1,t));
+        const d=Math.hypot(mx-(ax+t*dx),my-(ay+t*dy));
         if(d<bd+(best?1:0)){
           // paramètre 3D corrigé de la perspective (t écran ≠ t espace)
-          if(!camera.isOrthographicCamera){const za=a[3],zb=b[3];const den=(1-t)*zb+t*za;if(Math.abs(den)>1e-12)t=t*za/den;}
+          if(!ortho){const za=S[a+3],zb=S[b+3];const den=(1-t)*zb+t*za;if(Math.abs(den)>1e-12)t=t*za/den;}
           const w=[P[k-1][0]+(P[k][0]-P[k-1][0])*t,P[k-1][1]+(P[k][1]-P[k-1][1])*t,P[k-1][2]+(P[k][2]-P[k-1][2])*t];
           // masquée par la face survolée ? (l'arête doit être au moins aussi proche que la face)
-          const dc=camera.position.distanceTo(new THREE.Vector3(w[0],w[1],w[2]));
+          const dc=camera.position.distanceTo(wv.set(w[0],w[1],w[2]));
           const better=!best||d<bd-1||(d<bd+1?dc<best.dc:false);
           if(better&&(!faceHit||dc<=faceHit.distance*1.004+slack)){bd=Math.min(d,bd);best={pi,dc,d};}
         }
       }
-      a=b;
     }
   });
   return best;

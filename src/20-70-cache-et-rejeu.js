@@ -1089,7 +1089,7 @@ function occCompoundOf(shapes){
 // des facettes gardées, sans repasser par le noyau. Empreinte différente, finesse différente ou
 // budget de triangles plus serré : maillage refait comme avant. Jeté par le rafraîchissement dur.
 let occMeshMemo=new Map(); // id du corps → {sig,lin,ang,lin1,ang1,maxT,tris,geo}
-function occMeshMemoClear(){occMeshMemo.forEach(m=>{try{m.geo.dispose&&m.geo.dispose();}catch(e){}});occMeshMemo=new Map();}
+function occMeshMemoClear(){try{occFaceMemoClear();}catch(e){}occMeshMemo.forEach(m=>{try{m.geo.dispose&&m.geo.dispose();}catch(e){}});occMeshMemo=new Map();}
 function occMeshMemoGet(p,D,maxT){
   if(freshHard||!p||!p.sig)return null;
   const m=occMeshMemo.get(p.bodyId);
@@ -1145,7 +1145,11 @@ function occRebuild(){
         const maxT=Math.max(1,OCC_DISPLAY_TRIS-trisTot),lin0=D.lin,ang0=D.ang;
         const repris=occMeshMemoGet(p,D,maxT); // V0.89.2 : corps inchangé → facettes du rejeu précédent
         try{
-          g=repris||occTessellateBudget(p.shape,D,maxT);
+          g=repris;
+          // V0.96.1 : facettes gardées face par face (20-25) — seules les faces neuves ou modifiées sont maillées ;
+          // le solide ressort entièrement maillé, comme par l'ancien chemin
+          if(!g)g=occTessellateFaces(p.shape,D,maxT);
+          if(!g)g=occTessellateBudget(p.shape,D,maxT);
           if(!g)g=occTessellate(p.shape,D.lin,D.ang);
         }catch(err){FR.msgs.push(e.name+' : maillage impossible, ignoré');return;}
         if(!repris)occMeshMemoPut(p,g,lin0,ang0,D,maxT);
@@ -1167,6 +1171,7 @@ function occRebuild(){
         const pre=(FR.preThr||[]).find(x=>x.bodyId===p.bodyId); // corps sans filets modélisés (FAO)
         bodies.push({id:e.id,name:e.name+' · '+(lit?tris.toLocaleString('fr'):'?')+' tris',mesh,color:col,visible:vis,kind:'body',ref:null,bodyId:e.id,shape:p.shape,sig:p.sig||null,shapeFao:pre?pre.shape:null});
       });
+      try{occFaceMemoPurge();}catch(err){}
       if(!bodies.some(b=>b.kind==='body'))faceEl.textContent+=(faceEl.textContent?'\n':'')+'Solide exact vide (tout a été découpé).';
       if(FR.shape){occLive={shape:FR.shape,shapeFao:FR.shapeFao||null,preThr:FR.preThr||[]};FR.shape=null;FR.shapeFao=null;FR.preThr=null;
         // V0.89.3 : empreinte du composé (tous les corps qui le forment) — null si l'un d'eux n'en a pas
