@@ -297,7 +297,9 @@ function delWkPending(){
 function delWkReplay(key){
   // Réponse du worker : le rejeu reprend le résultat rangé sous sa clé.
   setTimeout(()=>{
-    try{builtVersion=-1;builtHash=null;builtEngine=null;rebuild();}catch(e){}
+    // V0.94.6 : préchauffe en cours (31) : elle attend cette réponse et son appelant refait l'affichage
+    const prechauffe=typeof regenRun!=='undefined'&&!!regenRun;
+    try{builtVersion=-1;builtHash=null;builtEngine=null;if(!prechauffe)rebuild();}catch(e){}
     try{if(sel&&sel.kind==='feature')renderProps();}catch(e){}
     const e=key&&delWkRes.get(key);
     if(!e||delWkPending())return;

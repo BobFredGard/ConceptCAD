@@ -19,7 +19,7 @@ function mffModified(){
   try{const empty=!(doc.sketches||[]).length&&!(doc.features||[]).length;
     if(mffSavedSig===null)return !empty;return mffSig()!==mffSavedSig;}catch(e){return false;}
 }
-function mffMark(){mffSavedSig=mffSig();mffTitle();}
+function mffMark(){mffSavedSig=mffSig();mffTitle();try{pcEcrireSoon();}catch(e){}} // V0.94.6 : pièce enregistrée ou ouverte → gardée sur ce poste (20-75)
 function mffTitle(){
   try{
     const nm=mffName||((doc&&doc.name)||'Sans titre');const mod=mffModified();

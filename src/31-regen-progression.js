@@ -58,7 +58,7 @@ async function regenWarmRun(why,tout){
   const skAll=new Set();list.forEach(f=>regenSketchIds(f).forEach(id=>{if(skName[id]!=null)skAll.add(id);}));
   const total=list.length+skAll.size,seenF=new Set(),seenS=new Set();
   const cols=[]; // couleurs des étapes traitées, dans l'ordre : la dernière colore la barre
-  let g=null,FR=null,shown=false,lastPaint=t0,lastStep=t0;
+  let g=null,FR=null,shown=false,lastPaint=t0,lastStep=t0,reprises=0;
   if(tout){
     // peinte avant la première fonction : elle peut à elle seule durer
     regenUiShow(why);shown=true;regenUiSet(0,total,'','',[]);
@@ -72,6 +72,19 @@ async function regenWarmRun(why,tout){
       // occThreadSkip est global : un rejeu synchrone glissé dans une pause l'a pu reposer
       try{occThreadSkip=true;r=g.next();}finally{occThreadSkip=skip0;}
       if(r.done){FR=r.value;break;}
+      // V0.94.6 : une suppression de face vient de partir au calcul de fond (21). La suite serait
+      // calculée sur la pièce SANS elle, puis refaite en entier à sa réponse (vraie pièce : deux fois
+      // 5 s). On attend sa réponse, puis on reprend : tout ce qui la précède est déjà gardé.
+      if(typeof delWkPending==='function'&&delWkPending()&&reprises<3){
+        try{g.return();}catch(e){}g=null;reprises++;
+        if(!shown){regenUiShow(why);shown=true;}
+        regenUiSet(Math.min(seenF.size+seenS.size,total),total,'Suppression de face (calcul de fond)…','',cols);
+        const fin=performance.now()+(typeof DEL_WK_DELAI==='number'?DEL_WK_DELAI:20000)+5000;
+        while(delWkPending()&&performance.now()<fin){await new Promise(k=>setTimeout(k,150));if(stale())return false;}
+        if(stale())return false;
+        g=occFinalShapeGen(upto,true);lastPaint=lastStep=performance.now();
+        continue;
+      }
       const fs=(r.value&&r.value.fs)||[];
       const nouv=[];
       fs.forEach(f=>{

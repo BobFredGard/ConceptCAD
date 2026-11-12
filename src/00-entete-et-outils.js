@@ -21,7 +21,7 @@
  * peut changer sans rien casser. CACHE_VER (parcours FAO) reste indépendant.
  */
 
-const APP_VER='V0.94.5';
+const APP_VER='V0.94.6';
 try{console.log('[ConceptCAD] version '+APP_VER);}catch(e){}
 try{var mfSv=document.getElementById('mfSplashVer');if(mfSv)mfSv.textContent=APP_VER;}catch(e){} // écran de démarrage
 
@@ -163,9 +163,15 @@ async function occtFinishBoot(){
     // rechargement de la page, le cache était valide, le rejeu sauté, occLive absent —
     // plus aucun congé, plus aucune esquisse sur face, plus aucune sélection de face.
     // V0.42.0 : préchauffe avec barre de progression (31) — le rejeu final relit ses points de contrôle
+    // V0.94.6 : imports posés AVANT ce calcul (il se faisait sans eux, puis une seconde fois), puis
+    // pièce finie gardée sur ce poste relue si rien n'a changé (20-75)
+    let pcOk=false;
     try{faceEl.textContent='Noyau prêt — recalcul exact…';builtVersion=-1;builtHash=null;builtEngine=null;
-      await regenWarm('Recalcul exact du modèle');builtVersion=-1;rebuild();}catch(e){}
+      try{if(typeof importRestorePending==='function')await importRestorePending({sansRejeu:true});}catch(e){}
+      pcOk=typeof pcPreparer==='function'&&await pcPreparer();
+      if(!pcOk)await regenWarm('Recalcul exact du modèle');builtVersion=-1;rebuild();}catch(e){}
     finally{regenUiHide();}
+    if(pcOk)try{pcApresServi();}catch(e){}
     // Assemblage : les autres pièces, capturées en repli maillage, sont refaites en exact (47)
     try{if(asmOn())asmBuildSnapshots();}catch(e){}
     // Imports STEP du document (F5, ouverture avant le noyau) : rejoués depuis leur source.
@@ -176,6 +182,7 @@ async function occtFinishBoot(){
     // caméra propulsée hors du plan lointain 5000 → vue noire jusqu'au prochain Iso).
     if(!viewUserMoved){try{showAll();}catch(e){}}
     try{if(filMode&&occLive&&occLive.shape){exitFilletMode(true);enterExactFilletMode();}}catch(e){}
+    try{if(typeof pcEcrireSoon==='function')pcEcrireSoon();}catch(e){}
     try{if(typeof bootSafeDone==='function')bootSafeDone();}catch(e){}} // V0.31.2 : rejeu exact passé → démarrage abouti (99-init)
 }
 const VIVID=[0x0a84ff,0x30d158,0xff9f0a,0xbf5af2,0xff453a,0x64d2ff,0xffd60a,0x5e5ce6];
