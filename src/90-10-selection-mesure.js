@@ -944,10 +944,10 @@ function hoverMove(e){
     if(key===hoverKey)return;
     clearHover();hoverKey=key;
     if(!hoverGroup){hoverGroup=new THREE.Group();mesScene().add(hoverGroup);}
-    const tris=g?null:growTris(h.object,h.faceIndex);
-    if(g){const out=[];for(let t=g.start;t<g.start+g.count&&out.length<4000;t++)out.push(t);highlightTris(h.object,out,0x0a84ff,0.35,hoverGroup);}
-    else if(tris&&tris.length)highlightTris(h.object,tris.slice(0,4000),0x0a84ff,0.35,hoverGroup);
-    else highlightTris(h.object,[h.faceIndex],0x0a84ff,0.35,hoverGroup);
+    // V0.95.6 : mêmes triangles que la sélection orange (faceTrisFor), sans plafond. Plafonnée à 4000
+    // triangles, la face d'une grande plaque très percée ne s'allumait qu'en partie (un triangle bleu).
+    // Refait seulement quand la face survolée change (hoverKey) : le coût reste celui d'un clic.
+    highlightTris(h.object,faceTrisFor(h.object,h.faceIndex),0x0a84ff,0.35,hoverGroup);
   }catch(err){}
 }
 function clearMeasure(){
