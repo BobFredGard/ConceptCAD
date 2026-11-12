@@ -8,7 +8,7 @@ sont sorties le 2026-09-30j.
 Code dans `src/` · livrable `fusion_mvp.html` (généré par `build.js`) · architecture et
 garde-fous en tête de `src/00-entete-et-outils.js`.
 
-**667 versions**, de `2026-09-28b` à `V0.95.1` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
+**668 versions**, de `2026-09-28b` à `V0.95.2` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
 comme dans le fichier d'origine.
 
 ---
@@ -7511,3 +7511,10 @@ Barquette ne perd plus son solide à la 107e modification, et sa mémoire ne mon
 - **Cause** : après l'ouverture, le recalcul de fond réécrit les positions des arêtes de congé au milliardième près (-20.795 → -20.79499999975), après la prise d'empreinte « enregistré » (1,5 s) : l'empreinte change sans vraie modification.
 - **Correctif** : l'empreinte « modifié depuis l'enregistrement » (`mffSig`, 97) arrondit les nombres au millionième.
 - **Test** : `tests/browser/modifie-arrondi.spec.cjs` : Cache Piles ouverte, cote changée, rouverte : non marquée modifiée. Parcours FAO et CACHE_VER inchangés.
+
+## V0.95.2 - FAO : après un changement d'outil, l'outil va directement au-dessus de son entrée
+
+- **Constat** : Ébauche 3D après un surfaçage avec un autre outil (T6 → T2) : l'aperçu montre un long rapide au dégagement depuis l'endroit où l'outil précédent avait fini ; dans le programme, après le `M6`, un `G0` renvoyait le nouvel outil à cet XY avant d'aller au-dessus de son entrée. Toutes les opérations qui suivent un changement d'outil sont concernées.
+- **Cause** : `faoSeqSafe` enchaînait l'approche d'une opération depuis la dernière position de l'opération précédente, même quand l'outil changeait : `faoSafeAhead` ajoutait la remontée sur place à l'ancien XY, émise après le changement d'outil.
+- **Correctif** (`src/88-fao-50-caches-dispatch`) : changement d'outil (même clé que `faoJobMoves`) → l'approche part de rien : premier rapide au dégagement directement au-dessus de l'entrée. L'outil précédent remonte sur place à son dégagement (`tail`, dessiné par l'aperçu et le visionneuse ; le post écrit déjà son `G0 Z` avant le changement). Même outil : inchangé.
+- **Test** : `tests/test_fao_liaisons.cjs` (remontée sur place de l'outil précédent, premier rapide au-dessus de l'entrée, rien d'ajouté sans changement d'outil). Parcours FAO et CACHE_VER inchangés.

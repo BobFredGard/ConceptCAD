@@ -1196,7 +1196,21 @@ function faoSeqSafe(job,seule){
     ctx=faoLinkCtx(job,opsOn);
     if(ctx)ctx.lift=faoLiftMin(job);
   }
+  let keyPrev=null;
   opsOn.forEach(function(op){
+    // V0.94.9 : CHANGEMENT D'OUTIL (même clé que faoJobMoves) — la machine part au point de
+    // changement puis revient : l'approche va droit au-dessus de l'entrée, jamais d'abord à
+    // l'XY où l'outil précédent a fini (G0 inutile après le M6). L'outil précédent remonte
+    // sur place à son dégagement : `tail`, dessiné par l'aperçu et le visionneuse (le post
+    // écrit déjà son G0 Z avant le changement).
+    const tk=(function(){const t=faoToolById(job,op&&op.toolId);return t?t.id+'|'+t.d:'';})();
+    if(keyPrev!==null&&tk!==keyPrev&&prev){
+      const last=res.length?res[res.length-1]:null;
+      const zc=last&&last.op?faoClearAbs(last.op,job):NaN;
+      if(last&&!last.absent&&isFinite(zc)&&zc>+prev.z+1e-9)last.tail=[{r:1,x:+prev.x,y:+prev.y,z:zc}];
+      prev=null;
+    }
+    keyPrev=tk;
     let mv=null;
     if(seule){
       mv=faoOpMovesTry(op,job);
