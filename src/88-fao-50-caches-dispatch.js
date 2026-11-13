@@ -822,6 +822,8 @@ function* faoOpMovesIt0(op,job){
          cornerR:tool.cornerR,laisse:+op.laisse||0,secu:secu,sens:op.sens,
          protectFn:red});
       try{ if(mv&&mv.diag)op.geoDiag=mv.diag; else delete op.geoDiag; }catch(e){}
+      // V0.99.2 : brut restant — seules les passes qui enlèvent encore de la matière (+ marge)
+      if(faoRestOn(op)&&mv&&mv.length)mv=faoRestFinishOp(mv,op,job,D,tool,secu);
     }else{ try{ op.geoDiag={nofaces:!drive?1:0}; }catch(e){} }
   }
   // Limite : rect (Liang-Barsky rapide) ou chaîne d'arêtes (clip impair).

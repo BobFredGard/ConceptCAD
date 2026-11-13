@@ -74,6 +74,8 @@ const vm=require('vm');
     const op={id:'f',type:'geofinish',brut:'restant'};
     A(faoRestOn(op)&&faoRestIgnore(op)===0.1&&faoRestMarge(op)===1,'finition « brut restant » : défauts 0,1 mm et marge 1 mm');
     A(!faoRestOn({type:'geofinish'})&&faoRestIgnore({type:'rough3d'})===0.25,'finition sur le brut du posage, ébauche : inchangées');
+    const og={id:'g',type:'geodesic',brut:'restant'};
+    A(faoRestOn(og)&&faoRestIgnore(og)===0.1&&faoRestMarge(og)===1&&!faoRestOn({type:'geodesic'}),'géodésique « brut restant » (V0.99.2) : mêmes défauts ; sans le réglage, inchangée');
     bodies.length=0;
     const s=faoDefaultSetup(); s.stock={x0:0,y0:0,z0:0,x1:100,y1:80,z1:20};
     s.tools=[{id:'T1',num:1,name:'D10',kind:'flat',d:10,cornerR:0,flutes:2,vc:200,fz:0.05},

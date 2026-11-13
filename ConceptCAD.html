@@ -383,7 +383,7 @@ input[type=range]{accent-color:var(--primary);width:100%}
  * peut changer sans rien casser. CACHE_VER (parcours FAO) reste indépendant.
  */
 
-const APP_VER='V0.99.1';
+const APP_VER='V0.99.2';
 try{console.log('[ConceptCAD] version '+APP_VER);}catch(e){}
 try{var mfSv=document.getElementById('mfSplashVer');if(mfSv)mfSv.textContent=APP_VER;}catch(e){} // écran de démarrage
 
@@ -50351,6 +50351,8 @@ function* faoOpMovesIt0(op,job){
          cornerR:tool.cornerR,laisse:+op.laisse||0,secu:secu,sens:op.sens,
          protectFn:red});
       try{ if(mv&&mv.diag)op.geoDiag=mv.diag; else delete op.geoDiag; }catch(e){}
+      // V0.99.2 : brut restant — seules les passes qui enlèvent encore de la matière (+ marge)
+      if(faoRestOn(op)&&mv&&mv.length)mv=faoRestFinishOp(mv,op,job,D,tool,secu);
     }else{ try{ op.geoDiag={nofaces:!drive?1:0}; }catch(e){} }
   }
   // Limite : rect (Liang-Barsky rapide) ou chaîne d'arêtes (clip impair).
@@ -51067,10 +51069,12 @@ function faoOpLinks(job,op,mv,prev,ctx){
 const FAO_REST_IGN=0.25; // mm — matière plus mince ignorée (défaut)
 const FAO_REST_IGN_FIN=0.1; // mm — finition (V0.99.1) : crêtes plus basses ignorées
 const FAO_REST_MARGE=1;     // mm — finition : passes prolongées de part et d'autre
-function faoRestOn(op){ return !!op&&(op.type==='rough3d'||op.type==='geofinish')&&op.brut==='restant'; }
+// V0.99.2 : la géodésique aussi (« on verra à l'usage si elle sert »)
+function faoRestFin(op){ return !!op&&(op.type==='geofinish'||op.type==='geodesic'); }
+function faoRestOn(op){ return !!op&&(op.type==='rough3d'||faoRestFin(op))&&op.brut==='restant'; }
 function faoRestIgnore(op){
   const v=op?+op.restIgn:NaN;
-  return (isFinite(v)&&v>=0)?Math.min(v,5):(op&&op.type==='geofinish'?FAO_REST_IGN_FIN:FAO_REST_IGN);
+  return (isFinite(v)&&v>=0)?Math.min(v,5):(faoRestFin(op)?FAO_REST_IGN_FIN:FAO_REST_IGN);
 }
 function faoRestMarge(op){
   const v=op?+op.restMarge:NaN;
@@ -51159,9 +51163,9 @@ function faoRestMap(op,job,D,radial){
   // grille : la boîte du brut (repère de calcul) + une marge d'un Ø d'outil
   const pad=D+2;
   const X0=+s.x0-pad,Y0=+s.y0-pad,W=+s.x1-+s.x0+2*pad,Hh=+s.y1-+s.y0+2*pad;
-  // finition (V0.99.1) : maille D/8 (0,25…0,5 mm) — la carte d'une finition précédente au pas de
+  // finition (V0.99.1) : maille D/8 (0,25…1 mm, 1 depuis V0.99.2 : boule D30 de RETARD 42 s) — la carte d'une finition précédente au pas de
   // D/16 prenait 30 s sur Cavité Usinage ; la marge couvre l'écart d'une maille
-  let p=(op&&op.type==='geofinish')?Math.max(0.25,Math.min(0.5,D/8)):Math.max(0.15,Math.min(0.5,D/16));
+  let p=faoRestFin(op)?Math.max(0.25,Math.min(1,D/8)):Math.max(0.15,Math.min(0.5,D/16));
   let nx=Math.ceil(W/p),ny=Math.ceil(Hh/p);
   while(nx*ny>3e6){p*=1.15;nx=Math.ceil(W/p);ny=Math.ceil(Hh/p);}
   const nc=nx*ny,z0=+s.z0,z1=+s.z1;
@@ -51382,14 +51386,25 @@ function faoRestEnvFn(tool,D){
 function faoRestFinish(mv,M,tool,D,ign,marge,secu){
   if(!Array.isArray(mv)||mv.length<2||!M||!M.grid)return mv;
   const G=M.grid,h=G.h,nx=G.nx,ny=G.ny,p=G.p,R=D/2,env=faoRestEnvFn(tool,D);
-  const n=Math.ceil(R/p)+1;
+  // V0.99.2 : maximum de la carte par bloc de B×B mailles — un bloc dont le plus haut point
+  // reste sous le dessous de l'outil à sa distance la plus courte est sauté d'un coup
+  // (géodésique boule D30 de RETARD : filtre 45 s → quelques secondes)
+  const B=4,nbx=Math.ceil(nx/B),nby=Math.ceil(ny/B),bm=new Float32Array(nbx*nby).fill(-1/0);
+  for(let j=0;j<ny;j++){const bj=(j/B|0)*nbx;for(let i=0;i<nx;i++){const v=h[j*nx+i],k=bj+(i/B|0);if(v>bm[k])bm[k]=v;}}
+  const bw=B*p;
   // l'outil posé (pointe x,y,z) enlève-t-il plus de ign de matière restante ?
   const eng=function(x,y,z){
-    const ci=Math.floor((x-G.x0)/p),cj=Math.floor((y-G.y0)/p);
-    for(let dj=-n;dj<=n;dj++){const j=cj+dj;if(j<0||j>=ny)continue;const cy=G.y0+(j+0.5)*p-y;
-      for(let di=-n;di<=n;di++){const i=ci+di;if(i<0||i>=nx)continue;const cx=G.x0+(i+0.5)*p-x;
-        const d=Math.hypot(cx,cy);if(d>R)continue;
-        if(h[j*nx+i]>z+env(d)+ign)return true;}}
+    const bi0=Math.max(0,Math.floor((x-R-G.x0)/bw)),bi1=Math.min(nbx-1,Math.floor((x+R-G.x0)/bw));
+    const bj0=Math.max(0,Math.floor((y-R-G.y0)/bw)),bj1=Math.min(nby-1,Math.floor((y+R-G.y0)/bw));
+    for(let bj=bj0;bj<=bj1;bj++){const ya=G.y0+bj*bw,yb=ya+bw,ey=y<ya?ya-y:(y>yb?y-yb:0);
+      for(let bi=bi0;bi<=bi1;bi++){const xa=G.x0+bi*bw,xb=xa+bw,ex=x<xa?xa-x:(x>xb?x-xb:0);
+        const dm=Math.hypot(ex,ey);if(dm>R)continue;
+        if(!(bm[bj*nbx+bi]>z+env(dm)+ign))continue;
+        const i1=Math.min(nx,(bi+1)*B),j1=Math.min(ny,(bj+1)*B);
+        for(let j=bj*B;j<j1;j++){const cy=G.y0+(j+0.5)*p-y;
+          for(let i=bi*B;i<i1;i++){const cx=G.x0+(i+0.5)*p-x;
+            const d=Math.hypot(cx,cy);if(d>R)continue;
+            if(h[j*nx+i]>z+env(d)+ign)return true;}}}}
     return false;};
   const gapMin=Math.max(2,D);
   const isCut=function(m){return !!m&&!m.r&&!m.ent;};
@@ -57301,7 +57316,7 @@ const FAO_TAB_HELP={
   'Hauteurs':'Dégagement, Retrait, puis Haut et Bas de la zone usinée : chacun depuis le brut, le modèle ou une face cliquée, plus un décalage.',
   'Passes':'Descente par niveau, pas latéral et manière de vider.',
   'Entrées':'Comment l’outil entre dans la matière.',
-  'Matière':'Surépaisseur laissée pour l’opération suivante (mm) ; ébauche 3D et finition : brut de départ (celui du posage, ou le brut restant après les opérations précédentes).',
+  'Matière':'Surépaisseur laissée pour l’opération suivante (mm) ; ébauche 3D, finition et géodésique : brut de départ (celui du posage, ou le brut restant après les opérations précédentes).',
   'Attaches':'Ponts de matière pour tenir la pièce en détourage traversant.'};
 function faoTabOf(t){
   t=String(t||'').toLowerCase().replace(/\s*\(.*$/,'').trim();
@@ -69103,6 +69118,7 @@ function faoGeoFiche(d,setup,op){
     op.sens==='bidir'?'bidir':'avalant',function(v){op.sens=(v==='bidir')?'bidir':'avalant';},
     'Sens de coupe des boucles.'));
   d.appendChild(gP);
+  faoRestRows(d,setup,op); // V0.99.2 : brut restant, comme la finition
   d.appendChild(faoH('Matière à laisser (mm)'));
   const gM=faoRow();
   gM.appendChild(faoLab('Surépaisseur'));

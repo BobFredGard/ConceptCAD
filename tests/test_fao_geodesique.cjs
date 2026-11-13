@@ -76,7 +76,15 @@ const A=(c,m)=>{if(!c){ko++;console.log('  ✗ '+m);}else console.log('  ✓ '+m
         if(zd>-1/0&&zd-z>pen){pen=zd-z;penAt=[x,y,z,i];}}
       if(!b.r){const l=Math.hypot(b.x-a.x,b.y-a.y,b.z-a.z);feed+=l;const zd=drop.tip((a.x+b.x)/2,(a.y+b.y)/2);
         if(!(zd>-1/0)||(a.z+b.z)/2>zd+0.05)air+=l;}}
-    return {R:R0,ms:ms,diag:op.geoDiag||mv.diag,label:faoOpLabel(op,setup),pen:pen,penAt:penAt,air:air,feed:feed,
+    // V0.99.2 : même géodésique refaite en « brut restant » juste après : presque rien à reprendre
+    const opR=JSON.parse(JSON.stringify(op));opR.id='geo_reprise';opR.brut='restant';
+    setup.ops.push(opR);faoSanitiseOps(setup);
+    const opR2=setup.ops.find(o=>o.id==='geo_reprise');
+    const tR0=Date.now(),mvR=faoOpMoves(opR2,setup),msR=Date.now()-tR0;
+    let feedR=0;for(let i=1;i<mvR.length;i++){const a=mvR[i-1],b=mvR[i];if(!b.r&&!a.r)feedR+=Math.hypot(b.x-a.x,b.y-a.y,b.z-a.z);}
+    let ficheR='';try{const dd=document.createElement('div');faoGeoFiche(dd,setup,opR2);ficheR=dd.textContent||dd.innerText||'';}catch(e){ficheR='exception '+e;}
+    setup.ops.pop();
+    return {R:R0,ms:ms,diag:op.geoDiag||mv.diag,rest:{feed:feedR,ms:msR,diag:opR2.restDiag,fiche:/Brut restant/.test(ficheR)||ficheR.indexOf('Départ')>=0},label:faoOpLabel(op,setup),pen:pen,penAt:penAt,air:air,feed:feed,
       mv:mv.map(m=>[m.r?1:0,m.x,m.y,m.z,m.tr?1:(m.ent?2:0)]),
       drive:{v:drive.v,n:drive.n}};
   `;
@@ -89,6 +97,8 @@ const A=(c,m)=>{if(!c){ko++;console.log('  ✗ '+m);}else console.log('  ✓ '+m
   console.log('  · diag '+JSON.stringify(r.diag));
   if(process.env.GEO_DUMP){fs.writeFileSync(process.env.GEO_DUMP,JSON.stringify(r));console.log('  · dump ->',process.env.GEO_DUMP);}
   A(r.mv.length>1000,'parcours non vide ('+r.mv.length+' mouvements)');
+  console.log('  · brut restant : '+(r.rest.feed/1000).toFixed(2)+' m d’avance, '+r.rest.ms+' ms, '+JSON.stringify(r.rest.diag));
+  A(r.rest.feed<0.1*r.feed,'géodésique refaite en brut restant : presque rien à reprendre ('+(r.rest.feed/1000).toFixed(2)+' m sur '+(r.feed/1000).toFixed(1)+' m)');
   A(r.pen<=0.005,'aucune pénétration (max '+r.pen.toFixed(4)+' mm'+(r.penAt?' en '+r.penAt.map(v=>+v.toFixed(2)).join(','):'')+')');
   const airPct=100*r.air/r.feed;
   A(airPct<3,'avance hors matière '+airPct.toFixed(1)+' % (Fusion : 23 %) sur '+(r.feed/1000).toFixed(1)+' m');

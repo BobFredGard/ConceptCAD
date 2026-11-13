@@ -8,7 +8,7 @@ sont sorties le 2026-09-30j.
 Code dans `src/` · livrable `fusion_mvp.html` (généré par `build.js`) · architecture et
 garde-fous en tête de `src/00-entete-et-outils.js`.
 
-**688 versions**, de `2026-09-28b` à `V0.99.1` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
+**689 versions**, de `2026-09-28b` à `V0.99.2` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
 comme dans le fichier d'origine.
 
 ---
@@ -7705,3 +7705,11 @@ Cavité Usinage, après l'ébauche D25 R2 : reprise D10 (Contours) 6,0 m de coup
 Cavité Usinage, après l'ébauche D25, la reprise D10 et une finition boule D12 (crêtes, pas 0,5) : finition boule D3 (pas 0,25) en brut restant, 8,0 m de coupe au lieu de 104 m (8 %), 14 s de calcul dont 4 s de carte ; une D3 sur toute la pièce n'enlèverait ensuite nulle part plus de 0,075 mm. Avec la finition boule D6 du fichier à la place de la D12 : aucune passe (la D6 ne laisse rien que la D3 puisse prendre, 0,04 mm au plus).
 
 **Test** : tests/test_fao_finition_restante.cjs (rapide et complet) : passes connues sur une bande de matière, marge 0 / 1 / 4 mm, passes voisines reprises, liaisons, passe entière gardée telle quelle, réglages et clé. Parcours d'exemple, CACHE_VER et FORMES_VER inchangés (nouvelle option seulement).
+
+## V0.99.2 - Géodésique : brut restant
+
+**Demande** : « tu peux commencer à l'ajouter sur la géodésique aussi. On verra à l'usage si elle sert. »
+
+**Correctif** : fiche de la géodésique, section **Brut** (même section que la finition) : *Départ* = brut du posage (défaut) ou brut restant, *Ignorer moins de* (0,1 mm), *Marge* (1 mm). Les passes géodésiques sont filtrées par `faoRestFinish` comme celles de la finition, après leur calcul sur les faces pilotes ; carte à la maille D/8, jusqu'à 1 mm (0,5 mm avant) pour les grosses boules ; le filtre saute d'un coup les blocs de 4 × 4 mailles dont le plus haut point reste sous l'outil. RETARD, boule D30, géodésique refaite en brut restant juste après la première : aucune passe, 30,6 s au lieu de 104 s (carte 42 → 11 s, filtre 45 → 3 s). Documents existants inchangés.
+
+**Test** : tests/test_fao_finition_restante.cjs (réglages de la géodésique), tests/test_fao_geodesique.cjs (géodésique refaite en brut restant sur RETARD : rien à reprendre). Parcours d'exemple, CACHE_VER et FORMES_VER inchangés (nouvelle option seulement).
