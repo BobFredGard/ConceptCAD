@@ -49,6 +49,24 @@ function asmPlanBodies(){
   asmPlanFree();
   const exact=typeof occHas==='function'&&occHas();
   const list=[];
+  /* V0.97.1 : un solide de composant est facettisé UNE fois, puis ses triangles sont placés pour chaque
+     occurrence (déplacement rigide : mêmes facettes que celles du solide placé). Avant, chaque occurrence
+     refaisait le maillage de son solide placé (SIRAP-14-000 : 161 occurrences de 7 pièces, 15 s). */
+  const triMemo=new Map(); // solide du composant → {pos,nrm,groups}
+  const triPlaced=(src,sh,F)=>{
+    const det=F.x[0]*(F.y[1]*F.z[2]-F.y[2]*F.z[1])-F.x[1]*(F.y[0]*F.z[2]-F.y[2]*F.z[0])+F.x[2]*(F.y[0]*F.z[1]-F.y[1]*F.z[0]);
+    if(!(det>0))return occTriPos(sh,0.3,0.4,true); // symétrie : sens des triangles inversé, maillage direct
+    let M=triMemo.get(src);
+    if(!M){M=occTriPos(src,0.3,0.4,true);triMemo.set(src,M);}
+    const P=M.pos,N=M.nrm,n=P.length,pos=new Array(n),nrm=N?new Array(n):null;
+    for(let i=0;i<n;i+=3){
+      const x=P[i],y=P[i+1],z=P[i+2];
+      pos[i]=F.o[0]+F.x[0]*x+F.y[0]*y+F.z[0]*z;pos[i+1]=F.o[1]+F.x[1]*x+F.y[1]*y+F.z[1]*z;pos[i+2]=F.o[2]+F.x[2]*x+F.y[2]*y+F.z[2]*z;
+      if(nrm){const a=N[i],b=N[i+1],c=N[i+2];
+        nrm[i]=F.x[0]*a+F.y[0]*b+F.z[0]*c;nrm[i+1]=F.x[1]*a+F.y[1]*b+F.z[1]*c;nrm[i+2]=F.x[2]*a+F.y[2]*b+F.z[2]*c;}
+    }
+    return{pos,nrm,groups:M.groups};
+  };
   asmPlanInstances().forEach(I=>{
     const c=asmComp(I.comp);if(!c)return;
     const key='asm:'+I.path.join('/');
@@ -57,8 +75,9 @@ function asmPlanBodies(){
       try{
         asmExactOfQuiet(c).forEach(b=>{
           const sh=asmPlaced(b.shape,I.F);
+          try{sh._asmSrc={shape:b.shape,F:I.F};}catch(e){} // V0.97.1 : classement des arêtes partagé (mepHlrTanIdx)
           let geo=null,tri=null;
-          try{const T=occTriPos(sh,0.3,0.4,true);tri=new Float32Array(T.pos); // V0.8.2 : triangles bruts (rayons des bulles)
+          try{const T=triPlaced(b.shape,sh,I.F);tri=new Float32Array(T.pos); // V0.8.2 : triangles bruts (rayons des bulles)
             geo=new THREE.BufferGeometry();geo.setAttribute('position',new THREE.Float32BufferAttribute(T.pos,3));
             try{geo.setAttribute('normal',new THREE.Float32BufferAttribute(occTriNormals(T),3));}catch(e){geo.computeVertexNormals();}
             geo.userData.occGroups=T.groups;}catch(e){geo=null;}
