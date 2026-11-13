@@ -34,8 +34,18 @@ function faoHMapDisc(rad,cell,prof){
   return out;
 }
 function faoHMapRaster(H,F,G,mesh){
-  // Plancher = dessus du maillage, par maille (triangles dilatés d'une maille).
-  const v=mesh.v, c=G.cell;
+  // Plancher = dessus du maillage, par maille. V0.96.6 : une maille ne prend un
+  // triangle que s'il passe à moins de 0,75 maille de son centre, à la plus haute
+  // cote possible dans ce rayon (plan + pente × rayon, jamais au-dessus du
+  // triangle). Avant, un triangle vertical prenait toute sa boîte : une paroi en
+  // biais remplissait un carré entier à sa hauteur, et les liaisons « retrait
+  // minimum » survolaient une pièce imaginaire.
+  const v=mesh.v, c=G.cell, rr=0.75*c;
+  const seg=function(px,py,ax,ay,bx,by){
+    const ex=bx-ax, ey=by-ay, l2=ex*ex+ey*ey;
+    let s=l2>1e-18?((px-ax)*ex+(py-ay)*ey)/l2:0; s=s<0?0:(s>1?1:s);
+    return Math.hypot(px-ax-s*ex,py-ay-s*ey);
+  };
   for(let t=0;t<mesh.t.length;t++){
     const a=v[mesh.t[t][0]], b=v[mesh.t[t][1]], d=v[mesh.t[t][2]];
     const zMax=Math.max(a[2],b[2],d[2]);
@@ -43,16 +53,18 @@ function faoHMapRaster(H,F,G,mesh){
     const j0=Math.max(0,Math.floor((Math.min(a[1],b[1],d[1])-G.y0)/c)-1), j1=Math.min(G.ny-1,Math.ceil((Math.max(a[1],b[1],d[1])-G.y0)/c)+1);
     const ux=b[0]-a[0], uy=b[1]-a[1], wx=d[0]-a[0], wy=d[1]-a[1];
     const det=ux*wy-uy*wx, L=Math.max(Math.hypot(ux,uy),Math.hypot(wx,wy),1e-9);
-    const flat=Math.abs(det)<1e-6*L*L; // triangle vu par la tranche : sa boîte entière
-    const eU=flat?0:1.5*c*Math.hypot(wx,wy)/Math.abs(det), eW=flat?0:1.5*c*Math.hypot(ux,uy)/Math.abs(det);
+    const flat=Math.abs(det)<1e-9*L*L; // triangle vu par la tranche : un trait
+    const gx=flat?0:(wy*(b[2]-a[2])-uy*(d[2]-a[2]))/det, gy=flat?0:(ux*(d[2]-a[2])-wx*(b[2]-a[2]))/det;
+    const rise=Math.hypot(gx,gy)*rr;
     for(let j=j0;j<=j1;j++)for(let i=i0;i<=i1;i++){
-      let z=zMax;
+      const px=G.x0+(i+0.5)*c, py=G.y0+(j+0.5)*c;
+      let inside=false;
       if(!flat){
-        const px=G.x0+(i+0.5)*c-a[0], py=G.y0+(j+0.5)*c-a[1];
-        const s=(px*wy-py*wx)/det, q=(ux*py-uy*px)/det;
-        if(s<-eU||q<-eW||s+q>1+eU+eW)continue;
-        z=Math.min(zMax,a[2]+s*(b[2]-a[2])+q*(d[2]-a[2])+(eU+eW)*Math.max(Math.abs(b[2]-a[2]),Math.abs(d[2]-a[2])));
+        const s=((px-a[0])*wy-(py-a[1])*wx)/det, q=(ux*(py-a[1])-uy*(px-a[0]))/det;
+        inside=s>=0&&q>=0&&s+q<=1;
       }
+      if(!inside&&Math.min(seg(px,py,a[0],a[1],b[0],b[1]),seg(px,py,b[0],b[1],d[0],d[1]),seg(px,py,d[0],d[1],a[0],a[1]))>rr)continue;
+      const z=flat?zMax:Math.min(zMax,a[2]+gx*(px-a[0])+gy*(py-a[1])+rise);
       const k=j*G.nx+i;
       if(z>F[k])F[k]=z;
       if(z>H[k])H[k]=z;
@@ -130,8 +142,46 @@ function faoLinkCtx(job,ops){
       }else seg([+a.x,+a.y,+a.z],[+b.x,+b.y,+b.z]);
     },
     tool:function(op){ return stampOf(faoToolById(job,op&&op.toolId)); },
-    top:function(a,b,R){
-      // Plus haut point de matière sous le passage d'un outil de rayon R.
+    top:function(a,b,R,t){
+      // V0.96.6 : plus haut point de matière réellement BALAYÉ par l'outil (rayon R)
+      // de a à b. Chaque maille est vue en 5 × 5 points. Aux deux bouts, l'outil
+      // occupe déjà la place (fin de la passe, descente de la suivante) : rien n'y
+      // dépasse son bout, et ce qui est derrière lui (paroi qu'il quitte) n'est
+      // jamais touché. Seule la bande parcourue entre les deux garde une marge
+      // (l'écart entre deux points vus). Avant, toute maille proche du trajet
+      // comptait : la paroi que la passe venait de longer passait pour un obstacle
+      // et la liaison remontait au-dessus du niveau précédent au lieu de la seule
+      // montée choisie.
+      if(!t)return this.topDisc(a,b,R);
+      const mg=0.18*cell, ra=R+mg, dx=b.x-a.x, dy=b.y-a.y, L2=dx*dx+dy*dy, L=Math.sqrt(L2);
+      const kd=t.kind, rc=kd==='ball'?R:(kd==='bull'?Math.min(R,Math.max(0,+t.cornerR||0)):0);
+      const tip=function(d){ const e=d-(R-rc); return (rc>0&&e>0)?rc-Math.sqrt(Math.max(0,rc*rc-e*e)):0; };
+      const i0=Math.max(0,Math.floor((Math.min(a.x,b.x)-ra-G.x0)/cell)-1), i1=Math.min(G.nx-1,Math.ceil((Math.max(a.x,b.x)+ra-G.x0)/cell)+1);
+      const j0=Math.max(0,Math.floor((Math.min(a.y,b.y)-ra-G.y0)/cell)-1), j1=Math.min(G.ny-1,Math.ceil((Math.max(a.y,b.y)+ra-G.y0)/cell)+1);
+      let top=floor;
+      for(let j=j0;j<=j1;j++)for(let i=i0;i<=i1;i++){
+        const h=H[j*G.nx+i];
+        if(!(h>top))continue;
+        const cx=G.x0+(i+0.5)*cell, cy=G.y0+(j+0.5)*cell;
+        for(let v=-2;v<=2;v++)for(let u=-2;u<=2;u++){
+          const qx=cx+u*cell/4, qy=cy+v*cell/4;
+          const da=Math.hypot(qx-a.x,qy-a.y), db=Math.hypot(qx-b.x,qy-b.y);
+          let band=false;
+          if(L>1e-9){
+            const s=((qx-a.x)*dx+(qy-a.y)*dy)/L2;
+            band=s>0&&s<1&&Math.abs((qx-a.x)*dy-(qy-a.y)*dx)/L<=ra;
+          }
+          if(!band&&da>R&&db>R)continue; // jamais sous l'outil
+          let z=h;
+          if(da<=R)z=Math.min(z,+a.z+tip(da));
+          if(db<=R)z=Math.min(z,+b.z+tip(db));
+          if(z>top)top=z;
+        }
+      }
+      return top;
+    },
+    topDisc:function(a,b,R){
+      // Plus haut point de matière sous le passage d'un outil de rayon R (prudent).
       const step=Math.max(cell,R/2), rad=R+step/2+cell;
       const kd=String(rad);
       if(!discs.has(kd))discs.set(kd,faoHMapDisc(rad,cell,null));
@@ -193,7 +243,7 @@ function faoOpLinks(job,op,mv,prev,ctx){
           const zB=low.top(B,B,R)+low.lift;
           if(zB<+B.z-1e-9&&zB>+N.z+1e-9)B={r:1,x:B.x,y:B.y,z:zB};
         }
-        const top=low.top(p,B,R);
+        const top=low.top(p,B,R,tool);
         zL=Math.max(Math.min(Math.max(+p.z,top)+low.lift,plane),+p.z,+B.z,top);
       }
       if(p.z<zL-1e-9)out.push({r:1,x:p.x,y:p.y,z:zL});

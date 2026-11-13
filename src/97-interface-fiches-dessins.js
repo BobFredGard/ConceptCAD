@@ -206,7 +206,7 @@ function mfFiTable(){
   const PATH=()=>ficD('M14 58H44V44H74V30',BL,1.8);
   const RAP=()=>ficD('M74 30L84 12H26L14 58',RE,1.2,'3 2');
   F('Simulation/Rapides','Déplacements rapides','Montre, atténue ou masque les trajets rouges : ceux où l’outil se déplace sans couper.',['Trois états : tous, fondus, masqués'],PATH()+RAP(),PATH(),null,'Avec les rapides','Masqués');
-  F('Calcul/Régénérer','Tout régénérer','Recalcule tous les parcours d’outil d’après la pièce actuelle et les réaffiche.',[],'<g opacity=".45">'+PATH()+'</g>'+ficT(82,20,'⚠',11,'#d97706'),PATH()+CHK(82,18),null,'Parcours à refaire','Parcours à jour');
+  F('Calcul/Régénérer','Tout régénérer','Recalcule les parcours d’outil de tous les posages non gelés d’après la pièce actuelle et les réaffiche.',[],'<g opacity=".45">'+PATH()+'</g>'+ficT(82,20,'⚠',11,'#d97706'),PATH()+CHK(82,18),null,'Parcours à refaire','Parcours à jour');
   F('Export/G-code','G-code','Écrit le programme que la machine va lire : Siemens 840D ou Fagor 8065.',[],PATH(),DOC(34,14,'.MPF',OR)+ficT(40,58,'G1 X12',5,'#334155','start'),null,'Le parcours','Le programme');
   /* ========== PLAN ========== */
   F('Planches/Nouvelle','Nouvelle planche','Ajoute une feuille vierge au plan.',[],SHEET(),ficG(0,0,.62,SHEET())+ficG(36,26,.62,ficR(9,5,82,66,OR,1.6,'#fff7ed')));
