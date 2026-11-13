@@ -1380,9 +1380,14 @@ function faoOpCardElement(setup,op,i){
         'dès qu’un îlot est présent, les anneaux l’entourent puis rejoignent ceux de la paroi. Chaque niveau est fini en entier (brut et brut restant : '+
         'l’air n’est pas usiné) ; la dernière passe suit les faces du solide.'],
       ['escargot','Trochoïdal · demi-anneaux par côté','Spirale au centre jusqu’aux murs les plus proches, puis demi-anneaux circulaires d’un côté puis de l’autre ; '+
-        'la dernière passe de chaque niveau suit les faces du solide (au contact réel de l’outil torique ou boule).']],
-      op.mode==='anneaux'?'anneaux':'escargot',
-      function(v){ op.mode=(v==='anneaux')?'anneaux':'escargot'; },
+        'la dernière passe de chaque niveau suit les faces du solide (au contact réel de l’outil torique ou boule).'],
+      // V0.98.0 : CONTOURS — une seule descente en spirale, puis passes parallèles
+      // aux îlots et aux parois, pilotées par la matière réellement restante
+      ['contours','Contours · une entrée, suit les îlots','Une seule descente par niveau, en hélice au centre (aucune si la zone donne sur le vide : entrée à plat par l’extérieur), spirale pour ouvrir, '+
+        'puis passes parallèles aux îlots et aux parois, espacées de ae. La fraise suit la carte de la matière réellement restante : elle ne coupe que là où il reste du brut, '+
+        'jamais plus que ae, passe partout et glisse à la cote dans le déjà-vidé d’un morceau à l’autre ; le niveau n’est fini que quand plus rien n’est accessible.']],
+      (op.mode==='anneaux'||op.mode==='contours')?op.mode:'escargot',
+      function(v){ op.mode=(v==='anneaux'||v==='contours')?v:'escargot'; if(op.mode!=='anneaux')delete op.uneEntree; },
       'Mode de vidage de l’ébauche 3D');
     rM.appendChild(modeSel);
     d.appendChild(rM);
