@@ -383,7 +383,7 @@ input[type=range]{accent-color:var(--primary);width:100%}
  * peut changer sans rien casser. CACHE_VER (parcours FAO) reste indépendant.
  */
 
-const APP_VER='V0.97.1';
+const APP_VER='V0.98.0';
 try{console.log('[ConceptCAD] version '+APP_VER);}catch(e){}
 try{var mfSv=document.getElementById('mfSplashVer');if(mfSv)mfSv.textContent=APP_VER;}catch(e){} // écran de démarrage
 
@@ -47415,7 +47415,8 @@ function faoSanitiseOps(s){
       // garde l'escargot partout ») — tout document (absent / 'conv' / autre) passe
       // en escargot à la lecture.
       // V0.23.15 : 2e mode 'anneaux' (Escargot) ; 'escargot' = Trochoïdal.
-      if(op.mode!=='anneaux')op.mode='escargot';
+      // V0.98.0 : 3e mode 'contours' (spirale puis contours parallèles aux îlots, une seule entrée)
+      if(op.mode!=='anneaux'&&op.mode!=='contours')op.mode='escargot';
       // V0.97.0 : une seule entrée (Escargot seulement ; absent = anneaux habituels)
       if(op.uneEntree&&op.mode==='anneaux')op.uneEntree=true; else delete op.uneEntree;
       delete op.entree;
@@ -50253,7 +50254,7 @@ function* faoOpMovesIt0(op,job){
         parRegion:!!op.parRegion,
         // V0.23.15 : 'anneaux' = Escargot (anneaux autour des îlots) ; sinon
         // 'escargot' = Trochoïdal (valeur historique, documents existants)
-        mode:op.mode==='anneaux'?'anneaux':'escargot',
+        mode:(op.mode==='anneaux'||op.mode==='contours')?op.mode:'escargot',
         // V0.97.0 : Escargot à une seule entrée (hélice unique par niveau)
         uneEntree:op.mode==='anneaux'&&!!op.uneEntree,
         // 2026-10-08-003 : sens de passe — 'avalant' = sens de coupe constant
@@ -57029,9 +57030,14 @@ function faoOpCardElement(setup,op,i){
         'dès qu’un îlot est présent, les anneaux l’entourent puis rejoignent ceux de la paroi. Chaque niveau est fini en entier (brut et brut restant : '+
         'l’air n’est pas usiné) ; la dernière passe suit les faces du solide.'],
       ['escargot','Trochoïdal · demi-anneaux par côté','Spirale au centre jusqu’aux murs les plus proches, puis demi-anneaux circulaires d’un côté puis de l’autre ; '+
-        'la dernière passe de chaque niveau suit les faces du solide (au contact réel de l’outil torique ou boule).']],
-      op.mode==='anneaux'?'anneaux':'escargot',
-      function(v){ op.mode=(v==='anneaux')?'anneaux':'escargot'; },
+        'la dernière passe de chaque niveau suit les faces du solide (au contact réel de l’outil torique ou boule).'],
+      // V0.98.0 : CONTOURS — une seule descente en spirale, puis passes parallèles
+      // aux îlots et aux parois, pilotées par la matière réellement restante
+      ['contours','Contours · une entrée, suit les îlots','Une seule descente par niveau, en hélice au centre (aucune si la zone donne sur le vide : entrée à plat par l’extérieur), spirale pour ouvrir, '+
+        'puis passes parallèles aux îlots et aux parois, espacées de ae. La fraise suit la carte de la matière réellement restante : elle ne coupe que là où il reste du brut, '+
+        'jamais plus que ae, passe partout et glisse à la cote dans le déjà-vidé d’un morceau à l’autre ; le niveau n’est fini que quand plus rien n’est accessible.']],
+      (op.mode==='anneaux'||op.mode==='contours')?op.mode:'escargot',
+      function(v){ op.mode=(v==='anneaux'||v==='contours')?v:'escargot'; if(op.mode!=='anneaux')delete op.uneEntree; },
       'Mode de vidage de l’ébauche 3D');
     rM.appendChild(modeSel);
     d.appendChild(rM);
@@ -59101,6 +59107,8 @@ function faoSpiralLevel(mesh,B,z,D,r,secu,zFrom,ae,entryMode,brutTop,zt,moves,op
   // front géodésique de oneEntryFronts (dans snailRings) part du point d'entrée.
   const oneE=!!(snail&&opt&&opt.oneEntry);
   if(oneE)spOn=false;
+  let facesRun=null; // V0.98.0 : passe de faces (posée plus bas, appelée par zone en Contours)
+  let oneDrop=null; // V0.98.0 (Contours) : descente dans le déjà-vidé, près du point visé
   let oneClrL=null; // liaison à la cote dans le déjà-vidé (posée par oneEntryFronts)
   // --- liaisons (copie conventionnelle) : G1 sûre ou translation à vide
   const zTopSafe=Math.max(top,isFinite(+brutTop)?+brutTop:top);
@@ -59869,8 +59877,32 @@ function faoSpiralLevel(mesh,B,z,D,r,secu,zFrom,ae,entryMode,brutTop,zt,moves,op
       // 3. fronts (côté entrée à gauche : sens trigonométrique autour de l'entrée)
       const K=Math.floor((Tmax-1e-6)/pitch);
       const onStock=fT?null:function(q){return !boxOut(q[0],q[1]);};
+      // V0.98.0 (Contours) : seuls les fronts FERMÉS autour de l'hélice sont
+      // gardés — la spirale d'ouverture ; dès qu'un front touche une paroi
+      // (ouvert, coupé en morceaux) la région passe aux contours parallèles
+      const ctr=!!(opt&&opt.contours),stopR=new Uint8Array(Math.max(1,nReg));
+      // … et la spirale s'arrête dès qu'elle a ouvert le CŒUR de la région (cases
+      // à moins d'un pas de la plus grande distance aux parois, autour de
+      // l'entrée) : au-delà, les anneaux parallèles aux parois prennent le relais
+      const kCap=new Float64Array(Math.max(1,nReg)).fill(1/0);
+      if(ctr)srcs.forEach(function(s){const g=s.rg;let Gm=0;
+        for(let p=0;p<NN;p++)if(mask[p]&&reg[pad(p)]===g&&G[pad(p)]<1/0&&G[pad(p)]>Gm)Gm=G[pad(p)];
+        if(!(Gm>0))return;const Gc=Gm-pitch,isC=function(p){return mask[p]&&reg[pad(p)]===g&&G[pad(p)]>=Gc;};
+        let p0=-1,bd=1/0;
+        for(let p=0;p<NN;p++)if(isC(p)){const i=p%nx,d=Math.hypot(gx0+i*h-s.x,gy0+((p-i)/nx)*h-s.y);if(d<bd){bd=d;p0=p;}}
+        if(p0<0)return;
+        const sn=new Uint8Array(NN),st=[p0];sn[p0]=1;let mT=0;
+        while(st.length){const q=st.pop();if(T[q]<INFc&&T[q]>mT)mT=T[q];const qi=q%nx,qj=(q-qi)/nx;
+          for(let dj=-1;dj<=1;dj++)for(let di=-1;di<=1;di++){const ii=qi+di,jj=qj+dj;if(ii<0||jj<0||ii>=nx||jj>=ny)continue;
+            const t=jj*nx+ii;if(!sn[t]&&isC(t)){sn[t]=1;st.push(t);}}}
+        kCap[g]=Math.max(0,Math.ceil((mT-D/2)/pitch));});
       for(let k=1;k<=K;k++){const n0=runs.length;addLoops(k*pitch,iso(Tcap-k*pitch,all),onStock);
-        for(let q=n0;q<runs.length;q++)runs[q].li=k;}
+        for(let q=n0;q<runs.length;q++)runs[q].li=k;
+        if(ctr){const nw=runs.splice(n0),cnt=new Map();
+          nw.forEach(function(R){cnt.set(R.rg,(cnt.get(R.rg)||0)+1);});
+          nw.forEach(function(R){const g=R.rg;
+            if(g<0||stopR[g]||hasAir[g]||cnt.get(g)!==1||!R.closed||k>kCap[g]){if(g>=0)stopR[g]=1;return;}
+            runs.push(R);});}}
       // 4. filet de couverture : case utile à plus de 0,45·D de toute passe
       // (fronts, alésage de l'hélice, tour des faces / anneau de bord ≈ bord de
       // zone, air) — crête entre deux fronts venus de l'air — droite(s) sur son axe
@@ -59882,7 +59914,7 @@ function faoSpiralLevel(mesh,B,z,D,r,secu,zFrom,ae,entryMode,brutTop,zt,moves,op
       srcs.forEach(function(s){stampC(s.x,s.y,s.hr+Rc);});
       runs.forEach(function(R){for(let k=0;k<R.dp.length;k++)stampC(R.dp[k][0],R.dp[k][1],Rc);});
       const seenB=new Uint8Array(NN),stk=[];
-      for(let p0=0;p0<NN;p0++){
+      for(let p0=0;p0<NN&&!ctr;p0++){
         if(!mask[p0]||cov[p0]||seenB[p0])continue;
         const cells=[];stk.length=0;stk.push(p0);seenB[p0]=1;
         while(stk.length){const q=stk.pop();cells.push(q);const qi=q%nx,qj=(q-qi)/nx;
@@ -59903,7 +59935,7 @@ function faoSpiralLevel(mesh,B,z,D,r,secu,zFrom,ae,entryMode,brutTop,zt,moves,op
       }
       // 5. anneau de bord le long des limites de zone (comme les anneaux)
       Fld=F;
-      {const n0=runs.length;addLoops(0,rim(iso(1.05*h,all)),noWall);for(let q=n0;q<runs.length;q++)runs[q].rim=1;}
+      if(!ctr){const n0=runs.length;addLoops(0,rim(iso(1.05*h,all)),noWall);for(let q=n0;q<runs.length;q++)runs[q].rim=1;}
       // 6. graphe : un front attend ses voisins du front précédent (≤ 1,6·pitch)
       const RL=[];
       srcs.forEach(function(s){const c=[],hh=Math.max(s.hr,1e-3);
@@ -59991,6 +60023,58 @@ function faoSpiralLevel(mesh,B,z,D,r,secu,zFrom,ae,entryMode,brutTop,zt,moves,op
             if(segClear(A[0],A[1],Bq[0],Bq[1])&&clrStraight(A[0],A[1],Bq[0],Bq[1],m===path.length-1?1.5*pitch:0))break;}
           if(m<path.length-1)out.push(path[m]);k=m;}
         return out;};
+      // V0.98.0 (Contours) : liaison à la cote limitée à max(3·D, 30 mm) — au-delà
+      // (demande « pas contre une relevée de temps en temps et un changement en
+      // rapide ») : remontée, rapide, descente dans une case déjà vidée à cette
+      // cote près du point visé (rien au-dessus : tout le disque y est passé)
+      if(ctr){const LL=Math.max(3*D,50),base=oneClrL;
+        oneClrL=function(ax,ay,bx,by){const w=base(ax,ay,bx,by);if(!w)return w;
+          let L=0,qx=ax,qy=ay;w.concat([[bx,by]]).forEach(function(q){L+=Math.hypot(q[0]-qx,q[1]-qy);qx=q[0];qy=q[1];});
+          return L>LL?null:w;};
+        // ENTRÉE PAR LE VIDE (retour : « au lieu d'utiliser les parties dégagées tu
+        // repars en spirales pleine matière ; tu rentres par le vide vers la
+        // matière et là ce sera cool ») : case déjà vidée (ou air) la plus proche
+        // du point visé EN CHEMINANT DANS LA ZONE (Dijkstra sur les centres
+        // permis, sans limite) ; descente là, puis coupe à plat le long du chemin
+        // jusqu'au point visé. Aucune hélice ni rampe tant qu'un vide existe au niveau.
+        const dK2=[],dV2=[],dG=new Float64Array(NN),dF=new Int32Array(NN),dS=new Uint8Array(NN),dT=[];
+        const dPush=function(p,k){dK2.push(k);dV2.push(p);let c=dK2.length-1;
+          while(c>0){const q=(c-1)>>1;if(dK2[q]<=k)break;dK2[c]=dK2[q];dV2[c]=dV2[q];c=q;}dK2[c]=k;dV2[c]=p;};
+        const dPop=function(){const top=dV2[0],lk=dK2.pop(),lv=dV2.pop(),n=dK2.length;
+          if(n){let c=0;for(;;){let m=2*c+1;if(m>=n)break;if(m+1<n&&dK2[m+1]<dK2[m])m++;if(dK2[m]>=lk)break;dK2[c]=dK2[m];dV2[c]=dV2[m];c=m;}dK2[c]=lk;dV2[c]=lv;}
+          return top;};
+        oneDrop=function(x,y){stampMoves();
+          for(let k=0;k<dT.length;k++)dS[dT[k]]=0;dT.length=0;dK2.length=0;dV2.length=0;
+          let t0=cellOf(x,y);
+          if(!mask[t0]){let bd=1/0;const ci=t0%nx,cj=(t0-ci)/nx;for(let dj=-3;dj<=3;dj++)for(let di=-3;di<=3;di++){const ii=ci+di,jj=cj+dj;if(ii<0||jj<0||ii>=nx||jj>=ny)continue;const q=jj*nx+ii;if(mask[q]&&Math.hypot(di,dj)<bd){bd=Math.hypot(di,dj);t0=q;}}
+            if(!mask[t0])return false;}
+          dS[t0]=1;dT.push(t0);dG[t0]=0;dF[t0]=-1;dPush(t0,0);let q=-1,ex=0;
+          while(dK2.length&&ex++<300000){const k=dK2[0],p=dPop();if(dS[p]===2||k>dG[p]+1e-12)continue;dS[p]=2;
+            if(srcF[p]||freeAt(p)){q=p;break;}
+            const i=p%nx,j=(p-i)/nx;
+            for(let dj=-1;dj<=1;dj++)for(let di=-1;di<=1;di++){if(!di&&!dj)continue;const ii=i+di,jj=j+dj;if(ii<0||jj<0||ii>=nx||jj>=ny)continue;
+              const t=jj*nx+ii;if(!mask[t]||dS[t]===2)continue;const g=k+(di&&dj?D2:1)*h;
+              if(dS[t]&&g>=dG[t])continue;if(!dS[t])dT.push(t);dS[t]=1;dG[t]=g;dF[t]=p;dPush(t,g);}}
+          if(q<0)return false;
+          // chemin case vidée → point visé, fil tiré (segments sûrs)
+          const path=[];for(let p=q;p>=0;p=dF[p]){const i=p%nx;path.push([gx0+i*h,gy0+((p-i)/nx)*h]);}
+          path.push([x,y]);
+          const way=[path[0]];let k=0;
+          while(k<path.length-1){let m=path.length-1;for(;m>k+1;m--)if(segClear(path[k][0],path[k][1],path[m][0],path[m][1]))break;way.push(path[m]);k=m;}
+          const qx=way[0][0],qy=way[0][1];
+          {const Pm=moves.length?moves[moves.length-1]:null;
+            if(Pm&&!Pm.r&&Math.abs(Pm.z-z)<1e-9){const w=base(Pm.x,Pm.y,qx,qy);
+              if(w){let L=0,ax=Pm.x,ay=Pm.y;w.concat([[qx,qy]]).forEach(function(q2){L+=Math.hypot(q2[0]-ax,q2[1]-ay);ax=q2[0];ay=q2[1];});
+                if(L<=LL){w.forEach(function(q2){pushCut(q2[0],q2[1]);});pushCut(qx,qy);
+                  for(let k2=1;k2<way.length-1;k2++)pushCut(way[k2][0],way[k2][1]);
+                  const lw2=way[way.length-2];atCut=true;prevIn=true;px=lw2[0];py=lw2[1];return true;}}}}
+          finishRamp();
+          const zG=gotoXY(qx,qy);
+          if(zG>z+1+1e-9)moves.push({r:1,x:rnd(qx),y:rnd(qy),z:rnd(z+1)});
+          moves.push({r:0,ent:1,x:rnd(qx),y:rnd(qy),z:z});
+          for(let w=1;w<way.length-1;w++)pushCut(way[w][0],way[w][1]);
+          const lw=way[way.length-2];
+          atCut=true;prevIn=true;px=lw[0];py=lw[1];return true;};}
       // 8. émission
       const done=new Uint8Array(RL.length);
       let nMain=0;RL.forEach(function(R){if(!R.rim)nMain++;});
@@ -60049,6 +60133,347 @@ function faoSpiralLevel(mesh,B,z,D,r,secu,zFrom,ae,entryMode,brutTop,zt,moves,op
         const zG=gotoXY(qx,qy);
         if(Math.abs(zG-z)>1e-9)moves.push({r:0,ent:1,x:rnd(qx),y:rnd(qy),z:z});
         pushCut(x,y);atCut=true;prevIn=true;px=x;py=y;};
+      // ===== V0.98.0 : CONTOURS (demande « une seule descente, en spirale, puis
+      // on part parallèles aux îlots et l'on passe partout en suivant la forme
+      // des îlots » ; « il faut vraiment gérer le brut restant »). Après l'hélice
+      // et la spirale d'ouverture : anneaux à distance constante des PAROIS
+      // (îlots, bords de poche ; sans paroi : du bord de zone), coupés seulement
+      // là où la MATIÈRE RESTANTE réelle (carte RG des disques d'outil balayés)
+      // le permet : largeur de matière prise par l'outil, mesurée en travers de
+      // la passe, ≤ 1,5·ae. Une portion trop chargée attend que ses voisines
+      // plus près du vidé soient faites ; rien à prendre → sautée (glissement à
+      // la cote si le trou est court). Toujours la portion faisable la plus
+      // proche ; liaison à la cote par le déjà-vidé. Plus rien de faisable mais
+      // de la matière que le tour des faces ne prendra pas (à plus de r de la
+      // paroi, ou plus de ~ae devant elle) : passe au ras de cette matière
+      // (ligne d'engagement ae), en dernier recours la portion la moins chargée.
+      const contourPhase=function(){
+        const R0=D/2,Rd=R0-0.3*h,nR=Math.ceil(Rd/h);
+        const stampD=function(x,y,Rr){const ci=Math.round((x-gx0)/h),cj=Math.round((y-gy0)/h),n=Math.ceil(Rr/h);
+          for(let dj=-n;dj<=n;dj++)for(let di=-n;di<=n;di++){const ii=ci+di,jj=cj+dj;if(ii<0||jj<0||ii>=nx||jj>=ny)continue;
+            const ex=gx0+ii*h-x,ey=gy0+jj*h-y;if(ex*ex+ey*ey<=Rr*Rr)RG[jj*nx+ii]=1;}};
+        srcs.forEach(function(s){if(s.hr>0)stampD(s.x,s.y,s.hr+rS);});
+        stampMoves();
+        // matière enlevable : à portée d'un centre d'outil permis, hors de l'air
+        d2=new Float64Array(N).fill(BIG);for(let p=0;p<NN;p++)if(mask[p])d2[pad(p)]=0;
+        const Dm=edt();
+        let Da=null;{d2=new Float64Array(N).fill(BIG);let a=false;for(let p=0;p<NN;p++)if(airC[p]){d2[pad(p)]=0;a=true;}if(a)Da=edt();}
+        const remv=new Uint8Array(NN);
+        for(let p=0;p<NN;p++){const q=pad(p);if(Dm[q]<=R0-h+1e-9&&!(Da&&Da[q]<=rS))remv[p]=1;}
+        // (filet final : jusqu'au bord du disque d'un centre permis — une limite de
+        // zone sans paroi n'a pas de passe de faces qui la serre)
+        const remX=new Uint8Array(NN),RX=R0-0.1;
+        for(let p=0;p<NN;p++){const q=pad(p);if(Dm[q]<=RX+1e-9&&!(Da&&Da[q]<=rS))remX[p]=1;}
+        // ce que le tour des faces prendra : bande de ~ae devant une paroi
+        d2=new Float64Array(N).fill(BIG);let anyB=false;
+        for(let p=0;p<NN;p++){if(!mask[p])continue;const i=p%nx,j=(p-i)/nx;let b=false;
+          for(let dj=-1;dj<=1&&!b;dj++)for(let di=-1;di<=1;di++){const ii=i+di,jj=j+dj;
+            if(ii<0||jj<0||ii>=nx||jj>=ny)continue;if(wallC[jj*nx+ii]){b=true;break;}}
+          if(b){d2[pad(p)]=0;anyB=true;}}
+        // … seulement là où la passe de faces existe vraiment (une paroi hors de la
+        // limite de l'opération n'a pas de passe : sa bande est prise par les anneaux)
+        // PAROIS PROPRES (retour « dans les rayons ce n'est pas joli », « fais de
+        // belles lignes droites et de beaux cercles ») : en Contours la passe de
+        // faces suit le BORD EXACT des centres permis (ligne de niveau à ~h,
+        // recollée au bord réel par bissection — comme l'anneau de bord) au lieu
+        // des contours décalés de l'ombre : un congé lu à chaque plan donnait des
+        // morceaux d'arcs voisins et des diagonales (fond posé à la cote) reliés
+        // en zigzag à travers les rainures. Gardé seulement contre une paroi ou
+        // une limite (pas contre l'air) ; même sens de coupe que les chaînes
+        // d'origine (côté de la paroi mesuré sur elles).
+        if(rem&&rem.length){
+          const inM=function(x,y){const ci=Math.round((x-gx0)/h),cj=Math.round((y-gy0)/h);return ci>=0&&cj>=0&&ci<nx&&cj<ny&&!!mask[cj*nx+ci];};
+          let sR=0,sL=0;
+          rem.forEach(function(ch){const P=ch.pts,n=P.length,m=ch.closed?n:n-1;
+            for(let i=0;i<m;i++){const a=P[i],e=P[(i+1)%n];let tx=e[0]-a[0],ty=e[1]-a[1];const L=Math.hypot(tx,ty);if(L<0.5)continue;tx/=L;ty/=L;
+              const mx=(a[0]+e[0])/2,my=(a[1]+e[1])/2,o=1.2*h,lM=inM(mx-ty*o,my+tx*o),rM=inM(mx+ty*o,my-tx*o);
+              if(lM&&!rM)sR+=L;else if(rM&&!lM)sL+=L;}});
+          const flip=sL>sR; // paroi à gauche dans les chaînes d'origine : lignes retournées
+          // coins vifs : la ligne de niveau coupe les angles (pan de ~h) ; deux
+          // côtés droits sont prolongés jusqu'à leur intersection quand elle est
+          // permise et proche — de vrais coins, de vraies lignes droites
+          const sharp=function(Q,closed){const n=Q.length;if(n<4)return Q;
+            const sl=function(i){const a=Q[i],b=Q[(i+1)%n];return Math.hypot(b[0]-a[0],b[1]-a[1]);};
+            const m=closed?n:n-1,lg=[];for(let i=0;i<m;i++)lg.push(sl(i)>=2*h);
+            const drop=new Uint8Array(n),put=new Map();
+            for(let i=0;i<m;i++){if(!lg[i])continue;let j=i+1,run=0;
+              while(j<i+1+m&&!lg[j%m]&&(closed||j<m)){run+=sl(j%m);j++;}
+              if(j===i+1||run>3*h||(!closed&&j>=m)||j%m===i)continue;
+              const a=Q[i],b=Q[(i+1)%n],c=Q[j%m],d=Q[(j+1)%n];
+              const ux=b[0]-a[0],uy=b[1]-a[1],vx=d[0]-c[0],vy=d[1]-c[1],den=ux*vy-uy*vx;
+              if(Math.abs(den)<0.34*Math.hypot(ux,uy)*Math.hypot(vx,vy))continue; // < 20° : pas un coin
+              const t=((c[0]-a[0])*vy-(c[1]-a[1])*vx)/den,X=[a[0]+ux*t,a[1]+uy*t];
+              if(Math.hypot(X[0]-b[0],X[1]-b[1])>2.5*h||Math.hypot(X[0]-c[0],X[1]-c[1])>2.5*h||!inside(X[0],X[1]))continue;
+              let ok=true;for(let k=i+1;k<=j;k++)if(put.has(k%n)||drop[k%n])ok=false;if(!ok)continue;
+              for(let k=i+2;k<=j;k++)drop[k%n]=1;put.set((i+1)%n,X);}
+            const o=[];for(let k=0;k<n;k++){if(drop[k])continue;o.push(put.has(k)?put.get(k):Q[k]);}return o;};
+          const nearW=function(x,y){const ci=Math.round((x-gx0)/h),cj=Math.round((y-gy0)/h),nb=2;
+            for(let dj=-nb;dj<=nb;dj++)for(let di=-nb;di<=nb;di++){const ii=ci+di,jj=cj+dj;
+              if(ii<0||jj<0||ii>=nx||jj>=ny)continue;const p=jj*nx+ii;if(!mask[p]&&wallC[p])return true;}
+            return false;};
+          // (densifiée avant recollage : un côté droit simplifié n'avait que ses deux bouts recollés)
+          Fld=F;const loops=rim(iso(1.05*h,all).map(function(P){const o=[],n=P.length;for(let i=0;i<n;i++){const a=P[i],e=P[(i+1)%n],k=Math.max(1,Math.ceil(Math.hypot(e[0]-a[0],e[1]-a[1])/(0.5*h)));for(let t=0;t<k;t++)o.push([a[0]+(e[0]-a[0])*t/k,a[1]+(e[1]-a[1])*t/k]);}return o;}));const out=[];
+          loops.forEach(function(P0){if(P0.length<3)return;
+            const P=[];for(let i=0;i<P0.length;i++){const a=P0[i],e=P0[(i+1)%P0.length],L=Math.hypot(e[0]-a[0],e[1]-a[1]),k=Math.max(1,Math.ceil(L/1));
+              for(let t=0;t<k;t++)P.push(t?[a[0]+(e[0]-a[0])*t/k,a[1]+(e[1]-a[1])*t/k]:a);}
+            const n=P.length,ok=P.map(function(q){return nearW(q[0],q[1]);});
+            if(ok.every(Boolean)){const Q=sharp(faoSimplifyPts(P0.concat([P0[0]]),0.01).slice(0,-1),true);if(flip)Q.reverse();out.push({pts:Q,closed:true,bb:faoPtsBB(Q)});return;}
+            if(!ok.some(Boolean))return;
+            let k0=0;while(ok[k0])k0++;let cur=null;
+            const fl=function(){if(cur&&cur.length>=2){const Q=sharp(faoSimplifyPts(cur,0.01),false);if(flip)Q.reverse();out.push({pts:Q,closed:false,bb:faoPtsBB(Q)});}cur=null;};
+            for(let t=1;t<=n;t++){const k=(k0+t)%n;if(ok[k]){if(!cur)cur=[P[(k+n-1)%n]];cur.push(P[k]);}else{if(cur)cur.push(P[k]);fl();}}
+            fl();});
+          rem.length=0;out.forEach(function(c){if(c.pts.length>=2)rem.push(c);});
+        }
+        if(rem&&rem.length){d2=new Float64Array(N).fill(BIG);anyB=false;
+          rem.forEach(function(ch){const P=ch.pts,n=P.length,m=ch.closed?n:n-1;
+            for(let i=0;i<Math.max(1,m);i++){const a=P[i],e=P[(i+1)%n]||a,L=Math.hypot(e[0]-a[0],e[1]-a[1]),k=Math.max(1,Math.ceil(L/(0.5*h)));
+              for(let t=0;t<=k;t++){const ci=Math.round((a[0]+(e[0]-a[0])*t/k-gx0)/h),cj=Math.round((a[1]+(e[1]-a[1])*t/k-gy0)/h);
+                if(ci<0||cj<0||ci>=nx||cj>=ny)continue;d2[(cj+1)*W+ci+1]=0;anyB=true;}}});}
+        const Db=anyB?edt():null;
+        const okLeft=function(p){if(!Db)return false;const d=Db[pad(p)];return d>=R0-1.25*pitch-h&&d<=R0+0.5*h;};
+        // ZONES (demande « usiner par zone et les finir pour être sûr que tout a
+        // été retiré ») : cœurs = parties larges (à plus d'un rayon d'outil des
+        // parois), séparés par les passages étroits ; chaque case va au cœur le
+        // plus proche dans la zone. Une zone est vidée, ses parois passées, puis
+        // contrôlée sur la carte de matière avant de passer à la suivante.
+        const ZL=new Int32Array(NN).fill(-1);let nZ=0;
+        {const tau=R0,core=new Int32Array(NN).fill(-1),pk=[],pr=[];
+          const isCo=function(p){const v=G[pad(p)];return mask[p]&&v>=tau&&v<1/0;};
+          for(let p0=0;p0<NN;p0++){if(core[p0]>=0||!isCo(p0))continue;const id=pk.length,st=[p0];core[p0]=id;let m=0;
+            while(st.length){const q=st.pop();if(G[pad(q)]>m)m=G[pad(q)];const qi=q%nx,qj=(q-qi)/nx;
+              for(let dj=-1;dj<=1;dj++)for(let di=-1;di<=1;di++){const ii=qi+di,jj=qj+dj;if(ii<0||jj<0||ii>=nx||jj>=ny)continue;
+                const t=jj*nx+ii;if(core[t]<0&&isCo(t)){core[t]=id;st.push(t);}}}
+            pk.push(m);pr.push(reg[pad(p0)]);}
+          // (retour « une zone peut être aussi un contour de poche de même largeur » :
+          // une case à plus de 2 rayons d'outil d'un cœur — couloir, rainure, tour
+          // de poche de largeur constante — forme sa PROPRE zone, suivie d'un bout à l'autre)
+          // cœur gardé : nettement plus large que le seuil, sinon le plus large de sa région
+          const keep=pk.map(function(m){return m>=tau+0.5*pitch;}),best=new Map();
+          pk.forEach(function(m,i){const g=pr[i];if(!best.has(g)||m>pk[best.get(g)])best.set(g,i);});
+          best.forEach(function(i,g){let any=false;pk.forEach(function(m,j){if(pr[j]===g&&keep[j])any=true;});if(!any)keep[i]=true;});
+          const idOf=new Int32Array(pk.length).fill(-1);pk.forEach(function(m,i){if(keep[i])idOf[i]=nZ++;});
+          const dZ=new Float64Array(NN).fill(1/0);hK.length=0;hV.length=0;
+          for(let p=0;p<NN;p++)if(core[p]>=0&&idOf[core[p]]>=0){ZL[p]=idOf[core[p]];dZ[p]=0;hPush(p,0);}
+          while(hK.length){const k=hK[0],p=hPop();if(k>dZ[p]+1e-12)continue;const i=p%nx,j=(p-i)/nx;
+            for(let dj=-1;dj<=1;dj++)for(let di=-1;di<=1;di++){if(!di&&!dj)continue;const ii=i+di,jj=j+dj;if(ii<0||jj<0||ii>=nx||jj>=ny)continue;
+              const q=jj*nx+ii;if(!mask[q])continue;const nk=k+(di&&dj?D2:1)*h;if(nk>2*R0)continue;if(nk<dZ[q]-1e-12){dZ[q]=nk;ZL[q]=ZL[p];hPush(q,nk);}}}
+          for(let p0=0;p0<NN;p0++){if(!mask[p0]||ZL[p0]>=0)continue;const id=nZ++,st=[p0];ZL[p0]=id;
+            while(st.length){const q=st.pop(),qi=q%nx,qj=(q-qi)/nx;
+              for(let dj=-1;dj<=1;dj++)for(let di=-1;di<=1;di++){const ii=qi+di,jj=qj+dj;if(ii<0||jj<0||ii>=nx||jj>=ny)continue;
+                const t=jj*nx+ii;if(mask[t]&&ZL[t]<0){ZL[t]=id;st.push(t);}}}}
+          // matière hors des centres permis (bande devant les parois) : zone voisine
+          let fr=[];for(let p=0;p<NN;p++)if(ZL[p]>=0)fr.push(p);
+          while(fr.length){const nf=[];fr.forEach(function(q){const qi=q%nx,qj=(q-qi)/nx;
+            for(let dj=-1;dj<=1;dj++)for(let di=-1;di<=1;di++){const ii=qi+di,jj=qj+dj;if(ii<0||jj<0||ii>=nx||jj>=ny)continue;
+              const t=jj*nx+ii;if(ZL[t]<0&&remv[t]){ZL[t]=ZL[q];nf.push(t);}}});fr=nf;}}
+        let DL=ZL; // zone courante de chaque case (recalculée sur la matière restante)
+        const zAt=function(x,y){const ci=Math.min(nx-1,Math.max(0,Math.round((x-gx0)/h))),cj=Math.min(ny-1,Math.max(0,Math.round((y-gy0)/h)));
+          if(DL[cj*nx+ci]>=0)return DL[cj*nx+ci];
+          for(let r2=1;r2<=4;r2++)for(let dj=-r2;dj<=r2;dj++)for(let di=-r2;di<=r2;di++){const ii=ci+di,jj=cj+dj;if(ii<0||jj<0||ii>=nx||jj>=ny)continue;if(DL[jj*nx+ii]>=0)return DL[jj*nx+ii];}
+          return -1;};
+        const resid=function(zi,useOk){let n=0;for(let p=0;p<NN;p++)if(DL[p]===zi&&remv[p]&&!RG[p]&&!(useOk&&okLeft(p)))n++;return n;};
+        // largeur de matière restante sous l'outil, en travers de la passe
+        const span=function(x,y,tx,ty){
+          const ci=Math.round((x-gx0)/h),cj=Math.round((y-gy0)/h);let lo=1/0,hi=-1/0;
+          for(let dj=-nR;dj<=nR;dj++){const jj=cj+dj;if(jj<0||jj>=ny)continue;
+            for(let di=-nR;di<=nR;di++){const ii=ci+di;if(ii<0||ii>=nx)continue;
+              const p=jj*nx+ii;if(!remv[p]||RG[p])continue;
+              const ex=gx0+ii*h-x,ey=gy0+jj*h-y;if(ex*ex+ey*ey>Rd*Rd)continue;
+              const l=tx*ey-ty*ex;if(l<lo)lo=l;if(l>hi)hi=l;}}
+          return hi>=lo?hi-lo+h:0;};
+        const eLo=Math.max(1.05*h,0.2*pitch),eMax=Math.min(D+h,1.5*pitch+h);
+        // candidats
+        const CC=[],bs=D,HB=new Map();
+        const hk=function(i,j){return i*1048576+j;};
+        const addC=function(list){list.forEach(function(R){const P=R.dp,n=P.length;if(n<2)return;
+          const tx=new Float64Array(n),ty=new Float64Array(n);
+          for(let k=0;k<n;k++){const a=P[k>0?k-1:(R.closed?n-1:0)],b=P[k<n-1?k+1:(R.closed?0:n-1)];
+            let dx=b[0]-a[0],dy=b[1]-a[1];const L=Math.hypot(dx,dy);if(L>1e-12){dx/=L;dy/=L;}tx[k]=dx;ty[k]=dy;}
+          const ci=CC.length,zl=new Int32Array(n);for(let k=0;k<n;k++)zl[k]=zAt(P[k][0],P[k][1]);
+          CC.push({P:P,zl:zl,segZ:-2,closed:!!R.closed,n:n,key:(R.rg>=0&&!hasW[R.rg])?R.lv:-R.lv,tx:tx,ty:ty,sp:new Float64Array(n),cn:new Uint8Array(n),dirty:new Uint8Array(n).fill(1),dAny:true,segs:null});
+          for(let k=0;k<n;k++){const key=hk(Math.floor(P[k][0]/bs),Math.floor(P[k][1]/bs));let a=HB.get(key);if(!a){a=[];HB.set(key,a);}a.push(ci,k);}});};
+        const n0=runs.length;
+        Fld=G;regOK=function(rg){return rg>=0&&hasW[rg];};rings(Gmax);
+        Fld=F;regOK=function(rg){return !(rg>=0&&hasW[rg]);};rings(Fmax);
+        regOK=null;addLoops(0,rim(iso(1.05*h,all)),noWall);
+        addC(runs.splice(n0));
+        const markDirty=function(fromI){const seenK=new Set();
+          for(let k=Math.max(1,fromI);k<moves.length;k++){const a=moves[k-1],b=moves[k];if(b.r)continue;
+            const L=Math.hypot(b.x-a.x,b.y-a.y),m=Math.max(1,Math.ceil(L/(0.5*bs)));
+            for(let s=0;s<=m;s++){const x=a.x+(b.x-a.x)*s/m,y=a.y+(b.y-a.y)*s/m,ci=Math.floor(x/bs),cj=Math.floor(y/bs);
+              for(let dj=-1;dj<=1;dj++)for(let di=-1;di<=1;di++){const key=hk(ci+di,cj+dj);if(seenK.has(key))continue;seenK.add(key);
+                const arr=HB.get(key);if(!arr)continue;
+                for(let e=0;e<arr.length;e+=2){const Cc=CC[arr[e]];Cc.dirty[arr[e+1]]=1;Cc.dAny=true;Cc.segs=null;}}}}};
+        const fresh=function(Cc){if(!Cc.dAny)return;
+          for(let k=0;k<Cc.n;k++)if(Cc.dirty[k]){Cc.sp[k]=span(Cc.P[k][0],Cc.P[k][1],Cc.tx[k],Cc.ty[k]);Cc.dirty[k]=0;}
+          Cc.dAny=false;};
+        // portions faisables : matière ≤ eM, trous sans matière ≤ 2·D gardés
+        const gapMax=2*D;
+        const pieces=function(Cc,eM,zi){
+          const n=Cc.n,P=Cc.P,S=new Int8Array(n);let any1=false,any2=false;
+          for(let k=0;k<n;k++){const v=Cc.cn[k]>=2?0:Cc.sp[k];S[k]=Cc.zl[k]!==zi?2:(v<=eLo?0:(v<=eM?1:2));if(S[k]===1)any1=true;if(S[k]===2)any2=true;}
+          if(!any1)return [];
+          const dK=function(a,b){return Math.hypot(P[b][0]-P[a][0],P[b][1]-P[a][1]);};
+          const out=[];
+          const lin=function(idx){let ts=-1,te=-1,lastOne=-1,gL=0;
+            const flush=function(){if(ts<0)return;const a=Math.max(0,ts-1),b=Math.min(idx.length-1,te+1);
+              if(b>a)out.push({idx:idx.slice(a,b+1),closed:false});ts=-1;};
+            for(let t=0;t<idx.length;t++){const k=idx[t];
+              if(S[k]===1){if(ts>=0&&gL>gapMax)flush();if(ts<0)ts=t;te=t;lastOne=t;gL=0;}
+              else if(ts>=0&&t>0)gL+=dK(idx[t-1],k);}
+            flush();};
+          const all1=[];for(let k=0;k<n;k++)all1.push(k);
+          if(!Cc.closed){let cur=[];for(let k=0;k<n;k++){if(S[k]===2){if(cur.length)lin(cur);cur=[];}else cur.push(k);}if(cur.length)lin(cur);return out;}
+          if(any2){let s0=0;while(S[s0]!==2)s0++;let cur=[];
+            for(let t=1;t<=n;t++){const k=(s0+t)%n;if(S[k]===2){if(cur.length)lin(cur);cur=[];}else cur.push(k);}
+            if(cur.length)lin(cur);return out;}
+          // boucle sans surcharge : fermée si aucun long trou sans matière
+          let gBest=0,gEnd=-1;{let s0=0;while(S[s0]!==1)s0++;let L=0;
+            for(let t=1;t<=n;t++){const k=(s0+t)%n,kp=(s0+t-1)%n;
+              if(S[k]===1){if(L>gBest){gBest=L;gEnd=k;}L=0;}else L+=dK(kp,k);}}
+          if(gBest<=gapMax)return [{idx:all1,closed:true}];
+          const rot2=[];for(let t=0;t<n;t++)rot2.push((gEnd+t)%n);lin(rot2);return out;};
+        // choix : (1) portion faisable (charge ≤ eMax) longue d'au moins D,
+        // la plus proche ; (2) sinon l'anneau le plus INTÉRIEUR (rainure si
+        // besoin), pris depuis un point déjà dégagé — comme un contour parallèle
+        const dP=function(P0,q){return Math.hypot(q[0]-P0.x,q[1]-P0.y);};
+        const eAt=function(slot,zi){let best=null,bc=1/0;const P0=moves.length?moves[moves.length-1]:{x:cx,y:cy};
+          const list=[];let kMin=1/0;
+          for(let ci=0;ci<CC.length;ci++){const Cc=CC[ci];fresh(Cc);
+            let sg;if(!slot){if(!Cc.segs||Cc.segZ!==zi){Cc.segs=pieces(Cc,eMax,zi);Cc.segZ=zi;}sg=Cc.segs;}else sg=pieces(Cc,1/0,zi);
+            for(let si=0;si<sg.length;si++){const g=sg[si];
+              if(!slot&&!g.closed&&g.idx.length<Cc.n){let L=0;for(let t=1;t<g.idx.length;t++)L+=Math.hypot(Cc.P[g.idx[t]][0]-Cc.P[g.idx[t-1]][0],Cc.P[g.idx[t]][1]-Cc.P[g.idx[t-1]][1]);if(L<D)continue;}
+              list.push([Cc,g]);if(slot&&Cc.key<kMin)kMin=Cc.key;}}
+          for(let e=0;e<list.length;e++){const Cc=list[e][0],g=list[e][1],P=Cc.P,ix=g.idx;
+            const pen=slot?2*D*(Cc.key-kMin)/pitch:0;
+            const okE=function(t){return !slot||Cc.sp[ix[t]]<=eMax;};
+            if(g.closed){for(let t=0;t<ix.length;t++){if(!okE(t))continue;const d=dP(P0,P[ix[t]])+pen;if(d<bc){bc=d;best={C:Cc,g:g,t:t,rev:false};}}}
+            else{const a=0,b=ix.length-1;
+              if(okE(a)){const d=dP(P0,P[ix[a]])+pen;if(d<bc){bc=d;best={C:Cc,g:g,t:0,rev:false};}}
+              if((!avalant||(slot&&!okE(a)))&&okE(b)){const d=dP(P0,P[ix[b]])+pen;if(d<bc){bc=d;best={C:Cc,g:g,t:0,rev:true};}}}}
+          if(!best&&slot)for(let e=0;e<list.length;e++){const Cc=list[e][0],g=list[e][1],d=dP(P0,Cc.P[g.idx[0]]);if(d<bc){bc=d;best={C:Cc,g:g,t:0,rev:false};}}
+          return best;};
+        const cutIt=function(b){const P=b.C.P,ix=b.g.idx;let seq;
+          ix.forEach(function(k){if(b.C.cn[k]<255)b.C.cn[k]++;});b.C.segs=null;
+          if(b.g.closed){seq=ix.slice(b.t).concat(ix.slice(0,b.t)).map(function(k){return P[k];});seq.push(seq[0]);}
+          else{seq=ix.map(function(k){return P[k];});if(b.rev)seq.reverse();}
+          const mI=moves.length;
+          openEntry(seq[0][0],seq[0][1]);
+          emitSeq(faoSimplifyPts(seq,0.01));
+          stampMoves();markDirty(mI);};
+        // vider une zone : portions faisables, sinon anneau intérieur, sinon passe
+        // au ras de la matière restante, en dernier recours la plus proche
+        const clearZone=function(zi,useOk){let lastFb=-1,noProg=0,lastRes=-1;
+          for(let guard=0;guard<20000;guard++){
+            const b=eAt(true,zi); // anneaux entiers, du plus intérieur vers les parois (retour « dans les rayons ce n'est pas joli »)
+            if(b){cutIt(b);continue;}
+            const nRes=resid(zi,useOk);
+            if(nRes<3)return;
+            if(nRes!==lastFb){
+              lastFb=nRes;
+              d2=new Float64Array(N).fill(BIG);let a=false;
+              for(let p=0;p<NN;p++)if(remv[p]&&!RG[p]&&DL[p]===zi){d2[pad(p)]=0;a=true;}
+              if(!a)return;
+              const Du=edt(),FU=new Float64Array(N).fill(-1);
+              for(let p=0;p<NN;p++)if(mask[p])FU[pad(p)]=Du[pad(p)];
+              Fld=FU;const m0=runs.length;addLoops(-2,iso(Math.max(h,R0-pitch),all));addC(runs.splice(m0));
+              continue;}
+            if(nRes===lastRes){if(++noProg>=3)return;}else noProg=0;
+            lastRes=nRes;
+            const b2=eAt(true,zi);if(!b2)return;cutIt(b2);}};
+        // ZONES DE MATIÈRE : morceaux d'un seul tenant de la matière restante
+        // (hors bande devant les parois tant qu'il en reste ailleurs), dans une
+        // même zone de parois ; chaque case (et chaque point de passe) va au
+        // morceau le plus proche. On finit le morceau le plus proche — dedans,
+        // ses parois, contrôle — puis on recalcule sur ce qui reste.
+        const CM=new Int32Array(NN),stuck=new Uint8Array(NN);
+        const relabel=function(useOk){
+          CM.fill(-1);let nc=0;const isM=function(p){return remv[p]&&!RG[p]&&!stuck[p]&&ZL[p]>=0&&!(useOk&&okLeft(p));};
+          const Dl=new Int32Array(NN).fill(-1),dd=new Float64Array(NN).fill(1/0);hK.length=0;hV.length=0;
+          for(let p0=0;p0<NN;p0++){if(CM[p0]!==-1||!isM(p0))continue;const z0=ZL[p0],st=[p0],cells=[p0];CM[p0]=-3;
+            while(st.length){const q=st.pop(),qi=q%nx,qj=(q-qi)/nx;
+              for(let dj=-1;dj<=1;dj++)for(let di=-1;di<=1;di++){const ii=qi+di,jj=qj+dj;if(ii<0||jj<0||ii>=nx||jj>=ny)continue;
+                const t=jj*nx+ii;if(CM[t]===-1&&isM(t)&&ZL[t]===z0){CM[t]=-3;st.push(t);cells.push(t);}}}
+            if(cells.length<3){cells.forEach(function(q){CM[q]=-2;});continue;}
+            const id=nc++;cells.forEach(function(q){CM[q]=id;Dl[q]=id;dd[q]=0;hPush(q,0);});}
+          while(hK.length){const k=hK[0],p=hPop();if(k>dd[p]+1e-12)continue;const i=p%nx,j=(p-i)/nx;
+            for(let dj=-1;dj<=1;dj++)for(let di=-1;di<=1;di++){if(!di&&!dj)continue;const ii=i+di,jj=j+dj;if(ii<0||jj<0||ii>=nx||jj>=ny)continue;
+              const q=jj*nx+ii;if(!mask[q]&&!remv[q])continue;const nk=k+(di&&dj?D2:1)*h;if(nk<dd[q]-1e-12){dd[q]=nk;Dl[q]=Dl[p];hPush(q,nk);}}}
+          DL=Dl;
+          CC.forEach(function(Cc){for(let k=0;k<Cc.n;k++)Cc.zl[k]=zAt(Cc.P[k][0],Cc.P[k][1]);Cc.segZ=-2;Cc.segs=null;});
+          return nc;};
+        // chaînes de faces : la part qui longe le morceau c, coupée aux changements
+        const splitFaces=function(c){if(!facesRun)return;const out=[];
+          rem.forEach(function(ch){const P=ch.pts,n=P.length,m=ch.closed?n:n-1,Q=[];
+            for(let i=0;i<m;i++){const a=P[i],e=P[(i+1)%n],L=Math.hypot(e[0]-a[0],e[1]-a[1]),k=Math.max(1,Math.ceil(L/1));
+              for(let t=0;t<k;t++)Q.push([a[0]+(e[0]-a[0])*t/k,a[1]+(e[1]-a[1])*t/k]);}
+            if(!ch.closed)Q.push(P[n-1]);
+            // part de paroi rattachée au morceau c : de la matière de c reste sous l'outil
+            // 1 = matière du morceau c, 0 = matière d'un autre morceau, 2 = plus rien :
+            // un passage déjà vidé suit ses voisins (une paroi d'un seul tenant,
+            // pas de miettes reliées par des cordes en travers de la rainure)
+            const L=Q.map(function(q){const ci=Math.round((q[0]-gx0)/h),cj=Math.round((q[1]-gy0)/h),n=Math.ceil((R0+h)/h);let o=false;
+              for(let dj=-n;dj<=n;dj++)for(let di=-n;di<=n;di++){const ii=ci+di,jj=cj+dj;if(ii<0||jj<0||ii>=nx||jj>=ny)continue;
+                const p=jj*nx+ii;if(remv[p]&&!RG[p]&&di*di+dj*dj<=n*n){if(DL[p]===c)return 1;o=true;}}
+              return o?0:2;});
+            {const n2=L.length;if(L.some(function(v){return v===1;})){
+              let i=0;while(i<n2){if(L[i]!==2){i++;continue;}let j=i;while(j+1<n2&&L[j+1]===2)j++;
+                const pv=i>0?L[i-1]:(ch.closed?L[n2-1]:-1),nv=j<n2-1?L[j+1]:(ch.closed?L[0]:-1);
+                const v=(pv===1||nv===1)?1:0;for(let k=i;k<=j;k++)L[k]=v;i=j+1;}}
+              else for(let k=0;k<n2;k++)L[k]=0;}
+            // morceaux courts (< 2·D) d'un autre statut entre deux parts : absorbés (pas de miettes)
+            {const n2=L.length;let i=0;while(i<n2){let j=i;while(j+1<n2&&L[j+1]===L[i])j++;
+              let len=0;for(let k=i+1;k<=j;k++)len+=Math.hypot(Q[k][0]-Q[k-1][0],Q[k][1]-Q[k-1][1]);
+              if(len<2*D&&(i>0||ch.closed)&&(j<n2-1||ch.closed)){const nb=L[(i+n2-1)%n2];for(let k=i;k<=j;k++)L[k]=nb;}
+              i=j+1;}}
+            if(L.every(function(v){return v===L[0];})){ch.zone=L[0]?c:-1;out.push(ch);return;}
+            let st=0;if(ch.closed){while(st<L.length&&L[st]===L[(st+L.length-1)%L.length])st++;if(st>=L.length)st=0;}
+            let cur=[Q[st]],cz=L[st];
+            const fl=function(){if(cur.length>=2)out.push({pts:faoSimplifyPts(cur,0.01),closed:false,bb:faoPtsBB(cur),zone:cz?c:-1});};
+            for(let t=1;t<=Q.length-(ch.closed?0:1);t++){const k=(st+t)%Q.length;
+              if(L[k]!==cz){cur.push(Q[k]);fl();cur=[Q[k]];cz=L[k];}else cur.push(Q[k]);}
+            fl();});
+          rem.length=0;out.forEach(function(e){if(e.pts.length>=2)rem.push(e);});};
+        const uncN=function(){let n=0;for(let p=0;p<NN;p++)if(remv[p]&&!RG[p])n++;return n;};
+        let lastU=-1;
+        for(let zg=0;zg<500;zg++){
+          let nc=relabel(true);if(!nc)nc=relabel(false);if(!nc)break;
+          const P0=moves.length?moves[moves.length-1]:{x:cx,y:cy};let c=-1,bd=1/0;
+          // morceau le plus proche EN CHEMINANT dans la pièce (DL = partage géodésique
+          // autour des morceaux) : on suit les bandes de proche en proche
+          {const ci=Math.min(nx-1,Math.max(0,Math.round((P0.x-gx0)/h))),cj=Math.min(ny-1,Math.max(0,Math.round((P0.y-gy0)/h)));
+            const v=DL[cj*nx+ci];if(v>=0&&v<nc)c=v;}
+          if(c<0)for(let p=0;p<NN;p++){if(CM[p]<0)continue;const i=p%nx,d=Math.hypot(gx0+i*h-P0.x,gy0+((p-i)/nx)*h-P0.y);if(d<bd){bd=d;c=CM[p];}}
+          clearZone(c,true);                                    // dedans
+          if(facesRun){splitFaces(c);const mI=moves.length;facesRun(function(ch){return ch.zone===c;});stampMoves();markDirty(mI);} // ses parois
+          clearZone(c,false);                                   // contrôle : plus rien dans ce morceau
+          const u=uncN();if(u===lastU){for(let p=0;p<NN;p++)if(CM[p]===c)stuck[p]=1;}lastU=u;}
+        // FILET FINAL (« il manque sur la gauche de cette ligne ») : la matière
+        // enlevable encore là est balayée au plus court — centre permis qui en
+        // couvre le plus, puis de proche en proche (pas ≤ ae) tant qu'il en
+        // couvre de nouvelle. Aucune case enlevable ne reste.
+        {const nS=Math.max(1,Math.round(Math.min(pitch,R0)/h)),Rc2=RX*RX,nX=Math.ceil(RX/h),LC=new Uint8Array(NN);
+          const cover=function(c){const i=c%nx,j=(c-i)/nx,x=gx0+i*h,y=gy0+j*h;let n=0;
+            for(let dj=-nX;dj<=nX;dj++){const jj=j+dj;if(jj<0||jj>=ny)continue;
+              for(let di=-nX;di<=nX;di++){const ii=i+di;if(ii<0||ii>=nx)continue;const p=jj*nx+ii;
+                if(!remX[p]||RG[p]||LC[p])continue;const ex=gx0+ii*h-x,ey=gy0+jj*h-y;if(ex*ex+ey*ey<=Rc2)n++;}}return n;};
+          const best=function(c0,rr,need){const i0=c0%nx,j0=(c0-i0)/nx;let bq=-1,bn=need-1;
+            for(let dj=-rr;dj<=rr;dj++)for(let di=-rr;di<=rr;di++){const ii=i0+di,jj=j0+dj;if(ii<0||jj<0||ii>=nx||jj>=ny)continue;
+              const q=jj*nx+ii;if(!mask[q])continue;const n=cover(q);if(n>bn){bn=n;bq=q;}}return bq;};
+          const xy=function(c){const i=c%nx;return [gx0+i*h,gy0+((c-i)/nx)*h];};
+          for(let g2=0;g2<400;g2++){
+            const P0=moves.length?moves[moves.length-1]:{x:cx,y:cy};let p0=-1,bd=1/0;
+            for(let p=0;p<NN;p++){if(!remX[p]||RG[p])continue;const i=p%nx,d=Math.hypot(gx0+i*h-P0.x,gy0+((p-i)/nx)*h-P0.y);if(d<bd){bd=d;p0=p;}}
+            if(p0<0)break;
+            let c=best(p0,nX,1);if(c<0){RG[p0]=1;continue;}LC.fill(0);
+            const seq=[xy(c)],seen=new Set([c]);
+            const stampC=function(q){const i=q%nx,j=(q-i)/nx;for(let dj=-nX;dj<=nX;dj++)for(let di=-nX;di<=nX;di++){const ii=i+di,jj=j+dj;if(ii<0||jj<0||ii>=nx||jj>=ny)continue;if(di*di*h*h+dj*dj*h*h<=Rc2)LC[jj*nx+ii]=1;}};stampC(c);
+            for(let st2=0;st2<2000;st2++){const q=best(c,nS,1);if(q<0||seen.has(q))break;const a=xy(c),b=xy(q);if(!segClear(a[0],a[1],b[0],b[1]))break;
+              seen.add(q);seq.push(b);stampC(q);c=q;}
+            if(seq.length<2){const a=seq[0];seq.push([a[0]+1e-3,a[1]]);}
+            const mI=moves.length;openEntry(seq[0][0],seq[0][1]);emitSeq(faoSimplifyPts(seq,0.01));stampMoves();markDirty(mI);for(let p=0;p<NN;p++)if(LC[p]&&remX[p])RG[p]=1;}}
+      };
       for(let guard=0;guard<200000;guard++){
         const P0=moves.length?moves[moves.length-1]:{x:cx,y:cy};
         let best=-1,bc=1/0,bEnd=0;
@@ -60069,6 +60494,7 @@ function faoSpiralLevel(mesh,B,z,D,r,secu,zFrom,ae,entryMode,brutTop,zt,moves,op
         else if(R.closed)spiral(best,rot(R.dp,P0.x,P0.y));
         else{emitSeq(bEnd?R.pts.slice().reverse():R.pts);mark(best);}
       }
+      if(ctr)contourPhase();
       finishRamp();
     };
     if(oneE){oneEntryFronts();return;}
@@ -60130,6 +60556,7 @@ function faoSpiralLevel(mesh,B,z,D,r,secu,zFrom,ae,entryMode,brutTop,zt,moves,op
         }else if(i>0&&atZ&&prevIn&&segClear(px,py,x,y))pushCut(x,y);
         else if(atZ&&linkNear(Pm.x,Pm.y,x,y)&&segClear(Pm.x,Pm.y,x,y))pushCut(x,y); // passe voisine : glissement
         else if(oneClrL&&atZ&&(wp=oneWay(Pm.x,Pm.y,x,y))){wp.forEach(function(q){pushCut(q[0],q[1]);});pushCut(x,y);} // V0.97.0 : dans le déjà-vidé
+        else if(oneDrop&&oneDrop(x,y))pushCut(x,y); // V0.98.0 : rapide + descente dans le vidé
         else if(!entryTo(x,y,ex,ey)){
           rampTot=Math.max(2,Math.ceil((rampZ0-z)/2));
           rampK=1; rampL=rampTot-1;
@@ -60139,22 +60566,6 @@ function faoSpiralLevel(mesh,B,z,D,r,secu,zFrom,ae,entryMode,brutTop,zt,moves,op
         atCut=true; prevIn=true; px=x; py=y;
       }
   };
-  // 007 : la descente éventuellement active est terminée par le bloc « fin de
-  // spirale pendant un rampage » ci-dessus — état clos avant les côtés.
-  rampL=0;
-  // état réel au début des côtés : à cote z (sinon entryTo gère l'accostage
-  // depuis la cote restante — même garde que la passe de faces, note 011).
-  {
-    const P=moves.length?moves[moves.length-1]:null;
-    atCut=!!(P&&!P.r&&Math.abs(P.z-z)<1e-9);
-    prevIn=atCut;
-  }
-  if(opt&&opt.snail)snailRings();
-  else{
-    const side0=(px>=cx)?1:-1; // côté où la spirale s'est arrêtée : d'abord là
-    clearArcs(side0,py);
-    clearArcs(-side0,py); // py = dernier point du côté précédent (mis à jour)
-  }
   // --- DERNIÈRE PASSE : les FACES du solide (retour 2/3). Mêmes chaînes que
   // le conventionnel k=0 : chaines du niveau offsetées à r (la laisse de
   // l'outil suit exactement les parois) + cadre E0 de la boîte. Chaîne la plus
@@ -60194,7 +60605,9 @@ function faoSpiralLevel(mesh,B,z,D,r,secu,zFrom,ae,entryMode,brutTop,zt,moves,op
     // traversait le volume interdit entre deux sommets autorisés. Densifiée à
     // ≤ 1 mm avant le filtre (seulement avec du rouge : parcours inchangés sinon).
     const dens=function(P,closed){
-      if(!(opt&&opt.zoneDense))return P;
+      // V0.98.0 : aussi en Contours — un long côté dont un bout sort de la limite
+      // n'est plus jeté en entier (paroi sans passe de faces : bande oubliée)
+      if(!(opt&&(opt.zoneDense||opt.contours)))return P;
       const out=[];const n=P.length,m=closed?n:n-1;
       for(let i=0;i<m;i++){const a=P[i],b=P[(i+1)%n];out.push(a);
         const L=Math.hypot(b[0]-a[0],b[1]-a[1]),k=Math.ceil(L/1);
@@ -60261,15 +60674,30 @@ function faoSpiralLevel(mesh,B,z,D,r,secu,zFrom,ae,entryMode,brutTop,zt,moves,op
     }
     return P;
   };
+  // 007 : la descente éventuellement active est terminée par le bloc « fin de
+  // spirale pendant un rampage » ci-dessus — état clos avant les côtés.
+  rampL=0;
+  // état réel au début des côtés : à cote z (sinon entryTo gère l'accostage
+  // depuis la cote restante — même garde que la passe de faces, note 011).
+  {
+    const P=moves.length?moves[moves.length-1]:null;
+    atCut=!!(P&&!P.r&&Math.abs(P.z-z)<1e-9);
+    prevIn=atCut;
+  }
+  // V0.98.0 : passe de faces appelable par zone (Contours : chaque zone est
+  // finie — dedans, parois, contrôle — avant la suivante) ; pick = chaînes admises
+  facesRun=function(pick){
   while(rem.length){
     const P=moves.length?moves[moves.length-1]:null;
     const sx0=rem[0].pts[0][0],sy0=rem[0].pts[0][1];
     const px=P?P.x:sx0, py=P?P.y:sy0;
-    let bi2=0,bd2=1/0;
+    let bi2=-1,bd2=1/0;
     for(let i=0;i<rem.length;i++){
+      if(pick&&!pick(rem[i]))continue;
       const dd=cpd(rem[i],px,py);
       if(dd<bd2){bd2=dd;bi2=i;}
     }
+    if(bi2<0)break;
     const ch=rem.splice(bi2,1)[0];
     const seq=cord(ch,px,py);
     const sx=seq[0][0],sy=seq[0][1];
@@ -60293,10 +60721,13 @@ function faoSpiralLevel(mesh,B,z,D,r,secu,zFrom,ae,entryMode,brutTop,zt,moves,op
     if(linkable&&wpF&&wpF.length)wpF.forEach(function(q){pushCut(q[0],q[1]);});
     // 2026-10-21-013 : chaîne de moins de 5 mm qui exigerait une entrée (remontée
     // + descente) : ignorée — seulement avec la matière suivie (brut-corps / rouge)
-    if(!here&&!linkable&&remTop){let Lc=0;for(let q=1;q<seq.length;q++)Lc+=Math.hypot(seq[q][0]-seq[q-1][0],seq[q][1]-seq[q-1][1]);if(ch.closed&&seq.length>1)Lc+=Math.hypot(seq[0][0]-seq[seq.length-1][0],seq[0][1]-seq[seq.length-1][1]);if(Lc<5)continue;}
+    // V0.98.0 : en Contours (oneDrop) jamais de morceau de paroi oublié
+    if(!here&&!linkable&&remTop&&!oneDrop){let Lc=0;for(let q=1;q<seq.length;q++)Lc+=Math.hypot(seq[q][0]-seq[q-1][0],seq[q][1]-seq[q-1][1]);if(ch.closed&&seq.length>1)Lc+=Math.hypot(seq[0][0]-seq[seq.length-1][0],seq[0][1]-seq[seq.length-1][1]);if(Lc<5)continue;}
     if(here){
       pushCut(sx,sy);
     }else if(linkable){
+      pushCut(sx,sy);
+    }else if(oneDrop&&oneDrop(sx,sy)){
       pushCut(sx,sy);
     }else if(!entryTo(sx,sy,ex2,ey2)){
       // 2026-10-08-007 : RAMPE le long de la chaîne de faces — la fraise
@@ -60315,6 +60746,14 @@ function faoSpiralLevel(mesh,B,z,D,r,secu,zFrom,ae,entryMode,brutTop,zt,moves,op
     for(let i=i0;i<seq.length;i++)pushCut(seq[i][0],seq[i][1]);
     if(ch.closed)pushCut(seq[0][0],seq[0][1]);
   }
+  };
+  if(opt&&opt.snail)snailRings();
+  else{
+    const side0=(px>=cx)?1:-1; // côté où la spirale s'est arrêtée : d'abord là
+    clearArcs(side0,py);
+    clearArcs(-side0,py); // py = dernier point du côté précédent (mis à jour)
+  }
+  facesRun(null);
 }
 // 2026-10-15-001 : un fond (face horizontale vers le haut à la cote f) est-il
 // DANS la zone de l'opération ? (Finir le fond : pas de passe sur un
@@ -60604,7 +61043,7 @@ function* faoGenRough3DIt(mesh,box,ztop,zbot,o){
   // V0.23.15 : 'escargot' (valeur historique) = TROCHOÏDAL (spirale puis demi-
   // anneaux par côté) ; 'anneaux' = ESCARGOT (spirale puis anneaux parallèles
   // aux bords et aux îlots, snailRings). Même moteur de niveau.
-  const esc=(o.mode==='escargot'||o.mode==='anneaux');
+  const esc=(o.mode==='escargot'||o.mode==='anneaux'||o.mode==='contours');
   // 2026-10-27 : MODÈLE SIMPLE DES PASSES (« revenir à un modèle simple ») —
   // on descend de `ap` en `ap` depuis `Haut` ; chaque fond réel du maillage
   // (plancher de poche, épaulement) est un ARRÊT à fond+`Fond` : s'il tombe
@@ -60679,7 +61118,7 @@ function* faoGenRough3DIt(mesh,box,ztop,zbot,o){
   // V0.23.16 : en Escargot, une simple BOÎTE de brut a aussi sa carte (demande
   // « je n'ai pas vu de gestion du brut ») — dessus = haut du brut dans la
   // boîte, rien dehors ; le Trochoïdal n'en a pas (parcours inchangés).
-  const remBox=!stockTopF&&typeof o.protectTip!=='function'&&!!SB&&o.mode==='anneaux';
+  const remBox=!stockTopF&&typeof o.protectTip!=='function'&&!!SB&&(o.mode==='anneaux'||o.mode==='contours');
   if(stockTopF||typeof o.protectTip==='function'||remBox){
     const g=1,pad=D;
     const rx0=BB.x0-pad,ry0=BB.y0-pad,rnx=Math.ceil((BB.x1-BB.x0+2*pad)/g)+1,rny=Math.ceil((BB.y1-BB.y0+2*pad)/g)+1;
@@ -60760,7 +61199,7 @@ function* faoGenRough3DIt(mesh,box,ztop,zbot,o){
     // ESCARGOT : spirale centre -> faces sur le meme plan/levels, memes
     // entrees/travel ; mini-passes et finition restent conventionnelles.
     // 2026-10-08-003 : sens (avalant = sens de coupe constant) porte par opt.
-    if(esc)faoSpiralLevel(M,BB,L.z,D,D/2+L.radial,secu,zFrom,ae,entryMode,o.brutTop,zt,moves,{snail:o.mode==='anneaux',oneEntry:o.mode==='anneaux'&&!!o.uneEntree,travelZ:tvZ,sens:o.sens,entryR:o.entryR,zoneAt:o.zoneAt,frameTouch:frameTouch,zoneDense:typeof o.protectTip==='function',stockTop:stockTopF,remBlocked:rem?rem.blocked:null,remTopAt:rem?rem.topAt:null,remPtAt:rem?rem.ptAt:null,zoneSafe:o.zoneSafe||null,
+    if(esc)faoSpiralLevel(M,BB,L.z,D,D/2+L.radial,secu,zFrom,ae,entryMode,o.brutTop,zt,moves,{snail:o.mode==='anneaux'||o.mode==='contours',oneEntry:(o.mode==='anneaux'&&!!o.uneEntree)||o.mode==='contours',contours:o.mode==='contours',travelZ:tvZ,sens:o.sens,entryR:o.entryR,zoneAt:o.zoneAt,frameTouch:frameTouch,zoneDense:typeof o.protectTip==='function',stockTop:stockTopF,remBlocked:rem?rem.blocked:null,remTopAt:rem?rem.topAt:null,remPtAt:rem?rem.ptAt:null,zoneSafe:o.zoneSafe||null,
       bullFaces:bullC?function(zz){return faoBullRingRuns(bullCtx(L.radial),zz,o.sens==='avalant',true);}:null,
       bullOK:bullC?function(x,y,zz){return bullCtx(L.radial).tipB(x,y)<=zz+1e-6;}:null});
     else faoRoughAdaptiveLevel(M,BB,L.z,D,D/2+L.radial,secu,zFrom,ae,entryMode,o.brutTop,zt,moves,{travelZ:tvZ,sens:o.sens,entryR:o.entryR,zoneAt:o.zoneAt,frameTouch:frameTouch});

@@ -197,7 +197,8 @@ function faoSanitiseOps(s){
       // garde l'escargot partout ») — tout document (absent / 'conv' / autre) passe
       // en escargot à la lecture.
       // V0.23.15 : 2e mode 'anneaux' (Escargot) ; 'escargot' = Trochoïdal.
-      if(op.mode!=='anneaux')op.mode='escargot';
+      // V0.98.0 : 3e mode 'contours' (spirale puis contours parallèles aux îlots, une seule entrée)
+      if(op.mode!=='anneaux'&&op.mode!=='contours')op.mode='escargot';
       // V0.97.0 : une seule entrée (Escargot seulement ; absent = anneaux habituels)
       if(op.uneEntree&&op.mode==='anneaux')op.uneEntree=true; else delete op.uneEntree;
       delete op.entree;
