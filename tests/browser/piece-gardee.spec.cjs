@@ -94,3 +94,55 @@ test('pièce finie gardée : relue à l’identique, recalculée si le fichier c
   expect(r4.rejeux).toBeGreaterThan(0);
   expect(err).toEqual([]);
 });
+
+// V0.96.3 : la clé ne porte plus le numéro de version (APP_VER) mais le tampon FORMES_VER : une nouvelle
+// version qui ne touche pas au calcul des formes ne fait plus recalculer chaque fichier. Filet : le rejeu
+// de fond qui suit une pièce relue la compare au solide recalculé ; une pièce gardée qui ne correspond
+// plus (ici : remplacée exprès par un cube dans le magasin) est jetée, la pièce recalculée et rangée.
+test('pièce finie gardée : clé sans numéro de version, pièce périmée détectée et recalculée',async({page})=>{
+  test.setTimeout(600000);
+  const err=[];page.on('pageerror',e=>err.push(e.message));page.on('dialog',d=>d.accept().catch(()=>{}));
+  const volume=()=>page.evaluate(()=>{const G=new occt.GProp_GProps_1();try{occt.BRepGProp.VolumeProperties_1(occLive.shape,G,false,false,false);return +G.Mass().toFixed(3);}finally{G.delete();}});
+  const controle=()=>page.evaluate(()=>({ok:pcVerif.ok,ecart:pcVerif.ecart}));
+  const fini=()=>page.waitForFunction(()=>!pcChauffe&&rebuildDepth===0&&(pcVerif.ok+pcVerif.ecart)>0,null,{timeout:300000});
+  await page.goto('/ConceptCAD.html');await pret(page);
+  await page.evaluate(async()=>{const db=await idbOpen();await new Promise(r=>{const tx=db.transaction('kv','readwrite'),st=tx.objectStore('kv');const q=st.getAllKeys();q.onsuccess=()=>{q.result.filter(k=>/^pfin:/.test(k)).forEach(k=>st.delete(k));};tx.oncomplete=tx.onerror=()=>r();});db.close();});
+  await ouvrirFichier(page,FIX);
+  expect(await rangee(page)).toBe(true);
+  const v0=await volume();
+  const cles=await page.evaluate(async()=>({k:(await idbKeys('pfin:')).filter(k=>k!=='pfin:index'),app:APP_VER,formes:FORMES_VER}));
+  expect(cles.k.length).toBeGreaterThan(0);
+  for(const k of cles.k){expect(k.startsWith('pfin:'+cles.formes+':')).toBe(true);expect(k.includes(cles.app)).toBe(false);}
+  // relue : le rejeu de fond la contrôle et la trouve bonne
+  await page.reload();await pret(page);await calme(page);
+  await ouvrirFichier(page,FIX);
+  await fini();
+  expect(await controle()).toEqual({ok:1,ecart:0});
+  expect(await volume()).toBe(v0);
+  // pièce gardée faussée dans le magasin : un cube à la place du solide
+  const fausse=await page.evaluate(async()=>{
+    const m=new occt.BRepPrimAPI_MakeBox_2(10,10,10),s=m.Shape();const octets=occBrepWrite(s);s.delete();m.delete();
+    const db=await idbOpen();let n=0;
+    await new Promise(r=>{const tx=db.transaction('kv','readwrite'),st=tx.objectStore('kv');const q=st.openCursor();
+      q.onsuccess=()=>{const c=q.result;if(!c)return;const e=c.value;
+        if(/^pfin:/.test(String(c.key))&&e&&Array.isArray(e.corps)){e.corps.forEach(x=>{x.brep=octets;x.noms=null;if(x.pre)delete x.pre;});c.update(e);n++;}
+        c.continue();};
+      tx.oncomplete=tx.onerror=()=>r();});
+    db.close();return n;});
+  expect(fausse).toBeGreaterThan(0);
+  await page.reload();await pret(page);await calme(page);
+  await ouvrirFichier(page,FIX);
+  await fini();
+  expect(await controle()).toEqual({ok:0,ecart:1});
+  await calme(page);
+  expect(await volume()).toBe(v0); // recalculée : le vrai solide est revenu
+  expect(await page.evaluate(()=>faceEl.textContent)).toContain('Pièce gardée périmée');
+  // … et rangée à la place de la fausse : la réouverture suivante est bonne
+  await page.waitForTimeout(6000);
+  await page.reload();await pret(page);await calme(page);
+  await ouvrirFichier(page,FIX);
+  await fini();
+  expect(await controle()).toEqual({ok:1,ecart:0});
+  expect(await volume()).toBe(v0);
+  expect(err).toEqual([]);
+});

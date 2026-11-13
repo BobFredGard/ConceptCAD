@@ -383,7 +383,7 @@ input[type=range]{accent-color:var(--primary);width:100%}
  * peut changer sans rien casser. CACHE_VER (parcours FAO) reste indépendant.
  */
 
-const APP_VER='V0.96.2';
+const APP_VER='V0.96.3';
 try{console.log('[ConceptCAD] version '+APP_VER);}catch(e){}
 try{var mfSv=document.getElementById('mfSplashVer');if(mfSv)mfSv.textContent=APP_VER;}catch(e){} // écran de démarrage
 
@@ -395,6 +395,18 @@ try{var mfSv=document.getElementById('mfSplashVer');if(mfSv)mfSv.textContent=APP
    A ne bumper QUE quand ce qui PRODUIT ces données change (moteur de géométrie,
    faoGen*) : c'est le seul cas où une entrée devient légitimement périmée. */
 const CACHE_VER='2026-10-30-004';
+/* ── Tampon de la PIÈCE FINIE gardée sur le poste (20-75) ──────────────────────
+   V0.96.3 (décision de Fred du 13/11/2026 : « Oui, les garder ») : sa clé portait APP_VER, chaque
+   livraison faisait donc recalculer chaque fichier une fois à sa première ouverture (barquette
+   d'exemple : chargement 4,7 s au lieu de 1,5 s), même quand la version ne touchait qu'à
+   l'interface. Elle porte maintenant ce tampon, à changer QUAND CHANGE CE QUE LA PIÈCE GARDÉE
+   CONTIENT : le rejeu d'une fonction (solide, noms des faces), le maillage d'affichage ou sa
+   finesse, les outils de découpe montrés, les états de calcul rangés avec elle. Séparé de
+   CACHE_VER, dont le changement fait aussi régénérer les parcours FAO.
+   Filet si le tampon est oublié : le rejeu de fond qui suit une pièce relue (pcChauffer) compare
+   son solide à celui qui est affiché (faces, arêtes, volume) ; au moindre écart, la pièce gardée
+   est jetée et la pièce recalculée (pcVerifie, 20-75). */
+const FORMES_VER='2026-11-13-001';
 function cacheVerOK(v){
   // 2026-10-30-002 (V0.23.16) : arrondi des coins — le passage qui suit une
   // entrée / un arc / un rapide garde son premier point (faoRoundMoves) : les
@@ -10410,8 +10422,9 @@ function projRefreshRerun(pass){
        repart pas de zéro.
    RÈGLE (comme les instantanés d'assemblage, 47) : au moindre doute, on recalcule. La clé reprend
    asmCacheKey (empreinte du paramétrique, fiches des corps, imports par l'empreinte de leur
-   source) avec APP_VER : chaque nouvelle version recalcule une fois (une correction du rejeu
-   n'est jamais masquée). Jamais gardé : un assemblage, le marqueur de timeline reculé, une
+   source) avec FORMES_VER (00) : le tampon de ce que la pièce gardée contient, changé quand le rejeu
+   ou le maillage d'affichage change (jusqu'en V0.96.2 : APP_VER, chaque version recalculait chaque
+   fichier une fois). Filet : le rejeu de fond qui suit une pièce relue la contrôle (pcVerifie). Jamais gardé : un assemblage, le marqueur de timeline reculé, une
    fonction suspendue, un calcul de fond en cours, une forme importée absente, une pièce trop
    grosse. Toute erreur de lecture ou d'écriture (quota, navigation privée) le contourne en silence.
    Le calcul de l'ouverture retouche parfois le document sans rien changer à la forme (arrondi d'une
@@ -10426,6 +10439,7 @@ let pcDernier=null;    // ce que le dernier rejeu d'affichage a produit hors des
 let pcEcrit=new Set(); // clés déjà rangées pendant cette session
 let pcEcrT=null,pcChauffe=null;
 let pcOuvert=null;   // {doc, cle} : clé du document tel qu'ouvert (fichier, brouillon), avant tout calcul
+const pcVerif={ok:0,ecart:0,sans:0,dernier:''}; // contrôles de la pièce relue par le rejeu de fond (pcVerifie)
 let pcFait=false;     // le rejeu d'affichage en cours a été servi par l'entrée (rebuildInner : pas de projections après)
 function pcIdbOK(){try{return typeof indexedDB!=='undefined'&&!!indexedDB&&typeof idbOpen==='function';}catch(e){return false;}}
 function pcPossible(){
@@ -10440,7 +10454,7 @@ function pcCle(){
   // null : pas de cache possible pour l'état courant
   if(!pcPossible())return null;
   const k=asmCacheKey(doc);if(!k)return null;
-  return 'pfin:'+APP_VER+':'+PC_V+':'+k.slice(6);
+  return 'pfin:'+FORMES_VER+':'+PC_V+':'+k.slice(6);
 }
 /* ── copie des tableaux d'un maillage (BufferGeometry ⇄ objet rangeable) ── */
 function pcGeoVers(g){
@@ -10575,7 +10589,12 @@ async function pcPreparer(){
     const v0=_docVersion,d0=doc;
     const e=await pcLire(cle);
     if(!e||e.v!==PC_V||!Array.isArray(e.corps)||!e.corps.length)return false;
-    if(doc!==d0||_docVersion!==v0||pcCle()!==cle)return false; // document changé pendant la lecture
+    if(doc!==d0||_docVersion!==v0)return false; // document changé pendant la lecture
+    // V0.96.3 : pendant la lecture, le calcul de l'ouverture a pu faire ses retouches (origine d'esquisse
+    // arrondie, face d'appui nommée) : la clé n'est plus celle du fichier mais celle du document retouché,
+    // qui est exactement la clé propre de l'entrée quand on l'a trouvée par son alias. Refusée alors à tort :
+    // la plaque SIRAP-14-003 était recalculée à chaque ouverture (11 s), pièce gardée rangée et lisible.
+    {const k2=pcCle();if(k2!==cle&&k2!==e.cle)return false;}
     e._doc=d0;e._ver=v0;
     pcServi=e;pcEcrit.add(cle);pcEcrit.add(e.cle);
     return true;
@@ -10624,6 +10643,44 @@ function pcFR(){
     return null;
   }
 }
+/* ── contrôle de la pièce relue (V0.96.3) ──
+   Le rejeu de fond (pcChauffer) vient de recalculer le solide de chaque corps, sans filets modélisés.
+   Comparé au solide affiché (celui sans filets quand il existe) : mêmes corps, même nombre de faces et
+   d'arêtes, même volume à 1e-7 près (la pièce gardée a fait un aller-retour par un fichier BRep).
+   false = la pièce gardée ne correspond plus à ce que le logiciel calcule aujourd'hui. Une lecture
+   impossible ne déclenche rien : au doute sur le CONTRÔLE, on garde l'affichage. */
+function pcFonctions(){try{return (doc.features||[]).map(f=>f.id+(f.visible===false?'-':'')).join(',');}catch(e){return '';}}
+function pcVerifie(FR){
+  // true : conforme ; false : écart ; null : contrôle impossible (on ne conclut rien)
+  try{
+    if(!FR||!Array.isArray(FR.perBody))return null;
+    const E=occt.TopAbs_ShapeEnum;
+    const compte=(sh,t)=>{const x=new occt.TopExp_Explorer_2(sh,t,E.TopAbs_SHAPE);let n=0;try{while(x.More()){n++;x.Next();}}finally{try{x.delete();}catch(e){}}return n;};
+    const vol=sh=>{const G=new occt.GProp_GProps_1();try{occt.BRepGProp.VolumeProperties_1(sh,G,false,false,false);return G.Mass();}finally{try{G.delete();}catch(e){}}};
+    const vus=bodies.filter(b=>b&&b.kind==='body'&&b.shape);
+    const neufs=FR.perBody.filter(p=>p&&p.shape);
+    if(!vus.length||!neufs.length)return null; // rien d'affiché, ou rejeu sans corps : pas un écart de calcul
+    if(vus.length!==neufs.length){pcVerif.dernier='corps '+vus.length+' / '+neufs.length+' '+JSON.stringify(FR.perBody.map(p=>[p&&p.bodyId,!!(p&&p.shape)]))+' '+JSON.stringify((FR.msgs||[]).slice(0,3))+' fonctions '+doc.features.length+' marqueur '+tlReplayCount();return false;}
+    for(const p of neufs){
+      const b=vus.find(x=>x.bodyId===p.bodyId);if(!b){pcVerif.dernier='corps '+p.bodyId+' absent';return false;}
+      const ref=b.shapeFao||b.shape;
+      const nf=[compte(ref,E.TopAbs_FACE),compte(p.shape,E.TopAbs_FACE),compte(ref,E.TopAbs_EDGE),compte(p.shape,E.TopAbs_EDGE)];
+      if(nf[0]!==nf[1]||nf[2]!==nf[3]){pcVerif.dernier=p.bodyId+' : faces '+nf[0]+' / '+nf[1]+', arêtes '+nf[2]+' / '+nf[3];return false;}
+      const a=vol(ref),c=vol(p.shape);
+      if(!(Math.abs(a-c)<=1e-7*Math.max(1,Math.abs(a),Math.abs(c)))){pcVerif.dernier=p.bodyId+' : volume '+a+' / '+c;return false;}
+    }
+    return true;
+  }catch(e){return null;}
+}
+function pcPerimee(){
+  // La pièce gardée ne vaut plus : recalcul normal (les points de contrôle viennent d'être remplis),
+  // puis rangement de la bonne à sa place.
+  try{log('Pièce gardée périmée (elle ne correspond plus au calcul de cette version) — recalculée.');}catch(e){}
+  try{faceEl.textContent=(faceEl.textContent?faceEl.textContent+'\n':'')+'Pièce gardée périmée : recalculée.';}catch(e){}
+  pcEcrit=new Set();
+  try{builtVersion=-1;rebuild();}catch(e){}
+  try{pcEcrireSoon();}catch(e){}
+}
 /* ── après une pièce servie : points de contrôle remplis en fond ── */
 function pcApresServi(){
   if(pcChauffe)return;
@@ -10636,7 +10693,7 @@ async function pcChauffer(){
   // Abandonné si le document change ; ce qui manque sera calculé par la modification elle-même.
   await new Promise(r=>setTimeout(r,1500));
   if(!occHas())return false;
-  const d0=doc,v0=_docVersion,m0=tlMark,s0=occSkipFeat,f0=occStepForce;
+  const d0=doc,v0=_docVersion,m0=tlMark,s0=occSkipFeat,f0=occStepForce,f1=pcFonctions();
   const stale=()=>doc!==d0||_docVersion!==v0||tlMark!==m0||occSkipFeat!==s0||occStepForce!==f0||!occHas();
   let g=null,FR=null;
   try{
@@ -10649,6 +10706,14 @@ async function pcChauffer(){
       if(r.done){FR=r.value;break;}
       await new Promise(r=>setTimeout(r,0));
     }
+    // V0.96.3 : la pièce relue est-elle bien celle que le rejeu d'aujourd'hui donne ?
+    // Seulement si rien n'a bougé depuis le départ : même document, mêmes fonctions (un fichier en cours
+    // d'ouverture vide puis remplit le MÊME document sans changer sa version), affichage à jour.
+    let memes=false;try{memes=!stale()&&!rebuildDepth&&doc.features.length>0&&pcFonctions()===f1&&buildKeyUpToDate();}catch(e){memes=false;}
+    const v=memes?pcVerifie(FR):null;
+    if(v===true)pcVerif.ok++;
+    else if(v===false){pcVerif.ecart++;try{occCleanup(FR,null);}catch(e){}FR=null;pcPerimee();}
+    else pcVerif.sans++;
     return true;
   }finally{if(FR){try{occCleanup(FR,null);}catch(e){}}}
 }

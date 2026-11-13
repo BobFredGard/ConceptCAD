@@ -21,7 +21,7 @@
  * peut changer sans rien casser. CACHE_VER (parcours FAO) reste indépendant.
  */
 
-const APP_VER='V0.96.2';
+const APP_VER='V0.96.3';
 try{console.log('[ConceptCAD] version '+APP_VER);}catch(e){}
 try{var mfSv=document.getElementById('mfSplashVer');if(mfSv)mfSv.textContent=APP_VER;}catch(e){} // écran de démarrage
 
@@ -33,6 +33,18 @@ try{var mfSv=document.getElementById('mfSplashVer');if(mfSv)mfSv.textContent=APP
    A ne bumper QUE quand ce qui PRODUIT ces données change (moteur de géométrie,
    faoGen*) : c'est le seul cas où une entrée devient légitimement périmée. */
 const CACHE_VER='2026-10-30-004';
+/* ── Tampon de la PIÈCE FINIE gardée sur le poste (20-75) ──────────────────────
+   V0.96.3 (décision de Fred du 13/11/2026 : « Oui, les garder ») : sa clé portait APP_VER, chaque
+   livraison faisait donc recalculer chaque fichier une fois à sa première ouverture (barquette
+   d'exemple : chargement 4,7 s au lieu de 1,5 s), même quand la version ne touchait qu'à
+   l'interface. Elle porte maintenant ce tampon, à changer QUAND CHANGE CE QUE LA PIÈCE GARDÉE
+   CONTIENT : le rejeu d'une fonction (solide, noms des faces), le maillage d'affichage ou sa
+   finesse, les outils de découpe montrés, les états de calcul rangés avec elle. Séparé de
+   CACHE_VER, dont le changement fait aussi régénérer les parcours FAO.
+   Filet si le tampon est oublié : le rejeu de fond qui suit une pièce relue (pcChauffer) compare
+   son solide à celui qui est affiché (faces, arêtes, volume) ; au moindre écart, la pièce gardée
+   est jetée et la pièce recalculée (pcVerifie, 20-75). */
+const FORMES_VER='2026-11-13-001';
 function cacheVerOK(v){
   // 2026-10-30-002 (V0.23.16) : arrondi des coins — le passage qui suit une
   // entrée / un arc / un rapide garde son premier point (faoRoundMoves) : les
