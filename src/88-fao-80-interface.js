@@ -1187,7 +1187,7 @@ const FAO_TAB_HELP={
   'Hauteurs':'Dégagement, Retrait, puis Haut et Bas de la zone usinée : chacun depuis le brut, le modèle ou une face cliquée, plus un décalage.',
   'Passes':'Descente par niveau, pas latéral et manière de vider.',
   'Entrées':'Comment l’outil entre dans la matière.',
-  'Matière':'Surépaisseur laissée pour l’opération suivante (mm) ; ébauche 3D et finition : brut de départ (celui du posage, ou le brut restant après les opérations précédentes).',
+  'Matière':'Surépaisseur laissée pour l’opération suivante (mm) ; ébauche 3D, finition et géodésique : brut de départ (celui du posage, ou le brut restant après les opérations précédentes).',
   'Attaches':'Ponts de matière pour tenir la pièce en détourage traversant.'};
 function faoTabOf(t){
   t=String(t||'').toLowerCase().replace(/\s*\(.*$/,'').trim();

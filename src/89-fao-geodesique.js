@@ -656,6 +656,7 @@ function faoGeoFiche(d,setup,op){
     op.sens==='bidir'?'bidir':'avalant',function(v){op.sens=(v==='bidir')?'bidir':'avalant';},
     'Sens de coupe des boucles.'));
   d.appendChild(gP);
+  faoRestRows(d,setup,op); // V0.99.2 : brut restant, comme la finition
   d.appendChild(faoH('Matière à laisser (mm)'));
   const gM=faoRow();
   gM.appendChild(faoLab('Surépaisseur'));
