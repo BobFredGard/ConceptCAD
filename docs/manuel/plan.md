@@ -21,6 +21,8 @@ Le retour dans le Plan est immédiat tant que la géométrie de la pièce n’a 
 - **Échelle d'une vue** : de 5:1 à 1:10, dont 3:4, 1:6 et 1:8 ; **Autre…** pour taper l'échelle de son choix (2:3, 1/7, 0,75). Le cartouche l'écrit en fraction (3:4, et non 1:1.33) (V0.95.7).
 - **Rotation d'une vue de 90°**, à gauche (↺) ou à droite (↻) : elle tourne sur place avec ses cotes, axes, lignes de coupe et détails ; les projections sont recalculées et réalignées.
 - **Arêtes exactes** du noyau (HLR OCCT), y compris pour un STEP importé.
+  - **Arêtes cachées** (« cachées en pointillé ») : seules celles qui ne sont pas recouvertes par un trait visible sont dessinées (V0.97.1) ; sans cachées choisies, elles ne sont pas extraites du calcul.
+  - **Assemblage rapide** : chaque pièce n'est préparée qu'une fois, quel que soit son nombre d'occurrences (V0.97.1).
   - **Tangentes grises comme dans la 3D**, dans les vues comme dans les coupes (même les raccords que le noyau croit vifs).
   - Perspective et cavalière.
   - **Rendu réaliste** des vues au choix ; en assemblage, chaque pièce avec son matériau et sa texture de rendu.
