@@ -30,7 +30,7 @@
 - **Perçage** : les trous sont **reconnus sur le modèle** (Ø, profondeur, débouchant ou borgne, lamage, filet) et choisis par groupe.
   - Cycles : pointage, perçage, débourrage, taraudage, **lamage fraisé en hélice**.
   - **Gamme automatique** pointage → perçage → lamage → taraudage, avec les forets pris dans la bibliothèque ou créés.
-- **Ébauche 3D** : niveaux en Z, minipasses, une région finie avant l'autre ; deux stratégies :
+- **Ébauche 3D** : niveaux en Z (de *ap* en *ap*, avec un arrêt sur chaque fond de la pièce **à portée de l'outil dans la zone** : un épaulement hors de la limite n'ajoute pas de passe), minipasses, une région finie avant l'autre ; deux stratégies :
   - **Trochoïdal** : spirale avec arcs de dégagement ;
   - **Escargot** : anneaux concentriques autour des îlots, départ par l'extérieur, suivi du brut restant (carte du brut).
 

@@ -79,7 +79,10 @@ const vm=require('vm');
     "for(const ff of [false,true]){const of=faoOpDefaults('pocket');of.id='pf'+ff;of.toolId='TP';of.limit={mode:'chain',loop:loop,closed:true,nEdges:4,tangent:true,side:'in',extra:0};of.ztop=30;of.zbot=24;of.ap=2;of.axial=0.5;of.radial=0.3;of.mode='escargot';if(ff)of.finitFond=true;faoSanitiseOps({ops:[of]});",
     "  const mf=faoOpMoves(of,job);const zc={};mf.filter(m=>!m.r&&!m.ent).forEach(m=>{const k=m.z.toFixed(2);zc[k]=(zc[k]||0)+1;});const zf={};for(const k in zc)if(zc[k]>10)zf[k]=1; /* niveaux réels (> 10 coupes) */",
     "  if(!ff)att(!zf['24.00']&&zf['24.50'],'Fond 0,5 sans « Finir le fond » : fond laissé à 24,5 ('+Object.keys(zf).join(' ')+')');",
-    "  else{att(zf['24.00']&&!zf['26.00'],'« Finir le fond » : passe à 24 exact, rien sur l épaulement 26 ('+Object.keys(zf).join(' ')+')');",
+    // V0.96.5 : l'épaulement 26 est hors de portée (poche x 20..80, y 15..45 ; épaulement à 12 mm) :
+    // plus d'arrêt à 26,5, la descente fait 28 -> 26 (pas de 2) -> 24,5 -> 24 ; 26 est un niveau ordinaire.
+    "  else{const surEp=mf.filter(m=>!m.r&&Math.abs(m.z-26)<1e-6&&(m.x<8+3||m.x>92-3||m.y<8+3||m.y>52-3)).length;",
+    "    att(zf['24.00']&&!zf['26.50']&&surEp===0,'« Finir le fond » : passe à 24 exact, rien sur l épaulement 26 ('+Object.keys(zf).join(' ')+', '+surEp+' coupes sur l épaulement)');",
     "    const wd=Math.min.apply(null,mf.filter(m=>!m.r&&!m.ent&&Math.abs(m.z-24)<1e-6&&faoPointInPoly(m.x,m.y,loop)).map(m=>faoDistToPoly(m.x,m.y,loop)));",
     "    att(Math.abs(wd-3)<0.01,'« Finir le fond » : parois finies à la cote au fond (centre à r = 3, vu '+wd.toFixed(3)+')');",
     "    att(of.finitFond===true,'sanitise : finitFond conservé');}}",
