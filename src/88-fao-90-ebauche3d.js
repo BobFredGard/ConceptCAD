@@ -1693,15 +1693,25 @@ function faoSpiralLevel(mesh,B,z,D,r,secu,zFrom,ae,entryMode,brutTop,zt,moves,op
 // 2026-10-15-001 : un fond (face horizontale vers le haut à la cote f) est-il
 // DANS la zone de l'opération ? (Finir le fond : pas de passe sur un
 // épaulement hors de la poche.) Sans zone : oui.
-function faoFloorInZone(mesh,f,zoneAt){
+function faoFloorInZone(mesh,f,zoneAt,reach){
+  // `reach` (> 0, optionnel) : le fond compte s'il est à portée du BORD de
+  // l'outil (zoneAt = zone du CENTRE) — on sonde aussi 8 points à reach.
   if(typeof zoneAt!=='function')return true;
+  const rr=isFinite(+reach)&&+reach>0?+reach*0.999:0;
+  const inZ=rr>0
+    ?function(x,y){ if(zoneAt(x,y))return true;
+        for(let q=0;q<8;q++){const t=q*Math.PI/4;if(zoneAt(x+rr*Math.cos(t),y+rr*Math.sin(t)))return true;}
+        return false; }
+    :zoneAt;
   const V=mesh.v,T=mesh.t;
   for(let i=0;i<T.length;i++){
     const a=V[T[i][0]],b=V[T[i][1]],c=V[T[i][2]];
-    if(Math.abs(a[2]-f)>1e-6||Math.abs(b[2]-f)>1e-6||Math.abs(c[2]-f)>1e-6)continue;
+    // f vient de faoUpFloors (cote arrondie à 0,001) : tolérance d'un
+    // demi-millième, sinon aucun triangle réel (73,0000003…) n'était reconnu.
+    if(Math.abs(a[2]-f)>5e-4||Math.abs(b[2]-f)>5e-4||Math.abs(c[2]-f)>5e-4)continue;
     // centre et milieux d'arêtes : un grand triangle peut déborder de la zone
     const pts=[[(a[0]+b[0]+c[0])/3,(a[1]+b[1]+c[1])/3],[(a[0]+b[0])/2,(a[1]+b[1])/2],[(b[0]+c[0])/2,(b[1]+c[1])/2],[(c[0]+a[0])/2,(c[1]+a[1])/2]];
-    for(let k=0;k<pts.length;k++)if(zoneAt(pts[k][0],pts[k][1]))return true;
+    for(let k=0;k<pts.length;k++)if(inZ(pts[k][0],pts[k][1]))return true;
   }
   return false;
 }
@@ -1985,6 +1995,10 @@ function* faoGenRough3DIt(mesh,box,ztop,zbot,o){
     for(let i=0;i<floorsUp.length;i++){
       const f=floorsUp[i];
       if(f<+zbot-1e-9||f>=zt-1e-9)continue;   // hors zone (`Bas`) ou au niveau `Haut`
+      // V0.96.4 : fond hors de la LIMITE de l'opération (hors de portée de
+      // l'outil) -> pas d'arrêt : un épaulement du pourtour ne doit pas
+      // couper en deux la descente d'une rainure (SIRAP-14-002, palier 73).
+      if(typeof o.zoneAt==='function'&&!faoFloorInZone(M,f,o.zoneAt,D/2+RA.radial))continue;
       stops.push({z:r3(f+RA.axial),f:f});      // fond + Fond
     }
     if(isFinite(zBot))stops.push({z:r3(zBot),f:null});

@@ -287,6 +287,7 @@ const SUITES = [
   "test_index_rayons",
   "test_facettes_par_face",
   "test_fao_copie_tournee",
+  "test_fao_fond_hors_zone",
   "test_alerte_paroi",
   "test_composants_repetition_profil",
   "test_composants_references",

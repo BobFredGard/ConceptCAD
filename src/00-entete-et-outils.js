@@ -21,7 +21,7 @@
  * peut changer sans rien casser. CACHE_VER (parcours FAO) reste indépendant.
  */
 
-const APP_VER='V0.96.4';
+const APP_VER='V0.96.5';
 try{console.log('[ConceptCAD] version '+APP_VER);}catch(e){}
 try{var mfSv=document.getElementById('mfSplashVer');if(mfSv)mfSv.textContent=APP_VER;}catch(e){} // écran de démarrage
 
@@ -32,7 +32,7 @@ try{var mfSv=document.getElementById('mfSplashVer');if(mfSv)mfSv.textContent=APP
    et une image vide au F5 — pour rien, les données produites n'avaient pas bougé.
    A ne bumper QUE quand ce qui PRODUIT ces données change (moteur de géométrie,
    faoGen*) : c'est le seul cas où une entrée devient légitimement périmée. */
-const CACHE_VER='2026-10-30-004';
+const CACHE_VER='2026-11-13-001';
 /* ── Tampon de la PIÈCE FINIE gardée sur le poste (20-75) ──────────────────────
    V0.96.3 (décision de Fred du 13/11/2026 : « Oui, les garder ») : sa clé portait APP_VER, chaque
    livraison faisait donc recalculer chaque fichier une fois à sa première ouverture (barquette
@@ -46,6 +46,9 @@ const CACHE_VER='2026-10-30-004';
    est jetée et la pièce recalculée (pcVerifie, 20-75). */
 const FORMES_VER='2026-11-13-001';
 function cacheVerOK(v){
+  // 2026-11-13-001 (V0.96.5) : ébauche 3D — un fond hors de la limite de
+  // l'opération (hors de portée de l'outil) n'est plus un arrêt de descente :
+  // les opérations à limite près d'un épaulement extérieur changent.
   // 2026-10-30-002 (V0.23.16) : arrondi des coins — le passage qui suit une
   // entrée / un arc / un rapide garde son premier point (faoRoundMoves) : les
   // opérations à Arrondi > 0 changent, à régénérer.
