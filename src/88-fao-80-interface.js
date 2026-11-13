@@ -323,9 +323,9 @@ function faoStaleUI(){
       bg.title=faoPrevStale
         ? ((n?(n+' opération(s) à régénérer — son triangle ⚠ ne régénère qu’elle. ')
              :'')
-           +'Ce bouton régénère TOUTES les opérations puis ré-affiche les traces'
+           +'Ce bouton régénère toutes les opérations des posages non gelés puis ré-affiche les traces'
            +' (les traces masquées ligne par ligne le RESTENT).')
-        : ('Régénère TOUTES les opérations (même celles à jour) puis RÉ-AFFICHE toutes'
+        : ('Régénère toutes les opérations des posages non gelés (même celles à jour) puis RÉ-AFFICHE toutes'
            +' les traces — les traces masquées ligne par ligne ne le sont pas :'
            +' masquez-les à la main, ligne par ligne.');
     }
@@ -658,7 +658,8 @@ function faoInitUI(){
       const bg=document.createElement('button'); bg.id='faoGenBtn'; faoGenBtnEl=bg;
       bg.className='fao-gen fao-dup';
       bg.textContent='Tout régénérer';
-      bg.title='Régénère TOUTES les trajectoires (même celles à jour). Les traces'
+      bg.title='Régénère les trajectoires de tous les posages non gelés (même celles à jour) ;'
+        +' les posages gelés et les opérations désactivées gardent les leurs. Les traces'
         +' masquées ligne par ligne le restent — masquez-les à la main.';
       bg.onclick=function(){
         // 2026-10-09-005 : flux progressif — les courbes apparaissent pendant

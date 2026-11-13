@@ -8,7 +8,7 @@ sont sorties le 2026-09-30j.
 Code dans `src/` · livrable `fusion_mvp.html` (généré par `build.js`) · architecture et
 garde-fous en tête de `src/00-entete-et-outils.js`.
 
-**682 versions**, de `2026-09-28b` à `V0.96.5` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
+**683 versions**, de `2026-09-28b` à `V0.96.6` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
 comme dans le fichier d'origine.
 
 ---
@@ -7640,3 +7640,12 @@ Barquette ne perd plus son solide à la 107e modification, et sa mémoire ne mon
 - **CACHE_VER** changé : les parcours d'ébauche 3D enregistrés sont à régénérer.
 - **Test** : `tests/test_fao_fond_hors_zone.cjs` (pièce de synthèse : épaulements à 7 hors limite, rainure au fond 4 ; une seule passe avec limite, 7 puis 4 sans limite ; fond à 7,0000003 reconnu). Échoue sur la version précédente.
 - **Test adapté** : `test_fao_poche` (« Finir le fond ») — l'épaulement à 26, à 12 mm de la poche, n'impose plus d'arrêt à 26,5 : la descente fait 28 → 26 → 24,5 → 24. Le test vérifie maintenant qu'aucune coupe ne touche l'épaulement et qu'il n'y a plus d'arrêt à 26,5.
+
+## V0.96.6 - FAO : Régénérer = posages actifs seulement ; Retrait minimum = la seule montée choisie
+
+- **Demande 1** : « quand on clique sur "Régénérer", il ne faut régénérer que les posages actifs ! ». Précisé par Fred : actifs = non gelés. Cause : le bouton jetait les parcours en mémoire de TOUS les posages (gelés compris, opérations désactivées comprises) puis ne recalculait que le posage affiché.
+- **Correctif 1** (`src/88-fao-60-postprocesseurs.js`) : `faoRegenSetups` / `faoRegenPurge` — seuls les posages non gelés et leurs opérations activées sont purgés puis recalculés, tous (le posage affiché d'abord et dessiné au fur et à mesure, les autres ensuite, sur plusieurs cœurs, rangés en mémoire pour l'affichage et l'export). Posages gelés et opérations désactivées gardent leurs parcours. Bulles d'aide du bouton mises à jour.
+- **Demande 2** : « Remontées : quand je dis "Retrait minimum = 5", je ne veux pas remonter au plan de retrait +5, je veux juste remonter de 5 mm, me déplacer vers la prochaine passe, en prenant en compte la pièce et le brut restant ». Cause : la carte de matière des liaisons (`src/88-fao-55-liaisons.js`) voyait des obstacles qui n'existaient pas : (a) toute maille proche du trajet comptait, donc la paroi que la passe venait de longer, (b) une paroi verticale (ou très raide) de la pièce remplissait toute sa boîte englobante à sa hauteur maximale. La liaison passait 5 mm au-dessus du niveau précédent ou de la pièce imaginaire, au lieu de 5 mm au-dessus de la passe.
+- **Correctif 2** : la liaison ne compte que la matière que l'outil balaierait vraiment entre ses deux bouts (5 × 5 points par maille ; aux bouts, l'outil occupe déjà la place ; la paroi qu'il quitte n'est plus un obstacle) ; le tracé de la pièce sur la carte ne prend une maille que si le triangle passe à moins de 0,75 maille de son centre, à la cote de son plan + pente × rayon. Matière restée pleine et pièce toujours franchies.
+- **Mesure** : Cavité Usinage, ébauche 3D Ø25 R2, retrait minimum 5 : écart moyen entre la liaison et le strict nécessaire (carte indépendante à 0,5 mm) 10,7 → 1,2 mm ; aucune traversée de matière. `test_fao_liaisons` (retrait minimum 3) : rapides 4 343 → 3 110 mm, aucune traversée.
+- **Test** : `tests/test_fao_regen_posages.cjs` (3 posages dont un gelé et une opération désactivée ; liaison qui quitte une paroi ; liaison vers la matière restée pleine ; paroi verticale en biais ; pente). Échoue sur la version précédente. Parcours FAO, CACHE_VER et FORMES_VER inchangés (les liaisons sont posées après le calcul des parcours).

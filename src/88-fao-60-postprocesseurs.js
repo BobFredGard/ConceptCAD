@@ -634,9 +634,40 @@ function faoRefreshPreview(mode){
   }catch(e){}
   return total;
 }
+/* ----- V0.96.6 (demande de Fred) : « Régénérer » = les posages ACTIFS seulement,
+   c'est-à-dire non gelés (comme l'export G-code), opérations activées. Les posages
+   gelés et les opérations désactivées gardent leurs parcours en mémoire : avant,
+   tout le cache était jeté, et seul le posage affiché était recalculé. */
+function faoRegenSetups(){
+  return faoRoot().setups.filter(function(s){
+    return s&&!(typeof faoSetupStruck==='function'&&faoSetupStruck(s))&&faoRegenOpsOf(s).length>0;
+  });
+}
+function faoRegenOpsOf(s){
+  return ((s&&s.ops)||[]).filter(function(op){ return op&&op.on!==false&&!faoIsPattern(op); });
+}
+function faoRegenPurge(){
+  // Jette les parcours en mémoire des seules opérations à régénérer.
+  faoRegenSetups().forEach(function(s){
+    faoRegenOpsOf(s).forEach(function(op){
+      try{ if(faoOpMovesMap)faoOpMovesMap.delete(op); }catch(e){}
+      if(op.stale===true)op.stale=false;
+    });
+  });
+}
+function faoRegenOn(s,fn){
+  // Calcul d'un posage qui n'est pas celui affiché : il devient le posage de
+  // travail le temps de l'appel (brut, repère et plans lus comme à l'écran, comme
+  // l'export), puis on rend la main au posage affiché.
+  const r=faoRoot(), keep=r.activeSetupId;
+  r.activeSetupId=s.id;
+  try{ return fn(); }catch(e){ return null; }
+  finally{ r.activeSetupId=keep; }
+}
 function faoPreviewGenerate(){
-  // « Tout régénérer » = TOUT, à la demande : on purge le cache (chaque opération
-  // est recalculée, même celles à jour), puis on ré-affiche TOUTES les traces.
+  // « Tout régénérer » = tous les posages ACTIFS (non gelés), à la demande : on
+  // purge leur cache (chaque opération activée est recalculée, même celles à jour),
+  // puis on ré-affiche TOUTES les traces du posage affiché.
   // Les traces masquées à la main (op.hidden) le RESTENT : le masquage se fait
   // ligne par ligne, jamais remis à zéro en cachette. Le triangle ⚠ d'une ligne,
   // lui, ne régénère QUE son opération.
@@ -648,8 +679,12 @@ function faoPreviewGenerate(){
     try{ if(typeof faceEl!=='undefined'&&faceEl)faceEl.textContent='FAO : le solide exact n\'est pas encore en place (rejeu en cours) — régénération automatique à la fin du rejeu.'; }catch(e){}
     return 0;
   }
-  faoOpMovesPurge();
-  faoStaleClear();
+  faoRegenPurge();
+  const cur=faoDoc();
+  faoRegenSetups().forEach(function(s){
+    if(s===cur)return; // le posage affiché est calculé par le rendu ci-dessous
+    faoRegenOpsOf(s).forEach(function(op){ faoRegenOn(s,function(){ faoOpMoves(op,s); }); });
+  });
   const n=faoRefreshPreview('calcule');
   faoTouch();
   faoPrevStale=false; faoStaleUI();
@@ -718,6 +753,26 @@ async function faoRefreshPreviewStream(){
     }catch(e){}
     await faoYieldUI();
   }
+  // V0.96.6 : puis les autres posages actifs (non gelés), rangés en mémoire sans
+  // être dessinés : ils s'affichent quand on les sélectionne, et l'export les sert.
+  const autres=faoRegenSetups().filter(function(s){ return s!==job; });
+  for(let a=0;a<autres.length;a++){
+    const s=autres[a], sops=faoRegenOpsOf(s);
+    const dit=function(t){ try{ if(typeof faceEl!=='undefined'&&faceEl)faceEl.textContent='FAO : posage « '+s.name+' » ('+(a+2)+'/'+(autres.length+1)+'), '+t; }catch(e){} };
+    let pr=null;
+    faoRegenOn(s,function(){
+      pr=faoWkRemplir(s,sops,function(){ return tok!==faoStreamTok; },null,function(n,total,coeurs){
+        dit(n+'/'+total+' opération'+(total>1?'s':'')+' sur '+coeurs+' cœur'+(coeurs>1?'s':'')+'…');
+      });
+    });
+    try{ await pr; }catch(e){}
+    for(let i=0;i<sops.length;i++){
+      if(tok!==faoStreamTok)return -1;
+      dit('génération '+(i+1)+'/'+sops.length+'…');
+      faoRegenOn(s,function(){ faoOpMoves(sops[i],s); });
+      await faoYieldUI();
+    }
+  }
   if(tok!==faoStreamTok)return -1;
   // Rendu CANONIQUE : tout est en mémoire (coups de cache) — c'est exactement
   // ce que le bouton faisait en un bloc : rapides sécurisés, arrondis, zones,
@@ -738,8 +793,7 @@ async function faoPreviewGenerateAsync(){
     try{ if(typeof faceEl!=='undefined'&&faceEl)faceEl.textContent='FAO : le solide exact n\'est pas encore en place (rejeu en cours) — régénération automatique à la fin du rejeu.'; }catch(e){}
     return 0;
   }
-  faoOpMovesPurge();
-  faoStaleClear();
+  faoRegenPurge();
   let n=0;
   try{ n=await faoRefreshPreviewStream(); }catch(e){
     n=-1;
