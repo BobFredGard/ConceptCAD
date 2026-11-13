@@ -309,6 +309,49 @@ function faoRegenOp(setupId,opId){
     return mv?mv.length:0;
   }catch(e){ return 0; }
 }
+async function faoRegenOpStream(setupId,opId){
+  // V0.99.0 (demande de Fred) : le triangle ⚠ redessine SON opération au fur et à
+  // mesure, comme « Tout régénérer ». L'ancien tracé de l'opération disparaît
+  // d'abord (les autres restent), puis chaque niveau calculé apparaît ; le rendu
+  // canonique (lecture seule) remplace enfin les traits provisoires. Hors du posage
+  // affiché, opération masquée ou 2.5D (instantanée) : chemin synchrone.
+  let s=null,o=null;
+  try{
+    (faoRoot().setups||[]).forEach(function(x){
+      ((x&&x.ops)||[]).forEach(function(q){ if(q&&q.id===opId){ s=x; o=q; } });
+    });
+  }catch(e){}
+  if(!o)return 0;
+  const job=faoDoc();
+  if(s!==job||o.hidden===true||!faoPrevOn||!faoMeshOp(o)
+    ||typeof THREE==='undefined'||typeof scene==='undefined'||!scene)return faoRegenOp(setupId,opId);
+  const tok=++faoStreamTok;
+  o.stale=false;             // débloque le recalcul (clé ≠ cache)
+  o.hidden=true;             // dessin de départ SANS l'ancien tracé de cette opération
+  try{ faoRefreshPreview(); }finally{ o.hidden=false; }
+  try{ faoRefreshFaoUI(); }catch(e){} // triangle retiré tout de suite
+  const g=faoPrevGroup;
+  const dit=function(t){ try{ if(typeof faceEl!=='undefined'&&faceEl)faceEl.textContent=t; }catch(e){} };
+  dit('FAO : génération de « '+faoOpShortLabel(o)+' »…');
+  let n=0;
+  try{
+    const st={n:0,prev:null};
+    const mv=await faoOpMovesStream(o,job,function(marr){
+      if(tok!==faoStreamTok||!g||g!==faoPrevGroup||o.hidden===true||!marr||marr.length<=st.n)return;
+      const delta=marr.slice(st.n); st.n=marr.length;
+      try{ const sp=faoSegSplit(delta,faoSegClipper(o,job),st.prev); st.prev=sp.prev; faoPrevAdd(g,sp); }catch(e){}
+    });
+    n=mv?mv.length:0;
+  }catch(e){
+    try{ if(typeof console!=='undefined'&&console&&console.log)console.log('faoRegenOpStream',e); }catch(e2){}
+  }
+  if(tok!==faoStreamTok)return 0; // un autre rafraîchissement a pris la main
+  faoRefreshPreview();       // canonique : cette op est fraîche, les autres servent l'ancien tracé
+  if(faoStaleCount()===0)faoPrevStale=false;
+  faoRefreshFaoUI();
+  dit('FAO : « '+faoOpShortLabel(o)+' » régénérée, '+n+' points de parcours.');
+  return n;
+}
 function faoStaleUI(){
   // Reflète faoPrevStale sur le bouton « Tout régénérer » et sur l'export.
   try{
@@ -793,7 +836,7 @@ function faoRenderTree(){
             +(why?(' '+why):'');
           sk.onclick=function(ev){
             try{ if(ev&&ev.stopPropagation)ev.stopPropagation(); }catch(e){}
-            faoRegenOp(s.id,op.id);
+            faoRegenOpStream(s.id,op.id);
           };
           d.appendChild(sk);
         }
@@ -1104,13 +1147,13 @@ const FAO_TAB_HELP={
   'Hauteurs':'Dégagement, Retrait, puis Haut et Bas de la zone usinée : chacun depuis le brut, le modèle ou une face cliquée, plus un décalage.',
   'Passes':'Descente par niveau, pas latéral et manière de vider.',
   'Entrées':'Comment l’outil entre dans la matière.',
-  'Matière':'Surépaisseur laissée pour l’opération suivante (mm).',
+  'Matière':'Surépaisseur laissée pour l’opération suivante (mm) ; ébauche 3D : brut de départ (celui du posage, ou le brut restant après les opérations précédentes).',
   'Attaches':'Ponts de matière pour tenir la pièce en détourage traversant.'};
 function faoTabOf(t){
   t=String(t||'').toLowerCase().replace(/\s*\(.*$/,'').trim();
   const M=[['outil','Outil'],['trous','Zone'],['hauteur','Hauteurs'],['vidage','Passes'],['passes','Passes'],['côté et sens','Passes'],
     ['trajectoire','Entrées'],['plans','Hauteurs'],['entrée','Entrées'],['matière','Matière'],
-    ['attaches','Attaches'],['repère','Repère'],['zone','Zone'],['bord de la poche','Zone'],['profil','Zone']];
+    ['attaches','Attaches'],['brut','Matière'],['repère','Repère'],['zone','Zone'],['bord de la poche','Zone'],['profil','Zone']];
   for(let i=0;i<M.length;i++)if(t.indexOf(M[i][0])===0)return M[i][1];
   return null;
 }
@@ -1236,7 +1279,7 @@ function faoOpCardElement(setup,op,i){
     w.title='Parcours à régénérer : CETTE opération a changé. Clic = ne régénérer'
       +' que cette opération (le bouton « Tout régénérer » régénère tout).'
       +(why?(' '+why):'');
-    w.onclick=function(){ faoRegenOp(setup.id,op.id); };
+    w.onclick=function(){ faoRegenOpStream(setup.id,op.id); };
     r.appendChild(w);
   }
   r.appendChild(faoMini('↑',function(){ if(i>0){ setup.ops.splice(i,1); setup.ops.splice(i-1,0,op); } },
@@ -1368,6 +1411,35 @@ function faoOpCardElement(setup,op,i){
       return (isFinite(+t.d)&&+t.d>0)?+t.d:10; })();
     const aeNow=isFinite(+op.ae)&&+op.ae>0?+op.ae:toolD*0.6;
     const apNow=isFinite(+op.ap)&&+op.ap>0?+op.ap:5;
+    // V0.99.0 : BRUT de départ — celui du posage, ou ce qu'il reste après les opérations
+    // précédentes (usinage de reprise, src/88-fao-57-brut-restant.js)
+    if(op.type==='rough3d'){
+      d.appendChild(faoH('Brut'));
+      const rB=faoRow();
+      rB.appendChild(faoLab('Départ'));
+      rB.appendChild(faoSel([
+        ['posage','Brut du posage','L’ébauche part du brut du posage (boîte, cylindre ou corps), comme si rien n’avait encore été usiné.'],
+        ['restant','Brut restant (opérations précédentes)','Usinage de reprise : les opérations actives placées avant celle-ci dans le posage (3+2 compris) sont rejouées ; '+
+          'l’ébauche ne passe que là où il reste de la matière (coins et recoins qu’une fraise plus grosse n’a pas atteints, marches laissées par un pas plus grand).']],
+        faoRestOn(op)?'restant':'posage',
+        function(v){ if(v==='restant')op.brut='restant'; else{ delete op.brut; delete op.restIgn; } try{renderProps();}catch(e){} },
+        'Brut de départ de l’ébauche 3D'));
+      d.appendChild(rB);
+      if(faoRestOn(op)){
+        const rI=faoRow();
+        rI.appendChild(faoLab('Ignorer moins de'));
+        rI.appendChild(faoNum(faoRestIgnore(op),function(v){ op.restIgn=Math.max(0,Math.min(5,v)); },44,0.05,
+          'Épaisseur de matière restante (mm) que l’ébauche ne va pas chercher : la surépaisseur laissée par l’opération précédente le long des parois et des fonds ne déclenche pas de passe. 0,25 mm par défaut.'));
+        rI.appendChild(faoLab('mm'));
+        d.appendChild(rI);
+        const nPrev=(function(){ try{ return faoRestPrev(setup,op).length; }catch(e){ return 0; } })();
+        const di=op.restDiag;
+        d.appendChild(faoHelp(nPrev?('Matière enlevée par '+nPrev+' opération'+(nPrev>1?'s':'')+' précédente'+(nPrev>1?'s':'')+' du posage'+
+            (di&&di.tilt?(' (dont '+di.tilt+' en 3+2)'):'')+' : seule la matière qui reste est usinée.'+
+            (di&&isFinite(+di.ms)?(' Carte calculée en '+(di.ms/1000).toFixed(1).replace('.',',')+' s, maille '+String(di.pas).replace('.',',')+' mm.'):''))
+          :'Aucune opération active avant celle-ci dans le posage : le brut restant est le brut du posage.'));
+      }
+    }
     // Haut / Bas (+ lien d'arêtes) : onglet Hauteurs (faoPlanesCard)
     d.appendChild(faoH('Vidage'));
     const rM=faoRow();

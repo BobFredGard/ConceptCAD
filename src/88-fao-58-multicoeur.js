@@ -288,6 +288,8 @@ function faoWkAccepte(op,job){
   // démarrage d'un worker. Les corps FAO (murs) passent par une triangulation THREE : calcul normal.
   if(!op||op.on===false||!faoMeshOp(op)||op.type==='chamfer'||faoContourProfil(op))return false;
   if(faoWallList(job).length)return false;
+  // V0.99.0 : brut restant — lit les parcours des opérations précédentes : calcul normal, après elles
+  if(faoRestOn(op))return false;
   return true;
 }
 function faoWkNbCoeurs(){

@@ -14,7 +14,7 @@ function faoOpMovesStore(op,key,mv){
 }
 function faoOpSig(op){
   const o={};
-  const skip={hidden:1,on:1,geoBlocked:1,geoDiag:1,stale:1,cut:1,tangent:1,expr:1,pname:1,exprErr:1}; // expr / pname : formules ƒx (V0.95.0) — seule la valeur compte // cut : vitesses/avances (2026-10-15-010) — aucun effet sur le tracé ; tangent : aide à la saisie des faces (2026-10-21-003)
+  const skip={hidden:1,on:1,geoBlocked:1,geoDiag:1,restDiag:1,stale:1,cut:1,tangent:1,expr:1,pname:1,exprErr:1}; // expr / pname : formules ƒx (V0.95.0) — seule la valeur compte // cut : vitesses/avances (2026-10-15-010) — aucun effet sur le tracé ; tangent : aide à la saisie des faces (2026-10-21-003)
   try{
     for(const k in op){
       if(!Object.prototype.hasOwnProperty.call(op,k)||skip[k])continue;
@@ -153,6 +153,8 @@ function faoOpMovesKey(op,job){
         return [q&&q.id,q&&q.type,q&&q.on!==false?1:0];
       });
     }
+    // V0.99.0 : BRUT RESTANT — l'ébauche dépend des parcours des opérations qui la précèdent
+    if(faoRestOn(op)){ const rd=faoRestDep(op,job); if(rd===null)return null; dep=['restant',rd]; }
     let body='0'; // hors ebauche 3D/geofinition : aucun dependence au solide
     if(faoMeshOp(op)){
       const fp=faoSetupFp(job);
@@ -688,6 +690,7 @@ function* faoOpMovesIt0(op,job){
     const zctx=faoZoneCtx(op,job);
     // Poche adaptative SANS bord sélectionné : rien (jamais tout le brut).
     const pkNoGeo=faoPocketAdapt(op)&&!(zctx&&zctx.chain);
+    const RS=(am&&am.mesh&&!pkNoGeo)?faoRoughStock(op,job,D,RA.radial):{top:null,raw:null};
     if(am&&am.mesh&&!pkNoGeo)mv=yield* faoGenRough3DIt(am.mesh,am.box,+op.ztop,+op.zbot,
       {ap:+op.ap,ae:isFinite(+op.ae)?+op.ae:D*0.6,toolD:D,
        // 2026-10-14-007 : forme de l'outil (passe torique)
@@ -706,9 +709,10 @@ function* faoOpMovesIt0(op,job){
         stockBox:(job&&job.stock&&faoStockValid&&faoStockValid(job.stock))?job.stock:null,
         protectTip:protTip,
         // 2026-10-21-010 : brut = corps — dessus réel dilaté du rayon d'outil
-        stockTopAt:(function(){try{const T=faoStockTop(job,1);return T?T.dil(D/2+RA.radial):null;}catch(e){return null;}})(),
+        // V0.99.0 : + brut restant (opérations précédentes, 3+2 compris) — src/88-fao-57-brut-restant.js
+        stockTopAt:RS.top,
         // 2026-10-22-003 : dessus NON dilaté (entrées par l'extérieur, à plat)
-        stockRawAt:(function(){try{const T=faoStockTop(job,1);return T?T.at:null;}catch(e){return null;}})(),
+        stockRawAt:RS.raw,
         zoneAt:zctx?zctx.at:null,
         // 2026-10-11-005 : la limite voyage avec la zone — le REPÈRE de
         // génération (faoLoopAxis) suit l'axe de la chaîne (poche oblique).
@@ -732,6 +736,8 @@ function* faoOpMovesIt0(op,job){
         // (aucune chaine retournee) ; absent/'bidir' = legacy (retournement
         // vers l'extremite la plus proche).
         sens:op.sens});
+    // V0.99.0 : brut restant — longs tronçons sans matière restante -> liaisons
+    if(faoRestOn(op)&&RS.top&&mv&&mv.length)mv=faoRestTrimAir(mv,RS.top,D);
     // 2026-10-21-003 : rapides au-dessus des intouchables -> plan de dégagement
     if(protTip&&mv&&mv.length)mv=faoProtectRapids(mv,protTip,secu);
   }
