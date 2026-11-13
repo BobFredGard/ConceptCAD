@@ -33,6 +33,7 @@
 - **Ébauche 3D** : niveaux en Z (de *ap* en *ap*, avec un arrêt sur chaque fond de la pièce **à portée de l'outil dans la zone** : un épaulement hors de la limite n'ajoute pas de passe), minipasses, une région finie avant l'autre ; deux stratégies :
   - **Trochoïdal** : spirale avec arcs de dégagement ;
   - **Escargot** : anneaux concentriques autour des îlots, départ par l'extérieur, suivi du brut restant (carte du brut).
+    - **Une seule entrée (hélice unique)** : une hélice par niveau au centre (aucune si la zone donne sur le vide : entrée à plat par l'extérieur), puis la fraise vide toute la surface en escargot depuis ce point — spirale continue tant qu'aucun mur ne la coupe, puis arcs qui contournent murs et îlots. Les passages d'un morceau à l'autre glissent à la cote dans la zone déjà vidée ; la fraise ne se relève que si aucun passage dégagé n'existe.
 
   Les entrées ne plongent **jamais en pleine matière** : par l'extérieur en arc, en hélice ou en rampe douce (pente ≤ 0,4). Les descentes dans l'air se font en **rapide**, jusqu'au brut restant.
 

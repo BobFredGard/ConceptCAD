@@ -1386,6 +1386,21 @@ function faoOpCardElement(setup,op,i){
       'Mode de vidage de l’ébauche 3D');
     rM.appendChild(modeSel);
     d.appendChild(rM);
+    // V0.97.0 : ESCARGOT À UNE SEULE ENTRÉE — une hélice par niveau au centre,
+    // puis un front qui s'élargit depuis ce point (spirale continue tant
+    // qu'aucun mur ne la coupe), liaisons à la cote dans le déjà-vidé.
+    if(op.mode==='anneaux'){
+      const rU=faoRow();
+      const cbU=document.createElement('input'); cbU.type='checkbox'; cbU.checked=!!op.uneEntree;
+      cbU.title='Une seule entrée par niveau : une hélice au centre de la zone (aucune si la zone donne sur le vide : entrée à plat par l’extérieur), puis la fraise vide toute la surface en escargot depuis ce point, en contournant murs et îlots. '+
+        'Les passages d’un morceau à l’autre glissent à la cote dans la zone déjà vidée ; la fraise ne se relève que si aucun passage dégagé n’existe.';
+      cbU.onchange=function(){ faoSnapshot('une seule entrée');
+        if(cbU.checked)op.uneEntree=true; else delete op.uneEntree;
+        faoChanged(); };
+      rU.appendChild(cbU);
+      rU.appendChild(faoLab('Une seule entrée (hélice unique)'));
+      d.appendChild(rU);
+    }
     // 2026-10-08-003 : SENS DE PASSE — 'avalant' = sens de coupe constant
     // (aucune chaine retournée : les dents attaquent la matière de la même
     // façon sur tous les morceaux — sens de rotation de la fraise) ; défaut à

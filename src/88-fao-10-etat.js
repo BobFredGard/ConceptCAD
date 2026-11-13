@@ -198,6 +198,8 @@ function faoSanitiseOps(s){
       // en escargot à la lecture.
       // V0.23.15 : 2e mode 'anneaux' (Escargot) ; 'escargot' = Trochoïdal.
       if(op.mode!=='anneaux')op.mode='escargot';
+      // V0.97.0 : une seule entrée (Escargot seulement ; absent = anneaux habituels)
+      if(op.uneEntree&&op.mode==='anneaux')op.uneEntree=true; else delete op.uneEntree;
       delete op.entree;
       }
     // 2026-10-08-003 : sens de passe — seuls 'avalant' et 'bidir' survivent,
