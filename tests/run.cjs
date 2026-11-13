@@ -114,6 +114,7 @@ const SUITES = [
   "test_fao_escargot_une_entree",
   "test_fao_contours",
   "test_fao_brut_restant",
+  "test_fao_finition_restante",
   "test_fao_sens",
   "test_fao_zone2",
   "test_fao_sketch_zone",

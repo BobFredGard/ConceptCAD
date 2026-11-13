@@ -8,7 +8,7 @@ sont sorties le 2026-09-30j.
 Code dans `src/` · livrable `fusion_mvp.html` (généré par `build.js`) · architecture et
 garde-fous en tête de `src/00-entete-et-outils.js`.
 
-**687 versions**, de `2026-09-28b` à `V0.99.0` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
+**688 versions**, de `2026-09-28b` à `V0.99.1` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
 comme dans le fichier d'origine.
 
 ---
@@ -7695,3 +7695,13 @@ Cavité Usinage, après l'ébauche D25 R2 : reprise D10 (Contours) 6,0 m de coup
 **Correctif** : le triangle ⚠ d'une opération (arbre ou fiche) passe par `faoRegenOpStream` : l'ancien tracé de cette opération disparaît, les autres restent, puis chaque niveau calculé s'affiche aussitôt, comme avec « Tout régénérer » ; le rendu canonique remplace enfin les traits provisoires. Opération masquée, 2.5D (instantanée) ou d'un autre posage : chemin synchrone inchangé. Cavité Usinage, ébauche D25 : 33 rafraîchissements du tracé pendant les 16 s du calcul (avant : écran figé puis tracé d'un bloc).
 
 **Test** : tests/test_fao_brut_restant.cjs (rapide et complet). Parcours d'exemple, CACHE_VER et FORMES_VER inchangés (nouvelle option seulement).
+
+## V0.99.1 - Finition : brut restant, avec une marge
+
+**Demande** : « peux-tu avoir cette fonction de brut restant dans la Finition ? » ; « avec une option de marge pour aller un poil plus loin » ; « mon idée est de ne pas mettre de limite intérieure dans certains cas pour utiliser le brut restant » ; « l'idée du "un poil plus loin" est d'être sûr que la fraise boule est bien passée partout sur la limite du brut restant ».
+
+**Correctif** : fiche de la finition (parallèle ou crêtes constantes), onglet *Matière*, section **Brut** (même section que l'ébauche 3D, `faoRestRows`) : *Départ* = brut du posage (défaut) ou brut restant. La finition est calculée normalement, puis `faoRestFinish` (`src/88-fao-57-brut-restant.js`) teste chaque point de passe contre la carte du brut restant de l'ébauche (3+2 compris) : l'outil posé là enlève-t-il plus de **Ignorer moins de** (0,1 mm) ? (dessus de la carte − dessous de l'outil sous tout son disque : boule, torique ou plat). **Marge** (`op.restMarge`, 1 mm) : tout point de passe à moins de cette distance, en 3D, d'un point qui enlève de la matière est gardé — le long de la passe et sur les passes voisines. Les trous plus courts que max(2 mm, Ø) sont gardés aussi ; le reste devient des liaisons (montée au plan de sécurité, passage, descente de 1 mm en avance), redessinées ensuite par les liaisons du posage. Un arc n'est jamais coupé. Carte de la finition à la maille D/8 (0,25 à 0,5 mm) : la carte d'une finition précédente au pas de l'ébauche prenait 30 s sur Cavité Usinage, 4 s maintenant. Clé du parcours = opérations précédentes ; pas de calcul multicœur pour une reprise.
+
+Cavité Usinage, après l'ébauche D25, la reprise D10 et une finition boule D12 (crêtes, pas 0,5) : finition boule D3 (pas 0,25) en brut restant, 8,0 m de coupe au lieu de 104 m (8 %), 14 s de calcul dont 4 s de carte ; une D3 sur toute la pièce n'enlèverait ensuite nulle part plus de 0,075 mm. Avec la finition boule D6 du fichier à la place de la D12 : aucune passe (la D6 ne laisse rien que la D3 puisse prendre, 0,04 mm au plus).
+
+**Test** : tests/test_fao_finition_restante.cjs (rapide et complet) : passes connues sur une bande de matière, marge 0 / 1 / 4 mm, passes voisines reprises, liaisons, passe entière gardée telle quelle, réglages et clé. Parcours d'exemple, CACHE_VER et FORMES_VER inchangés (nouvelle option seulement).

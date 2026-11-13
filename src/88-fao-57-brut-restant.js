@@ -29,10 +29,16 @@
    Clé du parcours : celles des opérations précédentes (faoRestDep) — modifier une
    opération précédente met la reprise « à régénérer ». */
 const FAO_REST_IGN=0.25; // mm — matière plus mince ignorée (défaut)
-function faoRestOn(op){ return !!op&&op.type==='rough3d'&&op.brut==='restant'; }
+const FAO_REST_IGN_FIN=0.1; // mm — finition (V0.99.1) : crêtes plus basses ignorées
+const FAO_REST_MARGE=1;     // mm — finition : passes prolongées de part et d'autre
+function faoRestOn(op){ return !!op&&(op.type==='rough3d'||op.type==='geofinish')&&op.brut==='restant'; }
 function faoRestIgnore(op){
   const v=op?+op.restIgn:NaN;
-  return (isFinite(v)&&v>=0)?Math.min(v,5):FAO_REST_IGN;
+  return (isFinite(v)&&v>=0)?Math.min(v,5):(op&&op.type==='geofinish'?FAO_REST_IGN_FIN:FAO_REST_IGN);
+}
+function faoRestMarge(op){
+  const v=op?+op.restMarge:NaN;
+  return (isFinite(v)&&v>=0)?Math.min(v,50):FAO_REST_MARGE;
 }
 function faoRestBase(job){ return (job&&job.__opJob)?Object.getPrototypeOf(job):job; }
 function faoRestPrev(P,op){
@@ -117,7 +123,9 @@ function faoRestMap(op,job,D,radial){
   // grille : la boîte du brut (repère de calcul) + une marge d'un Ø d'outil
   const pad=D+2;
   const X0=+s.x0-pad,Y0=+s.y0-pad,W=+s.x1-+s.x0+2*pad,Hh=+s.y1-+s.y0+2*pad;
-  let p=Math.max(0.15,Math.min(0.5,D/16));
+  // finition (V0.99.1) : maille D/8 (0,25…0,5 mm) — la carte d'une finition précédente au pas de
+  // D/16 prenait 30 s sur Cavité Usinage ; la marge couvre l'écart d'une maille
+  let p=(op&&op.type==='geofinish')?Math.max(0.25,Math.min(0.5,D/8)):Math.max(0.15,Math.min(0.5,D/16));
   let nx=Math.ceil(W/p),ny=Math.ceil(Hh/p);
   while(nx*ny>3e6){p*=1.15;nx=Math.ceil(W/p);ny=Math.ceil(Hh/p);}
   const nc=nx*ny,z0=+s.z0,z1=+s.z1;
@@ -233,7 +241,8 @@ function faoRestMap(op,job,D,radial){
   const look=function(A){return function(x,y){
     const i=Math.floor((x-X0)/p),j=Math.floor((y-Y0)/p);
     if(i<0||j<0||i>=nx||j>=ny)return -1/0;return A[j*nx+i];};};
-  const map={top:look(dil),raw:look(h),n:nOps,tilt:nTilt,ms:Date.now()-t0,pas:p,ign:e};
+  const map={top:look(dil),raw:look(h),n:nOps,tilt:nTilt,ms:Date.now()-t0,pas:p,ign:e,
+    grid:{h:h,nx:nx,ny:ny,x0:X0,y0:Y0,p:p}};
   if(key!==null){ try{ if(!faoRestMemo)faoRestMemo=new WeakMap(); faoRestMemo.set(op,{key:key,map:map}); }catch(e){} }
   return map;
 }
@@ -309,4 +318,135 @@ function faoRoughStock(op,job,D,radial){
     }
   }
   return {top:top,raw:raw};
+}
+
+/* ----- V0.99.1 : FINITION sur le brut restant (demande de Fred : « cette fonction de brut
+   restant dans la Finition », « avec une option de marge pour aller un poil plus loin » ;
+   « ne pas mettre de limite intérieure dans certains cas pour utiliser le brut restant »).
+   La finition (parallèle ou crêtes constantes) est calculée normalement, puis chaque point de
+   passe est testé contre la carte du brut restant (même carte que l'ébauche) : l'outil, posé
+   là, enlève-t-il plus de « Ignorer moins de » ? (dessus de la carte − dessous de l'outil,
+   maille par maille sous son disque : boule, torique ou plat.) Les tronçons qui enlèvent de la
+   matière sont gardés, ainsi que tout point de passe à moins de la marge (en 3D) d'un point
+   qui en enlève : le long de la passe ET sur les passes voisines — la boule repasse sur tout
+   le bord de la zone restante (Fred : « être sûr que la fraise boule est bien passée partout
+   sur la limite du brut restant »). Les trous plus courts que
+   max(2 mm, Ø) aussi (moins cher que remonter). Le reste devient des liaisons : montée au
+   plan de sécurité, passage, descente en avance au début du tronçon suivant — les liaisons du
+   posage (retrait, retrait minimum) les redessinent ensuite comme les autres. Un arc n'est
+   jamais coupé : l'intervalle gardé s'étend à l'arc entier. */
+function faoRestEnvFn(tool,D){
+  // Hauteur du dessous de l'outil au-dessus de sa pointe, à la distance ρ de l'axe.
+  const R=D/2,k=tool&&tool.kind;
+  if(k==='flat')return function(){return 0;};
+  const rc=k==='bull'?Math.max(0,Math.min(R,isFinite(+tool.cornerR)?+tool.cornerR:R)):R;
+  const r0=R-rc;
+  return function(d){ if(d<=r0)return 0; const u=Math.min(rc,d-r0); return rc-Math.sqrt(Math.max(0,rc*rc-u*u)); };
+}
+function faoRestFinish(mv,M,tool,D,ign,marge,secu){
+  if(!Array.isArray(mv)||mv.length<2||!M||!M.grid)return mv;
+  const G=M.grid,h=G.h,nx=G.nx,ny=G.ny,p=G.p,R=D/2,env=faoRestEnvFn(tool,D);
+  const n=Math.ceil(R/p)+1;
+  // l'outil posé (pointe x,y,z) enlève-t-il plus de ign de matière restante ?
+  const eng=function(x,y,z){
+    const ci=Math.floor((x-G.x0)/p),cj=Math.floor((y-G.y0)/p);
+    for(let dj=-n;dj<=n;dj++){const j=cj+dj;if(j<0||j>=ny)continue;const cy=G.y0+(j+0.5)*p-y;
+      for(let di=-n;di<=n;di++){const i=ci+di;if(i<0||i>=nx)continue;const cx=G.x0+(i+0.5)*p-x;
+        const d=Math.hypot(cx,cy);if(d>R)continue;
+        if(h[j*nx+i]>z+env(d)+ign)return true;}}
+    return false;};
+  const gapMin=Math.max(2,D);
+  const isCut=function(m){return !!m&&!m.r&&!m.ent;};
+  const segsOf=function(i,j){ // tronçons de coupe (hors entrées) de la chaîne mv[i..j-1]
+    const C=[];let s=0,prv=i>0?mv[i-1]:null;
+    for(let k=i;k<j;k++){const b=mv[k];
+      if(prv&&isCut(b)){const L=Math.hypot(b.x-prv.x,b.y-prv.y,(+b.z)-(+prv.z));C.push({k:k,a:prv,b:b,s0:s,L:L});s+=L;}
+      prv=b;}
+    C.s=s;return C;};
+  const sampleOf=function(C,f){ // échantillons au pas de la carte : f(x,y,z,abscisse)
+    C.forEach(function(c){const ns=Math.max(1,Math.ceil(c.L/p));
+      for(let q=0;q<=ns;q++){const t=q/ns;
+        f(c.a.x+(c.b.x-c.a.x)*t,c.a.y+(c.b.y-c.a.y)*t,+c.a.z+((+c.b.z)-(+c.a.z))*t,c.s0+c.L*t);}});};
+  // 1er passage : points qui enlèvent de la matière, rangés par cases de la taille de la marge
+  const cs=Math.max(marge,p),HS=new Map();let nHit=0;
+  for(let i=0;i<mv.length;){
+    if(mv[i].r){i++;continue;}
+    let j=i;while(j<mv.length&&!mv[j].r)j++;
+    if(i>0)sampleOf(segsOf(i,j),function(x,y,z){ if(!eng(x,y,z))return;
+      const k=Math.floor(x/cs)+','+Math.floor(y/cs);let L=HS.get(k);if(!L){L=[];HS.set(k,L);}L.push(x,y,z);nHit++;});
+    i=j;}
+  const near=function(x,y,z){
+    const ci=Math.floor(x/cs),cj=Math.floor(y/cs),m2=marge*marge+1e-9;
+    for(let dj=-1;dj<=1;dj++)for(let di=-1;di<=1;di++){const L=HS.get((ci+di)+','+(cj+dj));if(!L)continue;
+      for(let q=0;q<L.length;q+=3){const ex=L[q]-x,ey=L[q+1]-y,ez=L[q+2]-z;if(ex*ex+ey*ey+ez*ez<=m2)return true;}}
+    return false;};
+  const out=[];let pos=null,air=false,Ltot=0,Lkeep=0,nCut=0;
+  const put=function(m){out.push(m);pos=m;};
+  const up=function(){ if(pos&&+pos.z<secu-1e-9)out.push({r:1,x:pos.x,y:pos.y,z:secu}); };
+  const goRapid=function(Q){ // vers un point sûr (fin d'un rapide d'origine)
+    up(); out.push({r:1,x:Q.x,y:Q.y,z:Math.max(secu,+Q.z)}); put({r:1,x:Q.x,y:Q.y,z:+Q.z});
+  };
+  const goCut=function(Q){ // vers un point de passe : descente finale en avance
+    up(); out.push({r:1,x:Q.x,y:Q.y,z:secu});
+    if(+Q.z+1<secu-1e-9)out.push({r:1,x:Q.x,y:Q.y,z:+Q.z+1});
+    put({r:0,ent:1,x:Q.x,y:Q.y,z:+Q.z});
+  };
+  let i=0;
+  while(i<mv.length){
+    const m=mv[i];
+    if(m.r){ if(!air)put(m); i++; continue; }
+    let j=i;while(j<mv.length&&!mv[j].r)j++;          // chaîne en avance mv[i..j-1]
+    const start=i>0?mv[i-1]:null;
+    const C=segsOf(i,j),s=C.s;
+    Ltot+=s;
+    const whole=function(){ if(air&&start)goRapid(start); air=false; for(let k=i;k<j;k++)put(mv[k]); Lkeep+=s; };
+    if(!C.length||!start){ whole(); i=j; continue; }
+    // abscisses gardées : à moins de la marge d'un point qui enlève de la matière
+    const I=[];
+    if(nHit)sampleOf(C,function(x,y,z,d){ if(!near(x,y,z))return;
+      const a=Math.max(0,d-p),b=Math.min(s,d+p),L=I[I.length-1];
+      if(L&&a<=L[1]+gapMin)L[1]=Math.max(L[1],b);else I.push([a,b]);});
+    if(!I.length){ air=true; i=j; continue; }          // chaîne entière sur du déjà fini
+    if(I[0][0]<=gapMin)I[0][0]=0;
+    if(s-I[I.length-1][1]<=gapMin)I[I.length-1][1]=s;
+    if(I.length===1&&I[0][0]===0&&I[0][1]===s){ whole(); nCut++; i=j; continue; }
+    const at=function(d,lo){
+      let q=0;while(q<C.length-1&&d>C[q].s0+C[q].L+1e-9)q++;
+      const c=C[q];let t=c.L>1e-12?Math.max(0,Math.min(1,(d-c.s0)/c.L)):(lo?0:1);
+      if(c.b.arc)t=lo?0:1;
+      return {q:q,t:t,d:c.s0+c.L*t,x:c.a.x+(c.b.x-c.a.x)*t,y:c.a.y+(c.b.y-c.a.y)*t,z:+c.a.z+((+c.b.z)-(+c.a.z))*t};
+    };
+    for(let v=0;v<I.length;v++){
+      const A=at(I[v][0],true),B=at(I[v][1],false);
+      if(B.d<=A.d+1e-9)continue;
+      Lkeep+=B.d-A.d;
+      if(A.d<=1e-9){ if(air)goRapid(start); air=false; for(let k=i;k<C[0].k;k++)put(mv[k]); }
+      else goCut(A);
+      for(let q=A.q;q<=B.q;q++){
+        const c=C[q],t0=(q===A.q)?A.t:0,t1=(q===B.q)?B.t:1;
+        if(q>A.q)for(let k=C[q-1].k+1;k<c.k;k++)put(mv[k]); // avances intercalées
+        if(t1<=t0+1e-12)continue;
+        if(t1>=1-1e-9)put(c.b);
+        else put({r:0,x:c.a.x+(c.b.x-c.a.x)*t1,y:c.a.y+(c.b.y-c.a.y)*t1,z:+c.a.z+((+c.b.z)-(+c.a.z))*t1});
+      }
+      if(B.d>=s-1e-9){ for(let k=C[C.length-1].k+1;k<j;k++)put(mv[k]); air=false; }
+      else air=true;
+    }
+    nCut++;
+    i=j;
+  }
+  if(air)up();
+  for(const k in mv)if(!/^\d+$/.test(k))out[k]=mv[k];
+  out.restKeep=Ltot>0?Math.round(100*Lkeep/Ltot):100;
+  out.restChains=nCut;
+  return out;
+}
+function faoRestFinishOp(mv,op,job,D,tool,secu){
+  // Point d'entrée de la finition (dispatch) : carte, filtre, diagnostic de la fiche.
+  let M=null;
+  try{ M=faoRestMap(op,job,D,0); }catch(e){ M=null; }
+  if(!M){ try{ op.restDiag={err:1}; }catch(e){} return mv; }
+  const r=faoRestFinish(mv,M,tool,D,Math.max(faoRestIgnore(op),0.25*M.pas),faoRestMarge(op),secu);
+  try{ op.restDiag={n:M.n,tilt:M.tilt,ms:M.ms,pas:+M.pas.toFixed(3),garde:r&&r.restKeep}; }catch(e){}
+  return r;
 }

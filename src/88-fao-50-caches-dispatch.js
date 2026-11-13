@@ -154,7 +154,7 @@ function faoOpMovesKey(op,job){
       });
     }
     // V0.99.0 : BRUT RESTANT — l'ébauche dépend des parcours des opérations qui la précèdent
-    if(faoRestOn(op)){ const rd=faoRestDep(op,job); if(rd===null)return null; dep=['restant',rd]; }
+    if(faoRestOn(op)){ const rd=faoRestDep(op,job); if(rd===null)return null; dep=dep?['restant',rd,dep]:['restant',rd]; }
     let body='0'; // hors ebauche 3D/geofinition : aucun dependence au solide
     if(faoMeshOp(op)){
       const fp=faoSetupFp(job);
@@ -788,6 +788,8 @@ function* faoOpMovesIt0(op,job){
       // parallèle : le masque de faces ne voit que les centres de facettes —
       // passes recoupées EXACTEMENT au prédicat bleu/rouge (ré-entrée par le haut)
       if(faceOk&&op.traj!=='scallop'&&mv.length)mv=faoClipMovesPoly(mv,null,0,secu,1,faceOk);
+      // V0.99.1 : brut restant — seules les passes qui enlèvent encore de la matière (+ marge)
+      if(faoRestOn(op)&&mv&&mv.length)mv=faoRestFinishOp(mv,op,job,D,tool,secu);
       op.geoBlocked=(tool.kind==='flat'&&!mv.length);
       // 2026-10-13-007 : diag embarqué (fond nu : quelle phase est morte ?) —
       // lu par la fiche op. Stashé AVANT le clip (qui reconstruit les tableaux).
