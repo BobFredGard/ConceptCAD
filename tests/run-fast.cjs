@@ -31,6 +31,7 @@ const SUITES = [
   'test_prodver_badge',
   'test_fao_passes',
   'test_fao_regen_posages',
+  'test_fao_escargot_une_entree',
   'test_fao_minipasses_pentes',
   'test_fao_zlim',
   'test_fao_pose_fond',

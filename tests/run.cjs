@@ -111,6 +111,7 @@ const SUITES = [
   "test_fao_minipasses_pentes",
   "test_fao_escargot",
   "test_fao_escargot_ilots",
+  "test_fao_escargot_une_entree",
   "test_fao_sens",
   "test_fao_zone2",
   "test_fao_sketch_zone",

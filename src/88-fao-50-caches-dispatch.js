@@ -726,6 +726,8 @@ function* faoOpMovesIt0(op,job){
         // V0.23.15 : 'anneaux' = Escargot (anneaux autour des îlots) ; sinon
         // 'escargot' = Trochoïdal (valeur historique, documents existants)
         mode:op.mode==='anneaux'?'anneaux':'escargot',
+        // V0.97.0 : Escargot à une seule entrée (hélice unique par niveau)
+        uneEntree:op.mode==='anneaux'&&!!op.uneEntree,
         // 2026-10-08-003 : sens de passe — 'avalant' = sens de coupe constant
         // (aucune chaine retournee) ; absent/'bidir' = legacy (retournement
         // vers l'extremite la plus proche).
