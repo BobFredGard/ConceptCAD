@@ -231,6 +231,14 @@
       const d=Math.hypot(x-sx,y-sy);
       if(d<bd){bd=d;best={x,y,hit};}
     };
+    // 2026-11-13 : cotes — « si je sélectionne un cercle ou un arc de cercle, je prends son centre » :
+    // un point visé SUR le cercle (ou l'arc) donne son centre (opt.ctr) ; ailleurs, point sur le cercle
+    const ctrPref=!!(opt&&opt.ctr);
+    const onCirc=(x,y,cx,cy,hit)=>{
+      if(!ctrPref){consider(x,y,hit);return;}
+      const d=Math.hypot(x-sx,y-sy);
+      if(d<bd){bd=d;best={x:cx,y:cy,hit:Object.assign({},hit,{t:'ctr'})};}
+    };
     sh.views.forEach(v=>{
       const g=mepGeoOf(v);
       g.els.forEach((e,i)=>{
@@ -251,7 +259,7 @@
           if(e.t==='C'){
             consider(cx,cy,{t:'ctr',vid:v.id,i});
             const a=Math.atan2(sy-cy,sx-cx);
-            consider(cx+r*Math.cos(a),cy+r*Math.sin(a),{t:'onC',vid:v.id,i});
+            onCirc(cx+r*Math.cos(a),cy+r*Math.sin(a),cx,cy,{t:'onC',vid:v.id,i});
           }else{
             consider(cx,cy,{t:'ctr',vid:v.id,i});
             const a=Math.atan2(sy-cy,sx-cx);
@@ -264,7 +272,7 @@
               const d0=Math.abs(a-e.a0),d1=Math.abs(a-e.a1);
               aa=d0<d1?e.a0:e.a1;
             }else aa=an;
-            consider(cx+r*Math.cos(aa),cy+r*Math.sin(aa),{t:'onC',vid:v.id,i});
+            onCirc(cx+r*Math.cos(aa),cy+r*Math.sin(aa),cx,cy,{t:'onC',vid:v.id,i});
           }
         }
       });
@@ -288,7 +296,7 @@
           const cx=v.x+p.cx*v.scale,cy=v.y+p.cy*v.scale,r=p.r*v.scale;
           consider(cx,cy,{t:'ctr',vid:v.id,ak:p.ak});
           const a=Math.atan2(sy-cy,sx-cx);
-          if(p.t==='C'||mepAxisArcIn(p,a))consider(cx+r*Math.cos(a),cy+r*Math.sin(a),{t:'onAx',vid:v.id,ak:p.ak});
+          if(p.t==='C'||mepAxisArcIn(p,a))onCirc(cx+r*Math.cos(a),cy+r*Math.sin(a),cx,cy,{t:'onAx',vid:v.id,ak:p.ak});
         }
       });
     });

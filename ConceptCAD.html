@@ -383,7 +383,7 @@ input[type=range]{accent-color:var(--primary);width:100%}
  * peut changer sans rien casser. CACHE_VER (parcours FAO) reste indépendant.
  */
 
-const APP_VER='V0.96.3';
+const APP_VER='V0.96.4';
 try{console.log('[ConceptCAD] version '+APP_VER);}catch(e){}
 try{var mfSv=document.getElementById('mfSplashVer');if(mfSv)mfSv.textContent=APP_VER;}catch(e){} // écran de démarrage
 
@@ -86176,8 +86176,8 @@ function filmFrame(){
       if(h.t==='mid'||h.t==='onSeg'){const g=mepGeoOf(v),e=g&&g.els[h.i];if(e&&e.t==='L'&&mepGeoExact(g))return mepEdgeRefOf(e,q);}}
     return null;
   }
-  function mepSnapLocal(sh,P){
-    const sn=mepSnapPt(P.x,P.y,sh),v=sn.hit?mepView(sh,sn.hit.vid):mepViewAt(sh,sn.x,sn.y);
+  function mepSnapLocal(sh,P,opt){
+    const sn=mepSnapPt(P.x,P.y,sh,opt),v=sn.hit?mepView(sh,sn.hit.vid):mepViewAt(sh,sn.x,sn.y);
     if(!v)return null;
     const q={x:(sn.x-v.x)/v.scale,y:(sn.y-v.y)/v.scale};
     const hh=mepSnapHint(sh,v,sn,q);if(hh)q.hint=hh;
@@ -86190,7 +86190,7 @@ function filmFrame(){
   }
   function mepOrdClick(sh,P,axis){
     const cur=mepSt.ord?sh.dims.find(x=>x.id===mepSt.ord):null;
-    const S=mepSnapLocal(sh,P);
+    const S=mepSnapLocal(sh,P,{ctr:true}); // cercle ou arc visé : son centre
     if(!S){mepStatus('Ordonnées : cliquez dans une vue.');return;}
     if(!cur){
       const o=S.q,d={id:mepUid('d'),kind:'ord',axis,vid:S.v.id,vid2:null,o,a:o,b:o,pts:[],off:mepOrdDefaultOff(S.v,axis,o),ref:false,tol:null};
@@ -87470,6 +87470,14 @@ function filmFrame(){
       const d=Math.hypot(x-sx,y-sy);
       if(d<bd){bd=d;best={x,y,hit};}
     };
+    // 2026-11-13 : cotes — « si je sélectionne un cercle ou un arc de cercle, je prends son centre » :
+    // un point visé SUR le cercle (ou l'arc) donne son centre (opt.ctr) ; ailleurs, point sur le cercle
+    const ctrPref=!!(opt&&opt.ctr);
+    const onCirc=(x,y,cx,cy,hit)=>{
+      if(!ctrPref){consider(x,y,hit);return;}
+      const d=Math.hypot(x-sx,y-sy);
+      if(d<bd){bd=d;best={x:cx,y:cy,hit:Object.assign({},hit,{t:'ctr'})};}
+    };
     sh.views.forEach(v=>{
       const g=mepGeoOf(v);
       g.els.forEach((e,i)=>{
@@ -87490,7 +87498,7 @@ function filmFrame(){
           if(e.t==='C'){
             consider(cx,cy,{t:'ctr',vid:v.id,i});
             const a=Math.atan2(sy-cy,sx-cx);
-            consider(cx+r*Math.cos(a),cy+r*Math.sin(a),{t:'onC',vid:v.id,i});
+            onCirc(cx+r*Math.cos(a),cy+r*Math.sin(a),cx,cy,{t:'onC',vid:v.id,i});
           }else{
             consider(cx,cy,{t:'ctr',vid:v.id,i});
             const a=Math.atan2(sy-cy,sx-cx);
@@ -87503,7 +87511,7 @@ function filmFrame(){
               const d0=Math.abs(a-e.a0),d1=Math.abs(a-e.a1);
               aa=d0<d1?e.a0:e.a1;
             }else aa=an;
-            consider(cx+r*Math.cos(aa),cy+r*Math.sin(aa),{t:'onC',vid:v.id,i});
+            onCirc(cx+r*Math.cos(aa),cy+r*Math.sin(aa),cx,cy,{t:'onC',vid:v.id,i});
           }
         }
       });
@@ -87527,7 +87535,7 @@ function filmFrame(){
           const cx=v.x+p.cx*v.scale,cy=v.y+p.cy*v.scale,r=p.r*v.scale;
           consider(cx,cy,{t:'ctr',vid:v.id,ak:p.ak});
           const a=Math.atan2(sy-cy,sx-cx);
-          if(p.t==='C'||mepAxisArcIn(p,a))consider(cx+r*Math.cos(a),cy+r*Math.sin(a),{t:'onAx',vid:v.id,ak:p.ak});
+          if(p.t==='C'||mepAxisArcIn(p,a))onCirc(cx+r*Math.cos(a),cy+r*Math.sin(a),cx,cy,{t:'onAx',vid:v.id,ak:p.ak});
         }
       });
     });
@@ -89572,7 +89580,7 @@ function filmFrame(){
       const hit=mepHitViewEnt(sh,P.x,P.y,{axes:true});
       if(hit&&mepDimSelectEnt(hit,alt))return;
       // sinon : point libre (distance)
-      const snap=mepSnapPt(P.x,P.y,sh);
+      const snap=mepSnapPt(P.x,P.y,sh,{ctr:true});
       const v=mepViewAt(sh,snap.x,snap.y);
       const lx=v?(snap.x-v.x)/v.scale:0,ly=v?(snap.y-v.y)/v.scale:0;
       if(!v){mepStatus('Cote : cliquez une arête ou un cercle projeté.');return;}
@@ -89595,7 +89603,7 @@ function filmFrame(){
       return;
     }
     if(D.kind==='dist'&&!D.b){
-      const snap=mepSnapPt(P.x,P.y,sh2);
+      const snap=mepSnapPt(P.x,P.y,sh2,{ctr:true});
       const v=mepView(sh2,D.vid);
       if(!v){mepSt.dim=null;return;}
       const lx=(snap.x-v.x)/v.scale,ly=(snap.y-v.y)/v.scale;
@@ -90075,7 +90083,7 @@ function filmFrame(){
   // point visé au curseur : accrochage imposé (S, comme les clics de l'outil Cote) ou automatique
   function mepChainPtAuto(sh,C,P){
     const v=mepView(sh,C.vid);if(!v)return null;
-    const snap=mepSnapPt(P.x,P.y,sh);
+    const snap=mepSnapPt(P.x,P.y,sh,{ctr:true}); // cercle ou arc visé : son centre
     const q={x:(snap.x-v.x)/v.scale,y:(snap.y-v.y)/v.scale};
     const hh=(snap.hit&&snap.hit.vid===v.id)?mepSnapHint(sh,v,snap,q):null;if(hh)q.hint=hh;
     return q;

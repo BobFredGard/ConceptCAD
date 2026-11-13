@@ -48,7 +48,7 @@
   // point visé au curseur : accrochage imposé (S, comme les clics de l'outil Cote) ou automatique
   function mepChainPtAuto(sh,C,P){
     const v=mepView(sh,C.vid);if(!v)return null;
-    const snap=mepSnapPt(P.x,P.y,sh);
+    const snap=mepSnapPt(P.x,P.y,sh,{ctr:true}); // cercle ou arc visé : son centre
     const q={x:(snap.x-v.x)/v.scale,y:(snap.y-v.y)/v.scale};
     const hh=(snap.hit&&snap.hit.vid===v.id)?mepSnapHint(sh,v,snap,q):null;if(hh)q.hint=hh;
     return q;

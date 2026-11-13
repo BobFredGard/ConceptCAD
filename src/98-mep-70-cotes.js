@@ -1497,8 +1497,8 @@
       if(h.t==='mid'||h.t==='onSeg'){const g=mepGeoOf(v),e=g&&g.els[h.i];if(e&&e.t==='L'&&mepGeoExact(g))return mepEdgeRefOf(e,q);}}
     return null;
   }
-  function mepSnapLocal(sh,P){
-    const sn=mepSnapPt(P.x,P.y,sh),v=sn.hit?mepView(sh,sn.hit.vid):mepViewAt(sh,sn.x,sn.y);
+  function mepSnapLocal(sh,P,opt){
+    const sn=mepSnapPt(P.x,P.y,sh,opt),v=sn.hit?mepView(sh,sn.hit.vid):mepViewAt(sh,sn.x,sn.y);
     if(!v)return null;
     const q={x:(sn.x-v.x)/v.scale,y:(sn.y-v.y)/v.scale};
     const hh=mepSnapHint(sh,v,sn,q);if(hh)q.hint=hh;
@@ -1511,7 +1511,7 @@
   }
   function mepOrdClick(sh,P,axis){
     const cur=mepSt.ord?sh.dims.find(x=>x.id===mepSt.ord):null;
-    const S=mepSnapLocal(sh,P);
+    const S=mepSnapLocal(sh,P,{ctr:true}); // cercle ou arc visé : son centre
     if(!S){mepStatus('Ordonnées : cliquez dans une vue.');return;}
     if(!cur){
       const o=S.q,d={id:mepUid('d'),kind:'ord',axis,vid:S.v.id,vid2:null,o,a:o,b:o,pts:[],off:mepOrdDefaultOff(S.v,axis,o),ref:false,tol:null};
