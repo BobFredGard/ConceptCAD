@@ -8,7 +8,7 @@ sont sorties le 2026-09-30j.
 Code dans `src/` · livrable `fusion_mvp.html` (généré par `build.js`) · architecture et
 garde-fous en tête de `src/00-entete-et-outils.js`.
 
-**680 versions**, de `2026-09-28b` à `V0.96.3` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
+**681 versions**, de `2026-09-28b` à `V0.96.4` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
 comme dans le fichier d'origine.
 
 ---
@@ -7625,3 +7625,9 @@ Barquette ne perd plus son solide à la 107e modification, et sa mémoire ne mon
 - **Mesures** (navigateur automatique, noyau à un cœur, brouillon du démarrage laissé finir) : plaque SIRAP-14-003, réouverture 11,6 → 1,8 s ; barquette d'exemple 5,8 → 1,4 s (inchangé pour elle). Contrôle de fond sans fausse alerte sur 9 pièces (plaque, barquette, Cavité Usinage, Perçages, Support Pédale, Crochet, Cache Piles, Griffe, Goupille).
 - **À savoir** : cette version change encore la clé une dernière fois (le tampon remplace le numéro) : chaque fichier est recalculé une fois à sa première ouverture en V0.96.3, puis gardé d'une version à l'autre. La pièce gardée vit dans le navigateur ou l'appli du poste où ConceptCAD tourne (6 pièces au plus) : elle ne suit ni le fichier ni l'utilisateur d'un poste à l'autre. Le brouillon repris au démarrage, lui, est toujours recalculé (non traité ici).
 - **Test** : `tests/browser/piece-gardee.spec.cjs`, second essai : clés au tampon `FORMES_VER`, sans `APP_VER` ; pièce relue contrôlée bonne ; pièce gardée remplacée exprès par un cube dans le magasin → écart détecté, vrai solide recalculé, message, puis bonne pièce rangée et relue à l'ouverture suivante. Parcours FAO et CACHE_VER inchangés.
+
+## V0.96.4 - Mise en plan : les cotes prennent le centre des cercles et des arcs
+
+- **Demande** : « Mise en plan : cotation des trous -> il faut que les outils de cotations prennent par défaut les centres des cercles et pas le 1er point choisi. Si je sélectionne un cercle ou un arc de cercle, je prend son centre ». Cause : la sélection d'un cercle (Ø, entraxe, cercle ↔ arête) partait déjà du centre, mais un cercle cliqué comme point (2ᵉ point d'une distance, point suivant d'une chaîne, point d'ordonnée) donnait le point du cercle sous la souris.
+- **Correctif** : `mepSnapPt(…,{ctr:true})` — un point visé sur un cercle ou un arc (arête projetée, trait d'axe ou arc d'axe) donne son centre, référencé comme les autres centres (la cote suit la pièce). Utilisé par la distance point → point, la cotation en chaîne et les ordonnées X / Y. Inchangés : accrochages imposés au clic droit (point sur le cercle, quadrant…), tracés de l'esquisse de planche, tolérances géométriques et notes.
+- **Test** : `tests/test_mep_cote_centres.cjs` (cercle et arc visés → centre, dessin libre → point du cercle, distance, chaîne, ordonnées). Parcours FAO, CACHE_VER et FORMES_VER inchangés.

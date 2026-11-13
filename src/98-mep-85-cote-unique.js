@@ -314,7 +314,7 @@
       const hit=mepHitViewEnt(sh,P.x,P.y,{axes:true});
       if(hit&&mepDimSelectEnt(hit,alt))return;
       // sinon : point libre (distance)
-      const snap=mepSnapPt(P.x,P.y,sh);
+      const snap=mepSnapPt(P.x,P.y,sh,{ctr:true});
       const v=mepViewAt(sh,snap.x,snap.y);
       const lx=v?(snap.x-v.x)/v.scale:0,ly=v?(snap.y-v.y)/v.scale:0;
       if(!v){mepStatus('Cote : cliquez une arête ou un cercle projeté.');return;}
@@ -337,7 +337,7 @@
       return;
     }
     if(D.kind==='dist'&&!D.b){
-      const snap=mepSnapPt(P.x,P.y,sh2);
+      const snap=mepSnapPt(P.x,P.y,sh2,{ctr:true});
       const v=mepView(sh2,D.vid);
       if(!v){mepSt.dim=null;return;}
       const lx=(snap.x-v.x)/v.scale,ly=(snap.y-v.y)/v.scale;

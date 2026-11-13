@@ -31,6 +31,7 @@ Le retour dans le Plan est immédiat tant que la géométrie de la pièce n’a 
 ## Cotation et sorties
 
 - **Cote** unique (longueur, distance, Ø, rayon, angle) avec **accrochages** imposés (extrémité, milieu, extrême X / Y, intersection), **cotation en chaîne** depuis une ligne de rappel, cotes d'angle sur les quatre secteurs, texte collé à l'arc et déplaçable.
+  - Un **cercle ou un arc cliqué donne son centre** : distance, chaîne et ordonnées partent du centre du trou, pas du point cliqué sur le bord.
 - **Oblongs** repérés par leurs 2 centres : un clic de l'outil Axes pose les centres et l'axe ; entraxe et position sont cotés depuis les centres, et suivis quand la pièce change.
 - **Rainures circulaires** (oblong en arc vu de face) : un clic pose l'arc d'axe, les traits vers les centres des bouts et la croix du centre ; les cotes s'accrochent aux centres des bouts.
   - Un Ø sur un arc incomplet (bout de rainure) n'a qu'une flèche, et son trait dépasse le centre (ISO 129-1).
