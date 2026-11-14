@@ -393,33 +393,32 @@ function faoRestFinish(mv,M,tool,D,ign,marge,secu){
     for(let dj=-1;dj<=1;dj++)for(let di=-1;di<=1;di++){const L=HS.get((ci+di)+','+(cj+dj));if(!L)continue;
       for(let q=0;q<L.length;q+=3){const ex=L[q]-x,ey=L[q+1]-y,ez=L[q+2]-z;if(ex*ex+ey*ey+ez*ez<=m2)return true;}}
     return false;};
-  const out=[];let pos=null,air=false,Ltot=0,Lkeep=0,nCut=0;
-  const put=function(m){out.push(m);pos=m;};
-  const up=function(){ if(pos&&+pos.z<secu-1e-9)out.push({r:1,x:pos.x,y:pos.y,z:secu}); };
-  const goRapid=function(Q){ // vers un point sûr (fin d'un rapide d'origine)
-    up(); out.push({r:1,x:Q.x,y:Q.y,z:Math.max(secu,+Q.z)}); put({r:1,x:Q.x,y:Q.y,z:+Q.z});
-  };
-  const goCut=function(Q){ // vers un point de passe : descente finale en avance
-    up(); out.push({r:1,x:Q.x,y:Q.y,z:secu});
-    if(+Q.z+1<secu-1e-9)out.push({r:1,x:Q.x,y:Q.y,z:+Q.z+1});
-    put({r:0,ent:1,x:Q.x,y:Q.y,z:+Q.z});
-  };
+  // V0.99.3 (Fred, SIRAP-14-002) : les tronçons gardés sont d'abord RANGÉS, puis enchaînés au
+  // plus proche — avant, ils sortaient dans l'ordre des passes d'origine (géodésique : anneau
+  // par anneau) et l'outil traversait toute la pièce entre deux bouts de paroi (239 rapides,
+  // 7,6 m) ; et les rapides d'approche d'une passe abandonnée restaient : plongée puis remontée
+  // sur place sans rien couper.
+  let Ltot=0,Lkeep=0,nCut=0,seq=0;
+  const frags=[];let cur=null,pend=[];
+  // kind 'rapid' : P = point sûr (fin d'un rapide d'origine) ; 'cut' : P = point de passe
+  const open=function(kind,P,pre){ cur={kind:kind,P:P,pre:pre,mv:[],seq:seq++,endsChain:false}; frags.push(cur); };
+  const put=function(m){cur.mv.push(m);};
   let i=0;
   while(i<mv.length){
     const m=mv[i];
-    if(m.r){ if(!air)put(m); i++; continue; }
+    if(m.r){ pend.push(m); i++; continue; }
     let j=i;while(j<mv.length&&!mv[j].r)j++;          // chaîne en avance mv[i..j-1]
-    const start=i>0?mv[i-1]:null;
+    const start=i>0?mv[i-1]:null,pre=pend;pend=[];
     const C=segsOf(i,j),s=C.s;
     Ltot+=s;
-    const whole=function(){ if(air&&start)goRapid(start); air=false; for(let k=i;k<j;k++)put(mv[k]); Lkeep+=s; };
+    const whole=function(){ open(start?'rapid':'cut',start||mv[i],pre); for(let k=i;k<j;k++)put(mv[k]); cur.endsChain=true; Lkeep+=s; };
     if(!C.length||!start){ whole(); i=j; continue; }
     // abscisses gardées : à moins de la marge d'un point qui enlève de la matière
     const I=[];
     if(nHit)sampleOf(C,function(x,y,z,d){ if(!near(x,y,z))return;
       const a=Math.max(0,d-p),b=Math.min(s,d+p),L=I[I.length-1];
       if(L&&a<=L[1]+gapMin)L[1]=Math.max(L[1],b);else I.push([a,b]);});
-    if(!I.length){ air=true; i=j; continue; }          // chaîne entière sur du déjà fini
+    if(!I.length){ seq++; i=j; continue; }            // chaîne entière sur du déjà fini
     if(I[0][0]<=gapMin)I[0][0]=0;
     if(s-I[I.length-1][1]<=gapMin)I[I.length-1][1]=s;
     if(I.length===1&&I[0][0]===0&&I[0][1]===s){ whole(); nCut++; i=j; continue; }
@@ -433,8 +432,8 @@ function faoRestFinish(mv,M,tool,D,ign,marge,secu){
       const A=at(I[v][0],true),B=at(I[v][1],false);
       if(B.d<=A.d+1e-9)continue;
       Lkeep+=B.d-A.d;
-      if(A.d<=1e-9){ if(air)goRapid(start); air=false; for(let k=i;k<C[0].k;k++)put(mv[k]); }
-      else goCut(A);
+      if(A.d<=1e-9){ open('rapid',start,pre); for(let k=i;k<C[0].k;k++)put(mv[k]); }
+      else open('cut',A,null);
       for(let q=A.q;q<=B.q;q++){
         const c=C[q],t0=(q===A.q)?A.t:0,t1=(q===B.q)?B.t:1;
         if(q>A.q)for(let k=C[q-1].k+1;k<c.k;k++)put(mv[k]); // avances intercalées
@@ -442,13 +441,43 @@ function faoRestFinish(mv,M,tool,D,ign,marge,secu){
         if(t1>=1-1e-9)put(c.b);
         else put({r:0,x:c.a.x+(c.b.x-c.a.x)*t1,y:c.a.y+(c.b.y-c.a.y)*t1,z:+c.a.z+((+c.b.z)-(+c.a.z))*t1});
       }
-      if(B.d>=s-1e-9){ for(let k=C[C.length-1].k+1;k<j;k++)put(mv[k]); air=false; }
-      else air=true;
+      if(B.d>=s-1e-9){ for(let k=C[C.length-1].k+1;k<j;k++)put(mv[k]); cur.endsChain=true; }
+      else seq++;
     }
     nCut++;
     i=j;
   }
-  if(air)up();
+  // enchaînement : au plus proche (en plan) ; la suite d'origine est gardée quand elle n'est
+  // guère plus loin (2 D), pour ne pas hacher un ordre de passes déjà bon
+  const out=[];let pos=null;
+  const up=function(){ if(pos&&+pos.z<secu-1e-9)out.push({r:1,x:pos.x,y:pos.y,z:secu}); };
+  const emit=function(f,prev){
+    const Q=f.P;
+    if(!pos){ /* tout premier tronçon : ses rapides d'origine */ (f.pre||[]).forEach(function(m){out.push(m);}); }
+    else if(prev&&prev.endsChain&&f.kind==='rapid'&&f.seq===prev.seq+1&&f.pre&&f.pre.length){ f.pre.forEach(function(m){out.push(m);}); }
+    else if(f.kind==='rapid'){ up(); out.push({r:1,x:Q.x,y:Q.y,z:Math.max(secu,+Q.z)}); out.push({r:1,x:Q.x,y:Q.y,z:+Q.z}); }
+    else{ up(); out.push({r:1,x:Q.x,y:Q.y,z:secu});
+      if(+Q.z+1<secu-1e-9)out.push({r:1,x:Q.x,y:Q.y,z:+Q.z+1});
+      out.push({r:0,ent:1,x:Q.x,y:Q.y,z:+Q.z}); }
+    f.mv.forEach(function(m){out.push(m);});
+    if(f.mv.length)pos=f.mv[f.mv.length-1];else if(out.length)pos=out[out.length-1];
+  };
+  const used=new Uint8Array(frags.length),bySeq=new Map();
+  frags.forEach(function(f,k){bySeq.set(f.seq,k);});
+  const gD=2*D;let prev=null,k=0;
+  for(let n=0;n<frags.length;n++){
+    if(n>0){
+      const px=pos?pos.x:0,py=pos?pos.y:0;let best=-1,bd=1/0;
+      for(let q=0;q<frags.length;q++){ if(used[q])continue;const d=Math.hypot(frags[q].P.x-px,frags[q].P.y-py);if(d<bd){bd=d;best=q;} }
+      const nx2=bySeq.get(prev.seq+1);
+      if(nx2!==undefined&&!used[nx2]&&Math.hypot(frags[nx2].P.x-px,frags[nx2].P.y-py)<=bd+gD)best=nx2;
+      k=best;
+    }
+    used[k]=1;emit(frags[k],prev);prev=frags[k];
+  }
+  // fin : les rapides d'origine si le dernier tronçon finit sa chaîne en dernier, sinon remontée
+  if(prev&&prev.endsChain&&prev.seq===seq-1&&pend.length&&prev===frags[frags.length-1])pend.forEach(function(m){out.push(m);});
+  else up();
   for(const k in mv)if(!/^\d+$/.test(k))out[k]=mv[k];
   out.restKeep=Ltot>0?Math.round(100*Lkeep/Ltot):100;
   out.restChains=nCut;
@@ -459,7 +488,10 @@ function faoRestFinishOp(mv,op,job,D,tool,secu){
   let M=null;
   try{ M=faoRestMap(op,job,D,0); }catch(e){ M=null; }
   if(!M){ try{ op.restDiag={err:1}; }catch(e){} return mv; }
-  const r=faoRestFinish(mv,M,tool,D,Math.max(faoRestIgnore(op),0.25*M.pas),faoRestMarge(op),secu);
-  try{ op.restDiag={n:M.n,tilt:M.tilt,ms:M.ms,pas:+M.pas.toFixed(3),garde:r&&r.restKeep}; }catch(e){}
+  // « Ignorer moins de » : jamais sous le quart de la maille de la carte (en dessous, l'écart
+  // de la carte elle-même relancerait des passes partout) ; la fiche affiche la valeur appliquée
+  const ign=Math.max(faoRestIgnore(op),0.25*M.pas);
+  const r=faoRestFinish(mv,M,tool,D,ign,faoRestMarge(op),secu);
+  try{ op.restDiag={n:M.n,tilt:M.tilt,ms:M.ms,pas:+M.pas.toFixed(3),garde:r&&r.restKeep,ign:+ign.toFixed(3)}; }catch(e){}
   return r;
 }

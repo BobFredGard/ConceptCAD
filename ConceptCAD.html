@@ -383,7 +383,7 @@ input[type=range]{accent-color:var(--primary);width:100%}
  * peut changer sans rien casser. CACHE_VER (parcours FAO) reste indépendant.
  */
 
-const APP_VER='V0.99.2';
+const APP_VER='V0.99.3';
 try{console.log('[ConceptCAD] version '+APP_VER);}catch(e){}
 try{var mfSv=document.getElementById('mfSplashVer');if(mfSv)mfSv.textContent=APP_VER;}catch(e){} // écran de démarrage
 
@@ -49682,6 +49682,9 @@ function faoOpMovesKey(op,job){
         return [q&&q.id,q&&q.type,q&&q.on!==false?1:0];
       });
     }
+    // V0.99.3 : crêtes constantes — tous les fronts (plus 12 au plus) : seules ces finitions
+    // sont à refaire (CACHE_VER inchangé : les autres opérations gardent leurs parcours)
+    if(op&&op.type==='geofinish'&&op.traj==='scallop')dep=['cretes-fronts',dep];
     // V0.99.0 : BRUT RESTANT — l'ébauche dépend des parcours des opérations qui la précèdent
     if(faoRestOn(op)){ const rd=faoRestDep(op,job); if(rd===null)return null; dep=dep?['restant',rd,dep]:['restant',rd]; }
     let body='0'; // hors ebauche 3D/geofinition : aucun dependence au solide
@@ -50298,6 +50301,7 @@ function* faoOpMovesIt0(op,job){
         {step:isFinite(+op.step)?+op.step:1,toolD:D,kind:tool.kind,
          cornerR:tool.cornerR,laisse:+op.laisse||0,secu:secu,
          ztop:op.ztop,zbot:op.zbot,sens:op.sens,
+         holeMax:(+op.holeMax>0)?+op.holeMax:0, // V0.99.3 : « Ignorer les trous » (Ø max, mm)
          zoneAt:zctx?zctx.at:null});
       else mv=yield* faoGenGeoFinishIt(am.mesh,
         {step:isFinite(+op.step)?+op.step:1,toolD:D,kind:tool.kind,
@@ -51431,33 +51435,32 @@ function faoRestFinish(mv,M,tool,D,ign,marge,secu){
     for(let dj=-1;dj<=1;dj++)for(let di=-1;di<=1;di++){const L=HS.get((ci+di)+','+(cj+dj));if(!L)continue;
       for(let q=0;q<L.length;q+=3){const ex=L[q]-x,ey=L[q+1]-y,ez=L[q+2]-z;if(ex*ex+ey*ey+ez*ez<=m2)return true;}}
     return false;};
-  const out=[];let pos=null,air=false,Ltot=0,Lkeep=0,nCut=0;
-  const put=function(m){out.push(m);pos=m;};
-  const up=function(){ if(pos&&+pos.z<secu-1e-9)out.push({r:1,x:pos.x,y:pos.y,z:secu}); };
-  const goRapid=function(Q){ // vers un point sûr (fin d'un rapide d'origine)
-    up(); out.push({r:1,x:Q.x,y:Q.y,z:Math.max(secu,+Q.z)}); put({r:1,x:Q.x,y:Q.y,z:+Q.z});
-  };
-  const goCut=function(Q){ // vers un point de passe : descente finale en avance
-    up(); out.push({r:1,x:Q.x,y:Q.y,z:secu});
-    if(+Q.z+1<secu-1e-9)out.push({r:1,x:Q.x,y:Q.y,z:+Q.z+1});
-    put({r:0,ent:1,x:Q.x,y:Q.y,z:+Q.z});
-  };
+  // V0.99.3 (Fred, SIRAP-14-002) : les tronçons gardés sont d'abord RANGÉS, puis enchaînés au
+  // plus proche — avant, ils sortaient dans l'ordre des passes d'origine (géodésique : anneau
+  // par anneau) et l'outil traversait toute la pièce entre deux bouts de paroi (239 rapides,
+  // 7,6 m) ; et les rapides d'approche d'une passe abandonnée restaient : plongée puis remontée
+  // sur place sans rien couper.
+  let Ltot=0,Lkeep=0,nCut=0,seq=0;
+  const frags=[];let cur=null,pend=[];
+  // kind 'rapid' : P = point sûr (fin d'un rapide d'origine) ; 'cut' : P = point de passe
+  const open=function(kind,P,pre){ cur={kind:kind,P:P,pre:pre,mv:[],seq:seq++,endsChain:false}; frags.push(cur); };
+  const put=function(m){cur.mv.push(m);};
   let i=0;
   while(i<mv.length){
     const m=mv[i];
-    if(m.r){ if(!air)put(m); i++; continue; }
+    if(m.r){ pend.push(m); i++; continue; }
     let j=i;while(j<mv.length&&!mv[j].r)j++;          // chaîne en avance mv[i..j-1]
-    const start=i>0?mv[i-1]:null;
+    const start=i>0?mv[i-1]:null,pre=pend;pend=[];
     const C=segsOf(i,j),s=C.s;
     Ltot+=s;
-    const whole=function(){ if(air&&start)goRapid(start); air=false; for(let k=i;k<j;k++)put(mv[k]); Lkeep+=s; };
+    const whole=function(){ open(start?'rapid':'cut',start||mv[i],pre); for(let k=i;k<j;k++)put(mv[k]); cur.endsChain=true; Lkeep+=s; };
     if(!C.length||!start){ whole(); i=j; continue; }
     // abscisses gardées : à moins de la marge d'un point qui enlève de la matière
     const I=[];
     if(nHit)sampleOf(C,function(x,y,z,d){ if(!near(x,y,z))return;
       const a=Math.max(0,d-p),b=Math.min(s,d+p),L=I[I.length-1];
       if(L&&a<=L[1]+gapMin)L[1]=Math.max(L[1],b);else I.push([a,b]);});
-    if(!I.length){ air=true; i=j; continue; }          // chaîne entière sur du déjà fini
+    if(!I.length){ seq++; i=j; continue; }            // chaîne entière sur du déjà fini
     if(I[0][0]<=gapMin)I[0][0]=0;
     if(s-I[I.length-1][1]<=gapMin)I[I.length-1][1]=s;
     if(I.length===1&&I[0][0]===0&&I[0][1]===s){ whole(); nCut++; i=j; continue; }
@@ -51471,8 +51474,8 @@ function faoRestFinish(mv,M,tool,D,ign,marge,secu){
       const A=at(I[v][0],true),B=at(I[v][1],false);
       if(B.d<=A.d+1e-9)continue;
       Lkeep+=B.d-A.d;
-      if(A.d<=1e-9){ if(air)goRapid(start); air=false; for(let k=i;k<C[0].k;k++)put(mv[k]); }
-      else goCut(A);
+      if(A.d<=1e-9){ open('rapid',start,pre); for(let k=i;k<C[0].k;k++)put(mv[k]); }
+      else open('cut',A,null);
       for(let q=A.q;q<=B.q;q++){
         const c=C[q],t0=(q===A.q)?A.t:0,t1=(q===B.q)?B.t:1;
         if(q>A.q)for(let k=C[q-1].k+1;k<c.k;k++)put(mv[k]); // avances intercalées
@@ -51480,13 +51483,43 @@ function faoRestFinish(mv,M,tool,D,ign,marge,secu){
         if(t1>=1-1e-9)put(c.b);
         else put({r:0,x:c.a.x+(c.b.x-c.a.x)*t1,y:c.a.y+(c.b.y-c.a.y)*t1,z:+c.a.z+((+c.b.z)-(+c.a.z))*t1});
       }
-      if(B.d>=s-1e-9){ for(let k=C[C.length-1].k+1;k<j;k++)put(mv[k]); air=false; }
-      else air=true;
+      if(B.d>=s-1e-9){ for(let k=C[C.length-1].k+1;k<j;k++)put(mv[k]); cur.endsChain=true; }
+      else seq++;
     }
     nCut++;
     i=j;
   }
-  if(air)up();
+  // enchaînement : au plus proche (en plan) ; la suite d'origine est gardée quand elle n'est
+  // guère plus loin (2 D), pour ne pas hacher un ordre de passes déjà bon
+  const out=[];let pos=null;
+  const up=function(){ if(pos&&+pos.z<secu-1e-9)out.push({r:1,x:pos.x,y:pos.y,z:secu}); };
+  const emit=function(f,prev){
+    const Q=f.P;
+    if(!pos){ /* tout premier tronçon : ses rapides d'origine */ (f.pre||[]).forEach(function(m){out.push(m);}); }
+    else if(prev&&prev.endsChain&&f.kind==='rapid'&&f.seq===prev.seq+1&&f.pre&&f.pre.length){ f.pre.forEach(function(m){out.push(m);}); }
+    else if(f.kind==='rapid'){ up(); out.push({r:1,x:Q.x,y:Q.y,z:Math.max(secu,+Q.z)}); out.push({r:1,x:Q.x,y:Q.y,z:+Q.z}); }
+    else{ up(); out.push({r:1,x:Q.x,y:Q.y,z:secu});
+      if(+Q.z+1<secu-1e-9)out.push({r:1,x:Q.x,y:Q.y,z:+Q.z+1});
+      out.push({r:0,ent:1,x:Q.x,y:Q.y,z:+Q.z}); }
+    f.mv.forEach(function(m){out.push(m);});
+    if(f.mv.length)pos=f.mv[f.mv.length-1];else if(out.length)pos=out[out.length-1];
+  };
+  const used=new Uint8Array(frags.length),bySeq=new Map();
+  frags.forEach(function(f,k){bySeq.set(f.seq,k);});
+  const gD=2*D;let prev=null,k=0;
+  for(let n=0;n<frags.length;n++){
+    if(n>0){
+      const px=pos?pos.x:0,py=pos?pos.y:0;let best=-1,bd=1/0;
+      for(let q=0;q<frags.length;q++){ if(used[q])continue;const d=Math.hypot(frags[q].P.x-px,frags[q].P.y-py);if(d<bd){bd=d;best=q;} }
+      const nx2=bySeq.get(prev.seq+1);
+      if(nx2!==undefined&&!used[nx2]&&Math.hypot(frags[nx2].P.x-px,frags[nx2].P.y-py)<=bd+gD)best=nx2;
+      k=best;
+    }
+    used[k]=1;emit(frags[k],prev);prev=frags[k];
+  }
+  // fin : les rapides d'origine si le dernier tronçon finit sa chaîne en dernier, sinon remontée
+  if(prev&&prev.endsChain&&prev.seq===seq-1&&pend.length&&prev===frags[frags.length-1])pend.forEach(function(m){out.push(m);});
+  else up();
   for(const k in mv)if(!/^\d+$/.test(k))out[k]=mv[k];
   out.restKeep=Ltot>0?Math.round(100*Lkeep/Ltot):100;
   out.restChains=nCut;
@@ -51497,8 +51530,11 @@ function faoRestFinishOp(mv,op,job,D,tool,secu){
   let M=null;
   try{ M=faoRestMap(op,job,D,0); }catch(e){ M=null; }
   if(!M){ try{ op.restDiag={err:1}; }catch(e){} return mv; }
-  const r=faoRestFinish(mv,M,tool,D,Math.max(faoRestIgnore(op),0.25*M.pas),faoRestMarge(op),secu);
-  try{ op.restDiag={n:M.n,tilt:M.tilt,ms:M.ms,pas:+M.pas.toFixed(3),garde:r&&r.restKeep}; }catch(e){}
+  // « Ignorer moins de » : jamais sous le quart de la maille de la carte (en dessous, l'écart
+  // de la carte elle-même relancerait des passes partout) ; la fiche affiche la valeur appliquée
+  const ign=Math.max(faoRestIgnore(op),0.25*M.pas);
+  const r=faoRestFinish(mv,M,tool,D,ign,faoRestMarge(op),secu);
+  try{ op.restDiag={n:M.n,tilt:M.tilt,ms:M.ms,pas:+M.pas.toFixed(3),garde:r&&r.restKeep,ign:+ign.toFixed(3)}; }catch(e){}
   return r;
 }
 
@@ -56445,6 +56481,19 @@ function faoRestRows(d,setup,op){
   const fin=op.type!=='rough3d';
   d.appendChild(faoH('Brut'));
   const rB=faoRow();
+  const setRest=function(v){ if(v==='restant')op.brut='restant'; else{ delete op.brut; delete op.restIgn; delete op.restMarge; } try{renderProps();}catch(e){} };
+  if(fin){
+    // V0.99.3 (demande de Fred) : une finition ne « part » pas d'un brut — elle passe partout,
+    // ou seulement là où il reste de la matière. Une simple case, pas un choix de départ.
+    const cbR=document.createElement('input'); cbR.type='checkbox'; cbR.checked=faoRestOn(op);
+    cbR.title='Brut restant : les opérations actives placées avant celle-ci dans le posage (3+2 compris) sont rejouées ; '+
+      'la finition ne passe que là où il reste de la matière (congés et recoins qu’une fraise plus grosse n’a pas atteints, crêtes trop hautes), plus la marge. '+
+      'Case vide : la finition passe sur toute la zone.';
+    cbR.onchange=function(){ faoSnapshot('brut restant'); setRest(cbR.checked?'restant':'posage'); faoChanged(); };
+    rB.appendChild(cbR);
+    rB.appendChild(faoLab('Brut restant (opérations précédentes)'));
+    d.appendChild(rB);
+  }else{
   rB.appendChild(faoLab('Départ'));
   rB.appendChild(faoSel([
     ['posage','Brut du posage',fin?'La finition passe sur toute la zone, comme si rien n’avait encore été usiné.'
@@ -56453,9 +56502,10 @@ function faoRestRows(d,setup,op){
       (fin?'la finition ne passe que là où il reste de la matière (congés et recoins qu’une fraise plus grosse n’a pas atteints, crêtes trop hautes), plus la marge.'
         :'l’ébauche ne passe que là où il reste de la matière (coins et recoins qu’une fraise plus grosse n’a pas atteints, marches laissées par un pas plus grand).')]],
     faoRestOn(op)?'restant':'posage',
-    function(v){ if(v==='restant')op.brut='restant'; else{ delete op.brut; delete op.restIgn; delete op.restMarge; } try{renderProps();}catch(e){} },
+    setRest,
     'Brut de départ de l’opération'));
   d.appendChild(rB);
+  }
   if(!faoRestOn(op))return;
   const rI=faoRow();
   rI.appendChild(faoLab('Ignorer moins de'));
@@ -56475,7 +56525,8 @@ function faoRestRows(d,setup,op){
   d.appendChild(faoHelp(nPrev?('Matière enlevée par '+nPrev+' opération'+(nPrev>1?'s':'')+' précédente'+(nPrev>1?'s':'')+' du posage'+
       (di&&di.tilt?(' (dont '+di.tilt+' en 3+2)'):'')+' : seule la matière qui reste est usinée.'+
       (di&&isFinite(+di.ms)?(' Carte calculée en '+(di.ms/1000).toFixed(1).replace('.',',')+' s, maille '+String(di.pas).replace('.',',')+' mm.'):'')+
-      (fin&&di&&isFinite(+di.garde)?(' Passes gardées : '+di.garde+' % de la longueur.'):''))
+      (fin&&di&&isFinite(+di.garde)?(' Passes gardées : '+di.garde+' % de la longueur.'):'')+
+      (fin&&di&&isFinite(+di.ign)&&+di.ign>faoRestIgnore(op)+1e-6?(' « Ignorer moins de » appliqué : '+String(di.ign).replace('.',',')+' mm (au moins le quart de la maille de la carte : plus fin, l’imprécision de la carte relancerait des passes partout).'):''))
     :'Aucune opération active avant celle-ci dans le posage : le brut restant est le brut du posage.'));
 }
 async function faoRegenOpStream(setupId,opId){
@@ -57797,6 +57848,24 @@ function faoOpCardElement(setup,op,i){
     pdEls.push(gP.appendChild(faoNumFx(op,'pdirAng',isFinite(+op.pdirAng)?+op.pdirAng:0,function(v){op.pdirAng=v;if(op.pdir!=='ang'){op.pdir='ang';pdSel.value='ang';}},52,1,
       'Angle des passes en degrés depuis X (0 = X, 90 = Y). Saisir bascule en mode Angle.')));
     pdShow();
+    // V0.99.3 (Fred, SIRAP-14-002) : « Ignorer les trous » — crêtes constantes seulement. Chaque
+    // petit trou était un bord de la zone : anneaux autour, remontées, et au-delà de 12 bords
+    // des bandes oubliées. Bouchés, la boule passe par-dessus (src/89-fao-cretes.js).
+    if(op.traj!=='parallel'){
+      const gT=faoRow();
+      const cbT=document.createElement('input'); cbT.type='checkbox'; cbT.checked=+op.holeMax>0;
+      cbT.title='Les trous de la zone (perçages, alésages…) sont traités comme bouchés : la boule passe par-dessus au niveau du fond, sans tourner autour ni y plonger. Les trous plus grands que le diamètre indiqué restent des bords de la zone.';
+      cbT.onchange=function(){ faoSnapshot('ignorer les trous'); if(cbT.checked)op.holeMax=10; else delete op.holeMax; faoChanged(); };
+      gT.appendChild(cbT);
+      gT.appendChild(faoLab('Ignorer les trous'));
+      if(+op.holeMax>0){
+        gT.appendChild(faoLab('jusqu’à Ø'));
+        gT.appendChild(faoNumFx(op,'holeMax',+op.holeMax,function(v){ op.holeMax=Math.max(0.5,Math.min(500,v)); },44,1,
+          'Diamètre maximal (mm) des trous ignorés. 10 mm par défaut.'));
+        gT.appendChild(faoLab('mm'));
+      }
+      d.appendChild(gT);
+    }
     // 2026-10-04-004 : limites Z (au-delà, relief non fini) + garde-fou fraise droite.
     d.appendChild(faoH('Entrées'));
     d.appendChild(gE);
@@ -57818,7 +57887,7 @@ function faoOpCardElement(setup,op,i){
       const gd=op.geoDiag;
       const gdEl=document.createElement('div'); gdEl.className='fao-meta';
       if(gd.fronts!==undefined)
-        gdEl.textContent='Diag : '+gd.fronts+' bord(s) · anneaux '+(gd.rings||[]).join('/')+' · '+(gd.rest||0)+' boucles de reste · '+(gd.seq||0)+' séquence(s) · '+(gd.slides||0)+' glissement(s) · '+(gd.lifts||0)+' remontée(s) · '+(gd.tips||0)+' pointe(s) · '+(gd.ms||0)+' ms';
+        gdEl.textContent='Diag : '+gd.fronts+' bord(s)'+(gd.holes?(' · '+gd.holes+' trou(s) ignoré(s)'):'')+' · anneaux '+(gd.rings||[]).join('/')+' · '+(gd.rest||0)+' boucles de reste · '+(gd.seq||0)+' séquence(s) · '+(gd.slides||0)+' glissement(s) · '+(gd.lifts||0)+' remontée(s) · '+(gd.tips||0)+' pointe(s) · '+(gd.ms||0)+' ms';
       else
       gdEl.textContent='Diag : '+gd.chains+' chaînes ('+gd.slope+' pentes · '+gd.plate+' plateaux · '+gd.par+' // · '+gd.rest+' restes)'+(gd.flat?'':' · ⚠ aucun plan détecté');
       d.appendChild(gdEl);
@@ -58733,6 +58802,18 @@ function faoClipKeyTarget(t){
 // Le bouton « Exporter G-code » prend en charge TOUS les posages non gelés
 // (un fichier par posage) — faoExport, src/88-fao-80-interface.js.
 let faoCtxEl=null, faoCtxSetupId=null;
+// V0.99.3 (Fred) : le style « barré » d'un posage gelé était posé avec le menu, donc
+// seulement après le premier clic droit — un fichier ouvert montrait ses posages gelés
+// comme actifs. Posé dès le chargement.
+(function faoStruckStyle(){
+  try{
+    if(typeof document==='undefined'||!document.createElement)return;
+    const st=document.createElement('style');
+    st.textContent='.fao-setup.struck>span:not(.fao-tri){text-decoration:line-through;opacity:.55}'
+      +'.fao-op.struck .lb{text-decoration:line-through}';
+    (document.head||document.documentElement).appendChild(st);
+  }catch(e){}
+})();
 function faoSetupStruck(s){ return !!(s&&s.struck===true); }
 function faoSetupStrike(id,on){
   // Geler (on=true) / dégeler (on=false) un posage. Renvoie true si l'état change.
@@ -58834,9 +58915,7 @@ function faoCtxBuild(){
     +'#faoCtxMenu button{display:block;width:100%;text-align:left;background:none;border:none;padding:7px 10px;font-size:.82rem;border-radius:6px;color:inherit;cursor:pointer}'
     +'#faoCtxMenu button:hover:not(:disabled){background:var(--primary)}'
     +'#faoCtxMenu button:disabled{opacity:.4;cursor:default}'
-    +'#faoCtxMenu hr{border:none;border-top:1px solid var(--border);margin:4px 0}'
-    +'.fao-setup.struck>span:not(.fao-tri){text-decoration:line-through;opacity:.55}'
-    +'.fao-op.struck .lb{text-decoration:line-through}';
+    +'#faoCtxMenu hr{border:none;border-top:1px solid var(--border);margin:4px 0}';
   (document.head||document.documentElement).appendChild(st);
   document.body.appendChild(m);
   m.addEventListener('contextmenu',function(e){ e.preventDefault(); });
@@ -67218,6 +67297,42 @@ function* faoGenScallopIt(mesh,o){
     V[k]=[x,y,z];
     inside[k]=(zin[k]&&inWin(z))?1:0;
   }
+  // V0.99.3 (Fred) : « Ignorer les trous » — un creux FERMÉ de la surface outil (nœuds de la
+  // zone sous le bas de la fenêtre, entourés de nœuds dans la fenêtre) de Ø au plus o.holeMax
+  // est bouché à la cote la plus haute de son pourtour : ni front, ni anneaux autour, la boule
+  // passe par-dessus sans y plonger (descente outil = max(descente réelle, bouchon)).
+  if(isFinite(+o.holeMax)&&+o.holeMax>0){
+    const hm=+o.holeMax,seen=new Uint8Array(nv),plug=new Float32Array(nv).fill(NaN);
+    let nPlug=0;
+    for(let s0=0;s0<nv;s0++){
+      if(seen[s0]||inside[s0]||!zin[s0]||!(V[s0][2]>-1/0)||!(V[s0][2]<zb))continue;
+      const comp=[s0];seen[s0]=1;let open=false,rim=-1/0,x0=1/0,x1=-1/0,y0=1/0,y1=-1/0;
+      for(let q=0;q<comp.length;q++){const k=comp[q],i=k%nx,j=(k-i)/nx;
+        if(V[k][0]<x0)x0=V[k][0];if(V[k][0]>x1)x1=V[k][0];if(V[k][1]<y0)y0=V[k][1];if(V[k][1]>y1)y1=V[k][1];
+        if(i===0||j===0||i===nx-1||j===ny-1){open=true;continue;}
+        const nb=[k-1,k+1,k-nx,k+nx];
+        for(let t=0;t<4;t++){const w=nb[t];
+          if(inside[w]){ if(V[w][2]>rim)rim=V[w][2]; continue; }
+          if(!zin[w]||!(V[w][2]>-1/0)||!(V[w][2]<zb)){open=true;continue;} // bord de zone ou bosse : pas un trou
+          if(!seen[w]){seen[w]=1;comp.push(w);}}}
+      if(open||!(rim>-1/0))continue;
+      if(Math.max(x1-x0,y1-y0)>hm+1e-9)continue;
+      comp.forEach(function(k){plug[k]=rim;V[k][2]=rim;inside[k]=1;});
+      nPlug++;
+    }
+    diag.holes=nPlug;
+    if(nPlug){
+      const tip0=drop.tip;
+      drop.tip=function(x,y){
+        const t=tip0(x,y);
+        const fi=(x-bx0)/g,fj=(y-by0)/g,i=Math.floor(fi),j=Math.floor(fj);
+        let p=-1/0;
+        for(let dj=0;dj<=1;dj++)for(let di=0;di<=1;di++){const ii=i+di,jj=j+dj;
+          if(ii<0||jj<0||ii>=nx||jj>=ny)continue;const v=plug[jj*nx+ii];if(v>p)p=v;}
+        return p>t?p:t;
+      };
+    }
+  }
   // triangles : cellules dont les 4 nœuds ont une cote (diagonales alternées)
   const T=[];
   for(let j=0;j<ny-1;j++)for(let i=0;i<nx-1;i++){
@@ -67305,9 +67420,16 @@ function* faoGenScallopIt(mesh,o){
   const flen=fseg.map(function(ss){let l=0;ss.forEach(function(s){l+=Math.hypot(s.a.p[0]-s.b.p[0],s.a.p[1]-s.b.p[1],s.a.p[2]-s.b.p[2]);});return l;});
   let fronts=[];
   for(let f=0;f<nF;f++)if(flen[f]>=Math.max(2*step,D*0.5))fronts.push(f);
-  if(fronts.length>12){
+  diag.frontsAll=fronts.length;
+  // V0.99.3 (Fred, SIRAP-14-002) : 12 fronts au plus avant — les 40 autres (trous du fond,
+  // bossages) n'avaient ni anneaux ni champ, les isos de reste qui les touchaient restaient
+  // ouvertes et étaient jetées : bande non usinée au pied de chaque paroi (3 100 mm² à plus
+  // de 0,3 mm, jusqu'à 2,3 mm d'épaisseur). Tous les fronts : 65 mm², rien au-delà de 1 mm.
+  // Garde-fou seulement contre une zone pathologique (un champ par front).
+  const FMAX=400;
+  if(fronts.length>FMAX){
     fronts.sort(function(a,b){return flen[b]-flen[a];});
-    fronts=fronts.slice(0,12);
+    fronts=fronts.slice(0,FMAX);
   }
   // ordre : du plus bas au plus haut (cote moyenne du bord)
   const fz={};

@@ -7,6 +7,18 @@
 // Le bouton « Exporter G-code » prend en charge TOUS les posages non gelés
 // (un fichier par posage) — faoExport, src/88-fao-80-interface.js.
 let faoCtxEl=null, faoCtxSetupId=null;
+// V0.99.3 (Fred) : le style « barré » d'un posage gelé était posé avec le menu, donc
+// seulement après le premier clic droit — un fichier ouvert montrait ses posages gelés
+// comme actifs. Posé dès le chargement.
+(function faoStruckStyle(){
+  try{
+    if(typeof document==='undefined'||!document.createElement)return;
+    const st=document.createElement('style');
+    st.textContent='.fao-setup.struck>span:not(.fao-tri){text-decoration:line-through;opacity:.55}'
+      +'.fao-op.struck .lb{text-decoration:line-through}';
+    (document.head||document.documentElement).appendChild(st);
+  }catch(e){}
+})();
 function faoSetupStruck(s){ return !!(s&&s.struck===true); }
 function faoSetupStrike(id,on){
   // Geler (on=true) / dégeler (on=false) un posage. Renvoie true si l'état change.
@@ -108,9 +120,7 @@ function faoCtxBuild(){
     +'#faoCtxMenu button{display:block;width:100%;text-align:left;background:none;border:none;padding:7px 10px;font-size:.82rem;border-radius:6px;color:inherit;cursor:pointer}'
     +'#faoCtxMenu button:hover:not(:disabled){background:var(--primary)}'
     +'#faoCtxMenu button:disabled{opacity:.4;cursor:default}'
-    +'#faoCtxMenu hr{border:none;border-top:1px solid var(--border);margin:4px 0}'
-    +'.fao-setup.struck>span:not(.fao-tri){text-decoration:line-through;opacity:.55}'
-    +'.fao-op.struck .lb{text-decoration:line-through}';
+    +'#faoCtxMenu hr{border:none;border-top:1px solid var(--border);margin:4px 0}';
   (document.head||document.documentElement).appendChild(st);
   document.body.appendChild(m);
   m.addEventListener('contextmenu',function(e){ e.preventDefault(); });
