@@ -383,7 +383,7 @@ input[type=range]{accent-color:var(--primary);width:100%}
  * peut changer sans rien casser. CACHE_VER (parcours FAO) reste indépendant.
  */
 
-const APP_VER='V0.99.3';
+const APP_VER='V0.99.4';
 try{console.log('[ConceptCAD] version '+APP_VER);}catch(e){}
 try{var mfSv=document.getElementById('mfSplashVer');if(mfSv)mfSv.textContent=APP_VER;}catch(e){} // écran de démarrage
 
@@ -66814,7 +66814,56 @@ function faoScFMM(V,T,vt,dist,ok){
 // de la POINTE en (x,y) — contact sans surcoupe. Boule exacte (sommets, arêtes,
 // facettes), torique = boules de rayon r aux points du cercle (D/2−r) + disque
 // plat central, droite = disque (sommets, arêtes, facette au centre).
+// V0.99.4 : PRÉPARATION DES DESCENTES GARDÉE — préparer une descente (listes de
+// sommets, arêtes, facettes rangées par case) prend jusqu'à 4 s sur une grosse pièce,
+// et se refaisait à chaque opération et à chaque régénération. La préparation ne
+// dépend que du maillage et de l'outil : elle est gardée, reconnue par une empreinte
+// du CONTENU du maillage (recalculée à chaque appel : un maillage modifié sur place
+// n'est jamais confondu) et par les réglages de l'outil. Une descente préparée ne
+// change plus après sa création : la réutiliser donne exactement les mêmes cotes.
+// Place bornée : une préparation boule de SIRAP-14-002 (336 000 triangles) occupe de
+// l'ordre de 150 Mo → FAO_DROP_MEMO_TRI triangles en tout (les plus anciennes sortent),
+// tout est rendu après FAO_DROP_MEMO_MS sans usage. La descente torique exacte
+// (faoTorusDropper, ~300 Mo, moins d'une seconde à refaire) n'est pas gardée.
+const FAO_DROP_MEMO_TRI=800000;
+const FAO_DROP_MEMO_MS=600000;
+let faoDropMemoTimer=null;
+const faoDropMemo=new Map(); // clé -> {d, w}
+const faoDropMemoStat={hit:0,miss:0};
+function faoMeshPrint(mesh){
+  // empreinte 2 × 32 bits de toutes les coordonnées (bits exacts) et des triangles
+  const V=mesh.v,T=mesh.t,f=new Float64Array(1),u=new Uint32Array(f.buffer);
+  let a=0x811c9dc5|0,b=0x9e3779b9|0;
+  for(let i=0;i<V.length;i++){const p=V[i];
+    for(let c=0;c<3;c++){f[0]=p[c];
+      a=Math.imul(a^u[0],0x01000193);a=Math.imul(a^u[1],0x01000193);
+      b=Math.imul(b+u[0]|0,0x5bd1e995);b^=b>>>13;b=Math.imul(b+u[1]|0,0x5bd1e995);b^=b>>>15;}}
+  for(let i=0;i<T.length;i++){const t=T[i];
+    for(let c=0;c<3;c++){const w=t[c]|0;a=Math.imul(a^w,0x01000193);b=Math.imul(b+w|0,0x5bd1e995);b^=b>>>13;}}
+  return V.length+'/'+T.length+'/'+(a>>>0).toString(36)+'.'+(b>>>0).toString(36);
+}
+function faoDropMemoGet(mesh,key,make){
+  if(!mesh||!mesh.v||!mesh.t)return make();
+  const k=faoMeshPrint(mesh)+'|'+key;
+  if(typeof setTimeout==='function'){
+    if(faoDropMemoTimer)clearTimeout(faoDropMemoTimer);
+    faoDropMemoTimer=setTimeout(function(){faoDropMemo.clear();faoDropMemoTimer=null;},FAO_DROP_MEMO_MS);
+    if(faoDropMemoTimer&&typeof faoDropMemoTimer.unref==='function')faoDropMemoTimer.unref(); // Node : ne retient pas la fin des tests
+  }
+  const e=faoDropMemo.get(k);
+  if(e){faoDropMemo.delete(k);faoDropMemo.set(k,e);faoDropMemoStat.hit++;return Object.assign({},e.d);} // copie : un appelant peut remplacer tip (trous bouchés)
+  faoDropMemoStat.miss++;
+  const d=make(),w=mesh.t.length+1;
+  if(w>FAO_DROP_MEMO_TRI)return d;
+  faoDropMemo.set(k,{d:Object.assign({},d),w:w});
+  let tot=0;faoDropMemo.forEach(function(x){tot+=x.w;});
+  for(const [kk,x] of faoDropMemo){if(tot<=FAO_DROP_MEMO_TRI)break;faoDropMemo.delete(kk);tot-=x.w;}
+  return d;
+}
 function faoScDropper(mesh,kind,D,cornerR,laisse,nsRing){
+  return faoDropMemoGet(mesh,'sc|'+kind+'|'+D+'|'+cornerR+'|'+laisse+'|'+nsRing,function(){return faoScDropper0(mesh,kind,D,cornerR,laisse,nsRing);});
+}
+function faoScDropper0(mesh,kind,D,cornerR,laisse,nsRing){
   const L=isFinite(+laisse)&&+laisse>0?+laisse:0;
   const Rt=D/2;
   const r=kind==='flat'?0:(kind==='bull'?Math.min(Rt,isFinite(+cornerR)?+cornerR:Rt):Rt);
