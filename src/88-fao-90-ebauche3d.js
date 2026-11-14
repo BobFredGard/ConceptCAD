@@ -339,7 +339,10 @@ function faoHelixSpot(mesh,cx,cy,hr,r,z,brutTop,planes){
 // direct »).
 const faoHelixJeu=2;
 function faoHelixEntry(cx,cy,zFrom,zTo,radius,toolD){
-  const drop=Math.max(0.5,(isFinite(+toolD)&&+toolD>0?+toolD:10)*0.1);
+  let drop=Math.max(0.5,(isFinite(+toolD)&&+toolD>0?+toolD:10)*0.1);
+  // V0.99.7 : réglages de l'opération (descente par tour ; rayon plafonné — même centre, donc
+  // toujours dans la place libre trouvée)
+  if(faoEntryCur){ if(faoEntryCur.helixPas)drop=faoEntryCur.helixPas; if(faoEntryCur.helixR&&radius>faoEntryCur.helixR)radius=faoEntryCur.helixR; }
   const depth=Math.max(0.01,zFrom-zTo);
   const turns=Math.max(1,Math.ceil(depth/drop));
   const per=10, moves=[{r:1,x:cx+radius,y:cy,z:zFrom}];
@@ -1127,7 +1130,7 @@ function faoSpiralLevel(mesh,B,z,D,r,secu,zFrom,ae,entryMode,brutTop,zt,moves,op
   const rampZr=function(x,y){
     const zf=Math.round((rampZ0+(z-rampZ0)*rampK/rampTot)*1000)/1000;
     const P=moves.length?moves[moves.length-1]:null;
-    const zl=P?Math.round((P.z-Math.hypot(x-P.x,y-P.y)*0.4)*1000)/1000:zf;
+    const zl=P?Math.round((P.z-Math.hypot(x-P.x,y-P.y)*faoRampTan(0.4))*1000)/1000:zf; // V0.99.7 : pente réglable
     return Math.max(z,zf,zl);
   };
   // 2026-10-21-004 : FIN DE RAMPAGE ANTICIPÉE — un rampage ne continue QUE
@@ -1869,6 +1872,7 @@ function faoSpiralLevel(mesh,B,z,D,r,secu,zFrom,ae,entryMode,brutTop,zt,moves,op
         // une limite (pas contre l'air) ; même sens de coupe que les chaînes
         // d'origine (côté de la paroi mesuré sur elles).
         if(rem&&rem.length){
+          const rem0=rem.map(function(c){return {pts:c.pts,closed:!!c.closed};}); // chaînes exactes (couloirs étroits)
           const inM=function(x,y){const ci=Math.round((x-gx0)/h),cj=Math.round((y-gy0)/h);return ci>=0&&cj>=0&&ci<nx&&cj<ny&&!!mask[cj*nx+ci];};
           let sR=0,sL=0;
           rem.forEach(function(ch){const P=ch.pts,n=P.length,m=ch.closed?n:n-1;
@@ -1910,6 +1914,71 @@ function faoSpiralLevel(mesh,B,z,D,r,secu,zFrom,ae,entryMode,brutTop,zt,moves,op
             const fl=function(){if(cur&&cur.length>=2){const Q=sharp(faoSimplifyPts(cur,0.01),false);if(flip)Q.reverse();out.push({pts:Q,closed:false,bb:faoPtsBB(Q)});}cur=null;};
             for(let t=1;t<=n;t++){const k=(k0+t)%n;if(ok[k]){if(!cur)cur=[P[(k+n-1)%n]];cur.push(P[k]);}else{if(cur)cur.push(P[k]);fl();}}
             fl();});
+          // V0.99.7 : COULOIRS ÉTROITS (retour « pourquoi ces vagues ? », « on devrait avoir
+          // 2 courbes // à la forme ») — une gorge à peine plus large que l'outil laisse aux
+          // centres une bande plus étroite que la maille : la ligne de niveau y saute d'une
+          // rangée de cases à l'autre (zigzag que l'arrondi change en vagues, deux passes en
+          // opposition qui se croisent). Là où la bande des centres permis fait moins de 3
+          // mailles en travers, on garde les chaînes EXACTES d'origine (parois décalées du
+          // rayon : deux courbes parallèles à la forme) et on retire la ligne de niveau.
+          {const Wn=3*h,st=Math.min(0.5,0.5*h),pe=0.05;
+            const across=function(x,y,nx2,ny2){ // largeur permise depuis le bord, côté permis
+              let sg=0;if(inside(x+nx2*0.1,y+ny2*0.1))sg=1;else if(inside(x-nx2*0.1,y-ny2*0.1))sg=-1;else return -1;
+              for(let t=0.1+pe;t<=Wn;t+=pe)if(!inside(x+sg*nx2*t,y+sg*ny2*t))return t;
+              return 1/0;};
+            const nar=[],HN=new Map(),cs=Math.max(1,1.5*h);
+            const hkN=function(x,y){return Math.floor(x/cs)+','+Math.floor(y/cs);};
+            rem0.forEach(function(ch){const P=ch.pts,n=P.length,m=ch.closed?n:n-1;if(n<2)return;
+              const S2=[],Tg=[];
+              for(let i=0;i<m;i++){const a=P[i],e=P[(i+1)%n],L=Math.hypot(e[0]-a[0],e[1]-a[1]);if(!(L>1e-9))continue;
+                const k=Math.max(1,Math.ceil(L/st)),tx=(e[0]-a[0])/L,ty=(e[1]-a[1])/L;
+                for(let t=0;t<k;t++){S2.push([a[0]+(e[0]-a[0])*t/k,a[1]+(e[1]-a[1])*t/k]);Tg.push([tx,ty]);}}
+              if(!ch.closed){S2.push(P[n-1]);Tg.push(Tg.length?Tg[Tg.length-1]:[1,0]);}
+              const N2=S2.length;if(N2<2)return;
+              const isN=new Uint8Array(N2);let any=false;
+              for(let k=0;k<N2;k++){const w=across(S2[k][0],S2[k][1],-Tg[k][1],Tg[k][0]);if(w>0&&w<Wn){isN[k]=1;any=true;}}
+              if(!any)return;
+              // un vrai couloir est long : un pincement ponctuel (deux parois proches sur
+              // moins de 2·D) reste à la ligne de niveau — sinon des bouts d'un millimètre
+              {const Lmin=Math.max(5,2*D)/st;let k0=0;
+                if(ch.closed){while(k0<N2&&isN[k0])k0++;if(k0>=N2)k0=0;}
+                for(let t=0;t<N2;){const k=ch.closed?(k0+t)%N2:t;if(!isN[k]){t++;continue;}
+                  let e=t;while(e<N2&&isN[ch.closed?(k0+e)%N2:e])e++;
+                  if(e-t<Lmin)for(let q=t;q<e;q++)isN[ch.closed?(k0+q)%N2:q]=0;
+                  t=e;}
+                any=false;for(let k=0;k<N2;k++)if(isN[k]){any=true;break;}}
+              if(!any)return;
+              // prolongé de 2 mailles le long de la paroi : recouvre la ligne de niveau retirée
+              const ext=Math.ceil(2*h/st),mk=new Uint8Array(N2);
+              for(let k=0;k<N2;k++)if(isN[k])for(let d=-ext;d<=ext;d++){let q=k+d;if(ch.closed)q=(q+N2)%N2;else if(q<0||q>=N2)continue;mk[q]=1;}
+              for(let k=0;k<N2;k++)if(isN[k]){const key=hkN(S2[k][0],S2[k][1]);let a=HN.get(key);if(!a)HN.set(key,a=[]);a.push(S2[k]);}
+              if(mk.every(Boolean)&&ch.closed){nar.push({pts:faoSimplifyPts(S2.concat([S2[0]]),0.01).slice(0,-1),closed:true});return;}
+              let k0=0;if(ch.closed)while(mk[k0])k0++;
+              let cur=null;const fl2=function(){if(cur&&cur.length>=2)nar.push({pts:faoSimplifyPts(cur,0.01),closed:false});cur=null;};
+              for(let t=0;t<N2;t++){const k=ch.closed?(k0+t)%N2:t;if(mk[k]){if(!cur)cur=[];cur.push(S2[k]);}else fl2();}
+              fl2();});
+            if(nar.length){
+              const near=function(q){const ix=Math.floor(q[0]/cs),iy=Math.floor(q[1]/cs);
+                for(let a=-1;a<=1;a++)for(let b=-1;b<=1;b++){const L=HN.get((ix+a)+','+(iy+b));if(!L)continue;
+                  for(let k=0;k<L.length;k++)if(Math.hypot(L[k][0]-q[0],L[k][1]-q[1])<=1.5*h)return true;}
+                return false;};
+              const keep=[];
+              out.forEach(function(c){const P=c.pts,n=P.length;if(n<2)return;
+                const D2p=[];const m=c.closed?n:n-1;
+                for(let i=0;i<m;i++){const a=P[i],e=P[(i+1)%n],k=Math.max(1,Math.ceil(Math.hypot(e[0]-a[0],e[1]-a[1])/st));
+                  for(let t=0;t<k;t++)D2p.push([a[0]+(e[0]-a[0])*t/k,a[1]+(e[1]-a[1])*t/k]);}
+                if(!c.closed)D2p.push(P[n-1]);
+                const ok=D2p.map(function(q){return !near(q);});
+                if(ok.every(Boolean)){keep.push(c);return;}
+                if(!ok.some(Boolean))return;
+                let k0=0;if(c.closed)while(ok[k0])k0++;
+                let cur=null;const N3=D2p.length;
+                const fl3=function(){if(cur&&cur.length>=2){const Q=faoSimplifyPts(cur,0.01);keep.push({pts:Q,closed:false,bb:faoPtsBB(Q)});}cur=null;};
+                for(let t=0;t<N3;t++){const k=c.closed?(k0+t)%N3:t;if(ok[k]){if(!cur)cur=[];cur.push(D2p[k]);}else fl3();}
+                fl3();});
+              out.length=0;keep.forEach(function(c){out.push(c);});
+              nar.forEach(function(c){if(c.pts.length>=2)out.push({pts:c.pts,closed:c.closed,bb:faoPtsBB(c.pts)});});
+            }}
           rem.length=0;out.forEach(function(c){if(c.pts.length>=2)rem.push(c);});
         }
         if(rem&&rem.length){d2=new Float64Array(N).fill(BIG);anyB=false;
@@ -2406,7 +2475,7 @@ function faoSpiralLevel(mesh,B,z,D,r,secu,zFrom,ae,entryMode,brutTop,zt,moves,op
     // Direction d'attaque = premier maillon de la chaîne (sens de coupe).
     const ex2=(seq.length>1)?seq[1][0]-seq[0][0]:0;
     const ey2=(seq.length>1)?seq[1][1]-seq[0][1]:0;
-    let i0=1;
+    let i0=1,rampN=0; // V0.99.7 : points de la rampe le long de la chaîne
     // 011 : P.z > z = fin de spiral en cours de rampage sans être redescendu
     // à la cote — ne JAMAIS accoster la chaîne depuis cette cote (une poussée
     // directe serait une plongée verticale non contrôlée) : entryTo (vide
@@ -2437,13 +2506,21 @@ function faoSpiralLevel(mesh,B,z,D,r,secu,zFrom,ae,entryMode,brutTop,zt,moves,op
       // bornés à ~2 mm, répartis sur les points disponibles), centre
       // toujours à r du mur : aucune plongée à plat sur le brut restant,
       // aucun gouge.
-      const nUse=Math.max(1,Math.min(seq.length-1,Math.ceil((rampZ0-z)/2)));
+      let nUse=Math.max(1,Math.min(seq.length-1,Math.ceil((rampZ0-z)/2)));
       const dz=(rampZ0-z)/nUse;
-      for(let i=1;i<=nUse;i++){
+      if(faoEntryCur&&faoEntryCur.rampAng){
+        // V0.99.7 : pente réglée — descente au prorata de la longueur suivie (point de la chaîne
+        // où la cote est atteinte ; chaîne trop courte : dernier point à la cote)
+        const tn=faoRampTan(0.4);let zc=rampZ0,k=0;
+        while(k<seq.length-1&&zc>z+1e-9){k++;zc=Math.max(z,zc-Math.hypot(seq[k][0]-seq[k-1][0],seq[k][1]-seq[k-1][1])*tn);
+          moves.push({r:0,ent:1,x:rnd(seq[k][0]),y:rnd(seq[k][1]),z:Math.round((k===seq.length-1?z:zc)*1000)/1000});}
+        nUse=Math.max(1,k);
+      }else for(let i=1;i<=nUse;i++){
         moves.push({r:0,ent:1,x:rnd(seq[i][0]),y:rnd(seq[i][1]),
           z:Math.round((rampZ0-dz*i)*1000)/1000});
       }
       i0=nUse+1;
+      rampN=nUse;
     }
     // V0.99.6 : croisement aux coupures (morceaux de splitFaces) — aller-retour le long de la
     // paroi au-delà de chaque bout, la passe repart du même point (ordre et liaisons inchangés)
@@ -2455,9 +2532,17 @@ function faoSpiralLevel(mesh,B,z,D,r,secu,zFrom,ae,entryMode,brutTop,zt,moves,op
     if(!ch.closed){cutEnds.add(kS);cutEnds.add(kE);}
     const across=function(X,bx,by){if(!X||!X.length)return;for(let q=0;q<X.length;q++)pushCut(X[q][0],X[q][1]);for(let q=X.length-2;q>=0;q--)pushCut(X[q][0],X[q][1]);pushCut(bx,by);};
     if(i0===1&&doS)across(xS,sx,sy);
+    // V0.99.7 (« il faut bien penser à passer partout ») : la rampe descend le long de la paroi
+    // AU-DESSUS de la cote — sa portion n'était jamais reprise à fond (chaîne ouverte : jamais ;
+    // fermée : retour au départ seulement) et laissait la matière contre la paroi sur ~2 mm de
+    // haut. Boucle (fermée, ou bouts confondus) : la passe continue sur la rampe à la cote ;
+    // sinon aller-retour à la cote sur la rampe juste après la descente.
+    const loopS=ch.closed||(seq.length>2&&Math.hypot(seq[0][0]-seq[seq.length-1][0],seq[0][1]-seq[seq.length-1][1])<=linkMax);
+    if(rampN&&!loopS){for(let q=rampN-1;q>=0;q--)pushCut(seq[q][0],seq[q][1]);for(let q=1;q<=rampN;q++)pushCut(seq[q][0],seq[q][1]);}
     for(let i=i0;i<seq.length;i++)pushCut(seq[i][0],seq[i][1]);
     if(ch.closed)pushCut(seq[0][0],seq[0][1]);
     else if(doE){const e=seq[seq.length-1];across(xE,e[0],e[1]);}
+    if(rampN&&loopS){if(!ch.closed)pushCut(seq[0][0],seq[0][1]);for(let q=1;q<=rampN;q++)pushCut(seq[q][0],seq[q][1]);}
   }
   };
   if(opt&&opt.snail)snailRings();

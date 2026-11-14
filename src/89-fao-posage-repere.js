@@ -625,6 +625,18 @@ function faoFrameFixX(setup){
    arêtes, trous y sont ramenés), puis ses mouvements sont ré-exprimés dans le repère du posage
    (arcs linéarisés). G-code : orientation de l'outil par B/C (3+2) avant l'opération. */
 let faoFrameCur=null; // repère (monde) de l'opération en cours de calcul — trous détectés dedans
+// V0.99.7 (« pouvoir régler les valeurs de rampe, d'hélice, de rayon d'entrée pour chaque opération ») :
+// réglages d'entrée de l'opération en cours de calcul (posés à chaque reprise du générateur, comme
+// faoFrameCur) — null = tout automatique, comme avant. helixPas = descente par tour (mm),
+// helixR = rayon d'hélice MAXI (mm : l'hélice reste dans la place libre trouvée), rampAng = pente maxi (°).
+let faoEntryCur=null;
+function faoEntryCfg(op){
+  if(!op)return null;
+  const v=function(k,lo,hi){const x=+op[k];return (isFinite(x)&&x>=lo&&x<=hi)?x:0;};
+  const c={helixPas:v('helixPas',0.05,50),helixR:v('helixR',0.1,500),rampAng:v('rampAng',0.5,60)};
+  return (c.helixPas||c.helixR||c.rampAng)?c:null;
+}
+function faoRampTan(def){ const a=faoEntryCur&&faoEntryCur.rampAng; return a?Math.tan(a*Math.PI/180):def; }
 function faoOpFrameOf(setupId,opId){try{const s=faoSetup(setupId);const op=(s.ops||[]).filter(o=>o.id===opId)[0];return (op&&faoOpFrame(s,op))||faoFrame(s);}catch(e){return faoFrame(null);}}
 function faoOpFrame(job,op){
   // repère composé (directions MONDE) de l'opération ; null si = repère du posage
@@ -762,18 +774,17 @@ function faoSeqSafeOp(job,op,fr,mv,prev){
   return {out:out,prev:out.length?out[out.length-1]:prev};
 }
 function* faoOpMovesIt(op,job){
-  const fr=faoOpFrame(job,op);
-  if(!fr)return yield* faoOpMovesIt0(op,job);
-  const jo=faoOpJob(job,op,fr);
-  const it=faoOpMovesIt0(op,jo);
-  const step=()=>{const k=faoFrameCur;faoFrameCur=fr;try{return it.next();}finally{faoFrameCur=k;}};
+  const fr=faoOpFrame(job,op),ec=faoEntryCfg(op);
+  if(!fr&&!ec)return yield* faoOpMovesIt0(op,job);
+  const it=fr?faoOpMovesIt0(op,faoOpJob(job,op,fr)):faoOpMovesIt0(op,job);
+  const step=()=>{const k=faoFrameCur,e=faoEntryCur;if(fr)faoFrameCur=fr;faoEntryCur=ec;try{return it.next();}finally{faoFrameCur=k;faoEntryCur=e;}};
   let r=step();
   while(!r.done){
     const v=r.value;
-    yield (Array.isArray(v)&&v.length&&v[0]&&isFinite(+v[0].x))?faoMovesOpToPos(v,fr):v;
+    yield (fr&&Array.isArray(v)&&v.length&&v[0]&&isFinite(+v[0].x))?faoMovesOpToPos(v,fr):v;
     r=step();
   }
-  return faoMovesOpToPos(r.value,fr);
+  return fr?faoMovesOpToPos(r.value,fr):r.value;
 }
 function faoOpFrameRows(d,setup,op){
   d.appendChild(faoH('Repère de l’opération'));
