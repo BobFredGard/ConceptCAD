@@ -316,6 +316,19 @@ function faoRestRows(d,setup,op){
   const fin=op.type!=='rough3d';
   d.appendChild(faoH('Brut'));
   const rB=faoRow();
+  const setRest=function(v){ if(v==='restant')op.brut='restant'; else{ delete op.brut; delete op.restIgn; delete op.restMarge; } try{renderProps();}catch(e){} };
+  if(fin){
+    // V0.99.3 (demande de Fred) : une finition ne « part » pas d'un brut — elle passe partout,
+    // ou seulement là où il reste de la matière. Une simple case, pas un choix de départ.
+    const cbR=document.createElement('input'); cbR.type='checkbox'; cbR.checked=faoRestOn(op);
+    cbR.title='Brut restant : les opérations actives placées avant celle-ci dans le posage (3+2 compris) sont rejouées ; '+
+      'la finition ne passe que là où il reste de la matière (congés et recoins qu’une fraise plus grosse n’a pas atteints, crêtes trop hautes), plus la marge. '+
+      'Case vide : la finition passe sur toute la zone.';
+    cbR.onchange=function(){ faoSnapshot('brut restant'); setRest(cbR.checked?'restant':'posage'); faoChanged(); };
+    rB.appendChild(cbR);
+    rB.appendChild(faoLab('Brut restant (opérations précédentes)'));
+    d.appendChild(rB);
+  }else{
   rB.appendChild(faoLab('Départ'));
   rB.appendChild(faoSel([
     ['posage','Brut du posage',fin?'La finition passe sur toute la zone, comme si rien n’avait encore été usiné.'
@@ -324,9 +337,10 @@ function faoRestRows(d,setup,op){
       (fin?'la finition ne passe que là où il reste de la matière (congés et recoins qu’une fraise plus grosse n’a pas atteints, crêtes trop hautes), plus la marge.'
         :'l’ébauche ne passe que là où il reste de la matière (coins et recoins qu’une fraise plus grosse n’a pas atteints, marches laissées par un pas plus grand).')]],
     faoRestOn(op)?'restant':'posage',
-    function(v){ if(v==='restant')op.brut='restant'; else{ delete op.brut; delete op.restIgn; delete op.restMarge; } try{renderProps();}catch(e){} },
+    setRest,
     'Brut de départ de l’opération'));
   d.appendChild(rB);
+  }
   if(!faoRestOn(op))return;
   const rI=faoRow();
   rI.appendChild(faoLab('Ignorer moins de'));
@@ -346,7 +360,8 @@ function faoRestRows(d,setup,op){
   d.appendChild(faoHelp(nPrev?('Matière enlevée par '+nPrev+' opération'+(nPrev>1?'s':'')+' précédente'+(nPrev>1?'s':'')+' du posage'+
       (di&&di.tilt?(' (dont '+di.tilt+' en 3+2)'):'')+' : seule la matière qui reste est usinée.'+
       (di&&isFinite(+di.ms)?(' Carte calculée en '+(di.ms/1000).toFixed(1).replace('.',',')+' s, maille '+String(di.pas).replace('.',',')+' mm.'):'')+
-      (fin&&di&&isFinite(+di.garde)?(' Passes gardées : '+di.garde+' % de la longueur.'):''))
+      (fin&&di&&isFinite(+di.garde)?(' Passes gardées : '+di.garde+' % de la longueur.'):'')+
+      (fin&&di&&isFinite(+di.ign)&&+di.ign>faoRestIgnore(op)+1e-6?(' « Ignorer moins de » appliqué : '+String(di.ign).replace('.',',')+' mm (au moins le quart de la maille de la carte : plus fin, l’imprécision de la carte relancerait des passes partout).'):''))
     :'Aucune opération active avant celle-ci dans le posage : le brut restant est le brut du posage.'));
 }
 async function faoRegenOpStream(setupId,opId){
@@ -1668,6 +1683,24 @@ function faoOpCardElement(setup,op,i){
     pdEls.push(gP.appendChild(faoNumFx(op,'pdirAng',isFinite(+op.pdirAng)?+op.pdirAng:0,function(v){op.pdirAng=v;if(op.pdir!=='ang'){op.pdir='ang';pdSel.value='ang';}},52,1,
       'Angle des passes en degrés depuis X (0 = X, 90 = Y). Saisir bascule en mode Angle.')));
     pdShow();
+    // V0.99.3 (Fred, SIRAP-14-002) : « Ignorer les trous » — crêtes constantes seulement. Chaque
+    // petit trou était un bord de la zone : anneaux autour, remontées, et au-delà de 12 bords
+    // des bandes oubliées. Bouchés, la boule passe par-dessus (src/89-fao-cretes.js).
+    if(op.traj!=='parallel'){
+      const gT=faoRow();
+      const cbT=document.createElement('input'); cbT.type='checkbox'; cbT.checked=+op.holeMax>0;
+      cbT.title='Les trous de la zone (perçages, alésages…) sont traités comme bouchés : la boule passe par-dessus au niveau du fond, sans tourner autour ni y plonger. Les trous plus grands que le diamètre indiqué restent des bords de la zone.';
+      cbT.onchange=function(){ faoSnapshot('ignorer les trous'); if(cbT.checked)op.holeMax=10; else delete op.holeMax; faoChanged(); };
+      gT.appendChild(cbT);
+      gT.appendChild(faoLab('Ignorer les trous'));
+      if(+op.holeMax>0){
+        gT.appendChild(faoLab('jusqu’à Ø'));
+        gT.appendChild(faoNumFx(op,'holeMax',+op.holeMax,function(v){ op.holeMax=Math.max(0.5,Math.min(500,v)); },44,1,
+          'Diamètre maximal (mm) des trous ignorés. 10 mm par défaut.'));
+        gT.appendChild(faoLab('mm'));
+      }
+      d.appendChild(gT);
+    }
     // 2026-10-04-004 : limites Z (au-delà, relief non fini) + garde-fou fraise droite.
     d.appendChild(faoH('Entrées'));
     d.appendChild(gE);
@@ -1689,7 +1722,7 @@ function faoOpCardElement(setup,op,i){
       const gd=op.geoDiag;
       const gdEl=document.createElement('div'); gdEl.className='fao-meta';
       if(gd.fronts!==undefined)
-        gdEl.textContent='Diag : '+gd.fronts+' bord(s) · anneaux '+(gd.rings||[]).join('/')+' · '+(gd.rest||0)+' boucles de reste · '+(gd.seq||0)+' séquence(s) · '+(gd.slides||0)+' glissement(s) · '+(gd.lifts||0)+' remontée(s) · '+(gd.tips||0)+' pointe(s) · '+(gd.ms||0)+' ms';
+        gdEl.textContent='Diag : '+gd.fronts+' bord(s)'+(gd.holes?(' · '+gd.holes+' trou(s) ignoré(s)'):'')+' · anneaux '+(gd.rings||[]).join('/')+' · '+(gd.rest||0)+' boucles de reste · '+(gd.seq||0)+' séquence(s) · '+(gd.slides||0)+' glissement(s) · '+(gd.lifts||0)+' remontée(s) · '+(gd.tips||0)+' pointe(s) · '+(gd.ms||0)+' ms';
       else
       gdEl.textContent='Diag : '+gd.chains+' chaînes ('+gd.slope+' pentes · '+gd.plate+' plateaux · '+gd.par+' // · '+gd.rest+' restes)'+(gd.flat?'':' · ⚠ aucun plan détecté');
       d.appendChild(gdEl);

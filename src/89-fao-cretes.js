@@ -599,6 +599,42 @@ function* faoGenScallopIt(mesh,o){
     V[k]=[x,y,z];
     inside[k]=(zin[k]&&inWin(z))?1:0;
   }
+  // V0.99.3 (Fred) : « Ignorer les trous » — un creux FERMÉ de la surface outil (nœuds de la
+  // zone sous le bas de la fenêtre, entourés de nœuds dans la fenêtre) de Ø au plus o.holeMax
+  // est bouché à la cote la plus haute de son pourtour : ni front, ni anneaux autour, la boule
+  // passe par-dessus sans y plonger (descente outil = max(descente réelle, bouchon)).
+  if(isFinite(+o.holeMax)&&+o.holeMax>0){
+    const hm=+o.holeMax,seen=new Uint8Array(nv),plug=new Float32Array(nv).fill(NaN);
+    let nPlug=0;
+    for(let s0=0;s0<nv;s0++){
+      if(seen[s0]||inside[s0]||!zin[s0]||!(V[s0][2]>-1/0)||!(V[s0][2]<zb))continue;
+      const comp=[s0];seen[s0]=1;let open=false,rim=-1/0,x0=1/0,x1=-1/0,y0=1/0,y1=-1/0;
+      for(let q=0;q<comp.length;q++){const k=comp[q],i=k%nx,j=(k-i)/nx;
+        if(V[k][0]<x0)x0=V[k][0];if(V[k][0]>x1)x1=V[k][0];if(V[k][1]<y0)y0=V[k][1];if(V[k][1]>y1)y1=V[k][1];
+        if(i===0||j===0||i===nx-1||j===ny-1){open=true;continue;}
+        const nb=[k-1,k+1,k-nx,k+nx];
+        for(let t=0;t<4;t++){const w=nb[t];
+          if(inside[w]){ if(V[w][2]>rim)rim=V[w][2]; continue; }
+          if(!zin[w]||!(V[w][2]>-1/0)||!(V[w][2]<zb)){open=true;continue;} // bord de zone ou bosse : pas un trou
+          if(!seen[w]){seen[w]=1;comp.push(w);}}}
+      if(open||!(rim>-1/0))continue;
+      if(Math.max(x1-x0,y1-y0)>hm+1e-9)continue;
+      comp.forEach(function(k){plug[k]=rim;V[k][2]=rim;inside[k]=1;});
+      nPlug++;
+    }
+    diag.holes=nPlug;
+    if(nPlug){
+      const tip0=drop.tip;
+      drop.tip=function(x,y){
+        const t=tip0(x,y);
+        const fi=(x-bx0)/g,fj=(y-by0)/g,i=Math.floor(fi),j=Math.floor(fj);
+        let p=-1/0;
+        for(let dj=0;dj<=1;dj++)for(let di=0;di<=1;di++){const ii=i+di,jj=j+dj;
+          if(ii<0||jj<0||ii>=nx||jj>=ny)continue;const v=plug[jj*nx+ii];if(v>p)p=v;}
+        return p>t?p:t;
+      };
+    }
+  }
   // triangles : cellules dont les 4 nœuds ont une cote (diagonales alternées)
   const T=[];
   for(let j=0;j<ny-1;j++)for(let i=0;i<nx-1;i++){
@@ -686,9 +722,16 @@ function* faoGenScallopIt(mesh,o){
   const flen=fseg.map(function(ss){let l=0;ss.forEach(function(s){l+=Math.hypot(s.a.p[0]-s.b.p[0],s.a.p[1]-s.b.p[1],s.a.p[2]-s.b.p[2]);});return l;});
   let fronts=[];
   for(let f=0;f<nF;f++)if(flen[f]>=Math.max(2*step,D*0.5))fronts.push(f);
-  if(fronts.length>12){
+  diag.frontsAll=fronts.length;
+  // V0.99.3 (Fred, SIRAP-14-002) : 12 fronts au plus avant — les 40 autres (trous du fond,
+  // bossages) n'avaient ni anneaux ni champ, les isos de reste qui les touchaient restaient
+  // ouvertes et étaient jetées : bande non usinée au pied de chaque paroi (3 100 mm² à plus
+  // de 0,3 mm, jusqu'à 2,3 mm d'épaisseur). Tous les fronts : 65 mm², rien au-delà de 1 mm.
+  // Garde-fou seulement contre une zone pathologique (un champ par front).
+  const FMAX=400;
+  if(fronts.length>FMAX){
     fronts.sort(function(a,b){return flen[b]-flen[a];});
-    fronts=fronts.slice(0,12);
+    fronts=fronts.slice(0,FMAX);
   }
   // ordre : du plus bas au plus haut (cote moyenne du bord)
   const fz={};

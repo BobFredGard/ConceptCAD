@@ -153,6 +153,9 @@ function faoOpMovesKey(op,job){
         return [q&&q.id,q&&q.type,q&&q.on!==false?1:0];
       });
     }
+    // V0.99.3 : crêtes constantes — tous les fronts (plus 12 au plus) : seules ces finitions
+    // sont à refaire (CACHE_VER inchangé : les autres opérations gardent leurs parcours)
+    if(op&&op.type==='geofinish'&&op.traj==='scallop')dep=['cretes-fronts',dep];
     // V0.99.0 : BRUT RESTANT — l'ébauche dépend des parcours des opérations qui la précèdent
     if(faoRestOn(op)){ const rd=faoRestDep(op,job); if(rd===null)return null; dep=dep?['restant',rd,dep]:['restant',rd]; }
     let body='0'; // hors ebauche 3D/geofinition : aucun dependence au solide
@@ -769,6 +772,7 @@ function* faoOpMovesIt0(op,job){
         {step:isFinite(+op.step)?+op.step:1,toolD:D,kind:tool.kind,
          cornerR:tool.cornerR,laisse:+op.laisse||0,secu:secu,
          ztop:op.ztop,zbot:op.zbot,sens:op.sens,
+         holeMax:(+op.holeMax>0)?+op.holeMax:0, // V0.99.3 : « Ignorer les trous » (Ø max, mm)
          zoneAt:zctx?zctx.at:null});
       else mv=yield* faoGenGeoFinishIt(am.mesh,
         {step:isFinite(+op.step)?+op.step:1,toolD:D,kind:tool.kind,
