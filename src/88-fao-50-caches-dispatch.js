@@ -155,9 +155,11 @@ function faoOpMovesKey(op,job){
     }
     // V0.99.3 : crêtes constantes — tous les fronts (plus 12 au plus) : seules ces finitions
     // sont à refaire (CACHE_VER inchangé : les autres opérations gardent leurs parcours)
-    if(op&&op.type==='geofinish'&&op.traj==='scallop')dep=['cretes-fronts',dep];
+    if(op&&op.type==='geofinish'&&op.traj==='scallop')dep=['cretes-fronts','trous-10',dep]; // V0.99.5 : trous ignorés par défaut
     // V0.99.0 : BRUT RESTANT — l'ébauche dépend des parcours des opérations qui la précèdent
-    if(faoRestOn(op)){ const rd=faoRestDep(op,job); if(rd===null)return null; dep=dep?['restant',rd,dep]:['restant',rd]; }
+    if(faoRestOn(op)){ const rd=faoRestDep(op,job); if(rd===null)return null; dep=dep?['restant',rd,dep]:['restant',rd];
+      // V0.99.5 : crêtes constantes en brut restant = zone intérieure (plus de découpe après)
+      if(op.type==='geofinish'&&op.traj==='scallop')dep=['restant-zone',dep]; }
     let body='0'; // hors ebauche 3D/geofinition : aucun dependence au solide
     if(faoMeshOp(op)){
       const fp=faoSetupFp(job);
@@ -768,11 +770,22 @@ function* faoOpMovesIt0(op,job){
       // 2026-10-14-001 : trajectoire 'scallop' = CRÊTES CONSTANTES façon
       // Fusion 360 (offsets géodésiques depuis les bords de la zone, lentilles
       // dans les restes, descente outil sans surcoupe) — src/89-fao-cretes.js.
+      // V0.99.5 (Fred) : crêtes constantes en brut restant — la zone du brut restant est la
+      // LIMITE INTÉRIEURE du calcul (passes continues autour de la matière), plus de découpe après
+      let RZ=null;
+      if(op.traj==='scallop'&&faoRestOn(op)){
+        try{ const M=faoRestMap(op,job,D,0);
+          if(M){ const ign=Math.max(faoRestIgnore(op),0.25*M.pas);
+            RZ={eng:faoRestEngFn(M,tool,D,ign),marge:faoRestMarge(op),diag:{n:M.n,tilt:M.tilt,ms:M.ms,pas:+M.pas.toFixed(3),garde:100,ign:+ign.toFixed(3),zone:1}}; }
+        }catch(e){ RZ=null; }
+      }
       if(op.traj==='scallop')mv=yield* faoGenScallopIt(am.mesh,
         {step:isFinite(+op.step)?+op.step:1,toolD:D,kind:tool.kind,
          cornerR:tool.cornerR,laisse:+op.laisse||0,secu:secu,
          ztop:op.ztop,zbot:op.zbot,sens:op.sens,
-         holeMax:(+op.holeMax>0)?+op.holeMax:0, // V0.99.3 : « Ignorer les trous » (Ø max, mm)
+         // V0.99.3 : « Ignorer les trous » (Ø max, mm) ; V0.99.5 : coché par défaut (Fred)
+         holeMax:faoHoleMax(op),
+         restEng:RZ?RZ.eng:null,restMarge:RZ?RZ.marge:0,
          zoneAt:zctx?zctx.at:null});
       else mv=yield* faoGenGeoFinishIt(am.mesh,
         {step:isFinite(+op.step)?+op.step:1,toolD:D,kind:tool.kind,
@@ -793,7 +806,8 @@ function* faoOpMovesIt0(op,job){
       // passes recoupées EXACTEMENT au prédicat bleu/rouge (ré-entrée par le haut)
       if(faceOk&&op.traj!=='scallop'&&mv.length)mv=faoClipMovesPoly(mv,null,0,secu,1,faceOk);
       // V0.99.1 : brut restant — seules les passes qui enlèvent encore de la matière (+ marge)
-      if(faoRestOn(op)&&mv&&mv.length)mv=faoRestFinishOp(mv,op,job,D,tool,secu);
+      if(RZ){ try{ op.restDiag=RZ.diag; }catch(e){} }
+      else if(faoRestOn(op)&&mv&&mv.length)mv=faoRestFinishOp(mv,op,job,D,tool,secu);
       op.geoBlocked=(tool.kind==='flat'&&!mv.length);
       // 2026-10-13-007 : diag embarqué (fond nu : quelle phase est morte ?) —
       // lu par la fiche op. Stashé AVANT le clip (qui reconstruit les tableaux).

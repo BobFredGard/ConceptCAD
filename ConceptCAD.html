@@ -383,7 +383,7 @@ input[type=range]{accent-color:var(--primary);width:100%}
  * peut changer sans rien casser. CACHE_VER (parcours FAO) reste indépendant.
  */
 
-const APP_VER='V0.99.4';
+const APP_VER='V0.99.5';
 try{console.log('[ConceptCAD] version '+APP_VER);}catch(e){}
 try{var mfSv=document.getElementById('mfSplashVer');if(mfSv)mfSv.textContent=APP_VER;}catch(e){} // écran de démarrage
 
@@ -49684,9 +49684,11 @@ function faoOpMovesKey(op,job){
     }
     // V0.99.3 : crêtes constantes — tous les fronts (plus 12 au plus) : seules ces finitions
     // sont à refaire (CACHE_VER inchangé : les autres opérations gardent leurs parcours)
-    if(op&&op.type==='geofinish'&&op.traj==='scallop')dep=['cretes-fronts',dep];
+    if(op&&op.type==='geofinish'&&op.traj==='scallop')dep=['cretes-fronts','trous-10',dep]; // V0.99.5 : trous ignorés par défaut
     // V0.99.0 : BRUT RESTANT — l'ébauche dépend des parcours des opérations qui la précèdent
-    if(faoRestOn(op)){ const rd=faoRestDep(op,job); if(rd===null)return null; dep=dep?['restant',rd,dep]:['restant',rd]; }
+    if(faoRestOn(op)){ const rd=faoRestDep(op,job); if(rd===null)return null; dep=dep?['restant',rd,dep]:['restant',rd];
+      // V0.99.5 : crêtes constantes en brut restant = zone intérieure (plus de découpe après)
+      if(op.type==='geofinish'&&op.traj==='scallop')dep=['restant-zone',dep]; }
     let body='0'; // hors ebauche 3D/geofinition : aucun dependence au solide
     if(faoMeshOp(op)){
       const fp=faoSetupFp(job);
@@ -50297,11 +50299,22 @@ function* faoOpMovesIt0(op,job){
       // 2026-10-14-001 : trajectoire 'scallop' = CRÊTES CONSTANTES façon
       // Fusion 360 (offsets géodésiques depuis les bords de la zone, lentilles
       // dans les restes, descente outil sans surcoupe) — src/89-fao-cretes.js.
+      // V0.99.5 (Fred) : crêtes constantes en brut restant — la zone du brut restant est la
+      // LIMITE INTÉRIEURE du calcul (passes continues autour de la matière), plus de découpe après
+      let RZ=null;
+      if(op.traj==='scallop'&&faoRestOn(op)){
+        try{ const M=faoRestMap(op,job,D,0);
+          if(M){ const ign=Math.max(faoRestIgnore(op),0.25*M.pas);
+            RZ={eng:faoRestEngFn(M,tool,D,ign),marge:faoRestMarge(op),diag:{n:M.n,tilt:M.tilt,ms:M.ms,pas:+M.pas.toFixed(3),garde:100,ign:+ign.toFixed(3),zone:1}}; }
+        }catch(e){ RZ=null; }
+      }
       if(op.traj==='scallop')mv=yield* faoGenScallopIt(am.mesh,
         {step:isFinite(+op.step)?+op.step:1,toolD:D,kind:tool.kind,
          cornerR:tool.cornerR,laisse:+op.laisse||0,secu:secu,
          ztop:op.ztop,zbot:op.zbot,sens:op.sens,
-         holeMax:(+op.holeMax>0)?+op.holeMax:0, // V0.99.3 : « Ignorer les trous » (Ø max, mm)
+         // V0.99.3 : « Ignorer les trous » (Ø max, mm) ; V0.99.5 : coché par défaut (Fred)
+         holeMax:faoHoleMax(op),
+         restEng:RZ?RZ.eng:null,restMarge:RZ?RZ.marge:0,
          zoneAt:zctx?zctx.at:null});
       else mv=yield* faoGenGeoFinishIt(am.mesh,
         {step:isFinite(+op.step)?+op.step:1,toolD:D,kind:tool.kind,
@@ -50322,7 +50335,8 @@ function* faoOpMovesIt0(op,job){
       // passes recoupées EXACTEMENT au prédicat bleu/rouge (ré-entrée par le haut)
       if(faceOk&&op.traj!=='scallop'&&mv.length)mv=faoClipMovesPoly(mv,null,0,secu,1,faceOk);
       // V0.99.1 : brut restant — seules les passes qui enlèvent encore de la matière (+ marge)
-      if(faoRestOn(op)&&mv&&mv.length)mv=faoRestFinishOp(mv,op,job,D,tool,secu);
+      if(RZ){ try{ op.restDiag=RZ.diag; }catch(e){} }
+      else if(faoRestOn(op)&&mv&&mv.length)mv=faoRestFinishOp(mv,op,job,D,tool,secu);
       op.geoBlocked=(tool.kind==='flat'&&!mv.length);
       // 2026-10-13-007 : diag embarqué (fond nu : quelle phase est morte ?) —
       // lu par la fiche op. Stashé AVANT le clip (qui reconstruit les tableaux).
@@ -51084,6 +51098,11 @@ function faoRestMarge(op){
   const v=op?+op.restMarge:NaN;
   return (isFinite(v)&&v>=0)?Math.min(v,50):FAO_REST_MARGE;
 }
+// V0.99.5 (Fred) : « Ignorer les trous » coché par défaut — champ absent = 10 mm, 0 = décoché
+function faoHoleMax(op){
+  if(!op||op.holeMax===undefined||op.holeMax===null||op.holeMax==='')return 10;
+  const v=+op.holeMax;return (isFinite(v)&&v>0)?v:0;
+}
 function faoRestBase(job){ return (job&&job.__opJob)?Object.getPrototypeOf(job):job; }
 function faoRestPrev(P,op){
   // Entrées de la séquence (faoOpsSeq) placées avant `op` dans la liste du posage
@@ -51387,8 +51406,8 @@ function faoRestEnvFn(tool,D){
   const r0=R-rc;
   return function(d){ if(d<=r0)return 0; const u=Math.min(rc,d-r0); return rc-Math.sqrt(Math.max(0,rc*rc-u*u)); };
 }
-function faoRestFinish(mv,M,tool,D,ign,marge,secu){
-  if(!Array.isArray(mv)||mv.length<2||!M||!M.grid)return mv;
+function faoRestEngFn(M,tool,D,ign){
+  // l'outil posé (pointe x,y,z) enlève-t-il plus de ign de matière restante ?
   const G=M.grid,h=G.h,nx=G.nx,ny=G.ny,p=G.p,R=D/2,env=faoRestEnvFn(tool,D);
   // V0.99.2 : maximum de la carte par bloc de B×B mailles — un bloc dont le plus haut point
   // reste sous le dessous de l'outil à sa distance la plus courte est sauté d'un coup
@@ -51397,7 +51416,7 @@ function faoRestFinish(mv,M,tool,D,ign,marge,secu){
   for(let j=0;j<ny;j++){const bj=(j/B|0)*nbx;for(let i=0;i<nx;i++){const v=h[j*nx+i],k=bj+(i/B|0);if(v>bm[k])bm[k]=v;}}
   const bw=B*p;
   // l'outil posé (pointe x,y,z) enlève-t-il plus de ign de matière restante ?
-  const eng=function(x,y,z){
+  return function(x,y,z){
     const bi0=Math.max(0,Math.floor((x-R-G.x0)/bw)),bi1=Math.min(nbx-1,Math.floor((x+R-G.x0)/bw));
     const bj0=Math.max(0,Math.floor((y-R-G.y0)/bw)),bj1=Math.min(nby-1,Math.floor((y+R-G.y0)/bw));
     for(let bj=bj0;bj<=bj1;bj++){const ya=G.y0+bj*bw,yb=ya+bw,ey=y<ya?ya-y:(y>yb?y-yb:0);
@@ -51410,6 +51429,10 @@ function faoRestFinish(mv,M,tool,D,ign,marge,secu){
             const d=Math.hypot(cx,cy);if(d>R)continue;
             if(h[j*nx+i]>z+env(d)+ign)return true;}}}}
     return false;};
+}
+function faoRestFinish(mv,M,tool,D,ign,marge,secu){
+  if(!Array.isArray(mv)||mv.length<2||!M||!M.grid)return mv;
+  const p=M.grid.p,eng=faoRestEngFn(M,tool,D,ign);
   const gapMin=Math.max(2,D);
   const isCut=function(m){return !!m&&!m.r&&!m.ent;};
   const segsOf=function(i,j){ // tronçons de coupe (hors entrées) de la chaîne mv[i..j-1]
@@ -57853,14 +57876,14 @@ function faoOpCardElement(setup,op,i){
     // des bandes oubliées. Bouchés, la boule passe par-dessus (src/89-fao-cretes.js).
     if(op.traj!=='parallel'){
       const gT=faoRow();
-      const cbT=document.createElement('input'); cbT.type='checkbox'; cbT.checked=+op.holeMax>0;
+      const cbT=document.createElement('input'); cbT.type='checkbox'; cbT.checked=faoHoleMax(op)>0; // V0.99.5 : coché par défaut
       cbT.title='Les trous de la zone (perçages, alésages…) sont traités comme bouchés : la boule passe par-dessus au niveau du fond, sans tourner autour ni y plonger. Les trous plus grands que le diamètre indiqué restent des bords de la zone.';
-      cbT.onchange=function(){ faoSnapshot('ignorer les trous'); if(cbT.checked)op.holeMax=10; else delete op.holeMax; faoChanged(); };
+      cbT.onchange=function(){ faoSnapshot('ignorer les trous'); op.holeMax=cbT.checked?10:0; faoChanged(); };
       gT.appendChild(cbT);
       gT.appendChild(faoLab('Ignorer les trous'));
-      if(+op.holeMax>0){
+      if(faoHoleMax(op)>0){
         gT.appendChild(faoLab('jusqu’à Ø'));
-        gT.appendChild(faoNumFx(op,'holeMax',+op.holeMax,function(v){ op.holeMax=Math.max(0.5,Math.min(500,v)); },44,1,
+        gT.appendChild(faoNumFx(op,'holeMax',faoHoleMax(op),function(v){ op.holeMax=Math.max(0.5,Math.min(500,v)); },44,1,
           'Diamètre maximal (mm) des trous ignorés. 10 mm par défaut.'));
         gT.appendChild(faoLab('mm'));
       }
@@ -67282,7 +67305,7 @@ function* faoGenScallopIt(mesh,o){
   const zoneAt0=(typeof o.zoneAt==='function')?o.zoneAt:null;
   // Cache en grille (1 mm) du test de zone : une cellule dont les 4 coins
   // ont la même réponse est réputée uniforme ; sinon test exact.
-  const zoneAt=zoneAt0?(function(){
+  let zoneAt=zoneAt0?(function(){
     const g=1,cells=new Map(),corner=new Map();
     const cz=function(i,j){const k=i*131071+j;let v=corner.get(k);
       if(v===undefined){v=zoneAt0(i*g,j*g)?1:0;corner.set(k,v);}return v;};
@@ -67381,6 +67404,64 @@ function* faoGenScallopIt(mesh,o){
         return p>t?p:t;
       };
     }
+  }
+  // V0.99.5 (Fred, SIRAP-14-002) : brut restant = LIMITE INTÉRIEURE — la zone est réduite,
+  // avant tout calcul, aux nœuds où l'outil enlève encore de la matière (o.restEng) et à
+  // ceux à moins de la marge ; les passes suivent la forme de cette zone (boucles continues)
+  // au lieu d'être découpées après coup (une remontée à chaque traversée).
+  // (Un rectangle arrondi par zone a été essayé : un seul grand rectangle sur SIRAP-14-002,
+  // 69 m de coupe et 58 min au lieu de 49 m et 41 min — non retenu.)
+  if(typeof o.restEng==='function'){
+    const mg=Math.max(0,isFinite(+o.restMarge)?+o.restMarge:1);
+    // lissage (Fred) : fermeture de rayon cl (zones voisines réunies, creux comblés), puis
+    // flou gaussien σ de la frontière ; seuil abaissé de 0,6 σ pour ne pas rogner les bosses
+    const cl=isFinite(+o.restClose)?Math.max(0,+o.restClose):D/2,sg=isFinite(+o.restSmooth)?Math.max(0,+o.restSmooth):1;
+    const rOut=mg+cl+2*g,BIG=rOut+g,dist=new Float32Array(nv).fill(BIG);
+    const w=Math.ceil(rOut/g);let nEng=0;
+    for(let k=0;k<nv;k++){
+      if(!inside[k]||!o.restEng(V[k][0],V[k][1],V[k][2]))continue;
+      nEng++;const i=k%nx,j=(k-i)/nx;
+      for(let dj=-w;dj<=w;dj++){const jj=j+dj;if(jj<0||jj>=ny)continue;
+        for(let di=-w;di<=w;di++){const ii=i+di;if(ii<0||ii>=nx)continue;
+          const d=g*Math.hypot(di,dj);const q=jj*nx+ii;if(d<dist[q])dist[q]=d;}}
+    }
+    let restAt=null;
+    {
+      const m1=new Uint8Array(nv);for(let k=0;k<nv;k++)m1[k]=dist[k]<=mg+cl?1:0;
+      // distance au dehors de la dilatation (≤ cl + 2 g), depuis les nœuds dehors qui la bordent
+      const r2=cl+2*g,w2=Math.ceil(r2/g),d2=new Float32Array(nv);
+      for(let k=0;k<nv;k++)d2[k]=m1[k]?r2+g:0;
+      for(let k=0;k<nv;k++){
+        if(m1[k])continue;const i=k%nx,j=(k-i)/nx;
+        let edge=false;for(let dj=-1;dj<=1&&!edge;dj++)for(let di=-1;di<=1;di++){const ii=i+di,jj=j+dj;
+          if(ii>=0&&jj>=0&&ii<nx&&jj<ny&&m1[jj*nx+ii]){edge=true;break;}}
+        if(!edge)continue;
+        for(let dj=-w2;dj<=w2;dj++){const jj=j+dj;if(jj<0||jj>=ny)continue;
+          for(let di=-w2;di<=w2;di++){const ii=i+di;if(ii<0||ii>=nx)continue;const q=jj*nx+ii;
+            if(!m1[q])continue;const d=g*Math.hypot(di,dj);if(d<d2[q])d2[q]=d;}}
+      }
+      // champ F = distance au dehors − cl (≥ 0 : dans la zone fermée), puis flou
+      let F=new Float32Array(nv);for(let k=0;k<nv;k++)F[k]=Math.min(d2[k],r2)-cl;
+      if(sg>0){
+        const sn=sg/g,W=Math.max(1,Math.ceil(2.5*sn)),wt=[];let ws=0;
+        for(let q=-W;q<=W;q++){const v=Math.exp(-0.5*q*q/(sn*sn));wt.push(v);ws+=v;}
+        for(let q=0;q<wt.length;q++)wt[q]/=ws;
+        const T2=new Float32Array(nv);
+        for(let j=0;j<ny;j++)for(let i=0;i<nx;i++){let v=0;for(let q=-W;q<=W;q++){const ii=Math.min(nx-1,Math.max(0,i+q));v+=F[j*nx+ii]*wt[q+W];}T2[j*nx+i]=v;}
+        for(let j=0;j<ny;j++)for(let i=0;i<nx;i++){let v=0;for(let q=-W;q<=W;q++){const jj=Math.min(ny-1,Math.max(0,j+q));v+=T2[jj*nx+i]*wt[q+W];}F[j*nx+i]=v;}
+      }
+      const th=-0.6*sg;
+      restAt=function(x,y){
+        const fi=(x-bx0)/g,fj=(y-by0)/g,i=Math.floor(fi),j=Math.floor(fj);
+        if(i<0||j<0||i>=nx-1||j>=ny-1)return false;
+        const u=fi-i,v=fj-j,k=j*nx+i;
+        const f=(F[k]*(1-u)+F[k+1]*u)*(1-v)+(F[k+nx]*(1-u)+F[k+nx+1]*u)*v;
+        return f>=th;};
+      for(let k=0;k<nv;k++)if(inside[k]&&!(F[k]>=th))inside[k]=0;
+    }
+    diag.restEng=nEng;
+    const zPrev=zoneAt;
+    zoneAt=function(x,y){return (!zPrev||zPrev(x,y))&&restAt(x,y);};
   }
   // triangles : cellules dont les 4 nœuds ont une cote (diagonales alternées)
   const T=[];

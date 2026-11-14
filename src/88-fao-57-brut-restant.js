@@ -42,6 +42,11 @@ function faoRestMarge(op){
   const v=op?+op.restMarge:NaN;
   return (isFinite(v)&&v>=0)?Math.min(v,50):FAO_REST_MARGE;
 }
+// V0.99.5 (Fred) : « Ignorer les trous » coché par défaut — champ absent = 10 mm, 0 = décoché
+function faoHoleMax(op){
+  if(!op||op.holeMax===undefined||op.holeMax===null||op.holeMax==='')return 10;
+  const v=+op.holeMax;return (isFinite(v)&&v>0)?v:0;
+}
 function faoRestBase(job){ return (job&&job.__opJob)?Object.getPrototypeOf(job):job; }
 function faoRestPrev(P,op){
   // Entrées de la séquence (faoOpsSeq) placées avant `op` dans la liste du posage
@@ -345,8 +350,8 @@ function faoRestEnvFn(tool,D){
   const r0=R-rc;
   return function(d){ if(d<=r0)return 0; const u=Math.min(rc,d-r0); return rc-Math.sqrt(Math.max(0,rc*rc-u*u)); };
 }
-function faoRestFinish(mv,M,tool,D,ign,marge,secu){
-  if(!Array.isArray(mv)||mv.length<2||!M||!M.grid)return mv;
+function faoRestEngFn(M,tool,D,ign){
+  // l'outil posé (pointe x,y,z) enlève-t-il plus de ign de matière restante ?
   const G=M.grid,h=G.h,nx=G.nx,ny=G.ny,p=G.p,R=D/2,env=faoRestEnvFn(tool,D);
   // V0.99.2 : maximum de la carte par bloc de B×B mailles — un bloc dont le plus haut point
   // reste sous le dessous de l'outil à sa distance la plus courte est sauté d'un coup
@@ -355,7 +360,7 @@ function faoRestFinish(mv,M,tool,D,ign,marge,secu){
   for(let j=0;j<ny;j++){const bj=(j/B|0)*nbx;for(let i=0;i<nx;i++){const v=h[j*nx+i],k=bj+(i/B|0);if(v>bm[k])bm[k]=v;}}
   const bw=B*p;
   // l'outil posé (pointe x,y,z) enlève-t-il plus de ign de matière restante ?
-  const eng=function(x,y,z){
+  return function(x,y,z){
     const bi0=Math.max(0,Math.floor((x-R-G.x0)/bw)),bi1=Math.min(nbx-1,Math.floor((x+R-G.x0)/bw));
     const bj0=Math.max(0,Math.floor((y-R-G.y0)/bw)),bj1=Math.min(nby-1,Math.floor((y+R-G.y0)/bw));
     for(let bj=bj0;bj<=bj1;bj++){const ya=G.y0+bj*bw,yb=ya+bw,ey=y<ya?ya-y:(y>yb?y-yb:0);
@@ -368,6 +373,10 @@ function faoRestFinish(mv,M,tool,D,ign,marge,secu){
             const d=Math.hypot(cx,cy);if(d>R)continue;
             if(h[j*nx+i]>z+env(d)+ign)return true;}}}}
     return false;};
+}
+function faoRestFinish(mv,M,tool,D,ign,marge,secu){
+  if(!Array.isArray(mv)||mv.length<2||!M||!M.grid)return mv;
+  const p=M.grid.p,eng=faoRestEngFn(M,tool,D,ign);
   const gapMin=Math.max(2,D);
   const isCut=function(m){return !!m&&!m.r&&!m.ent;};
   const segsOf=function(i,j){ // tronçons de coupe (hors entrées) de la chaîne mv[i..j-1]
