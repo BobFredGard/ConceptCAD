@@ -584,7 +584,7 @@ function* faoGenScallopIt(mesh,o){
   const zoneAt0=(typeof o.zoneAt==='function')?o.zoneAt:null;
   // Cache en grille (1 mm) du test de zone : une cellule dont les 4 coins
   // ont la même réponse est réputée uniforme ; sinon test exact.
-  const zoneAt=zoneAt0?(function(){
+  let zoneAt=zoneAt0?(function(){
     const g=1,cells=new Map(),corner=new Map();
     const cz=function(i,j){const k=i*131071+j;let v=corner.get(k);
       if(v===undefined){v=zoneAt0(i*g,j*g)?1:0;corner.set(k,v);}return v;};
@@ -683,6 +683,64 @@ function* faoGenScallopIt(mesh,o){
         return p>t?p:t;
       };
     }
+  }
+  // V0.99.5 (Fred, SIRAP-14-002) : brut restant = LIMITE INTÉRIEURE — la zone est réduite,
+  // avant tout calcul, aux nœuds où l'outil enlève encore de la matière (o.restEng) et à
+  // ceux à moins de la marge ; les passes suivent la forme de cette zone (boucles continues)
+  // au lieu d'être découpées après coup (une remontée à chaque traversée).
+  // (Un rectangle arrondi par zone a été essayé : un seul grand rectangle sur SIRAP-14-002,
+  // 69 m de coupe et 58 min au lieu de 49 m et 41 min — non retenu.)
+  if(typeof o.restEng==='function'){
+    const mg=Math.max(0,isFinite(+o.restMarge)?+o.restMarge:1);
+    // lissage (Fred) : fermeture de rayon cl (zones voisines réunies, creux comblés), puis
+    // flou gaussien σ de la frontière ; seuil abaissé de 0,6 σ pour ne pas rogner les bosses
+    const cl=isFinite(+o.restClose)?Math.max(0,+o.restClose):D/2,sg=isFinite(+o.restSmooth)?Math.max(0,+o.restSmooth):1;
+    const rOut=mg+cl+2*g,BIG=rOut+g,dist=new Float32Array(nv).fill(BIG);
+    const w=Math.ceil(rOut/g);let nEng=0;
+    for(let k=0;k<nv;k++){
+      if(!inside[k]||!o.restEng(V[k][0],V[k][1],V[k][2]))continue;
+      nEng++;const i=k%nx,j=(k-i)/nx;
+      for(let dj=-w;dj<=w;dj++){const jj=j+dj;if(jj<0||jj>=ny)continue;
+        for(let di=-w;di<=w;di++){const ii=i+di;if(ii<0||ii>=nx)continue;
+          const d=g*Math.hypot(di,dj);const q=jj*nx+ii;if(d<dist[q])dist[q]=d;}}
+    }
+    let restAt=null;
+    {
+      const m1=new Uint8Array(nv);for(let k=0;k<nv;k++)m1[k]=dist[k]<=mg+cl?1:0;
+      // distance au dehors de la dilatation (≤ cl + 2 g), depuis les nœuds dehors qui la bordent
+      const r2=cl+2*g,w2=Math.ceil(r2/g),d2=new Float32Array(nv);
+      for(let k=0;k<nv;k++)d2[k]=m1[k]?r2+g:0;
+      for(let k=0;k<nv;k++){
+        if(m1[k])continue;const i=k%nx,j=(k-i)/nx;
+        let edge=false;for(let dj=-1;dj<=1&&!edge;dj++)for(let di=-1;di<=1;di++){const ii=i+di,jj=j+dj;
+          if(ii>=0&&jj>=0&&ii<nx&&jj<ny&&m1[jj*nx+ii]){edge=true;break;}}
+        if(!edge)continue;
+        for(let dj=-w2;dj<=w2;dj++){const jj=j+dj;if(jj<0||jj>=ny)continue;
+          for(let di=-w2;di<=w2;di++){const ii=i+di;if(ii<0||ii>=nx)continue;const q=jj*nx+ii;
+            if(!m1[q])continue;const d=g*Math.hypot(di,dj);if(d<d2[q])d2[q]=d;}}
+      }
+      // champ F = distance au dehors − cl (≥ 0 : dans la zone fermée), puis flou
+      let F=new Float32Array(nv);for(let k=0;k<nv;k++)F[k]=Math.min(d2[k],r2)-cl;
+      if(sg>0){
+        const sn=sg/g,W=Math.max(1,Math.ceil(2.5*sn)),wt=[];let ws=0;
+        for(let q=-W;q<=W;q++){const v=Math.exp(-0.5*q*q/(sn*sn));wt.push(v);ws+=v;}
+        for(let q=0;q<wt.length;q++)wt[q]/=ws;
+        const T2=new Float32Array(nv);
+        for(let j=0;j<ny;j++)for(let i=0;i<nx;i++){let v=0;for(let q=-W;q<=W;q++){const ii=Math.min(nx-1,Math.max(0,i+q));v+=F[j*nx+ii]*wt[q+W];}T2[j*nx+i]=v;}
+        for(let j=0;j<ny;j++)for(let i=0;i<nx;i++){let v=0;for(let q=-W;q<=W;q++){const jj=Math.min(ny-1,Math.max(0,j+q));v+=T2[jj*nx+i]*wt[q+W];}F[j*nx+i]=v;}
+      }
+      const th=-0.6*sg;
+      restAt=function(x,y){
+        const fi=(x-bx0)/g,fj=(y-by0)/g,i=Math.floor(fi),j=Math.floor(fj);
+        if(i<0||j<0||i>=nx-1||j>=ny-1)return false;
+        const u=fi-i,v=fj-j,k=j*nx+i;
+        const f=(F[k]*(1-u)+F[k+1]*u)*(1-v)+(F[k+nx]*(1-u)+F[k+nx+1]*u)*v;
+        return f>=th;};
+      for(let k=0;k<nv;k++)if(inside[k]&&!(F[k]>=th))inside[k]=0;
+    }
+    diag.restEng=nEng;
+    const zPrev=zoneAt;
+    zoneAt=function(x,y){return (!zPrev||zPrev(x,y))&&restAt(x,y);};
   }
   // triangles : cellules dont les 4 nœuds ont une cote (diagonales alternées)
   const T=[];

@@ -1688,14 +1688,14 @@ function faoOpCardElement(setup,op,i){
     // des bandes oubliées. Bouchés, la boule passe par-dessus (src/89-fao-cretes.js).
     if(op.traj!=='parallel'){
       const gT=faoRow();
-      const cbT=document.createElement('input'); cbT.type='checkbox'; cbT.checked=+op.holeMax>0;
+      const cbT=document.createElement('input'); cbT.type='checkbox'; cbT.checked=faoHoleMax(op)>0; // V0.99.5 : coché par défaut
       cbT.title='Les trous de la zone (perçages, alésages…) sont traités comme bouchés : la boule passe par-dessus au niveau du fond, sans tourner autour ni y plonger. Les trous plus grands que le diamètre indiqué restent des bords de la zone.';
-      cbT.onchange=function(){ faoSnapshot('ignorer les trous'); if(cbT.checked)op.holeMax=10; else delete op.holeMax; faoChanged(); };
+      cbT.onchange=function(){ faoSnapshot('ignorer les trous'); op.holeMax=cbT.checked?10:0; faoChanged(); };
       gT.appendChild(cbT);
       gT.appendChild(faoLab('Ignorer les trous'));
-      if(+op.holeMax>0){
+      if(faoHoleMax(op)>0){
         gT.appendChild(faoLab('jusqu’à Ø'));
-        gT.appendChild(faoNumFx(op,'holeMax',+op.holeMax,function(v){ op.holeMax=Math.max(0.5,Math.min(500,v)); },44,1,
+        gT.appendChild(faoNumFx(op,'holeMax',faoHoleMax(op),function(v){ op.holeMax=Math.max(0.5,Math.min(500,v)); },44,1,
           'Diamètre maximal (mm) des trous ignorés. 10 mm par défaut.'));
         gT.appendChild(faoLab('mm'));
       }
