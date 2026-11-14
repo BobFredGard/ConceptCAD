@@ -158,7 +158,9 @@ function faoOpMovesKey(op,job){
     if(op&&op.type==='geofinish'&&op.traj==='scallop')dep=['cretes-fronts','trous-10',dep]; // V0.99.5 : trous ignorés par défaut
     // V0.99.6 : ébauche Contours — croisement des passes de paroi aux coupures, limite à 0,01 mm près :
     // seules ces ébauches sont à refaire (CACHE_VER inchangé)
-    if(op&&op.type==='rough3d'&&op.mode==='contours')dep=['contours-croise',dep];
+    if(op&&op.type==='rough3d'&&op.mode==='contours')dep=['contours-croise','couloirs',dep]; // V0.99.7 : couloirs étroits = chaînes exactes
+    // V0.99.7 : rampe le long d'une paroi reprise à la cote (Trochoïdal, Escargot, Contours)
+    if(op&&op.type==='rough3d'&&(op.mode==='escargot'||op.mode==='anneaux'||op.mode==='contours'))dep=['rampe-reprise',dep];
     // V0.99.0 : BRUT RESTANT — l'ébauche dépend des parcours des opérations qui la précèdent
     if(faoRestOn(op)){ const rd=faoRestDep(op,job); if(rd===null)return null; dep=dep?['restant',rd,dep]:['restant',rd];
       // V0.99.5 : crêtes constantes en brut restant = zone intérieure (plus de découpe après)

@@ -554,6 +554,21 @@ function faoEntryRows(rp,op,D){
     if(isFinite(v)&&v>0)op.entryR=v; else delete op.entryR;
   },44,0.1,
   'Rayon du cercle d\'entrée (mm) : le centre du cercle se place à ce rayon de l\'ancre, l\'arc arrive en tangence sur la passe. Défaut Ø/4 de l\'outil ; 0 = défaut.'));
+  // V0.99.7 (« régler les valeurs de rampe, d'hélice, de rayon d'entrée pour chaque opération ») :
+  // 0 = automatique (valeurs d'avant) ; lues pendant le calcul par faoEntryCfg / faoEntryCur
+  const set=function(k,lo,hi){return function(v){if(isFinite(v)&&v>=lo&&v<=hi)op[k]=v;else delete op[k];};};
+  const cur=function(k,lo,hi){const x=+op[k];return (isFinite(x)&&x>=lo&&x<=hi)?x:0;};
+  rp.appendChild(faoLab('Hélice : descente / tour'));
+  rp.appendChild(faoNum(cur('helixPas',0.05,50),set('helixPas',0.05,50),44,0.1,
+  'Descente de l\'hélice d\'entrée à chaque tour (mm). 0 = automatique : '+(+Math.max(0.5,dE*0.1).toFixed(2))+' mm (10 % du Ø, 0,5 mm au moins).'));
+  rp.appendChild(faoLab('Hélice : rayon maxi'));
+  rp.appendChild(faoNum(cur('helixR',0.1,500),set('helixR',0.1,500),44,0.1,
+  'Rayon maxi de l\'hélice d\'entrée (mm). Le logiciel prend la plus grande hélice qui tient dans la place libre ; ce réglage la limite (jamais plus grande que la place). 0 = automatique.'));
+  if(op&&op.type==='rough3d'){
+    rp.appendChild(faoLab('Rampe : pente maxi'));
+    rp.appendChild(faoNum(cur('rampAng',0.5,60),set('rampAng',0.5,60),44,0.5,
+    'Pente maxi des descentes en rampe (degrés), le long de la spirale ou d\'une paroi. 0 = automatique : 22° environ le long de la spirale, paliers de 2 mm le long d\'une paroi.'));
+  }
 }
 /* 2026-10-08-003 : infos de mode en menu CONTEXTUEL — la fiche reste lisible
    (les blocs d'aide « trop en place » ont été retirés) : clic droit sur le
