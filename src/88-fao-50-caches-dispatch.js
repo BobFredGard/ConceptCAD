@@ -156,6 +156,9 @@ function faoOpMovesKey(op,job){
     // V0.99.3 : crêtes constantes — tous les fronts (plus 12 au plus) : seules ces finitions
     // sont à refaire (CACHE_VER inchangé : les autres opérations gardent leurs parcours)
     if(op&&op.type==='geofinish'&&op.traj==='scallop')dep=['cretes-fronts','trous-10',dep]; // V0.99.5 : trous ignorés par défaut
+    // V0.99.6 : ébauche Contours — croisement des passes de paroi aux coupures, limite à 0,01 mm près :
+    // seules ces ébauches sont à refaire (CACHE_VER inchangé)
+    if(op&&op.type==='rough3d'&&op.mode==='contours')dep=['contours-croise',dep];
     // V0.99.0 : BRUT RESTANT — l'ébauche dépend des parcours des opérations qui la précèdent
     if(faoRestOn(op)){ const rd=faoRestDep(op,job); if(rd===null)return null; dep=dep?['restant',rd,dep]:['restant',rd];
       // V0.99.5 : crêtes constantes en brut restant = zone intérieure (plus de découpe après)
@@ -862,7 +865,10 @@ function* faoOpMovesIt0(op,job){
     const R=faoEffLimit(op,clipR*2);
     if(R)mv=faoClipMovesXY(mv,R,secu);
   }else if(lim&&(lim.mode==='chain'||lim.mode==='sketch')&&lim.loop&&lim.loop.length>=3&&mv.length){
-    mv=faoClipMovesPoly(mv,lim,clipR,secu,2);
+    // V0.99.6 : ébauche Contours — le générateur tient déjà la limite (zoneAt) ; le re-clip exact coupait
+    // des bouts de passe qui la dépassaient de quelques centièmes (coins de la limite) : une remontée
+    // + rapide à chaque fois pour un saut de 0,6 mm (SIRAP-14-002 : 20 → 13 remontées). 0,01 mm de jeu.
+    mv=faoClipMovesPoly(mv,lim,(op.type==='rough3d'&&op.mode==='contours')?clipR-0.01:clipR,secu,2);
   }
   if(lim2&&mv.length&&!zoneDone){
     if(lim2.mode==='rect'){

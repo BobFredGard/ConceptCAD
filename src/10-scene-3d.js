@@ -41,8 +41,8 @@ function buildScene(){
     renderer.setPixelRatio(Math.min(2,Math.max(1.25,dpr))); // arêtes nettes sur écran HiDPI
   }catch(e){}
   // intensités ×π : unités physiques de three ≥ r155, même éclairage qu'en r147
-  scene.add(new THREE.HemisphereLight(0xffffff,0x444444,0.75*Math.PI));
-  const key=new THREE.DirectionalLight(0xffffff,Math.PI); key.position.set(60,-40,120); scene.add(key);
+  viewHemi=new THREE.HemisphereLight(0xffffff,0x444444,0.75*Math.PI); scene.add(viewHemi);
+  viewKey=new THREE.DirectionalLight(0xffffff,Math.PI); viewKey.position.set(60,-40,120); scene.add(viewKey);
   try{if('environment' in scene)scene.environment=makeStudioEnv();}catch(e){} // reflets studio
   // 2026-10-16-017 : repère façon Fusion (point + 3 axes + 3 plans cliquables, taille constante à l'écran)
   axHelper=triadMake({name:'axHelper'}); scene.add(axHelper); scene.add(axHelper.userData.planeGroup); // plans = plans d'origine (œil de l'arbre) // X rouge → droite, Y vert → arrière, Z bleu → haut
@@ -581,6 +581,19 @@ function viewBasis(){
   }catch(e){return W;}
 }
 let _viewUpSig='0,0,1';
+/* V0.99.6 : L'ÉCLAIRAGE SUIT LE HAUT DE LA VUE (Z du posage / de l'opération en FAO), comme le sol
+   miroir : lampe principale, lumière d'ambiance, reflets studio, ambiance de rendu et lampe d'ombre
+   tournent de la rotation qui amène le Z monde sur ce haut (viewLightQ, identité hors FAO). */
+let viewHemi=null,viewKey=null;
+const viewLightQ=new THREE.Quaternion();
+function viewLightSync(U){
+  viewLightQ.setFromUnitVectors(new THREE.Vector3(0,0,1),U);
+  if(viewKey)viewKey.position.set(60,-40,120).applyQuaternion(viewLightQ);
+  if(viewHemi)viewHemi.position.set(0,1,0).applyQuaternion(viewLightQ); // position d'origine de three (DEFAULT_UP)
+  try{if(scene.environmentRotation)scene.environmentRotation.setFromQuaternion(viewLightQ);}catch(e){}
+  try{if(typeof vEnvS!=='undefined'&&vEnvS&&vEnvS.mats)vEnvS.mats.forEach(m=>{if(m.envMapRotation)m.envMapRotation.setFromQuaternion(viewLightQ);});}catch(e){}
+  try{if(typeof vEnvS!=='undefined'&&vEnvS)vEnvS.shSig=null;}catch(e){} // carte d'ombre à refaire
+}
 function viewControlsRebuild(){
   const t=controls.target.clone(),o={rot:controls.enableRotate,damp:controls.enableDamping,df:controls.dampingFactor,
     zs:controls.zoomSpeed,mb:controls.mouseButtons?Object.assign({},controls.mouseButtons):null,obj:controls.object};
@@ -606,6 +619,7 @@ function viewUpSync(){
   const off=camera.position.clone().sub(controls.target);
   if(off.lengthSq()>0&&Math.abs(off.clone().normalize().dot(U))>0.9999)camera.position.addScaledVector(new THREE.Vector3(1,-1,0).normalize(),off.length()*1e-3);
   viewControlsRebuild();
+  try{viewLightSync(U);}catch(e){}
   try{refreshMirror();}catch(e){}
 }
 const _msig={x:NaN,y:NaN,z:NaN,qx:NaN,qy:NaN,qz:NaN,qw:NaN,fov:NaN,aspect:NaN,zoom:NaN};

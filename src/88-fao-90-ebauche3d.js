@@ -2091,6 +2091,7 @@ function faoSpiralLevel(mesh,B,z,D,r,secu,zFrom,ae,entryMode,brutTop,zt,moves,op
           CC.forEach(function(Cc){for(let k=0;k<Cc.n;k++)Cc.zl[k]=zAt(Cc.P[k][0],Cc.P[k][1]);Cc.segZ=-2;Cc.segs=null;});
           return nc;};
         // chaînes de faces : la part qui longe le morceau c, coupée aux changements
+        const ovX=D/2; // V0.99.6 : croisement des morceaux de paroi (demi-diamètre)
         const splitFaces=function(c){if(!facesRun)return;const out=[];
           rem.forEach(function(ch){const P=ch.pts,n=P.length,m=ch.closed?n:n-1,Q=[];
             for(let i=0;i<m;i++){const a=P[i],e=P[(i+1)%n],L=Math.hypot(e[0]-a[0],e[1]-a[1]),k=Math.max(1,Math.ceil(L/1));
@@ -2116,11 +2117,24 @@ function faoSpiralLevel(mesh,B,z,D,r,secu,zFrom,ae,entryMode,brutTop,zt,moves,op
               i=j+1;}}
             if(L.every(function(v){return v===L[0];})){ch.zone=L[0]?c:-1;out.push(ch);return;}
             let st=0;if(ch.closed){while(st<L.length&&L[st]===L[(st+L.length-1)%L.length])st++;if(st>=L.length)st=0;}
-            let cur=[Q[st]],cz=L[st];
-            const fl=function(){if(cur.length>=2)out.push({pts:faoSimplifyPts(cur,0.01),closed:false,bb:faoPtsBB(cur),zone:cz?c:-1});};
-            for(let t=1;t<=Q.length-(ch.closed?0:1);t++){const k=(st+t)%Q.length;
-              if(L[k]!==cz){cur.push(Q[k]);fl();cur=[Q[k]];cz=L[k];}else cur.push(Q[k]);}
-            fl();});
+            // V0.99.6 : morceaux EXACTS (comme avant) + leurs PROLONGEMENTS le long de la paroi
+            // (pre : avant le début, post : après la fin, D/2 au plus, gardés au redécoupage).
+            // facesRun y fait un aller-retour à chaque bout : les deux passes qui se rejoignent
+            // se CROISENT sur la paroi — plus de lamelle de matière contre elle au croisement
+            // (SIRAP-14-002, rainure de 9 mm, D6 : « petits triangles »), sans changer ni
+            // l'ordre, ni les liaisons, ni les entrées.
+            const nQ=Q.length,T=nQ-(ch.closed?0:1),pcs=[];let a0=0,cz=L[st];
+            for(let t=1;t<=T;t++){const k=(st+t)%nQ;if(L[k]!==cz){pcs.push([a0,t,cz]);a0=t;cz=L[k];}}
+            pcs.push([a0,T,cz]);
+            const qt=function(t){return Q[((st+t)%nQ+nQ)%nQ];};
+            const ext=function(t,dir,lim){const o=[];let l=0;for(let s2=1;s2<=lim&&l<ovX;s2++){const u=qt(t+dir*(s2-1)),v=qt(t+dir*s2);l+=Math.hypot(u[0]-v[0],u[1]-v[1]);o.push(v);}return o;};
+            pcs.forEach(function(pc){const a=pc[0],b=pc[1],len=b-a;
+              const cur=[];for(let t=a;t<=b;t++)cur.push(qt(t));
+              if(cur.length<2)return;
+              const room=ch.closed?nQ-1-len:0;
+              const pre=ch.closed?ext(a,-1,Math.floor(room/2)):(a>0?ext(a,-1,a):(ch.pre||null));
+              const post=ch.closed?ext(b,1,Math.floor(room/2)):(b<T?ext(b,1,T-b):(ch.post||null));
+              out.push({pts:faoSimplifyPts(cur,0.01),closed:false,bb:faoPtsBB(cur),zone:pc[2]?c:-1,pre:pre&&pre.length?pre:null,post:post&&post.length?post:null});});});
           rem.length=0;out.forEach(function(e){if(e.pts.length>=2)rem.push(e);});};
         const uncN=function(){let n=0;for(let p=0;p<NN;p++)if(remv[p]&&!RG[p])n++;return n;};
         let lastU=-1;
@@ -2373,6 +2387,7 @@ function faoSpiralLevel(mesh,B,z,D,r,secu,zFrom,ae,entryMode,brutTop,zt,moves,op
   }
   // V0.98.0 : passe de faces appelable par zone (Contours : chaque zone est
   // finie — dedans, parois, contrôle — avant la suivante) ; pick = chaînes admises
+  const cutEnds=new Set(); // V0.99.6 : bouts des morceaux de paroi déjà usinés (croisement)
   facesRun=function(pick){
   while(rem.length){
     const P=moves.length?moves[moves.length-1]:null;
@@ -2430,8 +2445,19 @@ function faoSpiralLevel(mesh,B,z,D,r,secu,zFrom,ae,entryMode,brutTop,zt,moves,op
       }
       i0=nUse+1;
     }
+    // V0.99.6 : croisement aux coupures (morceaux de splitFaces) — aller-retour le long de la
+    // paroi au-delà de chaque bout, la passe repart du même point (ordre et liaisons inchangés)
+    // UN SEUL croisement par coupure, fait par la passe qui arrive en second : il se fait dans le
+    // déjà-vidé (le voisin est passé), jamais en pleine matière
+    const rv=!ch.closed&&seq!==ch.pts,xS=ch.closed?null:(rv?ch.post:ch.pre),xE=ch.closed?null:(rv?ch.pre:ch.post);
+    const eK=function(q){return Math.round(q[0]*1000)+','+Math.round(q[1]*1000);},kS=eK(seq[0]),kE=eK(seq[seq.length-1]);
+    const doS=xS&&cutEnds.has(kS),doE=xE&&cutEnds.has(kE);
+    if(!ch.closed){cutEnds.add(kS);cutEnds.add(kE);}
+    const across=function(X,bx,by){if(!X||!X.length)return;for(let q=0;q<X.length;q++)pushCut(X[q][0],X[q][1]);for(let q=X.length-2;q>=0;q--)pushCut(X[q][0],X[q][1]);pushCut(bx,by);};
+    if(i0===1&&doS)across(xS,sx,sy);
     for(let i=i0;i<seq.length;i++)pushCut(seq[i][0],seq[i][1]);
     if(ch.closed)pushCut(seq[0][0],seq[0][1]);
+    else if(doE){const e=seq[seq.length-1];across(xE,e[0],e[1]);}
   }
   };
   if(opt&&opt.snail)snailRings();
