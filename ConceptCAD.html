@@ -383,7 +383,7 @@ input[type=range]{accent-color:var(--primary);width:100%}
  * peut changer sans rien casser. CACHE_VER (parcours FAO) reste indépendant.
  */
 
-const APP_VER='V0.99.5';
+const APP_VER='V0.99.6';
 try{console.log('[ConceptCAD] version '+APP_VER);}catch(e){}
 try{var mfSv=document.getElementById('mfSplashVer');if(mfSv)mfSv.textContent=APP_VER;}catch(e){} // écran de démarrage
 
@@ -1203,8 +1203,8 @@ function buildScene(){
     renderer.setPixelRatio(Math.min(2,Math.max(1.25,dpr))); // arêtes nettes sur écran HiDPI
   }catch(e){}
   // intensités ×π : unités physiques de three ≥ r155, même éclairage qu'en r147
-  scene.add(new THREE.HemisphereLight(0xffffff,0x444444,0.75*Math.PI));
-  const key=new THREE.DirectionalLight(0xffffff,Math.PI); key.position.set(60,-40,120); scene.add(key);
+  viewHemi=new THREE.HemisphereLight(0xffffff,0x444444,0.75*Math.PI); scene.add(viewHemi);
+  viewKey=new THREE.DirectionalLight(0xffffff,Math.PI); viewKey.position.set(60,-40,120); scene.add(viewKey);
   try{if('environment' in scene)scene.environment=makeStudioEnv();}catch(e){} // reflets studio
   // 2026-10-16-017 : repère façon Fusion (point + 3 axes + 3 plans cliquables, taille constante à l'écran)
   axHelper=triadMake({name:'axHelper'}); scene.add(axHelper); scene.add(axHelper.userData.planeGroup); // plans = plans d'origine (œil de l'arbre) // X rouge → droite, Y vert → arrière, Z bleu → haut
@@ -1743,6 +1743,19 @@ function viewBasis(){
   }catch(e){return W;}
 }
 let _viewUpSig='0,0,1';
+/* V0.99.6 : L'ÉCLAIRAGE SUIT LE HAUT DE LA VUE (Z du posage / de l'opération en FAO), comme le sol
+   miroir : lampe principale, lumière d'ambiance, reflets studio, ambiance de rendu et lampe d'ombre
+   tournent de la rotation qui amène le Z monde sur ce haut (viewLightQ, identité hors FAO). */
+let viewHemi=null,viewKey=null;
+const viewLightQ=new THREE.Quaternion();
+function viewLightSync(U){
+  viewLightQ.setFromUnitVectors(new THREE.Vector3(0,0,1),U);
+  if(viewKey)viewKey.position.set(60,-40,120).applyQuaternion(viewLightQ);
+  if(viewHemi)viewHemi.position.set(0,1,0).applyQuaternion(viewLightQ); // position d'origine de three (DEFAULT_UP)
+  try{if(scene.environmentRotation)scene.environmentRotation.setFromQuaternion(viewLightQ);}catch(e){}
+  try{if(typeof vEnvS!=='undefined'&&vEnvS&&vEnvS.mats)vEnvS.mats.forEach(m=>{if(m.envMapRotation)m.envMapRotation.setFromQuaternion(viewLightQ);});}catch(e){}
+  try{if(typeof vEnvS!=='undefined'&&vEnvS)vEnvS.shSig=null;}catch(e){} // carte d'ombre à refaire
+}
 function viewControlsRebuild(){
   const t=controls.target.clone(),o={rot:controls.enableRotate,damp:controls.enableDamping,df:controls.dampingFactor,
     zs:controls.zoomSpeed,mb:controls.mouseButtons?Object.assign({},controls.mouseButtons):null,obj:controls.object};
@@ -1768,6 +1781,7 @@ function viewUpSync(){
   const off=camera.position.clone().sub(controls.target);
   if(off.lengthSq()>0&&Math.abs(off.clone().normalize().dot(U))>0.9999)camera.position.addScaledVector(new THREE.Vector3(1,-1,0).normalize(),off.length()*1e-3);
   viewControlsRebuild();
+  try{viewLightSync(U);}catch(e){}
   try{refreshMirror();}catch(e){}
 }
 const _msig={x:NaN,y:NaN,z:NaN,qx:NaN,qy:NaN,qz:NaN,qw:NaN,fov:NaN,aspect:NaN,zoom:NaN};
@@ -49685,6 +49699,9 @@ function faoOpMovesKey(op,job){
     // V0.99.3 : crêtes constantes — tous les fronts (plus 12 au plus) : seules ces finitions
     // sont à refaire (CACHE_VER inchangé : les autres opérations gardent leurs parcours)
     if(op&&op.type==='geofinish'&&op.traj==='scallop')dep=['cretes-fronts','trous-10',dep]; // V0.99.5 : trous ignorés par défaut
+    // V0.99.6 : ébauche Contours — croisement des passes de paroi aux coupures, limite à 0,01 mm près :
+    // seules ces ébauches sont à refaire (CACHE_VER inchangé)
+    if(op&&op.type==='rough3d'&&op.mode==='contours')dep=['contours-croise',dep];
     // V0.99.0 : BRUT RESTANT — l'ébauche dépend des parcours des opérations qui la précèdent
     if(faoRestOn(op)){ const rd=faoRestDep(op,job); if(rd===null)return null; dep=dep?['restant',rd,dep]:['restant',rd];
       // V0.99.5 : crêtes constantes en brut restant = zone intérieure (plus de découpe après)
@@ -50391,7 +50408,10 @@ function* faoOpMovesIt0(op,job){
     const R=faoEffLimit(op,clipR*2);
     if(R)mv=faoClipMovesXY(mv,R,secu);
   }else if(lim&&(lim.mode==='chain'||lim.mode==='sketch')&&lim.loop&&lim.loop.length>=3&&mv.length){
-    mv=faoClipMovesPoly(mv,lim,clipR,secu,2);
+    // V0.99.6 : ébauche Contours — le générateur tient déjà la limite (zoneAt) ; le re-clip exact coupait
+    // des bouts de passe qui la dépassaient de quelques centièmes (coins de la limite) : une remontée
+    // + rapide à chaque fois pour un saut de 0,6 mm (SIRAP-14-002 : 20 → 13 remontées). 0,01 mm de jeu.
+    mv=faoClipMovesPoly(mv,lim,(op.type==='rough3d'&&op.mode==='contours')?clipR-0.01:clipR,secu,2);
   }
   if(lim2&&mv.length&&!zoneDone){
     if(lim2.mode==='rect'){
@@ -61072,6 +61092,7 @@ function faoSpiralLevel(mesh,B,z,D,r,secu,zFrom,ae,entryMode,brutTop,zt,moves,op
           CC.forEach(function(Cc){for(let k=0;k<Cc.n;k++)Cc.zl[k]=zAt(Cc.P[k][0],Cc.P[k][1]);Cc.segZ=-2;Cc.segs=null;});
           return nc;};
         // chaînes de faces : la part qui longe le morceau c, coupée aux changements
+        const ovX=D/2; // V0.99.6 : croisement des morceaux de paroi (demi-diamètre)
         const splitFaces=function(c){if(!facesRun)return;const out=[];
           rem.forEach(function(ch){const P=ch.pts,n=P.length,m=ch.closed?n:n-1,Q=[];
             for(let i=0;i<m;i++){const a=P[i],e=P[(i+1)%n],L=Math.hypot(e[0]-a[0],e[1]-a[1]),k=Math.max(1,Math.ceil(L/1));
@@ -61097,11 +61118,24 @@ function faoSpiralLevel(mesh,B,z,D,r,secu,zFrom,ae,entryMode,brutTop,zt,moves,op
               i=j+1;}}
             if(L.every(function(v){return v===L[0];})){ch.zone=L[0]?c:-1;out.push(ch);return;}
             let st=0;if(ch.closed){while(st<L.length&&L[st]===L[(st+L.length-1)%L.length])st++;if(st>=L.length)st=0;}
-            let cur=[Q[st]],cz=L[st];
-            const fl=function(){if(cur.length>=2)out.push({pts:faoSimplifyPts(cur,0.01),closed:false,bb:faoPtsBB(cur),zone:cz?c:-1});};
-            for(let t=1;t<=Q.length-(ch.closed?0:1);t++){const k=(st+t)%Q.length;
-              if(L[k]!==cz){cur.push(Q[k]);fl();cur=[Q[k]];cz=L[k];}else cur.push(Q[k]);}
-            fl();});
+            // V0.99.6 : morceaux EXACTS (comme avant) + leurs PROLONGEMENTS le long de la paroi
+            // (pre : avant le début, post : après la fin, D/2 au plus, gardés au redécoupage).
+            // facesRun y fait un aller-retour à chaque bout : les deux passes qui se rejoignent
+            // se CROISENT sur la paroi — plus de lamelle de matière contre elle au croisement
+            // (SIRAP-14-002, rainure de 9 mm, D6 : « petits triangles »), sans changer ni
+            // l'ordre, ni les liaisons, ni les entrées.
+            const nQ=Q.length,T=nQ-(ch.closed?0:1),pcs=[];let a0=0,cz=L[st];
+            for(let t=1;t<=T;t++){const k=(st+t)%nQ;if(L[k]!==cz){pcs.push([a0,t,cz]);a0=t;cz=L[k];}}
+            pcs.push([a0,T,cz]);
+            const qt=function(t){return Q[((st+t)%nQ+nQ)%nQ];};
+            const ext=function(t,dir,lim){const o=[];let l=0;for(let s2=1;s2<=lim&&l<ovX;s2++){const u=qt(t+dir*(s2-1)),v=qt(t+dir*s2);l+=Math.hypot(u[0]-v[0],u[1]-v[1]);o.push(v);}return o;};
+            pcs.forEach(function(pc){const a=pc[0],b=pc[1],len=b-a;
+              const cur=[];for(let t=a;t<=b;t++)cur.push(qt(t));
+              if(cur.length<2)return;
+              const room=ch.closed?nQ-1-len:0;
+              const pre=ch.closed?ext(a,-1,Math.floor(room/2)):(a>0?ext(a,-1,a):(ch.pre||null));
+              const post=ch.closed?ext(b,1,Math.floor(room/2)):(b<T?ext(b,1,T-b):(ch.post||null));
+              out.push({pts:faoSimplifyPts(cur,0.01),closed:false,bb:faoPtsBB(cur),zone:pc[2]?c:-1,pre:pre&&pre.length?pre:null,post:post&&post.length?post:null});});});
           rem.length=0;out.forEach(function(e){if(e.pts.length>=2)rem.push(e);});};
         const uncN=function(){let n=0;for(let p=0;p<NN;p++)if(remv[p]&&!RG[p])n++;return n;};
         let lastU=-1;
@@ -61354,6 +61388,7 @@ function faoSpiralLevel(mesh,B,z,D,r,secu,zFrom,ae,entryMode,brutTop,zt,moves,op
   }
   // V0.98.0 : passe de faces appelable par zone (Contours : chaque zone est
   // finie — dedans, parois, contrôle — avant la suivante) ; pick = chaînes admises
+  const cutEnds=new Set(); // V0.99.6 : bouts des morceaux de paroi déjà usinés (croisement)
   facesRun=function(pick){
   while(rem.length){
     const P=moves.length?moves[moves.length-1]:null;
@@ -61411,8 +61446,19 @@ function faoSpiralLevel(mesh,B,z,D,r,secu,zFrom,ae,entryMode,brutTop,zt,moves,op
       }
       i0=nUse+1;
     }
+    // V0.99.6 : croisement aux coupures (morceaux de splitFaces) — aller-retour le long de la
+    // paroi au-delà de chaque bout, la passe repart du même point (ordre et liaisons inchangés)
+    // UN SEUL croisement par coupure, fait par la passe qui arrive en second : il se fait dans le
+    // déjà-vidé (le voisin est passé), jamais en pleine matière
+    const rv=!ch.closed&&seq!==ch.pts,xS=ch.closed?null:(rv?ch.post:ch.pre),xE=ch.closed?null:(rv?ch.pre:ch.post);
+    const eK=function(q){return Math.round(q[0]*1000)+','+Math.round(q[1]*1000);},kS=eK(seq[0]),kE=eK(seq[seq.length-1]);
+    const doS=xS&&cutEnds.has(kS),doE=xE&&cutEnds.has(kE);
+    if(!ch.closed){cutEnds.add(kS);cutEnds.add(kE);}
+    const across=function(X,bx,by){if(!X||!X.length)return;for(let q=0;q<X.length;q++)pushCut(X[q][0],X[q][1]);for(let q=X.length-2;q>=0;q--)pushCut(X[q][0],X[q][1]);pushCut(bx,by);};
+    if(i0===1&&doS)across(xS,sx,sy);
     for(let i=i0;i<seq.length;i++)pushCut(seq[i][0],seq[i][1]);
     if(ch.closed)pushCut(seq[0][0],seq[0][1]);
+    else if(doE){const e=seq[seq.length-1];across(xE,e[0],e[1]);}
   }
   };
   if(opt&&opt.snail)snailRings();
@@ -95224,11 +95270,13 @@ function vEnvPatch(m){
   };
   m.customProgramCacheKey=function(){return 'vEnvPhoto2';};
   m.envMap=vEnvS.rt.texture;m.envMapIntensity=1;
+  if(m.envMapRotation&&typeof viewLightQ!=='undefined'){m.userData.vEnv.rot=m.envMapRotation.clone();m.envMapRotation.setFromQuaternion(viewLightQ);} // V0.99.6 : reflets tournés avec le haut de la vue
   m.needsUpdate=true;vEnvS.mats.add(m);
 }
 function vEnvUnpatch(m){
   const s=m&&m.userData&&m.userData.vEnv;if(!s)return;
   m.onBeforeCompile=s.obc;m.customProgramCacheKey=s.key;m.envMap=s.env;m.envMapIntensity=s.ei;
+  if(s.rot&&m.envMapRotation)m.envMapRotation.copy(s.rot);
   delete m.userData.vEnv;m.needsUpdate=true;
   // three garde le programme compilé par matériau et, en le reprenant au retour en ambiance, n'y
   // rebranche PAS nos uniformes (couleur, matériau figés jusqu'au rechargement) : on l'oublie
@@ -95400,7 +95448,9 @@ function vEnvTick(){
   else{fl.position.set(_vEnvC.x,_vEnvC.y,box.min.z-R*0.002);fl.quaternion.identity();}
   const k=envW?vEnvS.key:[-34,59]; // environnement actuel : direction de la lampe de la vue (10-scene-3d)
   const a=k[0]*Math.PI/180,e=k[1]*Math.PI/180,D=R*4;
-  sun.position.set(_vEnvC.x+D*Math.cos(e)*Math.cos(a),_vEnvC.y+D*Math.cos(e)*Math.sin(a),_vEnvC.z+D*Math.sin(e));
+  sun.position.set(D*Math.cos(e)*Math.cos(a),D*Math.cos(e)*Math.sin(a),D*Math.sin(e));
+  if(typeof viewLightQ!=='undefined')sun.position.applyQuaternion(viewLightQ); // V0.99.6 : la lampe suit le haut de la vue (Z du posage)
+  sun.position.add(_vEnvC);
   sun.target.position.copy(_vEnvC);sun.target.updateMatrixWorld();
   const sc=sun.shadow.camera;
   if(sc.right!==R*1.6||sc.far!==R*8){sc.left=-R*1.6;sc.right=R*1.6;sc.top=R*1.6;sc.bottom=-R*1.6;sc.near=R*0.5;sc.far=R*8;sc.updateProjectionMatrix();}

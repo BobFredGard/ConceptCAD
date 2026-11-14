@@ -138,11 +138,13 @@ function vEnvPatch(m){
   };
   m.customProgramCacheKey=function(){return 'vEnvPhoto2';};
   m.envMap=vEnvS.rt.texture;m.envMapIntensity=1;
+  if(m.envMapRotation&&typeof viewLightQ!=='undefined'){m.userData.vEnv.rot=m.envMapRotation.clone();m.envMapRotation.setFromQuaternion(viewLightQ);} // V0.99.6 : reflets tournés avec le haut de la vue
   m.needsUpdate=true;vEnvS.mats.add(m);
 }
 function vEnvUnpatch(m){
   const s=m&&m.userData&&m.userData.vEnv;if(!s)return;
   m.onBeforeCompile=s.obc;m.customProgramCacheKey=s.key;m.envMap=s.env;m.envMapIntensity=s.ei;
+  if(s.rot&&m.envMapRotation)m.envMapRotation.copy(s.rot);
   delete m.userData.vEnv;m.needsUpdate=true;
   // three garde le programme compilé par matériau et, en le reprenant au retour en ambiance, n'y
   // rebranche PAS nos uniformes (couleur, matériau figés jusqu'au rechargement) : on l'oublie
@@ -314,7 +316,9 @@ function vEnvTick(){
   else{fl.position.set(_vEnvC.x,_vEnvC.y,box.min.z-R*0.002);fl.quaternion.identity();}
   const k=envW?vEnvS.key:[-34,59]; // environnement actuel : direction de la lampe de la vue (10-scene-3d)
   const a=k[0]*Math.PI/180,e=k[1]*Math.PI/180,D=R*4;
-  sun.position.set(_vEnvC.x+D*Math.cos(e)*Math.cos(a),_vEnvC.y+D*Math.cos(e)*Math.sin(a),_vEnvC.z+D*Math.sin(e));
+  sun.position.set(D*Math.cos(e)*Math.cos(a),D*Math.cos(e)*Math.sin(a),D*Math.sin(e));
+  if(typeof viewLightQ!=='undefined')sun.position.applyQuaternion(viewLightQ); // V0.99.6 : la lampe suit le haut de la vue (Z du posage)
+  sun.position.add(_vEnvC);
   sun.target.position.copy(_vEnvC);sun.target.updateMatrixWorld();
   const sc=sun.shadow.camera;
   if(sc.right!==R*1.6||sc.far!==R*8){sc.left=-R*1.6;sc.right=R*1.6;sc.top=R*1.6;sc.bottom=-R*1.6;sc.near=R*0.5;sc.far=R*8;sc.updateProjectionMatrix();}
