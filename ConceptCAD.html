@@ -394,7 +394,7 @@ input[type=range]{accent-color:var(--primary);width:100%}
  * peut changer sans rien casser. CACHE_VER (parcours FAO) reste indépendant.
  */
 
-const APP_VER='V0.99.14';
+const APP_VER='V0.99.15';
 try{console.log('[ConceptCAD] version '+APP_VER);}catch(e){}
 try{var mfSv=document.getElementById('mfSplashVer');if(mfSv)mfSv.textContent=APP_VER;}catch(e){} // écran de démarrage
 
@@ -17385,7 +17385,9 @@ async function asmCacheFlush(){
     if(c._snap!==p.snap)return; // remplacé depuis : la capture suivante est en attente
     let v=null;try{v=asmCachePack(p.snap);}catch(e){v=null;}
     if(!v)return;
-    v.v=ASM_CACHE_V;v.at=Date.now();puts[p.key]=v;keys.push(p.key);
+    v.v=ASM_CACHE_V;v.at=Date.now();
+    if(c._snapG&&c._snapG.h===p.snap.hash&&asmSnapGeomOK(c._snapG.g))v.snapG=c._snapG.g; // faces d'accroche (V0.99.15)
+    puts[p.key]=v;keys.push(p.key);
     if(p.raw){puts[p.raw]={v:ASM_CACHE_V,alias:p.key};keys.push(p.raw);}
   });
   asmCachePend.clear();
@@ -17427,10 +17429,46 @@ async function asmCacheFill(list){
     let s;try{s=asmCacheUnpack(v,docHashOf(c.doc));}catch(e){return;}
     if(c._snap)asmSnapFree(c._snap);
     c._snap=s;delete c._stale;
+    // V0.99.15 : faces d'accroche gardées avec l'image — les alignements sur ce composant se
+    // relisent sans rejouer le composant (asmSnapGeomOf : 2 × 8 s sur un vrai assemblage)
+    if(asmSnapGeomOK(v.snapG))c._snapG={h:s.hash,g:v.snapG};else delete c._snapG;
     idx[key]=Date.now();n++;
   });
   if(n){try{await asmCacheWrite({'asnap:index':idx},[]);}catch(e){}}
   return n;
+}
+/* ── faces d'accroche gardées avec l'image (V0.99.15) ──
+   Un assemblage dont des occurrences sont alignées sur des POINTS D'ACCROCHE (48) relit, à
+   l'ouverture, les faces exactes des composants visés (asmSnapSync → asmSnapGeomOf). Servis par le
+   cache, ces composants n'ont pas de forme exacte en mémoire : chacun était rejoué en entier, interface
+   figée (2 pièces d'une centaine de fonctions : 15 s à chaque ouverture). Ces faces (données pures :
+   type, centre, normale, rectangle, arêtes) sont donc rangées dans l'entrée de l'image, sous la même
+   clé : servies avec elle, valables tant qu'elle l'est. Contenu venu d'un fichier : vérifié. */
+function asmSnapGeomOK(g){
+  const v3=a=>Array.isArray(a)&&a.length===3&&a.every(x=>typeof x==='number'&&isFinite(x));
+  const num=x=>typeof x==='number'&&isFinite(x);
+  try{
+    if(!g||typeof g!=='object'||!Array.isArray(g.faces))return false;
+    return g.faces.every(F=>F&&v3(F.c)&&v3(F.n)&&Array.isArray(F.edges)&&
+      (F.k==='plane'?v3(F.x)&&v3(F.y)&&Array.isArray(F.rect)&&F.rect.length===4&&F.rect.every(num)
+        :F.k==='cyl'?v3(F.l)&&v3(F.x)&&num(F.r)&&Array.isArray(F.t)&&F.t.length===2&&F.t.every(num):false)&&
+      F.edges.every(e=>e&&(e.k==='line'?v3(e.p0)&&v3(e.p1)&&v3(e.m)&&(e.d===null||v3(e.d))
+        :e.k==='circ'?v3(e.c)&&v3(e.n)&&v3(e.x)&&num(e.r):e.k==='other')));
+  }catch(e){return false;}
+}
+async function asmCacheSnapGSave(c,g){
+  // Faces d'accroche calculées après l'écriture de l'image : ajoutées à son entrée
+  if(!c||!c.doc||!c._snap||!c._snap.exact||!asmCacheIdbOK()||!asmSnapGeomOK(g))return false;
+  const p=asmCachePend.get(c);if(p&&p.snap===c._snap)return false; // image pas encore écrite : asmCacheFlush les prend
+  const key=asmCacheKey(c.doc);if(!key)return false;
+  let got;try{got=await asmCacheRead([key]);}catch(e){return false;}
+  let k=key,v=got[key];
+  if(v&&v.v===ASM_CACHE_V&&typeof v.alias==='string'){k=v.alias;try{v=(await asmCacheRead([k]))[k];}catch(e){return false;}}
+  if(!v||v.v!==ASM_CACHE_V||!Array.isArray(v.items)||v.snapG)return false;
+  if((v.hash||'')!==(c._snap.hash||'')||!c._snapG||c._snapG.g!==g)return false; // autre image entre-temps
+  v.snapG=g;
+  try{await asmCacheWrite({[k]:v},[]);}catch(e){return false;}
+  return true;
 }
 /* ── images dans le fichier (option asm.img) ── */
 const ASM_CACHE_TA={f32:Float32Array,u32:Uint32Array,u16:Uint16Array,u8:Uint8Array};
@@ -19626,6 +19664,7 @@ function asmSnapGeomOf(c){
   let g=null;
   try{g=asmSnapExtract(asmExactOfQuiet(c).map(b=>b.shape));}catch(e){g=null;}
   c._snapG={h:c._snap.hash,g};
+  if(g&&c._snap.exact){try{asmCacheSnapGSave(c,g).catch(()=>{});}catch(e){}} // gardées pour la prochaine ouverture (47-assemblage-cache)
   return g;
 }
 function asmSnapFrame(cid,sn){
