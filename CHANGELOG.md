@@ -8,7 +8,7 @@ sont sorties le 2026-09-30j.
 Code dans `src/` · livrable `fusion_mvp.html` (généré par `build.js`) · architecture et
 garde-fous en tête de `src/00-entete-et-outils.js`.
 
-**703 versions**, de `2026-09-28b` à `V0.99.16` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
+**704 versions**, de `2026-09-28b` à `V0.99.17` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
 comme dans le fichier d'origine.
 
 ---
@@ -7862,3 +7862,13 @@ Cavité Usinage, après l'ébauche D25, la reprise D10 et une finition boule D12
 - **Ouverture d'un assemblage** : la pose des formes importées des composants (`importRestorePending({sansRejeu})`, avant `asmAfterLoad`) reconstruisait tous les instantanés AVANT la lecture des images du fichier et du poste — défaut présent depuis V0.94.6 : chaque composant rejoué en entier à la première ouverture.
 
 **Test** : `piece-gardee.spec.cjs` (image dans le fichier : servie sans rejeu complet, identique au calcul — ⚠ compris —, contrôle bon, rien rangé sur le poste ; document modifié : recalcul). Mesures, navigateur vierge, image dans le fichier : cavité 1,4 → 0,5 s ; pièce de 100 fonctions 10,3 → 0,6 s ; grosse plaque 21,7 → 6,4 s (puis contrôle de fond par tranches de 3 s au plus, en pause dès que la souris bouge). Assemblage enregistré avec ses images, poste vierge : 32 s figées → 1,6 s ; composant lié relu de son fichier avec image : servi sans rejeu (16 s → 3 à 6 s). Fichiers plus lourds (gzip) : +0,4 Mo à +5 Mo selon la pièce. `test_composants_cache` : option d'office. CACHE_VER et FORMES_VER inchangés.
+
+## V0.99.17 - G-code : choisir où enregistrer le programme
+
+**Demande de Fred** : « FAO : G-Code -> il me faut une fenêtre pour définir où je sauvegarde mon fichier ».
+
+**Cause** : `faoExportSetups` téléchargeait le programme (lien `download`), qui partait d'office dans le dossier Téléchargements.
+
+**Correctif** : `faoGcodeSave` (`src/88-fao-82-posage-menu.js`) — un programme : fenêtre « Enregistrer sous » (`showSaveFilePicker`, nom proposé, type `.mpf`/`.nc`… selon le post) ; plusieurs posages : choix du dossier (`showDirectoryPicker`), un fichier par posage. Le sélecteur porte l'identifiant `ccgcode` : le navigateur repropose le dernier dossier choisi. Annuler = « export du G-code annulé ». Sans sélecteur (Firefox, appel sans clic, `?telecharger`) : téléchargement comme avant (`faoGcodeDownload`).
+
+**Test** : `test_fao_posage_menu` (repli téléchargement inchangé) ; essai dans la page avec sélecteurs simulés : un fichier écrit sous le nom choisi, deux fichiers dans le dossier choisi, annulation, repli sans clic. CACHE_VER et FORMES_VER inchangés.

@@ -394,7 +394,7 @@ input[type=range]{accent-color:var(--primary);width:100%}
  * peut changer sans rien casser. CACHE_VER (parcours FAO) reste indépendant.
  */
 
-const APP_VER='V0.99.16';
+const APP_VER='V0.99.17';
 try{console.log('[ConceptCAD] version '+APP_VER);}catch(e){}
 try{var mfSv=document.getElementById('mfSplashVer');if(mfSv)mfSv.textContent=APP_VER;}catch(e){} // écran de démarrage
 
@@ -59239,6 +59239,26 @@ function faoExportSetups(list){
       if(p.warns&&p.warns.length)warns.push(s.name+' : '+p.warns.join(' ; '));
     });
   }finally{ r.activeSetupId=keep; }
+  const wtxt=warns.length?(' ⚠ '+warns.join(' — ')):'';
+  const msg=function(where){
+    try{
+      faceEl.textContent='FAO : '+(files.length>1?(files.length+' programmes exportés'+(where?(' dans « '+where+' »'):'')+' : '):'')
+        +files.map(function(f){ return f.name+(files.length>1?'':(' enregistré ('+f.code.split('\n').length+' blocs)')); }).join(', ')
+        +wtxt;
+    }catch(e){}
+  };
+  try{ if(typeof window!=='undefined')window.faoLastExport=files; }catch(e){}
+  // V0.99.17 : fenêtre « Enregistrer sous » (1 programme) ou choix du dossier (plusieurs) ;
+  // le dossier choisi est retenu d'une fois sur l'autre (id du sélecteur). Sans sélecteur
+  // (Firefox, appel sans clic) : téléchargement comme avant.
+  faoGcodeSave(files).then(function(r){
+    if(r==='abort'){ try{ faceEl.textContent='FAO : export du G-code annulé.'; }catch(e){} return; }
+    if(r==='dl')faoGcodeDownload(files);
+    msg(r&&r.dir);
+  });
+  return files.length;
+}
+function faoGcodeDownload(files){
   files.forEach(function(f,i){
     // le 1er tout de suite, les suivants décalés : un navigateur refuse plusieurs
     // téléchargements dans le même instant
@@ -59252,13 +59272,33 @@ function faoExportSetups(list){
     };
     if(i===0)go(); else setTimeout(go,i*350);
   });
+}
+async function faoGcodeSave(files){
+  // 'dl' = repli téléchargement ; 'abort' = annulé par l'utilisateur ; {dir} = écrit.
+  const w=typeof window!=='undefined'?window:null;
+  if(!w||!files.length)return 'dl';
+  try{ if(/[?&]telecharger\b/.test(location.search))return 'dl'; }catch(e){}
+  const abort=function(e){ return e&&e.name==='AbortError'; };
+  const write=async function(h,code){ const s=await h.createWritable(); await s.write(code); await s.close(); };
   try{
-    faceEl.textContent='FAO : '+(files.length>1?(files.length+' programmes exportés : '):'')
-      +files.map(function(f){ return f.name+(files.length>1?'':(' exporté ('+f.code.split('\n').length+' blocs)')); }).join(', ')
-      +(warns.length?(' ⚠ '+warns.join(' — ')):'');
-  }catch(e){}
-  try{ if(typeof window!=='undefined')window.faoLastExport=files; }catch(e){}
-  return files.length;
+    if(files.length===1&&typeof w.showSaveFilePicker==='function'){
+      const f=files[0], ext=(f.name.split('.').pop()||'nc');
+      const h=await w.showSaveFilePicker({id:'ccgcode',startIn:'documents',suggestedName:f.name,
+        types:[{description:'Programme G-code (.'+ext+')',accept:{'text/plain':['.'+ext]}}]});
+      await write(h,f.code);
+      f.name=h.name;
+      return {dir:''};
+    }
+    if(files.length>1&&typeof w.showDirectoryPicker==='function'){
+      const d=await w.showDirectoryPicker({id:'ccgcode',startIn:'documents',mode:'readwrite'});
+      for(const f of files){ await write(await d.getFileHandle(f.name,{create:true}),f.code); }
+      return {dir:d.name};
+    }
+  }catch(e){
+    if(abort(e))return 'abort';
+    // pas de clic (SecurityError), droit refusé… : téléchargement
+  }
+  return 'dl';
 }
 function faoExportSetup(id){
   try{
