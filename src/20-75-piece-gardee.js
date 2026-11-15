@@ -271,6 +271,25 @@ function pcPerimee(){
   try{builtVersion=-1;rebuild();}catch(e){}
   try{pcEcrireSoon();}catch(e){}
 }
+/* ── V0.99.5 : le rejeu de fond attend que la vue soit au repos ──
+   Une étape du rejeu (une fonction) bloque la page de 50 à 600 ms : la vue saccadait pendant les
+   ~7 s qui suivent l'ouverture d'une pièce gardée (plaque SIRAP-14-003 : 55 blocages). Le rejeu
+   n'avance donc que si la souris (survol compris), la molette et le clavier sont immobiles depuis PC_CALME ms (bouton de souris
+   enfoncé = jamais au repos). Au pire, une étape commencée juste avant le geste le retarde. */
+const PC_CALME=900;
+let pcMainT=-1e9,pcMainBas=0;
+function pcMain(){pcMainT=performance.now();}
+try{
+  if(typeof window!=='undefined'&&window.addEventListener){
+    window.addEventListener('pointerdown',()=>{pcMainBas++;pcMain();},true);
+    const leve=()=>{pcMainBas=0;pcMain();};
+    window.addEventListener('pointerup',leve,true);window.addEventListener('pointercancel',leve,true);window.addEventListener('blur',leve);
+    window.addEventListener('pointermove',pcMain,{capture:true,passive:true}); // survol compris : la surbrillance saccadait aussi
+    window.addEventListener('wheel',pcMain,{capture:true,passive:true});
+    window.addEventListener('keydown',pcMain,true);
+  }
+}catch(e){}
+function pcCalme(){return !pcMainBas&&performance.now()-pcMainT>PC_CALME;}
 /* ── après une pièce servie : points de contrôle remplis en fond ── */
 function pcApresServi(){
   if(pcChauffe)return;
@@ -291,6 +310,7 @@ async function pcChauffer(){
     for(;;){
       if(stale()){try{g.return();}catch(e){}return false;}
       if(rebuildDepth||(typeof regenRun!=='undefined'&&regenRun)){await new Promise(r=>setTimeout(r,200));continue;}
+      if(!pcCalme()){await new Promise(r=>setTimeout(r,150));continue;} // V0.99.5 : vue en mouvement
       let r;const skip0=occThreadSkip;
       try{occThreadSkip=true;r=g.next();}finally{occThreadSkip=skip0;}
       if(r.done){FR=r.value;break;}
@@ -299,6 +319,7 @@ async function pcChauffer(){
     // V0.96.3 : la pièce relue est-elle bien celle que le rejeu d'aujourd'hui donne ?
     // Seulement si rien n'a bougé depuis le départ : même document, mêmes fonctions (un fichier en cours
     // d'ouverture vide puis remplit le MÊME document sans changer sa version), affichage à jour.
+    while(!pcCalme()&&!stale())await new Promise(r=>setTimeout(r,150)); // contrôle (~0,5 s) : vue au repos aussi
     let memes=false;try{memes=!stale()&&!rebuildDepth&&doc.features.length>0&&pcFonctions()===f1&&buildKeyUpToDate();}catch(e){memes=false;}
     const v=memes?pcVerifie(FR):null;
     if(v===true)pcVerif.ok++;
