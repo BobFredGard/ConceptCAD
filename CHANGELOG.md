@@ -8,7 +8,7 @@ sont sorties le 2026-09-30j.
 Code dans `src/` · livrable `fusion_mvp.html` (généré par `build.js`) · architecture et
 garde-fous en tête de `src/00-entete-et-outils.js`.
 
-**700 versions**, de `2026-09-28b` à `V0.99.13` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
+**701 versions**, de `2026-09-28b` à `V0.99.14` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
 comme dans le fichier d'origine.
 
 ---
@@ -7829,3 +7829,13 @@ Cavité Usinage, après l'ébauche D25, la reprise D10 et une finition boule D12
 **Correctif** : le côté de la matière est lu sur la face elle-même — sens du repère du cylindre (`Position().Direct()`) et orientation de la face ensemble (direct + FORWARD = normale vers l'extérieur = pion) → un vote par face ; tronçon aux faces d'accord : leur vote décide ; désaccord ou face illisible : classification comme avant. `?sansvote` (`faoHoleVoteOff`) redonne l'ancien tri. Corrige aussi un défaut de l'ancien tri : sur un composé de plusieurs solides, le classificateur ne voyait que le premier (Griffe : lamages du 2e corps ignorés dans les repères de côté ; assemblage STEP MERLIN).
 
 **Test** : `test_fao_trous_vote` (Perçages, Axe, Test Répétition Courbe, Support Pédale : mêmes trous qu'avant dans 6 repères, aucune classification ; Griffe : trous d'avant + lamages du 2e corps). Comparaison sur 23 pièces (Exemples, copies SIRAP-14) dans 6 repères : 1 446 tronçons, même verdict partout sauf Griffe ; contrôle local (matière de part et d'autre de chaque paroi cylindrique, solide par solide) sur 4 STEP : vote jamais faux sur 427 faces. Temps (banc hors navigateur) : SIRAP-14-002, ajout d'un perçage 1,85 → 0,94 s, modification de la dernière fonction 2,54 → 1,60 s, tri des trous dans 6 repères 1,9 s → 16 ms ; plaque SIRAP-14-003 11,6 s → 43 ms. Suite rapide 168/168. CACHE_VER et FORMES_VER inchangés.
+
+## V0.99.14 - Export STL : finesse au choix et aperçu du maillage
+
+**Demande de Fred** : « Export STL -> il faudrait une page pour déterminer le nombre de triangles ou une liste avec Grossier/Normal/Fin surtout pour les parties circulaires et une visu de ce que ça rend exactement ».
+
+**Avant** : le STL reprenait le maillage d'affichage, dont la finesse suit la taille de la pièce (`occDisplayDefl`, 0,05 à 0,35 mm, 0,2 rad) : cercles en polygones visibles, aucun réglage.
+
+**Correctif** : le bouton STL ouvre la fenêtre « Export STL — aperçu du fichier » (`src/90-41-export-stl.js`, `stlExportOpen`) : Grossier 0,1 mm · 20°, Normal 0,03 mm · 10°, Fin 0,01 mm · 5°, Personnalisé (écart et angle) ; nombre de triangles, poids du fichier, côtés d'un cercle Ø5 / Ø10 / Ø50 ; aperçu 3D (facettes et arêtes des triangles, tourner / zoomer) du maillage exact qui sera écrit. Maillage fait sur une COPIE du solide (`BRepBuilderAPI_Copy` sans triangulation) : les triangles laissés sur le solide par l'affichage ne sont jamais touchés. Corps sans forme exacte (maillage importé) : maillage affiché repris, signalé. Dernier choix retenu (`minifusion_stlFinesse`). L'export OBJ est inchangé.
+
+**Test** : `test_export_stl_finesse` (Axe : grossier < normal < fin, 4 618 / 13 160 / 35 932 triangles ; triangles du solide intacts ; fichier = 84 + 50 × triangles ; côtés d'un cercle annoncés). Vérifié dans le navigateur sur Axe et Drapeau Outillage Complet. CACHE_VER et FORMES_VER inchangés.
