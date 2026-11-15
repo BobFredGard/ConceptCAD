@@ -8,7 +8,7 @@ sont sorties le 2026-09-30j.
 Code dans `src/` · livrable `fusion_mvp.html` (généré par `build.js`) · architecture et
 garde-fous en tête de `src/00-entete-et-outils.js`.
 
-**697 versions**, de `2026-09-28b` à `V0.99.10` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
+**698 versions**, de `2026-09-28b` à `V0.99.11` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
 comme dans le fichier d'origine.
 
 ---
@@ -7799,3 +7799,13 @@ Cavité Usinage, après l'ébauche D25, la reprise D10 et une finition boule D12
 **Vitesse** : trous retrouvés gardés par repère (`faoHoleMemo`, 48 repères au lieu de 8) — SIRAP-14-002, 36 Ø1,5 des congés : 16 orientations, 32 opérations, 2 changements d'outil, gamme en 0,5 s au lieu de 30 s.
 
 **Test** : `tests/test_fao_percage_32_auto.cjs` (trous sur 3 faces : une fenêtre, un pointage par orientation, ordre d'atelier, outils d'un seul tenant, lectures par repère ; post : SUPA Z puis X avant chaque CYCLE800, G0 X Y puis G0 Z, un changement par outil ; perçage normal d'un congé : fonction choisie ou un trou cliqué → tous ses trous, Z de l'entrée, X côté poche) ; `test_post_cycle800` 9b ; essai dans l'application sur SIRAP-14-002. CACHE_VER et FORMES_VER inchangés ; parcours existants inchangés (seul le commentaire du perçage change dans le G-code).
+
+## V0.99.11 - Chargement : écran de présentation jusqu'à la pièce prête, logo et vue floue à l'ouverture
+
+**Demande de Fred (cosmétique)** : au lancement, l'écran de présentation disparaissait au bout de 5,3 s, pièce prête ou non ; à l'ouverture d'une autre pièce, l'ancienne réapparaissait puis laissait place à la nouvelle.
+
+**Cause** : le filet de secours de `viewFadeOut` (98) ré-affichait la vue au bout de 4 s, même en plein rejeu (barre de progression), quand l'ancienne pièce était encore dans la scène.
+
+**Correctif** : écran de présentation sans fin programmée (`#mfSplash`) : il reste jusqu'au rejeu exact (98 appelle `window.__mfSplashDone`), au moins 3 s pour l'animation du logo, 60 s au plus ; ligne d'état (« Chargement du noyau 3D… », « Calcul de la pièce… », « Prêt »), barre qui monte à 92 % puis se complète ; fondu croisé de 1,1 s vers la vue 3D. Ouverture : vue 3D floue et assombrie (`blur(18px)`), logo animé ConceptCAD par-dessus (`mfLogoShow`, aussi à la place du rond « Chargement du noyau 3D… » quand l'écran de présentation a été passé), puis logo effacé pendant que la vue redevient nette (1 s). Le filet n'ouvre plus la vue qu'après 3 s sans rejeu en cours (`regenRun`/`regenUi`), 120 s au plus.
+
+**Test** : vérifié dans le navigateur (démarrage sur Cavité Usinage, ouverture d'Axe et de Drapeau Outillage Complet) ; suite rapide 167/167. CACHE_VER et FORMES_VER inchangés.
