@@ -8,7 +8,7 @@ sont sorties le 2026-09-30j.
 Code dans `src/` · livrable `fusion_mvp.html` (généré par `build.js`) · architecture et
 garde-fous en tête de `src/00-entete-et-outils.js`.
 
-**701 versions**, de `2026-09-28b` à `V0.99.14` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
+**702 versions**, de `2026-09-28b` à `V0.99.15` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
 comme dans le fichier d'origine.
 
 ---
@@ -7839,3 +7839,13 @@ Cavité Usinage, après l'ébauche D25, la reprise D10 et une finition boule D12
 **Correctif** : le bouton STL ouvre la fenêtre « Export STL — aperçu du fichier » (`src/90-41-export-stl.js`, `stlExportOpen`) : Grossier 0,1 mm · 20°, Normal 0,03 mm · 10°, Fin 0,01 mm · 5°, Personnalisé (écart et angle) ; nombre de triangles, poids du fichier, côtés d'un cercle Ø5 / Ø10 / Ø50 ; aperçu 3D (facettes et arêtes des triangles, tourner / zoomer) du maillage exact qui sera écrit. Maillage fait sur une COPIE du solide (`BRepBuilderAPI_Copy` sans triangulation) : les triangles laissés sur le solide par l'affichage ne sont jamais touchés. Corps sans forme exacte (maillage importé) : maillage affiché repris, signalé. Dernier choix retenu (`minifusion_stlFinesse`). L'export OBJ est inchangé.
 
 **Test** : `test_export_stl_finesse` (Axe : grossier < normal < fin, 4 618 / 13 160 / 35 932 triangles ; triangles du solide intacts ; fichier = 84 + 50 × triangles ; côtés d'un cercle annoncés). Vérifié dans le navigateur sur Axe et Drapeau Outillage Complet. CACHE_VER et FORMES_VER inchangés.
+
+## V0.99.15 - Réouverture d'un assemblage sans écran figé
+
+**Constat de Fred** : « seul l'assemblage met vraiment du temps à s'ouvrir, la cavité et la PPS nickel ».
+
+**Cause** : les images des composants étaient bien servies par le cache (47, 0,6 s), mais des occurrences alignées sur des POINTS D'ACCROCHE (48) font relire, juste après, les faces exactes des composants visés (`asmSnapSync` → `asmSnapGeomOf`). Servis par le cache, ces composants n'avaient pas de forme exacte en mémoire : chacun était rejoué en entier (`asmExactOfQuiet`), en une seule tâche — deux pièces d'une centaine de fonctions : 15,8 s d'interface figée à chaque ouverture.
+
+**Correctif** : les faces d'accroche (`asmSnapExtract` : type, centre, normale, rectangle, arêtes — données pures) sont rangées dans l'entrée de l'image du composant (`snapG`, même clé, donc valables tant que l'image l'est) : écrites avec l'image (`asmCacheFlush`) ou ajoutées après coup (`asmCacheSnapGSave`), relues par `asmCacheFill`, vérifiées par `asmSnapGeomOK` (aussi pour les images venues d'un fichier). Les images déjà en cache se complètent à la première réouverture.
+
+**Test** : vrai assemblage de 161 occurrences (7 composants), deux ouvertures dans la même page : seconde ouverture 15,8 s bloquées → 0,4 s (plus longue tâche 0,25 s), positions des 161 occurrences identiques à celles du rejeu complet. Suite rapide 169/169. CACHE_VER et FORMES_VER inchangés.

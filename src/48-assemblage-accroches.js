@@ -180,6 +180,7 @@ function asmSnapGeomOf(c){
   let g=null;
   try{g=asmSnapExtract(asmExactOfQuiet(c).map(b=>b.shape));}catch(e){g=null;}
   c._snapG={h:c._snap.hash,g};
+  if(g&&c._snap.exact){try{asmCacheSnapGSave(c,g).catch(()=>{});}catch(e){}} // gardées pour la prochaine ouverture (47-assemblage-cache)
   return g;
 }
 function asmSnapFrame(cid,sn){
