@@ -81,7 +81,7 @@
   - Sur Siemens, le plan de travail pivote par **`CYCLE800`** ; les arcs G2/G3 et les cycles de perçage sont écrits dans le plan incliné.
   - Dégagement avant pivotement en coordonnées machine (`SUPA Z600`, `SUPA X`), puis approche en deux temps (`G0 X Y` au-dessus du trou, ensuite `G0 Z`) ; sens de pivotement réglable par machine (`swivelDir`, plateau tourné vers les outils).
   - Comme le post Fusion des Spinner : table remise à plat par `CYCLE800` en début de programme, plan redonné après chaque changement d'outil, brut décrit à la CN par `WORKPIECE` (« box » de la simulation Siemens).
-- **Exporter G-code** : un programme par posage non gelé ; le menu du posage exporte le sien seul.
+- **Exporter G-code** : un programme par posage non gelé ; le menu du posage exporte le sien seul. Une fenêtre « Enregistrer sous » permet de choisir le dossier et le nom du programme (plusieurs posages : choix du dossier, un fichier par posage). Le dernier dossier choisi est proposé la fois suivante. Sous Firefox, le programme part dans les Téléchargements comme avant.
 - **G-code** multi-outils, cycles du dialecte (CYCLE81 à 84 ; Fagor G81 avec temporisation K, G83 compté depuis le plan d’approche, G84), avance F modale. *Validez toujours un premier programme à vide sur la machine.*
 - **Cache des parcours** : rien n'est recalculé tant que la géométrie ne change pas.
 
