@@ -18,16 +18,22 @@
      (2026-10-22-001 : pilote + cône 60°) (angle de pointe, avance par tour
      F = f × S) ; sélectionner un groupe affecte le foret du même Ø de la
      bibliothèque, ou le CRÉE. */
-const FAO_DRILL_KINDS={drill:1,spot:1,center:1};
+// V0.99.9 : alésoir (kind 'ream') — outil à avance par tour comme un foret, bout plat à
+// chanfrein d'entrée 45° (faoReamLead), cycle « Alésage » (CYCLE85 / G85 : entrée ET sortie en avance).
+const FAO_DRILL_KINDS={drill:1,spot:1,center:1,ream:1};
 function faoToolIsDrill(t){ return !!(t&&FAO_DRILL_KINDS[t.kind]); }
-function faoToolAngle(t){ const a=t&&+t.ang; return (isFinite(a)&&a>20&&a<180)?a:(t&&(t.kind==='spot'||t.kind==='chamfer')?90:118); }
-function faoToolTipLen(t){ const D=(t&&+t.d>0)?+t.d:6; return (D/2)/Math.tan(faoToolAngle(t)*Math.PI/360); }
+function faoToolAngle(t){ const a=t&&+t.ang; return (isFinite(a)&&a>20&&a<180)?a:(t&&(t.kind==='spot'||t.kind==='chamfer'||t.kind==='ream')?90:118); }
+function faoReamLead(t){ const D=(t&&+t.d>0)?+t.d:6; return +Math.max(0.2,Math.min(1,D*0.05)).toFixed(3); } // chanfrein d'entrée (mm)
+function faoToolTipLen(t){ if(t&&t.kind==='ream')return faoReamLead(t); const D=(t&&+t.d>0)?+t.d:6; return (D/2)/Math.tan(faoToolAngle(t)*Math.PI/360); }
 function faoToolFr(t){
   // Avance par tour (mm/tr) d'un foret : saisie, sinon règle d'atelier (carbure).
   const v=t&&+t.fr; if(isFinite(v)&&v>0)return v;
   const D=(t&&+t.d>0)?+t.d:6;
+  if(t&&t.kind==='ream')return Math.round((0.015*D+0.08)*1000)/1000; // alésoir carbure : 0,1 à 0,4 mm/tr
   return t&&(t.kind==='spot'||t.kind==='center')?0.05:Math.round((0.012*D+0.03)*1000)/1000;
 }
+// Surépaisseur d'alésage sur le Ø (mm) : règle d'atelier, si la fonction n'en donne pas.
+function faoReamAllow(D){ return D<=3?0.1:(D<=6?0.2:(D<=12?0.3:(D<=25?0.4:0.5))); }
 /* ----- reconnaissance des trous ----- */
 let faoHoleCache={shape:null,list:null};
 function faoHoleShapes(){
@@ -179,7 +185,7 @@ function faoHolesDetect(shapes){
       if(Math.hypot(c.x-g.x,c.y-g.y)>0.01)return;
       if(c.zHi<=g.zLo+0.01&&c.apex<g.zLo)h.tipAng=+(2*c.semi*180/Math.PI).toFixed(1); // pointe de forage
       if(c.zLo>=g.zHi-0.01){ // chanfrein d'entrée
-        h.chD=+(2*Math.abs(c.zHi-c.apex)*Math.tan(c.semi)).toFixed(3);
+        h.chD=+(2*Math.abs(c.zHi-c.apex)*Math.tan(c.semi)).toFixed(3);h.chA=+(2*c.semi*180/Math.PI).toFixed(1);
         h.zSurf=+Math.max(h.zSurf,c.zHi).toFixed(3);
       }
     });
@@ -233,7 +239,8 @@ function faoHolesDetect(shapes){
           if(Math.abs(h.d-de)>0.02&&!(f.kind==='cbore'&&Math.abs(h.d-(+f.cbD))<0.02)&&!isReam&&!isPre)return;
           h.feat={id:f.id,name:f.name,kind:f.kind||'simple',thread:(!Nr&&!isPre&&f.thread&&f.thread.size)?Object.assign({size:f.thread.size,p:+f.thread.p,len:+f._thLen||+f.thread.len||0},f.thread.lh?{lh:true}:{}):null,
             role:(f.kind==='cbore'&&Math.abs(h.d-(+f.cbD))<0.02)?'lamage':(isReam?'alesage':(isPre?'avant-trou':'trou'))};
-          if(isReam)h.feat.tol=f.reamTol||'H7';
+          if(f.kind==='csink')h.feat.csA=+f.csA||90;
+          if(isReam){h.feat.tol=f.reamTol||'H7';h.feat.reamOff=(+f.reamOff>0)?+f.reamOff:null;}
         });
       });
     });
@@ -288,6 +295,30 @@ function faoHoleThread(h,setup){
   if(i&&i.thread&&i.thread.size)return Object.assign({size:i.thread.size,p:+i.thread.p,len:0,src:'STEP'},i.thread.lh?{lh:true}:{});
   return null;
 }
+function faoHoleReamInfo(h,setup){
+  // Alésage d'un trou : {tol, off} (off = surépaisseur sur le Ø voulue par la fonction, ou null).
+  if(h.feat&&h.feat.role==='alesage')return {tol:h.feat.tol||'H7',off:h.feat.reamOff||null};
+  if(h.feat)return null;
+  const key=(+h.d).toFixed(2)+'@'+(+h.ztop).toFixed(2);
+  const i=setup&&setup.holeInfo&&setup.holeInfo[key];
+  return (i&&i.ream)?{tol:i.ream.tol||'H7',off:null}:null;
+}
+function faoReamPilot(h,all,ri){
+  // Perçage pilote juste sous l'alésage (fonction « + perçage »), assez proche du Ø pour servir de pré-trou.
+  const a=(ri&&ri.off>0)?+ri.off:faoReamAllow(h.d);
+  return (all||[]).filter(function(q){return q!==h&&q.d<h.d-0.01&&h.d-q.d<=Math.max(1,2*a)+1e-6&&
+    Math.hypot(q.x-h.x,q.y-h.y)<0.02&&Math.abs(q.ztop-h.zbot)<0.05;}).sort(function(x,y){return y.d-x.d;})[0]||null;
+}
+function faoHoleFilt(hf,o){
+  // Trous d'un groupe gardés par une opération de la gamme (V0.99.9) ; sans filtre : tous.
+  if(!hf)return true;
+  const skip=!!(o.pre&&o.through); // petit trou débouchant d'un double perçage : fait par l'autre côté
+  if(hf==='plain')return !o.ream&&!skip;
+  if(hf==='ream')return !!o.ream;
+  if(hf==='csk')return !!o.csk;
+  if(hf==='spot')return !o.pre&&!(o.ream&&o.ream.pil);
+  return true;
+}
 function faoWithOpFrame(op,fn){
   // Exécute fn avec les trous vus dans le repère PROPRE de l'opération (onglet Repère, 3+2) :
   // un perçage sur la tranche voit les trous de la tranche « verticaux ». Sans repère propre :
@@ -335,8 +366,20 @@ function faoDrillResolve(op){
     const o={x:h.x,y:h.y,d:h.d,ztop:h.ztop,zbot:h.zbot,zSurf:h.zSurf,through:h.through,tipAng:h.tipAng,chD:h.chD};
     const th=faoHoleThread(h,setup);if(th)o.thread=th;
     if(h.feat&&h.feat.role==='lamage')o.cbore=true;
+    // V0.99.9 : alésé (fonction Perçage, ou « Alésé » choisi pour un STEP) ; trou fraisé ;
+    // petit trou d'un double perçage (avant-trou plus large au-dessus)
+    const ri=faoHoleReamInfo(h,setup);
+    if(ri){o.ream=ri;const pq=faoReamPilot(h,all,ri);if(pq)ri.pil=true;}
+    if(h.feat&&h.feat.kind==='csink'&&h.feat.role==='trou'&&h.chD>0)o.csk=+h.feat.csA||90; // angle de la fraisure
+    if(!h.feat){ // STEP : nature donnée dans la fenêtre de la gamme (faoDrillGammeDlg) ou la fiche
+      const hi=setup&&setup.holeInfo&&setup.holeInfo[(+h.d).toFixed(2)+'@'+(+h.ztop).toFixed(2)];
+      if(hi&&hi.cbore)o.cbore=true;
+      if(hi&&hi.csk&&h.chD>0)o.csk=+h.chA||90;
+    }
+    if(h.pre)o.pre=true;
     return o;}).filter(function(o){ // taraudage de la gamme : seulement les trous de SON filet
-    return !op.thKey||op.cycle!=='tap'||(o.thread&&faoThreadKey(o.thread)===op.thKey);});
+    return !op.thKey||op.cycle!=='tap'||(o.thread&&faoThreadKey(o.thread)===op.thKey);})
+    .filter(function(o){return faoHoleFilt(op.hf,o);}); // gamme : même groupe (Ø, départ), trous de natures différentes
   const a=JSON.stringify(op.holes||[]),b=JSON.stringify(nh);
   if(a===b)return false;
   op.holes=nh;return true;
@@ -365,7 +408,9 @@ function faoDrillDepthOf(op,t,h){
     // Ø de pointage : saisi, sinon chanfrein du modèle, sinon Ø NOMINAL + 0,4 pour un
     // trou taraudé (entrée du taraud), sinon Ø du trou + 0,4.
     const T=(h.thread&&typeof isoThread==='function')?isoThread(h.thread.size):null;
-    const chD=(+op.chD>0)?+op.chD:((h.chD>0)?h.chD:(T?(T[1]+0.4):(h.d+0.4)));
+    // V0.99.9 : le pointage d'une gamme ne fait pas la fraisure (opération « Fraisure » à part, après le perçage)
+    const mch=(h.chD>0&&!(op.gRole==='pointage'&&h.csk))?h.chD:0;
+    const chD=(+op.chD>0)?+op.chD:(mch>0?mch:(T?(T[1]+0.4):(h.d+0.4)));
     if(t&&t.kind==='center'){ // foret à centrer : pilote puis cône 60° (profil réel)
       // tp = [pointe, bout du cône 118°, haut du pilote, haut du cône 60°] : le chanfrein
       // se lit sur le cône 60° ; plus petit que le pilote → le pilote entier entre
@@ -374,7 +419,14 @@ function faoDrillDepthOf(op,t,h){
     }
     const Dt=(t&&+t.d>0)?+t.d:10;
     const r=Math.min(chD,Dt)/2;
-    return h.zSurf-r/Math.tan(faoToolAngle(t)*Math.PI/360);
+    // fraise à chanfreiner : le cône part du méplat de bout (Ø dt), pas d'une pointe
+    const rt=(t&&t.kind==='chamfer')?Math.max(0,Math.min(r,isFinite(+t.dt)&&+t.dt>=0?+t.dt/2:0.25)):0;
+    return h.zSurf-(r-rt)/Math.tan(faoToolAngle(t)*Math.PI/360);
+  }
+  if(cyc==='ream'){
+    // Alésoir : tout le Ø jusqu'au fond de l'alésage ; débouchant : chanfrein d'entrée sorti + débouchage
+    if(mode0==='manual'&&isFinite(+op.zbot))return +op.zbot;
+    return h.through?(h.zbot-brk-L):h.zbot;
   }
   if(cyc==='tap'){
     // Taraud : longueur filetée (fonction) ; STEP borgne : profondeur − 2 pas ; débouchant : traverse.
@@ -432,7 +484,7 @@ function faoGenDrillPlan(plan,secuAbs,op){
   // Taraudage : le taraud RESSORT à la MÊME avance qu'il est entré (F = pas × S),
   // seul le sens de rotation s'inverse — jamais en rapide (aperçu + estimation ;
   // le G-code, lui, laisse CYCLE84 / G84 rigide le faire).
-  const tap=!!(op&&op.cycle==='tap');
+  const tap=!!(op&&(op.cycle==='tap'||op.cycle==='ream')); // alésoir : ressort aussi en avance
   const moves=[];
   plan.forEach(function(p){
     const s=Math.max(+secuAbs||0,p.rfp+2);
@@ -449,7 +501,9 @@ function faoGenDrillPlan(plan,secuAbs,op){
 function faoDrillAutoTool(setup,op,d){
   // Foret du bon Ø dans la bibliothèque, sinon création ; foret à centrer pour un pointage.
   if(op.cycle==='helix')return faoHelixTool(setup,op,d);
-  const want=(op.cycle==='spot')?'spot':(op.cycle==='tap'?'tap':'drill');
+  if(op.cycle==='spot'&&op.gRole==='fraisure')return faoCskTool(setup,op);
+  if(op.cycle==='spot'){const r=faoSpotToolCfg(setup,op);if(r!==undefined)return r;}
+  const want=(op.cycle==='spot')?'spot':(op.cycle==='tap'?'tap':(op.cycle==='ream'?'ream':'drill'));
   const cur=faoToolById(setup,op.toolId);
   const tools=setup.tools||(setup.tools=[]);
   if(want==='tap'){
@@ -475,13 +529,84 @@ function faoDrillAutoTool(setup,op,d){
   let made=false;
   if(!t){
     const n=tools.reduce(function(m,x){return Math.max(m,+x.num||0);},0)+1;
-    t=want==='spot'
+    const h0=(op.holes||[]).find(function(h){return h.ream;});
+    t=want==='ream'
+      ?{id:'T'+n+'_'+Date.now().toString(36),num:n,name:'Alésoir D'+(+d.toFixed(3))+(h0?' '+h0.ream.tol:''),kind:'ream',d:+d.toFixed(3),cornerR:0,flutes:6,vc:30,fz:0.03,ang:90}
+      :want==='spot'
       ?{id:'T'+n+'_'+Date.now().toString(36),num:n,name:'Foret à pointer D10',kind:'spot',d:10,cornerR:0,flutes:2,vc:60,fz:0.03,ang:90}
       :{id:'T'+n+'_'+Date.now().toString(36),num:n,name:'Foret D'+(+d.toFixed(2)),kind:'drill',d:+d.toFixed(3),cornerR:0,flutes:2,vc:80,fz:0.05,ang:118};
     tools.push(t);made=true;
   }
   op.toolId=t.id;delete op.cut;
   return {tool:t,made:made};
+}
+/* ----- V0.99.9 : réglages de la gamme automatique (posage) -----
+   pointage : 'auto' (foret à pointer ou à centrer de la bibliothèque, sinon foret à pointer
+   D10 créé), 'spot' (foret à pointer), 'center' (foret à centrer), 'none' (sans pointage),
+   ou l'id d'un outil de la bibliothèque. finition des alésages : 'ream' (alésoir) ou 'mill'
+   (fraise, interpolation hélicoïdale). Réglés AVANT la gamme : fiche du posage ou d'un Perçage. */
+function faoDrillCfg(setup){
+  const c=(setup&&setup.drillCfg)||{};
+  return {spot:c.spot||'auto',ream:c.ream==='mill'?'mill':'ream',csk:c.csk==='chamfer'?'chamfer':'spot'};
+}
+function faoDrillCfgRows(setup){
+  const c=faoDrillCfg(setup);
+  const set=function(k,v){setup.drillCfg=Object.assign({},setup.drillCfg||{});setup.drillCfg[k]=v;};
+  const opts=faoDrillSpotOpts(setup);
+  const r1=faoRow();
+  r1.appendChild(faoLab('Pointage'));
+  r1.appendChild(faoSel(opts,opts.some(function(o){return o[0]===c.spot;})?c.spot:'auto',function(v){set('spot',v);},
+    'Gamme automatique : outil de pointage (ou aucun) — pris pour tous les trous (lisses, taraudés, lamés, fraisés, alésés)'));
+  r1.appendChild(faoLab('Finition alésage'));
+  r1.appendChild(faoSel([['ream','Alésoir'],['mill','Fraise (hélicoïdal)']],c.ream,function(v){set('ream',v);},
+    'Gamme automatique : un trou alésé est pré-percé puis fini à l’alésoir (cycle d’alésage) ou à la fraise (interpolation hélicoïdale)'));
+  const r2=faoRow();
+  r2.appendChild(faoLab('Fraisure'));
+  r2.appendChild(faoSel([['spot','Foret à pointer'],['chamfer','Fraise à chanfreiner']],c.csk,function(v){set('csk',v);},
+    'Gamme automatique : outil des fraisures (même angle que la fraisure, Ø ≥ Ø de fraisure + 1), passé après le perçage'));
+  const w=document.createElement('div');w.appendChild(r1);w.appendChild(r2);
+  return w;
+}
+function faoSpotToolCfg(setup,op){
+  // Outil de pointage choisi dans les réglages de la gamme ; undefined = règle automatique.
+  const c=faoDrillCfg(setup).spot;
+  if(c==='auto'||c==='none')return undefined;
+  const tools=setup.tools||(setup.tools=[]);
+  const cur=faoToolById(setup,op.toolId);
+  if(c!=='spot'&&c!=='center'){
+    const t=tools.find(function(x){return x.id===c;});
+    if(!t)return undefined; // outil retiré de la bibliothèque : règle automatique
+    if(cur===t)return null;
+    op.toolId=t.id;delete op.cut;return {tool:t,made:false};
+  }
+  if(cur&&cur.kind===c)return null;
+  let t=tools.find(function(x){return x.kind===c;}),made=false;
+  if(!t){
+    const n=tools.reduce(function(m,x){return Math.max(m,+x.num||0);},0)+1;
+    t=c==='spot'?{id:'T'+n+'_'+Date.now().toString(36),num:n,name:'Foret à pointer D10',kind:'spot',d:10,cornerR:0,flutes:2,vc:60,fz:0.03,ang:90}
+      :{id:'T'+n+'_'+Date.now().toString(36),num:n,name:'Foret à centrer A2,5',kind:'center',d:2.5,cornerR:0,flutes:2,vc:25,fz:0.03,ang:118};
+    tools.push(t);made=true;
+  }
+  op.toolId=t.id;delete op.cut;return {tool:t,made:made};
+}
+function faoCskTool(setup,op){
+  // Fraisure : foret à pointer de l'ANGLE de la fraisure, de Ø ≥ Ø de fraisure + 1 (sinon elle serait tronquée).
+  const hs=(op.holes||[]).filter(function(h){return h.csk;});
+  const csD=hs.reduce(function(m,h){return Math.max(m,+h.chD||0);},0),ang=hs.length?+hs[0].csk:90;
+  const tools=setup.tools||(setup.tools=[]);
+  const kind=faoDrillCfg(setup).csk; // V0.99.9 : foret à pointer ou fraise à chanfreiner
+  const ok=function(t){return t&&t.kind===kind&&Math.abs(faoToolAngle(t)-ang)<0.6&&+t.d>=csD+1-1e-6;};
+  if(ok(faoToolById(setup,op.toolId)))return null;
+  let t=tools.filter(ok).sort(function(a,b){return +a.d-(+b.d);})[0],made=false;
+  if(!t){
+    const D=[6,8,10,12,16,20,25,32,40].find(function(x){return x>=csD+1;})||Math.ceil(csD+2);
+    const n=tools.reduce(function(m,x){return Math.max(m,+x.num||0);},0)+1;
+    t=kind==='chamfer'
+      ?{id:'T'+n+'_'+Date.now().toString(36),num:n,name:'Fraise à chanfreiner D'+D+' '+ang+'°',kind:'chamfer',d:D,dt:0.5,cornerR:0,flutes:3,vc:120,fz:0.03,ang:ang}
+      :{id:'T'+n+'_'+Date.now().toString(36),num:n,name:'Foret à pointer D'+D+' '+ang+'°',kind:'spot',d:D,cornerR:0,flutes:2,vc:60,fz:0.03,ang:ang};
+    tools.push(t);made=true;
+  }
+  op.toolId=t.id;delete op.cut;return {tool:t,made:made};
 }
 /* ----- sélection dans la vue ----- */
 let faoHolePick=null; // {setupId,opId}
@@ -511,7 +636,7 @@ function faoHolePickAt(e){
   holes.forEach(function(H){
     if(h.point.z>H.zSurf+0.5||h.point.z<H.zbot-0.5)return;
     const d=Math.hypot(h.point.x-H.x,h.point.y-H.y);
-    if(d<=H.d/2+0.5&&d<bd){bd=d;best=H;}
+    if(d<=Math.max(H.d,H.chD||0)/2+0.5&&d<bd){bd=d;best=H;} // V0.99.9 : clic sur le cône d’une fraisure ou d’un chanfrein compris
   });
   if(!best){try{faceEl.textContent='Perçage : ce n’est pas un trou vertical reconnu.';}catch(e){}return true;}
   faoHoleToggle(setup,op,best.d,best.ztop);
@@ -585,9 +710,9 @@ function faoDrillSections(setup,op,d){
   // ── cycle (Réglages)
   const rc=faoRow();
   rc.appendChild(faoLab('Cycle'));
-  rc.appendChild(faoSel([['spot','Pointage (centrage)'],['drill','Perçage simple'],['peck','Débourrage (dégagement total)'],['chip','Brise-copeaux'],['tap','Taraudage'],['helix','Fraisage hélicoïdal (lamage)']],op.cycle||'drill',
+  rc.appendChild(faoSel([['spot','Pointage (centrage)'],['drill','Perçage simple'],['peck','Débourrage (dégagement total)'],['chip','Brise-copeaux'],['tap','Taraudage'],['ream','Alésage (alésoir)'],['helix','Fraisage hélicoïdal (lamage, alésage)']],op.cycle||'drill',
     function(v){op.cycle=v; if(op.src==='model'&&(op.holes||[]).length){faoDrillAutoTool(setup,op,op.holes[0].d);} },
-    'Pointage : G81/CYCLE81 à faible profondeur · Simple : G81 (G82 si temporisation) · Débourrage : G83/CYCLE83 remontée complète · Brise-copeaux : petit recul à chaque passe'));
+    'Pointage : G81/CYCLE81 à faible profondeur · Simple : G81 (G82 si temporisation) · Débourrage : G83/CYCLE83 remontée complète · Brise-copeaux : petit recul à chaque passe · Alésage : G85/CYCLE85, entrée et sortie en avance'));
   if(op.cycle==='peck'||op.cycle==='chip'){
     rc.appendChild(faoLab('Q'));
     rc.appendChild(faoNumFx(op,'peck',(+op.peck)||Math.max(1,+(((+t.d)||6)*1).toFixed(1)),function(v){op.peck=Math.max(0.1,v);},48,0.5,'Profondeur de chaque passe (mm)'));
@@ -614,6 +739,11 @@ function faoDrillSections(setup,op,d){
     rd.appendChild(nt);
     if(th0&&tt.kind==='tap'&&(tt.size!==th0.thread.size||Math.abs(+tt.p-th0.thread.p)>1e-6||!!tt.lh!==!!th0.thread.lh)){
       const w=document.createElement('div');w.className='fao-note';w.textContent='⚠ Le taraud T'+tt.num+' ('+holeThreadLabel({size:tt.size,p:tt.p,lh:tt.lh})+') ne correspond pas au filet '+holeThreadLabel(th0.thread)+'.';d.appendChild(w);}
+  }else if(op.cycle==='ream'){
+    const h0=(op.holes||[]).find(function(h){return h.ream;})||(op.holes||[])[0],tR=faoToolById(setup,op.toolId);
+    const nt=document.createElement('span');nt.className='fao-meta';
+    nt.textContent=h0?('alésage Ø'+(+h0.d.toFixed(3))+(h0.ream?' '+h0.ream.tol:'')+' · entrée et sortie en avance (G85 / CYCLE85)'+(tR&&tR.kind==='ream'&&Math.abs(+tR.d-h0.d)>0.011?' · ⚠ alésoir Ø'+tR.d:'')):'aucun trou';
+    rd.appendChild(nt);
   }else if(op.cycle==='spot'){
     rd.appendChild(faoLab('Ø pointage'));
     rd.appendChild(faoNumFx(op,'chD',(+op.chD)||0,function(v){op.chD=Math.max(0,v);},52,0.1,'Ø du chanfrein laissé par le foret à pointer / à centrer (0 = chanfrein du modèle, sinon Ø du trou + 0,4)'));
@@ -628,7 +758,7 @@ function faoDrillSections(setup,op,d){
   rd.appendChild(faoLab('Ordre'));
   rd.appendChild(faoSel([['auto','Plus court'],['zigzag','Zigzag']],op.order||'auto',function(v){op.order=v;},'Ordre de passage des trous'));
   d.appendChild(rd);
-  if(!faoToolIsDrill(t)&&!(op.cycle==='tap'&&t.kind==='tap')&&!(op.cycle==='helix'&&(t.kind==='flat'||t.kind==='bull'))){
+  if(!faoToolIsDrill(t)&&!(op.cycle==='tap'&&t.kind==='tap')&&!(op.cycle==='helix'&&(t.kind==='flat'||t.kind==='bull'))&&!(op.cycle==='spot'&&t.kind==='chamfer')){
     const w=document.createElement('div');w.className='fao-note';
     w.textContent='⚠ L’outil T'+t.num+' n’est pas un foret ('+faoKindLabel(t.kind)+') — choisissez des trous : le foret du bon Ø est pris ou créé.';
     d.appendChild(w);
@@ -638,8 +768,9 @@ function faoDrillSections(setup,op,d){
   const rs=faoRow();
   rs.appendChild(faoLab('Source'));
   rs.appendChild(faoSel([['model','Trous du modèle'],['xy','Coordonnées XY']],op.src||'xy',function(v){op.src=v;faoDrillResolve(op);},'Trous reconnus sur la pièce, ou points saisis'));
-  if(op.src==='model'&&(op.holeSel||[]).length)rs.appendChild(faoMini('⚙ Gamme',function(){faoDrillGamme(setup,op);},
+  if(op.src==='model'&&(op.holeSel||[]).length)rs.appendChild(faoMini('⚙ Gamme',function(){faoDrillGammeAsk(setup,op,true);},
     'Crée la gamme des trous sélectionnés : pointage → perçage (un Ø par opération, débourrage si profond) → taraudage des trous filetés'));
+  if(op.src==='model')d.appendChild(faoDrillCfgRows(setup)); // V0.99.9 : réglages de la gamme automatique
   if(op.src==='model')rs.appendChild(faoMini(faoHolePick?'✔ Fin':'Choisir dans la vue',function(){
     if(faoHolePick)faoHolePickExit();else faoHolePickStart(setup.id,op.id);},'Cliquer un trou de la pièce : tous les trous de même Ø et même départ'));
   d.appendChild(rs);
@@ -670,13 +801,10 @@ function faoDrillSections(setup,op,d){
       }else if(!fe){
         const key=g.d.toFixed(2)+'@'+g.z.toFixed(2);
         const info=(setup.holeInfo&&setup.holeInfo[key])||{};
-        const opts=[['','Trou']];
-        ALL_THREADS.forEach(function(t){for(let k=2;k<t.length;k++){const td=tapDrill(t[0],t[k]);if(Math.abs(td-g.d)<=0.3)opts.push([t[0]+'|'+t[k],'Taraudé '+holeThreadLabel({size:t[0],p:t[k]})]);}}); // V0.20.3 : + UNC/UNF, gaz
-        if(opts.length>1)r.appendChild(faoSel(opts,info.thread?(info.thread.size+'|'+info.thread.p):'',function(v){
-          setup.holeInfo=setup.holeInfo||{};
-          if(!v)delete setup.holeInfo[key];
-          else{const q=v.split('|'),lh=!!(info.thread&&info.thread.lh);setup.holeInfo[key]={thread:Object.assign({size:q[0],p:+q[1]},lh?{lh:true}:{})};}
-        },'Pièce importée (STEP) : la nature du trou n’est pas dans la géométrie — indiquez s’il est taraudé (Ø mesuré compatible avec le taraud).'));
+        const opts=faoStepHoleOpts(g,holes); // V0.99.9 : + alésé, lamage, fraisure
+        r.appendChild(faoSel(opts,faoStepHoleVal(info),function(v){
+          faoStepInfoSet(setup,key,v,!!(info.thread&&info.thread.lh));
+        },'Pièce importée (STEP) : la nature du trou n’est pas dans la géométrie — indiquez s’il est taraudé (Ø mesuré compatible avec le taraud) ou alésé.'));
         // V0.33.3 : sens du filet (le STEP ne le dit pas non plus)
         if(info.thread)r.appendChild(faoSel([['rh','À droite'],['lh','À gauche (LH)']],info.thread.lh?'lh':'rh',function(v){
           if(v==='lh')info.thread.lh=true;else delete info.thread.lh;
@@ -771,7 +899,7 @@ function faoDrillSelHoles(setup,op){
     holes.forEach(function(H){
       if(q[2]>H.zSurf+0.5||q[2]<H.zbot-0.5)return;
       const d=Math.hypot(q[0]-H.x,q[1]-H.y);
-      if(d<=H.d/2+0.5&&d<bd){bd=d;best=H;}
+      if(d<=Math.max(H.d,H.chD||0)/2+0.5&&d<bd){bd=d;best=H;} // V0.99.9 : clic sur le cône d’une fraisure ou d’un chanfrein compris
     });
     if(best){hit.push(best);if(best.feat)feats[best.feat.id]=1;}
   });
@@ -782,12 +910,138 @@ function faoDrillSelHoles(setup,op){
     out.push({d:+(+H.d).toFixed(3),z:+(+H.ztop).toFixed(3)});});
   return out;
 }
+/* ----- V0.99.9 : trous d'un STEP — nature demandée avant la gamme -----
+   La géométrie d'un STEP ne dit ni filet ni tolérance : une fenêtre liste les groupes de trous
+   sans fonction Perçage, propose Trou / Taraudé M… / Alésé H7 / Lamage / Fraisure (selon ce que
+   la forme permet) et range le choix dans setup.holeInfo, comme la liste de la fiche. */
+function faoStepHoleOpts(g,all){
+  const opts=[['','Trou lisse']];
+  if(typeof ALL_THREADS!=='undefined')ALL_THREADS.forEach(function(t){for(let k=2;k<t.length;k++){const td=tapDrill(t[0],t[k]);if(Math.abs(td-g.d)<=0.3)opts.push([t[0]+'|'+t[k],'Taraudé '+holeThreadLabel({size:t[0],p:t[k]})]);}}); // V0.20.3 : + UNC/UNF, gaz
+  ['H7','H6','H8'].forEach(function(t){opts.push(['ream|'+t,'Alésé '+t]);});
+  const h0=g.holes[0];
+  if(faoStepIsUpper(h0,all))opts.push(['cbore','Lamage (fraisé)']);
+  if(h0.chD>0)opts.push(['csk','Fraisure Ø'+(+h0.chD.toFixed(2))+(h0.chA?(' '+h0.chA+'°'):'')]);
+  return opts;
+}
+function faoStepHoleVal(info){
+  info=info||{};
+  if(info.ream)return 'ream|'+(info.ream.tol||'H7');
+  if(info.cbore)return 'cbore';
+  if(info.csk)return 'csk';
+  return info.thread?(info.thread.size+'|'+info.thread.p):'';
+}
+function faoStepIsUpper(h,all){
+  // Étage supérieur d'un trou étagé : un trou plus petit du même axe commence à son fond.
+  return (all||[]).some(function(q){return q!==h&&q.d<h.d-0.01&&Math.hypot(q.x-h.x,q.y-h.y)<0.02&&Math.abs(q.ztop-h.zbot)<0.05;});
+}
+function faoStepUnknown(setup,op){
+  // Groupes sélectionnés sans fonction Perçage (pièce importée) : ceux à faire préciser.
+  const all=faoWithOpFrame(op,function(){return faoHolesDetect();});
+  return faoHoleGroups(all).filter(function(g){
+    return faoHoleInSel(op,{d:g.d,ztop:g.z})&&!g.holes.some(function(h){return h.feat;})&&!g.holes.every(function(h){return h.pre&&h.through;});
+  }).map(function(g){return {g:g,all:all};});
+}
+function faoStepInfoSet(setup,key,v,lh){
+  setup.holeInfo=setup.holeInfo||{};
+  if(!v)delete setup.holeInfo[key];
+  else if(v.indexOf('ream|')===0)setup.holeInfo[key]={ream:{tol:v.slice(5)}};
+  else if(v==='cbore'||v==='csk'){const o={};o[v]=true;setup.holeInfo[key]=o;}
+  else{const p=v.split('|');setup.holeInfo[key]={thread:Object.assign({size:p[0],p:+p[1]},lh?{lh:true}:{})};}
+}
+function faoDrillSpotOpts(setup){
+  const opts=[['auto','Automatique (bibliothèque)'],['spot','Foret à pointer'],['center','Foret à centrer'],['none','Sans pointage']];
+  (setup.tools||[]).forEach(function(t){if(t.kind==='spot'||t.kind==='center'||t.kind==='drill')opts.push([t.id,'T'+t.num+' '+t.name]);});
+  return opts;
+}
+/* V0.99.9 : fenêtre « Gamme de perçage » — ouverte à la création de la gamme (Perçage sur des
+   trous sélectionnés, bouton ⚙ Gamme) : outil de pointage, finition des alésages et outil des
+   fraisures (seulement s'il y en a dans la sélection), nature des trous de STEP. Les choix
+   restent ceux du posage pour la gamme suivante (setup.drillCfg). Entrée = créer, Échap = annuler. */
+function faoDrillGammeDlg(setup,op,list,flags,done){
+  const mk=function(tag,cls,txt){const e=document.createElement(tag);if(cls)e.className=cls;if(txt!==undefined)e.textContent=txt;return e;};
+  const bg=mk('div','mffDlgBg'),d=mk('div','mffDlg fao-imp');
+  d.appendChild(mk('div','fao-imp-t','Gamme de perçage'));
+  d.appendChild(mk('div','fao-imp-s',(flags.n||0)+' trou(s) sélectionné(s). Choisissez les outils, la gamme est créée ensuite (pointage, perçage, fraisure, lamage, alésage, taraudage).'));
+  const c=faoDrillCfg(setup);
+  const cfgL=mk('div','fao-imp-list');d.appendChild(cfgL);
+  const pick=function(label,opts,val,tip){
+    const row=mk('label','fao-imp-it'),tx=mk('div','fao-imp-x');
+    tx.appendChild(mk('div','fao-imp-n',label));if(tip)tx.appendChild(mk('div','fao-imp-d',tip));
+    row.appendChild(tx);
+    const sl=mk('select','fao-sel');opts.forEach(function(o){const e=mk('option','',o[1]);e.value=o[0];sl.appendChild(e);});
+    sl.value=opts.some(function(o){return o[0]===val;})?val:opts[0][0];
+    row.appendChild(sl);cfgL.appendChild(row);return sl;
+  };
+  const sSpot=pick('Pointage',faoDrillSpotOpts(setup),c.spot,'Outil de pointage de tous les trous (ou aucun)');
+  const sReam=flags.ream?pick('Finition des alésages',[['ream','Alésoir'],['mill','Fraise (hélicoïdal)']],c.ream,'Après le pré-trou : alésoir (entrée et sortie en avance) ou fraise en hélice'):null;
+  const sCsk=flags.csk?pick('Fraisures',[['spot','Foret à pointer'],['chamfer','Fraise à chanfreiner']],c.csk,'Même angle que la fraisure, après le perçage'):null;
+  const sels=[];
+  if(list.length){
+    d.appendChild(mk('div','fao-imp-s','Pièce importée : la forme ne dit pas si un trou est taraudé ou alésé. Indiquez la nature de chaque groupe :'));
+    const lst=mk('div','fao-imp-list');d.appendChild(lst);
+    list.forEach(function(it){
+      const g=it.g,h0=g.holes[0],key=g.d.toFixed(2)+'@'+g.z.toFixed(2);
+      const info=(setup.holeInfo&&setup.holeInfo[key])||{};
+      const row=mk('label','fao-imp-it');
+      const tx=mk('div','fao-imp-x');
+      tx.appendChild(mk('div','fao-imp-n','Ø'+(+g.d.toFixed(3))+' × '+g.holes.length));
+      tx.appendChild(mk('div','fao-imp-d','Z '+(+g.z.toFixed(2))+' → '+(+h0.zbot.toFixed(2))+' · '+(h0.through?'débouchant':'borgne')+(h0.chD?(' · chanfrein Ø'+(+h0.chD.toFixed(2))):'')+(h0.cb?(' · sous lamage Ø'+h0.cb.d):'')));
+      row.appendChild(tx);
+      const opts=faoStepHoleOpts(g,it.all);
+      const sl=mk('select','fao-sel');
+      opts.forEach(function(o){const e=mk('option','',o[1]);e.value=o[0];sl.appendChild(e);});
+      let v=faoStepHoleVal(info);
+      if(!v&&faoStepIsUpper(h0,it.all))v='cbore'; // étage du dessus : lamage le plus probable
+      sl.value=opts.some(function(o){return o[0]===v;})?v:'';
+      row.appendChild(sl);lst.appendChild(row);sels.push({sl:sl,key:key,info:info});
+    });
+  }
+  const rowB=mk('div','mffBtns');
+  const bC=mk('button','','Annuler'),bOk=mk('button','primary','Créer la gamme'),sp=mk('span','fao-imp-sp');
+  const close=function(){try{document.removeEventListener('keydown',key,true);}catch(e){}try{bg.remove();}catch(e){}};
+  const ok=function(){
+    close();
+    setup.drillCfg=Object.assign({},setup.drillCfg||{},{spot:sSpot.value});
+    if(sReam)setup.drillCfg.ream=sReam.value;
+    if(sCsk)setup.drillCfg.csk=sCsk.value;
+    sels.forEach(function(q){faoStepInfoSet(setup,q.key,q.sl.value,!!(q.info.thread&&q.info.thread.lh));});
+    done();
+  };
+  const key=function(e){
+    if(e.key==='Escape'){e.preventDefault();e.stopPropagation();close();}
+    else if(e.key==='Enter'&&!(e.target&&e.target.tagName==='SELECT')){e.preventDefault();e.stopPropagation();ok();}
+  };
+  bC.onclick=close;bOk.onclick=ok;
+  [sp,bC,bOk].forEach(function(b){rowB.appendChild(b);});
+  d.appendChild(rowB);bg.appendChild(d);document.body.appendChild(bg);
+  try{document.addEventListener('keydown',key,true);}catch(e){}
+  try{bOk.focus();}catch(e){}
+  return bg;
+}
+function faoDrillGammeAsk(setup,op,noSnap){
+  // Gamme, après la fenêtre « Gamme de perçage » (outils, nature des trous de STEP).
+  if(typeof document==='undefined'||!document.body||faoDrillGammeAsk.off)return faoDrillGamme(setup,op,noSnap);
+  let list=[];try{list=faoStepUnknown(setup,op);}catch(e){list=[];}
+  try{faoDrillResolve(op);}catch(e){}
+  const H=op.holes||[];
+  const flags={n:H.length,
+    ream:H.some(function(h){return h.ream;})||list.length>0,
+    csk:H.some(function(h){return h.csk;})||list.some(function(it){return it.g.holes[0].chD>0;})};
+  faoDrillGammeDlg(setup,op,list,flags,function(){
+    if(!noSnap)faoSnapshot('gamme de perçage');
+    const made=faoDrillGamme(setup,op,true);
+    faoChanged();
+    try{if(made&&made.length)faoSelectOp(setup.id,made[0].id);}catch(e){}
+  });
+  try{faceEl.textContent='Gamme de perçage : choisissez les outils, puis « Créer la gamme ».';}catch(e){}
+  return null;
+}
 function faoDrillFromSel(setup,op){
   // Appelé juste après la création d'une opération Perçage (barre « + Usinage », ruban).
   let gs=[];try{gs=faoDrillSelHoles(setup,op);}catch(e){gs=[];}
   if(!gs.length)return null;
   op.src='model';op.holeSel=gs;
-  const made=faoDrillGamme(setup,op,true);
+  const made=faoDrillGammeAsk(setup,op,true);
   try{ if(typeof clearMeasure==='function')clearMeasure(); }catch(e){}
   if(made&&op.frame){try{faceEl.textContent+=' Repère 3+2 : Z = axe des trous ('+faoFrameLabel(op.frame.z)+') — réglez X dans l’onglet Repère de chaque opération.';}catch(e){}}
   return made;
@@ -805,46 +1059,95 @@ function faoDrillGamme(setup,op,noSnap){
   const sel=(op.holeSel||[]).slice();
   if(!sel.length||!holes.length){try{faceEl.textContent='Gamme : sélectionnez d’abord des trous.';}catch(e){}return null;}
   const of=function(s){return holes.filter(function(h){return Math.abs(h.d-s.d)<0.02&&Math.abs(h.ztop-s.z)<0.05;});};
-  const plain=sel.filter(function(s){return !of(s).some(function(h){return h.cbore;});});
+  const cfg=faoDrillCfg(setup);
+  // V0.99.9 : tri TROU PAR TROU (un groupe « même Ø, même départ » peut mêler un alésage et
+  // des avant-trous de double perçage) ; chaque opération garde ses trous (op.hf, faoHoleFilt)
+  const any=function(s,hf){return of(s).some(function(h){return faoHoleFilt(hf,h);});};
+  const skipped=sel.filter(function(s){return of(s).some(function(h){return h.pre&&h.through;});});
   const cbores=sel.filter(function(s){return of(s).some(function(h){return h.cbore;});});
+  const reams=sel.filter(function(s){return cbores.indexOf(s)<0&&any(s,'ream');});
+  // pilote d'un alésage : percé même s'il n'était pas sélectionné
+  const key=function(d,z){return (+d).toFixed(2)+'@'+(+z).toFixed(2);};
+  reams.forEach(function(s){of(s).forEach(function(h){
+    if(!h.ream||!h.ream.pil)return;
+    const all=faoWithOpFrame(op,function(){return faoHolesDetect();}),q=faoReamPilot(h,all,h.ream);
+    if(q&&!sel.some(function(t){return key(t.d,t.z)===key(q.d,q.ztop);})){
+      const g={d:+(+q.d).toFixed(3),z:+(+q.ztop).toFixed(3)};sel.push(g);op.holeSel.push(g);
+      faoDrillResolve(op);holes.length=0;Array.prototype.push.apply(holes,op.holes||[]);}
+  });});
+  const plain=sel.filter(function(s){return cbores.indexOf(s)<0&&any(s,'plain');});
   const base={depthMode:op.depthMode||'full',brk:isFinite(+op.brk)?+op.brk:1,order:op.order||'auto',dwell:0};
   const idx=Math.max(0,setup.ops.indexOf(op));
   setup.ops.splice(idx,1);
   const made=[];let at=idx;
-  const push=function(o){faoDrillInherit(op,o);setup.ops.splice(at++,0,o);faoDrillResolve(o);made.push(o);return o;};
-  // 1. pointage (tous les Ø)
-  if(plain.length){
-    const sp=Object.assign(faoOpDefaults('drill'),base,{cycle:'spot',holeSel:plain.map(function(s){return {d:s.d,z:s.z};})});
-    push(sp);faoDrillAutoTool(setup,sp,plain[0].d);
+  const push=function(o){faoDrillInherit(op,o);setup.ops.splice(at++,0,o);faoDrillResolve(o);if((o.holes||[]).length)made.push(o);else setup.ops.splice(--at,1);return o;};
+  const hsel=function(list){return list.map(function(s){return {d:s.d,z:s.z};});};
+  // perçages à faire : {s (groupe), d (Ø du foret), mode, hf}
+  const drills=[];
+  plain.forEach(function(s){drills.push({s:s,d:+s.d,mode:base.depthMode,hf:'plain'});});
+  // alésages sans pilote proche : pré-trou Ø alésage − surépaisseur (écart de la fonction, sinon
+  // règle d'atelier) ; borgne : pointe au fond (rien sous le fond plat)
+  reams.forEach(function(s){
+    const hs=of(s).filter(function(h){return h.ream;}),h0=hs[0],D=+s.d;
+    if(hs.every(function(h){return h.ream.pil;}))return;
+    const a=(h0.ream.off>0)?+h0.ream.off:faoReamAllow(D);
+    drills.push({s:s,d:+Math.max(0.2,D-a).toFixed(3),mode:h0.through?'full':'tip',hf:'ream',pre:true});
+  });
+  // 1. pointage (sauf au fond d'un avant-trou ou au-dessus d'un pilote : déjà centrés)
+  const toSpot=sel.filter(function(s){return drills.some(function(q){return q.s===s;})&&any(s,'spot');});
+  if(toSpot.length&&cfg.spot!=='none'){
+    const sp=Object.assign(faoOpDefaults('drill'),base,{cycle:'spot',gRole:'pointage',hf:'spot',holeSel:hsel(toSpot)});
+    push(sp);faoDrillAutoTool(setup,sp,toSpot[0].d);
   }
-  // 2. perçage : un Ø par opération, débourrage si profond (> 4 × Ø)
-  const byD=new Map();plain.forEach(function(s){const k=(+s.d).toFixed(2);if(!byD.has(k))byD.set(k,[]);byD.get(k).push(s);});
+  // 2. perçage : un Ø (et une profondeur) par opération, débourrage si profond (> 4 × Ø) ; gros Ø d'abord
+  const byD=new Map();
+  drills.slice().sort(function(x,y){return y.d-x.d;}).forEach(function(q){const k=q.d.toFixed(2)+'|'+q.mode+'|'+q.hf;if(!byD.has(k))byD.set(k,[]);byD.get(k).push(q);});
   byD.forEach(function(list){
-    const hs=[].concat.apply([],list.map(of));
+    const hs=[].concat.apply([],list.map(function(q){return of(q.s).filter(function(h){return faoHoleFilt(q.hf,h);});}));
     const d=list[0].d,depth=hs.reduce(function(m,h){return Math.max(m,h.zSurf-h.zbot);},0);
     const deep=depth>4*d;
-    const dr=Object.assign(faoOpDefaults('drill'),base,{cycle:deep?'peck':'drill',peck:deep?+(+d).toFixed(1):0,holeSel:list.map(function(s){return {d:s.d,z:s.z};})});
+    const dr=Object.assign(faoOpDefaults('drill'),base,{cycle:deep?'peck':'drill',depthMode:list[0].mode,hf:list[0].hf,peck:deep?+(+d).toFixed(1):0,holeSel:hsel(list.map(function(q){return q.s;}))});
+    if(list[0].pre)dr.gRole='pretrou';
     push(dr);faoDrillAutoTool(setup,dr,d);
   });
-  // 3. lamages : fraisage hélicoïdal, un Ø par opération
+  // 3. fraisures : foret à pointer de l'angle de la fraisure, après le perçage
+  const csks=plain.filter(function(s){return any(s,'csk');});
+  if(csks.length){
+    const byA=new Map();csks.forEach(function(s){const k=String(of(s).find(function(h){return h.csk;}).csk);if(!byA.has(k))byA.set(k,[]);byA.get(k).push(s);});
+    byA.forEach(function(list){
+      const fs=Object.assign(faoOpDefaults('drill'),base,{cycle:'spot',gRole:'fraisure',hf:'csk',holeSel:hsel(list)});
+      push(fs);faoDrillAutoTool(setup,fs,list[0].d);
+    });
+  }
+  // 4. lamages : fraisage hélicoïdal, un Ø par opération
   const byC=new Map();cbores.forEach(function(s){const k=(+s.d).toFixed(2);if(!byC.has(k))byC.set(k,[]);byC.get(k).push(s);});
   byC.forEach(function(list){
-    const hl=Object.assign(faoOpDefaults('drill'),base,{cycle:'helix',holeSel:list.map(function(s){return {d:s.d,z:s.z};})});
+    const hl=Object.assign(faoOpDefaults('drill'),base,{cycle:'helix',holeSel:hsel(list)});
     push(hl);faoHelixTool(setup,hl,list[0].d);
   });
-  // 4. taraudage : un filet par opération
+  // 5. finition des alésages : alésoir (cycle d'alésage) ou fraise (hélicoïdal), un Ø par opération
+  const byR=new Map();reams.forEach(function(s){const k=(+s.d).toFixed(3);if(!byR.has(k))byR.set(k,[]);byR.get(k).push(s);});
+  byR.forEach(function(list){
+    const ro=Object.assign(faoOpDefaults('drill'),base,{cycle:cfg.ream==='mill'?'helix':'ream',gRole:'alesage',hf:'ream',holeSel:hsel(list)});
+    push(ro);faoDrillAutoTool(setup,ro,list[0].d);
+  });
+  // 6. taraudage : un filet par opération
   const byT=new Map();
   plain.forEach(function(s){
     // un groupe (même Ø, même départ) peut mêler filets à droite / à gauche, ou trous lisses
     const ks=[];of(s).forEach(function(x){if(x.thread){const k=faoThreadKey(x.thread);if(ks.indexOf(k)<0)ks.push(k);}});
     ks.forEach(function(k){if(!byT.has(k))byT.set(k,[]);byT.get(k).push(s);});});
   byT.forEach(function(list,k){
-    const tp=Object.assign(faoOpDefaults('drill'),base,{cycle:'tap',thKey:k,holeSel:list.map(function(s){return {d:s.d,z:s.z};})});
+    const tp=Object.assign(faoOpDefaults('drill'),base,{cycle:'tap',thKey:k,hf:'plain',holeSel:hsel(list)});
     push(tp);faoDrillAutoTool(setup,tp,list[0].d);
   });
   faoChanged();
-  const names=made.map(function(o){const t=faoToolById(setup,o.toolId);return ({spot:'Pointage',drill:'Perçage',peck:'Perçage (débourrage)',tap:'Taraudage',helix:'Lamage fraisé'}[o.cycle]||o.cycle)+' T'+t.num+' '+t.name;});
+  const names=made.map(function(o){const t=faoToolById(setup,o.toolId);
+    const nm=o.gRole==='fraisure'?'Fraisure':(o.gRole==='alesage'?(o.cycle==='ream'?'Alésage':'Alésage fraisé'):(o.gRole==='pretrou'?'Pré-trou d’alésage':({spot:'Pointage',drill:'Perçage',peck:'Perçage (débourrage)',tap:'Taraudage',helix:'Lamage fraisé'}[o.cycle]||o.cycle)));
+    return nm+' T'+t.num+' '+t.name;});
   let msg='Gamme créée : '+names.join(' → ')+'.';
+  if(skipped.length)msg+=' Petit trou du double perçage (Ø'+skipped.map(function(s){return +(+s.d).toFixed(2);}).join(', Ø')+') laissé pour l’autre côté.';
+  if(!made.length)msg='Gamme : rien à usiner de ce côté.';
   try{faceEl.textContent=msg;}catch(e){}
   return made;
 }

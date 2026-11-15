@@ -8,7 +8,7 @@ sont sorties le 2026-09-30j.
 Code dans `src/` · livrable `fusion_mvp.html` (généré par `build.js`) · architecture et
 garde-fous en tête de `src/00-entete-et-outils.js`.
 
-**695 versions**, de `2026-09-28b` à `V0.99.8` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
+**696 versions**, de `2026-09-28b` à `V0.99.9` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
 comme dans le fichier d'origine.
 
 ---
@@ -7773,3 +7773,15 @@ Cavité Usinage, après l'ébauche D25, la reprise D10 et une finition boule D12
 **Moteur « Lisse »** (ex-« distance ») : cause des ondulations dans la lumière, le champ était stocké sur 8 bits (pas de 8p/255) et les normales, tirées de différences sur 1,5 pas, en héritaient. Correctif : la cible 3D de la taille GPU passe en flottants 16 bits quand la carte sait y dessiner (`EXT_color_buffer_float`, repli 8 bits sinon), et la grille est plus fine quand la taille se fait sur la carte (3 / 16 / 40 millions d'échantillons au lieu de 1,5 / 6 / 14 ; repli processeur inchangé).
 
 **Test** : Cavité Usinage, fin du parcours : finesse normale pas 0,68 → 0,49 mm (0,5 s, 34 Mo), haute 0,52 → 0,36 mm (1,0 s, 83 Mo), ondulations disparues sur les parois et congés (captures comparées) ; suite rapide 167/167. Parcours inchangés : CACHE_VER et FORMES_VER inchangés.
+
+## V0.99.9 - FAO Perçage : gamme automatique des trous alésés, fenêtre « Gamme de perçage », fraisures et doubles perçages
+
+**Demande** : « dans l'outil perçage, la fonction auto qui reconnaît un trou alésé et lance la gamme automatiquement ; l'outil à pointer n'est pas forcément utilisé, il faut pouvoir le définir avant de créer la gamme, et ce pour tous types », « on peut utiliser un alésoir ou une fraise », « pour les trous multiples, bien souvent le plus petit est fait par l'autre côté : faire juste le gros trou », « quid des perçages venant d'un STEP ? une fenêtre qui demande quel type de trou », « les fraisures : fraise à chanfreiner », « pouvoir enlever le pointage », « quand je clique sur la fraisure aussi ».
+
+**Alésoir** : nouveau type d'outil `ream` (bout plat, chanfrein d'entrée 45°, avance par tour) et cycle « Alésage » : entrée et sortie en avance, CYCLE85 (Siemens) / G85 (Fagor 8065, à valider sur la machine).
+
+**Gamme** (`faoDrillGamme`) : pointage → perçages → fraisures → lamages → alésages → taraudages, triée TROU PAR TROU (`op.hf`, `faoHoleFilt` : un groupe « même Ø, même départ » peut mêler un alésage et des avant-trous de double perçage). Alésé (4 cas de la fonction) : pré-trou Ø alésage − écart de la fonction (sinon 0,1 à 0,5 mm selon le Ø, `faoReamAllow`), pointe au fond pour un fond plat ; le perçage pilote de la fonction sert de pré-trou s'il est assez proche (et il est repris s'il n'était pas sélectionné) ; finition alésoir ou fraise hélicoïdale. Fraisure : opération à part après le perçage, foret à pointer ou fraise à chanfreiner du même angle, Ø ≥ Ø fraisure + 1, méplat compté dans la profondeur ; le pointage ne la creuse plus. Double perçage : le petit trou débouchant est laissé pour l'autre côté, un petit borgne est gardé, pas de pointage au fond d'un avant-trou.
+
+**Fenêtre « Gamme de perçage »** (`faoDrillGammeDlg`) à la création (trous sélectionnés + Perçage, bouton ⚙ Gamme) : pointage (automatique, foret à pointer, à centrer, outil de la bibliothèque, sans pointage), finition des alésages et outil des fraisures quand la sélection en contient, nature des trous d'une pièce importée (lisse, taraudé, alésé H6/H7/H8, lamage, fraisure). Choix gardés par posage (`setup.drillCfg`), aussi dans la fiche du posage (onglet Perçage) et d'un Perçage. Clic sur le cône d'une fraisure : le trou est retrouvé.
+
+**Test** : `tests/test_fao_alesage_gamme.cjs` (4 cas d'alésage, alésoir et fraise, pré-trous, CYCLE85/G85, fraisure au foret à pointer et à la fraise à chanfreiner, doubles perçages, choix du pointage, pièce sans fonction Perçage, clic sur le cône) ; essai dans l'application ; suite rapide 167/167. Seuls les perçages qui contiennent des trous alésés, fraisés ou de double perçage sont à régénérer ; CACHE_VER et FORMES_VER inchangés.
