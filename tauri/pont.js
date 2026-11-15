@@ -189,6 +189,11 @@
     try{
       localStorage.removeItem('minifusion_auto');
       localStorage.removeItem('minifusion_auto_idb');
+      // Fermeture normale = démarrage abouti. Le témoin n'était retiré que 5 s après le noyau prêt
+      // ou par « beforeunload », pas toujours reçu à la croix : fermer peu après l'ouverture le
+      // laissait, et le lancement suivant croyait à un démarrage raté (bandeau, sauvegarde
+      // automatique suspendue, modifications perdues au prochain arrêt brutal).
+      localStorage.removeItem('minifusion_boot');
       if(mffHandle&&mffHandle.chemin)localStorage.setItem(DERNIER,mffHandle.chemin);else localStorage.removeItem(DERNIER);
     }catch(e){}
   };

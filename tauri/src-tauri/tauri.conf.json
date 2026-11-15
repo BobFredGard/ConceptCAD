@@ -8,7 +8,8 @@
   "app": {
     "withGlobalTauri": true,
     "windows": [
-      { "title": "ConceptCAD", "width": 1400, "height": 900, "url": "index.html", "dragDropEnabled": false }
+      { "title": "ConceptCAD", "width": 1400, "height": 900, "url": "index.html", "dragDropEnabled": false,
+        "additionalBrowserArgs": "--disable-features=msWebOOUI,msPdfOOUI,msSmartScreenProtection --enable-aggressive-domstorage-flushing" }
     ],
     "security": {
       "csp": null,

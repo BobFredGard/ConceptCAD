@@ -46,7 +46,7 @@ Vous avez décidé de continuer. L'application n'est plus une maquette : elle s'
 - **Vrai calcul FAO :** Poche et Contour donne des parcours identiques à Chrome.
 - **Plusieurs cœurs (V0.66.0) :** Cavité Test donne aussi des parcours identiques à Chrome, en 5,5 s contre 5,7 s.
 
-**Une limite à connaître :** après un arrêt brutal (coupure de courant, programme tué), les dernières modifications peuvent manquer, car le brouillon n'arrive sur le disque qu'avec jusqu'à une minute de retard. Après 70 secondes d'attente, l'essai le retrouve bien ; après 12 secondes, il revient à la version précédente, avec le bandeau de secours. Le stockage est le même que dans Chrome.
+**Arrêt brutal (corrigé le 15/11/2026) :** sans réglage, WebView2 n'écrit le brouillon sur le disque qu'avec du retard (54 s mesurées, parfois plus de 70 s) : un programme tué ou planté dans ce délai perdait les dernières modifications, et l'essai « Arrêt brutal » échouait de temps en temps (V0.95.7, V0.98.0, V0.99.9). L'application demande maintenant une écriture dans la seconde (`--enable-aggressive-domstorage-flushing` dans `tauri.conf.json`) : le brouillon est sur le disque en 2 s, l'essai n'attend plus que 5 s. Une coupure de courant peut encore perdre ce que Windows n'a pas fini d'écrire.
 
 **Les chiffres de RAM ci-dessous datent de V0.64.3.** Ils n'ont pas été remesurés.
 

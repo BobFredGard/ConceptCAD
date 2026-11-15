@@ -108,14 +108,19 @@ async function fermeture(){
     await attendreFichier(s4,F);
     await garde(s4);
     m4=await modifier(s4,0.75);
-    await C.attendre(70000); // WebView2 pose son stockage sur le disque jusqu’à une minute plus tard
+    // Sans réglage, WebView2 n'écrit le stockage local sur le disque qu'avec retard (54 s mesurées,
+    // parfois plus de 70 s : échecs de V0.95.7, V0.98.0, V0.99.9). L'application demande une écriture
+    // dans la seconde (--enable-aggressive-domstorage-flushing, tauri.conf.json) : 5 s doivent suffire.
+    await C.attendre(5000);
+    // relevé avant l'arrêt : sauvegarde automatique suspendue ? brouillon écrit avec la nouvelle cote ?
+    var avantArret=await s4.page.evaluate(v=>{let t='';try{t=localStorage.getItem('minifusion_auto')||'';}catch(e){}return {suspendu:bootHold,bandeau:!!document.getElementById('bootSafe'),brouillon:t.length,nouvelleCote:t.includes(String(v))};},m4.valeur);
   }finally{await C.arreter(s4);}
   const s5=await C.lancer('app',{neuf:false});
   try{
     await s5.page.waitForFunction(pret,null,{timeout:120000,polling:100});
     await C.attendre(2500);
     const v=await valeur(s5,m4);
-    note('Arrêt brutal : le brouillon revient',v!==null&&Math.abs(v-m4.valeur)<1e-9,{lu:v,attendu:m4.valeur,titre:await s5.page.title()});
+    note('Arrêt brutal : le brouillon revient',v!==null&&Math.abs(v-m4.valeur)<1e-9,{lu:v,attendu:m4.valeur,titre:await s5.page.title(),avantArret,bandeau:await s5.page.evaluate(()=>!!document.getElementById('bootSafe'))});
     // Logiciel bloqué par un calcul : on peut quand même sortir
     await s5.page.evaluate(()=>{setTimeout(()=>{const t=Date.now();while(Date.now()-t<11000);},0);});
     await C.attendre(300);
