@@ -1353,9 +1353,9 @@ function faoViewerBarShow(){
     cb.style.whiteSpace='nowrap';
     bar.appendChild(cb); faoVwCollBtn=cb;
     const mb=mk('◼ matière','Matière usinée ON : la matière disparaît sous l\'outil (toggle)',function(){ faoViewerMatterToggle(); });
-    bar.appendChild(mb); faoVwMatterBtn=mb;
-    const eb=mk('◈ réel','',function(){ faoViewerExactToggle(); });
-    bar.appendChild(eb); faoVwExactBtn=eb;
+    faoVwMatterBtn=mb; // V0.99.8 : boutons « matière » et « réel/lisse » retirés de la barre
+    const eb=mk('◈ réel','',function(){ faoViewerExactToggle(); }); //   (matière toujours visible, rendu réel ;
+    faoVwExactBtn=eb;                                              //    fonctions gardées pour les tests)
     // 2026-10-11-003 : finesse du détail (près de ◈ réel) + 2 cases à cocher.
     const ds=document.createElement('select');
     ds.title='Finesse du détail : grille de matière + maillage de l\'outil (bas = rapide, haut = fin)';
