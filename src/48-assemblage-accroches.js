@@ -178,7 +178,9 @@ function asmSnapGeomOf(c){
   if(!c||!c._snap||typeof occHas!=='function'||!occHas())return null;
   if(asmSnapFresh(c))return c._snapG.g;
   let g=null;
-  try{g=asmSnapExtract(asmExactOfQuiet(c).map(b=>b.shape));}catch(e){g=null;}
+  const pre=c._snapGpre;delete c._snapGpre; // relevées à la capture (47, V0.99.16)
+  if(pre&&pre.h===c._snap.hash)g=pre.g;
+  else try{g=asmSnapExtract(asmExactOfQuiet(c).map(b=>b.shape));}catch(e){g=null;}
   c._snapG={h:c._snap.hash,g};
   if(g&&c._snap.exact){try{asmCacheSnapGSave(c,g).catch(()=>{});}catch(e){}} // gardées pour la prochaine ouverture (47-assemblage-cache)
   return g;

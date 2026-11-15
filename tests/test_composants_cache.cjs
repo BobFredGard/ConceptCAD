@@ -97,9 +97,13 @@ const vm=require('vm');
     const ix=KV['asnap:index'];
     att(Object.keys(ix).length===ASM_CACHE_MAX&&!('asnap:vieux0' in KV)&&('asnap:vieux'+(ASM_CACHE_MAX+4) in KV)&&KV[asmCacheKey(h.doc)],'22 : purge des plus anciennes, la nouvelle entrée reste');
     // ── images dans le fichier (V0.28.1, option asm.img) ──
-    asm.img=true;
-    att(asmSerial().img===true,'24 : option enregistrée avec l assemblage');
-    {const s=asmSerial();const keep=asm;asmFromSerial(s);att(asm.img===true,'25 : option relue à l ouverture');asm=keep;}
+    // V0.99.16 : cochée d'office — seul le refus (false) est enregistré
+    delete asm.img;
+    att(asmSerial().img===undefined,'24 : option d office : rien d enregistré');
+    asm.img=false;
+    att(asmSerial().img===false,'24b : option refusée enregistrée avec l assemblage');
+    {const s=asmSerial();const keep=asm;asmFromSerial(s);att(asm.img===false,'25 : refus relu à l ouverture');asm=keep;}
+    {delete asm.img;const s=asmSerial();const keep=asm;asmFromSerial(s);att(asm.img!==false,'25b : option d office relue');asm=keep;}
     // une entrée réelle (tableaux typés) pour A, un renvoi pour F déjà présent
     const kA=asmCacheKey(a.doc);
     KV[kA]={v:ASM_CACHE_V,at:1,hash:'hA',items:[{pos:new Float32Array([1,2,3,4,5,6,7,8,9]),nor:null,idx:new Uint16Array([0,1,2]),color:0x336699,bid:'b1'}],

@@ -394,7 +394,7 @@ input[type=range]{accent-color:var(--primary);width:100%}
  * peut changer sans rien casser. CACHE_VER (parcours FAO) reste indépendant.
  */
 
-const APP_VER='V0.99.15';
+const APP_VER='V0.99.16';
 try{console.log('[ConceptCAD] version '+APP_VER);}catch(e){}
 try{var mfSv=document.getElementById('mfSplashVer');if(mfSv)mfSv.textContent=APP_VER;}catch(e){} // écran de démarrage
 
@@ -10470,10 +10470,11 @@ let pcOuvert=null;   // {doc, cle} : clé du document tel qu'ouvert (fichier, br
 const pcVerif={ok:0,ecart:0,sans:0,dernier:''}; // contrôles de la pièce relue par le rejeu de fond (pcVerifie)
 let pcFait=false;     // le rejeu d'affichage en cours a été servi par l'entrée (rebuildInner : pas de projections après)
 function pcIdbOK(){try{return typeof indexedDB!=='undefined'&&!!indexedDB&&typeof idbOpen==='function';}catch(e){return false;}}
-function pcPossible(){
+function pcPossible(composant){
+  // composant (V0.99.16) : composant d'un assemblage servi par son image (pcServirComposant)
   try{
     if(!occHas()||freshHard||!doc||!(doc.features||[]).length)return false;
-    if(typeof asm!=='undefined'&&asm&&asm.comps&&asm.comps.length>1)return false;
+    if(!composant&&typeof asm!=='undefined'&&asm&&asm.comps&&asm.comps.length>1)return false;
     if(tlReplayCount()!=null||occSkipFeat||occStepForce||occPrefixTap||derCkPre)return false;
     return asmCacheable(doc)&&asmCacheImpReady(doc);
   }catch(e){return false;}
@@ -10481,9 +10482,9 @@ function pcPossible(){
 function pcCle(){
   // null : pas de cache possible pour l'état courant
   if(!pcPossible())return null;
-  const k=asmCacheKey(doc);if(!k)return null;
-  return 'pfin:'+FORMES_VER+':'+PC_V+':'+k.slice(6);
+  return pcCleDe(doc);
 }
+function pcCleDe(d){const k=d?asmCacheKey(d):null;return k?'pfin:'+FORMES_VER+':'+PC_V+':'+k.slice(6):null;}
 /* ── copie des tableaux d'un maillage (BufferGeometry ⇄ objet rangeable) ── */
 function pcGeoVers(g){
   if(!g||!g.attributes||!g.attributes.position)return null;
@@ -10540,9 +10541,17 @@ function pcCapture(cle){
   const delwk=[];
   try{
     const sigs=B.map(b=>b.sig);
+    const pris=new Set();
     delWkRes.forEach((v,k)=>{
       if(!v||v.st!=='fin'||!v.brep)return;
       if(!sigs.some(s=>s.startsWith(k)||k===s+';'))return;
+      pris.add(v);
+    });
+    // V0.99.16 : un même calcul est rangé sous plusieurs clés (renvois : le premier rejeu de la session
+    // ne voyait pas encore certains champs de calcul des fonctions) — toutes gardées, sinon le rejeu de
+    // contrôle relançait le calcul et la pièce était recalculée (plaque à suppression de face : 35 s)
+    delWkRes.forEach((v,k)=>{
+      if(!pris.has(v))return;
       delwk.push([k,{sig:v.sig||null,brep:v.brep,kept:v.kept|0,err:v.err||null,warnings:(v.warnings||[]).slice(),ms:v.ms||0,thr:!!v.thr}]);
     });
   }catch(e){}
@@ -10578,6 +10587,8 @@ function pcEcrireSoon(){
       ||(typeof delWkPending==='function'&&delWkPending())||!buildKeyUpToDate();
     if(occupe){if(Date.now()-t0<120000)pcEcrT=setTimeout(tente,1500);return;}
     const cle=pcCle();if(!cle||pcEcrit.has(cle))return;
+    // V0.99.16 : le fichier porte déjà cette image — pas de copie sur ce poste
+    if(pcFichier.has(cle)||(pcFichierDoc===doc&&!docUndoStack.length))return;
     let e=null;try{e=pcCapture(cle);}catch(x){e=null;}
     if(!e)return;
     // document tel qu'ouvert, retouché seulement par le calcul de l'ouverture (rien à annuler)
@@ -10591,6 +10602,7 @@ function pcEcrireSoon(){
 /* ── lecture à l'ouverture ── */
 async function pcLire(cle){
   // → entrée (un alias est suivi une fois) ou null
+  {const f=pcFichier.get(cle);if(f)return f;} // V0.99.16 : image venue d'un fichier ouvert
   const db=await idbOpen();
   const get=k=>new Promise(res=>{
     try{const rq=db.transaction('kv','readonly').objectStore('kv').get(k);rq.onsuccess=()=>res(rq.result||null);rq.onerror=()=>res(null);}
@@ -10615,14 +10627,19 @@ async function pcPreparer(){
     const cle=pcCle();if(!cle)return false;
     pcOuvert={doc,cle};
     const v0=_docVersion,d0=doc;
-    const e=await pcLire(cle);
+    // V0.99.16 : image du fichier qu'on ouvre (vérifiée avec son document par pcDuPaquet)
+    const fa=pcFichierAttendu&&(!pcFichierAttendu.doc||pcFichierAttendu.doc===doc)?pcFichierAttendu.e:null;
+    if(fa)pcFichierAttendu=null;
+    let e=await pcLire(cle),duFichier=false;
+    if(!e&&fa){e=fa;duFichier=true;}
     if(!e||e.v!==PC_V||!Array.isArray(e.corps)||!e.corps.length)return false;
     if(doc!==d0||_docVersion!==v0)return false; // document changé pendant la lecture
     // V0.96.3 : pendant la lecture, le calcul de l'ouverture a pu faire ses retouches (origine d'esquisse
     // arrondie, face d'appui nommée) : la clé n'est plus celle du fichier mais celle du document retouché,
     // qui est exactement la clé propre de l'entrée quand on l'a trouvée par son alias. Refusée alors à tort :
     // la plaque SIRAP-14-003 était recalculée à chaque ouverture (11 s), pièce gardée rangée et lisible.
-    {const k2=pcCle();if(k2!==cle&&k2!==e.cle)return false;}
+    if(!duFichier){const k2=pcCle();if(k2!==cle&&k2!==e.cle)return false;}
+    if(duFichier||pcFichier.get(cle)===e)pcFichierDoc=d0;
     e._doc=d0;e._ver=v0;
     pcServi=e;pcEcrit.add(cle);pcEcrit.add(e.cle);
     return true;
@@ -10632,7 +10649,7 @@ function pcValide(){
   // rebuildInner : rien n'a bougé depuis pcPreparer (même document, aucune modification, même
   // marqueur…) ? La clé y a été vérifiée ; les hôtes résolus entre-temps ne sont que des retouches.
   if(!pcServi)return false;
-  let ok=false;try{ok=pcServi._doc===doc&&pcServi._ver===_docVersion&&pcPossible();}catch(e){}
+  let ok=false;try{ok=pcServi._doc===doc&&pcServi._ver===_docVersion&&pcPossible(!!pcServi._asm);}catch(e){}
   if(!ok)pcServi=null;
   return ok;
 }
@@ -10661,7 +10678,9 @@ function pcFR(){
     (doc.sketches||[]).forEach(s=>{if(s.id)pcChampsPose(s,e.champs&&e.champs.s[s.id]);});
     try{NOMS_PERTES_ESQ.clear();(e.pertes||[]).forEach(([k,v])=>NOMS_PERTES_ESQ.set(k,v));}catch(x){}
     // calculs de fond : la préchauffe (et le prochain rejeu) les relisent sans relancer le worker
-    try{(e.delwk||[]).forEach(([k,v])=>{if(!delWkRes.has(k))delWkRes.set(k,Object.assign({},v,{st:'fin',warnings:(v.warnings||[]).slice()}));});}catch(x){}
+    try{const memes=new Map();(e.delwk||[]).forEach(([k,v])=>{if(delWkRes.has(k))return;
+      let o=memes.get(v.brep);if(!o){o=Object.assign({},v,{st:'fin',warnings:(v.warnings||[]).slice()});memes.set(v.brep,o);}
+      delWkRes.set(k,o);});}catch(x){}
     const ghostShapes=(e.ghosts||[]).map(g=>({geo:pcGeoDe(g.geo),orphan:!!g.orphan,fid:g.fid||null,inexact:g.inexact||null})).filter(g=>g.geo);
     pcFait=true;
     return{shape,shapeFao,preThr,perBody,ghostShapes,msgs:(e.msgs||[]).slice(),bin:[],itemShapes:[],items:[],imports:(e.imports||[]).slice(),D:e.D||null,servi:true};
@@ -10670,6 +10689,151 @@ function pcFR(){
     try{log('Pièce gardée illisible ('+((err&&err.message)||err)+') — recalcul complet.');}catch(x){}
     return null;
   }
+}
+/* ── V0.99.16 : IMAGE COMPLÈTE DANS LE FICHIER (demande de Fred : « je préfère que le fichier soit plus gros »)
+   À l'enregistrement d'une pièce, son image (même entrée que la pièce gardée : solide exact, maillage
+   d'affichage, noms des faces, états de calcul) part dans le fichier (b.pfin : tableaux réunis en un bloc
+   binaire gzip, base64). À l'ouverture du fichier — ou à la lecture d'une source liée par un assemblage
+   (47-composants-lies) — elle est gardée EN MÉMOIRE (pcFichier), jamais copiée sur le poste. Elle est
+   servie quand elle va avec le document : sa clé est celle du document, OU elle a été écrite avec le texte
+   même du document du fichier (empreinte sig du document enregistré, mêmes FORMES_VER et CACHE_VER) —
+   l'ouverture retouche le document (projections, noms) et sa clé change, alors que l'image et le
+   document sortent du même enregistrement. Même contrôle par le rejeu de fond qu'une pièce gardée.
+   Mesuré : cavité +0,36 Mo (ouverture 1,4 s → immédiate), plaque d'une centaine de fonctions +2,4 à 4,9 Mo
+   (11 à 22 s → immédiate). Contenu venu d'ailleurs : vérifié, une image douteuse est ignorée (recalcul). */
+const PC_FICHIER_MAX=6; // images en mémoire (jusqu’à ~20 Mo chacune pour une grosse pièce)
+const pcFichier=new Map();  // clé → entrée (images des fichiers ouverts pendant cette session)
+const pcCompMem=new Map();  // clé → entrée : images des composants préchargées avant leurs rejeux (assemblage)
+let pcFichierAttendu=null; // image du fichier en cours d'ouverture, vérifiée avec son document (bundleRestore → pcPreparer)
+let pcFichierDoc=null;     // document servi par l'image de son fichier : rien à copier sur ce poste tant qu'il n'est pas modifié
+function pcSigDoc(txt){
+  // empreinte du texte du document enregistré (deux empreintes + longueur, comme asmCacheKey)
+  txt=String(txt||'');let a=2166136261,b=5381;
+  for(let i=0;i<txt.length;i++){const c=txt.charCodeAt(i);a^=c;a=Math.imul(a,16777619);b=(Math.imul(b,33)^c)|0;}
+  return (a>>>0).toString(36)+'_'+(b>>>0).toString(36)+'_'+txt.length;
+}
+async function pcDuPaquet(b){
+  // Fichier lu (bundle) : son image, si elle va avec SON document → entrée ou null (et gardée dans pcFichier)
+  try{
+    const x=b&&b.pfin;if(!x||!b.doc)return null;
+    if(x.formes!==FORMES_VER||x.cache!==CACHE_VER||typeof x.sig!=='string')return null; // calcul changé depuis
+    if(x.sig!==(b._sigLu||pcSigDoc(JSON.stringify(b.doc))))return null; // document retouché hors de ConceptCAD : image ignorée
+    const e=await pcDepaquet(x);if(!e)return null;
+    pcFichier.delete(e.cle);pcFichier.set(e.cle,e);
+    while(pcFichier.size>PC_FICHIER_MAX)pcFichier.delete(pcFichier.keys().next().value);
+    return e;
+  }catch(err){return null;}
+}
+const PC_TA={f32:Float32Array,f64:Float64Array,u32:Uint32Array,i32:Int32Array,u16:Uint16Array,i16:Int16Array,u8:Uint8Array,i8:Int8Array};
+function pcTaKind(a){for(const k in PC_TA)if(a instanceof PC_TA[k])return k;return null;}
+async function pcPaquet(e){
+  // entrée → {v, z, cle, meta, bin} (gzip + base64) ou null
+  const parts=[];let off=0;const deja=new Map(); // même tableau (renvois des calculs de fond) : écrit une fois
+  // seuls les champs de l'ENTRÉE en « _ » restent sur le poste (_doc…) ; plus bas, « _ » est le nom des
+  // champs de calcul des fonctions (champs.f[id]._m, _perdues… : les ⚠), à garder
+  const walk=(v,haut)=>{
+    if(ArrayBuffer.isView(v)){
+      if(deja.has(v))return deja.get(v);
+      const t=pcTaKind(v);if(!t)throw new Error('tableau inconnu');
+      const pad=(8-off%8)%8;if(pad){parts.push(new Uint8Array(pad));off+=pad;}
+      parts.push(new Uint8Array(v.buffer,v.byteOffset,v.byteLength));
+      const r={$t:t,o:off,n:v.length};off+=v.byteLength;deja.set(v,r);return r;
+    }
+    if(Array.isArray(v))return v.map(x=>walk(x,false));
+    if(v instanceof Map||v instanceof Set)throw new Error('Map/Set : pas de place dans le fichier');
+    if(v&&typeof v==='object'){const o={};Object.keys(v).forEach(k=>{if(!haut||k[0]!=='_')o[k]=walk(v[k],false);});return o;}
+    return v;
+  };
+  const meta=walk(e,true);
+  const bin=new Uint8Array(off);let p=0;parts.forEach(u=>{bin.set(u,p);p+=u.length;});
+  const g=await asmCacheZip(bin,false),m=g&&await asmCacheZip(new TextEncoder().encode(JSON.stringify(meta)),false);
+  if(!g||!m)return null;
+  return {v:PC_V,z:'gzip',cle:e.cle,meta:importU8ToB64(m),bin:importU8ToB64(g)};
+}
+function pcEntreeOK(e){
+  // image venue d'un fichier : la forme de ce que pcFR lit
+  try{
+    if(!e||e.v!==PC_V||typeof e.cle!=='string'||!/^pfin:/.test(e.cle)||!Array.isArray(e.corps)||!e.corps.length)return false;
+    return e.corps.every(c=>c&&typeof c.bodyId==='string'&&typeof c.sig==='string'&&(typeof c.brep==='string'||c.brep instanceof Uint8Array)&&
+      c.mesh&&c.mesh.geo&&c.mesh.geo.at&&c.mesh.geo.at.position&&c.mesh.geo.at.position.a instanceof Float32Array&&c.mesh.geo.at.position.a.length%3===0);
+  }catch(err){return false;}
+}
+async function pcDepaquet(x){
+  // {v, z, meta, bin} → entrée vérifiée, ou null
+  if(!x||typeof x!=='object'||x.v!==PC_V||x.z!=='gzip'||typeof x.meta!=='string'||typeof x.bin!=='string')return null;
+  let bin,meta;
+  try{
+    bin=await asmCacheZip(importB64ToU8(x.bin),true);
+    const m=await asmCacheZip(importB64ToU8(x.meta),true);
+    meta=m?JSON.parse(new TextDecoder().decode(m)):null;
+  }catch(err){return null;}
+  if(!bin||!meta)return null;
+  const un=v=>{
+    if(v&&typeof v==='object'&&!Array.isArray(v)&&typeof v.$t==='string'){
+      const T=PC_TA[v.$t],o=+v.o,n=+v.n;
+      if(!T||!Number.isInteger(o)||!Number.isInteger(n)||o<0||n<0||o%T.BYTES_PER_ELEMENT||o+n*T.BYTES_PER_ELEMENT>bin.length)throw new Error('image abîmée');
+      const id=v.$t+':'+o+':'+n;if(vus.has(id))return vus.get(id); // même tableau cité plusieurs fois : un seul objet
+      const a=new T(bin.buffer.slice(bin.byteOffset+o,bin.byteOffset+o+n*T.BYTES_PER_ELEMENT));vus.set(id,a);return a;
+    }
+    if(Array.isArray(v))return v.map(un);
+    if(v&&typeof v==='object'){const r={};Object.keys(v).forEach(k=>{r[k]=un(v[k]);});return r;}
+    return v;
+  };
+  const vus=new Map();
+  let e;try{e=un(meta);}catch(err){return null;}
+  return pcEntreeOK(e)?e:null;
+}
+async function pcVersFichier(docTxt){
+  // Enregistrement d'une pièce : son image, si la pièce est à jour → paquet ou null.
+  // docTxt : texte du document tel qu'il part dans le fichier (empreinte sig)
+  try{
+    if(!occHas()||!pcPossible())return null;
+    const cle=pcCle();if(!cle)return null;
+    let e=null;
+    if(!rebuildDepth&&!pcChauffe&&buildKeyUpToDate()){try{e=pcCapture(cle);}catch(x){e=null;}}
+    if(!e)e=await pcLire(cle);
+    if(!e||!Array.isArray(e.corps)||!e.corps.length)return null;
+    if(e.cle!==cle)e=Object.assign({},e,{cle});
+    const x=await pcPaquet(e);if(!x)return null;
+    x.formes=FORMES_VER;x.cache=CACHE_VER;x.sig=pcSigDoc(docTxt);
+    return x;
+  }catch(err){return null;}
+}
+/* ── composants d'un assemblage servis par leur image (V0.99.16) ──
+   Un composant à rejouer (jamais vu sur ce poste, ou modifié puis enregistré avec son image) dont
+   l'image correspond EXACTEMENT à son document est servi comme une pièce gardée : ni rejeu ni maillage
+   (plaque d'une centaine de fonctions : 10 s → moins d'une seconde). Les images sont lues avant la
+   série de rejeux (asmBuildSnapshots est synchrone) : fichiers ouverts (pcFichier), puis ce poste. */
+function pcCompBesoin(c,exact){return !!(c&&c.doc&&(!c._snap||c._stale||(exact&&!c._snap.exact)));}
+async function pcComposantsPrecharger(list){
+  pcCompMem.clear();
+  if(typeof asm==='undefined'||!asm||!occHas())return 0;
+  let n=0;
+  for(const c of (list||asm.comps)){
+    if(!pcCompBesoin(c,true)||c.doc===doc)continue;
+    const cle=pcCleDe(c.doc);if(!cle)continue;
+    let e=null;try{e=pcFichier.get(cle)||(pcIdbOK()?await pcLire(cle):null);}catch(x){e=null;}
+    if(e&&Array.isArray(e.corps)&&e.corps.length){pcCompMem.set(cle,e);if(e.cle)pcCompMem.set(e.cle,e);n++;}
+  }
+  return n;
+}
+function pcServirComposant(c){
+  // asmActivate, juste avant le rejeu du composant : image servie si sa clé est celle du document
+  if(!c||!c.doc||c.doc!==doc||!occHas())return false;
+  if(!pcCompMem.size&&!pcFichier.size&&!c._pfin)return false;
+  try{if(typeof parApplyAll==='function')parApplyAll();}catch(e){}
+  try{importHydrate();}catch(e){}
+  try{ensureBodies();}catch(e){}
+  try{(doc.sketches||[]).forEach(migrateSketch);}catch(e){}
+  if(!pcPossible(true))return false;
+  const cle=pcCleDe(doc);if(!cle)return false;
+  const raw=c._rawKey?'pfin:'+FORMES_VER+':'+PC_V+':'+String(c._rawKey).slice(6):null;
+  // c._pfin : image du fichier source lu par le lien (47-composants-lies), vérifiée avec son document
+  const e=pcCompMem.get(cle)||pcFichier.get(cle)||(raw&&(pcCompMem.get(raw)||pcFichier.get(raw)))||c._pfin||null;
+  delete c._pfin;
+  if(!e)return false;
+  pcServi=Object.assign({},e,{_doc:doc,_ver:_docVersion+1,_asm:true});
+  return true;
 }
 /* ── contrôle de la pièce relue (V0.96.3) ──
    Le rejeu de fond (pcChauffer) vient de recalculer le solide de chaque corps, sans filets modélisés.
@@ -10743,6 +10907,7 @@ async function pcChauffer(){
   const d0=doc,v0=_docVersion,m0=tlMark,s0=occSkipFeat,f0=occStepForce,f1=pcFonctions();
   const stale=()=>doc!==d0||_docVersion!==v0||tlMark!==m0||occSkipFeat!==s0||occStepForce!==f0||!occHas();
   let g=null,FR=null;
+  const att0=typeof delWkAttenteN!=='undefined'?delWkAttenteN:0;
   try{
     g=occFinalShapeGen(tlReplayCount(),true);
     for(;;){
@@ -10750,7 +10915,7 @@ async function pcChauffer(){
       if(rebuildDepth||(typeof regenRun!=='undefined'&&regenRun)){await new Promise(r=>setTimeout(r,200));continue;}
       if(!pcCalme()){await new Promise(r=>setTimeout(r,150));continue;} // V0.99.5 : vue en mouvement
       let r;const skip0=occThreadSkip;
-      try{occThreadSkip=true;r=g.next();}finally{occThreadSkip=skip0;}
+      try{occThreadSkip=true;delWkFond=true;r=g.next();}finally{occThreadSkip=skip0;delWkFond=false;}
       if(r.done){FR=r.value;break;}
       await new Promise(r=>setTimeout(r,0));
     }
@@ -10759,7 +10924,11 @@ async function pcChauffer(){
     // d'ouverture vide puis remplit le MÊME document sans changer sa version), affichage à jour.
     while(!pcCalme()&&!stale())await new Promise(r=>setTimeout(r,150)); // contrôle (~0,5 s) : vue au repos aussi
     let memes=false;try{memes=!stale()&&!rebuildDepth&&doc.features.length>0&&pcFonctions()===f1&&buildKeyUpToDate();}catch(e){memes=false;}
-    const v=memes?pcVerifie(FR):null;
+    // V0.99.16 : rejeu qui a reçu « calcul en cours » (suppression de face ou filets relancés en fond) :
+    // son solide est provisoire, sans ce calcul — rien à conclure. Plaque à suppression de face : 898 faces
+    // au lieu de 896, « pièce gardée périmée » et 38 s d'à-coups pour la recalculer à l'identique.
+    const provisoire=typeof delWkAttenteN!=='undefined'&&delWkAttenteN!==att0;
+    const v=memes&&!provisoire?pcVerifie(FR):null;
     if(v===true)pcVerif.ok++;
     else if(v===false){pcVerif.ecart++;try{occCleanup(FR,null);}catch(e){}FR=null;pcPerimee();}
     else pcVerif.sans++;
@@ -10998,6 +11167,8 @@ function delWkPump(){
   delWk.w.postMessage(j.kind==='thr'?{t:'job',kind:'thr',id:j.key,brep:j.brep,voids:j.voids,lin:j.lin,ang:j.ang}
     :{t:'job',id:j.key,brep:j.brep,idx:j.idx});
 }
+let delWkFond=false; // V0.99.16 : rejeu de contrôle de la pièce gardée en cours (20-75) — ses calculs ne relancent pas l'affichage
+let delWkAttenteN=0; // V0.99.16 : réponses « en cours » données au rejeu (solide provisoire, sans ce calcul) — contrôle de la pièce gardée (20-75)
 function delWkAsk(key,result,hs,fid,ckPre){
   // Rejeu : résultat du worker pour cette clé, ou {pending} (calcul lancé / en cours).
   // ckPre : clé du solide d'entrée (préfixe du rejeu avant la fonction).
@@ -11008,10 +11179,10 @@ function delWkAsk(key,result,hs,fid,ckPre){
     if(e.brep){try{r=occBrepRead(e.brep);}catch(x){err=(x&&x.message)||String(x);}}
     return{res:{r,kept:r?e.kept:0,err:err||'résultat illisible',warnings:e.warnings.slice()}};
   }
-  if(e)return{pending:true,msg:'calcul en cours… (corps affiché sans la suppression)'};
+  if(e){if(!delWkFond)e.fond=false;delWkAttenteN++;return{pending:true,msg:'calcul en cours… (corps affiché sans la suppression)'};}
   // Suppression précédente du même corps encore en calcul : son entrée n'est pas encore le
   // solide de cette clé — on attend sa réponse plutôt que de calculer à côté.
-  if(key.includes(DEL_WK_MARK))return{pending:true,msg:'en attente de la suppression précédente…'};
+  if(key.includes(DEL_WK_MARK)){delWkAttenteN++;return{pending:true,msg:'en attente de la suppression précédente…'};}
   const idx=[];
   const SH=occt.TopAbs_ShapeEnum.TopAbs_SHAPE;
   const ex=new occt.TopExp_Explorer_2(result,occt.TopAbs_ShapeEnum.TopAbs_FACE,SH);
@@ -11025,10 +11196,11 @@ function delWkAsk(key,result,hs,fid,ckPre){
   for(const x of delWkRes.values())if(x.sig===sig){delWkRes.set(key,x);return delWkAsk(key,result,hs,fid,ckPre);}
   // Une nouvelle version de la même fonction (édition) rend caduques ses travaux en attente.
   for(let i=delWkQ.length-1;i>=0;i--)if(delWkQ[i].fid===fid){delWkRes.delete(delWkQ[i].key);delWkQ.splice(i,1);}
-  delWkRes.set(key,{st:'run',sig});
+  delWkRes.set(key,{st:'run',sig,fond:delWkFond});
   delWkQ.push({key,fid,brep,idx});
   try{delWkStart();}catch(x){delWkOff=(x&&x.message)||String(x);delWkQ.length=0;delWkRes.delete(key);return{res:null};}
   delWkPump();
+  delWkAttenteN++;
   return{pending:true,msg:'calcul en cours… (corps affiché sans la suppression)'};
 }
 /* ---------- filets modélisés dans le même worker (V0.21.19) ----------
@@ -11046,7 +11218,7 @@ function thrWkAsk(key,result,voids,fids,D){
     if(e.brep){try{r=occBrepRead(e.brep);}catch(x){err=(x&&x.message)||String(x);}}
     return{res:{r,err:r?null:(err||'résultat illisible')}};
   }
-  if(e)return{pending:true};
+  if(e){if(!delWkFond)e.fond=false;delWkAttenteN++;return{pending:true};}
   let brep,vb;
   try{brep=occBrepWrite(result);vb=occBrepWrite(voids);}catch(x){return{res:null};}
   const fk=(fids||[]).join(',');
@@ -11054,10 +11226,11 @@ function thrWkAsk(key,result,voids,fids,D){
   // filets de la version précédente encore en calcul : caducs, le worker est relancé
   // (le noyau ne s'interrompt pas ; le module wasm compilé est réemployé)
   if(delWk&&delWk.job&&delWk.job.kind==='thr'&&delWk.job.fid===fk){delWkRes.delete(delWk.job.key);delWkStop(delWk);}
-  delWkRes.set(key,{st:'run',sig:null,thr:true});
+  delWkRes.set(key,{st:'run',sig:null,thr:true,fond:delWkFond});
   delWkQ.push({key,kind:'thr',fid:fk,brep,voids:vb,idx:[],lin:D&&D.lin||0,ang:D&&D.ang||0});
   try{delWkStart();}catch(x){delWkOff=(x&&x.message)||String(x);delWkQ.length=0;delWkRes.delete(key);return{res:null};}
   delWkPump();
+  delWkAttenteN++;
   return{pending:true};
 }
 function delWkPending(){
@@ -11066,6 +11239,9 @@ function delWkPending(){
 }
 function delWkReplay(key){
   // Réponse du worker : le rejeu reprend le résultat rangé sous sa clé.
+  // V0.99.16 : calcul demandé par le seul rejeu de contrôle (pièce gardée servie, 20-75) : l'affichage
+  // n'en dépend pas — pas de rejeu complet (plaque : 12 s d'écran figé pour redessiner la même pièce)
+  {const e0=key&&delWkRes.get(key);if(e0&&e0.fond)return;}
   setTimeout(()=>{
     // V0.94.6 : préchauffe en cours (31) : elle attend cette réponse et son appelant refait l'affichage
     const prechauffe=typeof regenRun!=='undefined'&&!!regenRun;
@@ -16842,6 +17018,8 @@ function asmActivate(cid,path){
   occSkipFeat=null;
   builtVersion=-1;builtHash=null;builtEngine=null;_hashMemo=null;
   // _docVersion++ et non markDirty() : changer de composant n'est pas une modification du document
+  // V0.99.16 : image du composant (fichier ou poste) servie à la place du rejeu si elle correspond (20-75)
+  try{if(typeof pcServirComposant==='function')pcServirComposant(c);}catch(e){}
   try{_docVersion++;rebuild();}catch(e){}
   delete c._rawKey; // rejeu synchrone terminé : toute capture suivante suit une modification
   try{renderTree();renderProps();docUndoUI();}catch(e){}
@@ -16939,7 +17117,7 @@ function asmSerial(){
   const comps=asm.comps.map(c=>({id:c.id,kind:'comp',name:c.name,doc:c.doc===doc?null:serialiseObj(c.doc,false),
     occ:c.occ.map(asmOccSerial),link:asmLinkSerial(c.link,c),of:c.of||undefined,pats:asmPatSerial(c)}));
   return {v:2,name:asm.name,root:asm.root,active:asm.active,path:asm.path.slice(),mode:asmMode,comps,
-    img:asm.img?true:undefined}; // images des pièces embarquées dans le fichier (47-assemblage-cache)
+    img:asm.img===false?false:undefined}; // images des pièces embarquées dans le fichier (47-assemblage-cache) — V0.99.16 : d'office, false si décochée
 }
 function asmLinkSerial(l,c){
   // Lien enregistré sans son état d'exécution (st, msg) ; pend : modifié ici et pas encore écrit
@@ -16995,7 +17173,7 @@ function asmFromSerial(a){
   asm=null;asmMode='part';asmUndoStack=[];asmRedoStack=[];
   const t=asmTreeFromSerial(a,doc);if(!t)return false;
   asm={name:t.name,root:t.root,comps:t.comps,path:[],active:t.active};
-  if(a.img===true)asm.img=true;
+  if(a.img===false)asm.img=false; // V0.99.16 : images dans le fichier d'office (ancien a.img===true : idem)
   asm.path=(t.path&&asmPathComp(t.path)===t.active)?t.path:(asmFirstPath(t.active)||[]);
   // la vue d'assemblage demande les instantanés de tous les composants : rétablie après le
   // chargement (asmAfterLoad, 47), on ouvre donc toujours en mode Modéliser
@@ -17292,7 +17470,7 @@ function asmCacheKey(d){
   try{
     // imports : hors de docHashSrc (sauf dérivés) → fonctions entières, avec l'empreinte de leur source
     const im=asmCacheImports(d).map(({_mesh,_m,...r})=>r);
-    s=docHashSrc(d)+'|'+JSON.stringify({b:d.bodies||[],v:d.bodyVis||{},t:d.tint||0,r:d.rendu||null})+(im.length?'|'+JSON.stringify(im):'')+'|'+CACHE_VER+'|'+ASM_CACHE_V;}
+    s=docHashSrc(d,true)+'|'+JSON.stringify({b:d.bodies||[],v:d.bodyVis||{},t:d.tint||0,r:d.rendu||null})+(im.length?'|'+JSON.stringify(im):'')+'|'+CACHE_VER+'|'+ASM_CACHE_V;}
   catch(e){return null;}
   let a=2166136261,b=5381;
   for(let i=0;i<s.length;i++){const c=s.charCodeAt(i);a^=c;a=Math.imul(a,16777619);b=(Math.imul(b,33)^c)|0;}
@@ -17630,6 +17808,16 @@ function asmCaptureActive(){
     if(!thr.length)thr=null;}catch(e){thr=null;}
   c._snap={items,edges,pedges,pfaces,thr,exact:builtEngine==='exact',hash:(()=>{try{return docHash();}catch(e){return '';}})()};
   delete c._stale;
+  // V0.99.16 : composant visé par des points d'accroche (48) — faces relevées sur le solide affiché ;
+  // asmSnapGeomOf les reprend au lieu de son rejeu silencieux (composant servi par son image : pas de
+  // points de contrôle). Pas dans _snapG : asmSnapSync doit encore voir le changement et réaligner.
+  try{
+    if(c._snap.exact&&typeof asmSnapUses==='function'&&asmSnapUses().some(u=>u.comp===c.id)){
+      const vis=id=>!(doc.bodyVis&&doc.bodyVis[id]===false);
+      const sh=(bodies||[]).filter(b=>b&&b.kind==='body'&&b.shape&&vis(b.bodyId)).map(b=>b.shape);
+      if(sh.length){const g=asmSnapExtract(sh);if(g&&g.faces&&g.faces.length)c._snapGpre={h:c._snap.hash,g};}
+    }
+  }catch(e){}
   try{asmCacheSoon(c);}catch(e){} // gardé pour les prochaines ouvertures (47-assemblage-cache)
   // le composant vient d'être rejoué : ses repères ont pu bouger → les alignements suivent
   try{if(asmResolve()){dirty=true;autosave();}}catch(e){}
@@ -18066,8 +18254,8 @@ function asmRenderProps(p){
     if(!asm.path.length){
       // V0.28.1 : images des pièces dans le fichier (47-assemblage-cache)
       const lab=mk('label','pnl-note'),cb=document.createElement('input');
-      cb.type='checkbox';cb.checked=!!asm.img;
-      cb.onchange=()=>{if(cb.checked)asm.img=true;else delete asm.img;dirty=true;try{autosave();}catch(e){}};
+      cb.type='checkbox';cb.checked=asm.img!==false; // V0.99.16 : cochée d'office
+      cb.onchange=()=>{if(cb.checked)delete asm.img;else asm.img=false;dirty=true;try{autosave();}catch(e){}};
       lab.appendChild(cb);lab.appendChild(document.createTextNode(' Enregistrer les images des pièces dans le fichier (ouverture rapide sur un autre poste, fichier plus lourd)'));
       p.appendChild(lab);
     }
@@ -18122,7 +18310,11 @@ function asmAfterLoad(){
     // instantanés gardés d'une ouverture précédente : seuls les composants changés sont rejoués
     let n=0;try{n=await asmCacheFill();}catch(e){}
     if(asm!==A)return; // autre fichier ouvert pendant la lecture du cache
+    // V0.99.16 : images complètes des composants encore à rejouer (fichiers, poste) — servies au rejeu
+    try{if(typeof pcComposantsPrecharger==='function')await pcComposantsPrecharger();}catch(e){}
+    if(asm!==A)return;
     try{asmBuildSnapshots();}catch(e){}
+    try{if(typeof pcCompMem!=='undefined')pcCompMem.clear();}catch(e){}
     if(n){try{asmResolve();asmExtSyncSoon();}catch(e){}} // références entre composants : relues sans rejeu
     // asmEnter : un composant sans enfants (fichier V0.6.0 : la pièce active) → son porteur
     if(want){try{asmEnter();}catch(e){}}else{try{asmCtxDraw();renderTree();}catch(e){}}
@@ -18287,7 +18479,9 @@ async function asmLinkLoad(L,txt){
       // la racine de la source = le composant lié (même objet : il peut être le composant actif)
       const nd=JSON.parse(JSON.stringify(serialiseObj(c.doc,false)));
       if(L.doc===doc){try{docApplySnap(JSON.stringify(nd));}catch(e){}}
-      else{Object.keys(L.doc).forEach(k=>{if(!(k in nd))delete L.doc[k];});Object.assign(L.doc,docFromSerial(nd));}
+      else{Object.keys(L.doc).forEach(k=>{if(!(k in nd))delete L.doc[k];});Object.assign(L.doc,docFromSerial(nd));
+        // V0.99.16 : image complète du fichier source, vérifiée avec son document (20-75) : servie au rejeu
+        if(b&&b._pfin&&!(top.asm&&top.asm.comps&&top.asm.comps.length>1))L._pfin=b._pfin;else delete L._pfin;}
       L.doc.name=L.name;L.occ=c.occ.map(mo);L.pats=mp(c);if(!L.pats)delete L.pats;
     }else{
       const id=M(c.id);keep.add(id);
@@ -18394,7 +18588,9 @@ async function asmLinksCheck(ask){
     // contenu remplacé depuis le disque : les annulations qui le citaient ne valent plus
     asmUndoStack.length=0;asmRedoStack.length=0;
     try{await asmCacheFill();}catch(e){} // source déjà vue (autre hôte, retour en arrière) : sans rejeu
+    try{if(typeof pcComposantsPrecharger==='function')await pcComposantsPrecharger();}catch(e){} // V0.99.16 : image de la source (20-75)
     try{asmBuildSnapshots();}catch(e){}
+    try{if(typeof pcCompMem!=='undefined')pcCompMem.clear();}catch(e){}
     asmLinkRebase(asmLinked().filter(L=>out.updated.includes(L.name)));
     try{dirty=true;autosave();}catch(e){}
   }
@@ -18566,7 +18762,7 @@ async function asmCmdRelink(cid){
   const p=await asmPickSource();if(!p)return false;
   const ref=await asmLinkRef(p.h);
   L.link.rel=ref.rel;L.link.key=ref.key;L.link.name=p.name;asmLinkStamp(L,null);
-  if(asmHash(p.txt)!==L.link.sig&&!asmLinkDirty(L)){try{await asmLinkLoad(L,p.txt);try{await asmCacheFill(asmLinkMembers(L));}catch(e){}asmBuildSnapshots();}catch(e){alert('Lecture impossible : '+(e&&e.message||e));}}
+  if(asmHash(p.txt)!==L.link.sig&&!asmLinkDirty(L)){try{await asmLinkLoad(L,p.txt);try{await asmCacheFill(asmLinkMembers(L));}catch(e){}try{if(typeof pcComposantsPrecharger==='function')await pcComposantsPrecharger();}catch(e){}asmBuildSnapshots();try{pcCompMem.clear();}catch(e){}}catch(e){alert('Lecture impossible : '+(e&&e.message||e));}}
   else L.link.st='ok';
   asmNotify();
   try{faceEl.textContent='« '+L.name+' » relié à '+(ref.rel||p.name)+'.';}catch(e){}
@@ -19662,7 +19858,9 @@ function asmSnapGeomOf(c){
   if(!c||!c._snap||typeof occHas!=='function'||!occHas())return null;
   if(asmSnapFresh(c))return c._snapG.g;
   let g=null;
-  try{g=asmSnapExtract(asmExactOfQuiet(c).map(b=>b.shape));}catch(e){g=null;}
+  const pre=c._snapGpre;delete c._snapGpre; // relevées à la capture (47, V0.99.16)
+  if(pre&&pre.h===c._snap.hash)g=pre.g;
+  else try{g=asmSnapExtract(asmExactOfQuiet(c).map(b=>b.shape));}catch(e){g=null;}
   c._snapG={h:c._snap.hash,g};
   if(g&&c._snap.exact){try{asmCacheSnapGSave(c,g).catch(()=>{});}catch(e){}} // gardées pour la prochaine ouverture (47-assemblage-cache)
   return g;
@@ -76234,7 +76432,10 @@ async function importRestorePending(opts){
   if(others.size){
     // image prise sans la forme importée : à refaire (asmAfterLoad attend cette restauration)
     others.forEach(c=>{if(c._snap&&!c._snap.cached)c._stale=true;});
-    try{if(!asmRestoreHold)asmBuildSnapshots();}catch(e){}
+    // V0.99.16 : pas pendant l'ouverture (sansRejeu : deserialise, noyau prêt) — les images des composants
+    // (fichier, poste) ne sont pas encore lues ; asmAfterLoad / la fin du chargement refont les instantanés
+    // après elles (assemblage enregistré avec ses images : 2 pièces rejouées en entier, 30 s figées)
+    try{if(!asmRestoreHold&&!(opts&&opts.sansRejeu))asmBuildSnapshots();}catch(e){}
   }
   if(n&&opts&&opts.sansRejeu){builtVersion=-1;builtHash=null;builtEngine=null;}
   else if(n){
@@ -77585,10 +77786,16 @@ function docHash(){
   if(h!=='x'){_hashMemo=h;_hashVer=_docVersion;}
   return h;
 }
-function docHashSrc(d){
+function docHashSrc(d,sansNomsHotes){
   // Texte normalisé dont docHash prend l'empreinte — pour n'importe quel document (composants
   // d'un assemblage : cache des instantanés, 47-assemblage-cache)
-  const stripSketch=sk=>{const c=Object.assign({},sk);delete c._refs;delete c._health;delete c._audit;return c;};
+  // sansNomsHotes (V0.99.16, clés des images gardées) : sans le NOM d'affichage de la face d'appui
+  // des esquisses (sk.host.name, « Face 1494 ») — une simple étiquette, donnée à l'ouverture aux
+  // copies d'une répétition par un compteur qui dépend de ce qui a été ouvert avant : la même pièce
+  // avait une autre clé seule, dans un assemblage, et d'une ouverture à l'autre.
+  const stripSketch=sk=>{const c=Object.assign({},sk);delete c._refs;delete c._health;delete c._audit;
+    if(sansNomsHotes&&c.host&&typeof c.host==='object'&&'name' in c.host){c.host=Object.assign({},c.host);delete c.host.name;}
+    return c;};
   const stripFeat=({_mesh,_m,_perdues,...r})=>r;
   const stripCg=c=>{const o=cgClean(c);delete o.st;delete o.msg;delete o.ai;return o;};
   return JSON.stringify({s:d.sketches.map(stripSketch),f:(d.features||[]).filter(f=>f.type!=='import'||f.derive).map(stripFeat),t:d.tint||0,...((d.cgeo&&d.cgeo.length)?{c:d.cgeo.map(stripCg)}:{})},nomsSansCles); // construction : seulement si présente (empreinte des anciens documents inchangée)
@@ -77885,10 +78092,14 @@ async function bundleSerialise(){
   const moves=await bundleMoves();
   const imports=await bundleImports();
   // V0.28.1 : images des pièces d'un assemblage, sur option (47-assemblage-cache)
-  let asnap=null;try{if(asm&&asm.img)asnap=await asmCacheExport();}catch(e){asnap=null;}
+  // V0.99.16 : option cochée d'office (asm.img === false seulement si décochée)
+  let asnap=null;try{if(asm&&asm.img!==false&&asm.comps&&asm.comps.length>1)asnap=await asmCacheExport();}catch(e){asnap=null;}
+  // V0.99.16 : image complète d'une pièce (20-75, pcVersFichier) — ouverture sans recalcul sur tout poste
+  const docObj=JSON.parse(serialise());
+  let pfin=null;try{if(typeof pcVersFichier==='function')pfin=await pcVersFichier(JSON.stringify(docObj));}catch(e){pfin=null;}
   return JSON.stringify({app:'ConceptCAD',bundle:1,v:APP_VER,cacheVer:CACHE_VER,
-    at:Date.now(),name:doc.name||'',doc:JSON.parse(serialise()),
-    nMoves:Object.keys(moves).length,moves:moves,imports:imports,asnap:asnap||undefined});
+    at:Date.now(),name:doc.name||'',doc:docObj,
+    nMoves:Object.keys(moves).length,moves:moves,imports:imports,asnap:asnap||undefined,pfin:pfin||undefined});
 }
 let faoBundleMovesN=0;   // trajectoires embarquees dans le fichier ouvert
 function bundleReport(){
@@ -77936,6 +78147,9 @@ async function bundleStoreCaches(b){
   // Images des pièces d'un assemblage (option, V0.28.1) : dans le cache AVANT le document,
   // lu à l'ouverture à la place des rejeux (47-assemblage-cache)
   if(b.asnap){try{await asmCacheImport(b.asnap);}catch(e){}}
+  // V0.99.16 : image complète de la pièce (20-75) : gardée en mémoire, servie si la clé correspond
+  // (b._pfin : l'entrée, pour l'ouverture — bundleRestore — ou le lien d'un assemblage — 47-composants-lies)
+  if(b.pfin){try{if(typeof pcDuPaquet==='function')b._pfin=await pcDuPaquet(b);}catch(e){}}
   // Sources des imports AVANT le document : deserialise les rejoue aussitôt.
   const im=(b.imports&&typeof b.imports==='object')?b.imports:{};
   for(const k of Object.keys(im)){
@@ -77949,13 +78163,18 @@ async function bundleRestore(txt,opts){
   const b=JSON.parse(txt);
   if(!b||b.bundle!==1||!b.doc)return false;
   const moves=b.moves||{};
+  // V0.99.16 : empreinte du document TEL QU'ENREGISTRÉ (avant le renommage d'après le nom du fichier) — image (20-75)
+  try{if(b.pfin&&typeof pcSigDoc==='function')b._sigLu=pcSigDoc(JSON.stringify(b.doc));}catch(e){}
   if(opts&&opts.name&&b.doc&&typeof b.doc==='object')b.doc.name=opts.name;
   faoBundleMovesN=await bundleStoreCaches(b); // trajectoires puis sources des imports, AVANT le document
+  try{pcFichierAttendu=b._pfin?{e:b._pfin,doc:null}:null;pcFichierDoc=null;}catch(e){} // V0.99.16 : image de ce fichier (20-75)
   faoBundleWantReport=true;   // consomme par faoMovesDone() (fin de lecture)
   try{ setTimeout(function(){
         try{ if(faoBundleWantReport&&!faoMovesPending()){ faoBundleWantReport=false; bundleReport(); } }
         catch(e){} },1500); }catch(e){}
   await deserialise(JSON.stringify(b.doc),opts);
+  // image pas encore servie (noyau pas prêt : la préparation se fera au chargement du noyau) : liée à CE document
+  try{if(pcFichierAttendu&&!pcFichierAttendu.doc)pcFichierAttendu.doc=doc;}catch(e){}
   // MÉMOIRE : indispensable SANS IndexedDB (le prechargeur n'y lit rien) et
   // immédiat AVEC — le premier dessin n'attend aucune relecture asynchrone.
   let seeded=0;

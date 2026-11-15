@@ -404,6 +404,8 @@ function asmActivate(cid,path){
   occSkipFeat=null;
   builtVersion=-1;builtHash=null;builtEngine=null;_hashMemo=null;
   // _docVersion++ et non markDirty() : changer de composant n'est pas une modification du document
+  // V0.99.16 : image du composant (fichier ou poste) servie à la place du rejeu si elle correspond (20-75)
+  try{if(typeof pcServirComposant==='function')pcServirComposant(c);}catch(e){}
   try{_docVersion++;rebuild();}catch(e){}
   delete c._rawKey; // rejeu synchrone terminé : toute capture suivante suit une modification
   try{renderTree();renderProps();docUndoUI();}catch(e){}
@@ -501,7 +503,7 @@ function asmSerial(){
   const comps=asm.comps.map(c=>({id:c.id,kind:'comp',name:c.name,doc:c.doc===doc?null:serialiseObj(c.doc,false),
     occ:c.occ.map(asmOccSerial),link:asmLinkSerial(c.link,c),of:c.of||undefined,pats:asmPatSerial(c)}));
   return {v:2,name:asm.name,root:asm.root,active:asm.active,path:asm.path.slice(),mode:asmMode,comps,
-    img:asm.img?true:undefined}; // images des pièces embarquées dans le fichier (47-assemblage-cache)
+    img:asm.img===false?false:undefined}; // images des pièces embarquées dans le fichier (47-assemblage-cache) — V0.99.16 : d'office, false si décochée
 }
 function asmLinkSerial(l,c){
   // Lien enregistré sans son état d'exécution (st, msg) ; pend : modifié ici et pas encore écrit
@@ -557,7 +559,7 @@ function asmFromSerial(a){
   asm=null;asmMode='part';asmUndoStack=[];asmRedoStack=[];
   const t=asmTreeFromSerial(a,doc);if(!t)return false;
   asm={name:t.name,root:t.root,comps:t.comps,path:[],active:t.active};
-  if(a.img===true)asm.img=true;
+  if(a.img===false)asm.img=false; // V0.99.16 : images dans le fichier d'office (ancien a.img===true : idem)
   asm.path=(t.path&&asmPathComp(t.path)===t.active)?t.path:(asmFirstPath(t.active)||[]);
   // la vue d'assemblage demande les instantanés de tous les composants : rétablie après le
   // chargement (asmAfterLoad, 47), on ouvre donc toujours en mode Modéliser

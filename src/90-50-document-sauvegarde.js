@@ -39,10 +39,16 @@ function docHash(){
   if(h!=='x'){_hashMemo=h;_hashVer=_docVersion;}
   return h;
 }
-function docHashSrc(d){
+function docHashSrc(d,sansNomsHotes){
   // Texte normalisé dont docHash prend l'empreinte — pour n'importe quel document (composants
   // d'un assemblage : cache des instantanés, 47-assemblage-cache)
-  const stripSketch=sk=>{const c=Object.assign({},sk);delete c._refs;delete c._health;delete c._audit;return c;};
+  // sansNomsHotes (V0.99.16, clés des images gardées) : sans le NOM d'affichage de la face d'appui
+  // des esquisses (sk.host.name, « Face 1494 ») — une simple étiquette, donnée à l'ouverture aux
+  // copies d'une répétition par un compteur qui dépend de ce qui a été ouvert avant : la même pièce
+  // avait une autre clé seule, dans un assemblage, et d'une ouverture à l'autre.
+  const stripSketch=sk=>{const c=Object.assign({},sk);delete c._refs;delete c._health;delete c._audit;
+    if(sansNomsHotes&&c.host&&typeof c.host==='object'&&'name' in c.host){c.host=Object.assign({},c.host);delete c.host.name;}
+    return c;};
   const stripFeat=({_mesh,_m,_perdues,...r})=>r;
   const stripCg=c=>{const o=cgClean(c);delete o.st;delete o.msg;delete o.ai;return o;};
   return JSON.stringify({s:d.sketches.map(stripSketch),f:(d.features||[]).filter(f=>f.type!=='import'||f.derive).map(stripFeat),t:d.tint||0,...((d.cgeo&&d.cgeo.length)?{c:d.cgeo.map(stripCg)}:{})},nomsSansCles); // construction : seulement si présente (empreinte des anciens documents inchangée)
@@ -339,10 +345,14 @@ async function bundleSerialise(){
   const moves=await bundleMoves();
   const imports=await bundleImports();
   // V0.28.1 : images des pièces d'un assemblage, sur option (47-assemblage-cache)
-  let asnap=null;try{if(asm&&asm.img)asnap=await asmCacheExport();}catch(e){asnap=null;}
+  // V0.99.16 : option cochée d'office (asm.img === false seulement si décochée)
+  let asnap=null;try{if(asm&&asm.img!==false&&asm.comps&&asm.comps.length>1)asnap=await asmCacheExport();}catch(e){asnap=null;}
+  // V0.99.16 : image complète d'une pièce (20-75, pcVersFichier) — ouverture sans recalcul sur tout poste
+  const docObj=JSON.parse(serialise());
+  let pfin=null;try{if(typeof pcVersFichier==='function')pfin=await pcVersFichier(JSON.stringify(docObj));}catch(e){pfin=null;}
   return JSON.stringify({app:'ConceptCAD',bundle:1,v:APP_VER,cacheVer:CACHE_VER,
-    at:Date.now(),name:doc.name||'',doc:JSON.parse(serialise()),
-    nMoves:Object.keys(moves).length,moves:moves,imports:imports,asnap:asnap||undefined});
+    at:Date.now(),name:doc.name||'',doc:docObj,
+    nMoves:Object.keys(moves).length,moves:moves,imports:imports,asnap:asnap||undefined,pfin:pfin||undefined});
 }
 let faoBundleMovesN=0;   // trajectoires embarquees dans le fichier ouvert
 function bundleReport(){
@@ -390,6 +400,9 @@ async function bundleStoreCaches(b){
   // Images des pièces d'un assemblage (option, V0.28.1) : dans le cache AVANT le document,
   // lu à l'ouverture à la place des rejeux (47-assemblage-cache)
   if(b.asnap){try{await asmCacheImport(b.asnap);}catch(e){}}
+  // V0.99.16 : image complète de la pièce (20-75) : gardée en mémoire, servie si la clé correspond
+  // (b._pfin : l'entrée, pour l'ouverture — bundleRestore — ou le lien d'un assemblage — 47-composants-lies)
+  if(b.pfin){try{if(typeof pcDuPaquet==='function')b._pfin=await pcDuPaquet(b);}catch(e){}}
   // Sources des imports AVANT le document : deserialise les rejoue aussitôt.
   const im=(b.imports&&typeof b.imports==='object')?b.imports:{};
   for(const k of Object.keys(im)){
@@ -403,13 +416,18 @@ async function bundleRestore(txt,opts){
   const b=JSON.parse(txt);
   if(!b||b.bundle!==1||!b.doc)return false;
   const moves=b.moves||{};
+  // V0.99.16 : empreinte du document TEL QU'ENREGISTRÉ (avant le renommage d'après le nom du fichier) — image (20-75)
+  try{if(b.pfin&&typeof pcSigDoc==='function')b._sigLu=pcSigDoc(JSON.stringify(b.doc));}catch(e){}
   if(opts&&opts.name&&b.doc&&typeof b.doc==='object')b.doc.name=opts.name;
   faoBundleMovesN=await bundleStoreCaches(b); // trajectoires puis sources des imports, AVANT le document
+  try{pcFichierAttendu=b._pfin?{e:b._pfin,doc:null}:null;pcFichierDoc=null;}catch(e){} // V0.99.16 : image de ce fichier (20-75)
   faoBundleWantReport=true;   // consomme par faoMovesDone() (fin de lecture)
   try{ setTimeout(function(){
         try{ if(faoBundleWantReport&&!faoMovesPending()){ faoBundleWantReport=false; bundleReport(); } }
         catch(e){} },1500); }catch(e){}
   await deserialise(JSON.stringify(b.doc),opts);
+  // image pas encore servie (noyau pas prêt : la préparation se fera au chargement du noyau) : liée à CE document
+  try{if(pcFichierAttendu&&!pcFichierAttendu.doc)pcFichierAttendu.doc=doc;}catch(e){}
   // MÉMOIRE : indispensable SANS IndexedDB (le prechargeur n'y lit rien) et
   // immédiat AVEC — le premier dessin n'attend aucune relecture asynchrone.
   let seeded=0;

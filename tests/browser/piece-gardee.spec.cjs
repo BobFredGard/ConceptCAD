@@ -146,3 +146,49 @@ test('pièce finie gardée : clé sans numéro de version, pièce périmée dét
   expect(await volume()).toBe(v0);
   expect(err).toEqual([]);
 });
+
+// V0.99.16 : image complète de la pièce DANS le fichier (champ pfin du paquet). Un poste qui n'a jamais
+// ouvert la pièce la relit depuis le fichier sans la recalculer et sans en garder de copie locale ;
+// le contrôle de fond la trouve bonne. Un fichier dont le document a changé (image d'une autre version
+// de la pièce) n'est pas servi : recalcul.
+test('image de la pièce dans le fichier : relue sans calcul ni copie locale',async({page})=>{
+  test.setTimeout(600000);
+  const err=[];page.on('pageerror',e=>err.push(e.message));page.on('dialog',d=>d.accept().catch(()=>{}));
+  const viderPfin=()=>page.evaluate(async()=>{const db=await idbOpen();await new Promise(r=>{const tx=db.transaction('kv','readwrite'),st=tx.objectStore('kv');const q=st.getAllKeys();q.onsuccess=()=>{q.result.filter(k=>/^pfin:/.test(k)).forEach(k=>st.delete(k));};tx.oncomplete=tx.onerror=()=>r();});db.close();});
+  const locales=()=>page.evaluate(async()=>(await idbKeys('pfin:')).filter(k=>k!=='pfin:index').length);
+  await page.goto('/ConceptCAD.html');await pret(page);
+  await viderPfin();
+  await ouvrirFichier(page,FIX);
+  await page.waitForFunction(()=>!pcChauffe&&rebuildDepth===0,null,{timeout:300000});
+  const e1=await page.evaluate(etat);
+  const txt=await page.evaluate(()=>bundleSerialise());
+  const b=JSON.parse(txt);
+  expect(b.pfin&&b.pfin.bin&&b.pfin.sig&&b.pfin.formes).toBeTruthy();
+  const avec=path.join(test.info().outputDir,'barquette-image.conceptcad');
+  fs.mkdirSync(path.dirname(avec),{recursive:true});fs.writeFileSync(avec,zlib.gzipSync(txt));
+  // poste « vierge » : magasin local vidé, page rechargée
+  await page.waitForTimeout(3000);await viderPfin();
+  await page.reload();await pret(page);await calme(page);
+  await page.evaluate(()=>{window.__rejeux=0;window.__servi=0;window.__piles=[];const p=pcFR;window.pcFR=function(){const r=p.apply(this,arguments);if(r)window.__servi++;return r;};const o=occFinalShapeGen;window.occFinalShapeGen=function*(...a){if(!pcChauffe){window.__rejeux++;__piles.push(String(a[0])+' '+String(new Error().stack).split(String.fromCharCode(10)).slice(2,9).map(x=>x.trim().split(' ')[1]).join('<'));}return yield* o.apply(this,a);};});
+  await ouvrirFichier(page,avec);
+  const r=await page.evaluate(()=>({servi:__servi,piles:__piles}));
+  console.log('image du fichier',JSON.stringify(r));
+  expect(r.servi).toBe(1);
+  // comme ci-dessus : ni rejeu complet ni projection (un plan posé sur une face peut relire la pièce jusqu'à sa place)
+  expect(r.piles.filter(p=>/^(null|undefined) /.test(p)||/projEdgesFor|updateAllProjections|projPreUpdate/.test(p))).toEqual([]);
+  expect(await page.evaluate(etat)).toEqual(e1);
+  await page.waitForFunction(()=>!pcChauffe&&rebuildDepth===0&&(pcVerif.ok+pcVerif.ecart+pcVerif.sans)>0,null,{timeout:300000});
+  expect(await page.evaluate(()=>({ok:pcVerif.ok,ecart:pcVerif.ecart}))).toEqual({ok:1,ecart:0});
+  await page.waitForTimeout(4000);
+  expect(await locales()).toBe(0); // rien de rangé sur le poste : l'image reste dans le fichier
+  // document modifié, image d'origine laissée dans le fichier : pas servie
+  const d=b.doc;const f=d.features.find(x=>x.type==='extrude'&&x.op==='cut'&&!x.expr&&!x.mid&&!x.repeatId);f.distance=+f.distance-0.5;
+  const faux=path.join(test.info().outputDir,'barquette-image-perimee.conceptcad');
+  fs.writeFileSync(faux,zlib.gzipSync(JSON.stringify(b)));
+  await page.evaluate(()=>{window.__rejeux=0;window.__servi=0;});
+  await ouvrirFichier(page,faux);
+  const r2=await page.evaluate(()=>({servi:__servi,rejeux:__rejeux}));
+  expect(r2.servi).toBe(0);
+  expect(r2.rejeux).toBeGreaterThan(0);
+  expect(err).toEqual([]);
+});

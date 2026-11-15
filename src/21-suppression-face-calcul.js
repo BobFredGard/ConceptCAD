@@ -228,6 +228,8 @@ function delWkPump(){
   delWk.w.postMessage(j.kind==='thr'?{t:'job',kind:'thr',id:j.key,brep:j.brep,voids:j.voids,lin:j.lin,ang:j.ang}
     :{t:'job',id:j.key,brep:j.brep,idx:j.idx});
 }
+let delWkFond=false; // V0.99.16 : rejeu de contrôle de la pièce gardée en cours (20-75) — ses calculs ne relancent pas l'affichage
+let delWkAttenteN=0; // V0.99.16 : réponses « en cours » données au rejeu (solide provisoire, sans ce calcul) — contrôle de la pièce gardée (20-75)
 function delWkAsk(key,result,hs,fid,ckPre){
   // Rejeu : résultat du worker pour cette clé, ou {pending} (calcul lancé / en cours).
   // ckPre : clé du solide d'entrée (préfixe du rejeu avant la fonction).
@@ -238,10 +240,10 @@ function delWkAsk(key,result,hs,fid,ckPre){
     if(e.brep){try{r=occBrepRead(e.brep);}catch(x){err=(x&&x.message)||String(x);}}
     return{res:{r,kept:r?e.kept:0,err:err||'résultat illisible',warnings:e.warnings.slice()}};
   }
-  if(e)return{pending:true,msg:'calcul en cours… (corps affiché sans la suppression)'};
+  if(e){if(!delWkFond)e.fond=false;delWkAttenteN++;return{pending:true,msg:'calcul en cours… (corps affiché sans la suppression)'};}
   // Suppression précédente du même corps encore en calcul : son entrée n'est pas encore le
   // solide de cette clé — on attend sa réponse plutôt que de calculer à côté.
-  if(key.includes(DEL_WK_MARK))return{pending:true,msg:'en attente de la suppression précédente…'};
+  if(key.includes(DEL_WK_MARK)){delWkAttenteN++;return{pending:true,msg:'en attente de la suppression précédente…'};}
   const idx=[];
   const SH=occt.TopAbs_ShapeEnum.TopAbs_SHAPE;
   const ex=new occt.TopExp_Explorer_2(result,occt.TopAbs_ShapeEnum.TopAbs_FACE,SH);
@@ -255,10 +257,11 @@ function delWkAsk(key,result,hs,fid,ckPre){
   for(const x of delWkRes.values())if(x.sig===sig){delWkRes.set(key,x);return delWkAsk(key,result,hs,fid,ckPre);}
   // Une nouvelle version de la même fonction (édition) rend caduques ses travaux en attente.
   for(let i=delWkQ.length-1;i>=0;i--)if(delWkQ[i].fid===fid){delWkRes.delete(delWkQ[i].key);delWkQ.splice(i,1);}
-  delWkRes.set(key,{st:'run',sig});
+  delWkRes.set(key,{st:'run',sig,fond:delWkFond});
   delWkQ.push({key,fid,brep,idx});
   try{delWkStart();}catch(x){delWkOff=(x&&x.message)||String(x);delWkQ.length=0;delWkRes.delete(key);return{res:null};}
   delWkPump();
+  delWkAttenteN++;
   return{pending:true,msg:'calcul en cours… (corps affiché sans la suppression)'};
 }
 /* ---------- filets modélisés dans le même worker (V0.21.19) ----------
@@ -276,7 +279,7 @@ function thrWkAsk(key,result,voids,fids,D){
     if(e.brep){try{r=occBrepRead(e.brep);}catch(x){err=(x&&x.message)||String(x);}}
     return{res:{r,err:r?null:(err||'résultat illisible')}};
   }
-  if(e)return{pending:true};
+  if(e){if(!delWkFond)e.fond=false;delWkAttenteN++;return{pending:true};}
   let brep,vb;
   try{brep=occBrepWrite(result);vb=occBrepWrite(voids);}catch(x){return{res:null};}
   const fk=(fids||[]).join(',');
@@ -284,10 +287,11 @@ function thrWkAsk(key,result,voids,fids,D){
   // filets de la version précédente encore en calcul : caducs, le worker est relancé
   // (le noyau ne s'interrompt pas ; le module wasm compilé est réemployé)
   if(delWk&&delWk.job&&delWk.job.kind==='thr'&&delWk.job.fid===fk){delWkRes.delete(delWk.job.key);delWkStop(delWk);}
-  delWkRes.set(key,{st:'run',sig:null,thr:true});
+  delWkRes.set(key,{st:'run',sig:null,thr:true,fond:delWkFond});
   delWkQ.push({key,kind:'thr',fid:fk,brep,voids:vb,idx:[],lin:D&&D.lin||0,ang:D&&D.ang||0});
   try{delWkStart();}catch(x){delWkOff=(x&&x.message)||String(x);delWkQ.length=0;delWkRes.delete(key);return{res:null};}
   delWkPump();
+  delWkAttenteN++;
   return{pending:true};
 }
 function delWkPending(){
@@ -296,6 +300,9 @@ function delWkPending(){
 }
 function delWkReplay(key){
   // Réponse du worker : le rejeu reprend le résultat rangé sous sa clé.
+  // V0.99.16 : calcul demandé par le seul rejeu de contrôle (pièce gardée servie, 20-75) : l'affichage
+  // n'en dépend pas — pas de rejeu complet (plaque : 12 s d'écran figé pour redessiner la même pièce)
+  {const e0=key&&delWkRes.get(key);if(e0&&e0.fond)return;}
   setTimeout(()=>{
     // V0.94.6 : préchauffe en cours (31) : elle attend cette réponse et son appelant refait l'affichage
     const prechauffe=typeof regenRun!=='undefined'&&!!regenRun;

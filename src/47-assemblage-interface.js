@@ -74,6 +74,16 @@ function asmCaptureActive(){
     if(!thr.length)thr=null;}catch(e){thr=null;}
   c._snap={items,edges,pedges,pfaces,thr,exact:builtEngine==='exact',hash:(()=>{try{return docHash();}catch(e){return '';}})()};
   delete c._stale;
+  // V0.99.16 : composant visé par des points d'accroche (48) — faces relevées sur le solide affiché ;
+  // asmSnapGeomOf les reprend au lieu de son rejeu silencieux (composant servi par son image : pas de
+  // points de contrôle). Pas dans _snapG : asmSnapSync doit encore voir le changement et réaligner.
+  try{
+    if(c._snap.exact&&typeof asmSnapUses==='function'&&asmSnapUses().some(u=>u.comp===c.id)){
+      const vis=id=>!(doc.bodyVis&&doc.bodyVis[id]===false);
+      const sh=(bodies||[]).filter(b=>b&&b.kind==='body'&&b.shape&&vis(b.bodyId)).map(b=>b.shape);
+      if(sh.length){const g=asmSnapExtract(sh);if(g&&g.faces&&g.faces.length)c._snapGpre={h:c._snap.hash,g};}
+    }
+  }catch(e){}
   try{asmCacheSoon(c);}catch(e){} // gardé pour les prochaines ouvertures (47-assemblage-cache)
   // le composant vient d'être rejoué : ses repères ont pu bouger → les alignements suivent
   try{if(asmResolve()){dirty=true;autosave();}}catch(e){}
@@ -510,8 +520,8 @@ function asmRenderProps(p){
     if(!asm.path.length){
       // V0.28.1 : images des pièces dans le fichier (47-assemblage-cache)
       const lab=mk('label','pnl-note'),cb=document.createElement('input');
-      cb.type='checkbox';cb.checked=!!asm.img;
-      cb.onchange=()=>{if(cb.checked)asm.img=true;else delete asm.img;dirty=true;try{autosave();}catch(e){}};
+      cb.type='checkbox';cb.checked=asm.img!==false; // V0.99.16 : cochée d'office
+      cb.onchange=()=>{if(cb.checked)delete asm.img;else asm.img=false;dirty=true;try{autosave();}catch(e){}};
       lab.appendChild(cb);lab.appendChild(document.createTextNode(' Enregistrer les images des pièces dans le fichier (ouverture rapide sur un autre poste, fichier plus lourd)'));
       p.appendChild(lab);
     }
@@ -566,7 +576,11 @@ function asmAfterLoad(){
     // instantanés gardés d'une ouverture précédente : seuls les composants changés sont rejoués
     let n=0;try{n=await asmCacheFill();}catch(e){}
     if(asm!==A)return; // autre fichier ouvert pendant la lecture du cache
+    // V0.99.16 : images complètes des composants encore à rejouer (fichiers, poste) — servies au rejeu
+    try{if(typeof pcComposantsPrecharger==='function')await pcComposantsPrecharger();}catch(e){}
+    if(asm!==A)return;
     try{asmBuildSnapshots();}catch(e){}
+    try{if(typeof pcCompMem!=='undefined')pcCompMem.clear();}catch(e){}
     if(n){try{asmResolve();asmExtSyncSoon();}catch(e){}} // références entre composants : relues sans rejeu
     // asmEnter : un composant sans enfants (fichier V0.6.0 : la pièce active) → son porteur
     if(want){try{asmEnter();}catch(e){}}else{try{asmCtxDraw();renderTree();}catch(e){}}
