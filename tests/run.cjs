@@ -184,6 +184,7 @@ const SUITES = [
   "test_fao_collision",
   "test_fao_catalogue",
   "test_fao_percage",
+  "test_fao_trous_vote",
   "test_percage_3d",
   "test_percage_alese",
   "test_percage_cylindre",
