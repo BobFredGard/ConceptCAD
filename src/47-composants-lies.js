@@ -87,7 +87,9 @@ async function asmLinkLoad(L,txt){
       // la racine de la source = le composant lié (même objet : il peut être le composant actif)
       const nd=JSON.parse(JSON.stringify(serialiseObj(c.doc,false)));
       if(L.doc===doc){try{docApplySnap(JSON.stringify(nd));}catch(e){}}
-      else{Object.keys(L.doc).forEach(k=>{if(!(k in nd))delete L.doc[k];});Object.assign(L.doc,docFromSerial(nd));}
+      else{Object.keys(L.doc).forEach(k=>{if(!(k in nd))delete L.doc[k];});Object.assign(L.doc,docFromSerial(nd));
+        // V0.99.16 : image complète du fichier source, vérifiée avec son document (20-75) : servie au rejeu
+        if(b&&b._pfin&&!(top.asm&&top.asm.comps&&top.asm.comps.length>1))L._pfin=b._pfin;else delete L._pfin;}
       L.doc.name=L.name;L.occ=c.occ.map(mo);L.pats=mp(c);if(!L.pats)delete L.pats;
     }else{
       const id=M(c.id);keep.add(id);
@@ -194,7 +196,9 @@ async function asmLinksCheck(ask){
     // contenu remplacé depuis le disque : les annulations qui le citaient ne valent plus
     asmUndoStack.length=0;asmRedoStack.length=0;
     try{await asmCacheFill();}catch(e){} // source déjà vue (autre hôte, retour en arrière) : sans rejeu
+    try{if(typeof pcComposantsPrecharger==='function')await pcComposantsPrecharger();}catch(e){} // V0.99.16 : image de la source (20-75)
     try{asmBuildSnapshots();}catch(e){}
+    try{if(typeof pcCompMem!=='undefined')pcCompMem.clear();}catch(e){}
     asmLinkRebase(asmLinked().filter(L=>out.updated.includes(L.name)));
     try{dirty=true;autosave();}catch(e){}
   }
@@ -366,7 +370,7 @@ async function asmCmdRelink(cid){
   const p=await asmPickSource();if(!p)return false;
   const ref=await asmLinkRef(p.h);
   L.link.rel=ref.rel;L.link.key=ref.key;L.link.name=p.name;asmLinkStamp(L,null);
-  if(asmHash(p.txt)!==L.link.sig&&!asmLinkDirty(L)){try{await asmLinkLoad(L,p.txt);try{await asmCacheFill(asmLinkMembers(L));}catch(e){}asmBuildSnapshots();}catch(e){alert('Lecture impossible : '+(e&&e.message||e));}}
+  if(asmHash(p.txt)!==L.link.sig&&!asmLinkDirty(L)){try{await asmLinkLoad(L,p.txt);try{await asmCacheFill(asmLinkMembers(L));}catch(e){}try{if(typeof pcComposantsPrecharger==='function')await pcComposantsPrecharger();}catch(e){}asmBuildSnapshots();try{pcCompMem.clear();}catch(e){}}catch(e){alert('Lecture impossible : '+(e&&e.message||e));}}
   else L.link.st='ok';
   asmNotify();
   try{faceEl.textContent='« '+L.name+' » relié à '+(ref.rel||p.name)+'.';}catch(e){}

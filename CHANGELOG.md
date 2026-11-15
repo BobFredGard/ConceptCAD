@@ -8,7 +8,7 @@ sont sorties le 2026-09-30j.
 Code dans `src/` · livrable `fusion_mvp.html` (généré par `build.js`) · architecture et
 garde-fous en tête de `src/00-entete-et-outils.js`.
 
-**702 versions**, de `2026-09-28b` à `V0.99.15` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
+**703 versions**, de `2026-09-28b` à `V0.99.16` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
 comme dans le fichier d'origine.
 
 ---
@@ -7849,3 +7849,16 @@ Cavité Usinage, après l'ébauche D25, la reprise D10 et une finition boule D12
 **Correctif** : les faces d'accroche (`asmSnapExtract` : type, centre, normale, rectangle, arêtes — données pures) sont rangées dans l'entrée de l'image du composant (`snapG`, même clé, donc valables tant que l'image l'est) : écrites avec l'image (`asmCacheFlush`) ou ajoutées après coup (`asmCacheSnapGSave`), relues par `asmCacheFill`, vérifiées par `asmSnapGeomOK` (aussi pour les images venues d'un fichier). Les images déjà en cache se complètent à la première réouverture.
 
 **Test** : vrai assemblage de 161 occurrences (7 composants), deux ouvertures dans la même page : seconde ouverture 15,8 s bloquées → 0,4 s (plus longue tâche 0,25 s), positions des 161 occurrences identiques à celles du rejeu complet. Suite rapide 169/169. CACHE_VER et FORMES_VER inchangés.
+
+## V0.99.16 - Image complète de la pièce dans le fichier
+
+**Demande de Fred** : ne pas multiplier les pièces gardées sur chaque poste ; un fichier plus gros (compressé) est préférable, et le serveur a la place. Choix : « image complète ».
+
+**Correctif** :
+- **Pièce** : à l'enregistrement, la pièce finie (solides exacts BRep, maillages d'affichage, noms des faces, champs de calcul des fonctions et leurs ⚠, calculs de fond des suppressions de face et des filets) part dans le paquet `.conceptcad` (champ `pfin` : métadonnées et bloc binaire gzip, base64 ; `pcVersFichier`, `pcPaquet`). À l'ouverture, elle est vérifiée par l'empreinte du document tel qu'enregistré (`pcSigDoc`, lue avant les retouches d'ouverture et le renommage) et par FORMES_VER / CACHE_VER, puis servie depuis la mémoire (`pcFichier`, 6 au plus), sans écriture dans le magasin du poste. Le rejeu de fond la contrôle comme une pièce gardée ; un document modifié ignore l'image.
+- **Contrôle de fond** : un calcul de suppression de face demandé par ce seul contrôle ne relance plus de rejeu complet à sa réponse (`delWkFond`, entrée `fond`) ; une réponse « en cours » rend le contrôle non concluant au lieu d'un faux écart (`delWkAttenteN`).
+- **Clés** : le nom de l'hôte des esquisses copiées par une répétition (« Face N », redonné à chaque ouverture) n'entre plus dans les clés d'images (`docHashSrc(d,true)`).
+- **Assemblage** : images des composants enregistrées d'office dans le fichier (case cochée par défaut ; seul le refus est enregistré). Un composant lié relu depuis son fichier source prend l'image de la pièce de ce fichier (`L._pfin`, `pcComposantsPrecharger`, `pcServirComposant` dans `asmActivate`).
+- **Ouverture d'un assemblage** : la pose des formes importées des composants (`importRestorePending({sansRejeu})`, avant `asmAfterLoad`) reconstruisait tous les instantanés AVANT la lecture des images du fichier et du poste — défaut présent depuis V0.94.6 : chaque composant rejoué en entier à la première ouverture.
+
+**Test** : `piece-gardee.spec.cjs` (image dans le fichier : servie sans rejeu complet, identique au calcul — ⚠ compris —, contrôle bon, rien rangé sur le poste ; document modifié : recalcul). Mesures, navigateur vierge, image dans le fichier : cavité 1,4 → 0,5 s ; pièce de 100 fonctions 10,3 → 0,6 s ; grosse plaque 21,7 → 6,4 s (puis contrôle de fond par tranches de 3 s au plus, en pause dès que la souris bouge). Assemblage enregistré avec ses images, poste vierge : 32 s figées → 1,6 s ; composant lié relu de son fichier avec image : servi sans rejeu (16 s → 3 à 6 s). Fichiers plus lourds (gzip) : +0,4 Mo à +5 Mo selon la pièce. `test_composants_cache` : option d'office. CACHE_VER et FORMES_VER inchangés.

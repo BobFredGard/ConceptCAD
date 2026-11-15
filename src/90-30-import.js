@@ -198,7 +198,10 @@ async function importRestorePending(opts){
   if(others.size){
     // image prise sans la forme importée : à refaire (asmAfterLoad attend cette restauration)
     others.forEach(c=>{if(c._snap&&!c._snap.cached)c._stale=true;});
-    try{if(!asmRestoreHold)asmBuildSnapshots();}catch(e){}
+    // V0.99.16 : pas pendant l'ouverture (sansRejeu : deserialise, noyau prêt) — les images des composants
+    // (fichier, poste) ne sont pas encore lues ; asmAfterLoad / la fin du chargement refont les instantanés
+    // après elles (assemblage enregistré avec ses images : 2 pièces rejouées en entier, 30 s figées)
+    try{if(!asmRestoreHold&&!(opts&&opts.sansRejeu))asmBuildSnapshots();}catch(e){}
   }
   if(n&&opts&&opts.sansRejeu){builtVersion=-1;builtHash=null;builtEngine=null;}
   else if(n){
