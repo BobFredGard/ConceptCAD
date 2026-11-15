@@ -15,7 +15,7 @@
    posage ou incliné (3+2). Le moteur ne change rien aux parcours ni au G-code. */
 // V0.9.0 : « le Tri-Dexel n'est pas optimum, je préfère garder Distance et Cartes » — le tri-dexel
 // quitte le sélecteur (le code reste, essayé en V0.8.7–V0.8.9 ; faoSimEngine='dexel' le rappelle)
-const FAO_ENGINES={cartes:'cartes',sdf:'distance'};
+const FAO_ENGINES={cartes:'cartes',sdf:'lisse'}; // V0.99.8 : « distance » renommé « lisse » (demande de Fred)
 let faoSimEngine='cartes';
 try{const k=localStorage.getItem('minifusion_faoMoteur');if(k&&FAO_ENGINES[k])faoSimEngine=k;}catch(e){}
 let faoVwEngSel=null;
@@ -700,12 +700,18 @@ const FAO_SDFC_FS=[
 function faoSdfCSupported(){
   try{return faoDexGSupported()&&typeof THREE.WebGL3DRenderTarget==='function'&&THREE.MaxEquation!=null;}catch(e){return false;}
 }
+function faoSdfHalfOk(){
+  try{return !!(THREE.HalfFloatType!=null&&renderer.extensions&&renderer.extensions.has('EXT_color_buffer_float'));}catch(e){return false;}
+}
 function faoSdfCInit(E){
   // cible 3D, champ initial copié, matériaux de taille et de copie
   const S=E.D,n=S.n;
   const rt=new THREE.WebGL3DRenderTarget(n[0],n[1],n[2]);
   rt.depthBuffer=false;rt.stencilBuffer=false;
-  const tx=rt.texture;tx.format=THREE.RedFormat;tx.type=THREE.UnsignedByteType;tx.minFilter=THREE.LinearFilter;tx.magFilter=THREE.LinearFilter;
+  // V0.99.8 : champ en flottants 16 bits quand la carte sait y dessiner (8× plus précis que
+  // les octets : plus d'ondulations dans la lumière, normales nettes) ; repli sur 8 bits.
+  const half=faoSdfHalfOk();E.half=half;
+  const tx=rt.texture;tx.format=THREE.RedFormat;tx.type=half?THREE.HalfFloatType:THREE.UnsignedByteType;tx.minFilter=THREE.LinearFilter;tx.magFilter=THREE.LinearFilter;
   tx.wrapS=tx.wrapT=tx.wrapR=THREE.ClampToEdgeWrapping;tx.generateMipmaps=false;
   const B=new Uint8Array(n[0]*n[1]*n[2]);faoSdfGConvert(S,B,0,n[0]-1,0,n[1]-1,0,n[2]-1);
   const src=new THREE.Data3DTexture(B,n[0],n[1],n[2]);src.format=THREE.RedFormat;src.type=THREE.UnsignedByteType;src.unpackAlignment=1;src.needsUpdate=true;
@@ -797,7 +803,9 @@ function faoEngPas(s){
   const cfg=(typeof faoDetailCfg!=='undefined'&&faoDetailCfg[faoViewerDetail])||{B:200000,F:0.4};
   const X=s.x1-s.x0,Y=s.y1-s.y0,Z=s.z1-s.z0,lv=+faoViewerDetail||0;
   if(faoSimEngine==='dexel'){const B=cfg.B*4,F=cfg.F*0.5;return Math.max(F,Math.sqrt((X*Y)/B));}
-  const V=[1.5e6,6e6,14e6][Math.max(0,Math.min(2,lv))];return Math.max(cfg.F*0.5,Math.cbrt((X+0.8)*(Y+0.8)*(Z+0.8)/V));
+  const fin=faoSimEngine==='sdf'&&typeof THREE!=='undefined'&&typeof renderer!=='undefined'&&!!renderer&&faoSdfCSupported(); // taille sur la carte seulement
+  const V=(fin?[3e6,16e6,40e6]:[1.5e6,6e6,14e6])[Math.max(0,Math.min(2,lv))]; // V0.99.8 : « lisse » plus fin (taille sur la carte : 0,3 s pour 6,5 M)
+  return Math.max(cfg.F*0.5,Math.cbrt((X+0.8)*(Y+0.8)*(Z+0.8)/V));
 }
 function faoEngEnable(vw){
   // construit le moteur choisi, rattrape 0 → t, monte le maillage ; → nombre d'éléments suivis
@@ -815,7 +823,7 @@ function faoEngEnable(vw){
   const t2=(typeof performance!=='undefined'?performance:Date).now();
   E.stats={pas:p,carveMs:Math.round(t1-t0),meshMs:Math.round(t2-t1),
     cells:D.kind==='dexel'?D.rays:D.n[0]*D.n[1]*D.n[2],elems:D.kind==='dexel'?E.facets:E.tris,
-    mo:Math.round((D.kind==='dexel'?(E.g?D.rays*(16+32)*1.5+D.rays*40:E.facets*28+D.rays*40):(E.gpuCut?D.n[0]*D.n[1]*D.n[2]:D.F.length*(E.sg?5:4)+E.tris*30))/1e6)};
+    mo:Math.round((D.kind==='dexel'?(E.g?D.rays*(16+32)*1.5+D.rays*40:E.facets*28+D.rays*40):(E.gpuCut?D.n[0]*D.n[1]*D.n[2]*(E.half?2:1):D.F.length*(E.sg?5:4)+E.tris*30))/1e6)};
   if(D.kind==='sdf'&&E.sg)E.stats.elems=0;
   vw.mPos=null;
   faoViewerMatterHideBodies(vw);

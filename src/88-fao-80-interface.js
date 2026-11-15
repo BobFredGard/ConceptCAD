@@ -1491,7 +1491,7 @@ function faoOpCardElement(setup,op,i){
     // V0.23.15 : deux modes — TROCHOÏDAL (valeur historique 'escargot' :
     // spirale puis demi-anneaux par côté) et ESCARGOT ('anneaux' : spirale puis
     // anneaux parallèles aux bords, qui tournent autour des îlots).
-    const modeSel=faoSel([
+    const modeSel=faoSelAnim([ // V0.99.8 : étiquette animée au survol (src/88-fao-83)
       ['anneaux','Escargot · tourne autour des îlots','Spirale au centre de la zone, puis anneaux parallèles aux bords espacés de ae, du centre vers les faces : '+
         'dès qu’un îlot est présent, les anneaux l’entourent puis rejoignent ceux de la paroi. Chaque niveau est fini en entier (brut et brut restant : '+
         'l’air n’est pas usiné) ; la dernière passe suit les faces du solide.'],

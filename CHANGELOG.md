@@ -8,7 +8,7 @@ sont sorties le 2026-09-30j.
 Code dans `src/` · livrable `fusion_mvp.html` (généré par `build.js`) · architecture et
 garde-fous en tête de `src/00-entete-et-outils.js`.
 
-**694 versions**, de `2026-09-28b` à `V0.99.7` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
+**695 versions**, de `2026-09-28b` à `V0.99.8` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
 comme dans le fichier d'origine.
 
 ---
@@ -7761,3 +7761,15 @@ Cavité Usinage, après l'ébauche D25, la reprise D10 et une finition boule D12
 **Test** : pièce d’essai recalculée hors de l'application. Ébauche Ø4 : deux courbes parallèles le long de la gorge (droites et rayons), remontées 6 → 1, rapides 0,90 → 0,05 m, 3,01 → 3,02 min ; carte de hauteurs à 0,1 mm : 652 mm² de plus enlevés au fond, et aucune case laissée plus haute qu'en V0.99.6 (sans la reprise de rampe : 0,32 mm² restaient au fond, sur 0,67 mm, au départ du tour). Banc des parcours : seule l'ébauche 3D de Malaxeur Retard change (coupe +0,16 m, rapides −0,6 m, même temps). Ébauche Ø6 du même fichier : parcours identique au mouvement près (8 774 mouvements).
 
 **Réglages d’entrée par opération** (« il me faudrait pouvoir aussi régler les valeurs de rampe, d’hélice, de rayon d’entrée pour chaque opération ») : sous « Rayon d’entrée » (qui existait), trois champs — **Hélice : descente / tour** (mm ; auto = 10 % du Ø, 0,5 mm au moins), **Hélice : rayon maxi** (mm ; plafond : même centre, l’hélice reste dans la place libre trouvée) et, en Ébauche 3D, **Rampe : pente maxi** (degrés ; le long de la spirale et le long d’une paroi). 0 = automatique, parcours inchangés. Les valeurs sont lues pendant le calcul de l’opération (faoEntryCfg / faoEntryCur, posés à chaque reprise du générateur comme le repère 3+2, donc aussi dans les workers) et entrent dans la clé du parcours. Test : pièce d’essai, ébauche Ø4 réglée à 3° : toutes les descentes à 3,0° ; ébauche Ø6 réglée 0,3 mm/tour et rayon 1,5 : première hélice de rayon 2,40 → 1,50, descente 0,54 → 0,30 par tour ; réglages à 0 : parcours identique au mouvement près.
+
+## V0.99.8 - FAO : étiquettes animées sur les modes de vidage, barre de lecture allégée, moteur « Distance » renommé « Lisse » et affiné
+
+**Demande** : « pour ces 3 sous-fonctions, peux-tu me faire une étiquette au survol explicatrice avec animation », « la barre de lecture : enlever Réel/Lisse », « Matière aussi », « Peux-tu affiner encore plus le rendu "Distance" ? », « Tu peux renommer Distance par Lisse ».
+
+**Étiquettes** : une liste native n'émet aucun survol sur ses options. `faoSelAnim` (src/88-fao-83-menu-anime.js) garde le `<select>` (valeur, onchange, clavier, tests) et ouvre à la souris une liste maison ; survoler un mode montre son nom, son explication et un dessin SVG animé vu de dessus : la fraise trace ses passes (coupe en bleu, déplacements à vide en tirets jaunes, descentes en rouge). Escargot et Contours sont de vraies lignes de niveau d'un champ de distance (parois + îlot, marching squares) : les anneaux entourent l'îlot puis rejoignent ceux de la paroi ; Escargot redescend pour chaque anneau séparé, Contours glisse d'une passe à l'autre ; Trochoïdal : spirale centrale puis demi-anneaux à gauche puis à droite, passe finale le long des faces. Thème clair pris en compte.
+
+**Barre de lecture** : boutons « ◼ matière » et « ◈ réel / ≈ lisse » retirés (matière toujours visible, rendu réel ; les fonctions restent pour les tests).
+
+**Moteur « Lisse »** (ex-« distance ») : cause des ondulations dans la lumière, le champ était stocké sur 8 bits (pas de 8p/255) et les normales, tirées de différences sur 1,5 pas, en héritaient. Correctif : la cible 3D de la taille GPU passe en flottants 16 bits quand la carte sait y dessiner (`EXT_color_buffer_float`, repli 8 bits sinon), et la grille est plus fine quand la taille se fait sur la carte (3 / 16 / 40 millions d'échantillons au lieu de 1,5 / 6 / 14 ; repli processeur inchangé).
+
+**Test** : Cavité Usinage, fin du parcours : finesse normale pas 0,68 → 0,49 mm (0,5 s, 34 Mo), haute 0,52 → 0,36 mm (1,0 s, 83 Mo), ondulations disparues sur les parois et congés (captures comparées) ; suite rapide 167/167. Parcours inchangés : CACHE_VER et FORMES_VER inchangés.
