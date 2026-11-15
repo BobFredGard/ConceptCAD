@@ -99,13 +99,17 @@ function faoHolesDetect0(shapes){
           // Orientation de face NON fiable (repère direct/indirect selon la construction :
           // une découpe extrudée en −Z donne des trous « FORWARD ») → tri par la matière
           // autour du cylindre, plus bas (faoHoleIsHole).
+          // V0.99.13 : orientation ET sens du repère du cylindre ENSEMBLE donnent le côté de la matière,
+          // lu sur la face elle-même (repère direct + face FORWARD = normale vers l'extérieur du cylindre
+          // = matière dedans, pion ; chaque inversion retourne le sens) → vote « trou » par face (hv).
           if(Math.abs(Dd.Z())>0.9999){
             const r=c.Radius(),u=Math.abs(ad.LastUParameter()-ad.FirstUParameter());
             const za=L.Z()+Dd.Z()*ad.FirstVParameter(),zb=L.Z()+Dd.Z()*ad.LastVParameter();
             const key=L.X().toFixed(2)+'|'+L.Y().toFixed(2)+'|'+r.toFixed(3);
             let g=groups.get(key);
             if(!g){g={x:+L.X().toFixed(3),y:+L.Y().toFixed(3),r:r,rng:[],shape:si};groups.set(key,g);}
-            g.rng.push({lo:Math.min(za,zb),hi:Math.max(za,zb),u:u,f:si+':'+k});
+            let hv=null;try{const P3=c.Position();tmp.push(P3);hv=(P3.Direct()===(f.Orientation_1()===REV));}catch(e){hv=null;}
+            g.rng.push({lo:Math.min(za,zb),hi:Math.max(za,zb),u:u,f:si+':'+k,hv:hv});
           }
         }else if(ty===T.GeomAbs_Cone){
           const c=ad.Cone(),ax=c.Axis(),Dd=ax.Direction();tmp.push(c,ax,Dd);
@@ -177,8 +181,9 @@ function faoHolesDetect0(shapes){
     const R=G.rng.slice().sort(function(a,b){return a.lo-b.lo;});
     const out=[];
     R.forEach(function(q){const c=out[out.length-1];
-      if(c&&q.lo<=c.zHi+0.01){c.zHi=Math.max(c.zHi,q.hi);c.cov+=q.u;c.faces.push(q.f);}
-      else out.push({x:G.x,y:G.y,r:G.r,zLo:q.lo,zHi:q.hi,cov:q.u,faces:[q.f],shape:G.shape,modeled:mod});});
+      const vt=function(o){if(q.hv===true)o.vy++;else if(q.hv===false)o.vn++;else o.vx++;return o;};
+      if(c&&q.lo<=c.zHi+0.01){c.zHi=Math.max(c.zHi,q.hi);c.cov+=q.u;c.faces.push(q.f);vt(c);}
+      else out.push(vt({x:G.x,y:G.y,r:G.r,zLo:q.lo,zHi:q.hi,cov:q.u,faces:[q.f],shape:G.shape,modeled:mod,vy:0,vn:0,vx:0}));});
     out.forEach(function(g,i){segs.set(key+'#'+i,g);});
   });
   groups.clear();segs.forEach(function(v,k){groups.set(k,v);});
@@ -189,7 +194,12 @@ function faoHolesDetect0(shapes){
     // filet modélisé : couverture/classification perturbées par la gorge → trou d'office
     if(!g.modeled){
       if(g.cov<Math.PI*1.5)return; // < 270° : congé, rainure, demi-lune — pas un trou
-      if(!faoHoleIsHole(shapes[g.shape],g,clOf(g.shape)))return; // pion / bossage : matière DEDANS
+      // pion / bossage : matière DEDANS. V0.99.13 : faces du tronçon d'accord (toutes « trou » ou toutes
+      // « pion ») → leur vote suffit (même verdict que la classification sur tous les tronçons des pièces
+      // d'essai ; SIRAP-14-002 : 1,9 s → 16 ms) ; désaccord ou face illisible → classification de la matière
+      // autour (faoHoleIsHole, 16 points sur le solide entier, ~7 ms par trou) comme avant.
+      const vote=faoHoleVoteOff?null:(!g.vx&&g.vy&&!g.vn)?true:(!g.vx&&g.vn&&!g.vy)?false:null;
+      if(vote===false||(vote===null&&!faoHoleIsHole(shapes[g.shape],g,clOf(g.shape))))return;
     }
     const h={x:g.x,y:g.y,d:+(2*g.r).toFixed(3),ztop:+g.zHi.toFixed(3),zbot:+g.zLo.toFixed(3),
       through:false,tipAng:0,zSurf:+g.zHi.toFixed(3),chD:0,cb:null,faces:g.faces};
@@ -342,6 +352,8 @@ function faoWithOpFrame(op,fn){
 // V0.33.3 : clé d'un filet (taille, pas, sens) — un M8 et un M8-LH de même Ø et même départ
 // sont dans le même groupe de sélection, mais jamais dans le même taraudage (op.thKey).
 function faoThreadKey(th){ return th.size+'|'+(+th.p)+(th.lh?'|lh':''); }
+// V0.99.13 : true = ancien tri, toujours par classification de la matière (test_fao_trous_vote ; ?sansvote)
+let faoHoleVoteOff=(()=>{try{return /[?&]sansvote\b/.test(location.search);}catch(e){return false;}})();
 const faoHoleMemo=new Map(); // clé (pièce + imports + repère) → trous reconnus
 const faoHoleBrepNo=new WeakMap();let faoHoleBrepSeq=0; // numéro de chaque forme importée vue
 function faoHoleMemoKey(Fr){

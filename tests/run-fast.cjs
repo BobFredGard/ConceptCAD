@@ -63,6 +63,7 @@ const SUITES = [
   'test_fao_repetition',
   'test_fao_suppression_multiple',
   'test_fao_percage',
+  'test_fao_trous_vote',
   'test_percage_cylindre',
   'test_percage_normal',
   'test_parametre_mesure',
