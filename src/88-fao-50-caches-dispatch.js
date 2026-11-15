@@ -793,7 +793,7 @@ function* faoOpMovesIt0(op,job){
       // passes recoupées EXACTEMENT au prédicat bleu/rouge (ré-entrée par le haut)
       if(faceOk&&op.traj!=='scallop'&&mv.length)mv=faoClipMovesPoly(mv,null,0,secu,1,faceOk);
       // V0.99.1 : brut restant — seules les passes qui enlèvent encore de la matière (+ marge)
-      if(faoRestOn(op)&&mv&&mv.length)mv=faoRestFinishOp(mv,op,job,D,tool,secu);
+      if(faoRestOn(op)&&mv&&mv.length)mv=yield* faoRestFinishOpIt(mv,op,job,D,tool,secu);
       op.geoBlocked=(tool.kind==='flat'&&!mv.length);
       // 2026-10-13-007 : diag embarqué (fond nu : quelle phase est morte ?) —
       // lu par la fiche op. Stashé AVANT le clip (qui reconstruit les tableaux).
@@ -827,7 +827,7 @@ function* faoOpMovesIt0(op,job){
          protectFn:red});
       try{ if(mv&&mv.diag)op.geoDiag=mv.diag; else delete op.geoDiag; }catch(e){}
       // V0.99.2 : brut restant — seules les passes qui enlèvent encore de la matière (+ marge)
-      if(faoRestOn(op)&&mv&&mv.length)mv=faoRestFinishOp(mv,op,job,D,tool,secu);
+      if(faoRestOn(op)&&mv&&mv.length)mv=yield* faoRestFinishOpIt(mv,op,job,D,tool,secu);
     }else{ try{ op.geoDiag={nofaces:!drive?1:0}; }catch(e){} }
   }
   // Limite : rect (Liang-Barsky rapide) ou chaîne d'arêtes (clip impair).
@@ -913,6 +913,8 @@ function faoOpMovesStream(op,job,onChunk){
   return (async function(){
     let r=it.next();
     while(!r.done){
+      // V0.100.0 : demande de carte graphique (faoGpuAsk) — réponse, ou null = JavaScript
+      if(faoGpuIsAsk(r.value)){ r=it.next(await faoGpuServe(r.value.faoGpu)); continue; }
       if(onChunk){ try{ onChunk(r.value); }catch(e){} }
       await faoYieldUI();
       r=it.next();

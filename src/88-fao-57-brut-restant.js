@@ -346,6 +346,12 @@ function faoRestEnvFn(tool,D){
   return function(d){ if(d<=r0)return 0; const u=Math.min(rc,d-r0); return rc-Math.sqrt(Math.max(0,rc*rc-u*u)); };
 }
 function faoRestFinish(mv,M,tool,D,ign,marge,secu){
+  // version synchrone (tests, pilotes synchrones) : chemin JavaScript
+  const it=faoRestFinishIt(mv,M,tool,D,ign,marge,secu);
+  let r;while(!(r=it.next()).done){}
+  return r.value;
+}
+function* faoRestFinishIt(mv,M,tool,D,ign,marge,secu){
   if(!Array.isArray(mv)||mv.length<2||!M||!M.grid)return mv;
   const G=M.grid,h=G.h,nx=G.nx,ny=G.ny,p=G.p,R=D/2,env=faoRestEnvFn(tool,D);
   // V0.99.2 : maximum de la carte par bloc de B×B mailles — un bloc dont le plus haut point
@@ -381,13 +387,22 @@ function faoRestFinish(mv,M,tool,D,ign,marge,secu){
       for(let q=0;q<=ns;q++){const t=q/ns;
         f(c.a.x+(c.b.x-c.a.x)*t,c.a.y+(c.b.y-c.a.y)*t,+c.a.z+((+c.b.z)-(+c.a.z))*t,c.s0+c.L*t);}});};
   // 1er passage : points qui enlèvent de la matière, rangés par cases de la taille de la marge
+  // V0.100.0 : points d'abord relevés, puis testés d'un coup — par la carte graphique quand
+  // elle est là (src/88-fao-59 : les points proches du seuil sont refaits par eng)
   const cs=Math.max(marge,p),HS=new Map();let nHit=0;
+  const SP=[];
   for(let i=0;i<mv.length;){
     if(mv[i].r){i++;continue;}
     let j=i;while(j<mv.length&&!mv[j].r)j++;
-    if(i>0)sampleOf(segsOf(i,j),function(x,y,z){ if(!eng(x,y,z))return;
-      const k=Math.floor(x/cs)+','+Math.floor(y/cs);let L=HS.get(k);if(!L){L=[];HS.set(k,L);}L.push(x,y,z);nHit++;});
+    if(i>0)sampleOf(segsOf(i,j),function(x,y,z){ SP.push(x,y,z); });
     i=j;}
+  const nS=SP.length/3;
+  const gq=nS?(yield* faoGpuAsk({kind:'rest',grid:G,pts:Float64Array.from(SP),R:R,tool:tool,ign:ign})):null;
+  for(let q=0;q<nS;q++){
+    const x=SP[3*q],y=SP[3*q+1],z=SP[3*q+2];
+    const hit=(gq&&gq[q]!==2)?gq[q]===1:eng(x,y,z);
+    if(!hit)continue;
+    const k=Math.floor(x/cs)+','+Math.floor(y/cs);let L=HS.get(k);if(!L){L=[];HS.set(k,L);}L.push(x,y,z);nHit++;}
   const near=function(x,y,z){
     const ci=Math.floor(x/cs),cj=Math.floor(y/cs),m2=marge*marge+1e-9;
     for(let dj=-1;dj<=1;dj++)for(let di=-1;di<=1;di++){const L=HS.get((ci+di)+','+(cj+dj));if(!L)continue;
@@ -484,6 +499,11 @@ function faoRestFinish(mv,M,tool,D,ign,marge,secu){
   return out;
 }
 function faoRestFinishOp(mv,op,job,D,tool,secu){
+  const it=faoRestFinishOpIt(mv,op,job,D,tool,secu);
+  let r;while(!(r=it.next()).done){}
+  return r.value;
+}
+function* faoRestFinishOpIt(mv,op,job,D,tool,secu){
   // Point d'entrée de la finition (dispatch) : carte, filtre, diagnostic de la fiche.
   let M=null;
   try{ M=faoRestMap(op,job,D,0); }catch(e){ M=null; }
@@ -491,7 +511,7 @@ function faoRestFinishOp(mv,op,job,D,tool,secu){
   // « Ignorer moins de » : jamais sous le quart de la maille de la carte (en dessous, l'écart
   // de la carte elle-même relancerait des passes partout) ; la fiche affiche la valeur appliquée
   const ign=Math.max(faoRestIgnore(op),0.25*M.pas);
-  const r=faoRestFinish(mv,M,tool,D,ign,faoRestMarge(op),secu);
+  const r=yield* faoRestFinishIt(mv,M,tool,D,ign,faoRestMarge(op),secu);
   try{ op.restDiag={n:M.n,tilt:M.tilt,ms:M.ms,pas:+M.pas.toFixed(3),garde:r&&r.restKeep,ign:+ign.toFixed(3)}; }catch(e){}
   return r;
 }

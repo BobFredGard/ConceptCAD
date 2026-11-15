@@ -766,12 +766,13 @@ function* faoOpMovesIt(op,job){
   if(!fr)return yield* faoOpMovesIt0(op,job);
   const jo=faoOpJob(job,op,fr);
   const it=faoOpMovesIt0(op,jo);
-  const step=()=>{const k=faoFrameCur;faoFrameCur=fr;try{return it.next();}finally{faoFrameCur=k;}};
+  // V0.100.0 : la réponse du pilote (carte graphique, faoGpuAsk) est transmise au calcul
+  const step=(a)=>{const k=faoFrameCur;faoFrameCur=fr;try{return it.next(a);}finally{faoFrameCur=k;}};
   let r=step();
   while(!r.done){
     const v=r.value;
-    yield (Array.isArray(v)&&v.length&&v[0]&&isFinite(+v[0].x))?faoMovesOpToPos(v,fr):v;
-    r=step();
+    const back=yield (Array.isArray(v)&&v.length&&v[0]&&isFinite(+v[0].x))?faoMovesOpToPos(v,fr):v;
+    r=step(back);
   }
   return faoMovesOpToPos(r.value,fr);
 }

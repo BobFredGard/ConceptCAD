@@ -34,15 +34,103 @@ function faoBullRingSetup(M,BB,D,rc,laisse,zoneAt){
   const R=D/2,g=0.5; // grille de repérage (1 mm : 92 % au contact au lieu de 96 %, cordes sur les courbes)
   const R0=Math.max(0,R-rc);
   // descente torique EXACTE (faoTorusDropper) : contact du vrai tore
-  const dB=faoTorusDropper(M,D,rc,laisse);
-  const dF=faoScDropper(M,'flat',D,0,laisse);
+  // V0.100.0 : descentes préparées à la première question seulement — quand la carte
+  // graphique a rempli les deux grilles (faoBullRingGpuFill), seules les questions hors
+  // grille (tipB, tipF) les préparent
+  let dB0=null,dF0=null;
+  const dB=function(){return dB0||(dB0=faoTorusDropper(M,D,rc,laisse));};
+  const dF=function(){return dF0||(dF0=faoScDropper(M,'flat',D,0,laisse));};
   const x0=BB.x0-R,y0=BB.y0-R,nx=Math.ceil((BB.x1+R-x0)/g)+1,ny=Math.ceil((BB.y1+R-y0)/g)+1;
   const tF=new Float64Array(nx*ny).fill(NaN),tB=new Float64Array(nx*ny).fill(NaN);
-  const fAt=function(k){let v=tF[k];if(v!==v){const i=k%nx,j=(k-i)/nx;v=dF.tip(x0+i*g,y0+j*g);if(!(v>-1/0))v=-1e9;tF[k]=v;}return v;};
-  const bAt=function(k){let v=tB[k];if(v!==v){const i=k%nx,j=(k-i)/nx;v=dB.tip(x0+i*g,y0+j*g);if(!(v>-1/0))v=-1e9;tB[k]=v;}return v;};
-  const tipB=function(x,y){const v=dB.tip(x,y);return v>-1/0?v:-1e9;};
-  const tipF=function(x,y){const v=dF.tip(x,y);return v>-1/0?v:-1e9;};
-  return {g:g,x0:x0,y0:y0,nx:nx,ny:ny,rc:rc,D:D,fAt:fAt,bAt:bAt,tipB:tipB,tipF:tipF,zoneAt:zoneAt};
+  const fAt=function(k){let v=tF[k];if(v!==v){const i=k%nx,j=(k-i)/nx;v=dF().tip(x0+i*g,y0+j*g);if(!(v>-1/0))v=-1e9;tF[k]=v;}return v;};
+  const bAt=function(k){let v=tB[k];if(v!==v){const i=k%nx,j=(k-i)/nx;v=dB().tip(x0+i*g,y0+j*g);if(!(v>-1/0))v=-1e9;tB[k]=v;}return v;};
+  const tipB=function(x,y){const v=dB().tip(x,y);return v>-1/0?v:-1e9;};
+  const tipF=function(x,y){const v=dF().tip(x,y);return v>-1/0?v:-1e9;};
+  return {g:g,x0:x0,y0:y0,nx:nx,ny:ny,rc:rc,D:D,fAt:fAt,bAt:bAt,tipB:tipB,tipF:tipF,zoneAt:zoneAt,
+    tF:tF,tB:tB,M:M,laisse:laisse};
+}
+function* faoBullRingGpuFill(C){
+  // V0.100.0 : les deux grilles de la passe torique (fraise droite, tore exact) calculées
+  // d'un coup par la carte graphique — mêmes cotes que fAt / bAt (src/88-fao-59)
+  if(!C||C.gpuDone)return;
+  C.gpuDone=true;
+  const q={mesh:C.M,D:C.D,L:C.laisse,x0:C.x0,y0:C.y0,g:C.g,nx:C.nx,ny:C.ny};
+  const zF=yield* faoGpuAsk(Object.assign({kind:'drop',tool:'flat',r:0},q));
+  if(zF)for(let k=0;k<zF.length;k++){const v=zF[k];C.tF[k]=v>-1/0?v:-1e9;}
+  const zB=yield* faoGpuAsk(Object.assign({kind:'torus',rc:C.rc},q));
+  if(zB)for(let k=0;k<zB.length;k++){const v=zB[k];C.tB[k]=v>-1/0?v:-1e9;}
+}
+// V0.100.0 (essai « regroupement ») : points de coupe de l'iso-ligne (cross de
+// faoBullRingRuns) calculés d'avance pour plusieurs cotes z, la fausse position menée
+// en parallèle sur toutes les arêtes coupées : à chaque tour, une seule question à la
+// carte graphique pour tous les points. Mêmes opérations, dans le même ordre, que cross :
+// mêmes points. Sans carte : rien (cross calcule comme avant).
+function* faoBullRingPrefetch(C,zs){
+  if(!C||!zs||!zs.length||!faoGpuMaybe())return;
+  const nx=C.nx,ny=C.ny,g=C.g,eps=1e-6;
+  if(!C.pre)C.pre=new Map();
+  const J=[]; // tâches : [clé, Ax, Ay, Bx, By, zt, lo, hi, flo, fhi, side, it, carte]
+  const Pm=[];
+  for(let zi=0;zi<zs.length;zi++){
+    const z=zs[zi];
+    if(C.pre.has(z))continue;
+    const mp=new Map();C.pre.set(z,mp);
+    const fe=new Map();
+    const feas=function(k){let v=fe.get(k);if(v!==undefined)return v;const f=C.fAt(k);
+      v=f<=z+eps?true:(f-C.rc>z+eps?false:C.bAt(k)<=z+eps);fe.set(k,v);return v;};
+    const add=function(a,b){ // a faisable, b non
+      const key=a<b?a*67108864+b:b*67108864+a;
+      if(mp.has(key))return;
+      const ia=a%nx,ja=(a-ia)/nx,ib=b%nx,jb=(b-ib)/nx;
+      const zt=z-0.005;
+      let flo=C.bAt(a)-zt,fhi=C.bAt(b)-zt;
+      if(!(flo<=0))flo=-1e-6; if(!(fhi>0))fhi=1e-6;
+      if(flo<-1e8)flo=-50;
+      const t={key:key,mp:mp,A:[C.x0+ia*g,C.y0+ja*g],B:[C.x0+ib*g,C.y0+jb*g],zt:zt,lo:0,hi:1,flo:flo,fhi:fhi,side:0,it:0,m:0};
+      mp.set(key,null);J.push(t);
+    };
+    const tri=function(a,b,c){
+      const fa=feas(a),fb=feas(b),fc=feas(c);
+      if(fa===fb&&fb===fc)return;
+      const V=[[a,fa],[b,fb],[c,fc]];
+      for(let q=0;q<3;q++){const u=V[q],w=V[(q+1)%3];if(u[1]!==w[1]){if(u[1])add(u[0],w[0]);else add(w[0],u[0]);}}
+    };
+    for(let j=0;j<ny-1;j++)for(let i=0;i<nx-1;i++){
+      const a=j*nx+i,b=a+1,c=a+nx,d=c+1;
+      const fa=C.fAt(a),fb=C.fAt(b),fc=C.fAt(c),fd=C.fAt(d);
+      const lo=Math.min(fa,fb,fc,fd),hi=Math.max(fa,fb,fc,fd);
+      if(hi<=z+eps||lo-C.rc>z+eps)continue;
+      if(((i+j)&1)===0){tri(a,b,d);tri(a,d,c);}else{tri(a,b,c);tri(b,d,c);}
+    }
+  }
+  let act=J;
+  const t0=performance.now();let tours=0;
+  while(act.length){
+    const nxt=[];
+    for(let q=0;q<act.length;q++){const t=act[q];
+      if(t.it<8&&t.hi-t.lo>2e-4){
+        let m=(t.lo*t.fhi-t.hi*t.flo)/(t.fhi-t.flo);
+        if(!(m>t.lo&&m<t.hi))m=(t.lo+t.hi)/2;
+        t.m=m;nxt.push(t);
+      }else t.mp.set(t.key,[t.A[0]+(t.B[0]-t.A[0])*t.lo,t.A[1]+(t.B[1]-t.A[1])*t.lo]);
+    }
+    if(!nxt.length)break;
+    const X=new Float64Array(2*nxt.length);
+    for(let q=0;q<nxt.length;q++){const t=nxt[q];X[2*q]=t.A[0]+(t.B[0]-t.A[0])*t.m;X[2*q+1]=t.A[1]+(t.B[1]-t.A[1])*t.m;}
+    const Z=yield* faoGpuAsk({kind:'torus',mesh:C.M,D:C.D,rc:C.rc,L:C.laisse,pts:X});
+    tours++;
+    if(!Z){ // carte indisponible : on oublie tout, cross calculera
+      for(let zi=0;zi<zs.length;zi++)C.pre.delete(zs[zi]);
+      return;
+    }
+    for(let q=0;q<nxt.length;q++){const t=nxt[q],v=Z[q];
+      const fm=(v>-1/0?v:-1e9)-t.zt;
+      if(fm<=0){t.lo=t.m;t.flo=fm;if(t.side===-1)t.fhi/=2;t.side=-1;}else{t.hi=t.m;t.fhi=fm;if(t.side===1)t.flo/=2;t.side=1;}
+      t.it++;
+    }
+    act=nxt;
+  }
+  if(typeof faoGpuStat!=='undefined'){faoGpuStat.pre=(faoGpuStat.pre||0)+J.length;faoGpuStat.preMs=(faoGpuStat.preMs||0)+performance.now()-t0;faoGpuStat.preTours=(faoGpuStat.preTours||0)+tours;}
 }
 // Courbes « pointe outil réel = z » : morceaux où la fraise droite n'était PAS
 // au contact (écart > 0,03 mm), orientés matière à droite si avalant.
@@ -51,10 +139,12 @@ function faoBullRingRuns(C,z,climb,all,rb){
   // faisable (pointe réelle <= z) ; la fraise droite borne : tB <= tF, tB >= tF − rc
   const feas=function(k){const f=C.fAt(k);if(f<=z+eps)return true;if(f-C.rc>z+eps)return false;return C.bAt(k)<=z+eps;};
   const P=function(k){const i=k%nx,j=(k-i)/nx;return [C.x0+i*g,C.y0+j*g];};
-  const cut=new Map();
+  const cut=new Map(),pre=C.pre?C.pre.get(z):null;
   const cross=function(a,b){ // a faisable, b non
     const key=a<b?a*67108864+b:b*67108864+a;
     let c=cut.get(key);if(c)return c;
+    const pq=pre&&pre.get(key);
+    if(pq){c={key:key,p:[pq[0],pq[1]]};cut.set(key,c);return c;}
     // fausse position (Illinois) sur la pointe exacte, bornée par les nœuds
     // (valeurs déjà calculées) : 4 à 6 évaluations au lieu de 14 dichotomies
     const A=P(a),B=P(b),zt=z-0.005; // marge 5 µm

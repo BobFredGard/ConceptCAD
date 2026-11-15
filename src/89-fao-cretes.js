@@ -589,13 +589,15 @@ function* faoGenScallopIt(mesh,o){
   const V=new Array(nv);
   const inside=new Uint8Array(nv);
   const inWin=function(z){return z>-1/0&&z>=zb&&z<=zt;};
+  // V0.100.0 : grille entière descendue par la carte graphique (mêmes cotes, src/88-fao-59)
+  const zg=yield* faoGpuAsk({kind:'drop',mesh:mesh,tool:kind,D:D,r:Rc,L:L,x0:bx0,y0:by0,g:g,nx:nx,ny:ny});
   for(let j=0;j<ny;j++)for(let i=0;i<nx;i++){
     const k=j*nx+i,x=bx0+i*g,y=by0+j*g;
     // descente seulement dans la zone et sur un anneau d'un nœud autour
     let need=zin[k];
     if(!need)for(let dj=-1;dj<=1&&!need;dj++)for(let di=-1;di<=1;di++){
       const ii=i+di,jj=j+dj;if(ii<0||jj<0||ii>=nx||jj>=ny)continue;if(zin[jj*nx+ii]){need=1;break;}}
-    const z=need?drop.tip(x,y):-1/0;
+    const z=need?(zg?zg[k]:drop.tip(x,y)):-1/0;
     V[k]=[x,y,z];
     inside[k]=(zin[k]&&inWin(z))?1:0;
   }

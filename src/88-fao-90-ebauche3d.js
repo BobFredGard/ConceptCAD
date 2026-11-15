@@ -2868,6 +2868,33 @@ function* faoGenRough3DIt(mesh,box,ztop,zbot,o){
   // forEach -> for (yield interdit dans une closure) : chaque itération de
   // niveau cède le fil au flux via yield moves (dessin progressif 005).
   const chunkAt=[]; // 2026-10-22-001 : début de chaque niveau dans moves (ordre par région)
+  // V0.100.0 : grilles de la passe torique remplies d'avance par la carte graphique, pour
+  // chaque laisse qui servira (niveaux, mini-passes, finition des parois)
+  if(bullC){
+    // (même valeur que l'appel qui suivra : le contexte est rangé sous laisse.toFixed(4))
+    const ks=new Map(),add=function(v){const k=(+v||0).toFixed(4);if(!ks.has(k))ks.set(k,v);};
+    plan.forEach(function(L){add(L.radial);});
+    if(nb)add(RA.radial);
+    if(nf)for(let k=1;k<=nf;k++)add(RA.radial*(nf-k)/nf);
+    for(const v of ks.values())yield* faoBullRingGpuFill(bullCtx(v));
+    // essai « regroupement » : points de coupe de TOUTES les cotes de la passe torique
+    // (niveaux, mini-passes, finition des parois), d'un coup par laisse — mêmes cotes
+    // que les appels de la boucle ci-dessous
+    const zq=new Map(),addZ=function(v,z){const k=(+v||0).toFixed(4);let e=zq.get(k);if(!e){e={v:v,zs:[]};zq.set(k,e);}e.zs.push(z);};
+    for(let li=0;li<plan.length;li++){const L=plan[li];
+      addZ(L.radial,L.z);
+      const bandTop=L.top,h=bandTop-L.z;
+      const nbL=(!nb||L.fond||!(h>1e-9))?0:(h>=ap-1e-6?nb:Math.floor(nb*h/ap+1e-6));
+      for(let k=1;k<=nbL;k++)addZ(RA.radial,Math.round((bandTop-k*h/(nbL+1))*1000)/1000);
+      if(nf&&li===finIdx){
+        const zLow=L.z,range=Math.max(0,zt-zLow);
+        const np=(range>1e-9&&isFinite(+o.finitProf))?Math.max(1,Math.min(9,Math.round(+o.finitProf))):1;
+        for(let j=0;j<np;j++){const zj=(j===0)?zLow:Math.round((zLow+range*j/np)*1000)/1000;
+          for(let k=1;k<=nf;k++)addZ(RA.radial*(nf-k)/nf,zj);}
+      }
+    }
+    for(const e of zq.values())yield* faoBullRingPrefetch(bullCtx(e.v),e.zs);
+  }
   for(let li=0;li<plan.length;li++){
     const L=plan[li];
     chunkAt.push(moves.length);
@@ -2886,6 +2913,7 @@ function* faoGenRough3DIt(mesh,box,ztop,zbot,o){
     // ESCARGOT : spirale centre -> faces sur le meme plan/levels, memes
     // entrees/travel ; mini-passes et finition restent conventionnelles.
     // 2026-10-08-003 : sens (avalant = sens de coupe constant) porte par opt.
+    if(esc&&bullC)yield* faoBullRingPrefetch(bullCtx(L.radial),[L.z]);
     if(esc)faoSpiralLevel(M,BB,L.z,D,D/2+L.radial,secu,zFrom,ae,entryMode,o.brutTop,zt,moves,{snail:o.mode==='anneaux'||o.mode==='contours',oneEntry:(o.mode==='anneaux'&&!!o.uneEntree)||o.mode==='contours',contours:o.mode==='contours',travelZ:tvZ,sens:o.sens,entryR:o.entryR,zoneAt:o.zoneAt,frameTouch:frameTouch,zoneDense:typeof o.protectTip==='function',stockTop:stockTopF,remBlocked:rem?rem.blocked:null,remTopAt:rem?rem.topAt:null,remPtAt:rem?rem.ptAt:null,zoneSafe:o.zoneSafe||null,
       bullFaces:bullC?function(zz){return faoBullRingRuns(bullCtx(L.radial),zz,o.sens==='avalant',true);}:null,
       bullOK:bullC?function(x,y,zz){return bullCtx(L.radial).tipB(x,y)<=zz+1e-6;}:null});
@@ -2912,6 +2940,7 @@ function* faoGenRough3DIt(mesh,box,ztop,zbot,o){
         // paroi) est calculée au CONTACT RÉEL de l'outil (laisse Parois), à la
         // même place du parcours, au lieu du calcul fraise droite (~1 mm de
         // trop sur les faces inclinées, torique D25 R2).
+        if(bullC)yield* faoBullRingPrefetch(bullCtx(s),[zm]);
         if(bullC)faoBullRingLevel(bullCtx(s),zm,moves,{sens:o.sens,secu:secu,travelZ:tvZ,linkMax:bullLink,minRun:rem?5:0,dzStay:rem?h:0,all:true,
           restBelow:o.minipassesMode==='pentes'?{z:L.z,bridge:bullLink,marche:o.marcheMaxi,k:k,h:h,d:h/(nbL+1)}:undefined}); // V0.38.0 : pentes seulement (V0.39.0 : marche maxi)
         else faoRoughAdaptiveLevel(M,BB,zm,D,D/2+s,secu,Math.min(secu,bandTop),ae,entryMode,o.brutTop,zt,moves,
@@ -2952,6 +2981,7 @@ function* faoGenRough3DIt(mesh,box,ztop,zbot,o){
         for(let k=1;k<=nf;k++){
           const off=RA.radial*(nf-k)/nf;
           // 2026-10-14-010 : outil à rayon de coin — anneau au contact réel, en place
+          if(bullC)yield* faoBullRingPrefetch(bullCtx(off),[zj]);
           if(bullC)faoBullRingLevel(bullCtx(off),zj,moves,{sens:o.sens,secu:secu,travelZ:tvJ,linkMax:bullLink,minRun:rem?5:0,all:true});
           else faoRoughAdaptiveLevel(M,BB,zj,D,D/2+off,secu,zF,ae,entryMode,o.brutTop,zt,moves,{ringOnly:true,travelZ:tvJ,sens:o.sens,entryR:o.entryR,zoneAt:o.zoneAt,frameTouch:frameTouch});
           yield frameYield(); // dessin progressif 005 : finition k
@@ -2961,6 +2991,7 @@ function* faoGenRough3DIt(mesh,box,ztop,zbot,o){
   }
   if(bullC){
     for(let q=0;q<bullJobs.length;q++){const J=bullJobs[q];
+      yield* faoBullRingPrefetch(bullCtx(J[0]),[J[1]]);
       chunkAt.push(moves.length);
       zCur=J[1];
       faoBullRingLevel(bullCtx(J[0]),J[1],moves,{sens:o.sens,secu:secu,travelZ:J[2],linkMax:bullLink,minRun:rem?5:0});

@@ -132,9 +132,10 @@ function faoWkPrincipal(){
   };
   faoModelBox=function(s){return boite(s,'box','faoModelBox');};
   faoModelZBox=function(s){return boite(s,'zbox','faoModelZBox');};
-  self.onmessage=function(ev){
+  self.onmessage=async function(ev){
     const m=ev.data||{};
     if(m.t!=='job')return;
+    if(m.nogpu)faoGpuOff=true; // ?nogpu de la page, ou carte absente : JavaScript aussi ici
     try{
       doc=new Proxy(m.doc,{get:function(t,k){
         if(typeof k==='symbol'||k in t)return t[k];
@@ -156,6 +157,8 @@ function faoWkPrincipal(){
       let n=0,r=it.next();
       while(!r.done){
         const a=r.value;
+        // V0.100.0 : demande de carte graphique — le worker a aussi WebGPU (sinon JavaScript)
+        if(faoGpuIsAsk(a)){ r=it.next(await faoGpuServe(a.faoGpu)); continue; }
         if(Array.isArray(a)&&a.length>n&&m.flux){
           self.postMessage({t:'flux',opId:m.opId,delta:a.slice(n)});
           n=a.length;
@@ -403,7 +406,7 @@ function faoWkRemplir(job,ops,estCaduc,surFlux,surAvance){
         }
       };
       try{
-        w.postMessage({t:'job',setupId:job.id,opId:op.id,flux:!!surFlux&&op.hidden!==true,doc:donnees,corps:faoWkCorpsPour(corps,op,job),boites:faoWkBoites(job,op)});
+        w.postMessage({t:'job',setupId:job.id,opId:op.id,flux:!!surFlux&&op.hidden!==true,doc:donnees,corps:faoWkCorpsPour(corps,op,job),boites:faoWkBoites(job,op),nogpu:faoGpuOff||faoGpuBroken});
       }catch(e){
         try{ console.warn('[FAO multicœur] envoi impossible : '+((e&&e.message)||e)+' — calcul normal'); }catch(e2){}
         clore();

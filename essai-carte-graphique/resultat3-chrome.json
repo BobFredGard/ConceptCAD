@@ -1,0 +1,115 @@
+{
+ "operation": [
+  {
+   "opMs": 12878,
+   "pts": 77229,
+   "scallopMs": 8297,
+   "restMapMs": 641,
+   "preparationDescenteMs": 3998,
+   "descentes": 835294,
+   "descentesMs": 2469
+  },
+  {
+   "opMs": 8412,
+   "pts": 77229,
+   "scallopMs": 8227,
+   "restMapMs": 641,
+   "preparationDescenteMs": 4113,
+   "descentes": 835294,
+   "descentesMs": 2460
+  }
+ ],
+ "maillage": {
+  "triangles": 335818,
+  "sommets": 167744,
+  "D": 6
+ },
+ "boite": [
+  328.7,
+  231
+ ],
+ "grilles": [
+  {
+   "pas": 0.7,
+   "noeuds": 155901,
+   "jsMs": 4400,
+   "gpuListesMs": 3846,
+   "gpuListesCalculMs": 13.8,
+   "carte": "nvidia blackwell",
+   "via": "gpu",
+   "gpuPrimitivesMs": 99,
+   "detail": {
+    "prep": 64.7,
+    "envoi": 22.9,
+    "calcul": 6.7,
+    "lecture": 4.7,
+    "total": 99
+   },
+   "cmpListes": {
+    "ecartMax": 0.00128,
+    "plusDe1um": 4,
+    "videsDiff": 0
+   },
+   "cmpPrimitives": {
+    "ecartMax": 0.00128,
+    "plusDe1um": 4,
+    "videsDiff": 0
+   }
+  },
+  {
+   "pas": 0.25,
+   "noeuds": 1217300,
+   "jsMs": 6155,
+   "gpuListesMs": 4084,
+   "gpuListesCalculMs": 11.9,
+   "carte": "nvidia blackwell",
+   "via": "gpu",
+   "gpuPrimitivesMs": 176,
+   "detail": {
+    "prep": 109.1,
+    "envoi": 26.1,
+    "calcul": 30.4,
+    "lecture": 10,
+    "total": 175.6
+   },
+   "cmpListes": {
+    "ecartMax": 0.00333,
+    "plusDe1um": 25,
+    "videsDiff": 0
+   },
+   "cmpPrimitives": {
+    "ecartMax": 0.00333,
+    "plusDe1um": 25,
+    "videsDiff": 0
+   }
+  },
+  {
+   "pas": 0.1,
+   "noeuds": 7598568,
+   "jsMs": 15863,
+   "gpuListesMs": 4020,
+   "gpuListesCalculMs": 12.4,
+   "carte": "nvidia blackwell",
+   "via": "gpu",
+   "gpuPrimitivesMs": 275,
+   "detail": {
+    "prep": 71.5,
+    "envoi": 19.6,
+    "calcul": 142.3,
+    "lecture": 41.7,
+    "total": 275.1
+   },
+   "cmpListes": {
+    "ecartMax": 5.89026,
+    "plusDe1um": 2547,
+    "videsDiff": 242
+   },
+   "cmpPrimitives": {
+    "ecartMax": 5.89026,
+    "plusDe1um": 2547,
+    "videsDiff": 242
+   }
+  }
+ ],
+ "repli": "js"
+}
