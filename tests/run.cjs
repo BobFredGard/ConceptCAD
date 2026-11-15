@@ -194,6 +194,7 @@ const SUITES = [
   "test_clavette",
   "test_fao_taraudage",
   "test_fao_percage_selection",
+  "test_fao_alesage_gamme",
   "test_taraud_gauche",
   "test_filetage_axe",
   "test_esquisse_regles",

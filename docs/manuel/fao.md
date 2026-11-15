@@ -28,8 +28,14 @@
   - **Surfaçage, sens d’usinage** : lignes le long de **X**, de **Y**, ou dans la direction d’une **arête** droite ou d’une **face** cliquée (face plane : sa normale ; cylindre : son axe) ; **Inverser** retourne le sens.
 - **Chanfrein** sur arêtes cliquées, **en plan** (Z fixe) ou **en 3D** : la pointe suit le Z de l'arête, l'axe de l'outil reste vertical (3 axes).
 - **Perçage** : les trous sont **reconnus sur le modèle** (Ø, profondeur, débouchant ou borgne, lamage, filet) et choisis par groupe.
-  - Cycles : pointage, perçage, débourrage, taraudage, **lamage fraisé en hélice**.
-  - **Gamme automatique** pointage → perçage → lamage → taraudage, avec les forets pris dans la bibliothèque ou créés.
+  - Cycles : pointage, perçage, débourrage, taraudage, **alésage** (alésoir : entrée et sortie en avance, CYCLE85 / G85), **lamage ou alésage fraisé en hélice**.
+  - **Gamme automatique** pointage → perçage → fraisure → lamage → alésage → taraudage, avec les outils pris dans la bibliothèque ou créés. Elle se lance seule quand on crée un Perçage avec des trous sélectionnés.
+  - **Fenêtre « Gamme de perçage »** : à la création (trous sélectionnés puis *Perçage*, ou bouton *⚙ Gamme*), elle demande l'outil de pointage (ou **sans pointage**), la finition des alésages et l'outil des fraisures quand la sélection en contient, et la nature des trous d'une pièce importée ; les choix restent ceux du posage pour la gamme suivante.
+  - **Réglages de la gamme** (aussi dans la fiche du posage, onglet *Perçage*, ou la fiche d'un Perçage) : l'outil de **pointage** (automatique, foret à pointer, foret à centrer, un outil précis de la bibliothèque, ou **sans pointage**) et la **finition des alésages** (alésoir ou fraise).
+  - **Trou alésé** (les 4 cas de la fonction Perçage) : pré-trou au Ø d'alésage moins l'écart choisi dans la fonction (sinon 0,1 à 0,5 mm selon le Ø), puis alésoir ou fraise. Quand la fonction a son propre perçage au bon Ø, il sert de pré-trou. Un alésage à fond plat est pré-percé pointe au fond, sans descendre plus bas.
+  - **Fraisure** : faite après le perçage, au **foret à pointer** ou à la **fraise à chanfreiner** (réglage de la gamme), du même angle et assez gros pour toute la fraisure ; le méplat de bout de la fraise est compté dans la profondeur ; le pointage ne la creuse plus.
+  - **Double perçage** : seul le gros trou est fait ; le petit trou, s'il débouche, est laissé pour l'autre côté.
+  - **Pièce importée (STEP)** : la même fenêtre demande la nature de chaque groupe de trous (lisse, taraudé, alésé H6/H7/H8, lamage, fraisure).
 - **Ébauche 3D** : niveaux en Z (de *ap* en *ap*, avec un arrêt sur chaque fond de la pièce **à portée de l'outil dans la zone** : un épaulement hors de la limite n'ajoute pas de passe), minipasses, une région finie avant l'autre ; deux stratégies :
   - **Trochoïdal** : spirale avec arcs de dégagement ;
   - Dans la liste **Mode**, survoler un choix ouvre une étiquette : son explication et un petit dessin animé du parcours vu de dessus (coupe, déplacements à vide, descentes).

@@ -927,7 +927,11 @@ function faoOpShortLabel(op){
     if(op.src!=='model')return n+' ('+(op.pts||[]).length+')';
     const H=op.holes||[],c=op.cycle||'drill';
     const fr=function(v){return String(+(+v).toFixed(2)).replace('.',',');};
-    if(c==='spot')return 'Pointage ('+H.length+')';
+    const rm=H.find(function(x){return x.ream;});
+    if(c==='spot')return (op.gRole==='fraisure'?'Fraisure':'Pointage')+' ('+H.length+')';
+    if(c==='ream')return 'Alésage'+(H.length?' Ø'+fr(H[0].d):'')+(rm?' '+rm.ream.tol:'')+' ('+H.length+')';
+    if(c==='helix'&&rm)return 'Alésage fraisé Ø'+fr(H[0].d)+' '+rm.ream.tol+' ('+H.length+')';
+    if(op.gRole==='pretrou')return 'Pré-trou d’alésage'+(H.length?' Ø'+fr(H[0].d):'')+' ('+H.length+')';
     if(c==='helix')return 'Lamage fraisé'+(H.length?' Ø'+fr(H[0].d):'')+' ('+H.length+')';
     if(c==='tap'){const h=H.find(function(x){return x.thread;});return 'Taraudage'+(h&&typeof holeThreadLabel==='function'?' '+holeThreadLabel(h.thread):'')+' ('+H.length+')';}
     return n+(H.length?' Ø'+fr(H[0].d):'')+' ('+H.length+')';
@@ -1292,7 +1296,7 @@ function faoCardTabs(d,op){
 function faoSetupTabs(p,setup){
   const kids=Array.prototype.slice.call(p.children||[]);
   if(kids.length<4)return;
-  const MAP=[['posage','Général'],['repère','Repère'],['modèle','Modèle'],['brut','Brut'],['plans','Plans'],['machine','Temps']];
+  const MAP=[['posage','Général'],['repère','Repère'],['modèle','Modèle'],['brut','Brut'],['plans','Plans'],['gamme','Perçage'],['machine','Temps']];
   const nameOf=function(t){t=String(t||'').toLowerCase();for(let i=0;i<MAP.length;i++)if(t.indexOf(MAP[i][0])===0)return MAP[i][1];return null;};
   const isH=function(el){return !!(el&&el.className==='fao-h');};
   const groups={},names=[],foot=[];let cur=null,inFoot=false;
@@ -2276,6 +2280,9 @@ function faoSetupFiche(p,setup){
     'Plans en mm par référence (« depuis ») + décalage. Dégagement = position avant le travail, '+
     'changement d\'outil et rotation du plateau. Retrait = rapides entre les passes. Opérations : héritent de ces valeurs '+
     'tant qu\'elles ne les touchent pas ; tout plan reste ≥ dessus du brut.'));
+  // V0.99.9 : gamme automatique des perçages — réglée AVANT de sélectionner les trous
+  p.appendChild(faoH('Gamme de perçage automatique'));
+  if(typeof faoDrillCfgRows==='function')p.appendChild(faoDrillCfgRows(setup));
   p.appendChild(faoH('Machine · temps')); // 2026-10-22-008 : onglet « Temps »
   const rV=faoRow();
   rV.appendChild(faoLab('Rapide G0'));

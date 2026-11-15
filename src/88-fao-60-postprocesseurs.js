@@ -91,6 +91,7 @@ function faoDrillCycle(op,job,oz,inFrame){
   const tT=faoToolById(job,op.toolId);
   return {holes:holes,pts:plan.map(function(p){return [p.x,p.y];}),RTP:RTP,RFP:h0.RFP,SDIS:h0.SDIS,DP:h0.DP,
     peck:h0.peck,span:h0.span,chip:cyc==='chip',dwell:dwell,
+    ream:cyc==='ream', // V0.99.9 : alésage — CYCLE85 / G85, entrée et sortie en avance
     tap:cyc==='tap'?{p:(tT&&+tT.p>0)?+tT.p:1,lh:!!(tT&&tT.lh)}:null}; // lh : taraud à gauche (V0.33.3)
 }
 // Post unifié : un seul corps de programme, dialecte réduit à la tête/pied + style de ligne.
@@ -293,6 +294,17 @@ function faoPost(job,postId){
             }else{
               nc('G0 '+X+' '+Y+' Z'+faoFmtXYZ(DC.RTP));
               nc('CYCLE84('+faoFmtXYZ(DC.RTP)+', '+faoFmtXYZ(H.RFP)+', '+faoFmtXYZ(H.SDIS)+', '+faoFmtXYZ(H.DP)+', , '+DTB+', 3, , '+(tapLH?'-':'')+faoFmtXYZ(DC.tap.p)+', 0, '+SB+', '+SB+')');
+            }
+            return;
+          }
+          if(DC.ream){
+            // V0.99.9 : ALÉSAGE — Fagor 8065 : G85 (entrée en avance, temporisation K, sortie en avance).
+            // Siemens 840D : CYCLE85(RTP, RFP, SDIS, DP, DPR, DTB, FFR, RFF) — FFR = RFF = F d'alésage.
+            if(fag){
+              nc('G98 G85 '+X+' '+Y+' Z'+faoFmtXYZ(DC.RTP)+' I'+faoFmtXYZ(H.DP)+(DC.dwell>0?' K'+faoFmtXYZ(DC.dwell):'')+fw(F));
+            }else{
+              nc('G0 '+X+' '+Y+' Z'+faoFmtXYZ(DC.RTP)+fw(F));
+              nc('CYCLE85('+faoFmtXYZ(DC.RTP)+', '+faoFmtXYZ(H.RFP)+', '+faoFmtXYZ(H.SDIS)+', '+faoFmtXYZ(H.DP)+', , '+DTB+', '+F+', '+F+')');
             }
             return;
           }
