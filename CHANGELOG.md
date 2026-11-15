@@ -8,7 +8,7 @@ sont sorties le 2026-09-30j.
 Code dans `src/` · livrable `fusion_mvp.html` (généré par `build.js`) · architecture et
 garde-fous en tête de `src/00-entete-et-outils.js`.
 
-**696 versions**, de `2026-09-28b` à `V0.99.9` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
+**697 versions**, de `2026-09-28b` à `V0.99.10` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
 comme dans le fichier d'origine.
 
 ---
@@ -7785,3 +7785,17 @@ Cavité Usinage, après l'ébauche D25, la reprise D10 et une finition boule D12
 **Fenêtre « Gamme de perçage »** (`faoDrillGammeDlg`) à la création (trous sélectionnés + Perçage, bouton ⚙ Gamme) : pointage (automatique, foret à pointer, à centrer, outil de la bibliothèque, sans pointage), finition des alésages et outil des fraisures quand la sélection en contient, nature des trous d'une pièce importée (lisse, taraudé, alésé H6/H7/H8, lamage, fraisure). Choix gardés par posage (`setup.drillCfg`), aussi dans la fiche du posage (onglet Perçage) et d'un Perçage. Clic sur le cône d'une fraisure : le trou est retrouvé.
 
 **Test** : `tests/test_fao_alesage_gamme.cjs` (4 cas d'alésage, alésoir et fraise, pré-trous, CYCLE85/G85, fraisure au foret à pointer et à la fraise à chanfreiner, doubles perçages, choix du pointage, pièce sans fonction Perçage, clic sur le cône) ; essai dans l'application ; suite rapide 167/167. Seuls les perçages qui contiennent des trous alésés, fraisés ou de double perçage sont à régénérer ; CACHE_VER et FORMES_VER inchangés.
+
+## V0.99.10 - FAO Perçage 3+2 automatique : une opération par orientation du plateau
+
+**Demande** : « Pour le perçage des trous en 3+2, peux-tu regarder pour faire le changement de plateau en automatique ? Exemple, les Ø1,5 dans les congés de la cavité 002 », « il faut faire attention au changement de position du plateau entre 2 perçages », « normalement dans le postpro il y a 2 SUPA en Z et X », « le X toujours côté matière ou poche de la cavité, comme ça le plateau sera bien positionné ».
+
+**Gamme multi-orientations** (`faoDrillSelFaces`, `faoDrillAxisGroups`, `faoDrillGammeOrder`) : les faces de trous sélectionnées sont rangées par axe ; un perçage normal (fonction choisie dans l'arbre, ou un de ses trous cliqué) apporte tous ses trous avec leur sens de perçage (`drillDir` : Z sortant par la face d'entrée). Chaque axe devient une opération Perçage à son repère, une seule fenêtre « Gamme de perçage » pour toutes, puis les gammes sont remises dans l'ordre d'atelier : étape (pointage, perçage, fraisure, lamage, alésage, taraudage), outil d'un seul tenant, orientations dans l'ordre du plus proche (en partant de celle la plus proche du Z du posage).
+
+**X du repère** : trou incliné → X = projection horizontale de Z (côté où penche l'outil, vers la poche ou la matière) au lieu d'un axe fixe ; le plateau pivote toujours du même côté.
+
+**Post Siemens** : juste après un pivotement (dégagement `G0 SUPA Z600 D0`, `G0 SUPA X…`, `D1`, `CYCLE800`), la première approche se fait en deux temps, `G0 X Y` au-dessus puis `G0 Z`, jamais en diagonale vers la pièce — aussi après la remise à plat qui suit chaque changement d'outil (`test_fao` : `G0 X20 Y20 F…` puis `G0 Z5`). Commentaire des perçages « trous du modèle » : nombre de trous réel (affichait 0).
+
+**Vitesse** : trous retrouvés gardés par repère (`faoHoleMemo`, 48 repères au lieu de 8) — SIRAP-14-002, 36 Ø1,5 des congés : 16 orientations, 32 opérations, 2 changements d'outil, gamme en 0,5 s au lieu de 30 s.
+
+**Test** : `tests/test_fao_percage_32_auto.cjs` (trous sur 3 faces : une fenêtre, un pointage par orientation, ordre d'atelier, outils d'un seul tenant, lectures par repère ; post : SUPA Z puis X avant chaque CYCLE800, G0 X Y puis G0 Z, un changement par outil ; perçage normal d'un congé : fonction choisie ou un trou cliqué → tous ses trous, Z de l'entrée, X côté poche) ; `test_post_cycle800` 9b ; essai dans l'application sur SIRAP-14-002. CACHE_VER et FORMES_VER inchangés ; parcours existants inchangés (seul le commentaire du perçage change dans le G-code).

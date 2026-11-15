@@ -185,7 +185,13 @@ function faoPost(job,postId){
   let swCur=c800?null:'0,0,0', swUsed=false; // V0.89.0 : null = plan de la 1re opération toujours commandé
   // _DIR de CYCLE800 : solution choisie par la CN parmi les deux possibles (fiche machine swivelDir, +1 par défaut comme le post Fusion)
   const swDir=post.swivelDir===-1?-1:1;
-  const swOut=function(S,dir){ faoPostLines(post.swivelRetract,{}).forEach(nc); nc(faoCycle800(post,S,dir===undefined?swDir:dir)); };
+  // V0.99.9 : après un pivotement (retrait SUPA Z puis X de la fiche machine, CYCLE800), le premier
+  // rapide se fait en DEUX temps : X Y à la hauteur du retrait, puis Z — jamais en diagonale vers la pièce
+  // V0.99.10 : juste après un pivotement du plateau (dégagement SUPA Z puis X, CYCLE800), la 1re
+  // approche se fait en deux temps : G0 X Y au-dessus, puis G0 Z (jamais en diagonale vers la pièce)
+  let swJust=false;
+  const swOut=function(S,dir){ faoPostLines(post.swivelRetract,{}).forEach(nc); nc(faoCycle800(post,S,dir===undefined?swDir:dir)); swJust=true; };
+  const g0=function(X,Y,Z,ex){ if(swJust){ swJust=false; nc('G0 '+X+' '+Y+(ex||'')); nc('G0 '+Z); } else nc('G0 '+X+' '+Y+' '+Z+(ex||'')); };
   groups.forEach(function(g,gi){
     const t=g.tool;
     const S=faoFmtS(t.s), F=faoFmtF(t.f), FP=faoFmtF(t.plunge);
@@ -292,7 +298,7 @@ function faoPost(job,postId){
             if(fag){
               nc('G98 G84 '+X+' '+Y+' Z'+faoFmtXYZ(DC.RTP)+' I'+faoFmtXYZ(H.DP)+' K0 R1'+fw(F));
             }else{
-              nc('G0 '+X+' '+Y+' Z'+faoFmtXYZ(DC.RTP));
+              g0(X,Y,'Z'+faoFmtXYZ(DC.RTP));
               nc('CYCLE84('+faoFmtXYZ(DC.RTP)+', '+faoFmtXYZ(H.RFP)+', '+faoFmtXYZ(H.SDIS)+', '+faoFmtXYZ(H.DP)+', , '+DTB+', 3, , '+(tapLH?'-':'')+faoFmtXYZ(DC.tap.p)+', 0, '+SB+', '+SB+')');
             }
             return;
@@ -303,7 +309,7 @@ function faoPost(job,postId){
             if(fag){
               nc('G98 G85 '+X+' '+Y+' Z'+faoFmtXYZ(DC.RTP)+' I'+faoFmtXYZ(H.DP)+(DC.dwell>0?' K'+faoFmtXYZ(DC.dwell):'')+fw(F));
             }else{
-              nc('G0 '+X+' '+Y+' Z'+faoFmtXYZ(DC.RTP)+fw(F));
+              g0(X,Y,'Z'+faoFmtXYZ(DC.RTP),fw(F));
               nc('CYCLE85('+faoFmtXYZ(DC.RTP)+', '+faoFmtXYZ(H.RFP)+', '+faoFmtXYZ(H.SDIS)+', '+faoFmtXYZ(H.DP)+', , '+DTB+', '+F+', '+F+')');
             }
             return;
@@ -340,7 +346,7 @@ function faoPost(job,postId){
             }
           }else{
             // F de plongée sur chaque G0 : séquence d'avances identique au Fagor.
-            nc('G0 '+X+' '+Y+' Z'+faoFmtXYZ(DC.RTP)+fw(FP));
+            g0(X,Y,'Z'+faoFmtXYZ(DC.RTP),fw(FP));
             nc(H.peck
               ? 'CYCLE83('+faoFmtXYZ(DC.RTP)+', '+faoFmtXYZ(H.RFP)+', '+
                 faoFmtXYZ(H.SDIS)+', '+faoFmtXYZ(H.DP)+', , '+
@@ -370,11 +376,11 @@ function faoPost(job,postId){
         const emit=function(m){
           const mm=toB(m);
           const X='X'+faoFmtXYZ(mm.x), Y='Y'+faoFmtXYZ(mm.y), Z='Z'+faoFmtXYZ(mm.z);
-          if(m.r){ nc('G0 '+X+' '+Y+' '+Z); first=true; }
+          if(m.r){ g0(X,Y,Z); first=true; }
           else{
             const plunge=first&&/Z/.test(Z);
             const up=!plunge&&prev&&Math.abs(m.x-prev.x)<1e-6&&Math.abs(m.y-prev.y)<1e-6&&m.z>prev.z+1e-6;
-            nc('G1 '+X+' '+Y+' '+Z+fw(plunge?FP:(m.ent?FE:(up?FR:F))));
+            swJust=false; nc('G1 '+X+' '+Y+' '+Z+fw(plunge?FP:(m.ent?FE:(up?FR:F))));
             first=false;
           }
           prev=m;
@@ -454,7 +460,7 @@ function faoOpLabel(op,job){
   if(t==='chamfer')return 'Chanfrein '+((op.limit&&op.limit.nEdges)?op.limit.nEdges+' arêtes ':'(arêtes à sélectionner) ')+(+op.w||0.5)+' mm'+tag+off;
   if(t==='contour'&&faoContourProfil(op))return 'Contour '+((op.limit&&op.limit.nEdges)?op.limit.nEdges+' arêtes ':'(profil à sélectionner) ')+op.ztop+' -> '+op.zbot+ra+tag+off;
   if(t==='contour')return 'Contour ['+op.x0+','+op.y0+' -> '+op.x1+','+op.y1+'] '+op.ztop+' -> '+op.zbot+ra+tag+off+lim;
-  if(t==='drill')return 'Perçage '+(op.pts||[]).length+' trou(s) '+op.ztop+' -> '+op.zbot+((+op.peck)>0?' Q'+op.peck:'')+tag+off+lim;
+  if(t==='drill')return 'Perçage '+((op.src==='model'&&op.holes)?op.holes:(op.pts||[])).length+' trou(s) '+op.ztop+' -> '+op.zbot+((+op.peck)>0?' Q'+op.peck:'')+tag+off+lim;
   if(t==='rough3d')return 'Ébauche 3D '+op.ztop+' -> '+op.zbot+' ap '+op.ap+ra+tag+off+lim;
   if(t==='geofinish')return 'Finition pas '+op.step+tag+off+lim;
   if(t==='geodesic')return 'Géodésique pas '+op.step+' ('+((op.faces||[]).length?(op.faces.length+' face'+(op.faces.length>1?'s':'')):'faces à choisir')+')'+tag+off;

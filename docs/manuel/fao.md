@@ -36,6 +36,7 @@
   - **Fraisure** : faite après le perçage, au **foret à pointer** ou à la **fraise à chanfreiner** (réglage de la gamme), du même angle et assez gros pour toute la fraisure ; le méplat de bout de la fraise est compté dans la profondeur ; le pointage ne la creuse plus.
   - **Double perçage** : seul le gros trou est fait ; le petit trou, s'il débouche, est laissé pour l'autre côté.
   - **Pièce importée (STEP)** : la même fenêtre demande la nature de chaque groupe de trous (lisse, taraudé, alésé H6/H7/H8, lamage, fraisure).
+  - **Trous de plusieurs axes (3+2)** : trous cliqués sur plusieurs faces, ou **perçage normal** d'un congé (la fonction choisie dans l'arbre, ou un de ses trous cliqué, entraîne tous ses trous) : une opération par orientation du plateau, avec son repère (Z = axe du trou, **X du côté où penche l'outil**, vers la poche : le plateau pivote toujours du même côté). Une seule fenêtre pour toutes ; les opérations sont rangées étape par étape (tous les pointages, puis les perçages…), chaque outil d'un seul tenant, les orientations voisines à la suite. SIRAP-14-002 : 36 Ø1,5 dans les congés → 16 orientations, 2 outils, 2 changements d'outil.
 - **Ébauche 3D** : niveaux en Z (de *ap* en *ap*, avec un arrêt sur chaque fond de la pièce **à portée de l'outil dans la zone** : un épaulement hors de la limite n'ajoute pas de passe), minipasses, une région finie avant l'autre ; deux stratégies :
   - **Trochoïdal** : spirale avec arcs de dégagement ;
   - Dans la liste **Mode**, survoler un choix ouvre une étiquette : son explication et un petit dessin animé du parcours vu de dessus (coupe, déplacements à vide, descentes).
@@ -77,7 +78,7 @@
   - La vue tourne autour du point visé sur les faces de la pièce, même sous la matière pas encore enlevée (hors de la pièce : sur la matière), et zoome vers lui.
 - **3+2** : chaque opération peut avoir son propre Z et X.
   - Sur Siemens, le plan de travail pivote par **`CYCLE800`** ; les arcs G2/G3 et les cycles de perçage sont écrits dans le plan incliné.
-  - Dégagement avant pivotement en coordonnées machine (`SUPA Z600`, `SUPA X`) ; sens de pivotement réglable par machine (`swivelDir`, plateau tourné vers les outils).
+  - Dégagement avant pivotement en coordonnées machine (`SUPA Z600`, `SUPA X`), puis approche en deux temps (`G0 X Y` au-dessus du trou, ensuite `G0 Z`) ; sens de pivotement réglable par machine (`swivelDir`, plateau tourné vers les outils).
   - Comme le post Fusion des Spinner : table remise à plat par `CYCLE800` en début de programme, plan redonné après chaque changement d'outil, brut décrit à la CN par `WORKPIECE` (« box » de la simulation Siemens).
 - **Exporter G-code** : un programme par posage non gelé ; le menu du posage exporte le sien seul.
 - **G-code** multi-outils, cycles du dialecte (CYCLE81 à 84 ; Fagor G81 avec temporisation K, G83 compté depuis le plan d’approche, G84), avance F modale. *Validez toujours un premier programme à vide sur la machine.*
