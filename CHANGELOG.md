@@ -8,7 +8,7 @@ sont sorties le 2026-09-30j.
 Code dans `src/` · livrable `fusion_mvp.html` (généré par `build.js`) · architecture et
 garde-fous en tête de `src/00-entete-et-outils.js`.
 
-**698 versions**, de `2026-09-28b` à `V0.99.11` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
+**699 versions**, de `2026-09-28b` à `V0.99.12` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
 comme dans le fichier d'origine.
 
 ---
@@ -7809,3 +7809,13 @@ Cavité Usinage, après l'ébauche D25, la reprise D10 et une finition boule D12
 **Correctif** : écran de présentation sans fin programmée (`#mfSplash`) : il reste jusqu'au rejeu exact (98 appelle `window.__mfSplashDone`), au moins 3 s pour l'animation du logo, 60 s au plus ; ligne d'état (« Chargement du noyau 3D… », « Calcul de la pièce… », « Prêt »), barre qui monte à 92 % puis se complète ; fondu croisé de 1,1 s vers la vue 3D. Ouverture : vue 3D floue et assombrie (`blur(18px)`), logo animé ConceptCAD par-dessus (`mfLogoShow`, aussi à la place du rond « Chargement du noyau 3D… » quand l'écran de présentation a été passé), puis logo effacé pendant que la vue redevient nette (1 s). Le filet n'ouvre plus la vue qu'après 3 s sans rejeu en cours (`regenRun`/`regenUi`), 120 s au plus.
 
 **Test** : vérifié dans le navigateur (démarrage sur Cavité Usinage, ouverture d'Axe et de Drapeau Outillage Complet) ; suite rapide 167/167. CACHE_VER et FORMES_VER inchangés.
+
+## V0.99.12 - Ouverture d'une pièce gardée : la vue reste fluide pendant la préparation de fond
+
+**Demande de Fred** : « quand on ouvre un fichier, maintenant, le modèle s'ouvre plus vite mais lague le temps de se mettre à jour ».
+
+**Cause** : la pièce gardée s'affiche tout de suite (plaque SIRAP-14-003 : 0,15 s), puis le rejeu de fond (`pcChauffer`, 20-75) remplit les points de contrôle fonction par fonction ; chaque étape bloque la page de 50 à 560 ms — 55 blocages en ~7 s, la vue saccadait.
+
+**Correctif** : `pcCalme()` — le rejeu de fond n'avance que si la souris (survol compris, bouton enfoncé = jamais), la molette et le clavier sont immobiles depuis 0,9 s (`PC_CALME`) ; même attente avant le contrôle de la pièce relue (`pcVerifie`). Une modification faite avant la fin calcule elle-même ce qui manque, comme avant.
+
+**Test** : navigateur réel (Playwright), plaque SIRAP-14-003 rouverte, rotation de la vue pendant 8,5 s juste après l'ouverture : 52 blocages (5,7 s) sur V0.99.11 → 0 ; rejeu de fond fini après le geste, contrôle de la pièce relue OK ; suite rapide 167/167. Essayé aussi et non retenu : garder les workers FAO entre deux calculs (« Tout régénérer » SIRAP-14-002 25,5 → 25,3 s, aucun gain). CACHE_VER et FORMES_VER inchangés.
