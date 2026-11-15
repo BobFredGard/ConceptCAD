@@ -65,6 +65,11 @@ Le noyau géométrique exact est **OpenCascade 8 compilé en WebAssembly** par n
 
 S'il n'est pas disponible, l'application bascule seule sur un moteur maillage (CSG).
 
+## Chargement d'une pièce
+
+- **Au lancement**, l'écran de présentation reste affiché jusqu'à ce que la pièce soit entièrement calculée (« Chargement du noyau 3D… », « Calcul de la pièce… »), puis s'efface en fondu sur la vue 3D. Clic ou Échap pour le passer.
+- **À l'ouverture d'une autre pièce**, la vue 3D devient floue sous le logo ConceptCAD ; à la fin du chargement, le logo s'efface et la vue redevient nette sur la nouvelle pièce. L'ancienne pièce ne réapparaît plus au milieu du chargement.
+
 ## Cartes graphiques
 
 Le site, la version autonome et les applications Windows et Mac fonctionnent avec les cartes NVIDIA et AMD, y compris sur un PC portable à deux cartes, avec l'une ou l'autre. Sur Mac, ConceptCAD utilise la puce graphique Apple.
