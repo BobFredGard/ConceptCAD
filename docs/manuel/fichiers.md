@@ -13,6 +13,10 @@
   - Aussi pour un corps seul, ou pour **une seule pièce / un sous-ensemble d'un STEP multi-corps** (clic droit sur sa ligne de l'arborescence ou sur la pièce dans la vue 3D, placement d'assemblage gardé).
   - Un STEP ouvert tel quel se réexporte, sans ses pièces masquées.
   - **À la racine d'un assemblage, tout ce qui est visible part dans le même fichier, chaque pièce à sa place.**
+- **Export STL** : une fenêtre fait choisir la finesse — **Grossier** (0,1 mm · 20°), **Normal** (0,03 mm · 10°), **Fin** (0,01 mm · 5°) ou **Personnalisé** (écart et angle au choix).
+  - Elle annonce le **nombre de triangles**, le **poids du fichier** et le **nombre de côtés d'un cercle** (Ø5, Ø10, Ø50).
+  - L'**aperçu 3D** montre exactement les triangles qui seront écrits : on tourne et on zoome sur un trou ou un congé avant d'exporter.
+  - Le maillage est calculé sur la forme exacte, indépendamment de la finesse d'affichage ; le dernier choix est retenu.
 - **STEP multi-corps** : arborescence des sous-ensembles et pièces avec leurs noms, pièces **masquables** (👁), **une couleur par pièce ou par occurrence** ; les gros fichiers (44 Mo, 73 000 faces) s'ouvrent et se manipulent sans à-coups.
 - **Enregistrement sûr** : contenu vérifié avant écriture et relu après (jamais vide), version précédente gardée (`nom.conceptcad.bak` et copie dans le navigateur), menu **Copie de secours**.
 

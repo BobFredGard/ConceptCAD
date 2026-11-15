@@ -278,7 +278,7 @@ $('btnExportStep').onclick=async()=>{
     try{if(FR)occCleanup(FR,null);}catch(e){}
   }
 };
-$('btnExportStl').onclick=()=>downloadMesh('stl');
+$('btnExportStl').onclick=()=>stlExportOpen(); // fenêtre de finesse + aperçu (90-41)
 $('btnExportObj').onclick=()=>downloadMesh('obj');
 function downloadMesh(fmt){
   const vis=bodies.filter(b=>b.visible&&!b.ghost);if(!vis.length){alert('Rien à exporter (que des outils de découpe ?).');return;}
