@@ -98,7 +98,7 @@ const vm=require('vm');
     // --- P1-a : cycles de per\\u00e7age dialecte (golden tests)
     "att(/CYCLE81\\(5\\.000, 0\\.000, 5\\.000, -20\\.000, \\)/.test(s630.code),'siemens : CYCLE81 (golden)');",
     "att(!/CYCLE83/.test(s630.code),'sans Q : pas de CYCLE83');",
-    "att(/G0 X20\\.000 Y20\\.000 Z5\\.000 F/.test(s630.code),'siemens : trou au retrait, F plong\\u00e9e sur le G0');",
+    "att(/G0 X20\\.000 Y20\\.000 Z5\\.000 F/.test(s630.code)||/G0 X20\\.000 Y20\\.000 F[0-9.]+\\nG0 Z5\\.000\\n/.test(s630.code),'siemens : trou au retrait (après un pivotement : G0 X Y puis G0 Z, V0.99.10), F plong\\u00e9e sur le G0');",
     "att(/G98 G81 X20\\.000 Y20\\.000 Z5\\.000 I-20\\.000/.test(fg.code),'fagor : G98 G81 (golden)');",
     "att(/G80/.test(fg.code),'fagor : G80 annule le cycle');",
     "att(!/G83/.test(fg.code),'sans Q : pas de G83 fagor');",

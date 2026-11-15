@@ -383,7 +383,7 @@ input[type=range]{accent-color:var(--primary);width:100%}
  * peut changer sans rien casser. CACHE_VER (parcours FAO) reste indépendant.
  */
 
-const APP_VER='V0.99.9';
+const APP_VER='V0.99.10';
 try{console.log('[ConceptCAD] version '+APP_VER);}catch(e){}
 try{var mfSv=document.getElementById('mfSplashVer');if(mfSv)mfSv.textContent=APP_VER;}catch(e){} // écran de démarrage
 
@@ -52192,7 +52192,13 @@ function faoPost(job,postId){
   let swCur=c800?null:'0,0,0', swUsed=false; // V0.89.0 : null = plan de la 1re opération toujours commandé
   // _DIR de CYCLE800 : solution choisie par la CN parmi les deux possibles (fiche machine swivelDir, +1 par défaut comme le post Fusion)
   const swDir=post.swivelDir===-1?-1:1;
-  const swOut=function(S,dir){ faoPostLines(post.swivelRetract,{}).forEach(nc); nc(faoCycle800(post,S,dir===undefined?swDir:dir)); };
+  // V0.99.9 : après un pivotement (retrait SUPA Z puis X de la fiche machine, CYCLE800), le premier
+  // rapide se fait en DEUX temps : X Y à la hauteur du retrait, puis Z — jamais en diagonale vers la pièce
+  // V0.99.10 : juste après un pivotement du plateau (dégagement SUPA Z puis X, CYCLE800), la 1re
+  // approche se fait en deux temps : G0 X Y au-dessus, puis G0 Z (jamais en diagonale vers la pièce)
+  let swJust=false;
+  const swOut=function(S,dir){ faoPostLines(post.swivelRetract,{}).forEach(nc); nc(faoCycle800(post,S,dir===undefined?swDir:dir)); swJust=true; };
+  const g0=function(X,Y,Z,ex){ if(swJust){ swJust=false; nc('G0 '+X+' '+Y+(ex||'')); nc('G0 '+Z); } else nc('G0 '+X+' '+Y+' '+Z+(ex||'')); };
   groups.forEach(function(g,gi){
     const t=g.tool;
     const S=faoFmtS(t.s), F=faoFmtF(t.f), FP=faoFmtF(t.plunge);
@@ -52299,7 +52305,7 @@ function faoPost(job,postId){
             if(fag){
               nc('G98 G84 '+X+' '+Y+' Z'+faoFmtXYZ(DC.RTP)+' I'+faoFmtXYZ(H.DP)+' K0 R1'+fw(F));
             }else{
-              nc('G0 '+X+' '+Y+' Z'+faoFmtXYZ(DC.RTP));
+              g0(X,Y,'Z'+faoFmtXYZ(DC.RTP));
               nc('CYCLE84('+faoFmtXYZ(DC.RTP)+', '+faoFmtXYZ(H.RFP)+', '+faoFmtXYZ(H.SDIS)+', '+faoFmtXYZ(H.DP)+', , '+DTB+', 3, , '+(tapLH?'-':'')+faoFmtXYZ(DC.tap.p)+', 0, '+SB+', '+SB+')');
             }
             return;
@@ -52310,7 +52316,7 @@ function faoPost(job,postId){
             if(fag){
               nc('G98 G85 '+X+' '+Y+' Z'+faoFmtXYZ(DC.RTP)+' I'+faoFmtXYZ(H.DP)+(DC.dwell>0?' K'+faoFmtXYZ(DC.dwell):'')+fw(F));
             }else{
-              nc('G0 '+X+' '+Y+' Z'+faoFmtXYZ(DC.RTP)+fw(F));
+              g0(X,Y,'Z'+faoFmtXYZ(DC.RTP),fw(F));
               nc('CYCLE85('+faoFmtXYZ(DC.RTP)+', '+faoFmtXYZ(H.RFP)+', '+faoFmtXYZ(H.SDIS)+', '+faoFmtXYZ(H.DP)+', , '+DTB+', '+F+', '+F+')');
             }
             return;
@@ -52347,7 +52353,7 @@ function faoPost(job,postId){
             }
           }else{
             // F de plongée sur chaque G0 : séquence d'avances identique au Fagor.
-            nc('G0 '+X+' '+Y+' Z'+faoFmtXYZ(DC.RTP)+fw(FP));
+            g0(X,Y,'Z'+faoFmtXYZ(DC.RTP),fw(FP));
             nc(H.peck
               ? 'CYCLE83('+faoFmtXYZ(DC.RTP)+', '+faoFmtXYZ(H.RFP)+', '+
                 faoFmtXYZ(H.SDIS)+', '+faoFmtXYZ(H.DP)+', , '+
@@ -52377,11 +52383,11 @@ function faoPost(job,postId){
         const emit=function(m){
           const mm=toB(m);
           const X='X'+faoFmtXYZ(mm.x), Y='Y'+faoFmtXYZ(mm.y), Z='Z'+faoFmtXYZ(mm.z);
-          if(m.r){ nc('G0 '+X+' '+Y+' '+Z); first=true; }
+          if(m.r){ g0(X,Y,Z); first=true; }
           else{
             const plunge=first&&/Z/.test(Z);
             const up=!plunge&&prev&&Math.abs(m.x-prev.x)<1e-6&&Math.abs(m.y-prev.y)<1e-6&&m.z>prev.z+1e-6;
-            nc('G1 '+X+' '+Y+' '+Z+fw(plunge?FP:(m.ent?FE:(up?FR:F))));
+            swJust=false; nc('G1 '+X+' '+Y+' '+Z+fw(plunge?FP:(m.ent?FE:(up?FR:F))));
             first=false;
           }
           prev=m;
@@ -52461,7 +52467,7 @@ function faoOpLabel(op,job){
   if(t==='chamfer')return 'Chanfrein '+((op.limit&&op.limit.nEdges)?op.limit.nEdges+' arêtes ':'(arêtes à sélectionner) ')+(+op.w||0.5)+' mm'+tag+off;
   if(t==='contour'&&faoContourProfil(op))return 'Contour '+((op.limit&&op.limit.nEdges)?op.limit.nEdges+' arêtes ':'(profil à sélectionner) ')+op.ztop+' -> '+op.zbot+ra+tag+off;
   if(t==='contour')return 'Contour ['+op.x0+','+op.y0+' -> '+op.x1+','+op.y1+'] '+op.ztop+' -> '+op.zbot+ra+tag+off+lim;
-  if(t==='drill')return 'Perçage '+(op.pts||[]).length+' trou(s) '+op.ztop+' -> '+op.zbot+((+op.peck)>0?' Q'+op.peck:'')+tag+off+lim;
+  if(t==='drill')return 'Perçage '+((op.src==='model'&&op.holes)?op.holes:(op.pts||[])).length+' trou(s) '+op.ztop+' -> '+op.zbot+((+op.peck)>0?' Q'+op.peck:'')+tag+off+lim;
   if(t==='rough3d')return 'Ébauche 3D '+op.ztop+' -> '+op.zbot+' ap '+op.ap+ra+tag+off+lim;
   if(t==='geofinish')return 'Finition pas '+op.step+tag+off+lim;
   if(t==='geodesic')return 'Géodésique pas '+op.step+' ('+((op.faces||[]).length?(op.faces.length+' face'+(op.faces.length>1?'s':'')):'faces à choisir')+')'+tag+off;
@@ -71320,6 +71326,18 @@ function faoHoleAxisF(f,sk){
   return {dir:{x:d[0],y:d[1],z:d[2]},pts:A.pts.map(function(p){const q=faoToF(Fr,[p.x,p.y,p.z]);return {id:p.id,x:q[0],y:q[1],z:q[2]};})};
 }
 function faoHolesDetect(shapes){
+  // V0.99.10 : repère d'une opération 3+2 (faoFrameCur) : trous gardés par repère (faoHoleMemo) — une
+  // gamme sur 16 orientations relisait la pièce tournée à chaque appel (SIRAP-14-002 : 30 s)
+  if(!shapes&&faoFrameCur&&!faoFrameCur.id){
+    const k=faoHoleMemoKey();
+    if(k&&faoHoleMemo.has(k))return faoHoleMemo.get(k);
+    const l=faoHolesDetect0(faoHoleShapes());
+    if(k){if(faoHoleMemo.size>=48)faoHoleMemo.clear();faoHoleMemo.set(k,l);}
+    return l;
+  }
+  return faoHolesDetect0(shapes);
+}
+function faoHolesDetect0(shapes){
   // Liste des trous verticaux (axe ±Z) des solides donnés. Pur OCCT : testable en Node.
   shapes=shapes||faoHoleShapes();
   if(!shapes.length||typeof occt==='undefined'||!occt)return [];
@@ -71612,7 +71630,7 @@ function faoDrillResolve(op){
     const k=faoHoleMemoKey(Fr);
     if(k&&faoHoleMemo.has(k))return faoHoleMemo.get(k);
     const shapes=faoHoleShapes();const l=shapes.length?faoHolesDetect(shapes):null;
-    if(k&&l){if(faoHoleMemo.size>8)faoHoleMemo.clear();faoHoleMemo.set(k,l);}
+    if(k&&l){if(faoHoleMemo.size>=48)faoHoleMemo.clear();faoHoleMemo.set(k,l);}
     return l;});
   if(!all)return false;
   const setup=faoSetupOfOp(op);
@@ -72096,7 +72114,9 @@ function faoDrillSelAxis(setup,op){
   let a=null,pt=null,ac=null,fz=null;
   const f0=(typeof selFaces!=='undefined'&&selFaces||[]).find(function(f){return f&&f.point&&f.geom&&f.geom.kind==='cyl'&&f.geom.axis;});
   if(f0){a=[f0.geom.axis.x,f0.geom.axis.y,f0.geom.axis.z];pt=[f0.point.x,f0.point.y,f0.point.z];
-    const c=f0.geom.center;ac=c?[c.x,c.y,c.z]:pt;} // point de l'axe
+    const c=f0.geom.center;ac=c?[c.x,c.y,c.z]:pt; // point de l'axe
+    // V0.99.10 : trou d'un perçage normal : sens connu (de la face vers le trou visé), Z sortant par l'entrée
+    if(f0.drillDir)fz=[-f0.drillDir.x,-f0.drillDir.y,-f0.drillDir.z];}
   try{
     // sens de perçage de la fonction : sur l'axe cliqué, ou fonction sélectionnée dans l'arbre
     (doc.features||[]).forEach(function(f){
@@ -72118,6 +72138,10 @@ function faoDrillSelAxis(setup,op){
       if(r[2]>0.9999){delete op.frame;return;} // axe du posage : rien à changer
       let v=r;for(const k in FAO_AX){const q=FAO_AX[k];if(Math.abs(q[0]-r[0])<1e-7&&Math.abs(q[1]-r[1])<1e-7&&Math.abs(q[2]-r[2])<1e-7){v=k;break;}}
       op.frame=Object.assign({},op.frame||{},{z:v,flipZ:false});delete op.frame.o;faoFrameFixX(op);
+      // V0.99.10 (demande de Fred) : trou incliné → X du côté où penche l'outil, vers la poche / la
+      // matière (projection horizontale de Z) : le plateau pivote toujours dans le même sens
+      const L=Math.hypot(r[0],r[1]);
+      if(L>1e-3&&L<0.9999){op.frame.x=[r[0]/L,r[1]/L,0].map(function(q){return Math.abs(q)<1e-9?0:Math.round(q*1e9)/1e9;});op.frame.flipX=false;}
     });
   };
   // trous du même axe vus avec Z = w : l'un d'eux est-il borgne ?
@@ -72191,8 +72215,25 @@ function faoStepIsUpper(h,all){
 function faoStepUnknown(setup,op){
   // Groupes sélectionnés sans fonction Perçage (pièce importée) : ceux à faire préciser.
   const all=faoWithOpFrame(op,function(){return faoHolesDetect();});
+  // V0.99.10 : trous d'un perçage normal (fonction de la pièce, sans esquisse) : pas à demander
+  const hnXY=[];
+  try{
+    if(typeof hnIs==='function'&&typeof hnRun!=='undefined'){
+      let F=null;try{const s=faoSetupOfOp(op);F=(s&&faoOpFrame(s,op))||faoFrame(s||faoSetup());}catch(e){F=null;}
+      (doc.features||[]).forEach(function(f){
+        if(!f||!hnIs(f)||f.visible===false)return;
+        const R=hnRun.get(f.id);
+        ((R&&R.all)||[]).forEach(function(it){
+          if(!it.on)return;
+          const p=(F&&!F.id)?faoToF(F,it.P):it.P,c=(F&&!F.id)?faoToF(F,it.C):it.C;
+          if(Math.hypot(p[0]-c[0],p[1]-c[1])<0.05)hnXY.push(p); // axe du trou = Z de ce repère
+        });
+      });
+    }
+  }catch(e){}
+  const isHn=function(h){return hnXY.some(function(p){return Math.hypot(p[0]-h.x,p[1]-h.y)<0.1;});};
   return faoHoleGroups(all).filter(function(g){
-    return faoHoleInSel(op,{d:g.d,ztop:g.z})&&!g.holes.some(function(h){return h.feat;})&&!g.holes.every(function(h){return h.pre&&h.through;});
+    return faoHoleInSel(op,{d:g.d,ztop:g.z})&&!g.holes.some(function(h){return h.feat||isHn(h);})&&!g.holes.every(function(h){return h.pre&&h.through;});
   }).map(function(g){return {g:g,all:all};});
 }
 function faoStepInfoSet(setup,key,v,lh){
@@ -72215,7 +72256,7 @@ function faoDrillGammeDlg(setup,op,list,flags,done){
   const mk=function(tag,cls,txt){const e=document.createElement(tag);if(cls)e.className=cls;if(txt!==undefined)e.textContent=txt;return e;};
   const bg=mk('div','mffDlgBg'),d=mk('div','mffDlg fao-imp');
   d.appendChild(mk('div','fao-imp-t','Gamme de perçage'));
-  d.appendChild(mk('div','fao-imp-s',(flags.n||0)+' trou(s) sélectionné(s). Choisissez les outils, la gamme est créée ensuite (pointage, perçage, fraisure, lamage, alésage, taraudage).'));
+  d.appendChild(mk('div','fao-imp-s',(flags.n||0)+' trou(s) sélectionné(s)'+(flags.nFr?(', '+flags.nFr+' orientations du plateau (3+2)'):'')+'. Choisissez les outils, la gamme est créée ensuite (pointage, perçage, fraisure, lamage, alésage, taraudage).'));
   const c=faoDrillCfg(setup);
   const cfgL=mk('div','fao-imp-list');d.appendChild(cfgL);
   const pick=function(label,opts,val,tip){
@@ -72274,24 +72315,144 @@ function faoDrillGammeDlg(setup,op,list,flags,done){
 }
 function faoDrillGammeAsk(setup,op,noSnap){
   // Gamme, après la fenêtre « Gamme de perçage » (outils, nature des trous de STEP).
-  if(typeof document==='undefined'||!document.body||faoDrillGammeAsk.off)return faoDrillGamme(setup,op,noSnap);
-  let list=[];try{list=faoStepUnknown(setup,op);}catch(e){list=[];}
-  try{faoDrillResolve(op);}catch(e){}
-  const H=op.holes||[];
+  // V0.99.10 : op peut être une liste (une opération par orientation 3+2) : une seule fenêtre.
+  const ops=Array.isArray(op)?op:[op];
+  const run=function(){
+    if(ops.length===1)return faoDrillGamme(setup,ops[0],true);
+    const m=faoDrillGammeOrder(setup,ops.map(function(o){return faoDrillGamme(setup,o,true,true)||[];}));return m; // rafraichi par l'appelant (fenetre, creation)
+  };
+  if(typeof document==='undefined'||!document.body||faoDrillGammeAsk.off){
+    if(!noSnap)faoSnapshot('gamme de perçage');
+    return run();
+  }
+  let list=[],H=[];
+  ops.forEach(function(o){
+    try{list=list.concat(faoStepUnknown(setup,o));}catch(e){}
+    try{faoDrillResolve(o);}catch(e){}
+    H=H.concat(o.holes||[]);
+  });
   const flags={n:H.length,
     ream:H.some(function(h){return h.ream;})||list.length>0,
     csk:H.some(function(h){return h.csk;})||list.some(function(it){return it.g.holes[0].chD>0;})};
-  faoDrillGammeDlg(setup,op,list,flags,function(){
+  if(ops.length>1)flags.nFr=ops.length;
+  faoDrillGammeDlg(setup,ops[0],list,flags,function(){
     if(!noSnap)faoSnapshot('gamme de perçage');
-    const made=faoDrillGamme(setup,op,true);
+    const made=run();
     faoChanged();
     try{if(made&&made.length)faoSelectOp(setup.id,made[0].id);}catch(e){}
   });
   try{faceEl.textContent='Gamme de perçage : choisissez les outils, puis « Créer la gamme ».';}catch(e){}
   return null;
 }
+/* ----- V0.99.10 : trous d'axes différents → une opération par orientation du plateau (3+2) -----
+   Trous cliqués sur plusieurs faces, ou perçage normal (trous dans un congé, chacun perpendiculaire
+   à la face) : les faces sont rangées par axe, chaque axe devient une opération Perçage à son repère
+   (faoDrillSelHoles). Après la gamme, les opérations sont triées étape par étape (pointage, perçage,
+   fraisure, lamage, alésage, taraudage), chaque outil d'un seul tenant, les orientations voisines à la
+   suite : moins de changements d'outil et de pivotements. Le post dégage (SUPA Z puis X) à chaque
+   pivotement et approche en deux temps. */
+function faoDrillSelFaces(){
+  // Faces de la sélection + trous des perçages normaux concernés (fonction choisie dans l'arbre, ou
+  // un de ses trous cliqué : tous ses trous, comme une fonction Perçage), avec leur sens de perçage.
+  const fs=((typeof selFaces!=='undefined'&&selFaces)||[]).filter(function(f){return f&&f.point;});
+  const out=fs.slice(),hn=[];
+  if(typeof hnIs!=='function'||typeof hnRun==='undefined')return {faces:out,hn:0};
+  const un=function(v){const L=Math.hypot(v[0],v[1],v[2])||1;return [v[0]/L,v[1]/L,v[2]/L];};
+  const items=function(f){const R=hnRun.get(f.id);return ((R&&R.all)||[]).filter(function(it){return it.on;});};
+  const onIt=function(q,it){
+    if(!(q.geom&&q.geom.kind==='cyl'&&q.geom.axis))return false;
+    const u=un([it.C[0]-it.P[0],it.C[1]-it.P[1],it.C[2]-it.P[2]]),a=q.geom.axis;
+    if(Math.abs(u[0]*a.x+u[1]*a.y+u[2]*a.z)<0.9999)return false;
+    const w=[q.point.x-it.P[0],q.point.y-it.P[1],q.point.z-it.P[2]],t=w[0]*u[0]+w[1]*u[1]+w[2]*u[2];
+    return Math.hypot(w[0]-t*u[0],w[1]-t*u[1],w[2]-t*u[2])<0.1;
+  };
+  try{
+    (doc.features||[]).forEach(function(f){
+      if(!f||!hnIs(f)||f.visible===false)return;
+      const its=items(f);if(!its.length)return;
+      const picked=(typeof sel!=='undefined'&&sel&&sel.kind==='feature'&&sel.id===f.id)||fs.some(function(q){return its.some(function(it){return onIt(q,it);});});
+      if(picked)hn.push(its);
+    });
+  }catch(e){}
+  hn.forEach(function(its){its.forEach(function(it){
+    const u=un([it.C[0]-it.P[0],it.C[1]-it.P[1],it.C[2]-it.P[2]]),V=function(v){return {x:v[0],y:v[1],z:v[2]};};
+    // milieu du chemin : dans le trou, ni sur la face d'entrée ni dans le trou visé
+    out.unshift({point:V([(it.P[0]+it.C[0])/2,(it.P[1]+it.C[1])/2,(it.P[2]+it.C[2])/2]),geom:{kind:'cyl',axis:V(u),center:V(it.P)},drillDir:V(u)});
+  });});
+  return {faces:out,hn:hn.length};
+}
+function faoDrillAxisGroups(setup,faces){
+  // Faces rangées par axe (au signe près) ; faces sans axe : avec l'axe unique s'il n'y en a qu'un.
+  const G=[],loose=[];
+  faces.forEach(function(f){
+    const a=f.geom&&f.geom.kind==='cyl'&&f.geom.axis;
+    if(!a){loose.push(f);return;}
+    let g=G.find(function(g){return Math.abs(g.a[0]*a.x+g.a[1]*a.y+g.a[2]*a.z)>0.99995;});
+    if(!g){g={a:[a.x,a.y,a.z],faces:[]};G.push(g);}
+    if(f.drillDir)g.faces.unshift(f);else g.faces.push(f); // le sens connu d'abord (faoDrillSelAxis lit la 1re)
+  });
+  if(loose.length){if(G.length===1)G[0].faces=G[0].faces.concat(loose);else G.push({a:null,faces:loose});}
+  if(G.length<2)return G;
+  // ordre : l'axe le plus proche du Z du posage, puis toujours l'orientation la plus proche
+  const P=faoFrame(setup),zr=function(a){if(!a)return 1;const r=P.id?a:faoRotF(P,a);return Math.abs(r[2]);};
+  const ang=function(p,q){if(!p||!q)return (p===q)?1:0;return Math.abs(p[0]*q[0]+p[1]*q[1]+p[2]*q[2]);};
+  const rest=G.slice().sort(function(p,q){return zr(q.a)-zr(p.a);}),out=[rest.shift()];
+  while(rest.length){
+    const last=out[out.length-1].a;let bi=0,bv=-1;
+    rest.forEach(function(g,i){const v=ang(last,g.a);if(v>bv+1e-9){bv=v;bi=i;}});
+    out.push(rest.splice(bi,1)[0]);
+  }
+  return out;
+}
+function faoDrillGammeOrder(setup,lists){
+  // Opérations des gammes de chaque orientation (lists[k] = gamme de l'orientation k) remises dans
+  // l'ordre d'atelier : étape, puis outil (dans l'ordre où il apparaît), puis orientation.
+  const all=[];lists.forEach(function(L,k){(L||[]).forEach(function(o,i){all.push({o:o,k:k,i:i});});});
+  if(!all.length)return [];
+  const ph=function(o){
+    if(o.gRole==='pointage'||o.cycle==='spot'&&o.gRole!=='fraisure')return 0;
+    if(o.gRole==='fraisure')return 2;
+    if(o.gRole==='alesage')return 4;
+    if(o.cycle==='tap')return 5;
+    if(o.cycle==='helix')return 3;
+    return 1;
+  };
+  const rk={};
+  all.slice().sort(function(p,q){return ph(p.o)-ph(q.o)||p.k-q.k||p.i-q.i;}).forEach(function(e,n){const t=e.o.toolId||'';if(!(t in rk))rk[t]=n;});
+  const pos=Math.min.apply(null,all.map(function(e){return setup.ops.indexOf(e.o);}).filter(function(i){return i>=0;}));
+  all.forEach(function(e){const i=setup.ops.indexOf(e.o);if(i>=0)setup.ops.splice(i,1);});
+  all.sort(function(p,q){return ph(p.o)-ph(q.o)||rk[p.o.toolId||'']-rk[q.o.toolId||'']||p.k-q.k||p.i-q.i;});
+  const at=isFinite(pos)?pos:setup.ops.length;
+  setup.ops.splice.apply(setup.ops,[at,0].concat(all.map(function(e){return e.o;})));
+  const made=all.map(function(e){return e.o;});
+  const nT=Object.keys(rk).length;
+  try{faceEl.textContent='Gamme créée sur '+lists.filter(function(L){return L&&L.length;}).length+' orientations du plateau (3+2) : '+made.length+' opérations, '+nT+' outil(s), chaque outil d’un seul tenant — le programme dégage et pivote entre deux orientations.';}catch(e){}
+  return made;
+}
 function faoDrillFromSel(setup,op){
   // Appelé juste après la création d'une opération Perçage (barre « + Usinage », ruban).
+  // V0.99.10 : trous de plusieurs axes → une opération par orientation (faoDrillAxisGroups)
+  let SF=null;try{SF=faoDrillSelFaces();}catch(e){SF=null;}
+  const groups=SF?faoDrillAxisGroups(setup,SF.faces):[];
+  if(groups.length>1||(SF&&SF.hn)){
+    const keep=selFaces,ops=[];
+    try{
+      groups.forEach(function(g,k){
+        const o=k?faoOpDefaults('drill'):op;
+        if(k)setup.ops.splice(setup.ops.indexOf(ops.length?ops[ops.length-1]:op)+1,0,o);
+        selFaces=g.faces;
+        let gs=[];try{gs=faoDrillSelHoles(setup,o);}catch(e){gs=[];}
+        if(!gs.length){if(k)setup.ops.splice(setup.ops.indexOf(o),1);return;}
+        o.src='model';o.holeSel=gs;ops.push(o);
+      });
+    }finally{selFaces=keep;}
+    if(ops.length){
+      if(ops.indexOf(op)<0){const i=setup.ops.indexOf(op);if(i>=0)setup.ops.splice(i,1);} // 1er axe sans trou
+      const made=faoDrillGammeAsk(setup,ops.length>1?ops:ops[0],true);
+      try{ if(typeof clearMeasure==='function')clearMeasure(); }catch(e){}
+      return made||(ops[0]===op?null:[ops[0]]);
+    }
+  }
   let gs=[];try{gs=faoDrillSelHoles(setup,op);}catch(e){gs=[];}
   if(!gs.length)return null;
   op.src='model';op.holeSel=gs;
@@ -72302,7 +72463,7 @@ function faoDrillFromSel(setup,op){
 }
 
 /* ----- gamme automatique : pointage → perçage → taraudage — 2026-10-15-013 ----- */
-function faoDrillGamme(setup,op,noSnap){
+function faoDrillGamme(setup,op,noSnap,quiet){
   // À partir des groupes sélectionnés de l'opération : remplace l'opération par la
   // séquence d'atelier. Lamages : signalés (fraisage = interpolation, étape suivante).
   // noSnap : l'appelant a déjà pris l'instantané (création + gamme = un seul Ctrl+Z).
@@ -72395,7 +72556,7 @@ function faoDrillGamme(setup,op,noSnap){
     const tp=Object.assign(faoOpDefaults('drill'),base,{cycle:'tap',thKey:k,hf:'plain',holeSel:hsel(list)});
     push(tp);faoDrillAutoTool(setup,tp,list[0].d);
   });
-  faoChanged();
+  if(!quiet)faoChanged(); // V0.99.10 : plusieurs orientations → un seul rafraîchissement, à la fin
   const names=made.map(function(o){const t=faoToolById(setup,o.toolId);
     const nm=o.gRole==='fraisure'?'Fraisure':(o.gRole==='alesage'?(o.cycle==='ream'?'Alésage':'Alésage fraisé'):(o.gRole==='pretrou'?'Pré-trou d’alésage':({spot:'Pointage',drill:'Perçage',peck:'Perçage (débourrage)',tap:'Taraudage',helix:'Lamage fraisé'}[o.cycle]||o.cycle)));
     return nm+' T'+t.num+' '+t.name;});

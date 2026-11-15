@@ -30,6 +30,7 @@ const R=[
   "A(/\\nWORKPIECE\\(,\"C\",,\"BOX\",112,/.test(g)&&g.indexOf('WORKPIECE')<g.indexOf('G71'),'8b : WORKPIECE « BOX » du brut en tête, avant G71');",
   "{const i0=g.indexOf('CYCLE800(1,\"TABLE\",0,27,0,0,0,0.000,0.000,0.000,0,0,0,0,,1)');A(i0>0&&i0<iT&&g.slice(0,i0).indexOf('G0 SUPA Z600 D0')>0,'8c : plan remis à plat avant le 1er outil, _DIR 0, après le dégagement');}",
   "const pre=g.slice(0,iC).split('\\n').slice(-4,-1).join('|');A(pre==='G0 SUPA Z600 D0|G0 SUPA X-430|D1','9 : dégagement de la 1520 avant le pivotement ('+pre+')');",
+  "{const aft=g.slice(iC).split('\\n').slice(1,3);A(/^G0 X[-0-9.]+ Y[-0-9.]+$/.test(aft[0])&&/^G0 Z[-0-9.]+$/.test(aft[1]),'9b : après le pivotement, approche en deux temps : G0 X Y puis G0 Z ('+aft.join('|')+')');}",
   "const iR=g.lastIndexOf('CYCLE800(1,\"TABLE\",0,27,0,0,0,0.000,0.000,0.000,0,0,0,1,,1)');A(iR>iC&&iR<g.indexOf('M30'),'10 : table remise à plat avant M30');",
   // coordonnées dans le plan incliné : le dessus de l'opération (face X1 = 40 du centre commun) en Z
   "const zs=(g.slice(iC,iR).match(/G1 [^\\n]*Z(-?[0-9.]+)/g)||[]).map(l=>+l.match(/Z(-?[0-9.]+)/)[1]);",
