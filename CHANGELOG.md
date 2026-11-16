@@ -8,7 +8,7 @@ sont sorties le 2026-09-30j.
 Code dans `src/` · livrable `fusion_mvp.html` (généré par `build.js`) · architecture et
 garde-fous en tête de `src/00-entete-et-outils.js`.
 
-**706 versions**, de `2026-09-28b` à `V0.99.19` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
+**707 versions**, de `2026-09-28b` à `V0.99.20` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
 comme dans le fichier d'origine.
 
 ---
@@ -7892,3 +7892,15 @@ Cavité Usinage, après l'ébauche D25, la reprise D10 et une finition boule D12
 **Correctif** : `src/60-trim-et-souris.js` — `skTxtPressDbl` repère le double appui sur un même texte (500 ms, 8 px) dès le `pointerdown`, annule le glisser commencé et appelle `skTxtEdit`. `src/88-fao-70-simulation.js` — la liste est gardée (`faoVwSpeedSel`) et `faoViewerSpeedPick` donne sa valeur à la nouvelle lecture.
 
 **Test** : essai dans la page à la vraie souris (texte « HELLO » posé, double-clic sur le H : bandeau rouvert, « BONJOUR » tapé + Entrée : lettres refaites, plusieurs fois de suite) ; vitesse lue = liste (×1, puis ×10) ; `test_esquisse_texte`. CACHE_VER et FORMES_VER inchangés.
+
+## V0.99.20 - Finition à crêtes constantes : lissage, couture en V, passes lisses sur les congés
+
+**Demande de Fred** : finition boule sur une pièce de client : « il va falloir lisser tout ça aussi avec un facteur de lissage » ; « j'ai quand même des courbes qui se chevauchent » ; deux renforts en regard dans la cavité : « regarde comment Fusion 360 finit ses courbes » (anneaux arrêtés en V net sur la ligne de rencontre, une passe le long de cette ligne) ; « les congés de 3,3 sont bien lisses et pas tortueux ».
+
+**Avant** : anneaux en dents de scie sur les congés (lissage seulement en XY, et jamais sur les boucles qui touchent une paroi raide) ; entre deux bords proches, empilement de petites boucles fermées et de pointes qui se chevauchent, avec beaucoup de remontées.
+
+**Correctif** (`src/89-fao-cretes.js`) : (1) **facteur de lissage** (`op.lissage`, 0 à 10, 0 par défaut, onglet *Passes*) : le champ de distance de chaque front est diffusé (poids selon la pente réelle, donc rien ne traverse une paroi) avant le tracé des anneaux, mélangé au champ exact près du bord — les anneaux s'arrondissent sans se croiser. (2) **Lissage 3D** de toutes les passes, ramenées sur la surface de l'outil par projection au plus proche ; les points en falaise gardent leur position (jamais de surcoupe). (3) **Couture zone par zone** : dans une bande restante de moins d'un demi-rayon d'outil en moyenne, les anneaux sont coupés sur la ligne de rencontre des deux fronts (V net), une seule passe suit cette ligne, les morceaux sont enchaînés en zigzag par petites entrées et glissements jusqu'à 4 mm ; au-delà, lentilles fermées comme avant. (4) Liaison en S : avance raccourcie si la liaison dépasserait 1,5 pas en travers + l'avance (anneau lissé sur une paroi raide). Clé des parcours : `_scV=2` (les finitions à crêtes constantes sont à régénérer une fois).
+
+**Mesures** (pièce de Fred, hors dépôt, lissage 3) : remontées 42 → 26, rapides 1,55 m → 1,21 m, pointes 153 → 0, surcoupe max 0,004 mm ; cavité d'exemple : lentilles gardées, 11 remontées.
+
+**Test** : `test_fao_cretes` (cavité avec lissage 3 : facteur appliqué, anneaux, aucune surcoupe, coupes dans la zone, transitions au pas). CACHE_VER et FORMES_VER inchangés.

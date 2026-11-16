@@ -40,6 +40,9 @@ function faoOpSig(op){
   // zone 3D, volume « devant la face ») : elles seules sont à régénérer, pas
   // tout le cache (CACHE_VER inchangé).
   if(Array.isArray(op&&op.protect)&&op.protect.length)o._redV=3; // 2026-10-22-006 : volume « devant » borné (peau du corps-brut, hauteur de la face)
+  // V0.99.20 : finition en crêtes constantes refaite (lissage 3D, couture façon Fusion) —
+  // seules ces opérations sont à régénérer (CACHE_VER inchangé)
+  if(op&&op.type==='geofinish'&&op.traj==='scallop'&&!(op.finFusion===0||op.finFusion==='0'))o._scV=2;
   return o;
 }
 let faoMovesFpMap=null;
@@ -799,6 +802,7 @@ function* faoOpMovesIt0(op,job){
          ztop:op.ztop,zbot:op.zbot,sens:op.sens,
          // V0.99.3 : « Ignorer les trous » (Ø max, mm) ; V0.99.5 : coché par défaut (Fred)
          holeMax:faoHoleMax(op),
+         lissage:op.lissage,finFusion:op.finFusion,
          restEng:RZ?RZ.eng:null,restMarge:RZ?RZ.marge:0,
          zoneAt:zctx?zctx.at:null});
       else mv=yield* faoGenGeoFinishIt(am.mesh,

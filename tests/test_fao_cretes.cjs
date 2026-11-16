@@ -188,6 +188,18 @@ const FIX=path.join(__dirname,'fixtures');
     "att(vUp(mc)===0,'cavité : remontées en Z sur place');",
     "att(dc.seq<=15,'cavité : anneaux enchaînés au pas (séquences '+dc.seq+')');",
     "att((dc.tips||0)>=4,'cavité : pointes des lentilles finies (aller-retour sur la crête) — '+dc.tips);",
+    // V0.99.20 : facteur de lissage (champ de distance lissé, anneaux adoucis)
+    "const ml=faoGenScallop({v:__cavMesh.v,t:__cavMesh.t},{step:+op.step||1,toolD:tool.d,kind:tool.kind,cornerR:tool.cornerR,laisse:0,secu:55,ztop:op.ztop,zbot:op.zbot,zoneAt:zc.at,lissage:3});",
+    "const dl=ml.diag||{};p('cavité lissage 3 : '+ml.length+' moves, diag '+JSON.stringify({r:dl.rings,seq:dl.seq,lifts:dl.lifts,lissage:dl.lissage}));",
+    "att(dl.lissage===3,'cavité lissage 3 : facteur appliqué ('+dl.lissage+')');",
+    "att(dl.rings&&dl.rings[0]>=18&&dl.rings[1]>=18,'cavité lissage 3 : ≥18 anneaux par front '+JSON.stringify(dl.rings));",
+    "let gl=0;for(let i=1;i<ml.length;i++){const b=ml[i];if(b.r)continue;const g=drc.tip(b.x,b.y)-b.z;if(g>gl)gl=g;}",
+    "att(gl<0.02,'cavité lissage 3 : aucune surcoupe (max '+gl.toFixed(4)+')');",
+    "const zbl=ml.filter(m=>!m.r&&!m.ent&&!zc.at(m.x,m.y)&&!zc.at(m.x+0.06,m.y)&&!zc.at(m.x-0.06,m.y)&&!zc.at(m.x,m.y+0.06)&&!zc.at(m.x,m.y-0.06)).length;",
+    "att(zbl===0,'cavité lissage 3 : coupes dans la zone — '+zbl+' points dehors');",
+    "const tjl=trJ(ml,Math.hypot(1.5,4.5)+0.5);",
+    "att(tjl.bad===0,'cavité lissage 3 : transitions au pas seulement (max '+tjl.mx.toFixed(2)+' mm)');",
+    "att(dl.seq<=15,'cavité lissage 3 : anneaux enchaînés au pas (séquences '+dl.seq+')');",
     "if(ATT.length){p('');p('ECHECS ('+ATT.length+') :');ATT.forEach(function(m){p('  x '+m);});}",
     "else p('TOUT EST CONFORME');",
     "return {txt:P.join(String.fromCharCode(10)),ko:ATT.length};"

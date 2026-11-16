@@ -1,21 +1,21 @@
 # Parcours de référence
 
-Résumé chiffré de chaque opération active des exemples, recalculée par `npm run parcours` (noyau OCCT réel, maillage FAO du solide exact). Généré par `npm run parcours -- --ecrire` le 2026-10-30 ; source : `tests/parcours/reference.json`.
+Résumé chiffré de chaque opération active des exemples, recalculée par `npm run parcours` (noyau OCCT réel, maillage FAO du solide exact). Généré par `npm run parcours -- --ecrire` le 2026-11-16 ; source : `tests/parcours/reference.json`.
 
 | Opération | Mouvements | Coupe (m) | Rapides (m) | Remontées | Z mini | Z maxi | Temps (min) | Niveaux |
 |---|---:|---:|---:|---:|---:|---:|---:|---:|
 | Cavité Test.conceptcad › POSAGE1 › 1. Surfaçage (op_4_mvqryqye) | 63 | 3,16 | 0,02 | 1 | 40 | 42,5 | 2,64 | 2 |
-| Cavité Test.conceptcad › POSAGE1 › 2. Ébauche 3D (op_5_mvqs3025) | 23 978 | 18,29 | 7,05 | 99 | 15,5 | 44 | 17,1 | 34 |
-| Cavité Test.conceptcad › POSAGE1 › 3. Finition (op_3_mvqu822f) | 92 871 | 67,79 | 0,13 | 6 | 15 | 44,799 | 56,54 | 2 |
-| Cavité Test.conceptcad › POSAGE1 › 4. Contour (op_6_mvr0jnwn) | 2 087 | 3,56 | 0,08 | 7 | 40 | 43 | 3,01 | 3 |
+| Cavité Test.conceptcad › POSAGE1 › 2. Ébauche 3D (op_5_mvqs3025) | 24 105 | 18,29 | 7,05 | 99 | 15,5 | 44 | 17,1 | 34 |
+| Cavité Test.conceptcad › POSAGE1 › 3. Finition (op_3_mvqu822f) | 93 855 | 67,86 | 0,03 | 1 | 15 | 44,8 | 56,56 | 3 |
+| Cavité Test.conceptcad › POSAGE1 › 4. Contour (op_6_mvr0jnwn) | 1 467 | 2,52 | 0,08 | 5 | 36,5 | 38 | 2,13 | 2 |
 | Cavité Usinage.conceptcad › CAVIT_TEST › 1. Surfaçage (op_33_mv9vmyye) | 177 | 11,95 | 0,03 | 1 | 50 | 56,667 | 3,99 | 3 |
-| Cavité Usinage.conceptcad › CAVIT_TEST › 2. Ébauche 3D (op_3_muyajzho) | 39 947 | 34,01 | 3,49 | 84 | 20 | 53 | 9,54 | 36 |
-| Cavité Usinage.conceptcad › CAVIT_TEST › 3. Finition (op_3_mv4wo41j) | 107 037 | 74,85 | 0,93 | 18 | 20 | 54,8 | 37,69 | 11 |
-| Malaxeur Retard.conceptcad › POSAGE1 › 1. Ébauche 3D (op_3_mvia0l7l) | 25 914 | 30,39 | 47,33 | 596 | -22,5 | 64,424 | 37,55 | 112 |
-| Malaxeur Retard.conceptcad › POSAGE1 › 2. Géodésique (op_2_mvibf0gg) | 37 326 | 32,32 | 1,82 | 36 | -28,419 | 65,954 | 27,44 | 0 |
+| Cavité Usinage.conceptcad › CAVIT_TEST › 2. Ébauche 3D (op_3_muyajzho) | 39 935 | 33,96 | 3,51 | 84 | 20 | 53 | 9,53 | 36 |
+| Cavité Usinage.conceptcad › CAVIT_TEST › 3. Finition (op_3_mv4wo41j) | 94 880 | 74,87 | 0,98 | 24 | 20 | 54,8 | 37,73 | 4 |
+| Malaxeur Retard.conceptcad › POSAGE1 › 1. Ébauche 3D (op_3_mvia0l7l) | 25 517 | 29,44 | 44,78 | 570 | -22,5 | 64,424 | 36,13 | 111 |
+| Malaxeur Retard.conceptcad › POSAGE1 › 2. Géodésique (op_2_mvibf0gg) | 38 330 | 32,39 | 2,32 | 38 | -28,419 | 64,701 | 27,61 | 0 |
 | Perçages.conceptcad › POSAGE1 › 1. Surfaçage (op_5_mvjcidjk) | 47 | 1,83 | 0,02 | 1 | 20 | 22,5 | 1,53 | 2 |
 | Perçages.conceptcad › POSAGE1 › 10. Perçage (op_3_mvnrwbxv) | 8 | 0,04 | 0,14 | 0 | 10 | 10 | 0,07 | 0 |
-| Perçages.conceptcad › POSAGE1 › 11. Perçage (op_4_mvnrwbxw) | 10 | 0,07 | 0,1 | 0 | 10 | 10 | 0,08 | 1 |
+| Perçages.conceptcad › POSAGE1 › 11. Perçage (op_4_mvnrwbxw) | 10 | 0,06 | 0,1 | 0 | 10 | 10 | 0,08 | 1 |
 | Perçages.conceptcad › POSAGE1 › 12. Ébauche 3D (op_2_mvnu3k2a) | 1 603 | 1,06 | 0,19 | 4 | 6,75 | 13,25 | 0,96 | 6 |
 | Perçages.conceptcad › POSAGE1 › 13. Chanfrein (op_2_mvo2kuqf) | 94 | 0,1 | 0,02 | 0 | 1,45 | 17,55 | 0,09 | 2 |
 | Perçages.conceptcad › POSAGE1 › 14. Ébauche 3D (op_2_mvo4kwaj) | 1 917 | 1,13 | 0,36 | 12 | 8,5 | 11,5 | 1,07 | 10 |

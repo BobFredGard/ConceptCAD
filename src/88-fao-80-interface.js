@@ -1652,6 +1652,12 @@ function faoOpCardElement(setup,op,i){
     d.appendChild(faoH('Passes'));
     const gP=faoRow();
     gP.appendChild(faoLab('Pas')); gP.appendChild(faoNumFx(op,'step',op.step,function(v){op.step=Math.max(0.2,v);},52,0.5,'Écart entre deux passes voisines, mesuré sur la surface (mm). Plus il est petit, plus les crêtes sont basses.'));
+    // V0.99.20 (Fred) : facteur de lissage des passes (crêtes constantes)
+    if(op.traj!=='parallel'){
+      gP.appendChild(faoLab('Lissage'));
+      gP.appendChild(faoNumFx(op,'lissage',faoScLissage(op),function(v){ op.lissage=Math.max(0,Math.min(10,v)); },44,0.5,
+        'Facteur de lissage des passes (0 à 10, environ le rayon en mm) : 0 = passes d’origine ; plus grand = les pointes en V des passes s’arrondissent. Les passes ne se croisent jamais ; la profondeur reste calculée sur la pièce (jamais de surcoupe) ; l’écart entre deux passes s’élargit un peu là où elles sont arrondies.'));
+    }
     d.appendChild(gP);
     const gE=faoRow();
     // 2026-10-04-009 : entrée identique à l'ébauche 3D — hélice réservée si un
@@ -1702,7 +1708,7 @@ function faoOpCardElement(setup,op,i){
     pdEls.push(gP.appendChild(faoNumFx(op,'pdirAng',isFinite(+op.pdirAng)?+op.pdirAng:0,function(v){op.pdirAng=v;if(op.pdir!=='ang'){op.pdir='ang';pdSel.value='ang';}},52,1,
       'Angle des passes en degrés depuis X (0 = X, 90 = Y). Saisir bascule en mode Angle.')));
     pdShow();
-    // V0.99.3 (Fred, SIRAP-14-002) : « Ignorer les trous » — crêtes constantes seulement. Chaque
+    // V0.99.3 (Fred) : « Ignorer les trous » — crêtes constantes seulement. Chaque
     // petit trou était un bord de la zone : anneaux autour, remontées, et au-delà de 12 bords
     // des bandes oubliées. Bouchés, la boule passe par-dessus (src/89-fao-cretes.js).
     if(op.traj!=='parallel'){
