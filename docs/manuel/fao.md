@@ -77,6 +77,7 @@
 - **Simulation** sur la **carte graphique** : outil réel, matière enlevée à partir du vrai brut.
   - Rendu réel, matière toujours visible ; sol miroir et plan d'ombre placés sous le brut.
   - Deux moteurs : **cartes de hauteurs** (une par orientation en 3+2, lancer de rayons) ou **lisse** (champ de distance, en précision 16 bits ; pas de 0,49 mm en finesse normale et 0,36 mm en finesse haute sur Cavité Usinage).
+  - Lecture à la vitesse choisie dans la liste (×1 à ×20) dès le démarrage, et d'une simulation à la suivante.
   - La vue tourne autour du point visé sur les faces de la pièce, même sous la matière pas encore enlevée (hors de la pièce : sur la matière), et zoome vers lui.
 - **3+2** : chaque opération peut avoir son propre Z et X.
   - Sur Siemens, le plan de travail pivote par **`CYCLE800`** ; les arcs G2/G3 et les cycles de perçage sont écrits dans le plan incliné.

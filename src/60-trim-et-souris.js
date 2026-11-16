@@ -515,6 +515,20 @@ function skDimPressDbl(sk,e,px,py,wx,wy){
   skDimPress=id?{id,t:now,px,py}:null;
   return false;
 }
+// V0.99.19 : même parade pour un TEXTE — le 1er clic le sélectionne et redessine l'esquisse, le
+// dblclick natif était perdu (« pas possible d'éditer un texte »). Double appui = bandeau Texte rouvert.
+let skTxtPress=null;
+function skTxtPressDbl(sk,e,wx,wy){
+  if(skMulti(e)){skTxtPress=null;return false;}
+  const ent=nearestPoint(sk,wx,wy,SK_PT)?null:nearestEntity(sk,wx,wy,SK_PICK);
+  const id=ent&&ent.txt?ent.txt:null,now=Date.now(),lp=skTxtPress;
+  if(id&&lp&&lp.id===id&&now-lp.t<500&&Math.hypot(e.clientX-lp.cx,e.clientY-lp.cy)<8){
+    skTxtPress=null;try{e.preventDefault();}catch(_){}
+    skDragEnt=null;skDrag=null;skTxtEdit(sk,id);return true;
+  }
+  skTxtPress=id?{id,t:now,cx:e.clientX,cy:e.clientY}:null;
+  return false;
+}
 svg.addEventListener('dblclick',e=>{
   if(!skEdit||skTool!=='select')return;e=skEv(e);
   const sk=skEdit;
@@ -554,6 +568,7 @@ svg.addEventListener('pointerdown',e=>{
   if(skTool==='select'){
     const r0=svg.getBoundingClientRect(); // une étiquette de cote se déplace au glisser, s'édite au double-clic
     if(skDimPressDbl(sk,e,e.clientX-r0.left,e.clientY-r0.top,wx,wy))return;
+    if(skTxtPressDbl(sk,e,wx,wy))return;
     const dl=hitDimLabel(sk,e.clientX-r0.left,e.clientY-r0.top);
     if(dl){const dd=dimById(sk,dl);skSel={kind:'dim',id:dl};skSelX=[];
       const tp=dimLabelPos(sk,dd)||{x:wx,y:wy}; // V0.11.23 : décalage de prise, le texte ne saute pas sous le curseur

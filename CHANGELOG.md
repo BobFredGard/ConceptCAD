@@ -8,7 +8,7 @@ sont sorties le 2026-09-30j.
 Code dans `src/` · livrable `fusion_mvp.html` (généré par `build.js`) · architecture et
 garde-fous en tête de `src/00-entete-et-outils.js`.
 
-**705 versions**, de `2026-09-28b` à `V0.99.18` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
+**706 versions**, de `2026-09-28b` à `V0.99.19` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
 comme dans le fichier d'origine.
 
 ---
@@ -7882,3 +7882,13 @@ Cavité Usinage, après l'ébauche D25, la reprise D10 et une finition boule D12
 **Correctif** (`src/89-fao-contour.js`) : `faoContourMatFn` lit la carte du brut restant (`faoRestMap`, comme l'ébauche 3D « brut restant » : brut du posage moins les opérations placées avant) et le corps-brut s'il existe, sous le disque de la fraise élargi d'une garde (0,5 mm ou 2 mailles, plus la laisse et la finition : la passe contre la paroi touche toujours la pièce, elle n'est jamais sautée). `faoContourTrimAir` échantillonne chaque passe à 0,5 mm : un vide de plus de max(10 mm, 2·Ø) au milieu devient remontée + rapide jusqu'au-dessus du prochain point d'entrée en matière + descente en avance d'1 mm (les liaisons du posage relèvent le rapide au plan de retrait ou au retrait minimum) ; vide au début : la plongée se fait directement avant la matière ; vide à la fin : la passe s'arrête 1 mm après ; passe entièrement dans le vide : retirée. Case « Rapide dans le vide » dans la fiche (`op.sautVide`, absent = coché), nombre de sauts affiché. Clé du parcours : celles des opérations précédentes (`faoRestDep`) — les contours existants sont à régénérer une fois.
 
 **Test** : `test_fao_contour_vide` (moitié vide : plus aucune coupe dans le vide, un saut par passe ; tout vide / tout plein ; niveau au-dessus du brut retiré ; surfaçage placé avant : niveau déjà vidé retiré ; clés ; sanitise ; fiche). `test_fao` : l'essai de l'export G-code attend l'enregistrement, devenu asynchrone en V0.99.17 (il échouait dans la suite complète). CACHE_VER et FORMES_VER inchangés.
+
+## V0.99.19 - Esquisse : modifier un texte ; simulation à la vitesse de la liste
+
+**Demande de Fred** : « Esquisse -> permettre l'édition d'un texte : pas possible pour le moment » ; « vitesse simulation, utiliser la vitesse préréglée sur la liste déroulante au démarrage ».
+
+**Avant** : le double-clic sur un texte d'esquisse ne rouvrait pas son bandeau — le 1er clic sélectionne tout le texte et redessine l'esquisse, l'élément sous la souris est remplacé et le navigateur ne déclenche plus `dblclick` (même cause que les cotes en V0.83.0). La simulation repartait toujours à ×1 alors que la liste « Vitesse », gardée d'une simulation à l'autre, affichait par exemple ×10.
+
+**Correctif** : `src/60-trim-et-souris.js` — `skTxtPressDbl` repère le double appui sur un même texte (500 ms, 8 px) dès le `pointerdown`, annule le glisser commencé et appelle `skTxtEdit`. `src/88-fao-70-simulation.js` — la liste est gardée (`faoVwSpeedSel`) et `faoViewerSpeedPick` donne sa valeur à la nouvelle lecture.
+
+**Test** : essai dans la page à la vraie souris (texte « HELLO » posé, double-clic sur le H : bandeau rouvert, « BONJOUR » tapé + Entrée : lettres refaites, plusieurs fois de suite) ; vitesse lue = liste (×1, puis ×10) ; `test_esquisse_texte`. CACHE_VER et FORMES_VER inchangés.
