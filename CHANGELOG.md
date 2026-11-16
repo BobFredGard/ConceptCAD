@@ -8,7 +8,7 @@ sont sorties le 2026-09-30j.
 Code dans `src/` · livrable `fusion_mvp.html` (généré par `build.js`) · architecture et
 garde-fous en tête de `src/00-entete-et-outils.js`.
 
-**704 versions**, de `2026-09-28b` à `V0.99.17` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
+**705 versions**, de `2026-09-28b` à `V0.99.18` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
 comme dans le fichier d'origine.
 
 ---
@@ -7872,3 +7872,13 @@ Cavité Usinage, après l'ébauche D25, la reprise D10 et une finition boule D12
 **Correctif** : `faoGcodeSave` (`src/88-fao-82-posage-menu.js`) — un programme : fenêtre « Enregistrer sous » (`showSaveFilePicker`, nom proposé, type `.mpf`/`.nc`… selon le post) ; plusieurs posages : choix du dossier (`showDirectoryPicker`), un fichier par posage. Le sélecteur porte l'identifiant `ccgcode` : le navigateur repropose le dernier dossier choisi. Annuler = « export du G-code annulé ». Sans sélecteur (Firefox, appel sans clic, `?telecharger`) : téléchargement comme avant (`faoGcodeDownload`).
 
 **Test** : `test_fao_posage_menu` (repli téléchargement inchangé) ; essai dans la page avec sélecteurs simulés : un fichier écrit sous le nom choisi, deux fichiers dans le dossier choisi, annulation, repli sans clic. CACHE_VER et FORMES_VER inchangés.
+
+## V0.99.18 - Contour : rapide dans le vide
+
+**Demande de Fred** : « FAO : Fonction Contour -> si la fraise se trouve dans le vide, aller au prochain point d'entrée en matière en rapide » ; vide = hors du brut ET matière déjà enlevée par les opérations d'avant (choix de Fred).
+
+**Avant** : le contour parcourait toutes ses passes en avance, même au-dessus du brut ou dans une zone déjà vidée par une ébauche ou un surfaçage.
+
+**Correctif** (`src/89-fao-contour.js`) : `faoContourMatFn` lit la carte du brut restant (`faoRestMap`, comme l'ébauche 3D « brut restant » : brut du posage moins les opérations placées avant) et le corps-brut s'il existe, sous le disque de la fraise élargi d'une garde (0,5 mm ou 2 mailles, plus la laisse et la finition : la passe contre la paroi touche toujours la pièce, elle n'est jamais sautée). `faoContourTrimAir` échantillonne chaque passe à 0,5 mm : un vide de plus de max(10 mm, 2·Ø) au milieu devient remontée + rapide jusqu'au-dessus du prochain point d'entrée en matière + descente en avance d'1 mm (les liaisons du posage relèvent le rapide au plan de retrait ou au retrait minimum) ; vide au début : la plongée se fait directement avant la matière ; vide à la fin : la passe s'arrête 1 mm après ; passe entièrement dans le vide : retirée. Case « Rapide dans le vide » dans la fiche (`op.sautVide`, absent = coché), nombre de sauts affiché. Clé du parcours : celles des opérations précédentes (`faoRestDep`) — les contours existants sont à régénérer une fois.
+
+**Test** : `test_fao_contour_vide` (moitié vide : plus aucune coupe dans le vide, un saut par passe ; tout vide / tout plein ; niveau au-dessus du brut retiré ; surfaçage placé avant : niveau déjà vidé retiré ; clés ; sanitise ; fiche). `test_fao` : l'essai de l'export G-code attend l'enregistrement, devenu asynchrone en V0.99.17 (il échouait dans la suite complète). CACHE_VER et FORMES_VER inchangés.

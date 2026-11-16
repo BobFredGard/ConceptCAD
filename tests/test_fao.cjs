@@ -1241,6 +1241,8 @@ const vm=require('vm');
     "att(faoPrevStale===false,'export : aperçu validé par « Générer + aperçu »');",
     "att(!!expG&&expG.disabled===false,'export : bouton actif après régénération');",
     "expG.onclick();",
+    // V0.99.17 : enregistrement asynchrone (fenêtre « Enregistrer sous », repli téléchargement)
+    "for(let k=0;k<20&&!__dl;k++)await new Promise(function(r){setTimeout(r,10);});",
     "att(globalThis.__exp.length>100,'UI export : G-code produit ('+globalThis.__exp.length+' car.)');",
     "att(/M30/.test(globalThis.__exp),'UI export : pied M30');",
     "att(/CYCLE81/.test(globalThis.__exp),'UI export : per\\u00e7age en cycle dialecte');",

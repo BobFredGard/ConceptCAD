@@ -394,7 +394,7 @@ input[type=range]{accent-color:var(--primary);width:100%}
  * peut changer sans rien casser. CACHE_VER (parcours FAO) reste indépendant.
  */
 
-const APP_VER='V0.99.17';
+const APP_VER='V0.99.18';
 try{console.log('[ConceptCAD] version '+APP_VER);}catch(e){}
 try{var mfSv=document.getElementById('mfSplashVer');if(mfSv)mfSv.textContent=APP_VER;}catch(e){} // écran de démarrage
 
@@ -47661,12 +47661,14 @@ function faoSanitiseOps(s){
       // V0.23.18 : descente « Pente » (absent = Paliers, documents inchangés)
       if(op.descente==='pente'){const a=+op.pente;op.pente=isFinite(a)&&a>0?Math.max(0.5,Math.min(45,a)):5;}
       else{delete op.descente;delete op.pente;}
+      if(op.sautVide!==false)delete op.sautVide; // V0.99.18 : rapide dans le vide (absent = oui)
     }else if(op.type==='chamfer'){ // V0.7.9 : chanfrein — côté, entrées, recouvrement, largeur, décalage de pointe
       if(op.cside!=='ext'&&op.cside!=='int'&&op.cside!=='auto')delete op.cside;
       ['leadR','overlap','w','tipOff','z'].forEach(function(k){if(k in op&&!(isFinite(+op[k])&&(k==='z'||+op[k]>=0)))delete op[k];});
       ['nR','fin','tabN','tabW','tabH','descente','pente'].forEach(function(k){delete op[k];});
       if(op.c3d)op.c3d=true; else delete op.c3d; // V0.26.4 : parcours 3D (absent = plan)
     }else ['cside','nR','fin','leadR','overlap','tabN','tabW','tabH','descente','pente','c3d'].forEach(function(k){delete op[k];});
+    if(!(op.type==='contour'&&op.strat==='profil'))delete op.sautVide;
     if(op.type==='rough3d'||faoPocketAdapt(op)){const mp=+op.minipasses;op.minipasses=isFinite(mp)&&mp>0?Math.min(50,Math.round(mp)):0;
       // V0.38.0 : mini-passes « seulement sur les pentes » — absent = partout
       // (documents existants : ni champ ni changement de clé)
@@ -49977,6 +49979,8 @@ function faoOpMovesKey(op,job){
     if(op&&op.type==='rough3d'&&op.mode==='contours')dep=['contours-croise','couloirs',dep]; // V0.99.7 : couloirs étroits = chaînes exactes
     // V0.99.7 : rampe le long d'une paroi reprise à la cote (Trochoïdal, Escargot, Contours)
     if(op&&op.type==='rough3d'&&(op.mode==='escargot'||op.mode==='anneaux'||op.mode==='contours'))dep=['rampe-reprise',dep];
+    // V0.99.18 : contour — rapide dans le vide : dépend du brut et des opérations qui le précèdent
+    if(faoContourVideOn(op)){ const rd=faoRestDep(op,job); if(rd===null)return null; dep=dep?['vide',rd,dep]:['vide',rd]; }
     // V0.99.0 : BRUT RESTANT — l'ébauche dépend des parcours des opérations qui la précèdent
     if(faoRestOn(op)){ const rd=faoRestDep(op,job); if(rd===null)return null; dep=dep?['restant',rd,dep]:['restant',rd];
       // V0.99.5 : crêtes constantes en brut restant = zone intérieure (plus de découpe après)
@@ -50485,6 +50489,13 @@ function* faoOpMovesIt0(op,job){
         radial:RA.radial,axial:RA.axial,side:op.cside,sens:op.sens==='opp'?'opp':'climb',
         leadR:op.leadR,overlap:op.overlap,tabN:op.tabN,tabW:op.tabW,tabH:op.tabH,
         descente:op.descente,pente:op.pente}));
+      // V0.99.18 : fraise dans le vide (hors brut, ou matière déjà enlevée par les opérations
+      // précédentes) -> rapide jusqu'au prochain point d'entrée en matière
+      if(faoContourVideOn(op)&&mv&&mv.length){
+        const dg=mv.diag;
+        try{ const mat=faoContourMatFn(op,job,D,RA.radial,isFinite(+op.fin)?+op.fin:0);
+          if(mat){ mv=faoContourTrimAir(mv,mat,D); if(dg){ dg.vide=mv.vide; mv.diag=dg; } } }catch(e){}
+      }
       try{ if(mv&&mv.diag)op.geoDiag=mv.diag; }catch(e){}
     }
   }
@@ -67364,6 +67375,107 @@ function faoGenContourProfil(mesh,loop0,o){
   return moves;
 }
 
+/* ----- V0.99.18 : RAPIDE DANS LE VIDE (demande de Fred : « si la fraise se trouve dans le
+   vide, aller au prochain point d'entrée en matière en rapide »). Le vide = hors du brut
+   (boîte ou corps-brut) ET là où les opérations précédentes du posage ont déjà enlevé la
+   matière (même carte que le brut restant de l'ébauche 3D, faoRestMap). Case de la fiche
+   « Rapide dans le vide » (op.sautVide, absent = coché, false = décoché). */
+function faoContourVideOn(op){ return faoContourProfil(op)&&op.sautVide!==false; }
+function faoContourMatFn(op,job,D,radial,fin){
+  // Prédicat mat(x,y,z) : de la matière au-dessus de z sous le disque d'outil élargi d'une
+  // garde (r + garde). La garde couvre la laisse de la passe et l'écart de la carte : la
+  // passe la plus proche de la paroi touche toujours la pièce, elle n'est jamais sautée.
+  const r=D/2;
+  let R=null;
+  try{ R=faoRestMap(op,job,D,radial); }catch(e){ R=null; }
+  let T=null;
+  try{ T=faoStockTop(job,1); }catch(e){ T=null; }
+  if(!(R&&R.grid)&&!T)return null;
+  const gp=R&&R.grid?R.grid.p:(T?T.g:0.5);
+  const s=Math.max(0.5,2*gp)+Math.max(0,+radial||0)+Math.max(0,+fin||0);
+  let fR=null,fT=null;
+  if(R&&R.grid){
+    const G=R.grid,dil=faoRestDilate(G.h,G.nx,G.ny,r+s,G.p);
+    fR=function(x,y){const i=Math.floor((x-G.x0)/G.p),j=Math.floor((y-G.y0)/G.p);
+      if(i<0||j<0||i>=G.nx||j>=G.ny)return -1/0;return dil[j*G.nx+i];};
+  }
+  if(T){ try{ fT=T.dil(r+s); }catch(e){ fT=null; } }
+  const tol=0.02;
+  return function(x,y,z){
+    if(fR&&!(fR(x,y)>z+tol))return false;
+    if(fT&&!(fT(x,y)>z+tol))return false;
+    return true;
+  };
+}
+function faoContourTrimAir(mv,mat,D){
+  // Chaque suite de coupes (entre deux rapides) est échantillonnée à 0,5 mm : un tronçon où
+  // l'outil ne touche aucune matière devient une liaison — rapide jusqu'au-dessus du
+  // prochain point d'entrée en matière, puis descente en avance d'1 mm (les liaisons du
+  // posage relèvent ensuite ce rapide au plan de retrait ou au retrait minimum). On garde
+  // 1 mm de coupe avant la matière et après elle. Vide au début : la plongée se fait
+  // directement avant la matière ; vide à la fin : la passe s'arrête après la matière ;
+  // passe entièrement dans le vide : supprimée.
+  if(!Array.isArray(mv)||mv.length<3||typeof mat!=='function')return mv;
+  const st=0.5,mg=1,Lmid=Math.max(10,2*D),Lend=1;
+  const out=[];let nSaut=0,nVide=0;
+  let i=0;
+  while(i<mv.length){
+    if(mv[i].r||i===0){out.push(mv[i]);i++;continue;}
+    let j=i;while(j<mv.length&&!mv[j].r)j++;
+    // chaîne : départ mv[i-1], coupes mv[i..j-1] ; échantillons {x,y,z,d,k,end}
+    const S=[];let cum=0;
+    const p0=mv[i-1];S.push({x:+p0.x,y:+p0.y,z:+p0.z,d:0,k:i-1,end:true});
+    for(let k=i;k<j;k++){
+      const a=mv[k-1],b=mv[k],L=Math.hypot(b.x-a.x,b.y-a.y),ns=L>1e-9?Math.max(1,Math.ceil(L/st)):1;
+      for(let q=1;q<=ns;q++){const t=q/ns;
+        S.push({x:a.x+(b.x-a.x)*t,y:a.y+(b.y-a.y)*t,z:a.z+(b.z-a.z)*t,d:cum+L*t,k:k,end:q===ns});}
+      cum+=L;
+    }
+    const air=S.map(function(q){return !mat(q.x,q.y,q.z);});
+    // intervalles sautés [s1, s2] en indices d'échantillons : coupe jusqu'à s1, rapide à s2
+    const skips=[];const last=S.length-1;
+    for(let a=0;a<=last;){
+      if(!air[a]){a++;continue;}
+      let b=a;while(b<last&&air[b+1])b++;
+      const lead=a===0,trail=b===last;
+      if(lead&&trail){skips.push([0,last,'tout']);}
+      else{
+        const d1=lead?0:S[a].d+mg,d2=trail?S[last].d:S[b].d-mg;
+        if(d2-d1>=(lead||trail?Lend:Lmid)){
+          let s1=a,s2=b;
+          if(!lead){while(s1<b&&S[s1].d<d1)s1++;}else s1=0;
+          if(!trail){while(s2>s1&&S[s2].d>d2)s2--;}else s2=last;
+          if(s2>s1)skips.push([s1,s2,lead?'debut':(trail?'fin':'milieu')]);
+        }
+      }
+      a=b+1;
+    }
+    if(!skips.length){for(let k=i;k<j;k++)out.push(mv[k]);i=j;continue;}
+    if(skips[0][2]==='tout'){nVide++;i=j;continue;}
+    let si=0;
+    for(let s=1;s<=last;s++){
+      const sk=skips[si];
+      if(sk&&s>sk[0]&&s<=sk[1]){
+        if(s===sk[1]){
+          // fin du vide : rapide au-dessus, descente en avance (sauf fin de passe)
+          if(sk[2]!=='fin'){const q=S[s];
+            out.push({r:1,x:q.x,y:q.y,z:q.z+1});
+            out.push({r:0,ent:1,x:q.x,y:q.y,z:q.z});}
+          nSaut++;si++;
+        }
+        continue;
+      }
+      const q=S[s],m=mv[q.k];
+      if(q.end)out.push(m);
+      else if(sk&&s===sk[0]){const o2={r:0,x:q.x,y:q.y,z:q.z};if(m.ent)o2.ent=m.ent;out.push(o2);}
+    }
+    i=j;
+  }
+  for(const k in mv)if(!/^\d+$/.test(k))out[k]=mv[k];
+  out.vide={sauts:nSaut,passes:nVide};
+  return out;
+}
+
 // Fiche du contour sur profil : sections Profil, Hauteurs, Passes, Côté et
 // sens, Entrée/sortie, Attaches, Matière à laisser.
 function faoContourRows(d,setup,op){
@@ -67438,6 +67550,20 @@ function faoContourRows(d,setup,op){
   rE.appendChild(faoLab('recouvrement')); rE.appendChild(faoNumFx(op,'overlap',isFinite(+op.overlap)?+op.overlap:1,function(v){op.overlap=Math.max(0,v);},44,0.5,
     'Longueur parcourue au-delà du point de départ avant la sortie (pas de marque).'));
   d.appendChild(rE);
+  // V0.99.18 : rapide dans le vide
+  const rV=faoRow();
+  const cbV=document.createElement('input'); cbV.type='checkbox'; cbV.checked=op.sautVide!==false;
+  cbV.title='Là où la fraise ne touche aucune matière (hors du brut, ou matière déjà enlevée par les opérations précédentes du posage), '+
+    'elle remonte et va en rapide jusqu’au prochain point d’entrée en matière, au lieu de parcourir le vide en avance.';
+  cbV.onchange=function(){ faoSnapshot('rapide dans le vide');
+    if(cbV.checked)delete op.sautVide; else op.sautVide=false;
+    faoChanged(); };
+  rV.appendChild(cbV);
+  rV.appendChild(faoLab('Rapide dans le vide'));
+  const gdv=(op.geoDiag||{}).vide;
+  if(cbV.checked&&gdv&&(gdv.sauts||gdv.passes)){const iv=document.createElement('span');iv.className='fao-meta';
+    iv.textContent=' '+gdv.sauts+' saut(s)'+(gdv.passes?', '+gdv.passes+' passe(s) dans le vide retirée(s)':'');rV.appendChild(iv);}
+  d.appendChild(rV);
   d.appendChild(faoH('Attaches'));
   const rT=faoRow();
   rT.appendChild(faoLab('nombre')); rT.appendChild(faoNumFx(op,'tabN',isFinite(+op.tabN)?+op.tabN:0,function(v){op.tabN=Math.max(0,Math.min(50,Math.round(v)));},36,1,

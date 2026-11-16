@@ -24,6 +24,7 @@
 ## Opérations
 
 - **Surfaçage**, **Poche**, **Contour** (côté auto, passes radiales, attaches ; descente en **paliers** ou en **pente** réglable).
+  - Contour, **Rapide dans le vide** (coché par défaut) : là où la fraise ne toucherait aucune matière (au-dessus ou à côté du brut, ou matière déjà enlevée par les opérations placées avant dans le posage), elle remonte et va en rapide jusqu'au prochain point d'entrée en matière, puis redescend en avance 1 mm avant. Une passe entièrement dans le vide est retirée. La passe la plus proche de la paroi n'est jamais sautée. Modifier une opération placée avant met le contour « à régénérer ».
   - **Surfaçage, passe de finition** (case à cocher de la fiche) : l'ébauche laisse une **épaisseur** au-dessus de la cote, enlevée ensuite en une ou plusieurs **passes de finition** égales, la dernière à la cote Z ; **Toujours dans le même sens** usine chaque ligne de finition dans la même direction (retour en rapide au-dessus de la pièce) au lieu du va-et-vient.
   - **Surfaçage, sens d’usinage** : lignes le long de **X**, de **Y**, ou dans la direction d’une **arête** droite ou d’une **face** cliquée (face plane : sa normale ; cylindre : son axe) ; **Inverser** retourne le sens.
 - **Chanfrein** sur arêtes cliquées, **en plan** (Z fixe) ou **en 3D** : la pointe suit le Z de l'arête, l'axe de l'outil reste vertical (3 axes).
