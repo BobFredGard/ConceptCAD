@@ -570,6 +570,42 @@ function faoScBuckets(T,F,w){
   }
   return function(v){return B.get(Math.floor(v/w))||[];};
 }
+// V0.99.20 (Fred) : facteur de lissage de la Finition (op.lissage, 0 à 10) ;
+// absent ou 0 = parcours d'origine. Rayon de lissage du champ de distance ≈ facteur en mm.
+function faoScLissage(o){
+  const v=o?+o.lissage:NaN;
+  return (isFinite(v)&&v>0)?Math.min(10,v):0;
+}
+// Lissage d'un champ de distance géodésique (Jacobi sur les voisins du maillage, nœuds
+// dans la zone seulement). Les anneaux sont les isos d'UN champ : lissé, ils ne peuvent
+// toujours pas se croiser (un lissage des anneaux eux-mêmes, si). Les pointes en V (axe
+// médian, coins concaves de la zone) s'arrondissent ; une moyenne de distances ne monte
+// pas plus vite que la distance : l'écart entre passes s'élargit un peu sur l'axe médian
+// au lieu de se resserrer. Près du bord (d < R) le champ exact revient progressivement : l'anneau
+// du bord reste collé au bord.
+// Diffusion SUR LA SURFACE : poids h²/L² par voisin (L = longueur 3D de l'arête) — à
+// travers une paroi raide (grande L) le lissage passe peu, comme la vraie distance ; sans
+// ce poids, les anneaux traversaient les bossages au lieu d'en suivre la forme.
+function faoScSmoothField(F,nb,nbo,inside,R,h,V){
+  const n=F.length,it=Math.max(1,Math.min(400,Math.round((R/Math.max(h,1e-3))*(R/Math.max(h,1e-3)))));
+  let A=Float64Array.from(F),B=new Float64Array(n);
+  const ok=function(i){return inside[i]&&F[i]>0&&F[i]<1/0;};
+  const W=new Float32Array(nb.length),h2=h*h;
+  for(let i=0;i<n;i++)for(let q=nbo[i];q<nbo[i+1];q++){const j=nb[q],a=V[i],b=V[j];
+    const L2=(a[0]-b[0])*(a[0]-b[0])+(a[1]-b[1])*(a[1]-b[1])+(a[2]-b[2])*(a[2]-b[2]);
+    W[q]=L2>1e-12?Math.min(1,h2/L2):1;}
+  for(let k=0;k<it;k++){
+    for(let i=0;i<n;i++){
+      if(!ok(i)){B[i]=A[i];continue;}
+      let s=0,c=0;
+      for(let q=nbo[i];q<nbo[i+1];q++){const j=nb[q];const v=A[j];if(v<1/0&&v>-1/0){s+=W[q]*(v-A[i]);c++;}}
+      B[i]=c?A[i]+0.5*s/c:A[i];
+    }
+    const t=A;A=B;B=t;
+  }
+  for(let i=0;i<n;i++){if(!ok(i))continue;const w=Math.min(1,F[i]/R);A[i]=F[i]+w*(A[i]-F[i]);}
+  return A;
+}
 function* faoGenScallopIt(mesh,o){
   o=o||{};
   if(!mesh||!mesh.v||!mesh.v.length)return [];
@@ -684,7 +720,7 @@ function* faoGenScallopIt(mesh,o){
       };
     }
   }
-  // V0.99.5 (Fred, SIRAP-14-002) : brut restant = LIMITE INTÉRIEURE — la zone est réduite,
+  // V0.99.5 (Fred) : brut restant = LIMITE INTÉRIEURE — la zone est réduite,
   // avant tout calcul, aux nœuds où l'outil enlève encore de la matière (o.restEng) et à
   // ceux à moins de la marge ; les passes suivent la forme de cette zone (boucles continues)
   // au lieu d'être découpées après coup (une remontée à chaque traversée).
@@ -830,7 +866,7 @@ function* faoGenScallopIt(mesh,o){
   let fronts=[];
   for(let f=0;f<nF;f++)if(flen[f]>=Math.max(2*step,D*0.5))fronts.push(f);
   diag.frontsAll=fronts.length;
-  // V0.99.3 (Fred, SIRAP-14-002) : 12 fronts au plus avant — les 40 autres (trous du fond,
+  // V0.99.3 (Fred) : 12 fronts au plus avant — les 40 autres (trous du fond,
   // bossages) n'avaient ni anneaux ni champ, les isos de reste qui les touchaient restaient
   // ouvertes et étaient jetées : bande non usinée au pied de chaque paroi (3 100 mm² à plus
   // de 0,3 mm, jusqu'à 2,3 mm d'épaisseur). Tous les fronts : 65 mm², rien au-delà de 1 mm.
@@ -854,6 +890,12 @@ function* faoGenScallopIt(mesh,o){
     return Math.hypot(A[0]+ex*u-P[0],A[1]+ey*u-P[1],A[2]+ez*u-P[2]);
   };
   const fields=[];
+  // V0.99.20 : facteur de lissage (Fred) = rayon (mm) du lissage des champs
+  const lisR=faoScLissage(o);let lisNb=null,lisNbo=null;
+  // V0.99.20 (Fred, comparaison avec Fusion 360) : finition « 2 » par
+  // défaut — passes lissées en 3D, couture à deux fronts. o.finFusion===0 : parcours d'avant.
+  const fin2=!(o.finFusion===0||o.finFusion==='0');
+  diag.lissage=lisR||undefined;
   for(let fi=0;fi<fronts.length;fi++){
     const f=fronts[fi];
     const d=new Float64Array(nv).fill(1/0);
@@ -883,7 +925,15 @@ function* faoGenScallopIt(mesh,o){
       }
     });
     neg.forEach(function(dd,v){d[v]=-dd;});
-    fields.push(d);
+    if(lisR>0){
+      if(!lisNb){ // voisins de chaque nœud (CSR), une fois pour tous les fronts
+        const deg=new Int32Array(nv+1);
+        for(let i=0;i<nv;i++){const s=new Set();vt[i].forEach(function(ti){const t=T[ti];for(let q=0;q<3;q++)if(t[q]!==i)s.add(t[q]);});deg[i+1]=deg[i]+s.size;}
+        lisNbo=deg;lisNb=new Int32Array(deg[nv]);
+        for(let i=0;i<nv;i++){const s=new Set();vt[i].forEach(function(ti){const t=T[ti];for(let q=0;q<3;q++)if(t[q]!==i)s.add(t[q]);});let k=deg[i];s.forEach(function(j){lisNb[k++]=j;});}
+      }
+      fields.push(faoScSmoothField(d,lisNb,lisNbo,inside,lisR,g,V));
+    }else fields.push(d);
     yield moves;
   }
   // --- 4. anneaux par front -------------------------------------------------
@@ -936,6 +986,9 @@ function* faoGenScallopIt(mesh,o){
     diag.rings.push(ringCount);
   }
   // --- 5. zones restantes : lentilles concentriques ----------------------
+  // V0.99.20 : à deux fronts, COUTURE façon Fusion (anneaux coupés + passage sur la ligne
+  // de rencontre) au lieu des lentilles et de leurs pointes aller-retour
+  const couture=fin2&&fronts.length===2;
   {
     const dL=new Float64Array(nv).fill(1/0);
     let any=false;
@@ -952,7 +1005,7 @@ function* faoGenScallopIt(mesh,o){
     if(any){
       // composantes connexes des sommets restants (dL>0) pour Mx par zone
       const comp=new Int32Array(nv).fill(-1);
-      const Mx=[];
+      const Mx=[],zoneCou=[];
       for(let i=0;i<nv;i++){
         if(comp[i]>=0||!inside[i]||!(dL[i]>0)||!(dL[i]<1/0))continue;
         const id=Mx.length;Mx.push(0);
@@ -966,9 +1019,25 @@ function* faoGenScallopIt(mesh,o){
               if(comp[w]<0&&inside[w]&&dL[w]>0&&dL[w]<1/0){comp[w]=id;st.push(w);}}}
         }
       }
+      diag.zonesRest=Mx.length;diag.mx=Mx.map(function(v){return +v.toFixed(2);});
+      {// aire de chaque zone (nœuds × maille²) et épaisseur moyenne de reste
+        const cnt=new Float64Array(Mx.length),sm=new Float64Array(Mx.length);
+        for(let i=0;i<nv;i++)if(comp[i]>=0){cnt[comp[i]]++;sm[comp[i]]+=dL[i];}
+        diag.zA=Array.from(cnt).map(function(c){return Math.round(c*g*g);});
+        diag.zM=Array.from(sm).map(function(s,i){return +(s/Math.max(1,cnt[i])).toFixed(2);});
+        // COUTURE ou LENTILLES, zone par zone, comme Fusion : bande MINCE (épaisseur moyenne
+        // de reste ≤ ½ rayon d'outil) → anneaux
+        // coupés + couture ; zone ÉPAISSE (coins de la cavité d'exemple, 2,4 mm) →
+        // lentilles concentriques (Fusion y fait des lentilles : Exemples/cav.txt).
+        sm.forEach(function(s,i){zoneCou[i]=couture&&s/Math.max(1,cnt[i])<=0.5*R;});
+        diag.couture=zoneCou.map(function(b){return b?1:0;});}
       // niveaux par zone : Δ = Mx/(n+½), n = ceil(Mx/pas − ½)
       const lv=new Map();
       Mx.forEach(function(mx,id){
+        // COUTURE (façon Fusion) : la crête du reste est finie par un passage le long de
+        // la ligne de rencontre ; les lentilles ne remplissent que l'écart anneau → crête
+        // (niveaux m·Δ, Δ = Mx/(n+1) ≤ pas) — aucune là où le reste est plus mince qu'un pas.
+        if(zoneCou[id])return; // zone finie par la couture
         const n=Math.ceil(mx/step-0.5);
         if(n<1)return;
         const dl=mx/(n+0.5);
@@ -980,6 +1049,61 @@ function* faoGenScallopIt(mesh,o){
       // champs décalés (une copie par front) pour l'iso EXACTE du minimum
       const Fs=FsRest=fields.map(function(F,fi){const c=covered[fi]<0?0:covered[fi];
         const G=new Float64Array(nv);for(let i=0;i<nv;i++)G[i]=F[i]-c;return G;});
+      // point d'iso dans une zone finie par la couture (un des deux nœuds de son arête)
+      const zOk=function(q){const a=comp[q.a],b=comp[q.b];return (a>=0&&zoneCou[a])||(b>=0&&zoneCou[b]);};
+      if(couture&&zoneCou.some(Boolean)){
+        // ligne de rencontre = iso 0 de (reste du front 0 − reste du front 1), gardée là où
+        // il reste de la matière entre les deux derniers anneaux (d_L > 0,2 pas) ; les
+        // trous courts (≤ 6 mm, dans la zone) sont franchis au contact plutôt que par une
+        // remontée.
+        const Gd=new Float64Array(nv);
+        for(let i=0;i<nv;i++){const a=Fs[0][i],b=Fs[1][i];Gd[i]=(a<1/0&&b<1/0&&a>-1/0&&b>-1/0)?a-b:1/0;}
+        const eps=0.2*step,gapMax=6,minRun=Math.max(2*step,1);
+        const chs=faoScIso(V,N,T,Gd,0,null);
+        const gSeam=fronts.length+Mx.length+3;
+        // ANNEAUX COUPÉS À LA COUTURE (façon Fusion) : au-delà du dernier anneau fermé,
+        // chaque front continue ses niveaux k·pas, coupés là où ils passent chez l'autre
+        // front (Gd du mauvais signe) — passes ouvertes qui finissent pile sur la ligne de
+        // rencontre ; plus aucune lentille.
+        for(let fi=0;fi<2;fi++){
+          const F=fields[fi],sg=fi===0?1:-1,bkF=faoScBuckets(T,F,step);
+          const own=function(q){const a=interp(Fs[0],q),b=interp(Fs[1],q);return sg*(a-b)<=0;};
+          for(let k=Math.round(covered[fi]/step)+1;k<100000;k++){
+            const iso=k*step;let any2=false;
+            faoScIso(V,N,T,F,iso,bkF(iso)).forEach(function(c){
+              const P=c.pts,np=P.length;
+              const kp=P.map(function(q){return (inside[q.a]||inside[q.b])&&own(q)&&zOk(q);});
+              let i=0;
+              while(i<np){if(!kp[i]){i++;continue;}let j=i;while(j<np&&kp[j])j++;
+                const run=P.slice(i,j);
+                // même groupe pour les deux fronts : le bout d'une passe coupée tombe pile
+                // sur le début de la passe d'en face (même niveau, même point de couture)
+                // → enchaînement en zigzag au contact, sans remontée
+                if(lenOf(run)>=minRun){loops.push({g:fronts.length+Mx.length+1,lvl:k,iso:iso,pts:run,closed:c.closed&&i===0&&j===np,rest:1,coupe:1});any2=true;diag.coupes=(diag.coupes||0)+1;}
+                i=j;}
+            });
+            if(!any2)break;
+          }
+        }
+        chs.forEach(function(c){
+          const P=c.pts,np=P.length;if(np<3)return;
+          const val=P.map(function(q){return Math.min(interp(Fs[0],q),interp(Fs[1],q));});
+          const ins=P.map(function(q){return !!(inside[q.a]||inside[q.b])&&zOk(q);});
+          const sAt=new Float64Array(np);for(let i=1;i<np;i++)sAt[i]=sAt[i-1]+Math.hypot(P[i].p[0]-P[i-1].p[0],P[i].p[1]-P[i-1].p[1],P[i].p[2]-P[i-1].p[2]);
+          const keep=new Uint8Array(np);for(let i=0;i<np;i++)keep[i]=(ins[i]&&val[i]>eps)?1:0;
+          // trous courts comblés
+          let i=0;
+          while(i<np){if(keep[i]){i++;continue;}let j=i;while(j<np&&!keep[j])j++;
+            const okGap=i>0&&j<np&&sAt[j]-sAt[i-1]<=gapMax&&ins.slice(i,j).every(Boolean);
+            if(okGap)for(let k=i;k<j;k++)keep[k]=2;i=j;}
+          let all=true;for(let k=0;k<np;k++)if(!keep[k]){all=false;break;}
+          if(all&&c.closed){loops.push({g:gSeam,lvl:0,iso:0,pts:P,closed:true,rest:1,seam:1});diag.seam=(diag.seam||0)+1;return;}
+          i=0;
+          while(i<np){if(!keep[i]){i++;continue;}let j=i;while(j<np&&keep[j])j++;
+            if(sAt[j-1]-sAt[i]>=minRun){loops.push({g:gSeam,lvl:0,iso:0,pts:P.slice(i,j),closed:false,rest:1,seam:1});diag.seam=(diag.seam||0)+1;}
+            i=j;}
+        });
+      }
       // index : le min exact dans un triangle est dans [min des nœuds de dL,
       // min_k max des nœuds de F_k] (il peut DÉPASSER les valeurs aux nœuds)
       const BK=new Map();
@@ -1060,7 +1184,55 @@ function* faoGenScallopIt(mesh,o){
   // gaussien σ ≈ 0,8 mm (bruit d'interpolation à l'échelle du maillage
   // raffiné, ±0,1-0,3 mm) — la forme (rayon ≫ σ) est conservée ; Z recalculé
   // par descente outil ensuite (jamais de surcoupe).
+  // V0.99.20 (Fred, congés R3,3 « tortueux » comparés à Fusion) : lissage EN 3D. Le lissage
+  // XY puis descente verticale coupait le virage d'un congé creux vu de dessus : la descente
+  // y tombait dans le creux (cran de 0,2 à 0,25 mm à chaque congé, sur chaque anneau), et
+  // l'abscisse XY écrasait les parois raides. Ici : abscisse 3D, noyau gaussien σ 0,8 mm sur
+  // x, y, z, puis chaque point est reposé sur la surface outil au POINT LE PLUS PROCHE
+  // (Gauss-Newton sur la hauteur zAt), Z = zAt (jamais de surcoupe, comme avant).
+  const projSurf=function(sx,sy,sz){
+    let x=sx,y=sy;const h=Math.max(0.02,g*0.2);
+    for(let it=0;it<6;it++){
+      const z=zAt(x,y),zx1=zAt(x+h,y),zx0=zAt(x-h,y),zy1=zAt(x,y+h),zy0=zAt(x,y-h);
+      if(!(z>-1/0&&zx1>-1/0&&zx0>-1/0&&zy1>-1/0&&zy0>-1/0))break;
+      const gx=(zx1-zx0)/(2*h),gy=(zy1-zy0)/(2*h);
+      const rx=x-sx,ry=y-sy,rz=z-sz;
+      const bx=-(rx+gx*rz),by=-(ry+gy*rz);
+      const a11=1+gx*gx,a12=gx*gy,a22=1+gy*gy,det=a11*a22-a12*a12;
+      if(!(det>1e-12))break;
+      let dx=(a22*bx-a12*by)/det,dy=(a11*by-a12*bx)/det;
+      const dl=Math.hypot(dx,dy);if(dl>0.5){dx*=0.5/dl;dy*=0.5/dl;}
+      x+=dx;y+=dy;if(dl<1e-4)break;
+    }
+    return [x,y];
+  };
+  const smoothLoop3=function(P){
+    const n0=P.length-1;
+    if(n0<4)return P;
+    let Ltot=0;const cum=[0];
+    for(let i=1;i<=n0;i++){Ltot+=Math.hypot(P[i].x-P[i-1].x,P[i].y-P[i-1].y,P[i].z-P[i-1].z);cum.push(Ltot);}
+    if(!(Ltot>3))return P;
+    const n=Math.max(8,Math.round(Ltot/0.3));
+    const R2=[];let k=0;
+    for(let j=0;j<n;j++){const sv=Ltot*j/n;
+      while(k<n0-1&&cum[k+1]<sv)k++;
+      const sl=cum[k+1]-cum[k],u=sl>0?(sv-cum[k])/sl:0;
+      R2.push({x:P[k].x+(P[k+1].x-P[k].x)*u,y:P[k].y+(P[k+1].y-P[k].y)*u,z:P[k].z+(P[k+1].z-P[k].z)*u});}
+    const dsr=Ltot/n,sig=0.8/dsr,W=Math.min(Math.floor(n/2)-1,Math.ceil(sig*2.5)),w=[];let ws=0;
+    for(let q=-W;q<=W;q++){const v=Math.exp(-0.5*q*q/(sig*sig));w.push(v);ws+=v;}
+    const out=[];
+    for(let j=0;j<n;j++){let x=0,y=0,z=0;
+      for(let q=-W;q<=W;q++){const p=R2[((j+q)%n+n)%n],v=w[q+W];x+=p.x*v;y+=p.y*v;z+=p.z*v;}
+      x/=ws;y/=ws;z/=ws;
+      const pr=projSurf(x,y,z);let X=pr[0],Y=pr[1];
+      if(zoneAt&&!zoneAt(X,Y)){X=R2[j].x;Y=R2[j].y;}
+      let Z=zAt(X,Y);if(!(Z>-1/0)){X=R2[j].x;Y=R2[j].y;Z=R2[j].z;}
+      out.push({x:X,y:Y,z:Z});}
+    out.push({x:out[0].x,y:out[0].y,z:out[0].z});
+    return out;
+  };
   const smoothLoop=function(P){
+    if(fin2)return smoothLoop3(P);
     const n0=P.length-1;
     if(n0<4)return P;
     let Ltot=0;const cum=[0];
@@ -1082,6 +1254,10 @@ function* faoGenScallopIt(mesh,o){
         o2[j]={x:x/ws,y:y/ws};}
       return o2;
     };
+    // (V0.99.20 : le facteur de lissage de Fred n'agit PAS ici — un lissage XY
+    // plus fort des anneaux les fait se croiser sur les flancs raides, où un
+    // petit écart à plat est un grand écart en Z : 0,3 m → 1,85 m de passes
+    // superposées sur une pièce de Fred. Il lisse le CHAMP de distance, plus haut.)
     const A=gauss(0.8);
     // Lissage ADAPTATIF : une boucle posée sur une arête vive convexe (bord de
     // cavité) voit sa position outil osciller (±0,4 mm, période ~5 mm — un
@@ -1103,6 +1279,37 @@ function* faoGenScallopIt(mesh,o){
       let z=zAt(x,y);if(!(z>-1/0))z=R2[j].z;
       out.push({x:x,y:y,z:z});}
     out.push({x:out[0].x,y:out[0].y,z:out[0].z});
+    return out;
+  };
+  // Boucle qui touche une falaise (V0.99.20) : elle n'était PAS lissée du tout — or presque
+  // tous les anneaux des flancs touchent une paroi raide quelque part (crans à chaque congé).
+  // Lissage point par point, sans rééchantillonnage (σ 0,8 mm, abscisse 3D) : point de
+  // falaise = contre la paroi, XY gardé, Z adouci (jamais sous la descente outil) ; autre
+  // point = lissé en 3D puis reposé au plus proche sur la surface outil, Z = descente.
+  const smoothMixed=function(P,open){
+    const n=P.length;if(n<5)return P;
+    const s=new Float64Array(n);for(let i=1;i<n;i++)s[i]=s[i-1]+Math.hypot(P[i].x-P[i-1].x,P[i].y-P[i-1].y,P[i].z-P[i-1].z);
+    const L=s[n-1];if(!(L>(open?1:3)))return P;
+    const sig=0.8,W=sig*2.5,m=open?n:n-1,out=P.slice();
+    for(let i=0;i<m;i++){
+      // passe ouverte : extrémités fixes (elles tombent sur la couture), noyau tronqué
+      if(open&&(i===0||i===n-1))continue;
+      let x=0,y=0,z=0,ws=0;
+      for(const dir of [-1,1])for(let k=dir>0?1:0;k<m;k++){
+        let j=i+dir*k;
+        if(open){if(j<0||j>=n)break;}else j=((j%m)+m)%m;
+        let ds=Math.abs(s[j]-s[i]);if(!open)ds=Math.min(ds,L-ds);if(ds>W)break;
+        const w=Math.exp(-0.5*ds*ds/(sig*sig));x+=P[j].x*w;y+=P[j].y*w;z+=P[j].z*w;ws+=w;}
+      if(!(ws>0))continue;x/=ws;y/=ws;z/=ws;
+      if(P[i].cliff){const zd=drop.tip(P[i].x,P[i].y);out[i]={x:P[i].x,y:P[i].y,z:(zd>-1/0&&z<zd)?zd:z,cliff:1};continue;}
+      const pr=projSurf(x,y,z);let X=pr[0],Y=pr[1];
+      if(zoneAt&&!zoneAt(X,Y)){X=P[i].x;Y=P[i].y;}
+      // ne pas glisser dans une falaise : la descente au nouveau XY doit rester douce
+      const Z=zAt(X,Y),Zd=drop.tip(X,Y);
+      if(!(Z>-1/0)||!(Zd>-1/0)||Zd>Z+0.05){continue;}
+      out[i]={x:X,y:Y,z:Z};
+    }
+    if(!open)out[m]={x:out[0].x,y:out[0].y,z:out[0].z,cliff:out[0].cliff};
     return out;
   };
   // POINTES des restes (façon Fusion : « finir plus pointu »). Une lentille
@@ -1204,8 +1411,9 @@ function* faoGenScallopIt(mesh,o){
     // qui longe une falaise : sa position est imposée par la paroi)
     if(lp.closed){P[P.length-1]={x:P[0].x,y:P[0].y,z:P[0].z};
       let cl=false;for(let i=0;i<P.length;i++)if(P[i].cliff){cl=true;break;}
-      if(!cl)P=smoothLoop(P);
-      if(lp.rest)P=spikes(P,lp);}
+      if(!cl)P=smoothLoop(P);else if(fin2)P=smoothMixed(P);
+      if(lp.rest&&!lp.seam&&!lp.coupe)P=spikes(P,lp);} // lentilles seulement (couture : crête déjà parcourue)
+    else if(fin2)P=smoothMixed(P,true); // passes coupées et couture (ouvertes)
     // sous-échantillonnage de sécurité : segments ≤ 2 mm (Z suit la descente)
     const Q=[P[0]];
     for(let i=1;i<P.length;i++){
@@ -1300,7 +1508,10 @@ function* faoGenScallopIt(mesh,o){
   let first=true;
   const push=function(m){moves.push(m);};
   // arc vertical (quart de cercle) depuis le haut jusqu'au point S, tangent à T
-  const leadIn=function(S,Tn){
+  let prevCoupe=false;
+  let rCur=rE; // rayon des arcs de la séquence en cours (couture : petits arcs, façon Fusion)
+  const leadIn=function(S,Tn,rr){
+    const rE=rr||rCur;
     const lh=Math.hypot(Tn.x,Tn.y)||1,ux=Tn.x/lh,uy=Tn.y/lh;
     const pts=[];
     const nA=Math.max(8,Math.min(32,Math.ceil(rE*3)));
@@ -1313,7 +1524,8 @@ function* faoGenScallopIt(mesh,o){
     pts[nA]={x:S.x,y:S.y,z:S.z};
     return pts;
   };
-  const leadOut=function(E,Tn){
+  const leadOut=function(E,Tn,rr){
+    const rE=rr||rCur;
     const lh=Math.hypot(Tn.x,Tn.y)||1,ux=Tn.x/lh,uy=Tn.y/lh;
     const pts=[];
     const nA=Math.max(8,Math.min(32,Math.ceil(rE*3)));
@@ -1379,8 +1591,8 @@ function* faoGenScallopIt(mesh,o){
     }
     return out;
   };
-  const slide=function(A,TA,B,TB){
-    if(Math.hypot(B.x-A.x,B.y-A.y,B.z-A.z)>linkStep)return null;
+  const slide=function(A,TA,B,TB,lim){
+    if(Math.hypot(B.x-A.x,B.y-A.y,B.z-A.z)>(lim||linkStep))return null;
     if(!segIn([A.x,A.y],[B.x,B.y]))return null;
     const dAB=Math.hypot(B.x-A.x,B.y-A.y);
     let xy=[[A.x,A.y],[B.x,B.y]];
@@ -1413,7 +1625,12 @@ function* faoGenScallopIt(mesh,o){
       if(used[i]||loops[i].g!==gmin)continue;
       let av=true;for(let q=0;q<parents[i].length;q++)if(!used[parents[i][q]]){av=false;break;}
       if(!av)continue;
-      const d=cur?near(loops[i],cur).d:loops[i].lvl;
+      // passe ouverte : distance à son DÉBUT (sens de coupe gardé) ; couture : au bout le plus proche
+      const L0=loops[i];let d;
+      if(cur&&!L0.closed){const a=L0.tp[0],b=L0.tp[L0.tp.length-1];
+        d=Math.hypot(a.x-cur.x,a.y-cur.y,a.z-cur.z);
+        if(L0.seam)d=Math.min(d,Math.hypot(b.x-cur.x,b.y-cur.y,b.z-cur.z));}
+      else d=cur?near(L0,cur).d:L0.lvl;
       if(d<bd){bd=d;bi=i;}
     }
     if(bi<0){for(let i=0;i<loops.length;i++)if(!used[i]&&loops[i].g===gmin){bi=i;break;}}
@@ -1423,7 +1640,11 @@ function* faoGenScallopIt(mesh,o){
     // point de départ : proche de la position courante ET du niveau suivant
     // (une pointe de lentille éloignerait la liaison vers l'anneau suivant)
     let si=0;
-    {
+    const rNew=(lp.seam||lp.coupe)?Math.min(rE,1.5):rE;
+    if(!lp.closed){
+      // couture : départ par le bout le plus proche ; passe coupée : sens gardé
+      if(lp.seam&&cur&&Math.hypot(tp[tp.length-1].x-cur.x,tp[tp.length-1].y-cur.y,tp[tp.length-1].z-cur.z)<Math.hypot(tp[0].x-cur.x,tp[0].y-cur.y,tp[0].z-cur.z))tp=tp.slice().reverse();
+    }else{
       let nxt=null;
       for(let i=0;i<loops.length;i++)if(!used[i]&&loops[i].g===lp.g&&loops[i].lvl===lp.lvl+1){
         if(!nxt)nxt=[];nxt.push(loops[i]);}
@@ -1436,11 +1657,13 @@ function* faoGenScallopIt(mesh,o){
         if(c<best){best=c;si=i;}
       }
     }
-    tp=rotate(tp,si,0);
+    if(lp.closed)tp=rotate(tp,si,0);
     const S=tp[0];
     const TS=tangentAt(tp,0);
-    const lin=conform(leadIn(S,TS)); // cordes de l'arc contrôlées (2026-10-14-012)
-    const sl=first?null:slide(cur,curT,S,TS);
+    const lin=conform(leadIn(S,TS,rNew)); // cordes de l'arc contrôlées (2026-10-14-012)
+    // couture : d'une passe coupée à la suivante, glissement le long de la ligne de
+    // rencontre (déjà finie) jusqu'à 4 mm plutôt qu'une remontée
+    const sl=first?null:slide(cur,curT,S,TS,(lp.coupe&&prevCoupe)?Math.max(linkStep,4):0);
     if(sl){
       for(let k=0;k<sl.length;k++)push({r:0,tr:1,x:sl[k].x,y:sl[k].y,z:sl[k].z});
       diag.slides=(diag.slides||0)+1;
@@ -1450,7 +1673,7 @@ function* faoGenScallopIt(mesh,o){
         first=false;
       }else{
         // sortie de la séquence précédente puis saut local
-        const lo=conform([cur].concat(leadOut(cur,curT))).slice(1);
+        const lo=conform([cur].concat(leadOut(cur,curT,rCur))).slice(1);
         lo.forEach(function(p){push({r:0,ent:1,x:p.x,y:p.y,z:p.z});});
         const E=lo[lo.length-1];
         const H=hopZ(E,lin[0]);
@@ -1464,13 +1687,14 @@ function* faoGenScallopIt(mesh,o){
       for(let k=0;k<lin.length;k++)push({r:0,ent:1,x:lin[k].x,y:lin[k].y,z:lin[k].z});
     }
     emitLoop(tp);
-    cur=tp[tp.length-1];curT=tangentAt(tp,tp.length-1);
+    cur=tp[tp.length-1];curT=tangentAt(tp,tp.length-1);rCur=rNew;prevCoupe=!!lp.coupe;
     seqCount++;
     // enchaînement : niveau suivant du même groupe, proche → liaison en S
     for(;;){
       let nb=-1,nd=1/0,ni=0,ns=0;
+      if(!lp.closed)break; // passes ouvertes : enchaînées par la boucle principale
       for(let i=0;i<loops.length;i++){
-        if(used[i]||loops[i].g!==lp.g||loops[i].lvl!==lp.lvl+1)continue;
+        if(used[i]||loops[i].g!==lp.g||loops[i].lvl!==lp.lvl+1||!loops[i].closed)continue;
         const r=near(loops[i],cur);if(r.d<nd){nd=r.d;nb=i;ni=r.i;ns=r.s;}
       }
       // 2026-10-14-006 : transition seulement vers la trace au pas (<= 1,5 pas)
@@ -1479,8 +1703,11 @@ function* faoGenScallopIt(mesh,o){
       let tq=nx.tp;
       if(bidir){lastSense=-lastSense;
         if(lastSense<0){tq=tq.slice().reverse();const rr=near({tp:tq},cur);ni=rr.i;ns=rr.s;}}
-      const a2=Math.min(adv,nx.len*0.2);
-      const tr=rotate(tq,ni,ns+a2);
+      // avance raccourcie si la liaison dépasse « 1,5 pas en travers + avance »
+      // (anneau lissé sur une paroi raide)
+      let a2=Math.min(adv,nx.len*0.2),tr=rotate(tq,ni,ns+a2);
+      for(let q=0;q<6&&Math.hypot(tr[0].x-cur.x,tr[0].y-cur.y,tr[0].z-cur.z)>Math.hypot(linkStep,adv);q++){
+        a2*=0.75;tr=rotate(tq,ni,ns+a2);}
       const S2=tr[0],T2=tangentAt(tr,0);
       // liaison Hermite XY (tangentes aux 2 boucles), Z = descente outil
       const chord=Math.hypot(S2.x-cur.x,S2.y-cur.y);
@@ -1498,7 +1725,7 @@ function* faoGenScallopIt(mesh,o){
     yield moves;
   }
   if(cur){
-    const lo=conform([cur].concat(leadOut(cur,curT))).slice(1);
+    const lo=conform([cur].concat(leadOut(cur,curT,rCur))).slice(1);
     lo.forEach(function(p){push({r:0,ent:1,x:p.x,y:p.y,z:p.z});});
     const E=lo[lo.length-1];
     if(E.z<secu)push({r:1,x:E.x,y:E.y,z:secu});

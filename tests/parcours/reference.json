@@ -1,63 +1,8 @@
 {
- "Cavité Test.conceptcad › POSAGE1 › 1. Surfaçage (op_4_mvqryqye)": {
-  "type": "facing",
-  "outil": "Torique D20 R2",
-  "ms": 7390,
-  "resume": {
-   "n": 63,
-   "coupe": 3161.2,
-   "rapide": 17.5,
-   "nRap": 2,
-   "remontees": 1,
-   "zMin": 40,
-   "zMax": 42.5,
-   "minutes": 2.64,
-   "niveaux": {
-    "42.500": 1579,
-    "40.000": 1579
-   }
-  }
- },
- "Cavité Test.conceptcad › POSAGE1 › 4. Contour (op_6_mvr0jnwn)": {
-  "type": "contour",
-  "outil": "Fraise D10",
-  "ms": 7755,
-  "resume": {
-   "n": 2087,
-   "coupe": 3564,
-   "rapide": 83.3,
-   "nRap": 14,
-   "remontees": 7,
-   "zMin": 40,
-   "zMax": 43,
-   "minutes": 3.01,
-   "niveaux": {
-    "43.000": 1011,
-    "41.000": 1011,
-    "40.000": 1502
-   }
-  }
- },
- "Perçages.conceptcad › POSAGE1 › 7. Perçage (op_13_mvjrbphp)": {
-  "type": "drill",
-  "outil": "Foret D5",
-  "ms": 7725,
-  "resume": {
-   "n": 16,
-   "coupe": 98,
-   "rapide": 342,
-   "nRap": 11,
-   "remontees": 4,
-   "zMin": -2.502,
-   "zMax": -2.502,
-   "minutes": 0.17,
-   "niveaux": {}
-  }
- },
  "Perçages.conceptcad › POSAGE1 › 8. Perçage (op_14_mvjrbphp)": {
   "type": "drill",
   "outil": "Taraud M6",
-  "ms": 7785,
+  "ms": 6222,
   "resume": {
    "n": 20,
    "coupe": 176,
@@ -70,108 +15,10 @@
    "niveaux": {}
   }
  },
- "Perçages.conceptcad › POSAGE1 › 4. Perçage (op_8_mvjrb2sl)": {
-  "type": "drill",
-  "outil": "Foret D6.6",
-  "ms": 7806,
-  "resume": {
-   "n": 24,
-   "coupe": 173.9,
-   "rapide": 379.9,
-   "nRap": 17,
-   "remontees": 6,
-   "zMin": -6.983,
-   "zMax": -6.983,
-   "minutes": 0.24,
-   "niveaux": {}
-  }
- },
- "Perçages.conceptcad › POSAGE1 › 5. Perçage (op_10_mvjrbe4p)": {
-  "type": "drill",
-  "outil": "Fraise D6",
-  "ms": 7857,
-  "resume": {
-   "n": 294,
-   "coupe": 1075.3,
-   "rapide": 268,
-   "nRap": 17,
-   "remontees": 6,
-   "zMin": 13.6,
-   "zMax": 20.332,
-   "minutes": 0.97,
-   "niveaux": {
-    "13.600": 109
-   }
-  }
- },
- "Perçages.conceptcad › POSAGE1 › 9. Perçage (op_2_mvnrwbxu)": {
-  "type": "drill",
-  "outil": "Foret à centrer D10",
-  "ms": 7888,
-  "resume": {
-   "n": 8,
-   "coupe": 9.4,
-   "rapide": 106.4,
-   "nRap": 5,
-   "remontees": 0,
-   "zMin": 10,
-   "zMax": 10,
-   "minutes": 0.04,
-   "niveaux": {}
-  }
- },
- "Perçages.conceptcad › POSAGE1 › 3. Perçage (op_7_mvjrb2sl)": {
-  "type": "drill",
-  "outil": "Foret à centrer D10",
-  "ms": 7980,
-  "resume": {
-   "n": 24,
-   "coupe": 33,
-   "rapide": 239,
-   "nRap": 17,
-   "remontees": 6,
-   "zMin": 16.5,
-   "zMax": 16.5,
-   "minutes": 0.1,
-   "niveaux": {}
-  }
- },
- "Perçages.conceptcad › POSAGE1 › 6. Perçage (op_12_mvjrbpho)": {
-  "type": "drill",
-  "outil": "Foret à centrer D10",
-  "ms": 7910,
-  "resume": {
-   "n": 16,
-   "coupe": 20.8,
-   "rapide": 264.8,
-   "nRap": 11,
-   "remontees": 4,
-   "zMin": 16.8,
-   "zMax": 16.8,
-   "minutes": 0.09,
-   "niveaux": {}
-  }
- },
- "Perçages.conceptcad › POSAGE1 › 10. Perçage (op_3_mvnrwbxv)": {
-  "type": "drill",
-  "outil": "Foret D4.2",
-  "ms": 7972,
-  "resume": {
-   "n": 8,
-   "coupe": 38.5,
-   "rapide": 135.5,
-   "nRap": 5,
-   "remontees": 0,
-   "zMin": 10,
-   "zMax": 10,
-   "minutes": 0.07,
-   "niveaux": {}
-  }
- },
  "Perçages.conceptcad › POSAGE1 › 1. Surfaçage (op_5_mvjcidjk)": {
   "type": "facing",
   "outil": "Torique D25 R2",
-  "ms": 7962,
+  "ms": 6314,
   "resume": {
    "n": 47,
    "coupe": 1828.1,
@@ -187,28 +34,90 @@
    }
   }
  },
- "Perçages.conceptcad › POSAGE1 › 11. Perçage (op_4_mvnrwbxw)": {
+ "Perçages.conceptcad › POSAGE1 › 7. Perçage (op_13_mvjrbphp)": {
   "type": "drill",
-  "outil": "Taraud M5",
-  "ms": 8013,
+  "outil": "Foret D5",
+  "ms": 6228,
   "resume": {
-   "n": 10,
-   "coupe": 65.6,
-   "rapide": 97,
+   "n": 16,
+   "coupe": 98,
+   "rapide": 342,
+   "nRap": 11,
+   "remontees": 4,
+   "zMin": -2.502,
+   "zMax": -2.502,
+   "minutes": 0.17,
+   "niveaux": {}
+  }
+ },
+ "Perçages.conceptcad › POSAGE1 › 3. Perçage (op_7_mvjrb2sl)": {
+  "type": "drill",
+  "outil": "Foret à centrer D10",
+  "ms": 6363,
+  "resume": {
+   "n": 24,
+   "coupe": 33,
+   "rapide": 239,
+   "nRap": 17,
+   "remontees": 6,
+   "zMin": 16.5,
+   "zMax": 16.5,
+   "minutes": 0.1,
+   "niveaux": {}
+  }
+ },
+ "Perçages.conceptcad › POSAGE1 › 9. Perçage (op_2_mvnrwbxu)": {
+  "type": "drill",
+  "outil": "Foret à centrer D10",
+  "ms": 6347,
+  "resume": {
+   "n": 8,
+   "coupe": 9.4,
+   "rapide": 106.4,
    "nRap": 5,
    "remontees": 0,
    "zMin": 10,
    "zMax": 10,
-   "minutes": 0.08,
-   "niveaux": {
-    "10.000": 33
-   }
+   "minutes": 0.04,
+   "niveaux": {}
+  }
+ },
+ "Perçages.conceptcad › POSAGE1 › 10. Perçage (op_3_mvnrwbxv)": {
+  "type": "drill",
+  "outil": "Foret D4.2",
+  "ms": 6408,
+  "resume": {
+   "n": 8,
+   "coupe": 38.5,
+   "rapide": 135.5,
+   "nRap": 5,
+   "remontees": 0,
+   "zMin": 10,
+   "zMax": 10,
+   "minutes": 0.07,
+   "niveaux": {}
+  }
+ },
+ "Perçages.conceptcad › POSAGE1 › 6. Perçage (op_12_mvjrbpho)": {
+  "type": "drill",
+  "outil": "Foret à centrer D10",
+  "ms": 6392,
+  "resume": {
+   "n": 16,
+   "coupe": 20.8,
+   "rapide": 264.8,
+   "nRap": 11,
+   "remontees": 4,
+   "zMin": 16.8,
+   "zMax": 16.8,
+   "minutes": 0.09,
+   "niveaux": {}
   }
  },
  "Perçages.conceptcad › POSAGE1 › 2. Contour (op_6_mvjcpb4f)": {
   "type": "contour",
   "outil": "Fraise D10",
-  "ms": 8293,
+  "ms": 6481,
   "resume": {
    "n": 1705,
    "coupe": 3626.3,
@@ -226,29 +135,62 @@
    }
   }
  },
- "Perçages.conceptcad › POSAGE1 › 13. Chanfrein (op_2_mvo2kuqf)": {
-  "type": "chamfer",
-  "outil": "Foret à centrer D10",
-  "ms": 8289,
+ "Perçages.conceptcad › POSAGE1 › 11. Perçage (op_4_mvnrwbxw)": {
+  "type": "drill",
+  "outil": "Taraud M5",
+  "ms": 6482,
   "resume": {
-   "n": 94,
-   "coupe": 102.4,
-   "rapide": 20.3,
-   "nRap": 2,
+   "n": 10,
+   "coupe": 62.4,
+   "rapide": 97,
+   "nRap": 5,
    "remontees": 0,
-   "zMin": 1.45,
-   "zMax": 17.55,
-   "minutes": 0.09,
+   "zMin": 10,
+   "zMax": 10,
+   "minutes": 0.08,
    "niveaux": {
-    "17.550": 27,
-    "2.450": 28
+    "10.000": 31
    }
+  }
+ },
+ "Perçages.conceptcad › POSAGE1 › 5. Perçage (op_10_mvjrbe4p)": {
+  "type": "drill",
+  "outil": "Fraise D6",
+  "ms": 6484,
+  "resume": {
+   "n": 294,
+   "coupe": 1075.3,
+   "rapide": 268,
+   "nRap": 17,
+   "remontees": 6,
+   "zMin": 13.6,
+   "zMax": 20.332,
+   "minutes": 0.97,
+   "niveaux": {
+    "13.600": 109
+   }
+  }
+ },
+ "Perçages.conceptcad › POSAGE1 › 4. Perçage (op_8_mvjrb2sl)": {
+  "type": "drill",
+  "outil": "Foret D6.6",
+  "ms": 6582,
+  "resume": {
+   "n": 24,
+   "coupe": 173.9,
+   "rapide": 379.9,
+   "nRap": 17,
+   "remontees": 6,
+   "zMin": -6.983,
+   "zMax": -6.983,
+   "minutes": 0.24,
+   "niveaux": {}
   }
  },
  "Perçages.conceptcad › POSAGE1 › 12. Ébauche 3D (op_2_mvnu3k2a)": {
   "type": "rough3d",
   "outil": "Fraise D6",
-  "ms": 8445,
+  "ms": 6809,
   "resume": {
    "n": 1603,
    "coupe": 1059.8,
@@ -268,10 +210,107 @@
    }
   }
  },
+ "Perçages.conceptcad › POSAGE1 › 13. Chanfrein (op_2_mvo2kuqf)": {
+  "type": "chamfer",
+  "outil": "Foret à centrer D10",
+  "ms": 6801,
+  "resume": {
+   "n": 94,
+   "coupe": 102.4,
+   "rapide": 20.3,
+   "nRap": 2,
+   "remontees": 0,
+   "zMin": 1.45,
+   "zMax": 17.55,
+   "minutes": 0.09,
+   "niveaux": {
+    "17.550": 27,
+    "2.450": 28
+   }
+  }
+ },
+ "Cavité Test.conceptcad › POSAGE1 › 1. Surfaçage (op_4_mvqryqye)": {
+  "type": "facing",
+  "outil": "Torique D20 R2",
+  "ms": 6760,
+  "resume": {
+   "n": 63,
+   "coupe": 3161.2,
+   "rapide": 17.5,
+   "nRap": 2,
+   "remontees": 1,
+   "zMin": 40,
+   "zMax": 42.5,
+   "minutes": 2.64,
+   "niveaux": {
+    "42.500": 1579,
+    "40.000": 1579
+   }
+  }
+ },
+ "Cavité Usinage.conceptcad › CAVIT_TEST › 1. Surfaçage (op_33_mv9vmyye)": {
+  "type": "facing",
+  "outil": "Fraise D20",
+  "ms": 7681,
+  "resume": {
+   "n": 177,
+   "coupe": 11946.4,
+   "rapide": 33.3,
+   "nRap": 2,
+   "remontees": 1,
+   "zMin": 50,
+   "zMax": 56.667,
+   "minutes": 3.99,
+   "niveaux": {
+    "56.667": 3980,
+    "53.333": 3980,
+    "50.000": 3980
+   }
+  }
+ },
+ "Poche et Contour.conceptcad › POSAGE1 › 4. Surfaçage (op_3_mvbd93sk)": {
+  "type": "facing",
+  "outil": "Fraise D10",
+  "ms": 1762,
+  "resume": {
+   "n": 43,
+   "coupe": 2984.9,
+   "rapide": 24.1,
+   "nRap": 2,
+   "remontees": 1,
+   "zMin": 5.429,
+   "zMax": 107.071,
+   "minutes": 2.5,
+   "niveaux": {
+    "107.071": 54,
+    "5.429": 56
+   }
+  }
+ },
+ "Poche et Contour.conceptcad › POSAGE1 › 1. Surfaçage (op_3_mv7upzw4)": {
+  "type": "facing",
+  "outil": "Torique D25 R2",
+  "ms": 1778,
+  "resume": {
+   "n": 81,
+   "coupe": 3866.7,
+   "rapide": 16.7,
+   "nRap": 2,
+   "remontees": 1,
+   "zMin": 30,
+   "zMax": 33.333,
+   "minutes": 3.23,
+   "niveaux": {
+    "33.333": 1288,
+    "31.667": 1288,
+    "30.000": 1288
+   }
+  }
+ },
  "Poche et Contour.conceptcad › POSAGE1 › 2. Contour (op_3_mv81m3qf)": {
   "type": "contour",
   "outil": "Fraise D10",
-  "ms": 1759,
+  "ms": 1814,
   "resume": {
    "n": 565,
    "coupe": 1497.9,
@@ -289,7 +328,7 @@
  "Poche et Contour.conceptcad › POSAGE1 › 3. Poche (op_4_mv81nm4j)": {
   "type": "pocket",
   "outil": "Fraise D10",
-  "ms": 2172,
+  "ms": 2026,
   "resume": {
    "n": 3528,
    "coupe": 5418.2,
@@ -306,49 +345,10 @@
    }
   }
  },
- "Poche et Contour.conceptcad › POSAGE1 › 1. Surfaçage (op_3_mv7upzw4)": {
-  "type": "facing",
-  "outil": "Torique D25 R2",
-  "ms": 2157,
-  "resume": {
-   "n": 81,
-   "coupe": 3866.7,
-   "rapide": 16.7,
-   "nRap": 2,
-   "remontees": 1,
-   "zMin": 30,
-   "zMax": 33.333,
-   "minutes": 3.23,
-   "niveaux": {
-    "33.333": 1288,
-    "31.667": 1288,
-    "30.000": 1288
-   }
-  }
- },
- "Poche et Contour.conceptcad › POSAGE1 › 4. Surfaçage (op_3_mvbd93sk)": {
-  "type": "facing",
-  "outil": "Fraise D10",
-  "ms": 2168,
-  "resume": {
-   "n": 43,
-   "coupe": 2984.9,
-   "rapide": 24.1,
-   "nRap": 2,
-   "remontees": 1,
-   "zMin": 5.429,
-   "zMax": 107.071,
-   "minutes": 2.5,
-   "niveaux": {
-    "107.071": 54,
-    "5.429": 56
-   }
-  }
- },
  "Perçages.conceptcad › POSAGE1 › 14. Ébauche 3D (op_2_mvo4kwaj)": {
   "type": "rough3d",
   "outil": "Fraise D6",
-  "ms": 12675,
+  "ms": 11234,
   "resume": {
    "n": 1917,
    "coupe": 1131.8,
@@ -372,97 +372,51 @@
    }
   }
  },
- "Cavité Usinage.conceptcad › CAVIT_TEST › 1. Surfaçage (op_33_mv9vmyye)": {
-  "type": "facing",
-  "outil": "Fraise D20",
-  "ms": 12884,
-  "resume": {
-   "n": 177,
-   "coupe": 11946.4,
-   "rapide": 33.3,
-   "nRap": 2,
-   "remontees": 1,
-   "zMin": 50,
-   "zMax": 56.667,
-   "minutes": 3.99,
-   "niveaux": {
-    "56.667": 3980,
-    "53.333": 3980,
-    "50.000": 3980
-   }
-  }
- },
  "Malaxeur Retard.conceptcad › POSAGE1 › 2. Géodésique (op_2_mvibf0gg)": {
   "type": "geodesic",
   "outil": "Boule D30",
-  "ms": 20626,
+  "ms": 26617,
   "resume": {
-   "n": 37326,
-   "coupe": 32317.6,
-   "rapide": 1816.4,
-   "nRap": 107,
-   "remontees": 36,
+   "n": 38330,
+   "coupe": 32391.7,
+   "rapide": 2318.1,
+   "nRap": 113,
+   "remontees": 38,
    "zMin": -28.419,
-   "zMax": 65.954,
-   "minutes": 27.44,
+   "zMax": 64.701,
+   "minutes": 27.61,
    "niveaux": {}
   }
  },
  "Cavité Usinage.conceptcad › CAVIT_TEST › 3. Finition (op_3_mv4wo41j)": {
   "type": "geofinish",
   "outil": "Boule D6",
-  "ms": 24217,
+  "ms": 43521,
   "resume": {
-   "n": 107037,
-   "coupe": 74851.1,
-   "rapide": 930.6,
-   "nRap": 53,
-   "remontees": 18,
+   "n": 94880,
+   "coupe": 74872.8,
+   "rapide": 977.2,
+   "nRap": 71,
+   "remontees": 24,
    "zMin": 20,
    "zMax": 54.8,
-   "minutes": 37.69,
+   "minutes": 37.73,
    "niveaux": {
-    "50.000": 230,
-    "49.980": 153,
-    "49.919": 153,
-    "49.680": 153,
-    "49.505": 153,
-    "49.295": 153,
-    "48.178": 153,
-    "47.227": 152,
-    "46.909": 152,
-    "46.592": 152,
-    "20.000": 7454
-   }
-  }
- },
- "Cavité Test.conceptcad › POSAGE1 › 3. Finition (op_3_mvqu822f)": {
-  "type": "geofinish",
-  "outil": "Boule D6",
-  "ms": 27135,
-  "resume": {
-   "n": 92871,
-   "coupe": 67791.8,
-   "rapide": 129.4,
-   "nRap": 17,
-   "remontees": 6,
-   "zMin": 15,
-   "zMax": 44.799,
-   "minutes": 56.54,
-   "niveaux": {
-    "40.000": 156,
-    "15.000": 16492
+    "50.000": 229,
+    "49.818": 154,
+    "49.056": 154,
+    "20.000": 7469
    }
   }
  },
  "Cavité Test.conceptcad › POSAGE1 › 2. Ébauche 3D (op_5_mvqs3025)": {
   "type": "rough3d",
   "outil": "Torique D20 R2",
-  "ms": 43804,
+  "ms": 48827,
   "resume": {
-   "n": 23978,
-   "coupe": 18288.8,
-   "rapide": 7046.6,
+   "n": 24105,
+   "coupe": 18287.5,
+   "rapide": 7047.1,
    "nRap": 325,
    "remontees": 99,
    "zMin": 15.5,
@@ -500,25 +454,45 @@
     "19.143": 307,
     "18.429": 302,
     "17.714": 296,
-    "17.000": 898,
+    "17.000": 897,
     "16.250": 272,
-    "15.500": 748
+    "15.500": 747
+   }
+  }
+ },
+ "Cavité Test.conceptcad › POSAGE1 › 3. Finition (op_3_mvqu822f)": {
+  "type": "geofinish",
+  "outil": "Boule D6",
+  "ms": 56891,
+  "resume": {
+   "n": 93855,
+   "coupe": 67857.2,
+   "rapide": 34.9,
+   "nRap": 2,
+   "remontees": 1,
+   "zMin": 15,
+   "zMax": 44.8,
+   "minutes": 56.56,
+   "niveaux": {
+    "39.990": 199,
+    "39.907": 199,
+    "15.000": 16694
    }
   }
  },
  "Cavité Usinage.conceptcad › CAVIT_TEST › 2. Ébauche 3D (op_3_muyajzho)": {
   "type": "rough3d",
   "outil": "Torique D25 R2",
-  "ms": 65291,
+  "ms": 72892,
   "resume": {
-   "n": 39947,
-   "coupe": 34011.9,
-   "rapide": 3486.9,
-   "nRap": 245,
+   "n": 39935,
+   "coupe": 33961,
+   "rapide": 3508.8,
+   "nRap": 244,
    "remontees": 84,
    "zMin": 20,
    "zMax": 53,
-   "minutes": 9.54,
+   "minutes": 9.53,
    "niveaux": {
     "49.200": 537,
     "48.400": 534,
@@ -552,8 +526,8 @@
     "25.167": 493,
     "24.333": 489,
     "23.500": 484,
-    "22.667": 486,
-    "21.833": 505,
+    "22.667": 476,
+    "21.833": 463,
     "21.000": 1787,
     "20.000": 1449
    }
@@ -562,129 +536,147 @@
  "Malaxeur Retard.conceptcad › POSAGE1 › 1. Ébauche 3D (op_3_mvia0l7l)": {
   "type": "rough3d",
   "outil": "Torique D20 R2",
-  "ms": 66882,
+  "ms": 75274,
   "resume": {
-   "n": 25914,
-   "coupe": 30389.8,
-   "rapide": 47329,
-   "nRap": 1990,
-   "remontees": 596,
+   "n": 25517,
+   "coupe": 29444.5,
+   "rapide": 44783.4,
+   "nRap": 1899,
+   "remontees": 570,
    "zMin": -22.5,
    "zMax": 64.424,
-   "minutes": 37.55,
+   "minutes": 36.13,
    "niveaux": {
-    "61.000": 1246,
-    "60.229": 1173,
-    "59.479": 135,
-    "58.729": 119,
-    "57.979": 112,
-    "57.229": 959,
-    "56.479": 108,
-    "55.729": 108,
-    "54.979": 108,
-    "54.229": 884,
-    "53.479": 108,
-    "52.729": 107,
-    "51.979": 108,
-    "51.229": 886,
-    "50.479": 108,
-    "49.729": 108,
-    "48.979": 108,
-    "48.229": 897,
-    "47.479": 108,
-    "46.729": 109,
-    "45.979": 108,
-    "45.229": 881,
-    "44.479": 109,
-    "43.729": 109,
-    "42.979": 109,
-    "42.229": 794,
-    "41.479": 108,
-    "40.729": 109,
-    "39.979": 109,
-    "39.229": 809,
-    "38.479": 109,
-    "37.729": 109,
-    "36.979": 110,
-    "36.229": 831,
-    "35.479": 109,
-    "34.729": 109,
-    "33.979": 109,
-    "33.229": 765,
-    "32.479": 110,
-    "31.729": 110,
-    "30.979": 110,
-    "30.229": 722,
-    "29.479": 110,
-    "28.729": 110,
-    "27.979": 112,
-    "27.229": 663,
-    "26.479": 125,
-    "25.729": 126,
-    "24.979": 126,
-    "24.229": 620,
-    "23.479": 125,
-    "22.729": 125,
-    "21.979": 124,
-    "21.229": 601,
-    "20.479": 123,
-    "19.729": 123,
-    "18.979": 123,
-    "18.229": 563,
-    "17.479": 127,
-    "16.729": 127,
-    "15.979": 126,
-    "15.229": 547,
-    "14.479": 126,
-    "13.729": 125,
-    "12.979": 124,
-    "12.229": 471,
-    "11.479": 123,
-    "10.729": 123,
-    "9.979": 123,
-    "9.229": 477,
-    "8.479": 122,
-    "7.729": 121,
-    "6.979": 121,
-    "6.229": 385,
-    "5.479": 120,
-    "4.729": 120,
-    "3.979": 119,
-    "3.229": 365,
-    "2.479": 119,
-    "1.729": 118,
-    "0.979": 118,
-    "0.229": 307,
-    "-0.521": 117,
-    "-1.271": 117,
-    "-2.021": 117,
-    "-2.771": 230,
-    "-3.521": 116,
-    "-4.271": 115,
-    "-5.021": 115,
-    "-5.771": 218,
-    "-6.521": 114,
-    "-7.271": 113,
-    "-8.021": 113,
-    "-8.771": 205,
-    "-9.521": 113,
-    "-10.271": 113,
-    "-11.021": 112,
-    "-11.771": 206,
-    "-12.521": 111,
-    "-13.271": 112,
-    "-14.021": 112,
-    "-14.771": 209,
-    "-15.521": 111,
-    "-16.271": 109,
-    "-17.021": 109,
-    "-17.771": 127,
-    "-18.521": 108,
-    "-19.271": 106,
-    "-20.021": 104,
-    "-20.771": 200,
-    "-21.635": 105,
+    "61.000": 1266,
+    "60.250": 134,
+    "59.500": 141,
+    "58.750": 119,
+    "58.000": 994,
+    "57.250": 109,
+    "56.500": 108,
+    "55.750": 108,
+    "55.000": 916,
+    "54.250": 108,
+    "53.500": 108,
+    "52.750": 108,
+    "52.000": 941,
+    "51.250": 108,
+    "50.500": 108,
+    "49.750": 108,
+    "49.000": 899,
+    "48.250": 108,
+    "47.500": 109,
+    "46.750": 109,
+    "46.000": 892,
+    "45.250": 109,
+    "44.500": 109,
+    "43.750": 109,
+    "43.000": 874,
+    "42.250": 109,
+    "41.500": 108,
+    "40.750": 109,
+    "40.000": 854,
+    "39.250": 110,
+    "38.500": 110,
+    "37.750": 109,
+    "37.000": 799,
+    "36.250": 110,
+    "35.500": 109,
+    "34.750": 109,
+    "34.000": 831,
+    "33.250": 110,
+    "32.500": 110,
+    "31.750": 110,
+    "31.000": 769,
+    "30.250": 110,
+    "29.500": 110,
+    "28.750": 110,
+    "28.000": 700,
+    "27.250": 120,
+    "26.500": 125,
+    "25.750": 126,
+    "25.000": 627,
+    "24.250": 126,
+    "23.500": 125,
+    "22.750": 125,
+    "22.000": 493,
+    "21.250": 123,
+    "20.500": 123,
+    "19.750": 123,
+    "19.000": 623,
+    "18.250": 125,
+    "17.500": 127,
+    "16.750": 127,
+    "16.000": 561,
+    "15.250": 126,
+    "14.500": 126,
+    "13.750": 125,
+    "13.000": 479,
+    "12.250": 124,
+    "11.500": 123,
+    "10.750": 123,
+    "10.000": 477,
+    "9.250": 123,
+    "8.500": 122,
+    "7.750": 121,
+    "7.000": 398,
+    "6.250": 121,
+    "5.500": 120,
+    "4.750": 120,
+    "4.000": 370,
+    "3.250": 119,
+    "2.500": 119,
+    "1.750": 119,
+    "1.000": 306,
+    "0.250": 118,
+    "-0.500": 117,
+    "-1.250": 117,
+    "-2.000": 230,
+    "-2.750": 116,
+    "-3.500": 116,
+    "-4.250": 115,
+    "-5.000": 270,
+    "-5.750": 114,
+    "-6.500": 114,
+    "-7.250": 113,
+    "-8.000": 242,
+    "-8.750": 113,
+    "-9.500": 113,
+    "-10.250": 113,
+    "-11.000": 203,
+    "-11.750": 112,
+    "-12.500": 112,
+    "-13.250": 112,
+    "-14.000": 201,
+    "-14.750": 111,
+    "-15.500": 111,
+    "-16.250": 109,
+    "-17.000": 147,
+    "-17.750": 109,
+    "-18.500": 108,
+    "-19.250": 107,
+    "-20.000": 199,
+    "-21.667": 105,
     "-22.500": 200
+   }
+  }
+ },
+ "Cavité Test.conceptcad › POSAGE1 › 4. Contour (op_6_mvr0jnwn)": {
+  "type": "contour",
+  "outil": "Fraise D10",
+  "ms": 96307,
+  "resume": {
+   "n": 1467,
+   "coupe": 2521.6,
+   "rapide": 75,
+   "nRap": 12,
+   "remontees": 5,
+   "zMin": 36.5,
+   "zMax": 38,
+   "minutes": 2.13,
+   "niveaux": {
+    "38.000": 1004,
+    "36.500": 1500
    }
   }
  }
