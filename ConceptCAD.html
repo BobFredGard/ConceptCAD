@@ -394,7 +394,7 @@ input[type=range]{accent-color:var(--primary);width:100%}
  * peut changer sans rien casser. CACHE_VER (parcours FAO) reste indépendant.
  */
 
-const APP_VER='V0.99.18';
+const APP_VER='V0.99.19';
 try{console.log('[ConceptCAD] version '+APP_VER);}catch(e){}
 try{var mfSv=document.getElementById('mfSplashVer');if(mfSv)mfSv.textContent=APP_VER;}catch(e){} // écran de démarrage
 
@@ -35388,6 +35388,20 @@ function skDimPressDbl(sk,e,px,py,wx,wy){
   skDimPress=id?{id,t:now,px,py}:null;
   return false;
 }
+// V0.99.19 : même parade pour un TEXTE — le 1er clic le sélectionne et redessine l'esquisse, le
+// dblclick natif était perdu (« pas possible d'éditer un texte »). Double appui = bandeau Texte rouvert.
+let skTxtPress=null;
+function skTxtPressDbl(sk,e,wx,wy){
+  if(skMulti(e)){skTxtPress=null;return false;}
+  const ent=nearestPoint(sk,wx,wy,SK_PT)?null:nearestEntity(sk,wx,wy,SK_PICK);
+  const id=ent&&ent.txt?ent.txt:null,now=Date.now(),lp=skTxtPress;
+  if(id&&lp&&lp.id===id&&now-lp.t<500&&Math.hypot(e.clientX-lp.cx,e.clientY-lp.cy)<8){
+    skTxtPress=null;try{e.preventDefault();}catch(_){}
+    skDragEnt=null;skDrag=null;skTxtEdit(sk,id);return true;
+  }
+  skTxtPress=id?{id,t:now,cx:e.clientX,cy:e.clientY}:null;
+  return false;
+}
 svg.addEventListener('dblclick',e=>{
   if(!skEdit||skTool!=='select')return;e=skEv(e);
   const sk=skEdit;
@@ -35427,6 +35441,7 @@ svg.addEventListener('pointerdown',e=>{
   if(skTool==='select'){
     const r0=svg.getBoundingClientRect(); // une étiquette de cote se déplace au glisser, s'édite au double-clic
     if(skDimPressDbl(sk,e,e.clientX-r0.left,e.clientY-r0.top,wx,wy))return;
+    if(skTxtPressDbl(sk,e,wx,wy))return;
     const dl=hitDimLabel(sk,e.clientX-r0.left,e.clientY-r0.top);
     if(dl){const dd=dimById(sk,dl);skSel={kind:'dim',id:dl};skSelX=[];
       const tp=dimLabelPos(sk,dd)||{x:wx,y:wy}; // V0.11.23 : décalage de prise, le texte ne saute pas sous le curseur
@@ -53193,6 +53208,7 @@ faoMachine({
    Cache les traces, fait apparaître la boîte du brut (+ le corps-brut masqué s'il y en a un),
    anime l'outil le long du parcours et dessine un BOUT de trace qui suit la fraise
    puis disparaît au fur et à mesure derrière elle (fenêtre glissante). */
+let faoVwSpeedSel=null; // liste « Vitesse » : sa valeur sert dès le lancement (V0.99.19)
 let faoVw=null, faoVwBar=null, faoVwBarT=null, faoVwBtn=null, faoVwMatterBtn=null, faoVwEsc=false;
 // 2026-10-11-007 : le bouton de la barre est à 3 ÉTATS (cycle) —
 //   `reel`  ◈  surface NETTE aux cotes exactes (défaut « forme réelle » de 003)
@@ -54386,7 +54402,7 @@ function faoViewerOpen(){
       return false; // aucune opération jouable (jamais silencieux)
     }
     const vw={tl:b.tl, po:b.po, upSig:null, coll:null, collMarks:null, collNext:0, pts:b.pts, dd:b.dd, kt:b.kt, cr:b.cr, tp:b.tp, times:b.times, lens:b.lens, T:b.T, t:0, idx:0, drawn:0,
-      playing:false, speed:1, prevVis:true, body:null, tool:null, toolBody:null,
+      playing:false, speed:faoViewerSpeedPick(), prevVis:true, body:null, tool:null, toolBody:null,
       toolHold:null, toolSpin:null, toolSig:null, line:null, stock:null, toolH:30, _last:0, _looping:false,
       exact:faoViewerExact,
       smooth:faoViewerMode==='lisse',
@@ -54610,13 +54626,17 @@ function faoViewerBarShow(){
       const op=document.createElement('option'); op.value=o[0]; op.textContent=o[1]; sp.appendChild(op);
     });
     sp.onchange=function(){ if(faoVw)faoVw.speed=(+sp.value>0)?+sp.value:1; };
-    bar.appendChild(sp);
+    bar.appendChild(sp); faoVwSpeedSel=sp;
     const host=document.getElementById('vpwrap')||document.body;
     host.appendChild(bar);
     faoVwBar=bar;
     faoViewerMatterBarUpdate();
     faoViewerExactBarUpdate();
   }catch(e){}
+}
+function faoViewerSpeedPick(){
+  // vitesse affichée dans la liste (gardée d'une simulation à l'autre) — ×1 si la liste n'existe pas encore
+  try{ const v=faoVwSpeedSel?+faoVwSpeedSel.value:1; return v>0?v:1; }catch(e){ return 1; }
 }
 function faoViewerBarUpdate(){
   try{

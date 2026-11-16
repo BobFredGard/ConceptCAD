@@ -2,6 +2,7 @@
    Cache les traces, fait apparaître la boîte du brut (+ le corps-brut masqué s'il y en a un),
    anime l'outil le long du parcours et dessine un BOUT de trace qui suit la fraise
    puis disparaît au fur et à mesure derrière elle (fenêtre glissante). */
+let faoVwSpeedSel=null; // liste « Vitesse » : sa valeur sert dès le lancement (V0.99.19)
 let faoVw=null, faoVwBar=null, faoVwBarT=null, faoVwBtn=null, faoVwMatterBtn=null, faoVwEsc=false;
 // 2026-10-11-007 : le bouton de la barre est à 3 ÉTATS (cycle) —
 //   `reel`  ◈  surface NETTE aux cotes exactes (défaut « forme réelle » de 003)
@@ -1195,7 +1196,7 @@ function faoViewerOpen(){
       return false; // aucune opération jouable (jamais silencieux)
     }
     const vw={tl:b.tl, po:b.po, upSig:null, coll:null, collMarks:null, collNext:0, pts:b.pts, dd:b.dd, kt:b.kt, cr:b.cr, tp:b.tp, times:b.times, lens:b.lens, T:b.T, t:0, idx:0, drawn:0,
-      playing:false, speed:1, prevVis:true, body:null, tool:null, toolBody:null,
+      playing:false, speed:faoViewerSpeedPick(), prevVis:true, body:null, tool:null, toolBody:null,
       toolHold:null, toolSpin:null, toolSig:null, line:null, stock:null, toolH:30, _last:0, _looping:false,
       exact:faoViewerExact,
       smooth:faoViewerMode==='lisse',
@@ -1419,13 +1420,17 @@ function faoViewerBarShow(){
       const op=document.createElement('option'); op.value=o[0]; op.textContent=o[1]; sp.appendChild(op);
     });
     sp.onchange=function(){ if(faoVw)faoVw.speed=(+sp.value>0)?+sp.value:1; };
-    bar.appendChild(sp);
+    bar.appendChild(sp); faoVwSpeedSel=sp;
     const host=document.getElementById('vpwrap')||document.body;
     host.appendChild(bar);
     faoVwBar=bar;
     faoViewerMatterBarUpdate();
     faoViewerExactBarUpdate();
   }catch(e){}
+}
+function faoViewerSpeedPick(){
+  // vitesse affichée dans la liste (gardée d'une simulation à l'autre) — ×1 si la liste n'existe pas encore
+  try{ const v=faoVwSpeedSel?+faoVwSpeedSel.value:1; return v>0?v:1; }catch(e){ return 1; }
 }
 function faoViewerBarUpdate(){
   try{
