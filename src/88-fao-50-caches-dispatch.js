@@ -161,6 +161,8 @@ function faoOpMovesKey(op,job){
     if(op&&op.type==='rough3d'&&op.mode==='contours')dep=['contours-croise','couloirs',dep]; // V0.99.7 : couloirs étroits = chaînes exactes
     // V0.99.7 : rampe le long d'une paroi reprise à la cote (Trochoïdal, Escargot, Contours)
     if(op&&op.type==='rough3d'&&(op.mode==='escargot'||op.mode==='anneaux'||op.mode==='contours'))dep=['rampe-reprise',dep];
+    // V0.99.18 : contour — rapide dans le vide : dépend du brut et des opérations qui le précèdent
+    if(faoContourVideOn(op)){ const rd=faoRestDep(op,job); if(rd===null)return null; dep=dep?['vide',rd,dep]:['vide',rd]; }
     // V0.99.0 : BRUT RESTANT — l'ébauche dépend des parcours des opérations qui la précèdent
     if(faoRestOn(op)){ const rd=faoRestDep(op,job); if(rd===null)return null; dep=dep?['restant',rd,dep]:['restant',rd];
       // V0.99.5 : crêtes constantes en brut restant = zone intérieure (plus de découpe après)
@@ -669,6 +671,13 @@ function* faoOpMovesIt0(op,job){
         radial:RA.radial,axial:RA.axial,side:op.cside,sens:op.sens==='opp'?'opp':'climb',
         leadR:op.leadR,overlap:op.overlap,tabN:op.tabN,tabW:op.tabW,tabH:op.tabH,
         descente:op.descente,pente:op.pente}));
+      // V0.99.18 : fraise dans le vide (hors brut, ou matière déjà enlevée par les opérations
+      // précédentes) -> rapide jusqu'au prochain point d'entrée en matière
+      if(faoContourVideOn(op)&&mv&&mv.length){
+        const dg=mv.diag;
+        try{ const mat=faoContourMatFn(op,job,D,RA.radial,isFinite(+op.fin)?+op.fin:0);
+          if(mat){ mv=faoContourTrimAir(mv,mat,D); if(dg){ dg.vide=mv.vide; mv.diag=dg; } } }catch(e){}
+      }
       try{ if(mv&&mv.diag)op.geoDiag=mv.diag; }catch(e){}
     }
   }
