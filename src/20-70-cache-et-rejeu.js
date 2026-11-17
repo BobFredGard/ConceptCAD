@@ -92,7 +92,7 @@ function skSig(sk){
   // Seul le PROFIL compte : construction et références 3D ne participent jamais au solide
   // (extrusion, ancrages) — les projeter ne doit donc pas invalider les points de contrôle.
   const C=sk.constraints||[],D=sk.dims||[],P=sk.points||{};
-  const E=(sk.entities||[]).filter(e=>!e.construction&&!e.ref);
+  const E=(sk.entities||[]).filter(e=>!skHorsProfil(sk,e));
   const used=new Set();
   for(const e of E){used.add(e.p1);used.add(e.p2);used.add(e.pc);used.add(e.pa);used.add(e.pb);used.add(e.p);}
   mix(E.length);mix(C.length);mix(D.length);

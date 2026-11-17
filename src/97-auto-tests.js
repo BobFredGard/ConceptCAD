@@ -14,6 +14,11 @@ function runSelfTests(){
   T('Trace : rect → 1 solide',()=>{const tr=skLoopTrace(rect());return tr.solids.length===1&&!tr.opens.length?null:`solides=${tr.solids.length} opens=${tr.opens.length}`;});
   T('Trou horaire → 1 solide + 1 trou',()=>{const tr=skLoopTrace(holeSq(true));return tr.solids.length===1&&holesOf(tr)===1?null:`solides=${tr.solids.length} trous=${holesOf(tr)}`;});
   T('Trou anti-horaire → idem',()=>{const tr=skLoopTrace(holeSq(false));return tr.solids.length===1&&holesOf(tr)===1?null:`solides=${tr.solids.length} trous=${holesOf(tr)}`;});
+  T('Trait d\'axe qui ferme le contour = côté du profil',()=>{const s=rect();s.entities[3].axis=true;s.entities[3].construction=true;let tr=skLoopTrace(s);
+    if(tr.solids.length!==1||tr.opens.length)return `fermé : solides=${tr.solids.length} opens=${tr.opens.length}`;
+    const s2=rect();s2.entities.push({id:'ax',t:'line',p1:'p1',p2:'p4',axis:true,construction:true});tr=skLoopTrace(s2); // axe posé sur un trait normal : pas en double
+    if(tr.solids.length!==1||tr.opens.length)return `axe superposé : solides=${tr.solids.length} opens=${tr.opens.length}`;
+    s.points.p5={x:0,y:30};s.entities[3].p1='p5';tr=skLoopTrace(s);return tr.solids.length===0&&tr.opens.length===2?null:`axe qui dépasse : solides=${tr.solids.length} opens=${tr.opens.length}`;});
   T('Cercle inscrit = trou',()=>{const s=rect();s.points.pc={x:20,y:10};s.entities.push({id:'c',t:'circle',pc:'pc',r:5});const tr=skLoopTrace(s);return tr.circleHoles.length===1?null:`trous=${tr.circleHoles.length}`;});
   T('Ouvert détecté (2 bouts)',()=>{const s=rect();s.entities=s.entities.slice(0,3);const tr=skLoopTrace(s);return tr.solids.length===0&&tr.opens.length===2?null:`solides=${tr.solids.length} opens=${tr.opens.length}`;});
   T('Tangence converge (< 0.05)',()=>{const s={points:{pc:{x:0,y:8},p1:{x:-20,y:0},p2:{x:20,y:0}},entities:[{id:'c',t:'circle',pc:'pc',r:10},{id:'l',t:'line',p1:'p1',p2:'p2'}],constraints:[{id:'k',type:'tangent',line:'l',ent:'c'}],dims:[],seq:50};

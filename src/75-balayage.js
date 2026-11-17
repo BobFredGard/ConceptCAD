@@ -35,7 +35,7 @@ function sweepName(f){
 function sweepPath2D(sk,near){
   if(!sk)return{err:'esquisse du chemin introuvable'};
   const P=sk.points||{},TAU=Math.PI*2;
-  const ents=(sk.entities||[]).filter(e=>e&&!e.construction&&!e.ref&&(e.t==='line'||e.t==='arc'||e.t==='circle'||e.t==='spline'));
+  const ents=(sk.entities||[]).filter(e=>e&&!skHorsProfil(sk,e)&&(e.t==='line'||e.t==='arc'||e.t==='circle'||e.t==='spline'));
   if(!ents.length)return{err:'le chemin est vide (aucune ligne, arc ni spline hors construction dans « '+sk.name+' »)'};
   const full=e=>e.t==='circle'||(e.t==='arc'&&e.pa===e.pb);
   if(ents.some(full)){

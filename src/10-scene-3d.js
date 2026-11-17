@@ -1310,7 +1310,7 @@ function findHostForFace(pt,n,tol,lim){
         if(Math.hypot(n2x,n2y)<0.99)continue; // normale pas dans le plan de l'esquisse porteuse
         let bestE=null,bd2=1e9;
         for(const en of (hs.entities||[])){
-          if(en.t!=='line'||en.construction)continue;
+          if(en.t!=='line'||skHorsProfil(hs,en))continue;
           const a=hs.points[en.p1],b=hs.points[en.p2];if(!a||!b)continue;
           const ex=b.x-a.x,ey=b.y-a.y,L2=ex*ex+ey*ey;if(L2<1e-12)continue;
           const ux=ex/Math.sqrt(L2),uy=ey/Math.sqrt(L2);
@@ -1698,11 +1698,37 @@ function skRingDistIx(pt,rg){
   }
   return m;
 }
+// Trait d'axe (⟲, skToggleAxis) : reste de la construction, SAUF quand ses deux bouts sont posés sur des
+// bouts du profil — il ferme alors le contour (profil adossé à son axe) tout en restant l'axe de la révolution.
+function skAxeFermeProfil(sk,e){
+  if(!sk||!e||!e.axis||e.t!=='line'||e.ref)return false;
+  const P=sk.points||{},A=P[e.p1],B=P[e.p2];if(!A||!B)return false;
+  const bouts=[];
+  (sk.entities||[]).forEach(o=>{
+    if(!o||o===e||o.construction||o.ref)return;
+    if(o.t==='line')bouts.push(P[o.p1],P[o.p2]);
+    else if(o.t==='arc'){const C=P[o.pc],an=(typeof arcAngles==='function')?arcAngles(sk,o):null;
+      if(C&&an&&o.r>0)bouts.push({x:C.x+o.r*Math.cos(an.a1),y:C.y+o.r*Math.sin(an.a1)},{x:C.x+o.r*Math.cos(an.a2),y:C.y+o.r*Math.sin(an.a2)});
+      else bouts.push(P[o.pa],P[o.pb]);}
+    else if(o.t==='spline'&&o.pts&&o.pts.length&&!o.closed)bouts.push(P[o.pts[0]],P[o.pts[o.pts.length-1]]);
+  });
+  // bout OUVERT du profil (nombre impair de bouts posés là) : un contour déjà fermé, ou un trait normal
+  // superposé à l'axe (exemple Axe), ne doit pas recevoir l'axe en double
+  const ouvert=Q=>bouts.filter(b=>b&&Math.hypot(b.x-Q.x,b.y-Q.y)<1e-3).length%2===1;
+  return ouvert(A)&&ouvert(B);
+}
+// Hors profil : construction ou référence 3D, sauf le trait d'axe qui ferme le contour.
+function skHorsProfil(sk,e){
+  if(!e)return true;
+  if(e.ref)return true;
+  if(!e.construction)return false;
+  return !skAxeFermeProfil(sk,e);
+}
 function skLoopTrace(sk){ // traçage de faces déterministe (demi-arêtes, mur à gauche) + trous
   const P=sk.points||{};
   const TAU=Math.PI*2;
   const normAng=a=>{a%=TAU;if(a<0)a+=TAU;return a;};
-  const lines=(sk.entities||[]).filter(e=>e.t==='line'&&!e.construction&&!e.ref&&P[e.p1]&&P[e.p2]&&Math.hypot(P[e.p2].x-P[e.p1].x,P[e.p2].y-P[e.p1].y)>1e-9);
+  const lines=(sk.entities||[]).filter(e=>e.t==='line'&&!skHorsProfil(sk,e)&&P[e.p1]&&P[e.p2]&&Math.hypot(P[e.p2].x-P[e.p1].x,P[e.p2].y-P[e.p1].y)>1e-9);
   const arcs=(sk.entities||[]).filter(e=>e.t==='arc'&&!e.construction&&P[e.pc]&&P[e.pa]&&P[e.pb]&&e.r>1e-9);
   const circles=(sk.entities||[]).filter(e=>e.t==='circle'&&!e.construction&&P[e.pc]&&e.r>1e-9);
   const pts=Object.assign({},P);

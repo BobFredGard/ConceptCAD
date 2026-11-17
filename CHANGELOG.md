@@ -8,7 +8,7 @@ sont sorties le 2026-09-30j.
 Code dans `src/` · livrable `fusion_mvp.html` (généré par `build.js`) · architecture et
 garde-fous en tête de `src/00-entete-et-outils.js`.
 
-**708 versions**, de `2026-09-28b` à `V0.99.21` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
+**709 versions**, de `2026-09-28b` à `V0.99.22` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
 comme dans le fichier d'origine.
 
 ---
@@ -7912,3 +7912,13 @@ Cavité Usinage, après l'ébauche D25, la reprise D10 et une finition boule D12
 **Avant** : chaque instance d'une répétition porte une copie cachée de l'esquisse (« Esquisse 2 (rép 1) », « (rép 2) »…) avec ses cotes ; la fenêtre ƒx Paramètres et la mini-liste listaient aussi ces copies, donc chaque cote à formule revenait autant de fois qu'il y a d'instances. La fenêtre « Dériver » partait avec tous les paramètres cochés.
 
 **Correctif** : `src/51-parametres.js` et `src/52-derivee.js` (`parMiniRows`) ne listent plus les cotes des esquisses copiées (`repCloneSkName`) — elles suivent la source, qui reste seule affichée. `derPickDlg` : paramètres décochés au départ, boutons « Tout cocher » / « Tout décocher » (dès 2 paramètres) ; seules les valeurs nommées sont proposées, comme avant. CACHE_VER et FORMES_VER inchangés.
+
+## V0.99.22 - Esquisse : le trait d'axe ferme le contour
+
+**Demande de Fred** : « Quand une droite est transformée en trait d'axe, il faut la prendre comme faisant partie du contour si il se ferme sur ses points ; la droite axe sert pour la zone de contour et pour l'axe de rotation pour la fonction Révolution ».
+
+**Avant** : `skToggleAxis` marque l'axe ⟲ en construction ; il était donc retiré du profil et un demi-profil adossé à son axe restait ouvert (bouts rouges), sans révolution possible.
+
+**Correctif** : `skAxeFermeProfil` / `skHorsProfil` (`src/10-scene-3d.js`) — un trait d'axe dont les deux bouts tombent sur un bout OUVERT du profil (nombre impair de bouts posés là) entre dans le tracé des faces (`skLoopTrace`), le contrôle de l'esquisse, l'empreinte du rejeu, le balayage et la reconnaissance des faces latérales ; il reste l'axe proposé par la révolution. Un axe superposé à un trait normal (exemple Axe) ou qui dépasse du profil reste hors contour.
+
+**Test** : auto-test « Trait d'axe qui ferme le contour » (fermé, superposé, qui dépasse) ; profil de Fred révolutionné : 4176,34 mm³ = calcul exact. CACHE_VER et FORMES_VER inchangés.
