@@ -8,7 +8,7 @@ sont sorties le 2026-09-30j.
 Code dans `src/` · livrable `fusion_mvp.html` (généré par `build.js`) · architecture et
 garde-fous en tête de `src/00-entete-et-outils.js`.
 
-**711 versions**, de `2026-09-28b` à `V0.99.24` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
+**712 versions**, de `2026-09-28b` à `V0.99.25` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
 comme dans le fichier d'origine.
 
 ---
@@ -7946,3 +7946,13 @@ Cavité Usinage, après l'ébauche D25, la reprise D10 et une finition boule D12
 **Suite, même pièce** (Fred : « je crois que ça vient de la révolution car les chanfreins ont du mal à passer ») : chanfrein 1 mm du cercle au bout du tube, posé juste après la révolution, affiché « 0/1 arêtes retrouvées — 1 perdue » au rejeu. L'arête est pourtant là. Cause : à la sélection, `xAnchorFor` lui donne une ancre POINT de l'esquisse de révolution, le point de l'axe à 6,7 mm (seul point à moins de 8 mm du milieu du cercle) ; `xAnchorMatch` cherche alors une arête passant par ce point à 5 mm près et n'en trouve aucune, et la passe 2 d'`occApplyXFillets` ignore les ancres point. Correctif (`src/20-60-conges.js`) : ancre point sans résultat → l'arête encore exactement là où elle a été cliquée (0,75 mm), de même longueur ; une fois retrouvée, elle reçoit son nom (`nom`) et ne dépend plus de l'ancre. Test : `test_conge_bout_libre` points 6 à 8 (chanfrein du bout d'un tube tourné : 20,001 mm³ ôtés = calcul de Pappus).
 
 **Test** : `test_conge_bout_libre` (tube et anneau traversé par une fenêtre : refus du noyau seul constaté ; R0,5 et R1, avec et sans tangence : solide valide, matière ajoutée plausible, rien au-delà des bouts ; fonction Congé rejouée sur les deux arêtes). CACHE_VER et FORMES_VER inchangés : seuls changent les congés qui échouaient, et une pièce gardée qui en contient un est refaite par le contrôle du rejeu de fond (`pcVerifie`, écart de volume).
+
+## V0.99.25 - Congé tangent au sol d'un tube
+
+**Remarque de Fred** (même « Pièce pour fenêtre », capture du congé R1 au pied de la patte) : « Pas de tangence, la ligne est noire ».
+
+**Cause** : le congé « tout droit » (`occSingleEdgeConcavePiece`) suppose deux faces PLANES de part et d'autre de l'arête. Ici le sol est le tube R6,7 : le congé était posé sur le plan tangent au tube le long de l'arête, son centre à 7,761 mm de l'axe au lieu de 6,7 + 1 = 7,7. Au pied, une petite marche (r²/2R, 0,06 mm en R1) et une arête vive : le trait noir.
+
+**Correctif** (`src/20-20-aretes-et-maillage.js`) : un côté de l'arête peut aussi être un cylindre d'axe parallèle à l'arête (sol d'un tube, alésage). Le centre du congé est cherché à r du plan et à R ± r de l'axe (R + r quand le vide est dehors, R − r dedans), le pied posé SUR le cylindre ; chanfrein : pied sur le cylindre à la bonne distance. Pièce de Fred : centres des deux congés à 7,700 mm, arêtes du pied classées douces (plus de trait noir), solide valide.
+
+**Test** : `test_conge_bout_libre` point 3 et 5 : volume ajouté = section exacte d'un congé tangent au tube (0,288 mm³ en R0,5, 1,044 mm³ en R1) et centre du congé à 6,7 + r de l'axe. FORMES_VER changé (les pièces gardées avec l'ancien congé sont refaites) ; CACHE_VER inchangé.

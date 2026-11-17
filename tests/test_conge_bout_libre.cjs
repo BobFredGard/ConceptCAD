@@ -37,12 +37,13 @@ const {loadApp}=require('./appvm.cjs');
     let noyau=false;
     try{const h=occEdgeAt(base,e1.src),mf=new occt.BRepFilletAPI_MakeFillet(base,0);mf.Add_2(0.5,h);mf.Build();noyau=mf.IsDone();mf.delete();h.delete();}catch(e){noyau=false;}
     A(!noyau,'2 : le noyau seul refuse ce congé (bout libre)');
-    const v0=vol(base),sec=r=>r*r*(1-Math.PI/4)*6;
+    // V0.99.25 : section exacte d'un congé TANGENT au sol cylindrique R6,7 (centre à 6,7+r de l'axe, à r du flanc)
+    const v0=vol(base),sec=r=>{const R=6.7,xc=Math.sqrt((R+r)**2-r*r),be=Math.atan2(r,xc);return 6*(xc*r/2-R*R*be/2-r*r*(Math.PI/2-be)/2);};
+    const tangent=(s,r)=>{let n=0,ok=0;occSubShapes(s,'TopAbs_FACE').forEach(f=>{const d=occSurfDesc(f);if(d.k==='cy'&&Math.abs(d.r-r)<1e-6){n++;if(Math.abs(Math.hypot(d.p[1],d.p[2])-(6.7+r))<1e-5)ok++;}try{f.delete();}catch(e){}});return n>0&&ok===n;};
     for(const r of [0.5,1])for(const single of [false,'droit']){
       const w=[];const s=occFilletRun(base,[{src:e1.src,r,mid:e1.mid.slice(),pts:e1.pts}],w,false,{single});
       const dv=s?vol(s)-v0:0;
-      // le sol est convexe : un peu plus que la section d'un coin plan, jamais plus de 15 %
-      A(s&&occCoqueValide(s)&&dv>sec(r)&&dv<1.15*sec(r),'3 : R'+r+(single?' sans tangence':' avec tangence')+' : solide valide, '+dv.toFixed(3)+' mm³ ajoutés'+(w.length?' ('+w.join(' | ')+')':''));
+      A(s&&occCoqueValide(s)&&Math.abs(dv-sec(r))<0.01*sec(r)&&tangent(s,r),'3 : R'+r+(single?' sans tangence':' avec tangence')+' : solide valide, tangent au tube, '+dv.toFixed(3)+' mm³ ajoutés (attendu '+sec(r).toFixed(3)+')'+(w.length?' ('+w.join(' | ')+')':''));
       if(s){
         // coupé au ras : rien ne dépasse des faces de bout de l'anneau (x 8 et 14)
         const neuves=occListEdges(s).filter(x=>x.pts.some(q=>{const d=Math.hypot(q[1],q[2]);return d>6.7+1e-3&&d<6.7+r+1e-3;})&&x.pts.some(q=>q[0]<8-1e-3||q[0]>14+1e-3));
@@ -55,7 +56,7 @@ const {loadApp}=require('./appvm.cjs');
       edges:[e1,e2].map(e=>({pos:e.mid.slice(),pos0:e.mid.slice(),r:0.5,len:e.len,seed:1}))});
     freshHard=true;occCkClear();markDirty();rebuild();
     const xf=doc.features.find(f=>f.id==='X'),dv2=vol(occLive.shape)-v0;
-    A(!xf._err&&!xf._rate&&dv2>2*sec(0.5)&&dv2<2.3*sec(0.5),'5 : fonction Congé R0,5 sur les deux arêtes : faite ('+dv2.toFixed(3)+' mm³'+(xf._err?', '+xf._err:'')+')');
+    A(!xf._err&&!xf._rate&&Math.abs(dv2-2*sec(0.5))<0.02*sec(0.5)&&tangent(occLive.shape,0.5),'5 : fonction Congé R0,5 sur les deux arêtes : faite ('+dv2.toFixed(3)+' mm³'+(xf._err?', '+xf._err:'')+')');
     // Chanfrein du cercle au bout du tube, posé juste après la révolution : son ancre tombe sur le point de
     // l'axe (à 6,7 mm), qui ne mène à aucune arête — l'arête était déclarée perdue au rejeu (0/1).
     doc.features=[doc.features[0]];freshHard=true;occCkClear();markDirty();rebuild();

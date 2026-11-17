@@ -350,18 +350,30 @@ function occSingleEdgeConcavePiece(shape,pts,r,chamfer,cham,firstN,S0){
     const th1=bis(2*Math.PI*k1/N-st,2*Math.PI*k1/N,false); // matière → vide
     const th2=bis(2*Math.PI*(k2+1)/N,2*Math.PI*k2/N,false); // vide → matière
     let d1=dir(th1),d2=dir(th2);
-    const snap=d=>{ // direction exacte dans la face plane (voir occSingleEdgeTool)
-      let best=null,bd=0.999;
+    // V0.99.25 : un côté peut aussi être un CYLINDRE d'axe parallèle à l'arête (sol d'un tube, « Pièce
+    // pour fenêtre ») : avant, le congé était posé sur le plan tangent en M → centre trop haut, marche de
+    // r²/2R au pied, arête vive (trait noir). cyl = {O (point de l'axe dans le plan de M), R}.
+    const perp=w=>sub(w,mul(t,dot(w,t)));
+    const snap=d=>{ // direction exacte dans la face plane (voir occSingleEdgeTool) ou tangente au cylindre
+      let best=null,bd=0.999,cyl=null;
       occSubShapes(shape,'TopAbs_FACE').forEach(f=>{
         const sd=occSurfDesc(f);
         try{f.delete();}catch(e){}
-        if(sd.k!=='pl'||Math.abs(dot(sub(A,sd.p),sd.n))>1e-5||Math.abs(dot(sub(B,sd.p),sd.n))>1e-5)return;
-        let c=nrm(cross(sd.n,t));if(dot(c,d)<0)c=mul(c,-1);
-        if(dot(c,d)>bd){bd=dot(c,d);best=c;}
+        let c=null,cy=null;
+        if(sd.k==='pl'){
+          if(Math.abs(dot(sub(A,sd.p),sd.n))>1e-5||Math.abs(dot(sub(B,sd.p),sd.n))>1e-5)return;
+          c=nrm(cross(sd.n,t));
+        }else if(sd.k==='cy'&&Math.abs(Math.abs(dot(sd.a,t))-1)<1e-7){
+          const rM=perp(sub(M,sd.p));
+          if(Math.abs(len(rM)-sd.r)>1e-5||Math.abs(len(perp(sub(A,sd.p)))-sd.r)>1e-5)return;
+          c=nrm(cross(t,rM));cy={O:sub(M,rM),R:sd.r,er:nrm(rM)};
+        }else return;
+        if(dot(c,d)<0)c=mul(c,-1);
+        if(dot(c,d)>bd){bd=dot(c,d);best=c;cyl=cy;}
       });
-      return best||d;
+      return {d:best||d,cyl};
     };
-    d1=snap(d1);d2=snap(d2);
+    const sn1=snap(d1),sn2=snap(d2);d1=sn1.d;d2=sn2.d;
     const al=Math.acos(Math.max(-1,Math.min(1,dot(d1,d2))));
     if(!(al>0.05&&al<Math.PI-0.02))return null; // pas un coin rentrant franc
     const b=nrm(add(d1,d2)); // bissectrice, vers le vide
@@ -372,11 +384,42 @@ function occSingleEdgeConcavePiece(shape,pts,r,chamfer,cham,firstN,S0){
       if(!(D2>0))return null;
       s1=inFirst1?r:D2;s2=inFirst1?D2:r;
     }
+    let T1=add(M,mul(d1,s1)),T2=add(M,mul(d2,s2));
+    let h=chamfer?0:r/Math.sin(al/2),C=add(M,mul(b,h));
+    const cyls=[sn1.cyl,sn2.cyl];
+    if(cyls[0]||cyls[1]){
+      // côté cylindre : pied SUR le cylindre ; congé : centre à r du plan / à R±r de l'axe (Newton dans
+      // la section, départ = solution plane). Vide dehors (sol d'un tube) : R+r ; vide dedans : R−r.
+      const ds=[d1,d2],ns=[nrm(sub(d2,mul(d1,dot(d1,d2)))),nrm(sub(d1,mul(d2,dot(d1,d2))))];
+      const surCyl=(cy,di,si)=>{const ph=2*Math.asin(Math.min(1,si/(2*cy.R)));return add(cy.O,add(mul(cy.er,cy.R*Math.cos(ph)),mul(di,cy.R*Math.sin(ph))));};
+      if(chamfer){
+        if(cyls[0])T1=surCyl(cyls[0],d1,s1);
+        if(cyls[1])T2=surCyl(cyls[1],d2,s2);
+      }else{
+        const Rc=cyls.map((cy,i)=>cy?cy.R+(dot(ns[i],cy.er)>0?r:-r):0);
+        if(Rc.some((x,i)=>cyls[i]&&!(x>1e-6)))return null;
+        const fg=(i,Q)=>{const cy=cyls[i];
+          if(!cy)return [dot(sub(Q,M),ns[i])-r,ns[i]];
+          const w=perp(sub(Q,cy.O));return [len(w)-Rc[i],nrm(w)];};
+        let Q=C,ok=false;
+        for(let it=0;it<30;it++){
+          const [f1,g1]=fg(0,Q),[f2,g2]=fg(1,Q);
+          if(Math.abs(f1)<1e-10&&Math.abs(f2)<1e-10){ok=true;break;}
+          const a11=dot(g1,u),a12=dot(g1,v),a21=dot(g2,u),a22=dot(g2,v),det=a11*a22-a12*a21;
+          if(Math.abs(det)<1e-9)break;
+          const x=(-f1*a22+f2*a12)/det,y=(-a11*f2+a21*f1)/det;
+          Q=add(Q,add(mul(u,x),mul(v,y)));
+        }
+        if(!ok||len(sub(Q,C))>0.5*r)return null;
+        C=Q;h=len(sub(C,M));
+        const pied=(i)=>{const cy=cyls[i];if(!cy)return sub(C,mul(ns[i],r));const w=perp(sub(C,cy.O));return add(cy.O,mul(nrm(w),cy.R));};
+        T1=pied(0);T2=pied(1);
+      }
+      s1=len(sub(T1,M));s2=len(sub(T2,M));
+    }
     const s=Math.max(s1,s2);
-    const T1=add(M,mul(d1,s1)),T2=add(M,mul(d2,s2));
-    const h=chamfer?0:r/Math.sin(al/2),C=add(M,mul(b,h));
     const P=p=>{const q=new occt.gp_Pnt_3(p[0],p[1],p[2]);bin.push(q);return q;};
-    const Eo=sub(M,mul(b,0.5*s+0.2)); // sommet repoussé DANS la matière (pas de face coplanaire)
+    const Eo=sub(M,mul(b,(cyls[0]||cyls[1]?s:0.5*s)+0.2));// sommet repoussé DANS la matière (pas de face coplanaire)
     const ici=add(M,mul(b,chamfer?0.25*s:Math.min(0.25*s,0.2*(h-r)+1e-3))); // point du coin, dans le vide
     // L'outil déborde des deux bouts ; la pièce le coupe sur les faces voisines. Débord trop court : il
     // reste une face plane au bout (le congé n'atteint pas les faces voisines) → on rallonge.
