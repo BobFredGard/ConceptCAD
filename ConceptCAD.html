@@ -394,7 +394,7 @@ input[type=range]{accent-color:var(--primary);width:100%}
  * peut changer sans rien casser. CACHE_VER (parcours FAO) reste indépendant.
  */
 
-const APP_VER='V0.99.21';
+const APP_VER='V0.99.22';
 try{console.log('[ConceptCAD] version '+APP_VER);}catch(e){}
 try{var mfSv=document.getElementById('mfSplashVer');if(mfSv)mfSv.textContent=APP_VER;}catch(e){} // écran de démarrage
 
@@ -2483,7 +2483,7 @@ function findHostForFace(pt,n,tol,lim){
         if(Math.hypot(n2x,n2y)<0.99)continue; // normale pas dans le plan de l'esquisse porteuse
         let bestE=null,bd2=1e9;
         for(const en of (hs.entities||[])){
-          if(en.t!=='line'||en.construction)continue;
+          if(en.t!=='line'||skHorsProfil(hs,en))continue;
           const a=hs.points[en.p1],b=hs.points[en.p2];if(!a||!b)continue;
           const ex=b.x-a.x,ey=b.y-a.y,L2=ex*ex+ey*ey;if(L2<1e-12)continue;
           const ux=ex/Math.sqrt(L2),uy=ey/Math.sqrt(L2);
@@ -2871,11 +2871,37 @@ function skRingDistIx(pt,rg){
   }
   return m;
 }
+// Trait d'axe (⟲, skToggleAxis) : reste de la construction, SAUF quand ses deux bouts sont posés sur des
+// bouts du profil — il ferme alors le contour (profil adossé à son axe) tout en restant l'axe de la révolution.
+function skAxeFermeProfil(sk,e){
+  if(!sk||!e||!e.axis||e.t!=='line'||e.ref)return false;
+  const P=sk.points||{},A=P[e.p1],B=P[e.p2];if(!A||!B)return false;
+  const bouts=[];
+  (sk.entities||[]).forEach(o=>{
+    if(!o||o===e||o.construction||o.ref)return;
+    if(o.t==='line')bouts.push(P[o.p1],P[o.p2]);
+    else if(o.t==='arc'){const C=P[o.pc],an=(typeof arcAngles==='function')?arcAngles(sk,o):null;
+      if(C&&an&&o.r>0)bouts.push({x:C.x+o.r*Math.cos(an.a1),y:C.y+o.r*Math.sin(an.a1)},{x:C.x+o.r*Math.cos(an.a2),y:C.y+o.r*Math.sin(an.a2)});
+      else bouts.push(P[o.pa],P[o.pb]);}
+    else if(o.t==='spline'&&o.pts&&o.pts.length&&!o.closed)bouts.push(P[o.pts[0]],P[o.pts[o.pts.length-1]]);
+  });
+  // bout OUVERT du profil (nombre impair de bouts posés là) : un contour déjà fermé, ou un trait normal
+  // superposé à l'axe (exemple Axe), ne doit pas recevoir l'axe en double
+  const ouvert=Q=>bouts.filter(b=>b&&Math.hypot(b.x-Q.x,b.y-Q.y)<1e-3).length%2===1;
+  return ouvert(A)&&ouvert(B);
+}
+// Hors profil : construction ou référence 3D, sauf le trait d'axe qui ferme le contour.
+function skHorsProfil(sk,e){
+  if(!e)return true;
+  if(e.ref)return true;
+  if(!e.construction)return false;
+  return !skAxeFermeProfil(sk,e);
+}
 function skLoopTrace(sk){ // traçage de faces déterministe (demi-arêtes, mur à gauche) + trous
   const P=sk.points||{};
   const TAU=Math.PI*2;
   const normAng=a=>{a%=TAU;if(a<0)a+=TAU;return a;};
-  const lines=(sk.entities||[]).filter(e=>e.t==='line'&&!e.construction&&!e.ref&&P[e.p1]&&P[e.p2]&&Math.hypot(P[e.p2].x-P[e.p1].x,P[e.p2].y-P[e.p1].y)>1e-9);
+  const lines=(sk.entities||[]).filter(e=>e.t==='line'&&!skHorsProfil(sk,e)&&P[e.p1]&&P[e.p2]&&Math.hypot(P[e.p2].x-P[e.p1].x,P[e.p2].y-P[e.p1].y)>1e-9);
   const arcs=(sk.entities||[]).filter(e=>e.t==='arc'&&!e.construction&&P[e.pc]&&P[e.pa]&&P[e.pb]&&e.r>1e-9);
   const circles=(sk.entities||[]).filter(e=>e.t==='circle'&&!e.construction&&P[e.pc]&&e.r>1e-9);
   const pts=Object.assign({},P);
@@ -9285,7 +9311,7 @@ function skSig(sk){
   // Seul le PROFIL compte : construction et références 3D ne participent jamais au solide
   // (extrusion, ancrages) — les projeter ne doit donc pas invalider les points de contrôle.
   const C=sk.constraints||[],D=sk.dims||[],P=sk.points||{};
-  const E=(sk.entities||[]).filter(e=>!e.construction&&!e.ref);
+  const E=(sk.entities||[]).filter(e=>!skHorsProfil(sk,e));
   const used=new Set();
   for(const e of E){used.add(e.p1);used.add(e.p2);used.add(e.pc);used.add(e.pa);used.add(e.pb);used.add(e.p);}
   mix(E.length);mix(C.length);mix(D.length);
@@ -28602,7 +28628,7 @@ function skHealth(sk){
     if(e.t==='line'){const A=P[e.p1],B=P[e.p2];if(A&&B&&Math.hypot(B.x-A.x,B.y-A.y)<1e-6)degen.push(e.id);}
     if((e.t==='circle'||e.t==='arc')&&!(e.r>1e-6))degen.push(e.id);
   });
-  const segs=(sk.entities||[]).filter(e=>e.t==='line'&&!e.construction&&!e.ref&&P[e.p1]&&P[e.p2]).map(e=>({id:e.id,A:P[e.p1],B:P[e.p2]}));
+  const segs=(sk.entities||[]).filter(e=>e.t==='line'&&!skHorsProfil(sk,e)&&P[e.p1]&&P[e.p2]).map(e=>({id:e.id,A:P[e.p1],B:P[e.p2]}));
   const selfints=[];
   for(let i=0;i<segs.length;i++)for(let j=i+1;j<segs.length;j++){
     const s1=segs[i],s2=segs[j];
@@ -38057,7 +38083,7 @@ function sweepName(f){
 function sweepPath2D(sk,near){
   if(!sk)return{err:'esquisse du chemin introuvable'};
   const P=sk.points||{},TAU=Math.PI*2;
-  const ents=(sk.entities||[]).filter(e=>e&&!e.construction&&!e.ref&&(e.t==='line'||e.t==='arc'||e.t==='circle'||e.t==='spline'));
+  const ents=(sk.entities||[]).filter(e=>e&&!skHorsProfil(sk,e)&&(e.t==='line'||e.t==='arc'||e.t==='circle'||e.t==='spline'));
   if(!ents.length)return{err:'le chemin est vide (aucune ligne, arc ni spline hors construction dans « '+sk.name+' »)'};
   const full=e=>e.t==='circle'||(e.t==='arc'&&e.pa===e.pb);
   if(ents.some(full)){
@@ -79541,6 +79567,11 @@ function runSelfTests(){
   T('Trace : rect → 1 solide',()=>{const tr=skLoopTrace(rect());return tr.solids.length===1&&!tr.opens.length?null:`solides=${tr.solids.length} opens=${tr.opens.length}`;});
   T('Trou horaire → 1 solide + 1 trou',()=>{const tr=skLoopTrace(holeSq(true));return tr.solids.length===1&&holesOf(tr)===1?null:`solides=${tr.solids.length} trous=${holesOf(tr)}`;});
   T('Trou anti-horaire → idem',()=>{const tr=skLoopTrace(holeSq(false));return tr.solids.length===1&&holesOf(tr)===1?null:`solides=${tr.solids.length} trous=${holesOf(tr)}`;});
+  T('Trait d\'axe qui ferme le contour = côté du profil',()=>{const s=rect();s.entities[3].axis=true;s.entities[3].construction=true;let tr=skLoopTrace(s);
+    if(tr.solids.length!==1||tr.opens.length)return `fermé : solides=${tr.solids.length} opens=${tr.opens.length}`;
+    const s2=rect();s2.entities.push({id:'ax',t:'line',p1:'p1',p2:'p4',axis:true,construction:true});tr=skLoopTrace(s2); // axe posé sur un trait normal : pas en double
+    if(tr.solids.length!==1||tr.opens.length)return `axe superposé : solides=${tr.solids.length} opens=${tr.opens.length}`;
+    s.points.p5={x:0,y:30};s.entities[3].p1='p5';tr=skLoopTrace(s);return tr.solids.length===0&&tr.opens.length===2?null:`axe qui dépasse : solides=${tr.solids.length} opens=${tr.opens.length}`;});
   T('Cercle inscrit = trou',()=>{const s=rect();s.points.pc={x:20,y:10};s.entities.push({id:'c',t:'circle',pc:'pc',r:5});const tr=skLoopTrace(s);return tr.circleHoles.length===1?null:`trous=${tr.circleHoles.length}`;});
   T('Ouvert détecté (2 bouts)',()=>{const s=rect();s.entities=s.entities.slice(0,3);const tr=skLoopTrace(s);return tr.solids.length===0&&tr.opens.length===2?null:`solides=${tr.solids.length} opens=${tr.opens.length}`;});
   T('Tangence converge (< 0.05)',()=>{const s={points:{pc:{x:0,y:8},p1:{x:-20,y:0},p2:{x:20,y:0}},entities:[{id:'c',t:'circle',pc:'pc',r:10},{id:'l',t:'line',p1:'p1',p2:'p2'}],constraints:[{id:'k',type:'tangent',line:'l',ent:'c'}],dims:[],seq:50};

@@ -668,7 +668,7 @@ function skHealth(sk){
     if(e.t==='line'){const A=P[e.p1],B=P[e.p2];if(A&&B&&Math.hypot(B.x-A.x,B.y-A.y)<1e-6)degen.push(e.id);}
     if((e.t==='circle'||e.t==='arc')&&!(e.r>1e-6))degen.push(e.id);
   });
-  const segs=(sk.entities||[]).filter(e=>e.t==='line'&&!e.construction&&!e.ref&&P[e.p1]&&P[e.p2]).map(e=>({id:e.id,A:P[e.p1],B:P[e.p2]}));
+  const segs=(sk.entities||[]).filter(e=>e.t==='line'&&!skHorsProfil(sk,e)&&P[e.p1]&&P[e.p2]).map(e=>({id:e.id,A:P[e.p1],B:P[e.p2]}));
   const selfints=[];
   for(let i=0;i<segs.length;i++)for(let j=i+1;j<segs.length;j++){
     const s1=segs[i],s2=segs[j];
