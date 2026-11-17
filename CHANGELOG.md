@@ -8,7 +8,7 @@ sont sorties le 2026-09-30j.
 Code dans `src/` · livrable `fusion_mvp.html` (généré par `build.js`) · architecture et
 garde-fous en tête de `src/00-entete-et-outils.js`.
 
-**709 versions**, de `2026-09-28b` à `V0.99.22` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
+**710 versions**, de `2026-09-28b` à `V0.99.23` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
 comme dans le fichier d'origine.
 
 ---
@@ -7922,3 +7922,13 @@ Cavité Usinage, après l'ébauche D25, la reprise D10 et une finition boule D12
 **Correctif** : `skAxeFermeProfil` / `skHorsProfil` (`src/10-scene-3d.js`) — un trait d'axe dont les deux bouts tombent sur un bout OUVERT du profil (nombre impair de bouts posés là) entre dans le tracé des faces (`skLoopTrace`), le contrôle de l'esquisse, l'empreinte du rejeu, le balayage et la reconnaissance des faces latérales ; il reste l'axe proposé par la révolution. Un axe superposé à un trait normal (exemple Axe) ou qui dépasse du profil reste hors contour.
 
 **Test** : auto-test « Trait d'axe qui ferme le contour » (fermé, superposé, qui dépasse) ; profil de Fred révolutionné : 4176,34 mm³ = calcul exact. CACHE_VER et FORMES_VER inchangés.
+
+## V0.99.23 - Clic long : choisir parmi ce qui est sous le clic (esquisse et 3D)
+
+**Demande de Fred** : « Il faudrait pouvoir sélectionner l'entité que l'on souhaite quand plusieurs se chevauchent. Dans Fusion360, on clique un élément, d'un clic long et une fenêtre apparait avec tout ce qu'il existe sous le clic […] D'ailleurs, on pourrait faire la même chose pour le 3D, choisir la face derrière une face par exemple ».
+
+**Avant** : un clic prenait toujours l'élément le plus proche (le point avant la ligne, la ligne avant le cercle tangent, la face de devant) ; rien ne permettait d'atteindre l'autre sans déplacer la vue ou masquer des corps.
+
+**Correctif** : `src/90-15-choix-sous-clic.js` — un appui de 0,5 s sans bouger (souris ou stylet ; au doigt, l'appui long reste le menu contextuel) ouvre la liste de tout ce qui est sous le curseur quand il y a au moins deux éléments. Survol ou flèches ↑ ↓ = aperçu allumé, clic sur la ligne ou Entrée = sélection, Échap ou clic ailleurs = sélection d'avant rendue ; `Ctrl` pendant l'appui = ajouter. Esquisse (outil Sélection) : points, traits (ligne, cercle, arc, spline, points de construction, texte) et cote, avec L / Ø / R ; le glisser armé par l'appui est annulé. 3D : faces traversées de l'avant vers l'arrière (rayon en double face, « derrière ») et arêtes à moins de 7 px, cachées comprises, allumées à travers la matière. Le choix est rejoué comme un clic ordinaire (`wirePick._up`) avec l'élément imposé par `mfPickForce` (`pick`, `mesPick`, `edgePickScreen` dans `src/90-10-selection-mesure.js`) : il vaut aussi dans les fonctions qui attendent une face ou une arête. CACHE_VER et FORMES_VER inchangés.
+
+**Test** : `tests/browser/choix-sous-clic.spec.cjs` (ligne tangente à un cercle : liste, flèche + Entrée, clic sur la ligne, Échap, clic court sans liste ; bloc : face de derrière choisie, relâcher sans sélection). Choix d'une arête en 3D non couvert : le navigateur de test n'affiche pas les arêtes.

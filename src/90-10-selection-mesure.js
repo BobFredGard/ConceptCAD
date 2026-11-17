@@ -1,7 +1,7 @@
 /* ---------- picking / mesure façon viewer ---------- */
 function wirePick(){
   const el=renderer.domElement;let dx=0,dy=0;
-  el.addEventListener('pointerdown',e=>{dx=e.clientX;dy=e.clientY;});
+  el.addEventListener('pointerdown',e=>{dx=e.clientX;dy=e.clientY;try{choix3dArm(e);}catch(err){}}); // clic long = liste de ce qui est sous le clic (90-15)
   // Ctrl / Cmd enfoncé = MESURE, quoi qu'il soit ouvert (fonction, FAO, assemblage) : le curseur
   // l'annonce dès l'appui, le clic mesure sans rien activer ni sélectionner.
   try{const st=document.createElement('style');st.textContent='canvas.mfCtrlMesure{cursor:crosshair!important}';document.head.appendChild(st);}catch(e){}
@@ -10,7 +10,8 @@ function wirePick(){
   window.addEventListener('keyup',e=>{if(e.key==='Control'||e.key==='Meta'){ctrlVue(false);if(hoverKey)clearHover();}},true);
   window.addEventListener('blur',()=>ctrlVue(false));
   el.addEventListener('pointermove',e=>ctrlVue(e.ctrlKey||e.metaKey));
-  el.addEventListener('pointerup',e=>{
+  const onUp=e=>{
+    if(choix3dPris(e))return; // le clic long a ouvert la liste : ce relâcher ne sélectionne rien
     if(ctrlMesureEv(e)&&!skEdit&&e.button===0&&Math.hypot(e.clientX-dx,e.clientY-dy)<=6){
       faceSelect(e,true);
       return;
@@ -43,12 +44,14 @@ function wirePick(){
     if(coqueMode){if(e.button===0&&!e.ctrlKey)coqueToggle(e);return;}
     if(splitMode){if(e.button===0&&!e.ctrlKey)splitClick(e);return;} // scinder (85-scinder)
     if(e.altKey)return;
-    if(e.button===0&&!(e.ctrlKey||e.metaKey)&&typeof faoPosePickAt==='function'&&faoPosePickAt(e))return; // point cardinal → origine du posage
+    if(e.button===0&&!(e.ctrlKey||e.metaKey)&&!mfPickForce&&typeof faoPosePickAt==='function'&&faoPosePickAt(e))return; // point cardinal → origine du posage
     if(e.shiftKey&&e.button===0){shiftMeasure(e);return;}
     if(e.button===0&&!(e.ctrlKey||e.metaKey))faceSelect(e,false);
     else if((e.ctrlKey||e.metaKey)&&e.button===0)faceSelect(e,true);
     else if(e.ctrlKey&&e.button===2)recenter(e);
-  });
+  };
+  el.addEventListener('pointerup',onUp);
+  wirePick._up=onUp; // rejoué par la liste du clic long avec l'élément choisi (mfPickForce)
    el.addEventListener('dblclick',e=>{if(asmMode==='asm')asmDblClick(e);}); // double-clic = éditer la pièce
    el.addEventListener('pointermove',hoverMove);
    el.addEventListener('pointerleave',()=>clearHover());
@@ -249,7 +252,11 @@ function ctrlMesureEv(e){return !!(e&&(e.ctrlKey||e.metaKey)&&!e.shiftKey&&!e.al
 // Un seul outil de mesure en Modéliser et en Assembler : il voit les corps du modèle (Modéliser) et
 // les composants dessinés dans la vue (48-assemblage-mesure) ; ses tracés vont dans la scène affichée.
 function mesScene(){return asmMode==='asm'?asmSceneGet():scene;}
+// Clic long (90-15) : l'élément choisi dans la liste remplace ce que la souris trouverait —
+// {face:hit} ou {P:polyligne d'arête}. Posé le temps de rejouer le clic, jamais gardé.
+let mfPickForce=null;
 function mesPick(e){
+  if(mfPickForce&&mfPickForce.face)return mfPickForce.face;
   if(typeof viewFaoActive==='function'&&viewFaoActive())return pick(e); // FAO : le modèle seul
   const r=renderer.domElement.getBoundingClientRect();
   rayc.setFromCamera(new THREE.Vector2(((e.clientX-r.left)/r.width)*2-1,-((e.clientY-r.top)/r.height)*2+1),camera);
@@ -269,6 +276,7 @@ function mesEnCours(){return !!(mesEtrangere||selFaces.length||selEdges.length||
 function pick(e){
   const r=renderer.domElement.getBoundingClientRect();
   const ndc=new THREE.Vector2(((e.clientX-r.left)/r.width)*2-1,-((e.clientY-r.top)/r.height)*2+1);
+  if(mfPickForce&&mfPickForce.face)return mfPickForce.face;
   rayc.setFromCamera(ndc,camera);
   const hits=rayc.intersectObjects(bodies.filter(b=>b.visible).map(b=>b.mesh),false);
   return hits[0]||null;
@@ -442,9 +450,9 @@ function faceSelect(e,second){
     try{renderProps();}catch(err){}
   }
   // 2026-10-16-017 : plans du repère (dessinés devant la pièce) prioritaires
-  if(!second&&!noSel){const tp=triadPickPlane(e);if(tp){clearMeasure();sel={kind:'plane',id:tp};renderTree();renderProps();refreshParts();faceEl.textContent=`Plan ${tp} — ${PLANES[tp].label}
+  if(!second&&!noSel&&!mfPickForce){const tp=triadPickPlane(e);if(tp){clearMeasure();sel={kind:'plane',id:tp};renderTree();renderProps();refreshParts();faceEl.textContent=`Plan ${tp} — ${PLANES[tp].label}
 Bouton « Esquisse » (ou double-clic dans l'arbre) pour dessiner dessus.`;return;}}
-  if(!second&&!noSel&&cgSelectAt(e))return; // construction (79) : plans, axes, points, repères
+  if(!second&&!noSel&&!mfPickForce&&cgSelectAt(e))return; // construction (79) : plans, axes, points, repères
   const h=meas?mesPick(e):pick(e);
   try{
     const segs=meas?mesEdgeSegs():edgeHoverSegs(),eh=edgePickScreen(e,segs,h,6);
@@ -891,6 +899,7 @@ function edgeScrPts(segs,r){
 }
 function edgePickScreen(e,segs,faceHit,tolPx){
   if(!segs||!segs.length)return null;
+  if(mfPickForce)return choix3dAreteForcee(segs); // clic long : l'arête choisie (ou aucune si c'est une face)
   const r=renderer.domElement.getBoundingClientRect(),mx=e.clientX-r.left,my=e.clientY-r.top;
   const scr=edgeScrPts(segs,r),S=scr.S,off=scr.off;
   let slack=0.3;
@@ -944,6 +953,7 @@ function hoverMove(e){
   if(asmMode==='asm'&&!meas){if(hoverKey)clearHover();return;} // vue d'assemblage : seule la mesure survole
   if(skEdit||(!meas&&(filMode||filModeX||faoChainMode)))return;
   if(e.buttons!==0)return;
+  if(choixMenuOuvert())return; // liste du clic long ouverte : l'élément survolé dans la liste reste allumé
   const now=performance.now();if(now-lastHoverT<65)return;lastHoverT=now;
   try{
     if(!meas&&(triadHoverAt(e)||(typeof faoPoseHoverAt==='function'&&faoPoseHoverAt(e)))){if(hoverKey)clearHover();renderer.domElement.style.cursor='pointer';hoverMove._cur=1;return;}
