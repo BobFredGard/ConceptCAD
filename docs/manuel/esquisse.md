@@ -23,6 +23,7 @@
   - **projection associative** d'arêtes, **intersection** du plan avec des faces ou un corps ;
   - congé, chanfrein, ajustement ;
   - **décalage 2D comme Fusion** : un clic prend le trait ou toute sa chaîne tangente, aperçu à 3 mm du côté proposé, inverser, des deux côtés ; la copie n'est jamais en construction.
+- **Clic long = choisir sous le clic** (comme Fusion) : quand plusieurs éléments se chevauchent, un appui d'une demi-seconde sans bouger ouvre la liste des points, traits et cotes sous le curseur ; le survol (ou ↑ ↓) allume l'élément, un clic sur sa ligne ou `Entrée` le sélectionne, `Échap` ferme ; `Ctrl` pendant l'appui l'ajoute à la sélection.
 - **Repères visuels** : le bouton de l'outil ou de la fonction en cours reste allumé tant qu'elle est active, dans l'esquisse comme dans le ruban. Une contrainte ou une cote cliquée dans le panneau surligne en jaune ce qu'elle vise.
 - **Projection d'arêtes** : aussi celles des autres composants. Une projetée reste fixe et ne bouge qu'avec son arête source ; un point rendu coïncident avec elle vient s'y coller ; ajustée, elle reste entière en construction et le tronçon gardé devient une droite posée dessus.
 - **Arêtes du solide sans projeter** : elles s'allument au survol (bouts en carrés) et servent directement au tracé et à la cote, projetées d'office et associatives.

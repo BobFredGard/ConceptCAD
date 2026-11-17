@@ -12,6 +12,7 @@ Quatre espaces dans le bandeau supérieur : **CAO**, **FAO**, **PLAN** et **REND
 - **Écran de démarrage** animé de 6 s, logo bleu et orange ; un clic ou `Échap` le passe.
 - **Navigateur Modèle / Usinage / Plan** à gauche, avec des **onglets de posages** ; **propriétés** à droite ; **timeline** en bas de la vue 3D.
 - **Sélection synchronisée** : cliquer une face l'allume et **surligne** la fonction qui l'a créée dans l'arbre et la timeline, sans l'ouvrir (ni panneau, ni flèche) ; un clic sur cette ligne l'ouvre avec sa flèche. `Ctrl+clic` ne fait que mesurer, sans rien sélectionner.
+- **Clic long = choisir sous le clic** : un appui d'une demi-seconde sans bouger liste toutes les faces traversées (de l'avant vers l'arrière, même cachées) et les arêtes proches ; l'élément survolé s'allume à travers la matière, un clic sur sa ligne ou `Entrée` le prend, y compris dans une fonction qui attend une face ou une arête (congé, perçage, coque…).
 - **Fenêtres de fonctions** à boutons-icônes, aperçu immédiat, poignées dans la vue, **Annuler / OK**.
 - **Barre de progression** à l'ouverture d'un document, au chargement du noyau et sur **⟳ Régénérer** : bandeau semi-transparent en bas de la vue 3D, au-dessus de la timeline.
   - Elle donne l'avancement (n / total), le nom de la fonction et celui de l'esquisse en cours.
