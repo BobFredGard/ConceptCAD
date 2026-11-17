@@ -8,7 +8,7 @@ sont sorties le 2026-09-30j.
 Code dans `src/` · livrable `fusion_mvp.html` (généré par `build.js`) · architecture et
 garde-fous en tête de `src/00-entete-et-outils.js`.
 
-**710 versions**, de `2026-09-28b` à `V0.99.23` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
+**711 versions**, de `2026-09-28b` à `V0.99.24` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
 comme dans le fichier d'origine.
 
 ---
@@ -7932,3 +7932,17 @@ Cavité Usinage, après l'ébauche D25, la reprise D10 et une finition boule D12
 **Correctif** : `src/90-15-choix-sous-clic.js` — un appui de 0,5 s sans bouger (souris ou stylet ; au doigt, l'appui long reste le menu contextuel) ouvre la liste de tout ce qui est sous le curseur quand il y a au moins deux éléments. Survol ou flèches ↑ ↓ = aperçu allumé, clic sur la ligne ou Entrée = sélection, Échap ou clic ailleurs = sélection d'avant rendue ; `Ctrl` pendant l'appui = ajouter. Esquisse (outil Sélection) : points, traits (ligne, cercle, arc, spline, points de construction, texte) et cote, avec L / Ø / R ; le glisser armé par l'appui est annulé. 3D : faces traversées de l'avant vers l'arrière (rayon en double face, « derrière ») et arêtes à moins de 7 px, cachées comprises, allumées à travers la matière. Le choix est rejoué comme un clic ordinaire (`wirePick._up`) avec l'élément imposé par `mfPickForce` (`pick`, `mesPick`, `edgePickScreen` dans `src/90-10-selection-mesure.js`) : il vaut aussi dans les fonctions qui attendent une face ou une arête. CACHE_VER et FORMES_VER inchangés.
 
 **Test** : `tests/browser/choix-sous-clic.spec.cjs` (ligne tangente à un cercle : liste, flèche + Entrée, clic sur la ligne, Échap, clic court sans liste ; bloc : face de derrière choisie, relâcher sans sélection). Choix d'une arête en 3D non couvert : le navigateur de test n'affiche pas les arêtes.
+
+## V0.99.24 - Congé d'un coin qui débouche dans le vide ; chanfrein sur une pièce tournée retrouvé
+
+**Demande de Fred** (« Pièce pour fenêtre », dossier Arnaud) : « Pourquoi 1 mm ou 0,5 mm ne passent pas sur cette arête ? » — arête droite entre le flanc d'une patte et le tube sur lequel elle repose.
+
+**Cause** : la fenêtre traverse l'anneau sur toute sa longueur. Le coin patte / tube s'arrête donc aux deux faces de bout de l'anneau, mais le tube, lui, continue de part et d'autre. À chaque bout, quatre arêtes se rejoignent (dont la jonction avec le tube qui continue) : le noyau OCCT calcule bien le congé le long de l'arête mais ne sait pas le terminer à ces sommets, à tous les rayons (même 0,05 mm). Le congé « tout droit » de ConceptCAD (`occSingleEdgeConcavePiece`) ne s'en sortait pas non plus : il prolonge le coin jusqu'à ce que des faces voisines l'arrêtent, et ici rien ne l'arrête. Second défaut, dans le repli arête par arête d'`occFilletRun` : l'arête était retrouvée par la PREMIÈRE à moins de 3 mm, ici le bord du congé R1 voisin (2,99 mm) — le noyau tentait d'arrondir une autre arête.
+
+**Correctif** (`src/20-20-aretes-et-maillage.js`) : `occSingleEdgeConcavePiece` traite chaque bout à part ; un bout jamais arrêté, posé sur une face plane d'équerre à l'arête, est coupé au ras de cette face (comme Fusion), l'autre bout reste prolongé comme avant. Case « tangentes » cochée (par défaut) : une arête droite sans voisine tangente, refusée par le noyau, reçoit ce congé posé tout droit (la chaîne se réduit à elle : même forme que celle qu'aurait faite le noyau). Repli arête par arête : après un refus du noyau, la plus proche est essayée (la prendre d'emblée change Barquette 2 : `test_rep_nom_ordre`).
+
+**Pièce de Fred** (copie dans `D:\Copies-PLM\Arnaud`, hors dépôt) : R0,5 et R1, sur une arête ou les deux, solide valide (+0,336 / +1,382 mm³ par arête).
+
+**Suite, même pièce** (Fred : « je crois que ça vient de la révolution car les chanfreins ont du mal à passer ») : chanfrein 1 mm du cercle au bout du tube, posé juste après la révolution, affiché « 0/1 arêtes retrouvées — 1 perdue » au rejeu. L'arête est pourtant là. Cause : à la sélection, `xAnchorFor` lui donne une ancre POINT de l'esquisse de révolution, le point de l'axe à 6,7 mm (seul point à moins de 8 mm du milieu du cercle) ; `xAnchorMatch` cherche alors une arête passant par ce point à 5 mm près et n'en trouve aucune, et la passe 2 d'`occApplyXFillets` ignore les ancres point. Correctif (`src/20-60-conges.js`) : ancre point sans résultat → l'arête encore exactement là où elle a été cliquée (0,75 mm), de même longueur ; une fois retrouvée, elle reçoit son nom (`nom`) et ne dépend plus de l'ancre. Test : `test_conge_bout_libre` points 6 à 8 (chanfrein du bout d'un tube tourné : 20,001 mm³ ôtés = calcul de Pappus).
+
+**Test** : `test_conge_bout_libre` (tube et anneau traversé par une fenêtre : refus du noyau seul constaté ; R0,5 et R1, avec et sans tangence : solide valide, matière ajoutée plausible, rien au-delà des bouts ; fonction Congé rejouée sur les deux arêtes). CACHE_VER et FORMES_VER inchangés : seuls changent les congés qui échouaient, et une pièce gardée qui en contient un est refaite par le contrôle du rejeu de fond (`pcVerifie`, écart de volume).

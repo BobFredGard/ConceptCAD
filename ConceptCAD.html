@@ -394,7 +394,7 @@ input[type=range]{accent-color:var(--primary);width:100%}
  * peut changer sans rien casser. CACHE_VER (parcours FAO) reste indépendant.
  */
 
-const APP_VER='V0.99.23';
+const APP_VER='V0.99.24';
 try{console.log('[ConceptCAD] version '+APP_VER);}catch(e){}
 try{var mfSv=document.getElementById('mfSplashVer');if(mfSv)mfSv.textContent=APP_VER;}catch(e){} // écran de démarrage
 
@@ -5209,18 +5209,20 @@ function occSingleEdgeConcavePiece(shape,pts,r,chamfer,cham,firstN,S0){
     const ici=add(M,mul(b,chamfer?0.25*s:Math.min(0.25*s,0.2*(h-r)+1e-3))); // point du coin, dans le vide
     // L'outil déborde des deux bouts ; la pièce le coupe sur les faces voisines. Débord trop court : il
     // reste une face plane au bout (le congé n'atteint pas les faces voisines) → on rallonge.
-    const essai=o=>{
-      const loc=[],at0=p=>sub(p,mul(t,L/2+o));
+    // oA / oB : débord côté A (début) et côté B (fin). V0.99.24 : 0 = bout coupé au ras (voir plus bas).
+    // → morceau, ou {cA, cB} : côtés encore ouverts au bout de l'outil (null si autre échec)
+    const essai=(oA,oB)=>{
+      const loc=[],at0=p=>sub(p,mul(t,L/2+oA));
       try{
         const poly=new occt.BRepBuilderAPI_MakePolygon_3(P(at0(Eo)),P(at0(T1)),P(at0(T2)),true);loc.push(poly);
         if(!poly.IsDone())return null;
         const fm=new occt.BRepBuilderAPI_MakeFace_15(poly.Wire(),true);loc.push(fm);if(!fm.IsDone())return null;
-        const lg=L+2*o;
+        const lg=L+oA+oB;
         const vec=new occt.gp_Vec_4(t[0]*lg,t[1]*lg,t[2]*lg);loc.push(vec);
         const pr=new occt.BRepPrimAPI_MakePrism_1(fm.Face(),vec,false,true);loc.push(pr);pr.Build();if(!pr.IsDone())return null;
         let tool=pr.Shape();jeter.push(tool);
         if(!chamfer){
-          const C0=sub(C,mul(t,L/2+o+1));
+          const C0=sub(C,mul(t,L/2+oA+1));
           const dd=new occt.gp_Dir_4(t[0],t[1],t[2]);loc.push(dd);
           const ax=new occt.gp_Ax2_3(P(C0),dd);loc.push(ax);
           const cy=new occt.BRepPrimAPI_MakeCylinder_3(ax,r,lg+2);loc.push(cy);
@@ -5241,20 +5243,51 @@ function occSingleEdgeConcavePiece(shape,pts,r,chamfer,cham,firstN,S0){
         if(!garde)return null;
         // Bout pas encore arrêté par les faces voisines : le morceau garde une face plane d'équerre à
         // l'arête au bout de l'outil → rallonger. Contrôle sur le morceau seul (petit), pas sur la pièce.
-        const bout=L/2+o;let coupe=false;
+        // Un côté coupé au ras (débord 0) garde sa face plane d'équerre : c'est voulu.
+        let cA=false,cB=false;
         occSubShapes(garde,'TopAbs_FACE').forEach(f=>{
-          if(!coupe){const sd=occSurfDesc(f);if(sd.k==='pl'&&Math.abs(Math.abs(dot(sd.n,t))-1)<1e-6&&Math.abs(Math.abs(dot(sub(sd.p,M),t))-bout)<1e-4)coupe=true;}
+          const sd=occSurfDesc(f);
+          if(sd.k==='pl'&&Math.abs(Math.abs(dot(sd.n,t))-1)<1e-6){
+            const x=dot(sub(sd.p,M),t);
+            if(oA>0&&Math.abs(x+L/2+oA)<1e-4)cA=true;
+            if(oB>0&&Math.abs(x-L/2-oB)<1e-4)cB=true;
+          }
           try{f.delete();}catch(e){}
         });
+        if(cA||cB)return{cA,cB};
         const vg=occShapeVolume(garde);
-        if(coupe||!(vg>1e-6))return null;
+        if(!(vg>1e-6))return null;
         jeter.splice(jeter.indexOf(garde),1); // rendu à l'appelant
         return garde;
       }catch(e){return null;}
       finally{occDispose(loc);}
     };
     const o0=Math.max(4*s,3);
-    for(const k of [1,2.5,6]){const res=essai(o0*k);if(res)return res;}
+    let ouvert=null;
+    for(const k of [1,2.5,6]){
+      const res=essai(o0*k,o0*k);
+      if(res&&!res.cA&&!res.cB)return res;
+      ouvert=res||null;
+    }
+    // V0.99.24 : BOUT LIBRE. L'arête s'arrête sur une face plane d'équerre (bout d'une patte), mais
+    // au-delà le coin débouche dans le vide ou sur une face qui continue, tangente : rien n'arrête
+    // jamais le congé. Fusion le coupe au ras de cette face de bout ; le noyau le refuse (sommet à
+    // 4 arêtes, « Pièce pour fenêtre »). Ici : ce côté coupé au ras, l'autre traité comme avant.
+    if(!ouvert)return null;
+    const ras=E=>{
+      let ok=false;
+      occSubShapes(shape,'TopAbs_FACE').forEach(f=>{
+        if(!ok){const sd=occSurfDesc(f);ok=sd.k==='pl'&&Math.abs(Math.abs(dot(sd.n,t))-1)<1e-6&&Math.abs(dot(sub(E,sd.p),sd.n))<1e-5;}
+        try{f.delete();}catch(e){}
+      });
+      return ok;
+    };
+    const libreA=ouvert.cA&&ras(A),libreB=ouvert.cB&&ras(B);
+    if((ouvert.cA&&!libreA)||(ouvert.cB&&!libreB))return null;
+    for(const k of [1,2.5,6]){
+      const res=essai(libreA?0:o0*k,libreB?0:o0*k);
+      if(res&&!res.cA&&!res.cB)return res;
+    }
     return null; // jamais arrêté net par les faces voisines : le noyau décide
   }catch(e){return null;}
   finally{occDispose(bin);jeter.forEach(x=>{try{x.delete();}catch(e){}});}
@@ -5476,6 +5509,27 @@ function occFilletRun(base,jobs,warns,chamfer,opts){
     const ed=(edges||[]).find(e=>Math.hypot(e.mid[0]-j.mid[0],e.mid[1]-j.mid[1],e.mid[2]-j.mid[2])<3.0);
     if(!ed){warns.push('arête introuvable ('+kindLabel+' isolé)');if(bilan)(bilan.rates=bilan.rates||[]).push(j.mid.slice());continue;}
     let one=mk(cur,[{src:ed.src,r:j.r,fn:j.fn||null}]);
+    // V0.99.24 : refusée par le noyau. 1) L'arête retenue est la PREMIÈRE à moins de 3 mm du milieu : ce
+    // peut être une voisine (bord d'un congé R1 à 2,99 mm, « Pièce pour fenêtre ») → la plus proche est
+    // essayée. Seulement après un refus : la prendre d'emblée change Barquette 2 (test_rep_nom_ordre).
+    // 2) Arête droite d'un coin rentrant, sans voisine tangente (bout libre : la patte s'arrête, la face
+    // d'en face continue) : la chaîne tangente se réduit à elle, le congé posé tout droit est donc celui
+    // que le noyau aurait fait.
+    let edV=ed;
+    if(!one){
+      let dV=Math.hypot(ed.mid[0]-j.mid[0],ed.mid[1]-j.mid[1],ed.mid[2]-j.mid[2]);
+      (edges||[]).forEach(e=>{const d=Math.hypot(e.mid[0]-j.mid[0],e.mid[1]-j.mid[1],e.mid[2]-j.mid[2]);if(d<dV-1e-6){dV=d;edV=e;}});
+      if(edV!==ed)one=mk(cur,[{src:edV.src,r:j.r,fn:j.fn||null}]);
+    }
+    if(!one&&!cham){
+      try{
+        const i=(edges||[]).indexOf(edV);
+        if(i>=0&&xTangentChainOf(edges,i).length===1){
+          const m=occSingleEdgeConcavePiece(cur,edV.pts,j.r,chamfer,null,null,null);
+          if(m){try{one=occSouderMorceaux(cur,[m]);}finally{try{m.delete();}catch(e){}}}
+        }
+      }catch(e){one=null;}
+    }
     // V0.89.2 : le noyau prolonge de lui-même un arrondi le long des arêtes tangentes. Ici, les congés déjà
     // posés par CETTE fonction ont créé des tangences qui n'existaient pas quand les arêtes ont été choisies :
     // l'arrondi d'un bout d'arête partait faire le tour de la pièce. Refusé s'il emporte en entier une arête
@@ -8707,6 +8761,19 @@ function occApplyXFillets(base,xfils){
           return;
         }
         anchored.forEach(bi=>take(bi,se.r,se));return;
+      }
+      // V0.99.24 : ancre POINT qui ne mène à aucune arête — posée sur l'axe d'une révolution (« Pièce pour
+      // fenêtre » : cercle du bout du tube, ancré au point de l'axe à 6,7 mm) : un cercle autour de l'axe n'a
+      // pas de « verticale » par ce point, et la passe 2 ignore les ancres point. L'arête encore exactement
+      // là où elle a été cliquée, de même longueur, est la bonne.
+      if(se.anchor&&se.anchor.t==='p'){
+        const ref=se.pos0&&se.pos0.length===3?se.pos0:se.pos;
+        let bi=-1,bd=0.75;
+        edges.forEach((e,i)=>{
+          const d=Math.hypot(e.mid[0]-ref[0],e.mid[1]-ref[1],e.mid[2]-ref[2]);
+          if(d<bd&&(!(se.len>0)||Math.abs(e.len-se.len)<=Math.max(0.5,0.05*se.len))){bd=d;bi=i;}
+        });
+        if(bi>=0){take(bi,se.r,se);return;}
       }
       // Passe 2 : MEILLEUR candidat unique (une sélection = UNE arête ; hit multiples →
       // positions réécrites en doublons + arêtes étrangères dans le lot d'arrondi).
