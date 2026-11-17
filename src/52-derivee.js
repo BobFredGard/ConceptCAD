@@ -353,16 +353,22 @@ function derPickDlg(name,params,bodies){
     const t=document.createElement('div');t.innerHTML='<b style="font-size:15px">🔗 Dériver</b>';
     const s=document.createElement('div');s.style.cssText='opacity:.75;margin:4px 0 10px';s.textContent='Depuis '+name+'. Le lien va dans un seul sens : ce que vous ferez ici ne change pas la source.';
     box.appendChild(t);box.appendChild(s);
-    const liste=(titre,items,label,val)=>{
+    const liste=(titre,items,label,val,tous)=>{
       const out=[];if(!items.length)return out;
-      const h=document.createElement('div');h.style.cssText='font-weight:600;margin:8px 0 4px';h.textContent=titre;box.appendChild(h);
+      const h=document.createElement('div');h.style.cssText='font-weight:600;margin:8px 0 4px;display:flex;gap:6px;align-items:center';
+      const ht=document.createElement('span');ht.style.flex='1';ht.textContent=titre;h.appendChild(ht);
+      // 17/11 : « Tout cocher » / « Tout décocher » — la liste part décochée, on choisit ce qu'on partage
+      if(tous&&items.length>1)[['Tout cocher',true],['Tout décocher',false]].forEach(([t,v])=>{
+        const b=document.createElement('button');b.textContent=t;b.style.cssText='font-weight:400;font-size:12px;padding:1px 8px';
+        b.onclick=()=>out.forEach(x=>{x.c.checked=v;});h.appendChild(b);});
+      box.appendChild(h);
       items.forEach(o=>{const l=document.createElement('label');l.style.cssText='display:flex;gap:7px;align-items:center;padding:2px 0;cursor:pointer';
         const c=document.createElement('input');c.type='checkbox';c.checked=val(o);l.appendChild(c);
         const n=document.createElement('span');n.textContent=label(o);l.appendChild(n);box.appendChild(l);out.push({o,c});});
       return out;
     };
     const fmt=v=>String(+(+v).toFixed(4)).replace('.',',');
-    const P=liste('Paramètres',params,o=>o.name+' = '+fmt(o.value),()=>true);
+    const P=liste('Paramètres',params,o=>o.name+' = '+fmt(o.value),()=>false,true); // décochés : on ne partage que ce qu'on choisit
     const B=liste('Corps',bodies,o=>o.name,()=>false);
     if(!params.length&&!bodies.length){const n=document.createElement('div');n.textContent='Ce fichier n’a ni paramètre nommé ni corps à dériver.';box.appendChild(n);}
     const bar=document.createElement('div');bar.style.cssText='display:flex;gap:8px;justify-content:flex-end;margin-top:12px';
@@ -443,7 +449,7 @@ function parMiniRows(){
     if(p.mes){rows.push({name:p.name,val:p.mesErr?'':fmt(p.value),title:p.mesErr||('Mesure : '+parMesLibelle(p)+' — suit la pièce, non modifiable'),warn:!!p.mesErr,edit:'',set:null});return;} // V0.87.0 : mesure entre 2 faces
     rows.push({name:p.name,val:p.err?'':fmt(p.value),title:p.err||String(p.expr==null?'':p.expr),warn:!!p.err,
     edit:String(p.expr==null?'':p.expr),set:ex=>parSetParam(p,ex)});});
-  (doc.sketches||[]).forEach(sk=>(sk.dims||[]).forEach(d=>{if(!d||!d.name)return;
+  (doc.sketches||[]).forEach(sk=>!repCloneSkName(sk)&&(sk.dims||[]).forEach(d=>{if(!d||!d.name)return; // copies de répétition : cotes de la source, pas listées
     rows.push({name:d.name,val:fmt(parDimUser(d))+(d.type==='angle'?'°':''),title:(sk.name||sk.id)+' · cote'+(d.ref?' de référence (mesurée, non modifiable)':'')+(d.expr?' : '+d.expr:''),warn:!!d.exprErr,
       edit:d.expr?String(d.expr):brut(parDimUser(d)),set:d.ref?null:ex=>parSetDim(sk,d,ex)});}));
   parHolders().forEach(({h,f})=>{if(!h.pname)return;Object.keys(h.pname).forEach(k=>{const nm=h.pname[k];if(!nm)return;
