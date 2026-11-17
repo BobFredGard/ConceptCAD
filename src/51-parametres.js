@@ -469,7 +469,9 @@ function openParamsDlg(){
       rename:nm=>{if(!nm)return'Nom requis.';const ok=parNameCheck(nm,null,p);if(ok!==true)return ok;parRename(p.name,nm);p.name=nm;return true;},
       setExpr:ex=>parSetParam(p,ex),
       del:()=>{doc.params=doc.params.filter(q=>q!==p);}}));
-    (doc.sketches||[]).forEach(sk=>(sk.dims||[]).forEach(d=>{
+    // Esquisses copiées par une répétition (« … (rép i) ») : leurs cotes suivent la source,
+    // les lister répétait chaque cote nommée autant de fois qu'il y a d'instances.
+    (doc.sketches||[]).forEach(sk=>!repCloneSkName(sk)&&(sk.dims||[]).forEach(d=>{
       if(!d||(!d.name&&(d.expr==null||String(d.expr).trim()==='')))return;
       const unit=d.type==='angle'?'°':(d.dia||d.type==='diameter'?' (Ø)':'');
       row({name:d.name,expr:(d.expr!=null&&String(d.expr).trim()!=='')?String(d.expr):String(+parDimUser(d).toFixed(4)),val:parDimUser(d),unit,err:d.exprErr,origin:(sk.name||sk.id)+' · cote',

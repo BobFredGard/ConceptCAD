@@ -8,7 +8,7 @@ sont sorties le 2026-09-30j.
 Code dans `src/` · livrable `fusion_mvp.html` (généré par `build.js`) · architecture et
 garde-fous en tête de `src/00-entete-et-outils.js`.
 
-**707 versions**, de `2026-09-28b` à `V0.99.20` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
+**708 versions**, de `2026-09-28b` à `V0.99.21` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
 comme dans le fichier d'origine.
 
 ---
@@ -7904,3 +7904,11 @@ Cavité Usinage, après l'ébauche D25, la reprise D10 et une finition boule D12
 **Mesures** (pièce de Fred, hors dépôt, lissage 3) : remontées 42 → 26, rapides 1,55 m → 1,21 m, pointes 153 → 0, surcoupe max 0,004 mm ; cavité d'exemple : lentilles gardées, 11 remontées.
 
 **Test** : `test_fao_cretes` (cavité avec lissage 3 : facteur appliqué, anneaux, aucune surcoupe, coupes dans la zone, transitions au pas). CACHE_VER et FORMES_VER inchangés.
+
+## V0.99.21 - Paramètres : cotes des copies de répétition masquées ; Dériver : paramètres décochés au départ
+
+**Demande de Fred** (SIRAP-14-003) : « pourquoi je me retrouve avec X fois les mêmes paramètres ? » — puis « masquer les copies », et pour la Dérivée : « il ne faudrait partager que ceux qui ont vraiment un nom », « décocher avec une option pour les cocher toutes d'un coup ou les décocher ».
+
+**Avant** : chaque instance d'une répétition porte une copie cachée de l'esquisse (« Esquisse 2 (rép 1) », « (rép 2) »…) avec ses cotes ; la fenêtre ƒx Paramètres et la mini-liste listaient aussi ces copies, donc chaque cote à formule revenait autant de fois qu'il y a d'instances. La fenêtre « Dériver » partait avec tous les paramètres cochés.
+
+**Correctif** : `src/51-parametres.js` et `src/52-derivee.js` (`parMiniRows`) ne listent plus les cotes des esquisses copiées (`repCloneSkName`) — elles suivent la source, qui reste seule affichée. `derPickDlg` : paramètres décochés au départ, boutons « Tout cocher » / « Tout décocher » (dès 2 paramètres) ; seules les valeurs nommées sont proposées, comme avant. CACHE_VER et FORMES_VER inchangés.

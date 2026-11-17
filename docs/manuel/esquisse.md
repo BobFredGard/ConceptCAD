@@ -50,6 +50,7 @@
   - Dès la 1re lettre, une **liste propose les paramètres** (Entrée insère le nom sans valider le champ).
   - **Conditions** `if(L > 100 ; 5 ; 3)` et **arrondis au pas** `roundmoins(x ; 0,5)`, `roundplus(x ; 5)`.
   - **Clic sur ƒx** : mini-liste des paramètres dans le bandeau de droite, où chaque valeur se **modifie sur place** (nombre ou formule ; Entrée valide, Échap annule). **Clic droit** : liste complète.
+  - Les cotes des copies d'une répétition n'y figurent pas : elles suivent l'esquisse d'origine, seule listée (V0.99.21).
   - Une valeur tapée reste acquise, quelle que soit la façon de quitter le champ : Tab va au champ suivant, et le clic qui suit (Valider, une case, l'arbre) agit du premier coup.
   - **La formule reste dans le champ** (`pas_SM_chaud*2`, `nb+1`) et la valeur **suit les paramètres**, en CAO comme en FAO et dans le plan. Taper un nombre retire la formule. La fiche d'un repère validé montre chaque valeur avec sa formule.
 - **Paramètre mesuré entre 2 faces** : il **vaut la mesure et suit la pièce** (écart de plans parallèles, entraxe, axe ↔ face, sinon distance mini).
