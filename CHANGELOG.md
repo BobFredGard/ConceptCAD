@@ -8,7 +8,7 @@ sont sorties le 2026-09-30j.
 Code dans `src/` · livrable `fusion_mvp.html` (généré par `build.js`) · architecture et
 garde-fous en tête de `src/00-entete-et-outils.js`.
 
-**712 versions**, de `2026-09-28b` à `V0.99.25` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
+**713 versions**, de `2026-09-28b` à `V0.99.26` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
 comme dans le fichier d'origine.
 
 ---
@@ -7956,3 +7956,13 @@ Cavité Usinage, après l'ébauche D25, la reprise D10 et une finition boule D12
 **Correctif** (`src/20-20-aretes-et-maillage.js`) : un côté de l'arête peut aussi être un cylindre d'axe parallèle à l'arête (sol d'un tube, alésage). Le centre du congé est cherché à r du plan et à R ± r de l'axe (R + r quand le vide est dehors, R − r dedans), le pied posé SUR le cylindre ; chanfrein : pied sur le cylindre à la bonne distance. Pièce de Fred : centres des deux congés à 7,700 mm, arêtes du pied classées douces (plus de trait noir), solide valide.
 
 **Test** : `test_conge_bout_libre` point 3 et 5 : volume ajouté = section exacte d'un congé tangent au tube (0,288 mm³ en R0,5, 1,044 mm³ en R1) et centre du congé à 6,7 + r de l'axe. FORMES_VER changé (les pièces gardées avec l'ancien congé sont refaites) ; CACHE_VER inchangé.
+
+## V0.99.26 - Image de la pièce gardée quand on enregistre aussitôt
+
+**Remarque de Fred** : un fichier passé de 10,5 à 14 Mo avec son image est revenu à 10,5 Mo.
+
+**Cause** : l'image n'était jointe qu'à une pièce entièrement calculée au moment de l'enregistrement (`pcVersFichier`). Juste après l'ouverture d'une grosse pièce servie par son image, le contrôle de fond tourne une vingtaine de secondes et l'ouverture a retouché le document (clé changée) : l'image n'était ni reprise ni relue, et le fichier partait sans elle, sans avertissement. Même chose juste après une modification, calcul en cours. La question « Enregistrer ? » posée en ouvrant le fichier suivant tombait souvent dans ce moment.
+
+**Correctif** (`src/20-75-piece-gardee.js`) : document encore tel que servi par l'image de son fichier (rien d'annulable) → la même image repart ; sinon l'enregistrement attend la fin du calcul (60 s au plus) puis prend l'image, si le document n'a pas changé pendant l'attente. Une image trouvée fausse par le contrôle de fond n'est plus réenregistrée. Plaque d'une centaine de fonctions, enregistrée 10 s après son ouverture : image jointe, fichier rouvert aussitôt sur un poste vierge.
+
+**Test** : `piece-gardee.spec` (image dans le fichier) : réenregistrée aussitôt ouverte, l'image est dans le fichier. CACHE_VER et FORMES_VER inchangés.

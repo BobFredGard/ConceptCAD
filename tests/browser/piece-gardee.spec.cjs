@@ -177,6 +177,8 @@ test('image de la pièce dans le fichier : relue sans calcul ni copie locale',as
   // comme ci-dessus : ni rejeu complet ni projection (un plan posé sur une face peut relire la pièce jusqu'à sa place)
   expect(r.piles.filter(p=>/^(null|undefined) /.test(p)||/projEdgesFor|updateAllProjections|projPreUpdate/.test(p))).toEqual([]);
   expect(await page.evaluate(etat)).toEqual(e1);
+  // V0.99.26 : réenregistré aussitôt ouvert (contrôle de fond en cours) — l'image repart avec le fichier
+  {const re=JSON.parse(await page.evaluate(()=>bundleSerialise()));expect(re.pfin&&re.pfin.bin&&re.pfin.sig).toBeTruthy();}
   await page.waitForFunction(()=>!pcChauffe&&rebuildDepth===0&&(pcVerif.ok+pcVerif.ecart+pcVerif.sans)>0,null,{timeout:300000});
   expect(await page.evaluate(()=>({ok:pcVerif.ok,ecart:pcVerif.ecart}))).toEqual({ok:1,ecart:0});
   await page.waitForTimeout(4000);

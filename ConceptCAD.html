@@ -394,7 +394,7 @@ input[type=range]{accent-color:var(--primary);width:100%}
  * peut changer sans rien casser. CACHE_VER (parcours FAO) reste indépendant.
  */
 
-const APP_VER='V0.99.25';
+const APP_VER='V0.99.26';
 try{console.log('[ConceptCAD] version '+APP_VER);}catch(e){}
 try{var mfSv=document.getElementById('mfSplashVer');if(mfSv)mfSv.textContent=APP_VER;}catch(e){} // écran de démarrage
 
@@ -10837,6 +10837,7 @@ function pcFR(){
    document sortent du même enregistrement. Même contrôle par le rejeu de fond qu'une pièce gardée.
    Mesuré : cavité +0,36 Mo (ouverture 1,4 s → immédiate), plaque d'une centaine de fonctions +2,4 à 4,9 Mo
    (11 à 22 s → immédiate). Contenu venu d'ailleurs : vérifié, une image douteuse est ignorée (recalcul). */
+const PC_ATTENTE_ENR=60000; // enregistrement : attente maximale de la fin du calcul pour joindre l'image (V0.99.26)
 const PC_FICHIER_MAX=6; // images en mémoire (jusqu’à ~20 Mo chacune pour une grosse pièce)
 const pcFichier=new Map();  // clé → entrée (images des fichiers ouverts pendant cette session)
 const pcCompMem=new Map();  // clé → entrée : images des composants préchargées avant leurs rejeux (assemblage)
@@ -10924,9 +10925,26 @@ async function pcVersFichier(docTxt){
   // docTxt : texte du document tel qu'il part dans le fichier (empreinte sig)
   try{
     if(!occHas()||!pcPossible())return null;
-    const cle=pcCle();if(!cle)return null;
+    let cle=pcCle();if(!cle)return null;
+    // V0.99.26 : enregistré juste après l'ouverture (contrôle de fond en cours, clé changée par les
+    // retouches de l'ouverture) ou juste après une modification (calcul en cours) : l'image partait pas
+    // (plaque 10,5 → 15 → 10,5 Mo). Document encore tel que servi par l'image de son fichier : la même
+    // image repart ; sinon on attend la fin du calcul (PC_ATTENTE_ENR au plus) pour la prendre.
     let e=null;
-    if(!rebuildDepth&&!pcChauffe&&buildKeyUpToDate()){try{e=pcCapture(cle);}catch(x){e=null;}}
+    if(pcFichierDoc===doc&&!docUndoStack.length){for(const x of pcFichier.values())if(x&&x._doc===doc){e=x;break;}}
+    if(!e){
+      const occupe=()=>rebuildDepth||(typeof regenRun!=='undefined'&&regenRun)||pcChauffe||occThrPending
+        ||(typeof delWkPending==='function'&&delWkPending())||!buildKeyUpToDate();
+      if(occupe()){
+        try{log('Enregistrement : fin du calcul attendue pour joindre l’image de la pièce…');}catch(x){}
+        const t0=Date.now();
+        while(occupe()&&Date.now()-t0<PC_ATTENTE_ENR)await new Promise(r=>setTimeout(r,250));
+        // document changé pendant l'attente : son image n'irait pas avec le texte enregistré
+        try{if(pcSigDoc(JSON.stringify(JSON.parse(serialise())))!==pcSigDoc(docTxt))return null;}catch(x){return null;}
+        cle=pcCle();if(!cle)return null;
+      }
+      if(!occupe()){try{e=pcCapture(cle);}catch(x){e=null;}}
+    }
     if(!e)e=await pcLire(cle);
     if(!e||!Array.isArray(e.corps)||!e.corps.length)return null;
     if(e.cle!==cle)e=Object.assign({},e,{cle});
@@ -11066,7 +11084,8 @@ async function pcChauffer(){
     const provisoire=typeof delWkAttenteN!=='undefined'&&delWkAttenteN!==att0;
     const v=memes&&!provisoire?pcVerifie(FR):null;
     if(v===true)pcVerif.ok++;
-    else if(v===false){pcVerif.ecart++;try{occCleanup(FR,null);}catch(e){}FR=null;pcPerimee();}
+    else if(v===false){pcVerif.ecart++;pcFichierDoc=null; // image du fichier fausse : ne plus la réenregistrer
+try{occCleanup(FR,null);}catch(e){}FR=null;pcPerimee();}
     else pcVerif.sans++;
     return true;
   }finally{if(FR){try{occCleanup(FR,null);}catch(e){}}}
