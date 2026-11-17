@@ -403,6 +403,19 @@ function occApplyXFillets(base,xfils){
         }
         anchored.forEach(bi=>take(bi,se.r,se));return;
       }
+      // V0.99.24 : ancre POINT qui ne mène à aucune arête — posée sur l'axe d'une révolution (« Pièce pour
+      // fenêtre » : cercle du bout du tube, ancré au point de l'axe à 6,7 mm) : un cercle autour de l'axe n'a
+      // pas de « verticale » par ce point, et la passe 2 ignore les ancres point. L'arête encore exactement
+      // là où elle a été cliquée, de même longueur, est la bonne.
+      if(se.anchor&&se.anchor.t==='p'){
+        const ref=se.pos0&&se.pos0.length===3?se.pos0:se.pos;
+        let bi=-1,bd=0.75;
+        edges.forEach((e,i)=>{
+          const d=Math.hypot(e.mid[0]-ref[0],e.mid[1]-ref[1],e.mid[2]-ref[2]);
+          if(d<bd&&(!(se.len>0)||Math.abs(e.len-se.len)<=Math.max(0.5,0.05*se.len))){bd=d;bi=i;}
+        });
+        if(bi>=0){take(bi,se.r,se);return;}
+      }
       // Passe 2 : MEILLEUR candidat unique (une sélection = UNE arête ; hit multiples →
       // positions réécrites en doublons + arêtes étrangères dans le lot d'arrondi).
       // Verticale : MÊME coin en XY (tol 3 mm — ignore Z/longueur : suit épaisseur).
