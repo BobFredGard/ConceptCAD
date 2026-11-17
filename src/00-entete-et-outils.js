@@ -21,7 +21,7 @@
  * peut changer sans rien casser. CACHE_VER (parcours FAO) reste indépendant.
  */
 
-const APP_VER='V0.99.24';
+const APP_VER='V0.99.25';
 try{console.log('[ConceptCAD] version '+APP_VER);}catch(e){}
 try{var mfSv=document.getElementById('mfSplashVer');if(mfSv)mfSv.textContent=APP_VER;}catch(e){} // écran de démarrage
 
@@ -44,7 +44,7 @@ const CACHE_VER='2026-11-13-001';
    Filet si le tampon est oublié : le rejeu de fond qui suit une pièce relue (pcChauffer) compare
    son solide à celui qui est affiché (faces, arêtes, volume) ; au moindre écart, la pièce gardée
    est jetée et la pièce recalculée (pcVerifie, 20-75). */
-const FORMES_VER='2026-11-13-001';
+const FORMES_VER='2026-11-17-001';
 function cacheVerOK(v){
   // 2026-11-13-001 (V0.96.5) : ébauche 3D — un fond hors de la limite de
   // l'opération (hors de portée de l'outil) n'est plus un arrêt de descente :
