@@ -51,6 +51,17 @@
   n.title='Rainure de clavette automatique : cliquez un arbre ou un alésage, le Ø donne les cotes ISO 773, et la clavette se pose comme un corps séparé. Le tout suit le Ø si la pièce change.';
   a.parentNode.insertBefore(n,a.nextSibling);
 })();
+// Bouton « Joint torique » (gorge automatique, src/76-joint-torique.js), après la Clavette.
+(function(){
+  if(document.getElementById('btnOring'))return;
+  const a=document.getElementById('btnKeyway')||document.getElementById('btnHole');
+  if(!a||!a.parentNode)return;
+  const n=document.createElement('button');
+  n.id='btnOring';
+  n.textContent='⭕ Joint torique';
+  n.title='Gorge de joint torique automatique : cliquez un arbre, un alésage ou une face plane ronde ; le Ø donne la gorge ISO 3601-2 et le joint ISO 3601-1 (AS568), posé comme un corps séparé. Le tout suit le Ø.';
+  a.parentNode.insertBefore(n,a.nextSibling);
+})();
 // V0.83.0 : bouton « Perçage normal » (src/76-percage-normal.js), après le Perçage.
 (function(){
   if(document.getElementById('btnHoleNorm'))return;
@@ -77,6 +88,7 @@ if($('btnThread'))$('btnThread').onclick=()=>askThread();
 if($('btnHole'))$('btnHole').onclick=()=>holeStart();
 if($('btnHoleNorm'))$('btnHoleNorm').onclick=()=>hnStart();
 if($('btnKeyway'))$('btnKeyway').onclick=()=>kwStart();
+if($('btnOring'))$('btnOring').onclick=()=>orjStart();
 const btnRevolve=$('btnRevolve');
 if(btnRevolve)btnRevolve.onclick=()=>askRevolve(sel.kind==='sketch'?sel.id:null);
 if($('btnSweep'))$('btnSweep').onclick=()=>askSweep(sel.kind==='sketch'?sel.id:null);

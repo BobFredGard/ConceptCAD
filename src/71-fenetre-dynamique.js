@@ -24,6 +24,7 @@ function fdynEnsure(f){
 function fdynStart(f,snap,len){ fdyn={id:f.id,type:f.type,isNew:true,snap:snap,len:len}; }
 function fdynRename(f){
   try{
+    if(f.orj||f.orjRing)return; // joint torique : nom donné par orjSync
     if(f.type==='revolve')f.name=revolveName(f);
     else if(f.type==='sweep')f.name=sweepName(f);
     else if(f.type==='hole')f.name=holeName(f);
@@ -159,7 +160,7 @@ function fdynHandle(f){
     return {kind:'lin',C:C,n:n,val:+E.r||1,label:f.chamfer?'Distance':'Rayon',unit:'mm',step:0.1,min:0.05,max:500,
       set:(g,v)=>{(g.edges||[]).forEach(s=>{s.r=v;});}};
   }
-  if(f.type==='revolve'){
+  if(f.type==='revolve'&&!f.orj&&!f.orjRing){ // joint torique : pas de poignée d'angle
     const sk=doc.sketches.find(s=>s.id===f.sketchId);if(!sk)return null;
     const ax=revolveAxis2D(sk,f);if(ax.err)return null;
     const A=new THREE.Vector3(ax.P3.x,ax.P3.y,ax.P3.z),d=new THREE.Vector3(ax.D3.x,ax.D3.y,ax.D3.z).normalize();

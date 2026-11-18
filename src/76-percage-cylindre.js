@@ -127,6 +127,8 @@ function holeCylPlacement(el,ref){
   return {d:+Math.abs(v).toFixed(2),side:v<0?-1:1};
 }
 function holeCylPickAt(e){
+  if(holeFacePick.which==='cylOrj')return orjPickAt(e);
+  if(holeFacePick.which==='cylOrjEdge')return orjEdgePickAt(e); // joint torique (76-joint-torique)
   const W=holeFacePick,fW=W.fid&&doc.features.find(function(x){return x.id===W.fid;}),isKw=W.which==='cylKw'||(fW&&fW.kw);
   const msg=function(t){try{faceEl.textContent=(isKw?'Clavette : ':'Perçage : ')+t;}catch(err){}};
   if(W.which==='cylKw'){

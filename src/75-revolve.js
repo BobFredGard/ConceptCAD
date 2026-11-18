@@ -66,6 +66,7 @@ function occDirInPlane(B,w){
 }
 function revolveName(f){
   if(!f)return'Révolution';
+  if((f.orj||f.orjRing)&&f.name)return f.name; // joint torique (76-joint-torique)
   const base=(f.op==='cut'?'Révolution (découpe) ':'Révolution ')+(skName?skName(f.sketchId):'');
   const a=revolveAngle(f);
   return base+' '+(a>=359.9?'360°':Math.round(a)+'°');

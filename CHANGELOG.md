@@ -8,7 +8,7 @@ sont sorties le 2026-09-30j.
 Code dans `src/` · livrable `fusion_mvp.html` (généré par `build.js`) · architecture et
 garde-fous en tête de `src/00-entete-et-outils.js`.
 
-**714 versions**, de `2026-09-28b` à `V0.99.27` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
+**715 versions**, de `2026-09-28b` à `V0.99.28` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
 comme dans le fichier d'origine.
 
 ---
@@ -7980,3 +7980,17 @@ Cavité Usinage, après l'ébauche D25, la reprise D10 et une finition boule D12
 **Correctif 2** (`src/98-mep-80-souris.js`) : écart replié entre 0 et 90°, comme dans l'esquisse 2D ; l'alignée cède 12° à X et Y — elle reste en face d'un trait vraiment penché, et au clic droit « Alignée (A) ».
 
 **Test** : `test_mise_en_plan` « cote presque horizontale : posée horizontale, alignée seulement en face d'un trait penché ». CACHE_VER et FORMES_VER inchangés.
+
+## V0.99.28 - Gorge de joint torique automatique (arbre, alésage, face plane) et joints toriques normalisés
+
+**Demande** : « CAO : Normalisés -> j'aimerais pouvoir ajouter, un peu comme pour les clavettes, des joints toriques normalisés pour arbre et faces circulaires planes » ; puis un Ø pris sur une arête d'une face plane, et le joint centré dans la gorge.
+
+**Ajout 1** (`src/76-joint-torique.js`, nouveau ; branché dans 40-10, 40-30, 40-50, 71, 75, 76-percage-cylindre, 78, 90-10, 95, 96, 97) : Créer → Joint. Un clic : face cylindrique extérieure = arbre (gorge dans l'arbre, joint étiré sur le fond), intérieure = alésage (joint serré par son Ø ext.), face plane = gorge axiale. Repère masqué (`el.orj`, zx sur le cylindre ou face recentrée sur le cercle), esquisse dans son plan XZ réécrite par `orjSync` à chaque rejeu, révolution en découpe (`f.orj`) et joint en révolution d'un cercle, nouveau corps en caoutchouc (`f.orjRing`) : tout suit le Ø. Section d2 automatique par le Ø, gorge ISO 3601-2 (largeur, profondeur ; statique ou dynamique ; cotes Trelleborg recoupées ERIKS), joint de la série ISO 3601-1 classe A = AS568 (346 Ø intérieurs, 5 sections). Étirement, serrage, gorge hors cylindre ou hors face, paroi trop mince : signalés. Supprimer la gorge emporte le joint, son corps, son esquisse et son repère.
+
+**Ajout 2** (face plane) : face ronde (disque, couronne, bride) ou plaque de toute forme percée — le grand cercle y est un trou, la gorge l'entoure avec une portée de max(1,5 ; d2). Joint centré dans la gorge par défaut, ou contre la paroi du côté de la pression. Ø du joint saisi ou pris en cliquant une arête circulaire (⌖ : la gorge se centre sur ce cercle et le suit) ; contre une paroi, la paroi se pose à ce Ø et le joint s'y appuie de 1 à 3 %.
+
+**Ajout 3** (`src/48-composants-normalises.js`) : famille « Joints toriques » de la fenêtre Normalisés (section, Ø intérieur), joint seul, origine au centre, plan médian XY.
+
+**Non modélisé** : rayons de fond de gorge r1 et arêtes cassées (angles vifs), tolérances, bagues anti-extrusion.
+
+**Test** : `tests/browser/joint-torique.spec.cjs` (vrais clics : arbre Ø30 → 3,6 × 2 et 25,07 × 2,62 ; alésage Ø30 → 29,82 × 2,62 ; bride ronde ; plaque carrée percée ; Ø saisi ; arête cliquée ; réglage de section ; suppression ; Échap ; Normalisés). CACHE_VER et FORMES_VER inchangés.

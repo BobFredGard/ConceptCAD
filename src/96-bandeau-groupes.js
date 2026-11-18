@@ -81,6 +81,7 @@
     ['btnHole','⊚','Perçage (H)'],
     ['btnHoleNorm','⟂','Perçage normal à une face (vise le fond des trous borgnes)'],
     ['btnKeyway','\u{1F511}','Rainure de clavette automatique (arbre ou alésage)'],
+    ['btnOring','\u2B55','Gorge de joint torique automatique (arbre, alésage ou face plane)'],
     '#',
     ['btnBody','◧','Nouveau corps vide'],
     ['btnBodyCopy','⧉','Copier un corps à l’instant du marqueur (étape « Copie » de la timeline)']
