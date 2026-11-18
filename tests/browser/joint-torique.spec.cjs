@@ -50,6 +50,19 @@ test('joint torique : arbre, alésage et face plane reconnus au clic',async({pag
   await page.waitForFunction(()=>doc.cgeo.find(c=>c.orj)._orjOut.d2===3.53&&rebuildDepth===0);
   S=await etat();
   expect([S.O.b,S.O.t,S.O.d1]).toEqual([4.8,2.7,23.39]);
+  // quadrilobe (X-ring) : mêmes joints AS568, gorge Minnesota Rubber 3,94 × 3,1 ; profil à 4 lobes
+  await page.locator('.pnl-row',{hasText:'Type de joint'}).locator('select').selectOption('x');
+  await page.waitForFunction(()=>doc.cgeo.find(c=>c.orj).orj.kind==='x'&&rebuildDepth===0);
+  S=await etat();
+  expect([S.O.b,S.O.t,S.O.d1,S.err]).toEqual([3.94,3.1,23.39,'']);
+  expect(await page.evaluate(()=>doc.features.find(f=>f.orjRing).name)).toBe('Joint quadrilobe 23,39 × 3,53');
+  {
+    const d2=3.53,yc=S.O.pos,xc=15-3.1+d2/2; // section au fond de la gorge (Ø fond 23,8, joint étiré)
+    expect(await inside([yc,0,xc])).toBe(true);                       // cœur
+    expect(await inside([yc+0.28*d2,0,xc+0.28*d2])).toBe(true);       // lobe (coin)
+    expect(await inside([yc,0,xc+d2/2-0.06])).toBe(false);            // creux au milieu d'un côté
+    expect(await inside([yc+d2/2-0.06,0,xc])).toBe(false);
+  }
   await page.locator('button.fdynOk').click();
 
   // ── Moyeu Ø80 percé Ø30 : clic sur la paroi intérieure → gorge dans l'alésage, joint 29,82 × 2,62 ──
@@ -134,5 +147,7 @@ test('joint torique : arbre, alésage et face plane reconnus au clic',async({pag
   // ── Normalisés : le joint seul ──
   expect(await page.evaluate(()=>{const sp=stdSpec('oring',{cs:'1.78',size:'9.25'});return [sp.name,stdDoc(sp).features.map(f=>f.type).join()];}))
     .toEqual(['Joint torique 9,25 × 1,78','revolve']);
+  expect(await page.evaluate(()=>{const sp=stdSpec('oring',{kind:'x',cs:'2.62',size:'20.29'});return [sp.name,sp.key,stdDoc(sp).features.map(f=>f.type).join()];}))
+    .toEqual(['Joint quadrilobe 20,29 × 2,62','XRING|20.29|2.62','revolve']);
   expect(err).toEqual([]);
 });

@@ -8,7 +8,7 @@ sont sorties le 2026-09-30j.
 Code dans `src/` · livrable `fusion_mvp.html` (généré par `build.js`) · architecture et
 garde-fous en tête de `src/00-entete-et-outils.js`.
 
-**716 versions**, de `2026-09-28b` à `V0.99.29` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
+**717 versions**, de `2026-09-28b` à `V0.99.30` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
 comme dans le fichier d'origine.
 
 ---
@@ -8002,3 +8002,11 @@ Cavité Usinage, après l'ébauche D25, la reprise D10 et une finition boule D12
 **Correctif** (`tests/carte.cjs`, `tests/carte-releve.cjs`, `tests/run-cible.cjs`, `tests/pool.cjs`) : chaque suite lancée par le pool note les fonctions de `src/` et `PostPro/` qu'elle exécute (inspecteur du moteur, fonction par fonction : le relevé ligne par ligne doublait la durée des suites lourdes, 96 → 188 s ; celui-ci ne coûte rien, 94 s). La carte est rangée dans `.git/conceptcad-carte-tests.json` (commune à tous les worktrees) avec l'empreinte Git de chaque fichier vu, pour comparer exactement le fichier actuel à celui qu'a vu la suite. `npm run ci` trie alors parmi la suite rapide : suite relancée si une ligne de code modifiée tombe dans ce qu'elle exécute, si son fichier ou un fichier qu'elle cite change, si elle était rouge ou n'a jamais été relevée. **Tout** est relancé quand la modification touche tout le monde : code exécuté au chargement (repéré par l'analyse du texte, acorn), fichier source ajouté ou retiré, page hors script, `occt/`, `threejs/`, `build.js`, `tests/appvm.cjs`. Sans effet : commentaires, fonction ou constante toute neuve ; `APP_VER` / `CACHE_VER` / `FORMES_VER` seuls : suites qui les citent. Le code modifié qu'aucune suite n'exécute est signalé. `--liste` montre le tri et ses raisons ; `npm run test:cible` trie parmi toute la suite ; `npm run ci:rapide` garde l'ancien comportement ; `npm run ci:full` relance tout et refait la carte.
 
 **Test** : simulation sur V0.99.18 à V0.99.27 — 9 versions sur 10 auraient lancé 17 à 97 suites rapides sur 169 (V0.99.27 : tout, une ligne exécutée au chargement) ; essais à la main (ligne d'une fonction, commentaire, code au chargement, fonction ajoutée, ligne ajoutée) ; `npm run ci` réel : 14 suites en 71 s ; suite complète 343/343 avec le relevé. CACHE_VER et FORMES_VER inchangés.
+
+## V0.99.30 - Joints quadrilobes (X-ring, Quad-Ring) dans l'outil Joint et dans Normalisés
+
+**Demande** : « Peut-on imaginer d'ajouter les joint racleurs et/ou les quadrilobes? » — quadrilobes d'abord (accord : « yes »).
+
+**Ajout** (`src/76-joint-torique.js`, `src/48-composants-normalises.js`) : ligne « Type de joint » en tête du panneau de la gorge (Torique / Quadrilobe, `el.orj.kind='x'`). Mêmes séries que les toriques (AS568, 5 sections) ; gorges des fabricants `ORJ_GORGE_X` (Minnesota Rubber, recoupées à 0,1 mm près par deux autres catalogues) : plus profondes et presque aussi étroites que la section, écrasement ~10 % au lieu de ~20 % (section 3,53 sur arbre : 3,94 × 3,1 au lieu de 4,8 × 2,7). Profil à 4 lobes `orjQuadLoop` : 8 arcs tangents, lobes aux coins (rayon 0,2·d2), creux de 0,125·d2 au milieu des côtés, aire égale à celle des catalogues à 0,1 % près. Joint nommé « Joint quadrilobe d1 × d2 », gorge « Gorge de joint quadrilobe … ». Normalisés : famille « Joints toriques et quadrilobes », champ Type, clé `XRING|d1|d2`.
+
+**Test** : `joint-torique.spec` — passage en quadrilobe sur un arbre Ø30 (gorge 3,94 × 3,1, joint 23,39 × 3,53, cœur et lobes pleins, creux vides), composant normalisé quadrilobe 20,29 × 2,62. CACHE_VER et FORMES_VER inchangés.

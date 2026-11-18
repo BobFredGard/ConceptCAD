@@ -394,7 +394,7 @@ input[type=range]{accent-color:var(--primary);width:100%}
  * peut changer sans rien casser. CACHE_VER (parcours FAO) reste indépendant.
  */
 
-const APP_VER='V0.99.29';
+const APP_VER='V0.99.30';
 try{console.log('[ConceptCAD] version '+APP_VER);}catch(e){}
 try{var mfSv=document.getElementById('mfSplashVer');if(mfSv)mfSv.textContent=APP_VER;}catch(e){} // écran de démarrage
 
@@ -22303,7 +22303,8 @@ const STD_CATS=[
       def:st=>{const r=STD_ISO773.find(x=>x[2]+'x'+x[3]===st.size);return r?String(stdLens(STD_KEY_LV,Math.max(r[6],4*r[2]),r[7],true)[0]||r[6]):'';}}],
     gen:stdKey},
   // joints toriques ISO 3601-1 classe A / AS568 (76-joint-torique : tables et gorge automatique)
-  {k:'oring',lab:'Joints toriques',fields:[
+  {k:'oring',lab:'Joints toriques et quadrilobes',fields:[
+    {k:'kind',lab:'Type',opts:()=>[['o','Torique (O-ring)'],['x','Quadrilobe (X-ring, Quad-Ring)']]},
     {k:'cs',lab:'Section d2',opts:()=>ORJ_CS.map(v=>[String(v),stdF(v)+' mm']),def:()=>'2.62'},
     {k:'size',lab:'Ø intérieur d1 (mm)',opts:st=>orjRows(+st.cs).map(r=>[String(r[1]),stdF(r[1])+' × '+stdF(+st.cs)+'  (AS568-'+String(r[0]).padStart(3,'0')+')']),
       def:st=>{const L=orjRows(+st.cs);return String((L.find(r=>r[1]>=20)||L[L.length-1])[1]);}}],
@@ -40040,7 +40041,32 @@ const ORJ_ID={
 const ORJ_GORGE=[[1.78,1.3,2.4,1.45,2.4,1.3,2.6],[2.62,2,3.6,2.25,3.6,2,3.8],[3.53,2.7,4.8,3.1,4.8,2.7,5],
   [5.33,4.3,7.1,4.7,7.1,4.3,7.3],[6.99,5.8,9.5,6.1,9.5,5.8,9.7]]; // catalogue Trelleborg (suit ISO 3601-2), recoupé ERIKS à 0,1 mm
 const ORJ_MODES=[['shaft','Arbre (gorge dans l’arbre)'],['bore','Alésage (gorge dans l’alésage)']];
-function orjGorge(d2){return ORJ_GORGE.find(r=>Math.abs(r[0]-d2)<1e-6)||ORJ_GORGE[1];}
+// Joints QUADRILOBES (X-ring, Quad-Ring) : mêmes séries que les toriques (AS568), gorges des fabricants
+// [d2, radial statique t, b, radial dynamique t, b, axial h, b] (gorge plus profonde : écrasement ~10 % statique, 7 % dynamique)
+const ORJ_GORGE_X=[[1.78,1.42,2.03,1.55,2.03,1.42,2.03],[2.62,2.26,2.92,2.39,2.92,2.26,2.92],[3.53,3.1,3.94,3.25,3.94,3.1,3.94],
+  [5.33,4.78,6.1,4.98,6.1,4.78,6.1],[6.99,6.2,7.87,6.5,7.87,6.2,7.87]]; // Minnesota Rubber (Quad-Ring), recoupé Techno-Parts et Hutchinson à 0,1 mm
+// Profil quadrilobe dans un carré d2 × d2 : 4 lobes de rayon ORJ_X_LOBE × d2, creux de ORJ_X_CREUX × d2 au milieu des côtés
+const ORJ_X_LOBE=0.2,ORJ_X_CREUX=0.125; // aire 0,822 d2² (Minnesota : 0,8215 d2²)
+function orjQuadLoop(cx,cy,d2){
+  // Contour fermé (format stdLoop) : 4 lobes convexes aux coins (±45°), 4 creux concaves tangents entre eux
+  const h=d2/2,rl=ORJ_X_LOBE*d2,a=h-rl,h0=h-ORJ_X_CREUX*d2,k=rl-h0;
+  const cN=(2*a*a-k*k)/(2*(k+a)),rn=cN-h0; // centre et rayon du creux (sur l'axe du côté, au-delà du carré)
+  const L=[[a,a],[-a,a],[-a,-a],[a,-a]],N=[[0,cN],[-cN,0],[0,-cN],[cN,0]]; // lobes et creux dans le sens direct
+  const T=(n,l)=>{const t=rn/(rn+rl);return [n[0]+(l[0]-n[0])*t,n[1]+(l[1]-n[1])*t];};
+  const P=(q,c,ccw)=>[cx+q[0],cy+q[1],{c:[cx+c[0],cy+c[1]],ccw}];
+  const out=[];
+  for(let i=0;i<4;i++){
+    const l=L[i],nPrev=N[(i+3)%4],nNext=N[i];
+    // arrivée sur le lobe i par le creux d'avant (sens horaire autour du creux), puis tour du lobe (sens direct)
+    out.push(P(T(nPrev,l),nPrev,false));
+    out.push(P(T(nNext,l),l,true));
+  }
+  // le premier arc part du dernier point : creux N[3] → lobe L[0] ; ordre : creux d'avant, puis lobe
+  return out;
+}
+function orjKind(o){return o&&o.kind==='x'?'x':'o';}
+function orjKindLab(o){return orjKind(o)==='x'?'Joint quadrilobe':'Joint torique';}
+function orjGorge(d2,kind){const T=kind==='x'?ORJ_GORGE_X:ORJ_GORGE;return T.find(r=>Math.abs(r[0]-d2)<1e-6)||T[1];}
 function orjAutoCs(D){
   // Section d'usage courant selon le Ø (petits Ø : section fine)
   return D<12?1.78:D<35?2.62:D<110?3.53:D<250?5.33:6.99;
@@ -40083,7 +40109,7 @@ function orjRadial(el,g0,c){
   if(!A||!(A.r>0)||!(A.t1>A.t0))throw new Error('cylindre introuvable');
   const R=+A.r,D=2*R,cd=cgCylDir(A.d),same=cgDot(cgUnit(A.d),cd)>0;
   const s0=same?A.t0:-A.t1,s1=same?A.t1:-A.t0,Lc=s1-s0,bore=o.mode==='bore',warn=[];
-  const d2=+o.d2>0?+o.d2:orjAutoCs(D),G=orjGorge(d2);
+  const d2=+o.d2>0?+o.d2:orjAutoCs(D),G=orjGorge(d2,orjKind(o));
   const t=+o.ot>0?+o.ot:(o.dyn?G[3]:G[1]),b=+o.ob>0?+o.ob:(o.dyn?G[4]:G[2]);
   const pos=o.pos!=null&&isFinite(+o.pos)?+o.pos:Lc/2;
   if(pos-b/2<-1e-6||pos+b/2>Lc+1e-6)warn.push('la gorge dépasse du cylindre (longueur '+stdF(+Lc.toFixed(2))+')');
@@ -40166,8 +40192,8 @@ function orjFace(el,g0,c){
   const conc=cgLen(cgSub(cc,B.cc))<0.01,Rin=conc?B.Rin:0,Rout=conc?B.Rout:Infinity,ext=o.press==='ext';
   // Ø moyen visé sans Ø d'appui : milieu d'une face ronde ; près du trou d'une plaque (portée = max(1,5 ; d2))
   let d2=+o.d2>0?+o.d2:orjAutoCs(Dw||(B.round?Rin+Rout:2*Rin+6));
-  if(!(+o.d2>0)&&!Dw&&isFinite(Rout))while(d2>ORJ_CS[0]&&orjGorge(d2)[6]>0.6*(Rout-Rin))d2=ORJ_CS[ORJ_CS.indexOf(d2)-1];
-  const G=orjGorge(d2),h=+o.ot>0?+o.ot:G[5],b=+o.ob>0?+o.ob:G[6];
+  if(!(+o.d2>0)&&!Dw&&isFinite(Rout))while(d2>ORJ_CS[0]&&orjGorge(d2,orjKind(o))[6]>0.6*(Rout-Rin))d2=ORJ_CS[ORJ_CS.indexOf(d2)-1];
+  const G=orjGorge(d2,orjKind(o)),h=+o.ot>0?+o.ot:G[5],b=+o.ob>0?+o.ob:G[6];
   let ring,ri,ro;
   if(o.place!=='wall'){
     // Par défaut : joint CENTRÉ dans la gorge (même jeu des deux côtés). Ø visé = Ø moyen du joint (axe de sa
@@ -40243,17 +40269,17 @@ function orjSync(el,ctx){
 function orjDesig(O){return O&&O.d1?stdF(O.d1)+' × '+stdF(O.d2):'';}
 function orjName(f){
   const el=cgGet(f.orj),O=el&&el._orjOut;
-  if(!O||!O.D)return 'Gorge de joint torique';
+  if(!O||!O.D)return 'Gorge de '+orjKindLab(el&&el.orj).toLowerCase();
   const m=el.orj.mode;
-  return 'Gorge de joint torique '+orjDesig(O)+' ('+(m==='face'?'face Ø'+stdF(O.D):(m==='bore'?'alésage Ø':'arbre Ø')+stdF(O.D))+')';
+  return 'Gorge de '+orjKindLab(el.orj).toLowerCase()+' '+orjDesig(O)+' ('+(m==='face'?'face Ø'+stdF(O.D):(m==='bore'?'alésage Ø':'arbre Ø')+stdF(O.D))+')';
 }
 /* ----- Normalisés (48) : le joint seul, origine au centre, plan médian = XY ----- */
 function stdOring(st){
-  const d2=+st.cs,L=orjRows(d2),r=L.find(x=>String(x[1])===String(st.size))||L[0],d1=r[1],Rc=(d1+d2)/2,h=d2/2;
+  const x=st.kind==='x',d2=+st.cs,L=orjRows(d2),r=L.find(x=>String(x[1])===String(st.size))||L[0],d1=r[1],Rc=(d1+d2)/2,h=d2/2;
   const lab=stdF(d1)+' × '+stdF(d2);
-  return {key:'ORING|'+d1+'|'+d2,norm:'ISO 3601-1 A',desig:lab,name:'Joint torique '+lab,
+  return {key:(x?'XRING|':'ORING|')+d1+'|'+d2,norm:x?'AS568 (quadrilobe)':'ISO 3601-1 A',desig:lab,name:(x?'Joint quadrilobe ':'Joint torique ')+lab,
     info:'AS568-'+String(r[0]).padStart(3,'0')+' · Ø int. '+stdF(d1)+' · section '+stdF(d2)+' · Ø ext. '+stdF(+(d1+2*d2).toFixed(2))+' · origine au centre, plan médian XY',
-    prof:[[Rc,-h,{c:[Rc,0],ccw:true}],[Rc,h,{c:[Rc,0],ccw:true}]],ops:[],mat:{name:'Caoutchouc NBR',rho:1.2},color:0x18191a,reach:Rc+h};
+    prof:x?orjQuadLoop(Rc,0,d2):[[Rc,-h,{c:[Rc,0],ccw:true}],[Rc,h,{c:[Rc,0],ccw:true}]],ops:[],mat:{name:'Caoutchouc NBR',rho:1.2},color:0x18191a,reach:Rc+h};
 }
 /* ----- le joint, corps séparé ----- */
 function orjRingAdd(el){
@@ -40283,10 +40309,10 @@ function orjRingRemove(el){
 function orjRingSync(el,G){
   const rf=orjRingFeature(el),sk=orjSketchOf(el,'r');
   if(!rf||!sk){orjRingRemove(el);return;}
-  orjWrite(sk,rf,G.circ,G.yc);
-  rf.name='Joint torique '+stdF(G.ring[1])+' × '+stdF(G.d2);
+  orjWrite(sk,rf,orjKind(el.orj)==='x'?orjQuadLoop(G.circ.c[0],G.circ.c[1],G.d2):G.circ,G.yc);
+  rf.name=orjKindLab(el.orj)+' '+stdF(G.ring[1])+' × '+stdF(G.d2);
   const B=(doc.bodies||[]).find(b=>b.id===rf.body);
-  if(B&&(/^Corps \d+$/.test(B.name||'')||/^Joint torique /.test(B.name||'')))B.name=rf.name; // un nom donné à la main reste
+  if(B&&(/^Corps \d+$/.test(B.name||'')||/^Joint (torique|quadrilobe) /.test(B.name||'')))B.name=rf.name; // un nom donné à la main reste
 }
 function orjOnDelete(f){
   // delFeature : la gorge emporte son joint, son esquisse et son repère ; le joint seul laisse la gorge
@@ -40381,10 +40407,11 @@ function orjPanel(p,f){
   fdynEnsure(f);
   if(!el||!el.orj){U.pNote('⚠ Repère du joint introuvable.');fdynFoot(p,f);return;}
   const o=el.orj,O=el._orjOut||{},face=o.mode==='face';
-  U.pH('Gorge de joint torique');
+  U.pH('Gorge de '+orjKindLab(o).toLowerCase());
+  U.pRow('Type de joint',U.select([['o','Torique (O-ring)'],['x','Quadrilobe (X-ring, Quad-Ring)']],orjKind(o),v=>{o.kind=v;}));
   if(O.D){
     const what=face?'Face Ø '+stdF(O.D)+(O.Din?' (Ø int. '+stdF(O.Din)+')':''):(o.mode==='bore'?'Alésage Ø ':'Arbre Ø ')+stdF(O.D);
-    U.pNote(what+' — joint '+orjDesig(O)+' ('+orjRef(O.d2,O.dash)+') · gorge '+stdF(O.b)+' × '+stdF(O.t)+
+    U.pNote(what+' — joint '+(orjKind(o)==='x'?'quadrilobe ':'')+orjDesig(O)+' ('+orjRef(O.d2,O.dash)+') · gorge '+stdF(O.b)+' × '+stdF(O.t)+
       (face?' · Ø '+stdF(+(2*O.ri).toFixed(2))+' à '+stdF(+(2*O.ro).toFixed(2)):(O.k!=null?' · '+(o.mode==='bore'?'serrage':'étirement')+' '+stdF(+(O.k*100).toFixed(1))+' %':'')));
   }
   if(O.warn)U.pNote('⚠ '+O.warn);
@@ -40427,7 +40454,7 @@ function orjPanel(p,f){
 function orjRingPanel(p,f){
   const U=kwUi(p),el=cgGet(f.orjRing),O=el&&el._orjOut,gf=el&&orjFeature(el);
   if(!el||!O){U.pNote('⚠ Gorge de ce joint introuvable.');return;}
-  U.pH('Joint torique');
+  U.pH(orjKindLab(el.orj));
   U.pNote(orjDesig(O)+' — '+orjRef(O.d2,O.dash)+' (Ø int. × section, mm)');
   if(O.warn)U.pNote('⚠ '+O.warn);
   if(gf){

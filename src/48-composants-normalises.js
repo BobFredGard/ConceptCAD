@@ -432,7 +432,8 @@ const STD_CATS=[
       def:st=>{const r=STD_ISO773.find(x=>x[2]+'x'+x[3]===st.size);return r?String(stdLens(STD_KEY_LV,Math.max(r[6],4*r[2]),r[7],true)[0]||r[6]):'';}}],
     gen:stdKey},
   // joints toriques ISO 3601-1 classe A / AS568 (76-joint-torique : tables et gorge automatique)
-  {k:'oring',lab:'Joints toriques',fields:[
+  {k:'oring',lab:'Joints toriques et quadrilobes',fields:[
+    {k:'kind',lab:'Type',opts:()=>[['o','Torique (O-ring)'],['x','Quadrilobe (X-ring, Quad-Ring)']]},
     {k:'cs',lab:'Section d2',opts:()=>ORJ_CS.map(v=>[String(v),stdF(v)+' mm']),def:()=>'2.62'},
     {k:'size',lab:'Ø intérieur d1 (mm)',opts:st=>orjRows(+st.cs).map(r=>[String(r[1]),stdF(r[1])+' × '+stdF(+st.cs)+'  (AS568-'+String(r[0]).padStart(3,'0')+')']),
       def:st=>{const L=orjRows(+st.cs);return String((L.find(r=>r[1]>=20)||L[L.length-1])[1]);}}],
