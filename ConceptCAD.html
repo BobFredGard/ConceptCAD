@@ -394,7 +394,7 @@ input[type=range]{accent-color:var(--primary);width:100%}
  * peut changer sans rien casser. CACHE_VER (parcours FAO) reste indépendant.
  */
 
-const APP_VER='V0.99.30';
+const APP_VER='V0.99.31';
 try{console.log('[ConceptCAD] version '+APP_VER);}catch(e){}
 try{var mfSv=document.getElementById('mfSplashVer');if(mfSv)mfSv.textContent=APP_VER;}catch(e){} // écran de démarrage
 
@@ -91085,7 +91085,13 @@ function filmFrame(){
         rr=e.r*v.scale;cx=cS.x;cy=cS.y;
       }
       const px=w.b.x,py=w.b.y;
-      let ux=px-cx,uy=py-cy,ul=Math.hypot(ux,uy);
+      // texte sur un trait souligné : le leader part de dessous l'étiquette
+      // (plus de vide entre le texte et la flèche).
+      const fs=MEP_DIM_STYLE.textHeight||7,hh=MEP_TEXT_STYLE.dimH,uOff=mepDimUnderOff(hh);
+      const tx=px,ty=py+hh*0.4;
+      // V0.99.28 : direction visée depuis le DÉPART du leader (sous le texte), pas depuis le point posé —
+      // le leader et le trait de diamètre faisaient un coude (Ø244 / Ø230 : une seule droite entre les 2 flèches)
+      let ux=tx-cx,uy=ty+uOff-cy,ul=Math.hypot(ux,uy);
       if(ul<1e-6){ux=1;uy=0;ul=1;}
       ux/=ul;uy/=ul;
       let ang=Math.atan2(uy,ux);
@@ -91100,13 +91106,9 @@ function filmFrame(){
       const ex=cx+rr*Math.cos(ang),ey=cy+rr*Math.sin(ang);
       const pp=mepDimSymbolParts(d,val,d.kind==='dia'?'Ø':'R');
       const str=pp.main;
-      // texte sur un trait souligné : le leader part de dessous l'étiquette
-      // (plus de vide entre le texte et la flèche).
-      const fs=MEP_DIM_STYLE.textHeight||7,hh=MEP_TEXT_STYLE.dimH,uOff=mepDimUnderOff(hh);
-      const tx=px,ty=py+hh*0.4;
       // leader du texte vers la circonférence, flèche sur l'arête
       draw('line',Object.assign({x1:tx,y1:ty+uOff,x2:ex,y2:ey,'marker-end':AR},L));
-      if(d.kind==='dia'){
+      if(d.kind==='dia'&&!d.dia1){ // V0.99.28 : d.dia1 = Ø à une flèche, dessiné comme un rayon (clic droit)
         // trait de diamètre : part du bord (côté texte) après un vide, traverse
         // le centre et flèche le bord opposé - il ne part plus du centre.
         // V0.73.1 : le trait suit la direction du point fléché (ang), pas celle du texte — sur un arc, ang
@@ -93869,6 +93871,14 @@ function filmFrame(){
     mepSt.selDim=d.id;mepSt.sel=null;mepRender();mepSideShow();
     mepStatus(label+' — clic droit pour passer en '+(nk==='dia'?'R':'Ø')+'.');
   }
+  // V0.99.28 : Ø complet (trait d'un bord à l'autre, 2 flèches) ou à une flèche, comme un rayon
+  function mepDimSetDiaOne(d,one,draft){
+    if(!d||d.kind!=='dia'||!!d.dia1===!!one)return;
+    const label=one?'Cote Ø à une flèche':'Cote Ø complète';
+    if(draft){if(one)d.dia1=true;else delete d.dia1;mepRender();mepStatus(label+' : cliquez pour poser.');return;}
+    mepEdit(label,()=>{if(one)d.dia1=true;else delete d.dia1;});
+    mepSt.selDim=d.id;mepSt.sel=null;mepRender();mepSideShow();mepStatus(label+'.');
+  }
   function mepDimSetOrient(d,o,draft){
     if(!d||(d.kind!=='len'&&d.kind!=='dist'))return;
     const label=o==='h'?'Cote horizontale (X)':o==='v'?'Cote verticale (Y)':'Cote alignée';
@@ -93943,6 +93953,10 @@ function filmFrame(){
     if(d&&(d.kind==='dia'||d.kind==='rad')){
       add('Rayon (R)',d.kind==='rad',()=>mepDimSetKind(d,'rad',!!draft));
       add('Diamètre (Ø)',d.kind==='dia',()=>mepDimSetKind(d,'dia',!!draft));
+      if(d.kind==='dia'){
+        add('Ø complet (2 flèches)',!d.dia1,()=>mepDimSetDiaOne(d,false,!!draft));
+        add('Ø à une flèche (comme R)',!!d.dia1,()=>mepDimSetDiaOne(d,true,!!draft));
+      }
     }
     if(d&&(d.kind==='len'||d.kind==='dist')&&!(d.kind==='dist'&&!d.b)){
       const o=d.orient||'a';
@@ -94398,8 +94412,8 @@ function filmFrame(){
         bx=(P.x-v.x)/v.scale;by=(P.y-v.y)/v.scale;
       }
       mepEdit('cote '+(D.kind==='dia'?'Ø':'R'),()=>{
-        sh2.dims.push({id:mepUid('d'),kind:D.kind,vid:D.vid,vid2:null,
-          a:D.a,b:{x:bx,y:by},off:0,ref:shift,tol:null});
+        sh2.dims.push(Object.assign({id:mepUid('d'),kind:D.kind,vid:D.vid,vid2:null,
+          a:D.a,b:{x:bx,y:by},off:0,ref:shift,tol:null},D.kind==='dia'&&D.dia1?{dia1:true}:{}));
       });
       mepDimClearSelection();mepSt.selDim=null;mepSt.sel=null;mepRender();
       mepStatus('Cote posée.');
