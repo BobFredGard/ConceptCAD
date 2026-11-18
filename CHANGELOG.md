@@ -8,7 +8,7 @@ sont sorties le 2026-09-30j.
 Code dans `src/` · livrable `fusion_mvp.html` (généré par `build.js`) · architecture et
 garde-fous en tête de `src/00-entete-et-outils.js`.
 
-**717 versions**, de `2026-09-28b` à `V0.99.30` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
+**718 versions**, de `2026-09-28b` à `V0.99.31` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
 comme dans le fichier d'origine.
 
 ---
@@ -8010,3 +8010,13 @@ Cavité Usinage, après l'ébauche D25, la reprise D10 et une finition boule D12
 **Ajout** (`src/76-joint-torique.js`, `src/48-composants-normalises.js`) : ligne « Type de joint » en tête du panneau de la gorge (Torique / Quadrilobe, `el.orj.kind='x'`). Mêmes séries que les toriques (AS568, 5 sections) ; gorges des fabricants `ORJ_GORGE_X` (Minnesota Rubber, recoupées à 0,1 mm près par deux autres catalogues) : plus profondes et presque aussi étroites que la section, écrasement ~10 % au lieu de ~20 % (section 3,53 sur arbre : 3,94 × 3,1 au lieu de 4,8 × 2,7). Profil à 4 lobes `orjQuadLoop` : 8 arcs tangents, lobes aux coins (rayon 0,2·d2), creux de 0,125·d2 au milieu des côtés, aire égale à celle des catalogues à 0,1 % près. Joint nommé « Joint quadrilobe d1 × d2 », gorge « Gorge de joint quadrilobe … ». Normalisés : famille « Joints toriques et quadrilobes », champ Type, clé `XRING|d1|d2`.
 
 **Test** : `joint-torique.spec` — passage en quadrilobe sur un arbre Ø30 (gorge 3,94 × 3,1, joint 23,39 × 3,53, cœur et lobes pleins, creux vides), composant normalisé quadrilobe 20,29 × 2,62. CACHE_VER et FORMES_VER inchangés.
+
+## V0.99.31 - Cote Ø sur une seule droite ; Ø complet ou à une flèche
+
+**Remarques de Fred** (AXENS-02-000) : « Les cotes de diamètre ne sont toujours pas alignées à la droite entre 2 flèches » ; « il faudrait pouvoir lui dire de dessiner le diamètre complet ou juste faire une dimension comme pour les rayons ».
+
+**Cause** : la direction du Ø visait le point où le texte est posé, alors que le trait part sous le texte, un peu plus bas : départ du trait, flèche, centre et flèche opposée n'étaient pas sur une même droite (Ø244, Ø230 coudés).
+
+**Correctif** (`src/98-mep-70-cotes.js`) : la direction part du vrai départ du trait sous le texte ; tout est sur une seule droite. **Nouveau** (`98-mep-80-souris.js`, `98-mep-85-cote-unique.js`) : au clic droit sur une cote Ø, « Ø complet (2 flèches) » ou « Ø à une flèche (comme R) » (`dia1`), aussi pendant la pose ; annulable.
+
+**Test** : `test_mep_oblong_arc` — 4 positions du texte : leader et trait de diamètre sur une seule droite ; Ø à une flèche : une flèche, aucun trait au travers du cercle. CACHE_VER et FORMES_VER inchangés.

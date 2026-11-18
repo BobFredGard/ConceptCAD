@@ -38,6 +38,7 @@ Le retour dans le Plan est immédiat tant que la géométrie de la pièce n’a 
 - **Oblongs** repérés par leurs 2 centres : un clic de l'outil Axes pose les centres et l'axe ; entraxe et position sont cotés depuis les centres, et suivis quand la pièce change.
 - **Rainures circulaires** (oblong en arc vu de face) : un clic pose l'arc d'axe, les traits vers les centres des bouts et la croix du centre ; les cotes s'accrochent aux centres des bouts.
   - Un Ø sur un arc incomplet (bout de rainure) n'a qu'une flèche, et son trait dépasse le centre (ISO 129-1).
+  - Au clic droit, un Ø se dessine **complet (2 flèches)** ou **à une flèche, comme un rayon** ; le texte, les flèches et le centre restent sur une seule droite.
   - L'**arc d'axe se cote en rayon ou en diamètre**, et ses **2 traits en angle**.
 - **Esquisse de planche** : l'outil Cote vise aussi ses lignes, cercles et arcs (en trait d'axe ou non) ; la cote suit le tracé.
 - **Supprimer un axe automatique** (croix du centre d’un cercle, axe de trou) : Suppr ; sur un axe posé à la main, Suppr sur sa croix de centre ne retire que la croix. « Réafficher » dans le panneau de la vue les rend.

@@ -1405,6 +1405,14 @@
     mepSt.selDim=d.id;mepSt.sel=null;mepRender();mepSideShow();
     mepStatus(label+' — clic droit pour passer en '+(nk==='dia'?'R':'Ø')+'.');
   }
+  // V0.99.28 : Ø complet (trait d'un bord à l'autre, 2 flèches) ou à une flèche, comme un rayon
+  function mepDimSetDiaOne(d,one,draft){
+    if(!d||d.kind!=='dia'||!!d.dia1===!!one)return;
+    const label=one?'Cote Ø à une flèche':'Cote Ø complète';
+    if(draft){if(one)d.dia1=true;else delete d.dia1;mepRender();mepStatus(label+' : cliquez pour poser.');return;}
+    mepEdit(label,()=>{if(one)d.dia1=true;else delete d.dia1;});
+    mepSt.selDim=d.id;mepSt.sel=null;mepRender();mepSideShow();mepStatus(label+'.');
+  }
   function mepDimSetOrient(d,o,draft){
     if(!d||(d.kind!=='len'&&d.kind!=='dist'))return;
     const label=o==='h'?'Cote horizontale (X)':o==='v'?'Cote verticale (Y)':'Cote alignée';
@@ -1479,6 +1487,10 @@
     if(d&&(d.kind==='dia'||d.kind==='rad')){
       add('Rayon (R)',d.kind==='rad',()=>mepDimSetKind(d,'rad',!!draft));
       add('Diamètre (Ø)',d.kind==='dia',()=>mepDimSetKind(d,'dia',!!draft));
+      if(d.kind==='dia'){
+        add('Ø complet (2 flèches)',!d.dia1,()=>mepDimSetDiaOne(d,false,!!draft));
+        add('Ø à une flèche (comme R)',!!d.dia1,()=>mepDimSetDiaOne(d,true,!!draft));
+      }
     }
     if(d&&(d.kind==='len'||d.kind==='dist')&&!(d.kind==='dist'&&!d.b)){
       const o=d.orient||'a';

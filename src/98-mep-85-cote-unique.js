@@ -405,8 +405,8 @@
         bx=(P.x-v.x)/v.scale;by=(P.y-v.y)/v.scale;
       }
       mepEdit('cote '+(D.kind==='dia'?'Ø':'R'),()=>{
-        sh2.dims.push({id:mepUid('d'),kind:D.kind,vid:D.vid,vid2:null,
-          a:D.a,b:{x:bx,y:by},off:0,ref:shift,tol:null});
+        sh2.dims.push(Object.assign({id:mepUid('d'),kind:D.kind,vid:D.vid,vid2:null,
+          a:D.a,b:{x:bx,y:by},off:0,ref:shift,tol:null},D.kind==='dia'&&D.dia1?{dia1:true}:{}));
       });
       mepDimClearSelection();mepSt.selDim=null;mepSt.sel=null;mepRender();
       mepStatus('Cote posée.');

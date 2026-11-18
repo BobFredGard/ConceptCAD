@@ -111,6 +111,15 @@ const out=vm.runInContext(`(function(){
   dD.a.hint={t:'ent',i:0};
   Ls=traits();
   A(Ls.filter(l=>l['marker-end']||l['marker-start']).length===2,'cercle complet : deux flèches');
+  // V0.99.31 : départ du leader (sous le texte), flèche, centre et flèche opposée sur UNE droite (Ø244 coudé)
+  [{x:6,y:-12},{x:-9,y:-6},{x:5,y:7},{x:40,y:-30}].forEach(b=>{dD.b=b;const T2=traits(),ld=T2[0],dg=T2[1];
+    const cr=(x,y)=>(x-130)*(ld.y2-100)-(y-100)*(ld.x2-130);
+    A(!!dg&&Math.abs(cr(ld.x1,ld.y1))<1e-6&&Math.abs(cr(dg.x1,dg.y1))<1e-6&&Math.abs(cr(dg.x2,dg.y2))<1e-6,
+      'Ø texte en '+b.x+','+b.y+' : leader et trait de diamètre sur une seule droite');});
+  // V0.99.31 : Ø à une flèche (clic droit), dessiné comme un rayon : leader fléché seul, pas de trait au travers
+  dD.dia1=true;Ls=traits();
+  A(Ls.filter(l=>l['marker-end']||l['marker-start']).length===1&&!Ls.some(l=>Math.hypot((+l.x1+ +l.x2)/2-130,(+l.y1+ +l.y2)/2-100)<1),'Ø à une flèche : une flèche, aucun trait au travers du cercle');
+  delete dD.dia1;
   return r;
 })();`,ctx);
 out.log.forEach(m=>console.log('  ok  '+m));
