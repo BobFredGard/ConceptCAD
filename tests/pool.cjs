@@ -41,6 +41,18 @@ const sec = ms => (ms / 1000).toFixed(1).replace('.', ',') + ' s';
 async function pool(SUITES, { titre, timeout }) {
   const argv = process.argv.slice(2);
   const VERBOSE = argv.includes('--verbose');
+  // CARTE DES TESTS (tests/carte.cjs) : chaque suite note les lignes de src/ qu'elle exécute,
+  // pour que tests/run-cible.cjs ne relance ensuite que les suites touchées par une modification.
+  // TEST_CARTE=0 : sans relevé. Livrable périmé (src/ modifié sans node build.js) : sans relevé.
+  let CARTE = null;
+  if (process.env.TEST_CARTE !== '0') {
+    try {
+      const C = require('./carte.cjs');
+      const { D, perime } = C.etatLivrable();
+      if (perime) console.log('(carte des tests non relevée : ConceptCAD.html en retard sur ' + perime + ' — lancez node build.js)');
+      else CARTE = { C, D, blobs: C.empreintes(D), base: C.tete(), liste: C.listeFichiers(D), maj: {}, part: {} };
+    } catch (e) { console.log('(carte des tests non relevée : ' + e.message + ')'); }
+  }
   const iJ = argv.findIndex(a => a === '-j' || a === '--jobs');
   // morceaux réellement lancés
   const TACHES = [];
@@ -95,7 +107,12 @@ async function pool(SUITES, { titre, timeout }) {
       const [s, partie] = e.split(':');
       const debut = Date.now(), sortie = [];
       w.libre = debut + (isFinite(est(e)) ? est(e) * w.vit : 0);
-      const p = lancerProc(path.join(__dirname, s + '.cjs'), partie ? [partie] : [], w.aff);
+      const couv = CARTE ? CARTE.C.dossierCouverture(e) : null;
+      const p = lancerProc(path.join(__dirname, s + '.cjs'), partie ? [partie] : [], w.aff,
+        couv ? Object.assign({}, process.env, {
+          CARTE_COUV: couv,
+          NODE_OPTIONS: ((process.env.NODE_OPTIONS || '') + ' --require "' + path.join(__dirname, 'carte-releve.cjs').replace(/\\/g, '/') + '"').trim(),
+        }) : null);
       p.stdout.on('data', d => sortie.push(d));
       p.stderr.on('data', d => sortie.push(d));
       const delai = SUR_P[s] || timeout;
@@ -105,6 +122,7 @@ async function pool(SUITES, { titre, timeout }) {
         clearTimeout(minuterie);
         const ms = Date.now() - debut, vert = code === 0;
         res[e] = { vert, ms, eq: ms / w.vit, P: w.P, coupe };
+        if (couv) try { noter(s, e, couv, vert && !coupe); } catch (err) { console.log('(relevé de ' + e + ' perdu : ' + err.message + ')'); }
         w.libre = Date.now();
         fini++;
         if (!vert || VERBOSE) {
@@ -115,6 +133,21 @@ async function pool(SUITES, { titre, timeout }) {
         resolve();
       });
     });
+  }
+  // Relevé d'une suite (ou d'un morceau) : lignes exécutées par fichier source, avec l'empreinte
+  // du fichier vu ; une suite rouge ou coupée sera relancée au prochain tri quoi qu'il arrive.
+  function noter(s, e, couv, vert) {
+    const P = CARTE.part[s] || (CARTE.part[s] = { reste: TACHES.filter(t => t.split(':')[0] === s).length, f: null, app: false, vert: true });
+    try {
+      const c = CARTE.C.couverture(couv, CARTE.D);
+      if (c) { P.app = true; P.f = CARTE.C.fusionner(P.f, c); }
+    } catch (err) { P.vert = false; }
+    fs.rmSync(couv, { recursive: true, force: true });
+    P.vert = P.vert && vert;
+    if (--P.reste) return;
+    const f = {};
+    if (P.app) for (const k in P.f) f[k] = { b: CARTE.blobs[k], l: P.f[k] };
+    CARTE.maj[s] = { base: CARTE.base, tete: CARTE.D.tete, liste: CARTE.liste, date: new Date().toISOString(), vert: P.vert, app: P.app, f: P.app ? f : null };
   }
   async function ouvrier(w) { for (let e; file.length && (e = choisir(w));) await lancer(e, w); }
 
@@ -132,6 +165,9 @@ async function pool(SUITES, { titre, timeout }) {
   // (sinon elle passait pour plus courte, partait sur un cœur E et se faisait couper de nouveau)
   TACHES.forEach(e => { durees[e] = res[e].coupe ? Math.max(Math.round(res[e].eq), anciennes[e] || 0) : Math.round(res[e].eq); });
   try { fs.writeFileSync(DUREES, JSON.stringify(durees, null, 1)); } catch (e) { console.log('(durées non enregistrées : ' + e.message + ')'); }
+  if (CARTE && Object.keys(CARTE.maj).length) {
+    try { CARTE.C.ecrireCarte(CARTE.maj); } catch (e) { console.log('(carte des tests non enregistrée : ' + e.message + ')'); }
+  }
   if (pcores && C) { // écart P / E appris : dernière durée de chaque suite sur P et sur E
     const mP = C.mesP || {}, mE = C.mesE || {};
     TACHES.forEach(e => { if (res[e].vert) (res[e].P ? mP : mE)[e] = res[e].ms; });
