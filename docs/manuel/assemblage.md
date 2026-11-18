@@ -12,7 +12,7 @@ Comme dans Fusion 360, **tout est composant** : le fichier est le composant raci
   - **Bouchons** six pans creux DIN 906, DIN 908 et NPTF.
   - **Goupilles** ISO 2338, 8734, 2339, 8752 et ANSI (dowel, spring).
   - **Clavettes** ISO 773 formes A, B, C.
-  - **Joints toriques** ISO 3601-1 classe A (AS568) : les cinq sections 1,78 – 2,62 – 3,53 – 5,33 – 6,99 et tous leurs diamètres intérieurs.
+  - **Joints toriques** ISO 3601-1 classe A (AS568) et **quadrilobes** (X-ring) : les cinq sections 1,78 – 2,62 – 3,53 – 5,33 – 6,99 et tous leurs diamètres intérieurs.
   - **Rondelles** plates ISO 7089, 7090 (chanfreinée), 7092 (étroite), 7093-1 (large), Grower DIN 127 B, ANSI B18.22.1 Type A (séries N et W) et lock washers B18.21.1.
   - **Douilles autotaraudeuses** Ensat 302 (douille à fente de coupe) : métrique M2 à M20 (et M6 courte), pouces #4 à 5/8" en UNC ou UNF. Aucune norme ISO ni ANSI n'existe : cotes de la norme d'usine Ensat 302, reprise par tous les fabricants. Corps fileté, taraudage débouchant fraisé, fente ; la fiche donne le perçage conseillé et la profondeur mini du trou borgne. Posée « Sur des trous », 0,1 mm sous la surface.
   - **Engrenages** à vraie développante (ISO 53, ISO 21771) : roue, couronne ou crémaillère, denture droite ou hélicoïdale, déport, alésage et rainure de clavette. Sous-coupe, dent en pointe et autres défauts sont signalés.
