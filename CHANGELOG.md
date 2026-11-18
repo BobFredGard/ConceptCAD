@@ -8,7 +8,7 @@ sont sorties le 2026-09-30j.
 Code dans `src/` · livrable `fusion_mvp.html` (généré par `build.js`) · architecture et
 garde-fous en tête de `src/00-entete-et-outils.js`.
 
-**715 versions**, de `2026-09-28b` à `V0.99.28` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
+**716 versions**, de `2026-09-28b` à `V0.99.29` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
 comme dans le fichier d'origine.
 
 ---
@@ -7994,3 +7994,11 @@ Cavité Usinage, après l'ébauche D25, la reprise D10 et une finition boule D12
 **Non modélisé** : rayons de fond de gorge r1 et arêtes cassées (angles vifs), tolérances, bagues anti-extrusion.
 
 **Test** : `tests/browser/joint-torique.spec.cjs` (vrais clics : arbre Ø30 → 3,6 × 2 et 25,07 × 2,62 ; alésage Ø30 → 29,82 × 2,62 ; bride ronde ; plaque carrée percée ; Ø saisi ; arête cliquée ; réglage de section ; suppression ; Échap ; Normalisés). CACHE_VER et FORMES_VER inchangés.
+
+## V0.99.29 - Tests ciblés : npm run ci ne lance que les suites touchées par la modification
+
+**Cause** : la suite rapide (169 suites, ~20 min cumulées) et la suite complète (343 suites) tournaient en entier à chaque modification, même pour une retouche d'une seule fonction de l'oblong ou de la FAO.
+
+**Correctif** (`tests/carte.cjs`, `tests/carte-releve.cjs`, `tests/run-cible.cjs`, `tests/pool.cjs`) : chaque suite lancée par le pool note les fonctions de `src/` et `PostPro/` qu'elle exécute (inspecteur du moteur, fonction par fonction : le relevé ligne par ligne doublait la durée des suites lourdes, 96 → 188 s ; celui-ci ne coûte rien, 94 s). La carte est rangée dans `.git/conceptcad-carte-tests.json` (commune à tous les worktrees) avec l'empreinte Git de chaque fichier vu, pour comparer exactement le fichier actuel à celui qu'a vu la suite. `npm run ci` trie alors parmi la suite rapide : suite relancée si une ligne de code modifiée tombe dans ce qu'elle exécute, si son fichier ou un fichier qu'elle cite change, si elle était rouge ou n'a jamais été relevée. **Tout** est relancé quand la modification touche tout le monde : code exécuté au chargement (repéré par l'analyse du texte, acorn), fichier source ajouté ou retiré, page hors script, `occt/`, `threejs/`, `build.js`, `tests/appvm.cjs`. Sans effet : commentaires, fonction ou constante toute neuve ; `APP_VER` / `CACHE_VER` / `FORMES_VER` seuls : suites qui les citent. Le code modifié qu'aucune suite n'exécute est signalé. `--liste` montre le tri et ses raisons ; `npm run test:cible` trie parmi toute la suite ; `npm run ci:rapide` garde l'ancien comportement ; `npm run ci:full` relance tout et refait la carte.
+
+**Test** : simulation sur V0.99.18 à V0.99.27 — 9 versions sur 10 auraient lancé 17 à 97 suites rapides sur 169 (V0.99.27 : tout, une ligne exécutée au chargement) ; essais à la main (ligne d'une fonction, commentaire, code au chargement, fonction ajoutée, ligne ajoutée) ; `npm run ci` réel : 14 suites en 71 s ; suite complète 343/343 avec le relevé. CACHE_VER et FORMES_VER inchangés.

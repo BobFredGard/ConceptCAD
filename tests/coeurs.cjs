@@ -20,12 +20,12 @@ const liste = t => {
 
 // Lancement d'un script Node, épinglé si `aff` (masque hexadécimal des cœurs permis) : le
 // code de sortie traverse `start /wait` par `exit !errorlevel!` (cmd /v:on).
-function lancerProc(fichier, args, aff) {
-  if (!aff) return spawn(process.execPath, [fichier].concat(args), { stdio: ['ignore', 'pipe', 'pipe'] });
+function lancerProc(fichier, args, aff, env) {
+  if (!aff) return spawn(process.execPath, [fichier].concat(args), { stdio: ['ignore', 'pipe', 'pipe'], env: env || process.env });
   const q = a => '"' + a + '"';
   const ligne = '/d /v:on /s /c "start "" /b /wait /affinity ' + aff + ' ' + q(process.execPath) + ' ' + q(fichier) +
     args.map(a => ' ' + q(a)).join('') + ' & exit !errorlevel!"';
-  return spawn(process.env.ComSpec || 'cmd.exe', [ligne], { windowsVerbatimArguments: true, stdio: ['ignore', 'pipe', 'pipe'] });
+  return spawn(process.env.ComSpec || 'cmd.exe', [ligne], { windowsVerbatimArguments: true, stdio: ['ignore', 'pipe', 'pipe'], env: env || process.env });
 }
 function tuer(p, aff) {
   if (aff) { try { spawn('taskkill', ['/T', '/F', '/PID', String(p.pid)], { stdio: 'ignore' }); return; } catch (e) { /* repli */ } }

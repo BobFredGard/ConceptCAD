@@ -172,4 +172,6 @@ const SUITES = [
   "test_sk_decalage_outil",
   "test_projection_import_ouverture"
 ];
-require('./pool.cjs').pool(SUITES, { titre: 'SUITE RAPIDE', timeout: 10 * 60 * 1000 });
+// liste reprise par tests/run-cible.cjs (tri des suites touchées) : lancée seulement en direct
+module.exports = { SUITES, TIMEOUT: 10 * 60 * 1000 };
+if (require.main === module) require('./pool.cjs').pool(SUITES, { titre: 'SUITE RAPIDE', timeout: 10 * 60 * 1000 });
