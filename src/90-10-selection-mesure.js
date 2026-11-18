@@ -181,7 +181,7 @@ function filletTangentChain(sk, startCorner){
     if(typeof faoHolePick!=='undefined'&&faoHolePick){faoHolePickExit();return;}
     if(typeof parMesPick!=='undefined'&&parMesPick){parMesPickCancel(true);faceEl.textContent='Paramètre mesuré : annulé.';return;}
     if(typeof hnPick!=='undefined'&&hnPick){const nw=!hnPick.fid;hnPickCancel();faceEl.textContent=nw?'Perçage normal : annulé.':'Perçage normal : choix des faces terminé.';try{renderProps();}catch(e2){}return;}
-    if(typeof holeFacePick!=='undefined'&&holeFacePick){const kwP=holeFacePick.which==='cylKw';holeFacePickCancel();faceEl.textContent=kwP?'Clavette : annulée.':'Perçage : sélection de face annulée.';return;}
+    if(typeof holeFacePick!=='undefined'&&holeFacePick){const kwP=holeFacePick.which==='cylKw',orP=/^cylOrj/.test(holeFacePick.which);holeFacePickCancel();faceEl.textContent=kwP?'Clavette : annulée.':orP?'Joint torique : annulé.':'Perçage : sélection de face annulée.';return;}
     if(typeof threadPick!=='undefined'&&threadPick){threadPickCancel();faceEl.textContent='Filetage : sélection de face annulée.';return;}
     if(typeof bmPick!=='undefined'&&bmPick){bmPickExit(false);return;}
     if(mvMode){exitMoveFaceMode();return;}

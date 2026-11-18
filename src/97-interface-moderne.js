@@ -287,6 +287,7 @@ const MF_IC={
   extrude:'<path d="M4 15l8 4 8-4M4 15v-4l8-4 8 4v4M12 19v-8M4 11l8 4 8-4"/><path d="M12 7V2M9.5 4.5L12 2l2.5 2.5"/>',
   revolve:'<path d="M12 2v20" stroke-dasharray="2 2"/><ellipse cx="12" cy="13" rx="8" ry="3.2"/><path d="M17.5 8.5l2.2 2.4-3 .9"/>',
   keyway:'<rect x="2.5" y="7.5" width="19" height="10" rx="5"/><rect x="7.5" y="10" width="9" height="3.5" rx="1.75"/>',
+  oring:'<ellipse cx="12" cy="12" rx="9.5" ry="5.5"/><ellipse cx="12" cy="12" rx="5.5" ry="2.6"/>',
   sweep:'<path d="M3 18c4 0 5-12 10-12h4"/><ellipse cx="18.5" cy="6" rx="1.8" ry="3.2"/><ellipse cx="4.5" cy="18" rx="1.8" ry="3.2" stroke-dasharray="2 2"/>',
   thread:'<path d="M8 3h8M8 21h8M8 3v18M16 3v18"/><path d="M8 6l8 2M8 10l8 2M8 14l8 2M8 18l8 2"/>',
   hole:'<circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="3.5"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/>',
@@ -396,7 +397,7 @@ let mfBuilt=false;
 function mfClick(id){mfCloseMenus();const b=document.getElementById(id);if(b){b.click();return true;}try{faceEl.textContent='Commande indisponible ici ('+id+').';}catch(e){}return false;}
 const MF_CAO=[
   ['Esquisse',[['sketch','Esquisse','btnSketch']]],
-  ['Créer',[['extrude','Extrusion','btnExtrude'],['revolve','Révolution','btnRevolve'],['sweep','Balayage','btnSweep'],['hole','Perçage','btnHole'],['hole','Normal','btnHoleNorm'],['keyway','Clavette','btnKeyway'],['body','Corps','btnBody'],['copy','Copier','btnBodyCopy']]],
+  ['Créer',[['extrude','Extrusion','btnExtrude'],['revolve','Révolution','btnRevolve'],['sweep','Balayage','btnSweep'],['hole','Perçage','btnHole'],['hole','Normal','btnHoleNorm'],['keyway','Clavette','btnKeyway'],['oring','Joint','btnOring'],['body','Corps','btnBody'],['copy','Copier','btnBodyCopy']]],
   // V0.5.0 : géométrie de construction (78/79)
   ['Construire',[['cgPlane','Plan',()=>cgStart('plane'),'Plan de construction : décalé, à un angle, par 3 points, médian, normal à un axe'],
     ['cgAxis','Axe',()=>cgStart('axis'),'Axe de construction : arête, cylindre, 2 points, intersection de plans, normal à un plan'],
@@ -583,7 +584,7 @@ function mfRibCaoActive(){
   if(g(()=>revNew))on.add('Créer/Révolution');
   if(g(()=>swNew))on.add('Créer/Balayage');
   if(g(()=>hnPick))on.add('Créer/Normal');
-  const hp=g(()=>holeFacePick);if(hp)on.add(hp.which==='cylKw'?'Créer/Clavette':'Créer/Perçage');
+  const hp=g(()=>holeFacePick);if(hp)on.add(hp.which==='cylKw'?'Créer/Clavette':/^cylOrj/.test(hp.which)?'Créer/Joint':'Créer/Perçage');
   const cg=g(()=>cgMode),cgK={plane:'Plan',axis:'Axe',point:'Point',frame:'Repère'};
   if(cg&&cg.draft&&cgK[cg.draft.kind])on.add('Construire/'+cgK[cg.draft.kind]);
   const fm=g(()=>filMode),fx=g(()=>filModeX);
@@ -602,6 +603,7 @@ function mfRibCaoActive(){
     const f=D.features.find(x=>x&&x.id===S.id);
     if(f){
       if(f.kw)on.add('Créer/Clavette');
+      else if(f.orj||f.orjRing)on.add('Créer/Joint');
       else if(f.type==='hole'&&f.place)on.add('Créer/Normal'); // perçage normal à une face (76-percage-normal)
       else if(f.type==='xfillet'||f.type==='fillet')on.add(f.chamfer?'Modifier/Chanfrein':'Modifier/Congé');
       else if(MF_RIB_FEAT[f.type])on.add(MF_RIB_FEAT[f.type]);

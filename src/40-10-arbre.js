@@ -126,6 +126,8 @@ function featIconOf(f){
   if(f.type==='fillet')return xIcon(xKindOf(f));
   if(f.type==='repeat')return '🔁';
   if(f.type==='combine')return f.mode==='cut'?'⊖':(f.mode==='intersect'?'⊗':'⊕');
+  if(f.orjRing)return '⭕'; // joint torique, corps séparé (76-joint-torique)
+  if(f.orj)return '◎'; // gorge de joint torique
   if(f.type==='revolve')return (f.op||'add')==='cut'?'◔':'◍';
   if(f.type==='sweep')return (f.op||'add')==='cut'?'≋':'〰';
   if(f.type==='hole')return '⊚';

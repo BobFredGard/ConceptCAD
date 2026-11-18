@@ -398,7 +398,7 @@ function renderProps(){
     if(f.type==='gear')renderGearProps(p,f); // engrenage (76-engrenage)
     if(f.type==='hole'){fdynEnsure(f);renderHoleProps(p,f);fdynFoot(p,f);} // V0.8.0 : OK / Annuler, flèche de profondeur
     /* — révolution — V0.8.0 : fenêtre dynamique (71-fenetre-dynamique) */
-    if(f.type==='revolve'){ fdynRevolvePanel(p,f); }
+    if(f.type==='revolve'){ if(f.orj)orjPanel(p,f);else if(f.orjRing)orjRingPanel(p,f);else fdynRevolvePanel(p,f); } // joint torique : 76-joint-torique
     if(f.type==='sweep'){ sweepPanel(p,f); } // 75-balayage
     if(f.type==='import'&&f.derive)derProps(p,f); // V0.47.0 : corps dérivé (52)
     if(f.type==='import'){ importColorsPanel(p,f,pRow,pSel,pNote); } // STEP multi-corps : couleur par pièce / occurrence (90)

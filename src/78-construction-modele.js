@@ -562,7 +562,7 @@ function cgResolveAll(){
   try{
     for(const el of order){
       el.ai=cgPos(el);
-      if(!cgLocked(el)){cgResolveOne(el,ctx);if(el.kw)kwSync(el,ctx);}
+      if(!cgLocked(el)){cgResolveOne(el,ctx);if(el.kw)kwSync(el,ctx);if(el.orj)orjSync(el,ctx);}
       for(const sk of (doc.sketches||[]))if(sk.plane==='CG'&&sk.cg&&sk.cg.id===el.id){if(cgSyncSketch(sk))ch=true;}
     }
     // place de création d'une esquisse : même repli que les éléments si sa fonction disparaît
