@@ -8,7 +8,7 @@ sont sorties le 2026-09-30j.
 Code dans `src/` · livrable `fusion_mvp.html` (généré par `build.js`) · architecture et
 garde-fous en tête de `src/00-entete-et-outils.js`.
 
-**713 versions**, de `2026-09-28b` à `V0.99.26` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
+**714 versions**, de `2026-09-28b` à `V0.99.27` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
 comme dans le fichier d'origine.
 
 ---
@@ -7966,3 +7966,17 @@ Cavité Usinage, après l'ébauche D25, la reprise D10 et une finition boule D12
 **Correctif** (`src/20-75-piece-gardee.js`) : document encore tel que servi par l'image de son fichier (rien d'annulable) → la même image repart ; sinon l'enregistrement attend la fin du calcul (60 s au plus) puis prend l'image, si le document n'a pas changé pendant l'attente. Une image trouvée fausse par le contrôle de fond n'est plus réenregistrée. Plaque d'une centaine de fonctions, enregistrée 10 s après son ouverture : image jointe, fichier rouvert aussitôt sur un poste vierge.
 
 **Test** : `piece-gardee.spec` (image dans le fichier) : réenregistrée aussitôt ouverte, l'image est dans le fichier. CACHE_VER et FORMES_VER inchangés.
+
+## V0.99.27 - Détail d'une coupe coupé ; cotes presque horizontales posées horizontales
+
+**Remarques de Fred** (AXENS-02-000) : « je viens de faire une vue de détail d'une coupe et le détail n'est pas coupé » ; « il y a des cotes que l'on n'arrive pas à mettre horizontales ».
+
+**Cause 1** : un détail reprend le regard de sa vue mère, pas son plan de coupe : le détail B de la coupe A-A montrait la pièce entière, sans hachures.
+
+**Correctif 1** (`src/98-mep-20-vues.js`, `98-mep-10-projection-hlr.js`, `98-mep-60-interface-parametres.js`) : le calcul d'un détail pris sur une coupe emprunte le plan de sa mère (`mepDetailSec`), le temps du calcul seulement — posé à demeure, le détail passerait pour une coupe (ligne A-A tracée deux fois) ; la clé de cache du détail suit ce plan ; les hachures (traits ou plein, une par pièce) sont rognées au cercle du détail. AXENS-02-000 : détail B coupé, 27 arêtes de coupe et 10 boucles de hachures, comme la coupe A-A.
+
+**Cause 2** : l'orientation d'une cote se choisit au secteur du curseur autour du milieu (`mepDimOrientFromPts`) ; l'écart d'angle n'était pas replié (170° comptait pour loin au lieu de 10°) : la souris un peu à gauche du milieu donnait une cote verticale ou alignée. Et entre deux points presque à la même hauteur, alignée et horizontale se partageaient la place à 1° près : cote penchée (295,27).
+
+**Correctif 2** (`src/98-mep-80-souris.js`) : écart replié entre 0 et 90°, comme dans l'esquisse 2D ; l'alignée cède 12° à X et Y — elle reste en face d'un trait vraiment penché, et au clic droit « Alignée (A) ».
+
+**Test** : `test_mise_en_plan` « cote presque horizontale : posée horizontale, alignée seulement en face d'un trait penché ». CACHE_VER et FORMES_VER inchangés.

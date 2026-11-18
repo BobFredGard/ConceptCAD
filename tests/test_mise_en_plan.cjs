@@ -811,6 +811,9 @@ const A=(c,m)=>{if(!c){ko++;console.log('  x '+m);}else console.log('  ✓ '+m);
       const cd=T.clipDetail([{t:'L',x1:0,y1:0,x2:20,y2:0,k:'sharp'},{t:'L',x1:-20,y1:3,x2:0,y2:3,k:'sharp'}],{cx:0,cy:0,r:10});
       out.detClip=cd.length===2&&Math.abs(cd[0].x1)<1e-9&&Math.abs(cd[0].x2-10)<1e-6&&Math.abs(cd[1].x1+Math.sqrt(91))<1e-6&&Math.abs(cd[1].x2)<1e-9;
       out.detDbg=JSON.stringify(cd.map(e=>[e.x1,e.x2].map(v=>+v.toFixed(3))));
+      // cote entre deux points presque à la même hauteur : horizontale même souris un peu de côté ; trait à 45° : alignée en face
+      const O=T.dimOrient;
+      out.dimOri=O(0,0,295,8,{x:160,y:-20})==='h'&&O(0,0,295,8,{x:140,y:-20})==='h'&&O(0,0,8,295,{x:-20,y:160})==='v'&&O(0,0,50,50,{x:15,y:35})==='a'&&O(0,0,50,50,{x:25,y:-30})!=='a';
       out.revIdx=[0,1,25,26,27].map(k=>T.revIdx('A',k)).join()==='A,B,Z,AA,AB'&&T.revIdx('0',0)==='0'&&T.revIdx('1',0)==='1'
         &&T.revNext('A',[{i:'C'}])==='D'&&T.revNext('A',[{i:'Z'}])==='AA'&&T.revNext('1',[{i:'4'}])==='5'&&T.revNext('0',[])==='0'&&T.revNext('1',[{i:'B'}])==='2';
       sh0.sk=sk0;
@@ -1042,6 +1045,7 @@ const A=(c,m)=>{if(!c){ko++;console.log('  x '+m);}else console.log('  ✓ '+m);
   A(val&&val.dxfSnap,'vue DXF : coin accroché comme une extrémité de vue (cotes, esquisse liée)');
   A(val&&val.tbFormat,'cartouche : champ FORMAT écrit A3-H (A4-V…)');
   A(val&&val.revIdx,'révisions : indices en lettres (A…Z, AA) ou chiffres (0… / 1…), suite du dernier');
+  A(val&&val.dimOri,'cote presque horizontale : posée horizontale, alignée seulement en face d’un trait penché');
   A(val&&val.detClip,'détail : traits qui entrent / sortent du cercle rognés au bon croisement '+(val&&val.detDbg));
   A(val&&val.expCol&&val.expBW,'export PDF / SVG : couleurs gardées par défaut, option noir'+(val&&val.expErr?' — '+val.expErr:''));
   A(val&&val.paperBasis&&val.paperBasisSide,'vues alignées (coupe / auxiliaire) : base = projection 1er angle (V0.3.13)'+(val&&val.paperErr?' — '+val.paperErr:''));
