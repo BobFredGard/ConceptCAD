@@ -37,7 +37,8 @@
     return s;
   }
   function mepViewSig(v){
-    let s=[v.kind==='dxf'?'dxf:'+((v.dxf&&v.dxf.rev)||0):'',mepRound(v.dir),mepRound(v.u),mepRound(v.v),v.bodyId||'',v.mode||'hide',v.tangent?1:0,
+    const ds=typeof mepDetailSec==='function'?mepDetailSec(v):null; // détail d'une coupe : suit le plan de sa mère
+    let s=[ds?'dsec:'+mepRound(ds.p)+mepRound(ds.n)+(ds.pts?JSON.stringify(ds.pts):''):'',v.kind==='dxf'?'dxf:'+((v.dxf&&v.dxf.rev)||0):'',mepRound(v.dir),mepRound(v.u),mepRound(v.v),v.bodyId||'',v.mode||'hide',v.tangent?1:0,
       v.hlrExact===false?'soft':'exact',v.shade?1:0,(v.render3d||v.real)?(v.mirror?'1m':1):0,v.real?'real':'',
       v.section?mepRound(v.section.p)+mepRound(v.section.n)+(v.section.pts?JSON.stringify(v.section.pts):''):'',v.detail?v.detail.cx+','+v.detail.cy+','+v.detail.r:'',mepOblOf(v)?'obl:'+mepOblOf(v).a+','+mepOblOf(v).k:'',mepPerspOf(v)?'persp:'+mepPerspOf(v).fov:'',v.asm?'asm:'+asmPlanSig():'',mepLocalSig(v)].join('|');
     /* l'ombrage et le rendu 3D dépendent de la couleur/opacité des corps :

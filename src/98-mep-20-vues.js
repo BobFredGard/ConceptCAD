@@ -1,6 +1,18 @@
 // Espace PLAN — suite de la fonction englobante ouverte dans 98-mep-00-modele.js (état privé partagé, fermée dans 98-mep-95-export-init.js) : construction, création et commandes des vues, vues DXF et projetées.
   /* ═══════════════ H. construction d'une vue ═══════════════ */
+  /* détail pris sur une vue en coupe : il montre la matière coupée de sa mère (plan, hachures).
+     Le plan est prêté le temps du calcul seulement — posé à demeure, le détail passerait pour une
+     coupe (ligne A-A tracée deux fois, menus de coupe). */
+  function mepDetailSec(view){
+    if(!view||view.kind!=='detail'||view.section||!view.parent)return null;
+    const par=mepView(mepSheet(),view.parent);return par&&par.section||null;
+  }
   function mepBuildGeo(view){
+    const ps=mepDetailSec(view);
+    if(ps){view.section=ps;try{return mepBuildGeoIn(view);}finally{delete view.section;}}
+    return mepBuildGeoIn(view);
+  }
+  function mepBuildGeoIn(view){
     // vue DXF (2026-10-23) : géométrie importée telle quelle ; un détail pris dessus la rogne
     {const par=view.kind==='detail'&&view.parent?mepView(mepSheet(),view.parent):null,dv=view.kind==='dxf'?view:(par&&par.kind==='dxf'?par:null);
      if(dv){let els=((dv.dxf&&dv.dxf.els)||[]).map(e=>e.t==='P'?{t:'P',pts:e.pts.map(q=>q.slice()),k:e.k}:Object.assign({},e));

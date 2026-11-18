@@ -1282,10 +1282,16 @@
     const rdx=P.x-mx,rdy=P.y-my;
     if(Math.hypot(rdx,rdy)<=1e-6)return 'a';
     const beta=Math.atan2(dy,dx),phi=Math.atan2(rdy,rdx);
-    const w180=a=>{a=(a*180/Math.PI)%180;if(a<0)a+=180;return a;};
+    // écart d'angle entre deux directions (sans sens) : 0 à 90° — non replié, 170° comptait pour loin
+    // alors que c'est 10° : la souris un peu à gauche du milieu donnait une cote verticale ou alignée
+    const w180=a=>{a=(a*180/Math.PI)%180;if(a<0)a+=180;return Math.min(a,180-a);};
     const dH=w180(phi-Math.PI/2),dV=w180(phi),dA=w180(phi-(beta+Math.PI/2));
+    // l'alignée cède 12° à X et Y : deux points presque à la même hauteur (bords d'une coupe,
+    // l'un en haut d'un trait, l'autre au pied du suivant) donnaient une cote penchée dès que la
+    // souris n'était pas pile au-dessus du milieu — l'alignée y reste au clic droit
+    const AL=12;
     const cands=[{o:'h',d:dH,ok:Math.abs(dx)>1e-6},
-      {o:'v',d:dV,ok:Math.abs(dy)>1e-6},{o:'a',d:dA,ok:true}];
+      {o:'v',d:dV,ok:Math.abs(dy)>1e-6},{o:'a',d:dA+AL,ok:true}];
     cands.sort((p,q)=>p.d-q.d);
     return (cands.find(c=>c.ok)||cands[2]).o;
   }

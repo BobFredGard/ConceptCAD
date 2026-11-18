@@ -26,6 +26,7 @@ Le retour dans le Plan est immédiat tant que la géométrie de la pièce n’a 
   - **Tangentes grises comme dans la 3D**, dans les vues comme dans les coupes (même les raccords que le noyau croit vifs).
   - Perspective et cavalière.
   - **Rendu réaliste** des vues au choix ; en assemblage, chaque pièce avec son matériau et sa texture de rendu.
+- **Détail d'une coupe** : coupé et hachuré comme sa vue mère, hachures arrêtées au cercle du détail.
 - **Ligne de coupe** droite ou brisée (ISO 128-44), **hachures** (ISO 128-50), **filetages** (ISO 6410), **axes** (ISO 128-2) étirables et cotables ; nom de vue affiché seulement sur les coupes et détails.
 - **Coupe locale** : contour libre plus une arête du plan, modifiable ou supprimable (double-clic sur ses hachures) ; les filetages coupés y sont représentés comme dans une vue en coupe.
 - **Import DXF** : un dessin DXF (lignes, arcs, polylignes, splines, blocs) devient une vue de la planche.
@@ -52,6 +53,7 @@ Le retour dans le Plan est immédiat tant que la géométrie de la pièce n’a 
   - un trou coupé par une autre fonction reste reconnu ;
   - l'outil Perçage cote le trou dans toutes les vues : vu de bout, de côté ou en biais, en coupe comme avec les traits cachés.
 - **Ordonnées X / Y** (avec cassure), notes à flèche.
+- **Sens d'une cote au curseur** : horizontale, verticale ou alignée selon la position de la souris ; entre deux points presque à la même hauteur, la cote reste horizontale (alignée au clic droit).
 - **Précision des cotes** au choix : 0, 0.1, 0.01 ou 0.001, cote par cote ou par défaut pour tout le plan.
 - **Hauteur du texte** des cotes, avec flèches et tolérances proportionnelles (écarts au niveau de la valeur, quel que soit le sens de la cote) ; épaisseur des lignes d'attache et des axes de trous ; **Sauvegarder par défaut** / **Appliquer les défauts**.
 - **Dessin 2D** sur la planche avec contraintes.

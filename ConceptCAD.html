@@ -394,7 +394,7 @@ input[type=range]{accent-color:var(--primary);width:100%}
  * peut changer sans rien casser. CACHE_VER (parcours FAO) reste indépendant.
  */
 
-const APP_VER='V0.99.26';
+const APP_VER='V0.99.27';
 try{console.log('[ConceptCAD] version '+APP_VER);}catch(e){}
 try{var mfSv=document.getElementById('mfSplashVer');if(mfSv)mfSv.textContent=APP_VER;}catch(e){} // écran de démarrage
 
@@ -83536,7 +83536,8 @@ function filmFrame(){
     return s;
   }
   function mepViewSig(v){
-    let s=[v.kind==='dxf'?'dxf:'+((v.dxf&&v.dxf.rev)||0):'',mepRound(v.dir),mepRound(v.u),mepRound(v.v),v.bodyId||'',v.mode||'hide',v.tangent?1:0,
+    const ds=typeof mepDetailSec==='function'?mepDetailSec(v):null; // détail d'une coupe : suit le plan de sa mère
+    let s=[ds?'dsec:'+mepRound(ds.p)+mepRound(ds.n)+(ds.pts?JSON.stringify(ds.pts):''):'',v.kind==='dxf'?'dxf:'+((v.dxf&&v.dxf.rev)||0):'',mepRound(v.dir),mepRound(v.u),mepRound(v.v),v.bodyId||'',v.mode||'hide',v.tangent?1:0,
       v.hlrExact===false?'soft':'exact',v.shade?1:0,(v.render3d||v.real)?(v.mirror?'1m':1):0,v.real?'real':'',
       v.section?mepRound(v.section.p)+mepRound(v.section.n)+(v.section.pts?JSON.stringify(v.section.pts):''):'',v.detail?v.detail.cx+','+v.detail.cy+','+v.detail.r:'',mepOblOf(v)?'obl:'+mepOblOf(v).a+','+mepOblOf(v).k:'',mepPerspOf(v)?'persp:'+mepPerspOf(v).fov:'',v.asm?'asm:'+asmPlanSig():'',mepLocalSig(v)].join('|');
     /* l'ombrage et le rendu 3D dépendent de la couleur/opacité des corps :
@@ -84730,7 +84731,19 @@ function filmFrame(){
 /* ═══════════════ 98-mep-20-vues.js — mep 20 vues ═══════════════ */
 // Espace PLAN — suite de la fonction englobante ouverte dans 98-mep-00-modele.js (état privé partagé, fermée dans 98-mep-95-export-init.js) : construction, création et commandes des vues, vues DXF et projetées.
   /* ═══════════════ H. construction d'une vue ═══════════════ */
+  /* détail pris sur une vue en coupe : il montre la matière coupée de sa mère (plan, hachures).
+     Le plan est prêté le temps du calcul seulement — posé à demeure, le détail passerait pour une
+     coupe (ligne A-A tracée deux fois, menus de coupe). */
+  function mepDetailSec(view){
+    if(!view||view.kind!=='detail'||view.section||!view.parent)return null;
+    const par=mepView(mepSheet(),view.parent);return par&&par.section||null;
+  }
   function mepBuildGeo(view){
+    const ps=mepDetailSec(view);
+    if(ps){view.section=ps;try{return mepBuildGeoIn(view);}finally{delete view.section;}}
+    return mepBuildGeoIn(view);
+  }
+  function mepBuildGeoIn(view){
     // vue DXF (2026-10-23) : géométrie importée telle quelle ; un détail pris dessus la rogne
     {const par=view.kind==='detail'&&view.parent?mepView(mepSheet(),view.parent):null,dv=view.kind==='dxf'?view:(par&&par.kind==='dxf'?par:null);
      if(dv){let els=((dv.dxf&&dv.dxf.els)||[]).map(e=>e.t==='P'?{t:'P',pts:e.pts.map(q=>q.slice()),k:e.k}:Object.assign({},e));
@@ -88399,8 +88412,10 @@ function filmFrame(){
       }
     });
     /* hachures */
-    if(g.hatchG&&g.hatchG.length>1&&mepHatchCfg().parts)g.hatchG.forEach(G=>mepDrawHatch(mk,G.loops,v,mepHatchVar(G.k))); // V0.8.2 : par pièce
-    else if(g.hatch&&g.hatch.length)mepDrawHatch(mk,g.hatch,v);
+    // détail d'une coupe : hachures rognées au cercle du détail
+    const detClip=v.detail?[(()=>{const d=v.detail,c=[];for(let i=0;i<64;i++){const a=i*Math.PI/32;c.push([d.cx+d.r*Math.cos(a),d.cy+d.r*Math.sin(a)]);}return c;})()]:null;
+    if(g.hatchG&&g.hatchG.length>1&&mepHatchCfg().parts)g.hatchG.forEach(G=>mepDrawHatch(mk,G.loops,v,mepHatchVar(G.k),detClip)); // V0.8.2 : par pièce
+    else if(g.hatch&&g.hatch.length)mepDrawHatch(mk,g.hatch,v,null,detClip);
     // coupes locales (V0.23.7) : hachures rognées à la forme (et au cercle d'un détail)
     if(g.hatchLoc)g.hatchLoc.forEach(H=>{
       const clips=[H.poly];
@@ -93205,10 +93220,16 @@ function filmFrame(){
     const rdx=P.x-mx,rdy=P.y-my;
     if(Math.hypot(rdx,rdy)<=1e-6)return 'a';
     const beta=Math.atan2(dy,dx),phi=Math.atan2(rdy,rdx);
-    const w180=a=>{a=(a*180/Math.PI)%180;if(a<0)a+=180;return a;};
+    // écart d'angle entre deux directions (sans sens) : 0 à 90° — non replié, 170° comptait pour loin
+    // alors que c'est 10° : la souris un peu à gauche du milieu donnait une cote verticale ou alignée
+    const w180=a=>{a=(a*180/Math.PI)%180;if(a<0)a+=180;return Math.min(a,180-a);};
     const dH=w180(phi-Math.PI/2),dV=w180(phi),dA=w180(phi-(beta+Math.PI/2));
+    // l'alignée cède 12° à X et Y : deux points presque à la même hauteur (bords d'une coupe,
+    // l'un en haut d'un trait, l'autre au pied du suivant) donnaient une cote penchée dès que la
+    // souris n'était pas pile au-dessus du milieu — l'alignée y reste au clic droit
+    const AL=12;
     const cands=[{o:'h',d:dH,ok:Math.abs(dx)>1e-6},
-      {o:'v',d:dV,ok:Math.abs(dy)>1e-6},{o:'a',d:dA,ok:true}];
+      {o:'v',d:dV,ok:Math.abs(dy)>1e-6},{o:'a',d:dA+AL,ok:true}];
     cands.sort((p,q)=>p.d-q.d);
     return (cands.find(c=>c.ok)||cands[2]).o;
   }
@@ -95794,7 +95815,7 @@ function filmFrame(){
       titleTexts:sh=>{const t=[];const mk=(tag)=>{const o={textContent:''};if(tag==='text')t.push(o);return o;};mepDrawTitle(mk,sh,mepPage().pd,100);mepDrawRevs(mk,sh,mepPage().pd,100);mepDrawBom(mk,sh,mepPage().pd,100);return t.map(o=>o.textContent);},
       sk:{fromStd:sh=>mepTbFromStd(sh),solve:(sk,a)=>mepSkSolve(sk,80,a),residual:(sk,c)=>mepSkResidual(sk,c),
         apply:(sh,id,keys)=>{mepSt.skSel=new Set(keys);mepSkApply(sh,id);},setVal:(sh,c,v)=>mepSkSetVal(sh,c,v),
-        tbH:sh=>mepTbH(sh),tbEdit:on=>mepTbEdit(on),ctx:sh=>mepSkCtx(sh,true),addLine:(sh,a,b)=>mepSkAddLine(sh,a,b),trim:(sh,x,y)=>mepSkTrim(sh,x,y),clipDetail:(els,det)=>mepClipDetail(els,det),revIdx:(f,k)=>mepRevIdx(f,k),tbApply:(sh,o)=>mepTbApply(sh,o),drawSk:(mk,sh,c,m)=>mepDrawSkCtx(mk,sh,c,m),tbValue:(sh,c)=>mepTbValue(sh,c),revRows:sh=>mepTbRevRows(sh),revNext:(f,r)=>mepRevNext(f,r),hit:(sh,x,y)=>{const h=mepSkHit(sh,{x,y});return h?h.key:null;},
+        tbH:sh=>mepTbH(sh),tbEdit:on=>mepTbEdit(on),ctx:sh=>mepSkCtx(sh,true),addLine:(sh,a,b)=>mepSkAddLine(sh,a,b),trim:(sh,x,y)=>mepSkTrim(sh,x,y),clipDetail:(els,det)=>mepClipDetail(els,det),dimOrient:(ax,ay,bx,by,P)=>mepDimOrientFromPts(ax,ay,bx,by,P),revIdx:(f,k)=>mepRevIdx(f,k),tbApply:(sh,o)=>mepTbApply(sh,o),drawSk:(mk,sh,c,m)=>mepDrawSkCtx(mk,sh,c,m),tbValue:(sh,c)=>mepTbValue(sh,c),revRows:sh=>mepTbRevRows(sh),revNext:(f,r)=>mepRevNext(f,r),hit:(sh,x,y)=>{const h=mepSkHit(sh,{x,y});return h?h.key:null;},
         addRect:(sh,a,b)=>mepSkAddRect(sh,a,b),addArc:(sh,c,a,b)=>mepSkAddArc(sh,c,a,b),addText:(sh,p)=>mepSkAddText(sh,p),addWm:(sh,k,t)=>mepSkAddWatermark(sh,k,t),entPoly:(sh,e)=>mepSkEntPoly(sh,mepSkCtx(sh,false),e),textValue:(sh,e)=>mepSkTextValue(sh,e,false),
         merge:(sk,a,b)=>mepSkMerge(sk,a,b),
         box:(sh,x0,y0,x1,y1,add)=>mepBoxSelect(sh,{sx:x0,sy:y0,cur:{x:x1,y:y1}},add),sel:()=>[...mepSt.skSel],

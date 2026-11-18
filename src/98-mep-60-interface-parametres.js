@@ -389,8 +389,10 @@
       }
     });
     /* hachures */
-    if(g.hatchG&&g.hatchG.length>1&&mepHatchCfg().parts)g.hatchG.forEach(G=>mepDrawHatch(mk,G.loops,v,mepHatchVar(G.k))); // V0.8.2 : par pièce
-    else if(g.hatch&&g.hatch.length)mepDrawHatch(mk,g.hatch,v);
+    // détail d'une coupe : hachures rognées au cercle du détail
+    const detClip=v.detail?[(()=>{const d=v.detail,c=[];for(let i=0;i<64;i++){const a=i*Math.PI/32;c.push([d.cx+d.r*Math.cos(a),d.cy+d.r*Math.sin(a)]);}return c;})()]:null;
+    if(g.hatchG&&g.hatchG.length>1&&mepHatchCfg().parts)g.hatchG.forEach(G=>mepDrawHatch(mk,G.loops,v,mepHatchVar(G.k),detClip)); // V0.8.2 : par pièce
+    else if(g.hatch&&g.hatch.length)mepDrawHatch(mk,g.hatch,v,null,detClip);
     // coupes locales (V0.23.7) : hachures rognées à la forme (et au cercle d'un détail)
     if(g.hatchLoc)g.hatchLoc.forEach(H=>{
       const clips=[H.poly];
