@@ -2,7 +2,9 @@
 
 # Fichiers
 
-- **Import** : STEP et STL.
+- **Import** : STEP, **IGES** (`.igs`, `.iges`) et STL.
+  - Un IGES arrive souvent en surfaces séparées : elles sont **cousues en solide** quand elles se referment ; sinon elles restent des surfaces (affichées et usinables, mais ni unies ni soustraites).
+  - **Parasolid (`.x_t`)** : format fermé, illisible — réexportez la pièce en STEP ou en IGES depuis le logiciel d’origine.
 - **Export** : STL, OBJ, STEP (détail plus bas) et **FreeCAD natif (`.FCStd`)** exact : corps à leur couleur, aimants avec leurs caractéristiques et leurs **lignes de champ** rangées par intensité.
 - **Projet `.conceptcad`** compressé, 3 à 5 fois plus petit : pièce, FAO, planches, rendu. Les fichiers en clair, les `.conceptcad.gz` et les anciens `.miniFusion` s'ouvrent toujours.
 - **Réouverture rapide** : une pièce ouverte ou enregistrée est gardée finie sur ce poste. Rouverte sans changement, elle s'affiche **sans être recalculée** (pièce d’une centaine de fonctions : quelques secondes au lieu d’une vingtaine), puis se prépare en fond pour que la première modification reste rapide. Cette préparation se met en pause dès que la souris, la molette ou le clavier bougent : la vue reste fluide si on tourne la pièce juste après l'ouverture. Le moindre changement (fichier, pièce importée ou dérivée) la fait recalculer.

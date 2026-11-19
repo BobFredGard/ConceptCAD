@@ -542,7 +542,7 @@ function* occReplayBodyGen(bid,list){
         // mémorisés SANS le STEP étaient ensuite repris tels quels, une fois le STEP
         // restauré → seule l'opération restait affichée. Marque d'absence dans la clé.
         ckKey+='!'+f.id+';';
-        msgs.push(`${f.name} : `+(f.src&&f.src.fmt==='step'?'STEP en cours de restauration':'solide exact indisponible (import STL) — combinaison réservée au repli maillage'));
+        msgs.push(`${f.name} : `+(f.src&&f.src.fmt!=='stl'?'STEP en cours de restauration':'solide exact indisponible (import STL) — combinaison réservée au repli maillage'));
         return;
       }
       shape=occShapeCopy(bp); // COPIE : la table reste propriétaire de son BRep

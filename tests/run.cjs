@@ -175,6 +175,7 @@ const SUITES = [
   "test_rep_nom_ordre",
   "test_import_vie",
   "test_import_persist",
+  "test_import_iges",
   "test_ouverture_deterministe",
   "test_esquisse_colineaire",
   "test_esquisse_echelle",
