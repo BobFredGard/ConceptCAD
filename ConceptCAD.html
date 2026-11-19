@@ -410,7 +410,7 @@ input[type=range]{accent-color:var(--primary);width:100%}
  * peut changer sans rien casser. CACHE_VER (parcours FAO) reste indépendant.
  */
 
-const APP_VER='V0.99.39';
+const APP_VER='V0.99.40';
 try{console.log('[ConceptCAD] version '+APP_VER);}catch(e){}
 try{var mfSv=document.getElementById('mfSplashVer');if(mfSv)mfSv.textContent=APP_VER;}catch(e){} // écran de démarrage
 
@@ -17771,7 +17771,7 @@ function asmCachePack(s){
     const g=it.geo,p=g&&g.attributes&&g.attributes.position;
     if(!p||!p.array)return null;
     verts+=p.count||0;if(verts>ASM_CACHE_VERTS)return null;
-    items.push({pos:p.array.slice(),nor:asmCacheArr(g.attributes.normal),idx:g.index?asmCacheArr(g.index):null,
+    items.push({pos:p.array.slice(),nor:asmCacheArr(g.attributes.normal),col:it.vc?asmCacheArr(g.attributes.color):null,idx:g.index?asmCacheArr(g.index):null,
       color:it.color,bid:it.bid,op:it.op,gl:it.gl,rl:it.rl||null,cm:it.cm||null,grp:it.grp||null,fg:it.fg||null});
   }
   const e=s.edges&&s.edges.attributes;
@@ -17788,10 +17788,11 @@ function asmCacheUnpack(v,hash){
     if(it.nor&&it.nor.length===it.pos.length)g.setAttribute('normal',new THREE.Float32BufferAttribute(it.nor,3));
     if(it.idx)g.setIndex(new THREE.BufferAttribute(it.idx,1));
     if(!g.attributes.normal)g.computeVertexNormals();
+    const vc=!!(it.col&&it.col.length===it.pos.length);if(vc)g.setAttribute('color',new THREE.Float32BufferAttribute(it.col,3));
     // faces exactes (V0.29.0, mesures) : vérifiées, une table douteuse est simplement absente
     const grp=asmGrpNorm(it.grp),fg=grp?asmFgNorm(it.fg,grp.length):null;
     if(grp)g.userData.occGroups=grp;
-    return {geo:g,color:it.color,bid:it.bid||null,op:it.op,gl:it.gl,rl:it.rl||null,cm:it.cm||null,grp:grp||null,fg:fg||null};
+    return {vc,geo:g,color:it.color,bid:it.bid||null,op:it.op,gl:it.gl,rl:it.rl||null,cm:it.cm||null,grp:grp||null,fg:fg||null};
   });
   let edges=null;
   if(v.edges&&v.edges.pos&&v.edges.pos.length){
@@ -18058,7 +18059,8 @@ function asmCaptureActive(){
       // V0.29.0 : faces exactes (plan / cylindre) de chaque groupe du maillage — mesures entre pièces (48-assemblage-mesure)
       const grp=asmGrpNorm((b.mesh.geometry.userData||{}).occGroups);g.userData.occGroups=grp||undefined;
       const fg=grp?asmFaceTable(b):null;
-      items.push({grp:grp||null,fg:fg||null,geo:g,color:(m.color&&m.color.getHex)?m.color.getHex():0x9a9aa0,bid:bid||null,op:bid?bodyOpOf(bid):1,gl:bid?bodyGlassEff(bid):1,rl:bid?renderLookOf(bid):null,cm:bid?bodyMatOf(bid):null}); // rl : apparence de RENDU (atelier) ; cm : matériau CAO (vue) — 12-materiaux, V0.10.0
+      const vc=!!(m.vertexColors&&g.getAttribute('color')); // V0.99.40 : STEP multicolore (couleur par pièce) gardé en assemblage
+      items.push({vc,grp:grp||null,fg:fg||null,geo:g,color:(m.color&&m.color.getHex)?m.color.getHex():0x9a9aa0,bid:bid||null,op:bid?bodyOpOf(bid):1,gl:bid?bodyGlassEff(bid):1,rl:bid?renderLookOf(bid):null,cm:bid?bodyMatOf(bid):null}); // rl : apparence de RENDU (atelier) ; cm : matériau CAO (vue) — 12-materiaux, V0.10.0
     }catch(e){}
   });
   if(c._snap)asmSnapFree(c._snap);
@@ -18363,6 +18365,7 @@ function asmKey(e){
   const t=e.target;if(t&&(t.tagName==='INPUT'||t.tagName==='TEXTAREA'||t.isContentEditable))return false;
   const ctrl=e.ctrlKey||e.metaKey,k=String(e.key||'').toLowerCase();
   if(ctrl&&(k==='z'||k==='y'))return false; // routage unique en capture (undoDispatch, 45)
+  if((e.key==='Delete'||e.key==='Backspace')&&typeof asmHistKey==='function'&&asmHistKey(e))return true; // étape choisie dans l'historique (48)
   if((e.key==='Delete'||e.key==='Backspace')&&asmSelId){e.preventDefault();asmAskDeleteLot(asmLotIds());return true;}
   if(e.key==='Escape'&&mesEnCours()){asmMeasStop();return true;}
   if(e.key==='Escape'&&asmPatEd){asmPatCancel();return true;}
@@ -20322,6 +20325,7 @@ function asmLookMat(it,look,on){
   // Matière d'un corps d'instance en mode Placer : couleur du corps ; « Intensité » et
   // « Transparence » de l'occurrence, sinon celles du corps — setMatAlpha (même rendu que la pièce)
   const mat=new THREE.MeshStandardMaterial({color:it.color,metalness:.35,roughness:.4,polygonOffset:true,polygonOffsetFactor:1,polygonOffsetUnits:1});
+  if(it.vc&&it.geo&&it.geo.getAttribute&&it.geo.getAttribute('color')){mat.color.setHex(0xffffff);mat.vertexColors=true;} // V0.99.40 : couleurs des pièces d'un STEP
   setMatAlpha(mat,look.op!=null?look.op:(it.op||1),look.gl!=null?look.gl:(it.gl||1));
   if(on&&mat.emissive){mat.emissive.setHex(ASM_SEL_COL);mat.emissiveIntensity=0.35;}
   return mat;
@@ -20661,6 +20665,26 @@ function asmHistIcon(c,s){
     return '🧲<small>'+(k&&ASM_CONS[k.t]?ASM_CONS[k.t].ic:'')+'</small>';}
   return ASM_HIST_K[s.k].ic;
 }
+let asmHistSel=null; // V0.99.40 : étape choisie dans la barre (id) — Suppr la supprime tant qu'on n'a pas cliqué ailleurs
+function asmHistKey(e){
+  if(!asmHistSel||asmMode!=='asm')return false;
+  const c=asmActiveComp(),s=c&&asmHistOf(c).find(q=>q.id===asmHistSel);
+  if(!s||!asmHistCanDel(c,s)){asmHistSel=null;return false;}
+  try{e.preventDefault();}catch(_){}
+  try{if(typeof asmRel!=='undefined'&&asmRel)asmRelCancel();}catch(_){} // la relation ouverte d'un clic n'est pas gardée en cours
+  try{if(typeof asmPatEd!=='undefined'&&asmPatEd)asmPatCancel();}catch(_){}
+  const nm=asmHistName(c,s);
+  const c2=asmActiveComp(),s2=c2&&asmHistOf(c2).find(q=>q.id===asmHistSel);
+  asmHistSel=null;
+  if(s2&&asmHistDelete(c2,s2,true))try{faceEl.textContent='Supprimé : '+nm+' (Ctrl+Z pour annuler).';}catch(_){}
+  return true;
+}
+function asmHistPick(c,s){
+  // clic sur une étape : relation ou répétition → sa modification tout de suite ; sinon la pièce
+  asmHistSel=s.id;
+  if(!asmHistView&&(s.k==='rel'||s.k==='pat')){asmHistDbl(c,s);try{asmTlRender();}catch(e){}return;}
+  asmHistClick(c,s);try{asmTlRender();}catch(e){}
+}
 function asmHistClick(c,s){
   if(s.occ&&asmHistOcc(c,s)){asmSelId=s.occ;try{asmDraw();asmGizmoDraw();renderTree();renderProps();}catch(e){}}
 }
@@ -20669,7 +20693,47 @@ function asmHistDbl(c,s){
   if(asmHistExit())asmNotify(true);
   const o=asmHistOcc(c,s);
   if(s.k==='rel'&&o){asmRelStart(o.id);const i=(asmRel&&asmRel.list||[]).findIndex(r=>r.id===s.rel);if(i>=0)asmRelEdit(i);return;}
+  if(s.k==='pat'&&typeof asmPatEdit==='function'){asmPatEdit(c.id,s.pat);asmNotify();return;}
   asmHistClick(c,s);
+}
+function asmHistCanDel(c,s){
+  const o=asmHistOcc(c,s);
+  if(s.k==='rel')return !!(o&&(o.cons||[]).some(r=>r.id===s.rel));
+  if(s.k==='join')return !!(o&&o.align);
+  if(s.k==='pat')return (c.pats||[]).some(p=>p.id===s.pat);
+  if(s.k==='ins')return !!o;
+  return false;
+}
+function asmHistDelete(c,s,noAsk){
+  // V0.99.40 : supprimer l'objet d'UNE étape (relation, liaison, répétition, pièce) ; Ctrl+Z la rend
+  if(asmHistExit())asmNotify(true);
+  if(!asmHistCanDel(c,s))return false;
+  const o=asmHistOcc(c,s),nm=asmHistName(c,s);
+  if(s.k==='pat'){asmPatDeleteCmd(c.id,s.pat);return true;} // sa propre confirmation et son annulation
+  if(!noAsk&&!confirm('Supprimer l’étape « '+nm+' » ? (Ctrl+Z pour annuler)'))return false;
+  if(s.k==='ins')return asmDeleteOcc(o.id)!==false&&(asmSelId&&!asmOcc(asmSelId)&&(asmSelId=null),asmNotify(),true);
+  asmPush('supprimer '+nm);
+  try{asmAnimStop();}catch(e){}
+  if(s.k==='rel'){o.cons=o.cons.filter(r=>r.id!==s.rel);if(!o.cons.length){delete o.cons;delete o._dof;}}
+  else if(s.k==='join')o.align=null;
+  try{asmResolve();}catch(e){}
+  asmNotify();
+  return true;
+}
+function asmHistCtx(c,s,ev,el){
+  // clic droit sur une étape : Modifier / Supprimer, une à une
+  const items=[{title:asmHistName(c,s)}];
+  if(s.k==='rel')items.push({html:'✏ Modifier la relation',fn:()=>asmHistDbl(c,s)});
+  if(s.k==='pat')items.push({html:'✏ Modifier la répétition',fn:()=>asmHistDbl(c,s)});
+  if(s.k==='join')items.push({html:'✏ Modifier la liaison',fn:()=>asmHistClick(c,s)});
+  if(s.occ)items.push({html:'🎯 Sélectionner la pièce',fn:()=>asmHistClick(c,s)});
+  if(asmHistCanDel(c,s))items.push({html:'🗑 Supprimer '+({rel:'la relation',join:'la liaison',pat:'la répétition',ins:'la pièce'})[s.k],cls:'danger',fn:()=>asmHistDelete(c,s)});
+  try{
+    mfPop(el,items);
+    const p=document.querySelector('.mfPop.mfTmp');
+    if(p){const r=el.getBoundingClientRect();p.style.top=Math.max(6,r.top-p.offsetHeight-6+window.scrollY)+'px';
+      p.style.left=Math.max(6,Math.min(window.innerWidth-p.offsetWidth-8,r.left))+'px';}
+  }catch(e){}
 }
 /* ── bandeau en bas de la vue, en mode Assembler (même dessin que celui des pièces, 41) ── */
 let asmTlEl=null,asmTlDrag=null;
@@ -20696,6 +20760,8 @@ function asmTlHost(){
   d.appendChild(C);d.appendChild(T);d.appendChild(R);d.appendChild(N);
   d._row=R;d._cnt=N;d._steps=[];d._title=T;
   ['pointerdown','mousedown','dblclick','contextmenu'].forEach(t=>d.addEventListener(t,e=>{try{e.stopPropagation();}catch(_){}}));
+  // un clic ailleurs que dans la barre (vue, arbre, panneau) : Suppr ne vise plus l'étape choisie
+  window.addEventListener('pointerdown',e=>{try{if(asmHistSel&&!(asmTlEl&&asmTlEl.contains(e.target))&&!(e.target.closest&&e.target.closest('.mfPop'))){asmHistSel=null;asmTlRender();}}catch(_){}},true);
   d.addEventListener('wheel',e=>{try{e.stopPropagation();if(Math.abs(e.deltaY)>Math.abs(e.deltaX)){R.scrollLeft+=e.deltaY;e.preventDefault();}}catch(_){}},{passive:false});
   window.addEventListener('pointermove',e=>{const D=asmTlDrag;if(!D||!asmTlEl)return;
     if(!D.on){if(Math.abs(e.clientX-D.x0)<5)return;D.on=true;D.node.className='tlbM on';}
@@ -20725,10 +20791,11 @@ function asmTlRender(){
   H.forEach((s,i)=>{
     if(i===ptr)R.appendChild(mk());
     const d=document.createElement('div'),o=asmHistOcc(c,s);
-    d.className='tlbS k-'+s.k+(s.occ&&asmSelId===s.occ?' sel':'')+(i>=ptr?' off':'')+(o&&o.st==='warn'&&s.k!=='ins'&&s.k!=='move'?' warn':'');
+    d.className='tlbS k-'+s.k+((asmHistSel?asmHistSel===s.id:(s.occ&&asmSelId===s.occ))?' sel':'')+(i>=ptr?' off':'')+(o&&o.st==='warn'&&s.k!=='ins'&&s.k!=='move'?' warn':'');
     d.innerHTML='<span>'+asmHistIcon(c,s)+'</span>';
-    d.title=(i+1)+'. '+asmHistName(c,s)+(i>=ptr?' — au-delà du marqueur':'')+'\nClic = sélectionner la pièce'+(s.k==='rel'?' · double-clic = modifier la relation':'');
-    d.onclick=()=>asmHistClick(c,s);
+    d.title=(i+1)+'. '+asmHistName(c,s)+(i>=ptr?' — au-delà du marqueur':'')+'\n'+(s.k==='rel'||s.k==='pat'?'Clic = modifier':'Clic = sélectionner la pièce')+(asmHistCanDel(c,s)?' · Suppr = supprimer':'')+' · clic droit = modifier / supprimer';
+    d.onclick=()=>asmHistPick(c,s);
+    d.oncontextmenu=e=>{try{e.preventDefault();e.stopPropagation();}catch(_){}asmHistCtx(c,s,e,d);};
     d.ondblclick=()=>asmHistDbl(c,s);
     R.appendChild(d);h._steps.push(d);
   });
@@ -78500,8 +78567,14 @@ function ctxPieceBtnSync(p){
       // juste AVANT l'export du corps, qui reste la dernière entrée (test_ctx_menu_viewport)
       const M=$('ctxMenu3D');if(ctxStepBtn3d&&ctxStepBtn3d.parentNode===M)M.insertBefore(b,ctxStepBtn3d);else M.appendChild(b);
       ctxPieceBtn3d=b;
+      // V0.99.40 : couleur de la pièce cliquée
+      const cb=document.createElement('button');cb.dataset.act='piececol';
+      cb.title='Choisir la couleur de cette pièce du STEP (affichage seul, Ctrl+Z pour annuler) — reprise en assemblage';
+      cb.onclick=function(){const q=ctxPiece3d;try{hideCtx3D();}catch(e){}if(q)importPieceColorPick(q.fid,q.occ,q.name);};
+      M.insertBefore(cb,b);ctxPieceBtn3d._col=cb;
     }
     ctxPieceBtn3d.style.display=p?'':'none';
+    if(ctxPieceBtn3d._col){ctxPieceBtn3d._col.style.display=p?'':'none';if(p)ctxPieceBtn3d._col.textContent='🎨 Couleur de « '+String(p.name).replace(/:\d+$/,'')+' »…';}
     if(p)ctxPieceBtn3d.textContent='⬇ Exporter la pièce « '+String(p.name).replace(/:\d+$/,'')+' » en STEP';
   }catch(e){}
 }
@@ -78526,6 +78599,18 @@ function importPieceMenu(x,y,fid,occ,name){
   b.title='Géométrie exacte de SEULEMENT '+(occ.length>1?'ces '+occ.length+' pièces':'cette pièce')+' (placement d’assemblage gardé).';
   b.onclick=()=>{m.style.display='none';importPieceExport(fid,occ,name);};
   m.appendChild(b);
+  // V0.99.40 : couleur de la pièce (ou du sous-ensemble), une à une
+  const cb=document.createElement('button');cb.dataset.act='piececol';
+  cb.textContent='🎨 Couleur de '+(occ.length>1?'ce sous-ensemble…':'cette pièce…');
+  cb.title='Choisir sa couleur (affichage seul, enregistrée, Ctrl+Z pour annuler) — reprise en assemblage';
+  cb.onclick=()=>{m.style.display='none';importPieceColorPick(fid,occ,name);};
+  m.appendChild(cb);
+  const f=(doc.features||[]).find(x=>x&&x.id===fid);
+  if(f&&f.occCol&&occ.some(o=>f.occCol[o]!=null)){
+    const rb=document.createElement('button');rb.dataset.act='piececol0';rb.textContent='↺ Couleur automatique';
+    rb.title='Retire la couleur choisie : celle du coloriage du STEP, ou du corps';
+    rb.onclick=()=>{m.style.display='none';importSetOccCol(fid,occ,null);};m.appendChild(rb);
+  }
   try{hideCtx();hideCtx3D();}catch(e){}
   m.style.display='block';ctxPlace(m,x,y);
 }
@@ -78870,7 +78955,11 @@ function importAttach(name,fmt,u8,entry,fileName){
   importGeom.set(id,entry);
   const nf={id,type:'import',name,visible:true,_mesh:entry.mesh,src};
   const ud=entry.mesh.geometry&&entry.mesh.geometry.userData; // absent hors THREE réel (tests)
-  if(ud&&ud.impOcc)nf.colMode='piece'; // STEP à plusieurs solides : une couleur par pièce d'emblée
+  if(ud&&ud.impOcc){
+    // V0.99.40 : les couleurs du fichier d'abord ; sans elles, une couleur par pièce (palette)
+    const sc=fmt==='step'?importStepColors(u8,ud.impOcc.nOcc):null;
+    if(sc){nf.stepCol=sc;nf.colMode='file';}else nf.colMode='piece'; // STEP à plusieurs solides : multicolore d'emblée
+  }
   addFeature(nf);
   return id;
 }
@@ -79392,7 +79481,9 @@ function importColorMat(f,mat){
   // Pose (ou retire) les couleurs par sommet d'un import selon f.colMode ; rend mat.
   // applyBodyStyle laisse alors la matière BLANCHE (sinon la couleur du corps teinterait tout).
   const g=f&&f._mesh&&f._mesh.geometry,O=g&&g.userData&&g.userData.impOcc;
-  const mode=(O&&(f.colMode==='piece'||f.colMode==='occ'))?f.colMode:null;
+  const own=O?importOccColOf(f,O):null; // V0.99.40 : couleurs choisies pièce par pièce
+  const fc=O?importFileColOf(f,O):null; // couleurs du fichier STEP (V0.99.40)
+  const mode=(O&&(f.colMode==='piece'||f.colMode==='occ'||(f.colMode==='file'&&fc)))?f.colMode:(own?'body':null);
   if(!g||!mat)return mat;
   try{importHideApply(f);}catch(e){} // pièces masquées dans l'arborescence
   if(!mode){
@@ -79400,12 +79491,13 @@ function importColorMat(f,mat){
     mat.vertexColors=false;
     return mat;
   }
-  const key=mode+'2';
+  const base=mode==='body'||mode==='file'?bodyColorOfImport(f):0;
+  const key=mode+'2'+(own?JSON.stringify(own):'')+(mode==='body'?':'+base:'');
   if(g.userData.impColKey!==key||!g.getAttribute('color')){
     const n=g.attributes.position.count,col=new Float32Array(n*3),c=new THREE.Color();
     (g.userData.occGroups||[]).forEach(gr=>{
       const o=O.faceOcc[gr.f];if(o===undefined)return;
-      importCol(c,mode==='occ'?o:O.occPart[o]);
+      if(own&&own[o]!=null)c.setHex(own[o]);else if(mode==='file')c.setHex(fc[o]>=0?fc[o]:base);else if(mode==='body')c.setHex(base);else importCol(c,mode==='occ'?o:O.occPart[o]);
       for(let t=gr.start*3,z=(gr.start+gr.count)*3;t<z&&t<n;t++){col[t*3]=c.r;col[t*3+1]=c.g;col[t*3+2]=c.b;}
     });
     g.setAttribute('color',new THREE.Float32BufferAttribute(col,3));
@@ -79457,7 +79549,8 @@ function importBodyColors(g,bodyId,lin){
   if(!g||!g.userData||!g.userData.occGroups||typeof doc==='undefined')return false;
   const b0=(doc.bodies&&doc.bodies[0]&&doc.bodies[0].id)||'';
   const ims=(doc.features||[]).filter(f=>f&&f.type==='import'&&f.visible!==false&&(f.body||b0)===bodyId&&
-    (f.colMode==='piece'||f.colMode==='occ')&&f._mesh&&f._mesh.geometry&&f._mesh.geometry.userData&&f._mesh.geometry.userData.impOcc);
+    f._mesh&&f._mesh.geometry&&f._mesh.geometry.userData&&f._mesh.geometry.userData.impOcc&&
+    (f.colMode==='piece'||f.colMode==='occ'||(f.colMode==='file'&&importFileColOf(f,f._mesh.geometry.userData.impOcc))||importOccColOf(f,f._mesh.geometry.userData.impOcc)));
   if(!ims.length)return false;
   const tol=Math.max(0.05,2.5*(+lin||0.1)); // deux maillages de la même surface, chacun à lin près
   const P=g.attributes.position.array,n=(P.length/3)|0,col=new Float32Array(n*3);
@@ -79473,7 +79566,9 @@ function importBodyColors(g,bodyId,lin){
       for(let i=0;i<ims.length&&!cc;i++){
         const fo=importTriNear(G[i],p,tol);if(fo<0)continue;
         const O=ims[i]._mesh.geometry.userData.impOcc,oc=O.faceOcc[fo];if(oc===undefined)continue;
-        cc=importCol(c,ims[i].colMode==='occ'?oc:O.occPart[oc]);
+        const own=importOccColOf(ims[i],O),md=ims[i].colMode;
+        const fc=md==='file'?importFileColOf(ims[i],O):null;
+        cc=own&&own[oc]!=null?c.setHex(own[oc]):fc?(fc[oc]>=0?c.setHex(fc[oc]):base):(md==='occ'||md==='piece')?importCol(c,md==='occ'?oc:O.occPart[oc]):base;
       }
     }
     if(cc)hit++;const C=cc||base;
@@ -79483,19 +79578,125 @@ function importBodyColors(g,bodyId,lin){
   g.setAttribute('color',new THREE.Float32BufferAttribute(col,3));
   return true;
 }
+/* ---- V0.99.40 : couleurs DU FICHIER STEP (« la couleur peut être héritée de la pièce importée ») ----
+   Second passage par le lecteur CAF du noyau (STEPCAFControl_Reader, couleurs seules) : même
+   parcours que importStepOcc, donc mêmes n° d'occurrence ; couleur d'instance, sinon de la pièce
+   (surface puis générale), sinon de sa 1re face. Rend [0xRRGGBB | -1] par occurrence, ou null
+   (pas de couleur dans le fichier, IGES, nombre d'occurrences différent). Seulement si le texte
+   cite COLOUR_RGB : un STEP sans couleur ne paie rien. */
+function importStepColors(u8,nOcc){
+  if(!u8||!nOcc||importIsIges(u8)||typeof occt==='undefined'||!occt||!occt.STEPCAFControl_Reader)return null;
+  {let has=false;const n=u8.length;
+    for(let j=0;j<n&&!has;j+=65536){let t='';const e=Math.min(n,j+65536+16);for(let k=j;k<e;k+=8192)t+=String.fromCharCode.apply(null,u8.subarray(k,Math.min(e,k+8192)));if(t.indexOf('COLOUR_RGB')>=0)has=true;}
+    if(!has)return null;}
+  const path='/c.stp',bin=[],E=occt.TopAbs_ShapeEnum,T=occt.XCAFDoc_ColorType;
+  try{
+    try{occt.FS.unlink(path);}catch(e){}
+    occt.FS.writeFile(path,u8);
+    const D=new occt.TDocStd_Document(new occt.TCollection_ExtendedString('XmlXCAF')); // propriété de la poignée H, jamais libéré seul
+    const H=occBinPush(bin,new occt.Handle_TDocStd_Document(D));
+    occt.XCAFApp_Application.GetApplication().get().InitDocument(H);
+    const r=occBinPush(bin,new occt.STEPCAFControl_Reader());
+    r.SetColorMode(true);r.SetNameMode(false);r.SetLayerMode(false);r.SetPropsMode(false);
+    r.ReadFile(path);
+    if(!r.Transfer(H,occBinPush(bin,new occt.Message_ProgressRange())))return null;
+    const sh=r.Reader().OneShape();if(!sh||sh.IsNull())return null;occBinPush(bin,sh);
+    const CT=occt.XCAFDoc_DocumentTool.ColorTool(D.Main()).get();
+    // le noyau rend du RVB linéaire ; le fichier (et nos couleurs) sont en sRGB : 176/255 = 0,69 → 0,43
+    const s8=v=>{v=Math.max(0,Math.min(1,+v||0));const s=v<=0.0031308?12.92*v:1.055*Math.pow(v,1/2.4)-0.055;return Math.round(Math.max(0,Math.min(1,s))*255);};
+    const hexOf=c=>(s8(c.Red())<<16)|(s8(c.Green())<<8)|s8(c.Blue());
+    const colOf=s=>{
+      const c=occBinPush(bin,new occt.Quantity_Color());
+      try{if(CT.GetInstanceColor(s,T.XCAFDoc_ColorSurf,c)||CT.GetInstanceColor(s,T.XCAFDoc_ColorGen,c))return hexOf(c);}catch(e){}
+      try{if(CT.GetColor(s,T.XCAFDoc_ColorSurf,c)||CT.GetColor(s,T.XCAFDoc_ColorGen,c))return hexOf(c);}catch(e){}
+      try{const fx=occBinPush(bin,new occt.TopExp_Explorer_2(s,E.TopAbs_FACE,E.TopAbs_SHAPE));
+        if(fx.More()&&CT.GetColor(fx.Current(),T.XCAFDoc_ColorSurf,c))return hexOf(c);}catch(e){}
+      return -1;
+    };
+    // même parcours qu'importStepOcc (solides, puis coques et faces libres)
+    const typ=s=>{const t=s.ShapeType();return t===E.TopAbs_SOLID?'so':t===E.TopAbs_SHELL?'sh':t===E.TopAbs_FACE?'f':t===E.TopAbs_COMPOUND||t===E.TopAbs_COMPSOLID?'c':'';};
+    const out=[];
+    const visit=(s,own)=>{
+      const t=typ(s);
+      if(t==='so'||((t==='sh'||t==='f')&&!own)){out.push(colOf(s));own=true;}
+      if(t==='f'||!t)return;
+      const it=new occt.TopoDS_Iterator_2(s,true,true);
+      try{while(it.More()){visit(it.Value(),own);it.Next();}}finally{try{it.delete();}catch(e){}}
+    };
+    visit(sh,false);
+    if(out.length!==nOcc||!out.some(v=>v>=0))return null;
+    return out;
+  }catch(e){return null;}
+  finally{bin.reverse().forEach(h=>{try{h.delete();}catch(e){}});try{occt.FS.unlink(path);}catch(e){}}
+}
+/* ---- V0.99.40 : couleur choisie PIÈCE PAR PIÈCE (f.occCol = {n° d'occurrence: 0xRRGGBB}) ----
+   « Pour un STEP ou IGES importé en assemblage qui comporte plusieurs corps, il faut changer leur
+   couleur unitairement » : clic droit sur la pièce (arborescence du STEP ou vue 3D) → 🎨 Couleur.
+   Elle l'emporte sur le coloriage automatique (f.colMode) ; sans coloriage automatique, les autres
+   pièces gardent la couleur du corps. Affichage seul : FAO et solide exact intacts ; l'assemblage
+   la reprend (couleurs par sommet de l'instantané, 47). */
+function importFileColOf(f,O){
+  const L=f&&f.stepCol;
+  return Array.isArray(L)&&O&&L.length===O.nOcc&&L.every(v=>Number.isInteger(v)&&v>=-1&&v<=0xffffff)?L:null;
+}
+async function importReadFileColors(f){
+  // ancien import (avant V0.99.40) : couleurs relues dans la source gardée du STEP
+  const g=f&&f._mesh&&f._mesh.geometry,O=g&&g.userData&&g.userData.impOcc;
+  if(!O||!f.src||f.src.fmt!=='step')return null;
+  const u8=importSrc.get(f.src.key)||await importSrcGet(f.src.key);
+  return u8?importStepColors(u8,O.nOcc):null;
+}
+function importOccColOf(f,O){
+  const C=f&&f.occCol;if(!C||typeof C!=='object')return null;
+  const n=O&&O.nOcc,out={};let k=0;
+  Object.keys(C).forEach(i=>{const o=+i,v=+C[i];if(Number.isInteger(o)&&o>=0&&(!n||o<n)&&isFinite(v)&&v>=0&&v<=0xffffff){out[o]=v;k++;}});
+  return k?out:null;
+}
+function bodyColorOfImport(f){
+  try{const b0=(doc.bodies&&doc.bodies[0]&&doc.bodies[0].id)||'';return new THREE.Color(bodyColorOf(f.body||b0)).getHex();}catch(e){return 0x0a84ff;}
+}
+function importSetOccCol(fid,occ,hex){
+  // hex null = couleur automatique (celle du coloriage choisi, ou du corps)
+  const f=(doc.features||[]).find(x=>x&&x.id===fid);if(!f||!Array.isArray(occ)||!occ.length)return false;
+  docPushUndo('couleur de pièce de « '+f.name+' »');
+  const C=Object.assign({},f.occCol||{});
+  occ.forEach(o=>{if(hex==null)delete C[o];else C[o]=hex&0xffffff;});
+  if(Object.keys(C).length)f.occCol=C;else delete f.occCol;
+  markDirty();builtVersion=-1;builtHash=null;rebuild();
+  try{renderTree();renderProps();}catch(e){}
+  return true;
+}
+function importPieceColorPick(fid,occ,name){
+  // sélecteur de couleur du système, ouvert tout de suite
+  const f=(doc.features||[]).find(x=>x&&x.id===fid);if(!f)return;
+  const cur=f.occCol&&f.occCol[occ[0]]!=null?f.occCol[occ[0]]:bodyColorOfImport(f);
+  const inp=document.createElement('input');inp.type='color';inp.value='#'+(cur>>>0).toString(16).padStart(6,'0');
+  inp.style.cssText='position:fixed;left:-50px;top:-50px;opacity:0;width:1px;height:1px';
+  document.body.appendChild(inp);
+  inp.addEventListener('change',()=>{importSetOccCol(fid,occ,parseInt(inp.value.slice(1),16));try{faceEl.textContent='Couleur de « '+name+' » changée (Ctrl+Z pour annuler).';}catch(e){}inp.remove();});
+  inp.addEventListener('blur',()=>setTimeout(()=>{try{inp.remove();}catch(e){}},500));
+  try{inp.click();}catch(e){}
+}
 function importColorsPanel(p,f,pRow,pSel,pNote){
   // Panneau d'un import STEP à plusieurs solides : choix du coloriage.
   const g=f&&f._mesh&&f._mesh.geometry,O=g&&g.userData&&g.userData.impOcc;
   if(!O)return;
   const s=pSel([
+    ['file','Couleurs du fichier','Les couleurs enregistrées dans le STEP (pièces sans couleur : celle du corps)'],
     ['','Couleur du corps','Une seule couleur : celle du corps qui contient l’import'],
     ['piece','Une couleur par pièce ('+O.nPart+')','Les occurrences d’une même pièce partagent leur couleur'],
     ['occ','Une couleur par occurrence ('+O.nOcc+')','Chaque solide du fichier a sa propre couleur']],
-    f.colMode||'',v=>{docPushUndo('couleurs de « '+f.name+' »');
-      if(v)f.colMode=v;else delete f.colMode;
-      markDirty();rebuild();renderProps();});
+    f.colMode||'',async v=>{
+      if(v==='file'&&!importFileColOf(f,O)){
+        const sc=await importReadFileColors(f);
+        if(!sc){try{alert('Ce fichier ne contient pas de couleurs lisibles (ou sa source n’est plus disponible).');}catch(e){}renderProps();return;}
+        docPushUndo('couleurs de « '+f.name+' »');f.stepCol=sc;f.colMode='file';
+      }else{docPushUndo('couleurs de « '+f.name+' »');if(v)f.colMode=v;else delete f.colMode;}
+      markDirty();builtVersion=-1;builtHash=null;rebuild();renderProps();});
   pRow('Couleurs',s);
-  pNote(O.nOcc+' occurrences · '+O.nPart+' pièce(s) distincte(s).'+(O.nPart<O.nOcc?' Une pièce répétée = plusieurs occurrences.':''));
+  const own=importOccColOf(f,O);
+  pNote(O.nOcc+' occurrences · '+O.nPart+' pièce(s) distincte(s).'+(O.nPart<O.nOcc?' Une pièce répétée = plusieurs occurrences.':'')+
+    ' Couleur d’une seule pièce : clic droit sur elle (vue 3D ou arborescence) → 🎨 Couleur.'+(own?' '+Object.keys(own).length+' couleur(s) choisie(s) à la main.':''));
 }
 /* ============ FAO : « corps blindés » (phase 4) ==============================
    L'affichage est désormais plus fin (occDisplayDefl + budget de triangles, phase 3)
@@ -99610,7 +99811,9 @@ function vEnvApply(mat,L,C){ // matière d'un corps → apparence de rendu L ({m
   vEnvPatch(mat);const U=mat.userData.vEnv&&mat.userData.vEnv.U;
   if(!U)return;
   const d=matDef(L.mat);
-  U.uEnvCol.value.setHex(L.color);
+  // V0.99.40 : couleurs par sommet (pièces d'un STEP) : elles portent la couleur — sans matériau de rendu, pas
+  // de teinte du corps par-dessus (le bleu du corps × une pièce rouge = presque noir)
+  U.uEnvCol.value.setHex(mat.vertexColors&&!L.mat?0xffffff:L.color);
   U.uEnvGlass.value=0;
   if(d&&d.trans){U.uEnvMet.value=0;U.uEnvRou.value=d.rough;U.uEnvGlass.value=1;} // verre approché : lisse, reflets nets, bords plus opaques
   else if(mat.transparent&&!d){U.uEnvMet.value=mat.metalness;U.uEnvRou.value=mat.roughness;} // transparence CAO sans matériau : réglages de setMatAlpha (avec matériau : le sien, transparence gardée)

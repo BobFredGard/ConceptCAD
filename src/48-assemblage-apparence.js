@@ -71,6 +71,7 @@ function asmLookMat(it,look,on){
   // Matière d'un corps d'instance en mode Placer : couleur du corps ; « Intensité » et
   // « Transparence » de l'occurrence, sinon celles du corps — setMatAlpha (même rendu que la pièce)
   const mat=new THREE.MeshStandardMaterial({color:it.color,metalness:.35,roughness:.4,polygonOffset:true,polygonOffsetFactor:1,polygonOffsetUnits:1});
+  if(it.vc&&it.geo&&it.geo.getAttribute&&it.geo.getAttribute('color')){mat.color.setHex(0xffffff);mat.vertexColors=true;} // V0.99.40 : couleurs des pièces d'un STEP
   setMatAlpha(mat,look.op!=null?look.op:(it.op||1),look.gl!=null?look.gl:(it.gl||1));
   if(on&&mat.emissive){mat.emissive.setHex(ASM_SEL_COL);mat.emissiveIntensity=0.35;}
   return mat;

@@ -247,8 +247,14 @@ function ctxPieceBtnSync(p){
       // juste AVANT l'export du corps, qui reste la dernière entrée (test_ctx_menu_viewport)
       const M=$('ctxMenu3D');if(ctxStepBtn3d&&ctxStepBtn3d.parentNode===M)M.insertBefore(b,ctxStepBtn3d);else M.appendChild(b);
       ctxPieceBtn3d=b;
+      // V0.99.40 : couleur de la pièce cliquée
+      const cb=document.createElement('button');cb.dataset.act='piececol';
+      cb.title='Choisir la couleur de cette pièce du STEP (affichage seul, Ctrl+Z pour annuler) — reprise en assemblage';
+      cb.onclick=function(){const q=ctxPiece3d;try{hideCtx3D();}catch(e){}if(q)importPieceColorPick(q.fid,q.occ,q.name);};
+      M.insertBefore(cb,b);ctxPieceBtn3d._col=cb;
     }
     ctxPieceBtn3d.style.display=p?'':'none';
+    if(ctxPieceBtn3d._col){ctxPieceBtn3d._col.style.display=p?'':'none';if(p)ctxPieceBtn3d._col.textContent='🎨 Couleur de « '+String(p.name).replace(/:\d+$/,'')+' »…';}
     if(p)ctxPieceBtn3d.textContent='⬇ Exporter la pièce « '+String(p.name).replace(/:\d+$/,'')+' » en STEP';
   }catch(e){}
 }
@@ -273,6 +279,18 @@ function importPieceMenu(x,y,fid,occ,name){
   b.title='Géométrie exacte de SEULEMENT '+(occ.length>1?'ces '+occ.length+' pièces':'cette pièce')+' (placement d’assemblage gardé).';
   b.onclick=()=>{m.style.display='none';importPieceExport(fid,occ,name);};
   m.appendChild(b);
+  // V0.99.40 : couleur de la pièce (ou du sous-ensemble), une à une
+  const cb=document.createElement('button');cb.dataset.act='piececol';
+  cb.textContent='🎨 Couleur de '+(occ.length>1?'ce sous-ensemble…':'cette pièce…');
+  cb.title='Choisir sa couleur (affichage seul, enregistrée, Ctrl+Z pour annuler) — reprise en assemblage';
+  cb.onclick=()=>{m.style.display='none';importPieceColorPick(fid,occ,name);};
+  m.appendChild(cb);
+  const f=(doc.features||[]).find(x=>x&&x.id===fid);
+  if(f&&f.occCol&&occ.some(o=>f.occCol[o]!=null)){
+    const rb=document.createElement('button');rb.dataset.act='piececol0';rb.textContent='↺ Couleur automatique';
+    rb.title='Retire la couleur choisie : celle du coloriage du STEP, ou du corps';
+    rb.onclick=()=>{m.style.display='none';importSetOccCol(fid,occ,null);};m.appendChild(rb);
+  }
   try{hideCtx();hideCtx3D();}catch(e){}
   m.style.display='block';ctxPlace(m,x,y);
 }

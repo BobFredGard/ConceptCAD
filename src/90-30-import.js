@@ -192,7 +192,11 @@ function importAttach(name,fmt,u8,entry,fileName){
   importGeom.set(id,entry);
   const nf={id,type:'import',name,visible:true,_mesh:entry.mesh,src};
   const ud=entry.mesh.geometry&&entry.mesh.geometry.userData; // absent hors THREE réel (tests)
-  if(ud&&ud.impOcc)nf.colMode='piece'; // STEP à plusieurs solides : une couleur par pièce d'emblée
+  if(ud&&ud.impOcc){
+    // V0.99.40 : les couleurs du fichier d'abord ; sans elles, une couleur par pièce (palette)
+    const sc=fmt==='step'?importStepColors(u8,ud.impOcc.nOcc):null;
+    if(sc){nf.stepCol=sc;nf.colMode='file';}else nf.colMode='piece'; // STEP à plusieurs solides : multicolore d'emblée
+  }
   addFeature(nf);
   return id;
 }
@@ -714,7 +718,9 @@ function importColorMat(f,mat){
   // Pose (ou retire) les couleurs par sommet d'un import selon f.colMode ; rend mat.
   // applyBodyStyle laisse alors la matière BLANCHE (sinon la couleur du corps teinterait tout).
   const g=f&&f._mesh&&f._mesh.geometry,O=g&&g.userData&&g.userData.impOcc;
-  const mode=(O&&(f.colMode==='piece'||f.colMode==='occ'))?f.colMode:null;
+  const own=O?importOccColOf(f,O):null; // V0.99.40 : couleurs choisies pièce par pièce
+  const fc=O?importFileColOf(f,O):null; // couleurs du fichier STEP (V0.99.40)
+  const mode=(O&&(f.colMode==='piece'||f.colMode==='occ'||(f.colMode==='file'&&fc)))?f.colMode:(own?'body':null);
   if(!g||!mat)return mat;
   try{importHideApply(f);}catch(e){} // pièces masquées dans l'arborescence
   if(!mode){
@@ -722,12 +728,13 @@ function importColorMat(f,mat){
     mat.vertexColors=false;
     return mat;
   }
-  const key=mode+'2';
+  const base=mode==='body'||mode==='file'?bodyColorOfImport(f):0;
+  const key=mode+'2'+(own?JSON.stringify(own):'')+(mode==='body'?':'+base:'');
   if(g.userData.impColKey!==key||!g.getAttribute('color')){
     const n=g.attributes.position.count,col=new Float32Array(n*3),c=new THREE.Color();
     (g.userData.occGroups||[]).forEach(gr=>{
       const o=O.faceOcc[gr.f];if(o===undefined)return;
-      importCol(c,mode==='occ'?o:O.occPart[o]);
+      if(own&&own[o]!=null)c.setHex(own[o]);else if(mode==='file')c.setHex(fc[o]>=0?fc[o]:base);else if(mode==='body')c.setHex(base);else importCol(c,mode==='occ'?o:O.occPart[o]);
       for(let t=gr.start*3,z=(gr.start+gr.count)*3;t<z&&t<n;t++){col[t*3]=c.r;col[t*3+1]=c.g;col[t*3+2]=c.b;}
     });
     g.setAttribute('color',new THREE.Float32BufferAttribute(col,3));
@@ -779,7 +786,8 @@ function importBodyColors(g,bodyId,lin){
   if(!g||!g.userData||!g.userData.occGroups||typeof doc==='undefined')return false;
   const b0=(doc.bodies&&doc.bodies[0]&&doc.bodies[0].id)||'';
   const ims=(doc.features||[]).filter(f=>f&&f.type==='import'&&f.visible!==false&&(f.body||b0)===bodyId&&
-    (f.colMode==='piece'||f.colMode==='occ')&&f._mesh&&f._mesh.geometry&&f._mesh.geometry.userData&&f._mesh.geometry.userData.impOcc);
+    f._mesh&&f._mesh.geometry&&f._mesh.geometry.userData&&f._mesh.geometry.userData.impOcc&&
+    (f.colMode==='piece'||f.colMode==='occ'||(f.colMode==='file'&&importFileColOf(f,f._mesh.geometry.userData.impOcc))||importOccColOf(f,f._mesh.geometry.userData.impOcc)));
   if(!ims.length)return false;
   const tol=Math.max(0.05,2.5*(+lin||0.1)); // deux maillages de la même surface, chacun à lin près
   const P=g.attributes.position.array,n=(P.length/3)|0,col=new Float32Array(n*3);
@@ -795,7 +803,9 @@ function importBodyColors(g,bodyId,lin){
       for(let i=0;i<ims.length&&!cc;i++){
         const fo=importTriNear(G[i],p,tol);if(fo<0)continue;
         const O=ims[i]._mesh.geometry.userData.impOcc,oc=O.faceOcc[fo];if(oc===undefined)continue;
-        cc=importCol(c,ims[i].colMode==='occ'?oc:O.occPart[oc]);
+        const own=importOccColOf(ims[i],O),md=ims[i].colMode;
+        const fc=md==='file'?importFileColOf(ims[i],O):null;
+        cc=own&&own[oc]!=null?c.setHex(own[oc]):fc?(fc[oc]>=0?c.setHex(fc[oc]):base):(md==='occ'||md==='piece')?importCol(c,md==='occ'?oc:O.occPart[oc]):base;
       }
     }
     if(cc)hit++;const C=cc||base;
@@ -805,19 +815,125 @@ function importBodyColors(g,bodyId,lin){
   g.setAttribute('color',new THREE.Float32BufferAttribute(col,3));
   return true;
 }
+/* ---- V0.99.40 : couleurs DU FICHIER STEP (« la couleur peut être héritée de la pièce importée ») ----
+   Second passage par le lecteur CAF du noyau (STEPCAFControl_Reader, couleurs seules) : même
+   parcours que importStepOcc, donc mêmes n° d'occurrence ; couleur d'instance, sinon de la pièce
+   (surface puis générale), sinon de sa 1re face. Rend [0xRRGGBB | -1] par occurrence, ou null
+   (pas de couleur dans le fichier, IGES, nombre d'occurrences différent). Seulement si le texte
+   cite COLOUR_RGB : un STEP sans couleur ne paie rien. */
+function importStepColors(u8,nOcc){
+  if(!u8||!nOcc||importIsIges(u8)||typeof occt==='undefined'||!occt||!occt.STEPCAFControl_Reader)return null;
+  {let has=false;const n=u8.length;
+    for(let j=0;j<n&&!has;j+=65536){let t='';const e=Math.min(n,j+65536+16);for(let k=j;k<e;k+=8192)t+=String.fromCharCode.apply(null,u8.subarray(k,Math.min(e,k+8192)));if(t.indexOf('COLOUR_RGB')>=0)has=true;}
+    if(!has)return null;}
+  const path='/c.stp',bin=[],E=occt.TopAbs_ShapeEnum,T=occt.XCAFDoc_ColorType;
+  try{
+    try{occt.FS.unlink(path);}catch(e){}
+    occt.FS.writeFile(path,u8);
+    const D=new occt.TDocStd_Document(new occt.TCollection_ExtendedString('XmlXCAF')); // propriété de la poignée H, jamais libéré seul
+    const H=occBinPush(bin,new occt.Handle_TDocStd_Document(D));
+    occt.XCAFApp_Application.GetApplication().get().InitDocument(H);
+    const r=occBinPush(bin,new occt.STEPCAFControl_Reader());
+    r.SetColorMode(true);r.SetNameMode(false);r.SetLayerMode(false);r.SetPropsMode(false);
+    r.ReadFile(path);
+    if(!r.Transfer(H,occBinPush(bin,new occt.Message_ProgressRange())))return null;
+    const sh=r.Reader().OneShape();if(!sh||sh.IsNull())return null;occBinPush(bin,sh);
+    const CT=occt.XCAFDoc_DocumentTool.ColorTool(D.Main()).get();
+    // le noyau rend du RVB linéaire ; le fichier (et nos couleurs) sont en sRGB : 176/255 = 0,69 → 0,43
+    const s8=v=>{v=Math.max(0,Math.min(1,+v||0));const s=v<=0.0031308?12.92*v:1.055*Math.pow(v,1/2.4)-0.055;return Math.round(Math.max(0,Math.min(1,s))*255);};
+    const hexOf=c=>(s8(c.Red())<<16)|(s8(c.Green())<<8)|s8(c.Blue());
+    const colOf=s=>{
+      const c=occBinPush(bin,new occt.Quantity_Color());
+      try{if(CT.GetInstanceColor(s,T.XCAFDoc_ColorSurf,c)||CT.GetInstanceColor(s,T.XCAFDoc_ColorGen,c))return hexOf(c);}catch(e){}
+      try{if(CT.GetColor(s,T.XCAFDoc_ColorSurf,c)||CT.GetColor(s,T.XCAFDoc_ColorGen,c))return hexOf(c);}catch(e){}
+      try{const fx=occBinPush(bin,new occt.TopExp_Explorer_2(s,E.TopAbs_FACE,E.TopAbs_SHAPE));
+        if(fx.More()&&CT.GetColor(fx.Current(),T.XCAFDoc_ColorSurf,c))return hexOf(c);}catch(e){}
+      return -1;
+    };
+    // même parcours qu'importStepOcc (solides, puis coques et faces libres)
+    const typ=s=>{const t=s.ShapeType();return t===E.TopAbs_SOLID?'so':t===E.TopAbs_SHELL?'sh':t===E.TopAbs_FACE?'f':t===E.TopAbs_COMPOUND||t===E.TopAbs_COMPSOLID?'c':'';};
+    const out=[];
+    const visit=(s,own)=>{
+      const t=typ(s);
+      if(t==='so'||((t==='sh'||t==='f')&&!own)){out.push(colOf(s));own=true;}
+      if(t==='f'||!t)return;
+      const it=new occt.TopoDS_Iterator_2(s,true,true);
+      try{while(it.More()){visit(it.Value(),own);it.Next();}}finally{try{it.delete();}catch(e){}}
+    };
+    visit(sh,false);
+    if(out.length!==nOcc||!out.some(v=>v>=0))return null;
+    return out;
+  }catch(e){return null;}
+  finally{bin.reverse().forEach(h=>{try{h.delete();}catch(e){}});try{occt.FS.unlink(path);}catch(e){}}
+}
+/* ---- V0.99.40 : couleur choisie PIÈCE PAR PIÈCE (f.occCol = {n° d'occurrence: 0xRRGGBB}) ----
+   « Pour un STEP ou IGES importé en assemblage qui comporte plusieurs corps, il faut changer leur
+   couleur unitairement » : clic droit sur la pièce (arborescence du STEP ou vue 3D) → 🎨 Couleur.
+   Elle l'emporte sur le coloriage automatique (f.colMode) ; sans coloriage automatique, les autres
+   pièces gardent la couleur du corps. Affichage seul : FAO et solide exact intacts ; l'assemblage
+   la reprend (couleurs par sommet de l'instantané, 47). */
+function importFileColOf(f,O){
+  const L=f&&f.stepCol;
+  return Array.isArray(L)&&O&&L.length===O.nOcc&&L.every(v=>Number.isInteger(v)&&v>=-1&&v<=0xffffff)?L:null;
+}
+async function importReadFileColors(f){
+  // ancien import (avant V0.99.40) : couleurs relues dans la source gardée du STEP
+  const g=f&&f._mesh&&f._mesh.geometry,O=g&&g.userData&&g.userData.impOcc;
+  if(!O||!f.src||f.src.fmt!=='step')return null;
+  const u8=importSrc.get(f.src.key)||await importSrcGet(f.src.key);
+  return u8?importStepColors(u8,O.nOcc):null;
+}
+function importOccColOf(f,O){
+  const C=f&&f.occCol;if(!C||typeof C!=='object')return null;
+  const n=O&&O.nOcc,out={};let k=0;
+  Object.keys(C).forEach(i=>{const o=+i,v=+C[i];if(Number.isInteger(o)&&o>=0&&(!n||o<n)&&isFinite(v)&&v>=0&&v<=0xffffff){out[o]=v;k++;}});
+  return k?out:null;
+}
+function bodyColorOfImport(f){
+  try{const b0=(doc.bodies&&doc.bodies[0]&&doc.bodies[0].id)||'';return new THREE.Color(bodyColorOf(f.body||b0)).getHex();}catch(e){return 0x0a84ff;}
+}
+function importSetOccCol(fid,occ,hex){
+  // hex null = couleur automatique (celle du coloriage choisi, ou du corps)
+  const f=(doc.features||[]).find(x=>x&&x.id===fid);if(!f||!Array.isArray(occ)||!occ.length)return false;
+  docPushUndo('couleur de pièce de « '+f.name+' »');
+  const C=Object.assign({},f.occCol||{});
+  occ.forEach(o=>{if(hex==null)delete C[o];else C[o]=hex&0xffffff;});
+  if(Object.keys(C).length)f.occCol=C;else delete f.occCol;
+  markDirty();builtVersion=-1;builtHash=null;rebuild();
+  try{renderTree();renderProps();}catch(e){}
+  return true;
+}
+function importPieceColorPick(fid,occ,name){
+  // sélecteur de couleur du système, ouvert tout de suite
+  const f=(doc.features||[]).find(x=>x&&x.id===fid);if(!f)return;
+  const cur=f.occCol&&f.occCol[occ[0]]!=null?f.occCol[occ[0]]:bodyColorOfImport(f);
+  const inp=document.createElement('input');inp.type='color';inp.value='#'+(cur>>>0).toString(16).padStart(6,'0');
+  inp.style.cssText='position:fixed;left:-50px;top:-50px;opacity:0;width:1px;height:1px';
+  document.body.appendChild(inp);
+  inp.addEventListener('change',()=>{importSetOccCol(fid,occ,parseInt(inp.value.slice(1),16));try{faceEl.textContent='Couleur de « '+name+' » changée (Ctrl+Z pour annuler).';}catch(e){}inp.remove();});
+  inp.addEventListener('blur',()=>setTimeout(()=>{try{inp.remove();}catch(e){}},500));
+  try{inp.click();}catch(e){}
+}
 function importColorsPanel(p,f,pRow,pSel,pNote){
   // Panneau d'un import STEP à plusieurs solides : choix du coloriage.
   const g=f&&f._mesh&&f._mesh.geometry,O=g&&g.userData&&g.userData.impOcc;
   if(!O)return;
   const s=pSel([
+    ['file','Couleurs du fichier','Les couleurs enregistrées dans le STEP (pièces sans couleur : celle du corps)'],
     ['','Couleur du corps','Une seule couleur : celle du corps qui contient l’import'],
     ['piece','Une couleur par pièce ('+O.nPart+')','Les occurrences d’une même pièce partagent leur couleur'],
     ['occ','Une couleur par occurrence ('+O.nOcc+')','Chaque solide du fichier a sa propre couleur']],
-    f.colMode||'',v=>{docPushUndo('couleurs de « '+f.name+' »');
-      if(v)f.colMode=v;else delete f.colMode;
-      markDirty();rebuild();renderProps();});
+    f.colMode||'',async v=>{
+      if(v==='file'&&!importFileColOf(f,O)){
+        const sc=await importReadFileColors(f);
+        if(!sc){try{alert('Ce fichier ne contient pas de couleurs lisibles (ou sa source n’est plus disponible).');}catch(e){}renderProps();return;}
+        docPushUndo('couleurs de « '+f.name+' »');f.stepCol=sc;f.colMode='file';
+      }else{docPushUndo('couleurs de « '+f.name+' »');if(v)f.colMode=v;else delete f.colMode;}
+      markDirty();builtVersion=-1;builtHash=null;rebuild();renderProps();});
   pRow('Couleurs',s);
-  pNote(O.nOcc+' occurrences · '+O.nPart+' pièce(s) distincte(s).'+(O.nPart<O.nOcc?' Une pièce répétée = plusieurs occurrences.':''));
+  const own=importOccColOf(f,O);
+  pNote(O.nOcc+' occurrences · '+O.nPart+' pièce(s) distincte(s).'+(O.nPart<O.nOcc?' Une pièce répétée = plusieurs occurrences.':'')+
+    ' Couleur d’une seule pièce : clic droit sur elle (vue 3D ou arborescence) → 🎨 Couleur.'+(own?' '+Object.keys(own).length+' couleur(s) choisie(s) à la main.':''));
 }
 /* ============ FAO : « corps blindés » (phase 4) ==============================
    L'affichage est désormais plus fin (occDisplayDefl + budget de triangles, phase 3)

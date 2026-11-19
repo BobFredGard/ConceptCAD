@@ -63,9 +63,27 @@ const vm=require('vm');
     // 12. ancien fichier (sans historique) : reconstruit dans l'ordre des pièces
     delete Rt2.hist;asmHistReset();
     att(asmHistOf(Rt2).map(s=>s.k).join()==='ins,ins,rel,rel','12 : ancien fichier : insertions puis relations (vu '+asmHistOf(Rt2).map(s=>s.k).join()+')');
+    // 14. V0.99.40 : clic droit sur une étape → supprimer UNE relation, Ctrl+Z la rend
+    {const R3=asmRoot(),q=R3.occ.find(x=>x.id===oB.id);const ksR=()=>asmHistOf(R3).map(s=>s.k).join(',');
+      const sr=asmHistOf(R3).filter(s=>s.k==='rel');
+      att(asmHistCanDel(R3,sr[1])&&!asmHistCanDel(R3,{k:'move',occ:q.id}),'14 : relation supprimable, déplacement non');
+      att(asmHistDelete(R3,sr[1],true)===true,'14b : suppression faite');
+      att(q.cons&&q.cons.length===1&&q.cons[0].id==='r1','14c : la 2e relation seule est partie');
+      att(ksR()==='ins,ins,rel','14d : son étape aussi (vu '+ksR()+')');
+      asmUndo();const q2=asmRoot().occ.find(x=>x.id===oB.id);
+      att(q2.cons&&q2.cons.length===2&&ksR()==='ins,ins,rel,rel','14e : Ctrl+Z la rend (vu '+ksR()+')');
+      asmHistSetPtr(1);asmHistDelete(asmRoot(),asmHistOf(asmRoot()).filter(s=>s.k==='rel')[0],true);
+      att(!asmHistView,'14f : supprimer marqueur en arrière : marqueur remis en fin d’abord');
+      asmUndo();}
     // 13. pièce supprimée : ses étapes partent
-    asmDeleteOcc(oB.id);asmNotify();
+    asmHistDelete(asmRoot(),asmHistOf(asmRoot()).find(s=>s.k==='ins'&&s.occ===oB.id),true);asmNotify();
     att(asmHistOf(asmRoot()).map(s=>s.k).join()==='ins','13 : pièce supprimée : ses étapes retirées (vu '+asmHistOf(asmRoot()).map(s=>s.k).join()+')');
+    // 15. V0.99.40 : couleurs d'un STEP multi-corps (relues du fichier, choisies pièce par pièce) : valeurs vérifiées
+    {const O={nOcc:3};
+      att(JSON.stringify(importOccColOf({occCol:{0:0xff0000,2:'x',5:0x00ff00,1:-3}},O))==='{"0":16711680}','15 : couleurs à la main : seules les valides restent');
+      att(importOccColOf({},O)===null&&importOccColOf({occCol:{}},O)===null,'15b : aucune couleur à la main → null');
+      att(importFileColOf({stepCol:[0xb0b0b0,-1,0x808080]},O)!==null,'15c : couleurs du fichier acceptées (-1 = sans couleur)');
+      att(importFileColOf({stepCol:[1,2]},O)===null&&importFileColOf({stepCol:[1,2,0x1000000]},O)===null,'15d : longueur ou valeur fausse refusée');}
     if(ATT.length){p('ECHECS ('+ATT.length+') :');ATT.forEach(m=>p('  x '+m));}
     else p('TOUT EST CONFORME');
     return P.join(String.fromCharCode(10));

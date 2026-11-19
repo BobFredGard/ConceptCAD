@@ -240,7 +240,9 @@ function vEnvApply(mat,L,C){ // matière d'un corps → apparence de rendu L ({m
   vEnvPatch(mat);const U=mat.userData.vEnv&&mat.userData.vEnv.U;
   if(!U)return;
   const d=matDef(L.mat);
-  U.uEnvCol.value.setHex(L.color);
+  // V0.99.40 : couleurs par sommet (pièces d'un STEP) : elles portent la couleur — sans matériau de rendu, pas
+  // de teinte du corps par-dessus (le bleu du corps × une pièce rouge = presque noir)
+  U.uEnvCol.value.setHex(mat.vertexColors&&!L.mat?0xffffff:L.color);
   U.uEnvGlass.value=0;
   if(d&&d.trans){U.uEnvMet.value=0;U.uEnvRou.value=d.rough;U.uEnvGlass.value=1;} // verre approché : lisse, reflets nets, bords plus opaques
   else if(mat.transparent&&!d){U.uEnvMet.value=mat.metalness;U.uEnvRou.value=mat.roughness;} // transparence CAO sans matériau : réglages de setMatAlpha (avec matériau : le sien, transparence gardée)

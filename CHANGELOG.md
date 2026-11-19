@@ -8,7 +8,7 @@ sont sorties le 2026-09-30j.
 Code dans `src/` · livrable `fusion_mvp.html` (généré par `build.js`) · architecture et
 garde-fous en tête de `src/00-entete-et-outils.js`.
 
-**726 versions**, de `2026-09-28b` à `V0.99.39` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
+**727 versions**, de `2026-09-28b` à `V0.99.40` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
 comme dans le fichier d'origine.
 
 ---
@@ -8095,3 +8095,13 @@ Cavité Usinage, après l'ébauche D25, la reprise D10 et une finition boule D12
 **Ajout** (40-20-repetitions) : plus de cases à cocher pour les sources. `repSourceList` montre les fonctions choisies (✕ pour retirer) ; le clic dans la timeline ajoute / retire (`repPickToggle`, une esquisse vaut sa fonction) — d'emblée à la création, par « 🎯 Choisir dans la timeline » à l'édition (clic sur la répétition ou sélection ailleurs = fin du choix). Les sources de la répétition en cours ou sélectionnée sont entourées de vert dans la timeline (`repTlSources`, classes `rsrc` / `rcand`).
 
 **Test** : `test_timeline_bandeau` (glissée juste avant la répétition qui en dépend, au-delà refusée, esquisse qui glisse sa fonction), `test_arbre_selection` et `test_anteriorite` réécrits pour le choix dans la timeline. Vérifié dans l'application sur Cache Piles : congé glissé à la souris, esquisse + extrusion glissées ensemble, congé retiré puis remis dans la symétrie depuis la timeline, nouvelle répétition créée par clic sur une esquisse. CACHE_VER et FORMES_VER inchangés.
+
+## V0.99.40 - Assemblage : étapes modifiables et supprimables une à une, couleurs des STEP à plusieurs corps
+
+**Ajout** (`src/48-assemblage-historique.js`) : dans la barre d'historique de l'assemblage, un **clic** sur une relation ou une répétition ouvre sa modification (sinon il sélectionne la pièce) ; **Suppr** supprime l'étape choisie (relation, liaison, répétition, pièce) tant qu'on n'a pas cliqué ailleurs ; **clic droit** : Modifier / Sélectionner la pièce / Supprimer. Ctrl+Z rend l'étape.
+
+**Ajout** (`src/90-30-import.js`) : un STEP à plusieurs corps prend à l'import **les couleurs du fichier** (lecteur CAF du noyau, `importStepColors` : couleur d'instance, de la pièce, sinon de sa 1re face, RVB linéaire → sRGB ; seulement si le fichier cite `COLOUR_RGB`), rangées dans la fonction (`f.stepCol`, coloriage « Couleurs du fichier ») ; un ancien import les relit à la demande depuis sa source gardée. **Couleur d'une seule pièce** : clic droit sur elle (arborescence du STEP ou vue 3D) → 🎨 Couleur… / ↺ Couleur automatique (`f.occCol`), affichage seul, annulable.
+
+**Correctif** : en assemblage, une pièce STEP multicolore restait d'une seule couleur — l'instantané du composant garde désormais les couleurs par sommet (47, cache compris). L'ambiance de la vue (98-rendu-vue) multipliait ces couleurs par la couleur du corps : une pièce rouge sur un corps bleu sortait presque noire ; sans matériau de rendu, plus de teinte par-dessus.
+
+**Test** : `test_assemblage_historique` (suppression d'une étape, Ctrl+Z, marqueur, couleurs vérifiées). Vérifié dans l'application : MERLIN-37-000 importé en pièce à assembler, 29 couleurs lues dans le fichier et affichées en assemblage ; Test Assemblage : clic sur la liaison puis Suppr, Ctrl+Z la rend, menu du clic droit au-dessus de la barre. CACHE_VER et FORMES_VER inchangés.
