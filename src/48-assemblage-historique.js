@@ -154,6 +154,26 @@ function asmHistIcon(c,s){
     return '🧲<small>'+(k&&ASM_CONS[k.t]?ASM_CONS[k.t].ic:'')+'</small>';}
   return ASM_HIST_K[s.k].ic;
 }
+let asmHistSel=null; // V0.99.40 : étape choisie dans la barre (id) — Suppr la supprime tant qu'on n'a pas cliqué ailleurs
+function asmHistKey(e){
+  if(!asmHistSel||asmMode!=='asm')return false;
+  const c=asmActiveComp(),s=c&&asmHistOf(c).find(q=>q.id===asmHistSel);
+  if(!s||!asmHistCanDel(c,s)){asmHistSel=null;return false;}
+  try{e.preventDefault();}catch(_){}
+  try{if(typeof asmRel!=='undefined'&&asmRel)asmRelCancel();}catch(_){} // la relation ouverte d'un clic n'est pas gardée en cours
+  try{if(typeof asmPatEd!=='undefined'&&asmPatEd)asmPatCancel();}catch(_){}
+  const nm=asmHistName(c,s);
+  const c2=asmActiveComp(),s2=c2&&asmHistOf(c2).find(q=>q.id===asmHistSel);
+  asmHistSel=null;
+  if(s2&&asmHistDelete(c2,s2,true))try{faceEl.textContent='Supprimé : '+nm+' (Ctrl+Z pour annuler).';}catch(_){}
+  return true;
+}
+function asmHistPick(c,s){
+  // clic sur une étape : relation ou répétition → sa modification tout de suite ; sinon la pièce
+  asmHistSel=s.id;
+  if(!asmHistView&&(s.k==='rel'||s.k==='pat')){asmHistDbl(c,s);try{asmTlRender();}catch(e){}return;}
+  asmHistClick(c,s);try{asmTlRender();}catch(e){}
+}
 function asmHistClick(c,s){
   if(s.occ&&asmHistOcc(c,s)){asmSelId=s.occ;try{asmDraw();asmGizmoDraw();renderTree();renderProps();}catch(e){}}
 }
@@ -162,7 +182,47 @@ function asmHistDbl(c,s){
   if(asmHistExit())asmNotify(true);
   const o=asmHistOcc(c,s);
   if(s.k==='rel'&&o){asmRelStart(o.id);const i=(asmRel&&asmRel.list||[]).findIndex(r=>r.id===s.rel);if(i>=0)asmRelEdit(i);return;}
+  if(s.k==='pat'&&typeof asmPatEdit==='function'){asmPatEdit(c.id,s.pat);asmNotify();return;}
   asmHistClick(c,s);
+}
+function asmHistCanDel(c,s){
+  const o=asmHistOcc(c,s);
+  if(s.k==='rel')return !!(o&&(o.cons||[]).some(r=>r.id===s.rel));
+  if(s.k==='join')return !!(o&&o.align);
+  if(s.k==='pat')return (c.pats||[]).some(p=>p.id===s.pat);
+  if(s.k==='ins')return !!o;
+  return false;
+}
+function asmHistDelete(c,s,noAsk){
+  // V0.99.40 : supprimer l'objet d'UNE étape (relation, liaison, répétition, pièce) ; Ctrl+Z la rend
+  if(asmHistExit())asmNotify(true);
+  if(!asmHistCanDel(c,s))return false;
+  const o=asmHistOcc(c,s),nm=asmHistName(c,s);
+  if(s.k==='pat'){asmPatDeleteCmd(c.id,s.pat);return true;} // sa propre confirmation et son annulation
+  if(!noAsk&&!confirm('Supprimer l’étape « '+nm+' » ? (Ctrl+Z pour annuler)'))return false;
+  if(s.k==='ins')return asmDeleteOcc(o.id)!==false&&(asmSelId&&!asmOcc(asmSelId)&&(asmSelId=null),asmNotify(),true);
+  asmPush('supprimer '+nm);
+  try{asmAnimStop();}catch(e){}
+  if(s.k==='rel'){o.cons=o.cons.filter(r=>r.id!==s.rel);if(!o.cons.length){delete o.cons;delete o._dof;}}
+  else if(s.k==='join')o.align=null;
+  try{asmResolve();}catch(e){}
+  asmNotify();
+  return true;
+}
+function asmHistCtx(c,s,ev,el){
+  // clic droit sur une étape : Modifier / Supprimer, une à une
+  const items=[{title:asmHistName(c,s)}];
+  if(s.k==='rel')items.push({html:'✏ Modifier la relation',fn:()=>asmHistDbl(c,s)});
+  if(s.k==='pat')items.push({html:'✏ Modifier la répétition',fn:()=>asmHistDbl(c,s)});
+  if(s.k==='join')items.push({html:'✏ Modifier la liaison',fn:()=>asmHistClick(c,s)});
+  if(s.occ)items.push({html:'🎯 Sélectionner la pièce',fn:()=>asmHistClick(c,s)});
+  if(asmHistCanDel(c,s))items.push({html:'🗑 Supprimer '+({rel:'la relation',join:'la liaison',pat:'la répétition',ins:'la pièce'})[s.k],cls:'danger',fn:()=>asmHistDelete(c,s)});
+  try{
+    mfPop(el,items);
+    const p=document.querySelector('.mfPop.mfTmp');
+    if(p){const r=el.getBoundingClientRect();p.style.top=Math.max(6,r.top-p.offsetHeight-6+window.scrollY)+'px';
+      p.style.left=Math.max(6,Math.min(window.innerWidth-p.offsetWidth-8,r.left))+'px';}
+  }catch(e){}
 }
 /* ── bandeau en bas de la vue, en mode Assembler (même dessin que celui des pièces, 41) ── */
 let asmTlEl=null,asmTlDrag=null;
@@ -189,6 +249,8 @@ function asmTlHost(){
   d.appendChild(C);d.appendChild(T);d.appendChild(R);d.appendChild(N);
   d._row=R;d._cnt=N;d._steps=[];d._title=T;
   ['pointerdown','mousedown','dblclick','contextmenu'].forEach(t=>d.addEventListener(t,e=>{try{e.stopPropagation();}catch(_){}}));
+  // un clic ailleurs que dans la barre (vue, arbre, panneau) : Suppr ne vise plus l'étape choisie
+  window.addEventListener('pointerdown',e=>{try{if(asmHistSel&&!(asmTlEl&&asmTlEl.contains(e.target))&&!(e.target.closest&&e.target.closest('.mfPop'))){asmHistSel=null;asmTlRender();}}catch(_){}},true);
   d.addEventListener('wheel',e=>{try{e.stopPropagation();if(Math.abs(e.deltaY)>Math.abs(e.deltaX)){R.scrollLeft+=e.deltaY;e.preventDefault();}}catch(_){}},{passive:false});
   window.addEventListener('pointermove',e=>{const D=asmTlDrag;if(!D||!asmTlEl)return;
     if(!D.on){if(Math.abs(e.clientX-D.x0)<5)return;D.on=true;D.node.className='tlbM on';}
@@ -218,10 +280,11 @@ function asmTlRender(){
   H.forEach((s,i)=>{
     if(i===ptr)R.appendChild(mk());
     const d=document.createElement('div'),o=asmHistOcc(c,s);
-    d.className='tlbS k-'+s.k+(s.occ&&asmSelId===s.occ?' sel':'')+(i>=ptr?' off':'')+(o&&o.st==='warn'&&s.k!=='ins'&&s.k!=='move'?' warn':'');
+    d.className='tlbS k-'+s.k+((asmHistSel?asmHistSel===s.id:(s.occ&&asmSelId===s.occ))?' sel':'')+(i>=ptr?' off':'')+(o&&o.st==='warn'&&s.k!=='ins'&&s.k!=='move'?' warn':'');
     d.innerHTML='<span>'+asmHistIcon(c,s)+'</span>';
-    d.title=(i+1)+'. '+asmHistName(c,s)+(i>=ptr?' — au-delà du marqueur':'')+'\nClic = sélectionner la pièce'+(s.k==='rel'?' · double-clic = modifier la relation':'');
-    d.onclick=()=>asmHistClick(c,s);
+    d.title=(i+1)+'. '+asmHistName(c,s)+(i>=ptr?' — au-delà du marqueur':'')+'\n'+(s.k==='rel'||s.k==='pat'?'Clic = modifier':'Clic = sélectionner la pièce')+(asmHistCanDel(c,s)?' · Suppr = supprimer':'')+' · clic droit = modifier / supprimer';
+    d.onclick=()=>asmHistPick(c,s);
+    d.oncontextmenu=e=>{try{e.preventDefault();e.stopPropagation();}catch(_){}asmHistCtx(c,s,e,d);};
     d.ondblclick=()=>asmHistDbl(c,s);
     R.appendChild(d);h._steps.push(d);
   });

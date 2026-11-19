@@ -88,7 +88,7 @@ function asmCachePack(s){
     const g=it.geo,p=g&&g.attributes&&g.attributes.position;
     if(!p||!p.array)return null;
     verts+=p.count||0;if(verts>ASM_CACHE_VERTS)return null;
-    items.push({pos:p.array.slice(),nor:asmCacheArr(g.attributes.normal),idx:g.index?asmCacheArr(g.index):null,
+    items.push({pos:p.array.slice(),nor:asmCacheArr(g.attributes.normal),col:it.vc?asmCacheArr(g.attributes.color):null,idx:g.index?asmCacheArr(g.index):null,
       color:it.color,bid:it.bid,op:it.op,gl:it.gl,rl:it.rl||null,cm:it.cm||null,grp:it.grp||null,fg:it.fg||null});
   }
   const e=s.edges&&s.edges.attributes;
@@ -105,10 +105,11 @@ function asmCacheUnpack(v,hash){
     if(it.nor&&it.nor.length===it.pos.length)g.setAttribute('normal',new THREE.Float32BufferAttribute(it.nor,3));
     if(it.idx)g.setIndex(new THREE.BufferAttribute(it.idx,1));
     if(!g.attributes.normal)g.computeVertexNormals();
+    const vc=!!(it.col&&it.col.length===it.pos.length);if(vc)g.setAttribute('color',new THREE.Float32BufferAttribute(it.col,3));
     // faces exactes (V0.29.0, mesures) : vérifiées, une table douteuse est simplement absente
     const grp=asmGrpNorm(it.grp),fg=grp?asmFgNorm(it.fg,grp.length):null;
     if(grp)g.userData.occGroups=grp;
-    return {geo:g,color:it.color,bid:it.bid||null,op:it.op,gl:it.gl,rl:it.rl||null,cm:it.cm||null,grp:grp||null,fg:fg||null};
+    return {vc,geo:g,color:it.color,bid:it.bid||null,op:it.op,gl:it.gl,rl:it.rl||null,cm:it.cm||null,grp:grp||null,fg:fg||null};
   });
   let edges=null;
   if(v.edges&&v.edges.pos&&v.edges.pos.length){

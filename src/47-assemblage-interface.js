@@ -59,7 +59,8 @@ function asmCaptureActive(){
       // V0.29.0 : faces exactes (plan / cylindre) de chaque groupe du maillage — mesures entre pièces (48-assemblage-mesure)
       const grp=asmGrpNorm((b.mesh.geometry.userData||{}).occGroups);g.userData.occGroups=grp||undefined;
       const fg=grp?asmFaceTable(b):null;
-      items.push({grp:grp||null,fg:fg||null,geo:g,color:(m.color&&m.color.getHex)?m.color.getHex():0x9a9aa0,bid:bid||null,op:bid?bodyOpOf(bid):1,gl:bid?bodyGlassEff(bid):1,rl:bid?renderLookOf(bid):null,cm:bid?bodyMatOf(bid):null}); // rl : apparence de RENDU (atelier) ; cm : matériau CAO (vue) — 12-materiaux, V0.10.0
+      const vc=!!(m.vertexColors&&g.getAttribute('color')); // V0.99.40 : STEP multicolore (couleur par pièce) gardé en assemblage
+      items.push({vc,grp:grp||null,fg:fg||null,geo:g,color:(m.color&&m.color.getHex)?m.color.getHex():0x9a9aa0,bid:bid||null,op:bid?bodyOpOf(bid):1,gl:bid?bodyGlassEff(bid):1,rl:bid?renderLookOf(bid):null,cm:bid?bodyMatOf(bid):null}); // rl : apparence de RENDU (atelier) ; cm : matériau CAO (vue) — 12-materiaux, V0.10.0
     }catch(e){}
   });
   if(c._snap)asmSnapFree(c._snap);
@@ -364,6 +365,7 @@ function asmKey(e){
   const t=e.target;if(t&&(t.tagName==='INPUT'||t.tagName==='TEXTAREA'||t.isContentEditable))return false;
   const ctrl=e.ctrlKey||e.metaKey,k=String(e.key||'').toLowerCase();
   if(ctrl&&(k==='z'||k==='y'))return false; // routage unique en capture (undoDispatch, 45)
+  if((e.key==='Delete'||e.key==='Backspace')&&typeof asmHistKey==='function'&&asmHistKey(e))return true; // étape choisie dans l'historique (48)
   if((e.key==='Delete'||e.key==='Backspace')&&asmSelId){e.preventDefault();asmAskDeleteLot(asmLotIds());return true;}
   if(e.key==='Escape'&&mesEnCours()){asmMeasStop();return true;}
   if(e.key==='Escape'&&asmPatEd){asmPatCancel();return true;}
