@@ -57,8 +57,14 @@ function faoBullRingRuns(C,z,climb,all,rb){
     let c=cut.get(key);if(c)return c;
     // fausse position (Illinois) sur la pointe exacte, bornée par les nœuds
     // (valeurs déjà calculées) : 4 à 6 évaluations au lieu de 14 dichotomies
-    const A=P(a),B=P(b),zt=z-0.005; // marge 5 µm
-    let lo=0,hi=1,flo=C.bAt(a)-zt,fhi=C.bAt(b)-zt,side=0;
+    // marge 5 µm ; V0.99.39 (retour « la dernière passe fait de drôles de zigzags ») :
+    // un FOND à la cote cherchée (dernier niveau posé sur le fond) donnait une pointe
+    // au-dessus de zt sur le nœud faisable : aucune racine, le point tombait sur le
+    // nœud ou au milieu de l'arête — escalier de 0,5 mm (la maille) le long des
+    // parois. Cote de recherche relevée juste au-dessus du nœud faisable (≤ 1 µm).
+    const A=P(a),B=P(b),tA=C.bAt(a);let zt=z-0.005;
+    if(tA>-1e8&&tA>zt-0.001)zt=Math.min(z+0.001,tA+0.001);
+    let lo=0,hi=1,flo=tA-zt,fhi=C.bAt(b)-zt,side=0;
     if(!(flo<=0))flo=-1e-6; if(!(fhi>0))fhi=1e-6;
     if(flo<-1e8)flo=-50; // pas de matière : borne grossière
     for(let it=0;it<8&&hi-lo>2e-4;it++){
@@ -220,8 +226,11 @@ function faoBullRingLevel(C,z,moves,o){
     let nx=-dy/L,ny=dx/L; if(o.sens!=='avalant'){nx=-nx;ny=-ny;}
     const B=atEnd?Q:P;
     const offs=[1,1.5,2,3,4,6];
-    for(let q=0;q<offs.length;q++){
-      const E=[B[0]+nx*offs[q],B[1]+ny*offs[q]];
+    // V0.99.39 : puis l'autre côté — au bout d'un morceau, dans un coin, le premier
+    // maillon peut revenir en arrière (contour qui s'enroule) : sa normale pointait
+    // vers la matière et le morceau était jeté (cleared exige la colonne libre)
+    for(let sg=1;sg>=-1;sg-=2)for(let q=0;q<offs.length;q++){
+      const E=[B[0]+sg*nx*offs[q],B[1]+sg*ny*offs[q]];
       if(!cleared(E[0],E[1]))continue;
       let ok=true;for(let s=1;s<8&&ok;s++){const t=s/8;if(!reach(E[0]+(B[0]-E[0])*t,E[1]+(B[1]-E[1])*t))ok=false;}
       if(ok)return E;
@@ -306,14 +315,21 @@ function faoBullRingLevel(C,z,moves,o){
 
 // Descente d'un outil TORIQUE (ou boule : R0 = 0) exacte : pointe la plus basse
 // sans pénétration. Disque plat de rayon R0 + tore (cercle des centres R0,
-// rayon de coin rc, laisse L = outil gonflé). Sommets et points d'arêtes (pas
+// rayon de coin rc, laisse L radiale : cercle des centres R0 + L). Sommets et points d'arêtes (pas
 // 0,2 mm : écart < 0,003 mm) en formule fermée, facettes inclinées en
 // formule fermée (point de contact du tore sur le plan), facettes
 // horizontales sous le disque. Cellules de 2 mm triées par Z décroissant
 // (arrêt dès qu'un point ne peut plus relever la pointe).
+// V0.99.39 (retour « la dernière passe fait de drôles de zigzags ») : laisse L
+// RADIALE seulement, comme la fraise droite du moteur (disque D/2 + L) et Fusion —
+// l'outil est élargi de L (cercle des centres R0 + L, coin rc inchangé), sa pointe
+// n'est PAS relevée. Le tore gonflé de L en tous sens voyait le fond L trop haut :
+// au dernier niveau (fond à la cote) la fraise droite y descendait, la torique non,
+// et la passe de faces suivait la frontière des deux, case par case (escalier de
+// 0,5 mm le long de toutes les parois). Laisse du fond = cotes du plan.
 function faoTorusDropper(mesh,D,rc,laisse){
   const L=isFinite(+laisse)&&+laisse>0?+laisse:0;
-  const R0=Math.max(0,D/2-rc),rL=rc+L,reach=R0+rL+1e-6,cs=2;
+  const R0=Math.max(0,D/2-rc)+L,rL=rc,reach=R0+rL+1e-6,cs=2;
   const V=mesh.v,T=mesh.t;
   let x0=1/0,y0=1/0,x1=-1/0,y1=-1/0;
   for(let i=0;i<V.length;i++){const p=V[i];if(p[0]<x0)x0=p[0];if(p[0]>x1)x1=p[0];if(p[1]<y0)y0=p[1];if(p[1]>y1)y1=p[1];}
@@ -367,18 +383,18 @@ function faoTorusDropper(mesh,D,rc,laisse){
     for(let j=Math.max(0,cj-cr);j<=Math.min(ny-1,cj+cr);j++)for(let i=Math.max(0,ci-cr);i<=Math.min(nx-1,ci+cr);i++){
       const l=cellsP[j*nx+i];if(!l)continue;
       for(let q=0;q<l.length;q++){const p=l[q],pz=PZ[p];
-        if(pz+L<=h)break; // ne peut plus relever la pointe
+        if(pz<=h)break; // ne peut plus relever la pointe
         const dx=PX[p]-x,dy=PY[p]-y,d2=dx*dx+dy*dy;if(d2>r2)continue;
         const d=Math.sqrt(d2);let z;
-        if(d<=R0)z=pz+L;else{const u=d-R0;z=pz+Math.sqrt(Math.max(0,rL*rL-u*u))-rc;}
+        if(d<=R0)z=pz;else{const u=d-R0;z=pz+Math.sqrt(Math.max(0,rL*rL-u*u))-rc;}
         if(z>h)h=z;}
     }
     const lf=(ci>=0&&cj>=0&&ci<nx&&cj<ny)?cellsF[cj*nx+ci]:null;
     if(lf)for(let q=0;q<lf.length;q++){const o=lf[q]*13;
-      if(FA[o+12]+L<=h)break;
+      if(FA[o+12]<=h)break;
       const fx=FA[o+9],fy=FA[o+10],fz=FA[o+11],nh=Math.hypot(fx,fy);
       if(nh<1e-6){ // horizontale : sous le disque plat (rayon R0, ou R0+rL au contact du tore)
-        if(distTri(o,x,y)<=R0+1e-9){const z=FA[o+2]+L;if(z>h)h=z;}
+        if(distTri(o,x,y)<=R0+1e-9){const z=FA[o+2];if(z>h)h=z;}
         continue;}
       // point de contact du tore sur le plan
       const k=R0/nh+rL,px=x-k*fx,py=y-k*fy;

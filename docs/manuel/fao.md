@@ -50,6 +50,8 @@
 
   Les entrées ne plongent **jamais en pleine matière** : par l'extérieur en arc, en hélice ou en rampe douce (pente ≤ 0,4). Chaque fiche (Poche, Contour, Ébauche 3D, Finition) règle son entrée : **Entrée** (cercle, auto, hélice, rampe), **Rayon d’entrée**, **Hélice : descente / tour**, **Hélice : rayon maxi** (l’hélice reste toujours dans la place libre) et, en Ébauche 3D, **Rampe : pente maxi** (degrés) ; 0 = automatique. Les descentes dans l'air se font en **rapide**, jusqu'au brut restant.
 
+  **Fraise torique ou boule** : la passe le long des parois suit le contact réel de l'outil ; la laisse *Parois* s'applique sur les côtés seulement, la laisse du fond reste celle des cotes.
+
   **Mini-passes sur** : *toutes les parois* (par défaut) ou *pentes seulement* — les mini-passes ne reprennent alors que les morceaux de paroi où le niveau du dessous a laissé une marche (chanfreins, dépouilles, pentes) et sautent les parois verticales ; fraise droite, torique ou boule. En *pentes seulement*, la **Marche maxi** (mm, 0 = off) fait du nombre de mini-passes un maximum : aucune où la paroi est presque verticale, davantage où la pente est douce, pour ne jamais laisser plus que cette épaisseur en escalier.
 - **Finition** (passes parallèles ou à crête constante) et **Géodésique** (passes à distance constante depuis les bords des faces).
 

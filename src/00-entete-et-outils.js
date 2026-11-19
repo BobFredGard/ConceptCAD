@@ -21,7 +21,7 @@
  * peut changer sans rien casser. CACHE_VER (parcours FAO) reste indépendant.
  */
 
-const APP_VER='V0.99.41';
+const APP_VER='V0.99.42';
 try{console.log('[ConceptCAD] version '+APP_VER);}catch(e){}
 try{var mfSv=document.getElementById('mfSplashVer');if(mfSv)mfSv.textContent=APP_VER;}catch(e){} // écran de démarrage
 
@@ -32,7 +32,7 @@ try{var mfSv=document.getElementById('mfSplashVer');if(mfSv)mfSv.textContent=APP
    et une image vide au F5 — pour rien, les données produites n'avaient pas bougé.
    A ne bumper QUE quand ce qui PRODUIT ces données change (moteur de géométrie,
    faoGen*) : c'est le seul cas où une entrée devient légitimement périmée. */
-const CACHE_VER='2026-11-13-001';
+const CACHE_VER='2026-11-19-001';
 /* ── Tampon de la PIÈCE FINIE gardée sur le poste (20-75) ──────────────────────
    V0.96.3 (décision de Fred du 13/11/2026 : « Oui, les garder ») : sa clé portait APP_VER, chaque
    livraison faisait donc recalculer chaque fichier une fois à sa première ouverture (barquette
