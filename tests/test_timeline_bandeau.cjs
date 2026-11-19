@@ -82,6 +82,16 @@ const vm=require('vm');
     "att(ids()==='x1,rp,x2','instances repliées dans leur répétition (vu '+ids()+')');",
     "att(tlbMoveTo('rp',3)===true&&F()==='x1,x2,rp,k1,k2','bloc répétition glissé en fin, entier (vu '+F()+')');",
     "att(tlbMoveTo('k1',0)===false,'instance seule : non déplaçable');",
+    // V0.99.39 : la fonction suivant la dépose dépend de celle glissée (répétition, congé…) :
+    // le cran « de trop » ne doit plus faire refuser un déplacement permis
+    "doc.features=[{id:'y1',type:'extrude',name:'Y1',body:'b1'},{id:'y2',type:'extrude',name:'Y2',body:'b1'},{id:'rq',type:'repeat',name:'RQ',body:'b1',base:['y1']},{id:'q1',type:'extrude',name:'Q1',body:'b1',repeatId:'rq'}];",
+    "att(tlbMoveTo('y1',2)===true&&F()==='y2,y1,rq,q1','glissée juste avant la répétition qui en dépend (vu '+F()+')');",
+    "att(tlbMoveTo('y1',3)===false&&F()==='y2,y1,rq,q1','au-delà de sa répétition : refusé, rien ne bouge (vu '+F()+')');",
+    // esquisse consommée : attrapée, elle glisse sa fonction
+    "doc.sketches=[{id:'s9',name:'S9',plane:'XY',entities:[],points:{}}];",
+    "doc.features=[{id:'z1',type:'extrude',name:'Z1',body:'b1'},{id:'z2',type:'extrude',name:'Z2',sketchId:'s9',body:'b1'}];",
+    "{const T=tlbSteps(),k=T.findIndex(s=>s.id==='s9');att(k===1&&tlbDragFeatOf(T[k])&&tlbDragFeatOf(T[k]).id==='z2','esquisse consommée : glisser = sa fonction');}",
+    "att(tlbMoveTo('z2',0)===true&&F()==='z2,z1'&&tlbSteps().map(s=>s.id).join()==='s9,z2,z1','fonction et son esquisse en tête ensemble (vu '+tlbSteps().map(s=>s.id).join()+')');",
     // --- marqueur posé par l'utilisateur : ni l'esquisse ni l'extrusion ne le déplacent
     "doc.sketches=[{id:'t1',name:'EsqT1',plane:'XY',entities:[],points:{}}];",
     "doc.features=[{id:'m1',type:'extrude',name:'M1',sketchId:'t1',body:'b1'},{id:'m2',type:'extrude',name:'M2',body:'b1'},{id:'m3',type:'extrude',name:'M3',body:'b1'}];",

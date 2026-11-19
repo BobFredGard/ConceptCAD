@@ -9,7 +9,7 @@ Plans (décalé, à un angle, 3 points, médian, normal à un axe, **perpendicul
 
 ## Fonctions
 
-Historique rejouable, timeline à icônes (vert = ajout, rouge = enlèvement), marqueur de temps glissable, réordonnancement par glisser-déposer. Une fonction ne s'appuie que sur ce qui la précède (**règle d'antériorité**).
+Historique rejouable, timeline à icônes (vert = ajout, rouge = enlèvement), marqueur de temps glissable, réordonnancement par glisser-déposer : une fonction se glisse avec son esquisse (attraper l'une ou l'autre), congés et répétitions compris, jusqu'à la dernière place que permettent ses liens. Une fonction ne s'appuie que sur ce qui la précède (**règle d'antériorité**).
 - Marqueur posé juste après l'import d'un STEP ou d'un corps dérivé (suivi d'une échelle, d'autres fonctions…) : les outils de face (déplacer une face, congé, chanfrein, dépouille, coque) s'ouvrent sur ce corps comme sur une pièce native.
 - **Extrusion** et **révolution** dynamiques : distance, jusqu'à une face, à travers tout, symétrique, dépouille, nouveau corps ; flèche à glisser dans la vue, de taille fixe à l'écran (environ 40 pixels, quel que soit le zoom ou l'angle de vue), comme celles des perçages, congés et révolutions.
 - **Zones fermées** (comme Fusion 360) : en esquisse, chaque zone fermée est teintée (un contour ouvert ne l'est pas) ; dans l'extrusion, un clic sur une zone l'ajoute ou la retire — plusieurs zones pour une même extrusion, ↺ Auto pour toute la matière.
@@ -39,6 +39,7 @@ Historique rejouable, timeline à icônes (vert = ajout, rouge = enlèvement), m
   - L'arête choisie suit les paramètres amont, y compris sur une extrusion à **dépouille** (hauteur et angle modifiés).
   - Avec plusieurs corps, l'aperçu ne remplace que le corps modifié : un corps caché le reste.
 - **Répétition** linéaire, en grille, circulaire, symétrie ou suivant un profil, avec aperçu rouge des copies.
+  - Les **fonctions à répéter se choisissent dans la timeline** : un clic ajoute, un nouveau clic retire (cliquer une esquisse choisit sa fonction). Elles y sont **entourées de vert** dès que la répétition est sélectionnée. Pour modifier une répétition existante : **🎯 Choisir dans la timeline** dans son panneau ; ✕ retire une fonction de la liste.
   - **Symétrie + Linéaire + Symétrie** : dans une symétrie, cochez **+ Linéaire** (direction, quantité, distance) pour répéter la pièce et son image en ligne, puis **+ Symétrie (2ᵉ plan)** pour reprendre le tout en miroir — une seule fonction dans l’arbre.
   - Une **case à cocher par copie** enlève celle qui tombe mal : dans le panneau, et sous chaque copie dans la vue avec l'option « Cases dans la vue 3D ». Au survol, la copie passe en bleu.
   - Balayages compris, sans esquisses copiées visibles dans l'arbre.

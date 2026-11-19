@@ -8,7 +8,7 @@ sont sorties le 2026-09-30j.
 Code dans `src/` · livrable `fusion_mvp.html` (généré par `build.js`) · architecture et
 garde-fous en tête de `src/00-entete-et-outils.js`.
 
-**725 versions**, de `2026-09-28b` à `V0.99.38` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
+**726 versions**, de `2026-09-28b` à `V0.99.39` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
 comme dans le fichier d'origine.
 
 ---
@@ -8083,3 +8083,15 @@ Cavité Usinage, après l'ébauche D25, la reprise D10 et une finition boule D12
 **Ajout** (`src/48-assemblage-historique.js`) : en mode Assembler, une barre d'historique remplace celle de la pièce en bas de la vue : une étape par insertion de composant 📦, liaison ou alignement 🔗, relation 🧲, répétition ▦ et déplacement à la main ✥ (gestes à la suite sur la même pièce fusionnés), dans l'ordre de création. Marqueur ⏱ à glisser ou ⏮ ◀ ▶ ⏭ comme pour les pièces : les étapes suivantes ne comptent pas (pièce pas encore insérée masquée, liaison et relations retirées, position d'avant). Clic = sélectionner la pièce, double-clic sur une relation = la modifier. L'état réel reste celui enregistré et toute modification remet d'abord le marqueur en fin. Historique gardé dans le fichier (`hist` par composant) et par Ctrl+Z ; ancien fichier : reconstruit dans l'ordre des pièces.
 
 **Test** : `test_assemblage_historique` (13 contrôles : étapes, fusion des déplacements, marqueur, fichier, Ctrl+Z, ancien fichier, pièce supprimée). Vérifié dans l'application sur Test Assemblage : 3 étapes, marqueur en arrière retire le pivot glissant puis masque la goupille, retour en fin. CACHE_VER et FORMES_VER inchangés.
+
+## V0.99.39 - Timeline : glisser une fonction avec son esquisse ; sources des répétitions choisies dans la timeline
+
+**Constat de Fred** : « c'est difficile voire impossible de déplacer une fonction avec son esquisse dans la timeline — mais aussi les fonctions comme les congés et les répétitions » ; puis « pour les répétitions, enlever la liste avec les cases à cocher et plutôt sélectionner les fonctions depuis la timeline, entourées de vert ».
+
+**Cause** (41-bandeau-timeline) : `tlbMoveTo` avançait cran par cran (`featMoveRaw`) et contrôlait l'antériorité AVANT de savoir si le cran dépassait la dépose. Le cran « de trop » (celui qu'on n'aurait de toute façon pas gardé) était refusé dès que la fonction suivante dépendait de celle glissée — répétition qui la recopie, congé sur ses arêtes, esquisse sur sa face — et ce refus annulait tout le déplacement. Cache Piles : glisser un congé d'une place, juste avant la symétrie qui le recopie, était refusé. De plus seule l'icône de la fonction s'attrapait, pas celle de son esquisse.
+
+**Correctif** : le cran est d'abord fait sans contrôle (`featMoveStep`) pour tester le dépassement, seul un cran gardé est contrôlé. Une esquisse consommée s'attrape aussi et glisse sa fonction (`tlbDragFeatOf`, `tlbDragStart`) ; les deux icônes s'estompent ensemble. Dépose sur place : plus de message « Déplacement impossible ».
+
+**Ajout** (40-20-repetitions) : plus de cases à cocher pour les sources. `repSourceList` montre les fonctions choisies (✕ pour retirer) ; le clic dans la timeline ajoute / retire (`repPickToggle`, une esquisse vaut sa fonction) — d'emblée à la création, par « 🎯 Choisir dans la timeline » à l'édition (clic sur la répétition ou sélection ailleurs = fin du choix). Les sources de la répétition en cours ou sélectionnée sont entourées de vert dans la timeline (`repTlSources`, classes `rsrc` / `rcand`).
+
+**Test** : `test_timeline_bandeau` (glissée juste avant la répétition qui en dépend, au-delà refusée, esquisse qui glisse sa fonction), `test_arbre_selection` et `test_anteriorite` réécrits pour le choix dans la timeline. Vérifié dans l'application sur Cache Piles : congé glissé à la souris, esquisse + extrusion glissées ensemble, congé retiré puis remis dans la symétrie depuis la timeline, nouvelle répétition créée par clic sur une esquisse. CACHE_VER et FORMES_VER inchangés.

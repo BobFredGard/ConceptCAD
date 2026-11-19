@@ -122,90 +122,69 @@ const A=(c,m)=>{if(!c){ko++;console.log('  x '+m);}else console.log('  ✓ '+m);
     sel={kind:'null',id:null};rendre();
     out.marqueSansSel=/srcmark/.test(nomDe(parNom("Alpha")))?1:0;
 
-    // ── 4) le panneau de répétition liste les fonctions répétables, en cases
+    // ── 4) V0.99.39 : création — plus de cases, les sources se choisissent dans la TIMELINE
     sel={kind:'feature',id:"RP"};
     enterRepMode();
     out.repOuvert=repMode?1:0;
     out.cochées=(repMode.feats||[]).join("+");
     const p=document.getElementById('props');
-    // on repart d'un panneau VIDE : le harnais n'efface pas children, on vide donc
-    // le tableau nous-mêmes pour ne compter qu'UN rendu
     p.children.length=0;
     renderRepPanel();
-    const cases=chercher(p,function(n){return n.tagName==='INPUT'&&n.className==='repsrcchk';});
-    out.nbCases=cases.length;
-    out.cochees=cases.filter(function(c){return c.checked;}).length;
-    const noms=chercher(p,function(n){return n.tagName==='SPAN'&&n.textContent;}).map(function(n){return n.textContent;});
-    out.nomsListe=noms.join('|');
+    out.nbCases=chercher(p,function(n){return n.tagName==='INPUT'&&n.className==='repsrcchk';}).length;
+    out.nbItems=chercher(p,function(n){return n.className==='repSrcItem';}).length;
+    out.pickCreation=repPickActive()?1:0;
+    const pas=function(id){return tlbSteps().find(function(s){return s.id===id;});};
+    tlbClick(pas('E1'),{});
+    out.apresClicE1=(repMode.feats||[]).join("+");
+    out.vertCreation=Array.from(repTlSources().ids).join("+");
+    out.nbItemsApres=chercher(p,function(n){return n.className==='repSrcItem';}).length;
+    tlbClick(pas('E1'),{});
+    out.apresReclicE1=(repMode.feats||[]).join("+");
     out.toutesRepetables=doc.features.filter(function(f){return repCanFeature(f.id);}).map(function(f){return f.id;}).join("+");
+    exitRepMode();
 
-    // ── 5) ÉDITION d'une répétition : la MÊME liste à cocher, cochée sur les
-    //       sources actuelles — et cocher/décocher agit sur la répétition.
+    // ── 5) ÉDITION : liste des sources, choix ouvert par « 🎯 Choisir dans la timeline »
     repMode=null;sel={kind:'feature',id:"RP"};
-    renderProps();
+    doc.features.find(function(f){return f.id==="RP";}).base=["E1"];
+    repGenChildren(doc.features.find(function(f){return f.id==="RP";}));
     const pe=document.getElementById('props');
     pe.children.length=0;
-    renderProps();
-    const casesEdit=chercher(pe,function(n){return n.tagName==='INPUT'&&n.className==='repsrcchk';});
-    out.nbCasesEdit=casesEdit.length;
-    out.cocheesEdit=casesEdit.filter(function(c){return c.checked;}).length;
-    // la liste d'édition contient-elle les mêmes noms que celle de création ?
-    const nomsEdit=chercher(pe,function(n){return n.tagName==='SPAN'&&n.textContent;}).map(function(n){return n.textContent;}).join('|');
-    out.nomsEdit=nomsEdit;
-    out.pasDeBoutonAjouter=(function(){
-      const t=chercher(pe,function(n){return n.tagName==='BUTTON';}).map(function(n){return n.textContent;}).join('|');
-      return t.indexOf('Ctrl')<0;
-    })();
-    // décocher la source -> la répétition perd sa source, les instances suivent
-    const avant=doc.features.filter(function(f){return f.repeatId==="RP";}).length;
-    out.instancesAvant=avant;
-    const c0=casesEdit.filter(function(c){return c.checked;})[0];
-    if(c0){c0.checked=false;c0.onchange();}
-    out.baseApres=(doc.features.find(function(f){return f.id==="RP";}).base||[]).join("+");
-    out.instancesApres=doc.features.filter(function(f){return f.repeatId==="RP";}).length;
-    // la source est-elle de nouveau cochée après re-rendu ?
-    renderProps();
-    const pe2=document.getElementById('props');pe2.children.length=0;renderProps();
-    out.cocheesApres=chercher(pe2,function(n){return n.tagName==='INPUT'&&n.className==='repsrcchk';}).filter(function(c){return c.checked;}).length;
-
-    // ── 6) RÉGRESSION : « je peux décocher mais pas cocher ».
-    //    Le navigateur bascule la case PUIS envoie change. Si le panneau se
-    //    reconstruit dans onchange, le nœud cliqué est détruit pendant le clic.
-    //    On reproduit donc l'ordre exact, et on compte les reconstructions.
-    sel={kind:'feature',id:"RP"};
-    // état de départ connu : E1 source, E2 pas source
-    doc.features.find(function(f){return f.id==="RP";}).base=["E1"];
-    const p3=document.getElementById('props');p3.children.length=0;
     const origRenderProps=renderProps;
     let nbRender=0;
     renderProps=function(){nbRender++;return origRenderProps.apply(this,arguments);};
     renderProps();
-    const cases3=chercher(p3,function(n){return n.tagName==='INPUT'&&n.className==='repsrcchk';});
-    out.nbCases3=cases3.length;
-    const decoche=cases3.filter(function(c){return c.checked;})[0];
-    const aCocher=cases3.filter(function(c){return !c.checked;})[0];
-    out.nbRenderInitial=nbRender;
-    // 6a) COCHER : le navigateur met checked=true, puis onchange
-    if(aCocher){
-      aCocher.checked=true;              // ce que fait le navigateur
-      aCocher.onchange();                // puis l'événement change
-    }
-    out.cocheRestant=aCocher?aCocher.checked:0;
+    out.nbCasesEdit=chercher(pe,function(n){return n.tagName==='INPUT'&&n.className==='repsrcchk';}).length;
+    out.nbItemsEdit=chercher(pe,function(n){return n.className==='repSrcItem';}).length;
+    out.pickAvantBouton=repPickActive()?1:0;
+    out.vertEdit=Array.from((repTlSources()||{ids:[]}).ids).join("+");
+    out.pasDeBoutonAjouter=chercher(pe,function(n){return n.tagName==='BUTTON';}).map(function(n){return n.textContent;}).join('|').indexOf('Ctrl')<0;
+    const bt=chercher(pe,function(n){return n.className==='repPickBtn';})[0];
+    out.bouton=bt?bt.textContent:'';
+    if(bt)bt.onclick();
+    out.pickApresBouton=repPickActive()?1:0;
+    nbRender=0;
+    tlbClick(pas('E2'),{});
     out.baseApresCheck=(doc.features.find(function(f){return f.id==="RP";}).base||[]).join("+");
-    out.nbRenderApresCheck=nbRender-out.nbRenderInitial;
+    out.selApresCheck=sel.id;
+    out.nbRenderApresCheck=nbRender;
     out.enteteApresCheck=(function(){
-      const t=chercher(p3,function(n){return n.innerHTML&&n.innerHTML.indexOf('instance(s)')>=0;});
+      const t=chercher(pe,function(n){return n.innerHTML&&n.innerHTML.indexOf('instance(s)')>=0;});
       return t.length?t[0].innerHTML.replace(/<[^>]*>/g,''):'';
     })();
-    // 6b) DÉCOCHER de la même façon
-    nbRender=0;
-    if(decoche){
-      decoche.checked=false;
-      decoche.onchange();
-    }
-    out.decocheRestant=decoche?decoche.checked:0;
-    out.nbRenderApresUncheck=nbRender;
+    tlbClick(pas('E1'),{});
     out.baseApresUncheck=(doc.features.find(function(f){return f.id==="RP";}).base||[]).join("+");
+    out.nbRenderApresUncheck=nbRender;
+    // ✕ dans la liste du panneau
+    const xs=chercher(pe,function(n){return n.className==='mini repsrcdel';}),x=xs[xs.length-1]; // le harnais garde les anciennes lignes : la dernière est la liste à jour
+    if(x)x.onclick();
+    await new Promise(function(r){setTimeout(r,5);});
+    out.baseApresCroix=(doc.features.find(function(f){return f.id==="RP";}).base||[]).join("+");
+    // clic sur la répétition elle-même : fin du choix ; ensuite un clic redevient une sélection
+    tlbClick(pas('RP'),{});
+    out.pickFin=repPickActive()?1:0;
+    tlbClick(pas('E1'),{});
+    out.selApresFin=sel.id;
+    out.baseApresFin=(doc.features.find(function(f){return f.id==="RP";}).base||[]).join("+");
     renderProps=origRenderProps;
     return out;
   `;
@@ -222,46 +201,25 @@ const A=(c,m)=>{if(!c){ko++;console.log('  x '+m);}else console.log('  ✓ '+m);
   console.log('  sources marquées       : '+(o.marqueSource?'oui':'non')+'  (source='+o.marqueSurBloc+', non-source='+o.marqueSurPoche+')');
   console.log('  badge de la répétition : '+(o.badgeRep?'présent':'absent')+'  ◀ '+o.badgeChiffre);
   console.log('  sans répétition sélectionnée, repère : '+o.marqueSansSel+' (0 attendu)');
-  console.log('  panneau répétition     : ouvert='+o.repOuvert+'  cases='+o.nbCases+' (cochées '+o.cochees+')  répétables='+o.toutesRepetables);
-  console.log('  liste du panneau       : '+o.nomsListe);
-  console.log('  html ligne repetition  : '+o.htmlRep);
-  console.log('  selection : '+o.selAuMoment);
-  A(o.t1a==='E1','Ctrl+clic sur une fonction l ajoute au lot');
-  A(o.repApres1==='nul'&&o.repApres2==='nul','Ctrl+clic n ouvre PLUS le panneau Répétition (défaut 1)');
-  A(o.t1b==='E1+E2','le lot s accumule (E1+E2) — la suppression multiple reste possible');
-  A(o.selApres2==='E2','la dernière fonction cliquée reste la sélection courante');
-  A(o.t2==='RP','un clic simple sur une répétition REMPLACE le lot (plus de sélection fantôme)');
-  A(o.sel2==='RP','la répétition devient la sélection courante');
-  A(o.repApres3==='nul','le clic simple n ouvre pas non plus la répétition');
-  A(o.t2b==='RP','un clic sur une INSTANCE vide aussi le lot');
-  A(o.marqueSource>=1&&o.marqueSurBloc>=1,'la SOURCE est marquée ◀ dans l\'arbre ('+o.marqueSurBloc+' ligne(s) rendues)');
-  A(o.marqueSurPoche===0,'la fonction NON source ne porte pas ce repère');
-  A(o.marqueSansSel===0,'aucun repère quand aucune répétition n est sélectionnée');
-  A(o.badgeRep===1&&o.badgeChiffre==='1','la répétition affiche son nombre de sources (◀ 1)');
-  A(o.repOuvert===1&&o.nbCases===3,'le panneau propose une case par fonction répétable (3, la répétition comprise — V0.11.30)');
-  A(o.cochees===1&&o.cochées==='RP','la répétition sélectionnée est pré-cochée : on la répète (V0.11.30)');
-  A(/Alpha/.test(o.nomsListe)&&/Poche/.test(o.nomsListe),'la liste nomme les fonctions répétables, associées ou non');
+  console.log('  création : cases='+o.nbCases+' liste='+o.nbItems+' choix actif='+o.pickCreation+' clic E1 → '+o.apresClicE1+' (vert '+o.vertCreation+') reclic → '+o.apresReclicE1);
+  console.log('  édition  : liste='+o.nbItemsEdit+' vert='+o.vertEdit+' bouton='+o.bouton+' choix '+o.pickAvantBouton+'→'+o.pickApresBouton);
+  console.log('  clic E2 → '+o.baseApresCheck+' (reconstructions '+o.nbRenderApresCheck+', en-tête '+o.enteteApresCheck+') ; clic E1 → '+o.baseApresUncheck+' ; ✕ → '+o.baseApresCroix+' ; fin → choix '+o.pickFin+', sel '+o.selApresFin+', base '+o.baseApresFin);
+  A(o.repOuvert===1&&o.nbCases===0,'création : plus aucune case à cocher (V0.99.39)');
+  A(o.cochées==='RP'&&o.nbItems===1,'la répétition sélectionnée est déjà choisie, listée dans le panneau (V0.11.30)');
+  A(o.pickCreation===1,'création : le clic dans la timeline choisit d emblée');
+  A(o.apresClicE1==='RP+E1'&&o.vertCreation==='RP+E1','clic sur Alpha dans la timeline : ajoutée, entourée de vert');
+  A(o.apresReclicE1==='RP','reclic : retirée');
   A(o.toutesRepetables==='E1+E2+RP','les fonctions répétables sont E1, E2 et la répétition RP (les instances sont exclues)');
-  console.log('  édition               : cases='+o.nbCasesEdit+' (cochées '+o.cocheesEdit+')  liste='+o.nomsEdit);
-  console.log('  aucun bouton Ctrl+clic : '+(o.pasDeBoutonAjouter?'oui':'NON'));
-  console.log('  décocher la source    : base='+o.baseApres+'  instances '+o.instancesAvant+' -> '+o.instancesApres);
-  A(o.nbCasesEdit===2,'le panneau d\'ÉDITION propose la même liste de 2 fonctions répétables');
-  A(o.cocheesEdit===1,'les sources ACTUELLES sont déjà cochées (1)');
-  A(o.nomsEdit.indexOf('Alpha')>=0&&o.nomsEdit.indexOf('Poche')>=0,'la liste d\'édition nomme les mêmes fonctions que la création');
+  A(o.nbCasesEdit===0&&o.nbItemsEdit===1,'édition : la liste montre la source actuelle, sans case');
+  A(o.vertEdit==='E1','édition : la source est entourée de vert dans la timeline');
   A(o.pasDeBoutonAjouter,'le bouton « Ajouter / retirer par Ctrl+clic » a disparu');
-  A(o.baseApres==='','décocher retire la source de la répétition');
-  A(o.cocheesApres===0,'le re-rendu reflète la nouvelle liste (0 cochée)');
-  console.log('  COCHER (ordre navigateur) : cases='+o.nbCases3+'  reste cochée='+o.cocheRestant+
-    '  base='+o.baseApresCheck+'  reconstructions du panneau='+o.nbRenderApresCheck);
-  console.log('  en-tête mis à jour sur place : '+o.enteteApresCheck);
-  console.log('  DÉCOCHER                    : reste cochée='+o.decocheRestant+
-    '  base='+o.baseApresUncheck+'  reconstructions='+o.nbRenderApresUncheck);
-  A(o.cocheRestant===true,'COCHER fonctionne : la case reste cochée');
-  A(o.baseApresCheck==='E1+E2','cocher AJOUTE la source à la répétition (E1+E2)');
-  A(o.nbRenderApresCheck===0,'le panneau ne se RECONSTRUIT pas depuis le clic (cause du bug)');
+  A(o.pickAvantBouton===0&&o.pickApresBouton===1&&/Choisir/.test(o.bouton),'édition : le choix s ouvre par « 🎯 Choisir dans la timeline »');
+  A(o.baseApresCheck==='E1+E2'&&o.selApresCheck==='RP','clic sur Poche : AJOUTÉE à la répétition, la sélection reste la répétition');
+  A(o.nbRenderApresCheck===0,'le panneau ne se reconstruit pas depuis le clic');
   A(/4 instance/.test(o.enteteApresCheck),'l\'en-tête « n instance(s) » se met à jour sur place (2 sources × 2)');
-  A(o.decocheRestant===false&&o.baseApresUncheck==='E2','DÉCOCHER retire la source cochée (E1 cochée → il reste E2)');
-  A(o.nbRenderApresUncheck===0,'décocher ne reconstruit pas le panneau non plus');
+  A(o.baseApresUncheck==='E2'&&o.nbRenderApresUncheck===0,'reclic sur Alpha : retirée (il reste Poche)');
+  A(o.baseApresCroix==='','✕ dans le panneau : retire la source');
+  A(o.pickFin===0&&o.selApresFin==='E1'&&o.baseApresFin==='','clic sur la répétition : fin du choix, puis un clic redevient une sélection');
   console.log(ko?'\n*** '+ko+' PROBLEME(S) ***':'\n*** TOUT PASSE ***');
   process.exit(ko?1:0);
 })().catch(e=>{console.log('FATAL',String((e&&e.message)||e).slice(0,600));process.exit(1);});
