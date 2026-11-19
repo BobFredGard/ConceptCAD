@@ -8,7 +8,7 @@ sont sorties le 2026-09-30j.
 Code dans `src/` · livrable `fusion_mvp.html` (généré par `build.js`) · architecture et
 garde-fous en tête de `src/00-entete-et-outils.js`.
 
-**723 versions**, de `2026-09-28b` à `V0.99.36` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
+**724 versions**, de `2026-09-28b` à `V0.99.37` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
 comme dans le fichier d'origine.
 
 ---
@@ -8072,3 +8072,8 @@ Cavité Usinage, après l'ébauche D25, la reprise D10 et une finition boule D12
 **Correctif** (71, garde de V0.99.35) : `featGuard` ferme d'abord une session de fenêtre dynamique NON modifiée d'une autre fonction que la sélection — restée ouverte, la modification suivante (case d'une répétition) la faisait passer pour « non validée » et le panneau sautait sur elle (`test_arbre_selection` rouge depuis V0.99.35).
 
 **Test** : `test_composants_relations` — plan milieu (posé, normale, relu du fichier), liste vide refusée, imports compris. Vérifié dans l'application sur une copie de MERLIN-39-000 : 155 faces lues, bouton de la liaison, face posée sur le plan XY de l'origine (3 degrés de liberté), Annuler remet la liaison. CACHE_VER et FORMES_VER inchangés.
+## V0.99.37 - IGES : vrais plans et cylindres, faces supprimables
+
+- **Cause** : sur un IGES de SolidWorks (pièce de Fred), impossible de supprimer un cylindre, une face plane ou un congé, alors que le même travail marche sur un STEP. Le fichier ne contient aucun plan ni cylindre : cylindres et congés y sont des surfaces de révolution (entité 120), faces planes des B-splines (128). La suppression de face (Defeaturing) ne sait pas prolonger ces surfaces : refus, ou voisines qui « partent hors de la pièce ».
+- **Correctif** : `importIgesAnalytic` remet les surfaces en vraies surfaces avant la couture : révolutions → cylindres, cônes, sphères, tores (`ShapeCustom.SweptToElementary`) ; B-splines planes (`ShapeAnalysis_CanonicalRecognition.IsPlane`, 0,001 mm) → faces planes refaites sur leurs contours. Garde-fou `importMemeSolides` : la version convertie n'est gardée que si elle a autant de solides, valides, de même volume (1e-4) ; sinon import d'avant. Pièce de Fred : 40 cylindres + 13 plans (au lieu de 40 révolutions + 13 B-splines), cylindres et congés supprimables.
+- **Test** : `test_import_iges` — bloc percé Ø10 écrit avec ses plans en B-splines : revient en plans et cylindres seulement, le trou se supprime (bloc plein 48 000 mm³). CACHE_VER et FORMES_VER inchangés.

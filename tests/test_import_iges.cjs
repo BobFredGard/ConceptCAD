@@ -16,14 +16,20 @@ const A=(c,m)=>{if(!c){ko++;console.log('  ✗ '+m);}else console.log('  ✓ '+m
   vm.runInContext('occt=__realOcct;occtReady=true;window.alert=function(m){(window.__al=window.__al||[]).push(String(m));};window.confirm=function(){return true;};showAll=function(){};applyView=function(){};',ctx);
   // IGES de test : un bloc 60×40×20 et un cylindre Ø20×30 à part (2 solides), écrits en faces
   sandbox.__iges=vm.runInContext(`(function(){
-    const b=new occt.BRepPrimAPI_MakeBox_2(new occt.gp_Pnt_3(0,0,0),60,40,20);
+    const b0=new occt.BRepPrimAPI_MakeBox_2(new occt.gp_Pnt_3(0,0,0),60,40,20);
+    // V0.99.37 : bloc percé Ø10 de part en part — le trou doit pouvoir être supprimé après import
+    const axT=new occt.gp_Ax2_3(new occt.gp_Pnt_3(30,20,-5),new occt.gp_Dir_4(0,0,1));
+    const t=new occt.BRepPrimAPI_MakeCylinder_3(axT,5,30);
+    const b=new occt.BRepAlgoAPI_Cut_3(b0.Shape(),t.Shape(),new occt.Message_ProgressRange_1());
     const ax=new occt.gp_Ax2_3(new occt.gp_Pnt_3(100,0,0),new occt.gp_Dir_4(0,0,1));
     const c=new occt.BRepPrimAPI_MakeCylinder_3(ax,10,30);
     const w=new occt.IGESControl_Writer_1();
-    w.AddShape(b.Shape());w.AddShape(c.Shape());w.ComputeModel();
+    // faces planes du bloc écrites en B-splines (comme SolidWorks) : elles doivent revenir planes
+    const bs=occt.ShapeCustom.ConvertToBSpline(b.Shape(),false,false,false,true);
+    w.AddShape(bs);w.AddShape(c.Shape());w.ComputeModel();
     if(!w.Write('/__t.igs'))return null;
     const u=occt.FS.readFile('/__t.igs');try{occt.FS.unlink('/__t.igs');}catch(e){}
-    [w,b,c,ax].forEach(o=>{try{o.delete();}catch(e){}});
+    [w,b,c,ax,b0,axT,t,bs].forEach(o=>{try{o.delete();}catch(e){}});
     return Uint8Array.from(u).buffer;
   })()`,ctx);
   if(!sandbox.__iges){console.log('  ✗ IGES de test impossible à produire');process.exit(1);}
@@ -38,7 +44,19 @@ const A=(c,m)=>{if(!c){ko++;console.log('  ✗ '+m);}else console.log('  ✓ '+m
     const ex=new occt.TopExp_Explorer_2(sh,E.TopAbs_SOLID,E.TopAbs_SHAPE);
     for(;ex.More();ex.Next()){const s=occSolidCur(ex);const gp=new occt.GProp_GProps_1();occt.BRepGProp.VolumeProperties_1(s,gp,false,false,false);vol+=gp.Mass();nSol++;gp.delete();s.delete();}
     ex.delete();sh.delete();
-    out.nSol=nSol;out.vol=+vol.toFixed(1);out.last=importIgesSolidify.last;
+    out.nSol=nSol;out.vol=+vol.toFixed(1);out.last=importIgesSolidify.last;out.ana=importIgesAnalytic.last;
+    // V0.99.37 : surfaces vraies (plans, cylindres) et trou supprimable
+    {const sh2=importReadShape(u8);const k={};let trou=null;
+     const fe=new occt.TopExp_Explorer_2(sh2,E.TopAbs_FACE,E.TopAbs_SHAPE);
+     for(;fe.More();fe.Next()){const f=occFaceCur(fe);const t=occSurfKind(f);k[t]=(k[t]||0)+1;const bx=occFaceBox(f);
+       if(!trou&&t==='Cylinder'&&bx&&Math.abs(bx.pos[0]-30)<0.1&&Math.abs(bx.pos[1]-20)<0.1)trou=f;else f.delete();}
+     fe.delete();out.kinds=k;
+     const exs=new occt.TopExp_Explorer_2(sh2,E.TopAbs_SOLID,E.TopAbs_SHAPE);let blocV=null;
+     for(;exs.More()&&trou;exs.Next()){const so=occSolidCur(exs);let y=false;{const fx=new occt.TopExp_Explorer_2(so,E.TopAbs_FACE,E.TopAbs_SHAPE);for(;fx.More();fx.Next()){const c=fx.Current();if(c.IsSame(trou))y=true;c.delete();}fx.delete();}
+       if(y){
+       try{const r=occDeleteFacesOnce(so,[trou]);const gp=new occt.GProp_GProps_1();occt.BRepGProp.VolumeProperties_1(r,gp,false,false,false);blocV=+gp.Mass().toFixed(1);gp.delete();r.delete();}catch(e){blocV=String(e.message||e);}}
+       so.delete();}
+     exs.delete();if(trou)trou.delete();sh2.delete();out.trouSuppr=blocV;}
     // import réel
     window.__al=[];
     await importSTEP({name:'pieces.igs',arrayBuffer:async()=>__iges});
@@ -97,8 +115,10 @@ const A=(c,m)=>{if(!c){ko++;console.log('  ✗ '+m);}else console.log('  ✓ '+m
   A(o.reconnu,'IGES reconnu à son contenu (colonne 73 = S)');
   A(o.stepPasIges,'un STEP n\'est pas pris pour un IGES');
   A(o.nSol===2,'faces libres cousues en 2 solides ('+o.nSol+')');
-  const V=60*40*20+Math.PI*100*30;
+  const V=60*40*20-Math.PI*25*20+Math.PI*100*30;
   A(Math.abs(o.vol-V)<V*1e-3,'volume des solides cousus = '+o.vol+' mm³ (attendu '+V.toFixed(1)+')');
+  A(o.kinds&&!Object.keys(o.kinds).some(k=>!/^(Plane|Cylinder)$/.test(k))&&(o.ana&&o.ana.nPlan>=6),'surfaces vraies : seulement des plans et des cylindres, B-splines planes remises en plans ('+JSON.stringify(o.kinds)+', '+JSON.stringify(o.ana)+')');
+  A(o.trouSuppr===48000,'trou Ø10 supprimable après import : bloc plein 48000 mm³ ('+o.trouSuppr+')');
   A(o.import&&o.fmt==='iges'&&o.brep,'import : fonction, source « iges », solide exact gardé');
   A(/IGES importé/.test(o.msg)&&/2 solide/.test(o.msg),'message : « IGES importé … 2 solide(s) » ('+o.msg+')');
   A(o.al0===0,'aucune alerte à l\'import');

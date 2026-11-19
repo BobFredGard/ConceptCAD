@@ -347,6 +347,66 @@ function importIgesSolidify(shape){
     return comp;
   }finally{occDispose(bin);}
 }
+const IMPORT_IGES_PLAN_TOL=1e-3;
+function importIgesAnalytic(shape){
+  // V0.99.37 : SolidWorks (et d'autres) écrivent l'IGES sans plan ni cylindre : cylindres et
+  // congés en « surfaces de révolution » (entité 120), faces planes en B-splines (128). La
+  // suppression de face (Defeaturing) ne sait pas prolonger ces surfaces-là : tout était
+  // refusé. On les remet en surfaces vraies AVANT la couture : révolutions → cylindres,
+  // cônes, sphères, tores (ShapeCustom.SweptToElementary) ; B-splines planes (écart
+  // < IMPORT_IGES_PLAN_TOL) → faces planes refaites sur leurs contours, même normale.
+  // Rend un NOUVEAU shape (l'appelant libère l'entrée) ou null si rien n'a changé.
+  const E=occt.TopAbs_ShapeEnum,bin=[];
+  const ANA={Plane:1,Cylinder:1,Cone:1,Sphere:1,Torus:1};
+  let s1=null,nRev=0,nPlan=0;
+  try{
+    const fe0=occBinPush(bin,new occt.TopExp_Explorer_2(shape,E.TopAbs_FACE,E.TopAbs_SHAPE));
+    for(;fe0.More();fe0.Next()){const f=occFaceCur(fe0);if(occSurfKind(f)==='SurfaceOfRevolution')nRev++;try{f.delete();}catch(e){}}
+    if(nRev&&occt.ShapeCustom&&occt.ShapeCustom.SweptToElementary){
+      try{const r=occt.ShapeCustom.SweptToElementary(shape);if(r&&!r.IsNull())s1=r;}catch(e){}
+    }
+    const base=s1||shape;
+    const rs=occBinPush(bin,new occt.BRepTools_ReShape());
+    const fe=occBinPush(bin,new occt.TopExp_Explorer_2(base,E.TopAbs_FACE,E.TopAbs_SHAPE));
+    for(;fe.More();fe.Next()){
+      const f=occBinPush(bin,occFaceCur(fe));
+      if(ANA[occSurfKind(f)])continue;
+      try{
+        const cr=occBinPush(bin,new occt.ShapeAnalysis_CanonicalRecognition(f));
+        const pl=occBinPush(bin,new occt.gp_Pln());
+        if(!cr.IsPlane(IMPORT_IGES_PLAN_TOL,pl))continue;
+        const ow=occBinPush(bin,occt.BRepTools.OuterWire(f));
+        if(!ow||ow.IsNull())continue;
+        const mf=occBinPush(bin,new occt.BRepBuilderAPI_MakeFace(pl,ow,true));
+        const wx=occBinPush(bin,new occt.TopExp_Explorer_2(f,E.TopAbs_WIRE,E.TopAbs_SHAPE));
+        for(;wx.More();wx.Next()){const w=occBinPush(bin,occt.TopoDS.Wire_1(wx.Current()));if(!w.IsSame(ow))mf.Add(w);}
+        if(!mf.IsDone())continue;
+        const fx=occBinPush(bin,new occt.ShapeFix_Face(occBinPush(bin,mf.Face())));fx.FixOrientation_1();
+        // orientation : la couture remet les faces d'accord, et importReadShape compare le
+        // solide obtenu à celui des surfaces d'origine (validité, volume) avant de le garder
+        rs.Replace(f,occBinPush(bin,fx.Face()));nPlan++;
+      }catch(e){(importIgesAnalytic.err=importIgesAnalytic.err||[]).push(String(e&&e.message||e));}
+    }
+    importIgesAnalytic.last={nRev:s1?nRev:0,nPlan};
+    if(!nPlan)return s1;
+    const r=rs.Apply(base,E.TopAbs_SHAPE);
+    if(s1)try{s1.delete();}catch(e){}
+    return r&&!r.IsNull()?r:null;
+  }catch(e){if(s1)try{s1.delete();}catch(e2){}return null;}
+  finally{occDispose(bin);}
+}
+function importMemeSolides(a,b){
+  // Deux formes : même nombre de solides, tous valides dans b, même volume total (1e-4).
+  const E=occt.TopAbs_ShapeEnum;
+  const mes=s=>{let n=0,v=0,ok=true;const ex=new occt.TopExp_Explorer_2(s,E.TopAbs_SOLID,E.TopAbs_SHAPE);
+    try{for(;ex.More();ex.Next()){const so=occSolidCur(ex);try{n++;if(!occCoqueValide(so))ok=false;
+      const gp=new occt.GProp_GProps_1();occt.BRepGProp.VolumeProperties_1(so,gp,false,false,false);v+=gp.Mass();gp.delete();}finally{try{so.delete();}catch(e){}}}}
+    finally{try{ex.delete();}catch(e){}}return{n,v,ok};};
+  try{
+    const A=mes(a),B=mes(b);
+    return B.ok&&A.n===B.n&&Math.abs(A.v-B.v)<=1e-4*Math.max(1,Math.abs(A.v));
+  }catch(e){return false;}
+}
 function importReadShape(u8){
   // Octets STEP ou IGES → shape du noyau (propriété de l'appelant).
   const iges=importIsIges(u8);
@@ -360,8 +420,19 @@ function importReadShape(u8){
     reader.TransferRoots();let shape=reader.OneShape();
     if(!shape||shape.IsNull())throw new Error('fichier vide');
     if(iges){
-      importIgesSolidify.last=null;
-      const s=importIgesSolidify(shape);
+      importIgesSolidify.last=null;importIgesAnalytic.last=null;
+      const s0=importIgesSolidify(shape),info0=importIgesSolidify.last;
+      const a=importIgesAnalytic(shape);
+      let s=s0;
+      if(a){
+        // surfaces vraies gardées seulement si le résultat est aussi bon : autant de solides,
+        // valides, même volume (1e-4 près) — sinon l'import d'avant V0.99.37, tel quel
+        const sa=importIgesSolidify(a),infoA=importIgesSolidify.last;
+        const ref=s0||shape,cand=sa||a;
+        const ok=importMemeSolides(ref,cand);
+        if(ok){if(s0)try{s0.delete();}catch(e){}s=sa;try{shape.delete();}catch(e){}shape=a;importIgesSolidify.last=infoA;}
+        else{if(sa)try{sa.delete();}catch(e){}try{a.delete();}catch(e){}importIgesSolidify.last=info0;importIgesAnalytic.last=Object.assign({},importIgesAnalytic.last,{refus:true});}
+      }
       if(s){try{shape.delete();}catch(e){}shape=s;}
     }
     return shape;
