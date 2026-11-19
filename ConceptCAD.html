@@ -29,7 +29,7 @@ button:disabled{opacity:.45;cursor:not-allowed;box-shadow:none}
 .hints{display:flex;gap:6px;flex-wrap:wrap;font-size:.7rem;color:var(--muted)}
 .hints span{background:rgba(0,0,0,.25);border:1px solid var(--border);border-radius:7px;padding:3px 8px}
 kbd{background:rgba(255,255,255,.1);border:1px solid var(--border);border-radius:5px;padding:1px 6px;font-size:.66rem;margin-right:4px}
-.layout{display:flex;gap:12px;flex:1;min-height:0}
+.layout{display:flex;gap:12px;flex:1;min-height:0;position:relative}
 .sidebar{width:272px;flex:none;display:flex;flex-direction:column;gap:10px;min-height:0;overflow-y:auto}
 .panel{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:12px 14px}
 .panel-title{font-size:.66rem;font-weight:600;text-transform:uppercase;letter-spacing:.6px;color:var(--muted);margin:0 0 8px}
@@ -74,6 +74,19 @@ kbd{background:rgba(255,255,255,.1);border:1px solid var(--border);border-radius
 .part-row{display:flex;align-items:center;gap:7px;padding:2px 6px;border-radius:6px;cursor:pointer;font-size:.78rem;color:#fff;text-shadow:0 1px 4px #000}
 .part-row:hover{background:rgba(10,132,255,.35)}.part-row.hidden{opacity:.45}.pdot{width:11px;height:11px;border-radius:50%;flex:none;border:1px solid rgba(255,255,255,.5)}
 .right{width:288px;flex:none;display:flex;flex-direction:column;gap:10px;min-height:0;overflow-y:auto}
+/* V0.99.34 : panneau Paramètres posé PAR-DESSUS la vue 3D (comme l'arborescence), tout en haut ; le cube et ses icônes
+   se rangent à sa gauche (--mfPropsW, propsCubeSync) ;
+   onglet de repli contre le bord DROIT. La vue 3D va jusqu'au bord droit de la fenêtre. */
+#propsWrap{position:absolute;top:4px;right:0;bottom:36px;z-index:30;display:flex;align-items:flex-start;pointer-events:none}
+#propsWrap>*{pointer-events:auto}
+#propsWrap>.right{max-height:100%}
+#propsWrap.folded>.right{display:none}
+/* même fond, transparence, contour et flou que l'arborescence (#treeOverlay) */
+#propsWrap>.right>.panel{background:rgba(16,18,22,.78)!important;border:1px solid rgba(255,255,255,.13)!important;border-radius:12px!important;backdrop-filter:blur(7px);-webkit-backdrop-filter:blur(7px)}
+body.mf-sk #propsWrap,body[data-ws="plan"] #propsWrap{z-index:55}
+#propsToggle{margin:0 0 0 4px;min-width:20px;height:88px;flex:none;border-radius:10px 0 0 10px;background:rgba(16,18,22,.78);
+  border:1px solid rgba(255,255,255,.13);border-right:none;color:#e9e9ec;cursor:pointer;writing-mode:vertical-rl;padding:6px 2px}
+#propsToggle:hover{background:rgba(10,132,255,.3)}
 .row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}.col{display:flex;flex-direction:column;gap:8px}
 label{font-size:.83rem;display:inline-flex;align-items:center;gap:7px}
 input[type=number],input[type=text]{background:rgba(255,255,255,.08);border:1px solid var(--border);color:var(--text);border-radius:6px;padding:6px 8px;font-size:.83rem;width:100%}
@@ -120,7 +133,7 @@ input[type=range]{accent-color:var(--primary);width:100%}
 #ctxMenu .ctxRow .ctxOpV,#ctxMenu3D .ctxRow .ctxOpV{font-family:monospace;font-size:.72rem;min-width:38px;text-align:right}
 #ctxMenu .ctxWrap{border-top:1px solid var(--border);margin-top:4px;padding-top:4px}
 #ctxMenu button:hover,#ctxMenu3D button:hover{background:var(--primary)}
-@media(max-width:1100px){.right{display:none}.measurebar{grid-template-columns:1fr}#treeOverlay{width:210px}}
+@media(max-width:1100px){.right{display:none}#propsWrap{display:none}.measurebar{grid-template-columns:1fr}#treeOverlay{width:210px}}
 </style>
 <style>
 /* Écran de démarrage (V0.23.15) — affiché AVANT l'analyse du gros script, pour masquer
@@ -352,6 +365,7 @@ input[type=range]{accent-color:var(--primary);width:100%}
     </div>
   </div></main>
 
+  <div id="propsWrap">
   <aside class="right">
     <div class="panel"><p class="panel-title">Paramètres</p><div id="props" class="col"><span class="note">Sélectionnez une esquisse / extrusion / corps dans l'arbre.</span></div></div>
     <div class="panel"><p class="panel-title">Mesure</p><div id="faceInfo">Clic face 1, puis Ctrl+clic face 2.</div></div>
@@ -362,6 +376,8 @@ input[type=range]{accent-color:var(--primary);width:100%}
     <div class="row" style="margin-top:6px"><button id="btnRebuild" title="Régénérer tout le modèle (Ctrl+Maj+R)">⟳ Régénérer</button><button id="btnSelfTest" title="Rejoue la batterie de non-régression (esquisse)">🧪 Auto-tests</button></div>
     <div id="selfTest" class="note" style="white-space:pre-wrap;max-height:150px;overflow:auto"></div></div>
   </aside>
+  <button id="propsToggle" title="Replier / déplier les paramètres">❯</button>
+  </div>
 </div>
 
 <footer class="measurebar" style="display:none"></footer>
@@ -394,7 +410,7 @@ input[type=range]{accent-color:var(--primary);width:100%}
  * peut changer sans rien casser. CACHE_VER (parcours FAO) reste indépendant.
  */
 
-const APP_VER='V0.99.34';
+const APP_VER='V0.99.35';
 try{console.log('[ConceptCAD] version '+APP_VER);}catch(e){}
 try{var mfSv=document.getElementById('mfSplashVer');if(mfSv)mfSv.textContent=APP_VER;}catch(e){} // écran de démarrage
 
@@ -1270,62 +1286,14 @@ function fit(){
   if(mirrorRT)mirrorDirty=true;
   try{viewCenterShift();}catch(e){}
 }
-/* V0.2.5 : le CENTRE de rotation suit la zone VISIBLE du grand panneau.
-   Problème : le pivot d'orbite (cible OrbitControls) se projette au centre du CANVAS ;
-   les bandeaux verticaux (arborescence à gauche, barre + panneau FAO à droite en
-   classique) couvrent une moitié de l'écran — la pièce paraît excentrée et « fuit »
-   quand on orbite. Fix : on décale la PROJECTION (camera.setViewOffset) du récentrage
-   d pixels — le pivot se projette alors au milieu de la zone libre, et raycast/mesure/
-   reflet suivent (ils passent tous par la matrice projetée, jamais par des NDC bruts).
-   viewMidOffset : PURE — mesure les bandes et renvoie {W,H,L,R,d} (d = décalage px,
-   positif = contenu à DROITE). Édition d'esquisse : cadre à 0 — la superposition SVG
-   (s2w/w2s) et le fondu 3D partagent le même centrage, ne pas les séparer. */
-function viewMidOffset(){
-  const o={W:0,H:0,L:0,R:0,d:0};
-  const w=$('vpwrap');if(!w)return o;
-  o.W=w.clientWidth||0;o.H=w.clientHeight||0;
-  if(!o.W||!o.H)return o;
-  o.R=o.W; // par défaut : zone libre jusqu'au bord droit du canvas
-  try{if(typeof skEdit!=='undefined'&&skEdit)return o;}catch(e){}
-  try{
-    const cr=w.getBoundingClientRect();
-    const edge=(el,side)=>{ // bandeau de GAUCHE → cote droite ; bandeau de DROITE → cote gauche
-      if(!el)return null;
-      const r=el.getBoundingClientRect();
-      if(!r||r.width<=1||r.height<=1)return null;
-      return side==='l'?r.right-cr.left:r.left-cr.left;
-    };
-    const mod=!!(document.body&&document.body.classList&&document.body.classList.contains('ui-modern'));
-    const ws=mod?document.body.getAttribute('data-ws'):null;
-    // Moderne espace FAO : le panneau Usinage vit À GAUCHE (#faoWrap repoussé) ;
-    // les fiches posage/opération sont hors canvas (aside.right). Classique :
-    // arborescence à gauche, barre + panneau FAO en overlay À DROITE du canvas
-    // (#faoWrap garde sa min-width 270 MÊME replié → mesurer ses ENFANTS).
-    if(mod&&ws==='fao'){
-      const tw=(typeof faoTreeWrapEl!=='undefined'&&faoTreeWrapEl)?faoTreeWrapEl:document.getElementById('faoTreeWrap');
-      const v=edge(tw,'l');if(v!=null)o.L=v;
-    }else{
-      const v=edge(document.getElementById('treeWrap'),'l');if(v!=null)o.L=v;
-      const fw=typeof faoTreeWrapEl!=='undefined'?faoTreeWrapEl:null;
-      const ab=typeof faoAddBarEl!=='undefined'?faoAddBarEl:document.getElementById('faoAddBar');
-      const a=edge(ab,'r'),b2=edge(fw||document.getElementById('faoTreeWrap'),'r');
-      const vr=(a!=null&&b2!=null)?Math.min(a,b2):(a!=null?a:b2);
-      if(vr!=null)o.R=vr;
-    }
-  }catch(e){}
-  o.d=(o.L+o.R)/2-o.W/2;
-  return o;
-}
+/* V0.99.34 (décision de Fred) : la pièce est centrée sur TOUTE la vue 3D, bandeaux ou pas.
+ La règle V0.2.5 (projection décalée pour centrer la pièce entre l'arborescence et le panneau
+ de droite, viewMidOffset) est supprimée : ouvrir ou replier un bandeau ne déplace plus la vue.
+ viewCenterShift reste appelée aux mêmes endroits : elle retire seulement un ancien décalage.
+ (L'esquisse pose son propre décalage plus bas, inchangé.) */
 function viewCenterShift(){
   if(!camera)return;
-  const o=viewMidOffset();
-  if(!o.W||!o.H||Math.abs(o.d)<2){ // seuil 2px : un onglet isolé ne vaut pas un re-projet
-    try{if(camera.view&&camera.view.enabled)camera.clearViewOffset();}catch(e){}
-    return;
-  }
-  // offsetX = −d → la frustum se décale de −d : le contenu VA À DROITE de d pixels,
-  // l'ancien centre projeté se retrouve au milieu de la zone visible.
-  try{if(typeof camera.setViewOffset==='function')camera.setViewOffset(o.W,Math.max(1,o.H),-o.d,0,o.W,Math.max(1,o.H));}catch(e){}
+  try{if(camera.view&&camera.view.enabled)camera.clearViewOffset();}catch(e){}
 }
 const _mn=new THREE.Vector3(0,0,1),_mrwp=new THREE.Vector3(),_mcwp=new THREE.Vector3(),_mview=new THREE.Vector3();
 const _mrot=new THREE.Matrix4(),_mlook=new THREE.Vector3(),_mtgt=new THREE.Vector3(),_mcu=new THREE.Vector3();
@@ -12376,15 +12344,15 @@ let repMode=null;
     const st=document.createElement('style');st.id='cssScrollbars';
     st.textContent=
       /* Firefox : barre entièrement masquée par défaut */
-      '#treeOverlay,#faoTreeWrap .fao-cnt{scrollbar-width:none;-ms-overflow-style:none}'+
+      '#treeOverlay,#propsWrap>.right,#faoTreeWrap .fao-cnt{scrollbar-width:none;-ms-overflow-style:none}'+
       /* WebKit : piste et pouce transparents par défaut, la piste garde sa zone de clic */
-      '#treeOverlay::-webkit-scrollbar,#faoTreeWrap .fao-cnt::-webkit-scrollbar{width:8px;height:8px}'+
-      '#treeOverlay::-webkit-scrollbar-track,#faoTreeWrap .fao-cnt::-webkit-scrollbar-track{background:transparent}'+
-      '#treeOverlay::-webkit-scrollbar-thumb,#faoTreeWrap .fao-cnt::-webkit-scrollbar-thumb{background:transparent;border-radius:4px;transition:background .2s}'+
+      '#treeOverlay::-webkit-scrollbar,#propsWrap>.right::-webkit-scrollbar,#faoTreeWrap .fao-cnt::-webkit-scrollbar{width:8px;height:8px}'+
+      '#treeOverlay::-webkit-scrollbar-track,#propsWrap>.right::-webkit-scrollbar-track,#faoTreeWrap .fao-cnt::-webkit-scrollbar-track{background:transparent}'+
+      '#treeOverlay::-webkit-scrollbar-thumb,#propsWrap>.right::-webkit-scrollbar-thumb,#faoTreeWrap .fao-cnt::-webkit-scrollbar-thumb{background:transparent;border-radius:4px;transition:background .2s}'+
       /* classe .sbOn posée 1,2 s au défilement : la barre apparaît dans le thème */
-      '#treeOverlay.sbOn,#faoTreeWrap .fao-cnt.sbOn{scrollbar-width:thin;scrollbar-color:var(--muted) transparent}'+
-      '#treeOverlay.sbOn::-webkit-scrollbar-thumb,#faoTreeWrap .fao-cnt.sbOn::-webkit-scrollbar-thumb{background:var(--muted)}'+
-      '#treeOverlay.sbOn::-webkit-scrollbar-thumb:hover,#faoTreeWrap .fao-cnt.sbOn::-webkit-scrollbar-thumb:hover{background:var(--text)}';
+      '#treeOverlay.sbOn,#propsWrap>.right.sbOn,#faoTreeWrap .fao-cnt.sbOn{scrollbar-width:thin;scrollbar-color:var(--muted) transparent}'+
+      '#treeOverlay.sbOn::-webkit-scrollbar-thumb,#propsWrap>.right.sbOn::-webkit-scrollbar-thumb,#faoTreeWrap .fao-cnt.sbOn::-webkit-scrollbar-thumb{background:var(--muted)}'+
+      '#treeOverlay.sbOn::-webkit-scrollbar-thumb:hover,#propsWrap>.right.sbOn::-webkit-scrollbar-thumb:hover,#faoTreeWrap .fao-cnt.sbOn::-webkit-scrollbar-thumb:hover{background:var(--text)}';
     (document.head||document.body||document.documentElement).appendChild(st);
     let t=null;
     const show=function(el){
@@ -12399,6 +12367,8 @@ let repMode=null;
         if(a&&!a._sbBound){ a._sbBound=1; a.addEventListener('scroll',function(){show(a);}); }
       }catch(e){}
       try{
+        const p=document.querySelector('#propsWrap>.right'); // V0.99.34 : panneau Paramètres, même barre que l'arborescence
+        if(p&&!p._sbBound){ p._sbBound=1; p.addEventListener('scroll',function(){show(p);}); }
         const f=document.querySelector('#faoTreeWrap .fao-cnt');
         if(f&&!f._sbBound){ f._sbBound=1; f.addEventListener('scroll',function(){show(f);}); }
       }catch(e){}
@@ -14417,6 +14387,7 @@ function rs3Tick(){
 function renderProps(){
   if(typeof extNew!=='undefined'&&extNew)extNew=null; // une sélection annule le formulaire en cours
   if(typeof revNew!=='undefined'&&revNew)revNew=null; // idem pour le formulaire de révolution
+  try{if(typeof featGuard==='function')featGuard();}catch(e){} // V0.99.34 : fonction en cours non validée → on y reste (71)
   const p=$('props');p.innerHTML='';p.className='col';
   if(typeof bmMarks==='function'){try{bmMarks();}catch(e){}} // axes d'un Déplacer sélectionné (85) : affichés tant qu'il l'est
   // FAO : les fiches posage/opération vivent dans src/88-fao.js (arbre FAO dédié).
@@ -14449,10 +14420,7 @@ function renderProps(){
   const visDel=f=>pBtns([
     ['👁 Visible',()=>{f.visible=!(f.visible!==false);markDirty();rebuild();renderTree();renderProps();}],
     ['🗑 Supprimer',()=>{treeSel=[f.id];sel={kind:'feature',id:f.id};treeDeleteSel();}, 'danger']]);
-  /* ── nom du document (toujours en haut) ── */
-  const nmIn=document.createElement('input');nmIn.type='text';nmIn.id='docNameIn';nmIn.value=doc.name;
-  nmIn.onchange=e=>{doc.name=e.target.value;$('docName').textContent=doc.name;markDirty();};
-  pRow('Nom du document',nmIn);
+  /* nom du document : V0.99.34, déplacé en tête de l'arborescence (treeDocNameRow, 42) */
   $('docName').textContent=doc.name;
   /* ═══════ esquisse ═══════ */
   if(sel.kind==='sketch'){
@@ -14862,7 +14830,7 @@ function renderProps(){
     pChk('Visible',originVis[sel.id]!==false,v=>setOriginVis(sel.id,v));
     return;
   }
-  pNote('Sélectionnez un plan / esquisse / fonction / corps dans l\'arbre.');
+  pNote('Sélectionnez un plan / esquisse / fonction / corps dans l\'arbre.').dataset.pnlHome='1'; // panneau « vide » : se replie seul en CAO (95)
 }
 const skName=id=>(doc.sketches.find(s=>s.id===id)||{name:'?'}).name;
 const exName=id=>(doc.features.find(f=>f.id===id)||{name:'?'}).name;
@@ -15462,6 +15430,9 @@ function pgPickAt(e){
     if(typeof document==='undefined'||document.getElementById('cssTreeV2'))return;
     const st=document.createElement('style');st.id='cssTreeV2';
     st.textContent='.tsearch{padding:4px 6px 6px}'+
+      '.tdocname{display:flex;align-items:center;gap:8px;padding:2px 6px 6px}'+
+      '.tdocname label{flex:none;font-size:.72rem;color:var(--muted)}'+
+      '.tdocname input{flex:1;min-width:0;box-sizing:border-box;padding:3px 8px;font-size:.74rem;font-weight:600;border:1px solid var(--border);border-radius:6px;background:var(--bg);color:var(--text)}'+
       '.tsearch input{width:100%;box-sizing:border-box;padding:3px 8px;font-size:.74rem;border:1px solid var(--border);border-radius:6px;background:var(--bg);color:var(--text)}'+
       '.tnode.tmatch .nm{color:var(--primary);font-weight:600}'+
       '.tnode.tdrop{outline:2px dashed var(--primary);outline-offset:-2px}'+
@@ -15497,6 +15468,7 @@ const TREE_IND=14;          // retrait par niveau (px)       // occurrences iden
 function treeModel(){
   const L=[];
   L.push(treeSearchRow());
+  L.push(treeDocNameRow()); // V0.99.34 : nom du document en tête de l'arbre (quitte le panneau Paramètres)
   // Lot 1 : avec un assemblage, la hiérarchie des composants devient l'arbre lui-même ;
   // sans assemblage, l'arbre reste celui de la pièce (identique à renderTree)
   const uni=!!asm&&asmOn();
@@ -15513,6 +15485,17 @@ function treeModel(){
   if(!uni)treePart(L);
   else{const P=[];treePart(P);treeComps(L,P);}
   return treeQuery?treeFilter(L,treeQuery):L;
+}
+function treeDocNameRow(){
+  const v=String(doc.name||'').replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;');
+  return {cls:'tdocname',keep:true,
+    html:'<label for="docNameIn">Nom du document</label><input id="docNameIn" type="text" value="'+v+'" aria-label="Nom du document">',
+    init:d=>{
+      const i=d.querySelector?d.querySelector('input'):null;if(!i)return;
+      i.onchange=()=>{doc.name=i.value;try{$('docName').textContent=doc.name;}catch(e){}markDirty();};
+      // les raccourcis de l'application ne voient pas la frappe ; Entrée valide
+      i.onkeydown=e=>{e.stopPropagation();if(e.key==='Enter')i.blur();};
+    }};
 }
 function treeSearchRow(){
   const v=String(treeQuery).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;');
@@ -38777,6 +38760,82 @@ document.addEventListener('keydown',e=>{
   const a=document.activeElement;if(a&&(a.tagName==='INPUT'||a.tagName==='TEXTAREA'||a.tagName==='SELECT'))return;
   e.stopImmediatePropagation();e.preventDefault();fdynCancel();
 },true);
+
+/* ---------- V0.99.34 : pas de changement de fonction tant que la fonction en cours n'est pas validée ----------
+   Demande de Fred : une fonction modifiée (ou créée) dont on n'a cliqué ni OK ni Annuler reste
+   affichée. Un clic sur une autre fonction, une esquisse ou un corps est refusé, et une petite
+   boîte le rappelle avec trois choix : Valider (OK) puis aller à l'élément cliqué, Annuler les
+   modifications puis y aller, ou Rester. Une fonction simplement sélectionnée, sans modification,
+   ne bloque rien. Appelé en tête de renderProps (40-50) : sel y est déjà le nouvel élément. */
+let featGuardPass=false; // passage voulu (choix fait dans la boîte) : pas de nouveau blocage
+function featPendingSession(){
+  // session ouverte ET modifiée : {E, ok, cancel, f}
+  const S=[[typeof extDyn!=='undefined'?extDyn:null,()=>extDynOk(),()=>extDynCancel()],
+    [typeof fdyn!=='undefined'?fdyn:null,()=>fdynOk(),()=>fdynCancel()]];
+  for(const [E,ok,cancel] of S){
+    if(!E)continue;
+    if(!(E.isNew||docUndoStack.length>E.len))continue;
+    const f=(doc.features||[]).find(x=>x&&x.id===E.id);if(!f)continue;
+    return {E,ok,cancel,f};
+  }
+  return null;
+}
+function featGuard(){
+  if(featGuardPass)return false;
+  try{
+    if(typeof skEdit!=='undefined'&&skEdit)return false;
+    if(!sel||!sel.kind||!/^(feature|sketch|body)$/.test(sel.kind))return false;
+    const P=featPendingSession();if(!P)return false;
+    if(sel.kind==='feature'&&sel.id===P.f.id)return false;
+    const cible={kind:sel.kind,id:sel.id};
+    sel={kind:'feature',id:P.f.id};
+    try{if(typeof treeSel!=='undefined')treeSel=[P.f.id];}catch(e){}
+    setTimeout(()=>{try{renderTree();}catch(e){}try{refreshParts();}catch(e){}featGuardBox(P,cible);},0);
+    return true;
+  }catch(e){return false;}
+}
+function featGuardName(c){
+  try{
+    if(c.kind==='feature')return '« '+((doc.features.find(x=>x.id===c.id)||{}).name||'fonction')+' »';
+    if(c.kind==='sketch')return '« '+((doc.sketches.find(x=>x.id===c.id)||{}).name||'esquisse')+' »';
+    if(c.kind==='body')return '« '+((bodies.find(x=>x.id===c.id)||{}).name||'corps')+' »';
+  }catch(e){}
+  return 'l’élément choisi';
+}
+function featGuardGo(c){
+  featGuardPass=true;
+  try{
+    sel={kind:c.kind,id:c.id};
+    try{treeSel=c.kind==='feature'?[c.id]:[];}catch(e){}
+    if(c.kind==='body'){try{tlActivateBody(c.id);}catch(e){}}
+    renderTree();renderProps();try{refreshParts();}catch(e){}
+  }finally{featGuardPass=false;}
+}
+function featGuardClose(){const b=document.getElementById('featGuardBox');if(b)b.remove();}
+function featGuardBox(P,cible){
+  featGuardClose();
+  const host=document.getElementById('vpwrap')||document.body;
+  const box=document.createElement('div');box.id='featGuardBox';box.setAttribute('role','alertdialog');
+  box.style.cssText='position:absolute;top:56px;left:50%;transform:translateX(-50%);z-index:70;max-width:380px;'+
+    'padding:12px 14px;border-radius:12px;background:rgba(16,18,22,.92);border:1px solid rgba(255,159,10,.7);'+
+    'color:#e9e9ec;backdrop-filter:blur(7px);-webkit-backdrop-filter:blur(7px);box-shadow:0 10px 30px rgba(0,0,0,.4);font-size:.8rem;line-height:1.45';
+  const t=document.createElement('div');t.style.cssText='font-weight:700;margin-bottom:4px;color:#ffb340';
+  t.textContent='⚠ « '+P.f.name+' » n’est pas validée';
+  const m=document.createElement('div');m.style.cssText='margin-bottom:10px;color:rgba(233,233,236,.85)';
+  m.textContent='Validez-la ou annulez ses modifications avant de passer à '+featGuardName(cible)+'.';
+  const row=document.createElement('div');row.style.cssText='display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end';
+  const bt=(txt,cls,fn)=>{const b=document.createElement('button');b.textContent=txt;if(cls)b.className=cls;b.onclick=e=>{e.stopPropagation();featGuardClose();fn();};row.appendChild(b);return b;};
+  bt('Rester','',()=>{});
+  bt('↶ Annuler les modifications','',()=>{P.cancel();featGuardGo(cible);});
+  const ok=bt('✔ Valider et continuer','primary',()=>{P.ok();featGuardGo(cible);});
+  box.appendChild(t);box.appendChild(m);box.appendChild(row);
+  box.addEventListener('pointerdown',e=>e.stopPropagation());
+  host.appendChild(box);
+  try{ok.focus();}catch(e){}
+  const key=e=>{if(!document.getElementById('featGuardBox')){removeEventListener('keydown',key,true);return;}
+    if(e.key==='Escape'){e.stopImmediatePropagation();e.preventDefault();featGuardClose();removeEventListener('keydown',key,true);}};
+  addEventListener('keydown',key,true);
+}
 
 /* ═══════════════ 75-balayage.js — balayage ═══════════════ */
 /* ═══════════════════════════════════════════════════════════════════════════
@@ -80789,6 +80848,95 @@ function treeFoldSet(f){ // replier/déplier SANS toucher à localStorage (clic 
   tog.title=treeFolded?'Déplier l’arborescence':'Replier l’arborescence';
   try{viewCenterShift();}catch(e){} // V0.2.5 : le pivot suit la zone visible
 }
+// V0.99.34 : panneau Paramètres par-dessus la vue 3D, onglet de repli contre le bord droit.
+let propsFolded=false;
+function propsFoldSet(f){
+  propsFolded=!!f;
+  const wrap=$('propsWrap'),tog=$('propsToggle');
+  if(!wrap||!tog)return;
+  wrap.classList.toggle('folded',propsFolded);
+  tog.textContent=propsFolded?'❮':'❯';
+  tog.title=propsFolded?'Déplier les paramètres':'Replier les paramètres';
+  propsCubeSync();
+  try{viewCenterShift();}catch(e){} // la pièce reste au milieu de la zone libre
+}
+// V0.99.34 : le panneau de droite s'ouvre et se replie seul (demandes de Fred) :
+//  · CAO : il s'ouvre dès qu'il a quelque chose à montrer (fonction, esquisse, corps, formulaire…) et
+//    se replie quand on clique ailleurs — SAUF si la fonction montrée n'a pas été validée (bouton OK,
+//    Valider ou Appliquer jamais cliqué) : il reste alors ouvert.
+//  · FAO : il s'ouvre quand on choisit un posage ou une opération, et ne se replie jamais seul.
+//  · Esquisse et PLAN : rien d'automatique. L'onglet garde la main jusqu'au changement suivant.
+function propsAutoMode(){
+  try{
+    const b=document.body;
+    if(b.classList.contains('mf-sk'))return null;
+    if(typeof mepIsOpen==='function'&&mepIsOpen())return null;
+    const ws=b.getAttribute('data-ws');
+    return ws==='cao'||ws==='fao'?ws:null;
+  }catch(e){return null;}
+}
+const PROPS_VALIDE_RE=/^[\s\u2714\u2713]*(OK|Valider|Appliquer)(?![a-z\u00e0-\u00ff])/i;
+let propsAutoLast=null,propsAttente=false,propsValide=false,propsSelKey=null;
+function propsAuto(){
+  const m=propsAutoMode();
+  if(!m){propsAutoLast=null;return;}
+  const p=$('props');if(!p)return;
+  if(m==='fao'){ // posage / opération choisi : ouvrir (une fois par choix), jamais refermer
+    const k=(sel&&(sel.kind==='faoSetup'||sel.kind==='faoOp'))?sel.kind+':'+sel.id:'';
+    if(k===propsAutoLast)return;
+    propsAutoLast=k;
+    if(k&&propsFolded)propsFoldSet(false);
+    return;
+  }
+  const kids=[...p.children];
+  const vide=!kids.length||kids.every(k=>k.dataset&&k.dataset.pnlHome==='1');
+  const valide=propsValide;propsValide=false;
+  if(!vide){ // fonction montrée : en attente tant qu'un bouton de validation n'a pas été cliqué
+    // (évalué à chaque nouvel élément montré ; une fois validé, il le reste tant qu'on ne change pas)
+    const k=sel?(sel.kind+':'+sel.id):'';
+    if(valide)propsSelKey=k; // validée : plus d'attente pour cet élément
+    else if(k!==propsSelKey)propsAttente=[...p.querySelectorAll('button')].some(b=>PROPS_VALIDE_RE.test(b.textContent||''));
+  }
+  if(propsAutoLast===vide)return; // rien n'a changé : le choix manuel reste
+  propsAutoLast=vide;
+  if(!vide){if(propsFolded)propsFoldSet(false);return;}
+  if(propsAttente&&!valide)return; // pas validée : le panneau reste ouvert
+  propsAttente=false;propsSelKey=null;
+  if(!propsFolded)propsFoldSet(true);
+}
+// Le cube et ses icônes se rangent à gauche du panneau de droite (ouvert ou replié) :
+// --mfPropsW = place prise depuis le bord droit de la vue (0 si le panneau est caché).
+function propsCubeSync(){
+  try{
+    const vp=$('vpwrap'),pw=$('propsWrap'),tog=$('propsToggle');if(!vp||!pw)return;
+    let w=0;
+    if(pw.offsetWidth>0&&getComputedStyle(pw).display!=='none'){
+      const side=pw.querySelector('aside.right');
+      const sr=(!propsFolded&&side)?side.getBoundingClientRect():null;
+      const el=(sr&&sr.width>1&&sr.height>1)?sr:(tog?tog.getBoundingClientRect():null);
+      if(el&&el.width>0)w=Math.max(0,Math.round(vp.getBoundingClientRect().right-el.left+2));
+    }
+    const v=w+'px';
+    if(document.body.style.getPropertyValue('--mfPropsW')!==v)document.body.style.setProperty('--mfPropsW',v);
+  }catch(e){}
+}
+(function(){
+  const tog=$('propsToggle');
+  if(!tog)return;
+  propsFoldSet(false);
+  try{if(localStorage.getItem('minifusion_propsFolded')==='1')propsFoldSet(true);}catch(e){}
+  tog.onclick=()=>{propsFoldSet(!propsFolded);
+    try{localStorage.setItem('minifusion_propsFolded',propsFolded?'1':'0');}catch(e){}};
+  addEventListener('resize',propsCubeSync);
+  try{const p=$('props');if(p&&typeof MutationObserver==='function')new MutationObserver(()=>propsAuto()).observe(p,{childList:true});}catch(e){}
+  // clic sur OK / Valider / Appliquer (avant son action) : la fonction est validée
+  try{const p=$('props');if(p)p.addEventListener('click',e=>{const b=e.target&&e.target.closest?e.target.closest('button'):null;if(b&&PROPS_VALIDE_RE.test(b.textContent||'')){propsValide=true;propsAttente=false;}},true);}catch(e){}
+  // changement d'espace (CAO/FAO/PLAN) ou sortie d'esquisse : réévaluer
+  try{let k0='';new MutationObserver(()=>{const b=document.body,k=(b.getAttribute('data-ws')||'')+(b.classList.contains('mf-sk')?'/sk':'');if(k===k0)return;k0=k;propsAutoLast=null;propsAuto();}).observe(document.body,{attributes:true,attributeFilter:['data-ws','class']});}catch(e){}setTimeout(propsCubeSync,600);setTimeout(propsCubeSync,2500);
+  // le panneau change de contenu (vide en esquisse, plan, FAO…) : recentrer si sa largeur change
+  try{const side=document.querySelector('aside.right');let w=-1;
+    if(side&&typeof ResizeObserver==='function')new ResizeObserver(()=>{const n=side.offsetWidth;if(n!==w){w=n;propsCubeSync();try{viewCenterShift();}catch(e){}}}).observe(side);}catch(e){}
+})();
 (function(){
   const tog=$('treeToggle');
   if(tog){
@@ -82730,7 +82878,7 @@ function mfCss(){
   'body[data-theme="clair"] .fao-ctx{background:rgba(255,255,255,.98)!important;color:#1c1c1e!important;border-color:rgba(0,0,0,.16)!important;box-shadow:0 12px 32px rgba(0,0,0,.18)!important}',
   'body[data-theme="clair"] kbd,body[data-theme="clair"] .hints span{background:rgba(0,0,0,.05)}',
   /* Clair : la vue 3D est claire, ses panneaux aussi (arbre, barre de vues, réglages, FAO, onglets) */
-  'body[data-theme="clair"] #treeOverlay,body[data-theme="clair"] #treeToggle,body[data-theme="clair"] #viewbar,body[data-theme="clair"] #setMenu,body[data-theme="clair"] #skSetMenu,body[data-theme="clair"] #faoTreeWrap .fao-cnt,body[data-theme="clair"] #faoToggle,body[data-theme="clair"] #faoAddBar,body[data-theme="clair"] #faoViewerBar,body[data-theme="clair"] #mfBrTabs{background:rgba(255,255,255,.9)!important;color:#1c1c1e!important;border-color:rgba(0,0,0,.14)!important;box-shadow:0 6px 20px rgba(0,0,0,.12)!important}',
+  'body[data-theme="clair"] #treeOverlay,body[data-theme="clair"] #treeToggle,body[data-theme="clair"] #propsToggle,body[data-theme="clair"] #propsWrap>.right>.panel,body[data-theme="clair"] #viewbar,body[data-theme="clair"] #setMenu,body[data-theme="clair"] #skSetMenu,body[data-theme="clair"] #faoTreeWrap .fao-cnt,body[data-theme="clair"] #faoToggle,body[data-theme="clair"] #faoAddBar,body[data-theme="clair"] #faoViewerBar,body[data-theme="clair"] #mfBrTabs{background:rgba(255,255,255,.9)!important;color:#1c1c1e!important;border-color:rgba(0,0,0,.14)!important;box-shadow:0 6px 20px rgba(0,0,0,.12)!important}',
   'body[data-theme="clair"] #treeOverlay .ovlTitle,body[data-theme="clair"] #treeOverlay .ovlNote,body[data-theme="clair"] #setMenu .ovlTitle,body[data-theme="clair"] #setMenu label,body[data-theme="clair"] #setMenu .ovlNote,body[data-theme="clair"] #skSetMenu .ovlTitle,body[data-theme="clair"] #skSetMenu label,body[data-theme="clair"] #mfBrTabs button{color:#1c1c1e!important}',
   'body[data-theme="clair"] #treeOverlay .tgroup{color:#9a6700!important}',
   'body[data-theme="clair"] #mfBrTabs button.on{color:#fff!important}',
@@ -82816,12 +82964,12 @@ function mfCss(){
   '#mfBrTabs{position:absolute;top:10px;left:4px;z-index:23;gap:2px;padding:2px;border-radius:9px;background:rgba(16,18,22,.82);border:1px solid var(--border)}',
   '#mfBrTabs button{padding:3px 12px;font-size:.74rem;border:none;background:none;border-radius:7px;color:#e9e9ec}',
   '#mfBrTabs button.on{background:var(--primary);color:#fff}',
-  'body.ui-modern #viewbar{left:auto;right:92px}',
+  'body.ui-modern #viewbar{left:auto;right:calc(92px + var(--mfPropsW,0px))}',
   'body.ui-modern #viewbar>button[data-view],body.ui-modern #viewbar>#btnFit{display:none}',
   /* arbre : juste sous les onglets Modèle / Usinage (la barre de vues est partie à droite) */
   'body.ui-modern #treeOverlay,body.ui-modern #treeToggle{margin-top:40px!important}',
   /* menu ⚙ : il s'ouvre sous le bouton, à droite */
-  'body.ui-modern #setMenu{left:auto!important;right:92px}',
+  'body.ui-modern #setMenu{left:auto!important;right:calc(92px + var(--mfPropsW,0px))}',
   'body.ui-modern[data-ws="fao"] #treeWrap{display:none!important}',
   'body.ui-modern[data-ws="cao"] #faoWrap,body.ui-modern[data-ws="cao"] #faoTreeWrap{display:none!important}',
   'body.ui-modern[data-ws="plan"] #treeWrap,body.ui-modern[data-ws="plan"] #faoWrap,body.ui-modern[data-ws="plan"] #faoTreeWrap,body.ui-modern[data-ws="plan"] #faoAddBar{display:none!important}',
@@ -82882,7 +83030,7 @@ function mfCss(){
   'body.ui-modern.mf-sk #viewbar{z-index:56}body.ui-modern.mf-sk #setMenu{z-index:57}',
   /* 2026-10-29 : en esquisse, pas d'onglets Modèle / Usinage / Plan ni de rabat d'arborescence sur la vue */
   'body.ui-modern.mf-sk #mfBrTabs,body.ui-modern.mf-sk #treeWrap{display:none!important}',
-  '#skSetMenu{position:absolute;top:46px;right:92px;z-index:57;display:none;flex-direction:column;gap:7px;width:230px;padding:10px 12px 12px;border-radius:12px;background:rgba(14,16,20,.95);border:1px solid rgba(255,255,255,.15);box-shadow:0 16px 44px rgba(0,0,0,.55)}',
+  '#skSetMenu{position:absolute;top:46px;right:calc(92px + var(--mfPropsW,0px));z-index:57;display:none;flex-direction:column;gap:7px;width:230px;padding:10px 12px 12px;border-radius:12px;background:rgba(14,16,20,.95);border:1px solid rgba(255,255,255,.15);box-shadow:0 16px 44px rgba(0,0,0,.55)}',
   '#skSetMenu.open{display:flex}',
   '#skSetMenu .ovlTitle{margin:2px 0 0;font-size:.68rem;font-weight:700;letter-spacing:.05em;text-transform:uppercase;color:rgba(255,255,255,.55)}',
   '#skSetMenu label{display:flex;align-items:center;gap:6px;font-size:.78rem!important;margin:0;color:#e9e9ec}',
@@ -82896,7 +83044,7 @@ function mfCss(){
   '@media (max-width:1200px){.mfRb{font-size:0;min-width:34px;gap:0}.mfRb i{height:22px}.mfSearch{max-width:200px}.mfQuick button{padding:4px 6px}}',
   '@media (max-width:900px){.mfSearch{display:none!important}.mfWs button{padding:4px 9px}}',
   /* cube de vue */
-  '#mfCube{position:absolute;top:4px;right:4px;z-index:24;width:80px;height:80px}',
+  '#mfCube{position:absolute;top:4px;right:calc(4px + var(--mfPropsW,0px));z-index:24;width:80px;height:80px}',
   'body.mf-sk #mfCube{z-index:60}', /* esquisse : cube au-dessus du voile, il oriente la vue d'esquisse */
   '#mfCubeHome{position:absolute;top:2px;left:-18px;width:16px;height:16px;padding:0;font-size:10px;line-height:14px;border-radius:4px;background:rgba(40,44,52,.88)}',
   '#mfOrbit{position:absolute;top:21px;left:-18px;width:16px;height:16px;padding:0;font-size:11px;line-height:14px;border-radius:4px;background:rgba(40,44,52,.88)}',
@@ -83465,7 +83613,21 @@ function mfCube(){
     return new THREE.MeshBasicMaterial({map:t});
   });
   const cube=new THREE.Mesh(new THREE.BoxGeometry(2,2,2),mats);sc.add(cube);
-  const ax=new THREE.AxesHelper(1.6);ax.position.set(-1.02,-1.02,-1.02);sc.add(ax);
+  // V0.99.34 : axes X Y Z plus marqués — trait épais, dépassent du cube, flèche et lettre au bout
+  const ax=new THREE.Group();ax.position.set(-1.02,-1.02,-1.02);sc.add(ax);
+  const AXL=2.45,AXR=0.055,CNL=0.32,CNR=0.13; // longueur du trait, rayon, cône (longueur, rayon)
+  [[[1,0,0],0xff453a,'X'],[[0,1,0],0x30d158,'Y'],[[0,0,1],0x0a84ff,'Z']].forEach(([d,col,lab])=>{
+    const m=new THREE.MeshBasicMaterial({color:col});
+    const g=new THREE.Group();
+    const sh=new THREE.Mesh(new THREE.CylinderGeometry(AXR,AXR,AXL,12),m);sh.position.y=AXL/2;g.add(sh);
+    const cn=new THREE.Mesh(new THREE.ConeGeometry(CNR,CNL,16),m);cn.position.y=AXL+CNL/2;g.add(cn);
+    const k=document.createElement('canvas');k.width=k.height=64;const x=k.getContext('2d');
+    x.fillStyle='#'+col.toString(16).padStart(6,'0');x.font='800 52px sans-serif';x.textAlign='center';x.textBaseline='middle';x.fillText(lab,32,34);
+    const sp=new THREE.Sprite(new THREE.SpriteMaterial({map:new THREE.CanvasTexture(k),depthTest:false}));
+    sp.scale.set(0.42,0.42,1);sp.position.y=AXL+CNL+0.22;sp.renderOrder=2;g.add(sp);
+    g.quaternion.setFromUnitVectors(new THREE.Vector3(0,1,0),new THREE.Vector3(d[0],d[1],d[2]));
+    ax.add(g);
+  });
   let hov=-1;
   const pickF=e=>{const r=cv.getBoundingClientRect();const v=new THREE.Vector2(((e.clientX-r.left)/r.width)*2-1,-((e.clientY-r.top)/r.height)*2+1);
     const rc=new THREE.Raycaster();rc.setFromCamera(v,cam);const hh=rc.intersectObject(cube,false);return hh.length?hh[0].face.materialIndex:-1;};
@@ -83477,7 +83639,7 @@ function mfCube(){
     (typeof viewRaf==='function'?viewRaf:requestAnimationFrame)(loop);
     if(!document.body.classList.contains('ui-modern'))return;
     try{
-      const d=camera.position.clone().sub(controls.target).normalize().multiplyScalar(7.5);
+      const d=camera.position.clone().sub(controls.target).normalize().multiplyScalar(9.6); // recul : les flèches qui dépassent restent dans le cadre
       const s=[d.x,d.y,d.z,camera.up.x,camera.up.y,camera.up.z,hov].map(v=>Math.round(v*1e4)).join(',');
       if(s===sig)return;sig=s;
       cam.position.copy(d);cam.up.copy(camera.up);cam.lookAt(0,0,0);
@@ -100318,7 +100480,7 @@ function mfmCss(){
   st.textContent=[
   /* tout l'habillage bureau disparaît ; la vue occupe l'écran */
   'body.mf-mobile{margin:0;padding:0!important;overflow:hidden;height:100dvh;overscroll-behavior:none;-webkit-user-select:none;user-select:none}',
-  'body.mf-mobile .topbar,body.mf-mobile #mfRibbon,body.mf-mobile aside.right,body.mf-mobile #treeWrap,body.mf-mobile #viewbar,body.mf-mobile #mfBrTabs,body.mf-mobile #mfTl,body.mf-mobile #mfSkBar,body.mf-mobile #faoWrap,body.mf-mobile #faoTreeWrap,body.mf-mobile #faoAddBar{display:none!important}',
+  'body.mf-mobile .topbar,body.mf-mobile #mfRibbon,body.mf-mobile aside.right,body.mf-mobile #propsWrap,body.mf-mobile #treeWrap,body.mf-mobile #viewbar,body.mf-mobile #mfBrTabs,body.mf-mobile #mfTl,body.mf-mobile #mfSkBar,body.mf-mobile #faoWrap,body.mf-mobile #faoTreeWrap,body.mf-mobile #faoAddBar{display:none!important}',
   'body.mf-mobile .layout{position:fixed;inset:0;gap:0}',
   'body.mf-mobile #vpwrap{border:none;border-radius:0;box-shadow:none;min-height:0}',
   'body.mf-mobile #viewport{touch-action:none}',

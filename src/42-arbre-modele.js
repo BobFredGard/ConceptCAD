@@ -23,6 +23,9 @@
     if(typeof document==='undefined'||document.getElementById('cssTreeV2'))return;
     const st=document.createElement('style');st.id='cssTreeV2';
     st.textContent='.tsearch{padding:4px 6px 6px}'+
+      '.tdocname{display:flex;align-items:center;gap:8px;padding:2px 6px 6px}'+
+      '.tdocname label{flex:none;font-size:.72rem;color:var(--muted)}'+
+      '.tdocname input{flex:1;min-width:0;box-sizing:border-box;padding:3px 8px;font-size:.74rem;font-weight:600;border:1px solid var(--border);border-radius:6px;background:var(--bg);color:var(--text)}'+
       '.tsearch input{width:100%;box-sizing:border-box;padding:3px 8px;font-size:.74rem;border:1px solid var(--border);border-radius:6px;background:var(--bg);color:var(--text)}'+
       '.tnode.tmatch .nm{color:var(--primary);font-weight:600}'+
       '.tnode.tdrop{outline:2px dashed var(--primary);outline-offset:-2px}'+
@@ -58,6 +61,7 @@ const TREE_IND=14;          // retrait par niveau (px)       // occurrences iden
 function treeModel(){
   const L=[];
   L.push(treeSearchRow());
+  L.push(treeDocNameRow()); // V0.99.34 : nom du document en tête de l'arbre (quitte le panneau Paramètres)
   // Lot 1 : avec un assemblage, la hiérarchie des composants devient l'arbre lui-même ;
   // sans assemblage, l'arbre reste celui de la pièce (identique à renderTree)
   const uni=!!asm&&asmOn();
@@ -74,6 +78,17 @@ function treeModel(){
   if(!uni)treePart(L);
   else{const P=[];treePart(P);treeComps(L,P);}
   return treeQuery?treeFilter(L,treeQuery):L;
+}
+function treeDocNameRow(){
+  const v=String(doc.name||'').replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;');
+  return {cls:'tdocname',keep:true,
+    html:'<label for="docNameIn">Nom du document</label><input id="docNameIn" type="text" value="'+v+'" aria-label="Nom du document">',
+    init:d=>{
+      const i=d.querySelector?d.querySelector('input'):null;if(!i)return;
+      i.onchange=()=>{doc.name=i.value;try{$('docName').textContent=doc.name;}catch(e){}markDirty();};
+      // les raccourcis de l'application ne voient pas la frappe ; Entrée valide
+      i.onkeydown=e=>{e.stopPropagation();if(e.key==='Enter')i.blur();};
+    }};
 }
 function treeSearchRow(){
   const v=String(treeQuery).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;');

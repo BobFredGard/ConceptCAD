@@ -8,7 +8,7 @@ sont sorties le 2026-09-30j.
 Code dans `src/` · livrable `fusion_mvp.html` (généré par `build.js`) · architecture et
 garde-fous en tête de `src/00-entete-et-outils.js`.
 
-**721 versions**, de `2026-09-28b` à `V0.99.34` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
+**722 versions**, de `2026-09-28b` à `V0.99.35` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
 comme dans le fichier d'origine.
 
 ---
@@ -8046,3 +8046,15 @@ Cavité Usinage, après l'ébauche D25, la reprise D10 et une finition boule D12
 **Ajout** (`src/48-assemblage-placement.js`) : panneau d'une pièce libre — Distance X / Y / Z et Angle X / Y / Z depuis sa position de départ (choisie ou insérée), mis à jour par le manipulateur, « ↺ Position de départ ».
 
 **Test** : `test_composants_relations` (modèle seul) — vis-à-vis, décalage, affleurant, concentrique (1 degré de liberté), la pièce suit sa cible, incompatibles ⚠, tangentes cylindre / plan et cylindre / cylindre, angle 45° depuis des faces parallèles, parallèle, plans de repères, fichier, cible supprimée, champs Distance / Angle. Vérifié dans l'application sur « Test Assemblage » (noyau réel) : goupille dans le trou de la base et posée au fond (1 degré de liberté), Ctrl+Z / Ctrl+Y, 9 plans de repères, Annuler. CACHE_VER et FORMES_VER inchangés.
+
+## V0.99.35 - Vue 3D jusqu'au bord droit : panneau Paramètres flottant et repliable
+
+**Demande de Fred** : « pousser la vue 3D au max côté droit en mettant par-dessus les menus du bandeau de droite et le traiter comme le menu de gauche, avec un bouton de repli » (proposition visuelle validée), puis : bouton côté mur droit ; même couleur, transparence, contour, flou et barre de défilement que l'arborescence ; bandeau tout en haut, cube et icônes à sa gauche qui le suivent ; « Nom du document » au-dessus d'Origine ; axes du cube plus marqués ; ouverture au clic sur une fonction, fermeture en cliquant ailleurs sauf fonction non validée ; en FAO, ouverture seulement ; supprimer la règle qui centrait la pièce entre les bandeaux ; bloquer le changement de fonction tant que la fonction en cours n'est pas validée, avec rappel et possibilité de valider.
+
+**Interface** (coque de ConceptCAD.html, 95-toolbar) : `aside.right` dans `#propsWrap`, posé par-dessus la vue (top 4 px, à droite), onglet `#propsToggle` contre le bord droit (`propsFoldSet`, mémorisé dans `minifusion_propsFolded`) ; panneaux au style de `#treeOverlay` (thème clair compris), barre `.sbOn` (40-10) ; au-dessus de la feuille en PLAN et du voile d'esquisse. `--mfPropsW` (`propsCubeSync`) range le cube, la barre de vue et les menus ⚙ à gauche du panneau. `propsAuto` : CAO = ouvert si `#props` montre autre chose que l'accueil (`data-pnl-home`), replié au retour à l'accueil sauf si un bouton OK / Valider / Appliquer n'a pas été cliqué ; FAO = ouverture au choix d'un posage / d'une opération ; esquisse et PLAN manuels. Nom du document : ligne `treeDocNameRow` (42) en tête de l'arbre, retirée du panneau (40-50). Cube (97) : axes en cylindres + cônes + lettres, caméra reculée.
+
+**Centrage supprimé** (10) : `viewMidOffset` retirée, `viewCenterShift` ne fait plus que retirer un ancien décalage — la pièce est centrée sur toute la vue (l'esquisse garde son propre décalage).
+
+**Fonction non validée** (71) : `featGuard` en tête de `renderProps` — une session extrusion / fenêtre dynamique modifiée ou créée (`isNew` ou pile d'annulation plus longue) refuse le passage à une autre fonction, esquisse ou corps ; boîte `#featGuardBox` : Valider et continuer, Annuler les modifications, Rester (Échap).
+
+**Tests** : `test_vue_centre` réécrit (règle supprimée), `test_arbre_v2` ignore la ligne du nom ; vérifié dans l'application (Support Pédale) en CAO, FAO, PLAN et esquisse : repli, centrage, ouverture automatique, OK, boîte de rappel (3 choix). CACHE_VER et FORMES_VER inchangés.

@@ -28,7 +28,7 @@ function mfmCss(){
   st.textContent=[
   /* tout l'habillage bureau disparaît ; la vue occupe l'écran */
   'body.mf-mobile{margin:0;padding:0!important;overflow:hidden;height:100dvh;overscroll-behavior:none;-webkit-user-select:none;user-select:none}',
-  'body.mf-mobile .topbar,body.mf-mobile #mfRibbon,body.mf-mobile aside.right,body.mf-mobile #treeWrap,body.mf-mobile #viewbar,body.mf-mobile #mfBrTabs,body.mf-mobile #mfTl,body.mf-mobile #mfSkBar,body.mf-mobile #faoWrap,body.mf-mobile #faoTreeWrap,body.mf-mobile #faoAddBar{display:none!important}',
+  'body.mf-mobile .topbar,body.mf-mobile #mfRibbon,body.mf-mobile aside.right,body.mf-mobile #propsWrap,body.mf-mobile #treeWrap,body.mf-mobile #viewbar,body.mf-mobile #mfBrTabs,body.mf-mobile #mfTl,body.mf-mobile #mfSkBar,body.mf-mobile #faoWrap,body.mf-mobile #faoTreeWrap,body.mf-mobile #faoAddBar{display:none!important}',
   'body.mf-mobile .layout{position:fixed;inset:0;gap:0}',
   'body.mf-mobile #vpwrap{border:none;border-radius:0;box-shadow:none;min-height:0}',
   'body.mf-mobile #viewport{touch-action:none}',

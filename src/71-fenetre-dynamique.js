@@ -303,3 +303,79 @@ document.addEventListener('keydown',e=>{
   const a=document.activeElement;if(a&&(a.tagName==='INPUT'||a.tagName==='TEXTAREA'||a.tagName==='SELECT'))return;
   e.stopImmediatePropagation();e.preventDefault();fdynCancel();
 },true);
+
+/* ---------- V0.99.34 : pas de changement de fonction tant que la fonction en cours n'est pas validée ----------
+   Demande de Fred : une fonction modifiée (ou créée) dont on n'a cliqué ni OK ni Annuler reste
+   affichée. Un clic sur une autre fonction, une esquisse ou un corps est refusé, et une petite
+   boîte le rappelle avec trois choix : Valider (OK) puis aller à l'élément cliqué, Annuler les
+   modifications puis y aller, ou Rester. Une fonction simplement sélectionnée, sans modification,
+   ne bloque rien. Appelé en tête de renderProps (40-50) : sel y est déjà le nouvel élément. */
+let featGuardPass=false; // passage voulu (choix fait dans la boîte) : pas de nouveau blocage
+function featPendingSession(){
+  // session ouverte ET modifiée : {E, ok, cancel, f}
+  const S=[[typeof extDyn!=='undefined'?extDyn:null,()=>extDynOk(),()=>extDynCancel()],
+    [typeof fdyn!=='undefined'?fdyn:null,()=>fdynOk(),()=>fdynCancel()]];
+  for(const [E,ok,cancel] of S){
+    if(!E)continue;
+    if(!(E.isNew||docUndoStack.length>E.len))continue;
+    const f=(doc.features||[]).find(x=>x&&x.id===E.id);if(!f)continue;
+    return {E,ok,cancel,f};
+  }
+  return null;
+}
+function featGuard(){
+  if(featGuardPass)return false;
+  try{
+    if(typeof skEdit!=='undefined'&&skEdit)return false;
+    if(!sel||!sel.kind||!/^(feature|sketch|body)$/.test(sel.kind))return false;
+    const P=featPendingSession();if(!P)return false;
+    if(sel.kind==='feature'&&sel.id===P.f.id)return false;
+    const cible={kind:sel.kind,id:sel.id};
+    sel={kind:'feature',id:P.f.id};
+    try{if(typeof treeSel!=='undefined')treeSel=[P.f.id];}catch(e){}
+    setTimeout(()=>{try{renderTree();}catch(e){}try{refreshParts();}catch(e){}featGuardBox(P,cible);},0);
+    return true;
+  }catch(e){return false;}
+}
+function featGuardName(c){
+  try{
+    if(c.kind==='feature')return '« '+((doc.features.find(x=>x.id===c.id)||{}).name||'fonction')+' »';
+    if(c.kind==='sketch')return '« '+((doc.sketches.find(x=>x.id===c.id)||{}).name||'esquisse')+' »';
+    if(c.kind==='body')return '« '+((bodies.find(x=>x.id===c.id)||{}).name||'corps')+' »';
+  }catch(e){}
+  return 'l’élément choisi';
+}
+function featGuardGo(c){
+  featGuardPass=true;
+  try{
+    sel={kind:c.kind,id:c.id};
+    try{treeSel=c.kind==='feature'?[c.id]:[];}catch(e){}
+    if(c.kind==='body'){try{tlActivateBody(c.id);}catch(e){}}
+    renderTree();renderProps();try{refreshParts();}catch(e){}
+  }finally{featGuardPass=false;}
+}
+function featGuardClose(){const b=document.getElementById('featGuardBox');if(b)b.remove();}
+function featGuardBox(P,cible){
+  featGuardClose();
+  const host=document.getElementById('vpwrap')||document.body;
+  const box=document.createElement('div');box.id='featGuardBox';box.setAttribute('role','alertdialog');
+  box.style.cssText='position:absolute;top:56px;left:50%;transform:translateX(-50%);z-index:70;max-width:380px;'+
+    'padding:12px 14px;border-radius:12px;background:rgba(16,18,22,.92);border:1px solid rgba(255,159,10,.7);'+
+    'color:#e9e9ec;backdrop-filter:blur(7px);-webkit-backdrop-filter:blur(7px);box-shadow:0 10px 30px rgba(0,0,0,.4);font-size:.8rem;line-height:1.45';
+  const t=document.createElement('div');t.style.cssText='font-weight:700;margin-bottom:4px;color:#ffb340';
+  t.textContent='⚠ « '+P.f.name+' » n’est pas validée';
+  const m=document.createElement('div');m.style.cssText='margin-bottom:10px;color:rgba(233,233,236,.85)';
+  m.textContent='Validez-la ou annulez ses modifications avant de passer à '+featGuardName(cible)+'.';
+  const row=document.createElement('div');row.style.cssText='display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end';
+  const bt=(txt,cls,fn)=>{const b=document.createElement('button');b.textContent=txt;if(cls)b.className=cls;b.onclick=e=>{e.stopPropagation();featGuardClose();fn();};row.appendChild(b);return b;};
+  bt('Rester','',()=>{});
+  bt('↶ Annuler les modifications','',()=>{P.cancel();featGuardGo(cible);});
+  const ok=bt('✔ Valider et continuer','primary',()=>{P.ok();featGuardGo(cible);});
+  box.appendChild(t);box.appendChild(m);box.appendChild(row);
+  box.addEventListener('pointerdown',e=>e.stopPropagation());
+  host.appendChild(box);
+  try{ok.focus();}catch(e){}
+  const key=e=>{if(!document.getElementById('featGuardBox')){removeEventListener('keydown',key,true);return;}
+    if(e.key==='Escape'){e.stopImmediatePropagation();e.preventDefault();featGuardClose();removeEventListener('keydown',key,true);}};
+  addEventListener('keydown',key,true);
+}

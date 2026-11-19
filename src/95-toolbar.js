@@ -229,6 +229,95 @@ function treeFoldSet(f){ // replier/déplier SANS toucher à localStorage (clic 
   tog.title=treeFolded?'Déplier l’arborescence':'Replier l’arborescence';
   try{viewCenterShift();}catch(e){} // V0.2.5 : le pivot suit la zone visible
 }
+// V0.99.34 : panneau Paramètres par-dessus la vue 3D, onglet de repli contre le bord droit.
+let propsFolded=false;
+function propsFoldSet(f){
+  propsFolded=!!f;
+  const wrap=$('propsWrap'),tog=$('propsToggle');
+  if(!wrap||!tog)return;
+  wrap.classList.toggle('folded',propsFolded);
+  tog.textContent=propsFolded?'❮':'❯';
+  tog.title=propsFolded?'Déplier les paramètres':'Replier les paramètres';
+  propsCubeSync();
+  try{viewCenterShift();}catch(e){} // la pièce reste au milieu de la zone libre
+}
+// V0.99.34 : le panneau de droite s'ouvre et se replie seul (demandes de Fred) :
+//  · CAO : il s'ouvre dès qu'il a quelque chose à montrer (fonction, esquisse, corps, formulaire…) et
+//    se replie quand on clique ailleurs — SAUF si la fonction montrée n'a pas été validée (bouton OK,
+//    Valider ou Appliquer jamais cliqué) : il reste alors ouvert.
+//  · FAO : il s'ouvre quand on choisit un posage ou une opération, et ne se replie jamais seul.
+//  · Esquisse et PLAN : rien d'automatique. L'onglet garde la main jusqu'au changement suivant.
+function propsAutoMode(){
+  try{
+    const b=document.body;
+    if(b.classList.contains('mf-sk'))return null;
+    if(typeof mepIsOpen==='function'&&mepIsOpen())return null;
+    const ws=b.getAttribute('data-ws');
+    return ws==='cao'||ws==='fao'?ws:null;
+  }catch(e){return null;}
+}
+const PROPS_VALIDE_RE=/^[\s\u2714\u2713]*(OK|Valider|Appliquer)(?![a-z\u00e0-\u00ff])/i;
+let propsAutoLast=null,propsAttente=false,propsValide=false,propsSelKey=null;
+function propsAuto(){
+  const m=propsAutoMode();
+  if(!m){propsAutoLast=null;return;}
+  const p=$('props');if(!p)return;
+  if(m==='fao'){ // posage / opération choisi : ouvrir (une fois par choix), jamais refermer
+    const k=(sel&&(sel.kind==='faoSetup'||sel.kind==='faoOp'))?sel.kind+':'+sel.id:'';
+    if(k===propsAutoLast)return;
+    propsAutoLast=k;
+    if(k&&propsFolded)propsFoldSet(false);
+    return;
+  }
+  const kids=[...p.children];
+  const vide=!kids.length||kids.every(k=>k.dataset&&k.dataset.pnlHome==='1');
+  const valide=propsValide;propsValide=false;
+  if(!vide){ // fonction montrée : en attente tant qu'un bouton de validation n'a pas été cliqué
+    // (évalué à chaque nouvel élément montré ; une fois validé, il le reste tant qu'on ne change pas)
+    const k=sel?(sel.kind+':'+sel.id):'';
+    if(valide)propsSelKey=k; // validée : plus d'attente pour cet élément
+    else if(k!==propsSelKey)propsAttente=[...p.querySelectorAll('button')].some(b=>PROPS_VALIDE_RE.test(b.textContent||''));
+  }
+  if(propsAutoLast===vide)return; // rien n'a changé : le choix manuel reste
+  propsAutoLast=vide;
+  if(!vide){if(propsFolded)propsFoldSet(false);return;}
+  if(propsAttente&&!valide)return; // pas validée : le panneau reste ouvert
+  propsAttente=false;propsSelKey=null;
+  if(!propsFolded)propsFoldSet(true);
+}
+// Le cube et ses icônes se rangent à gauche du panneau de droite (ouvert ou replié) :
+// --mfPropsW = place prise depuis le bord droit de la vue (0 si le panneau est caché).
+function propsCubeSync(){
+  try{
+    const vp=$('vpwrap'),pw=$('propsWrap'),tog=$('propsToggle');if(!vp||!pw)return;
+    let w=0;
+    if(pw.offsetWidth>0&&getComputedStyle(pw).display!=='none'){
+      const side=pw.querySelector('aside.right');
+      const sr=(!propsFolded&&side)?side.getBoundingClientRect():null;
+      const el=(sr&&sr.width>1&&sr.height>1)?sr:(tog?tog.getBoundingClientRect():null);
+      if(el&&el.width>0)w=Math.max(0,Math.round(vp.getBoundingClientRect().right-el.left+2));
+    }
+    const v=w+'px';
+    if(document.body.style.getPropertyValue('--mfPropsW')!==v)document.body.style.setProperty('--mfPropsW',v);
+  }catch(e){}
+}
+(function(){
+  const tog=$('propsToggle');
+  if(!tog)return;
+  propsFoldSet(false);
+  try{if(localStorage.getItem('minifusion_propsFolded')==='1')propsFoldSet(true);}catch(e){}
+  tog.onclick=()=>{propsFoldSet(!propsFolded);
+    try{localStorage.setItem('minifusion_propsFolded',propsFolded?'1':'0');}catch(e){}};
+  addEventListener('resize',propsCubeSync);
+  try{const p=$('props');if(p&&typeof MutationObserver==='function')new MutationObserver(()=>propsAuto()).observe(p,{childList:true});}catch(e){}
+  // clic sur OK / Valider / Appliquer (avant son action) : la fonction est validée
+  try{const p=$('props');if(p)p.addEventListener('click',e=>{const b=e.target&&e.target.closest?e.target.closest('button'):null;if(b&&PROPS_VALIDE_RE.test(b.textContent||'')){propsValide=true;propsAttente=false;}},true);}catch(e){}
+  // changement d'espace (CAO/FAO/PLAN) ou sortie d'esquisse : réévaluer
+  try{let k0='';new MutationObserver(()=>{const b=document.body,k=(b.getAttribute('data-ws')||'')+(b.classList.contains('mf-sk')?'/sk':'');if(k===k0)return;k0=k;propsAutoLast=null;propsAuto();}).observe(document.body,{attributes:true,attributeFilter:['data-ws','class']});}catch(e){}setTimeout(propsCubeSync,600);setTimeout(propsCubeSync,2500);
+  // le panneau change de contenu (vide en esquisse, plan, FAO…) : recentrer si sa largeur change
+  try{const side=document.querySelector('aside.right');let w=-1;
+    if(side&&typeof ResizeObserver==='function')new ResizeObserver(()=>{const n=side.offsetWidth;if(n!==w){w=n;propsCubeSync();try{viewCenterShift();}catch(e){}}}).observe(side);}catch(e){}
+})();
 (function(){
   const tog=$('treeToggle');
   if(tog){

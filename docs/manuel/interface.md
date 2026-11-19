@@ -11,6 +11,12 @@ Quatre espaces dans le bandeau supérieur : **CAO**, **FAO**, **PLAN** et **REND
   - En PLAN, le bouton de l'outil en cours reste allumé tant que l'outil est actif.
 - **Écran de démarrage** animé de 6 s, logo bleu et orange ; un clic ou `Échap` le passe.
 - **Navigateur Modèle / Usinage / Plan** à gauche, avec des **onglets de posages** ; **propriétés** à droite ; **timeline** en bas de la vue 3D.
+  - La **vue 3D va jusqu'au bord droit** : le panneau Paramètres flotte par-dessus, comme l'arborescence (même fond transparent, contour, flou de la pièce dessous, barre de défilement discrète), tout en haut à droite.
+  - Son **onglet de repli** est collé au bord droit ; le **cube et ses icônes** se rangent à sa gauche et suivent son ouverture.
+  - **Ouverture automatique** : en CAO, le panneau s'ouvre sur une fonction, une esquisse ou un corps, et se replie quand on clique ailleurs — sauf si la fonction n'est pas encore validée (OK, Valider, Appliquer). En FAO, il s'ouvre au choix d'un posage ou d'une opération et ne se referme pas seul.
+  - **Fonction non validée** : un clic sur une autre fonction est refusé ; une boîte le rappelle avec **Valider et continuer**, **Annuler les modifications** ou **Rester**.
+  - La pièce est **centrée sur toute la vue 3D** : ouvrir ou replier un panneau ne la déplace plus.
+  - Le **nom du document** se modifie en tête de l'arborescence, au-dessus d'Origine.
 - **Sélection synchronisée** : cliquer une face l'allume et **surligne** la fonction qui l'a créée dans l'arbre et la timeline, sans l'ouvrir (ni panneau, ni flèche) ; un clic sur cette ligne l'ouvre avec sa flèche. `Ctrl+clic` ne fait que mesurer, sans rien sélectionner.
 - **Clic long = choisir sous le clic** : un appui d'une demi-seconde sans bouger liste toutes les faces traversées (de l'avant vers l'arrière, même cachées) et les arêtes proches ; l'élément survolé s'allume à travers la matière, un clic sur sa ligne ou `Entrée` le prend, y compris dans une fonction qui attend une face ou une arête (congé, perçage, coque…).
 - **Fenêtres de fonctions** à boutons-icônes, aperçu immédiat, poignées dans la vue, **Annuler / OK**.
@@ -24,7 +30,7 @@ Quatre espaces dans le bandeau supérieur : **CAO**, **FAO**, **PLAN** et **REND
   - **cinq thèmes** : Nuit, Graphite, Atelier, Clair, Contraste élevé ;
   - **fiches illustrées au survol**, façon dessin animé (actives par défaut, ⚙ → Affichage pour les couper) : une image avant → après qui s'anime, une phrase simple, les étapes et le raccourci de chaque icône ;
   - **quatre styles d'icônes** : au trait, couleurs par famille (une teinte par groupe du ruban), dessinées en volume, délire.
-- **Vue 3D** : cube de vue, orbite contrainte ou libre, centre de rotation sur le point visé, zoom vers le curseur, sol miroir, transparence « verre », **effet de perspective** réglable (de presque orthographique à fuyantes marquées, la pièce garde sa taille).
+- **Vue 3D** : cube de vue (axes X rouge, Y vert, Z bleu épais, fléchés et lettrés, qui dépassent du cube), orbite contrainte ou libre, centre de rotation sur le point visé, zoom vers le curseur, sol miroir, transparence « verre », **effet de perspective** réglable (de presque orthographique à fuyantes marquées, la pièce garde sa taille).
 - **Vue en veille** : à l'arrêt, la vue 3D ne se redessine plus en continu (la carte graphique d'un portable souffle, même avec une pièce lourde) ; elle repart à pleine vitesse au moindre geste. `?sansveille` dans l'adresse garde l'ancien affichage continu.
 - **Modification d'une grosse pièce** : seules les faces neuves ou modifiées sont remaillées et leurs arêtes reclassées, le reste est repris tel quel (mêmes triangles, mêmes arêtes). `?sansfacettes` dans l'adresse redonne le calcul complet, `?sansindex` l'ancienne recherche de la face sous la souris.
 - **Coupe X / Y / Z** (⚙ › Coupe) : plan de coupe glissé ou saisi au mm, côté inversable, faces coupées remplies.

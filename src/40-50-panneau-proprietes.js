@@ -1,6 +1,7 @@
 function renderProps(){
   if(typeof extNew!=='undefined'&&extNew)extNew=null; // une sélection annule le formulaire en cours
   if(typeof revNew!=='undefined'&&revNew)revNew=null; // idem pour le formulaire de révolution
+  try{if(typeof featGuard==='function')featGuard();}catch(e){} // V0.99.34 : fonction en cours non validée → on y reste (71)
   const p=$('props');p.innerHTML='';p.className='col';
   if(typeof bmMarks==='function'){try{bmMarks();}catch(e){}} // axes d'un Déplacer sélectionné (85) : affichés tant qu'il l'est
   // FAO : les fiches posage/opération vivent dans src/88-fao.js (arbre FAO dédié).
@@ -33,10 +34,7 @@ function renderProps(){
   const visDel=f=>pBtns([
     ['👁 Visible',()=>{f.visible=!(f.visible!==false);markDirty();rebuild();renderTree();renderProps();}],
     ['🗑 Supprimer',()=>{treeSel=[f.id];sel={kind:'feature',id:f.id};treeDeleteSel();}, 'danger']]);
-  /* ── nom du document (toujours en haut) ── */
-  const nmIn=document.createElement('input');nmIn.type='text';nmIn.id='docNameIn';nmIn.value=doc.name;
-  nmIn.onchange=e=>{doc.name=e.target.value;$('docName').textContent=doc.name;markDirty();};
-  pRow('Nom du document',nmIn);
+  /* nom du document : V0.99.34, déplacé en tête de l'arborescence (treeDocNameRow, 42) */
   $('docName').textContent=doc.name;
   /* ═══════ esquisse ═══════ */
   if(sel.kind==='sketch'){
@@ -446,7 +444,7 @@ function renderProps(){
     pChk('Visible',originVis[sel.id]!==false,v=>setOriginVis(sel.id,v));
     return;
   }
-  pNote('Sélectionnez un plan / esquisse / fonction / corps dans l\'arbre.');
+  pNote('Sélectionnez un plan / esquisse / fonction / corps dans l\'arbre.').dataset.pnlHome='1'; // panneau « vide » : se replie seul en CAO (95)
 }
 const skName=id=>(doc.sketches.find(s=>s.id===id)||{name:'?'}).name;
 const exName=id=>(doc.features.find(f=>f.id===id)||{name:'?'}).name;
