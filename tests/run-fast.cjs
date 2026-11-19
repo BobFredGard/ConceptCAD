@@ -151,6 +151,7 @@ const SUITES = [
   'test_cartouche_exterieur',
   'test_composants_liaisons',
   'test_composants_relations',
+  'test_assemblage_historique',
   'test_materiaux',
   'test_environnement_piece',
   'test_rendu_patine',

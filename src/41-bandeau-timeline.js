@@ -320,6 +320,7 @@ function tlbDragEnd(){
   }
 }
 function renderTimeline(){
+  try{if(typeof asmTlRender==='function')asmTlRender();}catch(e){} // bandeau de l'assemblage (48-assemblage-historique)
   const h=tlbHost();if(!h)return;
   if(tlbDrag)return; // pas de re-rendu sous un glisser en cours
   tlbBodySync(h);
