@@ -205,6 +205,11 @@ function asmSnapUses(){
     if(a.src&&a.src.sn){const r=asmPathFrame(o.comp,a.src.path);if(r)out.push({comp:r.comp,sn:a.src.sn});}
     if(a.dst&&a.dst.sn){const r=asmPathFrame(owner.id,a.dst.path);if(r)out.push({comp:r.comp,sn:a.dst.sn});}
   }));
+  // relations entre faces (48-assemblage-relations) : leurs faces se relisent de même
+  asm.comps.forEach(owner=>owner.occ.forEach(o=>(Array.isArray(o.cons)?o.cons:[]).forEach(k=>{
+    if(k.a&&k.a.f){const r=asmPathFrame(o.comp,k.a.path);if(r)out.push({comp:r.comp,sn:k.a});}
+    if(k.b&&k.b.f){const r=asmPathFrame(owner.id,k.b.path);if(r)out.push({comp:r.comp,sn:k.b});}
+  })));
   return out;
 }
 let asmSnapBusy=false;

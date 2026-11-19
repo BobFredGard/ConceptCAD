@@ -48,7 +48,7 @@ function asmGizmoDraw(){
   const S=asmSceneGet();
   if(asmGz){S.remove(asmGz);const i=TRIADS.indexOf(asmGz);if(i>=0)TRIADS.splice(i,1);asmGz.traverse(m=>{try{if(m.geometry)m.geometry.dispose();if(m.material)m.material.dispose();}catch(e){}});asmGz=null;}
   const o=asmOcc(asmSelId);
-  if(asmMode!=='asm'||asmAlign)return;
+  if(asmMode!=='asm'||asmAlign||asmRel)return;
   const G=asmGizmoSpec(o);if(!G)return;
   const g=new THREE.Group();g.name='asmGizmo';g.userData.px=110;
   const mat=c=>new THREE.MeshBasicMaterial({color:c,depthTest:false,transparent:true,opacity:0.95});
@@ -107,6 +107,7 @@ function asmGizmoDown(e){
   e.preventDefault();e.stopPropagation();
   const gz=h.object.userData.gz,O=new THREE.Vector3(G.O[0],G.O[1],G.O[2]),a=new THREE.Vector3(...G.ax[gz.ax]).normalize();
   asmDrag={kind:gz.kind,ax:gz.ax,dof:gz.dof||null,occ:o.id,fr0:JSON.parse(JSON.stringify(o.fr)),q0:o.align?Object.assign({},o.align.q||{}):null,O,a,moved:false};
+  if(asmMovable(o))asmMoveRefOf(o); // position de départ des champs Distance / Angle
   if(gz.kind==='move')asmDrag.t0=asmAxisParam(ray,O,a);
   else{const p=asmPlaneHit(ray,O,a);asmDrag.p0=p?p.sub(O):null;}
   asmPush((gz.dof?'piloter « ':gz.kind==='move'?'déplacer « ':'tourner « ')+o.name+' »');
@@ -140,7 +141,7 @@ function asmGizmoMove(e){
     o.fr=asmRotFr(D.fr0,D.fr0.o,[D.a.x,D.a.y,D.a.z],sd*Math.PI/180);
     try{faceEl.textContent=o.name+' : rotation '+'XYZ'[D.ax]+' '+sd.toFixed(free?1:0).replace('.',',')+'° (Maj = libre)';}catch(err){}
   }
-  D.moved=true;
+  D.moved=true;D.d=d;D.sd=sd;
   asmResolve();asmDraw();asmGizmoDraw();
 }
 function asmGizmoUp(){
@@ -153,10 +154,29 @@ function asmGizmoUp(){
   const o=asmOcc(D.occ);
   const same=o&&JSON.stringify(o.fr)===JSON.stringify(D.fr0)&&(!D.dof||JSON.stringify((o.align&&o.align.q)||{})===JSON.stringify(D.q0||{}));
   if(!D.moved||same){asmUndoStack.pop();try{asmDraw();}catch(e){}return;}
+  // pièce libre : les champs Distance / Angle du panneau suivent le geste
+  if(o&&!D.dof&&asmMovable(o)&&!(Array.isArray(o.cons)&&o.cons.length)){const M=asmMoveRefOf(o);const k=D.kind==='move'?D.ax:3+D.ax,v=D.kind==='move'?D.d:D.sd;if(isFinite(v))M.v[k]=+(M.v[k]+v).toFixed(9);}
   try{asmDraw();}catch(e){} // lignes de champ de plusieurs aimants : pleine finesse une fois posé (48-aimants-interface)
   asmNotify();
 }
 try{document.addEventListener('pointerdown',asmGizmoDown,true);}catch(e){} // tests VM : document simplifié
+/* ── déplacement depuis la position de départ (V0.99.34) ── */
+let asmMoveRef=null; // {occ, fr0, v:[dx, dy, dz, ax, ay, az]}
+function asmMoveRefOf(o){
+  if(!asmMoveRef||asmMoveRef.occ!==o.id)asmMoveRef={occ:o.id,fr0:JSON.parse(JSON.stringify(o.fr)),v:[0,0,0,0,0,0]};
+  return asmMoveRef;
+}
+function asmMoveBy(o,k,d,noPush){
+  // k 0..2 : translation le long d'un axe de l'assemblage ; 3..5 : rotation autour d'un axe
+  // passant par l'origine de la pièce
+  if(!d)return;
+  const M=asmMoveRefOf(o);
+  if(!noPush)asmPush(k<3?'déplacer « '+o.name+' »':'tourner « '+o.name+' »');
+  if(k<3){const a=ASM_AX[k];o.fr=asmRound(Object.assign({},o.fr,{o:o.fr.o.map((q,j)=>q+a[j]*d)}));}
+  else o.fr=asmRotFr(o.fr,o.fr.o,ASM_AX[k-3],d*Math.PI/180);
+  M.v[k]=+(M.v[k]+d).toFixed(9);
+  if(!noPush)asmNotify();
+}
 /* ── panneau de placement ── */
 function asmPlacementProps(p,o){
   // Sections « Placement » puis « Apparence (assemblage) » du panneau d'occurrence (asmRenderProps, 47)
@@ -210,9 +230,22 @@ function asmPlacementCore(p,o){
       b.title='Tourner l’occurrence autour de l’axe '+k+' de l’assemblage, passant par son origine';
       b.onclick=()=>{asmPush('rotation');o.fr=asmRotFr(o.fr,o.fr.o,ASM_AX[i],s*Math.PI/180);asmNotify();};rw.appendChild(b);});});
     p.appendChild(rw);
+    // V0.99.34 : « Position initiale » façon Fusion — déplacement et rotations depuis la position
+    // qu'avait la pièce quand elle a été choisie (le manipulateur les met à jour)
+    if(!(Array.isArray(o.cons)&&o.cons.length)){
+      const M=asmMoveRefOf(o);
+      p.appendChild(mk('div','pnl-note','Depuis la position de départ :'));
+      ['X','Y','Z'].forEach((k,i)=>Row('Distance '+k+' (mm)',num(M.v[i],v=>asmMoveBy(o,i,v-M.v[i]))));
+      ['X','Y','Z'].forEach((k,i)=>Row('Angle '+k+' (°)',num(M.v[3+i],v=>asmMoveBy(o,3+i,v-M.v[3+i]))));
+      if(M.v.some(x=>x)){const rb=mk('div','pnl-btns'),r0=mk('button','mini','↺ Position de départ');
+        r0.onclick=()=>{asmPush('position de départ');o.fr=JSON.parse(JSON.stringify(M.fr0));M.v=[0,0,0,0,0,0];asmNotify();};rb.appendChild(r0);p.appendChild(rb);}
+    }
     p.appendChild(mk('div','pnl-note','Manipulateur : flèches = déplacer, anneaux = tourner (pas 1 mm / 5°, Maj = libre).'));
   }
-  const b=mk('div','pnl-btns');const al=mk('button','primary','🔗 Aligner un repère…');al.onclick=()=>asmAlignStart(o.id);b.appendChild(al);
+  try{asmRelOccProps(p,o);}catch(e){} // relations entre faces (48-assemblage-relations)
+  const b=mk('div','pnl-btns');
+  if(!o.fixed){const rl=mk('button','primary','🧲 Relations…');rl.title='Poser la pièce face contre face, cylindre dans cylindre, tangente, angle… (comme Fusion)';rl.onclick=()=>asmRelStart(o.id);b.appendChild(rl);}
+  const al=mk('button',null,'🔗 Aligner un repère…');al.onclick=()=>asmAlignStart(o.id);b.appendChild(al);
   if(!o.fixed){const jb=mk('button',null,'⚙ Liaison telle que construite…');jb.title='Une liaison à la position actuelle (pivot, glissière…), autour d’un axe de l’occurrence';jb.onclick=()=>asmAsBuiltMenu(o,jb);b.appendChild(jb);}
   p.appendChild(b);
 }

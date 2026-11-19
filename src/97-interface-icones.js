@@ -136,6 +136,7 @@ const MF_ICF={
   asmView:fzBox(-5,-6,-1,1,0,4,'b')+fzBox(-1,0,-5,5,6,0,'o'),
   asmPart:fzBox(-6,-6,-3,3,3,3,'b')+FZ_PLUS,
   asmOcc:'<g opacity=".45">'+fzBox(-7,-1,-4,-2,4,1,'b')+'</g>'+fzBox(-2,-6,-1,3,-1,4,'b')+FZ_PLUS,
+  asmRel:fzBox(-6,-5,-5,4,5,-1,'b')+fzBox(-3,-3,-1,3,3,4,'o')+fzPoly([[-3,-3,-1],[3,-3,-1],[3,3,-1],[-3,3,-1]],'#3b82f6','#1e3a8a',' fill-opacity=".6"'),
   asmInspect:fzBox(-5,-5,-4,4,4,2,'b')+'<circle cx="10" cy="10" r="5.4" fill="#dbeafe" fill-opacity=".55" stroke="#1f2937" stroke-width="1.6"/><path d="M14 14l6 6" stroke="#1f2937" stroke-width="2.8" stroke-linecap="round"/>',
   asmFromBodies:fzBox(-7,-1,-3,-3,3,1,'b')+fzBox(1,-7,0,5,-3,4,'o')+fzArrow(9,18.5,19,18.5,'#16a34a',2),
   asmMag:'<path d="M5 3h5v10a2 2 0 0 0 4 0V3h5v10a7 7 0 0 1-14 0z" fill="#dc2626" stroke="#7f1d1d" stroke-width=".8"/><path d="M5 3h5v4H5zM14 3h5v4h-5z" fill="#e5e7eb" stroke="#4b5563" stroke-width=".7"/>',

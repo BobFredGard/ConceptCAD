@@ -373,6 +373,7 @@ function treeComps(L,P){
     const badges=(o.fixed?'<span class="tbadge" title="Fixée">📌 fixe</span>':'')+
       (o.pat?'<span class="tbadge" title="Instance de répétition : position imposée par sa source">🔁</span>':'')+
       (o.align?(o.align.type?'<span class="tbadge j" title="Liaison">⚙ '+asmEsc((ASM_JOINTS[o.align.type]||{}).lab||'')+'</span>':'<span class="tbadge j" title="Alignée sur un repère (rigide)">⚙ Rigide</span>'):'')+
+      (Array.isArray(o.cons)&&o.cons.length&&!o.align?'<span class="tbadge j" title="Relations entre faces : '+asmEsc(o.cons.map(k=>(ASM_CONS[k.t]||{}).lab).join(', '))+'">🧲 '+o.cons.length+'</span>':'')+
       (o.st==='warn'?'<span class="tbadge w" title="'+asmEsc(o.msg)+'">⚠</span>':'');
     L.push({drop:treeDropComp(inst.comp),lvl:lv,cls:'tnode tocc'+(self?' tactive':'')+(direct&&asmMode==='asm'&&asmLotHas(id)?' sel':'')+(o.visible===false?' hidden':''),
       style:(!mine&&!self)?{opacity:'0.55'}:{},

@@ -394,7 +394,7 @@ input[type=range]{accent-color:var(--primary);width:100%}
  * peut changer sans rien casser. CACHE_VER (parcours FAO) reste indépendant.
  */
 
-const APP_VER='V0.99.33';
+const APP_VER='V0.99.34';
 try{console.log('[ConceptCAD] version '+APP_VER);}catch(e){}
 try{var mfSv=document.getElementById('mfSplashVer');if(mfSv)mfSv.textContent=APP_VER;}catch(e){} // écran de démarrage
 
@@ -15812,6 +15812,7 @@ function treeComps(L,P){
     const badges=(o.fixed?'<span class="tbadge" title="Fixée">📌 fixe</span>':'')+
       (o.pat?'<span class="tbadge" title="Instance de répétition : position imposée par sa source">🔁</span>':'')+
       (o.align?(o.align.type?'<span class="tbadge j" title="Liaison">⚙ '+asmEsc((ASM_JOINTS[o.align.type]||{}).lab||'')+'</span>':'<span class="tbadge j" title="Alignée sur un repère (rigide)">⚙ Rigide</span>'):'')+
+      (Array.isArray(o.cons)&&o.cons.length&&!o.align?'<span class="tbadge j" title="Relations entre faces : '+asmEsc(o.cons.map(k=>(ASM_CONS[k.t]||{}).lab).join(', '))+'">🧲 '+o.cons.length+'</span>':'')+
       (o.st==='warn'?'<span class="tbadge w" title="'+asmEsc(o.msg)+'">⚠</span>':'');
     L.push({drop:treeDropComp(inst.comp),lvl:lv,cls:'tnode tocc'+(self?' tactive':'')+(direct&&asmMode==='asm'&&asmLotHas(id)?' sel':'')+(o.visible===false?' hidden':''),
       style:(!mine&&!self)?{opacity:'0.55'}:{},
@@ -17023,14 +17024,23 @@ function asmResolveIn(owner){
   // avant les alignements (une occurrence peut viser une instance) puis après (une source alignée a bougé)
   const pg=()=>{try{if(typeof asmPatGen==='function'&&asmPatGen(owner))ch=true;}catch(e){}};
   pg();
-  const todo=owner.occ.filter(o=>o.align);
-  owner.occ.forEach(o=>{if(!o.align){o.st='ok';o.msg='';}});
-  const done=new Set(owner.occ.filter(o=>!o.align).map(o=>o.id));
+  // V0.99.34 : relations entre faces (48-assemblage-relations) — résolues dans le même ordre
+  const placed=o=>o.align||(typeof asmConsOn==='function'&&asmConsOn(o));
+  const todo=owner.occ.filter(placed);
+  owner.occ.forEach(o=>{if(!placed(o)){o.st='ok';o.msg='';}});
+  const done=new Set(owner.occ.filter(o=>!placed(o)).map(o=>o.id));
   let progress=true;
   while(todo.length&&progress){
     progress=false;
     for(let i=0;i<todo.length;i++){
-      const o=todo[i],a=o.align,dep=a.dst&&a.dst.path&&a.dst.path[0];
+      const o=todo[i],a=o.align;
+      if(!a){ // relations : toutes les cibles d'abord
+        if(asmConsDeps(o).some(d=>d!==o.id&&!done.has(d)&&owner.occ.some(q=>q.id===d)))continue;
+        todo.splice(i,1);i--;progress=true;done.add(o.id);
+        if(asmConsApply(o,owner))ch=true;
+        continue;
+      }
+      const dep=a.dst&&a.dst.path&&a.dst.path[0];
       if(dep&&dep!==o.id&&!done.has(dep)&&owner.occ.some(q=>q.id===dep))continue; // cible pas encore placée
       todo.splice(i,1);i--;progress=true;done.add(o.id);
       if(dep===o.id){o.st='warn';o.msg='la cible est dans l’occurrence elle-même';continue;}
@@ -17043,7 +17053,7 @@ function asmResolveIn(owner){
       o.st='ok';o.msg='';
     }
   }
-  todo.forEach(o=>{o.st='warn';o.msg='alignement circulaire : position mémorisée';});
+  todo.forEach(o=>{o.st='warn';o.msg=(o.align?'alignement circulaire':'relations circulaires')+' : position mémorisée';});
   pg();
   return ch;
 }
@@ -17108,6 +17118,7 @@ function asmDeleteOcc(id,noPush){
   // les alignements qui passaient par elle tombent (les occurrences gardent leur position)
   asm.comps.forEach(c=>c.occ.forEach(q=>{const a=q.align;
     if(a&&((a.dst&&a.dst.path.includes(id))||(a.src&&a.src.path.includes(id))))q.align=null;}));
+  try{if(typeof asmConsOnDelete==='function')asmConsOnDelete(id);}catch(e){} // relations (48-assemblage-relations)
   asmPurge();
   // l'instance éditée passait par elle : on remonte au porteur
   const k=asm.path.indexOf(id);
@@ -17267,7 +17278,7 @@ function asmNotify(viewOnly){
   const f=globalThis.asmOnChange;if(typeof f==='function'){try{f(!!viewOnly);}catch(e){}}
 }
 /* ── sauvegarde : bloc asm (v2) dans le fichier (doc = composant actif, compatibilité) ── */
-function asmOccSerial(o){const s={id:o.id,comp:o.comp,name:o.name,fr:o.fr,fixed:!!o.fixed,visible:o.visible!==false,align:o.align||null};if(o.look)s.look=o.look;if(o.rendu)s.rendu=o.rendu;if(o.mag)s.mag=true;if(o.pat)s.pat={id:o.pat.id,k:o.pat.k};return s;}
+function asmOccSerial(o){const s={id:o.id,comp:o.comp,name:o.name,fr:o.fr,fixed:!!o.fixed,visible:o.visible!==false,align:o.align||null};if(o.look)s.look=o.look;if(o.rendu)s.rendu=o.rendu;if(o.mag)s.mag=true;if(o.pat)s.pat={id:o.pat.id,k:o.pat.k};if(Array.isArray(o.cons)&&o.cons.length)s.cons=asmConsNorm(o.cons);return s;}
 function asmSerial(){
   if(!asmHasContent())return null;
   asmSync();
@@ -17295,7 +17306,8 @@ function asmTreeFromSerial(a,topDoc,mkDoc){
   const fr=f=>okFr(f)?{o:f.o.map(Number),x:f.x.map(Number),y:f.y.map(Number),z:f.z.map(Number)}:asmFr0();
   const occOf=(o,cidKey)=>({id:String(o.id),comp:String(o[cidKey]),name:String(o.name||o.id),fr:fr(o.fr),fixed:!!o.fixed,
     visible:o.visible!==false,align:asmAlignNorm(o.align),look:asmLookNorm(o.look),rendu:(typeof renduNorm==='function'?renduNorm(o.rendu):null)||undefined,mag:o.mag?true:undefined,st:'ok',msg:'',
-    pat:o.pat&&typeof o.pat.id==='string'&&typeof o.pat.k==='string'?{id:o.pat.id,k:o.pat.k}:undefined}); // instance de répétition (48)
+    pat:o.pat&&typeof o.pat.id==='string'&&typeof o.pat.k==='string'?{id:o.pat.id,k:o.pat.k}:undefined, // instance de répétition (48)
+    cons:(typeof asmConsNorm==='function'?asmConsNorm(o.cons):undefined)}); // relations entre faces (48-assemblage-relations)
   let comps,root;
   if(Array.isArray(a.comps)&&a.comps.length){
     comps=a.comps.filter(c=>c&&typeof c.id==='string').map(c=>({id:c.id,kind:'comp',name:String(c.name||c.id),
@@ -18197,6 +18209,7 @@ function asmClick(e){
   // Ctrl+clic = mesure (wirePick, 90) ; un clic simple efface la mesure affichée
   asmMeasStop(true);
   if(asmAlignPickAt(e))return; // commande Aligner : clic = repère (48)
+  if(asmRelPickAt(e))return; // commande Relations : clic = face ou plan (48-assemblage-relations)
   if(stdHolePickAt(e))return; // composants normalisés : pose sur des trous (48)
   const id=asmPickAt(e);
   if(id&&asmSelClick(id,e))return;
@@ -18259,6 +18272,8 @@ function asmKey(e){
   if(e.key==='Escape'&&mesEnCours()){asmMeasStop();return true;}
   if(e.key==='Escape'&&asmPatEd){asmPatCancel();return true;}
   if(e.key==='Escape'&&asmAlign){asmAlignCancel();return true;}
+  if(e.key==='Escape'&&asmRel){asmRelCancel();return true;}
+  if(e.key==='Enter'&&asmRel){e.preventDefault();asmRelCommit();return true;}
   if(e.key==='Escape'&&stdHolePick){stdHoleCancel();return true;}
   if(e.key==='Escape'&&asmAnim){asmAnimStop();return true;} // animation d'une liaison (48)
   if(e.key==='Escape'){
@@ -18395,13 +18410,14 @@ function asmRenderProps(p){
   const Note=t=>p.appendChild(mk('div','pnl-note',t));
   const Btns=list=>{const d=mk('div','pnl-btns');list.forEach(([t,fn,cls])=>{const b=mk('button',cls||null,t);b.onclick=fn;d.appendChild(b);});p.appendChild(d);return d;};
   if(typeof asmAlign!=='undefined'&&asmAlign){asmAlignProps(p);return;} // commande Aligner (48)
+  if(typeof asmRel!=='undefined'&&asmRel){asmRelProps(p);return;} // commande Relations (48-assemblage-relations)
   if(asmPatEd&&asmPatProps(p))return;               // répétition ouverte (48-assemblage-repetitions)
   const c=asmActiveComp();
   const o=asmOcc(asmSelId);
   if(!o||!c.occ.includes(o)){
     H('🧩 '+c.name);
     Note(c.occ.length+' composant(s) placé(s) ici, '+asm.comps.length+' composant(s) dans le fichier. Cliquez un composant (vue ou arbre) ; double-clic = le modéliser.');
-    const l=[['➕ Nouveau composant',asmCmdNewComp,'primary'],['📥 Insérer…',asmCmdInsert],['🔩 Normalisés…',()=>stdDlg()],['✏️ Modéliser « '+c.name+' »',()=>asmExit()]];
+    const l=[['➕ Nouveau composant',asmCmdNewComp,'primary'],['📥 Insérer…',asmCmdInsert],['🧲 Relations…',()=>asmRelStart(null)],['🔩 Normalisés…',()=>stdDlg()],['✏️ Modéliser « '+c.name+' »',()=>asmExit()]];
     if(asm.path.length)l.push(['↑ Remonter',asmUp]);
     Btns(l);
     // répétitions de ce composant (48-assemblage-repetitions) : une ligne chacune, clic = la modifier
@@ -18531,7 +18547,7 @@ async function asmInsertText(txt,name){
     const M=id=>om[id]||id;
     return {id:cm[c.id],kind:'comp',name:nm,doc:c.doc,link:null,occ:c.occ.map(o=>Object.assign({},o,{id:om[o.id],comp:cm[o.comp],
       align:o.align?Object.assign({},o.align,{src:{path:rp(o.align.src.path),cg:o.align.src.cg},dst:{path:rp(o.align.dst.path),cg:o.align.dst.cg}}):null,
-      pat:asmPatOccRemap(o.pat,M)})),pats:asmPatRemap(c.pats,M)}; // répétitions (48) : sources et instances renommées
+      pat:asmPatOccRemap(o.pat,M),cons:asmConsRemap(o.cons,M)})),pats:asmPatRemap(c.pats,M)}; // répétitions (48) : sources et instances renommées
   });
   {const L=asmLinkOwner(owner);if(L)neufs.forEach(c=>{c.of=L.id;});} // inséré dans un composant lié : il en fait partie
   neufs.forEach(c=>asm.comps.push(c));
@@ -18586,7 +18602,7 @@ function asmSubtreeObj(L){
   if(mem.length>1||L.occ.length){
     const occ=o=>{const s={id:I(o.id),comp:I(o.comp),name:o.name,fr:o.fr,fixed:!!o.fixed,visible:o.visible!==false,
       align:o.align?Object.assign({},o.align,{src:{path:o.align.src.path.map(I),cg:o.align.src.cg},dst:{path:o.align.dst.path.map(I),cg:o.align.dst.cg}}):null};
-      if(o.pat)s.pat=asmPatOccRemap(o.pat,I);return s;}; // instance de répétition (48)
+      if(o.pat)s.pat=asmPatOccRemap(o.pat,I);if(o.cons)s.cons=asmConsRemap(o.cons,I);return s;}; // instance de répétition (48)
     top.asm={v:2,name:L.name,root:I(L.id),active:I(L.id),path:[],mode:'part',
       comps:mem.map(c=>({id:I(c.id),kind:'comp',name:c.name,doc:c===L?null:serialiseObj(c.doc,false),occ:c.occ.map(occ),link:c===L?null:asmLinkSerial(c.link),
         of:c.of&&c.of!==L.id?I(c.of):undefined,pats:asmPatRemap(asmPatSerial(c),I)}))};
@@ -18629,7 +18645,7 @@ async function asmLinkLoad(L,txt){
   t.comps.forEach(c=>{M(c.id);c.occ.forEach(o=>M(o.id));});
   const mo=o=>Object.assign({},o,{id:M(o.id),comp:M(o.comp),st:'ok',msg:'',
     align:o.align?Object.assign({},o.align,{src:{path:o.align.src.path.map(M),cg:o.align.src.cg},dst:{path:o.align.dst.path.map(M),cg:o.align.dst.cg}}):null,
-    pat:asmPatOccRemap(o.pat,M)});
+    pat:asmPatOccRemap(o.pat,M),cons:asmConsRemap(o.cons,M)});
   const mp=c=>{const p=asmPatRemap(c.pats,M);return p&&p.length?p:undefined;}; // répétitions (48)
   const keep=new Set();
   t.comps.forEach(c=>{
@@ -20043,6 +20059,11 @@ function asmSnapUses(){
     if(a.src&&a.src.sn){const r=asmPathFrame(o.comp,a.src.path);if(r)out.push({comp:r.comp,sn:a.src.sn});}
     if(a.dst&&a.dst.sn){const r=asmPathFrame(owner.id,a.dst.path);if(r)out.push({comp:r.comp,sn:a.dst.sn});}
   }));
+  // relations entre faces (48-assemblage-relations) : leurs faces se relisent de même
+  asm.comps.forEach(owner=>owner.occ.forEach(o=>(Array.isArray(o.cons)?o.cons:[]).forEach(k=>{
+    if(k.a&&k.a.f){const r=asmPathFrame(o.comp,k.a.path);if(r)out.push({comp:r.comp,sn:k.a});}
+    if(k.b&&k.b.f){const r=asmPathFrame(owner.id,k.b.path);if(r)out.push({comp:r.comp,sn:k.b});}
+  })));
   return out;
 }
 let asmSnapBusy=false;
@@ -20562,7 +20583,7 @@ function asmGizmoDraw(){
   const S=asmSceneGet();
   if(asmGz){S.remove(asmGz);const i=TRIADS.indexOf(asmGz);if(i>=0)TRIADS.splice(i,1);asmGz.traverse(m=>{try{if(m.geometry)m.geometry.dispose();if(m.material)m.material.dispose();}catch(e){}});asmGz=null;}
   const o=asmOcc(asmSelId);
-  if(asmMode!=='asm'||asmAlign)return;
+  if(asmMode!=='asm'||asmAlign||asmRel)return;
   const G=asmGizmoSpec(o);if(!G)return;
   const g=new THREE.Group();g.name='asmGizmo';g.userData.px=110;
   const mat=c=>new THREE.MeshBasicMaterial({color:c,depthTest:false,transparent:true,opacity:0.95});
@@ -20621,6 +20642,7 @@ function asmGizmoDown(e){
   e.preventDefault();e.stopPropagation();
   const gz=h.object.userData.gz,O=new THREE.Vector3(G.O[0],G.O[1],G.O[2]),a=new THREE.Vector3(...G.ax[gz.ax]).normalize();
   asmDrag={kind:gz.kind,ax:gz.ax,dof:gz.dof||null,occ:o.id,fr0:JSON.parse(JSON.stringify(o.fr)),q0:o.align?Object.assign({},o.align.q||{}):null,O,a,moved:false};
+  if(asmMovable(o))asmMoveRefOf(o); // position de départ des champs Distance / Angle
   if(gz.kind==='move')asmDrag.t0=asmAxisParam(ray,O,a);
   else{const p=asmPlaneHit(ray,O,a);asmDrag.p0=p?p.sub(O):null;}
   asmPush((gz.dof?'piloter « ':gz.kind==='move'?'déplacer « ':'tourner « ')+o.name+' »');
@@ -20654,7 +20676,7 @@ function asmGizmoMove(e){
     o.fr=asmRotFr(D.fr0,D.fr0.o,[D.a.x,D.a.y,D.a.z],sd*Math.PI/180);
     try{faceEl.textContent=o.name+' : rotation '+'XYZ'[D.ax]+' '+sd.toFixed(free?1:0).replace('.',',')+'° (Maj = libre)';}catch(err){}
   }
-  D.moved=true;
+  D.moved=true;D.d=d;D.sd=sd;
   asmResolve();asmDraw();asmGizmoDraw();
 }
 function asmGizmoUp(){
@@ -20667,10 +20689,29 @@ function asmGizmoUp(){
   const o=asmOcc(D.occ);
   const same=o&&JSON.stringify(o.fr)===JSON.stringify(D.fr0)&&(!D.dof||JSON.stringify((o.align&&o.align.q)||{})===JSON.stringify(D.q0||{}));
   if(!D.moved||same){asmUndoStack.pop();try{asmDraw();}catch(e){}return;}
+  // pièce libre : les champs Distance / Angle du panneau suivent le geste
+  if(o&&!D.dof&&asmMovable(o)&&!(Array.isArray(o.cons)&&o.cons.length)){const M=asmMoveRefOf(o);const k=D.kind==='move'?D.ax:3+D.ax,v=D.kind==='move'?D.d:D.sd;if(isFinite(v))M.v[k]=+(M.v[k]+v).toFixed(9);}
   try{asmDraw();}catch(e){} // lignes de champ de plusieurs aimants : pleine finesse une fois posé (48-aimants-interface)
   asmNotify();
 }
 try{document.addEventListener('pointerdown',asmGizmoDown,true);}catch(e){} // tests VM : document simplifié
+/* ── déplacement depuis la position de départ (V0.99.34) ── */
+let asmMoveRef=null; // {occ, fr0, v:[dx, dy, dz, ax, ay, az]}
+function asmMoveRefOf(o){
+  if(!asmMoveRef||asmMoveRef.occ!==o.id)asmMoveRef={occ:o.id,fr0:JSON.parse(JSON.stringify(o.fr)),v:[0,0,0,0,0,0]};
+  return asmMoveRef;
+}
+function asmMoveBy(o,k,d,noPush){
+  // k 0..2 : translation le long d'un axe de l'assemblage ; 3..5 : rotation autour d'un axe
+  // passant par l'origine de la pièce
+  if(!d)return;
+  const M=asmMoveRefOf(o);
+  if(!noPush)asmPush(k<3?'déplacer « '+o.name+' »':'tourner « '+o.name+' »');
+  if(k<3){const a=ASM_AX[k];o.fr=asmRound(Object.assign({},o.fr,{o:o.fr.o.map((q,j)=>q+a[j]*d)}));}
+  else o.fr=asmRotFr(o.fr,o.fr.o,ASM_AX[k-3],d*Math.PI/180);
+  M.v[k]=+(M.v[k]+d).toFixed(9);
+  if(!noPush)asmNotify();
+}
 /* ── panneau de placement ── */
 function asmPlacementProps(p,o){
   // Sections « Placement » puis « Apparence (assemblage) » du panneau d'occurrence (asmRenderProps, 47)
@@ -20724,9 +20765,22 @@ function asmPlacementCore(p,o){
       b.title='Tourner l’occurrence autour de l’axe '+k+' de l’assemblage, passant par son origine';
       b.onclick=()=>{asmPush('rotation');o.fr=asmRotFr(o.fr,o.fr.o,ASM_AX[i],s*Math.PI/180);asmNotify();};rw.appendChild(b);});});
     p.appendChild(rw);
+    // V0.99.34 : « Position initiale » façon Fusion — déplacement et rotations depuis la position
+    // qu'avait la pièce quand elle a été choisie (le manipulateur les met à jour)
+    if(!(Array.isArray(o.cons)&&o.cons.length)){
+      const M=asmMoveRefOf(o);
+      p.appendChild(mk('div','pnl-note','Depuis la position de départ :'));
+      ['X','Y','Z'].forEach((k,i)=>Row('Distance '+k+' (mm)',num(M.v[i],v=>asmMoveBy(o,i,v-M.v[i]))));
+      ['X','Y','Z'].forEach((k,i)=>Row('Angle '+k+' (°)',num(M.v[3+i],v=>asmMoveBy(o,3+i,v-M.v[3+i]))));
+      if(M.v.some(x=>x)){const rb=mk('div','pnl-btns'),r0=mk('button','mini','↺ Position de départ');
+        r0.onclick=()=>{asmPush('position de départ');o.fr=JSON.parse(JSON.stringify(M.fr0));M.v=[0,0,0,0,0,0];asmNotify();};rb.appendChild(r0);p.appendChild(rb);}
+    }
     p.appendChild(mk('div','pnl-note','Manipulateur : flèches = déplacer, anneaux = tourner (pas 1 mm / 5°, Maj = libre).'));
   }
-  const b=mk('div','pnl-btns');const al=mk('button','primary','🔗 Aligner un repère…');al.onclick=()=>asmAlignStart(o.id);b.appendChild(al);
+  try{asmRelOccProps(p,o);}catch(e){} // relations entre faces (48-assemblage-relations)
+  const b=mk('div','pnl-btns');
+  if(!o.fixed){const rl=mk('button','primary','🧲 Relations…');rl.title='Poser la pièce face contre face, cylindre dans cylindre, tangente, angle… (comme Fusion)';rl.onclick=()=>asmRelStart(o.id);b.appendChild(rl);}
+  const al=mk('button',null,'🔗 Aligner un repère…');al.onclick=()=>asmAlignStart(o.id);b.appendChild(al);
   if(!o.fixed){const jb=mk('button',null,'⚙ Liaison telle que construite…');jb.title='Une liaison à la position actuelle (pivot, glissière…), autour d’un axe de l’occurrence';jb.onclick=()=>asmAsBuiltMenu(o,jb);b.appendChild(jb);}
   p.appendChild(b);
 }
@@ -20971,6 +21025,544 @@ function asmAsBuiltMenu(o,anchor){
   try{const r=anchor.getBoundingClientRect();mfPop({getBoundingClientRect:()=>r},items);}catch(e){}
 }
 
+/* ═══════════════ 48-assemblage-relations.js — assemblage relations ═══════════════ */
+/* ---------- relations entre faces (V0.99.34) : « Créer les relations » façon Fusion ----------
+   Une occurrence (enfant direct du composant actif) est posée par des RELATIONS entre ses
+   faces et celles du reste : chaque relation relie une géométrie de l'occurrence (a) à une
+   géométrie cible (b) — face plane, face cylindrique, ou plan système d'un repère (XY, XZ, YZ
+   de l'origine ou d'un repère de construction).
+     · Coïncidente : plan contre plan (en vis-à-vis ; Inverser = affleurant), décalage ;
+                     cylindre dans cylindre (axes confondus) ; axe d'un cylindre dans un plan ;
+     · Angle       : angle entre les normales (ou les axes) ;
+     · Parallèle   : normales (axes) parallèles ; plan et cylindre : axe parallèle au plan ;
+     · Tangente    : cylindre contre plan (Inverser = de l'autre côté), cylindre contre
+                     cylindre (extérieur ; Inverser = intérieur), décalage.
+   Rien n'est figé au-delà : les degrés de liberté restants se pilotent au manipulateur. Le
+   placement est recalculé à chaque résolution (46 : asmResolveIn) par moindres carrés
+   (Levenberg-Marquardt) en partant de la position actuelle — la pièce bouge le moins possible.
+   Référence durable : o.cons = [{id, t, a, b, v, inv, sg}] ; a.path relatif au composant de
+   l'occurrence, b.path relatif au porteur ; face = signature (asmSnapSig : type, centre,
+   normale ou axe, rayon) retrouvée après un rejeu comme les points d'accroche ; plan de
+   repère = {cg (null = origine), p: 'XY'|'XZ'|'YZ'}. */
+const ASM_CONS={coinc:{lab:'Coïncidente',ic:'⫠'},angle:{lab:'Angle',ic:'∠'},par:{lab:'Parallèle',ic:'∥'},tan:{lab:'Tangente',ic:'◠'}};
+const ASM_CONS_LW=20; // poids des écarts d'orientation (mm par radian) face aux écarts de position
+function asmConsOn(o){return !!(o&&!o.align&&!o.fixed&&!o.pat&&Array.isArray(o.cons)&&o.cons.length);}
+/* ── modèle ── */
+function asmConsRefNorm(r){
+  if(!r||typeof r!=='object'||!Array.isArray(r.path))return null;
+  const okV=v=>Array.isArray(v)&&v.length===3&&v.every(x=>isFinite(+x));
+  const o={path:r.path.filter(x=>typeof x==='string')};
+  if(r.pl&&typeof r.pl==='object'&&['XY','XZ','YZ'].includes(r.pl.p))o.pl={cg:typeof r.pl.cg==='string'?r.pl.cg:null,p:r.pl.p};
+  else if(r.f&&(r.f.k==='plane'||r.f.k==='cyl')&&okV(r.f.c)&&okV(r.f.n)){
+    o.f={k:r.f.k,c:r.f.c.map(Number),n:r.f.n.map(Number)};if(r.f.k==='cyl')o.f.r=+r.f.r||0;}
+  else return null;
+  return o;
+}
+function asmConsNorm(L){
+  // Liste de relations relue d'un fichier (ou copiée) ; undefined si vide
+  if(!Array.isArray(L))return undefined;
+  const out=[];
+  L.forEach(k=>{if(!k||!ASM_CONS[k.t])return;const a=asmConsRefNorm(k.a),b=asmConsRefNorm(k.b);if(!a||!b)return;
+    const q={id:typeof k.id==='string'?k.id:uid('rl'),t:k.t,a,b,v:isFinite(+k.v)?+k.v:0,inv:!!k.inv};
+    if(k.sg===-1||k.sg===1)q.sg=k.sg;if(typeof k.name==='string')q.name=k.name;out.push(q);});
+  return out.length?out:undefined;
+}
+function asmConsRemap(L,M){
+  // Identifiants d'occurrences renouvelés (insertion, composants liés) : chemins suivis
+  const n=asmConsNorm(L);if(!n)return undefined;
+  n.forEach(k=>{k.a.path=k.a.path.map(M);k.b.path=k.b.path.map(M);});
+  return n;
+}
+function asmConsName(L,k){return k.name||('Relation '+(L.indexOf(k)+1));}
+function asmConsFind(G,f){
+  // Face de même type et même orientation, centre le plus proche (même Ø d'abord), comme les
+  // points d'accroche (48-assemblage-accroches : asmSnapFind)
+  let best=null;
+  (G&&G.faces||[]).forEach(F=>{
+    if(F.k!==f.k)return;
+    const d=asmV.dot(F.n,f.n);
+    if(F.k==='plane'?d<0.999:Math.abs(d)<0.999)return;
+    let s=asmV.len(asmV.sub(F.c,f.c));
+    const sr=F.k==='cyl'&&Math.abs(F.r-(f.r||0))<1e-4?0:1;
+    if(F.k==='cyl')s+=10*Math.abs(F.r-(f.r||0));
+    if(!best||sr<best.sr||(sr===best.sr&&s<best.s))best={F,s,sr};
+  });
+  return best?best.F:null;
+}
+function asmConsLocal(cid,ref){
+  // Géométrie {k, c, n, r?} d'une référence dans le repère du composant visé (bout du chemin)
+  if(ref.pl){
+    const F=asmCompFrame(cid,ref.pl.cg);if(!F)return null;
+    return {k:'plane',c:F.o,n:ref.pl.p==='XY'?F.z:ref.pl.p==='XZ'?F.y:F.x};
+  }
+  const c=asmComp(cid);
+  if(typeof asmSnapFresh==='function'&&asmSnapFresh(c)&&c._snapG.g){
+    const F=asmConsFind(c._snapG.g,ref.f);
+    if(!F)return null;
+    ref.f=asmSnapSig(F); // la référence suit la face (rejeu du composant)
+  }
+  const f=ref.f;return f?{k:f.k,c:f.c.slice(),n:f.n.slice(),r:f.r}:null;
+}
+function asmConsGeo(cid,ref){
+  // Géométrie de la référence dans le repère du composant cid (chemin relatif à cid)
+  const r=asmPathFrame(cid,ref&&ref.path);if(!r)return null;
+  const g=asmConsLocal(r.comp,ref);if(!g)return null;
+  return {k:g.k,c:asmApply(r.F,g.c),n:asmV.unit(asmRot(r.F,g.n))||g.n,r:g.r};
+}
+function asmConsXf(M,g){return {k:g.k,c:asmApply(M,g.c),n:asmRot(M,g.n),r:g.r};}
+function asmConsRes(k,A,B,out){
+  // Écarts d'une relation (0 = satisfaite) ; A : géométrie de l'occurrence, B : cible
+  const V=asmV,L=ASM_CONS_LW,v=+k.v||0,s=k.inv?-1:1,sg=k.sg||1;
+  const perp=(q,n)=>V.sub(q,V.mul(n,V.dot(q,n)));
+  const pp=A.k==='plane'&&B.k==='plane',cc=A.k==='cyl'&&B.k==='cyl';
+  const P=A.k==='plane'?A:B,C=A.k==='cyl'?A:B;
+  if(k.t==='angle'){out.push(L*(V.dot(A.n,B.n)*s-Math.cos(v*Math.PI/180)));return;}
+  if(k.t==='par'){
+    if(pp||cc){const d=V.sub(A.n,V.mul(B.n,s*sg));out.push(L*d[0],L*d[1],L*d[2]);}
+    else out.push(L*V.dot(C.n,P.n));
+    return;
+  }
+  if(pp){ // coïncidente ou tangente : en vis-à-vis (Inverser = affleurant), écart v le long de la normale cible
+    const d=V.add(A.n,V.mul(B.n,s));out.push(L*d[0],L*d[1],L*d[2],V.dot(V.sub(A.c,B.c),B.n)-v);return;
+  }
+  if(cc){
+    const q=perp(V.sub(A.c,B.c),B.n);
+    if(k.t==='tan'){
+      const x=V.cross(A.n,B.n);out.push(L*x[0],L*x[1],L*x[2]);
+      out.push(V.len(q)-(k.inv?Math.abs((A.r||0)-(B.r||0)):(A.r||0)+(B.r||0)+v));
+    }else{const d=V.sub(A.n,V.mul(B.n,s*sg));out.push(L*d[0],L*d[1],L*d[2],q[0],q[1],q[2]);}
+    return;
+  }
+  // un plan et un cylindre : axe parallèle au plan, à la distance voulue
+  out.push(L*V.dot(C.n,P.n));
+  const h=V.dot(V.sub(C.c,P.c),P.n);
+  out.push(k.t==='tan'?h-s*((C.r||0)+v):h-v);
+}
+function asmConsRodr(w){
+  // Matrice de rotation (colonnes) du vecteur rotation w
+  const t=Math.hypot(w[0],w[1],w[2]);
+  if(t<1e-15)return {o:[0,0,0],x:[1,0,0],y:[0,1,0],z:[0,0,1]};
+  const a=[w[0]/t,w[1]/t,w[2]/t],R=v=>cgRotDir(v,a,t);
+  return {o:[0,0,0],x:R([1,0,0]),y:R([0,1,0]),z:R([0,0,1])};
+}
+function asmConsMove(M,P,x){
+  // Déplacement rigide de M : rotation x[0..2] autour du point P, puis translation x[3..5]
+  const R=asmConsRodr(x),rp=v=>asmRot(R,v),d=asmV.sub(M.o,P);
+  return {o:asmV.add(asmV.add(P,rp(d)),[x[3],x[4],x[5]]),x:rp(M.x),y:rp(M.y),z:rp(M.z)};
+}
+function asmConsSolve6(A,g){
+  // Résout A·x = g (6×6), pivot partiel → x | null
+  const n=6,m=A.map((r,i)=>r.concat([g[i]]));
+  for(let c=0;c<n;c++){
+    let p=c;for(let r=c+1;r<n;r++)if(Math.abs(m[r][c])>Math.abs(m[p][c]))p=r;
+    if(Math.abs(m[p][c])<1e-300)return null;
+    [m[c],m[p]]=[m[p],m[c]];
+    for(let r=c+1;r<n;r++){const f=m[r][c]/m[c][c];if(f)for(let k=c;k<=n;k++)m[r][k]-=f*m[c][k];}
+  }
+  const x=new Array(n).fill(0);
+  for(let r=n-1;r>=0;r--){let s=m[r][n];for(let k=r+1;k<n;k++)s-=m[r][k]*x[k];x[r]=s/m[r][r];}
+  return x.every(isFinite)?x:null;
+}
+function asmConsRank(J){
+  // Rang numérique de J (m×6) : élimination avec pivot total, seuil relatif
+  const m=J.map(r=>r.slice());let rank=0;
+  const big=Math.max(1e-12,...m.map(r=>Math.max(...r.map(Math.abs))));
+  const used=new Array(6).fill(false),rows=new Array(m.length).fill(false);
+  for(let it=0;it<6;it++){
+    let bi=-1,bj=-1,bv=1e-7*big;
+    for(let i=0;i<m.length;i++)if(!rows[i])for(let j=0;j<6;j++)if(!used[j]&&Math.abs(m[i][j])>bv){bv=Math.abs(m[i][j]);bi=i;bj=j;}
+    if(bi<0)break;
+    rows[bi]=used[bj]=true;rank++;
+    for(let i=0;i<m.length;i++)if(i!==bi){const f=m[i][bj]/m[bi][bj];if(f)for(let j=0;j<6;j++)m[i][j]-=f*m[bi][j];}
+  }
+  return rank;
+}
+function asmConsPrep(o,owner){
+  // Relations de o avec leurs géométries : [{k, a (repère du composant de o), b (porteur)}] ;
+  // {miss} si une géométrie est introuvable
+  const out=[];
+  for(const k of o.cons){
+    const a=asmConsGeo(o.comp,k.a),b=asmConsGeo(owner.id,k.b);
+    if(!a||!b)return {miss:k,side:!a?'a':'b'};
+    out.push({k,a,b});
+  }
+  return {list:out};
+}
+function asmConsSolveFr(M0,list){
+  // Position M de l'occurrence satisfaisant au mieux les relations, partant de M0
+  // → {M, err (plus grand écart), dof (degrés de liberté restants)}
+  const res=M=>{const r=[];list.forEach(q=>asmConsRes(q.k,asmConsXf(M,q.a),q.b,r));return r;};
+  const cost=r=>r.reduce((s,x)=>s+x*x,0);
+  let M=asmRound(M0);
+  // retournement préalable : une orientation visée à l'opposé exact n'a pas de pente (le
+  // calcul resterait bloqué) → demi-tour autour d'un axe perpendiculaire ; angle visé depuis
+  // des normales alignées : inclinaison initiale de l'angle voulu
+  for(let pass=0;pass<list.length;pass++){
+    let done=true;
+    for(const q of list){
+      const A=asmConsXf(M,q.a),B=q.b,k=q.k,s=k.inv?-1:1,sg=k.sg||1;
+      let want=null;
+      if(k.t!=='angle'&&A.k==='plane'&&B.k==='plane')want=asmV.mul(B.n,k.t==='par'?s*sg:-s);
+      else if(k.t!=='angle'&&k.t!=='tan'&&A.k==='cyl'&&B.k==='cyl')want=asmV.mul(B.n,s*sg);
+      const d=want?asmV.dot(A.n,want):0;
+      let ax=null,ang=0;
+      if(want&&d<-0.999){ang=Math.PI;}
+      else if(k.t==='angle'&&Math.abs(asmV.dot(A.n,B.n))>0.9999){const tv=Math.acos(Math.max(-1,Math.min(1,Math.cos((+k.v||0)*Math.PI/180)*s)));
+        const cur=Math.acos(Math.max(-1,Math.min(1,asmV.dot(A.n,B.n))));ang=tv-cur;if(Math.abs(ang)<1e-9)ang=0;}
+      if(!ang)continue;
+      const t=Math.abs(A.n[0])<0.9?[1,0,0]:[0,1,0];ax=asmV.unit(asmV.cross(A.n,t));
+      M=asmConsMove(M,A.c,[ax[0]*ang,ax[1]*ang,ax[2]*ang,0,0,0]);done=false;break;
+    }
+    if(done)break;
+  }
+  let r=res(M),c=cost(r);
+  const P=()=>{const ps=list.map(q=>asmApply(M,q.a.c));return asmV.mul(ps.reduce((s,p)=>asmV.add(s,p),[0,0,0]),1/Math.max(1,ps.length));};
+  let J=null,lam=1e-3;
+  for(let it=0;it<200&&c>1e-18;it++){
+    const Pc=P(),h=1e-7;
+    J=r.map(()=>new Array(6).fill(0));
+    for(let j=0;j<6;j++){const x=[0,0,0,0,0,0];x[j]=h;const rj=res(asmConsMove(M,Pc,x));rj.forEach((v,i)=>{J[i][j]=(v-r[i])/h;});}
+    const A=[0,1,2,3,4,5].map(i=>[0,1,2,3,4,5].map(j=>J.reduce((s,row)=>s+row[i]*row[j],0)));
+    const g=[0,1,2,3,4,5].map(i=>-J.reduce((s,row,k)=>s+row[i]*r[k],0));
+    const dmax=Math.max(1e-12,...A.map((row,i)=>row[i]));
+    let ok=false;
+    for(let tries=0;tries<30;tries++){
+      const Ad=A.map((row,i)=>row.map((v,j)=>i===j?v+lam*dmax:v));
+      const x=asmConsSolve6(Ad,g);if(!x){lam*=10;continue;}
+      const Mn=asmConsMove(M,Pc,x),rn=res(Mn),cn=cost(rn);
+      if(cn<c){M=Mn;r=rn;c=cn;lam=Math.max(lam/5,1e-15);ok=true;break;}
+      lam*=6;if(lam>1e12)break;
+    }
+    if(!ok)break;
+  }
+  // degrés de liberté restants : rang des écarts autour de la solution
+  let dof=6;
+  try{const Pc=P(),h=1e-6;const r0=res(M);const Jr=r0.map(()=>new Array(6).fill(0));
+    for(let j=0;j<6;j++){const x=[0,0,0,0,0,0];x[j]=h;const rj=res(asmConsMove(M,Pc,x));rj.forEach((v,i)=>{Jr[i][j]=(v-r0[i])/h;});}
+    dof=6-asmConsRank(Jr);}catch(e){}
+  // orthonormalisation (le cumul des rotations dérive de 1e-16 par pas)
+  const Z=asmV.unit(M.z),X=asmV.unit(asmV.sub(M.x,asmV.mul(Z,asmV.dot(M.x,Z))));
+  M={o:M.o,x:X,y:asmV.cross(Z,X),z:Z};
+  return {M:asmRound(M),err:Math.max(0,...res(M).map(Math.abs)),dof};
+}
+function asmConsDeps(o){return (o.cons||[]).map(k=>k.b&&k.b.path&&k.b.path[0]).filter(Boolean);}
+function asmConsApply(o,owner){
+  // Résout les relations d'une occurrence (46 : asmResolveIn) → true si elle a bougé
+  if(asmConsDeps(o).includes(o.id)){o.st='warn';o.msg='une relation vise l’occurrence elle-même';return false;}
+  const pr=asmConsPrep(o,owner);
+  if(pr.miss){o.st='warn';o.msg=(pr.side==='a'?'face de la pièce':'face cible')+' introuvable dans « '+asmConsName(o.cons,pr.miss)+' » (la face a disparu ?) — position mémorisée';return false;}
+  const S=asmConsSolveFr(o.fr,pr.list);
+  o._dof=S.dof;
+  const ch=['o','x','y','z'].some(k=>S.M[k].some((v,j)=>Math.abs(v-o.fr[k][j])>1e-9));
+  if(ch)o.fr=S.M;
+  if(S.err>1e-4){o.st='warn';o.msg='relations incompatibles (écart restant '+String(+S.err.toFixed(3)).replace('.',',')+') — vérifiez les décalages ou supprimez une relation';}
+  else{o.st='ok';o.msg='';}
+  return ch;
+}
+function asmConsOnDelete(id){
+  // Une occurrence supprimée : les relations qui passaient par elle tombent
+  if(!asm)return;
+  asm.comps.forEach(c=>c.occ.forEach(q=>{if(!Array.isArray(q.cons))return;
+    q.cons=q.cons.filter(k=>!(k.a.path.includes(id)||k.b.path.includes(id)));if(!q.cons.length)delete q.cons;}));
+}
+/* ── commande « Relations » ──
+   asmRel = {occ, list (relations validées), cur {t, a, b, aG, bG, v, inv, sg}, edit (indice
+   en cours de modification ou -1), saved {fr, cons} (état d'avant la commande), planes} */
+let asmRel=null;
+function asmRelStart(occId){
+  if(typeof skEdit!=='undefined'&&skEdit){try{faceEl.textContent='Fermez d’abord l’esquisse.';}catch(e){}return;}
+  if(!asm||!asmOn()){try{faceEl.textContent='Relations : insérez d’abord au moins deux composants (📥 Insérer, ➕ Nouveau composant).';}catch(e){}return;}
+  if(asmMode!=='asm')asmEnter();
+  try{if(asmAlign)asmAlignCancel();}catch(e){}
+  asmRel={occ:null,list:[],cur:asmRelNew(),edit:-1,saved:null,planes:true};
+  const o=occId&&asmOcc(occId);
+  if(o&&asmActiveComp().occ.includes(o)&&!asmRelRefuse(o))asmRelTake(o);
+  asmRelRefresh();
+  try{faceEl.textContent='Relations : cliquez une face (ou un plan de repère) de la pièce à déplacer, puis la face où la poser.';}catch(e){}
+}
+function asmRelNew(t){return {t:t||null,a:null,b:null,aG:null,bG:null,v:0,inv:false,sg:1};}
+function asmRelRefuse(o){
+  // Pourquoi l'occurrence ne peut pas être déplacée par des relations (null = elle peut)
+  if(!o)return 'aucune pièce';
+  if(o.fixed)return '« '+o.name+' » est fixée';
+  if(o.pat)return '« '+o.name+' » est une instance de répétition (elle suit sa source)';
+  if(o.align)return '« '+o.name+' » est tenue par une liaison (supprimez-la d’abord)';
+  return null;
+}
+function asmRelTake(o){
+  const R=asmRel;R.occ=o.id;R.saved=JSON.parse(JSON.stringify({fr:o.fr,cons:o.cons||null}));R.orig=JSON.parse(JSON.stringify(R.saved));
+  R.list=(asmConsNorm(o.cons)||[]);
+}
+function asmRelCurDone(){const c=asmRel&&asmRel.cur;return !!(c&&c.a&&c.b&&c.t);}
+function asmRelPreview(){
+  const R=asmRel,o=R&&asmOcc(R.occ);if(!o)return;
+  const L=R.list.map(k=>Object.assign({},k));
+  if(asmRelCurDone()){const c=R.cur,k={id:c.id||uid('rl'),t:c.t,a:c.a,b:c.b,v:c.v,inv:c.inv,sg:c.sg};c.id=k.id;
+    if(R.edit>=0)L[R.edit]=k;else L.push(k);}
+  o.fr=JSON.parse(JSON.stringify(R.saved.fr));
+  if(L.length)o.cons=L;else delete o.cons;
+  // la pièce part de sa position d'avant la commande : chaque réglage repart du même point
+  asmResolve();
+}
+function asmRelRefresh(){
+  try{asmRelPreview();}catch(e){}
+  try{asmDraw();asmRelMarks();asmGizmoDraw();renderTree();renderProps();}catch(e){}
+}
+function asmRelSign(){
+  // Sens des axes au moment du choix : la pièce garde le sien (sg), Inverser le retourne
+  const R=asmRel,c=R.cur,o=asmOcc(R.occ),owner=asmActiveComp();if(!o||!c.a||!c.b)return;
+  const A=asmConsGeo(o.comp,c.a),B=asmConsGeo(owner.id,c.b);if(!A||!B)return;
+  const d=asmV.dot(asmRot(R.saved.fr,A.n),B.n);c.sg=d<0?-1:1;
+}
+function asmRelSet(side,ref,G,abs){
+  const R=asmRel,c=R.cur;
+  c[side]=ref;c[side+'G']={G,abs};
+  if(side==='a'&&!c.b){try{faceEl.textContent='Relations : cliquez maintenant la face (ou le plan) où poser la pièce.';}catch(e){}}
+  if(c.a&&c.b){asmRelSign();if(!c.t)c.t=c.aG.G.k===c.bG.G.k?'coinc':'tan';
+    try{faceEl.textContent='Relations : '+ASM_CONS[c.t].lab+' — réglez le décalage, Inverser, ou ＋ pour une autre relation, puis OK.';}catch(e){}}
+  asmRelRefresh();
+}
+function asmRelPickAt(e){
+  // Clic dans la vue pendant la commande → true si consommé
+  const R=asmRel;if(!R)return false;
+  const S=asmSceneGet(),P=asm.path,n=P.length;
+  rayc.ray.copy(asmRay(e));
+  // 1. plans des repères (dessinés par-dessus tout)
+  const MG=S.getObjectByName('asmRelMarks');
+  if(MG){MG.updateMatrixWorld(true);const ms=[];MG.traverse(m=>{if(m.isMesh&&m.userData.rp)ms.push(m);});
+    const h=rayc.intersectObjects(ms,false)[0];
+    if(h){const q=h.object.userData.rp;asmRelPickRef(q.rel.path,{path:q.rel.path.slice(),pl:{cg:q.rel.cg,p:q.p}},{k:'plane',pl:true,F:q.F,p:q.p});return true;}}
+  // 2. faces des pièces
+  const G=S.getObjectByName('asmOcc');if(!G)return true;
+  const ms=[];G.traverse(m=>{if(m.isMesh&&m.parent&&Array.isArray(m.parent.userData.path))ms.push(m);});
+  const hits=[];ms.forEach(m=>{try{THREE.Mesh.prototype.raycast.call(m,rayc,hits);}catch(err){}});
+  hits.sort((a,b)=>a.distance-b.distance);
+  for(const h of hits){
+    const path=h.object.parent.userData.path;
+    if(path.length<n||!P.every((q,i)=>path[i]===q))continue; // hors du composant actif
+    const cid=asmPathComp(path),c=asmComp(cid);if(!c)continue;
+    const Gs=typeof asmSnapGeomOf==='function'?asmSnapGeomOf(c):null;
+    if(!Gs){try{faceEl.textContent='Relations : noyau exact indisponible (faces non lues).';}catch(err){}return true;}
+    const inv=new THREE.Matrix4().copy(h.object.matrixWorld).invert();
+    const pl=h.point.clone().applyMatrix4(inv),nl=h.face?h.face.normal.clone():null;
+    const F=asmSnapHitFace(Gs,[pl.x,pl.y,pl.z],nl?[nl.x,nl.y,nl.z]:null);
+    if(!F){try{faceEl.textContent='Relations : cette face n’est ni plane ni cylindrique — choisissez une autre face ou un plan de repère.';}catch(err){}return true;}
+    asmRelPickRef(path.slice(n),{path:path.slice(n),f:asmSnapSig(F)},{k:F.k,F},path.slice());
+    return true;
+  }
+  try{faceEl.textContent='Relations : cliquez une face plane ou cylindrique, ou un plan de repère.';}catch(err){}
+  return true;
+}
+function asmRelPickRef(relPath,ref,G,abs){
+  // relPath : chemin relatif au composant actif ; [] = le composant actif lui-même
+  const R=asmRel,c=R.cur,owner=asmActiveComp();
+  abs=abs||asm.path.concat(relPath);
+  const head=relPath[0]||null;
+  const sideA=()=>{ // la référence devient a : relative au composant de l'occurrence
+    const r=Object.assign({},ref,{path:relPath.slice(1)});asmRelSet('a',r,G,abs);};
+  const sideB=()=>asmRelSet('b',Object.assign({},ref,{path:relPath.slice()}),G,abs);
+  if(!R.occ){
+    const o=head&&owner.occ.find(q=>q.id===head);
+    if(!o){try{faceEl.textContent='Relations : choisissez d’abord une face de la pièce à DÉPLACER (le composant actif lui-même ne bouge pas).';}catch(e){}return;}
+    const why=asmRelRefuse(o);
+    if(why){try{faceEl.textContent='Relations : '+why+' — choisissez d’abord une face de l’autre pièce.';}catch(e){}return;}
+    asmRelTake(o);sideA();return;
+  }
+  if(head===R.occ){
+    if(c.a&&c.b){try{faceEl.textContent='Relations : les deux faces sont choisies — × pour en changer une, ou ＋ pour une nouvelle relation.';}catch(e){}return;}
+    if(!c.a){sideA();return;}
+    try{faceEl.textContent='Relations : cette face est sur la pièce déplacée — choisissez la face où la poser (autre pièce ou repère).';}catch(e){}return;
+  }
+  if(!c.a){
+    // aucune face de la pièce encore : une face d'une autre pièce libre la remplace si rien n'est validé
+    const o=head&&owner.occ.find(q=>q.id===head);
+    if(o&&!R.list.length&&!asmRelRefuse(o)&&!c.b){asmRelRestore();asmRelTake(o);sideA();return;}
+    if(!c.b){sideB();try{faceEl.textContent='Relations : cible choisie — cliquez maintenant la face de « '+(asmOcc(R.occ)||{}).name+' ».';}catch(e){}return;}
+    try{faceEl.textContent='Relations : cliquez une face de « '+(asmOcc(R.occ)||{}).name+' ».';}catch(e){}return;
+  }
+  if(!c.b){sideB();return;}
+  try{faceEl.textContent='Relations : les deux faces sont choisies — × pour en changer une, ou ＋ pour une nouvelle relation.';}catch(e){}
+}
+function asmRelRestore(){
+  const R=asmRel,o=R&&asmOcc(R.occ);if(!o||!R.saved)return;
+  const S=R.orig||R.saved;o.fr=JSON.parse(JSON.stringify(S.fr));if(S.cons)o.cons=JSON.parse(JSON.stringify(S.cons));else delete o.cons;
+}
+function asmRelAdd(){
+  // Valide la relation en cours (＋) et en commence une autre sur la même pièce
+  const R=asmRel;if(!R)return;
+  if(!asmRelCurDone()){try{faceEl.textContent='Relations : choisissez les deux faces avant d’ajouter une relation.';}catch(e){}return;}
+  const c=R.cur,k={id:c.id||uid('rl'),t:c.t,a:c.a,b:c.b,v:c.v,inv:c.inv,sg:c.sg};
+  if(R.edit>=0)R.list[R.edit]=k;else R.list.push(k);
+  R.edit=-1;R.cur=asmRelNew();
+  // la position d'ARRIVÉE devient le départ des suivantes (la pièce ne revient pas en arrière)
+  try{asmRelPreview();const o=asmOcc(R.occ);if(o)R.saved.fr=JSON.parse(JSON.stringify(o.fr));}catch(e){}
+  asmRelRefresh();
+  try{faceEl.textContent='Relations : '+R.list.length+' relation(s). Cliquez deux faces pour une autre, ou OK.';}catch(e){}
+}
+function asmRelEdit(i){
+  const R=asmRel;if(!R||!R.list[i])return;
+  if(asmRelCurDone())asmRelAdd();
+  const k=R.list[i];R.edit=i;
+  R.cur={id:k.id,t:k.t,a:k.a,b:k.b,aG:asmRelGOf('a',k.a),bG:asmRelGOf('b',k.b),v:+k.v||0,inv:!!k.inv,sg:k.sg||1};
+  asmRelRefresh();
+}
+function asmRelGOf(side,ref){
+  // Surbrillance d'une référence enregistrée : géométrie complète de la face (si lue) ou plan
+  const R=asmRel,o=asmOcc(R.occ);
+  const rel=side==='a'?[R.occ].concat(ref.path):ref.path.slice(),abs=asm.path.concat(rel);
+  const cid=asmPathComp(abs);if(!cid)return null;
+  if(ref.pl){const F=asmCompFrame(cid,ref.pl.cg);return F?{G:{k:'plane',pl:true,F,p:ref.pl.p},abs}:null;}
+  const c=asmComp(cid),Gs=typeof asmSnapGeomOf==='function'?asmSnapGeomOf(c):null,F=Gs&&asmConsFind(Gs,ref.f);
+  return F?{G:{k:F.k,F},abs}:(o?{G:{k:ref.f.k,F:null},abs}:null);
+}
+function asmRelDel(i){
+  const R=asmRel;if(!R)return;
+  if(i==null){R.cur=asmRelNew();R.edit=-1;}
+  else{R.list.splice(i,1);if(R.edit===i){R.edit=-1;R.cur=asmRelNew();}else if(R.edit>i)R.edit--;}
+  asmRelRefresh();
+}
+function asmRelClear(side){const c=asmRel&&asmRel.cur;if(!c)return;c[side]=null;c[side+'G']=null;asmRelRefresh();}
+function asmRelCommit(){
+  const R=asmRel,o=R&&asmOcc(R.occ);
+  if(!o){asmRelCancel();return;}
+  if(asmRelCurDone())asmRelAdd();
+  const now={fr:o.fr,cons:o.cons};
+  asmRelRestore();
+  asmPush('relations de « '+o.name+' »');
+  o.fr=now.fr;if(R.list.length)o.cons=R.list.map(k=>Object.assign({},k));else delete o.cons;
+  asmRel=null;asmRelMarks();asmResolve();asmSelId=o.id;asmNotify();asmGizmoDraw();
+  try{faceEl.textContent='« '+o.name+' » : '+(o.cons?o.cons.length+' relation(s)'+(o._dof!=null?', '+o._dof+' degré(s) de liberté restant(s)':''):'aucune relation')+(o.st==='warn'?' — ⚠ '+o.msg:'')+'. Elle suivra les faces si les pièces changent.';}catch(e){}
+}
+function asmRelCancel(){
+  const R=asmRel;asmRel=null;
+  if(R&&R.saved){const cur=asmRel;asmRel=R;asmRelRestore();asmRel=cur;}
+  asmRelMarks();try{asmResolve();asmDraw();asmGizmoDraw();renderTree();renderProps();}catch(e){}
+}
+/* ── dessin : faces choisies (bleu) et plans des repères ── */
+function asmRelMarks(){
+  const S=asmSceneGet();let G=S.getObjectByName('asmRelMarks');
+  if(G){S.remove(G);G.traverse(m=>{const i=TRIADS.indexOf(m);if(i>=0)TRIADS.splice(i,1);try{if(m.geometry)m.geometry.dispose();if(m.material)m.material.dispose();}catch(e){}});}
+  const R=asmRel;if(!R)return;
+  G=new THREE.Group();G.name='asmRelMarks';S.add(G);
+  const V=asmInverse(asmWorld(asm.path)||asmFr0());
+  const W=abs=>asmCompose(V,asmWorld(abs)||asmFr0());
+  let size=20;try{const b=new THREE.Box3();S.getObjectByName('asmOcc').traverse(m=>{if(m.isMesh)b.expandByObject(m);});if(!b.isEmpty())size=Math.max(5,0.18*b.getSize(new THREE.Vector3()).length());}catch(e){}
+  // plans des repères : petits carrés cliquables (origine du composant actif, de chaque pièce,
+  // et repères de construction), comme le repère de la pièce
+  if(R.planes){
+    asmFramesUnder(asm.active,null).forEach(f=>{
+      const Fw=f.F,t=triadMake({name:'rp_'+asmRelFrKey(f.rel),px:62,renderOrder:993}),pg=t.userData.planeGroup;
+      const q=new THREE.Quaternion().setFromRotationMatrix(new THREE.Matrix4().makeBasis(new THREE.Vector3(...Fw.x),new THREE.Vector3(...Fw.y),new THREE.Vector3(...Fw.z)));
+      [t,pg].forEach(x=>{if(!x)return;x.position.set(Fw.o[0],Fw.o[1],Fw.o[2]);x.quaternion.copy(q);G.add(x);});
+      const Fc=f.rel.cg?asmCompFrame(asmPathComp(asm.path.concat(f.rel.path)),f.rel.cg):asmFr0();
+      Object.keys(t.userData.planes||{}).forEach(p=>{t.userData.planes[p].userData.rp={rel:f.rel,p,F:Fc,name:f.name};});
+    });
+  }
+  const blue=(on)=>new THREE.MeshBasicMaterial({color:on?0x0a84ff:0x5ac8fa,transparent:true,opacity:on?0.5:0.38,depthTest:false,depthWrite:false,side:THREE.DoubleSide});
+  const one=(gg,on)=>{
+    if(!gg||!gg.G)return;const g=gg.G,M=asmMat4(W(gg.abs));let mesh=null;
+    if(g.pl){
+      const F=g.F,ax=g.p==='XY'?[F.x,F.y,F.z]:g.p==='XZ'?[F.x,F.z,F.y]:[F.y,F.z,F.x],h=size/2;
+      const pts=[[-h,-h],[h,-h],[h,h],[-h,h]].map(([u,v])=>asmV.add(F.o,asmV.add(asmV.mul(ax[0],u),asmV.mul(ax[1],v))));
+      const ge=new THREE.BufferGeometry();const vv=[];[[0,1,2],[0,2,3]].forEach(tr=>tr.forEach(i=>vv.push(...pts[i])));
+      ge.setAttribute('position',new THREE.Float32BufferAttribute(vv,3));mesh=new THREE.Mesh(ge,blue(on));
+    }else if(g.F&&g.k==='plane'){
+      const F=g.F,[u0,u1,v0,v1]=F.rect,off=asmV.mul(F.n,0.02);
+      const pts=[[u0,v0],[u1,v0],[u1,v1],[u0,v1]].map(([u,v])=>asmV.add(asmV.add(F.c,off),asmV.add(asmV.mul(F.x,u),asmV.mul(F.y,v))));
+      const ge=new THREE.BufferGeometry();const vv=[];[[0,1,2],[0,2,3]].forEach(tr=>tr.forEach(i=>vv.push(...pts[i])));
+      ge.setAttribute('position',new THREE.Float32BufferAttribute(vv,3));mesh=new THREE.Mesh(ge,blue(on));
+    }else if(g.F&&g.k==='cyl'){
+      const F=g.F,len=Math.max(0.1,F.t[1]-F.t[0]);
+      mesh=new THREE.Mesh(new THREE.CylinderGeometry(F.r*1.01,F.r*1.01,len,48,1,true),blue(on));
+      const d=new THREE.Vector3(...F.n).normalize();mesh.quaternion.setFromUnitVectors(new THREE.Vector3(0,1,0),d);
+      const c=asmV.add(F.l,asmV.mul(F.n,(F.t[0]+F.t[1])/2));mesh.position.set(c[0],c[1],c[2]);
+    }
+    if(!mesh)return;
+    mesh.renderOrder=996;mesh.raycast=()=>{};
+    const w=new THREE.Group();w.matrixAutoUpdate=false;w.matrix.copy(M);w.add(mesh);G.add(w);
+  };
+  one(R.cur.aG,true);one(R.cur.bG,false);
+  G.updateMatrixWorld(true);
+}
+function asmRelFrKey(r){return (r.path||[]).join('/')+'|'+(r.cg||'');}
+function asmRelRefName(side,ref){
+  // « Base:1 · Face plane », « Origine · plan XY »…
+  if(!ref)return '—';
+  const R=asmRel,owner=asmActiveComp();
+  const rel=side==='a'?[R.occ].concat(ref.path):ref.path;
+  let c=owner;const parts=[];
+  for(const id of rel){const o=c&&c.occ.find(q=>q.id===id);if(!o)return '?';parts.push(o.name);c=asmComp(o.comp);}
+  if(!parts.length)parts.push(owner.name);
+  if(ref.pl){const nm=ref.pl.cg?(((c&&c.doc.cgeo)||[]).find(k=>k.id===ref.pl.cg)||{}).name||'Repère':'Origine';return parts.join(' › ')+' · '+nm+' plan '+ref.pl.p;}
+  return parts.join(' › ')+' · '+(ref.f.k==='plane'?'Face plane':'Cylindre Ø'+(+(2*(ref.f.r||0)).toFixed(3)));
+}
+function asmRelGeomLab(k){const g=r=>r.pl?'Plan':r.f.k==='cyl'?'Cyl.':'Face';return g(k.a)+'-'+g(k.b);}
+/* ── panneau ── */
+function asmRelProps(p){
+  const R=asmRel,o=asmOcc(R.occ),c=R.cur;
+  const mk=(tag,cls,txt)=>{const d=document.createElement(tag);if(cls)d.className=cls;if(txt!=null)d.textContent=txt;return d;};
+  const Row=(lab,ctl)=>{const r=mk('div','pnl-row');r.appendChild(mk('label',null,lab));if(ctl)r.appendChild(ctl);p.appendChild(r);return r;};
+  const num=(v,fn)=>{const i=document.createElement('input');i.type='text';i.inputMode='decimal';i.style.width='70px';i.value=String(+(+v).toFixed(4)).replace('.',',');
+    const go=()=>{const x=parseFloat(String(i.value).replace(',','.'));if(isFinite(x))fn(x);};i.addEventListener('change',go);i.addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();go();}});return i;};
+  p.appendChild(mk('div','pnl-h','🧲 Créer les relations'+(o?' — « '+o.name+' »':'')));
+  // type de relation
+  const tb=mk('div','pnl-btns');
+  Object.keys(ASM_CONS).forEach(t=>{const b=mk('button','mini',ASM_CONS[t].ic+' '+ASM_CONS[t].lab);
+    if(c.t===t)b.style.outline='2px solid var(--accent, #0a84ff)';
+    b.title={coinc:'Face contre face (Inverser = affleurant), cylindre dans cylindre, axe dans un plan',angle:'Angle entre les deux faces (normales) ou les deux axes',
+      par:'Faces ou axes parallèles, sans imposer la distance',tan:'Cylindre tangent à une face plane ou à un autre cylindre (Inverser = de l’autre côté / intérieur)'}[t];
+    b.onclick=()=>{c.t=t;if(t==='angle'&&R.cur.v===0)R.cur.v=90;asmRelRefresh();};tb.appendChild(b);});
+  Row('Type',null);p.appendChild(tb);
+  // géométries
+  const geo=(side,lab)=>{const r=Row(lab,null);const s=mk('span',null,c[side]?asmRelRefName(side,c[side]):(side==='a'?'cliquez une face de la pièce à déplacer':'cliquez la face où la poser'));
+    s.style.cssText='flex:1;font-size:11px;'+(c[side]?'':'color:var(--muted);font-style:italic');r.appendChild(s);
+    if(c[side]){const x=mk('button','mini','×');x.title='Choisir une autre face';x.onclick=()=>asmRelClear(side);r.appendChild(x);}};
+  geo('a','Pièce déplacée');geo('b','Cible');
+  if(asmRelCurDone()){
+    if(c.t!=='par')Row(c.t==='angle'?'Angle (°)':'Décalage (mm)',num(c.v,x=>{c.v=x;asmRelRefresh();}));
+    const iv=mk('button','mini','⇅ Inverser');iv.title='Retourner la pièce : en vis-à-vis ↔ affleurant, de l’autre côté, sens de l’axe';
+    if(c.inv)iv.style.outline='2px solid var(--accent, #0a84ff)';iv.onclick=()=>{c.inv=!c.inv;asmRelRefresh();};
+    const ad=mk('button','mini','＋ Ajouter une relation');ad.title='Garder cette relation et en créer une autre sur la même pièce';ad.onclick=asmRelAdd;
+    const b=mk('div','pnl-btns');b.appendChild(iv);b.appendChild(ad);p.appendChild(b);
+  }
+  // relations de la pièce
+  const all=R.list.map((k,i)=>({k,i}));
+  if(all.length||asmRelCurDone()){
+    p.appendChild(mk('div','pnl-note','Relations de la pièce :'));
+    const tbl=mk('div',null);tbl.style.cssText='display:flex;flex-direction:column;gap:2px;margin:2px 0 6px';
+    const line=(k,i,cur)=>{const r=mk('div',null);r.style.cssText='display:flex;align-items:center;gap:6px;font-size:11px;padding:2px 4px;border-radius:4px;cursor:pointer;'+(cur?'background:rgba(10,132,255,.22)':'');
+      r.appendChild(mk('span',null,ASM_CONS[k.t].ic));const nm=mk('span',null,(k.name||('Relation '+(i+1)))+' · '+ASM_CONS[k.t].lab+' · '+asmRelGeomLab(k));nm.style.flex='1';r.appendChild(nm);
+      if(k.t!=='par')r.appendChild(mk('span',null,String(+(+k.v||0).toFixed(3)).replace('.',',')+(k.t==='angle'?'°':' mm')+(k.inv?' ⇅':'')));
+      if(!cur){r.onclick=()=>asmRelEdit(i);r.title='Clic = modifier cette relation';}
+      const x=mk('button','mini','×');x.title='Supprimer cette relation';x.onclick=ev=>{ev.stopPropagation();asmRelDel(cur&&R.edit<0?null:i);};r.appendChild(x);
+      tbl.appendChild(r);};
+    all.forEach(({k,i})=>line(R.edit===i&&asmRelCurDone()?c:k,i,R.edit===i));
+    if(asmRelCurDone()&&R.edit<0)line(c,R.list.length,true);
+    p.appendChild(tbl);
+  }
+  if(o){
+    if(o.st==='warn')p.appendChild(mk('div','pnl-note','⚠ '+o.msg));
+    else if(o.cons&&o._dof!=null)p.appendChild(mk('div','pnl-note',o._dof?('Degrés de liberté restants : '+o._dof+' — après OK, le manipulateur déplace la pièce le long de ce qui reste libre.'):'Pièce entièrement positionnée (aucun degré de liberté restant).'));
+  }
+  const pl=document.createElement('input');pl.type='checkbox';pl.checked=R.planes;pl.onchange=()=>{R.planes=pl.checked;asmRelMarks();};
+  Row('Plans des repères',pl).title='Montrer les plans XY, XZ, YZ de l’origine et des repères (cliquables comme des faces)';
+  const b=mk('div','pnl-btns');
+  const ok=mk('button','primary','OK');ok.onclick=asmRelCommit;b.appendChild(ok);
+  const no=mk('button',null,'Annuler');no.onclick=asmRelCancel;b.appendChild(no);p.appendChild(b);
+}
+function asmRelOccProps(p,o){
+  // Section « Relations » du panneau d'une occurrence (48-assemblage-placement)
+  const mk=(tag,cls,txt)=>{const d=document.createElement(tag);if(cls)d.className=cls;if(txt!=null)d.textContent=txt;return d;};
+  if(!Array.isArray(o.cons)||!o.cons.length)return;
+  p.appendChild(mk('div','pnl-note','🧲 '+o.cons.length+' relation(s) : '+o.cons.map(k=>ASM_CONS[k.t].lab).join(', ')+
+    (o._dof!=null?' · '+(o._dof?o._dof+' degré(s) de liberté restant(s) (manipulateur)':'entièrement positionnée'):'')));
+  const b=mk('div','pnl-btns');
+  const ed=mk('button',null,'🧲 Modifier les relations…');ed.onclick=()=>asmRelStart(o.id);b.appendChild(ed);
+  const rm=mk('button',null,'Supprimer les relations');rm.title='La pièce garde sa position actuelle et redevient libre';
+  rm.onclick=()=>{asmPush('supprimer les relations');delete o.cons;delete o._dof;asmNotify();};b.appendChild(rm);
+  p.appendChild(b);
+}
+
 /* ═══════════════ 48-assemblage-repetitions.js — assemblage repetitions ═══════════════ */
 /* ---------- répétitions de composants (V0.29.0) ----------
    Les répétitions de la pièce (40 : linéaire, deux directions, circulaire, symétrie, symétrie
@@ -21124,6 +21716,7 @@ function asmPatGen(owner){
         const fr=asmRound(asmCompose(cell.M,s.fr));
         if(['o','x','y','z'].some(q=>fr[q].some((v,j)=>Math.abs(v-o.fr[q][j])>1e-9))){o.fr=fr;ch=true;}
         if(o.align){o.align=null;ch=true;}
+        if(o.cons){delete o.cons;ch=true;} // relations : la position suit la source
         if(o.fixed)o.fixed=false;
         // apparence de la source (intensité, transparence, arêtes, rendu) : les instances la suivent
         const lk=s.look?JSON.stringify(s.look):'',rd=s.rendu?JSON.stringify(s.rendu):'';
@@ -81454,6 +82047,7 @@ function mfFiTable(){
   const SCR=(x,y)=>ficCyl(x,y,-3,3,5,'mfFcHo','o');
   F('Composants/Répétition','Répéter une occurrence','Multiplie une pièce de l’assemblage : en ligne, en grille, en cercle ou en miroir.',['Sélectionnez l’occurrence','Réglez le nombre et l’écart'],PLATE()+SCR(-14,-14),PLATE()+SCR(-14,-14)+SCR(14,-14)+SCR(-14,14)+SCR(14,14));
   F('Composants/Mesurer','Mesurer','Mesure entre deux pièces : distance, entraxe ou angle.',['Cliquez une face','Cliquez une face de l’autre pièce','Échap pour finir'],ficBox(-24,-8,-6,-9,8,6,'b')+ficPoly([[-9,-8,-6],[-9,8,-6],[-9,8,6],[-9,-8,6]],'#f6a623','#c2410c')+ficBox(10,-8,-6,24,8,6,'b'),ficBox(-24,-8,-6,-9,8,6,'b')+ficBox(10,-8,-6,24,8,6,'b')+ficAr(ficXY(0,8,14)[0],ficXY(0,8,14)[1],ficXY(-9,8,14)[0],ficXY(-9,8,14)[1],GR,.9)+ficAr(ficXY(0,8,14)[0],ficXY(0,8,14)[1],ficXY(10,8,14)[0],ficXY(10,8,14)[1],GR,.9)+ficT(52,12,'19,0 mm',8,GR));
+  F('Composants/Relations','Créer les relations','Pose une pièce sur une autre : face contre face, cylindre dans un trou, tangente, angle — aussi sur les plans des repères.',['Cliquez une face de la pièce à déplacer','Cliquez la face où la poser','Réglez le décalage, Inverser, puis OK'],PLATE()+ficBox(-8,-8,14,8,8,24,'o')+ficAr(50,20,50,34),PLATE()+ficBox(-8,-8,-3,8,8,7,'o'),null,'Deux faces','Posées l’une contre l’autre');
   F('Composants/Inspecter','Inspecter','Trouve les pièces qui se touchent ou se chevauchent, et donne les masses et le centre de gravité.',[],CB('b','b'),CB('b','b')+'<ellipse cx="58" cy="42" rx="10" ry="16" fill="#ef4444" fill-opacity=".65" stroke="'+RE+'"/>'+ficT(79,14,'⚠',11,RE),null,'L’assemblage','Chevauchement');
   F('Composants/Depuis corps','Composants depuis corps','Transforme les corps d’une même pièce en composants, sans rien redessiner.',['Sélectionnez un corps, ou aucun pour tous'],ficBox(-20,-6,-6,-4,10,6,'b')+ficBox(2,-14,-6,18,2,6,'b')+ficR(10,14,80,48,GY,.8,'none',4),TREE(2,true),null,'Corps d’une pièce','Composants');
   const SCREW=()=>ficCyl(0,0,-24,4,32,'mfFcHm','m')+ficCyl(0,0,8,9,8,'mfFcHm','m')+ficE3(0,0,16,4,'#374151','#374151');
@@ -81909,6 +82503,7 @@ const MF_ICF={
   asmView:fzBox(-5,-6,-1,1,0,4,'b')+fzBox(-1,0,-5,5,6,0,'o'),
   asmPart:fzBox(-6,-6,-3,3,3,3,'b')+FZ_PLUS,
   asmOcc:'<g opacity=".45">'+fzBox(-7,-1,-4,-2,4,1,'b')+'</g>'+fzBox(-2,-6,-1,3,-1,4,'b')+FZ_PLUS,
+  asmRel:fzBox(-6,-5,-5,4,5,-1,'b')+fzBox(-3,-3,-1,3,3,4,'o')+fzPoly([[-3,-3,-1],[3,-3,-1],[3,3,-1],[-3,3,-1]],'#3b82f6','#1e3a8a',' fill-opacity=".6"'),
   asmInspect:fzBox(-5,-5,-4,4,4,2,'b')+'<circle cx="10" cy="10" r="5.4" fill="#dbeafe" fill-opacity=".55" stroke="#1f2937" stroke-width="1.6"/><path d="M14 14l6 6" stroke="#1f2937" stroke-width="2.8" stroke-linecap="round"/>',
   asmFromBodies:fzBox(-7,-1,-3,-3,3,1,'b')+fzBox(1,-7,0,5,-3,4,'o')+fzArrow(9,18.5,19,18.5,'#16a34a',2),
   asmMag:'<path d="M5 3h5v10a2 2 0 0 0 4 0V3h5v10a7 7 0 0 1-14 0z" fill="#dc2626" stroke="#7f1d1d" stroke-width=".8"/><path d="M5 3h5v4H5zM14 3h5v4h-5z" fill="#e5e7eb" stroke="#4b5563" stroke-width=".7"/>',
@@ -82449,6 +83044,7 @@ const MF_IC={
   asmOcc:'<path d="M3 9l6-3 6 3v6l-6 3-6-3z"/><path d="M17 10v8M13 14h8"/>',
   asmStd:'<path d="M7 3h10v4l-2 2H9L7 7z"/><path d="M10.5 3v2.5M13.5 3v2.5"/><path d="M9.5 9v12h5V9"/><path d="M9.5 12l5 1.5M9.5 15l5 1.5M9.5 18l5 1.5"/>',
   asmMag:'<path d="M5 4h5v9a2 2 0 0 0 4 0V4h5v9a7 7 0 0 1-14 0z"/><path d="M5 8h5M14 8h5"/>',
+  asmRel:'<path d="M3 5h7v14H3zM14 5h7v14h-7z"/><path d="M12 3v18" stroke-dasharray="2 2"/>',
   asmInspect:'<circle cx="10" cy="10" r="6"/><path d="M14.5 14.5L21 21"/><path d="M7 10h6M10 7v6"/>',
   asmFromBodies:'<path d="M3 14l5-3 5 3v5l-5 3-5-3z"/><path d="M14 6l4-2 4 2v4l-4 2-4-2z"/><path d="M12 12l3-3M15 9h-2.5M15 9v2.5"/>',
   pPdf:'<path d="M6 3h9l3 3v15H6z"/><text x="12" y="17.6" font-size="6.2" font-family="sans-serif" font-weight="700" text-anchor="middle" fill="currentColor" stroke="none">PDF</text>'
@@ -82499,6 +83095,8 @@ function mfRibbon(){
   grp('Composants',[['asmView','<span class="mfLabM">Assembler</span><span class="mfLabA">Modéliser</span>',()=>asmToggle(),'Modéliser le composant actif ↔ placer ses composants'],
     ['asmPart','Composant',()=>asmCmdNewComp(),'Nouveau composant dans le composant actif (on entre aussitôt dedans)',asmO],
     ['asmOcc','Occurrence',()=>{if(asmMode!=='asm')asmEnter();asmCmdNewOcc();},'Nouvelle occurrence du composant sélectionné',asmO],
+    // V0.99.34 : relations entre faces (48-assemblage-relations)
+    ['asmRel','Relations',()=>asmRelStart(asmSelId),'Créer les relations : face contre face, cylindre dans cylindre, tangente, angle, parallèle — aussi sur les plans des repères',asmO],
     // V0.29.0 : répétitions de composants (48-assemblage-repetitions)
     ['pattern','Répétition',()=>asmRibbonPattern(),'Répéter l’occurrence sélectionnée (ou le lot) : linéaire, 2 directions, circulaire, symétrie',asmO],
     ['asmInspect','Inspecter',()=>asmCmdInspect(),'Interférences entre corps / composants, masses (matière par composant) et centre de gravité',asmO],

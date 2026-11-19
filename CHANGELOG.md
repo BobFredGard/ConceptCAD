@@ -8,7 +8,7 @@ sont sorties le 2026-09-30j.
 Code dans `src/` · livrable `fusion_mvp.html` (généré par `build.js`) · architecture et
 garde-fous en tête de `src/00-entete-et-outils.js`.
 
-**720 versions**, de `2026-09-28b` à `V0.99.33` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
+**721 versions**, de `2026-09-28b` à `V0.99.34` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
 comme dans le fichier d'origine.
 
 ---
@@ -8036,3 +8036,13 @@ Cavité Usinage, après l'ébauche D25, la reprise D10 et une finition boule D12
 **Ajout** (`src/90-30-import.js`) : après le choix du fichier (STEP, IGES ou STL), la question « Importer « … » : Nouveau corps dans la pièce / Pièce à assembler (nouveau composant) / Annuler » (`importAskWhere`, `mffAsk`). « Nouveau corps » est proposé d'abord, « Pièce à assembler » d'abord en mode Placer. **Pièce à assembler** (`importAsComponent`) : composant neuf, enfant du composant actif, qui porte la fonction import (même chemin que d'habitude, dans le document du composant), posé à droite de l'existant, puis retour en mode Placer avec l'occurrence sélectionnée ; un Ctrl+Z l'annule ; fichier illisible → aucun composant vide ne reste. Correctif : un faux `.igs` dit « Import IGES impossible » (et non STEP).
 
 **Test** : `test_import_iges` — pièce à assembler : composant avec son import IGES, occurrence sélectionnée en mode Placer, pièce d'origine intacte, retour après enregistrement et réouverture, refus propre ; choix proposé par défaut selon le mode. Vérifié dans l'application : IGES en corps, puis en pièce à assembler posée à x = 80, Ctrl+Z la retire. CACHE_VER et FORMES_VER inchangés.
+
+## V0.99.34 - Assemblage : relations entre faces (comme Fusion) ; position de départ
+
+**Demande de Fred** (5 captures de Fusion) : « Positionnement à l'insertion ; positionnement après insertion ; un outil simple pour positionner des faces l'une contre l'autre, des cylindres sur des cylindres, des cylindres tangents à d'autres faces » — « et quand je dis faces, il faut aussi ajouter les plans système des repères ».
+
+**Ajout** (`src/48-assemblage-relations.js`) : commande **🧲 Relations** (ruban Composants en mode Assembler, panneau de l'assemblage, panneau d'une pièce). Clic sur une face de la pièce à déplacer puis sur la face cible : types **Coïncidente** (plan / plan en vis-à-vis, Inverser = affleurant, décalage ; cylindre / cylindre concentriques ; axe dans un plan), **Angle**, **Parallèle**, **Tangente** (cylindre / plan des deux côtés, cylindre / cylindre extérieur ou intérieur). Plans XY, XZ, YZ de l'origine et des repères de construction cliquables (triades à plans). ＋ cumule les relations, × en retire une, clic sur une ligne pour la modifier ; OK (Entrée) / Annuler (Échap). Modèle : `o.cons` (face = signature, retrouvée après rejeu comme les points d'accroche ; plan = repère + nom), résolu dans `asmResolveIn` (46) dans l'ordre des dépendances, par moindres carrés (Levenberg-Marquardt, retournement préalable des orientations opposées) depuis la position actuelle : la pièce bouge le moins possible ; degrés de liberté restants (rang des écarts) affichés, pilotés au manipulateur ; incompatibles ou face disparue : ⚠, position gardée. Fichier, Ctrl+Z, insertion et composants liés (chemins renommés), suppression de la cible, répétitions (instances sans relation) suivis ; badge 🧲 dans l'arbre.
+
+**Ajout** (`src/48-assemblage-placement.js`) : panneau d'une pièce libre — Distance X / Y / Z et Angle X / Y / Z depuis sa position de départ (choisie ou insérée), mis à jour par le manipulateur, « ↺ Position de départ ».
+
+**Test** : `test_composants_relations` (modèle seul) — vis-à-vis, décalage, affleurant, concentrique (1 degré de liberté), la pièce suit sa cible, incompatibles ⚠, tangentes cylindre / plan et cylindre / cylindre, angle 45° depuis des faces parallèles, parallèle, plans de repères, fichier, cible supprimée, champs Distance / Angle. Vérifié dans l'application sur « Test Assemblage » (noyau réel) : goupille dans le trou de la base et posée au fond (1 degré de liberté), Ctrl+Z / Ctrl+Y, 9 plans de repères, Annuler. CACHE_VER et FORMES_VER inchangés.
