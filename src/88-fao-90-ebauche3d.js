@@ -1225,7 +1225,15 @@ function faoSpiralLevel(mesh,B,z,D,r,secu,zFrom,ae,entryMode,brutTop,zt,moves,op
     let rev=avalant?false:((side>0)?(pyRef>=cy):(pyRef<cy));
     const Rsp=pitch*nSp; // rayon atteint par la spirale (thMax)
     let nEm=0,ag=0;
-    for(let R=Rsp;R<=Rmax+1e-9;R+=pitch){
+    // V0.99.43 (retour « il y en a un peu plus haut, au tout début, dans les 4 coins ») :
+    // un demi-anneau coupé par les parois donne un morceau par COIN ; émis rayon par
+    // rayon, la fraise allait d'un coin à l'autre à chaque rayon (remontée, traversée,
+    // entrée par un trait en biais qui recoupait les arcs faits). Les morceaux sont
+    // d'abord relevés, puis émis COIN PAR COIN : un morceau n'est pris que quand les
+    // morceaux du rayon d'avant qu'il recouvre sont faits (engagement ≤ pas), et la
+    // suite du morceau qu'on vient de finir passe d'abord.
+    const runs=[];
+    for(let R=Rsp,k=0;R<=Rmax+1e-9;R+=pitch,k++){
       const dth=Math.min(s/Math.max(R,0.5),Math.PI/6);
       const samp=[];
       for(let th=thA;th<=thB+1e-12;th+=dth){
@@ -1233,15 +1241,37 @@ function faoSpiralLevel(mesh,B,z,D,r,secu,zFrom,ae,entryMode,brutTop,zt,moves,op
         samp.push([th,x,y,inside(x,y)]);
       }
       if(rev)samp.reverse();
-      let had=false;
-      for(let i=0;i<samp.length&&ag++<500000;i++){
+      let had=false,cur=null;
+      for(let i=0;i<=samp.length;i++){
         const sm=samp[i];
-        if(!sm[3]){prevIn=false;continue;}
-        had=true;
+        if(sm&&sm[3]){had=true;if(!cur)cur=[];cur.push(sm);continue;}
+        if(cur){let a=1/0,b=-1/0;cur.forEach(function(q){if(q[0]<a)a=q[0];if(q[0]>b)b=q[0];});
+          runs.push({k:k,R:R,rev:rev,dth:dth,pts:cur,a:a,b:b,done:false});cur=null;}
+      }
+      if(had&&!avalant)rev=!rev; // sérpentin (bidir) : rayon suivant inversé
+    }
+    // arc de centre (ax,ay), rayon ar, de l'angle a0 sur da : centre outil toujours légal
+    const arcIn=function(ax,ay,ar,a0,da){const n=Math.max(4,Math.ceil(Math.abs(da)*ar/0.5));
+      for(let k=0;k<=n;k++){const a=a0+da*k/n;if(!inside(ax+ar*Math.cos(a),ay+ar*Math.sin(a)))return false;}return true;};
+    const over=function(p,q){const m=Math.max(p.dth,q.dth)*1.5;return p.a<=q.b+m&&q.a<=p.b+m;};
+    const ready=function(q){for(let i=0;i<runs.length;i++){const p=runs[i];if(p.k===q.k-1&&!p.done&&over(p,q))return false;}return true;};
+    let last=null;
+    for(let guardR=0;guardR<runs.length;guardR++){
+      let best=null,bs=1/0;
+      for(let i=0;i<runs.length;i++){const q=runs[i];if(q.done||!ready(q))continue;
+        const f=q.pts[0];let sc=Math.hypot(f[1]-px,f[2]-py)+q.k*1e-6;
+        if(last&&q.k===last.k+1&&over(last,q))sc-=1e9; // suite du morceau qui vient d'être fait
+        if(sc<bs){bs=sc;best=q;}}
+      if(!best)break;
+      best.done=true;last=best;
+      const sg=best.rev?-1:1,R=best.R;
+      for(let i=0;i<best.pts.length&&ag++<500000;i++){
+        const sm=best.pts[i];
         const th=sm[0],x=sm[1],y=sm[2];
-        const sg=rev?-1:1;
         let ex=-Math.sin(th)*sg, ey=Math.cos(th)*sg;
         if(Math.hypot(ex,ey)<1e-9){ex=x-px;ey=y-py;}
+        // début de morceau : enchaîné à la cote seulement vers la passe voisine (≤ 1,5·ae)
+        if(i===0&&prevIn&&!linkNear(px,py,x,y))prevIn=false;
         if(rampL>0&&!(prevIn&&segClear(px,py,x,y)))finishRamp(); // 2026-10-21-004 : jamais de pont
         if(rampL>0){
           rampK++;
@@ -1249,7 +1279,33 @@ function faoSpiralLevel(mesh,B,z,D,r,secu,zFrom,ae,entryMode,brutTop,zt,moves,op
           moves.push({r:0,ent:1,x:rnd(x),y:rnd(y),z:zr});
           rampL--;if(!rampL&&zr>z+1e-9)rampL=1; // V0.23.24 : jusqu’à la cote
         }else if(!atCut||!prevIn||!segClear(px,py,x,y)){
-          if(!entryTo(x,y,ex,ey)){
+          // V0.99.43 : entrée DROITE depuis l'arc d'avant (déjà vidé), le long du rayon —
+          // au lieu d'un point de vide pris au hasard autour (trait en biais à travers
+          // les arcs faits)
+          let rIn=null;
+          if(i===0&&!(faoEntryCur&&faoEntryCur.mode==='helix')){
+            // juste en deçà de l'arc d'avant (0,3 mm : sur l'arc même, l'arrondi des
+            // coordonnées fait refuser la plongée) — un trait court, d'un pas
+            const tL=[pitch+0.3,2*pitch,3*pitch];
+            for(let ti=0;ti<tL.length&&!rIn;ti++){const t=tL[ti];if(t>R+1e-9)break;
+              const qx=cx+(R-t)*Math.cos(th),qy=cy+(R-t)*Math.sin(th);
+              if(inside(qx,qy)&&plungeOK(qx,qy)&&segClear(qx,qy,x,y))rIn=[qx,qy];
+            }
+          }
+          if(rIn){const zG=gotoXY(rIn[0],rIn[1]);dropAir(rIn[0],rIn[1],zG);
+            if(Math.abs(zG-z)>1e-9)moves.push({r:0,ent:1,x:rnd(rIn[0]),y:rnd(rIn[1]),z:z});
+            // V0.99.43 (Fred : « toujours finir en cercle, cercles aussi pour rentrer ») :
+            // demi-cercle du point plongé jusqu'au départ, arrivée tangente à l'arc
+            // (plus petit le long du rayon si le grand touche la paroi)
+            const dIn=Math.hypot(x-rIn[0],y-rIn[1]),ux=(x-rIn[0])/dIn,uy=(y-rIn[1])/dIn;
+            let okC=false;
+            for(let f=1;f>=0.24&&!okC;f/=2){const hr=dIn*f/2;if(hr<0.75)break;
+              const ax=x-2*hr*ux,ay=y-2*hr*uy,hcx=x-hr*ux,hcy=y-hr*uy;
+              if(!arcIn(hcx,hcy,hr,Math.atan2(-uy,-ux),Math.PI*sg))continue;
+              pushCut(ax,ay);const P0=moves[moves.length-1];
+              moves.push({r:0,ent:1,x:rnd(x),y:rnd(y),z:z,arc:{i:rnd(hcx-P0.x),j:rnd(hcy-P0.y),cw:sg<0}});okC=true;}
+            pushCut(x,y);}
+          else if(!entryTo(x,y,ex,ey)){
             rampTot=Math.max(2,Math.ceil((rampZ0-z)/2));
             rampK=1; rampL=rampTot-1;
             const zr=rampZr(x,y);
@@ -1260,7 +1316,19 @@ function faoSpiralLevel(mesh,B,z,D,r,secu,zFrom,ae,entryMode,brutTop,zt,moves,op
         atCut=true; prevIn=true; px=x; py=y;
         nEm++;
       }
-      if(had&&!avalant)rev=!rev; // sérpentin (bidir) : rayon suivant inversé
+      // V0.99.43 : sortie en quart de cercle vers le centre (côté déjà vidé), sauf si
+      // le morceau suivant s'enchaîne à la cote
+      if(atCut&&rampL<=0&&best.pts.length){
+        const E=best.pts[best.pts.length-1],nx=Math.cos(E[0]),ny=Math.sin(E[0]);
+        const ex=-ny*sg,ey=nx*sg,rhoL=[pitch/2,pitch/3,1.5];
+        for(let ri=0;ri<rhoL.length;ri++){const rho=rhoL[ri];
+          const qcx=E[1]-rho*nx,qcy=E[2]-rho*ny;
+          if(!arcIn(qcx,qcy,rho,Math.atan2(ny,nx),Math.PI/2*sg))continue;
+          const fx=qcx+rho*ex,fy=qcy+rho*ey;
+          moves.push({r:0,x:rnd(fx),y:rnd(fy),z:z,arc:{i:rnd(qcx-rnd(E[1])),j:rnd(qcy-rnd(E[2])),cw:sg<0}});
+          px=fx;py=fy;break;}
+      }
+      prevIn=true; // fin de morceau : le suivant décide (passe voisine ou entrée)
     }
     return nEm;
   };
@@ -2357,7 +2425,7 @@ function faoSpiralLevel(mesh,B,z,D,r,secu,zFrom,ae,entryMode,brutTop,zt,moves,op
         for(let i=0;i<=n;i++){const t=i/n;if(!opt.bullOK(ax+(bx-ax)*t,ay+(by-ay)*t,z))return false;}return true;}
     :segClear;
   const fTouch=(opt&&typeof opt.frameTouch==='function')?opt.frameTouch:null; // V0.23.14 : cadre dans l'air retiré
-  const rem=wallRuns.concat(faoRectRuns(S,0,r).filter(function(c){return !fTouch||c.pts.some(function(p){return fTouch(p[0],p[1]);});})).filter(function(c){
+  const rem=wallRuns.concat(faoRectRuns(S,0,r).filter(function(c){return !fTouch||c.pts.some(function(p){return fTouch(p[0],p[1]);});}).map(function(c){c.fr=1;return c;})).filter(function(c){
     return c.pts&&c.pts.length>=2&&Math.max(c.bb[2]-c.bb[0],c.bb[3]-c.bb[1])>=0.1;
   });
   // 2026-10-10-004 : les chaines de FACES (parois du solide) sont egalement
@@ -2394,13 +2462,13 @@ function faoSpiralLevel(mesh,B,z,D,r,secu,zFrom,ae,entryMode,brutTop,zt,moves,op
           run.push(P[pi]);
         }else{
           split=true;
-          if(run&&run.length>=2)zs.push({pts:run,closed:false,bb:faoPtsBB(run)});
+          if(run&&run.length>=2)zs.push({pts:run,closed:false,bb:faoPtsBB(run),fr:chZ.fr});
           run=null;
         }
       }
       if(!split){zs.push(chZ);continue;} // tout dedans : chaine d'origine (closed conserve)
       // (chaîne fermée densifiée coupée : le morceau de fin rejoint le début)
-      if(run&&run.length>=2)zs.push({pts:run,closed:false,bb:faoPtsBB(run)});
+      if(run&&run.length>=2)zs.push({pts:run,closed:false,bb:faoPtsBB(run),fr:chZ.fr});
     }
     rem.length=0;
     for(let ci=0;ci<zs.length;ci++)rem.push(zs[ci]);
@@ -2463,8 +2531,12 @@ function faoSpiralLevel(mesh,B,z,D,r,secu,zFrom,ae,entryMode,brutTop,zt,moves,op
     const sx0=rem[0].pts[0][0],sy0=rem[0].pts[0][1];
     const px=P?P.x:sx0, py=P?P.y:sy0;
     let bi2=-1,bd2=1/0;
+    // V0.99.43 : le cadre du brut d'abord, les parois du solide en DERNIER (retour 2) —
+    // l'ordre ne dépend plus de l'endroit où finissent les arcs
+    let frL=false;for(let i=0;i<rem.length;i++)if(rem[i].fr&&!(pick&&!pick(rem[i]))){frL=true;break;}
     for(let i=0;i<rem.length;i++){
       if(pick&&!pick(rem[i]))continue;
+      if(frL&&!rem[i].fr)continue;
       const dd=cpd(rem[i],px,py);
       if(dd<bd2){bd2=dd;bi2=i;}
     }
