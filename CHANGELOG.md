@@ -8,7 +8,7 @@ sont sorties le 2026-09-30j.
 Code dans `src/` · livrable `fusion_mvp.html` (généré par `build.js`) · architecture et
 garde-fous en tête de `src/00-entete-et-outils.js`.
 
-**724 versions**, de `2026-09-28b` à `V0.99.37` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
+**725 versions**, de `2026-09-28b` à `V0.99.38` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
 comme dans le fichier d'origine.
 
 ---
@@ -8077,3 +8077,9 @@ Cavité Usinage, après l'ébauche D25, la reprise D10 et une finition boule D12
 - **Cause** : sur un IGES de SolidWorks (pièce de Fred), impossible de supprimer un cylindre, une face plane ou un congé, alors que le même travail marche sur un STEP. Le fichier ne contient aucun plan ni cylindre : cylindres et congés y sont des surfaces de révolution (entité 120), faces planes des B-splines (128). La suppression de face (Defeaturing) ne sait pas prolonger ces surfaces : refus, ou voisines qui « partent hors de la pièce ».
 - **Correctif** : `importIgesAnalytic` remet les surfaces en vraies surfaces avant la couture : révolutions → cylindres, cônes, sphères, tores (`ShapeCustom.SweptToElementary`) ; B-splines planes (`ShapeAnalysis_CanonicalRecognition.IsPlane`, 0,001 mm) → faces planes refaites sur leurs contours. Garde-fou `importMemeSolides` : la version convertie n'est gardée que si elle a autant de solides, valides, de même volume (1e-4) ; sinon import d'avant. Pièce de Fred : 40 cylindres + 13 plans (au lieu de 40 révolutions + 13 B-splines), cylindres et congés supprimables.
 - **Test** : `test_import_iges` — bloc percé Ø10 écrit avec ses plans en B-splines : revient en plans et cylindres seulement, le trou se supprime (bloc plein 48 000 mm³). CACHE_VER et FORMES_VER inchangés.
+
+## V0.99.38 - Assemblage : historique des étapes avec marqueur
+
+**Ajout** (`src/48-assemblage-historique.js`) : en mode Assembler, une barre d'historique remplace celle de la pièce en bas de la vue : une étape par insertion de composant 📦, liaison ou alignement 🔗, relation 🧲, répétition ▦ et déplacement à la main ✥ (gestes à la suite sur la même pièce fusionnés), dans l'ordre de création. Marqueur ⏱ à glisser ou ⏮ ◀ ▶ ⏭ comme pour les pièces : les étapes suivantes ne comptent pas (pièce pas encore insérée masquée, liaison et relations retirées, position d'avant). Clic = sélectionner la pièce, double-clic sur une relation = la modifier. L'état réel reste celui enregistré et toute modification remet d'abord le marqueur en fin. Historique gardé dans le fichier (`hist` par composant) et par Ctrl+Z ; ancien fichier : reconstruit dans l'ordre des pièces.
+
+**Test** : `test_assemblage_historique` (13 contrôles : étapes, fusion des déplacements, marqueur, fichier, Ctrl+Z, ancien fichier, pièce supprimée). Vérifié dans l'application sur Test Assemblage : 3 étapes, marqueur en arrière retire le pivot glissant puis masque la goupille, retour en fin. CACHE_VER et FORMES_VER inchangés.

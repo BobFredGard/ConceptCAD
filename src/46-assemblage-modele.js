@@ -447,9 +447,11 @@ function asmDocSnapOf(d){
 function asmSnap(docIds){
   // Occurrences copiées ; composants par RÉFÉRENCE ; documents nommés copiés
   if(!asm)return null;
-  const occ={},pats={};asm.comps.forEach(c=>{occ[c.id]=JSON.parse(JSON.stringify(c.occ));if(c.pats)pats[c.id]=JSON.parse(JSON.stringify(c.pats));});
+  try{if(typeof asmHistExit==='function')asmHistExit();}catch(e){} // marqueur de l'historique : l'état réel d'abord (48-assemblage-historique)
+  const occ={},pats={},hist={};asm.comps.forEach(c=>{occ[c.id]=JSON.parse(JSON.stringify(c.occ));if(c.pats)pats[c.id]=JSON.parse(JSON.stringify(c.pats));
+    if(Array.isArray(c.hist))hist[c.id]=JSON.parse(JSON.stringify(c.hist));});
   const docs={};(docIds||[]).forEach(id=>{const c=asmComp(id);if(c&&c.doc)docs[id]=asmDocSnapOf(c.doc);});
-  return {occ,pats,comps:asm.comps.slice(),active:asm.active,path:asm.path.slice(),docs};
+  return {occ,pats,hist,comps:asm.comps.slice(),active:asm.active,path:asm.path.slice(),docs};
 }
 function asmPush(label,docIds){
   const s=asmSnap(docIds);if(!s)return;
@@ -467,7 +469,8 @@ function asmUndoFirst(redo){
 }
 function asmRestore(s){
   asm.comps=s.comps;asm.comps.forEach(c=>{if(s.occ[c.id])c.occ=s.occ[c.id];
-    if(s.pats&&s.pats[c.id])c.pats=JSON.parse(JSON.stringify(s.pats[c.id]));else delete c.pats;}); // répétitions (48)
+    if(s.pats&&s.pats[c.id])c.pats=JSON.parse(JSON.stringify(s.pats[c.id]));else delete c.pats; // répétitions (48)
+    if(s.hist&&s.hist[c.id])c.hist=JSON.parse(JSON.stringify(s.hist[c.id]));else if(s.hist)delete c.hist;}); // historique (48-assemblage-historique)
   const touched=[];
   Object.keys(s.docs||{}).forEach(id=>{
     const c=asmComp(id);if(!c)return;
@@ -485,6 +488,7 @@ function asmRestore(s){
   asmResolve();
   // sans cela, Ctrl+Z sur une pièce modifiée rendait son document mais laissait l'ancienne forme à l'écran
   if(touched.some(c=>c._stale)&&typeof asmBuildSnapshots==='function'){try{asmBuildSnapshots();}catch(e){}}
+  try{if(typeof asmHistReset==='function')asmHistReset();}catch(e){} // l'état rendu n'est pas un geste nouveau
   asmNotify();
 }
 function asmUndo(){
@@ -502,16 +506,19 @@ function asmRedo(){
 function asmNotify(viewOnly){
   // Prévient l'interface d'assemblage (47) — sans en dépendre : le modèle se teste seul.
   // viewOnly : rien n'a changé dans le document (bascule de composant), juste l'affichage.
+  if(!viewOnly){try{if(typeof asmHistSyncAll==='function')asmHistSyncAll();}catch(e){}} // historique (48-assemblage-historique)
   const f=globalThis.asmOnChange;if(typeof f==='function'){try{f(!!viewOnly);}catch(e){}}
 }
 /* ── sauvegarde : bloc asm (v2) dans le fichier (doc = composant actif, compatibilité) ── */
-function asmOccSerial(o){const s={id:o.id,comp:o.comp,name:o.name,fr:o.fr,fixed:!!o.fixed,visible:o.visible!==false,align:o.align||null};if(o.look)s.look=o.look;if(o.rendu)s.rendu=o.rendu;if(o.mag)s.mag=true;if(o.pat)s.pat={id:o.pat.id,k:o.pat.k};if(Array.isArray(o.cons)&&o.cons.length)s.cons=asmConsNorm(o.cons);return s;}
+function asmOccSerial(o){const R=o._histReal||o; // marqueur de l'historique : l'état réel est enregistré
+  const s={id:o.id,comp:o.comp,name:o.name,fr:R.fr,fixed:!!o.fixed,visible:R.visible!==false,align:R.align||null};if(o.look)s.look=o.look;if(o.rendu)s.rendu=o.rendu;if(o.mag)s.mag=true;if(o.pat)s.pat={id:o.pat.id,k:o.pat.k};if(Array.isArray(R.cons)&&R.cons.length)s.cons=asmConsNorm(R.cons);return s;}
 function asmSerial(){
   if(!asmHasContent())return null;
   asmSync();
   try{asmNamesSync();}catch(e){} // noms des composants = noms de leurs documents (47)
   const comps=asm.comps.map(c=>({id:c.id,kind:'comp',name:c.name,doc:c.doc===doc?null:serialiseObj(c.doc,false),
-    occ:c.occ.map(asmOccSerial),link:asmLinkSerial(c.link,c),of:c.of||undefined,pats:asmPatSerial(c)}));
+    occ:c.occ.map(asmOccSerial),link:asmLinkSerial(c.link,c),of:c.of||undefined,pats:asmPatSerial(c),
+    hist:typeof asmHistSerial==='function'?asmHistSerial(c):undefined}));
   return {v:2,name:asm.name,root:asm.root,active:asm.active,path:asm.path.slice(),mode:asmMode,comps,
     img:asm.img===false?false:undefined}; // images des pièces embarquées dans le fichier (47-assemblage-cache) — V0.99.16 : d'office, false si décochée
 }
@@ -539,7 +546,8 @@ function asmTreeFromSerial(a,topDoc,mkDoc){
   if(Array.isArray(a.comps)&&a.comps.length){
     comps=a.comps.filter(c=>c&&typeof c.id==='string').map(c=>({id:c.id,kind:'comp',name:String(c.name||c.id),
       doc:c.doc==null?topDoc:mkDoc(c.doc),occ:(Array.isArray(c.occ)?c.occ:[]).filter(o=>o&&typeof o.id==='string').map(o=>occOf(o,'comp')),
-      link:(c.link&&typeof c.link==='object')?c.link:null,of:typeof c.of==='string'?c.of:undefined,pats:asmPatNorm(c.pats)}));
+      link:(c.link&&typeof c.link==='object')?c.link:null,of:typeof c.of==='string'?c.of:undefined,pats:asmPatNorm(c.pats),
+      hist:typeof asmHistNorm==='function'?asmHistNorm(c.hist):undefined}));
     root=comps.some(c=>c.id===a.root)?a.root:comps[0].id;
   }else if(Array.isArray(a.parts)&&a.parts.length&&Array.isArray(a.occ)){
     // V0.6.0 (v1) : un seul niveau, sans géométrie d'assemblage → racine vide portant les occurrences
@@ -576,6 +584,7 @@ function asmFromSerial(a){
   // chargement (asmAfterLoad, 47), on ouvre donc toujours en mode Modéliser
   asm._wantAsm=t.wantAsm;
   asmResolve();
+  try{if(typeof asmHistView!=='undefined')asmHistView=null;if(typeof asmHistReset==='function')asmHistReset();}catch(e){} // historique (48-assemblage-historique)
   return true;
 }
 function asmAllDocs(){
