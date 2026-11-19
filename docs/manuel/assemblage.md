@@ -5,6 +5,7 @@
 Comme dans Fusion 360, **tout est composant** : le fichier est le composant racine, ses enfants sont des pièces complètes, à n'importe quelle profondeur.
 - **Arbre unifié** : pièce et composants dans une seule arborescence, avec recherche et glisser-déposer ; sélection multiple dans l'arbre (`Ctrl+clic`, `Shift+clic` = plage) aussi en mode Assembler.
 - **Modéliser** le composant actif (le reste de l'assemblage affiché autour) ou **Assembler** ses enfants (manipulateur, pas de 1 mm et 5°). Dans les deux modes, la vue tourne autour du composant visé.
+- **Projeter les arêtes des autres pièces** : en modélisant une pièce (double-clic), une esquisse et l'outil **⧉ Projeter** (touche P) attrapent aussi les arêtes des autres pièces visibles de l'assemblage, pièces issues d'un STEP comprises. L'arête projetée suit la pièce visée quand elle bouge ou change. Ne sont pas proposées : les pièces masquées et les autres occurrences de la pièce en cours.
 - **FAO** permise seulement quand une **pièce** est active (pas en mode Assembler).
 - **Composant**, **Occurrence**, **Insérer** un autre fichier, **Depuis corps** pour convertir une pièce multicorps sans rien remodéliser.
 - **Normalisés** : vraies fonctions (révolution, six pans creux), avec aperçu coté.

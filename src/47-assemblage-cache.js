@@ -49,7 +49,9 @@ function asmCacheKey(d){
   try{
     // imports : hors de docHashSrc (sauf dérivés) → fonctions entières, avec l'empreinte de leur source
     const im=asmCacheImports(d).map(({_mesh,_m,...r})=>r);
-    s=docHashSrc(d,true)+'|'+JSON.stringify({b:d.bodies||[],v:d.bodyVis||{},t:d.tint||0,r:d.rendu||null})+(im.length?'|'+JSON.stringify(im):'')+'|'+CACHE_VER+'|'+ASM_CACHE_V;}
+    // '|i2' (V0.99.45) : images d'un composant à import reprises une fois — avant, un STEP resté
+    // tel quel n'y laissait ni arêtes ni faces exactes (pedges / pfaces) pour les autres pièces
+    s=docHashSrc(d,true)+'|'+JSON.stringify({b:d.bodies||[],v:d.bodyVis||{},t:d.tint||0,r:d.rendu||null})+(im.length?'|'+JSON.stringify(im)+'|i2':'')+'|'+CACHE_VER+'|'+ASM_CACHE_V;}
   catch(e){return null;}
   let a=2166136261,b=5381;
   for(let i=0;i<s.length;i++){const c=s.charCodeAt(i);a^=c;a=Math.imul(a,16777619);b=(Math.imul(b,33)^c)|0;}
