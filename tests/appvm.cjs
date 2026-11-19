@@ -152,6 +152,7 @@ function loadApp(){
     history:{pushState(){},replaceState(){},back(){},forward(){}},
     screen:{width:1280,height:900},
     devicePixelRatio:1,
+    btoa:global.btoa,atob:global.atob, // base64 du navigateur (parcours en colonnes du fichier, sources des imports)
     crypto:global.crypto||{getRandomValues:(a)=>{for(let i=0;i<a.length;i++)a[i]=Math.floor(Math.random()*256);return a;}}
   };
   sandbox.window=sandbox;sandbox.self=sandbox;sandbox.globalThis=sandbox;

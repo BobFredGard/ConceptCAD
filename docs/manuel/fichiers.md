@@ -23,6 +23,7 @@
   - L'**aperçu 3D** montre exactement les triangles qui seront écrits : on tourne et on zoome sur un trou ou un congé avant d'exporter.
   - Le maillage est calculé sur la forme exacte, indépendamment de la finesse d'affichage ; le dernier choix est retenu.
 - **STEP multi-corps** : arborescence des sous-ensembles et pièces avec leurs noms, pièces **masquables** (👁), **une couleur par pièce ou par occurrence** ; les gros fichiers (44 Mo, 73 000 faces) s'ouvrent et se manipulent sans à-coups.
+- **Parcours FAO dans le fichier** : les parcours calculés sont rangés dans le `.conceptcad`, la pièce se rouvre sans recalcul. Depuis la V0.99.43 ils sont écrits en colonnes exactes, sans rien arrondir : fichier plus léger (une pièce de 15,8 Mo passe à 13,3 Mo), mêmes points au bit près, même code machine. Une version plus ancienne de ConceptCAD ne lit pas ces parcours et les recalcule.
 - **Enregistrement sûr** : contenu vérifié avant écriture et relu après (jamais vide), version précédente gardée (`nom.conceptcad.bak` et copie dans le navigateur), menu **Copie de secours**.
 
 ---
