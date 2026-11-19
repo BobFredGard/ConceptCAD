@@ -251,14 +251,23 @@ function asmResolveIn(owner){
   // avant les alignements (une occurrence peut viser une instance) puis après (une source alignée a bougé)
   const pg=()=>{try{if(typeof asmPatGen==='function'&&asmPatGen(owner))ch=true;}catch(e){}};
   pg();
-  const todo=owner.occ.filter(o=>o.align);
-  owner.occ.forEach(o=>{if(!o.align){o.st='ok';o.msg='';}});
-  const done=new Set(owner.occ.filter(o=>!o.align).map(o=>o.id));
+  // V0.99.34 : relations entre faces (48-assemblage-relations) — résolues dans le même ordre
+  const placed=o=>o.align||(typeof asmConsOn==='function'&&asmConsOn(o));
+  const todo=owner.occ.filter(placed);
+  owner.occ.forEach(o=>{if(!placed(o)){o.st='ok';o.msg='';}});
+  const done=new Set(owner.occ.filter(o=>!placed(o)).map(o=>o.id));
   let progress=true;
   while(todo.length&&progress){
     progress=false;
     for(let i=0;i<todo.length;i++){
-      const o=todo[i],a=o.align,dep=a.dst&&a.dst.path&&a.dst.path[0];
+      const o=todo[i],a=o.align;
+      if(!a){ // relations : toutes les cibles d'abord
+        if(asmConsDeps(o).some(d=>d!==o.id&&!done.has(d)&&owner.occ.some(q=>q.id===d)))continue;
+        todo.splice(i,1);i--;progress=true;done.add(o.id);
+        if(asmConsApply(o,owner))ch=true;
+        continue;
+      }
+      const dep=a.dst&&a.dst.path&&a.dst.path[0];
       if(dep&&dep!==o.id&&!done.has(dep)&&owner.occ.some(q=>q.id===dep))continue; // cible pas encore placée
       todo.splice(i,1);i--;progress=true;done.add(o.id);
       if(dep===o.id){o.st='warn';o.msg='la cible est dans l’occurrence elle-même';continue;}
@@ -271,7 +280,7 @@ function asmResolveIn(owner){
       o.st='ok';o.msg='';
     }
   }
-  todo.forEach(o=>{o.st='warn';o.msg='alignement circulaire : position mémorisée';});
+  todo.forEach(o=>{o.st='warn';o.msg=(o.align?'alignement circulaire':'relations circulaires')+' : position mémorisée';});
   pg();
   return ch;
 }
@@ -336,6 +345,7 @@ function asmDeleteOcc(id,noPush){
   // les alignements qui passaient par elle tombent (les occurrences gardent leur position)
   asm.comps.forEach(c=>c.occ.forEach(q=>{const a=q.align;
     if(a&&((a.dst&&a.dst.path.includes(id))||(a.src&&a.src.path.includes(id))))q.align=null;}));
+  try{if(typeof asmConsOnDelete==='function')asmConsOnDelete(id);}catch(e){} // relations (48-assemblage-relations)
   asmPurge();
   // l'instance éditée passait par elle : on remonte au porteur
   const k=asm.path.indexOf(id);
@@ -495,7 +505,7 @@ function asmNotify(viewOnly){
   const f=globalThis.asmOnChange;if(typeof f==='function'){try{f(!!viewOnly);}catch(e){}}
 }
 /* ── sauvegarde : bloc asm (v2) dans le fichier (doc = composant actif, compatibilité) ── */
-function asmOccSerial(o){const s={id:o.id,comp:o.comp,name:o.name,fr:o.fr,fixed:!!o.fixed,visible:o.visible!==false,align:o.align||null};if(o.look)s.look=o.look;if(o.rendu)s.rendu=o.rendu;if(o.mag)s.mag=true;if(o.pat)s.pat={id:o.pat.id,k:o.pat.k};return s;}
+function asmOccSerial(o){const s={id:o.id,comp:o.comp,name:o.name,fr:o.fr,fixed:!!o.fixed,visible:o.visible!==false,align:o.align||null};if(o.look)s.look=o.look;if(o.rendu)s.rendu=o.rendu;if(o.mag)s.mag=true;if(o.pat)s.pat={id:o.pat.id,k:o.pat.k};if(Array.isArray(o.cons)&&o.cons.length)s.cons=asmConsNorm(o.cons);return s;}
 function asmSerial(){
   if(!asmHasContent())return null;
   asmSync();
@@ -523,7 +533,8 @@ function asmTreeFromSerial(a,topDoc,mkDoc){
   const fr=f=>okFr(f)?{o:f.o.map(Number),x:f.x.map(Number),y:f.y.map(Number),z:f.z.map(Number)}:asmFr0();
   const occOf=(o,cidKey)=>({id:String(o.id),comp:String(o[cidKey]),name:String(o.name||o.id),fr:fr(o.fr),fixed:!!o.fixed,
     visible:o.visible!==false,align:asmAlignNorm(o.align),look:asmLookNorm(o.look),rendu:(typeof renduNorm==='function'?renduNorm(o.rendu):null)||undefined,mag:o.mag?true:undefined,st:'ok',msg:'',
-    pat:o.pat&&typeof o.pat.id==='string'&&typeof o.pat.k==='string'?{id:o.pat.id,k:o.pat.k}:undefined}); // instance de répétition (48)
+    pat:o.pat&&typeof o.pat.id==='string'&&typeof o.pat.k==='string'?{id:o.pat.id,k:o.pat.k}:undefined, // instance de répétition (48)
+    cons:(typeof asmConsNorm==='function'?asmConsNorm(o.cons):undefined)}); // relations entre faces (48-assemblage-relations)
   let comps,root;
   if(Array.isArray(a.comps)&&a.comps.length){
     comps=a.comps.filter(c=>c&&typeof c.id==='string').map(c=>({id:c.id,kind:'comp',name:String(c.name||c.id),

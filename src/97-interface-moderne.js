@@ -385,6 +385,7 @@ const MF_IC={
   asmOcc:'<path d="M3 9l6-3 6 3v6l-6 3-6-3z"/><path d="M17 10v8M13 14h8"/>',
   asmStd:'<path d="M7 3h10v4l-2 2H9L7 7z"/><path d="M10.5 3v2.5M13.5 3v2.5"/><path d="M9.5 9v12h5V9"/><path d="M9.5 12l5 1.5M9.5 15l5 1.5M9.5 18l5 1.5"/>',
   asmMag:'<path d="M5 4h5v9a2 2 0 0 0 4 0V4h5v9a7 7 0 0 1-14 0z"/><path d="M5 8h5M14 8h5"/>',
+  asmRel:'<path d="M3 5h7v14H3zM14 5h7v14h-7z"/><path d="M12 3v18" stroke-dasharray="2 2"/>',
   asmInspect:'<circle cx="10" cy="10" r="6"/><path d="M14.5 14.5L21 21"/><path d="M7 10h6M10 7v6"/>',
   asmFromBodies:'<path d="M3 14l5-3 5 3v5l-5 3-5-3z"/><path d="M14 6l4-2 4 2v4l-4 2-4-2z"/><path d="M12 12l3-3M15 9h-2.5M15 9v2.5"/>',
   pPdf:'<path d="M6 3h9l3 3v15H6z"/><text x="12" y="17.6" font-size="6.2" font-family="sans-serif" font-weight="700" text-anchor="middle" fill="currentColor" stroke="none">PDF</text>'
@@ -435,6 +436,8 @@ function mfRibbon(){
   grp('Composants',[['asmView','<span class="mfLabM">Assembler</span><span class="mfLabA">Modéliser</span>',()=>asmToggle(),'Modéliser le composant actif ↔ placer ses composants'],
     ['asmPart','Composant',()=>asmCmdNewComp(),'Nouveau composant dans le composant actif (on entre aussitôt dedans)',asmO],
     ['asmOcc','Occurrence',()=>{if(asmMode!=='asm')asmEnter();asmCmdNewOcc();},'Nouvelle occurrence du composant sélectionné',asmO],
+    // V0.99.34 : relations entre faces (48-assemblage-relations)
+    ['asmRel','Relations',()=>asmRelStart(asmSelId),'Créer les relations : face contre face, cylindre dans cylindre, tangente, angle, parallèle — aussi sur les plans des repères',asmO],
     // V0.29.0 : répétitions de composants (48-assemblage-repetitions)
     ['pattern','Répétition',()=>asmRibbonPattern(),'Répéter l’occurrence sélectionnée (ou le lot) : linéaire, 2 directions, circulaire, symétrie',asmO],
     ['asmInspect','Inspecter',()=>asmCmdInspect(),'Interférences entre corps / composants, masses (matière par composant) et centre de gravité',asmO],

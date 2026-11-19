@@ -305,6 +305,7 @@ function asmClick(e){
   // Ctrl+clic = mesure (wirePick, 90) ; un clic simple efface la mesure affichée
   asmMeasStop(true);
   if(asmAlignPickAt(e))return; // commande Aligner : clic = repère (48)
+  if(asmRelPickAt(e))return; // commande Relations : clic = face ou plan (48-assemblage-relations)
   if(stdHolePickAt(e))return; // composants normalisés : pose sur des trous (48)
   const id=asmPickAt(e);
   if(id&&asmSelClick(id,e))return;
@@ -367,6 +368,8 @@ function asmKey(e){
   if(e.key==='Escape'&&mesEnCours()){asmMeasStop();return true;}
   if(e.key==='Escape'&&asmPatEd){asmPatCancel();return true;}
   if(e.key==='Escape'&&asmAlign){asmAlignCancel();return true;}
+  if(e.key==='Escape'&&asmRel){asmRelCancel();return true;}
+  if(e.key==='Enter'&&asmRel){e.preventDefault();asmRelCommit();return true;}
   if(e.key==='Escape'&&stdHolePick){stdHoleCancel();return true;}
   if(e.key==='Escape'&&asmAnim){asmAnimStop();return true;} // animation d'une liaison (48)
   if(e.key==='Escape'){
@@ -503,13 +506,14 @@ function asmRenderProps(p){
   const Note=t=>p.appendChild(mk('div','pnl-note',t));
   const Btns=list=>{const d=mk('div','pnl-btns');list.forEach(([t,fn,cls])=>{const b=mk('button',cls||null,t);b.onclick=fn;d.appendChild(b);});p.appendChild(d);return d;};
   if(typeof asmAlign!=='undefined'&&asmAlign){asmAlignProps(p);return;} // commande Aligner (48)
+  if(typeof asmRel!=='undefined'&&asmRel){asmRelProps(p);return;} // commande Relations (48-assemblage-relations)
   if(asmPatEd&&asmPatProps(p))return;               // répétition ouverte (48-assemblage-repetitions)
   const c=asmActiveComp();
   const o=asmOcc(asmSelId);
   if(!o||!c.occ.includes(o)){
     H('🧩 '+c.name);
     Note(c.occ.length+' composant(s) placé(s) ici, '+asm.comps.length+' composant(s) dans le fichier. Cliquez un composant (vue ou arbre) ; double-clic = le modéliser.');
-    const l=[['➕ Nouveau composant',asmCmdNewComp,'primary'],['📥 Insérer…',asmCmdInsert],['🔩 Normalisés…',()=>stdDlg()],['✏️ Modéliser « '+c.name+' »',()=>asmExit()]];
+    const l=[['➕ Nouveau composant',asmCmdNewComp,'primary'],['📥 Insérer…',asmCmdInsert],['🧲 Relations…',()=>asmRelStart(null)],['🔩 Normalisés…',()=>stdDlg()],['✏️ Modéliser « '+c.name+' »',()=>asmExit()]];
     if(asm.path.length)l.push(['↑ Remonter',asmUp]);
     Btns(l);
     // répétitions de ce composant (48-assemblage-repetitions) : une ligne chacune, clic = la modifier
@@ -639,7 +643,7 @@ async function asmInsertText(txt,name){
     const M=id=>om[id]||id;
     return {id:cm[c.id],kind:'comp',name:nm,doc:c.doc,link:null,occ:c.occ.map(o=>Object.assign({},o,{id:om[o.id],comp:cm[o.comp],
       align:o.align?Object.assign({},o.align,{src:{path:rp(o.align.src.path),cg:o.align.src.cg},dst:{path:rp(o.align.dst.path),cg:o.align.dst.cg}}):null,
-      pat:asmPatOccRemap(o.pat,M)})),pats:asmPatRemap(c.pats,M)}; // répétitions (48) : sources et instances renommées
+      pat:asmPatOccRemap(o.pat,M),cons:asmConsRemap(o.cons,M)})),pats:asmPatRemap(c.pats,M)}; // répétitions (48) : sources et instances renommées
   });
   {const L=asmLinkOwner(owner);if(L)neufs.forEach(c=>{c.of=L.id;});} // inséré dans un composant lié : il en fait partie
   neufs.forEach(c=>asm.comps.push(c));

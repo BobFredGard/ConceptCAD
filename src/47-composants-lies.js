@@ -36,7 +36,7 @@ function asmSubtreeObj(L){
   if(mem.length>1||L.occ.length){
     const occ=o=>{const s={id:I(o.id),comp:I(o.comp),name:o.name,fr:o.fr,fixed:!!o.fixed,visible:o.visible!==false,
       align:o.align?Object.assign({},o.align,{src:{path:o.align.src.path.map(I),cg:o.align.src.cg},dst:{path:o.align.dst.path.map(I),cg:o.align.dst.cg}}):null};
-      if(o.pat)s.pat=asmPatOccRemap(o.pat,I);return s;}; // instance de répétition (48)
+      if(o.pat)s.pat=asmPatOccRemap(o.pat,I);if(o.cons)s.cons=asmConsRemap(o.cons,I);return s;}; // instance de répétition (48)
     top.asm={v:2,name:L.name,root:I(L.id),active:I(L.id),path:[],mode:'part',
       comps:mem.map(c=>({id:I(c.id),kind:'comp',name:c.name,doc:c===L?null:serialiseObj(c.doc,false),occ:c.occ.map(occ),link:c===L?null:asmLinkSerial(c.link),
         of:c.of&&c.of!==L.id?I(c.of):undefined,pats:asmPatRemap(asmPatSerial(c),I)}))};
@@ -79,7 +79,7 @@ async function asmLinkLoad(L,txt){
   t.comps.forEach(c=>{M(c.id);c.occ.forEach(o=>M(o.id));});
   const mo=o=>Object.assign({},o,{id:M(o.id),comp:M(o.comp),st:'ok',msg:'',
     align:o.align?Object.assign({},o.align,{src:{path:o.align.src.path.map(M),cg:o.align.src.cg},dst:{path:o.align.dst.path.map(M),cg:o.align.dst.cg}}):null,
-    pat:asmPatOccRemap(o.pat,M)});
+    pat:asmPatOccRemap(o.pat,M),cons:asmConsRemap(o.cons,M)});
   const mp=c=>{const p=asmPatRemap(c.pats,M);return p&&p.length?p:undefined;}; // répétitions (48)
   const keep=new Set();
   t.comps.forEach(c=>{

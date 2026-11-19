@@ -317,6 +317,7 @@ const SUITES = [
   "test_simulation_moteurs",
   "test_post_cycle800",
   "test_composants_liaisons",
+  "test_composants_relations",
   "test_composants_inspection",
   "test_composants_normalises",
   "test_aimants",

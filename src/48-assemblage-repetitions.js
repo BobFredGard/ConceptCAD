@@ -150,6 +150,7 @@ function asmPatGen(owner){
         const fr=asmRound(asmCompose(cell.M,s.fr));
         if(['o','x','y','z'].some(q=>fr[q].some((v,j)=>Math.abs(v-o.fr[q][j])>1e-9))){o.fr=fr;ch=true;}
         if(o.align){o.align=null;ch=true;}
+        if(o.cons){delete o.cons;ch=true;} // relations : la position suit la source
         if(o.fixed)o.fixed=false;
         // apparence de la source (intensité, transparence, arêtes, rendu) : les instances la suivent
         const lk=s.look?JSON.stringify(s.look):'',rd=s.rendu?JSON.stringify(s.rendu):'';
