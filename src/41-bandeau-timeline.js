@@ -4,11 +4,13 @@
    à leur place de création sk.at), géométrie de construction (après sa fonction d'ancrage `at`, cf. cgPos).
    Survol = nom · clic = sélection (même `sel` que l'arbre) · double-clic = édition ·
    ⏱ marqueur glissable entre deux étapes (tlSetPtr : au-delà = grisé, comme tlLocked) ·
-   glisser une fonction = la réordonner dans son corps (crans featMoveRaw : mêmes règles que ▲▼).
+   glisser une fonction = la réordonner dans son corps (crans featMoveRaw : mêmes règles que ▲▼) ;
+   glisser une esquisse consommée = glisser sa fonction (elles bougent ensemble, V0.99.39).
    Remplace l'ancien panneau #timeline (puces) : renderTimeline() est appelé en fin de
    renderTree, donc à chaque rejeu et à chaque changement de sélection. Visibilité par CSS :
    interface moderne, espace CAO, hors édition d'esquisse (body.mf-sk). */
 let tlbEl=null,tlbDrag=null,tlbNoClick=false;
+let tlbMoveBout=false; // dernier tlbMoveTo : aucun cran possible (seule de son corps dans ce sens)
 (function(){
   try{
     const st=document.createElement('style');st.id='tlbCss';
@@ -40,6 +42,10 @@ let tlbEl=null,tlbDrag=null,tlbNoClick=false;
       '#mfTl .tlbS.warn{border-color:#ff453a;box-shadow:inset 0 0 0 1px #ff453a}'+
       '#mfTl .tlbS .w{position:absolute;top:-5px;right:-5px;line-height:1;font-size:.74rem;color:#ff453a;text-shadow:0 0 2px var(--bg)}'+
       '#mfTl .tlbS.drag{opacity:.35}'+
+      // V0.99.39 : fonctions d'une répétition entourées de vert ; pendant le choix, les candidates en pointillé
+      '#mfTl .tlbS.rsrc{border:2px solid #30d158;box-shadow:0 0 0 2px rgba(48,209,88,.35)}'+
+      '#mfTl .tlbS.rcand{border:1px dashed rgba(48,209,88,.8);cursor:copy}'+
+      '#mfTl .tlbS.rsrc.rcand{cursor:alias}'+
       '#mfTl .tlbM{flex:none;position:relative;width:5px;height:30px;margin:0 2px;border-radius:3px;background:var(--warn);cursor:ew-resize}'+
       '#mfTl .tlbM::before{content:"";position:absolute;left:-4px;top:-4px;border:6.5px solid transparent;border-top-color:var(--warn);border-bottom:none}'+
       '#mfTl .tlbM.on{box-shadow:0 0 0 3px var(--glow)}'+
@@ -121,22 +127,27 @@ function tlbMoveTo(id,g,S){
   const si=S.findIndex(s=>s.kind==='feature'&&s.id===id);
   if(!f||f.repeatId||si<0)return false;
   let A=doc.features.slice(),refus=null;
+  // V0.99.39 : le cran est d'abord fait SANS contrôle d'antériorité pour savoir s'il dépasse la
+  // cible ; seul un cran gardé est contrôlé. Avant, le cran « de trop » (au-delà de la dépose)
+  // était contrôlé en premier : si la fonction suivante dépendait de celle glissée (répétition,
+  // congé, face portant une esquisse), tout le déplacement était refusé, même vers une place permise.
+  tlbMoveBout=false;
+  const cran=(dir,over)=>{
+    for(let n=0;n<A.length;n++){
+      const B=A.slice();
+      if(!featMoveStep(B,id,dir)){if(!n)tlbMoveBout=true;break;} // bout du corps
+      if(over(B))break;                          // dépasserait la dépose : on s'arrête ici
+      const C=A.slice();
+      if(!featMoveRaw(C,id,dir)){refus=featMoveWhy;break;}
+      A=C;
+    }
+  };
   if(g>si){ // vers la droite : avant T (null = fin du fil)
     const T=tlbGapFeature(S,g,id);
-    for(let n=0;n<A.length;n++){
-      const B=A.slice();
-      if(!featMoveRaw(B,id,1)){refus=featMoveWhy;break;}
-      if(T&&B.indexOf(f)>B.indexOf(T))break;
-      A=B;
-    }
+    cran(1,B=>!!T&&B.indexOf(f)>B.indexOf(T));
   }else if(g<si){ // vers la gauche : après P (null = tête du fil)
     const P=tlbGapBefore(S,g,id);
-    for(let n=0;n<A.length;n++){
-      const B=A.slice();
-      if(!featMoveRaw(B,id,-1)){refus=featMoveWhy;break;}
-      if(P&&B.indexOf(f)<B.indexOf(P))break;
-      A=B;
-    }
+    cran(-1,B=>!!P&&B.indexOf(f)<B.indexOf(P));
   }
   // un cran refusé (antériorité, 43) annule tout le déplacement : pas d'arrêt à mi-chemin
   if(refus){try{faceEl.textContent='⛔ Déplacement refusé : '+refus;}catch(e){}return false;}
@@ -199,6 +210,14 @@ function tlbIsSel(s){
 }
 function tlbClick(s,ev){
   if(tlbNoClick){tlbNoClick=false;return;}
+  // V0.99.39 : choix des fonctions d'une répétition (40-20) — clic = ajouter / retirer ;
+  // une esquisse vaut sa fonction. Clic sur la répétition éditée : fin du choix, sélection normale.
+  if(s.kind!=='cg'&&repPickActive()){
+    const P=repPickActive(),f=tlbDragFeatOf(s);
+    if(P.rp&&f&&f.id===P.rp.id){P.on=false;renderTree();renderProps();return;}
+    if(f&&repPickToggle(f.id))return;
+    if(!f){try{faceEl.textContent='Cette esquisse n’est utilisée par aucune fonction : rien à répéter.';}catch(e){}return;}
+  }
   if(s.kind==='cg'){
     if(cgTreePick({k:'cg',id:s.id}))return; // saisie de construction en cours : référence
     sel={kind:'cg',id:s.id};treeSel=[];renderTree();renderProps();try{cgDraw();}catch(e){}
@@ -301,7 +320,7 @@ function tlbPlaceAt(node,g){
 function tlbDragMove(e){
   const D=tlbDrag;if(!D||!tlbEl)return;
   if(!D.on){if(Math.abs(e.clientX-D.x0)<5)return;D.on=true;
-    if(D.t==='feat'){D.node=document.createElement('div');D.node.className='tlbD';if(D.el)D.el.className+=' drag';}
+    if(D.t==='feat'){D.node=document.createElement('div');D.node.className='tlbD';(D.els||[]).forEach(el=>{if(el)el.className+=' drag';});}
     else D.node.className='tlbM on';
   }
   D.gap=tlbGapAt(e.clientX);
@@ -315,9 +334,27 @@ function tlbDragEnd(){
   const S=tlbSteps();
   if(D.t==='mark'){if(!tlbSetMark(tlbGapFeature(S,D.gap)))renderTimeline();}
   else if(!tlbMoveTo(D.id,D.gap,S)){
-    if(!featMoveWhy)try{faceEl.textContent='Déplacement impossible ici : une fonction reste dans son corps, une répétition se déplace en bloc.';}catch(e){}
+    // refus d'antériorité : son message est déjà affiché ; dépose sur place : rien à dire
+    if(!featMoveWhy&&tlbMoveBout)try{faceEl.textContent='Déplacement impossible ici : une fonction reste dans son corps, une répétition se déplace en bloc.';}catch(e){}
     renderTimeline();
   }
+}
+function tlbDragFeatOf(s){
+  // Étape attrapée → fonction glissée : la fonction elle-même, ou celle qui consomme l'esquisse
+  // (l'esquisse est toujours dessinée juste avant elle et la suit) ; null = rien à glisser
+  if(s.kind==='feature')return s.o.repeatId?null:s.o;
+  if(s.kind!=='sketch')return null;
+  let h=null;try{h=tlHostFeatureOfSketch(s.o);}catch(e){}
+  return h&&!h.repeatId&&(h.sketchId===s.id||h.pathId===s.id)?h:null;
+}
+function tlbDragStart(S,i,e){
+  if(e.button)return;
+  const f=tlbDragFeatOf(S[i]);if(!f)return;
+  const fi=S.findIndex(s=>s.kind==='feature'&&s.id===f.id);if(fi<0)return;
+  // le groupe glissé : la fonction et les esquisses qu'elle consomme (estompées ensemble)
+  const els=[];
+  S.forEach((s,k)=>{if(k===fi||(s.kind==='sketch'&&tlbDragFeatOf(s)===f))els.push(tlbEl._steps[k]);});
+  tlbDrag={t:'feat',id:f.id,x0:e.clientX,on:false,gap:fi,els};
 }
 function renderTimeline(){
   try{if(typeof asmTlRender==='function')asmTlRender();}catch(e){} // bandeau de l'assemblage (48-assemblage-historique)
@@ -326,6 +363,13 @@ function renderTimeline(){
   tlbBodySync(h);
   const R=h._row;R.innerHTML='';h._steps=[];
   const S=tlbSteps(),mg=tlbMarkGap(S),mOn=tlIdx()>=0;
+  let RS=null;try{RS=repTlSources();}catch(e){RS=null;}
+  const repCls=s=>{
+    // sources de la répétition en jeu (vert) ; une esquisse consommée suit sa fonction
+    if(!RS||s.kind==='cg')return '';
+    const f=tlbDragFeatOf(s);if(!f)return '';
+    return (RS.ids.has(f.id)?' rsrc':'')+(RS.pick&&(RS.ids.has(f.id)||repPickCan(f.id,RS.rp))?' rcand':'');
+  };
   const mk=()=>{
     const M=document.createElement('div');M.className='tlbM';
     M.title=mOn?'⏱ Marqueur temps — glisser pour rejouer jusqu’à une autre étape (au-delà : grisé, hors rejeu)':'⏱ Marqueur temps (fin du fil) — glisser vers la gauche pour revenir en arrière dans l’historique';
@@ -337,18 +381,18 @@ function renderTimeline(){
     if(i===mg)R.appendChild(mk());
     const d=document.createElement('div');
     const vis=s.o.visible!==false;
-    d.className='tlbS '+(s.kind==='feature'?'ft':(s.kind==='sketch'?'sk':'cg'))+(tlbIsSel(s)?' sel':'')+(vis?'':' hid')+(s.off?' off':'')+(s.warn?' warn':'');
+    d.className='tlbS '+(s.kind==='feature'?'ft':(s.kind==='sketch'?'sk':'cg'))+(tlbIsSel(s)?' sel':'')+(vis?'':' hid')+(s.off?' off':'')+(s.warn?' warn':'')+repCls(s);
     d.innerHTML='<span>'+tlbIcon(s)+'</span>'+(s.warn?'<span class="w">⚠</span>':'');
     const perdu=s.warn&&(s.kind==='sketch'||(s.o&&((s.o._perdues&&s.o._perdues.length)||(s.o._m&&s.o._m.m<s.o._m.t))));
     const why=s.warn&&s.kind==='cg'&&s.o.msg?' — ⚠ '+s.o.msg:(s.warn&&s.o&&s.o._adj&&!s.o._err?' — ⚠ '+s.o._adj:
       (perdu?' — ⚠ '+(s.kind==='sketch'?skFacePerdue(s.o):'face ou arête perdue')+' : double-clic pour la resélectionner':(s.warn?' — ⚠ à vérifier (résultat incomplet)':'')));
     d.title=tlbName(s)+why+(s.off?' — hors rejeu (au-delà du marqueur)':'')+(vis?'':' — masqué')+
-      '\nClic = sélectionner · double-clic = '+(s.kind==='sketch'?'modifier l’esquisse':(s.kind==='cg'?'modifier':'éditer'))+(s.kind==='feature'?' · glisser = réordonner dans le corps':'');
+      '\nClic = sélectionner · double-clic = '+(s.kind==='sketch'?'modifier l’esquisse':(s.kind==='cg'?'modifier':'éditer'))+(s.kind==='feature'?' · glisser = réordonner dans le corps (avec son esquisse)':(tlbDragFeatOf(s)?' · glisser = déplacer avec sa fonction':''));
     d.onclick=ev=>tlbClick(s,ev);
     d.ondblclick=()=>tlbDbl(s);
     d.oncontextmenu=e=>{e.preventDefault();showCtx(e.clientX,e.clientY,{kind:s.kind,id:s.id});};
-    if(s.kind==='feature')d.onpointerdown=e=>{if(e.button)return;tlbDrag={t:'feat',id:s.id,x0:e.clientX,on:false,gap:i,el:d};};
     R.appendChild(d);h._steps.push(d);
+    d.onpointerdown=e=>tlbDragStart(S,i,e);
   });
   if(mg>=S.length&&S.length)R.appendChild(mk());
   if(!S.length){const e=document.createElement('span');e.className='tlbE';e.textContent='Fil vide — créez une esquisse puis une extrusion.';R.appendChild(e);}

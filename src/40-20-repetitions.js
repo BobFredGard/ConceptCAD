@@ -79,53 +79,108 @@ function repExpandSources(list,seen){
 // détaché et l'état visuel retombe — d'où le symptôme « je peux décocher mais pas
 // cocher » (décocher « marche » seulement parce que l'image est déjà celle attendue).
 // On met donc à jour le compteur SUR PLACE, et on ne rafraîchit que le modèle et la 3D.
+// V0.99.39 (demande de Fred) : plus de cases à cocher — les sources se CHOISISSENT DANS LA
+// TIMELINE (clic = ajouter, reclic = retirer ; clic sur une esquisse = sa fonction) et y sont
+// entourées de vert. Le panneau ne garde que la liste des fonctions choisies, chacune avec ✕.
+// À la création (repMode) le choix est actif d'emblée ; à l'édition d'une répétition, il
+// s'ouvre par « 🎯 Choisir dans la timeline » (sinon un clic dans la timeline resterait une
+// sélection ordinaire). repPick = la liste affichée en ce moment (une seule à la fois).
+let repPick=null;
+function repPickActive(){
+  const P=repPick;if(!P)return null;
+  if(P.rp){
+    if(repMode||!P.on)return null;
+    if(!(sel.kind==='feature'&&sel.id===P.rp.id))return null;
+    return doc.features.indexOf(P.rp)>=0?P:null;
+  }
+  return repMode?P:null;
+}
+function repPickCan(id,rp){return repCanFeature(id)&&repAmont(id,rp)&&!(rp&&rp.id===id);}
+function repPickToggle(id){
+  // Clic dans la timeline pendant le choix : true si le clic est pris (ajout, retrait ou refus dit)
+  const P=repPickActive();if(!P)return false;
+  const f=doc.features.find(x=>x.id===id);if(!f)return false;
+  const dedans=(P.get()||[]).indexOf(id)>=0;
+  if(!dedans&&!repPickCan(id,P.rp)){
+    try{faceEl.textContent=P.rp&&P.rp.id===id?'C’est la répétition modifiée elle-même.':
+      (!repCanFeature(id)?'« '+f.name+' » ne se répète pas (instance, perçage normal ou fonction non répétable).':
+        '« '+f.name+' » est placée après la répétition : seules les fonctions antérieures se répètent.');}catch(e){}
+    return true;
+  }
+  P.set(id,!dedans);
+  return true;
+}
 function repSourceList(base,onChange,onTick,rp){
   // rp = la répétition modifiée (absente à la création) : seules les fonctions en amont sont
-  // proposées ; une source déjà cochée en aval (ancien fichier) reste visible, marquée ⚠.
-  const box=document.createElement('div');box.className='col';box.style.marginTop='6px';
-  const cand=doc.features.filter(f=>repCanFeature(f.id)&&(repAmont(f.id,rp)||(base||[]).indexOf(f.id)>=0));
+  // proposées ; une source déjà choisie en aval (ancien fichier) reste visible, marquée ⚠.
+  const box=document.createElement('div');box.className='col repSrcBox';box.style.marginTop='6px';
+  const prev=repPick;
+  const P={rp:rp||null,box,on:!rp||!!(prev&&prev.rp&&rp&&prev.rp.id===rp.id&&prev.on),get:()=>base};
+  repPick=P;
   const t=document.createElement('div');t.className='note';t.style.marginBottom='2px';
-  const estDedans=id=>cand.some(f=>f.id===id);
-  const majCompteur=()=>{
-    t.textContent='Fonctions à répéter — '+(base||[]).filter(estDedans).length+' cochée(s) sur '+cand.length;
+  const aide=document.createElement('div');aide.className='note';
+  const L=document.createElement('div');L.className='col repSrcList';
+  let bt=null;
+  if(rp){
+    bt=document.createElement('button');bt.className='repPickBtn';
+    bt.onclick=()=>{P.on=!P.on;maj();try{renderTimeline();}catch(e){}
+      try{faceEl.textContent=P.on?'Cliquez les fonctions dans la timeline : clic = ajouter, reclic = retirer.':'Choix des fonctions terminé.';}catch(e){}};
+  }
+  const maj=()=>{
+    const B=(base||[]).map(id=>doc.features.find(x=>x.id===id)).filter(Boolean);
+    t.textContent='Fonctions à répéter — '+B.length+' choisie(s)';
+    if(bt){bt.textContent=P.on?'✔ Terminer le choix':'🎯 Choisir dans la timeline';bt.title='Choisir les fonctions répétées en cliquant dans la timeline (en bas de la vue)';}
+    aide.innerHTML=(!rp||P.on)?'👉 Cliquez les fonctions dans la <b>timeline</b> (en bas) : clic = ajouter, reclic = retirer. Elles y sont <b style="color:#30d158">entourées de vert</b>.':
+      'Les fonctions répétées sont <b style="color:#30d158">entourées de vert</b> dans la timeline.';
+    L.innerHTML='';
+    if(!B.length){const w=document.createElement('span');w.className='note';w.textContent='Aucune fonction choisie.';L.appendChild(w);}
+    B.forEach(f=>{
+      const r=document.createElement('div');r.className='repSrcItem';
+      r.style.cssText='display:flex;align-items:center;gap:6px;border:1px solid #30d158;border-radius:6px;padding:1px 4px;margin:1px 0';
+      const aval=!repAmont(f.id,rp);
+      const s=document.createElement('span');s.style.flex='1';
+      s.textContent=(aval?'⚠ ':'')+featIconOf(f)+' '+f.name;
+      s.title=aval?'Placée APRÈS la répétition : une répétition ne doit répéter que des fonctions antérieures — retirez-la.':repCanFeatureHint(f);
+      if(aval)s.style.color='var(--warn)';
+      const x=document.createElement('button');x.className='mini repsrcdel';x.textContent='✕';x.title='Retirer « '+f.name+' » de la répétition';
+      x.style.cssText='padding:0 5px;flex:none';
+      x.onclick=()=>setTimeout(()=>P.set(f.id,false),0); // le bouton cliqué n'est pas détruit pendant son clic
+      r.appendChild(s);r.appendChild(x);L.appendChild(r);
+    });
   };
-  majCompteur();
-  box.appendChild(t);
-  if(!cand.length){
+  P.set=(id,on)=>{
+    const b=(base||[]).slice(),i=b.indexOf(id);
+    if(on){if(i<0)b.push(id);}else if(i>=0)b.splice(i,1);else return;
+    const f=doc.features.find(x=>x.id===id);
+    let ko=null;
+    try{onChange(b,f);}catch(err){ko=err;}
+    base=b; // l'état fait foi, même si la reconstruction a échoué : l'interface reste cohérente
+    maj();
+    if(ko){try{faceEl.textContent='Répétition : mise à jour impossible ('+(ko.message||ko)+').';}catch(e){}}
+    else{
+      try{faceEl.textContent=(on?'➕ ':'➖ ')+'« '+(f?f.name:id)+' » '+(on?'ajoutée à':'retirée de')+' la répétition ('+b.length+' fonction(s)).';}catch(e){}
+      if(onTick)try{onTick();}catch(e){}
+    }
+    try{renderTimeline();}catch(e){}
+  };
+  maj();
+  box.appendChild(t);box.appendChild(aide);box.appendChild(L);if(bt)box.appendChild(bt);
+  if(!doc.features.some(f=>repPickCan(f.id,rp))&&!(base||[]).length){
     const w=document.createElement('span');w.className='note';
     w.textContent='Aucune fonction répétable en amont (extrusion, révolution, balayage, perçage, congé, chanfrein, dépouille, déplacement ou suppression de face, répétition placés avant la répétition).';
     box.appendChild(w);
-    return box;
   }
-  cand.forEach(f=>{
-    const l=document.createElement('label');
-    l.style.display='flex';l.style.alignItems='center';l.style.gap='6px';l.style.cursor='pointer';
-    const c=document.createElement('input');c.type='checkbox';c.checked=(base||[]).indexOf(f.id)>=0;
-    c.className='repsrcchk'; // identifie les cases de sources (la case « Visible » du panneau en est une autre)
-    c.onchange=()=>{
-      const b=(base||[]).slice();
-      const i=b.indexOf(f.id);
-      if(c.checked){if(i<0)b.push(f.id);}else if(i>=0)b.splice(i,1);
-      // la case garde son propre état : on ne la remplace pas, on met à jour autour
-      let ko=null;
-      try{onChange(b,f);}catch(err){ko=err;}
-      base=b; // l'état fait foi, même si la reconstruction a échoué : l'interface reste cohérente
-      majCompteur();
-      if(ko){
-        try{faceEl.textContent='Répétition : mise à jour impossible ('+(ko.message||ko)+').';}catch(e){}
-      }else if(onTick){
-        try{onTick();}catch(e){}
-      }
-    };
-    const s=document.createElement('span');
-    const aval=!repAmont(f.id,rp);
-    s.textContent=(aval?'⚠ ':'')+featIconOf(f)+' '+f.name;
-    s.title=aval?'Placée APRÈS la répétition : une répétition ne doit répéter que des fonctions antérieures — décochez-la.':repCanFeatureHint(f);
-    if(aval)s.style.color='var(--warn)';
-    l.appendChild(c);l.appendChild(s);
-    box.appendChild(l);
-  });
   return box;
+}
+function repTlSources(){
+  // Pour la timeline : sources de la répétition en cours (création ou répétition sélectionnée)
+  // → {ids:Set, rp, pick:true si le clic choisit}, null = pas de répétition en jeu
+  if(repMode)return {ids:new Set(repMode.feats||[]),rp:null,pick:!!repPickActive()};
+  if(sel.kind==='feature'){
+    const f=doc.features.find(x=>x.id===sel.id);
+    if(f&&f.type==='repeat')return {ids:new Set(f.base||[]),rp:f,pick:!!repPickActive()};
+  }
+  return null;
 }
 function enterRepMode(){
   if(skEdit)return;
@@ -133,7 +188,7 @@ function enterRepMode(){
   repMode={type:'lin',copies:2,dist:20,angle:360,axis:'X',plane:'YZ',feats:[]};
   if(sel.kind==='feature'&&repCanFeature(sel.id)&&repAmont(sel.id,null))repMode.feats.push(sel.id);
   renderTree();renderRepPanel();
-  faceEl.textContent='Répétition : cochez les fonctions à répéter dans la liste ci-dessus, puis Appliquer. Astuce : la repetition est depliee dans l arbre et ses sources sont marquees ◀.';
+  faceEl.textContent='Répétition : cliquez les fonctions à répéter dans la timeline (en bas, entourées de vert), puis Appliquer. Astuce : la repetition est depliee dans l arbre et ses sources sont marquees ◀.';
 }
 function exitRepMode(){try{pgPickStop();}catch(e){}repPreviewRemove();repPreviewSrcFree();repMode=null;renderTree();renderProps();}
 /* V0.11.20 : APERÇU ROUGE des copies dès le choix du plan / de l'axe (retour : « j'aimerais

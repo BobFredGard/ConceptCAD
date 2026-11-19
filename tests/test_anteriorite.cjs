@@ -37,14 +37,19 @@ const A=(c,m)=>{if(!c){ko++;console.log('  x '+m);}else console.log('  ✓ '+m);
     o.aucunDefaut=antViolations(null,true).length===0;
 
     // ── sources de répétition : l'amont seulement
-    let lab=etiquettes(repSourceList(['E1'],function(){},null,doc.features.find(function(f){return f.id==='RP';})));
-    o.srcAmont=lab.length===1&&/Bloc/.test(lab[0]);
-    lab=etiquettes(repSourceList(['E1','E2'],function(){},null,doc.features.find(function(f){return f.id==='RP';})));
+    // V0.99.39 : plus de cases — candidates = ce que la timeline laisse choisir (repPickCan),
+    // la liste du panneau ne montre que les sources choisies
+    const RPf=doc.features.find(function(f){return f.id==='RP';});
+    const cands=function(rp){return doc.features.filter(function(f){return repPickCan(f.id,rp);}).map(function(f){return f.name;});};
+    const items=function(box){const L=box.children.find(function(c){return c.className==='col repSrcList';});return (L?L.children:[]).filter(function(r){return r.className==='repSrcItem';}).map(function(r){return r.children[0].textContent;});};
+    let lab=cands(RPf);
+    o.srcAmont=lab.length===1&&/Bloc/.test(lab[0])&&items(repSourceList(['E1'],function(){},null,RPf)).length===1;
+    lab=items(repSourceList(['E1','E2'],function(){},null,RPf));
     o.srcAvalCochee=lab.length===2&&/^⚠/.test(lab[1])&&/Bossage/.test(lab[1])&&!/⚠/.test(lab[0]);
-    lab=etiquettes(repSourceList([],function(){},null));
+    lab=cands(null);
     o.srcCreation=lab.length===5&&lab.some(function(l){return /Rép/.test(l);}); // création en fin de fil : Bloc, Rép, Bossage, Congé, Plot (V0.11.30 : une répétition se répète)
     tlMark='E2';
-    lab=etiquettes(repSourceList([],function(){},null));
+    lab=cands(null);
     o.srcCreationMarqueur=lab.length===2&&/Bloc/.test(lab[0])&&/Rép/.test(lab[1]);
     o.amont=repAmont('E1',null)&&!repAmont('E2',null)&&!repAmont('XF',null);
     tlMark=null;
@@ -115,7 +120,7 @@ const A=(c,m)=>{if(!c){ko++;console.log('  x '+m);}else console.log('  ✓ '+m);
   A(o.aucunDefaut,'document dans l’ordre : aucun défaut');
   console.log('  — sources de répétition');
   A(o.srcAmont,'répétition modifiée : seules les fonctions en amont sont proposées');
-  A(o.srcAvalCochee,'source déjà cochée en aval (ancien fichier) : visible, marquée ⚠');
+  A(o.srcAvalCochee,'source déjà choisie en aval (ancien fichier) : visible, marquée ⚠');
   A(o.srcCreation,'création en fin de fil : toutes les fonctions répétables');
   A(o.srcCreationMarqueur,'création avec le marqueur de temps : seulement ce qui le précède');
   A(o.amont,'repAmont');

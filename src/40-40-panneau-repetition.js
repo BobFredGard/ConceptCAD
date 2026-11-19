@@ -37,7 +37,7 @@ function repUseFaceFor(rp,which){
 function applyRepPattern(){
   if(!repMode)return;
   const ids=(repMode.feats||[]).filter(id=>repCanFeature(id)&&repAmont(id,null));
-  if(!ids.length){faceEl.textContent='Répétition : cochez au moins une fonction à répéter dans la liste ci-dessus.';return;}
+  if(!ids.length){faceEl.textContent='Répétition : cliquez au moins une fonction à répéter dans la timeline (en bas de la vue).';return;}
   const base=ids.map(id=>doc.features.find(f=>f.id===id)).filter(Boolean).sort((a,b)=>doc.features.indexOf(a)-doc.features.indexOf(b));
   // La répétition devient une FONCTION réelle (type 'repeat') : elle garde ses paramètres,
   // ses fonctions sources (base) et ses instances (children, créées par repGenChildren).
@@ -63,7 +63,7 @@ function applyRepPattern(){
   exitRepMode();
   sel={kind:'feature',id:rp.id};
   markDirty();rebuild();renderTree();renderProps();refreshParts();
-  faceEl.textContent='Répétition : '+nb+' fonction(s) copiée(s) — « '+rp.name+' » — les sources se cochent dans le panneau, à la création comme à l\'édition.';
+  faceEl.textContent='Répétition : '+nb+' fonction(s) copiée(s) — « '+rp.name+' » — à l\'édition, « 🎯 Choisir dans la timeline » change les fonctions répétées.';
 }
 function repUseSelectedFace(){
   if(!repMode)return;
@@ -192,7 +192,7 @@ function repSkipBoxSync(){
 }
 function renderRepPanel(){
   const p=$('props');p.innerHTML='';if(!repMode)return;
-  const h=document.createElement('div');h.innerHTML='<b>🔁 Répétition</b><br><span class="note">Choisissez les fonctions à répéter ci-dessous (cases à cocher). Dans l\'arbre, un <b>Ctrl+clic</b> sert désormais à la multi-suppression.<br>🔴 <b>Aperçu rouge</b> : les fonctions cochées, recopiées comme elles le seront (volume ajouté ou enlevé, faces des congés et dépouilles) — pour contrôler le plan, l\'axe ou le pas avant de valider. Une répétition cochée recopie son motif entier.</span>';p.appendChild(h);
+  const h=document.createElement('div');h.innerHTML='<b>🔁 Répétition</b><br><span class="note">Choisissez les fonctions à répéter en les <b>cliquant dans la timeline</b> (en bas de la vue) : elles s\'y entourent de vert.<br>🔴 <b>Aperçu rouge</b> : les fonctions choisies, recopiées comme elles le seront (volume ajouté ou enlevé, faces des congés et dépouilles) — pour contrôler le plan, l\'axe ou le pas avant de valider. Une répétition choisie recopie son motif entier.</span>';p.appendChild(h);
   const row=document.createElement('div');row.className='row';
   const typ=document.createElement('select');[['lin','Linéaire'],['circ','Circulaire'],['mir','Symétrie'],['path','Suivant un profil']].forEach(o=>{const op=document.createElement('option');op.value=o[0];op.textContent=o[1];typ.appendChild(op);});typ.value=repMode.type;
   typ.onchange=()=>{repMode.type=typ.value;if(typ.value==='path'&&!repMode.path){const G=pgGuideSketches(doc);if(G.length)repMode.path=pgDefaultPath(G[G.length-1]);}renderRepPanel();};row.appendChild(typ);
