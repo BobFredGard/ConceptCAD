@@ -76,6 +76,7 @@ $('btnImport').onclick=()=>$('fileImport').click();
 $('fileImport').addEventListener('change',async e=>{
   const f=e.target.files[0];if(!f)return;
   if(/\.stou?l$/i.test(f.name)){await importSTL(f);}
+  else if(/\.(x_[tb]|xmt_txt|xmt_bin)$/i.test(f.name)){alert('Fichier Parasolid (X_T) : format fermé de Siemens, illisible par le noyau libre.\nRéexportez la pièce en STEP (ou IGES) depuis le logiciel d’origine — SolidWorks, NX, Solid Edge… savent tous le faire.');}
   else{await importSTEP(f);}
   e.target.value='';
 });
@@ -231,25 +232,104 @@ function parseSTL(buf){
 }
 async function importSTEP(file){
   if(!occHas()){alert('Moteur STEP (OCCT) pas encore chargé — réessayez dans quelques secondes (page servie en http:// de préférence).\nEn attendant : import STL OK, extrusions OK.');return;}
+  let nom=/\.ig(e)?s$/i.test(file.name)?'IGES':'STEP';
   try{
     const u8=new Uint8Array(await file.arrayBuffer());
+    const iges=importIsIges(u8);nom=iges?'IGES':'STEP';
+    if(!iges&&/\.ig(e)?s$/i.test(file.name))throw new Error('ce fichier .igs ne ressemble pas à un IGES (lignes de 80 caractères)');
     const entry=importStepBuild(u8);
-    importAttach(file.name.replace(/\.[^.]+$/,''),'step',u8,entry,file.name);
+    importAttach(file.name.replace(/\.[^.]+$/,''),iges?'iges':'step',u8,entry,file.name);
     markDirty();rebuild();showAll();
-    faceEl.textContent='STEP importé : '+file.name;
-  }catch(e){alert('Import STEP impossible : '+((e&&e.message)||'erreur interne du noyau OCCT (mémoire insuffisante ?) — rechargez la page (F5) puis réessayez'));} // exception C++ : pas de message
+    let msg=nom+' importé : '+file.name;
+    const L=iges&&importIgesSolidify.last;
+    if(L&&L.nAutre)msg+=' — '+(L.nSol?L.nSol+' solide(s) et ':'')+L.nAutre+' surface(s) non fermée(s), gardée(s) en surfaces';
+    else if(L&&L.nSol)msg+=' — faces cousues en '+L.nSol+' solide(s)';
+    faceEl.textContent=msg;
+  }catch(e){alert('Import '+nom+' impossible : '+((e&&e.message)||'erreur interne du noyau OCCT (mémoire insuffisante ?) — rechargez la page (F5) puis réessayez'));} // exception C++ : pas de message
 }
-function importStepBuild(u8){
-  // Octets STEP -> {mesh, faoGeo, edges, brep}. Synchrone, déterministe : le
-  // rejeu d'un document redonne EXACTEMENT les mêmes triangles qu'à l'import.
-  {
-    const path='/i.stp'; // chemin court fixe (cf. export)
-    try{occt.FS.unlink(path);}catch(e){}
-    occt.FS.writeFile(path,u8);
-    const reader=new occt.STEPControl_Reader_1();
+/* ---- V0.99.32 : import IGES (.igs / .iges) ----
+   Même chemin que le STEP (importStepBuild) : seul le lecteur du noyau change. Le format
+   est reconnu au CONTENU (colonne 73 = « S » sur la 1re ligne de 80 caractères), donc le
+   rejeu, la restauration à l'ouverture et les corps dérivés (52) n'ont rien à savoir.
+   Un IGES arrive presque toujours en faces libres (surfaces « 144 » sans topologie de
+   solide) : on les COUD ; chaque coque fermée devient un solide (volume positif), le reste
+   est gardé en surfaces — affichable, usinable, mais ni uni ni soustrait. */
+function importIsIges(u8){
+  if(!u8||u8.length<80)return false;
+  let t='';for(let i=0;i<Math.min(u8.length,400);i++)t+=String.fromCharCode(u8[i]);
+  if(/ISO-10303-21/.test(t))return false;
+  const l=t.split(/\r?\n/)[0];
+  return l.length>=73&&l[72]==='S';
+}
+const IMPORT_IGES_SEW_TOL=0.01; // mm : écarts usuels d'un IGES entre faces voisines
+function importIgesSolidify(shape){
+  // Faces libres d'un IGES → solide(s) cousu(s). Rend un NOUVEAU shape (l'appelant libère
+  // l'entrée) ou null si rien à faire (déjà des solides, ou couture inutile).
+  const E=occt.TopAbs_ShapeEnum,bin=[];
+  const count=(s,t)=>{const ex=new occt.TopExp_Explorer_2(s,t,E.TopAbs_SHAPE);let n=0;try{for(;ex.More();ex.Next())n++;}finally{try{ex.delete();}catch(e){}}return n;};
+  try{
+    if(count(shape,E.TopAbs_SOLID)>0)return null;
+    if(count(shape,E.TopAbs_FACE)<2)return null;
+    const sew=occBinPush(bin,new occt.BRepBuilderAPI_Sewing(IMPORT_IGES_SEW_TOL,true,true,true,false));
+    sew.Add(shape);
+    sew.Perform(occBinPush(bin,new occt.Handle_Message_ProgressIndicator_1()));
+    const sewn=sew.SewedShape();
+    if(!sewn||sewn.IsNull())return null;
+    // coques fermées → solides ; coques ouvertes et faces seules gardées telles quelles
+    const bb=occBinPush(bin,new occt.BRep_Builder());
+    const comp=new occt.TopoDS_Compound();bb.MakeCompound(comp);
+    let nSol=0,nAutre=0;
+    const ex=occBinPush(bin,new occt.TopExp_Explorer_2(sewn,E.TopAbs_SHELL,E.TopAbs_SHAPE));
+    for(;ex.More();ex.Next()){
+      const sh=occBinPush(bin,occShellCur(ex));
+      let ferme=false;try{ferme=occt.BRep_Tool.IsClosed_1(sh);}catch(e){}
+      if(ferme){
+        try{
+          const ms=occBinPush(bin,new occt.BRepBuilderAPI_MakeSolid_1());ms.Add(sh);
+          let so=occBinPush(bin,ms.Solid());
+          const gp=occBinPush(bin,new occt.GProp_GProps_1());occt.BRepGProp.VolumeProperties_1(so,gp,false,false,false);
+          if(gp.Mass()<0)so=occBinPush(bin,so.Reversed());
+          bb.Add(comp,so);nSol++;continue;
+        }catch(e){}
+      }
+      bb.Add(comp,sh);nAutre++;
+    }
+    const fx=occBinPush(bin,new occt.TopExp_Explorer_2(sewn,E.TopAbs_FACE,E.TopAbs_SHELL)); // faces hors coque
+    for(;fx.More();fx.Next()){bb.Add(comp,occBinPush(bin,occFaceCur(fx)));nAutre++;}
+    try{sewn.delete();}catch(e){}
+    if(!nSol&&!nAutre){try{comp.delete();}catch(e){}return null;}
+    importIgesSolidify.last={nSol,nAutre};
+    return comp;
+  }finally{occDispose(bin);}
+}
+function importReadShape(u8){
+  // Octets STEP ou IGES → shape du noyau (propriété de l'appelant).
+  const iges=importIsIges(u8);
+  const path=iges?'/i.igs':'/i.stp'; // chemin court fixe (cf. export)
+  try{occt.FS.unlink(path);}catch(e){}
+  occt.FS.writeFile(path,u8);
+  const reader=iges?new occt.IGESControl_Reader_1():new occt.STEPControl_Reader_1();
+  try{
     reader.ReadFile(path); // statut passé en revue via NbRootsForTransfer
     if(reader.NbRootsForTransfer()<1)throw new Error('aucun solide transférable');
-    reader.TransferRoots();const shape=reader.OneShape();
+    reader.TransferRoots();let shape=reader.OneShape();
+    if(!shape||shape.IsNull())throw new Error('fichier vide');
+    if(iges){
+      importIgesSolidify.last=null;
+      const s=importIgesSolidify(shape);
+      if(s){try{shape.delete();}catch(e){}shape=s;}
+    }
+    return shape;
+  }finally{
+    try{reader.delete();}catch(e){}
+    try{occt.FS.unlink(path);}catch(e){}
+  }
+}
+function importStepBuild(u8){
+  // Octets STEP (ou IGES) -> {mesh, faoGeo, edges, brep}. Synchrone, déterministe : le
+  // rejeu d'un document redonne EXACTEMENT les mêmes triangles qu'à l'import.
+  {
+    const shape=importReadShape(u8);
     // FAO : la définition HISTORIQUE de l'import (0,5 mm / 0,5 rad), posée AVANT la
     // finesse d'affichage. Le noyau ne retesselle JAMAIS vers plus grossier : si l'on
     // commençait par le maillage fin, la demande grossière réutiliserait le fin et
@@ -295,8 +375,6 @@ function importStepBuild(u8){
     // « Soustraction » tombait dans le vide. Le BRep reste la PROPRIÉTÉ de la table :
     // occReplayBody en prend une COPIE, jamais l'original (libéré ici, à la purge).
     entry.brep=shape;
-    try{reader.delete();}catch(e){}
-    try{occt.FS.unlink(path);}catch(e){}
     return entry; // {mesh, edges, faoGeo, brep}
   }
 }

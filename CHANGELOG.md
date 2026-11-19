@@ -8,7 +8,7 @@ sont sorties le 2026-09-30j.
 Code dans `src/` · livrable `fusion_mvp.html` (généré par `build.js`) · architecture et
 garde-fous en tête de `src/00-entete-et-outils.js`.
 
-**718 versions**, de `2026-09-28b` à `V0.99.31` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
+**719 versions**, de `2026-09-28b` à `V0.99.32` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
 comme dans le fichier d'origine.
 
 ---
@@ -8020,3 +8020,11 @@ Cavité Usinage, après l'ébauche D25, la reprise D10 et une finition boule D12
 **Correctif** (`src/98-mep-70-cotes.js`) : la direction part du vrai départ du trait sous le texte ; tout est sur une seule droite. **Nouveau** (`98-mep-80-souris.js`, `98-mep-85-cote-unique.js`) : au clic droit sur une cote Ø, « Ø complet (2 flèches) » ou « Ø à une flèche (comme R) » (`dia1`), aussi pendant la pose ; annulable.
 
 **Test** : `test_mep_oblong_arc` — 4 positions du texte : leader et trait de diamètre sur une seule droite ; Ø à une flèche : une flèche, aucun trait au travers du cercle. CACHE_VER et FORMES_VER inchangés.
+
+## V0.99.32 - Import IGES
+
+**Demande de Fred** : « CAO : Import -> IGS et X_T ? »
+
+**Ajout** (`src/90-30-import.js`) : 📥 Importer lit les fichiers **IGES** (`.igs`, `.iges`) par le même chemin que le STEP (`importReadShape` : lecteur `IGESControl_Reader` du noyau, déjà présent). Le format est reconnu au **contenu** (colonne 73 = « S ») : rejeu, restauration à l'ouverture et corps dérivés n'ont rien à savoir ; source gardée dans le fichier (`f.src.fmt='iges'`). Les faces libres d'un IGES sont **cousues** (`importIgesSolidify`, tolérance 0,01 mm) : chaque coque fermée devient un solide de volume positif, le reste est gardé en surfaces, le message le dit. **X_T / X_B (Parasolid)** : refus avec un message clair (format fermé, réexporter en STEP ou IGES).
+
+**Test** : `test_import_iges` — bloc 60 × 40 × 20 et cylindre Ø20 × 30 écrits en IGES (faces) : 2 solides cousus, volume exact, réouverture avec le même id ; faux `.igs` refusé. CACHE_VER et FORMES_VER inchangés.
