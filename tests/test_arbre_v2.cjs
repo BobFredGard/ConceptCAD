@@ -29,7 +29,7 @@ const A=(c,m)=>{if(!c){ko++;console.log('  x '+m);}else console.log('  ✓ '+m);
     const t=document.getElementById('tree');
     const lignes=function(){
       const n0=t.children.length;renderTree();
-      return t.children.slice(n0).filter(function(r){return r.className!=='tsearch';}).map(function(r){return JSON.stringify({c:r.className,h:r.innerHTML,x:r.textContent,t:r.title||'',
+      return t.children.slice(n0).filter(function(r){return r.className!=='tsearch'&&r.className!=='tdocname';}).map(function(r){return JSON.stringify({c:r.className,h:r.innerHTML,x:r.textContent,t:r.title||'',
         s:r.style,k:(r.children||[]).map(function(k){return [k.tagName,k.className,k.innerHTML,k.textContent];}),
         oc:!!r.onclick,od:!!r.ondblclick,ox:!!r.oncontextmenu});});
     };

@@ -40,15 +40,15 @@ let repMode=null;
     const st=document.createElement('style');st.id='cssScrollbars';
     st.textContent=
       /* Firefox : barre entièrement masquée par défaut */
-      '#treeOverlay,#faoTreeWrap .fao-cnt{scrollbar-width:none;-ms-overflow-style:none}'+
+      '#treeOverlay,#propsWrap>.right,#faoTreeWrap .fao-cnt{scrollbar-width:none;-ms-overflow-style:none}'+
       /* WebKit : piste et pouce transparents par défaut, la piste garde sa zone de clic */
-      '#treeOverlay::-webkit-scrollbar,#faoTreeWrap .fao-cnt::-webkit-scrollbar{width:8px;height:8px}'+
-      '#treeOverlay::-webkit-scrollbar-track,#faoTreeWrap .fao-cnt::-webkit-scrollbar-track{background:transparent}'+
-      '#treeOverlay::-webkit-scrollbar-thumb,#faoTreeWrap .fao-cnt::-webkit-scrollbar-thumb{background:transparent;border-radius:4px;transition:background .2s}'+
+      '#treeOverlay::-webkit-scrollbar,#propsWrap>.right::-webkit-scrollbar,#faoTreeWrap .fao-cnt::-webkit-scrollbar{width:8px;height:8px}'+
+      '#treeOverlay::-webkit-scrollbar-track,#propsWrap>.right::-webkit-scrollbar-track,#faoTreeWrap .fao-cnt::-webkit-scrollbar-track{background:transparent}'+
+      '#treeOverlay::-webkit-scrollbar-thumb,#propsWrap>.right::-webkit-scrollbar-thumb,#faoTreeWrap .fao-cnt::-webkit-scrollbar-thumb{background:transparent;border-radius:4px;transition:background .2s}'+
       /* classe .sbOn posée 1,2 s au défilement : la barre apparaît dans le thème */
-      '#treeOverlay.sbOn,#faoTreeWrap .fao-cnt.sbOn{scrollbar-width:thin;scrollbar-color:var(--muted) transparent}'+
-      '#treeOverlay.sbOn::-webkit-scrollbar-thumb,#faoTreeWrap .fao-cnt.sbOn::-webkit-scrollbar-thumb{background:var(--muted)}'+
-      '#treeOverlay.sbOn::-webkit-scrollbar-thumb:hover,#faoTreeWrap .fao-cnt.sbOn::-webkit-scrollbar-thumb:hover{background:var(--text)}';
+      '#treeOverlay.sbOn,#propsWrap>.right.sbOn,#faoTreeWrap .fao-cnt.sbOn{scrollbar-width:thin;scrollbar-color:var(--muted) transparent}'+
+      '#treeOverlay.sbOn::-webkit-scrollbar-thumb,#propsWrap>.right.sbOn::-webkit-scrollbar-thumb,#faoTreeWrap .fao-cnt.sbOn::-webkit-scrollbar-thumb{background:var(--muted)}'+
+      '#treeOverlay.sbOn::-webkit-scrollbar-thumb:hover,#propsWrap>.right.sbOn::-webkit-scrollbar-thumb:hover,#faoTreeWrap .fao-cnt.sbOn::-webkit-scrollbar-thumb:hover{background:var(--text)}';
     (document.head||document.body||document.documentElement).appendChild(st);
     let t=null;
     const show=function(el){
@@ -63,6 +63,8 @@ let repMode=null;
         if(a&&!a._sbBound){ a._sbBound=1; a.addEventListener('scroll',function(){show(a);}); }
       }catch(e){}
       try{
+        const p=document.querySelector('#propsWrap>.right'); // V0.99.34 : panneau Paramètres, même barre que l'arborescence
+        if(p&&!p._sbBound){ p._sbBound=1; p.addEventListener('scroll',function(){show(p);}); }
         const f=document.querySelector('#faoTreeWrap .fao-cnt');
         if(f&&!f._sbBound){ f._sbBound=1; f.addEventListener('scroll',function(){show(f);}); }
       }catch(e){}

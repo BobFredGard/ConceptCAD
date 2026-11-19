@@ -71,7 +71,7 @@ function mfCss(){
   'body[data-theme="clair"] .fao-ctx{background:rgba(255,255,255,.98)!important;color:#1c1c1e!important;border-color:rgba(0,0,0,.16)!important;box-shadow:0 12px 32px rgba(0,0,0,.18)!important}',
   'body[data-theme="clair"] kbd,body[data-theme="clair"] .hints span{background:rgba(0,0,0,.05)}',
   /* Clair : la vue 3D est claire, ses panneaux aussi (arbre, barre de vues, réglages, FAO, onglets) */
-  'body[data-theme="clair"] #treeOverlay,body[data-theme="clair"] #treeToggle,body[data-theme="clair"] #viewbar,body[data-theme="clair"] #setMenu,body[data-theme="clair"] #skSetMenu,body[data-theme="clair"] #faoTreeWrap .fao-cnt,body[data-theme="clair"] #faoToggle,body[data-theme="clair"] #faoAddBar,body[data-theme="clair"] #faoViewerBar,body[data-theme="clair"] #mfBrTabs{background:rgba(255,255,255,.9)!important;color:#1c1c1e!important;border-color:rgba(0,0,0,.14)!important;box-shadow:0 6px 20px rgba(0,0,0,.12)!important}',
+  'body[data-theme="clair"] #treeOverlay,body[data-theme="clair"] #treeToggle,body[data-theme="clair"] #propsToggle,body[data-theme="clair"] #propsWrap>.right>.panel,body[data-theme="clair"] #viewbar,body[data-theme="clair"] #setMenu,body[data-theme="clair"] #skSetMenu,body[data-theme="clair"] #faoTreeWrap .fao-cnt,body[data-theme="clair"] #faoToggle,body[data-theme="clair"] #faoAddBar,body[data-theme="clair"] #faoViewerBar,body[data-theme="clair"] #mfBrTabs{background:rgba(255,255,255,.9)!important;color:#1c1c1e!important;border-color:rgba(0,0,0,.14)!important;box-shadow:0 6px 20px rgba(0,0,0,.12)!important}',
   'body[data-theme="clair"] #treeOverlay .ovlTitle,body[data-theme="clair"] #treeOverlay .ovlNote,body[data-theme="clair"] #setMenu .ovlTitle,body[data-theme="clair"] #setMenu label,body[data-theme="clair"] #setMenu .ovlNote,body[data-theme="clair"] #skSetMenu .ovlTitle,body[data-theme="clair"] #skSetMenu label,body[data-theme="clair"] #mfBrTabs button{color:#1c1c1e!important}',
   'body[data-theme="clair"] #treeOverlay .tgroup{color:#9a6700!important}',
   'body[data-theme="clair"] #mfBrTabs button.on{color:#fff!important}',
@@ -157,12 +157,12 @@ function mfCss(){
   '#mfBrTabs{position:absolute;top:10px;left:4px;z-index:23;gap:2px;padding:2px;border-radius:9px;background:rgba(16,18,22,.82);border:1px solid var(--border)}',
   '#mfBrTabs button{padding:3px 12px;font-size:.74rem;border:none;background:none;border-radius:7px;color:#e9e9ec}',
   '#mfBrTabs button.on{background:var(--primary);color:#fff}',
-  'body.ui-modern #viewbar{left:auto;right:92px}',
+  'body.ui-modern #viewbar{left:auto;right:calc(92px + var(--mfPropsW,0px))}',
   'body.ui-modern #viewbar>button[data-view],body.ui-modern #viewbar>#btnFit{display:none}',
   /* arbre : juste sous les onglets Modèle / Usinage (la barre de vues est partie à droite) */
   'body.ui-modern #treeOverlay,body.ui-modern #treeToggle{margin-top:40px!important}',
   /* menu ⚙ : il s'ouvre sous le bouton, à droite */
-  'body.ui-modern #setMenu{left:auto!important;right:92px}',
+  'body.ui-modern #setMenu{left:auto!important;right:calc(92px + var(--mfPropsW,0px))}',
   'body.ui-modern[data-ws="fao"] #treeWrap{display:none!important}',
   'body.ui-modern[data-ws="cao"] #faoWrap,body.ui-modern[data-ws="cao"] #faoTreeWrap{display:none!important}',
   'body.ui-modern[data-ws="plan"] #treeWrap,body.ui-modern[data-ws="plan"] #faoWrap,body.ui-modern[data-ws="plan"] #faoTreeWrap,body.ui-modern[data-ws="plan"] #faoAddBar{display:none!important}',
@@ -223,7 +223,7 @@ function mfCss(){
   'body.ui-modern.mf-sk #viewbar{z-index:56}body.ui-modern.mf-sk #setMenu{z-index:57}',
   /* 2026-10-29 : en esquisse, pas d'onglets Modèle / Usinage / Plan ni de rabat d'arborescence sur la vue */
   'body.ui-modern.mf-sk #mfBrTabs,body.ui-modern.mf-sk #treeWrap{display:none!important}',
-  '#skSetMenu{position:absolute;top:46px;right:92px;z-index:57;display:none;flex-direction:column;gap:7px;width:230px;padding:10px 12px 12px;border-radius:12px;background:rgba(14,16,20,.95);border:1px solid rgba(255,255,255,.15);box-shadow:0 16px 44px rgba(0,0,0,.55)}',
+  '#skSetMenu{position:absolute;top:46px;right:calc(92px + var(--mfPropsW,0px));z-index:57;display:none;flex-direction:column;gap:7px;width:230px;padding:10px 12px 12px;border-radius:12px;background:rgba(14,16,20,.95);border:1px solid rgba(255,255,255,.15);box-shadow:0 16px 44px rgba(0,0,0,.55)}',
   '#skSetMenu.open{display:flex}',
   '#skSetMenu .ovlTitle{margin:2px 0 0;font-size:.68rem;font-weight:700;letter-spacing:.05em;text-transform:uppercase;color:rgba(255,255,255,.55)}',
   '#skSetMenu label{display:flex;align-items:center;gap:6px;font-size:.78rem!important;margin:0;color:#e9e9ec}',
@@ -237,7 +237,7 @@ function mfCss(){
   '@media (max-width:1200px){.mfRb{font-size:0;min-width:34px;gap:0}.mfRb i{height:22px}.mfSearch{max-width:200px}.mfQuick button{padding:4px 6px}}',
   '@media (max-width:900px){.mfSearch{display:none!important}.mfWs button{padding:4px 9px}}',
   /* cube de vue */
-  '#mfCube{position:absolute;top:4px;right:4px;z-index:24;width:80px;height:80px}',
+  '#mfCube{position:absolute;top:4px;right:calc(4px + var(--mfPropsW,0px));z-index:24;width:80px;height:80px}',
   'body.mf-sk #mfCube{z-index:60}', /* esquisse : cube au-dessus du voile, il oriente la vue d'esquisse */
   '#mfCubeHome{position:absolute;top:2px;left:-18px;width:16px;height:16px;padding:0;font-size:10px;line-height:14px;border-radius:4px;background:rgba(40,44,52,.88)}',
   '#mfOrbit{position:absolute;top:21px;left:-18px;width:16px;height:16px;padding:0;font-size:11px;line-height:14px;border-radius:4px;background:rgba(40,44,52,.88)}',
@@ -806,7 +806,21 @@ function mfCube(){
     return new THREE.MeshBasicMaterial({map:t});
   });
   const cube=new THREE.Mesh(new THREE.BoxGeometry(2,2,2),mats);sc.add(cube);
-  const ax=new THREE.AxesHelper(1.6);ax.position.set(-1.02,-1.02,-1.02);sc.add(ax);
+  // V0.99.34 : axes X Y Z plus marqués — trait épais, dépassent du cube, flèche et lettre au bout
+  const ax=new THREE.Group();ax.position.set(-1.02,-1.02,-1.02);sc.add(ax);
+  const AXL=2.45,AXR=0.055,CNL=0.32,CNR=0.13; // longueur du trait, rayon, cône (longueur, rayon)
+  [[[1,0,0],0xff453a,'X'],[[0,1,0],0x30d158,'Y'],[[0,0,1],0x0a84ff,'Z']].forEach(([d,col,lab])=>{
+    const m=new THREE.MeshBasicMaterial({color:col});
+    const g=new THREE.Group();
+    const sh=new THREE.Mesh(new THREE.CylinderGeometry(AXR,AXR,AXL,12),m);sh.position.y=AXL/2;g.add(sh);
+    const cn=new THREE.Mesh(new THREE.ConeGeometry(CNR,CNL,16),m);cn.position.y=AXL+CNL/2;g.add(cn);
+    const k=document.createElement('canvas');k.width=k.height=64;const x=k.getContext('2d');
+    x.fillStyle='#'+col.toString(16).padStart(6,'0');x.font='800 52px sans-serif';x.textAlign='center';x.textBaseline='middle';x.fillText(lab,32,34);
+    const sp=new THREE.Sprite(new THREE.SpriteMaterial({map:new THREE.CanvasTexture(k),depthTest:false}));
+    sp.scale.set(0.42,0.42,1);sp.position.y=AXL+CNL+0.22;sp.renderOrder=2;g.add(sp);
+    g.quaternion.setFromUnitVectors(new THREE.Vector3(0,1,0),new THREE.Vector3(d[0],d[1],d[2]));
+    ax.add(g);
+  });
   let hov=-1;
   const pickF=e=>{const r=cv.getBoundingClientRect();const v=new THREE.Vector2(((e.clientX-r.left)/r.width)*2-1,-((e.clientY-r.top)/r.height)*2+1);
     const rc=new THREE.Raycaster();rc.setFromCamera(v,cam);const hh=rc.intersectObject(cube,false);return hh.length?hh[0].face.materialIndex:-1;};
@@ -818,7 +832,7 @@ function mfCube(){
     (typeof viewRaf==='function'?viewRaf:requestAnimationFrame)(loop);
     if(!document.body.classList.contains('ui-modern'))return;
     try{
-      const d=camera.position.clone().sub(controls.target).normalize().multiplyScalar(7.5);
+      const d=camera.position.clone().sub(controls.target).normalize().multiplyScalar(9.6); // recul : les flèches qui dépassent restent dans le cadre
       const s=[d.x,d.y,d.z,camera.up.x,camera.up.y,camera.up.z,hov].map(v=>Math.round(v*1e4)).join(',');
       if(s===sig)return;sig=s;
       cam.position.copy(d);cam.up.copy(camera.up);cam.lookAt(0,0,0);
