@@ -8,7 +8,7 @@ sont sorties le 2026-09-30j.
 Code dans `src/` · livrable `fusion_mvp.html` (généré par `build.js`) · architecture et
 garde-fous en tête de `src/00-entete-et-outils.js`.
 
-**727 versions**, de `2026-09-28b` à `V0.99.40` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
+**728 versions**, de `2026-09-28b` à `V0.99.41` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
 comme dans le fichier d'origine.
 
 ---
@@ -8105,3 +8105,12 @@ Cavité Usinage, après l'ébauche D25, la reprise D10 et une finition boule D12
 **Correctif** : en assemblage, une pièce STEP multicolore restait d'une seule couleur — l'instantané du composant garde désormais les couleurs par sommet (47, cache compris). L'ambiance de la vue (98-rendu-vue) multipliait ces couleurs par la couleur du corps : une pièce rouge sur un corps bleu sortait presque noire ; sans matériau de rendu, plus de teinte par-dessus.
 
 **Test** : `test_assemblage_historique` (suppression d'une étape, Ctrl+Z, marqueur, couleurs vérifiées). Vérifié dans l'application : MERLIN-37-000 importé en pièce à assembler, 29 couleurs lues dans le fichier et affichées en assemblage ; Test Assemblage : clic sur la liaison puis Suppr, Ctrl+Z la rend, menu du clic droit au-dessus de la barre. CACHE_VER et FORMES_VER inchangés.
+
+
+## V0.99.41 - FAO : afficher / masquer un parcours instantané, plus de ⚠ injustifiés
+
+**Cause** : masquer ou afficher le parcours d'une opération refaisait toute la séquence d'aperçu du posage (carte de matière et liaisons de toutes les opérations) : 2,1 s sur SIRAP-14-002. À l'ouverture d'un fichier, les parcours embarqués, plus anciens, écrasaient ceux du navigateur, et des triangles ⚠ revenaient sans raison (opérations désactivées, gel d'un posage compté dans la clé des parcours).
+
+**Correctif** (`src/88-fao-60-postprocesseurs.js`, `88-fao-80-interface.js`, `88-fao-50-caches-dispatch.js`, `45-annuler-document.js`, `90-50-document-sauvegarde.js`) : un sous-groupe par opération dans l'aperçu, allumé ou éteint (`faoPrevToggleFast`, empreinte `faoPrevSig`) : 2,1 s → 30 ms. Ctrl+Z d'un masquage ne rejoue plus la pièce (`docSnapFaoVisOnly`). À l'ouverture, les parcours plus récents du navigateur sont gardés (réserve `faoBundleAlt`). Le gel d'un posage sort de la clé des parcours, une opération désactivée n'a plus de ⚠, « Tout régénérer » n'est orange que si un parcours manque (`faoPrevAllReady`). Les matériaux de l'aperçu sont libérés.
+
+**Test** : `test_fao`, `test_fao_bundle` complétés ; `test_fao_stale` posé sur un vrai posage (un document vide n’est plus jamais périmé). CACHE_VER et FORMES_VER inchangés.

@@ -410,7 +410,7 @@ input[type=range]{accent-color:var(--primary);width:100%}
  * peut changer sans rien casser. CACHE_VER (parcours FAO) reste indépendant.
  */
 
-const APP_VER='V0.99.40';
+const APP_VER='V0.99.41';
 try{console.log('[ConceptCAD] version '+APP_VER);}catch(e){}
 try{var mfSv=document.getElementById('mfSplashVer');if(mfSv)mfSv.textContent=APP_VER;}catch(e){} // écran de démarrage
 
@@ -16676,9 +16676,39 @@ function docSnapMepOnly(d){
     return undoSame(key(d),key(docSnapObj()));
   }catch(e){return false;}
 }
+// V0.99.40 : « Masquer / Afficher » une trace FAO (op.hidden) ne touche ni la pièce ni les
+// parcours : l'annuler ne doit pas rejouer toute la pièce (plusieurs secondes sur une grosse
+// pièce, et les traces disparaissaient le temps du rejeu).
+function docSnapFaoVisOnly(d){
+  try{
+    const cur=docSnapObj();
+    if(!d||!d.fao||!cur.fao)return false;
+    const sans=o=>{const r=Object.assign({},o);delete r.fao;return JSON.stringify(r,undoKeyRep);};
+    const fk=f=>{
+      const c=JSON.parse(JSON.stringify(f));
+      (c.setups||[]).forEach(s=>((s&&s.ops)||[]).forEach(o=>{if(o)delete o.hidden;}));
+      return JSON.stringify(c,undoKeyRep);
+    };
+    return undoSame(fk(d.fao),fk(cur.fao))&&undoSame(sans(d),sans(cur));
+  }catch(e){return false;}
+}
+function docApplyFaoVis(d){
+  const S=(doc.fao&&doc.fao.setups)||[],D=(d.fao&&d.fao.setups)||[];
+  S.forEach((s,i)=>((s&&s.ops)||[]).forEach((o,j)=>{
+    const q=D[i]&&D[i].ops&&D[i].ops[j];
+    if(!o||!q)return;
+    if(Object.prototype.hasOwnProperty.call(q,'hidden'))o.hidden=q.hidden;else delete o.hidden;
+  }));
+  dirty=true;
+  try{if(typeof faoVisibleChanged==='function')faoVisibleChanged();}catch(e){}
+  try{autosave();}catch(e){}
+  docBaseSync();
+  return true;
+}
 function docApplySnap(snap){
   let d;
   try{d=JSON.parse(snap);}catch(e){return false;}
+  if(docSnapFaoVisOnly(d))return docApplyFaoVis(d);
   // Geste de mise en plan : la pièce n'a pas changé, ni rejeu ni reprojection des vues
   // (1,5 s pour 9 vues avant, à chaque Ctrl+Z). Seule la planche est remplacée.
   if(docSnapMepOnly(d)){
@@ -51767,6 +51797,7 @@ function faoOpMovesKey(op,job){
       if(k==='name'||k==='id')continue; // libelle / identifiant : jamais une trajectoire
       if(k==='liftMin')continue; // V0.61.0 : appliqué après le calcul (faoOpLinks), aucun parcours à refaire
       if(k==='holeInfo')continue; // nature des trous d'un STEP (taraudé…) : aucun effet sur les tracés
+      if(k==='struck'||k==='struckOn')continue; // V0.99.40 : posage gelé — aucun tracé ne change (gel = triangles partout, avant)
       if(k==='sketches'||k==='walls')continue; // V0.23.20 : esquisses/corps FAO -> géométrie seule (ci-dessous)
       if(k==='expr'||k==='pname'||k==='exprErr')continue; // formules ƒx (V0.95.0) : seule la valeur compte
       js[k]=typeof parSansFx==='function'?parSansFx(job[k]):job[k]; // posage vu par l'opération : son brut (repère de l'opération)
@@ -52033,6 +52064,7 @@ function faoMovesSave(job,op,key,mv){
    autre empreinte, entree rejetee, triangle rouge. Quand le solide exact arrive,
    il faut RELIRE — sans quoi la lecture, deja « prete », ne regardait plus rien. */
 let faoMovesFpSeen=null; // {posageId: faoSetupFp} du solide utilise a la derniere lecture
+let faoBundleAlt=null;   // V0.99.40 : parcours du fichier ouvert NON écrits (plus anciens que ceux du navigateur)
 function faoMovesSolidFp(){
   // Empreinte des solides qui entrent dans une CLE de parcours (seuls ces types
   // dependent du maillage : le Surfaçage, lui, ne voit jamais bouger sa clé).
@@ -52091,6 +52123,14 @@ async function faoMovesPreload(){
         if(ch&&ch.key===ck){ faoMovesWhySet(idk,null); continue; } // deja en memoire
         let val=null;
         try{ val=await idbGet(idk); }catch(e){ val=null; }
+        // V0.99.40 : parcours du fichier ouvert gardé en réserve (bundleStoreCaches) — servi s'il
+        // correspond au document alors que celui du navigateur, plus récent, ne correspond pas
+        try{
+          const alt=faoBundleAlt&&faoBundleAlt.get(idk);
+          if(alt&&alt.v===1&&Array.isArray(alt.mv)&&alt.k===ck&&cacheVerOK(alt.ver)&&!(val&&val.k===ck)){
+            val=alt; Promise.resolve(idbSet(idk,alt)).catch(function(){});
+          }
+        }catch(e){}
         if(!val){ faoMovesWhySet(idk,'absente'); continue; }
         const nb=(val.n||(val.mv&&val.mv.length)||0);
         if(val.v!==1){ faoMovesWhySet(idk,'format',{ver:val.ver}); continue; }
@@ -52173,7 +52213,7 @@ function faoMovesDone(){
     }else if(w==='full'){
       try{ faoStaleScan(); }catch(e){}
       try{ faoRefreshPreview(); }catch(e){}
-      faoPrevStale=true;                       // une modif a eu lieu pendant l'attente
+      faoPrevStale=!faoPrevAllReady();         // une modif a eu lieu pendant l'attente : périmé si un parcours manque
       try{ faoStaleUI(); }catch(e){}
     }else if(w==='lecture'){
       try{ faoRefreshPreview(true); }catch(e){}
@@ -54591,10 +54631,96 @@ function faoClearPreview(){
   try{
     if(faoPrevGroup&&typeof scene!=='undefined'&&scene){
       faoDel3D(faoPrevGroup);
-      try{ faoPrevGroup.traverse(function(o){ if(o.geometry&&o.geometry.dispose)o.geometry.dispose(); }); }catch(e){}
+      // V0.99.40 : matériaux libérés aussi (un par trait épais — ils s'accumulaient à chaque redessin)
+      try{ faoPrevGroup.traverse(function(o){
+        if(o.geometry&&o.geometry.dispose)o.geometry.dispose();
+        if(o.material&&o.material.dispose)o.material.dispose();
+      }); }catch(e){}
     }
   }catch(e){}
   faoPrevGroup=null;
+  faoPrevOps=null; faoPrevSig=null; faoPrevStreamG=null;
+}
+/* ----- V0.99.40 : afficher / masquer UNE opération sans tout redessiner -----
+   Avant, chaque clic sur « Masquer / Afficher » refaisait toute la séquence du
+   posage (carte de la matière restante 1500 × 1500, liaisons entre passes,
+   découpage et envoi à la carte graphique de TOUTES les opérations) : plusieurs
+   secondes sur une grosse pièce. Les liaisons d'une opération ne dépendent pas
+   de ce qui est masqué (une opération masquée reste dans la séquence) : chaque
+   opération a donc son propre sous-groupe dans l'aperçu, et le clic ne fait que
+   l'allumer ou l'éteindre. Une opération masquée au moment du dessin garde ses
+   mouvements de côté ; son sous-groupe est construit au premier « Afficher ».
+   faoPrevSig dit si le dessin vaut encore (mêmes opérations, mêmes parcours en
+   mémoire, même posage) ; sinon on redessine tout, comme avant. */
+let faoPrevOps=null;  // Map op -> {g:THREE.Group|null, parts:[{mv,clip}], n:nb de mouvements}
+let faoPrevSig=null;  // empreinte de ce que le dessin représente (faoPrevSigNow)
+let faoPrevStreamG=null; // aperçu en cours de dessin progressif (traits provisoires par opération)
+function faoPrevSigNow(job){
+  const L=[job, job&&job.ops, faoPrevOn, faoViewerRap, (typeof faoVw!=='undefined'&&faoVw)?1:0, faoBodyGen,
+    (typeof faoFrameCur!=='undefined')?faoFrameCur:null];
+  try{
+    faoOpsSeq(job).forEach(function(E){
+      const op=E.op;
+      L.push(op, op&&op.on, op&&op.stale, faoOpMovesHit(op), E.xf?JSON.stringify(E.xf):null); // xf : recréé à chaque appel
+    });
+  }catch(e){ return null; }
+  return L;
+}
+function faoPrevSigSame(a,b){
+  if(!a||!b||a.length!==b.length)return false;
+  for(let i=0;i<a.length;i++)if(a[i]!==b[i])return false;
+  return true;
+}
+function faoPrevOpEntry(op){
+  if(!faoPrevOps)faoPrevOps=new Map();
+  let e=faoPrevOps.get(op);
+  if(!e){ e={g:null,parts:[],n:0}; faoPrevOps.set(op,e); }
+  return e;
+}
+function faoPrevOpGroup(op,group){
+  // Sous-groupe de l'opération dans l'aperçu `group` (créé à la demande).
+  const e=faoPrevOpEntry(op);
+  if(!e.g){
+    e.g=new THREE.Group(); e.g.name='faoPreviewOp';
+    try{ e.g.userData.opId=op&&op.id; }catch(err){}
+    group.add(e.g);
+  }
+  e.g.visible=!(op&&op.hidden===true);
+  return e.g;
+}
+function faoPrevOpBuild(op,group){
+  // Construit les traits mis de côté d'une opération (masquée lors du dessin).
+  const e=faoPrevOpEntry(op);
+  const g=faoPrevOpGroup(op,group);
+  const parts=e.parts; e.parts=[];
+  for(let i=0;i<parts.length;i++){
+    try{ faoPrevAdd(g,faoSegSplit(parts[i].mv,parts[i].clip)); }catch(err){}
+  }
+  return g;
+}
+function faoPrevToggleFast(){
+  // Afficher / masquer sans redessin. Renvoie le nombre de mouvements affichés,
+  // ou -1 si le dessin en place ne vaut plus (il faut tout redessiner).
+  try{
+    if(!faoPrevGroup||!faoPrevOps||!faoPrevOn)return -1;
+    if(typeof THREE==='undefined'||typeof scene==='undefined'||!scene)return -1;
+    if(faoPrevStreamG&&faoPrevStreamG===faoPrevGroup){
+      // génération en cours : on allume / éteint les traits déjà là, le rendu final suivra
+      faoPrevOps.forEach(function(e,op){ if(e.g)e.g.visible=!(op&&op.hidden===true); });
+      return 0;
+    }
+    const job=faoDoc();
+    if(!faoPrevSigSame(faoPrevSig,faoPrevSigNow(job)))return -1;
+    let total=0, manque=0;
+    faoPrevOps.forEach(function(e,op){
+      const vis=!(op&&op.hidden===true);
+      if(vis&&e.parts.length)faoPrevOpBuild(op,faoPrevGroup);
+      if(e.g)e.g.visible=vis;
+      if(vis){ total+=e.n; if(e.absent)manque++; }
+    });
+    faoPrevMissing=manque;
+    return total;
+  }catch(e){ return -1; }
 }
 let faoPrevMissing=0; // ops sans parcours en memoire lors du dernier redraw en LECTURE
 const FAO_COL_RAPIDE=0xffd60a, FAO_COL_REMONTEE=0xff2d92; // mêmes couleurs dans l'aperçu et la simulation
@@ -54749,18 +54875,22 @@ function faoRefreshPreview(mode){
   try{
     if(typeof THREE==='undefined'||typeof scene==='undefined'||!scene)return 0;
     faoPrevGroup=new THREE.Group(); faoPrevGroup.name='faoPreview';
-    const mk=function(moves,clip){
-      // faoSegSplit borne la coupe à la zone et laisse les G0 traverser librement.
-      if(!moves||!moves.length)return;
-      try{ faoPrevAdd(faoPrevGroup,faoSegSplit(moves,clip)); }catch(e){}
-    };
+    faoPrevOps=new Map();
     faoSeqSafe(job,seule).forEach(function(b){
       const op=b.op;
-      if(op&&op.hidden===true)return; // traces masquées dans la vue (op.hidden) — le G-code, lui, les garde
-      if(b.absent){ faoPrevMissing++; return; } // pas de parcours en memoire : on n'invente rien
-      const mv=b.tail?b.moves.concat(b.tail):b.moves; total+=b.moves.length; // tail : remontée avant un changement d'outil
-      mk(mv,b.xf?null:faoSegClipper(op,job)); // copie d'une répétition : la zone de la source ne la borne pas
+      if(b.absent){ faoPrevOpEntry(op).absent=true; if(!(op&&op.hidden===true))faoPrevMissing++; return; } // pas de parcours en memoire : on n'invente rien
+      const mv=b.tail?b.moves.concat(b.tail):b.moves; // tail : remontée avant un changement d'outil
+      const clip=b.xf?null:faoSegClipper(op,job); // copie d'une répétition : la zone de la source ne la borne pas
+      if(!mv||!mv.length)return;
+      const e=faoPrevOpEntry(op); e.n+=b.moves.length;
+      // traces masquées dans la vue (op.hidden) — le G-code, lui, les garde : mises de côté,
+      // dessinées au premier « Afficher » (faoPrevToggleFast)
+      if(op&&op.hidden===true){ e.parts.push({mv:mv,clip:clip}); return; }
+      total+=b.moves.length;
+      // faoSegSplit borne la coupe à la zone et laisse les G0 traverser librement.
+      try{ faoPrevAdd(faoPrevOpGroup(op,faoPrevGroup),faoSegSplit(mv,clip)); }catch(e2){}
     });
+    faoPrevSig=faoPrevSigNow(job); // après la séquence : elle a pu mailler un corps (faoBodyGen)
     faoAdd3D(faoPrevGroup);
     if(typeof faoVw!=='undefined'&&faoVw)faoPrevGroup.visible=false; // viewer : traces restent cachées
   }catch(e){}
@@ -54840,6 +54970,7 @@ async function faoRefreshPreviewStream(){
   if(typeof THREE==='undefined'||typeof scene==='undefined'||!scene)return 0;
   const tok=++faoStreamTok;
   faoPrevGroup=new THREE.Group(); faoPrevGroup.name='faoPreview';
+  const g=faoPrevGroup; faoPrevOps=new Map(); faoPrevStreamG=g;
   faoAdd3D(faoPrevGroup);
   if(typeof faoVw!=='undefined'&&faoVw)faoPrevGroup.visible=false; // viewer : traces restent cachées
   const ops=((job&&job.ops)||[]).filter(function(op){ return op&&op.on!==false&&!faoIsPattern(op); });
@@ -54847,10 +54978,10 @@ async function faoRefreshPreviewStream(){
   // au cache ; la boucle ci-dessous les relit et calcule normalement tout ce qui manque.
   const fluxOp=new Map();
   await faoWkRemplir(job,ops,function(){ return tok!==faoStreamTok; },function(op,delta){
-    if(op.hidden===true)return;
+    if(g!==faoPrevGroup)return; // un autre dessin a pris la place
     const sp=faoSegSplit(delta,faoSegClipper(op,job),fluxOp.get(op)||null);
     fluxOp.set(op,sp.prev);
-    faoPrevAdd(faoPrevGroup,sp);
+    faoPrevAdd(faoPrevOpGroup(op,g),sp); // opération masquée : sous-groupe éteint, « Afficher » l'allume
   },function(n,total,coeurs){
     if(typeof faceEl!=='undefined'&&faceEl)faceEl.textContent='FAO : génération sur '+coeurs+' cœur'+(coeurs>1?'s':'')+', '+n+'/'+total+' opération'+(total>1?'s':'')+' terminée'+(n>1?'s':'')+'…';
   });
@@ -54866,21 +54997,20 @@ async function faoRefreshPreviewStream(){
         // canonique final.
         const st={n:0,prev:null};
         await faoOpMovesStream(op,job,function(marr){
-          if(tok!==faoStreamTok||!marr||marr.length<=st.n)return;
-          const delta=(op.hidden===true)?null:marr.slice(st.n);
+          if(tok!==faoStreamTok||g!==faoPrevGroup||!marr||marr.length<=st.n)return;
+          const delta=marr.slice(st.n);
           st.n=marr.length;
-          if(!delta)return;
           try{
             const sp=faoSegSplit(delta,faoSegClipper(op,job),st.prev);
             st.prev=sp.prev;
-            faoPrevAdd(faoPrevGroup,sp);
+            faoPrevAdd(faoPrevOpGroup(op,g),sp);
           }catch(e){}
         });
       }else{
         // Opérations 2.5D : calcul (coups de cache = instantané) + dessin.
         const mv=faoOpMoves(op,job);
-        if(mv&&mv.length&&op.hidden!==true)
-          try{ faoPrevAdd(faoPrevGroup,faoSegSplit(mv,faoSegClipper(op,job))); }catch(e){}
+        if(mv&&mv.length&&g===faoPrevGroup)
+          try{ faoPrevAdd(faoPrevOpGroup(op,g),faoSegSplit(mv,faoSegClipper(op,job))); }catch(e){}
       }
     }catch(e){}
     await faoYieldUI();
@@ -58598,6 +58728,9 @@ function faoStaleScan(){
       ((s&&s.ops)||[]).forEach(function(o){
         if(!o)return;
         if(faoIsPattern(o)){ o.stale=false; return; } // V0.95.3 : répétition = copies des sources, rien à générer
+        // V0.99.40 : opération désactivée (○, ou posage gelé) = aucun parcours à produire : pas de ⚠.
+        // Réactivée, faoChanged refait ce relevé et pose le triangle si son parcours manque.
+        if(o.on===false){ o.stale=false; return; }
         // Prima le maillage AVANT la cle (comme faoOpMoves) : la 1re lecture
         // d'une ebauche 3D incremente faoBodyGen.
         if(faoMeshOp(o)){ try{ faoActiveMesh(s); }catch(e){} }
@@ -58735,18 +58868,21 @@ async function faoRegenOpStream(setupId,opId){
   const tok=++faoStreamTok;
   o.stale=false;             // débloque le recalcul (clé ≠ cache)
   o.hidden=true;             // dessin de départ SANS l'ancien tracé de cette opération
-  try{ faoRefreshPreview(); }finally{ o.hidden=false; }
+  const hid0=o.hidden; // undefined ou false : la ligne était affichée
+  try{ faoRefreshPreview(); }finally{ o.hidden=hid0; }
   try{ faoRefreshFaoUI(); }catch(e){} // triangle retiré tout de suite
   const g=faoPrevGroup;
+  if(g)faoPrevStreamG=g; // « Masquer » pendant le calcul : éteint les traits provisoires (faoPrevToggleFast)
+  try{ if(g&&faoPrevOps){ const e=faoPrevOps.get(o); if(e)e.parts=[]; } }catch(e){} // jamais l'ancien tracé sous le nouveau
   const dit=function(t){ try{ if(typeof faceEl!=='undefined'&&faceEl)faceEl.textContent=t; }catch(e){} };
   dit('FAO : génération de « '+faoOpShortLabel(o)+' »…');
   let n=0;
   try{
     const st={n:0,prev:null};
     const mv=await faoOpMovesStream(o,job,function(marr){
-      if(tok!==faoStreamTok||!g||g!==faoPrevGroup||o.hidden===true||!marr||marr.length<=st.n)return;
+      if(tok!==faoStreamTok||!g||g!==faoPrevGroup||!marr||marr.length<=st.n)return;
       const delta=marr.slice(st.n); st.n=marr.length;
-      try{ const sp=faoSegSplit(delta,faoSegClipper(o,job),st.prev); st.prev=sp.prev; faoPrevAdd(g,sp); }catch(e){}
+      try{ const sp=faoSegSplit(delta,faoSegClipper(o,job),st.prev); st.prev=sp.prev; faoPrevAdd(faoPrevOpGroup(o,g),sp); }catch(e){}
     });
     n=mv?mv.length:0;
   }catch(e){
@@ -58798,9 +58934,24 @@ function faoChanged(){
   else faoStaleScan();            // 1) qui doit être regeneré -> icônes !
   faoTouch();
   if(!attend)faoRefreshPreview(); // 2) redraw : sert l'ancien trace pour les perimes
+  // V0.99.40 : périmé seulement si un parcours manque vraiment (avant : TOUJOURS, d'où
+  // « ⚠ Tout régénérer » et export bloqué après un gel, un ●/○, un renommage…)
+  faoPrevStale=attend?true:!faoPrevAllReady();
   faoRefreshFaoUI();
-  faoPrevStale=true;
   faoStaleUI();
+}
+function faoPrevAllReady(){
+  // Vrai si chaque opération active des posages non gelés (ce que l'export écrit) a son
+  // parcours en mémoire avec sa clé exacte — aucun calcul ici. Aucune opération : vrai.
+  try{
+    if(faoStaleCount()>0)return false;
+    const L=faoRegenSetups();
+    for(let i=0;i<L.length;i++){
+      const s=L[i];
+      if(!faoRegenOn(s,function(){ return faoMovesAllReady(s); }))return false;
+    }
+    return true;
+  }catch(e){ return false; }
 }
 function faoVisibleChanged(){
   // OEIL « Masquer / Afficher » : champ PUREMENT AFFICHAGE (ignore par faoOpSig, le
@@ -58813,7 +58964,10 @@ function faoVisibleChanged(){
     faoRefreshFaoUI();
     return;
   }
-  const n=faoRefreshPreview(true);
+  // V0.99.40 : le dessin en place vaut encore -> on allume / éteint le sous-groupe de
+  // l'opération (instantané) ; sinon redessin complet en lecture seule, comme avant.
+  let n=faoPrevToggleFast();
+  if(n<0)n=faoRefreshPreview(true);
   faoRefreshFaoUI();
   try{
     if(faoPrevMissing>0&&typeof faceEl!=='undefined'&&faceEl){
@@ -80980,8 +81134,23 @@ async function bundleStoreCaches(b){
   }catch(e){}
   const ancienFao=!!(b.doc.fao&&typeof b.doc.fao==='object'&&!Array.isArray(b.doc.fao.setups)); // pré-posages : ids inconnus ici
   const ks=Object.keys(moves).filter(function(k){return ancienFao||miens.has(k);});
+  // V0.99.40 : un parcours plus RÉCENT déjà rangé dans ce navigateur (« Tout régénérer » fait
+  // après l'enregistrement du fichier) n'est plus écrasé par celui du fichier : avant, chaque
+  // ouverture remettait les anciens parcours, donc les triangles ⚠, et il fallait tout
+  // régénérer encore. Celui du fichier reste en réserve (faoBundleAlt) : la lecture le prend
+  // si c'est LUI qui correspond au document (ouverture d'une version plus ancienne).
+  faoBundleAlt=new Map();
   if(ks.length&&faoMovesReady()){
-    for(let i=0;i<ks.length;i++){ try{ await idbSet(ks[i],moves[ks[i]]); }catch(e){} }
+    for(let i=0;i<ks.length;i++){
+      try{
+        const e=moves[ks[i]];
+        let cur=null;try{cur=await idbGet(ks[i]);}catch(err){cur=null;}
+        if(cur&&cur.v===1&&Array.isArray(cur.mv)&&cur.k&&e&&cur.k!==e.k&&+cur.at>+(e.at||0)){
+          faoBundleAlt.set(ks[i],e); continue;
+        }
+        await idbSet(ks[i],e);
+      }catch(e){}
+    }
   }
   // Images des pièces d'un assemblage (option, V0.28.1) : dans le cache AVANT le document,
   // lu à l'ouverture à la place des rejeux (47-assemblage-cache)

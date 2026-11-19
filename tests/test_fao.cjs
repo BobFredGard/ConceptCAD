@@ -1233,6 +1233,8 @@ const vm=require('vm');
     "att(!!expB,'arbre FAO : bouton Exporter G-code');",
     // « calculer puis valider » : modif -> bouton grisé + export bloqué ;
     // « Générer + aperçu » re-valide et ré-ouvre l'export.
+    // V0.99.40 : périmé seulement si un parcours manque vraiment — une vraie modification d'abord
+    "(function(){const q=faoSetup().ops.find(function(o){return o&&o.type!=='drill'&&o.on!==false;});if(q)q.essaiCle=1;})();",
     "faoChanged();",
     "let expA=null;(function wA2(n){if(expA)return;if(n.textContent==='Exporter G-code')expA=n;if(n.children)n.children.forEach(wA2);})(faoTreeWrapEl);",
     "att(!!expA&&expA.disabled===true,'export : bouton grisé tant que périmé');",
@@ -1289,6 +1291,31 @@ const vm=require('vm');
     "mbV.onclick({stopPropagation(){}});",
     "att(sU.ops[0].hidden===false,'affichage manuel : « Afficher » remet la trace');",
     "att(faoRefreshPreview()===nAll,'affichage manuel : preview totale ('+nAll+' pts)');",
+    // V0.99.40 : masquer / afficher SANS redessin (sous-groupe par opération allumé / éteint)
+    "{const sq=faoSeqSafe;let nSeq=0;faoSeqSafe=function(){nSeq++;return sq.apply(this,arguments);};",
+    " const g0=faoPrevGroup;",
+    " sU.ops[0].hidden=true;const nM=faoVisibleChanged.length>=0?(faoVisibleChanged(),faoPrevToggleFast()):0;",
+    " const e0=faoPrevOps&&faoPrevOps.get(sU.ops[0]);",
+    " att(nSeq===0&&faoPrevGroup===g0,'masquer rapide : aucune séquence recalculée, même dessin ('+nSeq+')');",
+    " att(!!e0&&!!e0.g&&e0.g.visible===false,'masquer rapide : sous-groupe de l opération éteint');",
+    " att(nM===nHid,'masquer rapide : '+nM+' points affichés comme le redessin complet ('+nHid+')');",
+    " sU.ops[0].hidden=false;faoVisibleChanged();",
+    " att(nSeq===0&&e0.g.visible===true,'afficher rapide : rallumé sans redessin ('+nSeq+')');",
+    " sU.ops[0].hidden=true;faoRefreshPreview();const e1=faoPrevOps.get(sU.ops[0]);",
+    " att(!!e1&&!e1.g&&e1.parts.length>0,'opération masquée au dessin : traits mis de côté, rien construit');",
+    " nSeq=0;sU.ops[0].hidden=false;const nA=faoPrevToggleFast();",
+    " att(nSeq===0&&!!e1.g&&e1.g.visible===true&&e1.parts.length===0&&nA===nAll,'premier Afficher : traits construits à la demande ('+nA+' pts)');",
+    " sU.ops[0].z=(+sU.ops[0].z||0)-0.5;faoOpMovesPurge();",
+    " att(faoPrevToggleFast()===-1,'parcours changé : le dessin en place ne vaut plus (redessin complet)');",
+    " sU.ops[0].z=(+sU.ops[0].z||0)+0.5;faoOpMovesPurge();",
+    " faoSeqSafe=sq;faoRefreshPreview();}",
+    // V0.99.40 : Ctrl+Z d'un « Masquer » : pas de rejeu de la pièce, mêmes opérations (parcours en mémoire gardés)
+    "{const rb=rebuild;let nRb=0;rebuild=function(){nRb++;return rb.apply(this,arguments);};",
+    " const op0=sU.ops[0];faoSnapshot('masquer');op0.hidden=true;faoVisibleChanged();",
+    " const okU=docUndo();",
+    " att(okU&&nRb===0,'annuler un masquage : aucun rejeu de la pièce ('+nRb+')');",
+    " att(faoSetup().ops[0]===op0&&op0.hidden!==true,'annuler un masquage : la trace revient, même opération en mémoire');",
+    " rebuild=rb;}",
     // --- 029 : ébauche 3D — le REPÈRE de génération doit suivre la POCHE
     // (2026-10-11-005, « Cavité inverse » = le parcours « tourne de 90° »).
     //   (a) brut PORTRAIT (SENS LONG : transpose x<->y du maillage) + limite :

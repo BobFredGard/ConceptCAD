@@ -18,7 +18,14 @@ const vm=require('vm');
     A(gen().textContent.indexOf('T')===0,'état initial : bouton « Tout régénérer » : '+JSON.stringify(gen().textContent));
     A(exp().disabled===false,'état initial : export ouvert');
 
-    // --- toute modification pèrimé l'aperçu
+    // --- toute modification pèrimé l'aperçu — V0.99.41 : seulement si un parcours manque
+    // vraiment (faoPrevAllReady) ; un document vide n'est jamais périmé, d'où un posage
+    // avec une poche dont le parcours n'est pas encore calculé
+    const sP=faoDefaultSetup(); sP.name='STALE';
+    sP.stock={x0:0,y0:0,z0:0,x1:100,y1:80,z1:25};
+    sP.tools=[{id:'T1',num:1,name:'Fraise D10',kind:'flat',d:10,cornerR:0,flutes:2,vc:250,fz:0.06}];
+    sP.ops=[{id:'S1',on:true,toolId:'T1',type:'pocket',x0:10,y0:10,x1:90,y1:70,ztop:25,zbot:5,ap:10,ae:5}];
+    doc.fao={setups:[sP],activeSetupId:sP.id};
     faoChanged();
     A(faoPrevStale===true,'faoChanged() : aperçu périmé');
     A(gen().textContent.charCodeAt(0)===0x26a0,'bouton signale ⚠ : '+JSON.stringify(gen().textContent));
@@ -49,7 +56,8 @@ const vm=require('vm');
     const msg2=(typeof faceEl!=='undefined'&&faceEl)?String(faceEl.textContent||''):'';
     A(msg2.indexOf('bloqu')<0,'export débloqué après régénération : '+JSON.stringify(msg2));
 
-    // --- un nouvel edit re-bloque
+    // --- un nouvel edit re-bloque (pas de la poche changé : son parcours ne correspond plus)
+    sP.ops[0].ae=4;
     faoChanged();
     A(faoPrevStale===true&&exp().disabled===true,'un nouvel edit re-bloque l export');
     faoPreviewGenerate();
