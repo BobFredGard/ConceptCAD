@@ -8,7 +8,7 @@ sont sorties le 2026-09-30j.
 Code dans `src/` · livrable `fusion_mvp.html` (généré par `build.js`) · architecture et
 garde-fous en tête de `src/00-entete-et-outils.js`.
 
-**719 versions**, de `2026-09-28b` à `V0.99.32` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
+**720 versions**, de `2026-09-28b` à `V0.99.33` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
 comme dans le fichier d'origine.
 
 ---
@@ -8028,3 +8028,11 @@ Cavité Usinage, après l'ébauche D25, la reprise D10 et une finition boule D12
 **Ajout** (`src/90-30-import.js`) : 📥 Importer lit les fichiers **IGES** (`.igs`, `.iges`) par le même chemin que le STEP (`importReadShape` : lecteur `IGESControl_Reader` du noyau, déjà présent). Le format est reconnu au **contenu** (colonne 73 = « S ») : rejeu, restauration à l'ouverture et corps dérivés n'ont rien à savoir ; source gardée dans le fichier (`f.src.fmt='iges'`). Les faces libres d'un IGES sont **cousues** (`importIgesSolidify`, tolérance 0,01 mm) : chaque coque fermée devient un solide de volume positif, le reste est gardé en surfaces, le message le dit. **X_T / X_B (Parasolid)** : refus avec un message clair (format fermé, réexporter en STEP ou IGES).
 
 **Test** : `test_import_iges` — bloc 60 × 40 × 20 et cylindre Ø20 × 30 écrits en IGES (faces) : 2 solides cousus, volume exact, réouverture avec le même id ; faux `.igs` refusé. CACHE_VER et FORMES_VER inchangés.
+
+## V0.99.33 - À l'import : nouveau corps ou pièce à assembler
+
+**Demande de Fred** : « Lors de l'import, on pourrait demander si l'on veut un nouveau corps de pièce ou une pièce à assembler ? »
+
+**Ajout** (`src/90-30-import.js`) : après le choix du fichier (STEP, IGES ou STL), la question « Importer « … » : Nouveau corps dans la pièce / Pièce à assembler (nouveau composant) / Annuler » (`importAskWhere`, `mffAsk`). « Nouveau corps » est proposé d'abord, « Pièce à assembler » d'abord en mode Placer. **Pièce à assembler** (`importAsComponent`) : composant neuf, enfant du composant actif, qui porte la fonction import (même chemin que d'habitude, dans le document du composant), posé à droite de l'existant, puis retour en mode Placer avec l'occurrence sélectionnée ; un Ctrl+Z l'annule ; fichier illisible → aucun composant vide ne reste. Correctif : un faux `.igs` dit « Import IGES impossible » (et non STEP).
+
+**Test** : `test_import_iges` — pièce à assembler : composant avec son import IGES, occurrence sélectionnée en mode Placer, pièce d'origine intacte, retour après enregistrement et réouverture, refus propre ; choix proposé par défaut selon le mode. Vérifié dans l'application : IGES en corps, puis en pièce à assembler posée à x = 80, Ctrl+Z la retire. CACHE_VER et FORMES_VER inchangés.

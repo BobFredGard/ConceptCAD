@@ -75,11 +75,56 @@ function importHydrate(){
 $('btnImport').onclick=()=>$('fileImport').click();
 $('fileImport').addEventListener('change',async e=>{
   const f=e.target.files[0];if(!f)return;
-  if(/\.stou?l$/i.test(f.name)){await importSTL(f);}
-  else if(/\.(x_[tb]|xmt_txt|xmt_bin)$/i.test(f.name)){alert('Fichier Parasolid (X_T) : format fermé de Siemens, illisible par le noyau libre.\nRéexportez la pièce en STEP (ou IGES) depuis le logiciel d’origine — SolidWorks, NX, Solid Edge… savent tous le faire.');}
-  else{await importSTEP(f);}
   e.target.value='';
+  if(/\.(x_[tb]|xmt_txt|xmt_bin)$/i.test(f.name)){alert('Fichier Parasolid (X_T) : format fermé de Siemens, illisible par le noyau libre.\nRéexportez la pièce en STEP (ou IGES) depuis le logiciel d’origine — SolidWorks, NX, Solid Edge… savent tous le faire.');return;}
+  // V0.99.33 : corps de la pièce ou pièce à assembler (demande de Fred)
+  const ou=await importAskWhere(f.name);
+  if(ou==='cancel')return;
+  if(ou==='asm'){await importAsComponent(f);return;}
+  if(/\.stou?l$/i.test(f.name)){await importSTL(f);}
+  else{await importSTEP(f);}
 });
+/* ---- V0.99.33 : à l'import, nouveau corps de la pièce ou pièce à assembler ----
+   Fred : « lors de l'import, on pourrait demander si l'on veut un nouveau corps de pièce ou
+   une pièce à assembler ». Pièce à assembler = un composant neuf, enfant du composant actif,
+   qui contient la fonction import (même chemin que d'habitude : importSTEP / importSTL
+   dans le document du composant), puis retour en mode Placer, l'occurrence sélectionnée,
+   posée à droite de ce qui est déjà là. Défaut : « pièce à assembler » si l'on est déjà en
+   mode Placer, sinon « nouveau corps ». */
+function importAskWhere(name){
+  const enAsm=typeof asmMode!=='undefined'&&asmMode==='asm';
+  return mffAsk('Importer « '+name+' » :',[
+    ['body','Nouveau corps dans la pièce',!enAsm],
+    ['asm','Pièce à assembler (nouveau composant)',enAsm],
+    ['cancel','Annuler']]);
+}
+async function importAsComponent(file){
+  if(typeof skEdit!=='undefined'&&skEdit){try{faceEl.textContent='Fermez d’abord l’esquisse.';}catch(e){}return false;}
+  const stl=/\.stou?l$/i.test(file.name);
+  if(!stl&&!occHas()){alert('Moteur STEP (OCCT) pas encore chargé — réessayez dans quelques secondes.');return false;}
+  const base=file.name.replace(/\.[^.]+$/,'');
+  // à droite de ce qui est déjà affiché (comme « Insérer »), mesuré avant de quitter la vue
+  let dx=0;
+  try{if(asmMode==='asm'){const box=new THREE.Box3();asmSceneGet().getObjectByName('asmOcc').traverse(m=>{if(m.isMesh)box.expandByObject(m);});if(!box.isEmpty())dx=box.max.x+20;}}catch(e){}
+  if(!dx)try{const box=new THREE.Box3();(bodies||[]).forEach(b=>{if(b&&b.mesh&&b.visible!==false)box.expandByObject(b.mesh);});if(!box.isEmpty())dx=box.max.x+20;}catch(e){}
+  asmEnsure();asmLeavePart();
+  const back=asm.path.slice();
+  const r=asmNewComp(base);if(!r)return false;
+  r.occ.fr.o[0]=dx;
+  asmShow(back.concat(r.occ.id),'part');
+  const n0=(doc.features||[]).length;
+  if(stl)await importSTL(file);else await importSTEP(file);
+  if((doc.features||[]).length===n0){
+    // import refusé (fichier illisible…) : le composant vide part, rien ne reste
+    asmShow(back,'asm');
+    try{asmDeleteOcc(r.occ.id,true);asmNotify();}catch(e){}
+    return false;
+  }
+  asmShow(back,'asm',r.occ.id);
+  try{asmNotify();}catch(e){}
+  try{faceEl.textContent='Importé comme pièce à assembler : « '+base+' » dans « '+r.owner.name+' ». Placez-la ou alignez un repère · double-clic = modéliser.';}catch(e){}
+  return true;
+}
 /* ---------- 2026-10-15-004 : la SOURCE d'un import est persistée ----------
    Retour : « quand on sauvegarde la pièce avec le STEP et des usinages, le fichier
    n'est pas rechargé car manquant. Pourtant le .miniFusion fait 30 Mo ! » — les
@@ -235,7 +280,7 @@ async function importSTEP(file){
   let nom=/\.ig(e)?s$/i.test(file.name)?'IGES':'STEP';
   try{
     const u8=new Uint8Array(await file.arrayBuffer());
-    const iges=importIsIges(u8);nom=iges?'IGES':'STEP';
+    const iges=importIsIges(u8);if(iges)nom='IGES';
     if(!iges&&/\.ig(e)?s$/i.test(file.name))throw new Error('ce fichier .igs ne ressemble pas à un IGES (lignes de 80 caractères)');
     const entry=importStepBuild(u8);
     importAttach(file.name.replace(/\.[^.]+$/,''),iges?'iges':'step',u8,entry,file.name);

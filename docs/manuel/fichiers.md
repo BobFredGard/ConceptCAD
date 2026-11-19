@@ -3,6 +3,7 @@
 # Fichiers
 
 - **Import** : STEP, **IGES** (`.igs`, `.iges`) et STL.
+  - À chaque import, ConceptCAD demande : **nouveau corps dans la pièce**, ou **pièce à assembler** (un composant neuf, posé à côté de ce qui existe, prêt à placer ou aligner ; Ctrl+Z l’annule). En mode Placer, « pièce à assembler » est proposé d’abord.
   - Un IGES arrive souvent en surfaces séparées : elles sont **cousues en solide** quand elles se referment ; sinon elles restent des surfaces (affichées et usinables, mais ni unies ni soustraites).
   - **Parasolid (`.x_t`)** : format fermé, illisible — réexportez la pièce en STEP ou en IGES depuis le logiciel d’origine.
 - **Export** : STL, OBJ, STEP (détail plus bas) et **FreeCAD natif (`.FCStd`)** exact : corps à leur couleur, aimants avec leurs caractéristiques et leurs **lignes de champ** rangées par intensité.
