@@ -61,9 +61,26 @@ const vm=require('vm');
       'bundle : document complet (2 operations)');
     A(b.doc.name==='Piece X','bundle : nom conserve dans le document');
     const kb='faoMoves:'+s.id+':opA';
-    A(!!b.moves[kb]&&b.moves[kb].v===1&&Array.isArray(b.moves[kb].mv)
-      &&b.moves[kb].mv.length===m1.length,
-      'bundle : parcours REELS dans le fichier ('+b.moves[kb].mv.length+' pts)');
+    A(!!b.moves[kb]&&b.moves[kb].v===1&&!b.moves[kb].mv&&!!b.moves[kb].mvz,
+      'bundle : parcours rangés en colonnes (mvz), plus de liste de points');
+    const z1=faoMvUnpack(b.moves[kb].mvz);
+    A(Array.isArray(z1)&&z1.length===m1.length,
+      'bundle : parcours REELS dans le fichier ('+(z1?z1.length:0)+' pts)');
+    A(faoMvSame(z1,m1)&&faoMvSame(faoMvUnpack(b.moves['faoMoves:'+s.id+':opB'].mvz),m2),
+      'bundle : points relus identiques bit à bit');
+
+    /* ---- colonnes : cas limites gardés exacts ---- */
+    const bord=[{r:1,x:-0,y:0.1+0.2,z:-30.135000228881836},{r:0,x:1e-300,y:-1e300,z:5e-324,arc:{i:1.5,j:-2,cw:true},ent:1},
+      {x:1,r:0,y:2,z:3},{r:1,x:NaN,y:0,z:0},{r:true,x:0,y:0,z:0},{r:0,x:1,y:2},{r:0,x:Number.MAX_VALUE,y:-Number.MIN_VALUE,z:123456.789,tr:2}];
+    const zb=faoMvPack(bord), rb=faoMvUnpack(zb);
+    A(!!zb&&zb.o.length===4&&zb.x.length===2,'colonnes : '+(zb?zb.o.length:'?')+' points de forme inattendue gardés tels quels');
+    A(faoMvSame(rb,bord)&&Object.is(rb[0].x,-0)&&rb[0].y===0.1+0.2,'colonnes : -0, 0,30000000000000004, extrêmes et champs en plus exacts');
+    A(faoMvSame(faoMvUnpack(faoMvPack([])),[]),'colonnes : parcours vide');
+    A(faoMvUnpack(Object.assign({},zb,{n:zb.n+1}))===null,'colonnes : entrée abîmée refusée');
+    const vieux={moves:{a:{v:1,mv:m1}}};bundleMovesInflate(vieux);
+    A(vieux.moves.a.mv===m1,'ancien fichier (mv en liste) : lu tel quel');
+    const abime={moves:{a:{v:1,mvz:{v:1,n:3,f:'xx',r:'000'}}}};bundleMovesInflate(abime);
+    A(!abime.moves.a,'entrée en colonnes illisible : retirée (l opération se régénère)');
     A(b.moves[kb].k===faoOpMovesKey(s.ops[0],s),
       'bundle : cle d empreinte embarquee (restauration possible)');
     A(bundleIs(serialise())===false,'ancien .minifusion.json : bundleIs = false');

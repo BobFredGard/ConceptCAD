@@ -326,11 +326,89 @@ async function bundleMoves(){
   try{
     const ks=(await idbKeys('faoMoves:')).filter(function(k){return miens.has(k);});
     for(let i=0;i<ks.length;i++){
-      try{ const v=await idbGet(ks[i]); if(v&&v.v===1&&Array.isArray(v.mv))out[ks[i]]=v; }
+      try{ const v=await idbGet(ks[i]); if(v&&v.v===1&&Array.isArray(v.mv))out[ks[i]]=bundleMvEntry(v); }
       catch(e){}
     }
   }catch(e){}
   return out;
+}
+/* Parcours rangés en colonnes EXACTES dans le fichier (mvz). Avant, chaque point était écrit
+   {"r":0,"x":-67.7354251578238,"y":…,"z":…} : ~77 caractères, noms d'axes répétés (SIRAP-14-002 :
+   28 Mo de parcours sur 42 décompressés). Les cotes gardent TOUS leurs bits : un arrondi, même au
+   milliardième, décalait ~1 100 cotes sur 1,1 million d'un millième dans le code machine (valeurs
+   pile entre deux millièmes) — refusé par Fred le 19/11. Rangement : X, Y, Z en Float64 ; chaque
+   valeur XOR la précédente du même axe (les octets hauts deviennent des zéros) ; octets regroupés
+   par rang (plans), puis base64 — la compression du fichier fait le reste (9,2 → 6,6 Mo).
+   r = '0'/'1' par point ; x = autres champs d'un point (arc, ent, tr…) ; o = point de forme
+   inattendue gardé tel quel. Relu et comparé bit à bit avant d'écrire : au moindre écart, l'entrée
+   part dans l'ancien format. Ouverture : bundleMovesInflate (avant tout usage de b.moves). */
+function faoMvLittle(){try{return new Uint8Array(new Uint16Array([1]).buffer)[0]===1;}catch(e){return false;}}
+function faoMvPack(mv){
+  if(!Array.isArray(mv)||typeof btoa!=='function'||!faoMvLittle())return null;
+  const n=mv.length,F=new Float64Array(n*3),R=new Array(n),X=[],O=[];
+  for(let i=0;i<n;i++){
+    const m=mv[i],ks=(m&&typeof m==='object'&&!Array.isArray(m))?Object.keys(m):null;
+    if(!(ks&&ks.length>=4&&ks[0]==='r'&&ks[1]==='x'&&ks[2]==='y'&&ks[3]==='z'&&(m.r===0||m.r===1)
+      &&Number.isFinite(m.x)&&Number.isFinite(m.y)&&Number.isFinite(m.z))){O.push([i,m]);R[i]='0';continue;}
+    F[i*3]=m.x;F[i*3+1]=m.y;F[i*3+2]=m.z;R[i]=m.r?'1':'0';
+    if(ks.length>4){const e={};for(let j=4;j<ks.length;j++)e[ks[j]]=m[ks[j]];X.push([i,e]);}
+  }
+  const U=new Uint32Array(F.buffer),D=new Uint32Array(U.length);
+  for(let i=0;i<U.length;i++)D[i]=i>=6?(U[i]^U[i-6]):U[i];
+  const B=new Uint8Array(D.buffer),N=B.length,P=N/8,T=new Uint8Array(N);
+  for(let i=0;i<N;i++)T[(i&7)*P+(i>>3)]=B[i];
+  return {v:1,n:n,f:importU8ToB64(T),r:R.join(''),x:X,o:O};
+}
+function faoMvUnpack(z){
+  // → tableau de points identique à celui rangé par faoMvPack, ou null (entrée illisible)
+  try{
+    if(!z||z.v!==1||typeof z.f!=='string'||typeof z.r!=='string'||!faoMvLittle())return null;
+    const n=z.n,T=importB64ToU8(z.f);
+    if(!Number.isInteger(n)||n<0||T.length!==n*24||z.r.length!==n)return null;
+    const N=T.length,P=N/8,B=new Uint8Array(N);
+    for(let i=0;i<N;i++)B[i]=T[(i&7)*P+(i>>3)];
+    const U=new Uint32Array(B.buffer);
+    for(let i=6;i<U.length;i++)U[i]=U[i]^U[i-6];
+    const F=new Float64Array(U.buffer),mv=new Array(n);
+    for(let i=0;i<n;i++)mv[i]={r:z.r.charCodeAt(i)===49?1:0,x:F[i*3],y:F[i*3+1],z:F[i*3+2]};
+    (Array.isArray(z.x)?z.x:[]).forEach(function(p){if(p&&mv[p[0]])Object.assign(mv[p[0]],p[1]);});
+    (Array.isArray(z.o)?z.o:[]).forEach(function(p){if(p&&p[0]>=0&&p[0]<n)mv[p[0]]=p[1];});
+    return mv;
+  }catch(e){return null;}
+}
+function faoMvSame(a,b){
+  // Comparaison stricte : même ordre des champs, cotes bit à bit (Object.is), autres champs tels qu'écrits dans un fichier
+  if(!Array.isArray(a)||!Array.isArray(b)||a.length!==b.length)return false;
+  for(let i=0;i<a.length;i++){
+    const p=a[i],q=b[i];if(p===q)continue;
+    if(!p||!q||typeof p!=='object'||typeof q!=='object')return false;
+    const kp=Object.keys(p),kq=Object.keys(q);if(kp.length!==kq.length)return false;
+    for(let j=0;j<kp.length;j++){
+      const k=kp[j];if(k!==kq[j])return false;
+      const u=p[k],v=q[k];
+      if(typeof u==='number'||typeof v==='number'){if(!Object.is(u,v))return false;}
+      else if(JSON.stringify(u)!==JSON.stringify(v))return false;
+    }
+  }
+  return true;
+}
+function bundleMvEntry(v){
+  // Copie de l'entrée pour le fichier : mv remplacé par mvz si la relecture redonne exactement les mêmes points
+  try{
+    const z=faoMvPack(v.mv);
+    if(z&&faoMvSame(faoMvUnpack(z),v.mv)){const c={};for(const k in v)if(k!=='mv')c[k]=v[k];c.mvz=z;return c;}
+  }catch(e){}
+  return v;
+}
+function bundleMovesInflate(b){
+  // Ouverture : remet mv dans chaque entrée rangée en colonnes ; une entrée illisible est retirée
+  // (l'opération se régénère, comme sans parcours). Sans effet sur un ancien fichier ou une 2e fois.
+  const m=b&&b.moves;if(!m||typeof m!=='object')return;
+  for(const k of Object.keys(m)){
+    const e=m[k];if(!e||!e.mvz||Array.isArray(e.mv))continue;
+    const mv=faoMvUnpack(e.mvz);
+    if(mv){e.mv=mv;delete e.mvz;}else delete m[k];
+  }
 }
 async function bundleImports(){
   // Fichiers d'origine des imports (base64) : sans eux, le STEP manquait à l'ouverture.
@@ -380,6 +458,7 @@ async function bundleStoreCaches(b){
   // Caches d'un bundle : trajectoires FAO (IndexedDB) et sources des imports. Partagée par
   // l'ouverture (bundleRestore) et l'insertion dans un assemblage (47). → nombre de
   // trajectoires gardées.
+  bundleMovesInflate(b); // parcours rangés en colonnes → points (sans effet sur un ancien fichier)
   const moves=b.moves||{};
   // Seulement les trajectoires des opérations du document (un ancien fichier
   // embarquait celles de TOUS les documents du navigateur d'origine : ~70 Mo).
@@ -430,6 +509,7 @@ async function bundleRestore(txt,opts){
   // lecture), puis mémoire amorcée : fonctionne aussi SANS IndexedDB.
   const b=JSON.parse(txt);
   if(!b||b.bundle!==1||!b.doc)return false;
+  bundleMovesInflate(b);
   const moves=b.moves||{};
   // V0.99.16 : empreinte du document TEL QU'ENREGISTRÉ (avant le renommage d'après le nom du fichier) — image (20-75)
   try{if(b.pfin&&typeof pcSigDoc==='function')b._sigLu=pcSigDoc(JSON.stringify(b.doc));}catch(e){}

@@ -8,7 +8,7 @@ sont sorties le 2026-09-30j.
 Code dans `src/` · livrable `fusion_mvp.html` (généré par `build.js`) · architecture et
 garde-fous en tête de `src/00-entete-et-outils.js`.
 
-**729 versions**, de `2026-09-28b` à `V0.99.42` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
+**730 versions**, de `2026-09-28b` à `V0.99.43` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
 comme dans le fichier d'origine.
 
 ---
@@ -8123,3 +8123,12 @@ Cavité Usinage, après l'ébauche D25, la reprise D10 et une finition boule D12
 **Correctif** (`src/89-fao-torique.js`) : laisse **radiale** seulement, comme la fraise droite et Fusion : cercle des centres R0 + laisse, rayon de coin inchangé, pointe non relevée (la laisse du fond reste celle des cotes du plan). Cote de recherche relevée juste au-dessus du nœud faisable (au plus 1 µm) quand un fond est à la cote. Entrée d'une mini-passe torique : l'autre côté est essayé quand le premier maillon, dans un coin, pointe vers la matière (le morceau était jeté). Les parcours des fraises toriques et boules avec une laisse de paroi changent : CACHE_VER 2026-11-19-001.
 
 **Test** : `test_fao_torique`, `test_fao_minipasses_pentes` (mini-passe z = 17 retrouvée). Vérifié en recalculant l'ébauche T7 de SIRAP-14-002 : passe du fond lisse, plus d'escalier. FORMES_VER inchangé.
+
+
+## V0.99.43 - Fichier : parcours FAO écrits en colonnes exactes, fichier plus léger
+
+**Cause** (question « moins de parcours sauvegardés, est-ce que cela réduit le poids ? ») : dans une pièce FAO de 42 Mo décompressés (15,8 Mo enregistrés), les parcours en faisaient 28 Mo, dont 20,7 Mo pour une seule finition géodésique (268 000 points). Chaque point était écrit `{"r":0,"x":-67.7354251578238,"y":…,"z":…}` : environ 77 caractères, noms des axes répétés. Un arrondi a été mesuré et refusé : même au milliardième de mm, environ 1 100 cotes sur 1,1 million, pile entre deux millièmes, changeaient d'un millième dans le code machine ; au 0,0001 mm, 46 000.
+
+**Correctif** (`src/90-50-document-sauvegarde.js`) : à l'enregistrement, chaque parcours part en colonnes exactes (`mvz`) : X, Y, Z en Float64, chaque valeur XOR la précédente du même axe, octets regroupés par rang puis base64 (`faoMvPack`) ; `r` en chaîne 0/1, les autres champs d'un point (arc, entrée…) à part, un point de forme inattendue gardé tel quel. Relu et comparé bit à bit avant l'écriture (`faoMvUnpack`, `faoMvSame`) : au moindre écart, ce parcours garde l'ancienne écriture. À l'ouverture, `bundleMovesInflate` remet les points avant tout usage (ouverture, assemblage, pièce dérivée) ; une entrée illisible est retirée et l'opération se recalcule. Ancien fichier lu tel quel. Une version antérieure de ConceptCAD ne lit pas `mvz` et recalcule ces parcours. Gain mesuré : 15,8 → 13,3 Mo, 5,6 → 4,9 Mo, 3,8 → 2,7 Mo, 2,8 → 2,0 Mo, 1,7 → 1,4 Mo sur cinq pièces.
+
+**Test** : `test_fao_bundle` (parcours en colonnes, relus bit à bit, -0, extrêmes, champs en plus, points de forme inattendue, parcours vide, entrée abîmée refusée, ancien fichier) ; `tests/appvm.cjs` reçoit `btoa`/`atob`. Vérifié dans l'appli avec le noyau exact : code machine identique après enregistrement et réouverture (351 568 et 135 029 lignes), points identiques au bit près sur cinq pièces réelles (857 000 points). CACHE_VER et FORMES_VER inchangés.
