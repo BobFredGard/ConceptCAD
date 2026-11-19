@@ -8,7 +8,7 @@ sont sorties le 2026-09-30j.
 Code dans `src/` · livrable `fusion_mvp.html` (généré par `build.js`) · architecture et
 garde-fous en tête de `src/00-entete-et-outils.js`.
 
-**731 versions**, de `2026-09-28b` à `V0.99.44` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
+**732 versions**, de `2026-09-28b` à `V0.99.45` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
 comme dans le fichier d'origine.
 
 ---
@@ -8140,3 +8140,11 @@ Cavité Usinage, après l'ébauche D25, la reprise D10 et une finition boule D12
 **Correctif** (`src/88-fao-90-ebauche3d.js`) : les morceaux sont d'abord relevés, puis émis **coin par coin**. Un morceau n'est pris que quand ceux du rayon d'avant qu'il recouvre sont faits, et la suite du morceau qu'on vient de finir passe d'abord. Entrée : plongée juste en deçà de l'arc d'avant (déjà vidé), puis **demi-cercle** tangent jusqu'au départ (plus petit, après un court trait le long du rayon, quand le grand touche la paroi). Sortie : **quart de cercle** vers le centre, côté déjà vidé. La passe de faces fait le cadre du brut d'abord et les parois du solide en dernier, quel que soit l'endroit où finissent les arcs. Sur SIRAP-14-002 T7 : rapides 34,0 → 28,6 m. CACHE_VER 2026-11-19-002.
 
 **Test** : `test_fao_escargot` (dernière passe sur les faces, quel que soit l'ordre des coins) ; suites FAO d'ébauche, `test_fao_securite`. FORMES_VER inchangé.
+
+## V0.99.45 - Assemblage : arêtes d'une pièce issue d'un STEP projetées dans une autre pièce
+
+**Cause** (question « Mais si la pièce insérée est issue d'un STEP ? ») : en modélisant une pièce de l'assemblage, ⧉ Projeter attrapait les arêtes des autres pièces (V0.8.1), sauf celles d'une pièce faite d'un STEP resté tel quel. Un tel import s'affiche en maillage (corps « import »), son solide exact est rangé dans `importGeom` et non dans `occLive` : la capture de fin de rejeu (`asmSkCaptureEdges`, `asmSkCaptureFaces`) ne lisait que `occLive`, la pièce n'avait ni arêtes ni faces exactes pour les autres (projection, éléments de construction sur ses faces ou arêtes).
+
+**Correctif** (`src/46-assemblage-modele.js`) : `asmSkLiveShapes` donne le solide de travail plus les solides exacts des imports affichés tels quels ; arêtes et faces sont relevées sur chacun. `src/47-assemblage-cache.js` : la clé des images d'un composant à import change une fois (`|i2`), les images gardées sans arêtes sont reprises ; les autres composants restent servis tels quels. Manuel : page Assemblage.
+
+**Test** : `test_assemblage_step_projection` (noyau réel : boîte STEP importée comme pièce à assembler, 12 arêtes et 6 faces capturées, Projeter la propose depuis une autre pièce et attrape son arête au bon endroit, liée à elle, qui suit son déplacement) ; échoue sans le correctif. CACHE_VER et FORMES_VER inchangés.

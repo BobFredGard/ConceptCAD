@@ -684,15 +684,32 @@ function asmSkExtLists(){
   });
   return out;
 }
+function asmSkLiveShapes(){
+  // Solides exacts affichés du composant actif : le solide de travail (occLive), plus les STEP
+  // importés restés tels quels (corps « import » : maillage affiché, solide exact rangé dans
+  // importGeom, hors occLive). Sans eux, une pièce issue d'un STEP n'offrait aucune arête ni
+  // face aux autres pièces (retour du 19/11). Un import entré dans un corps est déjà dans occLive.
+  const out=[];
+  if(!(typeof occHas==='function'&&occHas()))return out;
+  if(occLive&&occLive.shape)out.push(occLive.shape);
+  try{(bodies||[]).forEach(b=>{
+    if(!b||b.kind!=='import'||b.visible===false||(b.mesh&&b.mesh.visible===false)||typeof importGeom==='undefined')return;
+    const e=importGeom.get(b.ref||b.id);if(e&&e.brep&&!out.includes(e.brep))out.push(e.brep);
+  });}catch(e){}
+  return out;
+}
 function asmSkCaptureEdges(){
   // Arêtes exactes du composant actif (fin de rejeu), données pures pour les esquisses des autres
   try{
-    if(!(typeof occHas==='function'&&occHas()&&occLive&&occLive.shape))return null;
-    const E=nomsSurAretes(occLive.shape,occListEdges(occLive.shape));if(!E||!E.length)return null;
-    const r=p=>p.map(a=>Math.round(a*1e6)/1e6);
-    const R=E.slice(0,8000).map(e=>({pts:e.pts.map(r),mid:e.mid?r(e.mid):null,nom:e.nom}));
-    R.alias=E.alias||{};
-    return R;
+    const r=p=>p.map(a=>Math.round(a*1e6)/1e6),R=[];R.alias={};
+    for(const sh of asmSkLiveShapes()){
+      if(R.length>=8000)break;
+      let E=null;try{E=nomsSurAretes(sh,occListEdges(sh));}catch(e){E=null;}
+      if(!E||!E.length)continue;
+      E.slice(0,8000-R.length).forEach(e=>R.push({pts:e.pts.map(r),mid:e.mid?r(e.mid):null,nom:e.nom}));
+      Object.assign(R.alias,E.alias||{});
+    }
+    return R.length?R:null;
   }catch(e){return null;}
 }
 /* ── faces des autres composants comme références de construction ──
@@ -704,10 +721,11 @@ function asmSkCaptureEdges(){
    position (⚠) si la face a disparu. */
 function asmSkCaptureFaces(){
   try{
-    if(!(typeof occHas==='function'&&occHas()&&occLive&&occLive.shape))return null;
+    const shapes=asmSkLiveShapes();if(!shapes.length)return null;
     const out=[],SH=occt.TopAbs_ShapeEnum.TopAbs_SHAPE,T=occt.GeomAbs_SurfaceType;
     const r=p=>p.map(a=>Math.round(a*1e6)/1e6);
-    const ex=new occt.TopExp_Explorer_2(occLive.shape,occt.TopAbs_ShapeEnum.TopAbs_FACE,SH);
+    for(const shape of shapes){
+    const ex=new occt.TopExp_Explorer_2(shape,occt.TopAbs_ShapeEnum.TopAbs_FACE,SH);
     try{
       while(ex.More()&&out.length<4000){
         let f=null,ad=null;
@@ -717,18 +735,19 @@ function asmSkCaptureFaces(){
           const gt=ad.GetType(),b=occFaceBox(f);
           if(b&&gt===T.GeomAbs_Plane){
             const n=occFaceOutNormal(f);
-            if(n)out.push({ref:occFaceRefAny(f),nom:nomsFaceDe(occLive.shape,f),plane:{o:r(b.pos),n:r(n)}});
+            if(n)out.push({ref:occFaceRefAny(f),nom:nomsFaceDe(shape,f),plane:{o:r(b.pos),n:r(n)}});
           }else if(b&&(gt===T.GeomAbs_Cylinder||gt===T.GeomAbs_Cone)){
             const S=gt===T.GeomAbs_Cylinder?ad.Cylinder():ad.Cone(),ax=S.Axis();
             const d=[ax.Direction().X(),ax.Direction().Y(),ax.Direction().Z()],lo=[ax.Location().X(),ax.Location().Y(),ax.Location().Z()];
             const t=(b.pos[0]-lo[0])*d[0]+(b.pos[1]-lo[1])*d[1]+(b.pos[2]-lo[2])*d[2];
-            out.push({ref:occFaceRefAny(f),nom:nomsFaceDe(occLive.shape,f),axis:{o:r([lo[0]+d[0]*t,lo[1]+d[1]*t,lo[2]+d[2]*t]),d:r(d),rad:gt===T.GeomAbs_Cylinder?+S.Radius().toFixed(6):null}});
+            out.push({ref:occFaceRefAny(f),nom:nomsFaceDe(shape,f),axis:{o:r([lo[0]+d[0]*t,lo[1]+d[1]*t,lo[2]+d[2]*t]),d:r(d),rad:gt===T.GeomAbs_Cylinder?+S.Radius().toFixed(6):null}});
           }
         }catch(e){}
         finally{try{if(ad)ad.delete();}catch(e){}try{if(f)f.delete();}catch(e){}}
         ex.Next();
       }
     }finally{try{ex.delete();}catch(e){}}
+    }
     return out;
   }catch(e){return null;}
 }
