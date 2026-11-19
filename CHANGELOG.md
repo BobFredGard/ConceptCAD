@@ -8,7 +8,7 @@ sont sorties le 2026-09-30j.
 Code dans `src/` · livrable `fusion_mvp.html` (généré par `build.js`) · architecture et
 garde-fous en tête de `src/00-entete-et-outils.js`.
 
-**727 versions**, de `2026-09-28b` à `V0.99.40` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
+**729 versions**, de `2026-09-28b` à `V0.99.42` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
 comme dans le fichier d'origine.
 
 ---
@@ -8105,3 +8105,21 @@ Cavité Usinage, après l'ébauche D25, la reprise D10 et une finition boule D12
 **Correctif** : en assemblage, une pièce STEP multicolore restait d'une seule couleur — l'instantané du composant garde désormais les couleurs par sommet (47, cache compris). L'ambiance de la vue (98-rendu-vue) multipliait ces couleurs par la couleur du corps : une pièce rouge sur un corps bleu sortait presque noire ; sans matériau de rendu, plus de teinte par-dessus.
 
 **Test** : `test_assemblage_historique` (suppression d'une étape, Ctrl+Z, marqueur, couleurs vérifiées). Vérifié dans l'application : MERLIN-37-000 importé en pièce à assembler, 29 couleurs lues dans le fichier et affichées en assemblage ; Test Assemblage : clic sur la liaison puis Suppr, Ctrl+Z la rend, menu du clic droit au-dessus de la barre. CACHE_VER et FORMES_VER inchangés.
+
+
+## V0.99.41 - FAO : afficher / masquer un parcours instantané, plus de ⚠ injustifiés
+
+**Cause** : masquer ou afficher le parcours d'une opération refaisait toute la séquence d'aperçu du posage (carte de matière et liaisons de toutes les opérations) : 2,1 s sur SIRAP-14-002. À l'ouverture d'un fichier, les parcours embarqués, plus anciens, écrasaient ceux du navigateur, et des triangles ⚠ revenaient sans raison (opérations désactivées, gel d'un posage compté dans la clé des parcours).
+
+**Correctif** (`src/88-fao-60-postprocesseurs.js`, `88-fao-80-interface.js`, `88-fao-50-caches-dispatch.js`, `45-annuler-document.js`, `90-50-document-sauvegarde.js`) : un sous-groupe par opération dans l'aperçu, allumé ou éteint (`faoPrevToggleFast`, empreinte `faoPrevSig`) : 2,1 s → 30 ms. Ctrl+Z d'un masquage ne rejoue plus la pièce (`docSnapFaoVisOnly`). À l'ouverture, les parcours plus récents du navigateur sont gardés (réserve `faoBundleAlt`). Le gel d'un posage sort de la clé des parcours, une opération désactivée n'a plus de ⚠, « Tout régénérer » n'est orange que si un parcours manque (`faoPrevAllReady`). Les matériaux de l'aperçu sont libérés.
+
+**Test** : `test_fao`, `test_fao_bundle` complétés ; `test_fao_stale` posé sur un vrai posage (un document vide n’est plus jamais périmé). CACHE_VER et FORMES_VER inchangés.
+
+
+## V0.99.42 - FAO : ébauche 3D torique, passe des parois lisse au lieu d'un escalier
+
+**Cause** (retour « la dernière passe fait de drôles de zigzags », SIRAP-14-002, Fraise D20 R2, Parois 0,5 / Fond 0) : le long des parois, la passe de faces torique (`faoBullRingRuns`) suivait un escalier de 0,5 mm, la maille de repérage. Deux raisons. `faoTorusDropper` gonflait le tore de la laisse dans tous les sens : il voyait le fond 0,5 mm trop haut, alors que la fraise droite du moteur (disque D/2 + laisse) y descendait, et la passe suivait la frontière des deux, case par case. Le dernier niveau étant posé sur le fond, la pointe valait la cote de recherche (z − 5 µm) sur tout le côté libre : aucune racine, le point tombait sur le nœud ou au milieu de l'arête.
+
+**Correctif** (`src/89-fao-torique.js`) : laisse **radiale** seulement, comme la fraise droite et Fusion : cercle des centres R0 + laisse, rayon de coin inchangé, pointe non relevée (la laisse du fond reste celle des cotes du plan). Cote de recherche relevée juste au-dessus du nœud faisable (au plus 1 µm) quand un fond est à la cote. Entrée d'une mini-passe torique : l'autre côté est essayé quand le premier maillon, dans un coin, pointe vers la matière (le morceau était jeté). Les parcours des fraises toriques et boules avec une laisse de paroi changent : CACHE_VER 2026-11-19-001.
+
+**Test** : `test_fao_torique`, `test_fao_minipasses_pentes` (mini-passe z = 17 retrouvée). Vérifié en recalculant l'ébauche T7 de SIRAP-14-002 : passe du fond lisse, plus d'escalier. FORMES_VER inchangé.

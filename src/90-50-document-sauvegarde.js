@@ -394,8 +394,23 @@ async function bundleStoreCaches(b){
   }catch(e){}
   const ancienFao=!!(b.doc.fao&&typeof b.doc.fao==='object'&&!Array.isArray(b.doc.fao.setups)); // pré-posages : ids inconnus ici
   const ks=Object.keys(moves).filter(function(k){return ancienFao||miens.has(k);});
+  // V0.99.40 : un parcours plus RÉCENT déjà rangé dans ce navigateur (« Tout régénérer » fait
+  // après l'enregistrement du fichier) n'est plus écrasé par celui du fichier : avant, chaque
+  // ouverture remettait les anciens parcours, donc les triangles ⚠, et il fallait tout
+  // régénérer encore. Celui du fichier reste en réserve (faoBundleAlt) : la lecture le prend
+  // si c'est LUI qui correspond au document (ouverture d'une version plus ancienne).
+  faoBundleAlt=new Map();
   if(ks.length&&faoMovesReady()){
-    for(let i=0;i<ks.length;i++){ try{ await idbSet(ks[i],moves[ks[i]]); }catch(e){} }
+    for(let i=0;i<ks.length;i++){
+      try{
+        const e=moves[ks[i]];
+        let cur=null;try{cur=await idbGet(ks[i]);}catch(err){cur=null;}
+        if(cur&&cur.v===1&&Array.isArray(cur.mv)&&cur.k&&e&&cur.k!==e.k&&+cur.at>+(e.at||0)){
+          faoBundleAlt.set(ks[i],e); continue;
+        }
+        await idbSet(ks[i],e);
+      }catch(e){}
+    }
   }
   // Images des pièces d'un assemblage (option, V0.28.1) : dans le cache AVANT le document,
   // lu à l'ouverture à la place des rejeux (47-assemblage-cache)

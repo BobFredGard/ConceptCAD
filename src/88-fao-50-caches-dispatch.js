@@ -126,6 +126,7 @@ function faoOpMovesKey(op,job){
       if(k==='name'||k==='id')continue; // libelle / identifiant : jamais une trajectoire
       if(k==='liftMin')continue; // V0.61.0 : appliqué après le calcul (faoOpLinks), aucun parcours à refaire
       if(k==='holeInfo')continue; // nature des trous d'un STEP (taraudé…) : aucun effet sur les tracés
+      if(k==='struck'||k==='struckOn')continue; // V0.99.40 : posage gelé — aucun tracé ne change (gel = triangles partout, avant)
       if(k==='sketches'||k==='walls')continue; // V0.23.20 : esquisses/corps FAO -> géométrie seule (ci-dessous)
       if(k==='expr'||k==='pname'||k==='exprErr')continue; // formules ƒx (V0.95.0) : seule la valeur compte
       js[k]=typeof parSansFx==='function'?parSansFx(job[k]):job[k]; // posage vu par l'opération : son brut (repère de l'opération)
@@ -392,6 +393,7 @@ function faoMovesSave(job,op,key,mv){
    autre empreinte, entree rejetee, triangle rouge. Quand le solide exact arrive,
    il faut RELIRE — sans quoi la lecture, deja « prete », ne regardait plus rien. */
 let faoMovesFpSeen=null; // {posageId: faoSetupFp} du solide utilise a la derniere lecture
+let faoBundleAlt=null;   // V0.99.40 : parcours du fichier ouvert NON écrits (plus anciens que ceux du navigateur)
 function faoMovesSolidFp(){
   // Empreinte des solides qui entrent dans une CLE de parcours (seuls ces types
   // dependent du maillage : le Surfaçage, lui, ne voit jamais bouger sa clé).
@@ -450,6 +452,14 @@ async function faoMovesPreload(){
         if(ch&&ch.key===ck){ faoMovesWhySet(idk,null); continue; } // deja en memoire
         let val=null;
         try{ val=await idbGet(idk); }catch(e){ val=null; }
+        // V0.99.40 : parcours du fichier ouvert gardé en réserve (bundleStoreCaches) — servi s'il
+        // correspond au document alors que celui du navigateur, plus récent, ne correspond pas
+        try{
+          const alt=faoBundleAlt&&faoBundleAlt.get(idk);
+          if(alt&&alt.v===1&&Array.isArray(alt.mv)&&alt.k===ck&&cacheVerOK(alt.ver)&&!(val&&val.k===ck)){
+            val=alt; Promise.resolve(idbSet(idk,alt)).catch(function(){});
+          }
+        }catch(e){}
         if(!val){ faoMovesWhySet(idk,'absente'); continue; }
         const nb=(val.n||(val.mv&&val.mv.length)||0);
         if(val.v!==1){ faoMovesWhySet(idk,'format',{ver:val.ver}); continue; }
@@ -532,7 +542,7 @@ function faoMovesDone(){
     }else if(w==='full'){
       try{ faoStaleScan(); }catch(e){}
       try{ faoRefreshPreview(); }catch(e){}
-      faoPrevStale=true;                       // une modif a eu lieu pendant l'attente
+      faoPrevStale=!faoPrevAllReady();         // une modif a eu lieu pendant l'attente : périmé si un parcours manque
       try{ faoStaleUI(); }catch(e){}
     }else if(w==='lecture'){
       try{ faoRefreshPreview(true); }catch(e){}

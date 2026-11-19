@@ -288,9 +288,39 @@ function docSnapMepOnly(d){
     return undoSame(key(d),key(docSnapObj()));
   }catch(e){return false;}
 }
+// V0.99.40 : « Masquer / Afficher » une trace FAO (op.hidden) ne touche ni la pièce ni les
+// parcours : l'annuler ne doit pas rejouer toute la pièce (plusieurs secondes sur une grosse
+// pièce, et les traces disparaissaient le temps du rejeu).
+function docSnapFaoVisOnly(d){
+  try{
+    const cur=docSnapObj();
+    if(!d||!d.fao||!cur.fao)return false;
+    const sans=o=>{const r=Object.assign({},o);delete r.fao;return JSON.stringify(r,undoKeyRep);};
+    const fk=f=>{
+      const c=JSON.parse(JSON.stringify(f));
+      (c.setups||[]).forEach(s=>((s&&s.ops)||[]).forEach(o=>{if(o)delete o.hidden;}));
+      return JSON.stringify(c,undoKeyRep);
+    };
+    return undoSame(fk(d.fao),fk(cur.fao))&&undoSame(sans(d),sans(cur));
+  }catch(e){return false;}
+}
+function docApplyFaoVis(d){
+  const S=(doc.fao&&doc.fao.setups)||[],D=(d.fao&&d.fao.setups)||[];
+  S.forEach((s,i)=>((s&&s.ops)||[]).forEach((o,j)=>{
+    const q=D[i]&&D[i].ops&&D[i].ops[j];
+    if(!o||!q)return;
+    if(Object.prototype.hasOwnProperty.call(q,'hidden'))o.hidden=q.hidden;else delete o.hidden;
+  }));
+  dirty=true;
+  try{if(typeof faoVisibleChanged==='function')faoVisibleChanged();}catch(e){}
+  try{autosave();}catch(e){}
+  docBaseSync();
+  return true;
+}
 function docApplySnap(snap){
   let d;
   try{d=JSON.parse(snap);}catch(e){return false;}
+  if(docSnapFaoVisOnly(d))return docApplyFaoVis(d);
   // Geste de mise en plan : la pièce n'a pas changé, ni rejeu ni reprojection des vues
   // (1,5 s pour 9 vues avant, à chaque Ctrl+Z). Seule la planche est remplacée.
   if(docSnapMepOnly(d)){

@@ -105,6 +105,41 @@ const vm=require('vm');
     A(gen===0,'restauration : toujours AUCUN calcul ('+gen+')');
     faoGenFacing=gF; faoGenPocket=gP;
 
+    /* ============ 4b. V0.99.40 : fichier aux parcours ANCIENS, navigateur à jour ============
+       Le fichier a été enregistré avec un parcours périmé (opération modifiée ensuite), puis
+       « Tout régénérer » a rangé le parcours à jour dans ce navigateur. Rouvrir le fichier ne
+       doit plus écraser le parcours à jour par l'ancien (triangles revenus à chaque ouverture). */
+    {
+      const bb=JSON.parse(txt);
+      bb.doc.fao.setups[0].ops[0].z=19;                  // le document dit z=19…
+      const kA='faoMoves:'+s.id+':opA';
+      bb.moves[kA].at=1;                                 // …le parcours du fichier date d'avant (z=20)
+      const vieux=bb.moves[kA].k;
+      // navigateur : parcours à jour pour z=19 (plus récent)
+      s2.ops[0].z=19; faoOpMovesPurge();
+      const mz=faoOpMoves(s2.ops[0],s2);
+      const kNeuf=faoOpMovesKey(s2.ops[0],s2);
+      kv[kA]={v:1,ver:CACHE_VER,k:kNeuf,n:mz.length,at:Date.now(),mv:mz};
+      A(kNeuf!==vieux,'4b : la clé du fichier est bien périmée');
+      faoOpMovesPurge(); faoMovesReset(); faoStaleClear();
+      gen=0;
+      faoGenFacing=function(){ gen++; return gF.apply(this,arguments); };
+      faoGenPocket=function(){ gen++; return gP.apply(this,arguments); };
+      await bundleRestore(JSON.stringify(bb),{rebuild:false});
+      A(kv[kA]&&kv[kA].k===kNeuf,'4b : parcours à jour du navigateur GARDÉ (pas écrasé par le fichier)');
+      await faoMovesPreload(); faoStaleScan();
+      A(faoStaleCount()===0,'4b : aucun triangle après réouverture ('+faoStaleCount()+')');
+      A(gen===0,'4b : aucun recalcul ('+gen+')');
+      // et l'inverse : rouvrir l'ANCIENNE version (z=20) sert le parcours du fichier, gardé en réserve
+      faoOpMovesPurge(); faoMovesReset(); faoStaleClear();
+      const bv=JSON.parse(txt); bv.moves[kA].at=1;
+      await bundleRestore(JSON.stringify(bv),{rebuild:false});
+      await faoMovesPreload(); faoStaleScan();
+      A(faoStaleCount()===0,'4b : ancienne version rouverte, son parcours (réserve) servi ('+faoStaleCount()+')');
+      A(gen===0,'4b : toujours aucun recalcul ('+gen+')');
+      faoGenFacing=gF; faoGenPocket=gP;
+    }
+
     /* ============ 5. meme fichier, navigateur SANS IndexedDB ============
        Le bundle doit suffire a lui seul : la memoire est amorcee depuis le fichier,
        sans lecture disque (c'est le cas d'une cle USB ouverte sur un autre poste). */

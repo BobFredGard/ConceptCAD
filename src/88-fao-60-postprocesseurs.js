@@ -477,10 +477,96 @@ function faoClearPreview(){
   try{
     if(faoPrevGroup&&typeof scene!=='undefined'&&scene){
       faoDel3D(faoPrevGroup);
-      try{ faoPrevGroup.traverse(function(o){ if(o.geometry&&o.geometry.dispose)o.geometry.dispose(); }); }catch(e){}
+      // V0.99.40 : matériaux libérés aussi (un par trait épais — ils s'accumulaient à chaque redessin)
+      try{ faoPrevGroup.traverse(function(o){
+        if(o.geometry&&o.geometry.dispose)o.geometry.dispose();
+        if(o.material&&o.material.dispose)o.material.dispose();
+      }); }catch(e){}
     }
   }catch(e){}
   faoPrevGroup=null;
+  faoPrevOps=null; faoPrevSig=null; faoPrevStreamG=null;
+}
+/* ----- V0.99.40 : afficher / masquer UNE opération sans tout redessiner -----
+   Avant, chaque clic sur « Masquer / Afficher » refaisait toute la séquence du
+   posage (carte de la matière restante 1500 × 1500, liaisons entre passes,
+   découpage et envoi à la carte graphique de TOUTES les opérations) : plusieurs
+   secondes sur une grosse pièce. Les liaisons d'une opération ne dépendent pas
+   de ce qui est masqué (une opération masquée reste dans la séquence) : chaque
+   opération a donc son propre sous-groupe dans l'aperçu, et le clic ne fait que
+   l'allumer ou l'éteindre. Une opération masquée au moment du dessin garde ses
+   mouvements de côté ; son sous-groupe est construit au premier « Afficher ».
+   faoPrevSig dit si le dessin vaut encore (mêmes opérations, mêmes parcours en
+   mémoire, même posage) ; sinon on redessine tout, comme avant. */
+let faoPrevOps=null;  // Map op -> {g:THREE.Group|null, parts:[{mv,clip}], n:nb de mouvements}
+let faoPrevSig=null;  // empreinte de ce que le dessin représente (faoPrevSigNow)
+let faoPrevStreamG=null; // aperçu en cours de dessin progressif (traits provisoires par opération)
+function faoPrevSigNow(job){
+  const L=[job, job&&job.ops, faoPrevOn, faoViewerRap, (typeof faoVw!=='undefined'&&faoVw)?1:0, faoBodyGen,
+    (typeof faoFrameCur!=='undefined')?faoFrameCur:null];
+  try{
+    faoOpsSeq(job).forEach(function(E){
+      const op=E.op;
+      L.push(op, op&&op.on, op&&op.stale, faoOpMovesHit(op), E.xf?JSON.stringify(E.xf):null); // xf : recréé à chaque appel
+    });
+  }catch(e){ return null; }
+  return L;
+}
+function faoPrevSigSame(a,b){
+  if(!a||!b||a.length!==b.length)return false;
+  for(let i=0;i<a.length;i++)if(a[i]!==b[i])return false;
+  return true;
+}
+function faoPrevOpEntry(op){
+  if(!faoPrevOps)faoPrevOps=new Map();
+  let e=faoPrevOps.get(op);
+  if(!e){ e={g:null,parts:[],n:0}; faoPrevOps.set(op,e); }
+  return e;
+}
+function faoPrevOpGroup(op,group){
+  // Sous-groupe de l'opération dans l'aperçu `group` (créé à la demande).
+  const e=faoPrevOpEntry(op);
+  if(!e.g){
+    e.g=new THREE.Group(); e.g.name='faoPreviewOp';
+    try{ e.g.userData.opId=op&&op.id; }catch(err){}
+    group.add(e.g);
+  }
+  e.g.visible=!(op&&op.hidden===true);
+  return e.g;
+}
+function faoPrevOpBuild(op,group){
+  // Construit les traits mis de côté d'une opération (masquée lors du dessin).
+  const e=faoPrevOpEntry(op);
+  const g=faoPrevOpGroup(op,group);
+  const parts=e.parts; e.parts=[];
+  for(let i=0;i<parts.length;i++){
+    try{ faoPrevAdd(g,faoSegSplit(parts[i].mv,parts[i].clip)); }catch(err){}
+  }
+  return g;
+}
+function faoPrevToggleFast(){
+  // Afficher / masquer sans redessin. Renvoie le nombre de mouvements affichés,
+  // ou -1 si le dessin en place ne vaut plus (il faut tout redessiner).
+  try{
+    if(!faoPrevGroup||!faoPrevOps||!faoPrevOn)return -1;
+    if(typeof THREE==='undefined'||typeof scene==='undefined'||!scene)return -1;
+    if(faoPrevStreamG&&faoPrevStreamG===faoPrevGroup){
+      // génération en cours : on allume / éteint les traits déjà là, le rendu final suivra
+      faoPrevOps.forEach(function(e,op){ if(e.g)e.g.visible=!(op&&op.hidden===true); });
+      return 0;
+    }
+    const job=faoDoc();
+    if(!faoPrevSigSame(faoPrevSig,faoPrevSigNow(job)))return -1;
+    let total=0, manque=0;
+    faoPrevOps.forEach(function(e,op){
+      const vis=!(op&&op.hidden===true);
+      if(vis&&e.parts.length)faoPrevOpBuild(op,faoPrevGroup);
+      if(e.g)e.g.visible=vis;
+      if(vis){ total+=e.n; if(e.absent)manque++; }
+    });
+    faoPrevMissing=manque;
+    return total;
+  }catch(e){ return -1; }
 }
 let faoPrevMissing=0; // ops sans parcours en memoire lors du dernier redraw en LECTURE
 const FAO_COL_RAPIDE=0xffd60a, FAO_COL_REMONTEE=0xff2d92; // mêmes couleurs dans l'aperçu et la simulation
@@ -635,18 +721,22 @@ function faoRefreshPreview(mode){
   try{
     if(typeof THREE==='undefined'||typeof scene==='undefined'||!scene)return 0;
     faoPrevGroup=new THREE.Group(); faoPrevGroup.name='faoPreview';
-    const mk=function(moves,clip){
-      // faoSegSplit borne la coupe à la zone et laisse les G0 traverser librement.
-      if(!moves||!moves.length)return;
-      try{ faoPrevAdd(faoPrevGroup,faoSegSplit(moves,clip)); }catch(e){}
-    };
+    faoPrevOps=new Map();
     faoSeqSafe(job,seule).forEach(function(b){
       const op=b.op;
-      if(op&&op.hidden===true)return; // traces masquées dans la vue (op.hidden) — le G-code, lui, les garde
-      if(b.absent){ faoPrevMissing++; return; } // pas de parcours en memoire : on n'invente rien
-      const mv=b.tail?b.moves.concat(b.tail):b.moves; total+=b.moves.length; // tail : remontée avant un changement d'outil
-      mk(mv,b.xf?null:faoSegClipper(op,job)); // copie d'une répétition : la zone de la source ne la borne pas
+      if(b.absent){ faoPrevOpEntry(op).absent=true; if(!(op&&op.hidden===true))faoPrevMissing++; return; } // pas de parcours en memoire : on n'invente rien
+      const mv=b.tail?b.moves.concat(b.tail):b.moves; // tail : remontée avant un changement d'outil
+      const clip=b.xf?null:faoSegClipper(op,job); // copie d'une répétition : la zone de la source ne la borne pas
+      if(!mv||!mv.length)return;
+      const e=faoPrevOpEntry(op); e.n+=b.moves.length;
+      // traces masquées dans la vue (op.hidden) — le G-code, lui, les garde : mises de côté,
+      // dessinées au premier « Afficher » (faoPrevToggleFast)
+      if(op&&op.hidden===true){ e.parts.push({mv:mv,clip:clip}); return; }
+      total+=b.moves.length;
+      // faoSegSplit borne la coupe à la zone et laisse les G0 traverser librement.
+      try{ faoPrevAdd(faoPrevOpGroup(op,faoPrevGroup),faoSegSplit(mv,clip)); }catch(e2){}
     });
+    faoPrevSig=faoPrevSigNow(job); // après la séquence : elle a pu mailler un corps (faoBodyGen)
     faoAdd3D(faoPrevGroup);
     if(typeof faoVw!=='undefined'&&faoVw)faoPrevGroup.visible=false; // viewer : traces restent cachées
   }catch(e){}
@@ -726,6 +816,7 @@ async function faoRefreshPreviewStream(){
   if(typeof THREE==='undefined'||typeof scene==='undefined'||!scene)return 0;
   const tok=++faoStreamTok;
   faoPrevGroup=new THREE.Group(); faoPrevGroup.name='faoPreview';
+  const g=faoPrevGroup; faoPrevOps=new Map(); faoPrevStreamG=g;
   faoAdd3D(faoPrevGroup);
   if(typeof faoVw!=='undefined'&&faoVw)faoPrevGroup.visible=false; // viewer : traces restent cachées
   const ops=((job&&job.ops)||[]).filter(function(op){ return op&&op.on!==false&&!faoIsPattern(op); });
@@ -733,10 +824,10 @@ async function faoRefreshPreviewStream(){
   // au cache ; la boucle ci-dessous les relit et calcule normalement tout ce qui manque.
   const fluxOp=new Map();
   await faoWkRemplir(job,ops,function(){ return tok!==faoStreamTok; },function(op,delta){
-    if(op.hidden===true)return;
+    if(g!==faoPrevGroup)return; // un autre dessin a pris la place
     const sp=faoSegSplit(delta,faoSegClipper(op,job),fluxOp.get(op)||null);
     fluxOp.set(op,sp.prev);
-    faoPrevAdd(faoPrevGroup,sp);
+    faoPrevAdd(faoPrevOpGroup(op,g),sp); // opération masquée : sous-groupe éteint, « Afficher » l'allume
   },function(n,total,coeurs){
     if(typeof faceEl!=='undefined'&&faceEl)faceEl.textContent='FAO : génération sur '+coeurs+' cœur'+(coeurs>1?'s':'')+', '+n+'/'+total+' opération'+(total>1?'s':'')+' terminée'+(n>1?'s':'')+'…';
   });
@@ -752,21 +843,20 @@ async function faoRefreshPreviewStream(){
         // canonique final.
         const st={n:0,prev:null};
         await faoOpMovesStream(op,job,function(marr){
-          if(tok!==faoStreamTok||!marr||marr.length<=st.n)return;
-          const delta=(op.hidden===true)?null:marr.slice(st.n);
+          if(tok!==faoStreamTok||g!==faoPrevGroup||!marr||marr.length<=st.n)return;
+          const delta=marr.slice(st.n);
           st.n=marr.length;
-          if(!delta)return;
           try{
             const sp=faoSegSplit(delta,faoSegClipper(op,job),st.prev);
             st.prev=sp.prev;
-            faoPrevAdd(faoPrevGroup,sp);
+            faoPrevAdd(faoPrevOpGroup(op,g),sp);
           }catch(e){}
         });
       }else{
         // Opérations 2.5D : calcul (coups de cache = instantané) + dessin.
         const mv=faoOpMoves(op,job);
-        if(mv&&mv.length&&op.hidden!==true)
-          try{ faoPrevAdd(faoPrevGroup,faoSegSplit(mv,faoSegClipper(op,job))); }catch(e){}
+        if(mv&&mv.length&&g===faoPrevGroup)
+          try{ faoPrevAdd(faoPrevOpGroup(op,g),faoSegSplit(mv,faoSegClipper(op,job))); }catch(e){}
       }
     }catch(e){}
     await faoYieldUI();
