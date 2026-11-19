@@ -86,6 +86,17 @@ const vm=require('vm');
     asmResolve();
     V(Wd(oC,[0,1,0]),[-1,0,0],'11 : plan de repère : normale Y du rouleau opposée au X du repère');
     N(W(oC,[0,0,0])[0],30,'11b : plan de repère : origine du rouleau dans le plan X = 30');
+    // 11c. plan milieu (V0.99.36) : entre le dessous (Z -3) et le dessus (Z 7) du rouleau, posé contre le dessus du support
+    const keep=oC.cons;
+    oC.cons=[{id:'m1',t:'coinc',a:{path:[],f:pl([0,0,-3],[0,0,-1]),f2:pl([0,0,7],[0,0,1])},b:{path:[oA.id],f:pl([0,0,10],[0,0,1])},v:0,inv:false}];
+    oC.fr={o:[0,50,40],x:[1,0,0],y:[0,1,0],z:[0,0,1]};asmResolve();
+    N(W(oC,[0,0,2])[2],10,'11c : plan milieu (Z 2 du rouleau) contre le dessus du support');
+    V(Wd(oC,[0,0,-1]),[0,0,-1],'11d : plan milieu : normale de la 1re face');
+    {const n=asmConsNorm(JSON.parse(JSON.stringify(oC.cons)));att(n&&n[0].a.f2&&n[0].a.f2.c[2]===7,'11e : plan milieu : 2e face gardée dans le fichier');}
+    oC.cons=keep;asmResolve();
+    // 11f. liste de faces vide jamais crue (V0.99.33 la rangeait pour une pièce importée)
+    att(asmSnapGeomOK({faces:[]})===false,'11f : liste de faces vide refusée');
+    att(String(asmExactQuiet).includes('asmExactActive(true)'),'11g : pièce importée : ses imports comptent pour les faces');
     // 12. fichier
     const js=serialise();await deserialise(js,{rebuild:false});
     const oB2=asmOcc(oB.id),oC2=asmOcc(oC.id);

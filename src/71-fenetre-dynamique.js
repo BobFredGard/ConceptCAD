@@ -326,6 +326,12 @@ function featPendingSession(){
 function featGuard(){
   if(featGuardPass)return false;
   try{
+    // V0.99.36 : session NON modifiée d'une autre fonction que la sélection → fermée tout de suite ;
+    // restée ouverte, la modification suivante (case d'une répétition…) la faisait passer pour
+    // « non validée » (le tic d'image la ferme d'habitude ; test_arbre_selection, sans images)
+    const on=id=>sel&&sel.kind==='feature'&&sel.id===id,dirty=E=>E.isNew||docUndoStack.length>E.len;
+    if(typeof extDyn!=='undefined'&&extDyn&&!on(extDyn.id)&&!dirty(extDyn))extDynClose();
+    if(typeof fdyn!=='undefined'&&fdyn&&!on(fdyn.id)&&!dirty(fdyn))fdynClose();
     if(typeof skEdit!=='undefined'&&skEdit)return false;
     if(!sel||!sel.kind||!/^(feature|sketch|body)$/.test(sel.kind))return false;
     const P=featPendingSession();if(!P)return false;

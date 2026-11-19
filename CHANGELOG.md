@@ -8,7 +8,7 @@ sont sorties le 2026-09-30j.
 Code dans `src/` · livrable `fusion_mvp.html` (généré par `build.js`) · architecture et
 garde-fous en tête de `src/00-entete-et-outils.js`.
 
-**722 versions**, de `2026-09-28b` à `V0.99.35` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
+**723 versions**, de `2026-09-28b` à `V0.99.36` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
 comme dans le fichier d'origine.
 
 ---
@@ -8058,3 +8058,17 @@ Cavité Usinage, après l'ébauche D25, la reprise D10 et une finition boule D12
 **Fonction non validée** (71) : `featGuard` en tête de `renderProps` — une session extrusion / fenêtre dynamique modifiée ou créée (`isNew` ou pile d'annulation plus longue) refuse le passage à une autre fonction, esquisse ou corps ; boîte `#featGuardBox` : Valider et continuer, Annuler les modifications, Rester (Échap).
 
 **Tests** : `test_vue_centre` réécrit (règle supprimée), `test_arbre_v2` ignore la ligne du nom ; vérifié dans l'application (Support Pédale) en CAO, FAO, PLAN et esquisse : repli, centrage, ouverture automatique, OK, boîte de rappel (3 choix). CACHE_VER et FORMES_VER inchangés.
+
+## V0.99.36 - Relations : faces des pièces importées, liaison à retirer, plan milieu, déplacer X / Y / Z
+
+**Constat de Fred** (MERLIN-39-000, pièce importée d'un STEP par « Pièce à assembler ») : « impossible de sélectionner la moindre face sur ce modèle » ; puis « pouvoir choisir un plan milieu pour la 1re sélection et pour la 2nde aussi, au choix » et « pouvoir bouger la position en XYZ en translation et rotation ».
+
+**Cause** : `asmExactOfQuiet` / `asmExactQuiet` (48-composants-plan) relisaient le composant SANS ses imports STEP / IGES seuls dans leur corps (`asmExactActive()` au lieu de `asmExactActive(true)`, que prend déjà `asmExactCollect`) : une pièce faite d'un seul import n'avait aucune face — Relations, Aligner (points d'accroche) et mise en plan d'assemblage (repli sur le maillage) touchés. La liste vide était en plus rangée avec l'image dans le fichier et le cache : V0.99.34 la croyait encore. Et le refus « tenue par une liaison » s'écrivait dans la barre d'état, réécrite aussitôt par le mode Placer : rien ne semblait se passer.
+
+**Correctif** : imports compris (48-composants-plan) ; liste de faces vide jamais gardée ni crue (`asmSnapGeomOK`, `asmSnapGeomOf`) : les fichiers enregistrés en V0.99.33 / V0.99.34 se relisent sans rien refaire. Consignes et refus de la commande aussi en tête de son panneau (`asmRelSay`) ; pièce tenue par une liaison ou fixée : bouton « Supprimer la liaison et poser cette face » / « Libérer la pièce… » (Annuler remet la liaison, Ctrl+Z aussi).
+
+**Ajout** (`src/48-assemblage-relations.js`) : **▤ Plan milieu** à côté de « Pièce déplacée » et de « Cible » : deux clics sur deux faces planes parallèles de la même pièce → le plan à mi-chemin (normale de la première), dessiné avec les deux faces ; référence `{f, f2}` suivie après rejeu (`asmConsMid`). Champs **Distance X / Y / Z** et **Angle X / Y / Z** dans le panneau Relations (depuis le début de la commande) et dans le panneau d'une pièce qui a des relations : les directions libres suivent, celles que tiennent les relations reviennent.
+
+**Correctif** (71, garde de V0.99.35) : `featGuard` ferme d'abord une session de fenêtre dynamique NON modifiée d'une autre fonction que la sélection — restée ouverte, la modification suivante (case d'une répétition) la faisait passer pour « non validée » et le panneau sautait sur elle (`test_arbre_selection` rouge depuis V0.99.35).
+
+**Test** : `test_composants_relations` — plan milieu (posé, normale, relu du fichier), liste vide refusée, imports compris. Vérifié dans l'application sur une copie de MERLIN-39-000 : 155 faces lues, bouton de la liaison, face posée sur le plan XY de l'origine (3 degrés de liberté), Annuler remet la liaison. CACHE_VER et FORMES_VER inchangés.
