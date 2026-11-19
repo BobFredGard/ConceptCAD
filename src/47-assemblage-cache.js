@@ -206,6 +206,9 @@ function asmSnapGeomOK(g){
   const num=x=>typeof x==='number'&&isFinite(x);
   try{
     if(!g||typeof g!=='object'||!Array.isArray(g.faces))return false;
+    // V0.99.36 : liste vide jamais gardée — V0.99.33 rangeait celle d'une pièce importée lue sans
+    // son import (MERLIN-39-000) : relue au lieu d'être crue
+    if(!g.faces.length)return false;
     return g.faces.every(F=>F&&v3(F.c)&&v3(F.n)&&Array.isArray(F.edges)&&
       (F.k==='plane'?v3(F.x)&&v3(F.y)&&Array.isArray(F.rect)&&F.rect.length===4&&F.rect.every(num)
         :F.k==='cyl'?v3(F.l)&&v3(F.x)&&num(F.r)&&Array.isArray(F.t)&&F.t.length===2&&F.t.every(num):false)&&

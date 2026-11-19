@@ -232,9 +232,9 @@ function asmPlacementCore(p,o){
     p.appendChild(rw);
     // V0.99.34 : « Position initiale » façon Fusion — déplacement et rotations depuis la position
     // qu'avait la pièce quand elle a été choisie (le manipulateur les met à jour)
-    if(!(Array.isArray(o.cons)&&o.cons.length)){
-      const M=asmMoveRefOf(o);
-      p.appendChild(mk('div','pnl-note','Depuis la position de départ :'));
+    { // V0.99.36 : aussi avec des relations — les directions qu'elles tiennent reviennent
+      const M=asmMoveRefOf(o),held=Array.isArray(o.cons)&&o.cons.length;
+      p.appendChild(mk('div','pnl-note','Depuis la position de départ'+(held?' (les directions tenues par les relations ne bougent pas)':'')+' :'));
       ['X','Y','Z'].forEach((k,i)=>Row('Distance '+k+' (mm)',num(M.v[i],v=>asmMoveBy(o,i,v-M.v[i]))));
       ['X','Y','Z'].forEach((k,i)=>Row('Angle '+k+' (°)',num(M.v[3+i],v=>asmMoveBy(o,3+i,v-M.v[3+i]))));
       if(M.v.some(x=>x)){const rb=mk('div','pnl-btns'),r0=mk('button','mini','↺ Position de départ');

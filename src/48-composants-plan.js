@@ -23,7 +23,7 @@ function asmExactQuiet(c){
   // Solides exacts d'un composant SANS l'activer : document échangé le temps du rejeu
   const d0=doc,a0=asm.active,s0=occSkipFeat;
   let out=[];
-  try{doc=c.doc;asm.active=c.id;occSkipFeat=null;out=asmExactActive();}
+  try{doc=c.doc;asm.active=c.id;occSkipFeat=null;out=asmExactActive(true);}
   finally{doc=d0;asm.active=a0;occSkipFeat=s0;}
   return out;
 }
@@ -31,7 +31,9 @@ function asmExactOfQuiet(c){
   const h=c._snap?c._snap.hash:'';
   if(c._exact&&c._exact.hash===h&&h&&!c._stale)return c._exact.list;
   asmExactFree(c);
-  const list=c.doc===doc?asmExactActive():asmExactQuiet(c);
+  // V0.99.36 : imports STEP / IGES seuls dans leur corps compris (pièce à assembler importée : sans eux,
+  // aucune face à cliquer — MERLIN-39-000) ; comme asmExactCollect (48-composants-inspection)
+  const list=c.doc===doc?asmExactActive(true):asmExactQuiet(c);
   c._exact={hash:h,list};
   return list;
 }
