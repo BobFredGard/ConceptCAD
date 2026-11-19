@@ -8,7 +8,7 @@ sont sorties le 2026-09-30j.
 Code dans `src/` · livrable `fusion_mvp.html` (généré par `build.js`) · architecture et
 garde-fous en tête de `src/00-entete-et-outils.js`.
 
-**730 versions**, de `2026-09-28b` à `V0.99.43` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
+**731 versions**, de `2026-09-28b` à `V0.99.44` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
 comme dans le fichier d'origine.
 
 ---
@@ -8132,3 +8132,11 @@ Cavité Usinage, après l'ébauche D25, la reprise D10 et une finition boule D12
 **Correctif** (`src/90-50-document-sauvegarde.js`) : à l'enregistrement, chaque parcours part en colonnes exactes (`mvz`) : X, Y, Z en Float64, chaque valeur XOR la précédente du même axe, octets regroupés par rang puis base64 (`faoMvPack`) ; `r` en chaîne 0/1, les autres champs d'un point (arc, entrée…) à part, un point de forme inattendue gardé tel quel. Relu et comparé bit à bit avant l'écriture (`faoMvUnpack`, `faoMvSame`) : au moindre écart, ce parcours garde l'ancienne écriture. À l'ouverture, `bundleMovesInflate` remet les points avant tout usage (ouverture, assemblage, pièce dérivée) ; une entrée illisible est retirée et l'opération se recalcule. Ancien fichier lu tel quel. Une version antérieure de ConceptCAD ne lit pas `mvz` et recalcule ces parcours. Gain mesuré : 15,8 → 13,3 Mo, 5,6 → 4,9 Mo, 3,8 → 2,7 Mo, 2,8 → 2,0 Mo, 1,7 → 1,4 Mo sur cinq pièces.
 
 **Test** : `test_fao_bundle` (parcours en colonnes, relus bit à bit, -0, extrêmes, champs en plus, points de forme inattendue, parcours vide, entrée abîmée refusée, ancien fichier) ; `tests/appvm.cjs` reçoit `btoa`/`atob`. Vérifié dans l'appli avec le noyau exact : code machine identique après enregistrement et réouverture (351 568 et 135 029 lignes), points identiques au bit près sur cinq pièces réelles (857 000 points). CACHE_VER et FORMES_VER inchangés.
+
+## V0.99.44 - FAO : ébauche 3D Escargot, coins finis un par un, entrées et sorties en arc de cercle
+
+**Cause** (retour « il y en a un peu plus haut, au tout début, dans les 4 coins », puis « toujours finir en cercle, cercles aussi pour rentrer », SIRAP-14-002 T7) : après la spirale, chaque demi-anneau (`clearArcs`) était coupé par les parois en un morceau par coin et émis rayon par rayon. La fraise passait donc d'un coin à l'autre à chaque rayon (remontée, traversée), puis entrait par un trait en biais qui recoupait les arcs déjà faits. Une longue liaison traversait aussi le milieu de la poche.
+
+**Correctif** (`src/88-fao-90-ebauche3d.js`) : les morceaux sont d'abord relevés, puis émis **coin par coin**. Un morceau n'est pris que quand ceux du rayon d'avant qu'il recouvre sont faits, et la suite du morceau qu'on vient de finir passe d'abord. Entrée : plongée juste en deçà de l'arc d'avant (déjà vidé), puis **demi-cercle** tangent jusqu'au départ (plus petit, après un court trait le long du rayon, quand le grand touche la paroi). Sortie : **quart de cercle** vers le centre, côté déjà vidé. La passe de faces fait le cadre du brut d'abord et les parois du solide en dernier, quel que soit l'endroit où finissent les arcs. Sur SIRAP-14-002 T7 : rapides 34,0 → 28,6 m. CACHE_VER 2026-11-19-002.
+
+**Test** : `test_fao_escargot` (dernière passe sur les faces, quel que soit l'ordre des coins) ; suites FAO d'ébauche, `test_fao_securite`. FORMES_VER inchangé.
