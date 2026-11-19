@@ -61,9 +61,38 @@ const A=(c,m)=>{if(!c){ko++;console.log('  ✗ '+m);}else console.log('  ✓ '+m
     await importSTEP({name:'faux.igs',arrayBuffer:async()=>new TextEncoder().encode('pas un iges').buffer});
     out.fauxMsg=(window.__al||[]).join(' | ');
     out.fauxRien=doc.features.length===n0;
+    // V0.99.33 : « pièce à assembler » — un composant neuf qui porte l'import, mode Placer
+    window.__al=[];
+    asmCtxDraw=function(){};asmDraw=function(){};asmFit=function(){};asmFill=function(){}; // pas de vue 3D réelle ici
+    const rootDoc=doc,nRoot=doc.features.length;
+    const okA=await importAsComponent({name:'pieces.igs',arrayBuffer:async()=>__iges});
+    const cp=asm&&asm.comps.find(c=>c.name==='pieces');
+    const fi=cp&&cp.doc.features.find(x=>x.type==='import');
+    const occA=cp&&asmComp(asm.root).occ.find(o=>o.comp===cp.id);
+    out.asm={ok:okA,comp:!!cp,imp:!!(fi&&fi._mesh&&fi.src&&fi.src.fmt==='iges'),occ:!!occA,sel:!!(occA&&asmSelId===occA.id),
+      mode:asmMode,racineIntacte:asmComp(asm.root).doc===rootDoc&&rootDoc.features.length===nRoot,dx:occA&&occA.fr.o[0],al:(window.__al||[]).length,
+      msg:String(faceEl.textContent||'')};
+    // enregistré puis rouvert : le composant revient avec son import
+    {
+      const b2=await bundleSerialise();
+      asm=null;doc.features=[];markDirty();rebuild();docUndoStack.length=0;docRedoStack.length=0;importHydrate();importSrc.clear();importGeom.clear();
+      occt=__realOcct;occtReady=true;
+      await bundleRestore(b2,{name:'reouvert2'});
+      for(let i=0;i<40&&_importRestoring;i++)await new Promise(r=>setTimeout(r,10));
+      const c2=asm&&asm.comps.find(c=>c.name==='pieces'),f2=c2&&c2.doc.features.find(x=>x.type==='import');
+      out.asm.revenu=!!(f2&&f2._mesh&&importGeom.get(f2.id)&&importGeom.get(f2.id).brep);
+    }
+    // import refusé en pièce à assembler : aucun composant vide ne reste
+    const nC=asm.comps.length;
+    await importAsComponent({name:'faux.igs',arrayBuffer:async()=>new TextEncoder().encode('pas un iges').buffer});
+    out.asm.refusPropre=asm.comps.length===nC;
+    // question posée à l'import : « Nouveau corps » par défaut hors mode Placer
+    let q=null;mffAsk=async(m,b)=>{q={m,b};return 'cancel';};
+    asmMode='part';await importAskWhere('x.step');out.askPart=q&&q.b.find(x=>x[2])[0];
+    asmMode='asm';await importAskWhere('x.step');out.askAsm=q&&q.b.find(x=>x[2])[0];
     return out;
   })()`,ctx);
-  console.log('=== V0.99.32 : import IGES ===');
+  console.log('=== V0.99.32-33 : import IGES, pièce à assembler ===');
   console.log('  '+JSON.stringify(o));
   A(o.reconnu,'IGES reconnu à son contenu (colonne 73 = S)');
   A(o.stepPasIges,'un STEP n\'est pas pris pour un IGES');
@@ -74,7 +103,15 @@ const A=(c,m)=>{if(!c){ko++;console.log('  ✗ '+m);}else console.log('  ✓ '+m
   A(/IGES importé/.test(o.msg)&&/2 solide/.test(o.msg),'message : « IGES importé … 2 solide(s) » ('+o.msg+')');
   A(o.al0===0,'aucune alerte à l\'import');
   A(o.revenu,'réouverture : l\'IGES revient (même id, affiché, solide exact)');
-  A(/ne ressemble pas à un IGES/.test(o.fauxMsg)&&o.fauxRien,'faux .igs : refus explicite, rien ajouté');
+  A(/Import IGES impossible.*ne ressemble pas à un IGES/.test(o.fauxMsg)&&o.fauxRien,'faux .igs : refus explicite, rien ajouté');
+  const S=o.asm||{};
+  A(S.ok&&S.comp&&S.imp&&S.occ,'pièce à assembler : composant « pieces » neuf, avec son import IGES et son occurrence');
+  A(S.mode==='asm'&&S.sel,'pièce à assembler : retour en mode Placer, occurrence sélectionnée');
+  A(S.racineIntacte,'pièce à assembler : la pièce d\'origine n\'a pas reçu de corps');
+  // position à droite de l'existant : boîtes THREE factices ici, vérifiée dans le navigateur
+  A(S.revenu,'pièce à assembler : revient avec son import après enregistrement et réouverture');
+  A(S.refusPropre,'pièce à assembler refusée (fichier illisible) : aucun composant vide ne reste');
+  A(o.askPart==='body'&&o.askAsm==='asm','question à l\'import : « Nouveau corps » par défaut, « Pièce à assembler » en mode Placer');
   console.log(ko?'\n*** '+ko+' PROBLEME(S) ***':'\n*** TOUT PASSE ***');
   process.exit(ko?1:0);
 })().catch(e=>{console.log('FATAL',String((e&&e.stack)||e).slice(0,1500));process.exit(1);});
