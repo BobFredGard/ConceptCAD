@@ -32,7 +32,7 @@ function renderProps(){
     opts.forEach(o=>{const op=document.createElement('option');op.value=o[0];op.textContent=o[1];if(o[2])op.title=o[2];s.appendChild(op);});
     s.value=val;s.onchange=()=>fn(s.value);return s;};
   const visDel=f=>pBtns([
-    ['👁 Visible',()=>{f.visible=!(f.visible!==false);markDirty();rebuild();renderTree();renderProps();}],
+    ['👁 Visible',()=>{f.visible=!(f.visible!==false);markDirty();rebuildEdit();renderTree();renderProps();}],
     ['🗑 Supprimer',()=>{treeSel=[f.id];sel={kind:'feature',id:f.id};treeDeleteSel();}, 'danger']]);
   /* nom du document : V0.99.34, déplacé en tête de l'arborescence (treeDocNameRow, 42) */
   $('docName').textContent=doc.name;
@@ -57,8 +57,8 @@ function renderProps(){
       pH('Fonction verrouillée');
       pInfo(`⏱ <b>${f.name}</b> est exclue du rejeu : le marqueur temps s'arrête avant elle.`);
       pBtns([
-        ['🔓 Lever le marqueur',()=>{tlSetPtr(null);markDirty();rebuild();renderTree();renderProps();}],
-        ['👁 Afficher / masquer',()=>{f.visible=!(f.visible!==false);markDirty();rebuild();renderTree();renderProps();}],
+        ['🔓 Lever le marqueur',()=>{tlSetPtr(null);markDirty();rebuildEdit();renderTree();renderProps();}],
+        ['👁 Afficher / masquer',()=>{f.visible=!(f.visible!==false);markDirty();rebuildEdit();renderTree();renderProps();}],
         ['🗑 Supprimer',()=>{treeSel=[f.id];sel={kind:'feature',id:f.id};treeDeleteSel();},'danger']]);
       return;
     }
@@ -89,7 +89,7 @@ function renderProps(){
         if(!isFinite(v)){d.value=String(+f.dist||0).replace('.',',');return;}
         if(v===+f.dist)return;
         f.dist=Math.abs(v)<1e-9?0:v;f.name=mvName(f);repSyncForFeature(f);
-        markDirty();rebuild();renderTree();renderProps();
+        markDirty();rebuildEdit();renderTree();renderProps();
       });
       pRow('Distance (mm)',d);
       pNote('Positif : la face avance. Négatif : elle rentre. 0 : la fonction ne fait rien.');
@@ -118,12 +118,12 @@ function renderProps(){
         if(v===+f.angle)return;
         docPushUndo();
         f.angle=v;f.name=draftName(f);repSyncForFeature(f);
-        markDirty();rebuild();renderTree();renderProps();
+        markDirty();rebuildEdit();renderTree();renderProps();
       });
       pRow('Angle (°)',d);
       // V0.11.19 : inversion du sens sans toucher à la valeur (une expression ƒx reste liée)
       const fb=document.createElement('input');fb.type='checkbox';fb.checked=!!f.flip;
-      fb.onchange=()=>{docPushUndo();f.flip=fb.checked;f.name=draftName(f);repSyncForFeature(f);markDirty();rebuild();renderTree();renderProps();};
+      fb.onchange=()=>{docPushUndo();f.flip=fb.checked;f.name=draftName(f);repSyncForFeature(f);markDirty();rebuildEdit();renderTree();renderProps();};
       pRow('⇄ Inverser le sens',fb);
       pNote('Angle de démoulage : chaque face retenue pivote de cet angle autour de sa ligne d\'intersection avec le plan neutre. Sens effectif '+String(Math.round(draftAngleEff(f)*100)/100).replace('.',',').replace('-','−')+'° : la pièce '+(draftAngleEff(f)>=0?'se resserre':'s\'évase')+' le long de la normale du plan neutre.');
       pBtns([['📐 Re-sélectionner les faces',()=>{exitDraftMode(true);try{if(filMode||filModeX)exitFilletMode(true);}catch(e){}enterDraftMode(f);}]]);
@@ -148,7 +148,7 @@ function renderProps(){
         if(v===+f.thick)return;
         docPushUndo();
         f.thick=v;f.name=shellName(f);repSyncForFeature(f);
-        markDirty();rebuild();renderTree();renderProps();
+        markDirty();rebuildEdit();renderTree();renderProps();
       });
       pRow('Paroi (mm)',d);
       pNote('L\'intérieur est creusé de cette épaisseur sous chaque face conservée.');
@@ -203,9 +203,9 @@ function renderProps(){
       const entete=document.createElement('div');p.appendChild(entete);majEntete();
       p.appendChild(repSourceList(f.base,function(b){
         docPushUndo('sources de « '+f.name+' »');f.base=b;
-        repGenChildren(f);markDirty();rebuild();renderTree();refreshParts();
+        repGenChildren(f);markDirty();rebuildEdit();renderTree();refreshParts();
       },function(){majEntete();},f));
-      const applyCfg=()=>{repGenChildren(f);markDirty();rebuild();renderTree();renderProps();refreshParts();};
+      const applyCfg=()=>{repGenChildren(f);markDirty();rebuildEdit();renderTree();renderProps();refreshParts();};
       // ✂ exemplaires à enlever (repSkipFill) : la case reste en place, le panneau se refait après le clic
       const skipUI=()=>p.appendChild(repSkipFill(document.createElement('div'),f,v=>{
         docPushUndo('exemplaires enlevés de « '+f.name+' »');if(v)f.skip=v;else delete f.skip;
@@ -322,7 +322,7 @@ function renderProps(){
       const inp=document.createElement('input');inp.type='text';inp.inputMode='decimal';inp.value=f.radius;parFx(inp,f,'radius');
       const commit=()=>{
         const v=parseFloat(String(inp.value).replace(',','.'));
-        if(v>0&&isFinite(v)){f.radius=v;const nc=(f.corners||[]).length+((filRims&&(filRims.top||filRims.bottom))?1:0);f.name=`Congé R${v} (${nc} arête(s))`;markDirty();rebuild();renderProps();}
+        if(v>0&&isFinite(v)){f.radius=v;const nc=(f.corners||[]).length+((filRims&&(filRims.top||filRims.bottom))?1:0);f.name=`Congé R${v} (${nc} arête(s))`;markDirty();rebuildEdit();renderProps();}
       };
       inp.addEventListener('change',commit);inp.addEventListener('blur',commit);
       inp.addEventListener('keydown',e=>{if(e.key==='Enter'){commit();inp.blur();}});
@@ -341,12 +341,12 @@ function renderProps(){
         r.innerHTML=`<span>${xIcon(k)}</span><span class="nm">${s.name?`<b>${s.name}</b> · `:''}${dp} <b>${s.r}</b>${s.anchor?' ⌖':''} · (${s.pos.map(v=>v.toFixed(1)).join(', ')})</span>`;
         const num=document.createElement('input');num.type='text';num.inputMode='decimal';num.value=s.r;num.title=(f.chamfer?'Distance':'Rayon')+' de cette arête';parFx(num,s,'r');
         num.onclick=ev=>ev.stopPropagation();
-        const c2=()=>{const v=parseFloat(String(num.value).replace(',','.'));if(v>0&&isFinite(v)){s.r=v;repSyncForFeature(f);markDirty();rebuild();renderProps();}};
+        const c2=()=>{const v=parseFloat(String(num.value).replace(',','.'));if(v>0&&isFinite(v)){s.r=v;repSyncForFeature(f);markDirty();rebuildEdit();renderProps();}};
         num.addEventListener('change',c2);num.addEventListener('blur',c2);
         num.addEventListener('keydown',e=>{if(e.key==='Enter'){c2();num.blur();}e.stopPropagation();});
         r.appendChild(num);
         const x=document.createElement('span');x.textContent='✕';x.title='Retirer';x.style.cursor='pointer';
-        x.onclick=ev=>{ev.stopPropagation();f.edges.splice(i,1);f.name=xFeatName(f);repSyncForFeature(f);markDirty();rebuild();renderProps();};
+        x.onclick=ev=>{ev.stopPropagation();f.edges.splice(i,1);f.name=xFeatName(f);repSyncForFeature(f);markDirty();rebuildEdit();renderProps();};
         r.appendChild(x);lst.appendChild(r);
       });
       p.appendChild(lst);
@@ -361,7 +361,7 @@ function renderProps(){
           if(sm.value==='d2'&&!(+f.cd2>0))f.cd2=+((f.edges||[])[0]&&f.edges[0].r)||1;
           if(sm.value==='da'&&!(+f.cang>0&&+f.cang<90))f.cang=45;
           if(sm.value==='eq'){delete f.cflip;}
-          repSyncForFeature(f);markDirty();rebuild();renderTree();renderProps();
+          repSyncForFeature(f);markDirty();rebuildEdit();renderTree();renderProps();
         };
         pRow('Type',sm);
         if(sm.value!=='eq'){
@@ -372,13 +372,13 @@ function renderProps(){
             const v=parseFloat(String(i2.value).replace(',','.'));
             if(!isFinite(v)||v<=0||(da&&v>=90)){i2.value=String(+f[key]).replace('.',',');faceEl.textContent=da?'Angle du chanfrein : 0 < a < 90°.':'Distance 2 : valeur strictement positive.';return;}
             if(v===+f[key])return;
-            docPushUndo();f[key]=v;repSyncForFeature(f);markDirty();rebuild();renderTree();renderProps();
+            docPushUndo();f[key]=v;repSyncForFeature(f);markDirty();rebuildEdit();renderTree();renderProps();
           };
           i2.addEventListener('change',c3);i2.addEventListener('blur',c3);
           i2.addEventListener('keydown',e=>{if(e.key==='Enter'){c3();i2.blur();}e.stopPropagation();});
           pRow(da?'Angle (°)':'Distance 2 (mm)',i2);
           const fb=document.createElement('input');fb.type='checkbox';fb.checked=!!f.cflip;
-          fb.onchange=()=>{docPushUndo();f.cflip=fb.checked;repSyncForFeature(f);markDirty();rebuild();renderTree();renderProps();};
+          fb.onchange=()=>{docPushUndo();f.cflip=fb.checked;repSyncForFeature(f);markDirty();rebuildEdit();renderTree();renderProps();};
           pRow('⇄ Inverser les faces',fb);
           pNote((da?'D1 (distance par arête) sur la première face, angle entre le chanfrein et cette face.':'D1 (distance par arête) sur la première face, D2 sur l’autre.')+' Première face : celle qui regarde le plus vers le haut, sinon vers +X puis +Y.');
         }

@@ -174,10 +174,10 @@ function treePart(L){
       mv:dd=>{if(!featMove(id,dd))featMoveFail();},
       eye:()=>{
         if(kind==='plane'){setOriginVis(id,!originVis[id]);return;}
-        if(kind==='sketch'){const s=doc.sketches.find(x=>x.id===id);if(s){s.visible=!(s.visible!==false);markDirty();rebuild();renderTree();}}
+        if(kind==='sketch'){const s=doc.sketches.find(x=>x.id===id);if(s){s.visible=!(s.visible!==false);markDirty();rebuildEdit();renderTree();}}
         else if(kind==='feature'){const f=doc.features.find(x=>x.id===id);if(f){f.visible=!(f.visible!==false);if(f.type==='repeat')doc.features.forEach(k=>{if(k.repeatId===f.id)k.visible=f.visible;});
           if(!f.repeatId&&doc.bodyVis)bodies.forEach(b=>{if(b.ref===f.id)delete doc.bodyVis[b.id];});
-          markDirty();rebuild();renderTree();}}
+          markDirty();rebuildEdit();renderTree();}}
       },
       click:ev=>{
         if(treeSelClick(kind,id,ev))return;
@@ -240,7 +240,7 @@ function treePart(L){
   }
   if(tlMark!=null){
     const mi=tlIdx();
-    const replay=ev=>{if(ev&&ev.stopPropagation)ev.stopPropagation();if(tlMark!=null){tlSetPtr(null);markDirty();rebuild();renderTree();renderProps();}};
+    const replay=ev=>{if(ev&&ev.stopPropagation)ev.stopPropagation();if(tlMark!=null){tlSetPtr(null);markDirty();rebuildEdit();renderTree();renderProps();}};
     L.push({css:'display:flex;align-items:center;gap:6px;justify-content:space-between;padding:6px 8px;margin:6px 0 2px;border:1px solid var(--border);border-radius:8px;font-size:.72rem;cursor:pointer;background:linear-gradient(90deg,rgba(232,179,74,.14),transparent)',
       title:'Clic = rejouer toute la timeline (lever le marqueur)',
       kids:[{tag:'span',html:'⏱ Temps bloqué avant « '+(mi<0?'(fonction supprimée)':doc.features[mi].name)+' » — <b>'+(mi<0?0:mi)+'</b> fonction(s) rejouée(s)'},
@@ -272,7 +272,7 @@ function treePart(L){
         on:{
           mv:dd=>{if(!featMove(f.id,dd))featMoveFail();},
           tri:()=>{f.open=!f.open;renderTree();renderProps();},
-          eye:()=>{f.visible=!(f.visible!==false);doc.features.forEach(k=>{if(k.repeatId===f.id)k.visible=f.visible;});markDirty();rebuild();renderTree();},
+          eye:()=>{f.visible=!(f.visible!==false);doc.features.forEach(k=>{if(k.repeatId===f.id)k.visible=f.visible;});markDirty();rebuildEdit();renderTree();},
           click:ev=>{
             if(treeSelClick('feature',f.id,ev))return;
             treeSel=[f.id];
@@ -285,7 +285,7 @@ function treePart(L){
           html:`<span>${featIconOf(k)}</span><span class="nm">${k.name}</span><span class="eye" title="Afficher / masquer">`+(k.visible===false?EYE_OFF:'👁')+`</span>`,
           title:'Instance n°'+k.repIndex+' de la répétition — clic = sélectionner la répétition · Ctrl+clic = ajouter au lot à supprimer',
           on:{
-            eye:()=>{k.visible=!(k.visible!==false);markDirty();rebuild();renderTree();},
+            eye:()=>{k.visible=!(k.visible!==false);markDirty();rebuildEdit();renderTree();},
             click:ev=>{
               if(ev.ctrlKey||ev.metaKey){treeSelToggle(k.id,'feature');return;}
               treeSel=[f.id];
@@ -628,7 +628,7 @@ function treeFeatToBody(id,bodyId){
   if(lock){try{faceEl.textContent=lock;}catch(e){}return false;}
   docPushUndo('« '+f.name+' » vers « '+b.name+' »');
   f.body=bodyId;
-  markDirty();rebuild();renderTree();renderProps();
+  markDirty();rebuildEdit();renderTree();renderProps();
   try{faceEl.textContent='« '+f.name+' » s’applique maintenant à « '+b.name+' ».';}catch(e){}
   return true;
 }

@@ -411,6 +411,8 @@ function parAfterChange(barre){
   try{if(typeof skEdit!=='undefined'&&skEdit){drawSketch2D();renderSkPanel();}}catch(e){}
   try{markDirty();}catch(e){}
   const lourd=parRebuildMs>=0?parRebuildMs>=REGEN_SHOW_MS:(doc.features||[]).length>20;
+  // V0.99.52 : recalcul de fond (31, rebuildEdit) — l'ancienne pièce reste affichée, l'écran libre
+  if(barre&&lourd&&typeof fondPossible==='function'&&fondPossible())return new Promise(r=>rebuildEdit(r));
   if(barre&&lourd&&regenWarmUseful())return parRebuildBandeau();
   parRebuildMesure();
 }

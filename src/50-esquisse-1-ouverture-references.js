@@ -965,8 +965,8 @@ function closeSketch(save){
     doc.sketches=doc.sketches.filter(s=>s!==fantome);
     if(sel&&sel.kind==='sketch'&&sel.id===fantome.id)sel={kind:null,id:null};
   }
-  if(save&&skEdit){try{parApplyAll();}catch(e){}solveSketch(skEdit);cleanupSk(skEdit);if(!faoSk)repSyncForSketch(skEdit.id);markDirty();rebuild();projRefreshRerun(0);sel=faoSk?{kind:'faoSetup',id:faoSk.fao}:(fantome?{kind:null,id:null}:{kind:'sketch',id:skEdit.id});renderTree();renderProps();}
-  else if(skEdit){markDirty();try{rebuild();}catch(e){}renderTree();renderProps();}
+  if(save&&skEdit){try{parApplyAll();}catch(e){}solveSketch(skEdit);cleanupSk(skEdit);if(!faoSk)repSyncForSketch(skEdit.id);markDirty();rebuildEdit(()=>{try{projRefreshRerun(0);}catch(e){}});sel=faoSk?{kind:'faoSetup',id:faoSk.fao}:(fantome?{kind:null,id:null}:{kind:'sketch',id:skEdit.id});renderTree();renderProps();}
+  else if(skEdit){markDirty();try{rebuildEdit();}catch(e){}renderTree();renderProps();}
   const skNm=skEdit&&skEdit.name;
   skEdit=null;try{docUndoUI();}catch(e){} // V0.7.6 : les flèches du haut reviennent au document
   sk3dRedessine(); // le rejeu de sortie a eu lieu esquisse encore ouverte : son tracé 3D revient

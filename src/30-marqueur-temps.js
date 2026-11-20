@@ -180,6 +180,12 @@ function rebuildInner(projPass){
   try{importHydrate();}catch(e){} // imports STEP/STL : géométrie revivifiée si un instantané d'annulation l'a stripée
   try{ensureBodies();}catch(e){} // corps conteneurs : migration des anciens documents
   (doc.sketches||[]).forEach(migrateSketch); // compat anciens brouillons + verrouille le modèle points
+  rebuildHotes();
+  phAdd('hotes',performance.now()-_th);
+  rebuildInner2(projPass);
+}
+function rebuildHotes(){
+  // Hôtes, constructions et répétitions avant le rejeu (aussi joué par le recalcul de fond, 31, sur une copie)
   // « Vers un objet » : résolution de la distance (antériorité) AVANT les hôtes de faces.
   (doc.features||[]).forEach(f=>{if(f.type==='extrude'&&f.upto){try{resolveExtrudeUpto(f);}catch(e){}}});
   try{resolveAllSketchHosts();}catch(e){}
@@ -191,7 +197,8 @@ function rebuildInner(projPass){
   // source déplacée par une projection ou une face porteuse laissait la copie périmée).
   // Garde par signature : seules les répétitions dont une source a changé sont refaites.
   try{if(typeof repSyncStale==='function'&&repSyncStale())resolveAllSketchHosts();}catch(e){}
-  phAdd('hotes',performance.now()-_th);
+}
+function rebuildInner2(projPass){
   // 2026-10-16-008 : projections associatives AVANT le rejeu principal (ordre timeline, hôtes
   // de faces et instances recalés au fil de l'eau) → le rejeu se fait UNE fois sur un modèle
   // déjà cohérent, au lieu de « rejeu → projections bougent → second rejeu ».
