@@ -129,11 +129,12 @@ function skIsectWithShape(sk,fn){
   let idx=-1;try{idx=skConsumerIdx(sk);}catch(e){idx=-1;}
   if(idx>=0){
     let FR=null;
-    try{FR=occFinalShape(idx);return (FR&&FR.shape)?fn(FR.shape):null;}
+    try{FR=occFinalShapeRef(idx);return (FR&&FR.shape)?fn(FR.shape):null;}
     catch(e){return null;}
     finally{if(FR){try{occCleanup(FR,null);}catch(e){}}} // APRÈS lecture : occCleanup supprime FR.shape
   }
-  if(occLive&&occLive.shape){try{return fn(occLive.shape);}catch(e){return null;}}
+  const LS=occRefShape(); // V0.99.41 : import seul compris
+  if(LS){try{return fn(LS);}catch(e){return null;}}
   return null;
 }
 function isectDistTo(c,x,y){
@@ -196,12 +197,13 @@ function skIsectCurvesCached(sk,src){
   const B=sketchBasis(sk);
   const bs=[B.o.x,B.o.y,B.o.z,B.u.x,B.u.y,B.u.z,B.n.x,B.n.y,B.n.z].map(v=>(+v).toFixed(6)).join(',');
   const live=idx<0;
-  if(live&&!(occLive&&occLive.shape))return null;
+  const LS=live?occRefShape():null; // V0.99.41 : import seul compris
+  if(live&&!LS)return null;
   const pre=live?null:projPrefixSig(idx);
   const key=(live?'live':pre)+'#'+bs+'#'+JSON.stringify(src);
   if(!live&&pre!=null&&_isectPersist.has(key))return _isectPersist.get(key);
   if(live){
-    if(!_isectLive||_isectLive.shape!==occLive.shape)_isectLive={shape:occLive.shape,map:new Map()};
+    if(!_isectLive||_isectLive.shape!==LS)_isectLive={shape:LS,map:new Map()};
     if(_isectLive.map.has(key))return _isectLive.map.get(key);
   }
   const r=skIsectSourceCurves(sk,src);

@@ -973,6 +973,36 @@ function occLoneStep(){
   return Object.keys(by).some(b=>by[b].every(f=>f.type==='import')&&by[b].some(f=>{
     const e=(typeof importGeom!=='undefined')?importGeom.get(f.id):null;return !!(e&&e.brep);}));
 }
+/* V0.99.41 : ARÊTES, POINTS ET FACES D'UN IMPORT SEUL pour les références (demande de Fred : « peu
+   importe le type d'import, il nous faut pouvoir choisir des arêtes, des points ou des faces d'un
+   élément importé »). Un import seul dans son corps reste affiché par son maillage, hors de la chaîne
+   exacte : occLive était vide, et une esquisse posée dessus ne projetait rien, les autres composants
+   d'un assemblage ne voyaient ni ses arêtes ni ses faces (_snap.pedges / pfaces). Les références lisent
+   maintenant occRefShape() : le solide affiché, sinon les imports seuls (composé gardé tant qu'ils ne
+   changent pas) ; et les rejeux partiels des références (occFinalShapeRef) y font entrer l'import. */
+let _occLoneRef=null; // {doc, key, shape}
+function occRefShape(){
+  if(occLive&&occLive.shape)return occLive.shape;
+  if(typeof occHas!=='function'||!occHas()||typeof importLoneShapes!=='function')return null;
+  let key='';
+  try{key=(doc.features||[]).filter(f=>f&&f.type==='import'&&f.visible!==false).map(f=>{const e=importGeom.get(f.id);
+    return f.id+':'+(f.body||'')+':'+((f.src&&f.src.key)||'')+':'+(e&&e.brep?1:0)+':'+(f.hidOcc||[]).join('.');}).join('|');}catch(e){key='';}
+  if(_occLoneRef&&_occLoneRef.doc===doc&&_occLoneRef.key===key)return _occLoneRef.shape;
+  occRefShapeFree();
+  if(!key||!occLoneStep())return null;
+  let sh=null;
+  try{const L=importLoneShapes(null,null).map(p=>p.shape);sh=occCompoundOf(L);if(L.length>1)L.forEach(s=>{try{s.delete();}catch(e){}});}catch(e){sh=null;}
+  if(sh)_occLoneRef={doc,key,shape:sh};
+  return sh;
+}
+function occRefShapeFree(){
+  if(_occLoneRef){try{_occLoneRef.shape.delete();}catch(e){}_occLoneRef=null;}
+}
+function occFinalShapeRef(upto){
+  // Rejeu partiel pour une référence : un import seul y entre (comme pour un outil de face)
+  const sf=occStepForce;occStepForce=true;
+  try{return occFinalShape(upto);}finally{occStepForce=sf;}
+}
 function occExactForTool(again){
   // Solide exact prêt pour un outil de face : recalcul paresseux, STEP seul compris.
   // again : rejouer quand même (édition : occSkipFeat vient de changer — sans la fonction

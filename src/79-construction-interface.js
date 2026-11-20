@@ -352,7 +352,7 @@ function cgPickModelRef(e,draft,slot){
   //   point : sommet (≤ 12 px d'une extrémité d'arête), centre d'une arête circulaire, sinon
   //           l'extrémité la plus proche ;  axe : arête droite ou circulaire (axe du cercle),
   //           face cylindrique ou conique ;  plan : face plane, ou plan d'une arête circulaire.
-  if(!(typeof occHas==='function'&&occHas())||!occLive||!occLive.shape)return null;
+  if(!(typeof occHas==='function'&&occHas())||!occRefShape())return null; // V0.99.41 : import seul compris
   const type=(CG_HOW[draft.kind][draft.how].slots[slot]||[])[0];
   const h=pick(e);
   {
@@ -514,7 +514,8 @@ function cgEdgeUnder(e,faceHit){
   // Arête EXACTE (occListEdges) à ≤ 7 px du curseur, indépendante de l'affichage des arêtes
   // (edgeHoverSegs n'existe que lorsqu'elles sont dessinées). Une arête cachée derrière la
   // face survolée est ignorée, comme pour la sélection d'arêtes.
-  const edges=cgEdgesOf(occLive.shape,null);if(!edges.length)return null;
+  const LS=occRefShape();if(!LS)return null; // V0.99.41 : import seul compris
+  const edges=cgEdgesOf(LS,null);if(!edges.length)return null;
   const r=renderer.domElement.getBoundingClientRect(),mx=e.clientX-r.left,my=e.clientY-r.top;
   const v=new THREE.Vector3(),toS=p=>{v.set(p[0],p[1],p[2]).project(camera);return [(v.x+1)/2*r.width,(1-v.y)/2*r.height,v.z];};
   let best=null,bd=7;

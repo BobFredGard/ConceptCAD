@@ -291,18 +291,19 @@ function projPrefixSig(idx){
 function projEdgesFor(sk){
   // → tableau d'arêtes {pts,mid} (repère monde) du solide vu par l'esquisse, ou null
   let idx=-1;try{idx=skConsumerIdx(sk);}catch(e){idx=-1;}
-  const key=(idx>=0&&occHas())?'f'+idx:((occHas()&&occLive&&occLive.shape)?'live':null);
+  const LS=(idx>=0||!occHas())?null:occRefShape(),LV=occLive&&occLive.shape?occLive:null; // V0.99.41 : import seul compris
+  const key=(idx>=0&&occHas())?'f'+idx:(LS?'live':null);
   if(!key)return null;
   if(_projEdgeCache&&_projEdgeCache.has(key))return _projEdgeCache.get(key);
   // V0.89.5 : esquisse pas encore consommée — arêtes du solide affiché, gardées par son empreinte
-  const pk=key==='live'?(occLive.sig&&!occLive.incomplet&&!projImportsEnAttente()?'live|'+occLive.sig:null):projPrefixSig(idx);
+  const pk=key==='live'?(LV&&LV.sig&&!LV.incomplet&&!projImportsEnAttente()?'live|'+LV.sig:null):projPrefixSig(idx);
   if(pk!=null&&_projEdgePersist.has(pk)){const ed=_projEdgePersist.get(pk);if(_projEdgeCache)_projEdgeCache.set(key,ed);return ed;}
   let edges=null;
-  if(key==='live'&&occLive.incomplet)return null; // solide affiché calculé sans un import (ouverture)
-  if(key==='live'){try{edges=nomsSurAretes(occLive.shape,occListEdges(occLive.shape));}catch(e){edges=null;}}
+  if(key==='live'&&LV&&LV.incomplet)return null; // solide affiché calculé sans un import (ouverture)
+  if(key==='live'){try{edges=nomsSurAretes(LS,occListEdges(LS));}catch(e){edges=null;}}
   else{
     let FR=null;
-    try{FR=occFinalShape(idx);if(FR&&FR.shape)edges=nomsSurAretes(FR.shape,occListEdges(FR.shape));}catch(e){edges=null;}
+    try{FR=occFinalShapeRef(idx);if(FR&&FR.shape)edges=nomsSurAretes(FR.shape,occListEdges(FR.shape));}catch(e){edges=null;}
     // nettoyage APRÈS lecture (occCleanup supprime FR.shape)
     finally{if(FR){try{occCleanup(FR,null);}catch(e){}}}
   }
@@ -336,13 +337,14 @@ function skFacesPlanesOf(shape){
 function skFacesPlanes(sk){
   // faces planes du solide vu par l'esquisse (même règle d'antériorité que les projections)
   let idx=-1;try{idx=skConsumerIdx(sk);}catch(e){idx=-1;}
-  const key=(idx>=0&&occHas())?'f'+idx:((occHas()&&occLive&&occLive.shape)?'live':null);
-  if(!key||(key==='live'&&occLive.incomplet))return null;
-  const pk=key==='live'?(occLive.sig&&!projImportsEnAttente()?'live|'+occLive.sig:null):projPrefixSig(idx);
+  const LS=(idx>=0||!occHas())?null:occRefShape(),LV=occLive&&occLive.shape?occLive:null; // V0.99.41 : import seul compris
+  const key=(idx>=0&&occHas())?'f'+idx:(LS?'live':null);
+  if(!key||(key==='live'&&LV&&LV.incomplet))return null;
+  const pk=key==='live'?(LV&&LV.sig&&!projImportsEnAttente()?'live|'+LV.sig:null):projPrefixSig(idx);
   if(pk!=null&&_skFacePersist.has(pk))return _skFacePersist.get(pk);
   let FR=null,L=null;
   try{
-    const shape=key==='live'?occLive.shape:((FR=occFinalShape(idx))&&FR.shape);
+    const shape=key==='live'?LS:((FR=occFinalShapeRef(idx))&&FR.shape);
     if(shape)L=skFacesPlanesOf(shape);
   }catch(e){L=null;}
   finally{if(FR){try{occCleanup(FR,null);}catch(e){}}}
@@ -653,11 +655,11 @@ function projectEdgeAt(sk,x,y){
   try{
     const idx=skConsumerIdx(sk);
     if(idx>=0&&occHas()){
-      const FR=occFinalShape(idx);
+      const FR=occFinalShapeRef(idx);
       // Nettoyage DIFFÉRÉ (try/finally en fin de fonction) : occCleanup(FR,null) supprime
       // FR.shape — le lire après = use-after-free → aucune arête détectée sur esquisse consommée.
       if(FR&&FR.shape){candShapes.push(FR.shape);FRk=FR;}
-    }else if(occHas()&&occLive&&occLive.shape) candShapes.push(occLive.shape);
+    }else if(occHas()){const LS=occRefShape();if(LS)candShapes.push(LS);} // V0.99.41 : import seul compris
   }catch(e){}
   // 2) BRep exact : teste chaque arête sur le plan
   try{
@@ -749,14 +751,14 @@ function projNames(pr){
 function skRefMeshes(meshes){
   // 1) BRep exact si dispo (même tangents) — sinon 2) maillage
   try{
-    if(skEdit&&(skEdit.plane==='FACE'||skEdit.plane==='CG')&&occHas()&&occLive&&occLive.shape){
-      const br=skBRepPlanarRefs(occLive.shape);
+    if(skEdit&&(skEdit.plane==='FACE'||skEdit.plane==='CG')&&occHas()&&occRefShape()){
+      const br=skBRepPlanarRefs(occRefShape());
       if(br&&br.length) return br;
     }
     // cas partiel (fantôme violet) : la forme partielle est dans meshes[0] si on vient de skBuildRefs
     if(skEdit&&meshes&&meshes.length===1&&meshes[0]&&meshes[0].geometry&&occHas()){
       // tente quand même le BRep du solide antérieur (occLive avant le fantôme)
-      const br2=skBRepPlanarRefs(occLive?occLive.shape:null);
+      const br2=skBRepPlanarRefs(occRefShape());
       if(br2&&br2.length) return br2;
     }
   }catch(e){}
@@ -796,7 +798,7 @@ function skBuildRefs(){
   const dropGhost=()=>{ if(skAnteriorGhost){ try{scene.remove(skAnteriorGhost); skAnteriorGhost.geometry.dispose();}catch(e){} skAnteriorGhost=null; } };
   if(idx<0){
     try{
-      const br=skBRepPlanarRefs(occLive?occLive.shape:null);
+      const br=skBRepPlanarRefs(occRefShape());
       skEdit._refs=(br&&br.length)?br:skRefMeshes(bodies.filter(b=>!b.ghost).map(b=>b.mesh));
       skEdit._ghost=[]; // B : pas de wireframe 2D — on voit la 3D en fondu
     }catch(e){skEdit._refs=[]; skEdit._ghost=[];}
@@ -808,7 +810,7 @@ function skBuildRefs(){
   }
   if(!(geomLater(feats.slice(idx+1))&&occHas())){
     try{
-      const br=skBRepPlanarRefs(occLive?occLive.shape:null);
+      const br=skBRepPlanarRefs(occRefShape());
       skEdit._refs=(br&&br.length)?br:skRefMeshes(bodies.filter(b=>!b.ghost).map(b=>b.mesh));
       skEdit._ghost=[];
     }catch(e){skEdit._refs=[]; skEdit._ghost=[];}
@@ -821,7 +823,7 @@ function skBuildRefs(){
   dropGhost();
   let ok=false;
   try{
-    const FR=occFinalShape(idx);
+    const FR=occFinalShapeRef(idx);
     try{
       if(FR.shape){
         const br=skBRepPlanarRefs(FR.shape);

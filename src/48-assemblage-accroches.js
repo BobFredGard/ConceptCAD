@@ -99,7 +99,43 @@ function asmSnapExtract(shapes){
     }
     try{ex.delete();}catch(err){}
   });
-  return {faces};
+  const g={faces};
+  try{asmSnapEdgesInto(g,shapes);}catch(err){}
+  return g;
+}
+function asmSnapEdgesInto(g,shapes){
+  // V0.99.41 : arêtes droites et circulaires de TOUTES les faces (même B-spline : une pièce importée)
+  // et sommets, pour les relations (48-assemblage-relations) — g.edges, g.verts (repère du composant)
+  const EDGE=occt.TopAbs_ShapeEnum.TopAbs_EDGE,SH=occt.TopAbs_ShapeEnum.TopAbs_SHAPE;
+  const r6=p=>p.map(v=>Math.round(v*1e6)/1e6),key=p=>p.map(v=>v.toFixed(4)).join(',');
+  const edges=[],verts=[],seenE=new Set(),seenV=new Set();
+  const addV=p=>{const k=key(p);if(!seenV.has(k)&&verts.length<40000){seenV.add(k);verts.push(r6(p));}};
+  (shapes||[]).forEach(sh=>{
+    if(!sh)return;
+    const ex=new occt.TopExp_Explorer_2(sh,EDGE,SH);
+    try{
+      while(ex.More()&&edges.length<20000){
+        const info=asmSnapEdgeInfo(occEdgeCur(ex));ex.Next();
+        const P=info.pts||[];if(P.length<2)continue;
+        const k=key(P[0])+'|'+key(P[P.length-1])+'|'+key(P[6]||P[0]),k2=key(P[P.length-1])+'|'+key(P[0])+'|'+key(P[6]||P[0]);
+        if(seenE.has(k)||seenE.has(k2))continue;seenE.add(k);
+        addV(P[0]);if(!(info.k==='circ'&&info.full))addV(P[P.length-1]);
+        if(info.k==='line'&&info.d)edges.push({k:'line',p0:r6(info.p0),p1:r6(info.p1),m:r6(info.m),d:r6(info.d)});
+        else if(info.k==='circ')edges.push({k:'circ',c:r6(info.c),n:r6(info.n),x:r6(info.x),r:+info.r.toFixed(6),full:!!info.full,pts:P.map(r6)});
+      }
+    }finally{try{ex.delete();}catch(err){}}
+  });
+  g.edges=edges;g.verts=verts;
+  return g;
+}
+function asmSnapEdgesOf(c){
+  // Arêtes et sommets du composant c (relations) : relevés avec ses faces, sinon (faces venues
+  // d'une image d'avant V0.99.41) lus une fois sur sa forme exacte
+  const g=typeof asmSnapGeomOf==='function'?asmSnapGeomOf(c):null;if(!g)return null;
+  if(Array.isArray(g.edges)&&Array.isArray(g.verts))return g;
+  try{asmSnapEdgesInto(g,asmExactOfQuiet(c).map(b=>b.shape));}catch(e){g.edges=[];g.verts=[];return g;}
+  if(c._snap&&c._snap.exact&&g.edges.length){try{asmCacheSnapGSave(c,g).catch(()=>{});}catch(e){}} // gardées pour la prochaine ouverture
+  return g;
 }
 function asmSnapItems(F){
   // Points d'accroche d'une face : [{w, name, fr, e?}] (repères dans le composant)
@@ -207,8 +243,9 @@ function asmSnapUses(){
   }));
   // relations entre faces (48-assemblage-relations) : leurs faces se relisent de même
   asm.comps.forEach(owner=>owner.occ.forEach(o=>(Array.isArray(o.cons)?o.cons:[]).forEach(k=>{
-    if(k.a&&k.a.f){const r=asmPathFrame(o.comp,k.a.path);if(r)out.push({comp:r.comp,sn:k.a});}
-    if(k.b&&k.b.f){const r=asmPathFrame(owner.id,k.b.path);if(r)out.push({comp:r.comp,sn:k.b});}
+    const geo=x=>x&&(x.f||x.e||x.v); // face, arête ou sommet (V0.99.41)
+    if(geo(k.a)){const r=asmPathFrame(o.comp,k.a.path);if(r)out.push({comp:r.comp,sn:k.a});}
+    if(geo(k.b)){const r=asmPathFrame(owner.id,k.b.path);if(r)out.push({comp:r.comp,sn:k.b});}
   })));
   return out;
 }
