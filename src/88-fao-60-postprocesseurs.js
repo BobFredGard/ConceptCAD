@@ -906,7 +906,12 @@ async function faoRefreshPreviewStream(){
   // ce que le bouton faisait en un bloc : rapides sécurisés, arrondis, zones,
   // op. masquées, faoPrevMissing… strictement identique au flux synchrone.
   try{ if(typeof faceEl!=='undefined'&&faceEl)faceEl.textContent='FAO : affichage…'; }catch(e){}
-  return faoRefreshPreview('calcule');
+  // V0.99.48 : séquence du posage (liaisons) faite par un worker, l'écran reste libre
+  let pre=null;
+  try{ pre=await faoWkSeq(job,function(){ return tok!==faoStreamTok; }); }catch(e){ pre=null; }
+  if(tok!==faoStreamTok)return -1;
+  faoSeqPre=pre?{job:job,res:pre}:null;
+  try{ return faoRefreshPreview('calcule'); }finally{ faoSeqPre=null; }
 }
 async function faoPreviewGenerateAsync(){
   // Version FLUX de faoPreviewGenerate() : même séquence, mais les courbes

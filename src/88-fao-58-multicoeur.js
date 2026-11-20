@@ -134,22 +134,47 @@ function faoWkPrincipal(){
   };
   faoModelBox=function(s){return boite(s,'box','faoModelBox');};
   faoModelZBox=function(s){return boite(s,'zbox','faoModelZBox');};
+  const poser=function(m){
+    doc=new Proxy(m.doc,{get:function(t,k){
+      if(typeof k==='symbol'||k in t)return t[k];
+      self.__wkTouche('doc.'+k);
+    }});
+    boites=m.boites;
+    prec=m.prec||null;
+    if(m.precPaq){ prec={}; for(const id in m.precPaq)prec[id]=faoWkMvDepaq(m.precPaq[id]); }
+    bodies=(m.corps||[]).map(function(c){
+      return corpsRecu({id:c.id,kind:c.kind,ghost:c.ghost,visible:c.visible,cached:c.cached,
+        __m:{bas:lire(c.bas),mid:c.mid===undefined?undefined:lire(c.mid),fin:c.fin===undefined?undefined:lire(c.fin),
+          geoFin:c.geoFin,groupes:c.groupes}});
+    });
+    return (doc.fao.setups||[]).find(function(s){return s.id===m.setupId;});
+  };
   self.onmessage=function(ev){
     const m=ev.data||{};
+    if(m.t==='seq'){
+      // V0.99.48 : séquence du posage (liaisons, retrait minimum) — faoSeqSafe, comme la page
+      try{
+        const job=poser(m);
+        if(!job)throw new Error('posage introuvable');
+        self.__wkArme=true;
+        const res=faoSeqSafe(job,false);
+        self.__wkArme=false;
+        if(self.__wkPiege)throw new Error('[multicœur] '+self.__wkPiege+' indisponible');
+        const tr=[];
+        const out=res.map(function(b){
+          const p=b.absent?null:faoWkMvPaq(b.moves,tr);
+          return {opId:b.op&&b.op.id,absent:!!b.absent,xf:b.xf===undefined?undefined:b.xf,tail:b.tail===undefined?undefined:b.tail,mv:p};
+        });
+        self.postMessage({t:'seqfin',res:out},tr);
+      }catch(e){
+        self.__wkArme=false;
+        self.postMessage({t:'ko',err:String((e&&e.message)||e),piege:self.__wkPiege,pile:self.__wkPile});
+      }
+      return;
+    }
     if(m.t!=='job')return;
     try{
-      doc=new Proxy(m.doc,{get:function(t,k){
-        if(typeof k==='symbol'||k in t)return t[k];
-        self.__wkTouche('doc.'+k);
-      }});
-      boites=m.boites;
-      prec=m.prec||null;
-      bodies=(m.corps||[]).map(function(c){
-        return corpsRecu({id:c.id,kind:c.kind,ghost:c.ghost,visible:c.visible,cached:c.cached,
-          __m:{bas:lire(c.bas),mid:c.mid===undefined?undefined:lire(c.mid),fin:c.fin===undefined?undefined:lire(c.fin),
-            geoFin:c.geoFin,groupes:c.groupes}});
-      });
-      const job=(doc.fao.setups||[]).find(function(s){return s.id===m.setupId;});
+      const job=poser(m);
       const op=job&&(job.ops||[]).find(function(o){return o.id===m.opId;});
       if(!op)throw new Error('opération introuvable');
       const avant={};
@@ -287,17 +312,21 @@ function faoWkDocData(){
   return {fao:doc.fao};
 }
 function faoWkAccepte(op,job){
-  // Opérations confiées aux workers : les longues. Contour et chanfrein durent moins que le
-  // démarrage d'un worker. Les corps FAO (murs) passent par une triangulation THREE : calcul normal.
-  if(!op||op.on===false||!faoMeshOp(op)||op.type==='chamfer'||faoContourProfil(op))return false;
+  // Opérations confiées aux workers : les longues. Le chanfrein dure moins que le démarrage
+  // d'un worker. Les corps FAO (murs) passent par une triangulation THREE : calcul normal.
+  // V0.99.48 (demande de Fred : « toutes les opérations vers d'autres CPU ») : contour sur
+  // arêtes accepté — avec « Rapide dans le vide », sa carte de matière rejoue les parcours
+  // des précédentes (1,9 s par contour sur SIRAP-14-002, écran figé) : joints comme au brut restant.
+  if(!op||op.on===false||!faoMeshOp(op)||op.type==='chamfer')return false;
   if(faoWallList(job).length)return false;
   // V0.99.0 : brut restant — lit les parcours des opérations précédentes. V0.99.46 : accepté,
   // lancé quand elles sont finies, avec leurs parcours joints (faoWkPrecOps / faoWkPrec)
   return true;
 }
 function faoWkPrecOps(op,job){
-  // Opérations précédentes dont le parcours sert au brut restant de `op` ([] sinon)
-  if(!faoRestOn(op))return [];
+  // Opérations précédentes dont le parcours sert au brut restant de `op` ([] sinon) ;
+  // V0.99.48 : aussi à la carte de matière d'un contour « Rapide dans le vide »
+  if(!faoRestOn(op)&&!(typeof faoContourVideOn==='function'&&faoContourVideOn(op)))return [];
   const out=[];
   try{
     faoRestPrev(faoRestBase(job),op).forEach(function(E){ if(E&&E.op&&out.indexOf(E.op)<0)out.push(E.op); });
@@ -323,7 +352,25 @@ function faoWkNbCoeurs(){
 }
 
 // ----- répartition -----
-function faoWkRemplir(job,ops,estCaduc,surFlux,surAvance){
+async function faoWkRemplir(job,ops,estCaduc,surFlux,surAvance){
+  // V0.99.48 : maillages fin et intermédiaire préparés d'abord par le worker du noyau
+  // (faoFineGeoAsync / faoMidGeoAsync, src/90-60) — sur le fil principal, ils figeaient l'écran au
+  // premier calcul (SIRAP-14-002 : 4,9 s puis 1,5 s).
+  try{
+    if(!faoWkOff&&typeof faoFineGeoAsync==='function'){
+      const L=ops.filter(function(o){return faoWkAccepte(o,job);});
+      const fin=L.some(function(o){return faoWkBesoin(o,job).fin;}),mid=L.some(function(o){return faoWkBesoin(o,job).mid;});
+      const B=(bodies||[]).filter(function(b){return !!b;}),P=[];
+      B.forEach(function(b){
+        if(mid)P.push(faoMidGeoAsync(b).catch(function(){return null;}));
+        if(fin)P.push(faoFineGeoAsync(b).catch(function(){return null;}));
+      });
+      if(P.length)await Promise.all(P);
+    }
+  }catch(e){}
+  return faoWkRemplir0(job,ops,estCaduc,surFlux,surAvance);
+}
+function faoWkRemplir0(job,ops,estCaduc,surFlux,surAvance){
   // Calcule en parallèle ce qui peut l'être et range les résultats dans le cache.
   // Résout toujours (jamais d'échec) : ce qui manque sera calculé par le chemin normal.
   return new Promise(function(fini){
@@ -349,7 +396,7 @@ function faoWkRemplir(job,ops,estCaduc,surFlux,surAvance){
         return true;
       });
       if(!liste.length)return fini(0);
-      // Brut restant : les précédentes que les workers ne font pas (2.5D, contours : courtes)
+      // Brut restant, contour dans le vide : les précédentes que les workers ne font pas (2.5D : courtes)
       // sont calculées ici d'abord ; leurs parcours partiront avec l'opération.
       liste.forEach(function(o){
         const L=faoWkPrecOps(o,job)||[];
@@ -456,7 +503,8 @@ function faoWkRemplir(job,ops,estCaduc,surFlux,surAvance){
         }
       };
       let prec=null;
-      if(faoRestOn(op)){
+      const LP=faoWkPrecOps(op,job);
+      if(LP===null||LP.length){ // brut restant, contour « Rapide dans le vide » (V0.99.48)
         prec=faoWkPrec(op,job);
         if(!prec){ clore(); return; } // une précédente manque : calcul normal
       }
@@ -469,5 +517,104 @@ function faoWkRemplir(job,ops,estCaduc,surFlux,surAvance){
     };
     try{ if(surAvance)surAvance(0,total,nb); }catch(e){}
     suite();
+  });
+}
+
+/* ----- V0.99.48 : séquence finale du posage dans un worker -----
+   Demande de Fred : « toutes les opérations vers d'autres CPU ». À la fin de « Tout régénérer »,
+   faoSeqSafe (liaisons entre passes, carte de la matière pour le retrait minimum) figeait l'écran
+   1,6 s sur SIRAP-14-002. Elle est faite par un worker FAO, avec le même code ; les parcours
+   partent et reviennent en colonnes (faoWkMvPaq : transfert sans copie, aucun arrondi). La page
+   reprend le résultat une fois, tout de suite (faoSeqPre) ; sinon : calcul habituel. */
+let faoSeqPre=null; // {job, res} : séquence calculée par un worker, servie une fois par faoSeqSafe
+function faoWkMvSimple(m){
+  // {x,y,z} ou {r,x,y,z} (r : 0, 1, true, false), dans cet ordre de clés, coordonnées en nombres
+  if(!m||typeof m!=='object')return 0;
+  const k=Object.keys(m);
+  if(typeof m.x!=='number'||typeof m.y!=='number'||typeof m.z!=='number')return 0;
+  if(k.length===3&&k[0]==='x'&&k[1]==='y'&&k[2]==='z')return 5;
+  if(k.length!==4||k[0]!=='r'||k[1]!=='x'||k[2]!=='y'||k[3]!=='z')return 0;
+  return m.r===0?1:m.r===1?2:m.r===true?3:m.r===false?4:0;
+}
+function faoWkMvPaq(mv,tr){
+  // Parcours -> colonnes : r (code), x, y, z ; les points d'une autre forme et les champs
+  // posés sur le tableau (hors indices) voyagent tels quels.
+  const n=mv.length,c=new Uint8Array(n),x=new Float64Array(n),y=new Float64Array(n),z=new Float64Array(n),autres=[];
+  for(let i=0;i<n;i++){
+    const m=mv[i],s=faoWkMvSimple(m);
+    c[i]=s;
+    if(s){x[i]=m.x;y[i]=m.y;z[i]=m.z;}else if(i in mv)autres.push([i,m]); // trou du tableau : reste un trou
+  }
+  let champs=null;
+  for(const k in mv){ if(!/^\d+$/.test(k)){ if(!champs)champs={}; champs[k]=mv[k]; } }
+  if(tr)tr.push(c.buffer,x.buffer,y.buffer,z.buffer);
+  return {n:n,c:c,x:x,y:y,z:z,autres:autres,champs:champs};
+}
+function faoWkMvDepaq(p){
+  const R=[undefined,0,1,true,false];
+  const out=new Array(p.n);
+  for(let i=0;i<p.n;i++){
+    const s=p.c[i];
+    if(s===5)out[i]={x:p.x[i],y:p.y[i],z:p.z[i]};
+    else if(s)out[i]={r:R[s],x:p.x[i],y:p.y[i],z:p.z[i]};
+  }
+  for(let j=0;j<p.autres.length;j++)out[p.autres[j][0]]=p.autres[j][1];
+  if(p.champs)for(const k in p.champs)out[k]=p.champs[k];
+  return out;
+}
+function faoWkSeq(job,estCaduc){
+  // Séquence du posage par un worker → Promise du tableau de faoSeqSafe(job,false), ou null.
+  return new Promise(function(fini){
+    let w=null,fait=false;
+    const finir=function(r){ if(fait)return; fait=true; try{ if(w)w.terminate(); }catch(e){} faoWkActifs=faoWkActifs.filter(function(x){return x!==w;}); fini(r); };
+    try{
+      if(faoWkOff)return fini(null);
+      if(faoWallList(job).length)return fini(null);
+      const url=faoWkUrl();
+      if(!url)return fini(null);
+      const seq=faoOpsSeq(job);
+      if(!seq.length)return fini(null);
+      const ops=[];seq.forEach(function(E){ if(E.op&&ops.indexOf(E.op)<0)ops.push(E.op); });
+      // tous les parcours en mémoire, à jour : sinon le calcul habituel (qui sait les produire)
+      const tr=[],paq={},vus=new Map();
+      for(let i=0;i<ops.length;i++){
+        const op=ops[i];
+        if(!op.id||paq[op.id])return fini(null);
+        const h=faoOpMovesHit(op);
+        let k=null;
+        try{ k=faoOpMovesKey(op,job); }catch(e){ k=null; }
+        if(!h||!h.mv||k===null||h.key!==k)return fini(null);
+        paq[op.id]=faoWkMvPaq(h.mv,tr);
+        vus.set(op,h.mv);
+      }
+      const corps=(bodies||[]).filter(function(b){return !!b;}).map(function(b){
+        return {id:b.id,kind:b.kind,ghost:b.ghost,visible:b.visible,cached:b.cached,bas:faoWkAplat(faoMeshFromBodyCached(b))};
+      });
+      const boites={id:job.id,pos:{box:faoModelBox(job),zbox:faoModelZBox(job)},op:null};
+      w=new Worker(url);
+      faoWkActifs.push(w);
+      w.onerror=function(ev){ try{ ev.preventDefault(); }catch(e){} finir(null); };
+      w.onmessage=function(ev){
+        const m=ev.data||{};
+        if(m.t==='ko'){ try{ console.warn('[FAO multicœur] séquence : '+m.err+' — calcul normal'); }catch(e){} finir(null); return; }
+        if(m.t!=='seqfin')return;
+        try{
+          if(estCaduc&&estCaduc())return finir(null);
+          // rien n'a bougé pendant le calcul : mêmes parcours en mémoire
+          for(const [op,mv] of vus){ const h=faoOpMovesHit(op); if(!h||h.mv!==mv)return finir(null); }
+          const parId={};ops.forEach(function(o){ parId[o.id]=o; });
+          const res=m.res.map(function(b){
+            const op=parId[b.opId];
+            if(!op)throw new Error('opération inconnue');
+            const r={op:op,moves:b.absent?[]:faoWkMvDepaq(b.mv),xf:b.xf};
+            if(b.absent)r.absent=true;
+            if(b.tail!==undefined)r.tail=b.tail;
+            return r;
+          });
+          finir(res);
+        }catch(e){ finir(null); }
+      };
+      w.postMessage({t:'seq',setupId:job.id,doc:faoWkDocData(),corps:corps,boites:boites,precPaq:paq},tr);
+    }catch(e){ finir(null); }
   });
 }

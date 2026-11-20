@@ -142,6 +142,7 @@ const SUITES = [
   "test_fao_stale",
   "test_fao_refresh",
   "test_fao_chainage",
+  "test_fao_seq_paquet",
   "test_fao_regen_posages",
   "test_fao_cache_idb",
   "test_fao_attente_cache",

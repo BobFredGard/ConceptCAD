@@ -8,7 +8,7 @@ sont sorties le 2026-09-30j.
 Code dans `src/` · livrable `fusion_mvp.html` (généré par `build.js`) · architecture et
 garde-fous en tête de `src/00-entete-et-outils.js`.
 
-**734 versions**, de `2026-09-28b` à `V0.99.47` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
+**735 versions**, de `2026-09-28b` à `V0.99.48` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
 comme dans le fichier d'origine.
 
 ---
@@ -8164,3 +8164,11 @@ Cavité Usinage, après l'ébauche D25, la reprise D10 et une finition boule D12
 **Correctif** (`src/88-fao-94-selection.js`) : extrémités rangées dans des cases de côté 2 × tolérance (clé entière, 1 à 2 cases par axe) ; chaque case garde ses indices croissants et un début qui saute les segments déjà pris. Le choix reste exactement celui d'avant : segment libre de plus petit indice qui touche un bout, puis le même ordre des 4 tests ; chaîne tenue en deux moitiés au lieu de `unshift`. SIRAP-14-002 : 2e ébauche 63 → 21 s, 1re ébauche 47 → 32 s ; 992 appels comparés à l'ancien code pendant le calcul du posage, aucun écart, parcours identiques. Manuel : page FAO.
 
 **Test** : `test_fao_chainage` (3 000 cas mélangés : coïncidences, nœuds de degré 4, bruit sous la tolérance, z différents, coordonnées non finies — mêmes chaînes que l'ancien code recopié ; cercle de 20 000 morceaux mélangés en moins de 1,5 s, ~2 s avant). CACHE_VER et FORMES_VER inchangés.
+
+## V0.99.48 - FAO : « Tout régénérer » sans figer l'écran, calculs sur les autres cœurs
+
+**Demande** : « si tu peux déplacer toutes les opérations vers d'autres CPU que celui utilisé pour l'affichage et les commandes de base, c'est cool », puis « Oui, les deux » (début et fin du calcul). SIRAP-14-002, premier « Tout régénérer » après l'ouverture : écran figé 4,9 s au début (maillage fin de la pièce), 2 × 1,9 s (contours sur arêtes) et 1,6 s à la fin (enchaînement du posage).
+
+**Correctif** : contours sur arêtes confiés aux workers FAO (`faoWkAccepte`), avec les parcours des précédentes pour « Rapide dans le vide » (`faoWkPrecOps`) ; maillages fin et intermédiaire de la FAO faits par le worker du noyau (`occTessWk`, src/21 : solide passé en BRep binaire `BinTools`, nombres exacts — le BRep texte arrondit à 15 chiffres et changeait le maillage ; `faoFineGeoAsync` / `faoMidGeoAsync`, src/90-60, attendus par `faoWkRemplir`) ; séquence finale du posage (`faoSeqSafe` : liaisons, retrait minimum) faite par un worker FAO (`faoWkSeq`), parcours envoyés en colonnes sans copie (`faoWkMvPaq` / `faoWkMvDepaq`) et servis une fois (`faoSeqPre`). Tout échec ou délai : calcul habituel sur la page. SIRAP-14-002 : un seul blocage d'environ 0,5 s au début, le reste ≤ 0,12 s ; parcours (343 756, 136 227, 5 748 mouvements) et maillages identiques à l'ancien calcul. Manuel FAO.
+
+**Test** : `test_fao_seq_paquet` (aller-retour des parcours en colonnes : 20 000 points, champ r, autres formes, trous, champs du tableau, zéro négatif) ; `test_fao_multicoeur` (contours, précédentes jointes). CACHE_VER et FORMES_VER inchangés.
