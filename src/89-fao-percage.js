@@ -77,11 +77,13 @@ function faoHolesDetect(shapes){
   }
   return faoHolesDetect0(shapes);
 }
-function faoHolesDetect0(shapes){
+function faoHolesDetect0(shapes,diff){
   // Liste des trous verticaux (axe ±Z) des solides donnés. Pur OCCT : testable en Node.
+  // diff (V0.99.51, faoDrillReplayWk) : tableau — le test « débouchant » n'est pas fait ici, chaque point
+  // à classer y est rangé {h, si, z} (h.through reste false) ; l'appelant le fait faire par les workers.
   shapes=shapes||faoHoleShapes();
   if(!shapes.length||typeof occt==='undefined'||!occt)return [];
-  if(shapes.length===1&&faoHoleCache.shape===shapes[0]&&faoHoleCache.list)return faoHoleCache.list;
+  if(!diff&&shapes.length===1&&faoHoleCache.shape===shapes[0]&&faoHoleCache.list)return faoHoleCache.list;
   const groups=new Map(), cones=[];
   const T=occt.GeomAbs_SurfaceType, REV=occt.TopAbs_Orientation.TopAbs_REVERSED;
   shapes.forEach(function(sh,si){
@@ -232,6 +234,7 @@ function faoHolesDetect0(shapes){
     const g=Array.from(groups.values()).find(function(q){return Math.abs(q.x-h.x)<1e-6&&Math.abs(q.y-h.y)<1e-6&&Math.abs(2*q.r-h.d)<1e-6;});
     let zTest=h.zbot-0.3;
     cones.forEach(function(c){ if(Math.hypot(c.x-h.x,c.y-h.y)<=0.01&&c.zHi<=h.zbot+0.01&&c.apex<h.zbot)zTest=Math.min(zTest,c.apex-0.3); });
+    if(diff){diff.push({h:h,si:g?g.shape:0,z:zTest});return;}
     try{
       const cl=clOf(g?g.shape:0);
       const P=new occt.gp_Pnt_3(h.x,h.y,zTest);
@@ -269,7 +272,7 @@ function faoHolesDetect0(shapes){
   }catch(e){}
   holes.sort(function(a,b){return b.ztop-a.ztop||a.d-b.d||a.x-b.x||a.y-b.y;});
   cls.forEach(function(c){try{c.delete();}catch(e){}});
-  if(shapes.length===1){faoHoleCache={shape:shapes[0],list:holes};}
+  if(!diff&&shapes.length===1){faoHoleCache={shape:shapes[0],list:holes};}
   return holes;
 }
 function faoHoleIsHole(sh,g,clShared){
@@ -408,8 +411,103 @@ function faoDrillResolve(op){
   if(a===b)return false;
   op.holes=nh;return true;
 }
+/* V0.99.51 : trous débouchants testés sur plusieurs cœurs — demande de Fred : « maximiser les CPU », pour
+   la timeline. Mesuré sur SIRAP-14-002 : changer la profondeur d'un perçage figeait l'écran ~4,5 s dans
+   cette fonction, quelle que soit la fonction touchée — 144 trous, chacun testé « débouchant ? » par un
+   point classé dans la matière (~37 ms par point sur une pièce à 188 faces gauches). La lecture des faces
+   reste sur la page (quelques ms) ; seuls ces points partent sur les workers (21-vues-plan-calcul), en
+   paquets, le solide envoyé en BRep binaire exact. Tant qu'ils calculent, la FAO attend (faoSolidSettled) :
+   aucune génération sur une liste de trous périmée. ?mono, pas de worker, peu de points : comme avant. */
+let FAO_TROUS_WK_MIN=24;   // points à tester en dessous desquels la page les teste elle-même (démarrage ~1 s)
+let faoTrousAttente=0;     // détections en cours sur les workers
+let faoTrousN=0;           // numéro de la dernière détection lancée
+let faoTrousDernier=null;  // relevé de la dernière : {pts, paquets, ms, ok}
+function faoHoleMemoPut(k,l){
+  if(!k||!l)return;
+  if(faoHoleMemo.size>=48)faoHoleMemo.clear();
+  faoHoleMemo.set(k,l);
+}
+function faoTrousClasserIci(shapes,L){
+  // test « débouchant » sur la page : même code que faoHolesDetect0
+  const cls=new Map();
+  L.forEach(function(d){
+    try{
+      let c=cls.get(d.si);if(!c){c=new occt.BRepClass3d_SolidClassifier_2(shapes[d.si]);cls.set(d.si,c);}
+      const P=new occt.gp_Pnt_3(d.h.x,d.h.y,d.z);
+      c.Perform(P,1e-6);
+      d.h.through=(c.State()===occt.TopAbs_State.TopAbs_OUT);
+      try{P.delete();}catch(e){}
+    }catch(e){}
+  });
+  cls.forEach(function(c){try{c.delete();}catch(e){}});
+}
+function faoDrillReplayWk(){
+  // true : les tests « débouchant » sont partis sur les workers ; faoDrillReplay0 sera rejoué au retour
+  if(typeof occCalcWkUsable!=='function'||!occCalcWkUsable())return false;
+  const r=faoRoot(),ops=[];
+  ((r&&r.setups)||[]).forEach(function(s){((s&&s.ops)||[]).forEach(function(op){if(op&&op.type==='drill'&&op.src==='model')ops.push(op);});});
+  if(!ops.length)return false;
+  // trous de chaque repère encore inconnu, lus sur la page sans le test « débouchant »
+  const travaux=[],vus=new Set();
+  ops.forEach(function(op){faoWithOpFrame(op,function(Fr){
+    const k=faoHoleMemoKey(Fr);
+    if(!k||faoHoleMemo.has(k)||vus.has(k))return;
+    vus.add(k);
+    const shapes=faoHoleShapes();if(!shapes.length)return;
+    const diff=[],holes=faoHolesDetect0(shapes,diff);
+    travaux.push({k:k,shapes:shapes,holes:holes,diff:diff});
+  });});
+  const nPts=travaux.reduce(function(s,t){return s+t.diff.length;},0);
+  if(nPts<FAO_TROUS_WK_MIN){ // peu de points : la page les teste tout de suite
+    travaux.forEach(function(t){faoTrousClasserIci(t.shapes,t.diff);faoHoleMemoPut(t.k,t.holes);});
+    return false;
+  }
+  // paquets : un par cœur disponible, au plus, et pas moins de 6 points chacun
+  const nW=Math.max(1,Math.min(hlrWkNb(),Math.ceil(nPts/6)));
+  const paquets=[];
+  travaux.forEach(function(t){
+    const parSolide=new Map();
+    t.diff.forEach(function(d){let a=parSolide.get(d.si);if(!a){a=[];parSolide.set(d.si,a);}a.push(d);});
+    parSolide.forEach(function(L,si){
+      let brep=null;try{brep=occBinWrite(t.shapes[si]);}catch(e){brep=null;}
+      const nb=Math.max(1,Math.round(nW*L.length/nPts)),taille=Math.ceil(L.length/nb);
+      for(let i=0;i<L.length;i+=taille)paquets.push({t:t,part:L.slice(i,i+taille),brep:brep});
+    });
+  });
+  const n0=++faoTrousN,sig=occLive&&occLive.sig,t0=performance.now();
+  faoTrousAttente++;
+  Promise.all(paquets.map(function(p){
+    if(!p.brep)return Promise.resolve(null);
+    const pts=new Float64Array(3*p.part.length);
+    p.part.forEach(function(d,i){pts[3*i]=d.h.x;pts[3*i+1]=d.h.y;pts[3*i+2]=d.z;});
+    return occCalcWk({kind:'cls',brep:p.brep,pts:pts},function(m){return m.cls||null;});
+  })).then(function(R){
+    // pièce changée entre-temps : solides peut-être libérés, résultats sans objet
+    const courant=n0===faoTrousN&&typeof occLive!=='undefined'&&occLive&&occLive.sig===sig;
+    let ok=true;
+    R.forEach(function(st,i){
+      const p=paquets[i];
+      if(st&&st.length===p.part.length)p.part.forEach(function(d,q){d.h.through=st[q]===1;});
+      else{ok=false;if(courant)faoTrousClasserIci(p.t.shapes,p.part);} // worker indisponible : la page
+    });
+    if(ok||courant)travaux.forEach(function(t){faoHoleMemoPut(t.k,t.holes);});
+    faoTrousDernier={pts:nPts,paquets:paquets.length,ms:Math.round(performance.now()-t0),ok:ok,courant:courant};
+  }).catch(function(){}).then(function(){
+    faoTrousAttente=Math.max(0,faoTrousAttente-1);
+    if(n0!==faoTrousN)return; // une reconstruction plus récente a pris le relais
+    try{faoDrillReplay0();}catch(e){}
+    try{if(typeof faoRegenFlush==='function')faoRegenFlush();}catch(e){}
+  });
+  return true;
+}
+try{if(typeof window!=='undefined')window.faoTrousInfo=function(){return {attente:faoTrousAttente,dernier:faoTrousDernier,coeurs:occCalcWkUsable()?hlrWkNb():0};};}catch(e){}
 function faoDrillReplay(){
   // Fin de reconstruction : chaque perçage « trous du modèle » suit la pièce.
+  try{faoHoleCache={shape:null,list:null};}catch(e){}
+  try{if(faoDrillReplayWk())return;}catch(e){}
+  faoDrillReplay0();
+}
+function faoDrillReplay0(){
   try{
     faoHoleCache={shape:null,list:null};
     const r=faoRoot();let ch=false;

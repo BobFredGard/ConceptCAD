@@ -152,6 +152,26 @@ function delWkMain(){
       finally{try{if(h)h.delete();}catch(e){}if(s)try{s.delete();}catch(e){}}
       return;
     }
+    if(m.kind==='cls'){
+      // V0.99.51 : trous débouchants de la FAO (89-fao-percage, faoDrillReplayWk) — un point sous chaque
+      // trou, classé dans la matière comme sur la page (BRepClass3d_SolidClassifier, même tolérance).
+      // SIRAP-14-002 : 144 points, ~37 ms chacun sur la page à chaque reconstruction.
+      let cl=null;
+      try{
+        s=occBinRead(m.brep);
+        cl=new occt.BRepClass3d_SolidClassifier_2(s);
+        const P=m.pts,n=(P.length/3)|0,st=new Uint8Array(n),OUT=occt.TopAbs_State.TopAbs_OUT;
+        for(let i=0;i<n;i++){
+          const p=new occt.gp_Pnt_3(P[3*i],P[3*i+1],P[3*i+2]);
+          try{cl.Perform(p,1e-6);st[i]=cl.State()===OUT?1:0;}
+          catch(e){st[i]=0;} // illisible : non débouchant, comme sur la page
+          finally{try{p.delete();}catch(e){}}
+        }
+        self.postMessage({t:'fin',id:m.id,cls:st,ms:Date.now()-t0},[st.buffer]);
+      }catch(e){fin({err:String((e&&e.message)||e)});}
+      finally{try{if(cl)cl.delete();}catch(e){}if(s)try{s.delete();}catch(e){}}
+      return;
+    }
     if(m.kind==='thr'){
       // V0.21.19 : filets modélisés (occThrCut, src/20) — corps et vides en BRep
       let vd=null,r=null;
