@@ -113,7 +113,9 @@ function hlrWkMsg(me,m){
   if(m.t==='fin'&&me.job&&me.job.key===m.id){
     clearTimeout(me.timer);
     const j=me.job;me.job=null;
-    hlrWkRendre(j,m.hlr&&!m.err?{lots:m.hlr,ms:m.ms}:null);
+    let r=null;
+    try{r=m.err?null:(j.lire?j.lire(m):(m.hlr?{lots:m.hlr,ms:m.ms}:null));}catch(e){r=null;}
+    hlrWkRendre(j,r);
     hlrWkPump();
   }
 }
@@ -124,7 +126,8 @@ function hlrWkPump(){
     const j=hlrWkQ.shift();
     me.job=j;
     me.timer=setTimeout(()=>{if(me.job===j){hlrWkStop(me);hlrWkRendre(j,null);hlrWkPump();}},HLR_WK_DELAI);
-    me.w.postMessage({t:'job',kind:'hlr',id:j.key,brep:j.brep,axes:j.axes,cats:j.cats}); // copié : le même solide sert à plusieurs vues
+    // copié : le même solide sert à plusieurs vues (ou à plusieurs paquets de points)
+    me.w.postMessage(j.msg?Object.assign({t:'job',id:j.key},j.msg):{t:'job',kind:'hlr',id:j.key,brep:j.brep,axes:j.axes,cats:j.cats});
   });
   // workers à démarrer : un par travail en attente non couvert par un worker qui démarre
   const libres=hlrWks.filter(me=>!me.job).length;
@@ -139,6 +142,18 @@ function occHlrWk(brep,axes,cats){
   return new Promise(res=>{
     if(!hlrWkUsable()){res(null);return;}
     hlrWkQ.push({key:'hlr:'+(++hlrWkN),brep,axes,cats,res});
+    hlrWkPump();
+  });
+}
+// V0.99.51 : la même réserve sert à d'autres calculs du noyau (trous débouchants de la FAO, 89-fao-percage).
+// msg : {kind, …} lu par delWkMain ; lire(m) : réponse du worker → résultat. → Promise du résultat ou null.
+function occCalcWkUsable(){
+  try{return !hlrWkOff&&delWkUsable()&&!!(occt.BinTools&&occt.BinTools.Write);}catch(e){return false;}
+}
+function occCalcWk(msg,lire){
+  return new Promise(res=>{
+    if(!occCalcWkUsable()){res(null);return;}
+    hlrWkQ.push({key:(msg.kind||'calc')+':'+(++hlrWkN),msg,lire,res});
     hlrWkPump();
   });
 }

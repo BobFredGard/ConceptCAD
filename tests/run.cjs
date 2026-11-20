@@ -61,6 +61,7 @@ const SUITES = [
   "test_undo_filet",
   "test_mep_vitesse",
   "test_mep_multicoeur",
+  "test_fao_trous_multicoeur",
   "test_undo_aller_retour",
   "test_revolve",
   "test_balayage",

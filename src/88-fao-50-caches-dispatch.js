@@ -317,6 +317,8 @@ function faoSolidSettled(){
   // « l'Ébauche 3D perd son cache a chaque refresh ».
   // Tant que c'est faux : on ne lit pas, on n'ecrit pas, on ne genere pas.
   try{
+    // V0.99.51 : trous débouchants en calcul sur les workers (89-fao-percage) : perçages pas encore à jour
+    if(typeof faoTrousAttente!=='undefined'&&faoTrousAttente>0)return false;
     if(typeof bodies==='undefined'||!bodies||!bodies.length)return true;
     for(let i=0;i<bodies.length;i++){
       const b=bodies[i];

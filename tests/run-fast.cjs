@@ -43,6 +43,7 @@ const SUITES = [
   'test_undo_filet',
   'test_mep_vitesse',
   'test_mep_multicoeur',
+  'test_fao_trous_multicoeur',
   'test_mep_cachees_assemblage',
   'test_conge_tangent',
   'test_conge_ramene',
