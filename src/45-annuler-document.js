@@ -351,7 +351,7 @@ function docApplySnap(snap){
   try{if(typeof repMode!=='undefined'&&repMode)exitRepMode();}catch(e){}
   try{if(typeof extNew!=='undefined'&&extNew)extNew=null;}catch(e){}
   try{if(typeof revNew!=='undefined'&&revNew)revNew=null;}catch(e){}
-  markDirty();rebuild();
+  markDirty();rebuildEdit();
   renderTree();renderProps();refreshParts();
   // doc.fao vit dans le même document : l'arbre FAO, sa fiche et l'aperçu doivent
   // suivre la restauration (même garde-fou que les sorties de mode plus haut).

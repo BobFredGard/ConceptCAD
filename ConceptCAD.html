@@ -410,7 +410,7 @@ input[type=range]{accent-color:var(--primary);width:100%}
  * peut changer sans rien casser. CACHE_VER (parcours FAO) reste indépendant.
  */
 
-const APP_VER='V0.99.51';
+const APP_VER='V0.99.52';
 try{console.log('[ConceptCAD] version '+APP_VER);}catch(e){}
 try{var mfSv=document.getElementById('mfSplashVer');if(mfSv)mfSv.textContent=APP_VER;}catch(e){} // écran de démarrage
 
@@ -10024,7 +10024,10 @@ function* occReplayBodyGen(bid,list){
   const tap=occPrefixTap&&occReplayNest===1?occPrefixTap:null;
   for(let i=0;i<list.length;){
     const n=tap?1:batchLen(i);
-    yield {bid,fs:list.slice(i,i+n)}; // régénération par tranches (31) : fonction(s) sur le point d'être calculée(s)
+    const vy={bid,fs:list.slice(i,i+n)}; // régénération par tranches (31) : fonction(s) sur le point d'être calculée(s)
+    // sonde du recalcul de fond (V0.99.52) : clé du point de contrôle qui suivra (lot compris), pour s'arrêter AVANT de calculer
+    if(occRefSonde){let k=ckKey;vy.fs.forEach(g=>{k+=featSig(g)+';';});vy.cle=k;}
+    yield vy;
     if(n>1&&batch(list.slice(i,i+n))){nomsCompleter(result,list[i].id,null);i+=n;continue;}
     const f=list[i++];
     NOMS_PERTES=[];
@@ -10295,10 +10298,26 @@ function occRefShape(){
 function occRefShapeFree(){
   if(_occLoneRef){try{_occLoneRef.shape.delete();}catch(e){}_occLoneRef=null;}
 }
+// V0.99.52 : sonde du recalcul de fond (31, fondSonde). Pendant qu'elle est posée, un rejeu partiel qui
+// calcule au-delà de `limite` ms est abandonné (ce qui est fait reste gardé) : il rend null et note son
+// préfixe dans `manque`, que le fond calcule ensuite par tranches. Les suivants rendent null aussitôt.
+let occRefSonde=null;
 function occFinalShapeRef(upto){
   // Rejeu partiel pour une référence : un import seul y entre (comme pour un outil de face)
   const sf=occStepForce;occStepForce=true;
-  try{return occFinalShape(upto);}finally{occStepForce=sf;}
+  try{
+    const S=occRefSonde;
+    if(!S)return occFinalShape(upto);
+    if(S.manque!=null)return null;
+    const t=performance.now(),g=occFinalShapeGen(upto);
+    for(;;){
+      const r=g.next();
+      if(r.done)return r.value;
+      // étape sans point de contrôle (elle serait calculée ici) ou déjà trop de temps passé : abandon
+      const v=r.value,ko=!S.cleOff&&v&&v.cle&&v.fs&&v.fs.some(f=>OCC_TYPES_REJEU[f.type])&&!occCk.some(c=>c.key===v.cle);
+      if(ko||performance.now()-t>S.limite){try{g.return();}catch(e){}S.manque=upto;return null;}
+    }
+  }finally{occStepForce=sf;}
 }
 function occExactForTool(again){
   // Solide exact prêt pour un outil de face : recalcul paresseux, STEP seul compris.
@@ -11064,7 +11083,7 @@ async function pcChauffer(){
     g=occFinalShapeGen(tlReplayCount(),true);
     for(;;){
       if(stale()){try{g.return();}catch(e){}return false;}
-      if(rebuildDepth||(typeof regenRun!=='undefined'&&regenRun)){await new Promise(r=>setTimeout(r,200));continue;}
+      if(rebuildDepth||(typeof regenRun!=='undefined'&&regenRun)||(typeof fondEnCours==='function'&&fondEnCours())){await new Promise(r=>setTimeout(r,200));continue;}
       if(!pcCalme()){await new Promise(r=>setTimeout(r,150));continue;} // V0.99.5 : vue en mouvement
       let r;const skip0=occThreadSkip;
       try{occThreadSkip=true;delWkFond=true;r=g.next();}finally{occThreadSkip=skip0;delWkFond=false;}
@@ -11487,7 +11506,10 @@ function delWkReplay(key){
   setTimeout(()=>{
     // V0.94.6 : préchauffe en cours (31) : elle attend cette réponse et son appelant refait l'affichage
     const prechauffe=typeof regenRun!=='undefined'&&!!regenRun;
-    try{builtVersion=-1;builtHash=null;builtEngine=null;if(!prechauffe)rebuild();}catch(e){}
+    // V0.99.52 : recalcul de fond (31) en cours : il attend aussi cette réponse et affichera la pièce ; sinon
+    // la suite est recalculée au fond (SIRAP-14-002 : 7,7 s d'écran figé à cette réponse)
+    const fond=typeof fondEnCours==='function'&&fondEnCours();
+    try{builtVersion=-1;builtHash=null;builtEngine=null;if(!prechauffe&&!fond){if(typeof rebuildEdit==='function')rebuildEdit();else rebuild();}}catch(e){}
     try{if(sel&&sel.kind==='feature')renderProps();}catch(e){}
     const e=key&&delWkRes.get(key);
     if(!e||delWkPending())return;
@@ -11873,6 +11895,12 @@ function rebuildInner(projPass){
   try{importHydrate();}catch(e){} // imports STEP/STL : géométrie revivifiée si un instantané d'annulation l'a stripée
   try{ensureBodies();}catch(e){} // corps conteneurs : migration des anciens documents
   (doc.sketches||[]).forEach(migrateSketch); // compat anciens brouillons + verrouille le modèle points
+  rebuildHotes();
+  phAdd('hotes',performance.now()-_th);
+  rebuildInner2(projPass);
+}
+function rebuildHotes(){
+  // Hôtes, constructions et répétitions avant le rejeu (aussi joué par le recalcul de fond, 31, sur une copie)
   // « Vers un objet » : résolution de la distance (antériorité) AVANT les hôtes de faces.
   (doc.features||[]).forEach(f=>{if(f.type==='extrude'&&f.upto){try{resolveExtrudeUpto(f);}catch(e){}}});
   try{resolveAllSketchHosts();}catch(e){}
@@ -11884,7 +11912,8 @@ function rebuildInner(projPass){
   // source déplacée par une projection ou une face porteuse laissait la copie périmée).
   // Garde par signature : seules les répétitions dont une source a changé sont refaites.
   try{if(typeof repSyncStale==='function'&&repSyncStale())resolveAllSketchHosts();}catch(e){}
-  phAdd('hotes',performance.now()-_th);
+}
+function rebuildInner2(projPass){
   // 2026-10-16-008 : projections associatives AVANT le rejeu principal (ordre timeline, hôtes
   // de faces et instances recalés au fil de l'eau) → le rejeu se fait UNE fois sur un modèle
   // déjà cohérent, au lieu de « rejeu → projections bougent → second rejeu ».
@@ -12318,13 +12347,188 @@ async function regenWarmRun(why,tout){
   if(shown){regenUiSet(total,total,'Affichage du modèle…','',['var(--primary,#0a84ff)']);await regenFrame();}
   return true;
 }
+/* ---------- recalcul de fond après une modification (V0.99.52) ----------
+   Demande de Fred : « maximiser les CPU », pour la timeline : modifier une fonction au début d'une grosse
+   pièce figeait l'écran (SIRAP-14-003, perçage n°2 : 7,4 s ; SIRAP-14-002 : 9,3 s). Mesuré : presque tout est
+   le vrai recalcul des fonctions qui suivent, une après l'autre (le rejeu d'une timeline est séquentiel).
+   Les gestes de modification (fiche, fenêtres de fonction, paramètres, œil, marqueur, annulation, sortie
+   d'esquisse) appellent rebuildEdit() au lieu de rebuild() : la même préchauffe que l'ouverture (occFinalShapeGen,
+   mêmes clés de points de contrôle) part aussitôt. Finie dans FOND_BUDGET_MS : rebuild() tout de suite, comme
+   avant. Sinon elle continue par tranches, la main rendue au navigateur entre deux fonctions : l'ancienne
+   pièce reste affichée, la vue tourne, un bandeau dit où en est le calcul (sans voile : rien n'est retenu).
+   À la fin, rebuild() ne fait que relire les points de contrôle. Le document change pendant ce temps
+   (nouvelle modification) : la préchauffe repart sur le nouvel état. La FAO attend (faoSolidSettled).
+   Un rebuild() appelé ailleurs entre deux tranches reste synchrone et juste (mêmes points de contrôle).
+   ?mono, ?sansfond, banc de test (__regenSync) : rebuild() comme avant. */
+const FOND_BUDGET_MS=150;  // calcul plus court : pas de fond, aucun changement visible
+const FOND_TRANCHE_MS=50;  // calcul enchaîné entre deux peintures, au moins (plus si la peinture est lente)
+let fondOff=false;
+try{fondOff=/[?&](mono|sansfond)\b/.test(String(location.search||''));}catch(e){}
+let fondN=0,fondActif=0,fondApres=[],fondDernier=null;
+function fondPossible(){
+  try{
+    if(fondOff||rebuildDepth||regenRun||!regenWarmUseful())return false;
+    if(typeof buildKeyUpToDate==='function'&&buildKeyUpToDate())return false;
+    return true;
+  }catch(e){return false;}
+}
+function fondEnCours(){return fondActif>0;}
+// Copie de travail du document pour le fond : projections et hôtes y sont réglés sans toucher à la pièce
+// affichée (mêmes contenus = mêmes clés de points de contrôle que le rejeu final sur le vrai document).
+function fondClone(){
+  const c=JSON.parse(JSON.stringify(docSnapObj()));
+  (doc.features||[]).forEach((f,i)=>{const g=c.features[i];if(g&&g.id===f.id){if(f._mesh)g._mesh=f._mesh;if(f._m)g._m=f._m;}});
+  return c;
+}
+function fondAvec(clone,fn){
+  // fn avec la copie pour document : rien de ce qu'elle fait ne compte comme une modification
+  const d0=doc,v0=_docVersion,dt=dirty,md=markDirty,sp=_projEdgeCache;
+  doc=clone;markDirty=function(){};_projEdgeCache=null;
+  try{return fn();}finally{doc=d0;_docVersion=v0;dirty=dt;markDirty=md;_projEdgeCache=sp;}
+}
+const FOND_SONDE_MS=40;    // un rejeu partiel plus long, pendant la sonde : calculé ensuite par tranches
+const FOND_TOURS_MAX=80;   // préfixes calculés pour les projections, au plus (le rejeu final fait le reste)
+function fondSonde(clone,cleOff){
+  // Le début de rebuildInner (hôtes, projections) joué sur la copie. → préfixe à calculer d'abord, ou null.
+  // cleOff : seulement la limite de temps (une étape qui ne pose jamais de point de contrôle arrêterait chaque sonde)
+  const S={limite:FOND_SONDE_MS,manque:null,cleOff:!!cleOff};
+  fondAvec(clone,()=>{
+    occRefSonde=S;
+    try{
+      try{rebuildHotes();}catch(e){}
+      try{if(typeof projPreUpdate==='function'&&projPreUpdate()&&typeof cgResolveAll==='function'&&cgResolveAll())resolveAllSketchHosts();}catch(e){}
+    }finally{occRefSonde=null;}
+  });
+  return S.manque;
+}
+function* fondDerouler(mk,clone,force){
+  // un rejeu de préchauffe, une fonction par pas, sur la copie ; {attente} : suppression de face au calcul (21)
+  let g=null,reprises=0;
+  try{
+    for(;;){
+      if(!g)g=mk();
+      let r;
+      const skip0=occThreadSkip,sf=occStepForce;
+      try{r=fondAvec(clone,()=>{occThreadSkip=true;if(force)occStepForce=true;return g.next();});}
+      finally{occThreadSkip=skip0;occStepForce=sf;}
+      if(r.done){g=null;if(r.value){try{occCleanup(r.value,null);}catch(e){}}return;}
+      // V0.94.6 (comme regenWarmRun) : la suite serait calculée sans la face supprimée, puis refaite
+      if(typeof delWkPending==='function'&&delWkPending()&&reprises<3){
+        try{g.return();}catch(e){}g=null;reprises++;
+        const fin=performance.now()+(typeof DEL_WK_DELAI==='number'?DEL_WK_DELAI:20000)+5000;
+        while(delWkPending()&&performance.now()<fin)yield {attente:true};
+        continue;
+      }
+      yield r.value||{};
+    }
+  }finally{if(g){try{g.return();}catch(e){}}}
+}
+function* fondTache(upto){
+  // 1. projections : sonde, préfixe manquant calculé, nouvelle sonde… ; 2. la timeline sur la copie réglée
+  let clone=null,m0=null,deja=0;
+  for(let tour=0;;tour++){
+    clone=fondClone();
+    const m=fondSonde(clone,deja>0);
+    if(m==null||tour>=FOND_TOURS_MAX)break;
+    deja=m===m0?deja+1:0;m0=m;
+    if(deja>1)break; // le même préfixe manque encore : le rejeu final s'en charge
+    yield {proj:true};
+    yield* fondDerouler(()=>occFinalShapeGen(m,true),clone,true);
+  }
+  yield {proj:true};
+  yield* fondDerouler(()=>occFinalShapeGen(upto,true),clone,false);
+}
+function rebuildEdit(apres){
+  // rebuild() d'une modification faite par l'utilisateur ; apres() quand la pièce affichée est à jour
+  if(typeof apres==='function')fondApres.push(apres);
+  try{if(typeof parApplyAll==='function')parApplyAll();}catch(e){} // comme rebuild() : cotes ƒx avant les clés
+  if(!fondPossible()){fondFinir(true);return;}
+  const n=++fondN;
+  const etat={d:doc,v:_docVersion,m:tlMark,s:occSkipFeat,f:occStepForce,a:asmCkPrefix()};
+  const stale=()=>n!==fondN||doc!==etat.d||_docVersion!==etat.v||tlMark!==etat.m||occSkipFeat!==etat.s||occStepForce!==etat.f||asmCkPrefix()!==etat.a||!occHas();
+  try{importHydrate();}catch(e){}
+  try{ensureBodies();}catch(e){}
+  try{(doc.sketches||[]).forEach(migrateSketch);}catch(e){}
+  const upto=tlReplayCount();
+  const t0=performance.now();
+  const budget=typeof window!=='undefined'&&window.__fondBudget!=null?+window.__fondBudget:FOND_BUDGET_MS;
+  let T=fondTache(upto),fini=false;
+  try{
+    for(;;){
+      const r=T.next();
+      if(r.done){fini=true;break;}
+      if(r.value&&r.value.attente)break;
+      if(performance.now()-t0>=budget)break;
+    }
+  }catch(e){fini=true;}
+  if(fini){fondFinir(true);return;} // fini dans le budget (ou erreur) : rebuild() tout de suite
+  // la suite en tranches
+  fondActif++;
+  const tot=(doc.features||[]).filter(f=>f.visible!==false).length;
+  let vus=0,proj=0,ok=false;
+  const suite=async()=>{
+    try{
+      regenUiShow('Recalcul en arrière-plan',true);
+      for(;;){
+        const tf=performance.now();
+        await regenFrame();
+        if(stale())return;
+        const t=performance.now();
+        // tranche au moins aussi longue que la peinture : grosse pièce dans un navigateur sans carte graphique,
+        // le fond passait plus de temps à peindre qu'à calculer (SIRAP-14-003 : 44 s pour 7 s de calcul)
+        const tranche=Math.max(FOND_TRANCHE_MS,Math.min(400,t-tf));
+        let att=false;
+        while(performance.now()-t<tranche){
+          const r=T.next();
+          if(r.done){ok=true;break;}
+          const v=r.value||{};
+          if(v.attente){att=true;break;}
+          if(v.proj){proj++;vus=0;regenUiSet(0,tot,'esquisses projetées','');continue;}
+          const fs=v.fs||[];if(fs.length)vus++;
+          const f=fs[0];
+          regenUiSet(Math.min(vus,tot),tot,f?(f.name||f.type):'','');
+        }
+        if(ok)break;
+        if(att){await new Promise(k=>setTimeout(k,150));}
+      }
+    }catch(e){ok=true;} // erreur : le rejeu final fait le reste, comme avant
+    finally{
+      try{T.return();}catch(e){}
+      fondActif--;
+      if((n===fondN||!fondActif)&&regenUi&&regenUi.libre)regenUiHide();
+      fondDernier={ms:Math.round(performance.now()-t0),fini:ok,fonctions:vus,tours:proj};
+    }
+    if(n!==fondN)return; // une modification plus récente a pris le relais
+    if(ok&&!stale())fondFinir(false);
+    else setTimeout(()=>{if(n===fondN)rebuildEdit();},0); // document changé autrement : on repart
+  };
+  suite();
+}
+function fondFinir(sync){
+  // pièce affichée mise à jour (les points de contrôle sont prêts), puis ce qui attendait
+  try{if(regenUi&&regenUi.libre)regenUiHide();}catch(e){}
+  try{rebuild();}catch(e){}
+  const L=fondApres.splice(0);
+  L.forEach(fn=>{try{fn();}catch(e){}});
+  if(!sync){
+    try{renderTree();}catch(e){}
+    try{ // la fiche, sauf si on y tape
+      const a=document.activeElement,pp=document.getElementById('props');
+      if(!(a&&pp&&pp.contains(a)&&/^(INPUT|TEXTAREA|SELECT)$/.test(a.tagName)))renderProps();
+    }catch(e){}
+    try{refreshParts();}catch(e){}
+    try{if(typeof faoRegenFlush==='function')faoRegenFlush();}catch(e){}
+  }
+}
+try{if(typeof window!=='undefined')window.fondInfo=()=>({enCours:fondActif>0,dernier:fondDernier,off:fondOff});}catch(e){}
 /* ---------- interface ---------- */
 function regenKeyBlock(e){
   // Barre affichée : le rejeu est entre deux tranches, le document ne doit pas bouger.
   if(e.key==='F5'||e.key==='F12')return;
   try{e.preventDefault();e.stopPropagation();e.stopImmediatePropagation();}catch(_){}
 }
-function regenUiShow(why){
+function regenUiShow(why,libre){
+  // libre (V0.99.52, recalcul de fond) : bandeau seul, sans voile ni touches retenues
   if(regenUi)return;
   // V0.43.1 (demande de Fred) : BANDEAU tout en bas de la vue 3D, juste au-dessus de la timeline,
   // barre en couleur avec le texte dedans, un peu transparente (la pièce se devine dessous). Dans #vpwrap : l'écran de démarrage (#mfSplash) reste
@@ -12348,9 +12552,9 @@ function regenUiShow(why){
   // Remplissage : couleur de la timeline de la fonction EN COURS (change à chaque étape), découpé à l'avancement
   b.innerHTML='<div class="b" style="position:absolute;inset:0;opacity:.78;background-color:var(--primary,#0a84ff);clip-path:inset(0 100% 0 0);transition:clip-path .12s linear,background-color .25s ease"></div>'+ligne('l1')+ligne('l2');
   b._why=why||'Régénération';
-  try{(wrap||document.body).appendChild(b);document.body.appendChild(blk);}catch(e){}
-  try{window.addEventListener('keydown',regenKeyBlock,true);}catch(e){}
-  regenUi={b,blk,t:performance.now()};
+  try{(wrap||document.body).appendChild(b);if(!libre)document.body.appendChild(blk);}catch(e){}
+  try{if(!libre)window.addEventListener('keydown',regenKeyBlock,true);}catch(e){}
+  regenUi={b,blk,t:performance.now(),libre:!!libre};
   regenUiSet(0,0,'','');
 }
 function regenUiHold(ms){
@@ -14781,7 +14985,7 @@ function renderProps(){
     opts.forEach(o=>{const op=document.createElement('option');op.value=o[0];op.textContent=o[1];if(o[2])op.title=o[2];s.appendChild(op);});
     s.value=val;s.onchange=()=>fn(s.value);return s;};
   const visDel=f=>pBtns([
-    ['👁 Visible',()=>{f.visible=!(f.visible!==false);markDirty();rebuild();renderTree();renderProps();}],
+    ['👁 Visible',()=>{f.visible=!(f.visible!==false);markDirty();rebuildEdit();renderTree();renderProps();}],
     ['🗑 Supprimer',()=>{treeSel=[f.id];sel={kind:'feature',id:f.id};treeDeleteSel();}, 'danger']]);
   /* nom du document : V0.99.34, déplacé en tête de l'arborescence (treeDocNameRow, 42) */
   $('docName').textContent=doc.name;
@@ -14806,8 +15010,8 @@ function renderProps(){
       pH('Fonction verrouillée');
       pInfo(`⏱ <b>${f.name}</b> est exclue du rejeu : le marqueur temps s'arrête avant elle.`);
       pBtns([
-        ['🔓 Lever le marqueur',()=>{tlSetPtr(null);markDirty();rebuild();renderTree();renderProps();}],
-        ['👁 Afficher / masquer',()=>{f.visible=!(f.visible!==false);markDirty();rebuild();renderTree();renderProps();}],
+        ['🔓 Lever le marqueur',()=>{tlSetPtr(null);markDirty();rebuildEdit();renderTree();renderProps();}],
+        ['👁 Afficher / masquer',()=>{f.visible=!(f.visible!==false);markDirty();rebuildEdit();renderTree();renderProps();}],
         ['🗑 Supprimer',()=>{treeSel=[f.id];sel={kind:'feature',id:f.id};treeDeleteSel();},'danger']]);
       return;
     }
@@ -14838,7 +15042,7 @@ function renderProps(){
         if(!isFinite(v)){d.value=String(+f.dist||0).replace('.',',');return;}
         if(v===+f.dist)return;
         f.dist=Math.abs(v)<1e-9?0:v;f.name=mvName(f);repSyncForFeature(f);
-        markDirty();rebuild();renderTree();renderProps();
+        markDirty();rebuildEdit();renderTree();renderProps();
       });
       pRow('Distance (mm)',d);
       pNote('Positif : la face avance. Négatif : elle rentre. 0 : la fonction ne fait rien.');
@@ -14867,12 +15071,12 @@ function renderProps(){
         if(v===+f.angle)return;
         docPushUndo();
         f.angle=v;f.name=draftName(f);repSyncForFeature(f);
-        markDirty();rebuild();renderTree();renderProps();
+        markDirty();rebuildEdit();renderTree();renderProps();
       });
       pRow('Angle (°)',d);
       // V0.11.19 : inversion du sens sans toucher à la valeur (une expression ƒx reste liée)
       const fb=document.createElement('input');fb.type='checkbox';fb.checked=!!f.flip;
-      fb.onchange=()=>{docPushUndo();f.flip=fb.checked;f.name=draftName(f);repSyncForFeature(f);markDirty();rebuild();renderTree();renderProps();};
+      fb.onchange=()=>{docPushUndo();f.flip=fb.checked;f.name=draftName(f);repSyncForFeature(f);markDirty();rebuildEdit();renderTree();renderProps();};
       pRow('⇄ Inverser le sens',fb);
       pNote('Angle de démoulage : chaque face retenue pivote de cet angle autour de sa ligne d\'intersection avec le plan neutre. Sens effectif '+String(Math.round(draftAngleEff(f)*100)/100).replace('.',',').replace('-','−')+'° : la pièce '+(draftAngleEff(f)>=0?'se resserre':'s\'évase')+' le long de la normale du plan neutre.');
       pBtns([['📐 Re-sélectionner les faces',()=>{exitDraftMode(true);try{if(filMode||filModeX)exitFilletMode(true);}catch(e){}enterDraftMode(f);}]]);
@@ -14897,7 +15101,7 @@ function renderProps(){
         if(v===+f.thick)return;
         docPushUndo();
         f.thick=v;f.name=shellName(f);repSyncForFeature(f);
-        markDirty();rebuild();renderTree();renderProps();
+        markDirty();rebuildEdit();renderTree();renderProps();
       });
       pRow('Paroi (mm)',d);
       pNote('L\'intérieur est creusé de cette épaisseur sous chaque face conservée.');
@@ -14952,9 +15156,9 @@ function renderProps(){
       const entete=document.createElement('div');p.appendChild(entete);majEntete();
       p.appendChild(repSourceList(f.base,function(b){
         docPushUndo('sources de « '+f.name+' »');f.base=b;
-        repGenChildren(f);markDirty();rebuild();renderTree();refreshParts();
+        repGenChildren(f);markDirty();rebuildEdit();renderTree();refreshParts();
       },function(){majEntete();},f));
-      const applyCfg=()=>{repGenChildren(f);markDirty();rebuild();renderTree();renderProps();refreshParts();};
+      const applyCfg=()=>{repGenChildren(f);markDirty();rebuildEdit();renderTree();renderProps();refreshParts();};
       // ✂ exemplaires à enlever (repSkipFill) : la case reste en place, le panneau se refait après le clic
       const skipUI=()=>p.appendChild(repSkipFill(document.createElement('div'),f,v=>{
         docPushUndo('exemplaires enlevés de « '+f.name+' »');if(v)f.skip=v;else delete f.skip;
@@ -15071,7 +15275,7 @@ function renderProps(){
       const inp=document.createElement('input');inp.type='text';inp.inputMode='decimal';inp.value=f.radius;parFx(inp,f,'radius');
       const commit=()=>{
         const v=parseFloat(String(inp.value).replace(',','.'));
-        if(v>0&&isFinite(v)){f.radius=v;const nc=(f.corners||[]).length+((filRims&&(filRims.top||filRims.bottom))?1:0);f.name=`Congé R${v} (${nc} arête(s))`;markDirty();rebuild();renderProps();}
+        if(v>0&&isFinite(v)){f.radius=v;const nc=(f.corners||[]).length+((filRims&&(filRims.top||filRims.bottom))?1:0);f.name=`Congé R${v} (${nc} arête(s))`;markDirty();rebuildEdit();renderProps();}
       };
       inp.addEventListener('change',commit);inp.addEventListener('blur',commit);
       inp.addEventListener('keydown',e=>{if(e.key==='Enter'){commit();inp.blur();}});
@@ -15090,12 +15294,12 @@ function renderProps(){
         r.innerHTML=`<span>${xIcon(k)}</span><span class="nm">${s.name?`<b>${s.name}</b> · `:''}${dp} <b>${s.r}</b>${s.anchor?' ⌖':''} · (${s.pos.map(v=>v.toFixed(1)).join(', ')})</span>`;
         const num=document.createElement('input');num.type='text';num.inputMode='decimal';num.value=s.r;num.title=(f.chamfer?'Distance':'Rayon')+' de cette arête';parFx(num,s,'r');
         num.onclick=ev=>ev.stopPropagation();
-        const c2=()=>{const v=parseFloat(String(num.value).replace(',','.'));if(v>0&&isFinite(v)){s.r=v;repSyncForFeature(f);markDirty();rebuild();renderProps();}};
+        const c2=()=>{const v=parseFloat(String(num.value).replace(',','.'));if(v>0&&isFinite(v)){s.r=v;repSyncForFeature(f);markDirty();rebuildEdit();renderProps();}};
         num.addEventListener('change',c2);num.addEventListener('blur',c2);
         num.addEventListener('keydown',e=>{if(e.key==='Enter'){c2();num.blur();}e.stopPropagation();});
         r.appendChild(num);
         const x=document.createElement('span');x.textContent='✕';x.title='Retirer';x.style.cursor='pointer';
-        x.onclick=ev=>{ev.stopPropagation();f.edges.splice(i,1);f.name=xFeatName(f);repSyncForFeature(f);markDirty();rebuild();renderProps();};
+        x.onclick=ev=>{ev.stopPropagation();f.edges.splice(i,1);f.name=xFeatName(f);repSyncForFeature(f);markDirty();rebuildEdit();renderProps();};
         r.appendChild(x);lst.appendChild(r);
       });
       p.appendChild(lst);
@@ -15110,7 +15314,7 @@ function renderProps(){
           if(sm.value==='d2'&&!(+f.cd2>0))f.cd2=+((f.edges||[])[0]&&f.edges[0].r)||1;
           if(sm.value==='da'&&!(+f.cang>0&&+f.cang<90))f.cang=45;
           if(sm.value==='eq'){delete f.cflip;}
-          repSyncForFeature(f);markDirty();rebuild();renderTree();renderProps();
+          repSyncForFeature(f);markDirty();rebuildEdit();renderTree();renderProps();
         };
         pRow('Type',sm);
         if(sm.value!=='eq'){
@@ -15121,13 +15325,13 @@ function renderProps(){
             const v=parseFloat(String(i2.value).replace(',','.'));
             if(!isFinite(v)||v<=0||(da&&v>=90)){i2.value=String(+f[key]).replace('.',',');faceEl.textContent=da?'Angle du chanfrein : 0 < a < 90°.':'Distance 2 : valeur strictement positive.';return;}
             if(v===+f[key])return;
-            docPushUndo();f[key]=v;repSyncForFeature(f);markDirty();rebuild();renderTree();renderProps();
+            docPushUndo();f[key]=v;repSyncForFeature(f);markDirty();rebuildEdit();renderTree();renderProps();
           };
           i2.addEventListener('change',c3);i2.addEventListener('blur',c3);
           i2.addEventListener('keydown',e=>{if(e.key==='Enter'){c3();i2.blur();}e.stopPropagation();});
           pRow(da?'Angle (°)':'Distance 2 (mm)',i2);
           const fb=document.createElement('input');fb.type='checkbox';fb.checked=!!f.cflip;
-          fb.onchange=()=>{docPushUndo();f.cflip=fb.checked;repSyncForFeature(f);markDirty();rebuild();renderTree();renderProps();};
+          fb.onchange=()=>{docPushUndo();f.cflip=fb.checked;repSyncForFeature(f);markDirty();rebuildEdit();renderTree();renderProps();};
           pRow('⇄ Inverser les faces',fb);
           pNote((da?'D1 (distance par arête) sur la première face, angle entre le chanfrein et cette face.':'D1 (distance par arête) sur la première face, D2 sur l’autre.')+' Première face : celle qui regarde le plus vers le haut, sinon vers +X puis +Y.');
         }
@@ -15386,7 +15590,7 @@ function tlbSetMark(f){
   // Pose le marqueur avant la fonction f (null = rejouer tout) puis rejoue
   const id=f?f.id:null;
   if(id===(tlIdx()<0?null:tlMark))return false;
-  tlSetPtr(f);markDirty();rebuild();renderTree();renderProps();
+  tlSetPtr(f);markDirty();rebuildEdit();renderTree();renderProps();
   return true;
 }
 function tlbStep(dir){
@@ -15989,10 +16193,10 @@ function treePart(L){
       mv:dd=>{if(!featMove(id,dd))featMoveFail();},
       eye:()=>{
         if(kind==='plane'){setOriginVis(id,!originVis[id]);return;}
-        if(kind==='sketch'){const s=doc.sketches.find(x=>x.id===id);if(s){s.visible=!(s.visible!==false);markDirty();rebuild();renderTree();}}
+        if(kind==='sketch'){const s=doc.sketches.find(x=>x.id===id);if(s){s.visible=!(s.visible!==false);markDirty();rebuildEdit();renderTree();}}
         else if(kind==='feature'){const f=doc.features.find(x=>x.id===id);if(f){f.visible=!(f.visible!==false);if(f.type==='repeat')doc.features.forEach(k=>{if(k.repeatId===f.id)k.visible=f.visible;});
           if(!f.repeatId&&doc.bodyVis)bodies.forEach(b=>{if(b.ref===f.id)delete doc.bodyVis[b.id];});
-          markDirty();rebuild();renderTree();}}
+          markDirty();rebuildEdit();renderTree();}}
       },
       click:ev=>{
         if(treeSelClick(kind,id,ev))return;
@@ -16055,7 +16259,7 @@ function treePart(L){
   }
   if(tlMark!=null){
     const mi=tlIdx();
-    const replay=ev=>{if(ev&&ev.stopPropagation)ev.stopPropagation();if(tlMark!=null){tlSetPtr(null);markDirty();rebuild();renderTree();renderProps();}};
+    const replay=ev=>{if(ev&&ev.stopPropagation)ev.stopPropagation();if(tlMark!=null){tlSetPtr(null);markDirty();rebuildEdit();renderTree();renderProps();}};
     L.push({css:'display:flex;align-items:center;gap:6px;justify-content:space-between;padding:6px 8px;margin:6px 0 2px;border:1px solid var(--border);border-radius:8px;font-size:.72rem;cursor:pointer;background:linear-gradient(90deg,rgba(232,179,74,.14),transparent)',
       title:'Clic = rejouer toute la timeline (lever le marqueur)',
       kids:[{tag:'span',html:'⏱ Temps bloqué avant « '+(mi<0?'(fonction supprimée)':doc.features[mi].name)+' » — <b>'+(mi<0?0:mi)+'</b> fonction(s) rejouée(s)'},
@@ -16087,7 +16291,7 @@ function treePart(L){
         on:{
           mv:dd=>{if(!featMove(f.id,dd))featMoveFail();},
           tri:()=>{f.open=!f.open;renderTree();renderProps();},
-          eye:()=>{f.visible=!(f.visible!==false);doc.features.forEach(k=>{if(k.repeatId===f.id)k.visible=f.visible;});markDirty();rebuild();renderTree();},
+          eye:()=>{f.visible=!(f.visible!==false);doc.features.forEach(k=>{if(k.repeatId===f.id)k.visible=f.visible;});markDirty();rebuildEdit();renderTree();},
           click:ev=>{
             if(treeSelClick('feature',f.id,ev))return;
             treeSel=[f.id];
@@ -16100,7 +16304,7 @@ function treePart(L){
           html:`<span>${featIconOf(k)}</span><span class="nm">${k.name}</span><span class="eye" title="Afficher / masquer">`+(k.visible===false?EYE_OFF:'👁')+`</span>`,
           title:'Instance n°'+k.repIndex+' de la répétition — clic = sélectionner la répétition · Ctrl+clic = ajouter au lot à supprimer',
           on:{
-            eye:()=>{k.visible=!(k.visible!==false);markDirty();rebuild();renderTree();},
+            eye:()=>{k.visible=!(k.visible!==false);markDirty();rebuildEdit();renderTree();},
             click:ev=>{
               if(ev.ctrlKey||ev.metaKey){treeSelToggle(k.id,'feature');return;}
               treeSel=[f.id];
@@ -16443,7 +16647,7 @@ function treeFeatToBody(id,bodyId){
   if(lock){try{faceEl.textContent=lock;}catch(e){}return false;}
   docPushUndo('« '+f.name+' » vers « '+b.name+' »');
   f.body=bodyId;
-  markDirty();rebuild();renderTree();renderProps();
+  markDirty();rebuildEdit();renderTree();renderProps();
   try{faceEl.textContent='« '+f.name+' » s’applique maintenant à « '+b.name+' ».';}catch(e){}
   return true;
 }
@@ -17047,7 +17251,7 @@ function docApplySnap(snap){
   try{if(typeof repMode!=='undefined'&&repMode)exitRepMode();}catch(e){}
   try{if(typeof extNew!=='undefined'&&extNew)extNew=null;}catch(e){}
   try{if(typeof revNew!=='undefined'&&revNew)revNew=null;}catch(e){}
-  markDirty();rebuild();
+  markDirty();rebuildEdit();
   renderTree();renderProps();refreshParts();
   // doc.fao vit dans le même document : l'arbre FAO, sa fiche et l'aperçu doivent
   // suivre la restauration (même garde-fou que les sorties de mode plus haut).
@@ -26523,8 +26727,8 @@ function closeSketch(save){
     doc.sketches=doc.sketches.filter(s=>s!==fantome);
     if(sel&&sel.kind==='sketch'&&sel.id===fantome.id)sel={kind:null,id:null};
   }
-  if(save&&skEdit){try{parApplyAll();}catch(e){}solveSketch(skEdit);cleanupSk(skEdit);if(!faoSk)repSyncForSketch(skEdit.id);markDirty();rebuild();projRefreshRerun(0);sel=faoSk?{kind:'faoSetup',id:faoSk.fao}:(fantome?{kind:null,id:null}:{kind:'sketch',id:skEdit.id});renderTree();renderProps();}
-  else if(skEdit){markDirty();try{rebuild();}catch(e){}renderTree();renderProps();}
+  if(save&&skEdit){try{parApplyAll();}catch(e){}solveSketch(skEdit);cleanupSk(skEdit);if(!faoSk)repSyncForSketch(skEdit.id);markDirty();rebuildEdit(()=>{try{projRefreshRerun(0);}catch(e){}});sel=faoSk?{kind:'faoSetup',id:faoSk.fao}:(fantome?{kind:null,id:null}:{kind:'sketch',id:skEdit.id});renderTree();renderProps();}
+  else if(skEdit){markDirty();try{rebuildEdit();}catch(e){}renderTree();renderProps();}
   const skNm=skEdit&&skEdit.name;
   skEdit=null;try{docUndoUI();}catch(e){} // V0.7.6 : les flèches du haut reviennent au document
   sk3dRedessine(); // le rejeu de sortie a eu lieu esquisse encore ouverte : son tracé 3D revient
@@ -34988,6 +35192,8 @@ function parAfterChange(barre){
   try{if(typeof skEdit!=='undefined'&&skEdit){drawSketch2D();renderSkPanel();}}catch(e){}
   try{markDirty();}catch(e){}
   const lourd=parRebuildMs>=0?parRebuildMs>=REGEN_SHOW_MS:(doc.features||[]).length>20;
+  // V0.99.52 : recalcul de fond (31, rebuildEdit) — l'ancienne pièce reste affichée, l'écran libre
+  if(barre&&lourd&&typeof fondPossible==='function'&&fondPossible())return new Promise(r=>rebuildEdit(r));
   if(barre&&lourd&&regenWarmUseful())return parRebuildBandeau();
   parRebuildMesure();
 }
@@ -39516,7 +39722,7 @@ function fdynSet(label,fn){
   docPushUndo(label||('modification de « '+f.name+' »'));
   fn(f);fdynRename(f);
   try{repSyncForFeature(f);}catch(e){}
-  markDirty();rebuild();renderTree();renderProps();
+  markDirty();rebuildEdit();renderTree();renderProps();
 }
 function fdynClose(){fdyn=null;fdynHide();}
 function fdynOk(){
@@ -39573,7 +39779,7 @@ function fdynRevolveNew(skId,axis){
   if(sk.visible!==false)sk.visible=false;
   sel={kind:'feature',id:nf.id};
   fdynStart(nf,snap,len);
-  markDirty();rebuild();renderTree();renderProps();
+  markDirty();rebuildEdit();renderTree();renderProps();
   try{faceEl.textContent='Révolution : tournez la poignée ou tapez l’angle, puis OK (Échap = annuler).';}catch(e){}
   return nf;
 }
@@ -39773,7 +39979,7 @@ function fdynWire(){
     const D=fdynDrag;fdynDrag=null;fdynSwallow=Date.now();
     try{el.releasePointerCapture(D.id);}catch(err){}
     try{el.style.cursor='';}catch(err){}
-    if(D.pushed){try{const f=fdynFeature();if(f)repSyncForFeature(f);}catch(err){}markDirty();rebuild();renderTree();renderProps();}
+    if(D.pushed){try{const f=fdynFeature();if(f)repSyncForFeature(f);}catch(err){}markDirty();rebuildEdit();renderTree();renderProps();}
   },true);
   el.addEventListener('click',e=>{if(Date.now()-fdynSwallow<350){e.stopImmediatePropagation();e.preventDefault();}},true);
 }
@@ -52506,6 +52712,8 @@ function faoSolidSettled(){
   try{
     // V0.99.51 : trous débouchants en calcul sur les workers (89-fao-percage) : perçages pas encore à jour
     if(typeof faoTrousAttente!=='undefined'&&faoTrousAttente>0)return false;
+    // V0.99.52 : recalcul de fond en cours (31) : la pièce affichée n'est pas encore celle du document
+    if(typeof fondEnCours==='function'&&fondEnCours())return false;
     if(typeof bodies==='undefined'||!bodies||!bodies.length)return true;
     for(let i=0;i<bodies.length;i++){
       const b=bodies[i];

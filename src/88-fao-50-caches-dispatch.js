@@ -319,6 +319,8 @@ function faoSolidSettled(){
   try{
     // V0.99.51 : trous débouchants en calcul sur les workers (89-fao-percage) : perçages pas encore à jour
     if(typeof faoTrousAttente!=='undefined'&&faoTrousAttente>0)return false;
+    // V0.99.52 : recalcul de fond en cours (31) : la pièce affichée n'est pas encore celle du document
+    if(typeof fondEnCours==='function'&&fondEnCours())return false;
     if(typeof bodies==='undefined'||!bodies||!bodies.length)return true;
     for(let i=0;i<bodies.length;i++){
       const b=bodies[i];

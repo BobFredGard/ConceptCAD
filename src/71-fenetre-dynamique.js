@@ -36,7 +36,7 @@ function fdynSet(label,fn){
   docPushUndo(label||('modification de « '+f.name+' »'));
   fn(f);fdynRename(f);
   try{repSyncForFeature(f);}catch(e){}
-  markDirty();rebuild();renderTree();renderProps();
+  markDirty();rebuildEdit();renderTree();renderProps();
 }
 function fdynClose(){fdyn=null;fdynHide();}
 function fdynOk(){
@@ -93,7 +93,7 @@ function fdynRevolveNew(skId,axis){
   if(sk.visible!==false)sk.visible=false;
   sel={kind:'feature',id:nf.id};
   fdynStart(nf,snap,len);
-  markDirty();rebuild();renderTree();renderProps();
+  markDirty();rebuildEdit();renderTree();renderProps();
   try{faceEl.textContent='Révolution : tournez la poignée ou tapez l’angle, puis OK (Échap = annuler).';}catch(e){}
   return nf;
 }
@@ -293,7 +293,7 @@ function fdynWire(){
     const D=fdynDrag;fdynDrag=null;fdynSwallow=Date.now();
     try{el.releasePointerCapture(D.id);}catch(err){}
     try{el.style.cursor='';}catch(err){}
-    if(D.pushed){try{const f=fdynFeature();if(f)repSyncForFeature(f);}catch(err){}markDirty();rebuild();renderTree();renderProps();}
+    if(D.pushed){try{const f=fdynFeature();if(f)repSyncForFeature(f);}catch(err){}markDirty();rebuildEdit();renderTree();renderProps();}
   },true);
   el.addEventListener('click',e=>{if(Date.now()-fdynSwallow<350){e.stopImmediatePropagation();e.preventDefault();}},true);
 }

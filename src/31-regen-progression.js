@@ -113,13 +113,188 @@ async function regenWarmRun(why,tout){
   if(shown){regenUiSet(total,total,'Affichage du modèle…','',['var(--primary,#0a84ff)']);await regenFrame();}
   return true;
 }
+/* ---------- recalcul de fond après une modification (V0.99.52) ----------
+   Demande de Fred : « maximiser les CPU », pour la timeline : modifier une fonction au début d'une grosse
+   pièce figeait l'écran (SIRAP-14-003, perçage n°2 : 7,4 s ; SIRAP-14-002 : 9,3 s). Mesuré : presque tout est
+   le vrai recalcul des fonctions qui suivent, une après l'autre (le rejeu d'une timeline est séquentiel).
+   Les gestes de modification (fiche, fenêtres de fonction, paramètres, œil, marqueur, annulation, sortie
+   d'esquisse) appellent rebuildEdit() au lieu de rebuild() : la même préchauffe que l'ouverture (occFinalShapeGen,
+   mêmes clés de points de contrôle) part aussitôt. Finie dans FOND_BUDGET_MS : rebuild() tout de suite, comme
+   avant. Sinon elle continue par tranches, la main rendue au navigateur entre deux fonctions : l'ancienne
+   pièce reste affichée, la vue tourne, un bandeau dit où en est le calcul (sans voile : rien n'est retenu).
+   À la fin, rebuild() ne fait que relire les points de contrôle. Le document change pendant ce temps
+   (nouvelle modification) : la préchauffe repart sur le nouvel état. La FAO attend (faoSolidSettled).
+   Un rebuild() appelé ailleurs entre deux tranches reste synchrone et juste (mêmes points de contrôle).
+   ?mono, ?sansfond, banc de test (__regenSync) : rebuild() comme avant. */
+const FOND_BUDGET_MS=150;  // calcul plus court : pas de fond, aucun changement visible
+const FOND_TRANCHE_MS=50;  // calcul enchaîné entre deux peintures, au moins (plus si la peinture est lente)
+let fondOff=false;
+try{fondOff=/[?&](mono|sansfond)\b/.test(String(location.search||''));}catch(e){}
+let fondN=0,fondActif=0,fondApres=[],fondDernier=null;
+function fondPossible(){
+  try{
+    if(fondOff||rebuildDepth||regenRun||!regenWarmUseful())return false;
+    if(typeof buildKeyUpToDate==='function'&&buildKeyUpToDate())return false;
+    return true;
+  }catch(e){return false;}
+}
+function fondEnCours(){return fondActif>0;}
+// Copie de travail du document pour le fond : projections et hôtes y sont réglés sans toucher à la pièce
+// affichée (mêmes contenus = mêmes clés de points de contrôle que le rejeu final sur le vrai document).
+function fondClone(){
+  const c=JSON.parse(JSON.stringify(docSnapObj()));
+  (doc.features||[]).forEach((f,i)=>{const g=c.features[i];if(g&&g.id===f.id){if(f._mesh)g._mesh=f._mesh;if(f._m)g._m=f._m;}});
+  return c;
+}
+function fondAvec(clone,fn){
+  // fn avec la copie pour document : rien de ce qu'elle fait ne compte comme une modification
+  const d0=doc,v0=_docVersion,dt=dirty,md=markDirty,sp=_projEdgeCache;
+  doc=clone;markDirty=function(){};_projEdgeCache=null;
+  try{return fn();}finally{doc=d0;_docVersion=v0;dirty=dt;markDirty=md;_projEdgeCache=sp;}
+}
+const FOND_SONDE_MS=40;    // un rejeu partiel plus long, pendant la sonde : calculé ensuite par tranches
+const FOND_TOURS_MAX=80;   // préfixes calculés pour les projections, au plus (le rejeu final fait le reste)
+function fondSonde(clone,cleOff){
+  // Le début de rebuildInner (hôtes, projections) joué sur la copie. → préfixe à calculer d'abord, ou null.
+  // cleOff : seulement la limite de temps (une étape qui ne pose jamais de point de contrôle arrêterait chaque sonde)
+  const S={limite:FOND_SONDE_MS,manque:null,cleOff:!!cleOff};
+  fondAvec(clone,()=>{
+    occRefSonde=S;
+    try{
+      try{rebuildHotes();}catch(e){}
+      try{if(typeof projPreUpdate==='function'&&projPreUpdate()&&typeof cgResolveAll==='function'&&cgResolveAll())resolveAllSketchHosts();}catch(e){}
+    }finally{occRefSonde=null;}
+  });
+  return S.manque;
+}
+function* fondDerouler(mk,clone,force){
+  // un rejeu de préchauffe, une fonction par pas, sur la copie ; {attente} : suppression de face au calcul (21)
+  let g=null,reprises=0;
+  try{
+    for(;;){
+      if(!g)g=mk();
+      let r;
+      const skip0=occThreadSkip,sf=occStepForce;
+      try{r=fondAvec(clone,()=>{occThreadSkip=true;if(force)occStepForce=true;return g.next();});}
+      finally{occThreadSkip=skip0;occStepForce=sf;}
+      if(r.done){g=null;if(r.value){try{occCleanup(r.value,null);}catch(e){}}return;}
+      // V0.94.6 (comme regenWarmRun) : la suite serait calculée sans la face supprimée, puis refaite
+      if(typeof delWkPending==='function'&&delWkPending()&&reprises<3){
+        try{g.return();}catch(e){}g=null;reprises++;
+        const fin=performance.now()+(typeof DEL_WK_DELAI==='number'?DEL_WK_DELAI:20000)+5000;
+        while(delWkPending()&&performance.now()<fin)yield {attente:true};
+        continue;
+      }
+      yield r.value||{};
+    }
+  }finally{if(g){try{g.return();}catch(e){}}}
+}
+function* fondTache(upto){
+  // 1. projections : sonde, préfixe manquant calculé, nouvelle sonde… ; 2. la timeline sur la copie réglée
+  let clone=null,m0=null,deja=0;
+  for(let tour=0;;tour++){
+    clone=fondClone();
+    const m=fondSonde(clone,deja>0);
+    if(m==null||tour>=FOND_TOURS_MAX)break;
+    deja=m===m0?deja+1:0;m0=m;
+    if(deja>1)break; // le même préfixe manque encore : le rejeu final s'en charge
+    yield {proj:true};
+    yield* fondDerouler(()=>occFinalShapeGen(m,true),clone,true);
+  }
+  yield {proj:true};
+  yield* fondDerouler(()=>occFinalShapeGen(upto,true),clone,false);
+}
+function rebuildEdit(apres){
+  // rebuild() d'une modification faite par l'utilisateur ; apres() quand la pièce affichée est à jour
+  if(typeof apres==='function')fondApres.push(apres);
+  try{if(typeof parApplyAll==='function')parApplyAll();}catch(e){} // comme rebuild() : cotes ƒx avant les clés
+  if(!fondPossible()){fondFinir(true);return;}
+  const n=++fondN;
+  const etat={d:doc,v:_docVersion,m:tlMark,s:occSkipFeat,f:occStepForce,a:asmCkPrefix()};
+  const stale=()=>n!==fondN||doc!==etat.d||_docVersion!==etat.v||tlMark!==etat.m||occSkipFeat!==etat.s||occStepForce!==etat.f||asmCkPrefix()!==etat.a||!occHas();
+  try{importHydrate();}catch(e){}
+  try{ensureBodies();}catch(e){}
+  try{(doc.sketches||[]).forEach(migrateSketch);}catch(e){}
+  const upto=tlReplayCount();
+  const t0=performance.now();
+  const budget=typeof window!=='undefined'&&window.__fondBudget!=null?+window.__fondBudget:FOND_BUDGET_MS;
+  let T=fondTache(upto),fini=false;
+  try{
+    for(;;){
+      const r=T.next();
+      if(r.done){fini=true;break;}
+      if(r.value&&r.value.attente)break;
+      if(performance.now()-t0>=budget)break;
+    }
+  }catch(e){fini=true;}
+  if(fini){fondFinir(true);return;} // fini dans le budget (ou erreur) : rebuild() tout de suite
+  // la suite en tranches
+  fondActif++;
+  const tot=(doc.features||[]).filter(f=>f.visible!==false).length;
+  let vus=0,proj=0,ok=false;
+  const suite=async()=>{
+    try{
+      regenUiShow('Recalcul en arrière-plan',true);
+      for(;;){
+        const tf=performance.now();
+        await regenFrame();
+        if(stale())return;
+        const t=performance.now();
+        // tranche au moins aussi longue que la peinture : grosse pièce dans un navigateur sans carte graphique,
+        // le fond passait plus de temps à peindre qu'à calculer (SIRAP-14-003 : 44 s pour 7 s de calcul)
+        const tranche=Math.max(FOND_TRANCHE_MS,Math.min(400,t-tf));
+        let att=false;
+        while(performance.now()-t<tranche){
+          const r=T.next();
+          if(r.done){ok=true;break;}
+          const v=r.value||{};
+          if(v.attente){att=true;break;}
+          if(v.proj){proj++;vus=0;regenUiSet(0,tot,'esquisses projetées','');continue;}
+          const fs=v.fs||[];if(fs.length)vus++;
+          const f=fs[0];
+          regenUiSet(Math.min(vus,tot),tot,f?(f.name||f.type):'','');
+        }
+        if(ok)break;
+        if(att){await new Promise(k=>setTimeout(k,150));}
+      }
+    }catch(e){ok=true;} // erreur : le rejeu final fait le reste, comme avant
+    finally{
+      try{T.return();}catch(e){}
+      fondActif--;
+      if((n===fondN||!fondActif)&&regenUi&&regenUi.libre)regenUiHide();
+      fondDernier={ms:Math.round(performance.now()-t0),fini:ok,fonctions:vus,tours:proj};
+    }
+    if(n!==fondN)return; // une modification plus récente a pris le relais
+    if(ok&&!stale())fondFinir(false);
+    else setTimeout(()=>{if(n===fondN)rebuildEdit();},0); // document changé autrement : on repart
+  };
+  suite();
+}
+function fondFinir(sync){
+  // pièce affichée mise à jour (les points de contrôle sont prêts), puis ce qui attendait
+  try{if(regenUi&&regenUi.libre)regenUiHide();}catch(e){}
+  try{rebuild();}catch(e){}
+  const L=fondApres.splice(0);
+  L.forEach(fn=>{try{fn();}catch(e){}});
+  if(!sync){
+    try{renderTree();}catch(e){}
+    try{ // la fiche, sauf si on y tape
+      const a=document.activeElement,pp=document.getElementById('props');
+      if(!(a&&pp&&pp.contains(a)&&/^(INPUT|TEXTAREA|SELECT)$/.test(a.tagName)))renderProps();
+    }catch(e){}
+    try{refreshParts();}catch(e){}
+    try{if(typeof faoRegenFlush==='function')faoRegenFlush();}catch(e){}
+  }
+}
+try{if(typeof window!=='undefined')window.fondInfo=()=>({enCours:fondActif>0,dernier:fondDernier,off:fondOff});}catch(e){}
 /* ---------- interface ---------- */
 function regenKeyBlock(e){
   // Barre affichée : le rejeu est entre deux tranches, le document ne doit pas bouger.
   if(e.key==='F5'||e.key==='F12')return;
   try{e.preventDefault();e.stopPropagation();e.stopImmediatePropagation();}catch(_){}
 }
-function regenUiShow(why){
+function regenUiShow(why,libre){
+  // libre (V0.99.52, recalcul de fond) : bandeau seul, sans voile ni touches retenues
   if(regenUi)return;
   // V0.43.1 (demande de Fred) : BANDEAU tout en bas de la vue 3D, juste au-dessus de la timeline,
   // barre en couleur avec le texte dedans, un peu transparente (la pièce se devine dessous). Dans #vpwrap : l'écran de démarrage (#mfSplash) reste
@@ -143,9 +318,9 @@ function regenUiShow(why){
   // Remplissage : couleur de la timeline de la fonction EN COURS (change à chaque étape), découpé à l'avancement
   b.innerHTML='<div class="b" style="position:absolute;inset:0;opacity:.78;background-color:var(--primary,#0a84ff);clip-path:inset(0 100% 0 0);transition:clip-path .12s linear,background-color .25s ease"></div>'+ligne('l1')+ligne('l2');
   b._why=why||'Régénération';
-  try{(wrap||document.body).appendChild(b);document.body.appendChild(blk);}catch(e){}
-  try{window.addEventListener('keydown',regenKeyBlock,true);}catch(e){}
-  regenUi={b,blk,t:performance.now()};
+  try{(wrap||document.body).appendChild(b);if(!libre)document.body.appendChild(blk);}catch(e){}
+  try{if(!libre)window.addEventListener('keydown',regenKeyBlock,true);}catch(e){}
+  regenUi={b,blk,t:performance.now(),libre:!!libre};
   regenUiSet(0,0,'','');
 }
 function regenUiHold(ms){

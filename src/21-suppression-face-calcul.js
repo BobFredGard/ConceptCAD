@@ -395,7 +395,10 @@ function delWkReplay(key){
   setTimeout(()=>{
     // V0.94.6 : préchauffe en cours (31) : elle attend cette réponse et son appelant refait l'affichage
     const prechauffe=typeof regenRun!=='undefined'&&!!regenRun;
-    try{builtVersion=-1;builtHash=null;builtEngine=null;if(!prechauffe)rebuild();}catch(e){}
+    // V0.99.52 : recalcul de fond (31) en cours : il attend aussi cette réponse et affichera la pièce ; sinon
+    // la suite est recalculée au fond (SIRAP-14-002 : 7,7 s d'écran figé à cette réponse)
+    const fond=typeof fondEnCours==='function'&&fondEnCours();
+    try{builtVersion=-1;builtHash=null;builtEngine=null;if(!prechauffe&&!fond){if(typeof rebuildEdit==='function')rebuildEdit();else rebuild();}}catch(e){}
     try{if(sel&&sel.kind==='feature')renderProps();}catch(e){}
     const e=key&&delWkRes.get(key);
     if(!e||delWkPending())return;

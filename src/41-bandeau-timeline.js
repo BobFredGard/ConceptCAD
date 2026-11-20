@@ -103,7 +103,7 @@ function tlbSetMark(f){
   // Pose le marqueur avant la fonction f (null = rejouer tout) puis rejoue
   const id=f?f.id:null;
   if(id===(tlIdx()<0?null:tlMark))return false;
-  tlSetPtr(f);markDirty();rebuild();renderTree();renderProps();
+  tlSetPtr(f);markDirty();rebuildEdit();renderTree();renderProps();
   return true;
 }
 function tlbStep(dir){

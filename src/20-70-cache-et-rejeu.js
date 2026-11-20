@@ -727,7 +727,10 @@ function* occReplayBodyGen(bid,list){
   const tap=occPrefixTap&&occReplayNest===1?occPrefixTap:null;
   for(let i=0;i<list.length;){
     const n=tap?1:batchLen(i);
-    yield {bid,fs:list.slice(i,i+n)}; // régénération par tranches (31) : fonction(s) sur le point d'être calculée(s)
+    const vy={bid,fs:list.slice(i,i+n)}; // régénération par tranches (31) : fonction(s) sur le point d'être calculée(s)
+    // sonde du recalcul de fond (V0.99.52) : clé du point de contrôle qui suivra (lot compris), pour s'arrêter AVANT de calculer
+    if(occRefSonde){let k=ckKey;vy.fs.forEach(g=>{k+=featSig(g)+';';});vy.cle=k;}
+    yield vy;
     if(n>1&&batch(list.slice(i,i+n))){nomsCompleter(result,list[i].id,null);i+=n;continue;}
     const f=list[i++];
     NOMS_PERTES=[];
@@ -998,10 +1001,26 @@ function occRefShape(){
 function occRefShapeFree(){
   if(_occLoneRef){try{_occLoneRef.shape.delete();}catch(e){}_occLoneRef=null;}
 }
+// V0.99.52 : sonde du recalcul de fond (31, fondSonde). Pendant qu'elle est posée, un rejeu partiel qui
+// calcule au-delà de `limite` ms est abandonné (ce qui est fait reste gardé) : il rend null et note son
+// préfixe dans `manque`, que le fond calcule ensuite par tranches. Les suivants rendent null aussitôt.
+let occRefSonde=null;
 function occFinalShapeRef(upto){
   // Rejeu partiel pour une référence : un import seul y entre (comme pour un outil de face)
   const sf=occStepForce;occStepForce=true;
-  try{return occFinalShape(upto);}finally{occStepForce=sf;}
+  try{
+    const S=occRefSonde;
+    if(!S)return occFinalShape(upto);
+    if(S.manque!=null)return null;
+    const t=performance.now(),g=occFinalShapeGen(upto);
+    for(;;){
+      const r=g.next();
+      if(r.done)return r.value;
+      // étape sans point de contrôle (elle serait calculée ici) ou déjà trop de temps passé : abandon
+      const v=r.value,ko=!S.cleOff&&v&&v.cle&&v.fs&&v.fs.some(f=>OCC_TYPES_REJEU[f.type])&&!occCk.some(c=>c.key===v.cle);
+      if(ko||performance.now()-t>S.limite){try{g.return();}catch(e){}S.manque=upto;return null;}
+    }
+  }finally{occStepForce=sf;}
 }
 function occExactForTool(again){
   // Solide exact prêt pour un outil de face : recalcul paresseux, STEP seul compris.

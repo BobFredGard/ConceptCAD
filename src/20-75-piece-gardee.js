@@ -492,7 +492,7 @@ async function pcChauffer(){
     g=occFinalShapeGen(tlReplayCount(),true);
     for(;;){
       if(stale()){try{g.return();}catch(e){}return false;}
-      if(rebuildDepth||(typeof regenRun!=='undefined'&&regenRun)){await new Promise(r=>setTimeout(r,200));continue;}
+      if(rebuildDepth||(typeof regenRun!=='undefined'&&regenRun)||(typeof fondEnCours==='function'&&fondEnCours())){await new Promise(r=>setTimeout(r,200));continue;}
       if(!pcCalme()){await new Promise(r=>setTimeout(r,150));continue;} // V0.99.5 : vue en mouvement
       let r;const skip0=occThreadSkip;
       try{occThreadSkip=true;delWkFond=true;r=g.next();}finally{occThreadSkip=skip0;delWkFond=false;}
