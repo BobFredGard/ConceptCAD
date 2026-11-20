@@ -35,7 +35,13 @@ function occCkMax(){
   const n=(((typeof doc!=='undefined')&&doc&&doc.features)?doc.features.length:0)+2;
   // 2026-10-16-003 : 3 × la timeline (bornée) — après une modification, l'ancien ET le nouveau
   // préfixe coexistent pendant les passes de projection ; à 1 × ils s'évinçaient mutuellement.
-  const base=Math.max(8,Math.min(3*n,120));
+  // V0.99.53 : plafond porté de 120 à occCkPiece : deux versions complètes de la timeline restent (revenir à la
+  // valeur d'avant, annuler) — à 120, la plaque SIRAP-14-003 (109 fonctions) n'en gardait qu'une : retour à la
+  // valeur précédente = tout recalculé. 3 × la timeline suffit (5 × : +30 Mo de tas sur la barquette, rien de
+  // plus de gardé d'utile). Tas du noyau au-delà de OCC_CK_HEAP : plafond d'avant.
+  let lim=occCkPiece;
+  try{if(occt&&occt.HEAP8&&occt.HEAP8.length>OCC_CK_HEAP)lim=120;}catch(e){}
+  const base=Math.max(8,Math.min(3*n,lim));
   // V0.29.0 : assemblage — la file est commune à tous les composants (clés préfixées, asmCkPrefix)
   // mais bornée par la timeline de la pièce OUVERTE : une petite pièce évinçait les points de
   // contrôle de toutes les autres, et revenir dans une grosse pièce la rejouait en entier
@@ -45,6 +51,7 @@ function occCkMax(){
   }catch(e){}
   return base;
 }
+let occCkPiece=360;            // points de contrôle gardés pour une pièce, au plus (V0.99.53, 120 avant)
 const OCC_CK_ASM=200;          // points de contrôle gardés en assemblage (toutes pièces confondues)
 const OCC_CK_HEAP=1536*1048576; // au-delà de 1,5 Go de tas du noyau : retour à la borne d'une pièce
 function occShapeCopy(sh){
