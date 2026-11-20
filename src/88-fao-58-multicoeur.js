@@ -119,7 +119,9 @@ function faoWkPrincipal(){
   };
   // Le cache vit sur le fil principal : ici la clé ne sert qu'à passer par le chemin de rangement
   faoOpMovesKey=function(){return '1';};
-  faoOpMovesHit=function(){return null;};
+  // V0.99.46 : brut restant — parcours des opérations précédentes, tels que rangés par la page
+  let prec=null;
+  faoOpMovesHit=function(op){ const mv=prec&&op&&op.id?prec[op.id]:null; return mv?{key:'1',mv:mv}:null; };
   faoMovesSave=function(){};
   let capte=null,boites=null;
   faoOpMovesStore=function(op,cle,mv){capte=mv;};
@@ -141,6 +143,7 @@ function faoWkPrincipal(){
         self.__wkTouche('doc.'+k);
       }});
       boites=m.boites;
+      prec=m.prec||null;
       bodies=(m.corps||[]).map(function(c){
         return corpsRecu({id:c.id,kind:c.kind,ghost:c.ghost,visible:c.visible,cached:c.cached,
           __m:{bas:lire(c.bas),mid:c.mid===undefined?undefined:lire(c.mid),fin:c.fin===undefined?undefined:lire(c.fin),
@@ -288,9 +291,30 @@ function faoWkAccepte(op,job){
   // démarrage d'un worker. Les corps FAO (murs) passent par une triangulation THREE : calcul normal.
   if(!op||op.on===false||!faoMeshOp(op)||op.type==='chamfer'||faoContourProfil(op))return false;
   if(faoWallList(job).length)return false;
-  // V0.99.0 : brut restant — lit les parcours des opérations précédentes : calcul normal, après elles
-  if(faoRestOn(op))return false;
+  // V0.99.0 : brut restant — lit les parcours des opérations précédentes. V0.99.46 : accepté,
+  // lancé quand elles sont finies, avec leurs parcours joints (faoWkPrecOps / faoWkPrec)
   return true;
+}
+function faoWkPrecOps(op,job){
+  // Opérations précédentes dont le parcours sert au brut restant de `op` ([] sinon)
+  if(!faoRestOn(op))return [];
+  const out=[];
+  try{
+    faoRestPrev(faoRestBase(job),op).forEach(function(E){ if(E&&E.op&&out.indexOf(E.op)<0)out.push(E.op); });
+  }catch(e){ return null; }
+  return out;
+}
+function faoWkPrec(op,job){
+  // {id: parcours rangé} des opérations précédentes ; null si l'un manque (calcul normal)
+  const L=faoWkPrecOps(op,job);
+  if(L===null)return null;
+  const r={};
+  for(let i=0;i<L.length;i++){
+    const h=faoOpMovesHit(L[i]);
+    if(!h||!h.mv||!L[i].id)return null;
+    r[L[i].id]=h.mv;
+  }
+  return r;
 }
 function faoWkNbCoeurs(){
   let n=4;
@@ -325,6 +349,18 @@ function faoWkRemplir(job,ops,estCaduc,surFlux,surAvance){
         return true;
       });
       if(!liste.length)return fini(0);
+      // Brut restant : les précédentes que les workers ne font pas (2.5D, contours : courtes)
+      // sont calculées ici d'abord ; leurs parcours partiront avec l'opération.
+      liste.forEach(function(o){
+        const L=faoWkPrecOps(o,job)||[];
+        L.forEach(function(q){
+          if(liste.indexOf(q)>=0)return;
+          try{
+            const k=faoOpMovesKey(q,job),h=faoOpMovesHit(q);
+            if(k!==null&&!(h&&h.key===k)){ if(q.stale===true)q.stale=false; faoOpMoves(q,job); }
+          }catch(e){}
+        });
+      });
       corps=faoWkCorps(liste,job);
       donnees=faoWkDocData();
     }catch(e){ return fini(0); }
@@ -332,6 +368,12 @@ function faoWkRemplir(job,ops,estCaduc,surFlux,surAvance){
     const file=liste.slice();
     const total=liste.length;
     let enCours=0,finies=0,rangees=0,stop=false;
+    // V0.99.46 : une opération en brut restant attend les précédentes confiées aux workers
+    const faites=new Set(),ratees=new Set();
+    const attend=new Map();
+    liste.forEach(function(o){ attend.set(o,(faoWkPrecOps(o,job)||[]).filter(function(q){ return liste.indexOf(q)>=0; })); });
+    const pret=function(o){ return (attend.get(o)||[]).every(function(q){ return faites.has(q); }); };
+    const perdue=function(o){ return (attend.get(o)||[]).some(function(q){ return ratees.has(q); }); };
     const nb=Math.min(faoWkNbCoeurs(),total);
     // Un autre rafraîchissement a pris la main : on n'attend pas la fin d'une opération longue
     const veille=setInterval(function(){ if(estCaduc())suite(); },250);
@@ -349,8 +391,18 @@ function faoWkRemplir(job,ops,estCaduc,surFlux,surAvance){
         miens=[];
         return termine();
       }
-      while(enCours<nb&&file.length)lancer(file.shift());
-      if(!enCours&&!file.length)termine();
+      // précédente ratée : calcul normal, après elle (boucle habituelle)
+      for(let i=file.length-1;i>=0;i--)if(perdue(file[i])){ ratees.add(file[i]); file.splice(i,1); finies++; }
+      while(enCours<nb){
+        const i=file.findIndex(pret);
+        if(i<0)break;
+        lancer(file.splice(i,1)[0]);
+      }
+      if(!enCours){
+        // rien en cours et plus rien de prêt : ce qui reste repasse au calcul normal
+        while(file.length){ ratees.add(file.shift()); finies++; }
+        termine();
+      }
     };
     const lancer=function(op){
       let w=null;
@@ -362,10 +414,11 @@ function faoWkRemplir(job,ops,estCaduc,surFlux,surAvance){
       enCours++;
       faoWkActifs.push(w);
       miens.push(w);
-      let clos=false;
+      let clos=false,reussi=false;
       const clore=function(){
         if(clos)return;
         clos=true;
+        (reussi?faites:ratees).add(op);
         try{ w.terminate(); }catch(e){}
         faoWkActifs=faoWkActifs.filter(function(x){return x!==w;});
         miens=miens.filter(function(x){return x!==w;});
@@ -396,14 +449,19 @@ function faoWkRemplir(job,ops,estCaduc,surFlux,surAvance){
               faoOpMovesStore(op,k,m.mv);
               faoMovesSave(job,op,k,m.mv);
               op.stale=false;
-              rangees++;
+              rangees++; reussi=true;
             }
           }catch(e){}
           clore();
         }
       };
+      let prec=null;
+      if(faoRestOn(op)){
+        prec=faoWkPrec(op,job);
+        if(!prec){ clore(); return; } // une précédente manque : calcul normal
+      }
       try{
-        w.postMessage({t:'job',setupId:job.id,opId:op.id,flux:!!surFlux&&op.hidden!==true,doc:donnees,corps:faoWkCorpsPour(corps,op,job),boites:faoWkBoites(job,op)});
+        w.postMessage({t:'job',setupId:job.id,opId:op.id,flux:!!surFlux&&op.hidden!==true,doc:donnees,corps:faoWkCorpsPour(corps,op,job),boites:faoWkBoites(job,op),prec:prec});
       }catch(e){
         try{ console.warn('[FAO multicœur] envoi impossible : '+((e&&e.message)||e)+' — calcul normal'); }catch(e2){}
         clore();

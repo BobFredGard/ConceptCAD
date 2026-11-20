@@ -40,6 +40,7 @@ const vm=require('vm');
     faoPrevOn=true;
     renderTree();
     faoPreviewGenerate();
+    renderTree(); // V0.99.46 : Tout régénérer redessine l'arbre pendant le calcul ; le stub n'efface pas les anciens nœuds
     const mvA0=faoOpMoves(s.ops[0],s), mvB0=faoOpMoves(s.ops[1],s);
     A(faoPrevStale===false&&faoStaleCount()===0,'départ : tout est à jour ('+faoStaleCount()+' à régénérer)');
     A(exp().disabled===false,'départ : export ouvert');

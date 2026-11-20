@@ -1233,12 +1233,16 @@ const vm=require('vm');
     "att(!!expB,'arbre FAO : bouton Exporter G-code');",
     // « calculer puis valider » : modif -> bouton grisé + export bloqué ;
     // « Générer + aperçu » re-valide et ré-ouvre l'export.
-    // V0.99.40 : périmé seulement si un parcours manque vraiment — une vraie modification d'abord
+    // V0.99.46 : périmé seulement si un parcours manque vraiment — une vraie modification d'abord
     "(function(){const q=faoSetup().ops.find(function(o){return o&&o.type!=='drill'&&o.on!==false;});if(q)q.essaiCle=1;})();",
     "faoChanged();",
     "let expA=null;(function wA2(n){if(expA)return;if(n.textContent==='Exporter G-code')expA=n;if(n.children)n.children.forEach(wA2);})(faoTreeWrapEl);",
     "att(!!expA&&expA.disabled===true,'export : bouton grisé tant que périmé');",
-    "faoPreviewGenerate();",
+    // V0.99.46 : pendant « Tout régénérer », chaque opération garde son ⚠ jusqu'à son propre calcul
+    "(function(){const vu=[];const f0=faoRegenTick;faoRegenTick=function(){vu.push(faoStaleCount());return f0();};",
+    "  faoPreviewGenerate();faoRegenTick=f0;",
+    "  att(vu.length>0&&vu[0]>0,'Tout régénérer : triangles gardés au départ ('+vu.join(',')+')');",
+    "  att(faoStaleCount()===0&&faoRegenAttente===null,'Tout régénérer : plus aucun triangle à la fin');})();",
     "let expG=null;(function wG2(n){if(expG)return;if(n.textContent==='Exporter G-code')expG=n;if(n.children)n.children.forEach(wG2);})(faoTreeWrapEl);",
     "att(faoPrevStale===false,'export : aperçu validé par « Générer + aperçu »');",
     "att(!!expG&&expG.disabled===false,'export : bouton actif après régénération');",
@@ -1291,7 +1295,7 @@ const vm=require('vm');
     "mbV.onclick({stopPropagation(){}});",
     "att(sU.ops[0].hidden===false,'affichage manuel : « Afficher » remet la trace');",
     "att(faoRefreshPreview()===nAll,'affichage manuel : preview totale ('+nAll+' pts)');",
-    // V0.99.40 : masquer / afficher SANS redessin (sous-groupe par opération allumé / éteint)
+    // V0.99.46 : masquer / afficher SANS redessin (sous-groupe par opération allumé / éteint)
     "{const sq=faoSeqSafe;let nSeq=0;faoSeqSafe=function(){nSeq++;return sq.apply(this,arguments);};",
     " const g0=faoPrevGroup;",
     " sU.ops[0].hidden=true;const nM=faoVisibleChanged.length>=0?(faoVisibleChanged(),faoPrevToggleFast()):0;",
@@ -1309,7 +1313,7 @@ const vm=require('vm');
     " att(faoPrevToggleFast()===-1,'parcours changé : le dessin en place ne vaut plus (redessin complet)');",
     " sU.ops[0].z=(+sU.ops[0].z||0)+0.5;faoOpMovesPurge();",
     " faoSeqSafe=sq;faoRefreshPreview();}",
-    // V0.99.40 : Ctrl+Z d'un « Masquer » : pas de rejeu de la pièce, mêmes opérations (parcours en mémoire gardés)
+    // V0.99.46 : Ctrl+Z d'un « Masquer » : pas de rejeu de la pièce, mêmes opérations (parcours en mémoire gardés)
     "{const rb=rebuild;let nRb=0;rebuild=function(){nRb++;return rb.apply(this,arguments);};",
     " const op0=sU.ops[0];faoSnapshot('masquer');op0.hidden=true;faoVisibleChanged();",
     " const okU=docUndo();",

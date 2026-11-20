@@ -8,7 +8,7 @@ sont sorties le 2026-09-30j.
 Code dans `src/` · livrable `fusion_mvp.html` (généré par `build.js`) · architecture et
 garde-fous en tête de `src/00-entete-et-outils.js`.
 
-**732 versions**, de `2026-09-28b` à `V0.99.45` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
+**733 versions**, de `2026-09-28b` à `V0.99.46` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
 comme dans le fichier d'origine.
 
 ---
@@ -8148,3 +8148,11 @@ Cavité Usinage, après l'ébauche D25, la reprise D10 et une finition boule D12
 **Correctif** (`src/46-assemblage-modele.js`) : `asmSkLiveShapes` donne le solide de travail plus les solides exacts des imports affichés tels quels ; arêtes et faces sont relevées sur chacun. `src/47-assemblage-cache.js` : la clé des images d'un composant à import change une fois (`|i2`), les images gardées sans arêtes sont reprises ; les autres composants restent servis tels quels. Manuel : page Assemblage.
 
 **Test** : `test_assemblage_step_projection` (noyau réel : boîte STEP importée comme pièce à assembler, 12 arêtes et 6 faces capturées, Projeter la propose depuis une autre pièce et attrape son arête au bon endroit, liée à elle, qui suit son déplacement) ; échoue sans le correctif. CACHE_VER et FORMES_VER inchangés.
+
+## V0.99.46 - FAO : Tout régénérer, triangles ⚠ retirés un par un et brut restant sur plusieurs cœurs
+
+**Cause** (retour « une fois les triangles rouges disparus, il faut encore attendre longtemps », puis « enlève les triangles rouges au fur et à mesure que les opérations se finissent », SIRAP-14-002, POSAGE1 gelé) : « Tout régénérer » retirait tous les ⚠ dès le départ, alors que le calcul durait encore près de deux minutes ; masquer un gros parcours pendant ce temps paraissait lent. Les opérations en *Brut restant* (finition et deuxième ébauche) étaient refusées par les workers (`faoWkAccepte`) : calculées sur le fil principal, elles bloquaient l'écran 10 à 26 s.
+
+**Correctif** : `src/88-fao-60-postprocesseurs.js` — `faoRegenPurge` garde `op.stale` et note les opérations en attente (`faoRegenAttente`) ; `faoRegenTick` redessine l'arbre après chaque opération finie (workers, boucle principale, autres posages) ; fin du calcul : liste vidée. `src/88-fao-80-interface.js` — triangle en cours de calcul estompé, non cliquable. `src/88-fao-58-multicoeur.js` — le brut restant est accepté : `faoWkPrecOps` / `faoWkPrec` donnent les opérations précédentes et leurs parcours, joints au message du worker (`prec`, servi par `faoOpMovesHit` côté worker) ; une opération attend que ses précédentes confiées aux workers soient finies, celles qui n'y vont pas sont calculées d'abord sur la page ; précédente ratée → calcul normal. SIRAP-14-002 : Tout régénérer 126 → 94 s, plus long blocage de l'écran 26,6 → 1,4 s ; parcours identiques mouvement par mouvement (76 497, 264 827 et 3 899 mouvements). Manuel : page FAO.
+
+**Test** : `test_fao` (⚠ gardés au départ, aucun à la fin, liste vidée) ; `test_fao_multicoeur` (cas brut restant sur Perçages, parcours des précédentes joints, identiques au calcul normal ; option `--chemin`). CACHE_VER et FORMES_VER inchangés.

@@ -4,12 +4,14 @@
 //   node tests/test_fao_multicoeur.cjs                  exemples courts
 //   node tests/test_fao_multicoeur.cjs --tout           toutes les opérations longues des exemples
 //   node tests/test_fao_multicoeur.cjs --fichier Cavité seulement ces fichiers
+//   node tests/test_fao_multicoeur.cjs --chemin D:/x.conceptcad   un fichier hors Exemples (pièce d’essai)
 const fs = require('fs'), vm = require('vm'), path = require('path'), { Worker } = require('worker_threads');
 const ROOT = path.join(__dirname, '..');
 const { loadApp } = require('./appvm.cjs');
 const argv = process.argv.slice(2);
 const TOUT = argv.includes('--tout');
 const iF = argv.indexOf('--fichier'), FILTRE = iF >= 0 ? argv[iF + 1] : null;
+const iC = argv.indexOf('--chemin'), CHEMIN = iC >= 0 ? argv[iC + 1] : null; // fichier hors Exemples (pièce d'essai)
 const COURTS = ['Perçages.conceptcad'];
 const RELAIS = `
 const { parentPort, workerData } = require('worker_threads');
@@ -22,7 +24,7 @@ parentPort.on('message', m => { globalThis.onmessage({ data: m }); });
 let ok = 0, ko = 0, piegeVu = false;
 const verif = (c, n, d) => { if (c) { ok++; console.log('  ok ' + n); } else { ko++; console.log('  KO ' + n + (d ? ' : ' + d : '')); } };
 
-function cote(fichier, setupId, opId, corps, donnees, source, boites) {
+function cote(fichier, setupId, opId, corps, donnees, source, boites, prec) {
   return new Promise((res, rej) => {
     const w = new Worker(RELAIS, { eval: true, workerData: source, resourceLimits: { maxOldGenerationSizeMb: 8192 } });
     const fin = r => { w.terminate(); res(r); };
@@ -31,7 +33,7 @@ function cote(fichier, setupId, opId, corps, donnees, source, boites) {
       if (m.t === 'fin') fin({ mv: m.mv, champs: m.champs });
       else if (m.t === 'ko') fin({ err: m.err + (m.pile ? '\n' + m.pile.split('\n').slice(2, 9).join('\n') : ''), piege: m.piege });
     });
-    w.postMessage({ t: 'job', setupId, opId, flux: false, doc: donnees, corps, boites });
+    w.postMessage({ t: 'job', setupId, opId, flux: false, doc: donnees, corps, boites, prec: prec || null });
   });
 }
 
@@ -63,6 +65,7 @@ async function traiter(fichier) {
   const b = JSON.parse(require('./lire-projet.cjs')(fichier));
   delete b.moves;
   sandbox.__doc = JSON.stringify(b);
+  sandbox.__restEssai = !CHEMIN;
   await vm.runInContext(`(async function(){
     await bundleRestore(__doc,{rebuild:false});
     occCkClear();markDirty();rebuild();
@@ -110,6 +113,12 @@ async function traiter(fichier) {
     faoMeshFromBodyFine=function(b){try{return lu(b,'fin',{lin:D0.lin*0.25,ang:D0.ang});}catch(e){return null;}};
     faoFineGeo=function(b){const m=faoMeshFromBodyFine(b);return m?{userData:{occGroups:m.groupes}}:null;};
     try{faoMovesReset();}catch(e){}
+    // V0.99.46 : brut restant sur plusieurs cœurs — aucun exemple n'en a : la dernière de deux
+    // ébauches 3D d'un posage passe en brut restant (parcours des précédentes joints au worker)
+    if(__restEssai)(faoRoot().setups||[]).forEach(function(s){
+      const R=(s.ops||[]).filter(function(o){return o&&o.type==='rough3d'&&o.on!==false;});
+      if(R.length>=2&&!R.some(faoRestOn))R[R.length-1].brut='restant';
+    });
   })()`, ctx);
   sandbox.__html = fs.readFileSync(process.env.APP_FILE || path.join(ROOT, 'ConceptCAD.html'), 'utf8');
   const info = vm.runInContext(`(function(){
@@ -117,7 +126,7 @@ async function traiter(fichier) {
     const i=__html.search(/<script>\\r?\\n\\/\\* ═/), j=__html.indexOf('</script>',i);
     globalThis.__src=faoWkSource(__html.slice(i+8,j));
     const L=[];
-    (faoRoot().setups||[]).forEach(s=>(s.ops||[]).forEach(o=>{ if(faoWkAccepte(o,s))L.push({setup:s.id,op:o.id,type:o.type}); }));
+    (faoRoot().setups||[]).forEach(s=>(s.ops||[]).forEach(o=>{ if(faoWkAccepte(o,s))L.push({setup:s.id,op:o.id,type:o.type,rest:faoRestOn(o)}); }));
     return JSON.stringify(L);
   })()`, ctx);
   const liste = JSON.parse(info);
@@ -139,7 +148,7 @@ async function traiter(fichier) {
     const paquet = vm.runInContext(`(function(){
       const job=faoRoot().setups.find(s=>s.id===__ids[0]),op=job.ops.find(o=>o.id===__ids[1]);
       const c=faoWkCorps([op],job);
-      return {corps:c,doc:JSON.stringify(faoWkDocData()),boites:JSON.stringify(faoWkBoites(job,op))};
+      return {corps:c,doc:JSON.stringify(faoWkDocData()),boites:JSON.stringify(faoWkBoites(job,op)),prec:JSON.stringify(faoRestOn(op)?faoWkPrec(op,job):null)};
     })()`, ctx);
     const corps = paquet.corps.map(c => ({ ...c,
       bas: c.bas && { v: Float64Array.from(c.bas.v), t: Int32Array.from(c.bas.t) },
@@ -147,7 +156,9 @@ async function traiter(fichier) {
       fin: c.fin && { v: Float64Array.from(c.fin.v), t: Int32Array.from(c.fin.t) },
       groupes: c.groupes ? JSON.parse(JSON.stringify(c.groupes)) : c.groupes }));
     const t0 = Date.now();
-    const r = await cote(fichier, e.setup, e.op, corps, JSON.parse(paquet.doc), source, JSON.parse(paquet.boites));
+    const prec = JSON.parse(paquet.prec);
+    if (e.rest) verif(!!prec, e.type + ' ' + e.op + ' : brut restant, parcours des précédentes joints (' + (prec ? Object.keys(prec).length : 0) + ')');
+    const r = await cote(fichier, e.setup, e.op, corps, JSON.parse(paquet.doc), source, JSON.parse(paquet.boites), prec);
     const msW = Date.now() - t0;
     const nom = e.type + ' ' + e.op;
     if (r.err) { verif(false, nom, r.err); continue; }
@@ -174,7 +185,8 @@ async function traiter(fichier) {
     if (TOUT) return true;
     return COURTS.includes(f);
   });
-  for (const f of tous) await traiter(path.join(dir, f));
+  if (CHEMIN) await traiter(CHEMIN);
+  else for (const f of tous) await traiter(path.join(dir, f));
   console.log('\n' + ok + ' ok, ' + ko + ' KO');
   process.exit(ko ? 1 : 0);
 })().catch(e => { console.error(e); process.exit(1); });

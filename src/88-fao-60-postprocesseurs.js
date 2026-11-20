@@ -477,7 +477,7 @@ function faoClearPreview(){
   try{
     if(faoPrevGroup&&typeof scene!=='undefined'&&scene){
       faoDel3D(faoPrevGroup);
-      // V0.99.40 : matériaux libérés aussi (un par trait épais — ils s'accumulaient à chaque redessin)
+      // V0.99.46 : matériaux libérés aussi (un par trait épais — ils s'accumulaient à chaque redessin)
       try{ faoPrevGroup.traverse(function(o){
         if(o.geometry&&o.geometry.dispose)o.geometry.dispose();
         if(o.material&&o.material.dispose)o.material.dispose();
@@ -487,7 +487,7 @@ function faoClearPreview(){
   faoPrevGroup=null;
   faoPrevOps=null; faoPrevSig=null; faoPrevStreamG=null;
 }
-/* ----- V0.99.40 : afficher / masquer UNE opération sans tout redessiner -----
+/* ----- V0.99.46 : afficher / masquer UNE opération sans tout redessiner -----
    Avant, chaque clic sur « Masquer / Afficher » refaisait toute la séquence du
    posage (carte de la matière restante 1500 × 1500, liaisons entre passes,
    découpage et envoi à la carte graphique de TOUTES les opérations) : plusieurs
@@ -754,14 +754,29 @@ function faoRegenSetups(){
 function faoRegenOpsOf(s){
   return ((s&&s.ops)||[]).filter(function(op){ return op&&op.on!==false&&!faoIsPattern(op); });
 }
+/* V0.99.46 (demande de Fred) : pendant « Tout régénérer », chaque opération à
+   recalculer garde son triangle ⚠ jusqu'à ce que SON parcours soit fini — avant,
+   la purge les retirait tous d'emblée, alors que le calcul durait encore ~2 min.
+   Cache vidé : stale=true ne fait plus servir l'ancien tracé (faoOpMovesIt). */
+let faoRegenAttente=null; // Set des opérations en attente de calcul (Tout régénérer)
 function faoRegenPurge(){
   // Jette les parcours en mémoire des seules opérations à régénérer.
+  faoRegenAttente=new Set();
   faoRegenSetups().forEach(function(s){
     faoRegenOpsOf(s).forEach(function(op){
       try{ if(faoOpMovesMap)faoOpMovesMap.delete(op); }catch(e){}
-      if(op.stale===true)op.stale=false;
+      op.stale=true; faoRegenAttente.add(op);
     });
   });
+  faoRegenTick();
+}
+function faoRegenTick(){
+  // Une opération vient de finir : l'arbre retire son triangle.
+  try{ if(typeof faoRenderTree==='function')faoRenderTree(); }catch(e){}
+}
+function faoRegenEnd(){
+  faoRegenAttente=null;
+  faoRegenTick();
 }
 function faoRegenOn(s,fn){
   // Calcul d'un posage qui n'est pas celui affiché : il devient le posage de
@@ -794,8 +809,9 @@ function faoPreviewGenerate(){
     faoRegenOpsOf(s).forEach(function(op){ faoRegenOn(s,function(){ faoOpMoves(op,s); }); });
   });
   const n=faoRefreshPreview('calcule');
+  faoRegenEnd();
   faoTouch();
-  faoPrevStale=false; faoStaleUI();
+  faoPrevStale=faoStaleCount()>0; faoStaleUI();
   try{ if(typeof faceEl!=='undefined'&&faceEl)faceEl.textContent='FAO : '+n+' points de parcours.'+(n?'':' Aucune trajectoire.'); }catch(e){}
   return n;
 }
@@ -829,6 +845,7 @@ async function faoRefreshPreviewStream(){
     fluxOp.set(op,sp.prev);
     faoPrevAdd(faoPrevOpGroup(op,g),sp); // opération masquée : sous-groupe éteint, « Afficher » l'allume
   },function(n,total,coeurs){
+    if(n>0)faoRegenTick(); // une opération finie sur un cœur : son triangle s'en va
     if(typeof faceEl!=='undefined'&&faceEl)faceEl.textContent='FAO : génération sur '+coeurs+' cœur'+(coeurs>1?'s':'')+', '+n+'/'+total+' opération'+(total>1?'s':'')+' terminée'+(n>1?'s':'')+'…';
   });
   for(let i=0;i<ops.length;i++){
@@ -859,6 +876,7 @@ async function faoRefreshPreviewStream(){
           try{ faoPrevAdd(faoPrevOpGroup(op,g),faoSegSplit(mv,faoSegClipper(op,job))); }catch(e){}
       }
     }catch(e){}
+    faoRegenTick();
     await faoYieldUI();
   }
   // V0.96.6 : puis les autres posages actifs (non gelés), rangés en mémoire sans
@@ -870,6 +888,7 @@ async function faoRefreshPreviewStream(){
     let pr=null;
     faoRegenOn(s,function(){
       pr=faoWkRemplir(s,sops,function(){ return tok!==faoStreamTok; },null,function(n,total,coeurs){
+        if(n>0)faoRegenTick();
         dit(n+'/'+total+' opération'+(total>1?'s':'')+' sur '+coeurs+' cœur'+(coeurs>1?'s':'')+'…');
       });
     });
@@ -878,6 +897,7 @@ async function faoRefreshPreviewStream(){
       if(tok!==faoStreamTok)return -1;
       dit('génération '+(i+1)+'/'+sops.length+'…');
       faoRegenOn(s,function(){ faoOpMoves(sops[i],s); });
+      faoRegenTick();
       await faoYieldUI();
     }
   }
@@ -907,9 +927,10 @@ async function faoPreviewGenerateAsync(){
     n=-1;
     try{ if(typeof console!=='undefined'&&console&&console.log)console.log('faoPreviewGenerateAsync',e); }catch(e2){}
   }
+  faoRegenEnd();
   if(n<0)return 0; // supersede : un autre rafraîchissement a déjà peint
   faoTouch();
-  faoPrevStale=false; faoStaleUI();
+  faoPrevStale=faoStaleCount()>0; faoStaleUI();
   try{ if(typeof faceEl!=='undefined'&&faceEl)faceEl.textContent='FAO : '+n+' points de parcours.'+(n?'':' Aucune trajectoire.'); }catch(e){}
   return n;
 }
