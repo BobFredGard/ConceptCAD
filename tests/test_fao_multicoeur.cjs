@@ -126,7 +126,7 @@ async function traiter(fichier) {
     const i=__html.search(/<script>\\r?\\n\\/\\* ═/), j=__html.indexOf('</script>',i);
     globalThis.__src=faoWkSource(__html.slice(i+8,j));
     const L=[];
-    (faoRoot().setups||[]).forEach(s=>(s.ops||[]).forEach(o=>{ if(faoWkAccepte(o,s))L.push({setup:s.id,op:o.id,type:o.type,rest:faoRestOn(o)}); }));
+    (faoRoot().setups||[]).forEach(s=>(s.ops||[]).forEach(o=>{ if(faoWkAccepte(o,s))L.push({setup:s.id,op:o.id,type:o.type,rest:(faoWkPrecOps(o,s)||[1]).length>0}); }));
     return JSON.stringify(L);
   })()`, ctx);
   const liste = JSON.parse(info);
@@ -148,7 +148,7 @@ async function traiter(fichier) {
     const paquet = vm.runInContext(`(function(){
       const job=faoRoot().setups.find(s=>s.id===__ids[0]),op=job.ops.find(o=>o.id===__ids[1]);
       const c=faoWkCorps([op],job);
-      return {corps:c,doc:JSON.stringify(faoWkDocData()),boites:JSON.stringify(faoWkBoites(job,op)),prec:JSON.stringify(faoRestOn(op)?faoWkPrec(op,job):null)};
+      return {corps:c,doc:JSON.stringify(faoWkDocData()),boites:JSON.stringify(faoWkBoites(job,op)),prec:JSON.stringify((faoWkPrecOps(op,job)||[1]).length?faoWkPrec(op,job):null)};
     })()`, ctx);
     const corps = paquet.corps.map(c => ({ ...c,
       bas: c.bas && { v: Float64Array.from(c.bas.v), t: Int32Array.from(c.bas.t) },
@@ -157,7 +157,7 @@ async function traiter(fichier) {
       groupes: c.groupes ? JSON.parse(JSON.stringify(c.groupes)) : c.groupes }));
     const t0 = Date.now();
     const prec = JSON.parse(paquet.prec);
-    if (e.rest) verif(!!prec, e.type + ' ' + e.op + ' : brut restant, parcours des précédentes joints (' + (prec ? Object.keys(prec).length : 0) + ')');
+    if (e.rest) verif(!!prec, e.type + ' ' + e.op + ' : brut restant ou contour dans le vide, parcours des précédentes joints (' + (prec ? Object.keys(prec).length : 0) + ')');
     const r = await cote(fichier, e.setup, e.op, corps, JSON.parse(paquet.doc), source, JSON.parse(paquet.boites), prec);
     const msW = Date.now() - t0;
     const nom = e.type + ' ' + e.op;

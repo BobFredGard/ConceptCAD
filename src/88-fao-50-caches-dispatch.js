@@ -1251,6 +1251,11 @@ function faoSeqSafe(job,seule){
   // du posage). Source unique partagée par l'aperçu, le visionneuse et le G-code.
   // seule=true : LECTURE SEULE — un parcours absent de la memoire est IGNORE
   // (absent:true), jamais calcule : afficher/masquer une trace ne regenerate rien.
+  // V0.99.48 : séquence déjà faite par un worker juste avant (faoWkSeq) — servie une seule fois
+  if(typeof faoSeqPre!=='undefined'&&faoSeqPre){
+    const P=faoSeqPre; faoSeqPre=null;
+    if(P.job===job&&!seule)return P.res;
+  }
   const res=[]; let prev=null;
   const opsOn=((job&&job.ops)||[]).filter(function(op){return op&&op.on!==false&&!faoIsPattern(op);});
   // V0.61.0 : retrait minimum = carte de la matière restante (src/88-fao-55-liaisons.js)

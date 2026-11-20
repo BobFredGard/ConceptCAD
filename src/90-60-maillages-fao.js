@@ -17,6 +17,38 @@ function faoFineGeo(b){
     return g;
   }catch(e){return null;}
 }
+async function faoGeoAsync(b,champ,D){
+  // V0.99.48 : même géométrie que faoFineGeo / faoMidGeo, maillée par le worker du noyau
+  // (occTessWk, src/21 ; solide passé en BRep binaire, nombres exacts) : l'écran ne fige plus.
+  // Rien à faire si elle est déjà là ; null si le worker n'est pas disponible (faoFineGeo /
+  // faoMidGeo la calculeront ici, comme avant).
+  let shape=null,holder=null;
+  if(b&&b.kind==='import'){const e=importGeom.get(b.id);if(e&&e.brep){shape=e.brep;holder=e;}}
+  else if(b&&b.kind==='body'&&b.shape){shape=b.shape;holder=b;}
+  if(!shape)return null;
+  if(holder[champ])return holder[champ];
+  const enCours=champ+'P';
+  if(holder[enCours]&&holder[enCours].shape===shape)return holder[enCours].p;
+  if(typeof occTessWk!=='function')return null;
+  const p=(async function(){
+    const T=await occTessWk(shape,D.lin,D.ang);
+    if(holder[champ])return holder[champ]; // calculée ici entre-temps
+    const encore=b.kind==='import'?holder.brep===shape:b.shape===shape;
+    if(!T||!encore)return null; // solide remplacé pendant le calcul : il sera refait à la demande
+    // comme occTessellate
+    const g=new THREE.BufferGeometry();
+    g.setAttribute('position',new THREE.Float32BufferAttribute(T.pos,3));
+    try{g.setAttribute('normal',new THREE.Float32BufferAttribute(occTriNormals(T),3));}
+    catch(e){g.computeVertexNormals();}
+    g.userData.occGroups=T.groups;
+    holder[champ]=g;
+    return g;
+  })();
+  holder[enCours]={shape:shape,p:p};
+  try{ return await p; }finally{ if(holder[enCours]&&holder[enCours].p===p)holder[enCours]=null; }
+}
+function faoFineGeoAsync(b){ return faoGeoAsync(b,'_faoGeoFine',FAO_FINE_DEFL); }
+function faoMidGeoAsync(b){ return faoGeoAsync(b,'_faoGeoMid',FAO_MID_DEFL); }
 // 2026-10-22-009 : maillage INTERMÉDIAIRE (ébauche 3D, contour profil) — le
 // maillage d'outillage d'un import STEP est à 0,5 mm / 0,5 rad : autant que la
 // surépaisseur courante (« J'espère que tu prends bien en compte les vraies

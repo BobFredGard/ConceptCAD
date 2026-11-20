@@ -55,6 +55,27 @@ function occBrepRead(bytes){
     return s;
   }finally{try{B.delete();}catch(e){}try{pi.delete();}catch(e){}try{occt.FS.unlink(p);}catch(e){}}
 }
+// V0.99.48 : BRep BINAIRE (BinTools) — le texte n'écrit que 15 chiffres : relu, un solide frais
+// change au 1e-15 près et son maillage fin n'est plus le même (SIRAP-14-002 : 193 774 cotes).
+// Le binaire garde les nombres exacts : maillage du worker identique à celui de la page.
+const DEL_BIN_PATH='/d.bin';
+function occBinWrite(sh){
+  const p=DEL_BIN_PATH;
+  try{occt.FS.unlink(p);}catch(e){}
+  if(!occt.BinTools.Write(sh,p))throw new Error('écriture BRep binaire refusée');
+  const b=occt.FS.readFile(p);
+  try{occt.FS.unlink(p);}catch(e){}
+  return b;
+}
+function occBinRead(bytes){
+  const p=DEL_BIN_PATH;
+  occt.FS.writeFile(p,bytes);
+  const s=new occt.TopoDS_Shape(),pr=new occt.Message_ProgressRange_1();
+  try{
+    if(!occt.BinTools.Read(s,p,pr)||s.IsNull()){try{s.delete();}catch(e){}throw new Error('lecture BRep binaire refusée');}
+    return s;
+  }finally{try{pr.delete();}catch(e){}try{occt.FS.unlink(p);}catch(e){}}
+}
 function delWkUsable(){
   try{
     return !delWkOff&&typeof Worker==='function'&&typeof Blob==='function'&&typeof URL!=='undefined'&&!!URL.createObjectURL
@@ -96,6 +117,20 @@ function delWkMain(){
     self.postMessage({t:'debut',id:m.id});
     const t0=Date.now();let s=null,hs=[];
     const fin=o=>self.postMessage(Object.assign({t:'fin',id:m.id,kept:0,err:null,warnings:[],brep:null,ms:Date.now()-t0},o));
+    if(m.kind==='tess'){
+      // V0.99.48 : maillage FIN de la FAO (faoFineGeo, src/90-60) — demande de Fred : « toutes les
+      // opérations vers d'autres CPU ». Même code que le fil principal (occTriPos) sur le solide
+      // relu en BRep exact : triangles et normales identiques ; la page n'a plus qu'à les ranger.
+      try{
+        s=occBinRead(m.brep);
+        try{occt.BRepTools.Clean(s);}catch(e){}
+        const T=occTriPos(s,m.lin,m.ang,true);
+        const pos=Float64Array.from(T.pos),nrm=Float64Array.from(T.nrm);
+        self.postMessage({t:'fin',id:m.id,tess:{pos,nrm,groups:T.groups},ms:Date.now()-t0},[pos.buffer,nrm.buffer]);
+      }catch(e){fin({err:String((e&&e.message)||e)});}
+      finally{if(s)try{s.delete();}catch(e){}}
+      return;
+    }
     if(m.kind==='thr'){
       // V0.21.19 : filets modélisés (occThrCut, src/20) — corps et vides en BRep
       let vd=null,r=null;
@@ -129,9 +164,10 @@ function delWkSource(){
   const fns=[occPileRemettre,occAjoute,occFree,occCastLibre,occFaceCur,occEdgeCur,occSolidCur,occShellCur,occXyz,occAvec, // V0.64.3
     occBinPush,occDispose,occUnifyKeepEdges,occUnify,occCoqueValide,occBoxMinMax,occDelFaceDebord,
     occDeleteFacesOnce,occDelFacesTry,occBrepWrite,occBrepRead,occFaceAt,
-    occCut,occCutEach,occCutKids,occThrCut,occtV3Compat];
+    occCut,occCutEach,occCutKids,occThrCut,occtV3Compat,
+    occTriPos,occMeshShape,occFacePlane,occMeshParallele,occBinRead]; // V0.99.48 : maillage fin de la FAO
   // Noms uniques (20-05) : le worker n'en porte pas, le rejeu les redonne à la réponse (nomsCompleter)
-  return 'function nomsTransmet(a,b,r){return r;}\nfunction nomsApresUnify(){}\nlet occt=null,occtReady=false;const DEL_ISOLE_MAX='+DEL_ISOLE_MAX+',DEL_BREP_PATH='+JSON.stringify(DEL_BREP_PATH)+';\n'+fns.map(String).join('\n')+'\n('+delWkMain+')();\n';
+  return 'function nomsTransmet(a,b,r){return r;}\nfunction nomsApresUnify(){}\nlet occt=null,occtReady=false;const DEL_ISOLE_MAX='+DEL_ISOLE_MAX+',DEL_BREP_PATH='+JSON.stringify(DEL_BREP_PATH)+',OCC_MESH_SPLIT_FACES='+OCC_MESH_SPLIT_FACES+',DEL_BIN_PATH='+JSON.stringify(DEL_BIN_PATH)+';\n'+fns.map(String).join('\n')+'\n('+delWkMain+')();\n';
 }
 function delWkStart(){
   if(delWk)return delWk;
@@ -157,7 +193,13 @@ function delWkMsg(me,m){
   if(m.t==='ko'){delWkCrash(me,m.err);return;}
   if(m.t==='debut'){
     me.sursis=false;
-    delWkArm(me,()=>delWkTimeout(me),me.job&&me.job.kind==='thr'?THR_WK_DELAI:DEL_WK_DELAI);
+    delWkArm(me,()=>delWkTimeout(me),me.job&&(me.job.kind==='thr'||me.job.kind==='tess')?THR_WK_DELAI:DEL_WK_DELAI);
+    return;
+  }
+  if(m.t==='fin'&&me.job&&me.job.key===m.id&&me.job.kind==='tess'){
+    clearTimeout(me.timer);me.job=null;
+    tessWkRendre(m.id,m.tess||null);
+    delWkPump();
     return;
   }
   if(m.t==='fin'&&me.job&&me.job.key===m.id){
@@ -188,6 +230,7 @@ function delWkTimeout(me){
   if(!me.sursis){me.sursis=true;delWkArm(me,()=>delWkTimeout(me),DEL_WK_SURSIS);return;}
   const j=me.job;
   delWkStop(me);
+  if(j.kind==='tess'){tessWkRendre(j.key,null);if(delWkQ.length)delWkStart();return;}
   delWkFin(j.key,j.kind==='thr'
     ?{brep:null,kept:0,warnings:[],ms:THR_WK_DELAI,delai:true,err:`calcul des filets arrêté après ${Math.round(THR_WK_DELAI/1000)} s`}
     :{brep:null,kept:0,warnings:[],ms:DEL_WK_DELAI,delai:true,
@@ -203,12 +246,15 @@ function delWkCrash(me,why){
     // Démarrage impossible (.wasm illisible…) : retour au calcul synchrone d'avant.
     delWkOff=String(why||'?');
     try{console.warn('[Suppression de face] worker indisponible ('+delWkOff+') — calcul sur le thread principal');}catch(e){}
+    delWkQ.forEach(q=>{if(q.kind==='tess')tessWkRendre(q.key,null);});
+    if(j&&j.kind==='tess')tessWkRendre(j.key,null);
     delWkQ.length=0;
     delWkRes.forEach((v,k)=>{if(v.st==='run')delWkRes.delete(k);});
     delWkReplay(null);
     return;
   }
   // Le noyau du worker a planté en plein calcul (mémoire…) : échec de CE travail seulement.
+  if(j&&j.kind==='tess'){tessWkRendre(j.key,null);if(delWkQ.length)delWkStart();return;}
   if(j)delWkFin(j.key,{brep:null,kept:0,warnings:[],ms:0,err:`le noyau s'est arrêté pendant le calcul (${why})`});
   if(delWkQ.length)delWkStart();
   if(j)delWkReplay(j.key);
@@ -225,6 +271,7 @@ function delWkPump(){
   if(!delWk||!delWk.ready||delWk.job)return;
   const j=delWkQ.shift();if(!j)return;
   delWk.job=j;
+  if(j.kind==='tess'){delWk.w.postMessage({t:'job',kind:'tess',id:j.key,brep:j.brep,lin:j.lin,ang:j.ang});return;}
   delWk.w.postMessage(j.kind==='thr'?{t:'job',kind:'thr',id:j.key,brep:j.brep,voids:j.voids,lin:j.lin,ang:j.ang}
     :{t:'job',id:j.key,brep:j.brep,idx:j.idx});
 }
@@ -318,4 +365,32 @@ function delWkReplay(key){
         :'Suppression de face : calcul terminé en '+(e.ms/1000).toFixed(1).replace('.',',')+' s.';
     }catch(x){}
   },0);
+}
+
+/* ---------- maillage fin de la FAO dans le même worker (V0.99.48) ----------
+   Demande de Fred : « toutes les opérations vers d'autres CPU ». Le premier « Tout régénérer »
+   après l'ouverture maillait la pièce à la finesse de finition sur le fil principal (SIRAP-14-002 :
+   4,9 s d'écran figé). Le solide part en BRep exact, le worker le maille avec le même code
+   (occTriPos) et rend triangles, normales exactes et groupes de faces ; la page fabrique la
+   géométrie comme occTessellate. Pas de worker, échec, délai : null — calcul habituel. */
+const tessWkAttente=new Map(); // clé → fonction de retour
+let tessWkN=0;
+function tessWkRendre(key,T){
+  const f=tessWkAttente.get(key);
+  if(!f)return;
+  tessWkAttente.delete(key);
+  try{f(T);}catch(e){}
+}
+function occTessWk(shape,lin,ang){
+  // → Promise de {pos, nrm, groups} (comme occTriPos(shape,lin,ang,true)) ou null
+  return new Promise(res=>{
+    if(!delWkUsable()||!(occt.BinTools&&occt.BinTools.Write)){res(null);return;}
+    let brep;
+    try{brep=occBinWrite(shape);}catch(e){res(null);return;}
+    const key='tess:'+(++tessWkN);
+    tessWkAttente.set(key,res);
+    delWkQ.push({key,kind:'tess',brep,lin,ang,idx:[]});
+    try{delWkStart();}catch(x){delWkOff=(x&&x.message)||String(x);delWkQ.length=0;tessWkRendre(key,null);return;}
+    delWkPump();
+  });
 }
