@@ -583,11 +583,11 @@ function cgShapeFor(ctx){
   // l'aperçu, le solide affiché — celui sur lequel l'utilisateur vient de cliquer.
   if(ctx&&ctx.shapes&&ctx.self&&(doc.cgeo||[]).indexOf(ctx.self)>=0){
     const up=cgUpto(ctx.self);
-    if(!ctx.shapes.has(up)){let FR=null;try{FR=occFinalShape(up);}catch(e){FR=null;}ctx.shapes.set(up,FR);}
+    if(!ctx.shapes.has(up)){let FR=null;try{FR=occFinalShapeRef(up);}catch(e){FR=null;}ctx.shapes.set(up,FR);}
     const FR=ctx.shapes.get(up);
     return FR&&FR.shape&&!FR.shape.IsNull()?FR.shape:null;
   }
-  return (occLive&&occLive.shape)?occLive.shape:null;
+  return occRefShape(); // V0.99.41 : import seul compris
 }
 function cgEdgesOf(shape,ctx){
   // Arêtes (données pures : mid, pts, len) — une seule énumération par solide et par passe

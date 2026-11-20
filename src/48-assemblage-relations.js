@@ -15,7 +15,13 @@
    Référence durable : o.cons = [{id, t, a, b, v, inv, sg}] ; a.path relatif au composant de
    l'occurrence, b.path relatif au porteur ; face = signature (asmSnapSig : type, centre,
    normale ou axe, rayon) retrouvée après un rejeu comme les points d'accroche ; plan de
-   repère = {cg (null = origine), p: 'XY'|'XZ'|'YZ'}. */
+   repère = {cg (null = origine), p: 'XY'|'XZ'|'YZ'}.
+   V0.99.41 : aussi une ARÊTE ou un SOMMET (demande de Fred, pièces importées comprises) — arête
+   droite = axe (e = {k:'line', m, d}), arête circulaire = centre + axe (e = {k:'circ', c, n, r}),
+   sommet = point (v = [x, y, z]), retrouvés comme les faces après un rejeu (même type, la plus
+   proche). Coïncidente : point sur point / plan / axe / cylindre, cercle sur cercle (concentriques
+   et dans le même plan), cercle dans un plan, cercle autour d'un axe ; Angle et Parallèle : sur
+   les directions (normale du cercle, direction de l'arête). Tangente = Coïncidente pour eux. */
 const ASM_CONS={coinc:{lab:'Coïncidente',ic:'⫠'},angle:{lab:'Angle',ic:'∠'},par:{lab:'Parallèle',ic:'∥'},tan:{lab:'Tangente',ic:'◠'}};
 const ASM_CONS_LW=20; // poids des écarts d'orientation (mm par radian) face aux écarts de position
 function asmConsOn(o){return !!(o&&!o.align&&!o.fixed&&!o.pat&&Array.isArray(o.cons)&&o.cons.length);}
@@ -29,6 +35,9 @@ function asmConsRefNorm(r){
     o.f={k:r.f.k,c:r.f.c.map(Number),n:r.f.n.map(Number)};if(r.f.k==='cyl')o.f.r=+r.f.r||0;
     // V0.99.36 : plan milieu entre deux faces planes parallèles (f, f2)
     if(r.f.k==='plane'&&r.f2&&r.f2.k==='plane'&&okV(r.f2.c)&&okV(r.f2.n))o.f2={k:'plane',c:r.f2.c.map(Number),n:r.f2.n.map(Number)};}
+  else if(r.e&&r.e.k==='line'&&okV(r.e.m)&&okV(r.e.d))o.e={k:'line',m:r.e.m.map(Number),d:r.e.d.map(Number)};
+  else if(r.e&&r.e.k==='circ'&&okV(r.e.c)&&okV(r.e.n)&&isFinite(+r.e.r))o.e={k:'circ',c:r.e.c.map(Number),n:r.e.n.map(Number),r:+r.e.r};
+  else if(okV(r.v))o.v=r.v.map(Number);
   else return null;
   return o;
 }
@@ -63,6 +72,32 @@ function asmConsFind(G,f){
   });
   return best?best.F:null;
 }
+const asmR6=p=>p.map(v=>Math.round(v*1e6)/1e6);
+function asmEdgeSig(E){return E.k==='line'?{k:'line',m:asmR6(E.m),d:asmR6(E.d)}:{k:'circ',c:asmR6(E.c),n:asmR6(E.n),r:+(+E.r).toFixed(6)};}
+function asmConsFindEdge(G,e){
+  // Arête de même type et même direction, la plus proche (même Ø d'abord pour un cercle)
+  let best=null;
+  (G&&G.edges||[]).forEach(E=>{
+    if(E.k!==e.k)return;
+    if(Math.abs(asmV.dot(E.k==='line'?E.d:E.n,e.k==='line'?e.d:e.n))<0.999)return;
+    let s=asmV.len(asmV.sub(E.k==='line'?E.m:E.c,e.k==='line'?e.m:e.c));
+    const sr=E.k==='circ'&&Math.abs(E.r-(e.r||0))>1e-4?1:0;
+    if(E.k==='circ')s+=10*Math.abs(E.r-(e.r||0));
+    if(!best||sr<best.sr||(sr===best.sr&&s<best.s))best={E,s,sr};
+  });
+  return best?best.E:null;
+}
+function asmConsFindVert(G,v){
+  let best=null,bd=Infinity;
+  (G&&G.verts||[]).forEach(q=>{const d=asmV.len(asmV.sub(q,v));if(d<bd){bd=d;best=q;}});
+  return best;
+}
+function asmConsEdgeGeo(ref){
+  // Géométrie d'une arête ou d'un sommet : arête droite = axe sans rayon, cercle, point
+  if(ref.v)return {k:'pt',c:ref.v.slice(),n:[0,0,1]};
+  const e=ref.e;
+  return e.k==='line'?{k:'cyl',c:e.m.slice(),n:e.d.slice(),r:0,ln:true}:{k:'circ',c:e.c.slice(),n:e.n.slice(),r:e.r};
+}
 function asmConsLocal(cid,ref){
   // Géométrie {k, c, n, r?} d'une référence dans le repère du composant visé (bout du chemin)
   if(ref.pl){
@@ -70,6 +105,14 @@ function asmConsLocal(cid,ref){
     return {k:'plane',c:F.o,n:ref.pl.p==='XY'?F.z:ref.pl.p==='XZ'?F.y:F.x};
   }
   const c=asmComp(cid);
+  if(ref.e||ref.v){
+    if(typeof asmSnapFresh==='function'&&asmSnapFresh(c)&&c._snapG.g&&Array.isArray(c._snapG.g.edges)){
+      const g=c._snapG.g;
+      if(ref.e){const E=asmConsFindEdge(g,ref.e);if(!E)return null;ref.e=asmEdgeSig(E);}
+      else{const q=asmConsFindVert(g,ref.v);if(!q)return null;ref.v=asmR6(q);}
+    }
+    return asmConsEdgeGeo(ref);
+  }
   if(typeof asmSnapFresh==='function'&&asmSnapFresh(c)&&c._snapG.g){
     const F=asmConsFind(c._snapG.g,ref.f);
     if(!F)return null;
@@ -92,8 +135,36 @@ function asmConsGeo(cid,ref){
   return {k:g.k,c:asmApply(r.F,g.c),n:asmV.unit(asmRot(r.F,g.n))||g.n,r:g.r};
 }
 function asmConsXf(M,g){return {k:g.k,c:asmApply(M,g.c),n:asmRot(M,g.n),r:g.r};}
+function asmConsResX(k,A,B,out){
+  // V0.99.41 : écarts avec un point (sommet) ou un cercle (arête circulaire)
+  const V=asmV,L=ASM_CONS_LW,v=+k.v||0,s=k.inv?-1:1,sg=k.sg||1;
+  const perp=(q,n)=>V.sub(q,V.mul(n,V.dot(q,n))),p3=(a,w)=>out.push(w*a[0],w*a[1],w*a[2]);
+  const isO=g=>g.k==='pt';
+  if(k.t==='angle'){if(isO(A)||isO(B)){out.push(0);return;}out.push(L*(V.dot(A.n,B.n)*s-Math.cos(v*Math.PI/180)));return;}
+  if(k.t==='par'){
+    if(isO(A)||isO(B)){out.push(0);return;}
+    const nt=g=>g.k==='plane'||g.k==='circ'; // normale (plan, cercle) ou direction (axe, arête)
+    if(nt(A)===nt(B))p3(V.sub(A.n,V.mul(B.n,s*sg)),L);else out.push(L*V.dot(A.n,B.n));
+    return;
+  }
+  // coïncidente (tangente : pareil)
+  const O=isO(A)?A:isO(B)?B:null;
+  if(O){
+    const T=O===A?B:A;
+    if(T.k==='pt'||T.k==='circ'){p3(V.sub(A.c,B.c),1);return;}             // sur le point / au centre
+    if(T.k==='plane'){out.push(V.dot(V.sub(O.c,T.c),T.n)-v);return;}        // dans le plan (décalage)
+    const q=perp(V.sub(O.c,T.c),T.n);
+    if((T.r||0)>1e-9)out.push(V.len(q)-T.r-v);else p3(q,1);                 // sur le cylindre / sur l'arête
+    return;
+  }
+  const C=A.k==='circ'?A:B,T=C===A?B:A;
+  if(T.k==='circ'){p3(V.sub(A.n,V.mul(B.n,s*sg)),L);p3(V.sub(V.sub(A.c,B.c),V.mul(B.n,v)),1);return;} // cercles confondus
+  if(T.k==='plane'){p3(V.cross(C.n,T.n),L);out.push(V.dot(V.sub(C.c,T.c),T.n)-v);return;}              // cercle dans le plan
+  p3(V.cross(C.n,T.n),L);p3(perp(V.sub(C.c,T.c),T.n),1);                                               // cercle autour de l'axe
+}
 function asmConsRes(k,A,B,out){
   // Écarts d'une relation (0 = satisfaite) ; A : géométrie de l'occurrence, B : cible
+  if(A.k==='pt'||B.k==='pt'||A.k==='circ'||B.k==='circ'){asmConsResX(k,A,B,out);return;}
   const V=asmV,L=ASM_CONS_LW,v=+k.v||0,s=k.inv?-1:1,sg=k.sg||1;
   const perp=(q,n)=>V.sub(q,V.mul(n,V.dot(q,n)));
   const pp=A.k==='plane'&&B.k==='plane',cc=A.k==='cyl'&&B.k==='cyl';
@@ -185,7 +256,7 @@ function asmConsSolveFr(M0,list){
       const A=asmConsXf(M,q.a),B=q.b,k=q.k,s=k.inv?-1:1,sg=k.sg||1;
       let want=null;
       if(k.t!=='angle'&&A.k==='plane'&&B.k==='plane')want=asmV.mul(B.n,k.t==='par'?s*sg:-s);
-      else if(k.t!=='angle'&&k.t!=='tan'&&A.k==='cyl'&&B.k==='cyl')want=asmV.mul(B.n,s*sg);
+      else if(k.t!=='angle'&&k.t!=='tan'&&((A.k==='cyl'&&B.k==='cyl')||(A.k==='circ'&&B.k==='circ')))want=asmV.mul(B.n,s*sg);
       const d=want?asmV.dot(A.n,want):0;
       let ax=null,ang=0;
       if(want&&d<-0.999){ang=Math.PI;}
@@ -232,7 +303,7 @@ function asmConsApply(o,owner){
   // Résout les relations d'une occurrence (46 : asmResolveIn) → true si elle a bougé
   if(asmConsDeps(o).includes(o.id)){o.st='warn';o.msg='une relation vise l’occurrence elle-même';return false;}
   const pr=asmConsPrep(o,owner);
-  if(pr.miss){o.st='warn';o.msg=(pr.side==='a'?'face de la pièce':'face cible')+' introuvable dans « '+asmConsName(o.cons,pr.miss)+' » (la face a disparu ?) — position mémorisée';return false;}
+  if(pr.miss){o.st='warn';o.msg=(pr.side==='a'?'géométrie de la pièce':'géométrie cible')+' introuvable dans « '+asmConsName(o.cons,pr.miss)+' » (la face a disparu ?) — position mémorisée';return false;}
   const S=asmConsSolveFr(o.fr,pr.list);
   o._dof=S.dof;
   const ch=['o','x','y','z'].some(k=>S.M[k].some((v,j)=>Math.abs(v-o.fr[k][j])>1e-9));
@@ -260,7 +331,7 @@ function asmRelStart(occId){
   const o=occId&&asmOcc(occId);
   if(o&&asmActiveComp().occ.includes(o)&&!asmRelRefuse(o))asmRelTake(o);
   asmRelRefresh();
-  asmRelSay('Relations : cliquez une face (ou un plan de repère) de la pièce à déplacer, puis la face où la poser.');
+  asmRelSay('Relations : cliquez une face, une arête ou un sommet (ou un plan de repère) de la pièce à déplacer, puis où la poser.');
 }
 function asmRelNew(t){return {t:t||null,a:null,b:null,aG:null,bG:null,v:0,inv:false,sg:1};}
 function asmRelRefuse(o){
@@ -299,10 +370,19 @@ function asmRelSign(){
 function asmRelSet(side,ref,G,abs){
   const R=asmRel,c=R.cur;
   c[side]=ref;c[side+'G']={G,abs};
-  if(side==='a'&&!c.b){asmRelSay('Relations : cliquez maintenant la face (ou le plan) où poser la pièce.');}
-  if(c.a&&c.b){asmRelSign();if(!c.t)c.t=c.aG.G.k===c.bG.G.k?'coinc':'tan';
+  if(side==='a'&&!c.b){asmRelSay('Relations : cliquez maintenant la face, l’arête, le sommet (ou le plan) où poser la pièce.');}
+  if(c.a&&c.b){asmRelSign();const fk=k=>k==='plane'||k==='cyl';if(!c.t)c.t=fk(c.aG.G.k)&&fk(c.bG.G.k)&&c.aG.G.k!==c.bG.G.k?'tan':'coinc';
+    if(!asmRelTypeOK(c,c.t))c.t='coinc';
     asmRelSay('Relations : '+ASM_CONS[c.t].lab+' — réglez le décalage, Inverser, ou ＋ pour une autre relation, puis OK.');}
   asmRelRefresh();
+}
+function asmRelKinds(c){return [c.aG&&c.aG.G?c.aG.G.k:null,c.bG&&c.bG.G?c.bG.G.k:null];}
+function asmRelTypeOK(c,t){
+  // V0.99.41 : un sommet n'a pas de direction (ni Angle, ni Parallèle) ; Tangente : faces et arêtes droites
+  const K=asmRelKinds(c);
+  if(K.includes('pt'))return t==='coinc';
+  if(t==='tan')return !K.includes('circ');
+  return true;
 }
 function asmRelSay(t){
   // V0.99.36 : consigne ou refus de la commande — aussi en tête de son panneau (la barre d'état
@@ -331,10 +411,14 @@ function asmRelPickAt(e){
     const cid=asmPathComp(path),c=asmComp(cid);if(!c)continue;
     const Gs=typeof asmSnapGeomOf==='function'?asmSnapGeomOf(c):null;
     if(!Gs){asmRelSay('Relations : noyau exact indisponible (faces non lues).');return true;}
+    // V0.99.41 : sommet (≤ 10 px) ou arête (≤ 7 px) sous le curseur, avant la face
+    {const side0=R.occ?(path.slice(n)[0]===R.occ?'a':'b'):'a';
+      if(!(R.mid&&R.mid[side0])){const ev=asmRelEdgeHit(e,h,asmSnapEdgesOf(c));
+        if(ev){R.midP=null;asmRelPickRef(path.slice(n),Object.assign({path:path.slice(n)},ev.ref),ev.G,path.slice());return true;}}}
     const inv=new THREE.Matrix4().copy(h.object.matrixWorld).invert();
     const pl=h.point.clone().applyMatrix4(inv),nl=h.face?h.face.normal.clone():null;
     const F=asmSnapHitFace(Gs,[pl.x,pl.y,pl.z],nl?[nl.x,nl.y,nl.z]:null);
-    if(!F){asmRelSay('Relations : cette face n’est ni plane ni cylindrique — choisissez une autre face ou un plan de repère.');return true;}
+    if(!F){asmRelSay('Relations : cette face n’est ni plane ni cylindrique — choisissez une autre face, une de ses arêtes, un sommet ou un plan de repère.');return true;}
     // V0.99.36 : plan milieu (bouton du côté visé) — 1re face retenue, la 2e parallèle complète
     const rp=path.slice(n),side=R.occ?(rp[0]===R.occ?'a':'b'):'a';
     if(R.mid&&R.mid[side]){
@@ -351,8 +435,42 @@ function asmRelPickAt(e){
     asmRelPickRef(path.slice(n),{path:path.slice(n),f:asmSnapSig(F)},{k:F.k,F},path.slice());
     return true;
   }
-  asmRelSay('Relations : cliquez une face plane ou cylindrique, ou un plan de repère.');
+  asmRelSay('Relations : cliquez une face plane ou cylindrique, une arête, un sommet ou un plan de repère.');
   return true;
+}
+function asmRelEdgeHit(e,h,G){
+  // Sommet à ≤ 10 px, sinon arête droite ou circulaire à ≤ 7 px du curseur, pas cachés derrière la
+  // surface touchée → {ref: {v} | {e}, G (surbrillance)} | null. G : arêtes du composant (repère local)
+  if(!G||!Array.isArray(G.edges)||!Array.isArray(G.verts))return null;
+  const r=renderer.domElement.getBoundingClientRect(),mx=e.clientX-r.left,my=e.clientY-r.top;
+  const M=h.object.matrixWorld,v=new THREE.Vector3(),lim=h.distance*1.004+0.5;
+  const toS=p=>{v.set(p[0],p[1],p[2]).applyMatrix4(M);const dc=camera.position.distanceTo(v);v.project(camera);return [(v.x+1)/2*r.width,(1-v.y)/2*r.height,v.z,dc];};
+  let bv=null,bdv=10;
+  G.verts.forEach(q=>{const s=toS(q);if(Math.abs(s[2])>=1||s[3]>lim)return;const d=Math.hypot(s[0]-mx,s[1]-my);if(d<bdv){bdv=d;bv=q;}});
+  let be=null,bd=7;
+  G.edges.forEach(E=>{
+    const pts=E.k==='line'?[E.p0,E.p1]:(Array.isArray(E.pts)&&E.pts.length>1?E.pts:asmRelCircPts(E,48));
+    let a=toS(pts[0]);
+    for(let i=1;i<pts.length;i++){
+      const b=toS(pts[i]);
+      if(Math.abs(a[2])<1&&Math.abs(b[2])<1){
+        const dx=b[0]-a[0],dy=b[1]-a[1],L2=dx*dx+dy*dy||1e-9,t=Math.max(0,Math.min(1,((mx-a[0])*dx+(my-a[1])*dy)/L2));
+        const d=Math.hypot(mx-(a[0]+t*dx),my-(a[1]+t*dy));
+        if(d<bd&&a[3]+(b[3]-a[3])*t<=lim){bd=d;be=E;}
+      }
+      a=b;
+    }
+  });
+  // le sommet l'emporte s'il est au moins aussi près que l'arête (à 4 px près) : un petit cercle
+  // garde son arête quand on clique dessus, loin de son point de raccord
+  if(bv&&(!be||bdv<=bd+4))return {ref:{v:asmR6(bv)},G:{k:'pt',q:bv}};
+  return be?{ref:{e:asmEdgeSig(be)},G:{k:be.k,E:be}}:null;
+}
+function asmRelCircPts(E,n){
+  // Cercle complet (arête circulaire sans ses points : image d'avant V0.99.41)
+  const x=asmV.unit(E.x||[1,0,0])||[1,0,0],y=asmV.cross(E.n,x),out=[];
+  for(let i=0;i<=n;i++){const a=2*Math.PI*i/n;out.push(asmV.add(E.c,asmV.add(asmV.mul(x,E.r*Math.cos(a)),asmV.mul(y,E.r*Math.sin(a)))));}
+  return out;
 }
 function asmRelPickRef(relPath,ref,G,abs){
   // relPath : chemin relatif au composant actif ; [] = le composant actif lui-même
@@ -423,6 +541,11 @@ function asmRelGOf(side,ref){
   const rel=side==='a'?[R.occ].concat(ref.path):ref.path.slice(),abs=asm.path.concat(rel);
   const cid=asmPathComp(abs);if(!cid)return null;
   if(ref.pl){const F=asmCompFrame(cid,ref.pl.cg);return F?{G:{k:'plane',pl:true,F,p:ref.pl.p},abs}:null;}
+  if(ref.e||ref.v){ // V0.99.41 : arête ou sommet
+    const Ge=typeof asmSnapEdgesOf==='function'?asmSnapEdgesOf(asmComp(cid)):null;
+    if(ref.v)return {G:{k:'pt',q:(Ge&&asmConsFindVert(Ge,ref.v))||ref.v},abs};
+    return {G:{k:ref.e.k,E:(Ge&&asmConsFindEdge(Ge,ref.e))||null,e:ref.e},abs};
+  }
   const c=asmComp(cid),Gs=typeof asmSnapGeomOf==='function'?asmSnapGeomOf(c):null,F=Gs&&asmConsFind(Gs,ref.f);
   return F?{G:{k:F.k,F},abs}:(o?{G:{k:ref.f.k,F:null},abs}:null);
 }
@@ -488,6 +611,20 @@ function asmRelMarks(){
       const d=new THREE.Vector3(...F.n).normalize();mesh.quaternion.setFromUnitVectors(new THREE.Vector3(0,1,0),d);
       const c=asmV.add(F.l,asmV.mul(F.n,(F.t[0]+F.t[1])/2));mesh.position.set(c[0],c[1],c[2]);
     }
+    else if(g.k==='pt'||g.k==='line'||g.k==='circ'){ // V0.99.41 : sommet, arête droite, cercle
+      const rad=Math.max(0.05,size*0.006);
+      if(g.k==='pt'){const q=g.q;mesh=new THREE.Mesh(new THREE.SphereGeometry(rad*3,16,12),blue(on));mesh.position.set(q[0],q[1],q[2]);}
+      else if(g.k==='line'){
+        const e=g.E||g.e,p0=g.E?g.E.p0:asmV.add(e.m,asmV.mul(e.d,-size/4)),p1=g.E?g.E.p1:asmV.add(e.m,asmV.mul(e.d,size/4));
+        const len=Math.max(0.01,asmV.len(asmV.sub(p1,p0))),m=asmV.mul(asmV.add(p0,p1),0.5);
+        mesh=new THREE.Mesh(new THREE.CylinderGeometry(rad,rad,len,10,1),blue(on));
+        mesh.quaternion.setFromUnitVectors(new THREE.Vector3(0,1,0),new THREE.Vector3(...asmV.sub(p1,p0)).normalize());mesh.position.set(m[0],m[1],m[2]);
+      }else{
+        const e=g.E||g.e;
+        mesh=new THREE.Mesh(new THREE.TorusGeometry(Math.max(0.01,e.r),rad,8,64),blue(on));
+        mesh.quaternion.setFromUnitVectors(new THREE.Vector3(0,0,1),new THREE.Vector3(...e.n).normalize());mesh.position.set(e.c[0],e.c[1],e.c[2]);
+      }
+    }
     if(!mesh)return;
     mesh.renderOrder=996;mesh.raycast=()=>{};
     const w=new THREE.Group();w.matrixAutoUpdate=false;w.matrix.copy(M);w.add(mesh);G.add(w);
@@ -512,9 +649,11 @@ function asmRelRefName(side,ref){
   if(!parts.length)parts.push(owner.name);
   if(ref.pl){const nm=ref.pl.cg?(((c&&c.doc.cgeo)||[]).find(k=>k.id===ref.pl.cg)||{}).name||'Repère':'Origine';return parts.join(' › ')+' · '+nm+' plan '+ref.pl.p;}
   if(ref.f2)return parts.join(' › ')+' · Plan milieu (2 faces)';
+  if(ref.v)return parts.join(' › ')+' · Sommet';
+  if(ref.e)return parts.join(' › ')+' · '+(ref.e.k==='line'?'Arête droite':'Cercle Ø'+(+(2*(ref.e.r||0)).toFixed(3)));
   return parts.join(' › ')+' · '+(ref.f.k==='plane'?'Face plane':'Cylindre Ø'+(+(2*(ref.f.r||0)).toFixed(3)));
 }
-function asmRelGeomLab(k){const g=r=>r.pl?'Plan':r.f.k==='cyl'?'Cyl.':'Face';return g(k.a)+'-'+g(k.b);}
+function asmRelGeomLab(k){const g=r=>r.pl?'Plan':r.v?'Point':r.e?(r.e.k==='line'?'Arête':'Cercle'):r.f.k==='cyl'?'Cyl.':'Face';return g(k.a)+'-'+g(k.b);}
 /* ── panneau ── */
 function asmRelProps(p){
   const R=asmRel,o=asmOcc(R.occ),c=R.cur;
@@ -529,12 +668,13 @@ function asmRelProps(p){
   const tb=mk('div','pnl-btns');
   Object.keys(ASM_CONS).forEach(t=>{const b=mk('button','mini',ASM_CONS[t].ic+' '+ASM_CONS[t].lab);
     if(c.t===t)b.style.outline='2px solid var(--accent, #0a84ff)';
-    b.title={coinc:'Face contre face (Inverser = affleurant), cylindre dans cylindre, axe dans un plan',angle:'Angle entre les deux faces (normales) ou les deux axes',
+    b.title={coinc:'Face contre face (Inverser = affleurant), cylindre dans cylindre, axe dans un plan ; point sur point, sur une face ou une arête ; cercle sur cercle ou dans un plan',angle:'Angle entre les deux faces (normales) ou les deux axes',
       par:'Faces ou axes parallèles, sans imposer la distance',tan:'Cylindre tangent à une face plane ou à un autre cylindre (Inverser = de l’autre côté / intérieur)'}[t];
+    if(c.a&&c.b&&!asmRelTypeOK(c,t)){b.disabled=true;b.style.opacity='.45';b.title+=' — pas pour cette géométrie';}
     b.onclick=()=>{c.t=t;if(t==='angle'&&R.cur.v===0)R.cur.v=90;asmRelRefresh();};tb.appendChild(b);});
   Row('Type',null);p.appendChild(tb);
   // géométries
-  const geo=(side,lab)=>{const r=Row(lab,null);const s=mk('span',null,c[side]?asmRelRefName(side,c[side]):(side==='a'?'cliquez une face de la pièce à déplacer':'cliquez la face où la poser'));
+  const geo=(side,lab)=>{const r=Row(lab,null);const s=mk('span',null,c[side]?asmRelRefName(side,c[side]):(side==='a'?'cliquez une face, une arête ou un sommet de la pièce à déplacer':'cliquez où la poser (face, arête, sommet)'));
     s.style.cssText='flex:1;font-size:11px;'+(c[side]?'':'color:var(--muted);font-style:italic');r.appendChild(s);
     if(c[side]){const x=mk('button','mini','×');x.title='Choisir une autre face';x.onclick=()=>asmRelClear(side);r.appendChild(x);}
     else{const m=mk('button','mini','▤ Plan milieu');m.title='Plan à mi-chemin entre deux faces planes parallèles : cliquez les deux faces';
@@ -544,7 +684,8 @@ function asmRelProps(p){
       r.appendChild(m);}};
   geo('a','Pièce déplacée');geo('b','Cible');
   if(asmRelCurDone()){
-    if(c.t!=='par')Row(c.t==='angle'?'Angle (°)':'Décalage (mm)',num(c.v,x=>{c.v=x;asmRelRefresh();}));
+    const K=asmRelKinds(c),noOff=K.includes('pt')&&(K[0]===K[1]||K.includes('circ')||K.includes('line')); // point sur point, au centre, sur l'arête : rien à décaler
+    if(c.t!=='par'&&!noOff)Row(c.t==='angle'?'Angle (°)':'Décalage (mm)',num(c.v,x=>{c.v=x;asmRelRefresh();}));
     const iv=mk('button','mini','⇅ Inverser');iv.title='Retourner la pièce : en vis-à-vis ↔ affleurant, de l’autre côté, sens de l’axe';
     if(c.inv)iv.style.outline='2px solid var(--accent, #0a84ff)';iv.onclick=()=>{c.inv=!c.inv;asmRelRefresh();};
     const ad=mk('button','mini','＋ Ajouter une relation');ad.title='Garder cette relation et en créer une autre sur la même pièce';ad.onclick=asmRelAdd;

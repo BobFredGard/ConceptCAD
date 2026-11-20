@@ -8,7 +8,7 @@ sont sorties le 2026-09-30j.
 Code dans `src/` · livrable `fusion_mvp.html` (généré par `build.js`) · architecture et
 garde-fous en tête de `src/00-entete-et-outils.js`.
 
-**735 versions**, de `2026-09-28b` à `V0.99.48` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
+**736 versions**, de `2026-09-28b` à `V0.99.49` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
 comme dans le fichier d'origine.
 
 ---
@@ -8172,3 +8172,11 @@ Cavité Usinage, après l'ébauche D25, la reprise D10 et une finition boule D12
 **Correctif** : contours sur arêtes confiés aux workers FAO (`faoWkAccepte`), avec les parcours des précédentes pour « Rapide dans le vide » (`faoWkPrecOps`) ; maillages fin et intermédiaire de la FAO faits par le worker du noyau (`occTessWk`, src/21 : solide passé en BRep binaire `BinTools`, nombres exacts — le BRep texte arrondit à 15 chiffres et changeait le maillage ; `faoFineGeoAsync` / `faoMidGeoAsync`, src/90-60, attendus par `faoWkRemplir`) ; séquence finale du posage (`faoSeqSafe` : liaisons, retrait minimum) faite par un worker FAO (`faoWkSeq`), parcours envoyés en colonnes sans copie (`faoWkMvPaq` / `faoWkMvDepaq`) et servis une fois (`faoSeqPre`). Tout échec ou délai : calcul habituel sur la page. SIRAP-14-002 : un seul blocage d'environ 0,5 s au début, le reste ≤ 0,12 s ; parcours (343 756, 136 227, 5 748 mouvements) et maillages identiques à l'ancien calcul. Manuel FAO.
 
 **Test** : `test_fao_seq_paquet` (aller-retour des parcours en colonnes : 20 000 points, champ r, autres formes, trous, champs du tableau, zéro négatif) ; `test_fao_multicoeur` (contours, précédentes jointes). CACHE_VER et FORMES_VER inchangés.
+
+## V0.99.49 - Arêtes, sommets et faces des pièces importées : relations, esquisse, construction
+
+**Cause** : demande de Fred : « peu importe le type d'import, il nous faut pouvoir choisir des arêtes, des points ou des faces d'un élément importé », partout. Les relations d'assemblage ne prenaient que des faces planes ou cylindriques. Un import seul dans son corps reste affiché par son maillage, hors de la chaîne exacte : une esquisse posée dessus ne projetait aucune de ses arêtes, les plans, axes et points de construction ne pouvaient pas s'y appuyer, et le rejeu partiel des références (esquisse consommée) le laissait de côté.
+
+**Correctif** : relations (`48-assemblage-relations`) sur des arêtes et des sommets — arête droite = axe sans rayon (`e = {k:'line', m, d}`), arête circulaire = centre et axe (`e = {k:'circ', c, n, r}`), sommet = point (`v`) ; arêtes et sommets de toutes les faces relevés avec les faces d'accroche (`asmSnapEdgesInto`, `g.edges` / `g.verts`, gardés avec l'image ; image d'avant complétée une fois, `asmSnapEdgesOf`) ; clic : sommet à ≤ 10 px s'il est au moins aussi près que l'arête, arête à ≤ 7 px, pas derrière la surface touchée (`asmRelEdgeHit`) ; écarts `asmConsResX` (point sur point, plan, arête ou cylindre ; cercle sur cercle, dans un plan, autour d'un axe ; Angle et Parallèle sur les directions), types permis (`asmRelTypeOK`), décalage masqué quand il ne sert pas, surbrillance (sphère, tige, anneau), retrouvés après un rejeu (`asmConsFindEdge`, `asmConsFindVert`). Références d'une pièce : `occRefShape` (solide affiché, sinon composé des imports seuls, gardé tant qu'ils ne changent pas) et `occFinalShapeRef` (rejeu partiel où l'import entre) pour les projections, faces planes, intersections d'esquisse et la construction. Manuels assemblage et fichiers.
+
+**Test** : `test_relations_aretes` (sommet sur sommet, dans un plan, sur une arête ; cercle sur cercle ; arête et cercle dans un plan ; arêtes colinéaires ; parallèle ; fichier ; références fausses ; types permis ; arête et sommet retrouvés). Vérifié dans l'appli sur MERLIN-37-000 et Support Décalé : sommet sur sommet, cercle sur cercle (1 degré de liberté), clic réel sur un sommet ; esquisse sur un STEP seul : 153 arêtes, 24 faces planes, affichage inchangé. CACHE_VER et FORMES_VER inchangés.

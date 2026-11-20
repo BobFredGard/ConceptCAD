@@ -212,6 +212,10 @@ function asmSnapGeomOK(g){
     // V0.99.36 : liste vide jamais gardée — V0.99.33 rangeait celle d'une pièce importée lue sans
     // son import (MERLIN-39-000) : relue au lieu d'être crue
     if(!g.faces.length)return false;
+    // V0.99.41 : arêtes et sommets (relations) — facultatifs, vérifiés s'ils sont là
+    if('edges' in g&&!(Array.isArray(g.edges)&&g.edges.every(e=>e&&(e.k==='line'?v3(e.p0)&&v3(e.p1)&&v3(e.m)&&v3(e.d)
+      :e.k==='circ'?v3(e.c)&&v3(e.n)&&num(e.r)&&(!e.pts||(Array.isArray(e.pts)&&e.pts.every(v3))):false))))return false;
+    if('verts' in g&&!(Array.isArray(g.verts)&&g.verts.every(v3)))return false;
     return g.faces.every(F=>F&&v3(F.c)&&v3(F.n)&&Array.isArray(F.edges)&&
       (F.k==='plane'?v3(F.x)&&v3(F.y)&&Array.isArray(F.rect)&&F.rect.length===4&&F.rect.every(num)
         :F.k==='cyl'?v3(F.l)&&v3(F.x)&&num(F.r)&&Array.isArray(F.t)&&F.t.length===2&&F.t.every(num):false)&&
@@ -227,7 +231,7 @@ async function asmCacheSnapGSave(c,g){
   let got;try{got=await asmCacheRead([key]);}catch(e){return false;}
   let k=key,v=got[key];
   if(v&&v.v===ASM_CACHE_V&&typeof v.alias==='string'){k=v.alias;try{v=(await asmCacheRead([k]))[k];}catch(e){return false;}}
-  if(!v||v.v!==ASM_CACHE_V||!Array.isArray(v.items)||v.snapG)return false;
+  if(!v||v.v!==ASM_CACHE_V||!Array.isArray(v.items)||(v.snapG&&(Array.isArray(v.snapG.edges)||!Array.isArray(g.edges))))return false; // V0.99.41 : faces d’avant complétées de leurs arêtes
   if((v.hash||'')!==(c._snap.hash||'')||!c._snapG||c._snapG.g!==g)return false; // autre image entre-temps
   v.snapG=g;
   try{await asmCacheWrite({[k]:v},[]);}catch(e){return false;}
