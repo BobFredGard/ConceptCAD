@@ -369,6 +369,8 @@
       const anim=!was&&!!(opt&&opt.anim)&&mepSheetStale();
       mepBuildUI();
       mepSt.open=true;
+      // V0.99.50 : vues à recalculer parties sur les autres cœurs AVANT le panneau latéral, qui lit leur taille
+      try{mepHlrPrecalcul();}catch(e){}
       // animation : la planche ne s'ouvre qu'une fois la vue 3D couverte par le fondu
       if(!anim)mepWrapEl.classList.add('open');
       mepTabsRender();
@@ -396,7 +398,8 @@
           if(fresh)mepFitSheet();
           fill();
         }
-        setTimeout(()=>{if(tok===mepBusyTok)mepBusyHide();},Math.max(0,450-(Date.now()-t0)));
+        // vues parties sur les workers : l'animation reste, mepHlrPrecalcul la retire à leur retour
+        setTimeout(()=>{if(tok===mepBusyTok&&!mepHlrRun)mepBusyHide();},Math.max(0,450-(Date.now()-t0)));
       },200);
     }else{
       mepSt.open=false;
@@ -472,6 +475,9 @@
   window.mepSetTool=mepSetTool;
   window.mepImportDxf=mepImportDxf;
   window.mepSetAxisMode=mepSetAxisMode;
+  // V0.99.50 : vues sur plusieurs cœurs — état et mesures du dernier calcul (console, tests)
+  window.mepHlrInfo=()=>({enCours:!!mepHlrRun,dernier:mepHlrDernier,pourquoi:mepHlrPourquoi,octets:mepHlrOct,coeurs:typeof hlrWkNb==='function'?hlrWkNb():0,workers:typeof hlrWks!=='undefined'?hlrWks.length:0});
+  window.__mepHlr={relever:views=>mepHlrRelever(views||mepSheet().views),pre:mepHlrPre,cle:mepHlrEmpreinte};
   // points d'entrée réservés aux tests automatisés (jamais activés dans l'app)
   if(window.__MEP_TEST_HOOKS__){
     window.__mepTest={

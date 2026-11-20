@@ -210,6 +210,8 @@
   }
   function mepRender(){
     if(!mepWrapEl||!mepSt.open)return;
+    // V0.99.50 : vues à recalculer → arêtes cachées sur les autres cœurs, rendu refait à leur retour
+    if(mepHlrPrecalcul())return;
     try{if(typeof mfRibMepSync==='function')mfRibMepSync(mepSt);}catch(e){} // bouton du ruban de l'outil actif
     mepEnsure();
     mepPrefsSync(); // hors docSansEtape : un réglage changé (cotes, hachures…) est un vrai geste, annulable

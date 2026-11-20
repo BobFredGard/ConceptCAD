@@ -131,6 +131,27 @@ function delWkMain(){
       finally{if(s)try{s.delete();}catch(e){}}
       return;
     }
+    if(m.kind==='hlr'){
+      // V0.99.50 : arêtes vues et cachées d'une vue de mise en plan (98-mep-10, mepHlrExact) — demande
+      // de Fred : « faire pareil pour la mise à jour des vues de la mise en plan ». Même code que la
+      // page (occHlrEdgePts) sur le solide relu en BRep binaire exact ; la page n'a plus qu'à projeter.
+      let h=null;
+      try{
+        s=occBinRead(m.brep);
+        const a=m.axes;
+        h=new occt.HLRAppli_ReflectLines(s);
+        h.SetAxes(a[0],a[1],a[2],0,0,0,a[3],a[4],a[5]);
+        h.Perform();
+        const T=occt.HLRBRep_TypeOfResultingEdge,lots=[],bufs=[];
+        m.cats.forEach(c=>{
+          const P=occHlrPaquet(occHlrEdgePts(h.GetCompoundOf3dEdges(T[c[0]],!!c[1],true)));
+          lots.push(P);bufs.push(P.pts.buffer,P.off.buffer);
+        });
+        self.postMessage({t:'fin',id:m.id,hlr:lots,ms:Date.now()-t0},bufs);
+      }catch(e){fin({err:String((e&&e.message)||e)});}
+      finally{try{if(h)h.delete();}catch(e){}if(s)try{s.delete();}catch(e){}}
+      return;
+    }
     if(m.kind==='thr'){
       // V0.21.19 : filets modélisés (occThrCut, src/20) — corps et vides en BRep
       let vd=null,r=null;
@@ -165,9 +186,10 @@ function delWkSource(){
     occBinPush,occDispose,occUnifyKeepEdges,occUnify,occCoqueValide,occBoxMinMax,occDelFaceDebord,
     occDeleteFacesOnce,occDelFacesTry,occBrepWrite,occBrepRead,occFaceAt,
     occCut,occCutEach,occCutKids,occThrCut,occtV3Compat,
-    occTriPos,occMeshShape,occFacePlane,occMeshParallele,occBinRead]; // V0.99.48 : maillage fin de la FAO
+    occTriPos,occMeshShape,occFacePlane,occMeshParallele,occBinRead, // V0.99.48 : maillage fin de la FAO
+    occCurvePts,occHlrEdgePts,occHlrPaquet]; // V0.99.50 : vues de la mise en plan (21-vues-plan-calcul)
   // Noms uniques (20-05) : le worker n'en porte pas, le rejeu les redonne à la réponse (nomsCompleter)
-  return 'function nomsTransmet(a,b,r){return r;}\nfunction nomsApresUnify(){}\nlet occt=null,occtReady=false;const DEL_ISOLE_MAX='+DEL_ISOLE_MAX+',DEL_BREP_PATH='+JSON.stringify(DEL_BREP_PATH)+',OCC_MESH_SPLIT_FACES='+OCC_MESH_SPLIT_FACES+',DEL_BIN_PATH='+JSON.stringify(DEL_BIN_PATH)+';\n'+fns.map(String).join('\n')+'\n('+delWkMain+')();\n';
+  return 'function nomsTransmet(a,b,r){return r;}\nfunction nomsApresUnify(){}\nlet occt=null,occtReady=false;const EDGE_TOL='+EDGE_TOL+',DEL_ISOLE_MAX='+DEL_ISOLE_MAX+',DEL_BREP_PATH='+JSON.stringify(DEL_BREP_PATH)+',OCC_MESH_SPLIT_FACES='+OCC_MESH_SPLIT_FACES+',DEL_BIN_PATH='+JSON.stringify(DEL_BIN_PATH)+';\n'+fns.map(String).join('\n')+'\n('+delWkMain+')();\n';
 }
 function delWkStart(){
   if(delWk)return delWk;
