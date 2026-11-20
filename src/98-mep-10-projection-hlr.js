@@ -190,7 +190,12 @@
     const c=mepGeoCache.get(view.id);
     const ver=mepGeomKey();
     if(c&&c.ver===ver&&c.sig===mepViewSig(view))return c.geo;
+    // V0.99.50 : vue partie sur les workers — pas de calcul en double sur la page en attendant
+    // (panneau latéral, cotes…) : ancienne image, ou vue vide ; tout est redessiné à leur retour
+    if(mepHlrRun&&mepHlrRun.ids.has(view.id))return c?c.geo:{els:[],hatch:[],src:'calcul en cours'};
+    const t0=performance.now();
     const geo=mepBuildGeo(view);
+    mepVueDuree.set(view.id,performance.now()-t0); // V0.99.50 : décide des workers à la mise à jour suivante
     mepGeoCache.set(view.id,{ver,sig:mepViewSig(view),geo});
     return geo;
   }
@@ -930,92 +935,204 @@
     };
   }
   function mepHlrAddEdge(geo,added,view,shape,kind,tan){
-    if(!shape)return 0;
+    // V0.99.50 : échantillonnage des arêtes commun à la page et aux workers (occHlrEdgePts, src/21-vues-plan-calcul)
+    return mepHlrEmit(geo,added,view,occHlrEdgePts(shape),kind,tan);
+  }
+  function mepHlrEmit(geo,added,view,list,kind,tan){
     let n=0;
-    const bin=[];
-    try{
-      const SH=occt.TopAbs_ShapeEnum.TopAbs_SHAPE;
-      const ex=new occt.TopExp_Explorer_2(shape,occt.TopAbs_ShapeEnum.TopAbs_EDGE,SH);bin.push(ex);
-      while(ex.More()){
-        const e=occEdgeCur(ex);bin.push(e);
-        try{
-          const ad=new occt.BRepAdaptor_Curve_2(e);bin.push(ad);
-          const u0=ad.FirstParameter(),u1=ad.LastParameter();
-          if(u1>u0){
-            const pts=occCurvePts(ad,u0,u1,0.02,400);
-            let kd=kind;
-            if(tan&&pts&&pts.length>1&&tan.test(pts))kd=tan.kind; // tangente que le noyau croit vive
-            if(kd&&pts&&pts.length>1){
-              const kind=kd;
-              const lp=pts.map(p=>[mepDot(p,view.u),mepDot(p,view.v)]);
-              const wp=pts.map(p=>mepDot(p,view.dir)); // profondeur (vers l'observateur) : plan d'une coupe locale (V0.23.7)
-              const cir=mepFitCircle(lp);
-              if(cir){
-                const kc='C'+Math.round(cir.cx*100)+','+Math.round(cir.cy*100)+','+Math.round(cir.r*100);
-                const ka='A'+kc+','+Math.round(cir.a0*400)+','+Math.round(cir.a1*400);
-                const kk=cir.full?kc:ka;
-                if(!added.has(kk)){
-                  added.add(kk);
-                  const w=wp.reduce((s,x)=>s+x,0)/wp.length;
-                  geo.els.push(cir.full?{t:'C',cx:cir.cx,cy:cir.cy,r:cir.r,k:kind,w}:{t:'A',cx:cir.cx,cy:cir.cy,r:cir.r,a0:cir.a0,a1:cir.a1,k:kind,w});
-                  n++;
-                }
-              }else{
-                for(let i=0;i+1<lp.length;i++){
-                  const A=lp[i],B=lp[i+1];
-                  const dx=B[0]-A[0],dy=B[1]-A[1];
-                  if(dx*dx+dy*dy<1e-8)continue;
-                  const k=Math.round(A[0]*100)+','+Math.round(A[1]*100)+','+Math.round(B[0]*100)+','+Math.round(B[1]*100);
-                  const k2=Math.round(B[0]*100)+','+Math.round(B[1]*100)+','+Math.round(A[0]*100)+','+Math.round(A[1]*100);
-                  if(added.has(k)||added.has(k2))continue;
-                  added.add(k);
-                  geo.els.push({t:'L',x1:A[0],y1:A[1],x2:B[0],y2:B[1],k:kind,w:(wp[i]+wp[i+1])/2});
-                  n++;
-                }
-              }
-            }
+    list.forEach(pts=>{
+      try{
+      let kd=kind;
+      if(tan&&pts&&pts.length>1&&tan.test(pts))kd=tan.kind; // tangente que le noyau croit vive
+      if(kd&&pts&&pts.length>1){
+        const kind=kd;
+        const lp=pts.map(p=>[mepDot(p,view.u),mepDot(p,view.v)]);
+        const wp=pts.map(p=>mepDot(p,view.dir)); // profondeur (vers l'observateur) : plan d'une coupe locale (V0.23.7)
+        const cir=mepFitCircle(lp);
+        if(cir){
+          const kc='C'+Math.round(cir.cx*100)+','+Math.round(cir.cy*100)+','+Math.round(cir.r*100);
+          const ka='A'+kc+','+Math.round(cir.a0*400)+','+Math.round(cir.a1*400);
+          const kk=cir.full?kc:ka;
+          if(!added.has(kk)){
+            added.add(kk);
+            const w=wp.reduce((s,x)=>s+x,0)/wp.length;
+            geo.els.push(cir.full?{t:'C',cx:cir.cx,cy:cir.cy,r:cir.r,k:kind,w}:{t:'A',cx:cir.cx,cy:cir.cy,r:cir.r,a0:cir.a0,a1:cir.a1,k:kind,w});
+            n++;
           }
-        }catch(err){}
-        ex.Next();
+        }else{
+          for(let i=0;i+1<lp.length;i++){
+            const A=lp[i],B=lp[i+1];
+            const dx=B[0]-A[0],dy=B[1]-A[1];
+            if(dx*dx+dy*dy<1e-8)continue;
+            const k=Math.round(A[0]*100)+','+Math.round(A[1]*100)+','+Math.round(B[0]*100)+','+Math.round(B[1]*100);
+            const k2=Math.round(B[0]*100)+','+Math.round(B[1]*100)+','+Math.round(A[0]*100)+','+Math.round(A[1]*100);
+            if(added.has(k)||added.has(k2))continue;
+            added.add(k);
+            geo.els.push({t:'L',x1:A[0],y1:A[1],x2:B[0],y2:B[1],k:kind,w:(wp[i]+wp[i+1])/2});
+            n++;
+          }
+        }
       }
-    }catch(err){}
-    occDispose(bin);
-    try{shape.delete();}catch(e){}
+      }catch(err){}
+    });
     return n;
+  }
+  /* V0.99.50 : vues sur plusieurs cœurs (src/21-vues-plan-calcul). mepHlrPrecalcul relève, vue par vue,
+     les calculs d'arêtes cachées que demanderait la vue (mepHlrCollecte), les confie aux workers, range
+     leurs réponses dans mepHlrPre, puis redessine : mepHlrExact y retrouve sa réponse par l'empreinte du
+     solide (octets du BRep binaire), du regard et des catégories d'arêtes demandées. Pas de réponse
+     (worker absent, échec, autre solide) : calcul sur la page, comme avant. */
+  const MEP_WK_PETIT=300;          // ms : vues déjà mesurées plus rapides en tout → calcul sur la page
+  // Taille des solides (BRep binaire) additionnée vue par vue : ~0,2 ms de calcul par Ko et par vue au moins.
+  // Cavité Usinage : 9 vues, 3,0 Mo de calculs distincts mais 4,7 Mo vue par vue, 1,3 s d'écran figé → workers ;
+  // Support Pédale : 6 vues, 1,8 Mo, 0,3 s → page ; Griffe : 0,6 Mo, 0,07 s → page.
+  const MEP_WK_OCTETS=3*1048576;   // vue par vue en tout : au-delà, workers
+  const MEP_WK_OCTETS_UN=1048576;  // ou un seul solide au-delà de cette taille
+  const MEP_WK_OCTETS_CHAUD=1048576; // workers déjà démarrés : pas de démarrage à payer
+  const mepVueDuree=new Map();     // id de vue → durée du dernier calcul sur la page (ms)
+  let mepHlrCollecte=null;     // [{key,brep,axes,cats}] pendant le relevé, sinon null
+  const mepHlrPre=new Map();   // empreinte → {lots,ms} | 'ko'
+  function mepHlrEmpreinte(b){
+    // deux hachages des octets, lus par mots de 4 (SIRAP-14-001 : 2,7 Mo, 366 → quelques ms)
+    const n4=b.length>>>2,w=b.byteOffset%4===0?new Uint32Array(b.buffer,b.byteOffset,n4):new Uint32Array(b.slice(0,n4*4).buffer);
+    let h1=2166136261,h2=5381;
+    for(let i=0;i<n4;i++){const c=w[i];h1=Math.imul(h1^c,16777619);h2=(Math.imul(h2,33)+c)|0;}
+    for(let i=n4*4;i<b.length;i++){h1=Math.imul(h1^b[i],16777619);h2=(Math.imul(h2,33)+b[i])|0;}
+    return (h1>>>0).toString(36)+'.'+(h2>>>0).toString(36)+'.'+b.length;
+  }
+  const mepHlrOctetsMemo=new WeakMap(); // solide → {brep, h} : une écriture et une empreinte par solide, pas par vue
+  function mepHlrOctets(model){
+    let m=mepHlrOctetsMemo.get(model);
+    if(!m){const brep=occBinWrite(model);m={brep,h:mepHlrEmpreinte(brep)};mepHlrOctetsMemo.set(model,m);}
+    return m;
+  }
+  function mepHlrCle(h,axes,cats){
+    // regard arrondi à 1e-12 : le repère d'une vue oblique varie au dernier chiffre d'un calcul à l'autre
+    // (Cavité Usinage, vue ISO) — sans cela la vue n'était jamais retrouvée et repartait sans fin
+    return h+'|'+axes.map(x=>(+x).toFixed(12)).join(',')+'|'+cats.map(c=>c[0]+c[1]).join(',');
   }
   function mepHlrExact(geo,view,shapes,added){
     if(typeof occt==='undefined'||!occt)return false;
     if(!occt.HLRAppli_ReflectLines||!occt.HLRBRep_TypeOfResultingEdge)return false;
     let model=null,hlr=null,owned=false;
+    const C=mepHlrCollecte;
     try{
       model=occCompoundOf(shapes);
       if(!model)return false;
       owned=shapes.length>1;
-      hlr=new occt.HLRAppli_ReflectLines(model);
-      hlr.SetAxes(view.dir[0],view.dir[1],view.dir[2],0,0,0,view.u[0],view.u[1],view.u[2]);
-      hlr.Perform();
-      const T=occt.HLRBRep_TypeOfResultingEdge;
       const mode=view.mode||'hide';
       const kindV=view.section?'sect':'sharp';
-      let n=0;
+      // catégories d'arêtes, dans l'ordre d'émission : [type, visible, trait, classement des tangentes]
+      const cats=[['HLRBRep_Sharp',1,kindV,'v'],['HLRBRep_OutLine',1,kindV,null]];
+      if(view.tangent)cats.push(['HLRBRep_Rg1Line',1,'tangent',null]); // V0.86.0 : tangentes grises dans les coupes aussi
+      if(mode==='dash'){
+        cats.push(['HLRBRep_Sharp',0,'hidden','h'],['HLRBRep_OutLine',0,'hidden',null]);
+        if(view.tangent)cats.push(['HLRBRep_Rg1Line',0,'hidden',null]);
+      }
+      const axes=[view.dir[0],view.dir[1],view.dir[2],view.u[0],view.u[1],view.u[2]];
+      let lots=null,O=null;
+      // Le HLR part du solide RELU en BRep binaire, sur la page comme dans le worker : le même solide
+      // en mémoire peut rendre ses arêtes coupées et rangées autrement (SIRAP-14-001, vue de droite :
+      // 4 traits de plus), alors que relu il donne toujours le même dessin. Page et worker rendent
+      // ainsi la même vue au nombre près, et les cotes, accrochées par rang d'entité, ne sautent pas.
+      try{if(occt.BinTools&&occt.BinTools.Write)O=mepHlrOctets(model);}catch(e){O=null;}
+      if(O&&(C||mepHlrPre.size)){
+        const key=mepHlrCle(O.h,axes,cats);
+        if(C){
+          C.octetsVues=(C.octetsVues||0)+O.brep.length; // taille vue par vue, même si deux vues partagent un calcul
+          if(!mepHlrPre.has(key)&&!C.some(j=>j.key===key))C.push({key,brep:O.brep,axes,cats:cats.map(c=>[c[0],c[1]])});
+          return true; // relevé seulement : la vue sera calculée au retour des workers
+        }
+        const r=mepHlrPre.get(key);
+        if(r&&r!=='ko')lots=r.lots.map(occHlrDepaquet);
+      }
+      if(C)return true;
+      if(!lots){
+        let relu=null;
+        try{if(O)relu=occBinRead(O.brep);}catch(e){relu=null;}
+        if(relu){if(owned){try{model.delete();}catch(e){}}model=relu;owned=true;}
+        hlr=new occt.HLRAppli_ReflectLines(model);
+        hlr.SetAxes(axes[0],axes[1],axes[2],0,0,0,axes[3],axes[4],axes[5]);
+        hlr.Perform();
+        const T=occt.HLRBRep_TypeOfResultingEdge;
+        lots=cats.map(c=>occHlrEdgePts(hlr.GetCompoundOf3dEdges(T[c[0]],!!c[1],true)));
+      }
       const tanTest=mepHlrTanIdx(view,shapes);
       const tanV=tanTest?{test:tanTest,kind:view.tangent?'tangent':null}:null; // V0.86.0 : grise aussi en coupe
       const tanH=tanTest?{test:tanTest,kind:view.tangent?'hidden':null}:null;
-      n+=mepHlrAddEdge(geo,added,view,hlr.GetCompoundOf3dEdges(T.HLRBRep_Sharp,true,true),kindV,tanV);
-      n+=mepHlrAddEdge(geo,added,view,hlr.GetCompoundOf3dEdges(T.HLRBRep_OutLine,true,true),kindV);
-      if(view.tangent)n+=mepHlrAddEdge(geo,added,view,hlr.GetCompoundOf3dEdges(T.HLRBRep_Rg1Line,true,true),'tangent'); // V0.86.0 : tangentes grises dans les coupes aussi
-      if(mode==='dash'){
-        n+=mepHlrAddEdge(geo,added,view,hlr.GetCompoundOf3dEdges(T.HLRBRep_Sharp,false,true),'hidden',tanH);
-        n+=mepHlrAddEdge(geo,added,view,hlr.GetCompoundOf3dEdges(T.HLRBRep_OutLine,false,true),'hidden');
-        if(view.tangent)n+=mepHlrAddEdge(geo,added,view,hlr.GetCompoundOf3dEdges(T.HLRBRep_Rg1Line,false,true),'hidden');
-      }
+      let n=0;
+      cats.forEach((c,i)=>{n+=mepHlrEmit(geo,added,view,lots[i],c[2],c[3]==='v'?tanV:c[3]==='h'?tanH:null);});
       return n>0;
-    }catch(e){return false;}
+    }catch(e){return !!C;} // relevé : jamais le repli maillage, coûteux et inutile ici
     finally{
       try{hlr&&hlr.delete();}catch(e){}
       if(owned){try{model&&model.delete();}catch(e){}}
     }
   }
+  function mepHlrRelever(views,ids){
+    // Calculs d'arêtes cachées que demanderaient ces vues (hors cache) → [{key,brep,axes,cats}]
+    const jobs=[],ver=mepGeomKey();
+    views.forEach(v=>{
+      const c=mepGeoCache.get(v.id);
+      try{if(c&&c.ver===ver&&c.sig===mepViewSig(v))return;}catch(e){}
+      mepHlrCollecte=jobs;
+      if(ids)ids.add(v.id);
+      try{mepBuildGeo(v);}catch(e){}
+      finally{mepHlrCollecte=null;}
+    });
+    return jobs;
+  }
+  let mepHlrRun=null; // relevé confié aux workers, en attente de leurs réponses
+  let mepHlrRetour=false; // rendu qui suit le retour des workers : jamais de nouveau départ (filet contre une boucle)
+  function mepHlrPrecalcul(){
+    // → true si les vues de la planche partent sur les workers (le rendu se refera à leur retour)
+    if(mepHlrRun)return true;
+    if(mepHlrRetour){mepHlrPourquoi='retour';return false;}
+    if(typeof hlrWkUsable!=='function'||!hlrWkUsable()){mepHlrPourquoi='hors';return false;}
+    if(typeof window!=='undefined'&&window.__mepSync){mepHlrPourquoi='sync';return false;}
+    const sh=mepSheet();
+    if(!sh||!sh.views||!sh.views.length){mepHlrPourquoi='vide';return false;}
+    // vues à recalculer déjà mesurées, rapides en tout : la page les calcule sans relevé (petites pièces)
+    {
+      const ver=mepGeomKey();let tot=0,inconnue=false,une=false;
+      sh.views.forEach(v=>{
+        const c=mepGeoCache.get(v.id);
+        try{if(c&&c.ver===ver&&c.sig===mepViewSig(v))return;}catch(e){}
+        une=true;
+        const d=mepVueDuree.get(v.id);if(d==null)inconnue=true;else tot+=d;
+      });
+      if(!une||(!inconnue&&tot<MEP_WK_PETIT)){mepHlrPourquoi='petit';return false;}
+    }
+    const t0=performance.now();
+    const ids=new Set();
+    const jobs=mepHlrRelever(sh.views,ids);
+    if(!jobs.length){mepHlrPourquoi='rien';return false;}
+    // petite planche : démarrer un worker coûte plus que le calcul (Griffe : 72 ms sur la page, ~1 s de démarrage)
+    {
+      let oct=jobs.octetsVues||0,un=0;jobs.forEach(j=>{un=Math.max(un,j.brep.length);});
+      const chauds=typeof hlrWks!=='undefined'&&hlrWks.some(w=>w.ready);
+      mepHlrOct=oct;
+      if(oct<(chauds?MEP_WK_OCTETS_CHAUD:MEP_WK_OCTETS)&&un<MEP_WK_OCTETS_UN){mepHlrPourquoi='leger';return false;}
+    }
+    const run=mepHlrRun={n:jobs.length,t0,relev:performance.now()-t0,ids};
+    try{mepBusyShow();}catch(e){}
+    try{mepStatus('Mise à jour du plan… ('+jobs.length+' vue'+(jobs.length>1?'s':'')+' sur '+Math.min(jobs.length,hlrWkNb())+' cœur'+(Math.min(jobs.length,hlrWkNb())>1?'s':'')+')');}catch(e){}
+    Promise.all(jobs.map(j=>occHlrWk(j.brep,j.axes,j.cats).then(r=>{mepHlrPre.set(j.key,r||'ko');}))).then(()=>{
+      run.calc=performance.now()-t0;
+      mepHlrRun=null;
+      mepHlrRetour=true;
+      try{mepRender();}catch(e){try{console.warn(e);}catch(_){}}
+      try{if(mepSt.open)mepSideShow();}catch(e){}
+      mepHlrRetour=false;
+      mepHlrPre.clear();
+      run.total=performance.now()-t0;
+      delete run.ids;
+      mepHlrDernier=run;
+      try{mepBusyHide();}catch(e){}
+    });
+    return true;
+  }
+  let mepHlrDernier=null,mepHlrPourquoi='',mepHlrOct=0; // diagnostic : dernière raison de calculer sur la page ; mesures du dernier précalcul (tests, diagnostic)
   /* 2026-10-22-009 : REPRÉSENTATION DES FILETAGES (ISO 6410-1) des perçages taraudés
      (« les représentations de filetages ISO dans les vues ») — le trou est percé au Ø du
      foret (Ø mineur, tracé par le HLR) ; on ajoute la convention :
@@ -1195,6 +1312,7 @@
     return changed?out:els;
   }
   function mepFinishGeo(geo,view,cutShapes){
+    if(mepHlrCollecte)return geo; // V0.99.50 : relevé pour les workers — ni rendu 3D, ni finitions (refaits au rendu)
     try{geo.els=mepMergeCollinear(geo.els);}catch(e){}
     try{geo.els=mepDropHiddenUnder(geo.els);}catch(e){try{console.warn('mep cachées',e);}catch(e2){}}
     try{const th=mepThreadEls(view);if(th.length)geo.els=geo.els.concat(th);}catch(e){try{console.warn('mep filetage',e);}catch(e2){}}

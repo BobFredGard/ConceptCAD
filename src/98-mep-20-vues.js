@@ -19,6 +19,9 @@
        if(view!==dv&&view.detail)els=mepClipDetail(els,view.detail);
        return{els,hatch:[],src:'dxf'};}}
     const geo={els:[],hatch:[],src:''};
+    // V0.99.50 : relevé des calculs pour les workers (mepHlrRelever) — une perspective n'en demande pas
+    // (rayons sur le maillage) : la sauter, elle est calculée une seule fois, au rendu (SIRAP-14-001 : 0,8 s)
+    if(mepHlrCollecte&&mepPerspOf(view))return geo;
     const b=mepBasisOf(view);view.dir=b.dir;view.u=b.u;view.v=b.v;
     const list=mepMeshesOf(view);
     if(!list.length){geo.src='aucun corps';return geo;}

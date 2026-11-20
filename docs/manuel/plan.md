@@ -23,6 +23,7 @@ Le retour dans le Plan est immédiat tant que la géométrie de la pièce n’a 
 - **Arêtes exactes** du noyau (HLR OCCT), y compris pour un STEP importé.
   - **Arêtes cachées** (« cachées en pointillé ») : seules celles qui ne sont pas recouvertes par un trait visible sont dessinées (V0.97.1) ; sans cachées choisies, elles ne sont pas extraites du calcul.
   - **Assemblage rapide** : chaque pièce n'est préparée qu'une fois, quel que soit son nombre d'occurrences (V0.97.1).
+  - **Calcul sur plusieurs cœurs** : quand la planche est lourde, chaque vue est calculée sur son propre cœur du processeur, toutes en même temps ; l'écran reste utilisable pendant « Mise à jour du plan… » et les vues sont exactement les mêmes. Barquette SIRAP-14-001 : écran figé 11,6 s → 0,1 s ; Cavité Usinage (9 vues) : 1,2 s → 0,2 s. Une petite planche reste calculée directement, plus vite qu'un cœur ne démarre (V0.99.50).
   - **Tangentes grises comme dans la 3D**, dans les vues comme dans les coupes (même les raccords que le noyau croit vifs).
   - Perspective et cavalière.
   - **Rendu réaliste** des vues au choix ; en assemblage, chaque pièce avec son matériau et sa texture de rendu.
