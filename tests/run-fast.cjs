@@ -138,6 +138,7 @@ const SUITES = [
   'test_esquisse_texte',
   'test_survol_grande_face',
   'test_maillage_parallele',
+  'test_points_controle_retour',
   'test_index_rayons',
   'test_facettes_par_face',
   'test_fao_copie_tournee',
