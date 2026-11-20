@@ -49,23 +49,50 @@ function faoChainSegs(segs,tol){
   const key=function(p){return p.p;};
   const deq=function(a,b){ const dx=a[0]-b[0],dy=a[1]-b[1],dz=a[2]-b[2];
     return dx*dx+dy*dy+dz*dz<t2*t2; };
+  // V0.99.47 : index des extrémités par cases de côté t2 (voisines comprises) — la
+  // recherche relisait TOUS les segments à chaque maillon (O(n²) : 22,7 s sur les
+  // 3 niveaux de la 2e ébauche de SIRAP-14-002). Même choix qu'avant : le segment
+  // libre de plus petit indice qui touche un bout, puis le même ordre des 4 tests.
+  // Cases de côté 2·t2 : un point à moins de t2 de p est dans 1 à 2 cases par axe.
+  // Clé = mélange entier des 3 numéros (collisions sans effet : deq tranche).
+  const cs=2*t2,cells=new Map();
+  const hk=function(i,j,l){return (Math.imul(i|0,73856093)^Math.imul(j|0,19349663)^Math.imul(l|0,83492791))|0;};
+  // case = {k : indices croissants, d : début — tout ce qui précède est déjà pris}
+  const put=function(p,k){const c=hk(Math.floor(p[0]/cs),Math.floor(p[1]/cs),Math.floor(p[2]/cs));const L=cells.get(c);
+    if(!L)cells.set(c,{k:[k],d:0});else if(L.k[L.k.length-1]!==k)L.k.push(k);};
+  for(let k=0;k<segs.length;k++){put(key(segs[k][0]),k);put(key(segs[k][1]),k);}
+  const near=function(p,best){
+    const x0=Math.floor((p[0]-t2)/cs),x1=Math.floor((p[0]+t2)/cs),y0=Math.floor((p[1]-t2)/cs),y1=Math.floor((p[1]+t2)/cs),
+      z0=Math.floor((p[2]-t2)/cs),z1=Math.floor((p[2]+t2)/cs);
+    if(!(x1-x0<=2&&y1-y0<=2&&z1-z0<=2))return best; // coordonnée non finie : aucun point n'en est proche
+    for(let a=x0;a<=x1;a++)for(let b=y0;b<=y1;b++)for(let c=z0;c<=z1;c++){
+      const L=cells.get(hk(a,b,c));if(!L)continue;
+      const K=L.k;
+      while(L.d<K.length&&used[K[L.d]])L.d++;
+      for(let i=L.d;i<K.length;i++){const k=K[i];
+        if(k>=best)break;
+        if(used[k])continue;
+        if(deq(p,key(segs[k][0]))||deq(p,key(segs[k][1]))){best=k;break;}}
+    }
+    return best;
+  };
   for(let s=0;s<segs.length;s++){
     if(used[s])continue;
     used[s]=true;
-    const chain=[segs[s][0],segs[s][1]];
+    const back=[segs[s][0],segs[s][1]],front=[]; // chaîne = front inversé + back
     let grew=true, guard=0;
     while(grew&&guard++<100000){
       grew=false;
-      for(let k=0;k<segs.length;k++){
-        if(used[k])continue;
-        const A=segs[k][0], B=segs[k][1];
-        if(deq(key(chain[chain.length-1]),key(A))){chain.push(B);used[k]=true;grew=true;break;}
-        if(deq(key(chain[chain.length-1]),key(B))){chain.push(A);used[k]=true;grew=true;break;}
-        if(deq(key(chain[0]),key(B))){chain.unshift(A);used[k]=true;grew=true;break;}
-        if(deq(key(chain[0]),key(A))){chain.unshift(B);used[k]=true;grew=true;break;}
-      }
+      const tail=back[back.length-1],head=front.length?front[front.length-1]:back[0];
+      const k=near(key(head),near(key(tail),segs.length));
+      if(k>=segs.length)break;
+      const A=segs[k][0], B=segs[k][1];
+      if(deq(key(tail),key(A))){back.push(B);used[k]=true;grew=true;}
+      else if(deq(key(tail),key(B))){back.push(A);used[k]=true;grew=true;}
+      else if(deq(key(head),key(B))){front.push(A);used[k]=true;grew=true;}
+      else if(deq(key(head),key(A))){front.push(B);used[k]=true;grew=true;}
     }
-    chains.push(chain);
+    chains.push(front.reverse().concat(back));
   }
   // 2026-10-12-002 : longueur d'arc par chaîne (somme des segments), attachée
   // au tableau retourné — sert au filtre d'incohérence (fragments trop courts).
