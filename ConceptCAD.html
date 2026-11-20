@@ -410,7 +410,7 @@ input[type=range]{accent-color:var(--primary);width:100%}
  * peut changer sans rien casser. CACHE_VER (parcours FAO) reste indépendant.
  */
 
-const APP_VER='V0.99.45';
+const APP_VER='V0.99.46';
 try{console.log('[ConceptCAD] version '+APP_VER);}catch(e){}
 try{var mfSv=document.getElementById('mfSplashVer');if(mfSv)mfSv.textContent=APP_VER;}catch(e){} // écran de démarrage
 
@@ -53877,7 +53877,9 @@ function faoWkPrincipal(){
   };
   // Le cache vit sur le fil principal : ici la clé ne sert qu'à passer par le chemin de rangement
   faoOpMovesKey=function(){return '1';};
-  faoOpMovesHit=function(){return null;};
+  // V0.99.46 : brut restant — parcours des opérations précédentes, tels que rangés par la page
+  let prec=null;
+  faoOpMovesHit=function(op){ const mv=prec&&op&&op.id?prec[op.id]:null; return mv?{key:'1',mv:mv}:null; };
   faoMovesSave=function(){};
   let capte=null,boites=null;
   faoOpMovesStore=function(op,cle,mv){capte=mv;};
@@ -53899,6 +53901,7 @@ function faoWkPrincipal(){
         self.__wkTouche('doc.'+k);
       }});
       boites=m.boites;
+      prec=m.prec||null;
       bodies=(m.corps||[]).map(function(c){
         return corpsRecu({id:c.id,kind:c.kind,ghost:c.ghost,visible:c.visible,cached:c.cached,
           __m:{bas:lire(c.bas),mid:c.mid===undefined?undefined:lire(c.mid),fin:c.fin===undefined?undefined:lire(c.fin),
@@ -54046,9 +54049,30 @@ function faoWkAccepte(op,job){
   // démarrage d'un worker. Les corps FAO (murs) passent par une triangulation THREE : calcul normal.
   if(!op||op.on===false||!faoMeshOp(op)||op.type==='chamfer'||faoContourProfil(op))return false;
   if(faoWallList(job).length)return false;
-  // V0.99.0 : brut restant — lit les parcours des opérations précédentes : calcul normal, après elles
-  if(faoRestOn(op))return false;
+  // V0.99.0 : brut restant — lit les parcours des opérations précédentes. V0.99.46 : accepté,
+  // lancé quand elles sont finies, avec leurs parcours joints (faoWkPrecOps / faoWkPrec)
   return true;
+}
+function faoWkPrecOps(op,job){
+  // Opérations précédentes dont le parcours sert au brut restant de `op` ([] sinon)
+  if(!faoRestOn(op))return [];
+  const out=[];
+  try{
+    faoRestPrev(faoRestBase(job),op).forEach(function(E){ if(E&&E.op&&out.indexOf(E.op)<0)out.push(E.op); });
+  }catch(e){ return null; }
+  return out;
+}
+function faoWkPrec(op,job){
+  // {id: parcours rangé} des opérations précédentes ; null si l'un manque (calcul normal)
+  const L=faoWkPrecOps(op,job);
+  if(L===null)return null;
+  const r={};
+  for(let i=0;i<L.length;i++){
+    const h=faoOpMovesHit(L[i]);
+    if(!h||!h.mv||!L[i].id)return null;
+    r[L[i].id]=h.mv;
+  }
+  return r;
 }
 function faoWkNbCoeurs(){
   let n=4;
@@ -54083,6 +54107,18 @@ function faoWkRemplir(job,ops,estCaduc,surFlux,surAvance){
         return true;
       });
       if(!liste.length)return fini(0);
+      // Brut restant : les précédentes que les workers ne font pas (2.5D, contours : courtes)
+      // sont calculées ici d'abord ; leurs parcours partiront avec l'opération.
+      liste.forEach(function(o){
+        const L=faoWkPrecOps(o,job)||[];
+        L.forEach(function(q){
+          if(liste.indexOf(q)>=0)return;
+          try{
+            const k=faoOpMovesKey(q,job),h=faoOpMovesHit(q);
+            if(k!==null&&!(h&&h.key===k)){ if(q.stale===true)q.stale=false; faoOpMoves(q,job); }
+          }catch(e){}
+        });
+      });
       corps=faoWkCorps(liste,job);
       donnees=faoWkDocData();
     }catch(e){ return fini(0); }
@@ -54090,6 +54126,12 @@ function faoWkRemplir(job,ops,estCaduc,surFlux,surAvance){
     const file=liste.slice();
     const total=liste.length;
     let enCours=0,finies=0,rangees=0,stop=false;
+    // V0.99.46 : une opération en brut restant attend les précédentes confiées aux workers
+    const faites=new Set(),ratees=new Set();
+    const attend=new Map();
+    liste.forEach(function(o){ attend.set(o,(faoWkPrecOps(o,job)||[]).filter(function(q){ return liste.indexOf(q)>=0; })); });
+    const pret=function(o){ return (attend.get(o)||[]).every(function(q){ return faites.has(q); }); };
+    const perdue=function(o){ return (attend.get(o)||[]).some(function(q){ return ratees.has(q); }); };
     const nb=Math.min(faoWkNbCoeurs(),total);
     // Un autre rafraîchissement a pris la main : on n'attend pas la fin d'une opération longue
     const veille=setInterval(function(){ if(estCaduc())suite(); },250);
@@ -54107,8 +54149,18 @@ function faoWkRemplir(job,ops,estCaduc,surFlux,surAvance){
         miens=[];
         return termine();
       }
-      while(enCours<nb&&file.length)lancer(file.shift());
-      if(!enCours&&!file.length)termine();
+      // précédente ratée : calcul normal, après elle (boucle habituelle)
+      for(let i=file.length-1;i>=0;i--)if(perdue(file[i])){ ratees.add(file[i]); file.splice(i,1); finies++; }
+      while(enCours<nb){
+        const i=file.findIndex(pret);
+        if(i<0)break;
+        lancer(file.splice(i,1)[0]);
+      }
+      if(!enCours){
+        // rien en cours et plus rien de prêt : ce qui reste repasse au calcul normal
+        while(file.length){ ratees.add(file.shift()); finies++; }
+        termine();
+      }
     };
     const lancer=function(op){
       let w=null;
@@ -54120,10 +54172,11 @@ function faoWkRemplir(job,ops,estCaduc,surFlux,surAvance){
       enCours++;
       faoWkActifs.push(w);
       miens.push(w);
-      let clos=false;
+      let clos=false,reussi=false;
       const clore=function(){
         if(clos)return;
         clos=true;
+        (reussi?faites:ratees).add(op);
         try{ w.terminate(); }catch(e){}
         faoWkActifs=faoWkActifs.filter(function(x){return x!==w;});
         miens=miens.filter(function(x){return x!==w;});
@@ -54154,14 +54207,19 @@ function faoWkRemplir(job,ops,estCaduc,surFlux,surAvance){
               faoOpMovesStore(op,k,m.mv);
               faoMovesSave(job,op,k,m.mv);
               op.stale=false;
-              rangees++;
+              rangees++; reussi=true;
             }
           }catch(e){}
           clore();
         }
       };
+      let prec=null;
+      if(faoRestOn(op)){
+        prec=faoWkPrec(op,job);
+        if(!prec){ clore(); return; } // une précédente manque : calcul normal
+      }
       try{
-        w.postMessage({t:'job',setupId:job.id,opId:op.id,flux:!!surFlux&&op.hidden!==true,doc:donnees,corps:faoWkCorpsPour(corps,op,job),boites:faoWkBoites(job,op)});
+        w.postMessage({t:'job',setupId:job.id,opId:op.id,flux:!!surFlux&&op.hidden!==true,doc:donnees,corps:faoWkCorpsPour(corps,op,job),boites:faoWkBoites(job,op),prec:prec});
       }catch(e){
         try{ console.warn('[FAO multicœur] envoi impossible : '+((e&&e.message)||e)+' — calcul normal'); }catch(e2){}
         clore();
@@ -54652,7 +54710,7 @@ function faoClearPreview(){
   try{
     if(faoPrevGroup&&typeof scene!=='undefined'&&scene){
       faoDel3D(faoPrevGroup);
-      // V0.99.40 : matériaux libérés aussi (un par trait épais — ils s'accumulaient à chaque redessin)
+      // V0.99.46 : matériaux libérés aussi (un par trait épais — ils s'accumulaient à chaque redessin)
       try{ faoPrevGroup.traverse(function(o){
         if(o.geometry&&o.geometry.dispose)o.geometry.dispose();
         if(o.material&&o.material.dispose)o.material.dispose();
@@ -54662,7 +54720,7 @@ function faoClearPreview(){
   faoPrevGroup=null;
   faoPrevOps=null; faoPrevSig=null; faoPrevStreamG=null;
 }
-/* ----- V0.99.40 : afficher / masquer UNE opération sans tout redessiner -----
+/* ----- V0.99.46 : afficher / masquer UNE opération sans tout redessiner -----
    Avant, chaque clic sur « Masquer / Afficher » refaisait toute la séquence du
    posage (carte de la matière restante 1500 × 1500, liaisons entre passes,
    découpage et envoi à la carte graphique de TOUTES les opérations) : plusieurs
@@ -54929,14 +54987,29 @@ function faoRegenSetups(){
 function faoRegenOpsOf(s){
   return ((s&&s.ops)||[]).filter(function(op){ return op&&op.on!==false&&!faoIsPattern(op); });
 }
+/* V0.99.46 (demande de Fred) : pendant « Tout régénérer », chaque opération à
+   recalculer garde son triangle ⚠ jusqu'à ce que SON parcours soit fini — avant,
+   la purge les retirait tous d'emblée, alors que le calcul durait encore ~2 min.
+   Cache vidé : stale=true ne fait plus servir l'ancien tracé (faoOpMovesIt). */
+let faoRegenAttente=null; // Set des opérations en attente de calcul (Tout régénérer)
 function faoRegenPurge(){
   // Jette les parcours en mémoire des seules opérations à régénérer.
+  faoRegenAttente=new Set();
   faoRegenSetups().forEach(function(s){
     faoRegenOpsOf(s).forEach(function(op){
       try{ if(faoOpMovesMap)faoOpMovesMap.delete(op); }catch(e){}
-      if(op.stale===true)op.stale=false;
+      op.stale=true; faoRegenAttente.add(op);
     });
   });
+  faoRegenTick();
+}
+function faoRegenTick(){
+  // Une opération vient de finir : l'arbre retire son triangle.
+  try{ if(typeof faoRenderTree==='function')faoRenderTree(); }catch(e){}
+}
+function faoRegenEnd(){
+  faoRegenAttente=null;
+  faoRegenTick();
 }
 function faoRegenOn(s,fn){
   // Calcul d'un posage qui n'est pas celui affiché : il devient le posage de
@@ -54969,8 +55042,9 @@ function faoPreviewGenerate(){
     faoRegenOpsOf(s).forEach(function(op){ faoRegenOn(s,function(){ faoOpMoves(op,s); }); });
   });
   const n=faoRefreshPreview('calcule');
+  faoRegenEnd();
   faoTouch();
-  faoPrevStale=false; faoStaleUI();
+  faoPrevStale=faoStaleCount()>0; faoStaleUI();
   try{ if(typeof faceEl!=='undefined'&&faceEl)faceEl.textContent='FAO : '+n+' points de parcours.'+(n?'':' Aucune trajectoire.'); }catch(e){}
   return n;
 }
@@ -55004,6 +55078,7 @@ async function faoRefreshPreviewStream(){
     fluxOp.set(op,sp.prev);
     faoPrevAdd(faoPrevOpGroup(op,g),sp); // opération masquée : sous-groupe éteint, « Afficher » l'allume
   },function(n,total,coeurs){
+    if(n>0)faoRegenTick(); // une opération finie sur un cœur : son triangle s'en va
     if(typeof faceEl!=='undefined'&&faceEl)faceEl.textContent='FAO : génération sur '+coeurs+' cœur'+(coeurs>1?'s':'')+', '+n+'/'+total+' opération'+(total>1?'s':'')+' terminée'+(n>1?'s':'')+'…';
   });
   for(let i=0;i<ops.length;i++){
@@ -55034,6 +55109,7 @@ async function faoRefreshPreviewStream(){
           try{ faoPrevAdd(faoPrevOpGroup(op,g),faoSegSplit(mv,faoSegClipper(op,job))); }catch(e){}
       }
     }catch(e){}
+    faoRegenTick();
     await faoYieldUI();
   }
   // V0.96.6 : puis les autres posages actifs (non gelés), rangés en mémoire sans
@@ -55045,6 +55121,7 @@ async function faoRefreshPreviewStream(){
     let pr=null;
     faoRegenOn(s,function(){
       pr=faoWkRemplir(s,sops,function(){ return tok!==faoStreamTok; },null,function(n,total,coeurs){
+        if(n>0)faoRegenTick();
         dit(n+'/'+total+' opération'+(total>1?'s':'')+' sur '+coeurs+' cœur'+(coeurs>1?'s':'')+'…');
       });
     });
@@ -55053,6 +55130,7 @@ async function faoRefreshPreviewStream(){
       if(tok!==faoStreamTok)return -1;
       dit('génération '+(i+1)+'/'+sops.length+'…');
       faoRegenOn(s,function(){ faoOpMoves(sops[i],s); });
+      faoRegenTick();
       await faoYieldUI();
     }
   }
@@ -55082,9 +55160,10 @@ async function faoPreviewGenerateAsync(){
     n=-1;
     try{ if(typeof console!=='undefined'&&console&&console.log)console.log('faoPreviewGenerateAsync',e); }catch(e2){}
   }
+  faoRegenEnd();
   if(n<0)return 0; // supersede : un autre rafraîchissement a déjà peint
   faoTouch();
-  faoPrevStale=false; faoStaleUI();
+  faoPrevStale=faoStaleCount()>0; faoStaleUI();
   try{ if(typeof faceEl!=='undefined'&&faceEl)faceEl.textContent='FAO : '+n+' points de parcours.'+(n?'':' Aucune trajectoire.'); }catch(e){}
   return n;
 }
@@ -58749,7 +58828,7 @@ function faoStaleScan(){
       ((s&&s.ops)||[]).forEach(function(o){
         if(!o)return;
         if(faoIsPattern(o)){ o.stale=false; return; } // V0.95.3 : répétition = copies des sources, rien à générer
-        // V0.99.40 : opération désactivée (○, ou posage gelé) = aucun parcours à produire : pas de ⚠.
+        // V0.99.46 : opération désactivée (○, ou posage gelé) = aucun parcours à produire : pas de ⚠.
         // Réactivée, faoChanged refait ce relevé et pose le triangle si son parcours manque.
         if(o.on===false){ o.stale=false; return; }
         // Prima le maillage AVANT la cle (comme faoOpMoves) : la 1re lecture
@@ -58876,6 +58955,8 @@ async function faoRegenOpStream(setupId,opId){
   // d'abord (les autres restent), puis chaque niveau calculé apparaît ; le rendu
   // canonique (lecture seule) remplace enfin les traits provisoires. Hors du posage
   // affiché, opération masquée ou 2.5D (instantanée) : chemin synchrone.
+  // V0.99.46 : « Tout régénérer » en cours la calcule déjà — ne pas l'interrompre.
+  if(typeof faoRegenAttente!=='undefined'&&faoRegenAttente)return 0;
   let s=null,o=null;
   try{
     (faoRoot().setups||[]).forEach(function(x){
@@ -58955,7 +59036,7 @@ function faoChanged(){
   else faoStaleScan();            // 1) qui doit être regeneré -> icônes !
   faoTouch();
   if(!attend)faoRefreshPreview(); // 2) redraw : sert l'ancien trace pour les perimes
-  // V0.99.40 : périmé seulement si un parcours manque vraiment (avant : TOUJOURS, d'où
+  // V0.99.46 : périmé seulement si un parcours manque vraiment (avant : TOUJOURS, d'où
   // « ⚠ Tout régénérer » et export bloqué après un gel, un ●/○, un renommage…)
   faoPrevStale=attend?true:!faoPrevAllReady();
   faoRefreshFaoUI();
@@ -58985,7 +59066,7 @@ function faoVisibleChanged(){
     faoRefreshFaoUI();
     return;
   }
-  // V0.99.40 : le dessin en place vaut encore -> on allume / éteint le sous-groupe de
+  // V0.99.46 : le dessin en place vaut encore -> on allume / éteint le sous-groupe de
   // l'opération (instantané) ; sinon redessin complet en lecture seule, comme avant.
   let n=faoPrevToggleFast();
   if(n<0)n=faoRefreshPreview(true);
@@ -59427,6 +59508,13 @@ function faoRenderTree(){
           const sk=document.createElement('span');
           sk.className='stalei';
           sk.textContent=String.fromCharCode(0x26a0);
+          const enCours=typeof faoRegenAttente!=='undefined'&&faoRegenAttente&&faoRegenAttente.has(op);
+          if(enCours){
+            // « Tout régénérer » en cours : le triangle reste jusqu'à la fin de CETTE opération
+            sk.title='Parcours en cours de calcul (Tout régénérer) : le triangle disparaîtra quand cette opération sera finie.';
+            sk.style.opacity='0.6';
+            sk.onclick=function(ev){ try{ if(ev&&ev.stopPropagation)ev.stopPropagation(); }catch(e){} };
+          }else{
           const why=faoStaleWhy(op,s);
           sk.title='Parcours à régénérer : CETTE opération a changé. Clic = ne régénérer'
             +' que cette opération (le bouton « Tout régénérer » régénère tout).'
@@ -59435,6 +59523,7 @@ function faoRenderTree(){
             try{ if(ev&&ev.stopPropagation)ev.stopPropagation(); }catch(e){}
             faoRegenOpStream(s.id,op.id);
           };
+          }
           d.appendChild(sk);
         }
         d.appendChild(mb);

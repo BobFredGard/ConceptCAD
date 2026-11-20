@@ -246,7 +246,7 @@ function faoStaleScan(){
       ((s&&s.ops)||[]).forEach(function(o){
         if(!o)return;
         if(faoIsPattern(o)){ o.stale=false; return; } // V0.95.3 : répétition = copies des sources, rien à générer
-        // V0.99.40 : opération désactivée (○, ou posage gelé) = aucun parcours à produire : pas de ⚠.
+        // V0.99.46 : opération désactivée (○, ou posage gelé) = aucun parcours à produire : pas de ⚠.
         // Réactivée, faoChanged refait ce relevé et pose le triangle si son parcours manque.
         if(o.on===false){ o.stale=false; return; }
         // Prima le maillage AVANT la cle (comme faoOpMoves) : la 1re lecture
@@ -373,6 +373,8 @@ async function faoRegenOpStream(setupId,opId){
   // d'abord (les autres restent), puis chaque niveau calculé apparaît ; le rendu
   // canonique (lecture seule) remplace enfin les traits provisoires. Hors du posage
   // affiché, opération masquée ou 2.5D (instantanée) : chemin synchrone.
+  // V0.99.46 : « Tout régénérer » en cours la calcule déjà — ne pas l'interrompre.
+  if(typeof faoRegenAttente!=='undefined'&&faoRegenAttente)return 0;
   let s=null,o=null;
   try{
     (faoRoot().setups||[]).forEach(function(x){
@@ -452,7 +454,7 @@ function faoChanged(){
   else faoStaleScan();            // 1) qui doit être regeneré -> icônes !
   faoTouch();
   if(!attend)faoRefreshPreview(); // 2) redraw : sert l'ancien trace pour les perimes
-  // V0.99.40 : périmé seulement si un parcours manque vraiment (avant : TOUJOURS, d'où
+  // V0.99.46 : périmé seulement si un parcours manque vraiment (avant : TOUJOURS, d'où
   // « ⚠ Tout régénérer » et export bloqué après un gel, un ●/○, un renommage…)
   faoPrevStale=attend?true:!faoPrevAllReady();
   faoRefreshFaoUI();
@@ -482,7 +484,7 @@ function faoVisibleChanged(){
     faoRefreshFaoUI();
     return;
   }
-  // V0.99.40 : le dessin en place vaut encore -> on allume / éteint le sous-groupe de
+  // V0.99.46 : le dessin en place vaut encore -> on allume / éteint le sous-groupe de
   // l'opération (instantané) ; sinon redessin complet en lecture seule, comme avant.
   let n=faoPrevToggleFast();
   if(n<0)n=faoRefreshPreview(true);
@@ -924,6 +926,13 @@ function faoRenderTree(){
           const sk=document.createElement('span');
           sk.className='stalei';
           sk.textContent=String.fromCharCode(0x26a0);
+          const enCours=typeof faoRegenAttente!=='undefined'&&faoRegenAttente&&faoRegenAttente.has(op);
+          if(enCours){
+            // « Tout régénérer » en cours : le triangle reste jusqu'à la fin de CETTE opération
+            sk.title='Parcours en cours de calcul (Tout régénérer) : le triangle disparaîtra quand cette opération sera finie.';
+            sk.style.opacity='0.6';
+            sk.onclick=function(ev){ try{ if(ev&&ev.stopPropagation)ev.stopPropagation(); }catch(e){} };
+          }else{
           const why=faoStaleWhy(op,s);
           sk.title='Parcours à régénérer : CETTE opération a changé. Clic = ne régénérer'
             +' que cette opération (le bouton « Tout régénérer » régénère tout).'
@@ -932,6 +941,7 @@ function faoRenderTree(){
             try{ if(ev&&ev.stopPropagation)ev.stopPropagation(); }catch(e){}
             faoRegenOpStream(s.id,op.id);
           };
+          }
           d.appendChild(sk);
         }
         d.appendChild(mb);
