@@ -8,7 +8,7 @@ sont sorties le 2026-09-30j.
 Code dans `src/` · livrable `fusion_mvp.html` (généré par `build.js`) · architecture et
 garde-fous en tête de `src/00-entete-et-outils.js`.
 
-**741 versions**, de `2026-09-28b` à `V0.99.54` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
+**742 versions**, de `2026-09-28b` à `V0.99.55` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
 comme dans le fichier d'origine.
 
 ---
@@ -8234,3 +8234,27 @@ Chrome sans carte graphique :
 Manuel Interface.
 
 **Test** : `tests/browser/recalcul-fond.spec.cjs`, nouveau cas : même pièce, même modification, avec et sans `?sansfondmaillage`. Les facettes d'affichage et d'outillage FAO sont identiques au bit près (Cavité Usinage, SIRAP-14-002). Un calcul entièrement neuf n'est pas la référence : la finesse d'affichage suit la boîte du solide, qui dépend des triangles déjà posés (écart déjà là avant cette version). CACHE_VER et FORMES_VER inchangés.
+
+## V0.99.55 - Mise en plan : planche fluide (molette, panoramique, survol)
+
+**Cause** : constat de Fred : « niveau mise en plan chargé, avec SIRAP-14-002 par exemple, le GPU n'est utilisé qu'à 1/3 et la page n'est pas fluide ». La planche « Plaque de Base » comptait 13 500 éléments SVG, un `<line>` par segment d'arête. Chaque cran de molette, chaque pas du panoramique et la plupart des survols la refaisaient entièrement (`mepRender` : 14 000 éléments recréés, 570 000 pendant 40 crans de molette). Le navigateur la repeignait ensuite en entier, sur un seul cœur ; la carte graphique attendait.
+
+**Correctif** :
+- `src/98-mep-61-traits-groupes.js` : les segments qui se suivent avec la même classe forment un seul `<path>`. Chaque segment reste un sous-chemin `M…L`, donc pointillés, bouts ronds et ordre de peinture sont inchangés. Cercles et arcs restent à part (l'export DXF les relit tels quels).
+- Le bloc de traits d'une vue est gardé tant que sa géométrie (`mepGeoOf`), sa position et son échelle ne changent pas : un rendu le raccroche au lieu de le refaire.
+- L'arête sélectionnée ou survolée est redessinée par-dessus, seule, avec la même classe qu'avant.
+- `mepVBDraw` : le survol d'une vue ne redessine que son cadre bleu.
+- `src/98-mep-81-geste-vue.js` : pendant la molette ou le panoramique, l'image déjà peinte est déplacée et agrandie par une transformation CSS de `#mepSvg`, composée par la carte graphique. La planche est redessinée nette une seule fois, 160 ms après le dernier cran ou au relâcher du bouton.
+- Pendant le geste, `mepPt`, `mepPxToMm` et les règles calculent avec le cadrage voulu. Le survol est repris à la fin du geste.
+- `?sanstraitsgroupes` et `?sansgeste` : comme V0.99.54.
+
+Chrome avec la carte graphique (ANGLE Direct3D 11), SIRAP-14-002 :
+- Éléments de la planche : 13 511 → 2 597.
+- 40 crans de molette : 41 longues tâches (3,3 s bloquées) → 0 ; pire image 168 → 61 ms (le redessin final) ; 60 images/s pendant le geste.
+- Panoramique : 66 longues tâches (5,0 s) → 0 ; pire image 118 → 22 ms.
+- Survol : 67 768 éléments recréés → 3 ; pire image 91 → 25 ms.
+- Cadrage final identique, export DXF identique. À l'œil la planche est la même : seules les nuances d'anticrénelage changent, là où deux traits se superposent.
+
+Manuel Plan.
+
+**Test** : `tests/browser/mep-fluide.spec.cjs` (Cavité Usinage, 3 551 → 401 éléments ; aussi passé sur SIRAP-14-002). Avec et sans `?sanstraitsgroupes&sansgeste`, on vérifie : DXF identique, même cadrage au centième de mm après molette et panoramique, image déplacée sans redessin pendant le geste, plus de transformation à la fin, beaucoup moins d'éléments recréés au survol. CACHE_VER et FORMES_VER inchangés.

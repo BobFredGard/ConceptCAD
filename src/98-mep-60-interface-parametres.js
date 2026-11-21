@@ -218,6 +218,7 @@
     docSansEtape(mepRenderCorps); // cotes et coupes qui suivent la pièce : pas d'étape d'annulation
   }
   function mepRenderCorps(){
+    mepVueGesteLache(); // geste de vue en cours : le rendu remet tout en place
     try{mepCutFollowAll(mepSheet());}catch(e){}
     mepAxGen++; // traits d'axe recalculés à chaque rendu
     const sh=mepSheet();
@@ -277,15 +278,7 @@
       try{mepDrawSk(mk,sh);}catch(e){} // (V0.3.12 : la planche, et non sh.sk — l'esquisse n'était jamais dessinée)
     }
     /* cadre bleu : sélection (plein) + survol (pointillé) */
-    const drawVB=(id,cls)=>{
-      const v=mepView(sh,id);
-      if(!v)return;
-      const b=mepViewSheetBBox(v);
-      if(b)mk('rect',{x:b.x-4,y:b.y-4,width:b.w+8,height:b.h+8,class:cls},mepGHlp);
-    };
-    if(mepSt.sel)drawVB(mepSt.sel,'mepVBSel');
-    if(mepSt.lot)mepSt.lot.views.forEach(id=>drawVB(id,'mepVBSel'));
-    if(mepSt.hovView)drawVB(mepSt.hovView,'mepVB');
+    mepVBDraw();
     /* brouillons d'interaction */
     try{mepDrawDraft(mk);}catch(e){}
     try{mepDrawSnapHov(mk);}catch(e){}
@@ -293,6 +286,28 @@
     try{mepLocDraw(mk);}catch(e){} // coupe locale sélectionnée : forme et points
     mepToolSync();
     mepRulers();
+  }
+  /* cadres bleus des vues, dans leur propre groupe : le survol d'une vue ne redessine qu'eux (V0.99.55) */
+  let mepGVB=null;
+  function mepVBDraw(){
+    if(!mepGHlp)return;
+    const sh=mepSheet();
+    if(!mepGVB)mepGVB=document.createElementNS(NS,'g');
+    mepGVB.innerHTML='';
+    if(mepGVB.parentNode!==mepGHlp)mepGHlp.appendChild(mepGVB);
+    const drawVB=(id,cls)=>{
+      const v=mepView(sh,id);
+      if(!v)return;
+      const b=mepViewSheetBBox(v);
+      if(!b)return;
+      const el=document.createElementNS(NS,'rect');
+      const at={x:b.x-4,y:b.y-4,width:b.w+8,height:b.h+8,class:cls};
+      for(const k in at)el.setAttribute(k,at[k]);
+      mepGVB.appendChild(el);
+    };
+    if(mepSt.sel)drawVB(mepSt.sel,'mepVBSel');
+    if(mepSt.lot)mepSt.lot.views.forEach(id=>drawVB(id,'mepVBSel'));
+    if(mepSt.hovView)drawVB(mepSt.hovView,'mepVB');
   }
   function mepSheetScaleLabel(sh){
     const vals=sh.views.filter(v=>v.scale!==1&&v.kind!=='detail').map(v=>v.scale); // un détail porte sa propre échelle
@@ -367,29 +382,9 @@
     if(g.thr3d&&g.thr3d.length)g.thr3d.forEach(t=>mk('line',{x1:+X(t[0]).toFixed(3),y1:+Y(t[1]).toFixed(3),x2:+X(t[2]).toFixed(3),y2:+Y(t[3]).toFixed(3),
       class:'mepThr3d'+(t[4]?' mepThr3dRing':'')}));
     mepDrawAxes(mk,v,sh);
-    /* la vue sélectionnée garde ses couleurs : seul le cadre bleu la signale */
-    const selEnt=(e,ei)=>(mepSt.entSel&&mepSt.entSel.some(s=>
-      s.vid===v.id&&s.i===ei&&(!s.sig||s.sig===mepEntSig(e))))
-      ||(mepSt.intPick&&mepSt.intPick.vid===v.id&&mepSt.intPick.i===ei); // 1ʳᵉ entité d'une intersection
-    const hovEnt=(e,ei)=>mepSt.hovEnt&&mepSt.hovEnt.vid===v.id&&mepSt.hovEnt.i===ei
-      &&(!mepSt.hovEnt.sig||mepSt.hovEnt.sig===mepEntSig(e));
-    const cls=(e,ei)=>(e.k==='hidden'||e.k==='threadH'?'mepEnt mepHidden':e.k==='thread'?'mepEnt mepThread':e.k==='tangent'?'mepEnt mepTangent':e.k==='sect'?'mepEnt mepSect':e.k==='brk'?'mepEnt mepBrk':'mepEnt mepSharp')
-      +(selEnt(e,ei)?' mepSelEnt':(hovEnt(e,ei)?' mepHovEnt':''));
-    g.els.forEach((e,ei)=>{
-      if(e.t==='L')mk('line',{x1:+X(e.x1).toFixed(3),y1:+Y(e.y1).toFixed(3),x2:+X(e.x2).toFixed(3),y2:+Y(e.y2).toFixed(3),class:cls(e,ei)});
-      else if(e.t==='C')mk('circle',{cx:+X(e.cx).toFixed(3),cy:+Y(e.cy).toFixed(3),r:+(e.r*v.scale).toFixed(3),class:cls(e,ei)});
-      else if(e.t==='A'){
-        const x0=+X(e.cx+e.r*Math.cos(e.a0)).toFixed(3),y0=+Y(e.cy+e.r*Math.sin(e.a0)).toFixed(3);
-        const x1=+X(e.cx+e.r*Math.cos(e.a1)).toFixed(3),y1=+Y(e.cy+e.r*Math.sin(e.a1)).toFixed(3);
-        const rr=+(e.r*v.scale).toFixed(3);
-        const la=Math.abs(e.a1-e.a0)>Math.PI?1:0,sw=e.a1>e.a0?1:0;
-        mk('path',{d:'M'+x0+' '+y0+' A'+rr+' '+rr+' 0 '+la+' '+sw+' '+x1+' '+y1,class:cls(e,ei)});
-      }
-      else if(e.t==='P'&&e.pts&&e.pts.length>1){
-        for(let k=0;k+1<e.pts.length;k++)
-          mk('line',{x1:+X(e.pts[k][0]).toFixed(3),y1:+Y(e.pts[k][1]).toFixed(3),x2:+X(e.pts[k+1][0]).toFixed(3),y2:+Y(e.pts[k+1][1]).toFixed(3),class:cls(e,ei)});
-      }
-    });
+    /* traits de la vue : bloc gardé tant que la vue ne change pas (V0.99.55, 98-mep-61) ;
+       sélection et survol redessinés par-dessus, seuls */
+    mepEntsDraw(mk,v,g,X,Y);
     /* hachures */
     // détail d'une coupe : hachures rognées au cercle du détail
     const detClip=v.detail?[(()=>{const d=v.detail,c=[];for(let i=0;i<64;i++){const a=i*Math.PI/32;c.push([d.cx+d.r*Math.cos(a),d.cy+d.r*Math.sin(a)]);}return c;})()]:null;
