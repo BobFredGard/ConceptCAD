@@ -130,7 +130,7 @@ const FOND_BUDGET_MS=150;  // calcul plus court : pas de fond, aucun changement 
 const FOND_TRANCHE_MS=50;  // calcul enchaîné entre deux peintures, au moins (plus si la peinture est lente)
 let fondOff=false;
 try{fondOff=/[?&](mono|sansfond)\b/.test(String(location.search||''));}catch(e){}
-let fondN=0,fondActif=0,fondApres=[],fondDernier=null;
+let fondN=0,fondActif=0,fondApres=[],fondDernier=null,fondT0=0;
 function fondPossible(){
   try{
     if(fondOff||rebuildDepth||regenRun||!regenWarmUseful())return false;
@@ -167,17 +167,19 @@ function fondSonde(clone,cleOff){
   });
   return S.manque;
 }
-function* fondDerouler(mk,clone,force){
+function* fondDerouler(mk,clone,force,fant,fin){
   // un rejeu de préchauffe, une fonction par pas, sur la copie ; {attente} : suppression de face au calcul (21)
+  // fant (V0.99.54) : maillages des outils de découpe faits ici (occFantomeMemo, mêmes clés) — le rejeu final
+  // les reprend au lieu de les calculer d'un bloc (SIRAP-14-003, perçage n°2 : 215 ms d'écran figé en moins)
   let g=null,reprises=0;
   try{
     for(;;){
       if(!g)g=mk();
       let r;
-      const skip0=occThreadSkip,sf=occStepForce;
-      try{r=fondAvec(clone,()=>{occThreadSkip=true;if(force)occStepForce=true;return g.next();});}
-      finally{occThreadSkip=skip0;occStepForce=sf;}
-      if(r.done){g=null;if(r.value){try{occCleanup(r.value,null);}catch(e){}}return;}
+      const skip0=occThreadSkip,sf=occStepForce,fv=occFantomesVoulus;
+      try{r=fondAvec(clone,()=>{occThreadSkip=true;if(force)occStepForce=true;if(fant)occFantomesVoulus=true;return g.next();});}
+      finally{occThreadSkip=skip0;occStepForce=sf;occFantomesVoulus=fv;}
+      if(r.done){g=null;if(r.value){if(fin){try{fin(r.value);}catch(e){}}try{occCleanup(r.value,null);}catch(e){}}return;}
       // V0.94.6 (comme regenWarmRun) : la suite serait calculée sans la face supprimée, puis refaite
       if(typeof delWkPending==='function'&&delWkPending()&&reprises<3){
         try{g.return();}catch(e){}g=null;reprises++;
@@ -193,6 +195,7 @@ function* fondTache(upto){
   // 1. projections : sonde, préfixe manquant calculé, nouvelle sonde… ; 2. la timeline sur la copie réglée
   let clone=null,m0=null,deja=0;
   for(let tour=0;;tour++){
+    if(tour>0)yield {proj:true}; // V0.99.54 : peinture entre le préfixe calculé et la sonde suivante
     clone=fondClone();
     const m=fondSonde(clone,deja>0);
     if(m==null||tour>=FOND_TOURS_MAX)break;
@@ -202,7 +205,12 @@ function* fondTache(upto){
     yield* fondDerouler(()=>occFinalShapeGen(m,true),clone,true);
   }
   yield {proj:true};
-  yield* fondDerouler(()=>occFinalShapeGen(upto,true),clone,false);
+  // V0.99.54 (31-fond-maillage) : faces neuves de la pièce finie maillées ici, par paquets — seulement si le fond
+  // dure déjà (une petite modification finie dans le budget s'affiche tout de suite, comme avant)
+  let job=null;
+  yield* fondDerouler(()=>occFinalShapeGen(upto,true),clone,false,true,
+    FR=>{if(performance.now()-fondT0>=FOND_BUDGET_MS)job=fondMaillagePrend(FR);});
+  if(job){yield {maillage:true};yield* fondMaillageFait(job);}
 }
 function rebuildEdit(apres){
   // rebuild() d'une modification faite par l'utilisateur ; apres() quand la pièce affichée est à jour
@@ -216,7 +224,7 @@ function rebuildEdit(apres){
   try{ensureBodies();}catch(e){}
   try{(doc.sketches||[]).forEach(migrateSketch);}catch(e){}
   const upto=tlReplayCount();
-  const t0=performance.now();
+  const t0=performance.now();fondT0=t0;
   const budget=typeof window!=='undefined'&&window.__fondBudget!=null?+window.__fondBudget:FOND_BUDGET_MS;
   let T=fondTache(upto),fini=false;
   try{
@@ -249,7 +257,9 @@ function rebuildEdit(apres){
           if(r.done){ok=true;break;}
           const v=r.value||{};
           if(v.attente){att=true;break;}
-          if(v.proj){proj++;vus=0;regenUiSet(0,tot,'esquisses projetées','');continue;}
+          // V0.99.54 : la sonde des projections (jusqu'à 0,5 s sur SIRAP-14-003) part sur une tranche neuve
+          if(v.proj){proj++;vus=0;regenUiSet(0,tot,'esquisses projetées','');break;}
+          if(v.maillage){regenUiSet(tot,tot,'Affichage du modèle…','');break;}
           const fs=v.fs||[];if(fs.length)vus++;
           const f=fs[0];
           regenUiSet(Math.min(vus,tot),tot,f?(f.name||f.type):'','');
@@ -265,6 +275,9 @@ function rebuildEdit(apres){
       fondDernier={ms:Math.round(performance.now()-t0),fini:ok,fonctions:vus,tours:proj};
     }
     if(n!==fondN)return; // une modification plus récente a pris le relais
+    // V0.99.54 : une peinture entre la dernière fonction et l'affichage de la pièce (ils s'enchaînaient : 0,9 s
+    // d'écran figé d'un bloc sur SIRAP-14-003)
+    if(ok&&!stale()){try{await regenFrame();}catch(e){}if(n!==fondN)return;}
     if(ok&&!stale())fondFinir(false);
     else setTimeout(()=>{if(n===fondN)rebuildEdit();},0); // document changé autrement : on repart
   };
@@ -286,7 +299,7 @@ function fondFinir(sync){
     try{if(typeof faoRegenFlush==='function')faoRegenFlush();}catch(e){}
   }
 }
-try{if(typeof window!=='undefined')window.fondInfo=()=>({enCours:fondActif>0,dernier:fondDernier,off:fondOff});}catch(e){}
+try{if(typeof window!=='undefined')window.fondInfo=()=>({enCours:fondActif>0,dernier:fondDernier,off:fondOff,maillage:typeof fondMaillageDernier!=='undefined'?fondMaillageDernier:null});}catch(e){}
 /* ---------- interface ---------- */
 function regenKeyBlock(e){
   // Barre affichée : le rejeu est entre deux tranches, le document ne doit pas bouger.

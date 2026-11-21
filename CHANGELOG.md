@@ -8,7 +8,7 @@ sont sorties le 2026-09-30j.
 Code dans `src/` · livrable `fusion_mvp.html` (généré par `build.js`) · architecture et
 garde-fous en tête de `src/00-entete-et-outils.js`.
 
-**740 versions**, de `2026-09-28b` à `V0.99.53` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
+**741 versions**, de `2026-09-28b` à `V0.99.54` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
 comme dans le fichier d'origine.
 
 ---
@@ -8212,3 +8212,25 @@ Cavité Usinage, après l'ébauche D25, la reprise D10 et une finition boule D12
 **Correctif** : `occCkMax` (20-70) garde toujours 3 × la timeline, mais jusqu'à `occCkPiece` (360) au lieu de 120. Si le tas du noyau dépasse `OCC_CK_HEAP` (1,5 Go), on revient à la borne d'avant (120). L'assemblage est inchangé. Chrome : SIRAP-14-003, retour à la valeur précédente 6,2 → 0,14 s ; nouvel aller-retour 6,2 → 0,14 s. Tas du noyau inchangé (319 Mo). 5 × la timeline, essayé, ajoutait 30 Mo de tas sur la barquette sans rien garder d'utile. SIRAP-14-002 : retour 3,1 → 1,7 s, puis 1,9 → 0,5 s. Manuel Interface.
 
 **Test** : `test_points_controle_retour` : sur Cavité Usinage, la borne suit la règle (et revient à 120 avec `occCkPiece` = 120). Modifier une fonction du début calcule la suite. La version d'avant reste entière, revenir à la valeur précédente ne calcule rien, et la pièce est identique à un calcul sans points de contrôle. `--chemin` pour une pièce d'essai. CACHE_VER et FORMES_VER inchangés.
+
+## V0.99.54 - Recalcul de fond : nouvelle pièce maillée avant d'être affichée
+
+**Cause** : demande de Fred : « on y va ? » pour la suite du recalcul de fond (V0.99.52). Mesuré dans Chrome. Sur SIRAP-14-003 (perçage n°2 modifié), le plus long écran figé (1,3 s) enchaînait sans peinture la dernière fonction (0,5 s), puis le rejeu final (0,38 s, dont 0,21 s pour mailler les outils des perçages, les fantômes), puis la première peinture. La sonde des projections suivait aussi un calcul sans peinture entre les deux. Sur SIRAP-14-002 (perçage n°10 modifié), le rejeu final prenait 1,95 s, dont 1,5 s de maillage d'affichage et 0,8 s de maillage d'outillage FAO (`faoLegacyGeo`). Essayé puis abandonné : mailler sur un worker. Un solide relu en BRep binaire ne se maille pas au bit près comme l'original : dernière décimale des normales, quelques nœuds, même relu sur la page. Or la FAO garde ses parcours d'après l'empreinte de ce maillage.
+
+**Correctif** :
+- `src/31-fond-maillage.js` : quand le rejeu de préchauffe a fini (`fondTache`, rappel de `fondDerouler`), les faces neuves de la pièce sont maillées par paquets de 24, entre deux peintures. C'est fait à la finesse d'affichage et, s'il y a des opérations FAO, à celle de l'outillage. Ce sont les faces dont l'empreinte (20-25) manque aux facettes gardées. Le noyau multicœur maille les faces d'un paquet en parallèle.
+- Chaque face est d'abord copiée sans maillage. Le solide de préchauffe partage ses faces avec les points de contrôle, qui ne gagnent ni ne perdent aucun triangle.
+- Le résultat est rangé comme `occTriPosFaces` le fait (mêmes clés, triangles, normales, triangulation et polygones d'arêtes à greffer). Le rejeu final greffe au lieu de mailler.
+- Ce n'est fait que si le fond dure déjà, et à partir de 24 faces neuves.
+- Les maillages des fantômes se font pendant le fond (`occFantomesVoulus` dans le rejeu de préchauffe, mêmes clés `occFantomeMemo`).
+- Il y a maintenant une peinture avant le rejeu final, et la sonde des projections part sur une tranche neuve.
+- `?sansfondmaillage` : comme V0.99.53. `fondInfo().maillage` donne la mesure.
+
+Chrome sans carte graphique :
+- SIRAP-14-003 : écran figé au plus 1,29 → 0,74 s, rejeu final 0,38 → 0,17 s.
+- SIRAP-14-002 : rejeu final 1,95 → 0,75 s (affichage 1,48 → 0,25 s, outillage FAO 0,77 → 0,14 s, 1 096 faces préparées en 2,5 s pendant le fond), écran figé au plus 3,1 → 2,0 s. Le reste est une seule fonction de 1,9 s, la « Découpe Esquisse 75 », qui ne se coupe pas.
+- Cavité Usinage : 0,43 → 0,33 s.
+
+Manuel Interface.
+
+**Test** : `tests/browser/recalcul-fond.spec.cjs`, nouveau cas : même pièce, même modification, avec et sans `?sansfondmaillage`. Les facettes d'affichage et d'outillage FAO sont identiques au bit près (Cavité Usinage, SIRAP-14-002). Un calcul entièrement neuf n'est pas la référence : la finesse d'affichage suit la boîte du solide, qui dépend des triangles déjà posés (écart déjà là avant cette version). CACHE_VER et FORMES_VER inchangés.

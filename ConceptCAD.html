@@ -410,7 +410,7 @@ input[type=range]{accent-color:var(--primary);width:100%}
  * peut changer sans rien casser. CACHE_VER (parcours FAO) reste indépendant.
  */
 
-const APP_VER='V0.99.53';
+const APP_VER='V0.99.54';
 try{console.log('[ConceptCAD] version '+APP_VER);}catch(e){}
 try{var mfSv=document.getElementById('mfSplashVer');if(mfSv)mfSv.textContent=APP_VER;}catch(e){} // écran de démarrage
 
@@ -12238,6 +12238,126 @@ function sk3dPurge(){
 }
 function sk3dRedessine(){try{sk3dPurge();drawSketchHelpers();}catch(e){}}
 
+/* ═══════════════ 31-fond-maillage.js — fond maillage ═══════════════ */
+/* ---------- Facettes de la nouvelle pièce préparées pendant le recalcul de fond (V0.99.54) ----------
+   Demande de Fred : « maximiser les CPU », suite du recalcul de fond (V0.99.52). La pièce recalculée en
+   arrière-plan était ensuite maillée d'un bloc par le rejeu final : SIRAP-14-002 (perçage n°10 modifié),
+   1,5 s de maillage d'affichage et 0,8 s de maillage d'outillage FAO, écran figé.
+   Ici, dès que le rejeu de préchauffe a fini (31-regen-progression, fondTache), ses faces neuves (empreinte
+   absente des facettes gardées, 20-25) sont maillées par paquets, entre deux peintures, l'ancienne pièce
+   toujours affichée : à la finesse d'affichage et, s'il y a de la FAO, à celle de l'outillage. Le noyau
+   multicœur maille les faces d'un paquet en parallèle (20-20, occMeshParallele). Chaque face est COPIÉE
+   sans maillage avant d'être maillée : le solide de préchauffe partage ses faces avec les points de
+   contrôle, qui ne doivent jamais perdre ni gagner de triangles ici. Le résultat est rangé comme le fait
+   occTriPosFaces (mêmes clés finesse|empreinte, triangles, normales, triangulation et polygones d'arêtes à
+   greffer). Le rejeu final trouve alors chaque face déjà faite : il greffe au lieu de mailler.
+   Pas d'aller-retour par un worker : un solide relu en BRep binaire ne se maille pas au bit près comme
+   l'original (dernière décimale des normales, quelques nœuds), et la FAO garde ses parcours d'après
+   l'empreinte de ce maillage. Ici tout est identique au bit près (tests/browser/recalcul-fond.spec).
+   ?sansfondmaillage : comme V0.99.53. */
+const FOND_MAILLAGE_MIN=24;    // faces neuves : en dessous, le rejeu final les maille sans qu'on le voie
+const FOND_MAILLAGE_PAQUET=24; // faces maillées d'un coup (une tranche du fond en fait plusieurs)
+let fondMaillageOff=false;
+try{fondMaillageOff=/[?&]sansfondmaillage\b/.test(String(location.search||''));}catch(e){}
+let fondMaillageDernier=null; // mesure du dernier passage (fondInfo)
+function fondMaillagePossible(){
+  try{return !fondMaillageOff&&!freshHard&&occFaceMemoDispo();}catch(e){return false;}
+}
+function fondMaillageFao(){
+  // outillage FAO à préparer aussi : seulement s'il y a des opérations (faoLegacyGeo les lira au buildDone)
+  try{const r=typeof faoRoot==='function'?faoRoot():null;return !!(r&&(r.setups||[]).some(s=>(s.ops||[]).length));}
+  catch(e){return false;}
+}
+function fondMaillagePrend(FR){
+  // FR : rejeu de préchauffe fini (copie du document), appelé AVANT que ses solides soient libérés.
+  // → {corps: poignées gardées (mêmes solides), niv: finesses} ou null
+  if(!fondMaillagePossible()||!FR)return null;
+  const parts=(FR.perBody||[]).filter(p=>p&&p.shape);
+  if(!parts.length)return null;
+  let D=null;
+  try{D=occDisplayDefl(FR.shape||parts[0].shape);}catch(e){return null;}
+  const niv=[{lin:D.lin,ang:D.ang}];
+  if(fondMaillageFao()){try{const X=occXDefl();if(X.lin!==D.lin||X.ang!==D.ang)niv.push({lin:X.lin,ang:X.ang});}catch(e){}}
+  const corps=[];
+  for(const p of parts){
+    // nouvelle poignée sur le même solide : survit à occCleanup(FR)
+    try{const h=p.shape.Oriented(p.shape.Orientation_1());if(h&&!h.IsNull())corps.push(h);else if(h)h.delete();}catch(e){}
+  }
+  return corps.length?{corps,niv,t0:performance.now()}:null;
+}
+function fondFaceNue(f){
+  // copie de la face sans aucun maillage (géométrie copiée telle quelle)
+  let c=null;
+  try{c=new occt.BRepBuilderAPI_Copy_2(f,true,false);const s=c.Shape();return occt.TopoDS.Face_1(s);}
+  catch(e){return null;}finally{try{c&&c.delete();}catch(e){}}
+}
+function* fondMaillageFait(job){
+  // faces neuves maillées par paquets et rangées dans occFaceMemo
+  const E=occt.TopAbs_ShapeEnum;
+  let F=[],vus=0,ranges=0,neuves=0,pas=0;
+  const st={faces:0};
+  try{
+    // 1. empreintes des faces (une fois pour toutes les finesses)
+    const L=[];
+    for(const sh of job.corps){
+      const ex=new occt.TopExp_Explorer_2(sh,E.TopAbs_FACE,E.TopAbs_SHAPE);
+      try{while(ex.More()){F.push(occFaceCur(ex));ex.Next();}}finally{try{ex.delete();}catch(e){}}
+    }
+    const K=new Array(F.length);
+    for(let i=0;i<F.length;i++){
+      K[i]=occFaceEmpreinte(F[i]);
+      if(++pas%40===0)yield {};
+    }
+    st.faces=F.length;
+    for(const N of job.niv){
+      const pre=N.lin+'|'+N.ang+'|';
+      // faces à faire : empreinte lisible, absente, une seule fois par empreinte
+      const vu=new Set(),manque=[];
+      for(let i=0;i<F.length;i++){
+        if(K[i]===null)continue;
+        const k=pre+K[i];
+        if(vu.has(k)||occFaceMemo.has(k))continue;
+        vu.add(k);manque.push(i);
+      }
+      vus+=F.length;neuves+=manque.length;
+      if(manque.length<FOND_MAILLAGE_MIN)continue;
+      for(let a=0;a<manque.length;a+=FOND_MAILLAGE_PAQUET){
+        const lot=manque.slice(a,a+FOND_MAILLAGE_PAQUET),nues=[];
+        let C=null,bld=null;
+        try{
+          bld=new occt.BRep_Builder();C=new occt.TopoDS_Compound();bld.MakeCompound(C);
+          for(const i of lot){const n=fondFaceNue(F[i]);nues.push(n);if(n)bld.Add(C,n);}
+          const T=occTriPos(C,N.lin,N.ang,true); // même code que occTriPosFaces pour ses faces manquantes
+          const parOrd=new Map();T.groups.forEach(g=>parOrd.set(g.f,g));
+          let o=0;
+          lot.forEach((i,j)=>{
+            const n=nues[j];if(!n)return;
+            const g=parOrd.get(o++);
+            const k=pre+K[i];
+            if(occFaceMemo.has(k))return;
+            const e={p:g?Float64Array.from(T.pos.slice(g.start*9,(g.start+g.count)*9)):new Float64Array(0),
+                     n:g?Float64Array.from(T.nrm.slice(g.start*9,(g.start+g.count)*9)):new Float64Array(0),
+                     tri:null,polys:null,g:occFaceMemoGen};
+            const h=occFacePrise(n);
+            if(h){e.tri=h.tri;e.polys=h.polys;}
+            else if(e.p.length)return; // maillée mais non greffable : pas gardée (comme occTriPosFaces)
+            occFaceMemo.set(k,e);ranges++;
+          });
+        }catch(e){}
+        finally{
+          nues.forEach(n=>{try{n&&n.delete();}catch(e){}});
+          try{C&&C.delete();}catch(e){}try{bld&&bld.delete();}catch(e){}
+        }
+        yield {};
+      }
+    }
+  }finally{
+    F.forEach(f=>{try{f.delete();}catch(e){}});
+    job.corps.forEach(h=>{try{h.delete();}catch(e){}});
+    fondMaillageDernier={faces:st.faces,neuves,rangees:ranges,niveaux:job.niv.length,ms:Math.round(performance.now()-job.t0)};
+  }
+}
+
 /* ═══════════════ 31-regen-progression.js — regen progression ═══════════════ */
 /* ---------- Régénération avec barre de progression (V0.42.0) ----------
    Le rejeu exact est SYNCHRONE : tant qu'il calcule, le navigateur ne repeint rien — sur un gros
@@ -12371,7 +12491,7 @@ const FOND_BUDGET_MS=150;  // calcul plus court : pas de fond, aucun changement 
 const FOND_TRANCHE_MS=50;  // calcul enchaîné entre deux peintures, au moins (plus si la peinture est lente)
 let fondOff=false;
 try{fondOff=/[?&](mono|sansfond)\b/.test(String(location.search||''));}catch(e){}
-let fondN=0,fondActif=0,fondApres=[],fondDernier=null;
+let fondN=0,fondActif=0,fondApres=[],fondDernier=null,fondT0=0;
 function fondPossible(){
   try{
     if(fondOff||rebuildDepth||regenRun||!regenWarmUseful())return false;
@@ -12408,17 +12528,19 @@ function fondSonde(clone,cleOff){
   });
   return S.manque;
 }
-function* fondDerouler(mk,clone,force){
+function* fondDerouler(mk,clone,force,fant,fin){
   // un rejeu de préchauffe, une fonction par pas, sur la copie ; {attente} : suppression de face au calcul (21)
+  // fant (V0.99.54) : maillages des outils de découpe faits ici (occFantomeMemo, mêmes clés) — le rejeu final
+  // les reprend au lieu de les calculer d'un bloc (SIRAP-14-003, perçage n°2 : 215 ms d'écran figé en moins)
   let g=null,reprises=0;
   try{
     for(;;){
       if(!g)g=mk();
       let r;
-      const skip0=occThreadSkip,sf=occStepForce;
-      try{r=fondAvec(clone,()=>{occThreadSkip=true;if(force)occStepForce=true;return g.next();});}
-      finally{occThreadSkip=skip0;occStepForce=sf;}
-      if(r.done){g=null;if(r.value){try{occCleanup(r.value,null);}catch(e){}}return;}
+      const skip0=occThreadSkip,sf=occStepForce,fv=occFantomesVoulus;
+      try{r=fondAvec(clone,()=>{occThreadSkip=true;if(force)occStepForce=true;if(fant)occFantomesVoulus=true;return g.next();});}
+      finally{occThreadSkip=skip0;occStepForce=sf;occFantomesVoulus=fv;}
+      if(r.done){g=null;if(r.value){if(fin){try{fin(r.value);}catch(e){}}try{occCleanup(r.value,null);}catch(e){}}return;}
       // V0.94.6 (comme regenWarmRun) : la suite serait calculée sans la face supprimée, puis refaite
       if(typeof delWkPending==='function'&&delWkPending()&&reprises<3){
         try{g.return();}catch(e){}g=null;reprises++;
@@ -12434,6 +12556,7 @@ function* fondTache(upto){
   // 1. projections : sonde, préfixe manquant calculé, nouvelle sonde… ; 2. la timeline sur la copie réglée
   let clone=null,m0=null,deja=0;
   for(let tour=0;;tour++){
+    if(tour>0)yield {proj:true}; // V0.99.54 : peinture entre le préfixe calculé et la sonde suivante
     clone=fondClone();
     const m=fondSonde(clone,deja>0);
     if(m==null||tour>=FOND_TOURS_MAX)break;
@@ -12443,7 +12566,12 @@ function* fondTache(upto){
     yield* fondDerouler(()=>occFinalShapeGen(m,true),clone,true);
   }
   yield {proj:true};
-  yield* fondDerouler(()=>occFinalShapeGen(upto,true),clone,false);
+  // V0.99.54 (31-fond-maillage) : faces neuves de la pièce finie maillées ici, par paquets — seulement si le fond
+  // dure déjà (une petite modification finie dans le budget s'affiche tout de suite, comme avant)
+  let job=null;
+  yield* fondDerouler(()=>occFinalShapeGen(upto,true),clone,false,true,
+    FR=>{if(performance.now()-fondT0>=FOND_BUDGET_MS)job=fondMaillagePrend(FR);});
+  if(job){yield {maillage:true};yield* fondMaillageFait(job);}
 }
 function rebuildEdit(apres){
   // rebuild() d'une modification faite par l'utilisateur ; apres() quand la pièce affichée est à jour
@@ -12457,7 +12585,7 @@ function rebuildEdit(apres){
   try{ensureBodies();}catch(e){}
   try{(doc.sketches||[]).forEach(migrateSketch);}catch(e){}
   const upto=tlReplayCount();
-  const t0=performance.now();
+  const t0=performance.now();fondT0=t0;
   const budget=typeof window!=='undefined'&&window.__fondBudget!=null?+window.__fondBudget:FOND_BUDGET_MS;
   let T=fondTache(upto),fini=false;
   try{
@@ -12490,7 +12618,9 @@ function rebuildEdit(apres){
           if(r.done){ok=true;break;}
           const v=r.value||{};
           if(v.attente){att=true;break;}
-          if(v.proj){proj++;vus=0;regenUiSet(0,tot,'esquisses projetées','');continue;}
+          // V0.99.54 : la sonde des projections (jusqu'à 0,5 s sur SIRAP-14-003) part sur une tranche neuve
+          if(v.proj){proj++;vus=0;regenUiSet(0,tot,'esquisses projetées','');break;}
+          if(v.maillage){regenUiSet(tot,tot,'Affichage du modèle…','');break;}
           const fs=v.fs||[];if(fs.length)vus++;
           const f=fs[0];
           regenUiSet(Math.min(vus,tot),tot,f?(f.name||f.type):'','');
@@ -12506,6 +12636,9 @@ function rebuildEdit(apres){
       fondDernier={ms:Math.round(performance.now()-t0),fini:ok,fonctions:vus,tours:proj};
     }
     if(n!==fondN)return; // une modification plus récente a pris le relais
+    // V0.99.54 : une peinture entre la dernière fonction et l'affichage de la pièce (ils s'enchaînaient : 0,9 s
+    // d'écran figé d'un bloc sur SIRAP-14-003)
+    if(ok&&!stale()){try{await regenFrame();}catch(e){}if(n!==fondN)return;}
     if(ok&&!stale())fondFinir(false);
     else setTimeout(()=>{if(n===fondN)rebuildEdit();},0); // document changé autrement : on repart
   };
@@ -12527,7 +12660,7 @@ function fondFinir(sync){
     try{if(typeof faoRegenFlush==='function')faoRegenFlush();}catch(e){}
   }
 }
-try{if(typeof window!=='undefined')window.fondInfo=()=>({enCours:fondActif>0,dernier:fondDernier,off:fondOff});}catch(e){}
+try{if(typeof window!=='undefined')window.fondInfo=()=>({enCours:fondActif>0,dernier:fondDernier,off:fondOff,maillage:typeof fondMaillageDernier!=='undefined'?fondMaillageDernier:null});}catch(e){}
 /* ---------- interface ---------- */
 function regenKeyBlock(e){
   // Barre affichée : le rejeu est entre deux tranches, le document ne doit pas bouger.
