@@ -24,6 +24,7 @@ test('mise en plan : échelles 3:4, 1:6, 1:8 et échelle libre',async({page})=>{
     const v=mepAddViewStd('front');sh.views.length=0;sh.views.push(v);v.id='vF';v.x=120;v.y=90;v.scale=1;
     window.mepReprojectAll();
     __mepTest.setViewSel(v.id);
+    propsFoldSet(false); // V0.99.34 : le panneau de droite se replie seul en CAO (pièce sans sélection) ; en plan, rien d'automatique
   });
   const sel=page.locator('#mepSide .row:has(> label:text-is("Échelle")) select').first();
   const libre=page.locator('#mepSide input.mepScaleLibre').first();

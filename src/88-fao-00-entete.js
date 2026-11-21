@@ -207,7 +207,7 @@ const faoRapideMin=30;
       +'.fao-op .badge{font-size:.68rem;color:#7ee0c0;font-weight:700}'
       /* parcours a regenerer : outil/parametre modifie depuis la derniere generation */
       +'.fao-op .stalei{font-size:.74rem;color:#ff453a;font-weight:700;cursor:pointer;'
-      +'animation:faoStalePulse 1.8s ease-in-out infinite}'
+      +'animation:faoStalePulse 1.8s ease-in-out 3}' // V0.99.56 : 3 battements puis immobile (infini : écran recomposé 60 fois/s au repos)
       +'.fao-op .hbtn{font-size:.66rem;padding:1px 6px;border-radius:5px;cursor:pointer;'
       +'user-select:none;border:1px solid rgba(255,255,255,.14);color:rgba(255,255,255,.62)}'
       +'.fao-op .hbtn:hover{border-color:#0a84ff;background:rgba(10,132,255,.18)}'
@@ -229,7 +229,7 @@ const faoRapideMin=30;
          pas relancé « Tout régénérer » — le bouton le signale et l'export
          est bloqué. */
       +'.fao-gen.fao-stale{background:#7a2a12;border-color:#ff453a;color:#ffd7d3;'
-      +'animation:faoStalePulse 1.8s ease-in-out infinite}'
+      +'animation:faoStalePulse 1.8s ease-in-out 3}' // V0.99.56 : 3 battements puis immobile (infini : écran recomposé 60 fois/s au repos)
       +'@keyframes faoStalePulse{0%,100%{box-shadow:0 0 0 0 rgba(255,69,58,0)}'
       +'50%{box-shadow:0 0 0 4px rgba(255,69,58,.32)}}'
       +'.fao-cnt button:disabled{opacity:.5;cursor:not-allowed;filter:grayscale(.35)}'

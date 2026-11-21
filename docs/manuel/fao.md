@@ -69,6 +69,7 @@
 - **Faces usinables / intouchables** par opération.
 - **Limites propres à la FAO** (ruban FAO → Limites) : esquisses et extrusions, en **solide** ou en **surface**, qui servent de murs ou de surfaces infranchissables sans toucher au modèle.
 - **Triangle ⚠ d'une opération** : il ne régénère qu'elle, et son parcours se dessine au fur et à mesure du calcul, comme avec « Tout régénérer ».
+  Le triangle clignote trois fois quand il apparaît, puis reste rouge et immobile : l'écran ne travaille plus au repos.
 - **Calcul sur plusieurs cœurs** : « Tout régénérer » répartit les opérations longues sur les cœurs du processeur ; l'écran reste fluide et les parcours sont strictement les mêmes.
   - Les opérations en *Brut restant* partent aussi sur les autres cœurs, dès que les opérations dont elles dépendent sont finies : l'écran ne se bloque plus pendant leur calcul.
   - Pendant « Tout régénérer », chaque opération garde son triangle ⚠ jusqu'à la fin de son propre calcul ; les triangles disparaissent un par un.

@@ -8,7 +8,7 @@ sont sorties le 2026-09-30j.
 Code dans `src/` · livrable `fusion_mvp.html` (généré par `build.js`) · architecture et
 garde-fous en tête de `src/00-entete-et-outils.js`.
 
-**742 versions**, de `2026-09-28b` à `V0.99.55` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
+**743 versions**, de `2026-09-28b` à `V0.99.56` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
 comme dans le fichier d'origine.
 
 ---
@@ -8258,3 +8258,17 @@ Chrome avec la carte graphique (ANGLE Direct3D 11), SIRAP-14-002 :
 Manuel Plan.
 
 **Test** : `tests/browser/mep-fluide.spec.cjs` (Cavité Usinage, 3 551 → 401 éléments ; aussi passé sur SIRAP-14-002). Avec et sans `?sanstraitsgroupes&sansgeste`, on vérifie : DXF identique, même cadrage au centième de mm après molette et panoramique, image déplacée sans redessin pendant le geste, plus de transformation à la fin, beaucoup moins d'éléments recréés au survol. CACHE_VER et FORMES_VER inchangés.
+
+## V0.99.56 - FAO : plus de travail au repos ; deux tests de la mise en plan réparés
+
+**Cause** : constat de Fred, « UC au repos tourne à 20 % environ » (SIRAP-14-002, même fenêtre réduite). Mesuré sur toute la page (fenêtre, page, carte graphique) : 10 % au repos dans les onglets Pièce et Dessin, 42 % dans l'onglet FAO. Les triangles ⚠ des opérations à régénérer, comme le bouton « Tout régénérer » périmé, avaient une animation CSS `faoStalePulse` infinie (ombre qui pulse) : style recalculé et écran recomposé 60 fois par seconde, sans fin.
+
+**Correctif** : `src/88-fao-00-entete.js`, l'animation ne fait plus que 3 battements, puis le triangle reste rouge et immobile. Le fond de calcul, le redessin de veille de la vue 3D (2,5 images/s, 0,3 ms chacune avec la carte graphique) et la mémoire (1,6 Go au repos) étaient sains.
+
+Chrome avec la carte graphique, SIRAP-14-002 ouvert, sans rien toucher : FAO 42 % → 10 % (comme la page vide) ; Pièce et Dessin inchangés (10 %).
+
+Tests `mep-echelles` et `mep-rotation` : ils échouaient depuis la V0.99.34, car le panneau de droite se replie seul en CAO quand rien n'est sélectionné et leurs boutons (« ↺ 90° », liste des échelles) étaient cachés. Ils ouvrent maintenant le panneau (`propsFoldSet(false)`) avant de commencer.
+
+Manuel FAO.
+
+**Test** : mesure par `SystemInfo.getProcessInfo` (ouverture, Dessin, FAO, retour Pièce, repos de 30 s) ; `mep-echelles`, `mep-rotation`, `mep-fluide` passent. CACHE_VER et FORMES_VER inchangés.

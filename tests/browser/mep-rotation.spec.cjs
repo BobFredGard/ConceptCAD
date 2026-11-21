@@ -27,6 +27,7 @@ test('mise en plan : tourner une vue de 90° dans un sens puis dans l’autre',a
     window.mepReprojectAll();
     sh.dims.length=0;sh.dims.push({id:'dW',kind:'dist',vid:v.id,vid2:null,a:{x:0,y:0},b:{x:100,y:0},off:12,orient:'h',tol:null});
     __mepTest.setViewSel(v.id);
+    propsFoldSet(false); // V0.99.34 : le panneau de droite se replie seul en CAO (pièce sans sélection) ; en plan, rien d'automatique
   });
   const etat=()=>page.evaluate(()=>{
     const sh=doc.mep.sheets[doc.mep.cur],v=sh.views.find(o=>o.id==='vF'),t=sh.views.find(o=>o.id==='vT'),b=__mepTest.viewBBox(v),d=sh.dims[0];
