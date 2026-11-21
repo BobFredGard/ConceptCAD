@@ -879,8 +879,10 @@
       const g=mepRulerCv.getContext('2d');if(!g)return;
       g.setTransform(dpr,0,0,dpr,0,0);g.clearRect(0,0,R.width,R.height);
       if(mepSt.rulers===false)return;
-      const m=mepSvgEl.getScreenCTM&&mepSvgEl.getScreenCTM();if(!m)return;
-      const S=m.a,ox=m.e-R.left,oy=m.f-R.top; // écran = S·mm + o (relatif à la zone)
+      let S,ox,oy;
+      if(mepGeste){const M=mepGesteMeet(mepGesteVb(),mepGeste.w,mepGeste.h);S=M.s;ox=M.ox;oy=M.oy;} // V0.99.55 : cadrage voulu
+      else{const m=mepSvgEl.getScreenCTM&&mepSvgEl.getScreenCTM();if(!m)return;
+        S=m.a;ox=m.e-R.left;oy=m.f-R.top;} // écran = S·mm + o (relatif à la zone)
       const pg=mepPage();
       let dk=false;try{dk=(document.body.getAttribute('data-theme')||'nuit')!=='clair';}catch(e){}
       const bg=dk?'rgba(24,26,30,.92)':'rgba(240,242,246,.94)',fg=dk?'#c9ccd1':'#3a3f47',ac=dk?'#4da3ff':'#0a6cff';

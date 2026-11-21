@@ -66,6 +66,7 @@
   }
   /* pointeur écran → mm papier */
   function mepPt(ev){
+    if(mepGeste)return mepGestePt(ev); // V0.99.55 : geste en cours, cadrage voulu (98-mep-81)
     const r=mepSvgEl.getBoundingClientRect();
     // V0.3.11 : matrice écran → planche du navigateur. Le viewBox garde les proportions de la
     // planche et est CENTRÉ (preserveAspectRatio « meet ») : fenêtre plus large que la planche
@@ -93,6 +94,7 @@
     return{x:pg.vb[0],y:pg.vb[1],width:pg.vb[2],height:pg.vb[3]};
   }
   function mepPxToMm(){
+    if(mepGeste)return mepGestePxMm();
     try{
       const m=mepSvgEl.getScreenCTM&&mepSvgEl.getScreenCTM();
       if(m&&isFinite(m.a)&&m.a>0)return 1/m.a; // échelle réelle (centrage « meet » compris)

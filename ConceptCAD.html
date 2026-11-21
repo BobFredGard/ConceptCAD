@@ -410,7 +410,7 @@ input[type=range]{accent-color:var(--primary);width:100%}
  * peut changer sans rien casser. CACHE_VER (parcours FAO) reste indépendant.
  */
 
-const APP_VER='V0.99.54';
+const APP_VER='V0.99.55';
 try{console.log('[ConceptCAD] version '+APP_VER);}catch(e){}
 try{var mfSv=document.getElementById('mfSplashVer');if(mfSv)mfSv.textContent=APP_VER;}catch(e){} // écran de démarrage
 
@@ -89794,6 +89794,7 @@ function filmFrame(){
   }
   /* pointeur écran → mm papier */
   function mepPt(ev){
+    if(mepGeste)return mepGestePt(ev); // V0.99.55 : geste en cours, cadrage voulu (98-mep-81)
     const r=mepSvgEl.getBoundingClientRect();
     // V0.3.11 : matrice écran → planche du navigateur. Le viewBox garde les proportions de la
     // planche et est CENTRÉ (preserveAspectRatio « meet ») : fenêtre plus large que la planche
@@ -89821,6 +89822,7 @@ function filmFrame(){
     return{x:pg.vb[0],y:pg.vb[1],width:pg.vb[2],height:pg.vb[3]};
   }
   function mepPxToMm(){
+    if(mepGeste)return mepGestePxMm();
     try{
       const m=mepSvgEl.getScreenCTM&&mepSvgEl.getScreenCTM();
       if(m&&isFinite(m.a)&&m.a>0)return 1/m.a; // échelle réelle (centrage « meet » compris)
@@ -91798,8 +91800,10 @@ function filmFrame(){
       const g=mepRulerCv.getContext('2d');if(!g)return;
       g.setTransform(dpr,0,0,dpr,0,0);g.clearRect(0,0,R.width,R.height);
       if(mepSt.rulers===false)return;
-      const m=mepSvgEl.getScreenCTM&&mepSvgEl.getScreenCTM();if(!m)return;
-      const S=m.a,ox=m.e-R.left,oy=m.f-R.top; // écran = S·mm + o (relatif à la zone)
+      let S,ox,oy;
+      if(mepGeste){const M=mepGesteMeet(mepGesteVb(),mepGeste.w,mepGeste.h);S=M.s;ox=M.ox;oy=M.oy;} // V0.99.55 : cadrage voulu
+      else{const m=mepSvgEl.getScreenCTM&&mepSvgEl.getScreenCTM();if(!m)return;
+        S=m.a;ox=m.e-R.left;oy=m.f-R.top;} // écran = S·mm + o (relatif à la zone)
       const pg=mepPage();
       let dk=false;try{dk=(document.body.getAttribute('data-theme')||'nuit')!=='clair';}catch(e){}
       const bg=dk?'rgba(24,26,30,.92)':'rgba(240,242,246,.94)',fg=dk?'#c9ccd1':'#3a3f47',ac=dk?'#4da3ff':'#0a6cff';
@@ -92066,6 +92070,7 @@ function filmFrame(){
     docSansEtape(mepRenderCorps); // cotes et coupes qui suivent la pièce : pas d'étape d'annulation
   }
   function mepRenderCorps(){
+    mepVueGesteLache(); // geste de vue en cours : le rendu remet tout en place
     try{mepCutFollowAll(mepSheet());}catch(e){}
     mepAxGen++; // traits d'axe recalculés à chaque rendu
     const sh=mepSheet();
@@ -92125,15 +92130,7 @@ function filmFrame(){
       try{mepDrawSk(mk,sh);}catch(e){} // (V0.3.12 : la planche, et non sh.sk — l'esquisse n'était jamais dessinée)
     }
     /* cadre bleu : sélection (plein) + survol (pointillé) */
-    const drawVB=(id,cls)=>{
-      const v=mepView(sh,id);
-      if(!v)return;
-      const b=mepViewSheetBBox(v);
-      if(b)mk('rect',{x:b.x-4,y:b.y-4,width:b.w+8,height:b.h+8,class:cls},mepGHlp);
-    };
-    if(mepSt.sel)drawVB(mepSt.sel,'mepVBSel');
-    if(mepSt.lot)mepSt.lot.views.forEach(id=>drawVB(id,'mepVBSel'));
-    if(mepSt.hovView)drawVB(mepSt.hovView,'mepVB');
+    mepVBDraw();
     /* brouillons d'interaction */
     try{mepDrawDraft(mk);}catch(e){}
     try{mepDrawSnapHov(mk);}catch(e){}
@@ -92141,6 +92138,28 @@ function filmFrame(){
     try{mepLocDraw(mk);}catch(e){} // coupe locale sélectionnée : forme et points
     mepToolSync();
     mepRulers();
+  }
+  /* cadres bleus des vues, dans leur propre groupe : le survol d'une vue ne redessine qu'eux (V0.99.55) */
+  let mepGVB=null;
+  function mepVBDraw(){
+    if(!mepGHlp)return;
+    const sh=mepSheet();
+    if(!mepGVB)mepGVB=document.createElementNS(NS,'g');
+    mepGVB.innerHTML='';
+    if(mepGVB.parentNode!==mepGHlp)mepGHlp.appendChild(mepGVB);
+    const drawVB=(id,cls)=>{
+      const v=mepView(sh,id);
+      if(!v)return;
+      const b=mepViewSheetBBox(v);
+      if(!b)return;
+      const el=document.createElementNS(NS,'rect');
+      const at={x:b.x-4,y:b.y-4,width:b.w+8,height:b.h+8,class:cls};
+      for(const k in at)el.setAttribute(k,at[k]);
+      mepGVB.appendChild(el);
+    };
+    if(mepSt.sel)drawVB(mepSt.sel,'mepVBSel');
+    if(mepSt.lot)mepSt.lot.views.forEach(id=>drawVB(id,'mepVBSel'));
+    if(mepSt.hovView)drawVB(mepSt.hovView,'mepVB');
   }
   function mepSheetScaleLabel(sh){
     const vals=sh.views.filter(v=>v.scale!==1&&v.kind!=='detail').map(v=>v.scale); // un détail porte sa propre échelle
@@ -92215,29 +92234,9 @@ function filmFrame(){
     if(g.thr3d&&g.thr3d.length)g.thr3d.forEach(t=>mk('line',{x1:+X(t[0]).toFixed(3),y1:+Y(t[1]).toFixed(3),x2:+X(t[2]).toFixed(3),y2:+Y(t[3]).toFixed(3),
       class:'mepThr3d'+(t[4]?' mepThr3dRing':'')}));
     mepDrawAxes(mk,v,sh);
-    /* la vue sélectionnée garde ses couleurs : seul le cadre bleu la signale */
-    const selEnt=(e,ei)=>(mepSt.entSel&&mepSt.entSel.some(s=>
-      s.vid===v.id&&s.i===ei&&(!s.sig||s.sig===mepEntSig(e))))
-      ||(mepSt.intPick&&mepSt.intPick.vid===v.id&&mepSt.intPick.i===ei); // 1ʳᵉ entité d'une intersection
-    const hovEnt=(e,ei)=>mepSt.hovEnt&&mepSt.hovEnt.vid===v.id&&mepSt.hovEnt.i===ei
-      &&(!mepSt.hovEnt.sig||mepSt.hovEnt.sig===mepEntSig(e));
-    const cls=(e,ei)=>(e.k==='hidden'||e.k==='threadH'?'mepEnt mepHidden':e.k==='thread'?'mepEnt mepThread':e.k==='tangent'?'mepEnt mepTangent':e.k==='sect'?'mepEnt mepSect':e.k==='brk'?'mepEnt mepBrk':'mepEnt mepSharp')
-      +(selEnt(e,ei)?' mepSelEnt':(hovEnt(e,ei)?' mepHovEnt':''));
-    g.els.forEach((e,ei)=>{
-      if(e.t==='L')mk('line',{x1:+X(e.x1).toFixed(3),y1:+Y(e.y1).toFixed(3),x2:+X(e.x2).toFixed(3),y2:+Y(e.y2).toFixed(3),class:cls(e,ei)});
-      else if(e.t==='C')mk('circle',{cx:+X(e.cx).toFixed(3),cy:+Y(e.cy).toFixed(3),r:+(e.r*v.scale).toFixed(3),class:cls(e,ei)});
-      else if(e.t==='A'){
-        const x0=+X(e.cx+e.r*Math.cos(e.a0)).toFixed(3),y0=+Y(e.cy+e.r*Math.sin(e.a0)).toFixed(3);
-        const x1=+X(e.cx+e.r*Math.cos(e.a1)).toFixed(3),y1=+Y(e.cy+e.r*Math.sin(e.a1)).toFixed(3);
-        const rr=+(e.r*v.scale).toFixed(3);
-        const la=Math.abs(e.a1-e.a0)>Math.PI?1:0,sw=e.a1>e.a0?1:0;
-        mk('path',{d:'M'+x0+' '+y0+' A'+rr+' '+rr+' 0 '+la+' '+sw+' '+x1+' '+y1,class:cls(e,ei)});
-      }
-      else if(e.t==='P'&&e.pts&&e.pts.length>1){
-        for(let k=0;k+1<e.pts.length;k++)
-          mk('line',{x1:+X(e.pts[k][0]).toFixed(3),y1:+Y(e.pts[k][1]).toFixed(3),x2:+X(e.pts[k+1][0]).toFixed(3),y2:+Y(e.pts[k+1][1]).toFixed(3),class:cls(e,ei)});
-      }
-    });
+    /* traits de la vue : bloc gardé tant que la vue ne change pas (V0.99.55, 98-mep-61) ;
+       sélection et survol redessinés par-dessus, seuls */
+    mepEntsDraw(mk,v,g,X,Y);
     /* hachures */
     // détail d'une coupe : hachures rognées au cercle du détail
     const detClip=v.detail?[(()=>{const d=v.detail,c=[];for(let i=0;i<64;i++){const a=i*Math.PI/32;c.push([d.cx+d.r*Math.cos(a),d.cy+d.r*Math.sin(a)]);}return c;})()]:null;
@@ -92696,6 +92695,81 @@ function filmFrame(){
     const H=mepHatchCfg(),P=MEP_HATCH_PATS.find(p=>p[0]===H.pat);
     mepStatus('Hachures : '+(P?P[1]:H.pat)+(H.pat==='plein'?'':' · '+H.ang+'° · échelle '+H.sc)+' — toutes les coupes.');
     mepRender();
+  }
+
+/* ═══════════════ 98-mep-61-traits-groupes.js — mep 61 traits groupes ═══════════════ */
+  /* ═══════════════ traits des vues regroupés et gardés (V0.99.55) ═══════════════
+     Demande de Fred : « niveau mise en plan chargé, avec SIRAP-14-002 par exemple, le GPU n'est utilisé
+     qu'à 1/3 et la page n'est pas fluide ». La planche « Plaque de Base » comptait 13 500 éléments SVG
+     (un <line> par segment d'arête), tous recréés à chaque rendu : cran de molette, pas du panoramique,
+     survol. Ici :
+     - les segments qui se suivent avec la même classe ne font qu'un <path> (un sous-chemin M…L par
+       segment : pointillés, bouts ronds et ordre de peinture inchangés) ; cercles et arcs restent des
+       éléments à part (l'export DXF les relit comme CIRCLE / arcs exacts) ;
+     - le bloc d'une vue est gardé tant que sa géométrie (mepGeoOf), sa position et son échelle ne
+       changent pas : un rendu le raccroche au lieu de le refaire ;
+     - sélection et survol d'une arête sont redessinés par-dessus, seuls (même classe qu'avant).
+     ?sanstraitsgroupes : comme V0.99.54. */
+  let mepEntsOff=false;
+  try{mepEntsOff=/[?&]sanstraitsgroupes\b/.test(String(location.search||''));}catch(e){}
+  const mepEntsMemo=new WeakMap(); // géométrie de vue → {key, els, n, node}
+  function mepEntCls(e){
+    return e.k==='hidden'||e.k==='threadH'?'mepEnt mepHidden':e.k==='thread'?'mepEnt mepThread':e.k==='tangent'?'mepEnt mepTangent':
+      e.k==='sect'?'mepEnt mepSect':e.k==='brk'?'mepEnt mepBrk':'mepEnt mepSharp';
+  }
+  function mepEntEl(mk,e,X,Y,cls){
+    // un élément par entité (tracé d'avant V0.99.55)
+    if(e.t==='L')mk('line',{x1:+X(e.x1).toFixed(3),y1:+Y(e.y1).toFixed(3),x2:+X(e.x2).toFixed(3),y2:+Y(e.y2).toFixed(3),class:cls});
+    else if(e.t==='C')mk('circle',{cx:+X(e.cx).toFixed(3),cy:+Y(e.cy).toFixed(3),r:+(e.r*mepEntSc).toFixed(3),class:cls});
+    else if(e.t==='A'){
+      const x0=+X(e.cx+e.r*Math.cos(e.a0)).toFixed(3),y0=+Y(e.cy+e.r*Math.sin(e.a0)).toFixed(3);
+      const x1=+X(e.cx+e.r*Math.cos(e.a1)).toFixed(3),y1=+Y(e.cy+e.r*Math.sin(e.a1)).toFixed(3);
+      const rr=+(e.r*mepEntSc).toFixed(3);
+      const la=Math.abs(e.a1-e.a0)>Math.PI?1:0,sw=e.a1>e.a0?1:0;
+      mk('path',{d:'M'+x0+' '+y0+' A'+rr+' '+rr+' 0 '+la+' '+sw+' '+x1+' '+y1,class:cls});
+    }
+    else if(e.t==='P'&&e.pts&&e.pts.length>1){
+      for(let k=0;k+1<e.pts.length;k++)
+        mk('line',{x1:+X(e.pts[k][0]).toFixed(3),y1:+Y(e.pts[k][1]).toFixed(3),x2:+X(e.pts[k+1][0]).toFixed(3),y2:+Y(e.pts[k+1][1]).toFixed(3),class:cls});
+    }
+  }
+  let mepEntSc=1; // échelle de la vue en cours (rayons)
+  function mepEntsBuild(mk,g,X,Y){
+    const node=mk('g',{class:'mepEntsG'});
+    const add=(tag,attrs)=>mk(tag,attrs,node);
+    let cur=null,d=[];
+    const flush=()=>{if(d.length)add('path',{d:d.join(''),class:cur});d=[];cur=null;};
+    const seg=(a,b,c,e)=>{d.push('M'+(+X(a).toFixed(3))+' '+(+Y(b).toFixed(3))+'L'+(+X(c).toFixed(3))+' '+(+Y(e).toFixed(3)));};
+    for(const e of g.els){
+      const c=mepEntCls(e);
+      if(e.t==='L'||(e.t==='P'&&e.pts&&e.pts.length>1)){
+        if(c!==cur){flush();cur=c;}
+        if(e.t==='L')seg(e.x1,e.y1,e.x2,e.y2);
+        else for(let k=0;k+1<e.pts.length;k++)seg(e.pts[k][0],e.pts[k][1],e.pts[k+1][0],e.pts[k+1][1]);
+      }else{flush();mepEntEl(add,e,X,Y,c);}
+    }
+    flush();
+    return node;
+  }
+  function mepEntsDraw(mk,v,g,X,Y){
+    mepEntSc=v.scale;
+    const els=g.els||[];
+    // entités sélectionnées (jaune) et survolée (bleu) de cette vue
+    const sel=new Set();
+    (mepSt.entSel||[]).forEach(s=>{if(s&&s.vid===v.id&&typeof s.i==='number'){const e=els[s.i];if(e&&(!s.sig||s.sig===mepEntSig(e)))sel.add(s.i);}});
+    const ip=mepSt.intPick;if(ip&&ip.vid===v.id&&typeof ip.i==='number'&&els[ip.i])sel.add(ip.i);
+    const hv=mepSt.hovEnt;let hov=-1;
+    if(hv&&hv.vid===v.id&&typeof hv.i==='number'&&!sel.has(hv.i)){const e=els[hv.i];if(e&&(!hv.sig||hv.sig===mepEntSig(e)))hov=hv.i;}
+    if(mepEntsOff){
+      els.forEach((e,ei)=>mepEntEl(mk,e,X,Y,mepEntCls(e)+(sel.has(ei)?' mepSelEnt':(ei===hov?' mepHovEnt':''))));
+      return;
+    }
+    const key=v.x+'|'+v.y+'|'+v.scale;
+    const c=mepEntsMemo.get(g);
+    if(c&&c.key===key&&c.els===els&&c.n===els.length)mepGSheet.appendChild(c.node);
+    else mepEntsMemo.set(g,{key,els,n:els.length,node:mepEntsBuild(mk,g,X,Y)});
+    if(hov>=0)mepEntEl(mk,els[hov],X,Y,mepEntCls(els[hov])+' mepHovEnt');
+    sel.forEach(i=>mepEntEl(mk,els[i],X,Y,mepEntCls(els[i])+' mepSelEnt'));
   }
 
 /* ═══════════════ 98-mep-70-cotes.js — mep 70 cotes ═══════════════ */
@@ -96361,11 +96435,12 @@ function filmFrame(){
     const sh=mepSheet();
     if(mepSt.vcmd&&!(mepSt.pick&&mepSt.pick.kind==='pan')){mepVcmdMove(sh,P,ev);return;}
     const pk=mepSt.pick;
+    if(mepGeste&&!(pk&&pk.kind==='pan'))return; // survol repris à la fin du geste
     if(pk){
       if(pk.kind==='pan'){
         mepSt.pan.x=pk.px-(ev.clientX-pk.sx)*mepPxToMm();
         mepSt.pan.y=pk.py-(ev.clientY-pk.sy)*mepPxToMm();
-        mepRender();
+        mepVueGeste();
         return;
       }
       if(pk.kind==='box'){
@@ -96615,7 +96690,7 @@ function filmFrame(){
      if((ck&&(!o||o.vid!==ck.vid||o.end!==ck.end))||(!ck&&o)){mepSt.cutHov=ck;try{mepRender();}catch(e){}}}
     const v=mepViewAt(sh,P.x,P.y);
     const id=v?v.id:null;
-    if(id!==mepSt.hovView){mepSt.hovView=id;try{mepRender();}catch(e){}}
+    if(id!==mepSt.hovView){mepSt.hovView=id;try{mepEntsOff?mepRender():mepVBDraw();}catch(e){}} // V0.99.55 : cadre seul
   }
   function mepOnUp(ev){
     const pk=mepSt.pick;
@@ -96698,7 +96773,7 @@ function filmFrame(){
       mepSt.pick=null;
       return;
     }
-    if(pk.kind==='pan'){mepSt.pick=null;return;}
+    if(pk.kind==='pan'){mepSt.pick=null;mepVueGesteFin();return;}
     // tracé en cours (ligne, rectangle, cercle, arc, logo) : il continue au clic suivant
     // (V0.3.12 : auparavant effacé au relâchement — le dessin en 2 clics n'aboutissait jamais)
     if(MEP_SK_TOOLS.indexOf(pk.kind)>=0||pk.kind==='cut2'||pk.kind==='det2')return;
@@ -96720,7 +96795,7 @@ function filmFrame(){
     mepSt.pan.x=P.x-(P.x-mepSt.pan.x)/ratio;
     mepSt.pan.y=P.y-(P.y-mepSt.pan.y)/ratio;
     mepSt.zoom=z1;
-    mepRender();
+    mepVueGeste(); // V0.99.55 : image déplacée par la carte graphique, planche redessinée à la fin
   }
   // double-clic sur une cote (true si traité) : flèche → inversion des deux flèches ;
   // cote linéaire → inversion des flèches ; angle → angle rentrant (360 − θ) ↔ saillant ;
@@ -97303,6 +97378,67 @@ function filmFrame(){
       return;
     }
     mepCtxHide();
+  }
+
+/* ═══════════════ 98-mep-81-geste-vue.js — mep 81 geste vue ═══════════════ */
+  /* ═══════════════ panoramique et zoom par la carte graphique (V0.99.55) ═══════════════
+     Avant : chaque cran de molette et chaque pas du panoramique refaisaient toute la planche (mepRender)
+     puis le navigateur la repeignait en entier à la nouvelle échelle, sur un seul cœur.
+     Ici, pendant le geste, l'image déjà peinte est seulement déplacée / agrandie (transformation CSS de
+     #mepSvg, calque composé par la carte graphique) ; la planche est redessinée nette une fois, quand le
+     geste s'arrête (MEP_GESTE_MS sans molette, ou bouton relâché).
+     Le viewBox reste celui de l'image peinte : mepPt et mepPxToMm calculent le point visé avec le cadrage
+     voulu (mepSt.pan / mepSt.zoom), comme si la planche était déjà redessinée.
+     ?sansgeste : comme V0.99.54. */
+  const MEP_GESTE_MS=160;
+  let mepGesteOff=false;
+  try{mepGesteOff=/[?&]sansgeste\b/.test(String(location.search||''));}catch(e){}
+  let mepGeste=null; // {vb0:{x,y,width,height}, w, h, t}
+  function mepGesteMeet(vb,w,h){
+    // cadrage « meet » centré du viewBox dans la zone (w × h px) : écran = o + s·mm
+    const s=Math.min(w/vb.width,h/vb.height)||1;
+    return{s,ox:(w-vb.width*s)/2-vb.x*s,oy:(h-vb.height*s)/2-vb.y*s};
+  }
+  function mepGesteVb(){const pg=mepPage();return{x:pg.vb[0],y:pg.vb[1],width:pg.vb[2],height:pg.vb[3]};}
+  function mepGesteMs(){try{return +window.__mepGesteMs||MEP_GESTE_MS;}catch(e){return MEP_GESTE_MS;}} // tests : délai allongé
+  // point écran → mm papier dans le cadrage voulu (pendant un geste)
+  function mepGestePt(ev){
+    const r=mepSheetEl.getBoundingClientRect();
+    const M=mepGesteMeet(mepGesteVb(),mepGeste.w,mepGeste.h);
+    const px=ev.clientX-r.left,py=ev.clientY-r.top;
+    return{x:(px-M.ox)/M.s,y:(py-M.oy)/M.s,px,py};
+  }
+  function mepGestePxMm(){return 1/mepGesteMeet(mepGesteVb(),mepGeste.w,mepGeste.h).s;}
+  function mepVueGeste(){
+    // pan / zoom changés : image déplacée tout de suite, planche redessinée à la fin du geste
+    if(mepGesteOff||!mepSvgEl||!mepSheetEl||!mepSt.open){mepRender();return;}
+    if(!mepGeste){
+      const R=mepSheetEl.getBoundingClientRect(),w=R.width,h=R.height; // taille exacte (clientWidth est arrondi)
+      if(!(w>0&&h>0)){mepRender();return;}
+      mepGeste={vb0:mepSvgViewBox(),w,h,t:0};
+      const st=mepSvgEl.style;
+      st.transformOrigin='0 0';st.willChange='transform';st.overflow='visible';
+    }
+    const G=mepGeste;
+    const A=mepGesteMeet(G.vb0,G.w,G.h),B=mepGesteMeet(mepGesteVb(),G.w,G.h);
+    const k=B.s/A.s,tx=B.ox-k*A.ox,ty=B.oy-k*A.oy;
+    mepSvgEl.style.transform='matrix('+k+',0,0,'+k+','+tx+','+ty+')';
+    try{mepRulers();}catch(e){}
+    clearTimeout(G.t);
+    G.t=setTimeout(mepVueGesteFin,mepGesteMs());
+  }
+  function mepVueGesteLache(){
+    // fin du geste sans redessiner (le rendu qui suit remet tout en place)
+    if(!mepGeste)return;
+    clearTimeout(mepGeste.t);mepGeste=null;
+    const st=mepSvgEl.style;st.transform='';st.willChange='';st.overflow='';st.transformOrigin='';
+  }
+  function mepVueGesteFin(){
+    if(!mepGeste)return;
+    if(mepSt.pick&&mepSt.pick.kind==='pan'){clearTimeout(mepGeste.t);mepGeste.t=setTimeout(mepVueGesteFin,mepGesteMs());return;}
+    mepVueGesteLache();
+    try{const pg=mepPage();mepSvgEl.setAttribute('viewBox',pg.vb.map(v=>+v.toFixed(3)).join(' '));}catch(e){}
+    try{mepRender();}catch(e){}
   }
 
 /* ═══════════════ 98-mep-85-cote-unique.js — mep 85 cote unique ═══════════════ */

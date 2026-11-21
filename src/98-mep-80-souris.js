@@ -594,11 +594,12 @@
     const sh=mepSheet();
     if(mepSt.vcmd&&!(mepSt.pick&&mepSt.pick.kind==='pan')){mepVcmdMove(sh,P,ev);return;}
     const pk=mepSt.pick;
+    if(mepGeste&&!(pk&&pk.kind==='pan'))return; // survol repris à la fin du geste
     if(pk){
       if(pk.kind==='pan'){
         mepSt.pan.x=pk.px-(ev.clientX-pk.sx)*mepPxToMm();
         mepSt.pan.y=pk.py-(ev.clientY-pk.sy)*mepPxToMm();
-        mepRender();
+        mepVueGeste();
         return;
       }
       if(pk.kind==='box'){
@@ -848,7 +849,7 @@
      if((ck&&(!o||o.vid!==ck.vid||o.end!==ck.end))||(!ck&&o)){mepSt.cutHov=ck;try{mepRender();}catch(e){}}}
     const v=mepViewAt(sh,P.x,P.y);
     const id=v?v.id:null;
-    if(id!==mepSt.hovView){mepSt.hovView=id;try{mepRender();}catch(e){}}
+    if(id!==mepSt.hovView){mepSt.hovView=id;try{mepEntsOff?mepRender():mepVBDraw();}catch(e){}} // V0.99.55 : cadre seul
   }
   function mepOnUp(ev){
     const pk=mepSt.pick;
@@ -931,7 +932,7 @@
       mepSt.pick=null;
       return;
     }
-    if(pk.kind==='pan'){mepSt.pick=null;return;}
+    if(pk.kind==='pan'){mepSt.pick=null;mepVueGesteFin();return;}
     // tracé en cours (ligne, rectangle, cercle, arc, logo) : il continue au clic suivant
     // (V0.3.12 : auparavant effacé au relâchement — le dessin en 2 clics n'aboutissait jamais)
     if(MEP_SK_TOOLS.indexOf(pk.kind)>=0||pk.kind==='cut2'||pk.kind==='det2')return;
@@ -953,7 +954,7 @@
     mepSt.pan.x=P.x-(P.x-mepSt.pan.x)/ratio;
     mepSt.pan.y=P.y-(P.y-mepSt.pan.y)/ratio;
     mepSt.zoom=z1;
-    mepRender();
+    mepVueGeste(); // V0.99.55 : image déplacée par la carte graphique, planche redessinée à la fin
   }
   // double-clic sur une cote (true si traité) : flèche → inversion des deux flèches ;
   // cote linéaire → inversion des flèches ; angle → angle rentrant (360 − θ) ↔ saillant ;

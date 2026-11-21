@@ -6,6 +6,8 @@
 
 Le retour dans le Plan est immédiat tant que la géométrie de la pièce n’a pas changé, et Ctrl+Z / Ctrl+Y sur un geste de plan ne recalculent ni la pièce ni les vues. Le recalage automatique des cotes sur la pièce modifiée ne compte pas comme une étape : un seul Ctrl+Z ramène la pièce, ses vues et ses cotes.
 
+La planche reste fluide même chargée : pendant la molette ou le panoramique, l'image est déplacée par la carte graphique, puis redessinée nette dès que le geste s'arrête. Le survol d'une vue ne redessine que son cadre.
+
 ## Planches
 
 - **Formats** A4 à A0, paysage ou portrait, ou format manuel ; plusieurs planches en onglets.
