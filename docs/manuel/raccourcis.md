@@ -7,7 +7,7 @@
 | | Vue 3D | Esquisse |
 |---|---|---|
 | Clic gauche | sélection (et la fonction qui a créé la face) | dessin, sélection |
-| `Ctrl+clic` | mesure seule, partout (CAO, FAO, assemblage, fonction ouverte), sans rien sélectionner | multi-sélection |
+| `Ctrl+clic` | mesure seule, partout (CAO, FAO, assemblage, fonction ouverte), sans rien sélectionner ; à partir de 3 faces, sélection pour `Suppr` | multi-sélection |
 | Glisser gauche | rotation autour du point visé | dessin, déplacement d'entités, sélection au cadre |
 | Clic-molette glissé | rotation | rotation autour du dessin |
 | `Ctrl` + molette enfoncée, clic droit glissé | déplacement | déplacement |
