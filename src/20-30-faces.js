@@ -1196,7 +1196,12 @@ function occDelFacesTry(result,hs){
   // → {r: solide ou null, kept: nb de faces retirées, err: message d'échec, warnings}
   const warnings=[];
   let r=null,echec=null,kept=hs.length;
-  try{r=occDeleteFacesOnce(result,hs);}catch(e){echec=e;}
+  // V0.99.58 : refus du noyau → trou rebouché par un bouchon (occDelReboucher), voir plus bas
+  const essai=set=>{
+    try{return occDeleteFacesOnce(result,set);}
+    catch(e){try{return occDelReboucher(result,set);}catch(e2){throw e;}}
+  };
+  try{r=essai(hs);}catch(e){echec=e;}
   // Reprise face par face : N+1 suppressions complètes de plus. Sur une grosse pièce, une
   // seule coûte déjà de 0,4 s à plusieurs minutes (Defeaturing OCCT, mesuré V0.15.7) :
   // au-delà de DEL_ISOLE_MAX faces, refus direct plutôt qu'une attente interminable.
@@ -1204,14 +1209,282 @@ function occDelFacesTry(result,hs){
   if(!r&&hs.length>1&&hs.length<=DEL_ISOLE_MAX){
     const garde=[];
     for(const h of hs){
-      try{const t=occDeleteFacesOnce(result,garde.concat([h]));try{t.delete();}catch(e){}garde.push(h);}catch(e){}
+      try{const t=essai(garde.concat([h]));try{t.delete();}catch(e){}garde.push(h);}catch(e){}
     }
     if(garde.length){
-      try{r=occDeleteFacesOnce(result,garde);}catch(e){echec=e;}
+      try{r=essai(garde);}catch(e){echec=e;}
       if(r)kept=garde.length;
     }
   }
   return{r,kept:r?kept:0,err:r?null:String((echec&&echec.message)||echec),warnings};
+}
+/* ---------- trou rebouché par un bouchon (V0.99.58) ----------
+   Constat de Fred (platine perforée, suppr.conceptcad) : « quand on veut enlever un trou qui
+   englobe plusieurs surfaces, cela devient compliqué ». Le trou débouche sur un plat ET un
+   arrondi (jusqu'à 4 faces : plans, cylindres, surfaces libres) : BRepAlgoAPI_Defeaturing doit
+   prolonger ces 4 faces jusqu'à ce qu'elles se rejoignent dans le trou, et refuse (ou part hors
+   de la pièce). Repli, trou cylindrique seulement :
+   1. le trou est ÉLARGI dans la matière (cylindre C de rayon R = 1,5 r au plus r + 1 mm) ;
+   2. C est découpé par les SURFACES prolongées des faces de la pièce qu'il touche (les vraies :
+      plan, arrondi, surface libre — pli compris) ; les morceaux dont le flanc (rayon R) est
+      dans la matière forment le bouchon, ajouté à la pièce élargie.
+   Pièce élargie et bouchon viennent du même cylindre C : ils se recollent sans peine. Repli quand
+   une surface libre ne se prolonge pas jusque-là (occDelBouchonLisse) : seulement si chaque
+   ouverture est sur un seul plan (couvercle plan) ; sinon refus net. Essais
+   écartés : surface lisse tendue sur le bord du trou (bosse en pointe là où le trou coupe un
+   pli, « Pas cool », Fred) ; bouchon du rayon du trou (paroi sur paroi : la fusion ne collait
+   rien, +0,001 mm³ au lieu de 38). Sérialisé dans le worker de la suppression. */
+function occDelReboucher(shape,hs){
+  // → solide rebouché (neuf, `shape` intact) ; lève une erreur sinon
+  const bin=[],all=occSubShapes(shape,'TopAbs_FACE');bin.push(...all);
+  const isDel=h=>hs.some(x=>x.IsSame(h));
+  const kept=all.filter(h=>!isDel(h));
+  const aretes=new Map(); // face → ses arêtes (chargées une fois)
+  const ar=h=>{let a=aretes.get(h);if(!a){a=occSubShapes(h,'TopAbs_EDGE');bin.push(...a);aretes.set(h,a);}return a;};
+  let r=null,cur=shape;
+  const remplace=n=>{if(cur!==shape)occFree(cur);cur=n;};
+  try{
+    // groupes de faces retirées reliées par une arête : un bouchon par trou
+    const grp=hs.map((h,i)=>i);
+    const find=i=>grp[i]===i?i:(grp[i]=find(grp[i]));
+    for(let i=0;i<hs.length;i++)for(let j=i+1;j<hs.length;j++)
+      if(ar(hs[i]).some(e=>ar(hs[j]).some(x=>x.IsSame(e))))grp[find(i)]=find(j);
+    const groupes=new Map();hs.forEach((h,i)=>{const g=find(i);if(!groupes.has(g))groupes.set(g,[]);groupes.get(g).push(h);});
+    let attendu=0; // volume du bouchon − matière retirée à l'élargissement = gain attendu
+    for(const G of groupes.values()){
+      // A. découpe exacte par les surfaces voisines prolongées ; contrôle sur ce trou seul
+      let fait=null,att=0;
+      try{
+        const b=occDelBouchon(shape,G,kept,ar,bin);
+        const va=occShapeVolume(cur);
+        let c=occCut(cur,b.cyl);
+        att=-(va-occShapeVolume(c));
+        // morceaux soudés entre eux d'abord, puis unifiés : ajoutés un à un, le solide était
+        // invalide (essai : dessus plan + congé tangent, morceau de 0,5 mm³ entre les deux surfaces)
+        let pl=occShapeCopy(b.pieces[0]);
+        for(let i=1;i<b.pieces.length;i++){const n=occFuse(pl,b.pieces[i]);occFree(pl);pl=n;}
+        pl=occUnify(pl);
+        att+=Math.abs(occShapeVolume(pl));
+        try{const n=occFuse(c,pl);occFree(c);c=n;}finally{occFree(pl);}
+        const g=occShapeVolume(c)-va;
+        if(g>1e-6&&Math.abs(g-att)<=0.01*Math.abs(att)+1e-4&&occCoqueValide(c))fait=c;else occFree(c);
+      }catch(e){fait=null;}
+      // B. sinon (surface libre qui ne se prolonge pas jusqu'au trou) : surface tendue sur le bord
+      if(!fait){
+        const plug=occDelBouchonLisse(G,kept,ar,bin);
+        att=Math.abs(occShapeVolume(plug));
+        fait=occFuse(cur,plug);
+      }
+      attendu+=att;remplace(fait);
+    }
+    r=occUnify(cur);cur=shape;
+    if(!occCoqueValide(r))throw new Error('solide rebouché invalide');
+    const so=occSubShapes(r,'TopAbs_SOLID'),ns=so.length;occDispose(so);
+    const dv=occShapeVolume(r)-occShapeVolume(shape);
+    if(ns!==1||!(dv>1e-6)||Math.abs(dv-attendu)>0.01*Math.abs(attendu)+1e-4)throw new Error('bouchon mal recollé');
+    if(occDelFaceDebord(occBoxMinMax(shape),occBoxMinMax(r),hs.map(occBoxMinMax))>0.05)throw new Error('bouchon hors de la pièce');
+    const out=r;r=null;
+    return out;
+  }finally{
+    if(cur!==shape)occFree(cur);
+    if(r)occFree(r);
+    occDispose(bin);
+  }
+}
+function occFaceCreuse(h){
+  // Paroi de trou : face cylindrique ou conique dont la normale SORTANTE (hors matière) pointe
+  // vers l'axe. Mesurée au milieu de la face (différences finies, orientation de la face).
+  // → {o, d, r} (axe, rayon ; r=0 pour un cône) ou null
+  const bin=[];
+  try{
+    const f=occBinPush(bin,occt.TopoDS.Face_1(h));
+    const ad=occBinPush(bin,new occt.BRepAdaptor_Surface_2(f,true));
+    const T=occt.GeomAbs_SurfaceType,gt=ad.GetType();
+    let ax=null,rr=0;
+    if(gt===T.GeomAbs_Cylinder){const c=occBinPush(bin,ad.Cylinder());ax=occBinPush(bin,c.Axis());rr=c.Radius();}
+    else if(gt===T.GeomAbs_Cone)ax=occBinPush(bin,occBinPush(bin,ad.Cone()).Axis());
+    if(!ax)return null;
+    const o=occXyz(occBinPush(bin,ax.Location())),d=occXyz(occBinPush(bin,ax.Direction()));
+    const u=(ad.FirstUParameter()+ad.LastUParameter())/2,v=(ad.FirstVParameter()+ad.LastVParameter())/2;
+    const hu=1e-4*Math.max(1e-6,ad.LastUParameter()-ad.FirstUParameter()),hv=1e-4*Math.max(1e-6,ad.LastVParameter()-ad.FirstVParameter());
+    const P=(a,b)=>occXyz(occBinPush(bin,ad.Value(a,b)));
+    let n=occCross3(occSub3(P(u+hu,v),P(u-hu,v)),occSub3(P(u,v+hv),P(u,v-hv)));
+    if(f.Orientation_1()===occt.TopAbs_Orientation.TopAbs_REVERSED)n=n.map(x=>-x);
+    const p=P(u,v),w=occSub3(p,o),t=occDot3(w,d),rad=[w[0]-t*d[0],w[1]-t*d[1],w[2]-t*d[2]];
+    return occDot3(n,rad)<0?{o,d,r:rr}:null;
+  }catch(e){return null;}
+  finally{occDispose(bin);}
+}
+function occDelBouchon(shape,G,kept,ar,bin){
+  // Trou `G` (faces de `shape`) → {cyl : cylindre élargi à retirer, pieces : morceaux du bouchon}
+  const W=G.map(h=>occFaceCreuse(h)).filter(c=>c&&c.r>0);
+  if(!W.length)throw new Error('pas un trou'); // dessus d'un prisme, congé : refusés comme avant
+  const {o,d,r}=W[0];
+  const R=r+Math.min(0.5*r,1);
+  // étendue du trou le long de l'axe, élargie
+  let t0=1e18,t1=-1e18;
+  for(const h of G){
+    const B=occBoxMinMax(h);if(!B)continue;
+    for(let i=0;i<8;i++){
+      const p=[i&1?B.hi[0]:B.lo[0],i&2?B.hi[1]:B.lo[1],i&4?B.hi[2]:B.lo[2]];
+      const t=occDot3(occSub3(p,o),d);t0=Math.min(t0,t);t1=Math.max(t1,t);
+    }
+  }
+  const m=2*R+0.5*(t1-t0);t0-=m;t1+=m;
+  const base=[o[0]+t0*d[0],o[1]+t0*d[1],o[2]+t0*d[2]];
+  const ax2=occBinPush(bin,new occt.gp_Ax2_3(occBinPush(bin,new occt.gp_Pnt_3(base[0],base[1],base[2])),occBinPush(bin,new occt.gp_Dir_4(d[0],d[1],d[2]))));
+  const cyl=occBinPush(bin,occBinPush(bin,new occt.BRepPrimAPI_MakeCylinder_3(ax2,R,t1-t0)).Shape());
+  const CB=occBoxMinMax(cyl);
+  // faces de la pièce que le cylindre touche (hors trou) : leurs surfaces découpent le bouchon
+  // (voisines par une arête d'abord : une grande face percée de 200 trous échappe à la mesure de distance)
+  const touche=[];
+  for(const h of G)for(const e of ar(h)){
+    const k=kept.find(k=>!touche.some(x=>x.IsSame(k))&&ar(k).some(x=>x.IsSame(e)));
+    if(k)touche.push(k);
+  }
+  for(const k of kept){
+    if(touche.some(x=>x.IsSame(k)))continue;
+    const b=occBoxMinMax(k);
+    if(!b||[0,1,2].some(i=>b.hi[i]<CB.lo[i]-1e-6||b.lo[i]>CB.hi[i]+1e-6))continue;
+    const x=occBinPush(bin,new occt.BRepExtrema_DistShapeShape_2(k,cyl,occt.Extrema_ExtFlag.Extrema_ExtFlag_MIN,occt.Extrema_ExtAlgo.Extrema_ExtAlgo_Grad));
+    if(x.IsDone()&&x.NbSolution()>0&&x.Value()<1e-6)touche.push(k);
+  }
+  if(!touche.length)throw new Error('trou sans ouverture');
+  if(touche.length>24)throw new Error('trou trop entouré');
+  // surfaces prolongées, bornées autour du cylindre (sommets de sa boîte élargie de R)
+  const coins=[];
+  for(let i=0;i<8;i++)coins.push([i&1?CB.hi[0]+R:CB.lo[0]-R,i&2?CB.hi[1]+R:CB.lo[1]-R,i&4?CB.hi[2]+R:CB.lo[2]-R]);
+  const outils=[];
+  for(const k of touche){
+    try{
+      const F=occBinPush(bin,occt.TopoDS.Face_1(k));
+      const S=occBinPush(bin,occt.BRep_Tool.Surface_2(F));
+      const GA=occBinPush(bin,new occt.GeomAdaptor_Surface_2(S));
+      const sas=occBinPush(bin,new occt.ShapeAnalysis_Surface(S));
+      let u0=1e18,u1=-1e18,v0=1e18,v1=-1e18;
+      for(const c of coins){
+        const q=occBinPush(bin,sas.ValueOfUV(occBinPush(bin,new occt.gp_Pnt_3(c[0],c[1],c[2])),1e-6));
+        u0=Math.min(u0,q.X());u1=Math.max(u1,q.X());v0=Math.min(v0,q.Y());v1=Math.max(v1,q.Y());
+      }
+      const du=0.1*(u1-u0)+1e-6,dv=0.1*(v1-v0)+1e-6;u0-=du;u1+=du;v0-=dv;v1+=dv;
+      // Surface bornée (surface libre de la platine, arrêtée avant le trou) : la projection bute
+      // sur son bord ; elle est PROLONGÉE au-delà (le noyau évalue hors du domaine, dans le
+      // prolongement du dernier carreau) de 3 R — de quoi traverser le trou élargi, pas plus (au-delà
+      // le prolongement s'égare et la découpe est refusée) —, converti en paramètre par la vitesse
+      // de la surface à ce bord. GeomLib.ExtendSurfByLength : inutilisable dans ce build.
+      const Lm=3*R;
+      const vit=(enU,t,w)=>{
+        const h=1e-4*Math.max(1e-9,enU?GA.LastUParameter()-GA.FirstUParameter():GA.LastVParameter()-GA.FirstVParameter());
+        const a=occXyz(occBinPush(bin,enU?GA.Value(t,w):GA.Value(w,t))),b=occXyz(occBinPush(bin,enU?GA.Value(t+h,w):GA.Value(w,t+h)));
+        return Math.max(1e-9,Math.hypot(b[0]-a[0],b[1]-a[1],b[2]-a[2])/h);
+      };
+      const lim=(enU,a,b,lo,hi,per,w)=>{
+        if(per)return b-a>per*0.5?[lo,lo+per]:[a,b]; // surface fermée (cylindre) : au plus un tour
+        const e=1e-7*Math.max(1,Math.abs(hi-lo));
+        if(isFinite(lo)&&a<=lo+e+0.1*(b-a))a=Math.min(a,lo-Lm/vit(enU,lo,w));
+        if(isFinite(hi)&&b>=hi-e-0.1*(b-a))b=Math.max(b,hi+Lm/vit(enU,hi,w));
+        return[a,b];
+      };
+      const um=(Math.max(u0,GA.FirstUParameter())+Math.min(u1,GA.LastUParameter()))/2,vm=(Math.max(v0,GA.FirstVParameter())+Math.min(v1,GA.LastVParameter()))/2;
+      const U=lim(true,u0,u1,GA.FirstUParameter(),GA.LastUParameter(),GA.IsUPeriodic()?GA.UPeriod():0,vm);
+      const V=lim(false,v0,v1,GA.FirstVParameter(),GA.LastVParameter(),GA.IsVPeriodic()?GA.VPeriod():0,um);
+      if(!(U[1]>U[0]&&V[1]>V[0]))continue;
+      const mf=occBinPush(bin,new occt.BRepBuilderAPI_MakeFace(S,U[0],U[1],V[0],V[1],1e-7));
+      if(mf.IsDone())outils.push(occBinPush(bin,mf.Face()));
+    }catch(e){}
+  }
+  if(!outils.length)throw new Error('faces voisines non prolongeables');
+  const sp=occBinPush(bin,occSplitRun(cyl,outils));
+  // morceaux dont le flanc (rayon R) est dans la matière de la pièce
+  const pieces=[];
+  const so=occSubShapes(sp,'TopAbs_SOLID');bin.push(...so);
+  const cl=occBinPush(bin,new occt.BRepClass3d_SolidClassifier_2(shape));
+  const IN=occt.TopAbs_State.TopAbs_IN;
+  for(const s of so){
+    const p=occDelFlancPoint(s,o,d,R);
+    if(!p)continue;
+    const q=occBinPush(bin,new occt.gp_Pnt_3(p[0],p[1],p[2]));
+    cl.Perform(q,1e-7);
+    if(cl.State()===IN)pieces.push(s);
+  }
+  if(!pieces.length)throw new Error('bouchon vide');
+  return{cyl,pieces};
+}
+function occDelBouchonLisse(G,kept,ar,bin){
+  // Repli : faces du trou + un couvercle PLAN par ouverture (ouverture sur un seul plan), cousus en solide.
+  const bords=[];
+  for(const h of G)for(const e of ar(h)){
+    if(bords.some(b=>b.e.IsSame(e)))continue;
+    const nb=kept.find(k=>ar(k).some(x=>x.IsSame(e)));
+    if(nb)bords.push({e:occBinPush(bin,occt.TopoDS.Edge_1(e)),nb});
+  }
+  if(!bords.length)throw new Error('trou sans ouverture');
+  const vs=bords.map(b=>[occt.TopExp.FirstVertex(b.e,false),occt.TopExp.LastVertex(b.e,false)]);
+  vs.forEach(v=>bin.push(...v));
+  const grp=bords.map((b,i)=>i);
+  const find=i=>grp[i]===i?i:(grp[i]=find(grp[i]));
+  for(let i=0;i<bords.length;i++)for(let j=i+1;j<bords.length;j++)
+    if(vs[i].some(a=>vs[j].some(c=>a.IsSame(c))))grp[find(i)]=find(j);
+  const contours=new Map();bords.forEach((b,i)=>{const g=find(i);if(!contours.has(g))contours.set(g,[]);contours.get(g).push(b);});
+  const couvercles=[];
+  for(const L of contours.values()){
+    let p=null;
+    if(L.every(b=>b.nb.IsSame(L[0].nb))&&occSurfKind(L[0].nb)==='Plane'){
+      try{
+        const mw=occBinPush(bin,new occt.BRepBuilderAPI_MakeWire_1());
+        const reste=L.slice();
+        for(let tour=0;reste.length&&tour<=L.length;tour++){
+          for(let i=0;i<reste.length;i++){mw.Add_1(reste[i].e);if(mw.IsDone()){reste.splice(i,1);break;}}
+        }
+        if(!reste.length){
+          const fm=occBinPush(bin,new occt.BRepBuilderAPI_MakeFace_15(occBinPush(bin,mw.Wire()),true));
+          if(fm.IsDone())p=occBinPush(bin,fm.Face());
+        }
+      }catch(e){p=null;}
+    }
+    // ouverture courbe ou à cheval sur plusieurs faces : refus net. Une surface tendue sur le bord
+    // y faisait une bosse en pointe (tangente aux voisines) ou une selle (sans tangence) — « Pas
+    // cool », puis « C'est pire » (Fred, trou à cheval sur une arête vive de la platine)
+    if(!p)throw new Error('ouverture du trou impossible à couvrir');
+    couvercles.push(p);
+  }
+  for(const tol of [1e-4,1e-3,1e-2]){
+    const sew=occBinPush(bin,new occt.BRepBuilderAPI_Sewing(tol,true,true,true,false));
+    G.forEach(h=>sew.Add(h));couvercles.forEach(p=>sew.Add(p));
+    sew.Perform(occBinPush(bin,new occt.Message_ProgressRange_1()));
+    if(sew.NbFreeEdges())continue;
+    const s0=sew.SewedShape();
+    if(!s0||s0.IsNull()){occFree(s0);continue;}
+    const s=occShellToSolid(s0);
+    bin.push(s);
+    const so=occSubShapes(s,'TopAbs_SOLID'),n=so.length;occDispose(so);
+    if(n===1&&occCoqueValide(s))return s;
+  }
+  throw new Error('bouchon du trou impossible à fermer');
+}
+function occDelFlancPoint(s,o,d,r){
+  // Point À L'INTÉRIEUR d'une face de `s` posée sur le cylindre (axe o,d ; rayon r), ou null.
+  const bin=[];
+  try{
+    const fs=occSubShapes(s,'TopAbs_FACE');bin.push(...fs);
+    const IN=occt.TopAbs_State.TopAbs_IN;
+    for(const f of fs){
+      const ad=occBinPush(bin,new occt.BRepAdaptor_Surface_2(f,true));
+      if(ad.GetType()!==occt.GeomAbs_SurfaceType.GeomAbs_Cylinder)continue;
+      const u0=ad.FirstUParameter(),u1=ad.LastUParameter(),v0=ad.FirstVParameter(),v1=ad.LastVParameter();
+      const cls=occBinPush(bin,new occt.IntTools_FClass2d(f,1e-7));
+      for(let a=1;a<8;a++)for(let c=1;c<8;c++){
+        const u=u0+(u1-u0)*a/8,v=v0+(v1-v0)*c/8;
+        const q=occBinPush(bin,new occt.gp_Pnt2d_3(u,v));
+        if(cls.Perform(q,false)!==IN)continue;
+        const p=occXyz(occBinPush(bin,ad.Value(u,v)));
+        const w=occSub3(p,o),t=occDot3(w,d);
+        if(Math.abs(Math.hypot(w[0]-t*d[0],w[1]-t*d[1],w[2]-t*d[2])-r)<1e-5)return p;
+      }
+    }
+    return null;
+  }catch(e){return null;}
+  finally{occDispose(bin);}
 }
 /* ---------- scinder par un plan : faces ou corps (V0.11.5) ----------
    {type:'xsplit', mode:'face'|'body', body, pl:{src,cg?,o?,n?}, off, flip, faces?, newBody?}

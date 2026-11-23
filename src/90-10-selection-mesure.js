@@ -272,7 +272,7 @@ function mesEdgeSegs(){
 const mesPropre=m=>bodies.some(b=>b.mesh===m);
 const mesGeomOf=(m,fi)=>mesPropre(m)?occFaceGeom(m,fi):asmMeasGeom(m,fi);
 const mesNom=m=>mesPropre(m)?bodyName(m):asmMeasName(m);
-function mesEnCours(){return !!(mesEtrangere||selFaces.length||selEdges.length||selGroup||measureGroup);}
+function mesEnCours(){return !!(mesPlan||mesEtrangere||selFaces.length||selEdges.length||selGroup||measureGroup);}
 function pick(e){
   const r=renderer.domElement.getBoundingClientRect();
   const ndc=new THREE.Vector2(((e.clientX-r.left)/r.width)*2-1,-((e.clientY-r.top)/r.height)*2+1);
@@ -388,6 +388,12 @@ function edgeSelect(e,eh,second){
   const P=eh.P||edgeHoverSegs()[eh.pi];if(!P)return;
   const G=edgeGeomOf(P);
   clearHover();
+  if(second&&mesPlan&&!selFaces.length&&!mesEtrangere){ // plan du repère puis arête (V0.99.61) ; une autre arête la remplace
+    if(measureGroup){measureGroup.removeFromParent();measureGroup=null;}selLabels=[];labelsDiv.innerHTML='';
+    if(selGroup){selGroup.removeFromParent();selGroup=null;}
+    selEdges=[{P,G}];selGroup=new THREE.Group();mesScene().add(selGroup);
+    edgeHoverDraw(P,selGroup,0xff9f0a);mesPlanArete(mesPlan,G);return;
+  }
   if(!second||!selEdges.length){
     clearMeasure();selEdges=[{P,G}];
     if(!selGroup){selGroup=new THREE.Group();mesScene().add(selGroup);}
@@ -435,6 +441,72 @@ function edgeSelect(e,eh,second){
   let best={d:1e18};A.pts.forEach(p=>B.pts.forEach(q=>{const d=p.distanceTo(q);if(d<best.d)best={d,p,q};}));
   dimPair(best.p,best.q,best.d.toFixed(2));faceEl.textContent='Distance mini entre arêtes ≈ '+best.d.toFixed(2)+' mm';
 }
+// V0.99.61 (demande de Fred : « mesurer depuis un plan du repère et n'importe quelle face ») :
+// Ctrl+clic sur un des 3 plans du repère (XY, XZ, YZ) = une face plane de la mesure, à l'origine.
+// Il se mesure avec une face (distance exacte, axe d'un cylindre, angle) ou une arête.
+const MES_PLAN_N={XY:[0,0,1],XZ:[0,1,0],YZ:[1,0,0]};
+function mesPlanAt(e){
+  if(asmMode==='asm'||mfPickForce)return null;
+  try{
+    if(!axHelper||!axHelper.userData||!axHelper.userData.planes)return null;
+    const r=renderer.domElement.getBoundingClientRect();
+    rayc.setFromCamera(new THREE.Vector2(((e.clientX-r.left)/r.width)*2-1,-((e.clientY-r.top)/r.height)*2+1),camera);
+    const ms=Object.values(axHelper.userData.planes).filter(m=>m.visible&&(!m.parent||m.parent.visible!==false));
+    ms.forEach(m=>m.updateMatrixWorld(true));
+    const hits=rayc.intersectObjects(ms,false);if(!hits.length)return null;
+    return mesPlanDe(hits[0].object.userData.plane,hits[0].point);
+  }catch(err){return null;}
+}
+function mesPlanDe(id,point){
+  const m=axHelper&&axHelper.userData.planes&&axHelper.userData.planes[id];
+  const n=new THREE.Vector3(...MES_PLAN_N[id]),o=new THREE.Vector3();
+  if(m){const q=new THREE.Quaternion();m.getWorldQuaternion(q);n.applyQuaternion(q).normalize();m.getWorldPosition(o);}
+  return {plane:id,mesh:null,faceIndex:-1,point:(point||o).clone(),geom:{kind:'plan',p:o,n}};
+}
+function mesLib(X){return X.plane?`Plan ${X.plane} (repère)`:`${selLibelle('Face',selFaceInfo(X.mesh,X.faceIndex))} : ${mesNom(X.mesh)}`;}
+function mesPlanPose(pl){mesPlan=pl;try{triadPaint(axHelper);}catch(err){}}
+function mesPlanClic(pl,fao){
+  clearHover();
+  const nF=selFaces.length+(mesEtrangere?1:0);
+  if(!nF&&selEdges.length===1){ // arête puis plan
+    const E=selEdges[0];clearMeasure();try{parMesOfferClear();}catch(err){}
+    selEdges=[E];if(!selGroup){selGroup=new THREE.Group();mesScene().add(selGroup);}edgeHoverDraw(E.P,selGroup,0xff9f0a);
+    mesPlanPose(pl);mesPlanArete(pl,E.G);return;
+  }
+  if(nF===1){ // face puis plan (un 2e plan remplace le 1er)
+    const A=mesEtrangere||selFaces[0];
+    if(measureGroup){measureGroup.removeFromParent();measureGroup=null;}selLabels=[];labelsDiv.innerHTML='';try{parMesOfferClear();}catch(err){}
+    mesPlanPose(pl);
+    const noms=`${mesLib(A)}\n${mesLib(pl)}\n`;
+    measurePair(A,pl);faceEl.textContent=noms+faceEl.textContent;
+    return;
+  }
+  if(mesPlan&&mesPlan.plane===pl.plane&&!nF&&!selEdges.length)return; // même plan recliqué
+  clearMeasure();try{parMesOfferClear();}catch(err){}
+  mesPlanPose(pl);
+  faceEl.textContent=`Plan ${pl.plane} (repère) — ${PLANES[pl.plane].label}\nCtrl+clic une face ou une arête : distance, axe ou angle depuis ce plan.`;
+}
+function mesPlanArete(pl,G){
+  // Arête ↔ plan du repère : droite (angle, distance si parallèle), cercle (centre ↔ plan), courbe (distance mini)
+  const n=pl.geom.n,o=pl.geom.p,dist=q=>q.clone().sub(o).dot(n),pied=q=>q.clone().addScaledVector(n,-dist(q));
+  const tete=`Arête ↔ plan ${pl.plane} (repère)\n`;
+  if(G.kind==='line'){
+    const ang=Math.asin(Math.min(1,Math.abs(G.u.dot(n))))*180/Math.PI;
+    const M=G.a.clone().add(G.b).multiplyScalar(0.5),d=dist(M);
+    if(ang<0.5){dimPair(pied(M),M,Math.abs(d).toFixed(2));faceEl.textContent=tete+`Droite parallèle au plan : ${Math.abs(d).toFixed(2)} mm`;}
+    else{const da=dist(G.a),db=dist(G.b);dimPair(pied(G.a),G.a,Math.abs(da).toFixed(2));dimPair(pied(G.b),G.b,Math.abs(db).toFixed(2));
+      faceEl.textContent=tete+`Angle droite/plan : ${ang.toFixed(2)}° · extrémités à ${Math.abs(da).toFixed(2)} et ${Math.abs(db).toFixed(2)} mm`;}
+    return;
+  }
+  if(G.kind==='circle'){
+    const d=dist(G.center),par=Math.abs(Math.abs(G.axis.dot(n))-1)<1e-4;
+    dimPair(pied(G.center),G.center,Math.abs(d).toFixed(2));tagAt('Ø '+(2*G.r).toFixed(2),G.pts[0]);
+    faceEl.textContent=tete+`Centre ↔ plan : ${Math.abs(d).toFixed(2)} mm${par?' (cercle parallèle au plan)':''} · Ø=${(2*G.r).toFixed(2)}`;
+    return;
+  }
+  let best=null;G.pts.forEach(q=>{const d=Math.abs(dist(q));if(!best||d<best.d)best={d,q};});
+  if(best){dimPair(pied(best.q),best.q,best.d.toFixed(2));faceEl.textContent=tete+`Distance mini ≈ ${best.d.toFixed(2)} mm`;}
+}
 function faceSelect(e,second){
   // V0.24.2 : Ctrl / Cmd enfoncé = MESURE seulement — rien n'est sélectionné nulle part (fonction,
   // plan, construction : ni arbre, ni timeline, ni panneau, ni outil rouge), rien n'est désélectionné
@@ -453,6 +525,7 @@ function faceSelect(e,second){
   if(!second&&!noSel&&!mfPickForce){const tp=triadPickPlane(e);if(tp){clearMeasure();sel={kind:'plane',id:tp};renderTree();renderProps();refreshParts();faceEl.textContent=`Plan ${tp} — ${PLANES[tp].label}
 Bouton « Esquisse » (ou double-clic dans l'arbre) pour dessiner dessus.`;return;}}
   if(!second&&!noSel&&!mfPickForce&&cgSelectAt(e))return; // construction (79) : plans, axes, points, repères
+  if(meas){const pl=mesPlanAt(e);if(pl){mesPlanClic(pl,fao);return;}} // V0.99.61 : plan du repère dans la mesure
   const h=meas?mesPick(e):pick(e);
   try{
     const segs=meas?mesEdgeSegs():edgeHoverSegs(),eh=edgePickScreen(e,segs,h,6);
@@ -480,8 +553,23 @@ Bouton « Esquisse » (ou double-clic dans l'arbre) pour dessiner dessus.`;retur
     const hm=h.object,hf=h.faceIndex,hp=h.point.clone();
     if(!noSel)setTimeout(()=>{if(selFaces.length===1&&selFaces[0].mesh===hm&&selFaces[0].faceIndex===hf)faceSelectFeature(hm,hf,hp);},0);}
   else{
-    const A=mesEtrangere||selFaces[0];
+    const A=mesEtrangere||selFaces[0]||mesPlan;
     if(!A){faceSelect(e,false);return;}
+    if(mesPlan&&A!==mesPlan&&!faceMemeQue(A,P)){ // face + plan déjà mesurés : une 3e face → sélection de faces, le plan sort
+      mesPlan=null;try{triadPaint(axHelper);}catch(err){}
+      if(!propre){faceEl.textContent='Face d\'un autre composant : elle ne peut pas entrer dans la sélection de faces.';return;}
+      selFaces.push(P);faceSelRedessine(fao);return;
+    }
+    if(A===mesPlan){ // plan du repère puis face : mesure depuis le plan
+      if(selFaces.length||mesEtrangere)return;
+      if(propre)selFaces.push(P);else mesEtrangere=P;
+      if(measureGroup){measureGroup.removeFromParent();measureGroup=null;}selLabels=[];labelsDiv.innerHTML='';
+      if(selGroup){selGroup.removeFromParent();selGroup=null;}selEdges=[];
+      highlightTris(h.object,faceTrisFor(h.object,h.faceIndex),0xff9f0a,0.55);
+      const noms=`${mesLib(mesPlan)}\n${mesLib(P)}\n`;
+      measurePair(mesPlan,P);faceEl.textContent=noms+faceEl.textContent;
+      return;
+    }
     // V0.99.59 (demande de Fred) : 2 faces = mesure ; dès la 3e, plus de mesure (cotes vertes,
     // axes, bouton ƒx retirés) mais une sélection de faces, à supprimer avec Suppr.
     // Ctrl+clic sur une face déjà prise la retire ; revenu à 2 faces, la mesure revient.
@@ -494,7 +582,7 @@ Bouton « Esquisse » (ou double-clic dans l'arbre) pour dessiner dessus.`;retur
     }
     if(propre)selFaces.push(P);
     highlightTris(h.object,faceTrisFor(h.object,h.faceIndex),0xff9f0a,0.55);
-    const noms=`${selLibelle('Face',selFaceInfo(A.mesh,A.faceIndex))} : ${mesNom(A.mesh)}\n${selLibelle('Face',selFaceInfo(P.mesh,P.faceIndex))} : ${mesNom(P.mesh)}\n`;
+    const noms=`${mesLib(A)}\n${mesLib(P)}\n`;
     if(measurePair(A,P)){if(!propre||!mesPropre(A.mesh))faceEl.textContent=noms+faceEl.textContent;}
     else{
       const d=A.point.distanceTo(P.point);
@@ -527,6 +615,13 @@ function faceSelRedessine(fao){
 function measurePair(A,B){
   // Mesures exactes entre 2 faces classées (plans / cylindres BRep). True si traité.
   const GA=A.geom,GB=B.geom;
+  if((A.plane||B.plane)&&!((GA&&GA.kind==='cyl')||(GB&&GB.kind==='cyl')||(GA&&GB&&GA.kind==='plan'&&GB.kind==='plan'))){
+    // plan du repère ↔ face sans géométrie exacte (surface gauche, sphère, maillage) : point cliqué ↔ plan
+    const F=A.plane?B:A,R=A.plane?A:B,d=F.point.clone().sub(R.geom.p).dot(R.geom.n);
+    dimPair(F.point.clone().addScaledVector(R.geom.n,-d),F.point,Math.abs(d).toFixed(2));
+    faceEl.textContent=`Point cliqué ↔ plan ${R.plane} : ${Math.abs(d).toFixed(2)} mm`;
+    return true;
+  }
   if(!GA||!GB)return false;
   if(GA.kind==='cyl'&&GB.kind==='cyl'){
     const en=entraxePts(GA.center,GA.axis,GB.center,GB.axis);
@@ -555,9 +650,21 @@ function measurePair(A,B){
       // Distance EXACTE entre les deux plans (équations BRep), pas entre les points
       // cliqués : un clic tombe sur le maillage, à la flèche de tessellation près.
       const signed=(GB.p.clone().sub(GA.p)).dot(GA.n);
+      if(A.plane||B.plane){ // plan du repère : la cote part de la face cliquée (le petit plan est à l'origine)
+        const F=A.plane?B:A,GF=F.geom,GR=A.plane?GA:GB;
+        const F0=F.point.clone().addScaledVector(GF.n,-(F.point.clone().sub(GF.p)).dot(GF.n));
+        const d=F0.clone().sub(GR.p).dot(GR.n);
+        dimPair(F0.clone().addScaledVector(GR.n,-d),F0,Math.abs(d).toFixed(2));
+        faceEl.textContent=`Face parallèle au plan ${(A.plane||B.plane)} : ${Math.abs(d).toFixed(2)} mm`;
+        return true;
+      }
       const A0=A.point.clone().addScaledVector(GA.n,-(A.point.clone().sub(GA.p)).dot(GA.n)); // pied SUR le plan 1
       dimPair(A0,A0.clone().addScaledVector(GA.n,signed),Math.abs(signed).toFixed(2));
       faceEl.textContent=`Faces parallèles : ${Math.abs(signed).toFixed(2)} mm (angle ${ang.toFixed(2)}°)`;
+    }else if(A.plane||B.plane){
+      const F=A.plane?B:A,GR=A.plane?GA:GB,d=F.point.clone().sub(GR.p).dot(GR.n);
+      dimPair(F.point.clone().addScaledVector(GR.n,-d),F.point,Math.abs(d).toFixed(2));
+      faceEl.textContent=`Face inclinée sur le plan ${(A.plane||B.plane)} : angle=${ang.toFixed(2)}° · point cliqué à ${Math.abs(d).toFixed(2)} mm du plan`;
     }else{
       const d=A.point.distanceTo(B.point);
       dimPair(A.point,B.point,d.toFixed(2)+' mm');
@@ -986,6 +1093,7 @@ function hoverMove(e){
   if(choixMenuOuvert())return; // liste du clic long ouverte : l'élément survolé dans la liste reste allumé
   const now=performance.now();if(now-lastHoverT<65)return;lastHoverT=now;
   try{
+    if(meas&&asmMode!=='asm'&&triadHoverAt(e)){if(hoverKey)clearHover();return;} // Ctrl : les plans du repère se mesurent aussi
     if(!meas&&(triadHoverAt(e)||(typeof faoPoseHoverAt==='function'&&faoPoseHoverAt(e)))){if(hoverKey)clearHover();renderer.domElement.style.cursor='pointer';hoverMove._cur=1;return;}
     if(hoverMove._cur){hoverMove._cur=0;renderer.domElement.style.cursor='';}
     const h=meas?mesPick(e):pick(e);
@@ -1012,6 +1120,7 @@ function hoverMove(e){
 }
 function clearMeasure(){
   selFaces=[];mesEtrangere=null;selEdges=[];selLabels=[];labelsDiv.innerHTML='';clearHover();
+  if(mesPlan){mesPlan=null;try{triadPaint(axHelper);}catch(e){}}
   // removeFromParent : les tracés sont dans la scène où ils ont été faits (mesScene), pas forcément celle de la pièce
   if(selGroup){selGroup.removeFromParent();selGroup=null;}
   if(measureGroup){measureGroup.removeFromParent();measureGroup=null;}
