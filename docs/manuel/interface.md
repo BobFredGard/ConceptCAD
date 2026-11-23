@@ -3,7 +3,7 @@
 # Interface
 
 Quatre espaces dans le bandeau supérieur : **CAO**, **FAO**, **PLAN** et **RENDU**.
-- **Bandeau** : barre rapide (annuler, rétablir, fichiers), **recherche de commandes** (`Ctrl+K`), état du noyau, **Régénérer**, nom du document (● = non enregistré) et version.
+- **Bandeau** : barre rapide (annuler, rétablir, fichiers), **recherche de commandes** (`Ctrl+K`), état du noyau, **Régénérer**, nom du document (● = modifications non enregistrées ; les calculs faits en fond, comme la remise à jour des parcours FAO, ne l’allument pas) et version.
 - **Ruban à icônes** propre à chaque espace ; en esquisse, il laisse la place au bandeau d'esquisse.
   - Comme dans Fusion 360, le **nom de chaque groupe** (Créer ▾, Modifier ▾…) ouvre la liste de toutes ses fonctions, avec leur **raccourci clavier**.
   - L'**épingle 📌** choisit celles qui restent aussi dans le ruban ; les moins courantes n'y sont plus par défaut, pour gagner de la place.

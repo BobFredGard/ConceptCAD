@@ -21,4 +21,12 @@ test('pièce rouverte après une modification refusée : non marquée modifiée'
   await page.evaluate(async()=>{const sk=doc.sketches.find(k=>(k.dims||[]).some(d=>d.type!=='angle'&&!d.expr&&parDimUser(d)>2)),d=sk.dims.find(d=>d.type!=='angle'&&!d.expr&&parDimUser(d)>2);parSetDim(sk,d,String(+(parDimUser(d)+0.5).toFixed(3)));await parAfterChange(false);});
   await page.waitForTimeout(3000);
   expect((await go()).mod).toBe(false);
+  // V0.99.59 : parcours FAO remis à jour par la génération de fond (stale) = pas une modification ; un réglage, si
+  expect(await page.evaluate(()=>{
+    const fao=doc.fao||(doc.fao={setups:[]});if(!(fao.setups||[]).length)fao.setups=[{ops:[]}];
+    const s=fao.setups[0];s.ops=s.ops||[];let op=s.ops[0];if(!op){op={type:'contour',name:'essai',stale:true};s.ops.push(op);}
+    op.stale=true;mffMark();
+    op.stale=false;const a=mffModified();op.stale=true;const b=mffModified();
+    op.__essai=1;const c=mffModified();delete op.__essai;
+    return [a,b,c];})).toEqual([false,false,true]);
 });
