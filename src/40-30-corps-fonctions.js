@@ -62,7 +62,7 @@ function delFeature(f){
   if(!after||!after.parentNode)return;
   const b=document.createElement('button');
   b.id='btnBody';b.textContent='◧ Corps';
-  b.title='Nouveau corps VIDE : les fonctions suivantes naîtront dedans (il devient actif ●)';
+  b.title='Nouveau corps VIDE : les fonctions suivantes naîtront dedans (il devient le corps actif)';
   b.onclick=()=>newBody();
   after.parentNode.insertBefore(b,after.nextSibling);
 })();
