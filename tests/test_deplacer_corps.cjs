@@ -43,6 +43,19 @@ const {loadApp}=require('./appvm.cjs');
     "A(featIconOf(f)==='✥'&&typeof occApplyBodyMove==='function','13 : icône de l’arbre');",
     // signature : l'ordre des étapes compte
     "const s1=featSig(f);f.steps=f.steps.slice().reverse();A(featSig(f)!==s1,'14 : la signature (cache) dépend des étapes et de leur ordre');",
+    // V0.99.61 : repère manipulable — flèches, anneaux, points cardinaux, pivot qui suit le corps
+    "f.steps=[];delete f.piv;markDirty();rebuild();sel={kind:'feature',id:f.id};",
+    "const C=bmCardinals(B1);A(C.length===28&&C[0].name==='Centre de la boîte'&&near(C[0].p[0],20)&&C.some(q=>q.name==='Coin X+ Y+ Z+'&&near(q.p[0],40)&&near(q.p[1],20)&&near(q.p[2],10)),'15 : 27 points cardinaux de la boîte + centre de gravité');",
+    "let pv=bmPivot(f);A(near(pv[0],20)&&near(pv[1],10)&&near(pv[2],5),'16 : sans choix, le repère est au centre de gravité');",
+    "bmApply(f,'move',0,12);bmApply(f,'move',2,-3);A(f.steps.length===1&&f.steps[0].k==='t'&&near(f.steps[0].v[0],12)&&near(f.steps[0].v[2],-3),'17 : deux flèches à la suite = une seule translation fusionnée');",
+    "b=shot();A(near(b.x0,12)&&near(b.z0,-3),'18 : translation du repère rejouée sur le corps exact');",
+    "bmSetPivot(f,bmCardinals(B1).find(q=>q.name==='Coin X− Y− Z−'));pv=bmPivot(f);A(near(pv[0],12)&&near(pv[1],0)&&near(pv[2],-3)&&f.piv&&near(f.piv[0],0)&&near(f.piv[2],0),'19 : repère posé sur un coin (rangé en coordonnées du corps)');",
+    "bmApply(f,'rot',2,45);bmApply(f,'rot',2,45);A(f.steps.length===2&&f.steps[1].k==='r'&&near(f.steps[1].deg,90),'20 : deux rotations autour du même axe = une seule étape de 90°');",
+    "b=shot();A(near(b.x0,-8)&&near(b.x1,12)&&near(b.y0,0)&&near(b.y1,40),'21 : rotation de 90° autour de Z par le coin choisi');",
+    "pv=bmPivot(f);A(near(pv[0],12)&&near(pv[1],0)&&near(pv[2],-3),'22 : le repère reste sur son coin après la rotation');",
+    "bmApply(f,'move',1,5);pv=bmPivot(f);A(f.steps.length===3&&near(pv[1],5),'23 : le repère suit le corps quand il se déplace');",
+    "const js2=JSON.parse(serialise(false)).features.find(x=>x.id===f.id);A(js2&&Array.isArray(js2.piv)&&!('_pc' in js2),'24 : position du repère enregistrée (sans mémo interne)');",
+    "f.steps=[];delete f.piv;delete f.pivName;sel=null;",
     "return out;"
   ].join('\n');
   const o=await vm.runInContext('(async()=>{'+R+'})()',ctx);
