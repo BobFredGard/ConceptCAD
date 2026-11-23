@@ -410,7 +410,7 @@ input[type=range]{accent-color:var(--primary);width:100%}
  * peut changer sans rien casser. CACHE_VER (parcours FAO) reste indépendant.
  */
 
-const APP_VER='V0.99.63';
+const APP_VER='V0.99.64';
 try{console.log('[ConceptCAD] version '+APP_VER);}catch(e){}
 try{var mfSv=document.getElementById('mfSplashVer');if(mfSv)mfSv.textContent=APP_VER;}catch(e){} // écran de démarrage
 
@@ -15945,9 +15945,14 @@ let tlbMoveBout=false; // dernier tlbMoveTo : aucun cran possible (seule de son 
       '#mfTl .tlbS .w{position:absolute;top:-5px;right:-5px;line-height:1;font-size:.74rem;color:#ff453a;text-shadow:0 0 2px var(--bg)}'+
       '#mfTl .tlbS.drag{opacity:.35}'+
       // V0.99.39 : fonctions d'une répétition entourées de vert ; pendant le choix, les candidates en pointillé
-      '#mfTl .tlbS.rsrc{border:2px solid #30d158;box-shadow:0 0 0 2px rgba(48,209,88,.35)}'+
-      '#mfTl .tlbS.rcand{border:1px dashed rgba(48,209,88,.8);cursor:copy}'+
+      // V0.99.64 : choisies = fond vert plein + coche ✓ (le pointillé des candidates ne les écrase plus) ;
+      // pendant le choix, ce qui ne peut pas être répété est estompé
+      '#mfTl .tlbS.rcand{border:1px dashed rgba(48,209,88,.85);background:transparent;cursor:copy}'+
+      '#mfTl .tlbS.rsrc,#mfTl .tlbS.rsrc.rcand{border:2px solid #30d158;background:rgba(48,209,88,.28);box-shadow:0 0 0 2px rgba(48,209,88,.35)}'+
       '#mfTl .tlbS.rsrc.rcand{cursor:alias}'+
+      '#mfTl .tlbS.rsrc::after{content:"✓";position:absolute;bottom:-6px;right:-5px;width:13px;height:13px;border-radius:50%;background:#30d158;color:#fff;font-size:.62rem;font-weight:700;line-height:13px;text-align:center}'+
+      '#mfTl .tlbS.rsrc.sel{background:var(--primary)}'+
+      '#mfTl .tlbS.rno{opacity:.35}'+
       '#mfTl .tlbM{flex:none;position:relative;width:5px;height:30px;margin:0 2px;border-radius:3px;background:var(--warn);cursor:ew-resize}'+
       '#mfTl .tlbM::before{content:"";position:absolute;left:-4px;top:-4px;border:6.5px solid transparent;border-top-color:var(--warn);border-bottom:none}'+
       '#mfTl .tlbM.on{box-shadow:0 0 0 3px var(--glow)}'+
@@ -16268,9 +16273,18 @@ function renderTimeline(){
   let RS=null;try{RS=repTlSources();}catch(e){RS=null;}
   const repCls=s=>{
     // sources de la répétition en jeu (vert) ; une esquisse consommée suit sa fonction
+    if(!RS)return '';
+    const f=s.kind==='cg'?null:tlbDragFeatOf(s);
+    if(!f)return RS.pick?' rno':'';
+    const ch=RS.ids.has(f.id),can=RS.pick&&(ch||repPickCan(f.id,RS.rp));
+    return (ch?' rsrc':'')+(can?' rcand':'')+(RS.pick&&!can?' rno':'');
+  };
+  const repWhy=s=>{
+    // bulle : dit l'état de l'étape pour la répétition en jeu
     if(!RS||s.kind==='cg')return '';
     const f=tlbDragFeatOf(s);if(!f)return '';
-    return (RS.ids.has(f.id)?' rsrc':'')+(RS.pick&&(RS.ids.has(f.id)||repPickCan(f.id,RS.rp))?' rcand':'');
+    if(RS.ids.has(f.id))return '\n✓ Répétée'+(RS.pick?' — clic = la retirer':'');
+    return RS.pick?(repPickCan(f.id,RS.rp)?'\n◌ Peut être répétée — clic = l’ajouter':'\n✗ Ne peut pas être répétée ici'):'';
   };
   const mk=()=>{
     const M=document.createElement('div');M.className='tlbM';
@@ -16289,7 +16303,7 @@ function renderTimeline(){
     const why=s.warn&&s.kind==='cg'&&s.o.msg?' — ⚠ '+s.o.msg:(s.warn&&s.o&&s.o._adj&&!s.o._err?' — ⚠ '+s.o._adj:
       (perdu?' — ⚠ '+(s.kind==='sketch'?skFacePerdue(s.o):'face ou arête perdue')+' : double-clic pour la resélectionner':(s.warn?' — ⚠ à vérifier (résultat incomplet)':'')));
     d.title=tlbName(s)+why+(s.off?' — hors rejeu (au-delà du marqueur)':'')+(vis?'':' — masqué')+
-      '\nClic = sélectionner · double-clic = '+(s.kind==='sketch'?'modifier l’esquisse':(s.kind==='cg'?'modifier':'éditer'))+(s.kind==='feature'?' · glisser = réordonner dans le corps (avec son esquisse)':(tlbDragFeatOf(s)?' · glisser = déplacer avec sa fonction':''));
+      '\nClic = sélectionner · double-clic = '+(s.kind==='sketch'?'modifier l’esquisse':(s.kind==='cg'?'modifier':'éditer'))+(s.kind==='feature'?' · glisser = réordonner dans le corps (avec son esquisse)':(tlbDragFeatOf(s)?' · glisser = déplacer avec sa fonction':''))+repWhy(s);
     d.onclick=ev=>tlbClick(s,ev);
     d.ondblclick=()=>tlbDbl(s);
     d.oncontextmenu=e=>{e.preventDefault();showCtx(e.clientX,e.clientY,{kind:s.kind,id:s.id});};
