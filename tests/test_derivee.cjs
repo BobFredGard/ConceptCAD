@@ -119,6 +119,21 @@ const {loadApp}=require('./appvm.cjs');
     // ── mini-liste : noms et valeurs ──
     const rows=parMiniRows();
     att(rows.some(x=>x.name==='Entraxe'&&x.val==='55'&&x.link)&&rows.some(x=>x.name==='Double'&&x.val==='110'&&!x.link),'26 : mini-liste : paramètres et valeurs');
+    // ── 18/11 : dérivés utilisés ou non, retrait des non utilisés ──
+    {const Lu=doc.derive[0],X=derUnused(Lu).map(p=>p.name);
+      att(X.join()==='Jeu_2','26b : non utilisé = Jeu_2 seul, Entraxe sert à Double ('+X.join()+')');
+      const rr=parMiniRows();
+      att(rr.some(x=>x.name==='Jeu_2'&&x.unused)&&rr.some(x=>x.name==='Entraxe'&&x.link&&!x.unused),'26c : mini-liste : non utilisé marqué');
+      doc.sketches[0].dims=[{name:'Cote1',expr:'Jeu_2*10',value:2,type:'dist'}];
+      att(!derUnused(Lu).length,'26d : nom cité par une cote d esquisse : utilisé');
+      doc.sketches[0].dims=[];
+      const n=derRemoveUnused(doc.derive[0]);
+      const L2=doc.derive[0];
+      att(n===1&&L2.params.map(p=>p.name).join()==='Entraxe'&&!L2.auto&&parValueNow('Entraxe')===55,'26e : 🧹 retire Jeu_2, garde Entraxe, plus d ajout automatique');
+      c=await derCheck(false);
+      att(!doc.derive[0].params.some(p=>p.name==='Jeu_2'),'26f : la vérification suivante ne le ramène pas');
+      docUndo();
+      att(doc.derive[0].params.some(p=>p.name==='Jeu_2'),'26g : Ctrl+Z le rétablit');}
     // ── une valeur dérivée ne se règle pas par une configuration ──
     att(cfgSetExpr('Entraxe','1')===false,'27 : paramètre dérivé non modifiable ici');
     // ── paramètre et corps disparus de la source ──

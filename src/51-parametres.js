@@ -456,13 +456,16 @@ function openParamsDlg(){
       const del=td();
       if(o.show){const b=document.createElement('button');b.textContent='👁';b.title='Montrer les 2 faces et la mesure dans la vue 3D';b.onclick=()=>{ov.remove();o.show();};del.appendChild(b);}
       if(o.del){const b=document.createElement('button');b.textContent='🗑';b.title='Supprimer';b.onclick=()=>{o.del();parAfterChange(true);render();};del.appendChild(b);}
+      if(o.unused){tr.style.opacity='.5';tr.title='Paramètre dérivé que rien n’utilise dans ce modèle';}
       if(o.ro){tbl.appendChild(tr);return;}
       n.onchange=()=>{const r=o.rename(n.value.trim());if(r!==true){alert(r);n.value=o.name||'';return;}parAfterChange(true);render();};
       x.onchange=()=>{const r=o.setExpr(x.value.trim());if(r!==true){alert(r);x.value=o.expr;return;}parAfterChange(true);render();};
       tbl.appendChild(tr);
     };
-    (doc.derive||[]).forEach(L=>(L.params||[]).forEach(p=>row({name:p.name,expr:String(+(+p.value).toFixed(12)).replace('.',','),val:+p.value,err:p.miss?'disparu de la source':null,origin:'🔗 '+L.name,ro:true,
-      del:()=>{L.params=L.params.filter(q=>q!==p);L.auto=false;}})));
+    // 18/11 : dérivés non utilisés grisés (« non utilisé ») ; 🧹 dans la section Dérivées les retire tous
+    const usedD=(doc.derive||[]).length&&typeof derUsedNames==='function'?derUsedNames():null;
+    (doc.derive||[]).forEach(L=>(L.params||[]).forEach(p=>{const nu=!!usedD&&!usedD.has(p.name);row({name:p.name,expr:String(+(+p.value).toFixed(12)).replace('.',','),val:+p.value,err:p.miss?'disparu de la source':null,origin:'🔗 '+L.name+(nu?' · non utilisé':''),ro:true,unused:nu,
+      del:()=>{L.params=L.params.filter(q=>q!==p);L.auto=false;}});}));
     (doc.params||[]).forEach(p=>row(p.mes?{name:p.name,expr:'📏 '+parMesLibelle(p),val:+p.value,unit:' mm',err:p.mesErr||null,origin:'Mesure',
       roExpr:'Mesure entre 2 faces : la valeur suit la pièce (non modifiable). 👁 pour la voir.',show:()=>parMesShow(p),
       rename:nm=>{if(!nm)return'Nom requis.';const ok=parNameCheck(nm,null,p);if(ok!==true)return ok;parRename(p.name,nm);p.name=nm;return true;},
