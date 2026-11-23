@@ -8,7 +8,7 @@ sont sorties le 2026-09-30j.
 Code dans `src/` · livrable `fusion_mvp.html` (généré par `build.js`) · architecture et
 garde-fous en tête de `src/00-entete-et-outils.js`.
 
-**747 versions**, de `2026-09-28b` à `V0.99.60` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
+**748 versions**, de `2026-09-28b` à `V0.99.61` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
 comme dans le fichier d'origine.
 
 ---
@@ -8305,3 +8305,21 @@ Manuel FAO.
 **Correctif** (`src/90-10-selection-mesure.js`) : jusqu'ici chaque Ctrl+clic au-delà de la 2e face remesurait la 1re et la dernière. Désormais, dès la 3e face, `faceSelRedessine` retire les cotes vertes, leurs étiquettes, les axes et le bouton ƒx, et ne garde que la surbrillance orange de toutes les faces ; message « N faces sélectionnées — Suppr pour les supprimer » (sans Suppr en FAO). Ctrl+clic sur une face déjà prise la retire (`faceMemeQue`) ; revenu à 2 faces, la mesure revient. Une face d'un autre composant n'entre pas dans une sélection de 3 faces ou plus.
 
 **Test** : `tests/browser/multi-faces.spec` — bloc, 2 faces mesurées, 3e face : plus de cote ni d'étiquette ni de bouton ƒx ; retrait puis remise de la 3e ; Suppr crée la suppression des 3 faces. CACHE_VER et FORMES_VER inchangés.
+
+## V0.99.61 - Suppression de face : trou à cheval sur plusieurs faces rebouché
+
+**Constat de Fred** (platine perforée, `suppr.conceptcad`) : « quand on veut enlever un trou qui englobe plusieurs surfaces, cela devient compliqué ». Un trou Ø2 qui débouche sur un plat et un arrondi (jusqu'à 4 faces : plans, cylindres, surfaces libres) : `BRepAlgoAPI_Defeaturing` doit prolonger toutes ces faces jusqu'à ce qu'elles se rejoignent dans le trou, et refuse (« les faces voisines ne se rejoignent pas ») ; un autre trou était rejeté par le garde-fou « hors de la pièce ».
+
+**Correctif** (`src/20-30-faces.js`) : quand le noyau refuse, `occDelReboucher` rebouche lui-même un trou cylindrique. (A) Le trou est élargi dans la matière (rayon 1,5 r, au plus r + 1 mm) ; ce cylindre est découpé par les surfaces PROLONGÉES des faces qu'il touche (plan, arrondi, surface libre, pli compris) ; les morceaux dont le flanc est dans la matière, soudés entre eux, rebouchent la pièce élargie (même cylindre des deux côtés : recollage propre, volume exact). (B) Repli : faces du trou + couvercle PLAN quand chaque ouverture est sur un seul plan. Sinon refus net, comme avant. Écartés après essai sur la pièce de Fred : couvercle tendu sur le bord, tangent aux voisines (bosse en pointe, « Pas cool ») ou sans tangence (selle à cheval sur l'arête vive, « C'est pire ») ; surface libre prolongée par une grille de points refaite (découpe bloquée plus de 10 min). Seulement pour un vrai trou (`occFaceCreuse` : paroi cylindrique creuse) ; contrôles : volume attendu, solide valide, rien hors de la pièce. Fonctions envoyées au worker de la suppression (`src/21-suppression-face-calcul.js`). Pièce de Fred : trou rejeté à tort par le garde-fou « hors de la pièce » maintenant rebouché ; le trou à 4 faces (arête vive + surfaces libres du pli) et les lumières oblongues des plis restent refusés : leurs surfaces libres ne se prolongent pas jusqu'au trou.
+
+Manuel Fonctions 3D.
+
+**Test** : `tests/test_suppression_face.cjs` 6 (trou à cheval sur le dessus et un congé R10 : volume plein, bouchon seul, pas de bouchon sur un congé) ; `test_suppression_face_edition` (garde-fou « vrille » toujours refusé), `_worker`, `_step`. CACHE_VER et FORMES_VER inchangés.
+
+**Aussi dans V0.99.61 - Mesure depuis un plan du repère**
+
+**Demande de Fred** : mesurer depuis un plan du repère vers n'importe quelle face.
+
+**Ajout** (`src/90-10-selection-mesure.js`, `src/11-repere.js`) : `Ctrl+clic` sur le petit plan XY, XZ ou YZ du repère (`mesPlanAt`, `mesPlan`), puis sur une face ou une arête, ou l'inverse : distance exacte au plan, axe d'un cylindre, angle ; arête droite (angle ou distance), cercle (centre), courbe (distance mini). Le plan pris s'allume comme sélectionné, rien n'entre dans `selFaces`. Manuel Fonctions 3D et Raccourcis.
+
+**Test** : `tests/browser/mesure-plan-repere.spec`. CACHE_VER et FORMES_VER inchangés.

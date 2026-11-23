@@ -76,7 +76,7 @@ function triadPaint(g){
   if(!g||!g.userData.planes)return;
   Object.keys(g.userData.planes).forEach(p=>{
     const m=g.userData.planes[p];
-    const act=(typeof sel!=='undefined'&&sel&&sel.kind==='plane'&&sel.id===p);
+    const act=(typeof sel!=='undefined'&&sel&&sel.kind==='plane'&&sel.id===p)||(g===axHelper&&typeof mesPlan!=='undefined'&&mesPlan&&mesPlan.plane===p); // plan pris dans la mesure
     m.material.opacity=act?0.8:(triadHover===p&&g===axHelper?0.6:0.34);
   });
 }

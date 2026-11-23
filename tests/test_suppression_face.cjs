@@ -65,6 +65,21 @@ const {loadApp}=require('./appvm.cjs');
     ' for(const h of [35,8]){doc.features[0].distance=h;markDirty();rebuild();',
     '  A(nFaces(occLive.shape)===6&&doc.features[1]._m.m===1,"5 : hauteur "+h+" : la face suit ("+nFaces(occLive.shape)+" faces, "+JSON.stringify(doc.features[1]._m)+")");',
     '  A(Math.abs(vol(occLive.shape)-1200*h)<1,"5 : hauteur "+h+" : volume plein ("+vol(occLive.shape).toFixed(1)+")");}}',
+    // 6) V0.99.58 : trou à cheval sur le dessus plan et un congé R10 (platine de Fred) : rebouché,
+    //    par le noyau ou par le bouchon (occDelReboucher), volume de la boîte congée sans trou
+    '{const s0=fillet(box(),(a,z)=>z[0]-a[0]>99&&a[1]>59&&a[2]>39,10);const V=vol(s0);',
+    ' const cyl=new occt.BRepPrimAPI_MakeCylinder_3(new occt.gp_Ax2_3(new occt.gp_Pnt_3(50,52,-1),occt.gp.DZ()),3,42).Shape();',
+    ' const s=occCut(s0,cyl);const isTrou=f=>{const k=occSurfKind(f);return k==="Cylinder"&&occFaceBox(f).dim[0]<6.1;};',
+    ' const tr=faces(s).filter(isTrou);A(tr.length===1,"6 : une face de trou ("+tr.length+")");',
+    ' const r=occApplyDeleteFaces(s,{faces:tr.map(f=>occFaceRefAny(f))});out.w6=r.warnings;',
+    ' A(!r.fatal&&!faces(r.shape).some(isTrou),"6 : trou retiré "+r.warnings.join(" | "));',
+    ' A(Math.abs(vol(r.shape)-V)<0.5,"6 : volume plein ("+vol(r.shape).toFixed(2)+" / "+V.toFixed(2)+")");',
+    // le bouchon seul (repli quand le noyau refuse) : même volume, un solide valide
+    ' const s2=occCut(s0,cyl);const h=faces(s2).filter(isTrou)[0];const b=occDelReboucher(s2,[h]);',
+    ' A(occCoqueValide(b)&&Math.abs(vol(b)-V)<0.5,"6 : bouchon : volume plein ("+vol(b).toFixed(2)+")");',
+    // une face qui n\'est pas un trou (congé convexe) : le bouchon refuse plutôt que de rajouter de la matière
+    ' const cg=faces(s0).filter(f=>occSurfKind(f)==="Cylinder")[0];let refus=false;try{const x=occDelReboucher(s0,[cg]);x.delete();}catch(e){refus=true;}',
+    ' A(refus,"6 : pas de bouchon sur un congé");}',
     // signature : les faces visées entrent dans featSig
     '{const a=featSig({type:"xdelface",faces:[{pos:[1,2,3],dim:[1,1,1],st:"Torus"}]}),b=featSig({type:"xdelface",faces:[{pos:[1,2,4],dim:[1,1,1],st:"Torus"}]});A(a!==b,"signature : dépend des faces");}',
     'return out;'

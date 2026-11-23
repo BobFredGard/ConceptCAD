@@ -21,7 +21,7 @@
  * peut changer sans rien casser. CACHE_VER (parcours FAO) reste indépendant.
  */
 
-const APP_VER='V0.99.60';
+const APP_VER='V0.99.61';
 try{console.log('[ConceptCAD] version '+APP_VER);}catch(e){}
 try{var mfSv=document.getElementById('mfSplashVer');if(mfSv)mfSv.textContent=APP_VER;}catch(e){} // écran de démarrage
 
@@ -122,6 +122,7 @@ function entName(kind){
 }
 let sel={kind:null,id:null};
 let selFaces=[]; // {mesh,faceIndex,point}
+let mesPlan=null; // plan du repère (XY, XZ, YZ) pris par Ctrl+clic dans la mesure : {plane,point,geom}, jamais dans selFaces (V0.99.61)
 let mesEtrangere=null; // 1re face de la mesure quand elle est sur un autre composant : jamais dans selFaces, que lisent les fonctions (Esquisse, trous…)
 let selGroup=null,measureGroup=null,labelsDiv=$('labels'),selLabels=[];
 let clipPlane=null,fileHandle=null,occt=null,occtReady=false,dirty=false;

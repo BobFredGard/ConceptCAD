@@ -52,6 +52,7 @@ Historique rejouable, timeline à icônes (vert = ajout, rouge = enlèvement), m
       si le noyau refuse de les décaler, la face cliquée (plane ou cylindrique) bouge quand même et un message dit que les faces tangentes n'ont pas suivi ;
     - une face trop courbe pour la distance demandée, qui se replierait (« vrille »), est remplacée par une surface lisse tangente à ses voisines, et un message le dit (la coque aussi) ;
   - **supprimer des faces**, plusieurs à la fois, avec calcul en tâche de fond ;
+    - un **trou à cheval sur plusieurs faces** (un plat et un arrondi) se rebouche aussi : le trou est comblé par un bouchon coupé par les faces voisines prolongées, pli compris ; dans les plis faits de petites surfaces libres (tôle importée), le refus reste possible ;
   - **dépouille** : angle signé, sens inversable ;
   - **coque** : évidage à épaisseur constante, peau autour de la pièce, ou **soufflée** (la face choisie s'enfonce dans la pièce jusqu'à une paroi donnée de l'extérieur, en enjambant les creux plus étroits qu'une largeur choisie ; surface lisse, lissage réglable) ;
   - **scinder** par un plan ;
@@ -83,7 +84,7 @@ Historique rejouable, timeline à icônes (vert = ajout, rouge = enlèvement), m
   - le corps actif (●) reçoit les nouvelles fonctions ; une extrusion, une révolution, un balayage ou un perçage choisit aussi son corps dans son panneau ;
   - **Supprimer** un corps ne touche pas les autres (même ceux nés de lui par une répétition) ;
   - **⊘ Retirer** (clic droit sur le corps, dans l'arbre ou dans la vue 3D) l'enlève à partir d'une étape de la timeline, sans rien effacer, comme dans Fusion 360. Un corps retiré, ou consommé par **Combiner**, est barré dans l'arbre à partir de cette étape.
-- **Mesures** : `Ctrl` enfoncé, on est en mesure, sans bouton et sans rien activer (`Ctrl+clic` : face à face, Ø, entraxe, entre deux arêtes), en CAO et en FAO ; dès la **3e face**, plus de mesure : les faces restent seulement sélectionnées, `Suppr` les supprime (`Ctrl+clic` sur une face prise la retire) ; le même outil en **Modéliser** et en **Assembler** mesure aussi entre les pièces d'un assemblage.
+- **Mesures** : `Ctrl` enfoncé, on est en mesure, sans bouton et sans rien activer (`Ctrl+clic` : face à face, Ø, entraxe, entre deux arêtes, et depuis un **plan du repère** — `Ctrl+clic` sur le petit plan XY, XZ ou YZ puis sur n'importe quelle face ou arête, ou l'inverse : distance au plan, axe d'un cylindre, angle), en CAO et en FAO ; dès la **3e face**, plus de mesure : les faces restent seulement sélectionnées, `Suppr` les supprime (`Ctrl+clic` sur une face prise la retire) ; le même outil en **Modéliser** et en **Assembler** mesure aussi entre les pièces d'un assemblage.
 
 ---
 
