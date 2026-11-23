@@ -273,6 +273,41 @@ async function derRelink(L){
   await derCheck(false);
   return true;
 }
+/* 18/11 : paramètres dérivés UTILISÉS ou non. Un nom est utilisé s'il apparaît dans une
+   expression du modèle : paramètre local, cote d'esquisse, valeur de fonction 3D, FAO, mise en
+   plan (porteurs de parHolders), champ ƒx de l'assemblage, colonne de configuration. Un paramètre
+   seulement lu par un autre paramètre dérivé n'existe pas (ils n'ont pas d'expression). */
+function derUsedNames(d){
+  d=d||doc;
+  const S=new Set(),add=ex=>{if(ex==null)return;const m=String(ex).match(/[A-Za-z_][A-Za-z0-9_]*/g);if(m)m.forEach(n=>S.add(n));};
+  derWithDoc(d,()=>{
+    (doc.params||[]).forEach(p=>{if(p&&!p.mes)add(p.expr);});
+    (doc.sketches||[]).forEach(sk=>(sk.dims||[]).forEach(x=>{if(x)add(x.expr);}));
+    parHolders().forEach(({h})=>{if(h.expr)Object.keys(h.expr).forEach(k=>add(h.expr[k]));});
+    const c=doc.configs;if(c&&Array.isArray(c.cols))c.cols.forEach(n=>S.add(n));
+  });
+  try{if(typeof asm!=='undefined'&&asm&&Array.isArray(asm.comps))asm.comps.forEach(c=>{if(!c||c.doc!==d)return;
+    (c.occ||[]).forEach(o=>{const fx=o&&o.align&&o.align.fx;if(fx)Object.keys(fx).forEach(k=>add(fx[k]));});
+    (c.pats||[]).forEach(p=>{if(p&&p.fx)Object.keys(p.fx).forEach(k=>add(p.fx[k]));});});}catch(e){}
+  return S;
+}
+function derUnused(L,used){
+  used=used||derUsedNames();
+  return (L.params||[]).filter(p=>p&&p.name&&!used.has(p.name));
+}
+function derRemoveUnused(L){
+  // Retire du fichier les paramètres dérivés que rien n'utilise. L.auto coupé : sinon ils
+  // reviendraient d'eux-mêmes à la prochaine lecture de la source.
+  const X=derUnused(L);if(!X.length)return 0;
+  docPushUndo('retirer '+X.length+' paramètre(s) dérivé(s) non utilisé(s)');
+  L.params=L.params.filter(p=>!X.includes(p));L.auto=false;
+  derPrune(doc);
+  parAfterChange();
+  try{renderTree();renderProps();}catch(e){}
+  parMiniSoon();
+  try{faceEl.textContent=X.length+' paramètre(s) dérivé(s) non utilisé(s) retiré(s) : '+X.map(p=>p.name).join(', ')+'.';}catch(e){}
+  return X.length;
+}
 function derBreak(L){
   // Rompre : les valeurs deviennent des paramètres d'ici, les corps gardent leur forme actuelle
   docPushUndo('rompre la dérivée « '+L.name+' »');
@@ -416,9 +451,15 @@ function derProps(p,f){
 function derDlgSection(box,redo){
   // Liste complète des paramètres : les fichiers dont celui-ci dérive
   const h=document.createElement('div');h.style.cssText='margin-top:12px;font-weight:600';h.textContent='🔗 Dérivées';box.appendChild(h);
+  const used=derUsedNames();
   (doc.derive||[]).forEach(L=>{
     const r=document.createElement('div');r.style.cssText='display:flex;gap:8px;align-items:center;margin-top:4px';
-    const t=document.createElement('span');t.style.flex='1';t.textContent=(L.st==='warn'?'⚠ ':'')+(L.rel||L.name)+(L.st==='warn'&&L.msg?' — '+L.msg:'');r.appendChild(t);
+    const nP=(L.params||[]).length,X=derUnused(L,used);
+    const t=document.createElement('span');t.style.flex='1';t.textContent=(L.st==='warn'?'⚠ ':'')+(L.rel||L.name)+(L.st==='warn'&&L.msg?' — '+L.msg:'')
+      +(nP?' — '+(nP-X.length)+' paramètre(s) utilisé(s) sur '+nP:'');r.appendChild(t);
+    if(X.length){const b0=document.createElement('button');b0.className='derRmUnused';b0.textContent='🧹 Retirer les '+X.length+' non utilisés';
+      b0.title='Non utilisés : '+X.map(p=>p.name).join(', ')+'. Ils restent dans la source ; « + Dériver depuis un fichier… » les reprend.';
+      b0.onclick=()=>{derRemoveUnused(L);redo();};r.appendChild(b0);}
     const b1=document.createElement('button');b1.textContent='🔄';b1.title='Vérifier maintenant';b1.onclick=async()=>{await derCheck(true);redo();};r.appendChild(b1);
     const b2=document.createElement('button');b2.textContent='✂ Rompre';b2.title='Les valeurs deviennent des paramètres d’ici, les corps gardent leur forme';b2.onclick=()=>{derBreak(L);redo();};r.appendChild(b2);
     box.appendChild(r);
@@ -444,7 +485,9 @@ function parMiniRows(){
   const fmt=v=>isFinite(v)?String(+(+v).toFixed(4)).replace('.',','):'';
   const brut=v=>String(+(+v).toFixed(12)).replace('.',','); // texte à éditer : toute la précision
   const rows=[];
-  (doc.derive||[]).forEach(L=>(L.params||[]).forEach(p=>rows.push({name:p.name,val:fmt(p.value),title:'Dérivé de '+L.name+(p.miss?' — disparu de la source':' — à modifier dans ce fichier'),link:true,warn:!!p.miss})));
+  const used=(doc.derive||[]).length?derUsedNames():null;
+  (doc.derive||[]).forEach(L=>(L.params||[]).forEach(p=>{const nu=!used.has(p.name);
+    rows.push({name:p.name,val:fmt(p.value),title:'Dérivé de '+L.name+(p.miss?' — disparu de la source':' — à modifier dans ce fichier')+(nu?' — non utilisé dans ce modèle (liste complète : 🧹 pour retirer)':''),link:true,warn:!!p.miss,unused:nu});}));
   (doc.params||[]).forEach(p=>{if(!p||!p.name)return;
     if(p.mes){rows.push({name:p.name,val:p.mesErr?'':fmt(p.value),title:p.mesErr||('Mesure : '+parMesLibelle(p)+' — suit la pièce, non modifiable'),warn:!!p.mesErr,edit:'',set:null});return;} // V0.87.0 : mesure entre 2 faces
     rows.push({name:p.name,val:p.err?'':fmt(p.value),title:p.err||String(p.expr==null?'':p.expr),warn:!!p.err,
@@ -514,7 +557,7 @@ function parMiniRender(){
       if(i){i.focus();i.value=keep.txt;i._start=keep.start;}}
   }
   rows.forEach((r,n)=>{
-    const d=body.children[n];d.title=r.title||'';
+    const d=body.children[n];d.title=r.title||'';d.style.opacity=r.unused?'.45':'';
     d.querySelector('.parMiniN').textContent=(r.link?'🔗 ':'')+r.name;
     const i=d.querySelector('.parMiniI');
     if(i){i._row=r;if(document.activeElement!==i)parMiniShow(i);return;}

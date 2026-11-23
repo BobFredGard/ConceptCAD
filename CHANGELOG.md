@@ -8,7 +8,7 @@ sont sorties le 2026-09-30j.
 Code dans `src/` · livrable `fusion_mvp.html` (généré par `build.js`) · architecture et
 garde-fous en tête de `src/00-entete-et-outils.js`.
 
-**743 versions**, de `2026-09-28b` à `V0.99.56` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
+**744 versions**, de `2026-09-28b` à `V0.99.57` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
 comme dans le fichier d'origine.
 
 ---
@@ -8272,3 +8272,11 @@ Tests `mep-echelles` et `mep-rotation` : ils échouaient depuis la V0.99.34, car
 Manuel FAO.
 
 **Test** : mesure par `SystemInfo.getProcessInfo` (ouverture, Dessin, FAO, retour Pièce, repos de 30 s) ; `mep-echelles`, `mep-rotation`, `mep-fluide` passent. CACHE_VER et FORMES_VER inchangés.
+
+## V0.99.57 - Dérivée : paramètres dérivés utilisés ou non, retrait des non utilisés
+
+**Demande de Fred** : « voir les paramètres dérivés qui sont utilisés dans le modèle et ceux qui ne le sont pas et du coup, pouvoir les retirer pour ne pas polluer la vision globale des paramètres ».
+
+**Ajout** (`src/52-derivee.js`, `src/51-parametres.js`) : `derUsedNames` relève tous les noms cités par une expression du modèle (paramètres locaux, cotes d'esquisse, valeurs de fonctions 3D, FAO et mise en plan par `parHolders`, champs ƒx de l'assemblage, colonnes de configuration). Liste complète ƒx : paramètre dérivé non utilisé grisé, « · non utilisé » dans la colonne Origine ; mini-liste : ligne grisée. Section 🔗 Dérivées : « N paramètre(s) utilisé(s) sur M » et bouton **🧹 Retirer les N non utilisés** (`derRemoveUnused` : étape d'annulation, `L.auto` coupé pour qu'ils ne reviennent pas à la vérification suivante, lien supprimé s'il ne donne plus rien).
+
+**Test** : `tests/test_derivee.cjs` 26b à 26g (non utilisé repéré, cote d'esquisse qui le cite, retrait, pas de retour à la vérification, Ctrl+Z). CACHE_VER et FORMES_VER inchangés.
