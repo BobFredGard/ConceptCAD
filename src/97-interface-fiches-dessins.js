@@ -108,7 +108,7 @@ function mfFiTable(){
   F('Créer/Joint','Gorge de joint torique','Creuse la gorge d’un joint torique dans un arbre, un alésage ou une face plane ronde, aux cotes ISO 3601-2, et y pose le joint ISO 3601-1 (AS568) qui convient, comme un corps séparé. Si le diamètre change, tout suit.',['Cliquez Joint','Cliquez l’arbre, l’alésage ou la face plane','Réglez la section, le joint et la position, puis OK'],KW0,KW0+ficD('M40 26V56M48 26V56',OR,1.4)+'<ellipse cx="44" cy="41" rx="4" ry="15" fill="none" stroke="#1f2937" stroke-width="3"/>');
   // Corps vide : AUCUNE matière — une boîte en pointillés, prête à recevoir (V0.78.0 : distinct de Copier)
   const WIRE=(x0,y0,z0,x1,y1,z1,c)=>[[[x0,y0,z0],[x1,y0,z0],[x1,y1,z0],[x0,y1,z0]],[[x0,y0,z1],[x1,y0,z1],[x1,y1,z1],[x0,y1,z1]]].map(q=>ficL3(q,c,1.3,'3 2',true)).join('')+[[x0,y0],[x1,y0],[x1,y1],[x0,y1]].map(([x,y])=>ficL3([[x,y,z0],[x,y,z1]],c,1.3,'3 2')).join('');
-  F('Créer/Corps','Corps vide','Démarre une nouvelle pièce séparée, VIDE, dans le même fichier : rien n’est copié. Ce que vous créez ensuite ira dedans.',['Cliquez Corps : un corps vide apparaît dans l’arbre, actif ●','Dessinez et extrudez : la matière naît dans ce corps'],
+  F('Créer/Corps','Corps vide','Démarre une nouvelle pièce séparée, VIDE, dans le même fichier : rien n’est copié. Ce que vous créez ensuite ira dedans.',['Cliquez Corps : un corps vide apparaît dans l’arbre, il devient le corps actif','Dessinez et extrudez : la matière naît dans ce corps'],
     ficBox(-6,-6,-8,10,10,4,'b'),
     ficBox(-22,-4,-8,-8,10,4,'b')+WIRE(4,-16,-8,20,0,4,GR)+ficT(72,73,'vide',7,GR)+ficDot(84,12,3,GR)+ficT(84,23,'actif',6,GR));
   // Copier : la MÊME pièce (avec sa pastille) reproduite — en place, ou en miroir d'un plan (orange)

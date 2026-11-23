@@ -410,7 +410,7 @@ input[type=range]{accent-color:var(--primary);width:100%}
  * peut changer sans rien casser. CACHE_VER (parcours FAO) reste indépendant.
  */
 
-const APP_VER='V0.99.62';
+const APP_VER='V0.99.63';
 try{console.log('[ConceptCAD] version '+APP_VER);}catch(e){}
 try{var mfSv=document.getElementById('mfSplashVer');if(mfSv)mfSv.textContent=APP_VER;}catch(e){} // écran de démarrage
 
@@ -14452,7 +14452,7 @@ function delFeature(f){
   if(!after||!after.parentNode)return;
   const b=document.createElement('button');
   b.id='btnBody';b.textContent='◧ Corps';
-  b.title='Nouveau corps VIDE : les fonctions suivantes naîtront dedans (il devient actif ●)';
+  b.title='Nouveau corps VIDE : les fonctions suivantes naîtront dedans (il devient le corps actif)';
   b.onclick=()=>newBody();
   after.parentNode.insertBefore(b,after.nextSibling);
 })();
@@ -16747,7 +16747,6 @@ function treePart(L){
   groups.forEach(be=>{
     const kids=doc.features.filter(f=>!f.repeatId&&bodyOf(f)===be.id);
     const kidsVis=kids.filter(f=>!tlLocked(f));
-    const estActif=doc.activeBody===be.id;
     let pasNe=false;try{pasNe=tlMark!=null&&!bodyBornAt(be.id,tlIdx());}catch(e){} // V0.15.12 : corps né plus loin que le marqueur
     let parti=null;try{parti=bodyConsumedBy(be.id,tlIdx());}catch(e){} // V0.47.2 : outil consommé ou corps retiré : barré
     const selIn=treeSel.concat([(sel.kind==='feature'||sel.kind==='body')?sel.id:null]).filter(Boolean);
@@ -16758,12 +16757,11 @@ function treePart(L){
     const enRejeu=bodyEnabledOf(be.id);
     const bcol=bodyTextColor(be);
     L.push({drag:{kind:'body',id:be.id},drop:treeDropBody(be.id),lvl:0,cls:'tnode bh'+((sel.kind==='body'&&sel.id===be.id)?' sel':'')+(visVue?'':' hidden')+(enRejeu?'':' off')+(pasNe?' locked':'')+(parti?' gone':''),
-      style:{boxShadow:'inset 3px 0 0 '+(bcol||'#9a9aa0')},
       html:'<span class="tri" title="Déplier / replier les fonctions du corps">'+(open?'▼':'▶')+'</span><span title="Corps — '+(be.name||'')+'">🧱</span>'+
-        '<span class="nm"'+(bcol?(' style="color:'+bcol+'"'):'')+'>'+be.name+(estActif?' ●':'')+(pasNe?' <span title="Ce corps naît plus loin dans la timeline : il n’existe pas encore au marqueur">⏳ pas encore créé</span>':' · '+kidsVis.length+' fonction(s)')+(function(){const o=typeof repBodyOwner==='function'?repBodyOwner(be.id):null;return o?' <span class="repsrc" title="Corps créé par la répétition « '+o.name+' » (opération Nouveau corps)">🔁 '+o.name+'</span>':'';})()+'</span>'+
+        '<span class="nm"'+(bcol?(' style="color:'+bcol+'"'):'')+'>'+be.name+(pasNe?' <span title="Ce corps naît plus loin dans la timeline : il n’existe pas encore au marqueur">⏳ pas encore créé</span>':' · '+kidsVis.length+' fonction(s)')+(function(){const o=typeof repBodyOwner==='function'?repBodyOwner(be.id):null;return o?' <span class="repsrc" title="Corps créé par la répétition « '+o.name+' » (opération Nouveau corps)">🔁 '+o.name+'</span>':'';})()+'</span>'+
         '<span class="pwr'+(enRejeu?' on':'')+'" title="'+(enRejeu?'Rejeu ACTIF : toutes les fonctions de ce corps sont recalculées — cliquer pour les EXCLURE (le corps reste visible)':'Rejeu ÉTEINT : toutes les fonctions de ce corps sont exclues (grisées) — cliquer pour les inclure')+'">⏻</span>'+
         '<span class="eye" title="'+(visVue?'Corps visible dans la 3D — cliquer pour le CACHER (il reste dans le rejeu et l\'export)':'Corps masqué dans la 3D (vue seule) — cliquer pour l\'AFFICHER. Aucune fonction n\'est touchée')+'">'+(visVue?'👁':EYE_OFF)+'</span>',
-      title:(parti?'Corps absent du résultat à partir de « '+parti.name+' » : reculez le marqueur avant cette étape pour le retrouver · ':'')+'Clic = sélectionner et ACTIVER (les nouvelles fonctions naîtront dans « '+be.name+' ») · ▶/▼ = replier · ⏻ = rejeu (inclure/exclure ses fonctions du recalcul) · 👁 = vue 3D seule · clic droit = renommer / supprimer · ➕ additif / ➖ découpe · ● = corps actif',
+      title:(parti?'Corps absent du résultat à partir de « '+parti.name+' » : reculez le marqueur avant cette étape pour le retrouver · ':'')+'Clic = sélectionner et ACTIVER (les nouvelles fonctions naîtront dans « '+be.name+' ») · ▶/▼ = replier · ⏻ = rejeu (inclure/exclure ses fonctions du recalcul) · 👁 = vue 3D seule · clic droit = renommer / supprimer · ➕ additif / ➖ découpe',
       on:{
         tri:()=>{be.open=!open;try{dirty=true;}catch(e){}renderTree();},
         pwr:()=>bodyToggleEnabled(be.id),
@@ -85285,7 +85283,7 @@ function mfFiTable(){
   F('Créer/Joint','Gorge de joint torique','Creuse la gorge d’un joint torique dans un arbre, un alésage ou une face plane ronde, aux cotes ISO 3601-2, et y pose le joint ISO 3601-1 (AS568) qui convient, comme un corps séparé. Si le diamètre change, tout suit.',['Cliquez Joint','Cliquez l’arbre, l’alésage ou la face plane','Réglez la section, le joint et la position, puis OK'],KW0,KW0+ficD('M40 26V56M48 26V56',OR,1.4)+'<ellipse cx="44" cy="41" rx="4" ry="15" fill="none" stroke="#1f2937" stroke-width="3"/>');
   // Corps vide : AUCUNE matière — une boîte en pointillés, prête à recevoir (V0.78.0 : distinct de Copier)
   const WIRE=(x0,y0,z0,x1,y1,z1,c)=>[[[x0,y0,z0],[x1,y0,z0],[x1,y1,z0],[x0,y1,z0]],[[x0,y0,z1],[x1,y0,z1],[x1,y1,z1],[x0,y1,z1]]].map(q=>ficL3(q,c,1.3,'3 2',true)).join('')+[[x0,y0],[x1,y0],[x1,y1],[x0,y1]].map(([x,y])=>ficL3([[x,y,z0],[x,y,z1]],c,1.3,'3 2')).join('');
-  F('Créer/Corps','Corps vide','Démarre une nouvelle pièce séparée, VIDE, dans le même fichier : rien n’est copié. Ce que vous créez ensuite ira dedans.',['Cliquez Corps : un corps vide apparaît dans l’arbre, actif ●','Dessinez et extrudez : la matière naît dans ce corps'],
+  F('Créer/Corps','Corps vide','Démarre une nouvelle pièce séparée, VIDE, dans le même fichier : rien n’est copié. Ce que vous créez ensuite ira dedans.',['Cliquez Corps : un corps vide apparaît dans l’arbre, il devient le corps actif','Dessinez et extrudez : la matière naît dans ce corps'],
     ficBox(-6,-6,-8,10,10,4,'b'),
     ficBox(-22,-4,-8,-8,10,4,'b')+WIRE(4,-16,-8,20,0,4,GR)+ficT(72,73,'vide',7,GR)+ficDot(84,12,3,GR)+ficT(84,23,'actif',6,GR));
   // Copier : la MÊME pièce (avec sa pastille) reproduite — en place, ou en miroir d'un plan (orange)

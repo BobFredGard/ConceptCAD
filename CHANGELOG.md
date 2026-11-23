@@ -8,7 +8,7 @@ sont sorties le 2026-09-30j.
 Code dans `src/` · livrable `fusion_mvp.html` (généré par `build.js`) · architecture et
 garde-fous en tête de `src/00-entete-et-outils.js`.
 
-**749 versions**, de `2026-09-28b` à `V0.99.62` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
+**750 versions**, de `2026-09-28b` à `V0.99.63` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
 comme dans le fichier d'origine.
 
 ---
@@ -8331,3 +8331,11 @@ Manuel Fonctions 3D.
 **Ajout** (`src/85-deplacer-corps-repere.js`, `src/85-deplacer-corps.js`) : le Déplacer sélectionné montre un manipulateur au pivot (`bmGzDraw`, rangé dans TRIADS) : 3 flèches X / Y / Z (tirer = translation, pas 1 mm, Maj = libre), 3 anneaux (rotation autour de l'axe par le pivot, pas 5°), simple clic = case de saisie de la valeur (`bmValOpen`), Échap pendant le geste = annuler. Aperçu immédiat par le seul maillage (arêtes masquées le temps du geste) ; au relâcher une étape `t` ou `r`, fusionnée avec la dernière si même nature (`bmApply`). Boule blanche ou « 📍 Placer le repère… » : les 27 points cardinaux de la boîte du corps + centre de gravité (`bmCardinals`), ou les points d'une face ; pivot rangé dans `f.piv` en coordonnées du corps avant déplacement (il suit le corps). Panneau : section « Repère » (Déplacer mm / Tourner ° pour X, Y, Z). Le point à point propose aussi d'emblée les points cardinaux. Là où deux poignées se croisent, celle en surbrillance est prise. Manuel Fonctions 3D.
 
 **Test** : `tests/test_deplacer_corps.cjs` 15-24 (points cardinaux, pivot par défaut, fusion des translations et des rotations, rotation par un coin, pivot qui suit le corps, enregistrement). CACHE_VER et FORMES_VER inchangés.
+
+## V0.99.63 - Arbre : ligne du corps allégée
+
+**Demande de Fred** : « on enlève l'astérisque bleue du nom du corps », puis « tu peux enlever l'accolade aussi ».
+
+**Correctif** (`src/42-arbre-modele.js`) : la ligne du corps dans l'arbre n'affiche plus le rond « ● » du corps actif après son nom, ni le trait de couleur à gauche (`boxShadow` inset) qui, avec les coins arrondis, ressemblait à une accolade. Le nom garde la couleur du corps. Bulles d'aide reformulées (`src/40-30-corps-fonctions.js`, `src/97-interface-fiches-dessins.js`), manuel Fonctions 3D.
+
+**Test** : `tests/fixtures/arbre_reference.json` réécrit (`test_arbre_v2 --ecrire`). CACHE_VER et FORMES_VER inchangés.
