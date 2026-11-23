@@ -8,7 +8,7 @@ sont sorties le 2026-09-30j.
 Code dans `src/` · livrable `fusion_mvp.html` (généré par `build.js`) · architecture et
 garde-fous en tête de `src/00-entete-et-outils.js`.
 
-**746 versions**, de `2026-09-28b` à `V0.99.59` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
+**747 versions**, de `2026-09-28b` à `V0.99.60` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
 comme dans le fichier d'origine.
 
 ---
@@ -8298,3 +8298,10 @@ Manuel FAO.
 **Correctif** (`src/97-fichiers-projets.js`) : `mffSig` ignore les champs `stale` ; un vrai réglage d'opération ou une cote changée marquent toujours le document modifié. Plaque d'une centaine de fonctions, copie ancienne laissée 80 s après l'ouverture : plus de ●.
 
 **Test** : `modifie-arrondi.spec` : `stale` changé = non modifié, réglage d'une opération changé = modifié. CACHE_VER et FORMES_VER inchangés.
+## V0.99.60 - Ctrl+clic de faces : 2 faces = mesure, au-delà = sélection pour Suppr
+
+**Demande** : « CAO : Multi sélection de faces -> jusqu'à 2 -> Mesure, au-delà, plus mesure mais sélection en vue de leur suppression, enlever les outils de mesure verts ».
+
+**Correctif** (`src/90-10-selection-mesure.js`) : jusqu'ici chaque Ctrl+clic au-delà de la 2e face remesurait la 1re et la dernière. Désormais, dès la 3e face, `faceSelRedessine` retire les cotes vertes, leurs étiquettes, les axes et le bouton ƒx, et ne garde que la surbrillance orange de toutes les faces ; message « N faces sélectionnées — Suppr pour les supprimer » (sans Suppr en FAO). Ctrl+clic sur une face déjà prise la retire (`faceMemeQue`) ; revenu à 2 faces, la mesure revient. Une face d'un autre composant n'entre pas dans une sélection de 3 faces ou plus.
+
+**Test** : `tests/browser/multi-faces.spec` — bloc, 2 faces mesurées, 3e face : plus de cote ni d'étiquette ni de bouton ƒx ; retrait puis remise de la 3e ; Suppr crée la suppression des 3 faces. CACHE_VER et FORMES_VER inchangés.

@@ -482,6 +482,16 @@ Bouton « Esquisse » (ou double-clic dans l'arbre) pour dessiner dessus.`;retur
   else{
     const A=mesEtrangere||selFaces[0];
     if(!A){faceSelect(e,false);return;}
+    // V0.99.59 (demande de Fred) : 2 faces = mesure ; dès la 3e, plus de mesure (cotes vertes,
+    // axes, bouton ƒx retirés) mais une sélection de faces, à supprimer avec Suppr.
+    // Ctrl+clic sur une face déjà prise la retire ; revenu à 2 faces, la mesure revient.
+    const dejaI=selFaces.findIndex(s=>faceMemeQue(s,P));
+    if(dejaI>=0&&selFaces.length+(mesEtrangere?1:0)>=3){selFaces.splice(dejaI,1);faceSelRedessine(fao);return;}
+    if(dejaI>=0)return; // même face recliquée à 2 : rien ne change
+    if(selFaces.length+(mesEtrangere?1:0)>=2){
+      if(!propre){faceEl.textContent='Face d\'un autre composant : elle ne peut pas entrer dans la sélection de faces.';return;}
+      selFaces.push(P);faceSelRedessine(fao);return;
+    }
     if(propre)selFaces.push(P);
     highlightTris(h.object,faceTrisFor(h.object,h.faceIndex),0xff9f0a,0.55);
     const noms=`${selLibelle('Face',selFaceInfo(A.mesh,A.faceIndex))} : ${mesNom(A.mesh)}\n${selLibelle('Face',selFaceInfo(P.mesh,P.faceIndex))} : ${mesNom(P.mesh)}\n`;
@@ -493,6 +503,26 @@ Bouton « Esquisse » (ou double-clic dans l'arbre) pour dessiner dessus.`;retur
     }
     if(propre&&mesPropre(A.mesh)&&!fao){try{parMesOffer(A,P);}catch(err){}} // V0.87.0 : bouton « Créer un paramètre »
   }
+}
+function faceMemeQue(a,b){
+  if(!a||!b||a.mesh!==b.mesh)return false;
+  if(a.faceIndex===b.faceIndex)return true;
+  try{return faceTrisFor(a.mesh,a.faceIndex).includes(b.faceIndex);}catch(e){return false;}
+}
+function faceSelRedessine(fao){
+  // Sélection de plusieurs faces : surbrillance orange seule, aucun outil de mesure.
+  const fs=selFaces.slice(),etr=mesEtrangere;
+  clearMeasure();try{parMesOfferClear();}catch(e){}
+  selFaces=fs;mesEtrangere=etr;
+  const tout=(etr?[etr]:[]).concat(fs);
+  tout.forEach(s=>highlightTris(s.mesh,faceTrisFor(s.mesh,s.faceIndex),0xff9f0a,0.55));
+  if(tout.length===2){ // retour à 2 faces : la mesure revient
+    const A=tout[0],B=tout[1];
+    if(!measurePair(A,B)){const d=A.point.distanceTo(B.point);dimPair(A.point,B.point,d.toFixed(2)+' mm');faceEl.textContent=`Distance points ≈ ${d.toFixed(2)} mm`;}
+    return;
+  }
+  if(tout.length===1){faceEl.textContent=`${selLibelle('Face',selFaceInfo(tout[0].mesh,tout[0].faceIndex))} : ${mesNom(tout[0].mesh)}`;return;}
+  faceEl.textContent=`${tout.length} faces sélectionnées${fao?'':' — Suppr pour les supprimer'}.\nCtrl+clic sur une face sélectionnée pour la retirer · 2 faces = mesure.`;
 }
 function measurePair(A,B){
   // Mesures exactes entre 2 faces classées (plans / cylindres BRep). True si traité.

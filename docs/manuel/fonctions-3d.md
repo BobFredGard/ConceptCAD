@@ -83,7 +83,7 @@ Historique rejouable, timeline à icônes (vert = ajout, rouge = enlèvement), m
   - le corps actif (●) reçoit les nouvelles fonctions ; une extrusion, une révolution, un balayage ou un perçage choisit aussi son corps dans son panneau ;
   - **Supprimer** un corps ne touche pas les autres (même ceux nés de lui par une répétition) ;
   - **⊘ Retirer** (clic droit sur le corps, dans l'arbre ou dans la vue 3D) l'enlève à partir d'une étape de la timeline, sans rien effacer, comme dans Fusion 360. Un corps retiré, ou consommé par **Combiner**, est barré dans l'arbre à partir de cette étape.
-- **Mesures** : `Ctrl` enfoncé, on est en mesure, sans bouton et sans rien activer (`Ctrl+clic` : face à face, Ø, entraxe, entre deux arêtes), en CAO et en FAO ; le même outil en **Modéliser** et en **Assembler** mesure aussi entre les pièces d'un assemblage.
+- **Mesures** : `Ctrl` enfoncé, on est en mesure, sans bouton et sans rien activer (`Ctrl+clic` : face à face, Ø, entraxe, entre deux arêtes), en CAO et en FAO ; dès la **3e face**, plus de mesure : les faces restent seulement sélectionnées, `Suppr` les supprime (`Ctrl+clic` sur une face prise la retire) ; le même outil en **Modéliser** et en **Assembler** mesure aussi entre les pièces d'un assemblage.
 
 ---
 
