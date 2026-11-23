@@ -56,7 +56,7 @@ Historique rejouable, timeline à icônes (vert = ajout, rouge = enlèvement), m
   - **dépouille** : angle signé, sens inversable ;
   - **coque** : évidage à épaisseur constante, peau autour de la pièce, ou **soufflée** (la face choisie s'enfonce dans la pièce jusqu'à une paroi donnée de l'extérieur, en enjambant les creux plus étroits qu'une largeur choisie ; surface lisse, lissage réglable) ;
   - **scinder** par un plan ;
-  - **déplacer un corps** (translation, rotation, point à point) ;
+  - **déplacer un corps** (translation, rotation, point à point) : un **repère** s'affiche sur le corps ; on **tire ses flèches** X, Y, Z (pas de 1 mm) ou **ses anneaux** (rotation, pas de 5°), Maj = sans pas ; un **simple clic** sur une flèche ou un anneau ouvre une case pour **taper la valeur** (aussi dans le panneau, section Repère). La **boule blanche** du centre (ou « 📍 Placer le repère… ») propose les **27 points cardinaux** du corps (centre, milieux des faces et des arêtes, coins) et son centre de gravité, ou les points d'une face cliquée ; le repère suit ensuite le corps. Le point à point part, lui aussi, des points cardinaux du corps ;
   - **échelle / homothétie** d’un corps : facteur uniforme ou X, Y, Z ; centre = origine, point ou centre du corps ; corps modifié ou nouveau corps ;
   - **combiner** : union, soustraction, intersection.
 

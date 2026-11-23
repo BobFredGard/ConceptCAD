@@ -124,11 +124,13 @@ function bmChange(f,label,fn){
 }
 function bmAddStep(f,s){bmChange(f,'étape de déplacement',()=>{f.steps=(f.steps||[]).concat([s]);});}
 /* ── saisie dans la vue ── */
-const BM_WANT={from:'le point de départ',to:'le point d’arrivée',axis:'l’axe de rotation',dir:'la direction',center:'le centre de l’échelle'};
+const BM_WANT={from:'le point de départ',to:'le point d’arrivée',axis:'l’axe de rotation',dir:'la direction',center:'le centre de l’échelle',pivot:'l’emplacement du repère'};
 function bmPickStart(f,want,from){
   bmPick={fid:f.id,want,from:from||null,face:null};
+  // V0.99.61 : repère et point de départ — les points cardinaux du corps sont proposés d'emblée
+  if((want==='pivot'||want==='from')&&f.body&&typeof bmCardinals==='function'){const pts=bmCardinals(f.body);if(pts.length)bmPick.face={pts,name:'Points cardinaux de « '+bmBodyName(f.body)+' »',card:true};}
   bmMarks();renderProps();
-  try{faceEl.textContent=bmVerb()+' : choisissez '+BM_WANT[want]+' — clic sur une face pour ses '+(want==='axis'||want==='dir'?'axes':'points')+', ou dans le panneau. Échap = annuler.';}catch(e){}
+  try{faceEl.textContent=bmVerb()+' : choisissez '+BM_WANT[want]+' — '+(bmPick.face?'cliquez un point cardinal du corps, ou une face pour ses points':'clic sur une face pour ses '+(want==='axis'||want==='dir'?'axes':'points'))+', ou dans le panneau. Échap = annuler.';}catch(e){}
 }
 function bmPickExit(silent){
   if(!bmPick)return;
@@ -140,6 +142,7 @@ function bmPickExit(silent){
 function bmChoosePt(it){
   const P=bmPick,f=P&&bmFeat(P.fid);if(!f)return bmPickExit(true);
   if(P.want==='center'){bmPick=null;bmMarks();bsSetCentre(f,it);return;}
+  if(P.want==='pivot'){bmPick=null;bmMarks();bmSetPivot(f,it);return;} // repère du manipulateur (85-deplacer-corps-repere)
   if(P.want==='from'){bmPickStart(f,'to',it);return;}
   if(P.want!=='to')return;
   bmPick=null;bmMarks();
@@ -212,6 +215,10 @@ function bmMarkLen(){
   return L;
 }
 function bmMarks(){
+  bmMarksVue();
+  try{if(typeof bmGzDraw==='function')bmGzDraw();}catch(e){} // repère manipulable du Déplacer sélectionné (85-deplacer-corps-repere)
+}
+function bmMarksVue(){
   // Pastilles des points / axes de la face cliquée, le point de départ retenu et — 2026-10-26 —
   // les axes / points DÉJÀ choisis du Déplacer sélectionné : ils restent affichés pendant le
   // réglage de l'angle ou de la distance (avant : effacés dès le choix fait).
@@ -239,7 +246,7 @@ function bmMarks(){
   if(!P)return;
   const hv=P.hover;
   if(P.from)ball(P.from.p,0x0a84ff,6);
-  if(P.face&&P.face.pts)P.face.pts.forEach((it,i)=>ball(it.p,i===hv?0xffffff:(/cercle|arc/.test(it.name)?0xffb020:0x30d158),i===hv?8:5.5));
+  if(P.face&&P.face.pts)P.face.pts.forEach((it,i)=>ball(it.p,i===hv?0xffffff:it.card!=null?[0xffd60a,0x30d158,0x64d2ff,0xbf5af2][it.card]:(/cercle|arc/.test(it.name)?0xffb020:0x30d158),i===hv?8:5.5));
   if(P.face&&P.face.axes)P.face.axes.forEach((a,i)=>{
     axis(a.o,a.d,i===hv?0xffffff:0xffb020,i===hv?1:0.75);
     ball(a.o,i===hv?0xffffff:0xffb020,i===hv?8:5.5);
@@ -288,6 +295,7 @@ function bmoveProps(p,f){
   // ajouter une étape
   const P=bmPick&&bmPick.fid===f.id?bmPick:null;
   if(!P){
+    try{bmRepereProps(p,f,mk,btn);}catch(e){} // repère manipulable (85-deplacer-corps-repere)
     p.appendChild(mk('div','pnl-h','Ajouter'));
     const b=mk('div','pnl-btns');
     b.appendChild(btn('↔ Translation X Y Z','Décalage libre en X, Y, Z',()=>bmAddStep(f,{k:'t',v:[0,0,0]})));
@@ -306,7 +314,7 @@ function bmoveProps(p,f){
   const ax=P.want==='axis'||P.want==='dir';
   if(P.face){
     p.appendChild(mk('div','pnl-note',P.face.name+' :'));
-    if(ax)list(P.face.axes,bmChooseAxis,a=>a.name);else list(P.face.pts,bmChoosePt,it=>it.name.replace(/^.*? · /,''));
+    if(ax)list(P.face.axes,bmChooseAxis,a=>a.name);else list(P.face.pts,bmChoosePt,it=>it.card!=null?it.name:it.name.replace(/^.*? · /,''));
   }
   p.appendChild(mk('div','pnl-note',ax?'Axes de référence :':'Points de référence :'));
   if(ax)list(bmStaticAxes(f),bmChooseAxis,a=>a.name);else list(bmStaticPts(),bmChoosePt,it=>it.name);

@@ -8,7 +8,7 @@ sont sorties le 2026-09-30j.
 Code dans `src/` · livrable `fusion_mvp.html` (généré par `build.js`) · architecture et
 garde-fous en tête de `src/00-entete-et-outils.js`.
 
-**748 versions**, de `2026-09-28b` à `V0.99.61` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
+**749 versions**, de `2026-09-28b` à `V0.99.62` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
 comme dans le fichier d'origine.
 
 ---
@@ -8323,3 +8323,11 @@ Manuel Fonctions 3D.
 **Ajout** (`src/90-10-selection-mesure.js`, `src/11-repere.js`) : `Ctrl+clic` sur le petit plan XY, XZ ou YZ du repère (`mesPlanAt`, `mesPlan`), puis sur une face ou une arête, ou l'inverse : distance exacte au plan, axe d'un cylindre, angle ; arête droite (angle ou distance), cercle (centre), courbe (distance mini). Le plan pris s'allume comme sélectionné, rien n'entre dans `selFaces`. Manuel Fonctions 3D et Raccourcis.
 
 **Test** : `tests/browser/mesure-plan-repere.spec`. CACHE_VER et FORMES_VER inchangés.
+
+## V0.99.62 - Déplacer un corps : repère manipulable
+
+**Demande de Fred** : « un repère que l'on puisse positionner où l'on veut sur les points cardinaux du corps sélectionné, puis le déplacer suivant X Y Z, en cliquant sur les flèches, en tirant dessus ou en y mettant une valeur, en tournant autour des axes X Y Z avec un outil circulaire, et en déplaçant un point vers un autre ».
+
+**Ajout** (`src/85-deplacer-corps-repere.js`, `src/85-deplacer-corps.js`) : le Déplacer sélectionné montre un manipulateur au pivot (`bmGzDraw`, rangé dans TRIADS) : 3 flèches X / Y / Z (tirer = translation, pas 1 mm, Maj = libre), 3 anneaux (rotation autour de l'axe par le pivot, pas 5°), simple clic = case de saisie de la valeur (`bmValOpen`), Échap pendant le geste = annuler. Aperçu immédiat par le seul maillage (arêtes masquées le temps du geste) ; au relâcher une étape `t` ou `r`, fusionnée avec la dernière si même nature (`bmApply`). Boule blanche ou « 📍 Placer le repère… » : les 27 points cardinaux de la boîte du corps + centre de gravité (`bmCardinals`), ou les points d'une face ; pivot rangé dans `f.piv` en coordonnées du corps avant déplacement (il suit le corps). Panneau : section « Repère » (Déplacer mm / Tourner ° pour X, Y, Z). Le point à point propose aussi d'emblée les points cardinaux. Là où deux poignées se croisent, celle en surbrillance est prise. Manuel Fonctions 3D.
+
+**Test** : `tests/test_deplacer_corps.cjs` 15-24 (points cardinaux, pivot par défaut, fusion des translations et des rotations, rotation par un coin, pivot qui suit le corps, enregistrement). CACHE_VER et FORMES_VER inchangés.
