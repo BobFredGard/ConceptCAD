@@ -8,7 +8,7 @@ sont sorties le 2026-09-30j.
 Code dans `src/` · livrable `fusion_mvp.html` (généré par `build.js`) · architecture et
 garde-fous en tête de `src/00-entete-et-outils.js`.
 
-**750 versions**, de `2026-09-28b` à `V0.99.63` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
+**751 versions**, de `2026-09-28b` à `V0.99.64` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
 comme dans le fichier d'origine.
 
 ---
@@ -8339,3 +8339,13 @@ Manuel Fonctions 3D.
 **Correctif** (`src/42-arbre-modele.js`) : la ligne du corps dans l'arbre n'affiche plus le rond « ● » du corps actif après son nom, ni le trait de couleur à gauche (`boxShadow` inset) qui, avec les coins arrondis, ressemblait à une accolade. Le nom garde la couleur du corps. Bulles d'aide reformulées (`src/40-30-corps-fonctions.js`, `src/97-interface-fiches-dessins.js`), manuel Fonctions 3D.
 
 **Test** : `tests/fixtures/arbre_reference.json` réécrit (`test_arbre_v2 --ecrire`). CACHE_VER et FORMES_VER inchangés.
+
+## V0.99.64 - Répétition : fonctions choisies distinctes des candidates dans la timeline
+
+**Demande de Fred** : « J'aimerais bien différentier dans la time line les fonction susceptibles d'être répétées de celle choisie pour la répétition ».
+
+**Cause** : pendant le choix, une fonction déjà choisie portait à la fois `rsrc` (trait vert plein) et `rcand` (pointillé) ; la règle `rcand`, écrite après, remplaçait le trait plein : choisies et candidates se ressemblaient.
+
+**Correctif** (`src/41-bandeau-timeline.js`) : choisie = fond vert, trait vert épais et pastille ✓ ; candidate = pointillé vert sans fond ; pendant le choix, ce qui ne peut pas être répété (`rno`) est estompé. La bulle d'aide dit l'état : « ✓ Répétée — clic = la retirer », « Peut être répétée — clic = l'ajouter », « Ne peut pas être répétée ici ». Manuel Fonctions 3D.
+
+**Test** : vérifié dans le navigateur (classes et bulles des trois états) ; suite ciblée verte. CACHE_VER et FORMES_VER inchangés.
