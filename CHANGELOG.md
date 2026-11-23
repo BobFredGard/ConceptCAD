@@ -8,7 +8,7 @@ sont sorties le 2026-09-30j.
 Code dans `src/` · livrable `fusion_mvp.html` (généré par `build.js`) · architecture et
 garde-fous en tête de `src/00-entete-et-outils.js`.
 
-**745 versions**, de `2026-09-28b` à `V0.99.58` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
+**746 versions**, de `2026-09-28b` à `V0.99.59` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
 comme dans le fichier d'origine.
 
 ---
@@ -8288,3 +8288,13 @@ Manuel FAO.
 **Ajout** (`src/76-joint-torique.js`, `src/48-composants-normalises.js`) : Créer → Joint, clic sur un alésage, Type de joint → Racleur de tige (`el.orj.kind='w'`, `orjWiper`). Logement à l'entrée de l'alésage : lèvre de retenue Ø D2 sur 2 mm (L3 ≥ 2 de la figure), puis gorge Ø D1 × L1 ; cotes ISO 6195 type A (éditions 2002, 2013 et 2021 identiques), par tranche de Ø de tige : 4-50 → D1 = d+8, D2 = d+5,5, L1 = 5, L2 ≤ 8 ; 56-90 → d+10, d+7, 6,3, 10 ; 100-200 → d+15, d+10, 9,5, 14 ; 220-360 → d+20, d+13,5, 12,5, 18. Tige : plus grand Ø de la série ≤ Ø de l'alésage, ou choisie ; entrée au début ou à la fin de l'alésage (bout le plus proche du clic par défaut) ; L1 et S réglables. Racleur posé en corps séparé (`orjWiperLoop`) : talon dans la gorge, cou dans la lèvre de retenue, lèvre qui dépasse de L2 - L1 - L3 et serre la tige (0,3 à 0,8 mm, usage courant), forme indicative. Avertissements : alésage ≥ D2 (racleur non tenu), alésage bien plus grand que la tige, paroi trop mince, logement plus long que l'alésage. Normalisés : famille « Joints racleurs (ISO 6195 A) », clé `WIPER|d`, désignation tige × Ø logement × largeur.
 
 **Test** : `joint-torique.spec` — alésage Ø30 passé en racleur : tige 28, logement Ø36 × 5, retenue Ø33,5, matière et lèvre aux bons endroits, entrée changée de bout (l'ancien logement se referme) ; composant normalisé 63 × 73 × 6,3. CACHE_VER et FORMES_VER inchangés.
+
+## V0.99.59 - Plus de « ● modifié » tout seul après l'ouverture
+
+**Remarque de Fred** : une plaque s'affichait modifiée (●) peu après son ouverture, sans rien toucher ; ouvrir le fichier suivant demandait alors « Enregistrer ? ».
+
+**Cause** : environ une minute après l'ouverture, la génération de fond des parcours FAO remet à jour l'état « à régénérer » (`stale`) des opérations. Cet état de calcul est rangé dans le document, et l'empreinte du ● (`mffSig`) le comptait comme une modification. Surtout visible sur un fichier enregistré par une version plus ancienne.
+
+**Correctif** (`src/97-fichiers-projets.js`) : `mffSig` ignore les champs `stale` ; un vrai réglage d'opération ou une cote changée marquent toujours le document modifié. Plaque d'une centaine de fonctions, copie ancienne laissée 80 s après l'ouverture : plus de ●.
+
+**Test** : `modifie-arrondi.spec` : `stale` changé = non modifié, réglage d'une opération changé = modifié. CACHE_VER et FORMES_VER inchangés.
