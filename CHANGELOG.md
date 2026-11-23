@@ -8,7 +8,7 @@ sont sorties le 2026-09-30j.
 Code dans `src/` · livrable `fusion_mvp.html` (généré par `build.js`) · architecture et
 garde-fous en tête de `src/00-entete-et-outils.js`.
 
-**744 versions**, de `2026-09-28b` à `V0.99.57` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
+**745 versions**, de `2026-09-28b` à `V0.99.58` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
 comme dans le fichier d'origine.
 
 ---
@@ -8280,3 +8280,11 @@ Manuel FAO.
 **Ajout** (`src/52-derivee.js`, `src/51-parametres.js`) : `derUsedNames` relève tous les noms cités par une expression du modèle (paramètres locaux, cotes d'esquisse, valeurs de fonctions 3D, FAO et mise en plan par `parHolders`, champs ƒx de l'assemblage, colonnes de configuration). Liste complète ƒx : paramètre dérivé non utilisé grisé, « · non utilisé » dans la colonne Origine ; mini-liste : ligne grisée. Section 🔗 Dérivées : « N paramètre(s) utilisé(s) sur M » et bouton **🧹 Retirer les N non utilisés** (`derRemoveUnused` : étape d'annulation, `L.auto` coupé pour qu'ils ne reviennent pas à la vérification suivante, lien supprimé s'il ne donne plus rien).
 
 **Test** : `tests/test_derivee.cjs` 26b à 26g (non utilisé repéré, cote d'esquisse qui le cite, retrait, pas de retour à la vérification, Ctrl+Z). CACHE_VER et FORMES_VER inchangés.
+
+## V0.99.58 - Joints racleurs de tige (ISO 6195 type A) dans l'outil Joint et dans Normalisés
+
+**Demande** : « Peut-on imaginer d'ajouter les joint racleurs et/ou les quadrilobes? » (quadrilobes livrés en V0.99.30), puis « Oui, je veux bien les joints racleurs ».
+
+**Ajout** (`src/76-joint-torique.js`, `src/48-composants-normalises.js`) : Créer → Joint, clic sur un alésage, Type de joint → Racleur de tige (`el.orj.kind='w'`, `orjWiper`). Logement à l'entrée de l'alésage : lèvre de retenue Ø D2 sur 2 mm (L3 ≥ 2 de la figure), puis gorge Ø D1 × L1 ; cotes ISO 6195 type A (éditions 2002, 2013 et 2021 identiques), par tranche de Ø de tige : 4-50 → D1 = d+8, D2 = d+5,5, L1 = 5, L2 ≤ 8 ; 56-90 → d+10, d+7, 6,3, 10 ; 100-200 → d+15, d+10, 9,5, 14 ; 220-360 → d+20, d+13,5, 12,5, 18. Tige : plus grand Ø de la série ≤ Ø de l'alésage, ou choisie ; entrée au début ou à la fin de l'alésage (bout le plus proche du clic par défaut) ; L1 et S réglables. Racleur posé en corps séparé (`orjWiperLoop`) : talon dans la gorge, cou dans la lèvre de retenue, lèvre qui dépasse de L2 - L1 - L3 et serre la tige (0,3 à 0,8 mm, usage courant), forme indicative. Avertissements : alésage ≥ D2 (racleur non tenu), alésage bien plus grand que la tige, paroi trop mince, logement plus long que l'alésage. Normalisés : famille « Joints racleurs (ISO 6195 A) », clé `WIPER|d`, désignation tige × Ø logement × largeur.
+
+**Test** : `joint-torique.spec` — alésage Ø30 passé en racleur : tige 28, logement Ø36 × 5, retenue Ø33,5, matière et lèvre aux bons endroits, entrée changée de bout (l'ancien logement se referme) ; composant normalisé 63 × 73 × 6,3. CACHE_VER et FORMES_VER inchangés.

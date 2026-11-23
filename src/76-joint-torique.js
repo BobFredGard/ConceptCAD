@@ -92,8 +92,58 @@ function orjQuadLoop(cx,cy,d2){
   // le premier arc part du dernier point : creux N[3] → lobe L[0] ; ordre : creux d'avant, puis lobe
   return out;
 }
-function orjKind(o){return o&&o.kind==='x'?'x':'o';}
-function orjKindLab(o){return orjKind(o)==='x'?'Joint quadrilobe':'Joint torique';}
+function orjKind(o){return o&&(o.kind==='x'||o.kind==='w')?o.kind:'o';}
+function orjKindLab(o){const k=orjKind(o);return k==='x'?'Joint quadrilobe':k==='w'?'Joint racleur':'Joint torique';}
+function orjGrooveLab(o){return orjKind(o)==='w'?'Logement de racleur':'Gorge de '+orjKindLab(o).toLowerCase();}
+// Joints RACLEURS de tige, logement ISO 6195 type A (racleur clipsé dans une gorge à l'entrée de l'alésage) :
+// lèvre de retenue Ø D2 sur L3 ≥ 2 mm côté air, puis gorge Ø D1 sur L1. Cotes de la norme (éditions 2002, 2013 et
+// 2021 identiques) : par tranche de Ø de tige d → [d max, S = (D1-d)/2, D2-d, L1, L2 max (longueur du racleur posé),
+// serrage radial de la lèvre sur la tige (usage courant, pas dans la norme)]
+const ORJ_RACL_D=[4,5,6,8,10,12,14,16,18,20,22,25,28,32,36,40,45,50,56,63,70,80,90,100,110,125,140,160,180,200,220,250,280,320,360];
+const ORJ_RACL_BR=[[50,4,5.5,5,8,0.3],[90,5,7,6.3,10,0.4],[200,7.5,10,9.5,14,0.6],[360,10,13.5,12.5,18,0.8]];
+const ORJ_RACL_L3=2;
+function orjRacl(d){
+  const B=ORJ_RACL_BR.find(b=>d<=b[0]+1e-9)||ORJ_RACL_BR[ORJ_RACL_BR.length-1];
+  return {d,S:B[1],D1:d+2*B[1],D2:d+B[2],L1:B[3],L2:B[4],i:B[5]};
+}
+function orjWiperLoop(r,D1,S,L1,K,Y){
+  // Section du racleur (u = profondeur depuis la face d'entrée, vers l'intérieur ; x = rayon) : talon qui remplit
+  // la gorge (Ø D1), cou qui passe dans la lèvre de retenue, lèvre en pointe qui dépasse de L2 - L1 - L3 et serre
+  // la tige de K.i ; flanc intérieur à 13°. Y(u) → ordonnée d'esquisse.
+  const L3=ORJ_RACL_L3,ri=r+0.2,rn=r+0.55*S,rt=r-K.i,ut=L3+K.L1-K.L2,ub=L3+L1-0.1;
+  const uG=ut+0.2+(ri-rt)/Math.tan(13*Math.PI/180);
+  return [[ri,ub],[D1/2,ub],[D1/2,L3],[rn,L3],[rt,ut],[rt,ut+0.2],[ri,uG]].map(q=>[q[0],Y(q[1])]);
+}
+function orjWiper(el,g0,c){
+  const o=el.orj,A=g0&&g0.axis;
+  if(!A||!(A.r>0)||!(A.t1>A.t0))throw new Error('cylindre introuvable');
+  if(o.mode!=='bore')throw new Error('un racleur se loge dans un ALÉSAGE (la tige y coulisse) : cliquez l’alésage du palier ou du nez de vérin');
+  const R=+A.r,D=2*R,cd=cgCylDir(A.d),same=cgDot(cgUnit(A.d),cd)>0;
+  const s0=same?A.t0:-A.t1,s1=same?A.t1:-A.t0,Lc=s1-s0,warn=[];
+  let d=null;
+  if(+o.d1>0&&ORJ_RACL_D.indexOf(+o.d1)>=0)d=+o.d1;
+  else{ORJ_RACL_D.forEach(x=>{if(x<=D+1e-6)d=x;});if(d==null)throw new Error('alésage trop petit : tige de 4 mm au moins');}
+  const K=orjRacl(d),S=+o.ot>0?+o.ot:K.S,L1=+o.ob>0?+o.ob:K.L1,D1=d+2*S,D2=K.D2,L3=ORJ_RACL_L3;
+  if(d>D+1e-6)warn.push('tige Ø '+stdF(d)+' plus grande que l’alésage Ø '+stdF(+D.toFixed(2)));
+  if(D>=D2-1e-6)warn.push('alésage Ø '+stdF(+D.toFixed(2))+' ≥ Ø '+stdF(D2)+' de la lèvre de retenue : le racleur n’est pas tenu');
+  else if(D-d>0.5*(D2-d))warn.push('alésage Ø '+stdF(+D.toFixed(2))+' bien plus grand que la tige Ø '+stdF(d));
+  const end=o.end==='end'||o.end==='start'?o.end:(o.pos!=null&&+o.pos>Lc/2?'end':'start');
+  if(L3+L1>Lc+1e-6)warn.push('logement plus long que l’alésage (longueur '+stdF(+Lc.toFixed(2))+')');
+  const fr=el.fr,Pt=t=>cgAdd(A.o,cgMul(cd,s0+t)),yAt=t=>cgDot(cgSub(Pt(t),cgArr(fr.o)),cgArr(fr.z));
+  const yA=yAt(0),yB=yAt(Lc),yM=end==='end'?yB:yA,sg=Math.sign((end==='end'?yA:yB)-yM)||1,Y=u=>yM+sg*u;
+  const x0=Math.max(R-ORJ_OVER,R*0.5),xr=Math.max(D2/2,R);
+  {
+    const sh=cgShapeFor(c),fz=cgArr(fr.z),fx=cgArr(fr.x);
+    if(sh){try{const q=cgAdd(cgAdd(cgArr(fr.o),cgMul(fz,Y(L3+L1/2))),cgMul(fx,D1/2+0.3));if(!kwProbe(sh,[q])[0])warn.push('paroi trop mince : la gorge traverse');}catch(e){}}
+  }
+  const mouth=Pt(end==='end'?Lc:0);
+  return {D,d2:S,t:S,b:L1,pos:end==='end'?Lc-(L3+L1/2):L3+L1/2,Lc,yc:yM,ring:[0,d],k:null,warn,
+    D1,D2,L2:K.L2,end,mouth:cgArr(mouth).map(v=>+v.toFixed(4)),
+    groove:[[x0,Y(-ORJ_OVER)],[xr,Y(-ORJ_OVER)],[xr,Y(L3)],[D1/2,Y(L3)],[D1/2,Y(L3+L1)],[x0,Y(L3+L1)]],
+    wiper:orjWiperLoop(d/2,D1,S,L1,K,Y)};
+}
+function orjWDesig(d,D1,L1){return stdF(d)+' × '+stdF(+D1.toFixed(2))+' × '+stdF(L1);}
+
 function orjGorge(d2,kind){const T=kind==='x'?ORJ_GORGE_X:ORJ_GORGE;return T.find(r=>Math.abs(r[0]-d2)<1e-6)||T[1];}
 function orjAutoCs(D){
   // Section d'usage courant selon le Ø (petits Ø : section fine)
@@ -283,23 +333,25 @@ function orjSync(el,ctx){
   const c=ctx||{},keep=c.self;c.self=el;
   try{
     const g0=cgEvalRef(el.refs[0],c);
-    const G=el.orj.mode==='face'?orjFace(el,g0,c):orjRadial(el,g0,c);
+    const G=el.orj.mode==='face'?orjFace(el,g0,c):orjKind(el.orj)==='w'?orjWiper(el,g0,c):orjRadial(el,g0,c);
     const f=orjFeature(el);
     orjWrite(skG,f,G.groove,G.yc);
     if(el.orj.ring)orjRingSync(el,G);
     el._orjOut={D:+G.D.toFixed(4),Din:G.Din,Dw:G.Dw,d2:G.d2,d1:G.ring[1],dash:G.ring[0],t:G.t,b:G.b,pos:G.pos,Lc:G.Lc,k:G.k,
       ri:G.ri,ro:G.ro,warn:G.warn.join(' ; ')};
+    if(G.wiper)Object.assign(el._orjOut,{kind:'w',D1:G.D1,D2:G.D2,L2:G.L2,end:G.end,mouth:G.mouth});
     if(f)f.name=orjName(f);
   }catch(e){
     el._orjOut=Object.assign({},el._orjOut||{},{warn:String((e&&e.message)||e)});
   }finally{c.self=keep;}
 }
-function orjDesig(O){return O&&O.d1?stdF(O.d1)+' × '+stdF(O.d2):'';}
+function orjDesig(O){return O&&O.d1?(O.kind==='w'?orjWDesig(O.d1,O.D1,O.b):stdF(O.d1)+' × '+stdF(O.d2)):'';}
 function orjName(f){
   const el=cgGet(f.orj),O=el&&el._orjOut;
-  if(!O||!O.D)return 'Gorge de '+orjKindLab(el&&el.orj).toLowerCase();
+  if(!O||!O.D)return orjGrooveLab(el&&el.orj);
   const m=el.orj.mode;
-  return 'Gorge de '+orjKindLab(el.orj).toLowerCase()+' '+orjDesig(O)+' ('+(m==='face'?'face Ø'+stdF(O.D):(m==='bore'?'alésage Ø':'arbre Ø')+stdF(O.D))+')';
+  if(O.kind==='w')return 'Logement de racleur '+orjDesig(O)+' (alésage Ø'+stdF(+O.D.toFixed(2))+')';
+  return orjGrooveLab(el.orj)+' '+orjDesig(O)+' ('+(m==='face'?'face Ø'+stdF(O.D):(m==='bore'?'alésage Ø':'arbre Ø')+stdF(O.D))+')';
 }
 /* ----- Normalisés (48) : le joint seul, origine au centre, plan médian = XY ----- */
 function stdOring(st){
@@ -337,10 +389,10 @@ function orjRingRemove(el){
 function orjRingSync(el,G){
   const rf=orjRingFeature(el),sk=orjSketchOf(el,'r');
   if(!rf||!sk){orjRingRemove(el);return;}
-  orjWrite(sk,rf,orjKind(el.orj)==='x'?orjQuadLoop(G.circ.c[0],G.circ.c[1],G.d2):G.circ,G.yc);
-  rf.name=orjKindLab(el.orj)+' '+stdF(G.ring[1])+' × '+stdF(G.d2);
+  orjWrite(sk,rf,G.wiper||(orjKind(el.orj)==='x'?orjQuadLoop(G.circ.c[0],G.circ.c[1],G.d2):G.circ),G.yc);
+  rf.name=orjKindLab(el.orj)+' '+(G.wiper?orjWDesig(G.ring[1],G.D1,G.b):stdF(G.ring[1])+' × '+stdF(G.d2));
   const B=(doc.bodies||[]).find(b=>b.id===rf.body);
-  if(B&&(/^Corps \d+$/.test(B.name||'')||/^Joint (torique|quadrilobe) /.test(B.name||'')))B.name=rf.name; // un nom donné à la main reste
+  if(B&&(/^Corps \d+$/.test(B.name||'')||/^Joint (torique|quadrilobe|racleur) /.test(B.name||'')))B.name=rf.name; // un nom donné à la main reste
 }
 function orjOnDelete(f){
   // delFeature : la gorge emporte son joint, son esquisse et son repère ; le joint seul laisse la gorge
@@ -435,8 +487,11 @@ function orjPanel(p,f){
   fdynEnsure(f);
   if(!el||!el.orj){U.pNote('⚠ Repère du joint introuvable.');fdynFoot(p,f);return;}
   const o=el.orj,O=el._orjOut||{},face=o.mode==='face';
-  U.pH('Gorge de '+orjKindLab(o).toLowerCase());
-  U.pRow('Type de joint',U.select([['o','Torique (O-ring)'],['x','Quadrilobe (X-ring, Quad-Ring)']],orjKind(o),v=>{o.kind=v;}));
+  const wip=orjKind(o)==='w';
+  U.pH(orjGrooveLab(o));
+  U.pRow('Type de joint',U.select([['o','Torique (O-ring)'],['x','Quadrilobe (X-ring, Quad-Ring)']].concat(face?[]:[['w','Racleur de tige (ISO 6195 type A)']]),orjKind(o),v=>{
+    if((v==='w')!==wip){o.d1=0;o.ob=0;o.ot=0;if(v==='w'&&o.mode!=='bore')o.mode='bore';}o.kind=v;}));
+  if(wip){orjWiperPanel(U,o,O);fdynFoot(p,f);return;}
   if(O.D){
     const what=face?'Face Ø '+stdF(O.D)+(O.Din?' (Ø int. '+stdF(O.Din)+')':''):(o.mode==='bore'?'Alésage Ø ':'Arbre Ø ')+stdF(O.D);
     U.pNote(what+' — joint '+(orjKind(o)==='x'?'quadrilobe ':'')+orjDesig(O)+' ('+orjRef(O.d2,O.dash)+') · gorge '+stdF(O.b)+' × '+stdF(O.t)+
@@ -483,11 +538,39 @@ function orjRingPanel(p,f){
   const U=kwUi(p),el=cgGet(f.orjRing),O=el&&el._orjOut,gf=el&&orjFeature(el);
   if(!el||!O){U.pNote('⚠ Gorge de ce joint introuvable.');return;}
   U.pH(orjKindLab(el.orj));
-  U.pNote(orjDesig(O)+' — '+orjRef(O.d2,O.dash)+' (Ø int. × section, mm)');
+  U.pNote(O.kind==='w'?orjDesig(O)+' — racleur de tige ISO 6195 type A (tige × Ø logement × largeur, mm)':orjDesig(O)+' — '+orjRef(O.d2,O.dash)+' (Ø int. × section, mm)');
   if(O.warn)U.pNote('⚠ '+O.warn);
   if(gf){
     const d=document.createElement('div');d.className='pnl-btns';
     d.appendChild(U.mini('Régler la gorge','Section, joint, cotes et position de la gorge',()=>{sel={kind:'feature',id:gf.id};renderTree();renderProps();}));
     p.appendChild(d);
   }
+}
+function orjWiperPanel(U,o,O){
+  if(O.D&&O.kind==='w')U.pNote('Alésage Ø '+stdF(+O.D.toFixed(2))+' — racleur tige Ø '+stdF(O.d1)+' · logement Ø '+stdF(+O.D1.toFixed(2))+' × '+stdF(O.b)+
+    ', lèvre de retenue Ø '+stdF(O.D2)+' sur '+stdF(ORJ_RACL_L3)+' (ISO 6195 type A)');
+  if(O.warn)U.pNote('⚠ '+O.warn);
+  U.pRow('Tige d',U.select([['0','Automatique ('+(O.kind==='w'&&O.d1?stdF(O.d1):'—')+')']].concat(ORJ_RACL_D.map(v=>[String(v),'Ø '+stdF(v)+' mm'])),+o.d1>0?String(o.d1):'0',v=>{o.d1=+v;o.ob=0;o.ot=0;}));
+  U.pRow('Entrée de la tige',U.select([['start','Au début de l’alésage'],['end','À la fin de l’alésage']],O.end||'start',v=>{o.end=v;}));
+  kwCote(U,'Largeur de gorge L1 (mm)',O.b,+o.ob>0,v=>{o.ob=v;},()=>{o.ob=0;},'Reprendre la cote ISO 6195',o);
+  kwCote(U,'Profondeur S (mm)',O.t,+o.ot>0,v=>{o.ot=v;},()=>{o.ot=0;},'Reprendre la cote ISO 6195',o);
+  const kc=document.createElement('input');kc.type='checkbox';kc.checked=!!o.ring;
+  kc.title='Pose le racleur comme un corps séparé, dans son logement';
+  kc.onchange=()=>{
+    const el=(doc.cgeo||[]).find(c=>c&&c.orj===o);if(!el)return;
+    const len=docUndoStack.length;
+    docPushUndo('joint racleur');
+    if(kc.checked)orjRingAdd(el);else orjRingRemove(el);
+    docUndoStack.length=Math.min(docUndoStack.length,len+1);
+    U.go();
+  };
+  U.pRow('Racleur (corps séparé)',kc);
+  U.pNote('Le logement est creusé à l’entrée de l’alésage : la lèvre de retenue (Ø D2) tient le racleur, sa lèvre dépasse de la face et serre la tige. Forme du racleur indicative (chaque fabricant a la sienne), cotes du logement selon la norme.');
+}
+/* ----- Normalisés (48) : racleur seul, origine sur l'axe au dos du talon, lèvre vers +Z ----- */
+function stdWiper(st){
+  const d=+st.size>0?+st.size:25,K=orjRacl(d),ub=ORJ_RACL_L3+K.L1-0.1,lab=orjWDesig(d,K.D1,K.L1);
+  return {key:'WIPER|'+d,norm:'ISO 6195 type A',desig:lab,name:'Joint racleur '+lab,
+    info:'Tige Ø '+stdF(d)+' · logement Ø '+stdF(K.D1)+' × '+stdF(K.L1)+' · lèvre de retenue Ø '+stdF(K.D2)+' · longueur posée ≤ '+stdF(K.L2)+' · origine sur l’axe au dos du talon, lèvre vers +Z',
+    prof:orjWiperLoop(d/2,K.D1,K.S,K.L1,K,u=>+(ub-u).toFixed(6)),ops:[],mat:{name:'Polyuréthane',rho:1.2},color:0x18191a,reach:K.D1/2};
 }
