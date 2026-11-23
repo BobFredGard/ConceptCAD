@@ -438,6 +438,9 @@ const STD_CATS=[
     {k:'size',lab:'Ø intérieur d1 (mm)',opts:st=>orjRows(+st.cs).map(r=>[String(r[1]),stdF(r[1])+' × '+stdF(+st.cs)+'  (AS568-'+String(r[0]).padStart(3,'0')+')']),
       def:st=>{const L=orjRows(+st.cs);return String((L.find(r=>r[1]>=20)||L[L.length-1])[1]);}}],
     gen:stdOring},
+  {k:'wiper',lab:'Joints racleurs (ISO 6195 A)',fields:[
+    {k:'size',lab:'Tige d (mm)',opts:()=>ORJ_RACL_D.map(v=>[String(v),'Ø '+stdF(v)+'  (logement '+orjWDesig(v,orjRacl(v).D1,orjRacl(v).L1)+')']),def:()=>'25'}],
+    gen:stdWiper},
   {k:'washer',lab:'Rondelles',fields:[
     {k:'type',lab:'Norme',opts:()=>STD_WASHER_TYPES},
     {k:'size',lab:'Taille (vis)',opts:st=>stdWasherRows(st.type).map(r=>[r[0],/^ansi/.test(st.type)?r[0]+(r[0][0]==='#'?'':'"'):r[0]]),

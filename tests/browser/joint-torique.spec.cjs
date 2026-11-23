@@ -75,6 +75,29 @@ test('joint torique : arbre, alésage et face plane reconnus au clic',async({pag
   const yb=S.O.pos;
   expect(await inside([yb+1.7,0,-16.8])).toBe(false); // gorge creusée jusqu'à Ø34
   expect(await inside([yb,0,-17.2])).toBe(true);       // matière au-delà du fond
+  // racleur (ISO 6195 type A) dans le même alésage Ø30 : tige 28, logement Ø36 × 5, lèvre de retenue Ø33,5 sur 2 mm
+  await page.locator('.pnl-row',{hasText:'Type de joint'}).locator('select').selectOption('w');
+  await page.waitForFunction(()=>{const el=doc.cgeo.find(c=>c.orj);return el.orj.kind==='w'&&el._orjOut.kind==='w'&&rebuildDepth===0;});
+  S=await etat();
+  expect([S.O.d1,S.O.D1,S.O.D2,S.O.b,S.O.t,S.err,S.ring]).toEqual([28,36,33.5,5,4,'',true]);
+  expect(await page.evaluate(()=>[doc.features.find(f=>f.orj).name,doc.features.find(f=>f.orjRing).name]))
+    .toEqual(['Logement de racleur 28 × 36 × 5 (alésage Ø30)','Joint racleur 28 × 36 × 5']);
+  {
+    const mx=S.O.mouth[0],sg=mx<20?1:-1,X=u=>mx+sg*u;
+    expect(await inside([X(1),0,-16.5])).toBe(false);   // lèvre de retenue : alésée à Ø33,5
+    expect(await inside([X(1),0,-17])).toBe(true);      // au-delà de Ø33,5 : matière
+    expect(await inside([X(4.5),0,-18.3])).toBe(true);  // au-delà du fond Ø36 : matière
+    expect(await inside([X(4.5),0,-16])).toBe(true);    // talon du racleur dans la gorge
+    expect(await inside([X(8),0,-16])).toBe(true);      // derrière la gorge : matière
+    expect(await inside([X(-0.5),0,-13.95])).toBe(true); // pointe de lèvre : dépasse de la face, serre la tige Ø28
+    // l'autre bout de l'alésage
+    await page.locator('.pnl-row',{hasText:'Entrée de la tige'}).locator('select').selectOption(S.O.end==='end'?'start':'end');
+    await page.waitForFunction(m=>{const O=doc.cgeo.find(c=>c.orj)._orjOut;return O.mouth&&Math.abs(O.mouth[0]-m)>30&&rebuildDepth===0;},mx);
+    expect(await inside([X(1),0,-16.5])).toBe(true);    // l'ancien logement est refermé
+    const m2=(await etat()).O.mouth[0];
+    expect(Math.abs(m2-(40-mx))).toBeLessThan(1e-6);
+    expect(await inside([m2-sg*1,0,-16.5])).toBe(false);
+  }
   await page.locator('button.fdynOk').click();
 
   // ── Bride Ø80 percée Ø20, face plane à x = 20 : gorge axiale, joint contre la paroi extérieure ──
@@ -149,5 +172,7 @@ test('joint torique : arbre, alésage et face plane reconnus au clic',async({pag
     .toEqual(['Joint torique 9,25 × 1,78','revolve']);
   expect(await page.evaluate(()=>{const sp=stdSpec('oring',{kind:'x',cs:'2.62',size:'20.29'});return [sp.name,sp.key,stdDoc(sp).features.map(f=>f.type).join()];}))
     .toEqual(['Joint quadrilobe 20,29 × 2,62','XRING|20.29|2.62','revolve']);
+  expect(await page.evaluate(()=>{const sp=stdSpec('wiper',{size:'63'});return [sp.name,sp.key,stdDoc(sp).features.map(f=>f.type).join()];}))
+    .toEqual(['Joint racleur 63 × 73 × 6,3','WIPER|63','revolve']);
   expect(err).toEqual([]);
 });
