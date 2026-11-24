@@ -133,6 +133,21 @@ const vm=require('vm');
     A(faoOpsSeq(u).map(E=>E.op.id).join()==='g3,r3'&&faoGeoHasRrough(u,g3)===false&&faoGeoHasRroughListe(u,g3)===true,
       'par numéro : finition T1 avant l’ébauche T2 → pas d’hélice (rampe)');
 
+    /* 13. V0.99.77 — temps estimé : chaque copie d'une répétition comptée */
+    const s4=faoSetup('sO'); s4.toolOrder=undefined; doc.fao.activeSetupId='sO'; faoRoot();
+    faoPost(s4); // parcours en mémoire
+    const st=faoStats(s4);
+    let cutAtt=0;
+    faoOpsSeq(s4).forEach(E=>{ const sf=faoOpCutting(E.op,s4); cutAtt+=faoEstimate(faoMovesStat(E.op,s4),sf.f,sf.rapid,faoAccel(s4)).cut; });
+    A(st.n===4&&st.copies===6,'stats : 4 opérations, 6 passages avec les copies ('+st.n+', '+st.copies+')');
+    A(cutAtt>0&&Math.abs(st.cut-cutAtt)<1e-6,'stats : coupe de toutes les copies ('+st.cut.toFixed(1)+' / '+cutAtt.toFixed(1)+')');
+    A(/^4 op \\(6 avec les répétitions\\) · coupe/.test(faoStatsText()),'texte : « '+faoStatsText().slice(0,50)+' »');
+    const pq=s4.ops.filter(o=>o.type==='pattern')[0]; pq.on=false; faoRoot();
+    const st2=faoStats(s4);
+    A(st2.copies===4&&st2.cut<st.cut,'répétition désactivée : 4 passages, moins de coupe');
+    A(/^4 op · coupe/.test(faoStatsText()),'texte sans répétition : « '+faoStatsText().slice(0,30)+' »');
+    pq.on=true; faoRoot();
+
     const bad=P.filter(function(x){return x.indexOf('ECHEC')===0;});
     if(bad.length){P.push('');P.push('ECHECS ('+bad.length+') :');bad.forEach(function(m){P.push('  x '+m);});}
     else P.push('TOUT EST CONFORME');

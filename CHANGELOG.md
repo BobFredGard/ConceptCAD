@@ -8,7 +8,7 @@ sont sorties le 2026-09-30j.
 Code dans `src/` · livrable `fusion_mvp.html` (généré par `build.js`) · architecture et
 garde-fous en tête de `src/00-entete-et-outils.js`.
 
-**763 versions**, de `2026-09-28b` à `V0.99.76` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
+**764 versions**, de `2026-09-28b` à `V0.99.77` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
 comme dans le fichier d'origine.
 
 ---
@@ -8475,3 +8475,11 @@ Manuel Fonctions 3D.
 **Correctif** : fiche du posage, onglet Général, liste **Ordre d'usinage** (`setup.toolOrder`, absent = ordre de la liste : documents inchangés) — **Par outil** (ordre d'apparition) : chaque outil fait tout son travail là où il sert pour la première fois ; **Par numéro d'outil** : T1, T2, T3… (`src/89-fao-repetition.js`, `faoSeqOrder`). Tri stable de la séquence développée rendu par `faoOpsSeq` : chaque opération garde toutes ses copies à la suite (répétitions et répétitions imbriquées), à outil égal l'ordre de la liste. Aperçu, ▶ Usinage, collisions, G-code (`faoJobMoves`, `faoSeqSafe`) et séquence calculée sur un autre cœur suivent donc le même ordre. Brut restant et contour « Rapide dans le vide » : ce qui est vraiment usiné avant, dans cet ordre (`faoRestPrev`, `src/88-fao-57-brut-restant.js`) ; changer d'ordre met ces reprises « à régénérer ». Le réglage n'entre pas dans la clé des autres parcours (`faoOpMovesKey`) : changer d'ordre ne périme rien d'autre. Finition : entrée en hélice seulement si une ébauche passe vraiment avant elle (`faoGeoHasRrough`, règle de la liste gardée dans `faoGeoHasRroughListe`), clé marquée seulement quand la réponse change. Temps estimé : changements d'outil comptés sur la séquence réelle (`faoStatsGroups` → `faoToolChanges`). Fiche : ordre réel des outils (`faoOrderSummary`), gain en changements d'outil, avertissement quand des opérations changent de place ; arbre : « · par outil » / « · par n° d'outil » sur la ligne du posage.
 
 **Test** : `tests/test_fao_ordre_outils.cjs` (suite rapide) : séquence par liste / outil / numéro (numéro modifié compris), copies d'une répétition à la suite, `faoSeqSafe` et simulation, G-code (2 outils au lieu de 4, T2 d'abord, tous les trous), groupes du temps estimé, brut restant (règle de la liste inchangée, ordre réel sinon, clé qui change), clé d'une opération sans dépendance inchangée, entrée de la finition selon l'ordre réel, réglage nettoyé et relu, fiche, répétitions imbriquées. Manuel FAO. CACHE_VER et FORMES_VER inchangés.
+
+## V0.99.77 - FAO : temps estimé avec les copies des répétitions
+
+**Constat** (vérification de V0.99.76, accord de Fred : « Oui, corrige ») : le temps estimé du posage ne comptait qu'une fois chaque opération, même répétée. STEP.conceptcad : ébauches et finitions faites 6 et 4 fois, ≈ 82,2 min annoncées pour 5 h 27 de simulation.
+
+**Correctif** : `faoStats` (`src/88-fao-80-interface.js`) compte chaque opération autant de fois qu'elle est usinée (entrées de `faoOpsSeq`, répétitions imbriquées et désactivées comprises) : coupe, rapides et temps d'une copie × nombre de copies (une copie déplacée, tournée ou en miroir a les mêmes longueurs) ; texte « 4 op (20 avec les répétitions) · … » ; fiche d'une opération répétée : « ≈ 0.4 min × 6 copies = ≈ 2.7 min ». STEP.conceptcad : ≈ 327,8 min (simulation 326,8 min + 3 changements d'outil).
+
+**Test** : `tests/test_fao_ordre_outils.cjs` 13 : 4 opérations / 6 passages, longueur de coupe de toutes les copies, texte, répétition désactivée. Manuel FAO. CACHE_VER et FORMES_VER inchangés.

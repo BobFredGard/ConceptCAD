@@ -84,6 +84,7 @@
   - La fiche affiche l'ordre réel, par exemple « T2 (1, 3 ×2) → T1 (2 ×2, 5) — 1 changement d'outil au lieu de 3 », et prévient quand des opérations changent de place.
   - Le *Brut restant* suit cet ordre : changer d'ordre met les reprises « à régénérer ».
   - L'arbre l'indique sur la ligne du posage (« · par outil », « · par n° d'outil »).
+- **Temps estimé** (bas de la fiche du posage) : chaque copie d'une répétition est comptée, par exemple « 4 op (20 avec les répétitions) · … ≈ 327.8 min ». Dans la fiche d'une opération répétée : « ≈ 0.4 min × 6 copies = ≈ 2.7 min ».
 - **Copier / coller** (`Ctrl+C` / `Ctrl+V`) une ou plusieurs opérations, ou un posage complet.
 - **Supprimer plusieurs opérations** : `Ctrl+clic` / `Maj+clic` pour les choisir, `Suppr` pour les retirer ensemble ; un seul `Ctrl+Z` les rétablit.
 - **Dans la vue** : un clic sur une face l'allume et la mesure sans éditer de fonction ; un clic dans la vue désélectionne le posage ou l'opération.
