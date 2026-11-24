@@ -243,7 +243,7 @@ function pcFR(){
     try{const memes=new Map();(e.delwk||[]).forEach(([k,v])=>{if(delWkRes.has(k))return;
       let o=memes.get(v.brep);if(!o){o=Object.assign({},v,{st:'fin',warnings:(v.warnings||[]).slice()});memes.set(v.brep,o);}
       delWkRes.set(k,o);});}catch(x){}
-    const ghostShapes=(e.ghosts||[]).map(g=>({geo:pcGeoDe(g.geo),orphan:!!g.orphan,fid:g.fid||null,inexact:g.inexact||null})).filter(g=>g.geo);
+    const ghostShapes=(e.ghosts||[]).map(g=>({geo:pcGeoDe(g.geo),orphan:!!g.orphan,fid:g.fid||null,inexact:g.inexact||null,col:g.col||null})).filter(g=>g.geo);
     pcFait=true;
     return{shape,shapeFao,preThr,perBody,ghostShapes,msgs:(e.msgs||[]).slice(),bin:[],itemShapes:[],items:[],imports:(e.imports||[]).slice(),D:e.D||null,servi:true};
   }catch(err){

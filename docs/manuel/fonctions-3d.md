@@ -51,7 +51,7 @@ Historique rejouable, timeline à icônes (vert = ajout, rouge = enlèvement), m
     - la case **Faces tangentes** retient d'un clic toutes les faces qui se prolongent sans arête vive (l'intérieur d'une poche, congés compris), décalées d'un bloc quel que soit leur type ;
       si le noyau refuse de les décaler, la face cliquée (plane ou cylindrique) bouge quand même et un message dit que les faces tangentes n'ont pas suivi ;
     - une face trop courbe pour la distance demandée, qui se replierait (« vrille »), est remplacée par une surface lisse tangente à ses voisines, et un message le dit (la coque aussi) ;
-  - **supprimer des faces**, plusieurs à la fois, avec calcul en tâche de fond ;
+  - **supprimer des faces**, plusieurs à la fois, avec calcul en tâche de fond ; un clic sur la suppression dans l'arbre ou la timeline **allume en orange les faces qu'elle enlève** ; les **congés de raccord** qui bordent les faces choisies (arrondis autour d'une rainure, d'un bossage) partent avec elles, pour que les faces restantes se rejoignent ;
     - un **trou à cheval sur plusieurs faces** (un plat et un arrondi) se rebouche aussi : le trou est comblé par un bouchon coupé par les faces voisines prolongées, pli compris ; dans les plis faits de petites surfaces libres (tôle importée), le refus reste possible ;
   - **dépouille** : angle signé, sens inversable ;
   - **coque** : évidage à épaisseur constante, peau autour de la pièce, ou **soufflée** (la face choisie s'enfonce dans la pièce jusqu'à une paroi donnée de l'extérieur, en enjambant les creux plus étroits qu'une largeur choisie ; surface lisse, lissage réglable) ;

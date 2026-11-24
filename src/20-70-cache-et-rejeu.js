@@ -23,6 +23,7 @@ function occCleanup(FR,keepShape){
    invalide tout ce qui suit, donc aucune geometrie perimee ne peut etre reutilisee. */
 let occCk=[]; // [{key,shape}] du plus ancien au plus recent
 let occCkWarn={}; // avertissements de congé par point de contrôle (mêmes entrées = mêmes messages)
+let occCkDelM={}; // V0.99.65 : bilan d'une suppression de face (_m) par point de contrôle
 // V0.16.0 : relevé pos/len des arêtes d'un congé exact tel qu'au point de contrôle. Il n'est plus
 // dans la clé (featSig) : un point de contrôle retrouvé le RESTITUE, comme un recalcul l'aurait
 // rafraîchi (retour à une valeur précédente : relevé de cet état-là, pas du dernier rejeu).
@@ -81,7 +82,7 @@ function occToolCkPut(key,r){
 }
 function occCkClear(){
   for(const c of occCk){try{c.shape.delete();}catch(e){}}
-  occCk=[];occCkWarn={};occCkEdges={};
+  occCk=[];occCkWarn={};occCkEdges={};occCkDelM={};
   occToolCk.forEach(o=>{try{o.shape.delete();}catch(e){}try{if(o.thr)o.thr.delete();}catch(e){}});occToolCk=new Map();
   try{occFantomeMemo.forEach(o=>{try{o.dispose&&o.dispose();}catch(e){}});occFantomeMemo=new Map();}catch(e){}
 }
@@ -385,11 +386,17 @@ function* occReplayBodyGen(bid,list){
     }
     if(f.type==='xmove'||f.type==='xdelface'||f.type==='bmove'){
       if(!result){msgs.push(`${f.name} : aucun volume à `+(f.type==='bmove'?'déplacer':'déformer')+` — ignoré`);return;}
+      // V0.99.65 : faces de la suppression, allumées quand la fonction est sélectionnée (comme l'outil d'une découpe)
+      if(f.type==='xdelface'&&occFantomesVoulus){
+        try{const gg=occFantomeGeo(ckKey+'|faces',()=>occDelFacesGeo(result,f));if(gg)ghostShapes.push({geo:gg,orphan:false,fid:f.id,col:0xff9f0a});}catch(e){}
+      }
       const ckM=occCkGet(ckKey);
       const cpM=occCkPrise(ckM);
       if(cpM){
         try{result.delete();}catch(e){}result=cpM;
         const w=occCkWarn[ckKey];if(w&&w.length)msgs.push(...w.map(x=>`${f.name} : ${x}`));
+        // V0.99.65 : suppression reprise du point de contrôle (après la réponse du worker) : plus « ⏳ », bilan rendu
+        if(f.type==='xdelface'){delete f._calc;const m=occCkDelM[ckKey];if(m)f._m=Object.assign({},m);}
         return;
       }
       const snapM=f.type==='bmove'?null:nomsInstantane(result); // suppression (dans le worker), décalage : pas d'historique
@@ -400,6 +407,7 @@ function* occReplayBodyGen(bid,list){
       // sous une clé qui la supposerait faite (même marque que le STEP en cours de restauration).
       if(r.pending){ckKey+=DEL_WK_MARK+f.id+';';return;}
       if(r.warnings.length)occCkWarn[ckKey]=r.warnings.slice();else delete occCkWarn[ckKey];
+      if(f.type==='xdelface'&&f._m)occCkDelM[ckKey]=Object.assign({},f._m);
       occCkPut(ckKey,()=>occShapeCopy(result));
       return;
     }
@@ -1191,7 +1199,7 @@ function occRebuild(){
     const D=FR.D?{lin:FR.D.lin,ang:FR.D.ang}:occDisplayDefl(FR.shape||(parts[0]&&parts[0].shape)||null);
     // ce que la pièce gardée doit reprendre hors des corps (20-75, pcCapture)
     pcDernier={ver:_docVersion,D:{lin:D.lin,ang:D.ang},msgs:(FR.msgs||[]).slice(),imports:(FR.imports||[]).slice(),
-      ghosts:(FR.ghostShapes||[]).map(g=>({geo:g.geo,orphan:!!g.orphan,fid:g.fid||null,inexact:g.inexact||null}))};
+      ghosts:(FR.ghostShapes||[]).map(g=>({geo:g.geo,orphan:!!g.orphan,fid:g.fid||null,inexact:g.inexact||null,col:g.col||null}))};
     let trisTot=0;
     for(const id of [...occMeshMemo.keys()])if(!parts.some(p=>p.bodyId===id)){try{occMeshMemo.get(id).geo.dispose();}catch(e){}occMeshMemo.delete(id);}
     if(parts.length){
@@ -1240,12 +1248,12 @@ function occRebuild(){
     FR.ghostShapes.forEach((gh,i)=>{
       try{
         if(!gh.geo)return;
-        const mat=ghostMaterial(gh.inexact?0xff9f0a:0xff453a);
+        const mat=ghostMaterial(gh.col||(gh.inexact?0xff9f0a:0xff453a));
         const mesh=new THREE.Mesh(gh.geo,mat);mesh.userData.bid='occghost_'+i;mesh.raycast=()=>{};mesh.visible=false;mesh.renderOrder=20;
         scene.add(mesh);
         // Fantôme masqué par défaut (sinon il dépasse là où un congé a rajouté de la matière).
         // Visible quand sa découpe est sélectionnée, ou via 👁 dans Pièces.
-        bodies.push({id:'occghost_'+i,name:gh.inexact?`⚠ ${gh.inexact} (maillage — exclu de l'exact)`:'🔧 Outil '+(gh.orphan?'(orphelin)':'(découpe)'),mesh,color:0xff453a,visible:false,kind:'ghost',ref:gh.fid||null,ghost:true});
+        bodies.push({id:'occghost_'+i,name:gh.inexact?`⚠ ${gh.inexact} (maillage — exclu de l'exact)`:gh.col?'⌫ Faces supprimées':'🔧 Outil '+(gh.orphan?'(orphelin)':'(découpe)'),mesh,color:0xff453a,visible:false,kind:'ghost',ref:gh.fid||null,ghost:true});
       }catch(e){FR.msgs.push('fantôme illisible, ignoré');}
     });
     // Imports mesh : affichés tels quels SAUF s'ils sont entrés dans la chaîne exacte

@@ -410,7 +410,7 @@ input[type=range]{accent-color:var(--primary);width:100%}
  * peut changer sans rien casser. CACHE_VER (parcours FAO) reste indépendant.
  */
 
-const APP_VER='V0.99.64';
+const APP_VER='V0.99.65';
 try{console.log('[ConceptCAD] version '+APP_VER);}catch(e){}
 try{var mfSv=document.getElementById('mfSplashVer');if(mfSv)mfSv.textContent=APP_VER;}catch(e){} // écran de démarrage
 
@@ -433,7 +433,7 @@ const CACHE_VER='2026-11-19-002';
    Filet si le tampon est oublié : le rejeu de fond qui suit une pièce relue (pcChauffer) compare
    son solide à celui qui est affiché (faces, arêtes, volume) ; au moindre écart, la pièce gardée
    est jetée et la pièce recalculée (pcVerifie, 20-75). */
-const FORMES_VER='2026-11-17-001';
+const FORMES_VER='2026-11-24-001';
 function cacheVerOK(v){
   // 2026-11-13-001 (V0.96.5) : ébauche 3D — un fond hors de la limite de
   // l'opération (hors de portée de l'outil) n'est plus un arrêt de descente :
@@ -6367,9 +6367,15 @@ function occFaceOutNormal(f){
 }
 function occFaceBox(f){
   // Centre et dimensions d'une face : la signature qui permet de la retrouver au rejeu.
+  // V0.99.65 : face SANS triangles (solide neuf d'un rejeu, d'une suppression, d'un worker) → boîte
+  // EXACTE (AddOptimal). Le Add classique y gonfle les pôles des surfaces libres (STEP) : la même
+  // face paraissait décalée de 2 à 3 mm par rapport à la boîte mémorisée au clic (faite sur les
+  // triangles), et la suppression de face ne la retrouvait plus (constat de Fred, STEP.conceptcad).
   try{
     const b=new occt.Bnd_Box_1();
-    occt.BRepBndLib.Add(f,b,true);
+    const tri=typeof occFaceMaillee!=='function'||occFaceMaillee(f); // 20-25
+    if(tri)occt.BRepBndLib.Add(f,b,true);
+    else{try{occt.BRepBndLib.AddOptimal(f,b,false,false);}catch(e){occt.BRepBndLib.Add(f,b,true);}}
     const a=occXyz(b.CornerMin()),z=occXyz(b.CornerMax());
     const out={pos:[(a[0]+z[0])/2,(a[1]+z[1])/2,(a[2]+z[2])/2],dim:[z[0]-a[0],z[1]-a[1],z[2]-a[2]]};
     b.delete();return out;
@@ -7371,10 +7377,44 @@ function remplacerBtn(arme,onclick){
 }
 function occFindFaceAny(shape,ref){
   if(!shape||!ref)return null;
-  const parNom=nomsRefFace(shape,ref);if(parNom)return parNom;
+  const parNom=nomsRefFace(shape,ref);
+  if(parNom){
+    // V0.99.65 : nom retenu au clic sur une pièce calculée autrement (constat de Fred, STEP.conceptcad :
+    // « ~16 » pour deux faces voisines) → le nom désigne une AUTRE face. Une face au même centre et aux
+    // mêmes dimensions (à 0,02 mm près) l'emporte alors sur le nom, quand la face nommée est à plus de 0,1 mm.
+    if(!occFaceCalee(parNom,ref,0.1)){
+      const ex=occFaceExacte(shape,ref);
+      if(ex&&!ex.IsSame(parNom)){try{parNom.delete();}catch(e){}return ex;}
+      if(ex)try{ex.delete();}catch(e){}
+    }
+    return parNom;
+  }
   const g=occFindFaceAny0(shape,ref);
   nomsRefNote(shape,ref,g);
   return g;
+}
+function occFaceCalee(f,ref,tol){
+  // La face a-t-elle exactement le centre et les dimensions de la référence (arrondis au millième) ?
+  if(!Array.isArray(ref.pos)||!Array.isArray(ref.dim))return true; // rien pour en juger
+  const b=occFaceBox(f);if(!b)return true;
+  const t=tol||0.02; // boîte du clic (triangles) contre boîte exacte : quelques millièmes d'écart
+  for(let k=0;k<3;k++)if(Math.abs(b.pos[k]-ref.pos[k])>t||Math.abs(b.dim[k]-ref.dim[k])>t)return false;
+  return true;
+}
+function occFaceExacte(shape,ref){
+  // Face du solide calée exactement sur la référence (même type de surface) ; null s'il n'y en a pas UNE seule.
+  if(!Array.isArray(ref.pos)||!Array.isArray(ref.dim))return null;
+  const ex=new occt.TopExp_Explorer_2(shape,occt.TopAbs_ShapeEnum.TopAbs_FACE,occt.TopAbs_ShapeEnum.TopAbs_SHAPE);
+  let r=null,n=0;
+  try{
+    for(;ex.More();ex.Next()){
+      const f=occFaceCur(ex);let keep=false;
+      try{if((!ref.st||occSurfKind(f)===ref.st)&&occFaceCalee(f,ref)){if(!r||!f.IsSame(r)){n++;if(!r){r=f;keep=true;}}}}catch(e){}
+      if(!keep)try{f.delete();}catch(e){}
+    }
+  }finally{try{ex.delete();}catch(e){}}
+  if(n!==1&&r){try{r.delete();}catch(e){}return null;}
+  return r;
 }
 function occFindFaceAny0(shape,ref){
   if(ref.n){
@@ -7493,10 +7533,13 @@ function occApplyDeleteFaces(result,f,ckKey,ckPre){
   const total=(f.faces||[]).length;
   if(!total)return{shape:result,warnings:['aucune face à supprimer']};
   const hs=occNotePerdues(f,(f.faces||[]).map(fr=>{try{return occFindFaceAny(result,fr);}catch(e){return null;}})).filter(Boolean);
+  // V0.99.65 : deux références sur la MÊME face → une seule fois au noyau (le doublon faisait tout
+  // refuser, puis la reprise face par face n'en gardait qu'une partie)
+  let nDup=0;for(let i=hs.length-1;i>0;i--){if(hs.slice(0,i).some(h=>h.IsSame(hs[i]))){try{hs[i].delete();}catch(e){}hs.splice(i,1);nDup++;}}
   const free=()=>hs.forEach(h=>{try{h.delete();}catch(e){}});
-  f._m={m:hs.length,t:total};
+  f._m={m:hs.length+nDup,t:total};
   if(!hs.length)return{shape:result,warnings:[`aucune des ${total} face(s) n'est retrouvée — la pièce a changé`]};
-  if(hs.length<total)warnings.push(`${total-hs.length} face(s) introuvable(s) sur la pièce courante`);
+  if(hs.length+nDup<total)warnings.push(`${total-hs.length-nDup} face(s) introuvable(s) sur la pièce courante`);
   // V0.15.9 : calcul dans le worker quand il existe (21-suppression-face-calcul) — l'interface
   // ne gèle plus et un calcul sans fin est abandonné au délai. Sans worker : ici même.
   let res=null;
@@ -7515,9 +7558,25 @@ function occApplyDeleteFaces(result,f,ckKey,ckPre){
     f._m={m:0,t:total};
     return{shape:result,warnings:[`suppression impossible — ${res.err}`].concat(warnings),fatal:true};
   }
-  if(res.kept<hs.length){f._m={m:res.kept,t:total};warnings.push(`suppression partielle : ${res.kept}/${total} face(s), ${hs.length-res.kept} refusée(s) par le noyau`);}
+  if(res.kept<hs.length){f._m={m:res.kept+nDup,t:total};warnings.push(`suppression partielle : ${res.kept}/${total} face(s), ${hs.length-res.kept} refusée(s) par le noyau`);}
   try{result.delete();}catch(e){}
   return{shape:res.r,warnings};
+}
+function occDelFacesGeo(shape,f){
+  // V0.99.65 (demande de Fred : « quand je sélectionne la fonction dans l'arbre ou la timeline, que les
+  // faces s'illuminent, celles choisies pour la fonction ») : maillage des faces visées, prises sur le
+  // solide D'ENTRÉE (elles n'existent plus après). Copie SANS triangles maillée à part : le solide
+  // d'entrée (point de contrôle partagé) garde exactement ses triangles d'affichage.
+  const hs=(f.faces||[]).map(r=>{try{return occFindFaceAny(shape,Object.assign({},r));}catch(e){return null;}}).filter(Boolean);
+  if(!hs.length)return null;
+  let bld=null,C=null,cp=null,nue=null;
+  try{
+    bld=new occt.BRep_Builder();C=new occt.TopoDS_Compound();bld.MakeCompound(C);
+    hs.forEach(h=>bld.Add(C,h));
+    cp=new occt.BRepBuilderAPI_Copy_2(C,true,false);nue=cp.Shape();
+    return occTessellate(nue,0.05,0.3);
+  }catch(e){return null;}
+  finally{hs.forEach(h=>{try{h.delete();}catch(e){}});[nue,cp,C,bld].forEach(o=>{try{o&&o.delete();}catch(e){}});}
 }
 function occDelFacesTry(result,hs){
   // Cœur commun au thread principal et au worker (sérialisé tel quel par delWkSource : ni
@@ -7530,7 +7589,18 @@ function occDelFacesTry(result,hs){
     try{return occDeleteFacesOnce(result,set);}
     catch(e){try{return occDelReboucher(result,set);}catch(e2){throw e;}}
   };
-  try{r=essai(hs);}catch(e){echec=e;}
+  // V0.99.65 : congés de raccord qui bordent les faces choisies, retirés avec elles d'abord (constat de
+  // Fred, rainure de la platine STEP : « l'idée est de les enlever, puis rapprocher les faces restantes et
+  // de les coudre ») — laissés en place, ils ne se raccordent plus à rien : le noyau cherchait 73 s puis
+  // refusait ; avec eux, 1 s. Sans succès : les faces choisies seules, comme avant.
+  let rac=[];
+  try{rac=occDelRaccords(result,hs);}catch(e){rac=[];}
+  try{
+    if(rac.length){
+      try{r=essai(hs.concat(rac));warnings.push(`${rac.length} congé(s) de raccord retiré(s) avec elles`);}catch(e){r=null;}
+    }
+  }finally{occDispose(rac);}
+  if(!r)try{r=essai(hs);}catch(e){echec=e;}
   // Reprise face par face : N+1 suppressions complètes de plus. Sur une grosse pièce, une
   // seule coûte déjà de 0,4 s à plusieurs minutes (Defeaturing OCCT, mesuré V0.15.7) :
   // au-delà de DEL_ISOLE_MAX faces, refus direct plutôt qu'une attente interminable.
@@ -7546,6 +7616,41 @@ function occDelFacesTry(result,hs){
     }
   }
   return{r,kept:r?kept:0,err:r?null:String((echec&&echec.message)||echec),warnings};
+}
+const DEL_RACCORD_RANGS=2;
+function occDelRaccords(shape,hs){
+  // Faces de raccord des faces retirées hs : courbes (jamais un plan), reliées à la zone par une arête
+  // LISSE, pas plus grandes que la zone (1,2 × sa plus grande dimension : les grandes faces de la pièce
+  // restent) ; rang par rang (congé, puis congé de congé). Poignées neuves, à libérer.
+  const all=occSubShapes(shape,'TopAbs_FACE');
+  const out=[];
+  const aretes=f=>{const L=[];const ex=new occt.TopExp_Explorer_2(f,occt.TopAbs_ShapeEnum.TopAbs_EDGE,occt.TopAbs_ShapeEnum.TopAbs_SHAPE);
+    try{for(;ex.More();ex.Next())L.push(occEdgeCur(ex));}finally{try{ex.delete();}catch(e){}}return L;}; // arêtes typées (occEdgeTangent)
+  try{
+    let lo=[1e18,1e18,1e18],hi=[-1e18,-1e18,-1e18];
+    hs.forEach(h=>{const b=occBoxMinMax(h);if(b)for(let i=0;i<3;i++){lo[i]=Math.min(lo[i],b.lo[i]);hi[i]=Math.max(hi[i],b.hi[i]);}});
+    const D=Math.max(...hi.map((v,i)=>v-lo[i]));
+    if(!(D>0&&D<1e17))return out;
+    const zone=hs.slice();
+    const dans=h=>zone.some(x=>x.IsSame(h));
+    for(let rang=1;rang<=DEL_RACCORD_RANGS;rang++){
+      const ze=[];zone.forEach(z=>aretes(z).forEach(e=>ze.push({e,z})));
+      const neuf=[];
+      try{
+        for(const h of all){
+          if(dans(h)||out.includes(h))continue;
+          if(occSurfKind(h)==='Plane')continue;
+          const b=occBoxMinMax(h);if(!b||Math.max(...b.hi.map((v,i)=>v-b.lo[i]))>1.2*D)continue;
+          const E=aretes(h);
+          try{if(E.some(e=>ze.some(x=>x.e.IsSame(e)&&occEdgeTangent(e,h,x.z))))neuf.push(h);}
+          finally{occDispose(E);}
+        }
+      }finally{occDispose(ze.map(x=>x.e));}
+      if(!neuf.length)break;
+      out.push(...neuf);zone.push(...neuf);
+    }
+    return out;
+  }finally{occDispose(all.filter(h=>!out.includes(h)));}
 }
 /* ---------- trou rebouché par un bouchon (V0.99.58) ----------
    Constat de Fred (platine perforée, suppr.conceptcad) : « quand on veut enlever un trou qui
@@ -9594,6 +9699,7 @@ function occCleanup(FR,keepShape){
    invalide tout ce qui suit, donc aucune geometrie perimee ne peut etre reutilisee. */
 let occCk=[]; // [{key,shape}] du plus ancien au plus recent
 let occCkWarn={}; // avertissements de congé par point de contrôle (mêmes entrées = mêmes messages)
+let occCkDelM={}; // V0.99.65 : bilan d'une suppression de face (_m) par point de contrôle
 // V0.16.0 : relevé pos/len des arêtes d'un congé exact tel qu'au point de contrôle. Il n'est plus
 // dans la clé (featSig) : un point de contrôle retrouvé le RESTITUE, comme un recalcul l'aurait
 // rafraîchi (retour à une valeur précédente : relevé de cet état-là, pas du dernier rejeu).
@@ -9652,7 +9758,7 @@ function occToolCkPut(key,r){
 }
 function occCkClear(){
   for(const c of occCk){try{c.shape.delete();}catch(e){}}
-  occCk=[];occCkWarn={};occCkEdges={};
+  occCk=[];occCkWarn={};occCkEdges={};occCkDelM={};
   occToolCk.forEach(o=>{try{o.shape.delete();}catch(e){}try{if(o.thr)o.thr.delete();}catch(e){}});occToolCk=new Map();
   try{occFantomeMemo.forEach(o=>{try{o.dispose&&o.dispose();}catch(e){}});occFantomeMemo=new Map();}catch(e){}
 }
@@ -9956,11 +10062,17 @@ function* occReplayBodyGen(bid,list){
     }
     if(f.type==='xmove'||f.type==='xdelface'||f.type==='bmove'){
       if(!result){msgs.push(`${f.name} : aucun volume à `+(f.type==='bmove'?'déplacer':'déformer')+` — ignoré`);return;}
+      // V0.99.65 : faces de la suppression, allumées quand la fonction est sélectionnée (comme l'outil d'une découpe)
+      if(f.type==='xdelface'&&occFantomesVoulus){
+        try{const gg=occFantomeGeo(ckKey+'|faces',()=>occDelFacesGeo(result,f));if(gg)ghostShapes.push({geo:gg,orphan:false,fid:f.id,col:0xff9f0a});}catch(e){}
+      }
       const ckM=occCkGet(ckKey);
       const cpM=occCkPrise(ckM);
       if(cpM){
         try{result.delete();}catch(e){}result=cpM;
         const w=occCkWarn[ckKey];if(w&&w.length)msgs.push(...w.map(x=>`${f.name} : ${x}`));
+        // V0.99.65 : suppression reprise du point de contrôle (après la réponse du worker) : plus « ⏳ », bilan rendu
+        if(f.type==='xdelface'){delete f._calc;const m=occCkDelM[ckKey];if(m)f._m=Object.assign({},m);}
         return;
       }
       const snapM=f.type==='bmove'?null:nomsInstantane(result); // suppression (dans le worker), décalage : pas d'historique
@@ -9971,6 +10083,7 @@ function* occReplayBodyGen(bid,list){
       // sous une clé qui la supposerait faite (même marque que le STEP en cours de restauration).
       if(r.pending){ckKey+=DEL_WK_MARK+f.id+';';return;}
       if(r.warnings.length)occCkWarn[ckKey]=r.warnings.slice();else delete occCkWarn[ckKey];
+      if(f.type==='xdelface'&&f._m)occCkDelM[ckKey]=Object.assign({},f._m);
       occCkPut(ckKey,()=>occShapeCopy(result));
       return;
     }
@@ -10762,7 +10875,7 @@ function occRebuild(){
     const D=FR.D?{lin:FR.D.lin,ang:FR.D.ang}:occDisplayDefl(FR.shape||(parts[0]&&parts[0].shape)||null);
     // ce que la pièce gardée doit reprendre hors des corps (20-75, pcCapture)
     pcDernier={ver:_docVersion,D:{lin:D.lin,ang:D.ang},msgs:(FR.msgs||[]).slice(),imports:(FR.imports||[]).slice(),
-      ghosts:(FR.ghostShapes||[]).map(g=>({geo:g.geo,orphan:!!g.orphan,fid:g.fid||null,inexact:g.inexact||null}))};
+      ghosts:(FR.ghostShapes||[]).map(g=>({geo:g.geo,orphan:!!g.orphan,fid:g.fid||null,inexact:g.inexact||null,col:g.col||null}))};
     let trisTot=0;
     for(const id of [...occMeshMemo.keys()])if(!parts.some(p=>p.bodyId===id)){try{occMeshMemo.get(id).geo.dispose();}catch(e){}occMeshMemo.delete(id);}
     if(parts.length){
@@ -10811,12 +10924,12 @@ function occRebuild(){
     FR.ghostShapes.forEach((gh,i)=>{
       try{
         if(!gh.geo)return;
-        const mat=ghostMaterial(gh.inexact?0xff9f0a:0xff453a);
+        const mat=ghostMaterial(gh.col||(gh.inexact?0xff9f0a:0xff453a));
         const mesh=new THREE.Mesh(gh.geo,mat);mesh.userData.bid='occghost_'+i;mesh.raycast=()=>{};mesh.visible=false;mesh.renderOrder=20;
         scene.add(mesh);
         // Fantôme masqué par défaut (sinon il dépasse là où un congé a rajouté de la matière).
         // Visible quand sa découpe est sélectionnée, ou via 👁 dans Pièces.
-        bodies.push({id:'occghost_'+i,name:gh.inexact?`⚠ ${gh.inexact} (maillage — exclu de l'exact)`:'🔧 Outil '+(gh.orphan?'(orphelin)':'(découpe)'),mesh,color:0xff453a,visible:false,kind:'ghost',ref:gh.fid||null,ghost:true});
+        bodies.push({id:'occghost_'+i,name:gh.inexact?`⚠ ${gh.inexact} (maillage — exclu de l'exact)`:gh.col?'⌫ Faces supprimées':'🔧 Outil '+(gh.orphan?'(orphelin)':'(découpe)'),mesh,color:0xff453a,visible:false,kind:'ghost',ref:gh.fid||null,ghost:true});
       }catch(e){FR.msgs.push('fantôme illisible, ignoré');}
     });
     // Imports mesh : affichés tels quels SAUF s'ils sont entrés dans la chaîne exacte
@@ -11115,7 +11228,7 @@ function pcFR(){
     try{const memes=new Map();(e.delwk||[]).forEach(([k,v])=>{if(delWkRes.has(k))return;
       let o=memes.get(v.brep);if(!o){o=Object.assign({},v,{st:'fin',warnings:(v.warnings||[]).slice()});memes.set(v.brep,o);}
       delWkRes.set(k,o);});}catch(x){}
-    const ghostShapes=(e.ghosts||[]).map(g=>({geo:pcGeoDe(g.geo),orphan:!!g.orphan,fid:g.fid||null,inexact:g.inexact||null})).filter(g=>g.geo);
+    const ghostShapes=(e.ghosts||[]).map(g=>({geo:pcGeoDe(g.geo),orphan:!!g.orphan,fid:g.fid||null,inexact:g.inexact||null,col:g.col||null})).filter(g=>g.geo);
     pcFait=true;
     return{shape,shapeFao,preThr,perBody,ghostShapes,msgs:(e.msgs||[]).slice(),bin:[],itemShapes:[],items:[],imports:(e.imports||[]).slice(),D:e.D||null,servi:true};
   }catch(err){
@@ -11600,9 +11713,10 @@ function delWkSource(){
     occCut,occCutEach,occCutKids,occThrCut,occtV3Compat,
     occTriPos,occMeshShape,occFacePlane,occMeshParallele,occBinRead, // V0.99.48 : maillage fin de la FAO
     occCurvePts,occHlrEdgePts,occHlrPaquet, // V0.99.50 : vues de la mise en plan (21-vues-plan-calcul)
-    occDelReboucher,occDelBouchon,occSubShapes,occShellToSolid,occShapeVolume,occShapeCopy,occFuse,occSurfKind,occFaceArea,occFaceCreuse,occDot3,occSub3,occCross3,occDelFlancPoint,occSplitRun,occDelBouchonLisse]; // V0.99.58 : trou rebouché
+    occDelReboucher,occDelBouchon,occSubShapes,occShellToSolid,occShapeVolume,occShapeCopy,occFuse,occSurfKind,occFaceArea,occFaceCreuse,occDot3,occSub3,occCross3,occDelFlancPoint,occSplitRun,occDelBouchonLisse, // V0.99.58 : trou rebouché
+    occDelRaccords,occEdgeTangent,occSurfNormalAt]; // V0.99.65 : congés de raccord retirés avec les faces
   // Noms uniques (20-05) : le worker n'en porte pas, le rejeu les redonne à la réponse (nomsCompleter)
-  return 'function nomsTransmet(a,b,r){return r;}\nfunction nomsApresUnify(){}\nfunction nomsPartage(a,b){return b;}\nlet occt=null,occtReady=false;const EDGE_TOL='+EDGE_TOL+',DEL_ISOLE_MAX='+DEL_ISOLE_MAX+',DEL_BREP_PATH='+JSON.stringify(DEL_BREP_PATH)+',OCC_MESH_SPLIT_FACES='+OCC_MESH_SPLIT_FACES+',DEL_BIN_PATH='+JSON.stringify(DEL_BIN_PATH)+';\n'+fns.map(String).join('\n')+'\n('+delWkMain+')();\n';
+  return 'function nomsTransmet(a,b,r){return r;}\nfunction nomsApresUnify(){}\nfunction nomsPartage(a,b){return b;}\nlet occt=null,occtReady=false;const EDGE_TOL='+EDGE_TOL+',DEL_ISOLE_MAX='+DEL_ISOLE_MAX+',DEL_RACCORD_RANGS='+DEL_RACCORD_RANGS+',DEL_BREP_PATH='+JSON.stringify(DEL_BREP_PATH)+',OCC_MESH_SPLIT_FACES='+OCC_MESH_SPLIT_FACES+',DEL_BIN_PATH='+JSON.stringify(DEL_BIN_PATH)+';\n'+fns.map(String).join('\n')+'\n('+delWkMain+')();\n';
 }
 function delWkStart(){
   if(delWk)return delWk;
