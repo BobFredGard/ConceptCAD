@@ -8,7 +8,7 @@ sont sorties le 2026-09-30j.
 Code dans `src/` · livrable `fusion_mvp.html` (généré par `build.js`) · architecture et
 garde-fous en tête de `src/00-entete-et-outils.js`.
 
-**754 versions**, de `2026-09-28b` à `V0.99.67` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
+**755 versions**, de `2026-09-28b` à `V0.99.68` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
 comme dans le fichier d'origine.
 
 ---
@@ -8379,3 +8379,11 @@ Manuel Fonctions 3D.
 **Correctif** (`src/88-fao-30-parcours.js`) : `faoLoopFromChains` raccorde les chaînes bout à bout au plus proche (3D), en retournant celles qui arrivent par leur fin. Les fichiers déjà enregistrés se réparent à l'ouverture (la zone est re-suivie à chaque rejeu depuis ses ancres) ; le parcours de l'opération est à recalculer. Manuel FAO.
 
 **Test** : `tests/test_fao_chain.cjs` T5 (rectangle coupé en 8 arêtes disjointes de 2 µm, 4 ordres de clic : aucun croisement, aire pleine). Vérifié dans l'appli sur STEP.conceptcad : 0 croisement (5 avant), aire 200,5 mm², plus grand segment 7,88 mm (vraie arête droite) ; banc hors appli sur les 10 arêtes réelles : 40 ordres de clic sans croisement (40 sur 40 avec croisements avant). CACHE_VER et FORMES_VER inchangés.
+
+## V0.99.68 - Tests : avancement en pourcentage et temps restant
+
+**Demande de Fred** : « Pourrait-on avoir un % de la réalisation de l'ensemble des tests ? » (le dernier test, test_barquette_120, tournait depuis 21 min sans rien afficher, à 358/359).
+
+**Correctif** (`tests/pool.cjs`, commun à `npm run ci` et `npm run ci:full`) : chaque ligne affiche « [n/N · x % · reste ≈ …] ». Le pourcentage compte le temps de calcul d'après les durées du dernier passage (`tests/.durees.json`), pas le nombre de suites ; une suite en cours compte pour son temps écoulé, plafonné à 99 % de son estimation. Le reste estimé tient compte des suites en cours et de celles en attente, réparties sur les ouvriers. Sans ligne nouvelle depuis 60 s, une ligne « … en cours » donne les suites qui tournent, depuis quand, et l'avancement. Manuel Développement.
+
+**Test** : essai sur 4 suites (lignes à 3 %, 10 %, « … en cours » à 83 %, 100 %) ; `npm run ci:full` passé avec le nouvel affichage. CACHE_VER et FORMES_VER inchangés.

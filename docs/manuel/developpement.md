@@ -34,7 +34,7 @@ npx serve . -l 3000
 
 1. modifier `src/` ;
 2. `node build.js` ;
-3. `npm run ci` (build à jour, syntaxe, tests rapides, lint) pendant le travail, `npm run ci:full` (suite complète) avant de livrer ; tous deux doivent être verts ;
+3. `npm run ci` (build à jour, syntaxe, tests rapides, lint) pendant le travail, `npm run ci:full` (suite complète) avant de livrer ; tous deux doivent être verts ; chaque ligne affiche l’avancement « [n/N · x % · reste ≈ …] », en temps de calcul (durées du dernier passage) et non en nombre de suites, et une ligne « … en cours » le redonne quand rien ne finit pendant une minute ;
 4. incrémenter `APP_VER` (`src/00-entete-et-outils.js`), ajouter une entrée au CHANGELOG, mettre à jour la page du manuel concernée (`docs/manuel/`), puis `node build.js` ;
 5. commit, push et tag annoté `V0.x.y`, qui republie le site en ligne.
 6. `npm run autonome` refait `ConceptCAD-autonome.html` (trop gros pour Git), à copier ensuite à la place de l'ancien sur le partage Dropbox, pour que le lien du README reste le même.

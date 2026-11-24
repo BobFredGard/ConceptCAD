@@ -23,6 +23,12 @@
 // sur cœur E à sa dernière durée sur cœur P, et la médiane est gardée dans tests/.coeurs.json
 // (2 au départ). Processeur homogène, hors Windows ou TEST_AFFINITE=0 : pool homogène.
 // TEST_PCORES=0-7 force la liste des cœurs P, TEST_RAPPORT=1.8 l'écart de vitesse.
+//
+// AVANCEMENT (demande de Fred, 24/11/2026) : chaque ligne donne « [n/N · x % · reste ≈ …] ». Le %
+// compte le TEMPS de calcul (durées du dernier passage), pas le nombre de suites : la barquette 120
+// pèse autant que des dizaines de petites suites. Une suite en cours compte pour son temps écoulé,
+// plafonné à 99 % de son estimation. Sans ligne nouvelle depuis 60 s, une ligne « … en cours »
+// redonne l'avancement et les suites qui tournent.
 'use strict';
 const path = require('path'), fs = require('fs'), os = require('os');
 const { NCPU, masque, lancerProc, tuer, coeursPE, ecrire } = require('./coeurs.cjs');
@@ -87,6 +93,34 @@ async function pool(SUITES, { titre, timeout }) {
   const res = {};
   const t0 = Date.now();
   let fini = 0;
+  // ── avancement (voir l'en-tête) ──
+  const estAv = e => { const d = est(e); return isFinite(d) ? d : 10000; }; // suite inconnue : 10 s
+  const totalAv = TACHES.reduce((n, e) => n + estAv(e), 0) || 1;
+  const enCours = new Map(); // morceau → { debut, vit }
+  const duree = ms => { const m = Math.round(ms / 60000); return ms < 60000 ? Math.max(1, Math.round(ms / 1000)) + ' s' : m < 60 ? m + ' min' : Math.floor(m / 60) + ' h ' + String(m % 60).padStart(2, '0'); };
+  let derniere = Date.now();
+  function avancement() {
+    const now = Date.now();
+    let fait = 0, resteEnCours = 0, resteMax = 0;
+    TACHES.forEach(e => { if (res[e]) fait += estAv(e); });
+    enCours.forEach((r, e) => {
+      const d = estAv(e) * r.vit, ecoule = now - r.debut;
+      fait += Math.min(ecoule, 0.99 * d) / r.vit;
+      const reste = Math.max(d - ecoule, 0);
+      resteEnCours += reste; resteMax = Math.max(resteMax, reste);
+    });
+    const vitMoy = ouvriers.reduce((n, o) => n + o.vit, 0) / ouvriers.length;
+    const enFile = file.reduce((n, e) => n + estAv(e) * vitMoy, 0);
+    const reste = Math.max(resteMax, (resteEnCours + enFile) / ouvriers.length);
+    const pc = Math.min(fini === TACHES.length ? 100 : 99, Math.floor(100 * fait / totalAv));
+    return fini + '/' + TACHES.length + ' · ' + pc + ' %' + (fini < TACHES.length ? ' · reste ≈ ' + duree(reste) : '');
+  }
+  const veille = setInterval(() => {
+    if (Date.now() - derniere < 60000 || !enCours.size) return;
+    const l = [...enCours.keys()].slice(0, 4).map(e => e + ' (' + duree(Date.now() - enCours.get(e).debut) + ')');
+    console.log('… en cours : ' + l.join(', ') + (enCours.size > 4 ? ' et ' + (enCours.size - 4) + ' autre(s)' : '') + '  [' + avancement() + ']');
+    derniere = Date.now();
+  }, 15000);
   // Choix « au plus tôt fini » : la plus longue suite qu'aucun autre ouvrier (libre plus
   // tard, mais plus rapide) ne finirait avant celui-ci ; à défaut, la plus courte.
   function choisir(w) {
@@ -106,6 +140,7 @@ async function pool(SUITES, { titre, timeout }) {
     return new Promise(resolve => {
       const [s, partie] = e.split(':');
       const debut = Date.now(), sortie = [];
+      enCours.set(e, { debut, vit: w.vit });
       w.libre = debut + (isFinite(est(e)) ? est(e) * w.vit : 0);
       const couv = CARTE ? CARTE.C.dossierCouverture(e) : null;
       const p = lancerProc(path.join(__dirname, s + '.cjs'), partie ? [partie] : [], w.aff,
@@ -122,6 +157,7 @@ async function pool(SUITES, { titre, timeout }) {
         clearTimeout(minuterie);
         const ms = Date.now() - debut, vert = code === 0;
         res[e] = { vert, ms, eq: ms / w.vit, P: w.P, coupe };
+        enCours.delete(e);
         if (couv) try { noter(s, e, couv, vert && !coupe); } catch (err) { console.log('(relevé de ' + e + ' perdu : ' + err.message + ')'); }
         w.libre = Date.now();
         fini++;
@@ -129,7 +165,8 @@ async function pool(SUITES, { titre, timeout }) {
           console.log('\n──── ' + e + ' ────');
           process.stdout.write(Buffer.concat(sortie));
         }
-        console.log((vert ? '✓ ' : '✗ ') + e + ' — ' + sec(ms) + (pcores ? (w.P ? ' (P)' : ' (E)') : '') + '  [' + fini + '/' + TACHES.length + ']');
+        console.log((vert ? '✓ ' : '✗ ') + e + ' — ' + sec(ms) + (pcores ? (w.P ? ' (P)' : ' (E)') : '') + '  [' + avancement() + ']');
+        derniere = Date.now();
         resolve();
       });
     });
@@ -155,6 +192,7 @@ async function pool(SUITES, { titre, timeout }) {
     (pcores ? ' (cœurs P ' + pcores.join(',') + ' : ' + ouvriers.filter(o => o.P).length + ' ouvriers ; cœurs E : ' +
       ouvriers.filter(o => !o.P).length + ' ouvriers, ' + String(rapport).replace('.', ',') + ' fois plus lents)' : ''));
   await Promise.all(ouvriers.map(ouvrier));
+  clearInterval(veille);
   const total = Date.now() - t0;
   const vertS = s => tachesDe[s].every(e => res[e].vert);
   const ko = SUITES.filter(s => !vertS(s));
