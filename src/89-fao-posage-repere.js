@@ -252,7 +252,8 @@ function faoZoneProj(setup,op){
     const z=(l.z!==null&&isFinite(+l.z))?+l.z:zf;
     if(!isFinite(z))return;
     const P=l.pts,n=P.length,m=l.closed?n:n-1;
-    for(let i=0;i<m;i++){const a=P[i],b=P[(i+1)%n];
+    const pb=(typeof faoLoopPonts==='function')?faoLoopPonts(P):null; // V0.99.71 : ponts entre contours non dessinés
+    for(let i=0;i<m;i++){if(pb&&pb[i])continue;const a=P[i],b=P[(i+1)%n];
       if(!a||!b||!isFinite(+a[0])||!isFinite(+b[0]))continue;
       arr.push(+a[0],+a[1],z,+b[0],+b[1],z);}
   });

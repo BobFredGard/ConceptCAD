@@ -8,7 +8,7 @@ sont sorties le 2026-09-30j.
 Code dans `src/` · livrable `fusion_mvp.html` (généré par `build.js`) · architecture et
 garde-fous en tête de `src/00-entete-et-outils.js`.
 
-**757 versions**, de `2026-09-28b` à `V0.99.70` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
+**758 versions**, de `2026-09-28b` à `V0.99.71` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
 comme dans le fichier d'origine.
 
 ---
@@ -8407,3 +8407,15 @@ Manuel Fonctions 3D.
 **Dossier hors du dossier de projets** : chaque lien garde le fichier copié (handle mémorisé sur ce poste) et son chemin relatif au dossier copié. `asmLinkHandle` (`src/47-composants-lies.js`) essaie le handle d'abord quand les deux existent : jamais l'original du même nom. Sur un autre poste, choisir le dossier copié comme dossier de projets.
 
 **Test** : `tests/test_export_dossier.cjs` (15 contrôles, dossier simulé : sous-dossiers, liens vers les copies, empreintes, lien imbriqué, originaux inchangés, question, hors du dossier de projets, copie rouverte à jour) ; vérifié dans le navigateur (programme CN d'une pièce non active, 4 207 lignes). CACHE_VER et FORMES_VER inchangés.
+
+## V0.99.71 - Ébauche 3D : zone de plusieurs poches, calcul sans figer l'écran et plus rapide
+
+**Constats de Fred** (STEP.conceptcad, Ébauche 3D) : « j'ai toujours des lignes aléatoires » (5 poches choisies dans une même zone, reliées par des traits orange) ; « L'affichage est bloqué pendant la régénération qui met beaucoup de temps pour 1 seule opération ! » ; puis « Oui, accélérer ».
+
+**Zone de plusieurs poches** (`src/88-fao-30-parcours.js`) : `faoLoopFromChains` faisait une seule boucle des 5 contours, reliés par des traits simples qui traversaient la pièce. Les contours fermés sont maintenant séparés (sauf chanfrein et contour de profil), orientés pareil et reliés par des ponts aller-retour : la règle de parité ne change pas. `faoLoopPonts` repère ces ponts ; ils ne comptent ni pour la distance au bord (`faoDistToPoly`, `faoLoopDistTo`), ni pour les croisements (`faoPolyCross`, `src/88-fao-40-zone-plans.js`), ni à l'affichage orange (`faoZoneProj`, `src/89-fao-posage-repere.js`). Sélection (`src/88-fao-94-selection.js`) et rejeu font pareil : les fichiers enregistrés se réparent à l'ouverture.
+
+**Régénération d'une opération sans figer l'écran** (`src/88-fao-80-interface.js`, `faoRegenOpStream`) : le calcul part d'abord sur un autre cœur (`faoWkRemplir`), l'aperçu se remplit au fil des niveaux ; mesuré sur STEP.conceptcad : plus long arrêt de l'écran 0,14 s. Une opération restait masquée après un ⚠ : son état d'affichage est rendu.
+
+**Ébauche 3D plus rapide, parcours identiques** : boîtes de zone par contour (`faoZoneCtx` → `boxes`, élargies de la garantie outil, du décalage et d'un diamètre ; `faoInBoxes`), passées au générateur (`zoneBoxes`, `src/88-fao-50-caches-dispatch.js`), retirées si le repère tourne (`src/88-fao-90-ebauche3d.js`). Hors des boîtes : pas de case de masque calculée (`faoSpiralLevel`) et pas de paroi décalée pour une chaîne entièrement dehors (`faoOffsetRuns`, `src/88-fao-92-contour.js` ; couper une chaîne au bord des boîtes déplaçait un point de 0,3 mm : écarté). Index des parois à cellules de 1 mm au lieu de 4 (`faoShadowShape`, élargi au-delà de 600 mm de pièce). Manuel FAO.
+
+**Test** : `tests/test_fao_chain.cjs` T6 (deux carrés : aucun trait visible entre eux, ponts ignorés, aire 200). STEP.conceptcad, opération complète ancienne méthode contre nouvelle, pas à pas : 6 081 mouvements identiques, 1,5 fois plus rapide (jusqu'à 1,9 fois par niveau). `npm run parcours` : sorties identiques à V0.99.67 (les 6 écarts au fichier de référence existaient déjà). CACHE_VER et FORMES_VER inchangés.

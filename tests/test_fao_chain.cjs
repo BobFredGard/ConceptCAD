@@ -96,6 +96,28 @@ const A=(c,m)=>{if(!c){ko++;console.log('  ✗ '+m);}else console.log('  ✓ '+m
     R.push([worst===0,'T5 arêtes disjointes (jours 2 µm) : aucune corde croisée (max '+worst+')']);
     R.push([aMin>1199,'T5 arêtes disjointes : aire pleine '+aMin.toFixed(1)+' (≈1200)']);
 
+    // T6 — V0.99.71 (constat de Fred, 5 poches pour une même zone) : deux carrés 10×10
+    // disjoints (x 0..10 et 30..40), choisis ensemble, arêtes disjointes de 2 µm. Deux
+    // contours reliés par un pont aller-retour : invisible, hors zone, ni bord ni croisement.
+    const sq=function(x0){const Q=[[x0,0],[x0+10,0],[x0+10,10],[x0,10]];
+      return Q.map(function(a,k){const b=Q[(k+1)%4];return mk([a[0]+0.002*(k%2),a[1]],b,k===2);});};
+    E=sq(0).concat(sq(30));
+    [[0,1,2,3,4,5,6,7],[4,0,6,2,7,1,5,3]].forEach(function(o,t){
+      const ch=faoOrderEdges(E,o),r=faoLoopFromChains(E,ch,true),lp=r.loop,pb=faoLoopPonts(lp);
+      let visMax=0;for(let i=0;i+1<lp.length;i++){if(pb&&pb[i])continue;
+        visMax=Math.max(visMax,Math.hypot(lp[i+1][0]-lp[i][0],lp[i+1][1]-lp[i][1]));}
+      const Lz={loop:lp,side:'out',extra:0};
+      const dedans=faoLimInside(5,5,Lz,3)&&faoLimInside(35,5,Lz,3);
+      const entre=faoLimInside(20,5,Lz,3)||faoLimInside(20,0.5,Lz,3);
+      const tra=faoPolyCross(20,-5,20,15,lp);
+      R.push([visMax<=10.01,'T6.'+t+' deux carrés : aucun trait visible entre eux (plus long '+visMax.toFixed(2)+' ≤ 10)']);
+      R.push([dedans&&!entre,'T6.'+t+' deux carrés : dedans chacun, rien entre eux (Tout couvrir, r=3)']);
+      R.push([!tra,'T6.'+t+' deux carrés : pont ignoré au croisement']);
+      R.push([Math.abs(faoLoopArea(lp)-200)<0.1,'T6.'+t+' deux carrés : aire 200 ('+faoLoopArea(lp).toFixed(2)+')']);
+    });
+    // Contour / chanfrein (multi absent) : chaîne unique comme avant.
+    R.push([!faoLoopPonts(faoLoopFromChains(E,faoOrderEdges(E,[0,1,2,3,4,5,6,7])).loop),'T6 sans multi : pas de pont (trajet unique)']);
+
     // T4 — DOCUMENT RÉEL : après rejeu, la boucle doit être intégre.
     await deserialise(__docJson,{rebuild:false});
     occCkClear();markDirty();

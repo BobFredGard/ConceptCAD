@@ -603,7 +603,7 @@ function faoOrderEdges(edges,idx){
   });
   return chains;
 }
-function faoLoopFromChains(edges,chains){
+function faoLoopFromChains(edges,chains,multi){
   // Chaînes 3D -> boucle XY (projection, dédupliquée, refermée d'office).
   // Maillon {i,rev} : arête parcourue à l'envers si rev. Le 1er point de chaque
   // arête est conservé : la déduplication juste en dessous enlève les doublons.
@@ -625,18 +625,35 @@ function faoLoopFromChains(edges,chains){
     });
     if(P.length)parts.push(P);
   });
-  let pts=parts.length?parts.shift():[];
   const d2=function(a,b){const dx=a[0]-b[0],dy=a[1]-b[1],dz=a[2]-b[2];return dx*dx+dy*dy+dz*dz;};
+  // V0.99.71 : PLUSIEURS contours fermés (deux poches choisies pour la même zone — constat de
+  // Fred) : chaque contour est refermé sur son départ, puis relié au premier par un PONT
+  // aller-retour (mêmes points dans les deux sens). Le pont ne change rien au dedans/dehors
+  // (franchi deux fois) ; faoLoopPonts le repère pour l'affichage, les distances et les
+  // croisements. multi=false (contour, chanfrein : la boucle est un trajet) : chaîne unique.
+  const groups=[];let cur=null;
   while(parts.length){
-    const tail=pts[pts.length-1];
+    if(!cur){cur=parts.shift();continue;}
+    const tail=cur[cur.length-1];
     let bi=0,bRev=false,bd=Infinity;
     parts.forEach(function(P,j){
       const ds=d2(tail,P[0]),de=d2(tail,P[P.length-1]);
       if(ds<bd){bd=ds;bi=j;bRev=false;}
       if(de<bd){bd=de;bi=j;bRev=true;}
     });
+    const dc=d2(tail,cur[0]);
+    if(multi&&cur.length>2&&dc<0.25&&dc<=bd){groups.push(cur);cur=null;continue;} // contour refermé
     const P=parts.splice(bi,1)[0];
-    pts=pts.concat(bRev?P.reverse():P);
+    cur=cur.concat(bRev?P.reverse():P);
+  }
+  if(cur)groups.push(cur);
+  // contours tous dans le même sens que le premier : aires additionnées (faoLoopArea)
+  const sA=function(G){let a=0;for(let i=0;i<G.length;i++){const p=G[i],q=G[(i+1)%G.length];a+=p[0]*q[1]-q[0]*p[1];}return a;};
+  for(let g=1;g<groups.length;g++)if(sA(groups[g])*sA(groups[0])<0)groups[g]=groups[g].slice().reverse();
+  let pts=groups.length?groups[0]:[];
+  if(groups.length>1){
+    const a=pts[0];pts=pts.concat([a.slice()]);
+    for(let g=1;g<groups.length;g++){const G=groups[g];pts=pts.concat(G,[G[0].slice(),a.slice()]);}
   }
   pts=pts.filter(function(q,i){
     if(!i)return true;
@@ -650,6 +667,23 @@ function faoLoopFromChains(edges,chains){
   return {loop:pts.map(function(q){return [r3(q[0]),r3(q[1])];}),closed:closed,
     loop3:pts.map(function(q){return [r3(q[0]),r3(q[1]),r3(q[2])];})};
 }
+// V0.99.71 : ponts entre contours d'une même zone (cf. faoLoopFromChains) — segment i
+// (loop[i]→loop[i+1]) parcouru aussi dans l'autre sens. Uint8Array par indice, ou null.
+const faoPontsMemo=(typeof WeakMap!=='undefined')?new WeakMap():null;
+function faoLoopPonts(loop){
+  if(!Array.isArray(loop)||loop.length<4)return null;
+  if(faoPontsMemo&&faoPontsMemo.has(loop))return faoPontsMemo.get(loop);
+  const k=function(p){return p[0]+','+p[1];};
+  const seg=new Set();
+  for(let i=0;i+1<loop.length;i++)seg.add(k(loop[i])+'|'+k(loop[i+1]));
+  let out=null;
+  for(let i=0;i+1<loop.length;i++){
+    if(k(loop[i])===k(loop[i+1]))continue;
+    if(seg.has(k(loop[i+1])+'|'+k(loop[i]))){if(!out)out=new Uint8Array(loop.length);out[i]=1;}
+  }
+  if(faoPontsMemo)faoPontsMemo.set(loop,out);
+  return out;
+}
 function faoLoopArea(loop){
   let a=0;
   for(let i=0;i+1<loop.length;i++)a+=loop[i][0]*loop[i+1][1]-loop[i+1][0]*loop[i][1];
@@ -659,7 +693,9 @@ function faoLoopDistTo(loop,xy){
   // Distance XY d'un point à la polyligne de boucle (garde-fou d'intégrité).
   if(!loop||loop.length<2||!xy)return Infinity;
   let best=Infinity;
+  const pb=faoLoopPonts(loop);
   for(let i=0;i+1<loop.length;i++){
+    if(pb&&pb[i])continue;
     const a=loop[i], b=loop[i+1];
     const dx=b[0]-a[0], dy=b[1]-a[1], l2=dx*dx+dy*dy;
     let t=l2>1e-12?((xy[0]-a[0])*dx+(xy[1]-a[1])*dy)/l2:0;
@@ -765,7 +801,7 @@ function faoChainRematch(op,edges,field){
     sel=all;
   }
   // 3) reconstruction de la boucle XY (ordre, clip de longueur, validation)
-  let res=faoLoopFromChains(edges,faoOrderEdges(edges,sel));
+  let res=faoLoopFromChains(edges,faoOrderEdges(edges,sel),!(op.type==='chamfer'||faoContourProfil(op)));
   if(!res.loop.length||res.loop.length<3||faoLoopArea(res.loop)<1e-6)return fail(sel.length);
   // Intégrité : chaque arête retenue doit avoir ses points SUR la boucle. Une
   // arête mal orientée à l'assemblage est partiellement sautée → son milieu
@@ -1090,7 +1126,9 @@ function faoDistToPoly(x,y,loop){
   // segment coûtait ~30 µs/appel sur une chaîne de 133 points — appelé des
   // centaines de milliers de fois par la finition Crêtes constantes).
   let m=1/0;
+  const pb=faoLoopPonts(loop); // V0.99.71 : ponts entre contours = pas un bord
   for(let i=0;i+1<loop.length;i++){
+    if(pb&&pb[i])continue;
     const ax=loop[i][0], ay=loop[i][1], bx=loop[i+1][0], by=loop[i+1][1];
     const dx=bx-ax, dy=by-ay, l2=dx*dx+dy*dy;
     let t=l2>1e-12?((x-ax)*dx+(y-ay)*dy)/l2:0;

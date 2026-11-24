@@ -387,9 +387,11 @@ async function faoRegenOpStream(setupId,opId){
     ||typeof THREE==='undefined'||typeof scene==='undefined'||!scene)return faoRegenOp(setupId,opId);
   const tok=++faoStreamTok;
   o.stale=false;             // débloque le recalcul (clé ≠ cache)
-  o.hidden=true;             // dessin de départ SANS l'ancien tracé de cette opération
+  // V0.99.71 : état relevé AVANT de masquer (relevé après, il valait toujours true : l'opération
+  // restait masquée, et le ⚠ suivant prenait le chemin synchrone qui fige l'affichage — constat de Fred)
   const hid0=o.hidden; // undefined ou false : la ligne était affichée
-  try{ faoRefreshPreview(); }finally{ o.hidden=hid0; }
+  o.hidden=true;             // dessin de départ SANS l'ancien tracé de cette opération
+  try{ faoRefreshPreview(); }finally{ if(hid0===undefined)delete o.hidden; else o.hidden=hid0; }
   try{ faoRefreshFaoUI(); }catch(e){} // triangle retiré tout de suite
   const g=faoPrevGroup;
   if(g)faoPrevStreamG=g; // « Masquer » pendant le calcul : éteint les traits provisoires (faoPrevToggleFast)
@@ -399,6 +401,21 @@ async function faoRegenOpStream(setupId,opId){
   let n=0;
   try{
     const st={n:0,prev:null};
+    // V0.99.71 (constat de Fred : « l'affichage est bloqué pendant la régénération ») : comme
+    // « Tout régénérer », l'opération est d'abord calculée sur un autre cœur (src/88-fao-58),
+    // tracé dessiné au fur et à mesure ; le flux ci-dessous ne fait plus que relire le cache.
+    // Worker impossible ou en échec : calcul habituel sur le fil principal, inchangé.
+    try{
+      if(typeof faoWkRemplir==='function'){
+        await faoWkRemplir(job,[o],function(){ return tok!==faoStreamTok; },function(op,delta){
+          if(op!==o||tok!==faoStreamTok||!g||g!==faoPrevGroup||!delta||!delta.length)return;
+          const sp=faoSegSplit(delta,faoSegClipper(o,job),st.prev); st.prev=sp.prev; faoPrevAdd(faoPrevOpGroup(o,g),sp);
+        },function(k,total,coeurs){
+          if(!k)dit('FAO : génération de « '+faoOpShortLabel(o)+' » sur un autre cœur…');
+        });
+      }
+    }catch(e){}
+    if(tok!==faoStreamTok)return 0;
     const mv=await faoOpMovesStream(o,job,function(marr){
       if(tok!==faoStreamTok||!g||g!==faoPrevGroup||!marr||marr.length<=st.n)return;
       const delta=marr.slice(st.n); st.n=marr.length;
