@@ -25,6 +25,7 @@ const SUITES = [
   "test_coque_sel",
   "test_suppression_face",
   "test_suppression_face_step",
+  "test_suppression_step_platine",
   "test_suppression_face_edition",
   "test_moteur_v3",
   "test_suppression_face_worker",

@@ -8,7 +8,7 @@ sont sorties le 2026-09-30j.
 Code dans `src/` · livrable `fusion_mvp.html` (généré par `build.js`) · architecture et
 garde-fous en tête de `src/00-entete-et-outils.js`.
 
-**751 versions**, de `2026-09-28b` à `V0.99.64` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
+**752 versions**, de `2026-09-28b` à `V0.99.65` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
 comme dans le fichier d'origine.
 
 ---
@@ -8349,3 +8349,15 @@ Manuel Fonctions 3D.
 **Correctif** (`src/41-bandeau-timeline.js`) : choisie = fond vert, trait vert épais et pastille ✓ ; candidate = pointillé vert sans fond ; pendant le choix, ce qui ne peut pas être répété (`rno`) est estompé. La bulle d'aide dit l'état : « ✓ Répétée — clic = la retirer », « Peut être répétée — clic = l'ajouter », « Ne peut pas être répétée ici ». Manuel Fonctions 3D.
 
 **Test** : vérifié dans le navigateur (classes et bulles des trois états) ; suite ciblée verte. CACHE_VER et FORMES_VER inchangés.
+
+## V0.99.65 - Suppression de face : faces retrouvées sur une pièce STEP, faces allumées à la sélection
+
+**Constat de Fred** (STEP.conceptcad, platine importée) : « Pourquoi la 1ère suppression est rouge alors que les faces ont bien disparu ? La 2nd n'a pas d'erreur mais aucune face enlevée ! », « Autres faces non supprimées », « On perd des faces… ». **Demande de Fred** : « quand je sélectionne la fonction dans l'arbre ou la time line, que les faces s'illuminent, celles choisies pour la fonction ».
+
+**Cause** : une face est retrouvée au recalcul par son nom, sinon par sa boîte (centre et dimensions). Au clic, la boîte est prise sur les triangles d'affichage. Au recalcul, le solide neuf (déplacement, suppression précédente) n'a pas encore de triangles : `BRepBndLib.Add` prenait alors les pôles des surfaces libres du STEP, une boîte gonflée de 2 à 3 mm. La face visée n'était plus retrouvée (« 1 face introuvable », rouge), la suppression suivante était calculée sur une autre pièce et retenait le nom d'une face voisine (deux références sur la même face : le noyau refusait tout).
+
+**Correctif** (`src/20-30-faces.js`) : `occFaceBox` prend la boîte exacte (`AddOptimal`) d'une face sans triangles ; une face au même centre et aux mêmes dimensions (0,02 mm) l'emporte sur un nom qui désigne une face à plus de 0,1 mm (`occFaceCalee`, `occFaceExacte`) ; une même face n'est envoyée qu'une fois au noyau. Faces de chaque suppression maillées sur le solide d'entrée (`occDelFacesGeo`, copie sans triangles) et montrées en orange quand la fonction est sélectionnée, comme l'outil d'une découpe (`src/20-70-cache-et-rejeu.js`, pièce gardée `src/20-75-piece-gardee.js`). **Congés de raccord** (Fred : « Il faut arriver à tout faire fonctionner », « l'idée est de les enlever, puis rapprocher les faces restantes et de les coudre ») : une rainure de la platine (parois, fond, bouts) gardait ses congés de raccord avec le dessus ; le noyau cherchait 73 s à les prolonger puis refusait (le calcul de fond abandonne à 20 s). `occDelRaccords` : faces courbes (jamais un plan) reliées aux faces choisies par une arête lisse et pas plus grandes que la zone, sur 2 rangs ; retirées avec elles au premier essai (« N congé(s) de raccord retiré(s) avec elles »), sinon les faces choisies seules comme avant. Rainure : 0,5 s, solide refermé. Envoyées au worker (`src/21-suppression-face-calcul.js`). Une suppression qui ne choisit qu'une partie d'un détail (les 5 petites faces du bout de la rainure) reste refusée : choisir le détail entier. Manuel Fonctions 3D.
+
+**Sablier resté affiché** : après un calcul de fond, le recalcul reprend le résultat gardé et sautait l'étape qui enlève le ⏳ ; le bilan de la suppression est maintenant gardé avec le résultat (`occCkDelM`, `src/20-70-cache-et-rejeu.js`), le ⏳ laisse place au ⌫.
+
+**Test** : `tests/test_suppression_step_platine.cjs` sur la copie figée `tests/fixtures/platine-suppressions-step.conceptcad` (boîte sans triangles à 0,15 mm de la boîte maillée, 3,37 mm avant ; 22, 5 et 6 faces distinctes retrouvées ; faces prêtes à s'allumer ; rainure de 8 faces enlevée avec ses 5 congés, 0,5 s). FORMES_VER changé (solides et faces montrées des pièces gardées) ; CACHE_VER inchangé.

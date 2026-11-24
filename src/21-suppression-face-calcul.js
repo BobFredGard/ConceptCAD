@@ -208,9 +208,10 @@ function delWkSource(){
     occCut,occCutEach,occCutKids,occThrCut,occtV3Compat,
     occTriPos,occMeshShape,occFacePlane,occMeshParallele,occBinRead, // V0.99.48 : maillage fin de la FAO
     occCurvePts,occHlrEdgePts,occHlrPaquet, // V0.99.50 : vues de la mise en plan (21-vues-plan-calcul)
-    occDelReboucher,occDelBouchon,occSubShapes,occShellToSolid,occShapeVolume,occShapeCopy,occFuse,occSurfKind,occFaceArea,occFaceCreuse,occDot3,occSub3,occCross3,occDelFlancPoint,occSplitRun,occDelBouchonLisse]; // V0.99.58 : trou rebouché
+    occDelReboucher,occDelBouchon,occSubShapes,occShellToSolid,occShapeVolume,occShapeCopy,occFuse,occSurfKind,occFaceArea,occFaceCreuse,occDot3,occSub3,occCross3,occDelFlancPoint,occSplitRun,occDelBouchonLisse, // V0.99.58 : trou rebouché
+    occDelRaccords,occEdgeTangent,occSurfNormalAt]; // V0.99.65 : congés de raccord retirés avec les faces
   // Noms uniques (20-05) : le worker n'en porte pas, le rejeu les redonne à la réponse (nomsCompleter)
-  return 'function nomsTransmet(a,b,r){return r;}\nfunction nomsApresUnify(){}\nfunction nomsPartage(a,b){return b;}\nlet occt=null,occtReady=false;const EDGE_TOL='+EDGE_TOL+',DEL_ISOLE_MAX='+DEL_ISOLE_MAX+',DEL_BREP_PATH='+JSON.stringify(DEL_BREP_PATH)+',OCC_MESH_SPLIT_FACES='+OCC_MESH_SPLIT_FACES+',DEL_BIN_PATH='+JSON.stringify(DEL_BIN_PATH)+';\n'+fns.map(String).join('\n')+'\n('+delWkMain+')();\n';
+  return 'function nomsTransmet(a,b,r){return r;}\nfunction nomsApresUnify(){}\nfunction nomsPartage(a,b){return b;}\nlet occt=null,occtReady=false;const EDGE_TOL='+EDGE_TOL+',DEL_ISOLE_MAX='+DEL_ISOLE_MAX+',DEL_RACCORD_RANGS='+DEL_RACCORD_RANGS+',DEL_BREP_PATH='+JSON.stringify(DEL_BREP_PATH)+',OCC_MESH_SPLIT_FACES='+OCC_MESH_SPLIT_FACES+',DEL_BIN_PATH='+JSON.stringify(DEL_BIN_PATH)+';\n'+fns.map(String).join('\n')+'\n('+delWkMain+')();\n';
 }
 function delWkStart(){
   if(delWk)return delWk;
