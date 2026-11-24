@@ -920,7 +920,7 @@ function faoRenderTree(){
           faoSnapshot('activer/désactiver « '+faoOpShortLabel(op)+' »');
           op.on=!(op.on!==false); faoChanged(); };
         const lb=document.createElement('span'); lb.className='lb';
-        const own=faoIsPattern(op)?null:faoPatternOwner(s,op);
+        const own=faoPatternOwner(s,op); // V0.99.73 : une répétition peut être répétée
         lb.textContent=(i+1)+'. '+faoOpShortLabel(op)+(own?(' ↻'+(s.ops.indexOf(own)+1)):'');
         if(own)lb.title='Répétée par la répétition n° '+(s.ops.indexOf(own)+1)+' : usinée à la place de la répétition, sur toutes ses copies';
         const tool=faoToolById(s,op.toolId);

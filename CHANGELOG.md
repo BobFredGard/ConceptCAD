@@ -8,7 +8,7 @@ sont sorties le 2026-09-30j.
 Code dans `src/` · livrable `fusion_mvp.html` (généré par `build.js`) · architecture et
 garde-fous en tête de `src/00-entete-et-outils.js`.
 
-**759 versions**, de `2026-09-28b` à `V0.99.72` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
+**760 versions**, de `2026-09-28b` à `V0.99.73` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
 comme dans le fichier d'origine.
 
 ---
@@ -8433,3 +8433,13 @@ Manuel Fonctions 3D.
 **Couches sur plusieurs cœurs** (`src/88-fao-58-multicoeur.js`, `faoWkNivNb`, `faoWkRemplir0`) : une ébauche 3D est d'abord confiée à n workers de couches (n = nombre de couches, au plus 8 et au plus le nombre de cœurs ; 3 cœurs au moins), chacun ne calcule que les niveaux `li % n === i` (`faoNivPart`) et renvoie sa mémoire des calculs purs (`faoGeoMemo` : décalages `faoOffsetRuns`, rectangles `faoRectRuns`, lignes de balayage, cases du masque de `faoSpiralLevel`, clés par signature du maillage, des plans, de la boîte, du rayon et du pas) ; un worker final refait l'opération complète avec cette mémoire réunie : parcours identique par construction. STEP.conceptcad dans l'application : 22 s contre 108 s sur un seul cœur (207 s en V0.99.71), 6 069 mouvements identiques au mouvement près.
 
 **Test** : `tests/test_fao_chain.cjs` T7 (deux poches reliées par une coupe hors zone : AB avec la zone, ABABAB sans). `tests/test_fao_multicoeur.cjs` : 3 workers de couches puis le final, comparé au calcul normal (Cavité Test : 23 330 mouvements identiques). Application, onglet séparé : STEP.conceptcad par couches contre un seul cœur, 0 écart. `npm run parcours` : sorties identiques à V0.99.71 ; référence réécrite (les 6 écarts dataient d'avant V0.99.67). Manuel FAO. CACHE_VER et FORMES_VER inchangés.
+
+## V0.99.73 - FAO : répétition d'une répétition
+
+**Demande de Fred** : « FAO : Répétitions -> Il faut pouvoir répéter une répétition ... ».
+
+**Avant** : une répétition ne pouvait reprendre que des opérations d'usinage ; une couronne de trous refaite sur deux pièces demandait de tout recréer.
+
+**Correctif** (`src/89-fao-repetition.js`) : une répétition peut être la source d'une autre (fiche « Opérations répétées », ou `Ctrl+clic` sur la répétition avant **Répétition**). `faoOpsSeq` développe les répétitions récursivement : les copies de la répétition intérieure sont refaites sur chaque copie de celle qui la contient (`faoXfCompose` : décalage, rotation et miroir composés, deux miroirs rendent le sens de coupe d'origine ; une copie « autre origine » garde son déplacement, `faoXfGeo`), toujours **par opération**, à la place de la répétition la plus haute. Une répétition intérieure désactivée est transparente (ses opérations ne sont copiées que par celle qui la contient) ; l'englobante désactivée laisse l'intérieure seule, à sa place. Jamais de boucle : une répétition ne se contient pas, et celles qui la contiennent ne lui sont pas proposées (`faoPatternAncestors`, coupure de secours dans `faoPatternSanitise`). Deux « autres origines » ne se composent pas (une origine par copie). Au plus 10 000 copies par opération (`FAO_PAT_MAX`, le 100 × 100 d'avant). La fiche annonce le nombre réel de copies (`faoPatternTotal`) ; l'arbre met « ↻ » sur une répétition répétée. Perçage en cycle copié dans une autre origine ET déplacé : trous déplacés (`src/88-fao-60-postprocesseurs.js`).
+
+**Test** : `tests/test_fao_repetition.cjs` 12 à 20 (couronne de 4 trous refaite 2 fois en X : 8 trous dans le G-code, ordre par opération à travers les niveaux, intérieure ou englobante désactivée, boucles coupées, fiche, miroir de miroir, rangée refaite en G55, origines d'origines, plafond, copier / coller des trois niveaux). Manuel FAO. CACHE_VER et FORMES_VER inchangés.
