@@ -78,6 +78,13 @@
 - **Modifier la pièce sans attendre les perçages** : les trous des perçages « trous du modèle » sont recontrôlés sur les autres cœurs après chaque modification de la pièce ; la FAO attend leur réponse avant de générer (SIRAP-14-002 : modifier un perçage fige l'écran 1,8 s au lieu de 5,8 s), trous inchangés (V0.99.51).
 - **Après une modification de la pièce** : le maillage que la FAO lit sur le solide n'est refait que pour les faces modifiées (mêmes triangles qu'un maillage complet, les parcours gardés restent valables).
 - **Répétition** (comme le Motif de Fusion 360) : choisir les opérations par `Ctrl+clic`, puis **Répétition**. **Rectangulaire** (nombre et pas en X et Y), **Circulaire** (nombre, angle total, centre), **Symétrie** (plan X = … ou Y = … ; le sens de coupe s'inverse) ou **Autres origines** (mêmes parcours refaits en G55, G56…). Usinage **par opération** : chaque opération sur toutes les copies avant la suivante. Les opérations répétées portent « ↻ » et le numéro de leur répétition ; une répétition désactivée les laisse usinées une seule fois.
+- **Répétition d'une répétition** : une répétition peut en reprendre une autre (cocher la répétition dans « Opérations répétées », ou la choisir par `Ctrl+clic` avant **Répétition**). Exemple : une couronne de 4 trous, refaite 2 fois en X, donne 8 trous ; une rangée refaite en G55 donne la rangée dans les deux origines. Toujours usiné par opération, à la place de la répétition la plus haute ; la fiche donne le nombre réel de copies (au plus 10 000 par opération). Désactiver la répétition intérieure ne garde que les copies de l'englobante.
+- **Ordre d'usinage** (fiche du posage, onglet Général) : **Ordre de la liste** (comme l'arbre), **Par outil** (ordre d'apparition : chaque outil fait toutes ses opérations là où il sert pour la première fois : le moins de changements d'outil) ou **Par numéro d'outil** (T1, T2, T3…). L'aperçu, ▶ Usinage, le temps estimé et le G-code suivent ce choix.
+  - Les répétitions sont respectées : une opération répétée garde toutes ses copies à la suite ; à outil égal, l'ordre de la liste.
+  - La fiche affiche l'ordre réel, par exemple « T2 (1, 3 ×2) → T1 (2 ×2, 5) — 1 changement d'outil au lieu de 3 », et prévient quand des opérations changent de place.
+  - Le *Brut restant* suit cet ordre : changer d'ordre met les reprises « à régénérer ».
+  - L'arbre l'indique sur la ligne du posage (« · par outil », « · par n° d'outil »).
+- **Temps estimé** (bas de la fiche du posage) : chaque copie d'une répétition est comptée, par exemple « 4 op (20 avec les répétitions) · … ≈ 327.8 min ». Dans la fiche d'une opération répétée : « ≈ 0.4 min × 6 copies = ≈ 2.7 min ».
 - **Copier / coller** (`Ctrl+C` / `Ctrl+V`) une ou plusieurs opérations, ou un posage complet.
 - **Supprimer plusieurs opérations** : `Ctrl+clic` / `Maj+clic` pour les choisir, `Suppr` pour les retirer ensemble ; un seul `Ctrl+Z` les rétablit.
 - **Dans la vue** : un clic sur une face l'allume et la mesure sans éditer de fonction ; un clic dans la vue désélectionne le posage ou l'opération.
@@ -90,6 +97,7 @@
 - **Simulation** sur la **carte graphique** : outil réel, matière enlevée à partir du vrai brut.
   - Rendu réel, matière toujours visible ; sol miroir et plan d'ombre placés sous le brut.
   - Deux moteurs : **cartes de hauteurs** (une par orientation en 3+2, lancer de rayons) ou **lisse** (champ de distance, en précision 16 bits ; pas de 0,49 mm en finesse normale et 0,36 mm en finesse haute sur Cavité Usinage).
+  - Brut pris dans un solide, moteur **lisse** : la matière non usinée garde la vraie forme du solide (grands congés, dépouilles, coins arrondis lisses, sans marches).
   - Lecture à la vitesse choisie dans la liste (×1 à ×20) dès le démarrage, et d'une simulation à la suivante.
   - La vue tourne autour du point visé sur les faces de la pièce, même sous la matière pas encore enlevée (hors de la pièce : sur la matière), et zoome vers lui.
 - **3+2** : chaque opération peut avoir son propre Z et X.

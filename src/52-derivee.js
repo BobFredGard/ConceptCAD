@@ -397,9 +397,9 @@ function derPickDlg(name,params,bodies){
         const b=document.createElement('button');b.textContent=t;b.style.cssText='font-weight:400;font-size:12px;padding:1px 8px';
         b.onclick=()=>out.forEach(x=>{x.c.checked=v;});h.appendChild(b);});
       box.appendChild(h);
-      items.forEach(o=>{const l=document.createElement('label');l.style.cssText='display:flex;gap:7px;align-items:center;padding:2px 0;cursor:pointer';
-        const c=document.createElement('input');c.type='checkbox';c.checked=val(o);l.appendChild(c);
-        const n=document.createElement('span');n.textContent=label(o);l.appendChild(n);box.appendChild(l);out.push({o,c});});
+      // V0.99.78 : une ligne par élément (liste compacte, nom complet dans l'infobulle)
+      items.forEach(o=>{const c=document.createElement('input');c.type='checkbox';c.checked=val(o);
+        const l=mfPickRow(c,label(o),'',{title:label(o)});l.style.cursor='pointer';box.appendChild(l);out.push({o,c});});
       return out;
     };
     const fmt=v=>String(+(+v).toFixed(4)).replace('.',',');

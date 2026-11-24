@@ -9,6 +9,21 @@
      revenir en classique retire la classe — rien n'est déplacé ni détruit. */
 const MF_THEMES=[['nuit','Nuit (actuel)'],['graphite','Graphite'],['atelier','Atelier'],['clair','Clair'],['contraste','Contraste élevé']];
 function mfLS(k,v){try{if(v===undefined)return localStorage.getItem(k);localStorage.setItem(k,v);}catch(e){}return null;}
+function mfPickRow(input,text,mark,o){
+  // V0.99.78 : une ligne de liste à cocher des fiches (opération, fonction, corps…) — case + texte
+  // court sur UNE ligne, petit (classe .mf-pick de mfCss) ; mark = repère discret à droite
+  // (« ↻7 ») ; o.title = le détail (infobulle) ; o.off = grisé (désactivé, déjà pris…) ; o.warn = en
+  // orange (face perdue…) ; o.markColor. Sans case (input null) : ligne simple, on y ajoute ensuite
+  // champ, « Remplacer », ✕… (ils restent sur la ligne, le texte est raccourci par « … »).
+  o=o||{};
+  const r=document.createElement(input&&/^(checkbox|radio)$/.test(input.type)?'label':'div');
+  r.className='mf-pick'+(o.off?' mf-pick-off':'')+(o.warn?' mf-pick-warn':'')+(o.cls?' '+o.cls:'');
+  if(o.title)r.title=o.title;
+  if(input)r.appendChild(input);
+  const t=document.createElement('span');t.className='mf-pick-t';t.textContent=text;r.appendChild(t);
+  if(mark){const m=document.createElement('span');m.className='mf-pick-m';m.textContent=mark;if(o.markColor)m.style.color=o.markColor;r.appendChild(m);}
+  return r;
+}
 const MF_3D={nuit:[0x1c1c1e,0x141519,'#141416'],graphite:[0x202124,0x17181a,'#18191b'],atelier:[0x1c1915,0x141210,'#15130f'],clair:[0xe9ecf1,0xd7dbe2,'#e4e7ec'],contraste:[0x000000,0x050505,'#000']};
 function mf3D(t){
   // fond de la scène, sol miroir et fond du canevas assortis au thème (Clair = vue 3D claire)
@@ -198,6 +213,31 @@ function mfCss(){
   '#mfVpInfo #mfStEng{flex:none;color:var(--muted)}',
   '#mfVpInfo #mfStMeas{min-width:0;max-width:none;overflow:hidden;text-overflow:ellipsis}',
   'body.ui-modern aside.right>.panel.mfHideM{display:none}', /* Mesure et État : repérés par leur titre (voir mfBuildModern) */
+  /* V0.99.78 : listes à cocher des fiches (opérations, fonctions, corps…) — demande de Fred :
+     « le texte est trop gros […] réduire l'information affichée au strict minimum et sur une seule ligne ».
+     Une ligne par élément : case + texte court, petit, coupé par « … » ; le détail est dans l'infobulle. */
+  '.mf-pick{display:flex!important;flex-wrap:nowrap!important;align-items:center!important;gap:6px!important;margin:1px 0!important;padding:0!important;min-height:20px;font-size:.72rem!important;line-height:1.3!important;font-weight:400!important;color:var(--text);background:none!important;border:none!important;box-shadow:none!important;border-radius:0!important;width:auto!important;max-width:100%;min-width:0;box-sizing:border-box;cursor:default}',
+  '.mf-pick>input{margin:0!important;flex:none!important;width:auto!important}',
+  '.mf-pick>.mf-pick-t{flex:1 1 auto;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-size:inherit!important}',
+  '.mf-pick>.mf-pick-m{flex:none;color:var(--muted);font-size:.68rem;white-space:nowrap}',
+  '.mf-pick.mf-pick-off>.mf-pick-t{opacity:.5}',
+  '.mf-pick.mf-pick-warn>.mf-pick-t{color:var(--warn)}',
+  '.mf-pick-chips{display:flex;flex-wrap:wrap;gap:0 12px;margin:2px 0}',
+  '.mf-pick-chips>.mf-pick{flex:none}',
+  '.mf-pick>input:not([type=checkbox]):not([type=radio]){width:52px!important;height:22px!important;font-size:.72rem!important;padding:1px 5px!important;text-align:right}',
+  '.mf-pick>select{flex:0 1 auto!important;min-width:0!important;max-width:96px!important;height:22px!important;font-size:.7rem!important;padding:0 3px!important}',
+  '.mf-pick>button{flex:none!important;font-size:.68rem!important;padding:0 6px!important;height:20px!important;min-height:0!important;line-height:1!important;margin:0!important}',
+  '.mf-pick>.mf-pick-x{flex:none;cursor:pointer;color:var(--muted);padding:0 3px;font-size:.72rem}',
+  '.mf-pick>.mf-pick-x:hover{color:#ff6b60}',
+  '.mf-pick>.mf-pick-i{flex:none;font-size:.72rem;width:1.1em;text-align:center}',
+  /* listes déjà construites ailleurs (tests attachés à leur structure) : même taille, une ligne */
+  '#props .repSrcItem{min-height:20px;padding:0 4px!important}',
+  '#props .repSrcItem>span{font-size:.72rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}',
+  '#props .repSrcItem>button{font-size:.66rem!important;height:18px;line-height:1}',
+  '#props .repSkipBox>.row>span:first-child{font-size:.74rem}',
+  '#props .repSkipList>label{font-size:.72rem!important}',
+  /* case + libellé nu dans une rangée de fiche (« + Linéaire », « 2ᵉ direction (grille) »…) : taille des libellés */
+  '#props .row>input[type=checkbox]+span{font-size:.74rem}',
   /* esquisse (moderne) : bandeau d'esquisse à la place du ruban, panneau latéral à droite */
   'body.ui-modern.mf-sk #mfRibbon{display:none!important}',
   '#mfSkBar{margin-bottom:8px;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius)}',

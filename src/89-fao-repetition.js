@@ -12,8 +12,15 @@
 // Les parcours des copies ne sont JAMAIS recalculés : transformation des moves
 // de la source (cache inchangé, CACHE_VER inchangé). Source unique : faoOpsSeq,
 // lue par faoJobMoves et faoSeqSafe (aperçu, simulation, collisions, G-code).
+// V0.99.73 (Fred : « Il faut pouvoir répéter une répétition ») : une répétition
+// peut être la source d'une autre. Ses copies sont refaites sur chaque copie de
+// la répétition qui la contient (copies composées, faoXfCompose), toujours par
+// opération, émises à la place de la répétition la plus haute. Une répétition
+// imbriquée désactivée (○) est transparente : ses sources ne sont copiées que par
+// celle qui la contient. Jamais de boucle (A dans B dans A, faoPatternSanitise).
 const FAO_PAT_KINDS=[['rect','Rectangulaire'],['circ','Circulaire'],['mirror','Symétrie'],['wcs','Autres origines']];
 const FAO_WCS_ALL=['G54','G55','G56','G57','G58','G59'];
+const FAO_PAT_MAX=10000; // copies d'UNE opération, répétitions imbriquées comprises (100 × 100 d'avant)
 function faoIsPattern(op){ return !!(op&&op.type==='pattern'); }
 function faoPatternDefaults(setup){
   const s=(setup&&setup.stock)||faoStock();
@@ -26,17 +33,18 @@ function faoPatternDefaults(setup){
 }
 function faoPatternGeo(op){ return !!op&&op.kind!=='wcs'; }
 function faoPatternSanitise(s){
-  // Relu à chaque faoRoot : sources = opérations ordinaires du MÊME posage, une
-  // opération n'appartient qu'à UNE répétition (la première), nombres bornés.
+  // Relu à chaque faoRoot : sources = opérations (ou répétitions, V0.99.73) du
+  // MÊME posage, une opération n'appartient qu'à UNE répétition (la première),
+  // jamais de boucle, nombres bornés.
   if(!s||!Array.isArray(s.ops))return;
   const ids={}, taken={};
-  s.ops.forEach(function(o){ if(o&&o.id&&!faoIsPattern(o))ids[o.id]=o; });
+  s.ops.forEach(function(o){ if(o&&o.id)ids[o.id]=o; });
   s.ops.forEach(function(op){
     if(!faoIsPattern(op))return;
     if(['rect','circ','mirror','wcs'].indexOf(op.kind)<0)op.kind='rect';
     const src=Array.isArray(op.srcs)?op.srcs:[];
-    op.srcs=src.filter(function(id,i){ return typeof id==='string'&&ids[id]&&src.indexOf(id)===i&&!taken[id]; });
-    op.srcs.forEach(function(id){ taken[id]=1; });
+    op.srcs=src.filter(function(id,i){ return typeof id==='string'&&ids[id]&&id!==op.id&&src.indexOf(id)===i&&!taken[id]; });
+    op.srcs.forEach(function(id){ taken[id]=op; });
     const int=function(v,a,b,d){ v=Math.round(+v); return isFinite(v)?Math.max(a,Math.min(b,v)):d; };
     const num=function(v,d){ v=+v; return isFinite(v)?v:d; };
     op.nx=int(op.nx,1,100,2); op.ny=int(op.ny,1,100,1); op.n=int(op.n,1,360,4);
@@ -47,6 +55,16 @@ function faoPatternSanitise(s){
     op.wcs=w.filter(function(c,i){ return FAO_WCS_ALL.indexOf(c)>=0&&c!==(s.wcs||'G54')&&w.indexOf(c)===i; });
     // champs d'opération d'usinage sans objet ici
     ['radial','axial','limit','limit2','zlim','planes','entry','sens'].forEach(function(k){ delete op[k]; });
+  });
+  // V0.99.73 : boucle (A dans B dans A) — la répétition qui ferme la boucle quitte la sienne
+  s.ops.forEach(function(P){
+    if(!faoIsPattern(P)||!taken[P.id])return;
+    let q=taken[P.id], n=0;
+    while(q&&q!==P&&n++<s.ops.length)q=taken[q.id];
+    if(q!==P)return;
+    const par=taken[P.id];
+    par.srcs=par.srcs.filter(function(id){ return id!==P.id; });
+    delete taken[P.id];
   });
 }
 function faoPatternXfs(job,op){
@@ -78,10 +96,37 @@ function faoPatternXfs(job,op){
   return out;
 }
 function faoXfPt(xf,x,y){ return [xf.a*x+xf.b*y+xf.tx, xf.c*x+xf.d*y+xf.ty]; }
+function faoXfGeo(xf){
+  // Copie déplacée (décalage, rotation, miroir) ? Une copie « autre origine » seule n'a
+  // pas de partie géométrique ; une copie composée (V0.99.73) peut avoir les deux.
+  return !!xf&&isFinite(xf.a);
+}
+function faoXfCompose(o,i){
+  // V0.99.73 : copie `i` d'une répétition intérieure, replacée par la copie `o` de
+  // la répétition qui la contient (o après i). null = original. Une copie n'a
+  // qu'une origine : deux origines ne se composent pas (appelant : écartée).
+  if(!o)return i;
+  if(!i)return o;
+  const r={};
+  const go=faoXfGeo(o), gi=faoXfGeo(i);
+  if(go&&gi){
+    r.a=o.a*i.a+o.b*i.c; r.b=o.a*i.b+o.b*i.d;
+    r.c=o.c*i.a+o.d*i.c; r.d=o.c*i.b+o.d*i.d;
+    r.tx=o.a*i.tx+o.b*i.ty+o.tx; r.ty=o.c*i.tx+o.d*i.ty+o.ty;
+    r.mir=!!o.mir!==!!i.mir; // deux miroirs = rotation : sens de coupe d'origine
+  }else if(go||gi){
+    const g=go?o:i;
+    r.a=g.a; r.b=g.b; r.c=g.c; r.d=g.d; r.tx=g.tx; r.ty=g.ty; r.mir=!!g.mir;
+  }
+  const w=o.wcs||i.wcs;
+  if(w)r.wcs=w;
+  r.lab=o.lab+' / '+i.lab;
+  return r;
+}
 function faoXfMoves(mv,xf){
   // Moves de la source → moves de la copie (arcs : centre relatif tourné, sens
-  // inversé par un miroir). Origine (wcs) : moves inchangés.
-  if(!xf||xf.wcs||!Array.isArray(mv))return mv;
+  // inversé par un miroir). Origine (wcs) seule : moves inchangés.
+  if(!faoXfGeo(xf)||!Array.isArray(mv))return mv;
   return mv.map(function(m){
     const q=Object.assign({},m);
     if(isFinite(+m.x)&&isFinite(+m.y)){ const p=faoXfPt(xf,+m.x,+m.y); q.x=p[0]; q.y=p[1]; }
@@ -93,46 +138,177 @@ function faoXfMoves(mv,xf){
     return q;
   });
 }
-function faoPatternOwner(job,op){
-  // Répétition ACTIVE qui contient `op` (ou null).
-  const ops=(job&&job.ops)||[];
+function faoPatternParent(job,op){
+  // Répétition (active ou non) dont `op` est une source directe (ou null).
+  const ops=(job&&job.ops)||[], id=op&&op.id;
+  if(!id)return null;
   for(let i=0;i<ops.length;i++){ const p=ops[i];
-    if(faoIsPattern(p)&&p.on!==false&&(p.srcs||[]).indexOf(op&&op.id)>=0)return p; }
+    if(faoIsPattern(p)&&p!==op&&(p.srcs||[]).indexOf(id)>=0)return p; }
   return null;
+}
+function faoPatternAncestors(job,op){
+  // Répétitions qui contiennent `op`, de la plus proche à la plus haute (V0.99.73).
+  const out=[];
+  let p=faoPatternParent(job,op);
+  while(p&&out.indexOf(p)<0&&out.length<64){ out.push(p); p=faoPatternParent(job,p); }
+  return out;
+}
+function faoPatternOwner(job,op){
+  // Répétition ACTIVE qui copie `op` (ou null) : la plus proche en remontant, une
+  // répétition désactivée laissant ses sources à celle qui la contient (V0.99.73).
+  const A=faoPatternAncestors(job,op);
+  for(let i=0;i<A.length;i++)if(A[i].on!==false)return A[i];
+  return null;
+}
+function faoPatternXfsIn(job,P,xs){
+  // Copies de la répétition P placées dans chacune des copies `xs` de celles qui la
+  // contiennent (null = original), copie englobante par copie englobante.
+  if(P.on===false)return xs; // désactivée : transparente
+  const own=faoPatternXfs(job,P), L=[];
+  for(let j=0;j<xs.length;j++)for(let k=0;k<own.length;k++){
+    if(L.length>=FAO_PAT_MAX)return L;
+    const o=xs[j], i=own[k];
+    if(o&&i&&o.wcs&&i.wcs)continue; // une seule origine par copie
+    L.push(faoXfCompose(o,i));
+  }
+  return L;
+}
+// V0.99.76 (Fred : « Au moment de visualiser l'usinage et de générer le G-Code, il faudrait
+// pouvoir choisir de faire les outils dans l'ordre, en respectant les répétitions ») :
+// ordre d'usinage du posage, setup.toolOrder — absent = ordre de la liste (documents
+// inchangés) ; 'tool' = par outil, chaque outil fait tout son travail là où il sert pour
+// la première fois ; 'num' = par numéro d'outil (T1, T2…). Tri STABLE de la séquence
+// développée : chaque opération garde toutes ses copies à la suite (répétitions
+// respectées) ; à outil égal, l'ordre de la liste. faoOpsSeq le rend : aperçu, ▶ Usinage,
+// collisions, temps, G-code et brut restant (faoRestPrev) suivent le même ordre.
+const FAO_ORDRES=[
+  ['list','Ordre de la liste','Les opérations sont usinées dans l’ordre de l’arbre (répétitions à leur place).'],
+  ['tool','Par outil','Ordre d’apparition : chaque outil fait toutes ses opérations là où il sert pour la première fois — le moins de changements d’outil.'],
+  ['num','Par numéro d’outil','T1, T2, T3… : les outils passent par numéro croissant, quel que soit l’ordre de l’arbre.']];
+function faoToolOrder(job){ const v=job&&job.toolOrder; return (v==='tool'||v==='num')?v:'list'; }
+function faoSeqToolKey(job,op){
+  // Même outil = même clé que le changement d'outil de faoJobMoves / faoSeqSafe.
+  const t=faoToolById(job,op&&op.toolId);
+  return t?t.id+'|'+t.d:'';
+}
+function faoSeqOrder(job,seq){
+  const mode=faoToolOrder(job);
+  if(mode==='list'||seq.length<2)return seq;
+  const rang={}; let n=0;
+  const L=seq.map(function(E,i){
+    const k=faoSeqToolKey(job,E.op);
+    if(!(k in rang))rang[k]=n++;
+    const t=faoToolById(job,E.op&&E.op.toolId), num=t?+t.num:NaN;
+    return {E:E,i:i,r:rang[k],num:isFinite(num)?num:1e9};
+  });
+  L.sort(function(a,b){
+    if(mode==='num'&&a.num!==b.num)return a.num-b.num;
+    return (a.r-b.r)||(a.i-b.i);
+  });
+  return L.map(function(x){ return x.E; });
+}
+function faoToolChanges(seq,job){
+  // Nombre de groupes d'outil successifs d'une séquence (changements d'outil + 1).
+  let g=0, prev=null;
+  (seq||[]).forEach(function(E){ const k=faoSeqToolKey(job,E.op); if(k!==prev){ g++; prev=k; } });
+  return g;
+}
+function faoOrderSummary(job){
+  // Fiche du posage : ordre réel des outils, ex. « T1 (1, 3, 5 ×4) → T2 (2) ».
+  const ops=(job&&job.ops)||[];
+  const seq=faoOpsSeq(job), parts=[];
+  let cur=null;
+  seq.forEach(function(E){
+    const k=faoSeqToolKey(job,E.op);
+    if(!cur||cur.k!==k){
+      const t=faoToolById(job,E.op&&E.op.toolId)||{};
+      cur={k:k,lab:'T'+(t.num||1),ops:[],nb:{}};
+      parts.push(cur);
+    }
+    const id=E.op&&E.op.id;
+    if(!(id in cur.nb)){ cur.nb[id]=0; cur.ops.push(E.op); }
+    cur.nb[id]++;
+  });
+  return parts.map(function(p){
+    return p.lab+' ('+p.ops.map(function(o){ const c=p.nb[o.id]; return (ops.indexOf(o)+1)+(c>1?' ×'+c:''); }).join(', ')+')';
+  }).join(' → ');
+}
+function faoOrderRows(p,setup){
+  // Fiche du posage (onglet Général) : choix de l'ordre + ordre réel des outils.
+  const r=faoRow();
+  r.appendChild(faoLab('Ordre d’usinage'));
+  r.appendChild(faoSel(FAO_ORDRES,faoToolOrder(setup),function(v){
+    if(v==='tool'||v==='num')setup.toolOrder=v; else delete setup.toolOrder;
+  },'Ordre des opérations dans l’aperçu, ▶ Usinage, le temps estimé et le G-code. Par outil : toutes les opérations d’un même outil à la suite ; chaque opération répétée garde toutes ses copies à la suite.'));
+  p.appendChild(r);
+  try{
+    const seq=faoOpsSeq(setup);
+    if(!seq.length)return;
+    const nG=faoToolChanges(seq,setup);
+    const plur=function(n){ return n+' changement'+(n>1?'s':'')+' d’outil'; };
+    let t='Ordre réel : '+faoOrderSummary(setup)+' — '+plur(Math.max(0,nG-1));
+    if(faoToolOrder(setup)!=='list'){
+      const ls=faoOpsSeq(Object.assign({},setup,{toolOrder:undefined}));
+      const nL=faoToolChanges(ls,setup);
+      if(nL!==nG)t+=' au lieu de '+Math.max(0,nL-1)+' dans l’ordre de la liste';
+      t+='.';
+      p.appendChild(faoHelp(t));
+      const bouge=ls.some(function(E,i){ return E.op!==seq[i].op; });
+      if(bouge)p.appendChild(faoHelp('Des opérations changent de place : vérifiez que l’ordre reste possible (ébauche avant finition, pointage avant perçage, perçage avant taraudage). Le brut restant suit cet ordre.'));
+      return;
+    }
+    p.appendChild(faoHelp(t+'.'));
+  }catch(e){}
 }
 function faoOpsSeq(job){
   // Séquence d'usinage du posage : [{op, xf, pat, k, n}] — opérations actives,
   // répétitions développées (par opération), sources retirées de leur place.
+  // V0.99.73 : répétitions imbriquées développées récursivement ; pat = la
+  // répétition la plus haute, à la place de laquelle la copie est usinée.
+  // V0.99.76 : puis rangée selon l'ordre d'usinage du posage (faoSeqOrder).
   const ops=((job&&job.ops)||[]);
   const out=[];
+  const dev=function(top,P,xs,vus){
+    const L=faoPatternXfsIn(job,P,xs);
+    ops.forEach(function(src){
+      if(!src||src===P||(P.srcs||[]).indexOf(src.id)<0)return;
+      if(faoIsPattern(src)){
+        if(vus.indexOf(src)<0&&vus.length<64)dev(top,src,L,vus.concat([src]));
+        return;
+      }
+      if(src.on===false)return;
+      // repère propre (3+2) : copies géométriques impossibles → copies sans déplacement seules
+      const M=src.frame?L.filter(function(x){ return !faoXfGeo(x); }):L;
+      M.forEach(function(xf,k){ out.push({op:src,xf:xf,pat:top,k:k,n:M.length}); });
+    });
+  };
   ops.forEach(function(op){
     if(!op||op.on===false)return;
-    if(faoIsPattern(op)){
-      const xfs=faoPatternXfs(job,op);
-      ops.forEach(function(src){
-        if(!src||src.on===false||faoIsPattern(src)||(op.srcs||[]).indexOf(src.id)<0)return;
-        // repère propre (3+2) : copies géométriques impossibles → original seul
-        const own=!!src.frame&&faoPatternGeo(op);
-        const L=own?[null]:xfs;
-        L.forEach(function(xf,k){ out.push({op:src,xf:xf,pat:op,k:k,n:L.length}); });
-      });
-      return;
-    }
     if(faoPatternOwner(job,op))return;
+    if(faoIsPattern(op)){ dev(op,op,[null],[op]); return; }
     out.push({op:op,xf:null});
   });
-  return out;
+  return faoSeqOrder(job,out);
 }
 function faoPatternCount(job,op){
   // nombre de copies (original compris)
   return faoPatternXfs(job,op).length;
+}
+function faoPatternTotal(job,op){
+  // V0.99.73 : copies de chaque opération de cette répétition, répétitions qui la
+  // contiennent comprises (2 × 4 → 8).
+  const A=faoPatternAncestors(job,op).reverse();
+  let xs=[null];
+  A.forEach(function(p){ xs=faoPatternXfsIn(job,p,xs); });
+  return faoPatternXfsIn(job,Object.assign({},op,{on:true}),xs).length;
 }
 function faoPatternLabel(job,op){
   const k=FAO_PAT_KINDS.filter(function(x){return x[0]===op.kind;})[0];
   return 'Répétition '+(k?k[1].toLowerCase():'')+' ×'+faoPatternCount(job,op);
 }
 function faoPatternNew(){
-  // Bouton « Répétition » : reprend les opérations sélectionnées (Ctrl+clic) du posage.
+  // Bouton « Répétition » : reprend les opérations sélectionnées (Ctrl+clic) du posage,
+  // répétitions comprises (V0.99.73 : répétition d'une répétition).
   try{
     const s=faoSetup();
     const op=faoPatternDefaults(s);
@@ -140,7 +316,7 @@ function faoPatternNew(){
     try{
       const so=faoSelectedOps();
       if(so&&so.setup===s){
-        op.srcs=so.ops.filter(function(o){ return !faoIsPattern(o); }).map(function(o){ return o.id; });
+        op.srcs=so.ops.filter(function(o){ return !!o&&!!o.id; }).map(function(o){ return o.id; });
         at=Math.max.apply(null,so.ops.map(function(o){ return s.ops.indexOf(o)+1; })); // juste après la dernière source
       }
     }catch(e){}
@@ -158,7 +334,9 @@ function faoPatternFiche(p,setup,op,idx){
   if(op.on===false)d.style.opacity='0.55';
   const r=faoRow();
   const cb=document.createElement('input'); cb.type='checkbox'; cb.checked=op.on!==false;
-  cb.title='Décocher = répétition ignorée : les opérations sources sont usinées une seule fois, à leur place';
+  cb.title=faoPatternParent(setup,op)
+    ?'Décocher = répétition ignorée : ses opérations ne sont plus copiées que par la répétition qui la contient'
+    :'Décocher = répétition ignorée : les opérations sources sont usinées une seule fois, à leur place';
   cb.onchange=function(){ faoSnapshot('activer/désactiver la répétition'); op.on=cb.checked; faoChanged(); };
   r.appendChild(cb);
   const tt=document.createElement('span'); tt.className='fao-opnum';
@@ -195,42 +373,63 @@ function faoPatternFiche(p,setup,op,idx){
     d.appendChild(faoHelp('La copie miroir inverse le sens de coupe (avalant ↔ opposition), comme dans Fusion 360.'));
   }else{
     rp.appendChild(faoLab('Origines'));
+    d.appendChild(rp);
+    // V0.99.78 : origines en petites cases côte à côte (passent à la ligne au besoin, jamais hors du panneau)
+    const ro=document.createElement('div'); ro.className='mf-pick-chips';
     FAO_WCS_ALL.forEach(function(c){
       if(c===(setup.wcs||'G54'))return;
-      const lab=document.createElement('label'); lab.style.marginRight='6px';
       const k=document.createElement('input'); k.type='checkbox'; k.checked=(op.wcs||[]).indexOf(c)>=0;
       k.onchange=function(){ faoSnapshot('origines de la répétition');
         const w=(op.wcs||[]).filter(function(x){return x!==c;}); if(k.checked)w.push(c);
         op.wcs=FAO_WCS_ALL.filter(function(x){return w.indexOf(x)>=0;}); faoChanged(); };
-      lab.appendChild(k); lab.appendChild(document.createTextNode(' '+c)); rp.appendChild(lab);
+      ro.appendChild(mfPickRow(k,c,'',{title:'Refaire les parcours dans l’origine '+c}));
     });
-    d.appendChild(rp);
+    d.appendChild(ro);
     d.appendChild(faoHelp('Le programme usine d’abord dans '+(setup.wcs||'G54')+' (origine du posage), puis refait les mêmes parcours dans chaque origine cochée — à régler sur la CN.'));
   }
-  // sources
+  // sources : opérations et autres répétitions (V0.99.73), sauf celles qui contiennent
+  // déjà cette répétition (boucle impossible)
   d.appendChild(faoH('Opérations répétées'));
-  const ops=(setup.ops||[]).filter(function(o){ return o&&!faoIsPattern(o); });
+  const anc=faoPatternAncestors(setup,op);
+  const ops=(setup.ops||[]).filter(function(o){ return o&&o!==op&&anc.indexOf(o)<0; });
   if(!ops.length)d.appendChild(faoHelp('Aucune opération dans ce posage.'));
   ops.forEach(function(o){
     const owner=(setup.ops||[]).filter(function(q){ return faoIsPattern(q)&&q!==op&&(q.srcs||[]).indexOf(o.id)>=0; })[0];
-    const rr=faoRow();
     const k=document.createElement('input'); k.type='checkbox'; k.checked=(op.srcs||[]).indexOf(o.id)>=0;
-    const fr=!!o.frame&&faoPatternGeo(op);
+    const pat=faoIsPattern(o);
+    const fr=!pat&&!!o.frame&&faoPatternGeo(op);
+    const nOwn=owner?((setup.ops||[]).indexOf(owner)+1):0;
     k.disabled=!!owner;
-    k.title=owner?'Déjà dans une autre répétition':(fr?'Repère propre (3+2) : seul l’original est usiné, pas de copie déplacée':'Répéter cette opération');
     k.onchange=function(){ faoSnapshot('opérations de la répétition');
       const s2=(op.srcs||[]).filter(function(x){return x!==o.id;}); if(k.checked)s2.push(o.id);
       op.srcs=(setup.ops||[]).filter(function(q){return s2.indexOf(q.id)>=0;}).map(function(q){return q.id;}); faoChanged(); };
-    rr.appendChild(k);
-    const lb=document.createElement('span');
-    lb.textContent=((setup.ops||[]).indexOf(o)+1)+'. '+faoOpShortLabel(o)+(o.on===false?' (désactivée)':'')+(owner?' — dans une autre répétition':'')+(fr?' — repère propre : original seul':'');
-    rr.appendChild(lb);
-    d.appendChild(rr);
+    // V0.99.78 : une ligne courte, comme l'arbre (« 3. Répétition rect. ×3 ↻7 ») ; le détail est dans l'infobulle
+    const lab=faoOpShortLabel(o);
+    const info=[((setup.ops||[]).indexOf(o)+1)+'. '+lab];
+    if(o.on===false)info.push('Désactivée (○ dans l’arbre)');
+    info.push(owner?('Déjà dans la répétition n° '+nOwn)
+      :(pat?'Répéter cette répétition : toutes ses copies sont refaites sur chaque copie de celle-ci'
+        :(fr?'Repère propre (3+2) : seul l’original est usiné, pas de copie déplacée':'Répéter cette opération')));
+    d.appendChild(mfPickRow(k,((setup.ops||[]).indexOf(o)+1)+'. '+lab.replace(/^Répétition /,'Rép. ').replace(/rectangulaire/,'rect.').replace(/circulaire/,'circ.'),
+      (owner?'↻'+nOwn:'')+(fr?(owner?' ':'')+'3+2':''),
+      {off:o.on===false||!!owner,title:info.join(' — ')}));
   });
   const nS=(op.srcs||[]).length, nC=faoPatternCount(setup,op);
   d.appendChild(faoHelp(nS
     ?(nS+' opération(s) × '+nC+' copies (original compris) — usinées opération par opération : chacune sur toutes les copies avant la suivante.')
     :'Cochez les opérations à répéter (ou sélectionnez-les par Ctrl+clic dans l’arbre avant de créer la répétition).'));
+  // V0.99.73 : répétitions imbriquées — nombre réel de copies
+  const nT=faoPatternTotal(setup,op);
+  const inner=(setup.ops||[]).filter(function(o){ return faoIsPattern(o)&&(op.srcs||[]).indexOf(o.id)>=0; });
+  const haut=anc.filter(function(q){ return q.on!==false; }).pop();
+  if(haut&&op.on!==false)d.appendChild(faoHelp('Dans la répétition n° '+((setup.ops||[]).indexOf(anc[0])+1)
+    +' : ses opérations sont faites '+nT+' fois en tout, à la place de la répétition n° '+((setup.ops||[]).indexOf(haut)+1)+' dans la liste.'));
+  inner.forEach(function(q){
+    if(q.on===false){ d.appendChild(faoHelp('Répétition n° '+((setup.ops||[]).indexOf(q)+1)+' désactivée : ses opérations ne sont copiées que par celle-ci.')); return; }
+    d.appendChild(faoHelp('Répétition n° '+((setup.ops||[]).indexOf(q)+1)+' ('+faoPatternLabel(setup,q).replace(/^Répétition /,'')+') refaite sur chaque copie : '
+      +faoPatternTotal(setup,q)+' copies de chacune de ses opérations.'));
+  });
+  if(nT>=FAO_PAT_MAX)d.appendChild(faoHelp('⚠ Limité à '+FAO_PAT_MAX+' copies par opération.'));
   p.appendChild(d);
   const back=faoRow();
   const bb=document.createElement('button'); bb.textContent='← Posage '+setup.name; bb.style.fontSize='.72rem';

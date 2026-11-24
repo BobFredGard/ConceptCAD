@@ -361,6 +361,7 @@ function faoRestRows(d,setup,op){
   const nPrev=(function(){ try{ return faoRestPrev(setup,op).length; }catch(e){ return 0; } })();
   const di=op.restDiag;
   d.appendChild(faoHelp(nPrev?('Matière enlevée par '+nPrev+' opération'+(nPrev>1?'s':'')+' précédente'+(nPrev>1?'s':'')+' du posage'+
+      (faoToolOrder(setup)!=='list'?' (ordre d’usinage par outil)':'')+
       (di&&di.tilt?(' (dont '+di.tilt+' en 3+2)'):'')+' : seule la matière qui reste est usinée.'+
       (di&&isFinite(+di.ms)?(' Carte calculée en '+(di.ms/1000).toFixed(1).replace('.',',')+' s, maille '+String(di.pas).replace('.',',')+' mm.'):'')+
       (fin&&di&&isFinite(+di.garde)?(' Passes gardées : '+di.garde+' % de la longueur.'):'')+
@@ -888,7 +889,8 @@ function faoRenderTree(){
       h.appendChild(tri);
       const sl=document.createElement('span');
       sl.textContent='▤ '+s.name+' · '+(FAO_POSTS[s.machine||s.post]?FAO_POSTS[s.machine||s.post].label:s.machine)
-        +(faoOrientOn(s)?(' · 3+2 B'+faoOrient(s).b+' C'+faoOrient(s).c):'');
+        +(faoOrientOn(s)?(' · 3+2 B'+faoOrient(s).b+' C'+faoOrient(s).c):'')
+        +({tool:' · par outil',num:' · par n° d’outil'}[faoToolOrder(s)]||''); // V0.99.76
       h.appendChild(sl);
       h.title='Clic = fiche du posage dans le panneau droit'
         +(open?'':' · opérations repliées (clic sur la flèche pour les rouvrir)');
@@ -920,7 +922,7 @@ function faoRenderTree(){
           faoSnapshot('activer/désactiver « '+faoOpShortLabel(op)+' »');
           op.on=!(op.on!==false); faoChanged(); };
         const lb=document.createElement('span'); lb.className='lb';
-        const own=faoIsPattern(op)?null:faoPatternOwner(s,op);
+        const own=faoPatternOwner(s,op); // V0.99.73 : une répétition peut être répétée
         lb.textContent=(i+1)+'. '+faoOpShortLabel(op)+(own?(' ↻'+(s.ops.indexOf(own)+1)):'');
         if(own)lb.title='Répétée par la répétition n° '+(s.ops.indexOf(own)+1)+' : usinée à la place de la répétition, sur toutes ses copies';
         const tool=faoToolById(s,op.toolId);
@@ -2045,7 +2047,10 @@ function faoOpCardElement(setup,op,i){
     }
   }else{
     const ee=faoEstimate(mv,sf.f,faoRapide(setup),faoAccel(setup));
-    rs.textContent='S'+sf.s+' F'+sf.f+' · '+mv.length+' pts · ≈'+ee.tmin.toFixed(1)+' min';
+    // V0.99.77 : opération répétée — temps d'une copie × nombre de copies usinées
+    const kc=(function(){ try{ return faoOpsSeq(setup).filter(function(E){ return E.op===op; }).length; }catch(e){ return 1; } })();
+    rs.textContent='S'+sf.s+' F'+sf.f+' · '+mv.length+' pts · ≈'+ee.tmin.toFixed(1)+' min'
+      +(kc>1?(' × '+kc+' copies = ≈'+(ee.tmin*kc).toFixed(1)+' min'):'');
   }
   rr.appendChild(rs);
   try{ faoOpFrameRows(d,setup,op); }catch(e){} // 2026-10-16-020 : repère propre (3+2) de l'opération
@@ -2091,6 +2096,7 @@ function faoSetupFiche(p,setup){
   });
   p.appendChild(rOp);
   p.appendChild(faoHelp('Ou cliquez l’un des points blancs de la vue (coins, milieux d’arêtes, centres de faces, centre). Le repère du posage s’y place ; le G-code est relatif à ce point.'));
+  faoOrderRows(p,setup); // V0.99.76 : ordre d'usinage (liste, par outil, par numéro d'outil)
   faoFrameRows(p,setup); // 2026-10-16-019 : orientation Z / X du repère du posage
   // Indexation 3+2 (table C + B) — {0,0} = usinage 3 axes strictement inchangé.
   // 2026-10-16-020 : le 3+2 se règle désormais PAR OPÉRATION (onglet Repère) ; la ligne
@@ -2124,16 +2130,15 @@ function faoSetupFiche(p,setup){
   try{ bl=(typeof bodies!=='undefined'&&bodies?bodies:[]).filter(function(b){return b&&!b.ghost;}); }catch(e){}
   if(!bl.length)rB.appendChild(faoLab('Aucun corps (tout le brut).'));
   else{
+    rB.className='mf-pick-list'; // V0.99.78 : une ligne par corps (hors faoTidyRows)
     const all=setup.bodies==='all';
     const cbs=[]; // 2026-10-22-007 : cases gardées en main (faoTidyRows éclate la rangée)
     bl.forEach(function(b){
       const cb=document.createElement('input'); cb.type='checkbox'; cbs.push(cb);
       cb.checked=all||(Array.isArray(setup.bodies)&&setup.bodies.indexOf(b.id)>=0);
       const nm=(b.name||b.id)+'';
-      const lb=document.createElement('label');
-      lb.className='fao-check';
-      lb.appendChild(cb);
-      lb.appendChild(document.createTextNode(nm));
+      // V0.99.78 : liste compacte (une ligne par corps, case à gauche), comme les autres listes
+      const lb=mfPickRow(cb,nm,'',{title:'Usiner « '+nm+' » dans ce posage'});
       cb.onchange=function(){
         faoSnapshot('corps modélisés du posage');
         const checked=[];
@@ -2414,37 +2419,38 @@ function faoRenderProps(p,s){
 function faoStatsGroups(job){
   // Groupes d'outils SANS toucher aux parcours : faoJobMoves() calcule les absents,
   // et une estimation affichée n'a pas le droit de produire une trajectoire.
-  let groups=0, prev=null;
-  try{
-    faoActiveOps(job).forEach(function(op){
-      const t=faoToolById(job,op.toolId)||{};
-      const k=String(t.id)+'|'+String(t.d);
-      if(k!==prev){ groups++; prev=k; }
-    });
-  }catch(e){ groups=0; }
-  return groups;
+  // V0.99.76 : groupes de la séquence réelle (répétitions développées, ordre par outil).
+  try{ return faoToolChanges(faoOpsSeq(job),job); }catch(e){ return 0; }
 }
 function faoStats(job){
   // Estimation complète du posage : temps de coupe + rapides (accélération
   // machine) + changements d'outil (nb de groupes outil - 1) × durée unitaire.
-  let cut=0, rap=0, tm=0, n=0, wait=false, missing=0;
+  // V0.99.77 (constat du 24/11 : l'ébauche répétée 6 fois de STEP.conceptcad comptait une fois,
+  // ≈ 82 min annoncées pour 5 h 27 de simulation) : chaque opération compte autant de fois
+  // qu'elle est usinée — copies des répétitions (faoOpsSeq). Une copie déplacée, tournée ou
+  // en miroir a les mêmes longueurs : temps d'une copie × nombre de copies.
+  let cut=0, rap=0, tm=0, n=0, nc=0, wait=false, missing=0;
+  const nb=new Map(); let seqOk=false;
+  try{ faoOpsSeq(job).forEach(function(E){ if(E&&E.op)nb.set(E.op,(nb.get(E.op)||0)+1); }); seqOk=true; }catch(e){}
   faoActiveOps(job).forEach(function(op){
+    const k=seqOk?(nb.get(op)||0):1;
+    if(!k)return; // jamais usinée (hors séquence)
     const sf=faoOpCutting(op,job); // avance + rapide de CETTE opération
     const mv=faoMovesStat(op,job); // lecture d'abord : une stats ne recalcule rien
     if(!mv){ if(faoMovesPending())wait=true; else missing++; return; }
     const e=faoEstimate(mv,sf.f,sf.rapid,faoAccel(job));
-    cut+=e.cut; rap+=e.rap; tm+=e.tmin; n++;
+    cut+=e.cut*k; rap+=e.rap*k; tm+=e.tmin*k; n++; nc+=k;
   });
-  if(wait)return {n:0, cut:0, rap:0, groups:0, tchg:0, tmin:0, pending:true};
+  if(wait)return {n:0, copies:0, cut:0, rap:0, groups:0, tchg:0, tmin:0, pending:true};
   const groups=faoStatsGroups(job);
   const tchg=Math.max(0,groups-1)*(faoToolChg(job)/60);
-  return {n:n, cut:cut, rap:rap, groups:groups, tchg:tchg, tmin:tm+tchg, missing:missing};
+  return {n:n, copies:nc, cut:cut, rap:rap, groups:groups, tchg:tchg, tmin:tm+tchg, missing:missing};
 }
 function faoStatsText(){
   try{
     const s=faoStats(faoDoc());
     if(s.pending)return 'Estimation : chargement du parcours…';
-    const base=s.n+' op · coupe '+(s.cut/1000).toFixed(1)+' m · rapides '
+    const base=s.n+' op'+(s.copies>s.n?' ('+s.copies+' avec les répétitions)':'')+' · coupe '+(s.cut/1000).toFixed(1)+' m · rapides '
       +(s.rap/1000).toFixed(1)+' m · ≈'+s.tmin.toFixed(1)+' min';
     if(s.missing){
       let why='';

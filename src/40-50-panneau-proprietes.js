@@ -336,16 +336,18 @@ function renderProps(){
       if(f._adj&&!f._err){const e=document.createElement('div');e.style.cssText='font-size:.78rem;color:var(--warn);background:rgba(255,159,10,.09);border:1px solid rgba(255,159,10,.3);border-radius:6px;padding:5px 7px;margin-top:6px';e.textContent='⚠ '+f._adj;p.appendChild(e);} // V0.44.1 : rayon ramené (20)
       const lst=document.createElement('div');lst.className='col';lst.style.marginTop='6px';lst.style.maxHeight='180px';lst.style.overflow='auto';
       (f.edges||[]).forEach((s,i)=>{
-        const r=document.createElement('div');r.className='tnode';
+        // V0.99.78 : une ligne courte « icône  n. nom  [valeur] ✕ » ; position et repère ⌖ dans l'infobulle
         const k=xKindOf(f),dp=xDimPrefix(k);
-        r.innerHTML=`<span>${xIcon(k)}</span><span class="nm">${s.name?`<b>${s.name}</b> · `:''}${dp} <b>${s.r}</b>${s.anchor?' ⌖':''} · (${s.pos.map(v=>v.toFixed(1)).join(', ')})</span>`;
+        const r=mfPickRow(null,s.name||('Arête '+(i+1)),s.anchor?'⌖':'',
+          {title:(s.name||'Arête '+(i+1))+' · '+dp+' '+s.r+(s.anchor?' · ⌖ arête ancrée':'')+' · ('+s.pos.map(v=>v.toFixed(1)).join(', ')+')'});
+        const ic=document.createElement('span');ic.className='mf-pick-i';ic.textContent=xIcon(k);r.insertBefore(ic,r.firstChild);
         const num=document.createElement('input');num.type='text';num.inputMode='decimal';num.value=s.r;num.title=(f.chamfer?'Distance':'Rayon')+' de cette arête';parFx(num,s,'r');
         num.onclick=ev=>ev.stopPropagation();
         const c2=()=>{const v=parseFloat(String(num.value).replace(',','.'));if(v>0&&isFinite(v)){s.r=v;repSyncForFeature(f);markDirty();rebuildEdit();renderProps();}};
         num.addEventListener('change',c2);num.addEventListener('blur',c2);
         num.addEventListener('keydown',e=>{if(e.key==='Enter'){c2();num.blur();}e.stopPropagation();});
         r.appendChild(num);
-        const x=document.createElement('span');x.textContent='✕';x.title='Retirer';x.style.cursor='pointer';
+        const x=document.createElement('span');x.textContent='✕';x.title='Retirer';x.className='mf-pick-x';
         x.onclick=ev=>{ev.stopPropagation();f.edges.splice(i,1);f.name=xFeatName(f);repSyncForFeature(f);markDirty();rebuildEdit();renderProps();};
         r.appendChild(x);lst.appendChild(r);
       });

@@ -268,7 +268,7 @@ function faoPost(job,postId){
       // P1-a : perçage émis en cycle dialecte — le déroulé G0/G1 reste la
       // source prévisualisation/estimation/garde-fou mais n'est pas écrit ici.
       let DC=faoDrillCycle(b.op,joB,oz,!!toB);
-      if(DC&&b.xf&&!b.xf.wcs){ // copie déplacée d'un perçage : trous transformés
+      if(DC&&faoXfGeo(b.xf)){ // copie déplacée d'un perçage : trous transformés (V0.99.73 : aussi dans une autre origine)
         const X=b.xf;
         DC=Object.assign({},DC,{
           holes:(DC.holes||[]).map(function(H){ const p=faoXfPt(X,+H.x,+H.y); return Object.assign({},H,{x:p[0],y:p[1]}); }),

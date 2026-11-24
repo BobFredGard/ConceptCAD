@@ -404,11 +404,10 @@ function renderCoquePanel(){
     }
     const lst=document.createElement('div');lst.className='lst';
     coqueMode.faces.forEach((fr,i)=>{
-      const r2=document.createElement('div');r2.className='item';
-      const s=document.createElement('span');
       const pd=fr._perdue!=null?fr._perdue:fr._ord<0;
-      s.textContent=(pd?'⚠ perdue ':'✅ ')+'▸ centre ('+fr.pos.map(v=>(+v).toFixed(1)).join(' ; ')+') mm — '+(del?'sera supprimée':'sera retirée (ouverture)');
-      r2.appendChild(s);
+      // V0.99.78 : ligne courte « Face n », centre et rôle dans l'infobulle
+      const r2=mfPickRow(null,(pd?'⚠ ':'')+'Face '+(i+1)+(pd?' perdue':''),'',
+        {cls:'item',warn:pd,title:(pd?'⚠ Face perdue · ':'')+'Centre ('+fr.pos.map(v=>(+v).toFixed(1)).join(' ; ')+') mm — '+(del?'sera supprimée':'sera retirée (ouverture)')});
       if(fr._perdue)r2.appendChild(remplacerBtn(coqueMode.remp===i,()=>{coqueMode.remp=coqueMode.remp===i?null:i;renderCoquePanel();coqueRempHelp();}));
       const x=document.createElement('button');x.textContent='✕';x.title='Retirer cette face';
       x.onclick=()=>{coqueMode.faces.splice(i,1);if(coqueMode.remp!=null){const ip=coqueMode.faces.findIndex(r=>r._perdue);coqueMode.remp=ip>=0?ip:null;}coquePaint();coquePreviewUpdate();renderCoquePanel();coqueRempHelp();};

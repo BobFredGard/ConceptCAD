@@ -225,12 +225,11 @@ function renderMvPanel(){
   if(mvMode.faces.length){
     const lst=document.createElement('div');lst.className='lst';
     mvMode.faces.forEach((fr,i)=>{
-      const r2=document.createElement('div');r2.className='item';
-      const s=document.createElement('span');
       const nt=mvMode.tangent?mvChainOf(fr).length:0;
       const pd=fr._perdue!=null?fr._perdue:fr._ord<0;
-      s.textContent=(pd?'⚠ perdue ':'✅ ')+'▸ centre ('+fr.pos.map(v=>(+v).toFixed(1)).join(' ; ')+') mm'+(nt?' + '+nt+' tangente'+(nt>1?'s':''):'');
-      r2.appendChild(s);
+      // V0.99.78 : ligne courte « Face n » (+ tangentes), centre dans l'infobulle
+      const r2=mfPickRow(null,(pd?'⚠ ':'')+'Face '+(i+1)+(pd?' perdue':''),nt?'+'+nt+' tang.':'',
+        {cls:'item',warn:pd,title:(pd?'⚠ Face perdue · ':'')+'Centre ('+fr.pos.map(v=>(+v).toFixed(1)).join(' ; ')+') mm'+(nt?' + '+nt+' tangente'+(nt>1?'s':''):'')});
       if(fr._perdue)r2.appendChild(remplacerBtn(mvMode.remp===i,()=>{mvMode.remp=mvMode.remp===i?null:i;renderMvPanel();mvHelp();}));
       const x=document.createElement('button');x.textContent='✕';x.title='Retirer cette face';
       x.onclick=()=>{mvMode.faces.splice(i,1);const ip=mvMode.faces.findIndex(r=>r._perdue);mvMode.remp=mvMode.remp!=null&&ip>=0?ip:null;mvPaint();renderMvPanel();mvHelp();};

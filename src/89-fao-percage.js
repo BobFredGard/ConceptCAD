@@ -900,27 +900,22 @@ function faoDrillSections(setup,op,d){
     const holes=faoWithOpFrame(op,function(){return faoHolesDetect();}); // repère de l'opération (3+2)
     if(!holes.length){const n=document.createElement('div');n.className='fao-empty';n.textContent='Aucun trou vertical reconnu sur le modèle (noyau exact requis).';d.appendChild(n);}
     faoHoleGroups(holes).forEach(function(g){
-      const r=faoRow();
       const cb=document.createElement('input');cb.type='checkbox';cb.checked=faoHoleInSel(op,{d:g.d,ztop:g.z});
       cb.onchange=function(){faoHoleToggle(setup,op,g.d,g.z);};
-      r.appendChild(cb);
       const h0=g.holes[0];
-      const s=document.createElement('span');s.className='fao-meta';
-      s.textContent='Ø'+(+g.d.toFixed(2))+' × '+g.holes.length+' · Z '+(+g.z.toFixed(2))+' → '+(+h0.zbot.toFixed(2))+' · '+(h0.through?'débouchant':'borgne')+
+      // V0.99.78 : une ligne courte « Ø6.6 × 4 · déb. » + nature (M6, H7…) ; le reste dans l'infobulle
+      const det='Ø'+(+g.d.toFixed(2))+' × '+g.holes.length+' · Z '+(+g.z.toFixed(2))+' → '+(+h0.zbot.toFixed(2))+' · '+(h0.through?'débouchant':'borgne')+
         (h0.tipAng?(' · pointe '+h0.tipAng+'°'):'')+(h0.chD?(' · chanfrein Ø'+(+h0.chD.toFixed(2))):'')+(h0.cb?(' · lamage Ø'+h0.cb.d):'')+(h0.pre?(' · sous avant-trou Ø'+h0.pre.d):'');
-      r.appendChild(s);
       // nature : reconnue (fonction Perçage) ou choisie (STEP) — trou lisse / taraudé
       const fe=g.holes.find(function(h){return h.feat;});
-      if(fe&&fe.feat.thread){
-        const t=document.createElement('span');t.className='fao-meta';t.style.color='#ff9f0a';
-        t.textContent='taraudé '+holeThreadLabel(fe.feat.thread)+' (fonction Perçage)';r.appendChild(t);
-      }else if(fe&&fe.feat.role==='lamage'){
-        const t=document.createElement('span');t.className='fao-meta';t.textContent='lamage (fonction Perçage)';r.appendChild(t);
-      }else if(fe&&fe.feat.role==='avant-trou'){
-        const t=document.createElement('span');t.className='fao-meta';t.textContent='avant-trou d’un double perçage (fonction Perçage)';r.appendChild(t);
-      }else if(fe&&fe.feat.role==='alesage'){
-        const t=document.createElement('span');t.className='fao-meta';t.style.color='#ff9f0a';t.textContent='alésé '+fe.feat.tol+' (fonction Perçage)';r.appendChild(t);
-      }else if(!fe){
+      let mk='',mkCol='',nat='';
+      if(fe&&fe.feat.thread){ mk=holeThreadLabel(fe.feat.thread); mkCol='#ff9f0a'; nat='taraudé '+mk+' (fonction Perçage)'; }
+      else if(fe&&fe.feat.role==='lamage'){ mk='lamage'; nat='lamage (fonction Perçage)'; }
+      else if(fe&&fe.feat.role==='avant-trou'){ mk='avant-trou'; nat='avant-trou d’un double perçage (fonction Perçage)'; }
+      else if(fe&&fe.feat.role==='alesage'){ mk=String(fe.feat.tol||'alésé'); mkCol='#ff9f0a'; nat='alésé '+fe.feat.tol+' (fonction Perçage)'; }
+      const r=mfPickRow(cb,'Ø'+(+g.d.toFixed(2))+' × '+g.holes.length+' · '+(h0.through?'déb.':'borgne'),mk,
+        {markColor:mkCol,title:det+(nat?' — '+nat:'')});
+      if(!fe){
         const key=g.d.toFixed(2)+'@'+g.z.toFixed(2);
         const info=(setup.holeInfo&&setup.holeInfo[key])||{};
         const opts=faoStepHoleOpts(g,holes); // V0.99.9 : + alésé, lamage, fraisure

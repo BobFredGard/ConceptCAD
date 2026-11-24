@@ -8,7 +8,7 @@ sont sorties le 2026-09-30j.
 Code dans `src/` · livrable `fusion_mvp.html` (généré par `build.js`) · architecture et
 garde-fous en tête de `src/00-entete-et-outils.js`.
 
-**759 versions**, de `2026-09-28b` à `V0.99.72` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
+**765 versions**, de `2026-09-28b` à `V0.99.78` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
 comme dans le fichier d'origine.
 
 ---
@@ -8433,3 +8433,61 @@ Manuel Fonctions 3D.
 **Couches sur plusieurs cœurs** (`src/88-fao-58-multicoeur.js`, `faoWkNivNb`, `faoWkRemplir0`) : une ébauche 3D est d'abord confiée à n workers de couches (n = nombre de couches, au plus 8 et au plus le nombre de cœurs ; 3 cœurs au moins), chacun ne calcule que les niveaux `li % n === i` (`faoNivPart`) et renvoie sa mémoire des calculs purs (`faoGeoMemo` : décalages `faoOffsetRuns`, rectangles `faoRectRuns`, lignes de balayage, cases du masque de `faoSpiralLevel`, clés par signature du maillage, des plans, de la boîte, du rayon et du pas) ; un worker final refait l'opération complète avec cette mémoire réunie : parcours identique par construction. STEP.conceptcad dans l'application : 22 s contre 108 s sur un seul cœur (207 s en V0.99.71), 6 069 mouvements identiques au mouvement près.
 
 **Test** : `tests/test_fao_chain.cjs` T7 (deux poches reliées par une coupe hors zone : AB avec la zone, ABABAB sans). `tests/test_fao_multicoeur.cjs` : 3 workers de couches puis le final, comparé au calcul normal (Cavité Test : 23 330 mouvements identiques). Application, onglet séparé : STEP.conceptcad par couches contre un seul cœur, 0 écart. `npm run parcours` : sorties identiques à V0.99.71 ; référence réécrite (les 6 écarts dataient d'avant V0.99.67). Manuel FAO. CACHE_VER et FORMES_VER inchangés.
+
+## V0.99.73 - FAO : répétition d'une répétition
+
+**Demande de Fred** : « FAO : Répétitions -> Il faut pouvoir répéter une répétition ... ».
+
+**Avant** : une répétition ne pouvait reprendre que des opérations d'usinage ; une couronne de trous refaite sur deux pièces demandait de tout recréer.
+
+**Correctif** (`src/89-fao-repetition.js`) : une répétition peut être la source d'une autre (fiche « Opérations répétées », ou `Ctrl+clic` sur la répétition avant **Répétition**). `faoOpsSeq` développe les répétitions récursivement : les copies de la répétition intérieure sont refaites sur chaque copie de celle qui la contient (`faoXfCompose` : décalage, rotation et miroir composés, deux miroirs rendent le sens de coupe d'origine ; une copie « autre origine » garde son déplacement, `faoXfGeo`), toujours **par opération**, à la place de la répétition la plus haute. Une répétition intérieure désactivée est transparente (ses opérations ne sont copiées que par celle qui la contient) ; l'englobante désactivée laisse l'intérieure seule, à sa place. Jamais de boucle : une répétition ne se contient pas, et celles qui la contiennent ne lui sont pas proposées (`faoPatternAncestors`, coupure de secours dans `faoPatternSanitise`). Deux « autres origines » ne se composent pas (une origine par copie). Au plus 10 000 copies par opération (`FAO_PAT_MAX`, le 100 × 100 d'avant). La fiche annonce le nombre réel de copies (`faoPatternTotal`) ; l'arbre met « ↻ » sur une répétition répétée. Perçage en cycle copié dans une autre origine ET déplacé : trous déplacés (`src/88-fao-60-postprocesseurs.js`).
+
+**Test** : `tests/test_fao_repetition.cjs` 12 à 20 (couronne de 4 trous refaite 2 fois en X : 8 trous dans le G-code, ordre par opération à travers les niveaux, intérieure ou englobante désactivée, boucles coupées, fiche, miroir de miroir, rangée refaite en G55, origines d'origines, plafond, copier / coller des trois niveaux). Manuel FAO. CACHE_VER et FORMES_VER inchangés.
+
+## V0.99.74 - Simulation lisse : brut-corps sans escalier
+
+**Constat de Fred** (STEP.conceptcad, brut depuis un solide, moteur « lisse », finesse haute) : « as-tu un moyen de le rendre plus lisse ou proche de la réalité dans le mode usinage ? », puis « Je parle des grands congés non usinés ».
+
+**Cause** : le champ de distance du brut-corps était l'écart **vertical** au dessus du corps (`z − dessus(x, y)`), lu au plus proche sur une grille de 0,5 mm. Juste sur un dessus à plat, faux sur une paroi raide : sur les grands congés, les dépouilles et le contour, la surface tombait en marches d'un pas (0,18 mm sur STEP.conceptcad), la lumière était rayée et le pied du contour en dents de scie. Le brut était aussi copié sur la carte graphique en 8 bits.
+
+**Correctif** (`src/88-fao-78-moteurs-volume.js`) : `faoSdfCreate` calcule la **vraie distance** au corps-brut. Signe : sous le dessus exact du corps à chaque colonne de la grille (`faoSdfBodyTops`, même matière qu'avant, trou d'épingle entre deux triangles bouché). Valeur : distance exacte aux triangles (`faoSdfBodyDist`, point le plus proche d'un triangle) jusqu'à 2,5 pas de la surface (`FAO_SDF_BW`, tout ce que lisent le point de contact et la normale du rendu), ±4 pas au-delà comme avant. Parcours par triangle dans la tranche autour de son plan, ligne par ligne dans le triangle élargi ; un côté partagé avec un voisin du même plan n'est élargi que de BW·tan θ (faces planes découpées en éventails). Le champ du brut part sur la carte graphique en flottants, une couche à la fois (`faoSdfCInit`), quand elle sait dessiner en 16 bits ; repli 8 bits inchangé. Le moteur « cartes » n'est pas touché.
+
+**Mesures** (STEP.conceptcad, finesse haute, 40,8 M échantillons, corps de 18 840 triangles) : champ du brut 0,79 s (boîte seule : 0,53 s ; distance aux triangles 0,15 s, dessus 0,02 s). Grands congés et coins du brut lisses dans la simulation ; poches usinées inchangées.
+
+**Test** : `tests/test_sdf_brut_corps.cjs` (cylindre R20 × 30 de 1 440 triangles : bande à 0,0008 mm de la distance exacte, aucun triangle oublié face à la force brute, paroi extraite à 0,003 mm du rayon avec des normales horizontales, volume et rainure ; toit penché en éventails comparé à la force brute ; dôme du plat au vertical à 0,014 mm ; l'ancien champ faisait 0,39 mm d'escalier). `test_simulation_moteurs` et `test_fao_brut_corps` passent. Manuel FAO. CACHE_VER et FORMES_VER inchangés.
+
+## V0.99.75 - cpt local, publication sur « livre »
+
+**Demande de Fred** : « les modification et les cpt demandent beaucoup trop de temps de développement. Comment peut-on réduire ce temps? Peut-être en commitant en local, sur mon PC et on ne pousse que ce qui est vraiment fonctionnel? », puis, pour publier : « Quand je dis « livre » ».
+
+**Cause** : chaque cpt était une publication complète, 40 min à 1 h, environ 8 fois par jour (V0.99.27 → V0.99.72 en 7 jours) : suite complète (15 à 30 min, bornée par test_barquette_120, 120 modifications à la suite, impossible à découper), DMG Mac chez GitHub (7 à 23 min), site en ligne en échec au premier passage 5 fois sur 8 le 24/11 (« Fetching artifact metadata failed », erreur GitHub ; le secours à la main passait), puis installateur Windows, release, fichier autonome, copie Dropbox, dépôt principal.
+
+**cpt** (`tools/cpt.cjs`, `npm run cpt`, depuis le worktree après `npm run ci` vert et le commit de version) : rien hors commit, main local contenu dans la branche, numéro libre ; l'essai `ConceptCAD.html` du dépôt principal retiré s'il est identique (arrêt sinon) ; avance rapide de main dans `D:\ConceptCAD` ; copie sur la branche `sauvegarde` de GitHub (rien de publié : le site et les applications ne suivent que les tags) ; Exemples à commiter signalés ; versions en attente de « livre » listées.
+
+**livre** (`tools/livrer.cjs`, `npm run livrer`, dans `D:\ConceptCAD`) : contrôles, `npm run ci:full`, push de main + tag, fusion dans la branche de l'application et DMG lancé, installateur Windows pendant ce temps, site (secours `--ref main` jusqu'à 3 fois, version en ligne relue), fichier autonome + Dropbox (empreintes comparées), DMG signé, release (titres du CHANGELOG depuis la livraison précédente, `--notes`/`--titre`), `latest.json` en ligne vérifié. `--essai` sans rien changer, `--depuis <étape>` pour reprendre, verrou commun aux sessions. Outils communs : `tools/livraison-outils.cjs`.
+
+**Test** : `tests/test_livraison.cjs` (suite rapide) : versions, entrées du CHANGELOG, notes ; `tools/cpt.cjs` sur un dépôt jetable (GitHub simulé par un dépôt nu) : rangement sans tag ni push de main, sauvegarde = main local, essai identique retiré, essai différent / numéro pris / main avancé / oubli hors commit = arrêt. `tools/livrer.cjs --essai` lancé dans `D:\ConceptCAD`. Manuel Développement. CACHE_VER et FORMES_VER inchangés.
+
+## V0.99.76 - FAO : ordre d'usinage par outil, répétitions respectées
+
+**Demande de Fred** : « FAO : Au moment de visualiser l'usinage et de générer le G-Code, il faudrait pouvoir choisir de faire les outils dans l'ordre, en respectant les répétitions... ». Choix de Fred : les deux ordres au choix, réglés dans le posage.
+
+**Correctif** : fiche du posage, onglet Général, liste **Ordre d'usinage** (`setup.toolOrder`, absent = ordre de la liste : documents inchangés) — **Par outil** (ordre d'apparition) : chaque outil fait tout son travail là où il sert pour la première fois ; **Par numéro d'outil** : T1, T2, T3… (`src/89-fao-repetition.js`, `faoSeqOrder`). Tri stable de la séquence développée rendu par `faoOpsSeq` : chaque opération garde toutes ses copies à la suite (répétitions et répétitions imbriquées), à outil égal l'ordre de la liste. Aperçu, ▶ Usinage, collisions, G-code (`faoJobMoves`, `faoSeqSafe`) et séquence calculée sur un autre cœur suivent donc le même ordre. Brut restant et contour « Rapide dans le vide » : ce qui est vraiment usiné avant, dans cet ordre (`faoRestPrev`, `src/88-fao-57-brut-restant.js`) ; changer d'ordre met ces reprises « à régénérer ». Le réglage n'entre pas dans la clé des autres parcours (`faoOpMovesKey`) : changer d'ordre ne périme rien d'autre. Finition : entrée en hélice seulement si une ébauche passe vraiment avant elle (`faoGeoHasRrough`, règle de la liste gardée dans `faoGeoHasRroughListe`), clé marquée seulement quand la réponse change. Temps estimé : changements d'outil comptés sur la séquence réelle (`faoStatsGroups` → `faoToolChanges`). Fiche : ordre réel des outils (`faoOrderSummary`), gain en changements d'outil, avertissement quand des opérations changent de place ; arbre : « · par outil » / « · par n° d'outil » sur la ligne du posage.
+
+**Test** : `tests/test_fao_ordre_outils.cjs` (suite rapide) : séquence par liste / outil / numéro (numéro modifié compris), copies d'une répétition à la suite, `faoSeqSafe` et simulation, G-code (2 outils au lieu de 4, T2 d'abord, tous les trous), groupes du temps estimé, brut restant (règle de la liste inchangée, ordre réel sinon, clé qui change), clé d'une opération sans dépendance inchangée, entrée de la finition selon l'ordre réel, réglage nettoyé et relu, fiche, répétitions imbriquées. Manuel FAO. CACHE_VER et FORMES_VER inchangés.
+
+## V0.99.77 - FAO : temps estimé avec les copies des répétitions
+
+**Constat** (vérification de V0.99.76, accord de Fred : « Oui, corrige ») : le temps estimé du posage ne comptait qu'une fois chaque opération, même répétée. STEP.conceptcad : ébauches et finitions faites 6 et 4 fois, ≈ 82,2 min annoncées pour 5 h 27 de simulation.
+
+**Correctif** : `faoStats` (`src/88-fao-80-interface.js`) compte chaque opération autant de fois qu'elle est usinée (entrées de `faoOpsSeq`, répétitions imbriquées et désactivées comprises) : coupe, rapides et temps d'une copie × nombre de copies (une copie déplacée, tournée ou en miroir a les mêmes longueurs) ; texte « 4 op (20 avec les répétitions) · … » ; fiche d'une opération répétée : « ≈ 0.4 min × 6 copies = ≈ 2.7 min ». STEP.conceptcad : ≈ 327,8 min (simulation 326,8 min + 3 changements d'outil).
+
+**Test** : `tests/test_fao_ordre_outils.cjs` 13 : 4 opérations / 6 passages, longueur de coupe de toutes les copies, texte, répétition désactivée. Manuel FAO. CACHE_VER et FORMES_VER inchangés.
+
+## V0.99.78 - Listes des panneaux : une ligne par élément, petit texte
+
+**Demande** de Fred (capture de la fiche Répétition FAO) : « quand les menus comportent une suite d'opération, le texte est trop gros, il faudrait le réduire, réduire l'information affichée au stricte minimum et sur une seul ligne », puis « regarde tous les menus de l'application qui comporte ce type d'affichage ». Cause : ces listes posaient un texte sans taille dans le panneau (16 px au lieu de 12) qui passait à la ligne, avec tout le détail.
+
+**Correctif** : `mfPickRow` et le style `.mf-pick` (`src/97-interface-moderne.js`) : case (ou rien) + texte court sur une ligne, 0,72 rem, coupé par « … », repère discret à droite, détail dans l'infobulle, ligne grisée ou orange ; un clic sur le texte coche la case. Appliqué à : FAO « Opérations répétées » (« 3. Rép. rect. ×3 ↻7 », comme l'arbre ; `89-fao-repetition.js`), « Origines » d'une répétition (cases qui passent à la ligne), trous d'un perçage (« Ø5.5 × 4 · déb. » + M6 / H7, `89-fao-percage.js`), « Modèle à usiner » du posage (`88-fao-80-interface.js`) ; CAO : arêtes d'un congé / chanfrein exact, en fiche et à la création (nom + valeur + ✕, position dans l'infobulle ; `40-50`, `80-conges-chanfreins.js`), ancien congé, faces du déplacement de face, de la scission, de la dépouille, de la coque et de la suppression de face (« Face 2 », centre dans l'infobulle) ; « Fonctions à répéter » et « Exemplaires à enlever » de la répétition (même structure, style seulement), cases « + Linéaire » / « 2ᵉ direction » ; assemblage : relations de la pièce (« 1. Coïncidente », géométries dans l’infobulle ; non montrées à l’écran) ; PLAN : lignes de nomenclature ; boîte « Dériver ».
+
+**Test** : `tests/test_fao_repetition.cjs` 16 : libellé court « n. Rép. circ. ×4 » ; vérifié dans l'aperçu sur STEP.conceptcad et Crochet (12 px, 20 px de haut, une ligne). Manuel Interface. CACHE_VER et FORMES_VER inchangés.

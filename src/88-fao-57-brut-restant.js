@@ -56,6 +56,16 @@ function faoRestPrev(P,op){
   if(idx<0&&op&&op.id)for(let i=0;i<ops.length;i++)if(ops[i]&&ops[i].id===op.id){idx=i;break;}
   if(idx<0)return [];
   const out=[];
+  // V0.99.76 : ordre par outil (faoToolOrder) — ce qui est VRAIMENT usiné avant, dans
+  // l'ordre de la séquence : une opération de la liste placée plus haut peut passer
+  // après (son outil sert plus tard) ; une plus bas, avant. Opération hors séquence
+  // (désactivée) : règle de la liste, ci-dessous.
+  if(faoToolOrder(P)!=='list'){
+    const seq=faoOpsSeq(P);
+    let at=-1;
+    for(let i=0;i<seq.length;i++){ const o=seq[i]&&seq[i].op; if(o&&(o===op||(op.id&&o.id===op.id))){ at=i; break; } }
+    if(at>=0)return seq.slice(0,at);
+  }
   faoOpsSeq(P).forEach(function(E){
     if(!E||!E.op||E.op===op||(op.id&&E.op.id===op.id))return;
     const at=ops.indexOf(E.pat||E.op);
