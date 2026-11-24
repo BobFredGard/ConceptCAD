@@ -64,6 +64,7 @@ const SUITES = [
   'test_fao_copier_coller',
   'test_fao_posage_menu',
   'test_fao_repetition',
+  'test_fao_ordre_outils',
   'test_fao_suppression_multiple',
   'test_fao_percage',
   'test_fao_trous_vote',

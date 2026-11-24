@@ -173,11 +173,99 @@ function faoPatternXfsIn(job,P,xs){
   }
   return L;
 }
+// V0.99.76 (Fred : « Au moment de visualiser l'usinage et de générer le G-Code, il faudrait
+// pouvoir choisir de faire les outils dans l'ordre, en respectant les répétitions ») :
+// ordre d'usinage du posage, setup.toolOrder — absent = ordre de la liste (documents
+// inchangés) ; 'tool' = par outil, chaque outil fait tout son travail là où il sert pour
+// la première fois ; 'num' = par numéro d'outil (T1, T2…). Tri STABLE de la séquence
+// développée : chaque opération garde toutes ses copies à la suite (répétitions
+// respectées) ; à outil égal, l'ordre de la liste. faoOpsSeq le rend : aperçu, ▶ Usinage,
+// collisions, temps, G-code et brut restant (faoRestPrev) suivent le même ordre.
+const FAO_ORDRES=[
+  ['list','Ordre de la liste','Les opérations sont usinées dans l’ordre de l’arbre (répétitions à leur place).'],
+  ['tool','Par outil','Ordre d’apparition : chaque outil fait toutes ses opérations là où il sert pour la première fois — le moins de changements d’outil.'],
+  ['num','Par numéro d’outil','T1, T2, T3… : les outils passent par numéro croissant, quel que soit l’ordre de l’arbre.']];
+function faoToolOrder(job){ const v=job&&job.toolOrder; return (v==='tool'||v==='num')?v:'list'; }
+function faoSeqToolKey(job,op){
+  // Même outil = même clé que le changement d'outil de faoJobMoves / faoSeqSafe.
+  const t=faoToolById(job,op&&op.toolId);
+  return t?t.id+'|'+t.d:'';
+}
+function faoSeqOrder(job,seq){
+  const mode=faoToolOrder(job);
+  if(mode==='list'||seq.length<2)return seq;
+  const rang={}; let n=0;
+  const L=seq.map(function(E,i){
+    const k=faoSeqToolKey(job,E.op);
+    if(!(k in rang))rang[k]=n++;
+    const t=faoToolById(job,E.op&&E.op.toolId), num=t?+t.num:NaN;
+    return {E:E,i:i,r:rang[k],num:isFinite(num)?num:1e9};
+  });
+  L.sort(function(a,b){
+    if(mode==='num'&&a.num!==b.num)return a.num-b.num;
+    return (a.r-b.r)||(a.i-b.i);
+  });
+  return L.map(function(x){ return x.E; });
+}
+function faoToolChanges(seq,job){
+  // Nombre de groupes d'outil successifs d'une séquence (changements d'outil + 1).
+  let g=0, prev=null;
+  (seq||[]).forEach(function(E){ const k=faoSeqToolKey(job,E.op); if(k!==prev){ g++; prev=k; } });
+  return g;
+}
+function faoOrderSummary(job){
+  // Fiche du posage : ordre réel des outils, ex. « T1 (1, 3, 5 ×4) → T2 (2) ».
+  const ops=(job&&job.ops)||[];
+  const seq=faoOpsSeq(job), parts=[];
+  let cur=null;
+  seq.forEach(function(E){
+    const k=faoSeqToolKey(job,E.op);
+    if(!cur||cur.k!==k){
+      const t=faoToolById(job,E.op&&E.op.toolId)||{};
+      cur={k:k,lab:'T'+(t.num||1),ops:[],nb:{}};
+      parts.push(cur);
+    }
+    const id=E.op&&E.op.id;
+    if(!(id in cur.nb)){ cur.nb[id]=0; cur.ops.push(E.op); }
+    cur.nb[id]++;
+  });
+  return parts.map(function(p){
+    return p.lab+' ('+p.ops.map(function(o){ const c=p.nb[o.id]; return (ops.indexOf(o)+1)+(c>1?' ×'+c:''); }).join(', ')+')';
+  }).join(' → ');
+}
+function faoOrderRows(p,setup){
+  // Fiche du posage (onglet Général) : choix de l'ordre + ordre réel des outils.
+  const r=faoRow();
+  r.appendChild(faoLab('Ordre d’usinage'));
+  r.appendChild(faoSel(FAO_ORDRES,faoToolOrder(setup),function(v){
+    if(v==='tool'||v==='num')setup.toolOrder=v; else delete setup.toolOrder;
+  },'Ordre des opérations dans l’aperçu, ▶ Usinage, le temps estimé et le G-code. Par outil : toutes les opérations d’un même outil à la suite ; chaque opération répétée garde toutes ses copies à la suite.'));
+  p.appendChild(r);
+  try{
+    const seq=faoOpsSeq(setup);
+    if(!seq.length)return;
+    const nG=faoToolChanges(seq,setup);
+    const plur=function(n){ return n+' changement'+(n>1?'s':'')+' d’outil'; };
+    let t='Ordre réel : '+faoOrderSummary(setup)+' — '+plur(Math.max(0,nG-1));
+    if(faoToolOrder(setup)!=='list'){
+      const ls=faoOpsSeq(Object.assign({},setup,{toolOrder:undefined}));
+      const nL=faoToolChanges(ls,setup);
+      if(nL!==nG)t+=' au lieu de '+Math.max(0,nL-1)+' dans l’ordre de la liste';
+      t+='.';
+      p.appendChild(faoHelp(t));
+      const bouge=ls.some(function(E,i){ return E.op!==seq[i].op; });
+      if(bouge)p.appendChild(faoHelp('Des opérations changent de place : vérifiez que l’ordre reste possible (ébauche avant finition, pointage avant perçage, perçage avant taraudage). Le brut restant suit cet ordre.'));
+      return;
+    }
+    p.appendChild(faoHelp(t+'.'));
+  }catch(e){}
+}
 function faoOpsSeq(job){
   // Séquence d'usinage du posage : [{op, xf, pat, k, n}] — opérations actives,
   // répétitions développées (par opération), sources retirées de leur place.
   // V0.99.73 : répétitions imbriquées développées récursivement ; pat = la
   // répétition la plus haute, à la place de laquelle la copie est usinée.
+  // V0.99.76 : puis rangée selon l'ordre d'usinage du posage (faoSeqOrder).
   const ops=((job&&job.ops)||[]);
   const out=[];
   const dev=function(top,P,xs,vus){
@@ -200,7 +288,7 @@ function faoOpsSeq(job){
     if(faoIsPattern(op)){ dev(op,op,[null],[op]); return; }
     out.push({op:op,xf:null});
   });
-  return out;
+  return faoSeqOrder(job,out);
 }
 function faoPatternCount(job,op){
   // nombre de copies (original compris)

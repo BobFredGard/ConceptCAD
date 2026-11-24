@@ -361,6 +361,7 @@ function faoRestRows(d,setup,op){
   const nPrev=(function(){ try{ return faoRestPrev(setup,op).length; }catch(e){ return 0; } })();
   const di=op.restDiag;
   d.appendChild(faoHelp(nPrev?('Matière enlevée par '+nPrev+' opération'+(nPrev>1?'s':'')+' précédente'+(nPrev>1?'s':'')+' du posage'+
+      (faoToolOrder(setup)!=='list'?' (ordre d’usinage par outil)':'')+
       (di&&di.tilt?(' (dont '+di.tilt+' en 3+2)'):'')+' : seule la matière qui reste est usinée.'+
       (di&&isFinite(+di.ms)?(' Carte calculée en '+(di.ms/1000).toFixed(1).replace('.',',')+' s, maille '+String(di.pas).replace('.',',')+' mm.'):'')+
       (fin&&di&&isFinite(+di.garde)?(' Passes gardées : '+di.garde+' % de la longueur.'):'')+
@@ -888,7 +889,8 @@ function faoRenderTree(){
       h.appendChild(tri);
       const sl=document.createElement('span');
       sl.textContent='▤ '+s.name+' · '+(FAO_POSTS[s.machine||s.post]?FAO_POSTS[s.machine||s.post].label:s.machine)
-        +(faoOrientOn(s)?(' · 3+2 B'+faoOrient(s).b+' C'+faoOrient(s).c):'');
+        +(faoOrientOn(s)?(' · 3+2 B'+faoOrient(s).b+' C'+faoOrient(s).c):'')
+        +({tool:' · par outil',num:' · par n° d’outil'}[faoToolOrder(s)]||''); // V0.99.76
       h.appendChild(sl);
       h.title='Clic = fiche du posage dans le panneau droit'
         +(open?'':' · opérations repliées (clic sur la flèche pour les rouvrir)');
@@ -2091,6 +2093,7 @@ function faoSetupFiche(p,setup){
   });
   p.appendChild(rOp);
   p.appendChild(faoHelp('Ou cliquez l’un des points blancs de la vue (coins, milieux d’arêtes, centres de faces, centre). Le repère du posage s’y place ; le G-code est relatif à ce point.'));
+  faoOrderRows(p,setup); // V0.99.76 : ordre d'usinage (liste, par outil, par numéro d'outil)
   faoFrameRows(p,setup); // 2026-10-16-019 : orientation Z / X du repère du posage
   // Indexation 3+2 (table C + B) — {0,0} = usinage 3 axes strictement inchangé.
   // 2026-10-16-020 : le 3+2 se règle désormais PAR OPÉRATION (onglet Repère) ; la ligne
@@ -2414,15 +2417,8 @@ function faoRenderProps(p,s){
 function faoStatsGroups(job){
   // Groupes d'outils SANS toucher aux parcours : faoJobMoves() calcule les absents,
   // et une estimation affichée n'a pas le droit de produire une trajectoire.
-  let groups=0, prev=null;
-  try{
-    faoActiveOps(job).forEach(function(op){
-      const t=faoToolById(job,op.toolId)||{};
-      const k=String(t.id)+'|'+String(t.d);
-      if(k!==prev){ groups++; prev=k; }
-    });
-  }catch(e){ groups=0; }
-  return groups;
+  // V0.99.76 : groupes de la séquence réelle (répétitions développées, ordre par outil).
+  try{ return faoToolChanges(faoOpsSeq(job),job); }catch(e){ return 0; }
 }
 function faoStats(job){
   // Estimation complète du posage : temps de coupe + rapides (accélération

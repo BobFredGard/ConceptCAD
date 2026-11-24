@@ -140,6 +140,19 @@ function faoGeoEntryMode(entry,hasRrough){
   return m;
 }
 function faoGeoHasRrough(job,op){
+  // V0.99.76 : ordre d'usinage par outil (faoToolOrder) — ébauche faite AVANT dans
+  // l'ordre réel de la séquence ; opération hors séquence (désactivée) : règle de la liste.
+  if(faoToolOrder(job)!=='list'){
+    const seq=faoOpsSeq(job);
+    for(let i=0;i<seq.length;i++){
+      const q=seq[i]&&seq[i].op;
+      if(q&&(q===op||(op&&op.id&&q.id===op.id)))
+        return seq.slice(0,i).some(function(E){ return E.op.type==='rough3d'||faoPocketAdapt(E.op); });
+    }
+  }
+  return faoGeoHasRroughListe(job,op);
+}
+function faoGeoHasRroughListe(job,op){
   // Ébauche 3D (rough3d) active AVANT cette opération dans le même posage ?
   // Op introuvable -> false (jamais d'hélice au doute). L'ancien « Débourrage »
   // (pocket3d) ayant été supprimé, il ne compte plus comme débourrage.

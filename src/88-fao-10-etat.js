@@ -85,6 +85,7 @@ function faoSanitiseOps(s){
     if(out.clear||out.retr||out.mode)s.planes=out; else delete s.planes;
   }else if(s.planes!==undefined)delete s.planes;
   if(s.liftMin!==undefined&&!(+s.liftMin>0))delete s.liftMin; // V0.61.0 : retrait minimum entre passes (mm)
+  if(s.toolOrder!==undefined&&s.toolOrder!=='tool'&&s.toolOrder!=='num')delete s.toolOrder; // V0.99.76 : ordre d'usinage (absent = liste)
   if(s.fixture&&typeof s.fixture==='object'){
     if(!isFinite(+s.fixture.z0))delete s.fixture.z0;
     if(!isFinite(+s.fixture.z1))delete s.fixture.z1;

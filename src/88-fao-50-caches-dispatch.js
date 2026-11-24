@@ -127,6 +127,7 @@ function faoOpMovesKey(op,job){
       if(k==='liftMin')continue; // V0.61.0 : appliqué après le calcul (faoOpLinks), aucun parcours à refaire
       if(k==='holeInfo')continue; // nature des trous d'un STEP (taraudé…) : aucun effet sur les tracés
       if(k==='struck'||k==='struckOn')continue; // V0.99.40 : posage gelé — aucun tracé ne change (gel = triangles partout, avant)
+      if(k==='toolOrder')continue; // V0.99.76 : ordre d'usinage — seules les opérations qui lisent les précédentes en dépendent (ci-dessous)
       if(k==='sketches'||k==='walls')continue; // V0.23.20 : esquisses/corps FAO -> géométrie seule (ci-dessous)
       if(k==='expr'||k==='pname'||k==='exprErr')continue; // formules ƒx (V0.95.0) : seule la valeur compte
       js[k]=typeof parSansFx==='function'?parSansFx(job[k]):job[k]; // posage vu par l'opération : son brut (repère de l'opération)
@@ -156,6 +157,12 @@ function faoOpMovesKey(op,job){
       dep=idx<0?['absent']:ops.slice(0,idx+1).filter(function(q){ return !faoIsPattern(q); }).map(function(q){
         return [q&&q.id,q&&q.type,q&&q.on!==false?1:0];
       });
+      // V0.99.76 : ordre par outil — l'ébauche peut passer après la finition (ou avant) :
+      // marquée seulement si la réponse change (entrée de la finition, faoGeoHasRrough)
+      if(faoToolOrder(job)!=='list'){
+        const hs=faoGeoHasRrough(job,op);
+        if(hs!==faoGeoHasRroughListe(job,op))dep=['ordre-ebauche',hs?1:0,dep];
+      }
     }
     // V0.99.3 : crêtes constantes — tous les fronts (plus 12 au plus) : seules ces finitions
     // sont à refaire (CACHE_VER inchangé : les autres opérations gardent leurs parcours)
