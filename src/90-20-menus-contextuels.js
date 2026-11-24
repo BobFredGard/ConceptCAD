@@ -179,18 +179,16 @@ function importLoneShapes(FR,bid){
   }catch(e){}
   return out;
 }
-function stepSaveShapes(shapes,nm,sch){
-  // Écrit les formes en STEP et télécharge « nm.step » (export du corps, d'une pièce).
+async function stepSaveShapes(shapes,nm,sch,tgt){
+  // Écrit les formes en STEP dans tgt (cadPickSave) — export du corps, d'une pièce.
   const path='/b.stp'; // chemin court fixe (cf. /o.stp de l'export global)
   try{occt.FS.unlink(path);}catch(e){}
   const bytes=occWriteStep(shapes,path,sch);
   const blob=new Blob([bytes],{type:'application/step'});
-  const a=document.createElement('a');a.href=URL.createObjectURL(blob);
-  a.download=String(nm).replace(/[\\/:*?"<>|]+/g,'-')+'.step';
-  a.click();
-  setTimeout(()=>{try{URL.revokeObjectURL(a.href);}catch(e){}},2000);
   try{occt.FS.unlink(path);}catch(e){}
-  faceEl.textContent='STEP '+stepLabel(sch)+' « '+nm+' » exporté ('+(bytes.length/1024).toFixed(1)+' Ko).';
+  tgt=tgt||{name:cadFileBase(nm)+'.step'};
+  await cadWriteFile(tgt,blob);
+  faceEl.textContent='STEP '+stepLabel(sch)+' « '+nm+' » exporté dans « '+tgt.name+' » ('+(bytes.length/1024).toFixed(1)+' Ko).';
 }
 /* ---- Une PIÈCE (ou un sous-ensemble) d'un STEP multi-corps, seule : clic droit sur sa
    ligne de l'arborescence, ou sur elle dans la vue 3D. Placement d'assemblage gardé. ---- */
@@ -203,13 +201,15 @@ async function importPieceExport(fid,occ,nm){
     if(!e||!e.brep)throw new Error('solide exact du STEP indisponible (réimportez le fichier)');
     const sch=await stepAskSchema('Export STEP « '+nm+' »');
     if(!sch)return;
+    const tgt=await cadPickSave(nm,'step','Fichier STEP','application/step');
+    if(!tgt){cadExportCancelled('STEP');return;}
     faceEl.textContent='Export STEP « '+nm+' » : pré-test…';
     const pok=(await occExportPreflight());
     if(!pok[0])throw new Error(pok[1]||'pré-test impossible');
     const S=new Set(occ||[]);
     sh=importOccShape(e.brep,o=>S.has(o));
     if(!sh)throw new Error('pièce introuvable dans le solide du STEP');
-    stepSaveShapes([sh],nm,sch);
+    await stepSaveShapes([sh],nm,sch,tgt);
   }catch(e){
     const msg=String((e&&e.message)||e||'erreur');
     faceEl.textContent='Export STEP « '+nm+' » : '+msg;
@@ -304,6 +304,8 @@ async function ctxExportStep(bid){
     if(!occHas())throw new Error('OCCT indisponible (chargement en cours ou échec — servez la page en http://)');
     const sch=await stepAskSchema('Export STEP « '+nm+' »');
     if(!sch)return;
+    const tgt=await cadPickSave(nm,'step','Fichier STEP','application/step');
+    if(!tgt){cadExportCancelled('STEP');return;}
     faceEl.textContent='Export STEP « '+nm+' » : pré-test…';
     const pok=(await occExportPreflight());
     if(!pok[0])throw new Error(pok[1]||'pré-test impossible');
@@ -311,7 +313,7 @@ async function ctxExportStep(bid){
     let pb=(FR.perBody||[]).filter(p=>p.bodyId===bid);
     if(!pb.length)pb=lone=importLoneShapes(FR,bid); // STEP seul dans ce corps
     if(!pb.length)throw new Error('rien à exporter : aucune fonction visible de ce corps dans le rejeu (⏻ éteint ?)');
-    stepSaveShapes(pb.map(p=>p.shape),nm,sch);
+    await stepSaveShapes(pb.map(p=>p.shape),nm,sch,tgt);
   }catch(e){
     const msg=String((e&&e.message)||e||'erreur');
     faceEl.textContent='Export STEP « '+nm+' » : '+msg;
