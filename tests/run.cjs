@@ -324,6 +324,7 @@ const SUITES = [
   "test_cartouche_modele",
   "test_cartouche_exterieur",
   "test_simulation_moteurs",
+  "test_sdf_brut_corps",
   "test_post_cycle800",
   "test_composants_liaisons",
   "test_composants_relations",

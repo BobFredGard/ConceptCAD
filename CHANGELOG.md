@@ -8,7 +8,7 @@ sont sorties le 2026-09-30j.
 Code dans `src/` · livrable `fusion_mvp.html` (généré par `build.js`) · architecture et
 garde-fous en tête de `src/00-entete-et-outils.js`.
 
-**760 versions**, de `2026-09-28b` à `V0.99.73` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
+**761 versions**, de `2026-09-28b` à `V0.99.74` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
 comme dans le fichier d'origine.
 
 ---
@@ -8443,3 +8443,15 @@ Manuel Fonctions 3D.
 **Correctif** (`src/89-fao-repetition.js`) : une répétition peut être la source d'une autre (fiche « Opérations répétées », ou `Ctrl+clic` sur la répétition avant **Répétition**). `faoOpsSeq` développe les répétitions récursivement : les copies de la répétition intérieure sont refaites sur chaque copie de celle qui la contient (`faoXfCompose` : décalage, rotation et miroir composés, deux miroirs rendent le sens de coupe d'origine ; une copie « autre origine » garde son déplacement, `faoXfGeo`), toujours **par opération**, à la place de la répétition la plus haute. Une répétition intérieure désactivée est transparente (ses opérations ne sont copiées que par celle qui la contient) ; l'englobante désactivée laisse l'intérieure seule, à sa place. Jamais de boucle : une répétition ne se contient pas, et celles qui la contiennent ne lui sont pas proposées (`faoPatternAncestors`, coupure de secours dans `faoPatternSanitise`). Deux « autres origines » ne se composent pas (une origine par copie). Au plus 10 000 copies par opération (`FAO_PAT_MAX`, le 100 × 100 d'avant). La fiche annonce le nombre réel de copies (`faoPatternTotal`) ; l'arbre met « ↻ » sur une répétition répétée. Perçage en cycle copié dans une autre origine ET déplacé : trous déplacés (`src/88-fao-60-postprocesseurs.js`).
 
 **Test** : `tests/test_fao_repetition.cjs` 12 à 20 (couronne de 4 trous refaite 2 fois en X : 8 trous dans le G-code, ordre par opération à travers les niveaux, intérieure ou englobante désactivée, boucles coupées, fiche, miroir de miroir, rangée refaite en G55, origines d'origines, plafond, copier / coller des trois niveaux). Manuel FAO. CACHE_VER et FORMES_VER inchangés.
+
+## V0.99.74 - Simulation lisse : brut-corps sans escalier
+
+**Constat de Fred** (STEP.conceptcad, brut depuis un solide, moteur « lisse », finesse haute) : « as-tu un moyen de le rendre plus lisse ou proche de la réalité dans le mode usinage ? », puis « Je parle des grands congés non usinés ».
+
+**Cause** : le champ de distance du brut-corps était l'écart **vertical** au dessus du corps (`z − dessus(x, y)`), lu au plus proche sur une grille de 0,5 mm. Juste sur un dessus à plat, faux sur une paroi raide : sur les grands congés, les dépouilles et le contour, la surface tombait en marches d'un pas (0,18 mm sur STEP.conceptcad), la lumière était rayée et le pied du contour en dents de scie. Le brut était aussi copié sur la carte graphique en 8 bits.
+
+**Correctif** (`src/88-fao-78-moteurs-volume.js`) : `faoSdfCreate` calcule la **vraie distance** au corps-brut. Signe : sous le dessus exact du corps à chaque colonne de la grille (`faoSdfBodyTops`, même matière qu'avant, trou d'épingle entre deux triangles bouché). Valeur : distance exacte aux triangles (`faoSdfBodyDist`, point le plus proche d'un triangle) jusqu'à 2,5 pas de la surface (`FAO_SDF_BW`, tout ce que lisent le point de contact et la normale du rendu), ±4 pas au-delà comme avant. Parcours par triangle dans la tranche autour de son plan, ligne par ligne dans le triangle élargi ; un côté partagé avec un voisin du même plan n'est élargi que de BW·tan θ (faces planes découpées en éventails). Le champ du brut part sur la carte graphique en flottants, une couche à la fois (`faoSdfCInit`), quand elle sait dessiner en 16 bits ; repli 8 bits inchangé. Le moteur « cartes » n'est pas touché.
+
+**Mesures** (STEP.conceptcad, finesse haute, 40,8 M échantillons, corps de 18 840 triangles) : champ du brut 0,79 s (boîte seule : 0,53 s ; distance aux triangles 0,15 s, dessus 0,02 s). Grands congés et coins du brut lisses dans la simulation ; poches usinées inchangées.
+
+**Test** : `tests/test_sdf_brut_corps.cjs` (cylindre R20 × 30 de 1 440 triangles : bande à 0,0008 mm de la distance exacte, aucun triangle oublié face à la force brute, paroi extraite à 0,003 mm du rayon avec des normales horizontales, volume et rainure ; toit penché en éventails comparé à la force brute ; dôme du plat au vertical à 0,014 mm ; l'ancien champ faisait 0,39 mm d'escalier). `test_simulation_moteurs` et `test_fao_brut_corps` passent. Manuel FAO. CACHE_VER et FORMES_VER inchangés.
