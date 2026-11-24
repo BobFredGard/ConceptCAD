@@ -2130,16 +2130,15 @@ function faoSetupFiche(p,setup){
   try{ bl=(typeof bodies!=='undefined'&&bodies?bodies:[]).filter(function(b){return b&&!b.ghost;}); }catch(e){}
   if(!bl.length)rB.appendChild(faoLab('Aucun corps (tout le brut).'));
   else{
+    rB.className='mf-pick-list'; // V0.99.78 : une ligne par corps (hors faoTidyRows)
     const all=setup.bodies==='all';
     const cbs=[]; // 2026-10-22-007 : cases gardées en main (faoTidyRows éclate la rangée)
     bl.forEach(function(b){
       const cb=document.createElement('input'); cb.type='checkbox'; cbs.push(cb);
       cb.checked=all||(Array.isArray(setup.bodies)&&setup.bodies.indexOf(b.id)>=0);
       const nm=(b.name||b.id)+'';
-      const lb=document.createElement('label');
-      lb.className='fao-check';
-      lb.appendChild(cb);
-      lb.appendChild(document.createTextNode(nm));
+      // V0.99.78 : liste compacte (une ligne par corps, case à gauche), comme les autres listes
+      const lb=mfPickRow(cb,nm,'',{title:'Usiner « '+nm+' » dans ce posage'});
       cb.onchange=function(){
         faoSnapshot('corps modélisés du posage');
         const checked=[];

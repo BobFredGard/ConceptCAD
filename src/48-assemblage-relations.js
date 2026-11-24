@@ -697,8 +697,11 @@ function asmRelProps(p){
     p.appendChild(mk('div','pnl-note','Relations de la pièce :'));
     const tbl=mk('div',null);tbl.style.cssText='display:flex;flex-direction:column;gap:2px;margin:2px 0 6px';
     const line=(k,i,cur)=>{const r=mk('div',null);r.style.cssText='display:flex;align-items:center;gap:6px;font-size:11px;padding:2px 4px;border-radius:4px;cursor:pointer;'+(cur?'background:rgba(10,132,255,.22)':'');
-      r.appendChild(mk('span',null,ASM_CONS[k.t].ic));const nm=mk('span',null,(k.name||('Relation '+(i+1)))+' · '+ASM_CONS[k.t].lab+' · '+asmRelGeomLab(k));nm.style.flex='1';r.appendChild(nm);
-      if(k.t!=='par')r.appendChild(mk('span',null,String(+(+k.v||0).toFixed(3)).replace('.',',')+(k.t==='angle'?'°':' mm')+(k.inv?' ⇅':'')));
+      // V0.99.78 : une ligne courte « n. nom ou type » ; type et géométries dans l'infobulle
+      r.appendChild(mk('span',null,ASM_CONS[k.t].ic));const nm=mk('span',null,(i+1)+'. '+(k.name||ASM_CONS[k.t].lab));
+      nm.style.cssText='flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis';
+      nm.title=(k.name||('Relation '+(i+1)))+' · '+ASM_CONS[k.t].lab+' · '+asmRelGeomLab(k)+(cur?'':' — clic = modifier');r.appendChild(nm);
+      if(k.t!=='par'){const vv=mk('span',null,String(+(+k.v||0).toFixed(3)).replace('.',',')+(k.t==='angle'?'°':' mm')+(k.inv?' ⇅':''));vv.style.cssText='flex:none;white-space:nowrap';r.appendChild(vv);}
       if(!cur){r.onclick=()=>asmRelEdit(i);r.title='Clic = modifier cette relation';}
       const x=mk('button','mini','×');x.title='Supprimer cette relation';x.onclick=ev=>{ev.stopPropagation();asmRelDel(cur&&R.edit<0?null:i);};r.appendChild(x);
       tbl.appendChild(r);};

@@ -138,10 +138,10 @@ const vm=require('vm');
     /* 16. fiche : la couronne est proposée dans la rangée, la rangée pas dans la couronne */
     const txt=n=>(n.textContent||'')+(n.children||[]).map(txt).join('\\n');
     let fd=document.createElement('div'); faoPatternFiche(fd,t,P2,3);
-    A(/↻ Répétition circulaire ×4/.test(txt(fd)),'fiche de la rangée : la couronne est cochable');
+    A(/\\d+\\. Rép\\. circ\\. ×4/.test(txt(fd)),'fiche de la rangée : la couronne est cochable (libellé court V0.99.78)');
     A(/8 copies de chacune de ses opérations/.test(txt(fd)),'fiche de la rangée : 8 copies annoncées');
     fd=document.createElement('div'); faoPatternFiche(fd,t,P1,2);
-    A(!/Répétition rectangulaire/.test(txt(fd)),'fiche de la couronne : la rangée qui la contient n’est pas proposée');
+    A(!/Répétition rectangulaire|Rép\\. rect\\./.test(txt(fd)),'fiche de la couronne : la rangée qui la contient n’est pas proposée');
     A(/faites 8 fois en tout/.test(txt(fd)),'fiche de la couronne : faite 8 fois en tout');
 
     /* 17. symétrie de symétrie = demi-tour : sens de coupe d’origine */

@@ -373,16 +373,18 @@ function faoPatternFiche(p,setup,op,idx){
     d.appendChild(faoHelp('La copie miroir inverse le sens de coupe (avalant ↔ opposition), comme dans Fusion 360.'));
   }else{
     rp.appendChild(faoLab('Origines'));
+    d.appendChild(rp);
+    // V0.99.78 : origines en petites cases côte à côte (passent à la ligne au besoin, jamais hors du panneau)
+    const ro=document.createElement('div'); ro.className='mf-pick-chips';
     FAO_WCS_ALL.forEach(function(c){
       if(c===(setup.wcs||'G54'))return;
-      const lab=document.createElement('label'); lab.style.marginRight='6px';
       const k=document.createElement('input'); k.type='checkbox'; k.checked=(op.wcs||[]).indexOf(c)>=0;
       k.onchange=function(){ faoSnapshot('origines de la répétition');
         const w=(op.wcs||[]).filter(function(x){return x!==c;}); if(k.checked)w.push(c);
         op.wcs=FAO_WCS_ALL.filter(function(x){return w.indexOf(x)>=0;}); faoChanged(); };
-      lab.appendChild(k); lab.appendChild(document.createTextNode(' '+c)); rp.appendChild(lab);
+      ro.appendChild(mfPickRow(k,c,'',{title:'Refaire les parcours dans l’origine '+c}));
     });
-    d.appendChild(rp);
+    d.appendChild(ro);
     d.appendChild(faoHelp('Le programme usine d’abord dans '+(setup.wcs||'G54')+' (origine du posage), puis refait les mêmes parcours dans chaque origine cochée — à régler sur la CN.'));
   }
   // sources : opérations et autres répétitions (V0.99.73), sauf celles qui contiennent
@@ -393,22 +395,24 @@ function faoPatternFiche(p,setup,op,idx){
   if(!ops.length)d.appendChild(faoHelp('Aucune opération dans ce posage.'));
   ops.forEach(function(o){
     const owner=(setup.ops||[]).filter(function(q){ return faoIsPattern(q)&&q!==op&&(q.srcs||[]).indexOf(o.id)>=0; })[0];
-    const rr=faoRow();
     const k=document.createElement('input'); k.type='checkbox'; k.checked=(op.srcs||[]).indexOf(o.id)>=0;
     const pat=faoIsPattern(o);
     const fr=!pat&&!!o.frame&&faoPatternGeo(op);
+    const nOwn=owner?((setup.ops||[]).indexOf(owner)+1):0;
     k.disabled=!!owner;
-    k.title=owner?'Déjà dans une autre répétition'
-      :(pat?'Répéter cette répétition : toutes ses copies sont refaites sur chaque copie de celle-ci'
-        :(fr?'Repère propre (3+2) : seul l’original est usiné, pas de copie déplacée':'Répéter cette opération'));
     k.onchange=function(){ faoSnapshot('opérations de la répétition');
       const s2=(op.srcs||[]).filter(function(x){return x!==o.id;}); if(k.checked)s2.push(o.id);
       op.srcs=(setup.ops||[]).filter(function(q){return s2.indexOf(q.id)>=0;}).map(function(q){return q.id;}); faoChanged(); };
-    rr.appendChild(k);
-    const lb=document.createElement('span');
-    lb.textContent=((setup.ops||[]).indexOf(o)+1)+'. '+(pat?'↻ ':'')+faoOpShortLabel(o)+(o.on===false?' (désactivée)':'')+(owner?' — dans une autre répétition':'')+(fr?' — repère propre : original seul':'');
-    rr.appendChild(lb);
-    d.appendChild(rr);
+    // V0.99.78 : une ligne courte, comme l'arbre (« 3. Répétition rect. ×3 ↻7 ») ; le détail est dans l'infobulle
+    const lab=faoOpShortLabel(o);
+    const info=[((setup.ops||[]).indexOf(o)+1)+'. '+lab];
+    if(o.on===false)info.push('Désactivée (○ dans l’arbre)');
+    info.push(owner?('Déjà dans la répétition n° '+nOwn)
+      :(pat?'Répéter cette répétition : toutes ses copies sont refaites sur chaque copie de celle-ci'
+        :(fr?'Repère propre (3+2) : seul l’original est usiné, pas de copie déplacée':'Répéter cette opération')));
+    d.appendChild(mfPickRow(k,((setup.ops||[]).indexOf(o)+1)+'. '+lab.replace(/^Répétition /,'Rép. ').replace(/rectangulaire/,'rect.').replace(/circulaire/,'circ.'),
+      (owner?'↻'+nOwn:'')+(fr?(owner?' ':'')+'3+2':''),
+      {off:o.on===false||!!owner,title:info.join(' — ')}));
   });
   const nS=(op.srcs||[]).length, nC=faoPatternCount(setup,op);
   d.appendChild(faoHelp(nS

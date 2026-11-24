@@ -140,7 +140,8 @@ function repSourceList(base,onChange,onTick,rp){
       const aval=!repAmont(f.id,rp);
       const s=document.createElement('span');s.style.flex='1';
       s.textContent=(aval?'⚠ ':'')+featIconOf(f)+' '+f.name;
-      s.title=aval?'Placée APRÈS la répétition : une répétition ne doit répéter que des fonctions antérieures — retirez-la.':repCanFeatureHint(f);
+      const hh=aval?'Placée APRÈS la répétition : une répétition ne doit répéter que des fonctions antérieures — retirez-la.':repCanFeatureHint(f);
+      s.title=f.name+(hh?' — '+hh:''); // V0.99.78 : nom complet (la ligne est coupée par « … »)
       if(aval)s.style.color='var(--warn)';
       const x=document.createElement('button');x.className='mini repsrcdel';x.textContent='✕';x.title='Retirer « '+f.name+' » de la répétition';
       x.style.cssText='padding:0 5px;flex:none';

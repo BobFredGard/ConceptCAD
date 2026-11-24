@@ -410,7 +410,7 @@ input[type=range]{accent-color:var(--primary);width:100%}
  * peut changer sans rien casser. CACHE_VER (parcours FAO) reste indépendant.
  */
 
-const APP_VER='V0.99.77';
+const APP_VER='V0.99.78';
 try{console.log('[ConceptCAD] version '+APP_VER);}catch(e){}
 try{var mfSv=document.getElementById('mfSplashVer');if(mfSv)mfSv.textContent=APP_VER;}catch(e){} // écran de démarrage
 
@@ -13721,7 +13721,8 @@ function repSourceList(base,onChange,onTick,rp){
       const aval=!repAmont(f.id,rp);
       const s=document.createElement('span');s.style.flex='1';
       s.textContent=(aval?'⚠ ':'')+featIconOf(f)+' '+f.name;
-      s.title=aval?'Placée APRÈS la répétition : une répétition ne doit répéter que des fonctions antérieures — retirez-la.':repCanFeatureHint(f);
+      const hh=aval?'Placée APRÈS la répétition : une répétition ne doit répéter que des fonctions antérieures — retirez-la.':repCanFeatureHint(f);
+      s.title=f.name+(hh?' — '+hh:''); // V0.99.78 : nom complet (la ligne est coupée par « … »)
       if(aval)s.style.color='var(--warn)';
       const x=document.createElement('button');x.className='mini repsrcdel';x.textContent='✕';x.title='Retirer « '+f.name+' » de la répétition';
       x.style.cssText='padding:0 5px;flex:none';
@@ -15898,16 +15899,18 @@ function renderProps(){
       if(f._adj&&!f._err){const e=document.createElement('div');e.style.cssText='font-size:.78rem;color:var(--warn);background:rgba(255,159,10,.09);border:1px solid rgba(255,159,10,.3);border-radius:6px;padding:5px 7px;margin-top:6px';e.textContent='⚠ '+f._adj;p.appendChild(e);} // V0.44.1 : rayon ramené (20)
       const lst=document.createElement('div');lst.className='col';lst.style.marginTop='6px';lst.style.maxHeight='180px';lst.style.overflow='auto';
       (f.edges||[]).forEach((s,i)=>{
-        const r=document.createElement('div');r.className='tnode';
+        // V0.99.78 : une ligne courte « icône  n. nom  [valeur] ✕ » ; position et repère ⌖ dans l'infobulle
         const k=xKindOf(f),dp=xDimPrefix(k);
-        r.innerHTML=`<span>${xIcon(k)}</span><span class="nm">${s.name?`<b>${s.name}</b> · `:''}${dp} <b>${s.r}</b>${s.anchor?' ⌖':''} · (${s.pos.map(v=>v.toFixed(1)).join(', ')})</span>`;
+        const r=mfPickRow(null,s.name||('Arête '+(i+1)),s.anchor?'⌖':'',
+          {title:(s.name||'Arête '+(i+1))+' · '+dp+' '+s.r+(s.anchor?' · ⌖ arête ancrée':'')+' · ('+s.pos.map(v=>v.toFixed(1)).join(', ')+')'});
+        const ic=document.createElement('span');ic.className='mf-pick-i';ic.textContent=xIcon(k);r.insertBefore(ic,r.firstChild);
         const num=document.createElement('input');num.type='text';num.inputMode='decimal';num.value=s.r;num.title=(f.chamfer?'Distance':'Rayon')+' de cette arête';parFx(num,s,'r');
         num.onclick=ev=>ev.stopPropagation();
         const c2=()=>{const v=parseFloat(String(num.value).replace(',','.'));if(v>0&&isFinite(v)){s.r=v;repSyncForFeature(f);markDirty();rebuildEdit();renderProps();}};
         num.addEventListener('change',c2);num.addEventListener('blur',c2);
         num.addEventListener('keydown',e=>{if(e.key==='Enter'){c2();num.blur();}e.stopPropagation();});
         r.appendChild(num);
-        const x=document.createElement('span');x.textContent='✕';x.title='Retirer';x.style.cursor='pointer';
+        const x=document.createElement('span');x.textContent='✕';x.title='Retirer';x.className='mf-pick-x';
         x.onclick=ev=>{ev.stopPropagation();f.edges.splice(i,1);f.name=xFeatName(f);repSyncForFeature(f);markDirty();rebuildEdit();renderProps();};
         r.appendChild(x);lst.appendChild(r);
       });
@@ -23351,8 +23354,11 @@ function asmRelProps(p){
     p.appendChild(mk('div','pnl-note','Relations de la pièce :'));
     const tbl=mk('div',null);tbl.style.cssText='display:flex;flex-direction:column;gap:2px;margin:2px 0 6px';
     const line=(k,i,cur)=>{const r=mk('div',null);r.style.cssText='display:flex;align-items:center;gap:6px;font-size:11px;padding:2px 4px;border-radius:4px;cursor:pointer;'+(cur?'background:rgba(10,132,255,.22)':'');
-      r.appendChild(mk('span',null,ASM_CONS[k.t].ic));const nm=mk('span',null,(k.name||('Relation '+(i+1)))+' · '+ASM_CONS[k.t].lab+' · '+asmRelGeomLab(k));nm.style.flex='1';r.appendChild(nm);
-      if(k.t!=='par')r.appendChild(mk('span',null,String(+(+k.v||0).toFixed(3)).replace('.',',')+(k.t==='angle'?'°':' mm')+(k.inv?' ⇅':'')));
+      // V0.99.78 : une ligne courte « n. nom ou type » ; type et géométries dans l'infobulle
+      r.appendChild(mk('span',null,ASM_CONS[k.t].ic));const nm=mk('span',null,(i+1)+'. '+(k.name||ASM_CONS[k.t].lab));
+      nm.style.cssText='flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis';
+      nm.title=(k.name||('Relation '+(i+1)))+' · '+ASM_CONS[k.t].lab+' · '+asmRelGeomLab(k)+(cur?'':' — clic = modifier');r.appendChild(nm);
+      if(k.t!=='par'){const vv=mk('span',null,String(+(+k.v||0).toFixed(3)).replace('.',',')+(k.t==='angle'?'°':' mm')+(k.inv?' ⇅':''));vv.style.cssText='flex:none;white-space:nowrap';r.appendChild(vv);}
       if(!cur){r.onclick=()=>asmRelEdit(i);r.title='Clic = modifier cette relation';}
       const x=mk('button','mini','×');x.title='Supprimer cette relation';x.onclick=ev=>{ev.stopPropagation();asmRelDel(cur&&R.edit<0?null:i);};r.appendChild(x);
       tbl.appendChild(r);};
@@ -36755,9 +36761,9 @@ function derPickDlg(name,params,bodies){
         const b=document.createElement('button');b.textContent=t;b.style.cssText='font-weight:400;font-size:12px;padding:1px 8px';
         b.onclick=()=>out.forEach(x=>{x.c.checked=v;});h.appendChild(b);});
       box.appendChild(h);
-      items.forEach(o=>{const l=document.createElement('label');l.style.cssText='display:flex;gap:7px;align-items:center;padding:2px 0;cursor:pointer';
-        const c=document.createElement('input');c.type='checkbox';c.checked=val(o);l.appendChild(c);
-        const n=document.createElement('span');n.textContent=label(o);l.appendChild(n);box.appendChild(l);out.push({o,c});});
+      // V0.99.78 : une ligne par élément (liste compacte, nom complet dans l'infobulle)
+      items.forEach(o=>{const c=document.createElement('input');c.type='checkbox';c.checked=val(o);
+        const l=mfPickRow(c,label(o),'',{title:label(o)});l.style.cursor='pointer';box.appendChild(l);out.push({o,c});});
       return out;
     };
     const fmt=v=>String(+(+v).toFixed(4)).replace('.',',');
@@ -46954,9 +46960,14 @@ function renderExactPanel(){
   const lst=document.createElement('div');lst.className='col';lst.style.marginTop='6px';lst.style.maxHeight='220px';lst.style.overflow='auto';
   if(!filModeX.sel.length)lst.innerHTML='<span class="note">Arêtes issues des découpes incluses — tout est cliquable.</span>';
   filModeX.sel.forEach((s,i)=>{
-    const r=document.createElement('div');r.className='tnode';
     const eLen=(filModeX.edges.find(e=>Math.hypot(e.mid[0]-s.pos[0],e.mid[1]-s.pos[1],e.mid[2]-s.pos[2])<0.75)||{len:0}).len;
-    r.innerHTML=`<span>${s._perdue?'⚠':xIcon(k)}</span><span class="nm">${s._perdue?'<b>perdue</b> · ':''}${s.name?`<b>${s.name}</b> · `:''}${dp} <b>${xRvTexte(s)}</b> · L${eLen.toFixed(1)}${s.anchor?' · ⌖':''} · (${s.pos.map(v=>v.toFixed(1)).join(', ')})</span><span title="Retirer">✕</span>`;
+    // V0.99.78 : une ligne courte « icône  n. nom  [valeur] ✕ » ; longueur, position et ⌖ dans l'infobulle
+    // (clic sur la ligne = retirer l'arête, comme avant)
+    const r=mfPickRow(null,(s.name||('Arête '+(i+1)))+(s._perdue?' perdue':''),s.anchor?'⌖':'',
+      {warn:!!s._perdue,title:(s._perdue?'⚠ Arête perdue · ':'')+(s.name||'Arête '+(i+1))+' · '+dp+' '+xRvTexte(s)+' · L '+eLen.toFixed(1)+' mm'
+        +(s.anchor?' · ⌖ arête ancrée':'')+' · ('+s.pos.map(v=>v.toFixed(1)).join(', ')+') — clic sur la ligne = retirer'});
+    r.style.cursor='pointer';
+    const ic=document.createElement('span');ic.className='mf-pick-i';ic.textContent=s._perdue?'⚠':xIcon(k);r.insertBefore(ic,r.firstChild);
     if(filModeX.vari&&s.rv){
       // départ, ⇄, arrivée
       const mkI=(key,tt)=>{
@@ -46989,6 +47000,7 @@ function renderExactPanel(){
         if(ei>=0)xSeedDel(ei);else filModeX.sel.splice(i,1);
         xSelSync();paintExact();renderExactPanel();
       };
+      const xv=document.createElement('span');xv.className='mf-pick-x';xv.textContent='✕';xv.title='Retirer';r.appendChild(xv);
       lst.appendChild(r);
       return;
     }
@@ -47013,6 +47025,7 @@ function renderExactPanel(){
       if(ei>=0)xSeedDel(ei);else filModeX.sel.splice(i,1);
       xSelSync();paintExact();renderExactPanel();
     };
+    const xv=document.createElement('span');xv.className='mf-pick-x';xv.textContent='✕';xv.title='Retirer';r.appendChild(xv);
     lst.appendChild(r);
   });
   p.appendChild(lst);
@@ -47280,14 +47293,18 @@ function renderFilletPanel(){
     const lst=document.createElement('div');lst.className='col';lst.style.marginTop='6px';
     if(!filMode.sel.length&&!hasR)lst.innerHTML='<span class="note">Cliquez des arêtes ou une face dans la vue 3D.</span>';
     filMode.sel.forEach((s,i)=>{
-      const r=document.createElement('div');r.className='tnode';
-      r.innerHTML=`<span>⤢</span><span class="nm">Verticale (${s.x}, ${s.y})</span><span title="Retirer">✕</span>`;
+      // V0.99.78 : ligne courte (liste compacte, voir mfPickRow) ; clic = retirer
+      const r=mfPickRow(null,'⤢ Verticale ('+s.x+', '+s.y+')','',{title:'Arête verticale ('+s.x+', '+s.y+') — clic = retirer'});
+      r.style.cursor='pointer';
+      const xv=document.createElement('span');xv.className='mf-pick-x';xv.textContent='✕';r.appendChild(xv);
       r.onclick=()=>{filMode.sel.splice(i,1);paintFilletEdges();renderFilletPanel();};
       lst.appendChild(r);
     });
     if(hasR){
-      const r=document.createElement('div');r.className='tnode';
-      r.innerHTML=`<span>⤢</span><span class="nm">Périmètre ${filMode.rims.top&&filMode.rims.bottom?'haut+bas':(filMode.rims.top?'haut':'bas')} (arrondi R${filMode.radius})</span><span title="Retirer">✕</span>`;
+      const pt='Périmètre '+(filMode.rims.top&&filMode.rims.bottom?'haut+bas':(filMode.rims.top?'haut':'bas'));
+      const r=mfPickRow(null,'⤢ '+pt,'R'+filMode.radius,{title:pt+' (arrondi R'+filMode.radius+') — clic = retirer'});
+      r.style.cursor='pointer';
+      const xv=document.createElement('span');xv.className='mf-pick-x';xv.textContent='✕';r.appendChild(xv);
       r.onclick=()=>{filMode.rims.top=false;filMode.rims.bottom=false;paintFilletEdges();renderFilletPanel();};
       lst.appendChild(r);
     }
@@ -47802,12 +47819,11 @@ function renderMvPanel(){
   if(mvMode.faces.length){
     const lst=document.createElement('div');lst.className='lst';
     mvMode.faces.forEach((fr,i)=>{
-      const r2=document.createElement('div');r2.className='item';
-      const s=document.createElement('span');
       const nt=mvMode.tangent?mvChainOf(fr).length:0;
       const pd=fr._perdue!=null?fr._perdue:fr._ord<0;
-      s.textContent=(pd?'⚠ perdue ':'✅ ')+'▸ centre ('+fr.pos.map(v=>(+v).toFixed(1)).join(' ; ')+') mm'+(nt?' + '+nt+' tangente'+(nt>1?'s':''):'');
-      r2.appendChild(s);
+      // V0.99.78 : ligne courte « Face n » (+ tangentes), centre dans l'infobulle
+      const r2=mfPickRow(null,(pd?'⚠ ':'')+'Face '+(i+1)+(pd?' perdue':''),nt?'+'+nt+' tang.':'',
+        {cls:'item',warn:pd,title:(pd?'⚠ Face perdue · ':'')+'Centre ('+fr.pos.map(v=>(+v).toFixed(1)).join(' ; ')+') mm'+(nt?' + '+nt+' tangente'+(nt>1?'s':''):'')});
       if(fr._perdue)r2.appendChild(remplacerBtn(mvMode.remp===i,()=>{mvMode.remp=mvMode.remp===i?null:i;renderMvPanel();mvHelp();}));
       const x=document.createElement('button');x.textContent='✕';x.title='Retirer cette face';
       x.onclick=()=>{mvMode.faces.splice(i,1);const ip=mvMode.faces.findIndex(r=>r._perdue);mvMode.remp=mvMode.remp!=null&&ip>=0?ip:null;mvPaint();renderMvPanel();mvHelp();};
@@ -48995,10 +49011,10 @@ function renderSplitPanel(){
     if(S.faces.length){
       const lst=document.createElement('div');lst.className='lst';
       S.faces.forEach((r,i)=>{
-        const it=document.createElement('div');it.className='item';
-        const s=document.createElement('span');
-        s.textContent=(r._ord>=0?'✅ ':'⚠ ')+'▸ '+(r.st==='Plane'?'face plane':'face '+(r.st||'')).trim()+' ('+r.pos.map(v=>(+v).toFixed(1)).join(' ; ')+')';
-        it.appendChild(s);
+        // V0.99.78 : ligne courte « Face n », type et centre dans l'infobulle
+        const ko=!(r._ord>=0);
+        const it=mfPickRow(null,(ko?'⚠ ':'')+'Face '+(i+1),r.st==='Plane'?'plane':'',
+          {cls:'item',warn:ko,title:(ko?'⚠ Face introuvable · ':'')+(r.st==='Plane'?'Face plane':('Face '+(r.st||'')).trim())+' · centre ('+r.pos.map(v=>(+v).toFixed(1)).join(' ; ')+')'});
         const x=document.createElement('button');x.textContent='✕';x.title='Retirer cette face';
         x.onclick=()=>{S.faces.splice(i,1);splitPaint();renderSplitPanel();};
         it.appendChild(x);lst.appendChild(it);
@@ -49748,10 +49764,10 @@ function renderDraftPanel(){
     }
     const lst=document.createElement('div');lst.className='lst';
     draftMode.faces.forEach((fr,i)=>{
-      const r2=document.createElement('div');r2.className='item';
-      const s=document.createElement('span');
-      s.textContent=(fr._ord>=0?'✅ ':'⚠ ')+'▸ centre ('+fr.pos.map(v=>(+v).toFixed(1)).join(' ; ')+') mm';
-      r2.appendChild(s);
+      // V0.99.78 : ligne courte « Face n », centre dans l'infobulle
+      const ko=!(fr._ord>=0);
+      const r2=mfPickRow(null,(ko?'⚠ ':'')+'Face '+(i+1),'',
+        {cls:'item',warn:ko,title:(ko?'⚠ Face introuvable sur le solide actuel · ':'')+'Centre ('+fr.pos.map(v=>(+v).toFixed(1)).join(' ; ')+') mm'});
       const x=document.createElement('button');x.textContent='✕';x.title='Retirer cette face';
       x.onclick=()=>{draftMode.faces.splice(i,1);draftPaint();renderDraftPanel();};
       r2.appendChild(x);lst.appendChild(r2);
@@ -50850,11 +50866,10 @@ function renderCoquePanel(){
     }
     const lst=document.createElement('div');lst.className='lst';
     coqueMode.faces.forEach((fr,i)=>{
-      const r2=document.createElement('div');r2.className='item';
-      const s=document.createElement('span');
       const pd=fr._perdue!=null?fr._perdue:fr._ord<0;
-      s.textContent=(pd?'⚠ perdue ':'✅ ')+'▸ centre ('+fr.pos.map(v=>(+v).toFixed(1)).join(' ; ')+') mm — '+(del?'sera supprimée':'sera retirée (ouverture)');
-      r2.appendChild(s);
+      // V0.99.78 : ligne courte « Face n », centre et rôle dans l'infobulle
+      const r2=mfPickRow(null,(pd?'⚠ ':'')+'Face '+(i+1)+(pd?' perdue':''),'',
+        {cls:'item',warn:pd,title:(pd?'⚠ Face perdue · ':'')+'Centre ('+fr.pos.map(v=>(+v).toFixed(1)).join(' ; ')+') mm — '+(del?'sera supprimée':'sera retirée (ouverture)')});
       if(fr._perdue)r2.appendChild(remplacerBtn(coqueMode.remp===i,()=>{coqueMode.remp=coqueMode.remp===i?null:i;renderCoquePanel();coqueRempHelp();}));
       const x=document.createElement('button');x.textContent='✕';x.title='Retirer cette face';
       x.onclick=()=>{coqueMode.faces.splice(i,1);if(coqueMode.remp!=null){const ip=coqueMode.faces.findIndex(r=>r._perdue);coqueMode.remp=ip>=0?ip:null;}coquePaint();coquePreviewUpdate();renderCoquePanel();coqueRempHelp();};
@@ -63035,16 +63050,15 @@ function faoSetupFiche(p,setup){
   try{ bl=(typeof bodies!=='undefined'&&bodies?bodies:[]).filter(function(b){return b&&!b.ghost;}); }catch(e){}
   if(!bl.length)rB.appendChild(faoLab('Aucun corps (tout le brut).'));
   else{
+    rB.className='mf-pick-list'; // V0.99.78 : une ligne par corps (hors faoTidyRows)
     const all=setup.bodies==='all';
     const cbs=[]; // 2026-10-22-007 : cases gardées en main (faoTidyRows éclate la rangée)
     bl.forEach(function(b){
       const cb=document.createElement('input'); cb.type='checkbox'; cbs.push(cb);
       cb.checked=all||(Array.isArray(setup.bodies)&&setup.bodies.indexOf(b.id)>=0);
       const nm=(b.name||b.id)+'';
-      const lb=document.createElement('label');
-      lb.className='fao-check';
-      lb.appendChild(cb);
-      lb.appendChild(document.createTextNode(nm));
+      // V0.99.78 : liste compacte (une ligne par corps, case à gauche), comme les autres listes
+      const lb=mfPickRow(cb,nm,'',{title:'Usiner « '+nm+' » dans ce posage'});
       cb.onchange=function(){
         faoSnapshot('corps modélisés du posage');
         const checked=[];
@@ -77570,27 +77584,22 @@ function faoDrillSections(setup,op,d){
     const holes=faoWithOpFrame(op,function(){return faoHolesDetect();}); // repère de l'opération (3+2)
     if(!holes.length){const n=document.createElement('div');n.className='fao-empty';n.textContent='Aucun trou vertical reconnu sur le modèle (noyau exact requis).';d.appendChild(n);}
     faoHoleGroups(holes).forEach(function(g){
-      const r=faoRow();
       const cb=document.createElement('input');cb.type='checkbox';cb.checked=faoHoleInSel(op,{d:g.d,ztop:g.z});
       cb.onchange=function(){faoHoleToggle(setup,op,g.d,g.z);};
-      r.appendChild(cb);
       const h0=g.holes[0];
-      const s=document.createElement('span');s.className='fao-meta';
-      s.textContent='Ø'+(+g.d.toFixed(2))+' × '+g.holes.length+' · Z '+(+g.z.toFixed(2))+' → '+(+h0.zbot.toFixed(2))+' · '+(h0.through?'débouchant':'borgne')+
+      // V0.99.78 : une ligne courte « Ø6.6 × 4 · déb. » + nature (M6, H7…) ; le reste dans l'infobulle
+      const det='Ø'+(+g.d.toFixed(2))+' × '+g.holes.length+' · Z '+(+g.z.toFixed(2))+' → '+(+h0.zbot.toFixed(2))+' · '+(h0.through?'débouchant':'borgne')+
         (h0.tipAng?(' · pointe '+h0.tipAng+'°'):'')+(h0.chD?(' · chanfrein Ø'+(+h0.chD.toFixed(2))):'')+(h0.cb?(' · lamage Ø'+h0.cb.d):'')+(h0.pre?(' · sous avant-trou Ø'+h0.pre.d):'');
-      r.appendChild(s);
       // nature : reconnue (fonction Perçage) ou choisie (STEP) — trou lisse / taraudé
       const fe=g.holes.find(function(h){return h.feat;});
-      if(fe&&fe.feat.thread){
-        const t=document.createElement('span');t.className='fao-meta';t.style.color='#ff9f0a';
-        t.textContent='taraudé '+holeThreadLabel(fe.feat.thread)+' (fonction Perçage)';r.appendChild(t);
-      }else if(fe&&fe.feat.role==='lamage'){
-        const t=document.createElement('span');t.className='fao-meta';t.textContent='lamage (fonction Perçage)';r.appendChild(t);
-      }else if(fe&&fe.feat.role==='avant-trou'){
-        const t=document.createElement('span');t.className='fao-meta';t.textContent='avant-trou d’un double perçage (fonction Perçage)';r.appendChild(t);
-      }else if(fe&&fe.feat.role==='alesage'){
-        const t=document.createElement('span');t.className='fao-meta';t.style.color='#ff9f0a';t.textContent='alésé '+fe.feat.tol+' (fonction Perçage)';r.appendChild(t);
-      }else if(!fe){
+      let mk='',mkCol='',nat='';
+      if(fe&&fe.feat.thread){ mk=holeThreadLabel(fe.feat.thread); mkCol='#ff9f0a'; nat='taraudé '+mk+' (fonction Perçage)'; }
+      else if(fe&&fe.feat.role==='lamage'){ mk='lamage'; nat='lamage (fonction Perçage)'; }
+      else if(fe&&fe.feat.role==='avant-trou'){ mk='avant-trou'; nat='avant-trou d’un double perçage (fonction Perçage)'; }
+      else if(fe&&fe.feat.role==='alesage'){ mk=String(fe.feat.tol||'alésé'); mkCol='#ff9f0a'; nat='alésé '+fe.feat.tol+' (fonction Perçage)'; }
+      const r=mfPickRow(cb,'Ø'+(+g.d.toFixed(2))+' × '+g.holes.length+' · '+(h0.through?'déb.':'borgne'),mk,
+        {markColor:mkCol,title:det+(nat?' — '+nat:'')});
+      if(!fe){
         const key=g.d.toFixed(2)+'@'+g.z.toFixed(2);
         const info=(setup.holeInfo&&setup.holeInfo[key])||{};
         const opts=faoStepHoleOpts(g,holes); // V0.99.9 : + alésé, lamage, fraisure
@@ -79772,16 +79781,18 @@ function faoPatternFiche(p,setup,op,idx){
     d.appendChild(faoHelp('La copie miroir inverse le sens de coupe (avalant ↔ opposition), comme dans Fusion 360.'));
   }else{
     rp.appendChild(faoLab('Origines'));
+    d.appendChild(rp);
+    // V0.99.78 : origines en petites cases côte à côte (passent à la ligne au besoin, jamais hors du panneau)
+    const ro=document.createElement('div'); ro.className='mf-pick-chips';
     FAO_WCS_ALL.forEach(function(c){
       if(c===(setup.wcs||'G54'))return;
-      const lab=document.createElement('label'); lab.style.marginRight='6px';
       const k=document.createElement('input'); k.type='checkbox'; k.checked=(op.wcs||[]).indexOf(c)>=0;
       k.onchange=function(){ faoSnapshot('origines de la répétition');
         const w=(op.wcs||[]).filter(function(x){return x!==c;}); if(k.checked)w.push(c);
         op.wcs=FAO_WCS_ALL.filter(function(x){return w.indexOf(x)>=0;}); faoChanged(); };
-      lab.appendChild(k); lab.appendChild(document.createTextNode(' '+c)); rp.appendChild(lab);
+      ro.appendChild(mfPickRow(k,c,'',{title:'Refaire les parcours dans l’origine '+c}));
     });
-    d.appendChild(rp);
+    d.appendChild(ro);
     d.appendChild(faoHelp('Le programme usine d’abord dans '+(setup.wcs||'G54')+' (origine du posage), puis refait les mêmes parcours dans chaque origine cochée — à régler sur la CN.'));
   }
   // sources : opérations et autres répétitions (V0.99.73), sauf celles qui contiennent
@@ -79792,22 +79803,24 @@ function faoPatternFiche(p,setup,op,idx){
   if(!ops.length)d.appendChild(faoHelp('Aucune opération dans ce posage.'));
   ops.forEach(function(o){
     const owner=(setup.ops||[]).filter(function(q){ return faoIsPattern(q)&&q!==op&&(q.srcs||[]).indexOf(o.id)>=0; })[0];
-    const rr=faoRow();
     const k=document.createElement('input'); k.type='checkbox'; k.checked=(op.srcs||[]).indexOf(o.id)>=0;
     const pat=faoIsPattern(o);
     const fr=!pat&&!!o.frame&&faoPatternGeo(op);
+    const nOwn=owner?((setup.ops||[]).indexOf(owner)+1):0;
     k.disabled=!!owner;
-    k.title=owner?'Déjà dans une autre répétition'
-      :(pat?'Répéter cette répétition : toutes ses copies sont refaites sur chaque copie de celle-ci'
-        :(fr?'Repère propre (3+2) : seul l’original est usiné, pas de copie déplacée':'Répéter cette opération'));
     k.onchange=function(){ faoSnapshot('opérations de la répétition');
       const s2=(op.srcs||[]).filter(function(x){return x!==o.id;}); if(k.checked)s2.push(o.id);
       op.srcs=(setup.ops||[]).filter(function(q){return s2.indexOf(q.id)>=0;}).map(function(q){return q.id;}); faoChanged(); };
-    rr.appendChild(k);
-    const lb=document.createElement('span');
-    lb.textContent=((setup.ops||[]).indexOf(o)+1)+'. '+(pat?'↻ ':'')+faoOpShortLabel(o)+(o.on===false?' (désactivée)':'')+(owner?' — dans une autre répétition':'')+(fr?' — repère propre : original seul':'');
-    rr.appendChild(lb);
-    d.appendChild(rr);
+    // V0.99.78 : une ligne courte, comme l'arbre (« 3. Répétition rect. ×3 ↻7 ») ; le détail est dans l'infobulle
+    const lab=faoOpShortLabel(o);
+    const info=[((setup.ops||[]).indexOf(o)+1)+'. '+lab];
+    if(o.on===false)info.push('Désactivée (○ dans l’arbre)');
+    info.push(owner?('Déjà dans la répétition n° '+nOwn)
+      :(pat?'Répéter cette répétition : toutes ses copies sont refaites sur chaque copie de celle-ci'
+        :(fr?'Repère propre (3+2) : seul l’original est usiné, pas de copie déplacée':'Répéter cette opération')));
+    d.appendChild(mfPickRow(k,((setup.ops||[]).indexOf(o)+1)+'. '+lab.replace(/^Répétition /,'Rép. ').replace(/rectangulaire/,'rect.').replace(/circulaire/,'circ.'),
+      (owner?'↻'+nOwn:'')+(fr?(owner?' ':'')+'3+2':''),
+      {off:o.on===false||!!owner,title:info.join(' — ')}));
   });
   const nS=(op.srcs||[]).length, nC=faoPatternCount(setup,op);
   d.appendChild(faoHelp(nS
@@ -87290,6 +87303,21 @@ function mfIcCss(){
      revenir en classique retire la classe — rien n'est déplacé ni détruit. */
 const MF_THEMES=[['nuit','Nuit (actuel)'],['graphite','Graphite'],['atelier','Atelier'],['clair','Clair'],['contraste','Contraste élevé']];
 function mfLS(k,v){try{if(v===undefined)return localStorage.getItem(k);localStorage.setItem(k,v);}catch(e){}return null;}
+function mfPickRow(input,text,mark,o){
+  // V0.99.78 : une ligne de liste à cocher des fiches (opération, fonction, corps…) — case + texte
+  // court sur UNE ligne, petit (classe .mf-pick de mfCss) ; mark = repère discret à droite
+  // (« ↻7 ») ; o.title = le détail (infobulle) ; o.off = grisé (désactivé, déjà pris…) ; o.warn = en
+  // orange (face perdue…) ; o.markColor. Sans case (input null) : ligne simple, on y ajoute ensuite
+  // champ, « Remplacer », ✕… (ils restent sur la ligne, le texte est raccourci par « … »).
+  o=o||{};
+  const r=document.createElement(input&&/^(checkbox|radio)$/.test(input.type)?'label':'div');
+  r.className='mf-pick'+(o.off?' mf-pick-off':'')+(o.warn?' mf-pick-warn':'')+(o.cls?' '+o.cls:'');
+  if(o.title)r.title=o.title;
+  if(input)r.appendChild(input);
+  const t=document.createElement('span');t.className='mf-pick-t';t.textContent=text;r.appendChild(t);
+  if(mark){const m=document.createElement('span');m.className='mf-pick-m';m.textContent=mark;if(o.markColor)m.style.color=o.markColor;r.appendChild(m);}
+  return r;
+}
 const MF_3D={nuit:[0x1c1c1e,0x141519,'#141416'],graphite:[0x202124,0x17181a,'#18191b'],atelier:[0x1c1915,0x141210,'#15130f'],clair:[0xe9ecf1,0xd7dbe2,'#e4e7ec'],contraste:[0x000000,0x050505,'#000']};
 function mf3D(t){
   // fond de la scène, sol miroir et fond du canevas assortis au thème (Clair = vue 3D claire)
@@ -87479,6 +87507,31 @@ function mfCss(){
   '#mfVpInfo #mfStEng{flex:none;color:var(--muted)}',
   '#mfVpInfo #mfStMeas{min-width:0;max-width:none;overflow:hidden;text-overflow:ellipsis}',
   'body.ui-modern aside.right>.panel.mfHideM{display:none}', /* Mesure et État : repérés par leur titre (voir mfBuildModern) */
+  /* V0.99.78 : listes à cocher des fiches (opérations, fonctions, corps…) — demande de Fred :
+     « le texte est trop gros […] réduire l'information affichée au strict minimum et sur une seule ligne ».
+     Une ligne par élément : case + texte court, petit, coupé par « … » ; le détail est dans l'infobulle. */
+  '.mf-pick{display:flex!important;flex-wrap:nowrap!important;align-items:center!important;gap:6px!important;margin:1px 0!important;padding:0!important;min-height:20px;font-size:.72rem!important;line-height:1.3!important;font-weight:400!important;color:var(--text);background:none!important;border:none!important;box-shadow:none!important;border-radius:0!important;width:auto!important;max-width:100%;min-width:0;box-sizing:border-box;cursor:default}',
+  '.mf-pick>input{margin:0!important;flex:none!important;width:auto!important}',
+  '.mf-pick>.mf-pick-t{flex:1 1 auto;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-size:inherit!important}',
+  '.mf-pick>.mf-pick-m{flex:none;color:var(--muted);font-size:.68rem;white-space:nowrap}',
+  '.mf-pick.mf-pick-off>.mf-pick-t{opacity:.5}',
+  '.mf-pick.mf-pick-warn>.mf-pick-t{color:var(--warn)}',
+  '.mf-pick-chips{display:flex;flex-wrap:wrap;gap:0 12px;margin:2px 0}',
+  '.mf-pick-chips>.mf-pick{flex:none}',
+  '.mf-pick>input:not([type=checkbox]):not([type=radio]){width:52px!important;height:22px!important;font-size:.72rem!important;padding:1px 5px!important;text-align:right}',
+  '.mf-pick>select{flex:0 1 auto!important;min-width:0!important;max-width:96px!important;height:22px!important;font-size:.7rem!important;padding:0 3px!important}',
+  '.mf-pick>button{flex:none!important;font-size:.68rem!important;padding:0 6px!important;height:20px!important;min-height:0!important;line-height:1!important;margin:0!important}',
+  '.mf-pick>.mf-pick-x{flex:none;cursor:pointer;color:var(--muted);padding:0 3px;font-size:.72rem}',
+  '.mf-pick>.mf-pick-x:hover{color:#ff6b60}',
+  '.mf-pick>.mf-pick-i{flex:none;font-size:.72rem;width:1.1em;text-align:center}',
+  /* listes déjà construites ailleurs (tests attachés à leur structure) : même taille, une ligne */
+  '#props .repSrcItem{min-height:20px;padding:0 4px!important}',
+  '#props .repSrcItem>span{font-size:.72rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}',
+  '#props .repSrcItem>button{font-size:.66rem!important;height:18px;line-height:1}',
+  '#props .repSkipBox>.row>span:first-child{font-size:.74rem}',
+  '#props .repSkipList>label{font-size:.72rem!important}',
+  /* case + libellé nu dans une rangée de fiche (« + Linéaire », « 2ᵉ direction (grille) »…) : taille des libellés */
+  '#props .row>input[type=checkbox]+span{font-size:.74rem}',
   /* esquisse (moderne) : bandeau d'esquisse à la place du ruban, panneau latéral à droite */
   'body.ui-modern.mf-sk #mfRibbon{display:none!important}',
   '#mfSkBar{margin-bottom:8px;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius)}',
@@ -100826,7 +100879,9 @@ function filmFrame(){
     if(sh.bom&&sh.bom.on){
       mepBomRows(sh).forEach(q=>{
         r=rowEl();
-        const L=document.createElement('label');L.textContent=q.rep+'. '+q.name+(q.qty>1?' ×'+q.qty:'');r.appendChild(L);
+        const L=document.createElement('label');L.textContent=q.rep+'. '+q.name+(q.qty>1?' ×'+q.qty:'');
+        L.title=L.textContent;L.style.cssText='white-space:nowrap;overflow:hidden;text-overflow:ellipsis'; // V0.99.78 : une ligne
+        r.style.flexWrap='nowrap';r.appendChild(L);
         const i=document.createElement('input');i.placeholder='Matière';i.value=(sh.bom.mat&&sh.bom.mat[q.ids[0]])||'';
         i.onchange=()=>mepEdit('nomenclature',()=>{if(!sh.bom.mat)sh.bom.mat={};sh.bom.mat[q.ids[0]]=i.value;});r.appendChild(i);
       });

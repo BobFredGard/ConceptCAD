@@ -836,9 +836,14 @@ function renderExactPanel(){
   const lst=document.createElement('div');lst.className='col';lst.style.marginTop='6px';lst.style.maxHeight='220px';lst.style.overflow='auto';
   if(!filModeX.sel.length)lst.innerHTML='<span class="note">Arêtes issues des découpes incluses — tout est cliquable.</span>';
   filModeX.sel.forEach((s,i)=>{
-    const r=document.createElement('div');r.className='tnode';
     const eLen=(filModeX.edges.find(e=>Math.hypot(e.mid[0]-s.pos[0],e.mid[1]-s.pos[1],e.mid[2]-s.pos[2])<0.75)||{len:0}).len;
-    r.innerHTML=`<span>${s._perdue?'⚠':xIcon(k)}</span><span class="nm">${s._perdue?'<b>perdue</b> · ':''}${s.name?`<b>${s.name}</b> · `:''}${dp} <b>${xRvTexte(s)}</b> · L${eLen.toFixed(1)}${s.anchor?' · ⌖':''} · (${s.pos.map(v=>v.toFixed(1)).join(', ')})</span><span title="Retirer">✕</span>`;
+    // V0.99.78 : une ligne courte « icône  n. nom  [valeur] ✕ » ; longueur, position et ⌖ dans l'infobulle
+    // (clic sur la ligne = retirer l'arête, comme avant)
+    const r=mfPickRow(null,(s.name||('Arête '+(i+1)))+(s._perdue?' perdue':''),s.anchor?'⌖':'',
+      {warn:!!s._perdue,title:(s._perdue?'⚠ Arête perdue · ':'')+(s.name||'Arête '+(i+1))+' · '+dp+' '+xRvTexte(s)+' · L '+eLen.toFixed(1)+' mm'
+        +(s.anchor?' · ⌖ arête ancrée':'')+' · ('+s.pos.map(v=>v.toFixed(1)).join(', ')+') — clic sur la ligne = retirer'});
+    r.style.cursor='pointer';
+    const ic=document.createElement('span');ic.className='mf-pick-i';ic.textContent=s._perdue?'⚠':xIcon(k);r.insertBefore(ic,r.firstChild);
     if(filModeX.vari&&s.rv){
       // départ, ⇄, arrivée
       const mkI=(key,tt)=>{
@@ -871,6 +876,7 @@ function renderExactPanel(){
         if(ei>=0)xSeedDel(ei);else filModeX.sel.splice(i,1);
         xSelSync();paintExact();renderExactPanel();
       };
+      const xv=document.createElement('span');xv.className='mf-pick-x';xv.textContent='✕';xv.title='Retirer';r.appendChild(xv);
       lst.appendChild(r);
       return;
     }
@@ -895,6 +901,7 @@ function renderExactPanel(){
       if(ei>=0)xSeedDel(ei);else filModeX.sel.splice(i,1);
       xSelSync();paintExact();renderExactPanel();
     };
+    const xv=document.createElement('span');xv.className='mf-pick-x';xv.textContent='✕';xv.title='Retirer';r.appendChild(xv);
     lst.appendChild(r);
   });
   p.appendChild(lst);
@@ -1162,14 +1169,18 @@ function renderFilletPanel(){
     const lst=document.createElement('div');lst.className='col';lst.style.marginTop='6px';
     if(!filMode.sel.length&&!hasR)lst.innerHTML='<span class="note">Cliquez des arêtes ou une face dans la vue 3D.</span>';
     filMode.sel.forEach((s,i)=>{
-      const r=document.createElement('div');r.className='tnode';
-      r.innerHTML=`<span>⤢</span><span class="nm">Verticale (${s.x}, ${s.y})</span><span title="Retirer">✕</span>`;
+      // V0.99.78 : ligne courte (liste compacte, voir mfPickRow) ; clic = retirer
+      const r=mfPickRow(null,'⤢ Verticale ('+s.x+', '+s.y+')','',{title:'Arête verticale ('+s.x+', '+s.y+') — clic = retirer'});
+      r.style.cursor='pointer';
+      const xv=document.createElement('span');xv.className='mf-pick-x';xv.textContent='✕';r.appendChild(xv);
       r.onclick=()=>{filMode.sel.splice(i,1);paintFilletEdges();renderFilletPanel();};
       lst.appendChild(r);
     });
     if(hasR){
-      const r=document.createElement('div');r.className='tnode';
-      r.innerHTML=`<span>⤢</span><span class="nm">Périmètre ${filMode.rims.top&&filMode.rims.bottom?'haut+bas':(filMode.rims.top?'haut':'bas')} (arrondi R${filMode.radius})</span><span title="Retirer">✕</span>`;
+      const pt='Périmètre '+(filMode.rims.top&&filMode.rims.bottom?'haut+bas':(filMode.rims.top?'haut':'bas'));
+      const r=mfPickRow(null,'⤢ '+pt,'R'+filMode.radius,{title:pt+' (arrondi R'+filMode.radius+') — clic = retirer'});
+      r.style.cursor='pointer';
+      const xv=document.createElement('span');xv.className='mf-pick-x';xv.textContent='✕';r.appendChild(xv);
       r.onclick=()=>{filMode.rims.top=false;filMode.rims.bottom=false;paintFilletEdges();renderFilletPanel();};
       lst.appendChild(r);
     }

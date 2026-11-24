@@ -335,7 +335,9 @@
     if(sh.bom&&sh.bom.on){
       mepBomRows(sh).forEach(q=>{
         r=rowEl();
-        const L=document.createElement('label');L.textContent=q.rep+'. '+q.name+(q.qty>1?' ×'+q.qty:'');r.appendChild(L);
+        const L=document.createElement('label');L.textContent=q.rep+'. '+q.name+(q.qty>1?' ×'+q.qty:'');
+        L.title=L.textContent;L.style.cssText='white-space:nowrap;overflow:hidden;text-overflow:ellipsis'; // V0.99.78 : une ligne
+        r.style.flexWrap='nowrap';r.appendChild(L);
         const i=document.createElement('input');i.placeholder='Matière';i.value=(sh.bom.mat&&sh.bom.mat[q.ids[0]])||'';
         i.onchange=()=>mepEdit('nomenclature',()=>{if(!sh.bom.mat)sh.bom.mat={};sh.bom.mat[q.ids[0]]=i.value;});r.appendChild(i);
       });

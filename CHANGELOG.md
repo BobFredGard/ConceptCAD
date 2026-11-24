@@ -8,7 +8,7 @@ sont sorties le 2026-09-30j.
 Code dans `src/` · livrable `fusion_mvp.html` (généré par `build.js`) · architecture et
 garde-fous en tête de `src/00-entete-et-outils.js`.
 
-**764 versions**, de `2026-09-28b` à `V0.99.77` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
+**765 versions**, de `2026-09-28b` à `V0.99.78` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
 comme dans le fichier d'origine.
 
 ---
@@ -8483,3 +8483,11 @@ Manuel Fonctions 3D.
 **Correctif** : `faoStats` (`src/88-fao-80-interface.js`) compte chaque opération autant de fois qu'elle est usinée (entrées de `faoOpsSeq`, répétitions imbriquées et désactivées comprises) : coupe, rapides et temps d'une copie × nombre de copies (une copie déplacée, tournée ou en miroir a les mêmes longueurs) ; texte « 4 op (20 avec les répétitions) · … » ; fiche d'une opération répétée : « ≈ 0.4 min × 6 copies = ≈ 2.7 min ». STEP.conceptcad : ≈ 327,8 min (simulation 326,8 min + 3 changements d'outil).
 
 **Test** : `tests/test_fao_ordre_outils.cjs` 13 : 4 opérations / 6 passages, longueur de coupe de toutes les copies, texte, répétition désactivée. Manuel FAO. CACHE_VER et FORMES_VER inchangés.
+
+## V0.99.78 - Listes des panneaux : une ligne par élément, petit texte
+
+**Demande** de Fred (capture de la fiche Répétition FAO) : « quand les menus comportent une suite d'opération, le texte est trop gros, il faudrait le réduire, réduire l'information affichée au stricte minimum et sur une seul ligne », puis « regarde tous les menus de l'application qui comporte ce type d'affichage ». Cause : ces listes posaient un texte sans taille dans le panneau (16 px au lieu de 12) qui passait à la ligne, avec tout le détail.
+
+**Correctif** : `mfPickRow` et le style `.mf-pick` (`src/97-interface-moderne.js`) : case (ou rien) + texte court sur une ligne, 0,72 rem, coupé par « … », repère discret à droite, détail dans l'infobulle, ligne grisée ou orange ; un clic sur le texte coche la case. Appliqué à : FAO « Opérations répétées » (« 3. Rép. rect. ×3 ↻7 », comme l'arbre ; `89-fao-repetition.js`), « Origines » d'une répétition (cases qui passent à la ligne), trous d'un perçage (« Ø5.5 × 4 · déb. » + M6 / H7, `89-fao-percage.js`), « Modèle à usiner » du posage (`88-fao-80-interface.js`) ; CAO : arêtes d'un congé / chanfrein exact, en fiche et à la création (nom + valeur + ✕, position dans l'infobulle ; `40-50`, `80-conges-chanfreins.js`), ancien congé, faces du déplacement de face, de la scission, de la dépouille, de la coque et de la suppression de face (« Face 2 », centre dans l'infobulle) ; « Fonctions à répéter » et « Exemplaires à enlever » de la répétition (même structure, style seulement), cases « + Linéaire » / « 2ᵉ direction » ; assemblage : relations de la pièce (« 1. Coïncidente », géométries dans l’infobulle ; non montrées à l’écran) ; PLAN : lignes de nomenclature ; boîte « Dériver ».
+
+**Test** : `tests/test_fao_repetition.cjs` 16 : libellé court « n. Rép. circ. ×4 » ; vérifié dans l'aperçu sur STEP.conceptcad et Crochet (12 px, 20 px de haut, une ligne). Manuel Interface. CACHE_VER et FORMES_VER inchangés.

@@ -243,10 +243,10 @@ function renderSplitPanel(){
     if(S.faces.length){
       const lst=document.createElement('div');lst.className='lst';
       S.faces.forEach((r,i)=>{
-        const it=document.createElement('div');it.className='item';
-        const s=document.createElement('span');
-        s.textContent=(r._ord>=0?'✅ ':'⚠ ')+'▸ '+(r.st==='Plane'?'face plane':'face '+(r.st||'')).trim()+' ('+r.pos.map(v=>(+v).toFixed(1)).join(' ; ')+')';
-        it.appendChild(s);
+        // V0.99.78 : ligne courte « Face n », type et centre dans l'infobulle
+        const ko=!(r._ord>=0);
+        const it=mfPickRow(null,(ko?'⚠ ':'')+'Face '+(i+1),r.st==='Plane'?'plane':'',
+          {cls:'item',warn:ko,title:(ko?'⚠ Face introuvable · ':'')+(r.st==='Plane'?'Face plane':('Face '+(r.st||'')).trim())+' · centre ('+r.pos.map(v=>(+v).toFixed(1)).join(' ; ')+')'});
         const x=document.createElement('button');x.textContent='✕';x.title='Retirer cette face';
         x.onclick=()=>{S.faces.splice(i,1);splitPaint();renderSplitPanel();};
         it.appendChild(x);lst.appendChild(it);

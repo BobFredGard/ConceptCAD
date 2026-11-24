@@ -465,10 +465,10 @@ function renderDraftPanel(){
     }
     const lst=document.createElement('div');lst.className='lst';
     draftMode.faces.forEach((fr,i)=>{
-      const r2=document.createElement('div');r2.className='item';
-      const s=document.createElement('span');
-      s.textContent=(fr._ord>=0?'✅ ':'⚠ ')+'▸ centre ('+fr.pos.map(v=>(+v).toFixed(1)).join(' ; ')+') mm';
-      r2.appendChild(s);
+      // V0.99.78 : ligne courte « Face n », centre dans l'infobulle
+      const ko=!(fr._ord>=0);
+      const r2=mfPickRow(null,(ko?'⚠ ':'')+'Face '+(i+1),'',
+        {cls:'item',warn:ko,title:(ko?'⚠ Face introuvable sur le solide actuel · ':'')+'Centre ('+fr.pos.map(v=>(+v).toFixed(1)).join(' ; ')+') mm'});
       const x=document.createElement('button');x.textContent='✕';x.title='Retirer cette face';
       x.onclick=()=>{draftMode.faces.splice(i,1);draftPaint();renderDraftPanel();};
       r2.appendChild(x);lst.appendChild(r2);
