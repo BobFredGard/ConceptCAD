@@ -410,7 +410,7 @@ input[type=range]{accent-color:var(--primary);width:100%}
  * peut changer sans rien casser. CACHE_VER (parcours FAO) reste indépendant.
  */
 
-const APP_VER='V0.99.66';
+const APP_VER='V0.99.67';
 try{console.log('[ConceptCAD] version '+APP_VER);}catch(e){}
 try{var mfSv=document.getElementById('mfSplashVer');if(mfSv)mfSv.textContent=APP_VER;}catch(e){} // écran de démarrage
 
@@ -52280,18 +52280,36 @@ function faoLoopFromChains(edges,chains){
   // Maillon {i,rev} : arête parcourue à l'envers si rev. Le 1er point de chaque
   // arête est conservé : la déduplication juste en dessous enlève les doublons.
   // V0.26.4 : loop3 = mêmes points avec leur Z (chanfrein sur arêtes 3D).
-  let pts=[];
+  // V0.99.66 : plusieurs chaînes (arêtes qui ne se touchent pas à 1e-4 près, ex. pièce
+  // importée) — raccordées bout à bout au plus PROCHE, retournées si besoin. Avant :
+  // mises à la suite dans l'ordre des clics → cordes croisées dans la zone (constat de Fred).
+  const parts=[];
   (chains||[]).forEach(function(ch){
+    const P=[];
     ch.forEach(function(link){
       const i=(link&&typeof link==='object')?link.i:link;
       const rev=!!(link&&typeof link==='object'&&link.rev);
       const p=(edges[i]&&edges[i].pts)||[];
       for(let k=0;k<p.length;k++){
         const q=p[rev?(p.length-1-k):k];
-        pts.push([q[0],q[1],isFinite(+q[2])?+q[2]:0]);
+        P.push([q[0],q[1],isFinite(+q[2])?+q[2]:0]);
       }
     });
+    if(P.length)parts.push(P);
   });
+  let pts=parts.length?parts.shift():[];
+  const d2=function(a,b){const dx=a[0]-b[0],dy=a[1]-b[1],dz=a[2]-b[2];return dx*dx+dy*dy+dz*dz;};
+  while(parts.length){
+    const tail=pts[pts.length-1];
+    let bi=0,bRev=false,bd=Infinity;
+    parts.forEach(function(P,j){
+      const ds=d2(tail,P[0]),de=d2(tail,P[P.length-1]);
+      if(ds<bd){bd=ds;bi=j;bRev=false;}
+      if(de<bd){bd=de;bi=j;bRev=true;}
+    });
+    const P=parts.splice(bi,1)[0];
+    pts=pts.concat(bRev?P.reverse():P);
+  }
   pts=pts.filter(function(q,i){
     if(!i)return true;
     const a=pts[i-1];
