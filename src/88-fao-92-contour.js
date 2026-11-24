@@ -214,7 +214,12 @@ function faoPtsBB(pts){
 function faoShadowShape(mesh,planes,B,r,gstep){
   // Shape du niveau : sections par plan (parité), index global dedup (distance),
   // chaînes uniques (offset), boite de validation [B.*-r,B.*+r], pas de grille.
-  const S={pl:[],hash:faoHashBuild(4),rect:[B.x0-r,B.y0-r,B.x1+r,B.y1+r],
+  // V0.99.71 : cellule d'index de 1 mm (4 avant) — les tests de paroi
+  // (faoDistSeg, rayon ≈ D/2) balayaient des cellules de 4 mm bourrées de
+  // segments ; résultat identique (index exact), ébauche 3D ≈ 1,6× plus vite.
+  // Grande pièce : cellule élargie pour garder l'index ≤ ~600 × 600.
+  const cellS=Math.max(1,Math.ceil(Math.max((+B.x1)-(+B.x0),(+B.y1)-(+B.y0),0)/600))||4;
+  const S={pl:[],hash:faoHashBuild(cellS),rect:[B.x0-r,B.y0-r,B.x1+r,B.y1+r],
     chains:[],keys:{},gstep:gstep>0?gstep:2,segs:[]};
   const seen={};
   planes.forEach(function(zz){
@@ -686,12 +691,21 @@ function faoRectRaw(x0,y0,x1,y1){
 function faoOffsetRuns(S,d){
   // Toutes les chaines du niveau offsetées a d -> morceaux valides.
   const out=[];
+  // V0.99.71 : boîtes de zone (ébauche 3D) — une chaîne décalée entièrement
+  // hors de toutes les boîtes est entièrement hors zone : son tracé serait
+  // jeté par le filtre de zone, on ne le calcule pas. Chaîne entière seulement
+  // (couper au bord des boîtes déplacerait les points gardés : parcours changés).
+  const zb=S.zb||null;
   const valid=function(p){return faoShapeValid(S,p[0],p[1],d);};
   for(let ci=0;ci<S.chains.length;ci++){
     const ch=S.chains[ci];
     if(!ch.side)ch.side=faoChainSide(ch,S);
     const raw=faoOffsetChain(ch.pts,d,ch.side);
     if(!raw)continue;
+    if(zb){ const bb=faoPtsBB(raw); let hit=false;
+      for(let k=0;k<zb.length&&!hit;k++){const b=zb[k];
+        hit=bb[0]<=b[2]&&bb[2]>=b[0]&&bb[1]<=b[3]&&bb[3]>=b[1];}
+      if(!hit)continue; }
     faoEmitRuns(S,raw,valid,out);
   }
   return faoRunsDedupGeo(out,0.05);

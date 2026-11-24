@@ -77,7 +77,34 @@ function faoZoneCtx(op,job){
     at=at1?function(x,y){ return at1(x,y)&&at2(x,y); }:at2;
     cross=cross1?function(a,b){ return cross1(a,b)||cross2(a,b); }:cross2;
   }
-  return {lim:limOK,lim2:lim2OK,D:D,chain:chain,R:R,R2:R2,at:at,cross:cross};
+  // V0.99.71 : BOÎTES DE ZONE — une boîte par contour de la zone (les ponts
+  // d'une zone multi-poches la découpent), élargie de la garantie outil + du
+  // décalage + un diamètre de sécurité. Tout point hors de toutes les boîtes
+  // est forcément hors zone : l'ébauche 3D n'y calcule plus les parois
+  // (faoShapeValid sur toute la pièce était l'essentiel du temps).
+  let boxes=null;
+  if(R){ boxes=[[R.x0-D,R.y0-D,R.x1+D,R.y1+D]]; }
+  else if(limOK&&chain){
+    const loop=limOK.loop, pb=faoLoopPonts(loop), n=loop.length;
+    const m=zr+Math.abs(isFinite(+limOK.extra)?+limOK.extra:0)+D;
+    boxes=[]; let bx=null;
+    const add=function(p){ if(!bx)bx=[1/0,1/0,-1/0,-1/0];
+      if(p[0]<bx[0])bx[0]=p[0]; if(p[1]<bx[1])bx[1]=p[1];
+      if(p[0]>bx[2])bx[2]=p[0]; if(p[1]>bx[3])bx[3]=p[1]; };
+    const flush=function(){ if(bx)boxes.push([bx[0]-m,bx[1]-m,bx[2]+m,bx[3]+m]); bx=null; };
+    for(let i=0;i+1<n;i++){
+      if(pb&&pb[i]){ flush(); continue; }
+      add(loop[i]); add(loop[i+1]);
+    }
+    flush();
+    if(!boxes.length)boxes=null;
+  }
+  return {lim:limOK,lim2:lim2OK,D:D,chain:chain,R:R,R2:R2,at:at,cross:cross,boxes:boxes};
+}
+function faoInBoxes(B,x,y){
+  for(let i=0;i<B.length;i++){const b=B[i];
+    if(x>=b[0]&&x<=b[2]&&y>=b[1]&&y<=b[3])return true;}
+  return false;
 }
 /* ===================== PLANS : DÉGAGEMENT / RETRAIT ===================== */
 // 2026-10-08-002 : plans façon Fusion360, PAR OPÉRATION (héritage posage ->
@@ -453,7 +480,9 @@ function faoZoneCuts(moves,op,job,secu){
    engagés en tête d'opération ou franchissements de la séquence. */
 function faoPolyCross(ax,ay,bx,by,loop){
   const dx=bx-ax, dy=by-ay;
+  const pb=faoLoopPonts(loop); // V0.99.71 : un pont entre deux contours n'est pas un bord
   for(let i=0,j=loop.length-1;i<loop.length;j=i++){
+    if(pb&&j===i-1&&pb[j])continue;
     const cx1=loop[j][0],cy1=loop[j][1],cx2=loop[i][0],cy2=loop[i][1];
     const ex=cx2-cx1, ey=cy2-cy1;
     const den=dx*ey-dy*ex;

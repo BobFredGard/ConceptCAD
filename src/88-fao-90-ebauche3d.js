@@ -678,6 +678,10 @@ function faoSpiralLevel(mesh,B,z,D,r,secu,zFrom,ae,entryMode,brutTop,zt,moves,op
   // zone). Cases = même membership que la spirale, transformée de distance
   // chanfrein 2 passes (distance aux cases illégales + au bord de boîte).
   const S=faoShadowShape(mesh,planes,B,r,aeA);
+  // V0.99.71 : boîtes de zone (faoZoneCtx) — hors de toutes les boîtes, le
+  // point est hors zone : ni paroi (faoOffsetRuns) ni case du masque à calculer.
+  const zB=(zoneAt&&opt&&Array.isArray(opt.zoneBoxes)&&opt.zoneBoxes.length)?opt.zoneBoxes:null;
+  if(zB)S.zb=zB;
   const rrM=Math.max(0.01,r-0.005);
   // 008 : bbox 2D de la pièce — ancre d'arc hors silhouette = pas de hélice
   // (les chaînes du cadre E0 en marge entreraient par un ressort dans l'air).
@@ -703,6 +707,7 @@ function faoSpiralLevel(mesh,B,z,D,r,secu,zFrom,ae,entryMode,brutTop,zt,moves,op
     const y=gy0+j*h;
     for(let i=0;i<nx;i++){
       const x=gx0+i*h;
+      if(zB&&!faoInBoxes(zB,x,y)){ if(snail&&!zsM)wallC[j*nx+i]=1; if(!snail||!zsM)continue; }
       if(snail){const sv=faoShapeValid(S,x,y,rrM);
         if(!sv||(zoneAt&&!zoneAt(x,y))){if(!sv||!zsM||!zsM(x,y))wallC[j*nx+i]=1;continue;}}
       else if(!faoShapeValid(S,x,y,rrM)||(zoneAt&&!zoneAt(x,y)))continue;
@@ -2866,9 +2871,9 @@ function* faoGenRough3DIt(mesh,box,ztop,zbot,o){
     if(th!==0){
       const cs=Math.cos(th), sn=Math.sin(th); // R(+th) : repère -> monde
       o=Object.assign({},o,{zoneAt:function(x,y){ return zW(x*cs-y*sn, x*sn+y*cs); },
-        zoneSafe:zS?function(x,y){ return zS(x*cs-y*sn, x*sn+y*cs); }:null});
+        zoneSafe:zS?function(x,y){ return zS(x*cs-y*sn, x*sn+y*cs); }:null,zoneBoxes:null});
     }else{
-      o=Object.assign({},o,{zoneAt:function(x,y){ return zW(y,x); },zoneSafe:zS?function(x,y){ return zS(y,x); }:null});
+      o=Object.assign({},o,{zoneAt:function(x,y){ return zW(y,x); },zoneSafe:zS?function(x,y){ return zS(y,x); }:null,zoneBoxes:null});
     }
   }
   // 2026-10-11-005 — APERÇU PROVISOIRE DANS LA POSITION DE LA PIÈCE : pendant
@@ -3069,7 +3074,7 @@ function* faoGenRough3DIt(mesh,box,ztop,zbot,o){
     // ESCARGOT : spirale centre -> faces sur le meme plan/levels, memes
     // entrees/travel ; mini-passes et finition restent conventionnelles.
     // 2026-10-08-003 : sens (avalant = sens de coupe constant) porte par opt.
-    if(esc)faoSpiralLevel(M,BB,L.z,D,D/2+L.radial,secu,zFrom,ae,entryMode,o.brutTop,zt,moves,{snail:o.mode==='anneaux'||o.mode==='contours',oneEntry:(o.mode==='anneaux'&&!!o.uneEntree)||o.mode==='contours',contours:o.mode==='contours',travelZ:tvZ,sens:o.sens,entryR:o.entryR,zoneAt:o.zoneAt,frameTouch:frameTouch,zoneDense:typeof o.protectTip==='function',stockTop:stockTopF,remBlocked:rem?rem.blocked:null,remTopAt:rem?rem.topAt:null,remPtAt:rem?rem.ptAt:null,zoneSafe:o.zoneSafe||null,
+    if(esc)faoSpiralLevel(M,BB,L.z,D,D/2+L.radial,secu,zFrom,ae,entryMode,o.brutTop,zt,moves,{snail:o.mode==='anneaux'||o.mode==='contours',oneEntry:(o.mode==='anneaux'&&!!o.uneEntree)||o.mode==='contours',contours:o.mode==='contours',travelZ:tvZ,sens:o.sens,entryR:o.entryR,zoneAt:o.zoneAt,zoneBoxes:o.zoneBoxes||null,frameTouch:frameTouch,zoneDense:typeof o.protectTip==='function',stockTop:stockTopF,remBlocked:rem?rem.blocked:null,remTopAt:rem?rem.topAt:null,remPtAt:rem?rem.ptAt:null,zoneSafe:o.zoneSafe||null,
       bullFaces:bullC?function(zz){return faoBullRingRuns(bullCtx(L.radial),zz,o.sens==='avalant',true);}:null,
       bullOK:bullC?function(x,y,zz){return bullCtx(L.radial).tipB(x,y)<=zz+1e-6;}:null});
     else faoRoughAdaptiveLevel(M,BB,L.z,D,D/2+L.radial,secu,zFrom,ae,entryMode,o.brutTop,zt,moves,{travelZ:tvZ,sens:o.sens,entryR:o.entryR,zoneAt:o.zoneAt,frameTouch:frameTouch});

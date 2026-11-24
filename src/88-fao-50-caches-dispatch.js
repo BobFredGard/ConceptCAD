@@ -750,6 +750,7 @@ function* faoOpMovesIt0(op,job){
         // 2026-10-22-003 : dessus NON dilaté (entrées par l'extérieur, à plat)
         stockRawAt:RS.raw,
         zoneAt:zctx?zctx.at:null,
+        zoneBoxes:zctx?zctx.boxes:null,
         // 2026-10-11-005 : la limite voyage avec la zone — le REPÈRE de
         // génération (faoLoopAxis) suit l'axe de la chaîne (poche oblique).
         limit:op.limit,
