@@ -50,6 +50,7 @@ const SUITES = [
   'test_conge_plan_decale',
   'test_conge_depouille',
   'test_chanfrein_modes',
+  'test_conge_variable',
   'test_draft_sens',
   'test_repeat_chanfrein_depouille',
   'test_repeat_apercu',

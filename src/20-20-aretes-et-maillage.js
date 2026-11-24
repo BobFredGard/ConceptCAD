@@ -560,6 +560,78 @@ function occCongeDeborde(avant,apres,jobs,r){
     return !e.pts.some(q=>sur(q,reste,0.05));
   });
 }
+// V0.99.69 : CONGÉ VARIABLE (demande de Fred : « une valeur de départ et une d'arrivée, et les valeurs de 0
+// […] pour faire un cône »). rv = {a: rayon au départ, b: rayon à l'arrivée, p0: point du départ, un bout de
+// l'arête cliquée}. Le noyau prend l'arête et sa chaîne tangente (contour) :
+//  - arête seule ou chaîne OUVERTE : le rayon va de a à b, linéairement, d'un bout à l'autre du contour,
+//    dans le sens départ → arrivée de l'arête cliquée ;
+//  - chaîne FERMÉE (tour d'une face aux coins arrondis) : de a à b sur l'arête cliquée, puis retour de b à a
+//    sur le reste du tour (une seule rampe sauterait de b à a là où le tour se referme : refusé par le noyau).
+// 0 accepté à un bout (pointe), pas aux deux.
+function occCongeVariable(mf,h,rv){
+  const bin=[];
+  try{
+    mf.Add_1(h);
+    const IC=mf.Contour(h);if(!(IC>0))return false;
+    const n=mf.NbEdges(IC);
+    const a=Math.max(0,+rv.a||0),b=Math.max(0,+rv.b||0);
+    if(!(a>0||b>0))return false;
+    const XYZ=p=>[p.X(),p.Y(),p.Z()];
+    const dist=(p,q)=>Math.hypot(p[0]-q[0],p[1]-q[1],p[2]-q[2]);
+    const bouts=e=>{
+      const r=[];
+      const ex=occBinPush(bin,new occt.TopExp_Explorer_2(e,occt.TopAbs_ShapeEnum.TopAbs_VERTEX,occt.TopAbs_ShapeEnum.TopAbs_SHAPE));
+      for(;ex.More();ex.Next()){const v=occBinPush(bin,occt.TopoDS.Vertex_1(ex.Current()));const q=XYZ(occBinPush(bin,occt.BRep_Tool.Pnt(v)));if(!r.some(o=>dist(o,q)<1e-7))r.push(q);}
+      return r;
+    };
+    // arêtes du contour dans son ordre, leur longueur, et la place de l'arête cliquée
+    const E=[],L=[];let tot=0,ic=0;
+    for(let i=1;i<=n;i++){
+      const e=occBinPush(bin,mf.Edge(IC,i));E.push(e);
+      const g=occBinPush(bin,new occt.GProp_GProps_1());occt.BRepGProp.LinearProperties(e,g,false,false);
+      L.push(g.Mass());tot+=g.Mass();
+      if(!ic&&e.IsSame(h))ic=i;
+    }
+    if(!(tot>0))return false;
+    if(!ic)ic=1;
+    const fV=XYZ(occBinPush(bin,occt.BRep_Tool.Pnt(occBinPush(bin,mf.FirstVertex(IC)))));
+    const lV=XYZ(occBinPush(bin,occt.BRep_Tool.Pnt(occBinPush(bin,mf.LastVertex(IC)))));
+    const ferme=n>1&&dist(fV,lV)<1e-6;
+    // bout de l'arête cliquée par lequel le contour y ENTRE : commun avec l'arête précédente du contour
+    const B=bouts(E[ic-1]);
+    let entree=null;
+    if(B.length>=2){
+      const prec=ic>1?E[ic-2]:(ferme?E[n-1]:null),suiv=ic<n?E[ic]:(ferme?E[0]:null);
+      const touche=(q,e)=>e&&bouts(e).some(o=>dist(o,q)<1e-6);
+      const c=B.filter(q=>touche(q,prec)&&!touche(q,suiv));
+      if(c.length===1)entree=c[0];
+      else{const c2=B.filter(q=>!touche(q,suiv));if(c2.length===1)entree=c2[0];} // 1re arête d'une chaîne ouverte
+      if(!entree)entree=B.reduce((m,q)=>dist(q,fV)<dist(m,fV)?q:m,B[0]); // arête seule : départ du contour
+    }
+    // le contour entre-t-il dans l'arête par le départ ?
+    const parDepart=!(Array.isArray(rv.p0)&&rv.p0.length===3&&entree&&B.length>=2)
+      ||dist(entree,rv.p0)<=Math.min.apply(null,B.filter(q=>q!==entree).map(q=>dist(q,rv.p0)));
+    let u=parDepart?a:b,w=parDepart?b:a; // valeurs à l'entrée et à la sortie de l'arête cliquée
+    if(!ferme){
+      let s=0;
+      for(let i=1;i<=n;i++){const s1=s+L[i-1];mf.SetRadius(u+(w-u)*s/tot,u+(w-u)*s1/tot,IC,i);s=s1;}
+      return true;
+    }
+    // tour fermé : rampe u → w sur l'arête cliquée, retour w → u sur le reste. Le 0 tombe alors sur un
+    // sommet INTÉRIEUR du contour, que le noyau refuse : un centième de rayon à la place (pointe à 0,01 mm près).
+    const eps=Math.min(0.01,Math.max(u,w)/100);
+    if(!(u>0))u=eps;if(!(w>0))w=eps;
+    mf.SetRadius(u,w,IC,ic);
+    const reste=tot-L[ic-1];
+    let s=0;
+    for(let k=1;k<n;k++){
+      const i=((ic-1+k)%n)+1,s1=s+L[i-1];
+      mf.SetRadius(w+(u-w)*s/reste,w+(u-w)*s1/reste,IC,i);
+      s=s1;
+    }
+    return true;
+  }catch(e){return false;}finally{occDispose(bin);}
+}
 function occFilletRun(base,jobs,warns,chamfer,opts){
   // Arrondi/chanfrein BRep : 1) le lot en une passe (rapide), 2) si Build échoue → ARÊTE PAR ARÊTE
   // sur la shape courante (chaque succès conservé — une arête capricieuse ne fait plus
@@ -574,13 +646,15 @@ function occFilletRun(base,jobs,warns,chamfer,opts){
       const SH=occt.TopAbs_ShapeEnum.TopAbs_SHAPE;
       const ex=new occt.TopExp_Explorer_2(cur,occt.TopAbs_ShapeEnum.TopAbs_EDGE,SH);bin.push(ex);
       const hs=[];let k=0;
-      while(ex.More()){if(want.has(k)){const h=occEdgeCur(ex);bin.push(h);const w=want.get(k);hs.push({h,r:w.r,fn:w.fn||null});}k++;ex.Next();}
+      while(ex.More()){if(want.has(k)){const h=occEdgeCur(ex);bin.push(h);const w=want.get(k);hs.push({h,r:w.r,fn:w.fn||null,rv:(!chamfer&&w.rv)?w.rv:null});}k++;ex.Next();}
+      hs.sort((u,w)=>(u.rv?1:0)-(w.rv?1:0)); // congés variables EN DERNIER : leur loi couvre tout leur contour
       occDispose([ex]);
       if(!hs.length){occDispose(bin);return null;}
       if(chamfer&&!occt.BRepFilletAPI_MakeChamfer){occDispose(bin);return null;}
       const mf=chamfer?new occt.BRepFilletAPI_MakeChamfer(cur):new occt.BRepFilletAPI_MakeFillet(cur,0);bin.push(mf);
       let sansFace=0;
       hs.forEach(o=>{
+        if(o.rv){if(!occCongeVariable(mf,o.h,o.rv))mf.Add_2(o.r,o.h);return;}
         if(!cham){mf.Add_2(o.r,o.h);return;}
         // Add_3(D1, D2, arête, face de D1) / AddDA(D1, angle depuis cette face, arête, face)
         const ff=occChamferFirstFace(cur,o.h,cham.flip,o.fn);
@@ -596,7 +670,9 @@ function occFilletRun(base,jobs,warns,chamfer,opts){
     }catch(e){occDispose(bin);return null;}
   };
   const bilan=opts&&opts.bilan;
-  if(opts&&opts.single){
+  // congé variable : le noyau seul sait faire varier le rayon (l'outil « tout droit » est à rayon constant)
+  const varJ=!chamfer&&jobs.some(j=>j&&j.rv);
+  if(opts&&opts.single&&!varJ){
     // case « tangentes » DÉCOCHÉE : chaque arête seule, sans chaîne tangente
     // V0.70.3 : les morceaux des coins intérieurs s'accumulent et sont soudés EN UNE FOIS (une fusion, une
     // unification, un contrôle de la pièce) ; tant que la pièce ne change pas, ses arêtes ne sont pas relues.
@@ -722,7 +798,7 @@ function occFilletRun(base,jobs,warns,chamfer,opts){
     let edges=null;try{edges=occListEdges(cur);}catch(e){}
     const ed=(edges||[]).find(e=>Math.hypot(e.mid[0]-j.mid[0],e.mid[1]-j.mid[1],e.mid[2]-j.mid[2])<3.0);
     if(!ed){warns.push('arête introuvable ('+kindLabel+' isolé)');if(bilan)(bilan.rates=bilan.rates||[]).push(j.mid.slice());continue;}
-    let one=mk(cur,[{src:ed.src,r:j.r,fn:j.fn||null}]);
+    let one=mk(cur,[{src:ed.src,r:j.r,fn:j.fn||null,rv:j.rv||null}]);
     // V0.99.24 : refusée par le noyau. 1) L'arête retenue est la PREMIÈRE à moins de 3 mm du milieu : ce
     // peut être une voisine (bord d'un congé R1 à 2,99 mm, « Pièce pour fenêtre ») → la plus proche est
     // essayée. Seulement après un refus : la prendre d'emblée change Barquette 2 (test_rep_nom_ordre).
@@ -733,9 +809,9 @@ function occFilletRun(base,jobs,warns,chamfer,opts){
     if(!one){
       let dV=Math.hypot(ed.mid[0]-j.mid[0],ed.mid[1]-j.mid[1],ed.mid[2]-j.mid[2]);
       (edges||[]).forEach(e=>{const d=Math.hypot(e.mid[0]-j.mid[0],e.mid[1]-j.mid[1],e.mid[2]-j.mid[2]);if(d<dV-1e-6){dV=d;edV=e;}});
-      if(edV!==ed)one=mk(cur,[{src:edV.src,r:j.r,fn:j.fn||null}]);
+      if(edV!==ed)one=mk(cur,[{src:edV.src,r:j.r,fn:j.fn||null,rv:j.rv||null}]);
     }
-    if(!one&&!cham){
+    if(!one&&!cham&&!j.rv){
       try{
         const i=(edges||[]).indexOf(edV);
         if(i>=0&&xTangentChainOf(edges,i).length===1){

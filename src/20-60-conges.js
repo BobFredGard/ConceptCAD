@@ -346,7 +346,8 @@ function occApplyXFillets(base,xfils){
     // fn (V0.11.19) : normale de la première face d'un chanfrein asymétrique, portée par
     // l'entrée (ou par le germe pour une arête de chaîne)
     const fn=(se&&Array.isArray(se.fn))?se.fn:(fnChain||null);
-    if(dup){dup.r=Math.max(dup.r,r);if(!dup.fn&&fn)dup.fn=fn;}else jobs.push({bi,r,fn});
+    const rv=(se&&se.rv&&!chamfer)?se.rv:null; // V0.99.69 : congé variable (départ / arrivée)
+    if(dup){dup.r=Math.max(dup.r,r);if(!dup.fn&&fn)dup.fn=fn;if(!dup.rv&&rv)dup.rv=rv;}else jobs.push({bi,r,fn,rv});
   };
   xfils.forEach(xf=>{
     (xf.edges||[]).forEach(se=>{
@@ -491,6 +492,7 @@ function occApplyXFillets(base,xfils){
       let bs=null,bd=1e9;
       roots.forEach(se=>{const d=at(se.pos0&&se.pos0.length===3?se.pos0:se.pos);if(d<bd){bd=d;bs=se;}});
       if(!bs)return;
+      if(bs.rv&&!chamfer)return; // congé variable : le noyau prend la chaîne avec la loi du germe
       take(j,bs.r,null,Array.isArray(bs.fn)?bs.fn:null);
     });
   });
@@ -533,7 +535,7 @@ function occApplyXFillets(base,xfils){
     else delete xf._miss;
   });
   if(!jobs.length)return{shape:base,warnings:warns};
-  const js=jobs.map(j=>({src:edges[j.bi].src,r:j.r,mid:edges[j.bi].mid.slice(),pts:edges[j.bi].pts,fn:j.fn||null}));
+  const js=jobs.map(j=>({src:edges[j.bi].src,r:j.r,mid:edges[j.bi].mid.slice(),pts:edges[j.bi].pts,fn:j.fn||null,rv:j.rv||null}));
   // case décochée : arête seule ; 'droit' (V0.70.2) : congé sans tangence, prolongé tout droit à ses bouts
   // jusqu'aux faces voisines, coin intérieur compris — seulement pour les congés créés ou modifiés depuis,
   // les anciens documents gardent la chaîne que le noyau leur donnait
@@ -589,7 +591,7 @@ function occApplyXFillets(base,xfils){
       const r2=Math.max(0.5,+(rMax*k).toFixed(2));
       const w2=[];
       const cham2=cham?Object.assign({},cham,{d2:+(cham.d2*k).toFixed(2)}):null; // D2 réduit dans le même rapport
-      const t=occFilletRun(occShapeCopy(base),js.map(j=>({src:j.src,r:r2,mid:j.mid.slice(),pts:j.pts,fn:j.fn||null})),w2,chamfer,{single,cham:cham2});
+      const t=occFilletRun(occShapeCopy(base),js.map(j=>({src:j.src,r:r2,mid:j.mid.slice(),pts:j.pts,fn:j.fn||null,rv:j.rv?Object.assign({},j.rv,{a:j.rv.a*r2/j.r,b:j.rv.b*r2/j.r}):null})),w2,chamfer,{single,cham:cham2});
       let bon=t&&(occFacesValides(t,zone)||baseSaine===false); // un rayon « vérifié » doit aussi donner un solide valide
       // VOLUME PLAUSIBLE (V0.44.1) : un congé « valide » peut être faux (slot de 12 mm, R6 :
       // +1 866 mm³ au lieu d'en retirer). La matière ôtée ou ajoutée croît comme r² : même sens
@@ -773,7 +775,7 @@ function occFilletNurbs(base,js,chamfer,single,edges,cham){
         let b=null,bd=1e-3;
         E.forEach(e=>{const d=Math.hypot(e.mid[0]-j.mid[0],e.mid[1]-j.mid[1],e.mid[2]-j.mid[2]);if(d<bd){bd=d;b=e;}});
         if(!b){del(nb);return null;}
-        js2.push({src:b.src,r:j.r,mid:j.mid.slice(),fn:j.fn||null});
+        js2.push({src:b.src,r:j.r,mid:j.mid.slice(),fn:j.fn||null,rv:j.rv||null});
       }
       const w=[];
       // LOT SEUL (2026-10-27) : la passe arête par arête sur des surfaces NURBS peut FIGER le
@@ -871,7 +873,7 @@ function occFilletNurbs(base,js,chamfer,single,edges,cham){
 const OCC_NURBS_MEMO=[]; // reprises NURBS récentes {key, shape, local} (voir occFilletNurbs)
 function occNurbsMemoKey(js,chamfer,single,edges,cham){
   return (chamfer?'C':'F')+(single==='droit'?'2':single?'1':'t')+(cham?'|'+xChamKey(cham):'')+'|'+(edges||[]).length+'|'+(edges||[]).reduce((a,e)=>a+e.len,0).toFixed(6)
-    +'|'+js.map(j=>j.mid.map(v=>v.toFixed(5)).join(',')+'@'+j.r).join(';');
+    +'|'+js.map(j=>j.mid.map(v=>v.toFixed(5)).join(',')+'@'+j.r+(j.rv?'~'+j.rv.a+'>'+j.rv.b+'@'+(j.rv.p0||[]).map(v=>(+v).toFixed(3)).join(','):'')).join(';');
 }
 function occNurbsMemoGet(key){
   const hit=OCC_NURBS_MEMO.find(o=>o.key===key);if(!hit)return null;

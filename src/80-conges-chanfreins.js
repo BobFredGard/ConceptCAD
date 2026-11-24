@@ -6,7 +6,7 @@ let filModeX=null,xHover=null; // mode exact : sel=[{pos:[x,y,z],r}], edges=occL
 // pour congé / R1 pour chanfrein et tangentes cochées À CHAQUE entrée ; sur une pièce à faces
 // étroites comme la pédale, un rayon par défaut trop grand rendait l'aperçu muet au 1ᵉʳ clic).
 // Les défauts bruts (10 / 1, tangentes cochées) restent ceux du démarrage de l'appli.
-const filMemo={r:{fillet:10,chamfer:1},tangent:true,cmode:'eq',cd2:1,cang:45}; // V0.11.19 : type de chanfrein retenu aussi
+const filMemo={r:{fillet:10,chamfer:1},tangent:true,cmode:'eq',cd2:1,cang:45,r2:0}; // V0.11.19 : type de chanfrein retenu aussi
 let occSkipFeat=null; // id de fonction exclue du rejeu (édition de congé : revoir les arêtes vives AVANT elle)
 function filEdgeKey(fp){return fp.x.toFixed(2)+','+fp.y.toFixed(2);}
 function filletTarget(){
@@ -57,6 +57,9 @@ function enterExactFilletMode(editF,kind){
   // V0.11.19 : type de chanfrein (cmode 'eq' | 'd2' | 'da', cd2, cang, cflip) — `chamfer` posé
   // sur le mode pour que xChamOpts(filModeX) lise l'état de la commande comme une fonction.
   filModeX.chamfer=xIsChamfer(k);
+  // V0.99.69 : congé VARIABLE — rayon de départ et d'arrivée par arête (0 permis à un bout : pointe, cône)
+  filModeX.vari=!filModeX.chamfer&&!!(editing&&(editing.edges||[]).some(e=>e&&e.rv));
+  filModeX.radius2=filMemo.r2;
   if(filModeX.chamfer){
     if(editing){
       filModeX.cmode=(editing.cmode==='d2'||editing.cmode==='da')?editing.cmode:'eq';
@@ -73,7 +76,7 @@ function enterExactFilletMode(editF,kind){
     (editing.edges||[]).forEach(s=>{
       if(seen.some(u=>Math.abs((u.r||0)-(s.r||0))<1e-9&&Math.hypot(u.pos[0]-s.pos[0],u.pos[1]-s.pos[1],u.pos[2]-s.pos[2])<=0.75))return;
       seen.push(s);
-      filModeX.sel.push(parFxFrom(s,{pos:s.pos.slice(),pos0:(s.pos0||s.pos).slice(),r:s.r||2,len:+(s.len||0)||0,anchor:s.anchor||null,name:s.name||null,seed:s.seed?1:0,fn:Array.isArray(s.fn)?s.fn.slice():null},['r']));
+      filModeX.sel.push(parFxFrom(s,{pos:s.pos.slice(),pos0:(s.pos0||s.pos).slice(),r:s.r||2,len:+(s.len||0)||0,anchor:s.anchor||null,name:s.name||null,seed:s.seed?1:0,fn:Array.isArray(s.fn)?s.fn.slice():null,rv:s.rv?{a:+s.rv.a||0,b:+s.rv.b||0,p0:(s.rv.p0||s.pos).slice()}:null},['r']));
     });
     const rr=filModeX.sel.find(s=>s.r>0);if(rr)filModeX.radius=rr.r;
     occSkipFeat=editing.id;
@@ -175,17 +178,32 @@ function xSelSync(){
     const m=e.mid;
     if(kept.some(u=>Math.hypot(u.pos[0]-m[0],u.pos[1]-m[1],u.pos[2]-m[2])<0.75))return;
     let anchor=null;try{anchor=xAnchorFor(m);}catch(err){anchor=null;}
-    kept.push({pos:m.slice(),r:filModeX.radius,len:+((e.len||0).toFixed(3)),anchor,name:entName('edge')});
+    const o={pos:m.slice(),r:filModeX.radius,len:+((e.len||0).toFixed(3)),anchor,name:entName('edge')};
+    if(filModeX.vari)xRvPose(o,filModeX.radius,filModeX.radius2,e);
+    kept.push(o);
   });
   // un rayon saisi arête par arête survit à un changement de sélection
   filModeX.sel.forEach(s=>{
     const k=kept.findIndex(u=>Math.hypot(u.pos[0]-s.pos[0],u.pos[1]-s.pos[1],u.pos[2]-s.pos[2])<0.75);
-    if(k>=0){kept[k].r=s.r;if(s.expr||s.pname){parFxCopy(s,kept[k],['r']);if(s._fxOf)kept[k]._fxOf=s._fxOf;}}
+    if(k>=0){kept[k].r=s.r;if(s.rv)kept[k].rv=s.rv;else delete kept[k].rv;if(s.expr||s.pname){parFxCopy(s,kept[k],['r']);if(s._fxOf)kept[k]._fxOf=s._fxOf;}}
   });
   (filModeX.perdues||[]).forEach(q=>{if(kept.indexOf(q)<0)kept.push(q);}); // arêtes perdues : gardées jusqu'à remplacement ou ✕
   filModeX.sel=kept;
   xPreviewUpdate();
 }
+// V0.99.69 : congé variable d'une entrée — départ a, arrivée b, p0 = bout de l'arête où vaut a.
+// r reste le plus grand des deux : c'est lui que suivent zone de contrôle, doublons et messages.
+function xRvPose(o,a,b,e){
+  a=Math.max(0,+a||0);b=Math.max(0,+b||0);
+  if(!(a>0||b>0))b=a=+filModeX.radius||1;
+  let p0=o.rv&&o.rv.p0?o.rv.p0:null;
+  if(!p0){const E=e||(filModeX.edges||[]).find(x=>x&&Math.hypot(x.mid[0]-o.pos[0],x.mid[1]-o.pos[1],x.mid[2]-o.pos[2])<0.75);p0=E&&E.pts&&E.pts.length?E.pts[0].slice():o.pos.slice();}
+  o.rv={a:+a,b:+b,p0:p0.map(v=>+(+v).toFixed(6))};
+  o.r=Math.max(a,b);
+  if(o.expr)delete o.expr.r;if(o.pname)delete o.pname.r;
+}
+function xRvTexte(s){return s.rv?xNumFr(s.rv.a)+' → '+xNumFr(s.rv.b):String(s.r);}
+function xNumFr(v){return String(+(+v).toFixed(3)).replace('.',',');}
 function xRempHelp(){
   if(!filModeX||filModeX.remp==null||!(filModeX.perdues||[])[filModeX.remp])return false;
   const q=filModeX.perdues[filModeX.remp];
@@ -297,7 +315,7 @@ function xPreviewUpdate(){
     const sel=filModeX.sel.filter(s=>s.r>0);
     if(!sel.length||!occLive||!occLive.shape){xPrevRemove();return;}
     // rien à recalculer si la sélection et les rayons n'ont pas bougé
-    const sig=sel.map(s=>s.pos.map(v=>v.toFixed(2)).join(',')+'/'+s.r).join('|')+(xIsChamfer(filModeX.kind)?'#c'+xChamKey(xChamOpts(filModeX)):'#f')+(filModeX.tangent===false?'#1':'#t');
+    const sig=sel.map(s=>s.pos.map(v=>v.toFixed(2)).join(',')+'/'+s.r+(s.rv?'~'+s.rv.a+'>'+s.rv.b+'@'+s.rv.p0.join(','):'')).join('|')+(xIsChamfer(filModeX.kind)?'#c'+xChamKey(xChamOpts(filModeX)):'#f')+(filModeX.tangent===false?'#1':'#t');
     if(filModeX._prevSig===sig)return;
     const cham=xIsChamfer(filModeX.kind);
     // V0.77.2 : plusieurs corps → l'aperçu ne porte que sur LE corps des arêtes choisies. Avant, il
@@ -311,7 +329,7 @@ function xPreviewUpdate(){
     sel.forEach(s=>{
       let bi=-1,bd=1e9;
       E.forEach((e,i)=>{const d=Math.hypot(e.mid[0]-s.pos[0],e.mid[1]-s.pos[1],e.mid[2]-s.pos[2]);if(d<bd){bd=d;bi=i;}});
-      if(bi>=0&&bd<1.5)jobs.push({src:E[bi].src,r:s.r,mid:E[bi].mid,pts:E[bi].pts,fn:Array.isArray(s.fn)?s.fn:null});
+      if(bi>=0&&bd<1.5)jobs.push({src:E[bi].src,r:s.r,mid:E[bi].mid,pts:E[bi].pts,fn:Array.isArray(s.fn)?s.fn:null,rv:(!cham&&s.rv)?s.rv:null});
     });
     if(!jobs.length){xPrevRemove();return;}
     const pv=xPreviewShape(base,jobs,cham,E);
@@ -457,6 +475,15 @@ function xPreviewUpdate(){
         if(xIsSel(i)||xIsSeed(i))edgeHoverDraw(e.pts,rg,0xff9f0a);
         else if(xHover===i)edgeHoverDraw(e.pts,rg,0xff5a1f);
       });
+      // V0.99.69 : congé variable — point vert au DÉPART de chaque arête (là où vaut le premier rayon)
+      if(filModeX.vari){
+        const P=[];(filModeX.sel||[]).forEach(s=>{if(s.rv&&Array.isArray(s.rv.p0))P.push(s.rv.p0[0],s.rv.p0[1],s.rv.p0[2]);});
+        if(P.length){
+          const g=new THREE.BufferGeometry();g.setAttribute('position',new THREE.Float32BufferAttribute(P,3));
+          const pt=new THREE.Points(g,new THREE.PointsMaterial({color:0x16a34a,size:11,sizeAttenuation:false,depthTest:false,transparent:true}));
+          pt.renderOrder=1001;pt.name='xRvDepart';rg.add(pt);
+        }
+      }
       scene.add(rg);
     }catch(e){}
   }
@@ -579,7 +606,7 @@ function exactToggle(e){
       filModeX.sel=filModeX.sel.filter(s=>s!==q);
       xSeedAdd(i);xSelSync();
       const m=filModeX.edges[i].mid,nv=filModeX.sel.find(s=>Math.hypot(s.pos[0]-m[0],s.pos[1]-m[1],s.pos[2]-m[2])<0.75);
-      if(nv){nv.r=q.r;if(q.expr||q.pname)parFxCopy(q,nv,['r']);if(q.name)nv.name=q.name;}
+      if(nv){nv.r=q.r;if(q.rv)xRvPose(nv,q.rv.a,q.rv.b);if(q.expr||q.pname)parFxCopy(q,nv,['r']);if(q.name)nv.name=q.name;}
       filModeX.remp=filModeX.perdues.length?0:null;
       xPreviewUpdate();paintExact();renderExactPanel();
       if(!xRempHelp())faceEl.textContent=xLabel(filModeX.kind)+' : arête remplacée — '+filModeX.sel.length+' arête(s) retenue(s).';
@@ -694,14 +721,45 @@ function renderExactPanel(){
     :`${xIcon(k)} ${xLabel(k)} OCCT (surfaces analytiques, lisses) · ${filModeX.sel.length?filModeX.sel.length+' arête(s) ✅':'Cliquez une arête en 3D (noire · jaune au survol) — les grises sont des raccords lisses, impossibles à arrondir.'} · ${filModeX.edges.length} arêtes vives${(filModeX.tang&&filModeX.tang.length)?' · '+filModeX.tang.length+' grises':''}.`;
   p.appendChild(h);
   const r1=document.createElement('div');r1.className='pnl-row';
-  const lab=document.createElement('label');lab.textContent=(xIsChamfer(k)?'Distance':'Rayon')+' par défaut (mm)';r1.appendChild(lab);
+  const lab=document.createElement('label');lab.textContent=(xIsChamfer(k)?'Distance':(filModeX.vari?'Rayon de départ':'Rayon'))+' par défaut (mm)';r1.appendChild(lab);
   const inp=document.createElement('input');inp.type='text';inp.inputMode='decimal';inp.value=filModeX.radius;
   parFx(inp,filModeX,'radius'); // ƒx : « R », « R*2 »… — l'expression suit sur les arêtes retenues
-  const setR=()=>{const v=parseFloat(String(inp.value).replace(',','.'));if(v>0&&isFinite(v)){filModeX.radius=v;filMemo.r[xIsChamfer(k)?'chamfer':'fillet']=v;}};
+  const setR=()=>{const v=parseFloat(String(inp.value).replace(',','.'));if((v>0||(v===0&&filModeX.vari))&&isFinite(v)){filModeX.radius=v;if(v>0)filMemo.r[xIsChamfer(k)?'chamfer':'fillet']=v;}};
   inp.addEventListener('input',setR);inp.addEventListener('change',setR);
   inp.addEventListener('click',e=>e.stopPropagation());
   inp.addEventListener('keydown',e=>e.stopPropagation());
   r1.appendChild(inp);p.appendChild(r1);
+  if(!xIsChamfer(k)){
+    // V0.99.69 : rayon constant ou variable (départ → arrivée, 0 permis à un bout)
+    const rv=document.createElement('div');rv.className='pnl-row';
+    const lv=document.createElement('label');lv.textContent='Rayon';rv.appendChild(lv);
+    const sv=document.createElement('select');sv.id='xCongeVar';
+    [['c','Constant'],['v','Variable (départ → arrivée)']].forEach(o=>{const op=document.createElement('option');op.value=o[0];op.textContent=o[1];sv.appendChild(op);});
+    sv.value=filModeX.vari?'v':'c';
+    sv.onclick=e=>e.stopPropagation();
+    sv.onchange=()=>{
+      filModeX.vari=sv.value==='v';
+      if(!filModeX.vari&&!(filModeX.radius>0))filModeX.radius=filMemo.r.fillet||10; // départ 0 : sans objet en constant
+      filModeX.sel.forEach(s=>{
+        if(filModeX.vari){if(!s.rv)xRvPose(s,s.r,filModeX.radius2);}
+        else if(s.rv){s.r=Math.max(s.rv.a,s.rv.b)||filModeX.radius;s.rv=null;}
+      });
+      renderExactPanel();paintExact();xPreviewUpdate();
+    };
+    rv.appendChild(sv);p.appendChild(rv);
+    if(filModeX.vari){
+      const r2=document.createElement('div');r2.className='pnl-row';
+      const l2=document.createElement('label');l2.textContent='Rayon d’arrivée par défaut (mm)';r2.appendChild(l2);
+      const i2=document.createElement('input');i2.type='text';i2.inputMode='decimal';i2.id='xCongeR2';i2.value=xNumFr(filModeX.radius2);
+      const set2=()=>{const v=parseFloat(String(i2.value).replace(',','.'));if(v>=0&&isFinite(v)){filModeX.radius2=v;filMemo.r2=v;}};
+      i2.addEventListener('input',set2);i2.addEventListener('change',set2);
+      i2.addEventListener('click',e=>e.stopPropagation());i2.addEventListener('keydown',e=>e.stopPropagation());
+      r2.appendChild(i2);p.appendChild(r2);
+      const nv=document.createElement('div');nv.className='note';nv.style.marginTop='3px';
+      nv.textContent='Le rayon passe du départ (point vert) à l’arrivée le long de l’arête et de ses tangentes. 0 permis à un bout : le congé finit en pointe (cône). ⇄ échange les deux valeurs.';
+      p.appendChild(nv);
+    }
+  }
   if(xIsChamfer(k)){
     // V0.11.19 : type du chanfrein — distance égale / deux distances / distance + angle, et
     // inversion de la première face (celle qui porte D1). Même langage que SolidCraft.
@@ -780,7 +838,42 @@ function renderExactPanel(){
   filModeX.sel.forEach((s,i)=>{
     const r=document.createElement('div');r.className='tnode';
     const eLen=(filModeX.edges.find(e=>Math.hypot(e.mid[0]-s.pos[0],e.mid[1]-s.pos[1],e.mid[2]-s.pos[2])<0.75)||{len:0}).len;
-    r.innerHTML=`<span>${s._perdue?'⚠':xIcon(k)}</span><span class="nm">${s._perdue?'<b>perdue</b> · ':''}${s.name?`<b>${s.name}</b> · `:''}${dp} <b>${s.r}</b> · L${eLen.toFixed(1)}${s.anchor?' · ⌖':''} · (${s.pos.map(v=>v.toFixed(1)).join(', ')})</span><span title="Retirer">✕</span>`;
+    r.innerHTML=`<span>${s._perdue?'⚠':xIcon(k)}</span><span class="nm">${s._perdue?'<b>perdue</b> · ':''}${s.name?`<b>${s.name}</b> · `:''}${dp} <b>${xRvTexte(s)}</b> · L${eLen.toFixed(1)}${s.anchor?' · ⌖':''} · (${s.pos.map(v=>v.toFixed(1)).join(', ')})</span><span title="Retirer">✕</span>`;
+    if(filModeX.vari&&s.rv){
+      // départ, ⇄, arrivée
+      const mkI=(key,tt)=>{
+        const n=document.createElement('input');n.type='text';n.inputMode='decimal';n.value=xNumFr(s.rv[key]);n.title=tt;n.style.width='52px';
+        n.className='xRv'+key.toUpperCase();
+        n.onclick=ev=>ev.stopPropagation();
+        const ce=()=>{
+          const v=parseFloat(String(n.value).replace(',','.'));
+          const o=key==='a'?s.rv.b:s.rv.a;
+          if(!(v>=0&&isFinite(v))||!(v>0||o>0)){n.value=xNumFr(s.rv[key]);faceEl.textContent='Congé variable : rayon ≥ 0, et pas 0 aux deux bouts.';return;}
+          if(v===s.rv[key])return;
+          xRvPose(s,key==='a'?v:s.rv.a,key==='b'?v:s.rv.b);renderExactPanel();xPreviewUpdate();
+        };
+        n.addEventListener('change',ce);n.addEventListener('blur',ce);
+        n.addEventListener('keydown',e=>{if(e.key==='Enter'){ce();n.blur();}e.stopPropagation();});
+        return n;
+      };
+      r.appendChild(mkI('a','Rayon au départ (point vert)'));
+      const sw=document.createElement('button');sw.textContent='⇄';sw.title='Échanger départ et arrivée';sw.className='xRvSwap';
+      sw.onclick=ev=>{ev.stopPropagation();xRvPose(s,s.rv.b,s.rv.a);renderExactPanel();xPreviewUpdate();};
+      r.appendChild(sw);
+      r.appendChild(mkI('b','Rayon à l’arrivée'));
+      if(s._perdue){
+        const pi=(filModeX.perdues||[]).indexOf(s);
+        r.appendChild(remplacerBtn(filModeX.remp===pi,()=>{filModeX.remp=filModeX.remp===pi?null:pi;renderExactPanel();xRempHelp();}));
+      }
+      r.onclick=()=>{
+        if(s._perdue){const pi=filModeX.perdues.indexOf(s);if(pi>=0)filModeX.perdues.splice(pi,1);filModeX.remp=filModeX.perdues.length&&filModeX.remp!=null?0:null;}
+        const ei=filModeX.edges.findIndex(e=>Math.hypot(e.mid[0]-s.pos[0],e.mid[1]-s.pos[1],e.mid[2]-s.pos[2])<0.75);
+        if(ei>=0)xSeedDel(ei);else filModeX.sel.splice(i,1);
+        xSelSync();paintExact();renderExactPanel();
+      };
+      lst.appendChild(r);
+      return;
+    }
     const num=document.createElement('input');num.type='text';num.inputMode='decimal';num.value=s.r;
     num.onclick=ev=>ev.stopPropagation();parFx(num,s,'r');
     const ce=()=>{
@@ -862,8 +955,10 @@ function applyExactFillet(){
   const mkEdges=()=>filModeX.sel.map(s=>{
     const e={pos:s.pos.slice(),pos0:(s.pos0||s.pos).slice(),r:s.r,len:+(s.len||0),anchor:s.anchor||null,name:s.name||entName('edge')};
     const fn=firstN(s);if(fn)e.fn=fn;
+    if(filModeX.vari&&s.rv&&!xIsChamfer(k)){e.rv={a:+s.rv.a,b:+s.rv.b,p0:s.rv.p0.slice()};e.r=Math.max(e.rv.a,e.rv.b);}
     // ƒx : expression propre à l'arête, sinon celle du rayon par défaut si l'arête l'a gardé
-    if((s.expr&&s.expr.r)||(s.pname&&s.pname.r))parFxCopy(s,e,['r']);
+    if(e.rv){} // congé variable : départ et arrivée en valeurs, pas d'expression sur r
+    else if((s.expr&&s.expr.r)||(s.pname&&s.pname.r))parFxCopy(s,e,['r']);
     else if(filModeX.expr&&filModeX.expr.radius&&Math.abs((+s.r)-(+filModeX.radius))<1e-9)e.expr={r:filModeX.expr.radius};
     const ei=filModeX.edges.findIndex(x=>x&&Math.hypot(x.mid[0]-s.pos[0],x.mid[1]-s.pos[1],x.mid[2]-s.pos[2])<0.75);
     if((ei>=0&&(filModeX.seeds||[]).indexOf(ei)>=0)||s.seed)e.seed=1;

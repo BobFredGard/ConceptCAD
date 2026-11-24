@@ -36,6 +36,7 @@ Historique rejouable, timeline à icônes (vert = ajout, rouge = enlèvement), m
   - **Rayon impossible** : il est ramené au plus grand qui passe (⚠ dans l'arbre), le rayon demandé restant enregistré. Reprise NURBS quand le noyau refuse la chaîne.
   - **Arêtes refusées** ou ignorées par le noyau sans le dire : elles sont comptées, **⚠ « non fait sur n/t arête(s) »** dans l'arbre et le panneau, avec l'endroit.
   - **Chanfrein** à **distance égale, deux distances ou distance + angle**, première face inversable.
+  - **Congé variable** : dans le panneau, **Rayon → Variable (départ → arrivée)**. Chaque arête reçoit un rayon de départ (point vert dans la vue 3D) et un rayon d'arrivée ; **⇄** les échange. **0 est permis à un bout** : le congé finit en pointe, comme un cône. Le rayon varie le long de l'arête et de ses tangentes ; sur un tour fermé (dessus d'une pièce aux coins arrondis), il va du départ à l'arrivée sur l'arête cliquée et revient au départ sur le reste du tour.
   - L'arête choisie suit les paramètres amont, y compris sur une extrusion à **dépouille** (hauteur et angle modifiés).
   - Avec plusieurs corps, l'aperçu ne remplace que le corps modifié : un corps caché le reste.
 - **Répétition** linéaire, en grille, circulaire, symétrie ou suivant un profil, avec aperçu rouge des copies.
