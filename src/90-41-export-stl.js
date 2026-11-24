@@ -200,12 +200,13 @@ function stlExportOpen(){
   const rs=()=>{taille();dessine();};
   an.onclick=fin;
   ov.onclick=(e)=>{if(e.target===ov)fin();};
-  ok.onclick=()=>{
+  ok.onclick=async()=>{
     if(!M)return;
+    const tgt=await cadPickSave(doc.name||'piece','stl','Maillage STL','model/stl');
+    if(!tgt)return; // annulé : la fenêtre de finesse reste ouverte
     const blob=new Blob([stlEcrire(M)],{type:'model/stl'});
-    const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=(doc.name||'piece')+'.stl';a.click();
-    setTimeout(()=>URL.revokeObjectURL(a.href),2000);
-    try{faceEl.textContent='STL exporté : '+stlFmt(M.tris,0)+' triangles ('+stlPoids(M.tris)+', écart '+stlFmt(stlFinesse(stlChoix).lin)+' mm).';}catch(e){}
+    try{await cadWriteFile(tgt,blob);}catch(e){alert('Export STL impossible : '+(e.message||e));return;}
+    try{faceEl.textContent='STL exporté dans « '+tgt.name+' » : '+stlFmt(M.tris,0)+' triangles ('+stlPoids(M.tris)+', écart '+stlFmt(stlFinesse(stlChoix).lin)+' mm).';}catch(e){}
     fin();
   };
   document.addEventListener('keydown',kd,true);window.addEventListener('resize',rs);

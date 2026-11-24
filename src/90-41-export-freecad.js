@@ -286,13 +286,15 @@ async function fcBuild(){
 }
 async function fcExport(){
   if(!occHas()){alert('L’export FreeCAD a besoin du noyau OCCT (chargement en cours ou échec). Réessayez dans quelques secondes.');return;}
+  const tgt=await cadPickSave(cadExportName(),'FCStd','Document FreeCAD','application/zip');
+  if(!tgt){cadExportCancelled('FreeCAD');return;}
   faceEl.textContent='Export FreeCAD : préparation…';
   try{
     const R=await fcBuild();
     const blob=new Blob([R.bytes],{type:'application/zip'});
-    const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=(R.name||'piece')+'.FCStd';a.click();
-    setTimeout(()=>URL.revokeObjectURL(a.href),2000);
-    faceEl.textContent='FreeCAD exporté : '+R.n+' objet(s)'+(R.mags?', '+R.mags+' aimant(s) et '+R.lines+' lignes de champ':'')+' ('+(R.bytes.length/1024).toFixed(1)+' Ko).';
+    if(!tgt.h)tgt.name=cadFileBase(R.name)+'.FCStd';
+    await cadWriteFile(tgt,blob);
+    faceEl.textContent='FreeCAD exporté dans « '+tgt.name+' » : '+R.n+' objet(s)'+(R.mags?', '+R.mags+' aimant(s) et '+R.lines+' lignes de champ':'')+' ('+(R.bytes.length/1024).toFixed(1)+' Ko).';
   }catch(e){faceEl.textContent='Export FreeCAD : '+(e.message||e);alert('Export FreeCAD impossible : '+(e.message||e));}
 }
 $('btnExportFcstd').onclick=()=>fcExport();

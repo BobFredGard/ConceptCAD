@@ -8,7 +8,7 @@ sont sorties le 2026-09-30j.
 Code dans `src/` · livrable `fusion_mvp.html` (généré par `build.js`) · architecture et
 garde-fous en tête de `src/00-entete-et-outils.js`.
 
-**752 versions**, de `2026-09-28b` à `V0.99.65` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
+**753 versions**, de `2026-09-28b` à `V0.99.66` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
 comme dans le fichier d'origine.
 
 ---
@@ -8361,3 +8361,13 @@ Manuel Fonctions 3D.
 **Sablier resté affiché** : après un calcul de fond, le recalcul reprend le résultat gardé et sautait l'étape qui enlève le ⏳ ; le bilan de la suppression est maintenant gardé avec le résultat (`occCkDelM`, `src/20-70-cache-et-rejeu.js`), le ⏳ laisse place au ⌫.
 
 **Test** : `tests/test_suppression_step_platine.cjs` sur la copie figée `tests/fixtures/platine-suppressions-step.conceptcad` (boîte sans triangles à 0,15 mm de la boîte maillée, 3,37 mm avant ; 22, 5 et 6 faces distinctes retrouvées ; faces prêtes à s'allumer ; rainure de 8 faces enlevée avec ses 5 congés, 0,5 s). FORMES_VER changé (solides et faces montrées des pièces gardées) ; CACHE_VER inchangé.
+
+## V0.99.66 - Export CAO : choix du dossier et du nom du fichier
+
+**Demande de Fred** : « CAO - Export -> Tous types. Proposer une fenêtre pour choisir le répertoire de sauvegarde ».
+
+**Avant** : STEP, STL, OBJ et FreeCAD partaient directement dans les Téléchargements.
+
+**Correctif** (`src/90-40-export.js`) : `cadPickSave` ouvre la fenêtre « Enregistrer sous » (dossier + nom, dernier dossier retenu par l'identifiant `ccexport`) et `cadWriteFile` écrit le fichier choisi. La fenêtre s'ouvre juste après les réglages (schéma STEP, finesse STL), avant le calcul : le navigateur ne l'accepte que juste après un clic. Annuler n'écrit rien (« Export … annulé » ; la fenêtre de finesse STL reste ouverte). Sans cette fenêtre (appli Mac, Firefox, Safari, `?telecharger`, appel sans clic) : téléchargement comme avant. Branché sur l'export STEP, STL (`src/90-41-export-stl.js`), OBJ, FreeCAD (`src/90-41-export-freecad.js`) et le STEP d'un corps ou d'une pièce par clic droit (`src/90-20-menus-contextuels.js`, `stepSaveShapes`). Le message de fin donne le nom du fichier écrit. Manuel Fichiers.
+
+**Test** : test_export_step_import, test_export_step_assemblage, test_export_stl_finesse, test_export_freecad (repli téléchargement) ; essai dans la page : fichier choisi écrit, annulation, repli. CACHE_VER et FORMES_VER inchangés.

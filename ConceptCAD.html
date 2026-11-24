@@ -410,7 +410,7 @@ input[type=range]{accent-color:var(--primary);width:100%}
  * peut changer sans rien casser. CACHE_VER (parcours FAO) reste indépendant.
  */
 
-const APP_VER='V0.99.65';
+const APP_VER='V0.99.66';
 try{console.log('[ConceptCAD] version '+APP_VER);}catch(e){}
 try{var mfSv=document.getElementById('mfSplashVer');if(mfSv)mfSv.textContent=APP_VER;}catch(e){} // écran de démarrage
 
@@ -80962,18 +80962,16 @@ function importLoneShapes(FR,bid){
   }catch(e){}
   return out;
 }
-function stepSaveShapes(shapes,nm,sch){
-  // Écrit les formes en STEP et télécharge « nm.step » (export du corps, d'une pièce).
+async function stepSaveShapes(shapes,nm,sch,tgt){
+  // Écrit les formes en STEP dans tgt (cadPickSave) — export du corps, d'une pièce.
   const path='/b.stp'; // chemin court fixe (cf. /o.stp de l'export global)
   try{occt.FS.unlink(path);}catch(e){}
   const bytes=occWriteStep(shapes,path,sch);
   const blob=new Blob([bytes],{type:'application/step'});
-  const a=document.createElement('a');a.href=URL.createObjectURL(blob);
-  a.download=String(nm).replace(/[\\/:*?"<>|]+/g,'-')+'.step';
-  a.click();
-  setTimeout(()=>{try{URL.revokeObjectURL(a.href);}catch(e){}},2000);
   try{occt.FS.unlink(path);}catch(e){}
-  faceEl.textContent='STEP '+stepLabel(sch)+' « '+nm+' » exporté ('+(bytes.length/1024).toFixed(1)+' Ko).';
+  tgt=tgt||{name:cadFileBase(nm)+'.step'};
+  await cadWriteFile(tgt,blob);
+  faceEl.textContent='STEP '+stepLabel(sch)+' « '+nm+' » exporté dans « '+tgt.name+' » ('+(bytes.length/1024).toFixed(1)+' Ko).';
 }
 /* ---- Une PIÈCE (ou un sous-ensemble) d'un STEP multi-corps, seule : clic droit sur sa
    ligne de l'arborescence, ou sur elle dans la vue 3D. Placement d'assemblage gardé. ---- */
@@ -80986,13 +80984,15 @@ async function importPieceExport(fid,occ,nm){
     if(!e||!e.brep)throw new Error('solide exact du STEP indisponible (réimportez le fichier)');
     const sch=await stepAskSchema('Export STEP « '+nm+' »');
     if(!sch)return;
+    const tgt=await cadPickSave(nm,'step','Fichier STEP','application/step');
+    if(!tgt){cadExportCancelled('STEP');return;}
     faceEl.textContent='Export STEP « '+nm+' » : pré-test…';
     const pok=(await occExportPreflight());
     if(!pok[0])throw new Error(pok[1]||'pré-test impossible');
     const S=new Set(occ||[]);
     sh=importOccShape(e.brep,o=>S.has(o));
     if(!sh)throw new Error('pièce introuvable dans le solide du STEP');
-    stepSaveShapes([sh],nm,sch);
+    await stepSaveShapes([sh],nm,sch,tgt);
   }catch(e){
     const msg=String((e&&e.message)||e||'erreur');
     faceEl.textContent='Export STEP « '+nm+' » : '+msg;
@@ -81087,6 +81087,8 @@ async function ctxExportStep(bid){
     if(!occHas())throw new Error('OCCT indisponible (chargement en cours ou échec — servez la page en http://)');
     const sch=await stepAskSchema('Export STEP « '+nm+' »');
     if(!sch)return;
+    const tgt=await cadPickSave(nm,'step','Fichier STEP','application/step');
+    if(!tgt){cadExportCancelled('STEP');return;}
     faceEl.textContent='Export STEP « '+nm+' » : pré-test…';
     const pok=(await occExportPreflight());
     if(!pok[0])throw new Error(pok[1]||'pré-test impossible');
@@ -81094,7 +81096,7 @@ async function ctxExportStep(bid){
     let pb=(FR.perBody||[]).filter(p=>p.bodyId===bid);
     if(!pb.length)pb=lone=importLoneShapes(FR,bid); // STEP seul dans ce corps
     if(!pb.length)throw new Error('rien à exporter : aucune fonction visible de ce corps dans le rejeu (⏻ éteint ?)');
-    stepSaveShapes(pb.map(p=>p.shape),nm,sch);
+    await stepSaveShapes(pb.map(p=>p.shape),nm,sch,tgt);
   }catch(e){
     const msg=String((e&&e.message)||e||'erreur');
     faceEl.textContent='Export STEP « '+nm+' » : '+msg;
@@ -82214,6 +82216,35 @@ faoMeshFromBody=function(b){
 };
 
 /* ═══════════════ 90-40-export.js — 40 export ═══════════════ */
+/* ---- Exports CAO (STEP, STL, OBJ, FreeCAD) : fenêtre « Enregistrer sous » pour
+   choisir le dossier et le nom (demande de Fred, V0.99.66). La fenêtre est ouverte
+   AVANT le calcul du fichier : le navigateur ne l'accepte que juste après un clic.
+   Le dernier dossier est retenu (id 'ccexport'). Sans cette fenêtre (Safari, appli
+   Mac, ?telecharger, appel sans clic) : téléchargement comme avant. ---- */
+function cadFileBase(name){return String(name||'piece').replace(/[\\/:*?"<>|]+/g,'-').trim()||'piece';}
+async function cadPickSave(name,ext,desc,mime){
+  // null = annulé ; {h,name} = fichier choisi ; {name} = repli téléchargement
+  const fname=cadFileBase(name)+'.'+ext;
+  try{
+    if(typeof window.showSaveFilePicker!=='function'||/[?&]telecharger\b/.test(location.search))return {name:fname};
+    const acc={};acc[mime||'application/octet-stream']=['.'+ext];
+    const h=await window.showSaveFilePicker({id:'ccexport',startIn:'documents',suggestedName:fname,types:[{description:desc||('Fichier .'+ext),accept:acc}]});
+    return {h,name:h.name};
+  }catch(e){
+    if(e&&e.name==='AbortError')return null;
+    return {name:fname}; // pas de clic récent, droit refusé… : téléchargement
+  }
+}
+async function cadWriteFile(t,blob){
+  if(t&&t.h){const w=await t.h.createWritable();await w.write(blob);await w.close();return;}
+  const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=t.name;a.click();
+  setTimeout(()=>{try{URL.revokeObjectURL(a.href);}catch(e){}},2000);
+}
+function cadExportCancelled(what){try{faceEl.textContent='Export '+what+' annulé.';}catch(e){}}
+function cadExportName(){
+  try{if(asmMode==='asm'&&typeof asmActiveComp==='function'){const c=asmActiveComp();if(c&&c.name)return c.name;}}catch(e){}
+  return doc.name||'piece';
+}
 function occFsDiag(){
   // Photo du FS interne pour diagnostiquer (console F12).
   try{
@@ -82456,6 +82487,8 @@ $('btnExportStep').onclick=async()=>{
   if(!occHas()){alert('Export STEP exact nécessite OCCT (chargement en cours ou échec — servez la page en http://). Export STL/OBJ dispo.');return;}
   const sch=await stepAskSchema('Export STEP');
   if(!sch)return;
+  const tgt=await cadPickSave(cadExportName(),'step','Fichier STEP','application/step');
+  if(!tgt){cadExportCancelled('STEP');return;}
   faceEl.textContent='Export STEP : pré-test…';
   const[pok,pdetail]=await occExportPreflight();
   try{console.log('[STEP-OUT] pré-test : '+pdetail);}catch(e){}
@@ -82483,10 +82516,10 @@ $('btnExportStep').onclick=async()=>{
     const bytes=occWriteStep(all,path,sch);
     try{console.log('[STEP-OUT] après='+occt.FS.readdir('/').slice(0,12).join(','));}catch(e){}
     const blob=new Blob([bytes],{type:'application/step'});
-    const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=((E?E.name:doc.name)||'piece')+'.step';a.click();
-    setTimeout(()=>URL.revokeObjectURL(a.href),2000);
+    if(!tgt.h)tgt.name=cadFileBase(E?E.name:doc.name)+'.step';
+    await cadWriteFile(tgt,blob);
     try{occt.FS.unlink(path);}catch(e){}
-    faceEl.textContent='STEP '+stepLabel(sch)+' exact exporté ('+(E?E.shapes.length+' solides, ':'')+(bytes.length/1024).toFixed(1)+' Ko).';
+    faceEl.textContent='STEP '+stepLabel(sch)+' exact exporté dans « '+tgt.name+' » ('+(E?E.shapes.length+' solides, ':'')+(bytes.length/1024).toFixed(1)+' Ko).';
     if(E&&E.missing.length)alert('Attention : pièce(s) sans solide exact, absentes du fichier STEP : '+E.missing.join(', ')+'.');
   }catch(e){alert('Export STEP impossible : '+e.message);}
   finally{
@@ -82496,13 +82529,15 @@ $('btnExportStep').onclick=async()=>{
 };
 $('btnExportStl').onclick=()=>stlExportOpen(); // fenêtre de finesse + aperçu (90-41)
 $('btnExportObj').onclick=()=>downloadMesh('obj');
-function downloadMesh(fmt){
+async function downloadMesh(fmt){
   const vis=bodies.filter(b=>b.visible&&!b.ghost);if(!vis.length){alert('Rien à exporter (que des outils de découpe ?).');return;}
+  const tgt=await cadPickSave(doc.name||'piece',fmt,fmt==='stl'?'Maillage STL':'Maillage OBJ',fmt==='stl'?'model/stl':'text/plain');
+  if(!tgt){cadExportCancelled(fmt.toUpperCase());return;}
   let blob;
   if(fmt==='stl')blob=new Blob([meshesToSTL(vis.map(b=>b.mesh))],{type:'model/stl'});
   else blob=new Blob([meshesToOBJ(vis.map(b=>b.mesh))],{type:'text/plain'});
-  const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=(doc.name||'piece')+'.'+fmt;a.click();
-  setTimeout(()=>URL.revokeObjectURL(a.href),2000);
+  try{await cadWriteFile(tgt,blob);faceEl.textContent=fmt.toUpperCase()+' exporté dans « '+tgt.name+' ».';}
+  catch(e){alert('Export '+fmt.toUpperCase()+' impossible : '+(e.message||e));}
 }
 function meshesToSTL(meshes){
   let count=0;meshes.forEach(m=>{const g=m.geometry;count+= (g.index?g.index.count:g.attributes.position.count)/3;});
@@ -82820,13 +82855,15 @@ async function fcBuild(){
 }
 async function fcExport(){
   if(!occHas()){alert('L’export FreeCAD a besoin du noyau OCCT (chargement en cours ou échec). Réessayez dans quelques secondes.');return;}
+  const tgt=await cadPickSave(cadExportName(),'FCStd','Document FreeCAD','application/zip');
+  if(!tgt){cadExportCancelled('FreeCAD');return;}
   faceEl.textContent='Export FreeCAD : préparation…';
   try{
     const R=await fcBuild();
     const blob=new Blob([R.bytes],{type:'application/zip'});
-    const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=(R.name||'piece')+'.FCStd';a.click();
-    setTimeout(()=>URL.revokeObjectURL(a.href),2000);
-    faceEl.textContent='FreeCAD exporté : '+R.n+' objet(s)'+(R.mags?', '+R.mags+' aimant(s) et '+R.lines+' lignes de champ':'')+' ('+(R.bytes.length/1024).toFixed(1)+' Ko).';
+    if(!tgt.h)tgt.name=cadFileBase(R.name)+'.FCStd';
+    await cadWriteFile(tgt,blob);
+    faceEl.textContent='FreeCAD exporté dans « '+tgt.name+' » : '+R.n+' objet(s)'+(R.mags?', '+R.mags+' aimant(s) et '+R.lines+' lignes de champ':'')+' ('+(R.bytes.length/1024).toFixed(1)+' Ko).';
   }catch(e){faceEl.textContent='Export FreeCAD : '+(e.message||e);alert('Export FreeCAD impossible : '+(e.message||e));}
 }
 $('btnExportFcstd').onclick=()=>fcExport();
@@ -83034,12 +83071,13 @@ function stlExportOpen(){
   const rs=()=>{taille();dessine();};
   an.onclick=fin;
   ov.onclick=(e)=>{if(e.target===ov)fin();};
-  ok.onclick=()=>{
+  ok.onclick=async()=>{
     if(!M)return;
+    const tgt=await cadPickSave(doc.name||'piece','stl','Maillage STL','model/stl');
+    if(!tgt)return; // annulé : la fenêtre de finesse reste ouverte
     const blob=new Blob([stlEcrire(M)],{type:'model/stl'});
-    const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=(doc.name||'piece')+'.stl';a.click();
-    setTimeout(()=>URL.revokeObjectURL(a.href),2000);
-    try{faceEl.textContent='STL exporté : '+stlFmt(M.tris,0)+' triangles ('+stlPoids(M.tris)+', écart '+stlFmt(stlFinesse(stlChoix).lin)+' mm).';}catch(e){}
+    try{await cadWriteFile(tgt,blob);}catch(e){alert('Export STL impossible : '+(e.message||e));return;}
+    try{faceEl.textContent='STL exporté dans « '+tgt.name+' » : '+stlFmt(M.tris,0)+' triangles ('+stlPoids(M.tris)+', écart '+stlFmt(stlFinesse(stlChoix).lin)+' mm).';}catch(e){}
     fin();
   };
   document.addEventListener('keydown',kd,true);window.addEventListener('resize',rs);
