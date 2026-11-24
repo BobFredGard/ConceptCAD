@@ -8,7 +8,7 @@ sont sorties le 2026-09-30j.
 Code dans `src/` · livrable `fusion_mvp.html` (généré par `build.js`) · architecture et
 garde-fous en tête de `src/00-entete-et-outils.js`.
 
-**755 versions**, de `2026-09-28b` à `V0.99.68` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
+**756 versions**, de `2026-09-28b` à `V0.99.69` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
 comme dans le fichier d'origine.
 
 ---
@@ -8387,3 +8387,11 @@ Manuel Fonctions 3D.
 **Correctif** (`tests/pool.cjs`, commun à `npm run ci` et `npm run ci:full`) : chaque ligne affiche « [n/N · x % · reste ≈ …] ». Le pourcentage compte le temps de calcul d'après les durées du dernier passage (`tests/.durees.json`), pas le nombre de suites ; une suite en cours compte pour son temps écoulé, plafonné à 99 % de son estimation. Le reste estimé tient compte des suites en cours et de celles en attente, réparties sur les ouvriers. Sans ligne nouvelle depuis 60 s, une ligne « … en cours » donne les suites qui tournent, depuis quand, et l'avancement. Manuel Développement.
 
 **Test** : essai sur 4 suites (lignes à 3 %, 10 %, « … en cours » à 83 %, 100 %) ; `npm run ci:full` passé avec le nouvel affichage. CACHE_VER et FORMES_VER inchangés.
+
+## V0.99.69 - Congé variable : rayon de départ et d'arrivée, 0 permis
+
+**Demande** de Fred (« CAO : Congés -> possibilité de mettre une valeur de départ et une d'arrivée, et les valeurs de 0 existent ou sont possible, pour faire un cone par exemple ! ») : le congé exact n'avait qu'un rayon par arête.
+
+**Correctif** : panneau du congé (`src/80-conges-chanfreins.js`) : **Rayon → Constant / Variable (départ → arrivée)**, rayon d'arrivée par défaut, deux cases et ⇄ par arête, point vert au départ dans la vue 3D. Chaque arête garde `rv = {a, b, p0}` (p0 = bout de départ), `r` = le plus grand des deux (zone de contrôle, doublons, messages). Noyau (`src/20-20-aretes-et-maillage.js`, `occCongeVariable`) : `SetRadius(R1, R2, contour, arête)` sur chaque arête du contour ; chaîne ouverte = rampe d'un bout à l'autre dans le sens départ → arrivée de l'arête cliquée ; tour fermé = rampe sur l'arête cliquée puis retour au départ sur le reste (une rampe unique saute là où le tour se referme : refusé), 0 y devient 0,01 (sommet intérieur du contour). Case « tangentes » décochée : le congé variable passe par le noyau (l'outil « tout droit » est à rayon constant). Suivent aussi : rejeu (`src/20-60-conges.js`, rayon réduit dans le même rapport en cas d'échec, clé de la reprise NURBS), répétitions (p0 transformé), poignée de la fenêtre dynamique (départ et arrivée dans le même rapport). Manuel Fonctions 3D.
+
+**Test** : `tests/test_conge_variable.cjs` (noyau réel : 0 → 8, 8 → 0, 2 → 6, départ à l'autre bout, tangentes décochées, rejeu par le document et signature, création / édition / ⇄ / retour au constant par la commande, tour fermé de 8 arêtes tangentes avec 0 → 4 et 1 → 4). CACHE_VER et FORMES_VER inchangés (champ nouveau : les anciens congés ne changent pas).

@@ -212,6 +212,7 @@ const SUITES = [
   "test_regen_perf",
   "test_rejeu_cache",
   "test_chanfrein_modes",
+  "test_conge_variable",
   "test_tangence_exacte",
   "test_draft_sens",
   "test_esquisse_cotes_souples",

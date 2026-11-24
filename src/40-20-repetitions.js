@@ -707,6 +707,8 @@ function repCloneFeature(f,i,skMap,featMap,cfg,reuse){
       const p0=s.pos0||s.pos,repos=!reuse||reuse._src!==f.id||repReparation;
       const loin=repos&&Math.hypot(s.pos[0]-p0[0],s.pos[1]-p0[1],s.pos[2]-p0[2])>2;
       o.pos0=loin?o.pos.slice():repTransformPoint(p0,i,cfg).map(v=>+v.toFixed(6));
+      // V0.99.69 : congé variable — le bout « départ » suit la copie
+      if(s.rv&&Array.isArray(s.rv.p0))o.rv=Object.assign({},s.rv,{p0:repTransformPoint(s.rv.p0,i,cfg).map(v=>+v.toFixed(6))});
       // V0.11.19 : normale de la première face d'un chanfrein asymétrique, transformée comme
       // les normales de faces (repCloneFaceRef) — la copie garde D1 sur l'image de la même face.
       if(Array.isArray(s.fn)&&s.fn.length===3)o.fn=repNorm(repTransformVec(s.fn,i,cfg)).map(v=>+v.toFixed(4));

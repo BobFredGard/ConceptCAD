@@ -158,7 +158,7 @@ function fdynHandle(f){
     try{const b=(bodies||[]).find(x=>x&&x.mesh&&x.visible!==false);
       if(b){const bb=new THREE.Box3().setFromObject(b.mesh),c=bb.getCenter(new THREE.Vector3());const d=C.clone().sub(c);if(d.lengthSq()>1e-9)n=d.normalize();}}catch(e){}
     return {kind:'lin',C:C,n:n,val:+E.r||1,label:f.chamfer?'Distance':'Rayon',unit:'mm',step:0.1,min:0.05,max:500,
-      set:(g,v)=>{(g.edges||[]).forEach(s=>{s.r=v;});}};
+      set:(g,v)=>{(g.edges||[]).forEach(s=>{if(s.rv&&s.r>0){const k=v/s.r;s.rv=Object.assign({},s.rv,{a:+(s.rv.a*k).toFixed(4),b:+(s.rv.b*k).toFixed(4)});}s.r=v;});}}; // congé variable : départ et arrivée dans le même rapport
   }
   if(f.type==='revolve'&&!f.orj&&!f.orjRing){ // joint torique : pas de poignée d'angle
     const sk=doc.sketches.find(s=>s.id===f.sketchId);if(!sk)return null;
