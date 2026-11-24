@@ -24,16 +24,17 @@ parentPort.on('message', m => { globalThis.onmessage({ data: m }); });
 let ok = 0, ko = 0, piegeVu = false;
 const verif = (c, n, d) => { if (c) { ok++; console.log('  ok ' + n); } else { ko++; console.log('  KO ' + n + (d ? ' : ' + d : '')); } };
 
-function cote(fichier, setupId, opId, corps, donnees, source, boites, prec) {
+function cote(fichier, setupId, opId, corps, donnees, source, boites, prec, niv, memo) {
   return new Promise((res, rej) => {
     const w = new Worker(RELAIS, { eval: true, workerData: source, resourceLimits: { maxOldGenerationSizeMb: 8192 } });
     const fin = r => { w.terminate(); res(r); };
     w.on('error', rej);
     w.on('message', m => {
       if (m.t === 'fin') fin({ mv: m.mv, champs: m.champs });
+      else if (m.t === 'memo') fin({ memo: m.entries });
       else if (m.t === 'ko') fin({ err: m.err + (m.pile ? '\n' + m.pile.split('\n').slice(2, 9).join('\n') : ''), piege: m.piege });
     });
-    w.postMessage({ t: 'job', setupId, opId, flux: false, doc: donnees, corps, boites, prec: prec || null });
+    w.postMessage({ t: 'job', setupId, opId, flux: false, doc: donnees, corps, boites, prec: prec || null, niv: niv || null, memo: memo || null });
   });
 }
 
@@ -165,6 +166,26 @@ async function traiter(fichier) {
     const seq = JSON.parse(sandbox.__seq);
     const d = ecart(seq, JSON.parse(JSON.stringify(r.mv)), 'mv');
     verif(!d, nom + ' : ' + seq.length + ' mouvements identiques (normal ' + sandbox.__ms + ' ms, worker ' + msW + ' ms)', d);
+    // V0.99.72 (idée de Fred : couches sur plusieurs cœurs) : workers de couches en parallèle,
+    // puis worker final avec leur mémoire des parois — même parcours, au nombre près
+    if (e.type === 'rough3d') {
+      const N = 3, t1 = Date.now();
+      const parts = await Promise.all([...Array(N).keys()].map(i => cote(fichier, e.setup, e.op, corps, JSON.parse(paquet.doc), source, JSON.parse(paquet.boites), prec, { n: N, i })));
+      const msP = Date.now() - t1;
+      const err = parts.find(p => p.err);
+      if (err) verif(false, nom + ' : couches', err.err);
+      else {
+        const memo = [].concat(...parts.map(p => p.memo || []));
+        const t2 = Date.now();
+        const rf = await cote(fichier, e.setup, e.op, corps, JSON.parse(paquet.doc), source, JSON.parse(paquet.boites), prec, null, memo);
+        const msF = Date.now() - t2;
+        if (rf.err) verif(false, nom + ' : calcul final', rf.err);
+        else {
+          const d2 = ecart(seq, JSON.parse(JSON.stringify(rf.mv)), 'mv');
+          verif(!d2 && memo.length > 0, nom + ' : par couches (' + N + ' workers, ' + memo.length + ' calculs de parois partagés) ' + seq.length + ' mouvements identiques (couches ' + msP + ' ms, final ' + msF + ' ms)', d2);
+        }
+      }
+    }
     // Garde-fou : sans le maillage attendu, le worker refuse au lieu de se replier en silence
     if (e.type === 'rough3d' && !piegeVu) {
       piegeVu = true;

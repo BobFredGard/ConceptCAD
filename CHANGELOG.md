@@ -8,7 +8,7 @@ sont sorties le 2026-09-30j.
 Code dans `src/` · livrable `fusion_mvp.html` (généré par `build.js`) · architecture et
 garde-fous en tête de `src/00-entete-et-outils.js`.
 
-**758 versions**, de `2026-09-28b` à `V0.99.71` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
+**759 versions**, de `2026-09-28b` à `V0.99.72` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
 comme dans le fichier d'origine.
 
 ---
@@ -8419,3 +8419,17 @@ Manuel Fonctions 3D.
 **Ébauche 3D plus rapide, parcours identiques** : boîtes de zone par contour (`faoZoneCtx` → `boxes`, élargies de la garantie outil, du décalage et d'un diamètre ; `faoInBoxes`), passées au générateur (`zoneBoxes`, `src/88-fao-50-caches-dispatch.js`), retirées si le repère tourne (`src/88-fao-90-ebauche3d.js`). Hors des boîtes : pas de case de masque calculée (`faoSpiralLevel`) et pas de paroi décalée pour une chaîne entièrement dehors (`faoOffsetRuns`, `src/88-fao-92-contour.js` ; couper une chaîne au bord des boîtes déplaçait un point de 0,3 mm : écarté). Index des parois à cellules de 1 mm au lieu de 4 (`faoShadowShape`, élargi au-delà de 600 mm de pièce). Manuel FAO.
 
 **Test** : `tests/test_fao_chain.cjs` T6 (deux carrés : aucun trait visible entre eux, ponts ignorés, aire 200). STEP.conceptcad, opération complète ancienne méthode contre nouvelle, pas à pas : 6 081 mouvements identiques, 1,5 fois plus rapide (jusqu'à 1,9 fois par niveau). `npm run parcours` : sorties identiques à V0.99.67 (les 6 écarts au fichier de référence existaient déjà). CACHE_VER et FORMES_VER inchangés.
+
+## V0.99.72 - Ébauche 3D répartie par couches sur plusieurs cœurs, poche finie avant la suivante
+
+**Demandes de Fred** (STEP.conceptcad, Ébauche 3D) : « usiner par zone » (les 5 poches étaient usinées niveau par niveau) ; « ça bloquait avant de voir le brut » ; « Pourquoi vérifier toute la pièce alors que les poches sont délimités » ; « sur SIRAP-14-002, l'ebauche 3D est plustôt rapide […] et que là, c'est tout petit et c'est 10x plus long ! » ; « sur lébauche 3d partant du brut, chaque couche et sous couche de passes pourrait être calculée dans un coeur différent ».
+
+**Poche finie avant la suivante** (`src/88-fao-90-ebauche3d.js`, `faoRegionOrder`) : avec une zone, une coupe qui sort de la zone (cadre dont seuls les sommets sont dedans, retirée ensuite par `faoZoneCuts`) reliait les poches en une seule région ; elle sépare désormais les blocs (point d'échantillon et ses 4 voisins à 0,2 mm hors zone, `zonePur` = zone seule, tournée avec le repère). Clé de parcours : marque `region-zone` pour ces seules ébauches (zone + « Finir une région avant la suivante ») — elles sont recalculées une fois, CACHE_VER inchangé.
+
+**Aperçu d'usinage sans figer l'écran** (`src/88-fao-70-simulation.js`, `faoViewerToggleSansGel`, bouton de `src/88-fao-80-interface.js`) : les opérations sans parcours en mémoire sont calculées sur un autre cœur avant l'ouverture, la séquence aussi ; pendant « Tout régénérer », la lecture attend la fin.
+
+**Pourquoi la pièce STEP était 10 fois plus lente** : ses flancs en pente donnent 160 cotes de sommets en 13 mm (117 plans d'ombre, 225 079 segments par niveau, contre 2 plans et 312 segments sur SIRAP-14-002). Les contours empilés presque confondus dominaient le calcul. (1) `faoChainsDedans` (`src/88-fao-92-contour.js`) : un contour noyé dans la matière d'un autre plan (à plus de 0,001 mm de ses bords) ne donne jamais de point de décalage valide — il n'est plus décalé ; parité et index des distances restent complets. (2) Contours de chaque plan gardés avec sa coupe (`faoSliceCache.ch`). (3) Boîtes de zone aussi pour les mini-passes et la finition des parois (`zoneBoxes`). Un seul cœur : 456 → 219 s (banc Node), 207 → 108 s dans l'application.
+
+**Couches sur plusieurs cœurs** (`src/88-fao-58-multicoeur.js`, `faoWkNivNb`, `faoWkRemplir0`) : une ébauche 3D est d'abord confiée à n workers de couches (n = nombre de couches, au plus 8 et au plus le nombre de cœurs ; 3 cœurs au moins), chacun ne calcule que les niveaux `li % n === i` (`faoNivPart`) et renvoie sa mémoire des calculs purs (`faoGeoMemo` : décalages `faoOffsetRuns`, rectangles `faoRectRuns`, lignes de balayage, cases du masque de `faoSpiralLevel`, clés par signature du maillage, des plans, de la boîte, du rayon et du pas) ; un worker final refait l'opération complète avec cette mémoire réunie : parcours identique par construction. STEP.conceptcad dans l'application : 22 s contre 108 s sur un seul cœur (207 s en V0.99.71), 6 069 mouvements identiques au mouvement près.
+
+**Test** : `tests/test_fao_chain.cjs` T7 (deux poches reliées par une coupe hors zone : AB avec la zone, ABABAB sans). `tests/test_fao_multicoeur.cjs` : 3 workers de couches puis le final, comparé au calcul normal (Cavité Test : 23 330 mouvements identiques). Application, onglet séparé : STEP.conceptcad par couches contre un seul cœur, 0 écart. `npm run parcours` : sorties identiques à V0.99.71 ; référence réécrite (les 6 écarts dataient d'avant V0.99.67). Manuel FAO. CACHE_VER et FORMES_VER inchangés.

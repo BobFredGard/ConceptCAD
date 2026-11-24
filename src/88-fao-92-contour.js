@@ -211,6 +211,21 @@ function faoPtsBB(pts){
   }
   return bb;
 }
+/* ----- V0.99.72 (idée de Fred : « chaque couche et sous-couche de passes pourrait être
+   calculée dans un cœur différent ») : MÉMOIRE DES CALCULS DE PAROIS -----
+   Les morceaux de paroi d'une couche (lignes de balayage, contours décalés, cadres) ne
+   dépendent que de la pièce et de la couche, jamais des couches précédentes. Des workers
+   calculent chacun une partie des couches (faoNivPart) et rendent leur mémoire ; le calcul
+   final la reprend (mêmes fonctions, mêmes entrées : parcours identique au mouvement près). */
+let faoGeoMemo=null; // Map clé -> résultat, posée seulement pendant un calcul réparti
+function faoMemoClone(v){
+  if(ArrayBuffer.isView(v))return v.slice();
+  if(Array.isArray(v)){ const o=new Array(v.length); for(let i=0;i<v.length;i++)o[i]=faoMemoClone(v[i]); return o; }
+  if(v&&typeof v==='object'){ const o={}; for(const k in v)o[k]=faoMemoClone(v[k]); return o; }
+  return v;
+}
+function faoMeshSig(mesh){ return (mesh&&mesh.v?mesh.v.length:0)+'/'+(mesh&&mesh.t?mesh.t.length:0); }
+function faoPlanesSig(planes){ return planes.map(function(z){return Math.round(z*1000)/1000;}).join(','); }
 function faoShadowShape(mesh,planes,B,r,gstep){
   // Shape du niveau : sections par plan (parité), index global dedup (distance),
   // chaînes uniques (offset), boite de validation [B.*-r,B.*+r], pas de grille.
@@ -221,11 +236,26 @@ function faoShadowShape(mesh,planes,B,r,gstep){
   const cellS=Math.max(1,Math.ceil(Math.max((+B.x1)-(+B.x0),(+B.y1)-(+B.y0),0)/600))||4;
   const S={pl:[],hash:faoHashBuild(cellS),rect:[B.x0-r,B.y0-r,B.x1+r,B.y1+r],
     chains:[],keys:{},gstep:gstep>0?gstep:2,segs:[]};
+  if(faoGeoMemo)S.sig=faoMeshSig(mesh)+'|'+faoPlanesSig(planes)+'|'+[B.x0,B.y0,B.x1,B.y1].join(',')+'|'+r+'|'+S.gstep;
   const seen={};
   planes.forEach(function(zz){
-    const segs=faoSliceZCached(mesh,Math.round(zz*1000)/1000);
+    const zk=Math.round(zz*1000)/1000;
+    const segs=faoSliceZCached(mesh,zk);
     if(!segs.length)return;
-    const chains=faoChainsClosed(segs);
+    // V0.99.72 : contours d'un plan gardés avec sa coupe (calcul pur) — chaque niveau et
+    // chaque mini-passe relisait les mêmes plans (68 s sur STEP.conceptcad). Objets neufs
+    // à chaque ombre : sens d'offset, index… y sont posés pour CETTE ombre.
+    let CC=null;
+    try{ if(faoSliceCache&&faoSliceCache.mesh===mesh){ if(!faoSliceCache.ch)faoSliceCache.ch={}; CC=faoSliceCache.ch; } }catch(e){ CC=null; }
+    let mem=CC?CC[zk]:null;
+    if(!mem){
+      mem={ch:faoChainsClosed(segs).map(function(ch){return {pts:ch.pts,bb:ch.bb,cle:faoPointsKey(ch.pts.slice(0,ch.pts.length-1))};}),
+        sk:segs.map(function(s){
+          return [Math.round(Math.min(s[0],s[2])*1e4)/1e4,Math.round(Math.min(s[1],s[3])*1e4)/1e4,
+            Math.round(Math.max(s[0],s[2])*1e4)/1e4,Math.round(Math.max(s[1],s[3])*1e4)/1e4].join(',');})};
+      if(CC)CC[zk]=mem;
+    }
+    const chains=mem.ch.map(function(m){return {pts:m.pts,bb:m.bb,cle:m.cle};});
     if(!chains.length)return;
     const bb=[1/0,1/0,-1/0,-1/0];
     chains.forEach(function(ch){
@@ -233,14 +263,13 @@ function faoShadowShape(mesh,planes,B,r,gstep){
       if(ch.bb[1]<bb[1])bb[1]=ch.bb[1];
       if(ch.bb[2]>bb[2])bb[2]=ch.bb[2];
       if(ch.bb[3]>bb[3])bb[3]=ch.bb[3];
-      const k=faoPointsKey(ch.pts.slice(0,ch.pts.length-1));
-      if(!S.keys[k]){S.keys[k]=1;S.chains.push(ch);}
+      const k=ch.cle;
+      if(!S.keys[k]){S.keys[k]=1;ch.pi=S.pl.length;S.chains.push(ch);}
     });
     S.pl.push({chains:chains,bb:bb});
     const hs=[];
-    segs.forEach(function(s){
-      const k=[Math.round(Math.min(s[0],s[2])*1e4)/1e4,Math.round(Math.min(s[1],s[3])*1e4)/1e4,
-        Math.round(Math.max(s[0],s[2])*1e4)/1e4,Math.round(Math.max(s[1],s[3])*1e4)/1e4].join(',');
+    segs.forEach(function(s,si){
+      const k=mem.sk[si];
       if(seen[k])return;
       seen[k]=1;
       S.segs.push(s);
@@ -396,6 +425,89 @@ function faoShapeInside(S,x,y){
     }
   }
   return faoShapeInsideRaw(S,x,y);
+}
+// V0.99.72 (constat de Fred, STEP.conceptcad : « c'est tout petit et c'est 10x plus long » que
+// SIRAP-14-002) : une pièce importée à parois en pente et arrondis a un Z de sommet tous les
+// 0,1 mm — 117 plans d'ombre par niveau (2 sur SIRAP-14-002), 117 contours presque superposés
+// de chaque paroi, tous décalés puis vérifiés point par point. Un contour STRICTEMENT DANS LA
+// MATIÈRE d'un autre plan (à plus d'1 µm de son bord) ne donne aucun point valide : chacun de
+// ses points décalés est à moins de d du bord de cet autre plan. Il n'est plus décalé ; la
+// parité et les distances (validité des autres) restent calculées sur tous les plans.
+function faoPlaneInside(P,x,y){
+  // Parité d'UN plan (même règle que faoShapeInsideRaw)
+  if(y<P.bb[1]||y>P.bb[3])return false;
+  const yb=faoPlaneYB(P);
+  if(!yb.E.length)return false;
+  let b=Math.floor((y-yb.y0)/yb.step);
+  if(b<0)b=0; else if(b>=yb.n)b=yb.n-1;
+  const row=yb.rows[b];
+  if(!row)return false;
+  const E=yb.E;
+  let c=0;
+  for(let t=0;t<row.length;t++){
+    const i=row[t],ax=E[i],ay=E[i+1],bx=E[i+2],by=E[i+3];
+    if((ay>y)!==(by>y)){
+      const tt=(y-ay)/(by-ay);
+      if(ax+tt*(bx-ax)>x)c^=1;
+    }
+  }
+  return !!c;
+}
+function faoSegSegD2(ax,ay,bx,by,cx,cy,dx,dy){
+  // Distance² entre deux segments (0 s'ils se coupent)
+  const o=function(px,py,qx,qy,rx,ry){return (qx-px)*(ry-py)-(qy-py)*(rx-px);};
+  const d1=o(cx,cy,dx,dy,ax,ay),d2=o(cx,cy,dx,dy,bx,by),d3=o(ax,ay,bx,by,cx,cy),d4=o(ax,ay,bx,by,dx,dy);
+  if(((d1>0&&d2<0)||(d1<0&&d2>0))&&((d3>0&&d4<0)||(d3<0&&d4>0)))return 0;
+  const ps=function(px,py,sx,sy,ex,ey){const vx=ex-sx,vy=ey-sy,L=vx*vx+vy*vy;
+    let t=L>0?((px-sx)*vx+(py-sy)*vy)/L:0;if(t<0)t=0;else if(t>1)t=1;
+    const qx=sx+t*vx-px,qy=sy+t*vy-py;return qx*qx+qy*qy;};
+  return Math.min(ps(ax,ay,cx,cy,dx,dy),ps(bx,by,cx,cy,dx,dy),ps(cx,cy,ax,ay,bx,by),ps(dx,dy,ax,ay,bx,by));
+}
+function faoPlaneEdgeHash(P){
+  // Arêtes de parité du plan, indexées (cellule 1 mm), une fois par plan
+  if(P.eh)return P.eh;
+  const E=faoPlaneYB(P).E,segs=[];
+  for(let i=0;i<E.length;i+=4)segs.push([E[i],E[i+1],E[i+2],E[i+3]]);
+  P.eh=faoHashSegs(faoHashBuild(1),segs);
+  return P.eh;
+}
+function faoChainNearPlane(ch,P,eps){
+  // Un segment du contour approche-t-il à moins de eps d'une arête du plan ?
+  const H=faoPlaneEdgeHash(P),c=H.cell,e2=eps*eps,pts=ch.pts;
+  if(!H.w||!H.h)return false;
+  for(let i=0;i+1<pts.length;i++){
+    const ax=pts[i][0],ay=pts[i][1],bx=pts[i+1][0],by=pts[i+1][1];
+    let ix0=Math.floor((Math.min(ax,bx)-eps)/c),ix1=Math.floor((Math.max(ax,bx)+eps)/c);
+    let iy0=Math.floor((Math.min(ay,by)-eps)/c),iy1=Math.floor((Math.max(ay,by)+eps)/c);
+    if(ix0<H.x0)ix0=H.x0; if(ix1>H.x0+H.w-1)ix1=H.x0+H.w-1;
+    if(iy0<H.y0)iy0=H.y0; if(iy1>H.y0+H.h-1)iy1=H.y0+H.h-1;
+    for(let iy=iy0;iy<=iy1;iy++){const ro=(iy-H.y0)*H.w-H.x0;
+      for(let ix=ix0;ix<=ix1;ix++){const arr=H.a[ro+ix];if(!arr)continue;
+        for(let k=0;k<arr.length;k++){const s=arr[k];
+          if(faoSegSegD2(ax,ay,bx,by,s[0],s[1],s[2],s[3])<e2)return true;}}}
+  }
+  return false;
+}
+function faoChainsDedans(S){
+  // S.chains[i] -> 1 si le contour est strictement dans la matière d'un autre plan
+  if(S.dedans)return S.dedans;
+  const n=S.chains.length,out=new Uint8Array(n);
+  S.dedans=out;
+  if(S.pl.length<2)return out;
+  const eps=1e-3;
+  for(let ci=0;ci<n;ci++){
+    const ch=S.chains[ci],p0=ch.pts[0],bb=ch.bb;
+    for(let pj=0;pj<S.pl.length;pj++){
+      if(pj===ch.pi)continue;
+      const P=S.pl[pj];
+      if(bb[0]<P.bb[0]||bb[1]<P.bb[1]||bb[2]>P.bb[2]||bb[3]>P.bb[3])continue;
+      if(!faoPlaneInside(P,p0[0],p0[1]))continue;
+      if(faoChainNearPlane(ch,P,eps))continue;
+      out[ci]=1;
+      break;
+    }
+  }
+  return out;
 }
 function faoShapeInsideRaw(S,x,y){
   // OR des parités XOR par plan : trous gérés au plan, union entre plans
@@ -689,6 +801,13 @@ function faoRectRaw(x0,y0,x1,y1){
   return raw;
 }
 function faoOffsetRuns(S,d){
+  const mk=(faoGeoMemo&&S.sig)?('O|'+S.sig+'|'+d+'|'+(S.zb?JSON.stringify(S.zb):'')):null;
+  if(mk&&faoGeoMemo.has(mk))return faoMemoClone(faoGeoMemo.get(mk));
+  const res=faoOffsetRuns0(S,d);
+  if(mk)faoGeoMemo.set(mk,faoMemoClone(res));
+  return res;
+}
+function faoOffsetRuns0(S,d){
   // Toutes les chaines du niveau offsetées a d -> morceaux valides.
   const out=[];
   // V0.99.71 : boîtes de zone (ébauche 3D) — une chaîne décalée entièrement
@@ -697,7 +816,9 @@ function faoOffsetRuns(S,d){
   // (couper au bord des boîtes déplacerait les points gardés : parcours changés).
   const zb=S.zb||null;
   const valid=function(p){return faoShapeValid(S,p[0],p[1],d);};
+  const dedans=faoChainsDedans(S); // V0.99.72 : contours empilés dans la matière d'un autre plan
   for(let ci=0;ci<S.chains.length;ci++){
+    if(dedans[ci])continue;
     const ch=S.chains[ci];
     if(!ch.side)ch.side=faoChainSide(ch,S);
     const raw=faoOffsetChain(ch.pts,d,ch.side);
@@ -743,6 +864,13 @@ function faoRunsDedupGeo(runs,tol){
   return runs.filter(function(R,i){return keep[i];});
 }
 function faoRectRuns(S,inset,d){
+  const mk=(faoGeoMemo&&S.sig)?('R|'+S.sig+'|'+inset+'|'+d):null;
+  if(mk&&faoGeoMemo.has(mk))return faoMemoClone(faoGeoMemo.get(mk));
+  const res=faoRectRuns0(S,inset,d);
+  if(mk)faoGeoMemo.set(mk,faoMemoClone(res));
+  return res;
+}
+function faoRectRuns0(S,inset,d){
   // E0 (inset=0) : le tour de la boite de validation, valide a d (= r).
   // E-k (inset=k*aeA) : cadres imbriqués pour les niveaux vides (surfaçage).
   const R=S.rect;
@@ -780,14 +908,17 @@ function faoRoughAdaptiveLevel(mesh,B,z,D,r,secu,zFrom,ae,entryMode,brutTop,zt,m
   for(let pi=0;pi<planes.length;pi++){
     if(planes[pi]>z+1e-9)segsAll=segsAll.concat(faoSliceZCached(mesh,planes[pi]));
   }
+  // V0.99.72 : lignes de balayage de la couche (calcul pur) — mémoire du calcul réparti
+  const lkey=faoGeoMemo?('L|'+faoMeshSig(mesh)+'|'+faoPlanesSig(planes)+'|'+[B.x0,B.y0,B.x1,B.y1].join(',')+'|'+z+'|'+top+'|'+r+'|'+aeA):null;
+  let lines=(lkey&&faoGeoMemo.has(lkey))?faoMemoClone(faoGeoMemo.get(lkey)):null;
+  if(!lines){
+  lines=[];
   const ys=[]; let y=B.y0-r, g=0;
   while(y<=B.y1+r+1e-9&&g++<100000){
     // lignes purement hors brut (disque tangent sans coupe) : ignorees
     if(!(y+r<=B.y0+1e-9||y-r>=B.y1-1e-9))ys.push(y);
     y+=aeA;
   }
-  if(!ys.length)return;
-  const lines=[];
   const seenY={};
   ys.forEach(function(yy){
     let ivs=faoShadowIntervals(mesh,B,yy,z,top,r,aeA,planes);
@@ -852,6 +983,8 @@ function faoRoughAdaptiveLevel(mesh,B,z,D,r,secu,zFrom,ae,entryMode,brutTop,zt,m
     lines.push({y:yc,ivs:ivs});
   });
   lines.sort(function(p,q){return p.y-q.y;});
+  if(lkey)faoGeoMemo.set(lkey,faoMemoClone(lines));
+  }
   if(!lines.length)return;
   const regs=faoRoughRegions(lines);
   // --- SUIVI DE CONTOUR (lot B) : les passes sont les chaines du niveau
@@ -942,6 +1075,9 @@ function faoRoughAdaptiveLevel(mesh,B,z,D,r,secu,zFrom,ae,entryMode,brutTop,zt,m
   };
   // --- passes : chaines offsetees + cadres imbriques (E0/E-k)
   const S=faoShadowShape(mesh,planes,B,r,aeA);
+  // V0.99.72 : boîtes de zone aussi pour les mini-passes et la finition des parois — un contour
+  // décalé hors de toutes les boîtes est retiré entier par le filtre de zone plus bas (exact)
+  if(typeof opt==='object'&&opt&&typeof opt.zoneAt==='function'&&Array.isArray(opt.zoneBoxes)&&opt.zoneBoxes.length)S.zb=opt.zoneBoxes;
   // 008 : bbox 2D de la pièce — ancre d'arc hors silhouette = pas de hélice
   // (les chaînes du cadre E0 en marge entreraient par un ressort dans l'air).
   const mBB=[1/0,1/0,-1/0,-1/0];
