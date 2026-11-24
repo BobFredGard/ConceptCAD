@@ -20,6 +20,7 @@
   - Aussi pour un corps seul, ou pour **une seule pièce / un sous-ensemble d'un STEP multi-corps** (clic droit sur sa ligne de l'arborescence ou sur la pièce dans la vue 3D, placement d'assemblage gardé).
   - Un STEP ouvert tel quel se réexporte, sans ses pièces masquées.
   - **À la racine d'un assemblage, tout ce qui est visible part dans le même fichier, chaque pièce à sa place.**
+- **Assemblage complet → dossier** (Fichier → Exporter → **📦 Dossier**) : l'assemblage, toutes ses pièces liées et leurs programmes CN déjà calculés sont copiés d'un coup dans le dossier choisi, sous-dossiers gardés. Les copies s'ouvrent entre elles : les originaux ne sont pas touchés. Un posage dont les parcours ne sont pas à jour est signalé, à recalculer.
 - **Export STL** : une fenêtre fait choisir la finesse — **Grossier** (0,1 mm · 20°), **Normal** (0,03 mm · 10°), **Fin** (0,01 mm · 5°) ou **Personnalisé** (écart et angle au choix).
   - Elle annonce le **nombre de triangles**, le **poids du fichier** et le **nombre de côtés d'un cercle** (Ø5, Ø10, Ø50).
   - L'**aperçu 3D** montre exactement les triangles qui seront écrits : on tourne et on zoome sur un trou ou un congé avant d'exporter.

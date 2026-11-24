@@ -120,6 +120,12 @@ async function asmLinkHandle(L,ask,mode){
     try{const o={mode};if(typeof h.queryPermission!=='function')return true; // (stockage privé : toujours permis)
       if((await h.queryPermission(o))==='granted')return true;
       if(!ask)return false;return (await h.requestPermission(o))==='granted';}catch(e){return false;}};
+  // V0.99.70 : copie faite par « Assemblage → dossier » hors du dossier de projets (90-42) :
+  // handle mémorisé ET chemin relatif au dossier copié — le handle d'abord (cet ordinateur)
+  if(l.key&&l.rel){
+    let h=null;try{h=await idbGet(l.key);}catch(e){}
+    if(h){if(!(await perm(h,mode||'readwrite')))return {why:'accès au fichier source à autoriser',perm:true};return {h};}
+  }
   if(l.rel&&mffFolder){
     if(!(await perm(mffFolder,mode||'readwrite')))return {why:'accès au dossier de projets à autoriser',perm:true};
     try{
