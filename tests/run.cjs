@@ -290,6 +290,7 @@ const SUITES = [
   "test_composants_modele",
   "test_composants_corps",
   "test_composants_lies",
+  "test_export_dossier",
   "test_derivee",
   "test_mini_liste_parametres",
   "test_soustraction_faces_tangentes",

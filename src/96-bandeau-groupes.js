@@ -117,7 +117,8 @@
     ['btnExportStep','\u{2B07}','STEP — géométrie exacte'],
     ['btnExportStl','\u{2B07}','STL — maillage'],
     ['btnExportObj','\u{2B07}','OBJ — maillage'],
-    ['btnExportFcstd','\u{2B07}','FreeCAD — fichier natif (aimants avec lignes de champ)']
+    ['btnExportFcstd','\u{2B07}','FreeCAD — fichier natif (aimants avec lignes de champ)'],
+    ['btnExportPack','\u{1F4E6}','Assemblage complet → dossier (pièces liées et programmes CN)']
   ],'\u{1F4BE}');
   const gProj=groupe('Projet','Nouveau modèle, sauvegarde, ouverture',[
     ['btnNew','\u{1F195}','Nouveau modèle'],

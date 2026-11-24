@@ -8,7 +8,7 @@ sont sorties le 2026-09-30j.
 Code dans `src/` · livrable `fusion_mvp.html` (généré par `build.js`) · architecture et
 garde-fous en tête de `src/00-entete-et-outils.js`.
 
-**756 versions**, de `2026-09-28b` à `V0.99.69` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
+**757 versions**, de `2026-09-28b` à `V0.99.70` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
 comme dans le fichier d'origine.
 
 ---
@@ -8395,3 +8395,15 @@ Manuel Fonctions 3D.
 **Correctif** : panneau du congé (`src/80-conges-chanfreins.js`) : **Rayon → Constant / Variable (départ → arrivée)**, rayon d'arrivée par défaut, deux cases et ⇄ par arête, point vert au départ dans la vue 3D. Chaque arête garde `rv = {a, b, p0}` (p0 = bout de départ), `r` = le plus grand des deux (zone de contrôle, doublons, messages). Noyau (`src/20-20-aretes-et-maillage.js`, `occCongeVariable`) : `SetRadius(R1, R2, contour, arête)` sur chaque arête du contour ; chaîne ouverte = rampe d'un bout à l'autre dans le sens départ → arrivée de l'arête cliquée ; tour fermé = rampe sur l'arête cliquée puis retour au départ sur le reste (une rampe unique saute là où le tour se referme : refusé), 0 y devient 0,01 (sommet intérieur du contour). Case « tangentes » décochée : le congé variable passe par le noyau (l'outil « tout droit » est à rayon constant). Suivent aussi : rejeu (`src/20-60-conges.js`, rayon réduit dans le même rapport en cas d'échec, clé de la reprise NURBS), répétitions (p0 transformé), poignée de la fenêtre dynamique (départ et arrivée dans le même rapport). Manuel Fonctions 3D.
 
 **Test** : `tests/test_conge_variable.cjs` (noyau réel : 0 → 8, 8 → 0, 2 → 6, départ à l'autre bout, tangentes décochées, rejeu par le document et signature, création / édition / ⇄ / retour au constant par la commande, tour fermé de 8 arêtes tangentes avec 0 → 4 et 1 → 4). CACHE_VER et FORMES_VER inchangés (champ nouveau : les anciens congés ne changent pas).
+
+## V0.99.70 - Assemblage complet vers un dossier
+
+**Demande de Fred** : « exporter un fichier d'assemblage et tous ses fichiers en une seule fois vers le répertoire de mon choix ». Choix de Fred : les copies pointent vers les copies, sous-dossiers gardés, programmes CN ajoutés.
+
+**Nouveau** (`src/90-42-export-dossier.js`, Fichier → Exporter → **📦 Dossier**) : on choisit un dossier ; ConceptCAD y écrit l'assemblage, chaque pièce liée (liens imbriqués compris, une seule fois par fichier source) et les programmes CN déjà calculés (`Programmes CN/<pièce>/<posage>.mpf`). Les sous-dossiers sont gardés à partir du dossier commun à l'assemblage et à ses pièces. Contenu = état en mémoire (modifications pas encore enregistrées comprises) ; les trajectoires et imports d'une source lisible sont gardés. Les originaux ne sont ni modifiés ni réécrits. Les liens des copies pointent vers les copies, avec l'empreinte du fichier écrit : la copie rouverte ne voit aucun changement. Fichiers déjà présents : une question (Remplacer / Annuler). Posage dont les parcours ne sont pas à jour : listé « à recalculer », jamais calculé pendant la copie. Bilan affiché à la fin.
+
+**Premier essai de Fred** (SIRAP-14-000, « Rien n'a été copié ») : la copie aboutissait, mais calculait d'abord les programmes CN. Il fallait rejouer SIRAP-14-002, soit plus d'une minute d'écran figé sans message, et rien n'était écrit avant la fin. **Correction** : les fichiers sont écrits d'abord (4 s sur SIRAP-14-000), les programmes CN ensuite ; une fenêtre de progression dit l'étape et la pièce en cours ; le document n'est plus marqué « modifié » après la copie.
+
+**Dossier hors du dossier de projets** : chaque lien garde le fichier copié (handle mémorisé sur ce poste) et son chemin relatif au dossier copié. `asmLinkHandle` (`src/47-composants-lies.js`) essaie le handle d'abord quand les deux existent : jamais l'original du même nom. Sur un autre poste, choisir le dossier copié comme dossier de projets.
+
+**Test** : `tests/test_export_dossier.cjs` (15 contrôles, dossier simulé : sous-dossiers, liens vers les copies, empreintes, lien imbriqué, originaux inchangés, question, hors du dossier de projets, copie rouverte à jour) ; vérifié dans le navigateur (programme CN d'une pièce non active, 4 207 lignes). CACHE_VER et FORMES_VER inchangés.

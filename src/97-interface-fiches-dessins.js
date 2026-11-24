@@ -162,6 +162,9 @@ function mfFiTable(){
   EXP('STL','Crée un fichier STL fait de petits triangles, pour l’impression 3D par exemple.');
   EXP('OBJ','Crée un fichier OBJ fait de petits triangles, pour la 3D et l’animation.');
   F('Fichier/FreeCAD','Exporter en FreeCAD','Crée un fichier FreeCAD précis, corps et couleurs compris. Les aimants y gardent leurs caractéristiques et leurs lignes de champ.',[],LPART(),DOC(34,14,'FCStd',OR),null,'La pièce','Le fichier');
+  // V0.99.70 : assemblage complet vers un dossier (90-42)
+  const DOSS='<path d="M20 22h22l6 7h32v35h-60z" fill="#fde68a" stroke="#b45309" stroke-width="1.2"/>'+ficT(50,50,'Dossier',7,'#92400e');
+  F('Fichier/Dossier','Assemblage complet vers un dossier','Copie l’assemblage, toutes ses pièces liées et leurs programmes CN dans le dossier de votre choix. Les copies s’ouvrent entre elles.',['Choisissez le dossier'],DOC(8,8,'ASM',OR)+DOC(40,14,'PIÈCE',GR)+DOC(70,20,'CN','#64748b'),DOSS,null,'Assemblage et pièces','Le dossier');
   /* ========== composants ========== */
   const PA=(dx,dy,dz,k)=>ficBox(-14+dx,-9+dy,-5+dz,4+dx,9+dy,4+dz,k);
   const PB=(dx,dz,k)=>ficCyl(dx,0,dz,5,16,k==='o'?'mfFcHo':'mfFcHb',k);
