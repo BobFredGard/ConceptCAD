@@ -81,6 +81,21 @@ const A=(c,m)=>{if(!c){ko++;console.log('  ✗ '+m);}else console.log('  ✓ '+m
     R.push([q.maxSeg<=50+1e-6,'T3 hexagone : segment max '+q.maxSeg.toFixed(2)+' <= 50']);
     R.push([q.farMid<1e-3,'T3 hexagone : milieux sur la boucle ('+q.farMid.toExponential(1)+' mm)']);
 
+    // T5 — V0.99.66 (constat de Fred, STEP.conceptcad, ébauche 3D) : arêtes d'une
+    // pièce importée qui NE SE TOUCHENT PAS à 1e-4 près → une chaîne par arête,
+    // autrefois mises à la suite dans l'ordre des clics : 2 cordes croisées dans la
+    // zone. Rectangle 40×30 coupé en 8 arêtes, jours de 2 µm, ordres variés.
+    const cross=function(lp){let n=0;const s=function(p,q,r){return (q[0]-p[0])*(r[1]-p[1])-(q[1]-p[1])*(r[0]-p[0]);};
+      for(let i=0;i+1<lp.length;i++)for(let k=i+2;k+1<lp.length;k++){if(i===0&&k===lp.length-2)continue;
+        const A=lp[i],B=lp[i+1],C=lp[k],D=lp[k+1];if(s(A,B,C)*s(A,B,D)<0&&s(C,D,A)*s(C,D,B)<0)n++;}return n;};
+    const P8=[[0,0],[20,0],[40,0],[40,15],[40,30],[20,30],[0,30],[0,15]];
+    E=P8.map(function(a,k){const b=P8[(k+1)%8];return mk([a[0]+0.002*(k%2),a[1]],b,k%3===0);});
+    let worst=0,aMin=1e9;
+    [[0,1,2,3,4,5,6,7],[4,0,6,2,7,1,5,3],[7,3,1,5,0,6,2,4],[2,6,4,0,3,7,1,5]].forEach(function(o){
+      const qq=qual(E,o);worst=Math.max(worst,cross(qq.loop));aMin=Math.min(aMin,qq.area);});
+    R.push([worst===0,'T5 arêtes disjointes (jours 2 µm) : aucune corde croisée (max '+worst+')']);
+    R.push([aMin>1199,'T5 arêtes disjointes : aire pleine '+aMin.toFixed(1)+' (≈1200)']);
+
     // T4 — DOCUMENT RÉEL : après rejeu, la boucle doit être intégre.
     await deserialise(__docJson,{rebuild:false});
     occCkClear();markDirty();

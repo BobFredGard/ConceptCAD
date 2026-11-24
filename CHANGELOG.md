@@ -8,7 +8,7 @@ sont sorties le 2026-09-30j.
 Code dans `src/` · livrable `fusion_mvp.html` (généré par `build.js`) · architecture et
 garde-fous en tête de `src/00-entete-et-outils.js`.
 
-**753 versions**, de `2026-09-28b` à `V0.99.66` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
+**754 versions**, de `2026-09-28b` à `V0.99.67` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
 comme dans le fichier d'origine.
 
 ---
@@ -8371,3 +8371,11 @@ Manuel Fonctions 3D.
 **Correctif** (`src/90-40-export.js`) : `cadPickSave` ouvre la fenêtre « Enregistrer sous » (dossier + nom, dernier dossier retenu par l'identifiant `ccexport`) et `cadWriteFile` écrit le fichier choisi. La fenêtre s'ouvre juste après les réglages (schéma STEP, finesse STL), avant le calcul : le navigateur ne l'accepte que juste après un clic. Annuler n'écrit rien (« Export … annulé » ; la fenêtre de finesse STL reste ouverte). Sans cette fenêtre (appli Mac, Firefox, Safari, `?telecharger`, appel sans clic) : téléchargement comme avant. Branché sur l'export STEP, STL (`src/90-41-export-stl.js`), OBJ, FreeCAD (`src/90-41-export-freecad.js`) et le STEP d'un corps ou d'une pièce par clic droit (`src/90-20-menus-contextuels.js`, `stepSaveShapes`). Le message de fin donne le nom du fichier écrit. Manuel Fichiers.
 
 **Test** : test_export_step_import, test_export_step_assemblage, test_export_stl_finesse, test_export_freecad (repli téléchargement) ; essai dans la page : fichier choisi écrit, annulation, repli. CACHE_VER et FORMES_VER inchangés.
+
+## V0.99.67 - Zone en chaîne d'arêtes : plus de traits croisés
+
+**Cause** (constat de Fred, STEP.conceptcad, ébauche 3D → Zone → Chaîne d'arêtes : « Les 2 lignes qui se croisent ne servent à rien et je ne les ai jamais choisi ! ») : les 10 arêtes choisies autour de la poche d'une pièce STEP importée ne se touchent pas à 0,1 µm près ; `faoOrderEdges` en faisait 10 chaînes séparées, que `faoLoopFromChains` mettait à la suite dans l'ordre des clics, sans les retourner. La boucle refermait les trous par des cordes : deux de 14,73 mm traversaient la zone (5 croisements), affichées en orange et utilisées pour borner l'usinage.
+
+**Correctif** (`src/88-fao-30-parcours.js`) : `faoLoopFromChains` raccorde les chaînes bout à bout au plus proche (3D), en retournant celles qui arrivent par leur fin. Les fichiers déjà enregistrés se réparent à l'ouverture (la zone est re-suivie à chaque rejeu depuis ses ancres) ; le parcours de l'opération est à recalculer. Manuel FAO.
+
+**Test** : `tests/test_fao_chain.cjs` T5 (rectangle coupé en 8 arêtes disjointes de 2 µm, 4 ordres de clic : aucun croisement, aire pleine). Vérifié dans l'appli sur STEP.conceptcad : 0 croisement (5 avant), aire 200,5 mm², plus grand segment 7,88 mm (vraie arête droite) ; banc hors appli sur les 10 arêtes réelles : 40 ordres de clic sans croisement (40 sur 40 avec croisements avant). CACHE_VER et FORMES_VER inchangés.
