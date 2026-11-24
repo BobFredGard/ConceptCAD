@@ -8,7 +8,7 @@ sont sorties le 2026-09-30j.
 Code dans `src/` · livrable `fusion_mvp.html` (généré par `build.js`) · architecture et
 garde-fous en tête de `src/00-entete-et-outils.js`.
 
-**761 versions**, de `2026-09-28b` à `V0.99.74` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
+**762 versions**, de `2026-09-28b` à `V0.99.75` (numéro daté jusqu'à `2026-10-16-021`, puis numéro des tags) — la plus récente en bas,
 comme dans le fichier d'origine.
 
 ---
@@ -8455,3 +8455,15 @@ Manuel Fonctions 3D.
 **Mesures** (STEP.conceptcad, finesse haute, 40,8 M échantillons, corps de 18 840 triangles) : champ du brut 0,79 s (boîte seule : 0,53 s ; distance aux triangles 0,15 s, dessus 0,02 s). Grands congés et coins du brut lisses dans la simulation ; poches usinées inchangées.
 
 **Test** : `tests/test_sdf_brut_corps.cjs` (cylindre R20 × 30 de 1 440 triangles : bande à 0,0008 mm de la distance exacte, aucun triangle oublié face à la force brute, paroi extraite à 0,003 mm du rayon avec des normales horizontales, volume et rainure ; toit penché en éventails comparé à la force brute ; dôme du plat au vertical à 0,014 mm ; l'ancien champ faisait 0,39 mm d'escalier). `test_simulation_moteurs` et `test_fao_brut_corps` passent. Manuel FAO. CACHE_VER et FORMES_VER inchangés.
+
+## V0.99.75 - cpt local, publication sur « livre »
+
+**Demande de Fred** : « les modification et les cpt demandent beaucoup trop de temps de développement. Comment peut-on réduire ce temps? Peut-être en commitant en local, sur mon PC et on ne pousse que ce qui est vraiment fonctionnel? », puis, pour publier : « Quand je dis « livre » ».
+
+**Cause** : chaque cpt était une publication complète, 40 min à 1 h, environ 8 fois par jour (V0.99.27 → V0.99.72 en 7 jours) : suite complète (15 à 30 min, bornée par test_barquette_120, 120 modifications à la suite, impossible à découper), DMG Mac chez GitHub (7 à 23 min), site en ligne en échec au premier passage 5 fois sur 8 le 24/11 (« Fetching artifact metadata failed », erreur GitHub ; le secours à la main passait), puis installateur Windows, release, fichier autonome, copie Dropbox, dépôt principal.
+
+**cpt** (`tools/cpt.cjs`, `npm run cpt`, depuis le worktree après `npm run ci` vert et le commit de version) : rien hors commit, main local contenu dans la branche, numéro libre ; l'essai `ConceptCAD.html` du dépôt principal retiré s'il est identique (arrêt sinon) ; avance rapide de main dans `D:\ConceptCAD` ; copie sur la branche `sauvegarde` de GitHub (rien de publié : le site et les applications ne suivent que les tags) ; Exemples à commiter signalés ; versions en attente de « livre » listées.
+
+**livre** (`tools/livrer.cjs`, `npm run livrer`, dans `D:\ConceptCAD`) : contrôles, `npm run ci:full`, push de main + tag, fusion dans la branche de l'application et DMG lancé, installateur Windows pendant ce temps, site (secours `--ref main` jusqu'à 3 fois, version en ligne relue), fichier autonome + Dropbox (empreintes comparées), DMG signé, release (titres du CHANGELOG depuis la livraison précédente, `--notes`/`--titre`), `latest.json` en ligne vérifié. `--essai` sans rien changer, `--depuis <étape>` pour reprendre, verrou commun aux sessions. Outils communs : `tools/livraison-outils.cjs`.
+
+**Test** : `tests/test_livraison.cjs` (suite rapide) : versions, entrées du CHANGELOG, notes ; `tools/cpt.cjs` sur un dépôt jetable (GitHub simulé par un dépôt nu) : rangement sans tag ni push de main, sauvegarde = main local, essai identique retiré, essai différent / numéro pris / main avancé / oubli hors commit = arrêt. `tools/livrer.cjs --essai` lancé dans `D:\ConceptCAD`. Manuel Développement. CACHE_VER et FORMES_VER inchangés.
