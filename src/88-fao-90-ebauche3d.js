@@ -697,13 +697,18 @@ function faoSpiralLevel(mesh,B,z,D,r,secu,zFrom,ae,entryMode,brutTop,zt,moves,op
   let h=Math.min(1.5,Math.max(0.5,pitch*0.25));
   h=Math.max(h,Math.max(extX,extY)/400); // garde-fou : <= 401² cases
   const nx=Math.max(2,Math.floor(extX/h)+1),ny=Math.max(2,Math.floor(extY/h)+1);
-  const mask=new Uint8Array(nx*ny);
   // V0.23.16 (Escargot) : case hors zone à cause d'une PAROI (pièce, limite,
   // rouge) — sinon elle n'est hors zone que faute de brut : de l'AIR.
   const snail=!!(opt&&opt.snail),zsM=(opt&&typeof opt.zoneSafe==='function')?opt.zoneSafe:null;
-  const wallC=snail?new Uint8Array(nx*ny):null;
+  // V0.99.72 : cases du niveau (calcul pur : ombre, zone de l'opération) — mémoire du calcul
+  // réparti par couches (faoGeoMemo, src/88-fao-92-contour.js)
+  const mkM=(faoGeoMemo&&S.sig)?('M|'+S.sig+'|'+rrM+'|'+h+'|'+nx+'x'+ny+'|'+(snail?1:0)+'|'+(zsM?1:0)+'|'+(zoneAt?1:0)+'|'+(zB?JSON.stringify(zB):'')):null;
+  const memM=(mkM&&faoGeoMemo.has(mkM))?faoMemoClone(faoGeoMemo.get(mkM)):null;
+  const mask=memM?memM.mask:new Uint8Array(nx*ny);
+  const wallC=memM?memM.wallC:(snail?new Uint8Array(nx*ny):null);
   let rx0=1/0,rx1=-1/0,ry0=1/0,ry1=-1/0,nL=0;
-  for(let j=0;j<ny;j++){
+  if(memM){ rx0=memM.rx0;rx1=memM.rx1;ry0=memM.ry0;ry1=memM.ry1;nL=memM.nL; }
+  else for(let j=0;j<ny;j++){
     const y=gy0+j*h;
     for(let i=0;i<nx;i++){
       const x=gx0+i*h;
@@ -716,6 +721,7 @@ function faoSpiralLevel(mesh,B,z,D,r,secu,zFrom,ae,entryMode,brutTop,zt,moves,op
       if(y<ry0)ry0=y; if(y>ry1)ry1=y;
     }
   }
+  if(mkM&&!memM)faoGeoMemo.set(mkM,faoMemoClone({mask:mask,wallC:wallC,rx0:rx0,rx1:rx1,ry0:ry0,ry1:ry1,nL:nL}));
   if(!nL)return;
   const D1=1,D2=Math.SQRT2,INF=1e18;
   const dist=new Float64Array(nx*ny);
@@ -2747,6 +2753,8 @@ function faoLoopAxis(loop){
 // dessine les courbes au fur et à mesure (faoOpMovesStream). L'appel classique
 // faoGenRough3D() reste SYNCHRONE (drain complet, résultat strictement
 // identique) : tests, G-code, estimation et le rendu canonique l'utilisent.
+// V0.99.72 : {n, i} pendant un calcul réparti par couches (worker : couches li % n === i seulement)
+let faoNivPart=null;
 function* faoGenRough3DIt(mesh,box,ztop,zbot,o){
   // Ébauche 3D en MODE TROCOÏDAL UNIQUE (lot 2026-10-03-004) : pelage à ap
   // constant (ae ≤ 0.25*D), trochoïdes G2/G3 clampées en Y dans les goulets,
@@ -2797,6 +2805,9 @@ function* faoGenRough3DIt(mesh,box,ztop,zbot,o){
   // 2026-10-21-010 : BRUT = CORPS — o.stockTopAt(x,y) = dessus du brut dilaté
   // du rayon d'outil : un centre n'est admis que s'il reste de la matière du
   // brut sous le disque AU-DESSUS de la cote (sinon : usinage dans le vide).
+  // V0.99.72 : zone seule (sans brut ni rouge, qui dépendent du niveau) — sert
+  // à l'ordre par région (faoRegionOrder) pour ignorer les coupes hors zone.
+  let zonePur=(typeof o.zoneAt==='function')?o.zoneAt:null;
   if(typeof o.protectTip==='function'||typeof o.stockTopAt==='function'){
     const pT=(typeof o.protectTip==='function')?o.protectTip:null,sT=(typeof o.stockTopAt==='function')?o.stockTopAt:null;
     const zB=(typeof o.zoneAt==='function')?o.zoneAt:null;
@@ -2866,6 +2877,9 @@ function* faoGenRough3DIt(mesh,box,ztop,zbot,o){
       if(th!==0){X=x*cs-y*sn;Y=x*sn+y*cs;}else if(swapped){X=y;Y=x;}
       const dx=Math.max(+SB.x0-X,0,X-+SB.x1),dy=Math.max(+SB.y0-Y,0,Y-+SB.y1);
       return dx*dx+dy*dy<rD*rD;};}
+  if(zonePur&&(th!==0||swapped)){const zP=zonePur;
+    if(th!==0){const cs=Math.cos(th),sn=Math.sin(th);zonePur=function(x,y){return zP(x*cs-y*sn,x*sn+y*cs);};}
+    else zonePur=function(x,y){return zP(y,x);};}
   if(typeof o.zoneAt==='function'&&(th!==0||swapped)){
     const zW=o.zoneAt,zS=(typeof o.zoneSafe==='function')?o.zoneSafe:null;
     if(th!==0){
@@ -3059,6 +3073,8 @@ function* faoGenRough3DIt(mesh,box,ztop,zbot,o){
   for(let li=0;li<plan.length;li++){
     const L=plan[li];
     chunkAt.push(moves.length);
+    // V0.99.72 : calcul réparti — ce worker ne remplit la mémoire des parois que de SES couches
+    if(faoNivPart&&(li%faoNivPart.n)!==faoNivPart.i)continue;
     // Entrée depuis z+pas (rainure du dessus déjà ouverte, descente en avance
     // plongée) : l'hélice ne refait jamais toute la hauteur depuis la sécu.
     const zFrom=Math.min(secu,L.z+ap);
@@ -3077,7 +3093,7 @@ function* faoGenRough3DIt(mesh,box,ztop,zbot,o){
     if(esc)faoSpiralLevel(M,BB,L.z,D,D/2+L.radial,secu,zFrom,ae,entryMode,o.brutTop,zt,moves,{snail:o.mode==='anneaux'||o.mode==='contours',oneEntry:(o.mode==='anneaux'&&!!o.uneEntree)||o.mode==='contours',contours:o.mode==='contours',travelZ:tvZ,sens:o.sens,entryR:o.entryR,zoneAt:o.zoneAt,zoneBoxes:o.zoneBoxes||null,frameTouch:frameTouch,zoneDense:typeof o.protectTip==='function',stockTop:stockTopF,remBlocked:rem?rem.blocked:null,remTopAt:rem?rem.topAt:null,remPtAt:rem?rem.ptAt:null,zoneSafe:o.zoneSafe||null,
       bullFaces:bullC?function(zz){return faoBullRingRuns(bullCtx(L.radial),zz,o.sens==='avalant',true);}:null,
       bullOK:bullC?function(x,y,zz){return bullCtx(L.radial).tipB(x,y)<=zz+1e-6;}:null});
-    else faoRoughAdaptiveLevel(M,BB,L.z,D,D/2+L.radial,secu,zFrom,ae,entryMode,o.brutTop,zt,moves,{travelZ:tvZ,sens:o.sens,entryR:o.entryR,zoneAt:o.zoneAt,frameTouch:frameTouch});
+    else faoRoughAdaptiveLevel(M,BB,L.z,D,D/2+L.radial,secu,zFrom,ae,entryMode,o.brutTop,zt,moves,{travelZ:tvZ,sens:o.sens,entryR:o.entryR,zoneAt:o.zoneAt,zoneBoxes:o.zoneBoxes||null,frameTouch:frameTouch});
     if(rem)rem.carve();
     if(bullC&&!esc)bullJobs.push([L.radial,L.z,tvZ]); // conventionnel : contour ajouté en fin d'opération
     yield frameYield(); // dessin progressif 005 : pelage du niveau fini
@@ -3106,8 +3122,8 @@ function* faoGenRough3DIt(mesh,box,ztop,zbot,o){
           // V0.38.0 : « seulement sur les pentes » — morceaux de paroi où le
           // niveau du dessous (L.z) a laissé une marche (src/88-fao-92-contour.js)
           o.minipassesMode==='pentes'
-            ?{ringOnly:true,travelZ:tvZ,sens:o.sens,entryR:o.entryR,zoneAt:o.zoneAt,frameTouch:frameTouch,restBelow:{z:L.z,marche:o.marcheMaxi,k:k,h:h,d:h/(nbL+1)}}
-            :{ringOnly:true,travelZ:tvZ,sens:o.sens,entryR:o.entryR,zoneAt:o.zoneAt,frameTouch:frameTouch});
+            ?{ringOnly:true,travelZ:tvZ,sens:o.sens,entryR:o.entryR,zoneAt:o.zoneAt,zoneBoxes:o.zoneBoxes||null,frameTouch:frameTouch,restBelow:{z:L.z,marche:o.marcheMaxi,k:k,h:h,d:h/(nbL+1)}}
+            :{ringOnly:true,travelZ:tvZ,sens:o.sens,entryR:o.entryR,zoneAt:o.zoneAt,zoneBoxes:o.zoneBoxes||null,frameTouch:frameTouch});
         if(rem)rem.carve();
         yield frameYield(); // dessin progressif 005 : mini-passe k
       }
@@ -3141,7 +3157,7 @@ function* faoGenRough3DIt(mesh,box,ztop,zbot,o){
           const off=RA.radial*(nf-k)/nf;
           // 2026-10-14-010 : outil à rayon de coin — anneau au contact réel, en place
           if(bullC)faoBullRingLevel(bullCtx(off),zj,moves,{sens:o.sens,secu:secu,travelZ:tvJ,linkMax:bullLink,minRun:rem?5:0,all:true});
-          else faoRoughAdaptiveLevel(M,BB,zj,D,D/2+off,secu,zF,ae,entryMode,o.brutTop,zt,moves,{ringOnly:true,travelZ:tvJ,sens:o.sens,entryR:o.entryR,zoneAt:o.zoneAt,frameTouch:frameTouch});
+          else faoRoughAdaptiveLevel(M,BB,zj,D,D/2+off,secu,zF,ae,entryMode,o.brutTop,zt,moves,{ringOnly:true,travelZ:tvJ,sens:o.sens,entryR:o.entryR,zoneAt:o.zoneAt,zoneBoxes:o.zoneBoxes||null,frameTouch:frameTouch});
           yield frameYield(); // dessin progressif 005 : finition k
         }
       }
@@ -3164,7 +3180,7 @@ function* faoGenRough3DIt(mesh,box,ztop,zbot,o){
   if(o.parRegion){
     const bt=isFinite(+o.brutTop)?+o.brutTop:zt;
     const nm=faoRegionOrder(moves,chunkAt,D,secu,function(x,y){return stockTopF?Math.min(bt,stockTopF(x,y)):bt;},
-      Math.max(0.5,D/2-0.3*(isFinite(+o.cornerR)?+o.cornerR:0)),BB);
+      Math.max(0.5,D/2-0.3*(isFinite(+o.cornerR)?+o.cornerR:0)),BB,zonePur);
     if(nm!==moves){moves.length=0;for(let i=0;i<nm.length;i++)moves.push(nm[i]);}
   }
   // Retour repère -> pièce : même xf que les yields (source unique) — rotation
@@ -3187,7 +3203,7 @@ function* faoGenRough3DIt(mesh,box,ztop,zbot,o){
 // dans le NOUVEL ordre) ; sinon remontée verticale, rapide droit à 2 mm
 // au-dessus de la matière restante sous l'outil (plafonné au plan de
 // sécurité), descente au point d'entrée d'origine.
-function faoRegionOrder(moves,chunkAt,D,secu,topInit,rcut,BB){
+function faoRegionOrder(moves,chunkAt,D,secu,topInit,rcut,BB,zoneAt){
   const n=moves.length;
   if(n<4||!chunkAt||chunkAt.length<2)return moves;
   const isTr=new Uint8Array(n);isTr[0]=1;
@@ -3197,6 +3213,21 @@ function faoRegionOrder(moves,chunkAt,D,secu,topInit,rcut,BB){
     while(j<n&&moves[j].r){if(moves[j].z>moves[j-1].z+1e-9)up=true;j++;}
     if(up)for(let k=i;k<j;k++)isTr[k]=1;
     i=j;
+  }
+  // V0.99.72 (constat de Fred, STEP.conceptcad : 5 poches usinées niveau par
+  // niveau, « usiner par zone ») : une coupe qui SORT de la zone (cadre dont
+  // seuls les sommets sont dans la zone, retirée ensuite par faoZoneCuts)
+  // reliait les poches en une seule région. Elle sépare désormais les blocs :
+  // franchement dehors = un point d'échantillon et ses 4 voisins à 0,2 mm.
+  if(typeof zoneAt==='function'){
+    const out=function(x,y){const e=0.2;return !zoneAt(x,y)&&!zoneAt(x+e,y)&&!zoneAt(x-e,y)&&!zoneAt(x,y+e)&&!zoneAt(x,y-e);};
+    for(let k=1;k<n;k++){
+      if(moves[k].r||isTr[k])continue;
+      const a=moves[k-1],b=moves[k],L=Math.hypot(b.x-a.x,b.y-a.y);
+      if(L<2)continue;
+      const ns=Math.ceil(L/2);
+      for(let t=1;t<ns;t++){if(out(a.x+(b.x-a.x)*t/ns,a.y+(b.y-a.y)*t/ns)){isTr[k]=1;break;}}
+    }
   }
   const blocks=[];
   for(let i=0;i<n;){

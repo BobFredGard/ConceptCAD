@@ -795,7 +795,7 @@ function faoInitUI(){
       const bvw=document.createElement('button'); bvw.id='faoVwBtn';
       bvw.textContent=faoVw?'■ Quitter l\'usinage':'▶ Usinage';
       bvw.title='Viewer d\'usinage : cache les traces, anime l\'outil le long du parcours (Échap pour sortir).';
-      bvw.onclick=function(){ faoViewerToggle(); };
+      bvw.onclick=function(){ faoViewerToggleSansGel(); };
       faoVwBtn=bvw;
       r2.appendChild(bvw);
       // 2026-10-13-003 : cycle d'affichage des rapides (tous / fondus /

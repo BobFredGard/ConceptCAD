@@ -179,6 +179,10 @@ function faoWkPrincipal(){
       if(!op)throw new Error('opération introuvable');
       const avant={};
       for(const k in op)avant[k]=JSON.stringify(op[k]);
+      // V0.99.72 : ébauche 3D répartie par couches — m.niv : ne calculer que SES couches et
+      // rendre la mémoire des parois ; m.memo : calcul final, mémoire des autres workers reprise
+      faoNivPart=(m.niv&&m.niv.n>1)?{n:+m.niv.n,i:+m.niv.i}:null;
+      faoGeoMemo=(faoNivPart||m.memo)?new Map(m.memo||[]):null;
       self.__wkArme=true;
       const it=faoOpMovesIt(op,job);
       let n=0,r=it.next();
@@ -192,6 +196,7 @@ function faoWkPrincipal(){
       }
       self.__wkArme=false;
       if(self.__wkPiege)throw new Error('[multicœur] '+self.__wkPiege+' indisponible');
+      if(faoNivPart){ self.postMessage({t:'memo',opId:m.opId,entries:Array.from(faoGeoMemo)}); return; }
       if(!capte)throw new Error('aucun parcours rangé');
       // Champs de l'opération écrits par le calcul (diagnostic de la fiche…)
       const champs={};
@@ -345,6 +350,16 @@ function faoWkPrec(op,job){
   }
   return r;
 }
+function faoWkNivNb(op,job){
+  // V0.99.72 : workers de couches pour une ébauche 3D (0 : calcul d'un seul tenant)
+  if(!op||op.type!=='rough3d')return 0;
+  const c=faoWkNbCoeurs();
+  if(c<3)return 0;
+  const ap=+op.ap,H=(+op.ztop)-(+op.zbot);
+  if(!(ap>0)||!(H>0))return 0;
+  const nL=Math.ceil(H/ap-1e-9);
+  return Math.max(0,Math.min(c,nL,8));
+}
 function faoWkNbCoeurs(){
   let n=4;
   try{ const h=+navigator.hardwareConcurrency; if(h>0)n=h; }catch(e){}
@@ -413,7 +428,14 @@ function faoWkRemplir0(job,ops,estCaduc,surFlux,surAvance){
     }catch(e){ return fini(0); }
     // Les plus longues d'abord serait mieux, mais leur durée n'est pas connue : ordre du posage.
     const file=liste.slice();
-    const total=liste.length;
+    // V0.99.72 (idée de Fred : « chaque couche et sous-couche de passes pourrait être calculée
+    // dans un cœur différent ») : une ébauche 3D est d'abord découpée en workers de couches
+    // (mémoire des parois, faoGeoMemo), puis un worker final assemble le parcours avec elle.
+    const couches=new Map();
+    liste.forEach(function(o){ const n=faoWkNivNb(o,job); if(n>1)couches.set(o,n); });
+    let total=0;
+    liste.forEach(function(o){ total+=couches.has(o)?couches.get(o)+1:1; });
+    const sous=[]; // tâches prêtes avant la file : couches, puis calcul final
     let enCours=0,finies=0,rangees=0,stop=false;
     // V0.99.46 : une opération en brut restant attend les précédentes confiées aux workers
     const faites=new Set(),ratees=new Set();
@@ -441,17 +463,27 @@ function faoWkRemplir0(job,ops,estCaduc,surFlux,surAvance){
       // précédente ratée : calcul normal, après elle (boucle habituelle)
       for(let i=file.length-1;i>=0;i--)if(perdue(file[i])){ ratees.add(file[i]); file.splice(i,1); finies++; }
       while(enCours<nb){
+        if(sous.length){ lancer(sous.shift()); continue; }
         const i=file.findIndex(pret);
         if(i<0)break;
-        lancer(file.splice(i,1)[0]);
+        const o=file.splice(i,1)[0];
+        const n=couches.get(o);
+        if(n){
+          const agg={n:n,fin:0,memo:[]};
+          for(let k=0;k<n;k++)sous.push({op:o,niv:{n:n,i:k},agg:agg});
+          continue;
+        }
+        lancer({op:o});
       }
       if(!enCours){
+        while(sous.length){ const t=sous.shift(); finies++; if(!t.niv)ratees.add(t.op); else if(++t.agg.fin===t.agg.n)ratees.add(t.op); }
         // rien en cours et plus rien de prêt : ce qui reste repasse au calcul normal
         while(file.length){ ratees.add(file.shift()); finies++; }
         termine();
       }
     };
-    const lancer=function(op){
+    const lancer=function(t){
+      const op=t.op;
       let w=null;
       try{ w=new Worker(url); }catch(e){
         // Impossible de créer un worker : la boucle normale s'en charge.
@@ -465,7 +497,12 @@ function faoWkRemplir0(job,ops,estCaduc,surFlux,surAvance){
       const clore=function(){
         if(clos)return;
         clos=true;
-        (reussi?faites:ratees).add(op);
+        if(t.niv){
+          // dernier worker de couches : le calcul final passe en tête (avec ou sans mémoire)
+          const A=t.agg;
+          if(++A.fin===A.n)sous.unshift({op:op,memo:A.memo.length?A.memo:null});
+        }
+        else (reussi?faites:ratees).add(op);
         try{ w.terminate(); }catch(e){}
         faoWkActifs=faoWkActifs.filter(function(x){return x!==w;});
         miens=miens.filter(function(x){return x!==w;});
@@ -482,6 +519,11 @@ function faoWkRemplir0(job,ops,estCaduc,surFlux,surAvance){
         const m=ev.data||{};
         if(estCaduc()){ clore(); return; }
         if(m.t==='flux'){ try{ if(surFlux)surFlux(op,m.delta); }catch(e){} return; }
+        if(m.t==='memo'&&t.niv){
+          const E=m.entries||[];
+          for(let i=0;i<E.length;i++)t.agg.memo.push(E[i]);
+          reussi=true; clore(); return;
+        }
         if(m.t==='ko'){
           try{ console.warn('[FAO multicœur] '+op.id+' : '+m.err+' — calcul normal'); }catch(e){}
           clore();
@@ -509,7 +551,7 @@ function faoWkRemplir0(job,ops,estCaduc,surFlux,surAvance){
         if(!prec){ clore(); return; } // une précédente manque : calcul normal
       }
       try{
-        w.postMessage({t:'job',setupId:job.id,opId:op.id,flux:!!surFlux&&op.hidden!==true,doc:donnees,corps:faoWkCorpsPour(corps,op,job),boites:faoWkBoites(job,op),prec:prec});
+        w.postMessage({t:'job',setupId:job.id,opId:op.id,niv:t.niv||null,memo:t.memo||null,flux:!!surFlux&&op.hidden!==true&&!t.niv,doc:donnees,corps:faoWkCorpsPour(corps,op,job),boites:faoWkBoites(job,op),prec:prec});
       }catch(e){
         try{ console.warn('[FAO multicœur] envoi impossible : '+((e&&e.message)||e)+' — calcul normal'); }catch(e2){}
         clore();

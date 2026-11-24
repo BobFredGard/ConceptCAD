@@ -118,6 +118,28 @@ const A=(c,m)=>{if(!c){ko++;console.log('  ✗ '+m);}else console.log('  ✓ '+m
     // Contour / chanfrein (multi absent) : chaîne unique comme avant.
     R.push([!faoLoopPonts(faoLoopFromChains(E,faoOrderEdges(E,[0,1,2,3,4,5,6,7])).loop),'T6 sans multi : pas de pont (trajet unique)']);
 
+    // T7 — V0.99.72 (constat de Fred, STEP.conceptcad : « usiner par zone ») : deux poches
+    // (x 0..10 et 30..40) usinées niveau par niveau, reliées à chaque niveau par une COUPE
+    // hors zone (y=5, de 10 à 30, retirée plus tard par faoZoneCuts). Avec la zone, l'ordre
+    // par région finit la poche A sur tous ses niveaux avant la poche B.
+    {
+      const mv=[{r:1,x:2,y:2,z:5}],chunk=[];
+      const sq=function(x0,z){return [{r:0,x:x0+2,y:2,z:z},{r:0,x:x0+8,y:2,z:z},{r:0,x:x0+8,y:8,z:z},{r:0,x:x0+2,y:8,z:z},{r:0,x:x0+2,y:5,z:z}];};
+      for(let L=0;L<3;L++){const z=-1-L;chunk.push(mv.length);
+        mv.push({r:1,x:2,y:2,z:5},{r:1,x:2,y:2,z:z});
+        sq(0,z).forEach(function(m){mv.push(m);});
+        mv.push({r:0,x:10,y:5,z:z},{r:0,x:32,y:5,z:z}); // coupe hors zone A → B
+        sq(30,z).forEach(function(m){mv.push(m);});
+        mv.push({r:1,x:32,y:5,z:5});}
+      const zone=function(x,y){return y>=0&&y<=10&&((x>=0&&x<=10)||(x>=30&&x<=40));};
+      const BB={x0:0,y0:0,x1:40,y1:10};
+      const ordre=function(m){const s=[];let c='';m.forEach(function(q){if(q.r)return;const p=q.x<=10?'A':(q.x>=30?'B':'');if(p&&p!==c){s.push(p);c=p;}});return s.join('');};
+      const sans=faoRegionOrder(mv.map(function(m){return Object.assign({},m);}),chunk,6,5,function(){return 0;},2.7,BB);
+      const avec=faoRegionOrder(mv.map(function(m){return Object.assign({},m);}),chunk,6,5,function(){return 0;},2.7,BB,zone);
+      R.push([ordre(sans)==='ABABAB','T7 sans zone : une seule région, niveau par niveau ('+ordre(sans)+')']);
+      R.push([ordre(avec)==='AB','T7 avec zone : poche A finie avant la poche B ('+ordre(avec)+')']);
+    }
+
     // T4 — DOCUMENT RÉEL : après rejeu, la boucle doit être intégre.
     await deserialise(__docJson,{rebuild:false});
     occCkClear();markDirty();

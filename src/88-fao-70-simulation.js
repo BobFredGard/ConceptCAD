@@ -1283,6 +1283,38 @@ function faoViewerToggle(){
   }
   return false;
 }
+// V0.99.72 (constat de Fred, STEP.conceptcad : « ça bloquait avant de voir le brut ») :
+// ouvrir la lecture avant la fin du calcul faisait calculer le parcours sur le fil de
+// l'écran (14 s figées par à-coups). Les opérations sans parcours en mémoire sont
+// d'abord calculées sur un autre cœur (src/88-fao-58), la séquence aussi ; pendant
+// « Tout régénérer », la lecture attend la fin. Secours : ouverture habituelle.
+let faoViewerAttente=false;
+async function faoViewerToggleSansGel(){
+  if(faoVw||faoViewerAttente)return faoVw?faoViewerToggle():false;
+  faoViewerAttente=true;
+  try{
+    try{
+      let k=0;
+      while(typeof faoRegenAttente!=='undefined'&&faoRegenAttente&&k++<2400){
+        if(k===1)faoViewerMsg('FAO : régénération en cours — la lecture démarre dès qu’elle est finie…');
+        await new Promise(function(r){ setTimeout(r,250); });
+      }
+      const job=faoDoc();
+      const ops=((job&&job.ops)||[]).filter(function(op){ return op&&op.on!==false&&!faoIsPattern(op); });
+      const manque=ops.filter(function(op){ try{ return faoMeshOp(op)&&!faoOpMovesTry(op,job); }catch(e){ return false; } });
+      if(manque.length&&typeof faoWkRemplir==='function'){
+        faoViewerMsg('FAO : calcul du parcours sur un autre cœur avant la lecture…');
+        await faoWkRemplir(job,manque,function(){ return false; },null,function(n,total,coeurs){
+          faoViewerMsg('FAO : calcul avant la lecture, '+n+'/'+total+' opération'+(total>1?'s':'')+' sur '+coeurs+' cœur'+(coeurs>1?'s':'')+'…');
+        });
+      }
+      let pre=null;
+      if(typeof faoWkSeq==='function'){ try{ pre=await faoWkSeq(job,function(){ return false; }); }catch(e){ pre=null; } }
+      if(pre)faoSeqPre={job:job,res:pre};
+    }catch(e){}
+    return faoViewerToggle();
+  }finally{ faoViewerAttente=false; faoSeqPre=null; }
+}
 function faoViewerPlay(){
   const vw=faoVw; if(!vw)return false;
   if(vw.t>=vw.T)vw.t=0;

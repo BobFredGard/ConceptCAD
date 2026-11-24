@@ -165,6 +165,9 @@ function faoOpMovesKey(op,job){
     if(op&&op.type==='rough3d'&&op.mode==='contours')dep=['contours-croise','couloirs',dep]; // V0.99.7 : couloirs étroits = chaînes exactes
     // V0.99.7 : rampe le long d'une paroi reprise à la cote (Trochoïdal, Escargot, Contours)
     if(op&&op.type==='rough3d'&&(op.mode==='escargot'||op.mode==='anneaux'||op.mode==='contours'))dep=['rampe-reprise',dep];
+    // V0.99.72 : « Finir une région avant la suivante » dans une zone — une coupe hors zone ne relie
+    // plus les poches (faoRegionOrder) : seules ces ébauches sont à refaire (CACHE_VER inchangé)
+    if(op&&op.type==='rough3d'&&op.parRegion&&(op.limit||op.limit2))dep=['region-zone',dep];
     // V0.99.18 : contour — rapide dans le vide : dépend du brut et des opérations qui le précèdent
     if(faoContourVideOn(op)){ const rd=faoRestDep(op,job); if(rd===null)return null; dep=dep?['vide',rd,dep]:['vide',rd]; }
     // V0.99.0 : BRUT RESTANT — l'ébauche dépend des parcours des opérations qui la précèdent

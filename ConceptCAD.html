@@ -410,7 +410,7 @@ input[type=range]{accent-color:var(--primary);width:100%}
  * peut changer sans rien casser. CACHE_VER (parcours FAO) reste indépendant.
  */
 
-const APP_VER='V0.99.71';
+const APP_VER='V0.99.72';
 try{console.log('[ConceptCAD] version '+APP_VER);}catch(e){}
 try{var mfSv=document.getElementById('mfSplashVer');if(mfSv)mfSv.textContent=APP_VER;}catch(e){} // écran de démarrage
 
@@ -53809,6 +53809,9 @@ function faoOpMovesKey(op,job){
     if(op&&op.type==='rough3d'&&op.mode==='contours')dep=['contours-croise','couloirs',dep]; // V0.99.7 : couloirs étroits = chaînes exactes
     // V0.99.7 : rampe le long d'une paroi reprise à la cote (Trochoïdal, Escargot, Contours)
     if(op&&op.type==='rough3d'&&(op.mode==='escargot'||op.mode==='anneaux'||op.mode==='contours'))dep=['rampe-reprise',dep];
+    // V0.99.72 : « Finir une région avant la suivante » dans une zone — une coupe hors zone ne relie
+    // plus les poches (faoRegionOrder) : seules ces ébauches sont à refaire (CACHE_VER inchangé)
+    if(op&&op.type==='rough3d'&&op.parRegion&&(op.limit||op.limit2))dep=['region-zone',dep];
     // V0.99.18 : contour — rapide dans le vide : dépend du brut et des opérations qui le précèdent
     if(faoContourVideOn(op)){ const rd=faoRestDep(op,job); if(rd===null)return null; dep=dep?['vide',rd,dep]:['vide',rd]; }
     // V0.99.0 : BRUT RESTANT — l'ébauche dépend des parcours des opérations qui la précèdent
@@ -55899,6 +55902,10 @@ function faoWkPrincipal(){
       if(!op)throw new Error('opération introuvable');
       const avant={};
       for(const k in op)avant[k]=JSON.stringify(op[k]);
+      // V0.99.72 : ébauche 3D répartie par couches — m.niv : ne calculer que SES couches et
+      // rendre la mémoire des parois ; m.memo : calcul final, mémoire des autres workers reprise
+      faoNivPart=(m.niv&&m.niv.n>1)?{n:+m.niv.n,i:+m.niv.i}:null;
+      faoGeoMemo=(faoNivPart||m.memo)?new Map(m.memo||[]):null;
       self.__wkArme=true;
       const it=faoOpMovesIt(op,job);
       let n=0,r=it.next();
@@ -55912,6 +55919,7 @@ function faoWkPrincipal(){
       }
       self.__wkArme=false;
       if(self.__wkPiege)throw new Error('[multicœur] '+self.__wkPiege+' indisponible');
+      if(faoNivPart){ self.postMessage({t:'memo',opId:m.opId,entries:Array.from(faoGeoMemo)}); return; }
       if(!capte)throw new Error('aucun parcours rangé');
       // Champs de l'opération écrits par le calcul (diagnostic de la fiche…)
       const champs={};
@@ -56065,6 +56073,16 @@ function faoWkPrec(op,job){
   }
   return r;
 }
+function faoWkNivNb(op,job){
+  // V0.99.72 : workers de couches pour une ébauche 3D (0 : calcul d'un seul tenant)
+  if(!op||op.type!=='rough3d')return 0;
+  const c=faoWkNbCoeurs();
+  if(c<3)return 0;
+  const ap=+op.ap,H=(+op.ztop)-(+op.zbot);
+  if(!(ap>0)||!(H>0))return 0;
+  const nL=Math.ceil(H/ap-1e-9);
+  return Math.max(0,Math.min(c,nL,8));
+}
 function faoWkNbCoeurs(){
   let n=4;
   try{ const h=+navigator.hardwareConcurrency; if(h>0)n=h; }catch(e){}
@@ -56133,7 +56151,14 @@ function faoWkRemplir0(job,ops,estCaduc,surFlux,surAvance){
     }catch(e){ return fini(0); }
     // Les plus longues d'abord serait mieux, mais leur durée n'est pas connue : ordre du posage.
     const file=liste.slice();
-    const total=liste.length;
+    // V0.99.72 (idée de Fred : « chaque couche et sous-couche de passes pourrait être calculée
+    // dans un cœur différent ») : une ébauche 3D est d'abord découpée en workers de couches
+    // (mémoire des parois, faoGeoMemo), puis un worker final assemble le parcours avec elle.
+    const couches=new Map();
+    liste.forEach(function(o){ const n=faoWkNivNb(o,job); if(n>1)couches.set(o,n); });
+    let total=0;
+    liste.forEach(function(o){ total+=couches.has(o)?couches.get(o)+1:1; });
+    const sous=[]; // tâches prêtes avant la file : couches, puis calcul final
     let enCours=0,finies=0,rangees=0,stop=false;
     // V0.99.46 : une opération en brut restant attend les précédentes confiées aux workers
     const faites=new Set(),ratees=new Set();
@@ -56161,17 +56186,27 @@ function faoWkRemplir0(job,ops,estCaduc,surFlux,surAvance){
       // précédente ratée : calcul normal, après elle (boucle habituelle)
       for(let i=file.length-1;i>=0;i--)if(perdue(file[i])){ ratees.add(file[i]); file.splice(i,1); finies++; }
       while(enCours<nb){
+        if(sous.length){ lancer(sous.shift()); continue; }
         const i=file.findIndex(pret);
         if(i<0)break;
-        lancer(file.splice(i,1)[0]);
+        const o=file.splice(i,1)[0];
+        const n=couches.get(o);
+        if(n){
+          const agg={n:n,fin:0,memo:[]};
+          for(let k=0;k<n;k++)sous.push({op:o,niv:{n:n,i:k},agg:agg});
+          continue;
+        }
+        lancer({op:o});
       }
       if(!enCours){
+        while(sous.length){ const t=sous.shift(); finies++; if(!t.niv)ratees.add(t.op); else if(++t.agg.fin===t.agg.n)ratees.add(t.op); }
         // rien en cours et plus rien de prêt : ce qui reste repasse au calcul normal
         while(file.length){ ratees.add(file.shift()); finies++; }
         termine();
       }
     };
-    const lancer=function(op){
+    const lancer=function(t){
+      const op=t.op;
       let w=null;
       try{ w=new Worker(url); }catch(e){
         // Impossible de créer un worker : la boucle normale s'en charge.
@@ -56185,7 +56220,12 @@ function faoWkRemplir0(job,ops,estCaduc,surFlux,surAvance){
       const clore=function(){
         if(clos)return;
         clos=true;
-        (reussi?faites:ratees).add(op);
+        if(t.niv){
+          // dernier worker de couches : le calcul final passe en tête (avec ou sans mémoire)
+          const A=t.agg;
+          if(++A.fin===A.n)sous.unshift({op:op,memo:A.memo.length?A.memo:null});
+        }
+        else (reussi?faites:ratees).add(op);
         try{ w.terminate(); }catch(e){}
         faoWkActifs=faoWkActifs.filter(function(x){return x!==w;});
         miens=miens.filter(function(x){return x!==w;});
@@ -56202,6 +56242,11 @@ function faoWkRemplir0(job,ops,estCaduc,surFlux,surAvance){
         const m=ev.data||{};
         if(estCaduc()){ clore(); return; }
         if(m.t==='flux'){ try{ if(surFlux)surFlux(op,m.delta); }catch(e){} return; }
+        if(m.t==='memo'&&t.niv){
+          const E=m.entries||[];
+          for(let i=0;i<E.length;i++)t.agg.memo.push(E[i]);
+          reussi=true; clore(); return;
+        }
         if(m.t==='ko'){
           try{ console.warn('[FAO multicœur] '+op.id+' : '+m.err+' — calcul normal'); }catch(e){}
           clore();
@@ -56229,7 +56274,7 @@ function faoWkRemplir0(job,ops,estCaduc,surFlux,surAvance){
         if(!prec){ clore(); return; } // une précédente manque : calcul normal
       }
       try{
-        w.postMessage({t:'job',setupId:job.id,opId:op.id,flux:!!surFlux&&op.hidden!==true,doc:donnees,corps:faoWkCorpsPour(corps,op,job),boites:faoWkBoites(job,op),prec:prec});
+        w.postMessage({t:'job',setupId:job.id,opId:op.id,niv:t.niv||null,memo:t.memo||null,flux:!!surFlux&&op.hidden!==true&&!t.niv,doc:donnees,corps:faoWkCorpsPour(corps,op,job),boites:faoWkBoites(job,op),prec:prec});
       }catch(e){
         try{ console.warn('[FAO multicœur] envoi impossible : '+((e&&e.message)||e)+' — calcul normal'); }catch(e2){}
         clore();
@@ -58644,6 +58689,38 @@ function faoViewerToggle(){
     faoViewerMsg('Usinage : '+((e&&e.message)||e));
   }
   return false;
+}
+// V0.99.72 (constat de Fred, STEP.conceptcad : « ça bloquait avant de voir le brut ») :
+// ouvrir la lecture avant la fin du calcul faisait calculer le parcours sur le fil de
+// l'écran (14 s figées par à-coups). Les opérations sans parcours en mémoire sont
+// d'abord calculées sur un autre cœur (src/88-fao-58), la séquence aussi ; pendant
+// « Tout régénérer », la lecture attend la fin. Secours : ouverture habituelle.
+let faoViewerAttente=false;
+async function faoViewerToggleSansGel(){
+  if(faoVw||faoViewerAttente)return faoVw?faoViewerToggle():false;
+  faoViewerAttente=true;
+  try{
+    try{
+      let k=0;
+      while(typeof faoRegenAttente!=='undefined'&&faoRegenAttente&&k++<2400){
+        if(k===1)faoViewerMsg('FAO : régénération en cours — la lecture démarre dès qu’elle est finie…');
+        await new Promise(function(r){ setTimeout(r,250); });
+      }
+      const job=faoDoc();
+      const ops=((job&&job.ops)||[]).filter(function(op){ return op&&op.on!==false&&!faoIsPattern(op); });
+      const manque=ops.filter(function(op){ try{ return faoMeshOp(op)&&!faoOpMovesTry(op,job); }catch(e){ return false; } });
+      if(manque.length&&typeof faoWkRemplir==='function'){
+        faoViewerMsg('FAO : calcul du parcours sur un autre cœur avant la lecture…');
+        await faoWkRemplir(job,manque,function(){ return false; },null,function(n,total,coeurs){
+          faoViewerMsg('FAO : calcul avant la lecture, '+n+'/'+total+' opération'+(total>1?'s':'')+' sur '+coeurs+' cœur'+(coeurs>1?'s':'')+'…');
+        });
+      }
+      let pre=null;
+      if(typeof faoWkSeq==='function'){ try{ pre=await faoWkSeq(job,function(){ return false; }); }catch(e){ pre=null; } }
+      if(pre)faoSeqPre={job:job,res:pre};
+    }catch(e){}
+    return faoViewerToggle();
+  }finally{ faoViewerAttente=false; faoSeqPre=null; }
 }
 function faoViewerPlay(){
   const vw=faoVw; if(!vw)return false;
@@ -61491,7 +61568,7 @@ function faoInitUI(){
       const bvw=document.createElement('button'); bvw.id='faoVwBtn';
       bvw.textContent=faoVw?'■ Quitter l\'usinage':'▶ Usinage';
       bvw.title='Viewer d\'usinage : cache les traces, anime l\'outil le long du parcours (Échap pour sortir).';
-      bvw.onclick=function(){ faoViewerToggle(); };
+      bvw.onclick=function(){ faoViewerToggleSansGel(); };
       faoVwBtn=bvw;
       r2.appendChild(bvw);
       // 2026-10-13-003 : cycle d'affichage des rapides (tous / fondus /
@@ -64545,13 +64622,18 @@ function faoSpiralLevel(mesh,B,z,D,r,secu,zFrom,ae,entryMode,brutTop,zt,moves,op
   let h=Math.min(1.5,Math.max(0.5,pitch*0.25));
   h=Math.max(h,Math.max(extX,extY)/400); // garde-fou : <= 401² cases
   const nx=Math.max(2,Math.floor(extX/h)+1),ny=Math.max(2,Math.floor(extY/h)+1);
-  const mask=new Uint8Array(nx*ny);
   // V0.23.16 (Escargot) : case hors zone à cause d'une PAROI (pièce, limite,
   // rouge) — sinon elle n'est hors zone que faute de brut : de l'AIR.
   const snail=!!(opt&&opt.snail),zsM=(opt&&typeof opt.zoneSafe==='function')?opt.zoneSafe:null;
-  const wallC=snail?new Uint8Array(nx*ny):null;
+  // V0.99.72 : cases du niveau (calcul pur : ombre, zone de l'opération) — mémoire du calcul
+  // réparti par couches (faoGeoMemo, src/88-fao-92-contour.js)
+  const mkM=(faoGeoMemo&&S.sig)?('M|'+S.sig+'|'+rrM+'|'+h+'|'+nx+'x'+ny+'|'+(snail?1:0)+'|'+(zsM?1:0)+'|'+(zoneAt?1:0)+'|'+(zB?JSON.stringify(zB):'')):null;
+  const memM=(mkM&&faoGeoMemo.has(mkM))?faoMemoClone(faoGeoMemo.get(mkM)):null;
+  const mask=memM?memM.mask:new Uint8Array(nx*ny);
+  const wallC=memM?memM.wallC:(snail?new Uint8Array(nx*ny):null);
   let rx0=1/0,rx1=-1/0,ry0=1/0,ry1=-1/0,nL=0;
-  for(let j=0;j<ny;j++){
+  if(memM){ rx0=memM.rx0;rx1=memM.rx1;ry0=memM.ry0;ry1=memM.ry1;nL=memM.nL; }
+  else for(let j=0;j<ny;j++){
     const y=gy0+j*h;
     for(let i=0;i<nx;i++){
       const x=gx0+i*h;
@@ -64564,6 +64646,7 @@ function faoSpiralLevel(mesh,B,z,D,r,secu,zFrom,ae,entryMode,brutTop,zt,moves,op
       if(y<ry0)ry0=y; if(y>ry1)ry1=y;
     }
   }
+  if(mkM&&!memM)faoGeoMemo.set(mkM,faoMemoClone({mask:mask,wallC:wallC,rx0:rx0,rx1:rx1,ry0:ry0,ry1:ry1,nL:nL}));
   if(!nL)return;
   const D1=1,D2=Math.SQRT2,INF=1e18;
   const dist=new Float64Array(nx*ny);
@@ -66595,6 +66678,8 @@ function faoLoopAxis(loop){
 // dessine les courbes au fur et à mesure (faoOpMovesStream). L'appel classique
 // faoGenRough3D() reste SYNCHRONE (drain complet, résultat strictement
 // identique) : tests, G-code, estimation et le rendu canonique l'utilisent.
+// V0.99.72 : {n, i} pendant un calcul réparti par couches (worker : couches li % n === i seulement)
+let faoNivPart=null;
 function* faoGenRough3DIt(mesh,box,ztop,zbot,o){
   // Ébauche 3D en MODE TROCOÏDAL UNIQUE (lot 2026-10-03-004) : pelage à ap
   // constant (ae ≤ 0.25*D), trochoïdes G2/G3 clampées en Y dans les goulets,
@@ -66645,6 +66730,9 @@ function* faoGenRough3DIt(mesh,box,ztop,zbot,o){
   // 2026-10-21-010 : BRUT = CORPS — o.stockTopAt(x,y) = dessus du brut dilaté
   // du rayon d'outil : un centre n'est admis que s'il reste de la matière du
   // brut sous le disque AU-DESSUS de la cote (sinon : usinage dans le vide).
+  // V0.99.72 : zone seule (sans brut ni rouge, qui dépendent du niveau) — sert
+  // à l'ordre par région (faoRegionOrder) pour ignorer les coupes hors zone.
+  let zonePur=(typeof o.zoneAt==='function')?o.zoneAt:null;
   if(typeof o.protectTip==='function'||typeof o.stockTopAt==='function'){
     const pT=(typeof o.protectTip==='function')?o.protectTip:null,sT=(typeof o.stockTopAt==='function')?o.stockTopAt:null;
     const zB=(typeof o.zoneAt==='function')?o.zoneAt:null;
@@ -66714,6 +66802,9 @@ function* faoGenRough3DIt(mesh,box,ztop,zbot,o){
       if(th!==0){X=x*cs-y*sn;Y=x*sn+y*cs;}else if(swapped){X=y;Y=x;}
       const dx=Math.max(+SB.x0-X,0,X-+SB.x1),dy=Math.max(+SB.y0-Y,0,Y-+SB.y1);
       return dx*dx+dy*dy<rD*rD;};}
+  if(zonePur&&(th!==0||swapped)){const zP=zonePur;
+    if(th!==0){const cs=Math.cos(th),sn=Math.sin(th);zonePur=function(x,y){return zP(x*cs-y*sn,x*sn+y*cs);};}
+    else zonePur=function(x,y){return zP(y,x);};}
   if(typeof o.zoneAt==='function'&&(th!==0||swapped)){
     const zW=o.zoneAt,zS=(typeof o.zoneSafe==='function')?o.zoneSafe:null;
     if(th!==0){
@@ -66907,6 +66998,8 @@ function* faoGenRough3DIt(mesh,box,ztop,zbot,o){
   for(let li=0;li<plan.length;li++){
     const L=plan[li];
     chunkAt.push(moves.length);
+    // V0.99.72 : calcul réparti — ce worker ne remplit la mémoire des parois que de SES couches
+    if(faoNivPart&&(li%faoNivPart.n)!==faoNivPart.i)continue;
     // Entrée depuis z+pas (rainure du dessus déjà ouverte, descente en avance
     // plongée) : l'hélice ne refait jamais toute la hauteur depuis la sécu.
     const zFrom=Math.min(secu,L.z+ap);
@@ -66925,7 +67018,7 @@ function* faoGenRough3DIt(mesh,box,ztop,zbot,o){
     if(esc)faoSpiralLevel(M,BB,L.z,D,D/2+L.radial,secu,zFrom,ae,entryMode,o.brutTop,zt,moves,{snail:o.mode==='anneaux'||o.mode==='contours',oneEntry:(o.mode==='anneaux'&&!!o.uneEntree)||o.mode==='contours',contours:o.mode==='contours',travelZ:tvZ,sens:o.sens,entryR:o.entryR,zoneAt:o.zoneAt,zoneBoxes:o.zoneBoxes||null,frameTouch:frameTouch,zoneDense:typeof o.protectTip==='function',stockTop:stockTopF,remBlocked:rem?rem.blocked:null,remTopAt:rem?rem.topAt:null,remPtAt:rem?rem.ptAt:null,zoneSafe:o.zoneSafe||null,
       bullFaces:bullC?function(zz){return faoBullRingRuns(bullCtx(L.radial),zz,o.sens==='avalant',true);}:null,
       bullOK:bullC?function(x,y,zz){return bullCtx(L.radial).tipB(x,y)<=zz+1e-6;}:null});
-    else faoRoughAdaptiveLevel(M,BB,L.z,D,D/2+L.radial,secu,zFrom,ae,entryMode,o.brutTop,zt,moves,{travelZ:tvZ,sens:o.sens,entryR:o.entryR,zoneAt:o.zoneAt,frameTouch:frameTouch});
+    else faoRoughAdaptiveLevel(M,BB,L.z,D,D/2+L.radial,secu,zFrom,ae,entryMode,o.brutTop,zt,moves,{travelZ:tvZ,sens:o.sens,entryR:o.entryR,zoneAt:o.zoneAt,zoneBoxes:o.zoneBoxes||null,frameTouch:frameTouch});
     if(rem)rem.carve();
     if(bullC&&!esc)bullJobs.push([L.radial,L.z,tvZ]); // conventionnel : contour ajouté en fin d'opération
     yield frameYield(); // dessin progressif 005 : pelage du niveau fini
@@ -66954,8 +67047,8 @@ function* faoGenRough3DIt(mesh,box,ztop,zbot,o){
           // V0.38.0 : « seulement sur les pentes » — morceaux de paroi où le
           // niveau du dessous (L.z) a laissé une marche (src/88-fao-92-contour.js)
           o.minipassesMode==='pentes'
-            ?{ringOnly:true,travelZ:tvZ,sens:o.sens,entryR:o.entryR,zoneAt:o.zoneAt,frameTouch:frameTouch,restBelow:{z:L.z,marche:o.marcheMaxi,k:k,h:h,d:h/(nbL+1)}}
-            :{ringOnly:true,travelZ:tvZ,sens:o.sens,entryR:o.entryR,zoneAt:o.zoneAt,frameTouch:frameTouch});
+            ?{ringOnly:true,travelZ:tvZ,sens:o.sens,entryR:o.entryR,zoneAt:o.zoneAt,zoneBoxes:o.zoneBoxes||null,frameTouch:frameTouch,restBelow:{z:L.z,marche:o.marcheMaxi,k:k,h:h,d:h/(nbL+1)}}
+            :{ringOnly:true,travelZ:tvZ,sens:o.sens,entryR:o.entryR,zoneAt:o.zoneAt,zoneBoxes:o.zoneBoxes||null,frameTouch:frameTouch});
         if(rem)rem.carve();
         yield frameYield(); // dessin progressif 005 : mini-passe k
       }
@@ -66989,7 +67082,7 @@ function* faoGenRough3DIt(mesh,box,ztop,zbot,o){
           const off=RA.radial*(nf-k)/nf;
           // 2026-10-14-010 : outil à rayon de coin — anneau au contact réel, en place
           if(bullC)faoBullRingLevel(bullCtx(off),zj,moves,{sens:o.sens,secu:secu,travelZ:tvJ,linkMax:bullLink,minRun:rem?5:0,all:true});
-          else faoRoughAdaptiveLevel(M,BB,zj,D,D/2+off,secu,zF,ae,entryMode,o.brutTop,zt,moves,{ringOnly:true,travelZ:tvJ,sens:o.sens,entryR:o.entryR,zoneAt:o.zoneAt,frameTouch:frameTouch});
+          else faoRoughAdaptiveLevel(M,BB,zj,D,D/2+off,secu,zF,ae,entryMode,o.brutTop,zt,moves,{ringOnly:true,travelZ:tvJ,sens:o.sens,entryR:o.entryR,zoneAt:o.zoneAt,zoneBoxes:o.zoneBoxes||null,frameTouch:frameTouch});
           yield frameYield(); // dessin progressif 005 : finition k
         }
       }
@@ -67012,7 +67105,7 @@ function* faoGenRough3DIt(mesh,box,ztop,zbot,o){
   if(o.parRegion){
     const bt=isFinite(+o.brutTop)?+o.brutTop:zt;
     const nm=faoRegionOrder(moves,chunkAt,D,secu,function(x,y){return stockTopF?Math.min(bt,stockTopF(x,y)):bt;},
-      Math.max(0.5,D/2-0.3*(isFinite(+o.cornerR)?+o.cornerR:0)),BB);
+      Math.max(0.5,D/2-0.3*(isFinite(+o.cornerR)?+o.cornerR:0)),BB,zonePur);
     if(nm!==moves){moves.length=0;for(let i=0;i<nm.length;i++)moves.push(nm[i]);}
   }
   // Retour repère -> pièce : même xf que les yields (source unique) — rotation
@@ -67035,7 +67128,7 @@ function* faoGenRough3DIt(mesh,box,ztop,zbot,o){
 // dans le NOUVEL ordre) ; sinon remontée verticale, rapide droit à 2 mm
 // au-dessus de la matière restante sous l'outil (plafonné au plan de
 // sécurité), descente au point d'entrée d'origine.
-function faoRegionOrder(moves,chunkAt,D,secu,topInit,rcut,BB){
+function faoRegionOrder(moves,chunkAt,D,secu,topInit,rcut,BB,zoneAt){
   const n=moves.length;
   if(n<4||!chunkAt||chunkAt.length<2)return moves;
   const isTr=new Uint8Array(n);isTr[0]=1;
@@ -67045,6 +67138,21 @@ function faoRegionOrder(moves,chunkAt,D,secu,topInit,rcut,BB){
     while(j<n&&moves[j].r){if(moves[j].z>moves[j-1].z+1e-9)up=true;j++;}
     if(up)for(let k=i;k<j;k++)isTr[k]=1;
     i=j;
+  }
+  // V0.99.72 (constat de Fred, STEP.conceptcad : 5 poches usinées niveau par
+  // niveau, « usiner par zone ») : une coupe qui SORT de la zone (cadre dont
+  // seuls les sommets sont dans la zone, retirée ensuite par faoZoneCuts)
+  // reliait les poches en une seule région. Elle sépare désormais les blocs :
+  // franchement dehors = un point d'échantillon et ses 4 voisins à 0,2 mm.
+  if(typeof zoneAt==='function'){
+    const out=function(x,y){const e=0.2;return !zoneAt(x,y)&&!zoneAt(x+e,y)&&!zoneAt(x-e,y)&&!zoneAt(x,y+e)&&!zoneAt(x,y-e);};
+    for(let k=1;k<n;k++){
+      if(moves[k].r||isTr[k])continue;
+      const a=moves[k-1],b=moves[k],L=Math.hypot(b.x-a.x,b.y-a.y);
+      if(L<2)continue;
+      const ns=Math.ceil(L/2);
+      for(let t=1;t<ns;t++){if(out(a.x+(b.x-a.x)*t/ns,a.y+(b.y-a.y)*t/ns)){isTr[k]=1;break;}}
+    }
   }
   const blocks=[];
   for(let i=0;i<n;){
@@ -67697,6 +67805,21 @@ function faoPtsBB(pts){
   }
   return bb;
 }
+/* ----- V0.99.72 (idée de Fred : « chaque couche et sous-couche de passes pourrait être
+   calculée dans un cœur différent ») : MÉMOIRE DES CALCULS DE PAROIS -----
+   Les morceaux de paroi d'une couche (lignes de balayage, contours décalés, cadres) ne
+   dépendent que de la pièce et de la couche, jamais des couches précédentes. Des workers
+   calculent chacun une partie des couches (faoNivPart) et rendent leur mémoire ; le calcul
+   final la reprend (mêmes fonctions, mêmes entrées : parcours identique au mouvement près). */
+let faoGeoMemo=null; // Map clé -> résultat, posée seulement pendant un calcul réparti
+function faoMemoClone(v){
+  if(ArrayBuffer.isView(v))return v.slice();
+  if(Array.isArray(v)){ const o=new Array(v.length); for(let i=0;i<v.length;i++)o[i]=faoMemoClone(v[i]); return o; }
+  if(v&&typeof v==='object'){ const o={}; for(const k in v)o[k]=faoMemoClone(v[k]); return o; }
+  return v;
+}
+function faoMeshSig(mesh){ return (mesh&&mesh.v?mesh.v.length:0)+'/'+(mesh&&mesh.t?mesh.t.length:0); }
+function faoPlanesSig(planes){ return planes.map(function(z){return Math.round(z*1000)/1000;}).join(','); }
 function faoShadowShape(mesh,planes,B,r,gstep){
   // Shape du niveau : sections par plan (parité), index global dedup (distance),
   // chaînes uniques (offset), boite de validation [B.*-r,B.*+r], pas de grille.
@@ -67707,11 +67830,26 @@ function faoShadowShape(mesh,planes,B,r,gstep){
   const cellS=Math.max(1,Math.ceil(Math.max((+B.x1)-(+B.x0),(+B.y1)-(+B.y0),0)/600))||4;
   const S={pl:[],hash:faoHashBuild(cellS),rect:[B.x0-r,B.y0-r,B.x1+r,B.y1+r],
     chains:[],keys:{},gstep:gstep>0?gstep:2,segs:[]};
+  if(faoGeoMemo)S.sig=faoMeshSig(mesh)+'|'+faoPlanesSig(planes)+'|'+[B.x0,B.y0,B.x1,B.y1].join(',')+'|'+r+'|'+S.gstep;
   const seen={};
   planes.forEach(function(zz){
-    const segs=faoSliceZCached(mesh,Math.round(zz*1000)/1000);
+    const zk=Math.round(zz*1000)/1000;
+    const segs=faoSliceZCached(mesh,zk);
     if(!segs.length)return;
-    const chains=faoChainsClosed(segs);
+    // V0.99.72 : contours d'un plan gardés avec sa coupe (calcul pur) — chaque niveau et
+    // chaque mini-passe relisait les mêmes plans (68 s sur STEP.conceptcad). Objets neufs
+    // à chaque ombre : sens d'offset, index… y sont posés pour CETTE ombre.
+    let CC=null;
+    try{ if(faoSliceCache&&faoSliceCache.mesh===mesh){ if(!faoSliceCache.ch)faoSliceCache.ch={}; CC=faoSliceCache.ch; } }catch(e){ CC=null; }
+    let mem=CC?CC[zk]:null;
+    if(!mem){
+      mem={ch:faoChainsClosed(segs).map(function(ch){return {pts:ch.pts,bb:ch.bb,cle:faoPointsKey(ch.pts.slice(0,ch.pts.length-1))};}),
+        sk:segs.map(function(s){
+          return [Math.round(Math.min(s[0],s[2])*1e4)/1e4,Math.round(Math.min(s[1],s[3])*1e4)/1e4,
+            Math.round(Math.max(s[0],s[2])*1e4)/1e4,Math.round(Math.max(s[1],s[3])*1e4)/1e4].join(',');})};
+      if(CC)CC[zk]=mem;
+    }
+    const chains=mem.ch.map(function(m){return {pts:m.pts,bb:m.bb,cle:m.cle};});
     if(!chains.length)return;
     const bb=[1/0,1/0,-1/0,-1/0];
     chains.forEach(function(ch){
@@ -67719,14 +67857,13 @@ function faoShadowShape(mesh,planes,B,r,gstep){
       if(ch.bb[1]<bb[1])bb[1]=ch.bb[1];
       if(ch.bb[2]>bb[2])bb[2]=ch.bb[2];
       if(ch.bb[3]>bb[3])bb[3]=ch.bb[3];
-      const k=faoPointsKey(ch.pts.slice(0,ch.pts.length-1));
-      if(!S.keys[k]){S.keys[k]=1;S.chains.push(ch);}
+      const k=ch.cle;
+      if(!S.keys[k]){S.keys[k]=1;ch.pi=S.pl.length;S.chains.push(ch);}
     });
     S.pl.push({chains:chains,bb:bb});
     const hs=[];
-    segs.forEach(function(s){
-      const k=[Math.round(Math.min(s[0],s[2])*1e4)/1e4,Math.round(Math.min(s[1],s[3])*1e4)/1e4,
-        Math.round(Math.max(s[0],s[2])*1e4)/1e4,Math.round(Math.max(s[1],s[3])*1e4)/1e4].join(',');
+    segs.forEach(function(s,si){
+      const k=mem.sk[si];
       if(seen[k])return;
       seen[k]=1;
       S.segs.push(s);
@@ -67882,6 +68019,89 @@ function faoShapeInside(S,x,y){
     }
   }
   return faoShapeInsideRaw(S,x,y);
+}
+// V0.99.72 (constat de Fred, STEP.conceptcad : « c'est tout petit et c'est 10x plus long » que
+// SIRAP-14-002) : une pièce importée à parois en pente et arrondis a un Z de sommet tous les
+// 0,1 mm — 117 plans d'ombre par niveau (2 sur SIRAP-14-002), 117 contours presque superposés
+// de chaque paroi, tous décalés puis vérifiés point par point. Un contour STRICTEMENT DANS LA
+// MATIÈRE d'un autre plan (à plus d'1 µm de son bord) ne donne aucun point valide : chacun de
+// ses points décalés est à moins de d du bord de cet autre plan. Il n'est plus décalé ; la
+// parité et les distances (validité des autres) restent calculées sur tous les plans.
+function faoPlaneInside(P,x,y){
+  // Parité d'UN plan (même règle que faoShapeInsideRaw)
+  if(y<P.bb[1]||y>P.bb[3])return false;
+  const yb=faoPlaneYB(P);
+  if(!yb.E.length)return false;
+  let b=Math.floor((y-yb.y0)/yb.step);
+  if(b<0)b=0; else if(b>=yb.n)b=yb.n-1;
+  const row=yb.rows[b];
+  if(!row)return false;
+  const E=yb.E;
+  let c=0;
+  for(let t=0;t<row.length;t++){
+    const i=row[t],ax=E[i],ay=E[i+1],bx=E[i+2],by=E[i+3];
+    if((ay>y)!==(by>y)){
+      const tt=(y-ay)/(by-ay);
+      if(ax+tt*(bx-ax)>x)c^=1;
+    }
+  }
+  return !!c;
+}
+function faoSegSegD2(ax,ay,bx,by,cx,cy,dx,dy){
+  // Distance² entre deux segments (0 s'ils se coupent)
+  const o=function(px,py,qx,qy,rx,ry){return (qx-px)*(ry-py)-(qy-py)*(rx-px);};
+  const d1=o(cx,cy,dx,dy,ax,ay),d2=o(cx,cy,dx,dy,bx,by),d3=o(ax,ay,bx,by,cx,cy),d4=o(ax,ay,bx,by,dx,dy);
+  if(((d1>0&&d2<0)||(d1<0&&d2>0))&&((d3>0&&d4<0)||(d3<0&&d4>0)))return 0;
+  const ps=function(px,py,sx,sy,ex,ey){const vx=ex-sx,vy=ey-sy,L=vx*vx+vy*vy;
+    let t=L>0?((px-sx)*vx+(py-sy)*vy)/L:0;if(t<0)t=0;else if(t>1)t=1;
+    const qx=sx+t*vx-px,qy=sy+t*vy-py;return qx*qx+qy*qy;};
+  return Math.min(ps(ax,ay,cx,cy,dx,dy),ps(bx,by,cx,cy,dx,dy),ps(cx,cy,ax,ay,bx,by),ps(dx,dy,ax,ay,bx,by));
+}
+function faoPlaneEdgeHash(P){
+  // Arêtes de parité du plan, indexées (cellule 1 mm), une fois par plan
+  if(P.eh)return P.eh;
+  const E=faoPlaneYB(P).E,segs=[];
+  for(let i=0;i<E.length;i+=4)segs.push([E[i],E[i+1],E[i+2],E[i+3]]);
+  P.eh=faoHashSegs(faoHashBuild(1),segs);
+  return P.eh;
+}
+function faoChainNearPlane(ch,P,eps){
+  // Un segment du contour approche-t-il à moins de eps d'une arête du plan ?
+  const H=faoPlaneEdgeHash(P),c=H.cell,e2=eps*eps,pts=ch.pts;
+  if(!H.w||!H.h)return false;
+  for(let i=0;i+1<pts.length;i++){
+    const ax=pts[i][0],ay=pts[i][1],bx=pts[i+1][0],by=pts[i+1][1];
+    let ix0=Math.floor((Math.min(ax,bx)-eps)/c),ix1=Math.floor((Math.max(ax,bx)+eps)/c);
+    let iy0=Math.floor((Math.min(ay,by)-eps)/c),iy1=Math.floor((Math.max(ay,by)+eps)/c);
+    if(ix0<H.x0)ix0=H.x0; if(ix1>H.x0+H.w-1)ix1=H.x0+H.w-1;
+    if(iy0<H.y0)iy0=H.y0; if(iy1>H.y0+H.h-1)iy1=H.y0+H.h-1;
+    for(let iy=iy0;iy<=iy1;iy++){const ro=(iy-H.y0)*H.w-H.x0;
+      for(let ix=ix0;ix<=ix1;ix++){const arr=H.a[ro+ix];if(!arr)continue;
+        for(let k=0;k<arr.length;k++){const s=arr[k];
+          if(faoSegSegD2(ax,ay,bx,by,s[0],s[1],s[2],s[3])<e2)return true;}}}
+  }
+  return false;
+}
+function faoChainsDedans(S){
+  // S.chains[i] -> 1 si le contour est strictement dans la matière d'un autre plan
+  if(S.dedans)return S.dedans;
+  const n=S.chains.length,out=new Uint8Array(n);
+  S.dedans=out;
+  if(S.pl.length<2)return out;
+  const eps=1e-3;
+  for(let ci=0;ci<n;ci++){
+    const ch=S.chains[ci],p0=ch.pts[0],bb=ch.bb;
+    for(let pj=0;pj<S.pl.length;pj++){
+      if(pj===ch.pi)continue;
+      const P=S.pl[pj];
+      if(bb[0]<P.bb[0]||bb[1]<P.bb[1]||bb[2]>P.bb[2]||bb[3]>P.bb[3])continue;
+      if(!faoPlaneInside(P,p0[0],p0[1]))continue;
+      if(faoChainNearPlane(ch,P,eps))continue;
+      out[ci]=1;
+      break;
+    }
+  }
+  return out;
 }
 function faoShapeInsideRaw(S,x,y){
   // OR des parités XOR par plan : trous gérés au plan, union entre plans
@@ -68175,6 +68395,13 @@ function faoRectRaw(x0,y0,x1,y1){
   return raw;
 }
 function faoOffsetRuns(S,d){
+  const mk=(faoGeoMemo&&S.sig)?('O|'+S.sig+'|'+d+'|'+(S.zb?JSON.stringify(S.zb):'')):null;
+  if(mk&&faoGeoMemo.has(mk))return faoMemoClone(faoGeoMemo.get(mk));
+  const res=faoOffsetRuns0(S,d);
+  if(mk)faoGeoMemo.set(mk,faoMemoClone(res));
+  return res;
+}
+function faoOffsetRuns0(S,d){
   // Toutes les chaines du niveau offsetées a d -> morceaux valides.
   const out=[];
   // V0.99.71 : boîtes de zone (ébauche 3D) — une chaîne décalée entièrement
@@ -68183,7 +68410,9 @@ function faoOffsetRuns(S,d){
   // (couper au bord des boîtes déplacerait les points gardés : parcours changés).
   const zb=S.zb||null;
   const valid=function(p){return faoShapeValid(S,p[0],p[1],d);};
+  const dedans=faoChainsDedans(S); // V0.99.72 : contours empilés dans la matière d'un autre plan
   for(let ci=0;ci<S.chains.length;ci++){
+    if(dedans[ci])continue;
     const ch=S.chains[ci];
     if(!ch.side)ch.side=faoChainSide(ch,S);
     const raw=faoOffsetChain(ch.pts,d,ch.side);
@@ -68229,6 +68458,13 @@ function faoRunsDedupGeo(runs,tol){
   return runs.filter(function(R,i){return keep[i];});
 }
 function faoRectRuns(S,inset,d){
+  const mk=(faoGeoMemo&&S.sig)?('R|'+S.sig+'|'+inset+'|'+d):null;
+  if(mk&&faoGeoMemo.has(mk))return faoMemoClone(faoGeoMemo.get(mk));
+  const res=faoRectRuns0(S,inset,d);
+  if(mk)faoGeoMemo.set(mk,faoMemoClone(res));
+  return res;
+}
+function faoRectRuns0(S,inset,d){
   // E0 (inset=0) : le tour de la boite de validation, valide a d (= r).
   // E-k (inset=k*aeA) : cadres imbriqués pour les niveaux vides (surfaçage).
   const R=S.rect;
@@ -68266,14 +68502,17 @@ function faoRoughAdaptiveLevel(mesh,B,z,D,r,secu,zFrom,ae,entryMode,brutTop,zt,m
   for(let pi=0;pi<planes.length;pi++){
     if(planes[pi]>z+1e-9)segsAll=segsAll.concat(faoSliceZCached(mesh,planes[pi]));
   }
+  // V0.99.72 : lignes de balayage de la couche (calcul pur) — mémoire du calcul réparti
+  const lkey=faoGeoMemo?('L|'+faoMeshSig(mesh)+'|'+faoPlanesSig(planes)+'|'+[B.x0,B.y0,B.x1,B.y1].join(',')+'|'+z+'|'+top+'|'+r+'|'+aeA):null;
+  let lines=(lkey&&faoGeoMemo.has(lkey))?faoMemoClone(faoGeoMemo.get(lkey)):null;
+  if(!lines){
+  lines=[];
   const ys=[]; let y=B.y0-r, g=0;
   while(y<=B.y1+r+1e-9&&g++<100000){
     // lignes purement hors brut (disque tangent sans coupe) : ignorees
     if(!(y+r<=B.y0+1e-9||y-r>=B.y1-1e-9))ys.push(y);
     y+=aeA;
   }
-  if(!ys.length)return;
-  const lines=[];
   const seenY={};
   ys.forEach(function(yy){
     let ivs=faoShadowIntervals(mesh,B,yy,z,top,r,aeA,planes);
@@ -68338,6 +68577,8 @@ function faoRoughAdaptiveLevel(mesh,B,z,D,r,secu,zFrom,ae,entryMode,brutTop,zt,m
     lines.push({y:yc,ivs:ivs});
   });
   lines.sort(function(p,q){return p.y-q.y;});
+  if(lkey)faoGeoMemo.set(lkey,faoMemoClone(lines));
+  }
   if(!lines.length)return;
   const regs=faoRoughRegions(lines);
   // --- SUIVI DE CONTOUR (lot B) : les passes sont les chaines du niveau
@@ -68428,6 +68669,9 @@ function faoRoughAdaptiveLevel(mesh,B,z,D,r,secu,zFrom,ae,entryMode,brutTop,zt,m
   };
   // --- passes : chaines offsetees + cadres imbriques (E0/E-k)
   const S=faoShadowShape(mesh,planes,B,r,aeA);
+  // V0.99.72 : boîtes de zone aussi pour les mini-passes et la finition des parois — un contour
+  // décalé hors de toutes les boîtes est retiré entier par le filtre de zone plus bas (exact)
+  if(typeof opt==='object'&&opt&&typeof opt.zoneAt==='function'&&Array.isArray(opt.zoneBoxes)&&opt.zoneBoxes.length)S.zb=opt.zoneBoxes;
   // 008 : bbox 2D de la pièce — ancre d'arc hors silhouette = pas de hélice
   // (les chaînes du cadre E0 en marge entreraient par un ressort dans l'air).
   const mBB=[1/0,1/0,-1/0,-1/0];
